@@ -1,0 +1,6 @@
+# 本机模式（跑在游戏机器上）：零依赖，标准库就够
+# python -m ark_relay local
+
+# 服务器模式（跑在云服务器上）额外需要：
+fastapi>=0.110
+uvicorn[standard]>=0.29

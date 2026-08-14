@@ -1,0 +1,201 @@
+"""Judgment, bookkeeping, and message formatting.
+
+Everything factual is decided here, in plain Python. The model is only ever
+asked to phrase things (see summary.py). If it misbehaves the result is an
+awkward sentence, never a wrong verdict.
+"""
+from __future__ import annotations
+
+import json
+from datetime import datetime, timedelta
+from pathlib import Path
+
+from .config import SERVER_TZ, Config, RunRecord, both_clocks
+
+
+class State:
+    """Which runs have been handled, and today's ledger.
+
+    Kept as line-delimited JSON so a half-written file costs at most one
+    record, and so it stays readable when something goes wrong at 3am.
+    """
+
+    def __init__(self, state_dir: Path):
+        self.dir = state_dir
+        self.dir.mkdir(parents=True, exist_ok=True)
+        self.seen_path = self.dir / "seen.txt"
+        self._seen: set[str] | None = None
+
+    @property
+    def seen(self) -> set[str]:
+        if self._seen is None:
+            if self.seen_path.exists():
+                self._seen = {
+                    ln.strip()
+                    for ln in self.seen_path.read_text(encoding="utf-8").splitlines()
+                    if ln.strip()
+                }
+            else:
+                self._seen = set()
+        return self._seen
+
+    def mark_seen(self, run_id: str) -> None:
+        self.seen.add(run_id)
+        with self.seen_path.open("a", encoding="utf-8") as f:
+            f.write(run_id + "\n")
+
+    def ledger_path(self, day: str) -> Path:
+        return self.dir / f"ledger-{day}.jsonl"
+
+    def append_ledger(self, rec: RunRecord) -> None:
+        entry = {
+            "run_id": rec.run_id,
+            "script": rec.script,
+            "user": rec.user,
+            "started": rec.started.isoformat(),
+            "finished": rec.finished.isoformat(),
+            "ok": rec.ok,
+            "failed_tasks": rec.failed_tasks,
+            "sanity": rec.sanity,
+            "sanity_full_at": rec.sanity_full_at,
+            "drops": rec.drops,
+            "recruits": rec.recruits,
+        }
+        day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
+        with self.ledger_path(day).open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    def read_ledger(self, day: str) -> list[dict]:
+        p = self.ledger_path(day)
+        if not p.exists():
+            return []
+        out = []
+        for ln in p.read_text(encoding="utf-8").splitlines():
+            ln = ln.strip()
+            if not ln:
+                continue
+            try:
+                out.append(json.loads(ln))
+            except json.JSONDecodeError:
+                continue  # tolerate one torn line rather than lose the day
+        return out
+
+    def report_sent(self, day: str) -> bool:
+        return (self.dir / f"report-{day}.sent").exists()
+
+    def mark_report_sent(self, day: str) -> None:
+        (self.dir / f"report-{day}.sent").touch()
+
+
+def is_last_run_of_day(rec: RunRecord, cfg: Config) -> bool:
+    """True once the day's final scheduled queue has finished.
+
+    Configured as ARK_LAST_RUN_AFTER (server time). Anything finishing at or
+    after that hour is treated as the day's closer.
+    """
+    try:
+        hh, mm = (int(x) for x in cfg.last_run_after.split(":"))
+    except ValueError:
+        hh, mm = 21, 30
+    finished = rec.finished.astimezone(SERVER_TZ)
+    cutoff = finished.replace(hour=hh, minute=mm, second=0, microsecond=0)
+    return finished >= cutoff
+
+
+def format_failure(rec: RunRecord, diagnosis: str = "") -> tuple[str, str]:
+    """Immediate alert for a failed run. Title, body."""
+    title = f"❌ {rec.script} 失败"
+    lines = [
+        f"{rec.script} · {rec.user}",
+        f"{both_clocks(rec.started)} → {both_clocks(rec.finished)}"
+        f"（{rec.duration_min} 分钟）",
+        "",
+        "失败项：",
+    ]
+    lines += [f"  · {t}" for t in (rec.failed_tasks or ["未知"])]
+    if rec.sanity is not None:
+        lines += ["", f"剩余理智 {rec.sanity}"]
+        if rec.sanity_full_at:
+            lines.append(rec.sanity_full_at)
+    if diagnosis:
+        lines += ["", "─" * 12, diagnosis]
+    return title, "\n".join(lines)
+
+
+def _fmt_items(d: dict, limit: int = 12) -> list[str]:
+    """Render a {name: count} map, biggest first."""
+    if not d:
+        return []
+    try:
+        pairs = sorted(d.items(), key=lambda kv: -int(kv[1]))
+    except (TypeError, ValueError):
+        pairs = list(d.items())
+    out = [f"{k} ×{v}" for k, v in pairs[:limit]]
+    if len(pairs) > limit:
+        out.append(f"…另 {len(pairs) - limit} 项")
+    return out
+
+
+def format_daily(day: str, entries: list[dict], prose: str = "") -> tuple[str, str]:
+    """The one message of the day. Numbers here are copied, never generated."""
+    if not entries:
+        return f"📋 {day} 日报", "今天没有任何运行记录。"
+
+    failed = [e for e in entries if not e["ok"]]
+    head = "✅ 全绿" if not failed else f"⚠️ {len(failed)} 项失败"
+    title = f"📋 {day} {head}"
+
+    lines: list[str] = []
+    for e in entries:
+        started = datetime.fromisoformat(e["started"])
+        finished = datetime.fromisoformat(e["finished"])
+        mark = "✅" if e["ok"] else "❌"
+        lines.append(
+            f"{mark} {e['script']}　{both_clocks(started)} → {both_clocks(finished)}"
+        )
+        if e.get("sanity") is not None:
+            tail = f"　剩余理智 {e['sanity']}"
+            if e.get("sanity_full_at"):
+                tail += f"　{e['sanity_full_at']}"
+            lines.append(f"　　{tail.strip()}")
+        drops = _fmt_items(e.get("drops") or {})
+        if drops:
+            lines.append("　　产出　" + " · ".join(drops))
+        recruits = _fmt_items(e.get("recruits") or {})
+        if recruits:
+            lines.append("　　公招　" + " · ".join(recruits))
+        if not e["ok"]:
+            for t in e.get("failed_tasks") or ["未知"]:
+                lines.append(f"　　失败　{t}")
+        lines.append("")
+
+    if prose:
+        lines += ["─" * 12, prose]
+    return title, "\n".join(lines).rstrip()
+
+
+def format_missing(what: str, expected_at: datetime, detail: str = "") -> tuple[str, str]:
+    """Alert for something that should have happened and did not.
+
+    This is the alert only a relay outside the monitored machine can produce.
+    """
+    title = f"🔌 {what}"
+    body = [f"预计 {both_clocks(expected_at)} 应发生，至今没有。"]
+    if detail:
+        body += ["", detail]
+    return title, "\n".join(body)
+
+
+def stale_seconds(last: datetime | None, now: datetime | None = None) -> float:
+    now = now or datetime.now(tz=SERVER_TZ)
+    if last is None:
+        return float("inf")
+    return (now - last).total_seconds()
+
+
+def next_occurrence(hhmm: str, now: datetime | None = None) -> datetime:
+    """Next time-of-day on the server clock, today or tomorrow."""
+    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    hh, mm = (int(x) for x in hhmm.split(":"))
+    candidate = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+    return candidate if candidate > now else candidate + timedelta(days=1)

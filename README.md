@@ -30,6 +30,18 @@
 | [scripts/windows/setup-tasks.ps1](scripts/windows/setup-tasks.ps1) | 一键创建所需的计划任务 |
 | [scripts/mac/edit-json.py](scripts/mac/edit-json.py) | 安全改远程 JSON：定位 → 替换 → 校验 → 结构化 diff |
 
+## 中继
+
+[relay/](relay/) —— 本机模式零依赖，服务器模式加 FastAPI。三种角色：
+
+```bash
+python -m ark_relay local     # 游戏机器上：读 history、判定、推送
+python -m ark_relay agent     # 游戏机器上：上报事件 + 心跳 + 执行指令
+python -m ark_relay server    # 云服务器上：7x24，含心跳超时告警与网页
+```
+
+详见 [relay/README.md](relay/README.md)。
+
 ---
 
 ## 核心结论
@@ -101,7 +113,8 @@ export ARK_HOST=<你的服务器 Tailscale IP>
 - [x] 开机自启 + 完成后关机
 - [x] 企业微信图片推送
 - [ ] 无人值守全流程实测验证
-- [ ] 通知中继（本机模式 + 服务器模式，同一份代码）
-- [ ] 开机监督（心跳，复用 Uptime Kuma 的 Push 监控）
-- [ ] 四端 PWA 客户端（看状态 + 发人话指令）
-- [ ] 人话 → 配置指令（白名单 + 人工确认 + 结构化 diff 校验）
+- [x] 通知中继（本机模式 + 服务器模式，同一份代码）—— 已实现，待上机实测
+- [x] 开机监督（心跳 + watchdog，服务器模式）
+- [ ] 部署到云服务器并实测
+- [x] 四端 PWA 客户端（看状态 + 发人话指令）—— 已实现，待上机实测
+- [x] 人话 → 配置指令（白名单 + 人工确认 + 结构化 diff 校验）

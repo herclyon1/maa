@@ -1,0 +1,4 @@
+.env
+ark-state/
+__pycache__/
+*.pyc
