@@ -25,6 +25,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
+from .config import SERVER_TZ
+
 log = logging.getLogger("ark.commands")
 
 # ---------- gate ① : the whitelist ----------
@@ -95,7 +97,8 @@ def _safe_rewrite(path: Path, mutate: Callable[[str], str],
             f"（预期改动 {expect_changed}、新增 0、删除 0）"
         )
 
-    backup = path.with_suffix(path.suffix + f".bak-{datetime.now():%Y%m%d-%H%M%S}")
+    stamp = datetime.now(tz=SERVER_TZ)
+    backup = path.with_suffix(path.suffix + f".bak-{stamp:%Y%m%d-%H%M%S}")
     shutil.copy2(path, backup)
     try:
         path.write_text(updated, encoding="utf-8", newline="")
@@ -154,7 +157,8 @@ def _run_now(queue: str) -> tuple[bool, str]:
 
 
 def _skip_today(queue: str) -> tuple[bool, str]:
-    day = datetime.now().strftime("%Y-%m-%d")
+    # 必须用服务器时钟：跨时区或临近午夜时，主机本地日期会跳错天
+    day = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
     marker = Path(os.environ.get("ARK_STATE_DIR", "./ark-state")) / f"skip-{day}.flag"
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text(str(queue), encoding="utf-8")
