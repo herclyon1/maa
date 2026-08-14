@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import logging
 import os
 import sys
@@ -95,11 +96,53 @@ def cmd_report(cfg: Config) -> int:
     return 0 if _build_local_engine(cfg).send_daily_now() else 1
 
 
+def _acquire_singleton(cfg: Config) -> object | None:
+    """Refuse to start twice.
+
+    Two relays watching the same directory means every alert and every daily
+    report goes out twice. Restarting via the scheduler is easy to do
+    accidentally, so guard it here rather than relying on discipline.
+    """
+    cfg.state_dir.mkdir(parents=True, exist_ok=True)
+    lock = cfg.state_dir / "relay.lock"
+    try:
+        # Exclusive create: fails if another instance already holds it.
+        fh = lock.open("x")
+    except FileExistsError:
+        try:
+            pid = int(lock.read_text().strip() or 0)
+        except (OSError, ValueError):
+            pid = 0
+        if pid and _pid_alive(pid):
+            print(f"✗ 已有中继在运行（pid {pid}），本次不启动", file=sys.stderr)
+            return None
+        # Stale lock from a machine that was powered off mid-run.
+        lock.unlink(missing_ok=True)
+        fh = lock.open("x")
+    fh.write(str(os.getpid()))
+    fh.flush()
+    atexit.register(lambda: lock.unlink(missing_ok=True))
+    return fh
+
+
+def _pid_alive(pid: int) -> bool:
+    if os.name == "nt":
+        out = os.popen(f'tasklist /FI "PID eq {pid}" /NH').read()
+        return str(pid) in out
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
 def cmd_local(cfg: Config) -> int:
     problems = cfg.validate()
     if problems:
         for p in problems:
             print(f"✗ {p}", file=sys.stderr)
+        return 1
+    if _acquire_singleton(cfg) is None:
         return 1
     engine = _build_local_engine(cfg)
     log = logging.getLogger("ark")
