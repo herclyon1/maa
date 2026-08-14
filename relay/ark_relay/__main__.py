@@ -56,7 +56,12 @@ def cmd_check(cfg: Config) -> int:
     print(f"日报触发      {cfg.last_run_after} 之后（服务器时间）")
     n = Notifier(cfg)
     print(f"推送渠道      {'、'.join(n.channels) or '(无)'}")
-    print(f"措辞模型      {cfg.model if cfg.anthropic_key else '(未配置，将只发结构化内容)'}")
+    if cfg.llm_key:
+        from . import summary  # noqa: PLC0415
+        ok, detail = summary.check(cfg)
+        print(f"措辞模型      {'✅' if ok else '✗'} {detail}")
+    else:
+        print("措辞模型      (未配置，将只发结构化内容——不影响告警和日报)")
     problems = cfg.validate()
     if problems:
         print("\n有问题：")
@@ -99,6 +104,7 @@ def cmd_local(cfg: Config) -> int:
     engine = _build_local_engine(cfg)
     log = logging.getLogger("ark")
     log.info("本机模式启动，监视 %s（每 %d 秒）", cfg.history_dir, cfg.poll_seconds)
+    engine.bootstrap()  # never replay pre-existing history as fresh alerts
     log.info("注意：本机模式无法监督「机器没开机」——它自己也在这台机器上")
     while True:
         try:

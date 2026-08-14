@@ -33,6 +33,29 @@ class Engine:
         # arrives with the payload instead of being read off local disk.
         self.log_tails: dict[str, str] = {}
 
+    # ---------- first ever start ----------
+
+    def bootstrap(self) -> int:
+        """Adopt whatever history already exists as already-handled.
+
+        A fresh install must not replay past runs as new alerts. Those records
+        describe problems that were either already dealt with or are simply
+        old news; pushing them looks like a flood of failures that just
+        happened. Only runs produced after the relay starts are news.
+        """
+        if self.state.seen_path.exists():
+            return 0
+        adopted = 0
+        for rec in self.source.fetch(set()):
+            self.state.mark_seen(rec.run_id)
+            adopted += 1
+        # Touch the file even when there is nothing, so the next start is not
+        # treated as a first start.
+        self.state.seen_path.touch(exist_ok=True)
+        if adopted:
+            log.info("首次启动：已把 %d 条历史记录标记为已处理，不会重复告警", adopted)
+        return adopted
+
     # ---------- one pass ----------
 
     def tick(self) -> int:

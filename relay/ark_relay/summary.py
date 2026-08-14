@@ -1,4 +1,4 @@
-"""Claude API - wording only.
+"""LLM calls - wording only.
 
 The model never decides whether a run failed, which task failed, or what any
 number is. Those are settled in core.py before it is ever called. It receives
@@ -6,6 +6,12 @@ already-decided facts and turns them into a readable sentence.
 
 If the call fails, times out, or is not configured, the caller still has a
 complete message from core.py. Prose is an enhancement, never a dependency.
+
+Two wire formats are supported so the relay can run either side of the Great
+Firewall without touching business logic:
+
+    anthropic   api.anthropic.com          (blocked from mainland China)
+    openai      DeepSeek and anything else speaking the OpenAI chat API
 """
 from __future__ import annotations
 
@@ -18,8 +24,7 @@ from .config import Config
 
 log = logging.getLogger("ark.summary")
 
-_API = "https://api.anthropic.com/v1/messages"
-_TIMEOUT = 45
+_TIMEOUT = 60
 
 _DIAGNOSIS_PROMPT = """你在帮一个人看游戏自动化脚本的失败日志。
 
@@ -47,30 +52,73 @@ _DAILY_PROMPT = """下面是某人游戏自动化脚本今天的运行记录（J
 """
 
 
-def _ask(cfg: Config, prompt: str, max_tokens: int = 400) -> str:
-    if not cfg.anthropic_key:
-        return ""
-    body = json.dumps({
-        "model": cfg.model,
-        "max_tokens": max_tokens,
-        "messages": [{"role": "user", "content": prompt}],
-    }).encode("utf-8")
-    req = urllib.request.Request(_API, data=body, headers={
-        "content-type": "application/json",
-        "x-api-key": cfg.anthropic_key,
-        "anthropic-version": "2023-06-01",
-    })
-    try:
-        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-        log.warning("Claude 调用失败，跳过措辞生成: %s", exc)
-        return ""
-    try:
-        parts = [b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"]
+def _request(cfg: Config, prompt: str, max_tokens: int):
+    """Build the provider-specific request."""
+    if cfg.llm_provider == "anthropic":
+        url = cfg.llm_base_url.rstrip("/") + "/v1/messages"
+        body = {
+            "model": cfg.llm_model,
+            "max_tokens": max_tokens,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        headers = {
+            "content-type": "application/json",
+            "x-api-key": cfg.llm_key,
+            "anthropic-version": "2023-06-01",
+        }
+    else:  # openai-compatible: DeepSeek, and most domestic providers
+        url = cfg.llm_base_url.rstrip("/") + "/chat/completions"
+        body = {
+            "model": cfg.llm_model,
+            "max_tokens": max_tokens,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+        }
+        headers = {
+            "content-type": "application/json",
+            "authorization": f"Bearer {cfg.llm_key}",
+        }
+    return urllib.request.Request(
+        url, data=json.dumps(body, ensure_ascii=False).encode("utf-8"), headers=headers
+    )
+
+
+def _extract(cfg: Config, data: dict) -> str:
+    if cfg.llm_provider == "anthropic":
+        parts = [b.get("text", "") for b in data.get("content", [])
+                 if b.get("type") == "text"]
         return "".join(parts).strip()
-    except (AttributeError, TypeError):
+    choices = data.get("choices") or []
+    if not choices:
         return ""
+    return str((choices[0].get("message") or {}).get("content") or "").strip()
+
+
+def _ask(cfg: Config, prompt: str, max_tokens: int = 400) -> str:
+    if not cfg.llm_key:
+        return ""
+    try:
+        with urllib.request.urlopen(_request(cfg, prompt, max_tokens),
+                                    timeout=_TIMEOUT) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
+        # Never let a flaky model call break the notification path.
+        log.warning("%s 调用失败，跳过措辞生成: %s", cfg.llm_provider, exc)
+        return ""
+    try:
+        return _extract(cfg, data)
+    except (AttributeError, TypeError, IndexError, KeyError):
+        log.warning("模型返回格式看不懂，跳过: %s", str(data)[:200])
+        return ""
+
+
+def check(cfg: Config) -> tuple[bool, str]:
+    """Verify the model endpoint actually answers. Used by `ark_relay check`."""
+    if not cfg.llm_key:
+        return False, "未配置 API key（不影响运行，只是收不到人话解读）"
+    out = _ask(cfg, "回复两个字：正常", max_tokens=20)
+    return (True, f"{cfg.llm_provider}/{cfg.llm_model} 返回: {out}") if out \
+        else (False, f"{cfg.llm_provider}/{cfg.llm_model} 没有返回内容")
 
 
 def diagnose(cfg: Config, script: str, failed: list[str], log_tail: str) -> str:

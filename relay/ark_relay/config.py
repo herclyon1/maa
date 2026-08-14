@@ -17,8 +17,35 @@ USER_TZ = timezone(timedelta(hours=9), "东京")
 
 
 def both_clocks(dt: datetime) -> str:
-    """Render one instant on both clocks: '09:00（东京 10:00）'."""
-    return f"{dt.astimezone(SERVER_TZ):%H:%M}（东京 {dt.astimezone(USER_TZ):%H:%M}）"
+    """Render one instant on both clocks, always dated.
+
+        08-15 09:00（东京 10:00）
+
+    The two zones are an hour apart, so around midnight they fall on different
+    days. When that happens the Tokyo date is spelled out too, otherwise a
+    reader has no way to tell which day is meant:
+
+        08-15 23:30（东京 08-16 00:30）
+    """
+    srv = dt.astimezone(SERVER_TZ)
+    usr = dt.astimezone(USER_TZ)
+    if srv.date() == usr.date():
+        return f"{srv:%m-%d %H:%M}（东京 {usr:%H:%M}）"
+    return f"{srv:%m-%d %H:%M}（东京 {usr:%m-%d %H:%M}）"
+
+
+# Every env lookup below MUST be lazy (default_factory). Dataclass field
+# defaults are evaluated at import time, which happens before .env is loaded -
+# reading os.environ eagerly here silently yields empty config.
+def _env(name: str, default: str = "") -> str:
+    return os.environ.get(name, default)
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, "") or default)
+    except ValueError:
+        return default
 
 
 def _env_path(name: str, default: str | None = None) -> Path | None:
@@ -39,22 +66,28 @@ class Config:
         default_factory=lambda: _env_path("ARK_STATE_DIR", "./ark-state")  # type: ignore[arg-type]
     )
 
-    poll_seconds: int = int(os.environ.get("ARK_POLL_SECONDS", "300"))
+    poll_seconds: int = field(default_factory=lambda: _env_int("ARK_POLL_SECONDS", 300))
 
     # Push channels. Empty string = channel disabled.
-    serverchan_key: str = os.environ.get("SERVERCHAN_KEY", "")
-    wecom_corpid: str = os.environ.get("WECOM_CORPID", "")
-    wecom_secret: str = os.environ.get("WECOM_SECRET", "")
-    wecom_agentid: str = os.environ.get("WECOM_AGENTID", "")
-    wecom_touser: str = os.environ.get("WECOM_TOUSER", "@all")
+    serverchan_key: str = field(default_factory=lambda: _env("SERVERCHAN_KEY"))
+    wecom_corpid: str = field(default_factory=lambda: _env("WECOM_CORPID"))
+    wecom_secret: str = field(default_factory=lambda: _env("WECOM_SECRET"))
+    wecom_agentid: str = field(default_factory=lambda: _env("WECOM_AGENTID"))
+    wecom_touser: str = field(default_factory=lambda: _env("WECOM_TOUSER", "@all"))
 
     # Wording only - never judgment. See docs/04-中继设计.md §7.
-    anthropic_key: str = os.environ.get("ANTHROPIC_API_KEY", "")
-    model: str = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
+    # "openai" covers DeepSeek and anything else speaking the OpenAI chat API;
+    # "anthropic" is api.anthropic.com, which mainland China cannot reach.
+    llm_provider: str = field(default_factory=lambda: _env("ARK_LLM_PROVIDER", "openai"))
+    llm_base_url: str = field(
+        default_factory=lambda: _env("ARK_LLM_BASE_URL", "https://api.deepseek.com")
+    )
+    llm_key: str = field(default_factory=lambda: _env("ARK_LLM_KEY"))
+    llm_model: str = field(default_factory=lambda: _env("ARK_LLM_MODEL", "deepseek-chat"))
 
     # The last scheduled run of the day; the daily report goes out after it.
     # Server (Beijing) time, "HH:MM".
-    last_run_after: str = os.environ.get("ARK_LAST_RUN_AFTER", "21:30")
+    last_run_after: str = field(default_factory=lambda: _env("ARK_LAST_RUN_AFTER", "21:30"))
 
     def validate(self) -> list[str]:
         """Return a list of problems, empty if the config is usable."""

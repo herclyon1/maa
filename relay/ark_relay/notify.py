@@ -146,17 +146,37 @@ class ServerChan:
     def enabled(self) -> bool:
         return bool(self.key)
 
-    def send_text(self, title: str, body: str = "") -> None:
+    def _endpoints(self) -> list[str]:
+        """Both known Server酱 endpoints, most likely first.
+
+        `sctp...` keys are Server酱³ and are documented to use a per-uid host,
+        but the legacy sctapi host also accepts them - and is what AUTO-MAS
+        itself uses successfully with this key. Try both rather than guess.
+        """
+        urls = [f"https://sctapi.ftqq.com/{self.key}.send"]
         if self.key.startswith("sctp"):
             uid = self.key[4:].split("t", 1)[0]
-            url = f"https://{uid}.push.ft07.com/send/{self.key}.send"
-        else:
-            url = f"https://sctapi.ftqq.com/{self.key}.send"
+            if uid.isdigit():
+                urls.append(f"https://{uid}.push.ft07.com/send/{self.key}.send")
+        return urls
+
+    def send_text(self, title: str, body: str = "") -> None:
         # Server酱 renders Markdown; a blank line keeps line breaks intact.
-        r = _post_form(url, {"title": title[:100], "desp": body.replace("\n", "\n\n")})
-        code = r.get("code", r.get("errno"))
-        if code not in (0, None):
-            raise RuntimeError(f"Server酱 发送失败: {r}")
+        payload = {"title": title[:100], "desp": body.replace("\n", "\n\n")}
+        errors = []
+        for url in self._endpoints():
+            try:
+                r = _post_form(url, payload)
+            except Exception as exc:  # noqa: BLE001 - try the next endpoint
+                errors.append(f"{url.split('/')[2]}: {exc}")
+                continue
+            code = r.get("code", r.get("errno"))
+            if code in (0, None):
+                # A 0 here only means accepted, NOT delivered: if the account's
+                # message channel is misconfigured it silently goes nowhere.
+                return
+            errors.append(f"{url.split('/')[2]}: {r}")
+        raise RuntimeError("Server酱 发送失败 -> " + "；".join(errors))
 
 
 class Notifier:
