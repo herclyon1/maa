@@ -10,7 +10,7 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from .config import SERVER_TZ, Config, RunRecord, both_clocks
+from .config import SERVER_TZ, USER_TZ, Config, RunRecord, both_clocks
 
 
 class State:
@@ -56,6 +56,7 @@ class State:
             "finished": rec.finished.isoformat(),
             "ok": rec.ok,
             "failed_tasks": rec.failed_tasks,
+            "duration_known": rec.duration_known,
             "sanity": rec.sanity,
             "sanity_full_at": rec.sanity_full_at,
             "drops": rec.drops,
@@ -106,13 +107,11 @@ def format_failure(rec: RunRecord, diagnosis: str = "") -> tuple[str, str]:
     """Immediate alert for a failed run. Title, body."""
     title = f"❌ {rec.script} 失败"
     lines = [
-        f"{rec.script} · {rec.user}",
-        f"{both_clocks(rec.started)} → {both_clocks(rec.finished)}"
-        f"（{rec.duration_min} 分钟）",
+        f"{both_clocks(rec.started)} → {both_clocks(rec.finished)}",
+        f"用时 {rec.duration_min} 分钟 · 账号 {rec.user}",
         "",
-        "失败项：",
     ]
-    lines += [f"  · {t}" for t in (rec.failed_tasks or ["未知"])]
+    lines.append("· " + _fmt_failed(rec.failed_tasks))
     if rec.sanity is not None:
         lines += ["", f"剩余理智 {rec.sanity}"]
         if rec.sanity_full_at:
@@ -122,55 +121,87 @@ def format_failure(rec: RunRecord, diagnosis: str = "") -> tuple[str, str]:
     return title, "\n".join(lines)
 
 
-def _fmt_items(d: dict, limit: int = 12) -> list[str]:
-    """Render a {name: count} map, biggest first."""
+def _fmt_items(d: dict, limit: int = 8) -> str:
+    """Render a {name: count} map, biggest first, as one line."""
     if not d:
-        return []
+        return ""
     try:
         pairs = sorted(d.items(), key=lambda kv: -int(kv[1]))
     except (TypeError, ValueError):
         pairs = list(d.items())
-    out = [f"{k} ×{v}" for k, v in pairs[:limit]]
+    out = [f"{k}×{v}" for k, v in pairs[:limit]]
     if len(pairs) > limit:
-        out.append(f"…另 {len(pairs) - limit} 项")
-    return out
+        out.append(f"…另{len(pairs) - limit}项")
+    return " ".join(out)
 
 
-def format_daily(day: str, entries: list[dict], prose: str = "") -> tuple[str, str]:
-    """The one message of the day. Numbers here are copied, never generated."""
+def _fmt_failed(names: list[str], limit: int = 3) -> str:
+    """Fold long failure lists.
+
+    A run where everything failed means the script never got going - listing
+    fourteen separate lines implies fourteen separate faults, which is both
+    wrong and unreadable on a phone.
+    """
+    names = names or ["未知"]
+    if len(names) <= limit:
+        return "、".join(names)
+    return f"{len(names)} 项失败：" + "、".join(names[:limit]) + "…"
+
+
+def _hm(dt: datetime) -> str:
+    return f"{dt.astimezone(SERVER_TZ):%H:%M}"
+
+
+def _span(started: datetime, finished: datetime, known: bool = True) -> str:
+    """'09:00→09:45　45m　东京 10:00' - compact but unambiguous."""
+    if not known:
+        return f"{_hm(started)}　时长未知　东京 {started.astimezone(USER_TZ):%H:%M}"
+    mins = max(0, round((finished - started).total_seconds() / 60))
+    dur = f"{mins // 60}h{mins % 60:02d}m" if mins >= 60 else f"{mins}m"
+    return (f"{_hm(started)}→{_hm(finished)}　{dur}"
+            f"　东京 {started.astimezone(USER_TZ):%H:%M}")
+
+
+def format_daily(day: str, entries: list[dict], prose: str = "",
+                 plan: str = "") -> tuple[str, str]:
+    """The one message of the day. Numbers here are copied, never generated.
+
+    Laid out for a narrow phone screen: no nested indentation (full-width
+    spaces do not line up across fonts), one fact per short line.
+    """
     if not entries:
         return f"📋 {day} 日报", "今天没有任何运行记录。"
 
     failed = [e for e in entries if not e["ok"]]
-    head = "✅ 全绿" if not failed else f"⚠️ {len(failed)} 项失败"
-    title = f"📋 {day} {head}"
+    head = "全绿 ✅" if not failed else f"{len(failed)} 项失败 ⚠️"
+    title = f"📋 {day[5:]} · {head}"
 
     lines: list[str] = []
     for e in entries:
         started = datetime.fromisoformat(e["started"])
         finished = datetime.fromisoformat(e["finished"])
-        mark = "✅" if e["ok"] else "❌"
-        lines.append(
-            f"{mark} {e['script']}　{both_clocks(started)} → {both_clocks(finished)}"
-        )
-        if e.get("sanity") is not None:
-            tail = f"　剩余理智 {e['sanity']}"
-            if e.get("sanity_full_at"):
-                tail += f"　{e['sanity_full_at']}"
-            lines.append(f"　　{tail.strip()}")
-        drops = _fmt_items(e.get("drops") or {})
-        if drops:
-            lines.append("　　产出　" + " · ".join(drops))
-        recruits = _fmt_items(e.get("recruits") or {})
-        if recruits:
-            lines.append("　　公招　" + " · ".join(recruits))
+        lines.append(("✅" if e["ok"] else "❌")
+                     + f" {e['script']}　{_span(started, finished, e.get('duration_known', True))}")
         if not e["ok"]:
-            for t in e.get("failed_tasks") or ["未知"]:
-                lines.append(f"　　失败　{t}")
+            lines.append("· " + _fmt_failed(e.get("failed_tasks") or []))
+        if e.get("sanity") is not None:
+            s = f"· 剩余理智 {e['sanity']}"
+            full = str(e.get("sanity_full_at") or "")
+            if "回满" in full:
+                s += "，" + full.split("理智将在")[-1].split("回满")[0].strip() + " 回满"
+            lines.append(s)
+        if drops := _fmt_items(e.get("drops") or {}):
+            lines.append("· 产出 " + drops)
+        if recruits := _fmt_items(e.get("recruits") or {}):
+            lines.append("· 公招 " + recruits)
         lines.append("")
 
     if prose:
-        lines += ["─" * 12, prose]
+        lines += ["———————", prose, ""]
+    # Knowing last night was fine is only half of it - the operator also needs
+    # to know what tomorrow will farm, while there is still time to change it.
+    if plan:
+        lines += ["———————", plan]
     return title, "\n".join(lines).rstrip()
 
 

@@ -21,6 +21,9 @@ from .config import SERVER_TZ, RunRecord
 
 # "MaaEnd 部分任务执行失败: 🚚转交委托、⚔️协议空间"
 _FAILED_LIST = re.compile(r"失败[:：]\s*(.+)$")
+
+# "[2026-08-14 06:45:11.432] 任务开始: ..."
+_LOG_TS = re.compile(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
 _MAA_SUCCESS = "Success!"
 
 
@@ -32,6 +35,30 @@ def _split_failed(text: str) -> list[str]:
     # Names are separated by the Chinese enumeration comma; strip leading emoji.
     parts = [p.strip() for p in m.group(1).split("、") if p.strip()]
     return [re.sub(r"^[^\w一-鿿]+", "", p) for p in parts]
+
+
+def _log_span(log_path: Path) -> tuple[datetime, datetime] | None:
+    """First and last timestamp inside a run log.
+
+    This is the only trustworthy source for how long a script actually ran.
+    The record's filename and mtime are not: the filename disagrees with the
+    log by hours on this install, and the mtime is when the whole *queue*
+    finished, not this one script - together they reported a 42-minute run as
+    4h45m.
+    """
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    stamps = [m.group(1) for ln in text.splitlines() if (m := _LOG_TS.match(ln))]
+    if not stamps:
+        return None
+    try:
+        first = datetime.strptime(stamps[0], "%Y-%m-%d %H:%M:%S")
+        last = datetime.strptime(stamps[-1], "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+    return first.replace(tzinfo=SERVER_TZ), last.replace(tzinfo=SERVER_TZ)
 
 
 def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
@@ -76,6 +103,13 @@ def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
         return None
 
     log_path = json_path.with_suffix(".log")
+    # Prefer the log's own timestamps; fall back to filename/mtime only when
+    # the log is missing or has none (e.g. "未捕获到日志" runs).
+    duration_known = False
+    if log_path.exists() and (span := _log_span(log_path)):
+        started, finished = span
+        duration_known = True
+
     return RunRecord(
         run_id=f"{date_str}/{user}/{stem}",
         script=script,
@@ -86,6 +120,7 @@ def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
         failed_tasks=failed,
         raw=raw,
         log_path=log_path if log_path.exists() else None,
+        duration_known=duration_known,
     )
 
 

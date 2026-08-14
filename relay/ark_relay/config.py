@@ -61,6 +61,10 @@ class Config:
     history_dir: Path | None = field(
         default_factory=lambda: _env_path("ARK_HISTORY_DIR")
     )
+    # AUTO-MAS install root; used to read tomorrow's plan out of its config.
+    automas_dir: Path | None = field(
+        default_factory=lambda: _env_path("ARK_AUTOMAS_DIR")
+    )
     # Relay's own state: which runs have been handled, plus the daily ledger.
     state_dir: Path = field(
         default_factory=lambda: _env_path("ARK_STATE_DIR", "./ark-state")  # type: ignore[arg-type]
@@ -117,6 +121,10 @@ class RunRecord:
     failed_tasks: list[str] = field(default_factory=list)
     raw: dict = field(default_factory=dict)
     log_path: Path | None = None
+    # True only when start/finish came from the log's own timestamps. The
+    # filename/mtime fallback is off by hours on this install, so a duration
+    # derived from it must not be presented as fact.
+    duration_known: bool = True
 
     @property
     def duration_min(self) -> int:

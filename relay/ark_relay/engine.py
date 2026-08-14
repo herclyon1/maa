@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from . import collector, core, summary
+from . import collector, core, plan, summary
 from .config import SERVER_TZ, Config, RunRecord
 from .core import State
 from .notify import Notifier
@@ -115,7 +115,8 @@ class Engine:
             return
 
         prose = summary.daily_prose(self.cfg, entries)
-        title, body = core.format_daily(day, entries, prose)
+        title, body = core.format_daily(day, entries, prose,
+                                        plan.next_plan(self.cfg.automas_dir))
         errors = self.notifier.send(title, body)
         if errors:
             # Do not mark it sent - retry on the next tick rather than lose the day.
@@ -130,7 +131,8 @@ class Engine:
         day = now.strftime("%Y-%m-%d")
         entries = self.state.read_ledger(day)
         prose = summary.daily_prose(self.cfg, entries)
-        title, body = core.format_daily(day, entries, prose)
+        title, body = core.format_daily(day, entries, prose,
+                                        plan.next_plan(self.cfg.automas_dir))
         errors = self.notifier.send(title, body)
         if errors:
             log.error("日报推送失败: %s", "；".join(errors))

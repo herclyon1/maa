@@ -76,7 +76,31 @@ class WeCom:
         self._token_expires = time.time() + int(data.get("expires_in", 7200)) - 300
         return self._token
 
-    def send_text(self, text: str) -> None:
+    # 企业微信 text messages are capped at 2048 BYTES (not characters), and the
+    # API silently truncates rather than erroring - a long daily report just
+    # arrives with its tail missing. Split on line boundaries instead.
+    _LIMIT = 1800  # leave room for the "(1/3)" marker
+
+    @staticmethod
+    def _split(text: str, limit: int = _LIMIT) -> list[str]:
+        if len(text.encode("utf-8")) <= limit:
+            return [text]
+        parts, cur, size = [], [], 0
+        for line in text.split("\n"):
+            n = len(line.encode("utf-8")) + 1
+            if cur and size + n > limit:
+                parts.append("\n".join(cur))
+                cur, size = [], 0
+            # A single line longer than the limit still has to go somewhere;
+            # keep it whole rather than cutting mid-character.
+            cur.append(line)
+            size += n
+        if cur:
+            parts.append("\n".join(cur))
+        total = len(parts)
+        return [f"（{i}/{total}）\n{p}" for i, p in enumerate(parts, 1)]
+
+    def _send_one(self, text: str) -> None:
         url = (
             "https://qyapi.weixin.qq.com/cgi-bin/message/send"
             f"?access_token={self._access_token()}"
@@ -89,6 +113,12 @@ class WeCom:
         })
         if r.get("errcode") != 0:
             raise RuntimeError(f"企业微信发送失败: {r.get('errcode')} {r.get('errmsg')}")
+
+    def send_text(self, text: str) -> None:
+        for i, part in enumerate(self._split(text)):
+            if i:
+                time.sleep(0.4)  # keep the parts in order on the client
+            self._send_one(part)
 
     def send_image(self, path: Path) -> None:
         media_id = self._upload(path)
