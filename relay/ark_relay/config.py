@@ -78,6 +78,11 @@ class Config:
     wecom_secret: str = field(default_factory=lambda: _env("WECOM_SECRET"))
     wecom_agentid: str = field(default_factory=lambda: _env("WECOM_AGENTID"))
     wecom_touser: str = field(default_factory=lambda: _env("WECOM_TOUSER", "@all"))
+    # 企业微信群机器人: a webhook URL with no trusted-IP list, so it works from
+    # any machine on rotating consumer broadband - unlike the self-built app
+    # above, which answers errcode=60020 the day the IP changes.
+    # The URL contains its own key: treat the whole thing as a secret.
+    wecom_bot_url: str = field(default_factory=lambda: _env("WECOM_BOT_URL"))
 
     # Wording only - never judgment. See docs/04-中继设计.md §7.
     # "openai" covers DeepSeek and anything else speaking the OpenAI chat API;

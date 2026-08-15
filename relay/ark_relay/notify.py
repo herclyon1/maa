@@ -190,6 +190,40 @@ class WeCom:
         return data["media_id"]
 
 
+class WeComBot:
+    """企业微信群机器人 - a webhook, with no trusted-IP list.
+
+    This is the only way to reach 企业微信 from a machine whose public IP
+    rotates. The self-built app above authenticates by IP, so the Mac in Japan
+    (a shared IPv4-over-IPv6 address) and the game box behind dial-up
+    broadband both get errcode=60020 the moment their address changes. A group
+    robot authenticates by the key embedded in its URL instead, which is why
+    that URL is a secret and lives only in .env.
+
+    The robot posts into a group chat rather than as a direct app message, and
+    is capped at 20 messages per minute. Neither matters here: this system
+    sends a handful of messages a day, all of them to the same person.
+    """
+
+    _LIMIT = 3600  # markdown bodies cap at 4096 bytes; leave room for the marker
+
+    def __init__(self, cfg: Config):
+        self.url = cfg.wecom_bot_url
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.url)
+
+    def send_text(self, text: str) -> None:
+        for part in WeCom._split(text, self._LIMIT):
+            data = _post_json(self.url, {
+                "msgtype": "markdown", "markdown": {"content": part},
+            })
+            if data.get("errcode") != 0:
+                raise RuntimeError(
+                    f"群机器人发送失败: {data.get('errcode')} {data.get('errmsg')}")
+
+
 class ServerChan:
     """Server酱. `sctp...` = Server酱³, `SCT...` = Turbo - different endpoints.
 
@@ -269,26 +303,31 @@ class Notifier:
 
     def __init__(self, cfg: Config):
         self.wecom = WeCom(cfg)
+        self.wecom_bot = WeComBot(cfg)
         self.serverchan = ServerChan(cfg)
         self._announced_down: set[str] = set()
         self._announcing = False  # the outage alert itself goes out via _fan_out
 
+    def _enabled(self) -> list[tuple[str, object]]:
+        return [(n, c) for n, c in (
+            ("企业微信", self.wecom),
+            ("企业微信机器人", self.wecom_bot),
+            ("Server酱", self.serverchan),
+        ) if c.enabled]
+
     @property
     def channels(self) -> list[str]:
-        names = []
-        if self.wecom.enabled:
-            names.append("企业微信")
-        if self.serverchan.enabled:
-            names.append("Server酱")
-        return names
+        return [n for n, _ in self._enabled()]
 
     def _fan_out(self, title: str, body: str) -> tuple[list[str], dict[str, str]]:
         """Try every enabled channel. -> (delivered names, {name: error})"""
         delivered: list[str] = []
         failed: dict[str, str] = {}
+        joined = f"{title}\n\n{body}" if body else title
         attempts = (
-            ("企业微信", self.wecom,
-             lambda: self.wecom.send_text(f"{title}\n\n{body}" if body else title)),
+            ("企业微信", self.wecom, lambda: self.wecom.send_text(joined)),
+            ("企业微信机器人", self.wecom_bot,
+             lambda: self.wecom_bot.send_text(joined)),
             ("Server酱", self.serverchan,
              lambda: self.serverchan.send_text(title, body)),
         )
