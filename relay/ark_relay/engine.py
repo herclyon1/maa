@@ -243,6 +243,30 @@ class Engine:
 
     # ---------- daily wrap-up ----------
 
+    def _report_cutoff(self, now: datetime) -> datetime:
+        """The time of day after which the report is due.
+
+        Taken from AUTO-MAS's own last scheduled queue time whenever that can
+        be read, so moving a queue inside AUTO-MAS moves the report with it.
+        ARK_LAST_RUN_AFTER is only the fallback.
+
+        Both this method's callers used to compute the cutoff themselves, from
+        two different starting points - one of them from the *finish time of
+        the last run* rather than from the clock. That made the report
+        undeliverable whenever the evening queue finished earlier than the
+        configured hour: the condition could never become true, so the report
+        was never sent, and because shutdown waits for the report, the machine
+        never powered off either.
+        """
+        times = sorted(t for q in plan.schedule(self.cfg.automas_dir)
+                       for t in q.get("times", []))
+        hhmm = times[-1] if times else self.cfg.last_run_after
+        try:
+            hh, mm = (int(x) for x in hhmm.split(":"))
+        except ValueError:
+            hh, mm = 21, 30
+        return now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+
     def _maybe_daily_report(self, now: datetime | None = None) -> None:
         now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
         day = now.strftime("%Y-%m-%d")
@@ -251,17 +275,9 @@ class Engine:
         entries = self.state.read_ledger(day)
         if not entries:
             return
-        # Send once the day's final scheduled queue has finished, so the report
-        # goes out before the machine powers off.
-        last_finished = max(datetime.fromisoformat(e["finished"]) for e in entries)
-        try:
-            hh, mm = (int(x) for x in self.cfg.last_run_after.split(":"))
-        except ValueError:
-            hh, mm = 21, 30
-        cutoff = last_finished.astimezone(SERVER_TZ).replace(
-            hour=hh, minute=mm, second=0, microsecond=0
-        )
-        if last_finished.astimezone(SERVER_TZ) < cutoff:
+        # Due once the clock is past the day's last queue and nothing is still
+        # working - never based on when a run happened to finish.
+        if now < self._report_cutoff(now) or self._scripts_running():
             return
 
         title, body = self._compose_daily(day, entries)
@@ -293,11 +309,7 @@ class Engine:
             return False
         if self._scripts_running() or self._pending or self._recovered:
             return False
-        try:
-            hh, mm = (int(x) for x in self.cfg.last_run_after.split(":"))
-        except ValueError:
-            hh, mm = 21, 30
-        cutoff = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        cutoff = self._report_cutoff(now)   # same source as the report itself
         day = now.strftime("%Y-%m-%d")
         if now >= cutoff and not self.state.report_sent(day):
             log.info("到点该关机了，但日报还没发出去，继续等")

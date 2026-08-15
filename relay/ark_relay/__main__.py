@@ -26,6 +26,25 @@ from .notify import Notifier
 from .transport import LocalSource, Uploader
 
 
+def _force_utf8_console() -> None:
+    """Make stdout/stderr accept the emoji this program prints everywhere.
+
+    The console on this machine runs the GBK codepage, and every status line
+    here carries a ✅ / ❌ / 📋. Printing one raises UnicodeEncodeError, which
+    killed `check` and `test` on their final success line - reporting failure
+    for work that had in fact succeeded. Logging survives it (handlers swallow
+    their own errors) but silently drops the line from the stream, which is
+    exactly the wrong thing to lose while debugging.
+
+    The UTF-8 log file is written separately and was never affected.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError, ValueError):
+            pass  # redirected to something that cannot be reconfigured - fine
+
+
 def _setup_logging(verbose: bool) -> None:
     """Log to stderr, and to a UTF-8 file when ARK_LOG_FILE is set.
 
@@ -246,6 +265,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
 
+    _force_utf8_console()   # before anything prints or logs
     _setup_logging(args.verbose)
     _load_dotenv(args.env)
 

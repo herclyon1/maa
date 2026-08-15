@@ -13,6 +13,7 @@ import json
 import logging
 import mimetypes
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
@@ -23,25 +24,53 @@ from .config import Config
 log = logging.getLogger("ark.notify")
 
 _TIMEOUT = 20
+_RETRIES = 3
+_BACKOFF = 1.5  # seconds, multiplied by the attempt number
+
+
+def _post(req: urllib.request.Request) -> dict:
+    """POST with retries, but only for transport failures.
+
+    An alert gets one chance: nothing re-sends it if the push is dropped. And
+    the push does get dropped - measured from Japan, sctapi.ftqq.com
+    occasionally blows past the timeout mid-TLS-handshake and then answers in
+    a second on the very next attempt. Losing a real failure alert to one
+    flaky handshake is not acceptable, so transport errors are retried.
+
+    An HTTP status is an answer, not a transport failure: a 403 endpoint will
+    keep saying 403, and errcode=60020 will keep saying 60020. Those are
+    raised immediately so the caller can fall through to another endpoint or
+    another channel instead of sitting through pointless backoff.
+    """
+    last: Exception | None = None
+    for attempt in range(_RETRIES):
+        try:
+            with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError:
+            raise  # the server answered - retrying cannot change the answer
+        except (urllib.error.URLError, TimeoutError, OSError,
+                json.JSONDecodeError) as exc:
+            last = exc
+            if attempt < _RETRIES - 1:
+                delay = _BACKOFF * (attempt + 1)
+                log.warning("推送传输失败（第 %d/%d 次），%.1fs 后重试: %s",
+                            attempt + 1, _RETRIES, delay, exc)
+                time.sleep(delay)
+    raise last if last else RuntimeError("推送失败，原因未知")
 
 
 def _post_json(url: str, payload: dict) -> dict:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=body, headers={"Content-Type": "application/json"}
-    )
-    with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    return _post(urllib.request.Request(
+        url, data=body, headers={"Content-Type": "application/json"}))
 
 
 def _post_form(url: str, fields: dict) -> dict:
     body = urllib.parse.urlencode(fields).encode("utf-8")
-    req = urllib.request.Request(
+    return _post(urllib.request.Request(
         url, data=body,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-    )
-    with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+        headers={"Content-Type": "application/x-www-form-urlencoded"}))
 
 
 class WeCom:
@@ -209,12 +238,40 @@ class ServerChan:
         raise RuntimeError("Server酱 发送失败 -> " + "；".join(errors))
 
 
+def _hint(name: str, err: str) -> str:
+    """Turn a channel's raw error into something actionable on a phone."""
+    if name == "企业微信" and "60020" in err:
+        return ("可信 IP 不匹配。家宽拨号 IP 会变，去企业微信后台"
+                "「应用 → 企业可信IP」把当前出口 IP 重新加进去。")
+    return ""
+
+
 class Notifier:
-    """Fan out to every configured channel; one failure must not silence the rest."""
+    """Fan out to every configured channel; one failure must not silence the rest.
+
+    **Delivered means at least one channel accepted it.** Reporting a partial
+    failure as a total one is not the safe default it looks like: the caller
+    holds undelivered messages on disk and retries every poll cycle, so one
+    broken channel turns a single alert into the same alert every 30 seconds
+    all night - and because shutdown waits for that queue to drain, the machine
+    never powers off either.
+
+    That failure mode is not hypothetical. Both machines sit behind dial-up
+    consumer broadband whose public IP rotates, and 企业微信 rejects any call
+    from an IP outside the app's trusted list (errcode 60020). The day the IP
+    changes, every one of those consequences fires at once.
+
+    A dead channel is still a real fault, so it is reported in its own right -
+    through whichever channel still works - rather than swallowed. It is
+    announced once per channel per process; the machine reboots twice a day, so
+    a channel that stays broken keeps re-announcing itself until it is fixed.
+    """
 
     def __init__(self, cfg: Config):
         self.wecom = WeCom(cfg)
         self.serverchan = ServerChan(cfg)
+        self._announced_down: set[str] = set()
+        self._announcing = False  # the outage alert itself goes out via _fan_out
 
     @property
     def channels(self) -> list[str]:
@@ -225,22 +282,66 @@ class Notifier:
             names.append("Server酱")
         return names
 
-    def send(self, title: str, body: str) -> list[str]:
-        """Returns a list of human-readable failures (empty means all sent)."""
-        errors: list[str] = []
-        if self.wecom.enabled:
+    def _fan_out(self, title: str, body: str) -> tuple[list[str], dict[str, str]]:
+        """Try every enabled channel. -> (delivered names, {name: error})"""
+        delivered: list[str] = []
+        failed: dict[str, str] = {}
+        attempts = (
+            ("企业微信", self.wecom,
+             lambda: self.wecom.send_text(f"{title}\n\n{body}" if body else title)),
+            ("Server酱", self.serverchan,
+             lambda: self.serverchan.send_text(title, body)),
+        )
+        for name, channel, call in attempts:
+            if not channel.enabled:
+                continue
             try:
-                self.wecom.send_text(f"{title}\n\n{body}" if body else title)
+                call()
             except Exception as exc:  # noqa: BLE001 - report, never crash the loop
-                errors.append(f"企业微信: {exc}")
-                log.warning("企业微信推送失败: %s", exc)
-        if self.serverchan.enabled:
-            try:
-                self.serverchan.send_text(title, body)
-            except Exception as exc:  # noqa: BLE001
-                errors.append(f"Server酱: {exc}")
-                log.warning("Server酱推送失败: %s", exc)
-        return errors
+                failed[name] = str(exc)
+                log.warning("%s推送失败: %s", name, exc)
+            else:
+                delivered.append(name)
+        return delivered, failed
+
+    def send(self, title: str, body: str) -> list[str]:
+        """Returns failures only when the message reached nobody.
+
+        An empty list means the caller may consider the message delivered and
+        stop holding it. A non-empty list means every channel refused it.
+        """
+        delivered, failed = self._fan_out(title, body)
+        if not delivered:
+            return [f"{n}: {e}" for n, e in failed.items()]
+        # A channel that started working again becomes announceable once more.
+        self._announced_down -= set(delivered)
+        if not self._announcing:
+            self._announce_outage(failed, delivered)
+        return []
+
+    def _announce_outage(self, failed: dict[str, str], delivered: list[str]) -> None:
+        """Report a dead channel as its own alert, via the channels still alive."""
+        fresh = {n: e for n, e in failed.items() if n not in self._announced_down}
+        if not fresh:
+            return
+        lines = []
+        for name, err in fresh.items():
+            lines.append(f"· {name}：{err}")
+            if tip := _hint(name, err):
+                lines.append(f"  {tip}")
+        lines += [
+            "",
+            f"刚才那条消息已通过 {'、'.join(delivered)} 送达，没有丢。",
+            "但这条通道在修好之前一直是坏的。",
+        ]
+        self._announcing = True
+        try:
+            sent, _ = self._fan_out(
+                f"🔌 推送通道故障：{'、'.join(fresh)}", "\n".join(lines))
+        finally:
+            self._announcing = False
+        if sent:
+            self._announced_down |= set(fresh)
 
     def send_image(self, path: Path) -> list[str]:
         if not self.wecom.enabled:
