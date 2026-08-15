@@ -126,8 +126,8 @@ def _build_local_engine(cfg: Config) -> Engine:
     return Engine(cfg, LocalSource(cfg), State(cfg.state_dir), Notifier(cfg))
 
 
-def cmd_report(cfg: Config) -> int:
-    return 0 if _build_local_engine(cfg).send_daily_now() else 1
+def cmd_report(cfg: Config, mark: bool = True) -> int:
+    return 0 if _build_local_engine(cfg).send_daily_now(mark=mark) else 1
 
 
 def _acquire_singleton(cfg: Config) -> object | None:  # noqa: C901
@@ -262,6 +262,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--token", default=os.environ.get("ARK_TOKEN", ""))
     p.add_argument("--host", default="0.0.0.0")  # noqa: S104 - bound inside the tailnet
     p.add_argument("--port", type=int, default=int(os.environ.get("ARK_PORT", "8787")))
+    p.add_argument("--again", action="store_true",
+                   help="report 模式：只看一眼当天进度，不占用当天的日报名额")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
 
@@ -277,7 +279,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "test":
         return cmd_test(cfg)
     if args.command == "report":
-        return cmd_report(cfg)
+        return cmd_report(cfg, mark=not args.again)
     if args.command == "local":
         return cmd_local(cfg)
     if args.command == "agent":

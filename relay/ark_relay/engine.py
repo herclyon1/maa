@@ -314,6 +314,15 @@ class Engine:
         if now >= cutoff and not self.state.report_sent(day):
             log.info("到点该关机了，但日报还没发出去，继续等")
             return False
+        # Never power off in silence. If the day's real report has not gone out
+        # yet - which is the case after the morning queue - send an interim one
+        # first, so the machine is never dark without the operator knowing what
+        # it did. A timed task cannot do this job: it would have to fire in the
+        # gap between "run finished" and "machine off", and that gap moves.
+        if self.cfg.report_before_shutdown and not self.state.report_sent(day):
+            log.info("关机前先发一份当前进度")
+            self.send_daily_now(mark=False)
+
         log.info("本轮已处理完毕，60 秒后关机")
         try:
             subprocess.run(["shutdown", "/s", "/t", "60",
@@ -337,15 +346,24 @@ class Engine:
         log.warning("模型不可用，日报回退到结构化排版")
         return core.format_daily(day, entries, "", tomorrow)
 
-    def send_daily_now(self) -> bool:
-        """Force today's report out (used by the `report` command and tests)."""
+    def send_daily_now(self, mark: bool = True) -> bool:
+        """Force today's report out (used by the `report` command and tests).
+
+        `mark=False` sends an interim look at the day so far without consuming
+        the day's report - the evening summary still goes out on schedule.
+        Marking it would silently cancel that summary, which is the opposite of
+        what someone asking for a mid-day check wants.
+        """
         now = datetime.now(tz=SERVER_TZ)
         day = now.strftime("%Y-%m-%d")
         entries = self.state.read_ledger(day)
         title, body = self._compose_daily(day, entries)
+        if not mark:
+            title = title.replace("📋", "🔎", 1) + "（临时查看）"
         errors = self.notifier.send(title, body)
         if errors:
             log.error("日报推送失败: %s", "；".join(errors))
             return False
-        self.state.mark_report_sent(day)
+        if mark:
+            self.state.mark_report_sent(day)
         return True

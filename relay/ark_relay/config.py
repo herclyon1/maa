@@ -101,6 +101,13 @@ class Config:
     # actually delivered everything.
     shutdown_after_run: bool = field(
         default_factory=lambda: _env("ARK_SHUTDOWN_AFTER_RUN", "0") == "1")
+    # Send an interim report just before powering off, whenever the day's real
+    # report has not gone out yet. Without it the morning queue finishes, the
+    # machine goes dark, and nothing is heard until the evening - so a morning
+    # that farmed nothing looks exactly like a morning that farmed fine.
+    # On by default; set to 0 once the daily summary alone is trusted.
+    report_before_shutdown: bool = field(
+        default_factory=lambda: _env("ARK_REPORT_BEFORE_SHUTDOWN", "1") == "1")
     # Never power off within this many seconds of the relay starting. Guards
     # against a boot -> immediate-shutdown loop if state is ever inconsistent.
     shutdown_min_uptime: int = field(
