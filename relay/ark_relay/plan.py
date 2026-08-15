@@ -101,6 +101,18 @@ def _queues(cfg_dir: Path) -> list[dict]:
     return out
 
 
+def schedule(automas_dir: Path | None) -> list[dict]:
+    """[{name, times, items}] straight from AUTO-MAS's own queue config.
+
+    Read rather than hard-coded, so changing a queue time in AUTO-MAS cannot
+    leave the relay watching for a run that no longer exists.
+    """
+    if not automas_dir:
+        return []
+    cfg_dir = Path(automas_dir) / "config"
+    return _queues(cfg_dir) if cfg_dir.is_dir() else []
+
+
 def next_plan(automas_dir: Path | None) -> str:
     """Human-readable summary of what will run next. '' if it cannot be read."""
     if not automas_dir:

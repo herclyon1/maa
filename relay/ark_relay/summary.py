@@ -39,16 +39,25 @@ _DIAGNOSIS_PROMPT = """你在帮一个人看游戏自动化脚本的失败日志
 {log}
 """
 
-_DAILY_PROMPT = """下面是某人游戏自动化脚本今天的运行记录（JSON，已经整理好）。
+_DAILY_PROMPT = """你在给一个人写他游戏自动化脚本的当天日报。他人在东京，机器在中国，两地差 1 小时。
 
-请用**一两句**中文说一下今天整体怎么样。要点：
-- 如果全部成功，说得轻松一点，不用复述数字（数字已经单独列出来了）
-- 如果有失败，指出是哪一项、要不要管
-- 不要重复 JSON 里的数字，不要编造任何数字
-- 不要用 emoji 标题，不要分点，就是一两句话
+下面是 AUTO-MAS 今天写下的**原始运行记录**，一条一条给你，没有经过任何加工。
+你自己读，自己判断哪些值得说。
 
-记录：
-{ledger}
+写作要求：
+- 手机上看，行要短，不要多级缩进（全角空格在不同字体下对不齐）
+- 时间一律写成「服务器时刻（东京 时刻）」，服务器时间加 1 小时就是东京时间
+- 关卡、掉落数量、理智这些数字**必须逐字照抄原始记录**，一个字都不许改，也不许自己算
+- 原始记录里没有的东西不要写，不确定就说不确定
+- 有失败的，说清楚是哪个脚本的哪一项
+- 不要写「总结」「报告」这种标题词，直接讲内容
+- 末尾原样附上「明日安排」那段，不要改写
+
+今天的原始记录（JSON）：
+{records}
+
+明日安排（原样附在末尾）：
+{plan}
 """
 
 
@@ -133,18 +142,31 @@ def diagnose(cfg: Config, script: str, failed: list[str], log_tail: str) -> str:
     ), max_tokens=300)
 
 
-def daily_prose(cfg: Config, entries: list[dict]) -> str:
-    """A short human line for the daily report. Empty string if unavailable."""
+def daily_report(cfg: Config, entries: list[dict], plan: str = "") -> str:
+    """The whole daily report, written by the model from the raw records.
+
+    Deliberately not pre-digested: earlier versions parsed every field with
+    regexes and handed the model a finished table to garnish. That approach
+    produced three separate wrong-fact bugs (a 42-minute run reported as
+    4h45m, a mis-split failure list, a timestamp source that was off by
+    hours) - each one a wrong guess about the format. A model reading the
+    original text does not have to guess.
+
+    Returns "" when unavailable; the caller then falls back to the
+    deterministic layout, which is never wrong but never explains anything.
+    """
     if not entries:
         return ""
-    # Drop the raw blobs - the model only needs the shape of the day.
-    slim = [{
-        "script": e["script"],
-        "ok": e["ok"],
-        "failed_tasks": e.get("failed_tasks") or [],
-        "started": e["started"],
-        "finished": e["finished"],
+    material = [{
+        "脚本": e["script"],
+        "账号": e.get("user"),
+        "开始": e["started"],
+        "结束": e["finished"],
+        "时长可信": e.get("duration_known", True),
+        "AUTO-MAS原始输出": e.get("raw") or {
+            "ok": e["ok"], "failed_tasks": e.get("failed_tasks") or []},
     } for e in entries]
     return _ask(cfg, _DAILY_PROMPT.format(
-        ledger=json.dumps(slim, ensure_ascii=False, indent=2)
-    ), max_tokens=300)
+        records=json.dumps(material, ensure_ascii=False, indent=2),
+        plan=plan or "（读不到）",
+    ), max_tokens=1500)

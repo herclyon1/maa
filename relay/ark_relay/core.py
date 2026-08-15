@@ -57,6 +57,9 @@ class State:
             "ok": rec.ok,
             "failed_tasks": rec.failed_tasks,
             "duration_known": rec.duration_known,
+            # The model reads this verbatim. Keeping AUTO-MAS's own output
+            # means the report can never disagree with what actually happened.
+            "raw": rec.raw,
             "sanity": rec.sanity,
             "sanity_full_at": rec.sanity_full_at,
             "drops": rec.drops,
@@ -80,6 +83,31 @@ class State:
             except json.JSONDecodeError:
                 continue  # tolerate one torn line rather than lose the day
         return out
+
+    # ---------- undelivered alerts survive a restart ----------
+    #
+    # An alert held in memory is an alert lost the moment the relay restarts -
+    # and this machine reboots twice a day. Anything not yet delivered goes to
+    # disk and is only removed once a channel has actually accepted it.
+
+    @property
+    def pending_path(self) -> Path:
+        return self.dir / "pending.json"
+
+    def save_pending(self, payload: dict) -> None:
+        tmp = self.pending_path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=1),
+                       encoding="utf-8")
+        tmp.replace(self.pending_path)  # atomic: never leave a half-written file
+
+    def load_pending(self) -> dict:
+        if not self.pending_path.exists():
+            return {}
+        try:
+            data = json.loads(self.pending_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return data if isinstance(data, dict) else {}
 
     def report_sent(self, day: str) -> bool:
         return (self.dir / f"report-{day}.sent").exists()

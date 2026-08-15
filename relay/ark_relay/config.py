@@ -89,6 +89,18 @@ class Config:
     llm_key: str = field(default_factory=lambda: _env("ARK_LLM_KEY"))
     llm_model: str = field(default_factory=lambda: _env("ARK_LLM_MODEL", "deepseek-chat"))
 
+    # Take over shutdown from AUTO-MAS. Its own AfterAccomplish powers the box
+    # off within seconds of a queue finishing, which the relay's poll can never
+    # beat - so the daily report never got sent. With this on, set AUTO-MAS's
+    # AfterAccomplish to NoAction and let the relay power down once it has
+    # actually delivered everything.
+    shutdown_after_run: bool = field(
+        default_factory=lambda: _env("ARK_SHUTDOWN_AFTER_RUN", "0") == "1")
+    # Never power off within this many seconds of the relay starting. Guards
+    # against a boot -> immediate-shutdown loop if state is ever inconsistent.
+    shutdown_min_uptime: int = field(
+        default_factory=lambda: _env_int("ARK_SHUTDOWN_MIN_UPTIME", 600))
+
     # The last scheduled run of the day; the daily report goes out after it.
     # Server (Beijing) time, "HH:MM".
     last_run_after: str = field(default_factory=lambda: _env("ARK_LAST_RUN_AFTER", "21:30"))
