@@ -14,6 +14,7 @@ import argparse
 import atexit
 import logging
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -96,7 +97,7 @@ def cmd_report(cfg: Config) -> int:
     return 0 if _build_local_engine(cfg).send_daily_now() else 1
 
 
-def _acquire_singleton(cfg: Config) -> object | None:
+def _acquire_singleton(cfg: Config) -> object | None:  # noqa: C901
     """Refuse to start twice.
 
     Two relays watching the same directory means every alert and every daily
@@ -105,7 +106,7 @@ def _acquire_singleton(cfg: Config) -> object | None:
     """
     cfg.state_dir.mkdir(parents=True, exist_ok=True)
     lock = cfg.state_dir / "relay.lock"
-    try:
+    try:  # noqa: PLR1702
         # Exclusive create: fails if another instance already holds it.
         fh = lock.open("x")
     except FileExistsError:
@@ -127,8 +128,17 @@ def _acquire_singleton(cfg: Config) -> object | None:
 
 def _pid_alive(pid: int) -> bool:
     if os.name == "nt":
-        out = os.popen(f'tasklist /FI "PID eq {pid}" /NH').read()
-        return str(pid) in out
+        # tasklist prints in the console's ANSI codepage (GBK on this machine),
+        # not UTF-8. Decoding it crashed the relay on every boot, so compare
+        # raw bytes and never decode at all.
+        try:
+            out = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+                capture_output=True, timeout=15,
+            ).stdout
+        except (OSError, subprocess.SubprocessError):
+            return False  # cannot tell -> treat the lock as stale
+        return str(pid).encode("ascii") in out
     try:
         os.kill(pid, 0)
     except OSError:
@@ -142,8 +152,13 @@ def cmd_local(cfg: Config) -> int:
         for p in problems:
             print(f"✗ {p}", file=sys.stderr)
         return 1
-    if _acquire_singleton(cfg) is None:
-        return 1
+    try:
+        if _acquire_singleton(cfg) is None:
+            return 1
+    except Exception:  # noqa: BLE001
+        # The lock is a convenience, not a precondition. A relay that refuses
+        # to start because its own guard misbehaved is worse than two relays.
+        logging.getLogger("ark").exception("单实例锁异常，忽略并继续启动")
     engine = _build_local_engine(cfg)
     log = logging.getLogger("ark")
     log.info("本机模式启动，监视 %s（每 %d 秒）", cfg.history_dir, cfg.poll_seconds)
