@@ -212,16 +212,29 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
                      + f" {e['script']}　{_span(started, finished, e.get('duration_known', True))}")
         if not e["ok"]:
             lines.append("· " + _fmt_failed(e.get("failed_tasks") or []))
+        # What the sanity actually bought. AUTO-MAS leaves these empty, so they
+        # come from the collector's parse of MAA's own log - see collector.py.
+        raw = e.get("raw") or {}
+        if stages := raw.get("stages"):
+            farmed = "、".join(stages)
+            if times := raw.get("run_times"):
+                farmed += f" ×{times}"
+            lines.append("· 刷了 " + farmed)
+        if spent := raw.get("sanity_spent"):
+            cost = f"· 消耗理智 {spent}"
+            if med := raw.get("medicine_used"):
+                cost += f"，吃药 {med}"
+            lines.append(cost)
+        if drops := _fmt_items(e.get("drops") or {}):
+            lines.append("· 产出 " + drops)
+        if recruits := _fmt_items(e.get("recruits") or {}):
+            lines.append("· 公招 " + recruits)
         if e.get("sanity") is not None:
             s = f"· 剩余理智 {e['sanity']}"
             full = str(e.get("sanity_full_at") or "")
             if "回满" in full:
                 s += "，" + full.split("理智将在")[-1].split("回满")[0].strip() + " 回满"
             lines.append(s)
-        if drops := _fmt_items(e.get("drops") or {}):
-            lines.append("· 产出 " + drops)
-        if recruits := _fmt_items(e.get("recruits") or {}):
-            lines.append("· 公招 " + recruits)
         lines.append("")
 
     if prose:

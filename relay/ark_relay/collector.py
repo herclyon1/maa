@@ -61,6 +61,89 @@ def _log_span(log_path: Path) -> tuple[datetime, datetime] | None:
     return first.replace(tzinfo=SERVER_TZ), last.replace(tzinfo=SERVER_TZ)
 
 
+# MAA writes what it actually farmed into its own log, but AUTO-MAS does not
+# copy any of it into the result JSON - `drop_statistics` and
+# `recruit_statistics` arrive as empty dicts on every single run. The numbers
+# the operator most wants ("what did tonight's sanity actually buy") are
+# therefore only in the log, and only the relay can put them back.
+#
+#   [.. 09:04:12 ..] <2> 开始行动 1~6 次, -72理智
+#   [.. 09:04:03 ..] <2> 已使用理智药 1(+1)
+#   [.. 09:06:29 ..] <2> TO-5 掉落统计:
+#   龙门币 : 864 (+864)
+#
+_STAGE_DROPS = re.compile(r"(\S+)\s*掉落统计[:：]")
+# Real drops always carry the "(+N)" delta; the block's trailing
+# "当前次数 : 6" (how many times the stage was run) does not. That suffix is
+# the only thing separating an item from the run counter, so it is required.
+_DROP_ITEM = re.compile(r"^\s*(\S[^:：]*?)\s*[:：]\s*(\d+)\s*\(\+\d+\)\s*$")
+_RUN_TIMES = re.compile(r"^\s*当前次数\s*[:：]\s*(\d+)\s*$")
+_SANITY_SPENT = re.compile(r"开始行动.*?-\s*(\d+)\s*理智")
+_MEDICINE = re.compile(r"已使用理智药\s*(\d+)")
+# Lines inside a drop block are bare "name : count"; anything with a log
+# timestamp has left the block.
+_HAS_TS = re.compile(r"^\[\d{4}-\d{2}-\d{2}")
+
+
+def parse_maa_log(log_path: Path) -> dict:
+    """Recover stage / drops / sanity spend from a MAA log. {} when unreadable.
+
+    Deliberately forgiving: a log line that does not match is skipped rather
+    than aborting the parse. A daily report missing one item is a small loss;
+    a report that fails to render because of one odd line is a large one.
+    """
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {}
+
+    out: dict = {}
+    drops: dict[str, int] = {}
+    stages: list[str] = []
+    spent = 0
+    medicine = 0
+
+    times = 0
+    in_block = False
+    for line in text.splitlines():
+        if m := _STAGE_DROPS.search(line):
+            stages.append(m.group(1))
+            in_block = True
+            continue
+        if in_block:
+            # The block ends at the next timestamped line.
+            if _HAS_TS.match(line):
+                in_block = False
+            elif m := _RUN_TIMES.match(line):
+                times += int(m.group(1))
+                continue
+            elif m := _DROP_ITEM.match(line):
+                name, total = m.group(1), int(m.group(2))
+                drops[name] = drops.get(name, 0) + total
+                continue
+            elif not line.strip():
+                continue
+            else:
+                in_block = False
+        if m := _SANITY_SPENT.search(line):
+            spent += int(m.group(1))
+        if m := _MEDICINE.search(line):
+            medicine = max(medicine, int(m.group(1)))
+
+    if drops:
+        out["drop_statistics"] = drops
+    if stages:
+        # Keep order, drop repeats: one stage farmed ten times is still one stage.
+        out["stages"] = list(dict.fromkeys(stages))
+    if spent:
+        out["sanity_spent"] = spent
+    if medicine:
+        out["medicine_used"] = medicine
+    if times:
+        out["run_times"] = times
+    return out
+
+
 def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
     """Parse one result JSON. Returns None if it is not a run record."""
     try:
@@ -109,6 +192,14 @@ def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
     if log_path.exists() and (span := _log_span(log_path)):
         started, finished = span
         duration_known = True
+
+    # AUTO-MAS always hands us empty drop/recruit stats, so recover them from
+    # the log. Only fill what is genuinely missing - if a future AUTO-MAS
+    # version starts populating these, its numbers win over our parsing.
+    if script == "MAA" and log_path.exists():
+        for key, value in parse_maa_log(log_path).items():
+            if not raw.get(key):
+                raw[key] = value
 
     return RunRecord(
         run_id=f"{date_str}/{user}/{stem}",
