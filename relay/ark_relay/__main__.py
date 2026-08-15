@@ -27,10 +27,24 @@ from .transport import LocalSource, Uploader
 
 
 def _setup_logging(verbose: bool) -> None:
+    """Log to stderr, and to a UTF-8 file when ARK_LOG_FILE is set.
+
+    Python writes the file itself rather than going through a shell redirect:
+    PowerShell's `*>>` produces UTF-16 and mixes its own error stream in, which
+    left the log unreadable exactly when it was needed for debugging.
+    """
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    if path := os.environ.get("ARK_LOG_FILE"):
+        try:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            handlers.append(logging.FileHandler(path, encoding="utf-8"))
+        except OSError:
+            pass  # a missing log file must not stop the relay
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
         format="%(asctime)s %(levelname)-7s %(name)s  %(message)s",
         datefmt="%m-%d %H:%M:%S",
+        handlers=handlers,
     )
 
 
