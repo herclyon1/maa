@@ -238,6 +238,16 @@ class Engine:
 
     # ---------- decide held-back failures ----------
 
+    def scripts_running(self) -> bool:
+        """Public view of the same check the shutdown path uses.
+
+        The service needs it to decide when a config edit is safe: AUTO-MAS
+        reads its config as it launches each script, so writing during a run
+        would land somewhere between two scripts and take effect for only half
+        the queue.
+        """
+        return self._scripts_running()
+
     @staticmethod
     def _scripts_running() -> bool:
         """True while any managed script is still working.

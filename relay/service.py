@@ -49,6 +49,8 @@ import win32serviceutil  # noqa: E402
 # polled for liveness the way a task would poll the relay - a missing AUTO-MAS
 # is not urgent to the second, and relaunching it costs a desktop window.
 AUTOMAS_CHECK_SECONDS = 120
+# How often to re-check for queued config changes while already running.
+INBOX_CHECK_SECONDS = 300
 AUTOMAS_TASK = "AUTO-MAS_AutoStart"
 
 
@@ -71,6 +73,12 @@ def _automas_running() -> bool:
     except (OSError, subprocess.SubprocessError):
         return True  # cannot tell -> assume alive rather than launch a duplicate
     return b"main.py" in out
+
+
+def _maaend_dir(cfg):
+    """MaaEnd's install path, as AUTO-MAS records it."""
+    from ark_relay import plan
+    return plan.script_dir(cfg.automas_dir, "MaaEnd")
 
 
 def _revive_automas() -> None:
@@ -170,41 +178,29 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         engine.bootstrap()
         log.info("服务模式启动，监视 %s（每 %d 秒）", cfg.history_dir, cfg.poll_seconds)
 
-        # New code first, config second: an update that fixes how a command
-        # is applied should be in place before that command is applied. The
-        # update lands on disk only - it takes effect at the next boot, never
-        # inside a running process.
-        try:
-            from ark_relay import selfupdate
+        from ark_relay.inbox import Inbox
 
-            if changed := selfupdate.check(HERE):
-                log.info("代码已更新，下次开机生效: %s", "、".join(changed))
-        except Exception:  # noqa: BLE001
-            log.exception("自更新出错，跳过")
+        inbox = Inbox(cfg.state_dir, cfg.inbox_url,
+                      cfg.maaend_dir or _maaend_dir(cfg), cfg.automas_dir)
 
-        # Queued config changes are collected here, at boot, before AUTO-MAS
-        # gets to its first queue - MaaEnd reads its config when it launches,
-        # so this is the one moment a change can land without racing a run.
-        try:
-            from ark_relay.inbox import Inbox
-
-            from ark_relay import plan as _plan
-
-            # Configured path wins; otherwise ask AUTO-MAS, which already knows
-            # where MaaEnd lives.
-            maaend_dir = cfg.maaend_dir or _plan.script_dir(cfg.automas_dir, "MaaEnd")
-            version, messages = Inbox(cfg.state_dir, cfg.inbox_url,
-                                      maaend_dir, cfg.automas_dir).poll()
+        def collect(reason: str) -> None:
+            """Check for queued changes and push whatever landed."""
+            try:
+                version, messages = inbox.poll()
+            except Exception:  # noqa: BLE001 - never let this stop the relay
+                log.exception("待办检查出错，跳过")
+                return
             if messages:
                 for m in messages:
                     log.info("待办: %s", m)
                 notifier.send(f"⚙️ 配置已更新 v{version}", "\n".join(messages[1:]))
             else:
-                log.info("待办检查完毕：无新配置（当前 v%s）", version)
-        except Exception:  # noqa: BLE001 - never let this stop the relay
-            log.exception("待办检查出错，跳过")
+                log.debug("待办检查（%s）：无新配置（当前 v%s）", reason, version)
+
+        collect("启动")
 
         next_automas_check = 0.0
+        next_inbox_check = time.monotonic() + INBOX_CHECK_SECONDS
         while True:
             # Wait for either the stop signal or the next poll. Sleeping on the
             # event rather than time.sleep is what makes "stop" immediate
@@ -221,6 +217,14 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
                 log.exception("本轮处理出错，继续")
 
             now = time.monotonic()
+            # A change pushed while the machine is already awake must not have
+            # to wait for the next boot - the operator pushes it precisely
+            # because they want it to apply. Only when nothing is running,
+            # though: AUTO-MAS reads its config as it launches each script.
+            if now >= next_inbox_check and not engine.scripts_running():
+                next_inbox_check = now + INBOX_CHECK_SECONDS
+                collect("轮次")
+
             if now >= next_automas_check:
                 next_automas_check = now + AUTOMAS_CHECK_SECONDS
                 if not _automas_running():
