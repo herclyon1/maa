@@ -227,6 +227,10 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             lines.append(cost)
         if drops := _fmt_items(e.get("drops") or {}):
             lines.append("· 产出 " + drops)
+        # MaaEnd works through a list of chores rather than farming a stage, so
+        # "how many got done" is its equivalent of a stage count.
+        if done := raw.get("tasks_done"):
+            lines.append(f"· 完成 {len(done)} 项日常")
         if recruits := _fmt_items(e.get("recruits") or {}):
             lines.append("· 公招 " + recruits)
         if e.get("sanity") is not None:

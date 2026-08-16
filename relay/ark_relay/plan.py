@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import timedelta
 from pathlib import Path
 
 from .config import SERVER_TZ, USER_TZ
@@ -45,14 +46,34 @@ def _load(path: Path) -> dict:
         return {}
 
 
+def _script_kind(path: str) -> str:
+    """Classify a script by its install path: "MAA" | "MaaEnd" | "".
+
+    The display name is whatever the operator typed ("maa明日方舟", "新 MaaEnd
+    脚本"), so it cannot be matched on. The install path is set by AUTO-MAS
+    itself and matches the names the collector puts in the ledger, which is
+    what lets the two be compared.
+    """
+    p = (path or "").lower()
+    if "maaend" in p:
+        return "MaaEnd"
+    if "maa" in p:
+        return "MAA"
+    return ""
+
+
 def _scripts(cfg_dir: Path) -> dict[str, dict]:
-    """{script_uid: {name, stage, medicine, sanity_use}}"""
+    """{script_uid: {name, kind, stage, medicine, sanity_use}}"""
     data = _load(cfg_dir / "ScriptConfig.json")
     out: dict[str, dict] = {}
     for inst in data.get("instances", []):
         uid = inst.get("uid")
         node = data.get(uid) or {}
-        entry = {"name": (node.get("Info") or {}).get("Name") or "?"}
+        info_node = node.get("Info") or {}
+        entry = {
+            "name": info_node.get("Name") or "?",
+            "kind": _script_kind(info_node.get("Path") or ""),
+        }
         for user in ((node.get("SubConfigsInfo") or {}).get("UserData") or {}).values():
             if not isinstance(user, dict):
                 continue
@@ -148,3 +169,46 @@ def next_plan(automas_dir: Path | None) -> str:
             lines.append("· 跑完自动关机")
         lines.append("")
     return "\n".join(lines)
+
+
+def recent_due_queues(automas_dir: Path | None, now, window_minutes: int = 120) -> list[dict]:
+    """Queues whose time came up in the last `window_minutes`, with their scripts.
+
+    [{"name": ..., "due": datetime, "kinds": ["MAA", "MaaEnd"]}]
+
+    Two bounds matter, and getting either wrong breaks the machine's day:
+
+    A queue that just became due may still be working through its items, and
+    between two of them no game process exists at all - MAA has exited, the
+    next game is still launching. Powering off in that window costs a run; it
+    cost the 终月地 half of 2026-08-16.
+
+    But the wait cannot be open-ended either. If a script simply never runs -
+    it crashed, the game would not start - waiting for it forever would keep
+    the machine powered on all day and every day after. Past the window the
+    queue is written off and the machine may sleep.
+    """
+    if not automas_dir:
+        return []
+    cfg_dir = Path(automas_dir) / "config"
+    if not cfg_dir.is_dir():
+        return []
+    scripts = _scripts(cfg_dir)
+    out: list[dict] = []
+    for q in _queues(cfg_dir):
+        for hhmm in q.get("times", []):
+            try:
+                hh, mm = (int(x) for x in hhmm.split(":"))
+            except ValueError:
+                continue
+            due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+            if not (due <= now < due + timedelta(minutes=window_minutes)):
+                continue
+            kinds = []
+            for uid in q.get("items", []):
+                kind = (scripts.get(uid) or {}).get("kind")
+                if kind and kind not in kinds:
+                    kinds.append(kind)
+            if kinds:
+                out.append({"name": q.get("name", "?"), "due": due, "kinds": kinds})
+    return out

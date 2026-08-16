@@ -45,6 +45,7 @@ class Engine:
         self._missed_alerted: set[str] = set()
         self._started_at = datetime.now(tz=SERVER_TZ)
         self._handled_any = False   # nothing ran this session -> nothing to shut down for
+        self._shutdown_issued = False  # a countdown is already running; never twice
 
     # ---------- survive restarts ----------
 
@@ -304,13 +305,35 @@ class Engine:
         """
         if not self.cfg.shutdown_after_run or not self._handled_any:
             return False
+        # `shutdown /s /t 60` only starts a countdown; the loop keeps ticking
+        # through it. Without this flag the whole block ran again every poll -
+        # on 2026-08-16 that sent the pre-shutdown report three times in 60
+        # seconds and re-issued the shutdown twice.
+        if self._shutdown_issued:
+            return False
         now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
         if (now - self._started_at).total_seconds() < self.cfg.shutdown_min_uptime:
             return False
         if self._scripts_running() or self._pending or self._recovered:
             return False
-        cutoff = self._report_cutoff(now)   # same source as the report itself
+        # "No game process" is not the same as "the queue is finished". Between
+        # two scripts in one queue there is a window - MAA has exited, MaaEnd's
+        # game is still launching - where neither process exists. Powering off
+        # in that window costs a whole run, so also require that every script
+        # today's due queues contain has actually produced a record.
         day = now.strftime("%Y-%m-%d")
+        entries = self.state.read_ledger(day)
+        for q in plan.recent_due_queues(self.cfg.automas_dir, now):
+            # Only runs started at or after this queue's own time count -
+            # otherwise the morning's MaaEnd would satisfy the evening queue.
+            ran = {e["script"] for e in entries
+                   if datetime.fromisoformat(e["started"]).astimezone(SERVER_TZ)
+                   >= q["due"] - timedelta(minutes=5)}
+            if missing := [k for k in q["kinds"] if k not in ran]:
+                log.info("队列「%s」还有 %s 没跑完，不关机",
+                         q["name"], "、".join(missing))
+                return False
+        cutoff = self._report_cutoff(now)   # same source as the report itself
         if now >= cutoff and not self.state.report_sent(day):
             log.info("到点该关机了，但日报还没发出去，继续等")
             return False
@@ -330,6 +353,7 @@ class Engine:
         except (OSError, subprocess.SubprocessError):
             log.exception("关机命令执行失败")
             return False
+        self._shutdown_issued = True
         return True
 
     def _compose_daily(self, day: str, entries: list[dict]) -> tuple[str, str]:

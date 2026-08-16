@@ -144,6 +144,47 @@ def parse_maa_log(log_path: Path) -> dict:
     return out
 
 
+# MaaEnd writes what it collected in a different shape from MAA - no stage, no
+# drop table, just a running list of "获得 <item> ×<n>" as it works through the
+# day's chores, plus one line per finished task. AUTO-MAS records none of it
+# either (its result JSON is a bare "Success!"), so the same recovery applies.
+#
+#   任务完成: 🎁赠送干员礼物
+#   获得 高级认知载体 ×3
+#   获得 嵌晶玉 ×25
+#
+_END_GAIN = re.compile(r"获得\s+(\S.*?)\s*[×x]\s*(\d+)")
+_END_TASK_DONE = re.compile(r"任务完成[:：]\s*(\S.+?)\s*$")
+
+
+def parse_maaend_log(log_path: Path) -> dict:
+    """Recover items gained and tasks finished from a MaaEnd log. {} if unreadable."""
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {}
+
+    gains: dict[str, int] = {}
+    tasks: list[str] = []
+    for line in text.splitlines():
+        if m := _END_GAIN.search(line):
+            name = m.group(1).strip()
+            gains[name] = gains.get(name, 0) + int(m.group(2))
+        elif m := _END_TASK_DONE.search(line):
+            # Strip the leading emoji AUTO-MAS puts on every task name; it adds
+            # nothing once the names are already in a list.
+            name = re.sub(r"^[^\w一-鿿]+", "", m.group(1)).strip()
+            if name and name not in tasks:
+                tasks.append(name)
+
+    out: dict = {}
+    if gains:
+        out["drop_statistics"] = gains
+    if tasks:
+        out["tasks_done"] = tasks
+    return out
+
+
 def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
     """Parse one result JSON. Returns None if it is not a run record."""
     try:
@@ -196,8 +237,10 @@ def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
     # AUTO-MAS always hands us empty drop/recruit stats, so recover them from
     # the log. Only fill what is genuinely missing - if a future AUTO-MAS
     # version starts populating these, its numbers win over our parsing.
-    if script == "MAA" and log_path.exists():
-        for key, value in parse_maa_log(log_path).items():
+    if log_path.exists():
+        parsed = (parse_maa_log(log_path) if script == "MAA"
+                  else parse_maaend_log(log_path))
+        for key, value in parsed.items():
             if not raw.get(key):
                 raw[key] = value
 
