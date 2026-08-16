@@ -16,15 +16,21 @@
 //    still created below: it costs nothing and starts working the day this app
 //    is signed with a real identity.
 //
-// 2. Event-driven, not polled. `tailscale debug watch-ipn` is a long-lived
-//    subscription to tailscaled's own message bus; peer state arrives when it
-//    changes instead of being asked for on a timer. The interval below is only
-//    a backstop for a dead subscription, which is why it is minutes and not
-//    seconds.
+// 2. Event-driven, not polled. `watch-ipn-bus` is a long-lived subscription to
+//    tailscaled's own message bus; peer state arrives when it changes instead
+//    of being asked for on a timer. The interval below is only a backstop for a
+//    dead subscription, which is why it is minutes and not seconds.
+//
+// Both endpoints are read straight off tailscaled's local HTTP API rather than
+// through the bundled `Tailscale` CLI. That CLI is not a plain client: it tries
+// to start the GUI app, and from a context that cannot do that it prints "The
+// Tailscale GUI failed to start" and exits 0, which is indistinguishable from
+// success unless the output is parsed. The monitor kept coming up empty at
+// login for exactly that reason.
 //
 // Build:  swiftc -O main.swift -o FleetMonitor
-// It shells out to the Tailscale CLI rather than linking anything, so it keeps
-// working across Tailscale updates and needs no entitlements.
+// No linked libraries and no entitlements; it keeps working across Tailscale
+// updates because the local API is the same surface the CLI itself uses.
 
 import AppKit
 import Foundation
@@ -57,39 +63,59 @@ func note(_ s: String) {
 }
 
 enum Tailscale {
-    /// Locations Tailscale may live in, most likely first.
-    static let candidates = [
-        "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
-        "/usr/local/bin/tailscale",
-        "/opt/homebrew/bin/tailscale",
-    ]
+    /// Where tailscaled advertises its local HTTP API: a file whose name ends
+    /// in the port and whose contents are the password.
+    ///
+    /// This replaces shelling out to the bundled `Tailscale` CLI, which is not
+    /// a plain client - it tries to start the GUI app, and from any context
+    /// that cannot do that it answers "The Tailscale GUI failed to start
+    /// (CLIError error 3)" with exit status 0. That is why the monitor kept
+    /// coming up empty at login while the same command worked in a terminal.
+    /// The local API has no such dependency and no subprocess.
+    private static let proofDir = "/Library/Tailscale"
 
-    static var binary: String? {
-        candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+    static func endpoint() -> (port: Int, token: String)? {
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: proofDir)
+        else { return nil }
+        for name in names where name.hasPrefix("sameuserproof-") {
+            let port = Int(name.dropFirst("sameuserproof-".count)) ?? 0
+            guard port > 0,
+                  let token = try? String(contentsOfFile: "\(proofDir)/\(name)", encoding: .utf8)
+            else { continue }
+            return (port, token.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        return nil
+    }
+
+    static func request(_ path: String) -> URLRequest? {
+        guard let e = endpoint(),
+              let url = URL(string: "http://127.0.0.1:\(e.port)/localapi/v0/\(path)")
+        else { return nil }
+        var r = URLRequest(url: url)
+        // Username is empty; the proof file is the password.
+        let auth = Data(":\(e.token)".utf8).base64EncodedString()
+        r.setValue("Basic \(auth)", forHTTPHeaderField: "Authorization")
+        return r
     }
 
     static func status() -> [Machine]? {
-        guard let bin = binary else { return nil }
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: bin)
-        task.arguments = ["status", "--json"]
-        let pipe = Pipe()
-        let errPipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = errPipe
-        do { try task.run() } catch { note("run failed: \(error)"); return nil }
+        guard let req = request("status") else { note("no local API endpoint"); return nil }
 
-        // Read before waiting: a full pipe buffer would deadlock the child.
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
-        task.waitUntilExit()
-        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        // Synchronous by design: the caller is already on a background queue,
+        // and a status read that has not finished is not a status.
+        var payload: Data?
+        let done = DispatchSemaphore(value: 0)
+        URLSession.shared.dataTask(with: req) { d, _, err in
+            if let err = err { note("localapi: \(err.localizedDescription)") }
+            payload = d
+            done.signal()
+        }.resume()
+        _ = done.wait(timeout: .now() + 8)
+
+        guard let data = payload,
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
-            // The CLI's own words are the only thing that explains a failure
-            // that only happens when the app is launched at login.
-            note("exit=\(task.terminationStatus) out=\(data.count)B "
-                 + "[\(String(data: data, encoding: .utf8) ?? "<non-utf8>")] err="
-                 + (String(data: errData, encoding: .utf8) ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
+            note("localapi returned \(payload?.count ?? -1)B, unparseable")
             return nil
         }
 
@@ -106,37 +132,6 @@ enum Tailscale {
             if $0.isSelf != $1.isSelf { return $0.isSelf }
             if $0.online != $1.online { return !$0.online }
             return $0.host.localizedCaseInsensitiveCompare($1.host) == .orderedAscending
-        }
-    }
-
-    /// Subscribe to tailscaled's message bus and call `onChange` for every
-    /// notification it pushes. Never returns; run it off the main thread.
-    ///
-    /// The callback deliberately carries no payload. Decoding the bus format is
-    /// a moving target across Tailscale releases, whereas `status --json` is the
-    /// documented surface - so the bus is used only as a doorbell, and the
-    /// answer still comes from `status`.
-    static func watch(onChange: @escaping () -> Void) {
-        guard let bin = binary else { return }
-        while true {
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: bin)
-            task.arguments = ["debug", "watch-ipn"]
-            let pipe = Pipe()
-            task.standardOutput = pipe
-            task.standardError = Pipe()
-            do { try task.run() } catch { Thread.sleep(forTimeInterval: 30); continue }
-
-            let handle = pipe.fileHandleForReading
-            while true {
-                let chunk = handle.availableData
-                if chunk.isEmpty { break }  // subscription died; fall through to restart
-                onChange()
-            }
-            task.waitUntilExit()
-            // tailscaled restarts (updates, sleep/wake) kill the subscription.
-            // Reconnect, but never in a tight loop.
-            Thread.sleep(forTimeInterval: 5)
         }
     }
 
@@ -186,6 +181,51 @@ func line(_ m: Machine) -> String {
     return s
 }
 
+/// A live subscription to tailscaled's event bus.
+///
+/// The callback deliberately carries no payload. Decoding the bus format is a
+/// moving target across Tailscale releases, whereas the status endpoint is the
+/// stable surface - so the bus is only ever used as a doorbell, and the answer
+/// still comes from `Tailscale.status()`.
+final class BusWatcher: NSObject, URLSessionDataDelegate {
+    private let onChange: () -> Void
+    private var session: URLSession!
+    private var task: URLSessionDataTask?
+
+    init(onChange: @escaping () -> Void) {
+        self.onChange = onChange
+        super.init()
+        let cfg = URLSessionConfiguration.default
+        // The whole point is a connection that never completes; without this
+        // the stream is torn down after the default timeout and the monitor
+        // silently degrades to the backstop timer.
+        cfg.timeoutIntervalForRequest = .infinity
+        cfg.timeoutIntervalForResource = .infinity
+        session = URLSession(configuration: cfg, delegate: self, delegateQueue: nil)
+    }
+
+    func start() {
+        guard var req = Tailscale.request("watch-ipn-bus?mask=1") else {
+            // No endpoint yet - Tailscale may still be starting at login.
+            DispatchQueue.global().asyncAfter(deadline: .now() + 15) { self.start() }
+            return
+        }
+        req.timeoutInterval = Double.infinity
+        task = session.dataTask(with: req)
+        task?.resume()
+    }
+
+    func urlSession(_ s: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        onChange()
+    }
+
+    func urlSession(_ s: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        // tailscaled restarts (updates, sleep/wake) end the stream. Reconnect,
+        // but never in a tight loop.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 5) { self.start() }
+    }
+}
+
 /// The Dock icon, drawn rather than shipped: green when the whole fleet is up,
 /// red the moment one machine is not. The colour is what carries across a
 /// glance at the Dock; the badge underneath it gives the count.
@@ -219,8 +259,10 @@ final class Controller: NSObject, NSApplicationDelegate {
     private var body: NSTextField!
     private var footer: NSTextField!
     private var statusItem: NSStatusItem?
+    private var watcher: BusWatcher?
     private var lastOnline: [String: Bool] = [:]
     private var machines: [Machine] = []
+    private var lastGood: Date?
     /// Backstop only - the bus subscription is what actually drives updates.
     private let heartbeatSeconds: TimeInterval = 300
 
@@ -234,11 +276,10 @@ final class Controller: NSObject, NSApplicationDelegate {
         Timer.scheduledTimer(withTimeInterval: heartbeatSeconds, repeats: true) { [weak self] _ in
             self?.refresh()
         }
-        // The doorbell. Coalesced, because one user action (a machine waking)
-        // pushes a burst of notifications and each would otherwise fork a CLI.
-        DispatchQueue.global(qos: .utility).async {
-            Tailscale.watch { [weak self] in self?.scheduleRefresh() }
-        }
+        // The doorbell. Coalesced, because one machine waking pushes a burst of
+        // notifications and each would otherwise trigger its own status read.
+        watcher = BusWatcher { [weak self] in self?.scheduleRefresh() }
+        watcher?.start()
     }
 
     /// Keep the app alive with no windows; clicking the Dock icon brings it back.
@@ -300,12 +341,24 @@ final class Controller: NSObject, NSApplicationDelegate {
 
     private func apply(_ result: [Machine]?) {
         guard let list = result else {
-            NSApp.dockTile.badgeLabel = "!"
-            body.stringValue = Tailscale.binary == nil
-                ? "找不到 Tailscale" : "读不到 Tailscale 状态"
+            // A failed read is not news about the fleet, so do not throw away
+            // what was last known true - blanking the window to an error made
+            // a five-second hiccup look like everything had gone dark. Keep the
+            // last good answer on screen, say how old it is, and try again soon
+            // rather than waiting out the backstop.
+            if machines.isEmpty {
+                NSApp.dockTile.badgeLabel = "?"
+                body.stringValue = "正在连接 Tailscale…"
+            }
+            footer.stringValue = lastGood.map { "读取失败，显示的是 \(ago($0))的状态" }
+                ?? "读取失败，重试中…"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
+                self?.refresh()
+            }
             return
         }
         machines = list
+        lastGood = Date()
         let up = list.filter(\.online).count
 
         // The Dock badge is the whole point of the glanceable half: it is on
@@ -319,7 +372,7 @@ final class Controller: NSObject, NSApplicationDelegate {
 
         body.stringValue = list.map(line).joined(separator: "\n\n")
         let f = DateFormatter(); f.dateFormat = "HH:mm:ss"
-        footer.stringValue = "\(f.string(from: Date())) 更新 · 事件驱动，非轮询"
+        footer.stringValue = "\(f.string(from: Date())) 更新 · 状态变化时自动推送"
         notifyChanges(list)
     }
 
