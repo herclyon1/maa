@@ -160,6 +160,41 @@ enum Tailscale {
     }
 }
 
+/// Per-machine hardware notes, shown on hover rather than on screen.
+///
+/// The window answers one question - is it up - and every extra line spent on
+/// specs is a line competing with that answer. A tooltip costs nothing until
+/// someone actually wants it.
+///
+/// Read from disk rather than probed: the peer is powered off most of the day,
+/// which is exactly when you would want to look up what it is.
+enum Specs {
+    static let path = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/FleetMonitor/specs.json")
+
+    static func load() -> [String: [String: String]] {
+        guard let data = try? Data(contentsOf: path),
+              let root = try? JSONSerialization.jsonObject(with: data)
+                as? [String: [String: String]]
+        else { return [:] }
+        return root
+    }
+
+    /// Order matters: the first two lines are what someone glances at.
+    static let order = ["role", "os", "cpu", "gpu", "ram", "disk", "model"]
+    static let labels = ["role": "用途", "os": "系统", "cpu": "处理器", "gpu": "显卡",
+                         "ram": "内存", "disk": "存储", "model": "机型"]
+
+    static func tooltip(for host: String, _ all: [String: [String: String]]) -> String? {
+        guard let spec = all[host] else { return nil }
+        let rows = order.compactMap { key -> String? in
+            guard let v = spec[key], !v.isEmpty else { return nil }
+            return "\(labels[key] ?? key)　\(v)"
+        }
+        return rows.isEmpty ? nil : ([host, ""] + rows).joined(separator: "\n")
+    }
+}
+
 // MARK: - Formatting
 
 // The host OS here runs in English, so the app does too - a lone Chinese window
@@ -268,6 +303,7 @@ func tileIcon(up: Int, total: Int) -> NSImage {
 final class Controller: NSObject, NSApplicationDelegate {
     private var window: NSWindow!
     private var body: NSTextField!
+    private var rows: NSStackView!
     private var footer: NSTextField!
     private var statusItem: NSStatusItem?
     private var watcher: BusWatcher?
@@ -323,11 +359,17 @@ final class Controller: NSObject, NSApplicationDelegate {
         window.title = "Fleet Monitor"
         window.center()
 
+        rows = NSStackView()
+        rows.orientation = .vertical
+        rows.alignment = .leading
+        rows.spacing = 14
+        rows.frame = NSRect(x: 18, y: 46, width: 434, height: 274)
+        window.contentView?.addSubview(rows)
+
         body = NSTextField(labelWithString: "Loading…")
         body.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        body.frame = NSRect(x: 18, y: 46, width: 434, height: 274)
         body.maximumNumberOfLines = 0
-        window.contentView?.addSubview(body)
+        rows.addArrangedSubview(body)
 
         footer = NSTextField(labelWithString: "")
         footer.font = .systemFont(ofSize: 10)
@@ -392,7 +434,17 @@ final class Controller: NSObject, NSApplicationDelegate {
         NSApp.dockTile.display()
         statusItem?.button?.title = (up == list.count ? "🟢" : "🔴") + " \(up)/\(list.count)"
 
-        body.stringValue = list.map(line).joined(separator: "\n\n")
+        // Rebuilt rather than one text blob, because a tooltip belongs to a
+        // view and the specs are per machine.
+        let specs = Specs.load()
+        rows.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        for m in list {
+            let label = NSTextField(labelWithString: line(m))
+            label.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+            label.maximumNumberOfLines = 0
+            label.toolTip = Specs.tooltip(for: m.host, specs)
+            rows.addArrangedSubview(label)
+        }
         let f = DateFormatter(); f.dateFormat = "HH:mm:ss"
         footer.stringValue = "Updated \(f.string(from: Date())) · pushed on change"
         notifyChanges(list)

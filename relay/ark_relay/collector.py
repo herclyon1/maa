@@ -163,6 +163,11 @@ def parse_maa_log(log_path: Path) -> dict:
 #   获得 嵌晶玉 ×25
 #
 _END_GAIN = re.compile(r"获得\s+(\S.*?)\s*[×x]\s*(\d+)")
+# MaaEnd never prints a sanity number or a refill time - MAA reads those off the
+# game UI and it does not. What it does say is whether it stopped because the
+# sanity ran out, which is the part a reader actually acts on.
+_END_SANITY_OUT = re.compile(r"理智不足[，,]\s*结束任务")
+_END_PS_ENTER = re.compile(r"进入协议空间成功")
 _END_TASK_DONE = re.compile(r"任务完成[:：]\s*(\S.+?)\s*$")
 
 
@@ -191,6 +196,10 @@ def parse_maaend_log(log_path: Path) -> dict:
         out["drop_statistics"] = gains
     if tasks:
         out["tasks_done"] = tasks
+    if runs := len(_END_PS_ENTER.findall(text)):
+        out["protocol_runs"] = runs
+    if _END_SANITY_OUT.search(text):
+        out["sanity_exhausted"] = True
     return out
 
 

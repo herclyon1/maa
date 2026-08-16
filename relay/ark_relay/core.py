@@ -280,6 +280,16 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
         # "how many got done" is its equivalent of a stage count.
         if done := raw.get("tasks_done"):
             lines.append(f"· 完成 {len(done)} 项日常")
+        # MaaEnd publishes no sanity number and no refill time, so say the one
+        # thing it does report rather than leaving the line blank and letting
+        # the reader wonder whether it simply stopped early.
+        if runs := raw.get("protocol_runs"):
+            note = f"· 协议空间 {runs} 次"
+            if raw.get("sanity_exhausted"):
+                note += "，理智已耗尽"
+            lines.append(note)
+        elif raw.get("sanity_exhausted"):
+            lines.append("· 理智不足，未进入协议空间")
         if recruits := _fmt_items(e.get("recruits") or {}):
             lines.append("· 公招 " + recruits)
         if e.get("sanity") is not None:
