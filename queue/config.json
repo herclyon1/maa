@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "note": "终末地：理智改刷干员经验 → A.高级认知载体、初级认知载体",
+  "commands": [
+    {"action": "maaend_option", "task": "ProtocolSpace",
+     "option": "ProtocolSpaceTab", "case": "OperatorProgression"},
+    {"action": "maaend_option", "task": "ProtocolSpace",
+     "option": "OperatorProgression", "case": "OperatorEXP"},
+    {"action": "maaend_option", "task": "ProtocolSpace",
+     "option": "OperatorEXPRewardsSetOption", "case": "CognitiveCarriers"}
+  ]
+}

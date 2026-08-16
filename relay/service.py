@@ -165,9 +165,27 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
                 log.error("配置有问题: %s", p)
             return
 
-        engine = Engine(cfg, LocalSource(cfg), State(cfg.state_dir), Notifier(cfg))
+        notifier = Notifier(cfg)
+        engine = Engine(cfg, LocalSource(cfg), State(cfg.state_dir), notifier)
         engine.bootstrap()
         log.info("服务模式启动，监视 %s（每 %d 秒）", cfg.history_dir, cfg.poll_seconds)
+
+        # Queued config changes are collected here, at boot, before AUTO-MAS
+        # gets to its first queue - MaaEnd reads its config when it launches,
+        # so this is the one moment a change can land without racing a run.
+        try:
+            from ark_relay.inbox import Inbox
+
+            version, messages = Inbox(cfg.state_dir, cfg.inbox_url,
+                                      cfg.maaend_dir).poll()
+            if messages:
+                for m in messages:
+                    log.info("待办: %s", m)
+                notifier.send(f"⚙️ 配置已更新 v{version}", "\n".join(messages[1:]))
+            else:
+                log.info("待办检查完毕：无新配置（当前 v%s）", version)
+        except Exception:  # noqa: BLE001 - never let this stop the relay
+            log.exception("待办检查出错，跳过")
 
         next_automas_check = 0.0
         while True:

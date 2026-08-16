@@ -124,6 +124,13 @@ class Config:
     shutdown_min_uptime: int = field(
         default_factory=lambda: _env_int("ARK_SHUTDOWN_MIN_UPTIME", 600))
 
+    # Where queued config changes are fetched from, and the MaaEnd install they
+    # may target. Empty URL falls back to the project's own repo path.
+    inbox_url: str = field(default_factory=lambda: _env("ARK_INBOX_URL"))
+    maaend_dir: Path | None = field(
+        default_factory=lambda: _env_path("ARK_MAAEND_DIR")
+    )
+
     # The last scheduled run of the day; the daily report goes out after it.
     # Server (Beijing) time, "HH:MM".
     last_run_after: str = field(default_factory=lambda: _env("ARK_LAST_RUN_AFTER", "21:30"))
