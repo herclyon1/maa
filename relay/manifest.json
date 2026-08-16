@@ -8,7 +8,7 @@
   "ark_relay/config.py": "7e274b9ff42cd547249b7b60e4777d0ade5a9501",
   "ark_relay/core.py": "cfbc99250a0f99edba1cecad755b45b12892bd6d",
   "ark_relay/engine.py": "1bb656e1adeba2ef1f2db2837c0276a0af31926a",
-  "ark_relay/inbox.py": "5d7ecc7f5faf3e948e45a824f19d2fc48a8b2d9a",
+  "ark_relay/inbox.py": "74a9019b29622a783d50ad6a0bb938514ac16452",
   "ark_relay/maaend.py": "3d48ec8946274f9040834095dd04c67e5395f075",
   "ark_relay/notify.py": "c2502e0f6511d60e57469bfef2127ae083c948d1",
   "ark_relay/plan.py": "8e05b0e8c2600489ce4cd9d3fa00eee203825e3f",

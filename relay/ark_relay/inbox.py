@@ -38,7 +38,7 @@ log = logging.getLogger("ark.inbox")
 
 
 def label_version(version: int) -> str:
-    """2026081702 -> '08-17 第2次'. Falls back to the raw number.
+    """2026081702 -> '08-17 v2'. Falls back to the raw number.
 
     The version has to be an integer so "strictly newer" can be decided without
     ambiguity - raw.githubusercontent is a CDN and can hand back a stale copy,
@@ -51,7 +51,7 @@ def label_version(version: int) -> str:
     if len(text) != 10:
         return f"v{version}"
     try:
-        return f"{text[4:6]}-{text[6:8]} 第{int(text[8:10])}次"
+        return f"{text[4:6]}-{text[6:8]} v{int(text[8:10])}"
     except ValueError:
         return f"v{version}"
 
