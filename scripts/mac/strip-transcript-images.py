@@ -60,6 +60,22 @@ def strip_node(node, stats: dict):
         return {"type": "text",
                 "text": f"[截图已清理 · {human(raw * 3 / 4)} · "
                         f"{src.get('media_type', 'image')}]"}
+
+    # The same picture is stored a second time, under the tool result rather
+    # than the message content, in a different shape. Stripping only the first
+    # copy looked like it worked - a 69 MB transcript came down to 47 MB - while
+    # 28 MB of identical base64 stayed behind and kept the白屏 risk with it.
+    # The surrounding metadata is left intact so the record still describes what
+    # was there; only the payload goes.
+    if isinstance(node.get("base64"), str) and len(node["base64"]) > 4096:
+        raw = len(node["base64"])
+        stats["images"] += 1
+        stats["bytes"] += raw
+        keep = {k: v for k, v in node.items() if k != "base64"}
+        keep["base64"] = ""
+        keep["stripped"] = f"[截图已清理 · {human(raw * 3 / 4)}]"
+        return keep
+
     return {k: strip_node(v, stats) for k, v in node.items()}
 
 
