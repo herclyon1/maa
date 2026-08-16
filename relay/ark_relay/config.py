@@ -108,6 +108,17 @@ class Config:
     # On by default; set to 0 once the daily summary alone is trusted.
     report_before_shutdown: bool = field(
         default_factory=lambda: _env("ARK_REPORT_BEFORE_SHUTDOWN", "1") == "1")
+
+    # How long after a queue's time to wait before declaring one of its scripts
+    # missing. The morning queue runs MAA first (~20 min) and only then MaaEnd
+    # (~25 min), so a healthy MaaEnd record can legitimately be 45+ minutes
+    # late; alerting at the same mark as "nothing ran" would fire every morning.
+    partial_grace: int = field(
+        default_factory=lambda: _env_int("ARK_PARTIAL_GRACE_MIN", 75))
+    # Stop looking this long after the queue's time. Past it the run is written
+    # off - continuing to check would re-alert on yesterday's shape forever.
+    partial_window: int = field(
+        default_factory=lambda: _env_int("ARK_PARTIAL_WINDOW_MIN", 240))
     # Never power off within this many seconds of the relay starting. Guards
     # against a boot -> immediate-shutdown loop if state is ever inconsistent.
     shutdown_min_uptime: int = field(

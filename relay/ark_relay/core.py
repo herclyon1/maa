@@ -149,17 +149,23 @@ def format_failure(rec: RunRecord, diagnosis: str = "") -> tuple[str, str]:
     return title, "\n".join(lines)
 
 
-def _fmt_items(d: dict, limit: int = 8) -> str:
-    """Render a {name: count} map, biggest first, as one line."""
+def _fmt_items(d: dict, limit: int | None = None) -> str:
+    """Render a {name: count} map, biggest first, as one line.
+
+    `limit=None` means never fold. Output is the whole point of the report -
+    an elided "…另1项" hides exactly the number the reader opened the message
+    to see, and there is no way to go look it up afterwards.
+    """
     if not d:
         return ""
     try:
         pairs = sorted(d.items(), key=lambda kv: -int(kv[1]))
     except (TypeError, ValueError):
         pairs = list(d.items())
+    if limit is None or len(pairs) <= limit:
+        return " ".join(f"{k}×{v}" for k, v in pairs)
     out = [f"{k}×{v}" for k, v in pairs[:limit]]
-    if len(pairs) > limit:
-        out.append(f"…另{len(pairs) - limit}项")
+    out.append(f"…另{len(pairs) - limit}项")
     return " ".join(out)
 
 

@@ -184,6 +184,57 @@ class Engine:
                 if not self.notifier.send(title, body):
                     self._missed_alerted.add(key)
                     log.warning("🔌 %s 该跑没跑，已告警", q["name"])
+        self._check_partial_queues(now, day, entries)
+
+    def _check_partial_queues(self, now: datetime, day: str,
+                              entries: list[dict]) -> None:
+        """Alert when a queue ran but one of its scripts never did.
+
+        The check above only asks "did this queue produce anything", and on
+        2026-08-16 that was not enough: MAA ran, so the queue counted as having
+        run, while 终末地 never started at all and nobody was told. A queue that
+        delivers half of what it promised is a fault, and it is invisible from
+        the outside - the day looks green.
+
+        Two things make this safe to alert on:
+
+        Grace is generous. The morning queue runs MAA (~20 min) and only then
+        MaaEnd (~25 min), so MaaEnd's record can legitimately be 45+ minutes
+        late. Alerting at the same 25-minute mark as "nothing ran" would fire
+        on every single healthy morning.
+
+        Records are matched to their own queue by start time, so the morning's
+        MaaEnd can never be mistaken for the evening's.
+        """
+        for q in plan.recent_due_queues(self.cfg.automas_dir, now,
+                                        window_minutes=self.cfg.partial_window):
+            due = q["due"]
+            if now < due + timedelta(minutes=self.cfg.partial_grace):
+                continue  # still legitimately in progress
+            ran = {e["script"] for e in entries
+                   if datetime.fromisoformat(e["started"]).astimezone(SERVER_TZ)
+                   >= due - timedelta(minutes=5)}
+            if not ran:
+                continue  # nothing at all - already covered by the check above
+            for kind in q["kinds"]:
+                if kind in ran:
+                    continue
+                key = f"{day}/{q['name']}/{due:%H:%M}/{kind}"
+                if key in self._missed_alerted:
+                    continue
+                # Started after the window: it cannot know what happened then.
+                if self._started_at > due:
+                    self._missed_alerted.add(key)
+                    continue
+                late = int((now - due).total_seconds() // 60)
+                title, body = core.format_missing(
+                    f"{kind} 没有运行（{q['name']}）", due,
+                    f"这一轮跑了 {'、'.join(sorted(ran))}，但 {kind} 一次记录都没有，"
+                    f"已经晚了 {late} 分钟。\n"
+                    "队列本身是跑了的，所以不是没开机——是这一项自己没起来。")
+                if not self.notifier.send(title, body):
+                    self._missed_alerted.add(key)
+                    log.warning("🔌 %s 缺项：%s 没跑，已告警", q["name"], kind)
 
     # ---------- decide held-back failures ----------
 
