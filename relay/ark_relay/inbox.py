@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -39,7 +40,23 @@ DEFAULT_URL = ("https://raw.githubusercontent.com/herclyon1/maa/main/"
                "queue/config.json")
 
 
-def _fetch(url: str, timeout: int = 20) -> dict | None:
+def _fetch(url: str, timeout: int = 20, attempts: int = 3) -> dict | None:
+    """Fetch the queued file, retrying transient failures.
+
+    Measured from the game machine: 11 of 11 one hour, 7 of 10 the next, the
+    failures being TLS handshake and read timeouts. Boot is the only chance of
+    the day to collect a change, so one attempt would silently drop roughly a
+    third of them.
+    """
+    for i in range(attempts):
+        if (data := _fetch_once(url, timeout)) is not None:
+            return data
+        if i + 1 < attempts:
+            time.sleep(3 * (i + 1))
+    return None
+
+
+def _fetch_once(url: str, timeout: int = 20) -> dict | None:
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "ark-relay"})
         with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310

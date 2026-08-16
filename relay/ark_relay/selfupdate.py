@@ -26,6 +26,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -36,7 +37,7 @@ DEFAULT_BASE = "https://raw.githubusercontent.com/herclyon1/maa/main/relay/"
 MANIFEST = "manifest.json"
 
 
-def _get(url: str, timeout: int = 20) -> bytes | None:
+def _get_once(url: str, timeout: int = 20) -> bytes | None:
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "ark-relay"})
         with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
@@ -44,6 +45,24 @@ def _get(url: str, timeout: int = 20) -> bytes | None:
     except (urllib.error.URLError, OSError, ValueError) as exc:
         log.warning("取不到 %s: %s", url, exc)
         return None
+
+
+def _get_with_retry(url: str, attempts: int = 3, timeout: int = 20) -> bytes | None:
+    """Fetch, retrying transient failures.
+
+    Measured from the game machine: raw.githubusercontent answered 11 of 11 one
+    hour and 7 of 10 the next, with the failures being TLS handshake and read
+    timeouts rather than refusals. One attempt at boot therefore misses roughly
+    a third of the time - and a boot is the only chance of the day. Three
+    attempts take that under 3%, at the cost of a few seconds on the rare bad
+    morning.
+    """
+    for i in range(attempts):
+        if (data := _get_once(url, timeout)) is not None:
+            return data
+        if i + 1 < attempts:
+            time.sleep(3 * (i + 1))
+    return None
 
 
 def _sha1(data: bytes) -> str:
@@ -69,7 +88,7 @@ def _safe_target(root: Path, rel: str) -> Path | None:
 def check(root: Path, base_url: str = "") -> list[str]:
     """Fetch and apply any changed files. Returns human-readable lines."""
     base = (base_url or DEFAULT_BASE).rstrip("/") + "/"
-    raw = _get(base + MANIFEST)
+    raw = _get_with_retry(base + MANIFEST)
     if raw is None:
         return []
     try:
@@ -94,7 +113,7 @@ def check(root: Path, base_url: str = "") -> list[str]:
             continue
         if _sha1(target.read_bytes()) == want:
             continue
-        data = _get(base + rel)
+        data = _get_with_retry(base + rel)
         if data is None or _sha1(data) != want:
             log.warning("%s 下载失败或校验不符，跳过", rel)
             continue
