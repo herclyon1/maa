@@ -170,6 +170,18 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         engine.bootstrap()
         log.info("服务模式启动，监视 %s（每 %d 秒）", cfg.history_dir, cfg.poll_seconds)
 
+        # New code first, config second: an update that fixes how a command
+        # is applied should be in place before that command is applied. The
+        # update lands on disk only - it takes effect at the next boot, never
+        # inside a running process.
+        try:
+            from ark_relay import selfupdate
+
+            if changed := selfupdate.check(HERE):
+                log.info("代码已更新，下次开机生效: %s", "、".join(changed))
+        except Exception:  # noqa: BLE001
+            log.exception("自更新出错，跳过")
+
         # Queued config changes are collected here, at boot, before AUTO-MAS
         # gets to its first queue - MaaEnd reads its config when it launches,
         # so this is the one moment a change can land without racing a run.
@@ -182,7 +194,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             # where MaaEnd lives.
             maaend_dir = cfg.maaend_dir or _plan.script_dir(cfg.automas_dir, "MaaEnd")
             version, messages = Inbox(cfg.state_dir, cfg.inbox_url,
-                                      maaend_dir).poll()
+                                      maaend_dir, cfg.automas_dir).poll()
             if messages:
                 for m in messages:
                     log.info("待办: %s", m)

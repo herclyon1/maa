@@ -162,7 +162,15 @@ def next_plan(automas_dir: Path | None) -> str:
                 # AUTO-MAS stores "use as many as you have" as a sentinel, not
                 # as a real count. Printing 999 makes a reader stop and wonder.
                 bits.append("理智药不限" if int(med) >= 999 else f"理智药 {med} 个")
-            if s.get("sanity_use"):
+            if s.get("kind") == "MaaEnd":
+                # AUTO-MAS's SanityTaskType is only the tab; on its own it reads
+                # as the answer and is not one - "干员养成" does not say whether
+                # that means 经验 or 进阶, and the reward set decides which item
+                # actually drops. Report the resolved chain instead.
+                from . import sanity_plan  # noqa: PLC0415 - avoids a cycle
+                if label := sanity_plan.read(automas_dir).get("label"):
+                    bits.append(f"理智用于 {label}")
+            elif s.get("sanity_use"):
                 bits.append(f"理智用于 {s['sanity_use']}")
             label = s.get("name", "?")
             lines.append(f"· {label}" + ("　" + " · ".join(bits) if bits else ""))

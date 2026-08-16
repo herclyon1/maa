@@ -30,7 +30,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from . import maaend
+from . import maaend, sanity_plan
 from .commands import apply_command
 
 log = logging.getLogger("ark.inbox")
@@ -58,10 +58,12 @@ def _fetch(url: str, timeout: int = 20) -> dict | None:
 class Inbox:
     """Remembers which version has been applied; applies newer ones once."""
 
-    def __init__(self, state_dir: Path, url: str = "", maaend_dir: Path | None = None):
+    def __init__(self, state_dir: Path, url: str = "", maaend_dir: Path | None = None,
+                 automas_dir: Path | None = None):
         self.url = url or DEFAULT_URL
         self.marker = Path(state_dir) / "inbox-version.txt"
         self.maaend_dir = maaend_dir
+        self.automas_dir = automas_dir
 
     @property
     def applied_version(self) -> int:
@@ -134,7 +136,19 @@ class Inbox:
                 ok, detail = maaend.apply_changes(self.maaend_dir, maaend_batch)
                 out.append(("✅ 终末地：" if ok else "✗ 终末地：") + detail)
 
-        for cmd in others:
+        for cmd in [c for c in others if c.get("action") == "sanity_plan"]:
+            # The one that actually decides what MaaEnd farms. Everything it
+            # writes lands in AUTO-MAS, because AUTO-MAS overwrites MaaEnd's
+            # own copy on every launch.
+            if not self.automas_dir:
+                out.append("✗ 理智方案：找不到 AUTO-MAS 目录，跳过")
+                continue
+            ok, detail = sanity_plan.set_plan(
+                self.automas_dir, str(cmd.get("tab") or ""),
+                str(cmd.get("line") or ""), str(cmd.get("rewards_set") or ""))
+            out.append(("✅ 理智方案：" if ok else "✗ 理智方案：") + detail)
+
+        for cmd in [c for c in others if c.get("action") != "sanity_plan"]:
             # The file can only be written by whoever can push to the repo, so
             # authorship is the confirmation that gate ② asks for.
             ok, detail = apply_command({**cmd, "confirmed": True})
