@@ -48,6 +48,8 @@ struct Machine {
     /// nil when traffic is relayed rather than peer-to-peer.
     let directAddr: String?
     let relay: String
+    /// Whether a connection is carrying traffic right now.
+    let active: Bool
 }
 
 /// Append one line to a debug log. Silent on failure - a monitor that cannot
@@ -146,7 +148,8 @@ enum Tailscale {
             lastSeen: (d["LastSeen"] as? String).flatMap(parseDate),
             isSelf: isSelf,
             directAddr: addr.isEmpty ? nil : addr,
-            relay: (d["Relay"] as? String) ?? ""
+            relay: (d["Relay"] as? String) ?? "",
+            active: (d["Active"] as? Bool) ?? false
         )
     }
 
@@ -159,24 +162,32 @@ enum Tailscale {
 
 // MARK: - Formatting
 
+// The host OS here runs in English, so the app does too - a lone Chinese window
+// among English ones reads as something that wandered in from another machine.
+
 func ago(_ date: Date?) -> String {
-    guard let d = date, d.timeIntervalSince1970 > 0 else { return "从未" }
+    guard let d = date, d.timeIntervalSince1970 > 0 else { return "never" }
     let s = Int(Date().timeIntervalSince(d))
-    if s < 60 { return "刚刚" }
-    if s < 3600 { return "\(s / 60) 分钟前" }
-    if s < 86400 { return "\(s / 3600) 小时前" }
-    return "\(s / 86400) 天前"
+    if s < 60 { return "just now" }
+    if s < 3600 { return "\(s / 60)m ago" }
+    if s < 86400 { return "\(s / 3600)h ago" }
+    return "\(s / 86400)d ago"
 }
 
 func line(_ m: Machine) -> String {
     let dot = m.online ? "🟢" : "🔴"
     var s = "\(dot) \(m.host)"
-    if m.isSelf { s += "（本机）" }
+    if m.isSelf { s += "  (this Mac)" }
     s += "\n     \(m.ip)  \(m.os)"
     if !m.isSelf {
+        // An idle peer sits on the relay by design and switches to a direct
+        // path as soon as traffic starts, so a bare "relay" here reads as a
+        // fault when nothing is wrong. Say which it is.
         s += m.online
-            ? (m.directAddr != nil ? "  ·  直连" : "  ·  中继 \(m.relay)")
-            : "  ·  最后在线 \(ago(m.lastSeen))"
+            ? (m.directAddr != nil ? "  ·  direct"
+               : m.active ? "  ·  relay \(m.relay)"
+                          : "  ·  idle (direct on use)")
+            : "  ·  last seen \(ago(m.lastSeen))"
     }
     return s
 }
@@ -286,31 +297,42 @@ final class Controller: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ s: NSApplication) -> Bool { false }
 
     func applicationShouldHandleReopen(_ s: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        // Belt and braces alongside isReleasedWhenClosed: whatever the reason
+        // the window is gone, build a new one rather than message a dead
+        // pointer. This is the path that crashed the app on every Dock click
+        // after the window had been closed.
+        if window == nil { buildWindow() }
         // Ordering front only raises the window within this app; without the
         // activate it stays buried under whatever had focus, which looks
         // exactly like the app failing to open.
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+        refresh()
         return true
     }
 
     private func buildWindow() {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 340),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 470, height: 340),
                           styleMask: [.titled, .closable, .miniaturizable],
                           backing: .buffered, defer: false)
-        window.title = "舰队监控"
+        // An NSWindow deallocates itself on close by default. This app outlives
+        // its window on purpose - closing it is how you dismiss the detail and
+        // keep the Dock badge - so the next Dock click was messaging freed
+        // memory and taking the process with it.
+        window.isReleasedWhenClosed = false
+        window.title = "Fleet Monitor"
         window.center()
 
-        body = NSTextField(labelWithString: "读取中…")
+        body = NSTextField(labelWithString: "Loading…")
         body.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        body.frame = NSRect(x: 18, y: 46, width: 344, height: 274)
+        body.frame = NSRect(x: 18, y: 46, width: 434, height: 274)
         body.maximumNumberOfLines = 0
         window.contentView?.addSubview(body)
 
         footer = NSTextField(labelWithString: "")
         footer.font = .systemFont(ofSize: 10)
         footer.textColor = .secondaryLabelColor
-        footer.frame = NSRect(x: 18, y: 16, width: 344, height: 20)
+        footer.frame = NSRect(x: 18, y: 16, width: 434, height: 20)
         window.contentView?.addSubview(footer)
 
         window.makeKeyAndOrderFront(nil)
@@ -348,10 +370,10 @@ final class Controller: NSObject, NSApplicationDelegate {
             // rather than waiting out the backstop.
             if machines.isEmpty {
                 NSApp.dockTile.badgeLabel = "?"
-                body.stringValue = "正在连接 Tailscale…"
+                body.stringValue = "Connecting to Tailscale…"
             }
-            footer.stringValue = lastGood.map { "读取失败，显示的是 \(ago($0))的状态" }
-                ?? "读取失败，重试中…"
+            footer.stringValue = lastGood.map { "Read failed — showing state from \(ago($0))" }
+                ?? "Read failed — retrying…"
             DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
                 self?.refresh()
             }
@@ -372,7 +394,7 @@ final class Controller: NSObject, NSApplicationDelegate {
 
         body.stringValue = list.map(line).joined(separator: "\n\n")
         let f = DateFormatter(); f.dateFormat = "HH:mm:ss"
-        footer.stringValue = "\(f.string(from: Date())) 更新 · 状态变化时自动推送"
+        footer.stringValue = "Updated \(f.string(from: Date())) · pushed on change"
         notifyChanges(list)
     }
 
@@ -382,8 +404,8 @@ final class Controller: NSObject, NSApplicationDelegate {
         for m in list where !m.isSelf {
             if let was = lastOnline[m.host], was != m.online {
                 let n = UNMutableNotificationContent()
-                n.title = m.online ? "🟢 \(m.host) 上线" : "🔴 \(m.host) 掉线"
-                n.body = m.online ? "刚刚恢复连接" : "最后在线：\(ago(m.lastSeen))"
+                n.title = m.online ? "🟢 \(m.host) is up" : "🔴 \(m.host) went offline"
+                n.body = m.online ? "Reconnected just now" : "Last seen \(ago(m.lastSeen))"
                 UNUserNotificationCenter.current().add(
                     UNNotificationRequest(identifier: UUID().uuidString,
                                           content: n, trigger: nil))
