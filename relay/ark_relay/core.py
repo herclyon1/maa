@@ -7,6 +7,7 @@ awkward sentence, never a wrong verdict.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -187,13 +188,42 @@ def _hm(dt: datetime) -> str:
 
 
 def _span(started: datetime, finished: datetime, known: bool = True) -> str:
-    """'09:00→09:45　45m　东京 10:00' - compact but unambiguous."""
+    """'09:00→09:18　17m　东京 10:00→10:18'.
+
+    Both ends on both clocks. Showing only the Tokyo start meant the reader
+    could see when a run began in their own time but had to do the arithmetic
+    to know when it ended - on the one line where the whole point is the span.
+    """
+    tk = lambda d: f"{d.astimezone(USER_TZ):%H:%M}"  # noqa: E731
     if not known:
-        return f"{_hm(started)}　时长未知　东京 {started.astimezone(USER_TZ):%H:%M}"
+        return f"{_hm(started)}　时长未知　东京 {tk(started)}"
     mins = max(0, round((finished - started).total_seconds() / 60))
     dur = f"{mins // 60}h{mins % 60:02d}m" if mins >= 60 else f"{mins}m"
     return (f"{_hm(started)}→{_hm(finished)}　{dur}"
-            f"　东京 {started.astimezone(USER_TZ):%H:%M}")
+            f"　东京 {tk(started)}→{tk(finished)}")
+
+
+# "理智将在 2026-08-17 05:33 回满。(20h 14m 后)"
+_FULL_AT = re.compile(r"(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})")
+
+
+def _sanity_full(raw: str, ref: datetime) -> str:
+    """'次日 05:33 回满（东京 06:33）'. '' when the source says nothing.
+
+    A bare "2026-08-17 05:33" makes the reader work out whether that is tonight
+    or tomorrow, which is the only thing they actually wanted to know.
+    """
+    m = _FULL_AT.search(str(raw or ""))
+    if not m:
+        return ""
+    try:
+        when = datetime.strptime(f"{m.group(1)} {m.group(2)}", "%Y-%m-%d %H:%M")
+    except ValueError:
+        return ""
+    when = when.replace(tzinfo=SERVER_TZ)
+    delta = (when.date() - ref.astimezone(SERVER_TZ).date()).days
+    day = {0: "本日", 1: "次日"}.get(delta) or f"{delta} 天后"
+    return f"{day} {when:%H:%M} 回满（东京 {when.astimezone(USER_TZ):%H:%M}）"
 
 
 def format_daily(day: str, entries: list[dict], prose: str = "",
@@ -214,10 +244,23 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
     for e in entries:
         started = datetime.fromisoformat(e["started"])
         finished = datetime.fromisoformat(e["finished"])
+        raw_early = e.get("raw") or {}
+        # AUTO-MAS always runs 剿灭 as its own pass before the day's farming, so
+        # every queue produces two records. The first is a one-minute check that
+        # farms nothing, and unlabelled it looked like a run that mysteriously
+        # did nothing and ended on 0 sanity.
+        tag = "（剿灭检查）" if raw_early.get("annihilation") else ""
         lines.append(("✅" if e["ok"] else "❌")
-                     + f" {e['script']}　{_span(started, finished, e.get('duration_known', True))}")
+                     + f" {e['script']}{tag}　"
+                     + _span(started, finished, e.get('duration_known', True)))
         if not e["ok"]:
             lines.append("· " + _fmt_failed(e.get("failed_tasks") or []))
+        if raw_early.get("annihilation"):
+            lines.append("· " + ("本周剿灭已完成，跳过"
+                                 if raw_early.get("annihilation_done")
+                                 else "已打剿灭"))
+            lines.append("")
+            continue
         # What the sanity actually bought. AUTO-MAS leaves these empty, so they
         # come from the collector's parse of MAA's own log - see collector.py.
         raw = e.get("raw") or {}
@@ -241,9 +284,8 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             lines.append("· 公招 " + recruits)
         if e.get("sanity") is not None:
             s = f"· 剩余理智 {e['sanity']}"
-            full = str(e.get("sanity_full_at") or "")
-            if "回满" in full:
-                s += "，" + full.split("理智将在")[-1].split("回满")[0].strip() + " 回满"
+            if full := _sanity_full(e.get("sanity_full_at"), finished):
+                s += "，" + full
             lines.append(s)
         lines.append("")
 

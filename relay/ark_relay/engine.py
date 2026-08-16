@@ -46,6 +46,8 @@ class Engine:
         self._started_at = datetime.now(tz=SERVER_TZ)
         self._handled_any = False   # nothing ran this session -> nothing to shut down for
         self._shutdown_issued = False  # a countdown is already running; never twice
+        from .annihilation import WeeklyGate  # noqa: PLC0415 - optional feature
+        self._annihilation = WeeklyGate(state.dir, cfg.automas_dir)
 
     # ---------- survive restarts ----------
 
@@ -126,6 +128,11 @@ class Engine:
                 self._recovered[key] = bad
                 self._persist_pending()
                 log.info("↩️ %s 重试后成功，改为自愈通知", rec.script)
+            # A successful annihilation pass is the only moment anything knows
+            # this week's is done; AUTO-MAS forgets it as soon as the run ends.
+            if rec.raw.get("annihilation") and self._annihilation:
+                if msg := self._annihilation.on_success(rec.finished):
+                    self.notifier.send("🗓️ 剿灭", msg)
             log.info("✅ %s %s（%d 分钟）静默记账",
                      rec.script, rec.run_id, rec.duration_min)
             return

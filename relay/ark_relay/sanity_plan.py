@@ -144,6 +144,7 @@ def set_plan(automas_dir: Path, tab: str, line: str = "",
     if rewards_set and rewards_set not in ("RewardsSetA", "RewardsSetB"):
         return False, f"奖励组不合法: {rewards_set!r}（只能 RewardsSetA / RewardsSetB）"
 
+    before_label = read(automas_dir).get("label", "")
     path = _script_config(automas_dir)
     try:
         original = path.read_text(encoding="utf-8")
@@ -182,5 +183,9 @@ def set_plan(automas_dir: Path, tab: str, line: str = "",
         shutil.copy2(backup, path)
         return False, f"写入失败，已回滚: {exc}"
     after = read(automas_dir)
-    return True, (f"已改 {len(changes)} 处（备份 {backup.name}）："
-                  + "；".join(changes) + f"　现在是 {after.get('label', '?')}")
+    # Internal names are what the file holds and what a bug report needs, but
+    # they are not what the operator reads on their phone at midnight. The push
+    # gets the human chain; the log keeps the raw field names.
+    log.info("理智方案改动: %s", "；".join(changes))
+    return True, (f"{before_label or '(未知)'}\n改成 {after.get('label', '?')}"
+                  f"\n（备份 {backup.name}）")

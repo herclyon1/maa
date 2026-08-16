@@ -49,8 +49,6 @@ import win32serviceutil  # noqa: E402
 # polled for liveness the way a task would poll the relay - a missing AUTO-MAS
 # is not urgent to the second, and relaunching it costs a desktop window.
 AUTOMAS_CHECK_SECONDS = 120
-# How often to re-check for queued config changes while already running.
-INBOX_CHECK_SECONDS = 300
 AUTOMAS_TASK = "AUTO-MAS_AutoStart"
 
 
@@ -197,10 +195,20 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             else:
                 log.debug("待办检查（%s）：无新配置（当前 v%s）", reason, version)
 
+        # Once, at startup. The machine boots for each queue, so a change
+        # pushed while it is off - which is nearly always - lands before that
+        # day's run. Re-checking on a timer was added and removed again: it
+        # bought nothing the boot check did not already cover.
         collect("启动")
 
+        # A new game-week means last week's 剿灭 no longer counts.
+        try:
+            if msg := engine._annihilation.maybe_reopen():  # noqa: SLF001
+                notifier.send("🗓️ 剿灭", msg)
+        except Exception:  # noqa: BLE001
+            log.exception("剿灭周期检查出错，跳过")
+
         next_automas_check = 0.0
-        next_inbox_check = time.monotonic() + INBOX_CHECK_SECONDS
         while True:
             # Wait for either the stop signal or the next poll. Sleeping on the
             # event rather than time.sleep is what makes "stop" immediate
@@ -217,14 +225,6 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
                 log.exception("本轮处理出错，继续")
 
             now = time.monotonic()
-            # A change pushed while the machine is already awake must not have
-            # to wait for the next boot - the operator pushes it precisely
-            # because they want it to apply. Only when nothing is running,
-            # though: AUTO-MAS reads its config as it launches each script.
-            if now >= next_inbox_check and not engine.scripts_running():
-                next_inbox_check = now + INBOX_CHECK_SECONDS
-                collect("轮次")
-
             if now >= next_automas_check:
                 next_automas_check = now + AUTOMAS_CHECK_SECONDS
                 if not _automas_running():

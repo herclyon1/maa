@@ -36,6 +36,25 @@ from .commands import apply_command
 
 log = logging.getLogger("ark.inbox")
 
+
+def label_version(version: int) -> str:
+    """2026081702 -> '08-17 第2次'. Falls back to the raw number.
+
+    The version has to be an integer so "strictly newer" can be decided without
+    ambiguity - raw.githubusercontent is a CDN and can hand back a stale copy,
+    and comparing dates as text invites the wrong answer at a month boundary.
+    Encoding the date into the integer as YYYYMMDDNN keeps that property while
+    letting the push say when the change was made instead of "v1", which tells
+    the reader nothing.
+    """
+    text = str(version)
+    if len(text) != 10:
+        return f"v{version}"
+    try:
+        return f"{text[4:6]}-{text[6:8]} 第{int(text[8:10])}次"
+    except ValueError:
+        return f"v{version}"
+
 DEFAULT_URL = ("https://raw.githubusercontent.com/herclyon1/maa/main/"
                "queue/config.json")
 
@@ -130,7 +149,7 @@ class Inbox:
         # get better; the failure is reported instead, and the fix is a new
         # version - which is also how the operator learns it did not land.
         self._remember(version)
-        head = f"⚙️ 配置已更新 v{have} → v{version}"
+        head = f"⚙️ 配置已更新 · {label_version(version)}"
         if note:
             head += f"\n{note}"
         return version, [head, *messages]

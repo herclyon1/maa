@@ -79,6 +79,10 @@ _STAGE_DROPS = re.compile(r"(\S+)\s*掉落统计[:：]")
 _DROP_ITEM = re.compile(r"^\s*(\S[^:：]*?)\s*[:：]\s*(\d+)\s*\(\+\d+\)\s*$")
 _RUN_TIMES = re.compile(r"^\s*当前次数\s*[:：]\s*(\d+)\s*$")
 _SANITY_SPENT = re.compile(r"开始行动.*?-\s*(\d+)\s*理智")
+# AUTO-MAS runs 剿灭 as a separate pass before the day's farming, so every queue
+# produces two records. The short one farms nothing and ends on 0 sanity, which
+# unlabelled reads as a run that inexplicably did nothing.
+_ANNIHILATION = re.compile(r'GetFightStage: from \["Annihilation"\]')
 _MEDICINE = re.compile(r"已使用理智药\s*(\d+)")
 # Lines inside a drop block are bare "name : count"; anything with a log
 # timestamp has left the block.
@@ -141,6 +145,11 @@ def parse_maa_log(log_path: Path) -> dict:
         out["medicine_used"] = medicine
     if times:
         out["run_times"] = times
+    if _ANNIHILATION.search(text):
+        out["annihilation"] = True
+        # MAA recognises the weekly cap itself and leaves within a minute; a
+        # pass that actually fought would have spent sanity on the stage.
+        out["annihilation_done"] = not spent
     return out
 
 
