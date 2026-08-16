@@ -176,8 +176,13 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         try:
             from ark_relay.inbox import Inbox
 
+            from ark_relay import plan as _plan
+
+            # Configured path wins; otherwise ask AUTO-MAS, which already knows
+            # where MaaEnd lives.
+            maaend_dir = cfg.maaend_dir or _plan.script_dir(cfg.automas_dir, "MaaEnd")
             version, messages = Inbox(cfg.state_dir, cfg.inbox_url,
-                                      cfg.maaend_dir).poll()
+                                      maaend_dir).poll()
             if messages:
                 for m in messages:
                     log.info("待办: %s", m)

@@ -73,6 +73,7 @@ def _scripts(cfg_dir: Path) -> dict[str, dict]:
         entry = {
             "name": info_node.get("Name") or "?",
             "kind": _script_kind(info_node.get("Path") or ""),
+            "path": info_node.get("Path") or "",
         }
         for user in ((node.get("SubConfigsInfo") or {}).get("UserData") or {}).values():
             if not isinstance(user, dict):
@@ -212,3 +213,21 @@ def recent_due_queues(automas_dir: Path | None, now, window_minutes: int = 120) 
             if kinds:
                 out.append({"name": q.get("name", "?"), "due": due, "kinds": kinds})
     return out
+
+
+def script_dir(automas_dir: Path | None, kind: str) -> Path | None:
+    """Where AUTO-MAS says a given script is installed. None if unknown.
+
+    Saves having to configure the MaaEnd path a second time: AUTO-MAS already
+    knows it, and a path configured twice is a path that will disagree with
+    itself the day one of them moves.
+    """
+    if not automas_dir:
+        return None
+    cfg_dir = Path(automas_dir) / "config"
+    if not cfg_dir.is_dir():
+        return None
+    for s in _scripts(cfg_dir).values():
+        if s.get("kind") == kind and s.get("path"):
+            return Path(s["path"])
+    return None

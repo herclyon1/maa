@@ -129,7 +129,7 @@ class Inbox:
 
         if maaend_batch:
             if not self.maaend_dir:
-                out.append("✗ 终末地：ARK_MAAEND_DIR 未设置，跳过")
+                out.append("✗ 终末地：找不到安装路径，跳过")
             else:
                 ok, detail = maaend.apply_changes(self.maaend_dir, maaend_batch)
                 out.append(("✅ 终末地：" if ok else "✗ 终末地：") + detail)
