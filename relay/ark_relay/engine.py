@@ -319,6 +319,26 @@ class Engine:
             hh, mm = 21, 30
         return now.replace(hour=hh, minute=mm, second=0, microsecond=0)
 
+    def _unfinished_queues(self, now: datetime, entries: list[dict]) -> list[str]:
+        """Queues that came due recently and are still missing one of their scripts.
+
+        "No game process" is not the same as "the queue is finished". Between
+        two scripts in one queue there is a window - MAA has exited, MaaEnd's
+        game is still launching - where neither process exists, and the same
+        window exists at the very start before the first game comes up. Acting
+        in it costs a run: it cost 终末地 the morning of 2026-08-16.
+        """
+        out: list[str] = []
+        for q in plan.recent_due_queues(self.cfg.automas_dir, now):
+            # Only runs started at or after this queue's own time count -
+            # otherwise the morning's MaaEnd would satisfy the evening queue.
+            ran = {e["script"] for e in entries
+                   if datetime.fromisoformat(e["started"]).astimezone(SERVER_TZ)
+                   >= q["due"] - timedelta(minutes=5)}
+            if missing := [k for k in q["kinds"] if k not in ran]:
+                out.append(f"队列「{q['name']}」还差 {'、'.join(missing)}")
+        return out
+
     def _maybe_daily_report(self, now: datetime | None = None) -> None:
         now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
         day = now.strftime("%Y-%m-%d")
@@ -330,6 +350,15 @@ class Engine:
         # Due once the clock is past the day's last queue and nothing is still
         # working - never based on when a run happened to finish.
         if now < self._report_cutoff(now) or self._scripts_running():
+            return
+        # The cutoff *is* the last queue's start time, so this check first comes
+        # true in the seconds after that queue fires - while its game is still
+        # launching and no process exists yet. With earlier runs already in the
+        # ledger the report looked complete, so it went out describing only the
+        # morning and marked the day done; the evening run would then never be
+        # reported at all. Same guard the shutdown path already uses.
+        if unfinished := self._unfinished_queues(now, self.state.read_ledger(day)):
+            log.info("日报再等等：%s", "；".join(unfinished))
             return
 
         title, body = self._compose_daily(day, entries)
@@ -373,17 +402,9 @@ class Engine:
         # in that window costs a whole run, so also require that every script
         # today's due queues contain has actually produced a record.
         day = now.strftime("%Y-%m-%d")
-        entries = self.state.read_ledger(day)
-        for q in plan.recent_due_queues(self.cfg.automas_dir, now):
-            # Only runs started at or after this queue's own time count -
-            # otherwise the morning's MaaEnd would satisfy the evening queue.
-            ran = {e["script"] for e in entries
-                   if datetime.fromisoformat(e["started"]).astimezone(SERVER_TZ)
-                   >= q["due"] - timedelta(minutes=5)}
-            if missing := [k for k in q["kinds"] if k not in ran]:
-                log.info("队列「%s」还有 %s 没跑完，不关机",
-                         q["name"], "、".join(missing))
-                return False
+        if unfinished := self._unfinished_queues(now, self.state.read_ledger(day)):
+            log.info("不关机：%s", "；".join(unfinished))
+            return False
         cutoff = self._report_cutoff(now)   # same source as the report itself
         if now >= cutoff and not self.state.report_sent(day):
             log.info("到点该关机了，但日报还没发出去，继续等")
