@@ -83,6 +83,11 @@ _SANITY_SPENT = re.compile(r"开始行动.*?-\s*(\d+)\s*理智")
 # produces two records. The short one farms nothing and ends on 0 sanity, which
 # unlabelled reads as a run that inexplicably did nothing.
 _ANNIHILATION = re.compile(r'GetFightStage: from \["Annihilation"\]')
+# "剿灭模式 : 1480 / 1800" - the weekly cap and how far into it this run got.
+# Whether the pass *finished* is this comparison, not whether MAA exited
+# cleanly: a run that stops early for want of sanity still reports Success!,
+# and treating that as done would skip the rest of the week's 剿灭 entirely.
+_ANNI_PROGRESS = re.compile(r"剿灭模式\s*[:：]\s*(\d+)\s*/\s*(\d+)")
 _MEDICINE = re.compile(r"已使用理智药\s*(\d+)")
 # Lines inside a drop block are bare "name : count"; anything with a log
 # timestamp has left the block.
@@ -147,9 +152,14 @@ def parse_maa_log(log_path: Path) -> dict:
         out["run_times"] = times
     if _ANNIHILATION.search(text):
         out["annihilation"] = True
-        # MAA recognises the weekly cap itself and leaves within a minute; a
-        # pass that actually fought would have spent sanity on the stage.
-        out["annihilation_done"] = not spent
+        if hits := _ANNI_PROGRESS.findall(text):
+            got, cap = (int(x) for x in hits[-1])   # last line = final state
+            out["annihilation_progress"] = [got, cap]
+            out["annihilation_done"] = got >= cap
+        else:
+            # No progress line at all means MAA saw the cap was already met and
+            # left without fighting - which is also "done for this week".
+            out["annihilation_done"] = not spent
     return out
 
 

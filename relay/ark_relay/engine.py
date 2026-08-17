@@ -128,9 +128,13 @@ class Engine:
                 self._recovered[key] = bad
                 self._persist_pending()
                 log.info("↩️ %s 重试后成功，改为自愈通知", rec.script)
-            # A successful annihilation pass is the only moment anything knows
-            # this week's is done; AUTO-MAS forgets it as soon as the run ends.
-            if rec.raw.get("annihilation") and self._annihilation:
+            # Only a pass that actually reached the weekly cap counts. MAA
+            # reports Success! even when it stops early for want of sanity, and
+            # closing 剿灭 on that would skip the rest of the week with the cap
+            # unmet - the run on 2026-08-17 needed five sorties and 125 sanity
+            # to get from 0 to 1800.
+            if (rec.raw.get("annihilation") and rec.raw.get("annihilation_done")
+                    and self._annihilation):
                 if msg := self._annihilation.on_success(rec.finished):
                     self.notifier.send("🗓️ 剿灭", msg)
             log.info("✅ %s %s（%d 分钟）静默记账",

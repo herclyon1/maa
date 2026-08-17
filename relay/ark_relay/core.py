@@ -256,9 +256,16 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
         if not e["ok"]:
             lines.append("· " + _fmt_failed(e.get("failed_tasks") or []))
         if raw_early.get("annihilation"):
-            lines.append("· " + ("本周剿灭已完成，跳过"
-                                 if raw_early.get("annihilation_done")
-                                 else "已打剿灭"))
+            prog = raw_early.get("annihilation_progress")
+            if prog and prog[0] >= prog[1]:
+                note = f"本周剿灭已打满（{prog[0]}/{prog[1]}）"
+            elif prog:
+                note = f"⚠️ 剿灭只打到 {prog[0]}/{prog[1]}，本周还没满"
+            elif raw_early.get("annihilation_done"):
+                note = "本周剿灭此前已完成，跳过"
+            else:
+                note = "已打剿灭"
+            lines.append("· " + note)
             lines.append("")
             continue
         # What the sanity actually bought. AUTO-MAS leaves these empty, so they
