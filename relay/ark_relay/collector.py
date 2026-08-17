@@ -14,10 +14,18 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .config import SERVER_TZ, RunRecord
+
+# AUTO-MAS names history folders and files on the game's day-boundary clock,
+# not the machine's: `self.curdate = datetime.now(tz=UTC4)` in its AutoProxy.
+# The machine runs on UTC+8, so every filename reads four hours early. It only
+# shows when a run produced no timestamped log to prefer - a login failure, for
+# instance - and then the report claimed 05:17 for something that happened at
+# 09:17, at an hour the machine is not even powered on.
+AUTOMAS_NAME_TZ = timezone(timedelta(hours=4))
 
 # "MaaEnd 部分任务执行失败: 🚚转交委托、⚔️协议空间"
 _FAILED_LIST = re.compile(r"失败[:：]\s*(.+)$")
@@ -232,7 +240,7 @@ def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
         started = datetime.strptime(f"{date_str} {stem}", "%Y-%m-%d %H-%M-%S")
     except ValueError:
         return None
-    started = started.replace(tzinfo=SERVER_TZ)
+    started = started.replace(tzinfo=AUTOMAS_NAME_TZ).astimezone(SERVER_TZ)
     finished = datetime.fromtimestamp(json_path.stat().st_mtime, tz=SERVER_TZ)
     if finished < started:  # clock skew or a copied file; don't produce negatives
         finished = started

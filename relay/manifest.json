@@ -3,7 +3,7 @@
   "ark_relay/__init__.py": "297e0c5d45a732b40a24be0bfd40f07b174d2a9a",
   "ark_relay/__main__.py": "0df6c09ef5435cf249e006887eb2bbe89b2341ca",
   "ark_relay/annihilation.py": "0a2087174f2a2f48c187c8234e4c7477a00f601f",
-  "ark_relay/collector.py": "34db99867ec12709c9a8f12c5a9ef43abc4ac9f2",
+  "ark_relay/collector.py": "0f999262136fade7a31bb98e38d6ab269f1f5492",
   "ark_relay/commands.py": "79585c9b3d38cd1af034400b8fe1b0f331bafd90",
   "ark_relay/config.py": "7e274b9ff42cd547249b7b60e4777d0ade5a9501",
   "ark_relay/core.py": "7ff66cd80663c9f032caa662329fa16972b613bf",
