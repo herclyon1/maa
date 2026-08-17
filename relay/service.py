@@ -41,7 +41,10 @@ sys.path.insert(0, str(HERE))
 os.chdir(HERE)
 
 import servicemanager  # noqa: E402
-import win32event  # noqa: E402
+import win32api
+import win32con
+import win32event
+import win32file  # noqa: E402
 import win32service  # noqa: E402
 import win32serviceutil  # noqa: E402
 
@@ -71,6 +74,33 @@ def _automas_running() -> bool:
     except (OSError, subprocess.SubprocessError):
         return True  # cannot tell -> assume alive rather than launch a duplicate
     return b"main.py" in out
+
+
+def _automas_handle():
+    """A waitable handle on the AUTO-MAS backend, or None if it is not up.
+
+    Waiting on the process itself replaces asking every two minutes whether it
+    is still there. Windows signals the handle the instant the process exits,
+    so a backend that dies at 09:05 is revived at 09:05 rather than at 09:07 -
+    and in between, the relay is not doing anything at all.
+    """
+    try:
+        out = subprocess.run(
+            ["wmic", "process", "where", "name='python.exe'",
+             "get", "processid,commandline"],
+            capture_output=True, timeout=25,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for raw in out.splitlines():
+        if b"main.py" not in raw:
+            continue
+        pid = raw.split()[-1]
+        try:
+            return win32api.OpenProcess(win32con.SYNCHRONIZE, False, int(pid))
+        except (ValueError, Exception):  # noqa: B014 - pywin32 raises its own
+            return None
+    return None
 
 
 def _maaend_dir(cfg):
@@ -174,7 +204,8 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         notifier = Notifier(cfg)
         engine = Engine(cfg, LocalSource(cfg), State(cfg.state_dir), notifier)
         engine.bootstrap()
-        log.info("服务模式启动，监视 %s（每 %d 秒）", cfg.history_dir, cfg.poll_seconds)
+        log.info("服务模式启动，监视 %s（变更即处理，兜底 %d 秒）",
+                 cfg.history_dir, cfg.poll_seconds)
 
         from ark_relay.inbox import Inbox
 
@@ -208,16 +239,57 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         except Exception:  # noqa: BLE001
             log.exception("剿灭周期检查出错，跳过")
 
+        # Wake on the directory changing, not on a timer. AUTO-MAS writes a
+        # run record the moment a script finishes, and Windows will say so;
+        # asking every thirty seconds instead was just the lazy way to find out.
+        #
+        # The timeout stays, because some of what tick() does is genuinely
+        # time-based - the report cutoff, "a queue was due and produced
+        # nothing", the shutdown window - and none of those are announced by a
+        # file appearing. So: whichever comes first, a change or the interval.
+        watch = None
+        try:
+            if cfg.history_dir:
+                watch = win32file.FindFirstChangeNotification(
+                    str(cfg.history_dir), True,   # True = include subdirectories
+                    win32con.FILE_NOTIFY_CHANGE_FILE_NAME
+                    | win32con.FILE_NOTIFY_CHANGE_LAST_WRITE)
+                log.info("已挂上目录变更通知，记录一落盘立即处理")
+        except Exception:  # noqa: BLE001 - a missing notifier must not stop the relay
+            log.exception("目录变更通知挂载失败，退回定时检查")
+            watch = None
+
+        # Three things can wake this loop, none of them a timer: the service
+        # being stopped, a run record landing on disk, and the AUTO-MAS backend
+        # dying. The interval that remains is a backstop for the genuinely
+        # time-based work, not the way any of these are noticed.
+        automas = _automas_handle()
+        if automas:
+            log.info("已挂上 AUTO-MAS 进程句柄，它一退出立即拉起")
+
         next_automas_check = 0.0
         while True:
-            # Wait for either the stop signal or the next poll. Sleeping on the
-            # event rather than time.sleep is what makes "stop" immediate
-            # instead of up to one poll interval late.
-            if win32event.WaitForSingleObject(
-                self.stop_event, cfg.poll_seconds * 1000
-            ) == win32event.WAIT_OBJECT_0:
+            handles = [self.stop_event]
+            watch_idx = automas_idx = -1
+            if watch:
+                handles.append(watch); watch_idx = len(handles) - 1
+            if automas:
+                handles.append(automas); automas_idx = len(handles) - 1
+            rc = win32event.WaitForMultipleObjects(
+                handles, False, cfg.poll_seconds * 1000)
+            if rc == win32event.WAIT_OBJECT_0:
                 log.info("收到停止信号，退出")
+                if watch:
+                    win32file.FindCloseChangeNotification(watch)
                 return
+            if watch and rc == win32event.WAIT_OBJECT_0 + watch_idx:
+                # Re-arm before handling, so a write that lands while we work is
+                # not lost. A record that appears during tick() would otherwise
+                # wait for the timeout - the exact latency this removes.
+                win32file.FindNextChangeNotification(watch)
+                # AUTO-MAS writes the .json and .log separately; give it a
+                # moment so the first notification does not read a half-file.
+                time.sleep(2)
 
             try:
                 engine.tick()
@@ -225,11 +297,17 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
                 log.exception("本轮处理出错，继续")
 
             now = time.monotonic()
-            if now >= next_automas_check:
+            died = automas and rc == win32event.WAIT_OBJECT_0 + automas_idx
+            if died or (not automas and now >= next_automas_check):
                 next_automas_check = now + AUTOMAS_CHECK_SECONDS
                 if not _automas_running():
                     log.warning("AUTO-MAS 后端不在，正在拉起")
                     _revive_automas()
+                # Re-acquire either way: a revived backend is a new process,
+                # and a handle to the old one never signals again.
+                if automas:
+                    win32api.CloseHandle(automas)
+                automas = _automas_handle()
 
 
 if __name__ == "__main__":
