@@ -46,6 +46,7 @@ class Engine:
         self._started_at = datetime.now(tz=SERVER_TZ)
         self._handled_any = False   # nothing ran this session -> nothing to shut down for
         self._shutdown_issued = False  # a countdown is already running; never twice
+        self._last_wait_note = ""  # so the guard does not repeat itself every poll
         from .annihilation import WeeklyGate  # noqa: PLC0415 - optional feature
         self._annihilation = WeeklyGate(state.dir, cfg.automas_dir)
 
@@ -111,6 +112,7 @@ class Engine:
             self._handled_any = True
         self._flush_pending()
         self._check_missed_runs()
+        self._maybe_interim_report()
         self._maybe_daily_report()
         self._maybe_shutdown()
         return len(records)
@@ -360,6 +362,31 @@ class Engine:
                 out.append(f"队列「{q['name']}」还差 {'、'.join(missing)}")
         return out
 
+    def _maybe_interim_report(self, now: datetime | None = None) -> None:
+        """Report once the day's earlier queues are done, hours before the
+        daily summary is due.
+
+        This used to live inside the shutdown path, which coupled two unrelated
+        things: turning shutdown off for an afternoon of maintenance also
+        silently turned off the morning report, and the operator was left with
+        a machine that had run and said nothing. What decides this is "the
+        morning queue finished", not "I am about to power off".
+        """
+        now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+        day = now.strftime("%Y-%m-%d")
+        if self.state.interim_sent(day) or self.state.report_sent(day):
+            return
+        if now >= self._report_cutoff(now):
+            return          # the real daily report is due; let it do the talking
+        entries = self.state.read_ledger(day)
+        if not entries or self._scripts_running():
+            return
+        if self._unfinished_queues(now, entries):
+            return
+        if self.send_daily_now(mark=False):
+            self.state.mark_interim_sent(day)
+            log.info("🔎 %s 白天进度已推送（%d 条记录）", day, len(entries))
+
     def _maybe_daily_report(self, now: datetime | None = None) -> None:
         now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
         day = now.strftime("%Y-%m-%d")
@@ -424,8 +451,14 @@ class Engine:
         # today's due queues contain has actually produced a record.
         day = now.strftime("%Y-%m-%d")
         if unfinished := self._unfinished_queues(now, self.state.read_ledger(day)):
-            log.info("不关机：%s", "；".join(unfinished))
+            # Log only when the answer changes. Repeating the same line every
+            # poll buries the lines that matter under forty identical ones.
+            note = "；".join(unfinished)
+            if note != self._last_wait_note:
+                self._last_wait_note = note
+                log.info("不关机：%s", note)
             return False
+        self._last_wait_note = ""
         cutoff = self._report_cutoff(now)   # same source as the report itself
         if now >= cutoff and not self.state.report_sent(day):
             log.info("到点该关机了，但日报还没发出去，继续等")
@@ -435,9 +468,13 @@ class Engine:
         # first, so the machine is never dark without the operator knowing what
         # it did. A timed task cannot do this job: it would have to fire in the
         # gap between "run finished" and "machine off", and that gap moves.
-        if self.cfg.report_before_shutdown and not self.state.report_sent(day):
-            log.info("关机前先发一份当前进度")
-            self.send_daily_now(mark=False)
+        # Normally already sent by _maybe_interim_report; this is the backstop
+        # for the case where that failed to deliver.
+        if (self.cfg.report_before_shutdown and not self.state.report_sent(day)
+                and not self.state.interim_sent(day)):
+            log.info("关机前补发一份当前进度")
+            if self.send_daily_now(mark=False):
+                self.state.mark_interim_sent(day)
 
         log.info("本轮已处理完毕，60 秒后关机")
         try:

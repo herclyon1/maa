@@ -113,6 +113,12 @@ class State:
     def report_sent(self, day: str) -> bool:
         return (self.dir / f"report-{day}.sent").exists()
 
+    def interim_sent(self, day: str) -> bool:
+        return (self.dir / f"interim-{day}.sent").exists()
+
+    def mark_interim_sent(self, day: str) -> None:
+        (self.dir / f"interim-{day}.sent").touch()
+
     def mark_report_sent(self, day: str) -> None:
         (self.dir / f"report-{day}.sent").touch()
 
