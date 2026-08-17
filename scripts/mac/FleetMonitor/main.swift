@@ -6,15 +6,13 @@
 //
 // Two deliberate choices, both forced by measurement rather than taste:
 //
-// 1. Dock tile, not a menu-bar item. A status item was the obvious design and
-//    it is what this file used to be, but on this macOS every menu-bar extra on
-//    screen is owned by the Control Center process - the system hosts them now -
-//    and it declines to adopt an ad-hoc-signed app. The item was created, the
-//    button laid out, isVisible was true, and nothing was ever drawn. A plain
-//    NSWindow from the same process renders fine, so the Dock badge carries the
-//    glanceable summary and the window carries the detail. The status item is
-//    still created below: it costs nothing and starts working the day this app
-//    is signed with a real identity.
+// 1. Dock tile, not a menu-bar item. This file used to carry a status item
+//    too. It turned out to render fine - the earlier "nothing was ever drawn"
+//    diagnosis was wrong; the menu bar was simply overflowing on a crowded
+//    screen, which also kept a debug leftover ("TEST") invisible for two days.
+//    But rendered, it duplicated the Dock badge exactly, on the most
+//    contested pixels of the screen. One glanceable surface, deliberately:
+//    the Dock badge carries the summary, the window carries the detail.
 //
 // 2. Event-driven, not polled. `watch-ipn-bus` is a long-lived subscription to
 //    tailscaled's own message bus; peer state arrives when it changes instead
@@ -185,6 +183,15 @@ enum Specs {
     static let labels = ["role": "用途", "os": "系统", "cpu": "处理器", "gpu": "显卡",
                          "ram": "内存", "disk": "存储", "model": "机型"]
 
+    /// Optional per-machine display name (the "name" key). The hostname is
+    /// whatever the OS installer left behind, and renaming the machine itself
+    /// would ripple through every script and document that addresses it - the
+    /// window is the one place a friendly name costs nothing.
+    static func displayName(for host: String, _ all: [String: [String: String]]) -> String? {
+        guard let n = all[host]?["name"], !n.isEmpty else { return nil }
+        return n
+    }
+
     static func tooltip(for host: String, _ all: [String: [String: String]]) -> String? {
         guard let spec = all[host] else { return nil }
         let rows = order.compactMap { key -> String? in
@@ -209,9 +216,9 @@ func ago(_ date: Date?) -> String {
     return "\(s / 86400)d ago"
 }
 
-func line(_ m: Machine) -> String {
+func line(_ m: Machine, as name: String? = nil) -> String {
     let dot = m.online ? "🟢" : "🔴"
-    var s = "\(dot) \(m.host)"
+    var s = "\(dot) \(name ?? m.host)"
     if m.isSelf { s += "  (this Mac)" }
     s += "\n     \(m.ip)  \(m.os)"
     if !m.isSelf {
@@ -305,7 +312,6 @@ final class Controller: NSObject, NSApplicationDelegate {
     private var body: NSTextField!
     private var rows: NSStackView!
     private var footer: NSTextField!
-    private var statusItem: NSStatusItem?
     private var watcher: BusWatcher?
     private var lastOnline: [String: Bool] = [:]
     private var machines: [Machine] = []
@@ -315,8 +321,6 @@ final class Controller: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ note: Notification) {
         buildWindow()
-        // Harmless where the system refuses to host it; correct the day it does.
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
 
         refresh()
@@ -432,18 +436,30 @@ final class Controller: NSObject, NSApplicationDelegate {
         NSApp.dockTile.badgeLabel = "\(up)/\(list.count)"
         NSApp.applicationIconImage = tileIcon(up: up, total: list.count)
         NSApp.dockTile.display()
-        statusItem?.button?.title = (up == list.count ? "🟢" : "🔴") + " \(up)/\(list.count)"
 
-        // Rebuilt rather than one text blob, because a tooltip belongs to a
-        // view and the specs are per machine.
+        // One view per machine, because a tooltip belongs to a view and the
+        // specs are per machine. Updated in place when the machine count is
+        // unchanged: the bus delivers updates every few seconds while traffic
+        // flows, and tearing the rows down destroys whichever one the cursor
+        // is on - an open specs tooltip never survived long enough to read.
         let specs = Specs.load()
-        rows.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for m in list {
-            let label = NSTextField(labelWithString: line(m))
-            label.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-            label.maximumNumberOfLines = 0
-            label.toolTip = Specs.tooltip(for: m.host, specs)
-            rows.addArrangedSubview(label)
+        let labels = rows.arrangedSubviews.compactMap { $0 as? NSTextField }
+        if labels.count == list.count {
+            for (label, m) in zip(labels, list) {
+                let text = line(m, as: Specs.displayName(for: m.host, specs))
+                if label.stringValue != text { label.stringValue = text }
+                let tip = Specs.tooltip(for: m.host, specs)
+                if label.toolTip != tip { label.toolTip = tip }
+            }
+        } else {
+            rows.arrangedSubviews.forEach { $0.removeFromSuperview() }
+            for m in list {
+                let label = NSTextField(labelWithString: line(m, as: Specs.displayName(for: m.host, specs)))
+                label.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+                label.maximumNumberOfLines = 0
+                label.toolTip = Specs.tooltip(for: m.host, specs)
+                rows.addArrangedSubview(label)
+            }
         }
         let f = DateFormatter(); f.dateFormat = "HH:mm:ss"
         footer.stringValue = "Updated \(f.string(from: Date())) · pushed on change"
@@ -453,10 +469,12 @@ final class Controller: NSObject, NSApplicationDelegate {
     /// Only tell the user when something *changed*. A monitor that speaks on
     /// every update is a monitor people mute, and then it protects nothing.
     private func notifyChanges(_ list: [Machine]) {
+        let specs = Specs.load()
         for m in list where !m.isSelf {
             if let was = lastOnline[m.host], was != m.online {
+                let name = Specs.displayName(for: m.host, specs) ?? m.host
                 let n = UNMutableNotificationContent()
-                n.title = m.online ? "🟢 \(m.host) is up" : "🔴 \(m.host) went offline"
+                n.title = m.online ? "🟢 \(name) is up" : "🔴 \(name) went offline"
                 n.body = m.online ? "Reconnected just now" : "Last seen \(ago(m.lastSeen))"
                 UNUserNotificationCenter.current().add(
                     UNNotificationRequest(identifier: UUID().uuidString,

@@ -16,8 +16,11 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
+
+from . import watch
 
 from .config import SERVER_TZ, Config, both_clocks
 from .core import State
@@ -198,9 +201,16 @@ def cmd_local(cfg: Config) -> int:
     engine.bootstrap()  # never replay pre-existing history as fresh alerts
     log.info("注意：本机模式无法监督「机器没开机」——它自己也在这台机器上")
     # Deployed Windows machines run service.py, where new records arrive as
-    # directory-change events. This mode has no such hook, so record pickup
-    # still leans on the scan interval - which is why it is the dev harness,
-    # not the deployed path. The clock-based work sleeps to its exact moment.
+    # directory-change events through pywin32. This mode gets the same shape
+    # from watch.py (ctypes / kqueue, zero dependencies): a record landing on
+    # disk wakes the loop at once, and the clock-based work still sleeps to
+    # its exact moment. Only when no watcher can be started does record
+    # pickup fall back to the scan interval.
+    wake = threading.Event()
+    watching = watch.start(cfg.history_dir, wake)
+    log.info("已挂上目录变更通知，记录一落盘立即处理" if watching
+             else f"本平台没有目录监听，退回 {cfg.poll_seconds} 秒兜底扫描")
+    backstop = 3600.0 if watching else float(cfg.poll_seconds)
     while True:
         try:
             engine.tick()
@@ -209,7 +219,13 @@ def cmd_local(cfg: Config) -> int:
             return 0
         except Exception:  # noqa: BLE001 - the loop must survive anything
             log.exception("本轮处理出错，继续")
-        time.sleep(_sleep_until_alarm(engine, cfg.poll_seconds))
+        try:
+            if wake.wait(timeout=_sleep_until_alarm(engine, backstop)):
+                wake.clear()
+                time.sleep(2)  # AUTO-MAS writes the .json and .log separately
+        except KeyboardInterrupt:
+            log.info("退出")
+            return 0
 
 
 def _sleep_until_alarm(engine, cap: float) -> float:
@@ -234,7 +250,34 @@ def cmd_agent(cfg: Config, base_url: str, token: str) -> int:
     up = Uploader(base_url, token)
     state = State(cfg.state_dir / "agent")
     source = LocalSource(cfg)
-    log.info("采集端启动 → %s（每 %d 秒）", base_url, cfg.poll_seconds)
+
+    # Commands travel over their own held-open connection: the server keeps
+    # the request pending until something is queued (or ~50s pass and the
+    # agent simply asks again). Same shape as tailscaled's watch-ipn-bus - a
+    # doorbell, not a timer. A command sent from the phone lands here within
+    # a second instead of at the next cycle.
+    def command_loop() -> None:
+        from .commands import apply_command  # noqa: PLC0415 - optional feature
+        while True:
+            try:
+                for cmd in up.pull_commands(wait=50):
+                    ok, detail = apply_command(cmd)
+                    up.report_command(str(cmd.get("id", "")), ok, detail)
+                    log.info("指令 %s -> %s %s", cmd.get("action"), ok, detail)
+            except Exception:  # noqa: BLE001
+                log.exception("指令通道出错，稍后重连")
+                time.sleep(5)  # reconnect backoff, not an interval
+
+    threading.Thread(target=command_loop, name="commands", daemon=True).start()
+
+    # The heartbeat is the one deliberately periodic thing left: the beat IS
+    # the signal the server's watchdog listens for, so it cannot be an event.
+    # Event pickup does not wait for it - a record landing on disk wakes the
+    # loop at once.
+    wake = threading.Event()
+    watching = watch.start(cfg.history_dir, wake)
+    log.info("采集端启动 → %s（心跳每 %d 秒%s）", base_url, cfg.poll_seconds,
+             "，记录落盘即上报" if watching else "，记录随心跳节拍扫描")
     while True:
         try:
             up.heartbeat()
@@ -246,16 +289,16 @@ def cmd_agent(cfg: Config, base_url: str, token: str) -> int:
                     log.info("已上报 %s", rec.run_id)
                 else:
                     log.warning("上报失败，下轮重试: %s", rec.run_id)
-            for cmd in up.pull_commands():
-                from .commands import apply_command  # local import: optional feature
-                ok, detail = apply_command(cmd)
-                up.report_command(str(cmd.get("id", "")), ok, detail)
-                log.info("指令 %s -> %s %s", cmd.get("action"), ok, detail)
         except KeyboardInterrupt:
             return 0
         except Exception:  # noqa: BLE001
             log.exception("采集端本轮出错，继续")
-        time.sleep(cfg.poll_seconds)
+        try:
+            if wake.wait(timeout=cfg.poll_seconds):
+                wake.clear()
+                time.sleep(2)  # AUTO-MAS writes the .json and .log separately
+        except KeyboardInterrupt:
+            return 0
 
 
 def cmd_server(cfg: Config, host: str, port: int) -> int:

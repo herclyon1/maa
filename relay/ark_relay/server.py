@@ -27,6 +27,17 @@ from .engine import Engine
 from .notify import Notifier
 from .transport import QueueSource, payload_to_record
 
+# Module level so that `req: Request` survives `from __future__ import
+# annotations`: FastAPI resolves the string annotation against this module's
+# globals, and a name that only exists inside build_app is invisible there -
+# every Request parameter then degrades into a required query field and the
+# endpoint answers 422 to everything. Guarded, because local mode must keep
+# working with no fastapi installed at all.
+try:
+    from fastapi import Request
+except ImportError:  # local mode: server endpoints are never built
+    Request = None  # type: ignore[assignment,misc]
+
 log = logging.getLogger("ark.server")
 
 # How long without a heartbeat before we consider the machine down, while it
@@ -48,6 +59,18 @@ class Hub:
         self.queued: list[dict] = []         # 已确认，等机器上线
         self.results: list[dict] = []        # 最近的执行回报
         self.alerted: set[str] = set()       # 每个窗口只告警一次
+        # One number the page and the agent both wait on. Bumped whenever
+        # anything they show or drain has changed; created on startup because
+        # asyncio primitives want a running loop.
+        self.version = 0
+        self.changed: asyncio.Condition | None = None
+
+    async def bump(self) -> None:
+        """Something observable changed; wake every held-open request."""
+        self.version += 1
+        if self.changed is not None:
+            async with self.changed:
+                self.changed.notify_all()
 
     # ---- expectations: when the machine should be alive ----
 
@@ -87,6 +110,7 @@ class Hub:
                         self.alerted.add(key)
                         log.warning("已告警: %s", key)
                 self.engine.tick()
+                await self.bump()
             except Exception:  # noqa: BLE001 - watchdog must never die
                 log.exception("watchdog 本轮出错")
             await asyncio.sleep(self._next_wake_seconds())
@@ -142,7 +166,7 @@ def _parse_intent(cfg: Config, text: str) -> dict:
 
 
 def build_app(cfg: Config):  # noqa: C901 - a flat router reads better than helpers
-    from fastapi import FastAPI, Request  # noqa: PLC0415
+    from fastapi import FastAPI  # noqa: PLC0415
     from fastapi.responses import HTMLResponse, JSONResponse  # noqa: PLC0415
 
     hub = Hub(cfg)
@@ -150,12 +174,14 @@ def build_app(cfg: Config):  # noqa: C901 - a flat router reads better than help
 
     @app.on_event("startup")
     async def _start() -> None:
+        hub.changed = asyncio.Condition()
         asyncio.create_task(hub.watchdog())
         log.info("中继已启动，推送渠道：%s", "、".join(hub.notifier.channels) or "(无)")
 
     @app.post("/api/heartbeat")
     async def heartbeat() -> dict:
         hub.last_heartbeat = datetime.now(tz=SERVER_TZ)
+        await hub.bump()
         return {"ok": True}
 
     @app.post("/api/event")
@@ -169,11 +195,26 @@ def build_app(cfg: Config):  # noqa: C901 - a flat router reads better than help
             hub.engine.log_tails[rec.run_id] = str(tail)
         hub.source.offer(rec)
         hub.engine.tick()
+        await hub.bump()
         return {"ok": True}
 
     @app.get("/api/commands")
-    async def commands() -> dict:
+    async def commands(wait: float = 0) -> dict:
+        # The agent's doorbell: with ?wait= the request is held open until a
+        # command is queued or the wait expires (then the agent simply calls
+        # again). Queueing a command notifies this waiter directly - nothing
+        # on either side asks on a beat.
+        if wait and not hub.queued and hub.changed is not None:
+            try:
+                async with hub.changed:
+                    await asyncio.wait_for(
+                        hub.changed.wait_for(lambda: bool(hub.queued)),
+                        timeout=min(wait, 55.0))
+            except asyncio.TimeoutError:
+                pass
         out, hub.queued = hub.queued, []
+        if out:
+            await hub.bump()   # the page's "已入队" list just drained
         return {"commands": out}
 
     @app.post("/api/command-result")
@@ -184,6 +225,7 @@ def build_app(cfg: Config):  # noqa: C901 - a flat router reads better than help
         del hub.results[20:]
         mark = "✅" if body.get("ok") else "❌"
         hub.notifier.send(f"{mark} 指令执行回报", str(body.get("detail") or ""))
+        await hub.bump()
         return {"ok": True}
 
     @app.post("/api/say")
@@ -199,9 +241,11 @@ def build_app(cfg: Config):  # noqa: C901 - a flat router reads better than help
         intent["id"] = cid
         if intent["action"] in MUTATING:
             hub.pending[cid] = intent          # gate ②: wait for a human
+            await hub.bump()
             return {"ok": True, "need_confirm": True, "command": intent}
         intent["confirmed"] = True             # reversible: straight through
         hub.queued.append(intent)
+        await hub.bump()                       # wakes the agent's held request
         return {"ok": True, "need_confirm": False, "command": intent}
 
     @app.post("/api/confirm")
@@ -212,6 +256,7 @@ def build_app(cfg: Config):  # noqa: C901 - a flat router reads better than help
             return {"ok": False, "error": "没有这条待确认指令"}
         cmd["confirmed"] = True
         hub.queued.append(cmd)
+        await hub.bump()                       # wakes the agent's held request
         return {"ok": True, "command": cmd}
 
     @app.get("/api/status")
@@ -229,6 +274,35 @@ def build_app(cfg: Config):  # noqa: C901 - a flat router reads better than help
             "results": hub.results,
             "channels": hub.notifier.channels,
         }
+
+    @app.get("/api/stream")
+    async def stream():
+        from fastapi.responses import StreamingResponse  # noqa: PLC0415
+
+        # Server-sent events: the page holds one connection and the server
+        # speaks only when something changed. EventSource reconnects by
+        # itself, so a dropped connection degrades into a refresh - never
+        # into a page that asks on a timer.
+        async def gen():
+            last = -1
+            while True:
+                if hub.version == last and hub.changed is not None:
+                    try:
+                        async with hub.changed:
+                            await asyncio.wait_for(
+                                hub.changed.wait_for(lambda: hub.version != last),
+                                timeout=25.0)
+                    except asyncio.TimeoutError:
+                        pass
+                if hub.version != last:
+                    last = hub.version
+                    yield f"data: {last}\n\n"
+                else:
+                    # Comment frame: stops NATs and proxies from reaping an
+                    # idle connection. Carries no data, triggers nothing.
+                    yield ": keepalive\n\n"
+        return StreamingResponse(gen(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache"})
 
     @app.get("/", response_class=HTMLResponse)
     async def index() -> str:
@@ -323,5 +397,11 @@ async function confirmCmd(){
 }
 
 $('say').addEventListener('keydown', e => { if(e.key === 'Enter') say(); });
-load(); setInterval(load, 30000);
+load();
+// 服务端推送：有变化服务器才说话，页面从不定时询问。
+// 断线 EventSource 自动重连；重连成功和手机把页面切回前台时各补读一次。
+const es = new EventSource('/api/stream');
+es.onmessage = load;
+es.onopen = load;
+document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
 </script></body></html>"""

@@ -134,17 +134,22 @@ class Uploader:
             log.warning("心跳失败: %s", exc)
             return False
 
-    def pull_commands(self) -> list[dict]:
+    def pull_commands(self, wait: float = 0) -> list[dict]:
         """Fetch queued commands to apply on this machine.
 
-        Returns raw dicts; the applier does whitelist validation. Never trust
-        this list - it arrives over the network.
+        With `wait`, the server holds the request open until a command is
+        queued or the wait expires - the agent's doorbell, in place of asking
+        on a beat. Returns raw dicts; the applier does whitelist validation.
+        Never trust this list - it arrives over the network.
         """
         try:
-            req = urllib.request.Request(self.base + "/api/commands")
+            url = self.base + "/api/commands"
+            if wait:
+                url += f"?wait={int(wait)}"
+            req = urllib.request.Request(url)
             if self.token:
                 req.add_header("X-Ark-Token", self.token)
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            with urllib.request.urlopen(req, timeout=self.timeout + wait) as resp:
                 data = json.loads(resp.read().decode("utf-8") or "{}")
             cmds = data.get("commands")
             return list(cmds) if isinstance(cmds, list) else []
