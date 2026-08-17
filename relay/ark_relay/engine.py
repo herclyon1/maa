@@ -372,10 +372,17 @@ class Engine:
             except ValueError:
                 continue
             due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
-            # Only a checkpoint this boot actually sat through, and only once
-            # it is a couple of minutes past - a queue may start a moment late.
-            if not (self._started_at <= due <= now - timedelta(minutes=2)):
+            # A checkpoint is a moment, not a state. The window opens two
+            # minutes after the time - long enough for a queue that starts a
+            # little late - and closes five minutes later. Without the closing
+            # edge the condition stayed true all evening, so 21:33 and 22:00
+            # were still "checking 21:30", and a machine someone had been
+            # working on since the afternoon would be powered off the moment
+            # the loop next ran.
+            if not (due + timedelta(minutes=2) <= now <= due + timedelta(minutes=7)):
                 continue
+            if due < self._started_at:
+                continue        # this boot was not up for that checkpoint
             if raw in scheduled:
                 return False        # this wake has work; the normal path decides
             log.info("%s 这个时间点没有任何排期，本次开机无事可做", raw)
