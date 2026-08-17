@@ -342,6 +342,41 @@ class Engine:
             hh, mm = 21, 30
         return now.replace(hour=hh, minute=mm, second=0, microsecond=0)
 
+    def _nothing_left_today(self, now: datetime | None = None) -> bool:
+        """True when this boot has nothing to do and nothing is still coming.
+
+        A queue can be paused while the wake timer that exists for it stays on -
+        which is exactly what happened when 明日方舟 was suspended and the 21:30
+        wake had nothing left to run. Without this the machine boots, finds no
+        work, and stays lit until morning, because every other shutdown
+        condition starts from "something ran".
+
+        Deliberately strict: it must be past every scheduled time today, no
+        record can have been handled, and the machine must have been up long
+        enough that a queue starting late still has room.
+        """
+        now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+        if self._handled_any or not self.cfg.idle_shutdown:
+            return False
+        if (now - self._started_at).total_seconds() < self.cfg.idle_shutdown * 60:
+            return False
+        times = sorted(t for q in plan.schedule(self.cfg.automas_dir)
+                       for t in q.get("times", []))
+        if not times:
+            return False        # cannot read the schedule -> never act on it
+        for hhmm in times:
+            try:
+                hh, mm = (int(x) for x in hhmm.split(":"))
+            except ValueError:
+                return False
+            due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+            # Still coming today, or recent enough that it may yet produce a
+            # record - either way there is something to wait for.
+            if now < due + timedelta(minutes=self.cfg.partial_window):
+                return False
+        log.info("本次开机无事可做（今天的排期已全部过去），准备关机")
+        return True
+
     def _unfinished_queues(self, now: datetime, entries: list[dict]) -> list[str]:
         """Queues that came due recently and are still missing one of their scripts.
 
@@ -431,7 +466,9 @@ class Engine:
           - it is late enough for the daily report -> wait until it is sent
           - too soon after start -> never (no boot/shutdown loop)
         """
-        if not self.cfg.shutdown_after_run or not self._handled_any:
+        if not self.cfg.shutdown_after_run:
+            return False
+        if not self._handled_any and not self._nothing_left_today(now):
             return False
         # `shutdown /s /t 60` only starts a countdown; the loop keeps ticking
         # through it. Without this flag the whole block ran again every poll -
