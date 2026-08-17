@@ -1,12 +1,52 @@
 {
-  "version": 1,
-  "note": "终末地：理智改刷干员经验 → A.高级认知载体、初级认知载体",
+  "version": 2026081701,
+  "note": "礼物一次送 5 个；探物器罗盘库存 1 → 20；启用基质刷取（先不领取、不用刻写券，只跑成功率最高的两个地区）",
   "commands": [
-    {"action": "maaend_option", "task": "ProtocolSpace",
-     "option": "ProtocolSpaceTab", "case": "OperatorProgression"},
-    {"action": "maaend_option", "task": "ProtocolSpace",
-     "option": "OperatorProgression", "case": "OperatorEXP"},
-    {"action": "maaend_option", "task": "ProtocolSpace",
-     "option": "OperatorEXPRewardsSetOption", "case": "CognitiveCarriers"}
+    {
+      "action": "maaend_option",
+      "task": "GiftOperator",
+      "option": "GiftCount",
+      "values": {
+        "Count": "5"
+      }
+    },
+    {
+      "action": "maaend_option",
+      "task": "AutoStockStaple",
+      "option": "AutoStockBuyStockFactoryGoodsValleyIVDetectorCompassLimit",
+      "values": {
+        "ValleyDetectorCompassLimit": "20"
+      }
+    },
+    {
+      "action": "maaend_option",
+      "task": "AutoStockStaple",
+      "option": "AutoStockBuyStockFactoryGoodsWulingDetectorCompassLimit",
+      "values": {
+        "WulingDetectorCompassLimit": "20"
+      }
+    },
+    {
+      "action": "maaend_option",
+      "task": "AutoEssence",
+      "option": "AutoEssenceObtainMode",
+      "case": "Discard",
+      "enabled": true
+    },
+    {
+      "action": "maaend_option",
+      "task": "AutoEssence",
+      "option": "AutoEssenceDoOverride",
+      "value": false
+    },
+    {
+      "action": "maaend_option",
+      "task": "AutoEssence",
+      "option": "AutoEssenceChooseLocation",
+      "cases": [
+        "WLSwordVaultDale",
+        "WLQingboStockade"
+      ]
+    }
   ]
 }
