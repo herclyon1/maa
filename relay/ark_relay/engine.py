@@ -24,6 +24,12 @@ from .transport import Source
 
 log = logging.getLogger("ark.engine")
 
+# How long past a queue's time before "it produced nothing" becomes a fault.
+MISSED_GRACE_MIN = 25
+# A wake-up checkpoint is judged once, in this window past the hour: open two
+# minutes late (a queue may start a moment behind), closed five minutes later.
+CHECK_OPEN_MIN, CHECK_CLOSE_MIN = 2, 7
+
 
 class Engine:
     def __init__(self, cfg: Config, source: Source, state: State, notifier: Notifier):
@@ -151,7 +157,7 @@ class Engine:
     # ---------- a run that should have happened and did not ----------
 
     def _check_missed_runs(self, now: datetime | None = None,
-                           grace_min: int = 25) -> None:
+                           grace_min: int = MISSED_GRACE_MIN) -> None:
         """Alert when a scheduled queue produced nothing.
 
         "Did not run" is as much a fault as "ran and failed", and it is the
@@ -318,6 +324,61 @@ class Engine:
 
     # ---------- daily wrap-up ----------
 
+    def next_deadline(self, now: datetime | None = None) -> tuple[datetime, str] | None:
+        """The next moment any purely time-based decision can change.
+
+        Everything event-driven already wakes the loop by itself - a record
+        landing on disk, the backend dying, the service being stopped. What
+        remains is clock work, and each piece of it has an exact next moment:
+
+          - a queue that produced nothing becomes reportable at due+grace
+          - the daily report becomes due at the cutoff
+          - a wake-up checkpoint is asked once, shortly past its time
+
+        So the loop can sleep until the earliest of these instead of waking
+        every few minutes to ask the clock whether anything is due yet. The
+        opposite of polling is not "wait longer" - it is knowing exactly which
+        moment you are waiting for.
+        """
+        now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+        if self._shutdown_issued:
+            return None
+        cands: list[tuple[datetime, str]] = []
+
+        def today_and_tomorrow(hh: int, mm: int):
+            due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+            return due, due + timedelta(days=1)
+
+        for q in plan.schedule(self.cfg.automas_dir):
+            for hhmm in q.get("times", []):
+                try:
+                    hh, mm = (int(x) for x in hhmm.split(":"))
+                except ValueError:
+                    continue
+                for due in today_and_tomorrow(hh, mm):
+                    key = f"{due:%Y-%m-%d}/{q['name']}/{hhmm}"
+                    moment = due + timedelta(minutes=MISSED_GRACE_MIN)
+                    if moment > now and key not in self._missed_alerted:
+                        cands.append((moment, f"核对队列「{q['name']}」{hhmm} 是否漏跑"))
+
+        if not self.state.report_sent(now.strftime("%Y-%m-%d")):
+            cutoff = self._report_cutoff(now)
+            if cutoff > now:
+                cands.append((cutoff, "日报截止"))
+
+        for raw in self.cfg.check_times.split(","):
+            raw = raw.strip()
+            try:
+                hh, mm = (int(x) for x in raw.split(":"))
+            except ValueError:
+                continue
+            for due in today_and_tomorrow(hh, mm):
+                moment = due + timedelta(minutes=CHECK_OPEN_MIN)
+                if moment > now:
+                    cands.append((moment, f"检查点 {raw}"))
+
+        return min(cands) if cands else None
+
     def _report_cutoff(self, now: datetime) -> datetime:
         """The time of day after which the report is due.
 
@@ -379,7 +440,8 @@ class Engine:
             # were still "checking 21:30", and a machine someone had been
             # working on since the afternoon would be powered off the moment
             # the loop next ran.
-            if not (due + timedelta(minutes=2) <= now <= due + timedelta(minutes=7)):
+            if not (due + timedelta(minutes=CHECK_OPEN_MIN)
+                    <= now <= due + timedelta(minutes=CHECK_CLOSE_MIN)):
                 continue
             if due < self._started_at:
                 continue        # this boot was not up for that checkpoint

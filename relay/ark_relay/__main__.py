@@ -194,9 +194,13 @@ def cmd_local(cfg: Config) -> int:
         logging.getLogger("ark").exception("单实例锁异常，忽略并继续启动")
     engine = _build_local_engine(cfg)
     log = logging.getLogger("ark")
-    log.info("本机模式启动，监视 %s（每 %d 秒）", cfg.history_dir, cfg.poll_seconds)
+    log.info("本机模式启动，监视 %s", cfg.history_dir)
     engine.bootstrap()  # never replay pre-existing history as fresh alerts
     log.info("注意：本机模式无法监督「机器没开机」——它自己也在这台机器上")
+    # Deployed Windows machines run service.py, where new records arrive as
+    # directory-change events. This mode has no such hook, so record pickup
+    # still leans on the scan interval - which is why it is the dev harness,
+    # not the deployed path. The clock-based work sleeps to its exact moment.
     while True:
         try:
             engine.tick()
@@ -205,7 +209,20 @@ def cmd_local(cfg: Config) -> int:
             return 0
         except Exception:  # noqa: BLE001 - the loop must survive anything
             log.exception("本轮处理出错，继续")
-        time.sleep(cfg.poll_seconds)
+        time.sleep(_sleep_until_alarm(engine, cfg.poll_seconds))
+
+
+def _sleep_until_alarm(engine, cap: float) -> float:
+    """Seconds until the engine's next clock moment, bounded by the backstop."""
+    from .config import SERVER_TZ  # noqa: PLC0415
+    from datetime import datetime  # noqa: PLC0415
+    try:
+        if alarm := engine.next_deadline():
+            due, _why = alarm
+            return max(1.0, min((due - datetime.now(tz=SERVER_TZ)).total_seconds() + 1, cap))
+    except Exception:  # noqa: BLE001 - a broken alarm degrades into lateness
+        logging.getLogger("ark").exception("计算下一个时刻出错，退回备用间隔")
+    return cap
 
 
 def cmd_agent(cfg: Config, base_url: str, token: str) -> int:

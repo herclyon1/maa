@@ -89,7 +89,33 @@ class Hub:
                 self.engine.tick()
             except Exception:  # noqa: BLE001 - watchdog must never die
                 log.exception("watchdog 本轮出错")
-            await asyncio.sleep(60)
+            await asyncio.sleep(self._next_wake_seconds())
+
+    def _next_wake_seconds(self, cap: float = 3600.0) -> float:
+        """Sleep to the next judgment moment instead of a fixed minute beat.
+
+        The watchdog's only clock-based decisions are "did the machine wake up
+        by wake+grace" for each window, plus whatever moments the engine
+        enumerates itself. Each has an exact time; there is nothing a fixed
+        60-second wake could notice that these alarms do not.
+        """
+        now = datetime.now(tz=SERVER_TZ)
+        moments: list[datetime] = []
+        try:
+            for base in (now, now + timedelta(days=1)):
+                for name, wake, done in self.windows(base):
+                    key = f"{base:%Y-%m-%d}/{name}"
+                    judge = wake + HEARTBEAT_GRACE
+                    if key not in self.alerted and now < judge <= done:
+                        moments.append(judge)
+            if alarm := self.engine.next_deadline(now):
+                moments.append(alarm[0])
+        except Exception:  # noqa: BLE001 - a broken alarm degrades into lateness
+            log.exception("计算下一个时刻出错，退回备用间隔")
+            return 60.0
+        if not moments:
+            return cap
+        return max(1.0, min((min(moments) - now).total_seconds() + 1, cap))
 
 
 def _parse_intent(cfg: Config, text: str) -> dict:

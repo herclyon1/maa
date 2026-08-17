@@ -34,6 +34,7 @@ import os
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -188,7 +189,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         _load_dotenv(HERE / ".env")
         _setup_logging(verbose=False)
 
-        from ark_relay.config import Config
+        from ark_relay.config import SERVER_TZ, Config
         from ark_relay.core import State
         from ark_relay.engine import Engine
         from ark_relay.notify import Notifier
@@ -289,12 +290,23 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
 
         # Three things can wake this loop, none of them a timer: the service
         # being stopped, a run record landing on disk, and the AUTO-MAS backend
-        # dying. The interval that remains is a backstop for the genuinely
-        # time-based work, not the way any of these are noticed.
+        # dying. The timeout is not an interval either - it is an alarm clock.
+        # The engine knows the exact next moment any clock-based decision can
+        # change (a missed-run alert coming due, the report cutoff, a wake-up
+        # checkpoint), so the loop sleeps until precisely then. Waking every N
+        # seconds to ask "is it time yet?" was the last piece of polling left,
+        # and it was not merely wasteful: the checkpoint window is five minutes
+        # wide, the same as the old interval, so an unlucky phase could skip
+        # it entirely.
         automas = _automas_handle()
         if automas:
             log.info("已挂上 AUTO-MAS 进程句柄，它一退出立即拉起")
 
+        # If every alarm is far away (or there are none), still wake
+        # occasionally: an alarm-clock with a bug in it must degrade into
+        # lateness, not into a relay that sleeps forever.
+        backstop = 3600.0
+        last_alarm_note = ""
         next_automas_check = 0.0
         while True:
             handles = [self.stop_event]
@@ -303,8 +315,25 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
                 handles.append(watch); watch_idx = len(handles) - 1
             if automas:
                 handles.append(automas); automas_idx = len(handles) - 1
+            wait_s = backstop
+            try:
+                if alarm := engine.next_deadline():
+                    due, why = alarm
+                    # +1s so the wake lands just past the moment, not just short.
+                    remain = (due - datetime.now(tz=SERVER_TZ)).total_seconds() + 1
+                    wait_s = min(max(remain, 1.0), backstop)
+                    note = f"{due:%H:%M} {why}"
+                    if note != last_alarm_note:
+                        last_alarm_note = note
+                        log.info("下一个闹钟 %s", note)
+            except Exception:  # noqa: BLE001 - a broken alarm must not stop the loop
+                log.exception("计算下一个时刻出错，退回备用间隔")
+            if not automas:
+                # Degraded path: no process handle, so liveness has to be
+                # re-checked on a timer until a handle can be re-acquired.
+                wait_s = min(wait_s, AUTOMAS_CHECK_SECONDS)
             rc = win32event.WaitForMultipleObjects(
-                handles, False, cfg.poll_seconds * 1000)
+                handles, False, int(wait_s * 1000))
             if rc == win32event.WAIT_OBJECT_0:
                 log.info("收到停止信号，退出")
                 if watch:
