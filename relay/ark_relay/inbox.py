@@ -31,7 +31,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from . import maaend, sanity_plan
+from . import maaend, queues, sanity_plan
 from .commands import apply_command
 
 log = logging.getLogger("ark.inbox")
@@ -172,6 +172,15 @@ class Inbox:
                 ok, detail = maaend.apply_changes(self.maaend_dir, maaend_batch)
                 out.append(("✅ 终末地：" if ok else "✗ 终末地：") + detail)
 
+        for cmd in [c for c in others if c.get("action") == "queue"]:
+            if not self.automas_dir:
+                out.append("✗ 队列：找不到 AUTO-MAS 目录，跳过")
+                continue
+            ok, detail = queues.apply(
+                self.automas_dir, str(cmd.get("name") or ""),
+                cmd.get("enabled"), cmd.get("scripts"))
+            out.append(("✅ " if ok else "✗ ") + detail)
+
         for cmd in [c for c in others if c.get("action") == "sanity_plan"]:
             # The one that actually decides what MaaEnd farms. Everything it
             # writes lands in AUTO-MAS, because AUTO-MAS overwrites MaaEnd's
@@ -184,7 +193,8 @@ class Inbox:
                 str(cmd.get("line") or ""), str(cmd.get("rewards_set") or ""))
             out.append(("✅ 理智方案：" if ok else "✗ 理智方案：") + detail)
 
-        for cmd in [c for c in others if c.get("action") != "sanity_plan"]:
+        for cmd in [c for c in others
+                    if c.get("action") not in ("sanity_plan", "queue")]:
             # The file can only be written by whoever can push to the repo, so
             # authorship is the confirmation that gate ② asks for.
             ok, detail = apply_command({**cmd, "confirmed": True})

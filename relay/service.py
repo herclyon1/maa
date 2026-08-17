@@ -207,6 +207,34 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         log.info("服务模式启动，监视 %s（变更即处理，兜底 %d 秒）",
                  cfg.history_dir, cfg.poll_seconds)
 
+        # New code before anything else uses it. This block was silently lost
+        # in a refactor on 2026-08-17 - a range replace swallowed it - and for
+        # three commits the machine stopped receiving updates at all while the
+        # log still looked healthy. Keep it adjacent to its own marker.
+        try:
+            from ark_relay import selfupdate
+
+            if changed := selfupdate.check(HERE):
+                # Take effect now, not next boot. The files are on disk but this
+                # process imported the old ones, so the only honest way to run
+                # the new code is to be a new process. Waiting for the next boot
+                # meant a fix pushed in the morning sat unused all day - and a
+                # queued command that needs that fix could not be understood.
+                #
+                # A detached restarter rather than exiting and trusting the SCM's
+                # failure actions: if those are ever unset, exiting would leave
+                # the relay down until tomorrow, which is worse than the problem
+                # being fixed.
+                log.info("代码已更新，重启以立即生效: %s", "、".join(changed))
+                subprocess.Popen(  # noqa: S603
+                    ["cmd", "/c", "timeout /t 3 /nobreak >nul & "
+                                  "net stop ark-relay & net start ark-relay"],
+                    creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP
+                                   | subprocess.DETACHED_PROCESS))
+                return
+        except Exception:  # noqa: BLE001 - never let this stop the relay
+            log.exception("自更新出错，跳过")
+
         from ark_relay.inbox import Inbox
 
         inbox = Inbox(cfg.state_dir, cfg.inbox_url,
