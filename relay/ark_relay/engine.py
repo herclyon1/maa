@@ -342,24 +342,51 @@ class Engine:
             hh, mm = 21, 30
         return now.replace(hour=hh, minute=mm, second=0, microsecond=0)
 
+    def _remote_session_active(self) -> bool:
+        """Someone is connected right now - SSH or ToDesk.
+
+        The schedule cannot tell a plug-triggered boot from a person opening
+        the machine to work on it, and powering off underneath them is the one
+        failure this feature can cause. An open remote session is the signal
+        that separates the two.
+        """
+        try:
+            out = subprocess.run(["netstat", "-n"], capture_output=True,
+                                 timeout=20).stdout
+        except (OSError, subprocess.SubprocessError):
+            return True     # cannot tell -> assume someone is there
+        for line in out.splitlines():
+            if b"ESTABLISHED" not in line:
+                continue
+            # local side :22 is sshd; ToDesk's session ports are its own.
+            local = line.split()[1:2]
+            if local and local[0].endswith(b":22"):
+                return True
+        try:
+            tasks = subprocess.run(["tasklist", "/FI", "IMAGENAME eq ToDesk_Session.exe",
+                                    "/NH"], capture_output=True, timeout=20).stdout
+        except (OSError, subprocess.SubprocessError):
+            return True
+        return b"ToDesk_Session" in tasks
+
     def _nothing_left_today(self, now: datetime | None = None) -> bool:
-        """True when this boot has nothing to do and nothing is still coming.
+        """True when this boot has no work left in today's schedule.
 
-        A queue can be paused while the wake timer that exists for it stays on -
-        which is exactly what happened when 明日方舟 was suspended and the 21:30
-        wake had nothing left to run. Without this the machine boots, finds no
-        work, and stays lit until morning, because every other shutdown
-        condition starts from "something ran".
+        Decided from the schedule, not from a stopwatch: at 09:00 the queue is
+        still to come, so the machine waits however long that takes; at 21:30
+        with 明日方舟 paused there is nothing left today, so it powers off. An
+        earlier version keyed off "up for 25 minutes", which would also have
+        powered off a machine somebody had booted at three in the afternoon to
+        work on.
 
-        Deliberately strict: it must be past every scheduled time today, no
-        record can have been handled, and the machine must have been up long
-        enough that a queue starting late still has room.
+        The short grace still exists for a queue that starts a minute late, and
+        an open SSH or ToDesk session vetoes the whole thing.
         """
         now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
         if self._handled_any or not self.cfg.idle_shutdown:
             return False
-        if (now - self._started_at).total_seconds() < self.cfg.idle_shutdown * 60:
-            return False
+        if (now - self._started_at).total_seconds() < 300:
+            return False        # five minutes, so a late queue still has room
         times = sorted(t for q in plan.schedule(self.cfg.automas_dir)
                        for t in q.get("times", []))
         if not times:
@@ -370,11 +397,12 @@ class Engine:
             except ValueError:
                 return False
             due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
-            # Still coming today, or recent enough that it may yet produce a
-            # record - either way there is something to wait for.
             if now < due + timedelta(minutes=self.cfg.partial_window):
-                return False
-        log.info("本次开机无事可做（今天的排期已全部过去），准备关机")
+                return False    # still to come, or recent enough to still produce
+        if self._remote_session_active():
+            log.info("今天已无排期，但有远程会话连着，不关机")
+            return False
+        log.info("本次开机今天已无排期（%s 都已过去），准备关机", "、".join(times))
         return True
 
     def _unfinished_queues(self, now: datetime, entries: list[dict]) -> list[str]:
