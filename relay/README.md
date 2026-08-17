@@ -70,7 +70,8 @@ python -m ark_relay server --port 8787
 | 动作 | 可逆 | 要确认 |
 |---|---|---|
 | `run_now` 立刻跑一轮 | ✅ | 否 |
-| `skip_today` 今天跳过 | ✅ | 否 |
+| `skip_today` 今天跳过 | ✅ | 否（跳过模式：当天临时停用该队列，过后自动恢复） |
+| `debug_mode` 调试模式 | ✅ 自动过期 | 否（`days`:N 或 `off`:true；生效期内不关机、不报漏跑） |
 | `set_stage` 换关卡 | ❌ 改配置 | **是** |
 | `set_medicine` 理智药 | ❌ 改配置 | **是** |
 | `toggle_task` 开关任务 | ❌ 改配置 | **是**（尚未实现，会明确拒绝） |
