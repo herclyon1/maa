@@ -32,7 +32,7 @@ log = logging.getLogger("ark.commands")
 # ---------- gate ① : the whitelist ----------
 
 # Actions that only change what happens next, and undo themselves.
-REVERSIBLE = {"run_now", "skip_today"}
+REVERSIBLE = {"run_now", "skip_today", "debug_mode"}
 
 # Actions that write to a config file on disk.
 MUTATING = {"set_stage", "set_medicine", "toggle_task"}
@@ -190,6 +190,10 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             return _run_now(str(cmd.get("queue") or "新队列"))
         if action == "skip_today":
             return _skip_today(str(cmd.get("queue") or "新队列"))
+        if action == "debug_mode":
+            from .modes import set_debug  # noqa: PLC0415
+            state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
+            return set_debug(state_dir, cmd.get("days", 1), bool(cmd.get("off")))
     except Exception as exc:  # noqa: BLE001 - report, never crash the agent
         log.exception("执行指令失败: %s", action)
         return False, f"执行出错: {exc}"

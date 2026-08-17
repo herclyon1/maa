@@ -152,6 +152,8 @@ def _parse_intent(cfg: Config, text: str) -> dict:
         '  {"action":"set_medicine","value":整数}        理智药上限\n'
         '  {"action":"run_now","queue":"队列名"}         立刻跑一轮\n'
         '  {"action":"skip_today","queue":"队列名"}      今天跳过\n'
+        '  {"action":"debug_mode","days":1}              调试模式：不关机不报漏跑\n'
+        '  {"action":"debug_mode","off":true}            关闭调试模式\n'
         "如果这句话不属于以上任何一种，返回 {}。\n"
         "只输出 JSON，不要解释、不要代码块。\n\n"
         f"指令：{text}"

@@ -1,7 +1,11 @@
 {
-  "version": 2026081702,
-  "note": "暂停明日方舟，只跑终末地；礼物一次送 5 个；探物器罗盘 20；启用基质刷取（不领取、不用刻写券）",
+  "version": 2026081801,
+  "note": "🔧 调试模式：两个队列全停、不刷任何东西、不关机。并入 v2026081702 未送达的全部指令（机上 inbox 停在 v1，那批从未应用）。恢复正常时：推新版本把队列重新 enabled + debug_mode off。",
   "commands": [
+    {
+      "action": "debug_mode",
+      "days": 1
+    },
     {
       "action": "queue",
       "name": "Evening-MAA",
@@ -10,6 +14,7 @@
     {
       "action": "queue",
       "name": "新队列",
+      "enabled": false,
       "scripts": [
         "MaaEnd"
       ]

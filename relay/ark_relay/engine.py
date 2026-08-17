@@ -16,7 +16,7 @@ import os
 import subprocess
 from datetime import datetime, timedelta
 
-from . import collector, core, plan, summary
+from . import collector, core, modes, plan, summary
 from .config import SERVER_TZ, Config, RunRecord
 from .core import State
 from .notify import Notifier
@@ -53,8 +53,33 @@ class Engine:
         self._handled_any = False   # nothing ran this session -> nothing to shut down for
         self._shutdown_issued = False  # a countdown is already running; never twice
         self._last_wait_note = ""  # so the guard does not repeat itself every poll
+        self._debug_last: bool | None = None  # log mode transitions, not every tick
         from .annihilation import WeeklyGate  # noqa: PLC0415 - optional feature
         self._annihilation = WeeklyGate(state.dir, cfg.automas_dir)
+
+    # ---------- operator modes ----------
+
+    def _observe_modes(self) -> None:
+        """Advance skip-mode and make debug-mode transitions visible.
+
+        Runs at the top of every tick: the skip flag must engage before the
+        queue it targets comes due, and a mode change should announce itself
+        once in the log rather than being discovered from what did not happen.
+        """
+        try:
+            for msg in modes.process_skip(self.state.dir, self.cfg.automas_dir):
+                log.info("⏭️ %s", msg)
+                self.notifier.send("⏭️ 跳过模式", msg)
+        except Exception:  # noqa: BLE001 - modes must never stop the loop
+            log.exception("跳过模式处理出错")
+        active = modes.debug_active(self.state.dir)
+        if active != self._debug_last:
+            if active:
+                log.info("🔧 调试模式生效（至 %s）：不关机、不报漏跑",
+                         modes.debug_until(self.state.dir))
+            elif self._debug_last is not None:
+                log.info("🔧 调试模式已结束，恢复正常判定")
+            self._debug_last = active
 
     # ---------- survive restarts ----------
 
@@ -107,6 +132,7 @@ class Engine:
 
     def tick(self) -> int:
         """Process whatever is new. Returns how many records were handled."""
+        self._observe_modes()
         records = self.source.fetch(self.state.seen)
         for rec in records:
             try:
@@ -168,6 +194,10 @@ class Engine:
         powered on cannot be caught from inside it; that needs the off-box
         heartbeat.
         """
+        # Debug mode: the operator is deliberately making the machine do
+        # nothing; "it produced nothing" is the plan, not a fault.
+        if modes.debug_active(self.state.dir):
+            return
         now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
         day = now.strftime("%Y-%m-%d")
         entries = self.state.read_ledger(day)
@@ -540,6 +570,11 @@ class Engine:
           - it is late enough for the daily report -> wait until it is sent
           - too soon after start -> never (no boot/shutdown loop)
         """
+        # Debug mode outranks everything below, the idle checkpoint included:
+        # a boot with nothing scheduled is exactly what debugging looks like,
+        # and powering it off is exactly what the operator asked not to happen.
+        if modes.debug_active(self.state.dir):
+            return False
         if not self.cfg.shutdown_after_run:
             return False
         if not self._handled_any and not self._idle_checkpoint(now):
