@@ -342,68 +342,45 @@ class Engine:
             hh, mm = 21, 30
         return now.replace(hour=hh, minute=mm, second=0, microsecond=0)
 
-    def _remote_session_active(self) -> bool:
-        """Someone is connected right now - SSH or ToDesk.
+    def _idle_checkpoint(self, now: datetime | None = None) -> bool:
+        """True when a wake-up time has passed with nothing scheduled for it.
 
-        The schedule cannot tell a plug-triggered boot from a person opening
-        the machine to work on it, and powering off underneath them is the one
-        failure this feature can cause. An open remote session is the signal
-        that separates the two.
-        """
-        try:
-            out = subprocess.run(["netstat", "-n"], capture_output=True,
-                                 timeout=20).stdout
-        except (OSError, subprocess.SubprocessError):
-            return True     # cannot tell -> assume someone is there
-        for line in out.splitlines():
-            if b"ESTABLISHED" not in line:
-                continue
-            # local side :22 is sshd; ToDesk's session ports are its own.
-            local = line.split()[1:2]
-            if local and local[0].endswith(b":22"):
-                return True
-        try:
-            tasks = subprocess.run(["tasklist", "/FI", "IMAGENAME eq ToDesk_Session.exe",
-                                    "/NH"], capture_output=True, timeout=20).stdout
-        except (OSError, subprocess.SubprocessError):
-            return True
-        return b"ToDesk_Session" in tasks
+        The machine is woken at fixed times - 09:00 and 21:30 here - and each
+        wake exists to serve the queues at that time. So the morning check asks
+        only about 09:00 and the evening check only about 21:30. With 明日方舟
+        paused there is no 21:30 queue any more, but the wake still fires; that
+        boot has no purpose and should end.
 
-    def _nothing_left_today(self, now: datetime | None = None) -> bool:
-        """True when this boot has no work left in today's schedule.
-
-        Decided from the schedule, not from a stopwatch: at 09:00 the queue is
-        still to come, so the machine waits however long that takes; at 21:30
-        with 明日方舟 paused there is nothing left today, so it powers off. An
-        earlier version keyed off "up for 25 minutes", which would also have
-        powered off a machine somebody had booted at three in the afternoon to
-        work on.
-
-        The short grace still exists for a queue that starts a minute late, and
-        an open SSH or ToDesk session vetoes the whole thing.
+        Two earlier attempts got this wrong and are worth remembering. Keying
+        off "up for 25 minutes with every queue time past" would also have
+        powered off a machine booted at three in the afternoon to work on. And
+        vetoing on an open SSH or ToDesk session was worse than useless: both
+        start automatically at boot, so the veto always held and the feature
+        never fired at all.
         """
         now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
-        if self._handled_any or not self.cfg.idle_shutdown:
+        if self._handled_any:
             return False
-        if (now - self._started_at).total_seconds() < 300:
-            return False        # five minutes, so a late queue still has room
-        times = sorted(t for q in plan.schedule(self.cfg.automas_dir)
-                       for t in q.get("times", []))
-        if not times:
-            return False        # cannot read the schedule -> never act on it
-        for hhmm in times:
+        scheduled: set[str] = {t for q in plan.schedule(self.cfg.automas_dir)
+                               for t in q.get("times", [])}
+        for raw in self.cfg.check_times.split(","):
+            raw = raw.strip()
+            if not raw:
+                continue
             try:
-                hh, mm = (int(x) for x in hhmm.split(":"))
+                hh, mm = (int(x) for x in raw.split(":"))
             except ValueError:
-                return False
+                continue
             due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
-            if now < due + timedelta(minutes=self.cfg.partial_window):
-                return False    # still to come, or recent enough to still produce
-        if self._remote_session_active():
-            log.info("今天已无排期，但有远程会话连着，不关机")
-            return False
-        log.info("本次开机今天已无排期（%s 都已过去），准备关机", "、".join(times))
-        return True
+            # Only a checkpoint this boot actually sat through, and only once
+            # it is a couple of minutes past - a queue may start a moment late.
+            if not (self._started_at <= due <= now - timedelta(minutes=2)):
+                continue
+            if raw in scheduled:
+                return False        # this wake has work; the normal path decides
+            log.info("%s 这个时间点没有任何排期，本次开机无事可做", raw)
+            return True
+        return False
 
     def _unfinished_queues(self, now: datetime, entries: list[dict]) -> list[str]:
         """Queues that came due recently and are still missing one of their scripts.
@@ -496,7 +473,7 @@ class Engine:
         """
         if not self.cfg.shutdown_after_run:
             return False
-        if not self._handled_any and not self._nothing_left_today(now):
+        if not self._handled_any and not self._idle_checkpoint(now):
             return False
         # `shutdown /s /t 60` only starts a countdown; the loop keeps ticking
         # through it. Without this flag the whole block ran again every poll -

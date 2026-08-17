@@ -131,11 +131,13 @@ class Config:
         default_factory=lambda: _env_path("ARK_MAAEND_DIR")
     )
 
-    # Power off a machine that booted with nothing to do. With a queue paused,
-    # the wake timer still fires and the machine would otherwise sit lit until
-    # someone noticed. 0 disables it.
-    idle_shutdown: int = field(
-        default_factory=lambda: _env_int("ARK_IDLE_SHUTDOWN_MIN", 25))
+    # The times the machine is woken for. At each one the relay asks what is
+    # scheduled *for that time*; nothing scheduled means this boot has no
+    # purpose and it powers off. Kept separate from the queue times on purpose:
+    # a paused queue disappears from the schedule, but the wake that existed
+    # for it does not, and that is exactly the case worth catching.
+    check_times: str = field(
+        default_factory=lambda: _env("ARK_CHECK_TIMES", "09:00,21:30"))
 
     # The last scheduled run of the day; the daily report goes out after it.
     # Server (Beijing) time, "HH:MM".
