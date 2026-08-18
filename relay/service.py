@@ -308,6 +308,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         backstop = 3600.0
         last_alarm_note = ""
         next_automas_check = 0.0
+        next_inbox_retry = 0.0
         while True:
             handles = [self.stop_event]
             watch_idx = automas_idx = -1
@@ -332,6 +333,8 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
                 # Degraded path: no process handle, so liveness has to be
                 # re-checked on a timer until a handle can be re-acquired.
                 wait_s = min(wait_s, AUTOMAS_CHECK_SECONDS)
+            if not inbox.last_fetch_ok:
+                wait_s = min(wait_s, 300)   # wake in time for the fetch retry
             rc = win32event.WaitForMultipleObjects(
                 handles, False, int(wait_s * 1000))
             if rc == win32event.WAIT_OBJECT_0:
@@ -352,6 +355,15 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
                 engine.tick()
             except Exception:  # noqa: BLE001 - the loop must survive anything
                 log.exception("本轮处理出错，继续")
+
+            # A pause order that failed to download is not a pause order. On
+            # 2026-08-17 the queue file was unreachable all evening and the
+            # operator's stop order silently never arrived - so a failed boot
+            # fetch is retried every five minutes until the file has actually
+            # been read once, instead of waiting a whole day for the next boot.
+            if not inbox.last_fetch_ok and time.monotonic() >= next_inbox_retry:
+                next_inbox_retry = time.monotonic() + 300
+                collect("重试")
 
             now = time.monotonic()
             died = automas and rc == win32event.WAIT_OBJECT_0 + automas_idx

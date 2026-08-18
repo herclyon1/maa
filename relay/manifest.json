@@ -8,19 +8,19 @@
   "ark_relay/config.py": "bbf33b609cd7d56abf6da34c62a6ca5055884681",
   "ark_relay/core.py": "7ff66cd80663c9f032caa662329fa16972b613bf",
   "ark_relay/engine.py": "38fb43360b4d8ca7813467a8336ee5e9281498f7",
-  "ark_relay/inbox.py": "98b9d21faac6331a287845337a8353ee601cfbc7",
+  "ark_relay/inbox.py": "d343ba770a439585a1678fc55484f76f6669c0d1",
   "ark_relay/maaend.py": "3d48ec8946274f9040834095dd04c67e5395f075",
   "ark_relay/modes.py": "ca57afa5bdfae40b7026af9d9d675aff6d5cc347",
   "ark_relay/notify.py": "c2502e0f6511d60e57469bfef2127ae083c948d1",
   "ark_relay/plan.py": "8e05b0e8c2600489ce4cd9d3fa00eee203825e3f",
   "ark_relay/queues.py": "685271e8868320b9bd8a2bf7116dbdcaa99b95ed",
   "ark_relay/sanity_plan.py": "01aeb8d55f402daf2516025125018145febd08dc",
-  "ark_relay/selfupdate.py": "7916e738ee7859e1ca15a99cd74e438d06a3d098",
+  "ark_relay/selfupdate.py": "2364a97a286b71f7561c1ac7b58521e7a3bb5963",
   "ark_relay/server.py": "6197addc6286ff4b2b98963ffdc3b28f0c83f3ac",
   "ark_relay/summary.py": "7c50b6f5d5a2e4974cbf40ddb32db74f6e4f10f7",
   "ark_relay/transport.py": "0e719fdcdd53a8a6eb780d57b49869730d783eb2",
   "ark_relay/watch.py": "db46a3b75fc6d93e1141aea909230874aa5ead7d",
   "run.py": "0db6cde8fb8119323d991ec512d1b2b43e869b93",
-  "service.py": "8425653da0e5e9561a1df37737a93f853e480556"
+  "service.py": "9c27e91ddfa7a03b126a63cab7b660094b57f2a6"
  }
 }

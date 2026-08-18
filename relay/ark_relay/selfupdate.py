@@ -47,8 +47,29 @@ def _get_once(url: str, timeout: int = 20) -> bytes | None:
         return None
 
 
+def _alternates(url: str) -> list[str]:
+    """The same file through a second door (jsDelivr CDN over the same repo).
+
+    raw.githubusercontent is half-walled from the machine's network and has
+    gone dark for whole evenings (2026-08-17). The repo, history and write
+    path stay on GitHub; only the download exit changes. Every fetched file
+    is still verified against the manifest's SHA-1, so a stale CDN copy can
+    only ever mean "no update yet", never wrong code.
+    (Duplicated from inbox.py on purpose: selfupdate refuses to create new
+    files on the machine, so a shared module would never arrive.)
+    """
+    prefix = "https://raw.githubusercontent.com/"
+    if not url.startswith(prefix):
+        return [url]
+    parts = url[len(prefix):].split("/", 3)
+    if len(parts) < 4:
+        return [url]
+    owner, repo, branch, path = parts
+    return [url, f"https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{path}"]
+
+
 def _get_with_retry(url: str, attempts: int = 3, timeout: int = 20) -> bytes | None:
-    """Fetch, retrying transient failures.
+    """Fetch, retrying transient failures across both doors.
 
     Measured from the game machine: raw.githubusercontent answered 11 of 11 one
     hour and 7 of 10 the next, with the failures being TLS handshake and read
@@ -57,9 +78,11 @@ def _get_with_retry(url: str, attempts: int = 3, timeout: int = 20) -> bytes | N
     attempts take that under 3%, at the cost of a few seconds on the rare bad
     morning.
     """
+    urls = _alternates(url)
     for i in range(attempts):
-        if (data := _get_once(url, timeout)) is not None:
-            return data
+        for u in urls:
+            if (data := _get_once(u, timeout)) is not None:
+                return data
         if i + 1 < attempts:
             time.sleep(3 * (i + 1))
     return None

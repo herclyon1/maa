@@ -59,17 +59,45 @@ DEFAULT_URL = ("https://raw.githubusercontent.com/herclyon1/maa/main/"
                "queue/config.json")
 
 
+def _alternates(url: str) -> list[str]:
+    """The same file through a second door.
+
+    raw.githubusercontent is half-walled from the machine's network - the
+    evening of 2026-08-17 it timed out and 429'd for hours straight, and the
+    operator's pause order queued that morning never arrived before the run
+    it was meant to stop. jsDelivr serves the identical GitHub content over a
+    CDN with far better reachability from there. The repo, its history and
+    the write path stay on GitHub untouched; only the download exit changes.
+    A stale CDN copy is harmless by construction: versions apply only when
+    strictly newer, and selfupdate verifies every file against its SHA-1.
+
+    (Deliberately duplicated in selfupdate.py rather than shared: selfupdate
+    refuses to create new files on the machine, so a new shared module would
+    never arrive there.)
+    """
+    prefix = "https://raw.githubusercontent.com/"
+    if not url.startswith(prefix):
+        return [url]
+    parts = url[len(prefix):].split("/", 3)
+    if len(parts) < 4:
+        return [url]
+    owner, repo, branch, path = parts
+    return [url, f"https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{path}"]
+
+
 def _fetch(url: str, timeout: int = 20, attempts: int = 3) -> dict | None:
-    """Fetch the queued file, retrying transient failures.
+    """Fetch the queued file, retrying transient failures across both doors.
 
     Measured from the game machine: 11 of 11 one hour, 7 of 10 the next, the
     failures being TLS handshake and read timeouts. Boot is the only chance of
     the day to collect a change, so one attempt would silently drop roughly a
     third of them.
     """
+    urls = _alternates(url)
     for i in range(attempts):
-        if (data := _fetch_once(url, timeout)) is not None:
-            return data
+        for u in urls:
+            if (data := _fetch_once(u, timeout)) is not None:
+                return data
         if i + 1 < attempts:
             time.sleep(3 * (i + 1))
     return None
@@ -100,6 +128,11 @@ class Inbox:
         self.marker = Path(state_dir) / "inbox-version.txt"
         self.maaend_dir = maaend_dir
         self.automas_dir = automas_dir
+        # Whether the last poll actually reached the queue file. "Could not
+        # fetch" and "fetched, nothing new" both return quietly from poll();
+        # the caller needs to tell them apart to keep retrying the former -
+        # a pause order that fails to download is not a pause order.
+        self.last_fetch_ok = True
 
     @property
     def applied_version(self) -> int:
@@ -121,6 +154,7 @@ class Inbox:
         """
         have = self.applied_version
         data = self._fetch_or_none()
+        self.last_fetch_ok = data is not None
         if data is None:
             return have, []
 
