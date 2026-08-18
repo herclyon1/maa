@@ -272,6 +272,37 @@ class ServerChan:
         raise RuntimeError("Server酱 发送失败 -> " + "；".join(errors))
 
 
+class Ntfy:
+    """ntfy - the one channel whose result looks like a message, not a card.
+
+    Publishes over plain HTTP to a topic; the phone app renders it as a real
+    system notification with the full text. WeChat's template-card look is a
+    platform mandate no push service can escape, which is why this exists.
+    The topic name is the entire credential - generated long and random.
+    Knowing it lets someone send to the phone (not read), acceptable for
+    what travels here.
+    """
+
+    def __init__(self, cfg: Config):
+        self.topic = cfg.ntfy_topic
+        self.server = (cfg.ntfy_server or "https://ntfy.sh").rstrip("/")
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.topic)
+
+    def send_text(self, title: str, body: str = "") -> None:
+        # JSON publish keeps UTF-8 titles intact; header-based publishing
+        # would need RFC-2047 tricks for Chinese.
+        r = _post_json(self.server, {
+            "topic": self.topic,
+            "title": title,
+            "message": body or title,
+        })
+        if not r.get("id"):
+            raise RuntimeError(f"ntfy 发送失败: {r}")
+
+
 def _hint(name: str, err: str) -> str:
     """Turn a channel's raw error into something actionable on a phone."""
     if name == "企业微信" and "60020" in err:
@@ -305,6 +336,7 @@ class Notifier:
         self.wecom = WeCom(cfg)
         self.wecom_bot = WeComBot(cfg)
         self.serverchan = ServerChan(cfg)
+        self.ntfy = Ntfy(cfg)
         self._announced_down: set[str] = set()
         self._announcing = False  # the outage alert itself goes out via _fan_out
 
@@ -313,6 +345,7 @@ class Notifier:
             ("企业微信", self.wecom),
             ("企业微信机器人", self.wecom_bot),
             ("Server酱", self.serverchan),
+            ("ntfy", self.ntfy),
         ) if c.enabled]
 
     @property
@@ -330,6 +363,8 @@ class Notifier:
              lambda: self.wecom_bot.send_text(joined)),
             ("Server酱", self.serverchan,
              lambda: self.serverchan.send_text(title, body)),
+            ("ntfy", self.ntfy,
+             lambda: self.ntfy.send_text(title, body)),
         )
         for name, channel, call in attempts:
             if not channel.enabled:

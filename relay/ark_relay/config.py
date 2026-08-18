@@ -74,6 +74,10 @@ class Config:
 
     # Push channels. Empty string = channel disabled.
     serverchan_key: str = field(default_factory=lambda: _env("SERVERCHAN_KEY"))
+    # ntfy:手机上唯一长得像"正常通知"的通道(横幅+全文,非微信模板卡)。
+    # topic 即全部凭据,须足够随机;server 留空用官方 ntfy.sh,以后可自建。
+    ntfy_topic: str = field(default_factory=lambda: _env("ARK_NTFY_TOPIC"))
+    ntfy_server: str = field(default_factory=lambda: _env("ARK_NTFY_SERVER"))
     wecom_corpid: str = field(default_factory=lambda: _env("WECOM_CORPID"))
     wecom_secret: str = field(default_factory=lambda: _env("WECOM_SECRET"))
     wecom_agentid: str = field(default_factory=lambda: _env("WECOM_AGENTID"))
