@@ -58,7 +58,7 @@ let TOOLS: [ToolSpec] = [
              usbRel: "其他的专业软件/远程控制类/ToDesk_4.7.6.3（备用远控）.exe",
              homepage: "https://www.todesk.com/download.html", checker: .todesk),
     ToolSpec(id: "sunlogin", name: "向日葵", group: "特殊关注（装后自升级）", special: true,
-             localVer: "15.8.2", localDate: "",
+             localVer: "15.8.2.19742", localDate: "",
              usbRel: "其他的专业软件/远程控制类/向日葵_15.8.2（广泛使用）.exe",
              homepage: "https://sunlogin.oray.com/download", checker: .sunlogin),
 
@@ -98,7 +98,7 @@ let TOOLS: [ToolSpec] = [
              homepage: "https://www.voidtools.com",
              checker: .page(url: "https://www.voidtools.com/downloads/", vRe: "Everything-([0-9.]+)\\.x64-Setup\\.exe",
                             dlTemplate: "https://www.voidtools.com/Everything-{V}.x64-Setup.exe", pickMax: false)),
-    ToolSpec(id: "npp", name: "Notepad++", group: "小软件", localVer: "8.9.7", localDate: "",
+    ToolSpec(id: "npp", name: "Notepad++", group: "小软件", localVer: "8.9.7", localDate: "2026-07-14",
              usbRel: "其他小软件/Notepad++（文本类处理）.exe", glob: "其他小软件/Notepad++（文本类处理）.exe",
              nameTemplate: "其他小软件/Notepad++（文本类处理）.exe",
              homepage: "https://notepad-plus-plus.org",
@@ -114,23 +114,23 @@ let TOOLS: [ToolSpec] = [
              homepage: "https://www.internetdownloadmanager.com",
              checker: .page(url: "https://www.internetdownloadmanager.com/download.html", vRe: "idman([0-9]+build[0-9]+)\\.exe",
                             dlTemplate: "https://download.internetdownloadmanager.com/idman{RAW}.exe", pickMax: false)),
-    ToolSpec(id: "memreduct", name: "Mem Reduct", group: "小软件", localVer: "盘内旧版", localDate: "",
+    ToolSpec(id: "memreduct", name: "Mem Reduct", group: "小软件", localVer: "3.4", localDate: "2023-02-11",
              usbRel: "其他小软件/Mem Reduct（内存定时清理）.zip", glob: "其他小软件/Mem Reduct（内存定时清理）.*",
              nameTemplate: "其他小软件/Mem Reduct {V}（内存定时清理）.exe",
              homepage: "https://github.com/henrypp/memreduct",
              checker: .github(repo: "henrypp/memreduct", assetRe: "-setup\\.exe$")),
-    ToolSpec(id: "twinkle", name: "Twinkle Tray", group: "小软件", localVer: "1.16.6", localDate: "",
+    ToolSpec(id: "twinkle", name: "Twinkle Tray", group: "小软件", localVer: "1.16.6", localDate: "2025-01-10",
              usbRel: "其他小软件/Twinkle.Tray.v1.16.6（显示器亮度调节）.exe", glob: "其他小软件/Twinkle.Tray*（显示器亮度调节）.exe",
              nameTemplate: "其他小软件/Twinkle.Tray.v{V}（显示器亮度调节）.exe",
              homepage: "https://twinkletray.com",
              checker: .github(repo: "xanderfrangos/twinkle-tray", assetRe: "^Twinkle.*\\.exe$")),
-    ToolSpec(id: "honeyview", name: "HoneyView", group: "小软件", localVer: "盘内旧版", localDate: "",
+    ToolSpec(id: "honeyview", name: "HoneyView", group: "小软件", localVer: "5.53", localDate: "2024-06-21",
              usbRel: "其他小软件/HoneyView（图片查看器）.exe", glob: "其他小软件/HoneyView（图片查看器）.exe",
              nameTemplate: "其他小软件/HoneyView（图片查看器）.exe",
              homepage: "https://www.bandisoft.com/honeyview/",
              checker: .page(url: "https://www.bandisoft.com/honeyview/", vRe: "HoneyView ?v?([0-9]+\\.[0-9.]+)",
                             dlTemplate: "https://dl.bandisoft.com/honeyview/HONEYVIEW-SETUP.EXE", pickMax: false)),
-    ToolSpec(id: "rammap", name: "RamMap", group: "小软件", localVer: "盘内旧版", localDate: "",
+    ToolSpec(id: "rammap", name: "RamMap", group: "小软件", localVer: "1.51", localDate: "",
              usbRel: "其他小软件/RamMap（清理内存）.exe", glob: "其他小软件/RamMap（清理内存）.exe",
              nameTemplate: "其他小软件/RamMap（清理内存）.exe", zipMember: "RAMMap.exe",
              homepage: "https://learn.microsoft.com/sysinternals/downloads/rammap",
@@ -149,7 +149,7 @@ let TOOLS: [ToolSpec] = [
              homepage: "https://www.techpowerup.com/download/techpowerup-gpu-z/",
              checker: .page(url: "https://www.techpowerup.com/download/techpowerup-gpu-z/", vRe: "v(2\\.[0-9.]+)",
                             dlTemplate: "GPUZ_POST", pickMax: true)),
-    ToolSpec(id: "clash", name: "Clash Verge", group: "专业软件", localVer: "2.5.2", localDate: "",
+    ToolSpec(id: "clash", name: "Clash Verge", group: "专业软件", localVer: "2.5.2", localDate: "2026-07-19",
              usbRel: "其他的专业软件/Clash.Verge_2.5.2（翻墙工具）.exe", glob: "其他的专业软件/Clash.Verge_*（翻墙工具）.exe",
              nameTemplate: "其他的专业软件/Clash.Verge_{V}（翻墙工具）.exe",
              homepage: "https://github.com/clash-verge-rev/clash-verge-rev",
@@ -175,7 +175,7 @@ let TOOLS: [ToolSpec] = [
              usbRel: "其他的专业软件/远程控制类/AnyDesk（内网远程）.exe", glob: "其他的专业软件/远程控制类/AnyDesk（内网远程）.exe",
              nameTemplate: "其他的专业软件/远程控制类/AnyDesk（内网远程）.exe",
              homepage: "https://anydesk.com", checker: .anydeskLog),
-    ToolSpec(id: "tbtool", name: "图吧工具箱", group: "专业软件", localVer: "2026.08", localDate: "2026-08-19",
+    ToolSpec(id: "tbtool", name: "图吧工具箱", group: "专业软件", localVer: "2026.08", localDate: "2026-08 月版",
              usbRel: "其他的专业软件/【工具大全】图吧工具箱2026年08月.exe",
              homepage: "https://www.tbtool.cn", checker: .tbtool),
 
@@ -184,11 +184,11 @@ let TOOLS: [ToolSpec] = [
              nameTemplate: "各种驱动工具/360驱动大师·网卡版（小白推荐）.exe",
              homepage: "https://dd.360.cn",
              checker: .lastMod(url: "https://dl.360safe.com/drvmgr/360DrvMgrInstaller_net.exe", verLabel: "官方{D}版")),
-    ToolSpec(id: "drvceo", name: "驱动总裁·离线网卡版", group: "驱动与运行库", localVer: "盘内2025-02版", localDate: "",
+    ToolSpec(id: "drvceo", name: "驱动总裁·离线网卡版", group: "驱动与运行库", localVer: "2.18.0.11", localDate: "",
              usbRel: "各种驱动工具/驱动总裁·离线网卡版（专业驱动）.exe",
-             homepage: "https://www.drvceo.com",
-             checker: .page(url: "https://www.drvceo.com/xiazai.html", vRe: "驱动总裁[Vv ]*([0-9]+\\.[0-9]+(\\.[0-9]+)*)", dlTemplate: nil, pickMax: false)),
-    ToolSpec(id: "vcredist", name: "VisualCppRedist 运行库", group: "驱动与运行库", localVer: "0.105.0", localDate: "",
+             homepage: "https://www.sysceo.com/dc",
+             checker: .page(url: "https://www.sysceo.com/dc/download.html", vRe: "(20[0-9]{2}/[0-9]{2}/[0-9]{2})", dlTemplate: nil, pickMax: true)),
+    ToolSpec(id: "vcredist", name: "VisualCppRedist 运行库", group: "驱动与运行库", localVer: "0.105.0", localDate: "2026-06-06",
              usbRel: "插件或补丁（软件打不开试试打这个）/VisualCppRedist(运行库合集) v0.105.exe",
              glob: "插件或补丁（软件打不开试试打这个）/VisualCppRedist(运行库合集)*.exe",
              nameTemplate: "插件或补丁（软件打不开试试打这个）/VisualCppRedist(运行库合集) v{V}.exe",
@@ -310,6 +310,9 @@ func runChecker(_ spec: ToolSpec) async -> CheckResult {
             r.latestVer = "\(num.prefix(1)).\(num.dropFirst()) Build \(bld)"
         } else if spec.id == "diskgenius" {   // 6201829 → 6.2.0.1829
             r.latestVer = "\(raw.prefix(1)).\(raw.dropFirst(1).prefix(1)).\(raw.dropFirst(2).prefix(1)).\(raw.suffix(4))"
+        } else if spec.id == "drvceo" {   // 官网只公布更新日期不公布版本号
+            r.latestVer = "官方\(raw.replacingOccurrences(of: "/", with: "-"))更新"
+            r.latestDate = raw.replacingOccurrences(of: "/", with: "-")
         } else {
             r.latestVer = raw
         }
@@ -377,16 +380,14 @@ func runChecker(_ spec: ToolSpec) async -> CheckResult {
         }
         if let b = best { r.latestVer = b.0; r.latestDate = normDate(b.1) }
     case .sunlogin:
-        if let page = await fetchText("https://sunlogin.oray.com/download") {
-            let bundles = matches(page, "(//res1\\.orayimg\\.com/sunlogin/[^\"' ]*\\.js)").map { "https:" + $0[1] }
-            for b in bundles.prefix(8) {
-                if let js = await fetchText(b),
-                   let m = matches(js, "SunloginClient_([0-9][0-9.]+)\\.exe").first, m.count > 1 {
-                    r.latestVer = m[1]; break
-                }
-            }
+        // 贝锐官方版本 API（向日葵X for Windows）
+        if let body = await fetchText("https://client-webapi.oray.com/softwares/SUNLOGIN_X_WINDOWS?versiontype=stable"),
+           let data = body.data(using: .utf8),
+           let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            r.latestVer = j["versionno"] as? String
+            if let c = j["createtime"] as? String { r.latestDate = String(c.prefix(10)) }
         }
-        if r.latestVer == nil { r.note = "官网动态渲染抓不到，点官网按钮看" }
+        if r.latestVer == nil { r.note = "官方API未响应，点官网按钮看" }
     case .tbtool:
         guard let body = await fetchText("https://www.tbtool.cn/") else { break }
         if let m = matches(body, "(20[0-9]{2}\\.[0-9]{2})").first, m.count > 1 {
@@ -570,9 +571,9 @@ struct RowView: View {
     var upd: UpdState { store.updStates[spec.id] ?? .idle }
 
     var localDateText: String {
+        if spec.localDate.contains("月版") { return spec.localDate }
         if !spec.localDate.isEmpty { return spec.localDate + " 发布" }
-        if let f = store.fileDates[spec.id] { return f + " 盘内文件" }
-        return "日期未知"
+        return "发布日待查"
     }
 
     var body: some View {
@@ -604,9 +605,9 @@ struct RowView: View {
                         Text(res.latestDate.map { $0.contains("月版") ? $0 : $0 + " 发布" } ?? "日期未知")
                             .font(.system(size: 10)).foregroundColor(.secondary)
                     }
-                    .frame(width: 165, alignment: .leading)
+                    .frame(width: 167, alignment: .leading)
                 } else {
-                    Spacer().frame(width: 180)
+                    Spacer().frame(width: 190)
                 }
             }
 
