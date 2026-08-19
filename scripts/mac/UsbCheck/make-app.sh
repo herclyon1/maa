@@ -30,5 +30,5 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </dict>
 </plist>
 PLIST
-codesign --force --deep -s - "$APP" 2>/dev/null || true
+codesign --force --deep -s "UsbCheckDev" "$APP" 2>/dev/null || codesign --force --deep -s - "$APP"
 echo "打包完成: $APP"

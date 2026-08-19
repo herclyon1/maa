@@ -606,7 +606,14 @@ class Engine:
             return False
         self._last_wait_note = ""
         cutoff = self._report_cutoff(now)   # same source as the report itself
-        if now >= cutoff and not self.state.report_sent(day):
+        # An empty ledger means the day had nothing scheduled at all - queues
+        # disabled, or a boot with no work. There is no report to wait for and
+        # _maybe_daily_report returns early without ever marking one sent, so
+        # waiting here waits forever: on 2026-08-19 the evening boot sat awake
+        # all night on exactly this. Only hold the machine open when the day
+        # actually produced runs that still owe a report.
+        if (now >= cutoff and not self.state.report_sent(day)
+                and self.state.read_ledger(day)):
             log.info("到点该关机了，但日报还没发出去，继续等")
             return False
         # Never power off in silence. If the day's real report has not gone out

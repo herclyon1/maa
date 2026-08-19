@@ -1,69 +1,20 @@
 {
-  "version": 2026081801,
-  "note": "🔧 调试模式：两个队列全停、不刷任何东西、不关机。并入 v2026081702 未送达的全部指令（机上 inbox 停在 v1，那批从未应用）。恢复正常时：推新版本把队列重新 enabled + debug_mode off。",
+  "version": 2026081902,
+  "note": "恢复正常运行：调试模式关闭，两队列恢复定时。早 09:00 新队列（明日方舟+终末地），晚 21:30 Evening-MAA（仅明日方舟）。",
   "commands": [
     {
       "action": "debug_mode",
-      "days": 1
-    },
-    {
-      "action": "queue",
-      "name": "Evening-MAA",
-      "enabled": false
+      "off": true
     },
     {
       "action": "queue",
       "name": "新队列",
-      "enabled": false,
-      "scripts": [
-        "MaaEnd"
-      ]
-    },
-    {
-      "action": "maaend_option",
-      "task": "GiftOperator",
-      "option": "GiftCount",
-      "values": {
-        "Count": "5"
-      }
-    },
-    {
-      "action": "maaend_option",
-      "task": "AutoStockStaple",
-      "option": "AutoStockBuyStockFactoryGoodsValleyIVDetectorCompassLimit",
-      "values": {
-        "ValleyDetectorCompassLimit": "20"
-      }
-    },
-    {
-      "action": "maaend_option",
-      "task": "AutoStockStaple",
-      "option": "AutoStockBuyStockFactoryGoodsWulingDetectorCompassLimit",
-      "values": {
-        "WulingDetectorCompassLimit": "20"
-      }
-    },
-    {
-      "action": "maaend_option",
-      "task": "AutoEssence",
-      "option": "AutoEssenceObtainMode",
-      "case": "Discard",
       "enabled": true
     },
     {
-      "action": "maaend_option",
-      "task": "AutoEssence",
-      "option": "AutoEssenceDoOverride",
-      "value": false
-    },
-    {
-      "action": "maaend_option",
-      "task": "AutoEssence",
-      "option": "AutoEssenceChooseLocation",
-      "cases": [
-        "WLSwordVaultDale",
-        "WLQingboStockade"
-      ]
+      "action": "queue",
+      "name": "Evening-MAA",
+      "enabled": true
     }
   ]
 }
