@@ -66,20 +66,20 @@ let TOOLS: [ToolSpec] = [
              homepage: "https://sunlogin.oray.com/download", checker: .sunlogin),
 
     ToolSpec(id: "huorong", name: "火绒安全", group: "常用", localVer: "6.0.11.2", localDate: "2026-08-18",
-             usbRel: "火绒（推荐杀毒软件）.exe", glob: "火绒（推荐杀毒软件）.exe", nameTemplate: "火绒（推荐杀毒软件）.exe",
+             usbRel: "火绒安全（杀毒防护·推荐）.exe", glob: "火绒安全（杀毒防护·推荐）.exe", nameTemplate: "火绒安全（杀毒防护·推荐）.exe",
              homepage: "https://www.huorong.cn/person",
              checker: .redirectName(url: "https://www.huorong.cn/product/downloadHr60.php?pro=hr60",
                                     vRe: "sysdiag-all-x86-([0-9.]+)-", dRe: "-([0-9]{4}\\.[0-9]{2}\\.[0-9]{2})")),
     ToolSpec(id: "7zip", name: "7-Zip", group: "常用", localVer: "26.02", localDate: "2026-06-26",
-             usbRel: "解压软件7-Zip 26.02（官方版）.exe", glob: "解压软件7-Zip*（官方版）.exe",
-             nameTemplate: "解压软件7-Zip {V}（官方版）.exe",
-             extraCopy: (glob: "其他小软件/解压软件/7z*官方版.exe", template: "其他小软件/解压软件/7z {V}官方版.exe"),
+             usbRel: "7-Zip 26.02（解压软件）.exe", glob: "7-Zip*（解压软件）.exe",
+             nameTemplate: "7-Zip {V}（解压软件）.exe",
+             extraCopy: (glob: "其他小软件/解压软件/7-Zip*（解压软件）.exe", template: "其他小软件/解压软件/7-Zip {V}（解压软件）.exe"),
              homepage: "https://www.7-zip.org", checker: .github(repo: "ip7z/7zip", assetRe: "^7z[0-9]+-x64\\.exe$")),
     ToolSpec(id: "chrome", name: "谷歌浏览器", group: "常用", localVer: "151.0.7922.170", localDate: "2026-08-19",
-             usbRel: "谷歌浏览器（官方离线版）.exe", glob: "谷歌浏览器（官方离线版）.exe", nameTemplate: "谷歌浏览器（官方离线版）.exe",
+             usbRel: "Chrome谷歌浏览器（网页浏览器·离线包）.exe", glob: "Chrome谷歌浏览器（网页浏览器·离线包）.exe", nameTemplate: "Chrome谷歌浏览器（网页浏览器·离线包）.exe",
              homepage: "https://www.google.com/chrome/", checker: .chromeDash),
     ToolSpec(id: "firefox", name: "火狐浏览器", group: "常用", localVer: "154.0", localDate: "2026-08-17",
-             usbRel: "火狐浏览器国际版（无广告）.exe", glob: "火狐浏览器国际版（无广告）.exe", nameTemplate: "火狐浏览器国际版（无广告）.exe",
+             usbRel: "Firefox火狐浏览器（网页浏览器·国际版）.exe", glob: "Firefox火狐浏览器（网页浏览器·国际版）.exe", nameTemplate: "Firefox火狐浏览器（网页浏览器·国际版）.exe",
              homepage: "https://www.mozilla.org/firefox/", checker: .firefoxJSON),
     ToolSpec(id: "360cse", name: "360极速浏览器X", group: "常用", localVer: "23.0.1253.0", localDate: "2026-07-03",
              usbRel: "360极速浏览器X（国内使用）.exe", glob: "360极速浏览器X（国内使用）.exe", nameTemplate: "360极速浏览器X（国内使用）.exe",
@@ -102,8 +102,8 @@ let TOOLS: [ToolSpec] = [
              homepage: "https://notepad-plus-plus.org",
              checker: .github(repo: "notepad-plus-plus/notepad-plus-plus", assetRe: "Installer\\.x64\\.exe$")),
     ToolSpec(id: "potplayer", name: "PotPlayer", group: "小软件", localVer: "官方2026-08-19版", localDate: "2026-08-19",
-             usbRel: "其他小软件/PotPlayer官方最新版（专业视频播放器）.exe", glob: "其他小软件/PotPlayer官方最新版（专业视频播放器）.exe",
-             nameTemplate: "其他小软件/PotPlayer官方最新版（专业视频播放器）.exe",
+             usbRel: "其他小软件/PotPlayer（专业视频播放器）.exe", glob: "其他小软件/PotPlayer（专业视频播放器）.exe",
+             nameTemplate: "其他小软件/PotPlayer（专业视频播放器）.exe",
              homepage: "https://potplayer.daum.net",
              checker: .lastMod(url: "https://t1.daumcdn.net/potplayer/PotPlayer/Version/Latest/PotPlayerSetup64.exe", verLabel: "官方{D}版")),
     ToolSpec(id: "idm", name: "IDM", group: "小软件", localVer: "6.43 Build 9", localDate: "2026-08-17",
@@ -113,7 +113,7 @@ let TOOLS: [ToolSpec] = [
              checker: .page(url: "https://www.internetdownloadmanager.com/download.html", vRe: "idman([0-9]+build[0-9]+)\\.exe",
                             dlTemplate: "https://download.internetdownloadmanager.com/idman{RAW}.exe", pickMax: false)),
     ToolSpec(id: "memreduct", name: "Mem Reduct", group: "小软件", localVer: "3.4", localDate: "2023-02-11",
-             usbRel: "其他小软件/Mem Reduct（内存定时清理）.zip", glob: "其他小软件/Mem Reduct（内存定时清理）.*",
+             usbRel: "其他小软件/Mem Reduct（内存定时清理）.zip", glob: "其他小软件/Mem Reduct*（内存定时清理）.*",
              nameTemplate: "其他小软件/Mem Reduct {V}（内存定时清理）.exe",
              homepage: "https://github.com/henrypp/memreduct",
              checker: .github(repo: "henrypp/memreduct", assetRe: "-setup\\.exe$")),
@@ -129,8 +129,8 @@ let TOOLS: [ToolSpec] = [
              checker: .page(url: "https://www.bandisoft.com/honeyview/", vRe: "HoneyView ?v?([0-9]+\\.[0-9.]+)",
                             dlTemplate: "https://dl.bandisoft.com/honeyview/HONEYVIEW-SETUP.EXE", pickMax: false)),
     ToolSpec(id: "rammap", name: "RamMap", group: "小软件", localVer: "1.51", localDate: "",
-             usbRel: "其他小软件/RamMap（清理内存）.exe", glob: "其他小软件/RamMap（清理内存）.exe",
-             nameTemplate: "其他小软件/RamMap（清理内存）.exe", zipMember: "RAMMap.exe",
+             usbRel: "其他小软件/RamMap（内存诊断清理·微软Sysinternals）.exe", glob: "其他小软件/RamMap（内存诊断清理·微软Sysinternals）.exe",
+             nameTemplate: "其他小软件/RamMap（内存诊断清理·微软Sysinternals）.exe", zipMember: "RAMMap.exe",
              homepage: "https://learn.microsoft.com/sysinternals/downloads/rammap",
              checker: .page(url: "https://learn.microsoft.com/en-us/sysinternals/downloads/rammap", vRe: "RAMMap v([0-9.]+)",
                             dlTemplate: "https://download.sysinternals.com/files/RAMMap.zip", pickMax: false)),
@@ -142,8 +142,8 @@ let TOOLS: [ToolSpec] = [
              checker: .page(url: "https://www.cpuid.com/softwares/cpu-z.html", vRe: "cpu-z_([0-9.]+)-en\\.exe",
                             dlTemplate: "https://download.cpuid.com/cpu-z/cpu-z_{V}-en.exe", pickMax: true)),
     ToolSpec(id: "gpuz", name: "GPU-Z", group: "专业软件", localVer: "2.70.0", localDate: "2026-06-16",
-             usbRel: "其他的专业软件/GPU-Z（显卡信息).exe", glob: "其他的专业软件/GPU-Z（显卡信息).exe",
-             nameTemplate: "其他的专业软件/GPU-Z（显卡信息).exe",
+             usbRel: "其他的专业软件/GPU-Z（显卡信息）.exe", glob: "其他的专业软件/GPU-Z（显卡信息）.exe",
+             nameTemplate: "其他的专业软件/GPU-Z（显卡信息）.exe",
              homepage: "https://www.techpowerup.com/download/techpowerup-gpu-z/",
              checker: .page(url: "https://www.techpowerup.com/download/techpowerup-gpu-z/", vRe: "v(2\\.[0-9.]+)",
                             dlTemplate: "GPUZ_POST", pickMax: true)),
@@ -159,14 +159,14 @@ let TOOLS: [ToolSpec] = [
              checker: .page(url: "https://www.diskgenius.cn/download/downloadURL.php?Name=DG_64", vRe: "DG([0-9]{7})_x64\\.zip",
                             dlTemplate: "https://download_cn.eassos.com/DG{RAW}_x64.zip", pickMax: false)),
     ToolSpec(id: "geek", name: "Geek Uninstaller", group: "专业软件", localVer: "1.5.3.170", localDate: "2025-11-24",
-             usbRel: "其他的专业软件/强力卸载软件（Geek官方版）.exe", glob: "其他的专业软件/强力卸载软件（Geek官方版）.exe",
-             nameTemplate: "其他的专业软件/强力卸载软件（Geek官方版）.exe", zipMember: "geek.exe",
+             usbRel: "其他的专业软件/Geek Uninstaller（强力卸载）.exe", glob: "其他的专业软件/Geek Uninstaller（强力卸载）.exe",
+             nameTemplate: "其他的专业软件/Geek Uninstaller（强力卸载）.exe", zipMember: "geek.exe",
              homepage: "https://geekuninstaller.com",
              checker: .page(url: "https://geekuninstaller.com/download", vRe: "([0-9]\\.[0-9]\\.[0-9]+)",
                             dlTemplate: "https://geekuninstaller.com/geek.zip", pickMax: false)),
     ToolSpec(id: "revo", name: "Revo Uninstaller", group: "专业软件", localVer: "官方2026-05-13版", localDate: "2026-05-13",
-             usbRel: "其他的专业软件/软件卸载Revo_Uninstaller（官方免费版）.exe", glob: "其他的专业软件/软件卸载Revo_Uninstaller（官方免费版）.exe",
-             nameTemplate: "其他的专业软件/软件卸载Revo_Uninstaller（官方免费版）.exe",
+             usbRel: "其他的专业软件/Revo Uninstaller（软件卸载·官方免费版）.exe", glob: "其他的专业软件/Revo Uninstaller（软件卸载·官方免费版）.exe",
+             nameTemplate: "其他的专业软件/Revo Uninstaller（软件卸载·官方免费版）.exe",
              homepage: "https://www.revouninstaller.com",
              checker: .lastMod(url: "https://download.revouninstaller.com/download/revosetup.exe", verLabel: "官方{D}版")),
     ToolSpec(id: "anydesk", name: "AnyDesk", group: "专业软件", localVer: "9.7.15", localDate: "2026-08-17",
@@ -174,9 +174,9 @@ let TOOLS: [ToolSpec] = [
              nameTemplate: "其他的专业软件/远程控制类/AnyDesk（内网远程）.exe",
              homepage: "https://anydesk.com", checker: .anydeskLog),
     ToolSpec(id: "tbtool", name: "图吧工具箱", group: "专业软件", localVer: "2026.08", localDate: "2026-08 月版",
-             usbRel: "其他的专业软件/【工具大全】图吧工具箱2026年08月.exe",
-             glob: "其他的专业软件/【工具大全】图吧工具箱*.exe",
-             nameTemplate: "其他的专业软件/【工具大全】图吧工具箱{V}.exe",
+             usbRel: "其他的专业软件/图吧工具箱2026.08（硬件工具大全）.exe",
+             glob: "其他的专业软件/图吧工具箱*（硬件工具大全）.exe",
+             nameTemplate: "其他的专业软件/图吧工具箱{V}（硬件工具大全）.exe",
              homepage: "https://www.tbtool.cn", checker: .tbtool),
 
     ToolSpec(id: "360drv", name: "360驱动大师·网卡版", group: "驱动与运行库", localVer: "官方2026-04-20版", localDate: "2026-04-20",
@@ -188,6 +188,13 @@ let TOOLS: [ToolSpec] = [
              usbRel: "各种驱动工具/驱动总裁·离线网卡版（专业驱动）.exe",
              homepage: "https://www.sysceo.com/software-softwarei-id-245.html",
              checker: .drvceo),
+    ToolSpec(id: "ycruncher", name: "y-cruncher", group: "专业软件", localVer: "盘内2025-01版", localDate: "",
+             usbRel: "其他的专业软件/超频类/y-cruncher（圆周率计算·内存烤机）.zip",
+             glob: "其他的专业软件/超频类/y-cruncher*（圆周率计算·内存烤机）.zip",
+             nameTemplate: "其他的专业软件/超频类/y-cruncher v{V}（圆周率计算·内存烤机）.zip",
+             homepage: "https://www.numberworld.org/y-cruncher/",
+             checker: .page(url: "https://www.numberworld.org/y-cruncher/", vRe: "y-cruncher v([0-9.]+[a-z]?)",
+                            dlTemplate: "https://cdn.numberworld.org/y-cruncher-downloads/y-cruncher%20v{V}.zip", pickMax: false)),
     ToolSpec(id: "vcredist", name: "VisualCppRedist 运行库", group: "驱动与运行库", localVer: "0.105.0", localDate: "2026-06-06",
              usbRel: "插件或补丁（软件打不开试试打这个）/VisualCppRedist(运行库合集) v0.105.exe",
              glob: "插件或补丁（软件打不开试试打这个）/VisualCppRedist(运行库合集)*.exe",
@@ -195,9 +202,9 @@ let TOOLS: [ToolSpec] = [
              homepage: "https://github.com/abbodi1406/vcredist",
              checker: .github(repo: "abbodi1406/vcredist", assetRe: "AIO_x86_x64\\.exe$")),
     ToolSpec(id: "java21", name: "Java 21", group: "驱动与运行库", localVer: "21.0.12", localDate: "2026-07-15",
-             usbRel: "插件或补丁（软件打不开试试打这个）/Java21 64位（Oracle官方最新）.exe",
-             glob: "插件或补丁（软件打不开试试打这个）/Java21 64位（Oracle官方最新）.exe",
-             nameTemplate: "插件或补丁（软件打不开试试打这个）/Java21 64位（Oracle官方最新）.exe",
+             usbRel: "插件或补丁（软件打不开试试打这个）/Java21（运行环境·Oracle官方）.exe",
+             glob: "插件或补丁（软件打不开试试打这个）/Java21（运行环境·Oracle官方）.exe",
+             nameTemplate: "插件或补丁（软件打不开试试打这个）/Java21（运行环境·Oracle官方）.exe",
              homepage: "https://www.oracle.com/java/technologies/downloads/",
              checker: .lastMod(url: "https://download.oracle.com/java/21/latest/jdk-21_windows-x64_bin.exe", verLabel: "官方{D}版")),
 ]
@@ -280,7 +287,7 @@ func normDate(_ s: String) -> String {
 
 // MARK: - 查询
 
-func runChecker(_ spec: ToolSpec) async -> CheckResult {
+func runChecker(_ spec: ToolSpec, effLocal: String) async -> CheckResult {
     var r = CheckResult()
     switch spec.checker {
     case .github(let repo, let assetRe):
@@ -399,11 +406,11 @@ func runChecker(_ spec: ToolSpec) async -> CheckResult {
         }
     }
 
-    if spec.id == "todesk" || spec.id == "drvceo" {
-        r.status = .fresh   // 在线下载器/网盘分发,不做版本红绿判定,只显示信息
+    if spec.id == "todesk" {
+        r.status = .fresh   // 在线下载器,不判红绿
     } else if let lv = r.latestVer {
-        if spec.localVer.contains("盘内") { r.status = .outdated }
-        else if newer(lv, spec.localVer) { r.status = .outdated }
+        if effLocal.contains("盘内") { r.status = .outdated }
+        else if newer(lv, effLocal) { r.status = .outdated }
         else { r.status = .fresh }
     } else {
         r.status = .unknown
@@ -506,6 +513,23 @@ final class Store: ObservableObject {
     @Published var fileDates: [String: String] = [:]
     @Published var lastRun = "—"
     @Published var running = false
+    @Published var state: [String: [String: String]] = [:]   // id → {ver, date}
+
+    var statePath: String? { usbPath.map { "$0/.体检状态.json".replacingOccurrences(of: "$0", with: $0) } }
+
+    func effVer(_ t: ToolSpec) -> String { state[t.id]?["ver"] ?? t.localVer }
+    func effDate(_ t: ToolSpec) -> String { state[t.id]?["date"] ?? t.localDate }
+
+    func loadState() {
+        guard let sp = statePath, let d = FileManager.default.contents(atPath: sp),
+              let j = try? JSONSerialization.jsonObject(with: d) as? [String: [String: String]] else { return }
+        state = j
+    }
+    func saveState() {
+        guard let sp = statePath,
+              let d = try? JSONSerialization.data(withJSONObject: state, options: [.prettyPrinted, .sortedKeys]) else { return }
+        try? d.write(to: URL(fileURLWithPath: sp))
+    }
 
     func findUSB() {
         let fm = FileManager.default
@@ -527,11 +551,12 @@ final class Store: ObservableObject {
 
     func refresh() {
         running = true
-        findUSB(); loadFileDates()
+        findUSB(); loadFileDates(); loadState()
         for t in TOOLS { results[t.id] = CheckResult(); updStates[t.id] = .idle }
+        let effs = Dictionary(uniqueKeysWithValues: TOOLS.map { ($0.id, effVer($0)) })
         Task {
             await withTaskGroup(of: (String, CheckResult).self) { g in
-                for t in TOOLS { g.addTask { (t.id, await runChecker(t)) } }
+                for t in TOOLS { g.addTask { (t.id, await runChecker(t, effLocal: effs[t.id] ?? t.localVer)) } }
                 for await (id, res) in g { await MainActor.run { self.results[id] = res } }
             }
             await MainActor.run {
@@ -558,7 +583,8 @@ final class Store: ObservableObject {
                     self.updStates[t.id] = .done
                     var nr = r; nr.status = .fresh
                     self.results[t.id] = nr
-                    _ = v
+                    self.state[t.id] = ["ver": v, "date": r.latestDate ?? ""]
+                    self.saveState()
                 }
             } catch {
                 await MainActor.run { self.updStates[t.id] = .fail(error.localizedDescription) }
@@ -580,10 +606,12 @@ struct RowView: View {
     var res: CheckResult { store.results[spec.id] ?? CheckResult() }
     var upd: UpdState { store.updStates[spec.id] ?? .idle }
 
+    var effV: String { store.effVer(spec) }
+    var effD: String { store.effDate(spec) }
     var localDateText: String {
-        if spec.localVer.contains("在线安装器") { return "始终装官方最新·无发布日概念" }
-        if spec.localDate.contains("月版") { return spec.localDate }
-        if !spec.localDate.isEmpty { return spec.localDate + " 发布" }
+        if effV.contains("在线安装器") { return "始终装官方最新·无发布日概念" }
+        if effD.contains("月版") { return effD }
+        if !effD.isEmpty { return effD + " 发布" }
         return "发布日待查"
     }
 
@@ -603,7 +631,7 @@ struct RowView: View {
             .frame(width: 185, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(spec.localVer).font(.system(size: 12))
+                Text(effV).font(.system(size: 12))
                 Text(localDateText).font(.system(size: 10)).foregroundColor(.secondary)
             }
             .frame(width: 180, alignment: .leading)
