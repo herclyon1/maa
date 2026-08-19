@@ -54,11 +54,11 @@ struct CheckResult {
 // MARK: - 清单（2026-08-19 基线，版本与日期均为真实发布数据）
 
 let TOOLS: [ToolSpec] = [
-    ToolSpec(id: "todesk", name: "ToDesk", group: "特殊关注（装后自升级）", special: true,
+    ToolSpec(id: "todesk", name: "ToDesk", group: "专业软件",
              localVer: "在线安装器（无版本号）", localDate: "",
              usbRel: "其他的专业软件/远程控制类/ToDesk在线安装器（备用远控·运行装最新需联网）.exe",
              homepage: "https://www.todesk.com/download.html", checker: .todesk),
-    ToolSpec(id: "sunlogin", name: "向日葵", group: "特殊关注（装后自升级）", special: true,
+    ToolSpec(id: "sunlogin", name: "向日葵", group: "专业软件",
              localVer: "16.6.0.32198", localDate: "2026-08-05",
              usbRel: "其他的专业软件/远程控制类/向日葵_16.6.0.32198（广泛使用）.exe",
              glob: "其他的专业软件/远程控制类/向日葵_*（广泛使用）.exe",
@@ -86,7 +86,7 @@ let TOOLS: [ToolSpec] = [
              homepage: "https://browser.360.cn/ee/",
              checker: .page(url: "https://browser.360.cn/ee/", vRe: "360cse_([0-9.]+)\\.exe",
                             dlTemplate: "https://sedl.360tpcdn.com/cse/360cse_{V}.exe", pickMax: true)),
-    ToolSpec(id: "office", name: "Office 离线包", group: "常用", localVer: "16.0.20326.20100", localDate: "2026-08-19",
+    ToolSpec(id: "office", name: "Office 离线包", group: "常用", localVer: "16.0.20326.20100", localDate: "2026-08-18",
              usbRel: "Office离线安装包（免联网安装Word Excel PPT）/setup.exe", claudeOnly: true,
              homepage: "https://www.office.com", checker: .officeAPI),
 
@@ -156,7 +156,7 @@ let TOOLS: [ToolSpec] = [
              usbRel: "其他的专业软件/DiskGenius专业版6.2 x64（分区工具·解压后用）.zip", glob: "其他的专业软件/DiskGenius专业版* x64（分区工具·解压后用）.zip",
              nameTemplate: "其他的专业软件/DiskGenius专业版{V} x64（分区工具·解压后用）.zip",
              homepage: "https://www.diskgenius.cn",
-             checker: .page(url: "https://www.diskgenius.cn/download.php", vRe: "DG([0-9]{7})_x64\\.zip",
+             checker: .page(url: "https://www.diskgenius.cn/download/downloadURL.php?Name=DG_64", vRe: "DG([0-9]{7})_x64\\.zip",
                             dlTemplate: "https://download_cn.eassos.com/DG{RAW}_x64.zip", pickMax: false)),
     ToolSpec(id: "geek", name: "Geek Uninstaller", group: "专业软件", localVer: "1.5.3.170", localDate: "2025-11-24",
              usbRel: "其他的专业软件/强力卸载软件（Geek官方版）.exe", glob: "其他的专业软件/强力卸载软件（Geek官方版）.exe",
@@ -288,7 +288,7 @@ func runChecker(_ spec: ToolSpec) async -> CheckResult {
               let data = body.data(using: .utf8),
               let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { break }
         var tag = (j["tag_name"] as? String) ?? ""
-        if tag.hasPrefix("v") { tag.removeFirst() }
+        while let f = tag.first, f == "v" || f == "V" || f == "." { tag.removeFirst() }
         r.latestVer = tag
         if let d = j["published_at"] as? String { r.latestDate = String(d.prefix(10)) }
         if let assets = j["assets"] as? [[String: Any]] {
@@ -678,7 +678,7 @@ struct ContentView: View {
             .padding(10)
             Divider()
             List {
-                ForEach(["特殊关注（装后自升级）", "常用", "小软件", "专业软件", "驱动与运行库"], id: \.self) { g in
+                ForEach(["常用", "小软件", "专业软件", "驱动与运行库"], id: \.self) { g in
                     Section(header: Text(g).font(.system(size: 11, weight: .bold))) {
                         ForEach(TOOLS.filter { $0.group == g }) { t in
                             RowView(spec: t, store: store)
@@ -687,7 +687,7 @@ struct ContentView: View {
                 }
             }
             Divider()
-            Text("上次体检：\(store.lastRun) ｜ 特殊关注两项装机后自动升级，只标注不更新 ｜ 更新=官方直链下载+替换盘内旧文件，动作记入盘上更新记录")
+            Text("上次体检：\(store.lastRun) ｜ 更新=官方直链下载+替换盘内旧文件，动作记入盘上更新记录")
                 .font(.system(size: 10)).foregroundColor(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading).padding(8)
         }
