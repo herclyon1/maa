@@ -20,6 +20,7 @@ enum Checker {
     case todesk
     case sunlogin
     case tbtool
+    case drvceo
 }
 
 struct ToolSpec: Identifiable {
@@ -54,7 +55,7 @@ struct CheckResult {
 
 let TOOLS: [ToolSpec] = [
     ToolSpec(id: "todesk", name: "ToDesk", group: "特殊关注（装后自升级）", special: true,
-             localVer: "4.7.6.3", localDate: "",
+             localVer: "4.7.6.3（离线包）", localDate: "",
              usbRel: "其他的专业软件/远程控制类/ToDesk_4.7.6.3（备用远控）.exe",
              homepage: "https://www.todesk.com/download.html", checker: .todesk),
     ToolSpec(id: "sunlogin", name: "向日葵", group: "特殊关注（装后自升级）", special: true,
@@ -184,7 +185,7 @@ let TOOLS: [ToolSpec] = [
     ToolSpec(id: "drvceo", name: "驱动总裁·离线网卡版", group: "驱动与运行库", localVer: "2.18.0.11", localDate: "",
              usbRel: "各种驱动工具/驱动总裁·离线网卡版（专业驱动）.exe",
              homepage: "https://www.sysceo.com/software-softwarei-id-245.html",
-             checker: .page(url: "https://www.sysceo.com/software-softwarei-id-245.html", vRe: "版本[：:]([0-9.]+)", dlTemplate: nil, pickMax: false)),
+             checker: .drvceo),
     ToolSpec(id: "vcredist", name: "VisualCppRedist 运行库", group: "驱动与运行库", localVer: "0.105.0", localDate: "2026-06-06",
              usbRel: "插件或补丁（软件打不开试试打这个）/VisualCppRedist(运行库合集) v0.105.exe",
              glob: "插件或补丁（软件打不开试试打这个）/VisualCppRedist(运行库合集)*.exe",
@@ -307,9 +308,6 @@ func runChecker(_ spec: ToolSpec) async -> CheckResult {
             r.latestVer = "\(num.prefix(1)).\(num.dropFirst()) Build \(bld)"
         } else if spec.id == "diskgenius" {   // 6201829 → 6.2.0.1829
             r.latestVer = "\(raw.prefix(1)).\(raw.dropFirst(1).prefix(1)).\(raw.dropFirst(2).prefix(1)).\(raw.suffix(4))"
-        } else if spec.id == "drvceo" {
-            r.latestVer = raw
-            if let dm = matches(body, "更新时间[：:]([0-9-]+)").first, dm.count > 1 { r.latestDate = dm[1] }
         } else {
             r.latestVer = raw
         }
@@ -369,20 +367,9 @@ func runChecker(_ spec: ToolSpec) async -> CheckResult {
             r.downloadURL = "https://download.anydesk.com/AnyDesk.exe"
         }
     case .todesk:
-        guard var body = await fetchText("https://www.todesk.com/download.html") else { break }
-        body = body.replacingOccurrences(of: "\\u002F", with: "/")
-        // Windows 安装包直链里带版本号,只认这一处,避免误抓 iOS/mac 版本
-        if let m = matches(body, "dl\\.todesk\\.com/irrigation/ToDesk_([0-9.]+)\\.exe").first, m.count > 1 {
-            let v = m[1]
-            r.latestVer = v
-            r.downloadURL = "https://dl.todesk.com/irrigation/ToDesk_\(v).exe"
-            let esc = NSRegularExpression.escapedPattern(for: v)
-            if let dm = matches(body, "\"\(esc)\",\"-1\",\"(202[0-9]\\.[0-9]+\\.[0-9]+)\"").first, dm.count > 1 {
-                r.latestDate = normDate(dm[1])
-            }
-            r.downloadURL = nil   // 官方新版只发在线下载器且带防盗链
-            r.note = "盘内4.7.6.3是83MB离线完整包；新版官方只给在线安装器，建议保留"
-        }
+        // 官方已改为在线下载器(腾讯EdgeOne人机验证墙,无法脚本直取),与Office同类:无版本号
+        r.latestVer = "在线下载器（无版本号）"
+        r.note = "官方现只发在线安装器；盘内83MB离线包保留，需在线器时点官网"
     case .sunlogin:
         // 贝锐官方版本 API（向日葵X for Windows）
         if let body = await fetchText("https://client-webapi.oray.com/softwares/SUNLOGIN_X_WINDOWS?versiontype=stable"),
@@ -393,6 +380,12 @@ func runChecker(_ spec: ToolSpec) async -> CheckResult {
             r.downloadURL = j["downloadurl"] as? String
         }
         if r.latestVer == nil { r.note = "官方API未响应，点官网按钮看" }
+    case .drvceo:
+        if let body = await fetchText("https://www.sysceo.com/software-softwarei-id-245.html") {
+            if let m = matches(body, "版本[：:]([0-9.]+)").first, m.count > 1 { r.latestVer = m[1] }
+            if let dm = matches(body, "更新时间[：:]([0-9-]+)").first, dm.count > 1 { r.latestDate = dm[1] }
+        }
+        r.note = "官方走百度/迅雷网盘(带提取码),点官网手动下"
     case .tbtool:
         guard let body = await fetchText("https://www.tbtool.cn/") else { break }
         if let m = matches(body, "(20[0-9]{2}\\.[0-9]{2})").first, m.count > 1 {
@@ -401,7 +394,9 @@ func runChecker(_ spec: ToolSpec) async -> CheckResult {
         }
     }
 
-    if let lv = r.latestVer {
+    if spec.id == "todesk" || spec.id == "drvceo" {
+        r.status = .fresh   // 在线下载器/网盘分发,不做版本红绿判定,只显示信息
+    } else if let lv = r.latestVer {
         if spec.localVer.contains("盘内") { r.status = .outdated }
         else if newer(lv, spec.localVer) { r.status = .outdated }
         else { r.status = .fresh }
