@@ -55,8 +55,8 @@ struct CheckResult {
 
 let TOOLS: [ToolSpec] = [
     ToolSpec(id: "todesk", name: "ToDesk", group: "特殊关注（装后自升级）", special: true,
-             localVer: "4.7.6.3（离线包）", localDate: "",
-             usbRel: "其他的专业软件/远程控制类/ToDesk_4.7.6.3（备用远控）.exe",
+             localVer: "在线安装器（无版本号）", localDate: "",
+             usbRel: "其他的专业软件/远程控制类/ToDesk在线安装器（备用远控·运行装最新需联网）.exe",
              homepage: "https://www.todesk.com/download.html", checker: .todesk),
     ToolSpec(id: "sunlogin", name: "向日葵", group: "特殊关注（装后自升级）", special: true,
              localVer: "16.6.0.32198", localDate: "2026-08-05",
@@ -175,6 +175,8 @@ let TOOLS: [ToolSpec] = [
              homepage: "https://anydesk.com", checker: .anydeskLog),
     ToolSpec(id: "tbtool", name: "图吧工具箱", group: "专业软件", localVer: "2026.08", localDate: "2026-08 月版",
              usbRel: "其他的专业软件/【工具大全】图吧工具箱2026年08月.exe",
+             glob: "其他的专业软件/【工具大全】图吧工具箱*.exe",
+             nameTemplate: "其他的专业软件/【工具大全】图吧工具箱{V}.exe",
              homepage: "https://www.tbtool.cn", checker: .tbtool),
 
     ToolSpec(id: "360drv", name: "360驱动大师·网卡版", group: "驱动与运行库", localVer: "官方2026-04-20版", localDate: "2026-04-20",
@@ -211,7 +213,8 @@ final class NoRedirect: NSObject, URLSessionTaskDelegate {
 
 func request(_ url: String, method: String = "GET", follow: Bool = true,
              referer: String? = nil, body: String? = nil) async -> (Data?, [String: String]) {
-    guard let u = URL(string: url) else { return (nil, [:]) }
+    let encoded = url.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? url
+    guard let u = URL(string: url) ?? URL(string: encoded) else { return (nil, [:]) }
     var rq = URLRequest(url: u, timeoutInterval: 30)
     rq.httpMethod = method
     rq.setValue(UA, forHTTPHeaderField: "User-Agent")
@@ -369,7 +372,7 @@ func runChecker(_ spec: ToolSpec) async -> CheckResult {
     case .todesk:
         // 官方已改为在线下载器(腾讯EdgeOne人机验证墙,无法脚本直取),与Office同类:无版本号
         r.latestVer = "在线下载器（无版本号）"
-        r.note = "官方现只发在线安装器；盘内83MB离线包保留，需在线器时点官网"
+        r.note = "运行时自动下载并安装官方最新版，需联网（与Office安装器同理）"
     case .sunlogin:
         // 贝锐官方版本 API（向日葵X for Windows）
         if let body = await fetchText("https://client-webapi.oray.com/softwares/SUNLOGIN_X_WINDOWS?versiontype=stable"),
@@ -391,6 +394,8 @@ func runChecker(_ spec: ToolSpec) async -> CheckResult {
         if let m = matches(body, "(20[0-9]{2}\\.[0-9]{2})").first, m.count > 1 {
             r.latestVer = m[1]
             r.latestDate = m[1].replacingOccurrences(of: ".", with: "-") + " 月版"
+            let compact = m[1].replacingOccurrences(of: ".", with: "")
+            r.downloadURL = "https://apac.tualatin.club/图吧工具箱\(compact)安装包.exe"
         }
     }
 
@@ -576,6 +581,7 @@ struct RowView: View {
     var upd: UpdState { store.updStates[spec.id] ?? .idle }
 
     var localDateText: String {
+        if spec.localVer.contains("在线安装器") { return "始终装官方最新·无发布日概念" }
         if spec.localDate.contains("月版") { return spec.localDate }
         if !spec.localDate.isEmpty { return spec.localDate + " 发布" }
         return "发布日待查"
