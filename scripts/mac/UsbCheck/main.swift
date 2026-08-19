@@ -90,12 +90,12 @@ let TOOLS: [ToolSpec] = [
              usbRel: "Office离线安装包（免联网安装Word Excel PPT）/setup.exe", claudeOnly: true,
              homepage: "https://www.office.com", checker: .officeAPI),
 
-    ToolSpec(id: "everything", name: "Everything", group: "小软件", localVer: "1.4.1.1032", localDate: "2026-01-23",
-             usbRel: "其他小软件/Everything-1.4.1.1032（文件搜索）.exe", glob: "其他小软件/Everything-*（文件搜索）.exe",
-             nameTemplate: "其他小软件/Everything-{V}（文件搜索）.exe",
-             homepage: "https://www.voidtools.com",
-             checker: .page(url: "https://www.voidtools.com/downloads/", vRe: "Everything-([0-9.]+)\\.x64-Setup\\.exe",
-                            dlTemplate: "https://www.voidtools.com/Everything-{V}.x64-Setup.exe", pickMax: false)),
+    ToolSpec(id: "everything", name: "Everything", group: "小软件", localVer: "1.5.0.1415b", localDate: "2026-06-11",
+             usbRel: "其他小软件/Everything 1.5.0.1415b（文件搜索）.exe", glob: "其他小软件/Everything*（文件搜索）.exe",
+             nameTemplate: "其他小软件/Everything {V}（文件搜索）.exe",
+             homepage: "https://www.voidtools.com/forum/viewforum.php?f=12",
+             checker: .page(url: "https://www.voidtools.com/forum/viewforum.php?f=12", vRe: "1\\.5[.0-9]*\\.([0-9]{4})([ab])",
+                            dlTemplate: "EVERYTHING15", pickMax: false)),
     ToolSpec(id: "npp", name: "Notepad++", group: "小软件", localVer: "8.9.7", localDate: "2026-07-14",
              usbRel: "其他小软件/Notepad++（文本类处理）.exe", glob: "其他小软件/Notepad++（文本类处理）.exe",
              nameTemplate: "其他小软件/Notepad++（文本类处理）.exe",
@@ -122,12 +122,11 @@ let TOOLS: [ToolSpec] = [
              nameTemplate: "其他小软件/Twinkle.Tray.v{V}（显示器亮度调节）.exe",
              homepage: "https://twinkletray.com",
              checker: .github(repo: "xanderfrangos/twinkle-tray", assetRe: "^Twinkle.*\\.exe$")),
-    ToolSpec(id: "honeyview", name: "HoneyView", group: "小软件", localVer: "5.53", localDate: "2024-06-21",
-             usbRel: "其他小软件/HoneyView（图片查看器）.exe", glob: "其他小软件/HoneyView（图片查看器）.exe",
-             nameTemplate: "其他小软件/HoneyView（图片查看器）.exe",
-             homepage: "https://www.bandisoft.com/honeyview/",
-             checker: .page(url: "https://www.bandisoft.com/honeyview/", vRe: "HoneyView ?v?([0-9]+\\.[0-9.]+)",
-                            dlTemplate: "https://dl.bandisoft.com/honeyview/HONEYVIEW-SETUP.EXE", pickMax: false)),
+    ToolSpec(id: "imageglass", name: "ImageGlass", group: "小软件", localVer: "9.6.1.807", localDate: "2026-08-06",
+             usbRel: "其他小软件/ImageGlass 9.6.1（图片查看器）.msi", glob: "其他小软件/ImageGlass*（图片查看器）.msi",
+             nameTemplate: "其他小软件/ImageGlass {V}（图片查看器）.msi",
+             homepage: "https://imageglass.org",
+             checker: .github(repo: "d2phap/ImageGlass", assetRe: "x64\\.msi$")),
     ToolSpec(id: "rammap", name: "RamMap", group: "小软件", localVer: "1.51", localDate: "",
              usbRel: "其他小软件/RamMap（内存诊断清理·微软Sysinternals）.exe", glob: "其他小软件/RamMap（内存诊断清理·微软Sysinternals）.exe",
              nameTemplate: "其他小软件/RamMap（内存诊断清理·微软Sysinternals）.exe", zipMember: "RAMMap.exe",
@@ -159,11 +158,16 @@ let TOOLS: [ToolSpec] = [
              checker: .page(url: "https://www.diskgenius.cn/download/downloadURL.php?Name=DG_64", vRe: "DG([0-9]{7})_x64\\.zip",
                             dlTemplate: "https://download_cn.eassos.com/DG{RAW}_x64.zip", pickMax: false)),
     ToolSpec(id: "geek", name: "Geek Uninstaller", group: "专业软件", localVer: "1.5.3.170", localDate: "2025-11-24",
-             usbRel: "其他的专业软件/Geek Uninstaller（强力卸载）.exe", glob: "其他的专业软件/Geek Uninstaller（强力卸载）.exe",
-             nameTemplate: "其他的专业软件/Geek Uninstaller（强力卸载）.exe", zipMember: "geek.exe",
+             usbRel: "其他的专业软件/Geek Uninstaller（强力卸载·十年经典单文件）.exe", glob: "其他的专业软件/Geek Uninstaller（强力卸载·十年经典单文件）.exe",
+             nameTemplate: "其他的专业软件/Geek Uninstaller（强力卸载·十年经典单文件）.exe", zipMember: "geek.exe",
              homepage: "https://geekuninstaller.com",
              checker: .page(url: "https://geekuninstaller.com/download", vRe: "([0-9]\\.[0-9]\\.[0-9]+)",
                             dlTemplate: "https://geekuninstaller.com/geek.zip", pickMax: false)),
+    ToolSpec(id: "bcu", name: "BCUninstaller", group: "专业软件", localVer: "6.2.0", localDate: "2026-06-09",
+             usbRel: "其他的专业软件/BCUninstaller 6.2（批量强力卸载）.exe", glob: "其他的专业软件/BCUninstaller*（批量强力卸载）.exe",
+             nameTemplate: "其他的专业软件/BCUninstaller {V}（批量强力卸载）.exe",
+             homepage: "https://www.bcuninstaller.com",
+             checker: .github(repo: "BCUninstaller/Bulk-Crap-Uninstaller", assetRe: "setup\\.exe$")),
     ToolSpec(id: "revo", name: "Revo Uninstaller", group: "专业软件", localVer: "官方2026-05-13版", localDate: "2026-05-13",
              usbRel: "其他的专业软件/Revo Uninstaller（软件卸载·官方免费版）.exe", glob: "其他的专业软件/Revo Uninstaller（软件卸载·官方免费版）.exe",
              nameTemplate: "其他的专业软件/Revo Uninstaller（软件卸载·官方免费版）.exe",
@@ -626,6 +630,7 @@ struct RowView: View {
                     }
                 }
                 if let n = res.note { Text(n).font(.system(size: 10)).foregroundColor(.orange) }
+            if spec.id == "geek" { Text("功能已臻完备，更新慢是成熟不是怠惰").font(.system(size: 10)).foregroundColor(.secondary) }
                 if case .fail(let m) = upd { Text("更新失败：\(m)").font(.system(size: 10)).foregroundColor(.red) }
             }
             .frame(width: 185, alignment: .leading)
