@@ -545,7 +545,7 @@ class Engine:
         """
         now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
         day = now.strftime("%Y-%m-%d")
-        if self.state.interim_sent(day) or self.state.report_sent(day):
+        if self.state.report_sent(day):
             return
         if now >= self._report_cutoff(now):
             return          # the real daily report is due; let it do the talking
@@ -554,9 +554,14 @@ class Engine:
             return
         if self._unfinished_queues(now, entries):
             return
+        # Once per finished daytime ROUND, not once per day: a make-up run
+        # adds entries past the covered mark and deserves its own interim
+        # (operator order 2026-08-20 - the silent afternoon rerun taught us).
+        if len(entries) <= self.state.interim_covered(day):
+            return
         if self.send_daily_now(mark=False):
-            self.state.mark_interim_sent(day)
-            log.info("🔎 %s 白天进度已推送（%d 条记录）", day, len(entries))
+            self.state.mark_interim_sent(day, len(entries))
+            log.info("🔎 %s 白天进度已推送（覆盖 %d 条记录）", day, len(entries))
 
     def _maybe_daily_report(self, now: datetime | None = None) -> None:
         now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
@@ -683,7 +688,8 @@ class Engine:
                 and not self.state.interim_sent(day)):
             log.info("关机前补发一份当前进度")
             if self.send_daily_now(mark=False):
-                self.state.mark_interim_sent(day)
+                self.state.mark_interim_sent(
+                    day, len(self.state.read_ledger(day)))
 
         log.info("本轮已处理完毕，60 秒后关机")
         try:

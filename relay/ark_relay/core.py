@@ -116,8 +116,31 @@ class State:
     def interim_sent(self, day: str) -> bool:
         return (self.dir / f"interim-{day}.sent").exists()
 
-    def mark_interim_sent(self, day: str) -> None:
-        (self.dir / f"interim-{day}.sent").touch()
+    def interim_covered(self, day: str) -> int:
+        """How many ledger entries the day's interim reports已经覆盖.
+
+        Stored as a count so a make-up run later the same day (new entries
+        past the covered mark) triggers a fresh interim instead of being
+        swallowed by a boolean "already sent today" - the operator's design
+        is one interim per finished daytime round, not one per day.
+        """
+        try:
+            raw = (self.dir / f"interim-{day}.sent").read_text(
+                encoding="utf-8").strip()
+        except OSError:
+            return 0
+        if not raw:
+            # Legacy empty marker (pre-2026-08-20): sent, count unknown -
+            # never re-announce the day's already-reported rounds.
+            return 10**6
+        try:
+            return int(raw)
+        except ValueError:
+            return 10**6
+
+    def mark_interim_sent(self, day: str, covered: int = 1) -> None:
+        (self.dir / f"interim-{day}.sent").write_text(
+            str(covered), encoding="utf-8")
 
     def mark_report_sent(self, day: str) -> None:
         (self.dir / f"report-{day}.sent").touch()
