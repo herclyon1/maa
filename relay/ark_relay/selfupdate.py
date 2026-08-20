@@ -110,7 +110,8 @@ def _netloc(url: str) -> str:
     return parts[2] if len(parts) > 2 else url
 
 
-def _get_with_retry(url: str, attempts: int = 3, timeout: int = 20) -> bytes | None:
+def _get_with_retry(url: str, attempts: int = 3, timeout: int = 20,
+                    expect_sha: str = "") -> bytes | None:
     """Fetch, retrying transient failures across both doors.
 
     Measured from the game machine: raw.githubusercontent answered 11 of 11 one
@@ -125,9 +126,18 @@ def _get_with_retry(url: str, attempts: int = 3, timeout: int = 20) -> bytes | N
     urls.sort(key=lambda u: _netloc(u) != _last_good)  # stable: keeps order
     for i in range(attempts):
         for u in urls:
-            if (data := _get_once(u, timeout)) is not None:
-                _last_good = _netloc(u)
-                return data
+            if (data := _get_once(u, timeout)) is None:
+                continue
+            # 内容不对 = 这扇门给的是旧副本，换下一扇，而不是就此放弃。
+            # jsDelivr 的刷新不是原子的（2026-08-21 实测：.py 已经是新的、
+            # manifest 还是旧的），所以"取到了"和"取对了"必须分开判断。
+            # 早先把校验放在这个循环外面，结果 CDN 一旦缓存不同步，整套更新
+            # 就直接失败，压根不会去试永远最新的 raw.githubusercontent。
+            if expect_sha and _sha1(data) != expect_sha:
+                log.warning("%s 给的是旧副本（缓存未刷新），换下一扇门", _netloc(u))
+                continue
+            _last_good = _netloc(u)
+            return data
         if i + 1 < attempts:
             time.sleep(3 * (i + 1))
     return None
@@ -185,20 +195,51 @@ def _remember_version(root: Path, version: int) -> None:
         log.warning("记不住代码版本号，下次可能重复检查", exc_info=True)
 
 
+def _best_manifest(base: str) -> dict | None:
+    """把每扇门的 manifest 都取回来，选版本号最大的那份。
+
+    manifest 是所有校验的基准，唯独它自己没法被校验——所以不能"哪扇门先
+    应答就用哪份"。CDN 的刷新不是原子的，先应答的那扇很可能给的是上一版
+    （实测 2026-08-21：文件已经是新的、manifest 还是旧的），照着旧清单去
+    对新文件，每个文件都判不符，整套更新永远失败。
+
+    版本号只增不减，所以"取最大"既能绕开落后的门，又不需要信任任何一扇。
+    没有版本号的老格式退回"第一份取到的"，保持向后兼容。
+    """
+    best: dict | None = None
+    best_ver = -1
+    fallback: dict | None = None
+    for url in _alternates(base + MANIFEST):
+        if (data := _get_once(url)) is None:
+            continue
+        try:
+            m = json.loads(data)
+        except json.JSONDecodeError:
+            log.warning("%s 给的 manifest 不是合法 JSON", _netloc(url))
+            continue
+        if not isinstance(m, dict) or not isinstance(m.get("files"), dict):
+            continue
+        if fallback is None:
+            fallback = m
+        try:
+            ver = int(m.get("version") or 0)
+        except (TypeError, ValueError):
+            ver = 0
+        if ver > best_ver:
+            best, best_ver = m, ver
+    if best is not None and best_ver > 0:
+        log.debug("选用 v%s 的 manifest", best_ver)
+        return best
+    return fallback
+
+
 def check(root: Path, base_url: str = "") -> list[str]:
     """Fetch and apply any changed files. Returns human-readable lines."""
     base = (base_url or DEFAULT_BASE).rstrip("/") + "/"
-    raw = _get_with_retry(base + MANIFEST)
-    if raw is None:
+    manifest = _best_manifest(base)
+    if manifest is None:
         return []
-    try:
-        manifest = json.loads(raw)
-    except json.JSONDecodeError:
-        log.warning("manifest 不是合法 JSON")
-        return []
-    files = manifest.get("files")
-    if not isinstance(files, dict):
-        return []
+    files = manifest["files"]
 
     # 拒绝比机器上更旧的清单。下载走的是 CDN，CDN 完全可能整套缓存着上一版
     # （旧 manifest + 旧 .py，内部自洽、哈希也对得上），那样机器会被"更新"
@@ -237,10 +278,10 @@ def check(root: Path, base_url: str = "") -> list[str]:
             continue
         if _sha1(target.read_bytes()) == want:
             continue
-        data = _get_with_retry(base + rel)
-        if data is None or _sha1(data) != want:
-            log.warning("%s 下载失败或校验不符，本次更新整体放弃（已下 %d 个文件"
-                        "都不落盘，下次启动重来）", rel, len(staged))
+        data = _get_with_retry(base + rel, expect_sha=want)
+        if data is None:
+            log.warning("%s 所有门都拿不到正确内容，本次更新整体放弃（已下 %d 个"
+                        "文件都不落盘，下次启动重来）", rel, len(staged))
             return []
         staged.append((rel, target, data))
 
