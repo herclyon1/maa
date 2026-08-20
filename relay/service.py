@@ -304,8 +304,25 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         inbox = Inbox(cfg.state_dir, cfg.inbox_url,
                       cfg.maaend_dir or _maaend_dir(cfg), cfg.automas_dir)
 
+        # 队列跑着的时候来了配置指令，就先记在这里，等脚本都停了再落地。
+        deferred_inbox = [False]
+
         def collect(reason: str) -> None:
-            """Check for queued changes and push whatever landed."""
+            """Check for queued changes and push whatever landed.
+
+            改配置必须避开脚本运行期。AUTO-MAS 在跑的时候会用它内存里的那份
+            覆写 ScriptConfig.json，此时写进去的值会被静静冲掉——2026-08-20
+            实测两次：set_wait_time 120 被冲回 60，剿灭开关被冲回打开，于是
+            每轮又白跑一次剿灭。engine.scripts_running() 本来就是为这件事
+            准备的守卫，这里补上调用。
+            """
+            if engine.scripts_running():
+                if not deferred_inbox[0]:
+                    log.info("待办检查（%s）推迟：脚本正在运行，"
+                             "此时改配置会被 AUTO-MAS 冲掉", reason)
+                deferred_inbox[0] = True
+                return
+            deferred_inbox[0] = False
             try:
                 version, messages = inbox.poll()
             except Exception:  # noqa: BLE001 - never let this stop the relay
@@ -454,6 +471,11 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             if not inbox.last_fetch_ok and time.monotonic() >= next_inbox_retry:
                 next_inbox_retry = time.monotonic() + 300
                 collect("重试")
+
+            # 脚本刚停下 -> 把推迟的配置指令补上（现在写不会被冲掉了）。
+            if deferred_inbox[0] and not engine.scripts_running():
+                log.info("脚本已停，补做之前推迟的待办检查")
+                collect("推迟补做")
 
             now = time.monotonic()
             died = bool(automas) and rc == win32event.WAIT_OBJECT_0 + automas_idx

@@ -29,6 +29,11 @@ MISSED_GRACE_MIN = 25
 # A wake-up checkpoint is judged once, in this window past the hour: open two
 # minutes late (a queue may start a moment behind), closed five minutes later.
 CHECK_OPEN_MIN, CHECK_CLOSE_MIN = 2, 7
+# How far a round's FIRST record may sit from a scheduled time and still count
+# as that scheduled round. Only the first record is tested: a queue's later
+# scripts legitimately land 40+ minutes in (MAA then MaaEnd), so testing every
+# record against this window would call every healthy morning "manual".
+MANUAL_WINDOW_MIN = 30
 
 
 class Engine:
@@ -150,6 +155,7 @@ class Engine:
             self.state.mark_seen(rec.run_id)
             self._handled_any = True
         self._flush_pending()
+        self._enforce_annihilation()
         self._check_missed_runs()
         self._maybe_interim_report()
         self._maybe_daily_report()
@@ -533,6 +539,48 @@ class Engine:
                 out.append(f"队列「{q['name']}」还差 {'、'.join(missing)}")
         return out
 
+    def _enforce_annihilation(self) -> None:
+        """本周剿灭已打完就确保开关是关的——但只在没有脚本跑的时候写。
+
+        AUTO-MAS 运行中会覆写 ScriptConfig，那时候写等于白写（见
+        annihilation.enforce 的说明）。
+        """
+        if self._scripts_running():
+            return
+        try:
+            self._annihilation.enforce()
+        except Exception:  # noqa: BLE001 - 校正失败不值得打断本轮
+            log.exception("剿灭开关校正出错")
+
+    def _round_is_manual(self, new_entries: list[dict]) -> bool:
+        """这一轮是不是人手点出来的（而不是定时跑的）。
+
+        手动轮次要单独标注（用户 2026-08-20 令）：定时轮和手动补跑读起来
+        必须一眼能分，否则操作者无法判断"这条到底该不该出现"。
+
+        判据只看本轮最早的一条记录离排期时刻有多远——排期时刻直接读
+        AUTO-MAS 的队列配置，所以改了定时不用同步改这里。读不到排期就返回
+        False：宁可不标，也不要把定时轮误标成手动。
+        """
+        times = [t for q in plan.schedule(self.cfg.automas_dir)
+                 for t in q.get("times", [])]
+        if not times or not new_entries:
+            return False
+        try:
+            first = min(datetime.fromisoformat(e["started"]).astimezone(SERVER_TZ)
+                        for e in new_entries)
+        except (KeyError, ValueError):
+            return False
+        for hhmm in times:
+            try:
+                hh, mm = (int(x) for x in hhmm.split(":"))
+            except ValueError:
+                continue
+            due = first.replace(hour=hh, minute=mm, second=0, microsecond=0)
+            if abs((first - due).total_seconds()) <= MANUAL_WINDOW_MIN * 60:
+                return False
+        return True
+
     def _maybe_interim_report(self, now: datetime | None = None) -> None:
         """Report once the day's earlier queues are done, hours before the
         daily summary is due.
@@ -557,11 +605,14 @@ class Engine:
         # Once per finished daytime ROUND, not once per day: a make-up run
         # adds entries past the covered mark and deserves its own interim
         # (operator order 2026-08-20 - the silent afternoon rerun taught us).
-        if len(entries) <= self.state.interim_covered(day):
+        covered = self.state.interim_covered(day)
+        if len(entries) <= covered:
             return
-        if self.send_daily_now(mark=False):
+        # 只拿本轮新增的记录判断手动/定时；之前几轮已经各自报过了。
+        label = "手动执行" if self._round_is_manual(entries[covered:]) else "临时查看"
+        if self.send_daily_now(mark=False, label=label):
             self.state.mark_interim_sent(day, len(entries))
-            log.info("🔎 %s 白天进度已推送（覆盖 %d 条记录）", day, len(entries))
+            log.info("🔎 %s 已推送「%s」（覆盖 %d 条记录）", day, label, len(entries))
 
     def _maybe_daily_report(self, now: datetime | None = None) -> None:
         now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
@@ -721,20 +772,25 @@ class Engine:
         title2, body = core.format_daily(day, entries, "", tomorrow)
         return title2, body + (f"\n\n{act}" if act else "")
 
-    def send_daily_now(self, mark: bool = True) -> bool:
+    def send_daily_now(self, mark: bool = True, label: str = "临时查看") -> bool:
         """Force today's report out (used by the `report` command and tests).
 
         `mark=False` sends an interim look at the day so far without consuming
         the day's report - the evening summary still goes out on schedule.
         Marking it would silently cancel that summary, which is the opposite of
         what someone asking for a mid-day check wants.
+
+        `label` distinguishes the two non-consuming kinds: 「临时查看」for a
+        scheduled daytime round, 「手动执行」for a round someone triggered by
+        hand. See docs/09-通知模型.md - that distinction is required, not
+        cosmetic: the operator has to be able to tell why a summary appeared.
         """
         now = datetime.now(tz=SERVER_TZ)
         day = now.strftime("%Y-%m-%d")
         entries = self.state.read_ledger(day)
         title, body = self._compose_daily(day, entries)
         if not mark:
-            title = title.replace("📋", "🔎", 1) + "（临时查看）"
+            title = title.replace("📋", "🔎", 1) + f"（{label}）"
         errors = self.notifier.send(title, body)
         if errors:
             log.error("日报推送失败: %s", "；".join(errors))

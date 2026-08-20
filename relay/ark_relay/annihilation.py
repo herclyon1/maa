@@ -139,6 +139,33 @@ class WeeklyGate:
         log.info("本周剿灭已完成，暂时关闭（周一 04:00 后自动恢复为 %s）", current)
         return f"本周剿灭已完成，已暂停到下周一（届时恢复为 {current}）"
 
+    def enforce(self, now: datetime | None = None) -> bool:
+        """本周已打完，就把开关摁回 Close。返回是否真的改了。
+
+        必须可以反复执行，因为一次性关闭关不住：AUTO-MAS 在运行时会用自己
+        内存里的配置覆写 ScriptConfig.json，把闸门刚写下的 Close 冲回去。
+        2026-08-20 实测的现场就是这个样子——闸门状态文件记着「本周已完成」，
+        开关却还开着，于是早晚两班各自又空跑了一次剿灭（每次约 1 分钟，
+        外加一次完整的游戏启动）。on_success 因为 done_week 已匹配而直接
+        返回，永远不会再关第二次，这个洞要一直漏到下周一。
+
+        调用方负责挑没有脚本在跑的时刻调用，否则照样会被冲掉。
+        """
+        if not self.automas_dir:
+            return False
+        now = now or datetime.now(tz=SERVER_TZ)
+        if self._load().get("done_week") != week_key(now):
+            return False        # 本周还没打完，本来就该开着
+        current = read_setting(self.automas_dir)
+        if current in (CLOSED, ""):
+            return False        # 已经关着，或读不到配置
+        ok, detail = _write_setting(self.automas_dir, CLOSED)
+        if not ok:
+            log.warning("剿灭开关重新关闭失败: %s", detail)
+            return False
+        log.info("剿灭开关被冲回「%s」，已重新关闭（%s）", current, detail)
+        return True
+
     def maybe_reopen(self, now: datetime | None = None) -> str:
         """Called at startup. Restores the switch once the week has rolled."""
         if not self.automas_dir:
