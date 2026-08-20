@@ -702,12 +702,18 @@ class Engine:
         failed = [e for e in entries if not e["ok"]]
         head = "全绿 ✅" if not failed else f"{len(failed)} 项出错 ⚠️"
         title = f"📋 {day[5:]} · {head}"
+        # Event countdown rides on every report (operator order, 2026-08-20):
+        # a fixed-stage config plus an event ending overnight is a silent
+        # next-morning failure. Appended outside the model's text so a model
+        # outage can never drop it.
+        act = plan.activity_countdown(self.cfg.automas_dir)
         written = summary.daily_report(self.cfg, entries, tomorrow)
         if written:
             log.info("📋 日报由模型撰写（%d 条记录）", len(entries))
-            return title, written
+            return title, written + (f"\n\n{act}" if act else "")
         log.warning("模型不可用，日报回退到结构化排版")
-        return core.format_daily(day, entries, "", tomorrow)
+        title2, body = core.format_daily(day, entries, "", tomorrow)
+        return title2, body + (f"\n\n{act}" if act else "")
 
     def send_daily_now(self, mark: bool = True) -> bool:
         """Force today's report out (used by the `report` command and tests).

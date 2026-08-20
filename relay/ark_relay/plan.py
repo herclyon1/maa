@@ -233,6 +233,65 @@ def recent_due_queues(automas_dir: Path | None, now, window_minutes: int = 120) 
     return out
 
 
+def activity_countdown(automas_dir: Path | None, now=None,
+                       cache_path: Path | None = None) -> str:
+    """One line per current event: name, remaining time, end on both clocks.
+
+    Read from MAA's own activity cache (cache/gui/StageActivityV2.json,
+    maintained by the MAA resource repo and OTA-updated), so the relay never
+    holds its own copy of event dates. Empty string when anything is missing -
+    a report without a countdown beats no report.
+
+    Requested 2026-08-20: the operator farms event stages on a fixed-stage
+    config; an event ending overnight silently turns the next morning's run
+    into guaranteed failures. The countdown makes that visible in every
+    report, and an expired event is flagged instead of dropped.
+    """
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+    try:
+        if cache_path is None:
+            maa = script_dir(automas_dir, "MAA")
+            if not maa:
+                return ""
+            cache_path = Path(maa) / "cache" / "gui" / "StageActivityV2.json"
+        data = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, ValueError):
+        return ""
+    now = now or datetime.now(tz=SERVER_TZ)
+    lines: list[str] = []
+    for node in ((data.get("Official") or {}).get("sideStoryStage") or {}).values():
+        act = node.get("Activity") if isinstance(node, dict) else None
+        if not isinstance(act, dict):
+            continue
+        name = str(act.get("StageName") or "").strip() or "当期活动"
+        raw = str(act.get("UtcExpireTime") or "")
+        try:
+            tz_hours = int(act.get("TimeZone", 8))
+            end = datetime.strptime(raw, "%Y/%m/%d %H:%M:%S").replace(
+                tzinfo=timezone(timedelta(hours=tz_hours)))
+        except (ValueError, TypeError):
+            continue
+        left = end - now
+        end_txt = (f"{end.astimezone(SERVER_TZ):%m-%d %H:%M} 结束"
+                   f"（东京 {end.astimezone(USER_TZ):%H:%M}）")
+        if left.total_seconds() <= 0:
+            # Only a *recently* ended event deserves the warning - the cache
+            # keeps whole past events around ("红丝绒" months gone), and a
+            # permanent stale alarm teaches the reader to ignore alarms.
+            if left >= -timedelta(days=3):
+                lines.append(f"⚠️ 活动「{name}」已结束——主关卡若还是活动关，"
+                             "下一轮必失败，记得换关")
+            continue
+        days, rem = divmod(int(left.total_seconds()), 86400)
+        hours, rem = divmod(rem, 3600)
+        mins = rem // 60
+        span = (f"{days} 天 {hours} 时" if days else
+                (f"{hours} 时 {mins} 分" if hours else f"{mins} 分"))
+        head = "⚠️ " if left <= timedelta(hours=36) else ""
+        lines.append(f"{head}🗓️ 活动「{name}」剩 {span}，{end_txt}")
+    return "\n".join(lines)
+
+
 def script_dir(automas_dir: Path | None, kind: str) -> Path | None:
     """Where AUTO-MAS says a given script is installed. None if unknown.
 
