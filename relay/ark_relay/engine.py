@@ -330,7 +330,12 @@ class Engine:
                                  capture_output=True, timeout=20).stdout
         except (OSError, subprocess.SubprocessError):
             return True  # cannot tell -> wait rather than cry wolf
-        return any(n in out for n in (b"MAA.exe", b"MaaEnd.exe"))
+        # Endfield.exe is on this list because MaaEnd has NO process of its
+        # own - AUTO-MAS's python drives it in-process (verified 2026-08-20:
+        # during a MaaEnd run tasklist shows only the game). Watching for
+        # "MaaEnd.exe" alone made this check blind through the entire 终末地
+        # phase; the game binary is the only visible sign that phase is live.
+        return any(n in out for n in (b"MAA.exe", b"MaaEnd.exe", b"Endfield.exe"))
 
     def _flush_pending(self) -> None:
         if not (self._pending or self._recovered) or self._scripts_running():
