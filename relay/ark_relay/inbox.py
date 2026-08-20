@@ -5,13 +5,15 @@ what it farms is in another country. Neither end can rely on the other being
 awake, so the instruction goes somewhere that is always up and the machine
 collects it on its own.
 
-That somewhere is a plain file in the project's GitHub repo, fetched over
-raw.githubusercontent.com. Three things decided it, all measured from the
-machine itself rather than assumed:
+That somewhere is a plain file in the project's GitHub repo, fetched over a
+CDN mirror of it. Three things decided it, all measured from the machine
+itself rather than assumed:
 
-  * github.com is unreachable from there (10s timeout), so `git clone`/`pull`
-    can never work - but raw.githubusercontent.com answered 11 out of 11
-    times, 0.65-3.3s. Fetching one file is a different route from cloning.
+  * github.com is unreachable from there (TCP timeout), so `git clone`/`pull`
+    can never work - fetching one file over HTTPS is a different route.
+    raw.githubusercontent itself is barely usable from that line (measured
+    2026-08-21: 2/8, average 38s), so the jsDelivr mirrors go first and raw
+    is kept only as an always-fresh last resort. See _alternates().
   * a public repo needs no token, so nothing secret has to live on someone
     else's PC.
   * the file is written by a person, occasionally, and a repo gives that
@@ -24,6 +26,7 @@ did not move, instead of a machine quietly farming last week's plan.
 """
 from __future__ import annotations
 
+import http.client
 import json
 import logging
 import time
@@ -82,7 +85,20 @@ def _alternates(url: str) -> list[str]:
     if len(parts) < 4:
         return [url]
     owner, repo, branch, path = parts
-    return [url, f"https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{path}"]
+    ref = f"gh/{owner}/{repo}@{branch}/{path}"
+    # 顺序来自 2026-08-21 凌晨在游戏机上的实测（每门 8 次）：
+    #   fastly.jsdelivr  8/8  平均 426ms      ← 最好
+    #   cdn.jsdelivr     7/8  平均 1956ms
+    #   gcore.jsdelivr   7/8  平均 2398ms
+    #   raw.github       2/8  平均 38179ms    ← 最差，但内容永远最新
+    # 所以 raw 放最后：它是唯一不吃 CDN 缓存的门，留作兜底而不是首选。
+    # （jsDelivr 的缓存由 scripts/mac/purge-cdn.py 在每次推送后全局清掉。）
+    return [
+        f"https://fastly.jsdelivr.net/{ref}",
+        f"https://cdn.jsdelivr.net/{ref}",
+        f"https://gcore.jsdelivr.net/{ref}",
+        url,
+    ]
 
 
 # Netloc of the door that answered most recently, tried first from then on.
@@ -128,7 +144,9 @@ def _fetch_once(url: str, timeout: int = 20) -> dict | None:
         req = urllib.request.Request(url, headers={"User-Agent": "ark-relay"})
         with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
             raw = resp.read()
-    except (urllib.error.URLError, OSError, ValueError) as exc:
+    except (urllib.error.URLError, OSError, ValueError,
+            http.client.HTTPException) as exc:
+        # IncompleteRead 不是 OSError 的子类，漏掉它异常会穿出去。
         log.warning("取不到待办文件（%s）: %s", url, exc)
         return None
     try:

@@ -72,6 +72,11 @@ class Engine:
         queue it targets comes due, and a mode change should announce itself
         once in the log rather than being discovered from what did not happen.
         """
+        # 跳过模式要改 AUTO-MAS 的队列配置，同样必须避开脚本运行期，否则会
+        # 被 AUTO-MAS 的内存值冲掉——那意味着"今天跳过"悄悄失效、队列照跑。
+        # 推迟没有代价：脚本已经在跑了，这一轮本来就拦不住，下一个 tick 再engage。
+        if self._scripts_running():
+            return
         try:
             for msg in modes.process_skip(self.state.dir, self.cfg.automas_dir):
                 log.info("⏭️ %s", msg)

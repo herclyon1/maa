@@ -5,16 +5,22 @@ and pushed it. That put a laptop in another country on the critical path of a
 machine that runs unattended, and made every fix wait for a window where both
 were up at once.
 
-Same channel as the inbox: raw.githubusercontent.com, measured working from
-here 11 times out of 11 while github.com times out outright. A manifest lists
-each file with its SHA-1, so a file is fetched only when it actually differs -
-an up-to-date relay costs one small request.
+Same channel as the inbox, and the same door order (see _alternates): the
+jsDelivr mirrors first, raw.githubusercontent last - measured 2026-08-21 from
+the machine, raw answered 2 of 8 at an average of 38 seconds while
+fastly.jsdelivr answered 8 of 8 at 426ms. A manifest lists each file with its
+SHA-1, so a file is fetched only when it actually differs - an up-to-date
+relay costs one small request.
 
-What this deliberately does NOT do is restart itself. Reloading code into a
-running process is where self-updating systems go wrong; instead the new files
-land on disk and the service picks them up the next time it starts, which on
-this machine is every boot. A fix therefore takes effect the morning after it
-is pushed, and never mid-run.
+This module itself never reloads code into the running process - reloading in
+place is where self-updating systems go wrong. It only lands verified files on
+disk; deciding what to do about that is the caller's job. service.py restarts
+the service when this returns a non-empty list, so an update takes effect
+within seconds instead of waiting for the next boot (operator order
+2026-08-20: 更新必须立即生效). The restart is a fresh process, not a reload.
+
+Either every changed file lands or none does: a half-applied update leaves a
+mixed-version relay, and the restart above would then boot straight into it.
 
 Trust boundary, stated plainly: whoever can push to that repo can run code on
 this machine. The repo is the operator's own and the transport is HTTPS, so the
@@ -24,8 +30,10 @@ what the machine farms.
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
 import logging
+import os
 import time
 import urllib.error
 import urllib.request
@@ -42,7 +50,10 @@ def _get_once(url: str, timeout: int = 20) -> bytes | None:
         req = urllib.request.Request(url, headers={"User-Agent": "ark-relay"})
         with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
             return resp.read()
-    except (urllib.error.URLError, OSError, ValueError) as exc:
+    except (urllib.error.URLError, OSError, ValueError,
+            http.client.HTTPException) as exc:
+        # HTTPException 走的是 resp.read() 半截断流（IncompleteRead）那条路，
+        # 不是 OSError 的子类；漏掉它会让异常穿出去，把重试机会一起丢掉。
         log.warning("取不到 %s: %s", url, exc)
         return None
 
@@ -65,7 +76,20 @@ def _alternates(url: str) -> list[str]:
     if len(parts) < 4:
         return [url]
     owner, repo, branch, path = parts
-    return [url, f"https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{path}"]
+    ref = f"gh/{owner}/{repo}@{branch}/{path}"
+    # 顺序来自 2026-08-21 凌晨在游戏机上的实测（每门 8 次）：
+    #   fastly.jsdelivr  8/8  平均 426ms      ← 最好
+    #   cdn.jsdelivr     7/8  平均 1956ms
+    #   gcore.jsdelivr   7/8  平均 2398ms
+    #   raw.github       2/8  平均 38179ms    ← 最差，但内容永远最新
+    # 所以 raw 放最后：它是唯一不吃 CDN 缓存的门，留作兜底而不是首选。
+    # （jsDelivr 的缓存由 scripts/mac/purge-cdn.py 在每次推送后全局清掉。）
+    return [
+        f"https://fastly.jsdelivr.net/{ref}",
+        f"https://cdn.jsdelivr.net/{ref}",
+        f"https://gcore.jsdelivr.net/{ref}",
+        url,
+    ]
 
 
 # Netloc of the door that answered most recently, tried first from then on.
@@ -113,6 +137,21 @@ def _sha1(data: bytes) -> str:
     return hashlib.sha1(data).hexdigest()  # noqa: S324 - change detection, not security
 
 
+def _atomic_write(target: Path, data: bytes) -> None:
+    """临时文件 + os.replace，断电也不会留下半截 .py。
+
+    这台机器每天自己关两次电，而半截的 .py 会让中继下次启动直接
+    SyntaxError 起不来——那是没人会发现的死法（守护它的 SCM 只会一直重
+    启一个必然失败的进程）。config 那边已经这么做了，代码这边同理。
+    """
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    with tmp.open("wb") as f:
+        f.write(data)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, target)
+
+
 def _safe_target(root: Path, rel: str) -> Path | None:
     """Resolve a manifest path inside `root`, or None if it escapes.
 
@@ -144,7 +183,17 @@ def check(root: Path, base_url: str = "") -> list[str]:
     if not isinstance(files, dict):
         return []
 
-    updated: list[str] = []
+    # 先把要改的文件全部下齐并校验，一个都不落盘；全通过了再一次性写。
+    #
+    # 逐个下、下一个写一个是不行的：网络在中途断掉（这条线上是常态）会留下
+    # 「新 engine.py + 旧 core.py」的混合版本，而 service.py 一看有文件变了
+    # 就重启——重启进去的可能是一个跨版本、甚至跨不过 import 的中继。半套
+    # 更新比不更新危险得多。
+    # 存 (manifest 里的相对路径, 落盘目标, 内容)。相对路径必须原样留着，
+    # 不能事后拿 target.relative_to(root) 反推——_safe_target 返回的是
+    # resolve 过的路径，root 却未必（macOS 上 /var 是 /private/var 的符号
+    # 链接），反推会抛 ValueError，而那时文件已经写下去了。
+    staged: list[tuple[str, Path, bytes]] = []
     for rel, want in sorted(files.items()):
         target = _safe_target(root, rel)
         if target is None:
@@ -159,9 +208,20 @@ def check(root: Path, base_url: str = "") -> list[str]:
             continue
         data = _get_with_retry(base + rel)
         if data is None or _sha1(data) != want:
-            log.warning("%s 下载失败或校验不符，跳过", rel)
-            continue
-        target.write_bytes(data)
+            log.warning("%s 下载失败或校验不符，本次更新整体放弃（已下 %d 个文件"
+                        "都不落盘，下次启动重来）", rel, len(staged))
+            return []
+        staged.append((rel, target, data))
+
+    updated: list[str] = []
+    for rel, target, data in staged:
+        try:
+            _atomic_write(target, data)
+        except OSError:
+            # 走到这里已经全部校验通过，落盘还失败就是磁盘/权限问题。停手，
+            # 让下次启动重做——继续写只会把混合版本铺得更开。
+            log.exception("写入 %s 失败，停止本次更新", rel)
+            break
         updated.append(rel)
 
     if updated:
