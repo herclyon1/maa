@@ -25,6 +25,13 @@ foreach ($line in (Get-Content "C:\ProgramData\ark-cmd.txt" -Encoding UTF8)) {
     "click"  { $a=$arg.Split(' '); Click ([int]$a[0]) ([int]$a[1]) $false }
     "dclick" { $a=$arg.Split(' '); Click ([int]$a[0]) ([int]$a[1]) $false; Start-Sleep -Milliseconds 90; Click ([int]$a[0]) ([int]$a[1]) $false }
     "rclick" { $a=$arg.Split(' '); Click ([int]$a[0]) ([int]$a[1]) $true }
+    "scroll" {
+      # scroll x y notches  (positive = up, negative = down; one notch = 120)
+      $a=$arg.Split(' '); [M]::SetCursorPos([int]$a[0],[int]$a[1]); Start-Sleep -Milliseconds 90
+      $d = [int]$a[2] * 120
+      $ud = [BitConverter]::ToUInt32([BitConverter]::GetBytes($d),0)
+      [M]::mouse_event(0x0800,0,0,$ud,0)
+    }
     "type"   { [System.Windows.Forms.SendKeys]::SendWait($arg) }
     "sleep"  { Start-Sleep -Milliseconds ([int]$arg) }
     "run"    { try { Start-Process -FilePath $arg; L ("  launched: " + $arg) } catch { L ("  RUN FAIL: " + $_.Exception.Message) } }
