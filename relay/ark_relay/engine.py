@@ -53,6 +53,7 @@ class Engine:
         self._handled_any = False   # nothing ran this session -> nothing to shut down for
         self._shutdown_issued = False  # a countdown is already running; never twice
         self._last_wait_note = ""  # so the guard does not repeat itself every poll
+        self._mode_notified: set[str] = set()  # skip-mode messages already pushed
         self._debug_last: bool | None = None  # log mode transitions, not every tick
         from .annihilation import WeeklyGate  # noqa: PLC0415 - optional feature
         self._annihilation = WeeklyGate(state.dir, cfg.automas_dir)
@@ -69,7 +70,13 @@ class Engine:
         try:
             for msg in modes.process_skip(self.state.dir, self.cfg.automas_dir):
                 log.info("⏭️ %s", msg)
-                self.notifier.send("⏭️ 跳过模式", msg)
+                # A *persistent* failure (queue renamed while a restore marker
+                # is pending) returns the identical message on every tick, and
+                # ticks fire on every directory event - dedup per process, or
+                # the operator gets the same push dozens of times a boot.
+                if msg not in self._mode_notified:
+                    self._mode_notified.add(msg)
+                    self.notifier.send("⏭️ 跳过模式", msg)
         except Exception:  # noqa: BLE001 - modes must never stop the loop
             log.exception("跳过模式处理出错")
         active = modes.debug_active(self.state.dir)
@@ -152,7 +159,17 @@ class Engine:
     # ---------- per record ----------
 
     def _handle(self, rec: RunRecord) -> None:
-        self.state.append_ledger(rec)
+        # mark_seen only happens after _handle returns, so a crash later in
+        # this method (disk full during save_pending, annihilation copy2)
+        # replays the record on every retry tick - and each replay used to
+        # append the same run to the ledger again, inflating the daily report
+        # and the "重试 N 次" counts. The ledger append itself must be
+        # idempotent.
+        day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
+        if any(e.get("run_id") == rec.run_id for e in self.state.read_ledger(day)):
+            log.info("记录 %s 已在账上（上次处理中途出错的重试），跳过重记", rec.run_id)
+        else:
+            self.state.append_ledger(rec)
         key = (rec.script, rec.user)
 
         if rec.ok:
@@ -191,8 +208,8 @@ class Engine:
         looks exactly like everything being fine.
 
         Only covers windows while the relay itself is up. A machine that never
-        powered on cannot be caught from inside it; that needs the off-box
-        heartbeat.
+        powered on cannot be caught from inside it; that is the GitHub Actions
+        watchdog's job (scripts/watchdog.py, reading Tailscale lastSeen).
         """
         # Debug mode: the operator is deliberately making the machine do
         # nothing; "it produced nothing" is the plan, not a fault.
@@ -200,7 +217,7 @@ class Engine:
             return
         now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
         day = now.strftime("%Y-%m-%d")
-        entries = self.state.read_ledger(day)
+        entries = self._recent_entries(now)
         for q in plan.schedule(self.cfg.automas_dir):
             for hhmm in q.get("times", []):
                 try:
@@ -481,6 +498,16 @@ class Engine:
             return True
         return False
 
+    def _recent_entries(self, now: datetime) -> list[dict]:
+        """Today's ledger plus yesterday's, for queue-completion checks.
+
+        The ledger is keyed by each run's *start* date, so an evening queue
+        checked just after midnight has its records in yesterday's file; a
+        today-only read makes a finished queue look like it never ran.
+        """
+        return (self.state.read_ledger(now.strftime("%Y-%m-%d"))
+                + self.state.read_ledger((now - timedelta(days=1)).strftime("%Y-%m-%d")))
+
     def _unfinished_queues(self, now: datetime, entries: list[dict]) -> list[str]:
         """Queues that came due recently and are still missing one of their scripts.
 
@@ -529,6 +556,21 @@ class Engine:
     def _maybe_daily_report(self, now: datetime | None = None) -> None:
         now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
         day = now.strftime("%Y-%m-%d")
+        # Yesterday first. Everything below keys off "today", so a report that
+        # could not be delivered before midnight (channel outage - it has
+        # happened: 60020 all day on 2026-08-20) used to be abandoned the
+        # moment the date rolled: today's ledger is a different file, and no
+        # code path ever looked back. The runs are still in yesterday's
+        # ledger; send their report late rather than never.
+        yday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+        if not self.state.report_sent(yday) and (
+                y_entries := self.state.read_ledger(yday)):
+            title, body = self._compose_daily(yday, y_entries)
+            if errors := self.notifier.send(title + "（补发）", body):
+                log.error("昨日日报补发失败，稍后重试: %s", "；".join(errors))
+            else:
+                self.state.mark_report_sent(yday)
+                log.info("📋 %s 日报已补发（%d 条记录）", yday, len(y_entries))
         if self.state.report_sent(day):
             return
         entries = self.state.read_ledger(day)
@@ -577,8 +619,6 @@ class Engine:
             return False
         if not self.cfg.shutdown_after_run:
             return False
-        if not self._handled_any and not self._idle_checkpoint(now):
-            return False
         # `shutdown /s /t 60` only starts a countdown; the loop keeps ticking
         # through it. Without this flag the whole block ran again every poll -
         # on 2026-08-16 that sent the pre-shutdown report three times in 60
@@ -586,7 +626,18 @@ class Engine:
         if self._shutdown_issued:
             return False
         now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
-        if (now - self._started_at).total_seconds() < self.cfg.shutdown_min_uptime:
+        idle = self._idle_checkpoint(now)
+        if not self._handled_any and not idle:
+            return False
+        # The uptime floor guards against a boot -> immediate-shutdown loop.
+        # The idle checkpoint is exempt: it *is* a deliberate quick power-off
+        # of a purposeless boot, its window is only five minutes wide, and it
+        # cannot loop (the next wake is the machine's own timer, hours away).
+        # Held to the floor, it was unreachable whenever the service came up
+        # less than shutdown_min_uptime before the checkpoint - the 2026-08-19
+        # all-night wake.
+        if (not idle and (now - self._started_at).total_seconds()
+                < self.cfg.shutdown_min_uptime):
             return False
         if self._scripts_running() or self._pending or self._recovered:
             return False
@@ -596,7 +647,7 @@ class Engine:
         # in that window costs a whole run, so also require that every script
         # today's due queues contain has actually produced a record.
         day = now.strftime("%Y-%m-%d")
-        if unfinished := self._unfinished_queues(now, self.state.read_ledger(day)):
+        if unfinished := self._unfinished_queues(now, self._recent_entries(now)):
             # Log only when the answer changes. Repeating the same line every
             # poll buries the lines that matter under forty identical ones.
             note = "；".join(unfinished)

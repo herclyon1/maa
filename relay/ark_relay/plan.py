@@ -210,8 +210,18 @@ def recent_due_queues(automas_dir: Path | None, now, window_minutes: int = 120) 
                 hh, mm = (int(x) for x in hhmm.split(":"))
             except ValueError:
                 continue
-            due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
-            if not (due <= now < due + timedelta(minutes=window_minutes)):
+            # Yesterday's occurrence too: a 21:30 queue still inside its
+            # window at 00:10 used to vanish from this list the moment the
+            # date rolled, dropping the "don't power off mid-queue" guard in
+            # exactly the inter-script gap it exists for.
+            due = None
+            for day_shift in (0, -1):
+                cand = (now + timedelta(days=day_shift)).replace(
+                    hour=hh, minute=mm, second=0, microsecond=0)
+                if cand <= now < cand + timedelta(minutes=window_minutes):
+                    due = cand
+                    break
+            if due is None:
                 continue
             kinds = []
             for uid in q.get("items", []):

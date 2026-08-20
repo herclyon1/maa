@@ -17,7 +17,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from .config import SERVER_TZ
+from .config import SERVER_TZ, atomic_write_text
 
 log = logging.getLogger("ark.queues")
 
@@ -90,6 +90,16 @@ def apply(automas_dir: Path, name: str, enabled: bool | None = None,
                            f"（可用：{'、'.join(ids)}）")
         want = {ids[s] for s in scripts}
         sub = (target.get("SubConfigsInfo") or {}).get("QueueItem") or {}
+        # This code can only REMOVE items - there is no insertion path (a
+        # QueueItem needs a fresh uid and AUTO-MAS-shaped structure). Asking to
+        # restore a script that is not in the queue used to fall through to
+        # "已经是这个状态" - a ✅ for a machine that keeps farming without it.
+        have = {(item.get("Info") or {}).get("ScriptId")
+                for uid, item in sub.items()
+                if uid != "instances" and isinstance(item, dict)}
+        if missing := [s for s in scripts if ids[s] not in have]:
+            return False, (f"加回脚本尚未实现：{'、'.join(missing)} 不在队列里，"
+                           "只能移出不能加回。removed-*.json 里有原条目，需人工加回")
         keep_uids, dropped = [], []
         for uid, item in sub.items():
             if uid == "instances" or not isinstance(item, dict):
@@ -121,7 +131,7 @@ def apply(automas_dir: Path, name: str, enabled: bool | None = None,
             json.dumps({"queue": name, "items": removed}, ensure_ascii=False, indent=1),
             encoding="utf-8")
     try:
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2))
     except OSError as exc:
         shutil.copy2(backup, path)
         return False, f"写入失败，已回滚: {exc}"

@@ -85,6 +85,23 @@ def _alternates(url: str) -> list[str]:
     return [url, f"https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{path}"]
 
 
+# Netloc of the door that answered most recently, tried first from then on.
+# (Same stickiness as selfupdate.py, duplicated for the same reason the
+# _alternates helper is: selfupdate cannot deliver new shared modules.)
+_last_good = ""
+
+
+def _netloc(url: str) -> str:
+    """Host part of an http(s) URL; the URL itself when it has no host.
+
+    Never raises: a misconfigured ARK_INBOX_URL must degrade into a failed
+    fetch (which keeps last_fetch_ok False and the 5-minute retry alive), not
+    an IndexError that skips the fetch and leaves last_fetch_ok stuck True.
+    """
+    parts = url.split("/")
+    return parts[2] if len(parts) > 2 else url
+
+
 def _fetch(url: str, timeout: int = 20, attempts: int = 3) -> dict | None:
     """Fetch the queued file, retrying transient failures across both doors.
 
@@ -93,10 +110,13 @@ def _fetch(url: str, timeout: int = 20, attempts: int = 3) -> dict | None:
     the day to collect a change, so one attempt would silently drop roughly a
     third of them.
     """
+    global _last_good  # noqa: PLW0603 - process-lifetime stickiness by design
     urls = _alternates(url)
+    urls.sort(key=lambda u: _netloc(u) != _last_good)  # stable: keeps order
     for i in range(attempts):
         for u in urls:
             if (data := _fetch_once(u, timeout)) is not None:
+                _last_good = _netloc(u)
                 return data
         if i + 1 < attempts:
             time.sleep(3 * (i + 1))
@@ -177,7 +197,18 @@ class Inbox:
             return have, []
 
         log.info("收到待办 v%s（当前 v%s）：%s", version, have, note or "(无说明)")
-        messages = self._apply(commands)
+        try:
+            messages = self._apply(commands)
+        except Exception as exc:  # noqa: BLE001 - a torn batch must still report
+            # Without this, an exception mid-batch (copy2 on a locked file,
+            # disk full) escaped to the caller, which swallowed it - so a
+            # half-applied batch produced NO push and NO version marker, and
+            # the next boot re-applied the whole thing: skip_today lands on a
+            # day nobody named, edits repeat. Record the version and say what
+            # happened instead.
+            log.exception("待办 v%s 应用中途出错", version)
+            messages = [f"✗ 应用中途出错：{exc}。此前的指令可能已生效，"
+                        "本批不会重放——请核对配置，未生效的指令用新版本重发"]
         # Recorded even when a command failed. Retrying the same broken batch
         # on every boot would push the same failure every morning and never
         # get better; the failure is reported instead, and the fix is a new

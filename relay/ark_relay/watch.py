@@ -1,8 +1,8 @@
 """Wake on directory changes instead of asking "anything new yet?".
 
 The deployed Windows service already gets this through pywin32
-(FindFirstChangeNotification); this module gives the plain `local` and
-`agent` modes the same behaviour with no dependency at all:
+(FindFirstChangeNotification); this module gives the plain `local` mode
+the same behaviour with no dependency at all:
 
     Windows        FindFirstChangeNotificationW via ctypes
     macOS / BSD    kqueue on the directory descriptor (stdlib select)

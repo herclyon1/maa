@@ -1,0 +1,11 @@
+{
+  "enabled": false,
+  "pause_until": "2026-08-20",
+  "device": "ins",
+  "checks": {
+    "20 1 * * *":  {"kind": "boot",     "label": "早上开机", "since": "08:40"},
+    "15 3 * * *":  {"kind": "shutdown", "label": "早上收工", "boot_since": "08:40", "min_off": "09:40", "off_by": "10:45"},
+    "45 13 * * *": {"kind": "boot",     "label": "晚上开机", "since": "21:15"},
+    "10 15 * * *": {"kind": "shutdown", "label": "晚上收工", "boot_since": "21:15", "min_off": "21:50", "off_by": "22:35"}
+  }
+}

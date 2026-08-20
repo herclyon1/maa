@@ -35,7 +35,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .config import SERVER_TZ
+from .config import SERVER_TZ, atomic_write_text
 
 log = logging.getLogger("ark.maaend")
 
@@ -242,7 +242,7 @@ def apply_changes(root: Path, changes: list[dict]) -> tuple[bool, str]:
         f"{mc.config_path.stem}.bak-{stamp:%Y%m%d-%H%M%S}.json")
     shutil.copy2(mc.config_path, backup)
     try:
-        mc.config_path.write_text(updated, encoding="utf-8")
+        atomic_write_text(mc.config_path, updated)
     except OSError as exc:
         shutil.copy2(backup, mc.config_path)
         return False, f"写入失败，已回滚: {exc}"

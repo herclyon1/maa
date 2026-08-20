@@ -307,10 +307,17 @@ def scan(history_root: Path, seen: set[str]) -> list[RunRecord]:
             age = now - path.stat().st_mtime
         except OSError:
             continue
-        # Skip only files touched in the last few seconds. A negative age means
-        # the mtime is in the future (clock skew); those must not be skipped
-        # forever, so let them through.
-        if 0 <= age < 20:
+        # Wait only for an incomplete pair: AUTO-MAS writes the .json first and
+        # its .log moments later, and a log-less parse is frozen wrong forever
+        # once the engine marks it seen (filename/mtime times, no drops, no
+        # annihilation flags). The .log's own write fires the next directory
+        # event, so the record is processed seconds later with full data. A
+        # flat "younger than 20s" gate here used to skip every record on the
+        # very event its own write triggered, deferring "失败立刻推" to the
+        # next unrelated wake - up to an hour at night. Past 120s assume the
+        # run genuinely produced no log and take the record as it is. Negative
+        # age means clock skew (mtime in the future); never skip those forever.
+        if 0 <= age < 120 and not path.with_suffix(".log").exists():
             continue
         rec = parse_record(path, history_root)
         if rec and rec.run_id not in seen:

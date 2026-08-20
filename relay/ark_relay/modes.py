@@ -121,12 +121,20 @@ def _maybe_engage(state_dir: Path, automas_dir: Path | None,
     if not times:
         flag.unlink(missing_ok=True)
         return [*out, f"跳过「{queue}」：该队列本就没有启用的排期，无需处理"]
-    ok, detail = queues.apply(Path(automas_dir), queue, enabled=False)
-    if not ok:
-        return [*out, f"跳过「{queue}」失败：{detail}"]   # flag stays; retry next tick
+    # Marker BEFORE disable. The old order (disable → marker → unlink) had a
+    # crash window after the disable and before the marker: on the next tick
+    # the queue had vanished from plan.schedule, this function declared "该队
+    # 列本就没有启用的排期", deleted the flag - and the queue stayed disabled
+    # forever with a message saying nothing needed doing. Marker-first fails
+    # the other way: a crash before the disable leaves a marker whose restore
+    # later re-enables an already-enabled queue, which is a no-op.
     _marker(state_dir).write_text(json.dumps(
         {"queue": queue, "day": day, "last_time": max(times)},
         ensure_ascii=False), encoding="utf-8")
+    ok, detail = queues.apply(Path(automas_dir), queue, enabled=False)
+    if not ok:
+        _marker(state_dir).unlink(missing_ok=True)
+        return [*out, f"跳过「{queue}」失败：{detail}"]   # flag stays; retry next tick
     flag.unlink(missing_ok=True)
     return [*out, f"今天（{day}）跳过队列「{queue}」：已临时停用，过后自动恢复"]
 

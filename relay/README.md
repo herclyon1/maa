@@ -1,29 +1,38 @@
 # ark-relay
 
-MAA / AUTO-MAS 通知中继。**本机模式与服务器模式共用全部业务逻辑，只有 `transport.py` 一层不同。**
+MAA / AUTO-MAS 通知中继，跑在游戏机上。
 
 ```
-失败  → 立刻推（附 Sonnet 写的一句人话诊断）
+失败  → 立刻推（附模型写的一句人话诊断）
 成功  → 静默记账
 收尾  → 当天一条日报（关卡 / 掉落 / 理智 / 起止时间，双时区）
-没开机 → 告警  ★ 只有服务器模式做得到
+没开机 → 告警  ★ 由 GitHub Actions + Tailscale 负责，不在这台机器上
 ```
+
+**服务器模式已裁撤（2026-08-20）。** 云服务器的每一项独有功能都有了不需要
+服务器的实现，而且机器侧一行上传代码都不用写：
+
+| 原服务器功能 | 现在的实现 |
+|---|---|
+| 开机 / 收工监督 | GitHub Actions 定时查 Tailscale `lastSeen`（[watchdog](../.github/workflows/watchdog.yml)，配置在 [queue/watchdog.json](../queue/watchdog.json)）。机器开机 tailscaled 即连、关机即断，「报到」是它本来就在发的信号 |
+| 心跳超时告警 | 同上——按 2026-08-18 裁决，没有周期心跳，只有开机/收工两个事件加到点核查 |
+| 指令队列（手机发指令） | 收件箱：手机改仓库里的 [queue/config.json](../queue/config.json)，机器开机自取（inbox.py） |
+| 收事件、判定、推送 | 本机模式本来就有 |
+| 网页看状态 | 不再单做：日报/告警已推到微信，剩余需求由 GitHub 网页（仓库文件 + Actions 运行记录）覆盖 |
+
+之所以必须这样绕：游戏机对 github.com / api.github.com **TCP 层直接不通**
+（2026-08-20 实测），永远写不了 GitHub；而 raw.githubusercontent 会整晚变黑
+（8/17、8/20 两次实测），只读也得靠 jsDelivr 双门 + 粘性门顺序 + 推送后
+清 CDN 缓存（[purge-cdn.py](../scripts/mac/purge-cdn.py)）才稳。
 
 ## 装
 
-本机模式**零依赖**，标准库就够：
+**零依赖**，标准库就够（Windows 服务形态另需 pywin32，游戏机已装）：
 
 ```bash
 python -m ark_relay check      # 自检
 python -m ark_relay test       # 发一条测试消息
-python -m ark_relay local      # 常驻
-```
-
-服务器模式额外需要：
-
-```bash
-pip install fastapi "uvicorn[standard]"
-python -m ark_relay server --port 8787
+python -m ark_relay local      # 常驻（生产用 service.py 的 Windows 服务形态）
 ```
 
 ## 配置
@@ -32,36 +41,15 @@ python -m ark_relay server --port 8787
 
 | 变量 | 说明 |
 |---|---|
-| `ARK_HISTORY_DIR` | AUTO-MAS 的 `history` 目录（本机模式 / 采集端必填） |
+| `ARK_HISTORY_DIR` | AUTO-MAS 的 `history` 目录（必填） |
 | `ARK_STATE_DIR` | 中继自己的状态目录，默认 `./ark-state` |
-| `ARK_POLL_SECONDS` | 轮询间隔，默认 300 |
+| `ARK_POLL_SECONDS` | 兜底扫描间隔，默认 300——**仅当目录监听挂不上时才用**，生产路径事件驱动，此数从不走表 |
 | `ARK_LAST_RUN_AFTER` | 当天最后一轮的时刻（服务器时间），默认 `21:30` |
 | `SERVERCHAN_KEY` | Server酱 |
-| `WECOM_CORPID` / `WECOM_SECRET` / `WECOM_AGENTID` | 企业微信自建应用 |
-| `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | 措辞生成，不配也能跑 |
-| `ARK_AUTOMAS_DIR` | 采集端要改配置时才需要 |
-
-## 三种角色
-
-```
-本机模式    python -m ark_relay local
-            跑在游戏机器上，直接读 history，自己判定自己推送
-            ✅ 失败告警、日报    ❌ 开机监督（它自己也在这台机器上）
-
-采集端      python -m ark_relay agent --url http://<中继>:8787
-            跑在游戏机器上（服务器模式下）：上报事件 + 发心跳 + 执行指令
-            上报成功才记 seen，所以关机丢的事件下次开机会补上
-
-服务器      python -m ark_relay server
-            跑在云服务器上：收事件、判定、推送、心跳超时告警、指令队列、网页
-```
-
-## 网页
-
-服务器模式自带一个页面，手机浏览器打开、「添加到主屏幕」就是一个 App 图标——
-安卓 / iOS / Windows / macOS 一份代码全覆盖，不用上架、不用装包。
-
-能看机器在线状态、今天的运行记录；能用人话发指令。
+| `WECOM_CORPID` / `WECOM_SECRET` / `WECOM_AGENTID` | 企业微信自建应用（家宽 IP 一变就 60020，别当唯一渠道） |
+| `WECOM_BOT_URL` | 企业微信群机器人 webhook——没有可信 IP 名单，适合拨号家宽 |
+| `ARK_LLM_KEY` 等 | 措辞生成，不配也能跑 |
+| `ARK_AUTOMAS_DIR` | 读排期、收件箱改配置用 |
 
 ## 指令的四道闸
 
@@ -69,8 +57,8 @@ python -m ark_relay server --port 8787
 
 | 动作 | 可逆 | 要确认 |
 |---|---|---|
-| `run_now` 立刻跑一轮 | ✅ | 否 |
-| `skip_today` 今天跳过 | ✅ | 否（跳过模式：当天临时停用该队列，过后自动恢复） |
+| `run_now` 立刻跑一轮 | — | **尚未实现，会明确拒绝**（旧版写过一个没人消费的标记还报成功） |
+| `skip_today` 今天跳过 | ✅ | 否（跳过模式：当天临时停用该队列，过后自动恢复。可带 `"day":"YYYY-MM-DD"` 声明意图日期——收件箱是开机才收的，过期即拒绝，防止跳错天） |
 | `debug_mode` 调试模式 | ✅ 自动过期 | 否（`days`:N 或 `off`:true；生效期内不关机、不报漏跑） |
 | `set_stage` 换关卡 | ❌ 改配置 | **是** |
 | `set_medicine` 理智药 | ❌ 改配置 | **是** |

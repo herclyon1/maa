@@ -34,6 +34,24 @@ def both_clocks(dt: datetime) -> str:
     return f"{srv:%m-%d %H:%M}（东京 {usr:%m-%d %H:%M}）"
 
 
+def atomic_write_text(path: Path, text: str, newline: str | None = None) -> None:
+    """Write via temp file + os.replace, so a power cut mid-write can never
+    leave a truncated file behind.
+
+    This machine powers itself off twice a day - including via the relay's own
+    `shutdown /s /t 60`, which does not wait for in-flight work - and every
+    config writer here edits files AUTO-MAS cannot run without. A truncated
+    QueueConfig.json fails "safe" into a machine that schedules nothing, with
+    only a .bak sitting next to the corpse.
+    """
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with tmp.open("w", encoding="utf-8", newline=newline) as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
 # Every env lookup below MUST be lazy (default_factory). Dataclass field
 # defaults are evaluated at import time, which happens before .env is loaded -
 # reading os.environ eagerly here silently yields empty config.
@@ -55,8 +73,6 @@ def _env_path(name: str, default: str | None = None) -> Path | None:
 
 @dataclass
 class Config:
-    mode: str = "local"  # "local" (on the game box) or "server" (cloud)
-
     # Where AUTO-MAS writes one JSON + one .log per run.
     history_dir: Path | None = field(
         default_factory=lambda: _env_path("ARK_HISTORY_DIR")
@@ -70,6 +86,9 @@ class Config:
         default_factory=lambda: _env_path("ARK_STATE_DIR", "./ark-state")  # type: ignore[arg-type]
     )
 
+    # Fallback scan interval, used ONLY when no directory watcher could be
+    # started (watch.py / pywin32 both unavailable). On every deployed path
+    # records arrive as directory-change events and this number never ticks.
     poll_seconds: int = field(default_factory=lambda: _env_int("ARK_POLL_SECONDS", 300))
 
     # Push channels. Empty string = channel disabled.
@@ -146,11 +165,10 @@ class Config:
     def validate(self) -> list[str]:
         """Return a list of problems, empty if the config is usable."""
         problems: list[str] = []
-        if self.mode == "local":
-            if not self.history_dir:
-                problems.append("ARK_HISTORY_DIR 未设置（AUTO-MAS 的 history 目录）")
-            elif not self.history_dir.is_dir():
-                problems.append(f"ARK_HISTORY_DIR 不存在: {self.history_dir}")
+        if not self.history_dir:
+            problems.append("ARK_HISTORY_DIR 未设置（AUTO-MAS 的 history 目录）")
+        elif not self.history_dir.is_dir():
+            problems.append(f"ARK_HISTORY_DIR 不存在: {self.history_dir}")
         if not (self.serverchan_key or self.wecom_corpid):
             problems.append("没有配置任何推送渠道（SERVERCHAN_KEY 或 WECOM_*）")
         if self.wecom_corpid and not (self.wecom_secret and self.wecom_agentid):

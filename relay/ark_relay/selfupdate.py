@@ -68,6 +68,24 @@ def _alternates(url: str) -> list[str]:
     return [url, f"https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{path}"]
 
 
+# Netloc of the door that answered most recently, tried first from then on.
+# raw.githubusercontent goes fully dark for whole evenings (observed 08-17 and
+# again 08-20, 0/6 with jsDelivr at 6/6); without stickiness every file of a
+# multi-file update pays a full timeout on the dead door before the live one,
+# which turns a boot-time update into minutes of waiting for nothing.
+_last_good = ""
+
+
+def _netloc(url: str) -> str:
+    """Host part of an http(s) URL; the URL itself when it has no host.
+
+    Never raises: a misconfigured base URL must degrade into a failed fetch
+    (caught downstream), not an IndexError before any fetch is attempted.
+    """
+    parts = url.split("/")
+    return parts[2] if len(parts) > 2 else url
+
+
 def _get_with_retry(url: str, attempts: int = 3, timeout: int = 20) -> bytes | None:
     """Fetch, retrying transient failures across both doors.
 
@@ -78,10 +96,13 @@ def _get_with_retry(url: str, attempts: int = 3, timeout: int = 20) -> bytes | N
     attempts take that under 3%, at the cost of a few seconds on the rare bad
     morning.
     """
+    global _last_good  # noqa: PLW0603 - process-lifetime stickiness by design
     urls = _alternates(url)
+    urls.sort(key=lambda u: _netloc(u) != _last_good)  # stable: keeps order
     for i in range(attempts):
         for u in urls:
             if (data := _get_once(u, timeout)) is not None:
+                _last_good = _netloc(u)
                 return data
         if i + 1 < attempts:
             time.sleep(3 * (i + 1))

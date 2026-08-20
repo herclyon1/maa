@@ -25,7 +25,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from .config import SERVER_TZ
+from .config import SERVER_TZ, atomic_write_text
 
 log = logging.getLogger("ark.commands")
 
@@ -90,6 +90,12 @@ def _safe_rewrite(path: Path, mutate: Callable[[str], str],
     a, b = _flatten(before), _flatten(after)
     added, removed = set(b) - set(a), set(a) - set(b)
     changed = {k: (a[k], b[k]) for k in a.keys() & b.keys() if a[k] != b[k]}
+    # Setting a value to what it already is must read as success, not as the
+    # guard tripping - a re-sent batch (or the operator repeating the current
+    # stage) is fine, and "diff 不符预期" for it is indistinguishable from a
+    # real corruption catch.
+    if not (added or removed or changed):
+        return True, "已经是这个状态，无需改动"
     if added or removed or len(changed) != expect_changed:
         return False, (
             f"结构化 diff 不符预期，已放弃："
@@ -101,7 +107,7 @@ def _safe_rewrite(path: Path, mutate: Callable[[str], str],
     backup = path.with_suffix(path.suffix + f".bak-{stamp:%Y%m%d-%H%M%S}")
     shutil.copy2(path, backup)
     try:
-        path.write_text(updated, encoding="utf-8", newline="")
+        atomic_write_text(path, updated, newline="")
     except OSError as exc:
         shutil.copy2(backup, path)
         return False, f"写入失败，已回滚: {exc}"
@@ -150,15 +156,24 @@ def _toggle_task(name: str, on: bool) -> tuple[bool, str]:
 
 
 def _run_now(queue: str) -> tuple[bool, str]:
-    marker = Path(os.environ.get("ARK_STATE_DIR", "./ark-state")) / "run-now.flag"
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text(str(queue), encoding="utf-8")
-    return True, f"已请求立刻运行队列「{queue}」"
+    # An earlier version wrote run-now.flag here and reported success - but
+    # nothing anywhere ever read that flag, so the operator got a ✅ for a
+    # no-op. Refusing honestly is strictly better than lying until the
+    # consumer actually exists.
+    return False, (f"run_now 尚未实现（写过的请求标记没有任何组件消费），"
+                   f"队列「{queue}」需要人工触发")
 
 
-def _skip_today(queue: str) -> tuple[bool, str]:
+def _skip_today(queue: str, want_day: str = "") -> tuple[bool, str]:
     # 必须用服务器时钟：跨时区或临近午夜时，主机本地日期会跳错天
     day = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
+    # The command travels through the inbox and is collected at the NEXT boot,
+    # which may be the following morning - "skip today" queued at 23:00 after
+    # the runs would then silently skip a day the operator never named. A
+    # command carrying its intended date is refused once that date has passed.
+    if want_day and want_day != day:
+        return False, (f"skip_today 指定的是 {want_day}，今天已是 {day}——"
+                       "指令在收件箱里过期了，未生效。需要就重新排一条")
     marker = Path(os.environ.get("ARK_STATE_DIR", "./ark-state")) / f"skip-{day}.flag"
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text(str(queue), encoding="utf-8")
@@ -189,7 +204,8 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
         if action == "run_now":
             return _run_now(str(cmd.get("queue") or "新队列"))
         if action == "skip_today":
-            return _skip_today(str(cmd.get("queue") or "新队列"))
+            return _skip_today(str(cmd.get("queue") or "新队列"),
+                               str(cmd.get("day") or "").strip())
         if action == "debug_mode":
             from .modes import set_debug  # noqa: PLC0415
             state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))

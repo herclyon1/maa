@@ -141,11 +141,21 @@ def is_last_run_of_day(rec: RunRecord, cfg: Config) -> bool:
 def format_failure(rec: RunRecord, diagnosis: str = "") -> tuple[str, str]:
     """Immediate alert for a failed run. Title, body."""
     title = f"❌ {rec.script} 失败"
-    lines = [
-        f"{both_clocks(rec.started)} → {both_clocks(rec.finished)}",
-        f"用时 {rec.duration_min} 分钟 · 账号 {rec.user}",
-        "",
-    ]
+    # duration_known=False means start/finish came from filename/mtime, which
+    # is hours wrong on this install ("未捕获到日志" runs - exactly the class
+    # most likely to be a failure alert). Never present those as fact.
+    if rec.duration_known:
+        lines = [
+            f"{both_clocks(rec.started)} → {both_clocks(rec.finished)}",
+            f"用时 {rec.duration_min} 分钟 · 账号 {rec.user}",
+            "",
+        ]
+    else:
+        lines = [
+            f"{both_clocks(rec.started)}（文件名时间，可能有偏差）",
+            f"时长未知 · 账号 {rec.user}",
+            "",
+        ]
     lines.append("· " + _fmt_failed(rec.failed_tasks))
     if rec.sanity is not None:
         lines += ["", f"剩余理智 {rec.sanity}"]

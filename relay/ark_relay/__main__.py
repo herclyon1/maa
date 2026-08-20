@@ -1,12 +1,18 @@
 """Entry point.
 
     python -m ark_relay local     跑在游戏机器上，直接读 history，自己判定自己推送
-    python -m ark_relay agent     跑在游戏机器上（服务器模式）：上报事件 + 发心跳
-    python -m ark_relay server    跑在云服务器上：收事件、判定、推送、心跳超时告警
 
     python -m ark_relay check     自检：配置、目录、推送渠道
     python -m ark_relay test      发一条测试消息
     python -m ark_relay report    立刻推一次今天的日报
+
+There is no server mode any more. The 7×24 half of the system - "did the
+machine ever power on" - is GitHub Actions asking the Tailscale API for the
+machine's lastSeen (.github/workflows/watchdog.yml), and queued config changes
+already travel through the repo (inbox.py). The game machine cannot reach any
+GitHub write endpoint (api.github.com is TCP-blocked from there, measured
+2026-08-20), so nothing on it uploads anything; the watchdog reads a signal
+that tailscaled emits anyway, just by being connected.
 """
 from __future__ import annotations
 
@@ -26,7 +32,7 @@ from .config import SERVER_TZ, Config, both_clocks
 from .core import State
 from .engine import Engine
 from .notify import Notifier
-from .transport import LocalSource, Uploader
+from .transport import LocalSource
 
 
 def _force_utf8_console() -> None:
@@ -87,10 +93,9 @@ def _load_dotenv(path: Path) -> None:
 # ---------- commands ----------
 
 def cmd_check(cfg: Config) -> int:
-    print(f"模式          {cfg.mode}")
     print(f"history 目录  {cfg.history_dir or '(未设置)'}")
     print(f"状态目录      {cfg.state_dir}")
-    print(f"轮询间隔      {cfg.poll_seconds} 秒")
+    print(f"兜底扫描      {cfg.poll_seconds} 秒（仅当目录监听挂不上时才用）")
     print(f"日报触发      {cfg.last_run_after} 之后（服务器时间）")
     n = Notifier(cfg)
     print(f"推送渠道      {'、'.join(n.channels) or '(无)'}")
@@ -200,6 +205,14 @@ def cmd_local(cfg: Config) -> int:
     log.info("本机模式启动，监视 %s", cfg.history_dir)
     engine.bootstrap()  # never replay pre-existing history as fresh alerts
     log.info("注意：本机模式无法监督「机器没开机」——它自己也在这台机器上")
+    # A new game-week means last week's 剿灭 no longer counts. The service
+    # path does this at startup; without it here, running local mode across a
+    # Monday rollover left Annihilation stuck at Close indefinitely.
+    try:
+        if msg := engine._annihilation.maybe_reopen():  # noqa: SLF001
+            engine.notifier.send("🗓️ 剿灭", msg)
+    except Exception:  # noqa: BLE001
+        log.exception("剿灭周期检查出错，跳过")
     # Deployed Windows machines run service.py, where new records arrive as
     # directory-change events through pywin32. This mode gets the same shape
     # from watch.py (ctypes / kqueue, zero dependencies): a record landing on
@@ -241,87 +254,10 @@ def _sleep_until_alarm(engine, cap: float) -> float:
     return cap
 
 
-def cmd_agent(cfg: Config, base_url: str, token: str) -> int:
-    """Server mode, machine side: ship events and heartbeats, apply commands."""
-    if not cfg.history_dir:
-        print("✗ ARK_HISTORY_DIR 未设置", file=sys.stderr)
-        return 1
-    log = logging.getLogger("ark.agent")
-    up = Uploader(base_url, token)
-    state = State(cfg.state_dir / "agent")
-    source = LocalSource(cfg)
-
-    # Commands travel over their own held-open connection: the server keeps
-    # the request pending until something is queued (or ~50s pass and the
-    # agent simply asks again). Same shape as tailscaled's watch-ipn-bus - a
-    # doorbell, not a timer. A command sent from the phone lands here within
-    # a second instead of at the next cycle.
-    def command_loop() -> None:
-        from .commands import apply_command  # noqa: PLC0415 - optional feature
-        while True:
-            try:
-                for cmd in up.pull_commands(wait=50):
-                    ok, detail = apply_command(cmd)
-                    up.report_command(str(cmd.get("id", "")), ok, detail)
-                    log.info("指令 %s -> %s %s", cmd.get("action"), ok, detail)
-            except Exception:  # noqa: BLE001
-                log.exception("指令通道出错，稍后重连")
-                time.sleep(5)  # reconnect backoff, not an interval
-
-    threading.Thread(target=command_loop, name="commands", daemon=True).start()
-
-    # The heartbeat is the one deliberately periodic thing left: the beat IS
-    # the signal the server's watchdog listens for, so it cannot be an event.
-    # Event pickup does not wait for it - a record landing on disk wakes the
-    # loop at once.
-    wake = threading.Event()
-    watching = watch.start(cfg.history_dir, wake)
-    log.info("采集端启动 → %s（心跳每 %d 秒%s）", base_url, cfg.poll_seconds,
-             "，记录落盘即上报" if watching else "，记录随心跳节拍扫描")
-    while True:
-        try:
-            up.heartbeat()
-            for rec in source.fetch(state.seen):
-                # Only mark it done once the relay has acknowledged it; the
-                # machine is awake ~3h/day and must re-send after a reboot.
-                if up.send_event(rec):
-                    state.mark_seen(rec.run_id)
-                    log.info("已上报 %s", rec.run_id)
-                else:
-                    log.warning("上报失败，下轮重试: %s", rec.run_id)
-        except KeyboardInterrupt:
-            return 0
-        except Exception:  # noqa: BLE001
-            log.exception("采集端本轮出错，继续")
-        try:
-            if wake.wait(timeout=cfg.poll_seconds):
-                wake.clear()
-                time.sleep(2)  # AUTO-MAS writes the .json and .log separately
-        except KeyboardInterrupt:
-            return 0
-
-
-def cmd_server(cfg: Config, host: str, port: int) -> int:
-    try:
-        import uvicorn  # noqa: PLC0415
-    except ImportError:
-        print("✗ 服务器模式需要: pip install fastapi uvicorn", file=sys.stderr)
-        return 1
-    from .server import build_app  # noqa: PLC0415
-    uvicorn.run(build_app(cfg), host=host, port=port, log_level="info")
-    return 0
-
-
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="ark_relay", description="MAA 通知中继")
-    p.add_argument("command",
-                   choices=["local", "agent", "server", "check", "test", "report"])
+    p.add_argument("command", choices=["local", "check", "test", "report"])
     p.add_argument("--env", type=Path, default=Path(".env"), help="配置文件（默认 ./.env）")
-    p.add_argument("--url", default=os.environ.get("ARK_RELAY_URL", ""),
-                   help="agent 模式：中继地址，如 http://100.x.x.x:8787")
-    p.add_argument("--token", default=os.environ.get("ARK_TOKEN", ""))
-    p.add_argument("--host", default="0.0.0.0")  # noqa: S104 - bound inside the tailnet
-    p.add_argument("--port", type=int, default=int(os.environ.get("ARK_PORT", "8787")))
     p.add_argument("--again", action="store_true",
                    help="report 模式：只看一眼当天进度，不占用当天的日报名额")
     p.add_argument("-v", "--verbose", action="store_true")
@@ -332,7 +268,6 @@ def main(argv: list[str] | None = None) -> int:
     _load_dotenv(args.env)
 
     cfg = Config()
-    cfg.mode = "server" if args.command == "server" else "local"
 
     if args.command == "check":
         return cmd_check(cfg)
@@ -340,14 +275,7 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_test(cfg)
     if args.command == "report":
         return cmd_report(cfg, mark=not args.again)
-    if args.command == "local":
-        return cmd_local(cfg)
-    if args.command == "agent":
-        if not args.url:
-            print("✗ agent 模式需要 --url 或 ARK_RELAY_URL", file=sys.stderr)
-            return 1
-        return cmd_agent(cfg, args.url, args.token)
-    return cmd_server(cfg, args.host, args.port)
+    return cmd_local(cfg)
 
 
 if __name__ == "__main__":

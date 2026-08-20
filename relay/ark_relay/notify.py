@@ -111,17 +111,43 @@ class WeCom:
     _LIMIT = 1800  # leave room for the "(1/3)" marker
 
     @staticmethod
-    def _split(text: str, limit: int = _LIMIT) -> list[str]:
+    def _hard_wrap(line: str, limit: int) -> list[str]:
+        """Break one over-limit line at character boundaries, by UTF-8 bytes.
+
+        An unbroken line has to be cut somewhere: the app API silently
+        truncates past its byte cap, and the bot API *rejects* the whole
+        message - and since the body is retried verbatim, a single model-
+        written paragraph over the cap used to fail the daily report on every
+        retry, which the shutdown path then waited on all night.
+        """
+        out, cur, size = [], [], 0
+        for ch in line:
+            n = len(ch.encode("utf-8"))
+            if cur and size + n > limit:
+                out.append("".join(cur))
+                cur, size = [], 0
+            cur.append(ch)
+            size += n
+        if cur:
+            out.append("".join(cur))
+        return out or [""]
+
+    @classmethod
+    def _split(cls, text: str, limit: int = _LIMIT) -> list[str]:
         if len(text.encode("utf-8")) <= limit:
             return [text]
-        parts, cur, size = [], [], 0
+        lines: list[str] = []
         for line in text.split("\n"):
+            if len(line.encode("utf-8")) > limit:
+                lines.extend(cls._hard_wrap(line, limit))
+            else:
+                lines.append(line)
+        parts, cur, size = [], [], 0
+        for line in lines:
             n = len(line.encode("utf-8")) + 1
             if cur and size + n > limit:
                 parts.append("\n".join(cur))
                 cur, size = [], 0
-            # A single line longer than the limit still has to go somewhere;
-            # keep it whole rather than cutting mid-character.
             cur.append(line)
             size += n
         if cur:

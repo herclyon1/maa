@@ -15,6 +15,7 @@ Firewall without touching business logic:
 """
 from __future__ import annotations
 
+import http.client
 import json
 import logging
 import urllib.error
@@ -110,7 +111,12 @@ def _ask(cfg: Config, prompt: str, max_tokens: int = 400) -> str:
         with urllib.request.urlopen(_request(cfg, prompt, max_tokens),
                                     timeout=_TIMEOUT) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError,
+            http.client.HTTPException, ValueError) as exc:
+        # HTTPException (IncompleteRead mid-response) and ValueError
+        # (UnicodeDecodeError) are answers a flaky LLM endpoint really gives;
+        # letting them escape aborted the whole tick that asked for wording -
+        # deferring the very failure alert the wording was decorating.
         # Never let a flaky model call break the notification path.
         log.warning("%s 调用失败，跳过措辞生成: %s", cfg.llm_provider, exc)
         return ""

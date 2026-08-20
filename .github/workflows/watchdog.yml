@@ -1,0 +1,32 @@
+# 开机监督：游戏机之外唯一的哨兵。逻辑与文档见 scripts/watchdog.py。
+# cron 全是 UTC；对应的服务器（北京）时刻写在行尾注释里。
+# 注意：GitHub 的 cron 常迟到 5–20 分钟——判定用的是 lastSeen 的真实时间戳，
+# 迟到只推迟告警送达，不会造成误判。
+# 注意：公开仓库 60 天没有任何提交时，GitHub 会自动停用 schedule 触发；
+# 本仓库有收件箱在日常提交，正常不会触发这一条。
+name: watchdog
+
+on:
+  schedule:
+    - cron: '20 1 * * *'    # 服务器 09:20 —— 早上该开机了吗
+    - cron: '15 3 * * *'    # 服务器 11:15 —— 早上该收工关机了吗
+    - cron: '45 13 * * *'   # 服务器 21:45 —— 晚上该开机了吗
+    - cron: '10 15 * * *'   # 服务器 23:10 —— 晚上该收工关机了吗
+  workflow_dispatch: {}     # 手动触发 = 全部检查、只打印、不推送
+
+permissions:
+  contents: read
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: 查岗
+        env:
+          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+          SERVERCHAN_KEY: ${{ secrets.SERVERCHAN_KEY }}
+          CHECK_CRON: ${{ github.event.schedule }}
+        run: python3 scripts/watchdog.py

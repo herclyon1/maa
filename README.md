@@ -34,15 +34,15 @@
 
 ## 中继
 
-[relay/](relay/) —— 本机模式零依赖，服务器模式加 FastAPI。三种角色：
+[relay/](relay/) —— 零依赖，跑在游戏机上：
 
 ```bash
-python -m ark_relay local     # 游戏机器上：读 history、判定、推送
-python -m ark_relay agent     # 游戏机器上：上报事件 + 心跳 + 执行指令
-python -m ark_relay server    # 云服务器上：7x24，含心跳超时告警与网页
+python -m ark_relay local     # 读 history、判定、推送（生产用 service.py 服务形态）
 ```
 
-详见 [relay/README.md](relay/README.md)。
+7×24 的那一半（开机/收工监督）不在任何一台自家机器上：GitHub Actions
+定时查 Tailscale `lastSeen`，见 [scripts/watchdog.py](scripts/watchdog.py)。
+服务器模式已裁撤（2026-08-20），详见 [relay/README.md](relay/README.md)。
 
 ---
 
@@ -115,8 +115,7 @@ export ARK_HOST=<你的服务器 Tailscale IP>
 - [x] 开机自启 + 完成后关机
 - [x] 企业微信图片推送
 - [ ] 无人值守全流程实测验证
-- [x] 通知中继（本机模式 + 服务器模式，同一份代码）—— 已实现，待上机实测
-- [x] 开机监督（心跳 + watchdog，服务器模式）
-- [ ] 部署到云服务器并实测
-- [x] 四端 PWA 客户端（看状态 + 发人话指令）—— 已实现，待上机实测
-- [x] 人话 → 配置指令（白名单 + 人工确认 + 结构化 diff 校验）
+- [x] 通知中继（本机模式，生产运行）
+- [x] 开机监督（GitHub Actions + Tailscale lastSeen，无服务器无心跳）—— 已落地，待配 secrets 启用
+- [x] 配置指令走收件箱（白名单 + 结构化 diff 校验）
+- ~~服务器模式 / 四端 PWA / 云服务器部署~~ —— 2026-08-20 裁撤，见 [04-中继设计](docs/04-中继设计.md) 顶部说明

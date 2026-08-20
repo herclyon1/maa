@@ -49,11 +49,20 @@ import win32file  # noqa: E402
 import win32service  # noqa: E402
 import win32serviceutil  # noqa: E402
 
-# How often to check that AUTO-MAS is still alive. It is only checked, never
-# polled for liveness the way a task would poll the relay - a missing AUTO-MAS
-# is not urgent to the second, and relaunching it costs a desktop window.
+# Degraded path only: how often to re-check AUTO-MAS liveness when the WMI
+# process-start subscription below could not be set up. On the healthy path
+# a start is announced by the kernel and this number never ticks.
 AUTOMAS_CHECK_SECONDS = 120
 AUTOMAS_TASK = "AUTO-MAS_AutoStart"
+# When AUTO-MAS is missing, how long to give it (or our own revival of it)
+# before trying again. Doubles on each failed revival - this is failure
+# backoff, not an interval; it resets the moment a backend handle is held.
+REVIVE_FIRST_WAIT = 180
+REVIVE_MAX_WAIT = 1800
+# After this many failed revivals in a row, tell the operator. Before this
+# alert existed, a backend that refused to come back was discovered only by
+# the runs it failed to schedule.
+REVIVE_ALERT_AFTER = 3
 
 
 def _automas_running() -> bool:
@@ -102,6 +111,60 @@ def _automas_handle():
         except (ValueError, Exception):  # noqa: B014 - pywin32 raises its own
             return None
     return None
+
+
+def _start_process_watch(evt, alive: dict, log) -> bool:
+    """Signal `evt` whenever a python.exe process starts anywhere on the box.
+
+    Win32_ProcessStartTrace is a kernel-trace push event - WMI delivers it the
+    instant the process is created, with no WITHIN-style polling underneath
+    (unlike __InstanceCreationEvent, which would just move the timer into
+    WMI). It needs admin rights; the service runs as LocalSystem, which has
+    them. python.exe starts are rare on this machine (AUTO-MAS's backend and
+    nothing else), so the wake-ups cost nothing.
+
+    Returns False when the subscription cannot be created at all; if the
+    listener thread dies later it flips alive["ok"] and fires `evt` once more,
+    so the main loop notices and falls back to the liveness timer instead of
+    trusting a watcher that no longer exists.
+    """
+    try:
+        import pythoncom  # noqa: PLC0415 - optional capability probe
+        import win32com.client  # noqa: PLC0415
+    except ImportError:
+        return False
+
+    def run() -> None:
+        pythoncom.CoInitialize()
+        try:
+            wmi = win32com.client.GetObject("winmgmts:\\\\.\\root\\cimv2")
+            watcher = wmi.ExecNotificationQuery(
+                "SELECT * FROM Win32_ProcessStartTrace"
+                " WHERE ProcessName = 'python.exe'")
+            while True:
+                watcher.NextEvent()  # blocks until the kernel reports a start
+                win32event.SetEvent(evt)
+        except Exception:  # noqa: BLE001 - degrade to the timer, never crash
+            log.exception("进程启动事件监听退出，改用 %d 秒活性检查",
+                          AUTOMAS_CHECK_SECONDS)
+            alive["ok"] = False
+            win32event.SetEvent(evt)   # wake the loop so it sees the change
+        finally:
+            pythoncom.CoUninitialize()
+
+    # Verify the subscription can actually be created before promising it
+    # works: do it here, synchronously, not inside the thread.
+    try:
+        pythoncom.CoInitialize()
+        try:
+            win32com.client.GetObject("winmgmts:\\\\.\\root\\cimv2")
+        finally:
+            pythoncom.CoUninitialize()
+    except Exception:  # noqa: BLE001
+        return False
+    import threading  # noqa: PLC0415
+    threading.Thread(target=run, name="proc-watch", daemon=True).start()
+    return True
 
 
 def _maaend_dir(cfg):
@@ -288,29 +351,43 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             log.exception("目录变更通知挂载失败，退回定时检查")
             watch = None
 
-        # Three things can wake this loop, none of them a timer: the service
-        # being stopped, a run record landing on disk, and the AUTO-MAS backend
-        # dying. The timeout is not an interval either - it is an alarm clock.
-        # The engine knows the exact next moment any clock-based decision can
-        # change (a missed-run alert coming due, the report cutoff, a wake-up
-        # checkpoint), so the loop sleeps until precisely then. Waking every N
-        # seconds to ask "is it time yet?" was the last piece of polling left,
-        # and it was not merely wasteful: the checkpoint window is five minutes
-        # wide, the same as the old interval, so an unlucky phase could skip
-        # it entirely.
+        # Four things can wake this loop, none of them a timer: the service
+        # being stopped, a run record landing on disk, the AUTO-MAS backend
+        # dying, and a python.exe starting (so a freshly launched backend gets
+        # its handle immediately instead of at the next liveness check). The
+        # timeout is not an interval either - it is an alarm clock. The engine
+        # knows the exact next moment any clock-based decision can change
+        # (a missed-run alert coming due, the report cutoff, a wake-up
+        # checkpoint), so the loop sleeps until precisely then.
         automas = _automas_handle()
         if automas:
             log.info("已挂上 AUTO-MAS 进程句柄，它一退出立即拉起")
+        proc_evt = win32event.CreateEvent(None, 0, 0, None)
+        wmi_alive = {"ok": False}
+        wmi_alive["ok"] = _start_process_watch(proc_evt, wmi_alive, log)
+        if wmi_alive["ok"]:
+            log.info("已订阅进程启动事件（WMI 内核 trace），AUTO-MAS 一启动立即挂句柄")
+        else:
+            log.warning("进程启动事件订阅不可用，AUTO-MAS 缺席时退回 %d 秒活性检查",
+                        AUTOMAS_CHECK_SECONDS)
 
         # If every alarm is far away (or there are none), still wake
         # occasionally: an alarm-clock with a bug in it must degrade into
         # lateness, not into a relay that sleeps forever.
         backstop = 3600.0
         last_alarm_note = ""
+        # One-shot deadline for "AUTO-MAS should have appeared by now" - armed
+        # only while no handle is held. Doubles on every failed revival so a
+        # broken backend is retried with backoff, never on a beat.
+        revive_wait = float(REVIVE_FIRST_WAIT)
+        revive_deadline = (time.monotonic() + revive_wait) if not automas else None
+        revive_failures = 0
+        revive_alerted = False
         next_automas_check = 0.0
         next_inbox_retry = 0.0
         while True:
-            handles = [self.stop_event]
+            handles = [self.stop_event, proc_evt]
+            proc_idx = 1
             watch_idx = automas_idx = -1
             if watch:
                 handles.append(watch); watch_idx = len(handles) - 1
@@ -330,9 +407,14 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             except Exception:  # noqa: BLE001 - a broken alarm must not stop the loop
                 log.exception("计算下一个时刻出错，退回备用间隔")
             if not automas:
-                # Degraded path: no process handle, so liveness has to be
-                # re-checked on a timer until a handle can be re-acquired.
-                wait_s = min(wait_s, AUTOMAS_CHECK_SECONDS)
+                if wmi_alive["ok"] and revive_deadline is not None:
+                    # Event-driven path: sleep exactly until the revival
+                    # deadline; a start event will wake us sooner.
+                    wait_s = min(wait_s, max(1.0, revive_deadline - time.monotonic()))
+                elif not wmi_alive["ok"]:
+                    # Degraded path: no start events, so liveness has to be
+                    # re-checked on a timer until a handle can be re-acquired.
+                    wait_s = min(wait_s, AUTOMAS_CHECK_SECONDS)
             if not inbox.last_fetch_ok:
                 wait_s = min(wait_s, 300)   # wake in time for the fetch retry
             rc = win32event.WaitForMultipleObjects(
@@ -342,6 +424,14 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
                 if watch:
                     win32file.FindCloseChangeNotification(watch)
                 return
+            if rc == win32event.WAIT_OBJECT_0 + proc_idx and not automas:
+                # Some python.exe just started; adopt it if it is the backend.
+                if automas := _automas_handle():
+                    log.info("AUTO-MAS 已启动，进程句柄已挂上")
+                    revive_deadline = None
+                    revive_wait = float(REVIVE_FIRST_WAIT)
+                    revive_failures = 0
+                    revive_alerted = False
             if watch and rc == win32event.WAIT_OBJECT_0 + watch_idx:
                 # Re-arm before handling, so a write that lands while we work is
                 # not lost. A record that appears during tick() would otherwise
@@ -366,17 +456,44 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
                 collect("重试")
 
             now = time.monotonic()
-            died = automas and rc == win32event.WAIT_OBJECT_0 + automas_idx
-            if died or (not automas and now >= next_automas_check):
+            died = bool(automas) and rc == win32event.WAIT_OBJECT_0 + automas_idx
+            if died:
+                log.warning("AUTO-MAS 后端退出了")
+                win32api.CloseHandle(automas)
+                automas = None
+            due_check = (
+                automas is None
+                and ((wmi_alive["ok"] and revive_deadline is not None
+                      and now >= revive_deadline)
+                     or (not wmi_alive["ok"] and now >= next_automas_check)))
+            if died or due_check:
                 next_automas_check = now + AUTOMAS_CHECK_SECONDS
                 if not _automas_running():
-                    log.warning("AUTO-MAS 后端不在，正在拉起")
+                    log.warning("AUTO-MAS 后端不在，正在拉起（第 %d 次）",
+                                revive_failures + 1)
                     _revive_automas()
-                # Re-acquire either way: a revived backend is a new process,
-                # and a handle to the old one never signals again.
-                if automas:
-                    win32api.CloseHandle(automas)
-                automas = _automas_handle()
+                    revive_failures += 1
+                    if revive_failures >= REVIVE_ALERT_AFTER and not revive_alerted:
+                        revive_alerted = True
+                        notifier.send(
+                            "🔌 AUTO-MAS 拉不起来",
+                            f"已连续尝试拉起 {revive_failures} 次仍不见后端进程，"
+                            "需要人工看一眼。服务会按翻倍退避继续重试。")
+                # Adopt whichever backend now exists - our revival, or one that
+                # was there all along. A revived backend is a new process, so
+                # the old handle (already closed above) never signals again.
+                if automas := _automas_handle():
+                    log.info("AUTO-MAS 进程句柄已挂上")
+                    revive_deadline = None
+                    revive_wait = float(REVIVE_FIRST_WAIT)
+                    revive_failures = 0
+                    revive_alerted = False
+                else:
+                    # Arm with the CURRENT wait, then double for the next
+                    # failure - doubling first made the very first retry gap
+                    # 360s instead of the documented 180s.
+                    revive_deadline = now + revive_wait
+                    revive_wait = min(revive_wait * 2, float(REVIVE_MAX_WAIT))
 
 
 if __name__ == "__main__":

@@ -35,7 +35,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from .config import SERVER_TZ
+from .config import SERVER_TZ, atomic_write_text
 
 log = logging.getLogger("ark.sanity")
 
@@ -177,8 +177,7 @@ def set_plan(automas_dir: Path, tab: str, line: str = "",
     backup = path.with_suffix(f".bak-{stamp:%Y%m%d-%H%M%S}.json")
     shutil.copy2(path, backup)
     try:
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2),
-                        encoding="utf-8")
+        atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2))
     except OSError as exc:
         shutil.copy2(backup, path)
         return False, f"写入失败，已回滚: {exc}"

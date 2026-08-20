@@ -1,6 +1,6 @@
 # 本机模式（跑在游戏机器上）：零依赖，标准库就够
 # python -m ark_relay local
-
-# 服务器模式（跑在云服务器上）额外需要：
-fastapi>=0.110
-uvicorn[standard]>=0.29
+#
+# Windows 服务形态（service.py）额外需要 pywin32（游戏机上已装）。
+# 服务器模式已裁撤（2026-08-20）：7×24 的那一半由 GitHub Actions +
+# Tailscale lastSeen 承担，见 .github/workflows/watchdog.yml。
