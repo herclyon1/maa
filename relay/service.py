@@ -348,6 +348,11 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         except Exception:  # noqa: BLE001
             log.exception("剿灭周期检查出错，跳过")
 
+        # 本周已打完就把开关摁回 Close，开机时就做一次——不能只靠 tick：
+        # tick 由事件和闹钟驱动，机器刚起来时两者都还没来，等到第一次 tick
+        # 往往已经是第二天队列开跑的时刻，那一轮的空跑照样省不掉。
+        engine._enforce_annihilation()  # noqa: SLF001
+
         # Wake on the directory changing, not on a timer. AUTO-MAS writes a
         # run record the moment a script finishes, and Windows will say so;
         # asking every thirty seconds instead was just the lazy way to find out.
