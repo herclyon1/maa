@@ -35,7 +35,7 @@ log = logging.getLogger("ark.commands")
 REVERSIBLE = {"run_now", "skip_today", "debug_mode"}
 
 # Actions that write to a config file on disk.
-MUTATING = {"set_stage", "set_medicine", "toggle_task"}
+MUTATING = {"set_stage", "set_medicine", "toggle_task", "set_wait_time"}
 
 ALLOWED = REVERSIBLE | MUTATING
 
@@ -149,6 +149,31 @@ def _set_medicine(value: Any) -> tuple[bool, str]:
     return _safe_rewrite(_script_config(), mutate, expect_changed=1)
 
 
+def _set_wait_time(value: Any) -> tuple[bool, str]:
+    """MaaEnd 的「游戏启动后等待秒数」（ScriptConfig 里唯一的 Game/WaitTime）。
+
+    Why this knob exists here: every fresh boot the first MaaEnd attempt died
+    within seconds of connecting - the game recreates its window during first
+    startup and MaaEnd grabs the doomed early handle (2026-08-20 log
+    forensics, docs/05-踩过的坑.md). Waiting past the recreation window is
+    the fix; the retry mechanism was papering over it once per day.
+    """
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return False, f"等待秒数不是整数: {value!r}"
+    if not 0 <= n <= 600:
+        return False, f"等待秒数超出范围 0–600: {n}"
+
+    def mutate(raw: str) -> str:
+        hits = re.findall(r'"WaitTime":\s*\d+', raw)
+        if len(hits) != 1:
+            raise ValueError(f'找到 {len(hits)} 处 "WaitTime"，预期恰好 1 处')
+        return re.sub(r'("WaitTime":\s*)\d+', rf"\g<1>{n}", raw, count=1)
+
+    return _safe_rewrite(_script_config(), mutate, expect_changed=1)
+
+
 def _toggle_task(name: str, on: bool) -> tuple[bool, str]:
     # Deliberately unimplemented: task names live in a different file per
     # script and getting this wrong silently disables the wrong task.
@@ -199,6 +224,8 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             return _set_stage(cmd.get("value", ""))
         if action == "set_medicine":
             return _set_medicine(cmd.get("value"))
+        if action == "set_wait_time":
+            return _set_wait_time(cmd.get("value"))
         if action == "toggle_task":
             return _toggle_task(str(cmd.get("name", "")), bool(cmd.get("on")))
         if action == "run_now":

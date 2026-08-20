@@ -4,7 +4,7 @@
   "ark_relay/__main__.py": "5a84ee596b9fa1b767165c0ac69b177577e8fa8f",
   "ark_relay/annihilation.py": "0a2087174f2a2f48c187c8234e4c7477a00f601f",
   "ark_relay/collector.py": "d418d3c416dc6726d83a8bae72759f05aa76f0c3",
-  "ark_relay/commands.py": "9765933fffcc9ac9e4ed71676e45ff419705558d",
+  "ark_relay/commands.py": "668e2e7ef7d2772cff59bbb2fec52c03ba3369c0",
   "ark_relay/config.py": "a621f03a90146eec0de629f8dbbc578ed9175d31",
   "ark_relay/core.py": "904bc9e9f8bae888d935c894c49c0c1200175f7f",
   "ark_relay/engine.py": "c40cc6634bf9f1ba2a7e390760c8d97db33eecd6",

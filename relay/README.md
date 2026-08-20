@@ -67,6 +67,7 @@ python -m ark_relay local      # 常驻（生产用 service.py 的 Windows 服�
 | `debug_mode` 调试模式 | ✅ 自动过期 | 否（`days`:N 或 `off`:true；生效期内不关机、不报漏跑） |
 | `set_stage` 换关卡 | ❌ 改配置 | **是** |
 | `set_medicine` 理智药 | ❌ 改配置 | **是** |
+| `set_wait_time` MaaEnd 启动后等待秒数 | ❌ 改配置 | **是**（治首启窗口竞态，见 docs/05） |
 | `toggle_task` 开关任务 | ❌ 改配置 | **是**（尚未实现，会明确拒绝） |
 
 模型**只能产出这张表里的动作名，不能输出 JSON 补丁**。落地时一律：备份 → 改 → `json.loads` → 结构化 diff，**新增/删除不为 0 或改动数不符预期就回滚**。

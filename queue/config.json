@@ -1,20 +1,10 @@
 {
-  "version": 2026081902,
-  "note": "恢复正常运行：调试模式关闭，两队列恢复定时。早 09:00 新队列（明日方舟+终末地），晚 21:30 Evening-MAA（仅明日方舟）。",
+  "version": 2026082001,
+  "note": "MaaEnd 启动后等待 60→120 秒：根治每次开机首败的窗口重建竞态（8/20 日志取证）",
   "commands": [
     {
-      "action": "debug_mode",
-      "off": true
-    },
-    {
-      "action": "queue",
-      "name": "新队列",
-      "enabled": true
-    },
-    {
-      "action": "queue",
-      "name": "Evening-MAA",
-      "enabled": true
+      "action": "set_wait_time",
+      "value": 120
     }
   ]
 }
