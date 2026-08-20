@@ -9,13 +9,17 @@ once: selfupdate refuses to create files that do not already exist there.
 """
 import hashlib
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 files = sorted(
     [p.relative_to(HERE).as_posix() for p in (HERE / "ark_relay").glob("*.py")]
     + ["run.py", "service.py"])
-manifest = {"files": {
+# 单调递增的版本号，selfupdate 用它拒绝比机器上更旧的清单——CDN 可能
+# 缓存着上一版的整套快照，没有这道闸就会把机器悄悄降级回去。
+manifest = {"version": int(datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")),
+            "files": {
     f: hashlib.sha1((HERE / f).read_bytes()).hexdigest()  # noqa: S324 - change detection
     for f in files}}
 (HERE / "manifest.json").write_text(

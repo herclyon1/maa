@@ -168,6 +168,23 @@ def _safe_target(root: Path, rel: str) -> Path | None:
     return target
 
 
+def _applied_version(root: Path) -> int:
+    try:
+        return int((root / "state" / "code-version.txt")
+                   .read_text(encoding="utf-8").strip() or 0)
+    except (OSError, ValueError):
+        return 0
+
+
+def _remember_version(root: Path, version: int) -> None:
+    path = root / "state" / "code-version.txt"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write(path, str(version).encode("utf-8"))
+    except OSError:
+        log.warning("记不住代码版本号，下次可能重复检查", exc_info=True)
+
+
 def check(root: Path, base_url: str = "") -> list[str]:
     """Fetch and apply any changed files. Returns human-readable lines."""
     base = (base_url or DEFAULT_BASE).rstrip("/") + "/"
@@ -181,6 +198,20 @@ def check(root: Path, base_url: str = "") -> list[str]:
         return []
     files = manifest.get("files")
     if not isinstance(files, dict):
+        return []
+
+    # 拒绝比机器上更旧的清单。下载走的是 CDN，CDN 完全可能整套缓存着上一版
+    # （旧 manifest + 旧 .py，内部自洽、哈希也对得上），那样机器会被"更新"
+    # 回旧代码，而且日志上看起来一切正常。版本号只增不减，这道闸让降级变成
+    # 一条明确的警告而不是一次静默回滚。
+    try:
+        remote_ver = int(manifest.get("version") or 0)
+    except (TypeError, ValueError):
+        remote_ver = 0
+    local_ver = _applied_version(root)
+    if remote_ver and local_ver and remote_ver < local_ver:
+        log.warning("拿到的是旧清单（v%s < 本机 v%s），可能是 CDN 缓存未刷新，"
+                    "本次不更新", remote_ver, local_ver)
         return []
 
     # 先把要改的文件全部下齐并校验，一个都不落盘；全通过了再一次性写。
@@ -229,5 +260,9 @@ def check(root: Path, base_url: str = "") -> list[str]:
         for cache in root.rglob("__pycache__"):
             for pyc in cache.glob("*.pyc"):
                 pyc.unlink(missing_ok=True)
-        log.info("代码已更新 %d 个文件，下次启动生效: %s", len(updated), "、".join(updated))
+        log.info("代码已更新 %d 个文件: %s", len(updated), "、".join(updated))
+    # 版本号在"这套清单已完整落地"之后才记——包括本来就一致、一个文件都
+    # 没改的情况（那也说明机器已是这一版）。半途 break 掉的不记，让下次重来。
+    if remote_ver and len(updated) == len(staged):
+        _remember_version(root, remote_ver)
     return updated
