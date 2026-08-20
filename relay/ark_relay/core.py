@@ -340,6 +340,12 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             lines.append("· 公招 " + recruits)
         if e.get("sanity") is not None:
             s = f"· 剩余理智 {e['sanity']}"
+            # 终末地会报「当前/上限」，而且真的会超上限——超了意味着理智在
+            # 白白溢出，是要动手的信号，不能只报一个裸数字。
+            if cap := raw.get("sanity_cap"):
+                s += f"/{cap}"
+                if e["sanity"] > cap:
+                    s += "　⚠️ 已超上限，理智在溢出"
             if full := _sanity_full(e.get("sanity_full_at"), finished):
                 s += "，" + full
             lines.append(s)

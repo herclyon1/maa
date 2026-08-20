@@ -181,9 +181,11 @@ def parse_maa_log(log_path: Path) -> dict:
 #   获得 嵌晶玉 ×25
 #
 _END_GAIN = re.compile(r"获得\s+(\S.*?)\s*[×x]\s*(\d+)")
-# MaaEnd never prints a sanity number or a refill time - MAA reads those off the
-# game UI and it does not. What it does say is whether it stopped because the
-# sanity ran out, which is the part a reader actually acts on.
+# 终末地的理智数值。MaaEnd 以前不打印，是本项目 2026-08-15 提的建议
+# (MaaEnd#5053) 被采纳后加上的，形如「当前理智 920/360」——注意会超上限。
+# 取最后一次出现＝任务结束时的状态。
+_END_SANITY = re.compile(r"当前理智\s*(\d+)\s*/\s*(\d+)")
+# MaaEnd 还会说它是不是因为理智耗尽才收工，这条比数字更直接决定要不要管。
 _END_SANITY_OUT = re.compile(r"理智不足[，,]\s*结束任务")
 _END_PS_ENTER = re.compile(r"进入协议空间成功")
 _END_TASK_DONE = re.compile(r"任务完成[:：]\s*(\S.+?)\s*$")
@@ -216,6 +218,12 @@ def parse_maaend_log(log_path: Path) -> dict:
         out["tasks_done"] = tasks
     if runs := len(_END_PS_ENTER.findall(text)):
         out["protocol_runs"] = runs
+    if hits := _END_SANITY.findall(text):
+        got, cap = (int(x) for x in hits[-1])
+        # AUTO-MAS 给 MaaEnd 记的 sanity 恒为 0，所以这里填进去就会被采用
+        # （parse_record 只补 raw 里空着的字段）。
+        out["sanity"] = got
+        out["sanity_cap"] = cap
     if _END_SANITY_OUT.search(text):
         out["sanity_exhausted"] = True
     return out
