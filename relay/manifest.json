@@ -1,5 +1,5 @@
 {
- "version": 20260820234815,
+ "version": 20260820235211,
  "files": {
   "ark_relay/__init__.py": "297e0c5d45a732b40a24be0bfd40f07b174d2a9a",
   "ark_relay/__main__.py": "5a84ee596b9fa1b767165c0ac69b177577e8fa8f",
@@ -9,7 +9,7 @@
   "ark_relay/config.py": "a621f03a90146eec0de629f8dbbc578ed9175d31",
   "ark_relay/core.py": "ce6773cfb7873123cad03dbfeed499e37568ef96",
   "ark_relay/engine.py": "49dec4e7a410bbf8f875f053ecef5dee93fbaefb",
-  "ark_relay/inbox.py": "4dc8c7d5db33236dff1b27e4a20495f663a2db23",
+  "ark_relay/inbox.py": "ce2997d2eb2cf8631e66969e771ec4599dd7c76f",
   "ark_relay/maaend.py": "c4dd90f47da3adcb3a31d1004b8790f2e07a7834",
   "ark_relay/modes.py": "80b8efc21ef3eeff2d37df05a3c9671eca251a60",
   "ark_relay/notify.py": "efabeec144c15c61481f903144fd0148d51b6501",

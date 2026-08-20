@@ -288,5 +288,7 @@ class Inbox:
             # The file can only be written by whoever can push to the repo, so
             # authorship is the confirmation that gate ② asks for.
             ok, detail = apply_command({**cmd, "confirmed": True})
-            out.append(("✅ " if ok else "✗ ") + f"{cmd.get('action')}: {detail}")
+            # 成功时只报人话（detail 已经是「刷取关卡：TO-5 → 1-7」这种）；
+            # 失败时才带上内部动作名，那时它是排查线索而不是噪音。
+            out.append(f"✅ {detail}" if ok else f"✗ {cmd.get('action')}: {detail}")
         return out
