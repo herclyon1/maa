@@ -43,12 +43,15 @@ log = logging.getLogger("ark.update")
 
 DEFAULT_BASE = "https://raw.githubusercontent.com/herclyon1/maa/main/relay/"
 MANIFEST = "manifest.json"
-# 整轮自更新的总时间预算。开机时序是 08:47 中继起来、09:00 队列开跑，中间
-# 只有 13 分钟——自更新绝不能把这段烧掉。到点就干净放弃，下次启动重来。
-BUDGET_SECONDS = 150
-# 给 raw.githubusercontent 的单次超时。它实测 2/8、平均 38 秒，是兜底而不是
-# 主力；等它等满 20 秒 × 四扇门 × 多个文件，开机就没了。
-RAW_TIMEOUT = 8
+# 整轮自更新的总时间预算。开机时序：早班 08:47 中继起来 / 09:00 队列开跑，
+# 晚班 21:22 / 21:30——短的那头只有 8 分钟。240 秒既留足余量，又足够在
+# CDN 不同步、只能走 raw 的日子里把三五个文件拉下来。到点干净放弃，
+# 下次启动（当天晚上那趟）重来。
+BUDGET_SECONDS = 240
+# 给 raw.githubusercontent 的单次超时。它是四扇门里唯一不吃 CDN 缓存的，
+# CDN 落后时它是**唯一**能拿到新内容的门，所以不能掐太死——实测它成功时
+# 平均要 38 秒。总时长由上面的预算兜底，这里给它一次像样的机会。
+RAW_TIMEOUT = 25
 
 
 def _get_once(url: str, timeout: int = 20) -> bytes | None:
