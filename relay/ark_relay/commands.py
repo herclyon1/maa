@@ -51,6 +51,30 @@ def _script_config() -> Path:
     return Path(root) / "config" / "ScriptConfig.json"
 
 
+# 配置字段 → 人话。推送是给手机上的人看的，`/59da8762-8fa7-.../Game/WaitTime`
+# 这种东西对读的人毫无意义（2026-08-20 用户实测反馈）。
+_FIELD_LABELS = {
+    "Stage": "刷取关卡",
+    "MedicineNumb": "理智药上限",
+    "WaitTime": "终末地启动后等待",
+    "Annihilation": "剿灭",
+    "TimeEnabled": "队列定时",
+    "Enabled": "启用",
+    "RunTimesLimit": "失败重试上限",
+    "StageMode": "选关模式",
+}
+_FIELD_UNITS = {"WaitTime": " 秒", "MedicineNumb": " 个"}
+
+
+def _humanize(path: str, before: Any, after: Any) -> str:
+    """'/x/Game/WaitTime', 60, 120 -> '终末地启动后等待：60 秒 → 120 秒'"""
+    field = path.rsplit("/", 1)[-1]
+    label = _FIELD_LABELS.get(field, field)
+    unit = _FIELD_UNITS.get(field, "")
+    fmt = lambda v: f"{v}{unit}" if not isinstance(v, bool) else ("开" if v else "关")  # noqa: E731
+    return f"{label}：{fmt(before)} → {fmt(after)}"
+
+
 def _flatten(obj: Any, path: str = "") -> dict[str, Any]:
     out: dict[str, Any] = {}
     if isinstance(obj, dict):
@@ -112,8 +136,8 @@ def _safe_rewrite(path: Path, mutate: Callable[[str], str],
         shutil.copy2(backup, path)
         return False, f"写入失败，已回滚: {exc}"
 
-    detail = "；".join(f"{k}: {x!r} → {y!r}" for k, (x, y) in sorted(changed.items()))
-    return True, f"已改动 {len(changed)} 处（备份 {backup.name}）：{detail}"
+    detail = "；".join(_humanize(k, x, y) for k, (x, y) in sorted(changed.items()))
+    return True, detail
 
 
 # ---------- the actions ----------

@@ -28,12 +28,14 @@ from __future__ import annotations
 
 import http.client
 import json
+from datetime import datetime
 import logging
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 
+from .config import SERVER_TZ, both_clocks
 from . import maaend, queues, sanity_plan
 from .commands import apply_command
 
@@ -214,6 +216,7 @@ class Inbox:
             log.warning("待办文件 v%s 没有 commands 数组，忽略", version)
             return have, []
 
+        name = str(data.get("name") or "").strip()
         log.info("收到待办 v%s（当前 v%s）：%s", version, have, note or "(无说明)")
         try:
             messages = self._apply(commands)
@@ -232,10 +235,14 @@ class Inbox:
         # get better; the failure is reported instead, and the fix is a new
         # version - which is also how the operator learns it did not land.
         self._remember(version)
-        head = f"⚙️ 配置已更新 · {label_version(version)}"
+        # 返回值第 0 项是推送标题，其余是正文。以前把说明塞在标题里、正文只
+        # 取 messages[1:]，结果操作者自己写的那句说明被整条丢掉——而那恰恰
+        # 是最像人话的一句。
+        title = f"⚙️ 配置已更新：{name}" if name else "⚙️ 配置已更新"
+        body = [f"{both_clocks(datetime.now(tz=SERVER_TZ))} · {label_version(version)}"]
         if note:
-            head += f"\n{note}"
-        return version, [head, *messages]
+            body += ["", note]
+        return version, [title, "", *body, "", *messages]
 
     def _fetch_or_none(self) -> dict | None:
         return _fetch(self.url)

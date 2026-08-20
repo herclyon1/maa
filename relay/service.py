@@ -331,7 +331,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             if messages:
                 for m in messages:
                     log.info("待办: %s", m)
-                notifier.send(f"⚙️ 配置已更新 v{version}", "\n".join(messages[1:]))
+                notifier.send(messages[0], "\n".join(messages[1:]).strip())
             else:
                 log.debug("待办检查（%s）：无新配置（当前 v%s）", reason, version)
 

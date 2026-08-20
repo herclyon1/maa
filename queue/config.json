@@ -1,10 +1,11 @@
 {
-  "version": 2026082001,
-  "note": "MaaEnd 启动后等待 60→120 秒：根治每次开机首败的窗口重建竞态（8/20 日志取证）",
+  "version": 2026082101,
+  "name": "换刷 1-7",
+  "note": "TO-5 活动 08-22 03:59 结束，换回常驻 1-7 刷龙门币。理智药维持 0（不吃药）。",
   "commands": [
     {
-      "action": "set_wait_time",
-      "value": 120
+      "action": "set_stage",
+      "value": "1-7"
     }
   ]
 }

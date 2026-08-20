@@ -43,6 +43,12 @@ log = logging.getLogger("ark.update")
 
 DEFAULT_BASE = "https://raw.githubusercontent.com/herclyon1/maa/main/relay/"
 MANIFEST = "manifest.json"
+# 整轮自更新的总时间预算。开机时序是 08:47 中继起来、09:00 队列开跑，中间
+# 只有 13 分钟——自更新绝不能把这段烧掉。到点就干净放弃，下次启动重来。
+BUDGET_SECONDS = 150
+# 给 raw.githubusercontent 的单次超时。它实测 2/8、平均 38 秒，是兜底而不是
+# 主力；等它等满 20 秒 × 四扇门 × 多个文件，开机就没了。
+RAW_TIMEOUT = 8
 
 
 def _get_once(url: str, timeout: int = 20) -> bytes | None:
@@ -110,8 +116,13 @@ def _netloc(url: str) -> str:
     return parts[2] if len(parts) > 2 else url
 
 
+def _remaining(deadline: float | None) -> float:
+    """离预算耗尽还有多少秒；没有预算就当作无限。"""
+    return 1e9 if deadline is None else deadline - time.monotonic()
+
+
 def _get_with_retry(url: str, attempts: int = 3, timeout: int = 20,
-                    expect_sha: str = "") -> bytes | None:
+                    expect_sha: str = "", deadline: float | None = None) -> bytes | None:
     """Fetch, retrying transient failures across both doors.
 
     Measured from the game machine: raw.githubusercontent answered 11 of 11 one
@@ -126,7 +137,17 @@ def _get_with_retry(url: str, attempts: int = 3, timeout: int = 20,
     urls.sort(key=lambda u: _netloc(u) != _last_good)  # stable: keeps order
     for i in range(attempts):
         for u in urls:
-            if (data := _get_once(u, timeout)) is None:
+            left = _remaining(deadline)
+            if left <= 1:
+                log.warning("更新时间预算用尽，放弃取 %s", url.rsplit("/", 1)[-1])
+                return None
+            # raw.githubusercontent 实测 2/8、平均 38 秒，是四扇门里最慢的。
+            # 它只是"内容永远最新"的兜底，不值得为它把开机时间烧光——给它
+            # 一个短超时，通得过算捡到，通不过立刻让位。
+            per = min(timeout, left)
+            if "raw.githubusercontent.com" in u:
+                per = min(per, RAW_TIMEOUT)
+            if (data := _get_once(u, int(max(2, per)))) is None:
                 continue
             # 内容不对 = 这扇门给的是旧副本，换下一扇，而不是就此放弃。
             # jsDelivr 的刷新不是原子的（2026-08-21 实测：.py 已经是新的、
@@ -139,7 +160,10 @@ def _get_with_retry(url: str, attempts: int = 3, timeout: int = 20,
             _last_good = _netloc(u)
             return data
         if i + 1 < attempts:
-            time.sleep(3 * (i + 1))
+            nap = min(3 * (i + 1), max(0.0, _remaining(deadline) - 1))
+            if nap <= 0:
+                return None
+            time.sleep(nap)
     return None
 
 
@@ -195,7 +219,7 @@ def _remember_version(root: Path, version: int) -> None:
         log.warning("记不住代码版本号，下次可能重复检查", exc_info=True)
 
 
-def _best_manifest(base: str) -> dict | None:
+def _best_manifest(base: str, deadline: float | None = None) -> dict | None:
     """把每扇门的 manifest 都取回来，选版本号最大的那份。
 
     manifest 是所有校验的基准，唯独它自己没法被校验——所以不能"哪扇门先
@@ -210,7 +234,14 @@ def _best_manifest(base: str) -> dict | None:
     best_ver = -1
     fallback: dict | None = None
     for url in _alternates(base + MANIFEST):
-        if (data := _get_once(url)) is None:
+        left = _remaining(deadline)
+        if left <= 1:
+            log.warning("取 manifest 时预算已用尽，用手头最好的一份")
+            break
+        per = min(20.0, left)
+        if "raw.githubusercontent.com" in url:
+            per = min(per, RAW_TIMEOUT)
+        if (data := _get_once(url, int(max(2, per)))) is None:
             continue
         try:
             m = json.loads(data)
@@ -233,10 +264,17 @@ def _best_manifest(base: str) -> dict | None:
     return fallback
 
 
-def check(root: Path, base_url: str = "") -> list[str]:
-    """Fetch and apply any changed files. Returns human-readable lines."""
+def check(root: Path, base_url: str = "",
+          budget_s: float = BUDGET_SECONDS) -> list[str]:
+    """Fetch and apply any changed files. Returns human-readable lines.
+
+    `budget_s` 是整轮的墙钟预算，超了就干净放弃。这条在开机路径上是硬要求：
+    CDN 缓存不同步时，每个文件都要把四扇门试一遍（其中 raw 很慢），21 个
+    文件足够拖过 09:00 的队列时刻。宁可这次不更新，也不能耽误刷图。
+    """
     base = (base_url or DEFAULT_BASE).rstrip("/") + "/"
-    manifest = _best_manifest(base)
+    deadline = time.monotonic() + budget_s if budget_s else None
+    manifest = _best_manifest(base, deadline)
     if manifest is None:
         return []
     files = manifest["files"]
@@ -278,7 +316,7 @@ def check(root: Path, base_url: str = "") -> list[str]:
             continue
         if _sha1(target.read_bytes()) == want:
             continue
-        data = _get_with_retry(base + rel, expect_sha=want)
+        data = _get_with_retry(base + rel, expect_sha=want, deadline=deadline)
         if data is None:
             log.warning("%s 所有门都拿不到正确内容，本次更新整体放弃（已下 %d 个"
                         "文件都不落盘，下次启动重来）", rel, len(staged))
