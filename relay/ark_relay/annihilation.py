@@ -131,13 +131,16 @@ class WeeklyGate:
         current = read_setting(self.automas_dir)
         if current == CLOSED:
             return ""
-        ok, detail = _write_setting(self.automas_dir, CLOSED)
-        if not ok:
-            log.warning("剿灭关闭失败: %s", detail)
-            return ""
+        # 这里只记账，不写配置。
+        #
+        # 这一刻是「剿灭那趟刚出记录」，队列多半还在跑下一个脚本，而 AUTO-MAS
+        # 运行期间会用自己内存里的那份覆写 ScriptConfig——此时写下去的 Close
+        # 会被静静冲掉（2026-08-20 实测，正是它导致本周每轮又空跑一次剿灭）。
+        # 真正的关闭交给 enforce()：它挑没有脚本在跑的时刻做，而且做多少遍
+        # 结果都一样，被冲回去也能再关上。
         self._save({"done_week": week, "restore_to": current or DEFAULT_WHEN_UNKNOWN})
-        log.info("本周剿灭已完成，暂时关闭（周一 04:00 后自动恢复为 %s）", current)
-        return f"本周剿灭已完成，已暂停到下周一（届时恢复为 {current}）"
+        log.info("本周剿灭已完成，待脚本停下后关闭（周一 04:00 后恢复为 %s）", current)
+        return f"本周剿灭已完成，稍后暂停到下周一（届时恢复为 {current}）"
 
     def enforce(self, now: datetime | None = None) -> bool:
         """本周已打完，就把开关摁回 Close。返回是否真的改了。
