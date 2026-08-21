@@ -1,5 +1,5 @@
 {
- "version": 20260821115147,
+ "version": 20260821115416,
  "files": {
   "ark_relay/__init__.py": "297e0c5d45a732b40a24be0bfd40f07b174d2a9a",
   "ark_relay/__main__.py": "5a84ee596b9fa1b767165c0ac69b177577e8fa8f",
@@ -13,7 +13,7 @@
   "ark_relay/maaend.py": "c4dd90f47da3adcb3a31d1004b8790f2e07a7834",
   "ark_relay/modes.py": "e2db1f94d38e2af8ecfda5f71e1bc4bea64e7ab4",
   "ark_relay/notify.py": "efabeec144c15c61481f903144fd0148d51b6501",
-  "ark_relay/plan.py": "1a4aeed617b3813d82b51817eeb50643fd0793d8",
+  "ark_relay/plan.py": "c7ea48383b193e95b5649d9e0b951d7edf8b755d",
   "ark_relay/queues.py": "b0a97768e324530d2645d16cf8ef3569eb556097",
   "ark_relay/sanity_plan.py": "3b40287ebb29c4e94c2b266728e9428791e891ed",
   "ark_relay/selfupdate.py": "71313734dac78fbeb9ac3e681adf0a7d008686d2",

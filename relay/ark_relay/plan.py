@@ -83,6 +83,8 @@ def _scripts(cfg_dir: Path) -> dict[str, dict]:
                 entry["stage"] = info["Stage"]
                 entry["stage_mode"] = info.get("StageMode", "")
                 entry["medicine"] = info.get("MedicineNumb")
+            if info.get("Annihilation"):
+                entry["annihilation"] = info["Annihilation"]
             if task.get("SanityTaskType"):
                 entry["sanity_use"] = _SANITY_USE.get(
                     task["SanityTaskType"], task["SanityTaskType"]
@@ -158,6 +160,15 @@ def next_plan(automas_dir: Path | None) -> str:
             if s.get("stage"):
                 mode = "固定" if s.get("stage_mode") == "Fixed" else s.get("stage_mode", "")
                 bits.append(f"理智 {s['stage']}" + (f"（{mode}）" if mode else ""))
+            if (anni := s.get("annihilation")):
+                # Worth a line of its own. "Close" is how the weekly gate
+                # leaves the switch after a pass, and it is also how it looks
+                # when somebody closed it by hand - in which case nothing will
+                # ever reopen it, because the gate only restores a week it
+                # recorded closing itself. Either way the weekly reward is not
+                # being collected, and silence about that costs a reward a week.
+                bits.append("剿灭 本周已完成/关闭" if anni == "Close"
+                            else f"剿灭 {anni}")
             if (med := s.get("medicine")) is not None:
                 # AUTO-MAS stores "use as many as you have" as a sentinel, not
                 # as a real count. Printing 999 makes a reader stop and wonder.
