@@ -152,9 +152,19 @@ def host_reachable() -> bool:
 
 
 def remote(cmd: str) -> tuple[int, str]:
-    r = subprocess.run([*SSH, f"Administrator@{HOST}", cmd],
-                       capture_output=True, text=True)
-    return r.returncode, (r.stdout or "") + (r.stderr or "")
+    # Bytes, not text=True. The Windows console is GBK, so `schtasks` and
+    # friends answer in GBK and Python's UTF-8 decode raises - which killed
+    # this checker on its first run against a live machine. Decoding is done
+    # here, tolerantly: the checks look for ASCII markers, and a mangled
+    # Chinese word in an error message is better than a crash.
+    r = subprocess.run([*SSH, f"Administrator@{HOST}", cmd], capture_output=True)
+    raw = (r.stdout or b"") + (r.stderr or b"")
+    for enc in ("utf-8", "gbk"):
+        try:
+            return r.returncode, raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return r.returncode, raw.decode("utf-8", errors="replace")
 
 
 def check_win_paths(directives) -> None:

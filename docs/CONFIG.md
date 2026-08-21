@@ -47,8 +47,9 @@ user has it true; this machine does.
 | `新队列` | `StartUpEnabled` | `false` | see below |
 | `Evening-MAA` | `AfterAccomplish` | `NoAction` | same |
 
-<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\QueueConfig.json */AfterAccomplish NoAction -->
-<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\QueueConfig.json */StartUpEnabled False -->
+<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\QueueConfig.json */Info/AfterAccomplish NoAction -->
+<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\QueueConfig.json */Info/StartUpEnabled False -->
+<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\QueueConfig.json */Info/TimeEnabled True -->
 
 `StartUpEnabled` means "run this queue whenever the program starts, regardless of
 the clock" - and booting looks identical morning and evening. Left on, the BIOS
@@ -73,9 +74,11 @@ purely time-triggered, with 15 min of slack in the morning and 10 in the evening
 | MaaEnd controller | `Win32-Front` - foreground, needs the game window frontmost and unobstructed |
 | `Task.SanityTaskType` | `OperatorProgression` (single choice) |
 
-<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\ScriptConfig.json */Info/Stage 1-7 -->
-<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\ScriptConfig.json */Info/MedicineNumb 0 -->
-<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\ScriptConfig.json */Info/Annihilation Close -->
+<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/Stage 1-7 -->
+<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/StageMode Fixed -->
+<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/MedicineNumb 0 -->
+<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/Annihilation Close -->
+<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\ScriptConfig.json */Game/WaitTime 60 -->
 
 **`Info.Annihilation` is asymmetric and the asymmetry is silent.** AUTO-MAS
 offers only a static switch - there is no "once a week" it can express - so the

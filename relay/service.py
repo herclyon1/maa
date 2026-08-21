@@ -113,6 +113,47 @@ def _automas_handle():
     return None
 
 
+def _wait_for_network(log, timeout: float = 90.0) -> bool:
+    """Block until DNS answers, or give up. True if the network came up.
+
+    Measured 2026-08-21 21:20:19, one second after the service started on a
+    fresh boot: all four update doors failed with
+    `[Errno 11001] getaddrinfo failed`, and thirty seconds later raw was still
+    only getting as far as a TLS handshake timeout. The relay starts within a
+    second or two of logon, well before Windows has finished bringing up DNS,
+    so the boot-window update - the whole point of that window - was reaching
+    the network before there was one, every single boot.
+
+    Nothing downstream retried its way out of that: _best_manifest asks each
+    door once and returns None if none answer, so the round was abandoned
+    before the doors were reachable.
+
+    The boot-to-queue gap is about ten minutes, so waiting up to ninety
+    seconds here is cheap. Failing to wait costs the entire update.
+    """
+    import socket  # noqa: PLC0415 - only needed on this path
+
+    deadline = time.monotonic() + timeout
+    delay, waited = 2.0, False
+    while True:
+        try:
+            socket.getaddrinfo("raw.githubusercontent.com", 443)
+            if waited:
+                log.info("网络已就绪（等了 %.0f 秒）", timeout - (deadline - time.monotonic()))
+            return True
+        except OSError as exc:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                log.warning("等了 %.0f 秒 DNS 仍不通（%s），本次跳过取件；"
+                            "下次开机重试", timeout, exc)
+                return False
+            if not waited:
+                log.info("刚开机，DNS 还没起来，最多等 %.0f 秒", timeout)
+                waited = True
+            time.sleep(min(delay, left))
+            delay = min(delay * 2, 15.0)
+
+
 def _start_process_watch(evt, alive: dict, log) -> bool:
     """Signal `evt` whenever a python.exe process starts anywhere on the box.
 
@@ -275,6 +316,11 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         # in a refactor on 2026-08-17 - a range replace swallowed it - and for
         # three commits the machine stopped receiving updates at all while the
         # log still looked healthy. Keep it adjacent to its own marker.
+        # Before anything reaches for the network. Both the update and the
+        # inbox run in the seconds after boot, and on a cold boot there is no
+        # DNS yet - so both used to fail on every single boot and give up.
+        _wait_for_network(log)
+
         try:
             from ark_relay import selfupdate
 
