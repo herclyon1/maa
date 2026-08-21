@@ -191,8 +191,13 @@ def _set_wait_time(value: Any) -> tuple[bool, str]:
         n = int(value)
     except (TypeError, ValueError):
         return False, f"等待秒数不是整数: {value!r}"
-    if not 0 <= n <= 600:
-        return False, f"等待秒数超出范围 0–600: {n}"
+    # AUTO-MAS's own schema declares this field as `ge=60`
+    # (app/models/schema.py). Anything smaller is not rejected loudly - it is
+    # accepted, written to disk, and then silently clamped back to 60 the next
+    # time AUTO-MAS starts. Refusing here turns an invisible revert into a
+    # clear message (measured 2026-08-21: 30 became 60 on the next launch).
+    if not 60 <= n <= 600:
+        return False, f"等待秒数超出范围 60–600: {n}（AUTO-MAS 最小值就是 60，写小了会被它改回去）"
 
     def mutate(raw: str) -> str:
         hits = re.findall(r'"WaitTime":\s*\d+', raw)
