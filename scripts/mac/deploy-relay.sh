@@ -52,6 +52,16 @@ ssh -o ConnectTimeout=15 "$USER_AT" "\"$PY\" -X utf8 C:\\Users\\Administrator\\a
 ssh -o ConnectTimeout=15 "$USER_AT" \
   "del C:\\Users\\Administrator\\ark-verify.py & del ${REMOTE_DIR//\//\\}\\_manifest_check.json" >/dev/null 2>&1 || true
 
+echo "▶ 4.5/5 写入代码版本号（否则自更新会拿旧清单把这次部署顶回去）"
+# 手动部署之后必须把本地 manifest 的版本号刻到机器上。不写的话，机器的
+# code-version 还停在上一次自更新的值，下次启动时某扇缓存落后的门给一份
+# 更旧（甚至没有版本号）的 manifest，自更新就会认为"机器落后了"，把刚
+# 部署好的文件覆盖回旧版——2026-08-21 就这么被静默降级过一次。
+VER=$(python3 -c "import json;print(json.load(open('manifest.json'))['version'])")
+ssh -o ConnectTimeout=15 "$USER_AT" \
+  "powershell -NoProfile -Command \"Set-Content -Path 'C:/ProgramData/ark-relay/state/code-version.txt' -Value '$VER' -NoNewline\"" >/dev/null
+echo "    code-version = $VER"
+
 echo "▶ 5/5 重启服务并确认启动"
 # __pycache__ 里的旧 .pyc 会盖住新代码，必须清。
 ssh -o ConnectTimeout=15 "$USER_AT" \

@@ -291,9 +291,14 @@ def check(root: Path, base_url: str = "",
     except (TypeError, ValueError):
         remote_ver = 0
     local_ver = _applied_version(root)
-    if remote_ver and local_ver and remote_ver < local_ver:
-        log.warning("拿到的是旧清单（v%s < 本机 v%s），可能是 CDN 缓存未刷新，"
-                    "本次不更新", remote_ver, local_ver)
+    # 注意这里不能写成 `remote_ver and local_ver and ...`：没有版本号的旧
+    # manifest 会得到 remote_ver == 0，那个写法直接把它放行，于是机器被
+    # "更新"回旧代码。2026-08-21 就这么把刚部署好的 inbox.py 降级了一次，
+    # 而且日志上写着"代码已更新 1 个文件"，看起来完全正常。
+    # 本机已经应用过带版本号的清单，那么任何更旧的（含无版本号的）都该拒绝。
+    if local_ver and remote_ver < local_ver:
+        log.warning("拿到的清单更旧（v%s < 本机 v%s，0 表示没有版本号），"
+                    "多半是缓存未刷新，本次不更新", remote_ver, local_ver)
         return []
 
     # 先把要改的文件全部下齐并校验，一个都不落盘；全通过了再一次性写。
