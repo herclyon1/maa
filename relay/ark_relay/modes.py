@@ -23,7 +23,7 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from .config import SERVER_TZ
+from .config import SERVER_TZ, atomic_write_text
 
 log = logging.getLogger("ark.modes")
 
@@ -128,9 +128,13 @@ def _maybe_engage(state_dir: Path, automas_dir: Path | None,
     # forever with a message saying nothing needed doing. Marker-first fails
     # the other way: a crash before the disable leaves a marker whose restore
     # later re-enables an already-enabled queue, which is a no-op.
-    _marker(state_dir).write_text(json.dumps(
+    # Atomic: the machine is hard power-cut twice a day, and a torn marker
+    # makes _maybe_restore delete it and leave the queue disabled forever -
+    # exactly the "a skip can never quietly become a permanent stop" promise
+    # this module makes.
+    atomic_write_text(_marker(state_dir), json.dumps(
         {"queue": queue, "day": day, "last_time": max(times)},
-        ensure_ascii=False), encoding="utf-8")
+        ensure_ascii=False))
     ok, detail = queues.apply(Path(automas_dir), queue, enabled=False)
     if not ok:
         _marker(state_dir).unlink(missing_ok=True)

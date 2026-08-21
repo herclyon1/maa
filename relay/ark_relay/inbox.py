@@ -35,7 +35,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from .config import SERVER_TZ, both_clocks
+from .config import SERVER_TZ, atomic_write_text, both_clocks
 from . import maaend, queues, sanity_plan
 from .commands import apply_command
 
@@ -207,7 +207,11 @@ class Inbox:
 
     def _remember(self, version: int) -> None:
         self.marker.parent.mkdir(parents=True, exist_ok=True)
-        self.marker.write_text(str(version), encoding="utf-8")
+        # Atomic: this can run inside a shutdown countdown (service.py calls
+        # the deferred collect after tick(), which may already have issued
+        # `shutdown /s /t 60`). A truncated marker reads as version 0 and
+        # replays the whole last batch on the next boot.
+        atomic_write_text(self.marker, str(version))
 
     def poll(self) -> tuple[int, list[str]]:
         """Fetch, and apply if it is newer. Returns (version_now, messages).

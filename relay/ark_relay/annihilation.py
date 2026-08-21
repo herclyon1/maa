@@ -27,7 +27,7 @@ import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from .config import SERVER_TZ
+from .config import SERVER_TZ, atomic_write_text
 
 log = logging.getLogger("ark.annihilation")
 
@@ -94,7 +94,7 @@ def _write_setting(automas_dir: Path, value: str) -> tuple[bool, str]:
     backup = path.with_suffix(f".bak-{stamp:%Y%m%d-%H%M%S}.json")
     shutil.copy2(path, backup)
     try:
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2))
     except OSError as exc:
         shutil.copy2(backup, path)
         return False, f"写入失败，已回滚: {exc}"
@@ -116,8 +116,8 @@ class WeeklyGate:
 
     def _save(self, data: dict) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(data, ensure_ascii=False, indent=1),
-                             encoding="utf-8")
+        atomic_write_text(self.path,
+                          json.dumps(data, ensure_ascii=False, indent=1))
 
     def on_success(self, now: datetime | None = None) -> str:
         """Called when an annihilation pass completed. Closes it for the week."""
@@ -182,6 +182,14 @@ class WeeklyGate:
         ok, detail = _write_setting(self.automas_dir, restore)
         if not ok:
             log.warning("剿灭恢复失败: %s", detail)
+            return ""
+        # Read it back before forgetting the week. AUTO-MAS rewrites this file
+        # from its own memory while a queue runs, so a write that "succeeded"
+        # can be gone seconds later - and clearing the state first meant
+        # enforce() had nothing left to retry with, leaving 剿灭 off for the
+        # whole new week while the operator was told it had been restored.
+        if read_setting(self.automas_dir) != restore:
+            log.warning("剿灭恢复写入后又被改回，保留状态待下次重试")
             return ""
         self._save({})
         log.info("新的一周，剿灭已恢复为 %s", restore)

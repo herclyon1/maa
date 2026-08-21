@@ -77,6 +77,11 @@ def apply(automas_dir: Path, name: str, enabled: bool | None = None,
     removed: list[dict] = []
 
     if enabled is not None:
+        # The value arrives from a JSON file a person hand-edits. A string
+        # "false" is truthy, so it would switch the queue ON while the push
+        # reported it OFF; this writer has no structural diff to catch that.
+        if not isinstance(enabled, bool):
+            return False, f"enabled 必须是 true/false，收到 {enabled!r}"
         info = target.setdefault("Info", {})
         if bool(info.get("TimeEnabled")) != enabled:
             info["TimeEnabled"] = enabled
