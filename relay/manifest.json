@@ -1,10 +1,10 @@
 {
- "version": 20260821111012,
+ "version": 20260821111338,
  "files": {
   "ark_relay/__init__.py": "297e0c5d45a732b40a24be0bfd40f07b174d2a9a",
   "ark_relay/__main__.py": "5a84ee596b9fa1b767165c0ac69b177577e8fa8f",
   "ark_relay/annihilation.py": "17dd52b5fe669397046ad9c737d214884a90a1d1",
-  "ark_relay/collector.py": "c31708d9b28bc0df604f6df6ebd0cfdabdbd8cca",
+  "ark_relay/collector.py": "cf13b625e610505e08b741b58e8c507fa004d423",
   "ark_relay/commands.py": "7375d060b87d72fc4d5fa35c50617531e84c1580",
   "ark_relay/config.py": "b4d225a017b2bb73855492377315dd0ef1bca365",
   "ark_relay/core.py": "ef42122fd556a49d6a28b4576b6c7ccc2a1f0c7f",

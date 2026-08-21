@@ -115,16 +115,22 @@ def parse_maa_log(log_path: Path) -> dict:
         return {}
 
     out: dict = {}
-    drops: dict[str, int] = {}
+    # Per stage, because the running total below is per stage. One round can
+    # farm more than one - annihilation then the daily stage, or an event
+    # stage alongside a permanent one - and each keeps its own running total.
+    per_stage: dict[str, dict[str, int]] = {}
     stages: list[str] = []
     spent = 0
     medicine = 0
 
     times = 0
+    current = ""
     in_block = False
     for line in text.splitlines():
         if m := _STAGE_DROPS.search(line):
-            stages.append(m.group(1))
+            current = m.group(1)
+            stages.append(current)
+            per_stage.setdefault(current, {})
             in_block = True
             continue
         if in_block:
@@ -142,8 +148,14 @@ def parse_maa_log(log_path: Path) -> dict:
                 # last block already is the answer, so overwrite, never sum.
                 # (Verified against 2026-08-20's real log, where AUTO-MAS's
                 # own figure agrees with the last block.)
+                #
+                # But the total only runs within one stage. Overwriting across
+                # stages made a second stage's total erase the first one's
+                # instead of adding to it - annihilation's 龙门币 vanished the
+                # moment the daily stage logged its own. Hence per stage here,
+                # summed across stages below.
                 name, total = m.group(1), int(m.group(2))
-                drops[name] = total
+                per_stage.setdefault(current, {})[name] = total
                 continue
             elif not line.strip():
                 continue
@@ -154,6 +166,10 @@ def parse_maa_log(log_path: Path) -> dict:
         if m := _MEDICINE.search(line):
             medicine = max(medicine, int(m.group(1)))
 
+    drops: dict[str, int] = {}
+    for stage_drops in per_stage.values():
+        for name, total in stage_drops.items():
+            drops[name] = drops.get(name, 0) + total
     if drops:
         out["drop_statistics"] = drops
     if stages:
