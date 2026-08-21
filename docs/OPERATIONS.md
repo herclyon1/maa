@@ -344,8 +344,11 @@ machine **cannot reach github.com or api.github.com at all** - TCP is blocked
 nothing can ever be uploaded from the machine.
 
 - **Code**: `relay/manifest.json` carries a SHA-1 per file. At every service
-  start the relay fetches whatever changed, all-or-nothing, inside a 240s budget,
-  then restarts itself. **At service start specifically, never at the end of a
+  start the relay **waits up to 90 s for DNS** and then fetches whatever
+  changed, all-or-nothing, inside a 240s budget, then restarts itself. The wait
+  is not optional: the relay is logon-triggered and comes up before Windows has
+  a resolver, so without it every boot-window update failed with
+  `getaddrinfo failed` before reaching any door - see [PITFALLS.md](PITFALLS.md). **At service start specifically, never at the end of a
   queue** - the machine boots at 21:20 for a 21:30 queue, and that gap is the
   window this is meant to use. Once the new code is running it pushes a notice
   saying so; see [NOTIFICATIONS.md](NOTIFICATIONS.md).
@@ -489,6 +492,7 @@ outside the machine - silently, which is the whole hazard this file is about.
 | The emulator started but it was the wrong instance | emulator type must be `ldplayer` + `ldconsole.exe` |
 | A config change reverted itself | AUTO-MAS was running and overwrote it from memory, or the field has a `ge` floor in its schema |
 | A deploy "succeeded" but behaviour is unchanged | compare hashes; use `deploy-relay.sh`, never bare scp |
+| Self-update failed right after boot with `getaddrinfo failed` | no resolver yet, not a flaky mirror. All four doors failing in the same second is the tell |
 | Report says something happened at an impossible hour | the history filename is on a UTC+4 clock |
 
 ## Open items

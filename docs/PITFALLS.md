@@ -25,6 +25,39 @@ One sample is not a refutation.
 the remote screenshots stealing focus. An experiment disproved it. The cause is
 still open; `focus-watch.py` now runs at logon to catch the next occurrence.
 
+## The relay starts before the machine has DNS
+
+Measured 2026-08-21 at 21:20:19, one second after the service started on a cold
+boot:
+
+```
+21:20:19 取不到 https://fastly.jsdelivr.net/...  [Errno 11001] getaddrinfo failed
+21:20:19 取不到 https://cdn.jsdelivr.net/...     [Errno 11001] getaddrinfo failed
+21:20:19 取不到 https://gcore.jsdelivr.net/...   [Errno 11001] getaddrinfo failed
+21:20:19 取不到 https://raw.githubusercontent...  [Errno 11001] getaddrinfo failed
+21:20:49 取不到待办文件（raw...）  _ssl.c:983: The handshake operation timed out
+```
+
+All four doors, plus the inbox, in the same second - and thirty seconds later
+raw was still only getting as far as a TLS handshake. The relay is started by a
+logon-triggered task and comes up within a second or two of the desktop, well
+before Windows has finished bringing up DNS.
+
+Nothing downstream retried its way out of it: `_best_manifest` asks each door
+once and returns None when none answer, so the round was abandoned before the
+doors were reachable at all. **The boot-window update - the entire reason that
+window exists - had never once run against a working network.**
+
+This had been misread for days as "the CDNs are flaky from this machine", which
+is separately true and was not the reason. The tell is the error: `getaddrinfo
+failed` is not a slow mirror, it is no resolver. A door that is merely slow
+times out; a door whose name cannot be resolved fails instantly, and all four
+failing in the same second is not four independent outages.
+
+`service.py` now waits up to 90 seconds for DNS before touching either channel.
+The boot-to-queue gap is about ten minutes, so the wait costs nothing that
+matters and skipping it costs the whole update.
+
 ## Session-scoped state in a self-restarting process
 
 The relay restarts itself every time it applies an update. Any judgement of the

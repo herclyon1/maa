@@ -1,5 +1,5 @@
 {
- "version": 20260821132234,
+ "version": 20260821133213,
  "files": {
   "ark_relay/__init__.py": "297e0c5d45a732b40a24be0bfd40f07b174d2a9a",
   "ark_relay/__main__.py": "c3fad79ef49e452960a9936fce8cdec290668c78",
@@ -21,6 +21,6 @@
   "ark_relay/transport.py": "4a67e28d43a221c025b1de53a81d621f68fe70f6",
   "ark_relay/watch.py": "0c89581bf66483159a55d7817050ececbc0a0b38",
   "run.py": "0db6cde8fb8119323d991ec512d1b2b43e869b93",
-  "service.py": "ed42b75f19dedaa07c405ec5e5c9e39b7034d683"
+  "service.py": "65357c4255bbd425070c122a6cee336e8c2f5b59"
  }
 }
