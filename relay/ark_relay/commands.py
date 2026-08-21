@@ -1,6 +1,6 @@
 """Applying commands to AUTO-MAS config - the guarded path.
 
-Four gates, none optional (docs/04-中继设计.md §15):
+Four gates, none optional (relay/README.md, "The four gates on commands"):
 
   ① whitelist (白名单)
       the model emits an action name from a fixed table, never a JSON patch
@@ -184,7 +184,7 @@ def _set_wait_time(value: Any) -> tuple[bool, str]:
     Why this knob exists here: every fresh boot the first MaaEnd attempt died
     within seconds of connecting - the game recreates its window during first
     startup and MaaEnd grabs the doomed early handle (2026-08-20 log
-    forensics, docs/05-踩过的坑.md). Waiting past the recreation window is
+    forensics, docs/PITFALLS.md). Waiting past the recreation window is
     the fix; the retry mechanism was papering over it once per day.
     """
     try:
@@ -236,7 +236,9 @@ def _skip_today(queue: str, want_day: str = "") -> tuple[bool, str]:
                        "指令在收件箱里过期了，未生效。需要就重新排一条")
     marker = Path(os.environ.get("ARK_STATE_DIR", "./ark-state")) / f"skip-{day}.flag"
     marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text(str(queue), encoding="utf-8")
+    # Atomic: an empty flag reads back as the default queue name, so a torn
+    # write would skip a queue nobody asked to skip.
+    atomic_write_text(marker, str(queue))
     return True, f"今天（{day}）将跳过队列「{queue}」"
 
 

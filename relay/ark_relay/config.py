@@ -103,7 +103,8 @@ class Config:
     # The URL contains its own key: treat the whole thing as a secret.
     wecom_bot_url: str = field(default_factory=lambda: _env("WECOM_BOT_URL"))
 
-    # Wording only - never judgment. See docs/04-中继设计.md §7.
+    # Wording only - never judgment. See relay/README.md, "Where the model's
+    # authority ends".
     # "openai" covers DeepSeek and anything else speaking the OpenAI chat API;
     # "anthropic" is api.anthropic.com, which mainland China cannot reach.
     llm_provider: str = field(default_factory=lambda: _env("ARK_LLM_PROVIDER", "openai"))

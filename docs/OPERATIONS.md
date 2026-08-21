@@ -301,7 +301,14 @@ nothing can ever be uploaded from the machine.
 
 - **Code**: `relay/manifest.json` carries a SHA-1 per file. At every service
   start the relay fetches whatever changed, all-or-nothing, inside a 240s budget,
-  then restarts itself.
+  then restarts itself. **At service start specifically, never at the end of a
+  queue** - the machine boots at 21:20 for a 21:30 queue, and that gap is the
+  window this is meant to use. Once the new code is running it pushes a notice
+  saying so; see [NOTIFICATIONS.md](NOTIFICATIONS.md).
+  Note the manifest only covers `relay/ark_relay/*.py`, `run.py` and
+  `service.py`. Anything else - `scripts/windows/ark-do.ps1`, for instance -
+  has to be scp'd by hand, and so does any brand-new relay file, because
+  selfupdate deliberately refuses to create files that do not already exist.
 - **Config**: `queue/config.json`, applied once per strictly-newer integer
   `version`. See `queue/README.md` for the command format.
 
@@ -400,36 +407,50 @@ will alarm at 23:10 about a machine that should have shut down.
 | A deploy "succeeded" but behaviour is unchanged | compare hashes; use `deploy-relay.sh`, never bare scp |
 | Report says something happened at an impossible hour | the history filename is on a UTC+4 clock |
 
-## Known open items
+## Open items
+
+Split by who can actually close them, because the first version of this list
+read as a pile of work handed to the operator when most of it was mine.
+
+### Needs the operator's own hands - I cannot do these
 
 - **Mi Home timers are not set.** Until they are, the morning round does not
-  start on its own; the evening one does, because BIOS RTC wake is independent.
-- **WeCom returns `errcode=60020`.** The caller IP is not in the trusted list.
-  Either add the current egress IP in the admin console - the `60020` alarm
-  carries it, and this repo is public so it is not written down here - or
-  set `WECOM_BOT_URL` to a
-  group-bot webhook, which has no IP list at all. Server酱 currently carries
-  everything; re-enabling WeCom means both channels will fire.
-- **`ARK_LLM` (DeepSeek) reports the model unavailable**, so reports fall back to
-  structured formatting with no prose line. The key needs checking.
-- **The 21:30 checkpoint cannot tell maintenance from an idle machine.** If
-  someone boots the machine in the afternoon and is still working at 21:30, it
-  shuts down under them. `debug_mode` is the workaround. Accepted by the
-  operator, not fixed.
-- **Alarms are only as timely as AUTO-MAS's writes.** It flushes every attempt
-  at once when the whole script ends, so a 09:17 login failure cannot be known
-  before ~09:58. The relay's own file-to-push latency is 34 s. Fixing this means
-  tailing MaaEnd's live log as a second source and deciding which wins.
-- **A relay restart after a queue finishes leaves nobody to shut down.**
-  `engine._handled_any` only counts records this process handled, and
-  `_idle_checkpoint` requires it to be false *and* to be inside a
-  five-minute window. A selfupdate restart after the last run therefore
-  leaves the machine awake (hit on 2026-08-20; powered off by hand).
-  The fix is to gate on "every queue due today has its records and the
-  report is sent" rather than on this session's history.
+  start on its own. The evening one does; BIOS RTC wake is independent of the
+  plug.
+- **WeCom `errcode=60020`.** Either add the current egress IP in the admin
+  console (the alarm carries it), or create a group bot and set `WECOM_BOT_URL`,
+  which has no trusted-IP list and survives a changing home IP. Server酱 is
+  carrying everything meanwhile.
+- **The watchdog needs three repository secrets** - `TS_OAUTH_CLIENT_ID`,
+  `TS_OAUTH_SECRET`, `SERVERCHAN_KEY` - and `enabled: true` in
+  `queue/watchdog.json`.
+- **`ARK_LLM` (DeepSeek) reports the model unavailable.** Reports fall back to
+  structured formatting with no prose line, which costs one sentence and
+  nothing else. Needs a working key.
+
+### Accepted limits - understood, not going to be fixed
+
 - **SSH is a single point of failure.** Everything remote sits on it and it
-  cannot repair itself - when antivirus quarantined `sshd-session.exe` the only
-  fix was a person at the machine.
+  cannot repair itself: when antivirus quarantined `sshd-session.exe` the only
+  fix was a person at the machine. A second channel would need a service the
+  machine can reach outward, and it cannot reach GitHub at all.
+- **A relay restart more than two hours after a run still leaves nobody to
+  shut down.** `recent_due_queues` forgets a queue after that, and widening the
+  window would also widen the "wait for a script that never ran" hold that
+  shares it. The realistic case - a selfupdate restart minutes after the run -
+  is fixed.
+
+### My backlog - real work, not blocked on anyone
+
+- **Alarms are only as timely as AUTO-MAS's writes.** It flushes every attempt
+  at once when the script ends, so a 09:17 login failure cannot be known before
+  ~09:58; the relay's own file-to-push latency is 34 s. Fixing it means tailing
+  MaaEnd's live log as a second source and deciding which one wins when they
+  disagree. Deliberately not done the evening before a run: a new log parser
+  that misreads a line turns a working night into false alarms.
+- **MaaEnd's first-attempt failure has no confirmed cause.** `WaitTime` and my
+  screenshots were both tested and cleared. `focus-watch.py` runs at logon to
+  capture the next occurrence; the evidence goes to MaaEnd#4820.
 
 ## Appendix: driving PlayCover games on the Mac
 

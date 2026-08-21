@@ -70,7 +70,10 @@ def set_debug(state_dir: Path, days: int = 1, off: bool = False) -> tuple[bool, 
         return False, f"天数不是整数: {days!r}"
     until = (datetime.now(tz=SERVER_TZ) + timedelta(days=days - 1)).strftime("%Y-%m-%d")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(until, encoding="utf-8")
+    # Atomic: a torn date fails towards "debug on" by design, which means the
+    # machine then never powers itself off. Deliberate as a fallback, not as
+    # something a power cut should be able to cause.
+    atomic_write_text(path, until)
     return True, (f"🔧 调试模式已开启，至 {until}（含当天）：不关机、不报漏跑。"
                   "注意：要让机器什么都不刷，还需停用相应队列。")
 

@@ -252,7 +252,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         _load_dotenv(HERE / ".env")
         _setup_logging(verbose=False)
 
-        from ark_relay.config import SERVER_TZ, Config
+        from ark_relay.config import SERVER_TZ, Config, both_clocks
         from ark_relay.core import State
         from ark_relay.engine import Engine
         from ark_relay.notify import Notifier
@@ -298,6 +298,40 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
                 return
         except Exception:  # noqa: BLE001 - never let this stop the relay
             log.exception("自更新出错，跳过")
+
+        # We only reach here on a process that did NOT just apply an update -
+        # which, after a self-restart, is the process running the new code. So
+        # this is the first honest moment to say the update took effect, and
+        # the operator asked to be told the moment it does.
+        try:
+            from ark_relay import selfupdate  # noqa: PLC0415 - see the block above
+
+            if note := selfupdate.pending_announcement(HERE):
+                files = note.get("files") or []
+                title = (f"🔄 中继已更新（{len(files)} 个文件）" if files
+                         else "🔄 中继已更新")
+                applied = note.get("at") or ""
+                try:
+                    when = both_clocks(datetime.fromisoformat(applied))
+                except ValueError:
+                    when = applied
+                lines = [f"{when} 生效" if when else "刚刚生效"]
+                prev = note.get("previous")
+                lines.append(f"版本 v{prev} → v{note.get('version') or '?'}"
+                             if prev else f"版本 v{note.get('version') or '?'}")
+                # The file list only exists when the process that applied the
+                # update was already running this code; the first update after
+                # this shipped has no list, and saying so beats an empty line.
+                lines.append("改动文件：" + "、".join(files) if files
+                             else "（改动清单由上一版代码写入，本次没有）")
+                lines += ["", "更新在开机后、队列开跑前落地，本轮直接使用新代码。"]
+                body = "\n".join(lines)
+                if errors := notifier.send(title, body):
+                    log.error("更新通知没发出去: %s", "；".join(errors))
+                else:
+                    log.info("已推送更新通知：%d 个文件", len(files))
+        except Exception:  # noqa: BLE001 - a receipt must never break the relay
+            log.exception("推送更新通知出错，跳过")
 
         from ark_relay.inbox import Inbox
 

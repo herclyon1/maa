@@ -15,6 +15,7 @@ import logging
 import os
 import subprocess
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from . import collector, core, modes, plan, summary
 from .config import SERVER_TZ, Config, RunRecord
@@ -29,6 +30,10 @@ MISSED_GRACE_MIN = 25
 # A wake-up checkpoint is judged once, in this window past the hour: open two
 # minutes late (a queue may start a moment behind), closed five minutes later.
 CHECK_OPEN_MIN, CHECK_CLOSE_MIN = 2, 7
+# How long after the last remote GUI action the machine is held awake.
+# Long enough to keep working between two screenshots, short enough that
+# forgetting about it costs one delayed shutdown, not a night of uptime.
+MAINTENANCE_HOLD_SEC = 20 * 60
 # How far a round's FIRST record may sit from a scheduled time and still count
 # as that scheduled round. Only the first record is tested: a queue's later
 # scripts legitimately land 40+ minutes in (MAA then MaaEnd), so testing every
@@ -547,6 +552,87 @@ class Engine:
                 out.append(f"队列「{q['name']}」还差 {'、'.join(missing)}")
         return out
 
+    def _hands_on_machine(self, now: datetime) -> int:
+        """Seconds since someone last drove the desktop through `ark-do`, or -1.
+
+        The 21:30 checkpoint cannot tell "nobody is here" from "somebody is
+        working on this machine right now", so it used to power off under
+        whoever was mid-maintenance. Vetoing on an open SSH or ToDesk session
+        was tried and was worse than useless - both come up automatically at
+        boot, so the veto never lifted.
+
+        A GUI action is different: `ark-do` only ever runs because a person
+        asked for a click, a keystroke or a screenshot. It stamps this file on
+        every batch, so the hold is bounded by the last action rather than by
+        anything that merely stays connected.
+        """
+        mark = Path(self.state.dir) / "ark-do-last.txt"
+        try:
+            stamp = int(mark.read_text(encoding="ascii").strip())
+        except (OSError, ValueError):
+            return -1
+        # A clock the other way round means a stale or corrupt stamp; ignore it
+        # rather than hold the machine open forever on a bad number.
+        age = int(now.timestamp()) - stamp
+        return age if 0 <= age <= 86400 else -1
+
+    def _boot_time(self, now: datetime) -> datetime | None:
+        """When this machine last booted, or None if it cannot be determined.
+
+        Uptime, not the relay's own start time: the relay restarts itself for
+        every selfupdate, so its start time says nothing about why the machine
+        is awake. `GetTickCount64` is a kernel counter read, cheap enough to
+        call on every tick.
+        """
+        try:
+            import ctypes  # noqa: PLC0415 - Windows only, imported where used
+
+            ms = ctypes.windll.kernel32.GetTickCount64()  # type: ignore[attr-defined]
+        except (AttributeError, OSError, ImportError):
+            return None
+        if not ms or ms < 0:
+            return None
+        return now - timedelta(milliseconds=ms)
+
+    def _work_is_done(self, now: datetime, entries: list[dict]) -> bool:
+        """True when this boot's queue has come due and produced all its records.
+
+        The durable version of `_handled_any`, which only knows what *this
+        process* watched land. A relay restart after the last run - a
+        selfupdate is exactly that - cleared the flag, so nothing was left to
+        trigger the shutdown and the machine stayed awake all night. It cost
+        2026-08-20 a manual power-off.
+
+        Two requirements, and dropping either one costs a run:
+
+        A queue must actually have come due. "Nothing is unfinished" is
+        vacuously true at 08:50 with the 09:00 queue still ahead, and acting on
+        it would power the machine off minutes before its own run.
+
+        And the machine must have booted *before* that queue was due - this
+        boot has to be the one the queue was scheduled for. Without that test
+        the rule reaches a machine somebody powered on at 10:35 to work on: the
+        09:00 queue is still inside its two-hour window and its records are
+        already in the ledger from the morning, so "everything is finished"
+        reads true and the machine switches off under them ten minutes later.
+        Uptime is what distinguishes the two, not the relay's start time, which
+        every selfupdate resets.
+
+        Residual, deliberately not widened: `recent_due_queues` forgets a queue
+        two hours after it was due, so a restart later than that still leaves
+        no one to shut down. Widening the window here would also widen the
+        "wait for a script that never ran" hold that shares it.
+        """
+        due = plan.recent_due_queues(self.cfg.automas_dir, now)
+        if not due:
+            return False
+        booted = self._boot_time(now)
+        if booted is None:
+            return False        # cannot prove this boot belongs to the queue
+        if booted > min(q["due"] for q in due):
+            return False        # somebody powered this on after the queue ran
+        return not self._unfinished_queues(now, entries)
+
     def _enforce_annihilation(self) -> None:
         """Once this week's annihilation (剿灭) is done, make sure the switch
         is off - but only write while no script is running.
@@ -726,7 +812,10 @@ class Engine:
             return False
         now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
         idle = self._idle_checkpoint(now)
-        if not self._handled_any and not idle:
+        entries = self._recent_entries(now)
+        # `_handled_any` is the fast path for the ordinary case; `_work_is_done`
+        # is what survives a restart between the last run and the shutdown.
+        if not (self._handled_any or self._work_is_done(now, entries)) and not idle:
             return False
         # The uptime floor guards against a boot -> immediate-shutdown loop.
         # The idle checkpoint is exempt: it *is* a deliberate quick power-off
@@ -740,19 +829,30 @@ class Engine:
             return False
         if self._scripts_running() or self._pending or self._recovered:
             return False
+        # Somebody is working on this desktop. Hold, but only for a bounded
+        # time after their last action - an open-ended hold would turn one
+        # forgotten screenshot into a machine that never sleeps again.
+        hands = self._hands_on_machine(now)
+        if 0 <= hands < MAINTENANCE_HOLD_SEC:
+            note = (f"{hands // 60} 分钟前有人在这台机器上操作过，"
+                    f"暂不关机（{MAINTENANCE_HOLD_SEC // 60} 分钟无操作后放行）")
+            if note != self._last_wait_note:
+                self._last_wait_note = note
+                log.info(note)
+            return False
         # "No game process" is not the same as "the queue is finished". Between
         # two scripts in one queue there is a window - MAA has exited, MaaEnd's
         # game is still launching - where neither process exists. Powering off
         # in that window costs a whole run, so also require that every script
         # today's due queues contain has actually produced a record.
         day = now.strftime("%Y-%m-%d")
-        if self._last_round_manual(now, self._recent_entries(now)):
+        if self._last_round_manual(now, entries):
             note = "最近一轮是手动触发的，不当作当天收工，不关机"
             if note != self._last_wait_note:
                 self._last_wait_note = note
                 log.info(note)
             return False
-        if unfinished := self._unfinished_queues(now, self._recent_entries(now)):
+        if unfinished := self._unfinished_queues(now, entries):
             # Log only when the answer changes. Repeating the same line every
             # poll buries the lines that matter under forty identical ones.
             note = "；".join(unfinished)
@@ -826,7 +926,7 @@ class Engine:
 
         `label` distinguishes the two non-consuming kinds: 「临时查看」for a
         scheduled daytime round, 「手动执行」for a round someone triggered by
-        hand. See docs/09-通知模型.md - that distinction is required, not
+        hand. See docs/NOTIFICATIONS.md - that distinction is required, not
         cosmetic: the operator has to be able to tell why a summary appeared.
         """
         now = datetime.now(tz=SERVER_TZ)

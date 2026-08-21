@@ -38,7 +38,10 @@ import os
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime
 from pathlib import Path
+
+from .config import SERVER_TZ
 
 log = logging.getLogger("ark.update")
 
@@ -230,6 +233,89 @@ def _applied_version(root: Path) -> int:
         return 0
 
 
+def _announce_path(root: Path) -> Path:
+    return root / "state" / "update-announce.json"
+
+
+def take_announcement(root: Path) -> dict | None:
+    """Return the pending "code was updated" note, once, and clear it.
+
+    The process that applies an update cannot be the one that reports it: it is
+    still running the old code and is about to replace itself. So the update is
+    recorded here and announced by the process that comes up on the new code -
+    which also means the message is only ever sent once the new code is really
+    running, not merely written to disk.
+    """
+    path = _announce_path(root)
+    if not path.exists():
+        return None
+    try:
+        note = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        note = None
+    # Remove it either way. A torn write - the machine is hard power-cut twice
+    # a day - would otherwise sit there failing to parse on every boot forever.
+    path.unlink(missing_ok=True)
+    return note if isinstance(note, dict) else None
+
+
+def pending_announcement(root: Path) -> dict | None:
+    """What to tell the operator about a code update, or None if nothing new.
+
+    Two sources, in order:
+
+    The marker written by the process that applied the update, which carries
+    the file list. It cannot exist for the very first update after this feature
+    ships - the code that applies that one predates the marker - so there is a
+    second source.
+
+    The applied version compared against the last version announced. That needs
+    no cooperation from the process that did the update, only the version file
+    it has always written. A machine that has never announced anything is
+    treated as having something to announce: it is either this feature's first
+    boot (there genuinely was an update) or a fresh install, and one extra
+    notice is a far cheaper mistake than a silent update.
+    """
+    note = take_announcement(root)
+    current = _applied_version(root)
+    announced = _announced_version(root)
+    if note is None:
+        if not current or current == announced:
+            return None
+        note = {"version": current, "previous": announced or None, "files": []}
+    _remember_announced(root, current or int(note.get("version") or 0))
+    return note
+
+
+def _announced_version(root: Path) -> int:
+    try:
+        return int((root / "state" / "announced-version.txt")
+                   .read_text(encoding="utf-8").strip() or 0)
+    except (OSError, ValueError):
+        return 0
+
+
+def _remember_announced(root: Path, version: int) -> None:
+    if not version:
+        return
+    try:
+        _atomic_write(root / "state" / "announced-version.txt",
+                      str(version).encode("utf-8"))
+    except OSError:
+        # Worst case the same update is announced twice. Better than dropping it.
+        log.warning("记不住已通知的版本号，可能重复推送一次", exc_info=True)
+
+
+def _record_announcement(root: Path, note: dict) -> None:
+    try:
+        _atomic_write(_announce_path(root),
+                      json.dumps(note, ensure_ascii=False).encode("utf-8"))
+    except OSError:
+        # An update that lands without a notification is still an update; log
+        # it and carry on rather than fail the whole round over the receipt.
+        log.warning("记不下更新通知，本次更新不会有推送", exc_info=True)
+
+
 def _remember_version(root: Path, version: int) -> None:
     path = root / "state" / "code-version.txt"
     try:
@@ -390,4 +476,9 @@ def check(root: Path, base_url: str = "",
     # out midway is not recorded, so the next boot starts over.
     if remote_ver and len(updated) == len(staged):
         _remember_version(root, remote_ver)
+    if updated:
+        _record_announcement(root, {
+            "version": remote_ver, "previous": local_ver, "files": updated,
+            "at": datetime.now(tz=SERVER_TZ).isoformat(),
+        })
     return updated

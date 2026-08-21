@@ -11,7 +11,7 @@ import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from .config import SERVER_TZ, USER_TZ, Config, RunRecord, both_clocks
+from .config import Config, RunRecord, SERVER_TZ, USER_TZ, atomic_write_text, both_clocks
 
 
 class State:
@@ -139,8 +139,12 @@ class State:
             return 10**6
 
     def mark_interim_sent(self, day: str, covered: int = 1) -> None:
-        (self.dir / f"interim-{day}.sent").write_text(
-            str(covered), encoding="utf-8")
+        # Atomic: the machine is hard power-cut twice a day, and a torn write
+        # leaves an empty marker. interim_covered reads empty as "sent, count
+        # unknown" and returns 10**6, which silently suppresses every further
+        # interim report that day - a failure that looks exactly like a quiet
+        # afternoon.
+        atomic_write_text(self.dir / f"interim-{day}.sent", str(covered))
 
     def mark_report_sent(self, day: str) -> None:
         (self.dir / f"report-{day}.sent").touch()

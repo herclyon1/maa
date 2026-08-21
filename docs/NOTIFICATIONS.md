@@ -46,7 +46,29 @@ is deterministic.
 | Task succeeded | **silent**, recorded only |
 | Should have run and did not / something missing | alarm immediately |
 | Config command applied | push a receipt: inbox version, name, note, and what changed in plain language |
+| **Relay code updated** | push the moment the new code is actually running - version before and after, and which files changed |
 | A notification channel is broken | alarm over whatever channel still works (e.g. WeCom `60020` with the current egress IP) |
+
+## Updates must land at boot, and must announce themselves
+
+Two rules, both given by the operator on 2026-08-21.
+
+**At boot, never at the end of a queue.** The machine boots at 21:20 and the
+queue starts at 21:30; those eight minutes exist for exactly this. An update
+applied after the run would sit unused until the next boot, and a command that
+needs it could not be understood in the meantime. `service.py` runs selfupdate
+at service start, before the inbox, and restarts itself immediately so the new
+code is live before the queue fires.
+
+**Announce the moment it takes effect** - code updates as well as config ones.
+The process that applies a code update is still running the old code and is
+about to replace itself, so it cannot be the one to report. It records what it
+did, and the process that comes up on the new code sends the notice. That way
+the message means "the new code is running", not "the files were written".
+
+The first update after this shipped is a special case: the code that applies it
+predates the feature and leaves no record. So the notice is also derivable from
+the applied version alone, compared against the last version announced.
 
 ## Shutdown
 
