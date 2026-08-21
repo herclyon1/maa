@@ -586,6 +586,30 @@ class Engine:
                 return False
         return True
 
+    def _last_round_manual(self, now: datetime, entries: list[dict]) -> bool:
+        """True when the day's most recent round was triggered by hand.
+
+        A manual round must not count as "the day's work is done". On
+        2026-08-21 a hand-triggered MaaEnd test finished at 12:29 and the
+        relay promptly powered the machine off - while the operator was in
+        the middle of working on it, and hours before the evening queue.
+
+        The round is the group of records that finished close together; two
+        hours is comfortably wider than a full queue (MAA then MaaEnd) and
+        far narrower than the gap between the morning and evening queues.
+        """
+        if not entries:
+            return False
+        try:
+            starts = [datetime.fromisoformat(e["started"]).astimezone(SERVER_TZ)
+                      for e in entries]
+        except (KeyError, ValueError):
+            return False
+        newest = max(starts)
+        group = [e for e, t in zip(entries, starts)
+                 if newest - t <= timedelta(hours=2)]
+        return self._round_is_manual(group)
+
     def _maybe_interim_report(self, now: datetime | None = None) -> None:
         """Report once the day's earlier queues are done, hours before the
         daily summary is due.
@@ -713,6 +737,12 @@ class Engine:
         # in that window costs a whole run, so also require that every script
         # today's due queues contain has actually produced a record.
         day = now.strftime("%Y-%m-%d")
+        if self._last_round_manual(now, self._recent_entries(now)):
+            note = "最近一轮是手动触发的，不当作当天收工，不关机"
+            if note != self._last_wait_note:
+                self._last_wait_note = note
+                log.info(note)
+            return False
         if unfinished := self._unfinished_queues(now, self._recent_entries(now)):
             # Log only when the answer changes. Repeating the same line every
             # poll buries the lines that matter under forty identical ones.

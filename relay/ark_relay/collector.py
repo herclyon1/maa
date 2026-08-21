@@ -135,8 +135,15 @@ def parse_maa_log(log_path: Path) -> dict:
                 times += int(m.group(1))
                 continue
             elif m := _DROP_ITEM.match(line):
+                # MAA prints a RUNNING TOTAL in every drop block, not the
+                # gain since the last one: farming TO-5 twice logs
+                # "龙门币 : 1440 (+1440)" and then "龙门币 : 2448 (+1008)".
+                # Adding those gave 3888 for a run that dropped 2448 - the
+                # last block already is the answer, so overwrite, never sum.
+                # (Verified against 2026-08-20's real log, where AUTO-MAS's
+                # own figure agrees with the last block.)
                 name, total = m.group(1), int(m.group(2))
-                drops[name] = drops.get(name, 0) + total
+                drops[name] = total
                 continue
             elif not line.strip():
                 continue
