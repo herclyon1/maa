@@ -96,7 +96,19 @@ def cmd_check(cfg: Config) -> int:
     print(f"history 目录  {cfg.history_dir or '(未设置)'}")
     print(f"状态目录      {cfg.state_dir}")
     print(f"兜底扫描      {cfg.poll_seconds} 秒（仅当目录监听挂不上时才用）")
-    print(f"日报触发      {cfg.last_run_after} 之后（服务器时间）")
+    print(f"日报触发      {cfg.last_run_after} 之后（服务器时间，实际以 AUTO-MAS "
+          f"最后一个队列时刻为准）")
+    # The switches that decide behaviour, printed together. "Why did no interim
+    # report arrive" and "why did it not power off" are both one line each, and
+    # answering them by reading .env over SSH is how a wrong guess gets made.
+    def _sw(on: bool) -> str:
+        return "开" if on else "关"
+    print(f"跑完关机      {_sw(cfg.shutdown_after_run)}"
+          f"（ARK_SHUTDOWN_AFTER_RUN）")
+    print(f"临时查看      {_sw(cfg.interim_report)}"
+          f"（ARK_INTERIM_REPORT，白天每轮收尾各一条，不占日报名额）")
+    print(f"关机前补发    {_sw(cfg.report_before_shutdown)}"
+          f"（ARK_REPORT_BEFORE_SHUTDOWN，临时查看没送出去时的兜底）")
     n = Notifier(cfg)
     print(f"推送渠道      {'、'.join(n.channels) or '(无)'}")
     if cfg.llm_key:
