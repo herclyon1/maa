@@ -121,21 +121,45 @@ def _netloc(url: str) -> str:
 
 
 def _fetch(url: str, timeout: int = 20, attempts: int = 3) -> dict | None:
-    """Fetch the queued file, retrying transient failures across both doors.
+    """把每扇门的待办文件都取回来，选 version 最大的那份。
 
-    Measured from the game machine: 11 of 11 one hour, 7 of 10 the next, the
-    failures being TLS handshake and read timeouts. Boot is the only chance of
-    the day to collect a change, so one attempt would silently drop roughly a
-    third of them.
+    不能"哪扇门先应答就用哪份"。2026-08-21 早上就栽在这里：CDN 上还缓存着
+    昨天的 config.json，收件箱取到它、看见版本号没变大，于是判定"没有新指令"
+    **一声不吭地跳过**——操作者昨晚排的换关卡指令就这么没生效，而日志里连一行
+    异常都没有。
+
+    自更新那边靠 manifest 里的 SHA-1 能识破旧副本，待办文件没有这种校验：
+    它就是权威本身。所以改用同一个办法——问遍所有门，取版本号最大的一份。
+    版本号只增不减，落后的门自然出局，而且不需要信任任何一扇门。
+
+    只有一扇门应答（或都没有版本号）时退回"取到什么用什么"，保持向后兼容。
     """
     global _last_good  # noqa: PLW0603 - process-lifetime stickiness by design
     urls = _alternates(url)
     urls.sort(key=lambda u: _netloc(u) != _last_good)  # stable: keeps order
     for i in range(attempts):
+        best: dict | None = None
+        best_ver = -1
+        fallback: dict | None = None
         for u in urls:
-            if (data := _fetch_once(u, timeout)) is not None:
+            if (data := _fetch_once(u, timeout)) is None:
+                continue
+            if fallback is None:
+                fallback = data
                 _last_good = _netloc(u)
-                return data
+            try:
+                ver = int(data.get("version") or 0)
+            except (TypeError, ValueError):
+                ver = 0
+            if ver > best_ver:
+                best, best_ver = data, ver
+                if ver > 0:
+                    _last_good = _netloc(u)
+        if best is not None and best_ver > 0:
+            log.debug("待办文件取自各门中最新的一份 v%s", best_ver)
+            return best
+        if fallback is not None:
+            return fallback
         if i + 1 < attempts:
             time.sleep(3 * (i + 1))
     return None
