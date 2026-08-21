@@ -67,7 +67,7 @@ purely time-triggered, with 15 min of slack in the morning and 10 in the evening
 | MaaEnd `RunTimeLimit` | `40` min (was 10) |
 | `Info.Stage` / `StageMode` | `1-7` / `Fixed` |
 | `Info.MedicineNumb` | `0` - do not use sanity potions |
-| `Info.Annihilation` | `Close` |
+| `Info.Annihilation` | `Close` - **but see below** |
 | `Game/WaitTime` | `60` s (**hard floor, see below**) |
 | Emulator | LDPlayer: `ldplayer` + `ldconsole.exe`, `Index: 1000` |
 | MaaEnd controller | `Win32-Front` - foreground, needs the game window frontmost and unobstructed |
@@ -76,6 +76,15 @@ purely time-triggered, with 15 min of slack in the morning and 10 in the evening
 <!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\ScriptConfig.json */Info/Stage 1-7 -->
 <!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\ScriptConfig.json */Info/MedicineNumb 0 -->
 <!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\ScriptConfig.json */Info/Annihilation Close -->
+
+**`Info.Annihilation` is asymmetric and the asymmetry is silent.** AUTO-MAS
+offers only a static switch - there is no "once a week" it can express - so the
+relay's weekly gate closes it after a pass and reopens it when the week rolls.
+The gate only reopens a week it recorded closing itself (`state/annihilation.json`,
+key `done_week`). A switch closed by hand has no such record, so nothing ever
+reopens it and the weekly reward stops being collected indefinitely. The daily
+plan prints the switch's state for exactly this reason; if it reads
+`剿灭 本周已完成/关闭` on a Monday, check that file.
 
 `StageMode: Fixed` with all alternates disabled means an expired event stage
 fails every run. Whenever the current stage is an event stage, its end time is a

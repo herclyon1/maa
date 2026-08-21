@@ -25,6 +25,72 @@ One sample is not a refutation.
 the remote screenshots stealing focus. An experiment disproved it. The cause is
 still open; `focus-watch.py` now runs at logon to catch the next occurrence.
 
+## Session-scoped state in a self-restarting process
+
+The relay restarts itself every time it applies an update. Any judgement of the
+form *"what has this process seen?"* is therefore a judgement about an interval
+with no relation to the machine's day - and it was used in three separate
+places, each one failing the same way:
+
+| Asked | Should have asked |
+|---|---|
+| `_handled_any` - did this process handle a record? | does the ledger show today's due queues finished? |
+| `_started_at > due` - was this process up when the queue was due? | was the **machine** up when the queue was due? |
+
+The consequences were all silent. A restart after the last run left nobody to
+trigger the shutdown, so the machine stayed on all night. A restart that
+crossed a queue's scheduled time made the new process disqualify itself from
+reporting a missed run - on precisely the boot where something had already gone
+slowly enough to be worth knowing about.
+
+The durable answers are the ledger (survives restarts, on disk) and machine
+uptime via `GetTickCount64` (survives restarts, in the kernel). Neither has
+anything to do with how long the current process has existed.
+
+**The first fix for this was worse than the bug.** Replacing "did this process
+handle anything" with "are all due queues finished" reads true on a machine
+somebody powered on at 10:35 to work on: the 09:00 queue is still inside its
+two-hour window and its records are already in the ledger from the morning. It
+would have powered the machine off under them ten minutes after they booted it.
+Uptime is what separates "this boot is the one the queue was scheduled for"
+from "somebody turned this on afterwards" - and that distinction has to be part
+of the test, not an afterthought.
+
+## Silent degradation is the failure mode this system produces
+
+Not crashes. Every serious incident here has been something that kept working
+while quietly doing less:
+
+- an `scp` that returned 0 without transferring, so the service restarted onto
+  old code
+- a self-update that gave up cleanly and logged it, leaving the machine on old
+  code while everything upstream assumed the push had landed
+- a directory watch whose re-arm failed, dropping the relay to alarm-clock-only
+  wakeups - records still processed, just up to an hour late
+- a torn interim marker reading as "already sent", suppressing every further
+  interim report that day
+- a wording model that was down, costing a 60-second timeout on every alert and
+  every report, inside the path that must finish before the machine may sleep
+- a drop total that was overwritten instead of summed across stages, so a
+  number in the report simply got smaller
+
+None of these announce themselves, and several look exactly like a quiet day.
+The rule that follows: **when a component degrades, it must say so through a
+channel that is still working.** Logging is not saying so - nobody reads the
+log of a machine that is off 21 hours a day.
+
+## A test in the wrong input format is not a test
+
+The drop-parsing tests used timestamps without brackets. MAA writes
+`[2026-08-15 09:06:29.091][INF][TaskQueueViewModel]     <2> TO-5 掉落统计:` and
+the parser closes a drop block on the next *bracketed* line. With unbracketed
+input the block never closed, so every test passed while exercising a path that
+does not exist in production - including, for one commit, the per-stage fix
+they were written to protect.
+
+Real log lines are in the session archives; use them. A parser test whose input
+was written from memory is a test of the memory.
+
 ## Do not poll
 
 **This is a standing order, not a preference.** Polling is the default move when
