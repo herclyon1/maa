@@ -364,7 +364,18 @@ never serve a stale copy, so it stays as the final fallback. Both fetchers query
 config change silently do nothing.
 
 After pushing, run `scripts/mac/purge-cdn.py`: it purges jsDelivr and then waits
-until the CDN actually serves the new version.
+until the machine could actually fetch the new version. Its success test mirrors
+what selfupdate really does - the newest manifest across **all** doors equals
+the local one, and every file is served correctly by **at least one** door -
+because an earlier version only watched fastly and reported failure during the
+minutes fastly lagged, while the machine was already able to update fine. A test
+stricter than reality is a false alarm generator.
+
+It also reports how many files only `raw` can serve. That number matters: raw's
+measured median is 38 s, the whole round has a 240 s budget, so once more than
+about five files fall through to raw alone the update will not finish in time
+and will be abandoned cleanly. When that is the situation and a boot is close,
+use `deploy-relay.sh` instead - it is certain.
 
 **Fetch speed and cache-refresh speed are different things**, measured
 2026-08-21. The table above ranks fetches. On refresh the order inverted: after
