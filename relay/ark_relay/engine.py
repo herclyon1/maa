@@ -255,10 +255,20 @@ class Engine:
                 if ran:
                     self._missed_alerted.add(key)   # settled, stop checking
                     continue
-                # The relay may have started after the window closed (machine
-                # was off then, or it was restarted) - it cannot know whether
-                # the run happened, so it must not claim it did not.
-                if self._started_at > due:
+                # Was this machine even awake when the queue was due? If it
+                # was off, "nothing ran" is not something this relay can
+                # observe from the inside, and claiming it would be a false
+                # alarm every single morning - that is the GitHub Actions
+                # watchdog's job instead.
+                #
+                # Uptime, not the relay's own start time. Those differ every
+                # time the relay restarts itself for a selfupdate, and an
+                # update that runs long enough to cross the queue's time used
+                # to make the new process disqualify itself - swallowing a
+                # genuine missed run on precisely the boot where something had
+                # already gone slowly enough to be worth knowing about.
+                watching_since = self._boot_time(now) or self._started_at
+                if watching_since > due:
                     self._missed_alerted.add(key)
                     continue
                 late = int((now - due).total_seconds() // 60)
@@ -307,8 +317,13 @@ class Engine:
                 key = f"{day}/{q['name']}/{due:%H:%M}/{kind}"
                 if key in self._missed_alerted:
                     continue
-                # Started after the window: it cannot know what happened then.
-                if self._started_at > due:
+                # Was the machine awake when this queue was due? Same test,
+                # and the same reason, as in _check_missed_runs: uptime rather
+                # than the relay's start time, so a selfupdate restart cannot
+                # make the relay disqualify itself from reporting a script that
+                # never started.
+                watching_since = self._boot_time(now) or self._started_at
+                if watching_since > due:
                     self._missed_alerted.add(key)
                     continue
                 late = int((now - due).total_seconds() // 60)
@@ -714,6 +729,8 @@ class Engine:
         a machine that had run and said nothing. What decides this is "the
         morning queue finished", not "I am about to power off".
         """
+        if not self.cfg.interim_report:
+            return
         now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
         day = now.strftime("%Y-%m-%d")
         if self.state.report_sent(day):

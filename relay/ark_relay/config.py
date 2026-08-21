@@ -128,6 +128,14 @@ class Config:
     # On by default; set to 0 once the daily summary alone is trusted.
     report_before_shutdown: bool = field(
         default_factory=lambda: _env("ARK_REPORT_BEFORE_SHUTDOWN", "1") == "1")
+    # The interim summary after each finished daytime round - kind 2 in
+    # docs/NOTIFICATIONS.md, which calls it a test-phase feature that can be
+    # turned off once the daily report alone is trusted, without affecting the
+    # daily report. There was no switch for it: report_before_shutdown only
+    # governs the pre-shutdown backstop, so the specified behaviour was not
+    # actually available. On by default, which is the behaviour up to now.
+    interim_report: bool = field(
+        default_factory=lambda: _env("ARK_INTERIM_REPORT", "1") == "1")
 
     # How long after a queue's time to wait before declaring one of its scripts
     # missing. The morning queue runs MAA first (~20 min) and only then MaaEnd

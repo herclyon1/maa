@@ -21,11 +21,15 @@ They do not consume or cancel each other:
 - A hand-triggered catch-up round sends its own message, explicitly labelled as
   manual.
 
-Kind 2 exists only while the system is under test (`ARK_REPORT_BEFORE_SHUTDOWN=1`).
-Turning it off must not affect kind 1. It is not sent on a timer: the morning
-round powers off seconds after finishing, so a timer would have to fire inside a
-moving window between "finished" and "off". Sending immediately before shutdown
-is deterministic.
+Kind 2 exists only while the system is under test: set `ARK_INTERIM_REPORT=0`
+to stop it once the daily report alone is trusted. Turning it off must not
+affect kind 1, which is why it is its own switch - `ARK_REPORT_BEFORE_SHUTDOWN`
+governs a different thing, the backstop that fires from inside the shutdown path
+when the interim never got delivered.
+
+Kind 2 is not sent on a timer: the morning round powers off seconds after
+finishing, so a timer would have to fire inside a moving window between
+"finished" and "off". Reporting when the round completes is deterministic.
 
 ## Every summary must carry
 
@@ -53,8 +57,10 @@ is deterministic.
 
 Two rules, both given by the operator on 2026-08-21.
 
-**At boot, never at the end of a queue.** The machine boots at 21:20 and the
-queue starts at 21:30; those eight minutes exist for exactly this. An update
+**At boot, never at the end of a queue.** The machine powers on at 21:20 and
+the queue starts at 21:30; the relay is up a minute or two after boot, so
+roughly eight of those ten minutes are usable and they exist for exactly this.
+The morning gap is the same shape: power at 08:45, queue at 09:00. An update
 applied after the run would sit unused until the next boot, and a command that
 needs it could not be understood in the meantime. `service.py` runs selfupdate
 at service start, before the inbox, and restarts itself immediately so the new
@@ -74,21 +80,29 @@ the applied version alone, compared against the last version announced.
 
 - The relay powers the machine off after the queue has finished **and** the
   report has been delivered. This is the design and it stays.
-- **I must never shut the machine down without an explicit order from the
-  operator.** On 2026-08-20 I did, and then could not reach the machine to
-  restore a config. The relay's own post-run shutdown is the only exception.
+- **Nothing else powers the machine down without an explicit instruction.**
+  An unrequested manual shutdown on 2026-08-20 left the machine unreachable
+  while a config still needed restoring. The relay's own post-run shutdown is
+  the only automatic one.
 
 ## Channels
 
 | Channel | State |
 |---|---|
-| Server酱 (`sctapi.ftqq.com`, `SCT...` Turbo key) | **carrying everything** |
+| Server酱 (`sctapi.ftqq.com`) | **carrying everything** |
 | WeCom self-built app | **down**: `errcode=60020`, the home IP is not in the trusted list |
 | WeCom group bot (`WECOM_BOT_URL`) | not configured; has no trusted-IP list, so it would survive a changing home IP |
 
 MAA's and AUTO-MAS's own direct pushes are all off - both would reach the same
 WeChat, so leaving them on delivers everything twice. When WeCom comes back,
 expect duplicates until one channel is muted.
+
+Server酱 has two product lines with different key prefixes - `SCT...` is Turbo,
+`sctp...` is Server酱³ - and `notify.py` handles both, sending everything to
+`sctapi.ftqq.com` (the per-uid `{uid}.push.ft07.com` host that Server酱³
+documents returns 403 for this key and is not a usable fallback). Which line
+this deployment's key belongs to is not recorded here; the key lives only in
+`relay/.env` on the machine.
 
 Delivery rule: **one channel delivering counts as delivered.** See
 [PITFALLS.md](PITFALLS.md) for why that sentence exists.

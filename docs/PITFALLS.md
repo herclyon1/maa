@@ -22,7 +22,7 @@ evidence was in a different day's logs. Two comments then had to be deleted.
 One sample is not a refutation.
 
 **Blaming the instrument.** MaaEnd's first-attempt failures were attributed to
-my own screenshots stealing focus. An experiment disproved it. The cause is
+the remote screenshots stealing focus. An experiment disproved it. The cause is
 still open; `focus-watch.py` now runs at logon to catch the next occurrence.
 
 ## Do not poll
@@ -153,7 +153,7 @@ MaaEnd connects within a second of it appearing, so the handle goes stale. The
 second attempt takes over an already-running game and is fine.
 
 **Retry is the fix; do not treat it as a real fault.** The tunable is MaaEnd's
-own post-launch wait. Root cause not confirmed - `WaitTime` and my screenshots
+own post-launch wait. Root cause not confirmed - `WaitTime` and the remote screenshots
 were both disproved, and `focus-watch.py` is deployed to capture the next one.
 A sibling one-shot: recognition timing out 20s after "open rewards", the last
 step of protocol space. Also self-heals.

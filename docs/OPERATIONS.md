@@ -4,15 +4,20 @@ How to do things to the running system. Facts only; if a line cannot be checked
 against the machine or the code, it does not belong here.
 
 `scripts/mac/check-docs.py` verifies the checkable claims on this page and its
-siblings. Run it after any change to the system or to these docs.
+siblings - paths, the service, the scheduled tasks, config values - against the
+live machine. Run it after any change to the system or to these docs, and
+believe it over this page.
 
-Last verified end-to-end: 2026-08-21.
+Reviewed 2026-08-21. Claims carried over from older documents have been wrong
+before: "the Mi Home timers are not set" survived here for six days while the
+morning round ran every one of them. Anything inherited rather than checked is
+a candidate for the same failure.
 
 ## Map
 
 ```
 Japan (UTC+9)                          China (UTC+8, "server time")
-  MacBook Air  ── Tailscale + SSH ──▶  Windows 11 game machine, host "INS"
+  control Mac  ── Tailscale + SSH ──▶  Windows 11 game machine, host "INS"
   control only                          awake ~3h/day, off the rest
        │                                     ▲
        └── push to GitHub ──▶ repo ──────────┘  machine pulls at every boot
@@ -25,7 +30,7 @@ is closed happens either on the game machine or in GitHub Actions.
 |---|---|---|
 | Game machine | Tailscale `$ARK_HOST`, hostname `INS` | runs AUTO-MAS + MAA + MaaEnd + the relay |
 | Mac | Tailscale, Tokyo | control; not depended on |
-| HP server | Osaka; cloudflared tunnel + sshd on :2222 + RustDesk | **unused by this system** since the relay's server mode was retired. Credentials live in `~/Claude/HANDOFF-hp-cloud-server.md`, outside git |
+| HP server | Osaka; cloudflared tunnel + sshd on :2222 + RustDesk | **unused by this system** since the relay's server mode was retired. Its credentials are kept outside this repository |
 
 `ssh Administrator@$ARK_HOST` over Tailscale. No port forwarding. Public key
 must live in `C:\ProgramData\ssh\administrators_authorized_keys` - for accounts
@@ -45,7 +50,9 @@ D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64\  Arknights bot
 D:\maaend\MaaEnd-win-x86_64-v1.6.5\                 Endfield bot
 C:\ProgramData\ark-relay\                           the relay; Windows service "ark-relay"
   relay.log                                         its log
-  state\                                            ledger, seen.txt, code-version.txt, markers
+  state\                                            ledger-<date>.jsonl, seen.txt, pending.json,
+                                                    code-version.txt, announced-version.txt,
+                                                    ark-do-last.txt, report-/interim-<date>.sent
 C:\ProgramData\ark-do.ps1 / ark-cmd.txt / ark-do.log   remote input
 C:\ProgramData\ark-shot.ps1 / ark-shot.png             one-shot screenshot
 C:\ProgramData\focus-watch.log                         foreground-window log
@@ -78,12 +85,16 @@ no timestamped log at all.
 
 | Time | What | Trigger |
 |---|---|---|
-| 08:40 / 08:45 | smart plug cuts then restores power | Mi Home timer **- not set yet** |
+| 08:40 / 08:45 | smart plug cuts then restores power | Mi Home timer |
 | 08:46-08:47 | boot, auto-login, AUTO-MAS + relay start | BIOS "restore on AC", logon tasks |
 | 09:00 | queue `新队列`: MAA then MaaEnd, ~85 min | AUTO-MAS timer |
-| 21:20 | wake | BIOS RTC (confirmed in the event log) |
+| 21:20 | the machine powers on | BIOS RTC (`08-10 21:20:16 BOOT` in the event log) |
 | 21:30 | queue `Evening-MAA`: MAA only, ~45 min | AUTO-MAS timer |
 | after the last queue | relay sends the report, then powers off | relay |
+
+The morning wake and the evening wake use different mechanisms: the plug cuts
+mains power so the board's "restore on AC" setting boots it, while the evening
+one is the board's own RTC alarm and needs no plug at all.
 
 Arknights must farm twice a day at roughly even spacing or the base overflows.
 
@@ -91,7 +102,7 @@ The relay reads these times from AUTO-MAS's own `QueueConfig.json`, so moving a
 queue there moves the missed-run alarms and the report cutoff with it - there is
 no second copy of the schedule to keep in sync.
 
-Between 10:30 and 21:20 the machine is fully off and nothing on it can observe
+Between roughly 10:30 and 21:20 the machine is fully off and nothing on it can observe
 anything. That blind spot is what GitHub Actions covers (see below).
 
 ## Remote input: the ark-do task
@@ -139,6 +150,20 @@ freezes its own output; one `{ESC}` releases it.
 **Screenshots do not steal focus** - tested and disproved as a cause of MaaEnd
 failures. `run` and `click` do.
 
+**Every ark-do batch delays the automatic shutdown by 20 minutes.** The script
+stamps `state\ark-do-last.txt` and the relay treats a recent stamp as "somebody
+is working on this desktop", which is the point - but it means a screenshot
+taken while waiting for a run to finish pushes the power-off back. Take the
+screenshots before the round ends, or expect to wait. The hold is bounded by
+the last action, so it cannot keep the machine up indefinitely.
+
+Note this file is **not** in the relay manifest, so `deploy-relay.sh` and
+selfupdate do not touch it - `scripts/windows/*.ps1` has to be scp'd by hand:
+
+```bash
+scp scripts/windows/ark-do.ps1 Administrator@$ARK_HOST:'C:/ProgramData/ark-do.ps1'
+```
+
 ## Changing game configuration
 
 **Never launch MAA.exe or the MaaEnd executable directly.** They are launchers:
@@ -170,6 +195,15 @@ net start ark-relay
 ```
 
 Then read the value back **after AUTO-MAS has restarted**, not before.
+
+Two different write paths exist, and the difference is deliberate.
+`commands.py` edits the JSON **as text** and therefore carries the structural
+diff described below. `sanity_plan.py`, `queues.py` and `maaend.py` parse to a
+dict, mutate keys, and re-serialise - structure cannot be broken that way, so
+they rely on a different set of guards: refuse to create a key that does not
+already exist, back up, write atomically, roll back on failure, read back. Do
+not "add the diff for consistency"; it guards against a failure mode those
+paths do not have.
 
 Never regex-edit JSON on the remote host. The procedure that has never failed:
 fetch base64 → edit locally within the located block → `json.loads` → flatten
@@ -214,8 +248,10 @@ no polling interval. Recovery actions deliberately do **not** apply to a manual
 `sc config ark-relay start= disabled` and `sc delete ark-relay` are the other
 two intentional escape hatches; do not close them.
 
-Rollback path: `sc delete ark-relay` then re-enable the still-present disabled
-scheduled task `ark-relay`.
+Rollback path: `sc delete ark-relay` then re-enable the disabled scheduled task
+`ark-relay`, which was deliberately left in place as a way back.
+
+<!-- check: task ark-relay -->
 
 Services do not run `ark-relay.ps1`, so the environment that script used to set
 is absent. `service.py` sets `PYTHONUTF8`, `PYTHONIOENCODING` and `ARK_LOG_FILE`
@@ -325,9 +361,26 @@ Doors, in the order the code tries them (measured from the machine 2026-08-21,
 raw is last because it is by far the slowest, but it is the only door that can
 never serve a stale copy, so it stays as the final fallback. Both fetchers query
 **every** door and take the highest `version` - a lagging mirror used to make a
-config change silently do nothing. After pushing, run
-`scripts/mac/purge-cdn.py`, which purges jsDelivr and then waits until the CDN
-actually serves the new version.
+config change silently do nothing.
+
+After pushing, run `scripts/mac/purge-cdn.py`: it purges jsDelivr and then waits
+until the CDN actually serves the new version.
+
+**Fetch speed and cache-refresh speed are different things**, measured
+2026-08-21. The table above ranks fetches. On refresh the order inverted: after
+a purge that the API reported as `"status": "finished"` with both providers
+acknowledging, `cdn.jsdelivr.net` served the new manifest within seconds while
+`fastly.jsdelivr.net` - the fastest door for fetching - was still serving the
+previous version minutes later. A second purge in quick succession is also
+slower than the first.
+
+That is survivable by design rather than by luck: `raw.githubusercontent.com`
+carries the new manifest immediately, `_best_manifest` takes the highest version
+across all doors, and `_get_with_retry(expect_sha=...)` treats a hash mismatch
+as "this door is stale, try the next". So a machine booting mid-refresh still
+gets the right code - just slowly, since more files fall through to raw. When
+the purge script times out and the boot window is close, prefer the certain
+path: `deploy-relay.sh` pushes over SSH with hash verification.
 
 A stale manifest could also downgrade the relay. `deploy-relay.sh` stamps
 `state\code-version.txt` and selfupdate refuses any manifest not strictly newer,
@@ -368,6 +421,7 @@ will alarm at 23:10 about a machine that should have shut down.
 | `scripts/windows/focus-watch.py` | log every foreground-window change; task `ark-focus-watch` starts it at logon |
 | `scripts/windows/probe-mirrors.py` | measure which mirrors work from the machine, including content freshness |
 | `scripts/windows/push-wecom.ps1` | push an image to WeCom |
+| `scripts/windows/hp-fix.ps1` | one-off repair of the HP server's sshd. Nothing references it and the HP server is not part of this system; kept because that machine still runs the daemon it fixed |
 | `scripts/watchdog.py` | the GitHub Actions boot supervisor |
 
 <!-- check: repo scripts/mac/deploy-relay.sh -->
@@ -409,14 +463,11 @@ will alarm at 23:10 about a machine that should have shut down.
 
 ## Open items
 
-Split by who can actually close them, because the first version of this list
-read as a pile of work handed to the operator when most of it was mine.
+Split by what is needed to close them, so the list is not read as work handed
+to the operator when most of it is not.
 
-### Needs the operator's own hands - I cannot do these
+### Requires access outside this repository
 
-- **Mi Home timers are not set.** Until they are, the morning round does not
-  start on its own. The evening one does; BIOS RTC wake is independent of the
-  plug.
 - **WeCom `errcode=60020`.** Either add the current egress IP in the admin
   console (the alarm carries it), or create a group bot and set `WECOM_BOT_URL`,
   which has no trusted-IP list and survives a changing home IP. Server酱 is
@@ -440,7 +491,7 @@ read as a pile of work handed to the operator when most of it was mine.
   shares it. The realistic case - a selfupdate restart minutes after the run -
   is fixed.
 
-### My backlog - real work, not blocked on anyone
+### Outstanding work - not blocked on anything external
 
 - **Alarms are only as timely as AUTO-MAS's writes.** It flushes every attempt
   at once when the script ends, so a 09:17 login failure cannot be known before
