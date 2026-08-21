@@ -196,14 +196,22 @@ net start ark-relay
 
 Then read the value back **after AUTO-MAS has restarted**, not before.
 
-Two different write paths exist, and the difference is deliberate.
-`commands.py` edits the JSON **as text** and therefore carries the structural
-diff described below. `sanity_plan.py`, `queues.py` and `maaend.py` parse to a
-dict, mutate keys, and re-serialise - structure cannot be broken that way, so
-they rely on a different set of guards: refuse to create a key that does not
-already exist, back up, write atomically, roll back on failure, read back. Do
-not "add the diff for consistency"; it guards against a failure mode those
-paths do not have.
+Three write paths, and the differences between them are deliberate.
+
+`commands.py` edits the JSON **as text**, so it carries the full structural diff
+described below: added=0, removed=0, changed exactly as expected, or roll back.
+
+`maaend.py` parses to a dict but still diffs, with the check scoped to the
+options it meant to touch - a checkbox going from seven days to two genuinely
+adds and removes leaves, so a blanket added=0/removed=0 would reject real edits
+while a stray change anywhere else is still caught.
+
+`sanity_plan.py` and `queues.py` parse to a dict and do not diff. Structure
+cannot be broken that way, so they rely on a different set of guards: refuse to
+create a key that does not already exist, validate types, back up, write
+atomically, roll back on failure, and (sanity_plan) read back. Do not "add the
+diff for consistency" there; it guards against a failure mode those two do not
+have.
 
 Never regex-edit JSON on the remote host. The procedure that has never failed:
 fetch base64 → edit locally within the located block → `json.loads` → flatten
