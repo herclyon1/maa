@@ -95,4 +95,4 @@
 | CrisisDrills 危境预演 | AdvancedProgression1–5 | — | — |
 
 **写进的是 AUTO-MAS 的配置，不是 MaaEnd 的**——MaaEnd 那份每次运行都会被覆盖，
-改了等于没改。详见 `docs/05-踩过的坑.md`。
+改了等于没改。详见 [docs/CONFIG.md](../docs/CONFIG.md)（英文）。

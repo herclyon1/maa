@@ -1,108 +1,125 @@
 # ark-relay
 
-MAA / AUTO-MAS 通知中继，跑在游戏机上。
+The notification relay. Runs on the game machine as the Windows service
+`ark-relay`; zero dependencies beyond the standard library (pywin32 for the
+service wrapper, already installed there).
 
 ```
-失败  → 立刻推（附模型写的一句人话诊断；重试期间先憋着，等重试结果）
-自愈  → 重试成功仍要推一条「本次自愈，问题未解决」
-成功  → 静默记账
-白天  → 每一轮收尾（含手动补跑）推一条「临时查看」进度，互不占额
-晚上  → 最后一轮之后推正式日报（关卡 / 掉落 / 理智 / 起止时间，双时区）
-        隔夜没发出去的日报次日补发
-倒计时 → 日报与临时查看固定附当期活动剩余时间（读 MAA 活动缓存；
-        不足 36 小时加 ⚠️，刚结束 3 天内提示换关）
-没开机 → 告警  ★ 由 GitHub Actions + Tailscale 负责，不在这台机器上（暂缓启用）
+failure   push once, after the retries settle, with a one-line plain diagnosis
+recovery  push "recovered this time, problem not solved" - self-healing != fine
+success   silent, recorded
+daytime   one interim summary per round, manual rounds included, no quota used
+evening   the daily report after the last round; resent next day if it never went
+countdown every summary carries the event's remaining time, from MAA's own cache
+no boot   NOT this machine's job - GitHub Actions + Tailscale lastSeen
 ```
 
-**服务器模式已裁撤（2026-08-20）。** 云服务器的每一项独有功能都有了不需要
-服务器的实现，而且机器侧一行上传代码都不用写：
+[docs/NOTIFICATIONS.md](../docs/NOTIFICATIONS.md) is the authority on all of the
+above.
 
-| 原服务器功能 | 现在的实现 |
+## Modules
+
+| File | Responsibility |
 |---|---|
-| 开机 / 收工监督 | GitHub Actions 定时查 Tailscale `lastSeen`（[watchdog](../.github/workflows/watchdog.yml)，配置在 [queue/watchdog.json](../queue/watchdog.json)）。机器开机 tailscaled 即连、关机即断，「报到」是它本来就在发的信号 |
-| 心跳超时告警 | 同上——按 2026-08-18 裁决，没有周期心跳，只有开机/收工两个事件加到点核查 |
-| 指令队列（手机发指令） | 收件箱：手机改仓库里的 [queue/config.json](../queue/config.json)，机器开机自取（inbox.py） |
-| 收事件、判定、推送 | 本机模式本来就有 |
-| 网页看状态 | 不再单做：日报/告警已推到微信，剩余需求由 GitHub 网页（仓库文件 + Actions 运行记录）覆盖 |
+| `service.py` | Windows service host: process watch, alarm clock, inbox deferral |
+| `core.py` | judgement - what happened, was it a failure, what is pending |
+| `engine.py` | the round: reports, shutdown, catch-up, manual-round detection |
+| `collector.py` | parse AUTO-MAS history records and MAA/MaaEnd logs |
+| `watch.py` | directory-change notification (Windows ctypes / macOS kqueue) |
+| `plan.py` | read AUTO-MAS's schedule; there is no second copy of it |
+| `notify.py` / `transport.py` | channels and HTTP with the right retry policy |
+| `summary.py` | wording, including the optional LLM line |
+| `inbox.py` | fetch and apply `queue/config.json` |
+| `selfupdate.py` | fetch and apply `relay/manifest.json` |
+| `commands.py` | the command whitelist and its gates |
+| `queues.py` / `modes.py` / `annihilation.py` / `sanity_plan.py` / `maaend.py` | config writers |
 
-之所以必须这样绕：游戏机对 github.com / api.github.com **TCP 层直接不通**
-（2026-08-20 实测），永远写不了 GitHub；而 raw.githubusercontent 会整晚变黑
-（8/17、8/20 两次实测），只读也得靠 jsDelivr 双门 + 粘性门顺序 + 推送后
-清 CDN 缓存（[purge-cdn.py](../scripts/mac/purge-cdn.py)）才稳。
-
-## 装
-
-**零依赖**，标准库就够（Windows 服务形态另需 pywin32，游戏机已装）：
+## Running it
 
 ```bash
-python -m ark_relay check      # 自检
-python -m ark_relay test       # 发一条测试消息
-python -m ark_relay local      # 常驻（生产用 service.py 的 Windows 服务形态）
+python -m ark_relay check      # self-test
+python -m ark_relay test       # send one test message
+python -m ark_relay local      # foreground; production uses service.py
 ```
 
-## 配置
+Configuration is environment variables or `relay/.env`; the list is in
+[docs/CONFIG.md](../docs/CONFIG.md).
 
-复制仓库根目录的 `.env.example` 到 `relay/.env` 填好，或者直接用环境变量：
+## Why there is no server
 
-| 变量 | 说明 |
+Server mode was retired on 2026-08-20. Every capability a cloud server had now
+has an implementation that needs no server *and* no upload code on the machine -
+which matters, because the machine cannot reach github.com or api.github.com at
+the TCP layer at all.
+
+| Old server feature | Replacement |
 |---|---|
-| `ARK_HISTORY_DIR` | AUTO-MAS 的 `history` 目录（必填） |
-| `ARK_STATE_DIR` | 中继自己的状态目录，默认 `./ark-state` |
-| `ARK_POLL_SECONDS` | 兜底扫描间隔，默认 300——**仅当目录监听挂不上时才用**，生产路径事件驱动，此数从不走表 |
-| `ARK_LAST_RUN_AFTER` | 当天最后一轮的时刻（服务器时间），默认 `21:30` |
-| `SERVERCHAN_KEY` | Server酱 |
-| `WECOM_CORPID` / `WECOM_SECRET` / `WECOM_AGENTID` | 企业微信自建应用（家宽 IP 一变就 60020，别当唯一渠道） |
-| `WECOM_BOT_URL` | 企业微信群机器人 webhook——没有可信 IP 名单，适合拨号家宽 |
-| `ARK_LLM_KEY` 等 | 措辞生成，不配也能跑 |
-| `ARK_AUTOMAS_DIR` | 读排期、收件箱改配置用 |
+| boot / shutdown supervision | GitHub Actions reads Tailscale `lastSeen`. tailscaled connecting at boot and dropping at shutdown is a signal the machine already sends |
+| heartbeat timeout alarm | none - by the 2026-08-18 decision there is no periodic heartbeat, only those two events plus scheduled checks |
+| command queue from the phone | the inbox: edit `queue/config.json` in this repo, the machine fetches it at boot |
+| collect, judge, push | local mode already did this |
+| status web page | reports and alarms go to WeChat; the rest is the GitHub web UI |
 
-## 指令的四道闸
+## The four gates on commands
 
-见 [docs/04-中继设计.md §15](../docs/04-中继设计.md)。代码在 `commands.py`。
+A model may only emit an **action name from this table**. It may never emit a
+JSON patch.
 
-| 动作 | 可逆 | 要确认 |
+| Action | Reversible | Needs confirmation |
 |---|---|---|
-| `run_now` 立刻跑一轮 | — | **尚未实现，会明确拒绝**（旧版写过一个没人消费的标记还报成功） |
-| `skip_today` 今天跳过 | ✅ | 否（跳过模式：当天临时停用该队列，过后自动恢复。可带 `"day":"YYYY-MM-DD"` 声明意图日期——收件箱是开机才收的，过期即拒绝，防止跳错天） |
-| `debug_mode` 调试模式 | ✅ 自动过期 | 否（`days`:N 或 `off`:true；生效期内不关机、不报漏跑） |
-| `set_stage` 换关卡 | ❌ 改配置 | **是** |
-| `set_medicine` 理智药 | ❌ 改配置 | **是** |
-| `set_wait_time` MaaEnd 启动后等待秒数 | ❌ 改配置 | **是**（治首启窗口竞态，见 docs/05） |
-| `toggle_task` 开关任务 | ❌ 改配置 | **是**（尚未实现，会明确拒绝） |
+| `run_now` | - | **not implemented; refuses explicitly** (an older version wrote a marker nothing consumed and reported success) |
+| `skip_today` | yes | no - disables that queue for the day and restores it afterwards. Takes `"day":"YYYY-MM-DD"`; the inbox is only read at boot, so a stale one is refused rather than skipping the wrong day |
+| `debug_mode` | yes, self-expiring | no - `days:N` or `off:true`; while active: no shutdown, no missed-run alarms |
+| `set_stage` | no, writes config | **yes** |
+| `set_medicine` | no, writes config | **yes** |
+| `set_wait_time` | no, writes config | **yes** - 60-600 only, see [CONFIG.md](../docs/CONFIG.md) |
+| `toggle_task` | no, writes config | **yes** - not implemented; refuses explicitly |
 
-模型**只能产出这张表里的动作名，不能输出 JSON 补丁**。落地时一律：备份 → 改 → `json.loads` → 结构化 diff，**新增/删除不为 0 或改动数不符预期就回滚**。
+`sanity_plan`, `maaend_option` and `queue` are handled in `inbox.py` before the
+whitelist, as all-or-nothing batches, because their fields depend on each other.
 
-这道闸不是摆设：它已经抓到过一次真实事故——一个本该关掉 3 个 webhook 的正则只关了 2 个，还damage了无关段落。
+The confirmation gate exists for the model path. Commands arriving through the
+inbox are confirmed by the act of editing the repo file, so `inbox.py` supplies
+`confirmed: True` itself.
 
-## 时区
+Applying any of them: back up → write → `json.loads` → structural diff → **roll
+back unless added=0, removed=0 and changed matches expectation**. That gate has
+caught one real incident already; see [PITFALLS.md](../docs/PITFALLS.md).
 
-两台机器差 1 小时（服务器 Asia/Shanghai UTC+8，人在 Asia/Tokyo UTC+9），中继本身还可能跑在时区是 UTC 的云服务器上。三个时钟，四条规矩：
+## The timezone contract
 
-**① 一切判定用服务器时钟。** `SERVER_TZ` 是写死的 UTC+8 固定偏移，**不读运行主机的本地时区**。09:00 / 21:30 这些时刻对齐的是米家插座、BIOS 唤醒和 AUTO-MAS 的定时——它们全都按服务器钟走。所以中继部署在哪都不影响判定。
+Three clocks are in play: server UTC+8, operator UTC+9, and whatever host the
+code runs on.
 
-**② 落盘一律存带偏移的 ISO 8601。** ledger 里是 `2026-08-14T09:00:12+08:00`，不是 `09:00:12`。绝对时刻没有歧义，换机器读也不会错。
+1. **All judgement uses the server clock.** `SERVER_TZ` is a hardcoded UTC+8
+   fixed offset and deliberately does **not** read the host's local timezone.
+   09:00 and 21:30 are aligned to the smart plug, the BIOS wake and AUTO-MAS's
+   timers, all of which run on that clock. So where the relay is deployed cannot
+   change a verdict.
+2. **Everything persisted is ISO 8601 with an offset** - `2026-08-14T09:00:12+08:00`,
+   never a bare `09:00:12`. An absolute instant reads the same on any machine.
+3. **Everything shown to a human names both clocks.** `both_clocks()` prints
+   `09:00（东京 10:00）`.
+4. **No bare `datetime.now()` anywhere.** Every call carries `tz=SERVER_TZ`.
 
-**③ 给人看的地方一律双时区。** `both_clocks()` 输出 `09:00（东京 10:00）`，永远不出现没标注是哪个钟的时间。
+Rule 4 is not fastidiousness - see [PITFALLS.md](../docs/PITFALLS.md), "Timing
+and time zones".
 
-**④ 代码里不允许出现裸的 `datetime.now()`。** 每一处都必须带 `tz=SERVER_TZ`。
+## Where the model's authority ends
 
-> 第 ④ 条不是洁癖。`commands.py` 里「今天跳过」的日期原本用的是主机本地时钟，一旦采集端换台机器跑、或者恰好在午夜前后执行，就会跳错天。回归测试用 `TZ=UTC` 跑了一遍确认修好。
->
-> 开发时也踩过：在东京的 Mac 上 `touch -t 09:45` 造测试数据，那是东京 09:45 = 服务器 08:45，比文件名里的 09:00 还早，算出「结束早于开始」。**文件名和 mtime 必须来自同一个钟**——在真机上它们都是服务器本地时间，所以一致。
+The LLM call in `summary.py` **only chooses words**. Whether a run failed, which
+task failed, the stage, the drops, the sanity numbers, whether something is
+overdue - all of that is decided by ordinary Python in `core.py` before the model
+is asked anything.
 
-## 模型的边界
+An unreachable model, a timeout, or no key at all costs one sentence of prose.
+The structured content is sent regardless.
 
-`summary.py` 里的模型调用**只负责措辞**。是否失败、哪个任务失败、关卡掉落理智的数字、心跳有没有超时，全部在 `core.py` 里用普通 Python 判定完毕之后才轮到模型说话。
-
-模型调不通、超时、没配 key，都只是少一句人话——结构化内容照发。
-
-## 已验证
-
-用真实的 AUTO-MAS 记录格式跑通：
+## Verified against real records
 
 ```
-MAA     ok=True   45 分钟   龙门币 ×28800 · 技巧概要·卷2 ×4 · 家具零件 ×6
-MaaEnd  ok=False  43 分钟   失败：协议空间、日常奖励领取
-幂等性：重复扫描 0 条
-白名单：'rm -rf /' 拒绝 / 未确认的 set_stage 拒绝 / 'DROP TABLE' 关卡格式拒绝
+MAA     ok=True   45 min   龙门币 x28800 · 技巧概要·卷2 x4 · 家具零件 x6
+MaaEnd  ok=False  43 min   failed: protocol space, daily reward collection
+idempotence: a repeat scan yields 0 records
+whitelist:   'rm -rf /' refused / unconfirmed set_stage refused / bad stage code refused
 ```
