@@ -53,10 +53,14 @@ while true; do
     [ "$tag" = "REC" ] || continue
     case "$seen" in *"<$stem>"*) continue ;; esac
     seen="$seen<$stem>"
+    # The probe escapes non-ASCII so it survives the machine's GBK console;
+    # decode it here so a human reads the actual failure reason rather than
+    # a wall of \uXXXX.
+    text=$(printf '%s' "$res" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read()))' 2>/dev/null || printf '%s' "$res")
     if [ "$ok" = "1" ]; then
-      echo "OK   $stem $kind $res"
+      echo "OK   $stem $kind $text"
     else
-      echo "FAIL $stem $kind $res"
+      echo "FAIL $stem $kind $text"
     fi
   done <<< "$out"
 
