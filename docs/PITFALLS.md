@@ -285,6 +285,12 @@ block, so the two disagreed and exposed it.
 correct (the log says "行动 1~10 次" then "行动 11~17 次"). Two different
 semantics inside one block, easy to get wrong together.
 
+Checked against a real run on 2026-08-21 (09:22, stage 1-7, two batches:
+龙门币 720 then 1440). The parser's six drop figures match AUTO-MAS's own
+`drop_statistics` exactly, and the run count comes out 20 for 10+10. AUTO-MAS
+writing its own figure into the record is what makes this verifiable at all -
+when the two disagree, the parser is wrong.
+
 ## GUI automation
 
 **An SSH session cannot take a screenshot.** Session 0 isolation; there is no
