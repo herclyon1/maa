@@ -306,6 +306,26 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         try:
             from ark_relay import selfupdate  # noqa: PLC0415 - see the block above
 
+            # An update that was available and did not land must be as loud
+            # as one that did. Otherwise the machine quietly runs old code
+            # while everything upstream assumes the push took effect - the
+            # same trap as an scp that returns 0 without transferring.
+            if fail := selfupdate.take_failure(HERE):
+                files = fail.get("files") or []
+                more = max(0, int(fail.get("count") or 0) - len(files))
+                body = "\n".join([
+                    f"原因：{fail.get('reason') or '未知'}",
+                    f"仓库 v{fail.get('remote') or '?'}，本机仍是 v{fail.get('local') or '?'}",
+                    "没更新的文件：" + "、".join(files) + (f" 等 {more} 个" if more else ""),
+                    "",
+                    "本机现在跑的是旧代码。下次开机会自动重试；",
+                    "要立刻生效请在控制端执行 scripts/mac/deploy-relay.sh。",
+                ])
+                if errors := notifier.send("⚠️ 中继自更新没成功", body):
+                    log.error("更新失败通知没发出去: %s", "；".join(errors))
+                else:
+                    log.info("已推送更新失败通知")
+
             if note := selfupdate.pending_announcement(HERE):
                 files = note.get("files") or []
                 title = (f"🔄 中继已更新（{len(files)} 个文件）" if files

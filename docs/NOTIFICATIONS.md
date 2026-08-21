@@ -51,6 +51,7 @@ finishing, so a timer would have to fire inside a moving window between
 | Should have run and did not / something missing | alarm immediately |
 | Config command applied | push a receipt: inbox version, name, note, and what changed in plain language |
 | **Relay code updated** | push the moment the new code is actually running - version before and after, and which files changed |
+| **Relay code update failed** | push why, which files did not land, and that the machine is still on the old version |
 | A notification channel is broken | alarm over whatever channel still works (e.g. WeCom `60020` with the current egress IP) |
 
 ## Updates must land at boot, and must announce themselves
@@ -75,6 +76,15 @@ the message means "the new code is running", not "the files were written".
 The first update after this shipped is a special case: the code that applies it
 predates the feature and leaves no record. So the notice is also derivable from
 the applied version alone, compared against the last version announced.
+
+**A failed update is announced as loudly as a successful one.** An update that
+was available and did not land leaves the machine running old code while
+everything upstream assumes the push took effect - the same trap as an scp that
+returns 0 without transferring, and the reason `deploy-relay.sh` verifies
+hashes. The notice says why it failed, which files did not land, and that the
+machine is still on the previous version. It repeats on every boot until an
+update succeeds, because the machine boots twice a day and an unfixed channel
+should keep saying so.
 
 ## Shutdown
 

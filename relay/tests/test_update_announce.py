@@ -61,5 +61,38 @@ print("\n[no version file at all - fresh install, nothing to say]")
 r = fresh()
 check("silent", su.pending_announcement(r), None)
 
+print("\n[failure is announced too - a silent one leaves old code running]")
+r = fresh()
+su._record_failure(r, "缓存未刷新", 20260821113000, 20260821111012,
+                   ["ark_relay/engine.py", "ark_relay/core.py"])
+f = su.take_failure(r)
+check("reported", bool(f), True)
+check("reason", f and f["reason"], "缓存未刷新")
+check("file list", f and f["files"], ["ark_relay/engine.py", "ark_relay/core.py"])
+check("count", f and f["count"], 2)
+check("not repeated", su.take_failure(r), None)
+
+print("\n[a later success clears the stale complaint]")
+r = fresh()
+su._record_failure(r, "x", 1, 2, ["a.py"])
+su._clear_failure(r)
+check("cleared", su.take_failure(r), None)
+
+print("\n[corrupt failure marker is removed, not retried forever]")
+r = fresh()
+(r / "state" / "update-failed.json").write_text("{broken")
+check("returns nothing", su.take_failure(r), None)
+check("file removed", (r / "state" / "update-failed.json").exists(), False)
+
+print("\n[failure and success markers are independent]")
+r = fresh()
+(r / "state" / "code-version.txt").write_text("20260822090000")
+su._record_failure(r, "x", 1, 2, ["a.py"])
+check("failure present", bool(su.take_failure(r)), True)
+check("announcement still works", bool(su.pending_announcement(r)), True)
+
+print("\n[raw gets a timeout above its measured median]")
+check("RAW_TIMEOUT > 38s median", su.RAW_TIMEOUT > 38, True)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

@@ -58,9 +58,14 @@ BUDGET_SECONDS = 240
 # Per-attempt timeout for raw.githubusercontent. It is the only one of the four
 # doors that serves no CDN cache, so when the CDNs lag behind it is the *only*
 # door that can hand back new content - which means it must not be cut off too
-# early: measured, it takes 38 seconds on average when it does succeed. The
-# budget above caps the total time, so give it one decent chance here.
-RAW_TIMEOUT = 25
+# early: measured, it takes 38 seconds when it does succeed.
+#
+# This was 25, below that measured figure, while the comment claimed to be
+# giving raw "one decent chance". It was not: on the boots where raw is the
+# only usable door, a 25 s cut-off ends most attempts just before they would
+# have returned. 45 leaves real headroom, and BUDGET_SECONDS still caps the
+# round, so the cost of a door that is simply down is bounded either way.
+RAW_TIMEOUT = 45
 
 
 def _get_once(url: str, timeout: int = 20) -> bytes | None:
@@ -233,6 +238,45 @@ def _applied_version(root: Path) -> int:
         return 0
 
 
+def _failure_path(root: Path) -> Path:
+    return root / "state" / "update-failed.json"
+
+
+def take_failure(root: Path) -> dict | None:
+    """The pending "an update was available and did not land" note, cleared.
+
+    A silent failure here is worse than the failure itself: the machine keeps
+    running old code while everything downstream assumes the push took effect.
+    "Believing you deployed is worse than not deploying" applies to this path
+    exactly as it does to scp.
+    """
+    path = _failure_path(root)
+    if not path.exists():
+        return None
+    try:
+        note = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        note = None
+    path.unlink(missing_ok=True)
+    return note if isinstance(note, dict) else None
+
+
+def _record_failure(root: Path, reason: str, remote: int, local: int,
+                    pending: list[str]) -> None:
+    try:
+        _atomic_write(_failure_path(root), json.dumps({
+            "reason": reason, "remote": remote, "local": local,
+            "files": pending[:12], "count": len(pending),
+            "at": datetime.now(tz=SERVER_TZ).isoformat(),
+        }, ensure_ascii=False).encode("utf-8"))
+    except OSError:
+        log.warning("记不下更新失败的原因", exc_info=True)
+
+
+def _clear_failure(root: Path) -> None:
+    _failure_path(root).unlink(missing_ok=True)
+
+
 def _announce_path(root: Path) -> Path:
     return root / "state" / "update-announce.json"
 
@@ -350,7 +394,11 @@ def _best_manifest(base: str, deadline: float | None = None) -> dict | None:
             break
         per = min(20.0, left)
         if "raw.githubusercontent.com" in url:
-            per = min(per, RAW_TIMEOUT)
+            # `min(20, RAW_TIMEOUT)` left raw on 20 s here however large
+            # RAW_TIMEOUT grew, so the door that alone can carry a fresh
+            # manifest got the shortest allowance of all. Raise it to raw's
+            # own budget, still bounded by what is left of the round.
+            per = min(max(per, float(RAW_TIMEOUT)), left)
         if (data := _get_once(url, int(max(2, per)))) is None:
             continue
         try:
@@ -431,6 +479,16 @@ def check(root: Path, base_url: str = "",
     # path while root may not be resolved (on macOS /var is a symlink to
     # /private/var), so recovering it would raise ValueError - and by then the
     # files would already be written.
+    # What this round intends to change, worked out before any fetching, so a
+    # failure report can say what did not land rather than only where it stopped.
+    wanted: list[str] = []
+    for rel, want in sorted(files.items()):
+        target = _safe_target(root, rel)
+        if target is not None and target.exists() and _sha1(target.read_bytes()) != want:
+            wanted.append(rel)
+    if not wanted:
+        _clear_failure(root)        # nothing to do means nothing is outstanding
+
     staged: list[tuple[str, Path, bytes]] = []
     for rel, want in sorted(files.items()):
         target = _safe_target(root, rel)
@@ -448,6 +506,9 @@ def check(root: Path, base_url: str = "",
         if data is None:
             log.warning("%s 所有门都拿不到正确内容，本次更新整体放弃（已下 %d 个"
                         "文件都不落盘，下次启动重来）", rel, len(staged))
+            _record_failure(root, f"{rel}：所有门都拿不到正确内容（缓存未刷新，"
+                            "或时间预算不够走最慢的 raw）",
+                            remote_ver, local_ver, wanted)
             return []
         staged.append((rel, target, data))
 
@@ -461,6 +522,8 @@ def check(root: Path, base_url: str = "",
             # boot redo it - carrying on would only spread the mixed version
             # further.
             log.exception("写入 %s 失败，停止本次更新", rel)
+            _record_failure(root, f"写入 {rel} 失败（磁盘或权限），本次更新只落了一半",
+                            remote_ver, local_ver, wanted)
             break
         updated.append(rel)
 
@@ -477,6 +540,7 @@ def check(root: Path, base_url: str = "",
     if remote_ver and len(updated) == len(staged):
         _remember_version(root, remote_ver)
     if updated:
+        _clear_failure(root)        # this round landed; the old complaint is stale
         _record_announcement(root, {
             "version": remote_ver, "previous": local_ver, "files": updated,
             "at": datetime.now(tz=SERVER_TZ).isoformat(),
