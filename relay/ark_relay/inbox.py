@@ -88,13 +88,16 @@ def _alternates(url: str) -> list[str]:
         return [url]
     owner, repo, branch, path = parts
     ref = f"gh/{owner}/{repo}@{branch}/{path}"
-    # 顺序来自 2026-08-21 凌晨在游戏机上的实测（每门 8 次）：
-    #   fastly.jsdelivr  8/8  平均 426ms      ← 最好
-    #   cdn.jsdelivr     7/8  平均 1956ms
-    #   gcore.jsdelivr   7/8  平均 2398ms
-    #   raw.github       2/8  平均 38179ms    ← 最差，但内容永远最新
-    # 所以 raw 放最后：它是唯一不吃 CDN 缓存的门，留作兜底而不是首选。
-    # （jsDelivr 的缓存由 scripts/mac/purge-cdn.py 在每次推送后全局清掉。）
+    # The order comes from measurements on the game machine in the early hours
+    # of 2026-08-21 (8 attempts per door):
+    #   fastly.jsdelivr  8/8  average 426ms      <- best
+    #   cdn.jsdelivr     7/8  average 1956ms
+    #   gcore.jsdelivr   7/8  average 2398ms
+    #   raw.github       2/8  average 38179ms    <- worst, but always freshest
+    # So raw goes last: it is the only door that serves no CDN cache, kept as a
+    # fallback rather than a first choice.
+    # (jsDelivr's cache is purged globally by scripts/mac/purge-cdn.py after
+    # every push.)
     return [
         f"https://fastly.jsdelivr.net/{ref}",
         f"https://cdn.jsdelivr.net/{ref}",
@@ -121,18 +124,23 @@ def _netloc(url: str) -> str:
 
 
 def _fetch(url: str, timeout: int = 20, attempts: int = 3) -> dict | None:
-    """把每扇门的待办文件都取回来，选 version 最大的那份。
+    """Fetch the queue file from every door and keep the highest version.
 
-    不能"哪扇门先应答就用哪份"。2026-08-21 早上就栽在这里：CDN 上还缓存着
-    昨天的 config.json，收件箱取到它、看见版本号没变大，于是判定"没有新指令"
-    **一声不吭地跳过**——操作者昨晚排的换关卡指令就这么没生效，而日志里连一行
-    异常都没有。
+    "Use whichever door answers first" will not do. That is exactly what went
+    wrong on the morning of 2026-08-21: the CDN was still caching yesterday's
+    config.json, the inbox fetched it, saw a version number that had not gone
+    up, concluded there were no new instructions and *skipped without a word* -
+    so the stage-change order the operator queued the night before never took
+    effect, and there was not one exception line in the log to show for it.
 
-    自更新那边靠 manifest 里的 SHA-1 能识破旧副本，待办文件没有这种校验：
-    它就是权威本身。所以改用同一个办法——问遍所有门，取版本号最大的一份。
-    版本号只增不减，落后的门自然出局，而且不需要信任任何一扇门。
+    Self-update can see through a stale copy using the SHA-1s in the manifest;
+    the queue file has no such check, because it is the authority itself. So it
+    uses the same approach - ask every door and take the highest version.
+    Version numbers only ever go up, so a lagging door drops out by itself and
+    no single door has to be trusted.
 
-    只有一扇门应答（或都没有版本号）时退回"取到什么用什么"，保持向后兼容。
+    When only one door answers (or none of them carries a version), fall back
+    to "use whatever was fetched", which keeps backward compatibility.
     """
     global _last_good  # noqa: PLW0603 - process-lifetime stickiness by design
     urls = _alternates(url)
@@ -172,7 +180,8 @@ def _fetch_once(url: str, timeout: int = 20) -> dict | None:
             raw = resp.read()
     except (urllib.error.URLError, OSError, ValueError,
             http.client.HTTPException) as exc:
-        # IncompleteRead 不是 OSError 的子类，漏掉它异常会穿出去。
+        # IncompleteRead is not a subclass of OSError; leaving it out lets the
+        # exception escape.
         log.warning("取不到待办文件（%s）: %s", url, exc)
         return None
     try:
@@ -263,9 +272,10 @@ class Inbox:
         # get better; the failure is reported instead, and the fix is a new
         # version - which is also how the operator learns it did not land.
         self._remember(version)
-        # 返回值第 0 项是推送标题，其余是正文。以前把说明塞在标题里、正文只
-        # 取 messages[1:]，结果操作者自己写的那句说明被整条丢掉——而那恰恰
-        # 是最像人话的一句。
+        # Item 0 of the return value is the push title, the rest is the body.
+        # The note used to be stuffed into the title while the body took only
+        # messages[1:], which threw the operator's own note away entirely - and
+        # that is precisely the line that reads most like a human wrote it.
         title = f"⚙️ 配置已更新：{name}" if name else "⚙️ 配置已更新"
         body = [f"{both_clocks(datetime.now(tz=SERVER_TZ))} · {label_version(version)}"]
         if note:
@@ -316,7 +326,9 @@ class Inbox:
             # The file can only be written by whoever can push to the repo, so
             # authorship is the confirmation that gate ② asks for.
             ok, detail = apply_command({**cmd, "confirmed": True})
-            # 成功时只报人话（detail 已经是「刷取关卡：TO-5 → 1-7」这种）；
-            # 失败时才带上内部动作名，那时它是排查线索而不是噪音。
+            # On success report only the human-readable part (detail already
+            # reads like 「刷取关卡：TO-5 → 1-7」); the internal action name is
+            # added only on failure, where it is a diagnostic clue and not
+            # noise.
             out.append(f"✅ {detail}" if ok else f"✗ {cmd.get('action')}: {detail}")
         return out

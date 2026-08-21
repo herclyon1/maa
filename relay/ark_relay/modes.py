@@ -1,20 +1,22 @@
-"""调试模式与跳过模式 - the operator's two levers over what should NOT happen.
+"""Debug mode (调试模式) and skip mode (跳过模式) - the operator's two levers
+over what should NOT happen.
 
-调试模式  The machine is being worked on: boot it, farm nothing, and above
-          all do not power it off. One file carries the whole state - a date
-          up to which the mode holds - so it survives restarts, applies
-          identically in local and service mode, and expires on its own
-          instead of relying on anyone remembering to turn it off. While it
-          holds, the engine will not power the machine off (the idle
-          checkpoint included) and will not raise missed-run alarms.
+Debug mode  The machine is being worked on: boot it, farm nothing, and above
+            all do not power it off. One file carries the whole state - a date
+            up to which the mode holds - so it survives restarts, applies
+            identically in local and service mode, and expires on its own
+            instead of relying on anyone remembering to turn it off. While it
+            holds, the engine will not power the machine off (the idle
+            checkpoint included) and will not raise missed-run alarms.
 
-跳过模式  One queue sits out one occasion. skip_today used to write a flag
-          that nothing ever read; now the first tick that sees the flag
-          disables that queue inside AUTO-MAS, and a restore marker re-enables
-          it once the occasion is over - so a skip can never quietly become a
-          permanent stop. The queue's own times are captured into the marker
-          at disable time, because a disabled queue disappears from
-          plan.schedule and can no longer answer "when was I due".
+Skip mode   One queue sits out one occasion. skip_today used to write a flag
+            that nothing ever read; now the first tick that sees the flag
+            disables that queue inside AUTO-MAS, and a restore marker
+            re-enables it once the occasion is over - so a skip can never
+            quietly become a permanent stop. The queue's own times are
+            captured into the marker at disable time, because a disabled queue
+            disappears from plan.schedule and can no longer answer "when was
+            I due".
 """
 from __future__ import annotations
 
@@ -73,7 +75,7 @@ def set_debug(state_dir: Path, days: int = 1, off: bool = False) -> tuple[bool, 
                   "注意：要让机器什么都不刷，还需停用相应队列。")
 
 
-# ---------- 跳过模式 ----------
+# ---------- skip mode (跳过模式) ----------
 
 def _marker(state_dir: Path) -> Path:
     return Path(state_dir) / "skip-restore.json"

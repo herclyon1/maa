@@ -2,13 +2,16 @@
 
 Four gates, none optional (docs/04-中继设计.md §15):
 
-  ① 白名单      the model emits an action name from a fixed table,
-                never a JSON patch
-  ② 人工确认    config-mutating actions wait for the operator's OK;
-                reversible ones (run_now / skip_today) go straight through
-  ③ 落地校验    backup -> edit -> json.loads -> structural diff;
-                anything unexpected rolls back
-  ④ 回报        success, failure and rejection all get reported
+  ① whitelist (白名单)
+      the model emits an action name from a fixed table, never a JSON patch
+  ② operator confirmation (人工确认)
+      config-mutating actions wait for the operator's OK; reversible ones
+      (run_now / skip_today) go straight through
+  ③ write-back validation (落地校验)
+      backup -> edit -> json.loads -> structural diff; anything unexpected
+      rolls back
+  ④ reporting (回报)
+      success, failure and rejection all get reported
 
 Gate ③ exists because it has already caught a real mistake: a regex meant to
 disable three webhook tasks disabled two and damaged an unrelated section.
@@ -51,8 +54,9 @@ def _script_config() -> Path:
     return Path(root) / "config" / "ScriptConfig.json"
 
 
-# 配置字段 → 人话。推送是给手机上的人看的，`/59da8762-8fa7-.../Game/WaitTime`
-# 这种东西对读的人毫无意义（2026-08-20 用户实测反馈）。
+# Config field -> plain words. The push is read by a person on a phone, and
+# something like `/59da8762-8fa7-.../Game/WaitTime` means nothing at all to
+# the person reading it (operator feedback from real use, 2026-08-20).
 _FIELD_LABELS = {
     "Stage": "刷取关卡",
     "MedicineNumb": "理智药上限",
@@ -174,7 +178,8 @@ def _set_medicine(value: Any) -> tuple[bool, str]:
 
 
 def _set_wait_time(value: Any) -> tuple[bool, str]:
-    """MaaEnd 的「游戏启动后等待秒数」（ScriptConfig 里唯一的 Game/WaitTime）。
+    """MaaEnd's "seconds to wait after the game starts" - the one and only
+    Game/WaitTime in ScriptConfig.
 
     Why this knob exists here: every fresh boot the first MaaEnd attempt died
     within seconds of connecting - the game recreates its window during first
@@ -214,7 +219,8 @@ def _run_now(queue: str) -> tuple[bool, str]:
 
 
 def _skip_today(queue: str, want_day: str = "") -> tuple[bool, str]:
-    # 必须用服务器时钟：跨时区或临近午夜时，主机本地日期会跳错天
+    # Must use the server clock: across time zones, or close to midnight, the
+    # host's own local date lands on the wrong day.
     day = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
     # The command travels through the inbox and is collected at the NEXT boot,
     # which may be the following morning - "skip today" queued at 23:00 after

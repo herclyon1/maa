@@ -2,9 +2,9 @@
 
 Given a Source of run records, this decides what to say and when to say it:
 
-    失败      立刻推
-    成功      静默记账
-    当天收尾  推一条日报
+    failure       push immediately
+    success       book it silently, no push
+    end of day    push one daily report (日报)
 
 Judgment happens here in plain Python. The model is asked for wording only,
 after the verdict is already fixed.
@@ -72,9 +72,12 @@ class Engine:
         queue it targets comes due, and a mode change should announce itself
         once in the log rather than being discovered from what did not happen.
         """
-        # 跳过模式要改 AUTO-MAS 的队列配置，同样必须避开脚本运行期，否则会
-        # 被 AUTO-MAS 的内存值冲掉——那意味着"今天跳过"悄悄失效、队列照跑。
-        # 推迟没有代价：脚本已经在跑了，这一轮本来就拦不住，下一个 tick 再engage。
+        # Skip mode (跳过模式) edits AUTO-MAS's queue config, so like every
+        # other config write it has to stay clear of a running script -
+        # otherwise AUTO-MAS's in-memory copy wipes it, and "skip today"
+        # quietly fails while the queue runs anyway.
+        # Deferring costs nothing: a script is already running, so this round
+        # was never going to be stopped; engage on the next tick.
         if self._scripts_running():
             return
         try:
@@ -545,27 +548,32 @@ class Engine:
         return out
 
     def _enforce_annihilation(self) -> None:
-        """本周剿灭已打完就确保开关是关的——但只在没有脚本跑的时候写。
+        """Once this week's annihilation (剿灭) is done, make sure the switch
+        is off - but only write while no script is running.
 
-        AUTO-MAS 运行中会覆写 ScriptConfig，那时候写等于白写（见
-        annihilation.enforce 的说明）。
+        AUTO-MAS overwrites ScriptConfig while it runs, so a write made then
+        is a write thrown away (see the note on annihilation.enforce).
         """
         if self._scripts_running():
             return
         try:
             self._annihilation.enforce()
-        except Exception:  # noqa: BLE001 - 校正失败不值得打断本轮
+        except Exception:  # noqa: BLE001 - a failed fix must not break the tick
             log.exception("剿灭开关校正出错")
 
     def _round_is_manual(self, new_entries: list[dict]) -> bool:
-        """这一轮是不是人手点出来的（而不是定时跑的）。
+        """Whether this round was triggered by hand rather than by the schedule.
 
-        手动轮次要单独标注（用户 2026-08-20 令）：定时轮和手动补跑读起来
-        必须一眼能分，否则操作者无法判断"这条到底该不该出现"。
+        Manual rounds have to be labelled separately (operator order,
+        2026-08-20): a scheduled round and a hand-triggered make-up run must
+        be distinguishable at a glance, or the operator cannot judge whether
+        a given message was supposed to appear at all.
 
-        判据只看本轮最早的一条记录离排期时刻有多远——排期时刻直接读
-        AUTO-MAS 的队列配置，所以改了定时不用同步改这里。读不到排期就返回
-        False：宁可不标，也不要把定时轮误标成手动。
+        The test looks only at how far this round's earliest record sits from
+        a scheduled time - and the scheduled times are read straight from
+        AUTO-MAS's queue config, so changing the schedule needs no matching
+        change here. If no schedule can be read it returns False: better to
+        leave a round unlabelled than to mislabel a scheduled one as manual.
         """
         times = [t for q in plan.schedule(self.cfg.automas_dir)
                  for t in q.get("times", [])]
@@ -637,7 +645,8 @@ class Engine:
         covered = self.state.interim_covered(day)
         if len(entries) <= covered:
             return
-        # 只拿本轮新增的记录判断手动/定时；之前几轮已经各自报过了。
+        # Judge manual-vs-scheduled from this round's new entries only; the
+        # earlier rounds have each already been reported on their own.
         label = "手动执行" if self._round_is_manual(entries[covered:]) else "临时查看"
         if self.send_daily_now(mark=False, label=label):
             self.state.mark_interim_sent(day, len(entries))

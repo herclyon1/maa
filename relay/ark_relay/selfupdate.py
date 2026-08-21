@@ -17,7 +17,8 @@ place is where self-updating systems go wrong. It only lands verified files on
 disk; deciding what to do about that is the caller's job. service.py restarts
 the service when this returns a non-empty list, so an update takes effect
 within seconds instead of waiting for the next boot (operator order
-2026-08-20: 更新必须立即生效). The restart is a fresh process, not a reload.
+2026-08-20: updates must take effect immediately). The restart is a fresh
+process, not a reload.
 
 Either every changed file lands or none does: a half-applied update leaves a
 mixed-version relay, and the restart above would then boot straight into it.
@@ -43,14 +44,19 @@ log = logging.getLogger("ark.update")
 
 DEFAULT_BASE = "https://raw.githubusercontent.com/herclyon1/maa/main/relay/"
 MANIFEST = "manifest.json"
-# 整轮自更新的总时间预算。开机时序：早班 08:47 中继起来 / 09:00 队列开跑，
-# 晚班 21:22 / 21:30——短的那头只有 8 分钟。240 秒既留足余量，又足够在
-# CDN 不同步、只能走 raw 的日子里把三五个文件拉下来。到点干净放弃，
-# 下次启动（当天晚上那趟）重来。
+# Wall-clock budget for one whole self-update round. Boot timing: on the
+# morning shift the relay comes up at 08:47 and the queue starts at 09:00, on
+# the evening shift 21:22 / 21:30 - the shorter of the two leaves only 8
+# minutes. 240 seconds keeps a comfortable margin and is still enough to pull
+# three to five files on a day when the CDNs are out of sync and only raw
+# works. When it runs out, give up cleanly; the next boot (that same evening)
+# tries again.
 BUDGET_SECONDS = 240
-# 给 raw.githubusercontent 的单次超时。它是四扇门里唯一不吃 CDN 缓存的，
-# CDN 落后时它是**唯一**能拿到新内容的门，所以不能掐太死——实测它成功时
-# 平均要 38 秒。总时长由上面的预算兜底，这里给它一次像样的机会。
+# Per-attempt timeout for raw.githubusercontent. It is the only one of the four
+# doors that serves no CDN cache, so when the CDNs lag behind it is the *only*
+# door that can hand back new content - which means it must not be cut off too
+# early: measured, it takes 38 seconds on average when it does succeed. The
+# budget above caps the total time, so give it one decent chance here.
 RAW_TIMEOUT = 25
 
 
@@ -61,8 +67,9 @@ def _get_once(url: str, timeout: int = 20) -> bytes | None:
             return resp.read()
     except (urllib.error.URLError, OSError, ValueError,
             http.client.HTTPException) as exc:
-        # HTTPException 走的是 resp.read() 半截断流（IncompleteRead）那条路，
-        # 不是 OSError 的子类；漏掉它会让异常穿出去，把重试机会一起丢掉。
+        # HTTPException covers the truncated-stream path out of resp.read()
+        # (IncompleteRead); it is not a subclass of OSError, and leaving it
+        # out lets the exception escape and takes the retry with it.
         log.warning("取不到 %s: %s", url, exc)
         return None
 
@@ -86,13 +93,16 @@ def _alternates(url: str) -> list[str]:
         return [url]
     owner, repo, branch, path = parts
     ref = f"gh/{owner}/{repo}@{branch}/{path}"
-    # 顺序来自 2026-08-21 凌晨在游戏机上的实测（每门 8 次）：
-    #   fastly.jsdelivr  8/8  平均 426ms      ← 最好
-    #   cdn.jsdelivr     7/8  平均 1956ms
-    #   gcore.jsdelivr   7/8  平均 2398ms
-    #   raw.github       2/8  平均 38179ms    ← 最差，但内容永远最新
-    # 所以 raw 放最后：它是唯一不吃 CDN 缓存的门，留作兜底而不是首选。
-    # （jsDelivr 的缓存由 scripts/mac/purge-cdn.py 在每次推送后全局清掉。）
+    # The order comes from measurements on the game machine in the early hours
+    # of 2026-08-21 (8 attempts per door):
+    #   fastly.jsdelivr  8/8  average 426ms      <- best
+    #   cdn.jsdelivr     7/8  average 1956ms
+    #   gcore.jsdelivr   7/8  average 2398ms
+    #   raw.github       2/8  average 38179ms    <- worst, but always freshest
+    # So raw goes last: it is the only door that serves no CDN cache, kept as a
+    # fallback rather than a first choice.
+    # (jsDelivr's cache is purged globally by scripts/mac/purge-cdn.py after
+    # every push.)
     return [
         f"https://fastly.jsdelivr.net/{ref}",
         f"https://cdn.jsdelivr.net/{ref}",
@@ -120,7 +130,7 @@ def _netloc(url: str) -> str:
 
 
 def _remaining(deadline: float | None) -> float:
-    """离预算耗尽还有多少秒；没有预算就当作无限。"""
+    """Seconds left before the budget runs out; unlimited when there is none."""
     return 1e9 if deadline is None else deadline - time.monotonic()
 
 
@@ -144,19 +154,24 @@ def _get_with_retry(url: str, attempts: int = 3, timeout: int = 20,
             if left <= 1:
                 log.warning("更新时间预算用尽，放弃取 %s", url.rsplit("/", 1)[-1])
                 return None
-            # raw.githubusercontent 实测 2/8、平均 38 秒，是四扇门里最慢的。
-            # 它只是"内容永远最新"的兜底，不值得为它把开机时间烧光——给它
-            # 一个短超时，通得过算捡到，通不过立刻让位。
+            # raw.githubusercontent measured 2 of 8 at an average of 38
+            # seconds, the slowest of the four doors. It is only the "always
+            # freshest" fallback and not worth burning the boot window on -
+            # give it a short timeout: getting through is a bonus, and if it
+            # does not it steps aside at once.
             per = min(timeout, left)
             if "raw.githubusercontent.com" in u:
                 per = min(per, RAW_TIMEOUT)
             if (data := _get_once(u, int(max(2, per)))) is None:
                 continue
-            # 内容不对 = 这扇门给的是旧副本，换下一扇，而不是就此放弃。
-            # jsDelivr 的刷新不是原子的（2026-08-21 实测：.py 已经是新的、
-            # manifest 还是旧的），所以"取到了"和"取对了"必须分开判断。
-            # 早先把校验放在这个循环外面，结果 CDN 一旦缓存不同步，整套更新
-            # 就直接失败，压根不会去试永远最新的 raw.githubusercontent。
+            # Wrong content = this door served a stale copy, so move on to the
+            # next one instead of giving up here. jsDelivr's refresh is not
+            # atomic (measured 2026-08-21: the .py was already new while the
+            # manifest was still old), so "fetched something" and "fetched the
+            # right thing" have to be judged separately. The check used to sit
+            # outside this loop, and then any CDN cache skew failed the whole
+            # update outright, never even trying raw.githubusercontent, whose
+            # content is always the freshest.
             if expect_sha and _sha1(data) != expect_sha:
                 log.warning("%s 给的是旧副本（缓存未刷新），换下一扇门", _netloc(u))
                 continue
@@ -175,11 +190,13 @@ def _sha1(data: bytes) -> str:
 
 
 def _atomic_write(target: Path, data: bytes) -> None:
-    """临时文件 + os.replace，断电也不会留下半截 .py。
+    """Temp file + os.replace, so a power cut never leaves half a .py behind.
 
-    这台机器每天自己关两次电，而半截的 .py 会让中继下次启动直接
-    SyntaxError 起不来——那是没人会发现的死法（守护它的 SCM 只会一直重
-    启一个必然失败的进程）。config 那边已经这么做了，代码这边同理。
+    This machine powers itself off twice a day, and a truncated .py would make
+    the relay fail to start on the next boot with a SyntaxError - the kind of
+    death nobody would notice (the SCM guarding it would just keep restarting a
+    process that is bound to fail). The config side already does this; the same
+    reasoning applies to code.
     """
     tmp = target.with_suffix(target.suffix + ".tmp")
     with tmp.open("wb") as f:
@@ -223,15 +240,19 @@ def _remember_version(root: Path, version: int) -> None:
 
 
 def _best_manifest(base: str, deadline: float | None = None) -> dict | None:
-    """把每扇门的 manifest 都取回来，选版本号最大的那份。
+    """Fetch the manifest from every door and keep the highest version.
 
-    manifest 是所有校验的基准，唯独它自己没法被校验——所以不能"哪扇门先
-    应答就用哪份"。CDN 的刷新不是原子的，先应答的那扇很可能给的是上一版
-    （实测 2026-08-21：文件已经是新的、manifest 还是旧的），照着旧清单去
-    对新文件，每个文件都判不符，整套更新永远失败。
+    The manifest is the baseline for every check and is the one thing that
+    cannot itself be verified - so "use whichever door answers first" will not
+    do. CDN refreshes are not atomic, and the door that answers first may well
+    hand back the previous version (measured 2026-08-21: the files were already
+    new while the manifest was still old); checking new files against an old
+    manifest makes every one of them mismatch and the whole update fail forever.
 
-    版本号只增不减，所以"取最大"既能绕开落后的门，又不需要信任任何一扇。
-    没有版本号的老格式退回"第一份取到的"，保持向后兼容。
+    Version numbers only ever go up, so "take the highest" routes around a
+    lagging door without having to trust any single one. The older format
+    without a version falls back to "the first one fetched", which keeps
+    backward compatibility.
     """
     best: dict | None = None
     best_ver = -1
@@ -271,9 +292,11 @@ def check(root: Path, base_url: str = "",
           budget_s: float = BUDGET_SECONDS) -> list[str]:
     """Fetch and apply any changed files. Returns human-readable lines.
 
-    `budget_s` 是整轮的墙钟预算，超了就干净放弃。这条在开机路径上是硬要求：
-    CDN 缓存不同步时，每个文件都要把四扇门试一遍（其中 raw 很慢），21 个
-    文件足够拖过 09:00 的队列时刻。宁可这次不更新，也不能耽误刷图。
+    `budget_s` is the wall-clock budget for the whole round; overrunning it
+    means giving up cleanly. That is a hard requirement on the boot path: when
+    the CDN caches are out of sync every file has to try all four doors (raw
+    among them being slow), and 21 files is enough to drag past the 09:00 queue
+    slot. Better to skip this update than to hold up the farming.
     """
     base = (base_url or DEFAULT_BASE).rstrip("/") + "/"
     deadline = time.monotonic() + budget_s if budget_s else None
@@ -282,35 +305,46 @@ def check(root: Path, base_url: str = "",
         return []
     files = manifest["files"]
 
-    # 拒绝比机器上更旧的清单。下载走的是 CDN，CDN 完全可能整套缓存着上一版
-    # （旧 manifest + 旧 .py，内部自洽、哈希也对得上），那样机器会被"更新"
-    # 回旧代码，而且日志上看起来一切正常。版本号只增不减，这道闸让降级变成
-    # 一条明确的警告而不是一次静默回滚。
+    # Refuse a manifest older than the one the machine already has. Downloads
+    # go through a CDN, and a CDN can perfectly well be caching the previous
+    # release as a whole set (old manifest + old .py, internally consistent and
+    # matching hashes), which would "update" the machine back to old code while
+    # the log looks entirely normal. Version numbers only ever go up, so this
+    # gate turns a downgrade into an explicit warning rather than a silent
+    # rollback.
     try:
         remote_ver = int(manifest.get("version") or 0)
     except (TypeError, ValueError):
         remote_ver = 0
     local_ver = _applied_version(root)
-    # 注意这里不能写成 `remote_ver and local_ver and ...`：没有版本号的旧
-    # manifest 会得到 remote_ver == 0，那个写法直接把它放行，于是机器被
-    # "更新"回旧代码。2026-08-21 就这么把刚部署好的 inbox.py 降级了一次，
-    # 而且日志上写着"代码已更新 1 个文件"，看起来完全正常。
-    # 本机已经应用过带版本号的清单，那么任何更旧的（含无版本号的）都该拒绝。
+    # Note this must not be written as `remote_ver and local_ver and ...`: an
+    # old manifest with no version yields remote_ver == 0, which that form
+    # waves straight through, and the machine gets "updated" back to old code.
+    # That is exactly how a freshly deployed inbox.py was downgraded on
+    # 2026-08-21, with the log saying it had updated 1 file and everything
+    # looking perfectly normal.
+    # Once this machine has applied a versioned manifest, anything older
+    # (including an unversioned one) must be rejected.
     if local_ver and remote_ver < local_ver:
         log.warning("拿到的清单更旧（v%s < 本机 v%s，0 表示没有版本号），"
                     "多半是缓存未刷新，本次不更新", remote_ver, local_ver)
         return []
 
-    # 先把要改的文件全部下齐并校验，一个都不落盘；全通过了再一次性写。
+    # Download and verify every file that needs changing first, writing none of
+    # them to disk; only once they all pass is anything written, in one go.
     #
-    # 逐个下、下一个写一个是不行的：网络在中途断掉（这条线上是常态）会留下
-    # 「新 engine.py + 旧 core.py」的混合版本，而 service.py 一看有文件变了
-    # 就重启——重启进去的可能是一个跨版本、甚至跨不过 import 的中继。半套
-    # 更新比不更新危险得多。
-    # 存 (manifest 里的相对路径, 落盘目标, 内容)。相对路径必须原样留着，
-    # 不能事后拿 target.relative_to(root) 反推——_safe_target 返回的是
-    # resolve 过的路径，root 却未必（macOS 上 /var 是 /private/var 的符号
-    # 链接），反推会抛 ValueError，而那时文件已经写下去了。
+    # Downloading and writing one at a time will not do: the network dropping
+    # midway (routine on this line) leaves a mixed "new engine.py + old
+    # core.py" version, and service.py restarts as soon as it sees any file
+    # change - so the restart may boot a relay that straddles two versions, or
+    # one that cannot even get through its imports. Half an update is far more
+    # dangerous than no update.
+    # Holds (relative path from the manifest, target on disk, content). The
+    # relative path has to be kept as it is and must not be recovered
+    # afterwards via target.relative_to(root): _safe_target returns a resolved
+    # path while root may not be resolved (on macOS /var is a symlink to
+    # /private/var), so recovering it would raise ValueError - and by then the
+    # files would already be written.
     staged: list[tuple[str, Path, bytes]] = []
     for rel, want in sorted(files.items()):
         target = _safe_target(root, rel)
@@ -336,8 +370,10 @@ def check(root: Path, base_url: str = "",
         try:
             _atomic_write(target, data)
         except OSError:
-            # 走到这里已经全部校验通过，落盘还失败就是磁盘/权限问题。停手，
-            # 让下次启动重做——继续写只会把混合版本铺得更开。
+            # Everything has already been verified by this point, so failing to
+            # write is a disk or permissions problem. Stop and let the next
+            # boot redo it - carrying on would only spread the mixed version
+            # further.
             log.exception("写入 %s 失败，停止本次更新", rel)
             break
         updated.append(rel)
@@ -348,8 +384,10 @@ def check(root: Path, base_url: str = "",
             for pyc in cache.glob("*.pyc"):
                 pyc.unlink(missing_ok=True)
         log.info("代码已更新 %d 个文件: %s", len(updated), "、".join(updated))
-    # 版本号在"这套清单已完整落地"之后才记——包括本来就一致、一个文件都
-    # 没改的情况（那也说明机器已是这一版）。半途 break 掉的不记，让下次重来。
+    # The version is recorded only once this whole manifest has landed - which
+    # includes the case where everything already matched and not a single file
+    # changed (that too means the machine is on this version). A run that broke
+    # out midway is not recorded, so the next boot starts over.
     if remote_ver and len(updated) == len(staged):
         _remember_version(root, remote_ver)
     return updated

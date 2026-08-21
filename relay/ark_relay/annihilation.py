@@ -131,37 +131,48 @@ class WeeklyGate:
         current = read_setting(self.automas_dir)
         if current == CLOSED:
             return ""
-        # 这里只记账，不写配置。
+        # Bookkeeping only here; nothing is written to the config.
         #
-        # 这一刻是「剿灭那趟刚出记录」，队列多半还在跑下一个脚本，而 AUTO-MAS
-        # 运行期间会用自己内存里的那份覆写 ScriptConfig——此时写下去的 Close
-        # 会被静静冲掉（2026-08-20 实测，正是它导致本周每轮又空跑一次剿灭）。
-        # 真正的关闭交给 enforce()：它挑没有脚本在跑的时刻做，而且做多少遍
-        # 结果都一样，被冲回去也能再关上。
+        # This moment is "the annihilation (剿灭) pass has just produced its
+        # record", so the queue is most likely still running the next script,
+        # and while AUTO-MAS runs it overwrites ScriptConfig from its own
+        # in-memory copy - a Close written now is silently wiped (measured
+        # 2026-08-20; that is exactly what made every round this week burn
+        # another empty annihilation pass). The actual close is left to
+        # enforce(): it picks a moment when no script is running, and running
+        # it any number of times gives the same result, so it can close the
+        # switch again after it has been wiped back open.
         self._save({"done_week": week, "restore_to": current or DEFAULT_WHEN_UNKNOWN})
         log.info("本周剿灭已完成，待脚本停下后关闭（周一 04:00 后恢复为 %s）", current)
         return f"本周剿灭已完成，稍后暂停到下周一（届时恢复为 {current}）"
 
     def enforce(self, now: datetime | None = None) -> bool:
-        """本周已打完，就把开关摁回 Close。返回是否真的改了。
+        """Once this week's pass is done, push the switch back to Close.
 
-        必须可以反复执行，因为一次性关闭关不住：AUTO-MAS 在运行时会用自己
-        内存里的配置覆写 ScriptConfig.json，把闸门刚写下的 Close 冲回去。
-        2026-08-20 实测的现场就是这个样子——闸门状态文件记着「本周已完成」，
-        开关却还开着，于是早晚两班各自又空跑了一次剿灭（每次约 1 分钟，
-        外加一次完整的游戏启动）。on_success 因为 done_week 已匹配而直接
-        返回，永远不会再关第二次，这个洞要一直漏到下周一。
+        Returns whether anything was actually changed.
 
-        调用方负责挑没有脚本在跑的时刻调用，否则照样会被冲掉。
+        This must be safe to run over and over, because closing the switch
+        once does not keep it closed: while AUTO-MAS runs it overwrites
+        ScriptConfig.json from its own in-memory config, wiping out the Close
+        the gate just wrote. That is exactly what was measured on 2026-08-20 -
+        the gate's state file said "done for this week" while the switch was
+        still open, so the morning and evening rounds each burned another
+        empty annihilation (剿灭) pass (about 1 minute apiece, plus a full
+        game launch each time). on_success returns immediately because
+        done_week already matches, so it never closes the switch a second
+        time, and the hole would stay open until the following Monday.
+
+        The caller is responsible for calling this at a moment when no script
+        is running; otherwise the write gets wiped just the same.
         """
         if not self.automas_dir:
             return False
         now = now or datetime.now(tz=SERVER_TZ)
         if self._load().get("done_week") != week_key(now):
-            return False        # 本周还没打完，本来就该开着
+            return False        # not done this week yet - it should be open
         current = read_setting(self.automas_dir)
         if current in (CLOSED, ""):
-            return False        # 已经关着，或读不到配置
+            return False        # already closed, or the config cannot be read
         ok, detail = _write_setting(self.automas_dir, CLOSED)
         if not ok:
             log.warning("剿灭开关重新关闭失败: %s", detail)

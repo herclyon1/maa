@@ -304,7 +304,8 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         inbox = Inbox(cfg.state_dir, cfg.inbox_url,
                       cfg.maaend_dir or _maaend_dir(cfg), cfg.automas_dir)
 
-        # 队列跑着的时候来了配置指令，就先记在这里，等脚本都停了再落地。
+        # A config command that arrives while a queue is running waits here
+        # until every script has stopped, then lands.
         deferred_inbox = [False]
 
         def collect(reason: str) -> None:
@@ -348,9 +349,11 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         except Exception:  # noqa: BLE001
             log.exception("剿灭周期检查出错，跳过")
 
-        # 本周已打完就把开关摁回 Close，开机时就做一次——不能只靠 tick：
-        # tick 由事件和闹钟驱动，机器刚起来时两者都还没来，等到第一次 tick
-        # 往往已经是第二天队列开跑的时刻，那一轮的空跑照样省不掉。
+        # Assert the annihilation switch once at startup rather than leaving it
+        # to tick(): ticks are driven by file events and alarms, and neither has
+        # fired yet on a machine that just booted. By the time the first tick
+        # arrives it is usually the queue's own start time, so that round would
+        # still pay for the pointless annihilation pass.
         engine._enforce_annihilation()  # noqa: SLF001
 
         # Wake on the directory changing, not on a timer. AUTO-MAS writes a
@@ -477,7 +480,8 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
                 next_inbox_retry = time.monotonic() + 300
                 collect("重试")
 
-            # 脚本刚停下 -> 把推迟的配置指令补上（现在写不会被冲掉了）。
+            # Scripts have just stopped: apply the config commands that were
+            # deferred, now that a write will not be clobbered.
             if deferred_inbox[0] and not engine.scripts_running():
                 log.info("脚本已停，补做之前推迟的待办检查")
                 collect("推迟补做")

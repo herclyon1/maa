@@ -1,8 +1,8 @@
 """Read AUTO-MAS run records off disk.
 
 AUTO-MAS writes, per run:
-    history/<YYYY-MM-DD>/<用户名>/<HH-MM-SS>.json   结果
-    history/<YYYY-MM-DD>/<用户名>/<HH-MM-SS>.log    完整日志
+    history/<YYYY-MM-DD>/<username>/<HH-MM-SS>.json   result
+    history/<YYYY-MM-DD>/<username>/<HH-MM-SS>.log    full log
 
 The JSON tells us which script ran and whether it succeeded:
     MAA     -> {"maa_result": "Success!", "drop_statistics": {...}, "sanity": 1, ...}
@@ -188,11 +188,13 @@ def parse_maa_log(log_path: Path) -> dict:
 #   获得 嵌晶玉 ×25
 #
 _END_GAIN = re.compile(r"获得\s+(\S.*?)\s*[×x]\s*(\d+)")
-# 终末地的理智数值。MaaEnd 以前不打印，是本项目 2026-08-15 提的建议
-# (MaaEnd#5053) 被采纳后加上的，形如「当前理智 920/360」——注意会超上限。
-# 取最后一次出现＝任务结束时的状态。
+# Endfield's sanity figure. MaaEnd did not print it before; it was added after
+# this project's 2026-08-15 suggestion (MaaEnd#5053) was accepted, in the form
+# 「当前理智 920/360」 - note that it can go above the cap.
+# Take the last occurrence = the state when the tasks ended.
 _END_SANITY = re.compile(r"当前理智\s*(\d+)\s*/\s*(\d+)")
-# MaaEnd 还会说它是不是因为理智耗尽才收工，这条比数字更直接决定要不要管。
+# MaaEnd also says whether it knocked off because sanity ran out, and that
+# decides whether anything needs attention more directly than the number does.
 _END_SANITY_OUT = re.compile(r"理智不足[，,]\s*结束任务")
 _END_PS_ENTER = re.compile(r"进入协议空间成功")
 _END_TASK_DONE = re.compile(r"任务完成[:：]\s*(\S.+?)\s*$")
@@ -227,8 +229,9 @@ def parse_maaend_log(log_path: Path) -> dict:
         out["protocol_runs"] = runs
     if hits := _END_SANITY.findall(text):
         got, cap = (int(x) for x in hits[-1])
-        # AUTO-MAS 给 MaaEnd 记的 sanity 恒为 0，所以这里填进去就会被采用
-        # （parse_record 只补 raw 里空着的字段）。
+        # AUTO-MAS always records sanity as 0 for MaaEnd, so whatever is filled
+        # in here gets used (parse_record only fills in fields that are empty
+        # in raw).
         out["sanity"] = got
         out["sanity_cap"] = cap
     if _END_SANITY_OUT.search(text):

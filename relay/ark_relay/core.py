@@ -117,7 +117,7 @@ class State:
         return (self.dir / f"interim-{day}.sent").exists()
 
     def interim_covered(self, day: str) -> int:
-        """How many ledger entries the day's interim reports已经覆盖.
+        """How many ledger entries the day's interim reports already cover.
 
         Stored as a count so a make-up run later the same day (new entries
         past the covered mark) triggers a fresh interim instead of being
@@ -340,8 +340,10 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             lines.append("· 公招 " + recruits)
         if e.get("sanity") is not None:
             s = f"· 剩余理智 {e['sanity']}"
-            # 终末地会报「当前/上限」，而且真的会超上限——超了意味着理智在
-            # 白白溢出，是要动手的信号，不能只报一个裸数字。
+            # 终末地 reports "current/cap", and the current value really does
+            # go over the cap - being over means sanity (理智) is overflowing
+            # and going to waste, which is a signal to act on, so a bare
+            # number on its own is not enough.
             if cap := raw.get("sanity_cap"):
                 s += f"/{cap}"
                 if e["sanity"] > cap:
