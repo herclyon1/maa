@@ -104,8 +104,19 @@ def _extract(cfg: Config, data: dict) -> str:
     return str((choices[0].get("message") or {}).get("content") or "").strip()
 
 
+# Set once the endpoint has failed in this process, so the rest of the boot
+# stops paying for it. The wording is a garnish; the alert and the report are
+# complete without it, and every attempt against a dead endpoint can cost the
+# full _TIMEOUT - which is spent inside the path that has to finish before the
+# machine may power off. Process-lifetime only: the machine boots twice a day,
+# so a recovered endpoint is picked up again within hours without anyone
+# clearing anything.
+_endpoint_dead = False
+
+
 def _ask(cfg: Config, prompt: str, max_tokens: int = 400) -> str:
-    if not cfg.llm_key:
+    global _endpoint_dead  # noqa: PLW0603 - process-lifetime circuit breaker
+    if not cfg.llm_key or _endpoint_dead:
         return ""
     try:
         with urllib.request.urlopen(_request(cfg, prompt, max_tokens),
@@ -118,17 +129,26 @@ def _ask(cfg: Config, prompt: str, max_tokens: int = 400) -> str:
         # letting them escape aborted the whole tick that asked for wording -
         # deferring the very failure alert the wording was decorating.
         # Never let a flaky model call break the notification path.
-        log.warning("%s 调用失败，跳过措辞生成: %s", cfg.llm_provider, exc)
+        log.warning("%s 调用失败，本次启动不再尝试措辞生成: %s",
+                    cfg.llm_provider, exc)
+        _endpoint_dead = True
         return ""
     try:
         return _extract(cfg, data)
     except (AttributeError, TypeError, IndexError, KeyError):
-        log.warning("模型返回格式看不懂，跳过: %s", str(data)[:200])
+        # A shape we cannot read is as unusable as no answer, and it will be
+        # the same shape next time. An error body (a rejected key, a model
+        # that no longer exists) arrives here with HTTP 200 and lands in this
+        # branch, so the breaker belongs here too.
+        log.warning("模型返回格式看不懂，本次启动不再尝试: %s", str(data)[:200])
+        _endpoint_dead = True
         return ""
 
 
 def check(cfg: Config) -> tuple[bool, str]:
     """Verify the model endpoint actually answers. Used by `ark_relay check`."""
+    global _endpoint_dead  # noqa: PLW0603 - an explicit check must really ask
+    _endpoint_dead = False
     if not cfg.llm_key:
         return False, "未配置 API key（不影响运行，只是收不到人话解读）"
     out = _ask(cfg, "回复两个字：正常", max_tokens=20)
@@ -163,14 +183,22 @@ def daily_report(cfg: Config, entries: list[dict], plan: str = "") -> str:
     """
     if not entries:
         return ""
+    # Every field read with .get(). A KeyError here would propagate through
+    # _compose_daily to _maybe_daily_report, the report would never be sent,
+    # and because the shutdown path waits for a sent report the machine would
+    # stay powered on - a missing dictionary key turning into a night of
+    # uptime. The ledger is line-delimited JSON on a machine that is hard
+    # power-cut twice a day, so a syntactically valid but incomplete line is
+    # reachable. Wording is optional; getting this far without the report is
+    # not.
     material = [{
-        "脚本": e["script"],
+        "脚本": e.get("script") or "未知",
         "账号": e.get("user"),
-        "开始": e["started"],
-        "结束": e["finished"],
+        "开始": e.get("started"),
+        "结束": e.get("finished"),
         "时长可信": e.get("duration_known", True),
         "AUTO-MAS原始输出": e.get("raw") or {
-            "ok": e["ok"], "failed_tasks": e.get("failed_tasks") or []},
+            "ok": e.get("ok"), "failed_tasks": e.get("failed_tasks") or []},
     } for e in entries]
     return _ask(cfg, _DAILY_PROMPT.format(
         records=json.dumps(material, ensure_ascii=False, indent=2),

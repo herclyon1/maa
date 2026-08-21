@@ -7,11 +7,14 @@ awkward sentence, never a wrong verdict.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from .config import Config, RunRecord, SERVER_TZ, USER_TZ, atomic_write_text, both_clocks
+
+log = logging.getLogger("ark.core")
 
 
 class State:
@@ -70,6 +73,15 @@ class State:
         with self.ledger_path(day).open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
+    # What every consumer of a ledger entry assumes is present. Checked once,
+    # here, rather than defended against at each of the dozen places that read
+    # these fields - and one of those places is the deterministic report
+    # layout, the last fallback when the wording model is unavailable. A
+    # KeyError there means the daily report is never sent, and since the
+    # shutdown path waits for a sent report, the machine stays powered on all
+    # night. A missing dictionary key should not be able to do that.
+    _LEDGER_REQUIRED = ("run_id", "script", "started", "finished", "ok")
+
     def read_ledger(self, day: str) -> list[dict]:
         p = self.ledger_path(day)
         if not p.exists():
@@ -80,9 +92,19 @@ class State:
             if not ln:
                 continue
             try:
-                out.append(json.loads(ln))
+                entry = json.loads(ln)
             except json.JSONDecodeError:
                 continue  # tolerate one torn line rather than lose the day
+            if not isinstance(entry, dict):
+                continue
+            if missing := [k for k in self._LEDGER_REQUIRED if k not in entry]:
+                # Reachable: the ledger is line-delimited JSON on a machine
+                # that is hard power-cut twice a day, so a line can end up
+                # valid JSON yet incomplete.
+                log.warning("账目里有一条残缺记录（缺 %s），已跳过: %.120s",
+                            "、".join(missing), ln)
+                continue
+            out.append(entry)
         return out
 
     # ---------- undelivered alerts survive a restart ----------
