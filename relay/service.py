@@ -515,7 +515,28 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
                 # Re-arm before handling, so a write that lands while we work is
                 # not lost. A record that appears during tick() would otherwise
                 # wait for the timeout - the exact latency this removes.
-                win32file.FindNextChangeNotification(watch)
+                #
+                # Re-arming can fail, and it used to fail silently: the handle
+                # then never signals again, the loop falls back to waking only
+                # on the alarm clock, and run records sit unprocessed until the
+                # next clock-based deadline - up to the hour-long backstop.
+                # Everything still happens, just late and with no indication
+                # why. Degrading quietly is the failure mode this system has
+                # been bitten by most, so say it out loud.
+                try:
+                    win32file.FindNextChangeNotification(watch)
+                except Exception:  # noqa: BLE001 - report and degrade knowingly
+                    log.exception("目录变更通知重新武装失败，改用闹钟兜底")
+                    try:
+                        win32file.FindCloseChangeNotification(watch)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    watch = None
+                    notifier.send(
+                        "⚠️ 中继的目录监听掉了",
+                        "运行记录不再是一落盘就处理，要等下一个定时判定点才会被读到"
+                        "（最长一小时）。功能还在，只是变慢。\n"
+                        "重启中继即可恢复：net stop ark-relay & net start ark-relay")
                 # AUTO-MAS writes the .json and .log separately; give it a
                 # moment so the first notification does not read a half-file.
                 time.sleep(2)

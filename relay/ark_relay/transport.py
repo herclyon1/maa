@@ -45,6 +45,14 @@ def record_to_payload(rec: RunRecord) -> dict:
         "ok": rec.ok,
         "failed_tasks": rec.failed_tasks,
         "raw": rec.raw,
+        # Must ride along. A record whose times came from the filename rather
+        # than the log has an untrustworthy duration - the filename is on a
+        # UTC+4 clock here, which is how a report once claimed a run at 05:17
+        # on a machine that was powered off. Held failures are persisted to
+        # pending.json and reloaded after a restart, and the relay restarts
+        # itself for every selfupdate; dropping this flag let the reloaded copy
+        # default back to True and present that duration as fact.
+        "duration_known": rec.duration_known,
         "log_tail": collector.log_tail(rec) if not rec.ok else "",
     }
 
@@ -61,5 +69,9 @@ def payload_to_record(p: dict) -> RunRecord:
         failed_tasks=list(p.get("failed_tasks") or []),
         raw=dict(p.get("raw") or {}),
         log_path=None,
+        # Absent in payloads written before this was carried; True was the
+        # effective behaviour then, so keep it as the default rather than
+        # marking every pre-existing held record as untrustworthy.
+        duration_known=bool(p.get("duration_known", True)),
     )
     return rec
