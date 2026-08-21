@@ -412,6 +412,17 @@ at boot and dropping at shutdown *is* the check-in signal.
 Set `pause_until` before deliberately leaving the machine up overnight, or it
 will alarm at 23:10 about a machine that should have shut down.
 
+Once it is on, remember that remote GUI work interacts with it: every `ark-do`
+batch holds the shutdown for 20 minutes, and the morning check expects the
+machine off by 10:45. A screenshot taken at 10:30 will therefore trip the
+"should have shut down" alarm. `pause_until` is the intended answer, and
+`workflow_dispatch` runs every check in print-only mode for testing.
+
+`git log` decides whether it runs at all: GitHub disables scheduled workflows on
+a public repo after 60 days with no commits. Inbox edits normally keep this one
+alive, but a quiet stretch would switch off the only sentinel that lives
+outside the machine - silently, which is the whole hazard this file is about.
+
 ## Scripts
 
 | Script | Purpose |

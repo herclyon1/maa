@@ -14,11 +14,18 @@ schtasks /create /tn "ark-shot" /tr "$ps C:\ProgramData\ark-shot.ps1" /sc once /
 $exe = "D:\Users\Administrator\Desktop\AUTO-MAS\AUTO-MAS.exe"
 schtasks /create /tn "AUTO-MAS_AutoStart" /tr "`"$exe`"" /sc onlogon /rl highest /f
 
+# Foreground-window logger, started at logon. It exists to capture what has the
+# focus when MaaEnd's first attempt dies seconds after connecting - the cause is
+# still unconfirmed and the evidence only exists while the failure happens.
+# Runs on AUTO-MAS's embedded Python; there is no other interpreter installed.
+$py = "D:\Users\Administrator\Desktop\AUTO-MAS\environment\python\pythonw.exe"
+schtasks /create /tn "ark-focus-watch" /tr "`"$py`" C:\ProgramData\focus-watch.py" /sc onlogon /rl highest /f
+
 # Keep sshd alive - it is the single point of failure for all remote access.
 sc.exe failure sshd reset= 86400 actions= restart/5000/restart/10000/restart/30000
 
 Write-Output "--- verify ---"
-foreach ($t in @("ark-do","ark-shot","AUTO-MAS_AutoStart")) {
+foreach ($t in @("ark-do","ark-shot","AUTO-MAS_AutoStart","ark-focus-watch")) {
   schtasks /query /tn $t | Out-Null
   if ($LASTEXITCODE -eq 0) { Write-Output "  OK      $t" } else { Write-Output "  MISSING $t" }
 }
