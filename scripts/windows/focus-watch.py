@@ -42,7 +42,23 @@ def process_name(pid):
         kernel32.CloseHandle(h)
 
 
+# This runs on somebody else's machine, at logon, indefinitely. An append-only
+# log with no ceiling is not acceptable there: a program that flips the
+# foreground in a loop would fill the disk, and the disk is not ours to fill.
+# Keep one previous generation so a failure that happened just before a
+# rollover is still recoverable.
+MAX_BYTES = 4 * 1024 * 1024
+
+
 def write(line):
+    try:
+        if os.path.exists(LOG) and os.path.getsize(LOG) > MAX_BYTES:
+            old = LOG + ".1"
+            if os.path.exists(old):
+                os.remove(old)
+            os.replace(LOG, old)
+    except OSError:
+        pass          # a probe must never be the reason something else breaks
     with open(LOG, "a", encoding="utf-8") as f:
         f.write(line + "\n")
 
@@ -55,10 +71,10 @@ def on_event(hook, event, hwnd, id_object, id_child, thread, ts):
         pid = wt.DWORD()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
         write("%s  pid=%-6d %-24s %s" % (
-            time.strftime("%H:%M:%S"), pid.value,
+            time.strftime("%m-%d %H:%M:%S"), pid.value,
             process_name(pid.value), buf.value[:60]))
     except Exception as exc:  # noqa: BLE001 - a probe must never die
-        write("%s  ERROR %s" % (time.strftime("%H:%M:%S"), exc))
+        write("%s  ERROR %s" % (time.strftime("%m-%d %H:%M:%S"), exc))
 
 
 WinEventProc = ctypes.WINFUNCTYPE(
