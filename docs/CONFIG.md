@@ -414,6 +414,7 @@ sc.exe failure sshd reset= 86400 actions= restart/5000/restart/10000/restart/300
 | `ARK_SHUTDOWN_AFTER_RUN` | `1` - the relay powers the machine off |
 | `ARK_REPORT_BEFORE_SHUTDOWN` | `1` - backstop: send progress from inside the shutdown path if the interim never went out |
 | `ARK_INTERIM_REPORT` | `1` - the interim summary after each finished daytime round; set `0` to keep only the daily report |
+| `ARK_BOOT_TIMES` | scheduled power-on times, server clock, default `08:40,21:20`. Debug mode releases 10 minutes before the next one. Nothing on the machine records these - the morning wake is a Mi Home plug, the evening one a BIOS RTC alarm - so **moving either means changing this** |
 | `ARK_SHUTDOWN_MIN_UPTIME` | minimum uptime before a shutdown is allowed |
 | `ARK_LOG_FILE` | where the relay logs; `service.py` sets it itself, because the service does not run `ark-relay.ps1` |
 | `ARK_CHECK_TIMES` | extra checkpoint times, beyond the queue times read from AUTO-MAS |

@@ -273,7 +273,13 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
         if action == "debug_mode":
             from .modes import set_debug  # noqa: PLC0415
             state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
-            return set_debug(state_dir, cmd.get("days", 1), bool(cmd.get("off")))
+            # "cycles" counts scheduled power-ons to sit out; "days" is the
+            # old spelling and is still honoured so an inbox file written
+            # before 2026-08-23 keeps working. One cycle - the default - now
+            # means "until ten minutes before the next boot", not "until
+            # midnight", which is what the operator meant all along.
+            n = cmd.get("cycles", cmd.get("days", 1))
+            return set_debug(state_dir, n, bool(cmd.get("off")))
     except Exception as exc:  # noqa: BLE001 - report, never crash the agent
         log.exception("执行指令失败: %s", action)
         return False, f"执行出错: {exc}"

@@ -426,19 +426,39 @@ design so that "just this once" cannot silently become permanent.
 
 ### Debug mode - do not power off, do not alarm
 
+The file holds a **moment**, `YYYY-MM-DD HH:MM` on the server clock, and the
+mode releases **ten minutes before the next scheduled power-on** - not at
+midnight.
+
 ```bash
-# hold for today only; the date is server time and it expires by itself
-ssh $ARK_HOST 'powershell -NoProfile -Command "Set-Content C:\ProgramData\ark-relay\state\debug-until.txt -Value 2026-08-22 -NoNewline"'
+# what "leave it alone tonight" means: through to just before the next cycle
+ssh $ARK_HOST 'powershell -NoProfile -Command "Set-Content C:\ProgramData\ark-relay\state\debug-until.txt -Value \"2026-08-23 08:30\" -NoNewline"'
 # release early
 ssh $ARK_HOST 'del C:\ProgramData\ark-relay\state\debug-until.txt'
 ```
+
+`modes.set_debug(state_dir, cycles=1)` computes that moment. A power-on less
+than 150 minutes away counts as the cycle already under way and is skipped -
+asked at 21:00 to leave the machine alone, releasing at 21:10 (ten minutes
+before the 21:20 wake) would cover none of the run it was meant to cover.
+
+Power-on times are not discoverable on the machine: the morning one is a Mi
+Home plug cutting and restoring mains so the board's "restore on AC" boots it,
+the evening one is the board's own RTC alarm. `modes.BOOT_TIMES` carries them,
+default `08:40,21:20`, override with `ARK_BOOT_TIMES`. **Moving the plug timer
+or the BIOS alarm means changing that too** - nothing else will notice.
 
 While it holds, the engine will not power the machine off (the idle checkpoint
 included) and will not raise missed-run alarms. It does **not** stop the queues
 - to have the machine boot and farm nothing, disable the queue as well.
 
-A malformed date reads as "debug on" on purpose: the wrong failure here powers
-off a box somebody is working on.
+A bare `YYYY-MM-DD` is still read as end-of-that-day, and anything unparseable
+reads as "debug on" on purpose: the wrong failure here powers off a box
+somebody is working on.
+
+**Why it is not days.** Until 2026-08-23 this took a day count and expired at
+midnight. Asked at 21:00 on the 22nd for "no shutdown tonight", it expired
+forty minutes later, in the middle of an AUTO-MAS update.
 
 ### Skip mode - one queue sits out one occasion
 

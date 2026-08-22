@@ -63,6 +63,37 @@ REVIVE_MAX_WAIT = 1800
 # alert existed, a backend that refused to come back was discovered only by
 # the runs it failed to schedule.
 REVIVE_ALERT_AFTER = 3
+# How long a *live* Electron shell with no backend is left alone before the
+# revival is allowed to force-kill it. The stuck state this guard exists for
+# lasts hours; a first-run environment wizard - installing Python, pip and
+# git, then cloning the backend - legitimately has no backend for several
+# minutes and looks identical. On 2026-08-22 the revival killed that wizard
+# twice mid-clone and the operator was told all six mirrors had failed.
+SHELL_GRACE_SECONDS = 900
+# Processes whose presence vetoes any revival outright.
+INSTALLER_HINTS = (b"auto-mas-setup", b"unins")
+
+
+def _automas_shell_running() -> bool:
+    """True if the Electron shell is up, whatever the backend is doing."""
+    try:
+        out = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq AUTO-MAS.exe", "/NH"],
+            capture_output=True, timeout=25,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return True   # cannot tell -> assume it is there, i.e. do not kill
+    return b"AUTO-MAS.exe" in out
+
+
+def _installer_running() -> bool:
+    """True while a setup or uninstaller is on screen. Never touch it."""
+    try:
+        out = subprocess.run(["tasklist", "/NH"], capture_output=True,
+                             timeout=25).stdout.lower()
+    except (OSError, subprocess.SubprocessError):
+        return True   # cannot tell -> assume yes, i.e. keep hands off
+    return any(h in out for h in INSTALLER_HINTS)
 
 
 def _automas_running() -> bool:
@@ -537,6 +568,9 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         revive_deadline = (time.monotonic() + revive_wait) if not automas else None
         revive_failures = 0
         revive_alerted = False
+        # When the shell was first seen alive with no backend behind it.
+        shell_only_since = None
+        shell_grace_noted = False
         next_automas_check = 0.0
         next_inbox_retry = 0.0
         while True:
@@ -650,10 +684,38 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             if died or due_check:
                 next_automas_check = now + AUTOMAS_CHECK_SECONDS
                 if not _automas_running():
-                    log.warning("AUTO-MAS 后端不在，正在拉起（第 %d 次）",
-                                revive_failures + 1)
-                    _revive_automas()
-                    revive_failures += 1
+                    # Two gates before the force-kill, because reviving is not
+                    # free: it kills a window somebody may be looking at.
+                    if _installer_running():
+                        log.warning("AUTO-MAS 后端不在，但安装程序正在运行——不动它")
+                        shell_only_since = None
+                        shell_grace_noted = False
+                    elif _automas_shell_running():
+                        # Shell up, backend down. Either the stuck state this
+                        # guard exists for, or a first run still setting itself
+                        # up. Only the clock tells them apart, so wait.
+                        if shell_only_since is None:
+                            shell_only_since = now
+                        waited = now - shell_only_since
+                        if waited < SHELL_GRACE_SECONDS:
+                            if not shell_grace_noted:
+                                shell_grace_noted = True
+                                log.warning(
+                                    "AUTO-MAS 窗口在、后端不在，先等 %d 分钟再动"
+                                    "（可能正在首次配置或更新）",
+                                    SHELL_GRACE_SECONDS // 60)
+                        else:
+                            log.warning("AUTO-MAS 窗口在、后端已缺席 %d 分钟，"
+                                        "正在拉起（第 %d 次）",
+                                        int(waited // 60), revive_failures + 1)
+                            _revive_automas()
+                            revive_failures += 1
+                    else:
+                        # No shell at all: nothing to kill, so revive at once.
+                        log.warning("AUTO-MAS 后端不在，正在拉起（第 %d 次）",
+                                    revive_failures + 1)
+                        _revive_automas()
+                        revive_failures += 1
                     if revive_failures >= REVIVE_ALERT_AFTER and not revive_alerted:
                         revive_alerted = True
                         notifier.send(
@@ -665,6 +727,8 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
                 # the old handle (already closed above) never signals again.
                 if automas := _automas_handle():
                     log.info("AUTO-MAS 进程句柄已挂上")
+                    shell_only_since = None
+                    shell_grace_noted = False
                     revive_deadline = None
                     revive_wait = float(REVIVE_FIRST_WAIT)
                     revive_failures = 0

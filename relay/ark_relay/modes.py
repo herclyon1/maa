@@ -2,12 +2,20 @@
 over what should NOT happen.
 
 Debug mode  The machine is being worked on: boot it, farm nothing, and above
-            all do not power it off. One file carries the whole state - a date
-            up to which the mode holds - so it survives restarts, applies
+            all do not power it off. One file carries the whole state - the
+            moment the mode stops holding - so it survives restarts, applies
             identically in local and service mode, and expires on its own
             instead of relying on anyone remembering to turn it off. While it
             holds, the engine will not power the machine off (the idle
             checkpoint included) and will not raise missed-run alarms.
+
+            It ends ten minutes before the next scheduled power-on, not at
+            midnight. "Leave it alone tonight" means leave it alone until the
+            next cycle is about to start - and the calendar day ends in the
+            middle of that, which on 2026-08-22 expired the mode forty minutes
+            after it was asked for, while an update was still installing. The
+            ten minutes are so the ordinary cycle resumes with the mode already
+            out of the way.
 
 Skip mode   One queue sits out one occasion. skip_today used to write a flag
             that nothing ever read; now the first tick that sees the flag
@@ -25,6 +33,8 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import os
+
 from .config import SERVER_TZ, atomic_write_text
 
 log = logging.getLogger("ark.modes")
@@ -34,13 +44,56 @@ log = logging.getLogger("ark.modes")
 # progress would defeat the skip.
 RESTORE_GRACE_MIN = 30
 
+# Scheduled power-on times, server clock. The relay cannot read these from
+# anywhere: the morning one is a Mi Home plug cutting and restoring mains so
+# the board's "restore on AC" boots it, the evening one is the board's own RTC
+# alarm. Neither leaves a record on the machine. Override with ARK_BOOT_TIMES
+# ("HH:MM,HH:MM") if the plug or the BIOS alarm is moved.
+BOOT_TIMES = tuple(
+    s.strip() for s in os.environ.get("ARK_BOOT_TIMES", "08:40,21:20").split(",")
+    if s.strip())
+# How far ahead of a power-on debug mode releases, so the ordinary cycle starts
+# with the mode already gone rather than racing it.
+DEBUG_LEAD_MIN = 10
+# A power-on this close is the cycle already under way, not the next one. Asked
+# at 21:00 for "leave it alone tonight", releasing at 21:10 - ten minutes
+# before the 21:20 wake - would be an absurd reading of the request; the run it
+# is meant to cover has not even started. Comfortably longer than a queue
+# (~85 min) so the whole cycle is inside it.
+CURRENT_CYCLE_MIN = 150
+
+
+def next_boot(now: datetime, min_ahead_min: int = 0) -> datetime:
+    """The next scheduled power-on more than `min_ahead_min` away."""
+    now = now.astimezone(SERVER_TZ)
+    floor = now + timedelta(minutes=min_ahead_min)
+    cands = []
+    for day in (0, 1, 2):
+        for hhmm in BOOT_TIMES:
+            try:
+                hh, mm = (int(x) for x in hhmm.split(":"))
+            except ValueError:
+                continue
+            cands.append((now + timedelta(days=day)).replace(
+                hour=hh, minute=mm, second=0, microsecond=0))
+    future = sorted(c for c in cands if c > floor)
+    # No parseable entry at all -> fall back to tomorrow, which keeps the mode
+    # on rather than dropping it. Wrong in the safe direction.
+    return future[0] if future else now + timedelta(days=1)
+
 
 def _debug_file(state_dir: Path) -> Path:
     return Path(state_dir) / "debug-until.txt"
 
 
 def debug_until(state_dir: Path) -> str:
-    """The date debug mode holds through, '' when off."""
+    """The moment debug mode holds through, '' when off.
+
+    "YYYY-MM-DD HH:MM" since 2026-08-23. A bare "YYYY-MM-DD" is still accepted
+    and still means end-of-that-day: files written by the older code are on
+    disk right now, and reading one as a malformed value would turn the mode
+    off under someone who had just switched it on.
+    """
     try:
         return _debug_file(state_dir).read_text(encoding="utf-8").strip()
     except OSError:
@@ -51,31 +104,54 @@ def debug_active(state_dir: Path, now: datetime | None = None) -> bool:
     until = debug_until(state_dir)
     if not until:
         return False
-    today = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ).strftime("%Y-%m-%d")
-    # A malformed date must fail towards "debug on": the operator explicitly
-    # asked for the machine to be left alone, and the wrong failure here powers
-    # off a box someone is working on.
-    return today <= until or len(until) != 10
+    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    try:
+        end = datetime.strptime(until, "%Y-%m-%d %H:%M").replace(tzinfo=SERVER_TZ)
+    except ValueError:
+        try:                                   # legacy: a bare date
+            end = (datetime.strptime(until, "%Y-%m-%d").replace(tzinfo=SERVER_TZ)
+                   + timedelta(days=1))
+        except ValueError:
+            # Anything unparseable fails towards "debug on": the operator
+            # explicitly asked for the machine to be left alone, and the wrong
+            # failure here powers off a box someone is working on.
+            return True
+    return now < end
 
 
-def set_debug(state_dir: Path, days: int = 1, off: bool = False) -> tuple[bool, str]:
-    """days=1 means today only; the mode expires by itself after the date."""
+def set_debug(state_dir: Path, cycles: int = 1, off: bool = False,
+              now: datetime | None = None) -> tuple[bool, str]:
+    """Hold until ten minutes before a scheduled power-on.
+
+    `cycles=1` - the default and what "leave it alone tonight" means - releases
+    at the next power-on. `cycles=2` skips one more, and so on. Counting cycles
+    rather than days is the whole point: the boundary that matters is the start
+    of the next run, and midnight falls in the middle of the night with the
+    machine still being worked on.
+    """
     path = _debug_file(state_dir)
     if off:
         path.unlink(missing_ok=True)
         return True, "调试模式已关闭，恢复正常运行（队列若被停用需另行恢复）"
     try:
-        days = max(1, int(days))
+        cycles = max(1, int(cycles))
     except (TypeError, ValueError):
-        return False, f"天数不是整数: {days!r}"
-    until = (datetime.now(tz=SERVER_TZ) + timedelta(days=days - 1)).strftime("%Y-%m-%d")
+        return False, f"轮数不是整数: {cycles!r}"
+    at = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    # The first hop skips a power-on that is already imminent; later hops are
+    # plain "the one after that".
+    boot = next_boot(at, CURRENT_CYCLE_MIN)
+    for _ in range(cycles - 1):
+        boot = next_boot(boot)
+    end = boot - timedelta(minutes=DEBUG_LEAD_MIN)
     path.parent.mkdir(parents=True, exist_ok=True)
-    # Atomic: a torn date fails towards "debug on" by design, which means the
+    # Atomic: a torn value fails towards "debug on" by design, which means the
     # machine then never powers itself off. Deliberate as a fallback, not as
     # something a power cut should be able to cause.
-    atomic_write_text(path, until)
-    return True, (f"🔧 调试模式已开启，至 {until}（含当天）：不关机、不报漏跑。"
-                  "注意：要让机器什么都不刷，还需停用相应队列。")
+    atomic_write_text(path, end.strftime("%Y-%m-%d %H:%M"))
+    return True, (f"🔧 调试模式已开启，至 {end:%m-%d %H:%M}"
+                  f"（下次预定开机 {boot:%m-%d %H:%M} 前 {DEBUG_LEAD_MIN} 分钟）："
+                  "不关机、不报漏跑。注意：要让机器什么都不刷，还需停用相应队列。")
 
 
 # ---------- skip mode (跳过模式) ----------

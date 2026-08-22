@@ -586,4 +586,46 @@ Two checks would have caught it, and both are cheap:
 The general form: when a probe says "everything is empty", suspect the probe
 before the data. Absent values are the most common shape of a path mistake.
 
+## A watchdog cannot tell "installing" from "hung" - so give it a clock
+
+The relay revives AUTO-MAS when its Python backend is missing, and to do that
+it must first `taskkill /F` the Electron shell: the shell outlives its own
+backend (the exact state the machine was once found in), and the scheduled task
+counts as running while that shell is alive, so `schtasks /run` would start
+nothing.
+
+On 2026-08-22 an AUTO-MAS update ran its first-time environment wizard -
+Python, pip, git, then cloning the backend. Throughout all of that there is
+legitimately no backend. The revival killed the wizard twice, mid-clone, at
+23:12 and 23:16. The wizard then reported **"所有镜像源都尝试失败"**.
+
+Every part of that message was misleading, and chasing it wasted the next
+half hour:
+
+- All six mirrors were **reachable** from that machine - CNB 417 ms, gitee
+  339 ms, both HTTP 200. Only GitHub direct and ghfast timed out.
+- Both working mirrors **carried the branch** it wanted, `release/v5.4.0-beta.7`.
+- The clone had in fact **already succeeded**: HEAD sat on `5e2c2ba`, the exact
+  commit of that branch, tracking origin.
+
+The update completed by itself the moment the relay was stopped. Nothing else
+changed.
+
+Two lessons, and the second is the general one:
+
+1. **Never force-kill a window on a single instantaneous signal.** "Backend
+   missing" is true both when something is broken and when something is being
+   set up. Only elapsed time separates them, so the guard now waits 15 minutes
+   while a shell is alive, vetoes outright while an installer process exists,
+   and still revives instantly when there is no shell to kill.
+2. **An error message names the symptom, not the cause.** "All mirrors failed"
+   was the wizard's honest report of its own experience; it had no way to know
+   it was being shot. Test the thing it blames - the mirrors, from that machine
+   - before believing it.
+
+While chasing this I also asserted that the revival had no backoff, from
+reading `AUTOMAS_CHECK_SECONDS = 120`. That constant is the degraded path used
+only when the WMI subscription fails. The real path doubles `revive_wait` from
+180 s to a 1800 s cap, exactly as its alert message claims. Reading one
+constant is not reading the code path.
 
