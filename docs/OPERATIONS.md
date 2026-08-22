@@ -539,12 +539,10 @@ and `set_params` may be called only once.
    matters.
 4. Watch the first attempt with a screenshot, not by trusting the exit code.
 
-### Unrelated finding worth acting on
+### Emulator frame rate
 
-`cache\gui\StageActivityV2.json` still lists `SSReopen-AT` and `TO-*` as the
-current side stories. **That cache is stale**, and it is what the daily report's
-event countdown reads, so the countdown cannot be trusted for the event that
-opened 2026-08-22 until MAA refreshes it.
+60 FPS, stated by the operator. It is not in any LDPlayer config file - do not
+go looking for it again.
 
 ## Changing game configuration
 

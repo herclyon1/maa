@@ -566,3 +566,24 @@ had now has a serverless implementation, and the machine cannot upload to GitHub
 anyway. Do not rebuild it: the reasoning and the replacements are in
 [OPERATIONS.md](OPERATIONS.md) under "Update channels" and "Off-machine
 supervision".
+
+## Reading a nested field at the wrong depth looks exactly like stale data
+
+On 2026-08-22 the event cache `cache/gui/StageActivityV2.json` was declared
+stale and its countdown declared untrustworthy. It was neither. The probe read
+`node["UtcExpireTime"]`, but the field lives at `node["Activity"]["UtcExpireTime"]`
+- which is where `plan.activity_countdown` had been reading it all along. Every
+event came back `None`, and `None` was reported as "the cache never updated".
+
+Two checks would have caught it, and both are cheap:
+
+1. **The file's mtime.** It was written that same day at 15:12. A cache with a
+   fresh mtime and empty fields is a parser bug, not a stale cache.
+2. **Read it the way the consumer reads it.** `plan.py` already had the correct
+   path. Writing a second, shallower reader invented a disagreement that did
+   not exist.
+
+The general form: when a probe says "everything is empty", suspect the probe
+before the data. Absent values are the most common shape of a path mistake.
+
+
