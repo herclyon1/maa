@@ -15,14 +15,6 @@ function Click($x,$y,$rb){
   if($rb){ [M]::mouse_event(0x08,0,0,0,0); Start-Sleep -Milliseconds 55; [M]::mouse_event(0x10,0,0,0,0) }
   else   { [M]::mouse_event(0x02,0,0,0,0); Start-Sleep -Milliseconds 55; [M]::mouse_event(0x04,0,0,0,0) }
 }
-# Leave a timestamp the relay can see. Any GUI action here means a human (or
-# me) is working on this desktop right now, and the relay must not power the
-# machine off underneath them. ASCII only - this file is read as GBK.
-$mark = "C:\ProgramData\ark-relay\state\ark-do-last.txt"
-try {
-  New-Item -ItemType Directory -Force -Path (Split-Path $mark) | Out-Null
-  Set-Content -Path $mark -Value ([DateTimeOffset]::Now.ToUnixTimeSeconds()) -Encoding ASCII
-} catch { }
 L "--- batch start ---"
 foreach ($line in (Get-Content "C:\ProgramData\ark-cmd.txt" -Encoding UTF8)) {
   $line = $line.Trim(); if (-not $line -or $line.StartsWith("#")) { continue }

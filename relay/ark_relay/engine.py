@@ -30,10 +30,6 @@ MISSED_GRACE_MIN = 25
 # A wake-up checkpoint is judged once, in this window past the hour: open two
 # minutes late (a queue may start a moment behind), closed five minutes later.
 CHECK_OPEN_MIN, CHECK_CLOSE_MIN = 2, 7
-# How long after the last remote GUI action the machine is held awake.
-# Long enough to keep working between two screenshots, short enough that
-# forgetting about it costs one delayed shutdown, not a night of uptime.
-MAINTENANCE_HOLD_SEC = 20 * 60
 # How far a round's FIRST record may sit from a scheduled time and still count
 # as that scheduled round. Only the first record is tested: a queue's later
 # scripts legitimately land 40+ minutes in (MAA then MaaEnd), so testing every
@@ -567,48 +563,6 @@ class Engine:
                 out.append(f"队列「{q['name']}」还差 {'、'.join(missing)}")
         return out
 
-    def _hands_on_machine(self, now: datetime) -> int:
-        """Seconds since someone last drove the desktop through `ark-do`, or -1.
-
-        The 21:30 checkpoint cannot tell "nobody is here" from "somebody is
-        working on this machine right now", so it used to power off under
-        whoever was mid-maintenance. Vetoing on an open SSH or ToDesk session
-        was tried and was worse than useless - both come up automatically at
-        boot, so the veto never lifted.
-
-        A GUI action is different: `ark-do` only ever runs because a person
-        asked for a click, a keystroke or a screenshot. It stamps this file on
-        every batch, so the hold is bounded by the last action rather than by
-        anything that merely stays connected.
-        """
-        mark = Path(self.state.dir) / "ark-do-last.txt"
-        try:
-            stamp = int(mark.read_text(encoding="ascii").strip())
-        except (OSError, ValueError):
-            return -1
-        # A clock the other way round means a stale or corrupt stamp; ignore it
-        # rather than hold the machine open forever on a bad number.
-        age = int(now.timestamp()) - stamp
-        return age if 0 <= age <= 86400 else -1
-
-    def _boot_time(self, now: datetime) -> datetime | None:
-        """When this machine last booted, or None if it cannot be determined.
-
-        Uptime, not the relay's own start time: the relay restarts itself for
-        every selfupdate, so its start time says nothing about why the machine
-        is awake. `GetTickCount64` is a kernel counter read, cheap enough to
-        call on every tick.
-        """
-        try:
-            import ctypes  # noqa: PLC0415 - Windows only, imported where used
-
-            ms = ctypes.windll.kernel32.GetTickCount64()  # type: ignore[attr-defined]
-        except (AttributeError, OSError, ImportError):
-            return None
-        if not ms or ms < 0:
-            return None
-        return now - timedelta(milliseconds=ms)
-
     def _work_is_done(self, now: datetime, entries: list[dict]) -> bool:
         """True when this boot's queue has come due and produced all its records.
 
@@ -845,17 +799,6 @@ class Engine:
                 < self.cfg.shutdown_min_uptime):
             return False
         if self._scripts_running() or self._pending or self._recovered:
-            return False
-        # Somebody is working on this desktop. Hold, but only for a bounded
-        # time after their last action - an open-ended hold would turn one
-        # forgotten screenshot into a machine that never sleeps again.
-        hands = self._hands_on_machine(now)
-        if 0 <= hands < MAINTENANCE_HOLD_SEC:
-            note = (f"{hands // 60} 分钟前有人在这台机器上操作过，"
-                    f"暂不关机（{MAINTENANCE_HOLD_SEC // 60} 分钟无操作后放行）")
-            if note != self._last_wait_note:
-                self._last_wait_note = note
-                log.info(note)
             return False
         # "No game process" is not the same as "the queue is finished". Between
         # two scripts in one queue there is a window - MAA has exited, MaaEnd's

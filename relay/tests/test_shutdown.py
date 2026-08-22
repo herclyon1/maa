@@ -1,8 +1,9 @@
-"""Exercise the shutdown gate changes against a fake AUTO-MAS + ledger.
+"""Exercise the shutdown gate against a fake AUTO-MAS + ledger.
 
-Covers the bug being fixed (restart after the run leaves nobody to shut down)
-and the two ways the fix could itself cost a run (powering off before the
-queue, powering off mid-queue).
+Covers the bug being fixed (a restart after the run leaves nobody to shut the
+machine down) and the three ways the fix could itself cost a run: powering off
+before the queue, mid-queue, or on a machine somebody booted afterwards to work
+on.
 """
 import json, os, sys, tempfile
 from datetime import datetime, timedelta
@@ -104,20 +105,6 @@ print("\n[regression] must NOT power off mid-queue")
 ledger()
 check("due at 21:30, no records yet -> 21:40",
       E._work_is_done(at(21, 40), E._recent_entries(at(21, 40))), False)
-
-print("\n[maintenance hold]")
-mark = STATE / "ark-do-last.txt"
-check("no marker -> -1", E._hands_on_machine(at(22, 25)), -1)
-mark.write_text(str(int(at(22, 20).timestamp())), encoding="ascii")
-check("5 minutes ago", E._hands_on_machine(at(22, 25)), 300)
-check("held (5min < 20min)", 0 <= E._hands_on_machine(at(22, 25)) < eng.MAINTENANCE_HOLD_SEC, True)
-check("released after 25 minutes",
-      0 <= E._hands_on_machine(at(22, 45)) < eng.MAINTENANCE_HOLD_SEC, False)
-mark.write_text("not-a-number", encoding="ascii")
-check("corrupt marker ignored", E._hands_on_machine(at(22, 25)), -1)
-mark.write_text(str(int(at(23, 59).timestamp())), encoding="ascii")
-check("future marker ignored", E._hands_on_machine(at(22, 25)), -1)
-mark.unlink()
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

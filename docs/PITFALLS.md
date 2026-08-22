@@ -308,7 +308,7 @@ That window is the restarted process. Reading a correlation off a focus log and
 calling it a cause cost a day; the answer was in MaaEnd's own log the whole
 time, in a line that says "just finished updating".
 
-**The fix keeps auto-update on and moves it earlier.** `relay/ark_relay/prewarm.py`
+**The fix keeps auto-update on and moves it earlier.** `relay/ark_relay/preupdate.py`
 runs MaaEnd once in the boot-to-queue gap, waits for its update check to
 settle, and closes it, so the queue's launch finds nothing to update. Upstream
 declined to address the focus behaviour (MaaEnd#4820: "always on top 友商都没做,

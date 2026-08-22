@@ -456,18 +456,18 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         # the check answers "有更新=false" and the process AUTO-MAS launches is
         # the one that stays.
         try:
-            from ark_relay import prewarm  # noqa: PLC0415
+            from ark_relay import preupdate  # noqa: PLC0415
 
-            if prewarm.wanted_today(cfg.automas_dir):
+            if preupdate.wanted_today(cfg.automas_dir):
                 maaend = cfg.maaend_dir or _maaend_dir(cfg)
-                if updated := prewarm.run(maaend):
+                if updated := preupdate.run(maaend):
                     notifier.send(
                         "🔄 终末地脚本已更新",
                         f"MaaEnd 更新到 {updated}，已在开跑前装好。\n"
                         "这一步是为了避开 MaaEnd 边跑边更新导致的首轮全灭；"
                         "自动更新照常开着，只是提前到了开机窗口做。")
-        except Exception:  # noqa: BLE001 - a warm-up must never stop the relay
-            log.exception("MaaEnd 预热出错，跳过（本轮照旧）")
+        except Exception:  # noqa: BLE001 - a pre-update must never stop the relay
+            log.exception("MaaEnd 预更新出错，跳过（本轮照旧）")
 
         # A new game-week means last week's 剿灭 no longer counts.
         try:

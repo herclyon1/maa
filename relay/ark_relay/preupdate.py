@@ -30,7 +30,27 @@ watching, and close it. By the time the queue starts, the check returns
 Upstream declined to fix the underlying window-focus behaviour (MaaEnd#4820),
 so this is handled from our side or not at all.
 
-Failure here is deliberately cheap: if the warm-up cannot run, does not
+Measured side effects of launching MaaEnd on its own, 2026-08-22 12:37:
+
+    12:37:12 WARN  [App] 自动执行：目标实例不存在，跳过自动执行
+    12:37:12 INFO  [App] 检查更新: MaaEnd, 当前版本: v2.26.0-beta.1, 频道: beta
+    12:37:13 INFO  [App] 更新检查完成: 最新版本=v2.26.0-beta.1, 有更新=false
+
+It does not launch the game (verified over 64 seconds - only MaaEnd.exe ran),
+it does not start its configured tasks, and the check itself takes one second.
+So on the ordinary day, when there is nothing to update, this costs a few
+seconds and touches nothing.
+
+Why not check for the update from here and skip the launch entirely: doing that
+means reimplementing MaaEnd's own version lookup - its MirrorChyan resource id,
+its channel, its version format - and keeping that in step with a program that
+ships most days. The launch already answers the question authoritatively in one
+second, with no side effects worth avoiding. Downloading and applying the update
+from here would be worse still: that is MaaEnd's updater, including whatever
+file replacement and migration it does, and reimplementing it earns nothing but
+a second thing to keep correct.
+
+Failure here is deliberately cheap: if the pre-update cannot run, does not
 finish, or the network is slow, the round proceeds exactly as it does today -
 one wasted attempt, then the retry succeeds.
 """
@@ -46,7 +66,7 @@ from pathlib import Path
 
 from .config import SERVER_TZ
 
-log = logging.getLogger("ark.prewarm")
+log = logging.getLogger("ark.preupdate")
 
 # How long to let MaaEnd sort itself out. An update measured 17 seconds from
 # launch to the restarted process, plus download time on a line that is slow to
@@ -91,7 +111,7 @@ def run(maaend_dir: Path | None, budget_s: float = BUDGET_SECONDS) -> str:
         return ""
     exe = Path(maaend_dir) / "MaaEnd.exe"
     if not exe.exists():
-        log.warning("预热跳过：找不到 %s", exe)
+        log.warning("预更新跳过：找不到 %s", exe)
         return ""
 
     before = _newest_log(Path(maaend_dir))
@@ -106,14 +126,18 @@ def run(maaend_dir: Path | None, budget_s: float = BUDGET_SECONDS) -> str:
             creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP
                            | subprocess.DETACHED_PROCESS))
     except OSError:
-        log.warning("预热启动 MaaEnd 失败，本轮照旧", exc_info=True)
+        log.warning("预更新启动 MaaEnd 失败，本轮照旧", exc_info=True)
         return ""
-    log.info("预热：已启动 MaaEnd，等它把更新做完（最多 %.0f 秒）", budget_s)
+    log.info("预更新：已启动 MaaEnd，等它把更新做完（最多 %.0f 秒）", budget_s)
 
     updated_to = ""
     settled = False
+    # Poll quickly at first: measured on the machine, MaaEnd answers its own
+    # update check about one second after launch when there is nothing to do
+    # (12:37:12 launch, 12:37:13 "有更新=false"). The common case - no update -
+    # should cost seconds, not a fixed wait.
     while time.monotonic() < deadline:
-        time.sleep(3)
+        time.sleep(1)
         current = _newest_log(Path(maaend_dir))
         if current is None or current.name == before_name:
             continue        # this launch has not opened its log yet
@@ -126,11 +150,11 @@ def run(maaend_dir: Path | None, budget_s: float = BUDGET_SECONDS) -> str:
             # restarted process to report false.
             if has_update == "false":
                 settled = True
-                log.info("预热：MaaEnd 已是 %s%s", version,
+                log.info("预更新：MaaEnd 已是 %s%s", version,
                          f"（本次更新自 → {updated_to}）" if updated_to else "（无需更新）")
                 break
     if not settled:
-        log.warning("预热：%.0f 秒内没等到更新检查结束，本轮照旧", budget_s)
+        log.warning("预更新：%.0f 秒内没等到更新检查结束，本轮照旧", budget_s)
 
     _close(exe)
     if updated_to and settled:
@@ -139,15 +163,15 @@ def run(maaend_dir: Path | None, budget_s: float = BUDGET_SECONDS) -> str:
 
 
 def _close(exe: Path) -> None:
-    """Leave nothing running. AUTO-MAS kills it before每轮 anyway, but a warm-up
-    that leaves a window on the desktop is a warm-up that changed the thing it
+    """Leave nothing running. AUTO-MAS kills it before每轮 anyway, but a pre-update
+    that leaves a window on the desktop is a pre-update that changed the thing it
     was supposed to leave alone."""
     try:
         subprocess.run(  # noqa: S603
             ["taskkill", "/IM", exe.name, "/F"],
             capture_output=True, timeout=30, check=False)
     except (OSError, subprocess.SubprocessError):
-        log.warning("预热：关闭 MaaEnd 失败", exc_info=True)
+        log.warning("预更新：关闭 MaaEnd 失败", exc_info=True)
 
 
 def wanted_today(automas_dir: Path | None, now: datetime | None = None) -> bool:

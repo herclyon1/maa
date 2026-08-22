@@ -349,9 +349,9 @@ produces no system-level mouse input, so the screen goes dark during its 45
 minutes; MaaEnd's foreground controller seizes the mouse, so the screen stays
 lit for its whole run and that cannot be avoided.
 
-## MaaEnd's warm-up
+## MaaEnd's pre-update
 
-`relay/ark_relay/prewarm.py`, run once per boot when a queue still to come that
+`relay/ark_relay/preupdate.py`, run once per boot when a queue still to come that
 day includes MaaEnd. It launches MaaEnd, waits up to 180 s for its update check
 to settle (`更新检查完成: ... 有更新=false` in `MaaEnd/debug/<date>-<n>.log`),
 then closes it. If an update landed, the operator is told.
@@ -548,6 +548,14 @@ to the operator when most of it is not.
   cannot repair itself: when antivirus quarantined `sshd-session.exe` the only
   fix was a person at the machine. A second channel would need a service the
   machine can reach outward, and it cannot reach GitHub at all.
+- **The 21:30 checkpoint cannot tell maintenance from an idle machine.** Boot
+  the machine in the afternoon, still be working at 21:30, and it powers off
+  underneath you. `debug_mode` is the workaround.
+
+  A 20-minute hold keyed off remote GUI activity was built for this on
+  2026-08-21 and removed on 2026-08-22 at the operator's request: it made the
+  shutdown time unpredictable, and an unpredictable shutdown is worse than the
+  problem it solved. Shutdown timing should stay boring.
 - **A relay restart more than two hours after a run still leaves nobody to
   shut down.** `recent_due_queues` forgets a queue after that, and widening the
   window would also widen the "wait for a script that never ran" hold that
@@ -564,7 +572,7 @@ to the operator when most of it is not.
   that misreads a line turns a working night into false alarms.
 - ~~**MaaEnd's first-attempt failure has no confirmed cause.**~~ Solved
   2026-08-22: MaaEnd updates itself at startup and restarts its own process,
-  orphaning the log monitor AUTO-MAS just attached. `prewarm.py` now does that
+  orphaning the log monitor AUTO-MAS just attached. `preupdate.py` now does that
   update in the boot-to-queue gap. See [PITFALLS.md](PITFALLS.md).
 
 ## Appendix: driving PlayCover games on the Mac
