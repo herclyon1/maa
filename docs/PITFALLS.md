@@ -243,6 +243,23 @@ the regex instead hit history records under `recentlyClosed`. Structural diff -
 flatten both sides to `path → value`, compare added/removed/changed - is what
 caught it, and is now mandatory.
 
+## Do not half-configure a feature you cannot finish
+
+The Endfield account field was filled in and the password field was not,
+because whoever filled it in could not supply a password. That combination is
+not "partly configured" - it is a state that can only fail, and it failed
+silently for two days behind a retry-three-times-then-move-on facade.
+
+Worse, the failure it produced pointed at the wrong thing: "「明日方舟：终末地」
+登录失败" reads as an account or network problem. The account was signed in the
+entire time. It cost a full day of Endfield runs and a long detour through
+crash logs, game bulletins and version files before the config turned out to be
+the cause.
+
+**If a feature needs something you cannot provide, do not start it.** Say what
+it needs and leave it alone. A field that is filled in looks configured to
+everyone who reads it later, including whoever wrote it.
+
 ## MaaEnd
 
 **First attempt fails instantly, second succeeds.** All 14 items dead, five log
@@ -252,8 +269,40 @@ MaaEnd connects within a second of it appearing, so the handle goes stale. The
 second attempt takes over an already-running game and is fine.
 
 **Retry is the fix; do not treat it as a real fault.** The tunable is MaaEnd's
-own post-launch wait. Root cause not confirmed - `WaitTime` and the remote screenshots
-were both disproved, and `focus-watch.py` is deployed to capture the next one.
+own post-launch wait.
+
+**What the focus log finally showed (2026-08-22 11:46).** MaaEnd's foreground
+controller needs the game window frontmost and unobstructed. What obstructs it
+is MaaEnd:
+
+```
+11:47:57  AUTO-MAS starts MaaEnd
+11:47:58  MaaEnd.exe  pid=15772  "mxu"       <- MaaEnd's own window takes focus
+11:48:00  Endfield.exe           "Endfield"  <- the game takes it back
+11:48:01  AUTO-MAS logs "前置 Endfield 窗口成功"
+11:48:02  log monitor attached to pid 15772
+11:48:14  MaaEnd.exe  pid=20416  "mxu"       <- a SECOND MaaEnd process takes focus
+11:48:18  all 14 tasks fail
+```
+
+Four seconds after a second MaaEnd process raises a window, everything dies.
+The retry has only one MaaEnd process and runs normally:
+
+```
+11:49:38  MaaEnd.exe  pid=18120  "mxu"
+11:49:39  Endfield.exe           "Endfield"
+11:49:41  前置 Endfield 窗口成功
+11:49:42  log monitor attached - and it keeps running
+```
+
+So the obstruction is not ToDesk, not a screenshot, not the operator. It is
+MaaEnd's own second process, which appears about fifteen seconds into the first
+launch and steals the foreground from the game it is supposed to be driving.
+AUTO-MAS raises the game window at second one, which is too early to help.
+
+Not fixable from this side: `ControllerType` only offers `Win32-Front` and
+`ADB`, and Endfield is a PC game, so there is no background mode to switch to.
+Evidence belongs upstream at MaaEnd#4820.
 A sibling one-shot: recognition timing out 20s after "open rewards", the last
 step of protocol space. Also self-heals.
 

@@ -93,6 +93,32 @@ plan prints the switch's state for exactly this reason; if it reads
 fails every run. Whenever the current stage is an event stage, its end time is a
 hard deadline for changing it.
 
+**`Info/Id` must stay empty unless `Info/Password` is filled too.**
+`app/task/MaaEnd/AutoProxy.py` short-circuits on it:
+
+```python
+if self.cur_user_config.get("Info", "Id") == "" or await login(
+    self.cur_user_config.get("Info", "Id"),
+    self.cur_user_config.get("Info", "Password"), ...
+```
+
+Empty id means the whole login path is skipped and the run starts. A non-empty
+id sends it into `login()`, which hunts for the game's "切换账号" control to
+raise the login dialog. Filled-in id with an empty password is therefore a
+configuration that can only fail - and it fails expensively: the recognition
+task retries for about fourteen minutes before giving up, three times per round.
+
+That is exactly what it did on 2026-08-22, costing Endfield an entire day's run
+with an error message ("「明日方舟：终末地」登录失败") that points at the
+account rather than at the config. The account was fine the whole time - the
+game was already signed in, which is why the title screen offers 账户登出 and
+not 切换账号.
+
+It got into that state because this system's own operator half-configured it:
+the id was entered while explaining the feature as "automatic login", and the
+password could not be entered. **Never start this feature without the password.**
+Either both fields or neither.
+
 The Endfield sanity plan is three fields that must agree:
 
 | Field | Meaning |
