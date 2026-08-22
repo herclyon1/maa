@@ -309,6 +309,19 @@ services live in session 0 with no desktop.
 scripts/mac/watch-run.sh          # follow a run live: OK/FAIL per record, OFFLINE, DONE
 ```
 
+**The window between a run finishing and the machine powering off is about a
+minute**, and it is not a good time to be collecting anything. The report goes
+out as soon as the last record lands, the shutdown countdown is 60 s, and a
+watcher polling every three minutes will simply miss it - which is how the
+2026-08-22 morning's MaaEnd logs went uncollected despite a watcher being armed
+for exactly that.
+
+Collect while the run is still going, or wait for the next boot. Nothing is
+lost by waiting: `history/` and `focus-watch.log` are on disk and survive the
+power cycle. If something really must be caught before shutdown, watch for the
+script **starting** rather than for its record appearing - that gives half an
+hour of margin instead of one minute.
+
 ```powershell
 (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
 (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
