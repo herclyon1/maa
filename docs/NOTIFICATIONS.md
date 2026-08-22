@@ -52,7 +52,8 @@ finishing, so a timer would have to fire inside a moving window between
 | Config command applied | push a receipt: inbox version, name, note, and what changed in plain language |
 | **Relay code updated** | push the moment the new code is actually running - version before and after, and which files changed |
 | **Relay code update failed** | push why, which files did not land, and that the machine is still on the old version |
-| A notification channel is broken | alarm over whatever channel still works (e.g. WeCom `60020` with the current egress IP) |
+| A notification channel is broken | alarm over whatever channel still works, **once per fault**. The record is on disk, so a relay restart does not re-announce it; it clears when the channel works again or the fault changes |
+| MaaEnd updated itself | **not pushed** - the beta channel ships most days, so a notice per update is a daily message with nothing to act on. Log only |
 
 ## Updates must land at boot, and must announce themselves
 

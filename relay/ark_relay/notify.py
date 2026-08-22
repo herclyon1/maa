@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import mimetypes
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -19,7 +20,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-from .config import Config
+from .config import Config, atomic_write_text
 
 log = logging.getLogger("ark.notify")
 
@@ -323,16 +324,60 @@ class Notifier:
 
     A dead channel is still a real fault, so it is reported in its own right -
     through whichever channel still works - rather than swallowed. It is
-    announced once per channel per process; the machine reboots twice a day, so
-    a channel that stays broken keeps re-announcing itself until it is fixed.
+    announced once per channel per fault, and that record is kept on disk.
+
+    It used to live in memory, "once per channel per process", on the reasoning
+    that the machine reboots twice a day so a channel left broken would keep
+    reminding. In practice the relay restarts far more often than the machine
+    does - every self-update is a restart - and on 2026-08-22, a day of
+    deployments, the same 企业微信 60020 notice went out over and over. A
+    reminder that arrives on someone's phone that often is not a reminder, it
+    is noise, and noise is what makes real alerts get ignored.
+
+    Now: the same fault on the same channel is announced once and stays quiet
+    until it either changes or clears. The fingerprint deliberately strips the
+    parts of the message that differ every time - 企业微信's `hint: [...]` and
+    the reported egress IP - so a rotating home IP does not read as a new fault.
     """
 
     def __init__(self, cfg: Config):
         self.wecom = WeCom(cfg)
         self.wecom_bot = WeComBot(cfg)
         self.serverchan = ServerChan(cfg)
-        self._announced_down: set[str] = set()
+        self._down_path = Path(cfg.state_dir) / "channels-down.json"
+        self._announced_down: dict[str, str] = self._load_down()
         self._announcing = False  # the outage alert itself goes out via _fan_out
+
+    # ---------- which faults have already been reported ----------
+
+    @staticmethod
+    def _fingerprint(err: str) -> str:
+        """What makes two failures 'the same fault'.
+
+        企业微信's 60020 carries a fresh request hint and the current egress IP
+        on every attempt, so the raw message never repeats. Strip both; what is
+        left is the error code and its text, which is the thing that is either
+        fixed or not.
+        """
+        s = re.sub(r"hint: ?\[[^\]]*\]", "", err)
+        s = re.sub(r"from ip: ?[0-9a-fA-F:.]+", "", s)
+        return " ".join(s.split())[:160]
+
+    def _load_down(self) -> dict[str, str]:
+        try:
+            data = json.loads(self._down_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else {}
+
+    def _save_down(self) -> None:
+        try:
+            atomic_write_text(self._down_path,
+                              json.dumps(self._announced_down, ensure_ascii=False))
+        except OSError:
+            # Worst case the notice repeats once more. Never let bookkeeping
+            # about an alert break the alert path itself.
+            log.warning("记不住已通报的通道故障", exc_info=True)
 
     def _enabled(self) -> list[tuple[str, object]]:
         return [(n, c) for n, c in (
@@ -379,14 +424,18 @@ class Notifier:
         if not delivered:
             return [f"{n}: {e}" for n, e in failed.items()]
         # A channel that started working again becomes announceable once more.
-        self._announced_down -= set(delivered)
+        if any(n in self._announced_down for n in delivered):
+            for n in delivered:
+                self._announced_down.pop(n, None)
+            self._save_down()
         if not self._announcing:
             self._announce_outage(failed, delivered)
         return []
 
     def _announce_outage(self, failed: dict[str, str], delivered: list[str]) -> None:
         """Report a dead channel as its own alert, via the channels still alive."""
-        fresh = {n: e for n, e in failed.items() if n not in self._announced_down}
+        fresh = {n: e for n, e in failed.items()
+                 if self._announced_down.get(n) != self._fingerprint(e)}
         if not fresh:
             return
         lines = []
@@ -406,7 +455,9 @@ class Notifier:
         finally:
             self._announcing = False
         if sent:
-            self._announced_down |= set(fresh)
+            for n, e in fresh.items():
+                self._announced_down[n] = self._fingerprint(e)
+            self._save_down()
 
     def send_image(self, path: Path) -> list[str]:
         if not self.wecom.enabled:

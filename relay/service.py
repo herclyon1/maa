@@ -460,12 +460,14 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
 
             if preupdate.wanted_today(cfg.automas_dir):
                 maaend = cfg.maaend_dir or _maaend_dir(cfg)
+                # Deliberately not pushed. MaaEnd's beta channel ships most
+                # days, so a notice per update is a daily message that says
+                # nothing the operator can act on - and a channel that cries
+                # every day is a channel that stops being read. It goes in the
+                # log, where it is there when a run needs explaining.
                 if updated := preupdate.run(maaend):
-                    notifier.send(
-                        "🔄 终末地脚本已更新",
-                        f"MaaEnd 更新到 {updated}，已在开跑前装好。\n"
-                        "这一步是为了避开 MaaEnd 边跑边更新导致的首轮全灭；"
-                        "自动更新照常开着，只是提前到了开机窗口做。")
+                    log.info("预更新：MaaEnd 已更新到 %s（不推送，每天都更新）",
+                             updated)
         except Exception:  # noqa: BLE001 - a pre-update must never stop the relay
             log.exception("MaaEnd 预更新出错，跳过（本轮照旧）")
 
