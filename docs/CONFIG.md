@@ -243,19 +243,35 @@ last updated 2026-08-20. `resource/version.json` carries the resource date, not
 the program version. Never quote the folder name as a version - it has been
 wrong here by a whole major release.
 
+<!-- check: json D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64\config\gui.new.json Configurations/Default/Gui/ExternalNotification/SendWhenComplete False -->
+<!-- check: json D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64\config\gui.new.json Configurations/Default/Gui/ExternalNotification/SendWhenError False -->
+<!-- check: json D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64\config\gui.new.json Configurations/Default/Gui/ExternalNotification/SendWhenStalled False -->
+<!-- check: json D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64\config\gui.new.json Configurations/Default/Gui/PostActions DoNothing -->
+<!-- check: json D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64\config\gui.new.json Configurations/Default/Gui/StartUpSettings/RunDirectly False -->
+
 **`config/gui.new.json` is the live file. `config/gui.json` is a dead older
 format** - reading it yields confidently outdated answers, e.g. "external
 notification is not configured".
 
-There are two profiles in it. `Default` is the automated one;
-`<the owner's manual profile>` is what the machine's owner uses by hand and has
-`PostActions: Shutdown` - **do not touch it**. Changing only one profile is the
-usual way to change nothing.
+There are two profiles under `Configurations`. `Default` is the one AUTO-MAS
+drives. The second one is **also an automation profile**, not a
+"played by hand" one - it carries `RunDirectly: true` and
+`PostActions: Shutdown`, i.e. start immediately and power the machine off when
+done. (This page previously described it as the owner's manual configuration.
+That was inherited and wrong.)
+
+**Leave the second profile alone**, for a reason that can be checked: its
+Server酱 key is not the same as `Default`'s, so whatever it pushes goes to a
+different person. Compare the keys before touching either.
+
+Changing only one profile is also the usual way to change nothing, so read back
+whichever one you meant.
 
 | Key | Value | Note |
 |---|---|---|
 | `Gui.ExternalNotification.ShowWhenCompleteWithDetails` | `true` | without it the completion push has no content at all |
-| `SendWhenComplete` / `SendWhenError` / `SendWhenStalled` | `false` on both profiles | the relay is the only sender |
+| `ExternalNotification.SendWhenComplete/Error/Stalled` (Default) | `false` since 2026-08-22 | the relay is the only sender |
+| `ExternalNotification.*` (the other profile) | **left on deliberately** | its Server酱 key differs from Default's, so its pushes go to someone else. Not ours to silence |
 | `Gui.PostActions` (Default) | `None` | shutdown belongs to the relay |
 | `SendKey` | DPAPI-encrypted | cannot be read, and does not need to be |
 

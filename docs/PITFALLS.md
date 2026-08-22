@@ -320,6 +320,30 @@ controller needs the game window unobstructed.
 **MaaEnd's webhooks cannot carry content.** Structural, not a misconfiguration -
 see [CONFIG.md](CONFIG.md).
 
+## Inherited claims are the main source of wrong documentation here
+
+Four wrong statements found in one day (2026-08-21/22), every one of them
+carried over from an older document and never checked against the machine:
+
+| Claim | Reality |
+|---|---|
+| "the Mi Home timers are not set" | they were, and had been for days |
+| folder `MAA-v5.1.0-win-x64` = version 5.1.0 | running v6.17.0-beta.5 |
+| folder `MaaEnd-...-v1.6.5` = version 1.6.5 | running v2.25.0-rc.1 |
+| MAA's push switches "false on both profiles" | **both were true**, and had been pushing all along |
+| the second MAA profile is "the owner's manual config" | it is an automation profile with `RunDirectly` and `PostActions: Shutdown` |
+
+The pattern is always the same: something was true once, or was guessed once,
+and then got copied forward because copying is free and checking is not. None
+of them were caught by reading the documents - they were caught by hitting the
+machine for an unrelated reason and noticing the disagreement.
+
+`check-docs.py` exists for exactly this and it verified none of these five,
+because none of them were expressed as a check. **When writing something down,
+prefer a form the checker can verify** - a path, a service, a JSON key with an
+expected value - over prose that can only be read. Prose that cannot be checked
+should say when it was last confirmed.
+
 ## A directory name is not a version number
 
 Both bots update themselves in place and keep the folder name they were

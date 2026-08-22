@@ -133,6 +133,8 @@ scp Administrator@$ARK_HOST:'C:/ProgramData/s1.png' .
 | `sleep <ms>` | wait |
 | `run <path>` | start a program (path only, no arguments) |
 | `shot <path>` | full-screen capture |
+| `uiclick x y` | click for Electron / WebView UIs - **use this on AUTO-MAS and MaaEnd**, see below |
+| `focus <window title substring>` | raise a window and wait for it to settle before clicking into it |
 | `monitoroff` | blank the display. Put it last - any later mouse action wakes it |
 
 A plain screenshot is also available as `schtasks /run /tn "ark-shot"` writing
@@ -141,6 +143,22 @@ A plain screenshot is also available as `schtasks /run /tn "ark-shot"` writing
 <!-- check: task ark-do -->
 <!-- check: task ark-shot -->
 <!-- check: task ark-focus-watch -->
+
+**`click` misses on AUTO-MAS's UI, twice over, and both failures are silent** -
+the cursor lands correctly and nothing happens. Measured 2026-08-22:
+
+1. Electron/WebView controls arm on hover. A bare `click` sends press and
+   release without the control ever having seen a `mouseover`, and is ignored.
+   Moving there first and waiting fixes it.
+2. When the window is not in the foreground, the first click is spent
+   activating it. `run <exe>` raises the window but does not make that first
+   click count - a stop button was pressed twice this way while the task kept
+   running.
+
+`uiclick` does both (hover, settle, click, click) and `focus` raises a window
+properly first. Use them for anything drawn by AUTO-MAS or MaaEnd. Plain
+`click` is still right for the game itself, which is a normal window inside the
+emulator.
 
 The task must run `-WindowStyle Hidden`. Without it the PowerShell console it
 opens takes focus and covers the left half of the screen - the automation hides
