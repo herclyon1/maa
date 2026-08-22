@@ -143,6 +143,23 @@ public class W {
     }
     "type"   { [System.Windows.Forms.SendKeys]::SendWait($arg) }
     "sleep"  { Start-Sleep -Milliseconds ([int]$arg) }
+    "runargs" {
+      # runargs <exe> <args...>  - start a program WITH arguments.
+      # `run` deliberately takes a bare path, which is right for the common
+      # case but cannot express things like `dnplayer.exe --index 1000`. That
+      # limitation cost a failed launch on 2026-08-22: the whole string was
+      # treated as a path and the batch reported RUN FAIL with no clue why.
+      # First token is the executable, the rest are passed through.
+      $sp = $arg.Split(' ')
+      $exe = $sp[0]
+      $rest = if ($sp.Count -gt 1) { $sp[1..($sp.Count-1)] } else { @() }
+      try {
+        Start-Process -FilePath $exe -ArgumentList $rest -ErrorAction Stop
+        L ("  launched: " + $exe + " [" + ($rest -join ' ') + "]")
+      } catch {
+        L ("  RUNARGS FAIL: " + $_.Exception.Message)
+      }
+    }
     "run"    { try { Start-Process -FilePath $arg; L ("  launched: " + $arg) } catch { L ("  RUN FAIL: " + $_.Exception.Message) } }
     "monitoroff" {
       $r = [IntPtr]::Zero

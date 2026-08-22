@@ -184,6 +184,91 @@ scp scripts/windows/ark-do.ps1 Administrator@$ARK_HOST:'C:/ProgramData/ark-do.ps
 
 ## Driving the game over ADB - use this, not the mouse
 
+### The emulator has two instances. Only one has the game.
+
+This cost an entire evening on 2026-08-22, so it goes first.
+
+```
+ldconsole list2
+0,    雷电模拟器,       ...   <- factory instance, empty, ~570 MB
+1000, 雷电模拟器-1000,  ...   <- the one with Arknights, ~40 GB
+```
+
+Both were created the same day the emulator was installed, two minutes apart -
+instance 0 is not something anyone added, it ships that way. AUTO-MAS's
+`EmulatorConfig.json` says `Index: 1000`, which is the only reason the right
+one was ever being used: MAA had already started it.
+
+**Instance index maps to ADB device by a fixed rule** ([LDPlayer's own
+docs](https://help.ldmnq.com/docs/LD9adbserver)): "模拟器编号每+1，设备号+2",
+i.e.
+
+```
+device port = 5554 + index * 2
+  index 0     -> emulator-5554
+  index 1000  -> emulator-7554     <- verified on this machine
+```
+
+So the address is computable, not something to discover by trial. MAA's own
+[connection guide](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/dev/docs/zh-cn/manual/connection.md)
+also notes its auto-detection only handles **a single running emulator** - with
+multiple instances you must supply the address yourself.
+
+### Starting the right instance
+
+Three conditions, and all three are required. Each was violated at least once:
+
+```bash
+# via ark-do, NOT over ssh
+runargs D:\LD-MRFZ\LDPlayer9\ldconsole.exe launch --index 1000
+```
+
+| Requirement | What happens otherwise |
+|---|---|
+| Use `ldconsole`, not `dnplayer.exe` | `dnplayer.exe --index 1000` ignores the argument and starts instance 0 |
+| Run it through `ark-do` | over SSH it is session 0 with no desktop, and **no process appears at all** |
+| Use `runargs`, not `run` | `run` takes a bare path; the whole string becomes the path and it reports `RUN FAIL` |
+
+Note `ldconsole runninglist` and `list2` reported "nothing running" even while
+the instance was up and serving ADB. **Do not use them as the readiness test.**
+
+### Knowing when it is ready
+
+In order, each check better than a timer:
+
+```bash
+adb devices                                    # the device appears
+adb -s emulator-7554 shell getprop sys.boot_completed   # -> 1
+adb -s emulator-7554 shell pm list packages | findstr hypergryph   # the game is there
+```
+
+The last one is the real test: an emulator can be up, booted and serving ADB
+while being the wrong instance. Waiting on "a device exists" spent four minutes
+watching the empty instance on 2026-08-22.
+
+MAA's own order is worth copying: **connect first, launch only if that fails**,
+then wait and reconnect - not "launch and sleep".
+
+### From booted to the home screen
+
+```bash
+adb -s $DEV shell monkey -p com.hypergryph.arknights -c android.intent.category.LAUNCHER 1
+# screenshot, look, tap START
+adb -s $DEV shell input tap 800 852
+# screenshot, look, tap 开始唤醒
+adb -s $DEV shell input tap 800 641
+```
+
+Coordinates are read off `exec-out screencap -p`, which returns the device
+frame (1600x900 here) with no desktop, no window border and no overlays.
+**Measure on that image and send the numbers unchanged** - there is nothing to
+convert, and MAA's own 1280x720 task coordinates only need converting because
+it must run on every device.
+
+Screenshot between every step. Do not chain taps with sleeps.
+
+
+
 The emulator exposes an ADB endpoint. Everything the game needs can go through
 it, and that is strictly better than screen coordinates and synthetic clicks:
 
