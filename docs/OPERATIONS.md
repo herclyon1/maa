@@ -181,12 +181,12 @@ freezes its own output; one `{ESC}` releases it.
 **Screenshots do not steal focus** - tested and disproved as a cause of MaaEnd
 failures. `run` and `click` do.
 
-**Every ark-do batch delays the automatic shutdown by 20 minutes.** The script
-stamps `state\ark-do-last.txt` and the relay treats a recent stamp as "somebody
-is working on this desktop", which is the point - but it means a screenshot
-taken while waiting for a run to finish pushes the power-off back. Take the
-screenshots before the round ends, or expect to wait. The hold is bounded by
-the last action, so it cannot keep the machine up indefinitely.
+**ark-do does not hold off the shutdown.** An earlier version stamped
+`state\ark-do-last.txt` and the relay treated a recent stamp as "somebody is
+working on this desktop"; the operator removed that on 2026-08-22 - a countdown
+that moves whenever a screenshot is taken makes the power-off time
+unpredictable. To keep the machine up while working on it, use debug mode
+(below), which is explicit and self-expiring.
 
 Note this file is **not** in the relay manifest, so `deploy-relay.sh` and
 selfupdate do not touch it - `scripts/windows/*.ps1` has to be scp'd by hand:
@@ -244,6 +244,19 @@ runargs D:\LD-MRFZ\LDPlayer9\ldconsole.exe launch --index 1000
 
 Note `ldconsole runninglist` and `list2` reported "nothing running" even while
 the instance was up and serving ADB. **Do not use them as the readiness test.**
+
+**Shutting the instance down has the same session constraint as starting it:**
+
+```bash
+# via ark-do
+runargs D:\LD-MRFZ\LDPlayer9\ldconsole.exe quit --index 1000
+```
+
+Over SSH this command exits 0 and does nothing - `dnplayer.exe` and
+`Ld9BoxHeadless.exe` stay in the task list. Verified 2026-08-22: two SSH
+attempts left the emulator running, the same command through ark-do closed it.
+Check with `tasklist | findstr /I "dnplayer Ld9BoxHeadless"`, not with the exit
+code.
 
 ### Knowing when it is ready
 
@@ -367,6 +380,56 @@ middle of the shelf; over ADB on this device, something like
 MAA knows it has reached the end when the recognised starting position stops
 changing, not by counting pages - the swipe is less than a full screen, so
 consecutive views overlap and items must be de-duplicated by id.
+
+## Telling the machine NOT to do something
+
+Two levers, both in `C:\ProgramData\ark-relay\state\`, both self-expiring by
+design so that "just this once" cannot silently become permanent.
+
+<!-- check: dir C:\ProgramData\ark-relay\state -->
+
+### Debug mode - do not power off, do not alarm
+
+```bash
+# hold for today only; the date is server time and it expires by itself
+ssh $ARK_HOST 'powershell -NoProfile -Command "Set-Content C:\ProgramData\ark-relay\state\debug-until.txt -Value 2026-08-22 -NoNewline"'
+# release early
+ssh $ARK_HOST 'del C:\ProgramData\ark-relay\state\debug-until.txt'
+```
+
+While it holds, the engine will not power the machine off (the idle checkpoint
+included) and will not raise missed-run alarms. It does **not** stop the queues
+- to have the machine boot and farm nothing, disable the queue as well.
+
+A malformed date reads as "debug on" on purpose: the wrong failure here powers
+off a box somebody is working on.
+
+### Skip mode - one queue sits out one occasion
+
+```bash
+# server-time date in the filename, queue name in the body
+echo -n Evening-MAA > flag && scp flag $ARK_HOST:'C:/ProgramData/ark-relay/state/skip-2026-08-22.flag'
+```
+
+The first relay tick that sees the flag disables that queue in AUTO-MAS and
+writes `skip-restore.json` capturing the queue's times; 30 minutes past the last
+of those times, a later tick re-enables it and deletes the marker. The marker is
+written **before** the disable, so a crash in between leaves a marker that
+restores an already-enabled queue - a no-op - rather than a queue disabled
+forever.
+
+**Do not disable a queue by hand instead.** Editing `TimeEnabled` over SSH works
+for tonight and then leaves it off for every night after. If it has already been
+done, drop a `skip-restore.json` in by hand to hand it back to the machinery:
+
+```json
+{"queue": "Evening-MAA", "day": "2026-08-22", "last_time": "21:30"}
+```
+
+**Known gap:** `queues.apply` writes `QueueConfig.json` without stopping
+AUTO-MAS, so a skip engaged or restored while AUTO-MAS is running can be undone
+when AUTO-MAS next writes its in-memory copy out - the same trap CONFIG.md
+documents for hand edits. Verify with a read-back after the restore fires.
 
 ## Changing game configuration
 
