@@ -243,11 +243,17 @@ last updated 2026-08-20. `resource/version.json` carries the resource date, not
 the program version. Never quote the folder name as a version - it has been
 wrong here by a whole major release.
 
-<!-- check: json D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64\config\gui.new.json Configurations/Default/Gui/ExternalNotification/SendWhenComplete False -->
+<!-- check: json D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64\config\gui.new.json Configurations/*/Gui/ExternalNotification/SendWhenComplete False -->
+<!-- check: json D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64\config\gui.new.json Configurations/*/Gui/ExternalNotification/SendWhenError False -->
 <!-- check: json D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64\config\gui.new.json Configurations/Default/Gui/ExternalNotification/SendWhenError False -->
 <!-- check: json D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64\config\gui.new.json Configurations/Default/Gui/ExternalNotification/SendWhenStalled False -->
-<!-- check: json D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64\config\gui.new.json Configurations/Default/Gui/PostActions DoNothing -->
-<!-- check: json D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64\config\gui.new.json Configurations/Default/Gui/StartUpSettings/RunDirectly False -->
+
+**`RunDirectly: true` and `PostActions: "ExitArknights, ExitSelf"` on Default
+are the normal state** - MAA is launched by AUTO-MAS, runs, and closes the game
+and itself. Opening MAA by hand therefore starts a run and then shuts the game
+down, which makes the 小工具 tools (仓库识别 etc.) hard to reach. To use them,
+flip both temporarily and **put them back**; check-docs.py will catch it if you
+forget, which is how the 2026-08-22 depot run was caught.
 
 **`config/gui.new.json` is the live file. `config/gui.json` is a dead older
 format** - reading it yields confidently outdated answers, e.g. "external
@@ -271,7 +277,7 @@ whichever one you meant.
 |---|---|---|
 | `Gui.ExternalNotification.ShowWhenCompleteWithDetails` | `true` | without it the completion push has no content at all |
 | `ExternalNotification.SendWhenComplete/Error/Stalled` (Default) | `false` since 2026-08-22 | the relay is the only sender |
-| `ExternalNotification.*` (the other profile) | **left on deliberately** | its Server酱 key differs from Default's, so its pushes go to someone else. Not ours to silence |
+| `ExternalNotification.SendWhen*` (the other profile) | `false` since 2026-08-22 | **every** profile is silent - only the relay notifies, see [NOTIFICATIONS.md](NOTIFICATIONS.md). A differing Server酱 key is not a reason to leave one on |
 | `Gui.PostActions` (Default) | `None` | shutdown belongs to the relay |
 | `SendKey` | DPAPI-encrypted | cannot be read, and does not need to be |
 

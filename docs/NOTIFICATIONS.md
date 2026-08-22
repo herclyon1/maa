@@ -96,6 +96,27 @@ should keep saying so.
   while a config still needed restoring. The relay's own post-run shutdown is
   the only automatic one.
 
+## Only the relay pushes. Nothing else. Ever.
+
+This is the design, stated by the operator and predating everything else on
+this page: **MAA and AUTO-MAS never notify anyone directly.** They produce run
+records; the relay reads those records, decides what is worth saying, and says
+it. That is the whole reason the relay exists.
+
+So every push switch in every profile of every downstream program is off, and
+stays off. There is no "but this one goes to the other person" exception - the
+other person is inside this system too, and a direct push from MAA bypasses all
+of it: the retry logic that suppresses a first failure, the daily grouping, the
+countdown, the one-channel-is-enough delivery rule.
+
+Getting this wrong on 2026-08-22 cost three junk notices to the operator's
+phone. Worse was the reasoning: MAA's second profile was left pushing because
+its Server酱 key differed from the first, so its messages "went to someone
+else". That was answering a question about configuration when the question was
+about design. When a config looks like it might be someone else's business,
+ask what the system was supposed to do - do not infer the intent from the
+config, which is exactly the artefact that may be wrong.
+
 ## Channels
 
 | Channel | State |
