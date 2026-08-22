@@ -168,7 +168,15 @@ on one or two is indistinguishable from turning on none.
 
 ## MAA
 
-`D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64`, v5.1.0.
+`D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64`.
+
+**The directory name is not the version.** It is whatever the package was
+called when it was first unpacked; MAA updates itself in place and the folder
+keeps its original name. The running version was `v6.17.0-beta.4` on
+2026-08-22, read from the window title in `focus-watch.log`, with resources
+last updated 2026-08-20. `resource/version.json` carries the resource date, not
+the program version. Never quote the folder name as a version - it has been
+wrong here by a whole major release.
 
 **`config/gui.new.json` is the live file. `config/gui.json` is a dead older
 format** - reading it yields confidently outdated answers, e.g. "external
@@ -191,8 +199,12 @@ reads it to put the countdown in every report.
 
 ## MaaEnd
 
-`D:\maaend\MaaEnd-win-x86_64-v1.6.5`, v1.6.5 (upstream is on rc1 - check before
-claiming a version).
+`D:\maaend\MaaEnd-win-x86_64-v1.6.5`.
+
+Same trap as MAA: **the directory name is not the version.** The running build
+was `v2.25.0-rc.1` on 2026-08-21, read from the window title in
+`focus-watch.log`. The folder still says v1.6.5 because that is what the
+package was called when it was unpacked.
 
 `config/mxu-MaaEnd.json`'s "full daily" config carried three
 `__MXU_WEBHOOK__` tasks, all now `enabled: false`: one "task started", and two

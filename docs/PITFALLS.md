@@ -263,6 +263,22 @@ controller needs the game window unobstructed.
 **MaaEnd's webhooks cannot carry content.** Structural, not a misconfiguration -
 see [CONFIG.md](CONFIG.md).
 
+## A directory name is not a version number
+
+Both bots update themselves in place and keep the folder name they were
+unpacked with. On 2026-08-22:
+
+| Folder | Actually running |
+|---|---|
+| `MAA-v5.1.0-win-x64` | v6.17.0-beta.4 |
+| `MaaEnd-win-x86_64-v1.6.5` | v2.25.0-rc.1 |
+
+Both were quoted as versions in this documentation, one of them off by a whole
+major release, and a version claimed from a path was already the reason an
+upstream report went out wrong once. The window title in `focus-watch.log`
+carries the real one for both; `resource/version.json` under MAA is the
+*resource* date, not the program version.
+
 ## MAA
 
 **Drop statistics are running totals - never sum them.** One round farms in
