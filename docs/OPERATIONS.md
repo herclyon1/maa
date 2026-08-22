@@ -1,5 +1,18 @@
 # Operations
 
+> **When something here is unclear, or an attempt fails: read MAA's own
+> documentation first. Do not start experimenting.**
+>
+> MAA has solved every problem this system has, and written it down.
+> [Its manual](https://github.com/MaaAssistantArknights/MaaAssistantArknights/tree/dev/docs/zh-cn/manual)
+> covers connection, emulators, the depot tool and the rest;
+> `resource/tasks/tasks.json` and `src/MaaCore/` hold the behaviour itself.
+> On 2026-08-22 an evening went into discovering by trial that LDPlayer's
+> instance 1000 answers at `emulator-7554`. Its connection guide links the
+> vendor page that states the rule outright: device port = 5554 + index * 2.
+> Two page loads against several hours.
+
+
 How to do things to the running system. Facts only; if a line cannot be checked
 against the machine or the code, it does not belong here.
 

@@ -2,6 +2,15 @@
 
 # Game knowledge
 
+> **When something here is unclear, or a lookup fails: check PRTS and MAA's
+> documentation first. Do not guess from the game screen.**
+>
+> Icons at depot-tile size are not distinguishable - 固源岩, 异铁 and 装置 are
+> all grey-brown polygons, and 类凝结核 sits next to an unrelated amber jar
+> that was mistaken for its green tier. A wiki page settles tier, recipe and
+> whether a line exists at all, in one load.
+
+
 Arknights facts that decide what this system farms. Separate from CONFIG.md
 because those are settings on a machine; these are true of the game itself and
 would still be true on a different machine.
@@ -69,6 +78,29 @@ alike at tile size. Shape similarity is not a tier line.
 Same 3 / 4 shape as the ketone line. Still not something to assume - the rock
 line is 3 / **5**.
 
+## Reading a depot stock - the blue number alone is never the answer
+
+**Never report only the blue tier.** A depot request for a material means the
+whole line: read white, green and blue, then fold upward. Reporting the blue
+count on its own understates the real holding by however much sits in the lower
+tiers, and that error runs one way only - it always looks scarcer than it is.
+
+On 2026-08-22 糖组 was reported as "321" with white and green never opened. The
+ketone line the same day showed why that is not a rounding error: 365 blue, but
+937 green folded in on top of it, so the honest figure was 599 - **64% more
+than the blue count**. A plan built on 321 would farm sugar that was already
+sitting in the depot.
+
+Two materials, and only two, are exempt:
+
+| Material | Treatment | Why |
+|---|---|---|
+| 固源岩 (green rock) | **count as zero** | spent daily by the 搓玉 loop - it is fuel in transit, not stock |
+| 装置 | **count as zero** | same, permanently outrun by demand |
+
+Everything else converts. There is no third exception, and a material being
+inconvenient to find in the depot is not one.
+
 ## Converting a stock into "how many blues is that"
 
 Fold white into green first, then green into blue, at that material's own rate:
@@ -83,7 +115,7 @@ Worked from the depot readout of 2026-08-22:
 |---|---|---|---|---|
 | rock | (not read) | 162 | 569 | 569 + 162/5 = **601** |
 | ketone | (not read) | 937 | 365 | 365 + 937/4 = **599** |
-| sugar | (not read) | (not read) | 321 | at least 321 |
+| sugar | (not read) | (not read) | 321 | **incomplete** - lower tiers never opened, see rule above |
 | 类凝结核 | - | - | 157 | **157** - no line, nothing to fold in |
 
 Read from the depot on 2026-08-22 evening. The rock line's green is listed for
