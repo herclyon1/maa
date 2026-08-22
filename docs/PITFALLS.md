@@ -271,40 +271,48 @@ second attempt takes over an already-running game and is fine.
 **Retry is the fix; do not treat it as a real fault.** The tunable is MaaEnd's
 own post-launch wait.
 
-**What the focus log finally showed (2026-08-22 11:46).** MaaEnd's foreground
-controller needs the game window frontmost and unobstructed. What obstructs it
-is MaaEnd:
+**The cause, confirmed 2026-08-22: MaaEnd updates itself mid-round.**
+
+MaaEnd checks for updates only at startup. AUTO-MAS kills and relaunches it
+before every round, so every round lands on that check. When there is a new
+build it downloads it and **restarts its own process** - and AUTO-MAS's log
+monitor is attached to the pid it launched, which no longer exists:
 
 ```
 11:47:57  AUTO-MAS starts MaaEnd
-11:47:58  MaaEnd.exe  pid=15772  "mxu"       <- MaaEnd's own window takes focus
-11:48:00  Endfield.exe           "Endfield"  <- the game takes it back
-11:48:01  AUTO-MAS logs "前置 Endfield 窗口成功"
-11:48:02  log monitor attached to pid 15772
-11:48:14  MaaEnd.exe  pid=20416  "mxu"       <- a SECOND MaaEnd process takes focus
-11:48:18  all 14 tasks fail
+11:47:58  MaaEnd.exe pid=15772   <- the process AUTO-MAS is watching
+11:48:14  MaaEnd.exe pid=20416   <- restarted after updating
+11:48:18  all 14 tasks reported failed
 ```
 
-Four seconds after a second MaaEnd process raises a window, everything dies.
-The retry has only one MaaEnd process and runs normally:
+MaaEnd says so itself on the next attempt: `检测到刚更新完成: v2.26.0-beta.1`,
+followed by `更新检查完成: 最新版本=v2.26.0-beta.1, 有更新=false`. The retry
+succeeds because by then the update is done. That is the whole of the
+"fails once or twice, then heals itself" pattern.
 
-```
-11:49:38  MaaEnd.exe  pid=18120  "mxu"
-11:49:39  Endfield.exe           "Endfield"
-11:49:41  前置 Endfield 窗口成功
-11:49:42  log monitor attached - and it keeps running
-```
+The update channel is `beta`, which ships most days - v2.25.0-rc.1 on 08-21,
+v2.26.0-beta.1 on 08-22 - so most days opened with a wasted attempt and a
+failure alert.
 
-So the obstruction is not ToDesk, not a screenshot, not the operator. It is
-MaaEnd's own second process, which appears about fifteen seconds into the first
-launch and steals the foreground from the game it is supposed to be driving.
-AUTO-MAS raises the game window at second one, which is too early to help.
+Verified both directions on the same afternoon, one hour apart:
 
-Not fixable from this side: `ControllerType` only offers `Win32-Front` and
-`ADB`, and Endfield is a PC game, so there is no background mode to switch to.
-Evidence belongs upstream at MaaEnd#4820.
-A sibling one-shot: recognition timing out 20s after "open rewards", the last
-step of protocol space. Also self-heals.
+| | update pending | already current |
+|---|---|---|
+| monitor attached | 11:48:02 | 12:10:49 |
+| outcome | **all 14 failed 16 s later** | **still running after 106 s** |
+
+**An earlier reading of this page blamed MaaEnd's own window for stealing
+focus.** The focus log does show a second MaaEnd window appearing seconds
+before the failure, and that observation was correct - but it was the symptom.
+That window is the restarted process. Reading a correlation off a focus log and
+calling it a cause cost a day; the answer was in MaaEnd's own log the whole
+time, in a line that says "just finished updating".
+
+**The fix keeps auto-update on and moves it earlier.** `relay/ark_relay/prewarm.py`
+runs MaaEnd once in the boot-to-queue gap, waits for its update check to
+settle, and closes it, so the queue's launch finds nothing to update. Upstream
+declined to address the focus behaviour (MaaEnd#4820: "always on top 友商都没做,
+说明不是一个很好的方案"), so this is handled here or not at all.
 
 **Do not leave the Endfield launcher window on the desktop.** The foreground
 controller needs the game window unobstructed.

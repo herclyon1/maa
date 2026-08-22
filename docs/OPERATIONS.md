@@ -349,6 +349,22 @@ produces no system-level mouse input, so the screen goes dark during its 45
 minutes; MaaEnd's foreground controller seizes the mouse, so the screen stays
 lit for its whole run and that cannot be avoided.
 
+## MaaEnd's warm-up
+
+`relay/ark_relay/prewarm.py`, run once per boot when a queue still to come that
+day includes MaaEnd. It launches MaaEnd, waits up to 180 s for its update check
+to settle (`更新检查完成: ... 有更新=false` in `MaaEnd/debug/<date>-<n>.log`),
+then closes it. If an update landed, the operator is told.
+
+It exists because MaaEnd restarts its own process after updating, which kills
+whatever round AUTO-MAS had just started - see [PITFALLS.md](PITFALLS.md).
+Auto-update is deliberately left on; only its timing moved.
+
+Skipped when the day's remaining queues are MAA-only, so the evening boot does
+not start a program nothing will use. Failure is cheap by design: if it cannot
+run or does not finish, the round behaves exactly as it did before - one wasted
+attempt, then the retry succeeds.
+
 ## Update channels
 
 Both code and config reach the machine through this GitHub repo, because the
@@ -546,9 +562,10 @@ to the operator when most of it is not.
   MaaEnd's live log as a second source and deciding which one wins when they
   disagree. Deliberately not done the evening before a run: a new log parser
   that misreads a line turns a working night into false alarms.
-- **MaaEnd's first-attempt failure has no confirmed cause.** `WaitTime` and my
-  screenshots were both tested and cleared. `focus-watch.py` runs at logon to
-  capture the next occurrence; the evidence goes to MaaEnd#4820.
+- ~~**MaaEnd's first-attempt failure has no confirmed cause.**~~ Solved
+  2026-08-22: MaaEnd updates itself at startup and restarts its own process,
+  orphaning the log monitor AUTO-MAS just attached. `prewarm.py` now does that
+  update in the boot-to-queue gap. See [PITFALLS.md](PITFALLS.md).
 
 ## Appendix: driving PlayCover games on the Mac
 

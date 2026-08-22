@@ -442,6 +442,33 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         # bought nothing the boot check did not already cover.
         collect("启动")
 
+        # MaaEnd updates itself at startup and restarts its own process when it
+        # finds a new build. AUTO-MAS kills and relaunches it before every
+        # round, so every round lands on that check, and the restart orphans
+        # the log monitor AUTO-MAS just attached - every task in the round is
+        # reported failed seconds later. Measured 2026-08-22; the channel is
+        # `beta`, which ships most days, so most days opened with a wasted
+        # attempt and a failure alert.
+        #
+        # Auto-update stays on - being current is the point of it. The update
+        # is moved instead: done here, in the gap between boot and the first
+        # queue, where a restart costs nothing. By the time the queue starts,
+        # the check answers "有更新=false" and the process AUTO-MAS launches is
+        # the one that stays.
+        try:
+            from ark_relay import prewarm  # noqa: PLC0415
+
+            if prewarm.wanted_today(cfg.automas_dir):
+                maaend = cfg.maaend_dir or _maaend_dir(cfg)
+                if updated := prewarm.run(maaend):
+                    notifier.send(
+                        "🔄 终末地脚本已更新",
+                        f"MaaEnd 更新到 {updated}，已在开跑前装好。\n"
+                        "这一步是为了避开 MaaEnd 边跑边更新导致的首轮全灭；"
+                        "自动更新照常开着，只是提前到了开机窗口做。")
+        except Exception:  # noqa: BLE001 - a warm-up must never stop the relay
+            log.exception("MaaEnd 预热出错，跳过（本轮照旧）")
+
         # A new game-week means last week's 剿灭 no longer counts.
         try:
             if msg := engine._annihilation.maybe_reopen():  # noqa: SLF001

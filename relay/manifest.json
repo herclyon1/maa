@@ -1,5 +1,5 @@
 {
- "version": 20260821133213,
+ "version": 20260822041443,
  "files": {
   "ark_relay/__init__.py": "297e0c5d45a732b40a24be0bfd40f07b174d2a9a",
   "ark_relay/__main__.py": "c3fad79ef49e452960a9936fce8cdec290668c78",
@@ -14,6 +14,7 @@
   "ark_relay/modes.py": "e2db1f94d38e2af8ecfda5f71e1bc4bea64e7ab4",
   "ark_relay/notify.py": "efabeec144c15c61481f903144fd0148d51b6501",
   "ark_relay/plan.py": "c7ea48383b193e95b5649d9e0b951d7edf8b755d",
+  "ark_relay/prewarm.py": "02453174aeba3abeb3aaf5eb144510ec1e449b64",
   "ark_relay/queues.py": "b0a97768e324530d2645d16cf8ef3569eb556097",
   "ark_relay/sanity_plan.py": "3b40287ebb29c4e94c2b266728e9428791e891ed",
   "ark_relay/selfupdate.py": "71313734dac78fbeb9ac3e681adf0a7d008686d2",
@@ -21,6 +22,6 @@
   "ark_relay/transport.py": "4a67e28d43a221c025b1de53a81d621f68fe70f6",
   "ark_relay/watch.py": "0c89581bf66483159a55d7817050ececbc0a0b38",
   "run.py": "0db6cde8fb8119323d991ec512d1b2b43e869b93",
-  "service.py": "65357c4255bbd425070c122a6cee336e8c2f5b59"
+  "service.py": "841f32cc6cb8393809900dad846aa7b9b8b2a865"
  }
 }
