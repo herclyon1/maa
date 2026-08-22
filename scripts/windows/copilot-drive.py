@@ -181,7 +181,13 @@ def attempt(stage: str, job: Path) -> str:
         "formation_index": 0,
         "use_sanity_potion": False,
         "add_trust": False,
-        "ignore_requirements": False,
+        # Jobs declare 练度要求 (skill level, elite, module...) per operator, and
+        # MAA enforces them: an operator whose skill is not specialised enough
+        # comes back as reason "Unavailable" and the whole formation aborts.
+        # Measured 2026-08-23: three operators the account owns were rejected on
+        # skill_level alone, and the same job formed up and fought with this on.
+        # The requirement is the job author's preference, not a hard constraint.
+        "ignore_requirements": True,
         # 1 = borrow a support unit only when exactly one operator is missing.
         # Costs nothing when the roster is complete and saves a whole swap when
         # it is not.

@@ -518,6 +518,33 @@ raid, `3` both, `0` unset. Filter on it - and note that the copilot site indexes
 the raid variant under its own level id, `act44side_ex08#f#` beside
 `act44side_ex08`.
 
+### When auto-formation rejects an operator - read `reason`, not `why`
+
+Two different failures wear the same wrapper. The outer error always says
+`"why": "OperatorMissing"`; the useful field is `reason` inside `details.opers`.
+
+| `reason` | What it means | Fix |
+|---|---|---|
+| `Unavailable` | The operator **is owned and was found**. The job declares a 练度要求 - usually `skill_level`, i.e. a specialised skill - that this account has not reached, and MAA enforces it | set **`ignore_requirements: true`** |
+| `Missing` | MAA did not find the operator in the list at all | check 特别关注 per the FAQ |
+
+Measured 2026-08-23 on AT-EX-8's most-popular job: 丰川祥子, 八幡海铃 and 酒神
+were all rejected with `requirement_type: "skill_level"`. All three are owned.
+With `ignore_requirements: true` the identical job formed the full six-operator
+squad and reached `BattleStartAll` - the requirement is the job author's
+preference, not a constraint the game imposes.
+
+**So `ignore_requirements: true` is the default here**, and a job should only
+be swapped out after that has been tried.
+
+Two mistakes made this take hours instead of minutes:
+
+1. **The logger truncated the callback to 260 characters** - and the field that
+   distinguishes the two cases sits past that cut. Never truncate diagnostic
+   output for readability; log it whole and read the whole thing.
+2. `reason: "Missing"` was read as "the account does not own this operator",
+   and two perfectly usable jobs were discarded on that basis.
+
 ### When auto-formation says an operator is "Missing"
 
 It does **not** mean the account lacks the operator. It means MAA did not find
