@@ -89,6 +89,45 @@ reopens it and the weekly reward stops being collected indefinitely. The daily
 plan prints the switch's state for exactly this reason; if it reads
 `剿灭 本周已完成/关闭` on a Monday, check that file.
 
+### Why the stage is 1-7, and what that means for material planning
+
+1-7 is farmed daily for 固源岩 (T2 green), which is the input to the operator's
+standing 搓玉 loop:
+
+```
+2 固源岩 + 1,600 LMD  ->  1 源石碎片        (factory, 1 hour)
+2 源石碎片            ->  20 合成玉          (trading post)
+```
+
+1-7 is the cheapest 固源岩 stage per sanity, which is the whole reason it is
+the default rather than something with a richer drop table.
+
+**Consequence, and it is a standing rule from the operator: treat 固源岩 and
+装置 (the green rock and the green device) as though the stock were zero.**
+They are consumed continuously and are permanently in deficit; whatever number
+a depot readout shows for them is working stock on its way into the factory,
+not a reserve. Never count them toward a T3 total, and never conclude "we have
+plenty of 固源岩" from a large number - that number is the queue, not a surplus.
+
+This changes material decisions. Converting a green stock into "how many blues
+could it make" is only valid for greens that nothing else is spending:
+
+| Green | Spent on 搓玉? | Counts toward its T3 total? |
+|---|---|---|
+| 固源岩 | yes, daily | **no - treat as 0** |
+| 装置 | yes (alternate recipe) | **no - treat as 0** |
+| 酮凝集, 糖, 聚酸酯, 异铁 … | no | yes, at that material's own ratio |
+
+And the ratios are not uniform - check each one rather than assuming:
+
+| T3 | Recipe |
+|---|---|
+| 固源岩组 | 固源岩 **x5** + 200 LMD |
+| 酮凝集组 | 酮凝集 **x4** + 200 LMD |
+
+Sources: [固源岩组](https://prts.wiki/w/%E5%9B%BA%E6%BA%90%E5%B2%A9%E7%BB%84),
+[酮凝集组](https://prts.wiki/w/%E9%85%AE%E5%87%9D%E9%9B%86%E7%BB%84) on PRTS.
+
 `StageMode: Fixed` with all alternates disabled means an expired event stage
 fails every run. Whenever the current stage is an event stage, its end time is a
 hard deadline for changing it.
