@@ -6,6 +6,50 @@ bug - fix it, or run `scripts/mac/check-docs.py` which will say so first.
 
 Values below verified 2026-08-21.
 
+## Audited against AUTO-MAS's own documentation, 2026-08-22
+
+Every setting below was read off the live machine and checked against
+[doc.auto-mas.top](https://doc.auto-mas.top) (`docs/user-guide`,
+`docs/task-scheduler`, `docs/script-guide/maa`). The config had only ever been
+edited through JSON before this, so the point was to find out what that missed.
+
+### Matches the documentation
+
+| Item | Machine | Doc says |
+|---|---|---|
+| MAA's own 定时执行 | 8 timers, **all disabled** | "定时执行保持关闭" |
+| `Default` profile `PostActions` | `ExitArknights, ExitSelf` | after-run behaviour is AUTO-MAS's to set |
+| Queue chaining | 新队列 09:00 -> MAA then MaaEnd; Evening-MAA 21:30 -> MAA | queues run scripts in series |
+| `AfterAccomplish` | `NoAction` on both | the relay owns the power-off |
+| Account ID / password / Skland token | **all empty** | "若同区服仅有一个账号，也可将账号ID留空" - and an empty ID is what stops MAA attempting an account switch |
+| MaaEnd control | `EmulatorId`/`EmulatorIndex` = `-`, i.e. PC | "支持 PC 与模拟器控制（推荐 PC）" |
+| Emulator entry | `ldplayer` + `ldconsole.exe`, index 1000 | pick the emulator and instance in 模拟器管理 |
+| Notifications | 推送任务结果时机 = 不推送, 系统通知 = 否, 邮件 = 否 | - |
+
+`Function/IfAllowSleep = False` shows in the UI as **运行时阻止系统休眠 = 否**,
+which sounds wrong for an unattended machine and is not: `powercfg` reports
+`STANDBYIDLE` on AC = `0x0`, so Windows never sleeps on its own anyway.
+
+### Loaded guns - correct today, harmful the moment something else changes
+
+| Finding | Why it matters |
+|---|---|
+| The MAA user still has `Notify/IfServerChan = true` **with a ServerChan key saved**, under a master `Notify/Enabled = false` | One toggle away from AUTO-MAS pushing on its own. NOTIFICATIONS.md says the relay is the only notifier; the key should be cleared, not merely switched off |
+| `Timers/ForceScheduledStart = true` in MAA | Inert while all 8 timers are off. Enable any one of them later and MAA starts on its own clock, colliding with AUTO-MAS |
+| The **second** MAA profile has `PostActions = Shutdown` | AUTO-MAS only drives `Default`, so it never fires - but running that profile by hand from MAA's UI powers the machine off, against the standing "never shut down without an order" |
+| The same profile has `StartEmulator = true` pointing at `#0 guan.lnk` | That is the Arknights official launcher shortcut, not LDPlayer - the source of the wrong-thing-started confusion on 2026-08-22 |
+| `Update/CheckOnStartup = true` in MAA | MaaEnd's first-attempt failures were caused by exactly this shape of thing (self-update restarting the process). The MAA doc says update settings are AUTO-MAS's to adjust, so this is left alone and watched, not changed |
+
+### Available and switched off, by choice
+
+森空岛 auto sign-in is disabled and its token is empty. It is free daily
+resources; the doc notes it carries some risk and processes the token locally.
+Turning it on is the operator's call.
+
+屏蔽模拟器广告 = 否. An LDPlayer ad popup can cover the screen or take focus,
+which is the failure mode that cost a depot read on 2026-08-22.
+
+
 ## Change settings through the UI, not the JSON
 
 **Measured 2026-08-22, and it settles the question.** A log-style checkbox in
@@ -108,7 +152,7 @@ purely time-triggered, with 15 min of slack in the morning and 10 in the evening
 | `Info.MedicineNumb` | `0` - do not use sanity potions |
 | `Info.Annihilation` | `Close` - **but see below** |
 | `Game/WaitTime` | `60` s (**hard floor, see below**) |
-| Emulator | LDPlayer: `ldplayer` + `ldconsole.exe`, `Index: 1000` |
+| Emulator | LDPlayer: `ldplayer` + `ldconsole.exe` in `EmulatorConfig.json`; the **instance number lives elsewhere** - `ScriptConfig.json` -> `<script>/Emulator/Index` = `1000` |
 | MaaEnd controller | `Win32-Front` - foreground, needs the game window frontmost and unobstructed |
 | `Task.SanityTaskType` | `OperatorProgression` (single choice) |
 
