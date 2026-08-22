@@ -496,6 +496,46 @@ or measured on this machine on 2026-08-22.
 
 Note MAA's default branch is **`dev-v2`**, not `dev` - a `dev` URL 404s.
 
+### Raid mode (突袭), and what a 1-star clear means
+
+An EX stage has two difficulties and they are separate clears with separate
+rewards. From the stage's detail panel, **突袭模式** at the bottom switches it;
+the title turns red, an 附加条件 appears (AT-EX-8's is "「斩」所需费用提升") and
+the button becomes **开始突袭**.
+
+**A raid clear settles at ONE star and that is correct.** Three stars is not
+available in raid. So a success detector keyed on `StageDrops-Stars-3` will
+report a perfectly good raid as a failure - which is what happened here on
+2026-08-23. What is *wrong* is a one-star settlement on a stage that does have
+three stars.
+
+In `copilot_list` an entry carries `is_raid`; in single-copilot mode there is
+no such field, because the game is already in raid mode when you started from
+that screen.
+
+Jobs declare which difficulties they support in `difficulty`: `1` normal, `2`
+raid, `3` both, `0` unset. Filter on it - and note that the copilot site indexes
+the raid variant under its own level id, `act44side_ex08#f#` beside
+`act44side_ex08`.
+
+### When auto-formation says an operator is "Missing"
+
+It does **not** mean the account lacks the operator. It means MAA did not find
+it in the formation list. The official FAQ names the cause in one line:
+
+> 若自动编队无法正常识别干员，请取消对应干员的特别关注。
+> — [MAA FAQ](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/dev-v2/docs/zh-cn/manual/faq.md)
+
+On 2026-08-23 this was read as "the operator is not owned" and two jobs were
+swapped away on that basis; the operator owned both of them. **Check the
+special-focus marks before the first run, not after the third failure.** The
+filter is the rook icon in the sort bar, present on every operator list.
+
+The headless path loses nothing here: the callback carries
+`{"opers": {"<name>": [{"reason": "Missing"}]}}`, which is the same fact the
+GUI turns into its message box. What was missing was the translation, not the
+data.
+
 ### Run it through MaaCore, not the window
 
 `scripts/windows/copilot-drive.py` clears a list of stages unattended. It talks
