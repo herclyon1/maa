@@ -6,6 +6,37 @@ bug - fix it, or run `scripts/mac/check-docs.py` which will say so first.
 
 Values below verified 2026-08-21.
 
+## Change settings through the UI, not the JSON
+
+**Measured 2026-08-22, and it settles the question.** A log-style checkbox in
+AUTO-MAS was toggled through the UI and `config/Config.json` was read back
+immediately: **nothing changed in the file.** AUTO-MAS holds its configuration
+in memory and writes it out when it exits.
+
+That single fact decides the policy for all three programs:
+
+- **The UI is the live value. The file is a lagging copy.** Editing the file
+  while the program runs writes to the copy, and the program overwrites it on
+  exit with what it still believes. Every hand edit in this system has needed a
+  stop-edit-restart dance for exactly this reason.
+- None of these programs was written expecting anything but a person at the
+  keyboard. There is no documented file schema to code against, no validation
+  on load, and no reason for the authors to keep the on-disk shape stable.
+
+So: **click it.** Use `vclick`, screenshot the result, and treat the log line as
+the receipt.
+
+The file is still worth reading - afterwards, as *verification*, not as the
+means of change. The honest check is: make the change in the UI, let the
+program exit (or restart it), then read the file and confirm it matches. That is
+what `scripts/mac/check-docs.py` does, and why its numbers can be trusted.
+
+The one place file editing still wins is a change that must happen while the
+program is **not running** - restoring a queue on a machine that boots into a
+schedule, for instance. There the file is the only interface there is, and the
+stop-edit-restart dance is the price.
+
+
 ## Where authority lives
 
 ```

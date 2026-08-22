@@ -146,7 +146,9 @@ scp Administrator@$ARK_HOST:'C:/ProgramData/s1.png' .
 | `sleep <ms>` | wait |
 | `run <path>` | start a program (path only, no arguments) |
 | `shot <path>` | full-screen capture |
-| `uiclick x y` | click for Electron / WebView UIs - **use this on AUTO-MAS and MaaEnd**, see below |
+| `uiclick x y` | click for Electron / WebView UIs - hover, settle, click twice |
+| `vclick x y` | **verified click** - photographs a patch, clicks, photographs again, and says in the log whether anything reacted |
+| `vclick x y cx cy w h` | same, but check a rectangle centred on `(cx,cy)` instead of on the cursor - use whenever the effect appears somewhere else |
 | `focus <window title substring>` | raise a window and wait for it to settle before clicking into it |
 | `monitoroff` | blank the display. Put it last - any later mouse action wakes it |
 
@@ -156,6 +158,40 @@ A plain screenshot is also available as `schtasks /run /tn "ark-shot"` writing
 <!-- check: task ark-do -->
 <!-- check: task ark-shot -->
 <!-- check: task ark-focus-watch -->
+
+### Prefer `vclick`, and read the log
+
+`click` is fire-and-forget: it moves the cursor, presses, releases, and never
+looks. `vclick` checks each step - that the cursor arrived, that SendInput was
+accepted, and that the screen actually reacted - and writes the verdict to
+`ark-do.log`:
+
+```
+vclick OK at 1072,830 (8.02% of the checked patch changed)
+!! VCLICK NO REACTION at 716,1056 (0% changed) - do NOT blind-retry a toggle
+```
+
+**It never retries by itself.** An automatic retry is only safe on a control
+that ignores a second press; on a checkbox it undoes the first click and then
+reports failure for a setting it changed twice. That happened here on
+2026-08-22. If a click needs repeating, repeat it in the batch after looking at
+a screenshot.
+
+Three things were wrong with the first version of this, all of them the same
+mistake in different clothes - **the check was easier to fool than the thing it
+was checking**:
+
+1. It verified the patch *under the cursor*. AUTO-MAS highlights a menu item on
+   hover, so a click that never navigated scored 0.84% and passed.
+2. It compared one byte in three, which in BGR is blue. White (255,255,255) and
+   the theme blue (255,119,22) share a blue channel of 255, so toggling a
+   checkbox scored **0%** and was reported as no reaction.
+3. It rebuilt the input packet through `$i.mi.dx = ...`, which mutates a copy of
+   a value-type field in PowerShell. Every event went out with all-zero flags.
+   `SendInput` still returned 1, the cursor still moved because `MoveTo` falls
+   back to `SetCursorPos`, and hover highlights still lit up - so for half an
+   hour it looked exactly like "this app ignores synthetic clicks". It ignored
+   nothing; nothing was ever sent.
 
 **`click` misses on AUTO-MAS's UI, twice over, and both failures are silent** -
 the cursor lands correctly and nothing happens. Measured 2026-08-22:
