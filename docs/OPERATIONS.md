@@ -487,7 +487,7 @@ AUTO-MAS, so a skip engaged or restored while AUTO-MAS is running can be undone
 when AUTO-MAS next writes its in-memory copy out - the same trap CONFIG.md
 documents for hand edits. Verify with a read-back after the restore fires.
 
-## MAA's auto-battle (自动战斗 / Copilot) - studied, not yet run
+## MAA's auto-battle (自动战斗 / Copilot) - run, 2026-08-23
 
 Read before touching it. Everything below is either from
 [MAA's own manual](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/dev-v2/docs/zh-cn/manual/introduction/copilot.md)
@@ -495,6 +495,40 @@ and [integration protocol](https://github.com/MaaAssistantArknights/MaaAssistant
 or measured on this machine on 2026-08-22.
 
 Note MAA's default branch is **`dev-v2`**, not `dev` - a `dev` URL 404s.
+
+### Run it through MaaCore, not the window
+
+`scripts/windows/copilot-drive.py` clears a list of stages unattended. It talks
+to `MaaCore.dll` through the binding MAA ships at `Python/asst/`, so there is no
+window to see and nothing to click - which matters here because MAA's window
+cannot be screenshotted at all when nobody is watching the machine (see
+PITFALLS).
+
+Six stages of 墟 were cleared this way on 2026-08-23, and every failure along
+the way came from the same mistake in different clothes: **assuming a starting
+screen instead of establishing one.**
+
+| What was assumed | What happened |
+|---|---|
+| `filename` mode navigates | It does not. It expects the formation screen and errors on `BattleStartAll` from anywhere else. `copilot_list` navigates; single mode fights |
+| Copilot navigation works from the main screen | For an event stage it does not - it hunts the main-story chapters. 224 swipes and 100 chapter turns looking for AT-5 |
+| BACK a few times reaches a neutral screen | BACK on the main screen raises 是否确认退出游戏, and the tap meant to dismiss it opened the event shop twice |
+| Hand-timed taps reach the game | 70 s to the splash is enough until it is not. MAA's `StartUp` task waits on what it sees; use it |
+| MAA can navigate any stage | It could not find this event's **EX** map. Tapping there by hand and running `filename` mode worked first try |
+
+The working recipe, in order:
+
+1. `StartUp` task - MAA opens the game and reaches the main screen.
+2. Tap into the event map (banner, then section). Only safe *because* step 1
+   guarantees the screen it starts from.
+3. `copilot_list` with one entry - it navigates within the event map and fights.
+4. On `BattleFormationTask` + `reason: Missing`, move to the next job for that
+   stage. `support_unit_usage: 1` borrows when exactly one operator is missing,
+   which the operator reckons covers 90% of the cases.
+
+**Detect a stall by repetition, not by silence.** A navigation that cannot find
+its stage emits callbacks forever, so a quiet-timer never fires. The driver
+counts consecutive identical subtasks and gives up at 30.
 
 ### What it is
 

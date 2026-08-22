@@ -50,36 +50,44 @@ Turning it on is the operator's call.
 which is the failure mode that cost a depot read on 2026-08-22.
 
 
-## Change settings through the UI, not the JSON
+## Edit the JSON first; use the UI only when the JSON cannot do it
 
-**Measured 2026-08-22, and it settles the question.** A log-style checkbox in
-AUTO-MAS was toggled through the UI and `config/Config.json` was read back
-immediately: **nothing changed in the file.** AUTO-MAS holds its configuration
-in memory and writes it out when it exits.
+**Operator's rule, 2026-08-23.** The two routes reach the same place - a human
+opens the program, changes the UI, closes it, and only then is the change
+applied; the file route closes the program, edits, and reopens. Same steps in a
+different order. For an agent the file route is strictly better: the change is a
+diff, the check is a read-back, and nothing depends on clicking the right pixel.
 
-That single fact decides the policy for all three programs:
+The procedure, and every step of it is load-bearing:
 
-- **The UI is the live value. The file is a lagging copy.** Editing the file
-  while the program runs writes to the copy, and the program overwrites it on
-  exit with what it still believes. Every hand edit in this system has needed a
-  stop-edit-restart dance for exactly this reason.
-- None of these programs was written expecting anything but a person at the
-  keyboard. There is no documented file schema to code against, no validation
-  on load, and no reason for the authors to keep the on-disk shape stable.
+1. **Stop the program.** AUTO-MAS keeps its configuration in memory and writes
+   it out on exit; editing while it runs writes to a copy it will overwrite.
+   Measured: toggling a checkbox in the UI left `Config.json` untouched, mtime
+   still on the previous restart.
+2. **Edit with a structural diff.** Parse, change the one field, walk both trees
+   and assert that exactly the intended path differs. A typo that adds a key is
+   invisible in a text diff of pretty-printed JSON.
+3. **Back up next to the file** before writing, and write atomically.
+4. **Restart, then read back.** Not the value you wrote - the value the program
+   has after loading it.
 
-So: **click it.** Use `vclick`, screenshot the result, and treat the log line as
-the receipt.
+Fall back to the UI when the JSON genuinely cannot answer:
 
-The file is still worth reading - afterwards, as *verification*, not as the
-means of change. The honest check is: make the change in the UI, let the
-program exit (or restart it), then read the file and confirm it matches. That is
-what `scripts/mac/check-docs.py` does, and why its numbers can be trusted.
+- **The legal values are unknown.** `Info/Stage` takes a bare string, and only
+  the dropdown knows that this event's stages are `SSReopen-AT`, `AT-8`, `AT-7`,
+  `AT-6`, `AT-4`. Guessing a literal into a field with no validator is how a
+  queue silently farms nothing.
+- **The program must not be stopped** - mid-run, or mid-update.
+- **The field does not exist yet**: a first-time setup the UI creates.
 
-The one place file editing still wins is a change that must happen while the
-program is **not running** - restoring a queue on a machine that boots into a
-schedule, for instance. There the file is the only interface there is, and the
-stop-edit-restart dance is the price.
+### Where the field names come from
 
+`app/models/config.py` defines all 335 fields - name, group, default,
+validator - but carries **no descriptions**. `app/models/schema.py` does: every
+field there is a pydantic `Field(..., description="...")` in Chinese, and it is
+the only human-readable field reference that exists. Neither is published as
+documentation. Read `schema.py` for what a field means and `config.py` for what
+values it accepts.
 
 ## Where authority lives
 

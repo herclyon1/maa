@@ -13,6 +13,7 @@ public class M {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h,int c);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags);
   [DllImport("user32.dll")] public static extern int GetSystemMetrics(int i);
   [DllImport("user32.dll")] public static extern IntPtr SendMessageTimeout(IntPtr h,uint m,IntPtr w,IntPtr l,uint fl,uint to,out IntPtr r);
   [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
@@ -211,6 +212,45 @@ foreach ($line in (Get-Content "C:\ProgramData\ark-cmd.txt" -Encoding UTF8)) {
       Start-Sleep -Milliseconds 350
       Click $x $y $false | Out-Null
       L ("  uiclick done at " + $x + "," + $y)
+    }
+    "minwin" {
+      # Minimise a window by title substring. A foreground GPU application -
+      # the emulator - can stop the desktop being composited at all, after
+      # which every screen grab returns the last frame drawn before it opened.
+      # The tell is the taskbar clock disagreeing with the system clock.
+      $t = $arg
+      $cand = Get-Process | Where-Object {
+        $_.MainWindowHandle -ne 0 -and ($_.MainWindowTitle -like "*$t*" -or $_.ProcessName -like "*$t*")
+      } | Select-Object -First 1
+      if (-not $cand) { L ("  !! minwin: no window matching " + $t); break }
+      [M]::ShowWindow($cand.MainWindowHandle, 6) | Out-Null    # SW_MINIMIZE
+      L ("  minwin -> " + $cand.MainWindowTitle)
+    }
+    "winshot" {
+      # Capture ONE window through PrintWindow instead of scraping the screen.
+      # CopyFromScreen returns a blank white rectangle for a GPU-composited
+      # window - MAA's WPF shell is one - so a screen grab cannot see it at
+      # all. PW_RENDERFULLCONTENT (2) asks the window to render itself, which
+      # is the same method MaaEnd's own login code uses on this exact class of
+      # window. Usage: winshot <title substring> <path>
+      $a = $arg.Split(' ', 2)
+      $t = $a[0]; $out = if ($a.Count -gt 1) { $a[1] } else { "C:\ProgramData\ark-win.png" }
+      $cand = Get-Process | Where-Object {
+        $_.MainWindowHandle -ne 0 -and ($_.MainWindowTitle -like "*$t*" -or $_.ProcessName -like "*$t*")
+      } | Select-Object -First 1
+      if (-not $cand) { L ("  !! winshot: no window matching " + $t); break }
+      $h = $cand.MainWindowHandle
+      $r = New-Object M+RECT
+      [M]::GetWindowRect($h, [ref]$r) | Out-Null
+      $w = $r.R - $r.L; $ht = $r.B - $r.T
+      if ($w -le 0 -or $ht -le 0) { L "  !! winshot: window has no size"; break }
+      $bmp = New-Object Drawing.Bitmap $w, $ht
+      $g = [Drawing.Graphics]::FromImage($bmp)
+      $hdc = $g.GetHdc()
+      $ok = [M]::PrintWindow($h, $hdc, 2)      # PW_RENDERFULLCONTENT
+      $g.ReleaseHdc($hdc); $g.Dispose()
+      $bmp.Save($out, [Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
+      L ("  winshot " + $cand.MainWindowTitle + " -> " + $out + " (" + $w + "x" + $ht + ", ok=" + $ok + ")")
     }
     "focus"  {
       # Bring a window to the front by title substring and wait for it to
