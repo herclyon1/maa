@@ -182,6 +182,94 @@ selfupdate do not touch it - `scripts/windows/*.ps1` has to be scp'd by hand:
 scp scripts/windows/ark-do.ps1 Administrator@$ARK_HOST:'C:/ProgramData/ark-do.ps1'
 ```
 
+## Driving the game over ADB - use this, not the mouse
+
+The emulator exposes an ADB endpoint. Everything the game needs can go through
+it, and that is strictly better than screen coordinates and synthetic clicks:
+
+```bash
+ADB='D:\LD-MRFZ\LDPlayer9\adb.exe'
+ssh $H "\"$ADB\" connect 127.0.0.1:7555"                    # returns "connected"
+ssh $H "\"$ADB\" -s 127.0.0.1:7555 shell input tap 1496 779"
+ssh $H "\"$ADB\" -s 127.0.0.1:7555 shell input swipe 1200 425 600 425 400"
+ssh $H "\"$ADB\" -s 127.0.0.1:7555 exec-out screencap -p > C:\\ProgramData\\dev.png"
+```
+
+The device is **1600x900**. `screencap` returns exactly that, containing only
+the game - no desktop, no window frame, no overlays. **Measure coordinates off
+that screenshot and send them unchanged.** There is nothing to convert.
+
+Three things this fixes at once, each of which cost time on 2026-08-22:
+
+- **Overlays stop mattering.** A ToDesk panel was covering a 218x190 patch of
+  the game's bottom-right corner, exactly where the depot button is. Over ADB
+  it is irrelevant - the panel is a Windows window, the tap goes into the
+  device. (This is also why the old warning about ToDesk breaking runs applies
+  to MaaEnd's foreground controller and to screen-clicking, and **not** to MAA,
+  which has always used ADB.)
+- **Window position stops mattering.** No client-rect measurement to go stale
+  when someone moves or resizes the emulator.
+- **The launcher desktop stops mattering.** `adb shell monkey -p
+  com.hypergryph.arknights -c android.intent.category.LAUNCHER 1` starts the
+  game directly. No hunting for an icon - and no chance of dragging the icon
+  off the launcher's home screen, which is how one earlier attempt ended.
+
+Package name: `com.hypergryph.arknights` (official server). Find it with
+`adb shell pm list packages | findstr hypergryph`.
+
+### Getting from nothing to the home screen
+
+MAA's own sequence, from its logs, and it is worth copying exactly:
+
+```
+正在连接模拟器......
+连接失败
+正在尝试启动模拟器
+等待模拟器启动时间（秒）：10s
+等待结束
+正在运行中......
+```
+
+**Connect first; only launch the emulator if that fails.** Then wait a fixed
+interval and reconnect. The success test is "ADB answers", not "some seconds
+have passed" - the difference between those two is the difference between a
+procedure and a guess.
+
+After the game starts, it is a state machine, never a fixed script. Every round:
+screenshot, see what is actually on screen, act on that. What can show up:
+
+| On screen | Do |
+|---|---|
+| Title page with START | tap it |
+| 「开始唤醒」 | tap it |
+| Loading triangle, centre | **nothing - wait and look again** |
+| Announcement popup | close it |
+| 今日配给 | dismiss it |
+| Disconnect confirmation | confirm |
+| Resource integrity check | let it finish |
+
+Reaching the home screen is not the end: MAA checks it **three consecutive
+times** before believing it, because "sometimes it is already at home, then a
+window pops up a moment later" (its own comment). Do the same.
+
+**Do not write click-sleep-click-sleep.** That was tried here and one slow load
+desynchronised everything after it; the run ended up dragging the launcher's
+home screen around and losing the game icon. A sequence assumes; a state
+machine looks.
+
+### Depot specifics
+
+The depot shelf scrolls **horizontally**, which is not obvious - a vertical
+drag does nothing at all, silently. MAA's own swipe is right-to-left across the
+middle of the shelf; over ADB on this device, something like
+`input swipe 1200 425 600 425 400` moves about one screen. Tabs across the top:
+全部 / 消耗物品 / 基础物品 / 养成材料. Materials live under 养成材料;
+基础物品 is currencies.
+
+MAA knows it has reached the end when the recognised starting position stops
+changing, not by counting pages - the swipe is less than a full screen, so
+consecutive views overlap and items must be de-duplicated by id.
+
 ## Changing game configuration
 
 **Never launch MAA.exe or the MaaEnd executable directly.** They are launchers:

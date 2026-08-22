@@ -320,6 +320,36 @@ controller needs the game window unobstructed.
 **MaaEnd's webhooks cannot carry content.** Structural, not a misconfiguration -
 see [CONFIG.md](CONFIG.md).
 
+## Copying the answer instead of the method
+
+Spent most of an afternoon on 2026-08-22 failing at a task MAA does in seconds:
+read two numbers out of the depot. The failures were all the same shape.
+
+**Copied its coordinates, not its approach.** MAA's task files are full of
+numbers, and taking them felt like learning. But its numbers only work inside
+its method - screenshot, recognise what is actually on screen, then act. What
+got written instead was click-sleep-click-sleep, which assumes each step landed.
+One slow load desynchronised the rest and the run dragged the emulator's
+launcher screen around until the game icon was gone.
+
+**Rebuilt its eyes instead of using my own.** Time went into a template-matching
+engine with OpenCV, to recognise game screens. MAA needs that because it is an
+offline program that cannot see. I can look at a screenshot directly. The thing
+worth taking from MAA was never its recogniser - it was its **decision table**:
+what to do about each screen that might appear, and the fact that it lists all
+of them rather than predicting a sequence.
+
+**Fought the wrong layer.** Screen coordinates, window rects, a drag that would
+not scroll, an overlay covering the button. Every one of those problems exists
+only for something clicking at the desktop. MAA has never done that: it talks
+ADB to the device, where there is no desktop, no window position and no overlay.
+The fix was not a better mouse - it was to stop using the mouse.
+
+The general form: **when a working tool does something easily, the transferable
+part is how it decided, not what it typed.** Its constants encode its
+constraints, and its constraints may not be mine - in this case it needs
+resolution-independent coordinates and template matching, and I need neither.
+
 ## Inherited claims are the main source of wrong documentation here
 
 A full audit of the nine retired Chinese documents was run on 2026-08-22

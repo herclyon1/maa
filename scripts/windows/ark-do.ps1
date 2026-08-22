@@ -52,7 +52,14 @@ public class W {
 }
 "@
       if (-not ("W" -as [type])) { Add-Type $sig }
-      $p = Get-Process | Where-Object { $_.MainWindowTitle -like "*$t*" } | Select-Object -First 1
+      # Prefer a process whose window is actually on screen. An emulator keeps
+      # background processes with the same name, and picking one of those hands
+      # back a minimized phantom window parked off-screen - which then silently
+      # poisons every coordinate computed from it.
+      $cand = Get-Process | Where-Object {
+        $_.MainWindowHandle -ne 0 -and ($_.MainWindowTitle -like "*$t*" -or $_.ProcessName -like "*$t*")
+      }
+      $p = $cand | Sort-Object { if ($_.MainWindowTitle) { 0 } else { 1 } } | Select-Object -First 1
       if ($p) {
         [W]::ShowWindow($p.MainWindowHandle, 9) | Out-Null   # SW_RESTORE
         [W]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
@@ -62,6 +69,45 @@ public class W {
     }
     "dclick" { $a=$arg.Split(' '); Click ([int]$a[0]) ([int]$a[1]) $false; Start-Sleep -Milliseconds 90; Click ([int]$a[0]) ([int]$a[1]) $false }
     "rclick" { $a=$arg.Split(' '); Click ([int]$a[0]) ([int]$a[1]) $true }
+    "gdrag" {
+      # gdrag x1 y1 x2 y2 [steps]  - drag using ARKNIGHTS coordinates.
+      #
+      # MAA writes every gesture against a 1280x720 reference frame and scales
+      # it to whatever the device is. That is why its numbers can be copied
+      # straight out of resource/tasks/tasks.json - e.g. the depot's own swipe:
+      #
+      #   DepotSlowlySwipeToTheRight: (1150,340) -> (110,340)
+      #
+      # The mapping below is the emulator window as it is currently laid out,
+      # measured from a screenshot. Detecting it at run time was tried and
+      # abandoned: the visible window does not belong to dnplayer.exe, and the
+      # dnplayer process that does exist owns an off-screen phantom at
+      # -9999,-10000. A measured constant that is wrong when the window moves
+      # beats a detector that is confidently wrong right now - and gdrag prints
+      # the mapping it used, so a bad result is visible in the log.
+      #
+      # If the emulator window is moved or resized, re-measure and update these
+      # four numbers (client origin and size on screen).
+      $CLX = 163; $CLY = 88; $CLW = 1595; $CLH = 892
+      $a=$arg.Split(' ')
+      $gx1=[double]$a[0]; $gy1=[double]$a[1]; $gx2=[double]$a[2]; $gy2=[double]$a[3]
+      $n = if ($a.Count -gt 4) { [int]$a[4] } else { 14 }
+      $x1=[int]($CLX + $gx1*$CLW/1280.0); $y1=[int]($CLY + $gy1*$CLH/720.0)
+      $x2=[int]($CLX + $gx2*$CLW/1280.0); $y2=[int]($CLY + $gy2*$CLH/720.0)
+      L ("  gdrag game(" + $gx1 + "," + $gy1 + ")->(" + $gx2 + "," + $gy2 + ")  screen(" + $x1 + "," + $y1 + ")->(" + $x2 + "," + $y2 + ")")
+      [M]::SetCursorPos($x1,$y1); Start-Sleep -Milliseconds 250
+      [M]::mouse_event(0x02,0,0,0,0)
+      Start-Sleep -Milliseconds 150
+      # Ease in, stop hard: MAA uses slope-in 2, slope-out 0 for depot swipes,
+      # over about 200 ms. A linear drag reads as a flick and overshoots.
+      for ($i=1; $i -le $n; $i++) {
+        $f = [Math]::Pow($i / [double]$n, 2)
+        [M]::SetCursorPos([int]($x1 + ($x2-$x1)*$f), [int]($y1 + ($y2-$y1)*$f))
+        Start-Sleep -Milliseconds 14
+      }
+      Start-Sleep -Milliseconds 120
+      [M]::mouse_event(0x04,0,0,0,0)
+    }
     "drag" {
       # drag x1 y1 x2 y2 [steps]
       # For touch-derived UIs - the game inside the emulator, and anything else
