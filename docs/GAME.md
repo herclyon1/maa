@@ -35,13 +35,22 @@ The operator refers to these by colour - 绿石头 / 蓝石头 for the rock line
 ## Every conversion ratio in the game
 
 Complete, from the game's own `building_data.json` -> `workshopFormulas`
-(`formulaType: F_EVOLVE`), mirrored at
+(**all** formula types - `F_EVOLVE`, `F_BUILDING`, `F_ASC`, `F_SKILL`), mirrored at
 [Kengxxiao/ArknightsGameData](https://github.com/Kengxxiao/ArknightsGameData).
 Every ratio previously read off PRTS one page at a time - 固源岩, 酮凝集,
 固源岩组, 酮凝集组, 糖, 糖组 - matches this table exactly, so the table is the
 lookup and PRTS is the second opinion.
 
-**Six lines have a single-ingredient upgrade chain. Only these convert.**
+An earlier version of this table said **six** lines. It was generated with a
+name filter that dropped anything containing 碳, 技巧概要 and so on as
+"noise" - which silently deleted two real lines and the whole chip ring. The
+operator's instinct caught it. **Do not filter a generated list by name; filter
+by structure, and print what was dropped.**
+
+**Eight lines have a single-ingredient upgrade chain. Only these convert.**
+
+Six are upgrade materials, and they are the only things in the game with a
+**white** tier:
 
 | Line | T1 white | -> | T2 green | -> | T3 blue | -> | T4 purple |
 |---|---|---|---|---|---|---|---|
@@ -52,17 +61,49 @@ lookup and PRTS is the second opinion.
 | polyester 酯 | 酯原料 | x3 | 聚酸酯 | x4 | 聚酸酯组 | - | (聚酸酯块, mixed) |
 | device 装置 | 破损装置 | x3 | 装置 | x4 | 全新装置 | - | (改量装置, mixed) |
 
-White to green is **x3 everywhere**. Green to blue is **x4 everywhere except
-the rock line, which is x5**. That single exception is why each one gets looked
+Two more **start at green** - no white tier exists for them, but they still fold
+upward and a stock question about them still means reading two or three numbers:
+
+| Line | T2 green | -> | T3 blue | -> | T4 purple | Type |
+|---|---|---|---|---|---|---|
+| carbon 碳 | 碳 | x3 | 碳素 | x3 | 碳素组 | 家具素材 (furniture) |
+| skill summary | 技巧概要·卷1 | x3 | 技巧概要·卷2 | x3 | 技巧概要·卷3 | skill upgrades |
+
+Among upgrade materials, white to green is **x3 everywhere**, and green to blue
+is **x4 everywhere except the rock line, which is x5**. The two green-start
+lines are a flat x3 all the way up. That single x5 is why each one gets looked
 up rather than remembered - and it is the one that matters most, since the rock
 line is what the daily loop burns.
 
 LMD cost rises with tier: 100 for a green, 200 for a blue, 300 for a purple. It
 never changes the item ratio and is not a constraint here.
 
-The T4 column stops at 提纯源岩 because that is the only purple in the game made
-from one ingredient (固源岩组 x4). Every other T4 mixes three different T3s, so
-there is no ratio to fold and a purple stock stays a purple stock.
+The T4 column stops at 提纯源岩 among the materials because that is the only
+purple made from one ingredient (固源岩组 x4). Every other T4 material mixes
+three different T3s, so there is no ratio to fold and a purple stock stays a
+purple stock.
+
+### 芯片 convert sideways, not upward - and at a loss
+
+Class chips (`F_ASC`) look like a ninth line and are not one. All 16 recipes
+trade **3 of one class for 2 of another at the same tier**, in a fixed ring:
+
+```
+先锋 -> 辅助 -> 先锋      医疗 -> 重装 -> 医疗
+术师 -> 狙击 -> 术师      特种 -> 近卫 -> 特种
+```
+
+and the same ring again one tier up for 芯片组. Going T3 -> T4 needs 芯片助剂 as
+well, so it is a mixed recipe, not a fold. **Never add chips together when
+counting**: 3 in gives 2 out, so summing them across classes overstates by half
+again.
+
+### Other things that look convertible and are not
+
+作战记录 (基础/初级/中级/高级) are tiered 1-4 but have no crafting formula at
+all - they are consumed directly for EXP. 家具零件 is an output-only sink: 碳,
+碳素, 碳素组 and all three 加固建材 dissolve into it at 4 / 8 / 12 / 8 / 16 / 24
+per item, and nothing turns 家具零件 back into anything.
 
 ### Materials with no line at all - the count is the count
 

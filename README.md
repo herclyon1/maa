@@ -12,11 +12,6 @@ Tailscale + SSH 远程管理；控制端离线不影响游戏机自行运行。
 本仓库是这套系统的源码与运行记录，不是开箱即用的软件：路径、账号、时刻表都
 针对这一台机器。
 
-> **遇到不懂的地方、失败的地方，先查 MAA 的官方文档，不要自己试。**
-> 连接模拟器、多开端口、仓库识别这些问题 MAA
-> [都写过](https://github.com/MaaAssistantArknights/MaaAssistantArknights/tree/dev/docs/zh-cn/manual)，
-> 查一页比试一晚上快。
-
 ---
 
 ## 每日流程
