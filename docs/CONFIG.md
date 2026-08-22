@@ -31,13 +31,20 @@ user has it true; this machine does.
 | Key | Value | Why |
 |---|---|---|
 | `Notify.SendTaskResultTime` | `不推送` | **This is the switch that mattered.** See "two layers of notification switches" below |
-| `Notify.IfServerChan` | `true` | global Server酱 channel |
+| `Notify.IfServerChan` | `false` | verified 2026-08-22. This page said `true`, inherited from an older doc. AUTO-MAS must not push at all - only the relay does |
 | `Notify.ServerChanKey` | *(set)* | kept deliberately - muting by deleting a key hides the real switch and breaks other uses |
 | `Notify.IfSendStatistic` | `false` | statistics are the relay's job |
 | `Notify.IfSendMail` / `IfPushPlyer` | `false` | |
 | `Start.IfSelfStart` | `true` | was false; the machine would boot and AUTO-MAS would never start |
 | `Start.IfMinimizeDirectly` | `true` | stay out of the game window's way |
 | `Function.IfAllowSleep` | `false` | actively blocks system sleep |
+
+<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\Config.json Notify/IfServerChan False -->
+<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\Config.json Notify/IfSendStatistic False -->
+<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\Config.json Notify/IfSendMail False -->
+<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\Config.json Start/IfSelfStart True -->
+<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\Config.json Start/IfMinimizeDirectly True -->
+<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\Config.json Function/IfAllowSleep False -->
 
 ### config/QueueConfig.json
 
@@ -352,5 +359,11 @@ AUTO-MAS\config.bak-20260814\                              (whole directory, 9 f
 AUTO-MAS\config\Config.json.bak-20260814
 AUTO-MAS\config\QueueConfig.json.bak-20260814
 MAA-v5.1.0-win-x64\config\gui.new.json.bak-20260814
-MaaEnd-win-x86_64-v1.6.5\config\mxu-MaaEnd.json.bak-20260814
 ```
+
+The older documents also listed
+`MaaEnd-win-x86_64-v1.6.5\config\mxu-MaaEnd.json.bak-20260814` under the claim
+that "everything touched was backed up first". **That file does not exist**
+(checked 2026-08-22), so the MaaEnd webhook edit went in without one. The claim
+was not true when it was written, or the backup was later removed; either way,
+do not rely on a backup being there because a document says so.
