@@ -4,7 +4,7 @@
 > documentation first. Do not start experimenting.**
 >
 > MAA has solved every problem this system has, and written it down.
-> [Its manual](https://github.com/MaaAssistantArknights/MaaAssistantArknights/tree/dev/docs/zh-cn/manual)
+> [Its manual](https://github.com/MaaAssistantArknights/MaaAssistantArknights/tree/dev-v2/docs/zh-cn/manual)
 > covers connection, emulators, the depot tool and the rest;
 > `resource/tasks/tasks.json` and `src/MaaCore/` hold the behaviour itself.
 > On 2026-08-22 an evening went into discovering by trial that LDPlayer's
@@ -223,7 +223,7 @@ device port = 5554 + index * 2
 ```
 
 So the address is computable, not something to discover by trial. MAA's own
-[connection guide](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/dev/docs/zh-cn/manual/connection.md)
+[connection guide](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/dev-v2/docs/zh-cn/manual/connection.md)
 also notes its auto-detection only handles **a single running emulator** - with
 multiple instances you must supply the address yourself.
 
@@ -430,6 +430,121 @@ done, drop a `skip-restore.json` in by hand to hand it back to the machinery:
 AUTO-MAS, so a skip engaged or restored while AUTO-MAS is running can be undone
 when AUTO-MAS next writes its in-memory copy out - the same trap CONFIG.md
 documents for hand edits. Verify with a read-back after the restore fires.
+
+## MAA's auto-battle (自动战斗 / Copilot) - studied, not yet run
+
+Read before touching it. Everything below is either from
+[MAA's own manual](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/dev-v2/docs/zh-cn/manual/introduction/copilot.md)
+and [integration protocol](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/dev-v2/docs/zh-cn/protocol/integration.md),
+or measured on this machine on 2026-08-22.
+
+Note MAA's default branch is **`dev-v2`**, not `dev` - a `dev` URL 404s.
+
+### What it is
+
+A copilot ("作业") is a JSON timeline for one stage: which operators, which
+skills, and an ordered `actions` list of deploy / skill / retreat steps, each
+gated on kills, cost, cost change, cooling count or elapsed time. MAA replays
+it. It is not a solver - it does exactly what the file says, so a file written
+for a different roster or a different stage fails rather than adapts.
+
+### Prerequisites - both are hard requirements
+
+| Requirement | Status here |
+|---|---|
+| **60+ stable FPS** in the emulator | **unverified** - LDPlayer stores no fps key in `leidian1000.config` or the global `leidians.config`, so it is on the default and can only be confirmed in the emulator's own settings UI |
+| Touch mode **MiniTouch or MaaTouch** | **OK** - the `Default` profile (the one the queue runs, `emulator-7554`) is `MiniTouch`; the second profile is `MaaTouch` |
+
+`ConnectSettings/TouchMode` in `config\gui.new.json` holds this. **Plain ADB
+`input tap` - what this system uses for manual poking - is not one of the
+accepted modes.** Deployment is a press-drag-release with a direction flick and
+frame-accurate timing; the tap-based approach used to read the depot cannot do
+it, which is why this is MAA's job and not something to reimplement.
+
+### Where a copilot comes from
+
+- **prts.plus 神秘代码**, pasted into MAA's 自动战斗 box, or
+- **a local JSON file**.
+
+Both routes are open from the game machine - measured 2026-08-22: `prts.plus`
+returned HTTP 200 three times out of three and the API MAA actually calls,
+`prts.maa.plus/copilot/get/<id>`, returned 200. **This is not the same as
+`prts.wiki`, which 403s from that address.** Do not generalise either result to
+the other host.
+
+There is already a local library: 39 files in
+`MAA-v5.1.0-win-x64\config\copilot\` (`ME-*`, `AD-EX-*`, `15-3`, `15-4`, ...)
+plus MAA's bundled `resource\copilot\`.
+
+### Which screen it has to start from - this is the usual failure
+
+| Mode | Start MAA here |
+|---|---|
+| single copilot | the formation screen, the one with **开始行动** |
+| 战斗列表 (battle list) | the **map screen** holding those stages, not the formation screen |
+| 保全派驻 | after doing the initial setup by hand, at **开始部署** |
+| 悖论模拟 | **自动编队 off**, skills chosen by hand, at **开始模拟** |
+
+For a battle list, every stage must be in one area - reachable by swiping the
+map left and right only. The list stops itself on insufficient sanity, a lost
+battle, or a non-3-star clear.
+
+### Auto-formation wipes the current formation
+
+`自动编队` **clears whatever is in the formation** and rebuilds it from the
+copilot's operator list. Two consequences worth knowing before the first run:
+
+- 特别关注 (special-focus) marks on those operators must be cleared, or the
+  pick fails.
+- MAA does **not** borrow a support unit unless `support_unit_usage` says so,
+  and loop counts are meaningless when borrowing.
+
+`LoopTimes` applies to single-copilot mode only, never to a battle list.
+Current settings: `Default` profile has `SelectFormation=1`, `LoopTimes=3`,
+`SupportMode=WhenNeeded`, and an empty `TaskList`.
+
+### AUTO-MAS cannot start it - this is the blocker
+
+AUTO-MAS's MAA integration exposes only `IfFight`, `IfSeizeEntrustTask`,
+`SanityTaskType` and `TaskTransitionMethod`. There is **no copilot field**, so a
+copilot cannot be put in the nightly queue the way farming is. Two routes exist:
+
+1. **Drive MAA's GUI** through `ark-do` - `focus`, then `uiclick`, since MAA's
+   window is the Electron-style UI that swallows plain clicks.
+2. **Call MaaCore's `Copilot` task** directly, which is what the GUI does
+   underneath:
+
+```json
+{
+  "enable": true,
+  "filename": "copilot/1-7.json",
+  "loop_times": 2,
+  "formation": true,
+  "formation_index": 0,
+  "use_sanity_potion": false,
+  "support_unit_usage": 0
+}
+```
+
+`copilot_list` replaces `filename` for a battle list, each entry being
+`{filename, nav_name_override, is_raid}`; with a list, `loop_times` is ignored
+and `set_params` may be called only once.
+
+### Before the first real run
+
+1. Confirm the emulator's frame rate in its settings UI (the config file cannot
+   answer it).
+2. Pick a stage that costs little to fail.
+3. Expect the formation to be rebuilt - do not run it on a formation that
+   matters.
+4. Watch the first attempt with a screenshot, not by trusting the exit code.
+
+### Unrelated finding worth acting on
+
+`cache\gui\StageActivityV2.json` still lists `SSReopen-AT` and `TO-*` as the
+current side stories. **That cache is stale**, and it is what the daily report's
+event countdown reads, so the countdown cannot be trusted for the event that
+opened 2026-08-22 until MAA refreshes it.
 
 ## Changing game configuration
 
