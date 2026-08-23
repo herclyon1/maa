@@ -156,7 +156,7 @@ purely time-triggered, with 15 min of slack in the morning and 10 in the evening
 | MAA `RoutineTimeLimit` | `45` min (was 10 - too short, ran into false timeouts) |
 | MaaEnd path | `D:\maaend\MaaEnd-win-x86_64-v1.6.5` |
 | MaaEnd `RunTimeLimit` | `40` min (was 10) |
-| `Info.Stage` / `StageMode` | `1-7` / `Fixed` |
+| `Info.Stage` / `StageMode` | `AT-4` / `Fixed` |
 | `Info.MedicineNumb` | `0` - do not use sanity potions |
 | `Info.Annihilation` | `Close` - **but see below** |
 | `Game/WaitTime` | `60` s (**hard floor, see below**) |
@@ -164,7 +164,7 @@ purely time-triggered, with 15 min of slack in the morning and 10 in the evening
 | MaaEnd controller | `Win32-Front` - foreground, needs the game window frontmost and unobstructed |
 | `Task.SanityTaskType` | `OperatorProgression` (single choice) |
 
-<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/Stage 1-7 -->
+<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/Stage AT-4 -->
 <!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/StageMode Fixed -->
 <!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/MedicineNumb 0 -->
 <!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/Annihilation Close -->
@@ -179,7 +179,22 @@ reopens it and the weekly reward stops being collected indefinitely. The daily
 plan prints the switch's state for exactly this reason; if it reads
 `剿灭 本周已完成/关闭` on a Monday, check that file.
 
-### Why the stage is 1-7, and what that means for material planning
+### The stage is AT-4 until the event ends - then it must be changed
+
+**Changed from 1-7 to AT-4 on 2026-08-23**, at the operator's instruction, to
+farm the 墟 event. AT-4's listed value is 搓玉效率 0.91.
+
+⚠️ **AT-4 stops existing when the event closes, 2026-09-01 04:00 server time.**
+A fixed stage that no longer exists fails every run after that. The relay's
+daily report carries an activity countdown and flags an event that has ended,
+but **changing the stage back is a manual act** - nothing does it automatically.
+
+The alternative is AUTO-MAS's own `Task/IfActivityFirst` (界面上的「优先刷取活动关」),
+which asks each run whether an event is live: if so it farms the event stage at
+`ActivityStageIndex`, and if not it falls back to the fixed stage. That is the
+setting to use if this should stop needing a human.
+
+### Why the fallback stage is 1-7, and what that means for material planning
 
 1-7 is farmed daily for 固源岩 (T2 green), which is the input to the operator's
 standing 搓玉 loop:
