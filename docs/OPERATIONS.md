@@ -487,6 +487,80 @@ AUTO-MAS, so a skip engaged or restored while AUTO-MAS is running can be undone
 when AUTO-MAS next writes its in-memory copy out - the same trap CONFIG.md
 documents for hand edits. Verify with a read-back after the restore fires.
 
+## Driving all three without a window
+
+The desktop is only composited while something consumes frames, so with nobody
+watching, screen grabs return a stale frame and MAA's window comes back blank.
+Every one of these three programs can be driven without its UI, and that is the
+direction this system is moving.
+
+### AUTO-MAS - a FastAPI backend, 126 endpoints
+
+The Electron window is a shell over a Python backend that serves a REST API.
+Because it is FastAPI, the machine itself publishes the contract:
+
+```bash
+# the backend is the python.exe running main.py; find the port it listens on
+netstat -ano | findstr LISTENING | findstr <pid>
+curl http://127.0.0.1:<port>/openapi.json      # measured 2026-08-23: port 36163
+```
+
+**The port looked dynamic** - do not hard-code 36163 without checking. Verified
+by fetching the spec live: 126 paths, almost all `POST` with a JSON body.
+
+The ones that matter here:
+
+| Endpoint | What it replaces |
+|---|---|
+| `/api/dispatch/start` `{taskId, mode}` | triggering a queue by hand |
+| `/api/dispatch/stop` | stopping a run |
+| `/api/dispatch/set/power` `{signal}` · `get/power` · `cancel/power` | the power-off decision |
+| `/api/queue/*` (add / update / item / time / order / delete) | the stop-edit-restart JSON dance on `QueueConfig.json` |
+| `/api/scripts/user/update` · `/api/scripts/get` | editing `ScriptConfig.json` by hand |
+| `/api/setting/get` · `/api/setting/update` | editing `Config.json` by hand |
+| `/api/info/get/overview` | reading the home page off a screenshot - it returns the live activity stages, their drops and expiry |
+| `/api/ocr/screenshot` · `/api/ocr/screenshot/adb` · `/api/ocr/click/text` · `/api/ocr/click/image` | ark-do clicking, and blind coordinate taps |
+| `/api/history/search` · `/api/history/data` | scraping the history directory |
+| `/api/emulator/operate` · `/api/emulator/status` | `ldconsole` through ark-do |
+| `/api/scripts/maa/depot/items` `{scriptId}` | the 库存保持 item list |
+| `/api/scripts/maaend/options` `{scriptId}` | MaaEnd's task list |
+
+**This removes the reason config edits needed the program stopped.** The API
+writes through the running backend, so there is no in-memory copy to be
+clobbered - which was the whole basis of the stop-edit-restart procedure.
+
+Not yet verified: whether the API is reachable over Tailscale (it binds
+`0.0.0.0`), and whether it needs authentication. Check both before relying on
+it from here.
+
+### MAA - MaaCore, already in use
+
+`scripts/windows/copilot-drive.py` drives it through the binding MAA ships at
+`Python/asst/`. See the copilot section below.
+
+### MaaEnd - MaaFramework
+
+MaaEnd is built on MaaFramework, whose Go/Python bindings and CLI are the same
+shape as MaaCore's. Its own agent is a Go service plus C++ algorithms, so the
+headless surface exists; it has not been exercised here yet.
+
+**MaaEnd has no material-inventory readout.** Checked against its task
+documentation and feature list on 2026-08-23. What it does have is adjacent and
+not the same thing:
+
+- **库存转移** moves stock between regions on the 帝江号 - a mover, not a reader.
+- **自动囤货 / 售卖弹性物资** keep supplies topped up against an `item_map.json`
+  of internal item ids, for trading.
+- **情报档案库** scans the archive and can export what is *missing* to Open
+  Endfieldmap - archive entries, not materials.
+- **WeaponInventoryScan** reads the weapon list; **基质筛选** reads and locks
+  substrates by attribute.
+
+So a full "how many of each material do I hold" pass, the way MAA's 仓库识别
+does it for Arknights, does not exist in MaaEnd. The nearest buildable
+equivalent is AUTO-MAS's own OCR endpoints (`/api/ocr/screenshot/adb` plus
+`/api/ocr/check/text`) driving the depot screens directly.
+
 ## MAA's auto-battle (自动战斗 / Copilot) - run, 2026-08-23
 
 Read before touching it. Everything below is either from

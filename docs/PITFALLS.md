@@ -629,3 +629,33 @@ only when the WMI subscription fails. The real path doubles `revive_wait` from
 180 s to a 1800 s cap, exactly as its alert message claims. Reading one
 constant is not reading the code path.
 
+## Fixing a crash re-arms everything the crash was suppressing
+
+2026-08-23. Two bugs had been silently disabling the relay: `Engine._boot_time`
+was called from three places and never defined, and AUTO-MAS v5.4.0-beta.7
+renamed its history records from `05-00-01.json` to `MAA-05-00-00.json`, which
+the filename parser rejected. Between them: no records ingested, no ledger, no
+report, no power-off, and a missed-run alarm for a queue that had succeeded.
+
+Both were fixed and deployed. The relay then did exactly what it is supposed to
+do - ingested the day's runs, sent the report, found the day's work complete,
+and **powered the machine off**, twenty minutes after the operator had said to
+keep it up. Debug mode had expired at 08:30 and nothing else was holding it.
+
+The mistake was not the fix. It was not seeing that **a suppressed behaviour is
+still configured**: the shutdown had not been turned off, only broken. Restoring
+the code restored it. Before repairing anything that has been failing quietly,
+ask what it will start doing again the moment it works, and gate that first.
+
+Two smaller lessons from the same morning:
+
+- **A service that catches per-tick exceptions hides this class of bug.** The
+  relay stayed up, logged an AttributeError every tick, and did none of the
+  work that followed. `relay/tests/test_self_attrs.py` now checks statically
+  that every `self.x` in the package exists, which fails on exactly this.
+- **Upstream renames arrive as silence.** Nothing errored when the record
+  filenames changed - `parse_record` returned None and the records simply
+  vanished. A parser that can reject input needs a test for the shape it
+  rejects, not only the shape it accepts.
+
+
