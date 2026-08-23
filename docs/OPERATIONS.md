@@ -528,10 +528,32 @@ The ones that matter here:
 **This removes the reason config edits needed the program stopped.** The API
 writes through the running backend, so there is no in-memory copy to be
 clobbered - which was the whole basis of the stop-edit-restart procedure.
+Verified end to end on 2026-08-23: read a setting, write the opposite, read it
+back changed, restore it - all over HTTP from the Mac, with AUTO-MAS running.
 
-Not yet verified: whether the API is reachable over Tailscale (it binds
-`0.0.0.0`), and whether it needs authentication. Check both before relying on
-it from here.
+**Reachable from here, and unauthenticated.** `http://<tailscale-ip>:36163`
+answers directly; the port survived a reboot. It binds `0.0.0.0`, so anything
+that can route to the machine can drive it. Fine on Tailscale, not fine on an
+untrusted network - if this box ever leaves that private network, this is the
+first thing to close.
+
+**Mutating endpoints wrap their payload in `data`.** This is the one trap:
+
+```jsonc
+// /api/setting/update
+{"data": {"Function": {"IfBlockAd": true}}}
+// /api/queue/update
+{"queueId": "<uid>", "data": {"Info": {"TimeEnabled": false}}}
+// /api/scripts/user/update
+{"scriptId": "<uid>", "userId": "<uid>", "data": {...}}
+```
+
+Sending the inner object alone returns something that is not the usual
+envelope and changes nothing - a silent no-op. Read the schema out of
+`/openapi.json` rather than guessing the shape:
+`scripts/mac/mas-api.py paths` prints every endpoint with its required fields.
+
+The client lives at `scripts/mac/mas-api.py`.
 
 ### MAA - MaaCore, already in use
 
