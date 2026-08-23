@@ -270,8 +270,16 @@ def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
     except (ValueError, IndexError):
         return None
 
+    # AUTO-MAS names these files by the run's start time on a UTC+4 clock.
+    # v5.4.0-beta.7 started prefixing them with the script name, so the same
+    # record is "05-00-01.json" on 2026-08-22 and "MAA-05-00-00.json" on
+    # 2026-08-23. Parsing only the bare form silently dropped every record the
+    # morning after that update: an empty ledger, no report, no power-off, and
+    # a "该跑没跑" alarm for a queue that had in fact succeeded.
+    stem_time = stem.rsplit("-", 3)[-3:]
+    stem_time = "-".join(stem_time) if len(stem_time) == 3 else stem
     try:
-        started = datetime.strptime(f"{date_str} {stem}", "%Y-%m-%d %H-%M-%S")
+        started = datetime.strptime(f"{date_str} {stem_time}", "%Y-%m-%d %H-%M-%S")
     except ValueError:
         return None
     started = started.replace(tzinfo=AUTOMAS_NAME_TZ).astimezone(SERVER_TZ)
