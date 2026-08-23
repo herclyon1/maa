@@ -45,6 +45,13 @@ LOCAL_PS="$(mktemp)"
   echo '$ErrorActionPreference = "Continue"'
   echo '$ProgressPreference = "SilentlyContinue"'
   if [ "$MODE" = ps ]; then
+    # A child process that writes UTF-8 (python with PYTHONUTF8, curl, git) is
+    # decoded by whatever [Console]::OutputEncoding says. Pin it to UTF-8 so
+    # their output survives capture; without this the bytes are read as GBK.
+    echo '[Console]::OutputEncoding = [Text.Encoding]::UTF8'
+    echo '$OutputEncoding = [Text.Encoding]::UTF8'
+    echo '$env:PYTHONUTF8 = "1"'
+    echo '$env:PYTHONIOENCODING = "utf-8"'
     printf '$out = & {\n%s\n} 2>&1 | Out-String\n' "$CMD"
   else
     # chcp 65001 first: cmd's default codepage here is 936, so a UTF-8
@@ -57,8 +64,17 @@ LOCAL_PS="$(mktemp)"
   echo '[IO.File]::WriteAllText("C:\ProgramData\winrun.out", $out, (New-Object Text.UTF8Encoding($false)))'
 } > "$LOCAL_PS"
 
+# Delete the previous output first. Without this, a command that fails to
+# produce output leaves the last run's file in place - and reading that as if
+# it were the current result is exactly how stale data gets reported as fresh.
+ssh -o ConnectTimeout=30 "$USER_AT" 'del /Q C:\ProgramData\winrun.out 2>nul' >/dev/null 2>&1 || true
 scp -q -o ConnectTimeout=30 "$LOCAL_PS" "${USER_AT}:C:/ProgramData/winrun.ps1"
-ssh -o ConnectTimeout=90 "$USER_AT" 'powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\winrun.ps1' >/dev/null 2>&1 || true
+# Prefer PowerShell 7: it defaults to UTF-8 everywhere, so Get-Content on a
+# UTF-8 file is simply correct, where Windows PowerShell 5.1 would decode it as
+# ANSI and destroy it. 5.1 stays as the fallback because it is always present.
+ssh -o ConnectTimeout=90 "$USER_AT" \
+  'if exist "C:\Program Files\PowerShell\7\pwsh.exe" ("C:\Program Files\PowerShell\7\pwsh.exe" -NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\winrun.ps1) else (powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\winrun.ps1)' \
+  >/dev/null 2>&1 || true
 TMP="$(mktemp)"
 scp -q -o ConnectTimeout=30 "${USER_AT}:C:/ProgramData/winrun.out" "$TMP"
 python3 -c "$STRIP" "$TMP"

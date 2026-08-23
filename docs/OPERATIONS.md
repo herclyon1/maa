@@ -49,6 +49,46 @@ is closed happens either on the game machine or in GitHub Actions.
 must live in `C:\ProgramData\ssh\administrators_authorized_keys` - for accounts
 in the Administrators group, sshd does not read the user's own directory.
 
+## Runtimes: independent, not borrowed
+
+Both machines run their own Python now, and the game machine has PowerShell 7.
+
+| | Was | Is | Why |
+|---|---|---|---|
+| Game machine, relay | AUTO-MAS's embedded `environment\python\python.exe` | `C:\Program Files\Python314\python.exe` | **A watchdog must not depend on the runtime of the program it watches.** AUTO-MAS moving, replacing or breaking its bundled interpreter would take the relay down with it - and the relay exists precisely for when AUTO-MAS is in trouble |
+| Game machine, shell | Windows PowerShell 5.1 only | + `pwsh` 7.6.5 | 5.1 reads files as ANSI and cannot be changed; 7 is UTF-8 by default |
+| This Mac | Apple's Python 3.9 (frozen, deprecated) | `~/.local/bin/python3.14` via `uv` | 3.9 cannot run modern syntax; Apple's copy is an OS component and must not be replaced |
+
+Bundling a runtime inside an application is for making *that application* easy
+to deploy. Borrowing it for something else inherits every one of its upgrades
+as a risk.
+
+### Re-registering the relay service on a new interpreter
+
+```bash
+scripts/mac/winrun.sh 'net stop ark-relay'
+scripts/mac/winrun.sh --ps 'Set-Location C:\ProgramData\ark-relay; & "C:\Program Files\Python314\python.exe" service.py --startup auto update'
+scripts/mac/winrun.sh 'net start ark-relay'
+```
+
+`update` re-points the service at whichever interpreter runs it, and is
+reversible by running the same command with the other one. Install `pywin32`
+first (`pip install pywin32 -i https://pypi.tuna.tsinghua.edu.cn/simple` - the
+Tsinghua mirror, PyPI direct is slow from that machine) and confirm every relay
+module imports under the new interpreter **before** touching the service.
+
+### Downloading anything onto that machine
+
+- **Use `curl.exe`, not `Invoke-WebRequest`.** Measured 2026-08-23 on the same
+  file and mirror: PowerShell managed 19 MB in 24 minutes, curl did 108 MB in
+  85 seconds. Its progress rendering is the difference, not the network.
+- **GitHub release assets need a mirror.** `github.com` times out; `ghfast.top`
+  served at 1.26 MB/s. `gh-proxy.com` answers HEAD but stalls on the body.
+  python.org and the Tsinghua PyPI mirror are both reachable directly.
+- **A stalled download holds its output file open.** curl then fails with
+  `(23) Failed writing received data to disk` and `del` silently does nothing.
+  Kill the old process before retrying, or the retry cannot succeed.
+
 ## Paths on the game machine
 
 ```

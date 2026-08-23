@@ -685,6 +685,12 @@ And one trap that looks like a fix: **piping everything through
 shredded, so it works sometimes and silently corrupts the rest - which is worse
 than a consistent failure.
 
+The root fix for the first cause is **PowerShell 7**, which is UTF-8 by
+default: `Get-Content file.json -Raw` on a UTF-8 file is simply correct there,
+with no `-Encoding` and nothing to remember. Windows PowerShell 5.1 cannot be
+changed - like `cmd.exe`, it is a frozen OS component kept bug-compatible on
+purpose - so the answer is to stop using it, not to work around it.
+
 `scripts/mac/winrun.sh` encodes all of this:
 
 - `--get <path>` copies a file as bytes and decodes it here. **File contents
@@ -693,5 +699,12 @@ than a consistent failure.
   no console sits in the path.
 - the generated `.ps1` carries a BOM and `cmd` invocations are prefixed with
   `chcp 65001`, so Chinese works on the command line too.
+- it runs under `pwsh` 7 when present, falling back to 5.1 only if it is not.
+- it pins `[Console]::OutputEncoding` and `PYTHONUTF8` so a child process that
+  writes UTF-8 - python, curl, git - survives being captured.
+- **it deletes the previous output file before every run.** Without that, a
+  command that fails to produce output leaves the last run's file behind, and
+  reading that as the current result is the same failure mode in a new costume:
+  stale data reported as fresh.
 
 
