@@ -533,6 +533,37 @@ class Engine:
             return True
         return False
 
+    def _boot_time(self, now: datetime | None = None) -> datetime | None:
+        """When this machine last booted, or None when it cannot be told.
+
+        Uptime, not the relay's own start time. The relay restarts itself for
+        every selfupdate, so `self._started_at` moves - and an update that ran
+        past a queue's time made the new process disqualify itself from
+        reporting the missed run, on precisely the boot where something had
+        already gone slowly enough to be worth knowing about.
+
+        `GetTickCount64` is milliseconds since boot and never needs a clock
+        that agrees with anything. It is Windows-only; anywhere else this
+        returns None and the callers fall back to their own start time, which
+        is the conservative direction - a missed-run alarm that is skipped
+        beats one invented out of a wrong boot time.
+
+        This method was referenced from three places since 2026-08-21 and never
+        actually written. It raised AttributeError inside `_check_missed_runs`,
+        which the service loop caught and logged, so the relay stayed up while
+        silently doing none of the work that follows: no missed-run alarms, no
+        daily report, no power-off. See PITFALLS.
+        """
+        now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+        try:
+            import ctypes  # noqa: PLC0415 - Windows only, imported where used
+            ms = ctypes.windll.kernel32.GetTickCount64()
+        except (AttributeError, OSError):
+            return None
+        if not ms or ms < 0:
+            return None
+        return now - timedelta(milliseconds=int(ms))
+
     def _recent_entries(self, now: datetime) -> list[dict]:
         """Today's ledger plus yesterday's, for queue-completion checks.
 
