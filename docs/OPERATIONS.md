@@ -91,16 +91,29 @@ module imports under the new interpreter **before** touching the service.
 
 ## Paths on the game machine
 
+The three programs live under `D:\ark\` with names that carry no version:
+
 ```
-D:\Users\Administrator\Desktop\AUTO-MAS\            scheduler (Electron + embedded Python)
+D:\ark\automas\   D:\ark\maa\   D:\ark\maaend\
+```
+
+**Renamed 2026-08-24, because the old names lied.** `MAA-v5.1.0-win-x64` held
+v6.17.0; `MaaEnd-win-x86_64-v1.6.5` held v2.26.0-beta.3. Both self-update in
+place and neither renames its folder, so the name freezes at whatever was first
+downloaded - and it misled three separate investigations in one day, twice
+badly enough to reach a wrong conclusion. A directory name is not a version;
+`MAA.exe`'s `FileVersion` and MaaEnd's `interface.json` are.
+
+```
+D:\ark\automas\            scheduler (Electron + embedded Python)
   config\Config.json                                global settings incl. notifications
   config\QueueConfig.json                           queues and their times
   config\ScriptConfig.json                          per-user script settings (stage, medicine, ...)
   history\<YYYY-MM-DD>\<user>\<HH-MM-SS>.json+.log  one run record per script per attempt
-D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64\  Arknights bot
+D:\ark\maa\  Arknights bot
   config\gui.new.json                               the live config; gui.json is a dead older format
   cache\gui\StageActivityV2.json                    event end times, source of the report countdown
-D:\maaend\MaaEnd-win-x86_64-v1.6.5\                 Endfield bot
+D:\ark\maaend\                 Endfield bot
 C:\ProgramData\ark-relay\                           the relay; Windows service "ark-relay"
   relay.log                                         its log
   state\                                            ledger-<date>.jsonl, seen.txt, pending.json,
@@ -111,13 +124,13 @@ C:\ProgramData\ark-shot.ps1 / ark-shot.png             one-shot screenshot
 C:\ProgramData\focus-watch.log                         foreground-window log
 ```
 
-<!-- check: win D:\Users\Administrator\Desktop\AUTO-MAS -->
-<!-- check: win D:\Users\Administrator\Desktop\AUTO-MAS\config\ScriptConfig.json -->
-<!-- check: win D:\Users\Administrator\Desktop\AUTO-MAS\config\QueueConfig.json -->
-<!-- check: win D:\Users\Administrator\Desktop\AUTO-MAS\config\Config.json -->
-<!-- check: win D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64\config\gui.new.json -->
-<!-- check: win D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64\cache\gui\StageActivityV2.json -->
-<!-- check: win D:\maaend\MaaEnd-win-x86_64-v1.6.5 -->
+<!-- check: win D:\ark\automas -->
+<!-- check: win D:\ark\automas\config\ScriptConfig.json -->
+<!-- check: win D:\ark\automas\config\QueueConfig.json -->
+<!-- check: win D:\ark\automas\config\Config.json -->
+<!-- check: win D:\ark\maa\config\gui.new.json -->
+<!-- check: win D:\ark\maa\cache\gui\StageActivityV2.json -->
+<!-- check: win D:\ark\maaend -->
 <!-- check: win C:\ProgramData\ark-relay -->
 <!-- check: win C:\ProgramData\ark-do.ps1 -->
 <!-- check: win C:\ProgramData\ark-shot.ps1 -->
@@ -166,7 +179,7 @@ through a scheduled task running in the interactive session.
 
 ```bash
 cat > cmd.txt <<'EOF'
-run D:\Users\Administrator\Desktop\AUTO-MAS\AUTO-MAS.exe
+run D:\ark\automas\AUTO-MAS.exe
 sleep 20000
 click 264 345
 shot C:\ProgramData\s1.png
@@ -786,7 +799,7 @@ returned HTTP 200 three times out of three and the API MAA actually calls,
 the other host.
 
 There is already a local library: 39 files in
-`MAA-v5.1.0-win-x64\config\copilot\` (`ME-*`, `AD-EX-*`, `15-3`, `15-4`, ...)
+`D:\ark\maa\config\copilot\` (`ME-*`, `AD-EX-*`, `15-3`, `15-4`, ...)
 plus MAA's bundled `resource\copilot\`.
 
 ### Which screen it has to start from - this is the usual failure

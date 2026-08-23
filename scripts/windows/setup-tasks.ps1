@@ -11,14 +11,14 @@ schtasks /create /tn "ark-shot" /tr "$ps C:\ProgramData\ark-shot.ps1" /sc once /
 
 # AUTO-MAS autostart. Its own set_SelfStart() is supposed to create this but
 # was observed to fail silently, so create it explicitly.
-$exe = "D:\Users\Administrator\Desktop\AUTO-MAS\AUTO-MAS.exe"
+$exe = "D:\ark\automas\AUTO-MAS.exe"
 schtasks /create /tn "AUTO-MAS_AutoStart" /tr "`"$exe`"" /sc onlogon /rl highest /f
 
 # Foreground-window logger, started at logon. It exists to capture what has the
 # focus when MaaEnd's first attempt dies seconds after connecting - the cause is
 # still unconfirmed and the evidence only exists while the failure happens.
 # Runs on AUTO-MAS's embedded Python; there is no other interpreter installed.
-$py = "D:\Users\Administrator\Desktop\AUTO-MAS\environment\python\pythonw.exe"
+$py = "D:\ark\automas\environment\python\pythonw.exe"
 schtasks /create /tn "ark-focus-watch" /tr "`"$py`" C:\ProgramData\focus-watch.py" /sc onlogon /rl highest /f
 
 # Keep sshd alive - it is the single point of failure for all remote access.

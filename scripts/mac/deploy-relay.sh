@@ -13,7 +13,7 @@ set -euo pipefail
 HOST="${ARK_HOST:?请先 export ARK_HOST=<游戏机 Tailscale IP>}"
 USER_AT="Administrator@${HOST}"
 REMOTE_DIR='C:/ProgramData/ark-relay'
-PY='D:\Users\Administrator\Desktop\AUTO-MAS\environment\python\python.exe'
+PY='D:\ark\automas\environment\python\python.exe'
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../relay" && pwd)"
 
 cd "$HERE"

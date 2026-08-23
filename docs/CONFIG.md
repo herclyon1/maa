@@ -107,7 +107,7 @@ user has it true; this machine does.
 
 ## AUTO-MAS
 
-`D:\Users\Administrator\Desktop\AUTO-MAS`, v5.3.1.
+`D:\ark\automas`, v5.3.1.
 
 ### config/Config.json (global)
 
@@ -122,12 +122,12 @@ user has it true; this machine does.
 | `Start.IfMinimizeDirectly` | `true` | stay out of the game window's way |
 | `Function.IfAllowSleep` | `false` | actively blocks system sleep |
 
-<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\Config.json Notify/IfServerChan False -->
-<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\Config.json Notify/IfSendStatistic False -->
-<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\Config.json Notify/IfSendMail False -->
-<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\Config.json Start/IfSelfStart True -->
-<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\Config.json Start/IfMinimizeDirectly True -->
-<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\Config.json Function/IfAllowSleep False -->
+<!-- check: json D:\ark\automas\config\Config.json Notify/IfServerChan False -->
+<!-- check: json D:\ark\automas\config\Config.json Notify/IfSendStatistic False -->
+<!-- check: json D:\ark\automas\config\Config.json Notify/IfSendMail False -->
+<!-- check: json D:\ark\automas\config\Config.json Start/IfSelfStart True -->
+<!-- check: json D:\ark\automas\config\Config.json Start/IfMinimizeDirectly True -->
+<!-- check: json D:\ark\automas\config\Config.json Function/IfAllowSleep False -->
 
 ### config/QueueConfig.json
 
@@ -137,9 +137,9 @@ user has it true; this machine does.
 | `新队列` | `StartUpEnabled` | `false` | see below |
 | `Evening-MAA` | `AfterAccomplish` | `NoAction` | same |
 
-<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\QueueConfig.json */Info/AfterAccomplish NoAction -->
-<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\QueueConfig.json */Info/StartUpEnabled False -->
-<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\QueueConfig.json */Info/TimeEnabled True -->
+<!-- check: json D:\ark\automas\config\QueueConfig.json */Info/AfterAccomplish NoAction -->
+<!-- check: json D:\ark\automas\config\QueueConfig.json */Info/StartUpEnabled False -->
+<!-- check: json D:\ark\automas\config\QueueConfig.json */Info/TimeEnabled True -->
 
 `StartUpEnabled` means "run this queue whenever the program starts, regardless of
 the clock" - and booting looks identical morning and evening. Left on, the BIOS
@@ -152,9 +152,9 @@ purely time-triggered, with 15 min of slack in the morning and 10 in the evening
 
 | Item | Value |
 |---|---|
-| MAA path | `D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64` |
+| MAA path | `D:\ark\maa` |
 | MAA `RoutineTimeLimit` | `45` min (was 10 - too short, ran into false timeouts) |
-| MaaEnd path | `D:\maaend\MaaEnd-win-x86_64-v1.6.5` |
+| MaaEnd path | `D:\ark\maaend` |
 | MaaEnd `RunTimeLimit` | `40` min (was 10) |
 | `Info.Stage` / `StageMode` | `AT-4` / `Fixed` |
 | `Info.MedicineNumb` | `0` - do not use sanity potions |
@@ -164,11 +164,11 @@ purely time-triggered, with 15 min of slack in the morning and 10 in the evening
 | MaaEnd controller | `Win32-Front` - foreground, needs the game window frontmost and unobstructed |
 | `Task.SanityTaskType` | `OperatorProgression` (single choice) |
 
-<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/Stage AT-4 -->
-<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/StageMode Fixed -->
-<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/MedicineNumb 0 -->
-<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/Annihilation Close -->
-<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\ScriptConfig.json */Game/WaitTime 60 -->
+<!-- check: json D:\ark\automas\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/Stage AT-4 -->
+<!-- check: json D:\ark\automas\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/StageMode Fixed -->
+<!-- check: json D:\ark\automas\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/MedicineNumb 0 -->
+<!-- check: json D:\ark\automas\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/Annihilation Close -->
+<!-- check: json D:\ark\automas\config\ScriptConfig.json */Game/WaitTime 60 -->
 
 **`Info.Annihilation` is asymmetric and the asymmetry is silent.** AUTO-MAS
 offers only a static switch - there is no "once a week" it can express - so the
@@ -327,7 +327,7 @@ if mode == "任务结果" and (
 | `Notify/Enabled`, one per user | `config/ScriptConfig.json` | that user's notifications |
 | `Notify/SendTaskResultTime`, global | `config/Config.json` | "task result" pushes: `不推送` / `任何时刻` / `仅失败时` |
 
-<!-- check: json D:\Users\Administrator\Desktop\AUTO-MAS\config\Config.json Notify/SendTaskResultTime 不推送 -->
+<!-- check: json D:\ark\automas\config\Config.json Notify/SendTaskResultTime 不推送 -->
 
 The per-user switch does not gate the global path. That is the whole reason
 turning it off changed nothing.
@@ -338,7 +338,7 @@ on one or two is indistinguishable from turning on none.
 
 ## MAA
 
-`D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64`.
+`D:\ark\maa`.
 
 **The directory name is not the version.** It is whatever the package was
 called when it was first unpacked; MAA updates itself in place and the folder
@@ -348,10 +348,10 @@ last updated 2026-08-20. `resource/version.json` carries the resource date, not
 the program version. Never quote the folder name as a version - it has been
 wrong here by a whole major release.
 
-<!-- check: json D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64\config\gui.new.json Configurations/*/Gui/ExternalNotification/SendWhenComplete False -->
-<!-- check: json D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64\config\gui.new.json Configurations/*/Gui/ExternalNotification/SendWhenError False -->
-<!-- check: json D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64\config\gui.new.json Configurations/Default/Gui/ExternalNotification/SendWhenError False -->
-<!-- check: json D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64\config\gui.new.json Configurations/Default/Gui/ExternalNotification/SendWhenStalled False -->
+<!-- check: json D:\ark\maa\config\gui.new.json Configurations/*/Gui/ExternalNotification/SendWhenComplete False -->
+<!-- check: json D:\ark\maa\config\gui.new.json Configurations/*/Gui/ExternalNotification/SendWhenError False -->
+<!-- check: json D:\ark\maa\config\gui.new.json Configurations/Default/Gui/ExternalNotification/SendWhenError False -->
+<!-- check: json D:\ark\maa\config\gui.new.json Configurations/Default/Gui/ExternalNotification/SendWhenStalled False -->
 
 **`RunDirectly: true` and `PostActions: "ExitArknights, ExitSelf"` on Default
 are the normal state** - MAA is launched by AUTO-MAS, runs, and closes the game
@@ -391,7 +391,7 @@ reads it to put the countdown in every report.
 
 ## MaaEnd
 
-`D:\maaend\MaaEnd-win-x86_64-v1.6.5`.
+`D:\ark\maaend`.
 
 Same trap as MAA: **the directory name is not the version.** The running build
 was `v2.25.0-rc.1` on 2026-08-21, read from the window title in

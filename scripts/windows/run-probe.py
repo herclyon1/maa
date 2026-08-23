@@ -12,7 +12,7 @@ import json
 import os
 import sys
 
-HISTORY = r"D:\Users\Administrator\Desktop\AUTO-MAS\history"
+HISTORY = r"D:\ark\automas\history"
 
 
 def main() -> None:

@@ -16,7 +16,7 @@ set -uo pipefail
 
 HOST="${ARK_HOST:?set ARK_HOST to the game machine Tailscale IP}"
 USER_AT="Administrator@${HOST}"
-PY_EXE='D:\Users\Administrator\Desktop\AUTO-MAS\environment\python\python.exe'
+PY_EXE='D:\ark\automas\environment\python\python.exe'
 PROBE_REMOTE='C:\Users\Administrator\ark-probe.py'
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DAY="${1:-$(TZ=Asia/Shanghai date +%F)}"

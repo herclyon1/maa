@@ -21,7 +21,7 @@ import sys
 import time
 from pathlib import Path
 
-MAA = Path(r"D:\Users\Administrator\Desktop\MAA-v5.1.0-win-x64")
+MAA = Path(r"D:\ark\maa")
 ADB = r"D:\LD-MRFZ\LDPlayer9\adb.exe"
 ADDRESS = "127.0.0.1:7555"          # what the GUI itself connects to
 TOUCH = "minitouch"                  # copilot requires minitouch or maatouch
