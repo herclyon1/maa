@@ -566,22 +566,38 @@ MaaEnd is built on MaaFramework, whose Go/Python bindings and CLI are the same
 shape as MaaCore's. Its own agent is a Go service plus C++ algorithms, so the
 headless surface exists; it has not been exercised here yet.
 
-**MaaEnd has no material-inventory readout.** Checked against its task
-documentation and feature list on 2026-08-23. What it does have is adjacent and
-not the same thing:
+**MaaEnd does have an inventory readout - IMS.** An earlier reading of its
+feature list said otherwise; that was wrong. The feature is not advertised as
+"check my depot" because it exists to answer "do I have enough", so it is easy
+to miss from the outside.
 
-- **库存转移** moves stock between regions on the 帝江号 - a mover, not a reader.
-- **自动囤货 / 售卖弹性物资** keep supplies topped up against an `item_map.json`
-  of internal item ids, for trading.
-- **情报档案库** scans the archive and can export what is *missing* to Open
-  Endfieldmap - archive entries, not materials.
-- **WeaponInventoryScan** reads the weapon list; **基质筛选** reads and locks
-  substrates by attribute.
+IMS (Item Management System) lives in MaaEnd's go-service and is documented at
+`docs/zh_cn/developers/components/ims.md`. Two recognisers and three actions:
 
-So a full "how many of each material do I hold" pass, the way MAA's 仓库识别
-does it for Arknights, does not exist in MaaEnd. The nearest buildable
-equivalent is AUTO-MAS's own OCR endpoints (`/api/ocr/screenshot/adb` plus
-`/api/ocr/check/text`) driving the depot screens directly.
+| Node | Does |
+|---|---|
+| `SyncItemData` | scan the current screen and write **the whole table** into cache |
+| `SyncShopItemData` / `SyncValuablesItemData` | the same for 采购中心 and 珍贵物品页 |
+| `AddItemData` | scan and *add* to the cache |
+| `UpdateItemQuantity` | adjust one item |
+| `ItemQuantitySatisfied` / `ItemDataReady` | test the cache against a condition |
+
+**The result is a file:** `<MaaEnd>/debug/record/IMS.json`, `{updated_at,
+items: {<id>: <count>}}`. Reading it needs no automation at all.
+
+**It is already being filled every day.** Of MaaEnd's task entries only
+`ProtocolSpace.json` (协议空间) reaches `SyncItemData`, and 协议空间 is in the
+nightly run - which is why the file exists. The chain is
+`SyncItemData -> SyncItemDataBegin -> SyncItemDataInProgressionTab ->
+SyncItemDataRunFull`, so that pass is **already the full scan**, not a partial
+one. To refresh it, run the MaaEnd script and re-read the file.
+
+Item ids map through `assets/data/IconRecognition/recognition_items.json` (782
+entries) for **category, rarity, storageKind and icon id** - but its `name`
+field is a hash, so readable Chinese names are not in MaaEnd's own data. 29 of
+the 43 ids seen on 2026-08-23 were in that catalog; the rest are the
+fixed-point currency nodes (`T_CREDS`, `OROBERYL`, `VALLEY_STOCK_BILL`, ...)
+declared per-task rather than in the catalog.
 
 ## MAA's auto-battle (自动战斗 / Copilot) - run, 2026-08-23
 
