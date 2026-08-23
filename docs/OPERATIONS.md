@@ -489,6 +489,10 @@ documents for hand edits. Verify with a read-back after the restore fires.
 
 ## Driving all three without a window
 
+**The full method now lives in [HEADLESS.md](HEADLESS.md)** - the API client,
+the request-shape traps, MAA's binding, MaaEnd's inventory file, and an audit of
+what the relay can and cannot hand over. What follows is the summary.
+
 The desktop is only composited while something consumes frames, so with nobody
 watching, screen grabs return a stale frame and MAA's window comes back blank.
 Every one of these three programs can be driven without its UI, and that is the

@@ -18,6 +18,7 @@ that is acceptable on Tailscale and would not be on an untrusted network.
 import json
 import os
 import sys
+import urllib.error
 import urllib.request
 from typing import Optional   # this Mac runs Python 3.9; no X | None syntax
 
@@ -31,8 +32,19 @@ def call(path, body=None, method="POST"):
     req = urllib.request.Request(
         BASE + path, data=data, method=method,
         headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        raw = r.read().decode("utf-8")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            raw = r.read().decode("utf-8")
+    except urllib.error.HTTPError as e:
+        # FastAPI puts the reason a request was rejected in the body - which
+        # field, what it expected. Raising instead of showing that turns a
+        # one-line fix into guesswork; 422 is the normal way this API says
+        # "your shape is wrong".
+        body = e.read().decode("utf-8", "replace")
+        try:
+            return {"__status": e.code, "__detail": json.loads(body)}
+        except json.JSONDecodeError:
+            return {"__status": e.code, "__body": body[:1000]}
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
