@@ -658,4 +658,40 @@ Two smaller lessons from the same morning:
   vanished. A parser that can reject input needs a test for the shape it
   rejects, not only the shape it accepts.
 
+## Mojibake is not a display problem - it is where hallucinations come from
+
+2026-08-23. A run record was read with a remote command and the drop names came
+back as broken bytes. Rather than stopping, they were reported as 家具零件 and
+沿途的点滴 - names that look plausible and were invented. The real drops, from
+the same file read correctly, are 艺人见面抽选券 and 闲言碎语.
+
+**Reading damaged text and reporting a guess is worse than reporting nothing.**
+If the bytes are broken, the only correct next action is to fix how they are
+being read.
+
+Three separate causes, each of which alone produces mojibake:
+
+1. **Windows PowerShell 5.1 reads files as ANSI.** `Get-Content some.json` on a
+   UTF-8 file destroys it **on the machine**, before anything is transmitted.
+   Use `-Encoding UTF8`, or better, do not print files at all.
+2. **The console is codepage 936.** `cmd /c` interprets a UTF-8 command line as
+   GBK. `chcp 65001` first fixes it.
+3. **PowerShell 5.1 reads a `.ps1` as ANSI unless it opens with a UTF-8 BOM.**
+   A script written without those three bytes has its own Chinese destroyed
+   before it runs.
+
+And one trap that looks like a fix: **piping everything through
+`iconv -f GBK`**. Output that was already UTF-8 is then decoded twice and
+shredded, so it works sometimes and silently corrupts the rest - which is worse
+than a consistent failure.
+
+`scripts/mac/winrun.sh` encodes all of this:
+
+- `--get <path>` copies a file as bytes and decodes it here. **File contents
+  always go through this**, never through a remote command.
+- command output is written to a UTF-8 file on the machine and copied back, so
+  no console sits in the path.
+- the generated `.ps1` carries a BOM and `cmd` invocations are prefixed with
+  `chcp 65001`, so Chinese works on the command line too.
+
 
