@@ -35,9 +35,9 @@ import json
 import time
 from pathlib import Path
 
-# 快照落在这里。跟着会话走，不进仓库——它是易腐品，不是资产。
-SNAP_DIR = Path("/private/tmp/claude-501/-Users-herclyon-Claude/"
-                "9f0f6bee-f86f-4c3d-8d0c-3a5345fa9d44/scratchpad")
+# 快照不进仓库——它是易腐品，不是资产。但也不能放会话临时目录：
+# 那里跟着会话走，换一次会话数据就没了，下次又得重拉。
+SNAP_DIR = Path.home() / ".cache" / "ark" / "snapshots"
 
 # 官方自己声明的同步延迟。任何结论都要把它算进不确定性里。
 SKLAND_SYNC_LAG_MIN = 30
