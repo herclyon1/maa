@@ -203,6 +203,10 @@ winrun.sh --py scripts/mac/lib/maaend_essence.py --go     # 真跑
 `tasker_inited` 三项皆真、且 `is_running` 为假的实例。
 **本脚本不新建实例**——新建的这三项都是假的。
 字段名抄自 MXU `src-tauri/src/web_server.rs` 的 `handle_get_maa_state`。
+前置不满足时会打印补救命令：游戏的 exe 路径**从 AUTO-MAS 的 `Game.Path` 现问**，
+不写死——2026-08-28 我在 `wingui.sh` 里凭印象填过两条 exe 路径，
+事后 grep 发现那两条只存在于我自己刚写的那个文件里，差点被自己印证。
+`wingui.sh launch` 现在只认别名 `wuwa`（路径核实过）或**完整 exe 路径**。
 
 跑完会打印运行日志里的匹配摘要，并生成 `D:\ark\maaend\EssencePlan.html`
 （`export_calculator_script`，路径见 `plan_export.go` 的 `planRecommendHTMLPath`）。

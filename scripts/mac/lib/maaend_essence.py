@@ -43,6 +43,7 @@ import urllib.error
 import urllib.request
 
 MXU = "http://127.0.0.1:12701/api"
+MAS = "http://127.0.0.1:36163"        # AUTO-MAS 的 REST，用来问出游戏真实路径
 MAAEND = r"D:\ark\maaend"
 ENTRY = "EssenceFilterMain"
 AGENTS = [{"child_exec": "agent/go-service"},
@@ -60,6 +61,26 @@ def api(path: str, body: dict | None = None, timeout: int = 30):
     with urllib.request.urlopen(req, timeout=timeout) as r:
         raw = r.read().decode("utf-8", "replace")
     return json.loads(raw) if raw.strip() else {}
+
+
+def game_exe() -> str | None:
+    """从 AUTO-MAS 问出终末地的 exe 路径。**不写死**——2026-08-28 我凭印象
+    在 wingui.sh 里填过两条 exe 路径，事后发现那两条只存在于我自己刚写的
+    文件里，是纯猜。路径要从真实配置来。"""
+    try:
+        req = urllib.request.Request(
+            MAS + "/api/scripts/get", data=b"{}",
+            headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            for sc in json.loads(r.read().decode()).get("data", []):
+                if "maaend" in str(sc).lower():
+                    for u in (sc.get("user_infos") or {}).values():
+                        p = (u.get("Game") or {}).get("Path")
+                        if p:
+                            return p
+    except Exception:  # noqa: BLE001
+        pass
+    return None
 
 
 def running_procs() -> set[str]:
@@ -164,6 +185,11 @@ def main(argv: list[str]) -> int:
         print("\n❌ 还不能跑：")
         for b in bad:
             print("  · " + b)
+        exe = game_exe()
+        print("\n补救（图形程序必须从 session 1 起，见 memory relay-runs-in-session-0）：")
+        print(f"  游戏：wingui.sh launch '{exe}'" if exe else
+              "  游戏：AUTO-MAS 问不出 Game.Path，先确认 AUTO-MAS 在跑（36163）")
+        print("  MaaEnd：exe 路径同样别猜，先 winps.sh 列一下 D:\\ark\\maaend 下的 *.exe")
         return 1
     print("\n✅ 前置条件都满足")
 

@@ -19,7 +19,7 @@
 #   scripts/mac/wingui.sh key f2              # 打开传送目录
 #   scripts/mac/wingui.sh key l               # 单个字母（鸣潮：L 开队伍界面）
 #   scripts/mac/wingui.sh click 960 540       # 左键点一下（真实鼠标事件，游戏才认）
-#   scripts/mac/wingui.sh launch              # 启动鸣潮（图形程序必须从 session 1 起）
+#   scripts/mac/wingui.sh launch [wuwa|'D:\\path\\to\\App.exe']  # 启动图形程序（必须从 session 1 起）
 #   scripts/mac/wingui.sh scroll -3           # 滚轮，负数向下翻
 #   scripts/mac/wingui.sh focus [out.png]     # 只把游戏拉到前台再截图（OK-WW 窗口会被压下去）
 #
@@ -59,15 +59,34 @@ $log = @()
 $cmd = (Get-Content 'C:\ProgramData\ark-gui-cmd.txt' -Raw -ErrorAction SilentlyContinue).Trim()
 $log += "cmd=$cmd"
 
-if ($cmd -eq 'launch') {
-  # 启动鸣潮。必须从这里（session 1）启动——从 ssh 那个非交互窗口站起图形程序会死。
-  $exe = 'D:\Wuthering Waves Game\Wuthering Waves.exe'
-  if (Get-Process -Name 'Client-Win64-Shipping' -ErrorAction SilentlyContinue) {
-    $log += '游戏已在运行，没有重复启动'
+if ($cmd -like 'launch*') {
+  # 启动图形程序。必须从这里（session 1）起——从 ssh 那个非交互窗口站起会死。
+  # 见 memory relay-runs-in-session-0。
+  #
+  # 只认两种参数：别名 wuwa（路径已核实过），或**完整 exe 路径**。
+  # 不在这里内置终末地/MaaEnd 的路径——2026-08-28 我凭印象填了两条，
+  # 事后 grep 发现那两条只存在于我自己刚写的这个文件里，是纯猜。
+  # 路径由调用方从 AUTO-MAS 的 Game.Path 之类的真实来源取好再传进来。
+  $what = ($cmd -split '\s+', 2)[1]
+  if (-not $what) { $what = 'wuwa' }
+  if ($what -eq 'wuwa') { $exe = 'D:\Wuthering Waves Game\Wuthering Waves.exe' }
+  else { $exe = $what }
+
+  if ($exe -notmatch '^[A-Za-z]:\\') {
+    $log += "ERR 不认识 '$what'。只接受别名 wuwa 或完整 exe 路径。"
+  } elseif (-not (Test-Path $exe)) {
+    $log += "ERR 找不到 $exe —— 路径不对就去核对，别硬猜。"
   } else {
-    Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe)
-    $log += "已启动鸣潮，等它出登录界面（点『点击连接』进游戏）"
-    Start-Sleep -Seconds 45
+    $proc = [IO.Path]::GetFileNameWithoutExtension($exe)
+    # 鸣潮的进程名和 exe 名不一样，单独映射；其余按 exe 名判断。
+    if ($proc -eq 'Wuthering Waves') { $proc = 'Client-Win64-Shipping' }
+    if (Get-Process -Name $proc -ErrorAction SilentlyContinue) {
+      $log += "$proc 已在运行，没有重复启动"
+    } else {
+      Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe)
+      $log += "已启动 $exe，等 45 秒"
+      Start-Sleep -Seconds 45
+    }
   }
 } elseif ($cmd -ne 'shot') {
   # 发键之前必须把游戏拉到前台。鸣潮失焦时照常渲染但不收输入，
@@ -157,12 +176,12 @@ PS1
 
 case "$ACTION" in
   shot) CMD="shot" ;;
-  launch) CMD="launch" ;;
+  launch) CMD="launch ${2:-wuwa}" ;;   # wuwa 或完整 exe 路径
   key)  CMD="${ARG:?用法: wingui.sh key <esc|esc2|f2|enter|单个字母>}" ;;
   focus) CMD="focus" ;;
   scroll) CMD="scroll ${2:?用法: wingui.sh scroll <格数，负数向下>}" ;;
   click) CMD="click ${2:?用法: wingui.sh click <x> <y>} ${3:?缺 y 坐标}" ;;
-  *)    echo "用法: $0 shot [out.png] | $0 key <esc|f2|enter|字母> | $0 click <x> <y> | $0 launch" >&2; exit 2 ;;
+  *)    echo "用法: $0 shot [out.png] | $0 key <esc|f2|enter|字母> | $0 click <x> <y> | $0 launch [wuwa|<完整exe路径>]" >&2; exit 2 ;;
 esac
 
 printf '%s' "$CMD" > "$TMP/cmd.txt"
