@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """武器基质核对：实际词条 vs 武器自己要的 vs CEP 记的。
 
-    python3 scripts/mac/gem-check.py            # 只看 6★
-    python3 scripts/mac/gem-check.py --all
+    python3 scripts/mac/gem-check.py            # 限定 6★ + 管理员（默认）
+    python3 scripts/mac/gem-check.py --six       # 全部 6★（含常驻）
+    python3 scripts/mac/gem-check.py --all       # 全部干员
 
 **「推荐词条」这四个字有歧义，先说清楚**（2026-08-28 查证）：
 
@@ -37,17 +38,33 @@ CEP_WEAPONS = ("https://raw.githubusercontent.com/cmyyx/cep/main/"
                "src/data/weapons.ts")
 CEP_GEMSTATS = ("https://raw.githubusercontent.com/cmyyx/cep/main/"
                 "src/generated/i18n/gemStats/zh-CN.json")
+CEP_BANNER = ("https://raw.githubusercontent.com/cmyyx/cep/main/"
+              "src/data/banner.ts")
+
+# 管理员是主角，不走卡池，所以既不算限定也不算常驻——但要练，单独放行。
+PROTAGONIST = "管理员"
 
 # 满配基质的三条 cost。来源：森空岛接口里实际返回的 terms[].cost。
 FULL_COST = 15
 
 
+def _fetch(url: str) -> str:
+    with urllib.request.urlopen(url, timeout=30) as r:
+        return r.read().decode("utf-8")
+
+
+def standard_chars() -> set[str]:
+    """常驻 6★ 名单。**从 CEP 的 banner.ts 现拉，不写死**——池子会变。"""
+    m = re.search(r"STANDARD_CHARS\s*=\s*\[([^\]]*)\]", _fetch(CEP_BANNER))
+    if not m:
+        raise SystemExit("CEP 的 banner.ts 里找不到 STANDARD_CHARS 了，"
+                         "格式变了——去看一眼再改这里，别猜。")
+    return set(re.findall(r"'([^']+)'", m.group(1)))
+
+
 def cep_data() -> tuple[dict, dict]:
     """拉 CEP 的武器表和词条中文表。"""
-    def fetch(url: str) -> str:
-        with urllib.request.urlopen(url, timeout=30) as r:
-            return r.read().decode("utf-8")
-
+    fetch = _fetch
     names = json.loads(fetch(CEP_GEMSTATS))
     src = fetch(CEP_WEAPONS)
     out = {}
@@ -72,16 +89,24 @@ def strip_grade(s: str) -> str:
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--all", action="store_true", help="不限 6★")
+    ap.add_argument("--six", action="store_true", help="全部 6★（含常驻）")
+    ap.add_argument("--all", action="store_true", help="全部干员")
     ns = ap.parse_args(argv[1:])
 
     card = load("card")
     cep_w, cep_zh = cep_data()
+    std = set() if (ns.all or ns.six) else standard_chars()
+    if std:
+        print(f"（只看限定 6★ + {PROTAGONIST}；已排除常驻 "
+              f"{'、'.join(sorted(std))}）")
 
     rows, problems = [], []
     for c in card["detail"]["chars"]:
         cd = c["charData"]
+        name = cd["name"]
         if not ns.all and cd["rarity"]["value"] != "6":
+            continue
+        if std and name in std and not name.startswith(PROTAGONIST):
             continue
         w = c.get("weapon")
         if not w:
