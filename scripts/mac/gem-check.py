@@ -29,7 +29,12 @@ CEP 的 `src/data/weapons.ts` 里 `primaryStat` / `elementalDamage` /
 * 武器要什么 → 直接读 `gemTagId`，不翻译；
 * 实装了什么 → 基质词条只有中文和 hash id，用 CEP 的 gemStats 中文表
   反查成 CEP id（账号内 25/25 全覆盖，且 CEP 中文→id 唯一），再剥前缀成 tagId；
-* 然后 **tagId 比 tagId**。中文只用来显示。
+* 然后 **tagId 比 tagId**。
+
+**显示也一律用 CEP 的中文**（`generated/i18n/gemStats/zh-CN.json`），
+两栏同一套叫法，森空岛那两个异名根本不出现在输出里。
+CEP 的 `weapons.ts` 行内确实只有 id（三个字段 31 个取值全是 id 加 null），
+中文在同目录的 i18n 表里——这是正常的 i18n 分离，不是它没有中文。
 
 三处「查不到」全部当场报错，不许静默跳过——静默跳过会让「没报不一致」
 退化成「压根没比」。见 [[idmap-no-guessing]]、[[known-issue-is-not-an-excuse]]。
@@ -63,8 +68,8 @@ def _tag(cep_id: str) -> str:
     return re.sub(r"^(gat|gst)_passive_", "", cep_id)
 
 
-def cep_tables() -> tuple[dict[str, list[str]], dict[str, str]]:
-    """(武器名 → 三个 CEP id, 中文 → CEP id)。"""
+def cep_tables() -> tuple[dict[str, list[str]], dict[str, str], dict[str, str]]:
+    """(武器名 → 三个 CEP id, 中文 → CEP id, tagId → 中文)。"""
     zh = json.loads(_fetch(CEP + "generated/i18n/gemStats/zh-CN.json"))
     rev: dict[str, str] = {}
     for cid, name in zh.items():
@@ -73,6 +78,7 @@ def cep_tables() -> tuple[dict[str, list[str]], dict[str, str]]:
                              f"（{rev[name]} 和 {cid}），中文反查不再唯一，"
                              f"这个脚本的前提塌了，先去看数据。")
         rev[name] = cid
+    tag2zh = {_tag(cid): name for cid, name in zh.items()}
 
     src = _fetch(CEP + "data/weapons.ts")
     wt: dict[str, list[str]] = {}
@@ -89,7 +95,7 @@ def cep_tables() -> tuple[dict[str, list[str]], dict[str, str]]:
         if n:
             wt[n] = [x for x in (f("primaryStat"), f("elementalDamage"),
                                  f("specialAbility")) if x]
-    return wt, rev
+    return wt, rev, tag2zh
 
 
 def standard_chars() -> set[str]:
@@ -144,7 +150,7 @@ def main(argv: list[str]) -> int:
 
     card = load("card")
     chars = card["detail"]["chars"]
-    cep_w, zh2id = cep_tables()
+    cep_w, zh2id, tag2zh = cep_tables()
     print(verify(chars, cep_w))
 
     std = set() if (ns.all or ns.six) else standard_chars()
@@ -168,7 +174,8 @@ def main(argv: list[str]) -> int:
         wd = w["weaponData"]
 
         want = [si["gemTagId"] for si in wd["skillInfos"]]
-        want_zh = [si["skill"]["value"].split("·")[0] for si in wd["skillInfos"]]
+        # 显示用 CEP 的中文，不用森空岛武器栏的——后者和基质栏不是一套叫法。
+        want_zh = [tag2zh.get(t, f"?{t}") for t in want]
 
         gem = w.get("gem")
         if gem:
@@ -180,6 +187,7 @@ def main(argv: list[str]) -> int:
                     f" gemStats 中文表里查不到，翻不成 id。**不许按字面猜**——"
                     f"去 cmyyx/cep 更新 gemStats，或找别的权威对照表。")
             have = [_tag(zh2id[t]) for t in have_zh]
+            have_zh = [tag2zh[t] for t in have]      # 统一成 CEP 的叫法
             cost = sum(t["cost"] for t in gem["terms"])
         else:
             have, have_zh, cost = [], [], 0
@@ -187,7 +195,7 @@ def main(argv: list[str]) -> int:
         if not gem:
             verdict = "❌ 没有基质"
         elif sorted(have) != sorted(want):
-            miss = [want_zh[want.index(t)] for t in want if t not in have]
+            miss = [tag2zh.get(t, t) for t in want if t not in have]
             verdict = f"❌ 词条不符（缺 {'/'.join(miss)}）"
         elif cost < FULL_COST:
             verdict = f"⚠️ 词条对但没满级（{cost}/{FULL_COST}）"
