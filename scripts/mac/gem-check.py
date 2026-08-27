@@ -31,10 +31,18 @@ CEP 的 `src/data/weapons.ts` 里 `primaryStat` / `elementalDamage` /
   反查成 CEP id（账号内 25/25 全覆盖，且 CEP 中文→id 唯一），再剥前缀成 tagId；
 * 然后 **tagId 比 tagId**。
 
-**显示也一律用 CEP 的中文**（`generated/i18n/gemStats/zh-CN.json`），
-两栏同一套叫法，森空岛那两个异名根本不出现在输出里。
-CEP 的 `weapons.ts` 行内确实只有 id（三个字段 31 个取值全是 id 加 null），
-中文在同目录的 i18n 表里——这是正常的 i18n 分离，不是它没有中文。
+**显示也一律用 CEP 的中文**，两栏同一套叫法，森空岛那两个异名不出现在输出里。
+
+中文字段的确切位置和出处（`scripts/lib/generate-stat-i18n.ts` 里写着）：
+
+    src/generated/i18n/gemStats/zh-CN.json      ← 就是这个文件，31 条
+      ↑ 由 sync-game-data 生成，来源是游戏本体：
+        TableCfg/GemTable.json  取 /"(g[as]t_\w+)":/ 作 key
+        再用该条的 tagName.id 去 TextTable 查中文
+
+也就是说这张表的 key 是**游戏自己的 GemTable 键名**、值是**游戏自己的文本表**，
+不是 CEP 写的译名。`weapons.ts` 行内只有 id（三个词条字段 31 个取值全是 id
+加 null），中文分离在 i18n 表里，是正常的 i18n 结构，不是它没有中文。
 
 三处「查不到」全部当场报错，不许静默跳过——静默跳过会让「没报不一致」
 退化成「压根没比」。见 [[idmap-no-guessing]]、[[known-issue-is-not-an-excuse]]。

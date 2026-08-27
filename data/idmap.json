@@ -435,127 +435,127 @@
   "value": "重装信使"
  },
  "gat_passive_attr_agi": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "敏捷提升"
  },
  "gat_passive_attr_atk": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "攻击提升"
  },
  "gat_passive_attr_crirate": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "暴击率提升"
  },
  "gat_passive_attr_firedam": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "灼热伤害提升"
  },
  "gat_passive_attr_heal": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "治疗效率提升"
  },
  "gat_passive_attr_hp": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "生命提升"
  },
  "gat_passive_attr_icedam": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "寒冷伤害提升"
  },
  "gat_passive_attr_magicdam": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "法术伤害提升"
  },
  "gat_passive_attr_main": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "主能力提升"
  },
  "gat_passive_attr_naturaldam": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "自然伤害提升"
  },
  "gat_passive_attr_phydam": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "物理伤害提升"
  },
  "gat_passive_attr_physpell": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "源石技艺提升"
  },
  "gat_passive_attr_pulsedam": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "电磁伤害提升"
  },
  "gat_passive_attr_str": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "力量提升"
  },
  "gat_passive_attr_usp": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "终结技充能效率提升"
  },
  "gat_passive_attr_will": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "意志提升"
  },
  "gat_passive_attr_wisd": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "智识提升"
  },
  "gst_passive_break": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "残暴"
  },
  "gst_passive_burst": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "迸发"
  },
  "gst_passive_combo": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "追袭"
  },
  "gst_passive_crit": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "切骨"
  },
  "gst_passive_force": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "强攻"
  },
  "gst_passive_heal": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "医疗"
  },
  "gst_passive_keyword": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "效益"
  },
  "gst_passive_magabn": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "附术"
  },
  "gst_passive_phyabn": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "巧技"
  },
  "gst_passive_smash": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "粉碎"
  },
  "gst_passive_spirit": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "昂扬"
  },
  "gst_passive_tacafter": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "流转"
  },
  "gst_passive_tactic": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "压制"
  },
  "gst_passive_ult": {
-  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json（由 scripts/lib/generate-stat-i18n.ts 从游戏 TableCfg/GemTable.json 的 gat_/gst_ 键 + tagName.id 查 TextTable 生成）",
   "value": "夜幕"
  },
  "item_gem_rarity_2": {
