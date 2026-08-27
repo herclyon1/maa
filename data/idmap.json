@@ -723,6 +723,11 @@
   "source": "skland:GET /web/v1/game/endfield/enums",
   "value": "终结技"
  },
+ "skland:weapon.gem.terms[].cost": {
+  "note": "cost 不是固定属性——同一词条在不同基质上取值不同（攻击提升出现过1/2/6）。蚀刻强化后单个词条在武器上最高9级，那是 skillInfos.maxLevel，别和基质的6/3混为一谈",
+  "source": "gamersky.com/handbook/202602/2092299.shtml《武器基质系统详解》原文「基质的技能属性至多加成3级，而其余两个词条可以至多加成6级」；并经本账号 19 个基质 57 条词条实例交叉验证，无越界",
+  "value": "该词条的加成级数（属性词条上限6级，技能/特殊词条上限3级，满配6+6+3=15）"
+ },
  "weapon_type_claymores": {
   "note": "enums.weaponTypes",
   "source": "skland:GET /web/v1/game/endfield/enums",

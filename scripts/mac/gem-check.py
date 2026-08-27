@@ -47,7 +47,22 @@ CEP 的 `src/data/weapons.ts` 里 `primaryStat` / `elementalDamage` /
 三处「查不到」全部当场报错，不许静默跳过——静默跳过会让「没报不一致」
 退化成「压根没比」。见 [[idmap-no-guessing]]、[[known-issue-is-not-an-excuse]]。
 
-满配 = 三条齐全且 cost 6/6/3 = 15。
+## 三、`cost` 是什么（2026-08-28 查证，此前是我自己认定的）
+
+`terms[].cost` 是**该词条的加成级数**，不是固定属性——同一词条在不同基质上
+取值不同（攻击提升在本账号出现过 1 / 2 / 6）。上限两套：
+
+    属性词条（CEP id 以 gat_ 开头）  最高 6 级
+    技能词条（CEP id 以 gst_ 开头）  最高 3 级
+    → 满配 6 + 6 + 3 = 15
+
+出处：游民星空《明日方舟终末地 武器基质系统详解》原文「基质的技能属性至多
+加成 3 级，而其余两个词条可以至多加成 6 级」
+<https://www.gamersky.com/handbook/202602/2092299.shtml>；
+并经本账号 19 个基质 57 条词条实例交叉验证，无一越界。
+
+别和 `skillInfos[].maxLevel`（9/9/4）混：那是蚀刻强化后武器上单个词条能到的
+总级数，基质只贡献其中的 6/6/3 部分。
 """
 from __future__ import annotations
 
@@ -62,13 +77,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from snapshot import load  # noqa: E402
 
 CEP = "https://raw.githubusercontent.com/cmyyx/cep/main/src/"
-FULL_COST = 15                      # terms[].cost 之和，6+6+3
+# 单条词条的级数上限，按词条类型分。见上面「三、cost 是什么」。
+CAP = {"gat": 6, "gst": 3}
 PROTAGONIST = "管理员"              # 主角不走卡池，既非限定也非常驻，单独放行
 
 
 def _fetch(url: str) -> str:
     with urllib.request.urlopen(url, timeout=30) as r:
         return r.read().decode("utf-8")
+
+
+def _cap(cep_id: str) -> int:
+    """这条词条最高能到几级。"""
+    return CAP[cep_id.split("_", 1)[0]]
 
 
 def _tag(cep_id: str) -> str:
@@ -195,23 +216,25 @@ def main(argv: list[str]) -> int:
                     f" gemStats 中文表里查不到，翻不成 id。**不许按字面猜**——"
                     f"去 cmyyx/cep 更新 gemStats，或找别的权威对照表。")
             have = [_tag(zh2id[t]) for t in have_zh]
+            lv = {_tag(zh2id[t["name"]]): t["cost"] for t in gem["terms"]}
             have_zh = [tag2zh[t] for t in have]      # 统一成 CEP 的叫法
-            cost = sum(t["cost"] for t in gem["terms"])
+            caps = {t: _cap(zh2id[n]) for t, n in zip(have, have_zh)}
         else:
-            have, have_zh, cost = [], [], 0
+            have, have_zh, lv, caps = [], [], {}, {}
 
         if not gem:
             verdict = "❌ 没有基质"
         elif sorted(have) != sorted(want):
             miss = [tag2zh.get(t, t) for t in want if t not in have]
             verdict = f"❌ 词条不符（缺 {'/'.join(miss)}）"
-        elif cost < FULL_COST:
-            verdict = f"⚠️ 词条对但没满级（{cost}/{FULL_COST}）"
         else:
-            verdict = "✅ 满配"
+            low = [f"{tag2zh[t]} {lv[t]}/{caps[t]}"
+                   for t in have if lv[t] < caps[t]]
+            verdict = ("✅ 三条齐全且全部满级"
+                       if not low else "⚠️ 词条对但没满级：" + "、".join(low))
 
-        rows.append((name, wd["name"], verdict,
-                     "/".join(want_zh), "/".join(have_zh) or "无"))
+        detail = "/".join(f"{tag2zh[t]}{lv[t]}" for t in have) or "无"
+        rows.append((name, wd["name"], verdict, "/".join(want_zh), detail))
 
     w1 = max(len(r[0]) for r in rows)
     print(f"\n{'干员':<{w1}}  {'武器':<10}  结论")
@@ -224,7 +247,7 @@ def main(argv: list[str]) -> int:
             print(f"{'':<{w1}}  {'':<10}  实际装：{have}")
 
     ok = sum(1 for r in rows if r[2].startswith("✅"))
-    print(f"\n{ok}/{len(rows)} 满配")
+    print(f"\n{ok}/{len(rows)} 三条齐全且全部满级")
     return 0
 
 
