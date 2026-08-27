@@ -41,6 +41,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 MXU = "http://127.0.0.1:12701/api"
 MAS = "http://127.0.0.1:36163"        # AUTO-MAS 的 REST，用来问出游戏真实路径
@@ -72,12 +73,12 @@ def game_exe() -> str | None:
             MAS + "/api/scripts/get", data=b"{}",
             headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=15) as r:
-            for sc in json.loads(r.read().decode()).get("data", []):
-                if "maaend" in str(sc).lower():
-                    for u in (sc.get("user_infos") or {}).values():
-                        p = (u.get("Game") or {}).get("Path")
-                        if p:
-                            return p
+            # 实测返回：{"index":[...], "data": {"<uid>": {"Info":{"Name":...},
+            #            "Game":{"Path": "...Endfield.exe", ...}}}}
+            # data 是按 uid 索引的字典，不是列表——2026-08-28 第一版按列表写，错了。
+            for sc in (json.loads(r.read().decode()).get("data") or {}).values():
+                if (sc.get("Info") or {}).get("Name") == "MaaEnd":
+                    return (sc.get("Game") or {}).get("Path")
     except Exception:  # noqa: BLE001
         pass
     return None
@@ -112,28 +113,53 @@ def preflight() -> tuple[dict, list[str]]:
     if not inst:
         bad.append("MXU 里一个实例都没有——先在 MaaEnd 界面里连一次游戏窗口，"
                    "本脚本不新建实例（新实例没连控制器、也没加载资源）")
-    elif not any(usable(v) for v in inst.values()):
-        bad.append("有实例但都不可用（connected / resource_loaded / tasker_inited "
-                   "没齐）——去 MaaEnd 界面点一次连接")
+    elif not any(v.get("connected") for v in inst.values()):
+        bad.append("有实例但没连上控制器——去 MaaEnd 界面「连接设置」里刷新一次窗口")
     return inst, bad
 
 
 def usable(v: dict) -> bool:
-    """三个都要真：连了控制器、加载了资源、tasker 初始化过。
+    """要连了控制器 + 加载了资源。
 
-    本脚本**不新建实例**——新建的这三样都是假的，跑起来会一路失败。
+    `tasker_inited` **不要求**——2026-08-28 读 MXU 的 `start_tasks_impl`：
+    资源是硬前提（拿不到就 `Err("Resource not loaded")`），而 tasker
+    「若已有但未初始化则自动丢弃并重建」。所以 tasker 归它管，资源归我们管。
+
+    本脚本**不新建实例**——新建的连控制器都没有。
     """
-    return bool(v.get("connected") and v.get("resource_loaded")
-                and v.get("tasker_inited"))
+    return bool(v.get("connected") and v.get("resource_loaded"))
+
+
+def resource_paths() -> list[str]:
+    """从 MaaEnd 自己的 interface.json 读资源目录，**不写死**。"""
+    j = json.loads((Path(MAAEND) / "interface.json").read_text(encoding="utf-8"))
+    for r in j.get("resource") or []:
+        return [str(Path(MAAEND) / rel.lstrip("./")) for rel in (r.get("path") or [])]
+    return []
+
+
+def ensure_resource(iid: str) -> None:
+    """连上了但没装资源时，替它装一次。异步，装完 state 里才会变真。"""
+    paths = resource_paths()
+    if not paths:
+        raise SystemExit("interface.json 里没读到 resource 路径，去看一眼再说。")
+    print(f"资源没加载，替它装：{paths}")
+    api(f"/maa/instances/{iid}/resource/load", {"paths": paths}, timeout=60)
+    for _ in range(30):
+        time.sleep(2)
+        v = (api("/maa/state").get("instances") or {}).get(iid, {})
+        if v.get("resource_loaded"):
+            print("资源加载完成")
+            return
+    raise SystemExit("等了 60 秒资源还没加载完，去 MaaEnd 界面看看。")
 
 
 def pick_instance(inst: dict) -> str:
     """挑一个可用且当前空闲的实例。"""
     ok = {k: v for k, v in inst.items() if usable(v)}
     if not ok:
-        raise SystemExit(
-            "没有可用实例（要同时满足 connected / resource_loaded / tasker_inited）。"
-            "先在 MaaEnd 界面里连一次游戏窗口。")
+        raise SystemExit("没有可用实例（要 connected + resource_loaded）。"
+                         "先在 MaaEnd 界面里连一次游戏窗口。")
     free = [k for k, v in ok.items() if not v.get("is_running")]
     if not free:
         raise SystemExit(f"实例都在忙（{list(ok)}）。等它跑完，或去 MaaEnd 界面停掉，"
@@ -197,6 +223,11 @@ def main(argv: list[str]) -> int:
         print("\n（只是体检。要真跑加 --go）")
         return 0
 
+    # 连上了但资源没装：替它装。幂等的准备动作，不碰游戏。
+    for k, v in inst.items():
+        if v.get("connected") and not v.get("resource_loaded"):
+            ensure_resource(k)
+    inst = api("/maa/state").get("instances") or {}
     iid = pick_instance(inst)
     ov = override(not ns.also_5star, not ns.also_pure, export_plan=True)
     print(f"\n用实例 {iid} 跑 {ENTRY}")
@@ -249,7 +280,6 @@ def main(argv: list[str]) -> int:
     except Exception as e:  # noqa: BLE001
         print(f"\n⚠️ 取运行日志失败：{type(e).__name__}: {e}")
 
-    from pathlib import Path
     p = Path(PLAN_HTML)
     if p.is_file():
         print(f"\nEssencePlan.html 已生成，{p.stat().st_size} 字节 → {PLAN_HTML}")

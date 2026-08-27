@@ -16,6 +16,7 @@
 #
 #   scripts/mac/wingui.sh shot [输出.png]     # 截真实屏幕
 #   scripts/mac/wingui.sh key esc             # 对游戏窗口发 ESC（会先置前台）
+#   ARK_GUI_PROC=Endfield wingui.sh click 1780 565   # 作用到别的游戏（默认鸣潮）
 #   scripts/mac/wingui.sh key f2              # 打开传送目录
 #   scripts/mac/wingui.sh key l               # 单个字母（鸣潮：L 开队伍界面）
 #   scripts/mac/wingui.sh click 960 540       # 左键点一下（真实鼠标事件，游戏才认）
@@ -91,9 +92,17 @@ if ($cmd -like 'launch*') {
 } elseif ($cmd -ne 'shot') {
   # 发键之前必须把游戏拉到前台。鸣潮失焦时照常渲染但不收输入，
   # 不置前台的话按键全部落空，而且**没有任何报错**。
-  $p = Get-Process -Name 'Client-Win64-Shipping' -ErrorAction SilentlyContinue | Select-Object -First 1
+  #
+  # 目标进程名从 C:\ProgramData\ark-gui-proc.txt 读，默认鸣潮。
+  # 2026-08-28：这里原本写死 Client-Win64-Shipping，对终末地发点击时
+  # 会直接走到「游戏进程不在，按键跳过」——**不报错、什么也没发生**。
+  $proc = (Get-Content 'C:\ProgramData\ark-gui-proc.txt' -Raw -ErrorAction SilentlyContinue)
+  if ($proc) { $proc = $proc.Trim() }
+  if (-not $proc) { $proc = 'Client-Win64-Shipping' }
+  $log += "proc=$proc"
+  $p = Get-Process -Name $proc -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($null -eq $p) {
-    $log += 'ERR 游戏进程不在，按键跳过'
+    $log += "ERR 进程 $proc 不在，按键跳过"
   } else {
     $h = $p.MainWindowHandle
     $log += "hwnd=$h title=$($p.MainWindowTitle)"
@@ -185,8 +194,11 @@ case "$ACTION" in
 esac
 
 printf '%s' "$CMD" > "$TMP/cmd.txt"
+# 按键/点击要作用在哪个进程的窗口上。默认鸣潮；终末地传 ARK_GUI_PROC=Endfield。
+printf '%s' "${ARK_GUI_PROC:-Client-Win64-Shipping}" > "$TMP/proc.txt"
 scp -q -o ConnectTimeout=20 "$TMP/ark-gui.ps1" "${USER_AT}:${REMOTE_PS}"
 scp -q -o ConnectTimeout=20 "$TMP/cmd.txt" "${USER_AT}:C:/ProgramData/ark-gui-cmd.txt"
+scp -q -o ConnectTimeout=20 "$TMP/proc.txt" "${USER_AT}:C:/ProgramData/ark-gui-proc.txt"
 
 # -WindowStyle Hidden 很重要：不加的话 pwsh 的黑控制台会**盖在游戏上**，
 # 截出来的图中间一大块黑，而且它自己抢了前台。2026-08-26 第一版就这样。
