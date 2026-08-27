@@ -167,3 +167,42 @@
 | 它的「筛选」指什么 | 筛**方案列表**（按属性、按地区），文案见 `essence.attrFilterTitle` / `essence.regionFilter` | 筛**掉落物**（按武器匹配、未来可期、实用基质） |
 
 用法：**CEP 定去哪、锁什么 → MaaEnd `AutoEssence` 去打并 `EssenceFilter` 处理掉落 → 蚀刻手动。**
+
+## 单独调用「基质筛选锁定」（不跑整条队列）
+
+工具：`scripts/mac/lib/maaend_essence.py`，用 winrun 送到游戏机上跑。
+
+```
+winrun.sh --py scripts/mac/lib/maaend_essence.py          # 只体检，不动手
+winrun.sh --py scripts/mac/lib/maaend_essence.py --go     # 真跑
+```
+
+**调查结论（2026-08-28，全部读上游源码得出，机器当时不在线）：**
+
+* 任务名 `EssenceFilter`，入口节点 **`EssenceFilterMain`**，
+  controller 支持 `Win32-Front`——**可以单独调用**。
+* **不要求游戏停在某个界面。** `EssenceFilterMain.next` 里挂着
+  `[JumpBack]SceneEnterMenuValuables`，不在基质页就自己跳贵重品库，
+  再切「武器库 → 武器基质」页签。但游戏必须在跑、且能开菜单。
+* 分工（`agent/go-service/essencefilter/README.md`）：
+  C++ `RecoGrid`/`GridTracker`/`EssenceGrid` 扫网格挑格子 →
+  Pipeline 逐格 OCR 三条技能和等级 → Go `matchapi` 匹配 →
+  Go 只通过 `ctx.OverrideNext` 选分支，**点击全在 Pipeline**。
+* **匹配的是该稀有度的全部武器**（`weapons_output.json`），
+  不是「我拥有的武器」。所以命中 = 这枚基质对某把 6★ 武器是毕业词条。
+* 必须 `/tasks/start` 不能 `/tasks/run`——run 不拉 agent 子进程，
+  识别匹配全在里面，会一路 `Action is null`。见 [HEADLESS.md](HEADLESS.md)。
+
+**脚本里写死的两件事，故意不给开关：**
+
+* `discard_unmatched: false`——废弃是不可逆的，要废弃自己去界面点。
+* 跑完必定 `POST /agent/stop`，否则两个子进程一直挂着。
+
+**前置检查**（不满足就直接退出，不硬闯）：`MaaEnd.exe` 和 `Endfield.exe`
+在跑；`GET /api/maa/state` 里存在一个 `connected` + `resource_loaded` +
+`tasker_inited` 三项皆真、且 `is_running` 为假的实例。
+**本脚本不新建实例**——新建的这三项都是假的。
+字段名抄自 MXU `src-tauri/src/web_server.rs` 的 `handle_get_maa_state`。
+
+跑完会打印运行日志里的匹配摘要，并生成 `D:\ark\maaend\EssencePlan.html`
+（`export_calculator_script`，路径见 `plan_export.go` 的 `planRecommendHTMLPath`）。
