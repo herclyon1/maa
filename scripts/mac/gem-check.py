@@ -1,23 +1,38 @@
 #!/usr/bin/env python3
-"""武器基质核对：实际词条 vs 武器自己要的 vs CEP 记的。
+"""武器基质核对：实装词条 vs 武器自己要的。**按 id 比，不按中文比。**
 
     python3 scripts/mac/gem-check.py            # 限定 6★ + 管理员（默认）
     python3 scripts/mac/gem-check.py --six       # 全部 6★（含常驻）
     python3 scripts/mac/gem-check.py --all       # 全部干员
 
-**「推荐词条」这四个字有歧义，先说清楚**（2026-08-28 查证）：
+## 一、「推荐词条」这四个字有歧义
 
-基质词条不是攻略口味问题。武器在森空岛接口里**自己声明**了它要哪三条——
-`weaponData.skillInfos[].gemTagId` 配 `maxLevel`，例如熔铸火焰要
-智识提升(9) / 攻击提升(9) / 夜幕(4)。装错词条那一条就是白给。
+基质词条不是攻略口味。武器在森空岛接口里**自己声明**要哪三条——
+`weaponData.skillInfos[].gemTagId` 配 `maxLevel`（熔铸火焰要
+attr_wisd(9) / attr_atk(9) / ult(4)）。装错那一条就是白给。
 
-CEP 的 `src/data/weapons.ts` 里每把武器的 `primaryStat` /
-`elementalDamage` / `specialAbility` 三个字段，就是同一份数据的转录，
-不是它自己的推荐。所以这里同时打三列，**如果 CEP 和武器声明对不上，
-以武器声明为准**——那说明 CEP 的数据过期了。
+CEP 的 `src/data/weapons.ts` 里 `primaryStat` / `elementalDamage` /
+`specialAbility` 三个字段是同一份数据的转录，不是它自己的推荐——
+本账号 25 把武器 71 个词条位逐位核对，去掉 `gat_passive_`/`gst_passive_`
+前缀后与森空岛 `gemTagId` **71/71 相等，顺序也一一对应**。
 
-对照全部走中文名，不做 id 推导：森空岛给的武器技能和基质词条都自带中文，
-CEP 的 id 用 `idmap` 里登记过的 gemStats 表翻译。见 [[idmap-no-guessing]]。
+## 二、为什么不能按中文比（2026-08-28 差点又栽在这）
+
+森空岛**自己两处命名就不一致**：
+
+    tagId              武器技能栏          基质词条栏
+    attr_magicdam      法术提升            法术伤害提升
+    attr_physpell      源石技艺强度提升     源石技艺提升
+
+按中文比会把**装对了的**判成「词条不符」。所以这里：
+
+* 武器要什么 → 直接读 `gemTagId`，不翻译；
+* 实装了什么 → 基质词条只有中文和 hash id，用 CEP 的 gemStats 中文表
+  反查成 CEP id（账号内 25/25 全覆盖，且 CEP 中文→id 唯一），再剥前缀成 tagId；
+* 然后 **tagId 比 tagId**。中文只用来显示。
+
+三处「查不到」全部当场报错，不许静默跳过——静默跳过会让「没报不一致」
+退化成「压根没比」。见 [[idmap-no-guessing]]、[[known-issue-is-not-an-excuse]]。
 
 满配 = 三条齐全且 cost 6/6/3 = 15。
 """
@@ -26,7 +41,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import subprocess
 import sys
 import urllib.request
 from pathlib import Path
@@ -34,18 +48,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from snapshot import load  # noqa: E402
 
-CEP_WEAPONS = ("https://raw.githubusercontent.com/cmyyx/cep/main/"
-               "src/data/weapons.ts")
-CEP_GEMSTATS = ("https://raw.githubusercontent.com/cmyyx/cep/main/"
-                "src/generated/i18n/gemStats/zh-CN.json")
-CEP_BANNER = ("https://raw.githubusercontent.com/cmyyx/cep/main/"
-              "src/data/banner.ts")
-
-# 管理员是主角，不走卡池，所以既不算限定也不算常驻——但要练，单独放行。
-PROTAGONIST = "管理员"
-
-# 满配基质的三条 cost。来源：森空岛接口里实际返回的 terms[].cost。
-FULL_COST = 15
+CEP = "https://raw.githubusercontent.com/cmyyx/cep/main/src/"
+FULL_COST = 15                      # terms[].cost 之和，6+6+3
+PROTAGONIST = "管理员"              # 主角不走卡池，既非限定也非常驻，单独放行
 
 
 def _fetch(url: str) -> str:
@@ -53,38 +58,82 @@ def _fetch(url: str) -> str:
         return r.read().decode("utf-8")
 
 
+def _tag(cep_id: str) -> str:
+    """CEP id → 森空岛 gemTagId。前缀关系在 verify() 里每次跑都重新验证。"""
+    return re.sub(r"^(gat|gst)_passive_", "", cep_id)
+
+
+def cep_tables() -> tuple[dict[str, list[str]], dict[str, str]]:
+    """(武器名 → 三个 CEP id, 中文 → CEP id)。"""
+    zh = json.loads(_fetch(CEP + "generated/i18n/gemStats/zh-CN.json"))
+    rev: dict[str, str] = {}
+    for cid, name in zh.items():
+        if name in rev:
+            raise SystemExit(f"CEP gemStats 里「{name}」对应多个 id "
+                             f"（{rev[name]} 和 {cid}），中文反查不再唯一，"
+                             f"这个脚本的前提塌了，先去看数据。")
+        rev[name] = cid
+
+    src = _fetch(CEP + "data/weapons.ts")
+    wt: dict[str, list[str]] = {}
+    for m in re.finditer(r"\{\s*id:.*?\}", src, re.S):
+        row = m.group(0)
+
+        def f(key: str) -> str:
+            # 低星武器只有两个词条位，CEP 写 null——不能当空字符串，
+            # 否则会误报「CEP 和武器声明不一致」（2026-08-28 误报过奥佩罗77）。
+            mm = re.search(rf"{key}:\s*(?:'([^']*)'|null)", row)
+            return (mm.group(1) or "") if mm else ""
+
+        n = f("name")
+        if n:
+            wt[n] = [x for x in (f("primaryStat"), f("elementalDamage"),
+                                 f("specialAbility")) if x]
+    return wt, rev
+
+
 def standard_chars() -> set[str]:
-    """常驻 6★ 名单。**从 CEP 的 banner.ts 现拉，不写死**——池子会变。"""
-    m = re.search(r"STANDARD_CHARS\s*=\s*\[([^\]]*)\]", _fetch(CEP_BANNER))
+    """常驻 6★ 名单。**现拉，不写死**——池子会变。"""
+    m = re.search(r"STANDARD_CHARS\s*=\s*\[([^\]]*)\]",
+                  _fetch(CEP + "data/banner.ts"))
     if not m:
         raise SystemExit("CEP 的 banner.ts 里找不到 STANDARD_CHARS 了，"
                          "格式变了——去看一眼再改这里，别猜。")
     return set(re.findall(r"'([^']+)'", m.group(1)))
 
 
-def cep_data() -> tuple[dict, dict]:
-    """拉 CEP 的武器表和词条中文表。"""
-    fetch = _fetch
-    names = json.loads(fetch(CEP_GEMSTATS))
-    src = fetch(CEP_WEAPONS)
-    out = {}
-    for m in re.finditer(r"\{\s*id:.*?\}", src, re.S):
-        row = m.group(0)
-        def f(key: str) -> str:
-            # 低星武器只有两个词条位，CEP 用 null 表示——不能当成空字符串，
-            # 否则会误报「CEP 和武器声明不一致」（2026-08-28 就误报过奥佩罗77）。
-            mm = re.search(rf"{key}:\s*(?:'([^']*)'|null)", row)
-            return mm.group(1) or "" if mm else ""
-        n = f("name")
-        if n:
-            out[n] = [x for x in (f("primaryStat"), f("elementalDamage"),
-                                  f("specialAbility")) if x]
-    return out, names
+def verify(chars: list[dict], cep_w: dict[str, list[str]]) -> str:
+    """每次运行都重新证明「CEP id 剥前缀 == 森空岛 gemTagId」。
 
-
-def strip_grade(s: str) -> str:
-    """「智识提升·大」→「智识提升」；「夜幕·嘶鸣烈火」→「夜幕」。"""
-    return s.split("·")[0]
+    这个等式是整个脚本的地基。它哪天不成立了必须当场炸，
+    而不是安安静静地给出错误结论。
+    """
+    n = ok = 0
+    seen = set()
+    for c in chars:
+        w = c.get("weapon")
+        if not w:
+            continue
+        wd = w["weaponData"]
+        if wd["name"] in seen:
+            continue
+        seen.add(wd["name"])
+        ce = cep_w.get(wd["name"])
+        if ce is None:
+            raise SystemExit(f"CEP 的武器表里没有「{wd['name']}」——"
+                             f"无法核对。去 cmyyx/cep 看是不是还没收录。")
+        sk = wd["skillInfos"]
+        if len(sk) != len(ce):
+            raise SystemExit(f"「{wd['name']}」词条位数对不上："
+                             f"森空岛 {len(sk)} 个，CEP {len(ce)} 个。")
+        for si, cid in zip(sk, ce):
+            n += 1
+            ok += _tag(cid) == si["gemTagId"]
+    if ok != n:
+        raise SystemExit(f"地基塌了：{n} 个词条位里只有 {ok} 个满足"
+                         f"「CEP id 剥前缀 == gemTagId」。这个脚本的比对方式"
+                         f"不再可靠，先查数据，别信下面任何结论。")
+    return f"（已验证 {len(seen)} 把武器 {n} 个词条位：CEP id 与森空岛 tagId 全等）"
 
 
 def main(argv: list[str]) -> int:
@@ -94,55 +143,59 @@ def main(argv: list[str]) -> int:
     ns = ap.parse_args(argv[1:])
 
     card = load("card")
-    cep_w, cep_zh = cep_data()
+    chars = card["detail"]["chars"]
+    cep_w, zh2id = cep_tables()
+    print(verify(chars, cep_w))
+
     std = set() if (ns.all or ns.six) else standard_chars()
     if std:
         print(f"（只看限定 6★ + {PROTAGONIST}；已排除常驻 "
               f"{'、'.join(sorted(std))}）")
 
-    rows, problems = [], []
-    for c in card["detail"]["chars"]:
+    rows = []
+    for c in chars:
         cd = c["charData"]
         name = cd["name"]
         if not ns.all and cd["rarity"]["value"] != "6":
             continue
         if std and name in std and not name.startswith(PROTAGONIST):
             continue
+
         w = c.get("weapon")
         if not w:
-            rows.append((cd["name"], "—", "没有装武器", "", ""))
+            rows.append((name, "—", "❌ 没有装武器", "", ""))
             continue
         wd = w["weaponData"]
-        wname = wd["name"]
 
-        want = [strip_grade(si["skill"]["value"]) for si in wd["skillInfos"]]
+        want = [si["gemTagId"] for si in wd["skillInfos"]]
+        want_zh = [si["skill"]["value"].split("·")[0] for si in wd["skillInfos"]]
+
         gem = w.get("gem")
-        have = [t["name"] for t in gem["terms"]] if gem else []
-        cost = sum(t["cost"] for t in gem["terms"]) if gem else 0
-
-        cep_ids = cep_w.get(wname)
-        cep = [cep_zh.get(i, f"?{i}") for i in cep_ids] if cep_ids else None
-
-        if cep and sorted(cep) != sorted(want):
-            problems.append(f"CEP 记的和武器自己声明的不一致：{wname}　"
-                            f"CEP={'/'.join(cep)}　武器={'/'.join(want)}")
+        if gem:
+            have_zh = [t["name"] for t in gem["terms"]]
+            unknown = [t for t in have_zh if t not in zh2id]
+            if unknown:
+                raise SystemExit(
+                    f"「{name} / {wd['name']}」的基质词条 {unknown} 在 CEP 的"
+                    f" gemStats 中文表里查不到，翻不成 id。**不许按字面猜**——"
+                    f"去 cmyyx/cep 更新 gemStats，或找别的权威对照表。")
+            have = [_tag(zh2id[t]) for t in have_zh]
+            cost = sum(t["cost"] for t in gem["terms"])
+        else:
+            have, have_zh, cost = [], [], 0
 
         if not gem:
             verdict = "❌ 没有基质"
         elif sorted(have) != sorted(want):
-            miss = [x for x in want if x not in have]
-            extra = [x for x in have if x not in want]
-            verdict = "❌ 词条不符"
-            if miss:
-                verdict += f"（缺 {'/'.join(miss)}"
-                verdict += f"，多 {'/'.join(extra)}）" if extra else "）"
+            miss = [want_zh[want.index(t)] for t in want if t not in have]
+            verdict = f"❌ 词条不符（缺 {'/'.join(miss)}）"
         elif cost < FULL_COST:
             verdict = f"⚠️ 词条对但没满级（{cost}/{FULL_COST}）"
         else:
             verdict = "✅ 满配"
 
-        rows.append((cd["name"], wname, verdict,
-                     "/".join(want), "/".join(have) or "无"))
+        rows.append((name, wd["name"], verdict,
+                     "/".join(want_zh), "/".join(have_zh) or "无"))
 
     w1 = max(len(r[0]) for r in rows)
     print(f"\n{'干员':<{w1}}  {'武器':<10}  结论")
@@ -156,10 +209,6 @@ def main(argv: list[str]) -> int:
 
     ok = sum(1 for r in rows if r[2].startswith("✅"))
     print(f"\n{ok}/{len(rows)} 满配")
-    if problems:
-        print("\nCEP 数据与武器声明不一致（以武器声明为准）：")
-        for p in problems:
-            print("  · " + p)
     return 0
 
 
