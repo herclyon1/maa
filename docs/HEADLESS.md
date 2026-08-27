@@ -16,6 +16,69 @@ without it.
 Screenshots of the *emulator* are not affected - those come over ADB and are
 independent of the Windows desktop.
 
+## MaaEnd 扫库：要用 /tasks/start，不是 /tasks/run
+
+2026-08-24 全量扫库跑通了，`IMS.json` 从 44 项长到 **63 项**、`ret=true`。
+根因和之前记的完全不一样，**下面这段是实测结论，不是推测**。
+
+### 真正的原因：自定义动作没注册
+
+MXU 的 web API 有两个提交入口：
+
+| 端点 | 载荷 | 会不会拉起 agent |
+|---|---|---|
+| `POST /api/maa/instances/:id/tasks/run` | `[{entry, pipeline_override, selected_task_id}]` | **不会** |
+| `POST /api/maa/instances/:id/tasks/start` | `{tasks, agent_configs, cwd, tcp_compat_mode, pi_envs, reset_state, controller_info}` | **会** |
+
+MaaEnd 的 resource 里绝大多数动作是自定义动作，由 `interface.json` 的 `agent`
+段声明的两个子进程注册：
+
+```json
+"agent": [{"child_exec": "agent/go-service"},
+          {"child_exec": "agent/cpp-algo", "child_args": []}]
+```
+
+用 `/tasks/run` 建的实例**没有这两个子进程**，于是 `maafw.log` 里出现：
+
+```
+[ERR] Action is null [node_name=__ScenePrivateWorldEnterMenuList] [param.name=RepeatUntilFoundAction]
+[ERR] Action is null [node_name=__ScenePrivateMenuListEnterMenuValuables] [param.name=SceneManagerMenuListClickItemAction]
+```
+
+**识别全程是好的**——`InMenuList` 命中、OCR 在 `box=[1172,456,78,28]` 找到了
+「贵重品库」——只要轮到"点一下"就必然 `Node.Action.Failed`。改用 `/tasks/start`
+后一次注册了 **174 个**自定义动作（`AutoAltClickAction`、`RepeatUntilFoundAction`、
+`SceneManagerMenuListClickItemAction`…），扫库 30 秒内就开始写盘。
+
+### 可跑的调用
+
+```python
+POST http://127.0.0.1:12701/api/maa/instances/<id>/tasks/start
+{
+  "tasks": [{"entry": "SyncItemData", "pipeline_override": "{}"}],
+  "agent_configs": [{"child_exec": "agent/go-service"},
+                    {"child_exec": "agent/cpp-algo", "child_args": []}],
+  "cwd": "D:\\ark\\maaend",
+  "tcp_compat_mode": false, "pi_envs": null,
+  "reset_state": true, "controller_info": null
+}
+```
+
+跑完记得 `POST /api/maa/instances/<id>/agent/stop`，否则两个子进程会一直挂着。
+
+### 之前记错的两处，留着当教训
+
+1. **"一次任务只准扫一次"**——[MaaEnd#5180](https://github.com/MaaEnd/MaaEnd/issues/5180)
+   里维护者 overflow65537 说的配额限制**确有其事**，但它不是当时的拦路虎。我把它
+   当成定论写进文档，而实测里**全新实例照样失败**，证据当时就摆在那儿，是我没看。
+2. **"游戏用 RawInput 过滤了注入键盘"**——查到过这类案例就往上套。实际上
+   MaaEnd 的 `Key` 动作按 ESC 完全能开菜单，用 `DirectHit + action:Key + key:[27]`
+   的内联 override 当场验证过。键盘从来没有问题。
+
+共同的毛病：拿一个**能自圆其说**的外部解释顶替了"再看一眼日志"。
+`Action is null` 这行从第一次失败起就在 `maafw.log` 里。
+
+
 ## AUTO-MAS - a REST API
 
 Its Electron window is a shell over a FastAPI backend, so the machine
@@ -112,15 +175,39 @@ System), lives in the go-service process, and is documented at
 
 - `SyncItemData` scans the current screen and writes **the whole table** to
   `<MaaEnd>/debug/record/IMS.json` as `{updated_at, items: {<id>: <count>}}`.
+- IMS living **in go-service** is the whole story of why an API-driven scan
+  fails: go-service is one of the two `agent` children, and only
+  `/tasks/start` spawns them. Verified 2026-08-24 - see the Chinese section
+  "MaaEnd 扫库" above for the exact payload.
 - The chain is `SyncItemData -> SyncItemDataBegin -> SyncItemDataInProgressionTab
-  -> SyncItemDataRunFull`, so that pass **is** the full scan.
+  -> SyncItemDataRunFull`. **"RunFull" means "scan that tab exhaustively", NOT
+  "scan the whole depot".** The chain enters the **progression tab** and never
+  leaves it, which is why the 63 results only ever cover `valuableTabType`
+  4 / 6 / 7 / 10 and why 基质 (tab 2, 156 `gem_*` entries) never appears.
+  Do not repeat the mistake of reading "Full" as "whole inventory" - I did, and
+  then wrongly blamed MaaEnd for not scanning 基质.
+  **Open question (needs the machine):** does `resource/pipeline/nodes.json`
+  define sibling nodes for the other tabs, or is the tab switch parameterised so
+  `pipeline_override` can retarget it? The task files cached under
+  `automas/data/cache/maaend_resource_loader/` do **not** include
+  `resource/pipeline/nodes.json`, so this cannot be answered offline.
 - Of MaaEnd's task entries only `ProtocolSpace.json` (协议空间) reaches it - and
   协议空间 is in the nightly run, so **the file is refreshed every day with no
   extra work**. To force a refresh, run the MaaEnd script and re-read it.
-- Ids resolve through `assets/data/IconRecognition/recognition_items.json` for
-  category, rarity and icon - but its `name` is a hash, so readable names are
-  not in MaaEnd's data. The uppercase ids (`T_CREDS`, `OROBERYL`,
-  `VALLEY_STOCK_BILL`) are per-task fixed-point OCR nodes, not catalog entries.
+- **Chinese names: `locales/interface/zh_cn.json`.** Flatten it to
+  `{last key segment: string}` and look the id up by exact last segment - all 49
+  `item_*` / `ap_*` depot ids resolve that way (`item_gold` -> 折金票,
+  `item_expcard_stage2_high` -> 高级认知载体). Match on the **last segment only**;
+  a substring match also hits `task.ProtocolSpace.focus.supply_plan.*` status
+  templates and returns things like "折金票 未达标，准备刷取协议空间".
+  `assets/data/IconRecognition/recognition_items.json` carries category, rarity
+  and icon, but its `name` is a hash - it is not the name source.
+- The 14 uppercase ids (`T_CREDS`, `OROBERYL`, `VALLEY_STOCK_BILL`, ...) are
+  per-task fixed-point OCR nodes, not catalog entries: they appear in **no file
+  but `IMS.json` itself**, and their counts do not match the `item_*` entry of
+  the same name. Only three are named anywhere - `T_CREDS` 折金票,
+  `PROTOPRISM` 协议棱柱, `PROTOHEDRON` 协议棱柱组, via the supply_plan templates.
+  Treat the `item_*` set as the depot; ignore the uppercase set.
 
 ## Can the relay move entirely to this? No - and here is the line
 

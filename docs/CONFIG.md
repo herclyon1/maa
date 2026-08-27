@@ -36,8 +36,7 @@ which sounds wrong for an unattended machine and is not: `powercfg` reports
 |---|---|
 | The MAA user still has `Notify/IfServerChan = true` **with a ServerChan key saved**, under a master `Notify/Enabled = false` | One toggle away from AUTO-MAS pushing on its own. NOTIFICATIONS.md says the relay is the only notifier; the key should be cleared, not merely switched off |
 | `Timers/ForceScheduledStart = true` in MAA | Inert while all 8 timers are off. Enable any one of them later and MAA starts on its own clock, colliding with AUTO-MAS |
-| The **second** MAA profile has `PostActions = Shutdown` | AUTO-MAS only drives `Default`, so it never fires - but running that profile by hand from MAA's UI powers the machine off, against the standing "never shut down without an order" |
-| The same profile has `StartEmulator = true` pointing at `#0 guan.lnk` | That is the Arknights official launcher shortcut, not LDPlayer - the source of the wrong-thing-started confusion on 2026-08-22 |
+| ~~The **second** MAA profile (`卢智超666`) had `PostActions = Shutdown`, `RunDirectly = true` and `StartEmulator = true` pointing at `#0 guan.lnk`~~ | **已于 2026-08-24 删除**（操作者要求）。那是 MuMu 时代的遗留配置，AUTO-MAS 从不驱动它，但三个开关凑在一起意味着谁手动切过去，MAA 就会自己开模拟器、启动即跑、跑完关机。母本和 MAA 目录里的四份文件都已清掉，各留一份 `.bak-delprofile-20260824-114507` 备份 |
 | `Update/CheckOnStartup = true` in MAA | MaaEnd's first-attempt failures were caused by exactly this shape of thing (self-update restarting the process). The MAA doc says update settings are AUTO-MAS's to adjust, so this is left alone and watched, not changed |
 
 ### Available and switched off, by choice
@@ -148,6 +147,25 @@ left, and Endfield runs a pointless round that usually reports a false protocol
 space failure, followed by `Evening-MAA` at 21:30. With it off, both rounds are
 purely time-triggered, with 15 min of slack in the morning and 10 in the evening.
 
+
+### 两次开机是两套机制，不是同一套
+
+早晚都会自己开机，但**原理不同**，混为一谈会得出错误结论：
+
+| | 机制 | 前提 |
+|---|---|---|
+| **早上 08:45** | 智能插座断电再通电，主板「来电自启」把机器带起来 | BIOS 里 *Restore on AC Power Loss* 必须是 Power On；机器必须处于关机态（S5），不能是睡眠 |
+| **晚上 21:20** | 主板 RTC 定时开机 | BIOS 里设置了定时开机；同样要求关机态 |
+
+**为什么要写下来**：`powercfg /waketimers` 报「系统中不存在活动的唤醒计时器」，
+`Get-ScheduledTask` 里所有 `ark-*` 任务的 `WakeToRun` 也都是 `False`——因为这两套
+机制都在 BIOS/硬件层，Windows 根本看不见。2026-08-24 我据此差点得出"关机后不会
+自己醒"的错误结论，是靠翻事件日志 6005（连续七天 08:45:1x，误差六秒内）才纠正
+过来。**下次不要再从 Windows 侧找答案，这里就是答案。**
+
+推论：**关机是安全的**，两套机制都要求机器处于关机态才生效。反过来，让机器
+睡眠（而不是关机）会同时废掉这两条路。
+
 ### config/ScriptConfig.json (per user)
 
 | Item | Value |
@@ -167,7 +185,22 @@ purely time-triggered, with 15 min of slack in the morning and 10 in the evening
 <!-- check: json D:\ark\automas\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/Stage AT-4 -->
 <!-- check: json D:\ark\automas\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/StageMode Fixed -->
 <!-- check: json D:\ark\automas\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/MedicineNumb 0 -->
-<!-- check: json D:\ark\automas\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/Annihilation Close -->
+### `Info/Annihilation` 是随游戏周变化的，不能写死校验
+
+这个值有两个合法状态，中继按游戏周在两者之间来回切（`relay/ark_relay/annihilation.py`）：
+
+| 时机 | 值 | 原因 |
+|---|---|---|
+| 游戏周开始（周一 04:00 后第一次开机） | `Annihilation` | 本周剿灭还没打，要打 |
+| 本周剿灭跑成功之后 | `Close` | 打过了，再打是白扔理智 |
+
+原先这里写死校验 `Close`，结果 2026-08-24 早上开机后必然报错——那天正是新游戏周，
+中继刚打了日志 `新的一周，剿灭已恢复为 Annihilation`，**机器是对的，校验是错的**。
+写死一个随时间变化的值，只会每周一制造一次假警报。
+
+所以这里不设固定校验。要确认状态，看中继日志里的那两句话，或者直接读
+`ScriptConfig.json` 的 `*/SubConfigsInfo/UserData/*/Info/Annihilation`
+并对照上表判断是否合理。
 <!-- check: json D:\ark\automas\config\ScriptConfig.json */Game/WaitTime 60 -->
 
 **`Info.Annihilation` is asymmetric and the asymmetry is silent.** AUTO-MAS
@@ -236,6 +269,28 @@ Sources: [固源岩组](https://prts.wiki/w/%E5%9B%BA%E6%BA%90%E5%B2%A9%E7%BB%84
 `StageMode: Fixed` with all alternates disabled means an expired event stage
 fails every run. Whenever the current stage is an event stage, its end time is a
 hard deadline for changing it.
+
+### 队列报错的两种形态，别混为一谈
+
+两种看起来都像"登录出问题"，原因完全不同。**先分清是哪一种再动手**，
+这两个我都搞混过。
+
+| 形态 | 特征 | 原因 |
+|---|---|---|
+| **整天全红** | 明日方舟连试 6 次、终末地连试 3 次，全部失败。**只发生过一天** | 账号密码没填全（`Info/Id` 非空而 `Info/Password` 为空）。这天之外账号都是填好的 |
+| **首轮十四项齐报错** | 刚进到登录界面，紧接着十四个任务项一次性全部报错 | **更新打断**。这是常态性的，不是账号问题 |
+
+**判定方法**：看**范围和次数**，不要看报错文字。
+
+- 跨两个游戏、整天反复失败 → 查账号配置
+- 单轮、进登录界面后十四项一起炸 → 更新打断
+
+**不要因为一次账号事故就把所有登录类报错都归因于账号。** 反过来也一样：
+2026-08-20 09:00 那批 ERROR 和一次 MAA 更新时间重合，我据此写下"更新打断了队列"，
+而那天恰恰是账号那天——**时间重合两次都骗到了我**，一次骗我怪更新，
+一次差点骗我把所有事都怪到账号头上。
+
+游戏本身是登录着的：标题界面显示「账户登出」而非「切换账号」。
 
 **`Info/Id` must stay empty unless `Info/Password` is filled too.**
 `app/task/MaaEnd/AutoProxy.py` short-circuits on it:
@@ -348,6 +403,30 @@ last updated 2026-08-20. `resource/version.json` carries the resource date, not
 the program version. Never quote the folder name as a version - it has been
 wrong here by a whole major release.
 
+### MAA 的通知开关有两份，会被覆盖的那份不算数
+
+**改 MAA 自己的 `config/gui.new.json` 是没用的。** AUTO-MAS 为每个脚本存着一份
+母本，每次拉起 MAA 之前把它**覆盖**进 MAA 的目录：
+
+```
+D:\ark\automas\data\754d129e-d587-435b-b75f-a0b91aac7020\Default\ConfigFile\gui.new.json
+```
+
+（路径里的 uid 是 MAA 脚本在 AUTO-MAS 里的 id，见 `/api/scripts/get`。
+合并逻辑在 `app/task/MAA/tools/UpdateMAA.py`，是双向的——所以在 MAA 界面里改完
+也可能被同步回母本，反过来同样。）
+
+2026-08-24 就栽在这上面：MAA 目录里四个开关全是 `false`，`check-docs.py` 84 项
+全绿，但手机照样收到 `[MAA] 任务已全部完成`。因为**校验查的是副本**，而母本里
+`SendWhenComplete` 是 `true`，每次运行前又被盖回去。目录里那个
+`gui.new.json.bak-notify-off` 备份说明这事以前处理过、后来被同步回滚了。
+
+**所以两份都要关，而且两份都要校验。** 下面的检查项现在覆盖母本。
+
+<!-- check: json D:\ark\automas\data\754d129e-d587-435b-b75f-a0b91aac7020\Default\ConfigFile\gui.new.json Configurations/*/Gui/ExternalNotification/SendWhenComplete False -->
+<!-- check: json D:\ark\automas\data\754d129e-d587-435b-b75f-a0b91aac7020\Default\ConfigFile\gui.new.json Configurations/*/Gui/ExternalNotification/SendWhenError False -->
+<!-- check: json D:\ark\automas\data\754d129e-d587-435b-b75f-a0b91aac7020\Default\ConfigFile\gui.new.json Configurations/*/Gui/ExternalNotification/SendWhenStalled False -->
+
 <!-- check: json D:\ark\maa\config\gui.new.json Configurations/*/Gui/ExternalNotification/SendWhenComplete False -->
 <!-- check: json D:\ark\maa\config\gui.new.json Configurations/*/Gui/ExternalNotification/SendWhenError False -->
 <!-- check: json D:\ark\maa\config\gui.new.json Configurations/Default/Gui/ExternalNotification/SendWhenError False -->
@@ -432,6 +511,7 @@ sc.exe failure sshd reset= 86400 actions= restart/5000/restart/10000/restart/300
 | `ARK_HISTORY_DIR` | AUTO-MAS's `history` directory (required) |
 | `ARK_AUTOMAS_DIR` | AUTO-MAS root - schedule reading and config edits |
 | `ARK_MAAEND_DIR` | MaaEnd root |
+| `ARK_MAS_PORT` | AUTO-MAS backend port, default `36163`. The pre-update asks it over HTTP on localhost rather than launching anything. |
 | `ARK_STATE_DIR` | relay state, default `./ark-state` |
 | `ARK_LAST_RUN_AFTER` | fallback for the day's last run time, default `21:30`; the real cutoff comes from QueueConfig |
 | `ARK_SHUTDOWN_AFTER_RUN` | `1` - the relay powers the machine off |

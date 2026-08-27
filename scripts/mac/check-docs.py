@@ -223,8 +223,11 @@ def check_json_values(directives) -> None:
             bad(f"{md.relative_to(REPO)}: malformed json directive: {arg!r}")
             continue
         if path not in cache:
+            # pwsh 7 优先：5.1 默认不是 UTF-8，路径含中文时会被 ANSI 解码毁掉。
+            _pw = ('"C:\\Program Files\\PowerShell\\7\\pwsh.exe"'
+                   if _has_pwsh() else 'powershell')
             rc, out = remote(
-                f'powershell -NoProfile -Command '
+                f'{_pw} -NoProfile -Command '
                 f'"[Convert]::ToBase64String([IO.File]::ReadAllBytes(\'{path}\'))"')
             if rc != 0:
                 cache[path] = None

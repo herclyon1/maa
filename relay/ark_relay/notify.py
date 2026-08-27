@@ -307,6 +307,21 @@ def _hint(name: str, err: str) -> str:
     return ""
 
 
+# 报警：全渠道扇出。一个渠道挂了，另一个必须顶上——理由见 Notifier 的类注释。
+_ALERT_ORDER = ("企业微信", "企业微信机器人", "Server酱")
+
+# 日常：只发一个，第一个成功就停，后面的根本不会被调用。
+#
+# Server酱 排第一是实测结论：它没有 IP 白名单，用户 2026-08-24 明确说
+# "server酱长期稳定（从来没出过问题）"。企业微信恰恰相反——两台机器都在
+# 家宽后面，公网 IP 一转就 errcode 60020 全拒。
+#
+# 为什么不是"全发更保险"：同一份日报同时落到微信和 Server酱只是烦，不会
+# 更可靠。冗余的价值在报警，不在日常；把两者混为一谈的结果是真告警被日常
+# 噪声淹掉。用户 2026-08-24 当场提的："不要重复"。
+_ROUTINE_ORDER = ("Server酱", "企业微信机器人", "企业微信")
+
+
 class Notifier:
     """Fan out to every configured channel; one failure must not silence the rest.
 
@@ -344,6 +359,8 @@ class Notifier:
         self.wecom = WeCom(cfg)
         self.wecom_bot = WeComBot(cfg)
         self.serverchan = ServerChan(cfg)
+        # 每个渠道上一次的失败原因，用来压掉重复告警（见 _fan_out）。
+        self._last_send_error: dict[str, str] = {}
         self._down_path = Path(cfg.state_dir) / "channels-down.json"
         self._announced_down: dict[str, str] = self._load_down()
         self._announcing = False  # the outage alert itself goes out via _fan_out
@@ -390,37 +407,63 @@ class Notifier:
     def channels(self) -> list[str]:
         return [n for n, _ in self._enabled()]
 
-    def _fan_out(self, title: str, body: str) -> tuple[list[str], dict[str, str]]:
-        """Try every enabled channel. -> (delivered names, {name: error})"""
+    def _fan_out(self, title: str, body: str, *,
+                 order: tuple[str, ...] | None = None,
+                 stop_on_first: bool = False,
+                 ) -> tuple[list[str], dict[str, str]]:
+        """Try channels in `order`. -> (delivered names, {name: error})
+
+        `stop_on_first` returns as soon as one channel accepts, so the later
+        ones are never even attempted - that is what keeps a routine报告 from
+        landing on the phone twice.
+        """
         delivered: list[str] = []
         failed: dict[str, str] = {}
         joined = f"{title}\n\n{body}" if body else title
-        attempts = (
-            ("企业微信", self.wecom, lambda: self.wecom.send_text(joined)),
-            ("企业微信机器人", self.wecom_bot,
-             lambda: self.wecom_bot.send_text(joined)),
-            ("Server酱", self.serverchan,
-             lambda: self.serverchan.send_text(title, body)),
-        )
-        for name, channel, call in attempts:
+        attempts = {
+            "企业微信": (self.wecom, lambda: self.wecom.send_text(joined)),
+            "企业微信机器人": (self.wecom_bot,
+                        lambda: self.wecom_bot.send_text(joined)),
+            "Server酱": (self.serverchan,
+                        lambda: self.serverchan.send_text(title, body)),
+        }
+        for name in (order or _ALERT_ORDER):
+            channel, call = attempts[name]
             if not channel.enabled:
                 continue
             try:
                 call()
             except Exception as exc:  # noqa: BLE001 - report, never crash the loop
                 failed[name] = str(exc)
-                log.warning("%s推送失败: %s", name, exc)
+                # 同一条失败只说一次。企业微信的 60020（IP 不在白名单）是持续性的，
+                # 2026-08-26 一天刷了 74 条一模一样的告警——重复的噪音会把真正
+                # 变化了的失败淹掉。错误内容变了才再说一次；恢复了也说一次。
+                if self._last_send_error.get(name) != str(exc):
+                    log.warning("%s推送失败: %s", name, exc)
+                    self._last_send_error[name] = str(exc)
             else:
+                if self._last_send_error.pop(name, None) is not None:
+                    log.info("%s推送已恢复", name)
                 delivered.append(name)
+                if stop_on_first:
+                    break
         return delivered, failed
 
-    def send(self, title: str, body: str) -> list[str]:
+    def send(self, title: str, body: str, *, alert: bool = False) -> list[str]:
         """Returns failures only when the message reached nobody.
 
         An empty list means the caller may consider the message delivered and
         stop holding it. A non-empty list means every channel refused it.
+
+        `alert=True` fans out to **every** channel - use it only for faults
+        someone has to act on. Everything else (日报、预更新、剿灭、待办)
+        goes to **one** channel; see the note on `_ROUTINE_ORDER`.
         """
-        delivered, failed = self._fan_out(title, body)
+        if alert:
+            delivered, failed = self._fan_out(title, body)
+        else:
+            delivered, failed = self._fan_out(
+                title, body, order=_ROUTINE_ORDER, stop_on_first=True)
         if not delivered:
             return [f"{n}: {e}" for n, e in failed.items()]
         # A channel that started working again becomes announceable once more.

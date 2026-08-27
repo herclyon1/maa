@@ -14,6 +14,19 @@ that is acceptable on Tailscale and would not be on an untrusted network.
     scripts/mac/mas-api.py paths                 # every endpoint
     scripts/mac/mas-api.py get /api/info/get/overview
     scripts/mac/mas-api.py get /api/scripts/get
+
+Three things that cost real time on 2026-08-26, written down so they do not
+again:
+
+* **Every endpoint is POST.** A GET returns `Method Not Allowed`, including on
+  things that read (`/api/scripts/get`, `/api/queue/get`).
+* **`ValueError: 配置已锁定, 无法修改`** means a task is running - the config is
+  read-only for its duration. The fix is to `POST /api/dispatch/stop` and wait
+  for AUTO-MAS to go idle, **not** to retry: that day it was retried eighteen
+  times and failed every one. Verified afterwards that a write succeeds
+  immediately once nothing is running.
+* **`Config.json`'s `Data.Stage` is JSON inside a JSON string** - `json.loads`
+  it twice or you get `TypeError: string indices must be integers`.
 """
 import json
 import os
@@ -56,6 +69,25 @@ def spec():
         return json.loads(r.read().decode("utf-8"))
 
 
+SECRET_HINT = ("key", "cdk", "secret", "token", "password", "passwd", "sendkey",
+               "webhook", "cookie", "authorization")
+
+
+def redact(o):
+    """Blank anything whose key looks like a credential.
+
+    Printing a whole settings blob leaked a WeCom secret and a MirrorChyan CDK
+    into a transcript on 2026-08-24. A dump helper that cannot be trusted with
+    a config file is not a helper.
+    """
+    if isinstance(o, dict):
+        return {k: ("<已隐去>" if any(h in k.lower() for h in SECRET_HINT) and o[k]
+                    else redact(v)) for k, v in o.items()}
+    if isinstance(o, list):
+        return [redact(v) for v in o]
+    return o
+
+
 def main(argv):
     if not argv or argv[0] in ("-h", "--help"):
         print(__doc__)
@@ -80,7 +112,9 @@ def main(argv):
     if cmd in ("get", "post"):
         path = argv[1]
         body = json.loads(argv[2]) if len(argv) > 2 else {}
-        print(json.dumps(call(path, body, "POST"), ensure_ascii=False, indent=1))
+        raw = call(path, body, "POST")
+        show = raw if "--raw" in argv else redact(raw)
+        print(json.dumps(show, ensure_ascii=False, indent=1))
         return 0
     print(f"未知命令: {cmd}")
     return 1

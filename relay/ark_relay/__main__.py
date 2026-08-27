@@ -134,7 +134,9 @@ def cmd_test(cfg: Config) -> int:
         print("✗ 没有配置任何推送渠道")
         return 1
     now = datetime.now(tz=SERVER_TZ)
-    errors = n.send("🔧 中继自检", f"这是一条测试消息。\n当前 {both_clocks(now)}")
+    # 自检就是要把每条通道都打一遍，所以这里显式全发。
+    errors = n.send("🔧 中继自检",
+                    f"这是一条测试消息。\n当前 {both_clocks(now)}", alert=True)
     for e in errors:
         print(f"  ✗ {e}")
     if not errors:

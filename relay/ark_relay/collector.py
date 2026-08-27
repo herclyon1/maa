@@ -31,7 +31,10 @@ AUTOMAS_NAME_TZ = timezone(timedelta(hours=4))
 _FAILED_LIST = re.compile(r"失败[:：]\s*(.+)$")
 
 # "[2026-08-14 06:45:11.432] 任务开始: ..."
-_LOG_TS = re.compile(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
+# MAA/MaaEnd 写 "[2026-08-25 09:37:25.186]"，OK-WW 写
+# "2026-08-25 12:31:32,941 INFO ..."——没有方括号、毫秒用逗号。
+# 只认前者会让 OK-WW 的每条记录都显示"时长未知"。
+_LOG_TS = re.compile(r"^\[?(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
 _MAA_SUCCESS = "Success!"
 
 
@@ -194,6 +197,47 @@ def parse_maa_log(log_path: Path) -> dict:
     return out
 
 
+
+def _full_at_sentence(current: int, cap: int, sec_per_point: int,
+                      ref: datetime) -> str:
+    """写成 MAA 那句话的形状，好让 core._sanity_full 原样接手。
+
+    复用它是为了不把"本日/次日"和东京时间的换算再写第二遍——那两处一旦走样，
+    报告里就会出现两种不同的时间说法。
+    """
+    if current >= cap:
+        return ""
+    when = ref + timedelta(seconds=(cap - current) * sec_per_point)
+    return f"理智将在 {when.astimezone(SERVER_TZ):%Y-%m-%d %H:%M} 回满。"
+
+
+def flatten_drops(raw: dict) -> dict:
+    """把按关卡嵌套的掉落压平成 {物品: 数量}。
+
+    AUTO-MAS 早先把 `drop_statistics` 留空，所以这里一直是自己解析 MAA 日志再
+    填进去。本项目给 AUTO-MAS 提的 PR 让它从 v5.4.0-beta.8 起真的填了这个字段
+    ——形状是按关卡嵌套的 `{"AT-4": {"龙门币": 1296, ...}}`，比这里自己解析出来
+    的多一层。而合并逻辑是"raw 里没有才填"，于是嵌套那份原样进了报告，渲染成
+    `产出 AT-4×{'龙门币': 1296, ...}`。2026-08-25 实测到。
+
+    换句话说这是自己的上游改动打到自己身上：加字段时只想着 AUTO-MAS 那边，
+    没回头看这边的消费代码假设了什么形状。
+    """
+    src = raw.get("drop_statistics")
+    if not isinstance(src, dict) or not src:
+        return {}
+    if all(isinstance(v, dict) for v in src.values()):
+        flat: dict[str, int] = {}
+        for per_stage in src.values():
+            for name, count in per_stage.items():
+                try:
+                    flat[name] = flat.get(name, 0) + int(count)
+                except (TypeError, ValueError):
+                    continue
+        return flat
+    return {}
+
+
 # MaaEnd writes what it collected in a different shape from MAA - no stage, no
 # drop table, just a running list of "获得 <item> ×<n>" as it works through the
 # day's chores, plus one line per finished task. AUTO-MAS records none of it
@@ -212,6 +256,21 @@ _END_SANITY = re.compile(r"当前理智\s*(\d+)\s*/\s*(\d+)")
 # MaaEnd also says whether it knocked off because sanity ran out, and that
 # decides whether anything needs attention more directly than the number does.
 _END_SANITY_OUT = re.compile(r"理智不足[，,]\s*结束任务")
+# 协议空间一次结算扣多少理智。优先从日志里的读数差自己标定；只有当整份日志
+# 里看不到一次下降时才用这个数（例如 2026-08-24：两条读数都是 201，扣费发生在
+# 最后一次结算，之后就没有读数了）。160 是 2026-08-25 实测出来的：241 → 81。
+# 关卡等级变了这个数会变，但只要那天的日志里出现过一次下降，就会用实测值覆盖。
+_END_PS_COST = 160
+# 理智/波片的恢复速率，用来算"几点回满"。MAA 自己会把这句话写进结果 JSON，
+# 另外两个不写，所以这里自己算。
+#   终末地：每 7 分 12 秒回 1 点，24 小时共 200 点（官方口径）。
+#           与实测吻合：2026-08-24 收工 41 → 08-25 开跑 241，隔 24 小时正好 +200。
+#   鸣潮：  每 6 分钟回 1 点，上限 240，空到满正好 24 小时。
+_END_SANITY_SEC_PER_POINT = 432
+_OKWW_STAMINA_CAP = 240
+_OKWW_SEC_PER_POINT = 360
+_END_SANITY_SPENT = re.compile(r"尝试使用理智消耗许可")
+_END_SANITY_REFUSED = re.compile(r"理智不足[，,]\s*尝试不使用理智消耗许可")
 _END_PS_ENTER = re.compile(r"进入协议空间成功")
 _END_TASK_DONE = re.compile(r"任务完成[:：]\s*(\S.+?)\s*$")
 
@@ -245,6 +304,22 @@ def parse_maaend_log(log_path: Path) -> dict:
         out["protocol_runs"] = runs
     if hits := _END_SANITY.findall(text):
         got, cap = (int(x) for x in hits[-1])
+        # 「当前理智」是在协议空间的**奖励结算界面**读的，而扣费发生在紧随其后的
+        # 「确认领取奖励」。所以最后一条读数是**扣费之前**的数字：只要最后一次
+        # 真的扣成了，直接报它就会高出整整一次的量。
+        #
+        # 单次消耗从读数差自己标定——实测 2026-08-25：241 → 81，一次 160。
+        # 写死数字会在关卡等级变化时失准，而这个差值本身就是当次的真实消耗。
+        readings = [int(a) for a, _ in hits]
+        drops = [a - b for a, b in zip(readings, readings[1:]) if a > b]
+        # 只看**最后一次**结算扣没扣：整段里扣过几次不作数。实测 2026-08-25，
+        # 最后一次是 "理智不足，尝试不使用理智消耗许可"，没扣，所以 81 就是终值；
+        # 若按"扣费次数 > 拒绝次数"来判断，会把 81 再减 160 变成 0。
+        tail = text[text.rfind("当前理智"):]
+        last_claim_spent = (_END_SANITY_SPENT.search(tail)
+                            and not _END_SANITY_REFUSED.search(tail))
+        if last_claim_spent:
+            got = max(0, got - (max(drops) if drops else _END_PS_COST))
         # AUTO-MAS always records sanity as 0 for MaaEnd, so whatever is filled
         # in here gets used (parse_record only fills in fields that are empty
         # in raw).
@@ -252,6 +327,137 @@ def parse_maaend_log(log_path: Path) -> dict:
         out["sanity_cap"] = cap
     if _END_SANITY_OUT.search(text):
         out["sanity_exhausted"] = True
+    return out
+
+
+# OK-WW is the third shape. It never reads the reward screen, so there is no
+# drop list to recover - it is a pure image-recognition combat script and the
+# only numbers it ever knows are its own. What it *does* publish, through
+# ok-script's `info_set` (which logs every call), is enough for a useful line:
+# how much stamina went in, how many domain entries that bought, and where the
+# daily quest ended up. Asked for on 2026-08-25 with "虽然它没有掉落物的显示，
+# 但只能说够用了".
+_OKWW_STAMINA = re.compile(r"info_set current_stamina (\d+)")
+_OKWW_DAILY = re.compile(r"info_set current daily progress (\d+)")
+_OKWW_POINTS = re.compile(r"info_set total daily points (\d+)")
+# One of these is logged per domain entry, so counting them counts the runs.
+_OKWW_ENTRY = re.compile(r"使用单倍体力|当前体力大于等于双倍|使用双倍")
+_OKWW_DAILY_TARGET = 180
+# 游戏内日常活跃度满值。会超出（周常乐园等还会继续加），所以报出来时
+# 要带上限，否则「活跃度 110」看着像出错了。
+_OKWW_POINTS_TARGET = 100
+
+# 凝素领域刷的是第几个。OK-WW 的配置只存序号，日志也只写序号
+# （`Teleport to Forgery Challenge 0`，0 起算），报告里写「凝素领域 ×3」
+# 机器看得懂、人看不懂。用户 2026-08-26：「他那个凝素领域第一个机器看得懂，
+# 人看不懂是什么啊」。
+#
+# 下面这张表是 2026-08-26 在游戏里实拍 F2 →「素材获取」→「凝素领域」列表抄的
+# （瑝珑·梦州，武器类型筛选＝全部）。
+#
+# **它不是永久有效的**：列表顺序由游戏决定，加了武器类型筛选、
+# 或者版本更新加了新副本，序号就会错位。所以查不到的序号一律退回
+# 「第 N 个」，宁可少说也不要报一个错名字。
+_FORGERY_NAMES = {
+    0: "陨翼云渊（迅刀）",
+    1: "静灭云渊（音感仪）",
+    2: "裂斩云渊（长刃）",
+    3: "碎蚀云渊（臂铠）",
+}
+_OKWW_FORGERY_INDEX = re.compile(r"info_set Teleport to Forgery Challenge (\d+)")
+
+
+def _forgery_label(text: str) -> str:
+    """「凝素领域」后面跟哪个副本。认不出就只说序号。"""
+    hits = _OKWW_FORGERY_INDEX.findall(text)
+    if not hits:
+        return "凝素领域"
+    idx = int(hits[-1])
+    if name := _FORGERY_NAMES.get(idx):
+        return f"凝素领域·{name}"
+    return f"凝素领域（第 {idx + 1} 个）"
+
+
+def parse_okww_log(log_path: Path) -> dict:
+    """Recover stamina spend / entry count / daily progress from an OK-WW log.
+
+    Stamina is summed from the *drops* between consecutive readings rather than
+    from first-minus-last: the reserve tops the bar back up mid-run, and a
+    naive subtraction reads that refill as if it had never been spent.
+    """
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {}
+
+    out: dict = {}
+    readings = [int(m.group(1)) for m in _OKWW_STAMINA.finditer(text)]
+    spent = sum(a - b for a, b in zip(readings, readings[1:]) if a > b)
+    if spent:
+        out["okww_stamina_spent"] = spent
+    entries = len(_OKWW_ENTRY.findall(text))
+    if entries:
+        out["okww_runs"] = entries
+    if readings:
+        # 跑完还剩多少，比"花了多少"更有用：下一轮够不够 180 全看这个数。
+        out["okww_stamina_left"] = readings[-1]
+    if daily := _OKWW_DAILY.findall(text):
+        out["okww_daily"] = f"{max(int(x) for x in daily)}/{_OKWW_DAILY_TARGET}"
+    if points := _OKWW_POINTS.findall(text):
+        top = max(int(x) for x in points)
+        out["okww_points"] = f"{top}/{_OKWW_POINTS_TARGET}"
+        if top >= _OKWW_POINTS_TARGET:
+            out["okww_points"] += "（已满）"
+        # 第一次读到的活跃度就 ≥ 目标 = 这一轮开始前日常已经做完了
+        # （当天的第二次运行）。这轮不刷任何东西是**正确行为**，
+        # 下游的渲染和结果核对都要用这个标志，别把「无事可做」判成「没干成」。
+        if int(points[0]) >= _OKWW_POINTS_TARGET:
+            out["okww_daily_done_at_start"] = True
+    # Why it stopped, in its own words. "used all stamina" is the good ending.
+    if "used all stamina" in text:
+        out["okww_stopped"] = "体力用尽"
+    elif "not enough stamina" in text:
+        out["okww_stopped"] = "体力不足，未进入副本"
+    # 只报有信息量的：领邮件、领电台、领每日奖励每轮都会做，写进报告只是噪音。
+    # 运营 2026-08-25：「除了周常乐园、刷取的关卡、残像聚落之外也别写上去了」。
+    # 出现在日志里 != 做成了。凝素领域可能因为体力不够而根本没进本，梦魇任务
+    # 可能抛异常被 DailyTask 吞掉——把这两种都写成"完成"就是假的。所以每一项
+    # 都按它自己的成败标注。
+    steps = []
+    for needle, name in (
+        ("ForgeryTask:", _forgery_label(text)),
+        ("TacetTask:", "无音区"),
+        ("SimulationTask:", "模拟领域"),
+    ):
+        if needle not in text:
+            continue
+        if entries:
+            steps.append(f"{name} ×{entries}")
+        else:
+            steps.append(f"{name}（未进本）")
+    if "NightmareNestTask:" in text:
+        nest = "残象聚落" if "canxiang" in text else "梦魇巢穴"
+        # 出现在日志里 != 打过。2026-08-27 连着三轮走到 `open_boss_book canxiang`
+        # 却一场没打，而这里照样写成「残象聚落」，日报因此报了全绿。
+        # 判据换成「有没有真的进本」，并且把「已满跳过」和「找不到点位」分开说。
+        if "NightmareNestTask Failed" in text:
+            steps.append(f"{nest}（失败）")
+        elif "列表里没找到指定的点位" in text:
+            steps.append(f"{nest}（点位名对不上，一次没打）")
+        elif "指定点位都已打满" in text:
+            steps.append(f"{nest}（已满，跳过）")
+        elif re.search(r"is not complete|click_team_challenge|echo captured", text):
+            steps.append(nest)
+        else:
+            steps.append(f"{nest}（开了界面就退出，一次没打）")
+    if "weekly garden already completed" in text:
+        steps.append("周常乐园（本周已完成）")
+    elif "GardenTask:" in text:
+        steps.append("周常乐园")
+    if "check discarded echo" in text:
+        steps.append("声骸五合一")
+    if steps:
+        out["okww_steps"] = steps
     return out
 
 
@@ -301,6 +507,15 @@ def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
         failed = _split_failed(result) if not ok else []
         if not ok and not failed:
             failed = [result or "未知错误"]
+    elif "general_result" in raw:
+        # AUTO-MAS files OK-WW under the generic key it uses for 通用脚本, so the
+        # key alone cannot name the script - the filename prefix can. Records
+        # are "<script>-HH-MM-SS.json" since v5.4.0-beta.7.
+        prefix = stem.rsplit("-", 3)[0] if len(stem.rsplit("-", 3)) == 4 else ""
+        script = prefix or "通用脚本"
+        result = str(raw.get("general_result") or "")
+        ok = result.strip() == _MAA_SUCCESS
+        failed = [] if ok else ([result] if result else ["未知错误"])
     else:
         return None
 
@@ -316,11 +531,28 @@ def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
     # the log. Only fill what is genuinely missing - if a future AUTO-MAS
     # version starts populating these, its numbers win over our parsing.
     if log_path.exists():
-        parsed = (parse_maa_log(log_path) if script == "MAA"
-                  else parse_maaend_log(log_path))
+        if script == "MAA":
+            parsed = parse_maa_log(log_path)
+        elif script == "MaaEnd":
+            parsed = parse_maaend_log(log_path)
+        else:
+            parsed = parse_okww_log(log_path)
         for key, value in parsed.items():
             if not raw.get(key):
                 raw[key] = value
+    if flat := flatten_drops(raw):
+        raw["drop_statistics"] = flat
+    # 回满时间：MAA 自己写在结果 JSON 里，另外两个得算。用这条记录的结束时刻
+    # 当起点——那正是最后一次读数的时刻。
+    if not raw.get("sanity_full_at"):
+        if script == "MaaEnd" and raw.get("sanity") is not None:
+            raw["sanity_full_at"] = _full_at_sentence(
+                int(raw["sanity"]), int(raw.get("sanity_cap") or 360),
+                _END_SANITY_SEC_PER_POINT, finished)
+        elif raw.get("okww_stamina_left") is not None:
+            raw["sanity_full_at"] = _full_at_sentence(
+                int(raw["okww_stamina_left"]), _OKWW_STAMINA_CAP,
+                _OKWW_SEC_PER_POINT, finished)
 
     return RunRecord(
         run_id=f"{date_str}/{user}/{stem}",

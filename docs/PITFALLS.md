@@ -373,6 +373,7 @@ or guessed once, and then copied forward:
 | folder `MAA-v5.1.0-win-x64` = version 5.1.0 | v6.17.0-beta.5 |
 | folder `MaaEnd-…-v1.6.5` = version 1.6.5 | v2.25.0-rc.1 |
 | MAA's push switches "false on both profiles" | both true - it had been pushing all along |
+| （2026-08-24 又犯了一次）"MAA 目录里四个开关都是 false，所以不是 MAA 发的" | 是 MAA 发的。查的是会被覆盖的副本，母本在 AUTO-MAS 的 `data/<uid>/Default/ConfigFile/` 下，那里是 `true`。同一个坑第二次，这次把校验补到了母本上 |
 | the second MAA profile is "the owner's manual config" | an automation profile with `RunDirectly` + `PostActions: Shutdown` |
 | `Notify.IfServerChan = true` | false |
 | "everything touched was backed up first" | MaaEnd's config backup does not exist |
@@ -707,4 +708,37 @@ purpose - so the answer is to stop using it, not to work around it.
   reading that as the current result is the same failure mode in a new costume:
   stale data reported as fresh.
 
+
+
+## Five layers of quoting, and none of them are on your side
+
+A command typed inline for the game machine passes through bash, ssh,
+PowerShell, sometimes cmd, and finally Python. Every one of them gets a turn at
+the quotes.
+
+The failure that keeps recurring: PowerShell escapes a single quote by doubling
+it (`''`), but writing that inside a bash single-quoted string ends the bash
+string at the first quote. The result is not an error - it is a mangled command
+that runs and produces something plausible. On 2026-08-24 this burned three
+round trips in one session, twice producing `scp: winrun.out: No such file`
+because the remote command never ran at all.
+
+`set FOO=1 && cmd` has the same flavour of trap: cmd takes the trailing space
+into the value, so `PYTHONUTF8` becomes `"1 "` and Python refuses to start with
+`invalid PYTHONUTF8 environment variable value`. Write `set FOO=1&& cmd`.
+
+**The fix is not more careful quoting.** Put the script in a file and ship it:
+
+```bash
+scripts/mac/winrun.sh --py scripts/whatever.py arg1 arg2
+```
+
+`--py` copies the file, runs it with the machine's own Python 3.14 under
+`PYTHONUTF8=1`, and brings the output back as bytes through the same UTF-8-safe
+path as the other modes. No layer parses the script, so no layer can corrupt
+it. Verified with a line containing a single quote, a double quote and a
+backtick, plus Chinese, all of which arrived intact.
+
+Use `--ps` for genuine one-liners. Anything with a quote in it, or longer than
+one line, goes in a file.
 

@@ -26,7 +26,7 @@ def scope(raw: str, key: str) -> tuple[int, int]:
     raise ValueError(f'unbalanced braces after "{key}"')
 
 
-def replace_in(raw: str, key: str, old: str, new: str, expect: int = 1) -> str:
+def replace_in(raw: str, key: str, old: str, new: str, expect: int = 1) -> str:  # deadcode: allow —— 给临时脚本用的库函数
     """Replace `old` with `new`, but only inside the object under `key`."""
     i, e = scope(raw, key)
     blk = raw[i:e]

@@ -11,13 +11,14 @@ after the verdict is already fixed.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import collector, core, modes, plan, summary
+from . import collector, core, modes, outcome, plan, summary
 from .config import SERVER_TZ, Config, RunRecord
 from .core import State
 from .notify import Notifier
@@ -35,6 +36,59 @@ CHECK_OPEN_MIN, CHECK_CLOSE_MIN = 2, 7
 # scripts legitimately land 40+ minutes in (MAA then MaaEnd), so testing every
 # record against this window would call every healthy morning "manual".
 MANUAL_WINDOW_MIN = 30
+
+
+def _okww_master_config(automas_dir: str | Path | None, name: str) -> dict:
+    """读 OK-WW **真正生效**的那份配置。
+
+    OK-WW 自己目录里那份跑之前会被 AUTO-MAS 整个换掉、跑完再还原，
+    所以事后去读它读到的是「假的」。真正生效的在
+    `<automas>/data/<脚本id>/Default/ConfigFile/`。
+    脚本 id 不固定，扫一遍即可——这台机器上只有 OK-WW 有这个目录结构。
+    """
+    if not automas_dir:
+        return {}
+    root = Path(automas_dir) / "data"
+    if not root.is_dir():
+        return {}
+    for sid in root.iterdir():
+        f = sid / "Default" / "ConfigFile" / f"{name}.json"
+        if f.is_file():
+            try:
+                d = json.loads(f.read_text(encoding="utf-8", errors="replace"))
+            except (OSError, ValueError):
+                continue
+            if isinstance(d, dict) and d:
+                return d
+    return {}
+
+
+def _okww_nest_expected(automas_dir: str | Path | None) -> bool:
+    """这一轮本来该不该打残象聚落。"""
+    nest = _okww_master_config(automas_dir, "NightmareNestTask")
+    daily = _okww_master_config(automas_dir, "DailyTask")
+    if (nest.get("Only Farm These Nests") or "").strip():
+        return True
+    if daily.get("Farm Nightmare Nest for Daily Echo"):
+        return True
+    adds = daily.get("Additional Tasks to Run After Daily Task") or []
+    return "Auto Farm all Nightmare Nest" in adds
+
+
+def _maaend_new_shots(maaend_dir: str | Path | None,
+                      started: datetime) -> list[str]:
+    """这一轮新出现的 on_error 截图文件名。
+
+    MaaEnd 卡住时不报错，但万能跳转失败会存图——那是唯一的证据。
+    """
+    if not maaend_dir:
+        return []
+    d = Path(maaend_dir) / "debug" / "on_error"
+    if not d.is_dir():
+        return []
+    cut = started.timestamp()
+    return sorted(p.name for p in d.glob("*.png")
+                  if p.stat().st_mtime >= cut)
 
 
 class Engine:
@@ -63,6 +117,12 @@ class Engine:
         self._debug_last: bool | None = None  # log mode transitions, not every tick
         from .annihilation import WeeklyGate  # noqa: PLC0415 - optional feature
         self._annihilation = WeeklyGate(state.dir, cfg.automas_dir)
+        # 周常乐园和剿灭是同一个形状的问题：一周只需要做一次的事，
+        # 别每天都跑去看一眼。区别只在剿灭关的是 MAA 的开关、
+        # 这个关的是 OK-WW 的「Check Weekly Garden」附加任务。
+        from .garden import GardenGate     # noqa: PLC0415 - optional feature
+        # 中继本来就跑在游戏机上，MAS 的接口在本机；不走 Tailscale 那一圈。
+        self._garden = GardenGate(state.dir, "127.0.0.1")
 
     # ---------- operator modes ----------
 
@@ -165,6 +225,10 @@ class Engine:
             self._handled_any = True
         self._flush_pending()
         self._enforce_annihilation()
+        try:
+            self._garden.enforce()
+        except Exception:  # noqa: BLE001 - 一道省时间的门，不许拖垮主流程
+            log.warning("周常乐园开关没能落盘，下轮再试", exc_info=True)
         self._check_missed_runs()
         self._maybe_interim_report()
         self._maybe_daily_report()
@@ -172,6 +236,57 @@ class Engine:
         return len(records)
 
     # ---------- per record ----------
+
+    def _archive_maaend_evidence(self, rec: RunRecord) -> None:
+        """把这一轮的 on_error 截图和 debug 日志抢救到中继自己的目录。
+
+        存到 state/evidence/<run_id>/，绝不能挡住记账，所以整段包 try。
+        """
+        try:
+            src = Path(self.cfg.maaend_dir or "") / "debug"
+            if not src.is_dir():
+                return
+            dst = Path(self.cfg.state_dir) / "evidence" / rec.run_id.replace("/", "_")
+            dst.mkdir(parents=True, exist_ok=True)
+            import shutil  # noqa: PLC0415
+            n = 0
+            oe = src / "on_error"
+            if oe.is_dir():
+                for png in sorted(oe.glob("*.png"))[:20]:
+                    shutil.copy2(png, dst / png.name)
+                    n += 1
+            logs = sorted(src.glob("*.log"), key=lambda f: f.stat().st_mtime)
+            for f in logs[-2:]:
+                shutil.copy2(f, dst / f.name)
+                n += 1
+            log.info("📦 MaaEnd 失败证据已存档 %d 个文件 → %s", n, dst)
+        except Exception:  # noqa: BLE001 - 存档失败不许影响记账
+            log.exception("MaaEnd 证据存档失败（不影响记账）")
+
+    def _verify_outcome(self, rec: RunRecord) -> str | None:
+        """按证据核对这一轮到底干成了什么；全干成返回 None。
+
+        判据在 `outcome.py`，样本取自真实日志。这里只负责把日志文本
+        和「本来该干什么」凑齐——**核对失败绝不能挡住记账**，
+        所以整段包在 try 里：核对本身出错只写日志，不改变原有行为。
+        """
+        try:
+            text = ""
+            if rec.log_path and rec.log_path.exists():
+                text = rec.log_path.read_text(encoding="utf-8", errors="replace")
+            if not text:
+                return None                     # 没日志就没法核对，别瞎报
+            if rec.script == "OK-WW":
+                expect_nest = _okww_nest_expected(self.cfg.automas_dir)
+                checks = outcome.okww_checks(text, expect_nest=expect_nest)
+                return outcome.summarize(checks, "OK-WW")
+            if rec.script == "MaaEnd":
+                shots = _maaend_new_shots(self.cfg.maaend_dir, rec.started)
+                return outcome.summarize(
+                    outcome.maaend_checks(text, shots), "MaaEnd")
+        except Exception:  # noqa: BLE001 - 核对出错不许影响记账
+            log.exception("结果核对本身出错，按原样记账")
+        return None
 
     def _handle(self, rec: RunRecord) -> None:
         # mark_seen only happens after _handle returns, so a crash later in
@@ -199,10 +314,28 @@ class Engine:
             # closing 剿灭 on that would skip the rest of the week with the cap
             # unmet - the run on 2026-08-17 needed five sorties and 125 sanity
             # to get from 0 to 1800.
+            steps = rec.raw.get("okww_steps") or []
+            if any("周常乐园" in s and "已完成" in s for s in steps) and self._garden:
+                if msg := self._garden.on_success(rec.finished):
+                    # 2026-08-26：这里原本写的是 `notes.append(msg)`，可这个作用域里
+                    # 根本没有 notes——一路 NameError 把整个 _handle 打断，那条
+                    # OK-WW 记录当场「处理运行记录失败」。照 🗓️ 剿灭 那支写，
+                    # 两条周门本来就该是一个形状。
+                    self.notifier.send("🌳 周常乐园", msg)
             if (rec.raw.get("annihilation") and rec.raw.get("annihilation_done")
                     and self._annihilation):
                 if msg := self._annihilation.on_success(rec.finished):
                     self.notifier.send("🗓️ 剿灭", msg)
+            # AUTO-MAS 说「这个脚本正常退出了」，不等于它把活干成了。
+            # 2026-08-27：OK-WW 连着三轮没打残象聚落、MaaEnd 卡在弹窗上
+            # 把失败当做完自己关掉——两边一个 ERROR 都没报，而这里照样
+            # 记 ✅、照样静默。用户的原话是「他不报错，他直接把自己关掉了」。
+            # 所以退出之前先按证据核对一遍，没干成的必须出声。
+            if msg := self._verify_outcome(rec):
+                log.warning("⚠️ %s %s 有项目没干成：\n%s",
+                            rec.script, rec.run_id, msg)
+                self.notifier.send("⚠️ 这一轮没干完", msg, alert=True)
+                return
             log.info("✅ %s %s（%d 分钟）静默记账",
                      rec.script, rec.run_id, rec.duration_min)
             return
@@ -210,6 +343,12 @@ class Engine:
         # Hold it. Only alert once the script has stopped retrying entirely.
         self._pending[key] = rec
         self._persist_pending()   # queued to disk before anything else can go wrong
+        # MaaEnd 启动时会「Auto-cleared log files and debug artifacts」——
+        # 上一轮的 on_error 截图和日志在**下一次启动的瞬间**就被它自己删光。
+        # 2026-08-27 早上卡弹窗那三张截图就是这么没的：中午一重试，证据全无，
+        # 事后只能凭当时抄下的文件名说话。所以失败一落账就立刻把证据搬走。
+        if rec.script == "MaaEnd":
+            self._archive_maaend_evidence(rec)
         log.info("⏳ %s 失败，暂不推送，等重试结果", rec.script)
 
     # ---------- a run that should have happened and did not ----------
@@ -272,7 +411,7 @@ class Engine:
                     f"{q['name']} 没有运行", due,
                     f"已经晚了 {late} 分钟，今天没有任何该时段的运行记录。\n"
                     "可能原因：AUTO-MAS 没启动、定时没触发、模拟器或游戏起不来。")
-                if not self.notifier.send(title, body):
+                if not self.notifier.send(title, body, alert=True):
                     self._missed_alerted.add(key)
                     log.warning("🔌 %s 该跑没跑，已告警", q["name"])
         self._check_partial_queues(now, day, entries)
@@ -328,7 +467,7 @@ class Engine:
                     f"这一轮跑了 {'、'.join(sorted(ran))}，但 {kind} 一次记录都没有，"
                     f"已经晚了 {late} 分钟。\n"
                     "队列本身是跑了的，所以不是没开机——是这一项自己没起来。")
-                if not self.notifier.send(title, body):
+                if not self.notifier.send(title, body, alert=True):
                     self._missed_alerted.add(key)
                     log.warning("🔌 %s 缺项：%s 没跑，已告警", q["name"], kind)
 
@@ -381,7 +520,8 @@ class Engine:
             # got past, never as "nothing to do".
             body = (f"第 1 次失败，第 {attempts} 次才成功。"
                     f"这次自己缓过来了，但问题依然存在。\n") + body
-            if self.notifier.send(f"⚠️ {rec.script} 出错（本次自愈，问题未解决）", body):
+            if self.notifier.send(f"⚠️ {rec.script} 出错（本次自愈，问题未解决）",
+                                  body, alert=True):
                 return  # keep it on disk; retry next tick
             self._recovered.pop((rec.script, rec.user), None)
             self._persist_pending()   # only now is it safe to forget
@@ -396,7 +536,7 @@ class Engine:
             title, body = core.format_failure(rec, diagnosis)
             body = (f"重试 {attempts} 次全部失败，需要处理。\n" if attempts > 1
                     else "需要处理。\n") + body
-            errors = self.notifier.send(title, body)
+            errors = self.notifier.send(title, body, alert=True)
             if errors:
                 log.error("告警推送出错，保留待重发: %s", "；".join(errors))
                 return  # still on disk, retry next tick

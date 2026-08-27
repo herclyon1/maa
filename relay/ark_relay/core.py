@@ -243,9 +243,12 @@ def _fmt_failed(names: list[str], limit: int = 3) -> str:
     wrong and unreadable on a phone.
     """
     names = names or ["未知"]
+    # 一定要带上「失败于」三个字。2026-08-27 的日报里这行只写了
+    # 「赠送干员礼物、装备制造、基建任务」，看的人完全不知道这是失败清单
+    # 还是运行清单——❌ 是哪一步断的，必须一眼能看出来。
     if len(names) <= limit:
-        return "、".join(names)
-    return f"{len(names)} 项失败：" + "、".join(names[:limit]) + "…"
+        return "失败于：" + "、".join(names)
+    return f"失败于 {len(names)} 项：" + "、".join(names[:limit]) + "…"
 
 
 def _hm(dt: datetime) -> str:
@@ -358,10 +361,42 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
         if runs := raw.get("protocol_runs"):
             note = f"· 协议空间 {runs} 次"
             if raw.get("sanity_exhausted"):
-                note += "，理智已耗尽"
+                note += "，理智不足以再开一次"
             lines.append(note)
         elif raw.get("sanity_exhausted"):
             lines.append("· 理智不足，未进入协议空间")
+        # OK-WW has no drop list to show - it never reads the reward screen -
+        # so the line is built from what it does count: stamina in, entries
+        # bought, and where the daily landed.
+        if spent := raw.get("okww_stamina_spent"):
+            note = f"· 消耗波片 {spent}"
+            if runs := raw.get("okww_runs"):
+                note += f"，进本 {runs} 次"
+            lines.append(note)
+        if stopped := raw.get("okww_stopped"):
+            lines.append(f"· {stopped}")
+        # 和 MAA 一样：剩余才是要看的那个数，消耗只是过程。
+        if (left := raw.get("okww_stamina_left")) is not None:
+            s = f"· 剩余波片 {left}/240"
+            if full := _sanity_full(raw.get("sanity_full_at"), finished):
+                s += "，" + full
+            lines.append(s)
+        if daily := raw.get("okww_daily"):
+            if raw.get("okww_daily_done_at_start"):
+                # 这一轮开始时活跃度就已经满了（比如当天的第二次运行），
+                # OK-WW 只领奖就走。此时写「日常波片 0/180」是准确的数字、
+                # 错误的信息——读起来像一个都没刷成。2026-08-27 用户原话：
+                # 「日常波片 0/180 这个完全是 bug 吧」。
+                lines.append(f"· 今日日常此前已完成（活跃度 {raw.get('okww_points', '')}），"
+                             "本轮仅领奖")
+            else:
+                note = f"· 日常波片 {daily}"
+                if points := raw.get("okww_points"):
+                    note += f"，活跃度 {points}"
+                lines.append(note)
+        if steps := raw.get("okww_steps"):
+            # 不写"完成"——里面可能有「未进本」「失败」，见 collector 的注释。
+            lines.append("· 任务 " + "、".join(steps))
         if recruits := _fmt_items(e.get("recruits") or {}):
             lines.append("· 公招 " + recruits)
         if e.get("sanity") is not None:

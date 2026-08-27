@@ -42,7 +42,8 @@ check("no ip left", "112.43" in Notifier._fingerprint(ERR1), False)
 print("\n[announced once, and the record survives a restart]")
 sent = []
 class Cap(Notifier):
-    def _fan_out(self, title, body):
+    # 关键字要跟真签名一致，否则改动路由时这里会静默走岔。
+    def _fan_out(self, title, body, *, order=None, stop_on_first=False):
         sent.append(title)
         return ["Server酱"], {}          # delivered by one channel
 

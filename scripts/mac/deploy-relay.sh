@@ -10,13 +10,89 @@
 #
 set -euo pipefail
 
+REDEPLOY=0
+for a in "$@"; do
+  case "$a" in
+    --redeploy) REDEPLOY=1 ;;
+    *) echo "不认识的参数: $a" >&2; exit 2 ;;
+  esac
+done
+
 HOST="${ARK_HOST:?请先 export ARK_HOST=<游戏机 Tailscale IP>}"
 USER_AT="Administrator@${HOST}"
 REMOTE_DIR='C:/ProgramData/ark-relay'
 PY='D:\ark\automas\environment\python\python.exe'
+# 两个绝对路径都要在任何 cd 之前算好。2026-08-26 我在 cd 之后才去解析
+# "$(dirname "${BASH_SOURCE[0]}")"，相对路径当场失效，取日志那步静静失败了。
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../relay" && pwd)"
 
 cd "$HERE"
+
+# 为什么这道闸在最前面：2026-08-24 我在 test_preupdate_session.py 红着的时候
+# 部署了一次，红灯是真的（run() 拆分后断言失效），只是我先按了部署。语法自检
+# 拦不住这种——代码能编译，只是行为不对。测试全绿才准上机，没有例外。
+# 测试能不能拦住，前提是它真的被执行。2026-08-27 连续三次把新写的测试函数
+# 放在 `if __name__` 之后——从没运行过，却一路绿灯上了机器。
+# 闸门自己会坏，而且坏了不吭声。每次部署前拿已知的坏样本验一遍：
+# 拦不住的闸门比没有闸门更危险——它会让人以为这一类错已经不可能发生。
+echo "▶ 0b/5 闸门自检（拿坏样本验每道闸还拦不拦得住）"
+if ! out=$("$HERE/../scripts/mac/guardcheck.sh" 2>&1); then
+  sed 's/^/    /' <<<"$out"
+  echo "  ✋ 部署已取消：闸门失效了，先修闸门。"
+  exit 1
+fi
+echo "  $(tail -1 <<<"$out")"
+
+echo "▶ 0a/5 没有永远不会被执行的代码"
+if ! out=$(python3 "$HERE/../scripts/mac/lib/deadcode.py" \
+        "$HERE" "$HERE/../scripts" 2>&1); then
+  sed 's/^/    /' <<<"$out"
+  echo "  ✋ 部署已取消：上面这些代码写了等于没写。"
+  exit 1
+fi
+echo "  $(tail -1 <<<"$out")"
+
+echo "▶ 0/5 回归测试（不全绿就不部署）"
+FAILED=""
+for f in tests/test_*.py; do
+  if ! out=$(python3 "$f" 2>&1) || ! grep -qiE "passed|^PASS" <<<"$(tail -1 <<<"$out")"; then
+    FAILED="$FAILED $(basename "$f")"
+    printf '  ✗ %s\n' "$(basename "$f")"
+    tail -3 <<<"$out" | sed 's/^/      /'
+  fi
+done
+if [ -n "$FAILED" ]; then
+  echo "  ✋ 有测试没过：$FAILED"
+  echo "     部署已取消。先修测试，或者确认这些断言本身该更新。"
+  exit 1
+fi
+echo "  $(ls tests/test_*.py | wc -l | tr -d ' ') 个测试全过"
+
+# ── 0.5 闸：更新说明必须是新的 ──────────────────────────────
+# 2026-08-26 用户当场指出：「你的更新内容不能一直都是一样的，我看你更新了
+# 两次，第二次还在用旧的内容」。说明是静态文件，不换内容就会一直播报同一份，
+# 而**陈旧的说明比没有说明更糟**——它看起来像是新的。
+#
+# 所以：这次的说明和上次部署的一字不差就拒绝部署。
+# 真要重推同一份改动（比如部署链路本身出问题在反复试），加 --redeploy。
+NOTES="$HERE/RELEASE-NOTES.md"
+NOTES_STAMP="$HERE/state/last-deployed-notes.sha1"
+mkdir -p "$HERE/state"
+if [ ! -s "$NOTES" ]; then
+  echo "  ✋ relay/RELEASE-NOTES.md 是空的（上次部署后自动清空的，不是丢了）。" >&2
+  echo "     用人话写清楚**这次**改了什么——只写新增的，不要重复上次播报过的。" >&2
+  echo "     写完再部署。这段文字就是用户会收到的那条通知。" >&2
+  exit 7
+fi
+NOTES_SHA=$(shasum -a 1 "$NOTES" | awk '{print $1}')
+LAST_SHA=$(cat "$NOTES_STAMP" 2>/dev/null || echo "")
+if [ "$NOTES_SHA" = "$LAST_SHA" ] && [ "$REDEPLOY" != "1" ]; then
+  echo "  ✋ RELEASE-NOTES.md 和上次部署的一字不差。" >&2
+  echo "     这次改了什么？写进 relay/RELEASE-NOTES.md，用人话。" >&2
+  echo "     确实是重推同一份改动的话：$0 --redeploy" >&2
+  exit 8
+fi
 
 echo "▶ 1/5 重建 manifest"
 python3 make-manifest.py
@@ -27,6 +103,13 @@ python3 -m py_compile ark_relay/*.py service.py run.py
 FILES=$(python3 -c "import json;print(' '.join(json.load(open('manifest.json'))['files']))")
 
 echo "▶ 3/5 推送 $(wc -w <<<"$FILES") 个文件"
+# 清单里现在有嵌套路径（ark_relay/okww_files/*.py）。scp 不会自己建目录，
+# 目录不在的话那几个文件会静静推不过去，而哈希核对那步才会发现。先建好。
+for d in $(printf '%s\n' $FILES | xargs -n1 dirname | sort -u | grep -v '^\.$'); do
+  ssh -o ConnectTimeout=15 "$USER_AT" \
+    "if not exist \"${REMOTE_DIR//\//\\}\\${d//\//\\}\" mkdir \"${REMOTE_DIR//\//\\}\\${d//\//\\}\"" \
+    >/dev/null 2>&1 || true
+done
 for f in $FILES; do
   scp -q -o ConnectTimeout=15 "$f" "${USER_AT}:${REMOTE_DIR}/${f}"
 done
@@ -59,17 +142,70 @@ echo "▶ 4.5/5 写入代码版本号（否则自更新会拿旧清单把这次�
 # 部署好的文件覆盖回旧版——2026-08-21 就这么被静默降级过一次。
 VER=$(python3 -c "import json;print(json.load(open('manifest.json'))['version'])")
 ssh -o ConnectTimeout=15 "$USER_AT" \
-  "powershell -NoProfile -Command \"Set-Content -Path 'C:/ProgramData/ark-relay/state/code-version.txt' -Value '$VER' -NoNewline\"" >/dev/null
+  "if exist \"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" (\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoProfile -Command \"Set-Content -Path 'C:/ProgramData/ark-relay/state/code-version.txt' -Value '$VER' -NoNewline\") else (powershell -NoProfile -Command \"Set-Content -Path 'C:/ProgramData/ark-relay/state/code-version.txt' -Value '$VER' -NoNewline\")" >/dev/null
 echo "    code-version = $VER"
 
-echo "▶ 5/5 重启服务并确认启动"
+echo "▶ 5/5 重启服务并确认真的起来了"
+# 2026-08-26：这一段原本是
+#   ... & net stop ... & net start ... & echo RESTARTED
+# 三个问题叠在一起：
+#   1. `echo RESTARTED` 是**无条件**的，start 失败也照样打印；
+#   2. 所谓「确认」只是 tail 了几行日志，**从没查过服务状态**；
+#   3. 最后无脑打印「✅ 部署完成并已核对」。
+# 结果那天一次部署把服务停了没起回来，脚本全程绿灯，
+# 直到我手动 `sc query` 才发现 STATE=STOPPED——**通知链路断了一小时没人知道**。
+# 现在：先等它真的停，再启，再轮询到 RUNNING 为止，起不来就非零退出。
+
 # __pycache__ 里的旧 .pyc 会盖住新代码，必须清。
 ssh -o ConnectTimeout=15 "$USER_AT" \
-  'del /q C:\ProgramData\ark-relay\ark_relay\__pycache__\*.pyc >nul 2>&1 & net stop ark-relay >nul 2>&1 & net start ark-relay >nul 2>&1 & echo RESTARTED' \
-  | tr -d '\r' | tail -1
-sleep 25
-ssh -o ConnectTimeout=15 "$USER_AT" \
-  'powershell -NoProfile -Command "Get-Content C:\ProgramData\ark-relay\relay.log -Tail 6"' \
-  2>/dev/null | tr -d '\r' | sed 's/^/    /'
+  'del /q C:\ProgramData\ark-relay\ark_relay\__pycache__\*.pyc >nul 2>&1 & sc stop ark-relay >nul 2>&1 & echo STOPPING' \
+  >/dev/null 2>&1 || true
 
-echo "✅ 部署完成并已核对"
+svc_state() {
+  ssh -o ConnectTimeout=15 "$USER_AT" 'sc query ark-relay' 2>/dev/null \
+    | tr -d '\r' | awk '/STATE/{print $4}'
+}
+
+for _ in $(seq 1 15); do
+  [ "$(svc_state)" = "STOPPED" ] && break
+  sleep 2
+done
+echo "    停止确认：$(svc_state)"
+
+ssh -o ConnectTimeout=15 "$USER_AT" 'sc start ark-relay' >/dev/null 2>&1 || true
+STATE=""
+for _ in $(seq 1 20); do
+  STATE=$(svc_state)
+  [ "$STATE" = "RUNNING" ] && break
+  sleep 2
+done
+
+if [ "$STATE" != "RUNNING" ]; then
+  echo "  ✋ ark-relay 没能启动（当前状态 ${STATE:-未知}）。" >&2
+  echo "     代码已经推上去了，但服务是停的——通知链路是断的，必须立刻处理：" >&2
+  echo "     ssh $USER_AT 'sc start ark-relay'" >&2
+  exit 6
+fi
+echo "    启动确认：RUNNING"
+
+sleep 10
+# 日志尾巴走 winrun.sh，不要自己 ssh 打印。
+#
+# 换过一轮 pwsh 还是乱码——问题根本不在哪个 PowerShell，而在**中文穿过
+# 936 的控制台**这一层：不管谁写的 UTF-8，经过 cmd 管道就已经碎了。
+# winrun.sh 从一开始就是为这件事写的：远端写 UTF-8 文件，整体拷回来再解码，
+# 中文一个字节都不上命令行。同目录的现成工具，不要重复造。
+"$SCRIPT_DIR/winrun.sh" --get 'C:\ProgramData\ark-relay\relay.log' \
+  2>/dev/null | tail -6 | sed 's/^/    /' \
+  || echo "    （取日志失败，不影响部署结果——服务状态上面已确认）"
+
+printf '%s' "$NOTES_SHA" > "$NOTES_STAMP"
+
+# 说明已经推上去也播报过了，**本地清零**。
+# 用户 2026-08-26：「每次更新中继的时候把通知更新内容清零并且要求填写更新内容」。
+# 清零之后，上面那道「文件为空就拒绝部署」的闸自然会逼下一次写新的——
+# 比对哈希更彻底：哈希闸只防「一字不差」，清零连「改一个字蒙混」都防住了，
+# 因为你面对的是一张白纸，只能从头写这次干了什么。
+: > "$NOTES"
+echo "✅ 部署完成：文件哈希已核对，服务已确认 RUNNING"
+echo "   （relay/RELEASE-NOTES.md 已清空——下次部署前必须写清楚这次改了什么）"

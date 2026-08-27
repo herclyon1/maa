@@ -1,0 +1,366 @@
+"""把本地给 OK-WW 打的补丁重新贴回去——因为它的自动更新会整段覆盖 src。
+
+2026-08-25 打的补丁，到 08-26 全没了：OK-WW 从 v3.6.5 更新到 v3.6.6-beta.1
+时整个 `src` 目录被替换，连我留在同目录的 `.bak` 一起消失。用户的原话是
+「一个是 bug，两个是功能增加，Bug 可能被修了，但是功能增加我们需要呀」——
+功能不能指望上游，只能每次开机自己贴回去。
+
+设计上的三条：
+
+* **幂等。** 已经在就什么都不做，返回空。每次开机跑一遍的代价必须接近零。
+* **认不出上游那段就不动。** 上游改了结构还硬替换，只会把文件改坏。
+  宁可报「贴不上了」让人去看，也不许猜着改。
+* **改完必须回读 + 编译。** 写进去不等于对，语法坏了会让整个日常任务起不来。
+
+**这里只放「非改源码不可」的补丁。** 能在配置层做的一律不要来这儿：
+周常乐园的「本周只查一次」就是配置层做的（`garden.py`，照 `annihilation.py`
+那套周门写的），因为配置不会被更新覆盖，天然免疫这个问题。
+
+**已提给上游的补丁在合并之后就该从这里删掉**，别让本地版本和上游版本
+长期并存——两边都改同一段代码，早晚打架。每条补丁的 `upstream` 字段
+记着它的去向。
+"""
+from __future__ import annotations
+
+import hashlib
+import logging
+import os
+import py_compile
+import shutil
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable
+
+log = logging.getLogger("ark.okww_patch")
+
+_SRC = ("data", "apps", "ok-ww", "working", "src", "task")
+
+
+@dataclass(frozen=True)
+class _Patch:
+    name: str               # 人话名字，进通知
+    parts: tuple            # 相对 okww_dir 的路径
+    old: str                # 上游原样那段
+    new: str                # 我们要的那段
+    present: Callable[[str], bool]      # 已经在位了吗
+    breaks: str             # 贴不上会怎样，写给人看
+    upstream: str = ""      # 提给上游之后填 PR 链接；合并了就删掉这条补丁
+
+
+# ── 补丁一：领奖置底 ────────────────────────────────────────────
+# 上游顺序是 claim_daily → claim_mail → claim_battle_pass → run_additional_tasks，
+# 而周常乐园打完**还有奖励要领**，排在领奖之后就永远领不到。
+_REWARD_OLD = """        self.claim_daily()
+
+        self.claim_mail()
+        self.sleep(1)
+        self.claim_battle_pass()
+        self.run_additional_tasks()
+        self.log_info('Daily Task Completed', notify=True)"""
+
+_REWARD_NEW = """        # 本地补丁：附加任务提到领奖之前。上游顺序把 run_additional_tasks
+        # 排在 claim_daily 之后，可周常乐园打完还有奖励要领，就永远领不到。
+        # 领奖必须置底，其他任务没有放在领奖之后的必要。
+        self.run_additional_tasks()
+
+        self.claim_daily()
+        self.claim_mail()
+        self.sleep(1)
+        self.claim_battle_pass()
+        self.log_info('Daily Task Completed', notify=True)"""
+
+
+def _reward_present(text: str) -> bool:
+    """附加任务是不是已经排在领奖前面了。"""
+    a = text.find("self.run_additional_tasks()")
+    c = text.find("self.claim_daily()")
+    return a != -1 and c != -1 and a < c
+
+
+# ── 补丁二：副本没打通不该把整个每日任务带走 ──────────────────
+# 2026-08-26 实测：凝素领域限时没打完 → 不掉宝箱 → walk_to_treasure 抛
+# WaitFailedException → 它不在 except 里 → 一路穿到 DailyTask.run。
+# 当天连续四次「Daily Task exception stopped」，领奖 / 邮件 / 附加任务全跳过，
+# total daily points 0。而紧邻的 farm_domain_with_recovery_loop 里作者写了
+# max_recovery_retries=3 的恢复重试，只能通过 return False 进入，
+# 于是对这个失败模式完全是死代码。
+_DOMAIN_IMPORT_OLD = "from ok import Logger\n"
+_DOMAIN_IMPORT_NEW = "from ok import Logger, WaitFailedException\n"
+
+_DOMAIN_OLD = """            except (NotInCombatException, CharDeadException):
+                self.log_info('farm_in_domain: death recovered, exiting domain')"""
+
+# 下面这段必须和提给上游的 PR 一字不差，否则本地版和上游版会悄悄分叉。
+_DOMAIN_NEW = """            except (NotInCombatException, CharDeadException, WaitFailedException):
+                # WaitFailedException: 副本没打通（限时结束 / 敌人没清完）就不会掉宝箱，
+                # walk_to_treasure 找不到目标会抛它。和死亡一样当成“这一局没打成”，
+                # 交给 farm_domain_with_recovery_loop 重进；否则它会一路抛到
+                # DailyTask.run，把后面的领奖和附加任务全带走。
+                self.log_info('farm_in_domain: attempt failed, exiting domain')"""
+
+
+def _domain_present(text: str) -> bool:
+    return ("NotInCombatException, CharDeadException, WaitFailedException" in text
+            and "from ok import Logger, WaitFailedException" in text)
+
+
+PATCHES: tuple[_Patch, ...] = (
+    _Patch(
+        name="领奖顺序",
+        parts=(*_SRC, "DailyTask.py"),
+        old=_REWARD_OLD, new=_REWARD_NEW, present=_reward_present,
+        breaks="周常乐园的奖励会领不到",
+    ),
+    # 这条是两段替换，用 old/new 表达不了，走 _apply_domain 特判。
+)
+
+
+def _atomic_write(f: Path, text: str) -> Path | None:
+    """备份 → 原子替换。返回备份路径，写不进去返回 None。"""
+    bak = f.with_name(f"{f.stem}.py.bak-{time.strftime('%Y%m%d-%H%M%S')}")
+    try:
+        shutil.copy2(f, bak)
+        tmp = f.with_suffix(".py.tmp")
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, f)      # 原子替换，别让半截文件被 OK-WW 读到
+    except OSError:
+        log.warning("OK-WW 补丁：写不进去 %s", f.name, exc_info=True)
+        return None
+    return bak
+
+
+def _atomic_write_bytes(f: Path, data: bytes) -> Path | None:
+    """原样写字节。整份替换不能经过 write_text——它会按平台改写行尾。"""
+    bak = f.with_name(f"{f.stem}.py.bak-{time.strftime('%Y%m%d-%H%M%S')}")
+    try:
+        shutil.copy2(f, bak)
+        tmp = f.with_suffix(".py.tmp")
+        tmp.write_bytes(data)
+        os.replace(tmp, f)
+    except OSError:
+        log.warning("OK-WW 补丁：写不进去 %s", f.name, exc_info=True)
+        return None
+    return bak
+
+
+def _verify_or_revert(f: Path, bak: Path, present: Callable[[str], bool],
+                      label: str) -> str:
+    """回读 + 编译。写进去不等于对，语法坏了整个日常任务都起不来。"""
+    back = f.read_text(encoding="utf-8", errors="replace")
+    if not present(back):
+        shutil.copy2(bak, f)
+        log.error("OK-WW 补丁：%s 回读不对，已还原", label)
+        return f"OK-WW 补丁：{label} 回读不对，已还原成上游版"
+    try:
+        py_compile.compile(str(f), doraise=True)
+    except (py_compile.PyCompileError, OSError):
+        shutil.copy2(bak, f)
+        log.error("OK-WW 补丁：%s 语法检查没过，已还原", label, exc_info=True)
+        return f"OK-WW 补丁：{label} 改完语法不对，已还原成上游版"
+    return ""
+
+
+def _apply_one(root: Path, p: _Patch) -> list[str]:
+    f = root.joinpath(*p.parts)
+    if not f.exists():
+        log.warning("OK-WW 补丁：找不到 %s，跳过", f)
+        return [f"OK-WW 补丁：找不到 {f.name}，{p.name} 没能检查"]
+    try:
+        text = f.read_text(encoding="utf-8")
+    except OSError:
+        log.warning("OK-WW 补丁：读不了 %s", f, exc_info=True)
+        return [f"OK-WW 补丁：读不了 {f.name}"]
+
+    if p.present(text):
+        return []                      # 幂等：在位就不留痕迹也不报噪音
+    if p.old not in text:
+        # 上游改了结构。硬替换只会把文件改坏，所以停手并出声。
+        log.warning("OK-WW 补丁：认不出上游 %s 那段，结构可能变了，不动它", p.name)
+        return [f"OK-WW 补丁：{p.name}**贴不上了**（上游结构变了），"
+                f"{p.breaks}，需要人工看一眼"]
+
+    bak = _atomic_write(f, text.replace(p.old, p.new, 1))
+    if bak is None:
+        return [f"OK-WW 补丁：{p.name} 写不进去，{p.breaks}"]
+    if err := _verify_or_revert(f, bak, p.present, p.name):
+        return [err]
+    log.info("OK-WW 补丁：%s 已重新贴上", p.name)
+    return [f"OK-WW 补丁：{p.name} 已重新贴上（上次更新把它覆盖了）"]
+
+
+def _apply_domain(root: Path) -> list[str]:
+    """副本失败不再拖垮整个每日任务。两段替换，所以单独走一条路。"""
+    f = root.joinpath(*_SRC, "DomainTask.py")
+    label = "副本失败不拖垮每日任务"
+    if not f.exists():
+        return [f"OK-WW 补丁：找不到 DomainTask.py，{label} 没能检查"]
+    try:
+        text = f.read_text(encoding="utf-8")
+    except OSError:
+        return ["OK-WW 补丁：读不了 DomainTask.py"]
+
+    if _domain_present(text):
+        return []
+    if _DOMAIN_IMPORT_OLD not in text or _DOMAIN_OLD not in text:
+        log.warning("OK-WW 补丁：认不出上游 DomainTask 那两段，不动它")
+        return [f"OK-WW 补丁：{label}**贴不上了**（上游结构变了）——"
+                "多半是上游已经自己修了，去核对一下就能把这条补丁删掉"]
+
+    new = (text.replace(_DOMAIN_IMPORT_OLD, _DOMAIN_IMPORT_NEW, 1)
+               .replace(_DOMAIN_OLD, _DOMAIN_NEW, 1))
+    bak = _atomic_write(f, new)
+    if bak is None:
+        return [f"OK-WW 补丁：{label} 写不进去，副本打不通时每日任务还会整个中断"]
+    if err := _verify_or_revert(f, bak, _domain_present, label):
+        return [err]
+    log.info("OK-WW 补丁：%s 已重新贴上", label)
+    return [f"OK-WW 补丁：{label} 已重新贴上（上次更新把它覆盖了）"]
+
+
+# ── 补丁三：巢穴任务（整文件替换）──────────────────────────────
+# 这条补丁改了三处、还加了一个方法和一个配置项，用文本替换拼太脆。
+# 改成**整文件替换 + 哈希守卫**：只有当机器上那份和我们记录的上游版
+# 一字不差时才替换；上游一改动哈希就对不上，我们停手并出声，
+# 绝不拿旧补丁去盖新代码。
+#
+# 三处改动：
+#   1. 允许续刷未打满的点位（原来只认「已击败 0/N」，刷过一只就永久放弃）
+#      —— 上游 PR ok-oldking/ok-wuthering-waves#1629
+#   2. 同一点位打完没进展就跳过，别无限重进（队伍打不过时游戏弹「挑战失败」）
+#   3. 新增「只刷指定点位」配置（对应 issue #1622，上游还没有这个能力）
+_NEST_DIR = Path(__file__).with_name("okww_files")
+_NEST_UPSTREAM = _NEST_DIR / "NightmareNestTask.upstream.py"
+_NEST_PATCHED = _NEST_DIR / "NightmareNestTask.patched.py"
+
+
+def _sha(data: bytes) -> str:
+    """按**内容**算哈希，不算行尾符。
+
+    Windows 上 `write_text` 会把 \n 换成 \r\n，于是同一份内容在两台机器上
+    字节不同、哈希不同。2026-08-26 就因此把「已经贴好的补丁」误判成
+    「和上游对不上」。统一成 \n 再算，比的就是内容本身。
+    """
+    return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
+
+
+# 我们自己发布过的历次 NightmareNestTask 版本的哈希。
+# 为什么需要：护栏原本只认「上游那份」和「当前这份」，一旦我们自己改了补丁，
+# 机器上那份就两边都不是，于是被判成「有人手改过」而拒绝覆盖——
+# 结果是自己的修复永远推不上去。历史版本记在这里，见到就照常覆盖。
+_NEST_KNOWN_OURS = {
+    "6b27d6f03f7210f80cb5da823a55c5732f26935f16ab775196aee80376b2ff7e",   # 2026-08-27 12:05：hit_wanted 版（与最终版只差 docstring，漏记了哈希）
+    "788a8b633498b44f33dbd56d96b971cc95265e88719f6dc0a9f47fe2b4897916",   # 2026-08-27 11:35：临时的几何日志版
+    "fc7207ff2047999241cd1ce44996b54b13f2a9d1d0169e344615490bf57e85d5",   # 2026-08-27 11:26：包含匹配，但行匹配容差只有一倍行高
+    "48ec36c8c117854dfdd86d160a89bc76ce6e26a9b1c445c7605935b69f044726",   # 2026-08-27 上午：指定点位用了精确匹配，对不上「落渊南丘残象聚落」
+    "72cf1da2e840918fe62656acfb5b9434e84b1f320829ccf256d7f9aa9c9fcc34",   # 2026-08-27 之前：指定点位只 OCR 一次，不等列表渲染
+}
+
+
+def _apply_nest(root: Path) -> list[str]:
+    f = root.joinpath(*_SRC, "NightmareNestTask.py")
+    label = "巢穴任务（续刷 / 不空转 / 可指定点位）"
+    if not f.exists():
+        return [f"OK-WW 补丁：找不到 NightmareNestTask.py，{label} 没能检查"]
+    if not (_NEST_UPSTREAM.exists() and _NEST_PATCHED.exists()):
+        log.warning("OK-WW 补丁：缺少 okww_files 里的参照文件")
+        return [f"OK-WW 补丁：{label} 缺少参照文件，没能检查"]
+
+    try:
+        cur = f.read_bytes()
+    except OSError:
+        return ["OK-WW 补丁：读不了 NightmareNestTask.py"]
+
+    patched = _NEST_PATCHED.read_bytes()
+    if _sha(cur) == _sha(patched):
+        return []                       # 幂等：已经是我们这份
+    if _sha(cur) not in _NEST_KNOWN_OURS and \
+            _sha(cur) != _sha(_NEST_UPSTREAM.read_bytes()):
+        # 既不是上游那份、也不是我们那份——上游改过了，或者有人手改过。
+        # 这时候硬盖会把别人的改动抹掉，所以停手。
+        log.warning("OK-WW 补丁：NightmareNestTask.py 和记录的上游版对不上，不动它")
+        return [f"OK-WW 补丁：{label}**贴不上了**——文件和记录的上游版不一致，"
+                "多半是上游更新了，需要人工重做这份补丁"]
+
+    bak = _atomic_write_bytes(f, patched)
+    if bak is None:
+        return [f"OK-WW 补丁：{label} 写不进去"]
+    if err := _verify_or_revert(f, bak, lambda s: _sha(s.encode("utf-8")) == _sha(patched), label):
+        return [err]
+    log.info("OK-WW 补丁：%s 已重新贴上", label)
+    return [f"OK-WW 补丁：{label} 已重新贴上（上次更新把它覆盖了）"]
+
+# ── 补丁四：主C饿死兜底 ────────────────────────────────────────
+# 协奏攒不满时 has_buff() 恒为 False，_unbuffed_non_main_target 会让两个辅助
+# 无限互切，主C永远上不了场——而主C正是唯一有机会把协奏打起来的人。
+# 2026-08-26 实测：56 次切人决策里主C 0 次，全程零输出被磨死。
+# 根因是游戏键位被改过（见 issue #1626），已经修好；这条留作保险，
+# 平时处于休眠状态（实测健康局面下切人序列与上游完全一致）。
+# 2026-08-27：它当初是手工打的、没进这个清单，OK-WW 一更新就被冲掉了。
+_STARVE_OLD = """    def _choose_switch_target_by_buff_time(self, current_char, candidates):
+        if not candidates:
+            return current_char
+"""
+
+_STARVE_NEW = """    # 本地补丁：主C饿死兜底。协奏攒不满时 has_buff() 恒为 False，
+    # _unbuffed_non_main_target 会让两个辅助无限互切，主C永远上不了场——
+    # 而主C正是唯一有机会把协奏打起来的人，于是死锁自我维持。
+    # 上游 issue: ok-oldking/ok-wuthering-waves#1626
+    MAIN_DPS_STARVE_SECONDS = 25.0
+
+    def _starved_main_dps_target(self, candidates):
+        now = time.time()
+        starved = [char for char in candidates
+                   if char.is_main_dps
+                   and (char.last_switch_in_time < 0
+                        or now - char.last_switch_in_time > self.MAIN_DPS_STARVE_SECONDS)]
+        return self._oldest_switch_target(starved)
+
+    def _choose_switch_target_by_buff_time(self, current_char, candidates):
+        if not candidates:
+            return current_char
+
+        if not current_char.is_main_dps:
+            if starved := self._starved_main_dps_target(candidates):
+                return starved
+"""
+
+
+def _starve_present(text: str) -> bool:
+    return "_starved_main_dps_target" in text
+
+
+def _apply_starve(root: Path) -> list[str]:
+    f = root.joinpath(*_SRC, "BaseCombatTask.py")
+    label = "主C饿死兜底"
+    if not f.exists():
+        return [f"OK-WW 补丁：找不到 BaseCombatTask.py，{label} 没能检查"]
+    try:
+        text = f.read_text(encoding="utf-8")
+    except OSError:
+        return ["OK-WW 补丁：读不了 BaseCombatTask.py"]
+    if _starve_present(text):
+        return []
+    if _STARVE_OLD not in text:
+        log.warning("OK-WW 补丁：认不出上游 _choose_switch_target_by_buff_time，不动它")
+        return [f"OK-WW 补丁：{label}**贴不上了**（上游结构变了），需要人工看一眼"]
+    bak = _atomic_write(f, text.replace(_STARVE_OLD, _STARVE_NEW, 1))
+    if bak is None:
+        return [f"OK-WW 补丁：{label} 写不进去"]
+    if err := _verify_or_revert(f, bak, _starve_present, label):
+        return [err]
+    log.info("OK-WW 补丁：%s 已重新贴上", label)
+    return [f"OK-WW 补丁：{label} 已重新贴上（上次更新把它覆盖了）"]
+
+def ensure_patches(okww_dir: Path | None) -> list[str]:
+    """确保本地补丁在位。返回这次实际做了什么（空表示本来就在位）。"""
+    if not okww_dir:
+        return []
+    root = Path(okww_dir)
+    done: list[str] = []
+    for p in PATCHES:
+        done.extend(_apply_one(root, p))
+    done.extend(_apply_domain(root))
+    done.extend(_apply_nest(root))
+    done.extend(_apply_starve(root))
+    return done

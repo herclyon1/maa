@@ -1071,6 +1071,79 @@ not start a program nothing will use. Failure is cheap by design: if it cannot
 run or does not finish, the round behaves exactly as it did before - one wasted
 attempt, then the retry succeeds.
 
+## What the new runtimes actually buy us
+
+Both machines run Python 3.14 and PowerShell 7. Most of what those releases
+changed is irrelevant to this project; this is the short list of things that
+are, so the next person does not have to read seven changelogs to find out.
+
+### Python (we came from 3.9 on the Mac, and from AUTO-MAS's bundled copy on the game machine)
+
+- **`zoneinfo`** (3.9+) is the one that matters here. This project lives in two
+  clocks - the machine is UTC+8, the operator is UTC+9 - and every hand-rolled
+  offset is a DST bug waiting for a country to change its mind.
+  `ZoneInfo("Asia/Shanghai")` and `ZoneInfo("Asia/Tokyo")` are in the standard
+  library, no `pytz`, no vendored table.
+- **Deferred annotation evaluation** (PEP 649/749, 3.14) means
+  `from __future__ import annotations` is no longer needed for `X | None` in
+  signatures. Harmless to keep - the relay still has it - but new modules do
+  not need the line.
+- **`tomllib`** (3.11) reads TOML with no dependency. Worth remembering if a
+  config ever wants comments, which JSON cannot carry.
+- **Much better tracebacks** (3.11 onward): the failing sub-expression is
+  underlined, and `ExceptionGroup` renders readably. This is not a feature we
+  call, it is one we benefit from every time a remote script dies.
+- **`match`** (3.10) suits dispatch on record shape. Not a reason to rewrite
+  anything working.
+
+Deliberately not used: free-threading (PEP 703), sub-interpreters (PEP 734),
+t-strings (PEP 750). Nothing here is CPU-bound or templating-heavy.
+
+### PowerShell (we came from Windows PowerShell 5.1)
+
+- **UTF-8 by default.** This is the whole reason the mojibake chapter in
+  PITFALLS.md ends where it does. 5.1 reads files as ANSI (CP936 here) unless a
+  BOM says otherwise; 7 reads and writes UTF-8. `scripts/mac/winrun.sh` still
+  writes a BOM, because it must survive whichever host picks the script up.
+- **`ForEach-Object -Parallel`** (7.0) for bulk remote checks. `check-docs.py`
+  does its own fan-out, so this is for ad-hoc work.
+- **`&&` / `||` pipeline chain operators, `?:`, `??`, `??=`** (7.0). These make
+  one-liners over SSH shorter, which matters when every character has to
+  survive bash quoting on the way in.
+- **`Test-Json`** (6.1) validates before writing. Our policy is JSON-first for
+  config changes - stop the program, diff, write atomically, read back - and
+  this is a cheap extra gate in that sequence.
+- **`Get-Error`** renders the full error record including inner exceptions,
+  which the default one-line view hides.
+
+Deliberately not used: `Invoke-WebRequest` for anything large. It moved 19 MB
+in 24 minutes on this machine where `curl.exe` moved 108 MB in 85 seconds. Use
+`curl.exe`; Windows has shipped it since 1803.
+
+
+## Four programs, four update mechanisms
+
+All three update through MirrorChyan on the beta channel, and that is where the
+similarity ends. Each needed a different answer in the relay's pre-update, so
+the differences are written down rather than rediscovered.
+
+| | 何时发现更新 | 如何应用 | 中途会不会打断队列 | 中继怎么处理 |
+|---|---|---|---|---|
+| **MAA** | 运行期间自己查（日志见 21:30 那次） | 下载后放进 `<MAA>\NewVersion`，**下次启动**由 Bootstrapper 应用 | 不会——应用被推迟到下次启动 | 看 `NewVersion` 目录在不在；在才用 `MAA.exe --skip-startup-auto-run` 启动一次让它装完 |
+| **MaaEnd (MXU)** | 每次启动时查 | 当场下载并**重启自己** | 会——如果在跑任务时启动 | 开机时用 `--autostart` 先启动一次（这是唯一能跳过「更新完成」弹窗的分支），并临时清空 `autoStartInstanceId` 保证不开跑 |
+| **AUTO-MAS** | 后端每 4 小时查一次 | 需要显式 download + install；install 解压 `UpdatePack_*.zip` 后启动 `AUTO-MAS-Setup.exe` | 不会——`Run/IfAutoUpdateAfterQueue` 默认 false 且本机未设 | 直接调它自己的 HTTP 接口：check → download → 等包落地 → install |
+| **OK-WW（鸣潮）** | 启动时由 pyappify 检查 | 从 **CNB git 镜像** `cnb.cool/ok-oldking/ok-ww-update2.git` 拉取；`app.json` 里 `"update_method": "AUTO_UPDATE"` | 会——它 `Auto Start Game When App Starts` 开着，一启动就连游戏一起开 | 开机时临时关掉那个开关，用 `ok-ww.exe` 启动（**必须走这个外壳**，直接跑内置 python 会让 pyappify 上下文缺失、`/api/updates` 报 `pyappify_version: None`），等 `app.json` 的 `update_state` 落回 idle，关掉并还原 |
+
+四条容易踩的：
+
+- **MAA 的待装更新可以脱离网络判断**：`NewVersion` 目录就是全部信号。MirrorChyan 的匿名查询帮不上忙——`MaaResource` 查得到，`MAA` 和 `MaaEnd` 返回 `{"code":8001,"resource not found"}`，要 CDK。两台机器都验过。
+- **MaaEnd 不带 `--autostart` 就查不完**：刚更新过的那次开机，`App.tsx` 弹出「更新完成」框之后直接 `return`，后面的更新检查根本不执行。症状是中继空等满 180 秒。
+- **AUTO-MAS 装更新时进程会退出**，而中继本来会立刻把它拉起来。之所以不打架，是因为 `INSTALLER_HINTS` 里的 `auto-mas-setup` 正好就是它启动的安装器名字。改动那份名单前先想想这条。
+
+
+- **OK-WW 是四个里唯一不走 MirrorChyan 的。** MirrorChyan 确实收录了 `okww`（匿名查询就能拿到版本），但那只是初装下载渠道；它自带的更新器是 git 型的，国服 profile 指向 CNB。实测这台机器上 `cnb.cool` 是 200/0.32 秒，而 `github.com` 完全连不上，所以 CNB 这条路是对的，不要改。
+- **改 OK-WW 的配置前必须先停掉它。** 2026-08-24 踩过：我留着一个 `ok web` 实例，它把设置持在内存里又写回磁盘，于是「关掉自动开游戏」白改，`ok-ww.exe` 读到 True 就把鸣潮拉起来了。和 MAA 的母本/副本是同一类错误——**改一个正在运行的进程拥有的文件，等于改副本**。`preupdate._okww_quiesce()` 就是为此存在的。
+
 ## Update channels
 
 Both code and config reach the machine through this GitHub repo, because the

@@ -13,6 +13,8 @@ Tailscale + SSH 远程管理；控制端离线不影响游戏机自行运行。
 针对这一台机器。
 
 无界面操作(不依赖看屏幕)的完整方法见 [docs/HEADLESS.md](docs/HEADLESS.md)。
+AUTO-MAS 五个界面各是什么、OK-WW 能刷什么、母本与副本的关系，见 [docs/AUTOMAS.md](docs/AUTOMAS.md)。
+家里网络的拓扑、MTU 黑洞与百兆封顶的实测记录，见 [docs/HOME-NETWORK.md](docs/HOME-NETWORK.md)。
 
 ---
 

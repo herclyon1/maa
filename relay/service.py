@@ -343,6 +343,26 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         log.info("服务模式启动，监视 %s（变更即处理，兜底 %d 秒）",
                  cfg.history_dir, cfg.poll_seconds)
 
+        # 每次启动都贴一次 OK-WW 补丁——幂等，在位就一句话都不写。
+        #
+        # 以前只在开机预更新那一段里贴，于是白天改完补丁、部署、服务重启，
+        # 补丁**要等到第二天开机才生效**。2026-08-27 就这么发生了：残像聚落
+        # 「只刷落渊南丘」的修复推上了机器，文件却还是旧的，我以为已经好了。
+        # 「更新必须立即生效」是死命令，部署完就该是最终状态，不能留一个
+        # 「等下次开机」的尾巴。
+        try:
+            # 就地 import：模块级 import 会在服务安装阶段就被求值，
+            # 而 ark_relay 那时还不一定在 sys.path 上。
+            from ark_relay import okww_patch as _okww_patch  # noqa: PLC0415
+
+            okww_at_boot = cfg.okww_dir or (
+                Path(cfg.automas_dir).parent / "okww" if cfg.automas_dir else None)
+            for note in _okww_patch.ensure_patches(okww_at_boot):
+                log.info("启动：%s", note)
+                notifier.send("🩹 OK-WW 补丁", note)
+        except Exception:  # noqa: BLE001 - 贴不上也不能挡住服务启动
+            log.exception("启动时贴 OK-WW 补丁失败，服务照常继续")
+
         # New code before anything else uses it. This block was silently lost
         # in a refactor on 2026-08-17 - a range replace swallowed it - and for
         # three commits the machine stopped receiving updates at all while the
@@ -398,7 +418,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
                     "本机现在跑的是旧代码。下次开机会自动重试；",
                     "要立刻生效请在控制端执行 scripts/mac/deploy-relay.sh。",
                 ])
-                if errors := notifier.send("⚠️ 中继自更新没成功", body):
+                if errors := notifier.send("⚠️ 中继自更新没成功", body, alert=True):
                     log.error("更新失败通知没发出去: %s", "；".join(errors))
                 else:
                     log.info("已推送更新失败通知")
@@ -416,11 +436,25 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
                 prev = note.get("previous")
                 lines.append(f"版本 v{prev} → v{note.get('version') or '?'}"
                              if prev else f"版本 v{note.get('version') or '?'}")
-                # The file list only exists when the process that applied the
-                # update was already running this code; the first update after
-                # this shipped has no list, and saying so beats an empty line.
-                lines.append("改动文件：" + "、".join(files) if files
-                             else "（改动清单由上一版代码写入，本次没有）")
+                # 人话优先。用户 2026-08-26：「更新内容用人话写」——
+                # 一串文件名对着看不懂代码的人等于什么都没说。RELEASE-NOTES.md
+                # 由部署时一起推上来，写的是「修好了你遇到过的哪个毛病」。
+                # 文件名退居其次，只在没有说明文件时才列出来兜底。
+                notes = ""
+                try:
+                    nf = HERE / "RELEASE-NOTES.md"
+                    if nf.exists():
+                        notes = nf.read_text(encoding="utf-8").strip()
+                except OSError:
+                    notes = ""
+                if notes:
+                    lines += ["", notes]
+                else:
+                    # The file list only exists when the process that applied the
+                    # update was already running this code; the first update after
+                    # this shipped has no list, and saying so beats an empty line.
+                    lines.append("改动文件：" + "、".join(files) if files
+                                 else "（改动清单由上一版代码写入，本次没有）")
                 lines += ["", "更新在开机后、队列开跑前落地，本轮直接使用新代码。"]
                 body = "\n".join(lines)
                 if errors := notifier.send(title, body):
@@ -487,20 +521,69 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         # the check answers "有更新=false" and the process AUTO-MAS launches is
         # the one that stays.
         try:
-            from ark_relay import preupdate  # noqa: PLC0415
+            # okww_patch 2026-08-26 之前一直漏在这行外面：下面 549 行用它，
+            # 一跑到就 NameError，也就是说**补丁重贴从来没有真正执行过**。
+            # tests/test_undefined_names.py 就是为了这类错加的。
+            from ark_relay import okww_patch, plan, preupdate  # noqa: PLC0415
 
             if preupdate.wanted_today(cfg.automas_dir):
                 maaend = cfg.maaend_dir or _maaend_dir(cfg)
-                # Deliberately not pushed. MaaEnd's beta channel ships most
-                # days, so a notice per update is a daily message that says
-                # nothing the operator can act on - and a channel that cries
-                # every day is a channel that stops being read. It goes in the
-                # log, where it is there when a run needs explaining.
-                if updated := preupdate.run(maaend):
-                    log.info("预更新：MaaEnd 已更新到 %s（不推送，每天都更新）",
-                             updated)
+                # Both are pushed, per the standing order: when an auto-update
+                # takes effect, say so at once. An earlier version of this block
+                # suppressed the MaaEnd notice on the grounds that its beta
+                # channel "ships most days" - that was never measured, and the
+                # log shows the MaaEnd pre-update had in fact never once run to
+                # a verdict. Measured cadence on MAA is one update per ~6 days,
+                # which is not a channel anyone learns to tune out. If either
+                # ever does become daily noise, coalesce the two into one
+                # message rather than going silent.
+                maa = plan.script_dir(cfg.automas_dir, "MAA")
+                # Anything that could not be *checked* lands here. A pre-update
+                # that cannot tell whether an update exists must say so: on
+                # 2026-08-25 OK-WW was launched into session 0, its updater
+                # never ran, and the unchanged version file was reported as
+                # 无需更新 while v3.6.5 had been out for fourteen hours.
+                problems: list[str] = []
+                # MAA first: its update is applied by a delegated process at
+                # startup, so getting it out of the way is quick and the
+                # launch of MaaEnd afterwards is unaffected either way.
+                if note := preupdate.run_maa(maa, problems=problems):
+                    log.info("预更新：%s", note)
+                    notifier.send("🆕 预更新", note)
+                if updated := preupdate.run(maaend, problems=problems):
+                    log.info("预更新：MaaEnd 已更新：%s", updated)
+                    notifier.send("🆕 预更新",
+                                  f"MaaEnd 已更新：{updated}")
+                # AUTO-MAS is asked, not launched - it is already running.
+                if note := preupdate.run_automas(cfg.automas_dir,
+                                                 problems=problems):
+                    notifier.send("🆕 预更新", note)
+                # OK-WW last: it is the newest of the four and the only one whose
+                # update comes from a CNB git mirror rather than MirrorChyan.
+                okww = cfg.okww_dir or (Path(cfg.automas_dir).parent / "okww"
+                                        if cfg.automas_dir else None)
+                # OK-WW 的自动更新会整段覆盖 src，把本地补丁抹掉
+                # （2026-08-26 实测：v3.6.5 → v3.6.6-beta.1 之后两个补丁全没了，
+                #  连备份一起）。所以每轮开机都贴一次——幂等，在位就什么都不做。
+                # 放在 run_okww 之后：先让它更新完，再往新代码上贴。
+                if note := preupdate.run_okww(okww, problems=problems):
+                    log.info("预更新：%s", note)
+                    notifier.send("🆕 预更新", note)
+                for note in okww_patch.ensure_patches(okww):
+                    log.info("预更新：%s", note)
+                    notifier.send("🩹 OK-WW 补丁", note)
+                if problems:
+                    # An alert, not a routine note: a silent pre-update leaves
+                    # the machine running a version nobody chose.
+                    body = "\n".join(f"· {p}" for p in problems)
+                    log.error("预更新有 %d 项没能确认：\n%s", len(problems), body)
+                    notifier.send(
+                        f"⚠️ 预更新没能确认（{len(problems)} 项）",
+                        body + "\n\n这不是「无需更新」——是这一轮没能确认有没有更新。"
+                               "机器可能仍在跑旧版本。",
+                        alert=True)
         except Exception:  # noqa: BLE001 - a pre-update must never stop the relay
-            log.exception("MaaEnd 预更新出错，跳过（本轮照旧）")
+            log.exception("预更新出错，跳过（本轮照旧）")
 
         # A new game-week means last week's 剿灭 no longer counts.
         try:
@@ -645,7 +728,8 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
                         "⚠️ 中继的目录监听掉了",
                         "运行记录不再是一落盘就处理，要等下一个定时判定点才会被读到"
                         "（最长一小时）。功能还在，只是变慢。\n"
-                        "重启中继即可恢复：net stop ark-relay & net start ark-relay")
+                        "重启中继即可恢复：net stop ark-relay & net start ark-relay",
+                        alert=True)
                 # AUTO-MAS writes the .json and .log separately; give it a
                 # moment so the first notification does not read a half-file.
                 time.sleep(2)
@@ -721,7 +805,8 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
                         notifier.send(
                             "🔌 AUTO-MAS 拉不起来",
                             f"已连续尝试拉起 {revive_failures} 次仍不见后端进程，"
-                            "需要人工看一眼。服务会按翻倍退避继续重试。")
+                            "需要人工看一眼。服务会按翻倍退避继续重试。",
+                            alert=True)
                 # Adopt whichever backend now exists - our revival, or one that
                 # was there all along. A revived backend is a new process, so
                 # the old handle (already closed above) never signals again.

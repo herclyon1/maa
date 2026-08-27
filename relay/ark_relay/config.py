@@ -155,6 +155,9 @@ class Config:
     # Where queued config changes are fetched from, and the MaaEnd install they
     # may target. Empty URL falls back to the project's own repo path.
     inbox_url: str = field(default_factory=lambda: _env("ARK_INBOX_URL"))
+    okww_dir: Path | None = field(
+        default_factory=lambda: _env_path("ARK_OKWW_DIR")
+    )
     maaend_dir: Path | None = field(
         default_factory=lambda: _env_path("ARK_MAAEND_DIR")
     )

@@ -37,8 +37,10 @@ from ark_relay.engine import Engine             # noqa: E402
 
 sent = []
 class FakeNotifier(Notifier):
-    def send(self, title, body):
-        sent.append(title)
+    # 签名必须跟真的一样：漏跑告警是 alert=True 发的，桩少一个关键字
+    # 就会在真实调用点炸 TypeError，而那正是告警路径。
+    def send(self, title, body, *, alert=False):
+        sent.append((title, alert))
         return []
 
 cfg = Config()
@@ -130,6 +132,17 @@ E._check_partial_queues(at(23, 30), "2026-08-21",
 check("silent when the machine was off", len(sent), 0)
 _plan.recent_due_queues = _orig
 (STATE / "ledger-2026-08-21.jsonl").unlink()
+
+# 漏跑和缺项都是"人得去处理"的故障，必须走双通道。日常消息（日报、预更新）
+# 只发一处，这条断言防的是有人把 alert=True 顺手删掉。
+reset()
+BOOT[0] = at(21, 20)
+E._started_at = at(21, 20)
+_plan.recent_due_queues = lambda d, n, window_minutes=120: [
+    {"name": "Evening-MAA", "due": at(21, 30), "kinds": ["MAA"]}]
+E._check_missed_runs(at(22, 0))
+_plan.recent_due_queues = _orig
+check("漏跑告警走双通道", [a for _, a in sent], [True])
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

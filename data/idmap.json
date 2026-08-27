@@ -1,0 +1,751 @@
+{
+ "0307fe72af7e55f76cf375be267d636d": {
+  "note": "enums.suitTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "阿伯莉遗声"
+ },
+ "0803374d004606a0eb4fe79dd7d614f3": {
+  "note": "enums.suitTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "拓荒"
+ },
+ "0b8830f8e80c7ca94230596a99d614a4": {
+  "note": "enums.suitTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "壤流"
+ },
+ "17d901698b54205436bcb50905d4d26d": {
+  "note": "enums.suitTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "集成重型"
+ },
+ "1a4c13870df449ee376d8ed5e8dd9204": {
+  "note": "enums.suitTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "潮涌"
+ },
+ "1d6477b5665f05daa36c63ba24b8cf64": {
+  "note": "enums.suitTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "动火用"
+ },
+ "22fc1796d3f02ea400528cd0fe452999": {
+  "note": "enums.suitTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "清波"
+ },
+ "2a50c1685223ad1c8ee798bc66ab8ac3": {
+  "note": "enums.suitTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "M.I.警用"
+ },
+ "40e6cd5cb6531138c7fda69d3bff1c76": {
+  "note": "enums.suitTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "脉冲式"
+ },
+ "508f82db8e94556f724c4fbbfbf3e0b0": {
+  "note": "enums.suitTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "长息"
+ },
+ "50d183755f65e882454064176c3c3132": {
+  "note": "enums.suitTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "点剑"
+ },
+ "6d140bbabeb8636460161516ca659d45": {
+  "note": "enums.suitTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "集成轻型"
+ },
+ "6f111f96a39d526ec108f4896079b7e5": {
+  "note": "enums.suitTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "生物辅助"
+ },
+ "83bebe5e37738300a7787a4fead16633": {
+  "note": "enums.suitTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "碾骨"
+ },
+ "8a46e433f86173ae5ba81f4f0f2cfff0": {
+  "note": "enums.suitTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "巡行信使"
+ },
+ "91a23e201bd0d49f3cbab60dd71588b8": {
+  "note": "enums.suitTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "天灾防护"
+ },
+ "Auto Farm all Nightmare Nest": {
+  "source": "ok-ww:data/apps/ok-ww/working/i18n/zh_CN/LC_MESSAGES/ok.po",
+  "value": "自动刷所有梦魇巢穴"
+ },
+ "Farm Nightmare Nest for Daily Echo": {
+  "source": "ok-ww:data/apps/ok-ww/working/i18n/zh_CN/LC_MESSAGES/ok.po",
+  "value": "使用梦魇巢穴获取日常声骸"
+ },
+ "Forgery Challenge": {
+  "source": "ok-ww:data/apps/ok-ww/working/i18n/zh_CN/LC_MESSAGES/ok.po",
+  "value": "凝素领域"
+ },
+ "Nightmare Purification": {
+  "source": "ok-ww:data/apps/ok-ww/working/i18n/zh_CN/LC_MESSAGES/ok.po",
+  "value": "梦魇拔除"
+ },
+ "Tacet Discord Nest": {
+  "source": "ok-ww:data/apps/ok-ww/working/i18n/zh_CN/LC_MESSAGES/ok.po",
+  "value": "残像聚落"
+ },
+ "Tacet Suppression": {
+  "source": "ok-ww:data/apps/ok-ww/working/i18n/zh_CN/LC_MESSAGES/ok.po",
+  "value": "无音区"
+ },
+ "a68b5b89b9e323d3d557fb178e5bb36c": {
+  "note": "enums.suitTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "轻超域"
+ },
+ "acc7746b79b8757f74e9d79749cba8c9": {
+  "note": "enums.suitTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "集成实训"
+ },
+ "achv_type_adventure": {
+  "note": "enums.achievementFirstCategories",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "地区奖章"
+ },
+ "achv_type_battle": {
+  "note": "enums.achievementFirstCategories",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "技艺奖章"
+ },
+ "achv_type_event": {
+  "note": "enums.achievementFirstCategories",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "活动奖章"
+ },
+ "achv_type_factory": {
+  "note": "enums.achievementFirstCategories",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "建设奖章"
+ },
+ "achv_type_growth": {
+  "note": "enums.achievementFirstCategories",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "锤炼奖章"
+ },
+ "achv_type_hide": {
+  "note": "enums.achievementFirstCategories",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "奇想奖章"
+ },
+ "achv_type_quest": {
+  "note": "enums.achievementFirstCategories",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "章节奖章"
+ },
+ "achv_type_social": {
+  "note": "enums.achievementFirstCategories",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "社交奖章"
+ },
+ "active_effect_type_buff": {
+  "note": "enums.activeEffectTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "增益"
+ },
+ "active_effect_type_heal": {
+  "note": "enums.activeEffectTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "恢复"
+ },
+ "active_effect_type_revive": {
+  "note": "enums.activeEffectTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "复活"
+ },
+ "b0a4a678c2b091f45df836c1bf22b42e": {
+  "note": "enums.suitTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "旧锋"
+ },
+ "char_property_cryst": {
+  "note": "enums.charProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "寒冷"
+ },
+ "char_property_fire": {
+  "note": "enums.charProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "灼热"
+ },
+ "char_property_natural": {
+  "note": "enums.charProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "自然"
+ },
+ "char_property_physical": {
+  "note": "enums.charProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "物理"
+ },
+ "char_property_pulse": {
+  "note": "enums.charProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "电磁"
+ },
+ "cost_calc_template_advanced": {
+  "source": "skland game-tools JS: cost_calc_template_* 常量",
+  "value": "晋级 等级80/技能9/武器80"
+ },
+ "cost_calc_template_basic": {
+  "source": "skland game-tools JS: cost_calc_template_* 常量",
+  "value": "基础 等级60/技能6/武器60"
+ },
+ "cost_calc_template_high_tier": {
+  "source": "skland game-tools JS: cost_calc_template_* 常量",
+  "value": "高阶 等级90/技能9/武器90"
+ },
+ "cost_calc_template_perfect": {
+  "source": "skland game-tools JS: cost_calc_template_* 常量",
+  "value": "完美 等级90/技能12/武器90"
+ },
+ "d071c07e1a1665f0fe5eae0d18d37a87": {
+  "note": "enums.suitTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "蚀电防护"
+ },
+ "equip_all_skill_damage_increase": {
+  "note": "enums.equipProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "所有技能伤害加成"
+ },
+ "equip_attr_agi": {
+  "note": "enums.equipAbilities",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "敏捷"
+ },
+ "equip_attr_all_damage_taken_scalar": {
+  "note": "enums.equipProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "全伤害减免"
+ },
+ "equip_attr_atk": {
+  "note": "enums.equipProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "攻击力"
+ },
+ "equip_attr_combo_skill_damage_increase": {
+  "note": "enums.equipProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "连携技伤害加成"
+ },
+ "equip_attr_critical_rate": {
+  "note": "enums.equipProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "暴击率"
+ },
+ "equip_attr_cryst_and_pulse_damage_increase": {
+  "note": "enums.equipProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "寒冷和电磁伤害加成"
+ },
+ "equip_attr_damage_to_broken_unit_increase": {
+  "note": "enums.equipProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "对失衡目标伤害加成"
+ },
+ "equip_attr_heal_output_increase": {
+  "note": "enums.equipProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "治疗效率加成"
+ },
+ "equip_attr_max_hp": {
+  "note": "enums.equipProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "生命值"
+ },
+ "equip_attr_normal_attack_damage_increase": {
+  "note": "enums.equipProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "普通攻击伤害加成"
+ },
+ "equip_attr_normal_skill_damage_increase": {
+  "note": "enums.equipProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "战技伤害加成"
+ },
+ "equip_attr_physical_and_spellInfliction_enhance": {
+  "note": "enums.equipProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "源石技艺强度"
+ },
+ "equip_attr_physical_damage_increase": {
+  "note": "enums.equipProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "物理伤害加成"
+ },
+ "equip_attr_str": {
+  "note": "enums.equipAbilities",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "力量"
+ },
+ "equip_attr_ultimate_skill_damage_increase": {
+  "note": "enums.equipProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "终结技伤害加成"
+ },
+ "equip_attr_ultimate_sp_gain_scalar": {
+  "note": "enums.equipProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "终结技充能效率"
+ },
+ "equip_attr_will": {
+  "note": "enums.equipAbilities",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "意志"
+ },
+ "equip_attr_wisd": {
+  "note": "enums.equipAbilities",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "智识"
+ },
+ "equip_fire_and_natural_damage_increase": {
+  "note": "enums.equipProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "灼热和自然伤害加成"
+ },
+ "equip_level_10": {
+  "note": "enums.equipLevels",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "10"
+ },
+ "equip_level_20": {
+  "note": "enums.equipLevels",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "20"
+ },
+ "equip_level_28": {
+  "note": "enums.equipLevels",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "28"
+ },
+ "equip_level_36": {
+  "note": "enums.equipLevels",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "36"
+ },
+ "equip_level_50": {
+  "note": "enums.equipLevels",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "50"
+ },
+ "equip_level_53": {
+  "note": "enums.equipLevels",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "53"
+ },
+ "equip_level_60": {
+  "note": "enums.equipLevels",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "60"
+ },
+ "equip_level_70": {
+  "note": "enums.equipLevels",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "70"
+ },
+ "equip_level_73": {
+  "note": "enums.equipLevels",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "73"
+ },
+ "equip_main": {
+  "note": "enums.equipProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "主能力"
+ },
+ "equip_rarity_1": {
+  "note": "enums.equipRarities",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "灰色品质"
+ },
+ "equip_rarity_2": {
+  "note": "enums.equipRarities",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "绿色品质"
+ },
+ "equip_rarity_3": {
+  "note": "enums.equipRarities",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "蓝色品质"
+ },
+ "equip_rarity_4": {
+  "note": "enums.equipRarities",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "紫色品质"
+ },
+ "equip_rarity_5": {
+  "note": "enums.equipRarities",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "金色品质"
+ },
+ "equip_spell_damage_increase": {
+  "note": "enums.equipProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "法术伤害加成"
+ },
+ "equip_sub": {
+  "note": "enums.equipProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "副能力"
+ },
+ "equip_type_body": {
+  "note": "enums.equipTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "护甲"
+ },
+ "equip_type_edc": {
+  "note": "enums.equipTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "配件"
+ },
+ "equip_type_hand": {
+  "note": "enums.equipTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "护手"
+ },
+ "f394fa805de26d20af37b04c5840b1d2": {
+  "note": "enums.suitTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "50式应龙"
+ },
+ "f891b30534b3ec5b8f6c3774917009c4": {
+  "note": "enums.suitTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "蚀电屏蔽"
+ },
+ "f9c31f6fb42099bbcdc79cb71b65e2ed": {
+  "note": "enums.suitTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "重装信使"
+ },
+ "gat_passive_attr_agi": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "敏捷提升"
+ },
+ "gat_passive_attr_atk": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "攻击提升"
+ },
+ "gat_passive_attr_crirate": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "暴击率提升"
+ },
+ "gat_passive_attr_firedam": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "灼热伤害提升"
+ },
+ "gat_passive_attr_heal": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "治疗效率提升"
+ },
+ "gat_passive_attr_hp": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "生命提升"
+ },
+ "gat_passive_attr_icedam": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "寒冷伤害提升"
+ },
+ "gat_passive_attr_magicdam": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "法术伤害提升"
+ },
+ "gat_passive_attr_main": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "主能力提升"
+ },
+ "gat_passive_attr_naturaldam": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "自然伤害提升"
+ },
+ "gat_passive_attr_phydam": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "物理伤害提升"
+ },
+ "gat_passive_attr_physpell": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "源石技艺提升"
+ },
+ "gat_passive_attr_pulsedam": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "电磁伤害提升"
+ },
+ "gat_passive_attr_str": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "力量提升"
+ },
+ "gat_passive_attr_usp": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "终结技充能效率提升"
+ },
+ "gat_passive_attr_will": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "意志提升"
+ },
+ "gat_passive_attr_wisd": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "智识提升"
+ },
+ "gst_passive_break": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "残暴"
+ },
+ "gst_passive_burst": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "迸发"
+ },
+ "gst_passive_combo": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "追袭"
+ },
+ "gst_passive_crit": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "切骨"
+ },
+ "gst_passive_force": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "强攻"
+ },
+ "gst_passive_heal": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "医疗"
+ },
+ "gst_passive_keyword": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "效益"
+ },
+ "gst_passive_magabn": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "附术"
+ },
+ "gst_passive_phyabn": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "巧技"
+ },
+ "gst_passive_smash": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "粉碎"
+ },
+ "gst_passive_spirit": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "昂扬"
+ },
+ "gst_passive_tacafter": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "流转"
+ },
+ "gst_passive_tactic": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "压制"
+ },
+ "gst_passive_ult": {
+  "source": "github:cmyyx/cep src/generated/i18n/gemStats/zh-CN.json",
+  "value": "夜幕"
+ },
+ "item_gem_rarity_2": {
+  "note": "enums.gemRarities",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "稳定基质"
+ },
+ "item_gem_rarity_3": {
+  "note": "enums.gemRarities",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "净态基质"
+ },
+ "item_gem_rarity_4": {
+  "note": "enums.gemRarities",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "高纯基质"
+ },
+ "item_gem_rarity_5": {
+  "note": "enums.gemRarities",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "无瑕基质"
+ },
+ "label_type_foresee": {
+  "note": "enums.labelTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "预告"
+ },
+ "label_type_limited": {
+  "note": "enums.labelTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "限定"
+ },
+ "label_type_new": {
+  "note": "enums.labelTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "New"
+ },
+ "label_type_preview": {
+  "note": "enums.labelTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "前瞻"
+ },
+ "label_type_remake": {
+  "note": "enums.labelTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "复刻"
+ },
+ "label_type_time_limited": {
+  "note": "enums.labelTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "限时"
+ },
+ "label_type_up": {
+  "note": "enums.labelTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "Up"
+ },
+ "passive_effect_type_buff": {
+  "note": "enums.passiveEffectTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "增益"
+ },
+ "passive_effect_type_heal": {
+  "note": "enums.passiveEffectTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "恢复"
+ },
+ "passive_effect_type_revive": {
+  "note": "enums.passiveEffectTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "复活"
+ },
+ "profession_assault": {
+  "note": "enums.professions",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "突击"
+ },
+ "profession_caster": {
+  "note": "enums.professions",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "术师"
+ },
+ "profession_defender": {
+  "note": "enums.professions",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "重装"
+ },
+ "profession_guard": {
+  "note": "enums.professions",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "近卫"
+ },
+ "profession_supporter": {
+  "note": "enums.professions",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "辅助"
+ },
+ "profession_vanguard": {
+  "note": "enums.professions",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "先锋"
+ },
+ "rarity_3": {
+  "note": "enums.rarities",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "3"
+ },
+ "rarity_4": {
+  "note": "enums.rarities",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "4"
+ },
+ "rarity_5": {
+  "note": "enums.rarities",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "5"
+ },
+ "rarity_6": {
+  "note": "enums.rarities",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "6"
+ },
+ "skill_property_cryst": {
+  "note": "enums.skillProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "寒冷"
+ },
+ "skill_property_fire": {
+  "note": "enums.skillProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "灼热"
+ },
+ "skill_property_natural": {
+  "note": "enums.skillProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "自然"
+ },
+ "skill_property_physical": {
+  "note": "enums.skillProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "物理"
+ },
+ "skill_property_pulse": {
+  "note": "enums.skillProperties",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "电磁"
+ },
+ "skill_type_combo_skill": {
+  "note": "enums.skillTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "连携技"
+ },
+ "skill_type_normal_attack": {
+  "note": "enums.skillTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "普通攻击"
+ },
+ "skill_type_normal_skill": {
+  "note": "enums.skillTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "战技"
+ },
+ "skill_type_ultimate_skill": {
+  "note": "enums.skillTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "终结技"
+ },
+ "weapon_type_claymores": {
+  "note": "enums.weaponTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "双手剑"
+ },
+ "weapon_type_lance": {
+  "note": "enums.weaponTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "长柄武器"
+ },
+ "weapon_type_pistol": {
+  "note": "enums.weaponTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "手铳"
+ },
+ "weapon_type_sword": {
+  "note": "enums.weaponTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "单手剑"
+ },
+ "weapon_type_wand": {
+  "note": "enums.weaponTypes",
+  "source": "skland:GET /web/v1/game/endfield/enums",
+  "value": "施术单元"
+ }
+}

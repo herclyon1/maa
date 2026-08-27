@@ -1,0 +1,201 @@
+<title>终末地理智关卡树</title>
+<style>
+:root{
+  --paper:#F4F6F9; --card:#FFFFFF; --edge:#D8DEE8; --edge2:#E9EDF3;
+  --ink:#161B23; --mid:#4A5566; --dim:#7C889A;
+  --teal:#0F6C61; --amber:#A96A05; --crim:#B62B42; --moss:#2F7D4F;
+  --tealbg:#E6F2F0; --amberbg:#FBF0DE; --crimbg:#FBE9EC; --mossbg:#E8F4EC;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);width:1000px;
+ font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+ -webkit-font-smoothing:antialiased}
+.mono{font-family:"SF Mono",Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+.wrap{padding:40px 44px 46px}
+
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;
+ padding-bottom:18px;border-bottom:3px solid var(--ink)}
+.eyebrow{font-size:11.5px;letter-spacing:.26em;color:var(--teal);font-weight:800;margin-bottom:9px}
+h1{margin:0;font-size:33px;font-weight:850;letter-spacing:.02em;line-height:1.1}
+.sub{margin-top:9px;font-size:13px;color:var(--mid)}
+.meta{text-align:right;font-size:11px;color:var(--dim);line-height:1.85;white-space:nowrap}
+
+.legend{display:flex;align-items:center;gap:20px;margin:16px 0 4px;
+ font-size:11.5px;color:var(--mid)}
+.legend .sw{display:inline-block;width:22px;height:9px;border-radius:2px;vertical-align:-1px;margin-right:6px}
+
+.rail{position:relative;margin-top:22px;padding-left:30px}
+
+.branch{position:relative;margin-bottom:20px}
+/* 横向接头 */
+.branch:before{content:"";position:absolute;left:-24px;top:24px;width:18px;height:2px;background:var(--edge)}
+/* 主干只画到「下一个分叉」，最后一支不画——否则会拖出一条像是还有第五类的悬空线 */
+.branch:after{content:"";position:absolute;left:-24px;top:24px;bottom:-44px;width:2px;background:var(--edge)}
+.branch:last-child:after{display:none}
+.bhead{display:flex;align-items:center;gap:12px;padding:11px 16px;border-radius:9px 9px 0 0;
+ background:var(--bg,var(--tealbg));border:1px solid var(--edge);border-bottom:none}
+.bhead .num{font-size:12px;font-weight:800;color:var(--c,var(--teal));
+ border:2px solid var(--c,var(--teal));border-radius:50%;width:24px;height:24px;
+ display:flex;align-items:center;justify-content:center;flex:none}
+.bhead .zh{font-size:19px;font-weight:800;letter-spacing:.03em}
+.bhead .en{font-size:11.5px;color:var(--dim);letter-spacing:.04em}
+.pill{margin-left:auto;font-size:11px;font-weight:800;padding:4px 11px;border-radius:20px;
+ letter-spacing:.05em;color:#fff;background:var(--c,var(--teal))}
+
+.kids{border:1px solid var(--edge);border-radius:0 0 9px 9px;background:var(--card);overflow:hidden}
+.kid{display:grid;grid-template-columns:1fr 300px;gap:20px;align-items:center;
+ padding:13px 17px;border-top:1px solid var(--edge2)}
+.kid:first-child{border-top:none}
+.kid.mark{background:var(--mk,var(--amberbg))}
+.k1{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+.k1 b{font-size:16px;font-weight:800}
+.ab{font-size:10px;font-weight:700;color:var(--teal);background:var(--tealbg);
+ border:1px solid #BEDDD8;border-radius:3px;padding:1px 5px;letter-spacing:.04em}
+.k1 .id{font-size:10.5px;color:var(--dim)}
+.drop{margin-top:5px;font-size:13px;color:var(--mid);line-height:1.55}
+.drop em{font-style:normal;font-weight:700;color:var(--ink)}
+
+.bar{display:flex;align-items:center;gap:10px}
+.bar:has(>.val:only-child) .val{width:100%}
+.track{flex:1;height:12px;border-radius:6px;background:#EDF0F5;overflow:hidden;position:relative}
+.track i{display:block;height:100%;border-radius:6px;background:var(--bc,var(--moss))}
+.track.cap:after{content:"";position:absolute;right:0;top:0;bottom:0;width:3px;background:var(--moss)}
+.val{width:96px;text-align:right;font-size:13px;font-weight:800;color:var(--vc,var(--moss))}
+.val small{display:block;font-size:10px;font-weight:600;color:var(--dim);letter-spacing:.02em}
+.stk{width:100%;font-size:10.5px;color:var(--dim);margin-top:4px;text-align:right}
+
+.note{margin-top:26px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.box{background:var(--card);border:1px solid var(--edge);border-radius:9px;padding:15px 18px;
+ border-top:4px solid var(--bc2,var(--crim))}
+.box h3{margin:0 0 8px;font-size:14.5px;letter-spacing:.03em;color:var(--bc2,var(--crim))}
+.box p{margin:0;font-size:12.5px;color:var(--mid);line-height:1.85}
+.box p b{color:var(--ink)}
+footer{margin-top:22px;padding-top:14px;border-top:1px solid var(--edge);
+ font-size:11px;color:var(--dim);display:flex;justify-content:space-between}
+</style>
+<div class="wrap">
+<header>
+  <div>
+    <div class="eyebrow">MAAEND · SANITY TASK TREE</div>
+    <h1>终末地　理智刷取关卡树</h1>
+    <div class="sub">4 类任务 · 12 个关卡选项 · 满练一名干员的需求为全干员统一值</div>
+  </div>
+  <div class="meta">库存快照　2026-08-25 01:23 UTC<br>来源　IMS 全量扫库 ＋ 官方 ItemTable<br>需求口径　enjoygm 逐角色材料表（两角色数字一致）</div>
+</header>
+
+<div class="legend">
+  <span><span class="sw" style="background:#B62B42"></span>告急（&lt;1 人份）</span>
+  <span><span class="sw" style="background:#A96A05"></span>偏紧（1–8 人份）</span>
+  <span><span class="sw" style="background:#2F7D4F"></span>充足（&gt;8 人份）</span>
+  <span style="margin-left:auto">养成类按人份（15 满格）；危境预演与基质按右侧标注的分母</span>
+</div>
+
+<div class="rail">
+
+  <div class="branch" style="--c:#A96A05;--bg:#FBF0DE">
+    <div class="bhead"><span class="num">1</span><span class="zh">干员养成</span>
+      <span class="en">OperatorProgression</span><span class="pill">● 当前在刷</span></div>
+    <div class="kids">
+      <div class="kid mark">
+        <div><div class="k1"><b>干员经验</b><span class="ab">A / B 关</span><span class="id mono">OperatorEXP</span></div>
+          <div class="drop"><em>初/中/高级作战记录</em>（需 74）　<em>初/高级认知载体</em>（需 105）</div></div>
+        <div><div class="bar"><div class="track"><i style="width:65%"></i></div>
+          <div class="val">9.7–11.9<small>人份</small></div></div>
+          <div class="stk mono">721 / 640 / 1,030　·　1,248 / 2,920</div></div></div>
+      <div class="kid">
+        <div><div class="k1"><b>干员进阶</b><span class="ab">A / B 关</span><span class="id mono">Promotions</span></div>
+          <div class="drop"><em>协议圆盘</em>（需 33）　<em>协议圆盘组</em>（需 60）</div></div>
+        <div><div class="bar"><div class="track cap"><i style="width:100%"></i></div>
+          <div class="val">49–59<small>人份</small></div></div>
+          <div class="stk mono">1,944 / 2,941</div></div></div>
+      <div class="kid">
+        <div><div class="k1"><b>钱币收集</b><span class="id mono">T-Creds</span></div>
+          <div class="drop"><em>折金票</em>　满练一人需 <b>1,693,510</b></div></div>
+        <div><div class="bar"><div class="track"><i style="width:26%;background:#A96A05"></i></div>
+          <div class="val" style="--vc:#A96A05">3.9<small>人份</small></div></div>
+          <div class="stk mono">6,671,367</div></div></div>
+      <div class="kid">
+        <div><div class="k1"><b>技能提升</b><span class="ab">A / B 关</span><span class="id mono">SkillUp</span></div>
+          <div class="drop"><em>协议棱柱</em>（需 328）　<em>协议棱柱组</em>（需 472）</div></div>
+        <div><div class="bar"><div class="track"><i style="width:30%;background:#A96A05"></i></div>
+          <div class="val" style="--vc:#A96A05">4.5–8.2<small>人份</small></div></div>
+          <div class="stk mono">1,473 / 3,877</div></div></div>
+    </div>
+  </div>
+
+  <div class="branch" style="--c:#0F6C61;--bg:#E6F2F0">
+    <div class="bhead"><span class="num">2</span><span class="zh">武器养成</span>
+      <span class="en">WeaponProgression</span></div>
+    <div class="kids">
+      <div class="kid">
+        <div><div class="k1"><b>武器经验</b><span class="id mono">WeaponEXP</span></div>
+          <div class="drop"><em>武器检查单元 / 装置 / 套组</em></div></div>
+        <div><div class="bar"><div class="track"><i style="width:0%"></i></div>
+          <div class="val" style="--vc:#4A5566">无口径<small>未查到单人需求</small></div></div>
+          <div class="stk mono">75 / 141 / 1,615</div></div></div>
+      <div class="kid">
+        <div><div class="k1"><b>武器进阶</b><span class="ab">A / B 关</span><span class="id mono">WeaponTune</span></div>
+          <div class="drop"><em>强固模具</em>　<em>重型强固模具</em></div></div>
+        <div><div class="bar"><div class="track"><i style="width:0%"></i></div>
+          <div class="val" style="--vc:#4A5566">无口径<small>未查到单人需求</small></div></div>
+          <div class="stk mono">232 / 293</div></div></div>
+    </div>
+  </div>
+
+  <div class="branch" style="--c:#B62B42;--bg:#FBE9EC">
+    <div class="bhead"><span class="num">3</span><span class="zh">危境预演</span>
+      <span class="en">CrisisDrills</span><span class="pill">▲ 建议切到这里</span></div>
+    <div class="kids">
+      <div class="kid mark" style="--mk:#FBE9EC">
+        <div><div class="k1"><b>高阶培养 Ⅰ</b><span class="id mono">AdvancedProgression1</span></div>
+          <div class="drop"><em>D96钢样品四</em>　—　当前记住的子选项</div></div>
+        <div><div class="bar"><div class="track"><i style="width:0.0%;background:#B62B42"></i></div>
+          <div class="val" style="--vc:#B62B42">0 / 268<small>单人高阶素材总需求</small></div></div></div></div>
+      <div class="kid mark" style="--mk:#FBE9EC">
+        <div><div class="k1"><b>高阶培养 Ⅱ</b><span class="id mono">AdvancedProgression2</span></div>
+          <div class="drop"><em>超距辉映管</em></div></div>
+        <div><div class="bar"><div class="track"><i style="width:14.7%;background:#B62B42"></i></div>
+          <div class="val" style="--vc:#B62B42">22 / 268<small>单人高阶素材总需求</small></div></div></div></div>
+      <div class="kid mark" style="--mk:#FBE9EC">
+        <div><div class="k1"><b>高阶培养 Ⅲ</b><span class="id mono">AdvancedProgression3</span></div>
+          <div class="drop"><em>快子遴捡晶格</em></div></div>
+        <div><div class="bar"><div class="track"><i style="width:2.0%;background:#B62B42"></i></div>
+          <div class="val" style="--vc:#B62B42">3 / 268<small>单人高阶素材总需求</small></div></div></div></div>
+      <div class="kid mark" style="--mk:#FBE9EC">
+        <div><div class="k1"><b>高阶培养 Ⅳ</b><span class="id mono">AdvancedProgression4</span></div>
+          <div class="drop"><em>象限拟合液</em></div></div>
+        <div><div class="bar"><div class="track"><i style="width:2.0%;background:#B62B42"></i></div>
+          <div class="val" style="--vc:#B62B42">3 / 268<small>单人高阶素材总需求</small></div></div></div></div>
+      <div class="kid mark" style="--mk:#FBE9EC">
+        <div><div class="k1"><b>高阶培养 Ⅴ</b><span class="id mono">AdvancedProgression5</span></div>
+          <div class="drop"><em>三相纳米片</em></div></div>
+        <div><div class="bar"><div class="track"><i style="width:56.0%;background:#A96A05"></i></div>
+          <div class="val" style="--vc:#A96A05">84 / 268<small>单人高阶素材总需求</small></div></div></div></div>
+      <div class="kid" style="background:#FDF4F5">
+        <div><div class="k1"><b style="color:#B62B42">口径说明</b><span class="id">五种不能互相顶替，各有专属关卡 ss01–ss05</span></div>
+          <div class="drop">满练一人固定需 <b>268 个</b>，分摊到其中约 <b>3 种</b>；哪几种因干员而异，新角色官方未必公布。实例（梨诺，136+116+16=268）：
+          <em>象限拟合液 136</em>（精英化四阶 20 ＋ 专精 116）· <em>D96钢样品四 116</em>（专精）· <em>超距辉映管 16</em>（专武突破）</div></div>
+        <div><div class="bar"><div class="val" style="--vc:#B62B42;width:100%">看要练谁<small>需求因干员而异</small></div></div></div></div>
+    </div>
+  </div>
+
+  <div class="branch" style="--c:#4A5566;--bg:#EDF0F5">
+    <div class="bhead"><span class="num">4</span><span class="zh">基质刷取</span>
+      <span class="en">Essence</span></div>
+    <div class="kids">
+      <div class="kid">
+        <div><div class="k1"><b>按聚落指定</b><span class="id mono">AutoEssenceSpecifiedLocation</span></div>
+          <div class="drop"><em>无瑕基质</em>　每把武器 1 个位，最多 3 条词条　·　蚀刻每次吃 1 个基质，词条 +1 级（上限 6/6/3 = 15 级）</div>
+          <div class="drop" style="margin-top:4px;font-size:12px"><em>枢纽区（当前）</em>　源石研究园 · 矿脉源区 · 供能高地 · 武陵城区 · 清波寨 · 首墩 · 试验园区 · 藏剑谷 · 应龙关 · 北部禁区</div></div>
+        <div><div class="bar"><div class="track"><i style="width:0%"></i></div>
+          <div class="val" style="--vc:#4A5566">? / 16<small>满练一把武器</small></div></div>
+          <div class="stk mono">1 装备位 ＋ 15 次蚀刻　·　库存未知（扫库不统计基质）</div></div></div>
+    </div>
+  </div>
+
+</div>
+
+
+<footer><span>满练一名干员 ＝ 1,693,510 折金票 ＋ 268 个高阶素材（分摊到约 3 种）</span>
+<span class="mono">生成于 2026-08-26</span></footer>
+</div>

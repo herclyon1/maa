@@ -1,0 +1,79 @@
+{
+ "MAA": {
+  "作战开关": true,
+  "关卡": "AT-4",
+  "关卡模式": "Fixed",
+  "关卡链": [
+   "-",
+   "-",
+   "-"
+  ],
+  "剿灭": "Close",
+  "活动关优先": false,
+  "活动关序号": 1,
+  "活动关理智药": 999,
+  "理智药": 999,
+  "连战": "0"
+ },
+ "MaaEnd": {
+  "基质地点": "VFTheHub",
+  "开理智": true,
+  "理智任务": "OperatorProgression",
+  "自动吃药": true,
+  "详细": "OperatorEXP"
+ },
+ "OK-WW(MAS侧)": {
+  "AdditionalTasks": [
+   "Check Weekly Garden"
+  ],
+  "FarmNightmareNestForDailyEcho": true,
+  "MaterialSelection": "Shell Credit",
+  "TaskIndex": 1,
+  "WhichForgeryChallengeToFarm": 1,
+  "WhichTacetSuppressionToFarm": 1,
+  "WhichToFarm": "Forgery Challenge"
+ },
+ "OK-WW(本体)": {
+  "DailyTask": {
+   "Additional Tasks to Run After Daily Task": [
+    "Check Weekly Garden"
+   ],
+   "Exit After Task": true,
+   "Farm Nightmare Nest for Daily Echo": true,
+   "Material Selection": "Shell Credit",
+   "Which Forgery Challenge to Farm": 1,
+   "Which Tacet Suppression to Farm": 1,
+   "Which to Farm": "Forgery Challenge"
+  },
+  "ForgeryTask": {
+   "Which Forgery Challenge to Farm": 1
+  },
+  "NightmareNestTask": {
+   "Which to Farm": [
+    "Tacet Discord Nest"
+   ],
+   "_enabled": true
+  },
+  "TacetTask": {
+   "Which Tacet Suppression to Farm": 1
+  }
+ },
+ "ark-relay": "RUNNING",
+ "进程": {
+  "AUTO-MAS": true,
+  "Endfield": false,
+  "MAA": false,
+  "MaaEnd": false,
+  "ok-ww": false
+ },
+ "队列": {
+  "Evening-MAA": {
+   "定时": true,
+   "开机跑": false
+  },
+  "新队列": {
+   "定时": true,
+   "开机跑": false
+  }
+ }
+}
