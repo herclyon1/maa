@@ -1,11 +1,33 @@
 #!/usr/bin/env python3
 """武器基质核对：实装词条 vs 武器自己要的。**按 id 比，不按中文比。**
 
+## 零、正确的字段在 `weapon.skills[]`（2026-08-28 才发现，之前绕了一大圈）
+
+森空岛在每把武器实例上给了三条：
+
+    weapon.skills[] = { key, name, gemTermId, level, currentBaseLevel, currentMaxLevel }
+
+`gemTermId` 和 `gem.terms[].id` 是**同一套 hash id**，直接对得上——
+不需要 CEP、不需要中文、不需要剥前缀。核对就是一句：
+
+    {s.gemTermId for s in weapon.skills} == {t.id for t in gem.terms}
+
+本账号 19 把带基质的武器，18 把相等，唯一不等的是狼卫的同类相食——
+和绕 CEP 那条路得出的结论完全一致，互为独立验证。
+
+三个等级字段的关系也已全量验证（83/83 条词条实例）：
+
+    level = currentBaseLevel + 该词条在基质上的 cost
+
+`currentBaseLevel` 是武器自带的底（6★ 属性位 3、技能位 1），
+基质只补上面那段。
+
     python3 scripts/mac/gem-check.py            # 限定 6★ + 管理员（默认）
     python3 scripts/mac/gem-check.py --six       # 全部 6★（含常驻）
     python3 scripts/mac/gem-check.py --all       # 全部干员
+    python3 scripts/mac/gem-check.py --cross-check   # 再拿 CEP 独立核一遍
 
-## 一、「推荐词条」这四个字有歧义
+## 一、CEP 交叉验证（`--cross-check`，需要联网）
 
 基质词条不是攻略口味。武器在森空岛接口里**自己声明**要哪三条——
 `weaponData.skillInfos[].gemTagId` 配 `maxLevel`（熔铸火焰要
@@ -175,12 +197,12 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--six", action="store_true", help="全部 6★（含常驻）")
     ap.add_argument("--all", action="store_true", help="全部干员")
+    ap.add_argument("--cross-check", action="store_true",
+                    help="额外用 CEP 的数据独立核一遍（需要联网）")
     ns = ap.parse_args(argv[1:])
 
     card = load("card")
     chars = card["detail"]["chars"]
-    cep_w, zh2id, tag2zh = cep_tables()
-    print(verify(chars, cep_w))
 
     std = set() if (ns.all or ns.six) else standard_chars()
     if std:
@@ -198,56 +220,58 @@ def main(argv: list[str]) -> int:
 
         w = c.get("weapon")
         if not w:
-            rows.append((name, "—", "❌ 没有装武器", "", ""))
+            rows.append((name, "—", "❌ 没有装武器", []))
             continue
-        wd = w["weaponData"]
-
-        want = [si["gemTagId"] for si in wd["skillInfos"]]
-        # 显示用 CEP 的中文，不用森空岛武器栏的——后者和基质栏不是一套叫法。
-        want_zh = [tag2zh.get(t, f"?{t}") for t in want]
 
         gem = w.get("gem")
-        if gem:
-            have_zh = [t["name"] for t in gem["terms"]]
-            unknown = [t for t in have_zh if t not in zh2id]
-            if unknown:
-                raise SystemExit(
-                    f"「{name} / {wd['name']}」的基质词条 {unknown} 在 CEP 的"
-                    f" gemStats 中文表里查不到，翻不成 id。**不许按字面猜**——"
-                    f"去 cmyyx/cep 更新 gemStats，或找别的权威对照表。")
-            have = [_tag(zh2id[t]) for t in have_zh]
-            lv = {_tag(zh2id[t["name"]]): t["cost"] for t in gem["terms"]}
-            have_zh = [tag2zh[t] for t in have]      # 统一成 CEP 的叫法
-            caps = {t: _cap(zh2id[n]) for t, n in zip(have, have_zh)}
-        else:
-            have, have_zh, lv, caps = [], [], {}, {}
+        cost = {t["id"]: t["cost"] for t in gem["terms"]} if gem else {}
+        want = [s_["gemTermId"] for s_ in w["skills"]]
 
         if not gem:
             verdict = "❌ 没有基质"
-        elif sorted(have) != sorted(want):
-            miss = [tag2zh.get(t, t) for t in want if t not in have]
-            verdict = f"❌ 词条不符（缺 {'/'.join(miss)}）"
+        elif set(cost) != set(want):
+            extra = [t["name"] for t in gem["terms"] if t["id"] not in want]
+            miss = [s_["name"].split("·")[0] for s_ in w["skills"]
+                    if s_["gemTermId"] not in cost]
+            verdict = (f"❌ 词条不符（缺 {'/'.join(miss)}"
+                       + (f"，多 {'/'.join(extra)}" if extra else "") + "）")
         else:
-            low = [f"{tag2zh[t]} {lv[t]}/{caps[t]}"
-                   for t in have if lv[t] < caps[t]]
-            verdict = ("✅ 三条齐全且全部满级"
-                       if not low else "⚠️ 词条对但没满级：" + "、".join(low))
+            verdict = "✅ 三条全对"
 
-        detail = "/".join(f"{tag2zh[t]}{lv[t]}" for t in have) or "无"
-        rows.append((name, wd["name"], verdict, "/".join(want_zh), detail))
+        detail = [(s_["name"].split("·")[0], cost.get(s_["gemTermId"], 0),
+                   s_["level"], s_["currentMaxLevel"], s_["currentBaseLevel"])
+                  for s_ in w["skills"]]
+        rows.append((name, w["weaponData"]["name"], verdict, detail))
 
     w1 = max(len(r[0]) for r in rows)
-    print(f"\n{'干员':<{w1}}  {'武器':<10}  结论")
-    print("─" * 78)
-    for name, wname, verdict, want, have in sorted(
+    print(f"\n{'干员':<{w1}}  {'武器':<11}  词条是否正确")
+    print("─" * 76)
+    for name, wname, verdict, detail in sorted(
             rows, key=lambda r: (r[2].startswith("✅"), r[0])):
-        print(f"{name:<{w1}}  {wname:<10}  {verdict}")
-        if not verdict.startswith("✅"):
-            print(f"{'':<{w1}}  {'':<10}  武器要：{want}")
-            print(f"{'':<{w1}}  {'':<10}  实际装：{have}")
+        print(f"{name:<{w1}}  {wname:<11}  {verdict}")
+        for zh, c_, lv, cap, base in detail:
+            bar = "满" if lv >= cap else f"{lv}/{cap}"
+            print(f"{'':<{w1}}  {'':<11}    {zh:<12} 武器底{base} + 基质{c_}"
+                  f" = {bar}")
 
     ok = sum(1 for r in rows if r[2].startswith("✅"))
-    print(f"\n{ok}/{len(rows)} 三条齐全且全部满级")
+    print(f"\n{ok}/{len(rows)} 词条正确")
+
+    if ns.cross_check:
+        cep_w, zh2id, tag2zh = cep_tables()
+        print("\n" + verify(chars, cep_w))
+        bad = []
+        for c in chars:
+            w = c.get("weapon")
+            if not w or not w.get("gem"):
+                continue
+            ce = cep_w[w["weaponData"]["name"]]
+            want_t = sorted(_tag(i) for i in ce)
+            have_t = sorted(_tag(zh2id[t["name"]]) for t in w["gem"]["terms"])
+            if want_t != have_t:
+                bad.append(c["charData"]["name"])
+        print(f"CEP 独立核对：{len(bad)} 个不符" + (f"　{bad}" if bad else ""))
+
     return 0
 
 
