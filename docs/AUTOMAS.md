@@ -250,3 +250,44 @@ MAS 的快速配置把附加任务覆盖成 `[]`，**所以每周乐园一直没
 * `Material Selection = "Shell Credit"` → 原文是
   「Resonator EXP / Weapon EXP / Shell Credit」，是**模拟领域**那个任务的材料选择，
   和凝素领域无关。**别把这两个并成一句念。**
+
+## 关快速配置 ≠ 不再覆盖配置目录
+
+2026-08-28 用户问：「我不是已经关了快速配置吗，不是说不会覆盖吗？」——
+是我前面把两件事说混了。它们是分开的：
+
+| | 受什么控制 | 现在的状态 |
+|---|---|---|
+| **整个 config 目录被替换**（`rmtree` + `copytree`） | **无条件**，`AutoProxy.py:514-515` 没有任何 `if` | **每轮都做** |
+| **替换之后再往里覆盖字段**（`If*` 开关 / 理智任务 / 地点） | `Info.IfQuickConfig` | 已关，不再覆盖 |
+
+`Info.Mode` 只决定从**哪个**母本目录拷（`简洁` → `Default`，否则 → 用户 UUID），
+不决定拷不拷（`AutoProxy.py:499-507`）。
+
+**所以：在 MaaEnd / OK-WW 界面里改的东西，不管快速配置开不开，下一轮都会被冲掉。**
+唯一长期生效的地方是母本 `<automas>\data\<scriptId>\<Default|uuid>\ConfigFile\`。
+
+## MAA 的 `StageMode`
+
+`Info.StageMode` 是关卡配置模式，只有两种取值：
+
+* **`"Fixed"`（固定）** —— 关卡和药量全部直接取 `Info.*`，见
+  `AutoProxy.py:727-731`。参与的键是 `MAA_STAGE_KEY`（`constants.py`）：
+  `MedicineNumb / SeriesNumb / Stage / Stage_1 / Stage_2 / Stage_3 / Stage_Remain`。
+* **一个计划表的 UUID** —— 走 `PlanConfig.json`，按星期几取不同关卡和药量
+  （`AutoProxy.py:733-739`）。`AutoProxy.py:421` 也用它判断是否走计划表分支。
+
+当前是 `Fixed`：`Stage=AT-4`、`MedicineNumb=999`、`SeriesNumb=0`。
+**计划表里那份（所有天 `Stage='-' MedicineNumb=0`）根本不读。**
+
+## 战后自动筛选与手动 EssenceFilter 的规则已对齐
+
+用户要求两者一致、都只锁无瑕。已把 `AutoEssence` 的战后筛选打开并逐项对齐
+`maaend_essence.py` 的默认值，写完当场回读比对，9 项全部一致：
+
+    input_language CN｜rarity6 ✓ rarity5 ✗ rarity4 ✗
+    flawless ✓ pure ✗｜keep_future_promising ✗ keep_slot3 ✗ discard_unmatched ✗
+
+注意子选项名和手动那套**不同前缀**：战后的全部是
+`EssenceFilterAfterBattle*`（如 `EssenceFilterAfterBattleFlawlessEssence`），
+手动那套是 `FlawlessEssence`。改一边不会自动同步另一边。
