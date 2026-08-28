@@ -742,3 +742,60 @@ backtick, plus Chinese, all of which arrived intact.
 Use `--ps` for genuine one-liners. Anything with a quote in it, or longer than
 one line, goes in a file.
 
+
+## MAA 基建换班每天挂一次：不是分辨率，是基建视图没缩放到位
+
+2026-08-28 用户问「中继通知我有四项失败……是不是我们这边设置没弄好」。
+逐项查完的结论：
+
+### 1. MAA「基建换班」——**不是我们的设置**，慢性偶发，会复现
+
+`asst.log` 的因果链：
+
+```
+13:18:04  InfrastInfoTask | zoom gesture sent
+13:18:06  no facility matched, attempt 1
+13:18:08  no facility matched, attempt 2
+13:18:10  no facility matched, attempt 3
+13:18:11  Save image D:\ark\maa\debug\infrast\facility_layout\...raw.png
+13:18:11  ERR InfrastInfoTask | facility layout recognition failed after 3 attempts
+```
+
+**MAA 每次失败都会存一张现场图**，那个目录就是完整病历：
+
+    D:\ark\maa\debug\infrast\facility_layout\
+      08-26 15:24:41 / 08-26 21:35:36 / 08-27 21:35:18 / 08-28 13:18:11   共 4 次 / 3 天
+
+08-27 与 08-28 两张图**症状完全相同**：基建视图没缩放到位，
+右边一列（加工站 / 办公室 / 训练室 / 会客室）卡在画面右缘外，
+`InfrastInfoTask` 认不出完整布局。
+
+**排除了分辨率**：模拟器 LDPlayer9 `advancedSettings.resolution = 1600×900`、
+`resolutionDpi = 240`、16:9，高于 MAA 要求的 1280×720 下限；
+`asst.log` 里 MAA 全程用 `1.25` 的缩放因子（1600÷1280）正常处理，
+**没有任何分辨率相关告警**。
+
+**影响**：AUTO-MAS 看到「部分任务执行失败」就重跑一轮（`RunTimesLimit=3`），
+第二轮基本都成功。代价是每次多跑约 11 分钟，不丢任务。
+
+**能不能修**：MAA 侧的识别问题，我们这边没有对应开关。
+`基建换班` 的 `CustomFileType=user_defined` 但 `Filename=""`、`PlanSelect=-1`，
+等于没启用自定义排班——**没有验证过启用它能否绕过布局识别，别当成结论。**
+
+### 2 & 3. 终末地「选剑演武」×2 ——**是我们的设置**，已修
+
+见 [AUTOMAS.md](AUTOMAS.md#选剑演武游戏里成功maaend报失败已关掉)。
+我当天才加的任务，识别不可靠，失败时还把角色卡在挑战里连累基质刷取。已关闭。
+
+### 4. 鸣潮「游戏更新成功，即将重启任务」——误报
+
+不是故障，是鸣潮客户端更新后 OK-WW 正常重启任务的流程，紧接着就 DONE。
+
+### 顺带：这些历史怎么查
+
+```
+mas-api.py get /api/history/search '{"mode":"DAILY","start_date":"...","end_date":"..."}'
+```
+返回每个脚本每轮的 `status` 和 `error_info`。**但它只记「部分任务执行失败」，
+不记是哪个任务**——具体任务名要去 MXU 的运行日志或 MAA 的 `gui.log` 找，
+失败原因要去 MaaCore 的 `asst.log`（`gui.log` 只说「任务出错」不说为什么）。
