@@ -199,3 +199,54 @@ OK-WW 的游戏客户端路径在它自己的 `configs/devices.json`：
 `pc_full_path = D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe`。
 
 所以 OK-WW 那条 `Game.Enabled=false` **是对的，别去打开它**——打开了会变成两边都想启动游戏。
+
+## 母本 vs 脚本自己那份：你在 MaaEnd 界面上的改动会被冲掉
+
+2026-08-28：用户说「我记得手动在 MaaEnd 上加过自动采集」，而我报的任务表里没有。
+两份一比就清楚了：
+
+    D:\ark\maaend\config\mxu-MaaEnd.json          08-28 10:41  AUTO-MAS 实例 15 个（有 AutoCollect）
+    <automas>\data\<sid>\Default\ConfigFile\...   08-21 12:39  AUTO-MAS 实例 14 个（没有）
+
+`AutoProxy.py:514-515` 每轮跑之前 `shutil.rmtree` 掉 `<maaend>\config` 再
+`copytree` 母本过去。**在 MaaEnd 界面里加的任务，下一轮就没了。**
+和 OK-WW 是同一个套路，见 [[maa-config-master-copy]]。
+
+要让改动长期生效，必须写进**母本**。已把 live 的任务表同步进母本
+（AutoCollect 因此保住），并加了 `AutoEssence`、停用 `ProtocolSpace`。
+
+### MAS 那六个「摆设开关」的正解
+
+`IfAutoCollect` / `IfTrialOfSwordmancy` / `IfAutoEcoFarm` / `IfSeizeEntrustTask` /
+`IfResourceRecycleStation` / `IfPullCountCalculator`——**MaaEnd 确实有这六个功能**，
+不是 MAS 凭空造的开关。它们成为摆设，是因为**母本的任务表里没有这些任务**：
+MAS 只能开关已存在的任务，不会新建。要用就先把任务加进母本。
+
+## OK-WW 的 `-t` 与「周常」
+
+`AutoProxy.py:257-258`：`okww_args = ["-t", str(TaskIndex), "-e"]`。
+`-t` 是 OK-WW `onetime_tasks` 的下标（1 起算），`-e` 是跑完自行退出。
+
+    1 DailyTask   2 FarmEchoTask  3 NightmareNestTask  4 TacetTask   5 ForgeryTask
+    6 SimulationTask  7 MultiAccountDailyTask  8 MergeEchoTask
+    9 EnhanceEchoTask  10 ChangeEchoTask  11 GardenTask
+
+**TaskIndex = 1 → 只跑 DailyTask（每日一条龙）。每周乐园是第 11 个独立任务**，
+只能通过 DailyTask 的「附加任务」带起来。
+
+**没有「记忆周常已完成」这种功能。** 有的是 `Check Weekly Garden`：
+原文「领完每日奖励后检查每周乐园进度，不足 6000 分就跑乐园任务」——
+**每次去查进度**，不是记住结果。它在「附加任务」里；2026-08-28 之前
+MAS 的快速配置把附加任务覆盖成 `[]`，**所以每周乐园一直没跑过**。
+现在已加回 `["Check Weekly Garden"]`。
+
+另两个附加任务没加（很花时间，要用自己开）：
+`Merge Echo If discarded > 1000`、`Teleport and Farm 4C Echo`。
+
+### DailyTask 里两个键容易念混
+
+* `Which to Farm = "Forgery Challenge"` → **凝素领域**（`.po`：「凝素領域」）
+* `Which Forgery Challenge to Farm = 1` → 「**F2 列表中的第几个**凝素领域」
+* `Material Selection = "Shell Credit"` → 原文是
+  「Resonator EXP / Weapon EXP / Shell Credit」，是**模拟领域**那个任务的材料选择，
+  和凝素领域无关。**别把这两个并成一句念。**
