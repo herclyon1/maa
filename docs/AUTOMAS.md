@@ -291,3 +291,33 @@ MAS 的快速配置把附加任务覆盖成 `[]`，**所以每周乐园一直没
 注意子选项名和手动那套**不同前缀**：战后的全部是
 `EssenceFilterAfterBattle*`（如 `EssenceFilterAfterBattleFlawlessEssence`），
 手动那套是 `FlawlessEssence`。改一边不会自动同步另一边。
+
+## ⚠️ 2026-08-28 更正：快速配置**不能关**，中继依赖它
+
+我当天先把 MaaEnd 和 OK-WW 的 `IfQuickConfig` 关掉了，理由是「MAS 覆盖不全、
+还制造静默故障」。**这是错的，因为我们自己的中继就是通过 MAS 的用户字段工作的：**
+
+| 中继功能 | 写哪个 MAS 字段 | 快速配置关掉后 |
+|---|---|---|
+| `garden.py` 周常乐园记忆 | OK-WW `Task.AdditionalTasks` | **失效** |
+| `sanity_plan.py` 理智计划 | MaaEnd `Task.SanityTaskType` 等 | **失效** |
+| `annihilation.py` 剿灭记忆 | MAA `Info.Annihilation` | 不受影响（MAA 无快速配置） |
+
+已把两个都开回 `true`。**以后不要再动这个开关。**
+
+### 同一天的另外两个误判
+
+1. **OK-WW 的 `AdditionalTasks=[]` 不是「被 MAS 覆盖成空」**，是
+   `garden.py` 主动关的——`state/garden.json` 写着 `{"done_week": "2026-W35"}`，
+   本周乐园已完成，周一 04:00 会自动加回 `Check Weekly Garden`。
+   我据此往母本里加了这一项，等于让它这周白跑六天，已撤回。
+   **查乐园状态看 `garden.json`，别看配置。**
+
+2. **MAS 那六个开关不是「摆设」，是任务在 08-14 那次配置损坏时丢了。**
+   `mxu-MaaEnd.json.corrupt-20260814-054934` 里 AUTO-MAS 实例有 **17 个**任务，
+   包含 `SeizeEntrustTask` / `AutoCollect` / `ResourceRecycleStation` /
+   `AutoEcoFarm` / `AutoEssence`；之后的所有配置只剩 14 个。
+   已从该备份恢复三个（AutoCollect 与 AutoEssence 另行加回），母本现 19 个。
+
+   **`TrialOfSwordmancy`（选剑演武）连那份备份里都没有**，无从恢复，
+   要用得在 MaaEnd 界面重新加，然后**同步进母本**否则下一轮又没了。
