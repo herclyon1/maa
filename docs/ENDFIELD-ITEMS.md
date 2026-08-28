@@ -370,3 +370,44 @@ MaaEnd 母本的 AUTO-MAS 实例里没有对应任务，所以**从来没跑过*
 **「夜幕」「切骨」「医疗」「残暴」「附术」「昂扬」在枢纽区刷不到**——
 这和 `energy_point_gems.json` 里枢纽区的 `skillTermIds` 完全一致。
 预刻写能锁的技能属性只能从这 8 种里选，诀要的「迸发」在其中。
+
+## 预刻写怎么设（2026-08-28 实际做成）
+
+**位置**：淤积点的「开启挑战」界面 → 右下「属性选择」。
+不是菜单里某个设置项，必须走到那个点位、激发之后才有。
+
+**用 MaaEnd 走过去、但不要开打**：
+
+```
+winrun.sh --py scripts/mac/lib/maaend_task.py --entry AutoEssenceMain \
+    --override-b64 <base64 of {
+      "GotoTriggerPointSetAnchor_VFTheHub": {"enabled": true},
+      "AutoEssenceClickEssenceStartButton": {"action": {"type": "DoNothing"}, "next": []}
+    }> --go
+```
+
+30 秒走到并激发，停在开启挑战界面，**不花体力**（体力是领奖时才扣的）。
+`AutoEssenceClickEssenceStartPrepare` 才是那个界面，它的下一步
+`AutoEssenceClickEssenceStartButton` 被掐掉就停住了。
+
+**界面上的选项和 CEP 的数据完全一致**（这条是用户质疑后当场核对的）：
+
+    基础属性 5 个：敏捷 / 力量 / 意志 / 智识 / 主能力        ← s1Pool = 5
+    附加属性 8 个：攻击 / 灼热 / 电磁 / 寒冷 / 自然 / 源石技艺 / 终结技充能 / 法术
+    技能属性 8 个：强攻 / 压制 / 追袭 / 粉碎 / 巧技 / 迸发 / 流转 / 效益   ← s3Pool = 8
+
+规则写在界面上：**基础属性选 3 条，奖励基质的基础属性在这 3 条里随机出 1 条；
+附加或技能属性选 1 条，该条必定出现，剩下 1 条完全随机。**
+所以命中率 = 1/3 × 1/8 = 1/24，和先前算的一致。
+
+**代价**：预刻写生效时收取奖励额外消耗 **1 张刻写券**（当前余额 599）。
+
+诀的设置已改为 CEP 方案 1：**基础 智识/力量/敏捷 ｜ 技能锁 迸发**。
+
+## winrun 现在会自动带上同目录依赖
+
+`maaend_task.py` import `maaend_essence` 时远端报 `ModuleNotFoundError`——
+winrun 只送单文件。已改成按被送脚本的 import 语句自动带上 `scripts/mac/lib/*.py`。
+
+**pipeline_override 必须走 base64**：裸 JSON 穿过 bash → ssh → cmd → PowerShell
+四层会被啃掉引号，实测变成 `{GotoTrigger...`。`--override-b64` 是唯一入口。

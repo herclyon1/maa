@@ -305,6 +305,16 @@ GUARD
   if [ -f "$(dirname "${BASH_SOURCE[0]}")/lib/arklog.py" ]; then
     scp -q -o ConnectTimeout=30 "$(dirname "${BASH_SOURCE[0]}")/lib/arklog.py" \
       "${USER_AT}:C:/ProgramData/arklog.py" || true
+    # 顺带把被送的脚本 import 到的同目录模块也送过去。
+    # 2026-08-28：maaend_task.py import maaend_essence，只送单文件 → 远端
+    # ModuleNotFoundError。逐个特判会一直漏，所以按 import 语句自动带。
+    for _m in $(grep -oE '^(from|import) +[a-z_][a-z0-9_]*' "$LOCAL_PY" 2>/dev/null \
+                | awk '{print $2}' | sort -u); do
+      _f="$(dirname "${BASH_SOURCE[0]}")/lib/${_m}.py"
+      if [ -f "$_f" ] && [ "$_m" != "arklog" ]; then
+        scp -q -o ConnectTimeout=30 "$_f" "${USER_AT}:C:/ProgramData/${_m}.py" || true
+      fi
+    done
   fi
 
   scp -q -o ConnectTimeout=30 "$TMP.guard" "${USER_AT}:${REMOTE_GUARD}" \
