@@ -341,6 +341,17 @@ class Engine:
                      rec.script, rec.run_id, rec.duration_min)
             return
 
+        # "被下一轮取代"不是失败，不进待推队列。AUTO-MAS 把「游戏更新成功，
+        # 即将重启任务」和真故障一起放进 _OKWW_BUILTIN_FATAL，于是鸣潮客户端
+        # 每更新一次就报一次假失败（2026-08-28 用户点名要修的那条）。
+        if rec.transitional:
+            log.info("↪️ %s %s 是中途重启（%s），不算失败",
+                     rec.script, rec.run_id,
+                     str(rec.raw.get("general_result")
+                         or rec.raw.get("maa_result")
+                         or rec.raw.get("maaend_result") or "").strip())
+            return
+
         # Hold it. Only alert once the script has stopped retrying entirely.
         self._pending[key] = rec
         self._persist_pending()   # queued to disk before anything else can go wrong

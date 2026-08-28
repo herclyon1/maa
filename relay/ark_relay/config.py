@@ -205,6 +205,11 @@ class RunRecord:
     # filename/mtime fallback is off by hours on this install, so a duration
     # derived from it must not be presented as fact.
     duration_known: bool = True
+    # 这一轮不是"失败"，是"被下一轮取代了"。AUTO-MAS 把「游戏更新成功，
+    # 即将重启任务」和真故障一起塞进 `_OKWW_BUILTIN_FATAL`（见
+    # `task/Okww/AutoProxy.py:50-54`），于是客户端更新一次就报一次失败。
+    # 那不是故障：它后面紧跟着一条真正的结果记录。
+    transitional: bool = False
 
     @property
     def duration_min(self) -> int:

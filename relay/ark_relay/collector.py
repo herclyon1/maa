@@ -37,6 +37,22 @@ _FAILED_LIST = re.compile(r"失败[:：]\s*(.+)$")
 _LOG_TS = re.compile(r"^\[?(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
 _MAA_SUCCESS = "Success!"
 
+# AUTO-MAS 会把"这一轮被打断、马上重来"也写成非成功结果，于是中继照单
+# 报成失败。字符串抄自 AUTO-MAS 源码，不是我编的：
+#   task/Okww/AutoProxy.py:52
+#       ("游戏更新成功, 游戏即将重启", "游戏更新成功，即将重启任务")
+#   —— 它和「未连接游戏客户端」「流程产生错误」一起放在 _OKWW_BUILTIN_FATAL 里。
+# 这类记录后面一定跟着一条真正的结果，所以既不算成功也不算失败。
+_TRANSITIONAL = (
+    "游戏更新成功，即将重启任务",
+    "游戏更新成功, 游戏即将重启",
+)
+
+
+def _is_transitional(result: str) -> bool:
+    r = result.strip()
+    return any(t in r for t in _TRANSITIONAL)
+
 
 def _split_failed(text: str) -> list[str]:
     """Pull the per-task names out of MaaEnd's failure sentence."""
@@ -519,6 +535,11 @@ def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
     else:
         return None
 
+    transitional = _is_transitional(result)
+    if transitional:
+        # 不是故障，是被下一轮取代。别让它出现在失败清单里。
+        failed = []
+
     log_path = json_path.with_suffix(".log")
     # Prefer the log's own timestamps; fall back to filename/mtime only when
     # the log is missing or has none (e.g. "未捕获到日志" runs).
@@ -562,6 +583,7 @@ def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
         finished=finished,
         ok=ok,
         failed_tasks=failed,
+        transitional=transitional,
         raw=raw,
         log_path=log_path if log_path.exists() else None,
         duration_known=duration_known,

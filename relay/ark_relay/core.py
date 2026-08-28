@@ -61,6 +61,8 @@ class State:
             "ok": rec.ok,
             "failed_tasks": rec.failed_tasks,
             "duration_known": rec.duration_known,
+            # 让写日报的模型知道这条不是失败，是被下一轮取代
+            "transitional": rec.transitional,
             # The model reads this verbatim. Keeping AUTO-MAS's own output
             # means the report can never disagree with what actually happened.
             "raw": rec.raw,

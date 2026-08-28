@@ -125,8 +125,13 @@ def want_raise(label, fn):
     bad.append(label)
 
 # 1. 起点在未来
-future = (datetime.now() + timedelta(hours=2)).strftime("%H:%M")
-want_raise("未来时刻没被拦", lambda: arklog.since(log, future))
+# 只传 HH:MM 会被 since() 当成**今天**的那个时刻。22 点之后 +2 小时会跨到
+# 次日，字符串一截就变成"今天 00:xx"，那是过去——这条断言从写下起就有这个
+# 洞，2026-08-28 夜里 22:15 才第一次踩到，闸门自己报了 GUARD-FAIL。
+# 用 on= 把日期一起交出去，跨不跨零点都成立。
+_fut = datetime.now() + timedelta(hours=2)
+want_raise("未来时刻没被拦",
+           lambda: arklog.since(log, f"{_fut:%H:%M:%S}", on=_fut.date()))
 # 2. 窗口之后一行都没有
 want_raise("窗口后无日志没被拦", lambda: arklog.since(log, "23:58"))
 # 3. 整个文件解析不出时间戳
