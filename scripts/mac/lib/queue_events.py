@@ -14,6 +14,17 @@ FILES = {"MAA": r"D:\ark\maa\debug\gui.log",
 KEEP = re.compile(r"开始任务|完成任务|任务出错|已停止|停止任务|理智不足|体力不足|"
                   r"指定点位|Daily Task Completed|not enough stamina|"
                   r"Traceback|Failed|失败|超时|异常|连接失败|error")
+WANT = re.compile(
+    # 进度里程碑
+    r"任务开始|任务完成|任务出错|获得 |"
+    # 基质那条线（今天的重点）
+    r"基质|淤积点|刻写|匹配到武器|已锁定|筛选完成|激发|开启挑战|战利品|"
+    # 资源水位
+    r"理智|体力|"
+    # 失败信号——一个都不能少
+    r"失败|错误|超时|异常|停止|中止|Traceback|Error|Failed|"
+    r"不足|无法|拒绝|未能|跳过")
+
 NOISE = re.compile(r"GameDataReportService|HttpResponseLogging|penguin-stats|yituliu|"
                    r"ConfigurationHelper|TaskQueueViewModel]     <\d> Index")
 
@@ -66,7 +77,12 @@ try:
         m = strip(r.get("message", ""))
         if not m:
             continue
-        if re.search(r"未匹配到目标技能组合|已确认上锁|初始化完成", m):
+        # 用白名单而不是黑名单：MaaEnd 的记账日志花样太多——售卖产品每个据点
+        # 一份计划书、自动囤货逐个报价、连接/加载各四五条，黑名单永远追不完，
+        # 而事件太多监视器会被自动停掉。所以只放行真正要看的。
+        # **失败信号必须在白名单里**：只放行成功标记的话，崩溃和「还在跑」
+        # 在监视器里长得一模一样。
+        if not WANT.search(m):
             continue
         fresh.append(f"[MaaEnd] {m[:170]}")
     if fresh:
