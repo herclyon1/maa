@@ -72,6 +72,7 @@
 | **读森空岛快照** | `from snapshot import load, is_stale` —— `load` 自己会把数据年龄打出来。**刷新只在用户说「刷新」时跑** `refresh_snapshot.refresh()`，不许挂在读取路径上自动拉（那是轮询） |
 | **核对武器基质** | `scripts/mac/gem-check.py` —— 武器自己在 `skillInfos[].gemTagId` 里声明要哪三条。**按 id 比不按中文比**：森空岛自己两处命名不一致（attr_magicdam 在武器栏叫「法术提升」、在基质栏叫「法术伤害提升」），按中文比会把装对的判成错的 |
 | **单跑 MaaEnd 基质筛选** | `winrun.sh --py scripts/mac/lib/maaend_essence.py`（`--go` 才真跑）—— 自导航到基质页，锁毕业词条；**不废弃**，废弃没给开关 |
+| **查三个脚本实际会跑什么** | `winrun.sh --py scripts/mac/lib/effective_config.py` —— 按 `IfQuickConfig` 和 `StageMode` 分支取**真正生效**的那一份。`config-check.py` 只读 MAS 侧，快速配置关掉之后它会误导人 |
 | 仓库自检 | `scripts/mac/lint-repo.sh` |
 | shell 脚本静态检查 | `~/.local/bin/shellcheck -S warning` |
 
