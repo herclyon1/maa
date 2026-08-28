@@ -247,3 +247,54 @@ winrun.sh --py scripts/mac/lib/maaend_essence.py --go     # 真跑
 锁定入口 / 点锁 / 确认已锁、废弃入口 / 点废弃 / 确认已废弃。
 界面文案里搜不到任何「解锁」（仅有无关的「协议空间未解锁」）。
 **解锁只能手动。**
+
+## 基质刷取的性价比（数据出自 MaaEnd `data/EssenceFilter/energy_point_gems.json`）
+
+**重度能量淤积点·枢纽区**（四号谷地·组1），四个体力档的产出：
+
+| 体力 | 金色基质 | 紫色基质 | 行动资历 | 每枚金基质的理智 |
+|---:|---:|---:|---:|---:|
+| 50 | 1 | 2 | 300 | 50 |
+| 60 | 1 | 2 | 360 | 60 |
+| 70 | 2 | 2 | 420 | 35 |
+| **80** | **3** | 2 | 480 | **26.7** ← 最划算 |
+
+**低档是纯亏的**：60 体力和 50 体力都只出 1 枚金基质。**只跑 80 档。**
+
+命中特定三词条的概率（枢纽区池子：s1 五条 / s2 八条 / s3 八条）：
+
+* 不开预刻写：1/5 × 1/8 × 1/8 = **1/320**
+* 开预刻写（基础属性三选一 + 锁死一条附加或技能）：1/3 × 1/8 = **1/24**
+
+折算成理智（80 档，26.7 理智/枚）：
+
+* 开预刻写：约 24 枚 → **≈ 640 理智**
+* 不开：约 320 枚 → ≈ 8540 理智
+
+**预刻写把成本压到 1/13。不开等于白刷。**
+
+## 快速配置（`Info.IfQuickConfig`）的真实边界
+
+2026-08-28 实测：把 MAS 的理智任务从「干员养成」改成「基质刷取」后
+**完全不生效**，因为 `AutoProxy.py:622-665`：
+
+```python
+target_sanity_task_exists = any(t["taskName"] == target_task_name for t in maaend_tasks)
+sanity_missing = sanity_switch_enabled and not target_sanity_task_exists
+...
+if sanity_missing:
+    warning_message = f"...当前 MaaEnd 配置中缺少 {target_task_name} 任务，已跳过理智任务快速配置"
+```
+
+**快速配置只能开关 MaaEnd 配置里「已经存在」的任务，它不会替你新建。**
+母本 `<automas>/data/<scriptId>/Default/ConfigFile/mxu-MaaEnd.json` 的
+AUTO-MAS 实例里 18 个任务只有 `ProtocolSpace`，没有 `AutoEssence`，
+所以 MAS 打一条警告就跳过，照旧跑协议空间。
+
+它能管的只有三样：`If<TaskName>` 的任务开关、理智任务类型+详细、基质地点
+（写进 `AutoEssenceChooseLocation`）。**刻写券、领取方式、循环次数、战后筛选、
+AutoFight 细节——MAS 一个都不管**，全部沿用 MaaEnd 自己那份配置。
+
+另注：AUTO-MAS 跑前 `shutil.rmtree` 掉 `<maaend>/config` 再 `copytree` 自己那份
+（`AutoProxy.py:514-515`），和 OK-WW 同一个母本/副本套路。
+**改 `D:\ark\maaend\config` 那份不作数。**
