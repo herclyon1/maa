@@ -38,92 +38,60 @@ def test_week_boundary() -> None:
           week_key(mon + timedelta(minutes=2)) != week_key(mon), True)
 
 
-class FakeGate(garden.GardenGate):
-    """把 API 换成内存里的一份配置，好在本地验行为。"""
-
-    def __init__(self, state_dir, tasks):
-        super().__init__(state_dir, host="127.0.0.1")
-        # `Info.IfUseMasConfig: None` 不是摆设：AUTO-MAS 的 /user/get 真的会
-        # 吐出这个字段，而 /user/update **不接受**它，原样回写就报
-        # `AttributeError: 配置项 'Info.IfUseMasConfig' 不存在`。
-        # 2026-08-26 这条错每 30 秒刷一次日志，刷了一下午没人发现，
-        # 就是因为原来的假后端照单全收，比真后端宽容。
-        self.cfg = {"Task": {"AdditionalTasks": list(tasks)},
-                    "Info": {"Name": "ok-ww", "IfUseMasConfig": None}}
-        self.locked = False
-        self.writes = 0
-
-    def _find(self):
-        # 生产里每次都从 API 取一份新的，写失败不会污染下一次。
-        # 假环境必须照这个语义给副本，否则「锁着时没改动」根本测不出来。
-        import copy
-        return ("sid", "uid", copy.deepcopy(self.cfg))
-
-    def _write(self, cfg):
-        self.writes += 1
-        if self.locked:
-            return False
-        # 真后端会拒绝值为 None 的字段。假后端也必须拒绝，否则测出来的
-        # 「写成功」在机器上是假的。
-        for section, body in cfg.items():
-            if isinstance(body, dict):
-                for k, v in body.items():
-                    if v is None:
-                        raise _NullField(f"{section}.{k}")
-        return True
+def _make_master(root: Path, tasks: list[str]) -> Path:
+    """造一份和机器上一样的母本：<automas>/data/<sid>/Default/ConfigFile/DailyTask.json"""
+    d = root / "automas" / "data" / "c5e96ddc" / "Default" / "ConfigFile"
+    d.mkdir(parents=True, exist_ok=True)
+    f = d / "DailyTask.json"
+    f.write_text(json.dumps({
+        "Which to Farm": "Forgery Challenge",
+        garden.KEY: list(tasks),
+        "Exit After Task": True,
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    return root / "automas"
 
 
-class _NullField(Exception):
-    """后端拒收 None 字段，照它的原话报。"""
+def _read(automas: Path) -> list[str]:
+    f = automas / "data" / "c5e96ddc" / "Default" / "ConfigFile" / "DailyTask.json"
+    return json.loads(f.read_text(encoding="utf-8"))[garden.KEY]
 
 
-def _patch(gate):
-    garden._okww_user = lambda host: gate._find()          # noqa: SLF001
-
-    def fake_post(host, path, body):
-        if path.endswith("/user/update"):
-            try:
-                ok = gate._write(body["data"])            # noqa: SLF001
-            except _NullField as exc:
-                return {"status": "error",
-                        "message": f"AttributeError: 配置项 '{exc}' 不存在"}
-            if not ok:
-                return {"status": "error", "message": "ValueError: 配置已锁定, 无法修改"}
-            gate.cfg = body["data"]
-            return {"status": "success"}
-        return {}
-    garden._post = fake_post                               # noqa: SLF001
+def _other_keys(automas: Path) -> dict:
+    f = automas / "data" / "c5e96ddc" / "Default" / "ConfigFile" / "DailyTask.json"
+    d = json.loads(f.read_text(encoding="utf-8"))
+    return {k: v for k, v in d.items() if k != garden.KEY}
 
 
 def test_gate(tmp: Path) -> None:
     print("[记账 → 落盘 → 周一恢复]")
     now = datetime(2026, 8, 26, 12, 0, tzinfo=SERVER_TZ)   # 周三
-    g = FakeGate(tmp, [garden.TASK_NAME, "Other Task"])
-    _patch(g)
+    automas = _make_master(tmp, [garden.TASK_NAME, "Other Task"])
+    g = garden.GardenGate(tmp, automas)
+    before_other = _other_keys(automas)
 
     msg = g.on_success(now)
     check("第一次记账有回话", bool(msg), True)
-    check("记账**不碰配置**（这一刻配置多半是锁的）",
-          garden.TASK_NAME in g.cfg["Task"]["AdditionalTasks"], True)
+    check("记账**不碰配置**（落盘留给 enforce）",
+          garden.TASK_NAME in _read(automas), True)
     check("状态文件记下了本周", json.loads((tmp / "garden.json").read_text())["done_week"],
           week_key(now))
     check("同一周重复记账不再啰嗦", g.on_success(now), "")
 
-    g.locked = True
-    check("配置锁着时 enforce 不算成功", g.enforce(now), False)
-    check("锁着也不会把检查删掉",
-          garden.TASK_NAME in g.cfg["Task"]["AdditionalTasks"], True)
-
-    g.locked = False
-    check("解锁后 enforce 生效", g.enforce(now), True)
-    check("检查已关掉", garden.TASK_NAME in g.cfg["Task"]["AdditionalTasks"], False)
-    check("同组别的任务没被误伤", "Other Task" in g.cfg["Task"]["AdditionalTasks"], True)
+    check("enforce 生效", g.enforce(now), True)
+    check("检查已关掉", garden.TASK_NAME in _read(automas), False)
+    check("同组别的任务没被误伤", "Other Task" in _read(automas), True)
+    check("DailyTask 其余键原样保留", _other_keys(automas), before_other)
     check("已经关掉了就不再重复写", g.enforce(now), False)
 
     nxt = now + timedelta(days=7)
     check("新的一周会把检查放回去", g.enforce(nxt), True)
-    check("检查回来了", garden.TASK_NAME in g.cfg["Task"]["AdditionalTasks"], True)
+    check("检查回来了", garden.TASK_NAME in _read(automas), True)
     check("过期记账已清掉", json.loads((tmp / "garden.json").read_text()), {})
+
+    # 找不到母本时必须安静地不动手，而不是抛异常把中继带崩
+    g2 = garden.GardenGate(tmp, tmp / "nowhere")
+    g2._save({"done_week": week_key(now)})                    # noqa: SLF001
+    check("母本找不到时 enforce 返回 False 而不炸", g2.enforce(now), False)
 
 
 def main(tmp: Path) -> int:

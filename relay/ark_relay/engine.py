@@ -121,8 +121,9 @@ class Engine:
         # 别每天都跑去看一眼。区别只在剿灭关的是 MAA 的开关、
         # 这个关的是 OK-WW 的「Check Weekly Garden」附加任务。
         from .garden import GardenGate     # noqa: PLC0415 - optional feature
-        # 中继本来就跑在游戏机上，MAS 的接口在本机；不走 Tailscale 那一圈。
-        self._garden = GardenGate(state.dir, "127.0.0.1")
+        # 2026-08-28 起直接写母本，不再走 MAS 的接口——那条路要求快速配置
+        # 开着，而快速配置已经废掉了。
+        self._garden = GardenGate(state.dir, cfg.automas_dir)
 
     # ---------- operator modes ----------
 

@@ -292,7 +292,7 @@ MAS 的快速配置把附加任务覆盖成 `[]`，**所以每周乐园一直没
 `EssenceFilterAfterBattle*`（如 `EssenceFilterAfterBattleFlawlessEssence`），
 手动那套是 `FlawlessEssence`。改一边不会自动同步另一边。
 
-## ⚠️ 2026-08-28 更正：快速配置**不能关**，中继依赖它
+## 2026-08-28：快速配置已废除，中继改为直接读写母本
 
 我当天先把 MaaEnd 和 OK-WW 的 `IfQuickConfig` 关掉了，理由是「MAS 覆盖不全、
 还制造静默故障」。**这是错的，因为我们自己的中继就是通过 MAS 的用户字段工作的：**
@@ -303,7 +303,19 @@ MAS 的快速配置把附加任务覆盖成 `[]`，**所以每周乐园一直没
 | `sanity_plan.py` 理智计划 | MaaEnd `Task.SanityTaskType` 等 | **失效** |
 | `annihilation.py` 剿灭记忆 | MAA `Info.Annihilation` | 不受影响（MAA 无快速配置） |
 
-已把两个都开回 `true`。**以后不要再动这个开关。**
+**当天已把中继改成不依赖它**（用户原话：「中继依赖你就改成不依赖呀，
+你怎么就这么会偷懒？」——把开关开回去是绕远路，不是修）：
+
+* `garden.py` 改写母本 `DailyTask.json` 的
+  `Additional Tasks to Run After Daily Task`
+* `sanity_plan.py` 改读写母本 `mxu-MaaEnd.json`——理智方案就是
+  `ProtocolSpace` / `AutoEssence` 谁 `enabled`，并支持写淤积点地区
+* 两者都走 `config.master_config_dir()` 按标志文件找母本目录
+* 母本里没有对应任务时**明确拒绝并说清原因**，不再静默跳过
+
+`IfQuickConfig` 现在两个都是 `false`，中继功能上机验证正常：
+`sanity_plan.read()` 回「基质刷取 → 枢纽区」，`garden` 读到
+`done_week=2026-W35` 且 `enforce()` 判定无需改动。
 
 ### 同一天的另外两个误判
 

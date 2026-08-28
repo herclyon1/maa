@@ -310,15 +310,15 @@ class Inbox:
             out.append(("✅ " if ok else "✗ ") + detail)
 
         for cmd in [c for c in others if c.get("action") == "sanity_plan"]:
-            # The one that actually decides what MaaEnd farms. Everything it
-            # writes lands in AUTO-MAS, because AUTO-MAS overwrites MaaEnd's
-            # own copy on every launch.
+            # 决定 MaaEnd 把理智花在哪。写的是 AUTO-MAS 的**母本**——
+            # MaaEnd 自己那份每轮启动都会被母本整个覆盖。
             if not self.automas_dir:
                 out.append("✗ 理智方案：找不到 AUTO-MAS 目录，跳过")
                 continue
             ok, detail = sanity_plan.set_plan(
                 self.automas_dir, str(cmd.get("tab") or ""),
-                str(cmd.get("line") or ""), str(cmd.get("rewards_set") or ""))
+                str(cmd.get("line") or ""), str(cmd.get("rewards_set") or ""),
+                str(cmd.get("location") or ""))
             out.append(("✅ 理智方案：" if ok else "✗ 理智方案：") + detail)
 
         for cmd in [c for c in others

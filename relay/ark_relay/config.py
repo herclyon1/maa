@@ -228,3 +228,25 @@ class RunRecord:
     def recruits(self) -> dict:
         r = self.raw.get("recruit_statistics")
         return r if isinstance(r, dict) else {}
+
+def master_config_dir(automas_dir: "str | Path | None", marker: str) -> "Path | None":
+    """AUTO-MAS 母本目录里含 `marker` 的那一个。
+
+    脚本跑之前 AUTO-MAS 会把 `<automas>/data/<脚本id>/Default/ConfigFile/`
+    整个拷到脚本自己的配置目录，**无条件**（`AutoProxy.py:514-515`，
+    和 `IfQuickConfig` 无关）。所以在脚本那边改的东西下一轮就没了，
+    唯一长期生效的地方就是这里。
+
+    脚本 id 不固定，按标志文件认：OK-WW 是 `DailyTask.json`，
+    MaaEnd 是 `mxu-MaaEnd.json`。
+    """
+    if not automas_dir:
+        return None
+    root = Path(automas_dir) / "data"
+    if not root.is_dir():
+        return None
+    for sid in sorted(root.iterdir()):
+        d = sid / "Default" / "ConfigFile"
+        if (d / marker).is_file():
+            return d
+    return None

@@ -12,82 +12,49 @@
 配置不在覆盖范围内，所以同样的效果，配置层做就天然免疫。
 非改源码不可的那些放 `okww_patch.py`，能在配置层做的一律别去改源码。
 
-**为什么用 AUTO-MAS 的 API 而不是直接写配置文件**：`annihilation.py` 写文件，
-于是撞上「AUTO-MAS 运行期间会用内存里的副本覆盖配置文件」——它写进去的
-Close 被静静冲掉，整整一周每轮都在跑空剿灭（2026-08-20 实测）。API 是穿过
-运行中的后端写的，改完就是它内存里的值，不存在这个问题。
-代价是任务运行期间 API 会回 `配置已锁定`，所以照样要挑没任务在跑的时候落盘。
+**2026-08-28 改为直接写母本，不再走 AUTO-MAS 的 API。**
+原先写的是 MAS 用户配置的 `Task.AdditionalTasks`，那条路要求
+`Info.IfQuickConfig` 开着才会被下发。用户当天要求废掉快速配置
+（它只能开关已存在的任务、还制造静默故障），于是这个功能整个失效了。
+
+现在直接改母本 `<automas>/data/<脚本id>/Default/ConfigFile/DailyTask.json`
+里的 `Additional Tasks to Run After Daily Task`。这条路不依赖快速配置：
+母本目录是 AUTO-MAS 每轮**无条件**拷给 OK-WW 的那一份。
+
+`annihilation.py` 当年写文件被冲掉，是因为它写的是 **MAS 自己的配置**
+（MAS 运行期间用内存副本覆盖）。母本 `ConfigFile/` 目录 MAS 只读不写
+（`Okww/AutoProxy.py:82,264` 只有读；回写那段在 `OkNte` 里，不是 OK-WW），
+所以不存在同样的问题。写入用原子替换，避免和 copytree 撞车撕裂文件。
 """
 from __future__ import annotations
 
 import json
 import logging
-import urllib.error
-import urllib.request
+import os
 from datetime import datetime
 from pathlib import Path
 
 from .annihilation import week_key          # 周界口径必须和剿灭完全一致
-from .config import SERVER_TZ, atomic_write_text
+from .config import SERVER_TZ, atomic_write_text, master_config_dir
 
 log = logging.getLogger("ark.garden")
 
 TASK_NAME = "Check Weekly Garden"
-_TIMEOUT = 10
+KEY = "Additional Tasks to Run After Daily Task"
+MARKER = "DailyTask.json"
 
 
-def _post(host: str, path: str, body: dict) -> dict:
-    req = urllib.request.Request(
-        f"http://{host}:36163{path}", data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:  # noqa: S310
-        return json.loads(resp.read().decode())
-
-
-def _strip_nulls(obj):
-    """把值为 None 的字段全部摘掉，再往回写。
-
-    2026-08-26 实测：`/api/scripts/user/get` 会吐出后端**自己不接受**的字段，
-    原样回写就报 `AttributeError: 配置项 'Info.IfUseMasConfig' 不存在`。
-    读得到、写不回，是 AUTO-MAS 那边读写两套 schema 不一致。
-    它们的值都是 null，摘掉即可，不会丢任何真实设置。
-
-    不摘的后果不是「写不进去」这么简单：`enforce()` 每轮都会重来，
-    于是每 30 秒往日志里刷一条同样的失败，一直刷到有人去看。
-    """
-    if isinstance(obj, dict):
-        return {k: _strip_nulls(v) for k, v in obj.items() if v is not None}
-    if isinstance(obj, list):
-        return [_strip_nulls(v) for v in obj]
-    return obj
-
-
-def _okww_user(host: str) -> tuple[str, str, dict] | None:
-    """(scriptId, userId, 完整用户配置)。找不到 OK-WW 就返回 None。"""
-    try:
-        scripts = _post(host, "/api/scripts/get", {})["data"]
-    except (urllib.error.URLError, OSError, KeyError, ValueError):
-        return None
-    for sid, sc in scripts.items():
-        info = sc.get("Info") or {}
-        name = str(info.get("Name") or info.get("RootPath") or "")
-        if "ok-ww" not in name.lower() and "okww" not in name.lower():
-            continue
-        try:
-            users = _post(host, "/api/scripts/user/get", {"scriptId": sid}).get("data") or {}
-        except (urllib.error.URLError, OSError, ValueError):
-            return None
-        for uid, cfg in users.items():
-            return sid, uid, cfg
-    return None
+def _daily_file(automas_dir) -> "Path | None":
+    d = master_config_dir(automas_dir, MARKER)
+    return (d / MARKER) if d else None
 
 
 class GardenGate:
     """记住哪一个游戏周的周常乐园已经做完了。"""
 
-    def __init__(self, state_dir: Path, host: str = "127.0.0.1"):
+    def __init__(self, state_dir: Path, automas_dir=None):
         self.path = Path(state_dir) / "garden.json"
-        self.host = host
+        self.automas_dir = automas_dir
         self._last_write_error = ""     # 同一条写失败只说一次，见 enforce()
 
     def _load(self) -> dict:
@@ -125,12 +92,20 @@ class GardenGate:
         state = self._load()
         want_off = state.get("done_week") == week
 
-        found = _okww_user(self.host)
-        if not found:
+        f = _daily_file(self.automas_dir)
+        if f is None:
+            if self._last_write_error != "no-master":
+                log.warning("找不到 OK-WW 母本 %s，周常乐园开关没法改", MARKER)
+                self._last_write_error = "no-master"
             return False
-        sid, uid, cfg = found
-        task = cfg.setdefault("Task", {})
-        tasks = list(task.get("AdditionalTasks") or [])
+        try:
+            cfg = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            if str(exc) != self._last_write_error:
+                log.warning("读不了 %s：%s", f.name, exc)
+                self._last_write_error = str(exc)
+            return False
+        tasks = list(cfg.get(KEY) or [])
         has = TASK_NAME in tasks
 
         if want_off and has:
@@ -143,24 +118,18 @@ class GardenGate:
                 self._save({})          # 过期的记账，顺手清掉
             return False
 
-        task["AdditionalTasks"] = tasks
+        cfg[KEY] = tasks
+        # 原子替换：copytree 可能正在读这个目录，撕裂的 JSON 会让 OK-WW 起不来。
+        tmp = f.with_suffix(".json.tmp")
         try:
-            r = _post(self.host, "/api/scripts/user/update",
-                      {"scriptId": sid, "userId": uid, "data": _strip_nulls(cfg)})
-        except (urllib.error.URLError, OSError, ValueError) as exc:
-            log.warning("周常乐园开关写不进去：%s", exc)
-            return False
-        if r.get("status") != "success":
-            # `配置已锁定` 是预期内的——有任务在跑，下一轮再来，幂等，不必出声。
-            # 其余的都是真问题：同一条错会每轮复现，全打出来就是每 30 秒刷一屏。
-            # 所以只在**错误内容变了**的时候说一次。
-            msg = str(r.get("message") or "")
-            if "配置已锁定" in msg:
-                log.debug("周常乐园开关：配置锁着（有任务在跑），下轮再来")
-            elif msg != self._last_write_error:
-                log.warning("周常乐园开关写不进去：%s（会继续重试，"
-                            "但这条不是「锁着」，多半得人去看）", msg)
-            self._last_write_error = msg
+            tmp.write_text(json.dumps(cfg, ensure_ascii=False, indent=2),
+                           encoding="utf-8")
+            os.replace(tmp, f)
+        except OSError as exc:
+            if str(exc) != self._last_write_error:
+                log.warning("周常乐园开关写不进去：%s", exc)
+                self._last_write_error = str(exc)
+            tmp.unlink(missing_ok=True)
             return False
         self._last_write_error = ""
 
