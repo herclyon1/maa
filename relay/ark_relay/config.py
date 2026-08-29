@@ -174,6 +174,29 @@ class Config:
     # Server (Beijing) time, "HH:MM".
     last_run_after: str = field(default_factory=lambda: _env("ARK_LAST_RUN_AFTER", "21:30"))
 
+    def __post_init__(self) -> None:
+        """Fill `maaend_dir` from AUTO-MAS when the env var is unset.
+
+        `plan.script_dir` already says it exists so the MaaEnd path never has
+        to be configured twice — but only `service.py` ever called it, and
+        `Engine` read `cfg.maaend_dir` raw. With `ARK_MAAEND_DIR` unset (it
+        never was set on the machine), that stayed None, and
+        `_archive_maaend_evidence` hit `if not src.is_dir(): return` on its
+        very first line — silently, every single time, since the day it was
+        written. 2026-08-28 早上三轮选剑演武失败的 on_error 截图就是这么丢的：
+        MaaEnd 一重启就把 debug 目录清空，而本该抢救它们的代码从没跑过。
+
+        Resolving here fixes every consumer at once instead of one call site.
+        Import is deferred: `plan` imports this module.
+        """
+        if self.maaend_dir or not self.automas_dir:
+            return
+        try:
+            from . import plan  # noqa: PLC0415 - circular at module level
+            self.maaend_dir = plan.script_dir(self.automas_dir, "MaaEnd")
+        except Exception:  # noqa: BLE001 - resolution must never break startup
+            self.maaend_dir = None
+
     def validate(self) -> list[str]:
         """Return a list of problems, empty if the config is usable."""
         problems: list[str] = []

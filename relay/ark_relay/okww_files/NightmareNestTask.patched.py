@@ -301,6 +301,12 @@ class NightmareNestTask(WWOneTimeTask, BaseCombatTask):
         if wanted_rows is not None and not wanted_rows:
             return None                     # 指定了，但一个都没在列表里 → 什么都别刷
         hit_wanted = False
+        # 下面三个只为把「为什么没得刷」分清楚。2026-08-29 之前不管哪种原因，
+        # 收尾都打同一句「指定点位都已打满」——于是「白打一局被拉黑」和
+        # 「分母被 OCR 读错」都会伪装成「打满了」，事后根本查不出真相。
+        seen_full = False           # 计数确实是 N/N
+        seen_blacklisted = False    # 本轮打完没进展，已拉黑
+        odd_denoms = []             # 分母不在已知列表，多半是 OCR 读错
         counts = self.ocr(0.35, 0.13, 1, 0.96, match=self.count_re)
         for count_box in counts:
             if wanted_rows is not None:
@@ -324,19 +330,37 @@ class NightmareNestTask(WWOneTimeTask, BaseCombatTask):
                 # 就被永久跳过，剩下的 40 多只再也不会去打。2026-08-26 实测，
                 # 四个残象聚落刷到 10/41、6/48、48/48、24/24 之后，
                 # 任务每轮都报「没有可刷的巢穴」直接收工——两个没满的都被这行挡掉了。
-                if numerator != denominator and denominator in ['24', '36', '48', '41']:
-                    cache_key = self._make_nest_cache_key(count_box, denominator)
-                    if cache_key in self._unreachable_nests:
-                        self.log_info(f'skip cached unreachable nightmare nest: {cache_key}')
-                        continue
-                    self.log_info(f'{count_box} is not complete')
-                    count_box.x = self.width_of_screen(0.9)
-                    count_box.y -= count_box.height * 0.9
-                    count_box.height = 1
-                    count_box.width = 1
-                    return NestTarget(count_box, cache_key, numerator)
+                if denominator not in ['24', '36', '48', '41']:
+                    odd_denoms.append(count_box.name)
+                    continue
+                if numerator == denominator:
+                    seen_full = True
+                    continue
+                cache_key = self._make_nest_cache_key(count_box, denominator)
+                if cache_key in self._unreachable_nests:
+                    seen_blacklisted = True
+                    self.log_info(f'skip cached unreachable nightmare nest: {cache_key}')
+                    continue
+                self.log_info(f'{count_box} is not complete')
+                count_box.x = self.width_of_screen(0.9)
+                count_box.y -= count_box.height * 0.9
+                count_box.height = 1
+                count_box.width = 1
+                return NestTarget(count_box, cache_key, numerator)
         if wanted_rows is not None and hit_wanted:
-            self.log_info('nightmare nest: 指定点位都已打满，跳过')
+            if odd_denoms:
+                # 不许静默当成「打满」：分母读错会让一个没刷完的点位被永久跳过。
+                self.log_error('nightmare nest: 计数的分母不在已知列表（24/36/48/41），'
+                               f'多半是 OCR 读错：{odd_denoms}。本轮跳过，'
+                               '但**这不是打满**，请到游戏里核对真实计数',
+                               notify=True)
+            elif seen_blacklisted and not seen_full:
+                self.log_info('nightmare nest: 指定点位本轮已拉黑（打完一局计数没涨），'
+                              '跳过——**不是打满**')
+            elif seen_full:
+                self.log_info('nightmare nest: 指定点位都已打满，跳过')
+            else:
+                self.log_info('nightmare nest: 指定点位没有可用的计数，跳过')
 
     def _make_nest_cache_key(self, count_box, denominator):
         action_name = self.queues[0].__name__ if self.queues else 'unknown'

@@ -60,7 +60,10 @@ check("消耗波片按逐段下降累加", got.get("okww_stamina_spent"), 240)
 check("进本次数 = 每次消耗体力各一条", got.get("okww_runs"), 5)
 check("日常波片进度取最大值", got.get("okww_daily"), "180/180")
 check("活跃度带上限、满了要标出来", got.get("okww_points"), "100/100（已满）")
-check("为什么停下", got.get("okww_stopped"), "体力用尽")
+# 2026-08-29 改口径：OK-WW 的 used all stamina 不是「剩 0」，是**剩下的不够
+# 再开一局**（凝素领域单次 40，剩 37 就进不去）。用户点名「用尽不是零吗？
+# 还剩 20 多」——原来那句直译是事实错误。
+check("为什么停下", got.get("okww_stopped"), "体力不够再开一局")
 # 只报有信息量的项，而且按实际成败标注——出现在日志里不等于做成了。
 check("跑完还剩多少波片", got.get("okww_stamina_left"), 0)
 check("任务按成败标注", got.get("okww_steps"), ["凝素领域 ×5"])
@@ -75,8 +78,8 @@ check("只累加下降段", collector.parse_okww_log(refill).get("okww_stamina_s
 print("\n[体力不够时说得出原因]")
 short = TMP / "short.log"
 short.write_text("info_set current_stamina 18\nnot enough stamina\n", encoding="utf-8")
-check("报「体力不足」", collector.parse_okww_log(short).get("okww_stopped"),
-      "体力不足，未进入副本")
+check("报「体力不够」", collector.parse_okww_log(short).get("okww_stopped"),
+      "体力不够，一局都没开成")
 
 print("\n[凝素领域要报人话名字，不是序号]")
 # 用户 2026-08-26：「他那个凝素领域第一个机器看得懂，人看不懂是什么啊」。
@@ -122,8 +125,18 @@ entry = {"script": "OK-WW", "user": "wuwa", "ok": True, "raw": got,
 body = "\n".join(core._render_entries([entry])) if hasattr(core, "_render_entries") else ""
 if not body:                      # 渲染函数名不同就退回源码检查
     src = (Path(__file__).resolve().parents[1] / "ark_relay" / "core.py").read_text(encoding="utf-8")
-    check("渲染了波片消耗", "消耗波片" in src)
-    check("渲染了日常进度", "日常波片" in src)
+    # 2026-08-29 用户要求删掉的两项：
+    #   消耗量——「我不需要啊，不要再塞进去了」
+    #   活跃度/日常进度——读数被实测证伪（活跃度实际 160 报成 40，
+    #   日常进度读成 0/180 而这一轮明明刷了）。错的数字比没有数字更糟，
+    #   在把屏幕和日志对上之前不报。
+    # 只看代码不看注释：注释里正写着「为什么不再报消耗量」，
+    # 连注释一起搜必然误报。（同一个坑今天踩过第二次了。）
+    src_code = "\n".join(l.split("#", 1)[0] for l in src.splitlines())
+    check("不再渲染消耗量", "消耗波片" in src_code, False)
+    check("不再渲染活跃度/日常进度",
+          "活跃度" in src_code or "日常波片" in src_code, False)
+    check("渲染了备用体力（游戏里是两个数）", "备用" in src)
     check("渲染了任务列表", "okww_steps" in src)
     check("渲染了剩余波片", "剩余波片" in src)
 else:

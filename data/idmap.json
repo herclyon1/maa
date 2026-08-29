@@ -613,6 +613,41 @@
   "source": "skland:GET /web/v1/game/endfield/enums",
   "value": "Up"
  },
+ "maa.UsesOfDrones.Chip": {
+  "note": "MAA 基建换班的无人机用途枚举",
+  "source": "MaaAssistantArknights/src/MaaWpfGui/Res/Localizations/zh-cn.xaml (dev-v2) 与 ViewModels/.../InfrastSettingsUserControlModel.cs:141-148 的 UsesOfDronesList",
+  "value": "制造站-芯片组"
+ },
+ "maa.UsesOfDrones.CombatRecord": {
+  "note": "MAA 基建换班的无人机用途枚举",
+  "source": "MaaAssistantArknights/src/MaaWpfGui/Res/Localizations/zh-cn.xaml (dev-v2) 与 ViewModels/.../InfrastSettingsUserControlModel.cs:141-148 的 UsesOfDronesList",
+  "value": "制造站-经验书"
+ },
+ "maa.UsesOfDrones.Money": {
+  "note": "MAA 基建换班的无人机用途枚举",
+  "source": "MaaAssistantArknights/src/MaaWpfGui/Res/Localizations/zh-cn.xaml (dev-v2) 与 ViewModels/.../InfrastSettingsUserControlModel.cs:141-148 的 UsesOfDronesList",
+  "value": "贸易站-龙门币"
+ },
+ "maa.UsesOfDrones.OriginStone": {
+  "note": "MAA 基建换班的无人机用途枚举",
+  "source": "MaaAssistantArknights/src/MaaWpfGui/Res/Localizations/zh-cn.xaml (dev-v2) 与 ViewModels/.../InfrastSettingsUserControlModel.cs:141-148 的 UsesOfDronesList",
+  "value": "制造站-源石碎片"
+ },
+ "maa.UsesOfDrones.PureGold": {
+  "note": "MAA 基建换班的无人机用途枚举",
+  "source": "MaaAssistantArknights/src/MaaWpfGui/Res/Localizations/zh-cn.xaml (dev-v2) 与 ViewModels/.../InfrastSettingsUserControlModel.cs:141-148 的 UsesOfDronesList",
+  "value": "制造站-赤金"
+ },
+ "maa.UsesOfDrones.SyntheticJade": {
+  "note": "MAA 基建换班的无人机用途枚举",
+  "source": "MaaAssistantArknights/src/MaaWpfGui/Res/Localizations/zh-cn.xaml (dev-v2) 与 ViewModels/.../InfrastSettingsUserControlModel.cs:141-148 的 UsesOfDronesList",
+  "value": "贸易站-合成玉"
+ },
+ "maa.UsesOfDrones._NotUse": {
+  "note": "MAA 基建换班的无人机用途枚举",
+  "source": "MaaAssistantArknights/src/MaaWpfGui/Res/Localizations/zh-cn.xaml (dev-v2) 与 ViewModels/.../InfrastSettingsUserControlModel.cs:141-148 的 UsesOfDronesList",
+  "value": "不使用无人机"
+ },
  "passive_effect_type_buff": {
   "note": "enums.passiveEffectTypes",
   "source": "skland:GET /web/v1/game/endfield/enums",

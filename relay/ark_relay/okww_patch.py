@@ -248,6 +248,10 @@ def _sha(data: bytes) -> str:
 # 为什么需要：护栏原本只认「上游那份」和「当前这份」，一旦我们自己改了补丁，
 # 机器上那份就两边都不是，于是被判成「有人手改过」而拒绝覆盖——
 # 结果是自己的修复永远推不上去。历史版本记在这里，见到就照常覆盖。
+# 我方标记：上游源码里绝不会出现的、我们自己造的配置常量。
+# 见到它 = 现场那份出自我们之手，可以放心覆盖成最新版。
+_NEST_MARKER = b"Only Farm These Nests"
+
 _NEST_KNOWN_OURS = {
     "6b27d6f03f7210f80cb5da823a55c5732f26935f16ab775196aee80376b2ff7e",   # 2026-08-27 12:05：hit_wanted 版（与最终版只差 docstring，漏记了哈希）
     "788a8b633498b44f33dbd56d96b971cc95265e88719f6dc0a9f47fe2b4897916",   # 2026-08-27 11:35：临时的几何日志版
@@ -274,7 +278,13 @@ def _apply_nest(root: Path) -> list[str]:
     patched = _NEST_PATCHED.read_bytes()
     if _sha(cur) == _sha(patched):
         return []                       # 幂等：已经是我们这份
-    if _sha(cur) not in _NEST_KNOWN_OURS and \
+    # 上游永远不会包含我们自己造的这个配置常量，所以见到它就说明现场那份
+    # 是我们贴过的某个版本，照常覆盖。
+    # 为什么不只靠 _NEST_KNOWN_OURS：那张表要求**每次改补丁都手动补一条哈希**，
+    # 2026-08-29 我改了补丁却忘了补，于是修复推不上去，部署还照常报成功
+    # （只在日志里留了一行 warning）。靠人记的步骤迟早会漏，标记不会。
+    ours_by_marker = _NEST_MARKER in cur
+    if not ours_by_marker and _sha(cur) not in _NEST_KNOWN_OURS and \
             _sha(cur) != _sha(_NEST_UPSTREAM.read_bytes()):
         # 既不是上游那份、也不是我们那份——上游改过了，或者有人手改过。
         # 这时候硬盖会把别人的改动抹掉，所以停手。

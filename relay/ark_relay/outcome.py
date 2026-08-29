@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass
 
 
@@ -108,6 +109,10 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
 # ── MaaEnd ─────────────────────────────────────────────────────────
 # 万能跳转失败会存一张 on_error 截图。2026-08-27 那次卡弹窗，
 # 20 分钟里存了三张，而 MaaEnd 自己一个 ERROR 都没报。
+# MaaEnd 收尾标记。**它写在 MaaEnd 自己的 app 日志里**
+# （`<maaend>/debug/YYYY-MM-DD-N.log`：`INFO [App] 自动执行任务完成，关闭自身`），
+# 不在 AUTO-MAS 的 history 日志里。2026-08-29 只喂了后者，于是这条恒为假、
+# 天天误报「MaaEnd 没跑完」。修的是数据源，不是判据。
 _MAAEND_DONE = "自动执行任务完成"
 _MAAEND_STUCK = re.compile(r"SceneAnyEnterWorld|PipelineTask bad next")
 
@@ -119,15 +124,33 @@ def maaend_checks(text: str, on_error_names: list[str]) -> list[Check]:
     out.append(Check("MaaEnd 跑完", done,
                      "" if done else "日志里没有「自动执行任务完成」"))
 
+    # 附加的结构性判据：每个「任务开始」都该有对应的「任务完成／任务失败」。
+    # 它不依赖任何一句固定文案，收尾标记那条万一又被改名也还有这道兜底。
+    started = re.findall(r"任务开始[:：]\s*(\S+)", text)
+    ended = re.findall(r"任务(?:完成|失败)[:：]\s*(\S+)", text)
+    dangling = Counter(started) - Counter(ended)
+    if started:
+        out.append(Check("每个任务都收了尾", not dangling,
+                         "" if not dangling else
+                         "开了没收尾：" + "、".join(sorted(dangling))))
+
+    # 万能跳转失败（SceneAnyEnterWorld / PipelineTask bad next）永远算故障——
+    # 2026-08-27 那次就是「卡弹窗、自己不报错，只有截图能抓出来」，不能放宽。
+    # 其余节点的截图不一样：MaaEnd 会重试，重试成功任务照常完成。
+    # 2026-08-29 早班存了 6 张 ScenePrivateMapZoomOut，而环境监测和基质刷取
+    # 都报了「任务完成」——把它写成「没干成」是误报。所以只在**确实没跑完**时
+    # 才判故障，否则如实列出来但不算故障。
     stuck = [n for n in on_error_names if _MAAEND_STUCK.search(n)]
     if stuck:
         out.append(Check("界面没卡住", False,
                          f"万能跳转失败 {len(stuck)} 次，存了截图："
                          + "、".join(stuck[:3])))
-    elif on_error_names:
+    elif on_error_names and not done:
         out.append(Check("界面没卡住", False,
                          f"有 {len(on_error_names)} 张出错截图："
                          + "、".join(on_error_names[:3])))
+    elif on_error_names:
+        out.append(Check(f"出错截图 {len(on_error_names)} 张（已重试恢复）", True))
     else:
         out.append(Check("界面没卡住", True))
     return out

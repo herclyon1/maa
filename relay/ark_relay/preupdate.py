@@ -788,7 +788,15 @@ def run_automas(automas_dir: Path | None,
     wait_until = time.monotonic() + MAS_WAIT_SECONDS
     while True:
         try:
-            answer = _mas_post("/api/update/check", {"current_version": version})
+            # if_force 是必须的，不是保险起见。AUTO-MAS 的检查结果缓存四小时
+            # （`app/services/update.py:178-184`），而 MirrorChyan 的下载地址是
+            # **一次性令牌**，随检查响应带回来、存进 `mirror_chyan_download_url`。
+            # 走缓存 = 拿一个早就过期的令牌去下载，三次重试全 404，更新包一个字节
+            # 都不落地，然后我们在这儿干等 600 秒超时。
+            # 2026-08-29 实测：不强制 → 404；强制 → 换到新令牌，状态码 200。
+            # 这就是 AUTO-MAS 从 08-27 起反复「开始下载」却始终装不上的原因。
+            answer = _mas_post("/api/update/check",
+                               {"current_version": version, "if_force": True})
             break
         except Exception:  # noqa: BLE001 - not up yet, or genuinely unreachable
             if time.monotonic() >= wait_until:

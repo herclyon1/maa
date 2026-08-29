@@ -111,10 +111,15 @@ import arklog
 
 tmp = Path(sys.argv[1])
 log = tmp / "relay.log"
-today = date.today()
-log.write_text(f"{today:%m-%d} 01:00:00 INFO 早上那条\n"
+# 样本一律锚在**昨天**，并且每次查询都把 on= 交出去。
+# 早先把样本写成「今天 01:00/02:00」、窗口起点写死「00:30」，
+# 那么只要机器时间落在 00:00–00:30，"今天 00:30" 就是未来，
+# since() 正确地拒绝，闸门却把这当成失效。2026-08-29 00:12 撞上了。
+# 和 22 点之后 +2 小时跨零点那个洞是同一族：**断言不许依赖当前钟点。**
+ref = date.today() - timedelta(days=1)
+log.write_text(f"{ref:%m-%d} 01:00:00 INFO 早上那条\n"
                "  File \"x.py\", line 1, in <module>\n"
-               f"{today:%m-%d} 02:00:00 INFO 后面那条\n", encoding="utf-8")
+               f"{ref:%m-%d} 02:00:00 INFO 后面那条\n", encoding="utf-8")
 
 bad = []
 def want_raise(label, fn):
@@ -133,7 +138,7 @@ _fut = datetime.now() + timedelta(hours=2)
 want_raise("未来时刻没被拦",
            lambda: arklog.since(log, f"{_fut:%H:%M:%S}", on=_fut.date()))
 # 2. 窗口之后一行都没有
-want_raise("窗口后无日志没被拦", lambda: arklog.since(log, "23:58"))
+want_raise("窗口后无日志没被拦", lambda: arklog.since(log, "23:58", on=ref))
 # 3. 整个文件解析不出时间戳
 weird = tmp / "weird.log"
 weird.write_text("这行没有时间戳\n那行也没有\n", encoding="utf-8")
@@ -145,10 +150,10 @@ for label, line in (("中继", "08-27 10:00:00 x"),
     if arklog.parse_ts(line) is None:
         bad.append(f"{label} 格式认不出")
 # 5. 续行要跟随上一条带时间戳的行，不能因为字典序漏出来
-got = arklog.since(log, "00:30")
+got = arklog.since(log, "00:30", on=ref)
 if not any("File" in l for l in got):
     bad.append("traceback 续行被丢掉了")
-if arklog.since(log, "01:30") and any("早上那条" in l for l in arklog.since(log, "01:30")):
+if any("早上那条" in l for l in arklog.since(log, "01:30", on=ref)):
     bad.append("窗口之前的行漏进来了")
 
 print("GUARD-FAIL " + "；".join(bad) if bad else "GUARD-OK")

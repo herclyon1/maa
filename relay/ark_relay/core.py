@@ -356,7 +356,11 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
         # MaaEnd works through a list of chores rather than farming a stage, so
         # "how many got done" is its equivalent of a stage count.
         if done := raw.get("tasks_done"):
-            lines.append(f"· 完成 {len(done)} 项日常")
+            # 只写「完成 N 项」等于没说，看不出做了什么、漏了什么。
+            # 用户 2026-08-29：「改成完成数字标号的日常，然后数字标号在最后
+            # 附上对应任务名称」。
+            lines.append(f"· 完成 {len(done)} 项日常："
+                         + "、".join(f"{i}.{n}" for i, n in enumerate(done, 1)))
         # MaaEnd publishes no sanity number and no refill time, so say the one
         # thing it does report rather than leaving the line blank and letting
         # the reader wonder whether it simply stopped early.
@@ -367,35 +371,40 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             lines.append(note)
         elif raw.get("sanity_exhausted"):
             lines.append("· 理智不足，未进入协议空间")
-        # OK-WW has no drop list to show - it never reads the reward screen -
-        # so the line is built from what it does count: stamina in, entries
-        # bought, and where the daily landed.
-        if spent := raw.get("okww_stamina_spent"):
-            note = f"· 消耗波片 {spent}"
-            if runs := raw.get("okww_runs"):
-                note += f"，进本 {runs} 次"
-            lines.append(note)
-        if stopped := raw.get("okww_stopped"):
-            lines.append(f"· {stopped}")
-        # 和 MAA 一样：剩余才是要看的那个数，消耗只是过程。
-        if (left := raw.get("okww_stamina_left")) is not None:
-            s = f"· 剩余波片 {left}/240"
+        # ── OK-WW 这一段 2026-08-29 整段重写 ──
+        # 用户原话：「Ok ww 的通知你全部删掉重来，全是屎」。之前的毛病是三类：
+        #   ① 说法就是错的：「体力用尽」还剩 37；「已打满，跳过」——打满是干完了
+        #   ② 报了不可信的数：活跃度读成 40（实际 160，它读的是某一行的 +40）、
+        #      日常进度读成 0/180、残象计数被 OCR 吞掉前导数字
+        #   ③ 报了用户不要的：消耗量
+        # 现在只写**站得住的事实**，读不准的宁可不写，也不写个错的加免责。
+        if runs := raw.get("okww_runs"):
+            lines.append(f"· 进本 {runs} 次")
+        # 游戏里体力是两个数：蓝色结晶波片 N/240 和绿色那个备用值。
+        # OK-WW 的 get_stamina() 本来就分开存 current_stamina / back_up_stamina。
+        left = raw.get("okww_stamina_left")
+        if left is not None:
+            back = raw.get("okww_backup_stamina")
+            s = f"· 剩余波片 {left}/240" + (f"，备用 {back}" if back is not None else "")
+            if not (raw.get("okww_stamina_left_exact")
+                    or raw.get("okww_stopped")):
+                s += "　※最后一次读数，未必是结束余量"
             if full := _sanity_full(raw.get("sanity_full_at"), finished):
                 s += "，" + full
             lines.append(s)
-        if daily := raw.get("okww_daily"):
-            if raw.get("okww_daily_done_at_start"):
-                # 这一轮开始时活跃度就已经满了（比如当天的第二次运行），
-                # OK-WW 只领奖就走。此时写「日常波片 0/180」是准确的数字、
-                # 错误的信息——读起来像一个都没刷成。2026-08-27 用户原话：
-                # 「日常波片 0/180 这个完全是 bug 吧」。
-                lines.append(f"· 今日日常此前已完成（活跃度 {raw.get('okww_points', '')}），"
-                             "本轮仅领奖")
-            else:
-                note = f"· 日常波片 {daily}"
-                if points := raw.get("okww_points"):
-                    note += f"，活跃度 {points}"
-                lines.append(note)
+        if stopped := raw.get("okww_stopped"):
+            lines.append(f"· {stopped}")
+        # 残象聚落：打满就说刷满（那是干完了）。没打满时的计数被 OCR 吞过
+        # 前导数字（41 读成 0/41），所以带着出处报，不冒充准确值。
+        if raw.get("okww_nest_full"):
+            lines.append("· 残象聚落 落渊南丘 已刷满")
+        elif nest := raw.get("okww_nest"):
+            lines.append(f"· 残象聚落 落渊南丘 {nest}"
+                         "　※OCR 读数，可能吞掉前导数字")
+        # 活跃度和「累计消耗波片」两个读数都被实测证伪过（活跃度实际 160 报成 40），
+        # 在没把屏幕和日志对上之前不报——**错的数字比没有数字更糟**。
+        if raw.get("okww_daily_done_at_start"):
+            lines.append("· 今日日常此前已完成，本轮仅领奖")
         if steps := raw.get("okww_steps"):
             # 不写"完成"——里面可能有「未进本」「失败」，见 collector 的注释。
             lines.append("· 任务 " + "、".join(steps))

@@ -799,3 +799,52 @@ mas-api.py get /api/history/search '{"mode":"DAILY","start_date":"...","end_date
 返回每个脚本每轮的 `status` 和 `error_info`。**但它只记「部分任务执行失败」，
 不记是哪个任务**——具体任务名要去 MXU 的运行日志或 MAA 的 `gui.log` 找，
 失败原因要去 MaaCore 的 `asst.log`（`gui.log` 只说「任务出错」不说为什么）。
+
+## 部署中继前先看预更新在不在跑（2026-08-29）
+
+`deploy-relay.sh` 停服务时卡在 `STOP_PENDING`，脚本判失败并提示手动 `sc start`。
+真因不在部署脚本：中继 00:35:37 正在下载 AUTO-MAS v5.4.0 → v5.5.0-beta.1，
+下载线程没结束，服务就停不干净。我把服务进程强杀了（`taskkill /PID <pid> /T /F`），
+服务恢复策略自动把它拉了回来，`sc start` 随后报 1056「已在运行」——那是正常的。
+
+**代价**：那次 AUTO-MAS 下载被打断。事后核对 `main.py`、`QueueConfig.json`、
+`ScriptConfig.json` 都在，没有半截下载目录，4 个 AUTO-MAS 进程正常——这次没坏，
+但纯属运气。
+
+**规矩**：部署前先看 `relay.log` 末尾有没有「预更新：…开始下载」而没有对应的完成行；
+有就等它结束再部署。
+
+## 补丁机制没法更新自己贴过的补丁（2026-08-29，已修）
+
+`okww_patch._apply_nest` 原本只认「上游原版」和「当前最新版」两个哈希，
+机器上是我们**上一版**补丁时两边都不像，被判成「有人手改过」而拒绝覆盖。
+`_NEST_KNOWN_OURS` 那张表能救，但要求**每次改补丁都手动补一条哈希**——我忘了。
+
+**部署脚本照常显示成功**，只在服务启动日志里留了一行 warning。
+
+已改成认「我方标记」`Only Farm These Nests`（我们自己造的配置常量，
+上游源码里绝不会出现），见到就照常覆盖。测试见
+`relay/tests/test_okww_patch_refresh.py`。**靠人记的步骤迟早会漏，标记不会。**
+
+## AUTO-MAS 更新不上不是 CDK 的问题（2026-08-29，已修）
+
+从 08-27 起每次开机都打「预更新：AUTO-MAS 有更新，开始下载」，然后没有下文，
+版本卡在 v5.4.0。日志里没有任何失败行，看着像网慢。
+
+真因是两件事凑一起：
+
+* `app/services/update.py:178-184` 把更新检查结果**缓存四小时**；
+* MirrorChyan 的下载地址是**一次性令牌**，随检查响应带回来存进
+  `mirror_chyan_download_url`，下载时直接拿它用。
+
+走缓存 = 拿早就作废的令牌去下 → 三次重试全 404 → `UpdatePack_*.zip` 一个字节
+都不落地 → 中继在 `_wait_for_package` 干等 600 秒超时。
+
+**CDK 一直是好的**：版本检查从头到尾都成功（能查到 v5.5.0-beta.1）。
+
+修法：`/api/update/check` 带 `if_force: True`（`UpdateCheckIn` 本来就有这个字段）。
+机器上实测：不强制 → 404；强制 → 换到新令牌、状态码 200、**9.93 秒下完 102.8MB**。
+所以 600 秒预算从来不是瓶颈。测试见 `relay/tests/test_preupdate_mas_force.py`。
+
+**教训**：「开始 X」之后既没有成功也没有失败行，别当成「还在进行中」。
+去被调用方的日志里看它到底做了什么。

@@ -354,10 +354,24 @@ def parse_maaend_log(log_path: Path) -> dict:
 # daily quest ended up. Asked for on 2026-08-25 with "虽然它没有掉落物的显示，
 # 但只能说够用了".
 _OKWW_STAMINA = re.compile(r"info_set current_stamina (\d+)")
+# 绿色那个备用值。get_stamina() 一直分开存两个字段，我们只用了一个。
+_OKWW_BACKUP = re.compile(r"info_set back_up_stamina (\d+)")
+# 结束时的真实余量：OK-WW 停手时自己会打这一行。
+# `info_set current_stamina` 是**每轮开打前**记的，拿最后一条当「剩余」会
+# 永远多算一轮——2026-08-28 实际刷到 0，报告却写「剩余波片 80/240」，
+# 用户当场指出是误报。单次消耗还会在 40/80 之间自动切换，靠外部推算也不可靠，
+# 所以只认它自己报的这个数。
+_OKWW_STAMINA_END = re.compile(r"current stamina:\s*(\d+)\s*not enough to continue")
 _OKWW_DAILY = re.compile(r"info_set current daily progress (\d+)")
 _OKWW_POINTS = re.compile(r"info_set total daily points (\d+)")
 # One of these is logged per domain entry, so counting them counts the runs.
 _OKWW_ENTRY = re.compile(r"使用单倍体力|当前体力大于等于双倍|使用双倍")
+# 残象聚落的真实进度。用户 2026-08-29：「能不能给一下残像聚落的真实刷取结果，
+# xx/41 这种」。日志里每次开图鉴都会打一行 `已击败残象：N/M`，取最后一条。
+# ⚠️ 这个数是 OCR 出来的，前导数字可能被吞（10/41 读成 0/41），所以只做参考、
+# 不拿它下「刷没刷动」的结论——那个看 nest_cleared。
+_OKWW_NEST = re.compile(r"已击败残象[：:]\s*(\d+)\s*/\s*(\d+)")
+_OKWW_NEST_FULL = re.compile(r"指定点位都已打满")
 _OKWW_DAILY_TARGET = 180
 # 游戏内日常活跃度满值。会超出（周常乐园等还会继续加），所以报出来时
 # 要带上限，否则「活跃度 110」看着像出错了。
@@ -414,9 +428,19 @@ def parse_okww_log(log_path: Path) -> dict:
     entries = len(_OKWW_ENTRY.findall(text))
     if entries:
         out["okww_runs"] = entries
-    if readings:
-        # 跑完还剩多少，比"花了多少"更有用：下一轮够不够 180 全看这个数。
+    if back := _OKWW_BACKUP.findall(text):
+        out["okww_backup_stamina"] = int(back[-1])
+    if end := _OKWW_STAMINA_END.findall(text):
+        out["okww_stamina_left"] = int(end[-1])
+        out["okww_stamina_left_exact"] = True
+    elif readings:
+        # 没抓到收尾那行时才退回开打前的读数，并标明它不是结束余量。
         out["okww_stamina_left"] = readings[-1]
+        out["okww_stamina_left_exact"] = False
+    if nest := _OKWW_NEST.findall(text):
+        out["okww_nest"] = f"{nest[-1][0]}/{nest[-1][1]}"
+    if _OKWW_NEST_FULL.search(text):
+        out["okww_nest_full"] = True
     if daily := _OKWW_DAILY.findall(text):
         out["okww_daily"] = f"{max(int(x) for x in daily)}/{_OKWW_DAILY_TARGET}"
     if points := _OKWW_POINTS.findall(text):
@@ -431,9 +455,12 @@ def parse_okww_log(log_path: Path) -> dict:
             out["okww_daily_done_at_start"] = True
     # Why it stopped, in its own words. "used all stamina" is the good ending.
     if "used all stamina" in text:
-        out["okww_stopped"] = "体力用尽"
+        # 「用尽」是错的：OK-WW 的 used all stamina 意思是
+        # **剩下的不够再开一局**（凝素领域单次 40，剩 37 就进不去），
+        # 不是剩 0。2026-08-29 用户点名：「用尽不是零吗？还剩 20 多」。
+        out["okww_stopped"] = "体力不够再开一局"
     elif "not enough stamina" in text:
-        out["okww_stopped"] = "体力不足，未进入副本"
+        out["okww_stopped"] = "体力不够，一局都没开成"
     # 只报有信息量的：领邮件、领电台、领每日奖励每轮都会做，写进报告只是噪音。
     # 运营 2026-08-25：「除了周常乐园、刷取的关卡、残像聚落之外也别写上去了」。
     # 出现在日志里 != 做成了。凝素领域可能因为体力不够而根本没进本，梦魇任务
@@ -461,7 +488,9 @@ def parse_okww_log(log_path: Path) -> dict:
         elif "列表里没找到指定的点位" in text:
             steps.append(f"{nest}（点位名对不上，一次没打）")
         elif "指定点位都已打满" in text:
-            steps.append(f"{nest}（已满，跳过）")
+            # 「跳过」是 find_nest 内部的说法，不该漏进给人看的报告：
+            # 打满了是**干完了**，不是没干。
+            steps.append(f"{nest}（已刷满）")
         elif re.search(r"is not complete|click_team_challenge|echo captured", text):
             steps.append(nest)
         else:

@@ -75,6 +75,34 @@ def _okww_nest_expected(automas_dir: str | Path | None) -> bool:
     return "Auto Farm all Nightmare Nest" in adds
 
 
+def _maaend_app_log(maaend_dir: "str | Path | None",
+                    started: datetime) -> str:
+    """这一轮 MaaEnd **自己**写的 app 日志。
+
+    收尾标记「INFO [App] 自动执行任务完成，关闭自身」只出现在
+    `<maaend>/debug/YYYY-MM-DD-N.log` 里，**不在 AUTO-MAS 的 history 日志里**。
+    2026-08-29 早班就是只核对了后者，于是「MaaEnd 跑完」这条恒为假，
+    推了一条「这一轮没干完」的假告警——而 MaaEnd 当时 09:54:38 明明打了那句。
+    判据没错，错在没把它该看的文件给它。
+    """
+    if not maaend_dir:
+        return ""
+    d = Path(maaend_dir) / "debug"
+    if not d.is_dir():
+        return ""
+    cut = started.timestamp()
+    out: list[str] = []
+    # 文件名形如 2026-08-29-7.log；maafw*/go-service 是框架日志，不看。
+    for f in sorted(d.glob("20??-??-??-*.log")):
+        try:
+            if f.stat().st_mtime < cut:
+                continue
+            out.append(f.read_text(encoding="utf-8", errors="replace")[-200_000:])
+        except OSError:
+            continue
+    return "\n".join(out)
+
+
 def _maaend_new_shots(maaend_dir: str | Path | None,
                       started: datetime) -> list[str]:
     """这一轮新出现的 on_error 截图文件名。
@@ -244,8 +272,14 @@ class Engine:
         存到 state/evidence/<run_id>/，绝不能挡住记账，所以整段包 try。
         """
         try:
-            src = Path(self.cfg.maaend_dir or "") / "debug"
+            if not self.cfg.maaend_dir:
+                log.error("❌ 存不了 MaaEnd 失败证据：maaend_dir 没解析出来"
+                          "（ARK_MAAEND_DIR 未设，且 AUTO-MAS 里也没查到）。"
+                          "MaaEnd 下次启动就会清空 debug 目录，证据即将丢失")
+                return
+            src = Path(self.cfg.maaend_dir) / "debug"
             if not src.is_dir():
+                log.error("❌ 存不了 MaaEnd 失败证据：%s 不是目录", src)
                 return
             dst = Path(self.cfg.state_dir) / "evidence" / rec.run_id.replace("/", "_")
             dst.mkdir(parents=True, exist_ok=True)
@@ -283,8 +317,11 @@ class Engine:
                 return outcome.summarize(checks, "OK-WW")
             if rec.script == "MaaEnd":
                 shots = _maaend_new_shots(self.cfg.maaend_dir, rec.started)
+                # AUTO-MAS 的 history 日志 + MaaEnd 自己的 app 日志一起看：
+                # 收尾标记只在后者里，任务开始/完成只在前者里，缺一条就误判。
+                both = text + "\n" + _maaend_app_log(self.cfg.maaend_dir, rec.started)
                 return outcome.summarize(
-                    outcome.maaend_checks(text, shots), "MaaEnd")
+                    outcome.maaend_checks(both, shots), "MaaEnd")
         except Exception:  # noqa: BLE001 - 核对出错不许影响记账
             log.exception("结果核对本身出错，按原样记账")
         return None

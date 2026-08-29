@@ -47,8 +47,11 @@ domain = (work / "DomainTask.py").read_text(encoding="utf-8", errors="replace")
 check("副本失败不拖垮每日任务",
       "NotInCombatException, CharDeadException, WaitFailedException" in domain)
 nest = (work / "NightmareNestTask.py").read_text(encoding="utf-8", errors="replace")
-check("巢穴：允许续刷",
-      any(l.lstrip().startswith("if numerator != denominator") for l in nest.splitlines()))
+# 断言意图不断言字面：2026-08-29 把这段拆成 `if numerator == denominator:` 之后
+# 行为一模一样，守字面的断言却红了。真正要守的是「旧的 已击败必须为0 没回来」。
+nest_code = "\n".join(l.split("#", 1)[0] for l in nest.splitlines())
+check("巢穴：允许续刷（旧的 已击败==0 限制没回来）",
+      "numerator == '0'" not in nest_code and 'numerator == "0"' not in nest_code)
 check("巢穴：打完没进展就跳过", "_next_nest_with_progress" in nest)
 check("巢穴：可指定点位", "Only Farm These Nests" in nest)
 combat = (work / "BaseCombatTask.py").read_text(encoding="utf-8", errors="replace")
@@ -62,17 +65,32 @@ from ark_relay import okww_patch                  # noqa: E402
 notes = okww_patch.ensure_patches(Path(r"D:\ark\okww"))
 check("ensure_patches 幂等（全部已在位）", notes == [], f"返回 {notes}")
 
-print("\n=== 3. OK-WW 配置回到默认 ===")
-cfg = json.loads((Path(r"D:\ark\okww\data\apps\ok-ww\working\configs")
-                  / "NightmareNestTask.json").read_text(encoding="utf-8"))
-check("巢穴：刷全部（没留指定点位）", cfg.get("Only Farm These Nests") == "")
-check("巢穴：梦魇+残象都刷", len(cfg.get("Which to Farm") or []) == 2)
+print("\n=== 3. OK-WW 配置是不是我们要的那套 ===")
+# 读**母本**：快速配置已关，AUTO-MAS 每轮把母本整个拷给 OK-WW，
+# MAS API 里那几个字段不再驱动运行。2026-08-29 之前这里读 OK-WW 自己目录
+# 那份、而且期望「回到默认」——正好和死命令 okww-only-nanqiu 反着来，
+# 对着正确的配置天天喊狼来了。
+from ark_relay.config import master_config_dir            # noqa: E402
+_mdir = master_config_dir(r"D:\ark\automas", "DailyTask.json")
+cfg = json.loads((_mdir / "NightmareNestTask.json").read_text(encoding="utf-8"))
+daily = json.loads((_mdir / "DailyTask.json").read_text(encoding="utf-8"))
+check("巢穴：只刷落渊南丘", cfg.get("Only Farm These Nests") == "落渊南丘",
+      f"实际 {cfg.get('Only Farm These Nests')!r}")
+check("巢穴：只刷残象聚落（不碰梦魇拔除）",
+      cfg.get("Which to Farm") == ["Tacet Discord Nest"],
+      f"实际 {cfg.get('Which to Farm')!r}")
+check("巢穴：走刷满模式（附加任务里有 Auto Farm all Nightmare Nest）",
+      "Auto Farm all Nightmare Nest" in (daily.get(
+          "Additional Tasks to Run After Daily Task") or []),
+      f"实际 {daily.get('Additional Tasks to Run After Daily Task')!r}")
 scripts = post("/api/scripts/get")["data"]
 sid = next(k for k, v in scripts.items()
            if "ok" in str((v.get("Info") or {}).get("Name") or "").lower())
 u = next(iter(post("/api/scripts/user/get", {"scriptId": sid})["data"].values()))
-check("每日声骸开着", u["Task"].get("FarmNightmareNestForDailyEcho") is True)
-check("附加任务已清空（没留临时的全刷）", u["Task"].get("AdditionalTasks") == [])
+# 「每日声骸」这个开关在刷满模式下不再生效（DailyTask 的 if/elif，
+# condition1 优先），留着不碍事，所以只报状态、不当失败。
+print(f"  ·  每日声骸开关（刷满模式下不生效）= "
+      f"{daily.get('Farm Nightmare Nest for Daily Echo')}")
 check("体力去处＝凝素领域第1个",
       u["Task"].get("WhichToFarm") == "Forgery Challenge"
       and u["Task"].get("WhichForgeryChallengeToFarm") == 1)

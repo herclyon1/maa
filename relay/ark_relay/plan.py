@@ -227,19 +227,28 @@ def _okww_plan_bits(automas_dir: Path | None,
         elif which:
             bits.append(f"体力刷 {zh.get(which, which)}")
         nest_label = zh.get("Tacet Discord Nest", "残像聚落")
-        if only := (nest.get("Only Farm These Nests") or "").strip():
-            bits.append(f"{nest_label} 只打{only}（未满才打）")
+        adds = [str(a) for a in (daily.get(
+            "Additional Tasks to Run After Daily Task") or [])]
+        # 「自动刷所有梦魇巢穴」这个勾其实只决定走刷满还是走抓一个声骸就停，
+        # 刷什么范围由巢穴任务自己的两个选项管。所以不能原样列成一条附加任务：
+        # 上一行刚说「只打落渊南丘」，下一行再来个「附加 自动刷所有梦魇巢穴」，
+        # 自相矛盾。把它折进巢穴那一行，写它真正的效果。
+        FULL = "Auto Farm all Nightmare Nest"
+        scope = (nest.get("Only Farm These Nests") or "").strip()
+        where = f"只打{scope}" if scope else "全部点位"
+        if FULL in adds:
+            bits.append(f"{nest_label} {where}，刷到打满")
         elif daily.get("Farm Nightmare Nest for Daily Echo"):
-            bits.append(f"{nest_label} 取每日声骸")
-        adds = daily.get("Additional Tasks to Run After Daily Task")
-        if adds:
-            names = [zh.get(str(a), str(a)) for a in adds]
-            shown = "、".join(names[:2])
-            if len(names) > 2:
-                shown += f" 等 {len(names)} 项"
+            bits.append(f"{nest_label} {where}，只取一个每日声骸就停")
+        elif scope:
+            bits.append(f"{nest_label} {where}（未满才打）")
+        rest = [zh.get(str(a), str(a)) for a in adds if a != FULL]
+        if rest:
+            shown = "、".join(rest[:2])
+            if len(rest) > 2:
+                shown += f" 等 {len(rest)} 项"
             bits.append("附加 " + shown)
-        elif adds is not None:
-            bits.append("无附加任务")
+        # 没有附加任务就不写——「无附加任务」这一行不携带任何信息。
         return bits
     return []
 
