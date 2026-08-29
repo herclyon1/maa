@@ -88,3 +88,36 @@ BetterWW 是**在那台机器本地、对着窗口句柄发消息**，延迟接�
 要自动剧情就在那台机器上装 BetterWW，不要试图搬到 Mac 上。
 
 封号风险照旧：这些都是第三方工具，库洛和米哈游都有权封号。
+
+## 补充：Mac 上不用虚拟机跑 Windows 程序，有办法但这件事上没用
+
+2026-08-29 查证。
+
+### 不用虚拟机的路子确实存在
+
+| 方案 | 状态 |
+|------|------|
+| **CrossOver 26**（2026-02 发布） | Wine + Apple GPTK 4，Intel 和 Apple Silicon 都支持，不装 Windows、不要 Windows 授权。商业软件 |
+| **Whisky** | **已停止维护**，作者自己让大家转 CrossOver。老装的还能用，但没有更新和支持 |
+| Apple Game Porting Toolkit | 苹果自己的 D3D→Metal 翻译层，CrossOver 26 里已经打包了 |
+| 虚拟机（Parallels / VMware / UTM） | 跑 Windows 11 ARM，靠 Windows 自带的 x86 模拟跑 x86 程序 |
+
+### 但鸣潮这条链在两个地方各断一次
+
+**第一断：游戏本身在 Wine 下根本起不来。**
+鸣潮用的是库洛的反作弊（ACE 的改版）。实测结论是
+Whisky 和 Game Porting Toolkit 都会被反作弊挡住，游戏启动不了。
+Linux/Proton 那边是同样的问题。
+
+**第二断：就算游戏能跑，BetterWW 也接不上。**
+它靠的是 `DwmSharedSurface` / Windows Graphics Capture 截窗口，
+再用 `PostMessage` 往那个 HWND 发消息。这几个 API 在 Wine 里基本没实现，
+而且它必须和游戏在**同一个 Wine prefix** 里才可能看到对方的窗口句柄。
+
+**Mac 上唯一能玩鸣潮的路是 PlayCover**——在 Apple Silicon 上原生跑 iOS 版。
+但那是个 iOS 应用，**根本没有 Win32 窗口**，BetterWW 连能发消息的对象都不存在。
+
+### 结论
+
+这件事上 Mac 不是「慢一点」或者「麻烦一点」，是**结构上走不通**。
+Windows 机器必须留着当执行端。
