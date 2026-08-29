@@ -209,6 +209,9 @@ if ($cmd -like 'launch*') {
       $vk = switch -Regex ($one) {
         '^esc2?$'    { 0x1B }
         '^enter$'    { 0x0D }
+        '^space$'    { 0x20 }      # 跳跃。动作游戏里没这个键等于缺一条腿
+        '^shift$'    { 0xA0 }      # 冲刺/闪避
+        '^tab$'      { 0x09 }
         '^f(\d+)$'   { 0x6F + [int]$Matches[1] }        # VK_F1 = 0x70
         '^[a-z]$'    { [int][char]($one.ToUpper()) }     # VK_A..VK_Z 就是大写 ASCII
         '^[0-9]$'    { [int][char]$one }                 # VK_0..VK_9 同理
@@ -247,7 +250,7 @@ PS1
 case "$ACTION" in
   shot) CMD="shot" ;;
   launch) CMD="launch ${2:-wuwa}" ;;   # wuwa 或完整 exe 路径
-  key)  CMD="${ARG:?用法: wingui.sh key <esc|esc2|f2|enter|单个字母>}" ;;
+  key)  CMD="${ARG:?用法: wingui.sh key <esc|esc2|enter|space|shift|tab|f1-f12|单个字母或数字>}" ;;
   focus) CMD="focus" ;;
   scroll) CMD="scroll ${2:?用法: wingui.sh scroll <格数，负数向下> [x y]}${3:+ $3 ${4:?给了 x 就得给 y}}" ;;
   click) CMD="click ${2:?用法: wingui.sh click <x> <y>} ${3:?缺 y 坐标}" ;;
