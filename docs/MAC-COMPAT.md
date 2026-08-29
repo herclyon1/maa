@@ -36,6 +36,42 @@ macOS 和 Linux 包。它的 README 只写了「PC 端 (Win32 前台) 与安卓�
    要么真机要么模拟器。Apple Silicon 上安卓模拟器的选择非常有限。
 2. **它本来就没有自动剧情。** 它做的是日常。
 
+## BetterWW 到底能做什么（查源码确认，不是看简介）
+
+**它只做剧情，不做日常。** 仓库里 `GameTask` 下只有三个功能目录：
+`AutoSkip`（跳剧情）、`AutoPick`（自动拾取）、`GameLoading`（识别读条）。
+没有体力、周本、声骸、悬赏、深渊——那些是 OK-WW 的活。
+
+**没有自动寻路。** 整个仓库里没有任何寻路、走路、路径录制回放的代码。
+
+### 「后台」是怎么做到的
+
+两件事凑起来：
+
+1. **截图认窗口句柄，不认前台。** `Fischless.GameCapture` 实现了三种：
+   `BitBlt`、`DwmSharedSurface`、`Graphics`（Windows Graphics Capture）。
+   都是对着游戏窗口的 HWND 截，窗口被挡住、不在前台都能截到。
+
+2. **输入走 `PostMessage`，不走 `SendInput`。**
+   `AutoSkipTrigger.cs` 里调的是 `_simulator.KeyPressBackground(...)`
+   和 `skipRa.BackgroundClick()`，底层是 `PostMessageSimulator`——
+   直接往游戏窗口的消息队列里投消息，不需要窗口有焦点，
+   也不会抢走你正在用的鼠标键盘。
+
+3. **认按钮靠模板匹配**（`SkipButtonRo`、`NotPromptAgainButtonRo` 这些图片资源），
+   不是 OCR。所以它对分辨率和滤镜很敏感：
+   只支持 16:9、推荐 1920x1080 窗口化、不许开 HDR 和显卡滤镜、要管理员权限。
+   环境要求 Windows 10 64 位 + .NET 8。
+
+### 这跟我们 wingui.sh 的做法差在哪
+
+我们的 `wingui.sh` 用 `keybd_event` / `mouse_event`——那是**全局前台输入**，
+必须把游戏切到前台、会抢鼠标，而且要靠计划任务绕到 session 1，
+一次往返 30~40 秒。
+
+BetterWW 是**在那台机器本地、对着窗口句柄发消息**，延迟接近零，
+而且不抢焦点。这两者不是同一个量级的东西。
+
 ## 结论
 
 **自动剧情在 Mac 上是零选项。** 三个有自动剧情的工具（BetterGI、BetterWW、OK-WW）
