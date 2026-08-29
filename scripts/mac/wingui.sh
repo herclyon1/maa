@@ -289,14 +289,30 @@ ssh -o ConnectTimeout=20 "$USER_AT" \
    schtasks /run /tn ark-gui >nul 2>&1 & echo STARTED" >/dev/null 2>&1
 
 # 等结果文件出现。计划任务是异步的，schtasks /run 一返回不代表跑完了。
+#
+# 等多久不能写死。seq 串一长（拍三张照片 ≈ 75 秒）就会超过固定上限，
+# 脚本报「没有产出结果」，但**远端其实跑完了**——这种假失败最坑人。
+# 所以按动作串自己算预算：把 wait/hold 里写的毫秒加起来，
+# 再给每个动作留 5 秒（keybd_event 之后脚本自己要 sleep 2.5 秒，
+# click 之后 1.8 秒），最后加 30 秒的启动和截图开销。
+BUDGET=$(printf '%s' "$CMD" | awk '
+  { n = gsub(/[;\n]/, ";") + 1 }
+  { s = $0
+    while (match(s, /(wait|hold [A-Za-z0-9]+)[ ]+[0-9]+/)) {
+      seg = substr(s, RSTART, RLENGTH)
+      sub(/^.*[ ]/, "", seg); ms += seg
+      s = substr(s, RSTART + RLENGTH)
+    } }
+  END { printf "%d", 30 + ms/1000 + 5*n }')
+BUDGET=${ARK_GUI_WAIT:-$BUDGET}
 OUT=""
-for _ in $(seq 1 20); do
+for _ in $(seq 1 $(( (BUDGET + 1) / 2 ))); do
   if OUT=$(ssh -o ConnectTimeout=15 "$USER_AT" 'type C:\ProgramData\ark-gui.txt' 2>/dev/null | tr -d '\r') \
      && [ -n "$OUT" ]; then break; fi
   sleep 2
 done
 if [ -z "$OUT" ]; then
-  echo "✋ session 1 里的任务没有产出结果（40 秒）。" >&2
+  echo "✋ session 1 里的任务没有产出结果（等了 ${BUDGET} 秒）。" >&2
   echo "   多半是没人登录 console 会话——/it 的任务要求用户已登录。" >&2
   echo "   查一下：ssh $USER_AT qwinsta" >&2
   exit 3
