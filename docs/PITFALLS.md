@@ -848,3 +848,41 @@ mas-api.py get /api/history/search '{"mode":"DAILY","start_date":"...","end_date
 
 **教训**：「开始 X」之后既没有成功也没有失败行，别当成「还在进行中」。
 去被调用方的日志里看它到底做了什么。
+
+## WMI 进程订阅死了不会自己回来（2026-08-29 发现，未修）
+
+`relay/service.py` 用 `Win32_ProcessStartTrace` 订阅 python.exe 启动，
+好让 AUTO-MAS 一起来就立刻挂上句柄。这个订阅会周期性地被 RPC 打断：
+
+```
+pywintypes.com_error: (-2147352567, '发生意外。',
+  (0, 'SWbemEventSource', '远程过程调用失败。 ', None, 0, -2147023170), None)
+```
+
+**兜底是有的**：`_start_process_watch` 的 run() 捕获异常、记日志、
+把 `alive["ok"]` 翻成 False、唤醒主循环改用 `AUTOMAS_CHECK_SECONDS = 120`
+的定时活性检查。所以不是静默失败。
+
+**但缺的是重订阅。** `_start_process_watch` 只在第 635 行被调一次，
+线程一死就**再也不会重来**，剩下整个开机周期都停在 120 秒轮询上。
+
+代价：AUTO-MAS 启动后，中继最晚要 120 秒才挂上句柄，而不是内核事件的「立刻」。
+
+**规模**：`relay.log` 里 08-24 到 08-29 共 24 次，约每天 4 次。
+机器一天只开两次机（08:45 / 21:20），所以中继**大部分运行时间都在降级模式**。
+
+**该怎么修**：run() 的 except 分支不要直接退出线程，改成退避重试
+（比如 5s → 10s → …封顶 60s）重新建订阅，成功后把 `alive["ok"]` 翻回 True
+并记一行日志。注意别在队列运行期间部署——部署会重启服务。
+
+### 顺带：待办下发那条路今晚又失败了
+
+```
+08-29 21:21:38 WARNING ark.inbox  取不到待办文件
+  (https://raw.githubusercontent.com/herclyon1/maa/main/queue/config.json):
+  <urlopen error _ssl.c:1064: The handshake operation timed out>
+```
+
+同一次开机里 `ark.update` 取 manifest 也失败了一次（WinError 10054），
+但它**换了镜像重试成功**（拿到清单只是比本机旧，所以没更新）。
+`ark.inbox` 这条没有看到重试。这就是之前记下的「自更新和待办下发不可靠」。
