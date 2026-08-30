@@ -1,11 +1,11 @@
 {
-  "version": 2026083101,
+  "version": 2026083102,
   "name": "今晚别关机",
   "note": "改完把 version 加 1（格式是 年月日+两位序号），否则机器认为没变化",
   "commands": [
     {
       "action": "skip_shutdown",
-      "off": true
+      "off": false
     }
   ]
 }
