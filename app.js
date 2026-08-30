@@ -62,49 +62,51 @@ const VALUE_ZH = {
 const SCHEMA = [
   { title: "明日方舟", script: "MAA", sec: "MAA", fields: [
     { key:"关卡",       path:"Info.Stage",        type:"text",
-      hint:"自己填，像 1-7、CE-6、AT-4" },
+      hint:"游戏里的关卡号，自己填。像 1-7（常规）、CE-6（龙门币）、AT-4（活动关）。只在上面选「固定」时才生效" },
     { key:"关卡模式",   path:"Info.StageMode",    type:"text",
-      hint:"固定＝一直刷上面那一关；选计划表＝按表里排的日程刷" },
+      hint:"「固定」＝天天刷下面填的那一关。选「计划表」＝按你在电脑上排好的日程刷（哪天刷哪关），这时下面的关卡、连战、理智药都由计划表说了算，改这里没用" },
     { key:"理智药",     path:"Info.MedicineNumb", type:"number",
-      hint:"最多吃几个。999＝有多少吃多少" },
+      hint:"一趟最多嗑几瓶理智药。999＝有多少嗑多少；0＝一瓶都不嗑" },
     { key:"连战",       path:"Info.SeriesNumb",   type:"select",
       opts:["0","1","2","3","4","5","6"], asText:true,
-      hint:"一次连打几场。0＝不指定，听游戏里的" },
+      hint:"进本后连打几场再出来。「0」＝不改，用游戏里当前的设置" },
     { key:"剿灭",       path:"Info.Annihilation", type:"text",
-      hint:"「关闭」既表示本周已打完，也可能是被手动关掉了——后者会一直少一份周奖励" },
+      hint:"选「关闭」＝这周不打剿灭（本周已打满时也会自动变成这个）。其余几项是指定去打哪个剿灭关卡" },
     { key:"作战开关",   path:"Task.IfFight",      type:"bool",
-      hint:"关掉就完全不刷关，只做别的日常" },
+      hint:"关掉就完全不刷关卡，只做基建、公招这些日常" },
     { key:"活动关优先", path:"Task.IfActivityFirst", type:"bool",
-      hint:"开着＝有活动就刷活动关，活动结束自动回到上面那个固定关" },
+      hint:"开着＝有活动期间去刷活动关，活动一结束自动回到上面那个固定关。关着＝永远只刷固定关。下面两项只有它开着时才起作用" },
     { key:"活动关序号", path:"Task.ActivityStageIndex", type:"number",
-      hint:"活动里第几关，从 1 起算（不是从 0）" },
+      hint:"刷活动里的第几关——数的是活动关卡列表里从上往下的位置，第一关填 1（不是 0）。只在上面「活动期间优先刷活动关」打开时才生效" },
     { key:"活动关理智药", path:"Task.ActivityMedicineNumb", type:"number",
-      hint:"刷活动关时最多吃几个药" },
+      hint:"刷活动关那趟最多嗑几瓶药，和上面常规那个是分开算的。同样只在活动优先打开时才生效" },
   ]},
   { title: "终末地", script: "MaaEnd", sec: "MaaEnd", fields: [
     { key:"开理智",   path:"Task.IfSanity", type:"bool",
-      hint:"关掉就不花理智，只做日常" },
+      hint:"关掉就不花理智刷本，只做每日签到这类日常" },
     { key:"自动吃药", path:"Task.IfAutoUseSpMedication", type:"bool",
-      hint:"理智不够时自动嗑药" },
+      hint:"理智不够时自动嗑理智药接着刷" },
     { key:"理智任务", path:"Task.SanityTaskType", type:"text",
-      hint:"理智花在哪一类上" },
+      hint:"理智花在哪个方向。选「基质刷取」时，下面那个地点才有意义" },
     { key:"基质地点", path:"Task.AutoEssenceSpecifiedLocation", type:"text",
-      hint:"去哪个区采基质" },
+      hint:"去哪个区刷基质。只在上面选「基质刷取」时才生效" },
   ]},
   { title: "鸣潮", script: "OK-WW", sec: "OK-WW(MAS侧)", fields: [
     { key:"WhichToFarm", path:"Task.WhichToFarm", type:"text", label:"体力刷什么",
-      hint:"选了哪个，下面才出现对应的那一项" },
+      hint:"每天的体力花在哪。选了哪个，下面才会出现对应的那一项设置" },
     { key:"WhichTacetSuppressionToFarm", path:"Task.WhichTacetSuppressionToFarm",
-      type:"number", label:"凝素领域第几个", hint:"游戏里 F2 列表中的序号" },
+      type:"number", label:"凝素领域第几个",
+      hint:"游戏里按 F2 打开的列表中，从上往下第几个" },
     { key:"WhichForgeryChallengeToFarm", path:"Task.WhichForgeryChallengeToFarm",
-      type:"number", label:"模拟领域第几个", hint:"游戏里 F2 列表中的序号" },
+      type:"number", label:"模拟领域第几个",
+      hint:"游戏里按 F2 打开的列表中，从上往下第几个" },
     { key:"MaterialSelection", path:"Task.MaterialSelection", type:"text",
       label:"刷哪种材料" },
     { key:"FarmNightmareNestForDailyEcho", path:"Task.FarmNightmareNestForDailyEcho",
       type:"bool", label:"残象聚落",
-      hint:"日常差一个声骸时，去残象聚落补一个" },
+      hint:"每日任务差一个声骸时，去残象聚落补一个凑满" },
     { key:"TaskIndex", path:"Task.TaskIndex", type:"number", label:"任务序号",
-      hint:"OK-WW 内部用的编号，一般不用动" },
+      hint:"OK-WW 内部用来定位任务的编号。除非它跑错任务，否则别动" },
   ]},
 ];
 
@@ -197,7 +199,7 @@ function render() {
     <div class="acts">
       <button id="refresh">刷新（同时检测开没开机）</button>
       <button id="runnow">立刻跑一趟</button>
-      <button id="noshut">${relay["下次别关机"] ? "已设：跑完不关机" : "今晚跑完别关机"}</button>
+      <button id="noshut">${relay["下次别关机"] ? "✓ 下次跑完不关机" : "下次跑完不关机"}</button>
       <button id="skiptoday">今天跳过队列</button>
     </div>
     ${snap && snap.plan ? `<pre>${snap.plan.replace(/</g,"&lt;")}</pre>` : ""}
@@ -273,9 +275,12 @@ function wire() {
   // 于是 `s.at >= floor` 变成「数字 >= 事件对象」，永远为假——
   // 机器明明开着也判成关机。2026-08-31 我加 minAt 参数时就这么弄坏过一次。
   $("#refresh").onclick = () => ping();
-  $("#runnow").onclick = () => oneShot({ action:"run_now", confirmed:true, queue:"新队列" }, "已让它立刻跑一趟");
-  $("#noshut").onclick = () => oneShot({ action:"skip_shutdown" }, "这趟跑完不关机");
-  $("#skiptoday").onclick = () => oneShot({ action:"skip_today", queue:"新队列" }, "今天这个队列跳过");
+  $("#runnow").onclick = () => oneShot({ action:"run_now", confirmed:true, queue:"新队列" },
+    "已让「新队列」立刻开跑（机器关着时这条会等到下次开机，那时候正常排期也会跑）");
+  $("#noshut").onclick = () => oneShot({ action:"skip_shutdown" },
+    "下一次本该关机时会跳过（只跳这一次，再下一趟照常关）");
+  $("#skiptoday").onclick = () => oneShot({ action:"skip_today", queue:"新队列" },
+    "今天「新队列」不跑了（明天自动恢复）");
   const tm = $("#th-mode");
   if (tm) tm.onchange = () => saveTheme({ mode: tm.value === "auto" ? null : tm.value });
   for (const sw of document.querySelectorAll(".sw-c")) {
