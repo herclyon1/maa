@@ -1,0 +1,23 @@
+[
+ {
+  "id": "12",
+  "name": "晨星于此闪耀",
+  "chars": [
+   {
+    "id": "3a5f50e8cc825f31214c1ee832a36b97",
+    "pcLink": "https://wiki.skland.com/endfield/detail?mainTypeId=1&subTypeId=1&gameEntryId=1683",
+    "pic": "https://bbs.hycdn.cn/image/2026/07/13/4303e2163acbd727bfc451af47db072e.png",
+    "rarity": "rarity_6",
+    "name": "",
+    "dotType": "label_type_up"
+   }
+  ],
+  "poolStartAtTs": "1786248000",
+  "sortId": 12,
+  "poolEndAtTs": "1788300000",
+  "startAtTs": "1786248000",
+  "endAtTs": "1788300000",
+  "europePoolStartAtTs": "1786201200",
+  "europePoolEndAtTs": "1788253200"
+ }
+]

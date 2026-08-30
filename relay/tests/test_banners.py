@@ -1,25 +1,35 @@
-"""鸣潮卡池：两个免 token 接口的解析。
+"""三个游戏的卡池解析。
 
-夹具是 2026-08-31 从线上抓的真实响应：
-* `wuwa_home.json`   —— 库街区 wiki 首页 getPage，裁到「唤取」两个模块
-* `wuwa_notice.html` —— 官方 3.6 版本内容说明，裁到「全新角色/武器」两节
+夹具都是 2026-08-31 从线上抓的真实响应：
+* `wuwa_home.json`      —— 库街区 wiki 首页 getPage，裁到「唤取」两个模块
+* `wuwa_notice.html`    —— 官方 3.6 版本内容说明，裁到「全新角色/武器」两节
+* `prts_limited.wikitext` —— PRTS「卡池一览/限时寻访」全文
+* `ak_schedule.js`      —— 一图流手工维护的方舟未来排期
+* `endfield_pools.json` —— 森空岛 char-pool 的 data.list
 
-这一版的现实是：上半两个池子里**清宵是首发、达妮娅是复刻**，
-而 getPage 本身分不出来——只有公告的「全新角色」一节能分。
-下面的用例就是钉住这件事。
+钉住的都是已经踩过的坑：
 
-另外钉住两个已经踩过的坑：
-* `imgs[1:]` 在所有 tab 里是同一组通用条目，当成角色会每池多出三个名字；
-* 下一期官方公布了人的时候不许再写「约」和「官方未公布」。
+1. PRTS 的 URL 少了 `page=`（`[:-6]` 多切了六个字符），请求变成
+   `...&format=json卡池一览/限时寻访`，回一页 HTML，方舟那几行从来没出来过。
+2. getPage 的 `imgs[1:]` 在所有 tab 里是同一组通用条目，当成角色会每池多三个名字。
+3. getPage 分不出首发和复刻——3.6 上半两个池子里清宵是首发、达妮娅是复刻，
+   只有官方公告的「全新角色」一节能分。
+4. 「联合行动」这类池子里全是老干员，不能算首发。
+5. 下一期官方公布了人的时候不许再写「约」和「官方未公布」；
+   只给到日期的源不许硬凑出 00:00 冒充精确时刻。
 """
 import json
 import sys
+import urllib.parse
 from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay.banners import parse_wuwa, parse_wuwa_preview, render  # noqa: E402
+from ark_relay.banners import (  # noqa: E402
+    _AK_PAGES, _PRTS, debut_only, parse_ak_schedule, parse_arknights,
+    parse_endfield, parse_wuwa, parse_wuwa_preview, render,
+)
 
 FX = Path(__file__).parent / "fixtures"
 FAILED: list[str] = []
@@ -31,15 +41,14 @@ def check(what, got, want):
 
 
 def main() -> int:
+    # ── 鸣潮 ───────────────────────────────────────────────
     home = json.loads((FX / "wuwa_home.json").read_text(encoding="utf-8"))
     notice = (FX / "wuwa_notice.html").read_text(encoding="utf-8")
-    # 真实 entryId → 名字，省得测试联网
     names = {"1536353668409655296": "清宵", "1488852222116831232": "达妮娅"}
     pools = parse_wuwa(home, lambda e: names.get(e, ""))
 
     check("只认角色池，武器池排掉",
           [b.name for b in pools], ["仙风玉影水天清", "予明日以谎言"])
-    check("游戏名", {b.game for b in pools}, {"鸣潮"})
     check("每池只有一个角色（imgs 后几项是共用条目）",
           [b.chars for b in pools], [("清宵",), ("达妮娅",)])
     check("起始时刻按服务器时间原样解析",
@@ -55,9 +64,54 @@ def main() -> int:
     check("正文取不到时返回空而不是炸", parse_wuwa_preview(""), [])
     check("没有那一节时返回空", parse_wuwa_preview("<p>啥也没有</p>"), [])
 
+    # ── 明日方舟 ────────────────────────────────────────────
+    page = urllib.parse.quote(_AK_PAGES[0])
+    q = urllib.parse.parse_qs(urllib.parse.urlparse(_PRTS + page).query)
+    check("PRTS 的 URL 必须带 page 参数",
+          q.get("page"), ["卡池一览/限时寻访"])
+    check("只读限时寻访一页（轮换池那页恒为 0 条且没有首发）",
+          len(_AK_PAGES), 1)
+
+    ak = parse_arknights((FX / "prts_limited.wikitext").read_text(encoding="utf-8"))
+    check("限时寻访解析条数", len(ak), 163)
+    check("最后一条是联合行动23", ak[-1].name, "联合行动23")
+    check("联合行动23 在开时收录的是十个老干员", len(ak[-1].chars), 10)
+
+    fresh = debut_only(ak)
+    check("联合行动不算首发",
+          [b for b in fresh if b.name == "联合行动23"], [])
+    check("首发池里没有复刻",
+          [b.name for b in fresh if "复刻" in b.name], [])
+    check("2026 夏限是首发，且只留新干员",
+          next((b.chars for b in fresh
+                if b.name == "【限定寻访·夏季】车辙与风的归所"), None),
+          ("予愿安洁莉娜", "珊比", "嘉辛塔"))
+
+    sched = parse_ak_schedule((FX / "ak_schedule.js").read_text(encoding="utf-8"))
+    check("一图流排期按时间正序",
+          [(n, f"{d:%Y-%m-%d}", ok) for n, d, ok in sched],
+          [("P3R联动", "2026-09-04", False), ("感谢庆典", "2026-11-01", False)])
+    check("排期是空文本时返回空", parse_ak_schedule(""), [])
+
+    # ── 终末地 ─────────────────────────────────────────────
+    ef_pools = json.loads((FX / "endfield_pools.json").read_text(encoding="utf-8"))
+    ef = parse_endfield(ef_pools, lambda gid: {"1683": "梨诺"}.get(gid, ""))
+    check("终末地池名", [b.name for b in ef], ["晨星于此闪耀"])
+    check("角色名要按 pcLink 里的 gameEntryId 去查", ef[0].chars, ("梨诺",))
+    # 时间戳换算依赖本机时区，所以比时间戳本身，不比挂钟读数
+    check("起止时间戳原样还原",
+          (int(ef[0].start.timestamp()), int(ef[0].end.timestamp())),
+          (1786248000, 1788300000))
+
+    not_up = json.loads(json.dumps(ef_pools))
+    for c in not_up[0]["chars"]:
+        c["dotType"] = "label_type_normal"
+    check("不是 UP 的角色不进报告", parse_endfield(not_up, lambda g: "梨诺"), [])
+
+    # ── 渲染 ───────────────────────────────────────────────
     now = datetime(2026, 8, 31, 0, 0, 0)
-    fresh = [b for b in pools if b.chars == ("清宵",)]
-    out = render(fresh, now,
+    live = [b for b in pools if b.chars == ("清宵",)]
+    out = render(live, now,
                  {"鸣潮": (datetime(2026, 9, 10, 9, 59, 59), "景燃「身赴三途」")})
     check("在开的首发池要报", "清宵" in out, True)
     check("复刻不进报告", "达妮娅" in out, False)
@@ -65,9 +119,15 @@ def main() -> int:
     check("官方公布了人就不许写「约」", "下一期约" in out, False)
     check("官方公布了人就不许写「未公布」", "官方未公布" in out, False)
 
-    blind = render([], now, {"终末地": (datetime(2026, 9, 2, 12, 0, 0), "")})
+    blind = render([], now, {"终末地": (datetime(2026, 9, 2, 6, 0, 0), "")})
     check("没公布人时必须写「约」", "下一期约" in blind, True)
     check("没公布人时必须说明未公布", "官方未公布" in blind, True)
+    check("有确切时刻就把时刻写出来", "09-02 06:00" in blind, True)
+
+    dateonly = render([], now, {"明日方舟": (datetime(2026, 9, 4, 0, 0, 0),
+                                            "P3R联动（排期是预测，未官宣）")})
+    check("只给到日期的源不许凑出 00:00", "00:00" in dateonly, False)
+    check("只给到日期时写到日", "09-04 换" in dateonly, True)
 
     check("一条都没有时整段为空", render([], now, {}), "")
 

@@ -11,7 +11,8 @@
 | 鸣潮 | 库街区 `api.kurobbs.com/wiki/core/homepage/getPage`（免 token） | 池子名、起止时间；角色名要再查 `getEntryDetail` |
 | 鸣潮预告 | 官方游戏内公告 `aki-gm-resources-back.aki-game.com` | 整个版本上下半的**全新五星**和池名 |
 | 终末地 | 森空岛 `zonai.skland.com/web/v1/wiki/char-pool` | 池子名、起止时间戳；角色名要再查 `item/info` |
-| 明日方舟 | PRTS `卡池一览/限时寻访` + `常驻标准寻访` | 池子名、UP 干员、精确起止 |
+| 明日方舟 | PRTS `卡池一览/限时寻访` | 池子名、UP 干员、精确起止 |
+| 方舟预告 | 一图流前端仓库 `gachaScheduleOptions.js`（人工维护） | 下一期池名和大致开始日 |
 
 **为什么必须走官方而不是 Fandom**：2026-08-30 实测，同一时刻
 Fandom（国际服）给的是「False Promise for Tomorrow / Denia」，
@@ -234,14 +235,31 @@ def render(banners: list[Banner], now: datetime,
         d = when - now
         head = f"· {game} 下一期" + ("" if who else "约")
         tail = f"　{who}" if who else "（UP 是谁官方未公布）"
-        lines.append(f"{head} {when:%m-%d %H:%M} 换（还有 {d.days} 天）{tail}")
+        # 有些源只给到日期；硬凑一个 00:00 出来是假精确。
+        stamp = f"{when:%m-%d}" if (when.hour, when.minute) == (0, 0) \
+            else f"{when:%m-%d %H:%M}"
+        lines.append(f"{head} {stamp} 换（还有 {d.days} 天）{tail}")
     return "🎴 新角色卡池\n" + "\n".join(lines) if lines else ""
 
 
 # ── 汇总：三个源拉一遍，渲染成日报末尾那一段 ──────────────────
+# urlencode 出来的结尾就是 "&page="，正好给后面拼页面标题。
+# 2026-08-31 之前这里多切了 [:-6]，把 "&page=" 整个削掉，请求变成
+# ...&format=json卡池一览/限时寻访 —— PRTS 回一页 HTML，解析必炸，
+# 每次日报都在日志里留两条 WARNING，方舟那几行从来没出来过。
 _PRTS = "https://prts.wiki/api.php?" + urllib.parse.urlencode(
-    {"action": "parse", "prop": "wikitext", "format": "json", "page": ""})[:-6]
-_AK_PAGES = ("卡池一览/限时寻访", "卡池一览/常驻标准寻访/2026")
+    {"action": "parse", "prop": "wikitext", "format": "json", "page": ""})
+# 只读这一页就够。2026-08-31 核对过：「卡池一览/常驻标准寻访」那页是
+# **干员轮换池**，表格结构也不同（序号/寻访页面/开启时间，没有池名），
+# 解析出来恒为 0 条；而且里面每一个干员——提丰、引星棘刺、逻各斯、鸿雪、
+# 衡沙——都能在限时寻访里追到更早的首发，轮换池永远不会有新人。
+# 哪天方舟真在别的页首发干员了，把那页加回这里即可。
+_AK_PAGES = ("卡池一览/限时寻访",)
+
+# 下一期排期：官方不公布，PRTS 也只记已经开过的。一图流前端仓库里
+# 有人手工维护着未来排期，`accuracyFlag: false` 表示这条是预测不是官宣。
+_AK_SCHEDULE = ("https://raw.githubusercontent.com/Arknights-yituliu/"
+                "frontend-v2-plus/main/src/utils/gachaScheduleOptions.js")
 _KURO = "https://api.kurobbs.com"
 _ZONAI = "https://zonai.skland.com"
 
@@ -256,7 +274,29 @@ def _json(url: str, ua: str, data: "bytes | None" = None,
         return json.loads(r.read())
 
 
-def _arknights(now: datetime) -> "tuple[list[Banner], datetime | None]":
+def _text(url: str, ua: str, timeout: int = 20) -> str:
+    req = urllib.request.Request(url, headers={"User-Agent": ua})
+    with urllib.request.urlopen(req, timeout=timeout) as r:   # noqa: S310
+        return r.read().decode("utf-8", "replace")
+
+
+def parse_ak_schedule(js: str) -> "list[tuple[str, datetime, bool]]":
+    """一图流的排期数组 → [(池名, 开始日, 是否官宣)]，按时间正序。"""
+    out: "list[tuple[str, datetime, bool]]" = []
+    for m in re.finditer(r"\{([^{}]*)\}", js or ""):
+        blk = m.group(1)
+        name = re.search(r'name:\s*"([^"]+)"', blk)
+        start = re.search(r'startDate:\s*"(\d{4}-\d\d-\d\d)"', blk)
+        if not name or not start or re.search(r"disabled:\s*true", blk):
+            continue
+        out.append((name.group(1),
+                    datetime.strptime(start.group(1), "%Y-%m-%d"),
+                    not re.search(r"accuracyFlag:\s*false", blk)))
+    out.sort(key=lambda x: x[1])
+    return out
+
+
+def _arknights(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | None]":
     """PRTS 两页合起来判首发。下一期时间 PRTS 不给，返回 None 由调用方补。"""
     rows: list[Banner] = []
     for page in _AK_PAGES:
@@ -268,8 +308,18 @@ def _arknights(now: datetime) -> "tuple[list[Banner], datetime | None]":
             log.warning("PRTS 取不到 %s", page, exc_info=True)
     rows.sort(key=lambda b: b.start)
     debut = debut_only(rows)
-    nxt = min((b.start for b in rows if b.start > now), default=None)
-    return debut, nxt
+    if when := min((b.start for b in rows if b.start > now), default=None):
+        return debut, (when, "")      # PRTS 已经收录了，时间准，人未知
+    try:
+        sched = parse_ak_schedule(_text(_AK_SCHEDULE, _UA_BROWSER))
+    except Exception:  # noqa: BLE001
+        log.warning("一图流方舟排期取不到", exc_info=True)
+        return debut, None
+    nxt = next(((n, d, ok) for n, d, ok in sched if d > now), None)
+    if not nxt:
+        return debut, None
+    name, day, official = nxt
+    return debut, (day, name if official else f"{name}（排期是预测，未官宣）")
 
 
 def _endfield(cred, sk_get) -> "tuple[list[Banner], datetime | None]":
