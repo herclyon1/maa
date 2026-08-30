@@ -1,0 +1,50 @@
+{{Convene
+|name              = When Silence Tolls 2025-01-02
+|image             = When Silence Tolls 2025-01-02.jpg
+|type              = Featured Resonator
+|duration          = event
+|time_start        = 2025-01-02 10:00
+|time_end          = 2025-01-23 09:59
+|link              = https://wutheringwaves.kurogames.com/m/en/main/news/detail/1897
+|time_start_offset = UTC+8
+|time_end_offset   = 
+|resonatortrial    = 2025-01-02
+|preceding         = Celestial Revelation/2024-12-12
+|preceding2        = When Thunder Pours/2024-12-12
+|succeeding        = Stage in the Box/2025-01-23
+|succeeding2       = Thawborn Renewal/2025-01-23
+|alongside         = Chromatic Prose/2025-01-02
+|alongside2        = Absolute Pulsation: The Last Dance/2025-01-02
+|alongside3        = Absolute Pulsation: Rime-Draped Sprouts/2025-01-02
+|previous          = 
+|next              = When Silence Tolls/2025-05-22
+}}{{Intro/Convene|When Silence Tolls/2025-01-02}}
+
+==Details==
+===Event Period===
+*2025-01-02 10:00 (UTC+8) to 2025-01-23 09:59 (Server Time)
+
+===Summary===
+*The following [[Resonators]] will receive an increase in drop rate during the event:
+** 5-star Resonator: [[Carlotta]]
+** 4-star Resonators: [[Chixia]], [[Sanhua]], [[Mortefi]]
+
+===Notes===
+* During the event, you can only obtain [[Carlotta]] in "[[When Silence Tolls/2025-01-02|When Silence Tolls]]". The above Resonator can't be obtained after the event ends.
+* During the event, you can use "[[Afterglow Coral]]" to redeem [[Carlotta's Waveband]] in [[Store]] - [[Item Exchange]].
+* During the event, you can try the above Resonator in "[[Ascendant Aces/2025-01-02|Ascendant Aces]]" and win rewards.
+
+{{For|information about rates|Convene}}
+
+==Pool==
+{{Convene/Pool
+|resonator_5_F = Carlotta
+|resonator_4_F = Chixia;Sanhua;Mortefi
+|resonator_5   = Verina;Encore;Calcharo;Lingyang;Jianxin
+|resonator_4   = Lumi;Youhu;Baizhi;Taoqi;Danjin;Yangyang;Aalto;Yuanwu
+|weapon_4      = Dauntless Evernight;Commando of Conviction;Undying Flame;Amity Accord;Jinzhou Keeper;Discord;Overture;Cadenza;Marcato;Variation;Helios Cleaver;Lunar Cutter;Novaburst;Hollow Mirage;Comet Flare;Waning Redshift;Endless Collapse;Relativistic Jet;Celestial Spiral;Fusion Accretion
+|weapon_3      = Broadblade of Night;Sword of Night;Pistols of Night;Gauntlets of Night;Rectifier of Night;Broadblade of Voyager;Sword of Voyager;Pistols of Voyager;Gauntlets of Voyager;Rectifier of Voyager;Originite: Type I;Originite: Type II;Originite: Type III;Originite: Type IV;Originite: Type V
+}}
+
+==Change History==
+{{Change History|2.0}}

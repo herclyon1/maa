@@ -209,3 +209,21 @@ printf '%s' "$NOTES_SHA" > "$NOTES_STAMP"
 : > "$NOTES"
 echo "✅ 部署完成：文件哈希已核对，服务已确认 RUNNING"
 echo "   （relay/RELEASE-NOTES.md 已清空——下次部署前必须写清楚这次改了什么）"
+
+# 把这次部署的 manifest 推上 GitHub。**不推的话自更新永远用不成**：
+# 部署会把 manifest.json 的 version 改成这一刻的时间戳，但那是本地改动；
+# GitHub 上还是旧版本号，自更新一比「清单比本机旧」就拒绝更新——
+# 它是对的，只是永远等不到新清单。2026-08-30 查了半天 CDN 缓存，
+# 真因在这里：不是缓存没刷新，是根本没推上去。
+if git -C "$HERE/.." diff --quiet -- relay/manifest.json; then
+  echo "▶ manifest 没变化，不用推"
+else
+  git -C "$HERE/.." add relay/manifest.json relay/state/last-deployed-notes.sha1 2>/dev/null || true
+  if git -C "$HERE/.." commit -q -m "deploy: manifest $(date -u +%Y%m%d%H%M%S)" 2>/dev/null; then
+    if git -C "$HERE/.." push -q origin HEAD 2>/dev/null; then
+      echo "▶ manifest 已推上 GitHub，自更新下次开机就能看到"
+    else
+      echo "✋ manifest 提交了但推送失败——自更新会一直看到旧清单，记得手动 push" >&2
+    fi
+  fi
+fi
