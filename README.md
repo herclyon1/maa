@@ -1,43 +1,45 @@
 # 游戏机自动化
 
-一台放在国内的 Windows 机器，每天自己开机两次，把三个游戏的日常刷完，
-推个汇报到微信，然后自己关机。我这边是东京的 Mac，用 Tailscale + SSH 管它。
-**我的 Mac 关着不影响它自己跑。**
+一台位于国内的 Windows 机器，每天自动开机两次，运行三款游戏的日常任务，
+将结果推送到微信，随后自动关机。控制端是一台位于东京的 Mac，经
+Tailscale + SSH 远程管理；控制端离线不影响游戏机自行运行。
 
-三个游戏分别是 [MAA](https://github.com/MaaAssistantArknights/MaaAssistantArknights)（明日方舟）、
-[MaaEnd](https://github.com/MaaEnd/MaaEnd)（终末地）、
+被自动化的是 [MAA](https://github.com/MaaAssistantArknights/MaaAssistantArknights)（明日方舟）、
+[MaaEnd](https://github.com/MaaEnd/MaaEnd)（终末地）与
 [OK-WW](https://github.com/ok-oldking/ok-wuthering-waves)（鸣潮），
-由 [AUTO-MAS](https://github.com/AUTO-MAS-Project/AUTO-MAS) 排队跑。
-`relay/` 是我自己写的中继，跑在游戏机上，干这些活：
+由 [AUTO-MAS](https://github.com/AUTO-MAS-Project/AUTO-MAS) 统一调度。
+`relay/` 是自建的通知中继，运行于游戏机，负责：
 
-- 读每个脚本**自己的日志**核对到底干成了什么，而不是看进程退没退出
-- 开机到队列开跑之间的空档里，把四个程序的更新做掉
-- 推汇报和日报；队列跑完、汇报送到了，它负责关机
-- 自更新；每次 OK-WW 更新完，把我们的补丁重新贴回去
+- 读取各脚本自身的日志核对运行结果，而非依据进程退出状态判定
+- 在开机至队列启动之间的空档完成四款程序的更新
+- 推送汇报与日报；队列结束且汇报送达后接管关机
+- 自更新；每次 OK-WW 更新后重新应用本地补丁
 
-**这不是给别人用的东西**，路径、账号、时刻表全是照这一台机器写死的。
-放 GitHub 上是为了两件事：中继要从这儿自更新，以及我能在手机上改配置。
+本仓库是这套系统的源码与运行记录，**不是开箱即用的软件**：路径、账号、
+时刻表均针对这一台机器。置于 GitHub 是出于两个用途：中继由此自更新，
+以及配置可在网页端下发。
 
-## 我想改东西，去哪
+## 改动入口
 
-| 想干什么 | 去哪 |
+| 目标 | 位置 |
 |---|---|
-| 改刷什么关卡、吃不吃药 | [`queue/config.json`](queue/config.json)，网页上直接改，提交后下次开机生效（**记得把 `version` 加一**） |
-| 改中继的行为 | `relay/`，改完 `ARK_HOST=<IP> scripts/mac/deploy-relay.sh` |
-| 出事了想立刻停 | `scripts/mac/estop.sh` |
-| 看机器现在在不在 | Dock 上的 FleetMonitor |
+| 关卡、理智药等运行配置 | [`queue/config.json`](queue/config.json)，可在网页端编辑，提交后下次开机生效（须增大 `version`） |
+| 中继行为 | `relay/`，改动后执行 `ARK_HOST=<IP> scripts/mac/deploy-relay.sh` |
+| 紧急停止 | `scripts/mac/estop.sh` |
+| 查看机器在线状态 | FleetMonitor（控制端 Dock） |
 | 远程操作游戏画面 | `scripts/mac/wingui.sh`，用法见 [docs/PLAY-MANUAL.md](docs/PLAY-MANUAL.md) |
-| 查机器上的日志 | `scripts/mac/winrun.sh --py`，读日志一律用 `arklog` |
+| 读取机器日志 | `scripts/mac/winrun.sh --py`，日志一律经 `arklog` 读取 |
 
-**维护前先开调试模式**，不然队列跑完它就自己关机了：
-写 `C:\ProgramData\ark-relay\state\debug-until.txt`，内容是截止时刻；完事记得删掉。
+维护前需先开启调试模式，否则队列结束后机器会自动关机：写入
+`C:\ProgramData\ark-relay\state\debug-until.txt`，内容为截止时刻；
+维护完成后删除该文件。
 
-## 踩过的坑
+## 参考
 
-出事先翻 [docs/PITFALLS.md](docs/PITFALLS.md)，很多问题以前栽过一模一样的。
-无界面操作（不靠看屏幕）的完整方法见 [docs/HEADLESS.md](docs/HEADLESS.md)。
-AUTO-MAS 五个界面各管什么、母本副本的关系见 [docs/AUTOMAS.md](docs/AUTOMAS.md)。
-家里网络那个 MTU 黑洞和百兆封顶的实测见 [docs/HOME-NETWORK.md](docs/HOME-NETWORK.md)。
+排查故障先查阅 [docs/PITFALLS.md](docs/PITFALLS.md)。
+无界面操作（不依赖看屏幕）的完整方法见 [docs/HEADLESS.md](docs/HEADLESS.md)。
+AUTO-MAS 五个界面的职责与母本、副本的关系见 [docs/AUTOMAS.md](docs/AUTOMAS.md)。
+家庭网络的 MTU 黑洞与带宽封顶实测记录见 [docs/HOME-NETWORK.md](docs/HOME-NETWORK.md)。
 
 ---
 
@@ -106,11 +108,11 @@ AUTO-MAS 五个界面各管什么、母本副本的关系见 [docs/AUTOMAS.md](d
 
 ## 下发指令
 
-改 [`queue/config.json`](queue/config.json) 并提交，机器下次开机会读、会应用、
-会把结果推给我。**改完必须把 `version` 加一**，否则它当没变化。
+修改 [`queue/config.json`](queue/config.json) 并提交，游戏机在下次开机时读取、
+应用，并推送执行结果。**修改后必须增大 `version`**，否则视为无变化。
 
-能下发哪些指令、怎么写，见 [`queue/README.md`](queue/README.md)。
-这个文件在 GitHub 网页上直接就能改，手机也行。
+可用指令与写法见 [`queue/README.md`](queue/README.md)。该文件可直接在 GitHub
+网页端编辑，无需本地环境。
 
 ## 目录
 
