@@ -34,9 +34,13 @@ def main():
     check("没配目录", _maa_app_log(None, datetime.now()), None)
     check("目录不存在", _maa_app_log("/no/such/dir", datetime.now()), None)
 
-    print("2) 空文本喂给 maa_checks 会全绿——所以上面那步必须拦住")
-    check("空串确实会被判成全绿（这就是为什么不能返回空串）",
-          outcome.summarize(outcome.maa_checks(""), "MAA"), None)
+    print("2) 空文本现在也拦得住了（两道防线，不是只靠一道）")
+    # 第一版判据按错误字符串计数，空文本会全部判过 = 假全绿，全靠 _maa_app_log
+    # 返回 None 兜着。换成任务链结构判定之后，空文本自己就会报
+    # 「读到了这一轮的任务链事件：否」。两道都留着：判据自己站得住，
+    # 上游读不到时也照样说得出「无从核对」。
+    check("空文本会被判据自己拦下",
+          outcome.summarize(outcome.maa_checks(""), "MAA") is not None, True)
 
     print("3) OK-WW 配置读不到 → 必须 None，不能是 False")
     check("没配 automas_dir", _okww_nest_expected(None), None)
