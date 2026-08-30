@@ -1,10 +1,11 @@
-"""MAA 的结果核对——2026-08-30 之前这里是个洞。
+"""MAA 的结果核对——2026-08-30 之前这里是个洞，第一版判据又太吵。
 
-`_verify_outcome` 走到 MAA 直接 return None，也就是「全干成」。
-于是 MAA 只要进程正常退出就恒为绿，里面基建整个跪掉也照样报全绿。
-用户 08-29 到 08-30 连着两天在通知里看到的「全绿」就是这么来的。
+洞：`_verify_outcome` 走到 MAA 直接 return None（=全干成），
+所以 MAA 只要进程正常退出就恒为绿。
 
-样本取自 08-29 晚班和 08-30 早班的真实 asst.log。
+太吵：第一版按错误字符串计数判，拿真实日志空跑时 08-29 晚和 08-30 早
+**两趟都会被推送**，推的还是已确认无害的噪音。换成结构化判据：
+每条任务链都该有一对 TaskChainStart / TaskChainCompleted。
 """
 import sys
 from datetime import datetime
@@ -25,82 +26,82 @@ def check(name, got, want):
         FAILED.append(name)
 
 
-# 08-29 晚班真实片段（时间戳和进程号保留原样）
-REAL_FAIL = """\
-[2026-08-29 21:36:20.513][INF][Px17480][Tx23596] InfrastInfoTask | zoom gesture sent
-[2026-08-29 21:38:59.770][INF][Px17480][Tx23596] SubTaskError {"first":["Infrast
-[2026-08-29 21:42:02.957][ERR][Px17480][Tx23596] asst::InfrastAbstractTask::click_clear_button clear failed
-[2026-08-29 21:42:19.383][TRC][Px17480][Tx23596] asst::InfrastAbstractTask::on_run_fails | enter
-[2026-08-29 21:42:21.389][TRC][Px17480][Tx23596] asst::InfrastAbstractTask::on_run_fails | leave, 2006 ms
-[2026-08-29 21:43:00.000][ERR][Px17480][Tx23596] Unknown task: FightSeries-OldMethodFlag
-"""
+CHAINS = ["StartUp", "Fight", "Infrast", "Recruit", "Mall", "Award", "CloseDown"]
 
-CLEAN = """\
-[2026-08-30 09:09:41.495][INF][Px9556][Tx53843] InfrastInfoTask | zoom gesture sent
-[2026-08-30 09:12:00.000][INF][Px9556][Tx53843] Task Infrast completed
-"""
+
+def run(chains=CHAINS, *, drop_end=(), error=(), stopped=(), extra=""):
+    """造一段 asst.log：每条链一对 Start/Completed，可指定谁不收尾/谁报错。"""
+    out = []
+    for c in chains:
+        out.append(f'[2026-08-30 09:00:00][INF] TaskChainStart '
+                   f'{{"taskchain":"{c}","taskid":1}}')
+        if c in error:
+            out.append(f'[2026-08-30 09:10:00][INF] TaskChainError '
+                       f'{{"taskchain":"{c}","taskid":1}}')
+        elif c in stopped:
+            out.append(f'[2026-08-30 09:10:00][INF] TaskChainStopped '
+                       f'{{"taskchain":"{c}","taskid":1}}')
+        elif c not in drop_end:
+            out.append(f'[2026-08-30 09:10:00][INF] TaskChainCompleted '
+                       f'{{"taskchain":"{c}","taskid":1}}')
+    return "\n".join(out) + extra
 
 
 def main():
-    print("基建失败必须报出来（这是全绿的根因）")
-    got = maa_checks(REAL_FAIL)
-    check("基建掉进恢复流程要报出来",
-          any(c.label.startswith("基建") and not c.ok for c in got), True)
-    check("summarize 不再返回 None", summarize(got, "MAA") is not None, True)
-    check("找不到的任务定义也报",
-          any("任务定义" in c.label and not c.ok for c in got), True)
+    print("正常一轮：七条链各一对，不许推送")
+    check("全绿", summarize(maa_checks(run()), "MAA"), None)
 
-    print("干净的一轮不许误报")
-    got2 = maa_checks(CLEAN)
-    check("全绿", summarize(got2, "MAA"), None)
+    print("已确认无害的噪音不许把它变成告警")
+    noisy = run(extra="\n[2026-08-30 09:05:00][ERR] skill has no recognition result" * 21
+                      + "\n[2026-08-30 09:05:00][ERR] Unknown task: FightSeries-OldMethodFlag" * 10
+                      + "\n[2026-08-30 09:06:00][TRC] asst::InfrastAbstractTask::on_run_fails | enter")
+    check("噪音再多也全绿", summarize(maa_checks(noisy), "MAA"), None)
 
-    print("技能识别大量失败要单独说，但少量不报")
-    blind_many = CLEAN + "skill has no recognition result\n" * 20
-    got3 = maa_checks(blind_many)
-    check("20 次判失败",
-          any("技能" in c.label and not c.ok for c in got3), True)
-    blind_few = CLEAN + "skill has no recognition result\n" * 2
-    check("2 次不报", summarize(maa_checks(blind_few), "MAA"), None)
+    print("开了没收尾——这才是「队列卡死、自己不吭声」的形状")
+    got = maa_checks(run(drop_end=("Infrast",)))
+    check("判失败", any(c.label == "每条任务链都收了尾" and not c.ok for c in got), True)
+    check("说出是哪条链",
+          any("Infrast" in c.detail for c in got if not c.ok), True)
 
-    print("基建失败时把识别次数一起带上，不另开一条")
-    got4 = maa_checks(REAL_FAIL + "skill has no recognition result\n" * 20)
-    infra = [c for c in got4 if c.label.startswith("基建")][0]
-    check("detail 里带识别次数", "20 次" in infra.detail, True)
-    check("detail 说清不是整条链死掉", "不是整条链死掉" in infra.detail, True)
-    check("不重复开一条技能项",
-          sum(1 for c in got4 if "技能" in c.label), 0)
+    print("任务链报错 / 被中止")
+    check("Error 判失败",
+          any(not c.ok for c in maa_checks(run(error=("Fight",)))), True)
+    check("Stopped 判失败",
+          any(not c.ok for c in maa_checks(run(stopped=("Mall",)))), True)
 
-    print("_maa_app_log 只取本轮时间窗内的行")
+    print("一条任务链事件都没有 = 窗口切错，不许当成没问题")
+    got2 = maa_checks("随便什么日志，没有 TaskChain")
+    check("判失败", any(not c.ok for c in got2), True)
+    check("空文本同样不许全绿", summarize(maa_checks(""), "MAA") is not None, True)
+
+    print("_maa_app_log 的切窗：起点和终点都要管")
     import tempfile
     with tempfile.TemporaryDirectory() as d:
         dbg = Path(d) / "debug"
         dbg.mkdir()
         (dbg / "asst.log").write_text(
-            "[2026-08-29 21:42:19.383][TRC] asst::InfrastAbstractTask::on_run_fails | enter\n"
-            "[2026-08-30 09:09:41.495][INF] InfrastInfoTask | zoom gesture sent\n",
+            "[2026-08-29 21:42:19][TRC] 上一趟\n"
+            "  上一趟的续行\n"
+            "[2026-08-30 09:09:41][INF] 本趟\n"
+            "  本趟的续行\n"
+            "[2026-08-30 23:00:00][INF] 下一趟\n",
             encoding="utf-8")
-        got5 = _maa_app_log(d, datetime(2026, 8, 30, 9, 0, 0))
-        check("上一轮的失败不会算到这一轮头上",
-              "on_run_fails" in got5, False)
-        check("本轮的行留下了", "zoom gesture sent" in got5, True)
+        got3 = _maa_app_log(d, datetime(2026, 8, 30, 9, 0),
+                            datetime(2026, 8, 30, 10, 0))
+        check("上一趟不带进来", "上一趟" in got3, False)
+        check("上一趟的续行也不带", "上一趟的续行" in got3, False)
+        check("本趟带进来", "本趟" in got3, True)
+        check("本趟的续行带进来", "本趟的续行" in got3, True)
+        check("下一趟不带进来（这就是没有上界时的 bug）", "下一趟" in got3, False)
+
+        no_top = _maa_app_log(d, datetime(2026, 8, 30, 9, 0))
+        check("不给上界时下一趟会进来（duration_known=False 时的取舍）",
+              "下一趟" in no_top, True)
+
         check("目录没配返回 None（不是空串——空串会被判据当成全绿）",
-              _maa_app_log(None, datetime.now()), None)
+              _maa_app_log(None, datetime(2026, 1, 1)), None)
         check("窗口内一行都没有也返回 None",
               _maa_app_log(d, datetime(2030, 1, 1)), None)
-
-    print("续行跟着上一条时间戳走，不单独判断")
-    with tempfile.TemporaryDirectory() as d:
-        dbg = Path(d) / "debug"
-        dbg.mkdir()
-        (dbg / "asst.log").write_text(
-            "[2026-08-29 21:42:19.383][TRC] old\n"
-            "  Traceback 续行属于上面那条\n"
-            "[2026-08-30 09:09:41.495][INF] new\n"
-            "  这条续行属于本轮\n",
-            encoding="utf-8")
-        got6 = _maa_app_log(d, datetime(2026, 8, 30, 9, 0, 0))
-        check("旧的续行不带进来", "属于上面那条" in got6, False)
-        check("新的续行带进来", "属于本轮" in got6, True)
 
     print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
     return 0 if not FAILED else 1

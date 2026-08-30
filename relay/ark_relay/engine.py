@@ -119,8 +119,8 @@ def _maaend_app_log(maaend_dir: "str | Path | None",
     return "\n".join(out)
 
 
-def _maa_app_log(maa_dir: "str | Path | None",
-                 started: datetime) -> "str | None":
+def _maa_app_log(maa_dir: "str | Path | None", started: datetime,
+                 until: "datetime | None" = None) -> "str | None":
     """这一轮 MAA **自己**写的 asst.log，只保留本轮时间窗内的行。
 
     AUTO-MAS 的 history 日志只记「脚本跑完了没有」，**没有子任务级别的成败**。
@@ -144,14 +144,21 @@ def _maa_app_log(maa_dir: "str | Path | None",
             raw = fh.read().decode("utf-8", errors="replace")
     except OSError:
         return None
+    # 只有起点没有终点会把**后面几趟**也扫进来。2026-08-30 空跑时
+    # 08-29 晚班读到 72810 行（今早那趟的两倍），技能失败数变成 20+21=41，
+    # 等于把今早的错算到了昨晚头上。所以必须有上界。
+    # `until` 给 None 时不设上界——`duration_known=False` 的记录时间不可信，
+    # 那种情况宁可多取也不要把整趟切没了。
     cut = started.strftime("%Y-%m-%d %H:%M:%S")
+    top = until.strftime("%Y-%m-%d %H:%M:%S") if until else None
     out: list[str] = []
     keep = False
     for line in raw.splitlines():
         m = _MAA_TS.match(line)
         if m:
             # 时间戳是定宽的，字典序等于时间序，这里可以直接比。
-            keep = m.group(1) >= cut
+            ts = m.group(1)
+            keep = ts >= cut and (top is None or ts <= top)
         # 没有时间戳的是上一条的续行，跟着上一条走——不要单独判断，
         # 否则 traceback 那些行会被无条件带进来（arklog.py 里记过这个坑）。
         if keep:
@@ -384,7 +391,11 @@ class Engine:
                 return outcome.summarize(checks, "OK-WW")
             if rec.script == "MAA":
                 # 只看 MAA 自己的日志：AUTO-MAS 的 history 里没有子任务成败。
-                maa_log = _maa_app_log(self.cfg.maa_dir, rec.started)
+                # 结束时刻只在它可信时才当上界用（见 RunRecord.duration_known）。
+                # 留 5 分钟余量：MAA 收尾那几行可能落在 AUTO-MAS 记完之后。
+                until = (rec.finished + timedelta(minutes=5)
+                         if rec.duration_known else None)
+                maa_log = _maa_app_log(self.cfg.maa_dir, rec.started, until)
                 if maa_log is None:
                     # 空文本喂给 maa_checks 会全部判过 = 又一次假全绿。
                     return outcome.summarize([outcome.Check(

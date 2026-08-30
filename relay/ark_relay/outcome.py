@@ -158,58 +158,49 @@ def maaend_checks(text: str, on_error_names: list[str]) -> list[Check]:
 
 # ── MAA ────────────────────────────────────────────────────────────
 # 2026-08-30 之前这里**什么都没有**：`_verify_outcome` 走到 MAA 直接
-# return None，意思是「全干成」。所以 MAA 只要进程正常退出就恒为绿，
-# 里面基建整个失败也照样报全绿——用户连着两天看到的「全绿」就是这么来的。
+# return None（=全干成），所以 MAA 只要进程正常退出就恒为绿。
 #
-# 判据取自 08-29 晚班和 08-30 早班的真实 `asst.log`：
-#   [ERR] asst::InfrastAbstractTask::click_clear_button clear failed
-#   [TRC] asst::InfrastAbstractTask::on_run_fails | enter
-#   [TRC] asst::InfrastAbstractTask::on_run_fails | leave, 2006 ms
-# `on_run_fails` 到底意味着什么——2026-08-30 我第一版读错了，这里写清楚。
+# 第一版我按「错误字符串出现次数」判，空跑真实日志立刻打脸：08-29 晚和
+# 08-30 早**两趟都会被推送**，而推的正是 `skill has no recognition result`
+# 和 `Unknown task` 这两条已经确认无害的噪音。把「全绿」换成「每轮误报两条」
+# 比原来更糟——狼来了喊多了，真出事那次就没人看了。
 #
-# 我最初断言「on_run_fails 跑了就等于基建整体失败」，并按这个判据发了版。
-# 然后把失败那趟和成功那趟逐行对比，结论相反：
-#   08-29 晚（有 on_run_fails）设施覆盖 Dorm22/Mfg15/Trade11/Power8/Office6/…
-#   08-30 早（无 on_run_fails）设施覆盖 **一模一样**
-#   `click_clear_button clear failed` 两趟都各有 1 次
-# 而且 on_run_fails 之后 MAA 立刻跑 InfrastBegin 恢复（2006 ms）
-# 然后继续 SwipeToTheLeft → enter_facility → Reception，把剩下的设施跑完了。
-#
-# 所以它是**某一个设施的子任务失败后的恢复入口**，不是整条链死掉。
-# 报的时候必须说成「有设施失败并走了恢复」，不能说成「基建没干成」。
-_MAA_INFRAST_FAILED = "InfrastAbstractTask::on_run_fails"
-# 干员技能图标识别不出来。单次可能只是抖动，几十次就是识别整体不工作了。
-_MAA_SKILL_BLIND = "skill has no recognition result"
-_MAA_SKILL_BLIND_LIMIT = 5
-# 任务定义找不到：程序版本和资源版本对不上。08-29 晚班 7 次
-# `Unknown task: FightSeries-OldMethodFlag`。
-_MAA_UNKNOWN_TASK = re.compile(r"Unknown task: (\S+)")
+# 换成结构化判据：MAA 每条任务链都会打一对
+#   TaskChainStart  {"taskchain":"Infrast", ...}
+#   TaskChainCompleted {"taskchain":"Infrast", ...}
+# 实测两趟都是 StartUp/Fight/Infrast/Recruit/Mall/Award/CloseDown 各一对，
+# 零 Error、零 Stopped、零悬挂。**开了没收尾**才是真出事——
+# 那正是「队列卡死、脚本自己不吭声」的形状。
+_MAA_CHAIN = re.compile(
+    r'TaskChain(Start|Completed|Error|Stopped)\b.*?"taskchain":"(\w+)"')
 
 
 def maa_checks(text: str) -> list[Check]:
     """核对一轮 MAA。`text` 是这一轮时间窗内的 asst.log。"""
+    started: Counter = Counter()
+    ended: Counter = Counter()
+    bad: list[str] = []
+    for kind, chain in _MAA_CHAIN.findall(text):
+        if kind == "Start":
+            started[chain] += 1
+        else:
+            ended[chain] += 1
+            if kind in ("Error", "Stopped"):
+                bad.append(f"{chain}({'报错' if kind == 'Error' else '被中止'})")
+
     out: list[Check] = []
+    if not started:
+        # 一条任务链事件都没有 = 窗口切错了或日志不对，绝不能当成「没问题」。
+        out.append(Check("读到了这一轮的任务链事件", False,
+                         "asst.log 里没有 TaskChainStart，这一轮无从核对"))
+        return out
 
-    blind = text.count(_MAA_SKILL_BLIND)
-    n_recover = text.count(_MAA_INFRAST_FAILED + " | enter")
-    detail = ""
-    if n_recover:
-        detail = (f"{n_recover} 个设施的换班子任务失败后走了恢复流程"
-                  f"（MAA 恢复完继续跑完了剩下的设施，不是整条链死掉）")
-        if blind:
-            detail += f"；干员技能识别失败 {blind} 次"
-    out.append(Check("基建没有设施掉进恢复流程", not n_recover, detail))
-
-    # 没掉进恢复但识别在大量失败，也要说——那是下一次失败的前兆。
-    if not n_recover and blind >= _MAA_SKILL_BLIND_LIMIT:
-        out.append(Check("干员技能能识别出来", False,
-                         f"「{_MAA_SKILL_BLIND}」{blind} 次"))
-
-    unknown = sorted(set(_MAA_UNKNOWN_TASK.findall(text)))
-    if unknown:
-        out.append(Check("任务定义都能找到", False,
-                         "找不到：" + "、".join(unknown[:4])
-                         + "（多半是程序和资源版本对不上）"))
+    dangling = started - ended
+    out.append(Check("每条任务链都收了尾", not dangling,
+                     "" if not dangling else
+                     "开了没收尾：" + "、".join(sorted(dangling))))
+    out.append(Check("没有任务链报错或被中止", not bad,
+                     "" if not bad else "、".join(sorted(set(bad)))))
     return out
 
 
