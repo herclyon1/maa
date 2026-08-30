@@ -199,6 +199,11 @@ def set_debug(state_dir: Path, cycles: int = 1, off: bool = False,
     path = _debug_file(state_dir)
     if off:
         path.unlink(missing_ok=True)
+        # 手动关掉 = 「维护结束，恢复正常」。被吃掉的那次关机机会要一并清掉，
+        # 否则机器会一直空开到下一趟队列跑完——2026-08-31 我维护完关掉它，
+        # 机器就是这样准备空开一整夜的。**自然到期不清**，那才是用户要的
+        # 「跳过这一次」；只有明确说「关掉」时才恢复。
+        _skipped_file(state_dir).unlink(missing_ok=True)
         return True, "调试模式已关闭，恢复正常运行（队列若被停用需另行恢复）"
     try:
         cycles = max(1, int(cycles))

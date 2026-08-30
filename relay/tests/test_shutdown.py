@@ -177,12 +177,27 @@ check("下一趟队列跑完：正常关机（不用再按一次才关）",
       E._maybe_shutdown(at(23, 40)), True)
 skipped.unlink(missing_ok=True)
 
+print("\n[手动关调试] 明确关掉要恢复正常，自然到期不恢复")
+from ark_relay import modes                                 # noqa: E402
+# 2026-08-31：我维护完手动关掉调试模式，机器却因为「这次已跳过」的标记
+# 还在，准备空开一整夜到早班跑完。明确说「关掉」＝维护结束，标记要一起清。
+dbg.write_text(f"{real + timedelta(hours=1):%Y-%m-%d %H:%M}", encoding="utf-8")
+skipped.unlink(missing_ok=True); flag.unlink(missing_ok=True)
+ledger(run)
+E._shutdown_issued = False; issued.clear()
+E._maybe_shutdown(at(23, 0))                       # 生效中，吃掉一次
+check("先确认标记确实写下了", skipped.exists(), True)
+modes.set_debug(STATE, off=True)                   # 人明确关掉
+check("手动关掉后标记被清掉", skipped.exists(), False)
+E._shutdown_issued = False; issued.clear()
+check("于是恢复正常关机", E._maybe_shutdown(at(23, 5)), True)
+skipped.unlink(missing_ok=True); dbg.unlink(missing_ok=True)
+
 print("\n[手机开关] 待办指令 skip_shutdown：手机上改仓库里那个文件")
 # 用户 2026-08-31：「我要的是手机上面操作」。中继本来就有「公开仓库放一个
 # 文件、手机网页编辑」的收信通道，这里把开关接进那条通道。
 os.environ["ARK_STATE_DIR"] = str(STATE)
 from ark_relay.commands import apply_command, ALLOWED       # noqa: E402
-from ark_relay import modes                                 # noqa: E402
 
 check("动作在白名单里", "skip_shutdown" in ALLOWED, True)
 skipped.unlink(missing_ok=True); flag.unlink(missing_ok=True)
