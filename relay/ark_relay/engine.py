@@ -19,7 +19,7 @@ import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import collector, core, modes, outcome, plan, summary
+from . import banners, collector, core, modes, outcome, plan, summary
 from .config import SERVER_TZ, Config, RunRecord
 from .core import State
 from .notify import Notifier
@@ -1182,16 +1182,25 @@ class Engine:
         # next-morning failure. Appended outside the model's text so a model
         # outage can never drop it.
         act = plan.activity_countdown(self.cfg.automas_dir)
+        # 卡池倒计时同理，挂在最后（用户 2026-08-30 的要求：放在通知末尾）。
+        # 三个游戏各自 try 住，一个源挂了不影响其余，全挂了就少这一段。
+        try:
+            pool = banners.section(datetime.now(tz=SERVER_TZ).replace(tzinfo=None),
+                                   skland_token=self.cfg.skland_token)
+        except Exception:  # noqa: BLE001
+            log.warning("卡池那一段整体失败", exc_info=True)
+            pool = ""
+        tail = "".join(f"\n\n{x}" for x in (act, pool) if x)
         written = summary.daily_report(self.cfg, entries, tomorrow)
         if written:
             log.info("📋 日报由模型撰写（%d 条记录）", len(entries))
-            return title, written + (f"\n\n{act}" if act else "")
+            return title, written + tail
         # 用户 2026-08-30 定的：模型写日报是**废除的规划**（太贵），
         # 结构化模板就是最终形态、目前够用。所以走到这里不是故障，
         # 是常态路径——原来打 WARNING 会让人以为坏了，天天在日志里留一条假伤。
         log.info("日报用结构化模板（模型撰写已废弃，这是正常路径）")
         title2, body = core.format_daily(day, entries, "", tomorrow)
-        return title2, body + (f"\n\n{act}" if act else "")
+        return title2, body + tail
 
     def send_daily_now(self, mark: bool = True, label: str = "临时查看") -> bool:
         """Force today's report out (used by the `report` command and tests).

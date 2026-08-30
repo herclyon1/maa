@@ -8,7 +8,8 @@
 
 | 游戏 | 来源 | 拿到什么 |
 |------|------|---------|
-| 鸣潮 | 库街区 `api.kurobbs.com/aki/eventCalendar/summon` | 池子名、五星 UP（中文名）、剩余毫秒 |
+| 鸣潮 | 库街区 `api.kurobbs.com/wiki/core/homepage/getPage`（免 token） | 池子名、起止时间；角色名要再查 `getEntryDetail` |
+| 鸣潮预告 | 官方游戏内公告 `aki-gm-resources-back.aki-game.com` | 整个版本上下半的**全新五星**和池名 |
 | 终末地 | 森空岛 `zonai.skland.com/web/v1/wiki/char-pool` | 池子名、起止时间戳；角色名要再查 `item/info` |
 | 明日方舟 | PRTS `卡池一览/限时寻访` + `常驻标准寻访` | 池子名、UP 干员、精确起止 |
 
@@ -19,12 +20,16 @@ Fandom（国际服）给的是「False Promise for Tomorrow / Denia」，
 
 ## 下一期时间
 
-官方接口都不给「下一期是谁」，但给得出**什么时候开**：
+**鸣潮是唯一能拿到「下一期是谁」的**：官方在版本更新当天发的
+「N.N版本内容说明」公告里，把整个版本上下半的全新五星和对应池名
+一次性列全，等于提前三周官宣。这一节天然不含复刻，正好对上口径。
 
-* 鸣潮 / 终末地：本期结束即下期开始（这两家是连轴换的）
+方舟和终末地拿不到人，只拿得到**什么时候换**：
+
+* 终末地：本期结束即下期开始（连轴换）
 * 明日方舟：`gacha_table.json` 随客户端更新推送，里面**已经有未来的池子**
 
-所以「下一期开始时间」是推出来的，不是官宣的——渲染时要说清楚这一点，
+所以除鸣潮外，「下一期」是推出来的，不是官宣的——渲染时必须说清楚，
 不许写成好像官方已经公布了。
 
 取不到就返回空——报告少一行，好过没有报告。
@@ -128,24 +133,63 @@ def parse_endfield(pools: list, name_of) -> list[Banner]:
     return out
 
 
-# ── 鸣潮：库街区官方 ────────────────────────────────────────────
-# summon 返回 {"summonRoleEvents":[{title, state, leftTimestamp,
-#   roleList:[{name, starLevel}]}], "summonWeaponEvents":[...]}。
-# 只要角色池、只要五星 UP；武器池不报。
-# state=2 是进行中；没有结束时间字段，用 leftTimestamp 从 now 推。
-def parse_wuwa(data: dict, now: datetime) -> list[Banner]:
+# ── 鸣潮：库街区 wiki 首页（免 token）──────────────────────────
+# POST /wiki/core/homepage/getPage，只要三个固定 header。
+# data.contentJson.sideModules[] 里 title 含「角色…唤取」的模块，
+# content.tabs[] 是同时开着的几个池子：
+#   tab.name                        池名
+#   tab.countDown.dateRange         ["2026-08-20 11:00", "2026-09-10 09:59"]
+#   tab.imgs[0].linkConfig.entryId  角色条目 id
+# **imgs 后几项在所有 tab 里是同一组通用条目，只有第一项是角色。**
+# 武器池不报。
+def parse_wuwa(home: dict, name_of) -> list[Banner]:
     out: list[Banner] = []
-    for e in (data or {}).get("summonRoleEvents") or []:
-        left = e.get("leftTimestamp")
-        if not isinstance(left, int):
+    content = ((home or {}).get("data") or {}).get("contentJson") or {}
+    for m in content.get("sideModules") or []:
+        title = str(m.get("title") or "")
+        if "唤取" not in title or "角色" not in title:
             continue
-        five = tuple(r["name"] for r in (e.get("roleList") or [])
-                     if r.get("starLevel") == 5 and r.get("name"))
-        if not five:
-            continue
-        end = now + timedelta(milliseconds=left)
-        out.append(Banner("鸣潮", str(e.get("title") or ""), five, now, end))
+        for tab in (m.get("content") or {}).get("tabs") or []:
+            dr = (tab.get("countDown") or {}).get("dateRange") or []
+            if len(dr) != 2:
+                continue
+            try:
+                a = datetime.strptime(f"{dr[0]}:00", "%Y-%m-%d %H:%M:%S")
+                b = datetime.strptime(f"{dr[1]}:59", "%Y-%m-%d %H:%M:%S")
+            except (ValueError, TypeError):
+                continue
+            imgs = tab.get("imgs") or []
+            eid = (imgs[0].get("linkConfig") or {}).get("entryId") if imgs else None
+            who = name_of(str(eid)) if eid else ""
+            if not who:
+                continue
+            out.append(Banner("鸣潮", str(tab.get("name") or ""), (who,), a, b))
     out.sort(key=lambda x: x.end)
+    return out
+
+
+# 官方公告正文里「全新角色」那一节，格式是固定的：
+#     5星共鸣者「景燃」（热熔 | 长刃）
+#     ...
+#     ※可通过[身赴三途]角色活动唤取获得。
+_WW_ROLE = re.compile(r"5星共鸣者[「\[]([^」\]]+)[」\]]")
+_WW_POOL = re.compile(r"可通过[\[「]([^\]」]+)[\]」]角色活动唤取")
+
+
+def parse_wuwa_preview(content: str) -> "list[tuple[str, str]]":
+    """从版本公告正文取 (角色, 池名)。只截「全新角色」一节，复刻不在其中。"""
+    text = re.sub(r"<[^>]+>", "", content or "").replace("&nbsp;", "")
+    i = text.find("全新角色")
+    if i < 0:
+        return []
+    j = text.find("全新武器", i)
+    seg = text[i:j if j > 0 else len(text)]
+    hits = list(_WW_ROLE.finditer(seg))
+    out: "list[tuple[str, str]]" = []
+    for k, m in enumerate(hits):
+        tail = seg[m.end():hits[k + 1].start() if k + 1 < len(hits) else len(seg)]
+        pool = _WW_POOL.search(tail)
+        out.append((m.group(1), pool.group(1) if pool else ""))
     return out
 
 
@@ -171,11 +215,11 @@ def debut_only(banners: list[Banner]) -> list[Banner]:
 
 
 def render(banners: list[Banner], now: datetime,
-           next_starts: "dict[str, datetime] | None" = None) -> str:
+           next_starts: "dict[str, tuple[datetime, str]] | None" = None) -> str:
     """渲染成日报末尾的几行。
 
-    `next_starts` 是各游戏下一期的**推算**开始时刻——官方没公布是谁，
-    只知道什么时候换，所以措辞必须是「约」，不能写成官宣。
+    `next_starts[游戏] = (开始时刻, 是谁)`。是谁为空表示官方只换了时间、
+    没公布人——那种情况措辞必须是「约」，不能写成官宣。
     """
     lines: list[str] = []
     for b in sorted((x for x in banners if x.start <= now <= x.end),
@@ -183,12 +227,14 @@ def render(banners: list[Banner], now: datetime,
         d = b.end - now
         lines.append(f"· {b.game}「{b.name}」{' · '.join(b.chars)}"
                      f"　剩 {d.days} 天 {d.seconds // 3600} 小时")
-    for game, when in sorted((next_starts or {}).items(), key=lambda kv: kv[1]):
+    for game, (when, who) in sorted((next_starts or {}).items(),
+                                    key=lambda kv: kv[1][0]):
         if when <= now:
             continue
         d = when - now
-        lines.append(f"· {game} 下一期约 {when:%m-%d %H:%M} 换"
-                     f"（还有 {d.days} 天，UP 是谁官方未公布）")
+        head = f"· {game} 下一期" + ("" if who else "约")
+        tail = f"　{who}" if who else "（UP 是谁官方未公布）"
+        lines.append(f"{head} {when:%m-%d %H:%M} 换（还有 {d.days} 天）{tail}")
     return "🎴 新角色卡池\n" + "\n".join(lines) if lines else ""
 
 
@@ -245,48 +291,111 @@ def _endfield(cred, sk_get) -> "tuple[list[Banner], datetime | None]":
     return got, (min((b.end for b in got), default=None))
 
 
-def _wuwa(token: str, now: datetime) -> "tuple[list[Banner], datetime | None]":
-    h = {"token": token, "source": "h5", "devcode": "",
-         "Content-Type": "application/x-www-form-urlencoded"}
-    def post(path, payload):
-        return _json(_KURO + path, _UA_BROWSER,
-                     urllib.parse.urlencode(payload).encode(), h)
+# 这个 hash 是渠道常量、不随版本变；真失效了就去
+# 555me/game-CDN-List 的 data/ww/game/notice.json 里读 metadata.source_url。
+_WW_NOTICE = ("https://aki-gm-resources-back.aki-game.com/gamenotice/G152/"
+              "76402e5b20be2c39f095a152090afddc/zh-Hans.json")
+_WW_HDR = {"wiki_type": "9", "source": "h5",
+           "referer": "https://wiki.kurobbs.com/"}
+
+
+def _wuwa(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | None]":
+    """当前池走 wiki 首页，下一期走官方公告。两个都不要 token。"""
+    def post(path, payload=None):
+        # data 必须非 None，否则 urllib 发成 GET —— 这两个接口只认 POST。
+        h = dict(_WW_HDR)
+        body = b""
+        if payload is not None:
+            h["Content-Type"] = "application/x-www-form-urlencoded"
+            body = urllib.parse.urlencode(payload).encode()
+        return _json(_KURO + path, _UA_BROWSER, body, h)
+
+    cache: dict[str, str] = {}
+
+    def name_of(eid: str) -> str:
+        if eid not in cache:
+            try:
+                d = post("/wiki/core/catalogue/item/getEntryDetail",
+                         {"id": eid})["data"] or {}
+                cache[eid] = str(d.get("name") or "")
+            except Exception:  # noqa: BLE001
+                log.warning("库街区条目 %s 查不到名字", eid, exc_info=True)
+                cache[eid] = ""
+        return cache[eid]
+
+    # 先取公告：它的「全新角色」一节是判断首发/复刻的唯一权威依据。
+    # getPage 只给池子，不说谁是新人；3.6 上半两个池里达妮娅是复刻。
+    debut: "list[tuple[str, str]]" = []
+    notice_ok = True
     try:
-        role = post("/user/role/findRoleList", {"gameId": 3})["data"][0]
-        d = post("/aki/eventCalendar/summon",
-                 {"gameId": 3, "roleId": role["roleId"],
-                  "serverId": role["serverId"]})["data"]
+        notice = _json(_WW_NOTICE, _UA_BROWSER, timeout=25)
+        body = "".join(str(n.get("content") or "")
+                       for n in (notice.get("game") or [])
+                       if "版本内容说明" in str(n.get("tabTitle") or ""))
+        debut = parse_wuwa_preview(body)
     except Exception:  # noqa: BLE001
-        log.warning("库街区卡池取不到", exc_info=True)
+        notice_ok = False
+        log.warning("鸣潮官方公告取不到，这一版分不出首发和复刻", exc_info=True)
+
+    try:
+        home = post("/wiki/core/homepage/getPage")
+    except Exception:  # noqa: BLE001
+        log.warning("库街区首页取不到", exc_info=True)
         return [], None
-    got = parse_wuwa(d, now)
-    return got, (min((b.end for b in got), default=None))
+    pools = parse_wuwa(home, name_of)
+    end = min((b.end for b in pools), default=None)
+
+    # 公告拿不到就宁可多报一条复刻，也不把倒计时整个丢掉——反正
+    # 同版本几个池子结束时间一样，这一行的价值主要在那个时刻。
+    names = {w for w, _ in debut}
+    got = [b for b in pools if set(b.chars) & names] if notice_ok else pools
+
+    if not end or end <= now:
+        return got, None
+    live = {c for b in pools for c in b.chars}
+    rest = [(w, pl) for w, pl in debut if w not in live]
+    if not rest:
+        return got, (end, "")
+    who = "、".join(f"{w}「{p}」" if p else w for w, p in rest)
+    return got, (end, who)
 
 
-def section(now: datetime, *, cred=None, sk_get=None,
-            kuro_token: str = "") -> str:
+def section(now: datetime, *, skland_token: str = "",
+            cred=None, sk_get=None) -> str:
     """日报末尾那一段。任何一个游戏取不到就少一行，不影响其余。
 
-    `cred`/`sk_get` 由 engine 注入（森空岛签名链路在 skland.py，
-    不在这里重造）；`kuro_token` 来自 .env 的 KUROBBS_TOKEN。
+    只有终末地需要 `skland_token`（或调用方直接给 `cred`/`sk_get`，
+    测试就是这么注入的）。方舟走 PRTS、鸣潮走库街区，都不要 token。
+    签名链路在 skland.py，这里不重造。
     """
+    if sk_get is None and skland_token:
+        try:
+            from . import skland  # noqa: PLC0415 - 只有这一处用得上
+            cred = skland.login(skland_token)
+            def sk_get(path):  # noqa: E306
+                return skland.get(cred, path)
+        except Exception:  # noqa: BLE001
+            log.warning("森空岛登录失败，终末地卡池这一行不出", exc_info=True)
+            sk_get = None
     banners: list[Banner] = []
-    nxt: dict[str, datetime] = {}
+    nxt: "dict[str, tuple[datetime, str]]" = {}
     try:
         ak, ak_next = _arknights(now)
         banners += ak
         if ak_next:
-            nxt["明日方舟"] = ak_next
+            nxt["明日方舟"] = (ak_next, "")
     except Exception:  # noqa: BLE001
         log.warning("方舟卡池整段失败", exc_info=True)
     if sk_get is not None:
         ef, ef_next = _endfield(cred, sk_get)
         banners += ef
         if ef_next and ef_next > now:
-            nxt["终末地"] = ef_next
-    if kuro_token:
-        ww, ww_next = _wuwa(kuro_token, now)
+            nxt["终末地"] = (ef_next, "")
+    try:
+        ww, ww_next = _wuwa(now)
         banners += ww
-        if ww_next and ww_next > now:
+        if ww_next and ww_next[0] > now:
             nxt["鸣潮"] = ww_next
+    except Exception:  # noqa: BLE001
+        log.warning("鸣潮卡池整段失败", exc_info=True)
     return render(banners, now, nxt)

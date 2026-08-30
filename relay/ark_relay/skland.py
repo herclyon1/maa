@@ -57,6 +57,7 @@ _SIGN_KEYS = {"platform": "3", "timestamp": "", "dId": "", "vName": "1.0.0"}
 
 SKLAND_APP_CODE = "4ca99fa6b56cc2ba"     # 森空岛的 appCode，换 code 用
 GRANT_URL = "https://as.hypergryph.com/user/oauth2/v2/grant"
+ZONAI = "https://zonai.skland.com"
 CRED_URL = "https://zonai.skland.com/api/v1/user/auth/generate_cred_by_code"
 REFRESH_URL = "https://zonai.skland.com/web/v1/auth/refresh"
 BINDING_URL = "https://zonai.skland.com/api/v1/game/player/binding"
@@ -280,6 +281,12 @@ def endfield_card(cred: Cred, role_id: str = "", server_id: str = "") -> dict:
     if r.get("code") not in (0, None):
         raise SklandError(f"取终末地详情失败：code={r.get('code')} {r.get('message')}")
     return r.get("data") or {}
+
+
+def get(cred: Cred, path: str) -> dict:
+    """按签名规则 GET 一个 zonai 路径。给 banners.py 用，省得它重造签名链路。"""
+    url = ZONAI + path if path.startswith("/") else path
+    return _get(url, sign_headers(cred, url))
 
 
 def bindings(cred: Cred) -> list[dict]:

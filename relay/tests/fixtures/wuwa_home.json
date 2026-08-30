@@ -1,0 +1,320 @@
+{
+ "code": 200,
+ "data": {
+  "contentJson": {
+   "sideModules": [
+    {
+     "toolslayerVisible": true,
+     "more": {
+      "linkConfig": {
+       "linkType": 1
+      },
+      "visible": false
+     },
+     "unique": false,
+     "editLayerHide": false,
+     "asideLineVisible": false,
+     "id": "bc922c6a-cb0e-4f91-ba9f-38f654ce62e8",
+     "iconUrl": "https://prod-alicdn-community.kurobbs.com/forum/da38bba00f4a46f1840152fef96c42a220240606.png",
+     "type": "events-side",
+     "title": "角色活动唤取",
+     "content": {
+      "visible": true,
+      "tabs": [
+       {
+        "imgs": [
+         {
+          "linkConfig": {
+           "linkType": 1,
+           "entryId": "1536353668409655296"
+          },
+          "img": "https://prod-alicdn-community.kurobbs.com/forum/26bbec5f9a2a4129b2ff8f1edff2833a20260819.jpg",
+          "title": ""
+         },
+         {
+          "linkConfig": {
+           "linkType": 1,
+           "entryId": "1233436648562032640"
+          },
+          "img": "https://prod-alicdn-community.kurobbs.com/forum/80599ee504b441a0934fd1aa3b1b995c20260819.png",
+          "title": ""
+         },
+         {
+          "linkConfig": {
+           "linkType": 1,
+           "entryId": "1233429754977792000"
+          },
+          "img": "https://prod-alicdn-community.kurobbs.com/forum/b8a26d99f96a48a2994e8c3de886697f20260819.png",
+          "title": ""
+         },
+         {
+          "linkConfig": {
+           "linkType": 1,
+           "entryId": "1233492733107564544"
+          },
+          "img": "https://prod-alicdn-community.kurobbs.com/forum/f0d1f736ae004eb49397f6b7a2aad83b20260819.png",
+          "title": ""
+         }
+        ],
+        "name": "仙风玉影水天清",
+        "imgMode": "5",
+        "active": true,
+        "description": "",
+        "countDown": {
+         "dateRange": [
+          "2026-08-20 11:00",
+          "2026-09-10 09:59"
+         ],
+         "repeat": {
+          "endDate": "",
+          "isNeverEnd": true,
+          "repeatInterval": 0,
+          "dataRanges": [
+           {
+            "progressType": 3,
+            "dataRange": [
+             "",
+             ""
+            ],
+            "title": ""
+           }
+          ]
+         },
+         "precision": "minute",
+         "type": "no-repeat"
+        }
+       },
+       {
+        "imgs": [
+         {
+          "linkConfig": {
+           "linkUrl": "https://www.kurobbs.com/mc/post/1512938467751354368",
+           "linkType": 1,
+           "entryId": "1488852222116831232"
+          },
+          "img": "https://prod-alicdn-community.kurobbs.com/forum/144b1a1a76664255b5bfdb9c2a0f4f5d20260819.jpg",
+          "title": ""
+         },
+         {
+          "linkConfig": {
+           "linkType": 1,
+           "entryId": "1233436648562032640"
+          },
+          "img": "https://prod-alicdn-community.kurobbs.com/forum/e2a0fa9e55b34bb0bbcc396d5f359a6020260819.png",
+          "title": ""
+         },
+         {
+          "linkConfig": {
+           "linkType": 1,
+           "entryId": "1233429754977792000"
+          },
+          "img": "https://prod-alicdn-community.kurobbs.com/forum/2e6d9799187b4f09bdfde7f733410b7820260819.png",
+          "title": ""
+         },
+         {
+          "linkConfig": {
+           "linkType": 1,
+           "entryId": "1233492733107564544"
+          },
+          "img": "https://prod-alicdn-community.kurobbs.com/forum/ab3f5d76619145019415662ae18fdd0120260819.png",
+          "title": ""
+         }
+        ],
+        "innerTabs": [
+         {
+          "name": "页签标题",
+          "active": true,
+          "description": ""
+         }
+        ],
+        "name": "予明日以谎言",
+        "imgMode": "5",
+        "active": false,
+        "description": "",
+        "countDown": {
+         "dateRange": [
+          "2026-08-20 11:00",
+          "2026-09-10 09:59"
+         ],
+         "repeat": {
+          "endDate": "",
+          "isNeverEnd": true,
+          "repeatInterval": 0,
+          "dataRanges": [
+           {
+            "progressType": 3,
+            "dataRange": [
+             "",
+             ""
+            ],
+            "title": ""
+           }
+          ]
+         },
+         "precision": "minute",
+         "type": "no-repeat"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "toolslayerVisible": true,
+     "more": {
+      "linkConfig": {
+       "linkType": 1
+      },
+      "visible": false
+     },
+     "unique": false,
+     "editLayerHide": false,
+     "asideLineVisible": false,
+     "id": "b2f6d30a-30b3-426a-8d9d-4124bc5e29d2",
+     "iconUrl": "https://prod-alicdn-community.kurobbs.com/forum/8751848e0ec9460a8c09c5bd10a3734e20240606.png",
+     "type": "events-side",
+     "title": "武器活动唤取",
+     "content": {
+      "visible": true,
+      "tabs": [
+       {
+        "imgs": [
+         {
+          "linkConfig": {
+           "linkUrl": "https://www.kurobbs.com/mc/post/1538887550436995072",
+           "linkType": 1,
+           "entryId": "1538900888550293504"
+          },
+          "img": "https://prod-alicdn-community.kurobbs.com/forum/3de47834922d4fe3835e7f7bc1ce8d3520260819.png",
+          "title": ""
+         },
+         {
+          "linkConfig": {
+           "linkType": 1,
+           "entryId": "1235737480380874752"
+          },
+          "img": "https://prod-alicdn-community.kurobbs.com/forum/ced98d580b334ccd950d65500b5e102220260819.png",
+          "title": ""
+         },
+         {
+          "linkConfig": {
+           "linkType": 1,
+           "entryId": "1289333623412822016"
+          },
+          "img": "https://prod-alicdn-community.kurobbs.com/forum/cfd96b42f20f42dd80603607c7aef9bb20260819.png",
+          "title": ""
+         },
+         {
+          "linkConfig": {
+           "linkType": 1,
+           "entryId": "1235738854938181632"
+          },
+          "img": "https://prod-alicdn-community.kurobbs.com/forum/a2ad4bca6df04d76a2aec603e7d2323120260819.png",
+          "title": ""
+         }
+        ],
+        "name": "云琅",
+        "imgMode": "4-h",
+        "active": true,
+        "description": "",
+        "countDown": {
+         "dateRange": [
+          "2026-08-20 11:00",
+          "2026-09-10 09:59"
+         ],
+         "repeat": {
+          "endDate": "",
+          "isNeverEnd": true,
+          "repeatInterval": 0,
+          "dataRanges": [
+           {
+            "progressType": 3,
+            "dataRange": [
+             "",
+             ""
+            ],
+            "title": ""
+           }
+          ]
+         },
+         "precision": "minute",
+         "type": "no-repeat"
+        }
+       },
+       {
+        "imgs": [
+         {
+          "linkConfig": {
+           "linkUrl": "https://www.kurobbs.com/mc/post/1512938467751354368",
+           "linkType": 1,
+           "entryId": "1506107908334694400"
+          },
+          "img": "https://prod-alicdn-community.kurobbs.com/forum/6612512df69f43f0a2c25f06da7d616e20260819.png",
+          "title": ""
+         },
+         {
+          "linkConfig": {
+           "linkType": 1,
+           "entryId": "1235737480380874752"
+          },
+          "img": "https://prod-alicdn-community.kurobbs.com/forum/0edd9f3dffd74f379ad42ed18cc3aa0a20260819.png",
+          "title": ""
+         },
+         {
+          "linkConfig": {
+           "linkType": 1,
+           "entryId": "1289333623412822016"
+          },
+          "img": "https://prod-alicdn-community.kurobbs.com/forum/b470b2bed017467ab9298ef59ea16ad920260819.png",
+          "title": ""
+         },
+         {
+          "linkConfig": {
+           "linkType": 1,
+           "entryId": "1235738854938181632"
+          },
+          "img": "https://prod-alicdn-community.kurobbs.com/forum/6e415c8ee2c040719257ab553e9f599c20260819.png",
+          "title": ""
+         }
+        ],
+        "innerTabs": [
+         {
+          "name": "页签标题",
+          "active": true,
+          "description": ""
+         }
+        ],
+        "name": "赝作的矮星",
+        "imgMode": "4-h",
+        "active": false,
+        "description": "",
+        "countDown": {
+         "dateRange": [
+          "2026-08-20 11:00",
+          "2026-09-10 09:59"
+         ],
+         "repeat": {
+          "endDate": "",
+          "isNeverEnd": true,
+          "repeatInterval": 0,
+          "dataRanges": [
+           {
+            "progressType": 3,
+            "dataRange": [
+             "",
+             ""
+            ],
+            "title": ""
+           }
+          ]
+         },
+         "precision": "minute",
+         "type": "no-repeat"
+        }
+       }
+      ]
+     }
+    }
+   ]
+  }
+ }
+}
