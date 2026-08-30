@@ -465,7 +465,13 @@ class Notifier:
             delivered, failed = self._fan_out(
                 title, body, order=_ROUTINE_ORDER, stop_on_first=True)
         if not delivered:
-            return [f"{n}: {e}" for n, e in failed.items()]
+            errs = [f"{n}: {e}" for n, e in failed.items()]
+            # 返回非空 = **一条渠道都没送到**。11 个调用点里有很多把返回值丢了
+            # （`notifier.send("🆕 预更新", note)` 这种），于是「这条通知谁都没
+            # 收到」会被静默扔掉。在这里记一条 ERROR，任何调用点都漏不掉。
+            # 2026-08-30 全量审查时发现，和「静默变绿」是同一类毛病。
+            log.error("通知一条渠道都没送到：%s ｜ 标题：%s", "；".join(errs), title)
+            return errs
         # A channel that started working again becomes announceable once more.
         if any(n in self._announced_down for n in delivered):
             for n in delivered:

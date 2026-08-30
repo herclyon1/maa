@@ -83,7 +83,10 @@ def main():
         check("上一轮的失败不会算到这一轮头上",
               "on_run_fails" in got5, False)
         check("本轮的行留下了", "zoom gesture sent" in got5, True)
-        check("目录没配就返回空", _maa_app_log(None, datetime.now()), "")
+        check("目录没配返回 None（不是空串——空串会被判据当成全绿）",
+              _maa_app_log(None, datetime.now()), None)
+        check("窗口内一行都没有也返回 None",
+              _maa_app_log(d, datetime(2030, 1, 1)), None)
 
     print("续行跟着上一条时间戳走，不单独判断")
     with tempfile.TemporaryDirectory() as d:

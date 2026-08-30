@@ -644,8 +644,12 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
                     | win32con.FILE_NOTIFY_CHANGE_LAST_WRITE)
                 log.info("已挂上目录变更通知，记录一落盘立即处理")
         except Exception:  # noqa: BLE001 - a missing notifier must not stop the relay
-            log.exception("目录变更通知挂载失败，退回定时检查")
+            log.exception("目录变更通知挂载失败，先退回定时检查，稍后自动重试")
             watch = None
+        # 重建节奏。开机时挂载失败（比如目录还没就绪）同样要进重试，
+        # 不能只有「重新武装失败」那条路才有。
+        watch_retry_at = time.monotonic() + 5.0
+        watch_retry_delay = 5.0
 
         # Four things can wake this loop, none of them a timer: the service
         # being stopped, a run record landing on disk, the AUTO-MAS backend
@@ -685,6 +689,23 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         next_automas_check = 0.0
         next_inbox_retry = 0.0
         while True:
+            # 监听掉了就退避重建。重建成功后运行记录重新变成「一落盘就处理」。
+            if watch is None and cfg.history_dir \
+                    and time.monotonic() >= watch_retry_at:
+                try:
+                    watch = win32file.FindFirstChangeNotification(
+                        str(cfg.history_dir), True,
+                        win32con.FILE_NOTIFY_CHANGE_FILE_NAME
+                        | win32con.FILE_NOTIFY_CHANGE_LAST_WRITE)
+                    log.info("目录变更通知已重建，恢复「记录一落盘立即处理」")
+                    watch_retry_delay = 5.0
+                except Exception:  # noqa: BLE001 - 重建失败就再等等，别刷屏
+                    watch = None
+                    watch_retry_delay = min(watch_retry_delay * 2, 60.0)
+                    log.warning("目录变更通知重建失败，%.0f 秒后再试",
+                                watch_retry_delay)
+                watch_retry_at = time.monotonic() + watch_retry_delay
+
             handles = [self.stop_event, proc_evt]
             proc_idx = 1
             watch_idx = automas_idx = -1
@@ -752,11 +773,17 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
                     except Exception:  # noqa: BLE001
                         pass
                     watch = None
+                    # 重建时刻：掉了不是终点。原来这里只发一条「去重启中继」
+                    # 就完事，剩下整个开机周期都靠闹钟兜底——和 WMI 订阅那个
+                    # 一次性 bug 是同一族（2026-08-30 全量审查一起修的）。
+                    watch_retry_at = time.monotonic() + 5.0
+                    watch_retry_delay = 5.0
                     notifier.send(
                         "⚠️ 中继的目录监听掉了",
-                        "运行记录不再是一落盘就处理，要等下一个定时判定点才会被读到"
-                        "（最长一小时）。功能还在，只是变慢。\n"
-                        "重启中继即可恢复：net stop ark-relay & net start ark-relay",
+                        "运行记录暂时不再是一落盘就处理，要等下一个定时判定点"
+                        "（最长一小时）。中继会自己反复重建监听，恢复了就不用管；\n"
+                        "如果这条之后一直没恢复，重启中继：\n"
+                        "net stop ark-relay & net start ark-relay",
                         alert=True)
                 # AUTO-MAS writes the .json and .log separately; give it a
                 # moment so the first notification does not read a half-file.

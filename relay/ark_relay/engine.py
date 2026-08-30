@@ -64,10 +64,19 @@ def _okww_master_config(automas_dir: str | Path | None, name: str) -> dict:
     return {}
 
 
-def _okww_nest_expected(automas_dir: str | Path | None) -> bool:
-    """这一轮本来该不该打残象聚落。"""
+def _okww_nest_expected(automas_dir: str | Path | None) -> bool | None:
+    """这一轮本来该不该打残象聚落。**读不到配置返回 None，不是 False。**
+
+    原来读不到就返回 False，于是「配置说不用打」和「我根本没读到配置」
+    长得一模一样——后者会让残象聚落那一项**整个消失**，OK-WW 照报全绿。
+    `_okww_master_config` 在没有 automas_dir、没有 data 目录、JSON 读坏
+    这三种情况下都返回 `{}`，任何一种都会走到这里。
+    这就是 2026-08-30 排查出的那一类 bug：前置不满足 → 静默什么都不做 → 看着像成功。
+    """
     nest = _okww_master_config(automas_dir, "NightmareNestTask")
     daily = _okww_master_config(automas_dir, "DailyTask")
+    if not nest and not daily:
+        return None
     if (nest.get("Only Farm These Nests") or "").strip():
         return True
     if daily.get("Farm Nightmare Nest for Daily Echo"):
@@ -110,7 +119,8 @@ def _maaend_app_log(maaend_dir: "str | Path | None",
     return "\n".join(out)
 
 
-def _maa_app_log(maa_dir: "str | Path | None", started: datetime) -> str:
+def _maa_app_log(maa_dir: "str | Path | None",
+                 started: datetime) -> "str | None":
     """这一轮 MAA **自己**写的 asst.log，只保留本轮时间窗内的行。
 
     AUTO-MAS 的 history 日志只记「脚本跑完了没有」，**没有子任务级别的成败**。
@@ -121,10 +131,10 @@ def _maa_app_log(maa_dir: "str | Path | None", started: datetime) -> str:
     MAA 是**一个滚动的 asst.log**，只能按行首时间戳切。
     """
     if not maa_dir:
-        return ""
+        return None
     f = Path(maa_dir) / "debug" / "asst.log"
     if not f.is_file():
-        return ""
+        return None
     try:
         # 一轮就有三万多行，整文件读没必要；取尾巴再按时间切。
         size = f.stat().st_size
@@ -133,7 +143,7 @@ def _maa_app_log(maa_dir: "str | Path | None", started: datetime) -> str:
                 fh.seek(size - _MAA_LOG_TAIL)
             raw = fh.read().decode("utf-8", errors="replace")
     except OSError:
-        return ""
+        return None
     cut = started.strftime("%Y-%m-%d %H:%M:%S")
     out: list[str] = []
     keep = False
@@ -146,7 +156,9 @@ def _maa_app_log(maa_dir: "str | Path | None", started: datetime) -> str:
         # 否则 traceback 那些行会被无条件带进来（arklog.py 里记过这个坑）。
         if keep:
             out.append(line)
-    return "\n".join(out)
+    # 一行都没落在窗口里 = 这一轮的日志没找到，和「读不到文件」一样无从核对。
+    # 返回 "" 会被判据当成「什么错都没有」，那又是一次假全绿。
+    return "\n".join(out) if out else None
 
 
 def _maaend_new_shots(maaend_dir: str | Path | None,
@@ -359,13 +371,28 @@ class Engine:
                 return None                     # 没日志就没法核对，别瞎报
             if rec.script == "OK-WW":
                 expect_nest = _okww_nest_expected(self.cfg.automas_dir)
-                checks = outcome.okww_checks(text, expect_nest=expect_nest)
+                if expect_nest is None:
+                    # 读不到配置就说读不到，不许悄悄把残象聚落那一项去掉。
+                    checks = outcome.okww_checks(text, expect_nest=False)
+                    checks.append(outcome.Check(
+                        "能读到 OK-WW 生效中的配置", False,
+                        f"{self.cfg.automas_dir}/data/*/Default/ConfigFile/ "
+                        "下没读到 NightmareNestTask.json 和 DailyTask.json，"
+                        "所以这一轮该不该打残象聚落无从判断"))
+                else:
+                    checks = outcome.okww_checks(text, expect_nest=expect_nest)
                 return outcome.summarize(checks, "OK-WW")
             if rec.script == "MAA":
                 # 只看 MAA 自己的日志：AUTO-MAS 的 history 里没有子任务成败。
-                return outcome.summarize(
-                    outcome.maa_checks(_maa_app_log(self.cfg.maa_dir,
-                                                    rec.started)), "MAA")
+                maa_log = _maa_app_log(self.cfg.maa_dir, rec.started)
+                if maa_log is None:
+                    # 空文本喂给 maa_checks 会全部判过 = 又一次假全绿。
+                    return outcome.summarize([outcome.Check(
+                        "能读到 MAA 自己的日志", False,
+                        f"maa_dir={self.cfg.maa_dir}，"
+                        "asst.log 里没有这一轮时间窗内的行，基建成败无从核对")],
+                        "MAA")
+                return outcome.summarize(outcome.maa_checks(maa_log), "MAA")
             if rec.script == "MaaEnd":
                 shots = _maaend_new_shots(self.cfg.maaend_dir, rec.started)
                 # AUTO-MAS 的 history 日志 + MaaEnd 自己的 app 日志一起看：
@@ -373,8 +400,13 @@ class Engine:
                 both = text + "\n" + _maaend_app_log(self.cfg.maaend_dir, rec.started)
                 return outcome.summarize(
                     outcome.maaend_checks(both, shots), "MaaEnd")
-        except Exception:  # noqa: BLE001 - 核对出错不许影响记账
-            log.exception("结果核对本身出错，按原样记账")
+        except Exception as exc:  # noqa: BLE001 - 核对出错不许影响记账
+            log.exception("结果核对本身出错")
+            # 原来这里直接 return None，也就是「全干成」。核对崩了却报全绿，
+            # 是这一类 bug 里最坏的一种：出问题的时候恰恰最不该说没问题。
+            # 记账照旧不受影响（本函数只决定要不要额外报一句）。
+            return (f"{rec.script} 这一轮的结果核对没跑成（{type(exc).__name__}: "
+                    f"{exc}），所以「干成了没有」这次没人验过。")
         return None
 
     def _handle(self, rec: RunRecord) -> None:
