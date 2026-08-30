@@ -32,8 +32,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ark_relay.banners import (  # noqa: E402
     _AK_PAGES, _PRTS, debut_only, parse_ak_schedule, parse_arknights,
-    parse_endfield, parse_endfield_notice, parse_wuwa, parse_wuwa_preview,
-    render, upcoming,
+    newest_version, parse_endfield, parse_endfield_notice, parse_wuwa,
+    parse_wuwa_preview, render, upcoming,
 )
 
 FX = Path(__file__).parent / "fixtures"
@@ -153,6 +153,18 @@ def main() -> int:
                                             "P3R联动（排期是预测，未官宣）")})
     check("只给到日期的源不许凑出 00:00", "00:00" in dateonly, False)
     check("只给到日期时写到日", "09-04 换" in dateonly, True)
+
+    # ── 3.7 发布后 3.6 还挂着，必须只认版本号大的那条 ──────
+    check("两版并存时取版本号大的",
+          newest_version([("「甲」3.6版本内容说明", "旧"),
+                          ("「乙」3.7版本内容说明", "新")]), "新")
+    check("顺序反过来结果不变",
+          newest_version([("「乙」3.7版本内容说明", "新"),
+                          ("「甲」3.6版本内容说明", "旧")]), "新")
+    check("跨大版本也要比对(9.9 < 10.0)",
+          newest_version([("9.9版本内容说明", "旧"),
+                          ("10.0版本内容说明", "新")]), "新")
+    check("一条都没有时返回空", newest_version([]), "")
 
     check("一条都没有时整段为空", render([], now, {}), "")
 

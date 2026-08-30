@@ -149,6 +149,26 @@ _EF_POOL = re.compile(r"「([^」]+)」特许寻访")
 _EF_UP = re.compile(r"6星干员【([^】]+)】获取概率提升")
 
 
+_VER = re.compile(r"(\d+)\.(\d+)")
+
+
+def newest_version(entries: "list[tuple[str, str]]") -> str:
+    """从 [(标题, 正文)] 里挑版本号最大的那条正文。
+
+    3.6 快结束时 3.7 的版本说明会先发出来，两条并存。原来是把所有
+    「版本内容说明」拼在一起，一旦 3.7 排在 3.6 前面，「在开的那位之后」
+    这条判据就会指到错的人身上。只认版本号最大的那条，3.7 一发布
+    不用改代码就能自动报出来。
+    """
+    best, best_key = "", (-1, -1)
+    for title, body in entries:
+        m = _VER.search(title or "")
+        key = (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+        if key >= best_key:
+            best, best_key = body, key
+    return best
+
+
 def upcoming(debut: "list[tuple[str, str]]", live: "set[str]"
              ) -> "list[tuple[str, str]]":
     """公告按时间顺序列全版的池子，在开的那位之后的才是还没开的。
@@ -398,10 +418,11 @@ def _endfield(cred, sk_get, now: datetime
     notice_ok = True
     try:
         d = _json(_EF_BULLETIN, _UA_BROWSER, timeout=25)
-        html = "".join(
-            str(((n.get("data") or {}).get("html")) or "")
+        html = newest_version([
+            (str(n.get("title") or ""),
+             str(((n.get("data") or {}).get("html")) or ""))
             for n in ((d.get("data") or {}).get("list") or [])
-            if "版本更新说明" in str(n.get("title") or ""))
+            if "版本更新说明" in str(n.get("title") or "")])
         debut = parse_endfield_notice(html)
     except Exception:  # noqa: BLE001
         notice_ok = False
@@ -482,9 +503,10 @@ def _wuwa(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | None]":
     notice_ok = True
     try:
         notice = _json(_WW_NOTICE, _UA_BROWSER, timeout=25)
-        body = "".join(str(n.get("content") or "")
-                       for n in (notice.get("game") or [])
-                       if "版本内容说明" in str(n.get("tabTitle") or ""))
+        body = newest_version([(str(n.get("tabTitle") or ""),
+                                str(n.get("content") or ""))
+                               for n in (notice.get("game") or [])
+                               if "版本内容说明" in str(n.get("tabTitle") or "")])
         debut = parse_wuwa_preview(body)
     except Exception:  # noqa: BLE001
         notice_ok = False

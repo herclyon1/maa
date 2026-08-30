@@ -126,6 +126,26 @@ python3 -m py_compile ark_relay/*.py service.py run.py
 FILES=$(python3 -c "import json;print(' '.join(json.load(open('manifest.json'))['files']))")
 
 lap
+# 远端算哈希：用 AUTO-MAS 自带的 python，避免 certutil 的 GBK 输出问题。
+cat > /tmp/ark-verify.py <<'PY'
+import hashlib, json, pathlib, sys
+root = pathlib.Path(r"C:\ProgramData\ark-relay")
+want = json.loads((root / "_manifest_check.json").read_text(encoding="utf-8"))["files"]
+listing = "--list" in sys.argv
+bad = []
+for rel, sha in want.items():
+    p = root / rel
+    got = hashlib.sha1(p.read_bytes()).hexdigest() if p.exists() else "MISSING"
+    if got != sha:
+        bad.append(rel if listing else f"{rel}: {got[:8]} != {sha[:8]}")
+if listing:
+    # 只报差异，退出码恒 0——这一趟是用来决定推哪些文件的，不是判决。
+    print("\n".join(bad))
+    sys.exit(0)
+print("MISMATCH " + "; ".join(bad) if bad else f"HASH-OK {len(want)}")
+sys.exit(1 if bad else 0)
+PY
+
 echo "▶ 3/5 推送 $(wc -w <<<"$FILES") 个文件"
 # 清单里现在有嵌套路径（ark_relay/okww_files/*.py）。scp 不会自己建目录，
 # 目录不在的话那几个文件会静静推不过去，而哈希核对那步才会发现。先建好。
@@ -136,26 +156,24 @@ for d in $(printf '%s\n' $FILES | xargs -n1 dirname | sort -u | grep -v '^\.$');
 done
 # 一次调用建完所有目录——原来是一个目录一次 ssh，跨境往返白白多花好几秒。
 [ -n "$MKDIRS" ] && ssh "${SSH_OPTS[@]}" "$USER_AT" "$MKDIRS" >/dev/null 2>&1 || true
-for f in $FILES; do
-  scp -q "${SSH_OPTS[@]}" "$f" "${USER_AT}:${REMOTE_DIR}/${f}"
-done
+# 只推真正变了的。整份推一遍要一分多钟，而绝大多数部署只动一两个文件。
+# 先把清单和校验脚本送上去，问机器哪些对不上，再按名单推。
+# 安全性没有变化：推完之后那道严格校验（下一段）一个文件都不放过。
+scp -q "${SSH_OPTS[@]}" manifest.json "${USER_AT}:${REMOTE_DIR}/_manifest_check.json"
+scp -q "${SSH_OPTS[@]}" /tmp/ark-verify.py "${USER_AT}:C:/Users/Administrator/ark-verify.py"
+CHANGED=$(ssh "${SSH_OPTS[@]}" "$USER_AT" \
+  "\"$PY\" -X utf8 C:\\Users\\Administrator\\ark-verify.py --list" 2>/dev/null | tr -d '\r')
+if [ -z "$CHANGED" ]; then
+  echo "    机器上的文件和本地一致，无需推送"
+else
+  echo "    需要推送 $(printf '%s\n' "$CHANGED" | grep -c .) 个（共 $(wc -w <<<"$FILES") 个）"
+  for f in $CHANGED; do
+    scp -q "${SSH_OPTS[@]}" "$f" "${USER_AT}:${REMOTE_DIR}/${f}"
+  done
+fi
 
 lap
 echo "▶ 4/5 逐文件核对哈希"
-# 远端算哈希：用 AUTO-MAS 自带的 python，避免 certutil 的 GBK 输出问题。
-cat > /tmp/ark-verify.py <<'PY'
-import hashlib, json, pathlib, sys
-root = pathlib.Path(r"C:\ProgramData\ark-relay")
-want = json.loads((root / "_manifest_check.json").read_text(encoding="utf-8"))["files"]
-bad = []
-for rel, sha in want.items():
-    p = root / rel
-    got = hashlib.sha1(p.read_bytes()).hexdigest() if p.exists() else "MISSING"
-    if got != sha:
-        bad.append(f"{rel}: {got[:8]} != {sha[:8]}")
-print("MISMATCH " + "; ".join(bad) if bad else f"HASH-OK {len(want)}")
-sys.exit(1 if bad else 0)
-PY
 scp -q "${SSH_OPTS[@]}" manifest.json "${USER_AT}:${REMOTE_DIR}/_manifest_check.json"
 scp -q "${SSH_OPTS[@]}" /tmp/ark-verify.py "${USER_AT}:C:/Users/Administrator/ark-verify.py"
 ssh "${SSH_OPTS[@]}" "$USER_AT" "\"$PY\" -X utf8 C:\\Users\\Administrator\\ark-verify.py"
