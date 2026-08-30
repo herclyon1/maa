@@ -232,7 +232,12 @@ class WeComBot:
     sends a handful of messages a day, all of them to the same person.
     """
 
-    _LIMIT = 3600  # markdown bodies cap at 4096 bytes; leave room for the marker
+    # 2026-08-31：原来发的是 markdown。企业微信自己收得下，但这个群是**微信群**，
+    # 微信不认机器人的 markdown，用户手机上只看到一行「暂不支持此消息类型，
+    # 点击前往企业微信查看」——等于每一条群通知都白发了。改成纯文本，
+    # 微信和企业微信都认。text 的字节上限是 2048（markdown 是 4096），
+    # 所以这里的余量也要跟着降。
+    _LIMIT = 1800
 
     def __init__(self, cfg: Config):
         self.url = cfg.wecom_bot_url
@@ -244,7 +249,7 @@ class WeComBot:
     def send_text(self, text: str) -> None:
         for part in WeCom._split(text, self._LIMIT):
             data = _post_json(self.url, {
-                "msgtype": "markdown", "markdown": {"content": part},
+                "msgtype": "text", "text": {"content": part},
             })
             if data.get("errcode") != 0:
                 raise RuntimeError(
