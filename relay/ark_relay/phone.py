@@ -77,6 +77,10 @@ class Mailbox:
         self.pin = (pin or "").strip()
         self.state_dir = Path(state_dir)
         self._seen = self._load_seen()
+        # 停服务时要能立刻把这条连接掐断。光靠读超时不行：最坏要等满一个
+        # 超时周期，而 Windows 的服务停止只给 30 秒宽限——2026-08-31 因此
+        # 连着几次卡在 STOP_PENDING，每次白等十分钟。
+        self._resp = None
 
     @property
     def enabled(self) -> bool:
@@ -162,6 +166,15 @@ class Mailbox:
 
     # ---------- 挂着听（长连接，零轮询） ----------
 
+    def close(self) -> None:
+        """把挂着的那条连接掐断，让 listen 立刻从阻塞里出来。"""
+        r, self._resp = self._resp, None
+        if r is not None:
+            try:
+                r.close()
+            except Exception:  # noqa: BLE001 - 关不掉也不能拖住停止流程
+                log.debug("手机通道关不掉，忽略", exc_info=True)
+
     def listen(self, on_cmd, stop) -> None:
         """连上就挂着，服务端有消息才推过来。`stop()` 返回真就退出。
 
@@ -185,6 +198,7 @@ class Mailbox:
                 # 只能强杀进程。ntfy 每 45 秒会发一次 keepalive，
                 # 90 秒的读超时永远不会误伤，超时了外层重连就是。
                 with urllib.request.urlopen(req, timeout=90) as r:
+                    self._resp = r
                     log.info("📱 手机通道已连上（长连接，不轮询）")
                     delay = 5
                     for line in r:

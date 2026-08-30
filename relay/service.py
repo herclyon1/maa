@@ -319,6 +319,11 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
     def SvcStop(self):  # noqa: N802 - name required by the framework
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         win32event.SetEvent(self.stop_event)
+        # 手机通道那条长连接必须主动掐断，否则它在 socket 读上阻塞着，
+        # 服务停不下来——2026-08-31 连着几次卡在 STOP_PENDING。
+        box = getattr(self, "_mailbox", None)
+        if box is not None:
+            box.close()
 
     def SvcDoRun(self):  # noqa: N802 - name required by the framework
         servicemanager.LogMsg(
@@ -542,6 +547,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         from ark_relay.phone import Mailbox
 
         box = Mailbox(cfg.phone_topic, cfg.phone_pin, cfg.state_dir)
+        self._mailbox = box          # SvcStop 要用它掐断长连接
 
         def push_state(why: str) -> None:
             if not box.enabled:
