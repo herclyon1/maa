@@ -1,11 +1,11 @@
 {
-  "version": 2026083102,
-  "name": "今晚别关机",
-  "note": "改完把 version 加 1（格式是 年月日+两位序号），否则机器认为没变化",
+  "version": 2026083103,
+  "name": "待办（暂无）",
+  "note": "手机端要换成可视化界面，这个文件先放回安全状态",
   "commands": [
     {
       "action": "skip_shutdown",
-      "off": false
+      "off": true
     }
   ]
 }
