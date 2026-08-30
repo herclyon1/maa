@@ -32,7 +32,6 @@ REMOTE_DIR='C:/ProgramData/ark-relay'
 PY='D:\ark\automas\environment\python\python.exe'
 # 两个绝对路径都要在任何 cd 之前算好。2026-08-26 我在 cd 之后才去解析
 # "$(dirname "${BASH_SOURCE[0]}")"，相对路径当场失效，取日志那步静静失败了。
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../relay" && pwd)"
 
 cd "$HERE"
@@ -225,6 +224,15 @@ Start-Service ark-relay -ErrorAction SilentlyContinue
 try { $svc.WaitForStatus('Running', [TimeSpan]::FromSeconds(40)) } catch {}
 $svc.Refresh()
 Write-Output ("STATE=" + $svc.Status)
+# 顺手把日志尾巴带回来，省一次跨境往返。
+# base64 是纯 ASCII，绕开「中文穿过 936 控制台」那一层——winrun 存在的
+# 理由是同一件事，只是这里已经在机器上了，不必再跑一趟。
+Start-Sleep -Seconds 3
+try {
+  $tail = Get-Content 'C:\ProgramData\ark-relay\relay.log' -Tail 6 -Encoding utf8
+  $joined = ($tail -join "`n")
+  Write-Output ("LOG=" + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($joined)))
+} catch {}
 PS1
 # 闸门要求：送到机器上的 PowerShell 一律走 base64，不许内联拼接。
 ENC=$(printf '%s' "$RESTART_PS1" | iconv -f UTF-8 -t UTF-16LE | base64 | tr -d '\n')
@@ -244,16 +252,15 @@ if [ "$STATE" != "Running" ]; then
 fi
 echo "    启动确认：RUNNING"
 
-sleep 10
-# 日志尾巴走 winrun.sh，不要自己 ssh 打印。
-#
-# 换过一轮 pwsh 还是乱码——问题根本不在哪个 PowerShell，而在**中文穿过
-# 936 的控制台**这一层：不管谁写的 UTF-8，经过 cmd 管道就已经碎了。
-# winrun.sh 从一开始就是为这件事写的：远端写 UTF-8 文件，整体拷回来再解码，
-# 中文一个字节都不上命令行。同目录的现成工具，不要重复造。
-"$SCRIPT_DIR/winrun.sh" --get 'C:\ProgramData\ark-relay\relay.log' \
-  2>/dev/null | tail -6 | sed 's/^/    /' \
-  || echo "    （取日志失败，不影响部署结果——服务状态上面已确认）"
+# 日志尾巴已经跟着重启那次调用一起回来了（base64，绕开 936 控制台）。
+# 原来这里是 sleep 10 再跑一趟 winrun --get，光这两步就二三十秒，
+# 而这一整段的产出只是给人看六行日志。
+if LOGB64=$(sed -n 's/^LOG=//p' <<<"$OUT") && [ -n "$LOGB64" ]; then
+  printf '%s' "$LOGB64" | base64 -d 2>/dev/null | sed 's/^/    /' \
+    || echo "    （日志解码失败，不影响部署结果——服务状态上面已确认）"
+else
+  echo "    （没取到日志，不影响部署结果——服务状态上面已确认）"
+fi
 
 printf '%s' "$NOTES_SHA" > "$NOTES_STAMP"
 

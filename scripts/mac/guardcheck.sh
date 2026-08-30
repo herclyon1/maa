@@ -232,7 +232,9 @@ accepts "load 不许挂自动刷新（那就是轮询）" \
 
 echo
 echo "▶ 仓库自检本身"
-accepts "lint-repo 当前全绿" ./scripts/mac/lint-repo.sh
+# 这里只验「lint 不会误杀干净的树」。测试那一项部署流程自己会跑一遍，
+# 在这儿再跑一遍纯属重复，一次部署白等十几秒。
+LINT_SKIP_TESTS=1 accepts "lint-repo 当前全绿" ./scripts/mac/lint-repo.sh
 
 echo
 if [ "$FAIL" = 0 ]; then
