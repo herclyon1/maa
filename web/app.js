@@ -63,15 +63,15 @@ const SCHEMA = [
   { title: "明日方舟", script: "MAA", sec: "MAA", fields: [
     { key:"关卡",       path:"Info.Stage",        type:"text",
       hint:"自己填，像 1-7、CE-6、AT-4" },
-    { key:"关卡模式",   path:"Info.StageMode",    type:"text", ro:true,
-      hint:"固定关卡＝每次都刷上面那一关。这项要在电脑上改" },
+    { key:"关卡模式",   path:"Info.StageMode",    type:"text",
+      hint:"固定＝一直刷上面那一关；选计划表＝按表里排的日程刷" },
     { key:"理智药",     path:"Info.MedicineNumb", type:"number",
       hint:"最多吃几个。999＝有多少吃多少" },
     { key:"连战",       path:"Info.SeriesNumb",   type:"select",
       opts:["0","1","2","3","4","5","6"], asText:true,
       hint:"一次连打几场。0＝不指定，听游戏里的" },
-    { key:"剿灭",       path:"Info.Annihilation", type:"text", ro:true,
-      hint:"关闭／本周已完成。注意：被手动关掉也是这个值，那样每周会少一份奖励。这项要在电脑上改" },
+    { key:"剿灭",       path:"Info.Annihilation", type:"text",
+      hint:"「关闭」既表示本周已打完，也可能是被手动关掉了——后者会一直少一份周奖励" },
     { key:"作战开关",   path:"Task.IfFight",      type:"bool",
       hint:"关掉就完全不刷关，只做别的日常" },
     { key:"活动关优先", path:"Task.IfActivityFirst", type:"bool",
@@ -86,8 +86,8 @@ const SCHEMA = [
       hint:"关掉就不花理智，只做日常" },
     { key:"自动吃药", path:"Task.IfAutoUseSpMedication", type:"bool",
       hint:"理智不够时自动嗑药" },
-    { key:"理智任务", path:"Task.SanityTaskType", type:"text", ro:true,
-      hint:"理智花在哪一类上。这项要在电脑上改" },
+    { key:"理智任务", path:"Task.SanityTaskType", type:"text",
+      hint:"理智花在哪一类上" },
     { key:"基质地点", path:"Task.AutoEssenceSpecifiedLocation", type:"text",
       hint:"去哪个区采基质" },
   ]},
@@ -223,7 +223,8 @@ function render() {
       const live = optsOf(f.path);        // 机器发过来的真实选项
       /* 字段名用 AUTO-MAS 自己的中文标注（它界面就是中文的），
          没有才退回我在 SCHEMA 里写的那个。 */
-      const label = ((((snap && snap.options) || {})._labels || {})[f.path])
+      // 标签按「脚本|路径」取：不同脚本有同名字段，全局匹配会串标签
+      const label = ((((snap && snap.options) || {})._labels || {})[`${g.script}|${f.path}`])
                  || f.label || f.key;
       const hint = f.hint ? `<span class="hint">${f.hint}</span>` : "";
       let ctl;

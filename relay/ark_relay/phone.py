@@ -306,9 +306,62 @@ _OPTS = re.compile(r"OptionsValidator\(\s*\[(.*?)\]", re.S)
 _QUOTED = re.compile(r"""["']([^"']+)["']""")
 
 
-def _mas_labels(automas_dir) -> dict:
-    """AUTO-MAS 各配置项的中文名和合法取值。`{"Info.Stage": {...}}`"""
+# 前端（Electron）里每个下拉都是 {label:"中文",value:"英文"}。后端只登记
+# 取值、不登记中文，中文全在这份打包产物里——用户 2026-08-31：
+# 「界面上全都是中文呀，你怎么可能找不到呢？既然实际上有中文，
+# 为什么要留给我英文呢？」他是对的。
+# app.asar 有 57MB，扫一次要几秒，所以按「大小+修改时间」缓存结果。
+_LABEL_PAIR = re.compile(
+    r'label\s*:\s*"([^"]{1,40})"\s*,\s*value\s*:\s*"([^"]{1,60})"')
+
+
+def _asar_value_labels(automas_dir, state_dir: Path) -> dict:
+    """`{英文取值: 中文名}`，从前端打包产物里抽。"""
+    if not automas_dir:
+        return {}
+    asar = Path(automas_dir) / "resources" / "app.asar"
+    try:
+        st = asar.stat()
+    except OSError:
+        log.warning("找不到 app.asar，下拉里会留下英文取值")
+        return {}
+    stamp = f"{st.st_size}-{int(st.st_mtime)}"
+    cache = Path(state_dir) / "asar-labels.json"
+    try:
+        got = json.loads(cache.read_text(encoding="utf-8"))
+        if got.get("stamp") == stamp:
+            return got.get("map") or {}
+    except (OSError, json.JSONDecodeError):
+        pass
+    try:
+        text = asar.read_bytes().decode("utf-8", "replace")
+    except OSError:
+        log.warning("读不了 app.asar", exc_info=True)
+        return {}
     out: dict = {}
+    for label, value in _LABEL_PAIR.findall(text):
+        # 只留中文标签；英文=英文的那些没意义
+        if any("\u4e00" <= ch <= "\u9fff" for ch in label):
+            out.setdefault(value, label)
+    try:
+        atomic_write_text(cache, json.dumps({"stamp": stamp, "map": out},
+                                            ensure_ascii=False))
+    except OSError:
+        pass
+    log.info("从前端抽到 %d 条中文对照", len(out))
+    return out
+
+
+# 一个脚本一个 class：MaaUserConfig / MaaEndUserConfig / OkwwUserConfig。
+# 按「节.键」全局匹配会让同名字段串标签，所以按 class 分开。
+_CLASS = re.compile(r"^class\s+(\w+)", re.M)
+_CLASS_OF = {"MaaUserConfig": "MAA", "MaaEndUserConfig": "MaaEnd",
+             "OkwwUserConfig": "OK-WW"}
+
+
+def _mas_labels(automas_dir) -> dict:
+    """各脚本的中文名和合法取值。`{"MAA": {"Info.Stage": {...}}}`"""
+    out: dict = {"MAA": {}, "MaaEnd": {}, "OK-WW": {}}
     if not automas_dir:
         return out
     models = Path(automas_dir) / "app" / "models"
@@ -320,13 +373,51 @@ def _mas_labels(automas_dir) -> dict:
             text = f.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        for m in _CFG_ITEM.finditer(text):
-            o = _OPTS.search(m.group("rest"))
-            out[f'{m.group("sec")}.{m.group("key")}'] = {
-                "label": m.group("label").strip(),
-                "options": _QUOTED.findall(o.group(1)) if o else None,
-            }
+        marks = list(_CLASS.finditer(text))
+        for i, cm in enumerate(marks):
+            game = _CLASS_OF.get(cm.group(1))
+            if not game:
+                continue
+            end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
+            for m in _CFG_ITEM.finditer(text[cm.end():end]):
+                o = _OPTS.search(m.group("rest"))
+                out[game][f'{m.group("sec")}.{m.group("key")}'] = {
+                    "label": m.group("label").strip(),
+                    "options": _QUOTED.findall(o.group(1)) if o else None,
+                }
     return out
+
+
+def _plan_options(kind: str) -> "list[list[str]]":
+    """关卡模式／理智任务配置模式：固定，或者某张计划表。"""
+    out = [["固定（用下面这些设置）", "Fixed"]]
+    try:
+        from .commands import _mas  # noqa: PLC0415
+        for pid, v in (_mas("/api/plan/get").get("data") or {}).items():
+            name = str((v.get("Info") or {}).get("Name") or "")
+            if name and kind.lower() in name.replace(" ", "").lower():
+                out.append([f"计划表：{name}", pid])
+    except Exception:  # noqa: BLE001
+        log.warning("取不到计划表列表", exc_info=True)
+    return out
+
+
+_SANITY_LABELS = re.compile(r"MAAEND_SANITY_TASK_LABELS\s*=\s*\{(.*?)\}", re.S)
+
+
+def _sanity_options(automas_dir) -> "list[list[str]]":
+    """终末地的理智任务类型，中文名用 AUTO-MAS 自己那张表。"""
+    if not automas_dir:
+        return []
+    f = Path(automas_dir) / "app" / "utils" / "constants.py"
+    try:
+        m = _SANITY_LABELS.search(f.read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return []
+    if not m:
+        return []
+    return [[zh, en] for en, zh in
+            re.findall(r'"([^"]+)"\s*:\s*"([^"]+)"', m.group(1))]
 
 
 # 手机上真正会显示的那些项。**只发这些**：把 154 条标注全塞进去，
@@ -348,14 +439,23 @@ def _options(cfg) -> dict:
     """各游戏可选项。取不到就不给，页面那一项退回文本框。"""
     out: dict = {"MAA": {}, "MaaEnd": {}, "OK-WW": {}}
     try:
-        labels = {k: v for k, v in
-                  _mas_labels(getattr(cfg, "automas_dir", None)).items()
-                  if k in SHOWN}
-        for game in ("MAA", "MaaEnd"):
-            for path, info in labels.items():
+        zh = _asar_value_labels(getattr(cfg, "automas_dir", None),
+                                Path(getattr(cfg, "state_dir", ".")))
+        names: dict = {}
+        for game, items in _mas_labels(getattr(cfg, "automas_dir", None)).items():
+            for path, info in items.items():
+                if path not in SHOWN:
+                    continue
+                names[f"{game}|{path}"] = info["label"]
                 if info.get("options"):
-                    out[game][path] = [[v, v] for v in info["options"]]
-        out["_labels"] = {k: v["label"] for k, v in labels.items()}
+                    out[game][path] = [[zh.get(v, v), v] for v in info["options"]]
+        # 这两项后端只写「固定 或 某张计划表」，候选要现查
+        out["MAA"]["Info.StageMode"] = _plan_options("MAA")
+        names.setdefault("MAA|Info.StageMode", "关卡模式")
+        if san := _sanity_options(getattr(cfg, "automas_dir", None)):
+            out["MaaEnd"]["Task.SanityTaskType"] = san
+            names.setdefault("MaaEnd|Task.SanityTaskType", "理智任务")
+        out["_labels"] = names
     except Exception:  # noqa: BLE001
         log.warning("AUTO-MAS 的中文标注读不到", exc_info=True)
     try:
