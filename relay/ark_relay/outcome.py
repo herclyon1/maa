@@ -165,8 +165,18 @@ def maaend_checks(text: str, on_error_names: list[str]) -> list[Check]:
 #   [ERR] asst::InfrastAbstractTask::click_clear_button clear failed
 #   [TRC] asst::InfrastAbstractTask::on_run_fails | enter
 #   [TRC] asst::InfrastAbstractTask::on_run_fails | leave, 2006 ms
-# `on_run_fails` 是 MAA 自己的「这个任务失败了」收尾路径，不是重试中间态，
-# 出现即代表这一环没干成。
+# `on_run_fails` 到底意味着什么——2026-08-30 我第一版读错了，这里写清楚。
+#
+# 我最初断言「on_run_fails 跑了就等于基建整体失败」，并按这个判据发了版。
+# 然后把失败那趟和成功那趟逐行对比，结论相反：
+#   08-29 晚（有 on_run_fails）设施覆盖 Dorm22/Mfg15/Trade11/Power8/Office6/…
+#   08-30 早（无 on_run_fails）设施覆盖 **一模一样**
+#   `click_clear_button clear failed` 两趟都各有 1 次
+# 而且 on_run_fails 之后 MAA 立刻跑 InfrastBegin 恢复（2006 ms）
+# 然后继续 SwipeToTheLeft → enter_facility → Reception，把剩下的设施跑完了。
+#
+# 所以它是**某一个设施的子任务失败后的恢复入口**，不是整条链死掉。
+# 报的时候必须说成「有设施失败并走了恢复」，不能说成「基建没干成」。
 _MAA_INFRAST_FAILED = "InfrastAbstractTask::on_run_fails"
 # 干员技能图标识别不出来。单次可能只是抖动，几十次就是识别整体不工作了。
 _MAA_SKILL_BLIND = "skill has no recognition result"
@@ -181,16 +191,17 @@ def maa_checks(text: str) -> list[Check]:
     out: list[Check] = []
 
     blind = text.count(_MAA_SKILL_BLIND)
-    infra_bad = _MAA_INFRAST_FAILED in text
+    n_recover = text.count(_MAA_INFRAST_FAILED + " | enter")
     detail = ""
-    if infra_bad:
-        detail = "MAA 自己跑了 InfrastAbstractTask::on_run_fails"
+    if n_recover:
+        detail = (f"{n_recover} 个设施的换班子任务失败后走了恢复流程"
+                  f"（MAA 恢复完继续跑完了剩下的设施，不是整条链死掉）")
         if blind:
             detail += f"；干员技能识别失败 {blind} 次"
-    out.append(Check("基建换班", not infra_bad, detail))
+    out.append(Check("基建没有设施掉进恢复流程", not n_recover, detail))
 
-    # 基建没失败但识别在大量失败，也要说——那是下一次失败的前兆。
-    if not infra_bad and blind >= _MAA_SKILL_BLIND_LIMIT:
+    # 没掉进恢复但识别在大量失败，也要说——那是下一次失败的前兆。
+    if not n_recover and blind >= _MAA_SKILL_BLIND_LIMIT:
         out.append(Check("干员技能能识别出来", False,
                          f"「{_MAA_SKILL_BLIND}」{blind} 次"))
 

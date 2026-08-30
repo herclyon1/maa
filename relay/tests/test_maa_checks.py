@@ -44,8 +44,8 @@ CLEAN = """\
 def main():
     print("基建失败必须报出来（这是全绿的根因）")
     got = maa_checks(REAL_FAIL)
-    check("基建这一项判失败",
-          any(c.label == "基建换班" and not c.ok for c in got), True)
+    check("基建掉进恢复流程要报出来",
+          any(c.label.startswith("基建") and not c.ok for c in got), True)
     check("summarize 不再返回 None", summarize(got, "MAA") is not None, True)
     check("找不到的任务定义也报",
           any("任务定义" in c.label and not c.ok for c in got), True)
@@ -64,8 +64,9 @@ def main():
 
     print("基建失败时把识别次数一起带上，不另开一条")
     got4 = maa_checks(REAL_FAIL + "skill has no recognition result\n" * 20)
-    infra = [c for c in got4 if c.label == "基建换班"][0]
-    check("detail 里带次数", "20 次" in infra.detail, True)
+    infra = [c for c in got4 if c.label.startswith("基建")][0]
+    check("detail 里带识别次数", "20 次" in infra.detail, True)
+    check("detail 说清不是整条链死掉", "不是整条链死掉" in infra.detail, True)
     check("不重复开一条技能项",
           sum(1 for c in got4 if "技能" in c.label), 0)
 
