@@ -171,3 +171,47 @@ The fastest way is LDExtras , cost: 24 ms
 | C 本地改捏合坐标 | 改 `resource/tasks/tasks.json` 的 `InfrastInfoZoomOutPointer0/1`，加大起点间距、缩小终点间距 | **高**：① MAA 启动时跑 `ResourceIntegrityChecker`（08-28 晚班「Integrity check passed, 9302 file(s) verified」），改动可能被判失败；② `tasks.json` 会被 OTA 更新覆盖 |
 
 推荐 **A + B**。C 在整改前不要做。
+
+
+## 2026-08-29 晚班（v6.17.0-beta.7）：基建又失败了，但症状换了
+
+昨晚 21:30 那趟的 `asst.log` 实读结果，先说清楚**哪些是日志里写的，哪些是我没证据的**。
+
+### 日志里确实有的
+
+```
+21:36:20 [INF] InfrastInfoTask | zoom gesture sent
+21:38:59 [INF] SubTaskError {"class":"asst::ProcessTask","first":["Infrast...
+21:42:02 [INF] SubTaskError {"class":"asst::ProcessTask","first":["Infrast...
+21:42:02 [ERR] asst::InfrastAbstractTask::click_clear_button clear failed
+21:42:19 [TRC] asst::InfrastAbstractTask::on_run_fails | enter
+21:42:21 [TRC] asst::InfrastAbstractTask::on_run_fails | leave, 2006 ms
+```
+
+整段 **ERR 37 条 / WRN 1869 条**，去重后排前面的是：
+
+| 次数 | 内容 |
+|------|------|
+| ×20 | `skill has no recognition result` |
+| ×7 | `Unknown task: FightSeries-OldMethodFlag` |
+| ×7 | `Task FightSeries-OldMethodFlag not found` |
+| ×1 | `asst::InfrastAbstractTask::click_clear_button clear failed` |
+| ×1 | `asst::VisionHelper::correct_rect image is empty` |
+
+`on_run_fails` 跑了，说明**基建任务确实失败了**，不是「报了错但过了」。
+
+### 和早上那次的区别
+
+早上是**缩放手势的坐标没乘分辨率系数**（上游 #17895）。
+昨晚 `zoom gesture sent` 之后**没有任何 zoom 相关的报错**，
+失败点是 `click_clear_button`（清空干员选择的按钮）和
+20 次 `skill has no recognition result`（干员技能图标识别不出来）。
+
+**这两者是不是同一个根因，我没有证据，不要当成一回事。**
+「识别不出来」这一族症状看着像同源（模板在当前分辨率下匹配不上），
+但缩放这一条在 beta.7 里已经修了，昨晚也没报缩放错。
+
+### 待查
+
+- `FightSeries-OldMethodFlag` 这个任务被引用了 7 次却找不到定义，
+  可能是程序版本和资源版本对不上。没查。
