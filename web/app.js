@@ -218,7 +218,10 @@ function render() {
 }
 
 function wire() {
-  $("#refresh").onclick = ping;
+  // 必须包一层：`onclick = ping` 会把**鼠标事件对象**当成 minAt 传进去，
+  // 于是 `s.at >= floor` 变成「数字 >= 事件对象」，永远为假——
+  // 机器明明开着也判成关机。2026-08-31 我加 minAt 参数时就这么弄坏过一次。
+  $("#refresh").onclick = () => ping();
   $("#runnow").onclick = () => oneShot({ action:"run_now", confirmed:true, queue:"新队列" }, "已让它立刻跑一趟");
   $("#noshut").onclick = () => oneShot({ action:"skip_shutdown" }, "这趟跑完不关机");
   $("#skiptoday").onclick = () => oneShot({ action:"skip_today", queue:"新队列" }, "今天这个队列跳过");
@@ -273,7 +276,8 @@ async function oneShot(body, okText) {
    2026-08-31 实测撞到过：机器上已经是新值了，页面还显示旧值。 */
 async function ping(minAt) {
   setStatus("正在问机器…", "");
-  const floor = minAt || (snap ? snap.at : 0);
+  const floor = (typeof minAt === "number" ? minAt : null)
+             ?? (snap ? snap.at : 0);
   try { await send({ action:"refresh" }); }
   catch (e) { return setStatus("发不出去：" + e.message, "off"); }
   for (let i = 0; i < 16; i++) {
