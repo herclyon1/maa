@@ -175,14 +175,30 @@ function render() {
   for (const g of SCHEMA) {
     const cur = c[g.sec] || {};
     html += `<section><h2>${g.title} <small>${g.script}</small></h2>`;
+    /* 选择树：OK-WW 声明了「选了哪个才出现哪些子项」（sub_configs）。
+       选「刷模拟领域」时不该还摆着「凝素领域序号」——那是给人看的噪音。 */
+    const subs = (snap && snap.subs) || {};
+    const picked = cur["WhichToFarm"];
+    const hidden = new Set();
+    for (const [k, paths] of Object.entries(subs)) {
+      if (k !== picked) for (const pth of paths) hidden.add(pth);
+    }
+    const optsOf = (path) => (((snap && snap.options) || {})[g.script] || {})[path];
+
     for (const f of g.fields) {
       const id = `${g.script}|${f.path}`;
+      if (hidden.has(f.path)) continue;
       const val = cur[f.key];
       const label = f.label || f.key;
       const hint = f.hint ? `<span class="hint">${f.hint}</span>` : "";
       let ctl;
+      const live = optsOf(f.path);        // 机器发过来的真实选项
       if (f.type === "bool") {
         ctl = `<span class="sw"><input type="checkbox" data-id="${id}" ${val ? "checked" : ""}><span></span></span>`;
+      } else if (live && live.length) {
+        const opts = live.map(([lb, v]) =>
+          `<option value="${String(v)}" ${String(val) === String(v) ? "selected" : ""}>${lb}</option>`).join("");
+        ctl = `<select data-id="${id}">${opts}</select>`;
       } else if (f.type === "select") {
         const opts = f.opts.map((o) => `<option ${String(val) === o ? "selected" : ""}>${o}</option>`).join("");
         ctl = `<select data-id="${id}">${opts}</select>`;
@@ -209,10 +225,6 @@ function render() {
     </div>
   </section>`;
 
-  html += `<section><h2>其它</h2><div class="acts">
-      <button class="wide" id="forget">忘掉信箱和 PIN（换手机时用）</button>
-    </div></section>`;
-
   $("#app").innerHTML = html;
   wire();
 }
@@ -225,7 +237,6 @@ function wire() {
   $("#runnow").onclick = () => oneShot({ action:"run_now", confirmed:true, queue:"新队列" }, "已让它立刻跑一趟");
   $("#noshut").onclick = () => oneShot({ action:"skip_shutdown" }, "这趟跑完不关机");
   $("#skiptoday").onclick = () => oneShot({ action:"skip_today", queue:"新队列" }, "今天这个队列跳过");
-  $("#forget").onclick = () => { localStorage.removeItem(LS); location.reload(); };
   const tm = $("#th-mode");
   if (tm) tm.onchange = () => saveTheme({ mode: tm.value === "auto" ? null : tm.value });
   for (const sw of document.querySelectorAll(".sw-c")) {
@@ -255,6 +266,17 @@ function wire() {
       else { edits[key] = { label:`${g.title} ${f.label || f.key}`, script, path, from, to };
              row.classList.add("changed"); }
       updateBar();
+      // 「刷什么」决定下面出现哪些子项，改了就得重画一次
+      if (f.path === "Task.WhichToFarm") {
+        const keep = { ...edits };
+        snap = { ...snap, config: { ...snap.config,
+          [g.sec]: { ...(snap.config[g.sec] || {}), WhichToFarm: to } } };
+        render(); edits = keep; updateBar();
+        for (const k of Object.keys(edits)) {
+          const r2 = document.querySelector(`[data-row="${CSS.escape(k)}"]`);
+          if (r2) r2.classList.add("changed");
+        }
+      }
     });
   }
 }
