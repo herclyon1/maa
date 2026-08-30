@@ -19,7 +19,7 @@ edited through JSON before this, so the point was to find out what that missed.
 |---|---|---|
 | MAA's own 定时执行 | 8 timers, **all disabled** | "定时执行保持关闭" |
 | `Default` profile `PostActions` | `ExitArknights, ExitSelf` | after-run behaviour is AUTO-MAS's to set |
-| Queue chaining | 新队列 09:00 -> MAA then MaaEnd; Evening-MAA 21:30 -> MAA | queues run scripts in series |
+| Queue chaining | 新队列 09:00 -> MAA, MaaEnd, then OK-WW; Evening-MAA 21:30 -> MAA | queues run scripts in series |
 | `AfterAccomplish` | `NoAction` on both | the relay owns the power-off |
 | Account ID / password / Skland token | **all empty** | "若同区服仅有一个账号，也可将账号ID留空" - and an empty ID is what stops MAA attempting an account switch |
 | MaaEnd control | `EmulatorId`/`EmulatorIndex` = `-`, i.e. PC | "支持 PC 与模拟器控制（推荐 PC）" |

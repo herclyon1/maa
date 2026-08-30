@@ -1,13 +1,22 @@
 # MAA 无人值守自动化
 
-一台位于国内的 Windows 游戏机，每天自动开机两次，运行明日方舟与终末地的日常
-任务，将结果推送到微信，随后自动关机。控制端是一台位于日本的 Mac，经
+一台位于国内的 Windows 游戏机，每天自动开机两次，运行三款游戏的日常任务，
+将结果推送到微信，随后自动关机。控制端是一台位于日本的 Mac，经
 Tailscale + SSH 远程管理；控制端离线不影响游戏机自行运行。
 
-被自动化的是 [MAA](https://github.com/MaaAssistantArknights/MaaAssistantArknights)（明日方舟）
-与 [MaaEnd](https://github.com/MaaEnd/MaaEnd)（终末地），由
-[AUTO-MAS](https://github.com/AUTO-MAS-Project/AUTO-MAS) 统一调度。本仓库的
-`relay/` 是自建的通知中继，负责判定运行结果、推送汇报并接管关机。
+被自动化的是 [MAA](https://github.com/MaaAssistantArknights/MaaAssistantArknights)（明日方舟）、
+[MaaEnd](https://github.com/MaaEnd/MaaEnd)（终末地）与
+[OK-WW](https://github.com/ok-oldking/ok-wuthering-waves)（鸣潮），由
+[AUTO-MAS](https://github.com/AUTO-MAS-Project/AUTO-MAS) 统一调度。
+
+本仓库的 `relay/` 是自建的通知中继，运行在游戏机上，负责：
+
+- **核对运行结果**——读每个脚本自己的日志判断"到底干成了什么"，
+  而不是看进程有没有正常退出
+- **开机窗口内预更新**四款程序，免得队列跑到一半撞上更新
+- **推送汇报与日报**，并在队列结束、汇报送达后接管关机
+- **自更新**，以及把本地给 OK-WW 打的补丁在每次更新后重新贴回去
+- 接收下发的配置改动（见「下发指令」）
 
 本仓库是这套系统的源码与运行记录，不是开箱即用的软件：路径、账号、时刻表都
 针对这一台机器。
@@ -26,7 +35,7 @@ AUTO-MAS 五个界面各是什么、OK-WW 能刷什么、母本与副本的关�
 服务器  东京    事件
 08:40   09:40   米家插座断电
 08:45   09:45   通电 → 主板「AC 上电自启」→ 开机 → 自动登录
-09:00   10:00   队列「新队列」：明日方舟 → 终末地，约 85 分钟
+09:00   10:00   队列「新队列」：明日方舟 → 终末地 → 鸣潮，约 85 分钟
 ~10:30  ~11:30  推送汇报 → 自动关机
                 ── 白天约 11 小时完全关机，期间无任何本机监控 ──
 21:20   22:20   BIOS RTC 定时开机（不依赖插座）
@@ -38,8 +47,8 @@ AUTO-MAS 五个界面各是什么、OK-WW 能刷什么、母本与副本的关�
 
 机器每天仅运行约 3 小时。明日方舟需一天两次分开运行，否则基建产能溢出。
 
-当前配置：关卡 `1-7`、理智药 `0`、剿灭 `Close`、终末地「干员养成 · 干员经验」。
-完整配置清单见 [docs/CONFIG.md](docs/CONFIG.md)。
+当前配置：明日方舟关卡 `1-7`、理智药 `0`、剿灭 `Close`；鸣潮刷模拟领域（贝币），
+残象聚落只刷落渊南丘。完整配置清单见 [docs/CONFIG.md](docs/CONFIG.md)。
 
 ## 推送内容
 
