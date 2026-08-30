@@ -72,13 +72,22 @@ fi
 # 2026-08-26：新写的测试函数被 `>>` 追加到了 `main()` 之后，调用时还没定义。
 # 测试跑一遍就会 NameError，所以这条直接用「全部测试能跑通」兜住。
 echo "▶ 6/7 中继测试全绿"
-cnt=0; bad=""
-for f in relay/tests/test_*.py; do
-  cnt=$((cnt+1))
-  out=$(cd relay && python3 "tests/$(basename "$f")" 2>&1) || bad="$bad $(basename "$f")"
-  grep -qiE "passed|^PASS" <<<"$(tail -1 <<<"$out")" || bad="$bad $(basename "$f")"
-done
-[ -z "$bad" ] && ok "$cnt 个测试全过" || note "没过:$bad"
+# 并行跑：这道闸每次部署会被跑两遍（部署自己一遍、闸门自检里的
+# lint-repo 一遍），串行十几秒全是白等。判据没松：退出码要 0，
+# 且最后一行必须写着 passed。
+lint_one_test() {
+  local out
+  out=$(cd relay && python3 "tests/$(basename "$1")" 2>&1) || return 1
+  grep -qiE "passed|^PASS" <<<"$(tail -1 <<<"$out")" || { echo "$(basename "$1")"; return 1; }
+}
+export -f lint_one_test
+cnt=$(find relay/tests -name 'test_*.py' | wc -l | tr -d ' ')
+if bad=$(printf '%s\n' relay/tests/test_*.py \
+         | xargs -P 8 -I{} bash -c 'lint_one_test "$1" || { basename "$1"; exit 1; }' _ {} 2>&1); then
+  ok "$cnt 个测试全过"
+else
+  note "没过:$(tr '\n' ' ' <<<"$bad")"
+fi
 
 # 2026-08-27：同一类错的第三次——把测试函数写在 `if __name__` 之后，
 # 它永远不会被调用，测试照样打印 "all checks passed"、闸门照样放行。

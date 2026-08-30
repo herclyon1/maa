@@ -433,7 +433,7 @@ def section(now: datetime, *, skland_token: str = "",
         ak, ak_next = _arknights(now)
         banners += ak
         if ak_next:
-            nxt["明日方舟"] = (ak_next, "")
+            nxt["明日方舟"] = ak_next      # _arknights 已经给的是 (时刻, 是谁)
     except Exception:  # noqa: BLE001
         log.warning("方舟卡池整段失败", exc_info=True)
     if sk_get is not None:

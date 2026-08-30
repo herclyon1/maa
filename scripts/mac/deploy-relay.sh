@@ -20,6 +20,14 @@ done
 
 HOST="${ARK_HOST:?请先 export ARK_HOST=<游戏机 Tailscale IP>}"
 USER_AT="Administrator@${HOST}"
+# 跨境到乌鲁木齐，每次 ssh/scp 都要重新握手一次；这个脚本要跑四十多次，
+# 光握手就占掉大半时间。开连接复用：第一次连上之后所有后续调用走同一条
+# 通道，ControlPersist 让通道在脚本结束后再留一会儿，紧接着的 winrun 也蹭得上。
+CM_PATH="${TMPDIR:-/tmp}/ark-cm-$$"
+SSH_OPTS=(-o ConnectTimeout=15 -o ControlMaster=auto
+          -o "ControlPath=${CM_PATH}" -o ControlPersist=180)
+cleanup_cm() { ssh -O exit -o "ControlPath=${CM_PATH}" "$USER_AT" 2>/dev/null || true; }
+trap cleanup_cm EXIT
 REMOTE_DIR='C:/ProgramData/ark-relay'
 PY='D:\ark\automas\environment\python\python.exe'
 # 两个绝对路径都要在任何 cd 之前算好。2026-08-26 我在 cd 之后才去解析
@@ -54,16 +62,21 @@ fi
 echo "  $(tail -1 <<<"$out")"
 
 echo "▶ 0/5 回归测试（不全绿就不部署）"
-FAILED=""
-for f in tests/test_*.py; do
+# 并行跑。四十个测试各自起一个 python，串行要十几秒，而这十几秒
+# 每次部署都要付两遍（lint-repo 那道闸里还会再跑一遍）。
+# 判据一个没松：照样要退出码为 0，且最后一行必须写着 passed。
+run_one_test() {
+  local f="$1" out
   if ! out=$(python3 "$f" 2>&1) || ! grep -qiE "passed|^PASS" <<<"$(tail -1 <<<"$out")"; then
-    FAILED="$FAILED $(basename "$f")"
     printf '  ✗ %s\n' "$(basename "$f")"
     tail -3 <<<"$out" | sed 's/^/      /'
+    return 1
   fi
-done
-if [ -n "$FAILED" ]; then
-  echo "  ✋ 有测试没过：$FAILED"
+}
+export -f run_one_test
+if ! printf '%s\n' tests/test_*.py \
+     | xargs -P 8 -I{} bash -c 'run_one_test "$1"' _ {}; then
+  echo "  ✋ 有测试没过（见上）。"
   echo "     部署已取消。先修测试，或者确认这些断言本身该更新。"
   exit 1
 fi
@@ -105,13 +118,15 @@ FILES=$(python3 -c "import json;print(' '.join(json.load(open('manifest.json'))[
 echo "▶ 3/5 推送 $(wc -w <<<"$FILES") 个文件"
 # 清单里现在有嵌套路径（ark_relay/okww_files/*.py）。scp 不会自己建目录，
 # 目录不在的话那几个文件会静静推不过去，而哈希核对那步才会发现。先建好。
+MKDIRS=""
 for d in $(printf '%s\n' $FILES | xargs -n1 dirname | sort -u | grep -v '^\.$'); do
-  ssh -o ConnectTimeout=15 "$USER_AT" \
-    "if not exist \"${REMOTE_DIR//\//\\}\\${d//\//\\}\" mkdir \"${REMOTE_DIR//\//\\}\\${d//\//\\}\"" \
-    >/dev/null 2>&1 || true
+  win="${REMOTE_DIR//\//\\}\\${d//\//\\}"
+  MKDIRS="${MKDIRS}${MKDIRS:+ & }if not exist \"$win\" mkdir \"$win\""
 done
+# 一次调用建完所有目录——原来是一个目录一次 ssh，跨境往返白白多花好几秒。
+[ -n "$MKDIRS" ] && ssh "${SSH_OPTS[@]}" "$USER_AT" "$MKDIRS" >/dev/null 2>&1 || true
 for f in $FILES; do
-  scp -q -o ConnectTimeout=15 "$f" "${USER_AT}:${REMOTE_DIR}/${f}"
+  scp -q "${SSH_OPTS[@]}" "$f" "${USER_AT}:${REMOTE_DIR}/${f}"
 done
 
 echo "▶ 4/5 逐文件核对哈希"
@@ -129,10 +144,10 @@ for rel, sha in want.items():
 print("MISMATCH " + "; ".join(bad) if bad else f"HASH-OK {len(want)}")
 sys.exit(1 if bad else 0)
 PY
-scp -q -o ConnectTimeout=15 manifest.json "${USER_AT}:${REMOTE_DIR}/_manifest_check.json"
-scp -q -o ConnectTimeout=15 /tmp/ark-verify.py "${USER_AT}:C:/Users/Administrator/ark-verify.py"
-ssh -o ConnectTimeout=15 "$USER_AT" "\"$PY\" -X utf8 C:\\Users\\Administrator\\ark-verify.py"
-ssh -o ConnectTimeout=15 "$USER_AT" \
+scp -q "${SSH_OPTS[@]}" manifest.json "${USER_AT}:${REMOTE_DIR}/_manifest_check.json"
+scp -q "${SSH_OPTS[@]}" /tmp/ark-verify.py "${USER_AT}:C:/Users/Administrator/ark-verify.py"
+ssh "${SSH_OPTS[@]}" "$USER_AT" "\"$PY\" -X utf8 C:\\Users\\Administrator\\ark-verify.py"
+ssh "${SSH_OPTS[@]}" "$USER_AT" \
   "del C:\\Users\\Administrator\\ark-verify.py & del ${REMOTE_DIR//\//\\}\\_manifest_check.json" >/dev/null 2>&1 || true
 
 echo "▶ 4.5/5 写入代码版本号（否则自更新会拿旧清单把这次部署顶回去）"
@@ -141,7 +156,7 @@ echo "▶ 4.5/5 写入代码版本号（否则自更新会拿旧清单把这次�
 # 更旧（甚至没有版本号）的 manifest，自更新就会认为"机器落后了"，把刚
 # 部署好的文件覆盖回旧版——2026-08-21 就这么被静默降级过一次。
 VER=$(python3 -c "import json;print(json.load(open('manifest.json'))['version'])")
-ssh -o ConnectTimeout=15 "$USER_AT" \
+ssh "${SSH_OPTS[@]}" "$USER_AT" \
   "if exist \"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" (\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoProfile -Command \"Set-Content -Path 'C:/ProgramData/ark-relay/state/code-version.txt' -Value '$VER' -NoNewline\") else (powershell -NoProfile -Command \"Set-Content -Path 'C:/ProgramData/ark-relay/state/code-version.txt' -Value '$VER' -NoNewline\")" >/dev/null
 echo "    code-version = $VER"
 
@@ -157,12 +172,12 @@ echo "▶ 5/5 重启服务并确认真的起来了"
 # 现在：先等它真的停，再启，再轮询到 RUNNING 为止，起不来就非零退出。
 
 # __pycache__ 里的旧 .pyc 会盖住新代码，必须清。
-ssh -o ConnectTimeout=15 "$USER_AT" \
+ssh "${SSH_OPTS[@]}" "$USER_AT" \
   'del /q C:\ProgramData\ark-relay\ark_relay\__pycache__\*.pyc >nul 2>&1 & sc stop ark-relay >nul 2>&1 & echo STOPPING' \
   >/dev/null 2>&1 || true
 
 svc_state() {
-  ssh -o ConnectTimeout=15 "$USER_AT" 'sc query ark-relay' 2>/dev/null \
+  ssh "${SSH_OPTS[@]}" "$USER_AT" 'sc query ark-relay' 2>/dev/null \
     | tr -d '\r' | awk '/STATE/{print $4}'
 }
 
@@ -172,7 +187,7 @@ for _ in $(seq 1 15); do
 done
 echo "    停止确认：$(svc_state)"
 
-ssh -o ConnectTimeout=15 "$USER_AT" 'sc start ark-relay' >/dev/null 2>&1 || true
+ssh "${SSH_OPTS[@]}" "$USER_AT" 'sc start ark-relay' >/dev/null 2>&1 || true
 STATE=""
 for _ in $(seq 1 20); do
   STATE=$(svc_state)
