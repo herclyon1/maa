@@ -174,7 +174,11 @@ class Mailbox:
             try:
                 url = f"{NTFY}/{self.topic}/json"
                 req = urllib.request.Request(url, headers={"User-Agent": _UA})
-                with urllib.request.urlopen(req, timeout=None) as r:
+                # **不许用 timeout=None**：读会无限期阻塞，停服务时这个线程
+                # 挂住，服务卡在 STOP_PENDING 起不来——2026-08-31 撞过一次，
+                # 只能强杀进程。ntfy 每 45 秒会发一次 keepalive，
+                # 90 秒的读超时永远不会误伤，超时了外层重连就是。
+                with urllib.request.urlopen(req, timeout=90) as r:
                     log.info("📱 手机通道已连上（长连接，不轮询）")
                     delay = 5
                     for line in r:

@@ -46,34 +46,65 @@ function saveTheme(patch) {
 }
 
 /* 每一项：在快照里从哪读(sec/key)，写的时候写到哪(script/path) */
+/* 值 → 中文。来源都在仓库里，不是我编的：
+   · Fixed=固定 出自 plan.py 里给日报排班用的同一套换算
+   · 剿灭 Close 的含义出自 docs/CONFIG.md：既是「本周已完成」也可能是
+     「被人手动关掉了」，后者没人会自动打开，等于每周少一份奖励 */
+const VALUE_ZH = {
+  "Info.StageMode": { Fixed: "固定关卡" },
+  "Info.Annihilation": { Close: "关闭 / 本周已完成" },
+  "Info.SeriesNumb": { "0": "0（不指定，用游戏里的设置）" },
+};
+
+/* 每一项：在快照里从哪读(sec/key)，写的时候写到哪(script/path)。
+   `ro:true` = 只读：这一项我没有可靠的选项来源，与其给你一个我编的
+   下拉列表（826 就是编字段含义出的事），不如老实显示现值并说明含义。 */
 const SCHEMA = [
   { title: "明日方舟", script: "MAA", sec: "MAA", fields: [
-    { key:"关卡",       path:"Info.Stage",        type:"text",  hint:"像 1-7、CE-6、AT-4" },
-    { key:"关卡模式",   path:"Info.StageMode",    type:"select", opts:["Fixed","Auto"] },
-    { key:"理智药",     path:"Info.MedicineNumb", type:"number", hint:"999 = 有多少吃多少" },
-    { key:"连战",       path:"Info.SeriesNumb",   type:"select", opts:["0","1","2","3","4","5","6"], asText:true },
-    { key:"剿灭",       path:"Info.Annihilation", type:"select", opts:["Close","Weekly","Daily"] },
-    { key:"作战开关",   path:"Task.IfFight",      type:"bool" },
-    { key:"活动关优先", path:"Task.IfActivityFirst", type:"bool", hint:"开着就有活动刷活动，没有回落固定关" },
-    { key:"活动关序号", path:"Task.ActivityStageIndex", type:"number", hint:"从 1 起算，不是从 0" },
-    { key:"活动关理智药", path:"Task.ActivityMedicineNumb", type:"number" },
+    { key:"关卡",       path:"Info.Stage",        type:"text",
+      hint:"自己填，像 1-7、CE-6、AT-4" },
+    { key:"关卡模式",   path:"Info.StageMode",    type:"text", ro:true,
+      hint:"固定关卡＝每次都刷上面那一关。这项要在电脑上改" },
+    { key:"理智药",     path:"Info.MedicineNumb", type:"number",
+      hint:"最多吃几个。999＝有多少吃多少" },
+    { key:"连战",       path:"Info.SeriesNumb",   type:"select",
+      opts:["0","1","2","3","4","5","6"], asText:true,
+      hint:"一次连打几场。0＝不指定，听游戏里的" },
+    { key:"剿灭",       path:"Info.Annihilation", type:"text", ro:true,
+      hint:"关闭／本周已完成。注意：被手动关掉也是这个值，那样每周会少一份奖励。这项要在电脑上改" },
+    { key:"作战开关",   path:"Task.IfFight",      type:"bool",
+      hint:"关掉就完全不刷关，只做别的日常" },
+    { key:"活动关优先", path:"Task.IfActivityFirst", type:"bool",
+      hint:"开着＝有活动就刷活动关，活动结束自动回到上面那个固定关" },
+    { key:"活动关序号", path:"Task.ActivityStageIndex", type:"number",
+      hint:"活动里第几关，从 1 起算（不是从 0）" },
+    { key:"活动关理智药", path:"Task.ActivityMedicineNumb", type:"number",
+      hint:"刷活动关时最多吃几个药" },
   ]},
   { title: "终末地", script: "MaaEnd", sec: "MaaEnd", fields: [
-    { key:"开理智",   path:"Task.IfSanity", type:"bool" },
-    { key:"自动吃药", path:"Task.IfAutoUseSpMedication", type:"bool" },
-    { key:"理智任务", path:"Task.SanityTaskType", type:"text", hint:"如 Essence" },
-    { key:"基质地点", path:"Task.AutoEssenceSpecifiedLocation", type:"text" },
+    { key:"开理智",   path:"Task.IfSanity", type:"bool",
+      hint:"关掉就不花理智，只做日常" },
+    { key:"自动吃药", path:"Task.IfAutoUseSpMedication", type:"bool",
+      hint:"理智不够时自动嗑药" },
+    { key:"理智任务", path:"Task.SanityTaskType", type:"text", ro:true,
+      hint:"理智花在哪一类上。这项要在电脑上改" },
+    { key:"基质地点", path:"Task.AutoEssenceSpecifiedLocation", type:"text",
+      hint:"去哪个区采基质" },
   ]},
   { title: "鸣潮", script: "OK-WW", sec: "OK-WW(MAS侧)", fields: [
-    { key:"TaskIndex", path:"Task.TaskIndex", type:"number", label:"任务序号" },
-    { key:"WhichToFarm", path:"Task.WhichToFarm", type:"text", label:"刷什么" },
-    { key:"FarmNightmareNestForDailyEcho", path:"Task.FarmNightmareNestForDailyEcho",
-      type:"bool", label:"残象聚落" },
-    { key:"WhichForgeryChallengeToFarm", path:"Task.WhichForgeryChallengeToFarm",
-      type:"number", label:"模拟领域序号" },
+    { key:"WhichToFarm", path:"Task.WhichToFarm", type:"text", label:"体力刷什么",
+      hint:"选了哪个，下面才出现对应的那一项" },
     { key:"WhichTacetSuppressionToFarm", path:"Task.WhichTacetSuppressionToFarm",
-      type:"number", label:"凝素领域序号" },
-    { key:"MaterialSelection", path:"Task.MaterialSelection", type:"text", label:"材料" },
+      type:"number", label:"凝素领域第几个", hint:"游戏里 F2 列表中的序号" },
+    { key:"WhichForgeryChallengeToFarm", path:"Task.WhichForgeryChallengeToFarm",
+      type:"number", label:"模拟领域第几个", hint:"游戏里 F2 列表中的序号" },
+    { key:"MaterialSelection", path:"Task.MaterialSelection", type:"text",
+      label:"刷哪种材料" },
+    { key:"FarmNightmareNestForDailyEcho", path:"Task.FarmNightmareNestForDailyEcho",
+      type:"bool", label:"残象聚落",
+      hint:"日常差一个声骸时，去残象聚落补一个" },
+    { key:"TaskIndex", path:"Task.TaskIndex", type:"number", label:"任务序号",
+      hint:"OK-WW 内部用的编号，一般不用动" },
   ]},
 ];
 
@@ -193,7 +224,11 @@ function render() {
       const hint = f.hint ? `<span class="hint">${f.hint}</span>` : "";
       let ctl;
       const live = optsOf(f.path);        // 机器发过来的真实选项
-      if (f.type === "bool") {
+      const zh = (VALUE_ZH[f.path] || {})[String(val)];
+      if (f.ro) {
+        // 没有可靠选项来源的，老实显示现值，不假装成选择题
+        ctl = `<span class="ro">${zh || fmt(val)}</span>`;
+      } else if (f.type === "bool") {
         ctl = `<span class="sw"><input type="checkbox" data-id="${id}" ${val ? "checked" : ""}><span></span></span>`;
       } else if (live && live.length) {
         const opts = live.map(([lb, v]) =>
