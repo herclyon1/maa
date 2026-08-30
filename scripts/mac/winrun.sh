@@ -248,6 +248,15 @@ if [ "${1:-}" = "--py" ]; then
   preflight_scan_check "$LOCAL_PY" || exit 2
   preflight_timefilter_check "$LOCAL_PY" || exit 2
 
+  # 只验闸门、不真发。guardcheck.sh 里那条「正常深路径不许被误杀」原来会
+  # 真的去 SSH 一个不存在的测试地址（203.0.113.1），一直卡到连接超时——
+  # 2026-08-31 实测：整个闸门自检 62 秒，其中 60 秒就耗在这一步等超时上，
+  # 而它要验的东西（闸门放不放行）在碰网络之前就已经有答案了。
+  if [ -n "${WINRUN_DRY_RUN:-}" ]; then
+    echo "winrun: 闸门放行（dry-run，未发送）"
+    exit 0
+  fi
+
   RUN_ID="$$-$(date +%s)"
   REMOTE_PY="C:/ProgramData/winrun-run-${RUN_ID}.py"
   REMOTE_GUARD="C:/ProgramData/winrun-guard-${RUN_ID}.py"

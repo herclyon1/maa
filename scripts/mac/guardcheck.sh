@@ -53,7 +53,7 @@ while IFS= read -r expr; do
   { echo "from pathlib import Path"; echo "import os";
     echo "for f in ${expr}:"; echo "    print(f)"; } > "$TMP/scan$i.py"
   refuses "全盘扫描：${expr}" "拒绝发送" \
-    env ARK_HOST=203.0.113.1 ./scripts/mac/winrun.sh --py "$TMP/scan$i.py"
+    env WINRUN_DRY_RUN=1 ARK_HOST=203.0.113.1 ./scripts/mac/winrun.sh --py "$TMP/scan$i.py"
 done <<'VARIANTS'
 Path("C:/").rglob("*.json")
 Path("C:\\").rglob("*.json")
@@ -70,7 +70,9 @@ from pathlib import Path
 for f in Path(r"D:\ark\okww\data\apps\ok-ww\working\logs").rglob("*.log"):
     print(f)
 EOF
-if ARK_HOST=203.0.113.1 ./scripts/mac/winrun.sh --py "$TMP/normal.py" 2>&1 \
+# WINRUN_DRY_RUN：只走闸门不连机器。不加的话这一条会真的去 SSH 那个
+# 不存在的测试地址，卡满连接超时——整个自检 62 秒里 60 秒都在这儿等。
+if WINRUN_DRY_RUN=1 ARK_HOST=203.0.113.1 ./scripts/mac/winrun.sh --py "$TMP/normal.py" 2>&1 \
      | grep -q "拒绝发送"; then
   printf '  ✗ %-42s\n' "正常深路径被误杀"; FAIL=$((FAIL+1))
 else
@@ -82,14 +84,14 @@ lines = open("x.log").read().splitlines()
 hits = [l for l in lines if l[:19] > "2026-08-26 16:40"]
 EOF
 refuses "字典序比时间戳必须被拒" "拒绝发送" \
-  env ARK_HOST=203.0.113.1 ./scripts/mac/winrun.sh --py "$TMP/tf.py"
+  env WINRUN_DRY_RUN=1 ARK_HOST=203.0.113.1 ./scripts/mac/winrun.sh --py "$TMP/tf.py"
 
 cat > "$TMP/now.py" <<'EOF'
 from datetime import datetime
 print(datetime.now())
 EOF
 refuses "本机时钟 datetime.now() 必须被拒" "拒绝发送" \
-  env ARK_HOST=203.0.113.1 ./scripts/mac/winrun.sh --py "$TMP/now.py"
+  env WINRUN_DRY_RUN=1 ARK_HOST=203.0.113.1 ./scripts/mac/winrun.sh --py "$TMP/now.py"
 
 cat > "$TMP/ok.py" <<'EOF'
 # winrun: allow-raw-timefilter —— 豁免注释必须仍然放行
