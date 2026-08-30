@@ -10,6 +10,7 @@ never disagree with what the machine will actually do.
 from __future__ import annotations
 
 import json
+import os
 import re
 import logging
 from datetime import datetime, timedelta
@@ -380,8 +381,18 @@ def next_plan(automas_dir: Path | None) -> str:
                 # ever reopen it, because the gate only restores a week it
                 # recorded closing itself. Either way the weekly reward is not
                 # being collected, and silence about that costs a reward a week.
+                # 值是英文枚举（Annihilation / Chernobog@Annihilation …），
+                # 中文在 AUTO-MAS 前端的打包产物里。汇报里不该出现英文——
+                # 2026-08-31 用户在手机上看到「剿灭 Annihilation」。
+                from .phone import _asar_value_labels  # noqa: PLC0415
+                zh = {}
+                try:
+                    zh = _asar_value_labels(automas_dir, Path(os.environ.get(
+                        "ARK_STATE_DIR", "./ark-state")))
+                except Exception:  # noqa: BLE001
+                    pass
                 bits.append("剿灭 本周已完成/关闭" if anni == "Close"
-                            else f"剿灭 {anni}")
+                            else f"剿灭 {zh.get(anni, anni)}")
             if (med := s.get("medicine")) is not None:
                 # AUTO-MAS stores "use as many as you have" as a sentinel, not
                 # as a real count. Printing 999 makes a reader stop and wonder.
