@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 import urllib.error
 import urllib.request
@@ -259,9 +260,54 @@ OKWW_SUBS = {
 }
 
 
+# AUTO-MAS 自己的界面是全中文的，标注就在它的 models 里：每个 ConfigItem
+# 上面一行 `## 中文名`，合法取值在 OptionsValidator([...]) 里。
+# 用户 2026-08-31：「一定是有中文解释的因为 ui 界面就是全中文，
+# 只不过你没找到在哪里标注的而已。」——他是对的，我先前搜漏了。
+# 从这里读，不自己译：上游改了名字这边跟着变，硬编码早晚对不上。
+_CFG_ITEM = re.compile(
+    r'##\s*(?P<label>[^\n]+)\n\s*self\.\w+\s*=\s*ConfigItem\(\s*'
+    r'"(?P<sec>\w+)"\s*,\s*"(?P<key>\w+)"\s*,(?P<rest>.*?)\n\s*\)',
+    re.S)
+_OPTS = re.compile(r"OptionsValidator\(\s*\[(.*?)\]", re.S)
+_QUOTED = re.compile(r"""["']([^"']+)["']""")
+
+
+def _mas_labels(automas_dir) -> dict:
+    """AUTO-MAS 各配置项的中文名和合法取值。`{"Info.Stage": {...}}`"""
+    out: dict = {}
+    if not automas_dir:
+        return out
+    models = Path(automas_dir) / "app" / "models"
+    if not models.is_dir():
+        log.warning("找不到 AUTO-MAS 的 models 目录，手机上只能显示英文字段名")
+        return out
+    for f in sorted(models.glob("*.py")):
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for m in _CFG_ITEM.finditer(text):
+            o = _OPTS.search(m.group("rest"))
+            out[f'{m.group("sec")}.{m.group("key")}'] = {
+                "label": m.group("label").strip(),
+                "options": _QUOTED.findall(o.group(1)) if o else None,
+            }
+    return out
+
+
 def _options(cfg) -> dict:
     """各游戏可选项。取不到就不给，页面那一项退回文本框。"""
     out: dict = {"MAA": {}, "MaaEnd": {}, "OK-WW": {}}
+    try:
+        labels = _mas_labels(getattr(cfg, "automas_dir", None))
+        for game in ("MAA", "MaaEnd"):
+            for path, info in labels.items():
+                if info.get("options"):
+                    out[game][path] = [[v, v] for v in info["options"]]
+        out["_labels"] = labels
+    except Exception:  # noqa: BLE001
+        log.warning("AUTO-MAS 的中文标注读不到", exc_info=True)
     try:
         from .commands import _find_user, _mas  # noqa: PLC0415
         sid = _find_user("MaaEnd")[0]

@@ -220,12 +220,15 @@ function render() {
       const id = `${g.script}|${f.path}`;
       if (hidden.has(f.path)) continue;
       const val = cur[f.key];
-      const label = f.label || f.key;
+      const live = optsOf(f.path);        // 机器发过来的真实选项
+      /* 字段名用 AUTO-MAS 自己的中文标注（它界面就是中文的），
+         没有才退回我在 SCHEMA 里写的那个。 */
+      const meta = (((snap && snap.options) || {})._labels || {})[f.path];
+      const label = (meta && meta.label) || f.label || f.key;
       const hint = f.hint ? `<span class="hint">${f.hint}</span>` : "";
       let ctl;
-      const live = optsOf(f.path);        // 机器发过来的真实选项
       const zh = (VALUE_ZH[f.path] || {})[String(val)];
-      if (f.ro) {
+      if (f.ro && !(live && live.length)) {
         // 没有可靠选项来源的，老实显示现值，不假装成选择题
         ctl = `<span class="ro">${zh || fmt(val)}</span>`;
       } else if (f.type === "bool") {
