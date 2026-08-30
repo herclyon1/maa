@@ -215,6 +215,72 @@ class Mailbox:
             delay = min(delay * 2, 60)
 
 
+def _okww_options(cfg) -> dict:
+    """OK-WW 的下拉选项，从它**自己的源码**里读，不自己编。
+
+    用户 2026-08-31：「人家脚本那边根本都不是填东西，而是选择树。」
+    OK-WW 在 DailyTask.py 里明确声明了 `type: drop_down` 和 options，
+    还有 `sub_configs`——选了哪个才出现哪些子项。照抄它的声明，
+    上游改了这里跟着变；硬编码就会有一天悄悄对不上。
+    """
+    import re  # noqa: PLC0415
+    out: dict = {}
+    root = getattr(cfg, "okww_dir", None)
+    if not root:
+        return out
+    f = (Path(root) / "data" / "apps" / "ok-ww" / "working" / "src"
+         / "task" / "DailyTask.py")
+    try:
+        text = f.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        log.warning("读不到 OK-WW 的 DailyTask.py，鸣潮那几项只能当文本填")
+        return out
+    for key, pat in (("Task.WhichToFarm", r"support_tasks\s*=\s*\[([^\]]*)\]"),
+                     ("Task.MaterialSelection",
+                      r"material_option_list\s*=\s*\[([^\]]*)\]")):
+        m = re.search(pat, text, re.S)
+        if not m:
+            continue
+        vals = re.findall(r"""['"]([^'"]+)['"]""", m.group(1))
+        if vals:
+            out[key] = vals
+    return out
+
+
+# 选了「刷什么」里的哪一项，才显示哪些子项。抄自 OK-WW 的 sub_configs。
+OKWW_SUBS = {
+    "Tacet Suppression": ["Task.WhichTacetSuppressionToFarm"],
+    "Forgery Challenge": ["Task.WhichForgeryChallengeToFarm"],
+    "Simulation Challenge": ["Task.MaterialSelection"],
+}
+
+
+def _options(cfg) -> dict:
+    """各游戏可选项。取不到就不给，页面那一项退回文本框。"""
+    out: dict = {"MAA": {}, "MaaEnd": {}, "OK-WW": {}}
+    try:
+        from .commands import _find_user, _mas  # noqa: PLC0415
+        sid = _find_user("MaaEnd")[0]
+        d = _mas("/api/scripts/maaend/options", {"scriptId": sid})
+        locs = [[o.get("label"), o.get("value")]
+                for o in (d.get("essenceLocations") or [])
+                if o.get("value")]
+        if locs:
+            out["MaaEnd"]["Task.AutoEssenceSpecifiedLocation"] = locs
+    except Exception:  # noqa: BLE001
+        log.warning("终末地的地点选项取不到", exc_info=True)
+
+    try:
+        from . import plan  # noqa: PLC0415
+        zh = plan._okww_zh(getattr(cfg, "okww_dir", None))  # noqa: SLF001
+        for key, vals in _okww_options(cfg).items():
+            # 用 OK-WW 自己的语言包给中文名，不自己译
+            out["OK-WW"][key] = [[zh.get(v, v), v] for v in vals]
+    except Exception:  # noqa: BLE001
+        log.warning("鸣潮的选项取不到", exc_info=True)
+    return out
+
+
 def state_payload(cfg, state_dir: Path) -> dict:
     """手机上显示的那一份。和 config-check 读的是同一份代码（snapshot.py）。"""
     from . import modes, plan, snapshot  # noqa: PLC0415 - 避免导入环
@@ -231,6 +297,11 @@ def state_payload(cfg, state_dir: Path) -> dict:
         }
     except Exception:  # noqa: BLE001
         out["relay"] = {}
+    try:
+        out["options"] = _options(cfg)
+        out["subs"] = OKWW_SUBS
+    except Exception:  # noqa: BLE001
+        out["options"] = {}
     try:
         out["plan"] = plan.next_plan(cfg.automas_dir)
     except Exception:  # noqa: BLE001
