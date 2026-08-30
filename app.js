@@ -202,16 +202,22 @@ async function oneShot(body, okText) {
   catch (e) { toast("发不出去：" + e.message); }
 }
 
-async function ping() {
+/* `minAt` 是「只接受这个时刻之后上报的状态」。保存完之后必须传它——
+   否则可能收到**改动之前**发布的那一条，界面上就会显示成「没改成」。
+   2026-08-31 实测撞到过：机器上已经是新值了，页面还显示旧值。 */
+async function ping(minAt) {
   setStatus("正在问机器…", "");
-  const before = snap ? snap.at : 0;
+  const floor = minAt || (snap ? snap.at : 0);
   try { await send({ action:"refresh" }); }
   catch (e) { return setStatus("发不出去：" + e.message, "off"); }
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 16; i++) {
     await new Promise((r) => setTimeout(r, 700));
     let s;
     try { s = await latestState("2h"); } catch { continue; }
-    if (s && s.at > before) { snap = s; save_cache(); render(); return setStatus("开机中 · 刚刚更新", "on"); }
+    if (s && s.at >= floor && (!snap || s.at > snap.at)) {
+      snap = s; save_cache(); render();
+      return setStatus("开机中 · 刚刚更新", "on");
+    }
   }
   setStatus(snap ? `关机中 · 状态是 ${ago(snap.at)}的` : "关机中 · 还没有过状态", "off");
 }
@@ -259,7 +265,8 @@ $("#go").onclick = async () => {
   if (sent) {
     edits = {}; updateBar();
     toast(`${sent} 项已发出。机器开着就是马上生效，关着就是下次开机；生效后会有通知。`, 5000);
-    setTimeout(ping, 1500);
+    const after = now();          // 只认这一刻之后上报的状态
+    setTimeout(() => ping(after), 2000);
   }
 };
 
