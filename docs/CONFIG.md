@@ -212,20 +212,18 @@ reopens it and the weekly reward stops being collected indefinitely. The daily
 plan prints the switch's state for exactly this reason; if it reads
 `剿灭 本周已完成/关闭` on a Monday, check that file.
 
-### The stage is AT-4 until the event ends - then it must be changed
+### 固定关卡现在是 1-7（2026-08-31 用 config-check.py 实测）
 
-**Changed from 1-7 to AT-4 on 2026-08-23**, at the operator's instruction, to
-farm the 墟 event. AT-4's listed value is 搓玉效率 0.91.
+一度在 2026-08-23 改成活动关 AT-4 刷「墟」，**现在已经改回 1-7**。
+`活动关优先` 是 false，所以活动 09-01 04:00 结束也不会出事。
 
-⚠️ **AT-4 stops existing when the event closes, 2026-09-01 04:00 server time.**
-A fixed stage that no longer exists fails every run after that. The relay's
-daily report carries an activity countdown and flags an event that has ended,
-but **changing the stage back is a manual act** - nothing does it automatically.
+⚠️ 这一段以前写着「现在是 AT-4」，而机器上早就是 1-7 了。**文档说谎比没有
+文档更危险**——826 那次就是从错误的字段含义出发的。所以：
+**任何关于配置的断言，先跑 `scripts/mac/config-check.py`，贴出输出再说结论。**
 
-The alternative is AUTO-MAS's own `Task/IfActivityFirst` (界面上的「优先刷取活动关」),
-which asks each run whether an event is live: if so it farms the event stage at
-`ActivityStageIndex`, and if not it falls back to the fixed stage. That is the
-setting to use if this should stop needing a human.
+活动关那条路本身仍然有效，只是需要人手动切换。要让它不再需要人，
+用 AUTO-MAS 自己的 `Task/IfActivityFirst`（界面上的「优先刷取活动关」）：
+有活动就刷 `ActivityStageIndex` 指的活动关，没有就回落到固定关。
 
 ### Why the fallback stage is 1-7, and what that means for material planning
 

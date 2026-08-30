@@ -123,8 +123,17 @@ def fetch() -> dict:
                        capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit(f"✗ 读不回配置（winrun 退出码 {r.returncode}）\n{r.stderr.strip()}")
+    # winrun 会在正文前面加一行「[机器时间] MM-DD HH:MM:SS」——那是它的
+    # 设计（远端时钟必须露出来，见 winrun.sh 的注释），不是脏数据。
+    # 2026-08-31 之前这里直接 json.loads 整个 stdout，于是**读回来了却报
+    # 「不是 JSON」**：一个能正常工作的工具，每次都自称失败。
+    # 这正是这个脚本存在的理由那一类错——「以为干了但没干」的镜像。
+    body = r.stdout
+    i = body.find("{")
+    if i > 0:
+        body = body[i:]
     try:
-        return json.loads(r.stdout)
+        return json.loads(body)
     except json.JSONDecodeError:
         sys.exit(f"✗ 远端返回的不是 JSON：\n{r.stdout[:600]}")
 
