@@ -217,6 +217,17 @@ if ($svc.Status -ne 'Stopped') {
   try { $svc.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30)) } catch {}
 }
 $svc.Refresh()
+if ($svc.Status -ne 'Stopped') {
+  # 等不到就强杀。2026-08-31 连着三次卡在 STOP_PENDING，每次白等十分钟——
+  # 服务里有个挂在网络读上的线程，Stop-Service 等不下来。代码已经修过
+  # （读超时 + 重连补漏），这里是兜底：卡住时部署不该整个瘫掉。
+  $p = Get-CimInstance Win32_Service -Filter "Name='ark-relay'" -EA SilentlyContinue
+  if ($p -and $p.ProcessId -gt 0) {
+    Stop-Process -Id $p.ProcessId -Force -EA SilentlyContinue
+    Start-Sleep -Seconds 3
+  }
+  $svc.Refresh()
+}
 Write-Output ("STOPPED_OK=" + ($svc.Status -eq 'Stopped'))
 Remove-Item 'C:\ProgramData\ark-relay\ark_relay\__pycache__\*.pyc' `
   -Force -ErrorAction SilentlyContinue
