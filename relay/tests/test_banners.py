@@ -5,7 +5,8 @@
 * `wuwa_notice.html`    —— 官方 3.6 版本内容说明，裁到「全新角色/武器」两节
 * `prts_limited.wikitext` —— PRTS「卡池一览/限时寻访」全文
 * `ak_schedule.js`      —— 一图流手工维护的方舟未来排期
-* `endfield_pools.json` —— 森空岛 char-pool 的 data.list
+* `endfield_pools.json`  —— 森空岛 char-pool 的 data.list
+* `endfield_notice.html` —— 官方「版本更新说明」，裁到「全新干员」和寻访两节
 
 钉住的都是已经踩过的坑：
 
@@ -17,6 +18,9 @@
 4. 「联合行动」这类池子里全是老干员，不能算首发。
 5. 下一期官方公布了人的时候不许再写「约」和「官方未公布」；
    只给到日期的源不许硬凑出 00:00 冒充精确时刻。
+6. 「已公布但不在开」不等于「下一期」——本版上半开完了也满足这个条件，
+   照那个判据会把**上一期**当成下一期报出去。公告是按时间顺序列的，
+   要取在开的那位**之后**的。
 """
 import json
 import sys
@@ -28,7 +32,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ark_relay.banners import (  # noqa: E402
     _AK_PAGES, _PRTS, debut_only, parse_ak_schedule, parse_arknights,
-    parse_endfield, parse_wuwa, parse_wuwa_preview, render,
+    parse_endfield, parse_endfield_notice, parse_wuwa, parse_wuwa_preview,
+    render, upcoming,
 )
 
 FX = Path(__file__).parent / "fixtures"
@@ -107,6 +112,26 @@ def main() -> int:
     for c in not_up[0]["chars"]:
         c["dotType"] = "label_type_normal"
     check("不是 UP 的角色不进报告", parse_endfield(not_up, lambda g: "梨诺"), [])
+
+    ef_notice = (FX / "endfield_notice.html").read_text(encoding="utf-8")
+    ef_debut = parse_endfield_notice(ef_notice)
+    check("官方公告一次给全整版上下半的新干员和池名",
+          ef_debut, [("诀", "临渊望北"), ("梨诺", "晨星于此闪耀")])
+    check("公告取不到时返回空", parse_endfield_notice(""), [])
+    check("没有「全新干员」那一节时返回空",
+          parse_endfield_notice("<p>只有更新维护时间</p>"), [])
+
+    # ── 「下一期」只能取在开的那位之后的 ────────────────────
+    check("本版最后一个在开时，本版没有下一期了",
+          upcoming(ef_debut, {"梨诺"}), [])
+    check("本版第一个在开时，下一期是第二个",
+          upcoming(ef_debut, {"诀"}), [("梨诺", "晨星于此闪耀")])
+    check("上半开完了也不许被当成下一期",
+          [w for w, _ in upcoming(ef_debut, {"梨诺"})], [])
+    check("鸣潮同理：清宵在开，下一期是景燃",
+          upcoming(debut, {"清宵", "达妮娅"}), [("景燃", "身赴三途")])
+    check("一个都没在开时不猜",
+          upcoming(debut, set()), [])
 
     # ── 渲染 ───────────────────────────────────────────────
     now = datetime(2026, 8, 31, 0, 0, 0)

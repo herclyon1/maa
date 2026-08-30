@@ -37,6 +37,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../relay" && pwd)"
 
 cd "$HERE"
 
+# 分段计时。2026-08-31 用户说部署慢到承受不起，而当时谁也说不出慢在哪一段——
+# 我第一次量到的 90 秒其实是在「更新说明为空」那道闸上中止的，压根没走到网络。
+# 与其每次靠猜，不如每段都把秒数打出来。
+_T0=$SECONDS; _TP=$SECONDS
+lap() { printf '      （%d 秒）\n' "$((SECONDS-_TP))"; _TP=$SECONDS; }
+
 # 为什么这道闸在最前面：2026-08-24 我在 test_preupdate_session.py 红着的时候
 # 部署了一次，红灯是真的（run() 拆分后断言失效），只是我先按了部署。语法自检
 # 拦不住这种——代码能编译，只是行为不对。测试全绿才准上机，没有例外。
@@ -52,6 +58,7 @@ if ! out=$("$HERE/../scripts/mac/guardcheck.sh" 2>&1); then
 fi
 echo "  $(tail -1 <<<"$out")"
 
+lap
 echo "▶ 0a/5 没有永远不会被执行的代码"
 if ! out=$(python3 "$HERE/../scripts/mac/lib/deadcode.py" \
         "$HERE" "$HERE/../scripts" 2>&1); then
@@ -61,6 +68,7 @@ if ! out=$(python3 "$HERE/../scripts/mac/lib/deadcode.py" \
 fi
 echo "  $(tail -1 <<<"$out")"
 
+lap
 echo "▶ 0/5 回归测试（不全绿就不部署）"
 # 并行跑。四十个测试各自起一个 python，串行要十几秒，而这十几秒
 # 每次部署都要付两遍（lint-repo 那道闸里还会再跑一遍）。
@@ -107,14 +115,17 @@ if [ "$NOTES_SHA" = "$LAST_SHA" ] && [ "$REDEPLOY" != "1" ]; then
   exit 8
 fi
 
+lap
 echo "▶ 1/5 重建 manifest"
 python3 make-manifest.py
 
+lap
 echo "▶ 2/5 语法自检"
 python3 -m py_compile ark_relay/*.py service.py run.py
 
 FILES=$(python3 -c "import json;print(' '.join(json.load(open('manifest.json'))['files']))")
 
+lap
 echo "▶ 3/5 推送 $(wc -w <<<"$FILES") 个文件"
 # 清单里现在有嵌套路径（ark_relay/okww_files/*.py）。scp 不会自己建目录，
 # 目录不在的话那几个文件会静静推不过去，而哈希核对那步才会发现。先建好。
@@ -129,6 +140,7 @@ for f in $FILES; do
   scp -q "${SSH_OPTS[@]}" "$f" "${USER_AT}:${REMOTE_DIR}/${f}"
 done
 
+lap
 echo "▶ 4/5 逐文件核对哈希"
 # 远端算哈希：用 AUTO-MAS 自带的 python，避免 certutil 的 GBK 输出问题。
 cat > /tmp/ark-verify.py <<'PY'
@@ -150,6 +162,7 @@ ssh "${SSH_OPTS[@]}" "$USER_AT" "\"$PY\" -X utf8 C:\\Users\\Administrator\\ark-v
 ssh "${SSH_OPTS[@]}" "$USER_AT" \
   "del C:\\Users\\Administrator\\ark-verify.py & del ${REMOTE_DIR//\//\\}\\_manifest_check.json" >/dev/null 2>&1 || true
 
+lap
 echo "▶ 4.5/5 写入代码版本号（否则自更新会拿旧清单把这次部署顶回去）"
 # 手动部署之后必须把本地 manifest 的版本号刻到机器上。不写的话，机器的
 # code-version 还停在上一次自更新的值，下次启动时某扇缓存落后的门给一份
@@ -160,6 +173,7 @@ ssh "${SSH_OPTS[@]}" "$USER_AT" \
   "if exist \"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" (\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoProfile -Command \"Set-Content -Path 'C:/ProgramData/ark-relay/state/code-version.txt' -Value '$VER' -NoNewline\") else (powershell -NoProfile -Command \"Set-Content -Path 'C:/ProgramData/ark-relay/state/code-version.txt' -Value '$VER' -NoNewline\")" >/dev/null
 echo "    code-version = $VER"
 
+lap
 echo "▶ 5/5 重启服务并确认真的起来了"
 # 2026-08-26：这一段原本是
 #   ... & net stop ... & net start ... & echo RESTARTED
@@ -223,6 +237,8 @@ printf '%s' "$NOTES_SHA" > "$NOTES_STAMP"
 # 因为你面对的是一张白纸，只能从头写这次干了什么。
 : > "$NOTES"
 echo "✅ 部署完成：文件哈希已核对，服务已确认 RUNNING"
+lap
+printf "⏱  全程 %d 秒\n" "$((SECONDS-_T0))"
 echo "   （relay/RELEASE-NOTES.md 已清空——下次部署前必须写清楚这次改了什么）"
 
 # 把这次部署的 manifest 推上 GitHub。**不推的话自更新永远用不成**：

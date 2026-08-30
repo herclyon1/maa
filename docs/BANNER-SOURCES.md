@@ -8,7 +8,7 @@
 | 游戏 | 当前池 | 下期预告 | 要不要 token |
 |---|---|---|---|
 | 明日方舟 | PRTS `卡池一览/限时寻访` | 一图流前端仓库(人工维护) | 否 |
-| 终末地 | 森空岛 API | 一图流前端仓库(人工维护) | 当前池要,预告不要 |
+| 终末地 | 森空岛 API | 官方版本公告(跨版本才退回一图流) | 当前池要,预告不要 |
 | 鸣潮 | 库街区 wiki 首页 API | 官方游戏内公告 | 否 |
 
 ## 明日方舟
@@ -35,7 +35,32 @@
 
 - 当前池:森空岛 API,需要 `SKLAND_TOKEN`(见 CONFIG)。
   `dotType == "label_type_up"` 的才是 UP,角色名要再查 `item/info`。
-- 下期预告:`Arknights-yituliu/ef-frontend-v1` 仓库的
+- 下期预告(**本版之内**):官方公告聚合口,免 token:
+
+  ```
+  https://game-hub.hypergryph.com/bulletin/v2/aggregate?lang=zh-cn&platform=Windows&channel=1&type=0&code=endfield_5SD9TN&hideDetail=0
+  ```
+
+  `data.list[]` 里 title 为「版本更新说明」的那条,正文在 `data.html`。
+  和鸣潮是一个路数——整版上下半一次给全:
+
+  ```
+  ■ 全新干员
+  6星干员【诀】【梨诺】
+  ■ 全新寻访及申领
+  1.「临渊望北」特许寻访 · ... 6星干员【诀】获取概率提升 ...
+  3.「晨星于此闪耀」特许寻访 · ... 6星干员【梨诺】获取概率提升 ...
+  ```
+
+  「全新干员」那一节天然不含复刻,是判首发的依据;池名靠
+  「X」特许寻访 到下一个之间那段里的「6星干员【Y】获取概率提升」对上。
+
+  **判「下一期」不能用「已公布但不在开」**:本版上半开完了也满足这个条件,
+  照那个判据会把上一期当成下一期报出去。公告是按时间顺序列的,
+  要取在开的那位**之后**的(`upcoming()`)。
+
+- 下期预告(**跨版本**,本版两半都开完时才退到这里):
+  `Arknights-yituliu/ef-frontend-v1` 仓库的
   `custom/core/gacha/data/pool_info_table.json`。
 
   ```

@@ -11,6 +11,7 @@
 | 鸣潮 | 库街区 `api.kurobbs.com/wiki/core/homepage/getPage`（免 token） | 池子名、起止时间；角色名要再查 `getEntryDetail` |
 | 鸣潮预告 | 官方游戏内公告 `aki-gm-resources-back.aki-game.com` | 整个版本上下半的**全新五星**和池名 |
 | 终末地 | 森空岛 `zonai.skland.com/web/v1/wiki/char-pool` | 池子名、起止时间戳；角色名要再查 `item/info` |
+| 终末地预告 | 官方公告 `game-hub.hypergryph.com/bulletin/v2/aggregate` | 整版上下半的**全新干员**和池名 |
 | 明日方舟 | PRTS `卡池一览/限时寻访` | 池子名、UP 干员、精确起止 |
 | 方舟预告 | 一图流前端仓库 `gachaScheduleOptions.js`（人工维护） | 下一期池名和大致开始日 |
 
@@ -132,6 +133,48 @@ def parse_endfield(pools: list, name_of) -> list[Banner]:
                               tuple(names), a, b))
     out.sort(key=lambda x: x.start)
     return out
+
+
+# 官方「版本更新说明」公告里，整版上下半的新干员和池名一起给，
+# 和鸣潮的版本公告是一个路数：
+#     ■ 全新干员
+#     6星干员【诀】【梨诺】
+#     ■ 全新寻访及申领
+#     1.「临渊望北」特许寻访 · ... 6星干员【诀】获取概率提升 ...
+#     3.「晨星于此闪耀」特许寻访 · ... 6星干员【梨诺】获取概率提升 ...
+# 「全新干员」那一节天然不含复刻，正好是判首发的依据。
+_EF_DEBUT_SEG = re.compile(r"全新干员(.{0,300}?)■", re.S)
+_EF_BRACKET = re.compile(r"【([^】]+)】")
+_EF_POOL = re.compile(r"「([^」]+)」特许寻访")
+_EF_UP = re.compile(r"6星干员【([^】]+)】获取概率提升")
+
+
+def upcoming(debut: "list[tuple[str, str]]", live: "set[str]"
+             ) -> "list[tuple[str, str]]":
+    """公告按时间顺序列全版的池子，在开的那位之后的才是还没开的。
+
+    不能只用「不在 live 里」——本版上半已经开完了，那位也不在 live 里，
+    照那个判据会把**上一期**当成下一期报出去。
+    """
+    idx = max((i for i, (w, _) in enumerate(debut) if w in live), default=None)
+    return debut[idx + 1:] if idx is not None else []
+
+
+def parse_endfield_notice(html: str) -> "list[tuple[str, str]]":
+    """从版本更新说明取 (干员, 池名)，按公告里的先后顺序。"""
+    txt = re.sub(r"<[^>]+>", "", html or "").replace("&nbsp;", " ")
+    seg = _EF_DEBUT_SEG.search(txt)
+    if not seg:
+        return []
+    debut = _EF_BRACKET.findall(seg.group(1))
+    # 每个「X」特许寻访 到下一个之间的那段里，写着这一池 UP 的是谁
+    hits = list(_EF_POOL.finditer(txt))
+    pool_of: dict[str, str] = {}
+    for k, m in enumerate(hits):
+        tail = txt[m.end():hits[k + 1].start() if k + 1 < len(hits) else len(txt)]
+        if up := _EF_UP.search(tail):
+            pool_of.setdefault(up.group(1), m.group(1))
+    return [(n, pool_of.get(n, "")) for n in debut]
 
 
 # ── 鸣潮：库街区 wiki 首页（免 token）──────────────────────────
@@ -262,6 +305,14 @@ _AK_SCHEDULE = ("https://raw.githubusercontent.com/Arknights-yituliu/"
                 "frontend-v2-plus/main/src/utils/gachaScheduleOptions.js")
 _KURO = "https://api.kurobbs.com"
 _ZONAI = "https://zonai.skland.com"
+# 终末地官方公告聚合口，免 token。code 是渠道常量。
+_EF_BULLETIN = ("https://game-hub.hypergryph.com/bulletin/v2/aggregate"
+                "?lang=zh-cn&platform=Windows&channel=1&type=0"
+                "&code=endfield_5SD9TN&hideDetail=0")
+# 跨版本的下一期只有手工维护的这份有。时刻不采信它（见 docs/BANNER-SOURCES.md），
+# 只用来取「下一个是谁」。
+_EF_SCHEDULE = ("https://raw.githubusercontent.com/Arknights-yituliu/ef-frontend-v1"
+                "/main/custom/core/gacha/data/pool_info_table.json")
 
 
 def _json(url: str, ua: str, data: "bytes | None" = None,
@@ -322,7 +373,9 @@ def _arknights(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | Non
     return debut, (day, name if official else f"{name}（排期是预测，未官宣）")
 
 
-def _endfield(cred, sk_get) -> "tuple[list[Banner], datetime | None]":
+def _endfield(cred, sk_get, now: datetime
+              ) -> "tuple[list[Banner], tuple[datetime, str] | None]":
+    """在开的池子走森空岛（时刻权威），首发/预告走官方版本公告。"""
     try:
         pools = (sk_get("/web/v1/wiki/char-pool")["data"] or {}).get("list") or []
     except Exception:  # noqa: BLE001
@@ -337,8 +390,58 @@ def _endfield(cred, sk_get) -> "tuple[list[Banner], datetime | None]":
         except Exception:  # noqa: BLE001
             return ""
 
-    got = parse_endfield(pools, name_of)
-    return got, (min((b.end for b in got), default=None))
+    live = parse_endfield(pools, name_of)
+    end = min((b.end for b in live), default=None)
+
+    # 官方公告：这一版有哪些新干员、各在哪个池
+    debut: "list[tuple[str, str]]" = []
+    notice_ok = True
+    try:
+        d = _json(_EF_BULLETIN, _UA_BROWSER, timeout=25)
+        html = "".join(
+            str(((n.get("data") or {}).get("html")) or "")
+            for n in ((d.get("data") or {}).get("list") or [])
+            if "版本更新说明" in str(n.get("title") or ""))
+        debut = parse_endfield_notice(html)
+    except Exception:  # noqa: BLE001
+        notice_ok = False
+        log.warning("终末地官方公告取不到，这一版分不出首发和复刻", exc_info=True)
+
+    names = {w for w, _ in debut}
+    got = [b for b in live if set(b.chars) & names] if notice_ok else live
+    if not end or end <= now:
+        return got, None
+
+    # 下一期优先用官方公告里「已经公布但还没开」的那位
+    on = {c for b in live for c in b.chars}
+    rest = upcoming(debut, on)
+    if rest:
+        return got, (end, "、".join(f"{w}「{p}」" if p else w for w, p in rest))
+
+    # 本版两半都开完了，跨版本的只有一图流那份手工表有
+    try:
+        table = _json(_EF_SCHEDULE, _UA_BROWSER, timeout=25)
+    except Exception:  # noqa: BLE001
+        log.warning("一图流终末地排期取不到", exc_info=True)
+        return got, (end, "")
+    seen = {b.name for b in live} | {p for _, p in debut}
+    nxt = next((r for r in (table if isinstance(table, list) else [])
+                if str(r.get("poolName") or "") not in seen
+                and _ef_after(r, now)), None)
+    if not nxt:
+        return got, (end, "")
+    who = str(nxt.get("character") or "") or str(nxt.get("poolName") or "")
+    pool = str(nxt.get("poolName") or "")
+    label = f"{who}「{pool}」" if pool and pool != who else who
+    return got, (end, f"{label}（排期是别人手工维护的，未官宣）")
+
+
+def _ef_after(row: dict, now: datetime) -> bool:
+    try:
+        return datetime.strptime(str(row.get("poolStart") or ""),
+                                 "%Y/%m/%d %H:%M:%S") > now
+    except (ValueError, TypeError):
+        return False
 
 
 # 这个 hash 是渠道常量、不随版本变；真失效了就去
@@ -403,7 +506,7 @@ def _wuwa(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | None]":
     if not end or end <= now:
         return got, None
     live = {c for b in pools for c in b.chars}
-    rest = [(w, pl) for w, pl in debut if w not in live]
+    rest = upcoming(debut, live)
     if not rest:
         return got, (end, "")
     who = "、".join(f"{w}「{p}」" if p else w for w, p in rest)
@@ -437,10 +540,13 @@ def section(now: datetime, *, skland_token: str = "",
     except Exception:  # noqa: BLE001
         log.warning("方舟卡池整段失败", exc_info=True)
     if sk_get is not None:
-        ef, ef_next = _endfield(cred, sk_get)
-        banners += ef
-        if ef_next and ef_next > now:
-            nxt["终末地"] = (ef_next, "")
+        try:
+            ef, ef_next = _endfield(cred, sk_get, now)
+            banners += ef
+            if ef_next and ef_next[0] > now:
+                nxt["终末地"] = ef_next
+        except Exception:  # noqa: BLE001
+            log.warning("终末地卡池整段失败", exc_info=True)
     try:
         ww, ww_next = _wuwa(now)
         banners += ww
