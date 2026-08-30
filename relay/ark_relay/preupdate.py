@@ -1032,6 +1032,51 @@ def run_okww(okww_dir: Path | None,
         _okww_autostart(root, was)
 
 
+# 一天跑一遍就够。原来只看「今天还有没有要跑 MaaEnd 的队列」，没有记
+# 「今天已经跑过了」——于是**每次服务重启都重跑一整轮**，把 MAA、MaaEnd、
+# OK-WW 挨个拉起来查更新。2026-08-31 我一上午部署了三次，它就跑了三次，
+# 第三次 MAA 没在 180 秒内给出结论，报了一条「没能确认」。
+# 那条告警本身没说错，只是根本不该有第三次。
+RETRY_MIN = 20          # 上一轮有没确认的项时，隔多久才允许再试
+
+
+def should_run(state_dir: "Path | None", now: datetime,
+               *, had_problems: bool = False) -> bool:
+    """今天该不该跑预更新。
+
+    * 今天已经**干净地**跑完过 → 不跑（服务重启不该重来一遍）
+    * 今天跑过但有没确认的项 → 允许重试，但至少隔 RETRY_MIN 分钟，
+      免得连续部署把它变成连环重试
+    """
+    if not state_dir:
+        return True
+    f = Path(state_dir) / "preupdate.json"
+    try:
+        st = json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return True
+    if st.get("day") != now.strftime("%Y-%m-%d"):
+        return True
+    if st.get("clean"):
+        return False
+    try:
+        last = datetime.fromisoformat(str(st.get("at")))
+    except (TypeError, ValueError):
+        return True
+    return (now - last).total_seconds() >= RETRY_MIN * 60
+
+
+def mark_run(state_dir: "Path | None", now: datetime, *, clean: bool) -> None:
+    if not state_dir:
+        return
+    try:
+        atomic_write_text(Path(state_dir) / "preupdate.json", json.dumps(
+            {"day": now.strftime("%Y-%m-%d"), "at": now.isoformat(),
+             "clean": bool(clean)}, ensure_ascii=False))
+    except OSError:
+        log.warning("预更新的记账写不下来，下次重启可能会重跑一遍", exc_info=True)
+
+
 def wanted_today(automas_dir: Path | None, now: datetime | None = None) -> bool:
     """True when a queue still to come today runs MaaEnd.
 

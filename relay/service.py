@@ -616,7 +616,12 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             # tests/test_undefined_names.py 就是为了这类错加的。
             from ark_relay import okww_patch, plan, preupdate  # noqa: PLC0415
 
-            if preupdate.wanted_today(cfg.automas_dir):
+            # 一天跑一遍就够：每次服务重启都重跑，会把 MAA/MaaEnd/OK-WW
+            # 挨个再拉起来查一遍更新。2026-08-31 我一上午部署三次，
+            # 它跑了三次，第三次 MAA 没在 180 秒内答话，报了「没能确认」。
+            _pre_now = datetime.now(tz=SERVER_TZ)
+            if (preupdate.wanted_today(cfg.automas_dir)
+                    and preupdate.should_run(cfg.state_dir, _pre_now)):
                 maaend = cfg.maaend_dir or _maaend_dir(cfg)
                 # Both are pushed, per the standing order: when an auto-update
                 # takes effect, say so at once. An earlier version of this block
@@ -662,6 +667,8 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
                 for note in okww_patch.ensure_patches(okww):
                     log.info("预更新：%s", note)
                     notifier.send("🩹 OK-WW 补丁", note)
+                preupdate.mark_run(cfg.state_dir, _pre_now,
+                                   clean=not problems)
                 if problems:
                     # An alert, not a routine note: a silent pre-update leaves
                     # the machine running a version nobody chose.
