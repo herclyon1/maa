@@ -123,22 +123,41 @@ def _make(root: Path, daily=UPSTREAM_DAILY, domain=UPSTREAM_DOMAIN,
 
 
 def test_applies(tmp: Path) -> None:
-    print("[贴得上]")
+    """2026-08-30 起：只留残象聚落一条，其余三条**主动撤回上游原样**。
+
+    留残象是因为「只刷指定点位」上游没有，只能靠换整个文件拿到。
+    撤那三条是因为没有证据说它们还在起作用（键位问题、背包满、
+    以及上游关掉 PR 且那个顺序是作者有意为之）。
+    **只从清单里删掉不够**——已经贴在机器上的必须主动还原。
+    """
+    print("[只贴残象聚落，其余三条撤回上游原样]")
     d = _make(tmp)
+    # 夹具造的是上游原版。先把三条旧补丁真的贴上去，再看 ensure_patches
+    # 会不会把它们撤掉——不然测的只是「本来就没打」这种废话。
+    for one in okww_patch.PATCHES:
+        okww_patch._apply_one(tmp, one)                           # noqa: SLF001
+    okww_patch._apply_domain(tmp)                                 # noqa: SLF001
+    okww_patch._apply_starve(tmp)                                 # noqa: SLF001
+    pre_daily = (d / "DailyTask.py").read_text(encoding="utf-8")
+    check("前置：领奖顺序确实先被改了",
+          pre_daily.find("run_additional_tasks") < pre_daily.find("claim_daily"),
+          True)
+
     notes = okww_patch.ensure_patches(tmp)
-    check("四条补丁都报告贴上了", len(notes), 4)
 
     daily = (d / "DailyTask.py").read_text(encoding="utf-8")
-    check("附加任务排到了领奖前面",
-          daily.find("run_additional_tasks") < daily.find("claim_daily"), True)
+    check("领奖顺序已还原（附加任务仍排在领奖之后）",
+          daily.find("run_additional_tasks") > daily.find("claim_daily"), True)
 
     domain = (d / "DomainTask.py").read_text(encoding="utf-8")
-    check("WaitFailedException 进了 except",
-          "NotInCombatException, CharDeadException, WaitFailedException" in domain, True)
-    check("import 也补上了",
-          "from ok import Logger, WaitFailedException" in domain, True)
+    check("WaitFailedException 已撤出 except",
+          "NotInCombatException, CharDeadException, WaitFailedException" in domain,
+          False)
+    check("import 也撤了",
+          "from ok import Logger, WaitFailedException" in domain, False)
     check("只改一处 import，没波及别的 from ok",
           domain.count("from ok import"), 1)
+    check("撤销这件事有留言", any("已撤销" in n for n in notes), True)
 
     nest = (d / "NightmareNestTask.py").read_text(encoding="utf-8")
     patched = (Path(__file__).resolve().parents[1] / "ark_relay" / "okww_files"
@@ -158,7 +177,7 @@ def test_applies(tmp: Path) -> None:
     check("带了「只刷指定点位」", "Only Farm These Nests" in nest, True)
 
     combat = (d / "BaseCombatTask.py").read_text(encoding="utf-8")
-    check("主C饿死兜底已贴上", "_starved_main_dps_target" in combat, True)
+    check("主C饿死兜底已撤销", "_starved_main_dps_target" in combat, False)
     check("兜底排在原逻辑之前（否则等于没加）",
           combat.find("_starved_main_dps_target(candidates)")
           < combat.find("_switch_rule_3_target"), True)
@@ -176,7 +195,9 @@ def test_refuses_unknown(tmp: Path) -> None:
     print("[认不出上游就不动，而且要出声]")
     d = _make(tmp, domain="import re\n\nfrom ok import Logger\n\n# 上游重写过了\n")
     before = (d / "DomainTask.py").read_text(encoding="utf-8")
-    notes = okww_patch.ensure_patches(tmp)
+    # ensure_patches 从 2026-08-30 起不再应用这条补丁，但 _apply_domain
+    # 的「认不出就停手」这份安全行为仍然值得钉住——万一以后再启用。
+    notes = okww_patch._apply_domain(tmp)                         # noqa: SLF001
     check("文件一个字都没动",
           (d / "DomainTask.py").read_text(encoding="utf-8"), before)
     check("有一条「贴不上了」的告警",
@@ -192,7 +213,7 @@ def test_reverts_on_syntax_error(tmp: Path) -> None:
     okww_patch._DOMAIN_NEW = bad                                  # noqa: SLF001
     try:
         before = (d / "DomainTask.py").read_text(encoding="utf-8")
-        notes = okww_patch.ensure_patches(tmp)
+        notes = okww_patch._apply_domain(tmp)                     # noqa: SLF001
         check("已经还原成上游版",
               (d / "DomainTask.py").read_text(encoding="utf-8"), before)
         check("而且说了「已还原」", any("已还原" in n for n in notes), True)

@@ -362,15 +362,62 @@ def _apply_starve(root: Path) -> list[str]:
     log.info("OK-WW 补丁：%s 已重新贴上", label)
     return [f"OK-WW 补丁：{label} 已重新贴上（上次更新把它覆盖了）"]
 
+def _revert_text(root: Path, parts: tuple, new: str, old: str,
+                 label: str) -> list[str]:
+    """把一段本地改动还原回上游原样。找不到就当已经还原了，不出声。
+
+    **只停止重打是不够的**：`ensure_patches` 只会打不会撤，
+    从清单里删掉一条补丁，已经贴在机器上的那份还在，
+    要等 OK-WW 下次更新覆盖文件才会消失。所以要主动撤。
+    """
+    f = root.joinpath(*parts)
+    if not f.exists():
+        return []
+    try:
+        text = f.read_text(encoding="utf-8")
+    except OSError:
+        return [f"OK-WW 补丁：读不了 {f.name}，{label} 没能撤销"]
+    if new not in text:
+        return []                       # 幂等：已经是上游原样
+    bak = _atomic_write(f, text.replace(new, old, 1))
+    if bak is None:
+        return [f"OK-WW 补丁：{label} 撤销失败，写不进去"]
+    log.info("OK-WW 补丁：%s 已撤销，还原成上游原样", label)
+    return [f"OK-WW 补丁：{label} 已撤销（证据不足，见 2026-08-30 的结论）"]
+
+
 def ensure_patches(okww_dir: Path | None) -> list[str]:
-    """确保本地补丁在位。返回这次实际做了什么（空表示本来就在位）。"""
+    """确保本地补丁在位。返回这次实际做了什么（空表示本来就在位）。
+
+    2026-08-30 从四个减到一个。留下的只有残象聚落那份整份替换，
+    因为「只刷指定点位」上游根本没有，只能靠换掉整个文件拿到。
+
+    撤掉的三个，理由都是**没有证据说它们现在还在起作用**：
+
+    * 主C饿死兜底 —— 是我们自己改过游戏键位造成的（已在上游 #1632
+      承认并自行关闭 PR）。键位改回默认后症状再没出现。
+    * 副本失败不拖垮每日任务 —— 对应 08-26 那次「走向宝箱捡不到东西 →
+      等待超时 → 整个日常崩掉」，多半是背包满。而这条补丁是 08-28 才加的，
+      **症状 08-27 就已经不再出现**，加它之前病就好了。
+    * 领奖置底 —— 上游作者 2026-08-29 关闭了 PR #1631，没有留任何说明。
+      而且这个顺序是作者有意为之，`config_description` 里明写着。
+      改成 issue 去问「能不能做成可配置」，本地不再改。
+
+    三个都主动还原，不是只停止重打。
+    """
     if not okww_dir:
         return []
     root = Path(okww_dir)
     done: list[str] = []
-    for p in PATCHES:
-        done.extend(_apply_one(root, p))
-    done.extend(_apply_domain(root))
     done.extend(_apply_nest(root))
-    done.extend(_apply_starve(root))
+    # 以下三条：撤销，不是应用。
+    for p in PATCHES:
+        done.extend(_revert_text(root, p.parts, p.new, p.old, p.name))
+    done.extend(_revert_text(root, (*_SRC, "DomainTask.py"),
+                             _DOMAIN_NEW, _DOMAIN_OLD, "副本失败不拖垮每日任务"))
+    done.extend(_revert_text(root, (*_SRC, "DomainTask.py"),
+                             _DOMAIN_IMPORT_NEW, _DOMAIN_IMPORT_OLD,
+                             "副本补丁的 import"))
+    done.extend(_revert_text(root, (*_SRC, "BaseCombatTask.py"),
+                             _STARVE_NEW, _STARVE_OLD, "主C饿死兜底"))
     return done
