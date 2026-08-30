@@ -345,6 +345,11 @@ def _tomorrow():
     return datetime.now(SERVER_TZ) + timedelta(days=1)
 
 
+# 排班里显示的是游戏名，不是工具名。用户 2026-08-31：「那个排班搞好看一点」。
+# 他关心的是哪个游戏明天干什么，MAA / MaaEnd / OK-WW 是实现细节。
+_GAME_OF = {"MAA": "明日方舟", "MaaEnd": "终末地", "OK-WW": "鸣潮"}
+
+
 def next_plan(automas_dir: Path | None) -> str:
     """Human-readable summary of what will run next. '' if it cannot be read."""
     if not automas_dir:
@@ -361,7 +366,7 @@ def next_plan(automas_dir: Path | None) -> str:
     lines = ["📅 明日安排"]
     for q in queues:
         for t in q["times"]:
-            lines.append(f"{t}（东京 {_tokyo(t)}）")
+            lines.append(f"🕘 {t}　东京 {_tokyo(t)}")
         for uid in q["items"]:
             s = scripts.get(uid) or {}
             bits = []
@@ -394,10 +399,14 @@ def next_plan(automas_dir: Path | None) -> str:
                 bits.append(f"理智用于 {s['sanity_use']}")
             if s.get("kind") == "OK-WW":
                 bits += _okww_plan_bits(automas_dir, s.get("path"))
+            # 一行一件事。原来是「· MAA　理智 1-7 · 剿灭 … · 理智药不限」，
+            # 同一个「·」既当项目符号又当分隔符，手机上一行折成三行看不清。
             label = s.get("name", "?")
-            lines.append(f"· {label}" + ("　" + " · ".join(bits) if bits else ""))
+            game = _GAME_OF.get(str(s.get("kind") or ""), "")
+            lines.append(f"▸ {game}" if game else f"▸ {label}")
+            lines += [f"　{b}" for b in bits]
         if q["after"] == "Shutdown":
-            lines.append("· 跑完自动关机")
+            lines.append("⏻ 跑完自动关机")
         lines.append("")
     return "\n".join(lines)
 

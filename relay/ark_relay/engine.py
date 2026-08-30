@@ -1071,6 +1071,16 @@ class Engine:
 
     # ---------- power off, once everything has actually been delivered ----------
 
+    def _shutdown_key(self, now: datetime) -> str:
+        """这一次「该关机了」的机会标识。
+
+        用当天流水的条数：一趟队列跑完就会增加，所以「晚班跑完那一次」和
+        「早班跑完那一次」是两个不同的机会。调试模式吃掉的是其中一次，
+        不是从此不关机。
+        """
+        day = now.strftime("%Y-%m-%d")
+        return f"{day}:{len(self.state.read_ledger(day))}"
+
     def _maybe_shutdown(self, now: datetime | None = None) -> bool:
         """Power the machine off after a run, but only when nothing is pending.
 
@@ -1082,12 +1092,28 @@ class Engine:
           - it is late enough for the daily report -> wait until it is sent
           - too soon after start -> never (no boot/shutdown loop)
         """
+        now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+        if not self.cfg.shutdown_after_run:
+            return False
+        key = self._shutdown_key(now)
         # Debug mode outranks everything below, the idle checkpoint included:
         # a boot with nothing scheduled is exactly what debugging looks like,
         # and powering it off is exactly what the operator asked not to happen.
+        #
+        # 2026-08-31 改判（用户原话：「我开了调试模式是指把一次队列的中继关机
+        # 指令跳过，而不是中继一直尝试关机，要不然人类没办法使用这个电脑」）：
+        # 调试模式不再只是「这一次判定返回 False」——判定每 30 秒重来一次，
+        # 那样等于把关机推迟到到期时刻，人一走开机器就自己关了。
+        # 现在它**吃掉这一次关机机会**：记下机会标识，到期后只要没有新队列
+        # 跑完（标识没变）就不补关；新队列一跑完标识就变，恢复正常关机。
         if modes.debug_active(self.state.dir):
+            if modes.shutdown_skipped(self.state.dir) != key:
+                modes.mark_shutdown_skipped(self.state.dir, key)
+                log.info("🔧 调试模式：这一次关机已跳过（%s）；"
+                         "到期后不会补关，等下一趟队列跑完再判", key)
             return False
-        if not self.cfg.shutdown_after_run:
+        if modes.shutdown_skipped(self.state.dir) == key:
+            # 调试模式已经吃掉这一次了。人可能正在用这台电脑。
             return False
         # `shutdown /s /t 60` only starts a countdown; the loop keeps ticking
         # through it. Without this flag the whole block ran again every poll -
@@ -1095,7 +1121,6 @@ class Engine:
         # seconds and re-issued the shutdown twice.
         if self._shutdown_issued:
             return False
-        now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
         idle = self._idle_checkpoint(now)
         entries = self._recent_entries(now)
         # `_handled_any` is the fast path for the ordinary case; `_work_is_done`
@@ -1160,6 +1185,14 @@ class Engine:
                 self.state.mark_interim_sent(
                     day, len(self.state.read_ledger(day)))
 
+        # 人按过桌面上那个开关：把这一次关机吃掉，用完即失效。
+        # 位置必须在这里——所有别的门都过了、马上就要真关了才算数，
+        # 放在前面会被一次「其实还没到该关机的时候」白白消耗掉。
+        if modes.take_skip(self.state.dir):
+            modes.mark_shutdown_skipped(self.state.dir, key)
+            log.info("⏸ 有人按了「这次别关机」，本次关机已跳过；"
+                     "下一趟队列跑完会正常关机")
+            return False
         log.info("本轮已处理完毕，60 秒后关机")
         try:
             subprocess.run(["shutdown", "/s", "/t", "60",
@@ -1185,8 +1218,10 @@ class Engine:
         # 卡池倒计时同理，挂在最后（用户 2026-08-30 的要求：放在通知末尾）。
         # 三个游戏各自 try 住，一个源挂了不影响其余，全挂了就少这一段。
         try:
-            pool = banners.section(datetime.now(tz=SERVER_TZ).replace(tzinfo=None),
-                                   skland_token=self.cfg.skland_token)
+            bnow = datetime.now(tz=SERVER_TZ).replace(tzinfo=None)
+            rows, nxt = banners.collect(bnow, skland_token=self.cfg.skland_token)
+            pool = banners.render(rows, bnow, nxt)
+            self._announce_banners(bnow, nxt)
         except Exception:  # noqa: BLE001
             log.warning("卡池那一段整体失败", exc_info=True)
             pool = ""
@@ -1201,6 +1236,32 @@ class Engine:
         log.info("日报用结构化模板（模型撰写已废弃，这是正常路径）")
         title2, body = core.format_daily(day, entries, "", tomorrow)
         return title2, body + tail
+
+    def _announce_banners(self, now: datetime,
+                          nxt: "dict[str, tuple[datetime, str]]") -> None:
+        """开服前一天在企业微信群里说一声。
+
+        用户 2026-08-31 定的：只有「任意游戏的新卡池开放的前一天」才发群，
+        其余时间他自己看 Server酱。所以走 send_group 而不是 send——
+        后者 Server酱 优先且第一个成功就停，永远到不了群里。
+
+        按「游戏+开始时刻」打标记：同一天两个游戏换池要各播一条，
+        而同一期不许因为日报补发就播第二遍。
+        """
+        due = banners.opening_tomorrow(now, nxt)
+        fresh = [d for d in due
+                 if not self.state.banner_announced(f"{d[0]}-{d[1]:%Y%m%d%H%M}")]
+        if not fresh:
+            return
+        title, body = banners.group_notice(fresh)
+        if not title:
+            return
+        if self.notifier.send_group(title, body):
+            return                      # 没送到就不打标记，下一轮再试
+        for game, when, _ in fresh:
+            self.state.mark_banner_announced(f"{game}-{when:%Y%m%d%H%M}")
+        log.info("📣 已在群里播报明天开的卡池：%s",
+                 "、".join(g for g, _, _ in fresh))
 
     def send_daily_now(self, mark: bool = True, label: str = "临时查看") -> bool:
         """Force today's report out (used by the `report` command and tests).

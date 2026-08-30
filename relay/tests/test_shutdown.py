@@ -106,5 +106,76 @@ ledger()
 check("due at 21:30, no records yet -> 21:40",
       E._work_is_done(at(21, 40), E._recent_entries(at(21, 40))), False)
 
+print("\n[调试模式] 吃掉一次关机机会，而不是到期就补关")
+# 用户 2026-08-31：「我开了调试模式是指把一次队列的中继关机指令跳过，
+# 而不是中继一直尝试关机，要不然人类没办法使用这个电脑每次都要开调试模式。」
+# 改判前：调试模式只是让每次判定返回 False，判定每 30 秒重来，到期后条件
+# 没变就立刻关机——人一走开机器自己关了。
+# 改判后：生效期间记下「这一次关机机会」并吃掉它；到期后只要没有新队列
+# 跑完（机会标识没变）就不补关；新队列一跑完标识变了，恢复正常关机。
+# 这里把真正执行关机那步挡掉，只看判定结果。
+issued = []
+eng.subprocess = type("X", (), {"run": staticmethod(lambda *a, **k: issued.append(a))})()
+ledger(run)
+E._handled_any = True
+E._started_at = at(21, 20)
+BOOT[0] = at(21, 20)
+E.state.report_sent = lambda d: True          # 日报已发，不在那道门上卡住
+E._last_round_manual = lambda now, entries: False
+E._unfinished_queues = lambda now, entries: []
+
+# _maybe_shutdown 查调试模式时用的是**真实**当前时间（生产里 now 就是真实
+# 时间，这个参数只为其余判定服务），所以到期点要按真实时钟写。
+dbg = STATE / "debug-until.txt"
+skipped = STATE / "shutdown-skipped.txt"
+real = datetime.now(tz=SERVER_TZ)
+skipped.unlink(missing_ok=True)
+
+dbg.write_text(f"{real + timedelta(hours=1):%Y-%m-%d %H:%M}", encoding="utf-8")
+E._shutdown_issued = False; issued.clear()
+check("调试模式生效中：不关机", E._maybe_shutdown(at(23, 0)), False)
+check("生效中没有发出关机命令", len(issued), 0)
+check("并且把这一次机会记下来了",
+      skipped.read_text(encoding="utf-8").strip(), "2026-08-21:1")
+
+dbg.write_text(f"{real - timedelta(hours=1):%Y-%m-%d %H:%M}", encoding="utf-8")
+E._shutdown_issued = False; issued.clear()
+check("到期后没有新队列跑完：仍然不关机（人可能正在用）",
+      E._maybe_shutdown(at(23, 30)), False)
+check("到期后也没有发出关机命令", len(issued), 0)
+
+# 早班又跑了一趟，流水多一条 —— 这是一次新的关机机会
+ledger(run, dict(run, run_id="y"))
+E._shutdown_issued = False; issued.clear()
+check("下一趟队列跑完：恢复正常关机", E._maybe_shutdown(at(23, 40)), True)
+check("这次确实发出了关机命令", len(issued), 1)
+
+dbg.unlink(missing_ok=True); skipped.unlink(missing_ok=True)
+ledger(run)
+E._shutdown_issued = False; issued.clear()
+check("没开过调试模式时，本来就该关机", E._maybe_shutdown(at(23, 0)), True)
+
+print("\n[人工开关] 桌面那个 .bat：只跳过下一次，用完即失效")
+# 用户 2026-08-31：「你给一个人类好去调这个模式的方法，独立于你的。」
+# 它不带到期时间，就是把**下一次真正要执行的关机**吃掉一次。
+flag = STATE / "skip-next-shutdown.flag"
+dbg.unlink(missing_ok=True); skipped.unlink(missing_ok=True)
+ledger(run)
+flag.write_text("skip", encoding="utf-8")
+E._shutdown_issued = False; issued.clear()
+check("按下之后：这一次不关机", E._maybe_shutdown(at(23, 0)), False)
+check("没有发出关机命令", len(issued), 0)
+check("标记被用掉了（用完即失效）", flag.exists(), False)
+
+E._shutdown_issued = False; issued.clear()
+check("同一次机会不会因为标记没了就补关",
+      E._maybe_shutdown(at(23, 10)), False)
+
+ledger(run, dict(run, run_id="y"))
+E._shutdown_issued = False; issued.clear()
+check("下一趟队列跑完：正常关机（不用再按一次才关）",
+      E._maybe_shutdown(at(23, 40)), True)
+skipped.unlink(missing_ok=True)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

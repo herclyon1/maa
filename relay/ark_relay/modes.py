@@ -82,6 +82,58 @@ def next_boot(now: datetime, min_ahead_min: int = 0) -> datetime:
     return future[0] if future else now + timedelta(days=1)
 
 
+def _skip_flag(state_dir: Path) -> Path:
+    return Path(state_dir) / "skip-next-shutdown.flag"
+
+
+def skip_armed(state_dir: Path) -> bool:
+    """人有没有按下「下一次别关机」。
+
+    这是给**人**用的开关，桌面上那个 `中继关机开关.bat` 写的就是这个文件。
+    和调试模式的区别：调试模式带到期时间，是我维护时用的；这个不带时间，
+    就是把**下一次真正要执行的关机指令**吃掉一次，用完即失效。
+    用户 2026-08-31：「你给一个人类好去调这个模式的方法，独立于你的。」
+    """
+    return _skip_flag(state_dir).exists()
+
+
+def take_skip(state_dir: Path) -> bool:
+    """有就用掉并返回 True。用完即失效，下一趟队列照常关机。"""
+    f = _skip_flag(state_dir)
+    if not f.exists():
+        return False
+    try:
+        f.unlink()
+    except OSError:
+        log.warning("跳过关机的标记删不掉，可能会连着跳过两次", exc_info=True)
+    return True
+
+
+def _skipped_file(state_dir: Path) -> Path:
+    return Path(state_dir) / "shutdown-skipped.txt"
+
+
+def shutdown_skipped(state_dir: Path) -> str:
+    """哪一次关机机会已经被调试模式吃掉了，''=没有。
+
+    用户 2026-08-31：「我开了调试模式是指把一次队列的中继关机指令跳过，
+    而不是中继一直尝试关机，要不然人类没办法使用这个电脑。」
+
+    原来调试模式只是让每一次判定返回 False，而判定每 30 秒重来一次——
+    到期后条件没变，机器立刻就关了，等于调试模式只是把关机推迟到到期时刻。
+    现在它**吃掉这一次机会**：记下当时的机会标识，到期后只要标识没变
+    （没有新队列跑完），就不再补关；新队列一跑完标识就变，恢复正常关机。
+    """
+    try:
+        return _skipped_file(state_dir).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def mark_shutdown_skipped(state_dir: Path, key: str) -> None:
+    atomic_write_text(_skipped_file(state_dir), key)
+
+
 def _debug_file(state_dir: Path) -> Path:
     return Path(state_dir) / "debug-until.txt"
 

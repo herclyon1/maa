@@ -173,6 +173,14 @@ class State:
     def mark_report_sent(self, day: str) -> None:
         (self.dir / f"report-{day}.sent").touch()
 
+    # 卡池开服前一天要在群里播一条。按「游戏+开始时刻」记，不按天记——
+    # 按天记的话，同一天有两个游戏换池就只播得出一个。
+    def banner_announced(self, key: str) -> bool:
+        return (self.dir / f"banner-{key}.sent").exists()
+
+    def mark_banner_announced(self, key: str) -> None:
+        (self.dir / f"banner-{key}.sent").touch()
+
 
 def is_last_run_of_day(rec: RunRecord, cfg: Config) -> bool:
     """True once the day's final scheduled queue has finished.

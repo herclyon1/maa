@@ -32,8 +32,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ark_relay.banners import (  # noqa: E402
     _AK_PAGES, _PRTS, debut_only, parse_ak_schedule, parse_arknights,
-    gh_raw, newest_version, parse_endfield, parse_endfield_notice,
-    parse_wuwa, parse_wuwa_preview, render, upcoming,
+    gh_raw, group_notice, newest_version, opening_tomorrow, parse_endfield,
+    parse_endfield_notice, parse_wuwa, parse_wuwa_preview, render, upcoming,
 )
 
 FX = Path(__file__).parent / "fixtures"
@@ -174,6 +174,37 @@ def main() -> int:
           mirrors[-1], "https://raw.githubusercontent.com/o/r/main/a/b.js")
     check("每条镜像都指向同一个文件",
           all(m.endswith("a/b.js") for m in mirrors), True)
+
+    # ── 只有「明天开」的才发群 ──────────────────────────
+    # 日报是晚上发的。按「24 小时内」算的话，21:30 会把后天早上六点开的
+    # 也算进来——那不是明天。所以比的是日期。
+    evening = datetime(2026, 8, 31, 21, 30)
+    pool_nxt = {
+        "终末地": (datetime(2026, 9, 2, 6, 0), "提弗洛斯"),      # 后天，不发
+        "明日方舟": (datetime(2026, 9, 1, 0, 0), "P3R联动"),      # 明天，发
+        "鸣潮": (datetime(2026, 8, 31, 23, 0), "景燃"),          # 今天，不发
+    }
+    due = opening_tomorrow(evening, pool_nxt)
+    check("只留明天开的", [g for g, _, _ in due], ["明日方舟"])
+    check("后天开的不算明天",
+          "终末地" in {g for g, _, _ in due}, False)
+    check("今天开的也不算明天（24 小时内会算错）",
+          "鸣潮" in {g for g, _, _ in due}, False)
+    check("一个都没有时返回空", opening_tomorrow(evening, {}), [])
+
+    two = opening_tomorrow(evening, {
+        "明日方舟": (datetime(2026, 9, 1, 0, 0), "P3R联动"),
+        "鸣潮": (datetime(2026, 9, 1, 11, 0), "景燃「身赴三途」")})
+    check("同一天两个游戏换池都要留下，按时刻排",
+          [g for g, _, _ in two], ["明日方舟", "鸣潮"])
+
+    title, body = group_notice(two)
+    check("群通知标题点名是哪几个游戏",
+          title, "🎴 明天开新卡池：明日方舟、鸣潮")
+    check("只给到日期的不凑 00:00", "00:00" in body, False)
+    check("有时刻的写出时刻", "09-01 11:00" in body, True)
+    check("人名带上", "景燃「身赴三途」" in body, True)
+    check("没有要播的就不发", group_notice([]), ("", ""))
 
     check("一条都没有时整段为空", render([], now, {}), "")
 

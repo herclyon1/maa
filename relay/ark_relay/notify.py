@@ -481,6 +481,22 @@ class Notifier:
             self._announce_outage(failed, delivered)
         return []
 
+    def send_group(self, title: str, body: str) -> list[str]:
+        """只发企业微信群机器人。
+
+        用户 2026-08-31 定的：卡池开服前一天在群里说一声，其余时间他自己
+        看 Server酱 就行。所以这条**不能**走 `send()`——那个按
+        `_ROUTINE_ORDER` 走，Server酱 优先，第一个成功就停，永远到不了群里。
+        """
+        delivered, failed = self._fan_out(title, body,
+                                          order=("企业微信机器人",),
+                                          stop_on_first=True)
+        if delivered:
+            return []
+        errs = [f"{n}: {e}" for n, e in failed.items()] or ["企业微信机器人没开"]
+        log.error("群通知没送到：%s ｜ 标题：%s", "；".join(errs), title)
+        return errs
+
     def _announce_outage(self, failed: dict[str, str], delivered: list[str]) -> None:
         """Report a dead channel as its own alert, via the channels still alive."""
         fresh = {n: e for n, e in failed.items()

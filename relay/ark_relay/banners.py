@@ -562,9 +562,10 @@ def _wuwa(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | None]":
     return got, (end, who)
 
 
-def section(now: datetime, *, skland_token: str = "",
-            cred=None, sk_get=None) -> str:
-    """日报末尾那一段。任何一个游戏取不到就少一行，不影响其余。
+def collect(now: datetime, *, skland_token: str = "",
+            cred=None, sk_get=None
+            ) -> "tuple[list[Banner], dict[str, tuple[datetime, str]]]":
+    """把三个游戏拉一遍。任何一个取不到就少一条，不影响其余。
 
     只有终末地需要 `skland_token`（或调用方直接给 `cred`/`sk_get`，
     测试就是这么注入的）。方舟走 PRTS、鸣潮走库街区，都不要 token。
@@ -579,11 +580,11 @@ def section(now: datetime, *, skland_token: str = "",
         except Exception:  # noqa: BLE001
             log.warning("森空岛登录失败，终末地卡池这一行不出", exc_info=True)
             sk_get = None
-    banners: list[Banner] = []
+    rows: list[Banner] = []
     nxt: "dict[str, tuple[datetime, str]]" = {}
     try:
         ak, ak_next = _arknights(now)
-        banners += ak
+        rows += ak
         if ak_next:
             nxt["明日方舟"] = ak_next      # _arknights 已经给的是 (时刻, 是谁)
     except Exception:  # noqa: BLE001
@@ -591,16 +592,48 @@ def section(now: datetime, *, skland_token: str = "",
     if sk_get is not None:
         try:
             ef, ef_next = _endfield(cred, sk_get, now)
-            banners += ef
+            rows += ef
             if ef_next and ef_next[0] > now:
                 nxt["终末地"] = ef_next
         except Exception:  # noqa: BLE001
             log.warning("终末地卡池整段失败", exc_info=True)
     try:
         ww, ww_next = _wuwa(now)
-        banners += ww
+        rows += ww
         if ww_next and ww_next[0] > now:
             nxt["鸣潮"] = ww_next
     except Exception:  # noqa: BLE001
         log.warning("鸣潮卡池整段失败", exc_info=True)
-    return render(banners, now, nxt)
+    return rows, nxt
+
+
+def section(now: datetime, **kw) -> str:
+    """日报末尾那一段。"""
+    rows, nxt = collect(now, **kw)
+    return render(rows, now, nxt)
+
+
+def opening_tomorrow(now: datetime,
+                     nxt: "dict[str, tuple[datetime, str]]"
+                     ) -> "list[tuple[str, datetime, str]]":
+    """明天开的新池子。用户 2026-08-31 定的：只有这种才发到微信群。
+
+    比的是**日期**不是「24 小时内」——日报是晚上发的，21:30 看
+    「24 小时内」会把后天早上六点开的池子算进来，那不是明天。
+    """
+    day = (now + timedelta(days=1)).date()
+    return sorted(((g, w, who) for g, (w, who) in nxt.items()
+                   if w.date() == day), key=lambda x: x[1])
+
+
+def group_notice(due: "list[tuple[str, datetime, str]]") -> "tuple[str, str]":
+    """发到群里的那条。没有就返回两个空串。"""
+    if not due:
+        return "", ""
+    lines = []
+    for game, when, who in due:
+        stamp = f"{when:%m-%d}" if (when.hour, when.minute) == (0, 0) \
+            else f"{when:%m-%d %H:%M}"
+        lines.append(f"· {game}　{stamp} 开" + (f"　{who}" if who else ""))
+    what = "、".join(g for g, _, _ in due)
+    return f"🎴 明天开新卡池：{what}", "\n".join(lines)
