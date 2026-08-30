@@ -161,6 +161,11 @@ class Config:
     maaend_dir: Path | None = field(
         default_factory=lambda: _env_path("ARK_MAAEND_DIR")
     )
+    # MAA 装在哪。要它是为了读 MAA **自己**的 asst.log——AUTO-MAS 的
+    # history 日志里没有子任务级别的失败，基建整个跪掉也看不出来。
+    maa_dir: Path | None = field(
+        default_factory=lambda: _env_path("ARK_MAA_DIR")
+    )
 
     # The times the machine is woken for. At each one the relay asks what is
     # scheduled *for that time*; nothing scheduled means this boot has no
@@ -189,13 +194,17 @@ class Config:
         Resolving here fixes every consumer at once instead of one call site.
         Import is deferred: `plan` imports this module.
         """
-        if self.maaend_dir or not self.automas_dir:
+        if not self.automas_dir:
             return
         try:
             from . import plan  # noqa: PLC0415 - circular at module level
-            self.maaend_dir = plan.script_dir(self.automas_dir, "MaaEnd")
+            if not self.maaend_dir:
+                self.maaend_dir = plan.script_dir(self.automas_dir, "MaaEnd")
+            if not self.maa_dir:
+                self.maa_dir = plan.script_dir(self.automas_dir, "MAA")
         except Exception:  # noqa: BLE001 - resolution must never break startup
-            self.maaend_dir = None
+            self.maaend_dir = self.maaend_dir or None
+            self.maa_dir = self.maa_dir or None
 
     def validate(self) -> list[str]:
         """Return a list of problems, empty if the config is usable."""

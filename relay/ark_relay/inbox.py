@@ -145,12 +145,13 @@ def _fetch(url: str, timeout: int = 20, attempts: int = 3) -> dict | None:
     global _last_good  # noqa: PLW0603 - process-lifetime stickiness by design
     urls = _alternates(url)
     urls.sort(key=lambda u: _netloc(u) != _last_good)  # stable: keeps order
+    errors: list[str] = []
     for i in range(attempts):
         best: dict | None = None
         best_ver = -1
         fallback: dict | None = None
         for u in urls:
-            if (data := _fetch_once(u, timeout)) is None:
+            if (data := _fetch_once(u, timeout, errors)) is None:
                 continue
             if fallback is None:
                 fallback = data
@@ -170,10 +171,23 @@ def _fetch(url: str, timeout: int = 20, attempts: int = 3) -> dict | None:
             return fallback
         if i + 1 < attempts:
             time.sleep(3 * (i + 1))
+    # 只有**每一扇门都没答应**才算故障，这时把每扇门各自的结果都写出来，
+    # 而不是只留一条「取不到」让人猜是哪条路断了。
+    log.warning("待办文件一扇门都没取到（试了 %d 扇 × %d 轮）：%s",
+                len(urls), attempts, "；".join(errors[-len(urls):]) or "无详情")
     return None
 
 
-def _fetch_once(url: str, timeout: int = 20) -> dict | None:
+def _fetch_once(url: str, timeout: int = 20,
+                errors: "list[str] | None" = None) -> dict | None:
+    """取一扇门。**失败只记 debug**，由调用方决定要不要报警。
+
+    这里原来是直接打 WARNING 的，于是 raw.githubusercontent 这扇
+    **故意垫底、本来就最不通**的门每次超时都在日志里留一条
+    「取不到待办文件」——而前面三扇 jsDelivr 明明拿到了，待办也应用了。
+    2026-08-30 我自己就被这条骗过一次，跟用户说「待办下发又失败了」，
+    实际上那一轮完全正常。**一扇门失败不是故障，全部失败才是。**
+    """
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "ark-relay"})
         with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
@@ -182,7 +196,9 @@ def _fetch_once(url: str, timeout: int = 20) -> dict | None:
             http.client.HTTPException) as exc:
         # IncompleteRead is not a subclass of OSError; leaving it out lets the
         # exception escape.
-        log.warning("取不到待办文件（%s）: %s", url, exc)
+        log.debug("待办：%s 没答应（%s）", _netloc(url), exc)
+        if errors is not None:
+            errors.append(f"{_netloc(url)}: {exc}")
         return None
     try:
         data = json.loads(raw)

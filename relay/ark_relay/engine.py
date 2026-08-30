@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -75,6 +76,12 @@ def _okww_nest_expected(automas_dir: str | Path | None) -> bool:
     return "Auto Farm all Nightmare Nest" in adds
 
 
+# MAA 的行首时间戳：[2026-08-30 09:09:41.495][INF]...
+_MAA_TS = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
+# 尾巴取多少。一轮约三万行 / 六七 MB，留 16 MB 足够覆盖一整轮。
+_MAA_LOG_TAIL = 16 * 1024 * 1024
+
+
 def _maaend_app_log(maaend_dir: "str | Path | None",
                     started: datetime) -> str:
     """这一轮 MaaEnd **自己**写的 app 日志。
@@ -100,6 +107,45 @@ def _maaend_app_log(maaend_dir: "str | Path | None",
             out.append(f.read_text(encoding="utf-8", errors="replace")[-200_000:])
         except OSError:
             continue
+    return "\n".join(out)
+
+
+def _maa_app_log(maa_dir: "str | Path | None", started: datetime) -> str:
+    """这一轮 MAA **自己**写的 asst.log，只保留本轮时间窗内的行。
+
+    AUTO-MAS 的 history 日志只记「脚本跑完了没有」，**没有子任务级别的成败**。
+    所以在 2026-08-30 之前，基建整个失败（`InfrastAbstractTask::on_run_fails`）
+    也照样被记成全绿——用户连着两天看到的「全绿」就是这么来的。
+
+    和 MaaEnd 不一样的地方：MaaEnd 每轮一个新文件，可以按 mtime 挑；
+    MAA 是**一个滚动的 asst.log**，只能按行首时间戳切。
+    """
+    if not maa_dir:
+        return ""
+    f = Path(maa_dir) / "debug" / "asst.log"
+    if not f.is_file():
+        return ""
+    try:
+        # 一轮就有三万多行，整文件读没必要；取尾巴再按时间切。
+        size = f.stat().st_size
+        with f.open("rb") as fh:
+            if size > _MAA_LOG_TAIL:
+                fh.seek(size - _MAA_LOG_TAIL)
+            raw = fh.read().decode("utf-8", errors="replace")
+    except OSError:
+        return ""
+    cut = started.strftime("%Y-%m-%d %H:%M:%S")
+    out: list[str] = []
+    keep = False
+    for line in raw.splitlines():
+        m = _MAA_TS.match(line)
+        if m:
+            # 时间戳是定宽的，字典序等于时间序，这里可以直接比。
+            keep = m.group(1) >= cut
+        # 没有时间戳的是上一条的续行，跟着上一条走——不要单独判断，
+        # 否则 traceback 那些行会被无条件带进来（arklog.py 里记过这个坑）。
+        if keep:
+            out.append(line)
     return "\n".join(out)
 
 
@@ -315,6 +361,11 @@ class Engine:
                 expect_nest = _okww_nest_expected(self.cfg.automas_dir)
                 checks = outcome.okww_checks(text, expect_nest=expect_nest)
                 return outcome.summarize(checks, "OK-WW")
+            if rec.script == "MAA":
+                # 只看 MAA 自己的日志：AUTO-MAS 的 history 里没有子任务成败。
+                return outcome.summarize(
+                    outcome.maa_checks(_maa_app_log(self.cfg.maa_dir,
+                                                    rec.started)), "MAA")
             if rec.script == "MaaEnd":
                 shots = _maaend_new_shots(self.cfg.maaend_dir, rec.started)
                 # AUTO-MAS 的 history 日志 + MaaEnd 自己的 app 日志一起看：

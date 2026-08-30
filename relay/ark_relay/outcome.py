@@ -156,6 +156,52 @@ def maaend_checks(text: str, on_error_names: list[str]) -> list[Check]:
     return out
 
 
+# ── MAA ────────────────────────────────────────────────────────────
+# 2026-08-30 之前这里**什么都没有**：`_verify_outcome` 走到 MAA 直接
+# return None，意思是「全干成」。所以 MAA 只要进程正常退出就恒为绿，
+# 里面基建整个失败也照样报全绿——用户连着两天看到的「全绿」就是这么来的。
+#
+# 判据取自 08-29 晚班和 08-30 早班的真实 `asst.log`：
+#   [ERR] asst::InfrastAbstractTask::click_clear_button clear failed
+#   [TRC] asst::InfrastAbstractTask::on_run_fails | enter
+#   [TRC] asst::InfrastAbstractTask::on_run_fails | leave, 2006 ms
+# `on_run_fails` 是 MAA 自己的「这个任务失败了」收尾路径，不是重试中间态，
+# 出现即代表这一环没干成。
+_MAA_INFRAST_FAILED = "InfrastAbstractTask::on_run_fails"
+# 干员技能图标识别不出来。单次可能只是抖动，几十次就是识别整体不工作了。
+_MAA_SKILL_BLIND = "skill has no recognition result"
+_MAA_SKILL_BLIND_LIMIT = 5
+# 任务定义找不到：程序版本和资源版本对不上。08-29 晚班 7 次
+# `Unknown task: FightSeries-OldMethodFlag`。
+_MAA_UNKNOWN_TASK = re.compile(r"Unknown task: (\S+)")
+
+
+def maa_checks(text: str) -> list[Check]:
+    """核对一轮 MAA。`text` 是这一轮时间窗内的 asst.log。"""
+    out: list[Check] = []
+
+    blind = text.count(_MAA_SKILL_BLIND)
+    infra_bad = _MAA_INFRAST_FAILED in text
+    detail = ""
+    if infra_bad:
+        detail = "MAA 自己跑了 InfrastAbstractTask::on_run_fails"
+        if blind:
+            detail += f"；干员技能识别失败 {blind} 次"
+    out.append(Check("基建换班", not infra_bad, detail))
+
+    # 基建没失败但识别在大量失败，也要说——那是下一次失败的前兆。
+    if not infra_bad and blind >= _MAA_SKILL_BLIND_LIMIT:
+        out.append(Check("干员技能能识别出来", False,
+                         f"「{_MAA_SKILL_BLIND}」{blind} 次"))
+
+    unknown = sorted(set(_MAA_UNKNOWN_TASK.findall(text)))
+    if unknown:
+        out.append(Check("任务定义都能找到", False,
+                         "找不到：" + "、".join(unknown[:4])
+                         + "（多半是程序和资源版本对不上）"))
+    return out
+
+
 def summarize(checks: list[Check], who: str) -> str | None:
     """有没干成的就返回一段人话；全都干成了返回 None。"""
     bad = [c for c in checks if not c.ok]

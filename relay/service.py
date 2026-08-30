@@ -207,20 +207,48 @@ def _start_process_watch(evt, alive: dict, log) -> bool:
         return False
 
     def run() -> None:
+        """订阅、监听、断了就重订阅——不要监听一断就永久退化。
+
+        2026-08-30 之前这里是「一次性」的：RPC 一抖（relay.log 里
+        `SWbemEventSource 远程过程调用失败`，08-24 到 08-29 共 24 次），
+        线程直接退出，剩下**整个开机周期**都停在 120 秒轮询上。
+        机器一天只开两次机，所以中继大部分运行时间都在降级模式跑。
+        兜底有，但兜底不该是终点。
+        """
         pythoncom.CoInitialize()
+        delay = 5.0
+        logged_detail = False
         try:
-            wmi = win32com.client.GetObject("winmgmts:\\\\.\\root\\cimv2")
-            watcher = wmi.ExecNotificationQuery(
-                "SELECT * FROM Win32_ProcessStartTrace"
-                " WHERE ProcessName = 'python.exe'")
             while True:
-                watcher.NextEvent()  # blocks until the kernel reports a start
-                win32event.SetEvent(evt)
-        except Exception:  # noqa: BLE001 - degrade to the timer, never crash
-            log.exception("进程启动事件监听退出，改用 %d 秒活性检查",
-                          AUTOMAS_CHECK_SECONDS)
-            alive["ok"] = False
-            win32event.SetEvent(evt)   # wake the loop so it sees the change
+                try:
+                    wmi = win32com.client.GetObject(
+                        "winmgmts:\\\\.\\root\\cimv2")
+                    watcher = wmi.ExecNotificationQuery(
+                        "SELECT * FROM Win32_ProcessStartTrace"
+                        " WHERE ProcessName = 'python.exe'")
+                    if not alive["ok"]:
+                        alive["ok"] = True
+                        log.info("进程启动事件订阅已恢复，不再走 %d 秒轮询",
+                                 AUTOMAS_CHECK_SECONDS)
+                    delay, logged_detail = 5.0, False
+                    while True:
+                        watcher.NextEvent()   # 阻塞到内核报告一次进程启动
+                        win32event.SetEvent(evt)
+                except Exception:  # noqa: BLE001 - 降级但绝不放弃
+                    # 完整堆栈只写第一次，之后写一行：WMI 要是彻底坏了，
+                    # 60 秒重试一次会把日志刷爆。
+                    if not logged_detail:
+                        log.exception(
+                            "进程启动事件监听中断，改用 %d 秒活性检查，"
+                            "%.0f 秒后重订阅",
+                            AUTOMAS_CHECK_SECONDS, delay)
+                        logged_detail = True
+                    else:
+                        log.warning("进程启动事件重订阅失败，%.0f 秒后再试", delay)
+                    alive["ok"] = False
+                    win32event.SetEvent(evt)   # 唤醒主循环，让它看到降级
+                    time.sleep(delay)
+                    delay = min(delay * 2, 60.0)
         finally:
             pythoncom.CoUninitialize()
 
