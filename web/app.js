@@ -1,0 +1,267 @@
+/* 游戏机遥控。
+   一根管道：ntfy 上一个信箱。手机写指令，机器写状态。零轮询——
+   机器那头挂长连接，这头只在你按刷新时发一条 ping。
+   信箱名和 PIN 只存在这台手机里，不在这份代码里。 */
+const NTFY = "https://ntfy.sh";
+const LS = "ark-remote-cfg";
+const $ = (s) => document.querySelector(s);
+
+let cfg = null;      // {topic, pin}
+let snap = null;     // 机器最近一次上报的状态
+let edits = {};      // 改了但还没保存的：key -> {label, script, path, from, to}
+
+/* 每一项：在快照里从哪读(sec/key)，写的时候写到哪(script/path) */
+const SCHEMA = [
+  { title: "明日方舟", script: "MAA", sec: "MAA", fields: [
+    { key:"关卡",       path:"Info.Stage",        type:"text",  hint:"像 1-7、CE-6、AT-4" },
+    { key:"关卡模式",   path:"Info.StageMode",    type:"select", opts:["Fixed","Auto"] },
+    { key:"理智药",     path:"Info.MedicineNumb", type:"number", hint:"999 = 有多少吃多少" },
+    { key:"连战",       path:"Info.SeriesNumb",   type:"select", opts:["0","1","2","3","4","5","6"], asText:true },
+    { key:"剿灭",       path:"Info.Annihilation", type:"select", opts:["Close","Weekly","Daily"] },
+    { key:"作战开关",   path:"Task.IfFight",      type:"bool" },
+    { key:"活动关优先", path:"Task.IfActivityFirst", type:"bool", hint:"开着就有活动刷活动，没有回落固定关" },
+    { key:"活动关序号", path:"Task.ActivityStageIndex", type:"number", hint:"从 1 起算，不是从 0" },
+    { key:"活动关理智药", path:"Task.ActivityMedicineNumb", type:"number" },
+  ]},
+  { title: "终末地", script: "MaaEnd", sec: "MaaEnd", fields: [
+    { key:"开理智",   path:"Task.IfSanity", type:"bool" },
+    { key:"自动吃药", path:"Task.IfAutoUseSpMedication", type:"bool" },
+    { key:"理智任务", path:"Task.SanityTaskType", type:"text", hint:"如 Essence" },
+    { key:"基质地点", path:"Task.AutoEssenceSpecifiedLocation", type:"text" },
+  ]},
+  { title: "鸣潮", script: "OK-WW", sec: "OK-WW(MAS侧)", fields: [
+    { key:"TaskIndex", path:"Task.TaskIndex", type:"number", label:"任务序号" },
+    { key:"WhichToFarm", path:"Task.WhichToFarm", type:"text", label:"刷什么" },
+    { key:"FarmNightmareNestForDailyEcho", path:"Task.FarmNightmareNestForDailyEcho",
+      type:"bool", label:"残象聚落" },
+    { key:"WhichForgeryChallengeToFarm", path:"Task.WhichForgeryChallengeToFarm",
+      type:"number", label:"模拟领域序号" },
+    { key:"WhichTacetSuppressionToFarm", path:"Task.WhichTacetSuppressionToFarm",
+      type:"number", label:"凝素领域序号" },
+    { key:"MaterialSelection", path:"Task.MaterialSelection", type:"text", label:"材料" },
+  ]},
+];
+
+/* ---------- 信箱 ---------- */
+const now = () => Math.floor(Date.now() / 1000);
+
+async function send(body) {
+  const msg = JSON.stringify({ v:1, kind:"cmd", pin:cfg.pin, ts:now(), body });
+  const r = await fetch(`${NTFY}/${cfg.topic}`, { method:"POST", body:msg });
+  if (!r.ok) throw new Error("发不出去 " + r.status);
+}
+
+async function readMessages(since = "48h") {
+  const r = await fetch(`${NTFY}/${cfg.topic}/json?poll=1&since=${since}`);
+  if (!r.ok) throw new Error("读不到 " + r.status);
+  const text = await r.text();
+  return text.split("\n").filter(Boolean).map((l) => {
+    try { return JSON.parse(l); } catch { return null; }
+  }).filter((e) => e && e.event === "message");
+}
+
+async function latestState(since = "48h") {
+  const msgs = await readMessages(since);
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    let m;
+    try { m = JSON.parse(msgs[i].message); } catch { continue; }
+    if (m && m.kind === "state" && m.pin === cfg.pin) return m.body;
+  }
+  return null;
+}
+
+/* ---------- 界面 ---------- */
+function toast(t, ms = 2600) {
+  const el = $("#toast"); el.textContent = t; el.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove("show"), ms);
+}
+
+function ago(ts) {
+  const s = Math.max(0, now() - ts);
+  if (s < 60) return `${s} 秒前`;
+  if (s < 3600) return `${Math.floor(s/60)} 分钟前`;
+  if (s < 86400) return `${Math.floor(s/3600)} 小时 ${Math.floor(s%3600/60)} 分前`;
+  return `${Math.floor(s/86400)} 天前`;
+}
+
+function setStatus(text, state) {
+  $("#status").textContent = text;
+  $("#dot").className = "dot" + (state ? " " + state : "");
+}
+
+function fmt(v) {
+  if (v === true) return "开"; if (v === false) return "关";
+  if (v === null || v === undefined) return "（空）";
+  return String(v);
+}
+
+function setupScreen() {
+  $("#app").innerHTML = `
+    <section><h2>第一次使用</h2>
+      <div class="setup">
+        <p style="color:var(--dim);font-size:14px;margin:0 0 10px">
+          填一次就好，之后不再问。这两样只存在这台手机里。</p>
+        <label>信箱名<input id="s-topic" type="text" placeholder="ark-…"></label>
+        <label style="display:block;margin-top:12px">PIN<input id="s-pin" type="text" inputmode="numeric" placeholder="4 位数字"></label>
+      </div>
+      <div class="acts"><button class="primary wide" id="s-go">开始使用</button></div>
+    </section>`;
+  $("#s-go").onclick = () => {
+    const topic = $("#s-topic").value.trim(), pin = $("#s-pin").value.trim();
+    if (!topic || !pin) return toast("两样都要填");
+    cfg = { topic, pin };
+    localStorage.setItem(LS, JSON.stringify(cfg));
+    boot();
+  };
+}
+
+function render() {
+  const c = (snap && snap.config) || {};
+  const relay = (snap && snap.relay) || {};
+  let html = "";
+
+  html += `<section><h2>机器状态 <small>${snap ? ago(snap.at) : "还没有数据"}</small></h2>
+    <div class="acts">
+      <button id="refresh">刷新（同时检测开没开机）</button>
+      <button id="runnow">立刻跑一趟</button>
+      <button id="noshut">${relay["下次别关机"] ? "已设：跑完不关机" : "今晚跑完别关机"}</button>
+      <button id="skiptoday">今天跳过队列</button>
+    </div>
+    ${snap && snap.plan ? `<pre>${snap.plan.replace(/</g,"&lt;")}</pre>` : ""}
+  </section>`;
+
+  for (const g of SCHEMA) {
+    const cur = c[g.sec] || {};
+    html += `<section><h2>${g.title} <small>${g.script}</small></h2>`;
+    for (const f of g.fields) {
+      const id = `${g.script}|${f.path}`;
+      const val = cur[f.key];
+      const label = f.label || f.key;
+      const hint = f.hint ? `<span class="hint">${f.hint}</span>` : "";
+      let ctl;
+      if (f.type === "bool") {
+        ctl = `<span class="sw"><input type="checkbox" data-id="${id}" ${val ? "checked" : ""}><span></span></span>`;
+      } else if (f.type === "select") {
+        const opts = f.opts.map((o) => `<option ${String(val) === o ? "selected" : ""}>${o}</option>`).join("");
+        ctl = `<select data-id="${id}">${opts}</select>`;
+      } else {
+        ctl = `<input type="${f.type}" data-id="${id}" value="${val === undefined || val === null ? "" : String(val)}">`;
+      }
+      html += `<div class="row" data-row="${id}"><label>${label}${hint}</label>${ctl}</div>`;
+    }
+    html += `</section>`;
+  }
+
+  html += `<section><h2>其它</h2><div class="acts">
+      <button class="wide" id="forget">忘掉信箱和 PIN（换手机时用）</button>
+    </div></section>`;
+
+  $("#app").innerHTML = html;
+  wire();
+}
+
+function wire() {
+  $("#refresh").onclick = ping;
+  $("#runnow").onclick = () => oneShot({ action:"run_now", confirmed:true, queue:"新队列" }, "已让它立刻跑一趟");
+  $("#noshut").onclick = () => oneShot({ action:"skip_shutdown" }, "这趟跑完不关机");
+  $("#skiptoday").onclick = () => oneShot({ action:"skip_today", queue:"新队列" }, "今天这个队列跳过");
+  $("#forget").onclick = () => { localStorage.removeItem(LS); location.reload(); };
+
+  for (const el of document.querySelectorAll("[data-id]")) {
+    el.addEventListener("change", () => {
+      const [script, path] = el.dataset.id.split("|");
+      const g = SCHEMA.find((x) => x.script === script);
+      const f = g.fields.find((x) => x.path === path);
+      const cur = ((snap && snap.config) || {})[g.sec] || {};
+      const from = cur[f.key];
+      let to;
+      if (f.type === "bool") to = el.checked;
+      else if (f.type === "number") to = el.value === "" ? null : Number(el.value);
+      else to = el.value;
+      if (f.type === "select" && !f.asText && /^\d+$/.test(String(to)) && typeof from === "number") to = Number(to);
+
+      const key = el.dataset.id;
+      const row = document.querySelector(`[data-row="${CSS.escape(key)}"]`);
+      if (to === from) { delete edits[key]; row.classList.remove("changed"); }
+      else { edits[key] = { label:`${g.title} ${f.label || f.key}`, script, path, from, to };
+             row.classList.add("changed"); }
+      updateBar();
+    });
+  }
+}
+
+function updateBar() {
+  const n = Object.keys(edits).length;
+  $("#savebar").classList.toggle("show", n > 0);
+  $("#savenote").textContent = n ? `${n} 项待保存` : "";
+}
+
+/* ---------- 动作 ---------- */
+async function oneShot(body, okText) {
+  try { await send(body); toast(okText + "（机器开着就是马上，关着就是下次开机）"); }
+  catch (e) { toast("发不出去：" + e.message); }
+}
+
+async function ping() {
+  setStatus("正在问机器…", "");
+  const before = snap ? snap.at : 0;
+  try { await send({ action:"refresh" }); }
+  catch (e) { return setStatus("发不出去：" + e.message, "off"); }
+  for (let i = 0; i < 12; i++) {
+    await new Promise((r) => setTimeout(r, 700));
+    let s;
+    try { s = await latestState("2h"); } catch { continue; }
+    if (s && s.at > before) { snap = s; save_cache(); render(); return setStatus("开机中 · 刚刚更新", "on"); }
+  }
+  setStatus(snap ? `关机中 · 状态是 ${ago(snap.at)}的` : "关机中 · 还没有过状态", "off");
+}
+
+function save_cache() {
+  try { localStorage.setItem(LS + "-snap", JSON.stringify(snap)); } catch {}
+}
+
+async function doSave() {
+  const items = Object.values(edits);
+  if (!items.length) return;
+  $("#difflist").innerHTML = items.map((e) =>
+    `<div class="diff"><b>${e.label}</b><br><span class="old">${fmt(e.from)}</span> → <span class="new">${fmt(e.to)}</span></div>`).join("");
+  $("#confirm").showModal();
+}
+
+/* ---------- 启动 ---------- */
+async function boot() {
+  const raw = localStorage.getItem(LS);
+  if (!raw) return setupScreen();
+  cfg = JSON.parse(raw);
+  try { snap = JSON.parse(localStorage.getItem(LS + "-snap") || "null"); } catch { snap = null; }
+  render();
+  setStatus(snap ? `状态是 ${ago(snap.at)}的` : "正在读取…", "");
+  try {
+    const s = await latestState();
+    if (s) { snap = s; save_cache(); render(); }
+    setStatus(snap ? `状态是 ${ago(snap.at)}的 · 按刷新看是否开机` : "还没有过状态", "");
+  } catch (e) {
+    setStatus("读不到信箱：" + e.message, "off");
+  }
+}
+
+$("#save").onclick = doSave;
+$("#discard").onclick = () => { edits = {}; render(); updateBar(); };
+$("#cancel").onclick = () => $("#confirm").close();
+$("#go").onclick = async () => {
+  $("#confirm").close();
+  const items = Object.values(edits);
+  let sent = 0;
+  for (const e of items) {
+    try { await send({ action:"set_config", confirmed:true, script:e.script, path:e.path, value:e.to }); sent++; }
+    catch (err) { toast("第 " + (sent + 1) + " 项发不出去：" + err.message); break; }
+  }
+  if (sent) {
+    edits = {}; updateBar();
+    toast(`${sent} 项已发出。机器开着就是马上生效，关着就是下次开机；生效后会有通知。`, 5000);
+    setTimeout(ping, 1500);
+  }
+};
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+boot();

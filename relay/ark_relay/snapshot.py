@@ -76,9 +76,13 @@ def _mas(out: dict) -> None:
 
 
 def _queues(out: dict) -> None:
+    # 用 .get：不同版本的 AUTO-MAS 字段不一样，2026-08-31 就因为
+    # 直接下标 StartUpEnabled 抛了 KeyError，整段队列信息一条都拿不到。
     out["队列"] = {
-        c["Info"]["Name"]: {"定时": c["Info"]["TimeEnabled"],
-                            "开机跑": c["Info"]["StartUpEnabled"]}
+        str((c.get("Info") or {}).get("Name") or "?"): {
+            "定时": (c.get("Info") or {}).get("TimeEnabled"),
+            "开机跑": (c.get("Info") or {}).get("StartUpEnabled"),
+        }
         for c in _post("/api/queue/get")["data"].values()}
 
 
