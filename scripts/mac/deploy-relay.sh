@@ -203,31 +203,40 @@ echo "▶ 5/5 重启服务并确认真的起来了"
 # 直到我手动 `sc query` 才发现 STATE=STOPPED——**通知链路断了一小时没人知道**。
 # 现在：先等它真的停，再启，再轮询到 RUNNING 为止，起不来就非零退出。
 
-# __pycache__ 里的旧 .pyc 会盖住新代码，必须清。
-ssh "${SSH_OPTS[@]}" "$USER_AT" \
-  'del /q C:\ProgramData\ark-relay\ark_relay\__pycache__\*.pyc >nul 2>&1 & sc stop ark-relay >nul 2>&1 & echo STOPPING' \
-  >/dev/null 2>&1 || true
-
-svc_state() {
-  ssh "${SSH_OPTS[@]}" "$USER_AT" 'sc query ark-relay' 2>/dev/null \
-    | tr -d '\r' | awk '/STATE/{print $4}'
+# 整个停—等—清—起—等，一次往返在机器上做完。
+# 原来是 stop 一次 ssh，然后每 2 秒 sc query 一次直到 STOPPED，start 再来一遍，
+# 一次部署二十来个跨境往返，光这一段 54 秒。判据一条没松：
+# 还是要真的等到 STOPPED 才启动，还是要等到 RUNNING 才算成功，
+# 起不来照样非零退出——只是等待发生在机器本地，不再是跨境轮询。
+# __pycache__ 里的旧 .pyc 会盖住新代码，必须在启动之前清掉。
+read -r -d '' RESTART_PS1 <<'PS1' || true
+$ErrorActionPreference = 'Continue'
+$svc = Get-Service ark-relay -ErrorAction SilentlyContinue
+if (-not $svc) { Write-Output 'STATE=NOTFOUND'; exit 0 }
+if ($svc.Status -ne 'Stopped') {
+  Stop-Service ark-relay -Force -ErrorAction SilentlyContinue
+  try { $svc.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30)) } catch {}
 }
+$svc.Refresh()
+Write-Output ("STOPPED_OK=" + ($svc.Status -eq 'Stopped'))
+Remove-Item 'C:\ProgramData\ark-relay\ark_relay\__pycache__\*.pyc' `
+  -Force -ErrorAction SilentlyContinue
+Start-Service ark-relay -ErrorAction SilentlyContinue
+try { $svc.WaitForStatus('Running', [TimeSpan]::FromSeconds(40)) } catch {}
+$svc.Refresh()
+Write-Output ("STATE=" + $svc.Status)
+PS1
+# 闸门要求：送到机器上的 PowerShell 一律走 base64，不许内联拼接。
+ENC=$(printf '%s' "$RESTART_PS1" | iconv -f UTF-8 -t UTF-16LE | base64 | tr -d '\n')
+OUT=$(ssh "${SSH_OPTS[@]}" "$USER_AT" \
+  "\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoProfile -EncodedCommand $ENC" \
+  2>/dev/null | tr -d '\r')
+STATE=$(sed -n 's/^STATE=//p' <<<"$OUT")
+grep -q 'STOPPED_OK=True' <<<"$OUT" \
+  && echo "    停止确认：STOPPED" \
+  || echo "    停止确认：没等到 STOPPED（继续尝试启动了）"
 
-for _ in $(seq 1 15); do
-  [ "$(svc_state)" = "STOPPED" ] && break
-  sleep 2
-done
-echo "    停止确认：$(svc_state)"
-
-ssh "${SSH_OPTS[@]}" "$USER_AT" 'sc start ark-relay' >/dev/null 2>&1 || true
-STATE=""
-for _ in $(seq 1 20); do
-  STATE=$(svc_state)
-  [ "$STATE" = "RUNNING" ] && break
-  sleep 2
-done
-
-if [ "$STATE" != "RUNNING" ]; then
+if [ "$STATE" != "Running" ]; then
   echo "  ✋ ark-relay 没能启动（当前状态 ${STATE:-未知}）。" >&2
   echo "     代码已经推上去了，但服务是停的——通知链路是断的，必须立刻处理：" >&2
   echo "     ssh $USER_AT 'sc start ark-relay'" >&2
