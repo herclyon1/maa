@@ -7,16 +7,31 @@
 <title>游戏机遥控</title>
 <link rel="manifest" href="manifest.webmanifest">
 <style>
+  /* 浅色是底色，深色只覆盖变量。三种情况都要照顾到：
+     手机设成浅色、手机设成深色、以及页面里手动指定。 */
   :root{
-    --bg:#0f1216; --card:#171c22; --line:#242c35; --ink:#e6edf3;
-    --dim:#8b98a5; --accent:#4aa3ff; --ok:#3fb950; --warn:#d29922; --bad:#f85149;
+    --bg:#f4f6f9; --card:#ffffff; --line:#e2e8f0; --ink:#111826;
+    --dim:#64748b; --field:#f8fafc; --btn:#eef2f7; --sh:0 1px 2px rgba(16,24,40,.06);
+    --accent:#4aa3ff; --ok:#2da44e; --warn:#bf8700; --bad:#cf222e;
     --r:14px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0f1216; --card:#171c22; --line:#242c35; --ink:#e6edf3;
+      --dim:#8b98a5; --field:#0d1117; --btn:#232b34; --sh:none;
+      --ok:#3fb950; --warn:#d29922; --bad:#f85149;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f1216; --card:#171c22; --line:#242c35; --ink:#e6edf3;
+    --dim:#8b98a5; --field:#0d1117; --btn:#232b34; --sh:none;
+    --ok:#3fb950; --warn:#d29922; --bad:#f85149;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   body{margin:0;background:var(--bg);color:var(--ink);
        font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans SC",sans-serif;
        padding:env(safe-area-inset-top) 0 calc(env(safe-area-inset-bottom) + 90px)}
-  header{position:sticky;top:0;z-index:5;background:rgba(15,18,22,.94);
+  header{position:sticky;top:0;z-index:5;background:color-mix(in srgb, var(--bg) 94%, transparent);
          backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:14px 16px}
   h1{margin:0;font-size:19px;letter-spacing:.5px}
   .sub{color:var(--dim);font-size:13px;margin-top:3px;display:flex;gap:8px;align-items:center}
@@ -25,7 +40,7 @@
   .dot.off{background:var(--bad)}
   main{padding:14px 12px;max-width:640px;margin:0 auto}
   section{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
-          margin-bottom:12px;overflow:hidden}
+          margin-bottom:12px;overflow:hidden;box-shadow:var(--sh)}
   h2{margin:0;padding:13px 15px;font-size:15px;border-bottom:1px solid var(--line);
      display:flex;justify-content:space-between;align-items:center}
   h2 small{color:var(--dim);font-weight:400;font-size:12px}
@@ -34,13 +49,13 @@
   .row label{flex:1;min-width:0;font-size:14px}
   .row .hint{display:block;color:var(--dim);font-size:11.5px;margin-top:2px}
   input[type=text],input[type=number],select{
-    background:#0d1117;border:1px solid var(--line);color:var(--ink);
+    background:var(--field);border:1px solid var(--line);color:var(--ink);
     border-radius:9px;padding:9px 11px;font-size:15px;width:130px;text-align:right}
   select{width:auto;min-width:130px;text-align:left}
   input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
   .sw{position:relative;width:50px;height:29px;flex:none}
   .sw input{opacity:0;width:100%;height:100%;margin:0}
-  .sw span{position:absolute;inset:0;background:#2b333c;border-radius:99px;transition:.18s;pointer-events:none}
+  .sw span{position:absolute;inset:0;background:color-mix(in srgb, var(--ink) 22%, transparent);border-radius:99px;transition:.18s;pointer-events:none}
   .sw span::after{content:"";position:absolute;width:23px;height:23px;left:3px;top:3px;
                   background:#fff;border-radius:50%;transition:.18s}
   .sw input:checked + span{background:var(--ok)}
@@ -48,13 +63,13 @@
   .changed{background:rgba(74,163,255,.09)}
   .acts{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:13px 15px}
   button{font:inherit;border:0;border-radius:11px;padding:13px;color:var(--ink);
-         background:#232b34;cursor:pointer}
+         background:var(--btn);cursor:pointer;box-shadow:var(--sh)}
   button:active{transform:scale(.985)}
   button.primary{background:var(--accent);color:#06121f;font-weight:600}
   button.wide{grid-column:1/-1}
   button[disabled]{opacity:.45}
   .savebar{position:fixed;left:0;right:0;bottom:0;z-index:6;padding:12px 12px calc(12px + env(safe-area-inset-bottom));
-           background:rgba(15,18,22,.96);border-top:1px solid var(--line);
+           background:color-mix(in srgb, var(--bg) 96%, transparent);border-top:1px solid var(--line);
            display:flex;gap:10px;align-items:center;transform:translateY(120%);transition:.2s}
   .savebar.show{transform:none}
   .savebar .n{flex:1;color:var(--dim);font-size:13px}
@@ -69,12 +84,16 @@
   .diff b{font-weight:600}
   .old{color:var(--dim);text-decoration:line-through}
   .new{color:var(--ok)}
-  .toast{position:fixed;left:12px;right:12px;bottom:96px;z-index:9;background:#1f2933;
+  .toast{position:fixed;left:12px;right:12px;bottom:96px;z-index:9;background:var(--card);
          border:1px solid var(--line);border-radius:11px;padding:12px 14px;font-size:14px;
          opacity:0;transition:.2s;pointer-events:none}
   .toast.show{opacity:1}
   .setup{padding:15px}
   .setup input{width:100%;text-align:left;margin-top:6px}
+  .swatches{display:flex;gap:9px}
+  .sw-c{width:28px;height:28px;border-radius:50%;display:block;cursor:pointer;
+        border:2px solid transparent;box-shadow:0 0 0 1px var(--line) inset}
+  .sw-c.on{border-color:var(--ink);transform:scale(1.08)}
 </style>
 </head>
 <body>

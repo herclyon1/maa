@@ -10,6 +10,41 @@ let cfg = null;      // {topic, pin}
 let snap = null;     // 机器最近一次上报的状态
 let edits = {};      // 改了但还没保存的：key -> {label, script, path, from, to}
 
+/* ---------- 外观 ---------- */
+const THEME_KEY = "ark-remote-theme";
+const ACCENTS = [
+  ["蓝", "#4aa3ff"], ["绿", "#3fb950"], ["紫", "#a371f7"],
+  ["橙", "#e3873c"], ["红", "#f85149"], ["青", "#2dd4bf"],
+];
+
+function loadTheme() {
+  try { return JSON.parse(localStorage.getItem(THEME_KEY)) || {}; }
+  catch { return {}; }
+}
+
+function applyTheme() {
+  const t = loadTheme();
+  // mode 为空 = 跟随系统：什么都不标，交给 prefers-color-scheme
+  if (t.mode === "light" || t.mode === "dark") {
+    document.documentElement.dataset.theme = t.mode;
+  } else {
+    delete document.documentElement.dataset.theme;
+  }
+  document.documentElement.style.setProperty("--accent", t.accent || ACCENTS[0][1]);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) {
+    const dark = t.mode === "dark" ||
+      (!t.mode && matchMedia("(prefers-color-scheme: dark)").matches);
+    meta.content = dark ? "#0f1216" : "#f5f7fa";
+  }
+}
+
+function saveTheme(patch) {
+  const t = { ...loadTheme(), ...patch };
+  localStorage.setItem(THEME_KEY, JSON.stringify(t));
+  applyTheme();
+}
+
 /* 每一项：在快照里从哪读(sec/key)，写的时候写到哪(script/path) */
 const SCHEMA = [
   { title: "明日方舟", script: "MAA", sec: "MAA", fields: [
@@ -47,12 +82,19 @@ const now = () => Math.floor(Date.now() / 1000);
 
 async function send(body) {
   const msg = JSON.stringify({ v:1, kind:"cmd", pin:cfg.pin, ts:now(), body });
-  const r = await fetch(`${NTFY}/${cfg.topic}`, { method:"POST", body:msg });
+  const r = await fetch(`${NTFY}/${cfg.topic}`,
+                       { method:"POST", body:msg, cache:"no-store" });
   if (!r.ok) throw new Error("发不出去 " + r.status);
 }
 
 async function readMessages(since = "48h") {
-  const r = await fetch(`${NTFY}/${cfg.topic}/json?poll=1&since=${since}`);
+  /* `cache:"no-store"` + 一个变化的参数，两道都要。
+     2026-08-31 的 bug：不加这个，Chrome 把第一次的结果一直重复返回，
+     机器明明收到了刷新请求也回了状态，页面却永远看不到新的，
+     于是判成「关机中」——机器其实开着。 */
+  const r = await fetch(
+    `${NTFY}/${cfg.topic}/json?poll=1&since=${since}&_=${Date.now()}`,
+    { cache: "no-store" });
   if (!r.ok) throw new Error("读不到 " + r.status);
   const text = await r.text();
   return text.split("\n").filter(Boolean).map((l) => {
@@ -152,6 +194,21 @@ function render() {
     html += `</section>`;
   }
 
+  const th = loadTheme();
+  const mode = th.mode || "auto";
+  html += `<section><h2>外观</h2>
+    <div class="row"><label>深浅模式<span class="hint">跟随系统就是跟着手机的日夜切换</span></label>
+      <select id="th-mode">
+        <option value="auto" ${mode === "auto" ? "selected" : ""}>跟随系统</option>
+        <option value="light" ${mode === "light" ? "selected" : ""}>浅色</option>
+        <option value="dark" ${mode === "dark" ? "selected" : ""}>深色</option>
+      </select></div>
+    <div class="row"><label>主题色</label>
+      <span class="swatches">${ACCENTS.map(([n, c]) =>
+        `<i class="sw-c${(th.accent || ACCENTS[0][1]) === c ? " on" : ""}" data-c="${c}" title="${n}" style="background:${c}"></i>`).join("")}</span>
+    </div>
+  </section>`;
+
   html += `<section><h2>其它</h2><div class="acts">
       <button class="wide" id="forget">忘掉信箱和 PIN（换手机时用）</button>
     </div></section>`;
@@ -166,6 +223,15 @@ function wire() {
   $("#noshut").onclick = () => oneShot({ action:"skip_shutdown" }, "这趟跑完不关机");
   $("#skiptoday").onclick = () => oneShot({ action:"skip_today", queue:"新队列" }, "今天这个队列跳过");
   $("#forget").onclick = () => { localStorage.removeItem(LS); location.reload(); };
+  const tm = $("#th-mode");
+  if (tm) tm.onchange = () => saveTheme({ mode: tm.value === "auto" ? null : tm.value });
+  for (const sw of document.querySelectorAll(".sw-c")) {
+    sw.onclick = () => {
+      saveTheme({ accent: sw.dataset.c });
+      for (const o of document.querySelectorAll(".sw-c")) o.classList.remove("on");
+      sw.classList.add("on");
+    };
+  }
 
   for (const el of document.querySelectorAll("[data-id]")) {
     el.addEventListener("change", () => {
@@ -270,5 +336,8 @@ $("#go").onclick = async () => {
   }
 };
 
+applyTheme();
+// 跟随系统时，系统切了日夜要立刻跟上
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 boot();
