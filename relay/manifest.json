@@ -1,16 +1,16 @@
 {
- "version": 20260830232935,
+ "version": 20260830234323,
  "files": {
-  "RELEASE-NOTES.md": "cae240350f09a7cc860649ec148aa32dbde6d228",
+  "RELEASE-NOTES.md": "71e9a6a2e29f3e67851ff57e5573f308714d2a78",
   "ark_relay/__init__.py": "297e0c5d45a732b40a24be0bfd40f07b174d2a9a",
   "ark_relay/__main__.py": "a1c292210b8a315a205d5c45d42296b892c8f7a8",
   "ark_relay/annihilation.py": "17dd52b5fe669397046ad9c737d214884a90a1d1",
   "ark_relay/banners.py": "a55d236e97b3a8e77a3e2f9f4aaf6a08e53350e7",
   "ark_relay/collector.py": "12ee48446fbe3677a149fdccc5cb41fe85056784",
-  "ark_relay/commands.py": "508443008025e7b3023405d172800127d5ccfda3",
+  "ark_relay/commands.py": "1739310ab34c53cefe7d35aaf8d3b36b95af7501",
   "ark_relay/config.py": "e3f4fdfd498b899f664038921b829546f2b174db",
   "ark_relay/core.py": "75c2ab6be89be39e3f258de02d3ea6dd638b2cb0",
-  "ark_relay/engine.py": "e308be937b332ddcf12cc9330f144fcd1394e2cf",
+  "ark_relay/engine.py": "811dbdf2b2e5aaa9e4e061fd73290b4aa57571a8",
   "ark_relay/garden.py": "6b4cf80911808faffc9c8baa27a8e5f4f20967df",
   "ark_relay/inbox.py": "44a8514164c3af40b20bf9555cafdc11d2551e99",
   "ark_relay/maaend.py": "c4dd90f47da3adcb3a31d1004b8790f2e07a7834",
@@ -20,7 +20,7 @@
   "ark_relay/okww_files/NightmareNestTask.upstream.py": "c93bdc9ce1898d56cf15268d84e70107fe2ac4bf",
   "ark_relay/okww_patch.py": "0d2677ca7eb00f621c97d061f6968382781f6fa6",
   "ark_relay/outcome.py": "ee04444b0c7d9f88bdac1e6c42c8ecccd63194eb",
-  "ark_relay/phone.py": "895090dd7782b4f7e6ba39ec480d0ad13b1638fb",
+  "ark_relay/phone.py": "ef12c590ea83dcc84e55e4d89630c70e71c3e087",
   "ark_relay/plan.py": "ee4510779bdefa42bd4b34b8c3afb1d8a222620c",
   "ark_relay/preupdate.py": "9bbc121690ef222a4ff06d715ef22787dc8053ee",
   "ark_relay/queues.py": "b0a97768e324530d2645d16cf8ef3569eb556097",
@@ -31,6 +31,7 @@
   "ark_relay/summary.py": "c082e825156ef71dc1053fd894dce47937505a96",
   "ark_relay/transport.py": "8010a28731664d747d8601d21c3bd4153e880b20",
   "ark_relay/watch.py": "9ddff748ed6381f57a5f5efe9cffae1425486ac2",
+  "ark_relay/weeklyboss.py": "92f4a912c53b2954c521603a814f6cdfbe984316",
   "run.py": "0db6cde8fb8119323d991ec512d1b2b43e869b93",
   "service.py": "99525137615585dcfc4c4a7b5926a0c53be478e1"
  }
