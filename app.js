@@ -195,12 +195,22 @@ function render() {
   const relay = (snap && snap.relay) || {};
   let html = "";
 
+  const qs = (snap && snap.queues) || [];
+  const qopts = qs.map((q) => {
+    const t = (q["定时"] === false) ? "未启用定时" : "";
+    return `<option value="${q["名"]}">${q["名"]}${t ? "（" + t + "）" : ""}</option>`;
+  }).join("");
   html += `<section><h2>机器状态 <small>${snap ? ago(snap.at) : "还没有数据"}</small></h2>
     <div class="acts">
-      <button id="refresh">刷新（同时检测开没开机）</button>
-      <button id="runnow">立刻跑一趟</button>
-      <button id="noshut">${relay["下次别关机"] ? "✓ 下次跑完不关机" : "下次跑完不关机"}</button>
-      <button id="skiptoday">今天跳过队列</button>
+      <button class="wide" id="refresh">刷新（顺便看开没开机）</button>
+    </div>
+    ${qs.length ? `<div class="row"><label>下面两个按钮作用在哪个队列
+        <span class="hint">这台机器有两趟：一趟早上、一趟晚上</span></label>
+      <select id="queue">${qopts}</select></div>` : ""}
+    <div class="acts">
+      <button id="runnow">让它现在跑一趟</button>
+      <button id="skiptoday">跳过它下一趟</button>
+      <button class="wide" id="noshut">${relay["下次别关机"] ? "✓ 已设：下次跑完不关机" : "下次跑完不关机"}</button>
     </div>
     ${snap && snap.plan ? `<pre>${snap.plan.replace(/</g,"&lt;")}</pre>` : ""}
   </section>`;
@@ -251,6 +261,23 @@ function render() {
     html += `</section>`;
   }
 
+  const wb = (relay["周本"]) || {};
+  html += `<section><h2>鸣潮周本 <small>战歌重奏</small></h2>
+    <div class="row"><label>打周本
+      <span class="hint">和剿灭一个逻辑：本周打完自动停，下周一 04:00 自动开回来。
+      现在是关着的——它出厂设置是「一直刷」，次数得你定</span></label>
+      <span class="sw"><input type="checkbox" id="wb-on" ${wb["开"] ? "checked" : ""}><span></span></span>
+    </div>
+    <div class="row"><label>打第几个
+      <span class="hint">游戏里按 F2 打开周本列表，从上往下数，第一个填 1</span></label>
+      <input type="number" id="wb-idx" value="${wb["第几个周本"] || 1}"></div>
+    <div class="row"><label>一周打几次
+      <span class="hint">别填大数：这项在 OK-WW 里出厂是 10000，等于一直打</span></label>
+      <input type="number" id="wb-cnt" value="${wb["打几次"] || 1}"></div>
+    ${wb["本周已打"] ? `<div class="row"><span class="ro">本周已经打过了，下周一自动恢复</span></div>` : ""}
+    <div class="acts"><button class="wide primary" id="wb-save">保存周本设置</button></div>
+  </section>`;
+
   const th = loadTheme();
   const mode = th.mode || "auto";
   html += `<section><h2>外观</h2>
@@ -275,12 +302,32 @@ function wire() {
   // 于是 `s.at >= floor` 变成「数字 >= 事件对象」，永远为假——
   // 机器明明开着也判成关机。2026-08-31 我加 minAt 参数时就这么弄坏过一次。
   $("#refresh").onclick = () => ping();
-  $("#runnow").onclick = () => oneShot({ action:"run_now", confirmed:true, queue:"新队列" },
-    "已让「新队列」立刻开跑（机器关着时这条会等到下次开机，那时候正常排期也会跑）");
+  const theQueue = () => (document.querySelector("#queue") || {}).value || "新队列";
+  $("#runnow").onclick = () => oneShot(
+    { action:"run_now", confirmed:true, queue:theQueue() },
+    `已让「${theQueue()}」现在开跑。机器关着时这条会等到下次开机才执行，` +
+    "那时候它本来也要跑，所以等于没多跑一趟");
   $("#noshut").onclick = () => oneShot({ action:"skip_shutdown" },
     "下一次本该关机时会跳过（只跳这一次，再下一趟照常关）");
-  $("#skiptoday").onclick = () => oneShot({ action:"skip_today", queue:"新队列" },
-    "今天「新队列」不跑了（明天自动恢复）");
+  // 说明必须准：这条跳的是**机器执行它那一天**。机器关着时你现在按，
+  // 它要等下次开机才执行，跳掉的就是那一天，不是今天。
+  $("#skiptoday").onclick = () => oneShot(
+    { action:"skip_today", queue:theQueue() },
+    `「${theQueue()}」下一趟不跑了。机器开着＝跳今天这趟；` +
+    "机器关着＝这条等到下次开机才生效，跳的是那一天。只跳一次，之后自动恢复");
+  const wbSave = $("#wb-save");
+  if (wbSave) wbSave.onclick = () => {
+    const on = $("#wb-on").checked;
+    const index = Number($("#wb-idx").value) || 1;
+    const count = Number($("#wb-cnt").value) || 1;
+    if (!confirm(on
+      ? `打开周本：打第 ${index} 个，一周打 ${count} 次。确定？`
+      : "关掉周本？")) return;
+    oneShot({ action:"weekly_boss", on, index, count },
+      on ? `周本已开：第 ${index} 个，打 ${count} 次` : "周本已关");
+    setTimeout(() => ping(now()), 2000);
+  };
+
   const tm = $("#th-mode");
   if (tm) tm.onchange = () => saveTheme({ mode: tm.value === "auto" ? null : tm.value });
   for (const sw of document.querySelectorAll(".sw-c")) {
