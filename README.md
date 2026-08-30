@@ -1,29 +1,43 @@
-# MAA 无人值守自动化
+# 游戏机自动化
 
-一台位于国内的 Windows 游戏机，每天自动开机两次，运行三款游戏的日常任务，
-将结果推送到微信，随后自动关机。控制端是一台位于日本的 Mac，经
-Tailscale + SSH 远程管理；控制端离线不影响游戏机自行运行。
+一台放在国内的 Windows 机器，每天自己开机两次，把三个游戏的日常刷完，
+推个汇报到微信，然后自己关机。我这边是东京的 Mac，用 Tailscale + SSH 管它。
+**我的 Mac 关着不影响它自己跑。**
 
-被自动化的是 [MAA](https://github.com/MaaAssistantArknights/MaaAssistantArknights)（明日方舟）、
-[MaaEnd](https://github.com/MaaEnd/MaaEnd)（终末地）与
-[OK-WW](https://github.com/ok-oldking/ok-wuthering-waves)（鸣潮），由
-[AUTO-MAS](https://github.com/AUTO-MAS-Project/AUTO-MAS) 统一调度。
+三个游戏分别是 [MAA](https://github.com/MaaAssistantArknights/MaaAssistantArknights)（明日方舟）、
+[MaaEnd](https://github.com/MaaEnd/MaaEnd)（终末地）、
+[OK-WW](https://github.com/ok-oldking/ok-wuthering-waves)（鸣潮），
+由 [AUTO-MAS](https://github.com/AUTO-MAS-Project/AUTO-MAS) 排队跑。
+`relay/` 是我自己写的中继，跑在游戏机上，干这些活：
 
-本仓库的 `relay/` 是自建的通知中继，运行在游戏机上，负责：
+- 读每个脚本**自己的日志**核对到底干成了什么，而不是看进程退没退出
+- 开机到队列开跑之间的空档里，把四个程序的更新做掉
+- 推汇报和日报；队列跑完、汇报送到了，它负责关机
+- 自更新；每次 OK-WW 更新完，把我们的补丁重新贴回去
 
-- **核对运行结果**——读每个脚本自己的日志判断"到底干成了什么"，
-  而不是看进程有没有正常退出
-- **开机窗口内预更新**四款程序，免得队列跑到一半撞上更新
-- **推送汇报与日报**，并在队列结束、汇报送达后接管关机
-- **自更新**，以及把本地给 OK-WW 打的补丁在每次更新后重新贴回去
-- 接收下发的配置改动（见「下发指令」）
+**这不是给别人用的东西**，路径、账号、时刻表全是照这一台机器写死的。
+放 GitHub 上是为了两件事：中继要从这儿自更新，以及我能在手机上改配置。
 
-本仓库是这套系统的源码与运行记录，不是开箱即用的软件：路径、账号、时刻表都
-针对这一台机器。
+## 我想改东西，去哪
 
-无界面操作(不依赖看屏幕)的完整方法见 [docs/HEADLESS.md](docs/HEADLESS.md)。
-AUTO-MAS 五个界面各是什么、OK-WW 能刷什么、母本与副本的关系，见 [docs/AUTOMAS.md](docs/AUTOMAS.md)。
-家里网络的拓扑、MTU 黑洞与百兆封顶的实测记录，见 [docs/HOME-NETWORK.md](docs/HOME-NETWORK.md)。
+| 想干什么 | 去哪 |
+|---|---|
+| 改刷什么关卡、吃不吃药 | [`queue/config.json`](queue/config.json)，网页上直接改，提交后下次开机生效（**记得把 `version` 加一**） |
+| 改中继的行为 | `relay/`，改完 `ARK_HOST=<IP> scripts/mac/deploy-relay.sh` |
+| 出事了想立刻停 | `scripts/mac/estop.sh` |
+| 看机器现在在不在 | Dock 上的 FleetMonitor |
+| 远程操作游戏画面 | `scripts/mac/wingui.sh`，用法见 [docs/PLAY-MANUAL.md](docs/PLAY-MANUAL.md) |
+| 查机器上的日志 | `scripts/mac/winrun.sh --py`，读日志一律用 `arklog` |
+
+**维护前先开调试模式**，不然队列跑完它就自己关机了：
+写 `C:\ProgramData\ark-relay\state\debug-until.txt`，内容是截止时刻；完事记得删掉。
+
+## 踩过的坑
+
+出事先翻 [docs/PITFALLS.md](docs/PITFALLS.md)，很多问题以前栽过一模一样的。
+无界面操作（不靠看屏幕）的完整方法见 [docs/HEADLESS.md](docs/HEADLESS.md)。
+AUTO-MAS 五个界面各管什么、母本副本的关系见 [docs/AUTOMAS.md](docs/AUTOMAS.md)。
+家里网络那个 MTU 黑洞和百兆封顶的实测见 [docs/HOME-NETWORK.md](docs/HOME-NETWORK.md)。
 
 ---
 
@@ -92,11 +106,11 @@ AUTO-MAS 五个界面各是什么、OK-WW 能刷什么、母本与副本的关�
 
 ## 下发指令
 
-修改 [`queue/config.json`](queue/config.json) 并提交，游戏机在下次开机时读取、
-应用，并推送执行结果。**修改后必须增大 `version`**，否则视为无变化。
+改 [`queue/config.json`](queue/config.json) 并提交，机器下次开机会读、会应用、
+会把结果推给我。**改完必须把 `version` 加一**，否则它当没变化。
 
-可用指令与写法见 [`queue/README.md`](queue/README.md)。该文件可直接在 GitHub
-网页上编辑，无需本地环境。
+能下发哪些指令、怎么写，见 [`queue/README.md`](queue/README.md)。
+这个文件在 GitHub 网页上直接就能改，手机也行。
 
 ## 目录
 
