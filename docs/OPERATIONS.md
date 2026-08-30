@@ -1370,3 +1370,14 @@ under PlayCover locally.
    inventory got missed and reported as "cleared out".
 4. **Read the whole shop before buying anything.** Tokens are finite and what
    you buy first decides what you can no longer afford.
+
+## 运行约束（自 README 迁入）
+
+这些不是建议，是这套系统的既定行为，代码按此实现：
+
+1. **关机权归中继**：队列结束且汇报送达后由中继关机；除此之外不关机。
+2. **配置改动优先于按时开跑**：宁可推迟一轮，也不使用过期配置运行。
+3. **更新在开机窗口落地并立即生效**：开机到队列启动之间的空档用于自更新，
+   更新后立刻重启进程，不等到下一次开机；生效后立即推送通知。
+4. **不使用轮询**：文件、进程、状态变化一律走事件通知，定时事件走精确闹钟。
+   现存的唯一周期唤醒是一小时一次的保险丝，不承担任何发现职责。
