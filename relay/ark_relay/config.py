@@ -91,6 +91,10 @@ class Config:
     # records arrive as directory-change events and this number never ticks.
     poll_seconds: int = field(default_factory=lambda: _env_int("ARK_POLL_SECONDS", 300))
 
+    # 手机端那根管道。两个都空 = 整个功能关掉。
+    phone_topic: str = field(default_factory=lambda: _env("ARK_PHONE_TOPIC"))
+    phone_pin: str = field(default_factory=lambda: _env("ARK_PHONE_PIN"))
+
     # 森空岛通行证 token，日报末尾的终末地卡池要用。空=那一行不出。
     # 鸣潮和明日方舟的卡池不需要任何 token，见 banners.py。
     skland_token: str = field(default_factory=lambda: _env("SKLAND_TOKEN"))

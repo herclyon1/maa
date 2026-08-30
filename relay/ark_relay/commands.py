@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import re
+import urllib.request
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -35,10 +36,11 @@ log = logging.getLogger("ark.commands")
 # ---------- gate ① : the whitelist ----------
 
 # Actions that only change what happens next, and undo themselves.
-REVERSIBLE = {"run_now", "skip_today", "debug_mode", "skip_shutdown"}
+REVERSIBLE = {"skip_today", "debug_mode", "skip_shutdown"}
 
 # Actions that write to a config file on disk.
-MUTATING = {"set_stage", "set_medicine", "toggle_task", "set_wait_time"}
+MUTATING = {"set_stage", "set_medicine", "toggle_task", "set_wait_time",
+            "set_config", "run_now"}
 
 ALLOWED = REVERSIBLE | MUTATING
 
@@ -211,16 +213,127 @@ def _set_wait_time(value: Any) -> tuple[bool, str]:
 def _toggle_task(name: str, on: bool) -> tuple[bool, str]:
     # Deliberately unimplemented: task names live in a different file per
     # script and getting this wrong silently disables the wrong task.
-    return False, f"toggle_task 尚未实现（{name} → {'开' if on else '关'}），需要人工处理"
+    which = "开" if on else "关"
+    return False, (f"toggle_task 不用了（{name} → {which}）："
+                   "用 set_config 指名道姓地写路径，比猜任务名安全")
+
+
+MAS_API = "http://127.0.0.1:36163"
+
+
+def _mas(path: str, body: "dict | None" = None, timeout: int = 20) -> dict:
+    """AUTO-MAS 后端。**每个端点都是 POST**，读取的也是。
+
+    走 API 而不是改文件：后端在跑的时候会用内存里那份覆写文件，
+    直接改文件的值会被静静冲掉。
+    """
+    req = urllib.request.Request(
+        MAS_API + path, data=json.dumps(body or {}).encode(),
+        headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310
+        return json.loads(r.read().decode())
+
+
+def _find_user(script: str) -> "tuple[str, str, dict]":
+    """按脚本名找到 (scriptId, userId, 当前用户配置)。"""
+    scripts = _mas("/api/scripts/get")["data"]
+    for sid, sc in scripts.items():
+        name = str((sc.get("Info") or {}).get("Name") or "")
+        if name.lower() != script.lower():
+            continue
+        users = _mas("/api/scripts/user/get", {"scriptId": sid}).get("data") or {}
+        if not users:
+            raise KeyError(f"脚本「{script}」下面没有用户")
+        uid = next(iter(users))
+        return sid, uid, users[uid]
+    raise KeyError(f"没有叫「{script}」的脚本")
+
+
+def _dig(obj: dict, path: str):
+    cur = obj
+    for part in path.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            raise KeyError(path)
+        cur = cur[part]
+    return cur
+
+
+def _nest(path: str, value) -> dict:
+    out: dict = {}
+    cur = out
+    parts = path.split(".")
+    for part in parts[:-1]:
+        cur[part] = {}
+        cur = cur[part]
+    cur[parts[-1]] = value
+    return out
+
+
+def _set_config(cmd: dict) -> tuple[bool, str]:
+    """改任意一项配置。手机端所有设置都走这一条。
+
+    2026-08-31 实测过 `/api/scripts/user/update` 是**合并语义**：只写传进去
+    的那些键，其余原样不动（先存全量、写回同值、全量比对验的）。
+
+    这里必须做的三件事，一件都不能省——826 就是省了才出的事：
+      * 改之前先把**现值**读出来，报告里写「A → B」而不是只写 B；
+      * 路径必须在现有配置里真的存在，不存在就拒绝，不许凭空造字段；
+      * 写完**回读验证**，验的是「这个键现在是不是这个值」。
+    """
+    script = str(cmd.get("script") or "").strip()
+    path = str(cmd.get("path") or "").strip()
+    if not script or not path:
+        return False, "set_config 需要 script 和 path"
+    if "value" not in cmd:
+        return False, "set_config 需要 value"
+    value = cmd["value"]
+    try:
+        sid, uid, user = _find_user(script)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"找不到脚本或用户: {exc}"
+    try:
+        before = _dig(user, path)
+    except KeyError:
+        return False, (f"「{script}」里没有 {path} 这一项，已拒绝"
+                       "（不许凭空造字段——826 就是这么出的事）")
+    if before == value:
+        return True, f"{script} 的 {path} 本来就是 {value!r}，没有改动"
+    try:
+        _mas("/api/scripts/user/update",
+             {"scriptId": sid, "userId": uid, "data": _nest(path, value)})
+    except Exception as exc:  # noqa: BLE001
+        return False, f"写入失败: {exc}"
+    try:
+        users = _mas("/api/scripts/user/get", {"scriptId": sid})["data"]
+        now = _dig(users[uid], path)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"写了但回读不了，无法确认: {exc}"
+    if now != value:
+        return False, (f"写了但没生效：{script} 的 {path} 现在是 {now!r}，"
+                       f"不是 {value!r}")
+    return True, f"{script} 的 {path}：{before!r} → {now!r}"
 
 
 def _run_now(queue: str) -> tuple[bool, str]:
-    # An earlier version wrote run-now.flag here and reported success - but
-    # nothing anywhere ever read that flag, so the operator got a ✅ for a
-    # no-op. Refusing honestly is strictly better than lying until the
-    # consumer actually exists.
-    return False, (f"run_now 尚未实现（写过的请求标记没有任何组件消费），"
-                   f"队列「{queue}」需要人工触发")
+    """立刻跑一趟队列。走 AUTO-MAS 的 dispatch 接口。"""
+    try:
+        queues = _mas("/api/queue/get")["data"]
+    except Exception as exc:  # noqa: BLE001
+        return False, f"取不到队列列表: {exc}"
+    names = []
+    for qid, q in queues.items():
+        name = str((q.get("Info") or {}).get("Name") or "")
+        names.append(name)
+        if name == queue:
+            try:
+                r = _mas("/api/dispatch/start", {"taskId": qid, "mode": "队列"})
+            except Exception as exc:  # noqa: BLE001
+                return False, f"队列「{queue}」没能启动: {exc}"
+            if str(r.get("status")) != "success":
+                return False, f"队列「{queue}」没能启动: {r.get('message')}"
+            return True, f"队列「{queue}」已开始跑"
+    have = "、".join(names)
+    return False, f"没有叫「{queue}」的队列（有的是：{have}）"
 
 
 def _skip_today(queue: str, want_day: str = "") -> tuple[bool, str]:
@@ -280,6 +393,8 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             # midnight", which is what the operator meant all along.
             n = cmd.get("cycles", cmd.get("days", 1))
             return set_debug(state_dir, n, bool(cmd.get("off")))
+        if action == "set_config":
+            return _set_config(cmd)
         if action == "skip_shutdown":
             # 手机上按的那个「今晚别关机」。不带到期时间：把**下一次**
             # 真正要执行的关机吃掉一次，用完即失效，下一趟队列照常关。
