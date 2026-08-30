@@ -68,3 +68,40 @@
   实际那 5 个是 `IMS.json`、`ElasticGoodsPrices.json`、
   `CreditShoppingShelfSnapshots.json` 等**数据缓存**，不是截图。
   按目录条目数当证据是错的。
+
+## 补：OK-WW 战斗那组报错是常态，不是故障
+
+2026-08-30 按天统计（`ok-script.log`）：
+
+| 报错 | 08-27 | 08-28 | 08-29 | 08-30 |
+|------|-------|-------|-------|-------|
+| `Hiyuki:clicked liberation but no effect` | 3 | 3 | 6 | 4 |
+| `CombatCheck:target_enemy failed` | 7 | 5 | 5 | 4 |
+| `BaseCombatTask:combat check not in combat` | 4 | 6 | 4 | 4 |
+| **✓ 日常完成 / 指定点位都已打满** | ✓ | ✓ | ✓ | ✓ |
+
+**天天报、天天完成。** 这三条是 OK-WW 战斗内的重试信号，
+它用 ERROR 级别打重试日志而已。不是我们的故障，不用管、不用提 issue。
+
+### 但 08-26 那天有真崩溃，之后没再出现
+
+```
+DailyTask.run → ForgeryTask.farm_forgery → DomainTask.farm_in_domain
+  → BaseWWTask.walk_to_treasure → walk_to_box          （走向宝箱时崩）
+
+DailyTask.run → claim_battle_pass → BaseWWTask.ensure_main
+  → Exception: Please start in game world and in team!  （不在世界/队伍状态）
+```
+
+08-26 共 5 次，**08-27 到 08-30 一次都没有**。
+
+那天正好是我们发现游戏内键位被改过、改回默认，以及给 `ensure_main` 打补丁的日子
+（见 [[wuwa-keybinds-must-be-default]]、[[okww-nest-ensure-main-patch]]）。
+**时间吻合，但没有证据说是哪一个修好的**，也可能两个都有份。
+记在这里是为了：万一以后又冒出来，先查键位和 ensure_main，别从头猜。
+
+## 日报走模板是常态，不是故障
+
+`模型不可用，日报回退到结构化排版` 这条 WARNING 天天出现，读起来像坏了。
+用户 2026-08-30 说明：**模型写日报是废除的规划（太贵），结构化模板就是最终形态、
+目前够用。** 所以那是常态路径，已降为 INFO 并写明。
