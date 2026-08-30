@@ -319,10 +319,25 @@ _PRTS = "https://prts.wiki/api.php?" + urllib.parse.urlencode(
 # 哪天方舟真在别的页首发干员了，把那页加回这里即可。
 _AK_PAGES = ("卡池一览/限时寻访",)
 
+# 2026-08-31 在游戏机上实测：raw.githubusercontent.com 通是通，但要 **33 秒**，
+# 超过超时就直接失败，方舟和终末地的预告因此时有时无。同一份文件走
+# jsDelivr 只要 2.8~4.6 秒。所以按实测速度排镜像，raw 放最后兜底。
+# gitmirror 和 ghfast.top 当时完全不通，别加回来。
+def gh_raw(owner: str, repo: str, branch: str, path: str) -> list[str]:
+    """同一个 GitHub 文件的几条路，按在游戏机上实测的速度排。"""
+    return [
+        f"https://fastly.jsdelivr.net/gh/{owner}/{repo}@{branch}/{path}",
+        f"https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{path}",
+        f"https://gh-proxy.com/https://raw.githubusercontent.com/"
+        f"{owner}/{repo}/{branch}/{path}",
+        f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}",
+    ]
+
+
 # 下一期排期：官方不公布，PRTS 也只记已经开过的。一图流前端仓库里
 # 有人手工维护着未来排期，`accuracyFlag: false` 表示这条是预测不是官宣。
-_AK_SCHEDULE = ("https://raw.githubusercontent.com/Arknights-yituliu/"
-                "frontend-v2-plus/main/src/utils/gachaScheduleOptions.js")
+_AK_SCHEDULE = gh_raw("Arknights-yituliu", "frontend-v2-plus", "main",
+                      "src/utils/gachaScheduleOptions.js")
 _KURO = "https://api.kurobbs.com"
 _ZONAI = "https://zonai.skland.com"
 # 终末地官方公告聚合口，免 token。code 是渠道常量。
@@ -331,8 +346,8 @@ _EF_BULLETIN = ("https://game-hub.hypergryph.com/bulletin/v2/aggregate"
                 "&code=endfield_5SD9TN&hideDetail=0")
 # 跨版本的下一期只有手工维护的这份有。时刻不采信它（见 docs/BANNER-SOURCES.md），
 # 只用来取「下一个是谁」。
-_EF_SCHEDULE = ("https://raw.githubusercontent.com/Arknights-yituliu/ef-frontend-v1"
-                "/main/custom/core/gacha/data/pool_info_table.json")
+_EF_SCHEDULE = gh_raw("Arknights-yituliu", "ef-frontend-v1", "main",
+                      "custom/core/gacha/data/pool_info_table.json")
 
 
 def _json(url: str, ua: str, data: "bytes | None" = None,
@@ -349,6 +364,18 @@ def _text(url: str, ua: str, timeout: int = 20) -> str:
     req = urllib.request.Request(url, headers={"User-Agent": ua})
     with urllib.request.urlopen(req, timeout=timeout) as r:   # noqa: S310
         return r.read().decode("utf-8", "replace")
+
+
+def _first(urls: list[str], ua: str, timeout: int = 12) -> str:
+    """挨个试，第一条通的就返回。全挂了才抛最后一个异常。"""
+    err: Exception = RuntimeError("没有可用地址")
+    for u in urls:
+        try:
+            return _text(u, ua, timeout)
+        except Exception as e:  # noqa: BLE001, PERF203
+            log.debug("镜像取不到 %s：%s", u, e)
+            err = e
+    raise err
 
 
 def parse_ak_schedule(js: str) -> "list[tuple[str, datetime, bool]]":
@@ -382,7 +409,7 @@ def _arknights(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | Non
     if when := min((b.start for b in rows if b.start > now), default=None):
         return debut, (when, "")      # PRTS 已经收录了，时间准，人未知
     try:
-        sched = parse_ak_schedule(_text(_AK_SCHEDULE, _UA_BROWSER))
+        sched = parse_ak_schedule(_first(_AK_SCHEDULE, _UA_BROWSER))
     except Exception:  # noqa: BLE001
         log.warning("一图流方舟排期取不到", exc_info=True)
         return debut, None
@@ -441,9 +468,9 @@ def _endfield(cred, sk_get, now: datetime
 
     # 本版两半都开完了，跨版本的只有一图流那份手工表有
     try:
-        table = _json(_EF_SCHEDULE, _UA_BROWSER, timeout=25)
+        table = json.loads(_first(_EF_SCHEDULE, _UA_BROWSER))
     except Exception:  # noqa: BLE001
-        log.warning("一图流终末地排期取不到", exc_info=True)
+        log.warning("一图流终末地排期取不到（几条镜像都不通）", exc_info=True)
         return got, (end, "")
     seen = {b.name for b in live} | {p for _, p in debut}
     nxt = next((r for r in (table if isinstance(table, list) else [])

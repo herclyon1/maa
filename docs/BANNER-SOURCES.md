@@ -144,3 +144,20 @@ hash 会随版本变,从 `555me/game-CDN-List` 的 `data/ww/game/notice.json` �
 - **`anemone9/Game_Update_Dashboard`** —— `prisma/seed.js` 里确实有下期角色,
   能用来交叉验证,但是 ★0 的个人看板、纯散文摘要、两周手动刷一次,不能当数据源。
 - **鸣潮个人 token(库街区登录态)** —— 上面两个接口都不需要,不要为了卡池去要用户的 token。
+
+## GitHub 上那两份手工表怎么取
+
+2026-08-31 在游戏机(乌鲁木齐)上实测同一个文件:
+
+| 走法 | 结果 |
+|---|---|
+| `raw.githubusercontent.com` | 通,但 **33.2 秒** |
+| `fastly.jsdelivr.net/gh/...` | 2.8 秒 |
+| `cdn.jsdelivr.net/gh/...` | 4.6 秒 |
+| `gh-proxy.com/https://raw...` | 3.8 秒 |
+| `raw.gitmirror.com` | 完全不通 |
+| `ghfast.top` | 完全不通 |
+
+raw 那 33 秒超过了代码里的超时,所以方舟和终末地的预告**时有时无**。
+`gh_raw()` 按上表顺序排镜像,raw 只做最后兜底。不通的那两个别加回来。
+

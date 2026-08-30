@@ -32,8 +32,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ark_relay.banners import (  # noqa: E402
     _AK_PAGES, _PRTS, debut_only, parse_ak_schedule, parse_arknights,
-    newest_version, parse_endfield, parse_endfield_notice, parse_wuwa,
-    parse_wuwa_preview, render, upcoming,
+    gh_raw, newest_version, parse_endfield, parse_endfield_notice,
+    parse_wuwa, parse_wuwa_preview, render, upcoming,
 )
 
 FX = Path(__file__).parent / "fixtures"
@@ -165,6 +165,15 @@ def main() -> int:
           newest_version([("9.9版本内容说明", "旧"),
                           ("10.0版本内容说明", "新")]), "新")
     check("一条都没有时返回空", newest_version([]), "")
+
+    # 2026-08-31 实测：游戏机上 raw.githubusercontent 要 33 秒（超时失败），
+    # jsDelivr 2.8 秒。镜像顺序是按实测速度排的，别退回去。
+    mirrors = gh_raw("o", "r", "main", "a/b.js")
+    check("jsDelivr 排在最前", "jsdelivr" in mirrors[0], True)
+    check("raw.githubusercontent 只做最后兜底",
+          mirrors[-1], "https://raw.githubusercontent.com/o/r/main/a/b.js")
+    check("每条镜像都指向同一个文件",
+          all(m.endswith("a/b.js") for m in mirrors), True)
 
     check("一条都没有时整段为空", render([], now, {}), "")
 
