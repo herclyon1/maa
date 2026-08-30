@@ -223,8 +223,8 @@ function render() {
       const live = optsOf(f.path);        // 机器发过来的真实选项
       /* 字段名用 AUTO-MAS 自己的中文标注（它界面就是中文的），
          没有才退回我在 SCHEMA 里写的那个。 */
-      const meta = (((snap && snap.options) || {})._labels || {})[f.path];
-      const label = (meta && meta.label) || f.label || f.key;
+      const label = ((((snap && snap.options) || {})._labels || {})[f.path])
+                 || f.label || f.key;
       const hint = f.hint ? `<span class="hint">${f.hint}</span>` : "";
       let ctl;
       const zh = (VALUE_ZH[f.path] || {})[String(val)];

@@ -110,10 +110,24 @@ class Mailbox:
 
     # ---------- 发 ----------
 
+    # ntfy 单条消息有大小上限，超了会被**截断**——截断的 JSON 在手机上
+    # 解析失败，表现是「永远读不到最新状态、判成关机中」，而发送这头
+    # 一切正常。所以发之前自己量，超了就砍掉可有可无的部分并出声。
+    MAX_BODY = 3600
+
     def publish(self, body: dict, kind: str = "state") -> bool:
         if not self.enabled:
             return False
         data = pack(self.pin, body, kind).encode("utf-8")
+        for drop in ("plan", "options"):
+            if len(data) <= self.MAX_BODY:
+                break
+            if drop in body:
+                log.warning("状态太大（%d 字节），砍掉「%s」再发", len(data), drop)
+                body = {k: v for k, v in body.items() if k != drop}
+                data = pack(self.pin, body, kind).encode("utf-8")
+        if len(data) > self.MAX_BODY:
+            log.error("状态还是太大（%d 字节），手机上会解析失败", len(data))
         req = urllib.request.Request(f"{NTFY}/{self.topic}", data=data,
                                      method="POST",
                                      headers={"User-Agent": _UA,
@@ -315,16 +329,33 @@ def _mas_labels(automas_dir) -> dict:
     return out
 
 
+# 手机上真正会显示的那些项。**只发这些**：把 154 条标注全塞进去，
+# 单条消息会超过 ntfy 的大小上限被截断，页面 JSON.parse 直接失败，
+# 于是永远读不到最新状态、判成「关机中」——2026-08-31 就是这么坏的。
+SHOWN = (
+    "Info.Stage", "Info.StageMode", "Info.MedicineNumb", "Info.SeriesNumb",
+    "Info.Annihilation", "Task.IfFight", "Task.IfActivityFirst",
+    "Task.ActivityStageIndex", "Task.ActivityMedicineNumb",
+    "Task.IfSanity", "Task.IfAutoUseSpMedication", "Task.SanityTaskType",
+    "Task.AutoEssenceSpecifiedLocation",
+    "Task.WhichToFarm", "Task.WhichTacetSuppressionToFarm",
+    "Task.WhichForgeryChallengeToFarm", "Task.MaterialSelection",
+    "Task.FarmNightmareNestForDailyEcho", "Task.TaskIndex",
+)
+
+
 def _options(cfg) -> dict:
     """各游戏可选项。取不到就不给，页面那一项退回文本框。"""
     out: dict = {"MAA": {}, "MaaEnd": {}, "OK-WW": {}}
     try:
-        labels = _mas_labels(getattr(cfg, "automas_dir", None))
+        labels = {k: v for k, v in
+                  _mas_labels(getattr(cfg, "automas_dir", None)).items()
+                  if k in SHOWN}
         for game in ("MAA", "MaaEnd"):
             for path, info in labels.items():
                 if info.get("options"):
                     out[game][path] = [[v, v] for v in info["options"]]
-        out["_labels"] = labels
+        out["_labels"] = {k: v["label"] for k, v in labels.items()}
     except Exception:  # noqa: BLE001
         log.warning("AUTO-MAS 的中文标注读不到", exc_info=True)
     try:
