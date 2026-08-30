@@ -1186,7 +1186,10 @@ class Engine:
         if written:
             log.info("📋 日报由模型撰写（%d 条记录）", len(entries))
             return title, written + (f"\n\n{act}" if act else "")
-        log.warning("模型不可用，日报回退到结构化排版")
+        # 用户 2026-08-30 定的：模型写日报是**废除的规划**（太贵），
+        # 结构化模板就是最终形态、目前够用。所以走到这里不是故障，
+        # 是常态路径——原来打 WARNING 会让人以为坏了，天天在日志里留一条假伤。
+        log.info("日报用结构化模板（模型撰写已废弃，这是正常路径）")
         title2, body = core.format_daily(day, entries, "", tomorrow)
         return title2, body + (f"\n\n{act}" if act else "")
 
