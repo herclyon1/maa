@@ -35,7 +35,7 @@ log = logging.getLogger("ark.commands")
 # ---------- gate ① : the whitelist ----------
 
 # Actions that only change what happens next, and undo themselves.
-REVERSIBLE = {"run_now", "skip_today", "debug_mode"}
+REVERSIBLE = {"run_now", "skip_today", "debug_mode", "skip_shutdown"}
 
 # Actions that write to a config file on disk.
 MUTATING = {"set_stage", "set_medicine", "toggle_task", "set_wait_time"}
@@ -280,6 +280,14 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             # midnight", which is what the operator meant all along.
             n = cmd.get("cycles", cmd.get("days", 1))
             return set_debug(state_dir, n, bool(cmd.get("off")))
+        if action == "skip_shutdown":
+            # 手机上按的那个「今晚别关机」。不带到期时间：把**下一次**
+            # 真正要执行的关机吃掉一次，用完即失效，下一趟队列照常关。
+            # 用户 2026-08-31：「你给一个人类好去调这个模式的方法，
+            # 独立于你的」「我要的是手机上面操作」。
+            from .modes import set_skip_shutdown  # noqa: PLC0415
+            state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
+            return set_skip_shutdown(state_dir, not cmd.get("off"))
     except Exception as exc:  # noqa: BLE001 - report, never crash the agent
         log.exception("执行指令失败: %s", action)
         return False, f"执行出错: {exc}"

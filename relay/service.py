@@ -533,6 +533,9 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         # pushed while it is off - which is nearly always - lands before that
         # day's run. Re-checking on a timer was added and removed again: it
         # bought nothing the boot check did not already cover.
+        # 关机前最后拉一次待办：人可能刚在手机上按了「今晚别关机」。
+        # 只在真要关机那一刻拉一次，不是轮询。
+        engine._before_shutdown = lambda: collect("关机前")  # noqa: SLF001
         collect("启动")
 
         # MaaEnd updates itself at startup and restarts its own process when it

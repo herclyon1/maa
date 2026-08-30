@@ -190,6 +190,9 @@ class Engine:
         self.source = source
         self.state = state
         self.notifier = notifier
+        # 关机前最后拉一次待办用的钩子，由 service 接上（见 _maybe_shutdown）。
+        # 单机跑测试时是 None，那就不拉。
+        self._before_shutdown = None
         # Populated by the HTTP layer in server mode, where the log tail
         # arrives with the payload instead of being read off local disk.
         self.log_tails: dict[str, str] = {}
@@ -1185,7 +1188,16 @@ class Engine:
                 self.state.mark_interim_sent(
                     day, len(self.state.read_ledger(day)))
 
-        # 人按过桌面上那个开关：把这一次关机吃掉，用完即失效。
+        # 关机前最后拉一次待办：人可能刚在手机上按了「今晚别关机」。
+        # 这不是轮询——只在真的要关机这一刻拉一次，一天两回。
+        # 拉不到就按原计划关机：拉不到不等于有人喊停。
+        if self._before_shutdown is not None:
+            try:
+                self._before_shutdown()
+            except Exception:  # noqa: BLE001
+                log.warning("关机前的待办检查失败，按原计划关机", exc_info=True)
+        # 人按过开关（手机下的指令，或游戏机桌面那个 .bat）：
+        # 把这一次关机吃掉，用完即失效。
         # 位置必须在这里——所有别的门都过了、马上就要真关了才算数，
         # 放在前面会被一次「其实还没到该关机的时候」白白消耗掉。
         if modes.take_skip(self.state.dir):

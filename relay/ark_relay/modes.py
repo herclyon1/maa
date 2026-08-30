@@ -97,6 +97,21 @@ def skip_armed(state_dir: Path) -> bool:
     return _skip_flag(state_dir).exists()
 
 
+def set_skip_shutdown(state_dir: Path, on: bool) -> tuple[bool, str]:
+    """打开/取消「下一次别关机」。给待办指令和桌面开关共用。"""
+    f = _skip_flag(state_dir)
+    if on:
+        atomic_write_text(f, "skip")
+        return True, "下一次跑完不关机（只跳过这一次，之后恢复正常）"
+    if f.exists():
+        try:
+            f.unlink()
+        except OSError:
+            return False, "取消失败：标记文件删不掉"
+        return True, "已取消，跑完照常关机"
+    return True, "本来就没开，跑完照常关机"
+
+
 def take_skip(state_dir: Path) -> bool:
     """有就用掉并返回 True。用完即失效，下一趟队列照常关机。"""
     f = _skip_flag(state_dir)

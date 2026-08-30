@@ -177,5 +177,41 @@ check("下一趟队列跑完：正常关机（不用再按一次才关）",
       E._maybe_shutdown(at(23, 40)), True)
 skipped.unlink(missing_ok=True)
 
+print("\n[手机开关] 待办指令 skip_shutdown：手机上改仓库里那个文件")
+# 用户 2026-08-31：「我要的是手机上面操作」。中继本来就有「公开仓库放一个
+# 文件、手机网页编辑」的收信通道，这里把开关接进那条通道。
+os.environ["ARK_STATE_DIR"] = str(STATE)
+from ark_relay.commands import apply_command, ALLOWED       # noqa: E402
+from ark_relay import modes                                 # noqa: E402
+
+check("动作在白名单里", "skip_shutdown" in ALLOWED, True)
+skipped.unlink(missing_ok=True); flag.unlink(missing_ok=True)
+
+ok, msg = apply_command({"action": "skip_shutdown"})
+check("下指令后开关打开", (ok, modes.skip_armed(STATE)), (True, True))
+ok, _ = apply_command({"action": "skip_shutdown", "off": True})
+check("再下一条 off 就关掉", (ok, modes.skip_armed(STATE)), (True, False))
+
+# 不在白名单的动作必须被拒
+ok, _ = apply_command({"action": "poweroff_now"})
+check("白名单外的动作照样拒绝", ok, False)
+
+# 关机前那一拉：人在最后一刻按下也来得及
+ledger(run)
+E._shutdown_issued = False; issued.clear()
+E._before_shutdown = lambda: apply_command({"action": "skip_shutdown"})
+check("关机前拉到了「别关机」：不关", E._maybe_shutdown(at(23, 0)), False)
+check("并且没有发出关机命令", len(issued), 0)
+
+# 拉不到不等于有人喊停
+skipped.unlink(missing_ok=True); flag.unlink(missing_ok=True)
+def boom():
+    raise RuntimeError("网络不通")
+E._before_shutdown = boom
+E._shutdown_issued = False; issued.clear()
+check("关机前那一拉失败：按原计划关机", E._maybe_shutdown(at(23, 0)), True)
+E._before_shutdown = None
+skipped.unlink(missing_ok=True)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

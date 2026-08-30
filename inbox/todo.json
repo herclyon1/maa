@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "今晚别关机",
+  "note": "改完记得把 version 加 1，否则机器会认为没变化",
+  "commands": [
+    {"action": "skip_shutdown", "off": true}
+  ]
+}
