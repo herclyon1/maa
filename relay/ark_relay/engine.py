@@ -220,6 +220,8 @@ class Engine:
         # 2026-08-28 起直接写母本，不再走 MAS 的接口——那条路要求快速配置
         # 开着，而快速配置已经废掉了。
         self._garden = GardenGate(state.dir, cfg.automas_dir)
+        from .weeklyboss import WeeklyBossGate  # noqa: PLC0415 - 避免导入环
+        self._weeklyboss = WeeklyBossGate(state.dir, cfg.automas_dir)
 
     # ---------- operator modes ----------
 
@@ -324,6 +326,7 @@ class Engine:
         self._enforce_annihilation()
         try:
             self._garden.enforce()
+            self._weeklyboss.enforce()
         except Exception:  # noqa: BLE001 - 一道省时间的门，不许拖垮主流程
             log.warning("周常乐园开关没能落盘，下轮再试", exc_info=True)
         self._check_missed_runs()
@@ -450,6 +453,11 @@ class Engine:
             # unmet - the run on 2026-08-17 needed five sorties and 125 sanity
             # to get from 0 to 1800.
             steps = rec.raw.get("okww_steps") or []
+            # 周本：任务名译作「传送并刷取4C声骸」，任务本身显示「刷4C(大世界/副本)」，
+            # 两种都认。判据和周常乐园一致——只有真跑完那一步才算数。
+            if any(("4C声骸" in s or "刷4C" in s) and "已完成" in s for s in steps):
+                if msg := self._weeklyboss.on_success(rec.finished):
+                    self.notifier.send("⚔️ 鸣潮周本", msg)
             if any("周常乐园" in s and "已完成" in s for s in steps) and self._garden:
                 if msg := self._garden.on_success(rec.finished):
                     # 2026-08-26：这里原本写的是 `notes.append(msg)`，可这个作用域里

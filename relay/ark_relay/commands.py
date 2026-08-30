@@ -36,7 +36,7 @@ log = logging.getLogger("ark.commands")
 # ---------- gate ① : the whitelist ----------
 
 # Actions that only change what happens next, and undo themselves.
-REVERSIBLE = {"skip_today", "debug_mode", "skip_shutdown"}
+REVERSIBLE = {"skip_today", "debug_mode", "skip_shutdown", "weekly_boss"}
 
 # Actions that write to a config file on disk.
 MUTATING = {"set_stage", "set_medicine", "toggle_task", "set_wait_time",
@@ -395,6 +395,19 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             return set_debug(state_dir, n, bool(cmd.get("off")))
         if action == "set_config":
             return _set_config(cmd)
+        if action == "weekly_boss":
+            # 鸣潮周本（战歌重奏）。和剿灭一个形状：打完自动摘掉，
+            # 周一 04:00 挂回来。默认关着——Repeat Farm Count 出厂是 10000，
+            # 盲目打开会一直刷；一周能拿几次奖励是游戏规则，我不替人定。
+            from .weeklyboss import WeeklyBossGate  # noqa: PLC0415
+            state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
+            gate = WeeklyBossGate(state_dir, os.environ.get("ARK_AUTOMAS_DIR"))
+            ok, msg = gate.configure(
+                enabled=None if "on" not in cmd else bool(cmd.get("on")),
+                index=cmd.get("index"), count=cmd.get("count"))
+            if ok:
+                gate.enforce()
+            return ok, msg
         if action == "skip_shutdown":
             # 手机上按的那个「今晚别关机」。不带到期时间：把**下一次**
             # 真正要执行的关机吃掉一次，用完即失效，下一趟队列照常关。

@@ -488,19 +488,29 @@ def state_payload(cfg, state_dir: Path) -> dict:
     # 只发手机上会显示的那三段。整份快照还带着 OK-WW 的四个配置文件、
     # 队列表和进程列表，加起来会把单条消息顶过 ntfy 的大小上限，
     # 截断之后手机那头解析失败——表现是「永远显示关机中」。
+    # 只发手机上会显示的那些键。整份快照塞不进单条消息（见 Mailbox.MAX_BODY）。
+    keep = {k.split(".", 1)[1] for k in SHOWN} | {"关卡", "关卡模式", "理智药",
+            "连战", "剿灭", "作战开关", "活动关优先", "活动关序号", "活动关理智药",
+            "开理智", "自动吃药", "理智任务", "基质地点"}
     try:
         full = snapshot.read()
-        out["config"] = {k: v for k, v in full.items()
-                         if k in ("MAA", "MaaEnd", "OK-WW(MAS侧)")}
+        out["config"] = {
+            sec: {k: v for k, v in (vals or {}).items() if k in keep}
+            for sec, vals in full.items()
+            if sec in ("MAA", "MaaEnd", "OK-WW(MAS侧)")}
         out["run"] = {"服务": full.get("ark-relay"),
                       "在跑的": [n for n, on in (full.get("进程") or {}).items() if on]}
+        out["queues"] = [{"名": n, **v} for n, v in (full.get("队列") or {}).items()]
     except Exception as exc:  # noqa: BLE001
         out["config"] = {"_错误": f"{type(exc).__name__}: {exc}"}
     try:
+        from . import weeklyboss  # noqa: PLC0415
         out["relay"] = {
             "调试模式": modes.debug_until(state_dir) or "",
             "下次别关机": modes.skip_armed(state_dir),
-            "已跳过的关机": modes.shutdown_skipped(state_dir) or "",
+            "周本": weeklyboss.WeeklyBossGate(state_dir,
+                                              getattr(cfg, "automas_dir", None)
+                                              ).settings(),
         }
     except Exception:  # noqa: BLE001
         out["relay"] = {}
