@@ -33,6 +33,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -533,9 +534,61 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         # pushed while it is off - which is nearly always - lands before that
         # day's run. Re-checking on a timer was added and removed again: it
         # bought nothing the boot check did not already cover.
-        # 关机前最后拉一次待办：人可能刚在手机上按了「今晚别关机」。
-        # 只在真要关机那一刻拉一次，不是轮询。
-        engine._before_shutdown = lambda: collect("关机前")  # noqa: SLF001
+        # ---------- 手机端 ----------
+        # 用户 2026-08-31 定的形状：开机必取一次指令、必上报一次状态；
+        # 关机前必上报；手机按刷新能实时拿到状态（仅机器开着时）；
+        # 在线/离线不许靠轮询。做法见 phone.py 的模块说明。
+        from ark_relay.commands import apply_command
+        from ark_relay.phone import Mailbox
+
+        box = Mailbox(cfg.phone_topic, cfg.phone_pin, cfg.state_dir)
+
+        def push_state(why: str) -> None:
+            if not box.enabled:
+                return
+            try:
+                from ark_relay.phone import state_payload
+                box.publish(state_payload(cfg, cfg.state_dir))
+                log.info("📱 已上报状态到手机（%s）", why)
+            except Exception:  # noqa: BLE001 - 上报失败不许拖垮中继
+                log.warning("状态没能上报到手机（%s）", why, exc_info=True)
+
+        def run_phone_cmd(body: dict) -> None:
+            """手机上按的一条。刷新只回状态；其余是真改配置，改完立刻通知。"""
+            action = str((body or {}).get("action") or "")
+            if action == "refresh":
+                push_state("手机请求")
+                return
+            if engine.scripts_running():
+                # 脚本在跑的时候改配置会被 AUTO-MAS 用内存里那份冲掉。
+                notifier.send("📱 手机指令暂缓",
+                              f"「{action}」现在不能执行：脚本正在运行，"
+                              "此时改配置会被冲掉。等这一趟跑完再按一次。")
+                return
+            ok, msg = apply_command(body)
+            log.info("📱 手机指令 %s：%s", action, msg)
+            # 用户 2026-08-31 要的：按下保存之后要有通知说改动成功。
+            notifier.send("📱 配置已修改" if ok else "📱 配置没改成", msg)
+            push_state("改完配置")
+
+        push_state("开机")
+        if box.enabled:
+            for body in box.fetch():
+                run_phone_cmd(body)
+            threading.Thread(
+                target=lambda: box.listen(
+                    run_phone_cmd,
+                    lambda: win32event.WaitForSingleObject(self.stop_event, 0)
+                    == win32event.WAIT_OBJECT_0),
+                name="phone-mailbox", daemon=True).start()
+
+        # 关机前最后拉一次待办 + 上报一次状态：人可能刚在手机上按了
+        # 「今晚别关机」，而且手机上那份状态得停在机器关机那一刻的样子。
+        def before_shutdown() -> None:
+            collect("关机前")
+            push_state("关机前")
+
+        engine._before_shutdown = before_shutdown  # noqa: SLF001
         collect("启动")
 
         # MaaEnd updates itself at startup and restarts its own process when it
