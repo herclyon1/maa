@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0f1216">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260831050317">
+<link rel="manifest" href="manifest.webmanifest?v=20260831080815">
 <style>
   /* 浅色是底色，深色只覆盖变量。三种情况都要照顾到：
      手机设成浅色、手机设成深色、以及页面里手动指定。 */
@@ -41,13 +41,20 @@
   main{padding:14px 12px;max-width:640px;margin:0 auto}
   section{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
           margin-bottom:12px;overflow:hidden;box-shadow:var(--sh)}
-  h2{margin:0;padding:13px 15px;font-size:15px;border-bottom:1px solid var(--line);
+  h2{margin:0;padding:14px 15px;font-size:16px;font-weight:600;border-bottom:1px solid var(--line);
      display:flex;justify-content:space-between;align-items:center}
   h2 small{color:var(--dim);font-weight:400;font-size:12px}
-  .row{display:flex;align-items:center;gap:12px;padding:11px 15px;border-bottom:1px solid var(--line)}
+  /* 一行一件事，控件另起一行右对齐。中文字段名很长（「活动关优先任务吃
+     理智药数量」），挤在同一行会把输入框压成一条缝。 */
+  .row{display:flex;flex-direction:column;gap:8px;padding:13px 15px;
+       border-bottom:1px solid var(--line)}
   .row:last-child{border-bottom:0}
-  .row label{flex:1;min-width:0;font-size:14px}
-  .row .hint{display:block;color:var(--dim);font-size:11.5px;margin-top:2px}
+  .row label{font-size:15px;line-height:1.35}
+  .row .hint{display:block;color:var(--dim);font-size:12px;margin-top:3px;
+             line-height:1.45}
+  .row > :not(label){align-self:flex-end}
+  .row input[type=text],.row input[type=number],.row select{width:100%;max-width:100%;
+       text-align:left;padding:11px 12px;font-size:16px}
   input[type=text],input[type=number],select{
     background:var(--field);border:1px solid var(--line);color:var(--ink);
     border-radius:9px;padding:9px 11px;font-size:15px;width:130px;text-align:right}
@@ -61,7 +68,7 @@
   .sw input:checked + span{background:var(--ok)}
   .sw input:checked + span::after{transform:translateX(21px)}
   .changed{background:rgba(74,163,255,.09)}
-  .acts{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:13px 15px}
+  .acts{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px 15px}
   button{font:inherit;border:0;border-radius:11px;padding:13px;color:var(--ink);
          background:var(--btn);cursor:pointer;box-shadow:var(--sh)}
   button:active{transform:scale(.985)}
@@ -90,7 +97,7 @@
   .toast.show{opacity:1}
   .setup{padding:15px}
   .setup input{width:100%;text-align:left;margin-top:6px}
-  .ro{color:var(--dim);font-size:14px;text-align:right;max-width:190px}
+  .ro{color:var(--dim);font-size:14px}
   .swatches{display:flex;gap:9px}
   .sw-c{width:28px;height:28px;border-radius:50%;display:block;cursor:pointer;
         border:2px solid transparent;box-shadow:0 0 0 1px var(--line) inset}
@@ -121,6 +128,6 @@
 </dialog>
 
 <div class="toast" id="toast"></div>
-<script src="app.js?v=20260831050317"></script>
+<script src="app.js?v=20260831080815"></script>
 </body>
 </html>
