@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import urllib.request
 from pathlib import Path
@@ -22,8 +23,11 @@ from pathlib import Path
 log = logging.getLogger("ark.snapshot")
 
 API = "http://127.0.0.1:36163"
-OKWW_CONFIGS = Path(r"D:\ark\okww\data\apps\ok-ww\working\configs")
-OKWW_FILES = ("NightmareNestTask.json", "DailyTask.json",
+# 读**母本**，不是 OK-WW 自己那份。AUTO-MAS 每次跑之前会无条件把母本
+# 整个拷过去（见 config.master_config_dir 的注释），所以脚本目录里那份
+# 反映的是**上一趟**用的配置，不是当前生效的。2026-08-31 我拿它判断
+# 「周本配没配上」，得出的结论和母本正好相反。
+OKWW_FILES = ("NightmareNestTask.json", "DailyTask.json", "FarmEchoTask.json",
               "TacetTask.json", "ForgeryTask.json")
 
 
@@ -87,16 +91,22 @@ def _queues(out: dict) -> None:
 
 
 def _okww(out: dict) -> None:
+    from .config import master_config_dir  # noqa: PLC0415 - 避免导入环
+
+    d = master_config_dir(os.environ.get("ARK_AUTOMAS_DIR"), "DailyTask.json")
+    if d is None:
+        out["OK-WW(母本)"] = "找不到母本目录（ARK_AUTOMAS_DIR 没设或结构变了）"
+        return
     ok: dict = {}
     for f in OKWW_FILES:
-        p = OKWW_CONFIGS / f
+        p = d / f
         if not p.exists():
             continue
         try:
             ok[f[:-5]] = json.loads(p.read_text(encoding="utf-8"))
         except Exception as exc:  # noqa: BLE001
             ok[f[:-5]] = f"读不了: {exc}"
-    out["OK-WW(本体)"] = ok
+    out["OK-WW(母本·生效的)"] = ok
 
 
 def _runtime(out: dict) -> None:
