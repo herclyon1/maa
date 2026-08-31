@@ -949,6 +949,35 @@ _CLAIM_NEW = """                    if self._in_realm and not self.in_world():
                                 _ok, _used = self.use_stamina(once=60, must_use=0)
                                 self.log_info(f'周本领奖：已领取，花了 {_used}')
                             else:
+                                # 认不出就取证：是 F 没按出弹窗，还是弹窗在
+                                # 但 claim_stamina_sign 模板不匹配？
+                                try:
+                                    self.screenshot('no_claim_ui')
+                                    _o = self.ocr(box=self.box_of_screen(0.0, 0.0, 1.0, 1.0))
+                                    self.log_info(f'周本领奖：没认出，整屏读到 {_o}')
+                                except Exception:
+                                    pass
+                                self.log_info('周本领奖：没认出花体力界面，不领，按原样退出')
+                        except Exception as _e:
+                            self.log_info(f'周本领奖：这一步没做成，按原样退出 {_e!r}')
+                        self.send_key('esc', after_sleep=0.5)"""
+
+
+# 领奖补丁的上一版，留着**只为了还原**。改这条补丁之前必须先把它还原，
+# 否则 _apply_one 找不到 old、报「贴不上了」。今晚在这上面栽过三次。
+_CLAIM_V1 = """                    if self._in_realm and not self.in_world():
+                        # 本地补丁：退秘境之前先把周本奖励领了。
+                        # 领奖＝走到结晶前按 F、花 60 波片，不是进本时扣。
+                        # has_claim_stamina() 是门：认不出就什么都不花。
+                        try:
+                            self.walk_to_treasure()
+                            self.pick_f(handle_claim=False)
+                            self.sleep(2)
+                            if self.has_claim_stamina():
+                                self.log_info('周本领奖：认出「花体力领取」界面，开始领')
+                                _ok, _used = self.use_stamina(once=60, must_use=0)
+                                self.log_info(f'周本领奖：已领取，花了 {_used}')
+                            else:
                                 self.log_info('周本领奖：没认出花体力界面，不领，按原样退出')
                         except Exception as _e:
                             self.log_info(f'周本领奖：这一步没做成，按原样退出 {_e!r}')
@@ -956,7 +985,7 @@ _CLAIM_NEW = """                    if self._in_realm and not self.in_world():
 
 
 def _claim_present(text: str) -> bool:
-    return "周本领奖：认出「花体力领取」界面" in text
+    return "周本领奖：没认出，整屏读到" in text
 
 
 _CLAIM = _Patch(
@@ -1008,6 +1037,8 @@ def ensure_patches(okww_dir: Path | None) -> list[str]:
     # 截图补丁已经问到答案（Boss 死后画面上没有自动领奖这回事），还原。
     done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
                              _SHOT2_NEW, _SHOT2_OLD, "退秘境前留证据截图"))
+    done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
+                             _CLAIM_V1, _CLAIM_OLD, "打完 Boss 真正领周本奖励 v1"))
     done.extend(_apply_one(root, _CLAIM))
     # 取证补丁已经问到答案（画面是「结晶波片不足」弹窗），撤回。
     done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
