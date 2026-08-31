@@ -110,7 +110,10 @@ def _make(root: Path, daily=UPSTREAM_DAILY, domain=UPSTREAM_DOMAIN,
           nest=UPSTREAM_NEST, combat=UPSTREAM_COMBAT) -> Path:
     d = root / "data" / "apps" / "ok-ww" / "working" / "src" / "task"
     d.mkdir(parents=True, exist_ok=True)
-    (d / "DailyTask.py").write_text(daily, encoding="utf-8")
+    (d / "DailyTask.py").write_text(
+        daily + "\n    def _farm(self):\n"
+        + okww_patch._NOFARM_OLD + "\n            pass\n",
+        encoding="utf-8")
     (d / "DomainTask.py").write_text(domain, encoding="utf-8")
     (d / "NightmareNestTask.py").write_text(nest, encoding="utf-8")
     (d / "BaseCombatTask.py").write_text(combat, encoding="utf-8")
