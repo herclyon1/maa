@@ -706,8 +706,20 @@ _NOWAVE_NEW = """            # 本地补丁 v3：波片不足的弹窗是**点�
             # 上游 click_team_challenge() 里紧跟着 wait_click_skip_dialog_confirm()，
             # 会把弹窗上的「确认」点掉——「确认」的意思正是「不拿奖励继续进入」。
             # 所以把那两步拆开：先点开启挑战，再看弹窗，有就点「取消」并跳过。
-            self.wait_click_feature('team_start_challenge', raise_if_not_found=True,
-                                    click_after_delay=0.5, after_sleep=1)
+            try:
+                self.wait_click_feature('team_start_challenge', raise_if_not_found=True,
+                                        click_after_delay=0.5, after_sleep=1)
+            except Exception:
+                # 找不到「开启挑战」时留一张图再抛。2026-09-01 波片 91（够）
+                # 却仍然找不到，且之前几趟这一步是成功的——不是必然失败，
+                # 光看日志说不清那一刻画面是什么，只能拍下来。
+                try:
+                    self.screenshot('no_start_btn')
+                    _s = self.ocr(box=self.box_of_screen(0.0, 0.0, 1.0, 1.0))
+                    self.log_info(f'找不到开启挑战，整屏读到: {_s}')
+                except Exception:
+                    pass
+                raise
             _seen = self.ocr(box=self.box_of_screen(0.20, 0.35, 0.80, 0.60))
             self.log_info(f'v3 开启挑战后读到: {_seen}')
             if any('结晶波片' in str(_b) or '无法获取奖励' in str(_b) for _b in (_seen or [])):
@@ -742,7 +754,7 @@ def _nowave_present(text: str) -> bool:
     # 认 **这一版独有** 的字串。只认那句没变过的日志会让改动静默不部署——
     # 2026-08-31 已经栽过一次：v2 加了调试输出，判据没跟着改，
     # _apply_one 判成「已在位」直接返回，我却在日志里找那行输出。
-    return "v3 开启挑战后读到" in text
+    return "找不到开启挑战，整屏读到" in text
 
 
 _NOWAVE = _Patch(

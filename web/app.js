@@ -419,15 +419,20 @@ async function oneShot(body, okText) {
 /* `minAt` 是「只接受这个时刻之后上报的状态」。保存完之后必须传它——
    否则可能收到**改动之前**发布的那一条，界面上就会显示成「没改成」。
    2026-08-31 实测撞到过：机器上已经是新值了，页面还显示旧值。 */
-/* 判开关机的依据是**最新状态够不够新鲜**，不是「有没有收到比缓存更新的」。
+/* 判开关机只有一条依据：**最新状态够不够新鲜**。
 
-   老写法只认「更新的状态」：机器忙的时候（跑 OK-WW 时 CPU 被视觉识别占满）
-   十一秒内没推来新的，就报「关机中」——哪怕二十秒前刚推过一条，
-   那条本身就足以证明它开着。2026-09-01 用户报的「检测不到开机状态」。
+   老写法有两个方向的错：
+   · 机器忙的时候（跑 OK-WW 时 CPU 被视觉识别占满）十几秒内没推来更新的，
+     就报「关机中」——哪怕二十秒前刚推过一条，那条本身就证明它开着。
+     2026-09-01 用户报的「检测不到开机状态」。
+   · 反过来也错：刚打开页面时缓存是空的，于是**任何一条状态、哪怕两小时
+     前的**都会被当成「刚收到的新状态」，机器明明关着却报「开机中·刚刚更新」。
+     2026-09-01 模拟关机时测出来的。
 
-   FRESH_MS：机器开着时，中继在开机、改配置、每趟跑完都会推状态，
-   还会应答刷新。三分钟内有过状态就当它开着。 */
+   现在只认新鲜度：机器开着时中继会在开机、改配置、每趟跑完推状态，
+   还会应答刷新，所以三分钟内有过状态就是开着。 */
 const FRESH_MS = 3 * 60 * 1000;
+const JUST_MS = 60 * 1000;
 
 async function ping(minAt) {
   if (!cfg || !cfg.topic || !cfg.pin) {
@@ -435,40 +440,58 @@ async function ping(minAt) {
     return setStatus("还没设置信箱，先去设置里填", "off");
   }
   setStatus("正在问机器…", "");
-  const floor = (typeof minAt === "number" ? minAt : null)
-             ?? (snap ? snap.at : 0);
+  const floor = (typeof minAt === "number" ? minAt : null) ?? 0;
   try { await send({ action:"refresh" }); }
   catch (e) { return setStatus("发不出去：" + e.message, "off"); }
-  let newest = null;
-  for (let i = 0; i < 20; i++) {          // 20 × 800ms ≈ 16 秒，比原来宽
-    await new Promise((r) => setTimeout(r, 800));
+
+  // 每轮都要跟 ntfy 打一个来回（约 1 秒），所以圈数要省着用：
+  // 关机时是走满全程才下结论的，圈数太多人就得干等——2026-09-01
+  // 用 20 圈测出来要 40 秒，太久。10 圈≈12 秒，够了。
+  let best = snap;
+  for (let i = 0; i < 10; i++) {
     let s;
-    try { s = await latestState("2h"); } catch { continue; }
-    if (!s) continue;
-    if (!newest || s.at > newest.at) newest = s;
-    if (s.at >= floor && (!snap || s.at > snap.at)) {
-      snap = s; save_cache(); render();
-      return setStatus("开机中 · 刚刚更新", "on");
-    }
+    try { s = await latestState("2h"); } catch { s = null; }
+    if (s && (!best || s.at > best.at)) best = s;
+    // 已经够新鲜、且不早于调用方要求的那一刻，就不用再等
+    if (best && best.at >= floor && Date.now() - best.at * 1000 < FRESH_MS) break;
+    await new Promise((r) => setTimeout(r, 600));
   }
-  // 没等到更新的，但最新那条本身很新鲜 —— 机器是开着的，只是忙。
-  const best = newest || snap;
-  if (best && Date.now() - best.at * 1000 < FRESH_MS) {
-    if (newest && (!snap || newest.at > snap.at)) { snap = newest; save_cache(); render(); }
-    return setStatus(`开机中 · 在忙，状态是 ${ago(best.at)}的`, "on");
-  }
-  setStatus(best ? `关机中 · 状态是 ${ago(best.at)}的` : "关机中 · 还没有过状态", "off");
+
+  if (best && (!snap || best.at > snap.at)) { snap = best; save_cache(); render(); }
+  if (!best) return setStatus("关机中 · 还没有过状态", "off");
+  const age = Date.now() - best.at * 1000;
+  if (age < JUST_MS)  return setStatus("开机中 · 刚刚更新", "on");
+  if (age < FRESH_MS) return setStatus(`开机中 · 在忙，状态是 ${ago(best.at)}的`, "on");
+  return setStatus(`关机中 · 状态是 ${ago(best.at)}的`, "off");
 }
+
 
 function save_cache() {
   try { localStorage.setItem(LS + "-snap", JSON.stringify(snap)); } catch {}
+}
+
+/* 把内部值翻成人看的字。改动确认框必须用它——
+   2026-09-01 实测：下拉里显示的是「计划表：新 MAA 计划表」，
+   确认框里却甩出 `c88cfe9e-6617-4fb8-9225-183ca571e3ae`。
+   那个框存在的全部意义就是让人看清改了什么，显示 UUID 等于没有。
+   取名顺序和渲染下拉时完全一致：机器发来的选项表 → VALUE_ZH → 原样。 */
+function valLabel(script, path, v) {
+  const live = (((snap && snap.options) || {})[script] || {})[path];
+  if (live && live.length) {
+    const hit = live.find(([, val]) => String(val) === String(v));
+    if (hit) return hit[0];
+  }
+  const zh = (VALUE_ZH[path] || {})[String(v)];
+  return zh || fmt(v);
 }
 
 async function doSave() {
   const items = Object.values(edits);
   if (!items.length) return;
   $("#difflist").innerHTML = items.map((e) =>
-    `<div class="diff"><b>${e.label}</b><br><span class="old">${fmt(e.from)}</span> → <span class="new">${fmt(e.to)}</span></div>`).join("");
+    `<div class="diff"><b>${e.label}</b><br>` +
+    `<span class="old">${valLabel(e.script, e.path, e.from)}</span> → ` +
+    `<span class="new">${valLabel(e.script, e.path, e.to)}</span></div>`).join("");
   $("#confirm").showModal();
 }
 
