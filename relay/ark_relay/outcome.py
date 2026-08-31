@@ -175,8 +175,32 @@ _MAA_CHAIN = re.compile(
     r'TaskChain(Start|Completed|Error|Stopped)\b.*?"taskchain":"(\w+)"')
 
 
+_MAA_STARTUP = re.compile(
+    r'TaskChainStart\b.*?"taskchain":"StartUp"')
+
+
+def _one_run_only(text: str) -> str:
+    """只留这一轮。第二个 StartUp 之后的都是下一轮的，砍掉。
+
+    时间窗是 [开始, 结束+5分钟]，那 5 分钟是给收尾行留的余量。两趟挨得近时
+    余量会伸进下一趟：2026-08-31 晚上第一趟 21:30:50→21:33:38（窗口到
+    21:38:38），第二趟 21:33:43 就开跑，`Infrast` 21:35 开始、21:43 完成——
+    于是第一趟的窗口捞到了下一趟的「Infrast 开始」却够不到它的「完成」，
+    报了一条「开了没收尾：Infrast」。基建其实好好干完了，纯误报。
+
+    MAA 每轮都以 StartUp 开头，所以第二个 StartUp 就是越界的标志。
+    只有一个 StartUp（或一个都没有）时原样返回，不做任何事。
+    """
+    hits = list(_MAA_STARTUP.finditer(text))
+    if len(hits) < 2:
+        return text
+    cut = text.rfind("\n", 0, hits[1].start())
+    return text[:cut] if cut > 0 else text
+
+
 def maa_checks(text: str) -> list[Check]:
     """核对一轮 MAA。`text` 是这一轮时间窗内的 asst.log。"""
+    text = _one_run_only(text)
     started: Counter = Counter()
     ended: Counter = Counter()
     bad: list[str] = []
