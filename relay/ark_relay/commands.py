@@ -326,7 +326,11 @@ def _run_now(queue: str) -> tuple[bool, str]:
         names.append(name)
         if name == queue:
             try:
-                r = _mas("/api/dispatch/start", {"taskId": qid, "mode": "队列"})
+                # mode 的合法值只有 AutoProxy / ScriptConfig / Update
+                # （app/models/schema.py 的 TaskCreateIn）。2026-08-31 我写成
+                # 「队列」，接口直接 422——手机上按「现在跑一趟」毫无反应。
+                r = _mas("/api/dispatch/start",
+                         {"taskId": qid, "mode": "AutoProxy"})
             except Exception as exc:  # noqa: BLE001
                 return False, f"队列「{queue}」没能启动: {exc}"
             if str(r.get("status")) != "success":
