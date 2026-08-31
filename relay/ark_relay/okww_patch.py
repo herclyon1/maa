@@ -480,7 +480,10 @@ _STAMINA = _Patch(
 # 这个补丁**不改任何行为**，只是在点击之前存一张图。下次周本一跑就有证据，
 # 不用再靠猜按钮坐标——猜坐标去改生产脚本正是 826 那类错。
 _SHOT_OLD = """                        self.send_key('esc', after_sleep=0.5)
-                        self.wait_click_feature('claim_cancel_button_hcenter_vcenter', relative_x=2,"""
+                        self.wait_click_feature('claim_cancel_button_hcenter_vcenter', relative_x=2,
+                                                raise_if_not_found=True,
+                                                post_action=lambda: self.send_key('esc', after_sleep=1),
+                                                settle_time=1)"""
 
 _SHOT_NEW = """                        self.send_key('esc', after_sleep=0.5)
                         # 本地补丁：先留一张证据，再点。行为不变。
@@ -488,7 +491,10 @@ _SHOT_NEW = """                        self.send_key('esc', after_sleep=0.5)
                             self.screenshot('weekly_claim_dialog')
                         except Exception:
                             pass
-                        self.wait_click_feature('claim_cancel_button_hcenter_vcenter', relative_x=2,"""
+                        self.wait_click_feature('claim_cancel_button_hcenter_vcenter', relative_x=2,
+                                                raise_if_not_found=True,
+                                                post_action=lambda: self.send_key('esc', after_sleep=1),
+                                                settle_time=1)"""
 
 
 def _shot_present(text: str) -> bool:

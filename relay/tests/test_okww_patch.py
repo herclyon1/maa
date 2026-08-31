@@ -114,6 +114,17 @@ def _make(root: Path, daily=UPSTREAM_DAILY, domain=UPSTREAM_DOMAIN,
     (d / "DomainTask.py").write_text(domain, encoding="utf-8")
     (d / "NightmareNestTask.py").write_text(nest, encoding="utf-8")
     (d / "BaseCombatTask.py").write_text(combat, encoding="utf-8")
+    # 「周本领奖前留证据截图」那条补丁改的是 FarmEchoTask.py。夹具里少了它，
+    # ensure_patches 每次都会返回「贴不上了」，测试看到的就是「不幂等」。
+    # 2026-08-31 踩过一次，和 DailyTask 的样本只留尾巴那次是同一个坑。
+    # 那段在上游是嵌在 while/try/if 里的（24 空格缩进），夹具要把外层补齐，
+    # 否则 py_compile 过不了，补丁贴上去当场被判「回读不对」还原。
+    (d / "FarmEchoTask.py").write_text(
+        "class FarmEchoTask:\n    def do_run(self):\n        while True:\n"
+        "            try:\n                if True:\n                    if True:\n"
+        + okww_patch._SHOT_OLD
+        + "\n            except Exception:\n                pass\n",
+        encoding="utf-8")
     return d
 
 
