@@ -1,13 +1,13 @@
 {
- "version": 20260831032156,
+ "version": 20260831043427,
  "files": {
-  "RELEASE-NOTES.md": "f6237367455502f37b5075f21bdb596201a03863",
+  "RELEASE-NOTES.md": "9dd69c7a7a0ac3c0cc2b497960b13769d23f84b3",
   "ark_relay/__init__.py": "297e0c5d45a732b40a24be0bfd40f07b174d2a9a",
   "ark_relay/__main__.py": "a1c292210b8a315a205d5c45d42296b892c8f7a8",
   "ark_relay/annihilation.py": "72666453ea441dd4ac6f3675024f4d3b927bccde",
   "ark_relay/banners.py": "a55d236e97b3a8e77a3e2f9f4aaf6a08e53350e7",
   "ark_relay/collector.py": "12ee48446fbe3677a149fdccc5cb41fe85056784",
-  "ark_relay/commands.py": "1739310ab34c53cefe7d35aaf8d3b36b95af7501",
+  "ark_relay/commands.py": "de259e406c9847c50d0a27c749a4f2fc9b980f0c",
   "ark_relay/config.py": "e3f4fdfd498b899f664038921b829546f2b174db",
   "ark_relay/core.py": "75c2ab6be89be39e3f258de02d3ea6dd638b2cb0",
   "ark_relay/engine.py": "811dbdf2b2e5aaa9e4e061fd73290b4aa57571a8",
