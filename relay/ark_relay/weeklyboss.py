@@ -36,6 +36,14 @@ log = logging.getLogger("ark.weeklyboss")
 TASK_NAME = "Teleport and Farm 4C Echo"     # 传送并刷取4C声骸
 TASK_ZH = "传送并刷取4C声骸"
 KEY = "Additional Tasks to Run After Daily Task"
+# 上游对 Boss Level 的说明是 "Choose the Lowest that Drop a Echo"——
+# 那是**刷声骸**的思路：能掉声骸的最低级最好打。周本正相反，
+# **等级决定奖励档次，必须挑最高的**。这两种用途共用同一个配置项，
+# 而我们的 FarmEchoTask 只被周本用（日常刷声骸走残象聚落），
+# 所以直接钉在最高级，不存在冲突。2026-08-31 用户指出机器上是 80，错的。
+LEVELS = ("50", "60", "70", "80", "90")
+MAX_LEVEL = LEVELS[-1]
+
 DAILY = "DailyTask.json"
 FARM = "FarmEchoTask.json"
 WEEKLY = "Weekly Challenge"                 # 战歌重奏
@@ -93,11 +101,13 @@ class WeeklyBossGate:
         return {"开": bool(s.get("enabled")),
                 "第几个周本": int(s.get("index") or 1),
                 "打几次": int(s.get("count") or 1),
+                "难度等级": str(s.get("level") or MAX_LEVEL),
                 "本周已打": bool(s.get("done_week"))}
 
     def configure(self, *, enabled: "bool | None" = None,
                   index: "int | None" = None,
-                  count: "int | None" = None) -> tuple[bool, str]:
+                  count: "int | None" = None,
+                  level: "str | None" = None) -> tuple[bool, str]:
         s = self._load()
         if enabled is not None:
             s["enabled"] = bool(enabled)
@@ -111,6 +121,10 @@ class WeeklyBossGate:
             if not 1 <= int(count) <= 20:
                 return False, f"打的次数 {count} 不像话（应在 1~20）"
             s["count"] = int(count)
+        if level is not None:
+            if str(level) not in LEVELS:
+                return False, f"等级 {level} 不在可选范围（{'/'.join(LEVELS)}）"
+            s["level"] = str(level)
         self._save(s)
         v = self.settings()
         return True, ("周本已开：第 {} 个，打 {} 次".format(v["第几个周本"], v["打几次"])
@@ -169,7 +183,8 @@ class WeeklyBossGate:
             if farm is not None:
                 want = {"Teleport to Boss": WEEKLY,
                         "Which Weekly Boss to Teleport": int(s.get("index") or 1),
-                        "Repeat Farm Count": int(s.get("count") or 1)}
+                        "Repeat Farm Count": int(s.get("count") or 1),
+                        "Boss Level": str(s.get("level") or MAX_LEVEL)}
                 if any(farm.get(k) != v for k, v in want.items()):
                     farm.update(want)
                     if _write(farm_f, farm):

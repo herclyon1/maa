@@ -626,6 +626,49 @@ _TEAMSHOT = _Patch(
 )
 
 
+# ---- 波片不足时干净跳过，不空转不白打 --------------------------------------
+#
+# 2026-08-31 拍到了失败那一刻的画面，游戏弹的是：
+#     「结晶波片不足，无法获取奖励，请确认是否继续进入？」[取消][确认]
+#
+# 三件事因此对上了：
+#   * 周本没有「打完开宝箱」这一步，奖励是**进本时扣 60 结晶波片**直接给的；
+#   * 波片不够时这个弹窗**挡住了「开启挑战」**，wait_click_feature 超时抛
+#     WaitFailedException，run() 兜底又递归重来 → 12:35→12:47 空转 21 圈；
+#   * 选「确认」是不拿奖励地进去，所以三轮打完体力 56→56 一动没动，纯白打。
+#
+# 波片不够进去也拿不到奖励，正确做法是点「取消」并把这次周本安静跳过。
+# 抛 TaskDisabledException 是因为 run() 对它的处理就是 `pass`——
+# FarmEchoTask 静默结束，日常任务继续往下跑，不会像抛普通异常那样
+# 把整个日常带崩（我 16:00 那次就是这么崩的）。
+_NOWAVE_OLD = """            self.click_team_challenge()"""
+
+_NOWAVE_NEW = """            # 本地补丁：波片不足时游戏会弹「无法获取奖励，是否继续进入」，
+            # 它挡住「开启挑战」，上游只会超时→重试→再传送，空转。
+            # 进去也拿不到奖励，所以点「取消」并安静跳过这次周本。
+            if self.ocr(box=self.box_of_screen(0.25, 0.40, 0.75, 0.56),
+                        match=re.compile('结晶波片不足|无法获取奖励')):
+                self.log_info('结晶波片不足，取消并跳过本次周本')
+                self.click_dialog_left_button()
+                self.sleep(1)
+                raise TaskDisabledException()
+            self.click_team_challenge()"""
+
+
+def _nowave_present(text: str) -> bool:
+    return "结晶波片不足，取消并跳过本次周本" in text
+
+
+_NOWAVE = _Patch(
+    name="波片不足时跳过周本",
+    parts=(*_SRC, "FarmEchoTask.py"),
+    old=_NOWAVE_OLD,
+    new=_NOWAVE_NEW,
+    present=_nowave_present,
+    breaks="波片不够时周本会空转十几分钟，而且是不拿奖励地白打",
+)
+
+
 def ensure_patches(okww_dir: Path | None) -> list[str]:
     """确保本地补丁在位。返回这次实际做了什么（空表示本来就在位）。
 
@@ -662,7 +705,11 @@ def ensure_patches(okww_dir: Path | None) -> list[str]:
     done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
                              _FARMERR_NEW, _FARMERR_OLD, "周本活锁：打出被吞掉的异常"))
     done.extend(_apply_one(root, _SHOT2))
-    done.extend(_apply_one(root, _TEAMSHOT))
+    # 取证补丁已经问到答案（画面是「结晶波片不足」弹窗），撤回。
+    done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
+                             _TEAMSHOT_NEW, _TEAMSHOT_OLD,
+                             "开启挑战找不到时留证据截图"))
+    done.extend(_apply_one(root, _NOWAVE))
     # 截图补丁的问题已经问完了：2026-08-31 拍到的是「确认离开」退出弹窗，
     # 不是领奖弹窗（claim_cancel_button 这个名字指的是通用双按钮弹窗）。
     # 留着只会每打一次 Boss 就多存一张没用的图，所以主动还原。
