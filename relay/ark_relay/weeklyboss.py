@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 import json
+import re
 import logging
 import os
 from datetime import datetime
@@ -91,6 +92,39 @@ def _write(f: Path, cfg: dict) -> bool:
         tmp.unlink(missing_ok=True)
         return False
     return True
+
+
+def remaining_from_log() -> "int | None":
+    """OK-WW 日志里最近一次读到的「本周剩余可收取次数」。读不到返回 None。
+
+    本地补丁「进本前拍一张看剩余次数」会把那一行 OCR 出来打进日志，形如
+    `周本本周剩余次数原文: [... '本周剩余可收取次数：2/3' ...]`。
+    只取斜杠前那个数。
+
+    为什么要读它：`on_success` 原来只要任务跑完就记「本周已打」，
+    而**一趟不一定能领满三次**——奖励是进本时扣 60 波片，波片不够就少领。
+    2026-08-31 实测：贝币刷取把波片吃到只剩 1 点，第二天早上只回到 ~147，
+    只够领两次；按「跑完即打完」记账，第三次就永远丢了。
+    """
+    path = os.environ.get("ARK_OKWW_LOG")
+    if not path:
+        root = os.environ.get("ARK_OKWW_DIR")
+        if not root:
+            return None
+        logs = Path(root) / "data" / "apps" / "ok-ww" / "working" / "logs"
+        try:
+            cand = max(logs.glob("*.log*"), key=lambda q: q.stat().st_mtime)
+        except (OSError, ValueError):
+            return None
+        path = str(cand)
+    try:
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    hits = re.findall(r"本周剩余可收取次数[：:]\s*(\d+)\s*/\s*(\d+)", text)
+    if not hits:
+        return None
+    return int(hits[-1][0])
 
 
 def _mirror(name: str, want: dict) -> None:
@@ -171,10 +205,17 @@ class WeeklyBossGate:
         week = week_key(now or datetime.now(tz=SERVER_TZ))
         if s.get("done_week") == week:
             return ""
+        left = remaining_from_log()
+        if left is None:
+            log.info("周本：读不到本周剩余次数，这趟先不记账，下一趟再看")
+            return ""
+        if left > 0:
+            log.info("周本：本周还剩 %d 次没领，开关继续挂着", left)
+            return f"周本这趟跑完了，但本周还剩 {left} 次没领，下一趟接着打"
         s["done_week"] = week
         self._save(s)
-        log.info("本周周本已打完，待脚本停下后摘掉（周一 04:00 后恢复）")
-        return "本周周本已打完，稍后暂停到下周一"
+        log.info("本周周本三次已领满，待脚本停下后摘掉（周一 04:00 后恢复）")
+        return "本周周本已领满三次，稍后暂停到下周一"
 
     # ---------- 把开关推到该在的位置 ----------
 

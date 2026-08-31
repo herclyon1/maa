@@ -718,16 +718,25 @@ _NOWAVE = _Patch(
 # **不消耗次数**。所以这张图可以在波片不够的时候放心拍。
 _COUNT_OLD = """                self.click_configured_boss_level()"""
 
-_COUNT_NEW = """                # 本地补丁：选等级之前拍一张，页面上有本周剩余次数。
+_COUNT_NEW = """                # 本地补丁：选等级之前把「本周剩余可收取次数」读出来。
+                # 中继靠这个数判断本周打完没有——「任务跑完」不等于「三次领满」，
+                # 波片不够时一趟只领得到一两次，按前者记账会把剩下的次数丢掉。
                 try:
                     self.screenshot('weekly_remaining')
+                except Exception:
+                    pass
+                try:
+                    _left = self.ocr(box=self.box_of_screen(0.58, 0.80, 0.98, 0.90))
+                    self.log_info(f'周本本周剩余次数原文: {_left}')
                 except Exception:
                     pass
                 self.click_configured_boss_level()"""
 
 
 def _count_present(text: str) -> bool:
-    return "weekly_remaining" in text
+    # 判据认本版独有的字串，不能只认那句没变过的截图名——
+    # 否则改了内容也贴不上去（今天已栽过一次）。
+    return "周本本周剩余次数原文" in text
 
 
 _COUNT = _Patch(
