@@ -749,6 +749,43 @@ _COUNT = _Patch(
 )
 
 
+# ---- 让「主动跳过」这个信号穿过兜底 ----------------------------------------
+#
+# teleport_to_configured_boss_and_prepare 的兜底把**所有**异常包成 RuntimeError：
+#     except Exception as e:
+#         raise RuntimeError('Teleport to boss failed') from e
+# 于是我们主动抛的 TaskDisabledException 也被包住，run() 那句
+# `except TaskDisabledException: pass` 永远看不到它，落进后面的通用兜底，
+# 打一条 farm 4c error 再递归重试。
+#
+# 2026-08-31 实测：波片不足时确实跳过了、Boss 一轮都没白打，但日志里
+# 仍有 3 条 farm 4c error、跳过也重复了 3 次——就是被这层包装挡的。
+# 放行 TaskDisabledException，其余照旧包成 RuntimeError。
+_LETPASS_OLD = """        except Exception as e:
+            raise RuntimeError('Teleport to boss failed') from e"""
+
+_LETPASS_NEW = """        except TaskDisabledException:
+            # 本地补丁：这是「主动跳过」的信号，不是失败，不许包成 RuntimeError，
+            # 否则 run() 的 except TaskDisabledException 收不到，会当成错误重试。
+            raise
+        except Exception as e:
+            raise RuntimeError('Teleport to boss failed') from e"""
+
+
+def _letpass_present(text: str) -> bool:
+    return "这是「主动跳过」的信号" in text
+
+
+_LETPASS = _Patch(
+    name="放行主动跳过的信号",
+    parts=(*_SRC, "FarmEchoTask.py"),
+    old=_LETPASS_OLD,
+    new=_LETPASS_NEW,
+    present=_letpass_present,
+    breaks="波片不足时虽然会跳过，但每次都留一条 farm 4c error 并重试三遍",
+)
+
+
 def ensure_patches(okww_dir: Path | None) -> list[str]:
     """确保本地补丁在位。返回这次实际做了什么（空表示本来就在位）。
 
@@ -793,6 +830,7 @@ def ensure_patches(okww_dir: Path | None) -> list[str]:
     done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
                              _NOWAVE_V2, _NOWAVE_OLD, "波片不足时跳过周本 v2"))
     done.extend(_apply_one(root, _NOWAVE))
+    done.extend(_apply_one(root, _LETPASS))
     done.extend(_apply_one(root, _COUNT))
     # 截图补丁的问题已经问完了：2026-08-31 拍到的是「确认离开」退出弹窗，
     # 不是领奖弹窗（claim_cancel_button 这个名字指的是通用双按钮弹窗）。
