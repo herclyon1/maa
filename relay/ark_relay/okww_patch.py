@@ -651,8 +651,10 @@ _NOWAVE_OLD = """            self.click_team_challenge()"""
 _NOWAVE_NEW = """            # 本地补丁：波片不足时游戏会弹「无法获取奖励，是否继续进入」，
             # 它挡住「开启挑战」，上游只会超时→重试→再传送，空转。
             # 进去也拿不到奖励，所以点「取消」并安静跳过这次周本。
+            # v2：先无条件读一次并打进日志。v1 用 ocr(match=正则) 判，
+            # 实测一次都没命中（36 点波片照样进本白打），先看清读到的是什么。
             _seen = self.ocr(box=self.box_of_screen(0.20, 0.35, 0.80, 0.60))
-            self.log_info(f'开启挑战前 OCR 读到: {_seen}')
+            self.log_info(f'v2 开启挑战前读到: {_seen}')
             try:
                 self.screenshot('before_start_challenge')
             except Exception:
@@ -666,7 +668,10 @@ _NOWAVE_NEW = """            # 本地补丁：波片不足时游戏会弹「无�
 
 
 def _nowave_present(text: str) -> bool:
-    return "结晶波片不足，取消并跳过本次周本" in text
+    # 认 **这一版独有** 的字串。只认那句没变过的日志会让改动静默不部署——
+    # 2026-08-31 已经栽过一次：v2 加了调试输出，判据没跟着改，
+    # _apply_one 判成「已在位」直接返回，我却在日志里找那行输出。
+    return "v2 开启挑战前读到" in text
 
 
 _NOWAVE = _Patch(
