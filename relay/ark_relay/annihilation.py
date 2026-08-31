@@ -65,6 +65,17 @@ def week_key(now: datetime) -> str:
 
 
 def read_setting(automas_dir: Path | None) -> str:
+    """当前的剿灭设置。**后端优先**——文件里的可能还没被刷新。
+
+    读文件的坑和写文件是同一个：AUTO-MAS 在跑的时候，文件里那份可能
+    既不是它内存里的、也不是最终会落盘的。回读校验读到旧值，就会得出
+    「写失败了」或者「写成功了」两种都不可靠的结论。
+    """
+    try:
+        from .commands import _find_user  # noqa: PLC0415 - 避免导入环
+        return str((_find_user("MAA")[2].get("Info") or {}).get("Annihilation") or "")
+    except Exception:  # noqa: BLE001 - 后端不在就退回读文件
+        pass
     if not automas_dir:
         return ""
     try:
@@ -76,7 +87,38 @@ def read_setting(automas_dir: Path | None) -> str:
     return ""
 
 
+def _write_via_api(value: str) -> tuple[bool, str]:
+    """通过 AUTO-MAS 后端改。**优先走这条**。
+
+    直接改配置文件的问题：AUTO-MAS 在跑的时候会用内存里那份覆写文件，
+    写进去的值几秒后就被冲回去。2026-08-31 04:01 就是这样——恢复写入
+    成功、当场回读也对，随后被冲回 Close，而 `maybe_reopen` 回读通过后
+    就把记账清了，于是再没有人重试，整周的剿灭一次都没打。
+
+    走后端 API 写的是**运行中的那份**，不存在还没落盘的内存副本，
+    也就没有东西能把它冲掉。
+    """
+    from .commands import _find_user, _mas  # noqa: PLC0415 - 避免导入环
+    sid, uid, user = _find_user("MAA")
+    if (user.get("Info") or {}).get("Annihilation") == value:
+        return True, ""
+    _mas("/api/scripts/user/update",
+         {"scriptId": sid, "userId": uid,
+          "data": {"Info": {"Annihilation": value}}})
+    users = _mas("/api/scripts/user/get", {"scriptId": sid})["data"]
+    now = (users[uid].get("Info") or {}).get("Annihilation")
+    if now != value:
+        return False, f"写了但没生效：现在是 {now!r}"
+    return True, "已通过 AUTO-MAS 后端改写"
+
+
 def _write_setting(automas_dir: Path, value: str) -> tuple[bool, str]:
+    # 后端在跑就走它；连不上（AUTO-MAS 没起来）才退回改文件——
+    # 那种情况下没有内存副本，改文件是安全的。
+    try:
+        return _write_via_api(value)
+    except Exception as exc:  # noqa: BLE001
+        log.info("AUTO-MAS 后端不可用（%s），退回直接改配置文件", exc)
     path = _script_config(automas_dir)
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
