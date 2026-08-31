@@ -162,6 +162,11 @@ def _verify_or_revert(f: Path, bak: Path, present: Callable[[str], bool],
 
 
 def _apply_one(root: Path, p: _Patch) -> list[str]:
+    # 注意 present() 的判据必须跟着 new 一起改。
+    # 2026-08-31 踩过：我给「波片不足时跳过周本」加了调试行，present() 认的
+    # 还是那句没变过的日志，_apply_one 判成「已在位」直接返回，新版本
+    # **一声不吭地没部署**，我却在日志里找那行调试输出，白等一趟。
+    # 判据要认 new 里**这一版独有**的东西，改了内容就要跟着改判据。
     f = root.joinpath(*p.parts)
     if not f.exists():
         log.warning("OK-WW 补丁：找不到 %s，跳过", f)
