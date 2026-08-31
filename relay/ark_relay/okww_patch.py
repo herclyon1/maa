@@ -822,6 +822,63 @@ _NOFARM = _Patch(
 )
 
 
+# ---- 真正领周本奖励 --------------------------------------------------------
+#
+# 2026-09-01 凌晨,用户看着屏幕说的:「打完之后拿声骸直接一直重开去刷,
+# 这不是拿宝箱奖励」「这是声骸模式」。日志完全印证:三轮都是
+# 打 Boss → farm echo on the face → 点掉退出弹窗 → 重开,
+# 本周剩余次数一直 3/3、波片 91 一点没掉。
+#
+# **我之前的整个前提是错的。** `FarmEchoTask` + `Teleport to Boss =
+# Weekly Challenge` 是**刷 4C 声骸**的模式——传送到周本 Boss 那儿反复刷,
+# 领奖那一步根本不在这条代码路径里。那句「结晶波片不足,无法获取奖励,
+# 请确认是否继续进入」只是**进本前的提醒**,不是「进本时扣波片发奖励」,
+# 我把它读反了,还据此写了文档和三条补丁。
+#
+# 真正的领奖:打完 Boss **走到结晶前按 F,花 60 波片**。同仓库的
+# `TacetTask` 里就有这套现成写法(凝素领域也是花体力领奖):
+#     walk_to_treasure() → pick_f(handle_claim=False)
+#     → has_claim_stamina() → use_stamina(once=60)
+#
+# 插在「退秘境」之前。安全性:`has_claim_stamina()` 是门,认不出那个
+# 界面就什么都不花、原样走老路;整段包在 try 里,任何异常都只是回到
+# 原来的行为,不会把日常任务带崩。
+_CLAIM_OLD = """                    if self._in_realm and not self.in_world():
+                        self.send_key('esc', after_sleep=0.5)"""
+
+_CLAIM_NEW = """                    if self._in_realm and not self.in_world():
+                        # 本地补丁：退秘境之前先把周本奖励领了。
+                        # 领奖＝走到结晶前按 F、花 60 波片，不是进本时扣。
+                        # has_claim_stamina() 是门：认不出就什么都不花。
+                        try:
+                            self.walk_to_treasure()
+                            self.pick_f(handle_claim=False)
+                            self.sleep(2)
+                            if self.has_claim_stamina():
+                                self.log_info('周本领奖：认出「花体力领取」界面，开始领')
+                                _ok, _used = self.use_stamina(once=60, must_use=0)
+                                self.log_info(f'周本领奖：已领取，花了 {_used}')
+                            else:
+                                self.log_info('周本领奖：没认出花体力界面，不领，按原样退出')
+                        except Exception as _e:
+                            self.log_info(f'周本领奖：这一步没做成，按原样退出 {_e!r}')
+                        self.send_key('esc', after_sleep=0.5)"""
+
+
+def _claim_present(text: str) -> bool:
+    return "周本领奖：认出「花体力领取」界面" in text
+
+
+_CLAIM = _Patch(
+    name="打完 Boss 真正领周本奖励",
+    parts=(*_SRC, "FarmEchoTask.py"),
+    old=_CLAIM_OLD,
+    new=_CLAIM_NEW,
+    present=_claim_present,
+    breaks="周本永远只是刷声骸，奖励一次都领不到（本周 3/3 就是这么来的）",
+)
+
+
 def ensure_patches(okww_dir: Path | None) -> list[str]:
     """确保本地补丁在位。返回这次实际做了什么（空表示本来就在位）。
 
@@ -858,7 +915,10 @@ def ensure_patches(okww_dir: Path | None) -> list[str]:
     # 把一次可恢复的重试变成了硬崩溃（16:00 那趟就是这么死的）。
     done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
                              _FARMERR_NEW, _FARMERR_OLD, "周本活锁：打出被吞掉的异常"))
-    done.extend(_apply_one(root, _SHOT2))
+    # 截图补丁已经问到答案（Boss 死后画面上没有自动领奖这回事），还原。
+    done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
+                             _SHOT2_NEW, _SHOT2_OLD, "退秘境前留证据截图"))
+    done.extend(_apply_one(root, _CLAIM))
     # 取证补丁已经问到答案（画面是「结晶波片不足」弹窗），撤回。
     done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
                              _TEAMSHOT_NEW, _TEAMSHOT_OLD,
