@@ -646,8 +646,13 @@ _NOWAVE_OLD = """            self.click_team_challenge()"""
 _NOWAVE_NEW = """            # 本地补丁：波片不足时游戏会弹「无法获取奖励，是否继续进入」，
             # 它挡住「开启挑战」，上游只会超时→重试→再传送，空转。
             # 进去也拿不到奖励，所以点「取消」并安静跳过这次周本。
-            if self.ocr(box=self.box_of_screen(0.25, 0.40, 0.75, 0.56),
-                        match=re.compile('结晶波片不足|无法获取奖励')):
+            _seen = self.ocr(box=self.box_of_screen(0.20, 0.35, 0.80, 0.60))
+            self.log_info(f'开启挑战前 OCR 读到: {_seen}')
+            try:
+                self.screenshot('before_start_challenge')
+            except Exception:
+                pass
+            if any('结晶波片' in str(b) or '无法获取奖励' in str(b) for b in (_seen or [])):
                 self.log_info('结晶波片不足，取消并跳过本次周本')
                 self.click_dialog_left_button()
                 self.sleep(1)
