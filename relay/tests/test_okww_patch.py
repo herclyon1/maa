@@ -119,8 +119,16 @@ def _make(root: Path, daily=UPSTREAM_DAILY, domain=UPSTREAM_DOMAIN,
     # 2026-08-31 踩过一次，和 DailyTask 的样本只留尾巴那次是同一个坑。
     # 那段在上游是嵌在 while/try/if 里的（24 空格缩进），夹具要把外层补齐，
     # 否则 py_compile 过不了，补丁贴上去当场被判「回读不对」还原。
+    # run() 那段是「周本活锁：打出被吞掉的异常」的锚点，缩进 12 空格，
+    # 上游长这样（2026-08-31 从机器上抄的真实形状）。
     (d / "FarmEchoTask.py").write_text(
-        "class FarmEchoTask:\n    def do_run(self):\n        while True:\n"
+        "class FarmEchoTask:\n"
+        "    def run(self):\n        try:\n            return self.do_run()\n"
+        "        except Exception as e:\n"
+        + okww_patch._FARMERR_OLD
+        + "\n            if self.handle_claim_button():\n"
+          "                self.run()\n            else:\n                raise\n"
+        "\n    def do_run(self):\n        while True:\n"
         "            try:\n                if True:\n                    if True:\n"
         + okww_patch._SHOT_OLD
         + "\n            except Exception:\n                pass\n",
