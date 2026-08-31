@@ -54,6 +54,23 @@ def _file(automas_dir, name: str) -> "Path | None":
     return (d / name) if d else None
 
 
+def _okww_file(name: str) -> "Path | None":
+    """OK-WW 自己那份配置。**必须一起写**，光写母本不够。
+
+    2026-08-31 实测：母本 `Boss Level` 已经是 '90'（16:20 写的），
+    而 OK-WW 自己那份还停在 '80'（08:06 的），派发跑起来点的是
+    「推荐等级80」。`master_config_dir` 的注释说 AUTO-MAS 跑之前会
+    无条件把母本拷过去——**至少 /api/dispatch/start 这条路没有拷**。
+
+    两边都写就没有这个问题：真拷了，值一样；没拷，OK-WW 读到的也对。
+    """
+    root = os.environ.get("ARK_OKWW_DIR")
+    if not root:
+        return None
+    f = Path(root) / "data" / "apps" / "ok-ww" / "working" / "configs" / name
+    return f if f.is_file() else None
+
+
 def _read(f: "Path | None") -> "dict | None":
     if f is None or not f.is_file():
         return None
@@ -74,6 +91,21 @@ def _write(f: Path, cfg: dict) -> bool:
         tmp.unlink(missing_ok=True)
         return False
     return True
+
+
+def _mirror(name: str, want: dict) -> None:
+    """把 want 里的字段同步到 OK-WW 自己那份配置。副本没有就安静跳过。"""
+    f = _okww_file(name)
+    if f is None:
+        return
+    cur = _read(f)
+    if cur is None or all(cur.get(k) == v for k, v in want.items()):
+        return
+    cur.update(want)
+    if _write(f, cur):
+        log.info("周本配置已同步到 OK-WW 自己那份 %s：%s", name, want)
+    else:
+        log.warning("周本配置同步不进 OK-WW 自己那份 %s", name)
 
 
 class WeeklyBossGate:
@@ -175,6 +207,7 @@ class WeeklyBossGate:
             if not _write(daily_f, daily):
                 log.warning("周本开关写不进 %s", DAILY)
                 return False
+            _mirror(DAILY, {KEY: tasks})
 
         # 打开时顺带把「传送到哪」写对，否则挂上去也不知道去哪
         if want_on:
@@ -191,6 +224,7 @@ class WeeklyBossGate:
                         changed = True
                     else:
                         log.warning("周本的传送设置写不进 %s", FARM)
+                _mirror(FARM, want)          # 母本一致了也要保证副本一致
 
         if changed:
             log.info("周本已%s（第 %s 个，打 %s 次）",
