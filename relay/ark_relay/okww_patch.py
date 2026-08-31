@@ -386,6 +386,85 @@ def _revert_text(root: Path, parts: tuple, new: str, old: str,
     return [f"OK-WW 补丁：{label} 已撤销（证据不足，见 2026-08-30 的结论）"]
 
 
+# ── 补丁：附加任务提到体力刷取之前 ──────────────────────────────
+# 周本（战歌重奏）在附加任务里，开一个宝箱要 60 体力。而日常刷取那步
+# `must_use = 180 - used_stamina`，会先把体力吃到 180——排在后面的周本
+# 就只剩 60，三个宝箱只开得到一个。
+#
+# 提前之后：周本先花掉 180，回主界面重读一次体力，日常那步自己就判定
+# 不需要再刷了（`need_stamina = not daily_reward_ready and used_stamina < 180`）。
+#
+# **必须重读体力**：不重读的话 `used_stamina` 还是打 Boss 之前的值，
+# 日常照样再刷 180，等于两头都花，一天要 360 体力。
+# **必须先 ensure_main**：打完 Boss 人不在主界面，直接翻日常面板会失败。
+_STAMINA_OLD = """        if need_stamina:
+            target = self.config.get('Which to Farm', self.support_tasks[0])
+            if target == self.support_tasks[0]:
+                self.get_task_by_class(TacetTask).farm_tacet(daily=True, used_stamina=used_stamina,
+                                                             config=self.config)
+            elif target == self.support_tasks[1]:
+                self.get_task_by_class(ForgeryTask).farm_forgery(daily=True, used_stamina=used_stamina,
+                                                                 config=self.config)
+            else:
+                self.get_task_by_class(SimulationTask).farm_simulation(daily=True, used_stamina=used_stamina,
+                                                                       config=self.config)
+            self.sleep(4)
+
+        self.claim_daily()
+
+        self.claim_mail()
+        self.sleep(1)
+        self.claim_battle_pass()
+        self.run_additional_tasks()
+        self.log_info('Daily Task Completed', notify=True)"""
+
+_STAMINA_NEW = """        # 本地补丁：附加任务提到体力刷取之前。
+        # 周本在附加任务里，开宝箱要花体力；日常刷取会先把体力吃到 180，
+        # 排在后面的周本就只剩 60，三个宝箱只开得到一个。
+        self.run_additional_tasks()
+        self.ensure_main(time_out=180)
+        used_stamina, daily_reward_ready = self.open_daily()
+        need_stamina = not daily_reward_ready and used_stamina < 180
+
+        if need_stamina:
+            target = self.config.get('Which to Farm', self.support_tasks[0])
+            if target == self.support_tasks[0]:
+                self.get_task_by_class(TacetTask).farm_tacet(daily=True, used_stamina=used_stamina,
+                                                             config=self.config)
+            elif target == self.support_tasks[1]:
+                self.get_task_by_class(ForgeryTask).farm_forgery(daily=True, used_stamina=used_stamina,
+                                                                 config=self.config)
+            else:
+                self.get_task_by_class(SimulationTask).farm_simulation(daily=True, used_stamina=used_stamina,
+                                                                       config=self.config)
+            self.sleep(4)
+
+        self.claim_daily()
+
+        self.claim_mail()
+        self.sleep(1)
+        self.claim_battle_pass()
+        self.log_info('Daily Task Completed', notify=True)"""
+
+
+def _stamina_present(text: str) -> bool:
+    """附加任务是不是已经排在体力刷取前面了。"""
+    a = text.find("self.run_additional_tasks()")
+    b = text.find("if need_stamina:")
+    return a != -1 and b != -1 and a < b
+
+
+_STAMINA = _Patch(
+    name="附加任务先于体力刷取",
+    parts=(*_SRC, "DailyTask.py"),
+    old=_STAMINA_OLD,
+    new=_STAMINA_NEW,
+    present=_stamina_present,
+    breaks="周本只能分到日常刷剩的 60 体力，三个宝箱只开得到一个",
+    upstream="ok-oldking/ok-wuthering-waves#1647",
+)
+
+
 def ensure_patches(okww_dir: Path | None) -> list[str]:
     """确保本地补丁在位。返回这次实际做了什么（空表示本来就在位）。
 
@@ -410,6 +489,10 @@ def ensure_patches(okww_dir: Path | None) -> list[str]:
     root = Path(okww_dir)
     done: list[str] = []
     done.extend(_apply_nest(root))
+    # 2026-08-31 加回来一条：周本要在日常刷体力之前跑，否则只剩 60 体力。
+    # 这条不是「上游顺序不合理」的审美问题，是**用户要的分配做不到**：
+    # 一次周本宝箱 60 体力，三次就是 180，而日常那步会先把 180 吃光。
+    done.extend(_apply_one(root, _STAMINA))
     # 以下三条：撤销，不是应用。
     for p in PATCHES:
         done.extend(_revert_text(root, p.parts, p.new, p.old, p.name))
