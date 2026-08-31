@@ -135,7 +135,9 @@ def _make(root: Path, daily=UPSTREAM_DAILY, domain=UPSTREAM_DOMAIN,
         + okww_patch._SHOT_OLD
         + "\n            except Exception:\n                pass\n"
         "\n    def teleport_to_configured_boss(self):\n        if True:\n"
-        + okww_patch._TEAMSHOT_OLD + "\n",
+        + okww_patch._TEAMSHOT_OLD
+        + "\n\n    def _choose_level(self):\n        if True:\n            if True:\n"
+        + okww_patch._COUNT_OLD + "\n",
         encoding="utf-8")
     return d
 

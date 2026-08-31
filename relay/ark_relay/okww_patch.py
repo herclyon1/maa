@@ -679,6 +679,39 @@ _NOWAVE = _Patch(
 )
 
 
+# ---- 进本之前拍一张 Boss 页面，看本周还剩几次 ----------------------------
+#
+# 2026-08-31 用户问：「你确定刷的两次周本奖励是 90 级的副本？」——问得对，
+# 等级 90 是 16:20 才写进母本、16:41 才同步过去，之前几趟点的都是
+# 「推荐等级80」。而「已用 2 次」这个数是我从体力消耗**推算**的，
+# 不是读到的。推算已经错过好几回了，这次去读真的。
+#
+# 安全性：波片不足时进不去（会弹「结晶波片不足」，我们的补丁取消并跳过），
+# **不消耗次数**。所以这张图可以在波片不够的时候放心拍。
+_COUNT_OLD = """                self.click_configured_boss_level()"""
+
+_COUNT_NEW = """                # 本地补丁：选等级之前拍一张，页面上有本周剩余次数。
+                try:
+                    self.screenshot('weekly_remaining')
+                except Exception:
+                    pass
+                self.click_configured_boss_level()"""
+
+
+def _count_present(text: str) -> bool:
+    return "weekly_remaining" in text
+
+
+_COUNT = _Patch(
+    name="进本前拍一张看剩余次数",
+    parts=(*_SRC, "FarmEchoTask.py"),
+    old=_COUNT_OLD,
+    new=_COUNT_NEW,
+    present=_count_present,
+    breaks="本周还剩几次只能靠体力推算，而推算已经错过好几回",
+)
+
+
 def ensure_patches(okww_dir: Path | None) -> list[str]:
     """确保本地补丁在位。返回这次实际做了什么（空表示本来就在位）。
 
@@ -720,6 +753,7 @@ def ensure_patches(okww_dir: Path | None) -> list[str]:
                              _TEAMSHOT_NEW, _TEAMSHOT_OLD,
                              "开启挑战找不到时留证据截图"))
     done.extend(_apply_one(root, _NOWAVE))
+    done.extend(_apply_one(root, _COUNT))
     # 截图补丁的问题已经问完了：2026-08-31 拍到的是「确认离开」退出弹窗，
     # 不是领奖弹窗（claim_cancel_button 这个名字指的是通用双按钮弹窗）。
     # 留着只会每打一次 Boss 就多存一张没用的图，所以主动还原。
