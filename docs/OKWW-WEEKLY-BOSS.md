@@ -61,9 +61,52 @@ self.wait_click_feature('claim_cancel_button_hcenter_vcenter', relative_x=2, ...
 领取按钮,不是取消。日志里实际点在 `(538, 675)`。偏够没偏够,
 不看那一刻的画面说不清,所以**不许猜坐标改代码**。
 
-`okww_patch.py` 的 `_SHOT` 补丁在那次点击之前加了一行
-`self.screenshot('weekly_claim_dialog')`,**零行为改动**,
-图存在 `working/screenshots/weekly_claim_dialog/`。拿到图再动手。
+`_SHOT` 补丁在那次点击之前存了一张图，2026-08-31 12:49:24 拍到了。
+**拍到的是「提示 / 确认离开 / 重新挑战 · 确认」这个退出确认弹窗，
+不是领奖弹窗。** `claim_cancel_button_hcenter_vcenter` 指的是通用的
+双按钮弹窗锚点，`relative_x=2` 是去点右边那个按钮（这里是「确认」）。
+名字有误导性，但用法没错。补丁已还原——问题问完了，留着只会每打一次
+Boss 多存一张没用的图。
+
+真正的线索在同一段日志里：`wait_until timeout ... has_claim` ——
+**领奖提示压根没出现过**。`has_claim` 找的就是那个双按钮弹窗
+（`BaseWWTask.has_claim`），超时说明打完 Boss 之后它没弹出来。
+
+而宝箱的代码路径**是存在的**：`walk_to_treasure_and_restart()` 会走到
+宝箱、按 `f`、再调 `handle_claim_button()`；`execute_treasure_hunt()`、
+`find_treasure_icon()`、`_has_treasure` 都在。所以「OK-WW 不支持拿周本
+宝箱」这个说法是错的，之前那条结论作废。
+
+## 更要紧的：周本会活锁
+
+2026-08-31 12:35:53 → 12:47:44，日志里「传送 → found a claim reward →
+传送」**35 秒一轮转了 21 圈，白烧 12 分钟**，之后才真打上 Boss。
+
+上游 `FarmEchoTask.run()` 的兜底：
+
+```python
+except Exception as e:
+    logger.error('farm 4c error, try handle monthly card', e)
+    if self.handle_claim_button() or self.handle_monthly_card():
+        self.run()
+    else:
+        raise
+```
+
+* `logger.error(msg, e)` 把 `e` 当成 msg 的 printf 参数，而 msg 里没有
+  占位符，**异常内容整个被丢掉**。日志里只剩一句没信息量的
+  `farm 4c error`，真因查不到。
+* `handle_claim_button()` 的动作是**按 ESC 关掉弹窗**然后返回 `True`
+  ——所以那句 `found a claim reward` 意思是「发现并关掉了领奖弹窗」，
+  **不是「领到了」**。它几乎必然成立，于是 `self.run()` 无上限递归。
+* `do_run()` 每次重入都把 `count = 0` 重置，`Repeat Farm Count` 从头算。
+
+本地补丁「周本活锁：打出被吞掉的异常」只把日志改成 `exc_info=True`，
+**控制流一行不动**——没有证据就改生产脚本正是 826 那类错。
+下一次周本一跑，真因会自己写进日志。
+
+递归无上限是上游的设计问题，已提
+[ok-wuthering-waves#1649](https://github.com/ok-oldking/ok-wuthering-waves/issues/1649)。
 
 ## 踩过的坑
 
