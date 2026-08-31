@@ -29,16 +29,11 @@ def check(name, got, want):
         FAILED.append(name)
 
 
-UPSTREAM_DAILY = '''class DailyTask:
-    def run(self):
-        self.claim_daily()
-
-        self.claim_mail()
-        self.sleep(1)
-        self.claim_battle_pass()
-        self.run_additional_tasks()
-        self.log_info('Daily Task Completed', notify=True)
-'''
+# 样本必须是**上游真实的形状**：只留尾巴那几行的话，
+# 「附加任务先于体力刷取」这条补丁永远匹配不上，于是每次调用都返回
+# 「贴不上了」——测试看到的就是「不幂等」。2026-08-31 踩过。
+UPSTREAM_DAILY = ("class DailyTask:\n    def run(self):\n"
+                  + okww_patch._STAMINA_OLD + "\n")
 
 UPSTREAM_DOMAIN = '''import re
 
