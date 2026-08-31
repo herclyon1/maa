@@ -289,6 +289,20 @@ printf '%s' "$NOTES_SHA" > "$NOTES_STAMP"
 # 比对哈希更彻底：哈希闸只防「一字不差」，清零连「改一个字蒙混」都防住了，
 # 因为你面对的是一张白纸，只能从头写这次干了什么。
 : > "$NOTES"
+# 补丁贴不上／叠了两层，是**静默失败**：服务照样 RUNNING、部署照样成功，
+# 只有启动日志里那一行会说。2026-09-01 我 grep 部署输出时只筛了
+# 「部署完成/❌」，把「贴不上了」漏了过去，机器上空转了 95 分钟我却
+# 以为新补丁在跑。所以这里单独挑出来，用醒目的记号，漏不掉。
+PATCH_TROUBLE=$(printf '%s' "$LOGB64" | base64 -d 2>/dev/null \
+  | grep -E '贴不上|叠了|写不进|没能检查' || true)
+if [ -n "$PATCH_TROUBLE" ]; then
+  echo
+  echo "❌❌ 补丁没贴上——服务是起来了，但它跑的不是你以为的那份代码："
+  printf '%s\n' "$PATCH_TROUBLE" | sed 's/^/      /'
+  echo "      （先修补丁，别拿这次部署当数）"
+  exit 3
+fi
+
 echo "✅ 部署完成：文件哈希已核对，服务已确认 RUNNING"
 lap
 printf "⏱  全程 %d 秒\n" "$((SECONDS-_T0))"

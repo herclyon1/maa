@@ -750,6 +750,34 @@ _NOWAVE_V1 = """            # 本地补丁：波片不足时游戏会弹「无�
                 raise TaskDisabledException()"""
 
 
+# 上一版 v3 的原文，留着**只为了还原**。它把锚点 click_team_challenge()
+# 整句吃掉了，所以再想改这条补丁，必须先把它还原成上游原样，
+# 否则 _apply_one 找不到 old、报「贴不上了」——2026-09-01 就是这样，
+# 而我 grep 部署输出时只筛了「部署完成/❌」，把那条告警漏了过去，
+# 机器上跑了 95 分钟的空转我却以为新补丁在跑。
+_NOWAVE_V3A = """            # 本地补丁 v3：波片不足的弹窗是**点了「开启挑战」之后**才弹的。
+            # v1/v2 把检查放在点之前，那时画面还是配队页，OCR 读到空表，
+            # 一次都没命中（2026-08-31 实测：本周 3/3 一次奖励都没领到，
+            # 三轮 Boss 全是不拿奖励地白打）。
+            # 上游 click_team_challenge() 里紧跟着 wait_click_skip_dialog_confirm()，
+            # 会把弹窗上的「确认」点掉——「确认」的意思正是「不拿奖励继续进入」。
+            # 所以把那两步拆开：先点开启挑战，再看弹窗，有就点「取消」并跳过。
+            self.wait_click_feature('team_start_challenge', raise_if_not_found=True,
+                                    click_after_delay=0.5, after_sleep=1)
+            _seen = self.ocr(box=self.box_of_screen(0.20, 0.35, 0.80, 0.60))
+            self.log_info(f'v3 开启挑战后读到: {_seen}')
+            if any('结晶波片' in str(_b) or '无法获取奖励' in str(_b) for _b in (_seen or [])):
+                self.log_info('结晶波片不足，取消并跳过本次周本')
+                try:
+                    self.screenshot('nowave_dialog')
+                except Exception:
+                    pass
+                self.click_dialog_left_button()
+                self.sleep(1)
+                raise TaskDisabledException()
+            self.wait_click_skip_dialog_confirm()"""
+
+
 def _nowave_present(text: str) -> bool:
     # 认 **这一版独有** 的字串。只认那句没变过的日志会让改动静默不部署——
     # 2026-08-31 已经栽过一次：v2 加了调试输出，判据没跟着改，
@@ -991,6 +1019,8 @@ def ensure_patches(okww_dir: Path | None) -> list[str]:
                              _NOWAVE_V1 + "\n", "", "波片不足时跳过周本 v1"))
     done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
                              _NOWAVE_V2, _NOWAVE_OLD, "波片不足时跳过周本 v2"))
+    done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
+                             _NOWAVE_V3A, _NOWAVE_OLD, "波片不足时跳过周本 v3a"))
     done.extend(_apply_one(root, _NOWAVE))
     done.extend(_apply_one(root, _LETPASS))
     done.extend(_apply_one(root, _COUNT))
