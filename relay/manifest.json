@@ -1,7 +1,7 @@
 {
- "version": 20260831102151,
+ "version": 20260831103305,
  "files": {
-  "RELEASE-NOTES.md": "af899a26079b06d1a57cdc08df9eea488735c433",
+  "RELEASE-NOTES.md": "4e2ebcea33ef4128dda18c1e82541b3eec392277",
   "ark_relay/__init__.py": "297e0c5d45a732b40a24be0bfd40f07b174d2a9a",
   "ark_relay/__main__.py": "a1c292210b8a315a205d5c45d42296b892c8f7a8",
   "ark_relay/annihilation.py": "72666453ea441dd4ac6f3675024f4d3b927bccde",
@@ -18,7 +18,7 @@
   "ark_relay/notify.py": "781203027fc221375dc31e56c8c3fb4e220a5768",
   "ark_relay/okww_files/NightmareNestTask.patched.py": "8838b7666d0649c670a14326b0f48186b166fe57",
   "ark_relay/okww_files/NightmareNestTask.upstream.py": "c93bdc9ce1898d56cf15268d84e70107fe2ac4bf",
-  "ark_relay/okww_patch.py": "f679c2843e92a3a7f5a898c7b7750f8aa6a6fb89",
+  "ark_relay/okww_patch.py": "96adcf63f310a92c5eb6879242e75552e2175432",
   "ark_relay/outcome.py": "ee04444b0c7d9f88bdac1e6c42c8ecccd63194eb",
   "ark_relay/phone.py": "d1f07156a4ba05f84993cdfe2b8a274a3b2c3d1f",
   "ark_relay/plan.py": "ee4510779bdefa42bd4b34b8c3afb1d8a222620c",
@@ -31,7 +31,7 @@
   "ark_relay/summary.py": "c082e825156ef71dc1053fd894dce47937505a96",
   "ark_relay/transport.py": "8010a28731664d747d8601d21c3bd4153e880b20",
   "ark_relay/watch.py": "9ddff748ed6381f57a5f5efe9cffae1425486ac2",
-  "ark_relay/weeklyboss.py": "d1a7979163a6e151d9d2fdbf44210861d57fa999",
+  "ark_relay/weeklyboss.py": "fec6f7550775c0606f068f57bbcc413c99e36b94",
   "run.py": "0db6cde8fb8119323d991ec512d1b2b43e869b93",
   "service.py": "a869fdc554c65719d893cff094731110ed803ff0"
  }
