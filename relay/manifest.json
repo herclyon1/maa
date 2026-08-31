@@ -1,7 +1,7 @@
 {
- "version": 20260831105800,
+ "version": 20260831121822,
  "files": {
-  "RELEASE-NOTES.md": "06f38999a9f8d7823b09c41c4e992dc3170832ab",
+  "RELEASE-NOTES.md": "60b4124ab95a2817d9ba01bda150b75a5dba17b2",
   "ark_relay/__init__.py": "297e0c5d45a732b40a24be0bfd40f07b174d2a9a",
   "ark_relay/__main__.py": "a1c292210b8a315a205d5c45d42296b892c8f7a8",
   "ark_relay/annihilation.py": "72666453ea441dd4ac6f3675024f4d3b927bccde",
@@ -31,7 +31,7 @@
   "ark_relay/summary.py": "c082e825156ef71dc1053fd894dce47937505a96",
   "ark_relay/transport.py": "8010a28731664d747d8601d21c3bd4153e880b20",
   "ark_relay/watch.py": "9ddff748ed6381f57a5f5efe9cffae1425486ac2",
-  "ark_relay/weeklyboss.py": "fec6f7550775c0606f068f57bbcc413c99e36b94",
+  "ark_relay/weeklyboss.py": "a8dfc59c9e6f200ad776da44d7f80d0394640289",
   "run.py": "0db6cde8fb8119323d991ec512d1b2b43e869b93",
   "service.py": "a869fdc554c65719d893cff094731110ed803ff0"
  }
