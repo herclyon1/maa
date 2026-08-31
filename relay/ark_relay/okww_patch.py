@@ -470,6 +470,41 @@ _STAMINA = _Patch(
 )
 
 
+# ── 补丁：周本领奖那一刻先截一张图 ────────────────────────────
+# 2026-08-31：周本打满三轮，体力一点没动，说明奖励没领到。
+# 那行代码是 `wait_click_feature('claim_cancel_button…', relative_x=2)`——
+# `relative_x` 是「框内相对 X」，2 就是从取消按钮左边缘往右两个按钮宽度，
+# **本意就是去点右边的领取按钮**（用户说领取在弹窗右下角）。日志里点在
+# (538, 675)，偏够没偏够，不看那一刻的画面就说不清。
+#
+# 这个补丁**不改任何行为**，只是在点击之前存一张图。下次周本一跑就有证据，
+# 不用再靠猜按钮坐标——猜坐标去改生产脚本正是 826 那类错。
+_SHOT_OLD = """                        self.send_key('esc', after_sleep=0.5)
+                        self.wait_click_feature('claim_cancel_button_hcenter_vcenter', relative_x=2,"""
+
+_SHOT_NEW = """                        self.send_key('esc', after_sleep=0.5)
+                        # 本地补丁：先留一张证据，再点。行为不变。
+                        try:
+                            self.screenshot('weekly_claim_dialog')
+                        except Exception:
+                            pass
+                        self.wait_click_feature('claim_cancel_button_hcenter_vcenter', relative_x=2,"""
+
+
+def _shot_present(text: str) -> bool:
+    return "weekly_claim_dialog" in text
+
+
+_SHOT = _Patch(
+    name="周本领奖前留证据截图",
+    parts=(*_SRC, "FarmEchoTask.py"),
+    old=_SHOT_OLD,
+    new=_SHOT_NEW,
+    present=_shot_present,
+    breaks="下次周本还是拿不到那一刻的画面，只能继续猜按钮位置",
+)
+
+
 def ensure_patches(okww_dir: Path | None) -> list[str]:
     """确保本地补丁在位。返回这次实际做了什么（空表示本来就在位）。
 
@@ -498,6 +533,7 @@ def ensure_patches(okww_dir: Path | None) -> list[str]:
     # 这条不是「上游顺序不合理」的审美问题，是**用户要的分配做不到**：
     # 一次周本宝箱 60 体力，三次就是 180，而日常那步会先把 180 吃光。
     done.extend(_apply_one(root, _STAMINA))
+    done.extend(_apply_one(root, _SHOT))
     # 以下三条：撤销，不是应用。
     for p in PATCHES:
         done.extend(_revert_text(root, p.parts, p.new, p.old, p.name))
