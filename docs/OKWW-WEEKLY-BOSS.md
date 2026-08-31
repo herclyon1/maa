@@ -117,3 +117,39 @@ except Exception as e:
   最后用 `run_additional_tasks` 是否在 `claim_daily` 之前。
 * 测试夹具必须是**上游真实的形状**。只留尾巴几行、或者少一个文件,
   补丁就永远「贴不上」,测试表现为「不幂等」。
+
+## 2026-08-31 早班为什么没打周本
+
+不是门坏了，是**配置落地比队列晚**。母本改动时间：
+
+| 文件 | 写入 | 内容 |
+|---|---|---|
+| `FarmEchoTask.json` | 08-31 **08:06:23** | 传送=Weekly Challenge、序号 1、打 3 次 |
+| `DailyTask.json` | 08-31 **12:52:53** | 附加任务表里才有 `Teleport and Farm 4C Echo` |
+
+早班队列 09:xx→10:14 跑的时候，附加任务表里**还没有**周本那一项，
+所以 `FarmEchoTask` 压根没被调起来：早班日志 `boss_string is [Lv` 出现
+**0 次**，`GardenTask` 990 行，体力 240→160→80 全花在贝币上。
+
+`WeeklyBossGate.enforce()` 每一拍都在跑，逻辑也对——上机实测它读到的
+母本是全的、返回 `False`（本来就不用改）。真正的教训是
+**改完配置要确认它在队列开跑之前已经落到母本**，
+光看「我改过了」不算数，要看文件时间。
+
+配置路径（`master_config_dir` 解出来的那条，权威源）：
+
+```
+D:\ark\automas\data\<uuid>\Default\ConfigFile\DailyTask.json
+D:\ark\automas\data\<uuid>\Default\ConfigFile\FarmEchoTask.json
+```
+
+`D:\ark\okww\...\working\configs\` 下面那两份是**过期副本**
+（08-24 / 08-29），`config-check.py` 的「OK-WW(本体)」读的就是它，
+拿它判断当前配置会得出相反结论。2026-08-31 我据此误判过一次。
+
+## 什么时候补
+
+2026-08-31 是**周一**，周本 04:00 刚重置，整周都在。当天体力只剩 26，
+而宝箱一个 60——**打 Boss 捡声骸免费且不限次，受限的是宝箱（每周 3 次）**，
+所以当天再派发一趟只会白打不开箱。配置现在是对的，
+下一趟满体力的队列会自己打满三次，180 开箱 + 剩 60 刷贝币。
