@@ -23,6 +23,8 @@
 """
 from __future__ import annotations
 
+import base64
+import gzip
 import json
 import logging
 import re
@@ -43,10 +45,25 @@ SEEN_KEEP = 200
 _UA = "ark-relay"
 
 
-def pack(pin: str, body: dict, kind: str = "cmd") -> str:
-    return json.dumps({"v": 1, "kind": kind, "pin": pin,
-                       "ts": int(time.time()), "body": body},
-                      ensure_ascii=False, separators=(",", ":"))
+def pack(pin: str, body: dict, kind: str = "cmd", *, gz: bool = False) -> str:
+    """信封。`gz=True` 时 body 换成 gzip+base64 的字符串，字段名叫 `gz`。
+
+    为什么要压：状态里 `options`（那一堆中文下拉候选）占 57%，
+    2026-08-31 量到整包 3783 字节、离上限只剩 117。再加一个字段就会触发
+    降级——先砍「明日安排」，再砍「选项表」，而选项表正是手机上那些
+    中文下拉，砍掉等于功能没了，而且**不出声地没了**。
+    压完 2464 字节，余量一下子回到一千多。
+
+    发的那头只在**明文会超限**时才压，所以平时还是明文；
+    收的那头两种都认。这样手机上就算跑的是旧页面也不会突然读不懂。
+    """
+    env = {"v": 1, "kind": kind, "pin": pin, "ts": int(time.time())}
+    if gz:
+        raw = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
+        env["gz"] = base64.b64encode(gzip.compress(raw.encode("utf-8"))).decode("ascii")
+    else:
+        env["body"] = body
+    return json.dumps(env, ensure_ascii=False, separators=(",", ":"))
 
 
 def unpack(pin: str, raw: str, *, now: "float | None" = None) -> "dict | None":
@@ -66,6 +83,13 @@ def unpack(pin: str, raw: str, *, now: "float | None" = None) -> "dict | None":
     if abs(age) > MAX_AGE:
         log.info("信箱里那条指令太老了（%.1f 小时前），丢弃", age / 3600)
         return None
+    if "gz" in msg and "body" not in msg:
+        try:
+            msg["body"] = json.loads(
+                gzip.decompress(base64.b64decode(msg["gz"])).decode("utf-8"))
+        except Exception:  # noqa: BLE001 - 坏包当没看见，和 JSON 解不开一个待遇
+            log.warning("信箱里那条消息解压失败，丢弃", exc_info=True)
+            return None
     return msg
 
 
@@ -121,6 +145,13 @@ class Mailbox:
         if not self.enabled:
             return False
         data = pack(self.pin, body, kind).encode("utf-8")
+        if len(data) > self.MAX_BODY:
+            # 先试压缩。砍字段是**功能没了**，压缩只是多花几毫秒。
+            packed = pack(self.pin, body, kind, gz=True).encode("utf-8")
+            if len(packed) <= self.MAX_BODY:
+                log.info("状态 %d 字节超线，压缩后 %d 字节，照发",
+                         len(data), len(packed))
+                data = packed
         for drop in ("plan", "options"):
             if len(data) <= self.MAX_BODY:
                 break

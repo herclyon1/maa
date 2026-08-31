@@ -135,12 +135,27 @@ async function readMessages(since = "48h") {
   }).filter((e) => e && e.event === "message");
 }
 
+/* 状态包可能是压缩的。机器那头只在明文会超 ntfy 大小上限时才压
+   （选项表那一堆中文候选占了一多半），压不下也压。两种都要认：
+   以前超限的处理是**砍字段**——先砍明日安排、再砍选项表，
+   于是手机上那些中文下拉不声不响就没了。 */
+async function unwrap(m) {
+  if (m.body !== undefined) return m.body;
+  if (!m.gz) return null;
+  const bin = Uint8Array.from(atob(m.gz), (c) => c.charCodeAt(0));
+  const ds = new DecompressionStream("gzip");
+  const buf = await new Response(new Blob([bin]).stream().pipeThrough(ds)).arrayBuffer();
+  return JSON.parse(new TextDecoder().decode(buf));
+}
+
 async function latestState(since = "48h") {
   const msgs = await readMessages(since);
   for (let i = msgs.length - 1; i >= 0; i--) {
     let m;
     try { m = JSON.parse(msgs[i].message); } catch { continue; }
-    if (m && m.kind === "state" && m.pin === cfg.pin) return m.body;
+    if (m && m.kind === "state" && m.pin === cfg.pin) {
+      try { return await unwrap(m); } catch { return null; }
+    }
   }
   return null;
 }
