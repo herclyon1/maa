@@ -613,7 +613,13 @@ def ensure_patches(okww_dir: Path | None) -> list[str]:
     # 这条不是「上游顺序不合理」的审美问题，是**用户要的分配做不到**：
     # 一次周本宝箱 60 体力，三次就是 180，而日常那步会先把 180 吃光。
     done.extend(_apply_one(root, _STAMINA))
-    done.extend(_apply_one(root, _FARMERR))
+    # 2026-08-31 撤回：前提就是错的。ok.util.logger.Logger.error 的签名是
+    # error(self, message, exception=None)，第二个参数**本来就是异常**，
+    # 它内部走 exception_to_str(exception) 打印堆栈。上游写法没问题。
+    # 而我加的 exc_info=True 这个封装根本不认，当场 TypeError，
+    # 把一次可恢复的重试变成了硬崩溃（16:00 那趟就是这么死的）。
+    done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
+                             _FARMERR_NEW, _FARMERR_OLD, "周本活锁：打出被吞掉的异常"))
     done.extend(_apply_one(root, _SHOT2))
     # 截图补丁的问题已经问完了：2026-08-31 拍到的是「确认离开」退出弹窗，
     # 不是领奖弹窗（claim_cancel_button 这个名字指的是通用双按钮弹窗）。
