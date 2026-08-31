@@ -408,7 +408,8 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             gate = WeeklyBossGate(state_dir, os.environ.get("ARK_AUTOMAS_DIR"))
             ok, msg = gate.configure(
                 enabled=None if "on" not in cmd else bool(cmd.get("on")),
-                index=cmd.get("index"), count=cmd.get("count"))
+                index=cmd.get("index"), count=cmd.get("count"),
+                level=cmd.get("level"))
             if ok:
                 gate.enforce()
             return ok, msg
@@ -419,7 +420,12 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             # 独立于你的」「我要的是手机上面操作」。
             from .modes import set_skip_shutdown  # noqa: PLC0415
             state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
-            return set_skip_shutdown(state_dir, not cmd.get("off"))
+            # 取消的写法两种都认。规范是 off:true，但别的动作
+            # （weekly_boss / toggle_task）用的是 on，一个界面两套写法迟早
+            # 发错。2026-08-31 实测就发现手机上只有「开」没有「取消」，
+            # 发 on:false 会被当成「开」。宽进：两种都当取消。
+            off = bool(cmd.get("off")) or cmd.get("on") is False
+            return set_skip_shutdown(state_dir, not off)
     except Exception as exc:  # noqa: BLE001 - report, never crash the agent
         log.exception("执行指令失败: %s", action)
         return False, f"执行出错: {exc}"

@@ -210,7 +210,7 @@ function render() {
     <div class="acts">
       <button id="runnow">让它现在跑一趟</button>
       <button id="skiptoday">跳过它下一趟</button>
-      <button class="wide" id="noshut">${relay["下次别关机"] ? "✓ 已设：下次跑完不关机" : "下次跑完不关机"}</button>
+      <button class="wide" id="noshut">${relay["下次别关机"] ? "✕ 取消「下次跑完不关机」" : "下次跑完不关机"}</button>
     </div>
     ${snap && snap.plan ? `<pre>${snap.plan.replace(/</g,"&lt;")}</pre>` : ""}
   </section>`;
@@ -273,10 +273,17 @@ function render() {
       OK-WW 只认位置不认名字，新 Boss 上线顺序会变，换本时记得来改</span></label>
       <input type="number" id="wb-idx" value="${wb["第几个周本"] || 1}"></div>
     <div class="row"><label>一周打几次
-      <span class="hint">周本一周只能领 3 次奖励，填 3 就够。填多了：第 4 轮开不了本，
-      OK-WW 会直接报错退出（不会空转，但日报里会记一次失败）。
+      <span class="hint">奖励是**进本时扣 60 结晶波片**直接给的，没有打完开宝箱这一步。
+      一周只能领 3 次，填 3 就够，三次共 180 波片。
+      波片不够时会自动跳过这次周本（不空转、也不会白打），下一趟再补。
       这项在 OK-WW 里出厂是 10000，等于一直打</span></label>
       <input type="number" id="wb-cnt" value="${wb["打几次"] || 1}"></div>
+    <div class="row"><label>难度等级
+      <span class="hint">**周本要选最高的 90** —— 等级决定奖励档次。
+      （OK-WW 这一项的说明写的是「挑能掉声骸的最低级」，那是刷声骸的思路，
+      和周本正好相反，别被它带偏）</span></label>
+      <select id="wb-lvl">${["50","60","70","80","90"].map(v =>
+        `<option value="${v}"${String(wb["难度等级"]) === v ? " selected" : ""}>${v}${v === "90" ? "（推荐）" : ""}</option>`).join("")}</select></div>
     ${wb["本周已打"] ? `<div class="row"><span class="ro">本周已经打过了，下周一自动恢复</span></div>` : ""}
     <div class="acts"><button class="wide primary" id="wb-save">保存周本设置</button></div>
   </section>`;
@@ -310,8 +317,11 @@ function wire() {
     { action:"run_now", confirmed:true, queue:theQueue() },
     `已让「${theQueue()}」现在开跑。机器关着时这条会等到下次开机才执行，` +
     "那时候它本来也要跑，所以等于没多跑一趟");
-  $("#noshut").onclick = () => oneShot({ action:"skip_shutdown" },
-    "下一次本该关机时会跳过（只跳这一次，再下一趟照常关）");
+  // 已经设过就变成「取消」。只能开不能关是半个功能——2026-08-31 实测发现的。
+  $("#noshut").onclick = () => (relay["下次别关机"]
+    ? oneShot({ action:"skip_shutdown", off:true }, "已取消，下次跑完照常关机")
+    : oneShot({ action:"skip_shutdown" },
+        "下一次本该关机时会跳过（只跳这一次，再下一趟照常关）"));
   // 说明必须准：这条跳的是**机器执行它那一天**。机器关着时你现在按，
   // 它要等下次开机才执行，跳掉的就是那一天，不是今天。
   $("#skiptoday").onclick = () => oneShot(
@@ -323,11 +333,12 @@ function wire() {
     const on = $("#wb-on").checked;
     const index = Number($("#wb-idx").value) || 1;
     const count = Number($("#wb-cnt").value) || 1;
+    const level = $("#wb-lvl").value;
     if (!confirm(on
-      ? `打开周本：打第 ${index} 个，一周打 ${count} 次。确定？`
+      ? `打开周本：打第 ${index} 个，一周打 ${count} 次，难度 ${level} 级。确定？`
       : "关掉周本？")) return;
-    oneShot({ action:"weekly_boss", on, index, count },
-      on ? `周本已开：第 ${index} 个，打 ${count} 次` : "周本已关");
+    oneShot({ action:"weekly_boss", on, index, count, level },
+      on ? `周本已开：第 ${index} 个，打 ${count} 次，难度 ${level} 级` : "周本已关");
     setTimeout(() => ping(now()), 2000);
   };
 
