@@ -72,10 +72,33 @@ Boss 多存一张没用的图。
 **领奖提示压根没出现过**。`has_claim` 找的就是那个双按钮弹窗
 （`BaseWWTask.has_claim`），超时说明打完 Boss 之后它没弹出来。
 
-而宝箱的代码路径**是存在的**：`walk_to_treasure_and_restart()` 会走到
-宝箱、按 `f`、再调 `handle_claim_button()`；`execute_treasure_hunt()`、
-`find_treasure_icon()`、`_has_treasure` 都在。所以「OK-WW 不支持拿周本
-宝箱」这个说法是错的，之前那条结论作废。
+**更正（2026-08-31 二次核对）**：上面这句「宝箱路径存在」也是错的，
+我连着两次下结论都下早了。把 `do_run` 逐行读完之后才看清：
+
+```python
+elif not self.in_combat():
+    if self._in_realm and not self.in_world():      # ← 周本秘境走这条
+        self.send_key('esc', after_sleep=0.5)
+        self.wait_click_feature('claim_cancel_button...', relative_x=2, ...)
+        self.wait_in_team_and_world(time_out=120)
+    else:                                            # ← 宝箱逻辑全在这条里
+        if not self.in_combat():
+            if self.walk_to_treasure_and_restart():
+                self.handle_boss_restart_after_treasure()
+            else:
+                self.scroll_and_click_buttons()
+```
+
+周本在秘境里，走的是**第一条**：打完 Boss、捡完声骸，直接按 ESC 退出，
+宝箱那一步整个不存在。`execute_treasure_hunt()` 的主循环调用点还带着
+`if not self._in_realm` 的门（160 行），秘境里也进不去。
+
+而 `handle_claim_button()` 的动作是 `wait_until(has_claim)` 之后
+**按 ESC 关掉弹窗**并返回 True——它是「关闭」，不是「领取」。
+翻遍源码没有任何一处会花体力开宝箱。
+
+干净一趟的实测（15:42 那趟，无空转）：三轮 Boss 全打完、声骸都捡了，
+体力 **56 → 56 一动没动**，`has_claim` 每轮超时。
 
 ## 更要紧的：周本会活锁
 
