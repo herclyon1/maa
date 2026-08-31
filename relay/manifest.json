@@ -1,7 +1,7 @@
 {
- "version": 20260831043427,
+ "version": 20260831044741,
  "files": {
-  "RELEASE-NOTES.md": "9dd69c7a7a0ac3c0cc2b497960b13769d23f84b3",
+  "RELEASE-NOTES.md": "cccb556b90d606fad2504ff7639a9629e4a74590",
   "ark_relay/__init__.py": "297e0c5d45a732b40a24be0bfd40f07b174d2a9a",
   "ark_relay/__main__.py": "a1c292210b8a315a205d5c45d42296b892c8f7a8",
   "ark_relay/annihilation.py": "72666453ea441dd4ac6f3675024f4d3b927bccde",
@@ -14,7 +14,7 @@
   "ark_relay/garden.py": "6b4cf80911808faffc9c8baa27a8e5f4f20967df",
   "ark_relay/inbox.py": "44a8514164c3af40b20bf9555cafdc11d2551e99",
   "ark_relay/maaend.py": "c4dd90f47da3adcb3a31d1004b8790f2e07a7834",
-  "ark_relay/modes.py": "7afb7b7c91706ee035a95120d81c80512213661b",
+  "ark_relay/modes.py": "665578ca4e659b8342386f925416df221a6a8278",
   "ark_relay/notify.py": "781203027fc221375dc31e56c8c3fb4e220a5768",
   "ark_relay/okww_files/NightmareNestTask.patched.py": "8838b7666d0649c670a14326b0f48186b166fe57",
   "ark_relay/okww_files/NightmareNestTask.upstream.py": "c93bdc9ce1898d56cf15268d84e70107fe2ac4bf",
