@@ -324,6 +324,17 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         box = getattr(self, "_mailbox", None)
         if box is not None:
             box.close()
+        # 硬保险：15 秒还没退干净就强制退出进程。
+        # 用户 2026-08-31：「中继服务卡在 STOP_PENDING 这个不要再出现了，
+        # 直接浪费很长时间，杜绝。」——那天一上午卡了四次，每次部署白等
+        # 十分钟，还得远程强杀。
+        # 为什么强退是对的：卡在 STOP_PENDING 比强退坏得多——部署整个瘫掉、
+        # 通知链路一直断着、还要人去救。而这个进程的状态全是原子写盘的
+        # （见 config.atomic_write_text），强退不会写坏任何东西；
+        # 真丢的只是「本轮还没处理完的那几条记录」，下次启动会重新扫到。
+        killer = threading.Timer(15, lambda: os._exit(0))
+        killer.daemon = True     # 它自己不能反过来拖住退出
+        killer.start()
 
     def SvcDoRun(self):  # noqa: N802 - name required by the framework
         servicemanager.LogMsg(

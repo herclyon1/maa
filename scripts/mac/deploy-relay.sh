@@ -213,8 +213,16 @@ $ErrorActionPreference = 'Continue'
 $svc = Get-Service ark-relay -ErrorAction SilentlyContinue
 if (-not $svc) { Write-Output 'STATE=NOTFOUND'; exit 0 }
 if ($svc.Status -ne 'Stopped') {
-  Stop-Service ark-relay -Force -ErrorAction SilentlyContinue
-  try { $svc.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30)) } catch {}
+  # 用 sc.exe 而不是 Stop-Service：Stop-Service **自己会阻塞等待**，
+  # 服务不响应它就一直等下去——2026-08-31 一上午四次部署各卡十分钟，
+  # 根源就在这里。sc stop 只是把停止请求投递出去，等待由下面这段自己控制。
+  & sc.exe stop ark-relay | Out-Null
+  $deadline = (Get-Date).AddSeconds(25)
+  while ((Get-Date) -lt $deadline) {
+    Start-Sleep -Milliseconds 800
+    $svc.Refresh()
+    if ($svc.Status -eq 'Stopped') { break }
+  }
 }
 $svc.Refresh()
 if ($svc.Status -ne 'Stopped') {
