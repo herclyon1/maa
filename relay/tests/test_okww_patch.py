@@ -129,7 +129,9 @@ def _make(root: Path, daily=UPSTREAM_DAILY, domain=UPSTREAM_DOMAIN,
         + "\n            if self.handle_claim_button():\n"
           "                self.run()\n            else:\n                raise\n"
         "\n    def do_run(self):\n        while True:\n"
-        "            try:\n                if True:\n                    if True:\n"
+        "            try:\n                if True:\n"
+        + okww_patch._SHOT2_OLD + "\n                        pass\n"
+        "                if True:\n                    if True:\n"
         + okww_patch._SHOT_OLD
         + "\n            except Exception:\n                pass\n",
         encoding="utf-8")
