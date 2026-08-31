@@ -13,12 +13,15 @@ PID=$(pgrep -f 'ssh -f -N -D 127.0.0.1:1080' | head -1)
 snap() { nettop -P -J bytes_in,bytes_out -l 1 -p "$1" 2>/dev/null | awk '/ssh\./{gsub(/[^0-9 ]/,"");print $(NF-1), $NF}'; }
 kib() { awk -v a="$1" -v b="$2" -v s="$3" 'BEGIN{printf "%.2f", (b-a)*1024*8/s/1000000}'; }
 
+# 这里要的就是按空格拆成两个位置参数（bytes_in bytes_out），加引号反而错。
+# shellcheck disable=SC2046
 set -- $(snap "$PID"); i0=${1:-0}; o0=${2:-0}
 sleep "$SEC"
+# shellcheck disable=SC2046
 set -- $(snap "$PID"); i1=${1:-0}; o1=${2:-0}
 
 echo "── 隧道吞吐（${SEC} 秒）──"
-printf "  下行 %s Mbps    上行 %s Mbps\n" "$(kib $i0 $i1 $SEC)" "$(kib $o0 $o1 $SEC)"
+printf "  下行 %s Mbps    上行 %s Mbps\n" "$(kib "$i0" "$i1" "$SEC")" "$(kib "$o0" "$o1" "$SEC")"
 echo
 echo "── Chrome 走代理的连接数 ──"
 printf "  %s 条 → 127.0.0.1:1080\n" "$(lsof -nP -iTCP:1080 2>/dev/null | grep -c ESTABLISHED)"
