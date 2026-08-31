@@ -113,7 +113,9 @@ class Mailbox:
     # ntfy 单条消息有大小上限，超了会被**截断**——截断的 JSON 在手机上
     # 解析失败，表现是「永远读不到最新状态、判成关机中」，而发送这头
     # 一切正常。所以发之前自己量，超了就砍掉可有可无的部分并出声。
-    MAX_BODY = 3600
+    # ntfy 的真实上限是 4096 字节。留 200 字节余量够了——3600 太保守，
+    # 2026-08-31 加了队列和周本之后就超线，把「明日安排」砍掉了。
+    MAX_BODY = 3900
 
     def publish(self, body: dict, kind: str = "state") -> bool:
         if not self.enabled:
