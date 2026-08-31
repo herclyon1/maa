@@ -419,22 +419,45 @@ async function oneShot(body, okText) {
 /* `minAt` 是「只接受这个时刻之后上报的状态」。保存完之后必须传它——
    否则可能收到**改动之前**发布的那一条，界面上就会显示成「没改成」。
    2026-08-31 实测撞到过：机器上已经是新值了，页面还显示旧值。 */
+/* 判开关机的依据是**最新状态够不够新鲜**，不是「有没有收到比缓存更新的」。
+
+   老写法只认「更新的状态」：机器忙的时候（跑 OK-WW 时 CPU 被视觉识别占满）
+   十一秒内没推来新的，就报「关机中」——哪怕二十秒前刚推过一条，
+   那条本身就足以证明它开着。2026-09-01 用户报的「检测不到开机状态」。
+
+   FRESH_MS：机器开着时，中继在开机、改配置、每趟跑完都会推状态，
+   还会应答刷新。三分钟内有过状态就当它开着。 */
+const FRESH_MS = 3 * 60 * 1000;
+
 async function ping(minAt) {
+  if (!cfg || !cfg.topic || !cfg.pin) {
+    // 这跟关机是两回事，不能显示成同一个。
+    return setStatus("还没设置信箱，先去设置里填", "off");
+  }
   setStatus("正在问机器…", "");
   const floor = (typeof minAt === "number" ? minAt : null)
              ?? (snap ? snap.at : 0);
   try { await send({ action:"refresh" }); }
   catch (e) { return setStatus("发不出去：" + e.message, "off"); }
-  for (let i = 0; i < 16; i++) {
-    await new Promise((r) => setTimeout(r, 700));
+  let newest = null;
+  for (let i = 0; i < 20; i++) {          // 20 × 800ms ≈ 16 秒，比原来宽
+    await new Promise((r) => setTimeout(r, 800));
     let s;
     try { s = await latestState("2h"); } catch { continue; }
-    if (s && s.at >= floor && (!snap || s.at > snap.at)) {
+    if (!s) continue;
+    if (!newest || s.at > newest.at) newest = s;
+    if (s.at >= floor && (!snap || s.at > snap.at)) {
       snap = s; save_cache(); render();
       return setStatus("开机中 · 刚刚更新", "on");
     }
   }
-  setStatus(snap ? `关机中 · 状态是 ${ago(snap.at)}的` : "关机中 · 还没有过状态", "off");
+  // 没等到更新的，但最新那条本身很新鲜 —— 机器是开着的，只是忙。
+  const best = newest || snap;
+  if (best && Date.now() - best.at * 1000 < FRESH_MS) {
+    if (newest && (!snap || newest.at > snap.at)) { snap = newest; save_cache(); render(); }
+    return setStatus(`开机中 · 在忙，状态是 ${ago(best.at)}的`, "on");
+  }
+  setStatus(best ? `关机中 · 状态是 ${ago(best.at)}的` : "关机中 · 还没有过状态", "off");
 }
 
 function save_cache() {

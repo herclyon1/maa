@@ -46,6 +46,11 @@ class _Patch:
     present: Callable[[str], bool]      # 已经在位了吗
     breaks: str             # 贴不上会怎样，写给人看
     upstream: str = ""      # 提给上游之后填 PR 链接；合并了就删掉这条补丁
+    # 这条补丁**跨版本不变**的特征串（比如那句日志）。贴完之后它必须只出现
+    # 一次；出现多次就说明旧版本没还原干净、叠了两层。
+    # 为什么不能拿 new 的头一行当判据：叠加是「旧版本 + 新版本」并存，
+    # 新版本仍然只出现一次，数它永远抓不到。2026-09-01 就是这么漏掉的。
+    unique: str = ""
 
 
 # ── 补丁一：领奖置底 ────────────────────────────────────────────
@@ -161,6 +166,31 @@ def _verify_or_revert(f: Path, bak: Path, present: Callable[[str], bool],
     return ""
 
 
+def _stacked(f: Path, p: _Patch) -> "str | None":
+    """贴完之后自查有没有叠加。返回告警文字，正常时 None。
+
+    2026-09-01 踩的坑：v1 的替换文本**末尾自带锚点**
+    `self.click_team_challenge()`，我把 present() 改成认新版本之后，
+    _apply_one 就在 v1 上面又贴了一层——两段检查同时存在，旧那段先跑，
+    而它正是会误判的那版。波片 91（>60）也被判成「不足」跳过。
+    没有这道自查，叠加是**看不出来的**：文件语法没错、present() 也为真。
+
+    判据用 new 的第一行（各版本独有的那句注释/代码），出现超过一次就是叠了。
+    """
+    head = p.unique or next((ln for ln in p.new.splitlines() if ln.strip()), "")
+    if not head:
+        return None
+    try:
+        n = f.read_text(encoding="utf-8").count(head)
+    except OSError:
+        return None
+    if n <= 1:
+        return None
+    log.error("OK-WW 补丁：%s 叠了 %d 层，需要人工看一眼", p.name, n)
+    return (f"OK-WW 补丁：{p.name}**叠了 {n} 层**——旧版本没还原干净，"
+            f"旧那段会先跑。{p.breaks}")
+
+
 def _apply_one(root: Path, p: _Patch) -> list[str]:
     # 注意 present() 的判据必须跟着 new 一起改。
     # 2026-08-31 踩过：我给「波片不足时跳过周本」加了调试行，present() 认的
@@ -190,6 +220,8 @@ def _apply_one(root: Path, p: _Patch) -> list[str]:
         return [f"OK-WW 补丁：{p.name} 写不进去，{p.breaks}"]
     if err := _verify_or_revert(f, bak, p.present, p.name):
         return [err]
+    if (dup := _stacked(f, p)) is not None:
+        return [dup]
     log.info("OK-WW 补丁：%s 已重新贴上", p.name)
     return [f"OK-WW 补丁：{p.name} 已重新贴上（上次更新把它覆盖了）"]
 
@@ -690,6 +722,22 @@ _NOWAVE_NEW = """            # 本地补丁 v3：波片不足的弹窗是**点�
             self.wait_click_skip_dialog_confirm()"""
 
 
+# v1 那一版的原文。留着**只为了还原**：它的替换文本末尾自带锚点
+# `self.click_team_challenge()`，所以我把 present() 改成认 v3 之后，
+# _apply_one 又在它上面贴了一层——两段检查同时存在，v1 在前面先跑，
+# 而 v1 正是会误判的那版。2026-09-01 实测：波片 91（>60）也被判成
+# 「不足」跳过了。补丁的 new 里带着自己的 old，是这次叠加的根源。
+_NOWAVE_V1 = """            # 本地补丁：波片不足时游戏会弹「无法获取奖励，是否继续进入」，
+            # 它挡住「开启挑战」，上游只会超时→重试→再传送，空转。
+            # 进去也拿不到奖励，所以点「取消」并安静跳过这次周本。
+            if self.ocr(box=self.box_of_screen(0.25, 0.40, 0.75, 0.56),
+                        match=re.compile('结晶波片不足|无法获取奖励')):
+                self.log_info('结晶波片不足，取消并跳过本次周本')
+                self.click_dialog_left_button()
+                self.sleep(1)
+                raise TaskDisabledException()"""
+
+
 def _nowave_present(text: str) -> bool:
     # 认 **这一版独有** 的字串。只认那句没变过的日志会让改动静默不部署——
     # 2026-08-31 已经栽过一次：v2 加了调试输出，判据没跟着改，
@@ -704,6 +752,8 @@ _NOWAVE = _Patch(
     new=_NOWAVE_NEW,
     present=_nowave_present,
     breaks="波片不够时周本会空转十几分钟，而且是不拿奖励地白打",
+    # v1 和 v3 都会打这句日志，所以它出现两次＝两段检查并存。
+    unique="结晶波片不足，取消并跳过本次周本",
 )
 
 
@@ -923,7 +973,10 @@ def ensure_patches(okww_dir: Path | None) -> list[str]:
     done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
                              _TEAMSHOT_NEW, _TEAMSHOT_OLD,
                              "开启挑战找不到时留证据截图"))
-    # v2 贴在机器上，先原样还原，再贴 v3（锚点是同一句）。
+    # 历史版本必须先全部还原，否则会叠加：v1/v2 的替换文本末尾都带着
+    # 锚点本身，present() 一变就会再贴一层。
+    done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
+                             _NOWAVE_V1 + "\n", "", "波片不足时跳过周本 v1"))
     done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
                              _NOWAVE_V2, _NOWAVE_OLD, "波片不足时跳过周本 v2"))
     done.extend(_apply_one(root, _NOWAVE))
