@@ -248,6 +248,26 @@ def process_skip(state_dir: Path, automas_dir: Path | None,
     return out
 
 
+def _flag_day(path: Path) -> str | None:
+    """标记文件名里的日期，不是「某天跳过队列」的标记就返回 None。
+
+    这个目录里还住着别的功能的标记，最典型的是「下一次跑完不关机」的
+    skip-next-shutdown.flag。原来清理陈旧标记 glob 的是 skip-*.flag，
+    把它一并扫掉了——人在手机上按下开关，30 秒内就被删，日志还写
+    「未曾生效（当天机器没开机）」，而机器正开着。那个开关因此从加进来
+    的第一天起就是坏的，且坏得不出声。只认 skip-<YYYY-MM-DD>.flag。
+    """
+    name = path.stem
+    if not name.startswith("skip-"):
+        return None
+    day = name[len("skip-"):]
+    try:
+        datetime.strptime(day, "%Y-%m-%d")
+    except ValueError:
+        return None
+    return day
+
+
 def _maybe_engage(state_dir: Path, automas_dir: Path | None,
                   now: datetime) -> list[str]:
     day = now.strftime("%Y-%m-%d")
@@ -255,7 +275,8 @@ def _maybe_engage(state_dir: Path, automas_dir: Path | None,
     # Yesterday's flag with no marker means the skip never engaged (machine
     # was off all day). Say so rather than silently applying it to the wrong
     # day or leaving the file to confuse the next reader.
-    stale = sorted(p for p in state_dir.glob("skip-*.flag") if p != flag)
+    stale = sorted(p for p in state_dir.glob("skip-*.flag")
+                   if p != flag and _flag_day(p) is not None)
     out = []
     for p in stale:
         p.unlink(missing_ok=True)
