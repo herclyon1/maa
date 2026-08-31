@@ -269,10 +269,13 @@ function render() {
       <span class="sw"><input type="checkbox" id="wb-on" ${wb["开"] ? "checked" : ""}><span></span></span>
     </div>
     <div class="row"><label>打第几个
-      <span class="hint">游戏里按 F2 打开周本列表，从上往下数，第一个填 1</span></label>
+      <span class="hint">游戏里按 F2 打开周本列表，从上往下数，第一个填 1。
+      OK-WW 只认位置不认名字，新 Boss 上线顺序会变，换本时记得来改</span></label>
       <input type="number" id="wb-idx" value="${wb["第几个周本"] || 1}"></div>
     <div class="row"><label>一周打几次
-      <span class="hint">别填大数：这项在 OK-WW 里出厂是 10000，等于一直打</span></label>
+      <span class="hint">周本一周只能领 3 次奖励，填 3 就够。填多了：第 4 轮开不了本，
+      OK-WW 会直接报错退出（不会空转，但日报里会记一次失败）。
+      这项在 OK-WW 里出厂是 10000，等于一直打</span></label>
       <input type="number" id="wb-cnt" value="${wb["打几次"] || 1}"></div>
     ${wb["本周已打"] ? `<div class="row"><span class="ro">本周已经打过了，下周一自动恢复</span></div>` : ""}
     <div class="acts"><button class="wide primary" id="wb-save">保存周本设置</button></div>

@@ -1,7 +1,7 @@
 {
- "version": 20260830234323,
+ "version": 20260830235326,
  "files": {
-  "RELEASE-NOTES.md": "71e9a6a2e29f3e67851ff57e5573f308714d2a78",
+  "RELEASE-NOTES.md": "b2fa3af340c236a798bbbfb34f23e3f2259ac9b3",
   "ark_relay/__init__.py": "297e0c5d45a732b40a24be0bfd40f07b174d2a9a",
   "ark_relay/__main__.py": "a1c292210b8a315a205d5c45d42296b892c8f7a8",
   "ark_relay/annihilation.py": "17dd52b5fe669397046ad9c737d214884a90a1d1",
@@ -22,7 +22,7 @@
   "ark_relay/outcome.py": "ee04444b0c7d9f88bdac1e6c42c8ecccd63194eb",
   "ark_relay/phone.py": "ef12c590ea83dcc84e55e4d89630c70e71c3e087",
   "ark_relay/plan.py": "ee4510779bdefa42bd4b34b8c3afb1d8a222620c",
-  "ark_relay/preupdate.py": "9bbc121690ef222a4ff06d715ef22787dc8053ee",
+  "ark_relay/preupdate.py": "579d91558974c0855d05a304a4898f613be74fa4",
   "ark_relay/queues.py": "b0a97768e324530d2645d16cf8ef3569eb556097",
   "ark_relay/sanity_plan.py": "8a6c051e37025fef0517bd2e18f8e9f9d399f510",
   "ark_relay/selfupdate.py": "71313734dac78fbeb9ac3e681adf0a7d008686d2",
@@ -33,6 +33,6 @@
   "ark_relay/watch.py": "9ddff748ed6381f57a5f5efe9cffae1425486ac2",
   "ark_relay/weeklyboss.py": "92f4a912c53b2954c521603a814f6cdfbe984316",
   "run.py": "0db6cde8fb8119323d991ec512d1b2b43e869b93",
-  "service.py": "99525137615585dcfc4c4a7b5926a0c53be478e1"
+  "service.py": "af13f2e32ae9d35b9682938827ca2dcb6fbb60e5"
  }
 }
