@@ -90,10 +90,30 @@ def _queues(out: dict) -> None:
         for c in _post("/api/queue/get")["data"].values()}
 
 
+def _automas_dir() -> "str | None":
+    """AUTO-MAS 根目录。环境变量优先，其次读中继的 .env。
+
+    这个模块既被服务进程 import（环境变量齐全），也被 config-check.py
+    当独立探针跑（什么都没有）。2026-08-31 只读 os.environ，探针那条路
+    永远拿不到，快照里就只剩一句「找不到母本目录」。
+    """
+    if v := os.environ.get("ARK_AUTOMAS_DIR"):
+        return v
+    env = Path(r"C:\ProgramData\ark-relay\.env")
+    try:
+        for line in env.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("ARK_AUTOMAS_DIR=") and not line.startswith("#"):
+                return line.split("=", 1)[1].strip() or None
+    except OSError:
+        pass
+    return None
+
+
 def _okww(out: dict) -> None:
     from .config import master_config_dir  # noqa: PLC0415 - 避免导入环
 
-    d = master_config_dir(os.environ.get("ARK_AUTOMAS_DIR"), "DailyTask.json")
+    d = master_config_dir(_automas_dir(), "DailyTask.json")
     if d is None:
         out["OK-WW(母本)"] = "找不到母本目录（ARK_AUTOMAS_DIR 没设或结构变了）"
         return
