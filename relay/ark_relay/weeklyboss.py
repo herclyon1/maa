@@ -162,13 +162,18 @@ class WeeklyBossGate:
 
     # ---------- 人来开关 ----------
 
-    def settings(self) -> dict:
+    def settings(self, now: "datetime | None" = None) -> dict:
         s = self._load()
+        # 「本周已打」必须拿 done_week 跟**当前这一周**比，不能只看有没有值。
+        # 只看有没有值的话，过了周一 04:00 明明已经在打新一周了，
+        # 手机上还显示「本周已打」——状态是骗人的。enforce() 一直是对的
+        # （它用的就是这个比对），错的只有对外显示这一处。2026-08-31 测出来的。
+        week = week_key(now or datetime.now(tz=SERVER_TZ))
         return {"开": bool(s.get("enabled")),
                 "第几个周本": int(s.get("index") or 1),
                 "打几次": int(s.get("count") or 1),
                 "难度等级": str(s.get("level") or MAX_LEVEL),
-                "本周已打": bool(s.get("done_week"))}
+                "本周已打": s.get("done_week") == week}
 
     def configure(self, *, enabled: "bool | None" = None,
                   index: "int | None" = None,
