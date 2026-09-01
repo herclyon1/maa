@@ -117,7 +117,8 @@ async function send(body) {
   const msg = JSON.stringify({ v:1, kind:"cmd", pin:cfg.pin, ts:now(), body });
   const r = await fetch(`${NTFY}/${cfg.topic}`,
                        { method:"POST", body:msg, cache:"no-store" });
-  if (!r.ok) throw new Error("发不出去 " + r.status);
+  if (!r.ok) throw new Error(r.status === 429
+    ? "太频繁了，歇几秒再点（429）" : "HTTP " + r.status);
 }
 
 async function readMessages(since = "48h") {
@@ -148,12 +149,21 @@ async function unwrap(m) {
   return JSON.parse(new TextDecoder().decode(buf));
 }
 
+/* 顺带统计：信箱里有几条状态、几条 PIN 对得上。
+   PIN 填错时页面原来**一声不吭**地显示「还没有数据」，
+   用户会以为机器坏了——2026-09-01 模拟新用户实测出来的。 */
+let pinScan = { seen: 0, matched: 0 };
+
 async function latestState(since = "48h") {
   const msgs = await readMessages(since);
+  pinScan = { seen: 0, matched: 0 };
   for (let i = msgs.length - 1; i >= 0; i--) {
     let m;
     try { m = JSON.parse(msgs[i].message); } catch { continue; }
-    if (m && m.kind === "state" && m.pin === cfg.pin) {
+    if (!m || m.kind !== "state") continue;
+    pinScan.seen++;
+    if (m.pin === cfg.pin) {
+      pinScan.matched++;
       try { return await unwrap(m); } catch { return null; }
     }
   }
@@ -404,6 +414,21 @@ function wire() {
   }
 }
 
+/* 重渲染后把**未保存的改动**写回控件。没有这一步，一刷新界面就"复原"
+   （下拉显示旧值、高亮消失），但「N 项待保存」还挂着，点保存会把
+   已经看不见的改动发出去——界面骗人。2026-09-01 实测出来的。 */
+function applyEdits() {
+  for (const [key, e] of Object.entries(edits)) {
+    const el = document.querySelector(`[data-id="${CSS.escape(key)}"]`);
+    if (!el) continue;
+    if (el.type === "checkbox") el.checked = !!e.to;
+    else el.value = String(e.to);
+    const row = document.querySelector(`[data-row="${CSS.escape(key)}"]`);
+    if (row) row.classList.add("changed");
+  }
+  updateBar();
+}
+
 function updateBar() {
   const n = Object.keys(edits).length;
   $("#savebar").classList.toggle("show", n > 0);
@@ -458,7 +483,12 @@ async function ping(minAt) {
   }
 
   if (best && (!snap || best.at > snap.at)) { snap = best; save_cache(); render(); }
-  if (!best) return setStatus("关机中 · 还没有过状态", "off");
+  if (!best) {
+    if (pinScan.seen > 0 && pinScan.matched === 0) {
+      return setStatus(`信箱里有 ${pinScan.seen} 条消息但 PIN 对不上——检查设置里的 PIN`, "off");
+    }
+    return setStatus("关机中 · 还没有过状态", "off");
+  }
   const age = Date.now() - best.at * 1000;
   if (age < JUST_MS)  return setStatus("开机中 · 刚刚更新", "on");
   if (age < FRESH_MS) return setStatus(`开机中 · 在忙，状态是 ${ago(best.at)}的`, "on");
@@ -515,7 +545,10 @@ async function boot() {
 $("#save").onclick = doSave;
 $("#discard").onclick = () => { edits = {}; render(); updateBar(); };
 $("#cancel").onclick = () => $("#confirm").close();
+let saving = false;          // 防连点：2026-09-01 实测连点 3 下发了 3 遍
 $("#go").onclick = async () => {
+  if (saving) return;
+  saving = true;
   $("#confirm").close();
   const items = Object.values(edits);
   let sent = 0;
@@ -529,6 +562,7 @@ $("#go").onclick = async () => {
     const after = now();          // 只认这一刻之后上报的状态
     setTimeout(() => ping(after), 2000);
   }
+  saving = false;
 };
 
 applyTheme();
@@ -536,3 +570,10 @@ applyTheme();
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 boot();
+
+/* 所有重渲染之后都要把未保存的改动写回控件（见 applyEdits 的注释）。
+   包在这里统一接管，免得每个 render() 调用点都要记得跟一句。 */
+{
+  const _renderRaw = render;
+  render = (...a) => { _renderRaw(...a); applyEdits(); };
+}
