@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import banners, collector, core, modes, outcome, plan, summary
-from .config import SERVER_TZ, Config, RunRecord
+from .config import SERVER_TZ, Config, RunRecord, atomic_write_text
 from .core import State
 from .notify import Notifier
 from .transport import Source
@@ -660,6 +660,33 @@ class Engine:
         # phase; the game binary is the only visible sign that phase is live.
         return any(n in out for n in (b"MAA.exe", b"MaaEnd.exe", b"Endfield.exe"))
 
+    # 同一件事当天只报一次。2026-09-01 群里同一个 OK-WW 失败连推三条
+    # （17:00 / 08:29 / 11:54），用户：「赶紧去修，报了三次了。」
+    # 键 = 脚本 + 失败在哪一步：同一步反复失败是同一件事，不许反复推；
+    # 换了一步失败就是新事，照报。当天记账在 state/alerted-<日期>.json，
+    # 日报仍会汇总全部失败趟数，静默的只是重复的即时推送。
+    def _alert_key(self, rec) -> str:
+        return f"{rec.script}|{rec.user}|{','.join(sorted(rec.failed_tasks or ['?']))}"
+
+    def _alerted_file(self, day: str) -> Path:
+        return Path(self.state.dir) / f"alerted-{day}.json"
+
+    def _already_alerted(self, day: str, key: str) -> bool:
+        try:
+            return key in json.loads(self._alerted_file(day).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+
+    def _mark_alerted(self, day: str, key: str) -> None:
+        f = self._alerted_file(day)
+        try:
+            cur = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            cur = []
+        if key not in cur:
+            cur.append(key)
+        atomic_write_text(f, json.dumps(cur, ensure_ascii=False))
+
     def _flush_pending(self) -> None:
         if not (self._pending or self._recovered) or self._scripts_running():
             return
@@ -668,6 +695,12 @@ class Engine:
             day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
             attempts = sum(1 for e in self.state.read_ledger(day)
                            if e["script"] == rec.script and e["user"] == rec.user)
+            key = "自愈|" + self._alert_key(rec)
+            if self._already_alerted(day, key):
+                self._recovered.pop((rec.script, rec.user), None)
+                self._persist_pending()
+                log.info("⚠️ %s 同一步的自愈今天已报过，只记日志", rec.script)
+                continue
             _, body = core.format_failure(rec)
             # Self-healed is not the same as fine: the fault happened and will
             # happen again. Report it as an unresolved problem that this run
@@ -679,12 +712,19 @@ class Engine:
                 return  # keep it on disk; retry next tick
             self._recovered.pop((rec.script, rec.user), None)
             self._persist_pending()   # only now is it safe to forget
+            self._mark_alerted(day, key)
             log.info("⚠️ %s 自愈通知已推送", rec.script)
 
         for rec in list(self._pending.values()):
             day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
             attempts = sum(1 for e in self.state.read_ledger(day)
                            if e["script"] == rec.script and e["user"] == rec.user)
+            key = self._alert_key(rec)
+            if self._already_alerted(day, key):
+                self._pending.pop((rec.script, rec.user), None)
+                self._persist_pending()
+                log.info("❌ %s 又在同一步失败（今天已告警过），只记日志不再推", rec.script)
+                continue
             tail = self.log_tails.pop(rec.run_id, "") or collector.log_tail(rec)
             diagnosis = summary.diagnose(self.cfg, rec.script, rec.failed_tasks, tail)
             title, body = core.format_failure(rec, diagnosis)
@@ -696,6 +736,7 @@ class Engine:
                 return  # still on disk, retry next tick
             self._pending.pop((rec.script, rec.user), None)
             self._persist_pending()   # only now is it safe to forget
+            self._mark_alerted(day, key)
             log.info("❌ %s 最终失败，告警已推送（尝试 %d 次）", rec.script, attempts)
 
     # ---------- daily wrap-up ----------
