@@ -129,7 +129,7 @@ def _make(root: Path, daily=UPSTREAM_DAILY, domain=UPSTREAM_DOMAIN,
         "    def run(self):\n        try:\n            return self.do_run()\n"
         "        except Exception as e:\n"
         + okww_patch._FARMERR_OLD
-        + "\n            if self.handle_claim_button():\n"
+        + "\n            if self.handle_claim_button() or self.handle_monthly_card():\n"
           "                self.run()\n            else:\n                raise\n"
         "\n    def do_run(self):\n        while True:\n"
         "            try:\n                if True:\n"
