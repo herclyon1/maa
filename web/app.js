@@ -446,44 +446,77 @@ async function oneShot(body, okText) {
    2026-08-31 实测撞到过：机器上已经是新值了，页面还显示旧值。 */
 /* 判开关机只有一条依据：**最新状态够不够新鲜**。
 
-   老写法有两个方向的错：
-   · 机器忙的时候（跑 OK-WW 时 CPU 被视觉识别占满）十几秒内没推来更新的，
-     就报「关机中」——哪怕二十秒前刚推过一条，那条本身就证明它开着。
-     2026-09-01 用户报的「检测不到开机状态」。
-   · 反过来也错：刚打开页面时缓存是空的，于是**任何一条状态、哪怕两小时
-     前的**都会被当成「刚收到的新状态」，机器明明关着却报「开机中·刚刚更新」。
-     2026-09-01 模拟关机时测出来的。
+   慢和误报的共同根源（2026-09-01 用户反馈「每次等好久、开机有时显示成
+   关机」）：机器开着但闲着时中继不推状态（只在开机/跑完/改配置时推），
+   页面全靠那一条 refresh 应答；而旧实现是 600ms 一轮地轮询 ntfy，
+   应答丢一次（中继长连接恰在重连的窗口）就走满全程然后误判关机。
 
-   现在只认新鲜度：机器开着时中继会在开机、改配置、每趟跑完推状态，
-   还会应答刷新，所以三分钟内有过状态就是开着。 */
+   现在：
+   · 用 SSE 实时流收应答——状态一推就到，开机响应从「轮询碰运气」变成
+     一两秒内必达；
+   · 4 秒没动静自动补发一次 refresh，单条丢失不再致命；
+   · 8 秒时再用一次普通拉取兜底（SSE 万一被网络设备掐断）；
+   · 判定给依据：「没应答刷新」写进文案，不再假装确定。 */
 const FRESH_MS = 3 * 60 * 1000;
 const JUST_MS = 60 * 1000;
 
 async function ping(minAt) {
   if (!cfg || !cfg.topic || !cfg.pin) {
-    // 这跟关机是两回事，不能显示成同一个。
     return setStatus("还没设置信箱，先去设置里填", "off");
   }
   setStatus("正在问机器…", "");
   const floor = (typeof minAt === "number" ? minAt : null) ?? 0;
-  try { await send({ action:"refresh" }); }
-  catch (e) { return setStatus("发不出去：" + e.message, "off"); }
-
-  // 每轮都要跟 ntfy 打一个来回（约 1 秒），所以圈数要省着用：
-  // 关机时是走满全程才下结论的，圈数太多人就得干等——2026-09-01
-  // 用 20 圈测出来要 40 秒，太久。10 圈≈12 秒，够了。
   let best = snap;
-  for (let i = 0; i < 10; i++) {
-    let s;
-    try { s = await latestState("2h"); } catch { s = null; }
-    if (s && (!best || s.at > best.at)) best = s;
-    // 已经够新鲜、且不早于调用方要求的那一刻，就不用再等
-    if (best && best.at >= floor && Date.now() - best.at * 1000 < FRESH_MS) break;
-    await new Promise((r) => setTimeout(r, 600));
-  }
+  let sseLatest = null;
 
+  // 先挂流再发指令，免得应答赶在监听之前
+  let es = null;
+  try {
+    es = new EventSource(`${NTFY}/${cfg.topic}/sse?since=30s`);
+    es.onmessage = async (ev) => {
+      try {
+        const d = JSON.parse(ev.data);
+        if (d.event && d.event !== "message") return;
+        const m = JSON.parse(d.message);
+        if (!m || m.kind !== "state" || m.pin !== cfg.pin) return;
+        const body = await unwrap(m);
+        if (body && (!sseLatest || body.at > sseLatest.at)) sseLatest = body;
+      } catch {}
+    };
+  } catch {}
+
+  try { await send({ action: "refresh" }); }
+  catch (e) { es && es.close(); return setStatus("发不出去：" + e.message, "off"); }
+
+  const t0 = Date.now();
+  let resent = false, polled = false;
+  try {
+    while (Date.now() - t0 < 11000) {
+      await new Promise((r) => setTimeout(r, 500));
+      if (sseLatest && (!best || sseLatest.at > best.at)) best = sseLatest;
+      if (best && best.at >= floor && Date.now() - best.at * 1000 < FRESH_MS
+          && (!snap || best.at > snap.at)) {
+        snap = best; save_cache(); render();
+        const a = Date.now() - best.at * 1000;
+        return setStatus(a < JUST_MS ? "开机中 · 刚刚更新"
+                                     : `开机中 · 在忙，状态是 ${ago(best.at)}的`, "on");
+      }
+      if (!resent && Date.now() - t0 > 4000) {
+        resent = true;
+        send({ action: "refresh" }).catch(() => {});
+      }
+      if (!polled && Date.now() - t0 > 8000) {
+        polled = true;
+        try { const s = await latestState("2h");
+              if (s && (!best || s.at > best.at)) best = s; } catch {}
+      }
+    }
+  } finally { es && es.close(); }
+
+  // 走满全程没等到应答——按最新状态的年龄下结论，并写明依据
   if (best && (!snap || best.at > snap.at)) { snap = best; save_cache(); render(); }
   if (!best) {
+    try { await latestState("2h"); } catch {}
     if (pinScan.seen > 0 && pinScan.matched === 0) {
       return setStatus(`信箱里有 ${pinScan.seen} 条消息但 PIN 对不上——检查设置里的 PIN`, "off");
     }
@@ -492,7 +525,7 @@ async function ping(minAt) {
   const age = Date.now() - best.at * 1000;
   if (age < JUST_MS)  return setStatus("开机中 · 刚刚更新", "on");
   if (age < FRESH_MS) return setStatus(`开机中 · 在忙，状态是 ${ago(best.at)}的`, "on");
-  return setStatus(`关机中 · 状态是 ${ago(best.at)}的`, "off");
+  return setStatus(`关机中（没应答刷新）· 状态是 ${ago(best.at)}的`, "off");
 }
 
 
