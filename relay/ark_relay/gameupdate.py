@@ -404,16 +404,40 @@ def clear_pending(state_dir: Path, game: str) -> None:
 
 def last_run_ok(state_dir: Path, now: datetime, script: str) -> bool | None:
     """今天这个脚本最后一趟成没成；今天没跑过返回 None。"""
-    p = Path(state_dir) / f"ledger-{now:%Y-%m-%d}.jsonl"
     last = None
-    try:
-        for line in p.read_text(encoding="utf-8").splitlines():
-            e = json.loads(line)
-            if e.get("script") == script:
-                last = bool(e.get("ok"))
-    except (OSError, ValueError):
-        return None
+    for e in _today(state_dir, now):
+        if e.get("script") == script:
+            last = bool(e.get("ok"))
     return last
+
+
+def _today(state_dir: Path, now: datetime) -> list[dict]:
+    p = Path(state_dir) / f"ledger-{now:%Y-%m-%d}.jsonl"
+    try:
+        return [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
+    except (OSError, ValueError):
+        return []
+
+
+def needs_rerun(state_dir: Path, now: datetime, script: str) -> bool:
+    """只有「今天最后一趟是因为客户端过时进不了游戏」才值得更新后重跑。
+
+    2026-09-02 晚上的事故：MaaEnd 因为上游没适配新版本，四个任务真失败了；
+    我按「最后一趟没成功就重跑」把它又派发了一遍，把正在玩的用户挤下线。
+    普通任务失败重跑也还是失败，只会白白抢号——那种失败不归更新管。
+    """
+    last = None
+    for e in _today(state_dir, now):
+        if e.get("script") == script:
+            last = e
+    if last is None or last.get("ok"):
+        return False
+    return bool((last.get("raw") or {}).get("maaend_unreachable"))
+
+
+def off(state_dir: Path) -> bool:
+    """总开关：state/gameupdate-off.flag 存在就整套不动。"""
+    return (Path(state_dir) / "gameupdate-off.flag").exists()
 
 
 # ─────────────────────────── 开机：只做便宜的判断 ───────────────────────────
@@ -429,6 +453,9 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
     now = now or datetime.now(tz=SERVER_TZ)
     notes: list[str] = []
     problems: list[str] = []
+    if off(cfg.state_dir):
+        log.info("游戏更新：总开关关着（gameupdate-off.flag），不检查")
+        return notes, problems
     ld, idx = ldconsole_of(cfg.maa_dir)
     if ld:
         try:
@@ -457,7 +484,8 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
         h = (hint or efstatus.update_hint)(n0)
     except Exception:  # noqa: BLE001
         h = ""
-    if h:
+    if h and last_run_ok(cfg.state_dir, now, "MaaEnd") is not True:
+        # 今天已经成功过就不登记；普通任务失败也不归更新管（needs_rerun 会再拦一道）
         mark_pending(cfg.state_dir, "终末地", h)
     return notes, problems
 
@@ -476,12 +504,12 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
     problems: list[str] = []
     reran: list[str] = []
     todo = pending(cfg.state_dir)
-    if not todo:
+    if not todo or off(cfg.state_dir):
         return notes, problems, reran
     desk = desk or Desktop(cfg.state_dir)
 
     def rerun(script: str) -> None:
-        if last_run_ok(cfg.state_dir, now, script) is False and dispatch is not None:
+        if needs_rerun(cfg.state_dir, now, script) and dispatch is not None:
             ok, msg = dispatch(script)
             log.info("游戏更新：重跑 %s → %s", script, msg)
             if ok:

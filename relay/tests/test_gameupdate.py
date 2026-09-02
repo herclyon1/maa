@@ -123,7 +123,7 @@ dispatched = []
 d = FakeDesk([["登录", "更新游戏"], ["正在下载"], ["开始游戏"], ["请重启游戏", "确认"], ["点击任意位置继续"]])
 notes, probs, reran = gu.run_deferred(cfg, now=now, desk=d, dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=nosleep)
 check("更新通知带依据", notes, ["终末地 客户端已通过启动器更新（依据：今天 MaaEnd 进不了游戏）"])
-check("当天没跑成 → 重跑 MaaEnd", reran, ["MaaEnd"])
+check("当天因客户端过时没跑成 → 重跑 MaaEnd", reran, ["MaaEnd"])
 check("登记已清", gu.pending(ST), {})
 # 当天已经成功过：启动器说已是最新，不重跑
 (ST / "ledger-2026-09-02.jsonl").write_text(json.dumps({"script": "MaaEnd", "ok": True, "raw": {}}) + "\n", encoding="utf-8")
@@ -133,6 +133,21 @@ notes, probs, reran = gu.run_deferred(cfg, now=now, desk=FakeDesk([["开始游�
 check("已是最新 → 不发更新通知", notes, [])
 check("当天成功过 → 不重跑", reran, [])
 check("登记也清了", gu.pending(ST), {})
+
+print("[普通任务失败不重跑（09-02 晚上把用户挤下线的教训）]")
+(ST / "ledger-2026-09-02.jsonl").write_text(json.dumps({"script": "MaaEnd", "ok": False, "failed_tasks": ["赠送干员礼物"], "raw": {}}) + "\n", encoding="utf-8")
+gu.mark_pending(ST, "终末地", "公告说今天版本更新")
+dispatched.clear()
+notes, probs, reran = gu.run_deferred(cfg, now=now, desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=nosleep)
+check("普通失败 → 不重跑", reran, [])
+check("登记清掉", gu.pending(ST), {})
+notes, probs = gu.boot_check(cfg, budget_s=600, now=now, hint=lambda n: "官方公告：今天 09:00 版本更新")
+check("普通失败的日子开机仍会登记（由 needs_rerun 拦）", gu.pending(ST), {"终末地": "官方公告：今天 09:00 版本更新"})
+gu.clear_pending(ST, "终末地")
+(ST / "gameupdate-off.flag").write_text("", encoding="utf-8")
+gu.mark_pending(ST, "终末地", "x")
+check("总开关关着 → 什么都不做", gu.run_deferred(cfg, now=now, desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: (True, "ok"), sleep=nosleep), ([], [], []))
+(ST / "gameupdate-off.flag").unlink(); gu.clear_pending(ST, "终末地")
 
 print("[每次开机只跑一遍]")
 from datetime import datetime
