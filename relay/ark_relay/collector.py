@@ -291,12 +291,53 @@ _END_PS_ENTER = re.compile(r"进入协议空间成功")
 _END_TASK_DONE = re.compile(r"任务完成[:：]\s*(\S.+?)\s*$")
 
 
+# 2026-09-02 终末地服务器维护（「雪凇幽梦」版本更新，10:00 开服）：MaaEnd 三趟
+# 每个任务都在 20 秒整失败、一个没完成，截图停在标题画面。AUTO-MAS 把它写成
+# 「任务执行情况解析失败」，中继照单报了三次失败。这种「根本没进游戏」的
+# 形状很好认：任务全部秒败、零完成。用户要求：认出来就当天跳过、不报警。
+_TASK_START = re.compile(r"\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)[.\d]*\]\s*任务开始:\s*(.+)")
+_TASK_END = re.compile(r"\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)[.\d]*\]\s*任务(完成|失败):\s*(.+)")
+_UNREACHABLE_QUICK_SEC = 30
+_UNREACHABLE_MIN_FAILS = 3
+
+
+def maaend_unreachable(text: str) -> bool:
+    """每个任务都在半分钟内失败、一个没完成 = 根本没进游戏。
+
+    服务器维护、客户端待更新、卡在标题画面都是这个形状。正常失败是某一
+    步卡住几分钟，别的任务照样完成，不会满足这个条件。
+    """
+    starts: dict[str, datetime] = {}
+    fails = done = quick = 0
+    for line in text.splitlines():
+        if m := _TASK_START.search(line):
+            starts[m.group(2).strip()] = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S")
+            continue
+        if not (m := _TASK_END.search(line)):
+            continue
+        name = m.group(3).strip()
+        if "结束进程" in name:
+            continue          # 收尾任务，不是游戏内任务
+        if m.group(2) == "完成":
+            done += 1
+            continue
+        fails += 1
+        t0 = starts.get(name)
+        t1 = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S")
+        if t0 is not None and (t1 - t0).total_seconds() <= _UNREACHABLE_QUICK_SEC:
+            quick += 1
+    return done == 0 and fails >= _UNREACHABLE_MIN_FAILS and quick == fails
+
+
 def parse_maaend_log(log_path: Path) -> dict:
     """Recover items gained and tasks finished from a MaaEnd log. {} if unreadable."""
     try:
         text = log_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return {}
+    out_flags: dict = {}
+    if maaend_unreachable(text):
+        out_flags["maaend_unreachable"] = True
 
     gains: dict[str, int] = {}
     tasks: list[str] = []
@@ -343,6 +384,7 @@ def parse_maaend_log(log_path: Path) -> dict:
         out["sanity_cap"] = cap
     if _END_SANITY_OUT.search(text):
         out["sanity_exhausted"] = True
+    out.update(out_flags)
     return out
 
 

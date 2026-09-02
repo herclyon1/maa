@@ -304,6 +304,42 @@ def _sanity_full(raw: str, ref: datetime) -> str:
     return f"{day} {when:%H:%M} 回满（东京 {when.astimezone(USER_TZ):%H:%M}）"
 
 
+def episode_kinds(entries: list[dict]) -> dict[str, str]:
+    """把「看着像失败、其实不是故障」的记录分出来。run_id → 类型。
+
+    "update"      鸣潮：一串连续失败里含「游戏更新成功，即将重启任务」，
+                  且紧接着就有一趟成功——整串都是客户端更新的插曲。
+                  2026-09-02 早班：09:18 更新重启、09:20 失败、09:28 成功，
+                  日报却写「❌ ❌」还推了一条 ⚠️ 自愈，用户点名的假报警。
+    "maintenance" 终末地：任务全部秒败、零完成（collector.maaend_unreachable），
+                  根本没进游戏——服务器维护或客户端待更新，不是配置问题。
+    """
+    kinds: dict[str, str] = {}
+    groups: dict[tuple, list[dict]] = {}
+    for e in entries:
+        groups.setdefault((e.get("script"), e.get("user")), []).append(e)
+    for es in groups.values():
+        es = sorted(es, key=lambda e: e.get("started") or "")
+        streak: list[dict] = []
+        for e in es:
+            raw = e.get("raw") or {}
+            if not e.get("ok") and raw.get("maaend_unreachable"):
+                kinds[e["run_id"]] = "maintenance"
+            if e.get("ok"):
+                if any(x.get("transitional") for x in streak):
+                    for x in streak:
+                        kinds.setdefault(x["run_id"], "update")
+                streak = []
+            else:
+                streak.append(e)
+    return kinds
+
+
+_KIND_ICON = {"update": "↪️", "maintenance": "⏸"}
+_KIND_NOTE = {"update": "游戏更新后重跑，不算失败",
+              "maintenance": "进不了游戏（服务器维护／客户端待更新），今天跳过"}
+
+
 def format_daily(day: str, entries: list[dict], prose: str = "",
                  plan: str = "") -> tuple[str, str]:
     """The one message of the day. Numbers here are copied, never generated.
@@ -314,8 +350,14 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
     if not entries:
         return f"📋 {day} 日报", "今天没有任何运行记录。"
 
-    failed = [e for e in entries if not e["ok"]]
-    head = "全绿 ✅" if not failed else f"{len(failed)} 项失败 ⚠️"
+    kinds = episode_kinds(entries)
+    failed = [e for e in entries if not e["ok"] and e["run_id"] not in kinds]
+    if failed:
+        head = f"{len(failed)} 项失败 ⚠️"
+    elif "maintenance" in kinds.values():
+        head = "终末地维护跳过，其余全绿 ✅"
+    else:
+        head = "全绿 ✅"
     title = f"📋 {day[5:]} · {head}"
 
     lines: list[str] = []
@@ -328,10 +370,13 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
         # farms nothing, and unlabelled it looked like a run that mysteriously
         # did nothing and ended on 0 sanity.
         tag = "（剿灭检查）" if raw_early.get("annihilation") else ""
-        lines.append(("✅" if e["ok"] else "❌")
-                     + f" {e['script']}{tag}　"
+        kind = kinds.get(e["run_id"], "")
+        icon = "✅" if e["ok"] else _KIND_ICON.get(kind, "❌")
+        lines.append(icon + f" {e['script']}{tag}　"
                      + _span(started, finished, e.get('duration_known', True)))
-        if not e["ok"]:
+        if kind:
+            lines.append("· " + _KIND_NOTE[kind])
+        elif not e["ok"]:
             lines.append("· " + _fmt_failed(e.get("failed_tasks") or []))
         if raw_early.get("annihilation"):
             prog = raw_early.get("annihilation_progress")

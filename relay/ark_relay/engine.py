@@ -19,7 +19,7 @@ import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import banners, collector, core, modes, outcome, plan, summary
+from . import banners, collector, core, modes, outcome, plan, summary, efstatus
 from .config import SERVER_TZ, Config, RunRecord, atomic_write_text
 from .core import State
 from .notify import Notifier
@@ -695,6 +695,13 @@ class Engine:
             day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
             attempts = sum(1 for e in self.state.read_ledger(day)
                            if e["script"] == rec.script and e["user"] == rec.user)
+            # 鸣潮客户端更新→重启→重跑成功：这是插曲不是故障。2026-09-02 早班
+            # 因此推了一条 ⚠️「本次自愈，问题未解决」，用户点名是假报警。
+            if core.episode_kinds(self.state.read_ledger(day)).get(rec.run_id) == "update":
+                self._recovered.pop((rec.script, rec.user), None)
+                self._persist_pending()
+                log.info("↪️ %s 游戏更新后重跑成功，不算故障，不报警", rec.script)
+                continue
             key = "自愈|" + self._alert_key(rec)
             if self._already_alerted(day, key):
                 self._recovered.pop((rec.script, rec.user), None)
@@ -719,6 +726,25 @@ class Engine:
             day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
             attempts = sum(1 for e in self.state.read_ledger(day)
                            if e["script"] == rec.script and e["user"] == rec.user)
+            # 终末地根本没进游戏（服务器维护／客户端待更新）：不是要人处理的
+            # 故障。当天只发一条说明，不拉警报。用户 2026-09-02：「检测到
+            # 服务器在维护时候就跳过，不报警」。
+            if rec.script == "MaaEnd" and (rec.raw or {}).get("maaend_unreachable"):
+                mkey = "维护|MaaEnd"
+                if not self._already_alerted(day, mkey):
+                    hint = efstatus.update_hint()
+                    body = (f"MaaEnd 连试 {attempts} 次都停在登录界面：每个任务 20 秒内"
+                            "失败、一个没完成，这是没进游戏的形状，不是配置问题。"
+                            "多半是服务器维护或客户端待更新。今天不再报警，明早照常。"
+                            + (f"\n{hint}" if hint else ""))
+                    if self.notifier.send("⏸ 终末地进不了游戏，今天跳过", body):
+                        return  # 发不出去就下个 tick 再来
+                    self._mark_alerted(day, mkey)
+                self._pending.pop((rec.script, rec.user), None)
+                self._persist_pending()
+                self.log_tails.pop(rec.run_id, None)
+                log.info("⏸ MaaEnd 进不了游戏（尝试 %d 次），按维护跳过，不报警", attempts)
+                continue
             key = self._alert_key(rec)
             if self._already_alerted(day, key):
                 self._pending.pop((rec.script, rec.user), None)
