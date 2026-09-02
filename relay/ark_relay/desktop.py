@@ -96,9 +96,14 @@ public class ArkD {
     $t.Result
   }
   function Ocr([string]$path) {
-    [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType = WindowsRuntime] | Out-Null
-    [Windows.Storage.StorageFile, Windows.Storage, ContentType = WindowsRuntime] | Out-Null
-    [Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics.Imaging, ContentType = WindowsRuntime] | Out-Null
+    [Windows.Media.Ocr.OcrEngine,Windows.Foundation,ContentType=WindowsRuntime] | Out-Null
+    [Windows.Storage.StorageFile,Windows.Storage,ContentType=WindowsRuntime] | Out-Null
+    [Windows.Graphics.Imaging.BitmapDecoder,Windows.Graphics.Imaging,ContentType=WindowsRuntime] | Out-Null
+    [Windows.Globalization.Language,Windows.Globalization,ContentType=WindowsRuntime] | Out-Null
+    [Windows.Storage.Streams.IRandomAccessStream,Windows.Storage.Streams,ContentType=WindowsRuntime] | Out-Null
+    [Windows.Storage.FileAccessMode,Windows.Storage,ContentType=WindowsRuntime] | Out-Null
+    [Windows.Graphics.Imaging.SoftwareBitmap,Windows.Graphics.Imaging,ContentType=WindowsRuntime] | Out-Null
+    [Windows.Media.Ocr.OcrResult,Windows.Media.Ocr,ContentType=WindowsRuntime] | Out-Null
     $file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($path)) ([Windows.Storage.StorageFile])
     $stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
     $dec = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
@@ -136,7 +141,7 @@ public class ArkD {
   $shot = [string]$r.shot
   $lines = $null
   foreach ($a in $r.actions) {
-    switch ($a.do) {
+    switch ([string]$a.act) {
       'wait' { Start-Sleep -Milliseconds ([int]$a.ms); [void]$log.Add("wait $($a.ms)") }
       'shot' { Shot $shot; [void]$log.Add("shot $shot") }
       'ocr' {
@@ -153,7 +158,7 @@ public class ArkD {
         if ($null -eq $hit) { [void]$log.Add("click_text: 屏幕上没有「$want」") }
         else { Click ([int]($hit.x + $hit.w / 2)) ([int]($hit.y + $hit.h / 2)) }
       }
-      default { [void]$log.Add("不认识的动作 $($a.do)") }
+      default { [void]$log.Add("不认识的动作 $($a.act)") }
     }
   }
   $out.ok = $true
@@ -213,7 +218,11 @@ class Desktop:
         want = hashlib.sha256(AGENT_PS.encode("utf-8")).hexdigest()
         stamp = self.dir / "agent.sha256"
         if not (self.agent.exists() and stamp.exists() and stamp.read_text().strip() == want):
-            atomic_write_text(self.agent, AGENT_PS)
+            # 必须带 BOM：Windows PowerShell 5.1 读没有 BOM 的 .ps1 按 ANSI（GBK）
+            # 解析，脚本里的「」会把字符串撑破，整段解析失败（2026-09-02 实测）。
+            tmp = self.agent.with_suffix(".tmp")
+            tmp.write_bytes(b"\xef\xbb\xbf" + AGENT_PS.encode("utf-8"))
+            tmp.replace(self.agent)
             atomic_write_text(stamp, want)
 
     @staticmethod
@@ -252,7 +261,7 @@ class Desktop:
 
     # -- 常用组合 --
     def read(self, focus: str | None = None, settle_ms: int = 0) -> Screen:
-        acts = ([{"do": "wait", "ms": settle_ms}] if settle_ms else []) + [{"do": "ocr"}]
+        acts = ([{"act": "wait", "ms": settle_ms}] if settle_ms else []) + [{"act": "ocr"}]
         data = self.run(acts, focus=focus)
         lines = [Line(str(o.get("text") or ""), int(o.get("x") or 0), int(o.get("y") or 0),
                       int(o.get("w") or 0), int(o.get("h") or 0))
@@ -262,11 +271,11 @@ class Desktop:
         return Screen(lines, Path(data.get("shot") or ""))
 
     def click_text(self, text: str, focus: str | None = None) -> bool:
-        data = self.run([{"do": "click_text", "text": text}], focus=focus)
+        data = self.run([{"act": "click_text", "text": text}], focus=focus)
         return bool(data.get("ok")) and bool(data.get("clicked"))
 
     def click(self, x: int, y: int, focus: str | None = None) -> bool:
-        data = self.run([{"do": "click", "x": x, "y": y}], focus=focus)
+        data = self.run([{"act": "click", "x": x, "y": y}], focus=focus)
         return bool(data.get("ok"))
 
 
