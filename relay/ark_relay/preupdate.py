@@ -423,9 +423,36 @@ def _maaend_version_in(log_file: Path | None) -> str:
     return hits[-1] if hits else ""
 
 
-def _maaend_span(old: str, new: str) -> str:
-    """「旧版 → 新版」。旧版号没拿到就只报新版，不编。"""
-    return f"{old} → {new}" if old and old != new else new
+def _span(old: str, new: str) -> str:
+    """「旧版 → 新版」——四个程序的更新通知统一用这一种写法。
+
+    旧版号没拿到就明说「旧版本没读到」，不编也不省：2026-08-30 MaaEnd
+    的通知只有「已更新：v2.27.0-beta.1」，看不出从哪升上来的，用户
+    2026-09-01 要求四个程序样式统一、都带「老版本号 → 新版本号」。
+    """
+    if old and old != new:
+        return f"{old} → {new}"
+    if old == new:
+        return new
+    return f"（旧版本没读到）→ {new}"
+
+
+_maaend_span = _span      # 旧名字，测试和别处还在用
+
+
+def _maaend_file_version(maaend_dir: Path) -> str:
+    """MaaEnd 自己的 interface.json 里的 version——不依赖日志时机。
+
+    2026-08-30 08:46:23 启动、08:46:33 就「刚更新完成」：更新包是前一天
+    跑队列时下载好的，启动即装、装完重启，旧版本那行日志根本没机会被
+    读到。文件里的版本号在启动**之前**读，就没有这个时机问题。
+    """
+    try:
+        data = json.loads((Path(maaend_dir) / "interface.json")
+                          .read_text(encoding="utf-8"))
+        return str(data.get("version") or "")
+    except (OSError, ValueError, TypeError, AttributeError):
+        return ""
 
 
 def _run_maaend(maaend_dir: Path, exe: Path, budget_s: float,
@@ -443,7 +470,7 @@ def _run_maaend(maaend_dir: Path, exe: Path, budget_s: float,
     updated_to = ""
     # 升级前的版本号。先从上一次启动的日志里兜个底，本次启动自己写的
     # 「当前版本: vX」一出现就覆盖掉它——那个才是准的。
-    old_ver = _maaend_version_in(before)
+    old_ver = _maaend_file_version(maaend_dir) or _maaend_version_in(before)
     settled = False
     # Poll quickly at first: measured on the machine, MaaEnd answers its own
     # update check about one second after launch when there is nothing to do
@@ -574,6 +601,22 @@ _MAA_PENDING_DIR = "NewVersion"
 _MAA_PENDING_GLOB = "MirrorChyanApp*.zip"
 
 
+_MAA_PENDING_VER = re.compile(r"MirrorChyanApp(v[\w.\-+]+)\.zip$", re.IGNORECASE)
+
+
+def _maa_pending_version(maa_dir: Path | None) -> str:
+    """已下载待装的那个包是哪个版本——从 MirrorChyan 包名读；读不到返回空串。"""
+    if not maa_dir:
+        return ""
+    try:
+        for p in Path(maa_dir).glob(_MAA_PENDING_GLOB):
+            if m := _MAA_PENDING_VER.search(p.name):
+                return m.group(1)
+    except OSError:
+        pass
+    return ""
+
+
 def maa_update_pending(maa_dir: Path | None) -> bool:
     """True when MAA has an update downloaded and waiting for a restart.
 
@@ -639,6 +682,7 @@ def run_maa(maa_dir: Path | None, budget_s: float = BUDGET_SECONDS,
         return ""
 
     staged_before = maa_update_pending(maa_dir)
+    before_ver = _maa_version(log_path)
     was = _maa_run_directly(Path(maa_dir), False)
     if was is None:
         _note(problems, "MAA 预更新：改不动配置，没有检查更新")
@@ -684,9 +728,11 @@ def run_maa(maa_dir: Path | None, budget_s: float = BUDGET_SECONDS,
         if was:
             _maa_run_directly(Path(maa_dir), True)   # put it back as we found it
     if applied:
-        return f"MAA {applied}"
+        # 装完后 MAA 重启，gui.log 末尾那行 Version 就是新版本号
+        return f"MAA 已更新：{_span(before_ver, _maa_version(log_path) or '新版本')}"
     if answered and not staged_before and maa_update_pending(maa_dir):
-        return "MAA 已下载新版，下轮启动时装上"
+        target = _maa_pending_version(maa_dir) or "新版本"
+        return f"MAA 有更新：{_span(before_ver, target)}（已下载，下轮启动时装上）"
     return ""
 
 
@@ -836,7 +882,7 @@ def run_automas(automas_dir: Path | None,
     except Exception:  # noqa: BLE001
         log.warning("预更新：AUTO-MAS 安装没能启动，本轮照旧", exc_info=True)
         return ""
-    return f"AUTO-MAS 已开始安装更新：{version} → {latest}"
+    return f"AUTO-MAS 有更新：{_span(version, latest)}（安装中，装完自动重启）"
 
 
 # OK-WW (鸣潮) is the fourth program and updates unlike any of the other three:
@@ -1027,7 +1073,7 @@ def run_okww(okww_dir: Path | None,
         # pre-update that leaves 鸣潮 running has not left the machine alone.
         _close(exe)
         _okww_quiesce()
-        return f"OK-WW 已更新：{before_version} → {settled}" if settled else ""
+        return f"OK-WW 已更新：{_span(before_version, settled)}" if settled else ""
     finally:
         _okww_autostart(root, was)
 

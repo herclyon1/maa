@@ -22,6 +22,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+
+from . import names
 import re
 import urllib.request
 import shutil
@@ -316,6 +318,7 @@ def _set_config(cmd: dict) -> tuple[bool, str]:
 
 def _run_now(queue: str) -> tuple[bool, str]:
     """立刻跑一趟队列。走 AUTO-MAS 的 dispatch 接口。"""
+    queue = names.canonical(queue)
     try:
         queues = _mas("/api/queue/get")["data"]
     except Exception as exc:  # noqa: BLE001
@@ -351,6 +354,7 @@ def _skip_today(queue: str, want_day: str = "") -> tuple[bool, str]:
     if want_day and want_day != day:
         return False, (f"skip_today 指定的是 {want_day}，今天已是 {day}——"
                        "指令在收件箱里过期了，未生效。需要就重新排一条")
+    queue = names.canonical(queue)
     marker = Path(os.environ.get("ARK_STATE_DIR", "./ark-state")) / f"skip-{day}.flag"
     marker.parent.mkdir(parents=True, exist_ok=True)
     # Atomic: an empty flag reads back as the default queue name, so a torn
@@ -383,9 +387,9 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
         if action == "toggle_task":
             return _toggle_task(str(cmd.get("name", "")), bool(cmd.get("on")))
         if action == "run_now":
-            return _run_now(str(cmd.get("queue") or "新队列"))
+            return _run_now(str(cmd.get("queue") or names.MORNING))
         if action == "skip_today":
-            return _skip_today(str(cmd.get("queue") or "新队列"),
+            return _skip_today(str(cmd.get("queue") or names.MORNING),
                                str(cmd.get("day") or "").strip())
         if action == "debug_mode":
             from .modes import set_debug  # noqa: PLC0415

@@ -80,8 +80,8 @@ def main(root: Path) -> int:
     check("带老版本号",
           preupdate._maaend_span("v2.26.0-beta.6", "v2.26.0-beta.7"),
           "v2.26.0-beta.6 → v2.26.0-beta.7")
-    check("老版本号没拿到就只报新版（不许编）",
-          preupdate._maaend_span("", "v2.26.0-beta.7"), "v2.26.0-beta.7")
+    check("老版本号没拿到要明说（不许编）",
+          preupdate._maaend_span("", "v2.26.0-beta.7"), "（旧版本没读到）→ v2.26.0-beta.7")
     check("同版本不写成 X → X", preupdate._maaend_span("v1", "v1"), "v1")
 
     vlog = root / "20260827-1.log"

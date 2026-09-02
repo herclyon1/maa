@@ -19,7 +19,7 @@ edited through JSON before this, so the point was to find out what that missed.
 |---|---|---|
 | MAA's own 定时执行 | 8 timers, **all disabled** | "定时执行保持关闭" |
 | `Default` profile `PostActions` | `ExitArknights, ExitSelf` | after-run behaviour is AUTO-MAS's to set |
-| Queue chaining | 新队列 09:00 -> MAA, MaaEnd, then OK-WW; Evening-MAA 21:30 -> MAA | queues run scripts in series |
+| Queue chaining | 早班 09:00 -> MAA, MaaEnd, then OK-WW; 晚班 21:30 -> MAA | queues run scripts in series |
 | `AfterAccomplish` | `NoAction` on both | the relay owns the power-off |
 | Account ID / password / Skland token | **all empty** | "若同区服仅有一个账号，也可将账号ID留空" - and an empty ID is what stops MAA attempting an account switch |
 | MaaEnd control | `EmulatorId`/`EmulatorIndex` = `-`, i.e. PC | "支持 PC 与模拟器控制（推荐 PC）" |
@@ -132,9 +132,9 @@ user has it true; this machine does.
 
 | Queue | Key | Value | Why |
 |---|---|---|---|
-| `新队列` | `AfterAccomplish` | `NoAction` | the **relay** powers off, after the report is delivered |
-| `新队列` | `StartUpEnabled` | `false` | see below |
-| `Evening-MAA` | `AfterAccomplish` | `NoAction` | same |
+| `早班` | `AfterAccomplish` | `NoAction` | the **relay** powers off, after the report is delivered |
+| `早班` | `StartUpEnabled` | `false` | see below |
+| `晚班` | `AfterAccomplish` | `NoAction` | same |
 
 <!-- check: json D:\ark\automas\config\QueueConfig.json */Info/AfterAccomplish NoAction -->
 <!-- check: json D:\ark\automas\config\QueueConfig.json */Info/StartUpEnabled False -->
@@ -142,9 +142,9 @@ user has it true; this machine does.
 
 `StartUpEnabled` means "run this queue whenever the program starts, regardless of
 the clock" - and booting looks identical morning and evening. Left on, the BIOS
-wake at 21:20 starts `新队列` again: Arknights farms a second time with no sanity
+wake at 21:20 starts `早班` again: Arknights farms a second time with no sanity
 left, and Endfield runs a pointless round that usually reports a false protocol
-space failure, followed by `Evening-MAA` at 21:30. With it off, both rounds are
+space failure, followed by `晚班` at 21:30. With it off, both rounds are
 purely time-triggered, with 15 min of slack in the morning and 10 in the evening.
 
 

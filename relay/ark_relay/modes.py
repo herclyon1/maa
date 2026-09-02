@@ -35,6 +35,8 @@ from pathlib import Path
 
 import os
 
+from . import names
+
 from .config import SERVER_TZ, atomic_write_text
 
 log = logging.getLogger("ark.modes")
@@ -285,7 +287,7 @@ def _maybe_engage(state_dir: Path, automas_dir: Path | None,
         return out
     if _marker(state_dir).exists():
         return out          # one skip at a time; the marker must resolve first
-    queue = flag.read_text(encoding="utf-8").strip() or "新队列"
+    queue = names.canonical(flag.read_text(encoding="utf-8").strip() or names.MORNING)
     if not automas_dir:
         return [*out, f"跳过「{queue}」失败：没有 AUTO-MAS 目录"]
 
@@ -325,7 +327,7 @@ def _maybe_restore(state_dir: Path, automas_dir: Path | None,
     try:
         info = json.loads(marker.read_text(encoding="utf-8"))
         day, last_time = str(info["day"]), str(info.get("last_time") or "23:59")
-        queue = str(info["queue"])
+        queue = names.canonical(str(info["queue"]))
         hh, mm = (int(x) for x in last_time.split(":"))
         occasion_end = (datetime.strptime(day, "%Y-%m-%d")
                         .replace(hour=hh, minute=mm, tzinfo=SERVER_TZ)

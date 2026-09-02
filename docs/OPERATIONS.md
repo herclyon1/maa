@@ -153,9 +153,9 @@ no timestamped log at all.
 |---|---|---|
 | 08:40 / 08:45 | smart plug cuts then restores power | Mi Home timer |
 | 08:46-08:47 | boot, auto-login, AUTO-MAS + relay start | BIOS "restore on AC", logon tasks |
-| 09:00 | queue `新队列`: MAA then MaaEnd, ~85 min | AUTO-MAS timer |
+| 09:00 | queue `早班`: MAA then MaaEnd, ~85 min | AUTO-MAS timer |
 | 21:20 | the machine powers on | BIOS RTC (`08-10 21:20:16 BOOT` in the event log) |
-| 21:30 | queue `Evening-MAA`: MAA only, ~45 min | AUTO-MAS timer |
+| 21:30 | queue `晚班`: MAA only, ~45 min | AUTO-MAS timer |
 | after the last queue | relay sends the report, then powers off | relay |
 
 The morning wake and the evening wake use different mechanisms: the plug cuts
@@ -517,7 +517,7 @@ forty minutes later, in the middle of an AUTO-MAS update.
 
 ```bash
 # server-time date in the filename, queue name in the body
-echo -n Evening-MAA > flag && scp flag $ARK_HOST:'C:/ProgramData/ark-relay/state/skip-2026-08-22.flag'
+echo -n 晚班 > flag && scp flag $ARK_HOST:'C:/ProgramData/ark-relay/state/skip-2026-08-22.flag'
 ```
 
 The first relay tick that sees the flag disables that queue in AUTO-MAS and
@@ -532,7 +532,7 @@ for tonight and then leaves it off for every night after. If it has already been
 done, drop a `skip-restore.json` in by hand to hand it back to the machinery:
 
 ```json
-{"queue": "Evening-MAA", "day": "2026-08-22", "last_time": "21:30"}
+{"queue": "晚班", "day": "2026-08-22", "last_time": "21:30"}
 ```
 
 **Known gap:** `queues.apply` writes `QueueConfig.json` without stopping

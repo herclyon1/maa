@@ -12,8 +12,8 @@
 |---|---|---|
 | 08:45 | 智能插座通电 | 主机上电开机 |
 | 开机后 | `ark-relay` 服务 | 预更新：依次拉起 MAA / MaaEnd / AUTO-MAS / OK-WW 检查更新，更新完把我们的四个补丁重新贴回去 |
-| 09:00 | AUTO-MAS 队列「新队列」 | 1. MAA → 2. MaaEnd → **3. OK-WW** |
-| 21:30 | AUTO-MAS 队列「Evening-MAA」 | 只有 MAA |
+| 09:00 | AUTO-MAS 队列「早班」 | 1. MAA → 2. MaaEnd → **3. OK-WW** |
+| 21:30 | AUTO-MAS 队列「晚班」 | 只有 MAA |
 
 OK-WW 在 AUTO-MAS 里的条目：`RootPath=D:\ark\okww`、`Game.WaitTime=60`、
 `RunTimesLimit=3`（失败最多重来 3 次）、`RunTimeLimit=120` 分钟。

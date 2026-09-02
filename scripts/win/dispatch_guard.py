@@ -14,7 +14,7 @@
 用法（经 winrun --py 在游戏机上跑）：
     dispatch_guard.py status
     dispatch_guard.py start MAA|MaaEnd|OK-WW
-    dispatch_guard.py start-queue 新队列        # 明知故犯才用
+    dispatch_guard.py start-queue 早班        # 明知故犯才用
     dispatch_guard.py stop                      # 停干净所有
 """
 import json

@@ -12,6 +12,8 @@ one file rather than remembering a UUID.
 from __future__ import annotations
 
 import json
+
+from . import names
 import logging
 import shutil
 from datetime import datetime
@@ -55,6 +57,7 @@ def describe(automas_dir: Path | None) -> list[str]:
 def apply(automas_dir: Path, name: str, enabled: bool | None = None,
           scripts: list[str] | None = None) -> tuple[bool, str]:
     """Enable/disable a queue and/or set which scripts it runs."""
+    name = names.canonical(name)
     path = _path(automas_dir)
     try:
         original = path.read_text(encoding="utf-8")

@@ -337,7 +337,7 @@ function wire() {
   // 于是 `s.at >= floor` 变成「数字 >= 事件对象」，永远为假——
   // 机器明明开着也判成关机。2026-08-31 我加 minAt 参数时就这么弄坏过一次。
   $("#refresh").onclick = () => ping();
-  const theQueue = () => (document.querySelector("#queue") || {}).value || "新队列";
+  const theQueue = () => (document.querySelector("#queue") || {}).value || "早班";
   $("#runnow").onclick = () => oneShot(
     { action:"run_now", confirmed:true, queue:theQueue() },
     `已让「${theQueue()}」现在开跑。机器关着时这条会等到下次开机才执行，` +
