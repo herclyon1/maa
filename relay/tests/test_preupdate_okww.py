@@ -78,7 +78,7 @@ def main(root: Path) -> int:
     # 而未变的版本文件被读成"无需更新"——那天 v3.6.5 已经发布十四小时。
     # 拿不到桌面就必须拒绝启动，并把这件事报上去。
     check("拒绝在 session 0 启动",
-          "_spawn_interactive(exe, root, require_console=True)" in src, True)
+          "_spawn_interactive(exe, root, require_console=True, minimized=True)" in src, True)
     check("拿不到控制台会话要上报",
           "拿不到控制台会话" in src, True)
     check("安静不等于没有更新",

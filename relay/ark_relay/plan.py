@@ -262,7 +262,11 @@ def _okww_plan_bits(automas_dir: Path | None,
                 continue
             if a == "Teleport and Farm 4C Echo" and weekly:
                 lvl = str(farm_cfg.get("Boss Level") or "")
-                rest.append("周本 战歌重奏" + (f"（{lvl} 级）" if lvl else ""))
+                idx = int(farm_cfg.get("Which Weekly Boss to Teleport") or 1)
+                done = _weekly_boss_done()
+                label = f"周本 战歌重奏 第 {idx} 个" + (f"（{lvl} 级）" if lvl else "")
+                # 用户 2026-09-02：「不是说都刷完了吗？」——本周已打满就明说明天不打
+                rest.append(label + ("，本周已打满，明天不打" if done else "，明天会打"))
             else:
                 rest.append(zh.get(str(a), str(a)))
         if rest:
@@ -273,6 +277,17 @@ def _okww_plan_bits(automas_dir: Path | None,
         # 没有附加任务就不写——「无附加任务」这一行不携带任何信息。
         return bits
     return []
+
+
+def _weekly_boss_done() -> bool:
+    """周本本周是否已打满——读中继自己的周本记账（weeklyboss 模块）。"""
+    try:
+        import os  # noqa: PLC0415
+        from .weeklyboss import WeeklyBoss  # noqa: PLC0415
+        state = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
+        return bool(WeeklyBoss(state / "weekly-boss.json", None).settings().get("本周已打"))
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _okww_quick_overrides(automas_dir: Path | None) -> dict | None:

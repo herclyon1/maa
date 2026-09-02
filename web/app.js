@@ -236,6 +236,7 @@ function render() {
       <button id="runnow">让它现在跑一趟</button>
       <button id="skiptoday">跳过它下一趟</button>
       <button class="wide" id="noshut">${relay["下次别关机"] ? "✕ 取消「下次跑完不关机」" : "下次跑完不关机"}</button>
+      <button class="wide danger" id="estop">🛑 停止一切脚本和游戏</button>
     </div>
     ${snap && snap.plan ? `<pre>${snap.plan.replace(/</g,"&lt;")}</pre>` : ""}
   </section>`;
@@ -352,6 +353,10 @@ function wire() {
         "下一次本该关机时会跳过（只跳这一次，再下一趟照常关）"));
   // 说明必须准：这条跳的是**机器执行它那一天**。机器关着时你现在按，
   // 它要等下次开机才执行，跳掉的就是那一天，不是今天。
+  $("#estop").onclick = () => {
+    if (!confirm("立刻停掉所有脚本和游戏？正在跑的这趟会作废。")) return;
+    oneShot({ action:"estop", confirmed:true }, "已下令停止一切，机器上几秒内生效");
+  };
   $("#skiptoday").onclick = () => oneShot(
     { action:"skip_today", queue:theQueue() },
     `「${theQueue()}」下一趟不跑了。机器开着＝跳今天这趟；` +

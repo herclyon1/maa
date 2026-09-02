@@ -610,6 +610,14 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             if action == "watch":
                 hb.watch()          # 页面打开了：这 10 分钟每 30 秒跳一次
                 return
+            if action == "estop":
+                # 红按钮：恰恰是脚本在跑的时候才按，不能被下面那道门拦住
+                from ark_relay import commands as _cmd  # noqa: PLC0415
+                ok, msg = _cmd.estop()
+                log.warning("🛑 红按钮：%s", msg)
+                notifier.send("🛑 已停一切", msg)
+                push_state("红按钮")
+                return
             if engine.scripts_running():
                 # 脚本在跑的时候改配置会被 AUTO-MAS 用内存里那份冲掉。
                 notifier.send("📱 手机指令暂缓",

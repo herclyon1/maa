@@ -498,12 +498,8 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
             remote = remote_ak_version(fetch)
             local = recorded_ak_version(cfg.state_dir)
             if remote and local and remote != local:
-                if budget_s >= 600:
-                    if n := update_arknights(cfg.state_dir, ld, idx, budget_s=budget_s - 60,
-                                             problems=problems, fetch=fetch):
-                        notes.append(n)
-                else:
-                    mark_pending(cfg.state_dir, "明日方舟", f"官方版本 {remote}，已装 {local}")
+                # 用户 2026-09-02：「你能保证 10 分钟之内更新完吗？」——不能。一律延后。
+                mark_pending(cfg.state_dir, "明日方舟", f"官方版本 {remote}，已装 {local}")
             elif remote and not local:
                 # 第一次：起模拟器记一次已装版本（约一分钟）
                 if n := update_arknights(cfg.state_dir, ld, idx, budget_s=min(budget_s, 300),

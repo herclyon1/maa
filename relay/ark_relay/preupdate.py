@@ -251,7 +251,8 @@ def _console_primary_token(session: int):
 
 def _spawn_interactive(exe: Path, cwd: Path,
                        args: tuple[str, ...] = (),
-                       *, require_console: bool = False) -> bool:
+                       *, require_console: bool = False,
+                       minimized: bool = False) -> bool:
     """Start a GUI program in the console session. True if it was launched.
 
     The relay is a LocalSystem service, so it runs in session 0, which has no
@@ -297,6 +298,11 @@ def _spawn_interactive(exe: Path, cwd: Path,
         startup = win32process.STARTUPINFO()
         # Without this the process has no window station and dies the same way.
         startup.lpDesktop = "winsta0\\default"
+        if minimized:
+            # 用户 2026-09-02：「检查更新的时候桌面我希望不要出现任何东西」。
+            # 启动时就让它最小化；不认这个标志的程序会照常弹窗（待实测）。
+            startup.dwFlags |= win32con.STARTF_USESHOWWINDOW
+            startup.wShowWindow = win32con.SW_SHOWMINNOACTIVE
         # CreateProcessAsUser wants the exe repeated as argv[0].
         cmd = subprocess.list2cmdline([str(exe), *args])
         handles = win32process.CreateProcessAsUser(
@@ -462,7 +468,7 @@ def _run_maaend(maaend_dir: Path, exe: Path, budget_s: float,
     before_name = before.name if before else ""
     deadline = time.monotonic() + budget_s
     # In the console session, not session 0 - see _spawn_interactive.
-    if not _spawn_interactive(exe, maaend_dir, _MAAEND_AUTOSTART):
+    if not _spawn_interactive(exe, maaend_dir, _MAAEND_AUTOSTART, minimized=True):
         return ""
     log.info("预更新：已启动 MaaEnd（--autostart，已清空自动执行实例），最多 %.0f 秒",
              budget_s)
@@ -692,7 +698,7 @@ def run_maa(maa_dir: Path | None, budget_s: float = BUDGET_SECONDS,
     answered = False
     try:
         # session 0 has no desktop; MAA's updater does not run there.
-        if not _spawn_interactive(exe, maa_dir, require_console=True):
+        if not _spawn_interactive(exe, maa_dir, require_console=True, minimized=True):
             log.warning("预更新：MAA 没能在控制台会话启动，本轮没有检查更新")
             _note(problems, "MAA 预更新：拿不到控制台会话，**没有检查更新**")
             return ""
@@ -1020,7 +1026,7 @@ def run_okww(okww_dir: Path | None,
     try:
         # session 0 has no desktop, and OK-WW's updater simply does not run
         # there - it returns a stale version file that reads as "no update".
-        if not _spawn_interactive(exe, root, require_console=True):
+        if not _spawn_interactive(exe, root, require_console=True, minimized=True):
             log.warning("预更新：OK-WW 没能在控制台会话启动，本轮没有检查更新")
             _note(problems, "OK-WW 预更新：拿不到控制台会话，**没有检查更新**"
                             "（不是「无需更新」）")
