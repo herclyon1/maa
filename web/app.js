@@ -559,6 +559,100 @@ async function doSave() {
 }
 
 /* ---------- 启动 ---------- */
+/* ---------- ToDesk 式在线状态 ----------
+   用户 2026-09-02：「和 ToDesk 一样，打开就是在线或离线，不用手动刷新，
+   不用轮询；手动刷新是兜底不是常规。」
+
+   页面打开：查一眼最近 90 秒有没有心跳（一次拉取），同时发一条「我在看」
+   (watch)，机器收到立刻跳一次、之后每 30 秒跳一次，持续 10 分钟（页面在
+   前台每 8 分钟续一次）。页面挂一条 SSE 实时收：心跳/状态一到翻开机，
+   收到 bye（优雅关机）秒翻关机，硬断电靠 90 秒没心跳翻过来。
+   updateLive 的定时器是本地计时，不碰网络——页面上没有轮询。
+
+   为什么机器不盲跳：ntfy.sh 每个 IP 每天 250 条，盲跳会把额度吃光。 */
+const HB_FRESH_MS = 90 * 1000;
+const WATCH_RENEW_MS = 8 * 60 * 1000;
+const CONFIRM_MS = 8 * 1000;
+let lastHb = 0;
+let liveES = null;
+let pendingUntil = 0;
+
+function updateLive() {
+  if (!cfg) return;
+  const alive = lastHb && (Date.now() - lastHb < HB_FRESH_MS);
+  if (alive) {
+    setStatus(`开机中 · 实时${snap ? `（配置是 ${ago(snap.at)}的）` : ""}`, "on");
+  } else if (Date.now() < pendingUntil) {
+    setStatus("正在确认是否在线…", "");
+  } else if (snap) {
+    setStatus(`关机中 · 最后状态 ${ago(snap.at)}前`, "off");
+  } else {
+    setStatus("关机中 · 还没有过状态", "off");
+  }
+}
+setInterval(updateLive, 5000);
+
+function askWatch() {
+  // 「我在看」：机器收到立刻跳一次。8 秒内没回应就按关机算。
+  if (!cfg || !cfg.topic || !cfg.pin) return;
+  if (!(lastHb && Date.now() - lastHb < HB_FRESH_MS)) pendingUntil = Date.now() + CONFIRM_MS;
+  updateLive();          // 马上显示「正在确认…」，别让旧的「关机中」多挂 5 秒
+  send({ action: "watch" }).catch(() => {});
+}
+setInterval(() => { if (!document.hidden) askWatch(); }, WATCH_RENEW_MS);
+
+async function probeHb() {
+  // 打开页面/回到前台时查一次心跳历史，有就立判开机
+  try {
+    const r = await fetch(`${NTFY}/${cfg.topic}-hb/json?poll=1&since=90s&_=${Date.now()}`,
+                          { cache: "no-store" });
+    let hb = 0, bye = 0;
+    for (const l of (await r.text()).split("\n")) {
+      if (!l.trim()) continue;
+      try {
+        const e = JSON.parse(l);
+        if (e.event !== "message") continue;
+        if (e.message === "bye") bye = Math.max(bye, e.time * 1000);
+        else hb = Math.max(hb, e.time * 1000);
+      } catch {}
+    }
+    lastHb = (bye >= hb) ? 0 : hb;
+  } catch {}
+}
+
+function startLive() {
+  if (liveES) { try { liveES.close(); } catch {} }
+  try {
+    liveES = new EventSource(`${NTFY}/${cfg.topic},${cfg.topic}-hb/sse?since=30s`);
+    liveES.onmessage = async (ev) => {
+      try {
+        const d = JSON.parse(ev.data);
+        if (d.event && d.event !== "message") return;
+        if (d.topic === cfg.topic + "-hb") {
+          if (d.message === "bye") { lastHb = 0; pendingUntil = 0; }
+          else lastHb = d.time * 1000;
+          updateLive();
+          return;
+        }
+        let m; try { m = JSON.parse(d.message); } catch { return; }
+        if (!m || m.kind !== "state" || m.pin !== cfg.pin) return;
+        const body = await unwrap(m);
+        if (!body) return;
+        if (!snap || body.at > snap.at) { snap = body; save_cache(); render(); }
+        lastHb = Math.max(lastHb, d.time * 1000);   // 状态包也是活着的证据
+        updateLive();
+      } catch {}
+    };
+  } catch {}
+}
+
+document.addEventListener("visibilitychange", async () => {
+  if (document.hidden || !cfg) return;
+  startLive();
+  await probeHb(); updateLive();
+  askWatch();
+});
+
 async function boot() {
   const raw = localStorage.getItem(LS);
   if (!raw) return setupScreen();
@@ -566,10 +660,16 @@ async function boot() {
   try { snap = JSON.parse(localStorage.getItem(LS + "-snap") || "null"); } catch { snap = null; }
   render();
   setStatus(snap ? `状态是 ${ago(snap.at)}的` : "正在读取…", "");
+  // 先挂流再问：心跳判定、「我在看」、最新配置并行——打开即知开关机
+  startLive();
+  probeHb().then(() => { updateLive(); askWatch(); });
   try {
     const s = await latestState();
-    if (s) { snap = s; save_cache(); render(); }
-    setStatus(snap ? `状态是 ${ago(snap.at)}的 · 按刷新看是否开机` : "还没有过状态", "");
+    if (s && (!snap || s.at > snap.at)) { snap = s; save_cache(); render(); }
+    updateLive();
+    if (!snap && pinScan.seen > 0 && pinScan.matched === 0) {
+      setStatus(`信箱里有 ${pinScan.seen} 条消息但 PIN 对不上——检查设置里的 PIN`, "off");
+    }
   } catch (e) {
     setStatus("读不到信箱：" + e.message, "off");
   }

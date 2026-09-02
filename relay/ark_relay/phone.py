@@ -28,6 +28,7 @@ import gzip
 import json
 import logging
 import re
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -91,6 +92,103 @@ def unpack(pin: str, raw: str, *, now: "float | None" = None) -> "dict | None":
             log.warning("信箱里那条消息解压失败，丢弃", exc_info=True)
             return None
     return msg
+
+
+# ---------- 心跳（ToDesk 式在线状态） ----------
+#
+# 用户 2026-09-02：「像 ToDesk 一样，打开就是在线或离线，不用手动刷新，
+# 能不能不用轮询实现？手动刷新作为兜底选项而不是经常行为。」
+#
+# 做法：页面打开时发一条「我在看」(watch)，机器在这 10 分钟租约内每 30 秒
+# 往 <topic>-hb 跳一次；没人看就一跳不跳。页面挂 SSE 实时收，心跳一到
+# 翻「开机」，收到 bye（服务优雅停止）秒翻「关机」，硬断电靠 90 秒超时。
+# 页面自己不轮询——只有一条长连接和本地计时。
+#
+# 为什么不能盲跳：ntfy.sh 匿名档**每个 IP 每天 250 条**（2026-09-02 查
+# /v1/account 证实）。60 秒盲跳一天 270 条，会把状态推送和指令应答一起
+# 挡在门外。所以：有人看才跳，且一天最多 HB_DAILY_CAP 跳，超过退到 5 分钟。
+
+HEARTBEAT_SEC = 30       # 有人看时的间隔
+WATCH_LEASE_SEC = 600    # 一条「我在看」管 10 分钟；页面在前台会续
+HB_DAILY_CAP = 150       # 一天最多这么多跳，给状态/指令留足额度
+HB_SLOW_SEC = 300        # 超过上限后的间隔
+
+
+class Heartbeat:
+    """有人看才跳。post 可注入，测试不碰网络。"""
+
+    def __init__(self, topic: str, state_dir: Path, post=None):
+        self.topic = (topic or "").strip()
+        self.url = f"{NTFY}/{self.topic}-hb"
+        self.state_dir = Path(state_dir)
+        self._lease = 0.0
+        self._kick = threading.Event()
+        self._post = post or self._http_post
+
+    def _http_post(self, payload: bytes, title: str) -> None:
+        req = urllib.request.Request(self.url, data=payload, method="POST",
+                                     headers={"User-Agent": _UA, "Title": title})
+        urllib.request.urlopen(req, timeout=10).read()
+
+    # -- 租约 --
+    def watch(self) -> None:
+        """页面说「我在看」：续 10 分钟，并立刻跳一次让它秒知道在线。"""
+        self._lease = time.time() + WATCH_LEASE_SEC
+        self._kick.set()
+
+    def watched(self) -> bool:
+        return time.time() < self._lease
+
+    # -- 当天计数（防吃光 ntfy 额度） --
+    def _count_file(self) -> Path:
+        return self.state_dir / f"hb-{time.strftime('%Y-%m-%d')}.txt"
+
+    def sent_today(self) -> int:
+        try:
+            return int(self._count_file().read_text(encoding="utf-8").strip() or 0)
+        except (OSError, ValueError):
+            return 0
+
+    def _bump(self) -> None:
+        try:
+            self.state_dir.mkdir(parents=True, exist_ok=True)
+            self._count_file().write_text(str(self.sent_today() + 1), encoding="utf-8")
+        except OSError:
+            pass
+
+    def interval(self) -> int:
+        return HEARTBEAT_SEC if self.sent_today() < HB_DAILY_CAP else HB_SLOW_SEC
+
+    def beat(self) -> bool:
+        try:
+            self._post(b"hb", "hb")
+        except Exception:  # noqa: BLE001 - 心跳失败本身就是信息，不告警
+            log.debug("心跳没发出去", exc_info=True)
+            return False
+        self._bump()
+        return True
+
+    def bye(self) -> None:
+        try:
+            self._post(b"bye", "bye")
+            log.info("📱 已发下线心跳（bye）")
+        except Exception:  # noqa: BLE001
+            pass
+
+    def loop(self, stop) -> None:
+        """后台线程主体。stop() 返回真就退出，退出前发 bye。"""
+        while not stop():
+            wait = 5
+            if self.watched():
+                self.beat()
+                wait = self.interval()
+            # 1 秒一片地等：停服务要能马上退出，watch() 到了要能马上跳
+            for _ in range(wait):
+                if stop() or self._kick.is_set():
+                    break
+                time.sleep(1)
+            self._kick.clear()
+        self.bye()
 
 
 class Mailbox:

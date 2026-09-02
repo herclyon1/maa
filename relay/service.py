@@ -570,11 +570,17 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             except Exception:  # noqa: BLE001 - 上报失败不许拖垮中继
                 log.warning("状态没能上报到手机（%s）", why, exc_info=True)
 
+        from ark_relay.phone import Heartbeat  # noqa: PLC0415
+        hb = Heartbeat(box.topic, cfg.state_dir)
+
         def run_phone_cmd(body: dict) -> None:
             """手机上按的一条。刷新只回状态；其余是真改配置，改完立刻通知。"""
             action = str((body or {}).get("action") or "")
             if action == "refresh":
                 push_state("手机请求")
+                return
+            if action == "watch":
+                hb.watch()          # 页面打开了：这 10 分钟每 30 秒跳一次
                 return
             if engine.scripts_running():
                 # 脚本在跑的时候改配置会被 AUTO-MAS 用内存里那份冲掉。
@@ -598,6 +604,13 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
                     lambda: win32event.WaitForSingleObject(self.stop_event, 0)
                     == win32event.WAIT_OBJECT_0),
                 name="phone-mailbox", daemon=True).start()
+            # ToDesk 式在线状态：页面说「我在看」才跳，停服务时发 bye。
+            # 页面靠它自动翻开机/关机，不用人手动刷新（用户 2026-09-02 要的）。
+            threading.Thread(
+                target=lambda: hb.loop(
+                    lambda: win32event.WaitForSingleObject(self.stop_event, 0)
+                    == win32event.WAIT_OBJECT_0),
+                name="phone-heartbeat", daemon=True).start()
 
         # 关机前最后拉一次待办 + 上报一次状态：人可能刚在手机上按了
         # 「今晚别关机」，而且手机上那份状态得停在机器关机那一刻的样子。
