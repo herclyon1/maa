@@ -215,10 +215,24 @@ function setupScreen() {
   };
 }
 
+let lastGoodConfig = null;
+try { lastGoodConfig = JSON.parse(localStorage.getItem(LS + "-config") || "null"); } catch {}
+
 function render() {
-  const c = (snap && snap.config) || {};
+  let c = (snap && snap.config) || {};
   const relay = (snap && snap.relay) || {};
   let html = "";
+  /* AUTO-MAS 没在运行时，中继读不到配置，快照里只有一条 _错误。
+     2026-09-02 晚：用户在机器上玩，AUTO-MAS 被关了，页面把空配置当成配置显示——
+     「一坨屎」。现在：明说读不到，配置区退回上一次读到的那份，并标明是旧的。 */
+  let cfgNote = "";
+  if (c._错误 || !Object.keys(c).length) {
+    cfgNote = `<div class="warn">⚠️ 读不到 AUTO-MAS 的配置（它没在运行？）${lastGoodConfig ? "——下面显示的是上次读到的，改了也要等它开着才生效" : ""}</div>`;
+    c = lastGoodConfig || {};
+  } else {
+    lastGoodConfig = c;
+    try { localStorage.setItem(LS + "-config", JSON.stringify(c)); } catch {}
+  }
 
   const qs = (snap && snap.queues) || [];
   const qopts = qs.map((q) => {
@@ -239,7 +253,7 @@ function render() {
       <button class="wide danger" id="estop">🛑 停止一切脚本和游戏</button>
     </div>
     ${snap && snap.plan ? `<pre>${snap.plan.replace(/</g,"&lt;")}</pre>` : ""}
-  </section>`;
+  </section>${cfgNote}`;
 
   for (const g of SCHEMA) {
     const cur = c[g.sec] || {};
