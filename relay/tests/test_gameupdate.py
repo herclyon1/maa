@@ -105,11 +105,11 @@ print("[开机只做便宜判断：不开启动器，只登记]")
 class Cfg: pass
 cfg = Cfg(); cfg.state_dir = ST; cfg.maa_dir = None; cfg.maaend_dir = None; cfg.okww_dir = None
 now = _dt(2026, 9, 2, 8, 46)
-notes, probs = gu.boot_check(cfg, budget_s=600, now=now, hint=lambda n: "官方公告：今天 09:00 版本更新")
+notes, probs = gu.boot_check(cfg, budget_s=600, now=now, maint_sources={}, hint=lambda n: "官方公告：今天 09:00 版本更新")
 check("公告有版本更新 → 登记终末地", gu.pending(ST), {"终末地": "官方公告：今天 09:00 版本更新"})
 check("开机不发更新通知", notes, [])
 gu.clear_pending(ST, "终末地")
-notes, probs = gu.boot_check(cfg, budget_s=600, now=now, hint=lambda n: "")
+notes, probs = gu.boot_check(cfg, budget_s=600, now=now, maint_sources={}, hint=lambda n: "")
 check("公告没说 → 不登记", gu.pending(ST), {})
 
 print("[队列跑完后：更新 + 只在当天没跑成时重跑]")
@@ -141,7 +141,7 @@ dispatched.clear()
 notes, probs, reran = gu.run_deferred(cfg, now=now, desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=nosleep)
 check("普通失败 → 不重跑", reran, [])
 check("登记清掉", gu.pending(ST), {})
-notes, probs = gu.boot_check(cfg, budget_s=600, now=now, hint=lambda n: "官方公告：今天 09:00 版本更新")
+notes, probs = gu.boot_check(cfg, budget_s=600, now=now, maint_sources={}, hint=lambda n: "官方公告：今天 09:00 版本更新")
 check("普通失败的日子开机仍会登记（由 needs_rerun 拦）", gu.pending(ST), {"终末地": "官方公告：今天 09:00 版本更新"})
 gu.clear_pending(ST, "终末地")
 (ST / "gameupdate-off.flag").write_text("", encoding="utf-8")
@@ -167,6 +167,30 @@ check("等不到窗口那种失败 → 重跑 OK-WW", reran, ["OK-WW"])
 gu.mark_pending(ST, "鸣潮", "x")
 notes, probs, reran = gu.run_deferred(cfg, now=now, desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: (True, "ok"), sleep=nosleep)
 check("普通失败 → 不重跑 OK-WW", reran, [])
+
+print("[维护日：窗口落盘、撞上算维护、队列后等开服再补跑]")
+from datetime import timedelta as _td
+w_start = _dt(2026, 9, 4, 6, 0, tzinfo=gu.SERVER_TZ); w_end = _dt(2026, 9, 4, 12, 0, tzinfo=gu.SERVER_TZ)
+gu.save_windows(ST, {"明日方舟": (w_start, w_end, "官方公告：09-04 06:00–12:00 停机维护")})
+check("09:00 的 MAA 撞上维护", bool(gu.in_maintenance(ST, "MAA", _dt(2026, 9, 4, 9, 0, tzinfo=gu.SERVER_TZ))), True)
+check("开服 45 分钟内仍算（客户端还没更新）", bool(gu.in_maintenance(ST, "MAA", _dt(2026, 9, 4, 12, 30, tzinfo=gu.SERVER_TZ))), True)
+check("下午就不算", gu.in_maintenance(ST, "MAA", _dt(2026, 9, 4, 15, 0, tzinfo=gu.SERVER_TZ)), "")
+check("别的游戏不受影响", gu.in_maintenance(ST, "MaaEnd", _dt(2026, 9, 4, 9, 0, tzinfo=gu.SERVER_TZ)), "")
+(ST / "ledger-2026-09-04.jsonl").write_text(json.dumps({"script": "MAA", "ok": False, "raw": {"maintenance": "官方公告"}}) + "\n", encoding="utf-8")
+check("撞上维护的失败 → 该补跑", gu.needs_rerun(ST, _dt(2026, 9, 4, 13, 0), "MAA"), True)
+cfg.maa_dir = None
+gu.mark_pending(ST, "明日方舟", "官方公告")
+slept = []
+notes, probs, reran = gu.run_deferred(cfg, now=_dt(2026, 9, 4, 13, 0, tzinfo=gu.SERVER_TZ), desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: (True, "ok"), sleep=lambda s: slept.append(s), clock=lambda: _dt(2026, 9, 4, 13, 0, tzinfo=gu.SERVER_TZ))
+check("窗口已过就不等", sum(slept), 0)
+slept.clear(); gu.mark_pending(ST, "明日方舟", "官方公告")
+ticks = [_dt(2026, 9, 4, 11, 58, tzinfo=gu.SERVER_TZ)]
+def clk():
+    ticks.append(ticks[-1] + _td(minutes=1)); return ticks[-1]
+gu.run_deferred(cfg, now=_dt(2026, 9, 4, 11, 58, tzinfo=gu.SERVER_TZ), desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: (True, "ok"), sleep=lambda s: slept.append(s), clock=clk)
+check("还在停服就一分钟一分钟等到开服，再缓 5 分钟", (slept.count(60) >= 1, 300 in slept), (True, True))
+gu.save_windows(ST, {})
+gu.clear_pending(ST, "明日方舟")
 
 print("[每次开机只跑一遍]")
 from datetime import datetime

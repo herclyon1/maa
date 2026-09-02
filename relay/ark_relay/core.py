@@ -323,7 +323,7 @@ def episode_kinds(entries: list[dict]) -> dict[str, str]:
         streak: list[dict] = []
         for e in es:
             raw = e.get("raw") or {}
-            if not e.get("ok") and raw.get("maaend_unreachable"):
+            if not e.get("ok") and (raw.get("maaend_unreachable") or raw.get("okww_unreachable") or raw.get("maintenance")):
                 kinds[e["run_id"]] = "maintenance"
             if e.get("ok"):
                 if any(x.get("transitional") for x in streak):
@@ -480,7 +480,7 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
     if failed:
         head = f"{len(failed)} 项失败 ⚠️"
     elif "maintenance" in kinds.values():
-        head = "终末地维护跳过，其余全绿 ✅"
+        head = "维护日跳过，其余全绿 ✅"
     else:
         head = "全绿 ✅"
     title = f"📋 {day[5:]} · {head}"

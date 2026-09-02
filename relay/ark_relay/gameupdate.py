@@ -435,7 +435,8 @@ def needs_rerun(state_dir: Path, now: datetime, script: str) -> bool:
             last = e
     if last is None or last.get("ok"):
         return False
-    return bool((last.get("raw") or {}).get(_UNREACHABLE_FLAG.get(script, "")))
+    raw = last.get("raw") or {}
+    return bool(raw.get(_UNREACHABLE_FLAG.get(script, "")) or raw.get("maintenance"))
 
 
 def off(state_dir: Path) -> bool:
@@ -478,7 +479,7 @@ def wuwa_update_day(now: datetime, fetch=None) -> str:
 # ─────────────────────────── 开机：只做便宜的判断 ───────────────────────────
 
 def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
-               hint=None, fetch=None, wuwa_fetch=None) -> tuple[list[str], list[str]]:
+               hint=None, fetch=None, wuwa_fetch=None, maint_sources=None) -> tuple[list[str], list[str]]:
     """开机窗口里做的事：一个 HTTP 读方舟版本号、一个 HTTP 读终末地公告。
 
     方舟版本不同：窗口够（≥10 分钟）就当场装，不够就登记；
@@ -522,13 +523,58 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
     w = wuwa_update_day(n0, fetch=None if wuwa_fetch is None else wuwa_fetch)
     if w and last_run_ok(cfg.state_dir, now, "OK-WW") is not True:
         mark_pending(cfg.state_dir, "鸣潮", w)
+    # 三家官方停服维护公告（maintenance.py）：今天在维护的游戏，把窗口落盘并登记。
+    # 用户 2026-09-02 定的：维护中不算失败；队列跑完后等到开服，更新，补跑，再关机。
+    try:
+        from . import maintenance  # noqa: PLC0415
+        wins = maintenance.today(now, sources=maint_sources) if maint_sources is not None else maintenance.today(now)
+    except Exception:  # noqa: BLE001
+        wins = {}
+    save_windows(cfg.state_dir, wins)
+    for game, (start, end, why) in wins.items():
+        if last_run_ok(cfg.state_dir, now, maintenance.SCRIPT_OF[game]) is not True:
+            mark_pending(cfg.state_dir, game, why)
     return notes, problems
+
+
+def _windows_path(state_dir: Path) -> Path:
+    return Path(state_dir) / "maintenance-today.json"
+
+
+def save_windows(state_dir: Path, wins: dict) -> None:
+    atomic_write_text(_windows_path(state_dir), json.dumps(
+        {g: {"start": w[0].isoformat(), "end": w[1].isoformat(), "why": w[2]} for g, w in wins.items()},
+        ensure_ascii=False))
+
+
+def windows(state_dir: Path) -> dict[str, tuple[datetime, datetime, str]]:
+    try:
+        d = json.loads(_windows_path(state_dir).read_text(encoding="utf-8"))
+        return {g: (datetime.fromisoformat(v["start"]), datetime.fromisoformat(v["end"]), str(v.get("why") or ""))
+                for g, v in d.items()}
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+
+
+def in_maintenance(state_dir: Path, script: str, at: datetime) -> str:
+    """这个脚本在这一刻是不是撞上了官方停服维护（开服后再宽限 45 分钟给客户端更新）。
+    返回依据句；不是返回空串。"""
+    from . import maintenance  # noqa: PLC0415
+    from datetime import timedelta  # noqa: PLC0415
+    game = next((g for g, s in maintenance.SCRIPT_OF.items() if s == script), "")
+    w = windows(state_dir).get(game)
+    if not w:
+        return ""
+    start, end, why = w
+    if start - timedelta(minutes=30) <= at.astimezone(start.tzinfo) <= end + timedelta(minutes=45):
+        return why
+    return ""
 
 
 # ─────────────────────────── 队列跑完之后：更新 + 重跑 ───────────────────────────
 
 def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = None,
-                 dispatch=None, sleep=time.sleep) -> tuple[list[str], list[str], list[str]]:
+                 dispatch=None, sleep=time.sleep, clock=None) -> tuple[list[str], list[str], list[str]]:
     """把登记过的都做掉。返回 (更新通知, 问题, 重跑了哪些脚本)。
 
     dispatch(脚本名) → (ok, msg)：单独派发一个脚本（不是整条队列）。
@@ -542,6 +588,20 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
     if not todo or off(cfg.state_dir):
         return notes, problems, reran
     desk = desk or Desktop(cfg.state_dir)
+    # 官方公告说还在停服就等，一直等到开服（用户 2026-09-02：「如果游戏还在停服，
+    # 那就等，一直等到游戏开服为止，然后跑完再关机」）。最多等 8 小时。
+    wins = windows(cfg.state_dir)
+    ends = [w[1] for g, w in wins.items() if g in todo]
+    if ends:
+        until = max(ends)
+        waited = 0
+        clock = clock or (lambda: datetime.now(tz=SERVER_TZ))
+        while clock() < until and waited < 8 * 3600:
+            if waited == 0:
+                log.info("游戏更新：官方还在停服维护，等到 %s 开服再动", until.strftime("%m-%d %H:%M"))
+            sleep(60); waited += 60
+        if waited:
+            sleep(300)      # 开服后再缓 5 分钟，启动器那边的更新包才挂得上
 
     def rerun(script: str) -> None:
         if needs_rerun(cfg.state_dir, now, script) and dispatch is not None:

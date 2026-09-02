@@ -184,21 +184,44 @@ def upcoming(debut: "list[tuple[str, str]]", live: "set[str]"
     return debut[idx + 1:] if idx is not None else []
 
 
+_EF_ANY_POOL = re.compile(r"「([^」]+)」(特许寻访|重构寻访#?\d*)")
+_EF_OPEN = re.compile(r"开放时间[：:]\s*(\d{4})/(\d{1,2})/(\d{1,2})\s*(\d{1,2}):(\d{2})")
+
+
 def parse_endfield_notice(html: str) -> "list[tuple[str, str]]":
-    """从版本更新说明取 (干员, 池名)，按公告里的先后顺序。"""
-    txt = re.sub(r"<[^>]+>", "", html or "").replace("&nbsp;", " ")
+    """从版本更新说明取 (干员, 池名)，按公告里的先后顺序。只要 6 星首发。"""
+    return [(n, pool) for n, pool, _, debut in endfield_pools_from_notice(html) if debut]
+
+
+def endfield_pools_from_notice(html: str) -> "list[tuple[str, str, datetime | None, bool]]":
+    """公告里每一期 6 星 UP 池：(干员, 池名, 开放时刻或 None, 是否首发)。
+
+    用户 2026-09-03：「不要光顾着删卡池，你要补充预期卡池的角色」。
+    2026-09-02 的公告：「冬猎」提弗洛斯（首发，版本更新后开）；
+    「绚丽异彩」重构寻访#1 伊冯（复刻，2026/09/24 12:00 开）。
+    """
+    txt = re.sub(r"<[^>]+>", " ", html or "").replace("&nbsp;", " ")
+    txt = re.sub(r"\s+", " ", txt)
     seg = _EF_DEBUT_SEG.search(txt)
-    if not seg:
-        return []
-    debut = [n for grp in _EF_SIX.findall(seg.group(1)) for n in _EF_BRACKET.findall(grp)]
-    # 每个「X」特许寻访 到下一个之间的那段里，写着这一池 UP 的是谁
-    hits = list(_EF_POOL.finditer(txt))
-    pool_of: dict[str, str] = {}
+    debut = set(n for grp in _EF_SIX.findall(seg.group(1)) for n in _EF_BRACKET.findall(grp)) if seg else set()
+    hits = list(_EF_ANY_POOL.finditer(txt))
+    out: list[tuple[str, str, "datetime | None", bool]] = []
+    seen: set[tuple[str, str]] = set()
     for k, m in enumerate(hits):
         tail = txt[m.end():hits[k + 1].start() if k + 1 < len(hits) else len(txt)]
-        if up := _EF_UP.search(tail):
-            pool_of.setdefault(up.group(1), m.group(1))
-    return [(n, pool_of.get(n, "")) for n in debut]
+        up = _EF_UP.search(tail)
+        if not up:
+            continue
+        name, pool = up.group(1), m.group(1)
+        if (name, pool) in seen:
+            continue
+        seen.add((name, pool))
+        when = None
+        if t := _EF_OPEN.search(tail):
+            y, mo, d, hh, mm = (int(x) for x in t.groups())
+            when = datetime(y, mo, d, hh, mm)
+        out.append((name, pool, when, name in debut))
+    return out
 
 
 # ── 鸣潮：库街区 wiki 首页（免 token）──────────────────────────
@@ -442,6 +465,47 @@ def six_star_only(b: Banner, fetch=None) -> Banner:
     return Banner(b.game, b.name, keep, b.start, b.end)
 
 
+_AK_NEWS = "https://ak.hypergryph.com/news"
+_AK_NEWS_ITEM = re.compile(r'\\"cid\\":\\"(\d+)\\",\\"tab\\":\\"\w+\\",\\"sticky\\":(?:true|false),\\"title\\":\\"([^"\\]+)\\",\\"author\\":\\"[^"\\]*\\",\\"displayTime\\":(\d+)')
+_AK_SIX_LINE = re.compile(r"★{6}[：:]\s*([^（(★]+)")
+_AK_SPAN = re.compile(r"(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})\s*[-~～]\s*(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})")
+
+
+def _ak_article_text(raw: str) -> str:
+    """官网文章是 Next.js 渲染，正文在 JSON 字符串里、HTML 被转义两层。"""
+    body = raw.encode("utf-8").decode("unicode_escape", errors="ignore").encode("latin-1", errors="ignore").decode("utf-8", errors="ignore")
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", body))
+
+
+def arknights_next_from_news(now: datetime, get=None) -> "tuple[datetime, str] | None":
+    """官网最新一条「…寻访即将开启」：(开启时刻, 六星「池名」)。没有/已开就 None。
+
+    用户 2026-09-03：「明日方舟官方早都公布角色了，中继完全没跟进」。
+    实录 08-29 公告 1457：【石白深蓝之夜】限时寻访 09月04日 12:00 - 09月18日 03:59，
+    ★★★★★★：结城理（占6★出率的50%）。年份公告里没有，按「离现在最近」补。
+    """
+    get = get or (lambda u: _text(u, _UA_BROWSER))
+    page = get(_AK_NEWS)
+    seen = set()
+    for cid, title, _ts in _AK_NEWS_ITEM.findall(page):
+        if cid in seen or "寻访" not in title or "开启" not in title:
+            continue
+        seen.add(cid)
+        body = _ak_article_text(get(f"{_AK_NEWS}/{cid}"))
+        m6 = _AK_SIX_LINE.search(body)
+        six = [x.strip() for x in re.split(r"[/、]", m6.group(1))] if m6 else []
+        sp = _AK_SPAN.search(body)
+        if not six or not sp:
+            continue
+        mo, d, hh, mm = (int(x) for x in sp.groups()[:4])
+        year = now.year + (1 if mo < now.month - 6 else 0)
+        start = datetime(year, mo, d, hh, mm)
+        pool = re.search(r"【([^】]+)】", title)
+        who = "、".join(x for x in six if x) + (f"「{pool.group(1)}」" if pool else "")
+        return (start, who) if start > now else None
+    return None
+
+
 def _arknights(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | None]":
     """PRTS 两页合起来判首发。下一期时间 PRTS 不给，返回 None 由调用方补。"""
     rows: list[Banner] = []
@@ -457,6 +521,12 @@ def _arknights(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | Non
     # 只对在开的那几个查稀有度（历史几十条不查），六星才报
     debut = [six_star_only(b) if b.start <= now <= b.end else b for b in debut]
     debut = [b for b in debut if b.chars]
+    # 官网「寻访即将开启」公告最准：有名有时刻。有就用它。
+    try:
+        if official := arknights_next_from_news(now):
+            return debut, official
+    except Exception:  # noqa: BLE001
+        log.warning("方舟官网寻访公告取不到", exc_info=True)
     if when := min((b.start for b in rows if b.start > now), default=None):
         return debut, (when, "")      # PRTS 已经收录了，时间准，人未知
     try:
@@ -492,6 +562,7 @@ def _endfield(cred, sk_get, now: datetime
     end = min((b.end for b in live), default=None)
 
     # 官方公告：这一版有哪些新干员、各在哪个池
+    html = ""
     debut: "list[tuple[str, str]]" = []
     notice_ok = True
     try:
@@ -511,8 +582,16 @@ def _endfield(cred, sk_get, now: datetime
     if not end or end <= now:
         return got, None
 
-    # 下一期优先用官方公告里「已经公布但还没开」的那位
+    # 下一期优先用官方公告：开放时刻在未来的那一期（复刻也报，标「复刻」）
     on = {c for b in live for c in b.chars}
+    try:
+        pools = endfield_pools_from_notice(html) if notice_ok else []
+    except Exception:  # noqa: BLE001
+        pools = []
+    future = [(n, p, w, d) for n, p, w, d in pools if w and w > now and n not in on]
+    if future:
+        n, p, w, d = min(future, key=lambda x: x[2])
+        return got, (w, f"{n}「{p}」" + ("" if d else "（复刻）"))
     rest = upcoming(debut, on)
     if rest:
         return got, (end, "、".join(f"{w}「{p}」" if p else w for w, p in rest))

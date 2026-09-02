@@ -379,8 +379,11 @@ class Engine:
         def work() -> None:
             from . import commands  # noqa: PLC0415
             try:
+                def _dispatch(name: str):
+                    self._gu_rerun_at = datetime.now(tz=SERVER_TZ)
+                    return commands.run_script(name)
                 notes, problems, reran = gameupdate.run_deferred(
-                    self.cfg, now=now, dispatch=commands.run_script)
+                    self.cfg, now=now, dispatch=_dispatch)
                 for n in notes:
                     self.notifier.send("🆕 游戏更新", n)
                 if reran:
@@ -435,6 +438,11 @@ class Engine:
         if rec.script == "OK-WW" and not rec.ok and (rec.raw or {}).get("okww_unreachable"):
             from . import gameupdate  # noqa: PLC0415
             gameupdate.mark_pending(self.cfg.state_dir, "鸣潮", "今天 OK-WW 等不到游戏窗口（客户端待更新）")
+        if not rec.ok:
+            # 撞上官方停服维护的失败：标上，日报画 ⏸、不报警，队列后等开服再补跑
+            from . import gameupdate  # noqa: PLC0415
+            if why := gameupdate.in_maintenance(self.cfg.state_dir, rec.script, rec.started):
+                rec.raw["maintenance"] = why
 
     def _verify_outcome(self, rec: RunRecord) -> str | None:
         """按证据核对这一轮到底干成了什么；全干成返回 None。
@@ -796,21 +804,21 @@ class Engine:
             # 终末地根本没进游戏（服务器维护／客户端待更新）：不是要人处理的
             # 故障。当天只发一条说明，不拉警报。用户 2026-09-02：「检测到
             # 服务器在维护时候就跳过，不报警」。
-            if rec.script == "MaaEnd" and (rec.raw or {}).get("maaend_unreachable"):
-                mkey = "维护|MaaEnd"
+            maint = (rec.raw or {}).get("maintenance")
+            if maint or (rec.script == "MaaEnd" and (rec.raw or {}).get("maaend_unreachable")):
+                mkey = f"维护|{rec.script}"
                 if not self._already_alerted(day, mkey):
-                    hint = efstatus.update_hint()
-                    body = (f"MaaEnd 连试 {attempts} 次都停在登录界面：每个任务 20 秒内"
-                            "失败、一个没完成，这是没进游戏的形状，不是配置问题。"
-                            "多半是服务器维护或客户端待更新。今天不再报警，明早照常。"
+                    hint = maint or efstatus.update_hint()
+                    body = (f"{rec.script} 连试 {attempts} 次都没进游戏（{'官方停服维护中' if maint else '每个任务 20 秒内失败、一个没完成'}），"
+                            "不是配置问题。队列跑完后中继会等开服、更新客户端、再单独补跑它。"
                             + (f"\n{hint}" if hint else ""))
-                    if self.notifier.send("⏸ 终末地进不了游戏，今天跳过", body):
+                    if self.notifier.send(f"⏸ {rec.script} 进不了游戏，稍后补跑", body):
                         return  # 发不出去就下个 tick 再来
                     self._mark_alerted(day, mkey)
                 self._pending.pop((rec.script, rec.user), None)
                 self._persist_pending()
                 self.log_tails.pop(rec.run_id, None)
-                log.info("⏸ MaaEnd 进不了游戏（尝试 %d 次），按维护跳过，不报警", attempts)
+                log.info("⏸ %s 进不了游戏（尝试 %d 次），按维护处理，不报警", rec.script, attempts)
                 continue
             key = self._alert_key(rec)
             if self._already_alerted(day, key):
@@ -1128,6 +1136,10 @@ class Engine:
         except (KeyError, ValueError):
             return False
         newest = max(starts)
+        # 队列后由中继自己派发的补跑不是「人手动跑的」，跑完该关机
+        since = getattr(self, "_gu_rerun_at", None)
+        if since is not None and newest >= since:
+            return False
         group = [e for e, t in zip(entries, starts)
                  if newest - t <= timedelta(hours=2)]
         return self._round_is_manual(group)

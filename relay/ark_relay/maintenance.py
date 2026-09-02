@@ -117,7 +117,7 @@ def today(now: datetime | None = None, sources=None) -> dict[str, Window]:
     """今天有停服维护的游戏 → 窗口。每家一次网络请求，失败就当没有。"""
     now = now or datetime.now(tz=SERVER_TZ)
     out: dict[str, Window] = {}
-    for game, fn in (sources or SOURCES).items():
+    for game, fn in (sources if sources is not None else SOURCES).items():
         try:
             w = fn(now)
         except Exception:  # noqa: BLE001 - 公告取不到不是事故
