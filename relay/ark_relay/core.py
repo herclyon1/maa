@@ -340,17 +340,15 @@ _KIND_NOTE = {"update": "游戏更新后重跑，不算失败",
               "maintenance": "进不了游戏（服务器维护／客户端待更新），今天跳过"}
 
 
-# ── 三个游戏一个版式 ──────────────────────────────────────────
-# 用户 2026-09-02：「中继的每日通知要统一格式，现在三个游戏花样百出，
-# 视觉上要看起来一样。」原来 MAA 写「刷了/消耗理智/产出/公招/剩余理智」，
-# 鸣潮写「进本/剩余波片/残象聚落/任务」，终末地写「完成 N 项/协议空间」——
-# 每家一套。现在每家都是同样五行、同样顺序、同样标签，没有的写「—」：
-#   · 做了　  这一趟干了什么（刷的关卡×次数 / 进本次数+任务 / 日常清单）
-#   · 消耗　  花掉的资源（理智、吃药 / 协议空间次数）；鸣潮的消耗读数被
-#             证伪过，宁可「—」也不写错的（2026-08-29 用户原话见 git 历史）
-#   · 产出　  掉落
-#   · 剩余　  体力余量与回满时刻
-#   · 备注　  公招、残象聚落、提前收工的原因……其余一切
+# ── 三个游戏一个版式：以 MAA 为样板 ─────────────────────────
+# 用户 2026-09-02：「模范生就是 MAA，你要青出于蓝而胜于蓝」。五行的**语义**：
+#   做了　刷（什么）×次数
+#   消耗　理智 N，吃药 N（鸣潮：波片 N，备用体力 N；终末地：理智 N，加强剂 N）
+#   产出　这次刷本的掉落（鸣潮不读奖励界面，只能说类别）
+#   剩余　理智 N/上限，回满时刻
+#   备注　额外任务：公招、残像聚落、日常清单、自动采集……
+# 没有的写「—」。三家字段都来自 collector 的解析器，MaaEnd/OK-WW 自己不产
+# 这些数，是我们从它们的日志里算出来的。
 _LABELS = ("做了", "消耗", "产出", "剩余", "备注")
 
 
@@ -359,80 +357,95 @@ def _row(label: str, parts: list[str]) -> str:
 
 
 def _block(e: dict, finished: datetime) -> list[str]:
-    """一趟成功记录的五行。字段来源见 collector.py 三个解析器。"""
     raw = e.get("raw") or {}
+    script = e.get("script")
     did: list[str] = []
     cost: list[str] = []
     out: list[str] = []
     left: list[str] = []
     notes: list[str] = []
 
-    # 做了
-    if stages := raw.get("stages"):
-        farmed = "、".join(stages)
-        if times := raw.get("run_times"):
-            farmed += f" ×{times}"
-        did.append("刷 " + farmed)
-    if runs := raw.get("okww_runs"):
-        did.append(f"进本 {runs} 次")
-    if steps := raw.get("okww_steps"):
-        did.append("任务 " + "、".join(steps))      # 里面可能有「未进本」，不写"完成"
-    if done := raw.get("tasks_done"):
-        # 用户 2026-08-29：数字标号 + 任务名，看得出做了什么、漏了什么
-        did.append(f"日常 {len(done)} 项：" + "、".join(f"{i}.{n}" for i, n in enumerate(done, 1)))
+    if script == "MAA":
+        if stages := raw.get("stages"):
+            did.append("刷 " + "、".join(stages) + (f" ×{t}" if (t := raw.get("run_times")) else ""))
+        if raw.get("sanity_spent") or raw.get("medicine_used"):
+            cost.append(f"理智 {raw.get('sanity_spent') or 0}，吃药 {raw.get('medicine_used') or 0}")
+        if drops := _fmt_items(e.get("drops") or {}):
+            out.append(drops)
+        if e.get("sanity") is not None:
+            s = f"理智 {e['sanity']}"
+            if full := _sanity_full(e.get("sanity_full_at"), finished):
+                s += "，" + full
+            left.append(s)
+        if recruits := _fmt_items(e.get("recruits") or {}):
+            notes.append("公招 " + recruits)
 
-    # 消耗
-    if spent := raw.get("sanity_spent"):
-        c = f"理智 {spent}"
-        if med := raw.get("medicine_used"):
-            c += f"，吃药 {med}"
-        cost.append(c)
-    if runs := raw.get("protocol_runs"):
-        c = f"协议空间 {runs} 次"
-        if raw.get("sanity_exhausted"):
-            c += "，理智不足以再开一次"
-        cost.append(c)
-    elif raw.get("sanity_exhausted"):
-        cost.append("理智不足，未进入协议空间")
+    elif script == "OK-WW":
+        runs = raw.get("okww_runs") or 0
+        farm = raw.get("okww_farm") or "模拟领域"
+        if runs:
+            did.append(f"刷 {farm} ×{runs}")
+        if raw.get("okww_stamina_spent") or raw.get("okww_backup_spent"):
+            cost.append(f"波片 {raw.get('okww_stamina_spent') or 0}，"
+                        f"备用体力 {raw.get('okww_backup_spent') or 0}")
+        if runs:
+            out.append(f"{raw.get('okww_farm_reward') or '副本奖励'}（{runs} 局，游戏未显示数量）")
+        wl = raw.get("okww_stamina_left")
+        if wl is not None:
+            s = f"波片 {wl}/240"
+            if not (raw.get("okww_stamina_left_exact") or raw.get("okww_stopped")):
+                s += "　※最后一次读数"
+            if full := _sanity_full(raw.get("sanity_full_at"), finished):
+                s += "，" + full
+            left.append(s)
+        for step in raw.get("okww_steps") or []:
+            # 刷本那一项已经在「做了」里，这里只留额外任务
+            if any(k in step for k in ("模拟领域", "凝素领域", "无音区")):
+                continue
+            notes.append(step)
+        if raw.get("okww_nest_full") and not any("残象聚落" in n or "残像聚落" in n for n in notes):
+            notes.append("残象聚落（已刷满）")
+        if raw.get("okww_daily_done_at_start"):
+            notes.append("今日日常此前已完成，本轮仅领奖")
 
-    # 产出
-    if drops := _fmt_items(e.get("drops") or {}):
-        out.append(drops)
-
-    # 剩余
-    if e.get("sanity") is not None:
-        s = f"理智 {e['sanity']}"
-        if cap := raw.get("sanity_cap"):
-            s += f"/{cap}"
-            if e["sanity"] > cap:
-                s += "　⚠️ 已超上限，理智在溢出"
-        if full := _sanity_full(e.get("sanity_full_at"), finished):
-            s += "，" + full
-        left.append(s)
-    wl = raw.get("okww_stamina_left")
-    if wl is not None:
-        back = raw.get("okww_backup_stamina")
-        s = f"波片 {wl}/240" + (f"，备用 {back}" if back is not None else "")
-        if not (raw.get("okww_stamina_left_exact") or raw.get("okww_stopped")):
-            s += "　※最后一次读数，未必是结束余量"
-        if full := _sanity_full(raw.get("sanity_full_at"), finished):
-            s += "，" + full
-        left.append(s)
-
-    # 备注
-    if recruits := _fmt_items(e.get("recruits") or {}):
-        notes.append("公招 " + recruits)
-    if raw.get("okww_nest_full"):
-        notes.append("残象聚落 落渊南丘 已刷满")
-    elif nest := raw.get("okww_nest"):
-        notes.append(f"残象聚落 落渊南丘 {nest}　※OCR 读数，可能吞掉前导数字")
-    if raw.get("okww_daily_done_at_start"):
-        notes.append("今日日常此前已完成，本轮仅领奖")
-    if stopped := raw.get("okww_stopped"):
-        notes.append(str(stopped))
+    elif script == "MaaEnd":
+        farm = raw.get("maaend_farm")
+        runs = raw.get("maaend_farm_runs") or raw.get("protocol_runs") or 0
+        if farm:
+            place = raw.get("maaend_farm_place")
+            did.append(f"刷 {farm}" + (f"·{place}" if place else "") + f" ×{runs}")
+        if raw.get("maaend_sanity_spent") or raw.get("maaend_medicine"):
+            cost.append(f"理智 {raw.get('maaend_sanity_spent') or 0}，"
+                        f"加强剂 {raw.get('maaend_medicine') or 0}")
+        elif farm and raw.get("sanity_exhausted"):
+            cost.append("理智不足，一次没开成")
+        if drops := _fmt_items(raw.get("maaend_farm_drops") or {}):
+            out.append(drops)
+        if e.get("sanity") is not None:
+            s = f"理智 {e['sanity']}"
+            if cap := raw.get("sanity_cap"):
+                s += f"/{cap}"
+                if e["sanity"] > cap:
+                    s += "　⚠️ 已超上限，理智在溢出"
+            if full := _sanity_full(e.get("sanity_full_at"), finished):
+                s += "，" + full
+            left.append(s)
+        done = [t for t in (raw.get("tasks_done") or []) if not any(k in t for k in _END_FARM_NOTE_SKIP)]
+        failed = raw.get("tasks_failed") or []
+        if done or failed:
+            # 用户 2026-08-29：要看得出做了什么、漏了什么，所以列名单
+            n = f"日常 {len(done)} 项：" + "、".join(done) if done else "日常 0 项"
+            if failed:
+                n += "；失败 " + "、".join(failed)
+            notes.append(n)
+        if routes := raw.get("maaend_collect_routes"):
+            notes.append(f"自动采集 {routes} 条路线")
 
     return [_row(l, v) for l, v in zip(_LABELS, (did, cost, out, left, notes))]
 
+
+# 「做了」里已经写了刷本，日常清单里就不再重复它，也不算「结束进程」那种收尾
+_END_FARM_NOTE_SKIP = ("基质刷取", "协议空间", "结束进程")
 
 def format_daily(day: str, entries: list[dict], prose: str = "",
                  plan: str = "") -> tuple[str, str]:

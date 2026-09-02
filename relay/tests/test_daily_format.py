@@ -1,16 +1,22 @@
-"""日报三家一个版式（用户 2026-09-02：「视觉上要看起来一样」）。
+"""日报三家一个语义模板，以 MAA 为样板（用户 2026-09-02）：
 
-每一趟成功记录都是同样五行、同样顺序、同样标签：做了/消耗/产出/剩余/备注；
-没有的写「—」。没跑成的只有一行「备注」。
+  做了　刷（什么）×次数
+  消耗　理智 N，吃药 N（鸣潮：波片 N，备用体力 N；终末地：理智 N，加强剂 N）
+  产出　这次刷本的掉落
+  剩余　理智 N/上限，回满时刻
+  备注　额外任务
+
+鸣潮和终末地的数字全部从它们的真实日志里算出来（夹具是 09-02 / 09-01 实录）。
 """
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import core  # noqa: E402
+from ark_relay import collector, core  # noqa: E402
 from ark_relay.config import SERVER_TZ  # noqa: E402
 
+FX = Path(__file__).parent / "fixtures"
 fails = []
 def check(label, got, want):
     ok = got == want
@@ -27,44 +33,60 @@ def ent(run_id, script, hh, mm, dur, ok=True, **kw):
     e.update(kw)
     return e
 
+print("[鸣潮：从真实日志算出来]")
+ww = collector.parse_okww_log(FX / "okww_sim_2026-09-02.log")
+check("刷的本", ww.get("okww_farm"), "模拟领域·贝币")
+check("产出类别", ww.get("okww_farm_reward"), "贝币")
+check("进本 2 局", ww.get("okww_runs"), 2)
+check("波片 168→88→8 花了 160", ww.get("okww_stamina_spent"), 160)
+check("备用体力没动", ww.get("okww_backup_spent"), None)
+check("剩 8", ww.get("okww_stamina_left"), 8)
+ww["sanity_full_at"] = "2026-09-03 08:53"
+
+print("[终末地：从真实日志算出来]")
+ef = collector.parse_maaend_log(FX / "maaend_full_2026-09-01.log")
+check("刷本任务", ef.get("maaend_farm"), "基质刷取")
+check("地点", ef.get("maaend_farm_place"), "枢纽区")
+check("次数", ef.get("maaend_farm_runs"), 2)
+check("理智 234→154→74 花了 160", ef.get("maaend_sanity_spent"), 160)
+check("刷本掉落只算基质", ef.get("maaend_farm_drops"), {"无暇基质": 6, "高纯基质": 4})
+check("没吃加强剂", ef.get("maaend_medicine"), None)
+check("剩余理智 74/360", (ef.get("sanity"), ef.get("sanity_cap")), (74, 360))
+check("失败清单为空", ef.get("tasks_failed"), None)
+
+print("[三家五行，同一语义]")
 entries = [
     ent("maa", "MAA", 9, 0, 17, raw={"stages": ["1-7"], "run_times": 10, "sanity_spent": 120,
                                        "medicine_used": 1},
         drops={"龙门币": 1440, "固源岩": 25}, recruits={"3★": 2}, sanity=0,
         sanity_full_at="理智将在 2026-09-03 06:07 回满"),
-    ent("ww", "OK-WW", 9, 28, 13, raw={"okww_runs": 2, "okww_stamina_left": 8, "okww_backup_stamina": 0,
-                                        "okww_stamina_left_exact": True, "okww_nest_full": True,
-                                        "okww_steps": ["模拟领域 ×2", "残象聚落（已刷满）"],
-                                        "okww_stopped": "体力不够再开一局",
-                                        "sanity_full_at": "2026-09-03 08:53"}),
-    ent("ef", "MaaEnd", 9, 42, 25, raw={"tasks_done": ["赠送干员礼物", "装备制造"], "protocol_runs": 3,
-                                         "sanity_cap": 360},
-        sanity=12, drops={"武陵调度券": 320000}),
+    ent("ww", "OK-WW", 9, 28, 13, raw=ww),
+    ent("ef", "MaaEnd", 9, 42, 25, raw=ef, sanity=ef["sanity"], sanity_full_at="2026-09-02 21:00"),
     ent("bad", "OK-WW", 21, 30, 5, ok=False, failed_tasks=["OK-WW 流程产生错误"]),
 ]
 title, body = core.format_daily("2026-09-02", entries)
 print(body)
 blocks = [b for b in body.split("\n\n") if b.strip()]
-labels = lambda blk: [l.split("　")[0] for l in blk.splitlines()[1:]]
-want = ["· 做了", "· 消耗", "· 产出", "· 剩余", "· 备注"]
-print("[三家五行一样]")
-check("MAA 五行顺序", labels(blocks[0]), want)
-check("鸣潮 五行顺序", labels(blocks[1]), want)
-check("终末地 五行顺序", labels(blocks[2]), want)
-print("[内容进对格子]")
-check("MAA 做了", "刷 1-7 ×10" in blocks[0], True)
-check("MAA 消耗含吃药", "理智 120，吃药 1" in blocks[0], True)
-check("MAA 剩余带回满", "理智 0，次日 06:07 回满" in blocks[0], True)
-check("MAA 备注公招", "· 备注　公招 3★×2" in blocks[0], True)
-check("鸣潮 做了", "进本 2 次；任务 模拟领域 ×2、残象聚落（已刷满）" in blocks[1], True)
-check("鸣潮 消耗宁可留空", "· 消耗　—" in blocks[1], True)
-check("鸣潮 剩余", "波片 8/240，备用 0" in blocks[1], True)
-check("鸣潮 备注", "残象聚落 落渊南丘 已刷满；体力不够再开一局" in blocks[1], True)
-check("终末地 做了", "日常 2 项：1.赠送干员礼物、2.装备制造" in blocks[2], True)
-check("终末地 消耗", "· 消耗　协议空间 3 次" in blocks[2], True)
-check("终末地 剩余", "· 剩余　理智 12/360" in blocks[2], True)
-print("[没跑成的只有一行备注]")
-check("失败块两行", len(blocks[3].splitlines()), 2)
-check("失败于在备注格", "· 备注　失败于：OK-WW 流程产生错误" in blocks[3], True)
+rows = lambda blk: blk.splitlines()[1:]
+check("MAA", rows(blocks[0]), [
+    "· 做了　刷 1-7 ×10",
+    "· 消耗　理智 120，吃药 1",
+    "· 产出　龙门币×1440 固源岩×25",
+    "· 剩余　理智 0，次日 06:07 回满（东京 07:07）",
+    "· 备注　公招 3★×2"])
+check("鸣潮", rows(blocks[1]), [
+    "· 做了　刷 模拟领域·贝币 ×2",
+    "· 消耗　波片 160，备用体力 0",
+    "· 产出　贝币（2 局，游戏未显示数量）",
+    "· 剩余　波片 8/240，次日 08:53 回满（东京 09:53）",
+    "· 备注　残象聚落（已刷满）"])
+check("终末地", rows(blocks[2]), [
+    "· 做了　刷 基质刷取·枢纽区 ×2",
+    "· 消耗　理智 160，加强剂 0",
+    "· 产出　无暇基质×6 高纯基质×4",
+    "· 剩余　理智 74/360，本日 21:00 回满（东京 22:00）",
+    "· 备注　日常 9 项：赠送干员礼物、装备制造、拜访好友、基建任务、信用点购物、应急理智加强剂、选剑演武、自动采集、日常奖励领取"])
+check("失败的只有一行备注", rows(blocks[3]), ["· 备注　失败于：OK-WW 流程产生错误"])
+check("「体力不够再开一局」不再出现", "体力不够" in body, False)
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

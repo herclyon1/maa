@@ -289,6 +289,63 @@ _END_SANITY_SPENT = re.compile(r"尝试使用理智消耗许可")
 _END_SANITY_REFUSED = re.compile(r"理智不足[，,]\s*尝试不使用理智消耗许可")
 _END_PS_ENTER = re.compile(r"进入协议空间成功")
 _END_TASK_DONE = re.compile(r"任务完成[:：]\s*(\S.+?)\s*$")
+# 用户 2026-09-02：日报三家一个语义模板，MaaEnd 不产这些数「只能我们自己来」。
+# 刷本段的形状（2026-09-01 实录）：
+#   任务开始: 🎱基质刷取 / 📌目标地点：枢纽区 / 当前理智 234/360 / 是无暇基质 ×N
+#   ✅已完成一次基质刷取 / 当前理智 154/360 / … / 任务完成: 🎱基质刷取
+_END_TASK_START = re.compile(r"任务开始[:：]\s*(\S.+?)\s*$")
+_END_TASK_FAIL = re.compile(r"任务失败[:：]\s*(\S.+?)\s*$")
+_END_FARM_TASKS = ("基质刷取", "协议空间")
+_END_PLACE = re.compile(r"目标地点[:：]\s*(\S+)")
+_END_ESSENCE_DONE = re.compile(r"已完成一次基质刷取")
+_END_ESSENCE_DROP = re.compile(r"^是(\S+?基质)\s*$")
+_END_MEDICINE = re.compile(r"使用(?:了)?应急理智加强剂")
+_END_COLLECT_ROUTES = re.compile(r"(\d+)\s*条路线")
+
+
+def _strip_emoji(name: str) -> str:
+    return re.sub(r"^[^\w一-鿿]+", "", name).strip()
+
+
+def _maaend_farm(text: str) -> dict:
+    """刷本那一段：刷了什么、在哪、几次、掉了什么。没有刷本任务就返回 {}。"""
+    out: dict = {}
+    lines = text.splitlines()
+    start = end = None
+    farm = ""
+    for i, line in enumerate(lines):
+        if m := _END_TASK_START.search(line):
+            name = _strip_emoji(m.group(1))
+            if any(k in name for k in _END_FARM_TASKS):
+                start, farm = i, name
+        elif start is not None and (m := _END_TASK_DONE.search(line) or _END_TASK_FAIL.search(line)):
+            if _strip_emoji(m.group(1)) == farm:
+                end = i
+                break
+    if start is None:
+        return out
+    seg = lines[start:(end + 1) if end is not None else None]
+    body = "\n".join(seg)
+    out["maaend_farm"] = farm
+    if m := _END_PLACE.search(body):
+        out["maaend_farm_place"] = m.group(1)
+    runs = len(_END_ESSENCE_DONE.findall(body)) or len(_END_PS_ENTER.findall(body))
+    if runs:
+        out["maaend_farm_runs"] = runs
+    drops: dict[str, int] = {}
+    for line in seg:
+        if m := _END_ESSENCE_DROP.search(line.split("] ", 1)[-1]):
+            drops[m.group(1)] = drops.get(m.group(1), 0) + 1
+        elif m := _END_GAIN.search(line):
+            drops[m.group(1).strip()] = drops.get(m.group(1).strip(), 0) + int(m.group(2))
+    if drops:
+        out["maaend_farm_drops"] = drops
+    readings = [int(a) for a, _ in _END_SANITY.findall(body)]
+    spent = sum(a - b for a, b in zip(readings, readings[1:]) if a > b)
+    if spent:
+        out["maaend_sanity_spent"] = spent
+    return out
+
 
 
 # 2026-09-02 终末地服务器维护（「雪凇幽梦」版本更新，10:00 开服）：MaaEnd 三趟
@@ -357,8 +414,17 @@ def parse_maaend_log(log_path: Path) -> dict:
         out["drop_statistics"] = gains
     if tasks:
         out["tasks_done"] = tasks
+    failed = [_strip_emoji(m.group(1)) for m in _END_TASK_FAIL.finditer(text)]
+    failed = [f for f in failed if "结束进程" not in f]
+    if failed:
+        out["tasks_failed"] = list(dict.fromkeys(failed))
     if runs := len(_END_PS_ENTER.findall(text)):
         out["protocol_runs"] = runs
+    out.update(_maaend_farm(text))
+    if n := len(_END_MEDICINE.findall(text)):
+        out["maaend_medicine"] = n
+    if m := _END_COLLECT_ROUTES.findall(text):
+        out["maaend_collect_routes"] = int(m[-1])
     if hits := _END_SANITY.findall(text):
         got, cap = (int(x) for x in hits[-1])
         # 「当前理智」是在协议空间的**奖励结算界面**读的，而扣费发生在紧随其后的
@@ -437,6 +503,25 @@ _FORGERY_NAMES = {
     3: "碎蚀云渊（臂铠）",
 }
 _OKWW_FORGERY_INDEX = re.compile(r"info_set Teleport to Forgery Challenge (\d+)")
+# 模拟领域的目标：OK-WW 源码 SimulationTask 三选一，译文来自它自己的 ok.po
+_OKWW_SIM_TARGET = re.compile(r"info_set Target Simulation Challenge (.+?)\s*$", re.M)
+_SIM_ZH = {"Shell Credit": "贝币", "Resonator EXP": "共鸣者经验", "Weapon EXP": "武器经验"}
+_OKWW_TACET_INDEX = re.compile(r"info_set Teleport to Tacet Suppression (\d+)")
+
+
+def _okww_farm(text: str) -> "tuple[str, str]":
+    """(刷的本, 产出类别)。OK-WW 不读奖励界面，产出只能说类别。"""
+    if "SimulationTask:" in text:
+        hits = _OKWW_SIM_TARGET.findall(text)
+        tgt = _SIM_ZH.get(hits[-1].strip(), hits[-1].strip()) if hits else ""
+        return (f"模拟领域·{tgt}" if tgt else "模拟领域", tgt or "模拟领域奖励")
+    if "ForgeryTask:" in text:
+        return (_forgery_label(text), "武器突破材料")
+    if "TacetTask:" in text:
+        hits = _OKWW_TACET_INDEX.findall(text)
+        idx = f" #{int(hits[-1]) + 1}" if hits else ""
+        return (f"无音区{idx}", "声骸与角色突破材料")
+    return ("", "")
 
 
 def _forgery_label(text: str) -> str:
@@ -464,7 +549,11 @@ def parse_okww_log(log_path: Path) -> dict:
 
     out: dict = {}
     readings = [int(m.group(1)) for m in _OKWW_STAMINA.finditer(text)]
-    spent = sum(a - b for a, b in zip(readings, readings[1:]) if a > b)
+    # 收尾那句「current stamina: 8 not enough to continue」是最后一次读数，
+    # 不算进去会把最后一局的消耗漏掉（2026-09-02 实录：168→88→8 只算出 80）。
+    tail = [int(x) for x in _OKWW_STAMINA_END.findall(text)]
+    series = readings + tail[-1:]
+    spent = sum(a - b for a, b in zip(series, series[1:]) if a > b)
     if spent:
         out["okww_stamina_spent"] = spent
     entries = len(_OKWW_ENTRY.findall(text))
@@ -472,6 +561,13 @@ def parse_okww_log(log_path: Path) -> dict:
         out["okww_runs"] = entries
     if back := _OKWW_BACKUP.findall(text):
         out["okww_backup_stamina"] = int(back[-1])
+        backs = [int(x) for x in back]
+        if used := sum(a - b for a, b in zip(backs, backs[1:]) if a > b):
+            out["okww_backup_spent"] = used
+    farm, reward = _okww_farm(text)
+    if farm:
+        out["okww_farm"] = farm
+        out["okww_farm_reward"] = reward
     if end := _OKWW_STAMINA_END.findall(text):
         out["okww_stamina_left"] = int(end[-1])
         out["okww_stamina_left_exact"] = True

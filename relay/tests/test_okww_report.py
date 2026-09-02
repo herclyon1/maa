@@ -138,7 +138,7 @@ if not body:                      # 渲染函数名不同就退回源码检查
           "活跃度" in src_code or "日常波片" in src_code, False)
     check("渲染了备用体力（游戏里是两个数）", "备用" in src)
     check("渲染了任务列表", "okww_steps" in src)
-    check("渲染了剩余波片", "剩余波片" in src)
+    check("渲染了剩余波片", "波片" in src)
 else:
     check("写出了波片消耗", "消耗波片 240" in body)
     check("写出了进本次数", "进本 5 次" in body)
