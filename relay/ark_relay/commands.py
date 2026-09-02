@@ -316,6 +316,29 @@ def _set_config(cmd: dict) -> tuple[bool, str]:
     return True, f"{script} 的 {path}：{before!r} → {now!r}"
 
 
+def run_script(script: str) -> tuple[bool, str]:
+    """单独派发一个脚本（不是整条队列），走 AUTO-MAS 的 dispatch 接口。
+
+    游戏更新完要重跑那一个游戏时用。派整条队列会把其它游戏也再跑一遍，
+    2026-09-01 就是这么把 MAA 多跑了一趟、还吃了理智药。
+    """
+    try:
+        scripts = _mas("/api/scripts/get")["data"]
+    except Exception as exc:  # noqa: BLE001
+        return False, f"取不到脚本列表: {exc}"
+    for sid, sc in scripts.items():
+        if str((sc.get("Info") or {}).get("Name") or "").lower() != script.lower():
+            continue
+        try:
+            r = _mas("/api/dispatch/start", {"taskId": sid, "mode": "AutoProxy"})
+        except Exception as exc:  # noqa: BLE001
+            return False, f"脚本「{script}」没能启动: {exc}"
+        if str(r.get("status")) != "success":
+            return False, f"脚本「{script}」没能启动: {r.get('message')}"
+        return True, f"脚本「{script}」已单独开跑"
+    return False, f"没有叫「{script}」的脚本"
+
+
 def _run_now(queue: str) -> tuple[bool, str]:
     """立刻跑一趟队列。走 AUTO-MAS 的 dispatch 接口。"""
     queue = names.canonical(queue)

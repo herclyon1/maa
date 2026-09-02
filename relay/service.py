@@ -744,7 +744,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             if gameupdate.should_run(cfg.state_dir, _gu_now, boot_id=_boot_id):
                 budget = _seconds_to_next_queue(cfg.automas_dir, _gu_now)
                 log.info("游戏更新：开始检查三家客户端（预算 %.0f 秒）", budget)
-                notes, gproblems = gameupdate.run_all(cfg, budget_s=budget)
+                notes, gproblems = gameupdate.boot_check(cfg, budget_s=budget, now=_gu_now)
                 for n in notes:
                     log.info("游戏更新：%s", n)
                     notifier.send("🆕 游戏更新", n)

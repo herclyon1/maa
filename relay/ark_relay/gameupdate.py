@@ -366,78 +366,155 @@ def mark_run(state_dir: Path | None, now: datetime, *, boot_id: str) -> None:
             {"boot": boot_id, "at": now.isoformat()}, ensure_ascii=False))
 
 
-def today_unreachable(state_dir: Path, now: datetime) -> bool:
-    """今天有没有「MaaEnd 根本没进游戏」的记录（collector.maaend_unreachable）。"""
+# ─────────────────────────── 登记：哪个游戏要更新 ───────────────────────────
+# 用户 2026-09-02：「预更新的窗口只有几分钟，更新游戏来不及。检测到有更新之后
+# 直接先跳过这个游戏，等所有其他游戏跑完之后，再单独拉这个游戏进行更新，
+# 然后再去重跑。」所以：开机只登记，队列跑完引擎再来做（run_deferred）。
+
+def _pending_path(state_dir: Path) -> Path:
+    return Path(state_dir) / "gameupdate-pending.json"
+
+
+def pending(state_dir: Path) -> dict[str, str]:
+    """{游戏: 为什么}。"""
+    try:
+        d = json.loads(_pending_path(state_dir).read_text(encoding="utf-8"))
+        return {str(k): str(v) for k, v in (d or {}).items()}
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
+def mark_pending(state_dir: Path, game: str, why: str) -> bool:
+    """登记一条；已经登记过同一个游戏就不重复。返回是否新登记。"""
+    d = pending(state_dir)
+    if game in d:
+        return False
+    d[game] = why
+    atomic_write_text(_pending_path(state_dir), json.dumps(d, ensure_ascii=False))
+    log.info("游戏更新：已登记 %s 待更新（%s）", game, why)
+    return True
+
+
+def clear_pending(state_dir: Path, game: str) -> None:
+    d = pending(state_dir)
+    if game in d:
+        d.pop(game)
+        atomic_write_text(_pending_path(state_dir), json.dumps(d, ensure_ascii=False))
+
+
+def last_run_ok(state_dir: Path, now: datetime, script: str) -> bool | None:
+    """今天这个脚本最后一趟成没成；今天没跑过返回 None。"""
     p = Path(state_dir) / f"ledger-{now:%Y-%m-%d}.jsonl"
+    last = None
     try:
         for line in p.read_text(encoding="utf-8").splitlines():
             e = json.loads(line)
-            if e.get("script") == "MaaEnd" and (e.get("raw") or {}).get("maaend_unreachable"):
-                return True
+            if e.get("script") == script:
+                last = bool(e.get("ok"))
     except (OSError, ValueError):
-        pass
-    return False
+        return None
+    return last
 
 
-def endfield_signal(state_dir: Path, now: datetime, hint=None) -> str:
-    """要不要动终末地启动器——有信号才动，没有信号一次都不开。
+# ─────────────────────────── 开机：只做便宜的判断 ───────────────────────────
 
-    用户 2026-09-02：「一定不要做到每天都要去检测，大版本更新是很少的。」
-    信号只有两种：官方公告说今天版本更新；或今天 MaaEnd 已经因为客户端
-    过时进不了游戏。两样都没有就什么都不做。
-    """
-    from . import efstatus  # noqa: PLC0415
-    h = (hint or efstatus.update_hint)(now)
-    if h:
-        return h
-    if today_unreachable(state_dir, now):
-        return "今天 MaaEnd 进不了游戏（客户端待更新）"
-    return ""
+def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
+               hint=None, fetch=None) -> tuple[list[str], list[str]]:
+    """开机窗口里做的事：一个 HTTP 读方舟版本号、一个 HTTP 读终末地公告。
 
-
-def run_all(cfg, *, budget_s: float, desk: Desktop | None = None,
-            now: datetime | None = None) -> tuple[list[str], list[str]]:
-    """跑三家。返回 (给人看的更新通知, 没能确认的问题)。
-
-    每次开机只做两件便宜事：读一次方舟官方版本号（一个 HTTP 请求）、
-    读一次终末地官方公告。启动器和模拟器只在有信号时才动：
-    · 方舟：官方版本号 ≠ 记录的已装版本 → 下载装包
-    · 终末地：公告说今天版本更新 / 今天 MaaEnd 进不了游戏 → 启动器流程
-    · 鸣潮：不主动。OK-WW 自己会经启动器更新（今早实录：更新→重启→重跑成功），
-      日报里已把这种插曲摘出来不算失败。
+    方舟版本不同：窗口够（≥10 分钟）就当场装，不够就登记；
+    终末地公告说今天版本更新：登记；启动器一次都不开。
+    鸣潮：不管，OK-WW 自己会更新。
     """
     now = now or datetime.now(tz=SERVER_TZ)
     notes: list[str] = []
     problems: list[str] = []
-    long_budget = budget_s > 1200      # 早班窗口只有十几分钟，晚上才够下大包
-
     ld, idx = ldconsole_of(cfg.maa_dir)
     if ld:
         try:
-            if n := update_arknights(cfg.state_dir, ld, idx, budget_s=min(budget_s, 900),
-                                     problems=problems):
-                notes.append(n)
+            remote = remote_ak_version(fetch)
+            local = recorded_ak_version(cfg.state_dir)
+            if remote and local and remote != local:
+                if budget_s >= 600:
+                    if n := update_arknights(cfg.state_dir, ld, idx, budget_s=budget_s - 60,
+                                             problems=problems, fetch=fetch):
+                        notes.append(n)
+                else:
+                    mark_pending(cfg.state_dir, "明日方舟", f"官方版本 {remote}，已装 {local}")
+            elif remote and not local:
+                # 第一次：起模拟器记一次已装版本（约一分钟）
+                if n := update_arknights(cfg.state_dir, ld, idx, budget_s=min(budget_s, 300),
+                                         problems=problems, fetch=fetch):
+                    notes.append(n)
+            else:
+                log.info("游戏更新：明日方舟已是 %s，无需更新", remote or "?")
         except Exception:  # noqa: BLE001
-            log.exception("游戏更新：明日方舟这一段出错")
-            problems.append("明日方舟：更新流程出错（见日志）")
-    else:
-        log.info("游戏更新：找不到雷电 ldconsole，跳过明日方舟")
-
-    game, launcher = endfield_paths(cfg.maaend_dir)
-    if game and launcher:
-        why = endfield_signal(cfg.state_dir, now.replace(tzinfo=None) if now.tzinfo else now)
-        if why:
-            log.info("游戏更新：终末地有信号（%s），去启动器看", why)
-            try:
-                if n := update_endfield(desk or Desktop(cfg.state_dir), game, launcher,
-                                        budget_s=2400 if long_budget else max(120, budget_s - 120),
-                                        problems=problems):
-                    notes.append(n + f"（依据：{why}）")
-            except Exception:  # noqa: BLE001
-                log.exception("游戏更新：终末地这一段出错")
-                problems.append("终末地：更新流程出错（见日志）")
-        else:
-            log.info("游戏更新：终末地没有更新信号，不开启动器")
-    else:
-        log.info("游戏更新：找不到终末地启动器，跳过")
+            log.exception("游戏更新：明日方舟开机检查出错")
+            problems.append("明日方舟：开机检查出错（见日志）")
+    from . import efstatus  # noqa: PLC0415
+    n0 = now.replace(tzinfo=None) if now.tzinfo else now
+    try:
+        h = (hint or efstatus.update_hint)(n0)
+    except Exception:  # noqa: BLE001
+        h = ""
+    if h:
+        mark_pending(cfg.state_dir, "终末地", h)
     return notes, problems
+
+
+# ─────────────────────────── 队列跑完之后：更新 + 重跑 ───────────────────────────
+
+def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = None,
+                 dispatch=None, sleep=time.sleep) -> tuple[list[str], list[str], list[str]]:
+    """把登记过的都做掉。返回 (更新通知, 问题, 重跑了哪些脚本)。
+
+    dispatch(脚本名) → (ok, msg)：单独派发一个脚本（不是整条队列）。
+    只有当天那个脚本最后一趟没成功时才重跑——成功了说明客户端本来就能用。
+    """
+    now = now or datetime.now(tz=SERVER_TZ)
+    notes: list[str] = []
+    problems: list[str] = []
+    reran: list[str] = []
+    todo = pending(cfg.state_dir)
+    if not todo:
+        return notes, problems, reran
+    desk = desk or Desktop(cfg.state_dir)
+
+    def rerun(script: str) -> None:
+        if last_run_ok(cfg.state_dir, now, script) is False and dispatch is not None:
+            ok, msg = dispatch(script)
+            log.info("游戏更新：重跑 %s → %s", script, msg)
+            if ok:
+                reran.append(script)
+            else:
+                problems.append(f"{script}：更新后没能重跑（{msg}）")
+
+    if "终末地" in todo:
+        why = todo["终末地"]
+        game, launcher = endfield_paths(cfg.maaend_dir)
+        if game and launcher:
+            before = len(problems)
+            n = update_endfield(desk, game, launcher, budget_s=2400, problems=problems, sleep=sleep)
+            if n:
+                notes.append(n + f"（依据：{why}）")
+            if len(problems) == before:      # 更新成功，或本来就是最新
+                rerun("MaaEnd")
+                clear_pending(cfg.state_dir, "终末地")
+        else:
+            problems.append("终末地：找不到启动器")
+            clear_pending(cfg.state_dir, "终末地")
+
+    if "明日方舟" in todo:
+        ld, idx = ldconsole_of(cfg.maa_dir)
+        if ld:
+            before = len(problems)
+            n = update_arknights(cfg.state_dir, ld, idx, budget_s=1800, problems=problems, sleep=sleep)
+            if n:
+                notes.append(n)
+            if len(problems) == before:
+                rerun("MAA")
+                clear_pending(cfg.state_dir, "明日方舟")
+        else:
+            problems.append("明日方舟：找不到雷电 ldconsole")
+            clear_pending(cfg.state_dir, "明日方舟")
+    return notes, problems, reran

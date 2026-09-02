@@ -93,13 +93,46 @@ check("装完记录更新", gu.recorded_ak_version(ST), "2.8.01")
 check("装完退出模拟器", any("quit" in c for c in calls), True)
 check("装完删了包", (ST / "apk" / "arknights-2.8.01.apk").exists(), False)
 
-print("[终末地：没有信号就一次都不开启动器]")
+print("[登记：哪个游戏要更新]")
 from datetime import datetime as _dt
+check("空", gu.pending(ST), {})
+check("登记", gu.mark_pending(ST, "终末地", "公告说今天版本更新"), True)
+check("重复登记不算", gu.mark_pending(ST, "终末地", "又来"), False)
+check("读回", gu.pending(ST), {"终末地": "公告说今天版本更新"})
+gu.clear_pending(ST, "终末地"); check("清掉", gu.pending(ST), {})
+
+print("[开机只做便宜判断：不开启动器，只登记]")
+class Cfg: pass
+cfg = Cfg(); cfg.state_dir = ST; cfg.maa_dir = None; cfg.maaend_dir = None; cfg.okww_dir = None
 now = _dt(2026, 9, 2, 8, 46)
-check("公告没说、账本没失败 → 空", gu.endfield_signal(ST, now, hint=lambda n: ""), "")
-check("公告说今天版本更新 → 有信号", gu.endfield_signal(ST, now, hint=lambda n: "官方公告：今天 09:00 版本更新"), "官方公告：今天 09:00 版本更新")
+notes, probs = gu.boot_check(cfg, budget_s=600, now=now, hint=lambda n: "官方公告：今天 09:00 版本更新")
+check("公告有版本更新 → 登记终末地", gu.pending(ST), {"终末地": "官方公告：今天 09:00 版本更新"})
+check("开机不发更新通知", notes, [])
+gu.clear_pending(ST, "终末地")
+notes, probs = gu.boot_check(cfg, budget_s=600, now=now, hint=lambda n: "")
+check("公告没说 → 不登记", gu.pending(ST), {})
+
+print("[队列跑完后：更新 + 只在当天没跑成时重跑]")
+cfg.maaend_dir = ST / "maaend"; (cfg.maaend_dir / "config").mkdir(parents=True, exist_ok=True)
+game = ST / "hg" / "games" / "Endfield Game" / "Endfield.exe"; game.parent.mkdir(parents=True, exist_ok=True); game.write_bytes(b"")
+(ST / "hg" / "Launcher.exe").write_bytes(b"")
+(cfg.maaend_dir / "config" / "mxu-MaaEnd.json").write_text(json.dumps({"connectedProgramPath": str(game)}), encoding="utf-8")
 (ST / "ledger-2026-09-02.jsonl").write_text(json.dumps({"script": "MaaEnd", "ok": False, "raw": {"maaend_unreachable": True}}) + "\n", encoding="utf-8")
-check("今天 MaaEnd 进不了游戏 → 有信号", gu.endfield_signal(ST, now, hint=lambda n: ""), "今天 MaaEnd 进不了游戏（客户端待更新）")
+gu.mark_pending(ST, "终末地", "今天 MaaEnd 进不了游戏")
+dispatched = []
+d = FakeDesk([["登录", "更新游戏"], ["正在下载"], ["开始游戏"], ["请重启游戏", "确认"], ["点击任意位置继续"]])
+notes, probs, reran = gu.run_deferred(cfg, now=now, desk=d, dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=nosleep)
+check("更新通知带依据", notes, ["终末地 客户端已通过启动器更新（依据：今天 MaaEnd 进不了游戏）"])
+check("当天没跑成 → 重跑 MaaEnd", reran, ["MaaEnd"])
+check("登记已清", gu.pending(ST), {})
+# 当天已经成功过：启动器说已是最新，不重跑
+(ST / "ledger-2026-09-02.jsonl").write_text(json.dumps({"script": "MaaEnd", "ok": True, "raw": {}}) + "\n", encoding="utf-8")
+gu.mark_pending(ST, "终末地", "公告说今天版本更新")
+dispatched.clear()
+notes, probs, reran = gu.run_deferred(cfg, now=now, desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=nosleep)
+check("已是最新 → 不发更新通知", notes, [])
+check("当天成功过 → 不重跑", reran, [])
+check("登记也清了", gu.pending(ST), {})
 
 print("[每次开机只跑一遍]")
 from datetime import datetime

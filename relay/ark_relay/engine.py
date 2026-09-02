@@ -334,9 +334,57 @@ class Engine:
             log.warning("周常乐园开关没能落盘，下轮再试", exc_info=True)
         self._check_missed_runs()
         self._maybe_interim_report()
+        self._maybe_deferred_update()
         self._maybe_daily_report()
         self._maybe_shutdown()
         return len(records)
+
+    # ---------- 队列跑完之后再更新游戏客户端 ----------
+
+    def _deferred_update_busy(self) -> bool:
+        t = getattr(self, "_gu_thread", None)
+        return bool(t is not None and t.is_alive())
+
+    def _maybe_deferred_update(self) -> None:
+        """有登记、队列都跑完了、没脚本在跑 → 起后台线程去更新再重跑。
+
+        用户 2026-09-02 定的顺序：先让别的游戏跑完，再单独更新、单独重跑。
+        线程活着期间 _maybe_shutdown 不关机；重跑本身是 AUTO-MAS 派发的
+        脚本，跑起来之后照常由 _scripts_running 挡住关机。一天最多起一次。
+        """
+        from . import gameupdate  # noqa: PLC0415
+        if self._deferred_update_busy() or not gameupdate.pending(self.state.dir):
+            return
+        now = datetime.now(tz=SERVER_TZ)
+        day = now.strftime("%Y-%m-%d")
+        if getattr(self, "_gu_day", "") == day:
+            return
+        if self._scripts_running():
+            return
+        entries = self._recent_entries(now)
+        if not self.state.read_ledger(day) or self._unfinished_queues(now, entries):
+            return
+        import threading  # noqa: PLC0415
+        self._gu_day = day
+
+        def work() -> None:
+            from . import commands  # noqa: PLC0415
+            try:
+                notes, problems, reran = gameupdate.run_deferred(
+                    self.cfg, now=now, dispatch=commands.run_script)
+                for n in notes:
+                    self.notifier.send("🆕 游戏更新", n)
+                if reran:
+                    self.notifier.send("🔁 更新后重跑", "、".join(reran) + " 已单独开跑")
+                if problems:
+                    self.notifier.send(f"⚠️ 游戏更新没能确认（{len(problems)} 项）",
+                                       "\n".join(f"· {x}" for x in problems))
+            except Exception:  # noqa: BLE001
+                log.exception("游戏更新（队列后）出错")
+
+        self._gu_thread = threading.Thread(target=work, name="game-update", daemon=True)
+        self._gu_thread.start()
+        log.info("游戏更新：队列已跑完，后台开始更新 %s", "、".join(gameupdate.pending(self.state.dir)))
 
     # ---------- per record ----------
 
@@ -371,6 +419,10 @@ class Engine:
             log.info("📦 MaaEnd 失败证据已存档 %d 个文件 → %s", n, dst)
         except Exception:  # noqa: BLE001 - 存档失败不许影响记账
             log.exception("MaaEnd 证据存档失败（不影响记账）")
+        # 根本没进游戏 = 客户端待更新的信号：登记，队列跑完后去更新再重跑
+        if (rec.raw or {}).get("maaend_unreachable"):
+            from . import gameupdate  # noqa: PLC0415
+            gameupdate.mark_pending(self.cfg.state_dir, "终末地", "今天 MaaEnd 进不了游戏（客户端待更新）")
 
     def _verify_outcome(self, rec: RunRecord) -> str | None:
         """按证据核对这一轮到底干成了什么；全干成返回 None。
@@ -1220,6 +1272,8 @@ class Engine:
             return False
         if self._scripts_running() or self._pending or self._recovered:
             return False
+        if self._deferred_update_busy():
+            return False          # 游戏客户端正在更新/重跑，别关
         # "No game process" is not the same as "the queue is finished". Between
         # two scripts in one queue there is a window - MAA has exited, MaaEnd's
         # game is still launching - where neither process exists. Powering off
