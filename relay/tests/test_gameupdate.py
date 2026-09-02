@@ -144,6 +144,10 @@ check("下一次开机→跑", gu.should_run(ST, datetime.now(), boot_id="b2"), 
 print("[桌面 Screen 匹配忽略空格]")
 s = Screen([Line("更 新 游 戏", 10, 10, 50, 20)])
 check("有", s.has("更新游戏"), True); check("中心", s.find("更新游戏").center, (35, 20))
+s3 = Screen([Line("@丹始游戏", 1324, 782, 200, 40)])
+check("错一个字仍命中（OCR 把开认成丹）", s3.find("开始游戏") is not None, True)
+check("错一个字不会串到别的按钮", s3.find("更新游戏") is None, True)
+check("两字以下不容错", Screen([Line("确人", 0, 0, 10, 10)]).find("确认") is None, True)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

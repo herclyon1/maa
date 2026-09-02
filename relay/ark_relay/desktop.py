@@ -52,8 +52,11 @@ public class ArkD {
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, uint d, UIntPtr e);
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
 }
 "@
+  $win = $null
   $r = [IO.File]::ReadAllText($req, [Text.Encoding]::UTF8) | ConvertFrom-Json
 
   # 置前台：按进程名，或 title:窗口标题。同名多进程时按标题定位更稳。
@@ -74,6 +77,8 @@ public class ArkD {
       [ArkD]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
       [void]$log.Add("focus: $($p.ProcessName) 「$($p.MainWindowTitle)」")
       Start-Sleep -Milliseconds 800
+      $rc = New-Object ArkD+RECT
+      if ([ArkD]::GetWindowRect($p.MainWindowHandle, [ref]$rc)) { $win = $rc }
     }
   }
 
@@ -129,6 +134,38 @@ public class ArkD {
     $stream.Dispose()
     return $lines
   }
+  # 第二遍识别：黑字配亮黄底的按钮（鹰角启动器「开始游戏」）整屏 OCR 会漏掉。
+  # 把聚焦窗口裁出来，灰度 + 高对比（黄底变白、字仍黑），放大两倍再认，
+  # 坐标映射回屏幕。2026-09-02 实测整屏那遍读到 15 行就是没有按钮。
+  function OcrWindow([string]$shotPath, [string]$outPath) {
+    if ($null -eq $win) { return @() }
+    $src = [Drawing.Image]::FromFile($shotPath)
+    $w = [Math]::Max(1, $win.R - $win.L); $h = [Math]::Max(1, $win.B - $win.T)
+    $dst = New-Object Drawing.Bitmap ($w * 2), ($h * 2)
+    $g = [Drawing.Graphics]::FromImage($dst)
+    $g.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $cm = New-Object Drawing.Imaging.ColorMatrix
+    # 灰度（Rec.601 权重）再乘 3 拉对比，偏移 -1.0 把中灰以上推成白
+    $k = 3.0
+    $cm.Matrix00 = 0.299*$k; $cm.Matrix01 = 0.299*$k; $cm.Matrix02 = 0.299*$k
+    $cm.Matrix10 = 0.587*$k; $cm.Matrix11 = 0.587*$k; $cm.Matrix12 = 0.587*$k
+    $cm.Matrix20 = 0.114*$k; $cm.Matrix21 = 0.114*$k; $cm.Matrix22 = 0.114*$k
+    $cm.Matrix40 = -1.0; $cm.Matrix41 = -1.0; $cm.Matrix42 = -1.0
+    $cm.Matrix33 = 1.0; $cm.Matrix44 = 1.0
+    $ia = New-Object Drawing.Imaging.ImageAttributes
+    $ia.SetColorMatrix($cm)
+    $rect = New-Object Drawing.Rectangle 0, 0, ($w * 2), ($h * 2)
+    $g.DrawImage($src, $rect, $win.L, $win.T, $w, $h, [Drawing.GraphicsUnit]::Pixel, $ia)
+    $g.Dispose(); $src.Dispose()
+    $dst.Save($outPath, [Drawing.Imaging.ImageFormat]::Png); $dst.Dispose()
+    $found = Ocr $outPath
+    $mapped = New-Object System.Collections.ArrayList
+    foreach ($ln in $found) {
+      [void]$mapped.Add(@{ text = $ln.text; x = [int]($win.L + $ln.x / 2); y = [int]($win.T + $ln.y / 2);
+                           w = [int]($ln.w / 2); h = [int]($ln.h / 2) })
+    }
+    return $mapped
+  }
   function Click([int]$x, [int]$y) {
     [ArkD]::SetCursorPos($x, $y) | Out-Null
     Start-Sleep -Milliseconds 250
@@ -148,15 +185,37 @@ public class ArkD {
       'shot' { Shot $shot; [void]$log.Add("shot $shot") }
       'ocr' {
         Shot $shot
-        $lines = Ocr $shot
+        # 函数返回的 ArrayList 会被 PowerShell 展开成定长数组，重新装一遍才能 Add
+        $lines = New-Object System.Collections.ArrayList
+        foreach ($e in @(Ocr $shot)) { [void]$lines.Add($e) }
+        $extra = @(OcrWindow $shot ($shot -replace '\.png$', '-x2.png'))
+        foreach ($e in $extra) { [void]$lines.Add($e) }
         $out.ocr = @($lines)
-        [void]$log.Add("ocr $($lines.Count) 行")
+        [void]$log.Add("ocr $($lines.Count) 行（窗口增强 $($extra.Count) 行）")
       }
       'click' { Click ([int]$a.x) ([int]$a.y) }
       'click_text' {
-        if ($null -eq $lines) { Shot $shot; $lines = Ocr $shot; $out.ocr = @($lines) }
+        if ($null -eq $lines) {
+          Shot $shot
+          $lines = New-Object System.Collections.ArrayList
+          foreach ($e in @(Ocr $shot)) { [void]$lines.Add($e) }
+          foreach ($e in @(OcrWindow $shot ($shot -replace '\.png$', '-x2.png'))) { [void]$lines.Add($e) }
+          $out.ocr = @($lines)
+        }
         $want = ([string]$a.text) -replace '\s', ''
         $hit = $lines | Where-Object { ($_.text -replace '\s', '') -like "*$want*" } | Select-Object -First 1
+        if ($null -eq $hit -and $want.Length -ge 4) {
+          # 容忍 1 个字的误差（「开始游戏」被认成「丹始游戏」）
+          $hit = $lines | Where-Object {
+            $t = ($_.text -replace '\s', ''); $ok = $false
+            for ($i = 0; $i -le $t.Length - $want.Length; $i++) {
+              $miss = 0
+              for ($j = 0; $j -lt $want.Length; $j++) { if ($t[$i + $j] -ne $want[$j]) { $miss++ } }
+              if ($miss -le 1) { $ok = $true; break }
+            }
+            $ok
+          } | Select-Object -First 1
+        }
         if ($null -eq $hit) { [void]$log.Add("click_text: 屏幕上没有「$want」") }
         else { Click ([int]($hit.x + $hit.w / 2)) ([int]($hit.y + $hit.h / 2)) }
       }
@@ -169,6 +228,17 @@ public class ArkD {
 }
 Save
 '''
+
+
+def _fuzzy_in(want: str, hay: str, max_miss: int = 1) -> bool:
+    n = len(want)
+    if n == 0 or len(hay) < n:
+        return False
+    for i in range(len(hay) - n + 1):
+        miss = sum(1 for a, b in zip(want, hay[i:i + n]) if a != b)
+        if miss <= max_miss:
+            return True
+    return False
 
 
 @dataclass
@@ -192,10 +262,19 @@ class Screen:
         self.shot = shot
 
     def find(self, text: str) -> Line | None:
+        """先精确，再容忍 1 个字的误差（≥4 字才容错）。
+
+        2026-09-02 实测：鹰角启动器的「开始游戏」被系统 OCR 认成「丹始游戏」，
+        差一个字。四字按钮错一字仍当命中，两字以下不容错，免得乱点。
+        """
         want = text.replace(" ", "")
         for ln in self.lines:
             if want in ln.text.replace(" ", ""):
                 return ln
+        if len(want) >= 4:
+            for ln in self.lines:
+                if _fuzzy_in(want, ln.text.replace(" ", "")):
+                    return ln
         return None
 
     def has(self, *texts: str) -> bool:
