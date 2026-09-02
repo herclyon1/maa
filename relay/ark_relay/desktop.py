@@ -2,9 +2,11 @@
 
 中继是 LocalSystem 服务，跑在 session 0，没有桌面。要操作启动器这类图形程序，
 得把一段脚本派到 console 会话里执行——`preupdate._spawn_interactive` 已经
-会用控制台用户的令牌起进程，这里复用它，起的是 **Windows PowerShell 5.1**
-（不是 pwsh 7：WinRT 的 OCR 只有 5.1 能直接调；5.1 读 UTF-8 的坑用
-`[IO.File]::ReadAllText(..., UTF8)` 绕开，见 memory use-pwsh7-not-powershell51）。
+的「交互式计划任务」方式起进程，这里复用它，起的是 **Windows PowerShell 5.1**。
+为什么不是 pwsh 7：2026-09-02 在机器上实测 pwsh 7.6.5 加载不了 WinRT 类型
+（`Unable to find type [Windows.Media.Ocr.OcrEngine]`），系统自带的 OCR 只有 5.1
+能调。5.1 的编码坑逐条堵：脚本文件带 BOM 写入，请求/结果用
+`[IO.File]::ReadAllText/WriteAllText(..., UTF8)`。这是全仓库唯一允许用 5.1 的地方。
 
 OCR 用系统自带的 Windows.Media.Ocr，2026-09-02 在机器上核对过，
 可用语言含 zh-Hans-CN。启动器的「更新游戏 / 开始游戏」、游戏里的
@@ -227,8 +229,10 @@ class Desktop:
 
     @staticmethod
     def _spawn_default(exe: Path, cwd: Path, args: tuple[str, ...]) -> bool:
-        from .preupdate import _spawn_interactive  # noqa: PLC0415 - 避免循环导入
-        return _spawn_interactive(exe, cwd, args, require_console=True)
+        # 走交互式计划任务，不走令牌直起：2026-09-02 实测令牌方式起来的助手
+        # 截到图却 OCR 出 0 行（用户环境没完整加载），计划任务方式读出 45 行。
+        from .preupdate import _spawn_via_task  # noqa: PLC0415 - 避免循环导入
+        return _spawn_via_task(exe, cwd, args)
 
     def run(self, actions: list[dict], focus: str | None = None,
             timeout: float | None = None) -> dict:

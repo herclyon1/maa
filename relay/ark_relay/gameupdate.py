@@ -366,11 +366,49 @@ def mark_run(state_dir: Path | None, now: datetime, *, boot_id: str) -> None:
             {"boot": boot_id, "at": now.isoformat()}, ensure_ascii=False))
 
 
-def run_all(cfg, *, budget_s: float, desk: Desktop | None = None) -> tuple[list[str], list[str]]:
-    """跑三家。返回 (给人看的更新通知, 没能确认的问题)。"""
+def today_unreachable(state_dir: Path, now: datetime) -> bool:
+    """今天有没有「MaaEnd 根本没进游戏」的记录（collector.maaend_unreachable）。"""
+    p = Path(state_dir) / f"ledger-{now:%Y-%m-%d}.jsonl"
+    try:
+        for line in p.read_text(encoding="utf-8").splitlines():
+            e = json.loads(line)
+            if e.get("script") == "MaaEnd" and (e.get("raw") or {}).get("maaend_unreachable"):
+                return True
+    except (OSError, ValueError):
+        pass
+    return False
+
+
+def endfield_signal(state_dir: Path, now: datetime, hint=None) -> str:
+    """要不要动终末地启动器——有信号才动，没有信号一次都不开。
+
+    用户 2026-09-02：「一定不要做到每天都要去检测，大版本更新是很少的。」
+    信号只有两种：官方公告说今天版本更新；或今天 MaaEnd 已经因为客户端
+    过时进不了游戏。两样都没有就什么都不做。
+    """
+    from . import efstatus  # noqa: PLC0415
+    h = (hint or efstatus.update_hint)(now)
+    if h:
+        return h
+    if today_unreachable(state_dir, now):
+        return "今天 MaaEnd 进不了游戏（客户端待更新）"
+    return ""
+
+
+def run_all(cfg, *, budget_s: float, desk: Desktop | None = None,
+            now: datetime | None = None) -> tuple[list[str], list[str]]:
+    """跑三家。返回 (给人看的更新通知, 没能确认的问题)。
+
+    每次开机只做两件便宜事：读一次方舟官方版本号（一个 HTTP 请求）、
+    读一次终末地官方公告。启动器和模拟器只在有信号时才动：
+    · 方舟：官方版本号 ≠ 记录的已装版本 → 下载装包
+    · 终末地：公告说今天版本更新 / 今天 MaaEnd 进不了游戏 → 启动器流程
+    · 鸣潮：不主动。OK-WW 自己会经启动器更新（今早实录：更新→重启→重跑成功），
+      日报里已把这种插曲摘出来不算失败。
+    """
+    now = now or datetime.now(tz=SERVER_TZ)
     notes: list[str] = []
     problems: list[str] = []
-    desk = desk or Desktop(cfg.state_dir)
     long_budget = budget_s > 1200      # 早班窗口只有十几分钟，晚上才够下大包
 
     ld, idx = ldconsole_of(cfg.maa_dir)
@@ -387,26 +425,19 @@ def run_all(cfg, *, budget_s: float, desk: Desktop | None = None) -> tuple[list[
 
     game, launcher = endfield_paths(cfg.maaend_dir)
     if game and launcher:
-        try:
-            if n := update_endfield(desk, game, launcher,
-                                    budget_s=2400 if long_budget else max(120, budget_s - 120),
-                                    problems=problems):
-                notes.append(n)
-        except Exception:  # noqa: BLE001
-            log.exception("游戏更新：终末地这一段出错")
-            problems.append("终末地：更新流程出错（见日志）")
+        why = endfield_signal(cfg.state_dir, now.replace(tzinfo=None) if now.tzinfo else now)
+        if why:
+            log.info("游戏更新：终末地有信号（%s），去启动器看", why)
+            try:
+                if n := update_endfield(desk or Desktop(cfg.state_dir), game, launcher,
+                                        budget_s=2400 if long_budget else max(120, budget_s - 120),
+                                        problems=problems):
+                    notes.append(n + f"（依据：{why}）")
+            except Exception:  # noqa: BLE001
+                log.exception("游戏更新：终末地这一段出错")
+                problems.append("终末地：更新流程出错（见日志）")
+        else:
+            log.info("游戏更新：终末地没有更新信号，不开启动器")
     else:
         log.info("游戏更新：找不到终末地启动器，跳过")
-
-    if launcher_ww := wuwa_launcher(cfg.okww_dir):
-        try:
-            if n := update_wuwa(desk, launcher_ww,
-                                budget_s=2400 if long_budget else max(120, budget_s - 120),
-                                problems=problems):
-                notes.append(n)
-        except Exception:  # noqa: BLE001
-            log.exception("游戏更新：鸣潮这一段出错")
-            problems.append("鸣潮：更新流程出错（见日志）")
-    else:
-        log.info("游戏更新：找不到鸣潮启动器，跳过")
     return notes, problems

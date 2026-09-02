@@ -93,6 +93,14 @@ check("装完记录更新", gu.recorded_ak_version(ST), "2.8.01")
 check("装完退出模拟器", any("quit" in c for c in calls), True)
 check("装完删了包", (ST / "apk" / "arknights-2.8.01.apk").exists(), False)
 
+print("[终末地：没有信号就一次都不开启动器]")
+from datetime import datetime as _dt
+now = _dt(2026, 9, 2, 8, 46)
+check("公告没说、账本没失败 → 空", gu.endfield_signal(ST, now, hint=lambda n: ""), "")
+check("公告说今天版本更新 → 有信号", gu.endfield_signal(ST, now, hint=lambda n: "官方公告：今天 09:00 版本更新"), "官方公告：今天 09:00 版本更新")
+(ST / "ledger-2026-09-02.jsonl").write_text(json.dumps({"script": "MaaEnd", "ok": False, "raw": {"maaend_unreachable": True}}) + "\n", encoding="utf-8")
+check("今天 MaaEnd 进不了游戏 → 有信号", gu.endfield_signal(ST, now, hint=lambda n: ""), "今天 MaaEnd 进不了游戏（客户端待更新）")
+
 print("[每次开机只跑一遍]")
 from datetime import datetime
 check("没记录→跑", gu.should_run(ST, datetime.now(), boot_id="b1"), True)
