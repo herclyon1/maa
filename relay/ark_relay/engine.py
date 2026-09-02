@@ -357,13 +357,22 @@ class Engine:
             return
         now = datetime.now(tz=SERVER_TZ)
         day = now.strftime("%Y-%m-%d")
+        why = ""
         if getattr(self, "_gu_day", "") == day:
+            why = "今天已经起过一次"
+        elif self._scripts_running():
+            why = "有脚本在跑"
+        elif not self.state.read_ledger(day):
+            why = "今天还没有任何运行记录"
+        elif unfinished := self._unfinished_queues(now, self._recent_entries(now)):
+            why = "队列没跑完：" + "；".join(unfinished)
+        if why:
+            # 只在原因变化时写一行，免得每 30 秒刷屏
+            if why != getattr(self, "_gu_wait_note", ""):
+                self._gu_wait_note = why
+                log.info("游戏更新：有登记但先不动（%s）", why)
             return
-        if self._scripts_running():
-            return
-        entries = self._recent_entries(now)
-        if not self.state.read_ledger(day) or self._unfinished_queues(now, entries):
-            return
+        self._gu_wait_note = ""
         import threading  # noqa: PLC0415
         self._gu_day = day
 
