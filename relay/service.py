@@ -304,6 +304,24 @@ def _revive_automas() -> None:
 
 
 
+def ensure_automas(timeout: float = 45) -> bool:
+    """AUTO-MAS 接口不在就拉起来等它上线。用户 2026-09-03：「MAS 不在的时候你要拉起他，
+    不希望见到任何理由开机时检测不到配置，而且要快。」"""
+    from ark_relay import commands  # noqa: PLC0415
+    if commands.mas_up():
+        return True
+    log.warning("AUTO-MAS 接口不在，拉起它")
+    _revive_automas()
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        time.sleep(3)
+        if commands.mas_up():
+            log.info("AUTO-MAS 已拉起（%.0f 秒）", timeout - (deadline - time.monotonic()))
+            return True
+    log.error("AUTO-MAS 拉起后 %.0f 秒内接口仍不通", timeout)
+    return False
+
+
 def _boot_stamp(now: datetime) -> str:
     """这次开机的标识：开机时刻到分钟。部署重启服务不改变它。"""
     try:
@@ -605,6 +623,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             """手机上按的一条。刷新只回状态；其余是真改配置，改完立刻通知。"""
             action = str((body or {}).get("action") or "")
             if action == "refresh":
+                ensure_automas()          # 读配置前先保证它活着
                 push_state("手机请求")
                 return
             if action == "watch":
@@ -630,6 +649,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             notifier.send("📱 配置已修改" if ok else "📱 配置没改成", msg)
             push_state("改完配置")
 
+        ensure_automas()
         push_state("开机")
         if box.enabled:
             for body in box.fetch():
@@ -682,6 +702,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             _pre_now = datetime.now(tz=SERVER_TZ)
             if (preupdate.wanted_today(cfg.automas_dir)
                     and preupdate.should_run(cfg.state_dir, _pre_now)):
+                ensure_automas()          # 09-03 01:08：AUTO-MAS 被关着，预更新问了 180 秒
                 maaend = cfg.maaend_dir or _maaend_dir(cfg)
                 # Both are pushed, per the standing order: when an auto-update
                 # takes effect, say so at once. An earlier version of this block

@@ -429,6 +429,8 @@ def needs_rerun(state_dir: Path, now: datetime, script: str) -> bool:
     我按「最后一趟没成功就重跑」把它又派发了一遍，把正在玩的用户挤下线。
     普通任务失败重跑也还是失败，只会白白抢号——那种失败不归更新管。
     """
+    if any(r.get("script") == script for r in skips(state_dir)):
+        return True                     # 今天从队列里摘掉的，更新完必须补跑
     last = None
     for e in _today(state_dir, now):
         if e.get("script") == script:
@@ -479,7 +481,8 @@ def wuwa_update_day(now: datetime, fetch=None) -> str:
 # ─────────────────────────── 开机：只做便宜的判断 ───────────────────────────
 
 def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
-               hint=None, fetch=None, wuwa_fetch=None, maint_sources=None) -> tuple[list[str], list[str]]:
+               hint=None, fetch=None, wuwa_fetch=None, maint_sources=None,
+               skipper=None) -> tuple[list[str], list[str]]:
     """开机窗口里做的事：一个 HTTP 读方舟版本号、一个 HTTP 读终末地公告。
 
     方舟版本不同：窗口够（≥10 分钟）就当场装，不够就登记；
@@ -532,9 +535,86 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
         wins = {}
     save_windows(cfg.state_dir, wins)
     for game, (start, end, why) in wins.items():
-        if last_run_ok(cfg.state_dir, now, maintenance.SCRIPT_OF[game]) is not True:
-            mark_pending(cfg.state_dir, game, why)
+        script = maintenance.SCRIPT_OF[game]
+        if last_run_ok(cfg.state_dir, now, script) is True:
+            continue
+        mark_pending(cfg.state_dir, game, why)
+        # 用户 2026-09-03：「当天队列里不跑他」。今天队列时刻落在维护窗口
+        # （开服后再算 45 分钟客户端更新）里的，经接口把它从队列摘掉；
+        # 补跑完再加回（restore_skips）。摘/加回 09-03 在早班上实测可逆。
+        from datetime import timedelta as _td  # noqa: PLC0415
+        for q in _queues_today(cfg.automas_dir, now):
+            for due in q["dues"]:
+                if start - _td(minutes=30) <= due <= end + _td(minutes=45):
+                    try:
+                        rec = skipper(q["name"], script) if skipper else _skip_default(q["name"], script)
+                    except Exception as exc:  # noqa: BLE001
+                        problems.append(f"{game}：从队列「{q['name']}」摘掉 {script} 失败（{exc}）")
+                        continue
+                    if rec:
+                        rec["why"] = why
+                        _add_skip(cfg.state_dir, rec)
+                        log.info("游戏更新：%s 维护（%s），今天从队列「%s」摘掉 %s", game, why, q["name"], script)
+                    break
     return notes, problems
+
+
+def _skip_default(queue: str, script: str):
+    from . import commands  # noqa: PLC0415
+    return commands.skip_script_in_queue(queue, script)
+
+
+def _queues_today(automas_dir, now: datetime) -> list[dict]:
+    """今天还没到的队列时刻：[{name, dues:[datetime]}]。"""
+    from . import plan  # noqa: PLC0415
+    out = []
+    for q in plan.schedule(automas_dir) if automas_dir else []:
+        dues = []
+        for hhmm in q.get("times", []):
+            try:
+                hh, mm = (int(x) for x in hhmm.split(":"))
+            except ValueError:
+                continue
+            due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+            if due >= now:
+                dues.append(due)
+        out.append({"name": q["name"], "dues": dues})
+    return out
+
+
+def _skips_path(state_dir: Path) -> Path:
+    return Path(state_dir) / "queue-skips.json"
+
+
+def skips(state_dir: Path) -> list[dict]:
+    try:
+        return list(json.loads(_skips_path(state_dir).read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return []
+
+
+def _add_skip(state_dir: Path, rec: dict) -> None:
+    lst = skips(state_dir)
+    if not any(r.get("queueId") == rec.get("queueId") and r.get("scriptId") == rec.get("scriptId") for r in lst):
+        lst.append(rec)
+    atomic_write_text(_skips_path(state_dir), json.dumps(lst, ensure_ascii=False))
+
+
+def restore_skips(state_dir: Path, restorer=None) -> list[str]:
+    """把今天摘掉的都加回去。返回加回了谁。每次调用都试，成功的才从记录里去掉。"""
+    from . import commands  # noqa: PLC0415
+    restorer = restorer or commands.restore_script_in_queue
+    left, done = [], []
+    for rec in skips(state_dir):
+        try:
+            if restorer(rec):
+                done.append(f"{rec['script']}→「{rec['queue']}」")
+                continue
+        except Exception:  # noqa: BLE001
+            log.exception("加回队列失败：%s", rec)
+        left.append(rec)
+    atomic_write_text(_skips_path(state_dir), json.dumps(left, ensure_ascii=False))
+    return done
 
 
 def _windows_path(state_dir: Path) -> Path:
@@ -577,10 +657,13 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
                  dispatch=None, sleep=time.sleep, clock=None) -> tuple[list[str], list[str], list[str]]:
     """把登记过的都做掉。返回 (更新通知, 问题, 重跑了哪些脚本)。
 
-    dispatch(脚本名) → (ok, msg)：单独派发一个脚本（不是整条队列）。
-    只有当天那个脚本最后一趟没成功时才重跑——成功了说明客户端本来就能用。
+    用户 2026-09-03 定的顺序：**队列跑完立刻更新**（下载、安装、拉起游戏过
+    着色器编译，到「点击任意位置继续」的登录界面才算准备好），不等开服；
+    准备好之后如果离开服还超过 10 分钟就先把游戏关掉，到点再单独补跑。
+    更新包还没放出来（维护中常见）就每 10 分钟再试，最多试到开服后 2 小时。
     """
     now = now or datetime.now(tz=SERVER_TZ)
+    clock = clock or (lambda: datetime.now(tz=SERVER_TZ))
     notes: list[str] = []
     problems: list[str] = []
     reran: list[str] = []
@@ -588,71 +671,67 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
     if not todo or off(cfg.state_dir):
         return notes, problems, reran
     desk = desk or Desktop(cfg.state_dir)
-    # 官方公告说还在停服就等，一直等到开服（用户 2026-09-02：「如果游戏还在停服，
-    # 那就等，一直等到游戏开服为止，然后跑完再关机」）。最多等 8 小时。
     wins = windows(cfg.state_dir)
-    ends = [w[1] for g, w in wins.items() if g in todo]
-    if ends:
-        until = max(ends)
-        waited = 0
-        clock = clock or (lambda: datetime.now(tz=SERVER_TZ))
-        while clock() < until and waited < 8 * 3600:
-            if waited == 0:
-                log.info("游戏更新：官方还在停服维护，等到 %s 开服再动", until.strftime("%m-%d %H:%M"))
-            sleep(60); waited += 60
-        if waited:
-            sleep(300)      # 开服后再缓 5 分钟，启动器那边的更新包才挂得上
+    from datetime import timedelta as _td  # noqa: PLC0415
+
+    def prepare(game: str) -> tuple[bool, str]:
+        """更新到登录界面。返回 (准备好了没, 通知句)。没准备好时 problems 里有原因。"""
+        before = len(problems)
+        if game == "终末地":
+            g, l = endfield_paths(cfg.maaend_dir)
+            if not (g and l):
+                problems.append("终末地：找不到启动器"); return False, ""
+            n = update_endfield(desk, g, l, budget_s=2400, problems=problems, sleep=sleep)
+        elif game == "鸣潮":
+            l = wuwa_launcher(cfg.okww_dir)
+            if not l:
+                problems.append("鸣潮：找不到启动器"); return False, ""
+            n = update_wuwa(desk, l, budget_s=2400, problems=problems, sleep=sleep)
+        else:
+            ld, idx = ldconsole_of(cfg.maa_dir)
+            if not ld:
+                problems.append("明日方舟：找不到雷电 ldconsole"); return False, ""
+            n = update_arknights(cfg.state_dir, ld, idx, budget_s=1800, problems=problems, sleep=sleep)
+        return len(problems) == before, n
 
     def rerun(script: str) -> None:
         if needs_rerun(cfg.state_dir, now, script) and dispatch is not None:
             ok, msg = dispatch(script)
-            log.info("游戏更新：重跑 %s → %s", script, msg)
+            log.info("游戏更新：补跑 %s → %s", script, msg)
             if ok:
                 reran.append(script)
             else:
-                problems.append(f"{script}：更新后没能重跑（{msg}）")
+                problems.append(f"{script}：更新后没能补跑（{msg}）")
 
-    if "终末地" in todo:
-        why = todo["终末地"]
-        game, launcher = endfield_paths(cfg.maaend_dir)
-        if game and launcher:
-            before = len(problems)
-            n = update_endfield(desk, game, launcher, budget_s=2400, problems=problems, sleep=sleep)
-            if n:
-                notes.append(n + f"（依据：{why}）")
-            if len(problems) == before:      # 更新成功，或本来就是最新
-                rerun("MaaEnd")
-                clear_pending(cfg.state_dir, "终末地")
-        else:
-            problems.append("终末地：找不到启动器")
-            clear_pending(cfg.state_dir, "终末地")
-
-    if "鸣潮" in todo:
-        why = todo["鸣潮"]
-        launcher_ww = wuwa_launcher(cfg.okww_dir)
-        if launcher_ww:
-            before = len(problems)
-            n = update_wuwa(desk, launcher_ww, budget_s=2400, problems=problems, sleep=sleep)
-            if n:
-                notes.append(n + f"（依据：{why}）")
-            if len(problems) == before:
-                rerun("OK-WW")
-                clear_pending(cfg.state_dir, "鸣潮")
-        else:
-            problems.append("鸣潮：找不到启动器")
-            clear_pending(cfg.state_dir, "鸣潮")
-
-    if "明日方舟" in todo:
-        ld, idx = ldconsole_of(cfg.maa_dir)
-        if ld:
-            before = len(problems)
-            n = update_arknights(cfg.state_dir, ld, idx, budget_s=1800, problems=problems, sleep=sleep)
-            if n:
-                notes.append(n)
-            if len(problems) == before:
-                rerun("MAA")
-                clear_pending(cfg.state_dir, "明日方舟")
-        else:
-            problems.append("明日方舟：找不到雷电 ldconsole")
-            clear_pending(cfg.state_dir, "明日方舟")
+    from . import maintenance  # noqa: PLC0415
+    for game, why in list(todo.items()):
+        script = maintenance.SCRIPT_OF.get(game, "")
+        start, end = (wins.get(game) or (None, None, ""))[:2]
+        deadline = (end + _td(hours=2)) if end else clock() + _td(hours=1)
+        ready, note = False, ""
+        while True:
+            ready, note = prepare(game)
+            if ready or clock() >= deadline:
+                break
+            # 更新包多半还没放出来：把这轮的问题收回，10 分钟后再试
+            log.info("游戏更新：%s 还没准备好（%s），10 分钟后再试", game, problems[-1] if problems else "")
+            del problems[len(problems) - 1:]
+            sleep(600)
+        if note:
+            notes.append(note + f"（依据：{why}）")
+        if not ready:
+            problems.append(f"{game}：到 {deadline:%m-%d %H:%M} 仍没准备好客户端，今天不补跑")
+            continue
+        # 准备好了。离开服还远就先关游戏等着；到点补跑
+        if end and clock() < end:
+            if end - clock() > _td(minutes=10):
+                kill("Endfield.exe", "Client-Win64-Shipping.exe")
+            log.info("游戏更新：%s 客户端已就绪，等 %s 开服再补跑", game, end.strftime("%H:%M"))
+            while clock() < end:
+                sleep(60)
+            sleep(120)
+        rerun(script)
+        clear_pending(cfg.state_dir, game)
+    if done := restore_skips(cfg.state_dir):
+        log.info("游戏更新：已把摘掉的加回队列：%s", "、".join(done))
     return notes, problems, reran

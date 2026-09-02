@@ -263,8 +263,8 @@ def _okww_plan_bits(automas_dir: Path | None,
             if a == "Teleport and Farm 4C Echo" and weekly:
                 lvl = str(farm_cfg.get("Boss Level") or "")
                 idx = int(farm_cfg.get("Which Weekly Boss to Teleport") or 1)
-                done = _weekly_boss_done()
-                label = f"周本 战歌重奏 第 {idx} 个" + (f"（{lvl} 级）" if lvl else "")
+                done, nm = _weekly_boss_state()
+                label = f"周本 {nm or f'战歌重奏第 {idx} 个'}" + (f"（{lvl} 级）" if lvl else "")
                 # 用户 2026-09-02：「不是说都刷完了吗？」——本周已打满就明说明天不打
                 rest.append(label + ("，本周已打满，明天不打" if done else "，明天会打"))
             else:
@@ -279,15 +279,16 @@ def _okww_plan_bits(automas_dir: Path | None,
     return []
 
 
-def _weekly_boss_done() -> bool:
-    """周本本周是否已打满——读中继自己的周本记账（weeklyboss 模块）。"""
+def _weekly_boss_state() -> "tuple[bool, str]":
+    """(本周是否已打满, Boss 名) —— 读中继自己的周本记账（weeklyboss 模块）。"""
     try:
         import os  # noqa: PLC0415
-        from .weeklyboss import WeeklyBoss  # noqa: PLC0415
+        from .weeklyboss import WeeklyBossGate  # noqa: PLC0415
         state = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
-        return bool(WeeklyBoss(state / "weekly-boss.json", None).settings().get("本周已打"))
+        v = WeeklyBossGate(state).settings()
+        return bool(v.get("本周已打")), str(v.get("名字") or "")
     except Exception:  # noqa: BLE001
-        return False
+        return False, ""
 
 
 def _okww_quick_overrides(automas_dir: Path | None) -> dict | None:

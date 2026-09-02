@@ -127,6 +127,33 @@ def remaining_from_log() -> "int | None":
     return int(hits[-1][0])
 
 
+_NAME_RE = re.compile(r"周本名称原文:\s*\[(.*?)\]")
+
+
+def name_from_log() -> str:
+    """OK-WW 日志里最近一次 OCR 到的周本名（补丁「周本名称原文」）。读不到返回空串。"""
+    path = os.environ.get("ARK_OKWW_LOG")
+    if not path:
+        root = os.environ.get("ARK_OKWW_DIR")
+        if not root:
+            return ""
+        logs = Path(root) / "data" / "apps" / "ok-ww" / "working" / "logs"
+        try:
+            path = str(max(logs.glob("*.log*"), key=lambda q: q.stat().st_mtime))
+        except (OSError, ValueError):
+            return ""
+    try:
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    hits = _NAME_RE.findall(text)
+    if not hits:
+        return ""
+    # OCR 结果形如 "千傀重楼_0.99"，取第一个词、去掉置信度
+    first = hits[-1].split(",")[0].strip().strip("'\"")
+    return re.sub(r"_[\d.]+$", "", first).strip()
+
+
 def _mirror(name: str, want: dict) -> None:
     """把 want 里的字段同步到 OK-WW 自己那份配置。副本没有就安静跳过。"""
     f = _okww_file(name)
@@ -170,6 +197,7 @@ class WeeklyBossGate:
         # （它用的就是这个比对），错的只有对外显示这一处。2026-08-31 测出来的。
         week = week_key(now or datetime.now(tz=SERVER_TZ))
         return {"开": bool(s.get("enabled")),
+                "名字": str(s.get("name") or ""),
                 "第几个周本": int(s.get("index") or 1),
                 "打几次": int(s.get("count") or 1),
                 "难度等级": str(s.get("level") or MAX_LEVEL),
@@ -210,6 +238,10 @@ class WeeklyBossGate:
         week = week_key(now or datetime.now(tz=SERVER_TZ))
         if s.get("done_week") == week:
             return ""
+        if nm := name_from_log():
+            if s.get("name") != nm:
+                s["name"] = nm
+                self._save(s)
         left = remaining_from_log()
         if left is None:
             log.info("周本：读不到本周剩余次数，这趟先不记账，下一趟再看")

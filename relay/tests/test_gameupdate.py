@@ -181,16 +181,54 @@ check("撞上维护的失败 → 该补跑", gu.needs_rerun(ST, _dt(2026, 9, 4, 
 cfg.maa_dir = None
 gu.mark_pending(ST, "明日方舟", "官方公告")
 slept = []
-notes, probs, reran = gu.run_deferred(cfg, now=_dt(2026, 9, 4, 13, 0, tzinfo=gu.SERVER_TZ), desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: (True, "ok"), sleep=lambda s: slept.append(s), clock=lambda: _dt(2026, 9, 4, 13, 0, tzinfo=gu.SERVER_TZ))
-check("窗口已过就不等", sum(slept), 0)
-slept.clear(); gu.mark_pending(ST, "明日方舟", "官方公告")
-ticks = [_dt(2026, 9, 4, 11, 58, tzinfo=gu.SERVER_TZ)]
-def clk():
-    ticks.append(ticks[-1] + _td(minutes=1)); return ticks[-1]
-gu.run_deferred(cfg, now=_dt(2026, 9, 4, 11, 58, tzinfo=gu.SERVER_TZ), desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: (True, "ok"), sleep=lambda s: slept.append(s), clock=clk)
-check("还在停服就一分钟一分钟等到开服，再缓 5 分钟", (slept.count(60) >= 1, 300 in slept), (True, True))
+ticks0 = [_dt(2026, 9, 4, 13, 0, tzinfo=gu.SERVER_TZ)]
+def clk0():
+    ticks0.append(ticks0[-1] + _td(minutes=10)); return ticks0[-1]
+notes, probs, reran = gu.run_deferred(cfg, now=_dt(2026, 9, 4, 13, 0, tzinfo=gu.SERVER_TZ), desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: (True, "ok"), sleep=lambda s: slept.append(s), clock=clk0)
+check("准备不了（没雷电）→ 每 10 分钟重试到截止，不补跑", (reran, 600 in slept, any("仍没准备好" in p for p in probs)), ([], True, True))
+# 终末地：客户端准备好了、离开服还远 → 关游戏、一分钟一分钟等到开服、缓 2 分钟、再补跑
+gu.save_windows(ST, {"终末地": (_dt(2026, 9, 4, 6, 0, tzinfo=gu.SERVER_TZ), _dt(2026, 9, 4, 12, 0, tzinfo=gu.SERVER_TZ), "官方公告")})
+(ST / "ledger-2026-09-04.jsonl").write_text(json.dumps({"script": "MaaEnd", "ok": False, "raw": {"maintenance": "官方公告"}}) + "\n", encoding="utf-8")
+gu.mark_pending(ST, "终末地", "官方公告")
+slept.clear(); dispatched.clear()
+ticks1 = [_dt(2026, 9, 4, 10, 30, tzinfo=gu.SERVER_TZ)]
+def clk1():
+    ticks1.append(ticks1[-1] + _td(minutes=1)); return ticks1[-1]
+notes, probs, reran = gu.run_deferred(cfg, now=_dt(2026, 9, 4, 10, 30, tzinfo=gu.SERVER_TZ), desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=lambda s: slept.append(s), clock=clk1)
+check("先准备好再等开服：一分钟一分钟等，开服后缓 2 分钟，然后补跑", (slept.count(60) >= 1, 120 in slept, reran), (True, True, ["MaaEnd"]))
 gu.save_windows(ST, {})
 gu.clear_pending(ST, "明日方舟")
+
+print("[维护日：队列时刻落在窗口里 → 摘掉；补跑完加回]")
+gu.save_windows(ST, {})
+(ST / "queue-skips.json").unlink(missing_ok=True)
+import ark_relay.plan as _plan
+_plan_backup = _plan.schedule
+_plan.schedule = lambda d: [{"name": "早班", "times": ["09:00"]}, {"name": "晚班", "times": ["21:30"]}]
+cfg.automas_dir = ST
+skipped = []
+src_ak = {"明日方舟": lambda n: (_dt(2026, 9, 4, 6, 0, tzinfo=gu.SERVER_TZ), _dt(2026, 9, 4, 12, 0, tzinfo=gu.SERVER_TZ), "官方公告：09-04 06:00–12:00")}
+notes, probs = gu.boot_check(cfg, budget_s=600, now=_dt(2026, 9, 4, 8, 46, tzinfo=gu.SERVER_TZ), maint_sources=src_ak, hint=lambda n: "",
+                             skipper=lambda q, sc: skipped.append((q, sc)) or {"queue": q, "queueId": "Q", "script": sc, "scriptId": "S", "position": 0})
+check("早班 09:00 在窗口里 → 从早班摘掉 MAA", skipped, [("早班", "MAA")])
+check("晚班 21:30 不在窗口里 → 不摘", len(skipped), 1)
+check("登记了明日方舟", "明日方舟" in gu.pending(ST), True)
+check("摘掉的记在案", [r["script"] for r in gu.skips(ST)], ["MAA"])
+check("被摘掉的即使没失败记录也要补跑", gu.needs_rerun(ST, _dt(2026, 9, 4, 13, 0), "MAA"), True)
+restored = []
+dispatched.clear()
+ticks = [_dt(2026, 9, 4, 10, 30, tzinfo=gu.SERVER_TZ)]
+def clk2():
+    ticks.append(ticks[-1] + _td(minutes=1)); return ticks[-1]
+cfg.maa_dir = None   # 找不到雷电 → 准备失败 → 每 10 分钟重试直到截止
+notes, probs, reran = gu.run_deferred(cfg, now=_dt(2026, 9, 4, 10, 30, tzinfo=gu.SERVER_TZ), desk=FakeDesk([["x"]]), dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=lambda s: None, clock=clk2)
+check("准备不了 → 不补跑、问题里说明", (reran, any("仍没准备好" in p for p in probs)), ([], True))
+gu.clear_pending(ST, "明日方舟")
+import ark_relay.gameupdate as _gu2
+_orig_restore = _gu2.restore_skips
+done = gu.restore_skips(ST, restorer=lambda rec: restored.append(rec["script"]) or True)
+check("加回", (done, restored, gu.skips(ST)), (["MAA→「早班」"], ["MAA"], []))
+_plan.schedule = _plan_backup
 
 print("[每次开机只跑一遍]")
 from datetime import datetime

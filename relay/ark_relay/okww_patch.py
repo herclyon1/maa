@@ -859,7 +859,7 @@ _NOWAVE = _Patch(
 # **不消耗次数**。所以这张图可以在波片不够的时候放心拍。
 _COUNT_OLD = """                self.click_configured_boss_level()"""
 
-_COUNT_NEW = """                # 本地补丁：选等级之前把「本周剩余可收取次数」读出来。
+_COUNT_V1 = """                # 本地补丁：选等级之前把「本周剩余可收取次数」读出来。
                 # 中继靠这个数判断本周打完没有——「任务跑完」不等于「三次领满」，
                 # 波片不够时一趟只领得到一两次，按前者记账会把剩下的次数丢掉。
                 try:
@@ -873,11 +873,31 @@ _COUNT_NEW = """                # 本地补丁：选等级之前把「本周剩�
                     pass
                 self.click_configured_boss_level()"""
 
+_COUNT_NEW = """                # 本地补丁：选等级之前把「本周剩余可收取次数」读出来。
+                # 中继靠这个数判断本周打完没有——「任务跑完」不等于「三次领满」，
+                # 波片不够时一趟只领得到一两次，按前者记账会把剩下的次数丢掉。
+                try:
+                    self.screenshot('weekly_remaining')
+                except Exception:
+                    pass
+                try:
+                    _left = self.ocr(box=self.box_of_screen(0.58, 0.80, 0.98, 0.90))
+                    self.log_info(f'周本本周剩余次数原文: {_left}')
+                except Exception:
+                    pass
+                try:
+                    # 右上角标题就是 Boss 名（2026-09-02 截图：千傀重楼）——日报要写名字，不写序号
+                    _name = self.ocr(box=self.box_of_screen(0.62, 0.13, 0.86, 0.20))
+                    self.log_info(f'周本名称原文: {_name}')
+                except Exception:
+                    pass
+                self.click_configured_boss_level()"""
+
 
 def _count_present(text: str) -> bool:
     # 判据认本版独有的字串，不能只认那句没变过的截图名——
-    # 否则改了内容也贴不上去（今天已栽过一次）。
-    return "周本本周剩余次数原文" in text
+    # 否则改了内容也贴不上去（今天已栽过一次）。v2 加了 Boss 名的 OCR。
+    return "周本名称原文" in text
 
 
 _COUNT = _Patch(
@@ -1212,6 +1232,8 @@ def ensure_patches(okww_dir: Path | None) -> list[str]:
                              "开启挑战找不到时留证据截图"))
     # 历史版本必须先全部还原，否则会叠加：v1/v2 的替换文本末尾都带着
     # 锚点本身，present() 一变就会再贴一层。
+    done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
+                             _COUNT_V1, _COUNT_OLD, "进本前拍一张看剩余次数 v1"))
     done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
                              _NOWAVE_V1 + "\n", "", "波片不足时跳过周本 v1"))
     done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),

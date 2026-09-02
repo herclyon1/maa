@@ -351,6 +351,69 @@ def estop() -> tuple[bool, str]:
     return True, "已停一切：" + ("、".join(stopped) if stopped else "接口没停到东西") + "；脚本和游戏进程已结束"
 
 
+def mas_up() -> bool:
+    """AUTO-MAS 后端接口活着没有。"""
+    try:
+        _mas("/api/queue/get", timeout=5)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _queue_id(queue: str) -> str:
+    for qid, q in _mas("/api/queue/get")["data"].items():
+        if str((q.get("Info") or {}).get("Name") or "") == queue:
+            return qid
+    raise KeyError(f"没有叫「{queue}」的队列")
+
+
+def _script_id(script: str) -> str:
+    for sid, sc in _mas("/api/scripts/get")["data"].items():
+        if str((sc.get("Info") or {}).get("Name") or "").lower() == script.lower():
+            return sid
+    raise KeyError(f"没有叫「{script}」的脚本")
+
+
+def skip_script_in_queue(queue: str, script: str) -> dict | None:
+    """把一个脚本从队列里摘出去（经 AUTO-MAS 接口），返回加回时要用的记录。
+
+    维护日「当天队列里不跑它」用的。2026-09-03 在 早班 上实测：
+    item/delete 摘掉，item/add → item/update(ScriptId) → item/order 能一字不差地加回。
+    """
+    qid, sid = _queue_id(queue), _script_id(script)
+    items = _mas("/api/queue/item/get", {"queueId": qid})
+    order = [i["uid"] for i in items["index"]]
+    target = next((u for u in order if (items["data"].get(u, {}).get("Info") or {}).get("ScriptId") == sid), None)
+    if target is None:
+        return None
+    r = _mas("/api/queue/item/delete", {"queueId": qid, "queueItemId": target})
+    if str(r.get("status")) != "success":
+        raise RuntimeError(f"摘不掉：{r.get('message')}")
+    rec = {"queue": queue, "queueId": qid, "script": script, "scriptId": sid, "position": order.index(target)}
+    log.info("队列「%s」今天摘掉 %s（原第 %d 位）", queue, script, rec["position"] + 1)
+    return rec
+
+
+def restore_script_in_queue(rec: dict) -> bool:
+    """按 skip_script_in_queue 的记录加回去，位置也放回原处。"""
+    qid, sid = rec["queueId"], rec["scriptId"]
+    items = _mas("/api/queue/item/get", {"queueId": qid})
+    order = [i["uid"] for i in items["index"]]
+    if any((items["data"].get(u, {}).get("Info") or {}).get("ScriptId") == sid for u in order):
+        return True                                   # 已经在了
+    r = _mas("/api/queue/item/add", {"queueId": qid})
+    uid = r.get("queueItemId")
+    if not uid:
+        raise RuntimeError(f"加不回：{r.get('message')}")
+    _mas("/api/queue/item/update", {"queueId": qid, "queueItemId": uid, "data": {"Info": {"ScriptId": sid}}})
+    pos = min(int(rec.get("position", len(order))), len(order))
+    _mas("/api/queue/item/order", {"queueId": qid, "indexList": order[:pos] + [uid] + order[pos:]})
+    back = _mas("/api/queue/item/get", {"queueId": qid})
+    ok = any((back["data"].get(u, {}).get("Info") or {}).get("ScriptId") == sid for u in (i["uid"] for i in back["index"]))
+    log.info("队列「%s」已把 %s 加回第 %d 位：%s", rec["queue"], rec["script"], pos + 1, "成功" if ok else "失败")
+    return ok
+
+
 def run_script(script: str) -> tuple[bool, str]:
     """单独派发一个脚本（不是整条队列），走 AUTO-MAS 的 dispatch 接口。
 
