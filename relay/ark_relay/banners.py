@@ -314,8 +314,37 @@ def _stamp(when: datetime) -> str:
     return f"{when:%m-%d}" if (when.hour, when.minute) == (0, 0) else f"{when:%m-%d %H:%M}"
 
 
+# ── 版本前瞻 ──
+# 用户 2026-09-03：卡池预期来自官方「版本前瞻」；前瞻还没发也要标下次前瞻的时间。
+# 终末地/鸣潮的前瞻按往期规律在版本更新前约 10 天（雪凇幽梦：研发通讯 08-22，版本 09-02；
+# 鸣潮 3.6：08-20 版本）；官方一发「前瞻」公告就用公告的时刻。方舟版本时间不固定，
+# 下一期看一图流（next_starts 里已带）。
+_PREVIEW_LEAD_DAYS = 10
+
+
+def previews(now: datetime, rows: list[Banner], version_end: "dict[str, datetime]",
+             official: "dict[str, tuple[datetime, str]] | None" = None) -> "dict[str, str]":
+    """{游戏: 前瞻那一行的正文}。official[游戏] = (前瞻时刻, 标题) 有就用它。"""
+    out: dict[str, str] = {}
+    for game in ("终末地", "鸣潮"):
+        if official and game in official:
+            when, title = official[game]
+            out[game] = f"{when:%m-%d %H:%M} {title}"
+            continue
+        end = version_end.get(game)
+        if not end:
+            continue
+        guess = end - timedelta(days=_PREVIEW_LEAD_DAYS)
+        if guess <= now:
+            out[game] = f"版本 {end:%m-%d} 更新前（前瞻应已发布，官方接口里没读到）"
+        else:
+            out[game] = f"预计 {guess:%m-%d}（版本 {end:%m-%d} 更新前约 {_PREVIEW_LEAD_DAYS} 天，官方未公布）"
+    return out
+
+
 def render(banners: list[Banner], now: datetime,
-           next_starts: "dict[str, tuple[datetime, str]] | None" = None) -> str:
+           next_starts: "dict[str, tuple[datetime, str]] | None" = None,
+           preview: "dict[str, str] | None" = None) -> str:
     """日报末尾那一段，按游戏分块，每块最多两行：
 
         明日方舟
@@ -333,8 +362,9 @@ def render(banners: list[Banner], now: datetime,
     for b in sorted((x for x in banners if x.start <= now <= x.end), key=lambda x: x.end):
         live.setdefault(b.game, []).append(b)
     nxt = {g: v for g, v in (next_starts or {}).items() if v[0] > now}
-    games = [g for g in _GAME_ORDER if g in live or g in nxt]
-    games += sorted(g for g in set(live) | set(nxt) if g not in _GAME_ORDER)
+    pv = preview or {}
+    games = [g for g in _GAME_ORDER if g in live or g in nxt or g in pv]
+    games += sorted(g for g in set(live) | set(nxt) | set(pv) if g not in _GAME_ORDER)
     blocks: list[str] = []
     for game in games:
         lines = [game]
@@ -347,6 +377,8 @@ def render(banners: list[Banner], now: datetime,
             d = when - now
             head = ("约 " if not who else "") + f"{_stamp(when)} 开（还有 {d.days} 天）"
             lines.append(f"· 预告　{head}　{who or 'UP 是谁官方未公布'}")
+        if game in pv:
+            lines.append(f"· 前瞻　{pv[game]}")
         blocks.append("\n".join(lines))
     return "🎴 卡池\n" + "\n".join(blocks) if blocks else ""
 
@@ -737,10 +769,27 @@ def collect(now: datetime, *, skland_token: str = "",
     return rows, nxt
 
 
+def version_ends(now: datetime, rows: list[Banner]) -> "dict[str, datetime]":
+    """各游戏这一版什么时候结束（= 下一版更新时刻）。终末地取当期池子结束；
+    鸣潮取公告里的更新维护开始 + 42 天（3.x 每版六周）。取不到就没有。"""
+    out: dict[str, datetime] = {}
+    ef = [b.end for b in rows if b.game == "终末地" and b.start <= now]
+    if ef:
+        out["终末地"] = max(ef)
+    try:
+        from . import maintenance  # noqa: PLC0415
+        w = maintenance.wuwa_window(now)
+        if w:
+            out["鸣潮"] = w[0].replace(tzinfo=None) + timedelta(days=42)
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
 def section(now: datetime, **kw) -> str:
     """日报末尾那一段。"""
     rows, nxt = collect(now, **kw)
-    return render(rows, now, nxt)
+    return render(rows, now, nxt, previews(now, rows, version_ends(now, rows)))
 
 
 def opening_tomorrow(now: datetime,

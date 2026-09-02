@@ -732,6 +732,13 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
                     log.info("预更新：MaaEnd 已更新：%s", updated)
                     notifier.send("🆕 预更新",
                                   f"MaaEnd 已更新：{updated}")
+                try:
+                    from ark_relay import gameupdate as _gu  # noqa: PLC0415
+                    if back := _gu.maaend_reenable_if_updated(cfg):
+                        log.info("预更新：%s", back)
+                        notifier.send("🔓 终末地日常已开回", back)
+                except Exception:  # noqa: BLE001
+                    log.exception("开回 MaaEnd 任务出错")
                 # AUTO-MAS is asked, not launched - it is already running.
                 if note := preupdate.run_automas(cfg.automas_dir,
                                                  problems=problems):

@@ -114,8 +114,8 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
     restarted = False
     while time.monotonic() < deadline:
         scr = desk.read(focus="Endfield")
-        if scr.has("点击任意位置继续"):
-            log.info("游戏更新：终末地已到标题画面，客户端可用")
+        if scr.has(*READY_WORDS["终末地"]):
+            log.info("游戏更新：终末地已到标题画面（读到「点击任意位置继续」），客户端可用")
             break
         if scr.has("请重启游戏") and not restarted:
             desk.click_text("确认", focus="Endfield")
@@ -134,6 +134,48 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
         _note(problems, "终末地：更新后 15 分钟没走到标题画面（可能还在编译着色器）")
     kill("Endfield.exe", "Games.exe")
     return "终末地 客户端已通过启动器更新"
+
+
+# ─────────────────────────── 「到登录界面」三家各自的判据 ───────────────────────────
+# 用户 2026-09-03：「三个游戏到登录界面并不是每一个都出现『点击任意位置继续』」。
+# 终末地：那句是 09-02 手动更新时屏幕上读到的，已验证。
+# 鸣潮 / 明日方舟：候选词是按各自登录界面的常见文案列的，**未在机器上验证**；
+# 读不到候选词时退回「游戏窗口活着满 N 分钟」这个不靠字的判据，并在日志里写明用的是哪个。
+READY_WORDS = {
+    "终末地": ("点击任意位置继续",),
+    "鸣潮": ("点击开始", "点击进入", "开始游戏", "登录"),
+    "明日方舟": ("开始唤醒", "点击开始", "账号登录", "登录"),
+}
+
+
+def wait_ready(desk: Desktop, game: str, *, focus: str, alive, budget_s: float = 900,
+               fallback_s: float = 240, poll_s: float = 30, sleep=time.sleep) -> str:
+    """等到登录界面。返回依据句（空串 = 没等到）。alive() 说进程还在不在。"""
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < budget_s:
+        if not alive():
+            return ""
+        scr = desk.read(focus=focus)
+        if scr.has(*READY_WORDS.get(game, ())):
+            hit = next(w for w in READY_WORDS[game] if scr.has(w))
+            log.info("游戏更新：%s 到登录界面（读到「%s」）", game, hit)
+            return f"读到「{hit}」"
+        if time.monotonic() - t0 >= fallback_s:
+            log.info("游戏更新：%s 没读到登录界面的字，但游戏窗口活着满 %.0f 分钟，按就绪算", game, fallback_s / 60)
+            return f"窗口活着满 {fallback_s / 60:.0f} 分钟（没读到字）"
+        sleep(poll_s)
+    return ""
+
+
+def _alive(exe: str):
+    import subprocess as _sp  # noqa: PLC0415
+    def f() -> bool:
+        try:
+            out = _sp.run(["tasklist"], capture_output=True, timeout=30).stdout
+            return exe.encode() in out
+        except Exception:  # noqa: BLE001
+            return True
+    return f
 
 
 # ─────────────────────────── 鸣潮 ───────────────────────────
@@ -180,8 +222,15 @@ def update_wuwa(desk: Desktop, launcher: Path, *, budget_s: float = 2400, poll_s
         sleep(poll_s)
         scr = desk.read(focus="title:鸣潮")
         if scr.has("开始游戏"):
+            # 装完了。点「开始游戏」把游戏拉到登录界面（着色器就是这时候编的）
+            desk.click_text("开始游戏", focus="title:鸣潮")
+            sleep(90)
+            how = wait_ready(desk, "鸣潮", focus="Client-Win64-Shipping",
+                             alive=_alive("Client-Win64-Shipping.exe"), sleep=sleep)
             _okww_quiesce()
-            return "鸣潮 客户端已通过启动器更新"
+            if not how:
+                _note(problems, "鸣潮：更新后游戏没走到登录界面")
+            return "鸣潮 客户端已通过启动器更新" + (f"，已到登录界面（{how}）" if how else "")
     _note(problems, f"鸣潮：{budget_s / 60:.0f} 分钟内没等到「开始游戏」，先把启动器关掉免得和 OK-WW 撞车")
     _okww_quiesce()
     return ""
@@ -271,7 +320,8 @@ def download(url: str, dest: Path, *, timeout: float = 1500) -> bool:
 
 def update_arknights(state_dir: Path, ldconsole: Path, idx: int, *,
                      budget_s: float = 900, problems: list[str] | None = None,
-                     fetch=None, run=None, sleep=time.sleep, downloader=download) -> str:
+                     fetch=None, run=None, sleep=time.sleep, downloader=download,
+                     desk: Desktop | None = None) -> str:
     """返回「明日方舟 已更新：旧 → 新」或空串。"""
     run = run or (lambda args: subprocess.run(args, capture_output=True, text=True,
                                               errors="replace", timeout=120).stdout)
@@ -331,6 +381,14 @@ def update_arknights(state_dir: Path, ldconsole: Path, idx: int, *,
         now_ver = installed_ak_version(ldconsole, idx, run)
         if now_ver == remote:
             break
+    if now_ver == remote and desk is not None:
+        # 拉起一次让它把版本资源下完、走到登录界面（用户 2026-09-03 要求「到登录界面才算 OK」）
+        run([str(ldconsole), "runapp", "--index", str(idx), "--packagename", AK_PACKAGE])
+        sleep(60)
+        how = wait_ready(desk, "明日方舟", focus="dnplayer", alive=lambda: True,
+                         budget_s=900, fallback_s=300, sleep=sleep)
+        log.info("游戏更新：明日方舟预热%s", f"完成（{how}）" if how else "没等到登录界面")
+        run([str(ldconsole), "killapp", "--index", str(idx), "--packagename", AK_PACKAGE])
     run([str(ldconsole), "quit", "--index", str(idx)])
     if now_ver != remote:
         _note(problems, f"明日方舟：装完读到的版本是 {now_ver or '空'}，不是 {remote}")
@@ -691,7 +749,7 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
             ld, idx = ldconsole_of(cfg.maa_dir)
             if not ld:
                 problems.append("明日方舟：找不到雷电 ldconsole"); return False, ""
-            n = update_arknights(cfg.state_dir, ld, idx, budget_s=1800, problems=problems, sleep=sleep)
+            n = update_arknights(cfg.state_dir, ld, idx, budget_s=1800, problems=problems, sleep=sleep, desk=desk)
         return len(problems) == before, n
 
     def rerun(script: str) -> None:
@@ -735,3 +793,38 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
     if done := restore_skips(cfg.state_dir):
         log.info("游戏更新：已把摘掉的加回队列：%s", "、".join(done))
     return notes, problems, reran
+
+
+# ─────────────────────────── MaaEnd 临时关掉的任务：上游更新后开回 ───────────────────────────
+# 2026-09-02 MaaEnd v2.27.0-beta.4 没适配 1.5.3，用户指示先关掉四项；beta.5（09-02 夜）
+# 的说明里有「适配新版本」「装备制造弹窗」「栖云生态点」。上游一换版本就开回来。
+
+def maaend_reenable_if_updated(cfg) -> str:
+    rec_p = Path(cfg.state_dir) / "maaend-disabled-for-1.5.3.json"
+    try:
+        rec = json.loads(rec_p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    from .preupdate import _maaend_file_version  # noqa: PLC0415
+    ver = _maaend_file_version(cfg.maaend_dir) if cfg.maaend_dir else ""
+    since = str(rec.get("since") or "v2.27.0-beta.4")
+    if not ver or ver == since:
+        return ""
+    # 母本在 AUTO-MAS 的 data/<脚本id>/Default/ConfigFile/mxu-MaaEnd.json
+    root = Path(cfg.automas_dir) / "data" if cfg.automas_dir else None
+    target = next((f for f in (root.glob("*/Default/ConfigFile/mxu-MaaEnd.json") if root else [])), None)
+    if not target:
+        return ""
+    names = set(rec.get("disabled") or [])
+    j = json.loads(target.read_text(encoding="utf-8"))
+    on = []
+    for t in j.get("instances", [{}])[0].get("tasks", []):
+        if t.get("taskName") in names and not t.get("enabled"):
+            t["enabled"] = True
+            on.append(t["taskName"])
+    if on:
+        atomic_write_text(target, json.dumps(j, ensure_ascii=False, indent=2))
+    rec_p.unlink(missing_ok=True)
+    zh = {"GiftOperator": "赠送干员礼物", "GearAssembly": "装备制造", "DeliveryJobs": "转交委托", "EnvironmentMonitoring": "环境监测"}
+    return (f"MaaEnd 已更新到 {ver}（之前是 {since}），关掉的 {len(on)} 项日常已开回来："
+            + "、".join(zh.get(n, n) for n in on)) if on else ""

@@ -388,6 +388,21 @@ def _tomorrow():
 _GAME_OF = {"MAA": "明日方舟", "MaaEnd": "终末地", "OK-WW": "鸣潮"}
 
 
+def maintenance_lines(day) -> list[str]:
+    """明日安排里的停服维护提示（用户 2026-09-03：「这个务必要体现」）。"""
+    try:
+        from datetime import datetime as _dt  # noqa: PLC0415
+        from . import maintenance  # noqa: PLC0415
+        from .config import SERVER_TZ  # noqa: PLC0415
+        at = _dt(day.year, day.month, day.day, 8, 46, tzinfo=SERVER_TZ)
+        wins = maintenance.today(at)
+    except Exception:  # noqa: BLE001
+        return []
+    return [f"⚠️ {game} {start:%m-%d %H:%M}–{end:%H:%M} 停服维护：当天队列里不跑它，"
+            f"队列跑完立刻更新客户端，{end:%H:%M} 开服后单独补跑"
+            for game, (start, end, _why) in wins.items()]
+
+
 def next_plan(automas_dir: Path | None) -> str:
     """Human-readable summary of what will run next. '' if it cannot be read."""
     if not automas_dir:
@@ -402,6 +417,9 @@ def next_plan(automas_dir: Path | None) -> str:
         return ""
 
     lines = ["📅 明日安排"]
+    from datetime import datetime as _dt, timedelta as _td  # noqa: PLC0415
+    from .config import SERVER_TZ as _TZ  # noqa: PLC0415
+    lines += maintenance_lines((_dt.now(tz=_TZ) + _td(days=1)).date())
     for q in queues:
         for t in q["times"]:
             lines.append(f"🕘 {t}　东京 {_tokyo(t)}")

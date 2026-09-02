@@ -1391,7 +1391,7 @@ class Engine:
         try:
             bnow = datetime.now(tz=SERVER_TZ).replace(tzinfo=None)
             rows, nxt = banners.collect(bnow, skland_token=self.cfg.skland_token)
-            pool = banners.render(rows, bnow, nxt)
+            pool = banners.render(rows, bnow, nxt, banners.previews(bnow, rows, banners.version_ends(bnow, rows)))
             self._announce_banners(bnow, nxt)
         except Exception:  # noqa: BLE001
             log.warning("卡池那一段整体失败", exc_info=True)
