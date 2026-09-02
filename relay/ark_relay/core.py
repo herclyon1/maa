@@ -433,8 +433,9 @@ def _block(e: dict, finished: datetime) -> list[str]:
         done = [t for t in (raw.get("tasks_done") or []) if not any(k in t for k in _END_FARM_NOTE_SKIP)]
         failed = raw.get("tasks_failed") or []
         if done or failed:
-            # 用户 2026-08-29：要看得出做了什么、漏了什么，所以列名单
-            n = f"日常 {len(done)} 项：" + "、".join(done) if done else "日常 0 项"
+            # 用户 2026-09-02：备注太多，缩成「日常 1-16 项完成」，名单当注释
+            # 放到整条通知的最末（见 daily_footnote）。
+            n = f"日常 1-{len(done)} 项完成" if done else "日常 0 项"
             if failed:
                 n += "；失败 " + "、".join(failed)
             notes.append(n)
@@ -446,6 +447,19 @@ def _block(e: dict, finished: datetime) -> list[str]:
 
 # 「做了」里已经写了刷本，日常清单里就不再重复它，也不算「结束进程」那种收尾
 _END_FARM_NOTE_SKIP = ("基质刷取", "协议空间", "结束进程")
+
+def daily_footnote(entries: list[dict]) -> str:
+    """通知最末的注释：终末地日常清单的编号对照。「日常 1-16 项完成」里的
+    数字就是这里的序号。取当天最后一趟成功的 MaaEnd；没有就返回空串。"""
+    for e in reversed(entries):
+        if e.get("script") != "MaaEnd" or not e.get("ok"):
+            continue
+        raw = e.get("raw") or {}
+        done = [t for t in (raw.get("tasks_done") or []) if not any(k in t for k in _END_FARM_NOTE_SKIP)]
+        if done:
+            return "———————\n日常：" + " ".join(f"{i}.{n}" for i, n in enumerate(done, 1))
+    return ""
+
 
 def format_daily(day: str, entries: list[dict], prose: str = "",
                  plan: str = "") -> tuple[str, str]:

@@ -85,8 +85,11 @@ check("终末地", rows(blocks[2]), [
     "· 消耗　理智 160，加强剂 0",
     "· 产出　无暇基质×6 高纯基质×4",
     "· 剩余　理智 74/360，本日 21:00 回满（东京 22:00）",
-    "· 备注　日常 9 项：赠送干员礼物、装备制造、拜访好友、基建任务、信用点购物、应急理智加强剂、选剑演武、自动采集、日常奖励领取"])
+    "· 备注　日常 1-9 项完成"])
 check("失败的只有一行备注", rows(blocks[3]), ["· 备注　失败于：OK-WW 流程产生错误"])
 check("「体力不够再开一局」不再出现", "体力不够" in body, False)
+foot = core.daily_footnote(entries)
+check("名单当注释放最末", foot, "———————\n日常：1.赠送干员礼物 2.装备制造 3.拜访好友 4.基建任务 5.信用点购物 6.应急理智加强剂 7.选剑演武 8.自动采集 9.日常奖励领取")
+check("没有终末地成功记录就没有注释", core.daily_footnote(entries[:2]), "")
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
