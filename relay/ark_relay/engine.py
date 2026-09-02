@@ -259,6 +259,9 @@ class Engine:
                          modes.debug_until(self.state.dir))
             elif self._debug_last is not None:
                 log.info("🔧 调试模式已结束，恢复正常判定")
+                # 用户 2026-09-02 定的：调试模式是「跳过这一次跑完后的关机」
+                # 的一次性开关，关掉它**不会**有人再去执行那条关机——机器就
+                # 开到下一趟队列跑完为止。这是默认设计，别在这里补关。
             self._debug_last = active
 
     # ---------- survive restarts ----------

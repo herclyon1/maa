@@ -340,6 +340,100 @@ _KIND_NOTE = {"update": "游戏更新后重跑，不算失败",
               "maintenance": "进不了游戏（服务器维护／客户端待更新），今天跳过"}
 
 
+# ── 三个游戏一个版式 ──────────────────────────────────────────
+# 用户 2026-09-02：「中继的每日通知要统一格式，现在三个游戏花样百出，
+# 视觉上要看起来一样。」原来 MAA 写「刷了/消耗理智/产出/公招/剩余理智」，
+# 鸣潮写「进本/剩余波片/残象聚落/任务」，终末地写「完成 N 项/协议空间」——
+# 每家一套。现在每家都是同样五行、同样顺序、同样标签，没有的写「—」：
+#   · 做了　  这一趟干了什么（刷的关卡×次数 / 进本次数+任务 / 日常清单）
+#   · 消耗　  花掉的资源（理智、吃药 / 协议空间次数）；鸣潮的消耗读数被
+#             证伪过，宁可「—」也不写错的（2026-08-29 用户原话见 git 历史）
+#   · 产出　  掉落
+#   · 剩余　  体力余量与回满时刻
+#   · 备注　  公招、残象聚落、提前收工的原因……其余一切
+_LABELS = ("做了", "消耗", "产出", "剩余", "备注")
+
+
+def _row(label: str, parts: list[str]) -> str:
+    return f"· {label}　" + ("；".join(x for x in parts if x) or "—")
+
+
+def _block(e: dict, finished: datetime) -> list[str]:
+    """一趟成功记录的五行。字段来源见 collector.py 三个解析器。"""
+    raw = e.get("raw") or {}
+    did: list[str] = []
+    cost: list[str] = []
+    out: list[str] = []
+    left: list[str] = []
+    notes: list[str] = []
+
+    # 做了
+    if stages := raw.get("stages"):
+        farmed = "、".join(stages)
+        if times := raw.get("run_times"):
+            farmed += f" ×{times}"
+        did.append("刷 " + farmed)
+    if runs := raw.get("okww_runs"):
+        did.append(f"进本 {runs} 次")
+    if steps := raw.get("okww_steps"):
+        did.append("任务 " + "、".join(steps))      # 里面可能有「未进本」，不写"完成"
+    if done := raw.get("tasks_done"):
+        # 用户 2026-08-29：数字标号 + 任务名，看得出做了什么、漏了什么
+        did.append(f"日常 {len(done)} 项：" + "、".join(f"{i}.{n}" for i, n in enumerate(done, 1)))
+
+    # 消耗
+    if spent := raw.get("sanity_spent"):
+        c = f"理智 {spent}"
+        if med := raw.get("medicine_used"):
+            c += f"，吃药 {med}"
+        cost.append(c)
+    if runs := raw.get("protocol_runs"):
+        c = f"协议空间 {runs} 次"
+        if raw.get("sanity_exhausted"):
+            c += "，理智不足以再开一次"
+        cost.append(c)
+    elif raw.get("sanity_exhausted"):
+        cost.append("理智不足，未进入协议空间")
+
+    # 产出
+    if drops := _fmt_items(e.get("drops") or {}):
+        out.append(drops)
+
+    # 剩余
+    if e.get("sanity") is not None:
+        s = f"理智 {e['sanity']}"
+        if cap := raw.get("sanity_cap"):
+            s += f"/{cap}"
+            if e["sanity"] > cap:
+                s += "　⚠️ 已超上限，理智在溢出"
+        if full := _sanity_full(e.get("sanity_full_at"), finished):
+            s += "，" + full
+        left.append(s)
+    wl = raw.get("okww_stamina_left")
+    if wl is not None:
+        back = raw.get("okww_backup_stamina")
+        s = f"波片 {wl}/240" + (f"，备用 {back}" if back is not None else "")
+        if not (raw.get("okww_stamina_left_exact") or raw.get("okww_stopped")):
+            s += "　※最后一次读数，未必是结束余量"
+        if full := _sanity_full(raw.get("sanity_full_at"), finished):
+            s += "，" + full
+        left.append(s)
+
+    # 备注
+    if recruits := _fmt_items(e.get("recruits") or {}):
+        notes.append("公招 " + recruits)
+    if raw.get("okww_nest_full"):
+        notes.append("残象聚落 落渊南丘 已刷满")
+    elif nest := raw.get("okww_nest"):
+        notes.append(f"残象聚落 落渊南丘 {nest}　※OCR 读数，可能吞掉前导数字")
+    if raw.get("okww_daily_done_at_start"):
+        notes.append("今日日常此前已完成，本轮仅领奖")
+    if stopped := raw.get("okww_stopped"):
+        notes.append(str(stopped))
+
+    return [_row(l, v) for l, v in zip(_LABELS, (did, cost, out, left, notes))]
+
+
 def format_daily(day: str, entries: list[dict], prose: str = "",
                  plan: str = "") -> tuple[str, str]:
     """The one message of the day. Numbers here are copied, never generated.
@@ -364,118 +458,32 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
     for e in entries:
         started = datetime.fromisoformat(e["started"])
         finished = datetime.fromisoformat(e["finished"])
-        raw_early = e.get("raw") or {}
-        # AUTO-MAS always runs 剿灭 as its own pass before the day's farming, so
-        # every queue produces two records. The first is a one-minute check that
-        # farms nothing, and unlabelled it looked like a run that mysteriously
-        # did nothing and ended on 0 sanity.
-        tag = "（剿灭检查）" if raw_early.get("annihilation") else ""
+        raw = e.get("raw") or {}
         kind = kinds.get(e["run_id"], "")
         icon = "✅" if e["ok"] else _KIND_ICON.get(kind, "❌")
+        tag = "（剿灭检查）" if raw.get("annihilation") else ""
         lines.append(icon + f" {e['script']}{tag}　"
                      + _span(started, finished, e.get('duration_known', True)))
+        # 没跑成的、剿灭检查那一分钟：只有一行备注，不摆五个空格子。
         if kind:
-            lines.append("· " + _KIND_NOTE[kind])
-        elif not e["ok"]:
-            lines.append("· " + _fmt_failed(e.get("failed_tasks") or []))
-        if raw_early.get("annihilation"):
-            prog = raw_early.get("annihilation_progress")
+            lines += [_row("备注", [_KIND_NOTE[kind]]), ""]
+            continue
+        if not e["ok"]:
+            lines += [_row("备注", [_fmt_failed(e.get("failed_tasks") or [])]), ""]
+            continue
+        if raw.get("annihilation"):
+            prog = raw.get("annihilation_progress")
             if prog and prog[0] >= prog[1]:
                 note = f"本周剿灭已打满（{prog[0]}/{prog[1]}）"
             elif prog:
                 note = f"⚠️ 剿灭只打到 {prog[0]}/{prog[1]}，本周还没满"
-            elif raw_early.get("annihilation_done"):
+            elif raw.get("annihilation_done"):
                 note = "本周剿灭此前已完成，跳过"
             else:
                 note = "已打剿灭"
-            lines.append("· " + note)
-            lines.append("")
+            lines += [_row("备注", [note]), ""]
             continue
-        # What the sanity actually bought. AUTO-MAS leaves these empty, so they
-        # come from the collector's parse of MAA's own log - see collector.py.
-        raw = e.get("raw") or {}
-        if stages := raw.get("stages"):
-            farmed = "、".join(stages)
-            if times := raw.get("run_times"):
-                farmed += f" ×{times}"
-            lines.append("· 刷了 " + farmed)
-        if spent := raw.get("sanity_spent"):
-            cost = f"· 消耗理智 {spent}"
-            if med := raw.get("medicine_used"):
-                cost += f"，吃药 {med}"
-            lines.append(cost)
-        if drops := _fmt_items(e.get("drops") or {}):
-            lines.append("· 产出 " + drops)
-        # MaaEnd works through a list of chores rather than farming a stage, so
-        # "how many got done" is its equivalent of a stage count.
-        if done := raw.get("tasks_done"):
-            # 只写「完成 N 项」等于没说，看不出做了什么、漏了什么。
-            # 用户 2026-08-29：「改成完成数字标号的日常，然后数字标号在最后
-            # 附上对应任务名称」。
-            lines.append(f"· 完成 {len(done)} 项日常："
-                         + "、".join(f"{i}.{n}" for i, n in enumerate(done, 1)))
-        # MaaEnd publishes no sanity number and no refill time, so say the one
-        # thing it does report rather than leaving the line blank and letting
-        # the reader wonder whether it simply stopped early.
-        if runs := raw.get("protocol_runs"):
-            note = f"· 协议空间 {runs} 次"
-            if raw.get("sanity_exhausted"):
-                note += "，理智不足以再开一次"
-            lines.append(note)
-        elif raw.get("sanity_exhausted"):
-            lines.append("· 理智不足，未进入协议空间")
-        # ── OK-WW 这一段 2026-08-29 整段重写 ──
-        # 用户原话：「Ok ww 的通知你全部删掉重来，全是屎」。之前的毛病是三类：
-        #   ① 说法就是错的：「体力用尽」还剩 37；「已打满，跳过」——打满是干完了
-        #   ② 报了不可信的数：活跃度读成 40（实际 160，它读的是某一行的 +40）、
-        #      日常进度读成 0/180、残象计数被 OCR 吞掉前导数字
-        #   ③ 报了用户不要的：消耗量
-        # 现在只写**站得住的事实**，读不准的宁可不写，也不写个错的加免责。
-        if runs := raw.get("okww_runs"):
-            lines.append(f"· 进本 {runs} 次")
-        # 游戏里体力是两个数：蓝色结晶波片 N/240 和绿色那个备用值。
-        # OK-WW 的 get_stamina() 本来就分开存 current_stamina / back_up_stamina。
-        left = raw.get("okww_stamina_left")
-        if left is not None:
-            back = raw.get("okww_backup_stamina")
-            s = f"· 剩余波片 {left}/240" + (f"，备用 {back}" if back is not None else "")
-            if not (raw.get("okww_stamina_left_exact")
-                    or raw.get("okww_stopped")):
-                s += "　※最后一次读数，未必是结束余量"
-            if full := _sanity_full(raw.get("sanity_full_at"), finished):
-                s += "，" + full
-            lines.append(s)
-        if stopped := raw.get("okww_stopped"):
-            lines.append(f"· {stopped}")
-        # 残象聚落：打满就说刷满（那是干完了）。没打满时的计数被 OCR 吞过
-        # 前导数字（41 读成 0/41），所以带着出处报，不冒充准确值。
-        if raw.get("okww_nest_full"):
-            lines.append("· 残象聚落 落渊南丘 已刷满")
-        elif nest := raw.get("okww_nest"):
-            lines.append(f"· 残象聚落 落渊南丘 {nest}"
-                         "　※OCR 读数，可能吞掉前导数字")
-        # 活跃度和「累计消耗波片」两个读数都被实测证伪过（活跃度实际 160 报成 40），
-        # 在没把屏幕和日志对上之前不报——**错的数字比没有数字更糟**。
-        if raw.get("okww_daily_done_at_start"):
-            lines.append("· 今日日常此前已完成，本轮仅领奖")
-        if steps := raw.get("okww_steps"):
-            # 不写"完成"——里面可能有「未进本」「失败」，见 collector 的注释。
-            lines.append("· 任务 " + "、".join(steps))
-        if recruits := _fmt_items(e.get("recruits") or {}):
-            lines.append("· 公招 " + recruits)
-        if e.get("sanity") is not None:
-            s = f"· 剩余理智 {e['sanity']}"
-            # 终末地 reports "current/cap", and the current value really does
-            # go over the cap - being over means sanity (理智) is overflowing
-            # and going to waste, which is a signal to act on, so a bare
-            # number on its own is not enough.
-            if cap := raw.get("sanity_cap"):
-                s += f"/{cap}"
-                if e["sanity"] > cap:
-                    s += "　⚠️ 已超上限，理智在溢出"
-            if full := _sanity_full(e.get("sanity_full_at"), finished):
-                s += "，" + full
-            lines.append(s)
+        lines += _block(e, finished)
         lines.append("")
 
     if prose:

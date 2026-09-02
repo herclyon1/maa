@@ -141,18 +141,18 @@ def main() -> int:
     check("在开的首发池要报", "清宵" in out, True)
     check("复刻不进报告", "达妮娅" in out, False)
     check("下一期报出人名", "景燃「身赴三途」" in out, True)
-    check("官方公布了人就不许写「约」", "下一期约" in out, False)
+    check("官方公布了人就不许写「约」", "预告　约" in out, False)
     check("官方公布了人就不许写「未公布」", "官方未公布" in out, False)
 
     blind = render([], now, {"终末地": (datetime(2026, 9, 2, 6, 0, 0), "")})
-    check("没公布人时必须写「约」", "下一期约" in blind, True)
+    check("没公布人时必须写「约」", "预告　约" in blind, True)
     check("没公布人时必须说明未公布", "官方未公布" in blind, True)
     check("有确切时刻就把时刻写出来", "09-02 06:00" in blind, True)
 
     dateonly = render([], now, {"明日方舟": (datetime(2026, 9, 4, 0, 0, 0),
                                             "P3R联动（排期是预测，未官宣）")})
     check("只给到日期的源不许凑出 00:00", "00:00" in dateonly, False)
-    check("只给到日期时写到日", "09-04 换" in dateonly, True)
+    check("只给到日期时写到日", "09-04 开" in dateonly, True)
 
     # ── 3.7 发布后 3.6 还挂着，必须只认版本号大的那条 ──────
     check("两版并存时取版本号大的",
@@ -207,6 +207,18 @@ def main() -> int:
     check("没有要播的就不发", group_notice([]), ("", ""))
 
     check("一条都没有时整段为空", render([], now, {}), "")
+
+    # ── 按游戏分块，每家一个样（用户 2026-09-02）──────────────
+    both = render(live, now, {"鸣潮": (datetime(2026, 9, 10, 9, 59, 59), "景燃「身赴三途」"),
+                              "明日方舟": (datetime(2026, 9, 4, 0, 0, 0), "P3R联动（排期是预测，未官宣）")})
+    lines = both.splitlines()
+    check("标题", lines[0], "🎴 卡池")
+    check("游戏顺序按日报顺序：方舟在前", lines.index("明日方舟") < lines.index("鸣潮"), True)
+    check("方舟没有在开的 UP 就没有「当期」行",
+          any(l.startswith("· 当期") for l in lines[lines.index("明日方舟") + 1:lines.index("鸣潮")]), False)
+    check("鸣潮有当期也有预告",
+          [l.split("　")[0] for l in lines[lines.index("鸣潮") + 1:]], ["· 当期", "· 预告"])
+    check("当期带结束时刻", "（09-10 09:59 结束）" in both, True)
 
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1

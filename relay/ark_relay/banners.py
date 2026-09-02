@@ -278,31 +278,50 @@ def debut_only(banners: list[Banner]) -> list[Banner]:
     return out
 
 
+# 日报里的顺序：和上面三块运行记录一致（MAA → 鸣潮 → 终末地）
+_GAME_ORDER = ("明日方舟", "鸣潮", "终末地")
+
+
+def _stamp(when: datetime) -> str:
+    # 有些源只给到日期；硬凑一个 00:00 出来是假精确。
+    return f"{when:%m-%d}" if (when.hour, when.minute) == (0, 0) else f"{when:%m-%d %H:%M}"
+
+
 def render(banners: list[Banner], now: datetime,
            next_starts: "dict[str, tuple[datetime, str]] | None" = None) -> str:
-    """渲染成日报末尾的几行。
+    """日报末尾那一段，按游戏分块，每块最多两行：
 
-    `next_starts[游戏] = (开始时刻, 是谁)`。是谁为空表示官方只换了时间、
-    没公布人——那种情况措辞必须是「约」，不能写成官宣。
+        明日方舟
+        · 当期　「池名」角色　剩 3 天 4 小时（09-05 03:59 结束）
+        · 预告　09-04 开（还有 1 天）　是谁
+
+    用户 2026-09-02：「要有当期新 UP 角色的卡池倒计时（如果没有 UP 就不显示），
+    而且得要有卡池预告」，并且三家视觉上要一样。所以：
+    · 没有在开的 UP → 不写「当期」那行；没有预告 → 不写「预告」那行；
+      两样都没有 → 这个游戏整块不出现。
+    · `next_starts[游戏] = (开始时刻, 是谁)`。是谁为空表示官方只换了时间、
+      没公布人——那种情况措辞必须是「约」，不能写成官宣。
     """
-    lines: list[str] = []
-    for b in sorted((x for x in banners if x.start <= now <= x.end),
-                    key=lambda x: x.end):
-        d = b.end - now
-        lines.append(f"· {b.game}「{b.name}」{' · '.join(b.chars)}"
-                     f"　剩 {d.days} 天 {d.seconds // 3600} 小时")
-    for game, (when, who) in sorted((next_starts or {}).items(),
-                                    key=lambda kv: kv[1][0]):
-        if when <= now:
-            continue
-        d = when - now
-        head = f"· {game} 下一期" + ("" if who else "约")
-        tail = f"　{who}" if who else "（UP 是谁官方未公布）"
-        # 有些源只给到日期；硬凑一个 00:00 出来是假精确。
-        stamp = f"{when:%m-%d}" if (when.hour, when.minute) == (0, 0) \
-            else f"{when:%m-%d %H:%M}"
-        lines.append(f"{head} {stamp} 换（还有 {d.days} 天）{tail}")
-    return "🎴 新角色卡池\n" + "\n".join(lines) if lines else ""
+    live: dict[str, list[Banner]] = {}
+    for b in sorted((x for x in banners if x.start <= now <= x.end), key=lambda x: x.end):
+        live.setdefault(b.game, []).append(b)
+    nxt = {g: v for g, v in (next_starts or {}).items() if v[0] > now}
+    games = [g for g in _GAME_ORDER if g in live or g in nxt]
+    games += sorted(g for g in set(live) | set(nxt) if g not in _GAME_ORDER)
+    blocks: list[str] = []
+    for game in games:
+        lines = [game]
+        for b in live.get(game, []):
+            d = b.end - now
+            lines.append(f"· 当期　「{b.name}」{' · '.join(b.chars)}"
+                         f"　剩 {d.days} 天 {d.seconds // 3600} 小时（{_stamp(b.end)} 结束）")
+        if game in nxt:
+            when, who = nxt[game]
+            d = when - now
+            head = ("约 " if not who else "") + f"{_stamp(when)} 开（还有 {d.days} 天）"
+            lines.append(f"· 预告　{head}　{who or 'UP 是谁官方未公布'}")
+        blocks.append("\n".join(lines))
+    return "🎴 卡池\n" + "\n".join(blocks) if blocks else ""
 
 
 # ── 汇总：三个源拉一遍，渲染成日报末尾那一段 ──────────────────
