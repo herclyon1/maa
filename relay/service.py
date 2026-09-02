@@ -35,7 +35,7 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -302,6 +302,34 @@ def _revive_automas() -> None:
     except (OSError, subprocess.SubprocessError):
         pass  # next check will try again
 
+
+
+def _boot_stamp(now: datetime) -> str:
+    """这次开机的标识：开机时刻到分钟。部署重启服务不改变它。"""
+    try:
+        import ctypes  # noqa: PLC0415
+        up_ms = ctypes.windll.kernel32.GetTickCount64()
+        return (now - timedelta(milliseconds=int(up_ms))).strftime("%Y%m%d%H%M")
+    except Exception:  # noqa: BLE001
+        return now.strftime("%Y%m%d%H")
+
+
+def _seconds_to_next_queue(automas_dir, now: datetime) -> float:
+    """离今天下一趟队列还有多少秒；今天没有了就给晚上的大预算。"""
+    from ark_relay import plan  # noqa: PLC0415
+    best = None
+    for q in plan.schedule(automas_dir):
+        for hhmm in q.get("times", []):
+            try:
+                hh, mm = (int(x) for x in hhmm.split(":"))
+            except ValueError:
+                continue
+            due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+            if due > now and (best is None or due < best):
+                best = due
+    if best is None:
+        return 3600.0
+    return max(120.0, (best - now).total_seconds() - 90)
 
 class ArkRelayService(win32serviceutil.ServiceFramework):
     _svc_name_ = "ark-relay"
@@ -705,6 +733,28 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
                         alert=True)
         except Exception:  # noqa: BLE001 - a pre-update must never stop the relay
             log.exception("预更新出错，跳过（本轮照旧）")
+
+        # 大版本更新日把游戏客户端也更新掉（用户 2026-09-02 要的）。
+        # 每次开机一遍：早班窗口短，只够方舟装包 / 给启动器点一下更新；
+        # 晚班只跑 MAA，终末地和鸣潮的大包放这里下。预算 = 离下一趟队列还有多久。
+        try:
+            from ark_relay import gameupdate  # noqa: PLC0415
+            _gu_now = datetime.now(tz=SERVER_TZ)
+            _boot_id = _boot_stamp(_gu_now)
+            if gameupdate.should_run(cfg.state_dir, _gu_now, boot_id=_boot_id):
+                budget = _seconds_to_next_queue(cfg.automas_dir, _gu_now)
+                log.info("游戏更新：开始检查三家客户端（预算 %.0f 秒）", budget)
+                notes, gproblems = gameupdate.run_all(cfg, budget_s=budget)
+                for n in notes:
+                    log.info("游戏更新：%s", n)
+                    notifier.send("🆕 游戏更新", n)
+                if gproblems:
+                    body = "\n".join(f"· {x}" for x in gproblems)
+                    log.warning("游戏更新有 %d 项没能确认：\n%s", len(gproblems), body)
+                    notifier.send(f"⚠️ 游戏更新没能确认（{len(gproblems)} 项）", body)
+                gameupdate.mark_run(cfg.state_dir, _gu_now, boot_id=_boot_id)
+        except Exception:  # noqa: BLE001 - 更新客户端出错不能拖垮中继
+            log.exception("游戏更新出错，跳过（本轮照旧）")
 
         # A new game-week means last week's 剿灭 no longer counts.
         try:
