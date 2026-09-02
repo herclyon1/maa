@@ -225,6 +225,10 @@ def _okww_plan_bits(automas_dir: Path | None,
         elif which == "Tacet Suppression":
             idx = int(daily.get("Which Tacet Suppression to Farm") or 1)
             bits.append(f"体力刷 {zh.get(which, which)} #{idx}")
+        elif which == "Simulation Challenge":
+            tgt = str(daily.get("Material Selection") or "")
+            tgt_zh = collector._SIM_ZH.get(tgt, zh.get(tgt, tgt))
+            bits.append(f"体力刷 模拟领域·{tgt_zh}" if tgt_zh else "体力刷 模拟领域")
         elif which:
             bits.append(f"体力刷 {zh.get(which, which)}")
         nest_label = zh.get("Tacet Discord Nest", "残像聚落")
@@ -243,7 +247,24 @@ def _okww_plan_bits(automas_dir: Path | None,
             bits.append(f"{nest_label} {where}，只取一个每日声骸就停")
         elif scope:
             bits.append(f"{nest_label} {where}（未满才打）")
-        rest = [zh.get(str(a), str(a)) for a in adds if a != FULL]
+        # 「Teleport and Farm 4C Echo」在我们这里被周本补丁征用：FarmEchoTask 的
+        # Teleport to Boss = Weekly Challenge 时，它跑的是周本领奖，不是刷声骸。
+        # 用户 2026-09-02：「我敢百分百确定鸣潮没有传送刷取 4C 的任务」——写周本。
+        farm_f = d / "FarmEchoTask.json"
+        try:
+            farm_cfg = json.loads(farm_f.read_text(encoding="utf-8")) if farm_f.is_file() else {}
+        except (OSError, ValueError):
+            farm_cfg = {}
+        weekly = str(farm_cfg.get("Teleport to Boss") or "") == "Weekly Challenge"
+        rest = []
+        for a in adds:
+            if a == FULL:
+                continue
+            if a == "Teleport and Farm 4C Echo" and weekly:
+                lvl = str(farm_cfg.get("Boss Level") or "")
+                rest.append("周本 战歌重奏" + (f"（{lvl} 级）" if lvl else ""))
+            else:
+                rest.append(zh.get(str(a), str(a)))
         if rest:
             shown = "、".join(rest[:2])
             if len(rest) > 2:
@@ -396,7 +417,8 @@ def next_plan(automas_dir: Path | None) -> str:
             if (med := s.get("medicine")) is not None:
                 # AUTO-MAS stores "use as many as you have" as a sentinel, not
                 # as a real count. Printing 999 makes a reader stop and wonder.
-                bits.append("理智药不限" if int(med) >= 999 else f"理智药 {med} 个")
+                bits.append("理智药不限" if int(med) >= 999
+                            else ("不吃理智药" if int(med) <= 0 else f"理智药 {med} 个"))
             if s.get("kind") == "MaaEnd":
                 # AUTO-MAS's SanityTaskType is only the tab; on its own it reads
                 # as the answer and is not one - "干员养成" does not say whether

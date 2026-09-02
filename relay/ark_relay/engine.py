@@ -1359,6 +1359,9 @@ class Engine:
     def _compose_daily(self, day: str, entries: list[dict]) -> tuple[str, str]:
         """Model writes the report from the raw records; code only decides the
         headline (green / how many failed), which must never be a guess."""
+        # 账本里的 raw 是记账那一刻的解析结果；解析器升级后旧条目会缺字段。
+        # 出报告前按 history 日志重算一遍（用户 2026-09-02 指出鸣潮那块全是老账）。
+        entries = [collector.refresh_raw(e, self.cfg.history_dir) for e in entries]
         tomorrow = plan.next_plan(self.cfg.automas_dir)
         failed = [e for e in entries if not e["ok"]]
         head = "全绿 ✅" if not failed else f"{len(failed)} 项出错 ⚠️"

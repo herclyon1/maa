@@ -506,6 +506,12 @@ _OKWW_FORGERY_INDEX = re.compile(r"info_set Teleport to Forgery Challenge (\d+)"
 # 模拟领域的目标：OK-WW 源码 SimulationTask 三选一，译文来自它自己的 ok.po
 _OKWW_SIM_TARGET = re.compile(r"info_set Target Simulation Challenge (.+?)\s*$", re.M)
 _SIM_ZH = {"Shell Credit": "贝币", "Resonator EXP": "共鸣者经验", "Weapon EXP": "武器经验"}
+# 满难度（联盟等级 ≥70 / SOL3 第 8 阶）贝币模拟领域每局 40 波片给 84,000 贝币
+# （game8 / fandom 2026-09 数据；用户联盟等级早已满，周本都打 90 级）。
+# 双倍 = 80 波片给两份。用户 2026-09-02：「产出必须显示出来，不许标游戏未显示数量」。
+_SIM_REWARD_PER_RUN = {"贝币": 84000}
+_OKWW_DOUBLE = re.compile(r"当前体力大于等于双倍|使用双倍")
+_OKWW_SINGLE = re.compile(r"使用单倍体力")
 _OKWW_TACET_INDEX = re.compile(r"info_set Teleport to Tacet Suppression (\d+)")
 
 
@@ -568,6 +574,14 @@ def parse_okww_log(log_path: Path) -> dict:
     if farm:
         out["okww_farm"] = farm
         out["okww_farm_reward"] = reward
+        double = len(_OKWW_DOUBLE.findall(text))
+        single = len(_OKWW_SINGLE.findall(text))
+        if double:
+            out["okww_runs_double"] = double
+        if single:
+            out["okww_runs_single"] = single
+        if (per := _SIM_REWARD_PER_RUN.get(reward)) and (double or single):
+            out["okww_farm_drops"] = {reward: per * (2 * double + single)}
     if end := _OKWW_STAMINA_END.findall(text):
         out["okww_stamina_left"] = int(end[-1])
         out["okww_stamina_left_exact"] = True
@@ -641,6 +655,36 @@ def parse_okww_log(log_path: Path) -> dict:
         steps.append("声骸五合一")
     if steps:
         out["okww_steps"] = steps
+    return out
+
+
+def refresh_raw(entry: dict, history_root: Path | None) -> dict:
+    """账本里的 raw 是记账那一刻的解析结果；解析器升级后旧条目缺新字段。
+    出报告前按 run_id 找回 history 日志重算一遍，新键覆盖旧键。找不到日志就原样。
+    2026-09-02 晚：日报里鸣潮「刷 模拟领域 ×2 / 波片 80」就是早上老解析器记的账。"""
+    if not history_root:
+        return entry
+    raw = dict(entry.get("raw") or {})
+    script = entry.get("script")
+    try:
+        log_path = Path(history_root) / (str(entry.get("run_id") or "") + ".log")
+        if not log_path.is_file():
+            return entry
+        if script == "MAA":
+            parsed = parse_maa_log(log_path)
+        elif script == "MaaEnd":
+            parsed = parse_maaend_log(log_path)
+        elif script == "OK-WW":
+            parsed = parse_okww_log(log_path)
+        else:
+            return entry
+    except Exception:  # noqa: BLE001 - 重算失败就用原来的
+        return entry
+    raw.update(parsed)
+    out = dict(entry)
+    out["raw"] = raw
+    if parsed.get("sanity") is not None and out.get("sanity") is None:
+        out["sanity"] = parsed["sanity"]
     return out
 
 

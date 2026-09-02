@@ -384,15 +384,19 @@ def _block(e: dict, finished: datetime) -> list[str]:
         runs = raw.get("okww_runs") or 0
         farm = raw.get("okww_farm") or "模拟领域"
         if runs:
-            did.append(f"刷 {farm} ×{runs}")
+            dbl = raw.get("okww_runs_double") or 0
+            did.append(f"刷 {farm} ×{runs}" + ("（双倍）" if dbl == runs else f"（双倍 {dbl}）" if dbl else ""))
         if raw.get("okww_stamina_spent") or raw.get("okww_backup_spent"):
             cost.append(f"波片 {raw.get('okww_stamina_spent') or 0}，"
                         f"备用体力 {raw.get('okww_backup_spent') or 0}")
-        if runs:
-            out.append(f"{raw.get('okww_farm_reward') or '副本奖励'}（{runs} 局，游戏未显示数量）")
+        if drops := _fmt_items(raw.get("okww_farm_drops") or {}):
+            out.append(drops)
+        elif runs:
+            out.append(str(raw.get("okww_farm_reward") or "副本奖励"))
         wl = raw.get("okww_stamina_left")
         if wl is not None:
-            s = f"波片 {wl}/240"
+            back = raw.get("okww_backup_stamina")
+            s = f"波片 {wl}/240" + (f"，备用 {back}" if back is not None else "")
             if not (raw.get("okww_stamina_left_exact") or raw.get("okww_stopped")):
                 s += "　※最后一次读数"
             if full := _sanity_full(raw.get("sanity_full_at"), finished):
