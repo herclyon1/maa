@@ -432,6 +432,9 @@ class Engine:
         if (rec.raw or {}).get("maaend_unreachable"):
             from . import gameupdate  # noqa: PLC0415
             gameupdate.mark_pending(self.cfg.state_dir, "终末地", "今天 MaaEnd 进不了游戏（客户端待更新）")
+        if rec.script == "OK-WW" and not rec.ok and (rec.raw or {}).get("okww_unreachable"):
+            from . import gameupdate  # noqa: PLC0415
+            gameupdate.mark_pending(self.cfg.state_dir, "鸣潮", "今天 OK-WW 等不到游戏窗口（客户端待更新）")
 
     def _verify_outcome(self, rec: RunRecord) -> str | None:
         """按证据核对这一轮到底干成了什么；全干成返回 None。

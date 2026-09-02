@@ -570,6 +570,10 @@ def parse_okww_log(log_path: Path) -> dict:
         backs = [int(x) for x in back]
         if used := sum(a - b for a, b in zip(backs, backs[1:]) if a > b):
             out["okww_backup_spent"] = used
+    # 根本没进游戏：等窗口出错、一局没开。大版本更新日库洛启动器停在「更新」
+    # 按钮上，OK-WW 只会等游戏窗口，等不到就是这个形状（2026-09-02 09:18 实录）。
+    if "waiting for game to start error" in text and not entries:
+        out["okww_unreachable"] = True
     farm, reward = _okww_farm(text)
     if farm:
         out["okww_farm"] = farm

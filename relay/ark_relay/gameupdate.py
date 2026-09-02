@@ -419,6 +419,9 @@ def _today(state_dir: Path, now: datetime) -> list[dict]:
         return []
 
 
+_UNREACHABLE_FLAG = {"MaaEnd": "maaend_unreachable", "OK-WW": "okww_unreachable"}
+
+
 def needs_rerun(state_dir: Path, now: datetime, script: str) -> bool:
     """只有「今天最后一趟是因为客户端过时进不了游戏」才值得更新后重跑。
 
@@ -432,7 +435,7 @@ def needs_rerun(state_dir: Path, now: datetime, script: str) -> bool:
             last = e
     if last is None or last.get("ok"):
         return False
-    return bool((last.get("raw") or {}).get("maaend_unreachable"))
+    return bool((last.get("raw") or {}).get(_UNREACHABLE_FLAG.get(script, "")))
 
 
 def off(state_dir: Path) -> bool:
@@ -440,15 +443,48 @@ def off(state_dir: Path) -> bool:
     return (Path(state_dir) / "gameupdate-off.flag").exists()
 
 
+# ─────────────────────────── 鸣潮：官方公告里的更新维护日 ───────────────────────────
+_WW_NOTICE_URL = ("https://aki-gm-resources-back.aki-game.com/gamenotice/G152/"
+                  "76402e5b20be2c39f095a152090afddc/zh-Hans.json")
+_WW_MAINT = re.compile(r"更新维护时间[：:]\s*(\d{4})年(\d{1,2})月(\d{1,2})日")
+
+
+def wuwa_update_day(now: datetime, fetch=None) -> str:
+    """公告里最新的「版本内容说明」写的更新维护日是今天 → 返回依据句；否则空串。
+
+    公告是提前几天发的，写法固定：「更新维护时间：2026年8月20日04:00 ~ …」
+    （2026-09-02 核对）。一个 HTTP 请求，不开启动器。
+    """
+    try:
+        data = fetch() if fetch else json.loads(
+            urllib.request.urlopen(urllib.request.Request(  # noqa: S310
+                _WW_NOTICE_URL, headers={"User-Agent": _UA}), timeout=20).read())
+        items = [(str(n.get("tabTitle") or ""), str(n.get("content") or ""))
+                 for n in (data.get("game") or []) if "版本内容说明" in str(n.get("tabTitle") or "")]
+        from .banners import newest_version  # noqa: PLC0415
+        body = newest_version(items)
+        m = _WW_MAINT.search(re.sub(r"<[^>]+>", " ", body))
+        if not m:
+            return ""
+        y, mo, d = (int(x) for x in m.groups())
+        if (y, mo, d) == (now.year, now.month, now.day):
+            ver = next((t for t, _ in items if body == dict(items).get(t)), "")
+            return f"官方公告：今天更新维护（{ver.strip().splitlines()[-1] if ver else '新版本'}）"
+    except Exception:  # noqa: BLE001 - 只是信号
+        return ""
+    return ""
+
+
 # ─────────────────────────── 开机：只做便宜的判断 ───────────────────────────
 
 def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
-               hint=None, fetch=None) -> tuple[list[str], list[str]]:
+               hint=None, fetch=None, wuwa_fetch=None) -> tuple[list[str], list[str]]:
     """开机窗口里做的事：一个 HTTP 读方舟版本号、一个 HTTP 读终末地公告。
 
     方舟版本不同：窗口够（≥10 分钟）就当场装，不够就登记；
     终末地公告说今天版本更新：登记；启动器一次都不开。
-    鸣潮：不管，OK-WW 自己会更新。
+    鸣潮：公告写的更新维护日是今天就登记（OK-WW 只会点游戏内的「即将重启」，
+    不会点启动器上的「更新」——用户 2026-09-02 指出的）。
     """
     now = now or datetime.now(tz=SERVER_TZ)
     notes: list[str] = []
@@ -487,6 +523,9 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
     if h and last_run_ok(cfg.state_dir, now, "MaaEnd") is not True:
         # 今天已经成功过就不登记；普通任务失败也不归更新管（needs_rerun 会再拦一道）
         mark_pending(cfg.state_dir, "终末地", h)
+    w = wuwa_update_day(n0, fetch=None if wuwa_fetch is None else wuwa_fetch)
+    if w and last_run_ok(cfg.state_dir, now, "OK-WW") is not True:
+        mark_pending(cfg.state_dir, "鸣潮", w)
     return notes, problems
 
 
@@ -531,6 +570,21 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
         else:
             problems.append("终末地：找不到启动器")
             clear_pending(cfg.state_dir, "终末地")
+
+    if "鸣潮" in todo:
+        why = todo["鸣潮"]
+        launcher_ww = wuwa_launcher(cfg.okww_dir)
+        if launcher_ww:
+            before = len(problems)
+            n = update_wuwa(desk, launcher_ww, budget_s=2400, problems=problems, sleep=sleep)
+            if n:
+                notes.append(n + f"（依据：{why}）")
+            if len(problems) == before:
+                rerun("OK-WW")
+                clear_pending(cfg.state_dir, "鸣潮")
+        else:
+            problems.append("鸣潮：找不到启动器")
+            clear_pending(cfg.state_dir, "鸣潮")
 
     if "明日方舟" in todo:
         ld, idx = ldconsole_of(cfg.maa_dir)

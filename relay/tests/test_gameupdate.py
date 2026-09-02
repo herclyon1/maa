@@ -149,6 +149,25 @@ gu.mark_pending(ST, "终末地", "x")
 check("总开关关着 → 什么都不做", gu.run_deferred(cfg, now=now, desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: (True, "ok"), sleep=nosleep), ([], [], []))
 (ST / "gameupdate-off.flag").unlink(); gu.clear_pending(ST, "终末地")
 
+print("[鸣潮：公告更新维护日 + 等不到窗口才重跑]")
+notice = {"game": [{"tabTitle": "「甲」3.7版本内容说明", "content": "<p>更新维护时间：2026年9月2日04:00 ~ 2026年9月2日11:00（UTC+8）</p>"},
+                   {"tabTitle": "「乙」3.6版本内容说明", "content": "更新维护时间：2026年8月20日04:00 ~ …"}]}
+check("版本号最大的那条写的是今天 → 有信号", bool(gu.wuwa_update_day(_dt(2026, 9, 2, 8, 46), fetch=lambda: notice)), True)
+check("别的日子 → 空", gu.wuwa_update_day(_dt(2026, 9, 5, 8, 46), fetch=lambda: notice), "")
+cfg.okww_dir = ST / "okww"; wwl = ST / "wwgame" / "Wuthering Waves.exe"; wwl.parent.mkdir(parents=True, exist_ok=True); wwl.write_bytes(b"")
+(cfg.okww_dir / "data" / "apps" / "ok-ww" / "working" / "configs").mkdir(parents=True, exist_ok=True)
+(cfg.okww_dir / "data" / "apps" / "ok-ww" / "working" / "configs" / "x.json").write_text(json.dumps({"path": str(wwl)}), encoding="utf-8")
+(ST / "ledger-2026-09-02.jsonl").write_text(json.dumps({"script": "OK-WW", "ok": False, "raw": {"okww_unreachable": True}}) + "\n", encoding="utf-8")
+gu.mark_pending(ST, "鸣潮", "官方公告：今天更新维护")
+dispatched.clear()
+notes, probs, reran = gu.run_deferred(cfg, now=now, desk=FakeDesk([["公告", "立即更新"], ["下载中"], ["开始游戏"]]), dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=nosleep)
+check("鸣潮更新了", notes, ["鸣潮 客户端已通过启动器更新（依据：官方公告：今天更新维护）"])
+check("等不到窗口那种失败 → 重跑 OK-WW", reran, ["OK-WW"])
+(ST / "ledger-2026-09-02.jsonl").write_text(json.dumps({"script": "OK-WW", "ok": False, "raw": {}}) + "\n", encoding="utf-8")
+gu.mark_pending(ST, "鸣潮", "x")
+notes, probs, reran = gu.run_deferred(cfg, now=now, desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: (True, "ok"), sleep=nosleep)
+check("普通失败 → 不重跑 OK-WW", reran, [])
+
 print("[每次开机只跑一遍]")
 from datetime import datetime
 check("没记录→跑", gu.should_run(ST, datetime.now(), boot_id="b1"), True)
