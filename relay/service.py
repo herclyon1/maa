@@ -307,7 +307,9 @@ def _revive_automas() -> None:
 def ensure_automas(timeout: float = 45) -> bool:
     """AUTO-MAS 接口不在就拉起来等它上线。用户 2026-09-03：「MAS 不在的时候你要拉起他，
     不希望见到任何理由开机时检测不到配置，而且要快。」"""
+    import logging  # noqa: PLC0415
     from ark_relay import commands  # noqa: PLC0415
+    log = logging.getLogger("ark.service")
     if commands.mas_up():
         return True
     log.warning("AUTO-MAS 接口不在，拉起它")
