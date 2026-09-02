@@ -208,6 +208,15 @@ def main() -> int:
 
     check("一条都没有时整段为空", render([], now, {}), "")
 
+    # ── 只报最高稀有度（用户 2026-09-03）────────────────────
+    from ark_relay.banners import parse_endfield_notice, six_star_only
+    notice_html = "<p>■ 全新干员 6星干员【提弗洛斯】、5星干员【噗切娜】 ■ 全新武器 …</p><p>1.「冬猎」特许寻访 · 寻访说明：6星干员【提弗洛斯】获取概率提升</p>"
+    check("终末地公告：5 星赠送角色不进首发名单", parse_endfield_notice(notice_html), [("提弗洛斯", "冬猎")])
+    fake_prts = lambda n: {"予愿安洁莉娜": "|稀有度=5", "珊比": "|稀有度=5", "嘉辛塔": "|稀有度=4"}.get(n, "")
+    b6 = Banner("明日方舟", "车辙与风的归所", ("予愿安洁莉娜", "珊比", "嘉辛塔"), datetime(2026, 8, 1), datetime(2026, 8, 15))
+    check("方舟池只留六星（PRTS 稀有度 5=六星）", six_star_only(b6, fake_prts).chars, ("予愿安洁莉娜", "珊比"))
+    check("稀有度查不到的名字去掉，不冒充", six_star_only(Banner("明日方舟", "x", ("无名",), datetime(2026, 8, 1), datetime(2026, 8, 15)), fake_prts).chars, ())
+
     # ── 按游戏分块，每家一个样（用户 2026-09-02）──────────────
     both = render(live, now, {"鸣潮": (datetime(2026, 9, 10, 9, 59, 59), "景燃「身赴三途」"),
                               "明日方舟": (datetime(2026, 9, 4, 0, 0, 0), "P3R联动（排期是预测，未官宣）")})

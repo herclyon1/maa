@@ -144,6 +144,10 @@ def parse_endfield(pools: list, name_of) -> list[Banner]:
 #     3.「晨星于此闪耀」特许寻访 · ... 6星干员【梨诺】获取概率提升 ...
 # 「全新干员」那一节天然不含复刻，正好是判首发的依据。
 _EF_DEBUT_SEG = re.compile(r"全新干员(.{0,300}?)■", re.S)
+# 只要 6 星。2026-09-02 的公告「6星干员【提弗洛斯】、5星干员【噗切娜】」——
+# 噗切娜是赠送的 5 星，根本不进卡池，却被当成下一期报出去了。
+# 用户定的：终末地、明日方舟只报 6 星限定新 UP；鸣潮只报 5 星（它的最高稀有度）。
+_EF_SIX = re.compile(r"6星干员((?:【[^】]+】)+)")
 _EF_BRACKET = re.compile(r"【([^】]+)】")
 _EF_POOL = re.compile(r"「([^」]+)」特许寻访")
 _EF_UP = re.compile(r"6星干员【([^】]+)】获取概率提升")
@@ -186,7 +190,7 @@ def parse_endfield_notice(html: str) -> "list[tuple[str, str]]":
     seg = _EF_DEBUT_SEG.search(txt)
     if not seg:
         return []
-    debut = _EF_BRACKET.findall(seg.group(1))
+    debut = [n for grp in _EF_SIX.findall(seg.group(1)) for n in _EF_BRACKET.findall(grp)]
     # 每个「X」特许寻访 到下一个之间的那段里，写着这一池 UP 的是谁
     hits = list(_EF_POOL.finditer(txt))
     pool_of: dict[str, str] = {}
@@ -413,6 +417,31 @@ def parse_ak_schedule(js: str) -> "list[tuple[str, datetime, bool]]":
     return out
 
 
+_AK_RARITY = re.compile(r"稀有度\s*=\s*(\d)")
+_rarity_cache: dict[str, int] = {}
+
+
+def ak_rarity(name: str, fetch=None) -> int:
+    """PRTS 干员页的稀有度字段，**0 起算**（5 = 六星，2026-09-03 用予愿安洁莉娜核对）。
+    取不到返回 -1。只查在开的那几个名字，每个名字缓存到进程结束。"""
+    if name in _rarity_cache:
+        return _rarity_cache[name]
+    try:
+        wt = (fetch or (lambda n: _json(_PRTS + urllib.parse.quote(n), _UA_PLAIN)["parse"]["wikitext"]["*"]))(name)
+        m = _AK_RARITY.search(wt or "")
+        r = int(m.group(1)) if m else -1
+    except Exception:  # noqa: BLE001
+        r = -1
+    _rarity_cache[name] = r
+    return r
+
+
+def six_star_only(b: Banner, fetch=None) -> Banner:
+    """方舟池子只留六星（用户定的）。稀有度查不到的名字**去掉**，不冒充。"""
+    keep = tuple(c for c in b.chars if ak_rarity(c, fetch) == 5)
+    return Banner(b.game, b.name, keep, b.start, b.end)
+
+
 def _arknights(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | None]":
     """PRTS 两页合起来判首发。下一期时间 PRTS 不给，返回 None 由调用方补。"""
     rows: list[Banner] = []
@@ -425,6 +454,9 @@ def _arknights(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | Non
             log.warning("PRTS 取不到 %s", page, exc_info=True)
     rows.sort(key=lambda b: b.start)
     debut = debut_only(rows)
+    # 只对在开的那几个查稀有度（历史几十条不查），六星才报
+    debut = [six_star_only(b) if b.start <= now <= b.end else b for b in debut]
+    debut = [b for b in debut if b.chars]
     if when := min((b.start for b in rows if b.start > now), default=None):
         return debut, (when, "")      # PRTS 已经收录了，时间准，人未知
     try:
