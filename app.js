@@ -120,7 +120,7 @@ const SCHEMA = [
     { path:"DailyTask.json/Which Forgery Challenge to Farm", type:"number",
       hint:"游戏里按 F2 打开传送列表，凝素领域从上往下数第几个。只在上面选「凝素领域」时才有用" },
     { path:"DailyTask.json/Which Tacet Suppression to Farm", type:"number",
-      hint:"游戏里按 F2 打开传送列表，无音区从上往下数第几个。只在上面选「无音区」时才有用" },
+      hint:"F2 → 素材获取 → 无音清剿，按地区分组从上往下连续数第几个。1 方掌西峰、2 玄幽东岳（白+绿套）、3 落日堤屿、4 冰原运输港、5 加拉尔冠阶，其余见 docs/鸣潮-无音区序号对照.md。只在上面选「无音区」时才有用" },
     { path:"NightmareNestTask.json/Only Farm These Nests", type:"text",
       label:"残象聚落点位", ro:true,
       hint:"只刷落渊南丘，这是定好的。要换点位在电脑上改" },
