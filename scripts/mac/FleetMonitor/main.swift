@@ -55,6 +55,8 @@ struct Machine {
     let relay: String
     /// Whether a connection is carrying traffic right now.
     let active: Bool
+    /// What the last ping measured, when there was one.
+    let probe: Probe?
     /// Tailscale still lists the machine as up, but it did not answer a ping.
     /// Rendered differently from a machine control has already given up on:
     /// "last seen never" is what that peer's timestamps say, and it reads as a
@@ -65,8 +67,24 @@ struct Machine {
     func silent() -> Machine {
         Machine(host: host, ip: ip, os: os, online: false, lastSeen: lastSeen,
                 isSelf: isSelf, directAddr: directAddr, relay: relay,
-                active: active, noReply: true)
+                active: active, probe: nil, noReply: true)
     }
+
+    /// The same machine, carrying what the ping measured.
+    func answering(_ p: Probe) -> Machine {
+        Machine(host: host, ip: ip, os: os, online: true, lastSeen: lastSeen,
+                isSelf: isSelf, directAddr: directAddr, relay: relay,
+                active: active, probe: p, noReply: false)
+    }
+}
+
+/// One round trip to a machine.
+struct Probe {
+    let answered: Bool
+    let ms: Int
+    /// Whether the reply came over a direct path rather than a relay.
+    let direct: Bool
+    static let none = Probe(answered: false, ms: 0, direct: false)
 }
 
 /// Append one line to a debug log. Silent on failure - a monitor that cannot
@@ -131,12 +149,12 @@ enum Tailscale {
     /// host firewall that drops pings - which Windows does by default - cannot
     /// make a running machine look dead. A machine that is off never answers,
     /// and the request simply hangs until the timeout below.
-    static func reachable(_ ip: String, timeout: TimeInterval = 4) -> Bool {
-        guard !ip.isEmpty, var req = request("ping?ip=\(ip)&type=disco") else { return false }
+    static func probe(_ ip: String, timeout: TimeInterval = 4) -> Probe {
+        guard !ip.isEmpty, var req = request("ping?ip=\(ip)&type=disco") else { return .none }
         req.httpMethod = "POST"
         req.timeoutInterval = timeout
         let lock = NSLock()
-        var ok = false
+        var result = Probe.none
         let done = DispatchSemaphore(value: 0)
         let task = URLSession.shared.dataTask(with: req) { d, _, _ in
             defer { done.signal() }
@@ -148,13 +166,18 @@ enum Tailscale {
             // Tailscale IP", which must not count as the peer being up.
             let err = (o["Err"] as? String) ?? ""
             let latency = (o["LatencySeconds"] as? Double) ?? 0
-            lock.lock(); ok = err.isEmpty && latency > 0; lock.unlock()
+            guard err.isEmpty, latency > 0 else { return }
+            let endpoint = (o["Endpoint"] as? String) ?? ""
+            lock.lock()
+            result = Probe(answered: true, ms: Int((latency * 1000).rounded()),
+                           direct: !endpoint.isEmpty)
+            lock.unlock()
         }
         task.resume()
         _ = done.wait(timeout: .now() + timeout + 2)
         task.cancel()
         lock.lock(); defer { lock.unlock() }
-        return ok
+        return result
     }
 
     static func status() -> [Machine]? {
@@ -190,21 +213,24 @@ enum Tailscale {
         let group = DispatchGroup()
         let queue = DispatchQueue(label: "fleetmonitor.probe", attributes: .concurrent)
         let lock = NSLock()
-        var silent = Set<String>()
+        var answers: [String: Probe] = [:]
         for m in out where !m.isSelf && m.online {
             group.enter()
             queue.async {
                 // Two tries, so one dropped packet cannot evict a machine that
                 // is running. Only a machine that is genuinely off pays for the
                 // second attempt.
-                if !reachable(m.ip) && !reachable(m.ip) {
-                    lock.lock(); silent.insert(m.ip); lock.unlock()
-                }
+                var p = probe(m.ip)
+                if !p.answered { p = probe(m.ip) }
+                lock.lock(); answers[m.ip] = p; lock.unlock()
                 group.leave()
             }
         }
         _ = group.wait(timeout: .now() + 20)
-        out = out.map { silent.contains($0.ip) ? $0.silent() : $0 }
+        out = out.map { m in
+            guard let p = answers[m.ip] else { return m }
+            return p.answered ? m.answering(p) : m.silent()
+        }
 
         // Self first, then offline machines surfaced above online ones - the
         // ones that need attention should not be at the bottom of the list.
@@ -228,6 +254,7 @@ enum Tailscale {
             directAddr: addr.isEmpty ? nil : addr,
             relay: (d["Relay"] as? String) ?? "",
             active: (d["Active"] as? Bool) ?? false,
+            probe: nil,
             noReply: false
         )
     }
@@ -306,12 +333,18 @@ func line(_ m: Machine, as name: String? = nil) -> String {
         // An idle peer sits on the relay by design and switches to a direct
         // path as soon as traffic starts, so a bare "relay" here reads as a
         // fault when nothing is wrong. Say which it is.
-        s += m.online
-            ? (m.directAddr != nil ? "  ·  direct"
-               : m.active ? "  ·  relay \(m.relay)"
-                          : "  ·  idle (direct on use)")
-            : m.noReply ? "  ·  no reply — powered off"
-                        : "  ·  last seen \(ago(m.lastSeen))"
+        // The path comes from the ping itself, not from `Active`: the ping is
+        // traffic, so every machine we verify reads as active from then on and
+        // the window would permanently say "relay" - the exact reading the
+        // "idle (direct on use)" wording existed to prevent.
+        if m.online, let p = m.probe {
+            s += (p.direct ? "  ·  direct" : "  ·  relay \(m.relay)") + "  ·  \(p.ms)ms"
+        } else {
+            s += m.online
+                ? (m.directAddr != nil ? "  ·  direct" : "  ·  idle (direct on use)")
+                : m.noReply ? "  ·  no reply — powered off"
+                            : "  ·  last seen \(ago(m.lastSeen))"
+        }
     }
     return s
 }
