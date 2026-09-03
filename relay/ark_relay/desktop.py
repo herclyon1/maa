@@ -54,6 +54,20 @@ public class ArkD {
   [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, uint d, UIntPtr e);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+  public delegate bool EnumProc(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc cb, IntPtr l);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);
+  public static IntPtr FindByTitle(string part) {
+    IntPtr found = IntPtr.Zero;
+    EnumWindows((h, l) => {
+      if (!IsWindowVisible(h)) return true;
+      var sb = new System.Text.StringBuilder(512); GetWindowText(h, sb, 512);
+      if (sb.ToString().Contains(part)) { found = h; return false; }
+      return true;
+    }, IntPtr.Zero);
+    return found;
+  }
 }
 "@
   $win = $null
@@ -71,7 +85,22 @@ public class ArkD {
       $p = Get-Process -Name $f -ErrorAction SilentlyContinue |
            Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
     }
+    if ($null -eq $p -and $f -like 'title:*') {
+      # Get-Process 的 MainWindowTitle 看不到雷电这类窗口（09-03 实测），
+      # 退回枚举所有可见顶层窗口按标题子串找。
+      $h2 = [ArkD]::FindByTitle($f.Substring(6))
+      if ($h2 -ne [IntPtr]::Zero) {
+        [ArkD]::ShowWindow($h2, 9) | Out-Null
+        [ArkD]::SetForegroundWindow($h2) | Out-Null
+        [void]$log.Add("focus(enum): $f")
+        Start-Sleep -Milliseconds 800
+        $rc = New-Object ArkD+RECT
+        if ([ArkD]::GetWindowRect($h2, [ref]$rc)) { $win = $rc }
+        $p = 'enum'
+      }
+    }
     if ($null -eq $p) { [void]$log.Add("focus: 没有 $f 的窗口") }
+    elseif ($p -eq 'enum') { }
     else {
       [ArkD]::ShowWindow($p.MainWindowHandle, 9) | Out-Null
       [ArkD]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
@@ -179,7 +208,7 @@ public class ArkD {
 
   $shot = [string]$r.shot
   $lines = $null
-  foreach ($a in $r.actions) {
+  foreach ($a in @($r.actions)) {
     switch ([string]$a.act) {
       'wait' { Start-Sleep -Milliseconds ([int]$a.ms); [void]$log.Add("wait $($a.ms)") }
       'shot' { Shot $shot; [void]$log.Add("shot $shot") }

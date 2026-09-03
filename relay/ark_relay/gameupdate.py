@@ -337,6 +337,30 @@ def emulator_boot(maa_dir: Path | None, ldconsole: Path, idx: int, *, run=None, 
     return False
 
 
+def ak_prewarm(ldconsole: Path, dev: str, desk: Desktop, *, run=None, sleep=time.sleep,
+               budget_s: float = 900) -> str:
+    """拉起方舟走到登录界面。09-03 实测：首屏是带「START」的加载页，要点一下
+    屏幕底部中央（1600x900 下约 (800,855)）才到「开始唤醒」。返回依据句。"""
+    run = run or _sh
+    adb = str(adb_of(ldconsole))
+    run([adb, "-s", dev, "shell", f"am start -n {AK_ACTIVITY}"])
+    sleep(60)
+    m = re.search(r"(\d+)x(\d+)", run([adb, "-s", dev, "shell", "wm size"]) or "")
+    W, H = (int(m.group(1)), int(m.group(2))) if m else (1600, 900)
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < budget_s:
+        scr = desk.read(focus="title:明日方舟")
+        if scr.has(*READY_WORDS["明日方舟"]):
+            log.info("游戏更新：明日方舟到登录界面（读到「开始唤醒」）")
+            return "读到「开始唤醒」"
+        if scr.has("START"):
+            run([adb, "-s", dev, "shell", f"input tap {W // 2} {int(H * 0.95)}"])
+            log.info("游戏更新：明日方舟加载页，点了 START")
+        sleep(20)
+    log.warning("游戏更新：明日方舟 %.0f 分钟内没读到「开始唤醒」", budget_s / 60)
+    return ""
+
+
 def emulator_quit(ldconsole: Path, idx: int, run=None, sleep=time.sleep) -> None:
     run = run or _sh
     dev = adb_device(ldconsole, run)
@@ -461,10 +485,7 @@ def update_arknights(state_dir: Path, ldconsole: Path, idx: int, *,
             break
     if now_ver == remote and desk is not None:
         # 拉起一次让它把版本资源下完、走到登录界面（用户 2026-09-03：到登录界面才算 OK）
-        run([str(adb_of(ldconsole)), "-s", dev, "shell", f"am start -n {AK_ACTIVITY}"])
-        sleep(90)
-        how = wait_ready(desk, "明日方舟", focus="title:雷电模拟器", alive=lambda: True,
-                         budget_s=900, sleep=sleep)
+        how = ak_prewarm(ldconsole, dev, desk, run=run, sleep=sleep)
         log.info("游戏更新：明日方舟预热%s", f"完成（{how}）" if how else "没等到登录界面")
         if not how:
             _note(problems, "明日方舟：装完拉起后 15 分钟没读到「开始唤醒」")
