@@ -1,7 +1,7 @@
 {
- "version": 20260903110750,
+ "version": 20260903134848,
  "files": {
-  "RELEASE-NOTES.md": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+  "RELEASE-NOTES.md": "9014f40dca43c4be48f1d1b1111ac17a1be731bc",
   "ark_relay/__init__.py": "297e0c5d45a732b40a24be0bfd40f07b174d2a9a",
   "ark_relay/__main__.py": "a1c292210b8a315a205d5c45d42296b892c8f7a8",
   "ark_relay/annihilation.py": "72666453ea441dd4ac6f3675024f4d3b927bccde",
@@ -13,7 +13,7 @@
   "ark_relay/desktop.py": "3cbdcfb6df2f8d6d5855253c4baed9abbe74e279",
   "ark_relay/efstatus.py": "edf5a31c98727f4210c657382f12696b2fad7c51",
   "ark_relay/engine.py": "2c5a095f03e74ea256ae64888fca56ea4b840940",
-  "ark_relay/gameupdate.py": "1be4b69710d6981682a3eac0e43ef9bdb724977e",
+  "ark_relay/gameupdate.py": "53ff9ff397699899f45bda36afe4b17ed2581a3b",
   "ark_relay/garden.py": "6b4cf80911808faffc9c8baa27a8e5f4f20967df",
   "ark_relay/inbox.py": "44a8514164c3af40b20bf9555cafdc11d2551e99",
   "ark_relay/maaend.py": "c4dd90f47da3adcb3a31d1004b8790f2e07a7834",
