@@ -325,6 +325,9 @@ def episode_kinds(entries: list[dict]) -> dict[str, str]:
             raw = e.get("raw") or {}
             if not e.get("ok") and (raw.get("maaend_unreachable") or raw.get("okww_unreachable") or raw.get("maintenance")):
                 kinds[e["run_id"]] = "maintenance"
+            elif (not e.get("ok") and e.get("script") == "MaaEnd" and e.get("failed_tasks")
+                  and set(e["failed_tasks"]) <= {"应急理智加强剂", "自动采集"}):
+                kinds[e["run_id"]] = "soft"
             if e.get("ok"):
                 if any(x.get("transitional") for x in streak):
                     for x in streak:
@@ -335,9 +338,10 @@ def episode_kinds(entries: list[dict]) -> dict[str, str]:
     return kinds
 
 
-_KIND_ICON = {"update": "↪️", "maintenance": "⏸"}
+_KIND_ICON = {"update": "↪️", "maintenance": "⏸", "soft": "🟡"}
 _KIND_NOTE = {"update": "游戏更新后重跑，不算失败",
-              "maintenance": "进不了游戏（服务器维护／客户端待更新），今天跳过"}
+              "maintenance": "进不了游戏（服务器维护／客户端待更新），今天跳过",
+              "soft": "其余都做了，只有上游还没修好的那项没成"}
 
 
 # ── 三个游戏一个版式：以 MAA 为样板 ─────────────────────────
@@ -479,6 +483,8 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
     failed = [e for e in entries if not e["ok"] and e["run_id"] not in kinds]
     if failed:
         head = f"{len(failed)} 项失败 ⚠️"
+    elif "soft" in kinds.values():
+        head = "全绿 ✅（个别上游项没成）"
     elif "maintenance" in kinds.values():
         head = "维护日跳过，其余全绿 ✅"
     else:
@@ -496,6 +502,12 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
         lines.append(icon + f" {e['script']}{tag}　"
                      + _span(started, finished, e.get('duration_known', True)))
         # 没跑成的、剿灭检查那一分钟：只有一行备注，不摆五个空格子。
+        if kind == "soft":
+            note = "没做成：" + "、".join(e.get("failed_tasks") or []) + "（上游问题，不算失败）"
+            if routes := raw.get("maaend_collect_done"):
+                note += f"；自动采集 {routes} 条路线已采"
+            lines += [_row("备注", [note]), ""]
+            continue
         if kind:
             lines += [_row("备注", [_KIND_NOTE[kind]]), ""]
             continue

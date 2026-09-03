@@ -776,9 +776,11 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         # 预更新因为凌晨已经跑过而跳过，这一步跟着没跑，四项一直关着。
         try:
             from ark_relay import gameupdate as _gu2  # noqa: PLC0415
-            if back := _gu2.maaend_reenable_if_updated(cfg):
-                log.info("开机：%s", back)
-                notifier.send("🔓 终末地日常已开回", back)
+            for back in (_gu2.maaend_reenable_if_updated(cfg), _gu2.maaend_reenable_next_boot(cfg),
+                         _gu2.maaend_reenable_spmed_if_updated(cfg)):
+                if back:
+                    log.info("开机：%s", back)
+                    notifier.send("🔓 终末地日常已开回", back)
         except Exception:  # noqa: BLE001
             log.exception("开回 MaaEnd 任务出错")
 

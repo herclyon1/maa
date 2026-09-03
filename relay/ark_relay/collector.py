@@ -425,6 +425,12 @@ def parse_maaend_log(log_path: Path) -> dict:
         out["maaend_medicine"] = n
     if m := _END_COLLECT_ROUTES.findall(text):
         out["maaend_collect_routes"] = int(m[-1])
+    # 「路线N：xxx」出现几次 = 走了几条；「…采集失败」几条 = 没采到的
+    started = set(re.findall(r"路线(\d+)[：:]", text))
+    failed_r = set(re.findall(r"(?:路线|线路)(\d+)[：:][^\n]*采集失败", text))
+    if started:
+        out["maaend_collect_done"] = len(started - failed_r)
+        out["maaend_collect_total"] = len(started)
     if hits := _END_SANITY.findall(text):
         got, cap = (int(x) for x in hits[-1])
         # 「当前理智」是在协议空间的**奖励结算界面**读的，而扣费发生在紧随其后的

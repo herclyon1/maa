@@ -69,6 +69,15 @@ check("终末地画 ⏸", body.count("⏸ MaaEnd"), 3)
 check("插曲说明", "游戏更新后重跑，不算失败" in body, True)
 check("维护说明", "进不了游戏" in body, True)
 
+print("[上游软失败：🟡 不计失败]")
+soft = [ent("m", "MAA", 9, 0, 17, True), ent("s", "MaaEnd", 9, 28, 50, False, failed=["应急理智加强剂", "自动采集"], raw={"maaend_collect_done": 13, "maaend_collect_total": 15})]
+check("分类 soft", core.episode_kinds(soft).get("s"), "soft")
+ts, bs = core.format_daily("2026-09-03", soft)
+check("标题不算失败", "全绿 ✅（个别上游项没成）" in ts, True)
+check("画 🟡 并写采了几条", "🟡 MaaEnd" in bs and "自动采集 13 条路线已采" in bs, True)
+mixed = [ent("x", "MaaEnd", 9, 28, 50, False, failed=["赠送干员礼物", "自动采集"])]
+check("混着真失败的不算软", core.episode_kinds(mixed), {})
+
 print("[真故障不能被顺手洗白]")
 real = [ent("a", "OK-WW", 9, 18, 7, False), ent("b", "OK-WW", 9, 28, 13, True)]
 check("没有更新重启的失败→不是插曲", core.episode_kinds(real), {})

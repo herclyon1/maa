@@ -569,6 +569,10 @@ class Engine:
                          or rec.raw.get("maaend_result") or "").strip())
             return
 
+        if rec.script == "MaaEnd" and rec.failed_tasks and set(rec.failed_tasks) <= self.SOFT_FAILS:
+            log.warning("🟡 %s 只是 %s 没做成（上游问题），记日报不拉警报",
+                        rec.script, "、".join(rec.failed_tasks))
+            return
         # Hold it. Only alert once the script has stopped retrying entirely.
         self._pending[key] = rec
         self._persist_pending()   # queued to disk before anything else can go wrong
@@ -635,6 +639,11 @@ class Engine:
                 if watching_since > due:
                     self._missed_alerted.add(key)
                     continue
+                if self._scripts_running():
+                    # 09-03 11:15：MaaEnd 正被 AUTO-MAS 重试第三次、进程好好的，
+                    # 这里却因为「75 分钟没有记录」喊了「MaaEnd 没有运行」。
+                    log.info("🔌 %s 还没有记录，但脚本进程在跑，先不喊", q["name"])
+                    continue
                 late = int((now - due).total_seconds() // 60)
                 title, body = core.format_missing(
                     f"{q['name']} 没有运行", due,
@@ -645,8 +654,16 @@ class Engine:
                     log.warning("🔌 %s 该跑没跑，已告警", q["name"])
         self._check_partial_queues(now, day, entries)
 
+    # MaaEnd 里这几项失败是上游/游戏本身的问题，不是要人半夜处理的故障：
+    #   应急理智加强剂：beta.5 在「选择加强剂」那步坏了（09-03 实录，已关掉等上游）
+    #   自动采集：15 条路线里总有两三条「采集失败」，任务整体就报失败，其余都采了
+    # 用户 2026-09-03：「今天下午或者明天再报错你就滚」——这类只进日报，不推 ⚠️。
+    SOFT_FAILS = {"应急理智加强剂", "自动采集"}
+
     def _check_partial_queues(self, now: datetime, day: str,
                               entries: list[dict]) -> None:
+        if self._scripts_running():
+            return          # 还有脚本在跑，缺的那项可能正是它
         """Alert when a queue ran but one of its scripts never did.
 
         The check above only asks "did this queue produce anything", and on

@@ -833,3 +833,49 @@ def maaend_reenable_if_updated(cfg) -> str:
     zh = {"GiftOperator": "赠送干员礼物", "GearAssembly": "装备制造", "DeliveryJobs": "转交委托", "EnvironmentMonitoring": "环境监测"}
     return (f"MaaEnd 已更新到 {ver}（之前是 {since}），关掉的 {len(on)} 项日常已开回来："
             + "、".join(zh.get(n, n) for n in on)) if on else ""
+
+
+def maaend_set_enabled(cfg, names: set, enabled: bool) -> list[str]:
+    """改母本 mxu-MaaEnd.json 里几项的 enabled。返回真改动了的。"""
+    root = Path(cfg.automas_dir) / "data" if cfg.automas_dir else None
+    target = next((f for f in (root.glob("*/Default/ConfigFile/mxu-MaaEnd.json") if root else [])), None)
+    if not target:
+        return []
+    j = json.loads(target.read_text(encoding="utf-8"))
+    changed = []
+    for t in j.get("instances", [{}])[0].get("tasks", []):
+        if t.get("taskName") in names and bool(t.get("enabled")) != enabled:
+            t["enabled"] = enabled
+            changed.append(t["taskName"])
+    if changed:
+        atomic_write_text(target, json.dumps(j, ensure_ascii=False, indent=2))
+    return changed
+
+
+def maaend_reenable_next_boot(cfg) -> str:
+    """补跑时临时关掉的（如当天已跑过的自动采集），下次开机开回。"""
+    rec_p = Path(cfg.state_dir) / "maaend-reenable-next-boot.json"
+    try:
+        rec = json.loads(rec_p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    on = maaend_set_enabled(cfg, set(rec.get("tasks") or []), True)
+    rec_p.unlink(missing_ok=True)
+    zh = {"AutoCollect": "自动采集", "AutoUseSpMedication": "应急理智加强剂"}
+    return ("已开回：" + "、".join(zh.get(n, n) for n in on)) if on else ""
+
+
+def maaend_reenable_spmed_if_updated(cfg) -> str:
+    """应急理智加强剂在 beta.5 坏了（09-03）；MaaEnd 再换版本就开回来试。"""
+    rec_p = Path(cfg.state_dir) / "maaend-disabled-spmed.json"
+    try:
+        rec = json.loads(rec_p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    from .preupdate import _maaend_file_version  # noqa: PLC0415
+    ver = _maaend_file_version(cfg.maaend_dir) if cfg.maaend_dir else ""
+    if not ver or ver == str(rec.get("since") or ""):
+        return ""
+    on = maaend_set_enabled(cfg, set(rec.get("tasks") or []), True)
+    rec_p.unlink(missing_ok=True)
+    return f"MaaEnd 已是 {ver}，应急理智加强剂开回来试" if on else ""
