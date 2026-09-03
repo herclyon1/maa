@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0f1216">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260903025537">
+<link rel="manifest" href="manifest.webmanifest?v=20260904002405">
 <style>
   /* 浅色是底色，深色只覆盖变量。三种情况都要照顾到：
      手机设成浅色、手机设成深色、以及页面里手动指定。 */
@@ -101,6 +101,13 @@
   .setup{padding:15px}
   .setup input{width:100%;text-align:left;margin-top:6px}
   .ro{color:var(--dim);font-size:14px}
+  /* 多选（终末地的地区选择）：一排小按钮，按一下切一个。手机上比
+     <select multiple> 好按得多，也一眼看得出选了哪几个。 */
+  .pills{display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end}
+  .pill{background:var(--btn);border:1px solid var(--line);border-radius:99px;
+        padding:7px 12px;font-size:14px;color:var(--dim);box-shadow:none}
+  .pill.on{background:var(--ok);border-color:var(--ok);color:#fff;font-weight:600}
+  .row .pills{align-self:stretch}
   .swatches{display:flex;gap:9px}
   .sw-c{width:28px;height:28px;border-radius:50%;display:block;cursor:pointer;
         border:2px solid transparent;box-shadow:0 0 0 1px var(--line) inset}
@@ -131,6 +138,6 @@
 </dialog>
 
 <div class="toast" id="toast"></div>
-<script src="app.js?v=20260903025537"></script>
+<script src="app.js?v=20260904002405"></script>
 </body>
 </html>
