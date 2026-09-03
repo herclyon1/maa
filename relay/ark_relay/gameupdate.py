@@ -972,8 +972,34 @@ def maaend_reenable_next_boot(cfg) -> str:
     return ("已开回：" + "、".join(zh.get(n, n) for n in on)) if on else ""
 
 
+# 坏掉的那个节点长什么样（beta.5，2026-09-03 从机器上读的原文）：
+#   "all_of": ["YellowConfirmButtonType2", {"param": {...}, "type": "OCR"}]
+# all_of 的元素是**节点**，识别得写在 node 的 recognition 里；把 type/param
+# 直接挂在节点顶层，框架不认，那一条判据等于没写，确认按钮就点不下去。
+# 上游 PR #5453 正是把它包进 recognition，顺带把 roi 放宽并加了等画面静止。
+def spmed_fix_present(maaend_dir) -> bool:
+    """加强剂那个确认节点是不是已经修好了。
+
+    换版本**不等于**这个 bug 修好了：2026-09-03 的修复（上游 PR #5453）
+    到当晚还没合入，只按版本号开回来就是白失败一次。判据改成直接看
+    资源文件里那条判据的形状——修好了才开，与哪个版本无关。
+    """
+    if not maaend_dir:
+        return False
+    f = Path(maaend_dir) / "resource" / "pipeline" / "nodes.json"
+    try:
+        node = json.loads(f.read_text(encoding="utf-8")).get("AutoUseSpMedicationQuickUse")
+    except (OSError, ValueError):
+        return False
+    if not isinstance(node, dict):
+        return False
+    all_of = ((node.get("recognition") or {}).get("param") or {}).get("all_of") or []
+    inline = [x for x in all_of if isinstance(x, dict)]
+    return bool(inline) and all("recognition" in x for x in inline)
+
+
 def maaend_reenable_spmed_if_updated(cfg) -> str:
-    """应急理智加强剂在 beta.5 坏了（09-03）；MaaEnd 再换版本就开回来试。"""
+    """应急理智加强剂在 beta.5 坏了（09-03）；上游把它修好了就开回来。"""
     rec_p = Path(cfg.state_dir) / "maaend-disabled-spmed.json"
     try:
         rec = json.loads(rec_p.read_text(encoding="utf-8"))
@@ -983,6 +1009,9 @@ def maaend_reenable_spmed_if_updated(cfg) -> str:
     ver = _maaend_file_version(cfg.maaend_dir) if cfg.maaend_dir else ""
     if not ver or ver == str(rec.get("since") or ""):
         return ""
+    if not spmed_fix_present(cfg.maaend_dir):
+        log.info("MaaEnd 已是 %s，但加强剂那条判据还是坏的写法，继续关着", ver)
+        return ""
     on = maaend_set_enabled(cfg, set(rec.get("tasks") or []), True)
     rec_p.unlink(missing_ok=True)
-    return f"MaaEnd 已是 {ver}，应急理智加强剂开回来试" if on else ""
+    return f"MaaEnd 已是 {ver}，加强剂的判据已修好，任务开回来" if on else ""
