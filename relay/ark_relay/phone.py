@@ -397,52 +397,6 @@ _OPTS = re.compile(r"OptionsValidator\(\s*\[(.*?)\]", re.S)
 _QUOTED = re.compile(r"""["']([^"']+)["']""")
 
 
-# 前端（Electron）里每个下拉都是 {label:"中文",value:"英文"}。后端只登记
-# 取值、不登记中文，中文全在这份打包产物里——用户 2026-08-31：
-# 「界面上全都是中文呀，你怎么可能找不到呢？既然实际上有中文，
-# 为什么要留给我英文呢？」他是对的。
-# app.asar 有 57MB，扫一次要几秒，所以按「大小+修改时间」缓存结果。
-_LABEL_PAIR = re.compile(
-    r'label\s*:\s*"([^"]{1,40})"\s*,\s*value\s*:\s*"([^"]{1,60})"')
-
-
-def _asar_value_labels(automas_dir, state_dir: Path) -> dict:
-    """`{英文取值: 中文名}`，从前端打包产物里抽。"""
-    if not automas_dir:
-        return {}
-    asar = Path(automas_dir) / "resources" / "app.asar"
-    try:
-        st = asar.stat()
-    except OSError:
-        log.warning("找不到 app.asar，下拉里会留下英文取值")
-        return {}
-    stamp = f"{st.st_size}-{int(st.st_mtime)}"
-    cache = Path(state_dir) / "asar-labels.json"
-    try:
-        got = json.loads(cache.read_text(encoding="utf-8"))
-        if got.get("stamp") == stamp:
-            return got.get("map") or {}
-    except (OSError, json.JSONDecodeError):
-        pass
-    try:
-        text = asar.read_bytes().decode("utf-8", "replace")
-    except OSError:
-        log.warning("读不了 app.asar", exc_info=True)
-        return {}
-    out: dict = {}
-    for label, value in _LABEL_PAIR.findall(text):
-        # 只留中文标签；英文=英文的那些没意义
-        if any("\u4e00" <= ch <= "\u9fff" for ch in label):
-            out.setdefault(value, label)
-    try:
-        atomic_write_text(cache, json.dumps({"stamp": stamp, "map": out},
-                                            ensure_ascii=False))
-    except OSError:
-        pass
-    log.info("从前端抽到 %d 条中文对照", len(out))
-    return out
-
-
 # 一个脚本一个 class：MaaUserConfig / MaaEndUserConfig / OkwwUserConfig。
 # 按「节.键」全局匹配会让同名字段串标签，所以按 class 分开。
 _CLASS = re.compile(r"^class\s+(\w+)", re.M)
@@ -498,17 +452,16 @@ def _options(cfg) -> dict:
     """各游戏可选项。取不到就不给，页面那一项退回文本框。"""
     out: dict = {"MAA": {}, "MaaEnd": {}, "OK-WW": {}}
     try:
-        zh = _asar_value_labels(getattr(cfg, "automas_dir", None),
-                                Path(getattr(cfg, "state_dir", ".")))
         names: dict = {}
         for game, items in _mas_labels(getattr(cfg, "automas_dir", None)).items():
             for path, info in items.items():
                 if path not in SHOWN:
                     continue
                 names[f"{game}|{path}"] = info["label"]
-                if info.get("options"):
-                    out.setdefault(game, {})[path] = [[zh.get(v, v), v]
-                                                      for v in info["options"]]
+                # 2026-09-04 起只带中文字段名，不带候选列表：留下的六项里
+                # 只有「剿灭」是选择题，而它已经改成只读显示（每周自己开关，
+                # 不该在手机上点）。那张关卡表一个人就占一千多字节，
+                # 整包会顶到 ntfy 的上限去。
         out["_labels"] = names
     except Exception:  # noqa: BLE001
         log.warning("AUTO-MAS 的中文标注读不到", exc_info=True)
