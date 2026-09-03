@@ -227,6 +227,19 @@ function setupScreen() {
 let lastGoodConfig = null;
 try { lastGoodConfig = JSON.parse(localStorage.getItem(LS + "-config") || "null"); } catch {}
 
+/* 字段的显示名：一律用**脚本自己**的译名（MaaEnd 的语言包、OK-WW 的 ok.po、
+   AUTO-MAS 的中文标注），SCHEMA 里写的那个只是兜底。渲染和确认框都用这一个，
+   免得列表里是中文、确认框里蹦出 `@enabled` 这种键名。
+   2026-09-03 发现原来「模拟领域第几个／凝素领域第几个」是我编的，
+   而且和官方译名正好编反了——所以译名一律去问脚本，不自己写。 */
+function labelOf(g, f) {
+  const M = ((snap && snap.master) || {})[g.game] || {};
+  return (g.src === "master"
+      ? (M.labels || {})[f.path]
+      : ((((snap && snap.options) || {})._labels || {})[`${g.script}|${f.path}`]))
+    || f.label || f.key || f.path.split("/").pop();
+}
+
 function render() {
   let c = (snap && snap.config) || {};
   const relay = (snap && snap.relay) || {};
@@ -290,14 +303,7 @@ function render() {
       const live = g.src === "master"
         ? (M.options || {})[f.path]
         : (((snap && snap.options) || {})[g.script] || {})[f.path];
-      /* 字段名一律用**脚本自己**的译名（MaaEnd 的语言包、OK-WW 的 ok.po、
-         AUTO-MAS 的中文标注），SCHEMA 里那个只是兜底。
-         2026-09-03 发现原来「模拟领域第几个／凝素领域第几个」是我编的，
-         而且和官方译名正好编反了。 */
-      const label = (g.src === "master"
-          ? (M.labels || {})[f.path]
-          : ((((snap && snap.options) || {})._labels || {})[`${g.script}|${f.path}`]))
-        || f.label || f.key || f.path.split("/").pop();
+      const label = labelOf(g, f);
       const hint = f.hint ? `<span class="hint">${f.hint}</span>` : "";
       const zh = (VALUE_ZH[f.path] || {})[String(val)];
       const pick = (v) => {
@@ -440,7 +446,7 @@ function wire() {
     const row = document.querySelector(`[data-row="${CSS.escape(id)}"]`);
     if (same) { delete edits[id]; if (row) row.classList.remove("changed"); }
     else {
-      edits[id] = { label:`${g.title} ${f.label || f.key || f.path.split("/").pop()}`,
+      edits[id] = { label:`${g.title} · ${labelOf(g, f)}`,
                     src:g.src, owner:g.game || g.script, path:f.path, from, to };
       if (row) row.classList.add("changed");
     }
