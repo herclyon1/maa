@@ -7,6 +7,9 @@ const LS = "ark-remote-cfg";
 const $ = (s) => document.querySelector(s);
 
 let cfg = null;      // {topic, pin}
+/* 当前在看哪一趟班。它管两件事：下面两个按钮作用在哪趟，以及配置区
+   只显示这趟要跑的游戏。记在这台手机上，换页不丢。 */
+let curQueue = localStorage.getItem("ark-remote-cfg-queue") || "";
 let snap = null;     // 机器最近一次上报的状态
 let edits = {};      // 改了但还没保存的：key -> {label, script, path, from, to}
 
@@ -70,7 +73,7 @@ const VALUE_ZH = {
    src:"mas"    → 值取 snap.config[sec][key]，写 set_config(script, path)
    src:"master" → 值取 snap.master[game].values[path]，写 set_master(game, path) */
 const SCHEMA = [
-  { title:"明日方舟", src:"mas", script:"MAA", sec:"MAA", fields:[
+  { title:"明日方舟", owner:"MAA", src:"mas", script:"MAA", sec:"MAA", fields:[
     { key:"关卡",       path:"Info.Stage",        type:"text",
       hint:"游戏里的关卡号，自己填。像 1-7（常规）、CE-6（龙门币）、AT-4（活动关）" },
     { key:"理智药",     path:"Info.MedicineNumb", type:"number",
@@ -84,7 +87,7 @@ const SCHEMA = [
     { key:"剿灭",       path:"Info.Annihilation", type:"text", ro:true,
       hint:"每周自己开关：打满了自动变「关闭」，下周一自动开回来。这里只显示现状" },
   ]},
-  { title:"终末地 · 基质刷取", src:"master", game:"MaaEnd", fields:[
+  { title:"终末地 · 基质刷取", owner:"MaaEnd", src:"master", game:"MaaEnd", fields:[
     { path:"AutoEssence/@enabled", type:"bool", label:"跑这个任务",
       hint:"关掉就完全不刷基质，理智会一直攒着" },
     { path:"AutoEssence/AutoEssenceDoOverride", type:"bool",
@@ -98,13 +101,13 @@ const SCHEMA = [
     { path:"AutoEssence/EssenceFilterAfterBattle", type:"bool",
       hint:"每轮打完当场筛选并锁定有用的基质" },
   ]},
-  { title:"终末地 · 另外两个任务", src:"master", game:"MaaEnd", fields:[
+  { title:"终末地 · 另外两个任务", owner:"MaaEnd", src:"master", game:"MaaEnd", fields:[
     { path:"AutoUseSpMedication/@enabled", type:"bool",
       hint:"上游 beta.5 这一项是坏的：弹窗出来了不点确认，重试三次全失败。修复还没合入，先关着" },
     { path:"AutoCollect/@enabled", type:"bool",
       hint:"15 条采集路线。其中 2 条寻路走不到，已从路线表里摘掉，剩下的正常" },
   ]},
-  { title:"鸣潮", src:"master", game:"OK-WW", fields:[
+  { title:"鸣潮", owner:"OK-WW", src:"master", game:"OK-WW", fields:[
     { path:"DailyTask.json/Which to Farm", type:"text", label:"体力刷什么",
       hint:"每天的体力花在哪" },
     { path:"DailyTask.json/Material Selection", type:"text", label:"刷哪种材料",
@@ -257,16 +260,23 @@ function render() {
   }
 
   const qs = (snap && snap.queues) || [];
+  /* 选中的班次记住，并且**只显示这趟班要跑的游戏**。用户 2026-09-04：
+     「早班晚班切换的时候应该只显示当次班次的游戏，否则极容易和早班混淆。」
+     晚班只有明日方舟，把终末地和鸣潮摆在那儿，改了也不是这趟的事。 */
+  if (qs.length && !qs.some((q) => q["名"] === curQueue)) curQueue = qs[0]["名"];
   const qopts = qs.map((q) => {
     const t = (q["定时"] === false) ? "未启用定时" : "";
-    return `<option value="${q["名"]}">${q["名"]}${t ? "（" + t + "）" : ""}</option>`;
+    return `<option value="${q["名"]}"${q["名"] === curQueue ? " selected" : ""}>${q["名"]}${t ? "（" + t + "）" : ""}</option>`;
   }).join("");
+  const thisShift = (qs.find((q) => q["名"] === curQueue) || {})["脚本"] || null;
+  const inShift = (owner) => !thisShift || !thisShift.length || thisShift.includes(owner);
   html += `<section><h2>机器状态 <small>${snap ? ago(snap.at) : "还没有数据"}</small></h2>
     <div class="acts">
       <button class="wide" id="refresh">刷新（顺便看开没开机）</button>
     </div>
-    ${qs.length ? `<div class="row"><label>下面两个按钮作用在哪个队列
-        <span class="hint">这台机器有两趟：一趟早上、一趟晚上</span></label>
+    ${qs.length ? `<div class="row"><label>看哪一趟班
+        <span class="hint">下面两个按钮作用在这趟班上，配置也只显示这趟班要跑的游戏。
+        ${thisShift && thisShift.length ? "这趟跑：" + thisShift.join("、") : ""}</span></label>
       <select id="queue">${qopts}</select></div>` : ""}
     <div class="acts">
       <button id="runnow">让它现在跑一趟</button>
@@ -278,6 +288,7 @@ function render() {
   </section>${cfgNote}`;
 
   for (const g of SCHEMA) {
+    if (!inShift(g.owner)) continue;
     const M = ((snap && snap.master) || {})[g.game] || {};
     const cur = g.src === "master" ? (M.values || {}) : (c[g.sec] || {});
     const ro = M.readonly || {};
@@ -333,30 +344,29 @@ function render() {
   }
 
   const wb = (relay["周本"]) || {};
-  html += `<section><h2>鸣潮周本 <small>战歌重奏</small></h2>
-    <div class="row"><label>打周本
+  if (inShift("OK-WW")) html += `<section><h2>鸣潮周本 <small>战歌重奏</small></h2>
+    <div class="row" data-row="wb|OK-WW|开"><label>打周本
       <span class="hint">和剿灭一个逻辑：本周打完自动停，下周一 04:00 自动开回来。
       现在是关着的——它出厂设置是「一直刷」，次数得你定</span></label>
-      <span class="sw"><input type="checkbox" id="wb-on" ${wb["开"] ? "checked" : ""}><span></span></span>
+      <span class="sw"><input type="checkbox" data-id="wb|OK-WW|开" id="wb-on" ${wb["开"] ? "checked" : ""}><span></span></span>
     </div>
-    <div class="row"><label>打第几个
+    <div class="row" data-row="wb|OK-WW|第几个周本"><label>打第几个
       <span class="hint">游戏里按 F2 打开周本列表，从上往下数，第一个填 1。
       OK-WW 只认位置不认名字，新 Boss 上线顺序会变，换本时记得来改</span></label>
-      <input type="number" id="wb-idx" value="${wb["第几个周本"] || 1}"></div>
-    <div class="row"><label>一周打几次
+      <input type="number" data-id="wb|OK-WW|第几个周本" id="wb-idx" value="${wb["第几个周本"] || 1}"></div>
+    <div class="row" data-row="wb|OK-WW|打几次"><label>一周打几次
       <span class="hint">奖励是**进本时扣 60 结晶波片**直接给的，没有打完开宝箱这一步。
       一周只能领 3 次，填 3 就够，三次共 180 波片。
       波片不够时会自动跳过这次周本（不空转、也不会白打），下一趟再补。
       这项在 OK-WW 里出厂是 10000，等于一直打</span></label>
-      <input type="number" id="wb-cnt" value="${wb["打几次"] || 1}"></div>
-    <div class="row"><label>难度等级
+      <input type="number" data-id="wb|OK-WW|打几次" id="wb-cnt" value="${wb["打几次"] || 1}"></div>
+    <div class="row" data-row="wb|OK-WW|难度等级"><label>难度等级
       <span class="hint">**周本要选最高的 90** —— 等级决定奖励档次。
       （OK-WW 这一项的说明写的是「挑能掉声骸的最低级」，那是刷声骸的思路，
       和周本正好相反，别被它带偏）</span></label>
-      <select id="wb-lvl">${["50","60","70","80","90"].map(v =>
+      <select data-id="wb|OK-WW|难度等级" id="wb-lvl">${["50","60","70","80","90"].map(v =>
         `<option value="${v}"${String(wb["难度等级"]) === v ? " selected" : ""}>${v}${v === "90" ? "（推荐）" : ""}</option>`).join("")}</select></div>
     ${wb["本周已打"] ? `<div class="row"><span class="ro">本周已经打过了，下周一自动恢复</span></div>` : ""}
-    <div class="acts"><button class="wide primary" id="wb-save">保存周本设置</button></div>
   </section>`;
 
   html += `<section><h2>这台手机</h2>
@@ -390,7 +400,18 @@ function wire() {
   // 于是 `s.at >= floor` 变成「数字 >= 事件对象」，永远为假——
   // 机器明明开着也判成关机。2026-08-31 我加 minAt 参数时就这么弄坏过一次。
   $("#refresh").onclick = () => ping();
-  const theQueue = () => (document.querySelector("#queue") || {}).value || "早班";
+  const theQueue = () => curQueue || "早班";
+  const qsel = $("#queue");
+  if (qsel) qsel.onchange = () => {
+    curQueue = qsel.value;
+    try { localStorage.setItem("ark-remote-cfg-queue", curQueue); } catch {}
+    const keep = { ...edits };
+    render(); edits = keep; updateBar();
+    for (const k of Object.keys(edits)) {
+      const r = document.querySelector(`[data-row="${CSS.escape(k)}"]`);
+      if (r) r.classList.add("changed");
+    }
+  };
   $("#runnow").onclick = () => oneShot(
     { action:"run_now", confirmed:true, queue:theQueue() },
     `已让「${theQueue()}」现在开跑。机器关着时这条会等到下次开机才执行，` +
@@ -413,20 +434,6 @@ function wire() {
     { action:"skip_today", queue:theQueue() },
     `「${theQueue()}」下一趟不跑了。机器开着＝跳今天这趟；` +
     "机器关着＝这条等到下次开机才生效，跳的是那一天。只跳一次，之后自动恢复");
-  const wbSave = $("#wb-save");
-  if (wbSave) wbSave.onclick = () => {
-    const on = $("#wb-on").checked;
-    const index = Number($("#wb-idx").value) || 1;
-    const count = Number($("#wb-cnt").value) || 1;
-    const level = $("#wb-lvl").value;
-    if (!confirm(on
-      ? `打开周本：打第 ${index} 个，一周打 ${count} 次，难度 ${level} 级。确定？`
-      : "关掉周本？")) return;
-    oneShot({ action:"weekly_boss", on, index, count, level },
-      on ? `周本已开：第 ${index} 个，打 ${count} 次，难度 ${level} 级` : "周本已关");
-    setTimeout(() => ping(now()), 2000);
-  };
-
   const tm = $("#th-mode");
   if (tm) tm.onchange = () => saveTheme({ mode: tm.value === "auto" ? null : tm.value });
   for (const sw of document.querySelectorAll(".sw-c")) {
@@ -436,6 +443,12 @@ function wire() {
       sw.classList.add("on");
     };
   }
+
+  /* 周本那四项走同一个保存栏。原来它自己有一个「保存周本设置」按钮，
+     和下面的「保存修改」两套并存——用户 2026-09-04 问「何意味」。
+     现在它和别的设置一样进待保存清单，保存时合成一条指令发出去。 */
+  const WB_ZH = { "开":"打周本", "第几个周本":"打第几个", "打几次":"一周打几次",
+                  "难度等级":"难度等级" };
 
   const locate = (id) => {
     const i = id.indexOf("|"), j = id.indexOf("|", i + 1);
@@ -469,6 +482,22 @@ function wire() {
 
   for (const el of document.querySelectorAll("[data-id]")) {
     el.addEventListener("change", () => {
+      if (el.dataset.id.startsWith("wb|")) {
+        const key = el.dataset.id.slice("wb|OK-WW|".length);
+        const wbNow = (((snap && snap.relay) || {})["周本"]) || {};
+        const from = key === "开" ? !!wbNow["开"]
+          : key === "难度等级" ? String(wbNow[key] ?? "")
+          : Number(wbNow[key] ?? 1);
+        const to = key === "开" ? el.checked
+          : key === "难度等级" ? el.value : (Number(el.value) || 1);
+        const id = el.dataset.id;
+        const row = document.querySelector(`[data-row="${CSS.escape(id)}"]`);
+        if (String(from) === String(to)) { delete edits[id]; if (row) row.classList.remove("changed"); }
+        else { edits[id] = { label:`鸣潮周本 · ${WB_ZH[key] || key}`, src:"wb", key, from, to };
+               if (row) row.classList.add("changed"); }
+        updateBar();
+        return;
+      }
       const { g, f } = locate(el.dataset.id);
       if (!g) return;
       const from = valueNow(g, f);
@@ -820,7 +849,9 @@ $("#go").onclick = async () => {
   if (saving) return;
   saving = true;
   $("#confirm").close();
-  const items = Object.values(edits);
+  const all = Object.values(edits);
+  const wbEdits = all.filter((e) => e.src === "wb");
+  const items = all.filter((e) => e.src !== "wb");
   let sent = 0;
   for (const e of items) {
     const body = e.src === "master"
@@ -828,6 +859,22 @@ $("#go").onclick = async () => {
       : { action:"set_config", confirmed:true, script:e.owner, path:e.path, value:e.to };
     try { await send(body); sent++; }
     catch (err) { toast("第 " + (sent + 1) + " 项发不出去：" + err.message); break; }
+  }
+  /* 周本是一条指令带四个参数，不能一项一条发——分开发的话，中间那条
+     会拿着别的三个旧值去覆盖。所以按现值合成一次发。 */
+  if (wbEdits.length) {
+    const base = (((snap && snap.relay) || {})["周本"]) || {};
+    const get = (k, d) => {
+      const hit = wbEdits.find((e) => e.key === k);
+      return hit ? hit.to : (base[k] ?? d);
+    };
+    try {
+      await send({ action:"weekly_boss", on: !!get("开", false),
+                   index: Number(get("第几个周本", 1)) || 1,
+                   count: Number(get("打几次", 1)) || 1,
+                   level: String(get("难度等级", "90")) });
+      sent += wbEdits.length;
+    } catch (err) { toast("周本设置发不出去：" + err.message); }
   }
   if (sent) {
     edits = {}; updateBar();
