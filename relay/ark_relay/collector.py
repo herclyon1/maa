@@ -341,7 +341,13 @@ def _maaend_farm(text: str) -> dict:
     if drops:
         out["maaend_farm_drops"] = drops
     readings = [int(a) for a, _ in _END_SANITY.findall(body)]
-    spent = sum(a - b for a, b in zip(readings, readings[1:]) if a > b)
+    steps = [a - b for a, b in zip(readings, readings[1:]) if a > b]
+    spent = sum(steps)
+    # 「当前理智」是在**每次领取之前**播报的，最后一次领取之后没有读数：
+    # 09-03 实录 979/899/819/739/659 五个读数、五次领取，按相邻差只得 320，
+    # 真花了 400。领取次数和读数一样多时，最后那次按同样的步长补上。
+    if steps and runs and runs == len(readings):
+        spent += sorted(steps)[len(steps) // 2]
     if spent:
         out["maaend_sanity_spent"] = spent
     return out

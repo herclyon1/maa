@@ -148,6 +148,13 @@ enum Tailscale {
     /// host firewall that drops pings - which Windows does by default - cannot
     /// make a running machine look dead. A machine that is off never answers,
     /// and the request simply hangs until the timeout below.
+    /// Last answer per machine and when it was measured. See `status()`.
+    private static var cache: [String: (probe: Probe, at: Date)] = [:]
+    private static let cacheLock = NSLock()
+    private static let probeReuseSeconds: TimeInterval = 30
+    /// Consecutive silent reads per machine, for the hysteresis in `status()`.
+    private static var misses: [String: Int] = [:]
+
     static func probe(_ ip: String, timeout: TimeInterval = 4) -> Probe {
         guard !ip.isEmpty, var req = request("ping?ip=\(ip)&type=disco") else { return .none }
         req.httpMethod = "POST"
@@ -214,6 +221,16 @@ enum Tailscale {
         let lock = NSLock()
         var answers: [String: Probe] = [:]
         for m in out where !m.isSelf && m.online {
+            // A fresh answer is reused for a while. The ping is itself traffic,
+            // traffic rings the bus doorbell, and the doorbell used to trigger
+            // another ping: a loop that pinged every couple of seconds. Under
+            // that load pings queued behind each other, ran into their timeout,
+            // and a running machine flickered offline/online - on 2026-09-03 it
+            // did so a dozen times in a row while the game PC was booting.
+            if let c = cache[m.ip], Date().timeIntervalSince(c.at) < probeReuseSeconds {
+                answers[m.ip] = c.probe
+                continue
+            }
             group.enter()
             queue.async {
                 // Two tries, so one dropped packet cannot evict a machine that
@@ -226,9 +243,20 @@ enum Tailscale {
             }
         }
         _ = group.wait(timeout: .now() + 20)
+        cacheLock.lock()
+        for (ip, p) in answers { cache[ip] = (p, Date()) }
+        cacheLock.unlock()
         out = out.map { m in
             guard let p = answers[m.ip] else { return m }
-            return p.answered ? m.answering(p) : m.silent()
+            if p.answered {
+                misses[m.ip] = 0
+                return m.answering(p)
+            }
+            // Hysteresis: one silent read is not a verdict. A machine that is
+            // booting answers on the second or third read; one that is off
+            // never does, and two silent reads in a row is soon enough.
+            misses[m.ip, default: 0] += 1
+            return misses[m.ip]! >= 2 ? m.silent() : m
         }
 
         // Self first, then offline machines surfaced above online ones - the
@@ -511,13 +539,20 @@ final class Controller: NSObject, NSApplicationDelegate {
     }
 
     private var pending = false
+    private var reading = false
+    private var lastReadStarted = Date.distantPast
+    /// Floor between two bus-triggered reads. The bus fires on traffic, and
+    /// the read's own ping is traffic, so without a floor the two chase each
+    /// other for as long as a peer is up.
+    private let minReadGap: TimeInterval = 20
 
     /// Collapse a burst of bus notifications into one status read.
     private func scheduleRefresh() {
         DispatchQueue.main.async {
             guard !self.pending else { return }
             self.pending = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            let wait = max(1.5, self.minReadGap - Date().timeIntervalSince(self.lastReadStarted))
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
                 self.pending = false
                 self.refresh()
             }
@@ -527,9 +562,20 @@ final class Controller: NSObject, NSApplicationDelegate {
     @objc private func refresh() {
         // Off the main thread: the CLI can block for seconds when the network
         // is unhappy, and a frozen UI is worse than a stale count.
-        DispatchQueue.global(qos: .utility).async {
-            let result = Tailscale.status()
-            DispatchQueue.main.async { self.apply(result) }
+        // One read at a time: a read that overlaps another queues its pings
+        // behind the first one's, and queued pings time out and read as a
+        // machine that has gone silent.
+        DispatchQueue.main.async {
+            guard !self.reading else { return }
+            self.reading = true
+            self.lastReadStarted = Date()
+            DispatchQueue.global(qos: .utility).async {
+                let result = Tailscale.status()
+                DispatchQueue.main.async {
+                    self.reading = false
+                    self.apply(result)
+                }
+            }
         }
     }
 
