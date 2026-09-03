@@ -39,7 +39,6 @@
 
 import AppKit
 import Foundation
-import UserNotifications
 
 // MARK: - Model
 
@@ -324,7 +323,19 @@ func ago(_ date: Date?) -> String {
     return "\(s / 86400)d ago"
 }
 
-func line(_ m: Machine, as name: String? = nil) -> String {
+/// How to describe a machine Tailscale itself reports as down.
+///
+/// `seen` is when this monitor itself last saw the machine up, used only when
+/// Tailscale's own timestamp is missing. It usually is: an offline peer often
+/// comes back with a zero `LastSeen`, and rendering that read "last seen
+/// never" on a machine that had been up all evening - a line that looks like a
+/// bug in the monitor rather than a machine somebody switched off.
+func offlineNote(_ m: Machine, seen: Date?) -> String {
+    let stamp = m.lastSeen.flatMap { $0.timeIntervalSince1970 > 0 ? $0 : nil } ?? seen
+    return stamp == nil ? "  ·  offline" : "  ·  offline, last seen \(ago(stamp))"
+}
+
+func line(_ m: Machine, as name: String? = nil, seen: Date? = nil) -> String {
     let dot = m.online ? "🟢" : "🔴"
     var s = "\(dot) \(name ?? m.host)"
     if m.isSelf { s += "  (this Mac)" }
@@ -343,7 +354,7 @@ func line(_ m: Machine, as name: String? = nil) -> String {
             s += m.online
                 ? (m.directAddr != nil ? "  ·  direct" : "  ·  idle (direct on use)")
                 : m.noReply ? "  ·  no reply — powered off"
-                            : "  ·  last seen \(ago(m.lastSeen))"
+                            : offlineNote(m, seen: seen)
         }
     }
     return s
@@ -428,7 +439,9 @@ final class Controller: NSObject, NSApplicationDelegate {
     private var rows: NSStackView!
     private var footer: NSTextField!
     private var watcher: BusWatcher?
-    private var lastOnline: [String: Bool] = [:]
+    /// When this monitor last saw each machine up. Tailscale's own timestamp is
+    /// unreliable for a machine that lost power, so keep our own.
+    private var seenOnlineAt: [String: Date] = [:]
     private var machines: [Machine] = []
     private var lastGood: Date?
     /// Backstop only - the bus subscription is what actually drives updates.
@@ -436,8 +449,6 @@ final class Controller: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ note: Notification) {
         buildWindow()
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
-
         refresh()
         Timer.scheduledTimer(withTimeInterval: heartbeatSeconds, repeats: true) { [weak self] _ in
             self?.refresh()
@@ -542,6 +553,7 @@ final class Controller: NSObject, NSApplicationDelegate {
         }
         machines = list
         lastGood = Date()
+        for m in list where m.online { seenOnlineAt[m.host] = Date() }
         let up = list.filter(\.online).count
 
         // The Dock badge is the whole point of the glanceable half: it is on
@@ -561,7 +573,8 @@ final class Controller: NSObject, NSApplicationDelegate {
         let labels = rows.arrangedSubviews.compactMap { $0 as? NSTextField }
         if labels.count == list.count {
             for (label, m) in zip(labels, list) {
-                let text = line(m, as: Specs.displayName(for: m.host, specs))
+                let text = line(m, as: Specs.displayName(for: m.host, specs),
+                                seen: seenOnlineAt[m.host])
                 if label.stringValue != text { label.stringValue = text }
                 let tip = Specs.tooltip(for: m.host, specs)
                 if label.toolTip != tip { label.toolTip = tip }
@@ -569,7 +582,8 @@ final class Controller: NSObject, NSApplicationDelegate {
         } else {
             rows.arrangedSubviews.forEach { $0.removeFromSuperview() }
             for m in list {
-                let label = NSTextField(labelWithString: line(m, as: Specs.displayName(for: m.host, specs)))
+                let label = NSTextField(labelWithString: line(
+                    m, as: Specs.displayName(for: m.host, specs), seen: seenOnlineAt[m.host]))
                 label.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
                 label.maximumNumberOfLines = 0
                 label.toolTip = Specs.tooltip(for: m.host, specs)
@@ -578,28 +592,21 @@ final class Controller: NSObject, NSApplicationDelegate {
         }
         let f = DateFormatter(); f.dateFormat = "HH:mm:ss"
         footer.stringValue = "Updated \(f.string(from: Date())) · pushed on change · replies verified"
-        notifyChanges(list)
     }
 
-    /// Only tell the user when something *changed*. A monitor that speaks on
-    /// every update is a monitor people mute, and then it protects nothing.
-    private func notifyChanges(_ list: [Machine]) {
-        let specs = Specs.load()
-        for m in list where !m.isSelf {
-            if let was = lastOnline[m.host], was != m.online {
-                let name = Specs.displayName(for: m.host, specs) ?? m.host
-                let n = UNMutableNotificationContent()
-                n.title = m.online ? "🟢 \(name) is up" : "🔴 \(name) went offline"
-                n.body = m.online ? "Reconnected just now"
-                    : m.noReply ? "Stopped answering just now"
-                                : "Last seen \(ago(m.lastSeen))"
-                UNUserNotificationCenter.current().add(
-                    UNNotificationRequest(identifier: UUID().uuidString,
-                                          content: n, trigger: nil))
-            }
-            lastOnline[m.host] = m.online
-        }
-    }
+    /// No up/down popups, on purpose.
+    ///
+    /// The fleet's normal day is a scheduled boot and a scheduled shutdown, so
+    /// every single day this notified twice about something nobody needed
+    /// telling - and at boot it fired repeatedly, because the machine is
+    /// briefly reachable-but-not-answering while tailscaled starts. The user's
+    /// word for it on 2026-09-03 was "很烦".
+    ///
+    /// The state is already on screen without one: the Dock tile is coloured
+    /// and carries the count whenever the Dock is. And a machine being off is
+    /// not the thing worth interrupting for - a queue that failed is, and that
+    /// already arrives through the relay's own channel rather than a second
+    /// notification stream competing with it.
 }
 
 let app = NSApplication.shared
