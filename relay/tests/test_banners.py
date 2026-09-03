@@ -210,12 +210,12 @@ def main() -> int:
     # ── 前瞻行 ──
     from ark_relay import banners as _b
     pv = _b.previews(datetime(2026, 9, 3), [], {"终末地": datetime(2026, 9, 30, 11, 59), "鸣潮": datetime(2026, 10, 1, 4, 0)})
-    check("终末地前瞻按版本更新前 10 天预计", pv["终末地"].startswith("预计 09-20"), True)
-    check("鸣潮前瞻预计 09-21", pv["鸣潮"].startswith("预计 09-21"), True)
+    check("终末地前瞻：版本前 12 天 19:00", pv["终末地"].startswith("09-18 19:00"), True)
+    check("鸣潮前瞻：版本前 13 天 19:00", pv["鸣潮"].startswith("09-18 19:00"), True)
     pv2 = _b.previews(datetime(2026, 9, 3), [], {"终末地": datetime(2026, 9, 30)}, official={"终末地": (datetime(2026, 9, 19, 19, 0), "「XX」版本前瞻直播")})
     check("官方公布了就用官方的", pv2["终末地"], "09-19 19:00 「XX」版本前瞻直播")
-    out3 = render([], datetime(2026, 9, 3), {}, {"鸣潮": "预计 09-21（…）"})
-    check("只有前瞻也出这个游戏的块", "鸣潮\n· 前瞻　预计 09-21（…）" in out3, True)
+    out3 = render([], datetime(2026, 9, 3), {}, {"鸣潮": "09-18 19:00（…）"})
+    check("只有前瞻也出这个游戏的块", "鸣潮\n· 前瞻　09-18 19:00（…）" in out3, True)
 
     # ── 只报最高稀有度（用户 2026-09-03）────────────────────
     from ark_relay import banners as _b

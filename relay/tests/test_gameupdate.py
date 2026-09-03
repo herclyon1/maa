@@ -57,7 +57,7 @@ check("空", out, ""); check("问题里说没读到", any("没读到按钮" in x
 print("[鸣潮：读到「更新」就点，等到「开始游戏」]")
 import ark_relay.preupdate as pu
 pu._okww_quiesce = lambda: None
-d = FakeDesk([["公告", "立即更新"], ["下载中"], ["开始游戏"]]); probs = []
+d = FakeDesk([["公告", "立即更新"], ["下载中"], ["开始游戏"], ["点击连接"]]); probs = []
 out = gu.update_wuwa(d, Path("Wuthering Waves.exe"), poll_s=0, problems=probs, sleep=nosleep)
 check("报了更新", out.startswith("鸣潮 客户端已通过启动器更新"), True)
 check("点的是按钮中心", d.clicks[0], (140, 140))
@@ -160,7 +160,7 @@ cfg.okww_dir = ST / "okww"; wwl = ST / "wwgame" / "Wuthering Waves.exe"; wwl.par
 (ST / "ledger-2026-09-02.jsonl").write_text(json.dumps({"script": "OK-WW", "ok": False, "raw": {"okww_unreachable": True}}) + "\n", encoding="utf-8")
 gu.mark_pending(ST, "鸣潮", "官方公告：今天更新维护")
 dispatched.clear()
-notes, probs, reran = gu.run_deferred(cfg, now=now, desk=FakeDesk([["公告", "立即更新"], ["下载中"], ["开始游戏"]]), dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=nosleep)
+notes, probs, reran = gu.run_deferred(cfg, now=now, desk=FakeDesk([["公告", "立即更新"], ["下载中"], ["开始游戏"], ["点击连接"]]), dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=nosleep)
 check("鸣潮更新了", bool(notes) and notes[0].startswith("鸣潮 客户端已通过启动器更新") and notes[0].endswith("（依据：官方公告：今天更新维护）"), True)
 check("等不到窗口那种失败 → 重跑 OK-WW", reran, ["OK-WW"])
 (ST / "ledger-2026-09-02.jsonl").write_text(json.dumps({"script": "OK-WW", "ok": False, "raw": {}}) + "\n", encoding="utf-8")

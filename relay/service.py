@@ -772,6 +772,16 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         except Exception:  # noqa: BLE001 - a pre-update must never stop the relay
             log.exception("预更新出错，跳过（本轮照旧）")
 
+        # MaaEnd 换了版本就把 09-02 关掉的四项开回来。放在预更新块外面：09-03 早上
+        # 预更新因为凌晨已经跑过而跳过，这一步跟着没跑，四项一直关着。
+        try:
+            from ark_relay import gameupdate as _gu2  # noqa: PLC0415
+            if back := _gu2.maaend_reenable_if_updated(cfg):
+                log.info("开机：%s", back)
+                notifier.send("🔓 终末地日常已开回", back)
+        except Exception:  # noqa: BLE001
+            log.exception("开回 MaaEnd 任务出错")
+
         # 大版本更新日把游戏客户端也更新掉（用户 2026-09-02 要的）。
         # 每次开机一遍：早班窗口短，只够方舟装包 / 给启动器点一下更新；
         # 晚班只跑 MAA，终末地和鸣潮的大包放这里下。预算 = 离下一趟队列还有多久。

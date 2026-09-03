@@ -137,33 +137,36 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
 
 
 # ─────────────────────────── 「到登录界面」三家各自的判据 ───────────────────────────
-# 用户 2026-09-03：「三个游戏到登录界面并不是每一个都出现『点击任意位置继续』」。
-# 终末地：那句是 09-02 手动更新时屏幕上读到的，已验证。
-# 鸣潮 / 明日方舟：候选词是按各自登录界面的常见文案列的，**未在机器上验证**；
-# 读不到候选词时退回「游戏窗口活着满 N 分钟」这个不靠字的判据，并在日志里写明用的是哪个。
+# 三家登录界面的字，全部来自用户 2026-09-03 给的截图原文，不是猜的：
+#   终末地「点击任意位置继续」（09-02 更新时也读到过）
+#   明日方舟「开始唤醒」（雷电里，Ver 2.7.61 截图）
+#   鸣潮「点击连接」（CN_Android_Product_3.6.0 截图）
+# 没读到就一直等到预算用完，然后按「没准备好」报——不按时间硬算就绪
+# （用户：「合着窗口四五分钟后还在更新你就按就绪处理了？」）。
 READY_WORDS = {
     "终末地": ("点击任意位置继续",),
-    "鸣潮": ("点击开始", "点击进入", "开始游戏", "登录"),
-    "明日方舟": ("开始唤醒", "点击开始", "账号登录", "登录"),
+    "鸣潮": ("点击连接",),
+    "明日方舟": ("开始唤醒",),
 }
 
 
 def wait_ready(desk: Desktop, game: str, *, focus: str, alive, budget_s: float = 900,
-               fallback_s: float = 240, poll_s: float = 30, sleep=time.sleep) -> str:
-    """等到登录界面。返回依据句（空串 = 没等到）。alive() 说进程还在不在。"""
+               poll_s: float = 30, sleep=time.sleep) -> str:
+    """等到登录界面。返回依据句（空串 = 预算内没读到，或进程没了）。"""
     t0 = time.monotonic()
+    last = ""
     while time.monotonic() - t0 < budget_s:
         if not alive():
+            log.warning("游戏更新：%s 进程没了，没等到登录界面", game)
             return ""
         scr = desk.read(focus=focus)
-        if scr.has(*READY_WORDS.get(game, ())):
-            hit = next(w for w in READY_WORDS[game] if scr.has(w))
-            log.info("游戏更新：%s 到登录界面（读到「%s」）", game, hit)
-            return f"读到「{hit}」"
-        if time.monotonic() - t0 >= fallback_s:
-            log.info("游戏更新：%s 没读到登录界面的字，但游戏窗口活着满 %.0f 分钟，按就绪算", game, fallback_s / 60)
-            return f"窗口活着满 {fallback_s / 60:.0f} 分钟（没读到字）"
+        for w in READY_WORDS.get(game, ()):
+            if scr.has(w):
+                log.info("游戏更新：%s 到登录界面（读到「%s」）", game, w)
+                return f"读到「{w}」"
+        last = scr.dump(6)
         sleep(poll_s)
+    log.warning("游戏更新：%s %.0f 分钟内没读到登录界面的字，最后一屏：%s", game, budget_s / 60, last)
     return ""
 
 
@@ -386,8 +389,10 @@ def update_arknights(state_dir: Path, ldconsole: Path, idx: int, *,
         run([str(ldconsole), "runapp", "--index", str(idx), "--packagename", AK_PACKAGE])
         sleep(60)
         how = wait_ready(desk, "明日方舟", focus="dnplayer", alive=lambda: True,
-                         budget_s=900, fallback_s=300, sleep=sleep)
+                         budget_s=900, sleep=sleep)
         log.info("游戏更新：明日方舟预热%s", f"完成（{how}）" if how else "没等到登录界面")
+        if not how:
+            _note(problems, "明日方舟：装完拉起后 15 分钟没读到「开始唤醒」")
         run([str(ldconsole), "killapp", "--index", str(idx), "--packagename", AK_PACKAGE])
     run([str(ldconsole), "quit", "--index", str(idx)])
     if now_ver != remote:

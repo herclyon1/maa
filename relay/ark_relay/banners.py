@@ -315,18 +315,19 @@ def _stamp(when: datetime) -> str:
 
 
 # ── 版本前瞻 ──
-# 用户 2026-09-03：卡池预期来自官方「版本前瞻」；前瞻还没发也要标下次前瞻的时间。
-# 终末地/鸣潮的前瞻按往期规律在版本更新前约 10 天（雪凇幽梦：研发通讯 08-22，版本 09-02；
-# 鸣潮 3.6：08-20 版本）；官方一发「前瞻」公告就用公告的时刻。方舟版本时间不固定，
-# 下一期看一图流（next_starts 里已带）。
-_PREVIEW_LEAD_DAYS = 10
+# 用户 2026-09-03：鸣潮、终末地每个版本的前瞻时间是**固定规律**，不是「约」。实录：
+#   鸣潮 3.6：版本 08-20（周四）更新，前瞻通讯 08-07（周五）19:00 → 版本前 13 天
+#   终末地「雪凇幽梦」：版本 09-02（周三）更新，前瞻节目 08-21（周五）19:00 → 版本前 12 天
+# 官方一发前瞻公告就用公告的时刻；没发时按这个规律算，标「按规律」。
+# 方舟版本时间不固定，下一期看一图流（next_starts 里已带）。
+_PREVIEW_RULE = {"鸣潮": (13, 19, 0), "终末地": (12, 19, 0)}   # (版本前几天, 时, 分)
 
 
 def previews(now: datetime, rows: list[Banner], version_end: "dict[str, datetime]",
              official: "dict[str, tuple[datetime, str]] | None" = None) -> "dict[str, str]":
     """{游戏: 前瞻那一行的正文}。official[游戏] = (前瞻时刻, 标题) 有就用它。"""
     out: dict[str, str] = {}
-    for game in ("终末地", "鸣潮"):
+    for game, (days, hh, mm) in _PREVIEW_RULE.items():
         if official and game in official:
             when, title = official[game]
             out[game] = f"{when:%m-%d %H:%M} {title}"
@@ -334,11 +335,11 @@ def previews(now: datetime, rows: list[Banner], version_end: "dict[str, datetime
         end = version_end.get(game)
         if not end:
             continue
-        guess = end - timedelta(days=_PREVIEW_LEAD_DAYS)
-        if guess <= now:
-            out[game] = f"版本 {end:%m-%d} 更新前（前瞻应已发布，官方接口里没读到）"
+        when = (end - timedelta(days=days)).replace(hour=hh, minute=mm, second=0, microsecond=0)
+        if when <= now:
+            out[game] = f"{when:%m-%d %H:%M} 已播（版本 {end:%m-%d} 更新）"
         else:
-            out[game] = f"预计 {guess:%m-%d}（版本 {end:%m-%d} 更新前约 {_PREVIEW_LEAD_DAYS} 天，官方未公布）"
+            out[game] = f"{when:%m-%d %H:%M}（版本 {end:%m-%d} 更新前 {days} 天，按规律）"
     return out
 
 
