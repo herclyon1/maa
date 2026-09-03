@@ -19,6 +19,13 @@
 //    of being asked for on a timer. The interval below is only a backstop for a
 //    dead subscription, which is why it is minutes and not seconds.
 //
+// 3. The window shows whether a machine answers, not whether Tailscale thinks
+//    it is up. Those are different questions, and on 2026-09-03 they disagreed
+//    for over four hours: the game PC had been shut down at 14:43 and the
+//    status endpoint still said "Online" at 19:00, because a machine that loses
+//    power never logs out and control had not yet timed it out. Every machine
+//    the status claims is up is now asked directly before it is drawn green.
+//
 // Both endpoints are read straight off tailscaled's local HTTP API rather than
 // through the bundled `Tailscale` CLI. That CLI is not a plain client: it tries
 // to start the GUI app, and from a context that cannot do that it prints "The
@@ -48,6 +55,18 @@ struct Machine {
     let relay: String
     /// Whether a connection is carrying traffic right now.
     let active: Bool
+    /// Tailscale still lists the machine as up, but it did not answer a ping.
+    /// Rendered differently from a machine control has already given up on:
+    /// "last seen never" is what that peer's timestamps say, and it reads as a
+    /// bug rather than as a machine somebody switched off.
+    let noReply: Bool
+
+    /// The same machine, marked as not answering.
+    func silent() -> Machine {
+        Machine(host: host, ip: ip, os: os, online: false, lastSeen: lastSeen,
+                isSelf: isSelf, directAddr: directAddr, relay: relay,
+                active: active, noReply: true)
+    }
 }
 
 /// Append one line to a debug log. Silent on failure - a monitor that cannot
@@ -98,6 +117,46 @@ enum Tailscale {
         return r
     }
 
+    /// Whether the machine answers right now.
+    ///
+    /// `Online` in tailscaled's status is the control plane's opinion, not
+    /// reachability. A machine that loses power without logging out keeps that
+    /// flag set until control times it out - on 2026-09-03 the game PC still
+    /// read "online" four hours after it had been shut down, while neither ssh
+    /// nor ping reached it. A monitor whose entire job is answering "is it on"
+    /// cannot forward somebody else's stale opinion, so every machine the
+    /// status claims is up gets asked directly.
+    ///
+    /// A disco ping rather than ICMP: it is answered by tailscaled itself, so a
+    /// host firewall that drops pings - which Windows does by default - cannot
+    /// make a running machine look dead. A machine that is off never answers,
+    /// and the request simply hangs until the timeout below.
+    static func reachable(_ ip: String, timeout: TimeInterval = 4) -> Bool {
+        guard !ip.isEmpty, var req = request("ping?ip=\(ip)&type=disco") else { return false }
+        req.httpMethod = "POST"
+        req.timeoutInterval = timeout
+        let lock = NSLock()
+        var ok = false
+        let done = DispatchSemaphore(value: 0)
+        let task = URLSession.shared.dataTask(with: req) { d, _, _ in
+            defer { done.signal() }
+            guard let d = d,
+                  let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any]
+            else { return }
+            // A reply that carries an error is not a reply from the machine:
+            // pinging our own address answers instantly with "is local
+            // Tailscale IP", which must not count as the peer being up.
+            let err = (o["Err"] as? String) ?? ""
+            let latency = (o["LatencySeconds"] as? Double) ?? 0
+            lock.lock(); ok = err.isEmpty && latency > 0; lock.unlock()
+        }
+        task.resume()
+        _ = done.wait(timeout: .now() + timeout + 2)
+        task.cancel()
+        lock.lock(); defer { lock.unlock() }
+        return ok
+    }
+
     static func status() -> [Machine]? {
         guard let req = request("status") else { note("no local API endpoint"); return nil }
 
@@ -126,6 +185,27 @@ enum Tailscale {
                 if let p = v as? [String: Any] { out.append(parse(p, isSelf: false)) }
             }
         }
+        // Ask every machine the status claims is up whether it is actually
+        // there. See `reachable` for why the claim alone is not good enough.
+        let group = DispatchGroup()
+        let queue = DispatchQueue(label: "fleetmonitor.probe", attributes: .concurrent)
+        let lock = NSLock()
+        var silent = Set<String>()
+        for m in out where !m.isSelf && m.online {
+            group.enter()
+            queue.async {
+                // Two tries, so one dropped packet cannot evict a machine that
+                // is running. Only a machine that is genuinely off pays for the
+                // second attempt.
+                if !reachable(m.ip) && !reachable(m.ip) {
+                    lock.lock(); silent.insert(m.ip); lock.unlock()
+                }
+                group.leave()
+            }
+        }
+        _ = group.wait(timeout: .now() + 20)
+        out = out.map { silent.contains($0.ip) ? $0.silent() : $0 }
+
         // Self first, then offline machines surfaced above online ones - the
         // ones that need attention should not be at the bottom of the list.
         return out.sorted {
@@ -147,7 +227,8 @@ enum Tailscale {
             isSelf: isSelf,
             directAddr: addr.isEmpty ? nil : addr,
             relay: (d["Relay"] as? String) ?? "",
-            active: (d["Active"] as? Bool) ?? false
+            active: (d["Active"] as? Bool) ?? false,
+            noReply: false
         )
     }
 
@@ -229,7 +310,8 @@ func line(_ m: Machine, as name: String? = nil) -> String {
             ? (m.directAddr != nil ? "  ·  direct"
                : m.active ? "  ·  relay \(m.relay)"
                           : "  ·  idle (direct on use)")
-            : "  ·  last seen \(ago(m.lastSeen))"
+            : m.noReply ? "  ·  no reply — powered off"
+                        : "  ·  last seen \(ago(m.lastSeen))"
     }
     return s
 }
@@ -462,7 +544,7 @@ final class Controller: NSObject, NSApplicationDelegate {
             }
         }
         let f = DateFormatter(); f.dateFormat = "HH:mm:ss"
-        footer.stringValue = "Updated \(f.string(from: Date())) · pushed on change"
+        footer.stringValue = "Updated \(f.string(from: Date())) · pushed on change · replies verified"
         notifyChanges(list)
     }
 
@@ -475,7 +557,9 @@ final class Controller: NSObject, NSApplicationDelegate {
                 let name = Specs.displayName(for: m.host, specs) ?? m.host
                 let n = UNMutableNotificationContent()
                 n.title = m.online ? "🟢 \(name) is up" : "🔴 \(name) went offline"
-                n.body = m.online ? "Reconnected just now" : "Last seen \(ago(m.lastSeen))"
+                n.body = m.online ? "Reconnected just now"
+                    : m.noReply ? "Stopped answering just now"
+                                : "Last seen \(ago(m.lastSeen))"
                 UNUserNotificationCenter.current().add(
                     UNNotificationRequest(identifier: UUID().uuidString,
                                           content: n, trigger: nil))
