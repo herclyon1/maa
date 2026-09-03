@@ -359,6 +359,13 @@ function render() {
     <div class="acts"><button class="wide primary" id="wb-save">保存周本设置</button></div>
   </section>`;
 
+  html += `<section><h2>这台手机</h2>
+    <div class="row"><label>免输入链接
+      <span class="hint">把这条链接存成书签或加到主屏幕，以后打开就直接是控制台，
+      再也不用填信箱和 PIN。链接里带着这两样，别转发给别人</span></label>
+      <button id="mklink">复制链接</button></div>
+  </section>`;
+
   const th = loadTheme();
   const mode = th.mode || "auto";
   html += `<section><h2>外观</h2>
@@ -451,6 +458,13 @@ function wire() {
       if (row) row.classList.add("changed");
     }
     updateBar();
+  };
+
+  const mk = $("#mklink");
+  if (mk) mk.onclick = async () => {
+    const url = myLink();
+    try { await navigator.clipboard.writeText(url); toast("链接已复制。存成书签或加到主屏幕就不用再填了"); }
+    catch { prompt("长按复制这条链接：", url); }
   };
 
   for (const el of document.querySelectorAll("[data-id]")) {
@@ -749,7 +763,34 @@ document.addEventListener("visibilitychange", async () => {
   askWatch();
 });
 
+/* 免输入链接：把信箱和 PIN 放在链接的 `#` 后面，页面读一次存下来就把它抹掉。
+   为什么不直接写进代码里：这个页面挂在公开的 GitHub Pages 上、仓库也是公开的，
+   写进去等于把遥控信道贴在互联网上——任何人都能按那个红色的「停止一切」。
+   `#` 后面的内容浏览器不会发给服务器，也不进仓库，只存在你自己那条书签里。
+   用户 2026-09-04：「把信箱和 pin 这个设计删了就行」——要删的是**每次去填**，
+   这样就一次都不用填了。 */
+function fromLink() {
+  const m = /[#&]k=([A-Za-z0-9_-]+)/.exec(location.hash || "");
+  if (!m) return false;
+  try {
+    const j = JSON.parse(decodeURIComponent(escape(
+      atob(m[1].replace(/-/g, "+").replace(/_/g, "/")))));
+    if (!j.t || !j.p) return false;
+    localStorage.setItem(LS, JSON.stringify({ topic: j.t, pin: String(j.p) }));
+    history.replaceState(null, "", location.pathname + location.search);
+    return true;
+  } catch { return false; }
+}
+
+function myLink() {
+  const b = btoa(unescape(encodeURIComponent(
+    JSON.stringify({ t: cfg.topic, p: cfg.pin }))))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return location.origin + location.pathname + "#k=" + b;
+}
+
 async function boot() {
+  fromLink();
   const raw = localStorage.getItem(LS);
   if (!raw) return setupScreen();
   cfg = JSON.parse(raw);
