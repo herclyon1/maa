@@ -123,8 +123,12 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
         except (OSError, ValueError, TypeError):
             spec = {}
         defs = spec.get("option") or {}
+        # `task` 在真文件里是**数组**（一个文件可以声明多个任务），
+        # 里面按 name 找。2026-09-04 我照着自造的样例写成 dict，上机就炸。
+        decl = next((t for t in (spec.get("task") or [])
+                     if isinstance(t, dict) and t.get("name") == task_name), {})
         out["labels"][f"{task_name}/@enabled"] = zh(
-            (spec.get("task") or {}).get("label") or f"${'task'}.{task_name}.label")
+            decl.get("label") or f"$task.{task_name}.label")
         for opt in wanted:
             key = f"{task_name}/{opt}"
             if opt == "@enabled":
