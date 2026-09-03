@@ -112,10 +112,15 @@ const SCHEMA = [
       hint:"每天的体力花在哪" },
     { path:"DailyTask.json/Material Selection", type:"text", label:"刷哪种材料",
       hint:"只在上面选「模拟领域」时才有用" },
+    /* 这两项 OK-WW 只存**序号**，它按游戏里 F2 传送列表从上往下数着传送，
+       名字和掉落它都不知道。所以这里的说明必须写清楚序号是哪来的，
+       别再写成上一版那种和标题对不上的话（无音区那条写着「选凝素领域才有用」）。
+       用户 2026-09-04：「给我标数字，我怎么知道 1234 是什么东西呢？」
+       ——序号对应哪个套装要拿游戏里的 F2 列表核对，见 docs/欠的活.md。 */
     { path:"DailyTask.json/Which Forgery Challenge to Farm", type:"number",
-      label:"模拟领域第几个", hint:"游戏里按 F2 打开的列表中，从上往下第几个" },
+      hint:"游戏里按 F2 打开传送列表，凝素领域从上往下数第几个。只在上面选「凝素领域」时才有用" },
     { path:"DailyTask.json/Which Tacet Suppression to Farm", type:"number",
-      label:"凝素领域第几个", hint:"只在上面选「凝素领域」时才有用" },
+      hint:"游戏里按 F2 打开传送列表，无音区从上往下数第几个。只在上面选「无音区」时才有用" },
     { path:"NightmareNestTask.json/Only Farm These Nests", type:"text",
       label:"残象聚落点位", ro:true,
       hint:"只刷落渊南丘，这是定好的。要换点位在电脑上改" },
