@@ -44,8 +44,10 @@ check("领奖顺序（附加任务在领奖前）",
       daily.find("self.run_additional_tasks()") < daily.find("self.claim_daily()"),
       f"{daily.find('self.run_additional_tasks()')} < {daily.find('self.claim_daily()')}")
 domain = (work / "DomainTask.py").read_text(encoding="utf-8", errors="replace")
-check("副本失败不拖垮每日任务",
-      "NotInCombatException, CharDeadException, WaitFailedException" in domain)
+# 2026-08-30 主动还原（理由见 okww_patch.ensure_patches 的 docstring），
+# 上游 PR #1625 也已关闭。这里守的是「没有半截残留」。
+check("副本失败补丁已还原（08-30 撤掉，不该再出现）",
+      "WaitFailedException" not in domain)
 nest = (work / "NightmareNestTask.py").read_text(encoding="utf-8", errors="replace")
 # 断言意图不断言字面：2026-08-29 把这段拆成 `if numerator == denominator:` 之后
 # 行为一模一样，守字面的断言却红了。真正要守的是「旧的 已击败必须为0 没回来」。
@@ -55,7 +57,9 @@ check("巢穴：允许续刷（旧的 已击败==0 限制没回来）",
 check("巢穴：打完没进展就跳过", "_next_nest_with_progress" in nest)
 check("巢穴：可指定点位", "Only Farm These Nests" in nest)
 combat = (work / "BaseCombatTask.py").read_text(encoding="utf-8", errors="replace")
-check("主C饿死兜底（保险，平时休眠）", "_starved_main_dps_target" in combat)
+# 同上：饿死是我们改键位造成的，键位改回默认后撤掉（上游 #1632 自行关闭）。
+check("主C饿死补丁已还原（08-30 撤掉，不该再出现）",
+      "_starved_main_dps_target" not in combat)
 
 print("\n=== 2. 补丁能自动重贴（OK-WW 更新会覆盖 src）===")
 ref = Path(r"C:\ProgramData\ark-relay\ark_relay\okww_files")
@@ -91,16 +95,21 @@ u = next(iter(post("/api/scripts/user/get", {"scriptId": sid})["data"].values())
 # condition1 优先），留着不碍事，所以只报状态、不当失败。
 print(f"  ·  每日声骸开关（刷满模式下不生效）= "
       f"{daily.get('Farm Nightmare Nest for Daily Echo')}")
-check("体力去处＝凝素领域第1个",
-      u["Task"].get("WhichToFarm") == "Forgery Challenge"
-      and u["Task"].get("WhichForgeryChallengeToFarm") == 1)
+# 快速配置关了，MAS 侧 WhichToFarm 不再生效（effective_config.py 有说明），
+# 读母本。用户 09-01 起要的是模拟领域·贝币（plan.py 的「体力刷」也按这个写）。
+check("体力去处＝模拟领域·贝币（读母本）",
+      daily.get("Which to Farm") == "Simulation Challenge"
+      and daily.get("Material Selection") == "Shell Credit",
+      f"实际 {daily.get('Which to Farm')!r} / {daily.get('Material Selection')!r}")
 
 print("\n=== 4. MAA 关键配置（826 事故相关）===")
 mid = next(k for k, v in scripts.items()
            if (v.get("Info") or {}).get("Name") == "MAA")
 m = next(iter(post("/api/scripts/user/get", {"scriptId": mid})["data"].values()))
-check("关卡 AT-4", m["Info"].get("Stage") == "AT-4")
-check("理智药 999（无限吃）", str(m["Info"].get("MedicineNumb")) == "999")
+# 关卡随活动变，不当判据，只报出来给人看；药量按用户要求「不吃理智药」守 0。
+print(f"  ·  关卡 Info.Stage = {m['Info'].get('Stage')!r}（StageMode={m['Task'].get('StageMode')!r}）")
+check("理智药 0（用户要求不吃药）", str(m["Info"].get("MedicineNumb")) == "0",
+      f"实际 {m['Info'].get('MedicineNumb')!r}")
 check("活动关优先＝关（826 的元凶）", m["Task"].get("IfActivityFirst") is False)
 check("剿灭 Close", m["Info"].get("Annihilation") == "Close")
 check("理智作战开着", m["Task"].get("IfFight") is True)
@@ -127,7 +136,9 @@ unconfirmed = [l for l in recent if "预更新：" in l and "没" in l
                and "AUTO-MAS" not in l and "无需更新" not in l]
 check("预更新除 AUTO-MAS 下载超时外没有别的未确认项",
       not unconfirmed, "；".join(x[-60:] for x in unconfirmed) or "无")
-check("AUTO-MAS 更新是干净放弃（留到下次开机）",
-      any("留到下次开机再装" in l for l in recent))
+# 「无需更新」也是干净的；只有既没装成、也没说放弃才算问题。
+check("AUTO-MAS 预更新有明确结论（装了 / 无需更新 / 干净放弃）",
+      any(("留到下次开机再装" in l or "无需更新" in l or "已更新" in l)
+          and "AUTO-MAS" in l for l in recent))
 
 print(f"\n{'=' * 46}\n通过 {len(OK)} 项" + (f"，失败 {len(BAD)} 项：{BAD}" if BAD else "，全部通过"))
