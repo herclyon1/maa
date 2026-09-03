@@ -82,12 +82,24 @@ def _mas(out: dict) -> None:
 def _queues(out: dict) -> None:
     # 用 .get：不同版本的 AUTO-MAS 字段不一样，2026-08-31 就因为
     # 直接下标 StartUpEnabled 抛了 KeyError，整段队列信息一条都拿不到。
-    out["队列"] = {
-        str((c.get("Info") or {}).get("Name") or "?"): {
-            "定时": (c.get("Info") or {}).get("TimeEnabled"),
-            "开机跑": (c.get("Info") or {}).get("StartUpEnabled"),
+    # 每趟班有哪几个脚本。手机上按班次筛配置要用它——用户 2026-09-04：
+    # 「早班晚班切换的时候应该只显示当次班次的游戏，否则极容易和早班混淆。」
+    names = {sid: str((v.get("Info") or {}).get("Name") or "")
+             for sid, v in _post("/api/scripts/get")["data"].items()}
+    out["队列"] = {}
+    for qid, c in _post("/api/queue/get")["data"].items():
+        info = c.get("Info") or {}
+        try:
+            items = _post("/api/queue/item/get", {"queueId": qid})["data"].values()
+            scripts = [names.get(str((i.get("Info") or {}).get("ScriptId")), "")
+                       for i in items]
+        except Exception:  # noqa: BLE001 - 取不到就当没有，别把整段队列信息拖垮
+            scripts = []
+        out["队列"][str(info.get("Name") or "?")] = {
+            "定时": info.get("TimeEnabled"),
+            "开机跑": info.get("StartUpEnabled"),
+            "脚本": [x for x in scripts if x],
         }
-        for c in _post("/api/queue/get")["data"].values()}
 
 
 def _automas_dir() -> "str | None":
