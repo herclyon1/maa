@@ -136,6 +136,7 @@ be laziness.
 | checked every 120s whether AUTO-MAS's backend was alive | WMI `Win32_ProcessStartTrace` + `OpenProcess` handle - woken the instant it exits |
 | Fleet Monitor asked `tailscale status` every 30s | `watch-ipn-bus` long connection - the state change is pushed |
 | Fleet Monitor 拿 tailscaled 的 `Online` 当「机器开着」 | 那是控制面的说法，不是能不能连上。断电不会登出，09-03 关机四小时后它还报 Online=True。现在每台声称在线的机器都要真回一个 disco ping 才画绿 |
+| 手机页改终末地／鸣潮的设置，按下有回执但脚本照旧 | 这两个脚本的「快速配置」是关的，AUTO-MAS 直接 return，不把 MAS 用户配置下发给它们（`app/task/Okww/AutoProxy.py:320`、`MaaEnd/AutoProxy.py:537`）。真正生效的是各自的母本配置。**明日方舟没有这个开关**，它的关卡和理智药每次派发都会被写进 gui.new.json，走 MAS 是对的 |
 | Fleet Monitor 每天弹两次上下线通知（还在开机时连弹） | 定时开机和跑完关机是这套机器的日常，没人需要被告知；开机瞬间「能连上但还没答话」会让状态来回跳，通知跟着刷。已整个去掉，状态看 Dock 图标；真出事由中继自己的渠道报 |
 | Mac probed every 10 min for a chance to push code | deleted; the machine fetches from GitHub at boot |
 | main loop woke every 300s to ask "is it time yet" | an alarm clock: compute the next exact instant and sleep to it |
