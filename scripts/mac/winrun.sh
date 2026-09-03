@@ -43,6 +43,14 @@ fi
 
 HOST="${ARK_HOST:-100.65.39.119}"
 USER_AT="Administrator@${HOST}"
+
+# 连接复用。一次 winrun 里要开五六条 ssh/scp，每条重新握手＋认证要一两秒；
+# 跨境链路更明显。ControlMaster 让后面的都走第一条已经建好的通道，
+# ControlPersist 让通道在脚本结束后还留一会儿，**连着敲的下一条 winrun
+# 也蹭得上**——手动驱动游戏界面时一步一截图，这一项就是快慢的分水岭。
+# 路径按主机名固定（不带 $$），deploy-relay.sh 用的是同一套写法。
+CM_PATH="${TMPDIR:-/tmp}/ark-cm-${HOST}"
+SSH_OPTS=(-o ControlMaster=auto -o "ControlPath=${CM_PATH}" -o ControlPersist=300)
 STRIP='import sys;d=open(sys.argv[1],"rb").read();d=d[3:] if d.startswith(b"\xef\xbb\xbf") else d;sys.stdout.write(d.decode("utf-8","replace").replace("\r\n","\n"))'
 
 # 在游戏机上跑一段 PowerShell，不经过任何一层引号解析。
@@ -99,7 +107,7 @@ preflight_timefilter_check() {
 run_remote_ps() {
   local b64
   b64=$(printf '%s' "$1" | iconv -f UTF-8 -t UTF-16LE | base64 | tr -d '\n')
-  ssh -o ConnectTimeout="${2:-30}" "$USER_AT" \
+  ssh "${SSH_OPTS[@]}" -o ConnectTimeout="${2:-30}" "$USER_AT" \
     "if exist \"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" (\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoProfile -EncodedCommand $b64) else (powershell -NoProfile -EncodedCommand $b64)" \
     2>/dev/null
 }
@@ -120,17 +128,17 @@ if [ "${1:-}" = "--put" ]; then
   if [ "$PARENT" != "$DEST" ]; then
     MK_B64=$(printf '%s' "New-Item -ItemType Directory -Force -Path '${PARENT}' | Out-Null" \
              | iconv -f UTF-8 -t UTF-16LE | base64 | tr -d '\n')
-    ssh -o ConnectTimeout=30 "$USER_AT" \
+    ssh "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$USER_AT" \
       "pwsh -NoProfile -EncodedCommand ${MK_B64}" >/dev/null 2>&1 || true
   fi
-  scp -q -o ConnectTimeout=30 "$LOCAL" "${USER_AT}:${DEST}" || {
+  scp -q "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$LOCAL" "${USER_AT}:${DEST}" || {
     echo "winrun --put: 传输失败（上面是 scp 的报错）" >&2; exit 1; }
   # 传完必须核对大小，不然「静默没传上去」这个坑还在。
   WANT=$(wc -c < "$LOCAL" | tr -d ' ')
   # 用 pwsh 7，不是 powershell 5.1；而且不内联拼 PowerShell——照规矩走 base64。
   SZ_PS="(Get-Item -LiteralPath '${DEST}').Length"
   SZ_B64=$(printf '%s' "$SZ_PS" | iconv -f UTF-8 -t UTF-16LE | base64 | tr -d '\n')
-  GOT=$(ssh -o ConnectTimeout=30 "$USER_AT" \
+  GOT=$(ssh "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$USER_AT" \
         "pwsh -NoProfile -EncodedCommand ${SZ_B64}" 2>/dev/null | tr -d '\r ')
   if [ "$WANT" != "$GOT" ]; then
     echo "winrun --put: 大小对不上（本地 ${WANT}，远端 ${GOT:-读不到}）" >&2
@@ -150,7 +158,7 @@ if [ "${1:-}" = "--get" ] || [ "${1:-}" = "--get-safe" ]; then
   RAW=1; [ "${1}" = "--get-safe" ] && RAW=0
   REMOTE="${2:?用法: winrun.sh --get|--get-safe '<远端文件路径>'}"
   TMP="$(mktemp)"
-  scp -q -o ConnectTimeout=30 "${USER_AT}:$(printf '%s' "$REMOTE" | tr '\\' '/')" "$TMP"
+  scp -q "${SSH_OPTS[@]}" -o ConnectTimeout=30 "${USER_AT}:$(printf '%s' "$REMOTE" | tr '\\' '/')" "$TMP"
   if [ "$RAW" = 1 ]; then
     python3 -c "$STRIP" "$TMP"
   else
@@ -169,7 +177,7 @@ if [ "${1:-}" = "--py1" ]; then
   LOCAL_PY="${2:?用法: winrun.sh --py1 <本地 .py 文件> [参数...]}"
   [ -f "$LOCAL_PY" ] || { echo "找不到 $LOCAL_PY" >&2; exit 1; }
   shift 2
-  scp -q -o ConnectTimeout=30 "$LOCAL_PY" "${USER_AT}:C:/ProgramData/winrun-run.py"
+  scp -q "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$LOCAL_PY" "${USER_AT}:C:/ProgramData/winrun-run.py"
   ARGS="$*"
   TMP="$(mktemp)"
   LOCAL_PS1="$(mktemp)"
@@ -204,13 +212,13 @@ for (\$i = 0; \$i -lt 150; \$i++) {
 Unregister-ScheduledTask -TaskName "winrun-py1" -Confirm:\$false -ErrorAction SilentlyContinue
 PS1EOF
   } > "$LOCAL_PS1"
-  scp -q -o ConnectTimeout=30 "$LOCAL_PS1" "${USER_AT}:C:/ProgramData/winrun1.ps1" \
+  scp -q "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$LOCAL_PS1" "${USER_AT}:C:/ProgramData/winrun1.ps1" \
     || { echo "winrun1: 送不上去 ps1（scp 失败）" >&2; rm -f "$TMP" "$LOCAL_PS1"; exit 3; }
   # 计划任务本身失败与否 ssh 不一定反映得出来，所以判据放在「有没有产出」上。
-  ssh -o ConnectTimeout=330 "$USER_AT" \
+  ssh "${SSH_OPTS[@]}" -o ConnectTimeout=330 "$USER_AT" \
     'if exist "C:\Program Files\PowerShell\7\pwsh.exe" ("C:\Program Files\PowerShell\7\pwsh.exe" -NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\winrun1.ps1) else (powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\winrun1.ps1)' \
     >/dev/null 2>&1 || true
-  if ! scp -q -o ConnectTimeout=30 "${USER_AT}:C:/ProgramData/winrun.out" "$TMP" 2>/dev/null; then
+  if ! scp -q "${SSH_OPTS[@]}" -o ConnectTimeout=30 "${USER_AT}:C:/ProgramData/winrun.out" "$TMP" 2>/dev/null; then
     echo "winrun1: 远端没有产生 winrun.out（计划任务可能没跑起来）" >&2
     rm -f "$TMP" "$LOCAL_PS1"; exit 4
   fi
@@ -288,7 +296,7 @@ if [ "${1:-}" = "--py" ]; then
   # pwsh 的退出码在这里根本不反映成败，一直误报「清理失败」，
   # 而虚假的警告会把真正的失败淹掉。
 
-  scp -q -o ConnectTimeout=30 "$LOCAL_PY" "${USER_AT}:${REMOTE_PY}" \
+  scp -q "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$LOCAL_PY" "${USER_AT}:${REMOTE_PY}" \
     || { echo "winrun: 送不上去 $LOCAL_PY（scp 失败）" >&2; exit 3; }
 
   # 远端看门狗：脚本自己超时就把自己打死，不用等本地那层。
@@ -312,7 +320,7 @@ GUARD
   # 顺手送上 arklog.py：读日志的三个坑（时钟、字典序、格式）都在里面堵掉了，
   # 临时脚本 `from arklog import since` 就能用，不用每次自己拼过滤。
   if [ -f "$(dirname "${BASH_SOURCE[0]}")/lib/arklog.py" ]; then
-    scp -q -o ConnectTimeout=30 "$(dirname "${BASH_SOURCE[0]}")/lib/arklog.py" \
+    scp -q "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$(dirname "${BASH_SOURCE[0]}")/lib/arklog.py" \
       "${USER_AT}:C:/ProgramData/arklog.py" || true
     # 顺带把被送的脚本 import 到的同目录模块也送过去。
     # 2026-08-28：maaend_task.py import maaend_essence，只送单文件 → 远端
@@ -321,18 +329,18 @@ GUARD
                 | awk '{print $2}' | sort -u); do
       _f="$(dirname "${BASH_SOURCE[0]}")/lib/${_m}.py"
       if [ -f "$_f" ] && [ "$_m" != "arklog" ]; then
-        scp -q -o ConnectTimeout=30 "$_f" "${USER_AT}:C:/ProgramData/${_m}.py" || true
+        scp -q "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$_f" "${USER_AT}:C:/ProgramData/${_m}.py" || true
       fi
     done
   fi
 
-  scp -q -o ConnectTimeout=30 "$TMP.guard" "${USER_AT}:${REMOTE_GUARD}" \
+  scp -q "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$TMP.guard" "${USER_AT}:${REMOTE_GUARD}" \
     || { echo "winrun: 看门狗送不上去（scp 失败）" >&2; exit 3; }
   rm -f "$TMP.guard"
 
   # ② 跑。输出写到机器上的 UTF-8 文件再整体拷回，中文不经过 936 的控制台。
   #    本地这层也加上限：ssh 自己不会因为远端卡住而返回。
-  if ! ssh -o ConnectTimeout=30 -o ServerAliveInterval=15 \
+  if ! ssh "${SSH_OPTS[@]}" -o ConnectTimeout=30 -o ServerAliveInterval=15 \
       -o ServerAliveCountMax=$(( WINRUN_TIMEOUT / 15 + 4 )) "$USER_AT" \
       "set PYTHONUTF8=1&& set PYTHONIOENCODING=utf-8&& \"C:\\Program Files\\Python314\\python.exe\" ${REMOTE_GUARD//\//\\} $* > ${REMOTE_OUT//\//\\} 2>&1" \
       >/dev/null 2>&1; then
@@ -343,11 +351,11 @@ GUARD
   fi
 
   # ③ 取结果。取不回来是硬错误，必须出声。
-  if ! scp -q -o ConnectTimeout=30 "${USER_AT}:${REMOTE_OUT}" "$TMP" 2>/dev/null; then
+  if ! scp -q "${SSH_OPTS[@]}" -o ConnectTimeout=30 "${USER_AT}:${REMOTE_OUT}" "$TMP" 2>/dev/null; then
     echo "winrun: 远端没有产生输出文件（脚本可能根本没跑起来，或机器不可达）" >&2
     exit 4
   fi
-  ssh -o ConnectTimeout=30 "$USER_AT" \
+  ssh "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$USER_AT" \
     "del /Q ${REMOTE_PY//\//\\} ${REMOTE_GUARD//\//\\} ${REMOTE_OUT//\//\\}" >/dev/null 2>&1 || true
 
   # ④ 空输出**不再当成成功**。这正是 826 那天骗过我的那一步。
@@ -397,19 +405,19 @@ LOCAL_PS="$(mktemp)"
 # Delete the previous output first. Without this, a command that fails to
 # produce output leaves the last run's file in place - and reading that as if
 # it were the current result is exactly how stale data gets reported as fresh.
-ssh -o ConnectTimeout=30 "$USER_AT" 'del /Q C:\ProgramData\winrun.out 2>nul' >/dev/null 2>&1 || true
-scp -q -o ConnectTimeout=30 "$LOCAL_PS" "${USER_AT}:C:/ProgramData/winrun.ps1"
+ssh "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$USER_AT" 'del /Q C:\ProgramData\winrun.out 2>nul' >/dev/null 2>&1 || true
+scp -q "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$LOCAL_PS" "${USER_AT}:C:/ProgramData/winrun.ps1"
 # Prefer PowerShell 7: it defaults to UTF-8 everywhere, so Get-Content on a
 # UTF-8 file is simply correct, where Windows PowerShell 5.1 would decode it as
 # ANSI and destroy it. 5.1 stays as the fallback because it is always present.
-ssh -o ConnectTimeout=90 "$USER_AT" \
+ssh "${SSH_OPTS[@]}" -o ConnectTimeout=90 "$USER_AT" \
   'if exist "C:\Program Files\PowerShell\7\pwsh.exe" ("C:\Program Files\PowerShell\7\pwsh.exe" -NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\winrun.ps1) else (powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\winrun.ps1)' \
   >/dev/null 2>&1 || true
 TMP="$(mktemp)"
 trap 'rm -f "$TMP" "$LOCAL_PS"' EXIT
 # 取不回输出文件是硬错误：说明脚本压根没跑（机器不可达 / pwsh 没起来），
 # 而不是「这条命令没有输出」。这两件事必须分开报，混在一起就是静默失败。
-if ! scp -q -o ConnectTimeout=30 "${USER_AT}:C:/ProgramData/winrun.out" "$TMP" 2>/dev/null; then
+if ! scp -q "${SSH_OPTS[@]}" -o ConnectTimeout=30 "${USER_AT}:C:/ProgramData/winrun.out" "$TMP" 2>/dev/null; then
   echo "winrun: 远端没有产生 winrun.out（命令没跑起来，或机器不可达）" >&2
   exit 4
 fi
