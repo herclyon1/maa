@@ -31,7 +31,16 @@ ADB='D:\LD-MRFZ\LDPlayer9\adb.exe'
 DEV="127.0.0.1:7555"
 REMOTE_PNG='C:\ProgramData\ark-shot.png'
 
-run() { ssh "${SSH_OPTS[@]}" "$USER_AT" "$@"; }
+# 复用通道偶尔会死（对面重启网络、笔记本睡醒）。表现是 "read from master
+# failed: Broken pipe"，而且**这一条命令会挂到超时**。所以失败就把套接字扔掉
+# 重来一次——第二次会自己重新建通道。2026-09-04 手动打保全时被卡过一次。
+run() {
+  if ! ssh "${SSH_OPTS[@]}" -o BatchMode=yes "$USER_AT" "$@" 2>/dev/null; then
+    ssh -O exit -o "ControlPath=${CM_PATH}" "$USER_AT" 2>/dev/null || true
+    rm -f "$CM_PATH"
+    ssh "${SSH_OPTS[@]}" "$USER_AT" "$@"
+  fi
+}
 
 # 一条命令里先 connect 再干活，省一趟往返。
 with_connect() { run "\"$ADB\" connect $DEV >nul 2>&1 & $*"; }
@@ -40,7 +49,9 @@ fetch_shot() {
   local dest="${1:-shot.png}"
   with_connect "\"$ADB\" -s $DEV shell screencap -p /sdcard/ark.png & \
                 \"$ADB\" -s $DEV pull /sdcard/ark.png $REMOTE_PNG >nul 2>&1" >/dev/null
-  scp -q "${SSH_OPTS[@]}" "${USER_AT}:$(printf '%s' "$REMOTE_PNG" | tr '\\' '/')" "$dest"
+  scp -q "${SSH_OPTS[@]}" "${USER_AT}:$(printf '%s' "$REMOTE_PNG" | tr '\\' '/')" "$dest" \
+    || { rm -f "$CM_PATH"; scp -q "${SSH_OPTS[@]}" \
+         "${USER_AT}:$(printf '%s' "$REMOTE_PNG" | tr '\\' '/')" "$dest"; }
   printf '%s  %s 字节\n' "$dest" "$(wc -c < "$dest" | tr -d ' ')"
 }
 

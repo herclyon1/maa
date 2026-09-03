@@ -75,6 +75,7 @@
 | **查三个脚本实际会跑什么** | `winrun.sh --py scripts/mac/lib/effective_config.py` —— 按 `IfQuickConfig` 和 `StageMode` 分支取**真正生效**的那一份。`config-check.py` 只读 MAS 侧，快速配置关掉之后它会误导人 |
 | **盯队列进度** | `winrun.sh --py scripts/mac/lib/queue_events.py` —— 只吐增量事件，配 Monitor 挂后台。**必须用 winrun 不能用 winps**：winps 走 936 控制台，中文会变「杩涚▼」 |
 | **打活动关 / 打保全派驻** | 先读 `docs/MAA-打活动关与保全派驻.md`——**动手前读完对应那节**。2026-08-23 指挥打活动关卡了整整一天，全部时间花在摸索上，那天的坑都在里面 |
+| **驱动模拟器里的游戏（点/滑/截图）** | `scripts/mac/adbdo.sh tap\|swipe\|shot\|seq` —— 走复用 ssh，一步约 1 秒；**别用 winrun 干这个**，它走计划任务一步 10 秒 |
 | 仓库自检 | `scripts/mac/lint-repo.sh` |
 | shell 脚本静态检查 | `~/.local/bin/shellcheck -S warning` |
 
