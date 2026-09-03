@@ -871,6 +871,7 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
         expect_new = bool(end)              # 有维护窗口 = 今天一定有新版本，没看到新版本就不算准备好
         local0 = recorded_ak_version(cfg.state_dir) if game == "明日方舟" else ""
         while True:
+            mark = len(problems)
             ready, note = prepare(game)
             if game == "明日方舟" and expect_new and ready and not note:
                 # prepare 说「无需更新」= 官方版本号还没变（维护中包体还没放出来），继续等
@@ -879,9 +880,12 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
                     problems.append(f"明日方舟：官方版本号还没变（还是 {local0}），维护中包体还没放出来")
             if ready or clock() >= deadline:
                 break
-            # 更新包多半还没放出来：把这轮的问题收回，10 分钟后再试
+            # 更新包多半还没放出来：把这轮的问题整批收回，10 分钟后再试。
+            # 按 mark 切、不是只删最后一条：一次 prepare 可能写两条
+            # （装完版本不对 + 没读到登录界面），只删一条会把另一条留到
+            # 最终报告里，明明后来成功了却还是报错。
             log.info("游戏更新：%s 还没准备好（%s），10 分钟后再试", game, problems[-1] if problems else "")
-            del problems[len(problems) - 1:]
+            del problems[mark:]
             sleep(600)
         if note:
             notes.append(note + f"（依据：{why}）")
