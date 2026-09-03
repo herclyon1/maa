@@ -323,7 +323,7 @@ class Desktop:
         atomic_write_text(req, json.dumps(
             {"focus": focus, "actions": actions, "shot": str(shot)}, ensure_ascii=False))
         ok = self._spawn(POWERSHELL, self.dir,
-                         ("-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                         ("-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File",
                           str(self.agent), str(req), str(res)))
         if not ok:
             log.warning("桌面助手没能在交互会话里起来")

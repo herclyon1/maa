@@ -259,21 +259,101 @@ def ldconsole_of(maa_dir: Path | None) -> tuple[Path | None, int]:
     return (exe if exe.exists() else None), idx
 
 
+# 09-03 在机器上逐段实测得出的做法（都写死在这，别再猜）：
+# * `ldconsole launch/isrunning/quit` 对这台的实例**不管用**（isrunning 永远 stop，
+#   quit/quitall 关不掉）。起模拟器要走 MAA 用的那条快捷方式：dnplayer.exe index=1000，
+#   而且必须在交互会话起（session 0 起出来是僵尸进程）。
+# * 判「起来了」用 adb：`adb devices` 出现 emulator-7554，dumpsys 能读到 versionName。
+# * 拉起游戏：`adb shell am start -n com.hypergryph.arknights/com.u8.sdk.U8UnityContext`
+#   （resolve-activity 查到的入口）；关游戏 `am force-stop`；关模拟器 taskkill dnplayer。
+AK_ACTIVITY = "com.hypergryph.arknights/com.u8.sdk.U8UnityContext"
+_EMU_EXES = ("dnplayer.exe", "LdVBoxHeadless.exe", "LdBoxHeadless.exe")
+
+
+def _sh(args, t=120) -> str:
+    try:
+        r = subprocess.run(args, capture_output=True, timeout=t)
+        return (r.stdout + r.stderr).decode("utf-8", "replace")
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def _sh_long(args) -> str:
+    return _sh(args, 900)        # 装 2 GB 的 APK
+
+
+def adb_of(ldconsole: Path) -> Path:
+    return Path(ldconsole).parent / "adb.exe"
+
+
+def adb_device(ldconsole: Path, run=None) -> str:
+    out = (run or _sh)([str(adb_of(ldconsole)), "devices"])
+    for l in (out or "").splitlines()[1:]:
+        if l.strip().endswith("device"):
+            return l.split()[0]
+    return ""
+
+
+def installed_ak_version(ldconsole: Path, idx: int, run=None) -> str:
+    """dumpsys 里的 versionName。模拟器没起来就返回空串。"""
+    run = run or _sh
+    dev = adb_device(ldconsole, run)
+    if not dev:
+        return ""
+    out = run([str(adb_of(ldconsole)), "-s", dev, "shell", f"dumpsys package {AK_PACKAGE}"])
+    hits = re.findall(r"versionName=(\S+)", out or "")
+    return hits[0] if hits else ""
+
+
+def emulator_shortcut(maa_dir: Path | None, idx: int) -> tuple[Path, tuple[str, ...]]:
+    """MAA 起模拟器用的那条快捷方式的目标：(dnplayer.exe, ('index=1000',))。"""
+    ld, _ = ldconsole_of(maa_dir)
+    exe = Path(ld).parent / "dnplayer.exe" if ld else Path(r"D:\LD-MRFZ\LDPlayer9\dnplayer.exe")
+    return exe, (f"index={idx}",)
+
+
+def _spawn_args(exe: Path, args: tuple[str, ...]) -> bool:
+    from .preupdate import _spawn_interactive  # noqa: PLC0415
+    return _spawn_interactive(exe, exe.parent, args, require_console=True)
+
+
+def emulator_boot(maa_dir: Path | None, ldconsole: Path, idx: int, *, run=None, sleep=time.sleep,
+                  spawn=None, wait_s: float = 240) -> bool:
+    """起雷电到 adb 通。先清掉僵尸进程（isrunning 不可信，只看 adb）。"""
+    run = run or _sh
+    spawn = spawn or _spawn_args
+    if not adb_device(ldconsole, run):
+        for exe in _EMU_EXES:
+            run(["taskkill", "/F", "/IM", exe])
+        sleep(3)
+        exe, args = emulator_shortcut(maa_dir, idx)
+        if not spawn(exe, args):
+            return False
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < wait_s:
+        if installed_ak_version(ldconsole, idx, run):
+            return True
+        sleep(8)
+    return False
+
+
+def emulator_quit(ldconsole: Path, idx: int, run=None, sleep=time.sleep) -> None:
+    run = run or _sh
+    dev = adb_device(ldconsole, run)
+    if dev:
+        run([str(adb_of(ldconsole)), "-s", dev, "shell", f"am force-stop {AK_PACKAGE}"])
+    run([str(ldconsole), "quit", "--index", str(idx)])
+    sleep(5)
+    for exe in _EMU_EXES:
+        run(["taskkill", "/F", "/IM", exe])
+
+
 def remote_ak_version(fetch=None) -> str:
     data = fetch() if fetch else json.loads(
         urllib.request.urlopen(urllib.request.Request(  # noqa: S310
             AK_VERSION_URL, headers={"User-Agent": _UA}), timeout=20).read())
     return str((data or {}).get("clientVersion") or "")
 
-
-def installed_ak_version(ldconsole: Path, idx: int, run=None) -> str:
-    """dumpsys 里的 versionName。模拟器没起来就返回空串。"""
-    run = run or (lambda args: subprocess.run(args, capture_output=True, text=True,
-                                              errors="replace", timeout=60).stdout)
-    out = run([str(ldconsole), "adb", "--index", str(idx), "--command",
-               f"shell dumpsys package {AK_PACKAGE}"])
-    hits = re.findall(r"versionName=(\S+)", out or "")
-    return hits[0] if hits else ""
 
 
 def _record_path(state_dir: Path) -> Path:
@@ -324,10 +404,10 @@ def download(url: str, dest: Path, *, timeout: float = 1500) -> bool:
 def update_arknights(state_dir: Path, ldconsole: Path, idx: int, *,
                      budget_s: float = 900, problems: list[str] | None = None,
                      fetch=None, run=None, sleep=time.sleep, downloader=download,
-                     desk: Desktop | None = None) -> str:
+                     desk: Desktop | None = None, maa_dir: Path | None = None,
+                     spawn=None) -> str:
     """返回「明日方舟 已更新：旧 → 新」或空串。"""
-    run = run or (lambda args: subprocess.run(args, capture_output=True, text=True,
-                                              errors="replace", timeout=120).stdout)
+    run = run or _sh
     try:
         remote = remote_ak_version(fetch)
     except Exception as exc:  # noqa: BLE001
@@ -339,13 +419,7 @@ def update_arknights(state_dir: Path, ldconsole: Path, idx: int, *,
     local = recorded_ak_version(state_dir)
 
     def boot() -> bool:
-        run([str(ldconsole), "launch", "--index", str(idx)])
-        deadline = time.monotonic() + 240
-        while time.monotonic() < deadline:
-            sleep(10)
-            if installed_ak_version(ldconsole, idx, run):
-                return True
-        return False
+        return emulator_boot(maa_dir, ldconsole, idx, run=run, sleep=sleep, spawn=spawn)
 
     if not local:
         # 第一次：起模拟器读一次已装版本记下来，之后才有得比
@@ -353,7 +427,7 @@ def update_arknights(state_dir: Path, ldconsole: Path, idx: int, *,
             _note(problems, "明日方舟：起雷电读已装版本没成功（4 分钟内 adb 没通）")
             return ""
         local = installed_ak_version(ldconsole, idx, run)
-        run([str(ldconsole), "quit", "--index", str(idx)])
+        emulator_quit(ldconsole, idx, run, sleep)
         if local:
             record_ak_version(state_dir, local)
             log.info("游戏更新：明日方舟已装 %s（首次记录）", local)
@@ -376,7 +450,8 @@ def update_arknights(state_dir: Path, ldconsole: Path, idx: int, *,
     if not boot():
         _note(problems, "明日方舟：起雷电装包没成功（adb 没通）")
         return ""
-    run([str(ldconsole), "installapp", "--index", str(idx), "--filename", str(apk)])
+    dev = adb_device(ldconsole, run)
+    (_sh_long if run is _sh else run)([str(adb_of(ldconsole)), "-s", dev, "install", "-r", "-d", str(apk)])
     deadline = time.monotonic() + 600
     now_ver = ""
     while time.monotonic() < deadline:
@@ -385,16 +460,15 @@ def update_arknights(state_dir: Path, ldconsole: Path, idx: int, *,
         if now_ver == remote:
             break
     if now_ver == remote and desk is not None:
-        # 拉起一次让它把版本资源下完、走到登录界面（用户 2026-09-03 要求「到登录界面才算 OK」）
-        run([str(ldconsole), "runapp", "--index", str(idx), "--packagename", AK_PACKAGE])
-        sleep(60)
-        how = wait_ready(desk, "明日方舟", focus="dnplayer", alive=lambda: True,
+        # 拉起一次让它把版本资源下完、走到登录界面（用户 2026-09-03：到登录界面才算 OK）
+        run([str(adb_of(ldconsole)), "-s", dev, "shell", f"am start -n {AK_ACTIVITY}"])
+        sleep(90)
+        how = wait_ready(desk, "明日方舟", focus="title:雷电模拟器", alive=lambda: True,
                          budget_s=900, sleep=sleep)
         log.info("游戏更新：明日方舟预热%s", f"完成（{how}）" if how else "没等到登录界面")
         if not how:
             _note(problems, "明日方舟：装完拉起后 15 分钟没读到「开始唤醒」")
-        run([str(ldconsole), "killapp", "--index", str(idx), "--packagename", AK_PACKAGE])
-    run([str(ldconsole), "quit", "--index", str(idx)])
+    emulator_quit(ldconsole, idx, run, sleep)
     if now_ver != remote:
         _note(problems, f"明日方舟：装完读到的版本是 {now_ver or '空'}，不是 {remote}")
         return ""
@@ -754,7 +828,7 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
             ld, idx = ldconsole_of(cfg.maa_dir)
             if not ld:
                 problems.append("明日方舟：找不到雷电 ldconsole"); return False, ""
-            n = update_arknights(cfg.state_dir, ld, idx, budget_s=1800, problems=problems, sleep=sleep, desk=desk)
+            n = update_arknights(cfg.state_dir, ld, idx, budget_s=1800, problems=problems, sleep=sleep, desk=desk, maa_dir=cfg.maa_dir)
         return len(problems) == before, n
 
     def rerun(script: str) -> None:
@@ -772,8 +846,15 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
         start, end = (wins.get(game) or (None, None, ""))[:2]
         deadline = (end + _td(hours=2)) if end else clock() + _td(hours=1)
         ready, note = False, ""
+        expect_new = bool(end)              # 有维护窗口 = 今天一定有新版本，没看到新版本就不算准备好
+        local0 = recorded_ak_version(cfg.state_dir) if game == "明日方舟" else ""
         while True:
             ready, note = prepare(game)
+            if game == "明日方舟" and expect_new and ready and not note:
+                # prepare 说「无需更新」= 官方版本号还没变（维护中包体还没放出来），继续等
+                ready = False
+                if not problems or "版本号还没变" not in problems[-1]:
+                    problems.append(f"明日方舟：官方版本号还没变（还是 {local0}），维护中包体还没放出来")
             if ready or clock() >= deadline:
                 break
             # 更新包多半还没放出来：把这轮的问题收回，10 分钟后再试

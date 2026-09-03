@@ -252,7 +252,7 @@ def _console_primary_token(session: int):
 def _spawn_interactive(exe: Path, cwd: Path,
                        args: tuple[str, ...] = (),
                        *, require_console: bool = False,
-                       minimized: bool = False) -> bool:
+                       minimized: bool = False, hidden: bool = False) -> bool:
     """Start a GUI program in the console session. True if it was launched.
 
     The relay is a LocalSystem service, so it runs in session 0, which has no
@@ -305,9 +305,11 @@ def _spawn_interactive(exe: Path, cwd: Path,
             startup.wShowWindow = win32con.SW_SHOWMINNOACTIVE
         # CreateProcessAsUser wants the exe repeated as argv[0].
         cmd = subprocess.list2cmdline([str(exe), *args])
+        # hidden：桌面助手那种控制台程序不能开窗——09-03 实测它的 PowerShell 窗口
+        # 把游戏盖住，OCR 读到的是自己的窗口。CREATE_NO_WINDOW 让它没有控制台。
+        flags = (0x08000000 if hidden else win32con.CREATE_NEW_CONSOLE) | win32process.CREATE_UNICODE_ENVIRONMENT
         handles = win32process.CreateProcessAsUser(
-            token, str(exe), cmd, None, None, False,
-            win32con.CREATE_NEW_CONSOLE | win32process.CREATE_UNICODE_ENVIRONMENT,
+            token, str(exe), cmd, None, None, False, flags,
             env, str(cwd), startup)
         for h in handles:
             try:

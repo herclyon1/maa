@@ -569,6 +569,11 @@ class Engine:
                          or rec.raw.get("maaend_result") or "").strip())
             return
 
+        if rec.script == "MAA" and not rec.ok and self._maintenance_today("明日方舟"):
+            # 大版本更新日：包体/资源没就绪时跑失败不是要人处理的事，晚班再试
+            log.warning("🟡 更新日 MAA 没跑成，晚班再试，不拉警报")
+            rec.raw["maintenance_day"] = True
+            return
         if rec.script == "MaaEnd" and rec.failed_tasks and set(rec.failed_tasks) <= self.SOFT_FAILS:
             log.warning("🟡 %s 只是 %s 没做成（上游问题），记日报不拉警报",
                         rec.script, "、".join(rec.failed_tasks))
@@ -659,6 +664,13 @@ class Engine:
     #   自动采集：15 条路线里总有两三条「采集失败」，任务整体就报失败，其余都采了
     # 用户 2026-09-03：「今天下午或者明天再报错你就滚」——这类只进日报，不推 ⚠️。
     SOFT_FAILS = {"应急理智加强剂", "自动采集"}
+
+    def _maintenance_today(self, game: str) -> bool:
+        try:
+            from . import gameupdate  # noqa: PLC0415
+            return game in gameupdate.windows(self.state.dir)
+        except Exception:  # noqa: BLE001
+            return False
 
     def _check_partial_queues(self, now: datetime, day: str,
                               entries: list[dict]) -> None:

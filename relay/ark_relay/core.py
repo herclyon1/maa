@@ -328,6 +328,8 @@ def episode_kinds(entries: list[dict]) -> dict[str, str]:
             elif (not e.get("ok") and e.get("script") == "MaaEnd" and e.get("failed_tasks")
                   and set(e["failed_tasks"]) <= {"应急理智加强剂", "自动采集"}):
                 kinds[e["run_id"]] = "soft"
+            elif not e.get("ok") and raw.get("maintenance_day"):
+                kinds[e["run_id"]] = "soft"
             if e.get("ok"):
                 if any(x.get("transitional") for x in streak):
                     for x in streak:

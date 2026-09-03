@@ -62,35 +62,38 @@ out = gu.update_wuwa(d, Path("Wuthering Waves.exe"), poll_s=0, problems=probs, s
 check("报了更新", out.startswith("鸣潮 客户端已通过启动器更新"), True)
 check("点的是按钮中心", d.clicks[0], (140, 140))
 
-print("[明日方舟：版本记录、比对、装包]")
+print("[明日方舟：版本记录、比对、装包（按 09-03 实测的 adb 路径）]")
 ST = Path(tempfile.mkdtemp())
 calls = []
-state = {"ver": "2.7.61"}
+state = {"ver": "2.7.61", "up": False}
 def run(args):
     calls.append(args)
-    if "adb" in args:
-        return f"versionName={state['ver']}\n" if state.get("up") else ""
-    if "launch" in args: state["up"] = True
-    if "installapp" in args: state["ver"] = "2.8.01"
-    if "quit" in args: state["up"] = False
+    s = " ".join(map(str, args))
+    if s.endswith("devices"):
+        return "List of devices attached\nemulator-7554\tdevice\n" if state["up"] else "List of devices attached\n"
+    if "dumpsys" in s:
+        return f"versionName={state['ver']}\n" if state["up"] else ""
+    if " install " in s: state["ver"] = "2.8.01"
+    if "taskkill" in s or "quit" in s: state["up"] = False
     return ""
+spawn = lambda exe, args: state.__setitem__("up", True) or True
 fetch = lambda: {"clientVersion": "2.7.61", "resVersion": "x"}
-out = gu.update_arknights(ST, Path("ldconsole.exe"), 1000, fetch=fetch, run=run, sleep=nosleep, downloader=lambda *a, **k: True)
+out = gu.update_arknights(ST, Path("ldconsole.exe"), 1000, fetch=fetch, run=run, sleep=nosleep, downloader=lambda *a, **k: True, spawn=spawn)
 check("首次：只记录不更新", out, "")
 check("记录了已装版本", gu.recorded_ak_version(ST), "2.7.61")
-check("首次读完退出了模拟器", any("quit" in c for c in calls), True)
+check("首次读完关掉了模拟器", any("taskkill" in " ".join(map(str, c)) for c in calls), True)
 calls.clear()
-out = gu.update_arknights(ST, Path("ldconsole.exe"), 1000, fetch=fetch, run=run, sleep=nosleep, downloader=lambda *a, **k: True)
+out = gu.update_arknights(ST, Path("ldconsole.exe"), 1000, fetch=fetch, run=run, sleep=nosleep, downloader=lambda *a, **k: True, spawn=spawn)
 check("同版本：不动", out, ""); check("同版本不起模拟器", calls, [])
 fetch2 = lambda: {"clientVersion": "2.8.01"}
 dl = []
 def downloader(url, dest, timeout=0):
     dl.append(dest.name); dest.parent.mkdir(parents=True, exist_ok=True); dest.write_bytes(b"apk"); return True
-out = gu.update_arknights(ST, Path("ldconsole.exe"), 1000, fetch=fetch2, run=run, sleep=nosleep, downloader=downloader)
-check("新版本：下载→装→核对", out, "明日方舟 已更新：2.7.61 → 2.8.01（APK 已装进雷电）")
+out = gu.update_arknights(ST, Path("ldconsole.exe"), 1000, fetch=fetch2, run=run, sleep=nosleep, downloader=downloader, spawn=spawn)
+check("新版本：下载→adb install→核对", out, "明日方舟 已更新：2.7.61 → 2.8.01（APK 已装进雷电）")
 check("下的是新版包", dl, ["arknights-2.8.01.apk"])
+check("用 adb install 装", any(" install " in " ".join(map(str, c)) for c in calls), True)
 check("装完记录更新", gu.recorded_ak_version(ST), "2.8.01")
-check("装完退出模拟器", any("quit" in c for c in calls), True)
 check("装完删了包", (ST / "apk" / "arknights-2.8.01.apk").exists(), False)
 
 print("[登记：哪个游戏要更新]")
