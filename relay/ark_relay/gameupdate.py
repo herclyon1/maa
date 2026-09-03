@@ -353,9 +353,10 @@ def ak_prewarm(ldconsole: Path, dev: str, desk: Desktop, *, run=None, sleep=time
         if scr.has(*READY_WORDS["明日方舟"]):
             log.info("游戏更新：明日方舟到登录界面（读到「开始唤醒」）")
             return "读到「开始唤醒」"
-        if scr.has("START"):
-            run([adb, "-s", dev, "shell", f"input tap {W // 2} {int(H * 0.95)}"])
-            log.info("游戏更新：明日方舟加载页，点了 START")
+        # 「START」是花体字，OCR 未必认得出（09-03 实测读不到但盲点有效）；
+        # 没到登录界面就点一下屏幕底部中央——在登录界面那个位置是空的，点了无害。
+        run([adb, "-s", dev, "shell", f"input tap {W // 2} {int(H * 0.95)}"])
+        log.info("游戏更新：明日方舟还没到登录界面，点了一下底部（START 位置）")
         sleep(20)
     log.warning("游戏更新：明日方舟 %.0f 分钟内没读到「开始唤醒」", budget_s / 60)
     return ""
