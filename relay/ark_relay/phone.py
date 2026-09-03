@@ -384,46 +384,6 @@ class Mailbox:
             delay = min(delay * 2, 60)
 
 
-def _okww_options(cfg) -> dict:
-    """OK-WW 的下拉选项，从它**自己的源码**里读，不自己编。
-
-    用户 2026-08-31：「人家脚本那边根本都不是填东西，而是选择树。」
-    OK-WW 在 DailyTask.py 里明确声明了 `type: drop_down` 和 options，
-    还有 `sub_configs`——选了哪个才出现哪些子项。照抄它的声明，
-    上游改了这里跟着变；硬编码就会有一天悄悄对不上。
-    """
-    import re  # noqa: PLC0415
-    out: dict = {}
-    root = getattr(cfg, "okww_dir", None)
-    if not root:
-        return out
-    f = (Path(root) / "data" / "apps" / "ok-ww" / "working" / "src"
-         / "task" / "DailyTask.py")
-    try:
-        text = f.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        log.warning("读不到 OK-WW 的 DailyTask.py，鸣潮那几项只能当文本填")
-        return out
-    for key, pat in (("Task.WhichToFarm", r"support_tasks\s*=\s*\[([^\]]*)\]"),
-                     ("Task.MaterialSelection",
-                      r"material_option_list\s*=\s*\[([^\]]*)\]")):
-        m = re.search(pat, text, re.S)
-        if not m:
-            continue
-        vals = re.findall(r"""['"]([^'"]+)['"]""", m.group(1))
-        if vals:
-            out[key] = vals
-    return out
-
-
-# 选了「刷什么」里的哪一项，才显示哪些子项。抄自 OK-WW 的 sub_configs。
-OKWW_SUBS = {
-    "Tacet Suppression": ["Task.WhichTacetSuppressionToFarm"],
-    "Forgery Challenge": ["Task.WhichForgeryChallengeToFarm"],
-    "Simulation Challenge": ["Task.MaterialSelection"],
-}
-
-
 # AUTO-MAS 自己的界面是全中文的，标注就在它的 models 里：每个 ConfigItem
 # 上面一行 `## 中文名`，合法取值在 OptionsValidator([...]) 里。
 # 用户 2026-08-31：「一定是有中文解释的因为 ui 界面就是全中文，
@@ -519,38 +479,6 @@ def _mas_labels(automas_dir) -> dict:
     return out
 
 
-def _plan_options(kind: str) -> "list[list[str]]":
-    """关卡模式／理智任务配置模式：固定，或者某张计划表。"""
-    out = [["固定（用下面这些设置）", "Fixed"]]
-    try:
-        from .commands import _mas  # noqa: PLC0415
-        for pid, v in (_mas("/api/plan/get").get("data") or {}).items():
-            name = str((v.get("Info") or {}).get("Name") or "")
-            if name and kind.lower() in name.replace(" ", "").lower():
-                out.append([f"计划表：{name}", pid])
-    except Exception:  # noqa: BLE001
-        log.warning("取不到计划表列表", exc_info=True)
-    return out
-
-
-_SANITY_LABELS = re.compile(r"MAAEND_SANITY_TASK_LABELS\s*=\s*\{(.*?)\}", re.S)
-
-
-def _sanity_options(automas_dir) -> "list[list[str]]":
-    """终末地的理智任务类型，中文名用 AUTO-MAS 自己那张表。"""
-    if not automas_dir:
-        return []
-    f = Path(automas_dir) / "app" / "utils" / "constants.py"
-    try:
-        m = _SANITY_LABELS.search(f.read_text(encoding="utf-8", errors="replace"))
-    except OSError:
-        return []
-    if not m:
-        return []
-    return [[zh, en] for en, zh in
-            re.findall(r'"([^"]+)"\s*:\s*"([^"]+)"', m.group(1))]
-
-
 # 手机上真正会显示的那些项。**只发这些**：把 154 条标注全塞进去，
 # 单条消息会超过 ntfy 的大小上限被截断，页面 JSON.parse 直接失败，
 # 于是永远读不到最新状态、判成「关机中」——2026-08-31 就是这么坏的。
@@ -579,36 +507,11 @@ def _options(cfg) -> dict:
                     continue
                 names[f"{game}|{path}"] = info["label"]
                 if info.get("options"):
-                    out[game][path] = [[zh.get(v, v), v] for v in info["options"]]
-        # 这两项后端只写「固定 或 某张计划表」，候选要现查
-        out["MAA"]["Info.StageMode"] = _plan_options("MAA")
-        names.setdefault("MAA|Info.StageMode", "关卡模式")
-        if san := _sanity_options(getattr(cfg, "automas_dir", None)):
-            out["MaaEnd"]["Task.SanityTaskType"] = san
-            names.setdefault("MaaEnd|Task.SanityTaskType", "理智任务")
+                    out.setdefault(game, {})[path] = [[zh.get(v, v), v]
+                                                      for v in info["options"]]
         out["_labels"] = names
     except Exception:  # noqa: BLE001
         log.warning("AUTO-MAS 的中文标注读不到", exc_info=True)
-    try:
-        from .commands import _find_user, _mas  # noqa: PLC0415
-        sid = _find_user("MaaEnd")[0]
-        d = _mas("/api/scripts/maaend/options", {"scriptId": sid})
-        locs = [[o.get("label"), o.get("value")]
-                for o in (d.get("essenceLocations") or [])
-                if o.get("value")]
-        if locs:
-            out["MaaEnd"]["Task.AutoEssenceSpecifiedLocation"] = locs
-    except Exception:  # noqa: BLE001
-        log.warning("终末地的地点选项取不到", exc_info=True)
-
-    try:
-        from . import plan  # noqa: PLC0415
-        zh = plan._okww_zh(getattr(cfg, "okww_dir", None))  # noqa: SLF001
-        for key, vals in _okww_options(cfg).items():
-            # 用 OK-WW 自己的语言包给中文名，不自己译
-            out["OK-WW"][key] = [[zh.get(v, v), v] for v in vals]
-    except Exception:  # noqa: BLE001
-        log.warning("鸣潮的选项取不到", exc_info=True)
     return out
 
 
@@ -620,15 +523,14 @@ def state_payload(cfg, state_dir: Path) -> dict:
     # 队列表和进程列表，加起来会把单条消息顶过 ntfy 的大小上限，
     # 截断之后手机那头解析失败——表现是「永远显示关机中」。
     # 只发手机上会显示的那些键。整份快照塞不进单条消息（见 Mailbox.MAX_BODY）。
-    keep = {k.split(".", 1)[1] for k in SHOWN} | {"关卡", "关卡模式", "理智药",
-            "连战", "剿灭", "作战开关", "活动关优先", "活动关序号", "活动关理智药",
-            "开理智", "自动吃药", "理智任务", "基质地点"}
+    keep = {k.split(".", 1)[1] for k in SHOWN} | {"关卡", "理智药", "剿灭",
+            "作战开关", "活动关优先", "活动关序号"}
     try:
         full = snapshot.read()
+        # 只剩明日方舟：另外两个游戏的 MAS 字段不下发，见 mastercfg
         out["config"] = {
             sec: {k: v for k, v in (vals or {}).items() if k in keep}
-            for sec, vals in full.items()
-            if sec in ("MAA", "MaaEnd", "OK-WW(MAS侧)")}
+            for sec, vals in full.items() if sec == "MAA"}
         out["run"] = {"服务": full.get("ark-relay"),
                       "在跑的": [n for n, on in (full.get("进程") or {}).items() if on]}
         out["queues"] = [{"名": n, **v} for n, v in (full.get("队列") or {}).items()]
@@ -647,9 +549,20 @@ def state_payload(cfg, state_dir: Path) -> dict:
         out["relay"] = {}
     try:
         out["options"] = _options(cfg)
-        out["subs"] = OKWW_SUBS
     except Exception:  # noqa: BLE001
         out["options"] = {}
+    # 终末地和鸣潮改的是脚本自己那份配置，不是 MAS——那边改了不生效。
+    try:
+        from . import mastercfg  # noqa: PLC0415
+        out["master"] = {
+            "MaaEnd": mastercfg.read_maaend(getattr(cfg, "automas_dir", None),
+                                            getattr(cfg, "maaend_dir", None)),
+            "OK-WW": mastercfg.read_okww(getattr(cfg, "automas_dir", None),
+                                         getattr(cfg, "okww_dir", None)),
+        }
+    except Exception:  # noqa: BLE001
+        log.warning("母本配置读不到", exc_info=True)
+        out["master"] = {}
     try:
         out["plan"] = plan.next_plan(cfg.automas_dir)
     except Exception:  # noqa: BLE001

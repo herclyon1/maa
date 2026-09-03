@@ -42,7 +42,7 @@ REVERSIBLE = {"skip_today", "debug_mode", "skip_shutdown", "weekly_boss"}
 
 # Actions that write to a config file on disk.
 MUTATING = {"set_stage", "set_medicine", "toggle_task", "set_wait_time",
-            "set_config", "run_now"}
+            "set_config", "set_master", "run_now"}
 
 ALLOWED = REVERSIBLE | MUTATING
 
@@ -316,6 +316,32 @@ def _set_config(cmd: dict) -> tuple[bool, str]:
     return True, f"{script} 的 {path}：{before!r} → {now!r}"
 
 
+def _set_master(cmd: dict) -> tuple[bool, str]:
+    """改脚本自己那份配置（母本）。
+
+    终末地和鸣潮的「快速配置」是关的，MAS 用户配置里那些字段根本不下发
+    （查证见 mastercfg 模块开头）。手机上这两段改的是母本，不是 MAS。
+    """
+    from . import mastercfg  # noqa: PLC0415
+    game = str(cmd.get("game") or "").strip()
+    path = str(cmd.get("path") or "").strip()
+    if not game or not path or "value" not in cmd:
+        return False, "set_master 需要 game、path 和 value"
+    automas = os.environ.get("ARK_AUTOMAS_DIR")
+    if not automas:
+        return False, "ARK_AUTOMAS_DIR 未设置"
+    try:
+        if game == "MaaEnd":
+            from .config import Config  # noqa: PLC0415
+            return mastercfg.write_maaend(automas, Config().maaend_dir,
+                                          path, cmd["value"])
+        if game == "OK-WW":
+            return mastercfg.write_okww(automas, path, cmd["value"])
+    except Exception as exc:  # noqa: BLE001
+        return False, f"写母本失败: {type(exc).__name__}: {exc}"
+    return False, f"不认识的游戏 {game!r}"
+
+
 def estop() -> tuple[bool, str]:
     """红按钮：停一切脚本和游戏。手机页面上那个红色的。
 
@@ -524,6 +550,8 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             return set_debug(state_dir, n, bool(cmd.get("off")))
         if action == "set_config":
             return _set_config(cmd)
+        if action == "set_master":
+            return _set_master(cmd)
         if action == "weekly_boss":
             # 鸣潮周本（战歌重奏）。和剿灭一个形状：打完自动摘掉，
             # 周一 04:00 挂回来。默认关着——Repeat Farm Count 出厂是 10000，

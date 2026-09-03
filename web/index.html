@@ -101,6 +101,13 @@
   .setup{padding:15px}
   .setup input{width:100%;text-align:left;margin-top:6px}
   .ro{color:var(--dim);font-size:14px}
+  /* 多选（终末地的地区选择）：一排小按钮，按一下切一个。手机上比
+     <select multiple> 好按得多，也一眼看得出选了哪几个。 */
+  .pills{display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end}
+  .pill{background:var(--btn);border:1px solid var(--line);border-radius:99px;
+        padding:7px 12px;font-size:14px;color:var(--dim);box-shadow:none}
+  .pill.on{background:var(--ok);border-color:var(--ok);color:#fff;font-weight:600}
+  .row .pills{align-self:stretch}
   .swatches{display:flex;gap:9px}
   .sw-c{width:28px;height:28px;border-radius:50%;display:block;cursor:pointer;
         border:2px solid transparent;box-shadow:0 0 0 1px var(--line) inset}

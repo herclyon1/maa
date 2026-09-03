@@ -56,57 +56,66 @@ const VALUE_ZH = {
   "Info.SeriesNumb": { "0": "0（不指定，用游戏里的设置）" },
 };
 
-/* 每一项：在快照里从哪读(sec/key)，写的时候写到哪(script/path)。
-   `ro:true` = 只读：这一项我没有可靠的选项来源，与其给你一个我编的
-   下拉列表（826 就是编字段含义出的事），不如老实显示现值并说明含义。 */
+/* 页面上出现哪些设置——2026-09-03 重排过一次，两条规矩：
+   ① **改了不生效的一律不摆出来。** 终末地和鸣潮的「快速配置」是关的，
+      AUTO-MAS 那边直接 return，不把 MAS 用户配置下发给脚本
+      （app/task/Okww/AutoProxy.py:320、MaaEnd/AutoProxy.py:537）。
+      这两个游戏原来那 10 项按下去有回执、值也真写进了 MAS，可脚本看的是
+      自己那份母本，等于没改。现在它们改母本，src:"master"。
+      明日方舟不一样：它压根没有快速配置这回事，关卡和理智药每次派发都会
+      被写进 gui.new.json，所以照旧走 MAS。
+   ② **不用改的不摆出来。** 关卡模式常年「固定」、连战常年 0、
+      剿灭每周自己开关自己、任务序号原本的说明就是「除非它跑错否则别动」。
+
+   src:"mas"    → 值取 snap.config[sec][key]，写 set_config(script, path)
+   src:"master" → 值取 snap.master[game].values[path]，写 set_master(game, path) */
 const SCHEMA = [
-  { title: "明日方舟", script: "MAA", sec: "MAA", fields: [
+  { title:"明日方舟", src:"mas", script:"MAA", sec:"MAA", fields:[
     { key:"关卡",       path:"Info.Stage",        type:"text",
-      hint:"游戏里的关卡号，自己填。像 1-7（常规）、CE-6（龙门币）、AT-4（活动关）。只在上面选「固定」时才生效" },
-    { key:"关卡模式",   path:"Info.StageMode",    type:"text",
-      hint:"「固定」＝天天刷下面填的那一关。选「计划表」＝按你在电脑上排好的日程刷（哪天刷哪关），这时下面的关卡、连战、理智药都由计划表说了算，改这里没用" },
+      hint:"游戏里的关卡号，自己填。像 1-7（常规）、CE-6（龙门币）、AT-4（活动关）" },
     { key:"理智药",     path:"Info.MedicineNumb", type:"number",
-      hint:"一趟最多嗑几瓶理智药。999＝有多少嗑多少；0＝一瓶都不嗑" },
-    { key:"连战",       path:"Info.SeriesNumb",   type:"select",
-      opts:["0","1","2","3","4","5","6"], asText:true,
-      hint:"进本后连打几场再出来。「0」＝不改，用游戏里当前的设置" },
-    { key:"剿灭",       path:"Info.Annihilation", type:"text",
-      hint:"选「关闭」＝这周不打剿灭（本周已打满时也会自动变成这个）。其余几项是指定去打哪个剿灭关卡" },
+      hint:"一趟最多嗑几瓶理智药。0＝一瓶都不嗑（现在就是 0）；999＝有多少嗑多少" },
     { key:"作战开关",   path:"Task.IfFight",      type:"bool",
       hint:"关掉就完全不刷关卡，只做基建、公招这些日常" },
     { key:"活动关优先", path:"Task.IfActivityFirst", type:"bool",
-      hint:"开着＝有活动期间去刷活动关，活动一结束自动回到上面那个固定关。关着＝永远只刷固定关。下面两项只有它开着时才起作用" },
+      hint:"开着＝有活动就去刷活动关，活动结束自动回到上面那个固定关。826 那次刷错关就是它开着" },
     { key:"活动关序号", path:"Task.ActivityStageIndex", type:"number",
-      hint:"刷活动里的第几关——数的是活动关卡列表里从上往下的位置，第一关填 1（不是 0）。只在上面「活动期间优先刷活动关」打开时才生效" },
-    { key:"活动关理智药", path:"Task.ActivityMedicineNumb", type:"number",
-      hint:"刷活动关那趟最多嗑几瓶药，和上面常规那个是分开算的。同样只在活动优先打开时才生效" },
+      hint:"刷活动里的第几关，数的是活动关卡列表从上往下的位置，第一关填 1。只在上面那项开着时才有用" },
+    { key:"剿灭",       path:"Info.Annihilation", type:"text", ro:true,
+      hint:"每周自己开关：打满了自动变「关闭」，下周一自动开回来。这里只显示现状" },
   ]},
-  { title: "终末地", script: "MaaEnd", sec: "MaaEnd", fields: [
-    { key:"开理智",   path:"Task.IfSanity", type:"bool",
-      hint:"关掉就不花理智刷本，只做每日签到这类日常" },
-    { key:"自动吃药", path:"Task.IfAutoUseSpMedication", type:"bool",
-      hint:"理智不够时自动嗑理智药接着刷" },
-    { key:"理智任务", path:"Task.SanityTaskType", type:"text",
-      hint:"理智花在哪个方向。选「基质刷取」时，下面那个地点才有意义" },
-    { key:"基质地点", path:"Task.AutoEssenceSpecifiedLocation", type:"text",
-      hint:"去哪个区刷基质。只在上面选「基质刷取」时才生效" },
+  { title:"终末地 · 基质刷取", src:"master", game:"MaaEnd", fields:[
+    { path:"AutoEssence/@enabled", type:"bool", label:"跑这个任务",
+      hint:"关掉就完全不刷基质，理智会一直攒着" },
+    { path:"AutoEssence/AutoEssenceDoOverride", type:"bool",
+      hint:"开着就用刻写券定向刷词条。要事先在淤积点开始界面选好要刻写的属性；券不够时它会改成不刻写照常领取" },
+    { path:"AutoEssence/AutoEssenceObtainMode", type:"select",
+      hint:"每轮打完怎么结算。单倍＝一份体力一张券；双倍＝双倍体力两张券，奖励也翻倍；不领取＝只刷素材不结算" },
+    { path:"AutoEssence/AutoEssenceRepeatCount", type:"number",
+      hint:"一趟最多打几轮。单倍一轮 80 理智，双倍 160" },
+    { path:"AutoEssence/AutoEssenceChooseLocation", type:"pills",
+      hint:"从选中的地区里随机挑一个打。官方说藏剑谷和清波寨成功率最高，试验园区最低" },
+    { path:"AutoEssence/EssenceFilterAfterBattle", type:"bool",
+      hint:"每轮打完当场筛选并锁定有用的基质" },
   ]},
-  { title: "鸣潮", script: "OK-WW", sec: "OK-WW(MAS侧)", fields: [
-    { key:"WhichToFarm", path:"Task.WhichToFarm", type:"text", label:"体力刷什么",
-      hint:"每天的体力花在哪。选了哪个，下面才会出现对应的那一项设置" },
-    { key:"WhichTacetSuppressionToFarm", path:"Task.WhichTacetSuppressionToFarm",
-      type:"number", label:"凝素领域第几个",
-      hint:"游戏里按 F2 打开的列表中，从上往下第几个" },
-    { key:"WhichForgeryChallengeToFarm", path:"Task.WhichForgeryChallengeToFarm",
-      type:"number", label:"模拟领域第几个",
-      hint:"游戏里按 F2 打开的列表中，从上往下第几个" },
-    { key:"MaterialSelection", path:"Task.MaterialSelection", type:"text",
-      label:"刷哪种材料" },
-    { key:"FarmNightmareNestForDailyEcho", path:"Task.FarmNightmareNestForDailyEcho",
-      type:"bool", label:"残象聚落",
-      hint:"每日任务差一个声骸时，去残象聚落补一个凑满" },
-    { key:"TaskIndex", path:"Task.TaskIndex", type:"number", label:"任务序号",
-      hint:"OK-WW 内部用来定位任务的编号。除非它跑错任务，否则别动" },
+  { title:"终末地 · 另外两个任务", src:"master", game:"MaaEnd", fields:[
+    { path:"AutoUseSpMedication/@enabled", type:"bool",
+      hint:"上游 beta.5 这一项是坏的：弹窗出来了不点确认，重试三次全失败。修复还没合入，先关着" },
+    { path:"AutoCollect/@enabled", type:"bool",
+      hint:"15 条采集路线。其中 2 条寻路走不到，已从路线表里摘掉，剩下的正常" },
+  ]},
+  { title:"鸣潮", src:"master", game:"OK-WW", fields:[
+    { path:"DailyTask.json/Which to Farm", type:"text", label:"体力刷什么",
+      hint:"每天的体力花在哪" },
+    { path:"DailyTask.json/Material Selection", type:"text", label:"刷哪种材料",
+      hint:"只在上面选「模拟领域」时才有用" },
+    { path:"DailyTask.json/Which Forgery Challenge to Farm", type:"number",
+      label:"模拟领域第几个", hint:"游戏里按 F2 打开的列表中，从上往下第几个" },
+    { path:"DailyTask.json/Which Tacet Suppression to Farm", type:"number",
+      label:"凝素领域第几个", hint:"只在上面选「凝素领域」时才有用" },
+    { path:"NightmareNestTask.json/Only Farm These Nests", type:"text",
+      label:"残象聚落点位", ro:true,
+      hint:"只刷落渊南丘，这是定好的。要换点位在电脑上改" },
   ]},
 ];
 
@@ -256,45 +265,61 @@ function render() {
   </section>${cfgNote}`;
 
   for (const g of SCHEMA) {
-    const cur = c[g.sec] || {};
-    html += `<section><h2>${g.title} <small>${g.script}</small></h2>`;
-    /* 选择树：OK-WW 声明了「选了哪个才出现哪些子项」（sub_configs）。
-       选「刷模拟领域」时不该还摆着「凝素领域序号」——那是给人看的噪音。 */
-    const subs = (snap && snap.subs) || {};
-    const picked = cur["WhichToFarm"];
+    const M = ((snap && snap.master) || {})[g.game] || {};
+    const cur = g.src === "master" ? (M.values || {}) : (c[g.sec] || {});
+    const ro = M.readonly || {};
+    /* 母本读不到就整段不摆——空壳比没有更误导人（2026-09-02 那次「一坨屎」）。 */
+    if (g.src === "master" && !Object.keys(cur).length && !Object.keys(ro).length) continue;
+    html += `<section><h2>${g.title}</h2>`;
+    /* 选择树：OK-WW 自己声明了「选了哪个才出现哪些子项」（sub_configs）。
+       选「模拟领域」时不该还摆着「刷第几个无音区」——那是给人看的噪音。 */
     const hidden = new Set();
-    for (const [k, paths] of Object.entries(subs)) {
-      if (k !== picked) for (const pth of paths) hidden.add(pth);
+    if (g.game === "OK-WW") {
+      const picked = cur["DailyTask.json/Which to Farm"];
+      for (const [k, paths] of Object.entries(M.subs || {})) {
+        if (k !== picked) for (const pth of paths) hidden.add(pth);
+      }
     }
-    const optsOf = (path) => (((snap && snap.options) || {})[g.script] || {})[path];
-
     for (const f of g.fields) {
-      const id = `${g.script}|${f.path}`;
       if (hidden.has(f.path)) continue;
-      const val = cur[f.key];
-      const live = optsOf(f.path);        // 机器发过来的真实选项
-      /* 字段名用 AUTO-MAS 自己的中文标注（它界面就是中文的），
-         没有才退回我在 SCHEMA 里写的那个。 */
-      // 标签按「脚本|路径」取：不同脚本有同名字段，全局匹配会串标签
-      const label = ((((snap && snap.options) || {})._labels || {})[`${g.script}|${f.path}`])
-                 || f.label || f.key;
+      const id = `${g.src}|${g.game || g.script}|${f.path}`;
+      const val = g.src === "master"
+        ? (f.path in cur ? cur[f.path] : ro[f.path])
+        : cur[f.key];
+      if (val === undefined) continue;   // 机器上没有这一项就别画
+      const live = g.src === "master"
+        ? (M.options || {})[f.path]
+        : (((snap && snap.options) || {})[g.script] || {})[f.path];
+      /* 字段名一律用**脚本自己**的译名（MaaEnd 的语言包、OK-WW 的 ok.po、
+         AUTO-MAS 的中文标注），SCHEMA 里那个只是兜底。
+         2026-09-03 发现原来「模拟领域第几个／凝素领域第几个」是我编的，
+         而且和官方译名正好编反了。 */
+      const label = (g.src === "master"
+          ? (M.labels || {})[f.path]
+          : ((((snap && snap.options) || {})._labels || {})[`${g.script}|${f.path}`]))
+        || f.label || f.key || f.path.split("/").pop();
       const hint = f.hint ? `<span class="hint">${f.hint}</span>` : "";
-      let ctl;
       const zh = (VALUE_ZH[f.path] || {})[String(val)];
-      if (f.ro && !(live && live.length)) {
-        // 没有可靠选项来源的，老实显示现值，不假装成选择题
-        ctl = `<span class="ro">${zh || fmt(val)}</span>`;
+      const pick = (v) => {
+        const hit = (live || []).find(([, x]) => String(x) === String(v));
+        return hit ? hit[0] : (zh || fmt(v));
+      };
+      let ctl;
+      if (f.ro) {
+        ctl = `<span class="ro">${pick(val)}</span>`;
       } else if (f.type === "bool") {
         ctl = `<span class="sw"><input type="checkbox" data-id="${id}" ${val ? "checked" : ""}><span></span></span>`;
+      } else if (f.type === "pills") {
+        const on = new Set((Array.isArray(val) ? val : [val]).map(String));
+        ctl = `<div class="pills" data-pills="${id}">` + (live || []).map(([lb, v]) =>
+          `<button type="button" class="pill${on.has(String(v)) ? " on" : ""}" data-v="${v}">${lb}</button>`
+        ).join("") + `</div>`;
       } else if (live && live.length) {
-        const opts = live.map(([lb, v]) =>
-          `<option value="${String(v)}" ${String(val) === String(v) ? "selected" : ""}>${lb}</option>`).join("");
-        ctl = `<select data-id="${id}">${opts}</select>`;
-      } else if (f.type === "select") {
-        const opts = f.opts.map((o) => `<option ${String(val) === o ? "selected" : ""}>${o}</option>`).join("");
-        ctl = `<select data-id="${id}">${opts}</select>`;
+        ctl = `<select data-id="${id}">` + live.map(([lb, v]) =>
+          `<option value="${String(v)}" ${String(val) === String(v) ? "selected" : ""}>${lb}</option>`
+        ).join("") + `</select>`;
       } else {
-        ctl = `<input type="${f.type}" data-id="${id}" value="${val === undefined || val === null ? "" : String(val)}">`;
+        ctl = `<input type="${f.type}" data-id="${id}" value="${val === null ? "" : String(val)}">`;
       }
       html += `<div class="row" data-row="${id}"><label>${label}${hint}</label>${ctl}</div>`;
     }
@@ -399,30 +424,48 @@ function wire() {
     };
   }
 
+  const locate = (id) => {
+    const i = id.indexOf("|"), j = id.indexOf("|", i + 1);
+    const src = id.slice(0, i), owner = id.slice(i + 1, j), path = id.slice(j + 1);
+    const g = SCHEMA.find((x) => x.src === src && (x.game || x.script) === owner
+                                 && x.fields.some((y) => y.path === path));
+    return { src, owner, path, g, f: g && g.fields.find((y) => y.path === path) };
+  };
+  const valueNow = (g, f) => g.src === "master"
+    ? ((((snap && snap.master) || {})[g.game] || {}).values || {})[f.path]
+    : (((snap && snap.config) || {})[g.sec] || {})[f.key];
+
+  const note = (id, g, f, from, to) => {
+    const same = JSON.stringify(from) === JSON.stringify(to);
+    const row = document.querySelector(`[data-row="${CSS.escape(id)}"]`);
+    if (same) { delete edits[id]; if (row) row.classList.remove("changed"); }
+    else {
+      edits[id] = { label:`${g.title} ${f.label || f.key || f.path.split("/").pop()}`,
+                    src:g.src, owner:g.game || g.script, path:f.path, from, to };
+      if (row) row.classList.add("changed");
+    }
+    updateBar();
+  };
+
   for (const el of document.querySelectorAll("[data-id]")) {
     el.addEventListener("change", () => {
-      const [script, path] = el.dataset.id.split("|");
-      const g = SCHEMA.find((x) => x.script === script);
-      const f = g.fields.find((x) => x.path === path);
-      const cur = ((snap && snap.config) || {})[g.sec] || {};
-      const from = cur[f.key];
+      const { g, f } = locate(el.dataset.id);
+      if (!g) return;
+      const from = valueNow(g, f);
       let to;
       if (f.type === "bool") to = el.checked;
       else if (f.type === "number") to = el.value === "" ? null : Number(el.value);
       else to = el.value;
-      if (f.type === "select" && !f.asText && /^\d+$/.test(String(to)) && typeof from === "number") to = Number(to);
-
-      const key = el.dataset.id;
-      const row = document.querySelector(`[data-row="${CSS.escape(key)}"]`);
-      if (to === from) { delete edits[key]; row.classList.remove("changed"); }
-      else { edits[key] = { label:`${g.title} ${f.label || f.key}`, script, path, from, to };
-             row.classList.add("changed"); }
-      updateBar();
+      /* 母本里数字有时是字符串（MaaEnd 的输入框存的就是 "5"）。
+         按**现值的类型**回写，别把字符串改成数字让它对不上。 */
+      if (f.type === "number" && typeof from === "string") to = String(to);
+      note(el.dataset.id, g, f, from, to);
       // 「刷什么」决定下面出现哪些子项，改了就得重画一次
-      if (f.path === "Task.WhichToFarm") {
+      if (f.path === "DailyTask.json/Which to Farm") {
         const keep = { ...edits };
-        snap = { ...snap, config: { ...snap.config,
-          [g.sec]: { ...(snap.config[g.sec] || {}), WhichToFarm: to } } };
+        const M = ((snap && snap.master) || {})["OK-WW"] || {};
+        snap = { ...snap, master: { ...snap.master,
+          "OK-WW": { ...M, values: { ...(M.values || {}), [f.path]: to } } } };
         render(); edits = keep; updateBar();
         for (const k of Object.keys(edits)) {
           const r2 = document.querySelector(`[data-row="${CSS.escape(k)}"]`);
@@ -430,6 +473,27 @@ function wire() {
         }
       }
     });
+  }
+
+  /* 多选（地区选择）：一排小按钮，按一下切一个。全关掉不许——
+     MaaEnd 自己写着「若全不选则任务终止」。 */
+  for (const box of document.querySelectorAll("[data-pills]")) {
+    const id = box.dataset.pills;
+    const { g, f } = locate(id);
+    if (!g) continue;
+    for (const btn of box.querySelectorAll(".pill")) {
+      btn.onclick = () => {
+        const on = [...box.querySelectorAll(".pill.on")].map((b) => b.dataset.v);
+        const next = btn.classList.contains("on")
+          ? on.filter((v) => v !== btn.dataset.v) : on.concat(btn.dataset.v);
+        if (!next.length) { toast("至少要留一个地区，全不选的话这个任务会直接结束"); return; }
+        btn.classList.toggle("on");
+        const from = valueNow(g, f) || [];
+        const order = ((((snap && snap.master) || {})[g.game] || {}).options || {})[f.path] || [];
+        const rank = (v) => order.findIndex(([, x]) => String(x) === String(v));
+        note(id, g, f, [...from], next.slice().sort((a, b) => rank(a) - rank(b)));
+      };
+    }
   }
 }
 
@@ -442,6 +506,12 @@ function applyEdits() {
     if (!el) continue;
     if (el.type === "checkbox") el.checked = !!e.to;
     else el.value = String(e.to);
+  }
+  for (const [key, e] of Object.entries(edits)) {
+    const box = document.querySelector(`[data-pills="${CSS.escape(key)}"]`);
+    if (!box) continue;
+    const on = new Set((e.to || []).map(String));
+    for (const b of box.querySelectorAll(".pill")) b.classList.toggle("on", on.has(b.dataset.v));
     const row = document.querySelector(`[data-row="${CSS.escape(key)}"]`);
     if (row) row.classList.add("changed");
   }
@@ -557,14 +627,15 @@ function save_cache() {
    确认框里却甩出 `c88cfe9e-6617-4fb8-9225-183ca571e3ae`。
    那个框存在的全部意义就是让人看清改了什么，显示 UUID 等于没有。
    取名顺序和渲染下拉时完全一致：机器发来的选项表 → VALUE_ZH → 原样。 */
-function valLabel(script, path, v) {
-  const live = (((snap && snap.options) || {})[script] || {})[path];
-  if (live && live.length) {
-    const hit = live.find(([, val]) => String(val) === String(v));
-    if (hit) return hit[0];
-  }
-  const zh = (VALUE_ZH[path] || {})[String(v)];
-  return zh || fmt(v);
+function valLabel(e, v) {
+  const live = e.src === "master"
+    ? ((((snap && snap.master) || {})[e.owner] || {}).options || {})[e.path]
+    : (((snap && snap.options) || {})[e.owner] || {})[e.path];
+  const one = (x) => {
+    const hit = (live || []).find(([, val]) => String(val) === String(x));
+    return hit ? hit[0] : ((VALUE_ZH[e.path] || {})[String(x)] || fmt(x));
+  };
+  return Array.isArray(v) ? (v.length ? v.map(one).join("、") : "（一个都没选）") : one(v);
 }
 
 async function doSave() {
@@ -572,8 +643,8 @@ async function doSave() {
   if (!items.length) return;
   $("#difflist").innerHTML = items.map((e) =>
     `<div class="diff"><b>${e.label}</b><br>` +
-    `<span class="old">${valLabel(e.script, e.path, e.from)}</span> → ` +
-    `<span class="new">${valLabel(e.script, e.path, e.to)}</span></div>`).join("");
+    `<span class="old">${valLabel(e, e.from)}</span> → ` +
+    `<span class="new">${valLabel(e, e.to)}</span></div>`).join("");
   $("#confirm").showModal();
 }
 
@@ -705,7 +776,10 @@ $("#go").onclick = async () => {
   const items = Object.values(edits);
   let sent = 0;
   for (const e of items) {
-    try { await send({ action:"set_config", confirmed:true, script:e.script, path:e.path, value:e.to }); sent++; }
+    const body = e.src === "master"
+      ? { action:"set_master", confirmed:true, game:e.owner, path:e.path, value:e.to }
+      : { action:"set_config", confirmed:true, script:e.owner, path:e.path, value:e.to };
+    try { await send(body); sent++; }
     catch (err) { toast("第 " + (sent + 1) + " 项发不出去：" + err.message); break; }
   }
   if (sent) {
