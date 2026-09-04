@@ -374,11 +374,20 @@ def _block(e: dict, finished: datetime) -> list[str]:
     if script == "MAA":
         if stages := raw.get("stages"):
             did.append("刷 " + "、".join(stages) + (f" ×{t}" if (t := raw.get("run_times")) else ""))
+        elif not raw.get("sanity_spent"):
+            # 作战关掉时这一趟只做基建、公招、领取。原来五行全是「—」，
+            # 看不出它到底跑没跑，也看不出为什么没刷关卡。
+            did.append("只做日常（未刷关卡）")
         if raw.get("sanity_spent") or raw.get("medicine_used"):
             cost.append(f"理智 {raw.get('sanity_spent') or 0}，吃药 {raw.get('medicine_used') or 0}")
         if drops := _fmt_items(e.get("drops") or {}):
             out.append(drops)
-        if e.get("sanity") is not None:
+        # 刷完关卡把理智花到 0，那个 0 是真数据，要照印。
+        # 但作战关掉的那趟根本没读过理智，MAA 同样记 0——那是「没有数据」，
+        # 印成「剩余 理智 0」就是谎话（账号里明明还有理智）。
+        # 用有没有真的打过来区分：打过才认这个数。
+        fought = bool(raw.get("stages") or raw.get("sanity_spent"))
+        if e.get("sanity") is not None and (fought or e.get("sanity")):
             s = f"理智 {e['sanity']}"
             if full := _sanity_full(e.get("sanity_full_at"), finished):
                 s += "，" + full

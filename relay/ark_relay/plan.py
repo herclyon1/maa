@@ -90,6 +90,10 @@ def _scripts(cfg_dir: Path) -> dict[str, dict]:
             if not isinstance(user, dict):
                 continue
             info, task = user.get("Info") or {}, user.get("Task") or {}
+            # 作战开关。关掉时明天一关都不刷，明日安排必须照实说，
+            # 否则那行「理智 1-7（固定）」写的是一件明天不会发生的事。
+            if "IfFight" in task:
+                entry["fight"] = bool(task.get("IfFight"))
             if info.get("Stage"):
                 entry["stage"] = info["Stage"]
                 entry["stage_mode"] = info.get("StageMode", "")
@@ -470,7 +474,11 @@ def next_plan(automas_dir: Path | None) -> str:
         for uid in q["items"]:
             s = scripts.get(uid) or {}
             bits = []
-            if s.get("stage"):
+            if s.get("fight") is False:
+                # 作战关掉时明天不会刷任何关卡。还照着关卡号写「理智 1-7（固定）」
+                # 等于给出一个明天不会发生的安排。
+                bits.append("不刷关卡（只做日常）")
+            elif s.get("stage"):
                 mode = "固定" if s.get("stage_mode") == "Fixed" else s.get("stage_mode", "")
                 bits.append(f"理智 {s['stage']}" + (f"（{mode}）" if mode else ""))
             if (anni := s.get("annihilation")):

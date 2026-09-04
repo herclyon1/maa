@@ -45,7 +45,15 @@ MAAEND_SHOWN: dict[str, tuple[str, ...]] = {
         "EssenceFilterAfterBattle",     # 战后基质筛选
     ),
     "AutoUseSpMedication": ("@enabled",),
-    "AutoCollect": ("@enabled",),
+    "AutoCollect": (
+        "@enabled",
+        # 只给一个开关，手机上看不出它到底会去采哪几条、哪天采。
+        # 2026-09-04 用户：「自动采集任务，你应该显示采集路线。」
+        # 那天它 0.16 秒就「完成」，正是因为计划表只勾了周一和周四，
+        # 页面上却一个字都看不出来。
+        "AutoCollectRoutes",            # 采哪几条路线
+        "AutoCollectSchedule",          # 哪几天采
+    ),
 }
 
 OKWW_SHOWN: dict[str, tuple[str, ...]] = {

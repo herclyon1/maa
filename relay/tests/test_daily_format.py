@@ -97,5 +97,20 @@ check("「体力不够再开一局」不再出现", "体力不够" in body, Fals
 foot = core.daily_footnote(entries)
 check("名单当注释放最末", foot, "———————\n日常：1.赠送干员礼物 2.装备制造 3.拜访好友 4.基建任务 5.信用点购物 6.应急理智加强剂 7.选剑演武 8.自动采集 9.日常奖励领取")
 check("没有终末地成功记录就没有注释", core.daily_footnote(entries[:2]), "")
+# 作战关掉的那一趟：不能五行全横杠，也不能把「没读过理智」印成「理智 0」。
+# 2026-09-04 补跑就是这个形状：做了/消耗/产出/备注 四个横杠 + 一句「剩余 理智 0」，
+# 而账号里明明还有理智——那个 0 是 MAA 没读时的默认值，不是余量。
+_nf = {"script": "MAA", "ok": True, "sanity": 0,
+       "started": "2026-09-04T12:41:00+08:00", "finished": "2026-09-04T12:52:00+08:00",
+       "raw": {}, "drops": {}, "recruits": {}}
+_blk = "\n".join(core._block(_nf, datetime.fromisoformat(_nf["finished"])))
+check("作战关掉时说清做了什么", "只做日常" in _blk, True)
+check("没读过理智不印成理智 0", "理智 0" in _blk, False)
+# 真打完把理智花到 0 的，那个 0 要照印
+_f = dict(_nf, raw={"stages": ["1-7"], "sanity_spent": 120})
+_blk2 = "\n".join(core._block(_f, datetime.fromisoformat(_f["finished"])))
+check("真刷到 0 要照印", "理智 0" in _blk2, True)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
+
