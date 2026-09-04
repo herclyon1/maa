@@ -199,13 +199,15 @@ def main():
     plan = [((1500, 820), (501, 347), "right", "圣聆初雪"),
             ((1500, 820), (1099, 347), "down", "娜仁图亚")]
     for card, cell, facing, who in plan:
-        for attempt in range(1, 5):
+        for attempt in range(1, 9):
             im = grab()
             if has_choice(im) or has_dialog(im):
                 say("部署前又弹剧情，先清掉")
                 clear_plot()
-            say(f"部署 {who} → {cell} 朝{facing}（第 {attempt} 次）")
-            deploy(card, cell, facing)
+            jitter = ((attempt - 1) % 3 - 1) * 8      # -8 / 0 / +8 轮换
+            aim = (cell[0] + jitter, cell[1] + jitter)
+            say(f"部署 {who} → {aim} 朝{facing}（第 {attempt} 次）")
+            deploy(card, aim, facing)
             time.sleep(1.0)
             im = grab()
             if not card_present(im):
@@ -213,8 +215,8 @@ def main():
                 break
             say(f"{who} 没放上去，重试")
         else:
-            say(f"!! {who} 四次都没放上去"); return 1
-        time.sleep(2)
+            say(f"!! {who} 八次都没放上去"); return 1
+        time.sleep(4)          # 等剩下的干员卡重排到位
 
     say("两人就位，加速挂机")
     tap(1380, 65)          # 切 2 倍速
