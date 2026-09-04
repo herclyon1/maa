@@ -105,10 +105,10 @@ const SCHEMA = [
     { path:"AutoUseSpMedication/@enabled", type:"bool",
       hint:"理智不足时自动使用应急理智加强剂" },
     { path:"AutoCollect/@enabled", type:"bool",
-      hint:"下面两项决定它去采哪几条、哪天采" },
+      hint:"按下面的线路和周期自动采集材料" },
     /* 光一个开关看不出它会去采哪几条、哪天采，所以把路线和排班一起显示。 */
     { path:"AutoCollect/AutoCollectRoutes", type:"pills",
-      hint:"勾上的路线才会去采。路线 3 和 13 目前寻路走不到，已取消勾选" },
+      hint:"勾上的路线才会去采" },
     { path:"AutoCollect/AutoCollectSchedule", type:"pills",
       hint:"只在勾选的星期执行。没勾的日子这个任务会立即结束" },
   ]},
