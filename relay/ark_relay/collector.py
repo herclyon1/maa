@@ -342,14 +342,19 @@ def _maaend_farm(text: str) -> dict:
         out["maaend_farm_drops"] = drops
     readings = [int(a) for a, _ in _END_SANITY.findall(body)]
     steps = [a - b for a, b in zip(readings, readings[1:]) if a > b]
-    spent = sum(steps)
-    # 「当前理智」是在**每次领取之前**播报的，最后一次领取之后没有读数：
-    # 09-03 实录 979/899/819/739/659 五个读数、五次领取，按相邻差只得 320，
-    # 真花了 400。领取次数和读数一样多时，最后那次按同样的步长补上。
-    if steps and runs and runs == len(readings):
-        spent += sorted(steps)[len(steps) // 2]
-    if spent:
-        out["maaend_sanity_spent"] = spent
+    # 「当前理智」是在**每次领取之前**播报的，最后一次领取之后没有读数。
+    # 所以 n 次领取只会看到 n 个读数、n-1 个步长，直接求和永远少算最后一趟：
+    # 09-03 实录 979/899/819/739/659，五次领取按相邻差只得 320，真花了 400。
+    # 正确写法是「趟数 × 每趟步长」，不是把相邻差加起来。
+    if steps and runs:
+        out["maaend_sanity_spent"] = runs * sorted(steps)[len(steps) // 2]
+    elif runs and len(readings) >= 2:
+        out["maaend_sanity_spent"] = readings[0] - readings[-1]
+    # 只跑了一趟时这一趟自己看不到步长（只有一个读数），
+    # 留空交给上层用当天前一条记录去补——09-04 那趟就是这个形状，
+    # 日报里「消耗」印成了一条横杠。
+    elif runs:
+        out["maaend_sanity_runs_only"] = runs
     return out
 
 
@@ -481,7 +486,12 @@ _OKWW_BACKUP = re.compile(r"info_set back_up_stamina (\d+)")
 # 永远多算一轮——2026-08-28 实际刷到 0，报告却写「剩余波片 80/240」，
 # 用户当场指出是误报。单次消耗还会在 40/80 之间自动切换，靠外部推算也不可靠，
 # 所以只认它自己报的这个数。
-_OKWW_STAMINA_END = re.compile(r"current stamina:\s*(\d+)\s*not enough to continue")
+# 2026-09-04：这个正则原来把后半句 `not enough to continue` 也写死了，
+# 可 OK-WW 收尾还有第二种写法——当天实录是
+# `current stamina: 37 must_use completed, no need to use back_up`。
+# 没匹配上的后果是当天日报把最后一趟整个漏掉：真实 236→37（消耗 199、剩 37），
+# 报成「消耗 159、剩余 77」。所以只认前半句，后面写什么都行。
+_OKWW_STAMINA_END = re.compile(r"current stamina:\s*(\d+)")
 _OKWW_DAILY = re.compile(r"info_set current daily progress (\d+)")
 _OKWW_POINTS = re.compile(r"info_set total daily points (\d+)")
 # One of these is logged per domain entry, so counting them counts the runs.

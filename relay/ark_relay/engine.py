@@ -184,6 +184,31 @@ def _maaend_new_shots(maaend_dir: str | Path | None,
                   if p.stat().st_mtime >= cut)
 
 
+
+def _fill_single_run_sanity(entries: list[dict]) -> None:
+    """只刷了一趟的终末地记录，消耗要拿当天上一条的余量来补。
+
+    「当前理智」是每次领取**之前**播报的，所以一趟只有一个读数、零个步长，
+    这一条自己算不出消耗。2026-09-04 的日报里就印成了一条横杠：
+    那趟其实从 116 刷到 37，花了 79，只是这两个数分别落在前后两条记录里。
+
+    只在同一天、同一脚本、且两边都有余量读数时补，补不出来就维持空着——
+    宁可空，也不写一个编出来的数。
+    """
+    prev_left: dict[str, int] = {}
+    for e in entries:
+        raw = e.get("raw") or {}
+        script = str(e.get("script") or "")
+        left = e.get("sanity")
+        if raw.get("maaend_sanity_runs_only") and not raw.get("maaend_sanity_spent"):
+            before = prev_left.get(script)
+            if before is not None and isinstance(left, int) and before > left:
+                raw["maaend_sanity_spent"] = before - left
+                e["raw"] = raw
+        if isinstance(left, int):
+            prev_left[script] = left
+
+
 class Engine:
     def __init__(self, cfg: Config, source: Source, state: State, notifier: Notifier):
         self.cfg = cfg
@@ -1406,6 +1431,7 @@ class Engine:
         # 账本里的 raw 是记账那一刻的解析结果；解析器升级后旧条目会缺字段。
         # 出报告前按 history 日志重算一遍（用户 2026-09-02 指出鸣潮那块全是老账）。
         entries = [collector.refresh_raw(e, self.cfg.history_dir) for e in entries]
+        _fill_single_run_sanity(entries)
         tomorrow = plan.next_plan(self.cfg.automas_dir)
         failed = [e for e in entries if not e["ok"]]
         head = "全绿 ✅" if not failed else f"{len(failed)} 项出错 ⚠️"
