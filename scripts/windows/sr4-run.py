@@ -28,6 +28,11 @@ LOCAL_SHOT = r"C:\ProgramData\sr4-shot.raw"
 
 LOG = Path(sys.argv[1])
 
+# 点中干员后画面切侧视角，技能钮浮在固定位置。这个坐标是用
+# scripts/mac/lib/tilepos.py 的 skill_screen_pos 算的（照抄 MAA 的 TileCalc2），
+# 对应 act54side_04 在 1600x900 下的值。换关卡要重算。
+SKILL_BTN = (1015, 492)
+
 
 def say(msg):
     line = f"[{time.strftime('%H:%M:%S')}] {msg}"
@@ -75,9 +80,12 @@ def grab():
 
 def has_choice(im):
     """右侧出现「往左 / 往右」两个横条时，那一片是均匀的深灰。"""
+    # 选项条是**纯灰**（实测 40,40,40 / 42,42,42），战场是偏绿的（42,59,47）。
+    # 阈值别写成 `40 < v[0]`——选项条正好就是 40，边界会把它判掉，
+    # 结果一直认不出选项、只去点对话推进，而有选项时点那里没有用。
     pts = [(1300, 470), (1450, 470), (1300, 560), (1450, 560)]
     vals = [im.getpixel(p) for p in pts]
-    return all(abs(v[0] - v[1]) < 12 and abs(v[1] - v[2]) < 12 and 40 < v[0] < 110
+    return all(abs(v[0] - v[1]) <= 6 and abs(v[1] - v[2]) <= 6 and 30 <= v[0] <= 120
                for v in vals)
 
 
@@ -88,7 +96,8 @@ def has_dialog(im):
     return (sum(a) > 180) and (sum(b) < 210)
 
 
-def clear_plot(max_rounds=14):
+def clear_plot(max_rounds=18):
+    stuck = 0
     for _ in range(max_rounds):
         im = grab()
         if has_choice(im):
@@ -99,6 +108,12 @@ def clear_plot(max_rounds=14):
         if has_dialog(im):
             tap(1290, 845)
             time.sleep(0.9)
+            stuck += 1
+            if stuck >= 4:          # 点不动多半是选项没认出来，直接点「往左」
+                say("对话推不动，按选项处理")
+                tap(1350, 470)
+                time.sleep(1.2)
+                stuck = 0
             continue
         return True
     return False
@@ -203,12 +218,27 @@ def main():
 
     say("两人就位，加速挂机")
     tap(1380, 65)          # 切 2 倍速
-    # 之后每隔几秒清一次可能冒出来的剧情，直到战斗结束
-    for _ in range(150):
-        time.sleep(4)
+
+    # 挂机期间要做两件事：清冒出来的剧情，以及**手动触发技能**。
+    # 作业里 MAA 用 SkillDaemon 自动点技能，这个脚本得自己做——
+    # 娜仁图亚的「旋刃」是手动触发型，不点就打不出伤害，人放对了也过不了关。
+    # 点法：先点干员本人，屏幕上会浮出技能圆钮，再点那个钮。
+    skill_cycle = 0
+    for _ in range(300):
+        time.sleep(3)
         im = grab()
         if has_choice(im) or has_dialog(im):
             clear_plot()
+            continue
+        skill_cycle += 1
+        if skill_cycle % 4 == 0:
+            for (gx, gy) in ((501, 347), (1099, 347)):
+                tap(gx, gy - 115)          # 点干员（高台上显示得比格心高约 115）
+                time.sleep(0.7)
+                tap(*SKILL_BTN)            # 技能钮，位置由 MAA 的算法算出
+                time.sleep(0.5)
+                tap(60, 760)               # 点空白，收掉可能还开着的面板
+                time.sleep(0.3)
     say("=== 结束 ===")
     return 0
 

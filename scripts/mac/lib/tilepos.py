@@ -65,3 +65,21 @@ def tile_screen_pos(level, tile_x, tile_y, screen=(1280, 720)):  # deadcode: all
              (h - 1) / 2.0 - tile_y,
              tile["heightType"] * -0.4)
     return world_to_screen(level["view"], world, False, screen)
+
+
+# 点中一个干员之后，画面会切成侧视角，技能钮和撤退钮浮在固定的相对位置上。
+# 这三个常量和下面两个函数都照抄 MAA 的 TileCalc2.hpp（rel_pos_* /
+# get_skill_screen_pos / get_retreat_screen_pos），注意它们用的是 side=True。
+REL_X = 1.3143386840820312
+REL_Y = 1.314337134361267
+REL_Z = -0.3967874050140381
+
+
+def skill_screen_pos(level, screen=(1280, 720), multi_stage=False):  # deadcode: allow
+    shift = level["view"][0][0] if multi_stage else 0
+    return world_to_screen(level["view"], (REL_X + shift, -REL_Y, REL_Z), True, screen)
+
+
+def retreat_screen_pos(level, screen=(1280, 720), multi_stage=False):  # deadcode: allow
+    shift = level["view"][0][0] if multi_stage else 0
+    return world_to_screen(level["view"], (-REL_X + shift, REL_Y, REL_Z), True, screen)
