@@ -28,6 +28,66 @@
   改之前先用 `winrun.sh --py scripts/mac/lib/effective_config.py` 看**真正生效**的那份。
 * 当前设置：固定 `1-7`、活动关优先 `false`、理智药 `0`。
 
+### 换到新活动的关卡后：**先更新 MAA，否则 Fight 直接拒收**
+
+改完 `Info.Stage`（比如从 `1-7` 改成 `SR-5`）不要以为就完了。MAA 认不认这个
+关卡号，取决于它的**资源版本**——新活动上线后要更新才有那一份关卡数据。
+
+认不出来的样子（2026-09-04 实测）：`append_task` 返回的 **task id 是 0**，
+`asst.start()` 照样返回 True、一秒钟"跑完"，什么都没发生。
+`D:\ark\maa\debug\asst.log` 里写得很清楚：
+
+```
+Unknown task: SR-5 / Task SR-5 not found
+The stage name is not in invalid, or is not main line stage SR-5
+Cannot set stage SR-5
+```
+
+**验证的正门**（不吃药、不白刷）：
+
+```bash
+scripts/mac/winrun.sh --timeout 400 --py1 scripts/windows/copilot-run.py \
+  'C:\ProgramData\fight.log' fight SR-5 1
+```
+
+`fight` 模式的药量写死 0。看日志里 `Fight 已下发 id=` 后面那个数：
+**0 就是没认出来，非 0 才是认了**。真打通了会有
+`StageDrops ... "stageCode": "SR-5" ... "stars": 3`，那才算验完。
+
+**更新的正门是中继自带的预更新**，别手动去替换 `resource/stages.json`
+（只换那一个文件不够，MAA 还要在 tasks.json 里找关卡的导航定义，照样拒收）：
+
+```python
+sys.path.insert(0, r"C:\ProgramData\ark-relay")
+from ark_relay import preupdate
+preupdate.run_maa(Path(r"D:\ark\maa"), budget_s=600, problems=[])
+```
+
+用 `winrun.sh --py1` 跑它（要交互桌面）。2026-09-04 实测 v6.17.0 → v6.17.1，
+`stages.json` 803222 → 807286 字节，Fight 立刻就认 SR-5 了。
+
+手动起 MAA 的话必须带参数，否则一启动就自动开跑：
+`scripts/mac/wingui.sh launch 'D:\ark\maa\MAA.exe -- --skip-startup-auto-run'`
+
+### 活动的奖励弹窗：只挡作业模式，不挡 Fight
+
+月行水上每次通关会掉塔罗牌，并在**地图上**弹一个大动画。
+
+* **作业（Copilot）模式会被它挡死**：每打完一关要回地图找下一关，弹窗糊在
+  地图上，MAA 就一直 `Copilot@ChapterSwipeToTheRightAndPlot` 找不到关卡。
+  2026-09-04 打 SR-5〜SR-8 时卡过两次，**人点掉弹窗它立刻自己接上**。
+* **Fight 模式不受影响**：终端 → 活动 → 关卡 → 打 → 结算 → 「再来一次」，
+  全程不回地图。实测那趟掉了塔罗牌「节制」，MAA 照样正常结算收尾。
+
+所以队列里刷活动关（走 Fight）不用管这个弹窗；只有我手动用作业连打时要盯着。
+
+### 导航突然失败先看是不是掉线了
+
+`SwipeToStage` 滑几下就没下文、停在别的关卡页，**先截图看是不是
+「登录认证已失效，请重新登录」**。账号在别处登录会把模拟器这边挤下线，
+画面还停在旧界面，看着特别像导航坏了。跑一次 `copilot-run.py <log> startup`
+重登即可，见 memory `game-relogin-is-just-restart`。
+
 ### 2. 要通关（EX、突袭、剧情关）→ 用作业（Copilot）
 
 #### 作业从哪来
