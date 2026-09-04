@@ -338,9 +338,17 @@ function render() {
         ctl = `<span class="sw"><input type="checkbox" data-id="${id}" ${val ? "checked" : ""}><span></span></span>`;
       } else if (f.type === "pills") {
         const on = new Set((Array.isArray(val) ? val : [val]).map(String));
-        ctl = `<div class="pills" data-pills="${id}">` + (live || []).map(([lb, v]) =>
+        const opts = live || [];
+        const btns = opts.map(([lb, v]) =>
           `<button type="button" class="pill${on.has(String(v)) ? " on" : ""}" data-v="${v}">${lb}</button>`
-        ).join("") + `</div>`;
+        ).join("");
+        /* 选项一多，一屏几乎全被这些按钮占满。超过 8 个就默认收起，
+           只留一行「已选 N/M」，点开才展开。收起时按钮仍在 DOM 里，
+           编辑追踪照常工作。 */
+        ctl = opts.length > 8
+          ? `<details class="pillbox"><summary>已选 ${opts.filter(([, v]) => on.has(String(v))).length}/${opts.length}</summary>` +
+            `<div class="pills" data-pills="${id}">${btns}</div></details>`
+          : `<div class="pills" data-pills="${id}">${btns}</div>`;
       } else if (live && live.length) {
         ctl = `<select data-id="${id}">` + live.map(([lb, v]) =>
           `<option value="${String(v)}" ${String(val) === String(v) ? "selected" : ""}>${lb}</option>`
