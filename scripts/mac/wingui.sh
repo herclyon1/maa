@@ -21,6 +21,7 @@
 #   scripts/mac/wingui.sh key l               # 单个字母（鸣潮：L 开队伍界面）
 #   scripts/mac/wingui.sh click 960 540       # 左键点一下（真实鼠标事件，游戏才认）
 #   scripts/mac/wingui.sh launch [wuwa|'D:\\path\\to\\App.exe']  # 启动图形程序（必须从 session 1 起）
+#   scripts/mac/wingui.sh launch 'D:\\ark\\maa\\MAA.exe -- --skip-startup-auto-run'  # 带参数
 #   scripts/mac/wingui.sh scroll -3           # 滚轮，负数向下翻
 #   scripts/mac/wingui.sh focus [out.png]     # 只把游戏拉到前台再截图（OK-WW 窗口会被压下去）
 #
@@ -68,8 +69,16 @@ if ($cmd -like 'launch*') {
   # 不在这里内置终末地/MaaEnd 的路径——2026-08-28 我凭印象填了两条，
   # 事后 grep 发现那两条只存在于我自己刚写的这个文件里，是纯猜。
   # 路径由调用方从 AUTO-MAS 的 Game.Path 之类的真实来源取好再传进来。
+  # 路径后面可以再跟启动参数，用 `--` 隔开：
+  #   launch D:\ark\maa\MAA.exe -- --skip-startup-auto-run
+  # MAA 必须带 --skip-startup-auto-run 起，否则一启动就自动开跑任务。
   $what = ($cmd -split '\s+', 2)[1]
   if (-not $what) { $what = 'wuwa' }
+  $extra = @()
+  if ($what -match '^(.*?)\s+--\s+(.*)$') {
+    $what  = $Matches[1].Trim()
+    $extra = $Matches[2].Trim() -split '\s+'
+  }
   if ($what -eq 'wuwa') { $exe = 'D:\Wuthering Waves Game\Wuthering Waves.exe' }
   else { $exe = $what }
 
@@ -84,8 +93,13 @@ if ($cmd -like 'launch*') {
     if (Get-Process -Name $proc -ErrorAction SilentlyContinue) {
       $log += "$proc 已在运行，没有重复启动"
     } else {
-      Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe)
-      $log += "已启动 $exe，等 45 秒"
+      if ($extra.Count -gt 0) {
+        Start-Process -FilePath $exe -ArgumentList $extra -WorkingDirectory (Split-Path $exe)
+        $log += "已启动 $exe [" + ($extra -join ' ') + "]，等 45 秒"
+      } else {
+        Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe)
+        $log += "已启动 $exe，等 45 秒"
+      }
       Start-Sleep -Seconds 45
     }
   }

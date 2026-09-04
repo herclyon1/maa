@@ -15,6 +15,7 @@ Only one core may own the emulator at a time - close the MAA GUI first.
 
 Usage:
   copilot-run.py <log-path> startup            # 把游戏开到主界面，什么都不打
+  copilot-run.py <log-path> fight <关卡> [次数] # 直接刷关卡（验证 MAA 认不认这个关卡号）
   copilot-run.py <log-path> <stage> [<stage>…] # 按关卡跑作业（本地 JSON）
 
 `startup` 是打活动关的第一步：MAA 自己处理开屏、公告和登录，
@@ -73,10 +74,12 @@ def callback(msg, details, arg):
 
 
 STARTUP = len(STAGES) == 1 and STAGES[0] == "startup"
+FIGHT = len(STAGES) >= 2 and STAGES[0] == "fight"
 
 
 def main() -> int:
     say("=== StartUp：把游戏开到主界面 ===" if STARTUP
+        else f"=== Fight：验证关卡 {STAGES[1]} ===" if FIGHT
         else f"=== copilot 启动，关卡: {', '.join(STAGES)} ===")
     if not Asst.load(path=MAA):
         say("!! 资源加载失败"); return 1
@@ -100,6 +103,27 @@ def main() -> int:
         time.sleep(5)
     else:
         say(f"!! 连不上 {ADDRESS}，模拟器起来了吗？"); return 1
+
+    if FIGHT:
+        # 只为验证 MAA 认不认这个关卡号。**药量写死 0**：验证不该顺手吃药。
+        stage = STAGES[1]
+        times = int(STAGES[2]) if len(STAGES) > 2 else 1
+        tid = asst.append_task("Fight", {
+            "enable": True, "stage": stage, "medicine": 0,
+            "stone": 0, "times": times, "series": 0,
+        })
+        say(f"Fight 已下发 id={tid} 关卡={stage} 次数={times} 药=0")
+        if not tid:
+            say("!! append_task 被拒，看 debug/asst.log"); return 1
+        if not asst.start():
+            say("!! start 失败"); return 1
+        last = time.time()
+        while asst.running():
+            time.sleep(2)
+            if time.time() - last > 60:
+                last = time.time(); say("… 仍在跑")
+        say("=== Fight 结束 ===")
+        return 0
 
     if STARTUP:
         tid = asst.append_task("StartUp", {
