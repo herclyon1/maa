@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0f1216">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260904154109">
+<link rel="manifest" href="manifest.webmanifest?v=20260904154758">
 <style>
   /* 浅色是底色，深色只覆盖变量。三种情况都要照顾到：
      手机设成浅色、手机设成深色、以及页面里手动指定。 */
@@ -117,6 +117,12 @@
   .pillbox[open]>summary::after{content:" ▴"}
   .pillbox>.pills{margin-top:4px}
   .pillbox .pill{padding:5px 9px;font-size:13px}
+  /* 只看图标的单选：每个选项画它掉的两个套装图标。 */
+  .picks{display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end;align-self:stretch}
+  .pick{background:var(--btn);border:2px solid var(--line);border-radius:14px;
+        padding:6px 8px;display:flex;gap:4px;align-items:center;box-shadow:none}
+  .pick img{width:34px;height:34px;border-radius:50%;display:block}
+  .pick.on{border-color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,transparent)}
   .swatches{display:flex;gap:9px}
   .sw-c{width:28px;height:28px;border-radius:50%;display:block;cursor:pointer;
         border:2px solid transparent;box-shadow:0 0 0 1px var(--line) inset}
@@ -147,6 +153,6 @@
 </dialog>
 
 <div class="toast" id="toast"></div>
-<script src="app.js?v=20260904154109"></script>
+<script src="app.js?v=20260904154758"></script>
 </body>
 </html>
