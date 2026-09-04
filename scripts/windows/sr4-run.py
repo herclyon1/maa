@@ -23,8 +23,8 @@ ADB = r"D:\LD-MRFZ\LDPlayer9\adb.exe"
 DEV = "127.0.0.1:7555"
 TOUCH_SRC = r"D:\ark\maa\resource\minitouch\maatouch\minitouch"
 TOUCH_DST = "/data/local/tmp/maatouch"
-SHOT = "/sdcard/sr4.png"
-LOCAL_SHOT = r"C:\ProgramData\sr4-shot.png"
+SHOT = "/sdcard/sr4.raw"   # 不能用 .png：screencap 会按扩展名输出 PNG
+LOCAL_SHOT = r"C:\ProgramData\sr4-shot.raw"
 
 LOG = Path(sys.argv[1])
 
