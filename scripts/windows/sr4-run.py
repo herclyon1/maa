@@ -88,11 +88,6 @@ def has_dialog(im):
     return (sum(a) > 180) and (sum(b) < 210)
 
 
-def battle_ready(im):
-    """右下角费用数字区是亮的，且没有对话/选项 —— 说明能操作了。"""
-    return not has_choice(im) and not has_dialog(im)
-
-
 def clear_plot(max_rounds=14):
     for _ in range(max_rounds):
         im = grab()

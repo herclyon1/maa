@@ -57,7 +57,7 @@ def world_to_screen(view, world, side=False, screen=(1280, 720)):
             round((1 - r[1]) * base_h * screen[1] / base_h))
 
 
-def tile_screen_pos(level, tile_x, tile_y, screen=(1280, 720)):
+def tile_screen_pos(level, tile_x, tile_y, screen=(1280, 720)):  # deadcode: allow
     """level 就是那份 json（含 width/height/view/tiles）。tile_x/tile_y 用作业里的写法。"""
     w, h = level["width"], level["height"]
     tile = level["tiles"][tile_y][tile_x]
