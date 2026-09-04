@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0f1216">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260904041934">
+<link rel="manifest" href="manifest.webmanifest?v=20260904140255">
 <style>
   /* 浅色是底色，深色只覆盖变量。三种情况都要照顾到：
      手机设成浅色、手机设成深色、以及页面里手动指定。 */
@@ -108,6 +108,15 @@
         padding:7px 12px;font-size:14px;color:var(--dim);box-shadow:none}
   .pill.on{background:var(--ok);border-color:var(--ok);color:#fff;font-weight:600}
   .row .pills{align-self:stretch}
+  /* 选项多的那种收起来：默认只占一行。 */
+  .pillbox{align-self:stretch;width:100%}
+  .pillbox>summary{list-style:none;cursor:pointer;text-align:right;
+        font-size:14px;color:var(--dim);padding:6px 0}
+  .pillbox>summary::-webkit-details-marker{display:none}
+  .pillbox>summary::after{content:" ▾";font-size:12px}
+  .pillbox[open]>summary::after{content:" ▴"}
+  .pillbox>.pills{margin-top:4px}
+  .pillbox .pill{padding:5px 9px;font-size:13px}
   .swatches{display:flex;gap:9px}
   .sw-c{width:28px;height:28px;border-radius:50%;display:block;cursor:pointer;
         border:2px solid transparent;box-shadow:0 0 0 1px var(--line) inset}
@@ -138,6 +147,6 @@
 </dialog>
 
 <div class="toast" id="toast"></div>
-<script src="app.js?v=20260904041934"></script>
+<script src="app.js?v=20260904140255"></script>
 </body>
 </html>
