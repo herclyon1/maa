@@ -13,10 +13,17 @@ arrives as callbacks.
 
 Only one core may own the emulator at a time - close the MAA GUI first.
 
-Usage:  copilot-run.py <log-path> <stage> [<stage> ...]
+Usage:
+  copilot-run.py <log-path> startup            # 把游戏开到主界面，什么都不打
+  copilot-run.py <log-path> <stage> [<stage>…] # 按关卡跑作业（本地 JSON）
+
+`startup` 是打活动关的第一步：MAA 自己处理开屏、公告和登录，
+把游戏摆到主界面。**不要手动掐时间等开机**，见
+docs/MAA-打活动关与保全派驻.md「走通一次活动 EX 的配方」。
 """
 import ctypes
 import json
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -65,8 +72,12 @@ def callback(msg, details, arg):
     say(f"{m.name}: {json.dumps(d, ensure_ascii=False)[:500]}")
 
 
+STARTUP = len(STAGES) == 1 and STAGES[0] == "startup"
+
+
 def main() -> int:
-    say(f"=== copilot 启动，关卡: {', '.join(STAGES)} ===")
+    say("=== StartUp：把游戏开到主界面 ===" if STARTUP
+        else f"=== copilot 启动，关卡: {', '.join(STAGES)} ===")
     if not Asst.load(path=MAA):
         say("!! 资源加载失败"); return 1
     say("资源已加载")
@@ -76,9 +87,36 @@ def main() -> int:
         say(f"!! 触控模式设置失败: {TOUCH}"); return 1
     say(f"触控模式 = {TOUCH}")
 
-    if not asst.connect(ADB, ADDRESS):
-        say(f"!! 连接失败: {ADDRESS}"); return 1
-    say(f"已连接 {ADDRESS}")
+    # LDPlayer 的 adb 连接会自己掉，掉了之后 MaaCore 直接报 ConnectFailed。
+    # connect 是幂等的，白连一次不花钱；模拟器刚起来时 Android 侧还没听端口，
+    # 所以要给它几轮重试而不是一次就放弃。
+    for attempt in range(1, 11):
+        subprocess.run([ADB, "connect", ADDRESS],
+                       capture_output=True, timeout=30)
+        if asst.connect(ADB, ADDRESS):
+            say(f"已连接 {ADDRESS}（第 {attempt} 次）")
+            break
+        say(f"连接失败，5 秒后重试（{attempt}/10）")
+        time.sleep(5)
+    else:
+        say(f"!! 连不上 {ADDRESS}，模拟器起来了吗？"); return 1
+
+    if STARTUP:
+        tid = asst.append_task("StartUp", {
+            "enable": True,
+            "client_type": "Official",
+            "start_game_enabled": True,
+        })
+        say(f"StartUp 已下发 id={tid}")
+        if not asst.start():
+            say("!! start 失败"); return 1
+        last = time.time()
+        while asst.running():
+            time.sleep(2)
+            if time.time() - last > 60:
+                last = time.time(); say("… 仍在开游戏")
+        say("=== StartUp 结束 ===")
+        return 0
 
     task = {
         "enable": True,
@@ -91,7 +129,9 @@ def main() -> int:
         "formation_index": 0,       # 0 = 当前编队栏位
         "use_sanity_potion": False, # 绝不吃药
         "add_trust": False,
-        "ignore_requirements": False,
+        # 练度要求是作业作者的偏好，不是游戏的限制。关着的话干员明明有，
+        # 也会被判 Unavailable 而凑不齐六人（2026-08-23 三个干员全栽在这）。
+        "ignore_requirements": True,
         "support_unit_usage": 0,    # 不借助战
     }
     tid = asst.append_task("Copilot", task)

@@ -37,6 +37,42 @@
 * 2026-08-22 实测：`prts.plus` 和 MAA 真正调用的 `prts.maa.plus/copilot/get/<id>` 从游戏机都通；
   **`prts.wiki` 从那台机器 403**，两者别混为一谈。
 
+#### 用接口批量拿作业（Mac 上 curl 直连就通，不用开浏览器）
+
+```bash
+# 找某个活动的全部作业：levelKeyword 填活动代号（如 act54side）
+curl -s 'https://prts.maa.plus/copilot/query?page=1&limit=100&levelKeyword=act54side'
+
+# 下载一份完整作业
+curl -s 'https://prts.maa.plus/copilot/get/<id>'
+```
+
+**这两个接口返回的东西不一样，用错了会浪费半小时**（2026-09-04 栽过）：
+
+| 接口 | `content` 里有什么 |
+|---|---|
+| `query` | 只有 `doc` / `opers` / `groups` / `stage_name`——**没有 `actions`** |
+| `get` | 完整作业，**含 `actions`**（真正的部署动作在这里） |
+
+`query` 是给列表页用的，作业正文被裁掉了。拿它的 `content` 存成文件喂给 MAA，
+MaaCore 会**在 `append_task` 阶段就拒收**，返回的 task id 是 **0**，
+而 `asst.start()` 照样返回 True、一秒钟就"跑完"了，什么都没发生。
+
+排错的正门是 **`D:\ark\maa\debug\asst.log`**，它写得很清楚：
+
+```
+[ERR] Json parse failed <路径> invalid map<K, T> key
+[ERR] CopilotConfig parse failed
+[ERR] asst::Assistant::append_task | invalid params: {...}
+```
+
+**`append_task` 返回 0 就是参数被拒**，别去猜是哪个字段——先看这三行。
+2026-09-04 我挨个试了 11 种参数组合全被拒，其实一行日志就说明了是作业文件的事。
+
+挑作业按 `views` 排序、看 `rating_level`（满分 10）和 `rating_ratio`；
+作者在 `doc.details` 里会写清楚这关能不能自动，**那句话要读**——
+月行水上的 SR-4 就是 5 份作业的作者一致说"MAA 会被剧情卡住，只能手动"。
+
 #### 从哪个界面启动——上次翻车的主要来源
 
 | 模式 | 必须停在这个界面 |
