@@ -1,5 +1,8 @@
 .env
 *.png
+# 手机页的图标是发布产物，必须入库：gh-pages 是 cp web/* 过去的，
+# 库里没有就等于线上缺文件（apple-touch-icon 404，主屏图标变成截图）。
+!web/*.png
 *.log
 __pycache__/
 .DS_Store
