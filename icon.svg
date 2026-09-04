@@ -1,37 +1,46 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <!--
+    构图：大手柄压在下半部，上方三道信号弧——「这台机器在别处，隔空控它」。
+    改这个文件时守两条：
+    1. 左右严格对称：横坐标一律写成 96 ± n，成对出现、成对修改。
+       最早那版随手画，底部缺口中心 87、按键组中心 131，而手柄中心 96，看着往右歪。
+    2. 弧要粗（7.5）、只画三道、逐道变淡。之前一道太孤零零，
+       画细了在 40px 又糊成一团灰。
+    背景用正上下渐变；斜向渐变会让整块图看着往一边倒。
+  -->
   <defs>
-    <!-- 手机壁纸多半是深色照片，纯黑底会糊成一块。用带一点蓝的深色渐变，
-         小尺寸下仍看得出是一块独立的图标。 -->
-    <linearGradient id="bg" x1="0.1" y1="0" x2="0.9" y2="1">
-      <stop offset="0" stop-color="#243056"/>
-      <stop offset="1" stop-color="#0d1120"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a3767"/>
+      <stop offset="1" stop-color="#0c1020"/>
     </linearGradient>
     <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#ffffff"/>
-      <stop offset="1" stop-color="#c9d4ea"/>
+      <stop offset="1" stop-color="#c3cfe8"/>
     </linearGradient>
   </defs>
 
   <rect width="192" height="192" rx="44" fill="url(#bg)"/>
 
-  <!--
-    手柄。整体压在视觉中心（y 约 96），左右各留 26 的余量，
-    在 40px 下也不会顶到圆角被切掉。
-    上一版把信号弧画在手柄上方，40px 时那两道弧糊成一团灰，
-    手柄本身反而被挤扁——所以这一版只画手柄，靠形状本身表意。
-  -->
-  <g transform="translate(0 4)">
-    <path fill="url(#body)"
-          d="M70 62h52c14 0 25 10 27 24l10 50c3 15-8 27-22 25-11-2-18-11-23-21l-8-17H68l-8 17c-5 10-12 19-23 21-14 2-25-10-22-25l10-50c2-14 13-24 27-24z"/>
-
-    <!-- 十字键：横竖两条，中间留一点缝，缩小后不会糊成一个方块 -->
-    <g fill="#1a2138">
-      <rect x="50" y="91" width="34" height="10" rx="5"/>
-      <rect x="62" y="79" width="10" height="34" rx="5"/>
-    </g>
-
-    <!-- 两个按键：一实一空，40px 下也分得出是两个东西 -->
-    <circle cx="122" cy="86" r="9.5" fill="#4aa3ff"/>
-    <circle cx="140" cy="104" r="9.5" fill="none" stroke="#1a2138" stroke-width="5"/>
+  <!-- 信号：圆心 (96,62)，半径 14/25/36，端点都对称于 96 -->
+  <g fill="none" stroke="#4aa3ff" stroke-width="7.5" stroke-linecap="round">
+    <path d="M83.3 56.1A14 14 0 0 1 108.7 56.1"/>
+    <path d="M73.4 51.4A25 25 0 0 1 118.6 51.4" opacity="0.68"/>
+    <path d="M63.4 46.8A36 36 0 0 1 128.6 46.8" opacity="0.4"/>
   </g>
+
+  <!-- 手柄：96±24 起肩，96±50 收腰，96±60 到握把外沿，底部缺口 96±9 -->
+  <path fill="url(#body)"
+        d="M72 72H120C134 72 144 82 146 95L156 138C159 153 148 165 135 163
+           C124 161 117 152 112 142L105 126H87L80 142C75 152 68 161 57 163
+           C44 165 33 153 36 138L46 95C48 82 58 72 72 72Z"/>
+
+  <!-- 十字键，中心 (70,104) ＝ 96−26 -->
+  <g fill="#1a2138">
+    <rect x="56" y="99" width="28" height="9.5" rx="4.75"/>
+    <rect x="65.25" y="90" width="9.5" height="28" rx="4.75"/>
+  </g>
+
+  <!-- 两个按键，中心 (122,104) ＝ 96+26，与十字键左右等距 -->
+  <circle cx="115" cy="97" r="8" fill="#4aa3ff"/>
+  <circle cx="129" cy="111" r="8" fill="none" stroke="#1a2138" stroke-width="4.75"/>
 </svg>
