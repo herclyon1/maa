@@ -126,9 +126,20 @@ def _read_from(path: Path, byte_offset: int) -> str:
     每次都白等满 180 秒然后报「没给出更新结论」。
 
     日志是 UTF-8 且只在末尾追加，所以按字节 seek 再解码是安全的。
+
+    **但「只在末尾追加」这个前提，MAA 自己会打破**：它每次启动都把上一份
+    `gui.log` 挪成 `gui.bak.log`，新开一份从 0 字节写起。我们记的偏移是
+    启动**前**那份的大小（几百 KB），拿去 seek 一份 12 KB 的新文件，
+    read 永远返回空——2026-09-04 就是这样：MAA 08:46:26 已经答了
+    「current version is latest」，判据一个字也没看见，白等满 180 秒，
+    再报一条「没能确认」的假警报，还把 tick 后面的事都耽误了。
+    所以文件比偏移还小 = 它被轮转或截断过，从头读。
     """
     try:
         with path.open("rb") as fh:
+            if byte_offset and path.stat().st_size < byte_offset:
+                log.info("%s 比记下的偏移还小，判定被轮转过，从头读", path.name)
+                byte_offset = 0
             fh.seek(byte_offset)
             return fh.read().decode("utf-8", errors="replace")
     except OSError:
