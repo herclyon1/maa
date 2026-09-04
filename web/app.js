@@ -72,6 +72,20 @@ const VALUE_ZH = {
 
    src:"mas"    → 值取 snap.config[sec][key]，写 set_config(script, path)
    src:"master" → 值取 snap.master[game].values[path]，写 set_master(game, path) */
+/* 无音区按序号选很难懂——人看的是它出什么声骸套装。
+   序号＝F2「素材获取 → 无音清剿」列表从上往下的位置；
+   套装名是用游戏里的「合鸣筛选」逐个选出来核对的，出处见
+   docs/鸣潮-无音区序号对照.md。没核对到的位置不列，宁可少也不写错。 */
+const TACET = [
+  ["1 · 羽落空尘之歌 ＋ 冥途夜行之灯", 1],
+  ["2 · 羽落空尘之歌 ＋ 清邪荡煞之心", 2],
+  ["3 · 雪落无声之愿 ＋ 剪心辑梦之影", 3],
+  ["4 · 听唤语义之愿", 4],
+];
+
+/* 待保存清单里也要显示成套装名，不能又变回数字。 */
+const CHOICES = { "DailyTask.json/Which Tacet Suppression to Farm": TACET };
+
 const SCHEMA = [
   { title:"明日方舟", owner:"MAA", src:"mas", script:"MAA", sec:"MAA", fields:[
     { key:"关卡",       path:"Info.Stage",        type:"text",
@@ -124,8 +138,8 @@ const SCHEMA = [
        ——序号对应哪个套装要拿游戏里的 F2 列表核对，见 docs/欠的活.md。 */
     { path:"DailyTask.json/Which Forgery Challenge to Farm", type:"number",
       hint:"游戏里按 F2 打开传送列表，凝素领域从上往下数第几个。只在上面选「凝素领域」时才有用" },
-    { path:"DailyTask.json/Which Tacet Suppression to Farm", type:"number",
-      hint:"F2 → 素材获取 → 无音清剿，按地区分组从上往下连续数第几个。1 方掌西峰、2 玄幽东岳（白+绿套）、3 落日堤屿、4 冰原运输港、5 加拉尔冠阶，其余见 docs/鸣潮-无音区序号对照.md。只在上面选「无音区」时才有用" },
+    { path:"DailyTask.json/Which Tacet Suppression to Farm", type:"select",
+      choices: TACET, hint:"按想要的声骸套装挑。只在上面选「无音区」时才有用" },
     { path:"NightmareNestTask.json/Only Farm These Nests", type:"text",
       label:"残象聚落点位", ro:true,
       hint:"只刷落渊南丘，这是定好的。要换点位在电脑上改" },
@@ -321,9 +335,11 @@ function render() {
         ? (f.path in cur ? cur[f.path] : ro[f.path])
         : cur[f.key];
       if (val === undefined) continue;   // 机器上没有这一项就别画
-      const live = g.src === "master"
+      /* f.choices 是我们自己核对出来的取值表（无音区那种：机器只存序号，
+         它自己不知道对应什么）。有就优先用它，机器发来的选项表兜底。 */
+      const live = f.choices || (g.src === "master"
         ? (M.options || {})[f.path]
-        : (((snap && snap.options) || {})[g.script] || {})[f.path];
+        : (((snap && snap.options) || {})[g.script] || {})[f.path]);
       const label = labelOf(g, f);
       const hint = f.hint ? `<span class="hint">${f.hint}</span>` : "";
       const zh = (VALUE_ZH[f.path] || {})[String(val)];
@@ -695,9 +711,9 @@ function save_cache() {
    那个框存在的全部意义就是让人看清改了什么，显示 UUID 等于没有。
    取名顺序和渲染下拉时完全一致：机器发来的选项表 → VALUE_ZH → 原样。 */
 function valLabel(e, v) {
-  const live = e.src === "master"
+  const live = CHOICES[e.path] || (e.src === "master"
     ? ((((snap && snap.master) || {})[e.owner] || {}).options || {})[e.path]
-    : (((snap && snap.options) || {})[e.owner] || {})[e.path];
+    : (((snap && snap.options) || {})[e.owner] || {})[e.path]);
   const one = (x) => {
     const hit = (live || []).find(([, val]) => String(val) === String(x));
     return hit ? hit[0] : ((VALUE_ZH[e.path] || {})[String(x)] || fmt(x));
