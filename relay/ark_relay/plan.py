@@ -16,7 +16,7 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from .config import SERVER_TZ, USER_TZ
+from .config import SERVER_TZ, USER_TZ, atomic_write_text
 
 log = logging.getLogger("ark.plan")
 
@@ -403,6 +403,50 @@ def maintenance_lines(day) -> list[str]:
             for game, (start, end, _why) in wins.items()]
 
 
+# 剿灭那个字段的值是英文枚举（Annihilation / Chernobog@Annihilation …），
+# 中文只存在 AUTO-MAS 前端的打包产物里。这段原来在 phone.py，
+# 2026-09-04 那边瘦身时被当成「不再需要」删掉了，可这里还 import 着它——
+# 于是每一轮 tick 都 ImportError，把它后面的补更新、日报、自动关机全带走，
+# 整整一上午没人发现。所以搬到唯一还用它的地方，不再跨模块借。
+_LABEL_PAIR = re.compile(
+    r'label\s*:\s*"([^"]{1,40})"\s*,\s*value\s*:\s*"([^"]{1,60})"')
+
+
+def _asar_value_labels(automas_dir, state_dir) -> dict:
+    """`{英文取值: 中文名}`，从前端打包产物里抽，按大小+时间戳缓存。"""
+    if not automas_dir:
+        return {}
+    asar = Path(automas_dir) / "resources" / "app.asar"
+    try:
+        st = asar.stat()
+    except OSError:
+        log.warning("找不到 app.asar，剿灭那一项会留下英文取值")
+        return {}
+    stamp = f"{st.st_size}-{int(st.st_mtime)}"
+    cache = Path(state_dir) / "asar-labels.json"
+    try:
+        got = json.loads(cache.read_text(encoding="utf-8"))
+        if got.get("stamp") == stamp:
+            return got.get("map") or {}
+    except (OSError, json.JSONDecodeError):
+        pass
+    try:
+        text = asar.read_bytes().decode("utf-8", "replace")
+    except OSError:
+        log.warning("读不了 app.asar", exc_info=True)
+        return {}
+    out: dict = {}
+    for label, value in _LABEL_PAIR.findall(text):
+        if any("\u4e00" <= ch <= "\u9fff" for ch in label):
+            out.setdefault(value, label)
+    try:
+        atomic_write_text(cache, json.dumps({"stamp": stamp, "map": out},
+                                            ensure_ascii=False))
+    except OSError:
+        pass
+    return out
+
+
 def next_plan(automas_dir: Path | None) -> str:
     """Human-readable summary of what will run next. '' if it cannot be read."""
     if not automas_dir:
@@ -439,7 +483,6 @@ def next_plan(automas_dir: Path | None) -> str:
                 # 值是英文枚举（Annihilation / Chernobog@Annihilation …），
                 # 中文在 AUTO-MAS 前端的打包产物里。汇报里不该出现英文——
                 # 2026-08-31 用户在手机上看到「剿灭 Annihilation」。
-                from .phone import _asar_value_labels  # noqa: PLC0415
                 zh = {}
                 try:
                     zh = _asar_value_labels(automas_dir, Path(os.environ.get(
