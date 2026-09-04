@@ -80,6 +80,10 @@
 | 仓库自检 | `scripts/mac/lint-repo.sh` |
 | shell 脚本静态检查 | `~/.local/bin/shellcheck -S warning` |
 
+## 开机后先看 docs/待查.md
+
+里面是上次收工时没查完、要在有机器的时候查的事。处理完就从那里删掉。
+
 ## 改中继的流程
 
 改完 → **立即部署，不要问**（`deploy-relay.sh` 自带测试闸门 + 哈希核对 + 启动确认）。
