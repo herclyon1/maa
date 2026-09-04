@@ -84,7 +84,20 @@ const TACET = [
 ];
 
 /* 待保存清单里也要显示成套装名，不能又变回数字。 */
-const CHOICES = { "DailyTask.json/Which Tacet Suppression to Farm": TACET };
+/* 凝素领域同样只存序号。每个地区 5 个，固定按迅刀/音感仪/长刃/臂铠/佩枪排；
+   这里只放梦州那一组，全表在 docs/鸣潮-无音区序号对照.md。 */
+const FORGE = [
+  ["1 · 迅刀（陨翼云渊）", 1],
+  ["2 · 音感仪（静灭云渊）", 2],
+  ["3 · 长刃（裂斩云渊）", 3],
+  ["4 · 臂铠（碎蚀云渊）", 4],
+  ["5 · 佩枪（沉熄云渊）", 5],
+];
+
+const CHOICES = {
+  "DailyTask.json/Which Tacet Suppression to Farm": TACET,
+  "DailyTask.json/Which Forgery Challenge to Farm": FORGE,
+};
 
 const SCHEMA = [
   { title:"明日方舟", owner:"MAA", src:"mas", script:"MAA", sec:"MAA", fields:[
@@ -136,8 +149,8 @@ const SCHEMA = [
        别再写成上一版那种和标题对不上的话（无音区那条写着「选凝素领域才有用」）。
        用户 2026-09-04：「给我标数字，我怎么知道 1234 是什么东西呢？」
        ——序号对应哪个套装要拿游戏里的 F2 列表核对，见 docs/欠的活.md。 */
-    { path:"DailyTask.json/Which Forgery Challenge to Farm", type:"number",
-      hint:"游戏里按 F2 打开传送列表，凝素领域从上往下数第几个。只在上面选「凝素领域」时才有用" },
+    { path:"DailyTask.json/Which Forgery Challenge to Farm", type:"select",
+      choices: FORGE, hint:"按想要的武器材料挑。只在上面选「凝素领域」时才有用" },
     { path:"DailyTask.json/Which Tacet Suppression to Farm", type:"select",
       choices: TACET, hint:"按想要的声骸套装挑。只在上面选「无音区」时才有用" },
     { path:"NightmareNestTask.json/Only Farm These Nests", type:"text",
