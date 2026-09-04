@@ -1,8 +1,37 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
-  <rect width="192" height="192" rx="42" fill="#0f1216"/>
-  <rect x="34" y="58" width="124" height="76" rx="16" fill="#4aa3ff"/>
-  <circle cx="66" cy="96" r="9" fill="#06121f"/>
-  <circle cx="126" cy="86" r="8" fill="#06121f"/>
-  <circle cx="142" cy="104" r="8" fill="#06121f"/>
-  <rect x="86" y="92" width="26" height="8" rx="4" fill="#06121f"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <defs>
+    <!-- 手机壁纸多半是深色照片，纯黑底会糊成一块。用带一点蓝的深色渐变，
+         小尺寸下仍看得出是一块独立的图标。 -->
+    <linearGradient id="bg" x1="0.1" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#243056"/>
+      <stop offset="1" stop-color="#0d1120"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#c9d4ea"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="192" height="192" rx="44" fill="url(#bg)"/>
+
+  <!--
+    手柄。整体压在视觉中心（y 约 96），左右各留 26 的余量，
+    在 40px 下也不会顶到圆角被切掉。
+    上一版把信号弧画在手柄上方，40px 时那两道弧糊成一团灰，
+    手柄本身反而被挤扁——所以这一版只画手柄，靠形状本身表意。
+  -->
+  <g transform="translate(0 4)">
+    <path fill="url(#body)"
+          d="M70 62h52c14 0 25 10 27 24l10 50c3 15-8 27-22 25-11-2-18-11-23-21l-8-17H68l-8 17c-5 10-12 19-23 21-14 2-25-10-22-25l10-50c2-14 13-24 27-24z"/>
+
+    <!-- 十字键：横竖两条，中间留一点缝，缩小后不会糊成一个方块 -->
+    <g fill="#1a2138">
+      <rect x="50" y="91" width="34" height="10" rx="5"/>
+      <rect x="62" y="79" width="10" height="34" rx="5"/>
+    </g>
+
+    <!-- 两个按键：一实一空，40px 下也分得出是两个东西 -->
+    <circle cx="122" cy="86" r="9.5" fill="#4aa3ff"/>
+    <circle cx="140" cy="104" r="9.5" fill="none" stroke="#1a2138" stroke-width="5"/>
+  </g>
 </svg>
