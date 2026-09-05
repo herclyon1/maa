@@ -425,6 +425,38 @@ class Engine:
 
     # ---------- per record ----------
 
+    def _warn_if_evidence_stale(self, rec: RunRecord, dst: Path) -> None:
+        """存下来的 debug 日志未必是失败那次的——对不上就明说，别让人被误导。
+
+        中继是靠监视 AUTO-MAS 的 history 才知道失败的，而 AUTO-MAS 整轮跑完
+        才写记录。等消息到手，MaaEnd 往往已经重试成功、启动时把 debug 清空了，
+        于是存下来的是**重试成功那次**的日志。
+
+        2026-09-05 就这么绕了一圈：证据目录名是失败那次（MaaEnd-05-27-42），
+        里面的 maafw.log 却只覆盖 09:57–09:59，那是成功那次（MaaEnd-05-56-35）。
+        真正定位问题靠的是同时存下来的 AUTO-MAS 那份 .json。
+
+        run_id 形如 `<日期>/<用户>/MaaEnd-HH-MM-SS`，末段就是这一轮的开始时刻。
+        """
+        try:
+            stamp = rec.run_id.rsplit("-", 3)[-3:]
+            if len(stamp) != 3 or not all(x.isdigit() for x in stamp):
+                return
+            hh, mm, ss = (int(x) for x in stamp)
+            started = hh * 3600 + mm * 60 + ss
+            for f in dst.glob("*.log"):
+                if f.name.startswith("automas-"):
+                    continue          # 这份按 run_id 取的，必然对得上
+                mt = datetime.fromtimestamp(f.stat().st_mtime, tz=SERVER_TZ)
+                ended = mt.hour * 3600 + mt.minute * 60 + mt.second
+                if ended < started:
+                    log.warning("⚠️ 证据里的 %s 最后写于 %s，早于这一轮开始的 %s，"
+                                "多半是**别的轮次**的日志，别拿它当这次失败的依据",
+                                f.name, mt.strftime("%H:%M:%S"),
+                                f"{hh:02d}:{mm:02d}:{ss:02d}")
+        except Exception:  # noqa: BLE001 - 只是提示，坏了也不许影响存档
+            log.debug("证据时间范围检查失败", exc_info=True)
+
     def _archive_maaend_evidence(self, rec: RunRecord) -> None:
         """把这一轮的 on_error 截图和 debug 日志抢救到中继自己的目录。
 
@@ -453,7 +485,17 @@ class Engine:
             for f in logs[-2:]:
                 shutil.copy2(f, dst / f.name)
                 n += 1
+            # AUTO-MAS 自己那一轮的 .log/.json **一定对得上这次失败**，
+            # 而 MaaEnd 的 debug 日志未必——见下面那条时间范围检查。
+            # 2026-09-05 就是靠 history 里的 .json 才看出失败的是「基质刷取」的。
+            if self.cfg.history_dir:
+                for suffix in (".log", ".json"):
+                    src_f = Path(self.cfg.history_dir) / (rec.run_id + suffix)
+                    if src_f.is_file():
+                        shutil.copy2(src_f, dst / ("automas-" + src_f.name))
+                        n += 1
             log.info("📦 MaaEnd 失败证据已存档 %d 个文件 → %s", n, dst)
+            self._warn_if_evidence_stale(rec, dst)
         except Exception:  # noqa: BLE001 - 存档失败不许影响记账
             log.exception("MaaEnd 证据存档失败（不影响记账）")
         # 根本没进游戏 = 客户端待更新的信号：登记，队列跑完后去更新再重跑
