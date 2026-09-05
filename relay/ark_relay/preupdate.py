@@ -558,6 +558,14 @@ def _close(exe: Path) -> None:
 # and it has not been caught breaking a queue here. Moving it into the boot
 # window anyway costs a few seconds and removes the possibility.
 _MAA_LATEST = re.compile(r'"msg"\s*:\s*"current version is latest"')
+# MAA **刚更新过之后的第一次启动会跳过更新检查**，于是那句 latest 永远等不到。
+# 2026-09-05 实测：08:46:07 启动 v6.17.1（昨天刚从 6.17.0 升上来），
+# 日志里 `IsFirstBoot has been set: \`true\` -> \`false\``，整段**一次
+# mirrorchyan 请求都没有**，中继白等满 180 秒再报一条「没能确认」的假警报；
+# 同一天 09:00:50 那次启动 IsFirstBoot 已是 false，09:00:56 就正常问了。
+# 认出这行就不必再等——**这不是故障**，而且更新也不会因此漏掉：
+# 09:00 队列自己那次启动会补上检查。
+_MAA_FIRST_BOOT = re.compile(r"IsFirstBoot has been set: `true` -> `false`")
 _MAA_APPLIED = re.compile(r"Delegated pending update completed successfully")
 _MAA_READY = re.compile(r"LoadResource Exit")
 
@@ -722,6 +730,11 @@ def run_maa(maa_dir: Path | None, budget_s: float = BUDGET_SECONDS,
             text = _read_from(log_path, before_len)
             if _MAA_APPLIED.search(text):
                 applied = "已应用挂起的更新"
+            if _MAA_FIRST_BOOT.search(text):
+                answered = True
+                log.info("预更新：MAA 刚更新过，这次是首次启动，它自己跳过了更新检查；"
+                         "09:00 队列启动时会补上")
+                break             # 等不到 latest，等下去只会白等满 180 秒
             if _MAA_LATEST.search(text):
                 answered = True
                 # 别把这行省掉：另外三个程序在「已是最新」时都写一句，
