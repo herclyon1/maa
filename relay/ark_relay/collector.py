@@ -17,6 +17,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from . import wuwa_tacet
 from .config import SERVER_TZ, RunRecord
 
 # AUTO-MAS names history folders and files on the game's day-boundary clock,
@@ -546,9 +547,13 @@ def _okww_farm(text: str) -> "tuple[str, str]":
     if "ForgeryTask:" in text:
         return (_forgery_label(text), "武器突破材料")
     if "TacetTask:" in text:
+        # 「无音区 #2 / 声骸与角色突破材料」这种写法人看不懂（用户 2026-09-06）。
+        # 序号查 wuwa_tacet 的对照表，写名字和它固定掉的两个套装；没登记就明说。
         hits = _OKWW_TACET_INDEX.findall(text)
-        idx = f" #{int(hits[-1]) + 1}" if hits else ""
-        return (f"无音区{idx}", "声骸与角色突破材料")
+        if not hits:
+            return ("无音区（日志里没有序号）", "声骸（无音区序号没读到，套装不明）")
+        idx = int(hits[-1]) + 1
+        return (wuwa_tacet.label(idx), wuwa_tacet.reward(idx))
     return ("", "")
 
 

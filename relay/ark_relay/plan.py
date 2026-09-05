@@ -228,7 +228,8 @@ def _okww_plan_bits(automas_dir: Path | None,
             bits.append(f"体力刷 凝素领域·{name}")
         elif which == "Tacet Suppression":
             idx = int(daily.get("Which Tacet Suppression to Farm") or 1)
-            bits.append(f"体力刷 {zh.get(which, which)} #{idx}")
+            from . import wuwa_tacet  # noqa: PLC0415
+            bits.append(f"体力刷 {wuwa_tacet.label(idx)}，出 {wuwa_tacet.reward(idx)}")
         elif which == "Simulation Challenge":
             tgt = str(daily.get("Material Selection") or "")
             tgt_zh = collector._SIM_ZH.get(tgt, zh.get(tgt, tgt))
