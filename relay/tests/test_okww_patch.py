@@ -233,9 +233,12 @@ def test_reverts_on_syntax_error(tmp: Path) -> None:
     """写进去不等于对。语法坏了必须还原，否则整个日常任务起不来。"""
     print("[改坏了要还原]")
     d = _make(tmp)
-    bad = okww_patch._DOMAIN_NEW + "\n   this is not python("     # noqa: SLF001
-    orig_new = okww_patch._DOMAIN_NEW                             # noqa: SLF001
-    okww_patch._DOMAIN_NEW = bad                                  # noqa: SLF001
+    # 补丁拆成子模块后，_apply_domain 读的是 okww_patches.domain 里的那份常量，
+    # 要改就改它本尊；改聚合模块的副本不起作用。
+    from ark_relay.okww_patches import domain as _domain           # noqa: PLC0415
+    bad = _domain._DOMAIN_NEW + "\n   this is not python("        # noqa: SLF001
+    orig_new = _domain._DOMAIN_NEW                                # noqa: SLF001
+    _domain._DOMAIN_NEW = bad                                     # noqa: SLF001
     try:
         before = (d / "DomainTask.py").read_text(encoding="utf-8")
         notes = okww_patch._apply_domain(tmp)                     # noqa: SLF001
@@ -243,7 +246,7 @@ def test_reverts_on_syntax_error(tmp: Path) -> None:
               (d / "DomainTask.py").read_text(encoding="utf-8"), before)
         check("而且说了「已还原」", any("已还原" in n for n in notes), True)
     finally:
-        okww_patch._DOMAIN_NEW = orig_new                         # noqa: SLF001
+        _domain._DOMAIN_NEW = orig_new                         # noqa: SLF001
 
 
 def test_missing_dir_is_quiet(tmp: Path) -> None:
@@ -271,7 +274,7 @@ def main() -> int:
     check("找不到时打印实际读到的名字", "实际读到的是" in wanted, True)
 
     # 护栏原本只认上游和当前，导致我们自己的修复永远推不上去
-    patch_src = (root / "ark_relay" / "okww_patch.py").read_text(encoding="utf-8")
+    patch_src = (root / "ark_relay" / "okww_patches" / "nest.py").read_text(encoding="utf-8")
     check("有历史版本清单", "_NEST_KNOWN_OURS" in patch_src, True)
     check("护栏检查里用上了它",
           "_sha(cur) not in _NEST_KNOWN_OURS" in patch_src, True)

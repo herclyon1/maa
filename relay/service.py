@@ -50,6 +50,8 @@ import win32file  # noqa: E402
 import win32service  # noqa: E402
 import win32serviceutil  # noqa: E402
 
+from ark_relay.config import SERVER_TZ, both_clocks  # noqa: E402
+
 # Degraded path only: how often to re-check AUTO-MAS liveness when the WMI
 # process-start subscription below could not be set up. On the healthy path
 # a start is announced by the kernel and this number never ticks.
@@ -399,64 +401,12 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             raise
 
     def main(self) -> None:
-        import logging
-
-        # The scheduled-task launcher used to set these before starting Python,
-        # and .env never carried them - so a service, which does not go through
-        # that launcher, ran fine but wrote its log nowhere. A service with no
-        # log is a service you cannot debug, which defeats the point of making
-        # the relay unkillable. Set them here, but let .env win if it says
-        # otherwise.
-        os.environ.setdefault("PYTHONUTF8", "1")
-        os.environ.setdefault("PYTHONIOENCODING", "utf-8")
-        os.environ.setdefault("ARK_LOG_FILE", str(HERE / "relay.log"))
-
-        from ark_relay.__main__ import _force_utf8_console, _load_dotenv, _setup_logging
-        _force_utf8_console()
-        # Absolute path: a service starts with an unrelated working directory,
-        # and a silently empty config would disable every push channel.
-        _load_dotenv(HERE / ".env")
-        _setup_logging(verbose=False)
-
-        from ark_relay.config import SERVER_TZ, Config, both_clocks
-        from ark_relay.core import State
-        from ark_relay.engine import Engine
-        from ark_relay.notify import Notifier
-        from ark_relay.transport import LocalSource
-
-        log = logging.getLogger("ark.service")
-        cfg = Config()
-        if problems := cfg.validate():
-            for p in problems:
-                log.error("配置有问题: %s", p)
+        """开机流程。每一步一个函数，顺序就是这里写的顺序。"""
+        booted = _stage_bootstrap()
+        if booted is None:
             return
-
-        notifier = Notifier(cfg)
-        engine = Engine(cfg, LocalSource(cfg), State(cfg.state_dir), notifier)
-        engine.bootstrap()
-        log.info("服务模式启动，监视 %s（变更即处理，兜底 %d 秒）",
-                 cfg.history_dir, cfg.poll_seconds)
-
-        # 每次启动都贴一次 OK-WW 补丁——幂等，在位就一句话都不写。
-        #
-        # 以前只在开机预更新那一段里贴，于是白天改完补丁、部署、服务重启，
-        # 补丁**要等到第二天开机才生效**。2026-08-27 就这么发生了：残像聚落
-        # 「只刷落渊南丘」的修复推上了机器，文件却还是旧的，我以为已经好了。
-        # 「更新必须立即生效」是死命令，部署完就该是最终状态，不能留一个
-        # 「等下次开机」的尾巴。
-        try:
-            # 就地 import：模块级 import 会在服务安装阶段就被求值，
-            # 而 ark_relay 那时还不一定在 sys.path 上。
-            from ark_relay import okww_patch as _okww_patch  # noqa: PLC0415
-
-            okww_at_boot = cfg.okww_dir or (
-                Path(cfg.automas_dir).parent / "okww" if cfg.automas_dir else None)
-            for note in _okww_patch.ensure_patches(okww_at_boot):
-                log.info("启动：%s", note)
-                notifier.send("🩹 OK-WW 补丁", note)
-        except Exception:  # noqa: BLE001 - 贴不上也不能挡住服务启动
-            log.exception("启动时贴 OK-WW 补丁失败，服务照常继续")
-
+        log, cfg, notifier, engine = booted
+        _stage_patch_okww(cfg, notifier, log)
         # New code before anything else uses it. This block was silently lost
         # in a refactor on 2026-08-17 - a range replace swallowed it - and for
         # three commits the machine stopped receiving updates at all while the
@@ -465,614 +415,713 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         # inbox run in the seconds after boot, and on a cold boot there is no
         # DNS yet - so both used to fail on every single boot and give up.
         _wait_for_network(log)
+        if _stage_selfupdate(log):
+            return
+        _stage_announce_update(notifier, log)
+        inbox, collect, deferred = _stage_inbox_and_phone(self, cfg, engine, notifier, log)
+        _stage_preupdate(cfg, notifier, log)
+        _stage_reenable_maaend(cfg, notifier, log)
+        _stage_gameupdate(cfg, notifier, log)
+        _stage_annihilation(engine, notifier, log)
+        _loop(self, cfg, engine, notifier, inbox, collect, deferred, log)
 
-        try:
-            from ark_relay import selfupdate
+def _stage_bootstrap():
+    """开机第一步：环境变量、日志、配置、引擎。配置不可用返回 None。"""
+    import logging
 
-            if changed := selfupdate.check(HERE):
-                # Take effect now, not next boot. The files are on disk but this
-                # process imported the old ones, so the only honest way to run
-                # the new code is to be a new process. Waiting for the next boot
-                # meant a fix pushed in the morning sat unused all day - and a
-                # queued command that needs that fix could not be understood.
-                #
-                # A detached restarter rather than exiting and trusting the SCM's
-                # failure actions: if those are ever unset, exiting would leave
-                # the relay down until tomorrow, which is worse than the problem
-                # being fixed.
-                log.info("代码已更新，重启以立即生效: %s", "、".join(changed))
-                subprocess.Popen(  # noqa: S603
-                    ["cmd", "/c", "timeout /t 3 /nobreak >nul & "
-                                  "net stop ark-relay & net start ark-relay"],
-                    creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP
-                                   | subprocess.DETACHED_PROCESS))
-                return
-        except Exception:  # noqa: BLE001 - never let this stop the relay
-            log.exception("自更新出错，跳过")
+    # The scheduled-task launcher used to set these before starting Python,
+    # and .env never carried them - so a service, which does not go through
+    # that launcher, ran fine but wrote its log nowhere. A service with no
+    # log is a service you cannot debug, which defeats the point of making
+    # the relay unkillable. Set them here, but let .env win if it says
+    # otherwise.
+    os.environ.setdefault("PYTHONUTF8", "1")
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    os.environ.setdefault("ARK_LOG_FILE", str(HERE / "relay.log"))
 
-        # We only reach here on a process that did NOT just apply an update -
-        # which, after a self-restart, is the process running the new code. So
-        # this is the first honest moment to say the update took effect, and
-        # the operator asked to be told the moment it does.
-        try:
-            from ark_relay import selfupdate  # noqa: PLC0415 - see the block above
+    from ark_relay.__main__ import _force_utf8_console, _load_dotenv, _setup_logging
+    _force_utf8_console()
+    # Absolute path: a service starts with an unrelated working directory,
+    # and a silently empty config would disable every push channel.
+    _load_dotenv(HERE / ".env")
+    _setup_logging(verbose=False)
 
-            # An update that was available and did not land must be as loud
-            # as one that did. Otherwise the machine quietly runs old code
-            # while everything upstream assumes the push took effect - the
-            # same trap as an scp that returns 0 without transferring.
-            if fail := selfupdate.take_failure(HERE):
-                files = fail.get("files") or []
-                more = max(0, int(fail.get("count") or 0) - len(files))
-                body = "\n".join([
-                    f"原因：{fail.get('reason') or '未知'}",
-                    f"仓库 v{fail.get('remote') or '?'}，本机仍是 v{fail.get('local') or '?'}",
-                    "没更新的文件：" + "、".join(files) + (f" 等 {more} 个" if more else ""),
-                    "",
-                    "本机现在跑的是旧代码。下次开机会自动重试；",
-                    "要立刻生效请在控制端执行 scripts/mac/deploy-relay.sh。",
-                ])
-                if errors := notifier.send("⚠️ 中继自更新没成功", body, alert=True):
-                    log.error("更新失败通知没发出去: %s", "；".join(errors))
-                else:
-                    log.info("已推送更新失败通知")
+    from ark_relay.config import Config
+    from ark_relay.core import State
+    from ark_relay.engine import Engine
+    from ark_relay.notify import Notifier
+    from ark_relay.transport import LocalSource
 
-            if note := selfupdate.pending_announcement(HERE):
-                files = note.get("files") or []
-                title = (f"🔄 中继已更新（{len(files)} 个文件）" if files
-                         else "🔄 中继已更新")
-                applied = note.get("at") or ""
-                try:
-                    when = both_clocks(datetime.fromisoformat(applied))
-                except ValueError:
-                    when = applied
-                lines = [f"{when} 生效" if when else "刚刚生效"]
-                prev = note.get("previous")
-                lines.append(f"版本 v{prev} → v{note.get('version') or '?'}"
-                             if prev else f"版本 v{note.get('version') or '?'}")
-                # 人话优先。用户 2026-08-26：「更新内容用人话写」——
-                # 一串文件名对着看不懂代码的人等于什么都没说。RELEASE-NOTES.md
-                # 由部署时一起推上来，写的是「修好了你遇到过的哪个毛病」。
-                # 文件名退居其次，只在没有说明文件时才列出来兜底。
-                notes = ""
-                try:
-                    nf = HERE / "RELEASE-NOTES.md"
-                    if nf.exists():
-                        notes = nf.read_text(encoding="utf-8").strip()
-                except OSError:
-                    notes = ""
-                if notes:
-                    lines += ["", notes]
-                else:
-                    # The file list only exists when the process that applied the
-                    # update was already running this code; the first update after
-                    # this shipped has no list, and saying so beats an empty line.
-                    lines.append("改动文件：" + "、".join(files) if files
-                                 else "（改动清单由上一版代码写入，本次没有）")
-                lines += ["", "更新在开机后、队列开跑前落地，本轮直接使用新代码。"]
-                body = "\n".join(lines)
-                if errors := notifier.send(title, body):
-                    log.error("更新通知没发出去: %s", "；".join(errors))
-                else:
-                    log.info("已推送更新通知：%d 个文件", len(files))
-        except Exception:  # noqa: BLE001 - a receipt must never break the relay
-            log.exception("推送更新通知出错，跳过")
+    log = logging.getLogger("ark.service")
+    cfg = Config()
+    if problems := cfg.validate():
+        for p in problems:
+            log.error("配置有问题: %s", p)
+        return
 
-        from ark_relay.inbox import Inbox
+    notifier = Notifier(cfg)
+    engine = Engine(cfg, LocalSource(cfg), State(cfg.state_dir), notifier)
+    engine.bootstrap()
+    log.info("服务模式启动，监视 %s（变更即处理，兜底 %d 秒）",
+             cfg.history_dir, cfg.poll_seconds)
+    return log, cfg, notifier, engine
 
-        inbox = Inbox(cfg.state_dir, cfg.inbox_url,
-                      cfg.maaend_dir or _maaend_dir(cfg), cfg.automas_dir)
 
-        # A config command that arrives while a queue is running waits here
-        # until every script has stopped, then lands.
-        deferred_inbox = [False]
+def _stage_patch_okww(cfg, notifier, log) -> None:
+    """每次启动贴一次 OK-WW 补丁（幂等）。"""
+    # 每次启动都贴一次 OK-WW 补丁——幂等，在位就一句话都不写。
+    #
+    # 以前只在开机预更新那一段里贴，于是白天改完补丁、部署、服务重启，
+    # 补丁**要等到第二天开机才生效**。2026-08-27 就这么发生了：残像聚落
+    # 「只刷落渊南丘」的修复推上了机器，文件却还是旧的，我以为已经好了。
+    # 「更新必须立即生效」是死命令，部署完就该是最终状态，不能留一个
+    # 「等下次开机」的尾巴。
+    try:
+        # 就地 import：模块级 import 会在服务安装阶段就被求值，
+        # 而 ark_relay 那时还不一定在 sys.path 上。
+        from ark_relay import okww_patch as _okww_patch  # noqa: PLC0415
 
-        def collect(reason: str) -> None:
-            """Check for queued changes and push whatever landed.
+        okww_at_boot = cfg.okww_dir or (
+            Path(cfg.automas_dir).parent / "okww" if cfg.automas_dir else None)
+        for note in _okww_patch.ensure_patches(okww_at_boot):
+            log.info("启动：%s", note)
+            notifier.send("🩹 OK-WW 补丁", note)
+    except Exception:  # noqa: BLE001 - 贴不上也不能挡住服务启动
+        log.exception("启动时贴 OK-WW 补丁失败，服务照常继续")
 
-            改配置必须避开脚本运行期。AUTO-MAS 在跑的时候会用它内存里的那份
-            覆写 ScriptConfig.json，此时写进去的值会被静静冲掉——2026-08-20
-            实测两次：set_wait_time 120 被冲回 60，剿灭开关被冲回打开，于是
-            每轮又白跑一次剿灭。engine.scripts_running() 本来就是为这件事
-            准备的守卫，这里补上调用。
-            """
-            if engine.scripts_running():
-                if not deferred_inbox[0]:
-                    log.info("待办检查（%s）推迟：脚本正在运行，"
-                             "此时改配置会被 AUTO-MAS 冲掉", reason)
-                deferred_inbox[0] = True
-                return
-            deferred_inbox[0] = False
-            try:
-                version, messages = inbox.poll()
-            except Exception:  # noqa: BLE001 - never let this stop the relay
-                log.exception("待办检查出错，跳过")
-                return
-            if messages:
-                for m in messages:
-                    log.info("待办: %s", m)
-                notifier.send(messages[0], "\n".join(messages[1:]).strip())
+
+def _stage_selfupdate(log) -> bool:
+    """拉新代码；真更新了就发起重启并返回 True，调用方立刻退出。"""
+    try:
+        from ark_relay import selfupdate
+
+        if changed := selfupdate.check(HERE):
+            # Take effect now, not next boot. The files are on disk but this
+            # process imported the old ones, so the only honest way to run
+            # the new code is to be a new process. Waiting for the next boot
+            # meant a fix pushed in the morning sat unused all day - and a
+            # queued command that needs that fix could not be understood.
+            #
+            # A detached restarter rather than exiting and trusting the SCM's
+            # failure actions: if those are ever unset, exiting would leave
+            # the relay down until tomorrow, which is worse than the problem
+            # being fixed.
+            log.info("代码已更新，重启以立即生效: %s", "、".join(changed))
+            subprocess.Popen(  # noqa: S603
+                ["cmd", "/c", "timeout /t 3 /nobreak >nul & "
+                              "net stop ark-relay & net start ark-relay"],
+                creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP
+                               | subprocess.DETACHED_PROCESS))
+            return
+    except Exception:  # noqa: BLE001 - never let this stop the relay
+        log.exception("自更新出错，跳过")
+    return False
+
+
+def _stage_announce_update(notifier, log) -> None:
+    """新代码起来之后的第一件事：把「更新失败 / 已更新」播出去。"""
+    # We only reach here on a process that did NOT just apply an update -
+    # which, after a self-restart, is the process running the new code. So
+    # this is the first honest moment to say the update took effect, and
+    # the operator asked to be told the moment it does.
+    try:
+        from ark_relay import selfupdate  # noqa: PLC0415 - see the block above
+
+        # An update that was available and did not land must be as loud
+        # as one that did. Otherwise the machine quietly runs old code
+        # while everything upstream assumes the push took effect - the
+        # same trap as an scp that returns 0 without transferring.
+        if fail := selfupdate.take_failure(HERE):
+            files = fail.get("files") or []
+            more = max(0, int(fail.get("count") or 0) - len(files))
+            body = "\n".join([
+                f"原因：{fail.get('reason') or '未知'}",
+                f"仓库 v{fail.get('remote') or '?'}，本机仍是 v{fail.get('local') or '?'}",
+                "没更新的文件：" + "、".join(files) + (f" 等 {more} 个" if more else ""),
+                "",
+                "本机现在跑的是旧代码。下次开机会自动重试；",
+                "要立刻生效请在控制端执行 scripts/mac/deploy-relay.sh。",
+            ])
+            if errors := notifier.send("⚠️ 中继自更新没成功", body, alert=True):
+                log.error("更新失败通知没发出去: %s", "；".join(errors))
             else:
-                log.debug("待办检查（%s）：无新配置（当前 v%s）", reason, version)
+                log.info("已推送更新失败通知")
 
-        # Once, at startup. The machine boots for each queue, so a change
-        # pushed while it is off - which is nearly always - lands before that
-        # day's run. Re-checking on a timer was added and removed again: it
-        # bought nothing the boot check did not already cover.
-        # ---------- 手机端 ----------
-        # 用户 2026-08-31 定的形状：开机必取一次指令、必上报一次状态；
-        # 关机前必上报；手机按刷新能实时拿到状态（仅机器开着时）；
-        # 在线/离线不许靠轮询。做法见 phone.py 的模块说明。
-        from ark_relay.commands import apply_command
-        from ark_relay.phone import Mailbox
-
-        box = Mailbox(cfg.phone_topic, cfg.phone_pin, cfg.state_dir)
-        self._mailbox = box          # SvcStop 要用它掐断长连接
-
-        def push_state(why: str) -> None:
-            if not box.enabled:
-                return
+        if note := selfupdate.pending_announcement(HERE):
+            files = note.get("files") or []
+            title = (f"🔄 中继已更新（{len(files)} 个文件）" if files
+                     else "🔄 中继已更新")
+            applied = note.get("at") or ""
             try:
-                from ark_relay.phone import state_payload
-                box.publish(state_payload(cfg, cfg.state_dir))
-                log.info("📱 已上报状态到手机（%s）", why)
-            except Exception:  # noqa: BLE001 - 上报失败不许拖垮中继
-                log.warning("状态没能上报到手机（%s）", why, exc_info=True)
+                when = both_clocks(datetime.fromisoformat(applied))
+            except ValueError:
+                when = applied
+            lines = [f"{when} 生效" if when else "刚刚生效"]
+            prev = note.get("previous")
+            lines.append(f"版本 v{prev} → v{note.get('version') or '?'}"
+                         if prev else f"版本 v{note.get('version') or '?'}")
+            # 人话优先。用户 2026-08-26：「更新内容用人话写」——
+            # 一串文件名对着看不懂代码的人等于什么都没说。RELEASE-NOTES.md
+            # 由部署时一起推上来，写的是「修好了你遇到过的哪个毛病」。
+            # 文件名退居其次，只在没有说明文件时才列出来兜底。
+            notes = ""
+            try:
+                nf = HERE / "RELEASE-NOTES.md"
+                if nf.exists():
+                    notes = nf.read_text(encoding="utf-8").strip()
+            except OSError:
+                notes = ""
+            if notes:
+                lines += ["", notes]
+            else:
+                # The file list only exists when the process that applied the
+                # update was already running this code; the first update after
+                # this shipped has no list, and saying so beats an empty line.
+                lines.append("改动文件：" + "、".join(files) if files
+                             else "（改动清单由上一版代码写入，本次没有）")
+            lines += ["", "更新在开机后、队列开跑前落地，本轮直接使用新代码。"]
+            body = "\n".join(lines)
+            if errors := notifier.send(title, body):
+                log.error("更新通知没发出去: %s", "；".join(errors))
+            else:
+                log.info("已推送更新通知：%d 个文件", len(files))
+    except Exception:  # noqa: BLE001 - a receipt must never break the relay
+        log.exception("推送更新通知出错，跳过")
 
-        from ark_relay.phone import Heartbeat  # noqa: PLC0415
-        hb = Heartbeat(box.topic, cfg.state_dir)
 
-        def run_phone_cmd(body: dict) -> None:
-            """手机上按的一条。刷新只回状态；其余是真改配置，改完立刻通知。"""
-            action = str((body or {}).get("action") or "")
-            if action == "refresh":
-                ensure_automas()          # 读配置前先保证它活着
-                push_state("手机请求")
-                return
-            if action == "watch":
-                hb.watch()          # 页面打开了：这 10 分钟每 30 秒跳一次
-                return
-            if action == "estop":
-                # 红按钮：恰恰是脚本在跑的时候才按，不能被下面那道门拦住
-                from ark_relay import commands as _cmd  # noqa: PLC0415
-                ok, msg = _cmd.estop()
-                log.warning("🛑 红按钮：%s", msg)
-                notifier.send("🛑 已停一切", msg)
-                push_state("红按钮")
-                return
-            if engine.scripts_running():
-                # 脚本在跑的时候改配置会被 AUTO-MAS 用内存里那份冲掉。
-                notifier.send("📱 手机指令暂缓",
-                              f"「{action}」现在不能执行：脚本正在运行，"
-                              "此时改配置会被冲掉。等这一趟跑完再按一次。")
-                return
-            ok, msg = apply_command(body)
-            log.info("📱 手机指令 %s：%s", action, msg)
-            # 用户 2026-08-31 要的：按下保存之后要有通知说改动成功。
-            notifier.send("📱 配置已修改" if ok else "📱 配置没改成", msg)
-            push_state("改完配置")
+def _stage_inbox_and_phone(svc, cfg, engine, notifier, log):
+    """待办信箱 + 手机通道。返回 (inbox, collect, deferred_inbox)，主循环要用。"""
+    from ark_relay.inbox import Inbox
 
-        ensure_automas()
-        push_state("开机")
-        if box.enabled:
-            for body in box.fetch():
-                run_phone_cmd(body)
-            threading.Thread(
-                target=lambda: box.listen(
-                    run_phone_cmd,
-                    lambda: win32event.WaitForSingleObject(self.stop_event, 0)
-                    == win32event.WAIT_OBJECT_0),
-                name="phone-mailbox", daemon=True).start()
-            # ToDesk 式在线状态：页面说「我在看」才跳，停服务时发 bye。
-            # 页面靠它自动翻开机/关机，不用人手动刷新（用户 2026-09-02 要的）。
-            threading.Thread(
-                target=lambda: hb.loop(
-                    lambda: win32event.WaitForSingleObject(self.stop_event, 0)
-                    == win32event.WAIT_OBJECT_0),
-                name="phone-heartbeat", daemon=True).start()
+    inbox = Inbox(cfg.state_dir, cfg.inbox_url,
+                  cfg.maaend_dir or _maaend_dir(cfg), cfg.automas_dir)
 
-        # 关机前最后拉一次待办 + 上报一次状态：人可能刚在手机上按了
-        # 「今晚别关机」，而且手机上那份状态得停在机器关机那一刻的样子。
-        def before_shutdown() -> None:
-            collect("关机前")
-            push_state("关机前")
+    # A config command that arrives while a queue is running waits here
+    # until every script has stopped, then lands.
+    deferred_inbox = [False]
 
-        engine._before_shutdown = before_shutdown  # noqa: SLF001
-        collect("启动")
+    def collect(reason: str) -> None:
+        """Check for queued changes and push whatever landed.
 
-        # MaaEnd updates itself at startup and restarts its own process when it
-        # finds a new build. AUTO-MAS kills and relaunches it before every
-        # round, so every round lands on that check, and the restart orphans
-        # the log monitor AUTO-MAS just attached - every task in the round is
-        # reported failed seconds later. Measured 2026-08-22; the channel is
-        # `beta`, which ships most days, so most days opened with a wasted
-        # attempt and a failure alert.
-        #
-        # Auto-update stays on - being current is the point of it. The update
-        # is moved instead: done here, in the gap between boot and the first
-        # queue, where a restart costs nothing. By the time the queue starts,
-        # the check answers "有更新=false" and the process AUTO-MAS launches is
-        # the one that stays.
+        改配置必须避开脚本运行期。AUTO-MAS 在跑的时候会用它内存里的那份
+        覆写 ScriptConfig.json，此时写进去的值会被静静冲掉——2026-08-20
+        实测两次：set_wait_time 120 被冲回 60，剿灭开关被冲回打开，于是
+        每轮又白跑一次剿灭。engine.scripts_running() 本来就是为这件事
+        准备的守卫，这里补上调用。
+        """
+        if engine.scripts_running():
+            if not deferred_inbox[0]:
+                log.info("待办检查（%s）推迟：脚本正在运行，"
+                         "此时改配置会被 AUTO-MAS 冲掉", reason)
+            deferred_inbox[0] = True
+            return
+        deferred_inbox[0] = False
         try:
-            # okww_patch 2026-08-26 之前一直漏在这行外面：下面 549 行用它，
-            # 一跑到就 NameError，也就是说**补丁重贴从来没有真正执行过**。
-            # tests/test_undefined_names.py 就是为了这类错加的。
-            from ark_relay import okww_patch, plan, preupdate  # noqa: PLC0415
+            version, messages = inbox.poll()
+        except Exception:  # noqa: BLE001 - never let this stop the relay
+            log.exception("待办检查出错，跳过")
+            return
+        if messages:
+            for m in messages:
+                log.info("待办: %s", m)
+            notifier.send(messages[0], "\n".join(messages[1:]).strip())
+        else:
+            log.debug("待办检查（%s）：无新配置（当前 v%s）", reason, version)
 
-            # 一天跑一遍就够：每次服务重启都重跑，会把 MAA/MaaEnd/OK-WW
-            # 挨个再拉起来查一遍更新。2026-08-31 我一上午部署三次，
-            # 它跑了三次，第三次 MAA 没在 180 秒内答话，报了「没能确认」。
-            _pre_now = datetime.now(tz=SERVER_TZ)
-            if (preupdate.wanted_today(cfg.automas_dir)
-                    and preupdate.should_run(cfg.state_dir, _pre_now)):
-                ensure_automas()          # 09-03 01:08：AUTO-MAS 被关着，预更新问了 180 秒
-                maaend = cfg.maaend_dir or _maaend_dir(cfg)
-                # Both are pushed, per the standing order: when an auto-update
-                # takes effect, say so at once. An earlier version of this block
-                # suppressed the MaaEnd notice on the grounds that its beta
-                # channel "ships most days" - that was never measured, and the
-                # log shows the MaaEnd pre-update had in fact never once run to
-                # a verdict. Measured cadence on MAA is one update per ~6 days,
-                # which is not a channel anyone learns to tune out. If either
-                # ever does become daily noise, coalesce the two into one
-                # message rather than going silent.
-                maa = plan.script_dir(cfg.automas_dir, "MAA")
-                # Anything that could not be *checked* lands here. A pre-update
-                # that cannot tell whether an update exists must say so: on
-                # 2026-08-25 OK-WW was launched into session 0, its updater
-                # never ran, and the unchanged version file was reported as
-                # 无需更新 while v3.6.5 had been out for fourteen hours.
-                problems: list[str] = []
-                # MAA first: its update is applied by a delegated process at
-                # startup, so getting it out of the way is quick and the
-                # launch of MaaEnd afterwards is unaffected either way.
-                if note := preupdate.run_maa(maa, problems=problems):
-                    log.info("预更新：%s", note)
-                    notifier.send("🆕 预更新", note)
-                if updated := preupdate.run(maaend, problems=problems):
-                    log.info("预更新：MaaEnd 已更新：%s", updated)
-                    notifier.send("🆕 预更新",
-                                  f"MaaEnd 已更新：{updated}")
-                try:
-                    from ark_relay import gameupdate as _gu  # noqa: PLC0415
-                    if back := _gu.maaend_reenable_if_updated(cfg):
-                        log.info("预更新：%s", back)
-                        notifier.send("🔓 终末地日常已开回", back)
-                except Exception:  # noqa: BLE001
-                    log.exception("开回 MaaEnd 任务出错")
-                # AUTO-MAS is asked, not launched - it is already running.
-                if note := preupdate.run_automas(cfg.automas_dir,
-                                                 problems=problems):
-                    notifier.send("🆕 预更新", note)
-                # OK-WW last: it is the newest of the four and the only one whose
-                # update comes from a CNB git mirror rather than MirrorChyan.
-                okww = cfg.okww_dir or (Path(cfg.automas_dir).parent / "okww"
-                                        if cfg.automas_dir else None)
-                # OK-WW 的自动更新会整段覆盖 src，把本地补丁抹掉
-                # （2026-08-26 实测：v3.6.5 → v3.6.6-beta.1 之后两个补丁全没了，
-                #  连备份一起）。所以每轮开机都贴一次——幂等，在位就什么都不做。
-                # 放在 run_okww 之后：先让它更新完，再往新代码上贴。
-                if note := preupdate.run_okww(okww, problems=problems):
-                    log.info("预更新：%s", note)
-                    notifier.send("🆕 预更新", note)
-                for note in okww_patch.ensure_patches(okww):
-                    log.info("预更新：%s", note)
-                    notifier.send("🩹 OK-WW 补丁", note)
-                preupdate.mark_run(cfg.state_dir, _pre_now,
-                                   clean=not problems)
-                if problems:
-                    # An alert, not a routine note: a silent pre-update leaves
-                    # the machine running a version nobody chose.
-                    body = "\n".join(f"· {p}" for p in problems)
-                    log.error("预更新有 %d 项没能确认：\n%s", len(problems), body)
-                    notifier.send(
-                        f"⚠️ 预更新没能确认（{len(problems)} 项）",
-                        body + "\n\n这不是「无需更新」——是这一轮没能确认有没有更新。"
-                               "机器可能仍在跑旧版本。",
-                        alert=True)
-        except Exception:  # noqa: BLE001 - a pre-update must never stop the relay
-            log.exception("预更新出错，跳过（本轮照旧）")
+    # Once, at startup. The machine boots for each queue, so a change
+    # pushed while it is off - which is nearly always - lands before that
+    # day's run. Re-checking on a timer was added and removed again: it
+    # bought nothing the boot check did not already cover.
+    # ---------- 手机端 ----------
+    # 用户 2026-08-31 定的形状：开机必取一次指令、必上报一次状态；
+    # 关机前必上报；手机按刷新能实时拿到状态（仅机器开着时）；
+    # 在线/离线不许靠轮询。做法见 phone.py 的模块说明。
+    from ark_relay.commands import apply_command
+    from ark_relay.phone import Mailbox
 
-        # MaaEnd 换了版本就把 09-02 关掉的四项开回来。放在预更新块外面：09-03 早上
-        # 预更新因为凌晨已经跑过而跳过，这一步跟着没跑，四项一直关着。
+    box = Mailbox(cfg.phone_topic, cfg.phone_pin, cfg.state_dir)
+    svc._mailbox = box          # SvcStop 要用它掐断长连接
+
+    def push_state(why: str) -> None:
+        if not box.enabled:
+            return
         try:
-            from ark_relay import gameupdate as _gu2  # noqa: PLC0415
-            for back in (_gu2.maaend_reenable_if_updated(cfg), _gu2.maaend_reenable_next_boot(cfg),
-                         _gu2.maaend_reenable_spmed_if_updated(cfg)):
-                if back:
-                    log.info("开机：%s", back)
+            from ark_relay.phone import state_payload
+            box.publish(state_payload(cfg, cfg.state_dir))
+            log.info("📱 已上报状态到手机（%s）", why)
+        except Exception:  # noqa: BLE001 - 上报失败不许拖垮中继
+            log.warning("状态没能上报到手机（%s）", why, exc_info=True)
+
+    from ark_relay.phone import Heartbeat  # noqa: PLC0415
+    hb = Heartbeat(box.topic, cfg.state_dir)
+
+    def run_phone_cmd(body: dict) -> None:
+        """手机上按的一条。刷新只回状态；其余是真改配置，改完立刻通知。"""
+        action = str((body or {}).get("action") or "")
+        if action == "refresh":
+            ensure_automas()          # 读配置前先保证它活着
+            push_state("手机请求")
+            return
+        if action == "watch":
+            hb.watch()          # 页面打开了：这 10 分钟每 30 秒跳一次
+            return
+        if action == "estop":
+            # 红按钮：恰恰是脚本在跑的时候才按，不能被下面那道门拦住
+            from ark_relay import commands as _cmd  # noqa: PLC0415
+            ok, msg = _cmd.estop()
+            log.warning("🛑 红按钮：%s", msg)
+            notifier.send("🛑 已停一切", msg)
+            push_state("红按钮")
+            return
+        if engine.scripts_running():
+            # 脚本在跑的时候改配置会被 AUTO-MAS 用内存里那份冲掉。
+            notifier.send("📱 手机指令暂缓",
+                          f"「{action}」现在不能执行：脚本正在运行，"
+                          "此时改配置会被冲掉。等这一趟跑完再按一次。")
+            return
+        ok, msg = apply_command(body)
+        log.info("📱 手机指令 %s：%s", action, msg)
+        # 用户 2026-08-31 要的：按下保存之后要有通知说改动成功。
+        notifier.send("📱 配置已修改" if ok else "📱 配置没改成", msg)
+        push_state("改完配置")
+
+    ensure_automas()
+    push_state("开机")
+    if box.enabled:
+        for body in box.fetch():
+            run_phone_cmd(body)
+        threading.Thread(
+            target=lambda: box.listen(
+                run_phone_cmd,
+                lambda: win32event.WaitForSingleObject(svc.stop_event, 0)
+                == win32event.WAIT_OBJECT_0),
+            name="phone-mailbox", daemon=True).start()
+        # ToDesk 式在线状态：页面说「我在看」才跳，停服务时发 bye。
+        # 页面靠它自动翻开机/关机，不用人手动刷新（用户 2026-09-02 要的）。
+        threading.Thread(
+            target=lambda: hb.loop(
+                lambda: win32event.WaitForSingleObject(svc.stop_event, 0)
+                == win32event.WAIT_OBJECT_0),
+            name="phone-heartbeat", daemon=True).start()
+
+    # 关机前最后拉一次待办 + 上报一次状态：人可能刚在手机上按了
+    # 「今晚别关机」，而且手机上那份状态得停在机器关机那一刻的样子。
+    def before_shutdown() -> None:
+        collect("关机前")
+        push_state("关机前")
+
+    engine._before_shutdown = before_shutdown  # noqa: SLF001
+    collect("启动")
+    return inbox, collect, deferred_inbox
+
+
+def _stage_preupdate(cfg, notifier, log) -> None:
+    """开机窗口里把四个程序的更新做掉（一天一次）。"""
+    # MaaEnd updates itself at startup and restarts its own process when it
+    # finds a new build. AUTO-MAS kills and relaunches it before every
+    # round, so every round lands on that check, and the restart orphans
+    # the log monitor AUTO-MAS just attached - every task in the round is
+    # reported failed seconds later. Measured 2026-08-22; the channel is
+    # `beta`, which ships most days, so most days opened with a wasted
+    # attempt and a failure alert.
+    #
+    # Auto-update stays on - being current is the point of it. The update
+    # is moved instead: done here, in the gap between boot and the first
+    # queue, where a restart costs nothing. By the time the queue starts,
+    # the check answers "有更新=false" and the process AUTO-MAS launches is
+    # the one that stays.
+    try:
+        # okww_patch 2026-08-26 之前一直漏在这行外面：下面 549 行用它，
+        # 一跑到就 NameError，也就是说**补丁重贴从来没有真正执行过**。
+        # tests/test_undefined_names.py 就是为了这类错加的。
+        from ark_relay import okww_patch, plan, preupdate  # noqa: PLC0415
+
+        # 一天跑一遍就够：每次服务重启都重跑，会把 MAA/MaaEnd/OK-WW
+        # 挨个再拉起来查一遍更新。2026-08-31 我一上午部署三次，
+        # 它跑了三次，第三次 MAA 没在 180 秒内答话，报了「没能确认」。
+        _pre_now = datetime.now(tz=SERVER_TZ)
+        if (preupdate.wanted_today(cfg.automas_dir)
+                and preupdate.should_run(cfg.state_dir, _pre_now)):
+            ensure_automas()          # 09-03 01:08：AUTO-MAS 被关着，预更新问了 180 秒
+            maaend = cfg.maaend_dir or _maaend_dir(cfg)
+            # Both are pushed, per the standing order: when an auto-update
+            # takes effect, say so at once. An earlier version of this block
+            # suppressed the MaaEnd notice on the grounds that its beta
+            # channel "ships most days" - that was never measured, and the
+            # log shows the MaaEnd pre-update had in fact never once run to
+            # a verdict. Measured cadence on MAA is one update per ~6 days,
+            # which is not a channel anyone learns to tune out. If either
+            # ever does become daily noise, coalesce the two into one
+            # message rather than going silent.
+            maa = plan.script_dir(cfg.automas_dir, "MAA")
+            # Anything that could not be *checked* lands here. A pre-update
+            # that cannot tell whether an update exists must say so: on
+            # 2026-08-25 OK-WW was launched into session 0, its updater
+            # never ran, and the unchanged version file was reported as
+            # 无需更新 while v3.6.5 had been out for fourteen hours.
+            problems: list[str] = []
+            # MAA first: its update is applied by a delegated process at
+            # startup, so getting it out of the way is quick and the
+            # launch of MaaEnd afterwards is unaffected either way.
+            if note := preupdate.run_maa(maa, problems=problems):
+                log.info("预更新：%s", note)
+                notifier.send("🆕 预更新", note)
+            if updated := preupdate.run(maaend, problems=problems):
+                log.info("预更新：MaaEnd 已更新：%s", updated)
+                notifier.send("🆕 预更新",
+                              f"MaaEnd 已更新：{updated}")
+            try:
+                from ark_relay import gameupdate as _gu  # noqa: PLC0415
+                if back := _gu.maaend_reenable_if_updated(cfg):
+                    log.info("预更新：%s", back)
                     notifier.send("🔓 终末地日常已开回", back)
-        except Exception:  # noqa: BLE001
-            log.exception("开回 MaaEnd 任务出错")
+            except Exception:  # noqa: BLE001
+                log.exception("开回 MaaEnd 任务出错")
+            # AUTO-MAS is asked, not launched - it is already running.
+            if note := preupdate.run_automas(cfg.automas_dir,
+                                             problems=problems):
+                notifier.send("🆕 预更新", note)
+            # OK-WW last: it is the newest of the four and the only one whose
+            # update comes from a CNB git mirror rather than MirrorChyan.
+            okww = cfg.okww_dir or (Path(cfg.automas_dir).parent / "okww"
+                                    if cfg.automas_dir else None)
+            # OK-WW 的自动更新会整段覆盖 src，把本地补丁抹掉
+            # （2026-08-26 实测：v3.6.5 → v3.6.6-beta.1 之后两个补丁全没了，
+            #  连备份一起）。所以每轮开机都贴一次——幂等，在位就什么都不做。
+            # 放在 run_okww 之后：先让它更新完，再往新代码上贴。
+            if note := preupdate.run_okww(okww, problems=problems):
+                log.info("预更新：%s", note)
+                notifier.send("🆕 预更新", note)
+            for note in okww_patch.ensure_patches(okww):
+                log.info("预更新：%s", note)
+                notifier.send("🩹 OK-WW 补丁", note)
+            preupdate.mark_run(cfg.state_dir, _pre_now,
+                               clean=not problems)
+            if problems:
+                # An alert, not a routine note: a silent pre-update leaves
+                # the machine running a version nobody chose.
+                body = "\n".join(f"· {p}" for p in problems)
+                log.error("预更新有 %d 项没能确认：\n%s", len(problems), body)
+                notifier.send(
+                    f"⚠️ 预更新没能确认（{len(problems)} 项）",
+                    body + "\n\n这不是「无需更新」——是这一轮没能确认有没有更新。"
+                           "机器可能仍在跑旧版本。",
+                    alert=True)
+    except Exception:  # noqa: BLE001 - a pre-update must never stop the relay
+        log.exception("预更新出错，跳过（本轮照旧）")
 
-        # 大版本更新日把游戏客户端也更新掉（用户 2026-09-02 要的）。
-        # 每次开机一遍：早班窗口短，只够方舟装包 / 给启动器点一下更新；
-        # 晚班只跑 MAA，终末地和鸣潮的大包放这里下。预算 = 离下一趟队列还有多久。
-        try:
-            from ark_relay import gameupdate  # noqa: PLC0415
-            _gu_now = datetime.now(tz=SERVER_TZ)
-            _boot_id = _boot_stamp(_gu_now)
-            if gameupdate.should_run(cfg.state_dir, _gu_now, boot_id=_boot_id):
-                budget = _seconds_to_next_queue(cfg.automas_dir, _gu_now)
-                log.info("游戏更新：开始检查三家客户端（预算 %.0f 秒）", budget)
-                notes, gproblems = gameupdate.boot_check(cfg, budget_s=budget, now=_gu_now)
-                for n in notes:
-                    log.info("游戏更新：%s", n)
-                    notifier.send("🆕 游戏更新", n)
-                if gproblems:
-                    body = "\n".join(f"· {x}" for x in gproblems)
-                    log.warning("游戏更新有 %d 项没能确认：\n%s", len(gproblems), body)
-                    notifier.send(f"⚠️ 游戏更新没能确认（{len(gproblems)} 项）", body)
-                gameupdate.mark_run(cfg.state_dir, _gu_now, boot_id=_boot_id)
-        except Exception:  # noqa: BLE001 - 更新客户端出错不能拖垮中继
-            log.exception("游戏更新出错，跳过（本轮照旧）")
 
-        # A new game-week means last week's 剿灭 no longer counts.
-        try:
-            if msg := engine._annihilation.maybe_reopen():  # noqa: SLF001
-                notifier.send("🗓️ 剿灭", msg)
-        except Exception:  # noqa: BLE001
-            log.exception("剿灭周期检查出错，跳过")
+def _stage_reenable_maaend(cfg, notifier, log) -> None:
+    """MaaEnd 换版本后把临时关掉的任务开回来。"""
+    # MaaEnd 换了版本就把 09-02 关掉的四项开回来。放在预更新块外面：09-03 早上
+    # 预更新因为凌晨已经跑过而跳过，这一步跟着没跑，四项一直关着。
+    try:
+        from ark_relay import gameupdate as _gu2  # noqa: PLC0415
+        for back in (_gu2.maaend_reenable_if_updated(cfg), _gu2.maaend_reenable_next_boot(cfg),
+                     _gu2.maaend_reenable_spmed_if_updated(cfg)):
+            if back:
+                log.info("开机：%s", back)
+                notifier.send("🔓 终末地日常已开回", back)
+    except Exception:  # noqa: BLE001
+        log.exception("开回 MaaEnd 任务出错")
 
-        # Assert the annihilation switch once at startup rather than leaving it
-        # to tick(): ticks are driven by file events and alarms, and neither has
-        # fired yet on a machine that just booted. By the time the first tick
-        # arrives it is usually the queue's own start time, so that round would
-        # still pay for the pointless annihilation pass.
-        engine._enforce_annihilation()  # noqa: SLF001
 
-        # Wake on the directory changing, not on a timer. AUTO-MAS writes a
-        # run record the moment a script finishes, and Windows will say so;
-        # asking every thirty seconds instead was just the lazy way to find out.
-        #
-        # The timeout stays, because some of what tick() does is genuinely
-        # time-based - the report cutoff, "a queue was due and produced
-        # nothing", the shutdown window - and none of those are announced by a
-        # file appearing. So: whichever comes first, a change or the interval.
+def _stage_gameupdate(cfg, notifier, log) -> None:
+    """大版本更新日：登记要更新的游戏客户端。"""
+    # 大版本更新日把游戏客户端也更新掉（用户 2026-09-02 要的）。
+    # 每次开机一遍：早班窗口短，只够方舟装包 / 给启动器点一下更新；
+    # 晚班只跑 MAA，终末地和鸣潮的大包放这里下。预算 = 离下一趟队列还有多久。
+    try:
+        from ark_relay import gameupdate  # noqa: PLC0415
+        _gu_now = datetime.now(tz=SERVER_TZ)
+        _boot_id = _boot_stamp(_gu_now)
+        if gameupdate.should_run(cfg.state_dir, _gu_now, boot_id=_boot_id):
+            budget = _seconds_to_next_queue(cfg.automas_dir, _gu_now)
+            log.info("游戏更新：开始检查三家客户端（预算 %.0f 秒）", budget)
+            notes, gproblems = gameupdate.boot_check(cfg, budget_s=budget, now=_gu_now)
+            for n in notes:
+                log.info("游戏更新：%s", n)
+                notifier.send("🆕 游戏更新", n)
+            if gproblems:
+                body = "\n".join(f"· {x}" for x in gproblems)
+                log.warning("游戏更新有 %d 项没能确认：\n%s", len(gproblems), body)
+                notifier.send(f"⚠️ 游戏更新没能确认（{len(gproblems)} 项）", body)
+            gameupdate.mark_run(cfg.state_dir, _gu_now, boot_id=_boot_id)
+    except Exception:  # noqa: BLE001 - 更新客户端出错不能拖垮中继
+        log.exception("游戏更新出错，跳过（本轮照旧）")
+
+
+def _stage_annihilation(engine, notifier, log) -> None:
+    """新的一周恢复剿灭，并在开机时校正一次开关。"""
+    # A new game-week means last week's 剿灭 no longer counts.
+    try:
+        if msg := engine._annihilation.maybe_reopen():  # noqa: SLF001
+            notifier.send("🗓️ 剿灭", msg)
+    except Exception:  # noqa: BLE001
+        log.exception("剿灭周期检查出错，跳过")
+
+    # Assert the annihilation switch once at startup rather than leaving it
+    # to tick(): ticks are driven by file events and alarms, and neither has
+    # fired yet on a machine that just booted. By the time the first tick
+    # arrives it is usually the queue's own start time, so that round would
+    # still pay for the pointless annihilation pass.
+    engine._enforce_annihilation()  # noqa: SLF001
+
+
+def _loop(svc, cfg, engine, notifier, inbox, collect, deferred_inbox, log) -> None:
+    """主循环：等事件或闹钟，跑 tick，拉起 AUTO-MAS。"""
+    # Wake on the directory changing, not on a timer. AUTO-MAS writes a
+    # run record the moment a script finishes, and Windows will say so;
+    # asking every thirty seconds instead was just the lazy way to find out.
+    #
+    # The timeout stays, because some of what tick() does is genuinely
+    # time-based - the report cutoff, "a queue was due and produced
+    # nothing", the shutdown window - and none of those are announced by a
+    # file appearing. So: whichever comes first, a change or the interval.
+    watch = None
+    try:
+        if cfg.history_dir:
+            watch = win32file.FindFirstChangeNotification(
+                str(cfg.history_dir), True,   # True = include subdirectories
+                win32con.FILE_NOTIFY_CHANGE_FILE_NAME
+                | win32con.FILE_NOTIFY_CHANGE_LAST_WRITE)
+            log.info("已挂上目录变更通知，记录一落盘立即处理")
+    except Exception:  # noqa: BLE001 - a missing notifier must not stop the relay
+        log.exception("目录变更通知挂载失败，先退回定时检查，稍后自动重试")
         watch = None
-        try:
-            if cfg.history_dir:
+    # 重建节奏。开机时挂载失败（比如目录还没就绪）同样要进重试，
+    # 不能只有「重新武装失败」那条路才有。
+    watch_retry_at = time.monotonic() + 5.0
+    watch_retry_delay = 5.0
+
+    # Four things can wake this loop, none of them a timer: the service
+    # being stopped, a run record landing on disk, the AUTO-MAS backend
+    # dying, and a python.exe starting (so a freshly launched backend gets
+    # its handle immediately instead of at the next liveness check). The
+    # timeout is not an interval either - it is an alarm clock. The engine
+    # knows the exact next moment any clock-based decision can change
+    # (a missed-run alert coming due, the report cutoff, a wake-up
+    # checkpoint), so the loop sleeps until precisely then.
+    automas = _automas_handle()
+    if automas:
+        log.info("已挂上 AUTO-MAS 进程句柄，它一退出立即拉起")
+    proc_evt = win32event.CreateEvent(None, 0, 0, None)
+    wmi_alive = {"ok": False}
+    wmi_alive["ok"] = _start_process_watch(proc_evt, wmi_alive, log)
+    if wmi_alive["ok"]:
+        log.info("已订阅进程启动事件（WMI 内核 trace），AUTO-MAS 一启动立即挂句柄")
+    else:
+        log.warning("进程启动事件订阅不可用，AUTO-MAS 缺席时退回 %d 秒活性检查",
+                    AUTOMAS_CHECK_SECONDS)
+
+    # If every alarm is far away (or there are none), still wake
+    # occasionally: an alarm-clock with a bug in it must degrade into
+    # lateness, not into a relay that sleeps forever.
+    backstop = 3600.0
+    last_alarm_note = ""
+    # One-shot deadline for "AUTO-MAS should have appeared by now" - armed
+    # only while no handle is held. Doubles on every failed revival so a
+    # broken backend is retried with backoff, never on a beat.
+    revive_wait = float(REVIVE_FIRST_WAIT)
+    revive_deadline = (time.monotonic() + revive_wait) if not automas else None
+    revive_failures = 0
+    revive_alerted = False
+    # When the shell was first seen alive with no backend behind it.
+    shell_only_since = None
+    shell_grace_noted = False
+    next_automas_check = 0.0
+    next_inbox_retry = 0.0
+    while True:
+        # 监听掉了就退避重建。重建成功后运行记录重新变成「一落盘就处理」。
+        if watch is None and cfg.history_dir \
+                and time.monotonic() >= watch_retry_at:
+            try:
                 watch = win32file.FindFirstChangeNotification(
-                    str(cfg.history_dir), True,   # True = include subdirectories
+                    str(cfg.history_dir), True,
                     win32con.FILE_NOTIFY_CHANGE_FILE_NAME
                     | win32con.FILE_NOTIFY_CHANGE_LAST_WRITE)
-                log.info("已挂上目录变更通知，记录一落盘立即处理")
-        except Exception:  # noqa: BLE001 - a missing notifier must not stop the relay
-            log.exception("目录变更通知挂载失败，先退回定时检查，稍后自动重试")
-            watch = None
-        # 重建节奏。开机时挂载失败（比如目录还没就绪）同样要进重试，
-        # 不能只有「重新武装失败」那条路才有。
-        watch_retry_at = time.monotonic() + 5.0
-        watch_retry_delay = 5.0
+                log.info("目录变更通知已重建，恢复「记录一落盘立即处理」")
+                watch_retry_delay = 5.0
+            except Exception:  # noqa: BLE001 - 重建失败就再等等，别刷屏
+                watch = None
+                watch_retry_delay = min(watch_retry_delay * 2, 60.0)
+                log.warning("目录变更通知重建失败，%.0f 秒后再试",
+                            watch_retry_delay)
+            watch_retry_at = time.monotonic() + watch_retry_delay
 
-        # Four things can wake this loop, none of them a timer: the service
-        # being stopped, a run record landing on disk, the AUTO-MAS backend
-        # dying, and a python.exe starting (so a freshly launched backend gets
-        # its handle immediately instead of at the next liveness check). The
-        # timeout is not an interval either - it is an alarm clock. The engine
-        # knows the exact next moment any clock-based decision can change
-        # (a missed-run alert coming due, the report cutoff, a wake-up
-        # checkpoint), so the loop sleeps until precisely then.
-        automas = _automas_handle()
+        handles = [svc.stop_event, proc_evt]
+        proc_idx = 1
+        watch_idx = automas_idx = -1
+        if watch:
+            handles.append(watch); watch_idx = len(handles) - 1
         if automas:
-            log.info("已挂上 AUTO-MAS 进程句柄，它一退出立即拉起")
-        proc_evt = win32event.CreateEvent(None, 0, 0, None)
-        wmi_alive = {"ok": False}
-        wmi_alive["ok"] = _start_process_watch(proc_evt, wmi_alive, log)
-        if wmi_alive["ok"]:
-            log.info("已订阅进程启动事件（WMI 内核 trace），AUTO-MAS 一启动立即挂句柄")
-        else:
-            log.warning("进程启动事件订阅不可用，AUTO-MAS 缺席时退回 %d 秒活性检查",
-                        AUTOMAS_CHECK_SECONDS)
-
-        # If every alarm is far away (or there are none), still wake
-        # occasionally: an alarm-clock with a bug in it must degrade into
-        # lateness, not into a relay that sleeps forever.
-        backstop = 3600.0
-        last_alarm_note = ""
-        # One-shot deadline for "AUTO-MAS should have appeared by now" - armed
-        # only while no handle is held. Doubles on every failed revival so a
-        # broken backend is retried with backoff, never on a beat.
-        revive_wait = float(REVIVE_FIRST_WAIT)
-        revive_deadline = (time.monotonic() + revive_wait) if not automas else None
-        revive_failures = 0
-        revive_alerted = False
-        # When the shell was first seen alive with no backend behind it.
-        shell_only_since = None
-        shell_grace_noted = False
-        next_automas_check = 0.0
-        next_inbox_retry = 0.0
-        while True:
-            # 监听掉了就退避重建。重建成功后运行记录重新变成「一落盘就处理」。
-            if watch is None and cfg.history_dir \
-                    and time.monotonic() >= watch_retry_at:
-                try:
-                    watch = win32file.FindFirstChangeNotification(
-                        str(cfg.history_dir), True,
-                        win32con.FILE_NOTIFY_CHANGE_FILE_NAME
-                        | win32con.FILE_NOTIFY_CHANGE_LAST_WRITE)
-                    log.info("目录变更通知已重建，恢复「记录一落盘立即处理」")
-                    watch_retry_delay = 5.0
-                except Exception:  # noqa: BLE001 - 重建失败就再等等，别刷屏
-                    watch = None
-                    watch_retry_delay = min(watch_retry_delay * 2, 60.0)
-                    log.warning("目录变更通知重建失败，%.0f 秒后再试",
-                                watch_retry_delay)
-                watch_retry_at = time.monotonic() + watch_retry_delay
-
-            handles = [self.stop_event, proc_evt]
-            proc_idx = 1
-            watch_idx = automas_idx = -1
+            handles.append(automas); automas_idx = len(handles) - 1
+        wait_s = backstop
+        try:
+            if alarm := engine.next_deadline():
+                due, why = alarm
+                # +1s so the wake lands just past the moment, not just short.
+                remain = (due - datetime.now(tz=SERVER_TZ)).total_seconds() + 1
+                wait_s = min(max(remain, 1.0), backstop)
+                note = f"{due:%H:%M} {why}"
+                if note != last_alarm_note:
+                    last_alarm_note = note
+                    log.info("下一个闹钟 %s", note)
+        except Exception:  # noqa: BLE001 - a broken alarm must not stop the loop
+            log.exception("计算下一个时刻出错，退回备用间隔")
+        if not automas:
+            if wmi_alive["ok"] and revive_deadline is not None:
+                # Event-driven path: sleep exactly until the revival
+                # deadline; a start event will wake us sooner.
+                wait_s = min(wait_s, max(1.0, revive_deadline - time.monotonic()))
+            elif not wmi_alive["ok"]:
+                # Degraded path: no start events, so liveness has to be
+                # re-checked on a timer until a handle can be re-acquired.
+                wait_s = min(wait_s, AUTOMAS_CHECK_SECONDS)
+        if not inbox.last_fetch_ok:
+            wait_s = min(wait_s, 300)   # wake in time for the fetch retry
+        rc = win32event.WaitForMultipleObjects(
+            handles, False, int(wait_s * 1000))
+        if rc == win32event.WAIT_OBJECT_0:
+            log.info("收到停止信号，退出")
             if watch:
-                handles.append(watch); watch_idx = len(handles) - 1
-            if automas:
-                handles.append(automas); automas_idx = len(handles) - 1
-            wait_s = backstop
+                win32file.FindCloseChangeNotification(watch)
+            return
+        if rc == win32event.WAIT_OBJECT_0 + proc_idx and not automas:
+            # Some python.exe just started; adopt it if it is the backend.
+            if automas := _automas_handle():
+                log.info("AUTO-MAS 已启动，进程句柄已挂上")
+                revive_deadline = None
+                revive_wait = float(REVIVE_FIRST_WAIT)
+                revive_failures = 0
+                revive_alerted = False
+        if watch and rc == win32event.WAIT_OBJECT_0 + watch_idx:
+            # Re-arm before handling, so a write that lands while we work is
+            # not lost. A record that appears during tick() would otherwise
+            # wait for the timeout - the exact latency this removes.
+            #
+            # Re-arming can fail, and it used to fail silently: the handle
+            # then never signals again, the loop falls back to waking only
+            # on the alarm clock, and run records sit unprocessed until the
+            # next clock-based deadline - up to the hour-long backstop.
+            # Everything still happens, just late and with no indication
+            # why. Degrading quietly is the failure mode this system has
+            # been bitten by most, so say it out loud.
             try:
-                if alarm := engine.next_deadline():
-                    due, why = alarm
-                    # +1s so the wake lands just past the moment, not just short.
-                    remain = (due - datetime.now(tz=SERVER_TZ)).total_seconds() + 1
-                    wait_s = min(max(remain, 1.0), backstop)
-                    note = f"{due:%H:%M} {why}"
-                    if note != last_alarm_note:
-                        last_alarm_note = note
-                        log.info("下一个闹钟 %s", note)
-            except Exception:  # noqa: BLE001 - a broken alarm must not stop the loop
-                log.exception("计算下一个时刻出错，退回备用间隔")
-            if not automas:
-                if wmi_alive["ok"] and revive_deadline is not None:
-                    # Event-driven path: sleep exactly until the revival
-                    # deadline; a start event will wake us sooner.
-                    wait_s = min(wait_s, max(1.0, revive_deadline - time.monotonic()))
-                elif not wmi_alive["ok"]:
-                    # Degraded path: no start events, so liveness has to be
-                    # re-checked on a timer until a handle can be re-acquired.
-                    wait_s = min(wait_s, AUTOMAS_CHECK_SECONDS)
-            if not inbox.last_fetch_ok:
-                wait_s = min(wait_s, 300)   # wake in time for the fetch retry
-            rc = win32event.WaitForMultipleObjects(
-                handles, False, int(wait_s * 1000))
-            if rc == win32event.WAIT_OBJECT_0:
-                log.info("收到停止信号，退出")
-                if watch:
-                    win32file.FindCloseChangeNotification(watch)
-                return
-            if rc == win32event.WAIT_OBJECT_0 + proc_idx and not automas:
-                # Some python.exe just started; adopt it if it is the backend.
-                if automas := _automas_handle():
-                    log.info("AUTO-MAS 已启动，进程句柄已挂上")
-                    revive_deadline = None
-                    revive_wait = float(REVIVE_FIRST_WAIT)
-                    revive_failures = 0
-                    revive_alerted = False
-            if watch and rc == win32event.WAIT_OBJECT_0 + watch_idx:
-                # Re-arm before handling, so a write that lands while we work is
-                # not lost. A record that appears during tick() would otherwise
-                # wait for the timeout - the exact latency this removes.
-                #
-                # Re-arming can fail, and it used to fail silently: the handle
-                # then never signals again, the loop falls back to waking only
-                # on the alarm clock, and run records sit unprocessed until the
-                # next clock-based deadline - up to the hour-long backstop.
-                # Everything still happens, just late and with no indication
-                # why. Degrading quietly is the failure mode this system has
-                # been bitten by most, so say it out loud.
+                win32file.FindNextChangeNotification(watch)
+            except Exception:  # noqa: BLE001 - report and degrade knowingly
+                log.exception("目录变更通知重新武装失败，改用闹钟兜底")
                 try:
-                    win32file.FindNextChangeNotification(watch)
-                except Exception:  # noqa: BLE001 - report and degrade knowingly
-                    log.exception("目录变更通知重新武装失败，改用闹钟兜底")
-                    try:
-                        win32file.FindCloseChangeNotification(watch)
-                    except Exception:  # noqa: BLE001
-                        pass
-                    watch = None
-                    # 重建时刻：掉了不是终点。原来这里只发一条「去重启中继」
-                    # 就完事，剩下整个开机周期都靠闹钟兜底——和 WMI 订阅那个
-                    # 一次性 bug 是同一族（2026-08-30 全量审查一起修的）。
-                    watch_retry_at = time.monotonic() + 5.0
-                    watch_retry_delay = 5.0
-                    notifier.send(
-                        "⚠️ 中继的目录监听掉了",
-                        "运行记录暂时不再是一落盘就处理，要等下一个定时判定点"
-                        "（最长一小时）。中继会自己反复重建监听，恢复了就不用管；\n"
-                        "如果这条之后一直没恢复，重启中继：\n"
-                        "net stop ark-relay & net start ark-relay",
-                        alert=True)
-                # AUTO-MAS writes the .json and .log separately; give it a
-                # moment so the first notification does not read a half-file.
-                time.sleep(2)
+                    win32file.FindCloseChangeNotification(watch)
+                except Exception:  # noqa: BLE001
+                    pass
+                watch = None
+                # 重建时刻：掉了不是终点。原来这里只发一条「去重启中继」
+                # 就完事，剩下整个开机周期都靠闹钟兜底——和 WMI 订阅那个
+                # 一次性 bug 是同一族（2026-08-30 全量审查一起修的）。
+                watch_retry_at = time.monotonic() + 5.0
+                watch_retry_delay = 5.0
+                notifier.send(
+                    "⚠️ 中继的目录监听掉了",
+                    "运行记录暂时不再是一落盘就处理，要等下一个定时判定点"
+                    "（最长一小时）。中继会自己反复重建监听，恢复了就不用管；\n"
+                    "如果这条之后一直没恢复，重启中继：\n"
+                    "net stop ark-relay & net start ark-relay",
+                    alert=True)
+            # AUTO-MAS writes the .json and .log separately; give it a
+            # moment so the first notification does not read a half-file.
+            time.sleep(2)
 
-            try:
-                engine.tick()
-            except Exception:  # noqa: BLE001 - the loop must survive anything
-                log.exception("本轮处理出错，继续")
+        try:
+            engine.tick()
+        except Exception:  # noqa: BLE001 - the loop must survive anything
+            log.exception("本轮处理出错，继续")
 
-            # A pause order that failed to download is not a pause order. On
-            # 2026-08-17 the queue file was unreachable all evening and the
-            # operator's stop order silently never arrived - so a failed boot
-            # fetch is retried every five minutes until the file has actually
-            # been read once, instead of waiting a whole day for the next boot.
-            if not inbox.last_fetch_ok and time.monotonic() >= next_inbox_retry:
-                next_inbox_retry = time.monotonic() + 300
-                collect("重试")
+        # A pause order that failed to download is not a pause order. On
+        # 2026-08-17 the queue file was unreachable all evening and the
+        # operator's stop order silently never arrived - so a failed boot
+        # fetch is retried every five minutes until the file has actually
+        # been read once, instead of waiting a whole day for the next boot.
+        if not inbox.last_fetch_ok and time.monotonic() >= next_inbox_retry:
+            next_inbox_retry = time.monotonic() + 300
+            collect("重试")
 
-            # Scripts have just stopped: apply the config commands that were
-            # deferred, now that a write will not be clobbered.
-            if deferred_inbox[0] and not engine.scripts_running():
-                log.info("脚本已停，补做之前推迟的待办检查")
-                collect("推迟补做")
+        # Scripts have just stopped: apply the config commands that were
+        # deferred, now that a write will not be clobbered.
+        if deferred_inbox[0] and not engine.scripts_running():
+            log.info("脚本已停，补做之前推迟的待办检查")
+            collect("推迟补做")
 
-            now = time.monotonic()
-            died = bool(automas) and rc == win32event.WAIT_OBJECT_0 + automas_idx
-            if died:
-                log.warning("AUTO-MAS 后端退出了")
-                win32api.CloseHandle(automas)
-                automas = None
-            due_check = (
-                automas is None
-                and ((wmi_alive["ok"] and revive_deadline is not None
-                      and now >= revive_deadline)
-                     or (not wmi_alive["ok"] and now >= next_automas_check)))
-            if died or due_check:
-                next_automas_check = now + AUTOMAS_CHECK_SECONDS
-                if not _automas_running():
-                    # Two gates before the force-kill, because reviving is not
-                    # free: it kills a window somebody may be looking at.
-                    if _installer_running():
-                        log.warning("AUTO-MAS 后端不在，但安装程序正在运行——不动它")
-                        shell_only_since = None
-                        shell_grace_noted = False
-                    elif _automas_shell_running():
-                        # Shell up, backend down. Either the stuck state this
-                        # guard exists for, or a first run still setting itself
-                        # up. Only the clock tells them apart, so wait.
-                        if shell_only_since is None:
-                            shell_only_since = now
-                        waited = now - shell_only_since
-                        if waited < SHELL_GRACE_SECONDS:
-                            if not shell_grace_noted:
-                                shell_grace_noted = True
-                                log.warning(
-                                    "AUTO-MAS 窗口在、后端不在，先等 %d 分钟再动"
-                                    "（可能正在首次配置或更新）",
-                                    SHELL_GRACE_SECONDS // 60)
-                        else:
-                            log.warning("AUTO-MAS 窗口在、后端已缺席 %d 分钟，"
-                                        "正在拉起（第 %d 次）",
-                                        int(waited // 60), revive_failures + 1)
-                            _revive_automas()
-                            revive_failures += 1
-                    else:
-                        # No shell at all: nothing to kill, so revive at once.
-                        log.warning("AUTO-MAS 后端不在，正在拉起（第 %d 次）",
-                                    revive_failures + 1)
-                        _revive_automas()
-                        revive_failures += 1
-                    if revive_failures >= REVIVE_ALERT_AFTER and not revive_alerted:
-                        revive_alerted = True
-                        notifier.send(
-                            "🔌 AUTO-MAS 拉不起来",
-                            f"已连续尝试拉起 {revive_failures} 次仍不见后端进程，"
-                            "需要人工看一眼。服务会按翻倍退避继续重试。",
-                            alert=True)
-                # Adopt whichever backend now exists - our revival, or one that
-                # was there all along. A revived backend is a new process, so
-                # the old handle (already closed above) never signals again.
-                if automas := _automas_handle():
-                    log.info("AUTO-MAS 进程句柄已挂上")
+        now = time.monotonic()
+        died = bool(automas) and rc == win32event.WAIT_OBJECT_0 + automas_idx
+        if died:
+            log.warning("AUTO-MAS 后端退出了")
+            win32api.CloseHandle(automas)
+            automas = None
+        due_check = (
+            automas is None
+            and ((wmi_alive["ok"] and revive_deadline is not None
+                  and now >= revive_deadline)
+                 or (not wmi_alive["ok"] and now >= next_automas_check)))
+        if died or due_check:
+            next_automas_check = now + AUTOMAS_CHECK_SECONDS
+            if not _automas_running():
+                # Two gates before the force-kill, because reviving is not
+                # free: it kills a window somebody may be looking at.
+                if _installer_running():
+                    log.warning("AUTO-MAS 后端不在，但安装程序正在运行——不动它")
                     shell_only_since = None
                     shell_grace_noted = False
-                    revive_deadline = None
-                    revive_wait = float(REVIVE_FIRST_WAIT)
-                    revive_failures = 0
-                    revive_alerted = False
+                elif _automas_shell_running():
+                    # Shell up, backend down. Either the stuck state this
+                    # guard exists for, or a first run still setting itself
+                    # up. Only the clock tells them apart, so wait.
+                    if shell_only_since is None:
+                        shell_only_since = now
+                    waited = now - shell_only_since
+                    if waited < SHELL_GRACE_SECONDS:
+                        if not shell_grace_noted:
+                            shell_grace_noted = True
+                            log.warning(
+                                "AUTO-MAS 窗口在、后端不在，先等 %d 分钟再动"
+                                "（可能正在首次配置或更新）",
+                                SHELL_GRACE_SECONDS // 60)
+                    else:
+                        log.warning("AUTO-MAS 窗口在、后端已缺席 %d 分钟，"
+                                    "正在拉起（第 %d 次）",
+                                    int(waited // 60), revive_failures + 1)
+                        _revive_automas()
+                        revive_failures += 1
                 else:
-                    # Arm with the CURRENT wait, then double for the next
-                    # failure - doubling first made the very first retry gap
-                    # 360s instead of the documented 180s.
-                    revive_deadline = now + revive_wait
-                    revive_wait = min(revive_wait * 2, float(REVIVE_MAX_WAIT))
+                    # No shell at all: nothing to kill, so revive at once.
+                    log.warning("AUTO-MAS 后端不在，正在拉起（第 %d 次）",
+                                revive_failures + 1)
+                    _revive_automas()
+                    revive_failures += 1
+                if revive_failures >= REVIVE_ALERT_AFTER and not revive_alerted:
+                    revive_alerted = True
+                    notifier.send(
+                        "🔌 AUTO-MAS 拉不起来",
+                        f"已连续尝试拉起 {revive_failures} 次仍不见后端进程，"
+                        "需要人工看一眼。服务会按翻倍退避继续重试。",
+                        alert=True)
+            # Adopt whichever backend now exists - our revival, or one that
+            # was there all along. A revived backend is a new process, so
+            # the old handle (already closed above) never signals again.
+            if automas := _automas_handle():
+                log.info("AUTO-MAS 进程句柄已挂上")
+                shell_only_since = None
+                shell_grace_noted = False
+                revive_deadline = None
+                revive_wait = float(REVIVE_FIRST_WAIT)
+                revive_failures = 0
+                revive_alerted = False
+            else:
+                # Arm with the CURRENT wait, then double for the next
+                # failure - doubling first made the very first retry gap
+                # 360s instead of the documented 180s.
+                revive_deadline = now + revive_wait
+                revive_wait = min(revive_wait * 2, float(REVIVE_MAX_WAIT))
 
 
 if __name__ == "__main__":

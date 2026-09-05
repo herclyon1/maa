@@ -75,6 +75,7 @@ def main() -> int:
     print("\n=== 解析不出来时必须喊，不许静默 return ===")
     import logging
     from ark_relay import engine as E
+    from ark_relay import handle as H
 
     class _Rec:
         run_id = "r/1"
@@ -91,11 +92,11 @@ def main() -> int:
             seen.append((r.levelno, r.getMessage()))
 
     h = _Cap()
-    E.log.addHandler(h)
+    H.log.addHandler(h)
     try:
         _Eng()._archive_maaend_evidence(_Rec())
     finally:
-        E.log.removeHandler(h)
+        H.log.removeHandler(h)
 
     check("maaend_dir 缺失时打了 ERROR",
           any(lv >= logging.ERROR for lv, _ in seen), True)

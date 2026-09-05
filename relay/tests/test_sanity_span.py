@@ -11,7 +11,7 @@
 """
 import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from ark_relay import collector, engine  # noqa: E402
+from ark_relay import collector, report  # noqa: E402
 
 fails = []
 
@@ -40,7 +40,7 @@ chk("单趟不硬编数字", one.get("maaend_sanity_spent"), None)
 chk("单趟留了口子", one.get("maaend_sanity_runs_only"), 1)
 es = [{"script": "MaaEnd", "sanity": 116, "raw": {}},
       {"script": "MaaEnd", "sanity": 37, "raw": dict(one)}]
-engine._fill_single_run_sanity(es)
+report._fill_single_run_sanity(es)
 chk("单趟由上一条补出", es[1]["raw"].get("maaend_sanity_spent"), 79)
 
 # 鸣潮：收尾用的是另一种句式

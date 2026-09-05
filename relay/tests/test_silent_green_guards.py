@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ark_relay import outcome  # noqa: E402
-from ark_relay.engine import _maa_app_log, _okww_nest_expected  # noqa: E402
+from ark_relay.handle import _maa_app_log, _okww_nest_expected  # noqa: E402
 
 FAILED = []
 

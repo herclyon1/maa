@@ -21,7 +21,8 @@ _extra = [f for f in ("RELEASE-NOTES.md",) if (HERE / f).exists()]
 # 它们不在 ark_relay/*.py 的通配范围内，漏掉的话补丁模块在机器上会
 # 报「缺少参照文件」——又是一次「部署成功但功能没上」。
 _nested = [p.relative_to(HERE).as_posix()
-           for p in sorted((HERE / "ark_relay" / "okww_files").glob("*.py"))]
+           for p in sorted((HERE / "ark_relay" / "okww_files").glob("*.py"))
+           + sorted((HERE / "ark_relay" / "okww_patches").glob("*.py"))]
 files = sorted(
     [p.relative_to(HERE).as_posix() for p in (HERE / "ark_relay").glob("*.py")]
     + _nested + ["run.py", "service.py"] + _extra)

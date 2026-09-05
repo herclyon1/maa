@@ -44,9 +44,9 @@ if _run_id_stamp("2026-09-05/endfield/MaaEnd") is not None:
 
 # 存档函数必须把 history 的两个后缀都带上
 src = (pathlib.Path(__file__).resolve().parents[1]
-       / "ark_relay" / "engine.py").read_text(encoding="utf-8")
+       / "ark_relay" / "handle.py").read_text(encoding="utf-8")
 body = src[src.index("def _archive_maaend_evidence"):]
-body = body[:body.index("\n    def ", 10)] if "\n    def " in body[10:] else body
+body = body[:body.index("\ndef ", 10)] if "\ndef " in body[10:] else body
 if 'history_dir' not in body:
     fails.append("存档没有带上 AUTO-MAS 的 history 记录")
 for suffix in ('".log"', '".json"'):
@@ -59,7 +59,7 @@ if "_warn_if_evidence_stale" not in body:
 
 # 检查函数要跳过自己按 run_id 取的那份，否则会自己警告自己
 warn = src[src.index("def _warn_if_evidence_stale"):]
-warn = warn[:warn.index("\n    def ", 10)]
+warn = warn[:warn.index("\ndef ", 10)]
 if 'startswith("automas-")' not in warn:
     fails.append("时间检查没跳过 automas- 那几份（它们必然对得上）")
 

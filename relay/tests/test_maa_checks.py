@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay.engine import _maa_app_log  # noqa: E402
+from ark_relay.handle import _maa_app_log  # noqa: E402
 from ark_relay.outcome import maa_checks, summarize  # noqa: E402
 
 FAILED = []

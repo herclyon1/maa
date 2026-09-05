@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import engine, outcome  # noqa: E402
+from ark_relay import handle, outcome  # noqa: E402
 
 FAILED = []
 
@@ -74,7 +74,7 @@ def main() -> int:
         (d / "2026-08-29-7.log").write_text(APP, encoding="utf-8")
         (d / "maafw.log").write_text("框架日志，不该被读进来\n", encoding="utf-8")
         started = datetime.now() - timedelta(hours=1)
-        txt = engine._maaend_app_log(Path(td), started)
+        txt = handle._maaend_app_log(Path(td), started)
         check("读到了收尾标记", "自动执行任务完成" in txt, True)
         check("没把框架日志混进来", "框架日志" in txt, False)
 
