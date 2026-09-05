@@ -67,11 +67,7 @@ REVIVE_MAX_WAIT = 1800
 # the runs it failed to schedule.
 REVIVE_ALERT_AFTER = 3
 # How long a *live* Electron shell with no backend is left alone before the
-# revival is allowed to force-kill it. The stuck state this guard exists for
-# lasts hours; a first-run environment wizard - installing Python, pip and
-# git, then cloning the backend - legitimately has no backend for several
-# minutes and looks identical. On 2026-08-22 the revival killed that wizard
-# twice mid-clone and the operator was told all six mirrors had failed.
+# 来龙去脉见 docs/CODE-HISTORY.md「service.py:(模块级)」
 SHELL_GRACE_SECONDS = 900
 # Processes whose presence vetoes any revival outright.
 INSTALLER_HINTS = (b"auto-mas-setup", b"unins")
@@ -150,20 +146,7 @@ def _automas_handle():
 def _wait_for_network(log, timeout: float = 90.0) -> bool:
     """Block until DNS answers, or give up. True if the network came up.
 
-    Measured 2026-08-21 21:20:19, one second after the service started on a
-    fresh boot: all four update doors failed with
-    `[Errno 11001] getaddrinfo failed`, and thirty seconds later raw was still
-    only getting as far as a TLS handshake timeout. The relay starts within a
-    second or two of logon, well before Windows has finished bringing up DNS,
-    so the boot-window update - the whole point of that window - was reaching
-    the network before there was one, every single boot.
-
-    Nothing downstream retried its way out of that: _best_manifest asks each
-    door once and returns None if none answer, so the round was abandoned
-    before the doors were reachable.
-
-    The boot-to-queue gap is about ten minutes, so waiting up to ninety
-    seconds here is cheap. Failing to wait costs the entire update.
+    来龙去脉见 docs/CODE-HISTORY.md「service.py:_wait_for_network」。
     """
     import socket  # noqa: PLC0415 - only needed on this path
 
@@ -212,11 +195,7 @@ def _start_process_watch(evt, alive: dict, log) -> bool:
     def run() -> None:
         """订阅、监听、断了就重订阅——不要监听一断就永久退化。
 
-        2026-08-30 之前这里是「一次性」的：RPC 一抖（relay.log 里
-        `SWbemEventSource 远程过程调用失败`，08-24 到 08-29 共 24 次），
-        线程直接退出，剩下**整个开机周期**都停在 120 秒轮询上。
-        机器一天只开两次机，所以中继大部分运行时间都在降级模式跑。
-        兜底有，但兜底不该是终点。
+        来龙去脉见 docs/CODE-HISTORY.md「service.py:run」。
         """
         pythoncom.CoInitialize()
         delay = 5.0
@@ -377,12 +356,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             box.close()
         # 硬保险：15 秒还没退干净就强制退出进程。
         # 用户 2026-08-31：「中继服务卡在 STOP_PENDING 这个不要再出现了，
-        # 直接浪费很长时间，杜绝。」——那天一上午卡了四次，每次部署白等
-        # 十分钟，还得远程强杀。
-        # 为什么强退是对的：卡在 STOP_PENDING 比强退坏得多——部署整个瘫掉、
-        # 通知链路一直断着、还要人去救。而这个进程的状态全是原子写盘的
-        # （见 config.atomic_write_text），强退不会写坏任何东西；
-        # 真丢的只是「本轮还没处理完的那几条记录」，下次启动会重新扫到。
+        # 来龙去脉见 docs/CODE-HISTORY.md「service.py:SvcStop」
         killer = threading.Timer(15, lambda: os._exit(0))
         killer.daemon = True     # 它自己不能反过来拖住退出
         killer.start()
@@ -408,12 +382,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         log, cfg, notifier, engine = booted
         _stage_patch_okww(cfg, notifier, log)
         # New code before anything else uses it. This block was silently lost
-        # in a refactor on 2026-08-17 - a range replace swallowed it - and for
-        # three commits the machine stopped receiving updates at all while the
-        # log still looked healthy. Keep it adjacent to its own marker.
-        # Before anything reaches for the network. Both the update and the
-        # inbox run in the seconds after boot, and on a cold boot there is no
-        # DNS yet - so both used to fail on every single boot and give up.
+        # 来龙去脉见 docs/CODE-HISTORY.md「service.py:main」
         _wait_for_network(log)
         if _stage_selfupdate(log):
             return
@@ -470,12 +439,8 @@ def _stage_bootstrap():
 def _stage_patch_okww(cfg, notifier, log) -> None:
     """每次启动贴一次 OK-WW 补丁（幂等）。"""
     # 每次启动都贴一次 OK-WW 补丁——幂等，在位就一句话都不写。
-    #
-    # 以前只在开机预更新那一段里贴，于是白天改完补丁、部署、服务重启，
-    # 补丁**要等到第二天开机才生效**。2026-08-27 就这么发生了：残像聚落
-    # 「只刷落渊南丘」的修复推上了机器，文件却还是旧的，我以为已经好了。
     # 「更新必须立即生效」是死命令，部署完就该是最终状态，不能留一个
-    # 「等下次开机」的尾巴。
+    # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_patch_okww」
     try:
         # 就地 import：模块级 import 会在服务安装阶段就被求值，
         # 而 ark_relay 那时还不一定在 sys.path 上。
@@ -561,9 +526,7 @@ def _stage_announce_update(notifier, log) -> None:
             lines.append(f"版本 v{prev} → v{note.get('version') or '?'}"
                          if prev else f"版本 v{note.get('version') or '?'}")
             # 人话优先。用户 2026-08-26：「更新内容用人话写」——
-            # 一串文件名对着看不懂代码的人等于什么都没说。RELEASE-NOTES.md
-            # 由部署时一起推上来，写的是「修好了你遇到过的哪个毛病」。
-            # 文件名退居其次，只在没有说明文件时才列出来兜底。
+            # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_announce_update」
             notes = ""
             try:
                 nf = HERE / "RELEASE-NOTES.md"
@@ -603,11 +566,7 @@ def _stage_inbox_and_phone(svc, cfg, engine, notifier, log):
     def collect(reason: str) -> None:
         """Check for queued changes and push whatever landed.
 
-        改配置必须避开脚本运行期。AUTO-MAS 在跑的时候会用它内存里的那份
-        覆写 ScriptConfig.json，此时写进去的值会被静静冲掉——2026-08-20
-        实测两次：set_wait_time 120 被冲回 60，剿灭开关被冲回打开，于是
-        每轮又白跑一次剿灭。engine.scripts_running() 本来就是为这件事
-        准备的守卫，这里补上调用。
+        来龙去脉见 docs/CODE-HISTORY.md「service.py:collect」。
         """
         if engine.scripts_running():
             if not deferred_inbox[0]:
@@ -629,13 +588,8 @@ def _stage_inbox_and_phone(svc, cfg, engine, notifier, log):
             log.debug("待办检查（%s）：无新配置（当前 v%s）", reason, version)
 
     # Once, at startup. The machine boots for each queue, so a change
-    # pushed while it is off - which is nearly always - lands before that
-    # day's run. Re-checking on a timer was added and removed again: it
-    # bought nothing the boot check did not already cover.
-    # ---------- 手机端 ----------
-    # 用户 2026-08-31 定的形状：开机必取一次指令、必上报一次状态；
-    # 关机前必上报；手机按刷新能实时拿到状态（仅机器开着时）；
     # 在线/离线不许靠轮询。做法见 phone.py 的模块说明。
+    # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_inbox_and_phone」
     from ark_relay.commands import apply_command
     from ark_relay.phone import Mailbox
 
@@ -718,18 +672,7 @@ def _stage_inbox_and_phone(svc, cfg, engine, notifier, log):
 def _stage_preupdate(cfg, notifier, log) -> None:
     """开机窗口里把四个程序的更新做掉（一天一次）。"""
     # MaaEnd updates itself at startup and restarts its own process when it
-    # finds a new build. AUTO-MAS kills and relaunches it before every
-    # round, so every round lands on that check, and the restart orphans
-    # the log monitor AUTO-MAS just attached - every task in the round is
-    # reported failed seconds later. Measured 2026-08-22; the channel is
-    # `beta`, which ships most days, so most days opened with a wasted
-    # attempt and a failure alert.
-    #
-    # Auto-update stays on - being current is the point of it. The update
-    # is moved instead: done here, in the gap between boot and the first
-    # queue, where a restart costs nothing. By the time the queue starts,
-    # the check answers "有更新=false" and the process AUTO-MAS launches is
-    # the one that stays.
+    # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_preupdate」
     try:
         # okww_patch 2026-08-26 之前一直漏在这行外面：下面 549 行用它，
         # 一跑到就 NameError，也就是说**补丁重贴从来没有真正执行过**。
@@ -755,10 +698,7 @@ def _stage_preupdate(cfg, notifier, log) -> None:
             # message rather than going silent.
             maa = plan.script_dir(cfg.automas_dir, "MAA")
             # Anything that could not be *checked* lands here. A pre-update
-            # that cannot tell whether an update exists must say so: on
-            # 2026-08-25 OK-WW was launched into session 0, its updater
-            # never ran, and the unchanged version file was reported as
-            # 无需更新 while v3.6.5 had been out for fourteen hours.
+            # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_preupdate」
             problems: list[str] = []
             # MAA first: its update is applied by a delegated process at
             # startup, so getting it out of the way is quick and the
@@ -786,9 +726,7 @@ def _stage_preupdate(cfg, notifier, log) -> None:
             okww = cfg.okww_dir or (Path(cfg.automas_dir).parent / "okww"
                                     if cfg.automas_dir else None)
             # OK-WW 的自动更新会整段覆盖 src，把本地补丁抹掉
-            # （2026-08-26 实测：v3.6.5 → v3.6.6-beta.1 之后两个补丁全没了，
-            #  连备份一起）。所以每轮开机都贴一次——幂等，在位就什么都不做。
-            # 放在 run_okww 之后：先让它更新完，再往新代码上贴。
+            # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_preupdate」
             if note := preupdate.run_okww(okww, problems=problems):
                 log.info("预更新：%s", note)
                 notifier.send("🆕 预更新", note)
@@ -1038,10 +976,7 @@ def _loop(svc, cfg, engine, notifier, inbox, collect, deferred_inbox, log) -> No
             log.exception("本轮处理出错，继续")
 
         # A pause order that failed to download is not a pause order. On
-        # 2026-08-17 the queue file was unreachable all evening and the
-        # operator's stop order silently never arrived - so a failed boot
-        # fetch is retried every five minutes until the file has actually
-        # been read once, instead of waiting a whole day for the next boot.
+        # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_loop」
         if not inbox.last_fetch_ok and time.monotonic() >= next_inbox_retry:
             next_inbox_retry = time.monotonic() + 300
             collect("重试")

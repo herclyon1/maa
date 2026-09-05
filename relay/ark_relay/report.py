@@ -18,12 +18,7 @@ log = logging.getLogger("ark.report")
 def _fill_single_run_sanity(entries: list[dict]) -> None:
     """只刷了一趟的终末地记录，消耗要拿当天上一条的余量来补。
 
-    「当前理智」是每次领取**之前**播报的，所以一趟只有一个读数、零个步长，
-    这一条自己算不出消耗。2026-09-04 的日报里就印成了一条横杠：
-    那趟其实从 116 刷到 37，花了 79，只是这两个数分别落在前后两条记录里。
-
-    只在同一天、同一脚本、且两边都有余量读数时补，补不出来就维持空着——
-    宁可空，也不写一个编出来的数。
+    来龙去脉见 docs/CODE-HISTORY.md「report.py:_fill_single_run_sanity」。
     """
     prev_left: dict[str, int] = {}
     for e in entries:
@@ -105,11 +100,7 @@ def _maybe_daily_report(eng, now: datetime | None = None) -> None:
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     day = now.strftime("%Y-%m-%d")
     # Yesterday first. Everything below keys off "today", so a report that
-    # could not be delivered before midnight (channel outage - it has
-    # happened: 60020 all day on 2026-08-20) used to be abandoned the
-    # moment the date rolled: today's ledger is a different file, and no
-    # code path ever looked back. The runs are still in yesterday's
-    # ledger; send their report late rather than never.
+    # 来龙去脉见 docs/CODE-HISTORY.md「report.py:_maybe_daily_report」
     yday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
     if not eng.state.report_sent(yday) and (
             y_entries := eng.state.read_ledger(yday)):
@@ -160,9 +151,7 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     head = "全绿 ✅" if not failed else f"{len(failed)} 项出错 ⚠️"
     title = f"📋 {day[5:]} · {head}"
     # Event countdown rides on every report (operator order, 2026-08-20):
-    # a fixed-stage config plus an event ending overnight is a silent
-    # next-morning failure. Appended outside the model's text so a model
-    # outage can never drop it.
+    # 来龙去脉见 docs/CODE-HISTORY.md「report.py:_compose_daily」
     act = plan.activity_countdown(eng.cfg.automas_dir)
     # 卡池倒计时同理，挂在最后（用户 2026-08-30 的要求：放在通知末尾）。
     # 三个游戏各自 try 住，一个源挂了不影响其余，全挂了就少这一段。
@@ -194,12 +183,7 @@ def _announce_banners(eng, now: datetime,
                       nxt: "dict[str, tuple[datetime, str]]") -> None:
     """开服前一天在企业微信群里说一声。
 
-    用户 2026-08-31 定的：只有「任意游戏的新卡池开放的前一天」才发群，
-    其余时间他自己看 Server酱。所以走 send_group 而不是 send——
-    后者 Server酱 优先且第一个成功就停，永远到不了群里。
-
-    按「游戏+开始时刻」打标记：同一天两个游戏换池要各播一条，
-    而同一期不许因为日报补发就播第二遍。
+    来龙去脉见 docs/CODE-HISTORY.md「report.py:_announce_banners」。
     """
     due = banners.opening_tomorrow(now, nxt)
     fresh = [d for d in due

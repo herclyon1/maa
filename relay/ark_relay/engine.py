@@ -263,9 +263,7 @@ class Engine:
         log.info("游戏更新：队列已跑完，后台开始更新 %s", "、".join(gameupdate.pending(self.state.dir)))
 
     # MaaEnd 里这几项失败是上游/游戏本身的问题，不是要人半夜处理的故障：
-    #   应急理智加强剂：beta.5 在「选择加强剂」那步坏了（09-03 实录，已关掉等上游）
-    #   自动采集：15 条路线里总有两三条「采集失败」，任务整体就报失败，其余都采了
-    # 用户 2026-09-03：「今天下午或者明天再报错你就滚」——这类只进日报，不推 ⚠️。
+    # 来龙去脉见 docs/CODE-HISTORY.md「engine.py:Engine」
     SOFT_FAILS = {"应急理智加强剂", "自动采集"}
 
     # ---------- decide held-back failures ----------
@@ -304,10 +302,7 @@ class Engine:
             val = True  # cannot tell -> wait rather than cry wolf
         else:
             # Endfield.exe is on this list because MaaEnd has NO process of its
-            # own - AUTO-MAS's python drives it in-process (verified 2026-08-20:
-            # during a MaaEnd run tasklist shows only the game). Watching for
-            # "MaaEnd.exe" alone made this check blind through the entire 终末地
-            # phase; the game binary is the only visible sign that phase is live.
+            # 来龙去脉见 docs/CODE-HISTORY.md「engine.py:_scripts_running」
             val = any(n in out for n in (b"MAA.exe", b"MaaEnd.exe", b"Endfield.exe"))
         _SCRIPTS_CACHE["at"], _SCRIPTS_CACHE["val"] = now, val
         return val

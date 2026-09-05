@@ -73,10 +73,7 @@ def _apply_nest(root: Path) -> list[str]:
     if _sha(cur) == _sha(patched):
         return []                       # 幂等：已经是我们这份
     # 上游永远不会包含我们自己造的这个配置常量，所以见到它就说明现场那份
-    # 是我们贴过的某个版本，照常覆盖。
-    # 为什么不只靠 _NEST_KNOWN_OURS：那张表要求**每次改补丁都手动补一条哈希**，
-    # 2026-08-29 我改了补丁却忘了补，于是修复推不上去，部署还照常报成功
-    # （只在日志里留了一行 warning）。靠人记的步骤迟早会漏，标记不会。
+    # 来龙去脉见 docs/CODE-HISTORY.md「nest.py:_apply_nest」
     ours_by_marker = _NEST_MARKER in cur
     if not ours_by_marker and _sha(cur) not in _NEST_KNOWN_OURS and \
             _sha(cur) != _sha(_NEST_UPSTREAM.read_bytes()):

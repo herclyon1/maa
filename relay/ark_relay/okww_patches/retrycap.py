@@ -8,11 +8,7 @@ from .core import _SRC, _Patch
 
 
 # ---- 兜底重试上限：连败三次就退出，不许无限转 ----------------------------
-#
-# 上游 run() 的兜底是 handle_claim_button() 成立就无上限递归重试。
-# 2026-09-01 实测转了 81 轮、50 分钟。用户：「一直卡循环了……你没有写
-# 退出机制。」加上限：连续 3 次 farm 4c error 就结束本次任务，
-# 抛 TaskDisabledException（run 自己会安静吞掉，不拖垮日常）。
+# 来龙去脉见 docs/CODE-HISTORY.md「retrycap.py:(模块级)」
 _RETRYCAP_OLD = """            logger.error('farm 4c error, try handle monthly card', e)
             if self.handle_claim_button() or self.handle_monthly_card():"""
 

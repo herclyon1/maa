@@ -76,23 +76,7 @@ def _idle_checkpoint(eng, now: datetime | None = None) -> bool:
 def _boot_time(eng, now: datetime | None = None) -> datetime | None:
     """When this machine last booted, or None when it cannot be told.
 
-    Uptime, not the relay's own start time. The relay restarts itself for
-    every selfupdate, so `eng._started_at` moves - and an update that ran
-    past a queue's time made the new process disqualify itself from
-    reporting the missed run, on precisely the boot where something had
-    already gone slowly enough to be worth knowing about.
-
-    `GetTickCount64` is milliseconds since boot and never needs a clock
-    that agrees with anything. It is Windows-only; anywhere else this
-    returns None and the callers fall back to their own start time, which
-    is the conservative direction - a missed-run alarm that is skipped
-    beats one invented out of a wrong boot time.
-
-    This method was referenced from three places since 2026-08-21 and never
-    actually written. It raised AttributeError inside `_check_missed_runs`,
-    which the service loop caught and logged, so the relay stayed up while
-    silently doing none of the work that follows: no missed-run alarms, no
-    daily report, no power-off. See PITFALLS.
+    来龙去脉见 docs/CODE-HISTORY.md「shutdown.py:_boot_time」。
     """
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     try:
@@ -123,11 +107,7 @@ def _recent_entries(eng, now: datetime) -> list[dict]:
 def _unfinished_queues(eng, now: datetime, entries: list[dict]) -> list[str]:
     """Queues that came due recently and are still missing one of their scripts.
 
-    "No game process" is not the same as "the queue is finished". Between
-    two scripts in one queue there is a window - MAA has exited, MaaEnd's
-    game is still launching - where neither process exists, and the same
-    window exists at the very start before the first game comes up. Acting
-    in it costs a run: it cost 终末地 the morning of 2026-08-16.
+    来龙去脉见 docs/CODE-HISTORY.md「shutdown.py:_unfinished_queues」。
     """
     out: list[str] = []
     for q in plan.recent_due_queues(eng.cfg.automas_dir, now):
@@ -144,31 +124,7 @@ def _unfinished_queues(eng, now: datetime, entries: list[dict]) -> list[str]:
 def _work_is_done(eng, now: datetime, entries: list[dict]) -> bool:
     """True when this boot's queue has come due and produced all its records.
 
-    The durable version of `_handled_any`, which only knows what *this
-    process* watched land. A relay restart after the last run - a
-    selfupdate is exactly that - cleared the flag, so nothing was left to
-    trigger the shutdown and the machine stayed awake all night. It cost
-    2026-08-20 a manual power-off.
-
-    Two requirements, and dropping either one costs a run:
-
-    A queue must actually have come due. "Nothing is unfinished" is
-    vacuously true at 08:50 with the 09:00 queue still ahead, and acting on
-    it would power the machine off minutes before its own run.
-
-    And the machine must have booted *before* that queue was due - this
-    boot has to be the one the queue was scheduled for. Without that test
-    the rule reaches a machine somebody powered on at 10:35 to work on: the
-    09:00 queue is still inside its two-hour window and its records are
-    already in the ledger from the morning, so "everything is finished"
-    reads true and the machine switches off under them ten minutes later.
-    Uptime is what distinguishes the two, not the relay's start time, which
-    every selfupdate resets.
-
-    Residual, deliberately not widened: `recent_due_queues` forgets a queue
-    two hours after it was due, so a restart later than that still leaves
-    no one to shut down. Widening the window here would also widen the
-    "wait for a script that never ran" hold that shares it.
+    来龙去脉见 docs/CODE-HISTORY.md「shutdown.py:_work_is_done」。
     """
     due = plan.recent_due_queues(eng.cfg.automas_dir, now)
     if not due:
@@ -184,16 +140,7 @@ def _work_is_done(eng, now: datetime, entries: list[dict]) -> bool:
 def _round_is_manual(eng, new_entries: list[dict]) -> bool:
     """Whether this round was triggered by hand rather than by the schedule.
 
-    Manual rounds have to be labelled separately (operator order,
-    2026-08-20): a scheduled round and a hand-triggered make-up run must
-    be distinguishable at a glance, or the operator cannot judge whether
-    a given message was supposed to appear at all.
-
-    The test looks only at how far this round's earliest record sits from
-    a scheduled time - and the scheduled times are read straight from
-    AUTO-MAS's queue config, so changing the schedule needs no matching
-    change here. If no schedule can be read it returns False: better to
-    leave a round unlabelled than to mislabel a scheduled one as manual.
+    来龙去脉见 docs/CODE-HISTORY.md「shutdown.py:_round_is_manual」。
     """
     times = [t for q in plan.schedule(eng.cfg.automas_dir)
              for t in q.get("times", [])]
@@ -218,14 +165,7 @@ def _round_is_manual(eng, new_entries: list[dict]) -> bool:
 def _last_round_manual(eng, now: datetime, entries: list[dict]) -> bool:
     """True when the day's most recent round was triggered by hand.
 
-    A manual round must not count as "the day's work is done". On
-    2026-08-21 a hand-triggered MaaEnd test finished at 12:29 and the
-    relay promptly powered the machine off - while the operator was in
-    the middle of working on it, and hours before the evening queue.
-
-    The round is the group of records that finished close together; two
-    hours is comfortably wider than a full queue (MAA then MaaEnd) and
-    far narrower than the gap between the morning and evening queues.
+    来龙去脉见 docs/CODE-HISTORY.md「shutdown.py:_last_round_manual」。
     """
     if not entries:
         return False
@@ -269,15 +209,7 @@ class Verdict:
 def decide(eng, now: datetime) -> Verdict:
     """纯判定：只读状态，不写任何东西。每一道门都对应一次真实事故。
 
-      - 功能没开 -> never
-      - 调试模式 / 已被吃掉的这一次机会 -> never（2026-08-31 改判，见下）
-      - 已经下过关机令 -> never（2026-08-16 一分钟内报了三次、关了两次）
-      - 本次开机还没跑完队列 -> never
-      - 开机不够久 -> never（防开机即关机的死循环）
-      - 有脚本在跑 / 有告警没推 / 客户端在更新 -> never
-      - 最近一轮是手动跑的 -> never（2026-08-21 把正在维护的机器关了）
-      - 队列还差脚本 -> never（2026-08-16 两个脚本之间的空档关掉了终末地）
-      - 到点了但日报没发 -> never（关机等日报，日报从不静默）
+    来龙去脉见 docs/CODE-HISTORY.md「shutdown.py:decide」。
     """
     if not eng.cfg.shutdown_after_run:
         return Verdict(False, "off", "关机功能没开")

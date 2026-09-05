@@ -48,11 +48,7 @@ def _okww_master_config(automas_dir: str | Path | None, name: str) -> dict:
 def _okww_nest_expected(automas_dir: str | Path | None) -> bool | None:
     """这一轮本来该不该打残象聚落。**读不到配置返回 None，不是 False。**
 
-    原来读不到就返回 False，于是「配置说不用打」和「我根本没读到配置」
-    长得一模一样——后者会让残象聚落那一项**整个消失**，OK-WW 照报全绿。
-    `_okww_master_config` 在没有 automas_dir、没有 data 目录、JSON 读坏
-    这三种情况下都返回 `{}`，任何一种都会走到这里。
-    这就是 2026-08-30 排查出的那一类 bug：前置不满足 → 静默什么都不做 → 看着像成功。
+    来龙去脉见 docs/CODE-HISTORY.md「handle.py:_okww_nest_expected」。
     """
     nest = _okww_master_config(automas_dir, "NightmareNestTask")
     daily = _okww_master_config(automas_dir, "DailyTask")
@@ -79,11 +75,7 @@ def _maaend_app_log(maaend_dir: "str | Path | None",
                     started: datetime) -> str:
     """这一轮 MaaEnd **自己**写的 app 日志。
 
-    收尾标记「INFO [App] 自动执行任务完成，关闭自身」只出现在
-    `<maaend>/debug/YYYY-MM-DD-N.log` 里，**不在 AUTO-MAS 的 history 日志里**。
-    2026-08-29 早班就是只核对了后者，于是「MaaEnd 跑完」这条恒为假，
-    推了一条「这一轮没干完」的假告警——而 MaaEnd 当时 09:54:38 明明打了那句。
-    判据没错，错在没把它该看的文件给它。
+    来龙去脉见 docs/CODE-HISTORY.md「handle.py:_maaend_app_log」。
     """
     if not maaend_dir:
         return ""
@@ -108,12 +100,7 @@ def _maa_app_log(maa_dir: "str | Path | None", started: datetime,
                  until: "datetime | None" = None) -> "str | None":
     """这一轮 MAA **自己**写的 asst.log，只保留本轮时间窗内的行。
 
-    AUTO-MAS 的 history 日志只记「脚本跑完了没有」，**没有子任务级别的成败**。
-    所以在 2026-08-30 之前，基建整个失败（`InfrastAbstractTask::on_run_fails`）
-    也照样被记成全绿——用户连着两天看到的「全绿」就是这么来的。
-
-    和 MaaEnd 不一样的地方：MaaEnd 每轮一个新文件，可以按 mtime 挑；
-    MAA 是**一个滚动的 asst.log**，只能按行首时间戳切。
+    来龙去脉见 docs/CODE-HISTORY.md「handle.py:_maa_app_log」。
     """
     if not maa_dir:
         return None
@@ -130,10 +117,9 @@ def _maa_app_log(maa_dir: "str | Path | None", started: datetime,
     except OSError:
         return None
     # 只有起点没有终点会把**后面几趟**也扫进来。2026-08-30 空跑时
-    # 08-29 晚班读到 72810 行（今早那趟的两倍），技能失败数变成 20+21=41，
     # 等于把今早的错算到了昨晚头上。所以必须有上界。
-    # `until` 给 None 时不设上界——`duration_known=False` 的记录时间不可信，
     # 那种情况宁可多取也不要把整趟切没了。
+    # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_maa_app_log」
     cut = started.strftime("%Y-%m-%d %H:%M:%S")
     top = until.strftime("%Y-%m-%d %H:%M:%S") if until else None
     out: list[str] = []
@@ -175,15 +161,7 @@ def _maaend_new_shots(maaend_dir: str | Path | None,
 def _warn_if_evidence_stale(eng, rec: RunRecord, dst: Path) -> None:
     """存下来的 debug 日志未必是失败那次的——对不上就明说，别让人被误导。
 
-    中继是靠监视 AUTO-MAS 的 history 才知道失败的，而 AUTO-MAS 整轮跑完
-    才写记录。等消息到手，MaaEnd 往往已经重试成功、启动时把 debug 清空了，
-    于是存下来的是**重试成功那次**的日志。
-
-    2026-09-05 就这么绕了一圈：证据目录名是失败那次（MaaEnd-05-27-42），
-    里面的 maafw.log 却只覆盖 09:57–09:59，那是成功那次（MaaEnd-05-56-35）。
-    真正定位问题靠的是同时存下来的 AUTO-MAS 那份 .json。
-
-    run_id 形如 `<日期>/<用户>/MaaEnd-HH-MM-SS`，末段就是这一轮的开始时刻。
+    来龙去脉见 docs/CODE-HISTORY.md「handle.py:_warn_if_evidence_stale」。
     """
     try:
         stamp = rec.run_id.rsplit("-", 3)[-3:]
@@ -339,10 +317,7 @@ def _handle(eng, rec: RunRecord) -> None:
             eng._persist_pending()
             log.info("↩️ %s 重试后成功，改为自愈通知", rec.script)
         # Only a pass that actually reached the weekly cap counts. MAA
-        # reports Success! even when it stops early for want of sanity, and
-        # closing 剿灭 on that would skip the rest of the week with the cap
-        # unmet - the run on 2026-08-17 needed five sorties and 125 sanity
-        # to get from 0 to 1800.
+        # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
         steps = rec.raw.get("okww_steps") or []
         # 周本：任务名译作「传送并刷取4C声骸」，任务本身显示「刷4C(大世界/副本)」，
         # 两种都认。判据和周常乐园一致——只有真跑完那一步才算数。
@@ -352,19 +327,15 @@ def _handle(eng, rec: RunRecord) -> None:
         if any("周常乐园" in s and "已完成" in s for s in steps) and eng._garden:
             if msg := eng._garden.on_success(rec.finished):
                 # 2026-08-26：这里原本写的是 `notes.append(msg)`，可这个作用域里
-                # 根本没有 notes——一路 NameError 把整个 _handle 打断，那条
-                # OK-WW 记录当场「处理运行记录失败」。照 🗓️ 剿灭 那支写，
-                # 两条周门本来就该是一个形状。
+                # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
                 eng.notifier.send("🌳 周常乐园", msg)
         if (rec.raw.get("annihilation") and rec.raw.get("annihilation_done")
                 and eng._annihilation):
             if msg := eng._annihilation.on_success(rec.finished):
                 eng.notifier.send("🗓️ 剿灭", msg)
         # AUTO-MAS 说「这个脚本正常退出了」，不等于它把活干成了。
-        # 2026-08-27：OK-WW 连着三轮没打残象聚落、MaaEnd 卡在弹窗上
-        # 把失败当做完自己关掉——两边一个 ERROR 都没报，而这里照样
-        # 记 ✅、照样静默。用户的原话是「他不报错，他直接把自己关掉了」。
         # 所以退出之前先按证据核对一遍，没干成的必须出声。
+        # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
         if msg := eng._verify_outcome(rec):
             log.warning("⚠️ %s %s 有项目没干成：\n%s",
                         rec.script, rec.run_id, msg)
@@ -398,9 +369,7 @@ def _handle(eng, rec: RunRecord) -> None:
     eng._pending[key] = rec
     eng._persist_pending()   # queued to disk before anything else can go wrong
     # MaaEnd 启动时会「Auto-cleared log files and debug artifacts」——
-    # 上一轮的 on_error 截图和日志在**下一次启动的瞬间**就被它自己删光。
-    # 2026-08-27 早上卡弹窗那三张截图就是这么没的：中午一重试，证据全无，
-    # 事后只能凭当时抄下的文件名说话。所以失败一落账就立刻把证据搬走。
+    # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
     if rec.script == "MaaEnd":
         eng._archive_maaend_evidence(rec)
     log.info("⏳ %s 失败，暂不推送，等重试结果", rec.script)
@@ -415,10 +384,8 @@ def _maintenance_today(eng, game: str) -> bool:
 
 
 # 同一件事当天只报一次。2026-09-01 群里同一个 OK-WW 失败连推三条
-# （17:00 / 08:29 / 11:54），用户：「赶紧去修，报了三次了。」
 # 键 = 脚本 + 失败在哪一步：同一步反复失败是同一件事，不许反复推；
-# 换了一步失败就是新事，照报。当天记账在 state/alerted-<日期>.json，
-# 日报仍会汇总全部失败趟数，静默的只是重复的即时推送。
+# 来龙去脉见 docs/CODE-HISTORY.md「handle.py:(模块级)」
 def _alert_key(eng, rec) -> str:
     return f"{rec.script}|{rec.user}|{','.join(sorted(rec.failed_tasks or ['?']))}"
 

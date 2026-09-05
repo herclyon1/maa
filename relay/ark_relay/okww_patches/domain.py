@@ -12,12 +12,7 @@ log = logging.getLogger("ark.okww_patch")
 
 
 # ── 补丁二：副本没打通不该把整个每日任务带走 ──────────────────
-# 2026-08-26 实测：凝素领域限时没打完 → 不掉宝箱 → walk_to_treasure 抛
-# WaitFailedException → 它不在 except 里 → 一路穿到 DailyTask.run。
-# 当天连续四次「Daily Task exception stopped」，领奖 / 邮件 / 附加任务全跳过，
-# total daily points 0。而紧邻的 farm_domain_with_recovery_loop 里作者写了
-# max_recovery_retries=3 的恢复重试，只能通过 return False 进入，
-# 于是对这个失败模式完全是死代码。
+# 来龙去脉见 docs/CODE-HISTORY.md「domain.py:(模块级)」
 _DOMAIN_IMPORT_OLD = "from ok import Logger\n"
 _DOMAIN_IMPORT_NEW = "from ok import Logger, WaitFailedException\n"
 

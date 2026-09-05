@@ -1,5 +1,7 @@
 # Pitfalls
 
+> 代码注释里搬出来的逐条事故经过在 [CODE-HISTORY.md](CODE-HISTORY.md)，按「文件:函数」索引。
+
 Everything here actually happened, with the cause that turned out to be true -
 not the one that looked true at the time. Kept because each one cost hours and
 none of them is guessable from the code.

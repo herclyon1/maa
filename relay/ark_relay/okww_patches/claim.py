@@ -8,26 +8,7 @@ from .core import _SRC, _Patch
 
 
 # ---- 真正领周本奖励 --------------------------------------------------------
-#
-# 2026-09-01 凌晨,用户看着屏幕说的:「打完之后拿声骸直接一直重开去刷,
-# 这不是拿宝箱奖励」「这是声骸模式」。日志完全印证:三轮都是
-# 打 Boss → farm echo on the face → 点掉退出弹窗 → 重开,
-# 本周剩余次数一直 3/3、波片 91 一点没掉。
-#
-# **我之前的整个前提是错的。** `FarmEchoTask` + `Teleport to Boss =
-# Weekly Challenge` 是**刷 4C 声骸**的模式——传送到周本 Boss 那儿反复刷,
-# 领奖那一步根本不在这条代码路径里。那句「结晶波片不足,无法获取奖励,
-# 请确认是否继续进入」只是**进本前的提醒**,不是「进本时扣波片发奖励」,
-# 我把它读反了,还据此写了文档和三条补丁。
-#
-# 真正的领奖:打完 Boss **走到结晶前按 F,花 60 波片**。同仓库的
-# `TacetTask` 里就有这套现成写法(凝素领域也是花体力领奖):
-#     walk_to_treasure() → pick_f(handle_claim=False)
-#     → has_claim_stamina() → use_stamina(once=60)
-#
-# 插在「退秘境」之前。安全性:`has_claim_stamina()` 是门,认不出那个
-# 界面就什么都不花、原样走老路;整段包在 try 里,任何异常都只是回到
-# 原来的行为,不会把日常任务带崩。
+# 来龙去脉见 docs/CODE-HISTORY.md「claim.py:(模块级)」
 _CLAIM_OLD = """                    if self._in_realm and not self.in_world():
                         self.send_key('esc', after_sleep=0.5)"""
 

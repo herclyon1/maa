@@ -11,12 +11,7 @@ log = logging.getLogger("ark.okww_patch")
 
 
 # ── 补丁四：主C饿死兜底 ────────────────────────────────────────
-# 协奏攒不满时 has_buff() 恒为 False，_unbuffed_non_main_target 会让两个辅助
-# 无限互切，主C永远上不了场——而主C正是唯一有机会把协奏打起来的人。
-# 2026-08-26 实测：56 次切人决策里主C 0 次，全程零输出被磨死。
-# 根因是游戏键位被改过（见 issue #1626），已经修好；这条留作保险，
-# 平时处于休眠状态（实测健康局面下切人序列与上游完全一致）。
-# 2026-08-27：它当初是手工打的、没进这个清单，OK-WW 一更新就被冲掉了。
+# 来龙去脉见 docs/CODE-HISTORY.md「starve.py:(模块级)」
 _STARVE_OLD = """    def _choose_switch_target_by_buff_time(self, current_char, candidates):
         if not candidates:
             return current_char

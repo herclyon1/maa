@@ -131,21 +131,7 @@ __all__ = [
 def ensure_patches(okww_dir: Path | None) -> list[str]:
     """确保本地补丁在位。返回这次实际做了什么（空表示本来就在位）。
 
-    2026-08-30 从四个减到一个。留下的只有残象聚落那份整份替换，
-    因为「只刷指定点位」上游根本没有，只能靠换掉整个文件拿到。
-
-    撤掉的三个，理由都是**没有证据说它们现在还在起作用**：
-
-    * 主C饿死兜底 —— 是我们自己改过游戏键位造成的（已在上游 #1632
-      承认并自行关闭 PR）。键位改回默认后症状再没出现。
-    * 副本失败不拖垮每日任务 —— 对应 08-26 那次「走向宝箱捡不到东西 →
-      等待超时 → 整个日常崩掉」，多半是背包满。而这条补丁是 08-28 才加的，
-      **症状 08-27 就已经不再出现**，加它之前病就好了。
-    * 领奖置底 —— 上游作者 2026-08-29 关闭了 PR #1631，没有留任何说明。
-      而且这个顺序是作者有意为之，`config_description` 里明写着。
-      改成 issue 去问「能不能做成可配置」，本地不再改。
-
-    三个都主动还原，不是只停止重打。
+    来龙去脉见 docs/CODE-HISTORY.md「okww_patch.py:ensure_patches」。
     """
     if not okww_dir:
         return []
@@ -158,10 +144,7 @@ def ensure_patches(okww_dir: Path | None) -> list[str]:
     done.extend(_apply_one(root, _STAMINA))
     done.extend(_apply_one(root, _NOFARM))
     # 2026-08-31 撤回：前提就是错的。ok.util.logger.Logger.error 的签名是
-    # error(self, message, exception=None)，第二个参数**本来就是异常**，
-    # 它内部走 exception_to_str(exception) 打印堆栈。上游写法没问题。
-    # 而我加的 exc_info=True 这个封装根本不认，当场 TypeError，
-    # 把一次可恢复的重试变成了硬崩溃（16:00 那趟就是这么死的）。
+    # 来龙去脉见 docs/CODE-HISTORY.md「okww_patch.py:ensure_patches」
     done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
                              _FARMERR_NEW, _FARMERR_OLD, "周本活锁：打出被吞掉的异常"))
     # 截图补丁已经问到答案（Boss 死后画面上没有自动领奖这回事），还原。

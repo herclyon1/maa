@@ -27,9 +27,8 @@ class _Patch:
     breaks: str             # 贴不上会怎样，写给人看
     upstream: str = ""      # 提给上游之后填 PR 链接；合并了就删掉这条补丁
     # 这条补丁**跨版本不变**的特征串（比如那句日志）。贴完之后它必须只出现
-    # 一次；出现多次就说明旧版本没还原干净、叠了两层。
     # 为什么不能拿 new 的头一行当判据：叠加是「旧版本 + 新版本」并存，
-    # 新版本仍然只出现一次，数它永远抓不到。2026-09-01 就是这么漏掉的。
+    # 来龙去脉见 docs/CODE-HISTORY.md「core.py:_Patch」
     unique: str = ""
 
 
@@ -81,13 +80,7 @@ def _verify_or_revert(f: Path, bak: Path, present: Callable[[str], bool],
 def _stacked(f: Path, p: _Patch) -> "str | None":
     """贴完之后自查有没有叠加。返回告警文字，正常时 None。
 
-    2026-09-01 踩的坑：v1 的替换文本**末尾自带锚点**
-    `self.click_team_challenge()`，我把 present() 改成认新版本之后，
-    _apply_one 就在 v1 上面又贴了一层——两段检查同时存在，旧那段先跑，
-    而它正是会误判的那版。波片 91（>60）也被判成「不足」跳过。
-    没有这道自查，叠加是**看不出来的**：文件语法没错、present() 也为真。
-
-    判据用 new 的第一行（各版本独有的那句注释/代码），出现超过一次就是叠了。
+    来龙去脉见 docs/CODE-HISTORY.md「core.py:_stacked」。
     """
     head = p.unique or next((ln for ln in p.new.splitlines() if ln.strip()), "")
     if not head:
@@ -105,10 +98,7 @@ def _stacked(f: Path, p: _Patch) -> "str | None":
 
 def _apply_one(root: Path, p: _Patch) -> list[str]:
     # 注意 present() 的判据必须跟着 new 一起改。
-    # 2026-08-31 踩过：我给「波片不足时跳过周本」加了调试行，present() 认的
-    # 还是那句没变过的日志，_apply_one 判成「已在位」直接返回，新版本
-    # **一声不吭地没部署**，我却在日志里找那行调试输出，白等一趟。
-    # 判据要认 new 里**这一版独有**的东西，改了内容就要跟着改判据。
+    # 来龙去脉见 docs/CODE-HISTORY.md「core.py:_apply_one」
     f = root.joinpath(*p.parts)
     if not f.exists():
         log.warning("OK-WW 补丁：找不到 %s，跳过", f)
