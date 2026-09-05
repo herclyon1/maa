@@ -67,7 +67,7 @@ def main() -> int:
             # 分支，说「日常那条的药在计划表」——在 Fixed 模式下是错的。
             mode = info.get("StageMode")
             if mode == "Fixed":
-                print(f"    ▶ Fixed 模式 → 关卡和药量都取 Info.*")
+                print("    ▶ Fixed 模式 → 关卡和药量都取 Info.*")
                 print(f"      Stage={info.get('Stage')!r} "
                       f"Stage_1/2/3={[info.get(f'Stage_{n}') for n in (1,2,3)]}")
                 print(f"      **MedicineNumb = {info.get('MedicineNumb')}**"

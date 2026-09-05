@@ -195,10 +195,18 @@ def _spawn_via_task(exe: Path, cwd: Path, args: tuple[str, ...] = ()) -> bool:
     return True
 
 
+_PWSH7 = Path(r"C:\Program Files\PowerShell\7\pwsh.exe")
+
+
 def _pwsh() -> str:
-    """PowerShell 7 优先。5.1 默认不是 UTF-8，中文路径会被 ANSI 解码毁掉。"""
-    seven = Path(r"C:\Program Files\PowerShell\7\pwsh.exe")
-    return str(seven) if seven.exists() else "powershell"
+    """只认 PowerShell 7。5.1 默认不是 UTF-8，中文路径会被 ANSI 解码毁掉。
+
+    不存在也不退回 5.1：退回去的话命令「跑成功了」但结果是乱码，比失败更坏。
+    这里只写一条 ERROR，调用方拿到不存在的路径会当场报 OSError。
+    """
+    if not _PWSH7.exists():
+        log.error("找不到 %s：这台机器必须装 PowerShell 7", _PWSH7)
+    return str(_PWSH7)
 
 
 # TOKEN_INFORMATION_CLASS 的两个取值。pywin32 各版本对这些常量的暴露位置
@@ -960,7 +968,7 @@ def _okww_quiesce() -> None:
           "$_.CommandLine -like '*-m ok *' } | "
           "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }")
     try:
-        subprocess.run(["powershell", "-NoProfile", "-Command", ps],  # noqa: S603, S607
+        subprocess.run([_pwsh(), "-NoProfile", "-Command", ps],  # noqa: S603, S607
                        capture_output=True, timeout=60)
     except (OSError, subprocess.SubprocessError):
         pass

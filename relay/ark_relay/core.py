@@ -17,6 +17,14 @@ from .config import Config, RunRecord, SERVER_TZ, USER_TZ, atomic_write_text, bo
 log = logging.getLogger("ark.core")
 
 
+def _is_iso(v) -> bool:
+    try:
+        datetime.fromisoformat(str(v))
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
 class State:
     """Which runs have been handled, and today's ledger.
 
@@ -105,6 +113,15 @@ class State:
                 # valid JSON yet incomplete.
                 log.warning("账目里有一条残缺记录（缺 %s），已跳过: %.120s",
                             "、".join(missing), ln)
+                continue
+            # 键在不等于值对。日报和关机判定都要拿 started/finished 去
+            # fromisoformat，一条解析不了的记录会让整天的日报发不出去，
+            # 关机等日报，机器就开一夜。和上面缺键是同一类事，同样跳过。
+            bad = [k for k in ("started", "finished")
+                   if not _is_iso(entry.get(k))]
+            if bad:
+                log.warning("账目里有一条时间不合法的记录（%s），已跳过: %.120s",
+                            "、".join(bad), ln)
                 continue
             out.append(entry)
         return out

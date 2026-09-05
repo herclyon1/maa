@@ -233,6 +233,26 @@ accepts "load 不许挂自动刷新（那就是轮询）" \
   python3 scripts/mac/lib/no_auto_refresh.py
 
 echo
+echo "▶ 静态检查闸门（pyflakes）"
+# 2026-09-06：局部变量 names 遮住模块 names，先读后绑定，四天里每次调用必崩。
+# 自写的 test_undefined_names 抓不到「先读后绑定」，只有 pyflakes 的 F823 能。
+cat > "$TMP/f823.py" <<'EOF'
+import os as names
+def f(x):
+    y = names.path.join(x, "a")
+    names = []
+    return y, names
+EOF
+refuses "先读后绑定的名字必须被抓出" "referenced before assignment" \
+  uvx pyflakes "$TMP/f823.py"
+cat > "$TMP/undef.py" <<'EOF'
+def g():
+    return _never_defined()
+EOF
+refuses "引用了没定义的名字必须被抓出" "undefined name" \
+  uvx pyflakes "$TMP/undef.py"
+
+echo
 echo "▶ 仓库自检本身"
 # 这里只验「lint 不会误杀干净的树」。测试那一项部署流程自己会跑一遍，
 # 在这儿再跑一遍纯属重复，一次部署白等十几秒。

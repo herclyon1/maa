@@ -1111,7 +1111,7 @@ _CLAIM_V3 = """                    if self._in_realm and not self.in_world():
                             _o = self.ocr(box=self.box_of_screen(0.0, 0.0, 1.0, 1.0))
                             _txt = ' '.join(str(_b) for _b in (_o or []))
                             if '领取奖励需消耗' in _txt and '结晶波片' in _txt:
-                                _m = re.search(r'(\d+)\s*/\s*240', _txt)
+                                _m = re.search(r'(\\d+)\\s*/\\s*240', _txt)
                                 _have = int(_m.group(1)) if _m else 0
                                 if _have >= 60:
                                     self.log_info(f'周本领奖：确认领取，波片 {_have}')

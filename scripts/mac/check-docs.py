@@ -151,6 +151,22 @@ def host_reachable() -> bool:
                           capture_output=True).returncode == 0
 
 
+_PWSH7 = r"C:\Program Files\PowerShell\7\pwsh.exe"
+_pwsh_cache: dict[str, bool] = {}
+
+
+def _has_pwsh() -> bool:
+    """游戏机上有没有 pwsh 7。只问一次。
+
+    这个名字被引用了却从来没定义——2026-09-06 pyflakes 一跑就报。走到
+    json 指令那一步必然 NameError。
+    """
+    if "v" not in _pwsh_cache:
+        rc, _ = remote(f'if exist "{_PWSH7}" (exit 0) else (exit 1)')
+        _pwsh_cache["v"] = rc == 0
+    return _pwsh_cache["v"]
+
+
 def remote(cmd: str) -> tuple[int, str]:
     # Bytes, not text=True. The Windows console is GBK, so `schtasks` and
     # friends answer in GBK and Python's UTF-8 decode raises - which killed
@@ -223,9 +239,13 @@ def check_json_values(directives) -> None:
             bad(f"{md.relative_to(REPO)}: malformed json directive: {arg!r}")
             continue
         if path not in cache:
-            # pwsh 7 优先：5.1 默认不是 UTF-8，路径含中文时会被 ANSI 解码毁掉。
-            _pw = ('"C:\\Program Files\\PowerShell\\7\\pwsh.exe"'
-                   if _has_pwsh() else 'powershell')
+            # 只用 pwsh 7：5.1 默认不是 UTF-8，路径含中文时会被 ANSI 解码毁掉。
+            # 没有就直接判 FAIL，不退回 5.1（退回去读到的是乱码，比失败更坏）。
+            if not _has_pwsh():
+                bad(f"{md.relative_to(REPO)}: 游戏机上没有 pwsh 7（{_PWSH7}），json 指令没法核对")
+                cache[path] = None
+                continue
+            _pw = f'"{_PWSH7}"'
             rc, out = remote(
                 f'{_pw} -NoProfile -Command '
                 f'"[Convert]::ToBase64String([IO.File]::ReadAllBytes(\'{path}\'))"')

@@ -11,7 +11,6 @@
 * AUTO-MAS 更新包下不完是**设计内**的（600 秒放弃、留到下次开机），
   不能算失败——把它和真正的未确认项分开。
 """
-import hashlib
 import json
 import sys
 import urllib.request

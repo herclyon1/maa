@@ -4,7 +4,7 @@
 `adb shell input swipe` 只能画一条匀速直线，游戏根本不认；
 `input motionevent` 要 Android 11+，这台雷电是 Android 9，没有。
 能做出真实触摸时序的只有 minitouch / MaaTouch —— MAA 自己用的也是它，
-就放在 `D:\ark\maa\resource\minitouch\maatouch\minitouch`。
+就放在 `D:\\ark\\maa\\resource\\minitouch\\maatouch\\minitouch`。
 
 MaaTouch 是个 dex，用 app_process 跑起来之后从 stdin 读 minitouch 协议：
 
@@ -85,7 +85,7 @@ def main() -> int:
 
     def touch(kind: str, x: int = 0, y: int = 0, pause: float = 0.05) -> None:
         """一组动作 + 提交 + 真实停顿。节奏由 Python 控制，不用 minitouch 的 w。"""
-        send(f"u 0" if kind == "u" else f"{kind} 0 {x} {y} 100")
+        send("u 0" if kind == "u" else f"{kind} 0 {x} {y} 100")
         send("c")
         time.sleep(pause)
 

@@ -328,6 +328,7 @@ def _boot_stamp(now: datetime) -> str:
     """这次开机的标识：开机时刻到分钟。部署重启服务不改变它。"""
     try:
         import ctypes  # noqa: PLC0415
+        ctypes.windll.kernel32.GetTickCount64.restype = ctypes.c_ulonglong  # 64 位，别截断
         up_ms = ctypes.windll.kernel32.GetTickCount64()
         return (now - timedelta(milliseconds=int(up_ms))).strftime("%Y%m%d%H%M")
     except Exception:  # noqa: BLE001

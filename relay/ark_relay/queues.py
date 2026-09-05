@@ -66,15 +66,19 @@ def apply(automas_dir: Path, name: str, enabled: bool | None = None,
         return False, f"读不了 QueueConfig: {exc}"
 
     target = None
-    names = []
+    # 不能叫 names：那是模块名，函数开头 names.canonical() 还要用它。
+    # 2026-09-02 到 09-06 这里就叫 names，Python 把它当本函数的局部变量，
+    # 第一行 names.canonical() 直接 UnboundLocalError——跳过队列、待办里的
+    # 队列开关，四天里每一次调用都崩。pyflakes 一行就能报（F823），现已进 lint。
+    have = []
     for inst in data.get("instances", []):
         node = data.get(inst.get("uid")) or {}
         qn = (node.get("Info") or {}).get("Name")
-        names.append(qn)
+        have.append(qn)
         if qn == name:
             target = node
     if target is None:
-        return False, f"没有叫「{name}」的队列（现有：{'、'.join(n for n in names if n)}）"
+        return False, f"没有叫「{name}」的队列（现有：{'、'.join(n for n in have if n)}）"
 
     changes: list[str] = []
     removed: list[dict] = []

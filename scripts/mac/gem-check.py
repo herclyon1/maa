@@ -59,7 +59,7 @@ CEP 的 `src/data/weapons.ts` 里 `primaryStat` / `elementalDamage` /
 
     src/generated/i18n/gemStats/zh-CN.json      ← 就是这个文件，31 条
       ↑ 由 sync-game-data 生成，来源是游戏本体：
-        TableCfg/GemTable.json  取 /"(g[as]t_\w+)":/ 作 key
+        TableCfg/GemTable.json  取 /"(g[as]t_\\w+)":/ 作 key
         再用该条的 tagName.id 去 TextTable 查中文
 
 也就是说这张表的 key 是**游戏自己的 GemTable 键名**、值是**游戏自己的文本表**，

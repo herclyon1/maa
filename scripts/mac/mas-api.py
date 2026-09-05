@@ -33,7 +33,6 @@ import os
 import sys
 import urllib.error
 import urllib.request
-from typing import Optional   # this Mac runs Python 3.9; no X | None syntax
 
 HOST = os.environ.get("ARK_HOST", "100.65.39.119")
 PORT = os.environ.get("ARK_MAS_PORT", "36163")

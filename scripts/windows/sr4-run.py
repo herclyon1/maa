@@ -12,8 +12,6 @@ MAA 打不了这一关：它进入 `Copilot@WaitUntilEndOfAction` 之后，剧�
 
 用法：sr4-run.py <日志路径>
 """
-import json
-import re
 import subprocess
 import sys
 import time

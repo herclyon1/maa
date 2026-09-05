@@ -16,6 +16,7 @@ import logging
 import os
 import re
 import subprocess
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -37,6 +38,9 @@ CHECK_OPEN_MIN, CHECK_CLOSE_MIN = 2, 7
 # scripts legitimately land 40+ minutes in (MAA then MaaEnd), so testing every
 # record against this window would call every healthy morning "manual".
 MANUAL_WINDOW_MIN = 30
+# `_scripts_running` 的短缓存，见那个方法的注释。
+_SCRIPTS_CACHE: dict = {"at": -1e9, "val": False}
+_SCRIPTS_TTL = 3.0
 
 
 def _okww_master_config(automas_dir: str | Path | None, name: str) -> dict:
@@ -341,7 +345,11 @@ class Engine:
     def tick(self) -> int:
         """Process whatever is new. Returns how many records were handled."""
         self._observe_modes()
-        records = self.source.fetch(self.state.seen)
+        try:
+            records = self.source.fetch(self.state.seen)
+        except Exception:  # noqa: BLE001 - 读不到记录，时钟类的事照做
+            log.exception("读取运行记录失败，本轮按没有新记录处理")
+            records = []
         for rec in records:
             try:
                 self._handle(rec)
@@ -350,19 +358,31 @@ class Engine:
                 continue
             self.state.mark_seen(rec.run_id)
             self._handled_any = True
-        self._flush_pending()
-        self._enforce_annihilation()
+        # 每一段各自兜住，一段坏了不许连累后面的。2026-09-04 「明日安排」那段
+        # 一个 ImportError 把它后面的补更新、日报、自动关机全带走，机器白开
+        # 一上午没人发现——关机和日报是最后两段，恰恰最不该被前面的段拖死。
+        for what, step in (
+            ("推送积压告警", self._flush_pending),
+            ("剿灭开关", self._enforce_annihilation),
+            ("周常门", self._weekly_gates),
+            ("漏跑检查", self._check_missed_runs),
+            ("临时查看", self._maybe_interim_report),
+            ("队列后更新", self._maybe_deferred_update),
+            ("日报", self._maybe_daily_report),
+            ("关机", self._maybe_shutdown),
+        ):
+            try:
+                step()
+            except Exception:  # noqa: BLE001 - 这一段坏了，下一段照跑
+                log.exception("本轮「%s」这一段出错，跳过它继续", what)
+        return len(records)
+
+    def _weekly_gates(self) -> None:
         try:
             self._garden.enforce()
             self._weeklyboss.enforce()
         except Exception:  # noqa: BLE001 - 一道省时间的门，不许拖垮主流程
             log.warning("周常乐园开关没能落盘，下轮再试", exc_info=True)
-        self._check_missed_runs()
-        self._maybe_interim_report()
-        self._maybe_deferred_update()
-        self._maybe_daily_report()
-        self._maybe_shutdown()
-        return len(records)
 
     # ---------- 队列跑完之后再更新游戏客户端 ----------
 
@@ -819,17 +839,26 @@ class Engine:
         """
         if os.name != "nt":
             return False
+        # 一轮 tick 里这个判断要问十来次（跳过模式、积压告警、漏跑、临时查看、
+        # 日报、关机……各问一遍），每问一次起一个 tasklist，慢的时候一次一两秒。
+        # 三秒内的答案直接复用：进程列表三秒内不会变出一个新游戏来。
+        now = time.monotonic()
+        if now - _SCRIPTS_CACHE["at"] < _SCRIPTS_TTL:
+            return _SCRIPTS_CACHE["val"]
         try:
             out = subprocess.run(["tasklist", "/FO", "CSV", "/NH"],
                                  capture_output=True, timeout=20).stdout
         except (OSError, subprocess.SubprocessError):
-            return True  # cannot tell -> wait rather than cry wolf
-        # Endfield.exe is on this list because MaaEnd has NO process of its
-        # own - AUTO-MAS's python drives it in-process (verified 2026-08-20:
-        # during a MaaEnd run tasklist shows only the game). Watching for
-        # "MaaEnd.exe" alone made this check blind through the entire 终末地
-        # phase; the game binary is the only visible sign that phase is live.
-        return any(n in out for n in (b"MAA.exe", b"MaaEnd.exe", b"Endfield.exe"))
+            val = True  # cannot tell -> wait rather than cry wolf
+        else:
+            # Endfield.exe is on this list because MaaEnd has NO process of its
+            # own - AUTO-MAS's python drives it in-process (verified 2026-08-20:
+            # during a MaaEnd run tasklist shows only the game). Watching for
+            # "MaaEnd.exe" alone made this check blind through the entire 终末地
+            # phase; the game binary is the only visible sign that phase is live.
+            val = any(n in out for n in (b"MAA.exe", b"MaaEnd.exe", b"Endfield.exe"))
+        _SCRIPTS_CACHE["at"], _SCRIPTS_CACHE["val"] = now, val
+        return val
 
     # 同一件事当天只报一次。2026-09-01 群里同一个 OK-WW 失败连推三条
     # （17:00 / 08:29 / 11:54），用户：「赶紧去修，报了三次了。」
@@ -1089,6 +1118,10 @@ class Engine:
         now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
         try:
             import ctypes  # noqa: PLC0415 - Windows only, imported where used
+            # 返回值是 64 位；不声明 restype 的话 ctypes 按 32 位 int 截断，
+            # 开机超过 24.8 天就变成负数——这台机器一天两开机撞不到，但
+            # 「靠巧合正确」不算正确。
+            ctypes.windll.kernel32.GetTickCount64.restype = ctypes.c_ulonglong
             ms = ctypes.windll.kernel32.GetTickCount64()
         except (AttributeError, OSError):
             return None

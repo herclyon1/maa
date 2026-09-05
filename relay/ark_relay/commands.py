@@ -470,10 +470,10 @@ def _run_now(queue: str) -> tuple[bool, str]:
         queues = _mas("/api/queue/get")["data"]
     except Exception as exc:  # noqa: BLE001
         return False, f"取不到队列列表: {exc}"
-    names = []
+    have = []      # 别叫 names，会把模块名遮住（见 queues.apply 的注释）
     for qid, q in queues.items():
         name = str((q.get("Info") or {}).get("Name") or "")
-        names.append(name)
+        have.append(name)
         if name == queue:
             try:
                 # mode 的合法值只有 AutoProxy / ScriptConfig / Update
@@ -486,8 +486,7 @@ def _run_now(queue: str) -> tuple[bool, str]:
             if str(r.get("status")) != "success":
                 return False, f"队列「{queue}」没能启动: {r.get('message')}"
             return True, f"队列「{queue}」已开始跑"
-    have = "、".join(names)
-    return False, f"没有叫「{queue}」的队列（有的是：{have}）"
+    return False, f"没有叫「{queue}」的队列（有的是：{'、'.join(have)}）"
 
 
 def _skip_today(queue: str, want_day: str = "") -> tuple[bool, str]:

@@ -889,3 +889,31 @@ pywintypes.com_error: (-2147352567, '发生意外。',
 同一次开机里 `ark.update` 取 manifest 也失败了一次（WinError 10054），
 但它**换了镜像重试成功**（拿到清单只是比本机旧，所以没更新）。
 `ark.inbox` 这条没有看到重试。这就是之前记下的「自更新和待办下发不可靠」。
+
+## A local variable with a module's name breaks the whole function, and 61 green tests never noticed (2026-09-06)
+
+`queues.apply` and `commands._run_now` both imported the `names` module and
+then, further down, did `names = []`. Python treats a name assigned anywhere in
+a function as local for the *entire* function, so the first line -
+`names.canonical(name)` - raised `UnboundLocalError` on every call from
+2026-09-02 (when `names.py` was added) to 09-06. Skip-queue, the inbox's queue
+switch and the phone's "run now" were all dead for four days.
+
+Why nothing caught it: no test called either function, and the home-grown
+`test_undefined_names.py` only asks "was this name ever bound in scope?" -
+which it was. The static fact that matters is *bound after being read*, which
+is pyflakes' F823 and takes one line to report.
+
+Now enforced: `lint-repo.sh` item 9 runs pyflakes over `relay/` and `scripts/`
+(zero reports allowed) and compiles everything with the machine's Python 3.14
+with `SyntaxWarning` as an error - that caught an invalid `\d` escape the local
+3.9 never mentioned. `guardcheck.sh` feeds both gates a known-bad sample.
+
+## One stage of `tick()` raising took the report and the shutdown with it (2026-09-04, fixed 09-06)
+
+`tick()` called its clock-driven stages in sequence with no per-stage guard.
+An `ImportError` in the "tomorrow's plan" stage aborted the tick before the
+daily report and `_maybe_shutdown` ran, every tick, all morning. Each stage
+now runs inside its own `try` and a failure is logged with its name; the
+source fetch is guarded the same way. `test_tick_isolation.py` raises in one
+stage and asserts the later ones still run.
