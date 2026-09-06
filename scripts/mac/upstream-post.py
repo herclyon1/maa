@@ -137,7 +137,7 @@ def cmd_rules(repo: str) -> int:
     return 0
 
 
-def _load_draft(path: Path) -> tuple[str, dict[str, str], str]:
+def _load_draft(path: Path, kind: str = "md") -> tuple[str, dict[str, str], str]:
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
     title = lines[0][1:].strip() if lines and lines[0].startswith("#") else ""
@@ -145,7 +145,11 @@ def _load_draft(path: Path) -> tuple[str, dict[str, str], str]:
     sections: dict[str, str] = {}
     cur = None
     for ln in lines[1:]:
-        if m := re.match(r"^([^\s\[#].{1,30}?)[:：]\s*$", ln):
+        if kind == "pr":
+            m = re.match(r"^##\s+(.+?)\s*$", ln)
+        else:
+            m = re.match(r"^([^\s\[#].{1,30}?)[:：]\s*$", ln)
+        if m:
             cur = m.group(1).strip()
             sections[cur] = ""
         elif cur is not None:
@@ -158,8 +162,20 @@ def cmd_lint(repo: str, template: str, draft: Path) -> int:
     if template not in t:
         print(f"✗ {repo} 没有模板 {template!r}，有的是：{', '.join(t)}"); return 2
     info = t[template]
-    title, sections, body = _load_draft(draft)
+    title, sections, body = _load_draft(draft, kind=info["kind"])
     bad: list[str] = []
+    if info["kind"] == "pr":
+        # PR 模板的勾选框：每个必须出现且要么 [x] 要么明确 [ ]，不许删
+        want_boxes = [ln.strip() for ln in (CACHE / repo.replace("/", "__") / "PULL_REQUEST_TEMPLATE.md")
+                      .read_text(encoding="utf-8").splitlines() if ln.strip().startswith("- [ ]")]
+        for wb in want_boxes:
+            label = wb[6:].strip()
+            if label not in body:
+                bad.append(f"PR 模板的勾选项没保留：{label[:40]}")
+        if not re.search(r"- \[x\].*(已联系作者|不适用|Not applicable|contacted the author)", body):
+            bad.append("「新功能或大改确认」那组勾选框一个都没勾——新功能必须先讨论并勾「已联系作者或已在社区讨论」")
+        if not re.search(r"discussions/\d+|issues/\d+|#\d+", body):
+            bad.append("PR 正文里没有任何 issue / 讨论链接（模板要「相关讨论链接」）")
     if not title:
         bad.append("草稿第一行要是 `# 标题`")
     if info["title"] and not title.startswith(info["title"]):
@@ -176,7 +192,13 @@ def cmd_lint(repo: str, template: str, draft: Path) -> int:
     extra = [k for k in sections if k not in {f for f, _ in info["fields"]}]
     if extra:
         bad.append(f"多出了模板没有的字段：{extra}（别自创分节）")
+    allowed_heads = {f for f, _ in info["fields"]}
     for rx, why in AI_TONE:
+        if "标题" in why:
+            stray = [h for h in re.findall(r"^\s*#{1,3}\s+(.+?)\s*$", body, re.M) if h.strip() not in allowed_heads]
+            if stray:
+                bad.append(f"AI 味：自造的标题（模板没有）：{stray[:3]}")
+            continue
         if rx.search(body):
             bad.append(f"AI 味：{why}")
     if len(body) > MAX_BODY:
