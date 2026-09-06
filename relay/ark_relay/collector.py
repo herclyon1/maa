@@ -731,6 +731,19 @@ def refresh_raw(entry: dict, history_root: Path | None) -> dict:
     out["raw"] = raw
     if parsed.get("sanity") is not None and out.get("sanity") is None:
         out["sanity"] = parsed["sanity"]
+    # 成败也按现在的判据重判：账是记账那一刻判的，判据升级后（例如 09-06
+    # 「AUTO-MAS 认不出改名的任务」「OK-WW 退出时少写一句」两条）旧账还是 ❌，
+    # 晚上的日报会照旧把做完的趟写成失败。只往「做完了」的方向改：
+    # parse_record 说 ok 才覆盖，说不 ok 不动旧账（旧账里的失败有当时的依据）。
+    try:
+        rec = parse_record(log_path.with_suffix(".json"), Path(history_root))
+    except Exception:  # noqa: BLE001
+        rec = None
+    if rec is not None and rec.ok and not out.get("ok"):
+        out["ok"], out["failed_tasks"] = True, []
+        for k in ("maaend_name_mismatch", "okww_exit_race"):
+            if k in rec.raw:
+                raw[k] = rec.raw[k]
     return out
 
 

@@ -42,5 +42,16 @@ rec3 = collector.parse_record(d / "MaaEnd-06-14-25.json", root)
 if rec3 is None or rec3.ok:
     fails.append("开了没收尾的任务不该被洗白")
 
+# 旧账重判：记账时是 ❌，判据升级后出报告前要改成 ✅（只往做完的方向改）
+old_entry = {"run_id": "2026-09-06/endfield/MaaEnd-05-40-21", "script": "MaaEnd", "ok": False,
+             "failed_tasks": ["SellProduct"], "raw": {}}
+fresh = collector.refresh_raw(old_entry, root)
+if not fresh.get("ok") or fresh.get("failed_tasks"):
+    fails.append(f"旧账没按新判据改成做完：{fresh.get('ok')} {fresh.get('failed_tasks')}")
+old_bad = {"run_id": "2026-09-06/endfield/MaaEnd-06-11-14", "script": "MaaEnd", "ok": False,
+           "failed_tasks": ["自动采集"], "raw": {}}
+if collector.refresh_raw(old_bad, root).get("ok"):
+    fails.append("真失败的旧账不该被改成做完")
+
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
