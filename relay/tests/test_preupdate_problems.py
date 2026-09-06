@@ -68,6 +68,8 @@ block = src[i:i + 400] if i >= 0 else ""
 check("有「预更新没能确认」这条通知", i >= 0)
 check("走 alert=True（报警，会全渠道发）", "alert=True" in block)
 check("明说了这不是「无需更新」", "这不是「无需更新」" in src)
+# 2026-09-06：MaaEnd 升级后 AUTO-MAS 的任务表缓存不刷新（#573），升级完必须重启它
+check("MaaEnd 升级后重启 AUTO-MAS 刷新缓存", "_revive_automas()" in src.split("preupdate.run(maaend", 1)[1][:1500])
 
 print("\n[没有回到旧的「安静即成功」写法]")
 p = (Path(__file__).resolve().parents[1] / "ark_relay" / "preupdate.py").read_text(encoding="utf-8")

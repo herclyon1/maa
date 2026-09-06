@@ -673,6 +673,10 @@ def _stage_inbox_and_phone(svc, cfg, engine, notifier, log):
     return inbox, collect, deferred_inbox
 
 
+def _note(problems, msg: str) -> None:
+    problems.append(msg)
+
+
 def _stage_preupdate(cfg, notifier, log) -> None:
     """开机窗口里把四个程序的更新做掉（一天一次）。"""
     # MaaEnd updates itself at startup and restarts its own process when it
@@ -714,6 +718,15 @@ def _stage_preupdate(cfg, notifier, log) -> None:
                 log.info("预更新：MaaEnd 已更新：%s", updated)
                 notifier.send("🆕 预更新",
                               f"MaaEnd 已更新：{updated}")
+                # AUTO-MAS 开机时就把 MaaEnd 的任务表预载进内存缓存了，MaaEnd 在它之后
+                # 被升级，缓存不会跟着刷新：2026-09-06 上游把 SellProduct 的定义文件改名，
+                # MAS 拿着旧表对不上「任务完成: 🛒据点交易」，整趟判失败还重试两次。
+                # 维护者（AUTO-MAS#573）：「缓存更新逻辑的问题，重启 MAS 就好」。
+                # 本机验证属实，所以升级完就把 MAS 重启一遍，让它重新读一次 MaaEnd。
+                log.info("预更新：MaaEnd 换了版本，重启 AUTO-MAS 刷新它的任务表缓存")
+                _revive_automas()
+                if not ensure_automas(timeout=120):
+                    _note(problems, "MaaEnd 更新后重启 AUTO-MAS，120 秒内接口没起来")
             try:
                 from ark_relay import gameupdate as _gu  # noqa: PLC0415
                 if back := _gu.maaend_reenable_if_updated(cfg):
