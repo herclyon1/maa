@@ -42,6 +42,12 @@
 没带上模板自动打的 `AI`/`bug` 标签，维护者按标签筛就看不见它，用户当场指出，关掉重提成 #575。
 用浏览器填表单时，勾选框要**真实点击**，脚本方式设值会被表单重置、提交时报「required checkbox is missing」。
 
+**附件怎么用浏览器工具传（2026-09-06 跑通）**：GitHub 新版评论框没有 `<input type=file>`，
+`find` 找不到。做法：用 javascript_tool 在评论框旁插一个自己的 `<input type=file id=ark-upload aria-label="ark upload picker">`，
+`find` 拿到它的 ref → `file_upload` 把本地 zip 放进去 → 再用 JS 把 `input.files[0]` 装进 `DataTransfer`，
+对评论框 `dispatchEvent(new DragEvent('drop', …))`，等到文本里出现 `user-attachments/files` 链接，
+再点 Comment，**发完用 gh 核实评论真的在**（第一次点了没发出去、还导航走丢了草稿）。
+
 **附件只能网页拖拽。** `gh` 命令行传不了附件，那些 `user-attachments`
 链接是网页上传生成的。所以流程是：先把文件在本机备齐 → 开网页填表 →
 把文件拖进去。命令行只用来读模板、查重、事后编辑正文。
