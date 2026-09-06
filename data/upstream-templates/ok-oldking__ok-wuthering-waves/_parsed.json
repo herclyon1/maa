@@ -1,0 +1,319 @@
+{
+ "bug-report-en.md": {
+  "kind": "md",
+  "title": "[BUG]",
+  "labels": [
+   "bug"
+  ],
+  "fields": [
+   [
+    "Bug summary",
+    true
+   ],
+   [
+    "Actual behavior",
+    true
+   ],
+   [
+    "Expected behavior",
+    true
+   ],
+   [
+    "Steps to reproduce",
+    true
+   ],
+   [
+    "Frequency",
+    true
+   ],
+   [
+    "Affected task or feature",
+    true
+   ],
+   [
+    "Main Echo check for Auto Combat",
+    true
+   ],
+   [
+    "Input and display environment",
+    true
+   ],
+   [
+    "Affected OK-WW version",
+    true
+   ],
+   [
+    "Windows version",
+    true
+   ],
+   [
+    "Logs and screenshots",
+    true
+   ],
+   [
+    "Video (optional)",
+    false
+   ]
+  ],
+  "route": "issue",
+  "notes": [
+   "Search existing issues first:"
+  ]
+ },
+ "feature-request-en.md": {
+  "kind": "md",
+  "title": "[Enhancement]",
+  "labels": [
+   "enhancement"
+  ],
+  "fields": [
+   [
+    "Problem or limitation",
+    true
+   ],
+   [
+    "Who benefits and when",
+    true
+   ],
+   [
+    "Proposed behavior",
+    true
+   ],
+   [
+    "Acceptance examples",
+    true
+   ],
+   [
+    "Alternatives considered",
+    true
+   ],
+   [
+    "Additional context",
+    true
+   ]
+  ],
+  "route": "issue",
+  "notes": [
+   "Search existing issues and discussions first:"
+  ]
+ },
+ "question-en.md": {
+  "kind": "md",
+  "title": "[Question]",
+  "labels": [
+   "question"
+  ],
+  "fields": [
+   [
+    "Question",
+    true
+   ],
+   [
+    "FAQ result",
+    true
+   ],
+   [
+    "What you have already tried",
+    true
+   ],
+   [
+    "OK-WW version",
+    true
+   ]
+  ],
+  "route": "issue",
+  "notes": [
+   "Search existing issues:"
+  ]
+ },
+ "报告bug-.md": {
+  "kind": "md",
+  "title": "[BUG]",
+  "labels": [
+   "bug"
+  ],
+  "fields": [
+   [
+    "错误摘要",
+    true
+   ],
+   [
+    "实际行为",
+    true
+   ],
+   [
+    "预期行为",
+    true
+   ],
+   [
+    "复现步骤",
+    true
+   ],
+   [
+    "出现频率",
+    true
+   ],
+   [
+    "相关任务或功能",
+    true
+   ],
+   [
+    "角色、队伍顺序及相关设置",
+    true
+   ],
+   [
+    "自动战斗主声骸检查",
+    true
+   ],
+   [
+    "输入及显示环境",
+    true
+   ],
+   [
+    "出现问题的 OK-WW 版本",
+    true
+   ],
+   [
+    "最近正常的 OK-WW 版本",
+    true
+   ],
+   [
+    "Windows 操作系统",
+    true
+   ],
+   [
+    "日志和截图",
+    true
+   ],
+   [
+    "录屏（可选）",
+    false
+   ]
+  ],
+  "route": "issue",
+  "notes": [
+   "先搜索现有ISSUE:",
+   "请先挨个检查:"
+  ]
+ },
+ "新功能建议-.md": {
+  "kind": "md",
+  "title": "[Enhancement]",
+  "labels": [
+   "enhancement"
+  ],
+  "fields": [
+   [
+    "要解决的问题或限制",
+    true
+   ],
+   [
+    "适用场景和受益用户",
+    true
+   ],
+   [
+    "期望行为",
+    true
+   ],
+   [
+    "验收示例",
+    true
+   ],
+   [
+    "需求热度及相关请求",
+    true
+   ],
+   [
+    "考虑过的替代方案",
+    true
+   ],
+   [
+    "补充信息",
+    true
+   ]
+  ],
+  "route": "discussion",
+  "notes": [
+   "### 建议先搜索已有 ISSUE 和讨论区，避免重复建议",
+   "新功能建议请去讨论区 [https://github.com/ok-oldking/ok-wuthering-waves/discussions](https://github.com/ok-oldking/ok-wuthering-waves/discussions)",
+   "请先挨个检查:"
+  ]
+ },
+ "问题咨询-.md": {
+  "kind": "md",
+  "title": "[Question]",
+  "labels": [
+   "question"
+  ],
+  "fields": [
+   [
+    "问题",
+    true
+   ],
+   [
+    "FAQ 检查结果",
+    true
+   ],
+   [
+    "已经尝试过",
+    true
+   ],
+   [
+    "ok-ww 版本",
+    true
+   ],
+   [
+    "Windows 版本及相关设置",
+    true
+   ],
+   [
+    "相关截图或链接（可选）",
+    false
+   ]
+  ],
+  "route": "issue",
+  "notes": [
+   "请先检查:"
+  ]
+ },
+ "PULL_REQUEST_TEMPLATE.md": {
+  "kind": "pr",
+  "title": "",
+  "labels": [],
+  "fields": [
+   [
+    "修改内容 / Changes",
+    true
+   ],
+   [
+    "修改类型 / Type of Change",
+    true
+   ],
+   [
+    "新功能或大改确认 / New Feature or Major Change Confirmation",
+    true
+   ],
+   [
+    "测试 / Testing",
+    true
+   ],
+   [
+    "截图或录屏 / Screenshots or Recordings",
+    true
+   ],
+   [
+    "检查清单 / Checklist",
+    true
+   ],
+   [
+    "社区联系方式 / Community Contact",
+    true
+   ]
+  ],
+  "route": "pr",
+  "notes": [
+   "如果本 PR 包含新功能，或会大幅修改当前功能、任务行为、角色逻辑、识别逻辑、配置结构或用户体验，请先联系作者或在社区中讨论后再提交。",
+   "If this PR adds a new feature, or significantly changes existing features, task behavior, character logic, recognition logic, configuration structure, or user experience, please contact the author or discuss it with the community before submitting."
+  ]
+ }
+}

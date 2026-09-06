@@ -253,6 +253,46 @@ refuses "引用了没定义的名字必须被抓出" "undefined name" \
   uvx pyflakes "$TMP/undef.py"
 
 echo
+echo "▶ 往上游发东西的闸门（upstream-post.py lint）"
+# 2026-09-06：OK-WW 三条建议提错地方、缺字段、没前缀；AUTO-MAS 用命令行提丢了标签。
+# 用缓存的模板（不联网）喂坏样本：缺字段 / 自造标题 / 没前缀 都必须被拒。
+TPL="data/upstream-templates/ok-oldking__ok-wuthering-waves"
+if [ -f "$TPL/_parsed.json" ]; then
+  cat > "$TPL/../_bad1.md" <<'EOF'
+# 想要一个功能
+
+要解决的问题或限制:
+就是想要。
+EOF
+  refuses "缺模板字段的草稿必须被拒" "缺字段" \
+    env UPSTREAM_POST_OFFLINE=1 python3 scripts/mac/upstream-post.py lint ok-oldking/ok-wuthering-waves "新功能建议-.md" "$TPL/../_bad1.md"
+  cat > "$TPL/../_bad2.md" <<'EOF'
+# [Enhancement] 想要一个功能
+
+## 现象
+要解决的问题或限制:
+就是想要。
+适用场景和受益用户:
+大家。
+期望行为:
+有。
+验收示例:
+有。
+需求热度及相关请求:
+无。
+考虑过的替代方案:
+无。
+补充信息:
+无。
+EOF
+  refuses "自造 ## 标题的草稿必须被拒" "AI 味" \
+    env UPSTREAM_POST_OFFLINE=1 python3 scripts/mac/upstream-post.py lint ok-oldking/ok-wuthering-waves "新功能建议-.md" "$TPL/../_bad2.md"
+  rm -f "$TPL/../_bad1.md" "$TPL/../_bad2.md"
+else
+  printf '  ✗ %-42s 没有缓存的模板，先跑 upstream-post.py rules\n' "上游发帖闸门"; FAIL=$((FAIL+1))
+fi
+
+echo
 echo "▶ 仓库自检本身"
 # 这里只验「lint 不会误杀干净的树」。测试那一项部署流程自己会跑一遍，
 # 在这儿再跑一遍纯属重复，一次部署白等十几秒。

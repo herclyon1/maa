@@ -77,6 +77,7 @@
 | **改手机页任何一条说明** | 先读 `docs/手机页文案的规矩.md`——只写「这个开关干什么、改了会怎样」，不写上游/版本号/日期/我的口吻。`lint-repo.sh` 第 8 项会拒 |
 | **打活动关 / 打保全派驻** | 先读 `docs/MAA-打活动关与保全派驻.md`——**动手前读完对应那节**。2026-08-23 指挥打活动关卡了整整一天，全部时间花在摸索上，那天的坑都在里面 |
 | **驱动模拟器里的游戏（点/滑/截图）** | `scripts/mac/adbdo.sh tap\|swipe\|shot\|seq` —— 走复用 ssh，一步约 1 秒；**别用 winrun 干这个**，它走计划任务一步 10 秒 |
+| **往上游提 issue / 讨论 / PR** | 先 `scripts/mac/upstream-post.py rules <repo>` 看规矩，`dup` 查重（含讨论区），草稿 `lint` 过了才许发；**只走网页表单**，命令行提不上标签。规矩全文在 `docs/提ISSUE的规矩.md` |
 | 仓库自检 | `scripts/mac/lint-repo.sh` |
 | shell 脚本静态检查 | `~/.local/bin/shellcheck -S warning` |
 
