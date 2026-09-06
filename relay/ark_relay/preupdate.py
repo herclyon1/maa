@@ -943,6 +943,12 @@ _OKWW_BASIC = ("data", "apps", "ok-ww", "working", "configs", "Basic Options.jso
 _OKWW_APPJSON = ("data", "apps", "ok-ww", "app.json")
 _OKWW_AUTOSTART_KEY = "Auto Start Game When App Starts"
 OKWW_BUDGET_SECONDS = 240
+# OK-WW 的更新检查是窗口显示后 30 秒才排的（它自己的日志：
+# 「schedule pyappify update check in 30000ms」）。app.json 一启动就会被重写，
+# 「文件动了」在 3 秒内就成立——2026-09-06 08:46:43 启动、08:46:46 就判「无需更新（v3.6.6）」
+# 关掉了，30 秒后的检查根本没跑到；09:20 真跑时它自己装了 v3.6.7-beta.2，
+# 把补丁全冲掉，那趟裸跑。所以「查过了」这个结论至少要等它过了那 30 秒。
+OKWW_MIN_WAIT_SECONDS = 45
 
 
 def _okww_quiesce() -> None:
@@ -1067,6 +1073,7 @@ def run_okww(okww_dir: Path | None,
             return ""
         log.info("预更新：已启动 OK-WW（已临时关掉自动开游戏），最多 %.0f 秒", budget_s)
         deadline = time.monotonic() + budget_s
+        launched = time.monotonic()
         settled = ""
         checked = False           # 见到过它真的动了：状态变化 / 版本列表刷新 / 版本变化
         failed = ""
@@ -1089,8 +1096,9 @@ def run_okww(okww_dir: Path | None,
             if version and version != before_version:
                 settled, checked = version, True
                 break
-            if checked and state == "idle":
-                break             # 问过了，而且已经安顿下来
+            if (checked and state == "idle"
+                    and time.monotonic() - launched >= OKWW_MIN_WAIT_SECONDS):
+                break             # 问过了、30 秒后的那次检查也过了、已经安顿下来
         if failed:
             _note(problems, f"OK-WW 预更新：更新报错 {failed}")
         elif settled:

@@ -448,9 +448,13 @@ def _stage_patch_okww(cfg, notifier, log) -> None:
 
         okww_at_boot = cfg.okww_dir or (
             Path(cfg.automas_dir).parent / "okww" if cfg.automas_dir else None)
-        for note in _okww_patch.ensure_patches(okww_at_boot):
+        notes = _okww_patch.ensure_patches(okww_at_boot)
+        for note in notes:
             log.info("启动：%s", note)
-            notifier.send("🩹 OK-WW 补丁", note)
+        # 一次启动只推一条。原来一条补丁一条推送，OK-WW 一更新就八条一起砸到手机上
+        # （用户 2026-09-06：「你这个通知一直在轰炸我」）。
+        if notes:
+            notifier.send(f"🩹 OK-WW 补丁（{len(notes)} 条）", "\n".join(f"· {n}" for n in notes))
     except Exception:  # noqa: BLE001 - 贴不上也不能挡住服务启动
         log.exception("启动时贴 OK-WW 补丁失败，服务照常继续")
 
@@ -730,9 +734,12 @@ def _stage_preupdate(cfg, notifier, log) -> None:
             if note := preupdate.run_okww(okww, problems=problems):
                 log.info("预更新：%s", note)
                 notifier.send("🆕 预更新", note)
-            for note in okww_patch.ensure_patches(okww):
+            patch_notes = okww_patch.ensure_patches(okww)
+            for note in patch_notes:
                 log.info("预更新：%s", note)
-                notifier.send("🩹 OK-WW 补丁", note)
+            if patch_notes:      # 合成一条推，别一条补丁一条推
+                notifier.send(f"🩹 OK-WW 补丁（{len(patch_notes)} 条）",
+                              "\n".join(f"· {n}" for n in patch_notes))
             preupdate.mark_run(cfg.state_dir, _pre_now,
                                clean=not problems)
             if problems:

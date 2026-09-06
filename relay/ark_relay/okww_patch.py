@@ -22,6 +22,7 @@
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from .okww_patches.claim import _CLAIM_OLD, _CLAIM_NEW, _CLAIM_V1, _CLAIM_V2, _CLAIM_V3, _claim_present, _CLAIM
@@ -41,9 +42,11 @@ from .okww_patches.stamina import _STAMINA_OLD, _STAMINA_NEW, _stamina_present, 
 from .okww_patches.starve import _STARVE_OLD, _STARVE_NEW, _starve_present, _apply_starve
 from .okww_patches.teamshot import _TEAMSHOT_OLD, _TEAMSHOT_NEW, _teamshot_present, _TEAMSHOT
 
+log = logging.getLogger("ark.okww_patch")
+
 # 测试和别处按旧名字从这里取，子模块里的名字全部原样再导出。
 __all__ = [
-    'ensure_patches',
+    'ensure_patches', 'ensure_if_updated',
     '_CLAIM_OLD',
     '_CLAIM_NEW',
     '_CLAIM_V1',
@@ -126,6 +129,42 @@ __all__ = [
     '_teamshot_present',
     '_TEAMSHOT',
 ]
+
+
+def ensure_if_updated(state_dir: Path, okww_dir: Path | None) -> list[str]:
+    """OK-WW 的版本号变了才贴一遍；没变什么都不做。给 engine.tick 用。
+
+    OK-WW 的自动更新发生在它自己启动时，不一定在开机预更新那一段：2026-09-06
+    预更新 08:46 说「无需更新」，09:20 那趟启动时它自己装了新版，src 整段被换掉，
+    补丁全没了，那趟裸跑，直到 11:30 重启服务才贴回去。版本号在
+    data/apps/ok-ww/app.json 的 current_version 里，每轮看一眼，变了就贴。
+    """
+    if not okww_dir:
+        return []
+    app = Path(okww_dir) / "data" / "apps" / "ok-ww" / "app.json"
+    try:
+        import json  # noqa: PLC0415
+        version = str(json.loads(app.read_text(encoding="utf-8")).get("current_version") or "")
+    except (OSError, ValueError):
+        return []
+    if not version:
+        return []
+    stamp = Path(state_dir) / "okww-version.txt"
+    try:
+        seen = stamp.read_text(encoding="utf-8").strip()
+    except OSError:
+        seen = ""
+    if seen == version:
+        return []
+    notes = ensure_patches(okww_dir)
+    try:
+        stamp.parent.mkdir(parents=True, exist_ok=True)
+        stamp.write_text(version, encoding="utf-8")
+    except OSError:
+        log.warning("记不住 OK-WW 版本号，下一轮会再贴一遍（幂等，无害）")
+    if seen and notes:
+        notes.insert(0, f"OK-WW 从 {seen} 换成了 {version}，补丁重新贴上")
+    return notes
 
 
 def ensure_patches(okww_dir: Path | None) -> list[str]:

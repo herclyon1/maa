@@ -181,6 +181,7 @@ class Engine:
         # 一个 ImportError 把它后面的补更新、日报、自动关机全带走，机器白开
         # 一上午没人发现——关机和日报是最后两段，恰恰最不该被前面的段拖死。
         for what, step in (
+            ("OK-WW 补丁", self._patch_okww_if_updated),
             ("推送积压告警", self._flush_pending),
             ("剿灭开关", self._enforce_annihilation),
             ("周常门", self._weekly_gates),
@@ -195,6 +196,20 @@ class Engine:
             except Exception:  # noqa: BLE001 - 这一段坏了，下一段照跑
                 log.exception("本轮「%s」这一段出错，跳过它继续", what)
         return len(records)
+
+    def _patch_okww_if_updated(self) -> None:
+        """OK-WW 运行时自己更新了就把补丁贴回去；有脚本在跑时不动它。"""
+        if self._scripts_running():
+            return
+        from . import okww_patch  # noqa: PLC0415
+        okww = self.cfg.okww_dir or (
+            Path(self.cfg.automas_dir).parent / "okww" if self.cfg.automas_dir else None)
+        notes = okww_patch.ensure_if_updated(self.state.dir, okww)
+        for n in notes:
+            log.info("补丁：%s", n)
+        if notes:
+            self.notifier.send(f"🩹 OK-WW 补丁（{len(notes)} 条）",
+                               "\n".join(f"· {n}" for n in notes))
 
     def _weekly_gates(self) -> None:
         try:
