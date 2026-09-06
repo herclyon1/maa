@@ -37,6 +37,10 @@ _FAILED_LIST = re.compile(r"失败[:：]\s*(.+)$")
 # 只认前者会让 OK-WW 的每条记录都显示"时长未知"。
 _LOG_TS = re.compile(r"^\[?(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
 _MAA_SUCCESS = "Success!"
+# AUTO-MAS 对 OK-WW 的两句判词（app/task/Okww/AutoProxy.py）：
+# 日志里有 _OKWW_SUCCESS_LOG 记成功；否则进程一没就记「在完成任务前退出」。
+_OKWW_EXITED = "在完成任务前退出"
+_OKWW_DONE = "Daily Task Completed"
 
 # AUTO-MAS 会把"这一轮被打断、马上重来"也写成非成功结果，于是中继照单
 # 报成失败。字符串抄自 AUTO-MAS 源码，不是我编的：
@@ -53,6 +57,15 @@ _TRANSITIONAL = (
 def _is_transitional(result: str) -> bool:
     r = result.strip()
     return any(t in r for t in _TRANSITIONAL)
+
+
+def _maaend_all_done(text: str) -> bool:
+    """每个「任务开始」都有同名「任务完成」、没有任何「任务失败」，且至少跑了一个任务。"""
+    started = [_strip_emoji(m.group(1)) for m in _END_TASK_START.finditer(text)]
+    done = {_strip_emoji(m.group(1)) for m in _END_TASK_DONE.finditer(text)}
+    if not started or _END_TASK_FAIL.search(text):
+        return False
+    return all(s in done for s in started)
 
 
 def _split_failed(text: str) -> list[str]:
@@ -289,13 +302,15 @@ _OKWW_SEC_PER_POINT = 360
 _END_SANITY_SPENT = re.compile(r"尝试使用理智消耗许可")
 _END_SANITY_REFUSED = re.compile(r"理智不足[，,]\s*尝试不使用理智消耗许可")
 _END_PS_ENTER = re.compile(r"进入协议空间成功")
-_END_TASK_DONE = re.compile(r"任务完成[:：]\s*(\S.+?)\s*$")
+# re.M：这三条既按单行 search，也对整段 finditer。没有 re.M 时 `$` 只认整段末尾，
+# finditer 一条都抓不到——parse_maaend_log 的 tasks_failed 因此一直是空的（09-06 测试抓出）。
+_END_TASK_DONE = re.compile(r"任务完成[:：]\s*(\S.+?)\s*$", re.M)
 # 用户 2026-09-02：日报三家一个语义模板，MaaEnd 不产这些数「只能我们自己来」。
 # 刷本段的形状（2026-09-01 实录）：
 #   任务开始: 🎱基质刷取 / 📌目标地点：枢纽区 / 当前理智 234/360 / 是无暇基质 ×N
 #   ✅已完成一次基质刷取 / 当前理智 154/360 / … / 任务完成: 🎱基质刷取
-_END_TASK_START = re.compile(r"任务开始[:：]\s*(\S.+?)\s*$")
-_END_TASK_FAIL = re.compile(r"任务失败[:：]\s*(\S.+?)\s*$")
+_END_TASK_START = re.compile(r"任务开始[:：]\s*(\S.+?)\s*$", re.M)
+_END_TASK_FAIL = re.compile(r"任务失败[:：]\s*(\S.+?)\s*$", re.M)
 _END_FARM_TASKS = ("基质刷取", "协议空间")
 _END_PLACE = re.compile(r"目标地点[:：]\s*(\S+)")
 _END_ESSENCE_DONE = re.compile(r"已完成一次基质刷取")
@@ -763,6 +778,20 @@ def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
         # "未捕获到日志" means AUTO-MAS could not tell - treat as failure, not success.
         ok = "失败" not in result and "未捕获" not in result and bool(result)
         failed = _split_failed(result) if not ok else []
+        # AUTO-MAS 按**它自己那张任务名表**对日志：上游一改某个任务的显示名，
+        # 它就找不到那条「任务完成」，记成「部分任务执行失败: X」。
+        # 2026-09-06 早班：MaaEnd v2.28.0-beta.1 把 SellProduct 显示名改成「据点交易」，
+        # 日志里 17 个任务全部「任务完成」、一条「任务失败」都没有，AUTO-MAS 照样记失败，
+        # 还白跑了两趟重试。以 MaaEnd 自己的日志为准：每个「任务开始」都有对应的
+        # 「任务完成」、没有「任务失败」，这趟就是做完了。
+        if not ok and failed and "未捕获" not in result:
+            try:
+                text = json_path.with_suffix(".log").read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                text = ""
+            if text and _maaend_all_done(text):
+                ok, failed = True, []
+                raw["maaend_name_mismatch"] = _split_failed(result)
         if not ok and not failed:
             failed = [result or "未知错误"]
     elif "general_result" in raw:
@@ -773,6 +802,18 @@ def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
         script = prefix or "通用脚本"
         result = str(raw.get("general_result") or "")
         ok = result.strip() == _MAA_SUCCESS
+        # AUTO-MAS 先读日志再看进程：OK-WW 写完「Daily Task Completed」几秒内就自己退出，
+        # AUTO-MAS 若在那几秒里只看到进程没了，就记「在完成任务前退出」。
+        # 2026-09-06 早班就是：09:36:18 Completed，09:36:24 退出，被记成失败，
+        # 重试那趟无事可做又记成 ✅。以 OK-WW 自己的日志为准：写了 Completed 就是做完了。
+        if not ok and _OKWW_EXITED in result:
+            try:
+                if _OKWW_DONE in json_path.with_suffix(".log").read_text(
+                        encoding="utf-8", errors="replace"):
+                    ok = True
+                    raw["okww_exit_race"] = True
+            except OSError:
+                pass
         failed = [] if ok else ([result] if result else ["未知错误"])
     else:
         return None

@@ -31,4 +31,7 @@ _LETPASS = _Patch(
     new=_LETPASS_NEW,
     present=_letpass_present,
     breaks="波片不足时虽然会跳过，但每次都留一条 farm 4c error 并重试三遍",
+    # 叠层只数我们自己的标记：上游 v3.6.7 在别处也写了一行
+    # `except TaskDisabledException:`，数通用行会把它算成我们叠了一层（09-06 假警报）。
+    unique="这是「主动跳过」的信号",
 )
