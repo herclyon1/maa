@@ -154,7 +154,24 @@ for d in $(printf '%s\n' $FILES | xargs -n1 dirname | sort -u | grep -v '^\.$');
   MKDIRS="${MKDIRS}${MKDIRS:+ & }if not exist \"$win\" mkdir \"$win\""
 done
 # 一次调用建完所有目录——原来是一个目录一次 ssh，跨境往返白白多花好几秒。
-[ -n "$MKDIRS" ] && ssh "${SSH_OPTS[@]}" "$USER_AT" "$MKDIRS" >/dev/null 2>&1 || true
+# 2026-09-06：这一步原来 `>/dev/null 2>&1 || true`，建不成一声不吭，接着 scp 对着
+# 不存在的目录一个个失败（okww_patches 第一次部署就撞上）。现在出错就停，
+# 并且建完回读一遍：目录不在就不往下走。
+if [ -n "$MKDIRS" ]; then
+  if ! out=$(ssh "${SSH_OPTS[@]}" "$USER_AT" "$MKDIRS" 2>&1); then
+    echo "  ✋ 机器上建目录失败：$out" >&2
+    exit 5
+  fi
+  CHECK=""
+  for d in $(printf '%s\n' $FILES | xargs -n1 dirname | sort -u | grep -v '^\.$'); do
+    win="${REMOTE_DIR//\//\\}\\${d//\//\\}"
+    CHECK="${CHECK}${CHECK:+ & }if exist \"$win\" (echo OK $d) else (echo MISSING $d)"
+  done
+  if missing=$(ssh "${SSH_OPTS[@]}" "$USER_AT" "$CHECK" 2>&1 | tr -d '\r' | grep MISSING); then
+    echo "  ✋ 机器上这些目录没建起来：$missing" >&2
+    exit 5
+  fi
+fi
 # 只推真正变了的。整份推一遍要一分多钟，而绝大多数部署只动一两个文件。
 # 先把清单和校验脚本送上去，问机器哪些对不上，再按名单推。
 # 安全性没有变化：推完之后那道严格校验（下一段）一个文件都不放过。
