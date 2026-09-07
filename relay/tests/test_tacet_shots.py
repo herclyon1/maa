@@ -41,19 +41,22 @@ class N:
     def send_group(self, title, body): self.groups.append((title, body)); return []
     def send_group_image(self, p): self.images.append(Path(p).name); return []
 class St:
-    def __init__(self): self.dir = state
+    def __init__(self, ledger=None): self.dir = state; self._ledger = ledger or []
+    def read_ledger(self, day): return self._ledger
 class Eng:
     def __init__(self):
         self.cfg = types.SimpleNamespace(okww_dir=TMP / "okww", automas_dir=TMP / "automas")
-        self.state = St(); self.notifier = N()
+        self.state = St(LEDGER); self.notifier = N()
 
 day = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
+# 账本里带着 OK-WW 自己报的「实际传送到第 1 个（0 起算）」= 第 2 个无音区
+LEDGER = [{"script": "OK-WW", "raw": {"okww_info": {"Teleport to Tacet Suppression": 1}}}]
 e = Eng()
 print("[只发最新那一张，带说明]")
 done = report._attach_tacet_shots(e, day)
 check("只发最新一张", done, ["11-02-10.000_tacet_drops_original.png"])
 check("先发一条说明", e.notifier.groups[0][0], "🖼️ 无音区产出")
-check("说明里有序号、名字、套装", all(k in e.notifier.groups[0][1] for k in ("第 2 个", "玄幽东岳", "羽落空尘之歌", "清邪荡煞之心")), True)
+check("说明里有实际序号、名字、套装", all(k in e.notifier.groups[0][1] for k in ("实际刷了第 2 个", "玄幽东岳", "羽落空尘之歌", "清邪荡煞之心")), True)
 check("说明写清是结算页", "刷完的结算页" in e.notifier.groups[0][1], True)
 check("别的截图不发", "09-58-35.184_weekly_remaining_original.png" in e.notifier.images, False)
 
@@ -77,6 +80,16 @@ check("缩后在上限内", len(out) <= notify._WECOM_IMAGE_LIMIT, True)
 check("缩后是 JPEG", out[:2] == b"\xff\xd8", True)
 small = TMP / "small.png"; png(small, 200, 100)
 check("小图原样发", notify._image_bytes_for_wecom(small) == small.read_bytes(), True)
+
+print("[设置和实际不一样时，两个都说出来]")
+e4 = Eng(); e4.state._ledger = [{"raw": {"okww_info": {"Teleport to Tacet Suppression": 4}}}]
+cap = report._tacet_caption(e4, day)
+check("说实际刷的是第 5 个", "实际刷了第 5 个" in cap, True)
+check("并指出设置写的是第 2 个", "设置里写的是第 2 个" in cap, True)
+
+print("[读不到实际序号时，明说那是设置值]")
+e5 = Eng(); e5.state._ledger = []
+check("明说", "（实际序号没读到）" in report._tacet_caption(e5, day), True)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

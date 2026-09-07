@@ -241,15 +241,37 @@ def _tacet_shots_dir(eng) -> "Path | None":
     return d if d.is_dir() else None
 
 
-def _tacet_caption(eng) -> str:
-    """「配置刷第 N 个：名字，掉 套装」——和日报里那一行同一个来源。"""
+def _tacet_caption(eng, day: str = "") -> str:
+    """「实际刷了第 N 个：名字，掉 套装」。
+
+    序号取 **OK-WW 自己报的实际传送目标**（账本里的 okww_info），不是配置里写的
+    「想刷哪个」——用户 2026-09-07 不放心的正是这两者可能不一样。两者不一致时
+    两个都说出来，让人一眼看见。读不到实际值才退回配置值，并且明说那是配置值。
+    """
+    from . import weeklyboss, wuwa_tacet  # noqa: PLC0415
+    want = None
     try:
-        from . import weeklyboss, wuwa_tacet  # noqa: PLC0415
         daily = weeklyboss._read(weeklyboss._file(eng.cfg.automas_dir, "DailyTask.json"))  # noqa: SLF001
-        idx = int((daily or {}).get("Which Tacet Suppression to Farm") or 1)
-        return f"配置刷第 {idx} 个：{wuwa_tacet.label(idx)}，掉 {wuwa_tacet.reward(idx)}"
+        want = int((daily or {}).get("Which Tacet Suppression to Farm") or 0) or None
     except Exception:  # noqa: BLE001
-        return "配置的无音区序号没读到"
+        want = None
+    got = None
+    try:
+        for e in reversed(eng.state.read_ledger(day or "")):
+            v = (e.get("raw") or {}).get("okww_info") or {}
+            if "Teleport to Tacet Suppression" in v:
+                got = int(v["Teleport to Tacet Suppression"]) + 1   # 上游从 0 起算
+                break
+    except Exception:  # noqa: BLE001
+        got = None
+    if got is not None:
+        line = f"实际刷了第 {got} 个：{wuwa_tacet.label(got)}，掉 {wuwa_tacet.reward(got)}"
+        if want is not None and want != got:
+            line += f"。注意：设置里写的是第 {want} 个（{wuwa_tacet.label(want)}），两者不一样"
+        return line
+    if want is not None:
+        return f"设置里写的是第 {want} 个：{wuwa_tacet.label(want)}，掉 {wuwa_tacet.reward(want)}（实际序号没读到）"
+    return "无音区序号没读到，设置和实际都没拿到"
 
 
 def _attach_tacet_shots(eng, day: str) -> list[str]:
@@ -275,7 +297,7 @@ def _attach_tacet_shots(eng, day: str) -> list[str]:
     if not cands:
         return []
     picks = [("tacet_drops", max(cands, key=lambda p: p.stat().st_mtime))]
-    eng.notifier.send_group(texts.TACET_DROPS, f"{_tacet_caption(eng)}。下面是刷完的结算页。")
+    eng.notifier.send_group(texts.TACET_DROPS, f"{_tacet_caption(eng, day)}。下面是刷完的结算页。")
     done = []
     for _tag, p in picks:
         if not eng.notifier.send_group_image(p):

@@ -554,8 +554,9 @@ _OKWW_SINGLE = re.compile(r"使用单倍体力")
 _OKWW_TACET_INDEX = re.compile(r"info_set Teleport to Tacet Suppression (\d+)")
 
 
-def _okww_farm(text: str) -> "tuple[str, str]":
+def _okww_farm(text: str, info: dict | None = None) -> "tuple[str, str]":
     """(刷的本, 产出类别)。OK-WW 不读奖励界面，产出只能说类别。"""
+    info = info if info is not None else okww_info(text)
     if "SimulationTask:" in text:
         hits = _OKWW_SIM_TARGET.findall(text)
         tgt = _SIM_ZH.get(hits[-1].strip(), hits[-1].strip()) if hits else ""
@@ -565,10 +566,14 @@ def _okww_farm(text: str) -> "tuple[str, str]":
     if "TacetTask:" in text:
         # 「无音区 #2 / 声骸与角色突破材料」这种写法人看不懂（用户 2026-09-06）。
         # 序号查 wuwa_tacet 的对照表，写名字和它固定掉的两个套装；没登记就明说。
+        # 序号先认上游自己报的「实际传送到第几个」（info_set，0 起算），
+        # 读不到才退回从提示语里刮。配置里写的是「想刷哪个」，这里要的是
+        # 「实际刷了哪个」——用户 2026-09-07 不放心的正是这两者可能不一样。
+        got = (info.get("fields") or {}).get("Teleport to Tacet Suppression")
         hits = _OKWW_TACET_INDEX.findall(text)
-        if not hits:
+        if got is None and not hits:
             return ("无音区（日志里没有序号）", "声骸（无音区序号没读到，套装不明）")
-        idx = int(hits[-1]) + 1
+        idx = (int(got) if got is not None else int(hits[-1])) + 1
         return (wuwa_tacet.label(idx), wuwa_tacet.reward(idx))
     return ("", "")
 
@@ -625,6 +630,56 @@ _OKWW_ANY_ERR = re.compile(r" ERROR TaskExecutor (\w+):(.*)")
 _OKWW_UNTRANSLATED: set = set()
 
 
+_OKWW_INFO = re.compile(r" INFO TaskExecutor (\w+):info_set (.+)$", re.M)
+_OKWW_INFO_NUM = ("current_stamina", "back_up_stamina", "current daily progress",
+                  "total daily points", "Teleport to Tacet Suppression",
+                  "Teleport to Boss Weekly Challenge")
+# 值里带空格的键：整行都是值，不能按最后一个空格切
+_OKWW_INFO_REST = ("Chars", "Revive", "Target Simulation Challenge")
+
+
+def okww_info(text: str, until: int | None = None) -> dict:
+    """OK-WW 自己写下的结构化状态（`info_set 键 值`），取每个键的最后一次。
+
+    这是**上游自己报的状态**，不是我们从散文里猜的：`current task` 是它认为
+    自己在做哪一步，`错误` 是它自己判定的失败原因，`Teleport to Tacet
+    Suppression` 是它**实际**传送去的第几个无音区（0 起算）。
+    2026-09-08 之前这些全靠正则从提示语里刮，上游一改措辞就失效。
+
+    返回 {"fields": {键: 值}, "tasks": [依次出现的 current task], "error": 原因或空}。
+    """
+    fields: dict = {}
+    tasks: list[str] = []
+    error = ""
+    for m in _OKWW_INFO.finditer(text):
+        if until is not None and m.start() >= until:
+            break           # 只看这一刻之前的状态
+        body = m.group(2).strip()
+        if body.startswith("current task"):
+            what = body[len("current task"):].strip()
+            if what and not what.startswith(("wait main", "in main")):
+                tasks.append(what)
+            continue
+        if body == "错误" or body.startswith("错误 "):
+            error = body[len("错误"):].strip()
+            continue
+        key, _, value = body.rpartition(" ")
+        for whole in _OKWW_INFO_REST:
+            if body.startswith(whole + " "):
+                key, value = whole, body[len(whole) + 1:]
+                break
+        if not key:
+            continue
+        if key in _OKWW_INFO_NUM:
+            try:
+                fields[key] = int(value)
+            except ValueError:
+                continue
+        else:
+            fields[key] = value
+    return {"fields": fields, "tasks": tasks, "error": error}
+
+
 def _okww_error(text: str) -> str:
     """失败的真实原因，人话。取最后一串 traceback 里最里层任务那一段。
 
@@ -633,8 +688,13 @@ def _okww_error(text: str) -> str:
     带着说明（如「farm 4c error, try handle monthly card」）。2026-09-07 之前日报只写
     AUTO-MAS 那句「流程产生错误，请检查游戏状态」，看不出是哪一步。
     """
+    info = okww_info(text)
     heads = list(_OKWW_TB_HEAD.finditer(text))
     if not heads:
+        # 没有 traceback，但上游自己说了「错误 …」：照它说的写
+        if info["error"] and info["tasks"]:
+            step = info["tasks"][-1].split()[0]
+            return _okww_say(_OKWW_TASK_BY_STEP.get(step, step), info["error"], "")
         return ""
     last = heads[-1]
     cluster = [m for m in heads if last.start() - m.start() < 6000]
@@ -644,6 +704,12 @@ def _okww_error(text: str) -> str:
     nxt = heads[heads.index(head) + 1].start() if heads.index(head) + 1 < len(heads) else len(text)
     excs = _OKWW_EXC_LINE.findall(text[head.end():nxt])
     exc = excs[-1][0].rsplit(".", 1)[-1] if excs else ""
+    # 上游自己记下的当前任务比包装层的类名可靠：`run_task_by_class <class …>`
+    # 那种只说得出「谁在调」，`current task` 说的是「在做哪一步」。
+    if task in ("DailyTask", "TaskExecutor"):
+        before_tasks = okww_info(text, until=head.start())["tasks"]
+        if before_tasks:
+            task = _OKWW_TASK_BY_STEP.get(before_tasks[-1].split()[0], task)
     if task in ("DailyTask", "TaskExecutor"):
         # 包装层自己抛的（如「NightmareNestTask Failed」「run_task_by_class <class …>」）：
         # 真正的任务名在这句里，真正的原因在它前面那条 ERROR 里
@@ -659,6 +725,18 @@ def _okww_error(text: str) -> str:
     # 模糊描述比英文更禁止（用户 2026-09-07：「描述模糊是第一大禁止」）。
     # 所以这里没有「这一步出错」这种兜底：翻得出就写具体的；翻不出就明说
     # 「中继还不认识这条错」并把原文打进日志，等着补翻译——说清楚不知道，不是糊弄。
+    return _okww_say(task, msg, exc, text, head.start())
+
+
+_OKWW_TASK_BY_STEP = {
+    "garden_start_game": "GardenTask", "garden": "GardenTask",
+    "check": "GardenTask", "claim": "DailyTask", "farm": "FarmEchoTask",
+    "tacet": "TacetTask", "nest": "NightmareNestTask",
+}
+
+
+def _okww_say(task: str, msg: str, exc: str, text: str = "", at: int = 0) -> str:
+    """把（任务, 原文, 异常名）说成一句人话。翻不出就明说，不许含糊。"""
     task_zh = _OKWW_TASK_ZH.get(task)
     msg_zh = next((zh for en, zh in _OKWW_MSG_ZH if en in msg), "")
     exc_zh = _OKWW_EXC_ZH.get(exc)
@@ -673,7 +751,7 @@ def _okww_error(text: str) -> str:
         return f"{who}：报了中继还不认识的错，原文已记进日志，要补翻译"
     what = msg_zh or exc_zh
     # 紧挨着 traceback 前面那句「wait_until timeout … N seconds」说明等了多久
-    before = text[max(0, head.start() - 600):head.start()]
+    before = text[max(0, at - 600):at] if text else ""
     if (w := _OKWW_WAIT_SEC.findall(before)) and "等" in what:
         sec = w[-1][:-2] if w[-1].endswith(".0") else w[-1]
         what += f"（等了 {sec} 秒）"
@@ -740,7 +818,10 @@ def _okww_health(text: str, out: dict, entries: int) -> None:
 
 def _okww_farm_fields(text: str, out: dict) -> None:
     """刷的是什么本、单倍双倍各几局、按满难度估的产出。"""
-    farm, reward = _okww_farm(text)
+    info = okww_info(text)
+    if info["fields"] or info["tasks"]:
+        out["okww_info"] = info["fields"]
+    farm, reward = _okww_farm(text, info)
     if farm:
         out["okww_farm"] = farm
         out["okww_farm_reward"] = reward
