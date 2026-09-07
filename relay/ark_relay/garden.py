@@ -62,7 +62,6 @@ class GardenGate:
     NAME = "鸣潮 · 周常乐园"
 
     def __init__(self, state_dir: Path, automas_dir=None):
-        self.path = Path(state_dir) / "garden.json"
         self._store = StateStore(state_dir)   # 状态收口：真正落盘在 state.json 的 weekly 段
         self.automas_dir = automas_dir
         self._last_write_error = ""     # 同一条写失败只说一次，见 enforce()

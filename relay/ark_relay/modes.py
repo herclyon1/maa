@@ -28,7 +28,6 @@ Skip mode   One queue sits out one occasion. skip_today used to write a flag
 """
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -37,7 +36,7 @@ import os
 
 from . import names
 
-from .config import SERVER_TZ, atomic_write_text
+from .config import SERVER_TZ
 
 log = logging.getLogger("ark.modes")
 
@@ -213,8 +212,10 @@ def set_debug(state_dir: Path, cycles: int = 1, off: bool = False,
 
 # ---------- skip mode (跳过模式) ----------
 
-def _marker(state_dir: Path) -> Path:
-    return Path(state_dir) / "skip-restore.json"
+def _restore_marker(state_dir: Path):
+    """跳过模式的恢复标记：停用了哪个队列、哪天、最后一个时段。没有返回 None。"""
+    d = _store(state_dir).get("queues", "skip_restore")
+    return d if isinstance(d, dict) and d else None
 
 
 def process_skip(state_dir: Path, automas_dir: Path | None,
@@ -233,44 +234,41 @@ def process_skip(state_dir: Path, automas_dir: Path | None,
     return out
 
 
-def _flag_day(path: Path) -> str | None:
-    """标记文件名里的日期，不是「某天跳过队列」的标记就返回 None。
+def _is_day(text: str) -> bool:
+    """键里那一段是不是 YYYY-MM-DD。
 
-    这个目录里还住着别的功能的标记，最典型的是「下一次跑完不关机」的
-    skip-next-shutdown.flag。原来清理陈旧标记 glob 的是 skip-*.flag，
-    把它一并扫掉了——人在手机上按下开关，30 秒内就被删，日志还写
-    「未曾生效（当天机器没开机）」，而机器正开着。那个开关因此从加进来
-    的第一天起就是坏的，且坏得不出声。只认 skip-<YYYY-MM-DD>.flag。
+    这个段里还住着别的功能的键。原来清理陈旧标记 glob 的是 skip-*.flag，
+    把「下一次别关机」的 skip-next-shutdown.flag 一并扫掉了——人在手机上按下
+    开关，30 秒内就被删，日志还写「未曾生效（当天机器没开机）」，而机器正开着。
+    那个开关因此从加进来的第一天起就是坏的，且坏得不出声。只认日期形状。
     """
-    name = path.stem
-    if not name.startswith("skip-"):
-        return None
-    day = name[len("skip-"):]
     try:
-        datetime.strptime(day, "%Y-%m-%d")
+        datetime.strptime(text, "%Y-%m-%d")
     except ValueError:
-        return None
-    return day
+        return False
+    return True
 
 
 def _maybe_engage(state_dir: Path, automas_dir: Path | None,
                   now: datetime) -> list[str]:
     day = now.strftime("%Y-%m-%d")
-    flag = state_dir / f"skip-{day}.flag"
+    store = _store(state_dir)
+    wanted = store.get("queues", f"skip_day:{day}")
     # Yesterday's flag with no marker means the skip never engaged (machine
     # was off all day). Say so rather than silently applying it to the wrong
     # day or leaving the file to confuse the next reader.
-    stale = sorted(p for p in state_dir.glob("skip-*.flag")
-                   if p != flag and _flag_day(p) is not None)
+    stale = sorted(k for k in store.section("queues")
+                   if k.startswith("skip_day:") and k != f"skip_day:{day}"
+                   and _is_day(k.split(":", 1)[1]))
     out = []
-    for p in stale:
-        p.unlink(missing_ok=True)
-        out.append(f"过期的跳过标记 {p.stem} 未曾生效（当天机器没开机），已清除")
-    if not flag.exists():
+    for k in stale:
+        store.pop("queues", k)
+        out.append(f"过期的跳过标记 {k.split(':', 1)[1]} 未曾生效（当天机器没开机），已清除")
+    if wanted is None:
         return out
-    if _marker(state_dir).exists():
+    if _restore_marker(state_dir):
         return out          # one skip at a time; the marker must resolve first
-    queue = names.canonical(flag.read_text(encoding="utf-8").strip() or names.MORNING)
+    queue = names.canonical(str(wanted).strip() or names.MORNING)
     if not automas_dir:
         return [*out, f"跳过「{queue}」失败：没有 AUTO-MAS 目录"]
 
@@ -278,7 +276,7 @@ def _maybe_engage(state_dir: Path, automas_dir: Path | None,
     times = next((q.get("times") or [] for q in plan.schedule(automas_dir)
                   if q["name"] == queue), [])
     if not times:
-        flag.unlink(missing_ok=True)
+        store.pop("queues", f"skip_day:{day}")
         return [*out, f"跳过「{queue}」：该队列本就没有启用的排期，无需处理"]
     # Marker BEFORE disable. The old order (disable → marker → unlink) had a
     # crash window after the disable and before the marker: on the next tick
@@ -291,33 +289,32 @@ def _maybe_engage(state_dir: Path, automas_dir: Path | None,
     # makes _maybe_restore delete it and leave the queue disabled forever -
     # exactly the "a skip can never quietly become a permanent stop" promise
     # this module makes.
-    atomic_write_text(_marker(state_dir), json.dumps(
-        {"queue": queue, "day": day, "last_time": max(times)},
-        ensure_ascii=False))
+    store.set("queues", "skip_restore",
+              {"queue": queue, "day": day, "last_time": max(times)})
     ok, detail = queues.apply(Path(automas_dir), queue, enabled=False)
     if not ok:
-        _marker(state_dir).unlink(missing_ok=True)
-        return [*out, f"跳过「{queue}」失败：{detail}"]   # flag stays; retry next tick
-    flag.unlink(missing_ok=True)
+        store.pop("queues", "skip_restore")
+        return [*out, f"跳过「{queue}」失败：{detail}"]   # 标记留着，下个 tick 重试
+    store.pop("queues", f"skip_day:{day}")
     return [*out, f"今天（{day}）跳过队列「{queue}」：已临时停用，过后自动恢复"]
 
 
 def _maybe_restore(state_dir: Path, automas_dir: Path | None,
                    now: datetime) -> list[str]:
-    marker = _marker(state_dir)
-    if not marker.exists():
+    info = _restore_marker(state_dir)
+    if info is None:
         return []
+    store = _store(state_dir)
     try:
-        info = json.loads(marker.read_text(encoding="utf-8"))
         day, last_time = str(info["day"]), str(info.get("last_time") or "23:59")
         queue = names.canonical(str(info["queue"]))
         hh, mm = (int(x) for x in last_time.split(":"))
         occasion_end = (datetime.strptime(day, "%Y-%m-%d")
                         .replace(hour=hh, minute=mm, tzinfo=SERVER_TZ)
                         + timedelta(minutes=RESTORE_GRACE_MIN))
-    except (KeyError, ValueError, json.JSONDecodeError):
+    except (KeyError, ValueError, TypeError):
         # An unreadable marker must not strand the queue disabled forever.
-        marker.unlink(missing_ok=True)
+        store.pop("queues", "skip_restore")
         return ["跳过模式的恢复标记损坏，已清除——请检查队列是否需要手动恢复"]
     if now < occasion_end:
         return []
@@ -327,5 +324,5 @@ def _maybe_restore(state_dir: Path, automas_dir: Path | None,
     ok, detail = queues.apply(Path(automas_dir), queue, enabled=True)
     if not ok:
         return [f"跳过「{queue}」后恢复失败：{detail}——请手动检查"]
-    marker.unlink(missing_ok=True)
+    store.pop("queues", "skip_restore")
     return [f"队列「{queue}」的跳过已结束，定时已恢复"]

@@ -35,7 +35,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from .config import SERVER_TZ, atomic_write_text, both_clocks
+from .config import SERVER_TZ, both_clocks
 from . import maaend, queues, sanity_plan
 from .commands import apply_command
 
@@ -214,7 +214,7 @@ class Inbox:
     def __init__(self, state_dir: Path, url: str = "", maaend_dir: Path | None = None,
                  automas_dir: Path | None = None):
         self.url = url or DEFAULT_URL
-        self.marker = Path(state_dir) / "inbox-version.txt"
+        self.state_dir = Path(state_dir)
         self.maaend_dir = maaend_dir
         self.automas_dir = automas_dir
         # Whether the last poll actually reached the queue file. "Could not
@@ -223,20 +223,22 @@ class Inbox:
         # a pause order that fails to download is not a pause order.
         self.last_fetch_ok = True
 
+    def _store(self):
+        from .statestore import StateStore  # noqa: PLC0415
+        return StateStore(self.state_dir)
+
     @property
     def applied_version(self) -> int:
         try:
-            return int(self.marker.read_text(encoding="utf-8").strip() or 0)
-        except (OSError, ValueError):
+            return int(str(self._store().get("queues", "inbox_version") or 0).strip() or 0)
+        except (TypeError, ValueError):
             return 0
 
     def _remember(self, version: int) -> None:
-        self.marker.parent.mkdir(parents=True, exist_ok=True)
-        # Atomic: this can run inside a shutdown countdown (service.py calls
-        # the deferred collect after tick(), which may already have issued
-        # `shutdown /s /t 60`). A truncated marker reads as version 0 and
-        # replays the whole last batch on the next boot.
-        atomic_write_text(self.marker, str(version))
+        # 原子写：这段可能跑在关机倒计时里（service.py 在 tick() 之后才做延后的
+        # 收件，而 tick 可能已经发了 `shutdown /s /t 60`）。写坏的记账会被读成
+        # 版本 0，下次开机把上一批指令整批重放一遍。state.json 的写入是原子的。
+        self._store().set("queues", "inbox_version", str(version))
 
     def poll(self) -> tuple[int, list[str]]:
         """Fetch, and apply if it is newer. Returns (version_now, messages).

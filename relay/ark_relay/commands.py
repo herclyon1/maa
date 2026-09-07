@@ -504,11 +504,10 @@ def _skip_today(queue: str, want_day: str = "") -> tuple[bool, str]:
         return False, (f"skip_today 指定的是 {want_day}，今天已是 {day}——"
                        "指令在收件箱里过期了，未生效。需要就重新排一条")
     queue = names.canonical(queue)
-    marker = Path(os.environ.get("ARK_STATE_DIR", "./ark-state")) / f"skip-{day}.flag"
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    # Atomic: an empty flag reads back as the default queue name, so a torn
-    # write would skip a queue nobody asked to skip.
-    atomic_write_text(marker, str(queue))
+    from .statestore import StateStore  # noqa: PLC0415
+    # 原子写：空值会被读成默认队列名，撕裂的写入等于跳过一个没人要求跳过的队列。
+    StateStore(Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))).set(
+        "queues", f"skip_day:{day}", str(queue))
     return True, f"今天（{day}）将跳过队列「{queue}」"
 
 

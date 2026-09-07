@@ -54,6 +54,10 @@ FIELDS: dict[str, dict[str, str]] = {
     },
     "queues": {
         "pending": "还没推出去的失败告警：{脚本|账号: 记录}",
+        "phone_seen": "手机指令去重用的消息 id 列表",
+        "inbox_version": "待办清单处理到哪一版",
+        "skip_restore": "跳过模式停用了哪个队列，用于过后恢复",
+        "skip_day:*": "某天要跳过哪个队列（值=队列名）",
     },
 }
 
@@ -63,6 +67,7 @@ LEGACY_GLOB = {
     "report-*.sent": ("marks", "report:{}", "flag"),
     "interim-*.sent": ("marks", "interim:{}", "text"),
     "banner-*.sent": ("marks", "banner:{}", "flag"),
+    "skip-*.flag": ("queues", "skip_day:{}", "text"),
 }
 
 LEGACY = {
@@ -75,6 +80,9 @@ LEGACY = {
     "gameupdate-off.flag": ("updates", "gameupdate_off", "flag"),
     "arknights-client.json": ("updates", "arknights_client", "json"),
     "queue-skips.json": ("updates", "queue_skips", "json"),
+    "phone-seen.json": ("queues", "phone_seen", "json"),
+    "inbox-version.txt": ("queues", "inbox_version", "text"),
+    "skip-restore.json": ("queues", "skip_restore", "json"),
     "maintenance-today.json": ("updates", "maintenance_windows", "json"),
     "shutdown-skipped.txt": ("modes", "shutdown_skipped", "text"),
     "garden.json": ("weekly", "garden", "json"),
@@ -185,6 +193,8 @@ class StateStore:
         for pattern, (section, tmpl, how) in LEGACY_GLOB.items():
             head, _, tail = pattern.partition("*")
             for f in sorted(self.dir.glob(pattern)):
+                if f.name in LEGACY:
+                    continue        # 上面按全名迁过了（skip-next-shutdown.flag 会撞 skip-*.flag）
                 stem = f.name[len(head):-len(tail)] if tail else f.name[len(head):]
                 value = _read_legacy(f, how)
                 if value is None:

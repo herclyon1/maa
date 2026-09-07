@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 STATE = Path(tempfile.mkdtemp())
 os.environ["ARK_STATE_DIR"] = str(STATE)
 from ark_relay import commands, names  # noqa: E402
+from ark_relay.statestore import StateStore  # noqa: E402
 
 fails = []
 def check(label, got, want):
@@ -30,14 +31,15 @@ check("空→空", names.canonical(""), "")
 
 print("[skip_today 落盘的是现名]")
 ok, msg = commands._skip_today("Evening-MAA")
-flag = next(STATE.glob("skip-*.flag"))
+marks = {k: v for k, v in StateStore(STATE).section("queues").items() if k.startswith("skip_day:")}
 check("成功", ok, True)
-check("标记内容", flag.read_text(encoding="utf-8"), "晚班")
+check("标记内容", list(marks.values()), ["晚班"])
 check("提示用现名", "「晚班」" in msg, True)
 
 print("[默认队列是早班]")
 ok, msg = commands.apply_command({"action": "skip_today"})
-check("默认早班", any(f.read_text(encoding="utf-8") == "早班" for f in STATE.glob("skip-*.flag")), True)
+check("默认早班", any(v == "早班" for k, v in StateStore(STATE).section("queues").items()
+                    if k.startswith("skip_day:")), True)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

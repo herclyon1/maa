@@ -153,7 +153,6 @@ class WeeklyGate:
     NAME = "明日方舟 · 剿灭"
 
     def __init__(self, state_dir: Path, automas_dir: Path | None):
-        self.path = Path(state_dir) / "annihilation.json"
         self._store = StateStore(state_dir)   # 状态收口：真正落盘在 state.json 的 weekly 段
         self.automas_dir = automas_dir
 

@@ -34,7 +34,6 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from .config import atomic_write_text
 
 log = logging.getLogger("ark.phone")
 
@@ -212,20 +211,17 @@ class Mailbox:
     # 开机时会把 24 小时内的消息一次取回，其中大半是上次开机就已经执行过的。
     # 用 ntfy 自己给的消息 id 记一下，免得同一条指令执行两遍。
 
-    def _seen_file(self) -> Path:
-        return self.state_dir / "phone-seen.json"
+    def _store(self):
+        from .statestore import StateStore  # noqa: PLC0415
+        return StateStore(self.state_dir)
 
     def _load_seen(self) -> "list[str]":
-        try:
-            data = json.loads(self._seen_file().read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return []
+        data = self._store().get("queues", "phone_seen")
         return [str(x) for x in data] if isinstance(data, list) else []
 
     def _save_seen(self) -> None:
         try:
-            atomic_write_text(self._seen_file(),
-                              json.dumps(self._seen[-SEEN_KEEP:]))
+            self._store().set("queues", "phone_seen", list(self._seen[-SEEN_KEEP:]))
         except OSError:
             log.warning("处理过的消息 id 存不下来，同一条指令可能被执行两次",
                         exc_info=True)
