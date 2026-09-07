@@ -33,7 +33,7 @@
 // success unless the output is parsed. The monitor kept coming up empty at
 // login for exactly that reason.
 //
-// Build:  swiftc -O main.swift -o FleetMonitor
+// Build:  swiftc -O main.swift -o FleetMonitor   （装进 ~/Applications/Fleet Monitor.app/Contents/MacOS/ 后 codesign -f -s - 整个 app）
 // No linked libraries and no entitlements; it keeps working across Tailscale
 // updates because the local API is the same surface the CLI itself uses.
 
@@ -123,11 +123,24 @@ enum Tailscale {
         return nil
     }
 
+    /// One session with **no cache**. 2026-09-07: the game PC had been off for
+    /// an hour and the window still said "114ms". URLSession had cached the
+    /// last ping reply (tailscaled sends no Cache-Control) and answered every
+    /// later probe from disk - the same "114ms" for ten minutes straight.
+    /// A monitor whose one job is "is it on" cannot let the OS answer from
+    /// memory, so this session has no cache at all and every request says so.
+    static let session: URLSession = {
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.urlCache = nil
+        cfg.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        return URLSession(configuration: cfg)
+    }()
+
     static func request(_ path: String) -> URLRequest? {
         guard let e = endpoint(),
               let url = URL(string: "http://127.0.0.1:\(e.port)/localapi/v0/\(path)")
         else { return nil }
-        var r = URLRequest(url: url)
+        var r = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData)
         // Username is empty; the proof file is the password.
         let auth = Data(":\(e.token)".utf8).base64EncodedString()
         r.setValue("Basic \(auth)", forHTTPHeaderField: "Authorization")
@@ -154,6 +167,10 @@ enum Tailscale {
     private static let probeReuseSeconds: TimeInterval = 30
     /// Consecutive silent reads per machine, for the hysteresis in `status()`.
     private static var misses: [String: Int] = [:]
+    /// Set when a machine went silent once: the second read should come in
+    /// seconds, not at the next five-minute heartbeat. Before this a machine
+    /// that was switched off stayed green for up to ten minutes.
+    static var recheckSoon = false
 
     static func probe(_ ip: String, timeout: TimeInterval = 4) -> Probe {
         guard !ip.isEmpty, var req = request("ping?ip=\(ip)&type=disco") else { return .none }
@@ -162,7 +179,7 @@ enum Tailscale {
         let lock = NSLock()
         var result = Probe.none
         let done = DispatchSemaphore(value: 0)
-        let task = URLSession.shared.dataTask(with: req) { d, _, _ in
+        let task = session.dataTask(with: req) { d, _, _ in
             defer { done.signal() }
             guard let d = d,
                   let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any]
@@ -193,7 +210,7 @@ enum Tailscale {
         // and a status read that has not finished is not a status.
         var payload: Data?
         let done = DispatchSemaphore(value: 0)
-        URLSession.shared.dataTask(with: req) { d, _, err in
+        session.dataTask(with: req) { d, _, err in
             if let err = err { note("localapi: \(err.localizedDescription)") }
             payload = d
             done.signal()
@@ -256,6 +273,7 @@ enum Tailscale {
             // booting answers on the second or third read; one that is off
             // never does, and two silent reads in a row is soon enough.
             misses[m.ip, default: 0] += 1
+            if misses[m.ip]! < 2 { recheckSoon = true }
             return misses[m.ip]! >= 2 ? m.silent() : m
         }
 
@@ -599,6 +617,10 @@ final class Controller: NSObject, NSApplicationDelegate {
         }
         machines = list
         lastGood = Date()
+        if Tailscale.recheckSoon {
+            Tailscale.recheckSoon = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in self?.refresh() }
+        }
         for m in list where m.online { seenOnlineAt[m.host] = Date() }
         let up = list.filter(\.online).count
 
