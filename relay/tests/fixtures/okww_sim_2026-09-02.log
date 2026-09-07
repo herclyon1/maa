@@ -1,0 +1,21 @@
+2026-09-02 09:28:08,014 INFO MainThread ok:ok-script init v3.6.6
+2026-09-02 09:32:48,907 INFO TaskExecutor DailyTask:info_set current daily progress 60
+2026-09-02 09:32:48,942 INFO TaskExecutor DailyTask:info_set total daily points 0
+2026-09-02 09:32:54,401 INFO TaskExecutor NightmareNestTask:open_boss_book canxiang
+2026-09-02 09:32:58,118 INFO TaskExecutor NightmareNestTask:nightmare nest: 指定点位都已打满，跳过
+2026-09-02 09:33:01,170 INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0
+2026-09-02 09:33:15,916 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：0/3_0.99, x60_0.79]
+2026-09-02 09:36:10,000 INFO TaskExecutor SimulationTask:info_set current_stamina 168
+2026-09-02 09:36:10,001 INFO TaskExecutor SimulationTask:info_set back_up_stamina 0
+2026-09-02 09:36:11,000 INFO TaskExecutor SimulationTask:open_boss_book moni
+2026-09-02 09:36:12,000 INFO TaskExecutor SimulationTask:info_set Target Simulation Challenge Shell Credit
+2026-09-02 09:36:13,000 INFO TaskExecutor SimulationTask:left_click team_start_challenge (1791, 994) after_sleep 1
+2026-09-02 09:37:30,000 INFO TaskExecutor SimulationTask:info_set current_stamina 168
+2026-09-02 09:37:30,001 INFO TaskExecutor SimulationTask:info_set back_up_stamina 0
+2026-09-02 09:37:30,002 INFO TaskExecutor BaseWWTask:当前体力大于等于双倍, 168 >= 80
+2026-09-02 09:39:00,000 INFO TaskExecutor SimulationTask:info_set current_stamina 88
+2026-09-02 09:39:00,001 INFO TaskExecutor SimulationTask:info_set back_up_stamina 0
+2026-09-02 09:39:00,002 INFO TaskExecutor BaseWWTask:当前体力大于等于双倍, 88 >= 80
+2026-09-02 09:40:30,000 INFO TaskExecutor BaseWWTask:current stamina: 8 not enough to continue
+2026-09-02 09:40:30,001 INFO TaskExecutor SimulationTask:used all stamina
+2026-09-02 09:40:40,000 INFO TaskExecutor DailyTask:info_set current task claim daily

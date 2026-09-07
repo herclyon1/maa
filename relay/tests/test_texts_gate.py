@@ -38,6 +38,9 @@ for f in list((ROOT / "ark_relay").glob("*.py")) + [ROOT / "service.py"]:
         if pat.search(line) and not line.strip().startswith("#"):
             bad.append(f"{f.name}:{i}: {line.strip()[:80]}")
 check("写死的标题为零", bad, [])
+# 地板：glob 扫到 0 个文件也会「零违规」，闸门成摆设。2026-09-08 回放测试栽过一次。
+_scanned = len(list((ROOT / "ark_relay").glob("*.py"))) + 1
+check("确实扫到了文件（至少 20 个）", _scanned >= 20, True)
 
 print("[plain() 本身认得出问题]")
 check("英文类名", texts.plain("FarmEchoTask 抛 WaitFailedException"), ["英文「FarmEchoTask」", "英文「WaitFailedException」"])

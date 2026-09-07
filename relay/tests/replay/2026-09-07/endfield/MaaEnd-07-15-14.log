@@ -1,0 +1,29 @@
+[2026-09-07 11:16:19.102] 正在连接窗口... Endfield
+[2026-09-07 11:16:19.190] 窗口连接成功: Endfield
+[2026-09-07 11:16:19.318] 已连接控制器 [电脑端-前台]
+[2026-09-07 11:16:19.318] 稳定性最好，需要游戏窗口保持在最前且不被遮挡，会完全抢占鼠标
+[2026-09-07 11:16:19.891] 检测到快捷键: （开始任务）
+[2026-09-07 11:16:19.967] 前置程序 Endfield.exe 已在运行，跳过执行
+[2026-09-07 11:16:20.009] 正在等待窗口「Endfield」就绪...
+[2026-09-07 11:16:20.025] 窗口已就绪
+[2026-09-07 11:16:25.544] 正在连接窗口... Endfield
+[2026-09-07 11:16:25.585] 窗口连接成功: Endfield
+[2026-09-07 11:16:25.698] 等待 5 秒后连接...
+[2026-09-07 11:16:31.256] 正在加载资源: 通用资源（目前仅简中支持较好）
+[2026-09-07 11:16:32.311] 资源加载成功: 通用资源（目前仅简中支持较好）
+[2026-09-07 11:16:32.712] 任务开始: 🎱基质刷取
+[2026-09-07 11:16:32.848] ▶️**准备开始本次基质刷取**
+[2026-09-07 11:16:32.945] 📌目标地点：清波寨
+[2026-09-07 11:16:32.983] 🧠正在判断当前状态
+[2026-09-07 11:16:33.134][ERR][Px6876][Tx38375][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconStable templ size is too large [image=[51,5,16]] [templ=[26,26,16]] 
+[2026-09-07 11:16:33.135][ERR][Px6876][Tx38375][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconHover templ size is too large [image=[51,5,16]] [templ=[26,26,16]] 
+[2026-09-07 11:16:33.155] ↩️返回大世界
+[2026-09-07 11:17:04.707][ERR][Px6876][Tx38375][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconStable templ size is too large [image=[206,20,16]] [templ=[26,26,16]] 
+[2026-09-07 11:17:04.754][ERR][Px6876][Tx38375][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __WhiteConfirmButtonType1IconHover templ size is too large [image=[206,20,16]] [templ=[26,26,16]] 
+[2026-09-07 11:17:23.668] ✈️准备传送到最近锚点
+[2026-09-07 11:17:49.416] 任务失败: 🎱基质刷取
+[2026-09-07 11:17:49.455] 正在连接窗口... Endfield
+[2026-09-07 11:17:49.480] 窗口连接成功: Endfield
+[2026-09-07 11:17:49.783] 任务开始: ⛔ 结束进程
+[2026-09-07 11:17:49.852] 已通过快捷键开始任务：
+[2026-09-07 11:17:50.368] 任务完成: ⛔ 结束进程

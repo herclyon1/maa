@@ -36,7 +36,7 @@ which sounds wrong for an unattended machine and is not: `powercfg` reports
 |---|---|
 | The MAA user still has `Notify/IfServerChan = true` **with a ServerChan key saved**, under a master `Notify/Enabled = false` | One toggle away from AUTO-MAS pushing on its own. NOTIFICATIONS.md says the relay is the only notifier; the key should be cleared, not merely switched off |
 | `Timers/ForceScheduledStart = true` in MAA | Inert while all 8 timers are off. Enable any one of them later and MAA starts on its own clock, colliding with AUTO-MAS |
-| ~~The **second** MAA profile (`卢智超666`) had `PostActions = Shutdown`, `RunDirectly = true` and `StartEmulator = true` pointing at `#0 guan.lnk`~~ | **已于 2026-08-24 删除**（操作者要求）。那是 MuMu 时代的遗留配置，AUTO-MAS 从不驱动它，但三个开关凑在一起意味着谁手动切过去，MAA 就会自己开模拟器、启动即跑、跑完关机。母本和 MAA 目录里的四份文件都已清掉，各留一份 `.bak-delprofile-20260824-114507` 备份 |
+| ~~The **second** MAA profile (`第二个配置`) had `PostActions = Shutdown`, `RunDirectly = true` and `StartEmulator = true` pointing at `#0 guan.lnk`~~ | **已于 2026-08-24 删除**（操作者要求）。那是 MuMu 时代的遗留配置，AUTO-MAS 从不驱动它，但三个开关凑在一起意味着谁手动切过去，MAA 就会自己开模拟器、启动即跑、跑完关机。母本和 MAA 目录里的四份文件都已清掉，各留一份 `.bak-delprofile-20260824-114507` 备份 |
 | `Update/CheckOnStartup = true` in MAA | MaaEnd's first-attempt failures were caused by exactly this shape of thing (self-update restarting the process). The MAA doc says update settings are AUTO-MAS's to adjust, so this is left alone and watched, not changed |
 
 ### Available and switched off, by choice

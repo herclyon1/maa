@@ -1,0 +1,1480 @@
+2026-09-07 09:19:33,751 INFO MainThread ok:ok-script init v3.6.7, ['D:\\ark\\okww\\data\\apps\\ok-ww\\working\\main.py', '-t', '1', '-e'], pid=14816 config: {'debug': False, 'custom_tasks': True, 'gui': {'type': 'qt'}, 'config_folder': 'configs', 'blur_area': <function blur_area at 0x0000021FE44042C0>, 'gui_icon': 'icons/icon.png', 'global_configs': [<ok.util.config.ConfigOption object at 0x0000021FC32F2DE0>, <ok.util.config.ConfigOption object at 0x0000021FC332AB70>, <ok.util.config.ConfigOption object at 0x0000021FC56F4800>], 'custom_tabs': [['src.gui.CharacterCodeTab', 'CharacterCodeTab']], 'ocr': {'lib': 'onnxocr', 'auto_simplify': True, 'params': {'use_openvino': True, 'use_npu': True}}, 'my_app': ['src.globals', 'Globals'], 'start_timeout': 120, 'wait_until_settle_time': 0, 'template_matching': {'coco_feature_json': 'assets\\coco_annotations.json', 'default_horizontal_variance': 0.002, 'default_vertical_variance': 0.002, 'default_threshold': 0.8, 'feature_processor': <function process_feature at 0x0000021FC559D6C0>, 'vcenter_features': ['monthly_card', 'skip_dialog_check'], 'hcenter_features': ['monthly_card', 'suisui_forte3', 'message_dialog', 'claim_stamina_sign', 'skip_dialog_check', 'login_close', 'garden_confirm', 'garden_continue_game', 'garden_unpause', 'garden_get_gold', 'garden_get_purple', 'garden_get_skip', 'garden_not_interested_confirm', 'garden_not_interested', 'a_garden_back', 'garden_get_confirm_gray', 'the_garden_max', 'garden_shop_close', 'garden_new_stage', 'a_garden_restart', 'suisui_forte2', 'suisui_e1', 'e_forte', 'f_break_full']}, 'windows': {'top_hwnd_class': [re.compile('CAgreementDlg'), re.compile('CLoginDlg_P_'), 'CefBrowserWindow', 'Chrome_RenderWidgetHostHWND', '#32770', re.compile('CNativeLoginDlg'), 'Static', 'ComboBox', 'ComboLBox', 'Button'], 'calculate_pc_exe_path': <function calculate_pc_exe_path at 0x0000021FE4404220>, 'exe': 'Client-Win64-Shipping.exe', 'hwnd_class': 'UnrealWindow', 'interaction': 'PostMessage', 'capture_method': ['WGC', 'BitBlt_RenderFull'], 'check_hdr': False, 'force_no_hdr': False, 'check_night_light': True, 'force_no_night_light': False}, 'window_size': {'width': 1200, 'height': 800, 'min_width': 1200, 'min_height': 800}, 'supported_resolution': {'ratio': '16:9', 'resize_to': [(2560, 1440), (1920, 1080), (1600, 900), (1280, 720)], 'min_size': (1280, 720)}, 'links': {'default': {'github': 'https://github.com/ok-oldking/ok-wuthering-waves', 'discord': 'https://discord.gg/vVyCatEBgA', 'download': 'https://ok-script.com/ok-ww', 'sponsor': 'https://patreon.com/ok_oldking', 'share': 'Download OK-WW from https://ok-script.com/ok-ww', 'faq': 'https://ok-script.com/ok-ww/'}, 'zh_CN': {'github': 'https://github.com/ok-oldking/ok-wuthering-waves', 'discord': 'https://discord.gg/vVyCatEBgA', 'sponsor': 'https://afdian.com/a/ok-oldking', 'share': '下载okww https://ok-script.com/ok-ww', 'faq': 'https://ok-script.com/ok-ww', 'qq_group': 'https://qm.qq.com/q/SUQpIpmq4', 'qq_channel': 'https://pd.qq.com/s/djmm6l44y'}}, 'about': '\n    <p style="color:red;">\n    <strong>本软件是免费开源的。</strong> 如果你被收费，请立即退款。请访问QQ频道或GitHub下载最新的官方版本。\n    </p>\n    <p style="color:red;">\n        <strong>本软件仅供个人使用，用于学习Python编程、计算机视觉、UI自动化等。</strong> 请勿将其用于任何营利性或商业用途。\n    </p>\n    <p style="color:red;">\n        <strong>使用本软件可能会导致账号被封。</strong> 请在了解风险后再使用。\n    </p>\n', 'screenshots_folder': 'screenshots', 'gui_title': 'OK-WW', 'log_file': 'logs/ok-ww.log', 'error_log_file': 'logs/ok-ww_error.log', 'launcher_log_file': 'logs/launcher.log', 'launcher_error_log_file': 'logs/launcher_error.log', 'version': 'v3.6.7', 'onetime_tasks': [['src.task.DailyTask', 'DailyTask'], ['src.task.FarmEchoTask', 'FarmEchoTask'], ['src.task.NightmareNestTask', 'NightmareNestTask'], ['src.task.TacetTask', 'TacetTask'], ['src.task.ForgeryTask', 'ForgeryTask'], ['src.task.SimulationTask', 'SimulationTask'], ['src.task.MultiAccountDailyTask', 'MultiAccountDailyTask'], ['src.task.MergeEchoTask', 'MergeEchoTask'], ['src.task.EnhanceEchoTask', 'EnhanceEchoTask'], ['src.task.ChangeEchoTask', 'ChangeEchoTask'], ['src.task.GardenTask', 'GardenTask']], 'trigger_tasks': [['src.task.AutoCombatTask', 'AutoCombatTask'], ['src.task.AutoPickTask', 'AutoPickTask'], ['src.task.AutoLoginTask', 'AutoLoginTask'], ['src.task.SkipDialogTask', 'AutoDialogTask'], ['src.task.FastTravelTask', 'FastTravelTask'], ['src.task.MouseResetTask', 'MouseResetTask']], 'scene': ['src.scene.WWScene', 'WWScene'], 'update_pyappify': {'to_version': '1.2.3', 'zip_url': 'https://github.com/ok-oldking/ok-wuthering-waves/releases/download/v3.5.30/ok-ww-win32.zip', 'sha256': '447207edbfb6944beb994347048e155df99775eb18c87dcae54dda125071c94a'}, 'profile': 'China'}
+2026-09-07 09:19:33,752 INFO MainThread ok:pyappify  app_version:v3.6.7, app_profile:China, pyappify_version:1.2.3 pyappify_upgradeable:True, pyappify_executable:D:\ark\okww\ok-ww.exe
+2026-09-07 09:19:33,766 INFO MainThread capture:check available WINDOWS_BUILD_NUMBER:26200 >= 20348 True
+2026-09-07 09:19:34,041 INFO MainThread ok:use_dml result is True
+2026-09-07 09:19:34,041 INFO MainThread ok:SetProcessDpiAwareness 0
+2026-09-07 09:19:34,052 INFO MainThread ok:do_init, config: {'debug': False, 'custom_tasks': True, 'gui': {'type': 'qt'}, 'config_folder': 'configs', 'blur_area': <function blur_area at 0x0000021FE44042C0>, 'gui_icon': 'icons/icon.png', 'global_configs': [<ok.util.config.ConfigOption object at 0x0000021FC32F2DE0>, <ok.util.config.ConfigOption object at 0x0000021FC332AB70>, <ok.util.config.ConfigOption object at 0x0000021FC56F4800>], 'custom_tabs': [['src.gui.CharacterCodeTab', 'CharacterCodeTab']], 'ocr': {'lib': 'onnxocr', 'auto_simplify': True, 'params': {'use_openvino': True, 'use_npu': True}}, 'my_app': ['src.globals', 'Globals'], 'start_timeout': 120, 'wait_until_settle_time': 0, 'template_matching': {'coco_feature_json': 'assets\\coco_annotations.json', 'default_horizontal_variance': 0.002, 'default_vertical_variance': 0.002, 'default_threshold': 0.8, 'feature_processor': <function process_feature at 0x0000021FC559D6C0>, 'vcenter_features': ['monthly_card', 'skip_dialog_check'], 'hcenter_features': ['monthly_card', 'suisui_forte3', 'message_dialog', 'claim_stamina_sign', 'skip_dialog_check', 'login_close', 'garden_confirm', 'garden_continue_game', 'garden_unpause', 'garden_get_gold', 'garden_get_purple', 'garden_get_skip', 'garden_not_interested_confirm', 'garden_not_interested', 'a_garden_back', 'garden_get_confirm_gray', 'the_garden_max', 'garden_shop_close', 'garden_new_stage', 'a_garden_restart', 'suisui_forte2', 'suisui_e1', 'e_forte', 'f_break_full']}, 'windows': {'top_hwnd_class': [re.compile('CAgreementDlg'), re.compile('CLoginDlg_P_'), 'CefBrowserWindow', 'Chrome_RenderWidgetHostHWND', '#32770', re.compile('CNativeLoginDlg'), 'Static', 'ComboBox', 'ComboLBox', 'Button'], 'calculate_pc_exe_path': <function calculate_pc_exe_path at 0x0000021FE4404220>, 'exe': 'Client-Win64-Shipping.exe', 'hwnd_class': 'UnrealWindow', 'interaction': 'PostMessage', 'capture_method': ['WGC', 'BitBlt_RenderFull'], 'check_hdr': False, 'force_no_hdr': False, 'check_night_light': True, 'force_no_night_light': False, 'start_exe': True, 'start_method': 'start'}, 'window_size': {'width': 1200, 'height': 800, 'min_width': 1200, 'min_height': 800}, 'supported_resolution': {'ratio': '16:9', 'resize_to': [(2560, 1440), (1920, 1080), (1600, 900), (1280, 720)], 'min_size': (1280, 720)}, 'links': {'default': {'github': 'https://github.com/ok-oldking/ok-wuthering-waves', 'discord': 'https://discord.gg/vVyCatEBgA', 'download': 'https://ok-script.com/ok-ww', 'sponsor': 'https://patreon.com/ok_oldking', 'share': 'Download OK-WW from https://ok-script.com/ok-ww', 'faq': 'https://ok-script.com/ok-ww/'}, 'zh_CN': {'github': 'https://github.com/ok-oldking/ok-wuthering-waves', 'discord': 'https://discord.gg/vVyCatEBgA', 'sponsor': 'https://afdian.com/a/ok-oldking', 'share': '下载okww https://ok-script.com/ok-ww', 'faq': 'https://ok-script.com/ok-ww', 'qq_group': 'https://qm.qq.com/q/SUQpIpmq4', 'qq_channel': 'https://pd.qq.com/s/djmm6l44y'}}, 'about': '\n    <p style="color:red;">\n    <strong>本软件是免费开源的。</strong> 如果你被收费，请立即退款。请访问QQ频道或GitHub下载最新的官方版本。\n    </p>\n    <p style="color:red;">\n        <strong>本软件仅供个人使用，用于学习Python编程、计算机视觉、UI自动化等。</strong> 请勿将其用于任何营利性或商业用途。\n    </p>\n    <p style="color:red;">\n        <strong>使用本软件可能会导致账号被封。</strong> 请在了解风险后再使用。\n    </p>\n', 'screenshots_folder': 'screenshots', 'gui_title': 'OK-WW', 'log_file': 'logs/ok-ww.log', 'error_log_file': 'logs/ok-ww_error.log', 'launcher_log_file': 'logs/launcher.log', 'launcher_error_log_file': 'logs/launcher_error.log', 'version': 'v3.6.7', 'onetime_tasks': [['src.task.DailyTask', 'DailyTask'], ['src.task.FarmEchoTask', 'FarmEchoTask'], ['src.task.NightmareNestTask', 'NightmareNestTask'], ['src.task.TacetTask', 'TacetTask'], ['src.task.ForgeryTask', 'ForgeryTask'], ['src.task.SimulationTask', 'SimulationTask'], ['src.task.MultiAccountDailyTask', 'MultiAccountDailyTask'], ['src.task.MergeEchoTask', 'MergeEchoTask'], ['src.task.EnhanceEchoTask', 'EnhanceEchoTask'], ['src.task.ChangeEchoTask', 'ChangeEchoTask'], ['src.task.GardenTask', 'GardenTask']], 'trigger_tasks': [['src.task.AutoCombatTask', 'AutoCombatTask'], ['src.task.AutoPickTask', 'AutoPickTask'], ['src.task.AutoLoginTask', 'AutoLoginTask'], ['src.task.SkipDialogTask', 'AutoDialogTask'], ['src.task.FastTravelTask', 'FastTravelTask'], ['src.task.MouseResetTask', 'MouseResetTask']], 'scene': ['src.scene.WWScene', 'WWScene'], 'update_pyappify': {'to_version': '1.2.3', 'zip_url': 'https://github.com/ok-oldking/ok-wuthering-waves/releases/download/v3.5.30/ok-ww-win32.zip', 'sha256': '447207edbfb6944beb994347048e155df99775eb18c87dcae54dda125071c94a'}, 'profile': 'China'}
+2026-09-07 09:19:34,294 INFO MainThread DeviceManager:__init__ start
+2026-09-07 09:19:34,300 INFO MainThread hwnd_window:HwndWindow init title:None player_id:-1 exe_name:['Client-Win64-Shipping.exe'] hwnd_class:UnrealWindow top_hwnd_class:[re.compile('CAgreementDlg'), re.compile('CLoginDlg_P_'), 'CefBrowserWindow', 'Chrome_RenderWidgetHostHWND', '#32770', re.compile('CNativeLoginDlg'), 'Static', 'ComboBox', 'ComboLBox', 'Button']
+2026-09-07 09:19:34,301 INFO MainThread DeviceManager:__init__ end
+2026-09-07 09:19:34,365 INFO MainThread TaskExecutor:install ocr translations error for en_US
+2026-09-07 09:19:34,366 INFO DefaultOCRInit TaskExecutor:start init default ocr
+2026-09-07 09:19:34,386 INFO screenshot screenshot:remove_old_files D:\ark\okww\data\apps\ok-ww\working\screenshots
+2026-09-07 09:19:35,305 INFO DefaultOCRInit TaskExecutor:init onnxocr {'use_openvino': True, 'use_npu': True}
+2026-09-07 09:19:35,307 INFO DefaultOCRInit TaskExecutor:use_openvino: True
+2026-09-07 09:19:35,307 INFO DefaultOCRInit TaskExecutor:use_npu: True
+2026-09-07 09:19:35,307 INFO DefaultOCRInit TaskExecutor:use_angle_cls: False
+2026-09-07 09:19:35,307 INFO DefaultOCRInit TaskExecutor:det_model_dir: D:\ark\okww\data\apps\ok-ww\python\Lib\site-packages\onnxocr\models\ppocrv5\det\det.onnx
+2026-09-07 09:19:35,307 INFO DefaultOCRInit TaskExecutor:rec_model_dir: D:\ark\okww\data\apps\ok-ww\python\Lib\site-packages\onnxocr\models\ppocrv5\rec\rec.onnx
+2026-09-07 09:19:35,307 INFO DefaultOCRInit TaskExecutor:rec_image_shape: 3, 48, 320
+2026-09-07 09:19:36,425 INFO MainThread app:translator install success <PySide6.QtCore.QLocale()/* Chinese, Simplified Han, China */ at 0x0000021FE87B1E80>, 开发工具
+2026-09-07 09:19:36,426 INFO MainThread TaskExecutor:install ocr translations error for zh_CN
+2026-09-07 09:19:36,820 INFO DefaultOCRInit TaskExecutor:openvino cache_dir: D:\ark\okww\data\apps\ok-ww\working\cache\openvino
+2026-09-07 09:19:37,136 INFO MainThread task_manager:Found tasks: []
+2026-09-07 09:19:37,141 INFO MainThread task_manager:Debug file watcher initialized, watching dirs ['D:\\ark\\okww\\data\\apps\\ok-ww\\working\\ok_tasks']
+2026-09-07 09:19:37,141 INFO MainThread ok:do_init, end
+2026-09-07 09:19:37,141 INFO MainThread ok:OK start id:2335441890592 pid:14816
+2026-09-07 09:19:37,797 INFO DefaultOCRInit TaskExecutor:openvino core.available_devices ['CPU', 'GPU']
+2026-09-07 09:19:37,817 INFO MainThread MainWindow:main window __init__
+2026-09-07 09:19:37,828 INFO MainThread MainWindow:Refresh primary button color: #00689b
+2026-09-07 09:19:39,202 INFO DefaultOCRInit TaskExecutor:openvino async infer requests: 1
+2026-09-07 09:19:39,206 INFO DefaultOCRInit TaskExecutor:openvino cache_dir: D:\ark\okww\data\apps\ok-ww\working\cache\openvino
+2026-09-07 09:19:39,218 INFO DefaultOCRInit TaskExecutor:openvino core.available_devices ['CPU', 'GPU']
+2026-09-07 09:19:39,248 INFO MainThread ok:translation installed for zh_CN
+2026-09-07 09:19:39,634 INFO DefaultOCRInit TaskExecutor:openvino async infer requests: 1
+2026-09-07 09:19:39,660 INFO DefaultOCRInit TaskExecutor:ocr_lib init <onnxocr.onnx_paddleocr.ONNXPaddleOcr object at 0x0000021FE5244EF0> onnxocr
+2026-09-07 09:19:39,662 INFO DefaultOCRInit TaskExecutor:default ocr init end, cost: 5.30s
+2026-09-07 09:19:40,420 INFO MainThread Loaded 0 tasks from cache
+2026-09-07 09:19:40,421 INFO ScheduleRefresh schedule_index_sync:schedule index sync start: 11 onetime_tasks, root=\OK-WW
+2026-09-07 09:19:40,428 INFO ScheduleRefresh schedule_index_sync:schedule index sync skipped: cache is empty/invalid
+2026-09-07 09:19:40,429 INFO ScheduleRefresh Loaded 0 tasks from cache
+2026-09-07 09:19:40,483 INFO ScheduleRefresh Initializing Windows Task Scheduler COM service, root=\OK-WW
+2026-09-07 09:19:40,607 INFO ScheduleRefresh Windows Task Scheduler COM service initialized, root=\OK-WW
+2026-09-07 09:19:40,612 INFO ScheduleRefresh Saved 0 tasks to cache
+2026-09-07 09:19:41,169 INFO MainThread UpdateCard:initialized current_version='v3.6.7', pyappify_module='D:\\ark\\okww\\data\\apps\\ok-ww\\working\\pyappify\\__init__.py', pyappify_app_version='v3.6.7', test_mode=False
+2026-09-07 09:19:41,191 INFO MainThread pyappify_startup:get_startup_version_change from_version=v3.6.7-beta.2, to_version=v3.6.7, is_updated=False, is_downgraded=False
+2026-09-07 09:19:41,815 INFO MainThread MainWindow:main window __init__ done
+2026-09-07 09:19:41,862 INFO MainThread ok:Attempting to minimize window for process with PID: 1080
+2026-09-07 09:19:41,873 INFO MainThread ok:pyappify no need to upgrade True 1.2.3 447207edbfb6944beb994347048e155df99775eb18c87dcae54dda125071c94a ['https://github.com/ok-oldking/ok-wuthering-waves/releases/download/v3.5.30/ok-ww-win32.zip']
+2026-09-07 09:19:41,874 INFO MainThread MainWindow:Window has fully displayed
+2026-09-07 09:19:41,874 INFO MainThread ok:start runtime with task param 0 True
+2026-09-07 09:19:41,874 INFO MainThread MainWindow:MainWindow showEvent Kill Launcher After Start
+2026-09-07 09:19:41,874 INFO ok.core.start_controller start_controller:enable param task <src.task.DailyTask.DailyTask object at 0x0000021FE91B7CB0>
+2026-09-07 09:19:41,874 INFO ok.core.start_controller start_controller:do_start: call do_refresh True
+2026-09-07 09:19:41,875 INFO PyAppifyShutdown ok:Attempting to terminate process with PID: 1080
+2026-09-07 09:19:41,875 INFO MainThread pyappify_startup:get_startup_version_change from_version=v3.6.7-beta.2, to_version=v3.6.7, is_updated=False, is_downgraded=False
+2026-09-07 09:19:41,876 INFO MainThread MainWindow:update success, show copyright
+2026-09-07 09:19:41,879 INFO MainThread MainWindow:schedule pyappify update check in 30000ms
+2026-09-07 09:19:41,893 INFO PyAppifyShutdown ok:_wait_for_process_exit success 1080
+2026-09-07 09:19:41,894 INFO MainThread ok:app.exec()
+2026-09-07 09:19:41,900 INFO ok.core.start_controller DeviceManager:update_pc_device pc_device: {'address': '', 'imei': 'pc', 'device': 'windows', 'model': '', 'nick': 'Client-Win64-Shipping.exe', 'width': 0, 'height': 0, 'hwnd': 'Client-Win64-Shipping.exe', 'capture': 'windows', 'connected': False, 'full_path': 'D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe', 'real_hwnd': 0, 'exe': ['Client-Win64-Shipping.exe']}
+2026-09-07 09:19:41,900 INFO ok.core.start_controller DeviceManager:first start use first or connected device {'address': '', 'imei': 'pc', 'device': 'windows', 'model': '', 'nick': 'Client-Win64-Shipping.exe', 'width': 0, 'height': 0, 'hwnd': 'Client-Win64-Shipping.exe', 'capture': 'windows', 'connected': False, 'full_path': 'D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe', 'real_hwnd': 0, 'exe': ['Client-Win64-Shipping.exe']}
+2026-09-07 09:19:41,900 INFO ok.core.start_controller DeviceManager:preferred device did change pc
+2026-09-07 09:19:41,902 INFO ok.core.start_controller start_controller:start_device: {'address': '', 'imei': 'pc', 'device': 'windows', 'model': '', 'nick': 'Client-Win64-Shipping.exe', 'width': 0, 'height': 0, 'hwnd': 'Client-Win64-Shipping.exe', 'capture': 'windows', 'connected': False, 'full_path': 'D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe', 'real_hwnd': 0, 'exe': ['Client-Win64-Shipping.exe']}
+2026-09-07 09:19:41,904 INFO ok.core.start_controller DeviceManager:calculate_pc_exe_path caller path D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe, result D:\Wuthering Waves Game\Wuthering Waves.exe
+2026-09-07 09:19:41,905 INFO ok.core.start_controller start_controller:starting game D:\Wuthering Waves Game\Wuthering Waves.exe
+2026-09-07 09:19:41,905 INFO ok.core.start_controller process:try execute D:\Wuthering Waves Game\Wuthering Waves.exe None with start
+2026-09-07 09:19:41,907 INFO RefreshAdb capture:check available WINDOWS_BUILD_NUMBER:26200 >= 20348 True
+2026-09-07 09:19:41,907 WARNING RefreshAdb windows_graphics:start_or_stop not self.hwnd_window.exists
+2026-09-07 09:19:41,907 INFO RefreshAdb windows_graphics:destroy windows capture
+2026-09-07 09:19:41,908 WARNING RefreshAdb windows_graphics:start_or_stop not self.hwnd_window.exists
+2026-09-07 09:19:41,908 INFO RefreshAdb windows_graphics:destroy windows capture
+2026-09-07 09:19:41,909 WARNING RefreshAdb windows_graphics:start_or_stop not self.hwnd_window.exists
+2026-09-07 09:19:41,909 INFO RefreshAdb windows_graphics:destroy windows capture
+2026-09-07 09:19:41,909 INFO RefreshAdb windows_graphics:destroy windows capture
+2026-09-07 09:19:41,909 INFO RefreshAdb update:use BitBlt_RenderFull capture render_full: True
+2026-09-07 09:19:41,909 INFO RefreshAdb DeviceManager:capture method <class 'ok.device.capture_methods.bitblt.BitBltCaptureMethod'>
+2026-09-07 09:19:42,050 INFO MainThread ScheduleTaskTab:Loaded 0 tasks
+2026-09-07 09:19:42,136 INFO MainThread pyappify_startup:get_startup_version_change from_version=v3.6.7-beta.2, to_version=v3.6.7, is_updated=False, is_downgraded=False
+2026-09-07 09:19:42,857 INFO global MainWindow:Window geometry updated in ok_config {'window_x': 360, 'window_y': 116, 'window_width': 1200, 'window_height': 800, 'window_maximized': False, 'navigation_expanded': True, 'use_overlay': False}
+2026-09-07 09:20:11,528 INFO update_window_size hwnd_window:do_update_window_size hwnd changed from 0 to 1442878 top 1442878 D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe UnrealWindow real:0,0,1920,1080
+2026-09-07 09:20:11,876 INFO pyappify-update UpdateCard:calling pyappify.get_version_list(release_only=True)
+2026-09-07 09:20:12,021 INFO ok.core.start_controller hwnd_window:hwnd changed,connected:1
+2026-09-07 09:20:12,021 INFO update_window_size hwnd_window:hwnd changed,connected:1
+2026-09-07 09:20:12,021 INFO ok.core.start_controller hwnd_window:do_update_window_size changed,visible:False,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-07 09:20:12,022 INFO update_window_size hwnd_window:do_update_window_size changed,visible:False,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-07 09:20:12,023 INFO ok.core.start_controller start_controller:waiting for started window to stabilize, current size 1920x1080
+2026-09-07 09:20:13,540 INFO pyappify-update UpdateCard:pyappify.get_version_list(release_only=True) result=[{'version': 'v3.6.7', 'previous_version': 'v3.6.6', 'update_note': ['优化自动登录 (ok-oldking)', '升级 ok-script 至 2.0.7b1 (ok-oldking)', '添加凌阳 (#1650) (AliceJump)', 'Update issue triage workflow lock (ok-oldking)', '添加秋水,秧秧,灯灯的模板图 (#1646) (AliceJump)', 'feat(char): 优化露西、丽贝卡、莫宁，支持露丽莫、露丽维 (#1623) (EEEEEEEEdison)', 'fix:修复讨伐强敌/战歌重奏 boss 定位全滚到底的回退 (#1605 引入) (#1638) (EEEEEEEEdison)', 'Declare onnxocr-ppocrv5 as a direct dependency (ok-oldking)', 'Reschedule mouse resets without duplicate handlers (ok-oldking)']}, {'version': 'v3.6.6', 'previous_version': 'v3.6.5', 'update_note': ['chore(deps): upgrade ok-script to 2.0.5 (ok-oldking)', 'fix(workshop): sanitize team URLs and log requests (ok-oldking)']}, {'version': 'v3.6.5', 'previous_version': 'v3.6.4', 'update_note': ['fix(tacet): calibrate book scroll header and add closed-loop retry for #1599 (#1605) (EEEEEEEEdison)', 'fix(qingxiao): 修复大招前 h2 不开,增加 h2 释放保护与轮询保护 R 释放 (#1604) (EEEEEEEEdison)', 'refactor: 赞妮/菲比/漂泊者 v23 适配上游 3.6.4 base（char-only） (#1603) (EEEEEEEEdison)']}, {'version': 'v3.6.4', 'previous_version': 'v3.5.32', 'update_note': ['修复测试 (ok-oldking)', '更新ok-script版本 (ok-oldking)', '适配3.6跳任务 (ok-oldking)', '支持清霄 (ok-oldking)', 'Reorganize team controls and add team deletion translations (ok-oldking)', 'Add custom team deletion (ok-oldking)', 'Handle unreadable custom team folders gracefully (ok-oldking)', 'Fix Rover wind form initialization (ok-oldking)', '适配合成声骸UI改变 (ok-oldking)', 'fix: 迁移漂泊者为 Rover 并刷新形态日志 (#1582) (EEEEEEEEdison)']}, {'version': 'v3.5.32', 'previous_version': 'v3.5.31', 'update_note': ['修复缺少DLL启动报错 (ok-oldking)', '优化自定义队伍ui (ok-oldking)', '更新自定义角色代码添加工坊 (ok-oldking)', '优化梦魇聚落：未拾取声骸时重新传送回当前聚落保底 (#1572) (EEEEEEEEdison)', '更新夸克下载链接 (ok-oldking)', 'Update docs.yml (ok-oldking)']}, {'version': 'v3.5.31', 'previous_version': 'v3.5.30', 'update_note': ['设置升级启动器 (ok-oldking)', '修复依赖版本错误 (ok-oldking)']}, {'version': 'v3.5.30', 'previous_version': 'v3.5.29', 'update_note': ['优化ui (ok-oldking)']}, {'version': 'v3.5.29', 'previous_version': 'v3.5.28', 'update_note': ['旧版启动器不再检查升级 (ok-oldking)']}, {'version': 'v3.5.28', 'previous_version': None, 'update_note': ['更新ok-script版本 (ok-oldking)', 'add website to pyappify (ok-oldking)', 'reduce package size']}]
+2026-09-07 09:20:13,543 INFO MainThread UpdateCard:loaded 9 valid versions into selector: ['v3.6.7', 'v3.6.6', 'v3.6.5', 'v3.6.4', 'v3.5.32', 'v3.5.31', 'v3.5.30', 'v3.5.29', 'v3.5.28']
+2026-09-07 09:20:13,543 INFO MainThread UpdateCard:update_available=False, current_version='v3.6.7', newest_update_index=None
+2026-09-07 09:20:14,054 INFO ok.core.start_controller start_controller:started window size stable for 2s: 1920x1080
+2026-09-07 09:20:14,055 INFO ok.core.start_controller DeviceManager:update_pc_device pc_device: {'address': '', 'imei': 'pc_1442878', 'device': 'windows', 'model': '', 'nick': '鸣潮  ', 'width': 1920, 'height': 1080, 'hwnd': '鸣潮  ', 'capture': 'windows', 'connected': True, 'full_path': 'D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe', 'real_hwnd': 1442878, 'exe': ['Client-Win64-Shipping.exe']}
+2026-09-07 09:20:14,055 INFO ok.core.start_controller DeviceManager:first start use first or connected device {'address': '', 'imei': 'pc_1442878', 'device': 'windows', 'model': '', 'nick': '鸣潮  ', 'width': 1920, 'height': 1080, 'hwnd': '鸣潮  ', 'capture': 'windows', 'connected': True, 'full_path': 'D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe', 'real_hwnd': 1442878, 'exe': ['Client-Win64-Shipping.exe'], 'resolution': '1920x1080'}
+2026-09-07 09:20:14,055 INFO ok.core.start_controller DeviceManager:preferred device did change pc_1442878
+2026-09-07 09:20:14,057 INFO ok.core.start_controller start_controller:test check_device_error msg: 鸣潮   is not connected, please select the game window.
+2026-09-07 09:20:14,057 ERROR ok.core.start_controller start_controller:Game window is not connected BitBlt_True_1920x1080 
+2026-09-07 09:20:14,057 ERROR ok.core.start_controller start_controller:waiting for game to start error 鸣潮   is not connected, please select the game window. 
+2026-09-07 09:20:14,064 INFO RefreshAdb hwnd_window:do_update_window_size hwnd changed from 0 to 1442878 top 1442878 D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe UnrealWindow real:0,0,1920,1080
+2026-09-07 09:20:14,071 INFO RefreshAdb hwnd_window:hwnd changed,connected:1
+2026-09-07 09:20:14,072 INFO RefreshAdb hwnd_window:do_update_window_size changed,visible:False,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-07 09:20:14,072 INFO RefreshAdb capture:check available WINDOWS_BUILD_NUMBER:26200 >= 20348 True
+2026-09-07 09:20:14,072 INFO RefreshAdb windows_graphics:start_or_stop start WGC capture
+2026-09-07 09:20:14,294 INFO RefreshAdb update:use WGC capture
+2026-09-07 09:20:14,295 INFO RefreshAdb DeviceManager:capture method <class 'ok.device.capture_methods.windows_graphics.WindowsGraphicsCaptureMethod'>
+2026-09-07 09:20:16,058 INFO ok.core.start_controller DeviceManager:update_pc_device pc_device: {'address': '', 'imei': 'pc_1442878', 'device': 'windows', 'model': '', 'nick': '鸣潮  ', 'width': 1920, 'height': 1080, 'hwnd': '鸣潮  ', 'capture': 'windows', 'connected': True, 'full_path': 'D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe', 'real_hwnd': 1442878, 'exe': ['Client-Win64-Shipping.exe']}
+2026-09-07 09:20:16,059 INFO ok.core.start_controller hwnd_window:do_update_window_size hwnd changed from 0 to 1442878 top 1442878 D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe UnrealWindow real:0,0,1920,1080
+2026-09-07 09:20:16,061 INFO ok.core.start_controller hwnd_window:hwnd changed,connected:1
+2026-09-07 09:20:16,061 INFO ok.core.start_controller hwnd_window:do_update_window_size changed,visible:False,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-07 09:20:16,061 INFO ok.core.start_controller capture:check available WINDOWS_BUILD_NUMBER:26200 >= 20348 True
+2026-09-07 09:20:20,113 WARNING ok.core.start_controller update:Windows Graphics Capture did not produce a frame within 1.5s
+2026-09-07 09:20:20,113 INFO ok.core.start_controller windows_graphics:destroy windows capture
+2026-09-07 09:20:20,155 INFO ok.core.start_controller update:use BitBlt_RenderFull capture render_full: True
+2026-09-07 09:20:20,155 INFO ok.core.start_controller windows_graphics:destroy windows capture
+2026-09-07 09:20:20,155 INFO ok.core.start_controller DeviceManager:capture method <class 'ok.device.capture_methods.bitblt.BitBltCaptureMethod'>
+2026-09-07 09:20:20,155 INFO ok.core.start_controller start_controller:test check_device_error msg: 鸣潮   is not connected, please select the game window.
+2026-09-07 09:20:29,575 INFO ok.core.start_controller start_controller:check_device_error: capturing frame (1920, 1080)
+2026-09-07 09:20:29,575 INFO ok.core.start_controller start_controller:check_device_error: checking feature_set size
+2026-09-07 09:20:29,575 INFO ok.core.start_controller FeatureSet:FeatureSet: Width and height changed from 0x0 to 1920x1080
+2026-09-07 09:20:29,575 INFO ok.core.start_controller start_controller:check_device_error: checking resolution
+2026-09-07 09:20:29,575 INFO ok.core.start_controller TaskExecutor:start check_frame_and_resolution
+2026-09-07 09:20:29,940 INFO ok.core.start_controller gpu_driver_settings:Windows HDR enabled: False (\\.\DISPLAY1: enabled=False, supported=False, bits=8)
+2026-09-07 09:20:29,958 INFO ok.core.start_controller gpu_driver_settings:NVIDIA filter profile in use: Unknown (NVIDIA filter profile slot not found for D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe)
+2026-09-07 09:20:30,198 INFO ok.core.start_controller gpu_driver_settings:NVIDIA Image Sharpening enabled: False
+2026-09-07 09:20:30,199 INFO ok.core.start_controller gpu_driver_settings:AMD image sharpening check skipped: ADLXPybind is not installed
+2026-09-07 09:20:30,411 INFO ok.core.start_controller gpu_driver_settings:NVIDIA RTX Dynamic Vibrance enabled: False
+2026-09-07 09:20:30,411 INFO ok.core.start_controller gpu_driver_settings:NVIDIA RTX HDR enabled: False (Windows HDR is not enabled)
+2026-09-07 09:20:30,412 INFO ok.core.start_controller gpu_driver_settings:GPU driver post-processing detected features: []
+2026-09-07 09:20:30,412 INFO ok.core.start_controller TaskExecutor:queued onetime_task 📅 Daily Task
+2026-09-07 09:20:30,412 INFO ok.core.start_controller start_controller:enabled task <src.task.DailyTask.DailyTask object at 0x0000021FE91B7CB0>
+2026-09-07 09:20:30,415 INFO TaskExecutor TaskExecutor:start execute
+2026-09-07 09:20:30,416 INFO TaskExecutor TaskExecutor:executor is paused sleep
+2026-09-07 09:20:30,416 INFO TaskExecutor TaskExecutor:get queued onetime_task 📅 Daily Task
+2026-09-07 09:20:30,948 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-09-07 09:20:30,970 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:20:31,010 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:20:31,030 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:20:31,051 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:20:31,281 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:21:04,701 INFO TaskExecutor DailyTask:wait_login Box(name='Labels.switch_account', x=1796, y=533, width=43, height=42, confidence=90) [点击连接_1.00]
+2026-09-07 09:21:25,632 INFO TaskExecutor DailyTask:monthly_card found click
+2026-09-07 09:21:30,459 INFO TaskExecutor BaseWWTask:set next monthly card start time to 2026-09-08 03:59:30
+2026-09-07 09:21:35,047 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:21:35,629 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-09-07 09:21:35,629 INFO TaskExecutor DailyTask:open_daily
+2026-09-07 09:21:35,630 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-09-07 09:21:36,159 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-09-07 09:21:36,159 INFO TaskExecutor DailyTask:click f2 to open the book
+2026-09-07 09:21:40,204 INFO TaskExecutor DailyTask:send f2 key to open
+2026-09-07 09:21:40,296 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:21:40,321 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:21:41,373 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_quest', x=48, y=156, width=57, height=67, confidence=65)
+2026-09-07 09:21:43,775 INFO TaskExecutor DailyTask:left_click gray_book_quest (77, 190) after_sleep 1.5
+2026-09-07 09:21:46,866 INFO TaskExecutor DailyTask:info_set current daily progress 0
+2026-09-07 09:21:46,915 INFO TaskExecutor DailyTask:info_set total daily points 0
+2026-09-07 09:21:47,417 INFO TaskExecutor NightmareNestTask:opened gray_book_boss
+2026-09-07 09:21:47,417 INFO TaskExecutor NightmareNestTask:click f2 to open the book
+2026-09-07 09:21:48,494 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=84)
+2026-09-07 09:21:50,896 INFO TaskExecutor NightmareNestTask:left_click gray_book_boss (76, 321) after_sleep 1.5
+2026-09-07 09:21:52,397 INFO TaskExecutor NightmareNestTask:open_boss_book canxiang
+2026-09-07 09:21:53,198 INFO TaskExecutor NightmareNestTask:left_click canxiang (460, 896) after_sleep 2
+2026-09-07 09:21:56,376 INFO TaskExecutor NightmareNestTask:Box(name='已击败残象：0/41', x=889, y=373, width=195, height=30, confidence=100) is not complete
+2026-09-07 09:21:56,577 INFO TaskExecutor NightmareNestTask:left_click 已击败残象：0/41 (1729, 347) after_sleep 2
+2026-09-07 09:21:58,605 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:21:58,671 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:21:58,716 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:21:59,459 INFO TaskExecutor NightmareNestTask:left_click gray_teleport (1351, 1007) after_sleep 1
+2026-09-07 09:22:00,949 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:00,998 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:14,616 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:16,716 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:16,735 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:16,793 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:16,867 INFO TaskExecutor NightmareNestTask:info_set Liberation Key r
+2026-09-07 09:22:16,868 INFO TaskExecutor NightmareNestTask:info_set Echo Key q
+2026-09-07 09:22:16,871 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:16,922 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:16,943 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:16,998 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:17,056 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:17,078 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:17,131 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:17,193 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:17,251 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:17,329 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:17,386 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:17,442 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:17,492 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:17,544 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:17,603 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:17,656 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:17,717 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:17,770 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:17,822 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:17,879 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:17,951 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:18,006 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:18,059 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:18,114 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:18,187 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:18,241 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:18,297 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:18,350 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:18,408 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:18,463 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:18,533 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:18,586 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:18,639 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:18,695 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:18,752 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:18,775 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:18,798 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:18,849 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:18,903 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:18,921 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:18,975 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:18,996 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:19,048 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:19,103 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:19,161 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:19,220 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:19,246 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:19,372 INFO TaskExecutor NightmareNestTask:info_set Chars 千咲, 洛瑟菈, 绯雪
+2026-09-07 09:22:19,372 INFO TaskExecutor NightmareNestTask:loaded chars success Chisa 0.9999891519546509
+2026-09-07 09:22:19,373 INFO TaskExecutor NightmareNestTask:loaded chars success Lucilla 0.9986656308174133
+2026-09-07 09:22:19,373 INFO TaskExecutor NightmareNestTask:loaded chars success Hiyuki 0.9283272624015808
+2026-09-07 09:22:19,411 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:19,495 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:19,711 INFO TaskExecutor FeatureSet:find_one_feature boss_break_lock took 217.67ms (check_size: 0.00ms, prepare: 217.17ms, match: 0.50ms, post: 0.00ms)
+2026-09-07 09:22:22,657 INFO TaskExecutor CombatCheck:target lost try retarget 10
+2026-09-07 09:22:22,856 INFO TaskExecutor NightmareNestTask:enter combat None
+2026-09-07 09:22:22,886 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:23,826 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:24,470 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:24,537 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:24,602 INFO TaskExecutor BaseCombatTask:switch selection result current=Chisa(Healer) target=Lucilla(SubDps) has_intro=False reason=unbuffed_subdps
+2026-09-07 09:22:24,603 INFO TaskExecutor BaseCombatTask:switch_next_char Chisa(Healer) -> Lucilla(SubDps) has_intro False has_sub_dps_intro False current_con 0
+2026-09-07 09:22:24,918 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.315s
+2026-09-07 09:22:32,791 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:22:32,855 INFO TaskExecutor BaseCombatTask:switch selection result current=Lucilla(SubDps) target=Chisa(Healer) has_intro=False reason=unbuffed_healer
+2026-09-07 09:22:32,856 INFO TaskExecutor BaseCombatTask:switch_next_char Lucilla(SubDps) -> Chisa(Healer) has_intro False has_sub_dps_intro False current_con 0
+2026-09-07 09:22:33,063 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.207s
+2026-09-07 09:22:34,778 INFO TaskExecutor BaseCombatTask:switch selection result current=Chisa(Healer) target=Lucilla(SubDps) has_intro=True reason=intro_unbuffed_subdps
+2026-09-07 09:22:34,778 INFO TaskExecutor BaseCombatTask:switch_next_char Chisa(Healer) -> Lucilla(SubDps) has_intro True has_sub_dps_intro False current_con 1
+2026-09-07 09:22:34,887 INFO TaskExecutor Chisa:switch_out at full con set current_con to 0
+2026-09-07 09:22:34,887 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.108s
+2026-09-07 09:22:37,176 INFO TaskExecutor Lucilla:Lucilla perform lib
+2026-09-07 09:22:50,601 INFO TaskExecutor Lucilla:Lucilla transform ended, stop pulse heavy early
+2026-09-07 09:22:50,601 INFO TaskExecutor Lucilla:Lucilla perform lib end
+2026-09-07 09:22:50,603 INFO TaskExecutor BaseCombatTask:switch selection result current=Lucilla(SubDps) target=Hiyuki(MainDps) has_intro=False reason=support_buffs_active_return_to_main_dps
+2026-09-07 09:22:50,603 INFO TaskExecutor BaseCombatTask:switch_next_char Lucilla(SubDps) -> Hiyuki(MainDps) has_intro False has_sub_dps_intro False current_con 0.0
+2026-09-07 09:22:50,747 INFO TaskExecutor BaseCombatTask:switch selection result current=Lucilla(SubDps) target=Hiyuki(MainDps) has_intro=True reason=priority_400
+2026-09-07 09:22:50,748 INFO TaskExecutor BaseCombatTask:switch_next_char refreshed target after intro became available: Hiyuki
+2026-09-07 09:22:50,814 INFO TaskExecutor Lucilla:switch_out at full con set current_con to 0
+2026-09-07 09:22:50,814 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.211s
+2026-09-07 09:22:51,957 INFO TaskExecutor Hiyuki:erned outro from Labels.char_lucilla
+2026-09-07 09:22:54,316 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.heavy_click_forte.<locals>.<lambda> at 0x0000021FC56C22A0> 2 seconds
+2026-09-07 09:22:58,585 INFO TaskExecutor Hiyuki:click_liberation end 3.9143779277801514
+2026-09-07 09:22:58,587 INFO TaskExecutor Hiyuki:erned outro from Labels.char_lucilla
+2026-09-07 09:22:58,633 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:23:00,010 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:23:07,483 INFO TaskExecutor CombatCheck:target lost try retarget 10
+2026-09-07 09:23:09,915 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.heavy_click_forte.<locals>.<lambda> at 0x0000021FA9999760> 2 seconds
+2026-09-07 09:23:16,347 INFO TaskExecutor TaskExecutor:wait_until timeout <function Hiyuki.hold_liberation.<locals>.<lambda> at 0x0000021FE5280720> 3 seconds
+2026-09-07 09:23:16,347 INFO TaskExecutor Hiyuki:hold_liberation end 6.268643379211426
+2026-09-07 09:23:16,883 INFO TaskExecutor BaseCombatTask:switch selection result current=Hiyuki(MainDps) target=Chisa(Healer) has_intro=False reason=unbuffed_healer
+2026-09-07 09:23:16,883 INFO TaskExecutor BaseCombatTask:switch_next_char Hiyuki(MainDps) -> Chisa(Healer) has_intro False has_sub_dps_intro False current_con 0.0
+2026-09-07 09:23:16,916 INFO TaskExecutor CombatCheck:target lost try retarget 10
+2026-09-07 09:23:18,955 INFO TaskExecutor BaseCombatTask:switch selection result current=Hiyuki(MainDps) target=Chisa(Healer) has_intro=True reason=intro_unbuffed_healer
+2026-09-07 09:23:18,956 INFO TaskExecutor BaseCombatTask:switch_next_char refreshed target after intro became available: Chisa
+2026-09-07 09:23:19,520 INFO TaskExecutor Hiyuki:switch_out at full con set current_con to 0
+2026-09-07 09:23:19,520 INFO TaskExecutor BaseCombatTask:switch_next_char end 2.638s
+2026-09-07 09:23:25,462 INFO TaskExecutor Chisa:click_liberation end 3.449758291244507
+2026-09-07 09:23:29,638 INFO TaskExecutor BaseCombatTask:switch selection result current=Chisa(Healer) target=Lucilla(SubDps) has_intro=True reason=intro_unbuffed_subdps
+2026-09-07 09:23:29,638 INFO TaskExecutor BaseCombatTask:switch_next_char Chisa(Healer) -> Lucilla(SubDps) has_intro True has_sub_dps_intro False current_con 1
+2026-09-07 09:23:29,761 INFO TaskExecutor Chisa:switch_out at full con set current_con to 0
+2026-09-07 09:23:29,761 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.122s
+2026-09-07 09:23:33,414 INFO TaskExecutor Lucilla:Lucilla perform lib
+2026-09-07 09:23:41,593 INFO TaskExecutor Lucilla:Lucilla transform ended, stop pulse heavy early
+2026-09-07 09:23:41,593 INFO TaskExecutor Lucilla:Lucilla perform lib end
+2026-09-07 09:23:41,596 INFO TaskExecutor BaseCombatTask:switch selection result current=Lucilla(SubDps) target=Hiyuki(MainDps) has_intro=False reason=support_buffs_active_return_to_main_dps
+2026-09-07 09:23:41,596 INFO TaskExecutor BaseCombatTask:switch_next_char Lucilla(SubDps) -> Hiyuki(MainDps) has_intro False has_sub_dps_intro False current_con 0.0
+2026-09-07 09:23:41,631 INFO TaskExecutor CombatCheck:target lost try retarget 10
+2026-09-07 09:23:42,522 INFO TaskExecutor BaseCombatTask:switch selection result current=Lucilla(SubDps) target=Hiyuki(MainDps) has_intro=True reason=priority_400
+2026-09-07 09:23:42,523 INFO TaskExecutor BaseCombatTask:switch_next_char refreshed target after intro became available: Hiyuki
+2026-09-07 09:23:42,615 INFO TaskExecutor Lucilla:switch_out at full con set current_con to 0
+2026-09-07 09:23:42,616 INFO TaskExecutor BaseCombatTask:switch_next_char end 1.019s
+2026-09-07 09:23:43,708 INFO TaskExecutor Hiyuki:erned outro from Labels.char_lucilla
+2026-09-07 09:23:51,817 INFO TaskExecutor Hiyuki:click_liberation end 3.924730062484741
+2026-09-07 09:23:51,818 INFO TaskExecutor Hiyuki:erned outro from Labels.char_lucilla
+2026-09-07 09:23:51,881 INFO TaskExecutor CombatCheck:target lost try retarget 10
+2026-09-07 09:24:01,913 ERROR TaskExecutor CombatCheck:target_enemy failed, try recheck break out of combat 
+2026-09-07 09:24:01,914 ERROR TaskExecutor BaseCombatTask:combat check not in combat 
+2026-09-07 09:24:01,948 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:24:03,917 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_feature.<locals>.<lambda> at 0x0000021FA99996C0> 2 seconds
+2026-09-07 09:24:03,918 INFO TaskExecutor BaseCombatTask:combat_once out of combat break combat check not in combat
+2026-09-07 09:24:07,722 INFO TaskExecutor BaseWWTask:walk_until_f direction w target_text: re.compile('(吸收|Absorb)')
+2026-09-07 09:24:10,501 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseWWTask.send_key_and_wait_f.<locals>.<lambda> at 0x0000021FA99996C0> 2.5 seconds
+2026-09-07 09:24:10,502 WARNING TaskExecutor BaseWWTask:can't find the f to enter
+2026-09-07 09:24:15,364 INFO TaskExecutor BaseWWTask:walk forward found f
+2026-09-07 09:24:17,945 INFO TaskExecutor TaskExecutor:wait_until timeout <bound method BaseWWTask.has_claim of <src.task.NightmareNestTask.NightmareNestTask object at 0x0000021FE920D2B0>> 1.5 seconds
+2026-09-07 09:24:17,945 INFO TaskExecutor NightmareNestTask:farm echo walk find true
+2026-09-07 09:24:21,992 INFO TaskExecutor NightmareNestTask:click f2 to open the book
+2026-09-07 09:24:26,039 INFO TaskExecutor NightmareNestTask:send f2 key to open
+2026-09-07 09:24:27,087 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=85)
+2026-09-07 09:24:29,489 INFO TaskExecutor NightmareNestTask:left_click gray_book_boss (76, 321) after_sleep 1.5
+2026-09-07 09:24:30,989 INFO TaskExecutor NightmareNestTask:open_boss_book canxiang
+2026-09-07 09:24:31,791 INFO TaskExecutor NightmareNestTask:left_click canxiang (460, 896) after_sleep 2
+2026-09-07 09:24:35,019 INFO TaskExecutor NightmareNestTask:nightmare nest: 指定点位都已打满，跳过
+2026-09-07 09:24:35,019 INFO TaskExecutor DailyTask:info_set current task check weekly garden
+2026-09-07 09:24:35,020 INFO TaskExecutor DailyTask:check weekly garden
+2026-09-07 09:24:35,020 INFO TaskExecutor GardenTask:info_set current task wait main esc=True
+2026-09-07 09:24:37,591 INFO TaskExecutor GardenTask:info_set current task in main esc=True
+2026-09-07 09:24:37,591 INFO TaskExecutor GardenTask:click f2 to open the book
+2026-09-07 09:24:41,634 INFO TaskExecutor GardenTask:send f2 key to open
+2026-09-07 09:24:42,702 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_quest', x=48, y=156, width=57, height=67, confidence=71)
+2026-09-07 09:24:45,105 INFO TaskExecutor GardenTask:left_click gray_book_quest (77, 190) after_sleep 1.5
+2026-09-07 09:24:54,295 INFO TaskExecutor GardenTask:Garden current: []
+2026-09-07 09:24:54,295 INFO TaskExecutor DailyTask:weekly garden not completed, run GardenTask
+2026-09-07 09:24:54,796 INFO TaskExecutor GardenTask:info_set current task wait main esc=True
+2026-09-07 09:24:57,352 INFO TaskExecutor GardenTask:info_set current task in main esc=True
+2026-09-07 09:24:57,352 INFO TaskExecutor GardenTask:info_set current task wait main esc=True
+2026-09-07 09:24:57,874 INFO TaskExecutor GardenTask:info_set current task in main esc=True
+2026-09-07 09:24:57,875 INFO TaskExecutor GardenTask:click f2 to open the book
+2026-09-07 09:25:01,934 INFO TaskExecutor GardenTask:send f2 key to open
+2026-09-07 09:25:03,002 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_quest', x=48, y=156, width=57, height=67, confidence=71)
+2026-09-07 09:25:05,404 INFO TaskExecutor GardenTask:left_click gray_book_quest (77, 190) after_sleep 1.5
+2026-09-07 09:25:14,590 INFO TaskExecutor GardenTask:Garden current: []
+2026-09-07 09:25:15,893 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:25:15,944 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:25:15,960 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:25:15,982 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:25:16,003 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:25:16,025 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:25:16,044 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:25:16,068 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:25:16,085 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:25:16,105 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:25:16,126 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:25:16,345 INFO TaskExecutor GardenTask:info_set current task garden_start_game
+2026-09-07 09:25:22,950 INFO TaskExecutor GardenTask:click garden_start_game 1.000
+2026-09-07 09:25:23,152 INFO TaskExecutor GardenTask:left_click garden_start_game (1599, 998) after_sleep 1
+2026-09-07 09:25:24,511 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 09:25:26,174 INFO TaskExecutor GardenTask:info_set current task garden_confirm
+2026-09-07 09:25:26,174 INFO TaskExecutor GardenTask:click garden_confirm 0.945
+2026-09-07 09:25:26,375 INFO TaskExecutor GardenTask:left_click garden_confirm (1125, 718) after_sleep 1
+2026-09-07 09:25:27,709 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:25:27,709 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:25:27,911 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:25:29,821 INFO update_window_size hwnd_window:hwnd changed,connected:1
+2026-09-07 09:25:29,822 INFO update_window_size hwnd_window:do_update_window_size changed,visible:True,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-07 09:25:37,688 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:25:38,689 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:25:38,916 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:25:40,140 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:25:41,493 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:25:41,493 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:25:41,694 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:25:51,968 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:25:52,969 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:25:53,197 INFO TaskExecutor GardenTask:left_click garden_get_gold (1071, 209) after_sleep 1
+2026-09-07 09:25:54,416 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:25:55,747 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:25:55,748 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:25:55,949 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:26:06,189 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:26:07,190 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:26:07,415 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:26:08,635 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:26:09,963 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:26:09,964 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:26:10,165 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:26:21,443 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:26:22,444 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:26:22,670 INFO TaskExecutor GardenTask:left_click garden_get_gold (1071, 209) after_sleep 1
+2026-09-07 09:26:23,890 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:26:25,217 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:26:25,218 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:26:25,418 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:26:37,771 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:26:37,771 INFO TaskExecutor GardenTask:click garden_new_stage 0.883
+2026-09-07 09:26:37,972 INFO TaskExecutor GardenTask:left_click garden_new_stage (1353, 719) after_sleep 1
+2026-09-07 09:26:39,302 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:26:39,302 INFO TaskExecutor GardenTask:click garden_new_stage 1.000
+2026-09-07 09:26:39,503 INFO TaskExecutor GardenTask:left_click garden_new_stage (1357, 719) after_sleep 1
+2026-09-07 09:26:40,835 INFO TaskExecutor GardenTask:info_set current task garden_confirm
+2026-09-07 09:26:40,835 INFO TaskExecutor GardenTask:click garden_confirm 1.000
+2026-09-07 09:26:41,036 INFO TaskExecutor GardenTask:left_click garden_confirm (1129, 718) after_sleep 1
+2026-09-07 09:26:42,362 INFO TaskExecutor GardenTask:info_set current task garden_shop_buy
+2026-09-07 09:26:42,362 INFO TaskExecutor GardenTask:click garden_shop_buy 1.000
+2026-09-07 09:26:42,563 INFO TaskExecutor GardenTask:left_click garden_shop_buy (1422, 742) after_sleep 1
+2026-09-07 09:26:43,890 INFO TaskExecutor GardenTask:info_set current task garden_shop_close
+2026-09-07 09:26:43,890 INFO TaskExecutor GardenTask:click garden_shop_close 1.000
+2026-09-07 09:26:44,091 INFO TaskExecutor GardenTask:left_click garden_shop_close (1614, 73) after_sleep 1
+2026-09-07 09:26:45,422 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:26:45,423 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:26:45,623 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:27:02,939 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:27:03,940 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:27:04,170 INFO TaskExecutor GardenTask:left_click garden_get_gold (637, 209) after_sleep 1
+2026-09-07 09:27:05,405 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:27:06,733 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:27:06,733 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:27:06,934 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:27:19,960 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:27:20,962 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:27:21,193 INFO TaskExecutor GardenTask:left_click garden_get_gold (618, 209) after_sleep 1
+2026-09-07 09:27:22,416 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:27:23,745 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:27:23,745 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:27:23,946 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:27:35,327 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:27:36,328 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:27:36,554 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:27:37,772 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:27:40,200 INFO TaskExecutor GardenTask:info_set current task garden_not_interested
+2026-09-07 09:27:40,421 INFO TaskExecutor GardenTask:left_click garden_not_interested (784, 540) after_sleep 1
+2026-09-07 09:27:41,639 INFO TaskExecutor GardenTask:left_click garden_not_interested_confirm (1598, 679) after_sleep 1
+2026-09-07 09:27:42,972 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:27:42,972 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:27:43,174 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:27:58,424 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:27:59,425 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:27:59,651 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:28:00,872 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:28:02,206 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:28:02,206 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:28:02,408 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:28:02,560 INFO update_window_size hwnd_window:hwnd changed,connected:1
+2026-09-07 09:28:02,561 INFO update_window_size hwnd_window:do_update_window_size changed,visible:False,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-07 09:28:13,258 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:28:13,259 INFO TaskExecutor GardenTask:click garden_new_stage 0.998
+2026-09-07 09:28:13,459 INFO TaskExecutor GardenTask:left_click garden_new_stage (1355, 719) after_sleep 1
+2026-09-07 09:28:14,792 INFO TaskExecutor GardenTask:info_set current task garden_confirm
+2026-09-07 09:28:14,792 INFO TaskExecutor GardenTask:click garden_confirm 1.000
+2026-09-07 09:28:14,994 INFO TaskExecutor GardenTask:left_click garden_confirm (1129, 718) after_sleep 1
+2026-09-07 09:28:16,331 INFO TaskExecutor GardenTask:info_set current task garden_shop_buy
+2026-09-07 09:28:16,331 INFO TaskExecutor GardenTask:click garden_shop_buy 1.000
+2026-09-07 09:28:16,531 INFO TaskExecutor GardenTask:left_click garden_shop_buy (1422, 742) after_sleep 1
+2026-09-07 09:28:17,864 INFO TaskExecutor GardenTask:info_set current task garden_shop_close
+2026-09-07 09:28:17,864 INFO TaskExecutor GardenTask:click garden_shop_close 1.000
+2026-09-07 09:28:18,066 INFO TaskExecutor GardenTask:left_click garden_shop_close (1614, 73) after_sleep 1
+2026-09-07 09:28:19,401 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:28:19,401 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:28:19,603 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:28:20,761 INFO update_window_size hwnd_window:hwnd changed,connected:1
+2026-09-07 09:28:20,762 INFO update_window_size hwnd_window:do_update_window_size changed,visible:True,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-07 09:28:31,055 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:28:32,056 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:28:32,284 INFO TaskExecutor GardenTask:left_click garden_get_gold (637, 209) after_sleep 1
+2026-09-07 09:28:33,504 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:28:34,840 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:28:34,841 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:28:35,042 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:28:46,356 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:28:47,356 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:28:47,581 INFO TaskExecutor GardenTask:left_click garden_get_gold (1543, 209) after_sleep 1
+2026-09-07 09:28:48,801 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:28:50,134 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:28:50,135 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:28:50,336 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:29:02,124 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:29:03,125 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:29:03,351 INFO TaskExecutor GardenTask:left_click garden_get_gold (1071, 209) after_sleep 1
+2026-09-07 09:29:04,571 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:29:05,899 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:29:05,899 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:29:06,099 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:29:25,743 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:29:26,744 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:29:26,971 INFO TaskExecutor GardenTask:left_click garden_get_gold (928, 209) after_sleep 1
+2026-09-07 09:29:28,197 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:29:29,525 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:29:29,526 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:29:29,726 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:29:41,657 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:29:41,657 INFO TaskExecutor GardenTask:click garden_new_stage 0.998
+2026-09-07 09:29:41,858 INFO TaskExecutor GardenTask:left_click garden_new_stage (1355, 719) after_sleep 1
+2026-09-07 09:29:43,191 INFO TaskExecutor GardenTask:info_set current task garden_confirm
+2026-09-07 09:29:43,191 INFO TaskExecutor GardenTask:click garden_confirm 1.000
+2026-09-07 09:29:43,392 INFO TaskExecutor GardenTask:left_click garden_confirm (1129, 718) after_sleep 1
+2026-09-07 09:29:44,723 INFO TaskExecutor GardenTask:info_set current task garden_shop_buy
+2026-09-07 09:29:44,723 INFO TaskExecutor GardenTask:click garden_shop_buy 1.000
+2026-09-07 09:29:44,924 INFO TaskExecutor GardenTask:left_click garden_shop_buy (1422, 742) after_sleep 1
+2026-09-07 09:29:46,252 INFO TaskExecutor GardenTask:info_set current task garden_shop_close
+2026-09-07 09:29:46,252 INFO TaskExecutor GardenTask:click garden_shop_close 1.000
+2026-09-07 09:29:46,454 INFO TaskExecutor GardenTask:left_click garden_shop_close (1614, 73) after_sleep 1
+2026-09-07 09:29:47,785 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:29:47,786 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:29:47,986 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:30:00,498 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:30:01,499 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:30:01,729 INFO TaskExecutor GardenTask:left_click garden_get_gold (1090, 209) after_sleep 1
+2026-09-07 09:30:02,952 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:30:04,285 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:30:04,285 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:30:04,486 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:30:16,948 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:30:17,949 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:30:18,177 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:30:19,403 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:30:20,741 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:30:20,741 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:30:20,942 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:30:42,971 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:30:43,972 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:30:44,206 INFO TaskExecutor GardenTask:left_click garden_get_purple (632, 212) after_sleep 1
+2026-09-07 09:30:45,431 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:30:47,883 INFO TaskExecutor GardenTask:info_set current task garden_not_interested
+2026-09-07 09:30:48,104 INFO TaskExecutor GardenTask:left_click garden_not_interested (784, 540) after_sleep 1
+2026-09-07 09:30:49,328 INFO TaskExecutor GardenTask:left_click garden_not_interested_confirm (1598, 679) after_sleep 1
+2026-09-07 09:30:50,666 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:30:50,667 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:30:50,867 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:31:03,372 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:31:04,373 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:31:04,599 INFO TaskExecutor GardenTask:left_click garden_get_gold (608, 208) after_sleep 1
+2026-09-07 09:31:05,825 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:31:07,160 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:31:07,160 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:31:07,361 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:31:20,408 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:31:20,408 INFO TaskExecutor GardenTask:click garden_new_stage 1.000
+2026-09-07 09:31:20,610 INFO TaskExecutor GardenTask:left_click garden_new_stage (1357, 719) after_sleep 1
+2026-09-07 09:31:21,939 INFO TaskExecutor GardenTask:info_set current task garden_confirm
+2026-09-07 09:31:21,940 INFO TaskExecutor GardenTask:click garden_confirm 1.000
+2026-09-07 09:31:22,140 INFO TaskExecutor GardenTask:left_click garden_confirm (1129, 718) after_sleep 1
+2026-09-07 09:31:23,474 INFO TaskExecutor GardenTask:info_set current task garden_shop_buy
+2026-09-07 09:31:23,474 INFO TaskExecutor GardenTask:click garden_shop_buy 1.000
+2026-09-07 09:31:23,675 INFO TaskExecutor GardenTask:left_click garden_shop_buy (1422, 742) after_sleep 1
+2026-09-07 09:31:25,009 INFO TaskExecutor GardenTask:info_set current task garden_shop_close
+2026-09-07 09:31:25,009 INFO TaskExecutor GardenTask:click garden_shop_close 1.000
+2026-09-07 09:31:25,210 INFO TaskExecutor GardenTask:left_click garden_shop_close (1614, 73) after_sleep 1
+2026-09-07 09:31:26,539 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:31:26,539 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:31:26,740 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:31:39,770 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:31:40,772 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:31:40,998 INFO TaskExecutor GardenTask:left_click garden_get_gold (618, 209) after_sleep 1
+2026-09-07 09:31:42,218 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:31:43,569 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:31:43,569 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:31:43,770 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:31:57,391 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:31:58,392 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:31:58,623 INFO TaskExecutor GardenTask:left_click garden_get_gold (618, 209) after_sleep 1
+2026-09-07 09:31:59,848 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:32:01,187 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:32:01,188 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:32:01,389 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:32:15,044 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:32:16,044 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:32:16,270 INFO TaskExecutor GardenTask:left_click garden_get_gold (608, 208) after_sleep 1
+2026-09-07 09:32:17,496 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:32:18,823 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:32:18,823 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:32:19,025 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:32:32,548 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:32:33,549 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:32:33,779 INFO TaskExecutor GardenTask:left_click garden_get_gold (618, 209) after_sleep 1
+2026-09-07 09:32:35,005 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:32:36,346 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:32:36,346 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:32:36,547 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:32:50,145 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:32:50,145 INFO TaskExecutor GardenTask:click garden_new_stage 1.000
+2026-09-07 09:32:50,346 INFO TaskExecutor GardenTask:left_click garden_new_stage (1357, 719) after_sleep 1
+2026-09-07 09:32:53,937 INFO TaskExecutor GardenTask:garden end [总天数_1.00, 26_1.00, 累计达到最高收益_1.00, 4770_0.99, 最大日收益_1.00, 367_1.00, 本周游历值_1.00, 1600/6000_1.00]
+2026-09-07 09:32:54,139 INFO TaskExecutor GardenTask:left_click a_garden_restart (815, 920) after_sleep 1
+2026-09-07 09:32:57,913 INFO TaskExecutor GardenTask:info_set current task garden_confirm
+2026-09-07 09:32:57,913 INFO TaskExecutor GardenTask:click garden_confirm 0.998
+2026-09-07 09:32:58,114 INFO TaskExecutor GardenTask:left_click garden_confirm (1128, 718) after_sleep 1
+2026-09-07 09:32:59,441 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:32:59,441 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:32:59,642 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:33:10,366 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:33:11,367 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:33:11,596 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:33:12,819 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:33:14,159 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:33:14,159 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:33:14,360 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:33:25,157 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:33:26,157 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:33:26,383 INFO TaskExecutor GardenTask:left_click garden_get_gold (618, 209) after_sleep 1
+2026-09-07 09:33:27,603 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:33:28,932 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:33:28,932 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:33:29,133 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:33:41,593 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:33:42,594 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:33:42,820 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:33:44,045 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:33:45,378 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:33:45,379 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:33:45,580 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:33:59,197 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:34:00,198 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:34:00,425 INFO TaskExecutor GardenTask:left_click garden_get_gold (1071, 209) after_sleep 1
+2026-09-07 09:34:01,649 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:34:02,977 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:34:02,978 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:34:03,178 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:34:14,421 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:34:14,421 INFO TaskExecutor GardenTask:click garden_new_stage 0.999
+2026-09-07 09:34:14,622 INFO TaskExecutor GardenTask:left_click garden_new_stage (1355, 719) after_sleep 1
+2026-09-07 09:34:15,953 INFO TaskExecutor GardenTask:info_set current task garden_confirm
+2026-09-07 09:34:15,953 INFO TaskExecutor GardenTask:click garden_confirm 1.000
+2026-09-07 09:34:16,154 INFO TaskExecutor GardenTask:left_click garden_confirm (1129, 718) after_sleep 1
+2026-09-07 09:34:17,480 INFO TaskExecutor GardenTask:info_set current task garden_shop_buy
+2026-09-07 09:34:17,480 INFO TaskExecutor GardenTask:click garden_shop_buy 1.000
+2026-09-07 09:34:17,681 INFO TaskExecutor GardenTask:left_click garden_shop_buy (1422, 742) after_sleep 1
+2026-09-07 09:34:19,019 INFO TaskExecutor GardenTask:info_set current task garden_shop_close
+2026-09-07 09:34:19,019 INFO TaskExecutor GardenTask:click garden_shop_close 1.000
+2026-09-07 09:34:19,220 INFO TaskExecutor GardenTask:left_click garden_shop_close (1614, 73) after_sleep 1
+2026-09-07 09:34:20,553 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:34:20,553 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:34:20,753 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:34:31,526 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:34:32,528 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:34:32,751 INFO TaskExecutor GardenTask:left_click garden_get_gold (637, 209) after_sleep 1
+2026-09-07 09:34:33,978 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:34:35,305 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:34:35,306 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:34:35,506 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:34:49,044 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:34:50,044 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:34:50,266 INFO TaskExecutor GardenTask:left_click garden_get_gold (618, 209) after_sleep 1
+2026-09-07 09:34:51,487 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:34:52,815 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:34:52,815 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:34:53,016 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:35:04,391 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:35:05,391 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:35:05,619 INFO TaskExecutor GardenTask:left_click garden_get_gold (618, 209) after_sleep 1
+2026-09-07 09:35:06,861 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:35:09,300 INFO TaskExecutor GardenTask:info_set current task garden_not_interested
+2026-09-07 09:35:09,523 INFO TaskExecutor GardenTask:left_click garden_not_interested (784, 498) after_sleep 1
+2026-09-07 09:35:10,750 INFO TaskExecutor GardenTask:left_click garden_not_interested_confirm (1598, 679) after_sleep 1
+2026-09-07 09:35:12,081 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:35:12,082 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:35:12,282 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:35:23,671 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:35:24,671 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:35:24,896 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:35:26,123 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:35:27,475 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:35:27,475 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:35:27,676 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:35:45,250 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:35:45,250 INFO TaskExecutor GardenTask:click garden_new_stage 1.000
+2026-09-07 09:35:45,451 INFO TaskExecutor GardenTask:left_click garden_new_stage (1357, 719) after_sleep 1
+2026-09-07 09:35:46,793 INFO TaskExecutor GardenTask:info_set current task garden_confirm
+2026-09-07 09:35:46,793 INFO TaskExecutor GardenTask:click garden_confirm 1.000
+2026-09-07 09:35:46,994 INFO TaskExecutor GardenTask:left_click garden_confirm (1129, 718) after_sleep 1
+2026-09-07 09:35:48,331 INFO TaskExecutor GardenTask:info_set current task garden_shop_close
+2026-09-07 09:35:48,331 INFO TaskExecutor GardenTask:click garden_shop_close 1.000
+2026-09-07 09:35:48,532 INFO TaskExecutor GardenTask:left_click garden_shop_close (1614, 73) after_sleep 1
+2026-09-07 09:35:49,861 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:35:49,862 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:35:50,063 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:36:01,557 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:36:02,558 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:36:02,784 INFO TaskExecutor GardenTask:left_click garden_get_gold (1061, 208) after_sleep 1
+2026-09-07 09:36:04,005 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:36:05,333 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:36:05,334 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:36:05,534 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:36:16,812 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:36:17,814 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:36:18,038 INFO TaskExecutor GardenTask:left_click garden_get_gold (528, 209) after_sleep 1
+2026-09-07 09:36:19,258 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:36:20,587 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:36:20,587 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:36:20,787 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:36:34,868 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:36:35,868 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:36:36,095 INFO TaskExecutor GardenTask:left_click garden_get_gold (618, 209) after_sleep 1
+2026-09-07 09:36:37,314 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:36:38,648 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:36:38,648 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:36:38,848 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:36:51,352 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:36:52,353 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:36:52,586 INFO TaskExecutor GardenTask:left_click garden_get_gold (1543, 209) after_sleep 1
+2026-09-07 09:36:53,812 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:36:55,161 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:36:55,161 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:36:55,363 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:37:07,848 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:37:07,848 INFO TaskExecutor GardenTask:click garden_new_stage 0.961
+2026-09-07 09:37:08,049 INFO TaskExecutor GardenTask:left_click garden_new_stage (1353, 719) after_sleep 1
+2026-09-07 09:37:09,382 INFO TaskExecutor GardenTask:info_set current task garden_confirm
+2026-09-07 09:37:09,382 INFO TaskExecutor GardenTask:click garden_confirm 1.000
+2026-09-07 09:37:09,584 INFO TaskExecutor GardenTask:left_click garden_confirm (1129, 718) after_sleep 1
+2026-09-07 09:37:10,915 INFO TaskExecutor GardenTask:info_set current task garden_shop_buy
+2026-09-07 09:37:10,915 INFO TaskExecutor GardenTask:click garden_shop_buy 1.000
+2026-09-07 09:37:11,116 INFO TaskExecutor GardenTask:left_click garden_shop_buy (1422, 742) after_sleep 1
+2026-09-07 09:37:12,450 INFO TaskExecutor GardenTask:info_set current task garden_shop_close
+2026-09-07 09:37:12,450 INFO TaskExecutor GardenTask:click garden_shop_close 1.000
+2026-09-07 09:37:12,651 INFO TaskExecutor GardenTask:left_click garden_shop_close (1614, 73) after_sleep 1
+2026-09-07 09:37:13,982 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:37:13,982 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:37:14,183 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:37:30,569 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:37:31,573 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:37:31,802 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:37:33,022 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:37:33,608 INFO update_window_size hwnd_window:hwnd changed,connected:1
+2026-09-07 09:37:33,609 INFO update_window_size hwnd_window:do_update_window_size changed,visible:False,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-07 09:37:34,356 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:37:34,356 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:37:34,557 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:37:40,481 INFO update_window_size hwnd_window:hwnd changed,connected:1
+2026-09-07 09:37:40,481 INFO update_window_size hwnd_window:do_update_window_size changed,visible:True,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-07 09:37:47,163 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:37:48,163 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:37:48,388 INFO TaskExecutor GardenTask:left_click garden_get_gold (618, 209) after_sleep 1
+2026-09-07 09:37:49,608 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:37:50,940 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:37:50,940 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:37:51,141 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:38:08,678 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:38:09,680 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:38:09,905 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:38:11,131 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:38:13,576 INFO TaskExecutor GardenTask:info_set current task garden_not_interested
+2026-09-07 09:38:13,798 INFO TaskExecutor GardenTask:left_click garden_not_interested (784, 582) after_sleep 1
+2026-09-07 09:38:15,021 INFO TaskExecutor GardenTask:left_click garden_not_interested_confirm (1598, 679) after_sleep 1
+2026-09-07 09:38:16,368 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:38:16,368 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:38:16,569 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:38:29,560 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:38:30,560 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:38:30,787 INFO TaskExecutor GardenTask:left_click garden_get_gold (637, 209) after_sleep 1
+2026-09-07 09:38:32,007 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:38:33,338 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:38:33,338 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:38:33,539 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:38:53,773 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:38:53,773 INFO TaskExecutor GardenTask:click garden_new_stage 0.997
+2026-09-07 09:38:53,974 INFO TaskExecutor GardenTask:left_click garden_new_stage (1356, 719) after_sleep 1
+2026-09-07 09:38:57,505 INFO TaskExecutor GardenTask:garden end [总天数_1.00, 21_1.00, 累计达到最高收益_1.00, 2174_0.99, 最大日收益_1.00, 300_0.99, 本周游历值_1.00, 2800/6000_1.00]
+2026-09-07 09:38:57,707 INFO TaskExecutor GardenTask:left_click a_garden_restart (815, 920) after_sleep 1
+2026-09-07 09:39:01,482 INFO TaskExecutor GardenTask:info_set current task garden_confirm
+2026-09-07 09:39:01,482 INFO TaskExecutor GardenTask:click garden_confirm 1.000
+2026-09-07 09:39:01,683 INFO TaskExecutor GardenTask:left_click garden_confirm (1129, 718) after_sleep 1
+2026-09-07 09:39:03,015 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:39:03,016 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:39:03,216 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:39:12,907 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:39:13,909 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:39:14,141 INFO TaskExecutor GardenTask:left_click garden_get_gold (1071, 209) after_sleep 1
+2026-09-07 09:39:15,366 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:39:16,700 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:39:16,701 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:39:16,902 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:39:27,180 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:39:28,181 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:39:28,406 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:39:29,645 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:39:30,979 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:39:30,979 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:39:31,180 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:39:41,954 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:39:42,955 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:39:43,182 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:39:44,409 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:39:45,748 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:39:45,748 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:39:45,949 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:39:56,742 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:39:57,743 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:39:57,970 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:39:59,195 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:40:00,521 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:40:00,521 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:40:00,722 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:40:09,244 INFO update_window_size hwnd_window:hwnd changed,connected:1
+2026-09-07 09:40:09,244 INFO update_window_size hwnd_window:do_update_window_size changed,visible:False,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-07 09:40:13,177 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:40:13,177 INFO TaskExecutor GardenTask:click garden_new_stage 1.000
+2026-09-07 09:40:13,284 INFO update_window_size hwnd_window:hwnd changed,connected:1
+2026-09-07 09:40:13,284 INFO update_window_size hwnd_window:do_update_window_size changed,visible:True,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-07 09:40:13,386 INFO TaskExecutor GardenTask:left_click garden_new_stage (1357, 719) after_sleep 1
+2026-09-07 09:40:14,715 INFO TaskExecutor GardenTask:info_set current task garden_confirm
+2026-09-07 09:40:14,715 INFO TaskExecutor GardenTask:click garden_confirm 1.000
+2026-09-07 09:40:14,916 INFO TaskExecutor GardenTask:left_click garden_confirm (1129, 718) after_sleep 1
+2026-09-07 09:40:16,253 INFO TaskExecutor GardenTask:info_set current task garden_shop_buy
+2026-09-07 09:40:16,254 INFO TaskExecutor GardenTask:click garden_shop_buy 1.000
+2026-09-07 09:40:16,337 INFO update_window_size hwnd_window:hwnd changed,connected:1
+2026-09-07 09:40:16,338 INFO update_window_size hwnd_window:do_update_window_size changed,visible:False,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-07 09:40:16,454 INFO TaskExecutor GardenTask:left_click garden_shop_buy (1422, 742) after_sleep 1
+2026-09-07 09:40:17,803 INFO TaskExecutor GardenTask:info_set current task garden_shop_close
+2026-09-07 09:40:17,803 INFO TaskExecutor GardenTask:click garden_shop_close 1.000
+2026-09-07 09:40:18,004 INFO TaskExecutor GardenTask:left_click garden_shop_close (1614, 73) after_sleep 1
+2026-09-07 09:40:19,333 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:40:19,334 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:40:19,534 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:40:30,310 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:40:31,311 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:40:31,541 INFO TaskExecutor GardenTask:left_click garden_get_gold (637, 209) after_sleep 1
+2026-09-07 09:40:32,765 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:40:34,094 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:40:34,094 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:40:34,295 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:40:45,100 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:40:46,101 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:40:46,324 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:40:47,546 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:40:48,878 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:40:48,878 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:40:49,079 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:41:05,908 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:41:06,908 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:41:07,137 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:41:08,363 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:41:10,793 INFO TaskExecutor GardenTask:info_set current task garden_not_interested
+2026-09-07 09:41:11,013 INFO TaskExecutor GardenTask:left_click garden_not_interested (784, 498) after_sleep 1
+2026-09-07 09:41:12,234 INFO TaskExecutor GardenTask:left_click garden_not_interested_confirm (1598, 679) after_sleep 1
+2026-09-07 09:41:13,580 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:41:13,580 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:41:13,781 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:41:18,715 INFO update_window_size hwnd_window:hwnd changed,connected:1
+2026-09-07 09:41:18,715 INFO update_window_size hwnd_window:do_update_window_size changed,visible:True,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-07 09:41:30,210 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:41:31,210 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:41:31,432 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:41:32,651 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:41:33,990 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:41:33,991 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:41:34,192 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:41:45,434 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:41:45,435 INFO TaskExecutor GardenTask:click garden_new_stage 1.000
+2026-09-07 09:41:45,635 INFO TaskExecutor GardenTask:left_click garden_new_stage (1357, 719) after_sleep 1
+2026-09-07 09:41:46,964 INFO TaskExecutor GardenTask:info_set current task garden_confirm
+2026-09-07 09:41:46,964 INFO TaskExecutor GardenTask:click garden_confirm 1.000
+2026-09-07 09:41:47,165 INFO TaskExecutor GardenTask:left_click garden_confirm (1129, 718) after_sleep 1
+2026-09-07 09:41:48,494 INFO TaskExecutor GardenTask:info_set current task garden_shop_buy
+2026-09-07 09:41:48,494 INFO TaskExecutor GardenTask:click garden_shop_buy 1.000
+2026-09-07 09:41:48,695 INFO TaskExecutor GardenTask:left_click garden_shop_buy (1422, 742) after_sleep 1
+2026-09-07 09:41:50,035 INFO TaskExecutor GardenTask:info_set current task garden_shop_close
+2026-09-07 09:41:50,035 INFO TaskExecutor GardenTask:click garden_shop_close 1.000
+2026-09-07 09:41:50,236 INFO TaskExecutor GardenTask:left_click garden_shop_close (1614, 73) after_sleep 1
+2026-09-07 09:41:51,568 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:41:51,568 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:41:51,768 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:42:03,028 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:42:04,030 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:42:04,256 INFO TaskExecutor GardenTask:left_click garden_get_gold (637, 209) after_sleep 1
+2026-09-07 09:42:05,479 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:42:06,811 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:42:06,811 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:42:07,012 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:42:07,618 INFO update_window_size hwnd_window:hwnd changed,connected:1
+2026-09-07 09:42:07,619 INFO update_window_size hwnd_window:do_update_window_size changed,visible:False,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-07 09:42:11,868 INFO update_window_size hwnd_window:hwnd changed,connected:1
+2026-09-07 09:42:11,869 INFO update_window_size hwnd_window:do_update_window_size changed,visible:True,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-07 09:42:18,495 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:42:19,496 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:42:19,722 INFO TaskExecutor GardenTask:left_click garden_get_gold (618, 209) after_sleep 1
+2026-09-07 09:42:20,948 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:42:22,276 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:42:22,276 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:42:22,478 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:42:38,147 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:42:39,148 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:42:39,370 INFO TaskExecutor GardenTask:left_click garden_get_gold (1071, 209) after_sleep 1
+2026-09-07 09:42:40,589 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:42:41,928 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:42:41,928 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:42:42,129 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:42:53,367 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:42:54,368 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:42:54,594 INFO TaskExecutor GardenTask:left_click garden_get_gold (1071, 209) after_sleep 1
+2026-09-07 09:42:55,814 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:42:57,142 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:42:57,142 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:42:57,343 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:43:09,681 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:43:09,681 INFO TaskExecutor GardenTask:click garden_new_stage 1.000
+2026-09-07 09:43:09,882 INFO TaskExecutor GardenTask:left_click garden_new_stage (1357, 719) after_sleep 1
+2026-09-07 09:43:11,208 INFO TaskExecutor GardenTask:info_set current task garden_confirm
+2026-09-07 09:43:11,208 INFO TaskExecutor GardenTask:click garden_confirm 1.000
+2026-09-07 09:43:11,409 INFO TaskExecutor GardenTask:left_click garden_confirm (1129, 718) after_sleep 1
+2026-09-07 09:43:12,742 INFO TaskExecutor GardenTask:info_set current task garden_shop_buy
+2026-09-07 09:43:12,742 INFO TaskExecutor GardenTask:click garden_shop_buy 1.000
+2026-09-07 09:43:12,943 INFO TaskExecutor GardenTask:left_click garden_shop_buy (1422, 742) after_sleep 1
+2026-09-07 09:43:14,274 INFO TaskExecutor GardenTask:info_set current task garden_shop_close
+2026-09-07 09:43:14,274 INFO TaskExecutor GardenTask:click garden_shop_close 1.000
+2026-09-07 09:43:14,475 INFO TaskExecutor GardenTask:left_click garden_shop_close (1614, 73) after_sleep 1
+2026-09-07 09:43:15,809 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:43:15,809 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:43:16,010 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:43:27,753 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:43:28,754 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:43:28,976 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:43:30,196 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:43:31,523 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:43:31,523 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:43:31,724 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:43:43,500 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:43:44,502 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:43:44,727 INFO TaskExecutor GardenTask:left_click garden_get_gold (618, 209) after_sleep 1
+2026-09-07 09:43:45,947 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:43:47,275 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:43:47,275 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:43:47,476 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:43:59,850 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:44:00,852 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:44:01,076 INFO TaskExecutor GardenTask:left_click garden_get_gold (618, 209) after_sleep 1
+2026-09-07 09:44:02,303 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:44:04,729 INFO TaskExecutor GardenTask:info_set current task garden_not_interested
+2026-09-07 09:44:04,953 INFO TaskExecutor GardenTask:left_click garden_not_interested (784, 582) after_sleep 1
+2026-09-07 09:44:06,176 INFO TaskExecutor GardenTask:left_click garden_not_interested_confirm (1598, 679) after_sleep 1
+2026-09-07 09:44:07,504 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:44:07,504 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:44:07,705 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:44:22,845 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:44:23,846 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:44:24,070 INFO TaskExecutor GardenTask:left_click garden_get_gold (618, 209) after_sleep 1
+2026-09-07 09:44:25,291 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:44:26,620 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:44:26,620 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:44:26,821 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:44:39,770 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:44:39,770 INFO TaskExecutor GardenTask:click garden_new_stage 1.000
+2026-09-07 09:44:39,971 INFO TaskExecutor GardenTask:left_click garden_new_stage (1357, 719) after_sleep 1
+2026-09-07 09:44:43,473 INFO TaskExecutor GardenTask:garden end [总天数_1.00, 21_1.00, 累计达到最高收益_1.00, 2005_1.00, 最大日收益_1.00, 211_1.00, 本周游历值_1.00, 4000/6000_1.00]
+2026-09-07 09:44:43,674 INFO TaskExecutor GardenTask:left_click a_garden_restart (815, 920) after_sleep 1
+2026-09-07 09:44:47,418 INFO TaskExecutor GardenTask:info_set current task garden_confirm
+2026-09-07 09:44:47,418 INFO TaskExecutor GardenTask:click garden_confirm 0.997
+2026-09-07 09:44:47,619 INFO TaskExecutor GardenTask:left_click garden_confirm (1129, 718) after_sleep 1
+2026-09-07 09:44:48,947 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:44:48,947 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:44:49,147 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:44:59,279 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:45:00,280 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:45:00,507 INFO TaskExecutor GardenTask:left_click garden_get_gold (618, 209) after_sleep 1
+2026-09-07 09:45:01,734 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:45:03,069 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:45:03,069 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:45:03,270 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:45:14,024 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:45:15,025 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:45:15,254 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:45:16,473 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:45:17,816 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:45:17,816 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:45:18,017 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:45:32,642 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:45:33,642 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:45:33,871 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:45:35,090 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:45:36,444 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:45:36,444 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:45:36,645 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:45:47,498 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:45:48,500 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:45:48,724 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:45:49,943 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:45:51,271 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:45:51,271 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:45:51,472 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:46:02,196 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:46:02,196 INFO TaskExecutor GardenTask:click garden_new_stage 0.852
+2026-09-07 09:46:02,397 INFO TaskExecutor GardenTask:left_click garden_new_stage (1353, 719) after_sleep 1
+2026-09-07 09:46:03,731 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:46:03,731 INFO TaskExecutor GardenTask:click garden_new_stage 1.000
+2026-09-07 09:46:03,932 INFO TaskExecutor GardenTask:left_click garden_new_stage (1357, 719) after_sleep 1
+2026-09-07 09:46:05,260 INFO TaskExecutor GardenTask:info_set current task garden_confirm
+2026-09-07 09:46:05,260 INFO TaskExecutor GardenTask:click garden_confirm 1.000
+2026-09-07 09:46:05,461 INFO TaskExecutor GardenTask:left_click garden_confirm (1129, 718) after_sleep 1
+2026-09-07 09:46:06,807 INFO TaskExecutor GardenTask:info_set current task garden_shop_buy
+2026-09-07 09:46:06,807 INFO TaskExecutor GardenTask:click garden_shop_buy 1.000
+2026-09-07 09:46:07,009 INFO TaskExecutor GardenTask:left_click garden_shop_buy (1422, 742) after_sleep 1
+2026-09-07 09:46:08,334 INFO TaskExecutor GardenTask:info_set current task garden_shop_close
+2026-09-07 09:46:08,334 INFO TaskExecutor GardenTask:click garden_shop_close 1.000
+2026-09-07 09:46:08,535 INFO TaskExecutor GardenTask:left_click garden_shop_close (1614, 73) after_sleep 1
+2026-09-07 09:46:09,881 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:46:09,881 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:46:10,082 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:46:22,498 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:46:23,499 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:46:23,724 INFO TaskExecutor GardenTask:left_click garden_get_gold (637, 209) after_sleep 1
+2026-09-07 09:46:24,943 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:46:26,282 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:46:26,282 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:46:26,483 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:46:37,822 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:46:38,823 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:46:39,052 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:46:40,271 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:46:41,622 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:46:41,622 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:46:41,823 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:46:57,126 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:46:58,127 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:46:58,356 INFO TaskExecutor GardenTask:left_click garden_get_gold (618, 209) after_sleep 1
+2026-09-07 09:46:59,581 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:47:02,024 INFO TaskExecutor GardenTask:info_set current task garden_not_interested
+2026-09-07 09:47:02,248 INFO TaskExecutor GardenTask:left_click garden_not_interested (784, 582) after_sleep 1
+2026-09-07 09:47:03,470 INFO TaskExecutor GardenTask:left_click garden_not_interested_confirm (1598, 679) after_sleep 1
+2026-09-07 09:47:04,809 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:47:04,809 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:47:05,010 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:47:16,910 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:47:17,912 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:47:18,134 INFO TaskExecutor GardenTask:left_click garden_get_gold (1071, 209) after_sleep 1
+2026-09-07 09:47:19,355 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:47:20,686 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:47:20,687 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:47:20,888 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:47:41,659 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:47:41,659 INFO TaskExecutor GardenTask:click garden_new_stage 1.000
+2026-09-07 09:47:41,860 INFO TaskExecutor GardenTask:left_click garden_new_stage (1357, 719) after_sleep 1
+2026-09-07 09:47:43,187 INFO TaskExecutor GardenTask:info_set current task garden_confirm
+2026-09-07 09:47:43,187 INFO TaskExecutor GardenTask:click garden_confirm 1.000
+2026-09-07 09:47:43,387 INFO TaskExecutor GardenTask:left_click garden_confirm (1129, 718) after_sleep 1
+2026-09-07 09:47:44,719 INFO TaskExecutor GardenTask:info_set current task garden_shop_buy
+2026-09-07 09:47:44,719 INFO TaskExecutor GardenTask:click garden_shop_buy 1.000
+2026-09-07 09:47:44,920 INFO TaskExecutor GardenTask:left_click garden_shop_buy (1422, 742) after_sleep 1
+2026-09-07 09:47:46,245 INFO TaskExecutor GardenTask:info_set current task garden_shop_close
+2026-09-07 09:47:46,245 INFO TaskExecutor GardenTask:click garden_shop_close 1.000
+2026-09-07 09:47:46,447 INFO TaskExecutor GardenTask:left_click garden_shop_close (1614, 73) after_sleep 1
+2026-09-07 09:47:47,774 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:47:47,774 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:47:47,975 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:47:59,860 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:48:00,862 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:48:01,085 INFO TaskExecutor GardenTask:left_click garden_get_gold (637, 209) after_sleep 1
+2026-09-07 09:48:02,311 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:48:03,646 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:48:03,646 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:48:03,847 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:48:25,717 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:48:26,718 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:48:26,948 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:48:28,166 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:48:29,511 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:48:29,511 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:48:29,712 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:48:41,615 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:48:42,616 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:48:42,843 INFO TaskExecutor GardenTask:left_click garden_get_gold (1071, 209) after_sleep 1
+2026-09-07 09:48:44,060 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:48:45,388 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:48:45,389 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:48:45,590 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:49:05,274 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:49:06,276 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:49:06,503 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:49:07,721 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:49:09,053 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:49:09,053 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:49:09,255 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:49:26,707 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:49:26,707 INFO TaskExecutor GardenTask:click garden_new_stage 1.000
+2026-09-07 09:49:26,908 INFO TaskExecutor GardenTask:left_click garden_new_stage (1357, 719) after_sleep 1
+2026-09-07 09:49:28,238 INFO TaskExecutor GardenTask:info_set current task garden_confirm
+2026-09-07 09:49:28,238 INFO TaskExecutor GardenTask:click garden_confirm 1.000
+2026-09-07 09:49:28,440 INFO TaskExecutor GardenTask:left_click garden_confirm (1129, 718) after_sleep 1
+2026-09-07 09:49:29,772 INFO TaskExecutor GardenTask:info_set current task garden_shop_close
+2026-09-07 09:49:29,772 INFO TaskExecutor GardenTask:click garden_shop_close 1.000
+2026-09-07 09:49:29,973 INFO TaskExecutor GardenTask:left_click garden_shop_close (1614, 73) after_sleep 1
+2026-09-07 09:49:31,303 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:49:31,304 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:49:31,505 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:49:42,733 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:49:43,734 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:49:43,962 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:49:45,180 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:49:46,514 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:49:46,515 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:49:46,716 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:49:57,989 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:49:58,989 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:49:59,218 INFO TaskExecutor GardenTask:left_click garden_get_gold (1543, 209) after_sleep 1
+2026-09-07 09:50:00,444 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:50:01,787 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:50:01,788 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:50:01,989 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:50:13,907 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:50:14,908 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:50:15,132 INFO TaskExecutor GardenTask:left_click garden_get_gold (1090, 209) after_sleep 1
+2026-09-07 09:50:16,358 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:50:18,807 INFO TaskExecutor GardenTask:info_set current task garden_not_interested
+2026-09-07 09:50:19,032 INFO TaskExecutor GardenTask:left_click garden_not_interested (784, 401) after_sleep 1
+2026-09-07 09:50:20,260 INFO TaskExecutor GardenTask:left_click garden_not_interested_confirm (1598, 679) after_sleep 1
+2026-09-07 09:50:21,594 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:50:21,594 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:50:21,795 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:50:33,699 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:50:34,700 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:50:34,933 INFO TaskExecutor GardenTask:left_click garden_get_gold (618, 209) after_sleep 1
+2026-09-07 09:50:36,156 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:50:37,484 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:50:37,484 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:50:37,685 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:50:50,189 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:50:50,189 INFO TaskExecutor GardenTask:click garden_new_stage 1.000
+2026-09-07 09:50:50,390 INFO TaskExecutor GardenTask:left_click garden_new_stage (1357, 719) after_sleep 1
+2026-09-07 09:50:51,721 INFO TaskExecutor GardenTask:info_set current task garden_confirm
+2026-09-07 09:50:51,721 INFO TaskExecutor GardenTask:click garden_confirm 1.000
+2026-09-07 09:50:51,923 INFO TaskExecutor GardenTask:left_click garden_confirm (1129, 718) after_sleep 1
+2026-09-07 09:50:53,249 INFO TaskExecutor GardenTask:info_set current task garden_shop_close
+2026-09-07 09:50:53,249 INFO TaskExecutor GardenTask:click garden_shop_close 1.000
+2026-09-07 09:50:53,450 INFO TaskExecutor GardenTask:left_click garden_shop_close (1614, 73) after_sleep 1
+2026-09-07 09:50:54,784 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:50:54,784 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:50:54,985 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:51:06,905 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:51:07,906 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:51:08,132 INFO TaskExecutor GardenTask:left_click garden_get_gold (618, 209) after_sleep 1
+2026-09-07 09:51:09,357 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:51:10,702 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:51:10,702 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:51:10,903 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:51:23,401 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:51:24,402 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:51:24,634 INFO TaskExecutor GardenTask:left_click garden_get_gold (618, 209) after_sleep 1
+2026-09-07 09:51:25,857 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:51:27,187 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:51:27,187 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:51:27,388 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:51:39,860 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:51:40,861 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:51:41,085 INFO TaskExecutor GardenTask:left_click garden_get_gold (618, 209) after_sleep 1
+2026-09-07 09:51:42,306 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:51:43,635 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:51:43,635 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:51:43,836 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:51:56,829 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:51:57,830 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:51:58,062 INFO TaskExecutor GardenTask:left_click garden_get_purple (1538, 212) after_sleep 1
+2026-09-07 09:51:59,288 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:52:00,616 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:52:00,616 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:52:00,817 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:52:13,809 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:52:13,809 INFO TaskExecutor GardenTask:click garden_new_stage 0.985
+2026-09-07 09:52:14,010 INFO TaskExecutor GardenTask:left_click garden_new_stage (1353, 719) after_sleep 1
+2026-09-07 09:52:17,550 INFO TaskExecutor GardenTask:garden end [总天数_1.00, 26_1.00, 累计达到最高收益_1.00, 4635_0.94, 最大日收益_0.99, 519_1.00, 本周游历值_1.00, 5600/6000_1.00]
+2026-09-07 09:52:17,751 INFO TaskExecutor GardenTask:left_click a_garden_restart (815, 920) after_sleep 1
+2026-09-07 09:52:21,519 INFO TaskExecutor GardenTask:info_set current task garden_confirm
+2026-09-07 09:52:21,519 INFO TaskExecutor GardenTask:click garden_confirm 1.000
+2026-09-07 09:52:21,719 INFO TaskExecutor GardenTask:left_click garden_confirm (1129, 718) after_sleep 1
+2026-09-07 09:52:23,046 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:52:23,046 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:52:23,247 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:52:33,428 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:52:34,429 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:52:34,656 INFO TaskExecutor GardenTask:left_click garden_get_gold (618, 209) after_sleep 1
+2026-09-07 09:52:35,881 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:52:37,208 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:52:37,208 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:52:37,408 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:52:47,610 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:52:48,611 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:52:48,839 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:52:50,057 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:52:51,408 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:52:51,409 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:52:51,610 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:53:01,874 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:53:02,874 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:53:03,098 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:53:04,325 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:53:05,657 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:53:05,657 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:53:05,858 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:53:20,001 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:53:21,002 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:53:21,231 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:53:22,450 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:53:23,779 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:53:23,779 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:53:23,980 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:53:35,309 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:53:35,309 INFO TaskExecutor GardenTask:click garden_new_stage 0.921
+2026-09-07 09:53:35,510 INFO TaskExecutor GardenTask:left_click garden_new_stage (1353, 719) after_sleep 1
+2026-09-07 09:53:36,837 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:53:36,837 INFO TaskExecutor GardenTask:click garden_new_stage 1.000
+2026-09-07 09:53:37,038 INFO TaskExecutor GardenTask:left_click garden_new_stage (1357, 719) after_sleep 1
+2026-09-07 09:53:38,378 INFO TaskExecutor GardenTask:info_set current task garden_confirm
+2026-09-07 09:53:38,378 INFO TaskExecutor GardenTask:click garden_confirm 1.000
+2026-09-07 09:53:38,579 INFO TaskExecutor GardenTask:left_click garden_confirm (1129, 718) after_sleep 1
+2026-09-07 09:53:39,910 INFO TaskExecutor GardenTask:info_set current task garden_shop_buy
+2026-09-07 09:53:39,910 INFO TaskExecutor GardenTask:click garden_shop_buy 1.000
+2026-09-07 09:53:40,111 INFO TaskExecutor GardenTask:left_click garden_shop_buy (1422, 742) after_sleep 1
+2026-09-07 09:53:41,452 INFO TaskExecutor GardenTask:info_set current task garden_shop_close
+2026-09-07 09:53:41,452 INFO TaskExecutor GardenTask:click garden_shop_close 1.000
+2026-09-07 09:53:41,653 INFO TaskExecutor GardenTask:left_click garden_shop_close (1614, 73) after_sleep 1
+2026-09-07 09:53:42,986 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:53:42,986 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:53:43,187 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:53:53,977 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:53:54,978 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:53:55,207 INFO TaskExecutor GardenTask:left_click garden_get_gold (1543, 209) after_sleep 1
+2026-09-07 09:53:56,432 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:53:57,761 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:53:57,761 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:53:57,962 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:54:08,777 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:54:09,777 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:54:10,005 INFO TaskExecutor GardenTask:left_click garden_get_gold (618, 209) after_sleep 1
+2026-09-07 09:54:11,232 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:54:12,565 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:54:12,565 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:54:12,766 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:54:29,072 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:54:30,072 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:54:30,295 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:54:31,520 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:54:33,959 INFO TaskExecutor GardenTask:info_set current task garden_not_interested
+2026-09-07 09:54:34,183 INFO TaskExecutor GardenTask:left_click garden_not_interested (784, 498) after_sleep 1
+2026-09-07 09:54:35,405 INFO TaskExecutor GardenTask:left_click garden_not_interested_confirm (1598, 679) after_sleep 1
+2026-09-07 09:54:36,734 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:54:36,734 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:54:36,935 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:54:48,304 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:54:49,305 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:54:49,532 INFO TaskExecutor GardenTask:left_click garden_get_gold (618, 209) after_sleep 1
+2026-09-07 09:54:50,751 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:54:52,080 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:54:52,080 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:54:52,281 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:55:03,626 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:55:03,627 INFO TaskExecutor GardenTask:click garden_new_stage 1.000
+2026-09-07 09:55:03,828 INFO TaskExecutor GardenTask:left_click garden_new_stage (1357, 719) after_sleep 1
+2026-09-07 09:55:05,159 INFO TaskExecutor GardenTask:info_set current task garden_confirm
+2026-09-07 09:55:05,159 INFO TaskExecutor GardenTask:click garden_confirm 1.000
+2026-09-07 09:55:05,360 INFO TaskExecutor GardenTask:left_click garden_confirm (1129, 718) after_sleep 1
+2026-09-07 09:55:06,692 INFO TaskExecutor GardenTask:info_set current task garden_shop_buy
+2026-09-07 09:55:06,692 INFO TaskExecutor GardenTask:click garden_shop_buy 1.000
+2026-09-07 09:55:06,893 INFO TaskExecutor GardenTask:left_click garden_shop_buy (1422, 742) after_sleep 1
+2026-09-07 09:55:08,244 INFO TaskExecutor GardenTask:info_set current task garden_shop_close
+2026-09-07 09:55:08,244 INFO TaskExecutor GardenTask:click garden_shop_close 1.000
+2026-09-07 09:55:08,445 INFO TaskExecutor GardenTask:left_click garden_shop_close (1614, 73) after_sleep 1
+2026-09-07 09:55:09,770 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:55:09,770 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:55:09,971 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:55:21,332 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:55:22,332 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:55:22,553 INFO TaskExecutor GardenTask:left_click garden_get_gold (656, 209) after_sleep 1
+2026-09-07 09:55:23,774 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:55:25,102 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:55:25,102 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:55:25,303 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:55:31,440 INFO update_window_size hwnd_window:hwnd changed,connected:1
+2026-09-07 09:55:31,440 INFO update_window_size hwnd_window:do_update_window_size changed,visible:False,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-07 09:55:37,180 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:55:38,181 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:55:38,409 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:55:39,629 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:55:40,958 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:55:40,958 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:55:41,159 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:55:54,169 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:55:55,169 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:55:55,397 INFO TaskExecutor GardenTask:left_click garden_get_gold (1071, 209) after_sleep 1
+2026-09-07 09:55:56,616 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:55:57,948 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:55:57,949 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:55:58,150 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:56:02,551 INFO update_window_size hwnd_window:hwnd changed,connected:1
+2026-09-07 09:56:02,551 INFO update_window_size hwnd_window:do_update_window_size changed,visible:True,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-07 09:56:10,066 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:56:11,067 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:56:11,293 INFO TaskExecutor GardenTask:left_click garden_get_gold (637, 209) after_sleep 1
+2026-09-07 09:56:12,513 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:56:13,843 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:56:13,843 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:56:14,044 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:56:35,963 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:56:35,963 INFO TaskExecutor GardenTask:click garden_new_stage 1.000
+2026-09-07 09:56:36,164 INFO TaskExecutor GardenTask:left_click garden_new_stage (1357, 719) after_sleep 1
+2026-09-07 09:56:37,491 INFO TaskExecutor GardenTask:info_set current task garden_confirm
+2026-09-07 09:56:37,492 INFO TaskExecutor GardenTask:click garden_confirm 1.000
+2026-09-07 09:56:37,692 INFO TaskExecutor GardenTask:left_click garden_confirm (1129, 718) after_sleep 1
+2026-09-07 09:56:39,024 INFO TaskExecutor GardenTask:info_set current task garden_shop_buy
+2026-09-07 09:56:39,024 INFO TaskExecutor GardenTask:click garden_shop_buy 1.000
+2026-09-07 09:56:39,225 INFO TaskExecutor GardenTask:left_click garden_shop_buy (1422, 742) after_sleep 1
+2026-09-07 09:56:40,557 INFO TaskExecutor GardenTask:info_set current task garden_shop_close
+2026-09-07 09:56:40,557 INFO TaskExecutor GardenTask:click garden_shop_close 1.000
+2026-09-07 09:56:40,758 INFO TaskExecutor GardenTask:left_click garden_shop_close (1614, 73) after_sleep 1
+2026-09-07 09:56:42,091 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:56:42,091 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:56:42,292 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:56:53,596 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:56:54,597 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:56:54,820 INFO TaskExecutor GardenTask:left_click garden_get_gold (1381, 209) after_sleep 1
+2026-09-07 09:56:56,041 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:56:57,373 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:56:57,373 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:56:57,574 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:57:14,031 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:57:15,032 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:57:15,257 INFO TaskExecutor GardenTask:left_click garden_get_gold (1524, 209) after_sleep 1
+2026-09-07 09:57:16,482 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:57:17,814 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:57:17,814 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:57:18,015 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:57:29,859 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:57:30,861 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:57:31,097 INFO TaskExecutor GardenTask:left_click garden_get_purple (1538, 212) after_sleep 1
+2026-09-07 09:57:32,324 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:57:34,751 INFO TaskExecutor GardenTask:info_set current task garden_not_interested
+2026-09-07 09:57:34,973 INFO TaskExecutor GardenTask:left_click garden_not_interested (784, 540) after_sleep 1
+2026-09-07 09:57:36,195 INFO TaskExecutor GardenTask:left_click garden_not_interested_confirm (1598, 679) after_sleep 1
+2026-09-07 09:57:37,523 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:57:37,523 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:57:37,724 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:57:49,518 INFO TaskExecutor GardenTask:info_set current task garden_get_skip
+2026-09-07 09:57:50,519 INFO TaskExecutor GardenTask:click garden_get_confirm
+2026-09-07 09:57:50,745 INFO TaskExecutor GardenTask:left_click garden_get_gold (618, 209) after_sleep 1
+2026-09-07 09:57:51,965 INFO TaskExecutor GardenTask:left_click garden_get_confirm_gray (1341, 866) after_sleep 1
+2026-09-07 09:57:53,297 INFO TaskExecutor GardenTask:info_set current task garden_next_day
+2026-09-07 09:57:53,298 INFO TaskExecutor GardenTask:click garden_next_day 1.000
+2026-09-07 09:57:53,499 INFO TaskExecutor GardenTask:left_click garden_next_day (1624, 988) after_sleep 1
+2026-09-07 09:58:06,005 INFO TaskExecutor GardenTask:info_set current task garden_new_stage
+2026-09-07 09:58:06,006 INFO TaskExecutor GardenTask:click garden_new_stage 1.000
+2026-09-07 09:58:06,206 INFO TaskExecutor GardenTask:left_click garden_new_stage (1357, 719) after_sleep 1
+2026-09-07 09:58:09,796 INFO TaskExecutor GardenTask:garden end [总天数_1.00, 21_1.00, 累计达到最高收益_1.00, 2102_0.99, 最大日收益_1.00, 298_0.99, 本周游历值_1.00, 已达到上限_1.00]
+2026-09-07 09:58:09,998 INFO TaskExecutor GardenTask:left_click a_garden_back (1104, 919) after_sleep 1
+2026-09-07 09:58:14,091 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_quest', x=48, y=156, width=57, height=67, confidence=71)
+2026-09-07 09:58:17,494 INFO TaskExecutor GardenTask:乐园任务完成, 已达到上限
+2026-09-07 09:58:17,497 INFO TaskExecutor DailyTask:Daily task completed, start teleport to farm 4C echo
+2026-09-07 09:58:18,026 INFO TaskExecutor FarmEchoTask:profile: Other {'combat_wait_time': 0, 'bypass_end_wait': False, 'treat_as_not_in_realm': False}
+2026-09-07 09:58:18,026 INFO TaskExecutor FarmEchoTask:in_realm: None
+2026-09-07 09:58:18,026 INFO TaskExecutor FarmEchoTask:info_set current task wait main esc=True
+2026-09-07 09:58:20,591 INFO TaskExecutor FarmEchoTask:info_set current task in main esc=True
+2026-09-07 09:58:20,591 INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0
+2026-09-07 09:58:20,591 INFO TaskExecutor FarmEchoTask:info_set current task wait main esc=True
+2026-09-07 09:58:21,120 INFO TaskExecutor FarmEchoTask:info_set current task in main esc=True
+2026-09-07 09:58:21,121 INFO TaskExecutor FarmEchoTask:click f2 to open the book
+2026-09-07 09:58:25,166 INFO TaskExecutor FarmEchoTask:send f2 key to open
+2026-09-07 09:58:26,223 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=85)
+2026-09-07 09:58:28,627 INFO TaskExecutor FarmEchoTask:left_click gray_book_boss (76, 321) after_sleep 1.5
+2026-09-07 09:58:30,127 INFO TaskExecutor FarmEchoTask:open_boss_book zhange
+2026-09-07 09:58:30,929 INFO TaskExecutor FarmEchoTask:left_click zhange (460, 658) after_sleep 2
+2026-09-07 09:58:33,659 INFO TaskExecutor FarmEchoTask:left_click boss_proceed (1824, 416) after_sleep 1
+2026-09-07 09:58:35,261 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：3/3_0.99, x60_0.79]
+2026-09-07 09:58:35,302 INFO TaskExecutor FarmEchoTask:周本名称原文: [千傀重楼_1.00]
+2026-09-07 09:58:36,998 INFO TaskExecutor FarmEchoTask:left_click 推荐等级90 (281, 609) after_sleep 1
+2026-09-07 09:58:41,128 INFO TaskExecutor FarmEchoTask:left_click team_start_challenge (1791, 994) after_sleep 1
+2026-09-07 09:58:42,501 INFO TaskExecutor FarmEchoTask:v3 开启挑战后读到: []
+2026-09-07 09:58:45,503 INFO TaskExecutor TaskExecutor:wait_until timeout <bound method BaseWWTask.click_skip_dialog_confirm of <src.task.FarmEchoTask.FarmEchoTask object at 0x0000021FE920D400>> 3 seconds
+2026-09-07 09:58:51,533 INFO TaskExecutor FarmEchoTask:teleport_to_boss prepared as realm
+2026-09-07 09:58:51,561 INFO TaskExecutor FarmEchoTask:info_set Liberation Key r
+2026-09-07 09:58:51,562 INFO TaskExecutor FarmEchoTask:info_set Echo Key q
+2026-09-07 09:58:51,657 INFO TaskExecutor FarmEchoTask:info_set Chars 千咲, 洛瑟菈, 绯雪
+2026-09-07 09:58:51,657 INFO TaskExecutor FarmEchoTask:loaded chars success Chisa 0.9999890327453613
+2026-09-07 09:58:51,657 INFO TaskExecutor FarmEchoTask:loaded chars success Lucilla 0.9950718283653259
+2026-09-07 09:58:51,657 INFO TaskExecutor FarmEchoTask:loaded chars success Hiyuki 0.8877620100975037
+2026-09-07 09:58:51,671 INFO TaskExecutor CombatCheck:target lost try retarget 3
+2026-09-07 09:58:51,747 INFO TaskExecutor FarmEchoTask:enter combat None
+2026-09-07 09:58:51,748 INFO TaskExecutor FarmEchoTask:start wait in combat
+2026-09-07 09:58:51,748 INFO TaskExecutor FarmEchoTask:combat_wait_time: 0
+2026-09-07 09:58:51,881 INFO TaskExecutor FarmEchoTask:boss_string is []
+2026-09-07 09:58:53,318 INFO TaskExecutor BaseCombatTask:switch selection result current=Chisa(Healer) target=Lucilla(SubDps) has_intro=False reason=unbuffed_subdps
+2026-09-07 09:58:53,319 INFO TaskExecutor BaseCombatTask:switch_next_char Chisa(Healer) -> Lucilla(SubDps) has_intro False has_sub_dps_intro False current_con 0.0
+2026-09-07 09:58:53,411 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.092s
+2026-09-07 09:59:01,243 INFO TaskExecutor BaseCombatTask:switch selection result current=Lucilla(SubDps) target=Chisa(Healer) has_intro=False reason=unbuffed_healer
+2026-09-07 09:59:01,243 INFO TaskExecutor BaseCombatTask:switch_next_char Lucilla(SubDps) -> Chisa(Healer) has_intro False has_sub_dps_intro False current_con 0.3899782135076253
+2026-09-07 09:59:01,317 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.074s
+2026-09-07 09:59:04,928 INFO TaskExecutor Chisa:click_liberation end 3.460293769836426
+2026-09-07 09:59:05,978 INFO TaskExecutor BaseCombatTask:switch selection result current=Chisa(Healer) target=Lucilla(SubDps) has_intro=False reason=unbuffed_subdps
+2026-09-07 09:59:05,979 INFO TaskExecutor BaseCombatTask:switch_next_char Chisa(Healer) -> Lucilla(SubDps) has_intro False has_sub_dps_intro False current_con 0.3534136546184739
+2026-09-07 09:59:06,087 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.108s
+2026-09-07 09:59:09,731 INFO TaskExecutor Lucilla:Lucilla perform lib
+2026-09-07 09:59:20,447 INFO TaskExecutor Lucilla:Lucilla transform ended, stop pulse heavy early
+2026-09-07 09:59:20,448 INFO TaskExecutor Lucilla:Lucilla perform lib end
+2026-09-07 09:59:20,450 INFO TaskExecutor BaseCombatTask:switch selection result current=Lucilla(SubDps) target=Chisa(Healer) has_intro=False reason=unbuffed_healer
+2026-09-07 09:59:20,451 INFO TaskExecutor BaseCombatTask:switch_next_char Lucilla(SubDps) -> Chisa(Healer) has_intro False has_sub_dps_intro False current_con 0.0
+2026-09-07 09:59:20,474 INFO TaskExecutor globals:yolo_model Using OpenVinoYolo8Detect
+2026-09-07 09:59:21,381 INFO TaskExecutor OpenVinoYolo8Detect:OpenVINO model compiled successfully for CPU 640x640.
+2026-09-07 09:59:21,501 INFO TaskExecutor CombatCheck:target lost try retarget 3
+2026-09-07 09:59:21,701 INFO TaskExecutor BaseCombatTask:switch selection result current=Lucilla(SubDps) target=Hiyuki(MainDps) has_intro=True reason=priority_400
+2026-09-07 09:59:21,701 INFO TaskExecutor BaseCombatTask:switch_next_char refreshed target after intro became available: Hiyuki
+2026-09-07 09:59:21,808 INFO TaskExecutor Lucilla:switch_out at full con set current_con to 0
+2026-09-07 09:59:21,808 INFO TaskExecutor BaseCombatTask:switch_next_char end 1.357s
+2026-09-07 09:59:22,967 INFO TaskExecutor Hiyuki:erned outro from Labels.char_lucilla
+2026-09-07 09:59:25,182 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.heavy_click_forte.<locals>.<lambda> at 0x0000021FC56C1B20> 2 seconds
+2026-09-07 09:59:29,389 INFO TaskExecutor Hiyuki:click_liberation end 3.957843542098999
+2026-09-07 09:59:29,391 INFO TaskExecutor Hiyuki:erned outro from Labels.char_lucilla
+2026-09-07 09:59:41,322 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.heavy_click_forte.<locals>.<lambda> at 0x0000021FAEE40180> 2 seconds
+2026-09-07 09:59:47,981 INFO TaskExecutor TaskExecutor:wait_until timeout <function Hiyuki.hold_liberation.<locals>.<lambda> at 0x0000021FAEE40180> 3 seconds
+2026-09-07 09:59:47,981 INFO TaskExecutor Hiyuki:hold_liberation end 6.536360025405884
+2026-09-07 09:59:48,509 INFO TaskExecutor BaseCombatTask:switch selection result current=Hiyuki(MainDps) target=Chisa(Healer) has_intro=False reason=unbuffed_healer
+2026-09-07 09:59:48,509 INFO TaskExecutor BaseCombatTask:switch_next_char Hiyuki(MainDps) -> Chisa(Healer) has_intro False has_sub_dps_intro False current_con 0.0
+2026-09-07 09:59:48,638 INFO TaskExecutor CombatCheck:target lost try retarget 3
+2026-09-07 09:59:51,655 ERROR TaskExecutor CombatCheck:target_enemy failed, try recheck break out of combat 
+2026-09-07 09:59:51,655 ERROR TaskExecutor BaseCombatTask:combat check not in combat 
+2026-09-07 09:59:53,673 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_feature.<locals>.<lambda> at 0x0000021FE48A0C20> 2 seconds
+2026-09-07 09:59:53,674 INFO TaskExecutor BaseCombatTask:combat_once out of combat break combat check not in combat
+2026-09-07 09:59:54,472 INFO TaskExecutor BaseWWTask:walk_until_f direction w target_text: re.compile('(吸收|Absorb)')
+2026-09-07 09:59:55,725 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseWWTask.send_key_and_wait_f.<locals>.<lambda> at 0x0000021FA9999760> 1 seconds
+2026-09-07 09:59:55,726 WARNING TaskExecutor BaseWWTask:can't find the f to enter
+2026-09-07 09:59:57,367 INFO TaskExecutor BaseWWTask:walk forward found f
+2026-09-07 09:59:59,933 INFO TaskExecutor TaskExecutor:wait_until timeout <bound method BaseWWTask.has_claim of <src.task.FarmEchoTask.FarmEchoTask object at 0x0000021FE920D400>> 1.5 seconds
+2026-09-07 09:59:59,934 INFO TaskExecutor FarmEchoTask:farm echo walk_find_echo True
+2026-09-07 10:00:04,969 INFO TaskExecutor TaskExecutor:wait_until timeout <bound method CombatCheck.in_combat of <src.task.FarmEchoTask.FarmEchoTask object at 0x0000021FE920D400>> 5 seconds
+2026-09-07 10:00:05,053 INFO TaskExecutor FarmEchoTask:start walk_to_treasure
+2026-09-07 10:00:05,077 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 10:00:05,187 INFO TaskExecutor FeatureSet:find_one_feature treasure_icon took 113.05ms (check_size: 0.00ms, prepare: 75.04ms, match: 38.01ms, post: 0.00ms)
+2026-09-07 10:00:19,745 INFO TaskExecutor BaseWWTask:do_walk_to_box ended Box(name='Labels.pick_up_f_hcenter_vcenter', x=1222, y=548, width=20, height=20, confidence=59)
+2026-09-07 10:00:19,768 INFO TaskExecutor BaseWWTask:walk_until_f direction w target_text: None
+2026-09-07 10:00:24,098 INFO TaskExecutor FarmEchoTask:周本领奖：认出弹窗，点确认。读到 Box(name='26', x=1206, y=48, width=62, height=35, confidence=100) Box(
+2026-09-07 10:00:24,100 WARNING TaskExecutor task:find_one:found [<Labels.confirm_btn_hcenter_vcenter: 'confirm_btn_hcenter_vcenter'>, <Labels.confirm_btn_highlight_hcenter_vcenter: 'confirm_btn_highlight_hcenter_vcenter'>] too many 2
+2026-09-07 10:00:24,300 INFO TaskExecutor FarmEchoTask:left_click Labels.confirm_btn_hcenter_vcenter (1419, 678) after_sleep 2
+2026-09-07 10:00:26,328 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 10:00:29,306 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_feature.<locals>.<lambda> at 0x0000021FC56C1B20> 3 seconds
+2026-09-07 10:00:32,309 INFO TaskExecutor FarmEchoTask:周本领奖：已点确认
+2026-09-07 10:00:32,854 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 10:00:43,326 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_click_feature.<locals>.<lambda> at 0x0000021FA99996C0> 10 seconds
+2026-09-07 10:00:43,366 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 103, in run
+    return self.do_run()
+           ^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 178, in do_run
+    self.wait_click_feature('claim_cancel_button_hcenter_vcenter', relative_x=2,
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\task.py", line 669, in wait_click_feature
+    box = self.wait_until(
+          ^^^^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\task.py", line 523, in wait_until
+    return self.executor.wait_condition(condition, time_out, pre_action, post_action, settle_time=settle_time,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\TaskExecutor.py", line 445, in wait_condition
+    raise WaitFailedException()
+ok.task.exceptions.WaitFailedException
+
+2026-09-07 10:00:44,870 INFO TaskExecutor TaskExecutor:wait_until timeout <bound method BaseWWTask.has_claim of <src.task.FarmEchoTask.FarmEchoTask object at 0x0000021FE920D400>> 1.5 seconds
+2026-09-07 10:00:44,876 ERROR TaskExecutor DailyTask:run_task_by_class <class 'src.task.FarmEchoTask.FarmEchoTask'> Traceback (most recent call last):
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\task.py", line 1116, in run_task_by_class
+    task.run()
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 103, in run
+    return self.do_run()
+           ^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 178, in do_run
+    self.wait_click_feature('claim_cancel_button_hcenter_vcenter', relative_x=2,
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\task.py", line 669, in wait_click_feature
+    box = self.wait_until(
+          ^^^^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\task.py", line 523, in wait_until
+    return self.executor.wait_condition(condition, time_out, pre_action, post_action, settle_time=settle_time,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\TaskExecutor.py", line 445, in wait_condition
+    raise WaitFailedException()
+ok.task.exceptions.WaitFailedException
+
+2026-09-07 10:00:44,885 INFO TaskExecutor DailyTask:info_set 错误 
+2026-09-07 10:00:44,891 ERROR TaskExecutor TaskExecutor:📅 Daily Task exception stopped Traceback (most recent call last):
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\TaskExecutor.py", line 571, in execute
+    task.run()
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\DailyTask.py", line 123, in run
+    self.run_additional_tasks()
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\DailyTask.py", line 176, in run_additional_tasks
+    self.run_task_by_class(FarmEchoTask)
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\task.py", line 1120, in run_task_by_class
+    raise e
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\task.py", line 1116, in run_task_by_class
+    task.run()
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 103, in run
+    return self.do_run()
+           ^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 178, in do_run
+    self.wait_click_feature('claim_cancel_button_hcenter_vcenter', relative_x=2,
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\task.py", line 669, in wait_click_feature
+    box = self.wait_until(
+          ^^^^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\task.py", line 523, in wait_until
+    return self.executor.wait_condition(condition, time_out, pre_action, post_action, settle_time=settle_time,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\TaskExecutor.py", line 445, in wait_condition
+    raise WaitFailedException()
+ok.task.exceptions.WaitFailedException
+
+2026-09-07 10:00:44,892 INFO TaskExecutor AutoCombatTask:warm_up_char_features loaded 59 character templates
+2026-09-07 10:00:44,900 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 10:00:44,973 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-07 10:00:45,039 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json

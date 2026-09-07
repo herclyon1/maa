@@ -203,8 +203,14 @@ echo "▶ 4.5/5 写入代码版本号（否则自更新会拿旧清单把这次�
 # 更旧（甚至没有版本号）的 manifest，自更新就会认为"机器落后了"，把刚
 # 部署好的文件覆盖回旧版——2026-08-21 就这么被静默降级过一次。
 VER=$(python3 -c "import json;print(json.load(open('manifest.json'))['version'])")
-ssh "${SSH_OPTS[@]}" "$USER_AT" \
-  "if exist \"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" (\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoProfile -Command \"Set-Content -Path 'C:/ProgramData/ark-relay/state/code-version.txt' -Value '$VER' -NoNewline\") else (powershell -NoProfile -Command \"Set-Content -Path 'C:/ProgramData/ark-relay/state/code-version.txt' -Value '$VER' -NoNewline\")" >/dev/null
+# 走中继自己的写入路径，不自己写文件：状态归 statestore 管，外面直接写迟早
+# 和它对不上（2026-09-08 桌面那个关机开关就是这么坏的）。顺带这里原来还留着
+# 一个 powershell 5.1 兜底，违反「只用 pwsh 7」的规矩，一并去掉。
+if ! ssh "${SSH_OPTS[@]}" "$USER_AT" \
+  "\"D:\\ark\\automas\\environment\\python\\python.exe\" -c \"import sys; sys.path.insert(0, r'C:\\ProgramData\\ark-relay'); from pathlib import Path; from ark_relay.statestore import StateStore; StateStore(Path(r'C:\\ProgramData\\ark-relay\\state')).set('versions', 'code', '$VER')\"" >/dev/null; then
+  echo "✋ 代码版本号没写进去——下次开机自更新可能把这次部署顶回旧版" >&2
+  exit 8
+fi
 echo "    code-version = $VER"
 
 lap
@@ -333,12 +339,24 @@ echo "   （relay/RELEASE-NOTES.md 已清空——下次部署前必须写清楚
 if git -C "$HERE/.." diff --quiet -- relay/manifest.json; then
   echo "▶ manifest 没变化，不用推"
 else
-  git -C "$HERE/.." add relay/manifest.json relay/state/last-deployed-notes.sha1 2>/dev/null || true
-  if git -C "$HERE/.." commit -q -m "deploy: manifest $(date -u +%Y%m%d%H%M%S)" 2>/dev/null; then
-    if git -C "$HERE/.." push -q origin HEAD 2>/dev/null; then
-      echo "▶ manifest 已推上 GitHub，自更新下次开机就能看到"
-    else
-      echo "✋ manifest 提交了但推送失败——自更新会一直看到旧清单，记得手动 push" >&2
-    fi
+  # 这三步任何一步失败都必须出声并以非零退出。原来 add/commit 都吞掉了错误，
+  # 只有 push 失败会报——于是「仓库有冲突残留 / index.lock 还在 / 磁盘满」这些
+  # 情况下屏幕上是绿的 ✅，GitHub 上却是旧清单，自更新永远拿不到新代码。
+  # 那正是第 328 行注释里写的那个坑，当时只修了一半。
+  # 机器侧此刻已经部署好了，所以这里非零退出的语义是：「机器好了，仓库没同步，
+  # 自更新用不了，去手工处理」。
+  if ! git -C "$HERE/.." add relay/manifest.json relay/state/last-deployed-notes.sha1; then
+    echo "✋ git add 失败：manifest 没能提交，自更新会一直看到旧清单" >&2
+    exit 9
+  fi
+  if ! git -C "$HERE/.." commit -q -m "deploy: manifest $(date -u +%Y%m%d%H%M%S)"; then
+    echo "✋ git commit 失败：manifest 没能提交，自更新会一直看到旧清单" >&2
+    exit 9
+  fi
+  if git -C "$HERE/.." push -q origin HEAD; then
+    echo "▶ manifest 已推上 GitHub，自更新下次开机就能看到"
+  else
+    echo "✋ manifest 提交了但推送失败——自更新会一直看到旧清单，请手动 push" >&2
+    exit 9
   fi
 fi

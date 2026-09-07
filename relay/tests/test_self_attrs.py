@@ -70,6 +70,11 @@ def used_names(cls: ast.ClassDef) -> dict[str, int]:
 
 def main() -> int:
     files = sorted(list((ROOT / "ark_relay").glob("*.py")) + [ROOT / "service.py"])
+    # 地板：glob 扫到 0 个文件也会打印「通过」，闸门就成了摆设——
+    # 目录改名、路径写错都会静默失效。2026-09-08 回放测试栽过一次。
+    if len(files) < 20:
+        print(f"  ✗ 只扫到 {len(files)} 个文件，至少该有 20 个——路径不对或目录改名了")
+        return 1
     problems = []
     checked = 0
     for f in files:

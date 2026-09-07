@@ -4,5 +4,10 @@
 # 库里没有就等于线上缺文件（apple-touch-icon 404，主屏图标变成截图）。
 !web/*.png
 *.log
+# 测试语料必须入库：回放测试和几个格式测试读的就是这些 .log。
+# 2026-09-08 发现它们被 *.log 挡在库外——新克隆里 10 条回放全判失败、
+# 两个测试直接崩，而代码一个字没错，人会照着假线索去查判定逻辑。
+!relay/tests/fixtures/**/*.log
+!relay/tests/replay/**/*.log
 __pycache__/
 .DS_Store

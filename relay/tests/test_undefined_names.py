@@ -125,6 +125,11 @@ def _check_scope(scope: ast.AST, visible: set[str], path: Path) -> None:
 
 def main() -> int:
     files = sorted(ROOT.glob("ark_relay/*.py")) + [ROOT / "service.py", ROOT / "run.py"]
+    # 地板：glob 扫到 0 个文件也会打印「通过」，闸门就成了摆设——
+    # 目录改名、路径写错都会静默失效。2026-09-08 回放测试栽过一次。
+    if len(files) < 20:
+        print(f"  ✗ 只扫到 {len(files)} 个文件，至少该有 20 个——路径不对或目录改名了")
+        return 1
     files = [f for f in files if f.exists()]
     print(f"[裸名字检查] {len(files)} 个文件")
     for f in files:

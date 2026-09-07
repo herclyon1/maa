@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT))
 from ark_relay import collector  # noqa: E402
 
 REPLAY = ROOT / "tests" / "replay"
+FLOOR = 10          # 语料下限，见 main() 里的说明
 FIELDS = ("okww_steps", "okww_unreachable", "okww_error", "okww_farm", "okww_runs",
           "okww_stamina_spent", "okww_stamina_left", "maaend_name_mismatch", "tasks_failed",
           "tasks_done", "okww_exit_race", "maaend_unreachable")
@@ -44,6 +45,14 @@ def main() -> int:
                         print(f"      {k}: 期望 {(want or {}).get(k)!r} 实际 {(got or {}).get(k)!r}")
             else:
                 print(f"  ✓ {exp_file.parent.relative_to(REPLAY)}/{stem}")
+    # 地板：语料一条都没找到时**不许判绿**。两道闸门都只看最后一行有没有
+    # "passed"，所以「回放 0 条，all checks passed」会让 collector 的全部判定
+    # 函数失去保护，而且一声不吭。2026-09-08 实测：语料被 .gitignore 吃掉之后
+    # 正是这个输出。
+    if n < FLOOR:
+        fails.append(f"回放样本只找到 {n} 条（至少要有 {FLOOR} 条）"
+                     "——语料库丢了、被 .gitignore 挡了，或者目录层级变了")
+        print(f"  ✗ 语料库只找到 {n} 条，期望至少 {FLOOR} 条")
     print(f"\n回放 {n} 条，" + (f"FAILED: {len(fails)}" if fails else "all checks passed"))
     return 1 if fails else 0
 

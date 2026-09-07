@@ -231,10 +231,16 @@ def _safe_target(root: Path, rel: str) -> Path | None:
 
 
 def _applied_version(root: Path) -> int:
+    """本机现在跑的代码版本。记在 state.json 的 versions.code。
+
+    2026-09-08 从独立的 code-version.txt 搬进来：那份文件由部署脚本从外面直接写，
+    而中继自己也写，两个写者各写各的格式，谁也不知道对方的存在——正是桌面那个
+    关机开关坏掉的同一类问题。现在两边都走 statestore。
+    """
+    from .statestore import StateStore  # noqa: PLC0415
     try:
-        return int((root / "state" / "code-version.txt")
-                   .read_text(encoding="utf-8").strip() or 0)
-    except (OSError, ValueError):
+        return int(str(StateStore(root / "state").get("versions", "code") or 0).strip() or 0)
+    except (TypeError, ValueError):
         return 0
 
 
@@ -361,10 +367,9 @@ def _record_announcement(root: Path, note: dict) -> None:
 
 
 def _remember_version(root: Path, version: int) -> None:
-    path = root / "state" / "code-version.txt"
+    from .statestore import StateStore  # noqa: PLC0415
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        _atomic_write(path, str(version).encode("utf-8"))
+        StateStore(root / "state").set("versions", "code", str(version))
     except OSError:
         log.warning("记不住代码版本号，下次可能重复检查", exc_info=True)
 

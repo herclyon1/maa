@@ -88,6 +88,7 @@ LEGACY = {
     "garden.json": ("weekly", "garden", "json"),
     "weeklyboss.json": ("weekly", "boss", "json"),
     "okww-version.txt": ("versions", "okww", "text"),
+    "code-version.txt": ("versions", "code", "text"),
     "maaend-version.txt": ("versions", "maaend", "text"),
     "debug-until.txt": ("modes", "debug_until", "text"),
 }

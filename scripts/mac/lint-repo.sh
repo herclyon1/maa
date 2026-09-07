@@ -14,7 +14,7 @@ FAIL=0
 note() { printf '  ✗ %s\n' "$1"; FAIL=1; }
 ok()   { printf '  ✅ %s\n' "$1"; }
 
-echo "▶ 1/9 shellcheck"
+echo "▶ 1/12 shellcheck"
 if command -v shellcheck >/dev/null || [ -x "$HOME/.local/bin/shellcheck" ]; then
   SC="$(command -v shellcheck || echo "$HOME/.local/bin/shellcheck")"
   bad=""
@@ -28,7 +28,7 @@ fi
 
 # 2026-08-26：我在 winrun.sh 的清理逻辑里用了 `powershell`（5.1），每次都失败。
 # 5.1 默认不是 UTF-8，读中文 JSON 必挂。规矩立完当轮就违反了，所以要机器来查。
-echo "▶ 2/9 不许用 powershell 5.1（要用 pwsh 7）"
+echo "▶ 2/12 不许用 powershell 5.1（要用 pwsh 7）"
 # grep -rn 的输出是 `文件:行号:内容`，所以过滤注释要跳过前两段，
 # 不能直接 `^\s*#`——2026-08-26 第一版就是这么写的，注释全都漏了过去。
 # 2026-09-06：原正则只认 `powershell ` 带空格，`["powershell", "-NoProfile"` 这种
@@ -44,14 +44,14 @@ hits=$(grep -rn "['\"\` ]powershell[ '\",]" scripts/ relay/ 2>/dev/null \
 
 # 2026-08-26：`pwsh -c "... \"A|B\" ..."` 被 bash/ssh/cmd 三层引号吃掉，
 # 报 `'Wuthering' 不是内部或外部命令`。正解是 base64 -EncodedCommand。
-echo "▶ 3/9 ssh 送 PowerShell 必须走 base64"
+echo "▶ 3/12 ssh 送 PowerShell 必须走 base64"
 hits=$(grep -rn 'ssh .*pwsh -\(NoProfile \)\?-\?[Cc]ommand' scripts/ 2>/dev/null \
        | grep -v EncodedCommand | grep -v "^\s*#" || true)
 [ -z "$hits" ] && ok "没有内联拼接的远端 PowerShell" || { note "有内联 -Command（应改 -EncodedCommand）"; echo "$hits" | head -5 | sed 's/^/       /'; }
 
 # 2026-08-26：deploy-relay.sh 在 `cd` 之后才解析 $(dirname "${BASH_SOURCE[0]}")，
 # 相对路径当场失效，取日志那步静默失败。当天 cwd 类问题共撞 37 次。
-echo "▶ 4/9 脚本目录必须在 cd 之前算好"
+echo "▶ 4/12 脚本目录必须在 cd 之前算好"
 hits=""
 while IFS= read -r f; do
   cdline=$(grep -n '^cd ' "$f" | head -1 | cut -d: -f1)
@@ -64,7 +64,7 @@ done < <(find scripts -name '*.sh' ! -path "*/lint-repo.sh")
 [ -z "$hits" ] && ok "没有 cd 之后才解析脚本目录的写法" || note "在 cd 之后解析路径: $hits"
 
 # 2026-08-26：RELEASE-NOTES.md 忘了加进清单，部署报成功而机器上根本没这个文件。
-echo "▶ 5/9 部署清单要包含更新说明"
+echo "▶ 5/12 部署清单要包含更新说明"
 if grep -q 'RELEASE-NOTES.md' relay/make-manifest.py 2>/dev/null; then
   ok "make-manifest 会带上 RELEASE-NOTES.md"
 else
@@ -74,10 +74,10 @@ fi
 # 2026-08-26：新写的测试函数被 `>>` 追加到了 `main()` 之后，调用时还没定义。
 # 测试跑一遍就会 NameError，所以这条直接用「全部测试能跑通」兜住。
 if [ -n "${LINT_SKIP_TESTS:-}" ]; then
-  echo "▶ 6/9 中继测试全绿"
+  echo "▶ 6/12 中继测试全绿"
   echo "  ⏭ 已跳过（调用方自己会跑一遍，这里再跑是重复）"
 else
-echo "▶ 6/9 中继测试全绿"
+echo "▶ 6/12 中继测试全绿"
 # 并行跑：这道闸每次部署会被跑两遍（部署自己一遍、闸门自检里的
 # lint-repo 一遍），串行十几秒全是白等。判据没松：退出码要 0，
 # 且最后一行必须写着 passed。
@@ -101,7 +101,7 @@ fi
 # 它永远不会被调用，测试照样打印 "all checks passed"、闸门照样放行。
 # 上面那条「测试全绿」拦不住：那个函数根本没被执行，谈不上红不红。
 # 所以这里查的是「定义了却没人调用」这一整类，而不是某一次的写法。
-echo "▶ 7/9 没有永远不会被执行的代码"
+echo "▶ 7/12 没有永远不会被执行的代码"
 if out=$(python3 scripts/mac/lib/deadcode.py relay scripts 2>&1); then
   ok "$(tail -1 <<<"$out")"
 else
@@ -109,7 +109,7 @@ else
   sed 's/^/    /' <<<"$out"
 fi
 
-echo "▶ 8/9 手机页文案不许有私人措辞"
+echo "▶ 8/12 手机页文案不许有私人措辞"
 # 规矩见 docs/手机页文案的规矩.md。文档拦不住，闸门才拦得住：
 # 2026-09-04 页面上写着「上游 beta.5 那阵它是坏的……中继在 09-04 开机时开了回来」，
 # 用户的话是「太私人措辞了」。命中下面这些词就拒绝提交。
@@ -130,7 +130,7 @@ fi
 # （它只看名字有没有绑定过，不看先读后绑定）。pyflakes 的 F823 一行就报。
 # 顺带用机器上那个版本的 Python（3.14）严格编译：`'\d'` 这类非法转义在 3.12+
 # 是 SyntaxWarning、将来是 SyntaxError，本地 3.9 一声不吭。
-echo "▶ 9/9 静态检查（pyflakes + 3.14 严格编译）"
+echo "▶ 9/12 静态检查（pyflakes + 3.14 严格编译）"
 PY314="$HOME/.local/bin/python3.14"
 if ! command -v uvx >/dev/null; then
   note "uvx 没装（brew install uv），pyflakes 跑不了"
@@ -153,6 +153,40 @@ sys.exit(0 if ok else 1)" 2>&1); then
   fi
 else
   note "找不到 $PY314，没法按机器的 Python 版本编译"
+fi
+
+echo "▶ 10/12 测试语料必须入库"
+# 2026-09-08：.gitignore 的 *.log 把 relay/tests 下的 12 个日志样本挡在库外，
+# 新克隆里 10 条回放全判失败、两个测试直接崩，而代码一个字没错。
+# 语料不入库 = 闸门在别的机器上失效，且失效得像「代码坏了」。
+missing=0
+while IFS= read -r f; do
+  git ls-files --error-unmatch "$f" >/dev/null 2>&1 || { note "测试语料没入库：$f"; missing=1; }
+done < <(find relay/tests/fixtures relay/tests/replay -name '*.log' -o -name '*.json' 2>/dev/null)
+[ "$missing" = 0 ] && ok "测试语料都在库里"
+
+echo "▶ 11/12 中继的状态只能由中继自己写"
+# 2026-09-08：状态收口把开关搬进 state.json，桌面那个 .bat 还在写旧的
+# skip-next-shutdown.flag——按下去界面显示「不关机」，中继照常关机，一声不吭。
+# 凡是中继会读的状态，外部脚本只能调它的函数，不许自己写文件。
+if hits=$(grep -rnE 'ark-relay[\\/]state[\\/][A-Za-z0-9_.-]+' scripts/win scripts/mac 2>/dev/null \
+          | grep -vE 'statestore|state\.json|\.migrated|^\s*(#|rem )' \
+          | grep -iE '>|set-content|write_text|echo .*>|del |remove-item'); then
+  note "外部脚本在直接写中继的状态文件（要改走 ark_relay.modes / statestore）："
+  sed 's/^/       /' <<<"$hits"
+else
+  ok "没有外部脚本直接写状态文件"
+fi
+
+echo "▶ 12/12 公开仓库里不许有他人身份信息"
+# 仓库是 public 的。别人的姓名、主机名、登录方式一旦提交就等于公开挂出去。
+if hits=$(grep -rnE '卢智超|Administrator[^a-zA-Z].{0,20}(空密码|无密码|自动登录)' \
+          --include='*.md' --include='*.py' --include='*.sh' --include='*.js' \
+          . 2>/dev/null | grep -v '^\./\.git/' | grep -v 'lint-repo.sh'); then
+  note "公开仓库里出现了他人身份信息或登录方式："
+  sed 's/^/       /' <<<"$hits"
+else
+  ok "没有他人身份信息"
 fi
 
 echo
