@@ -10,6 +10,7 @@
 | 文档 | 答什么问题 |
 |---|---|
 | [../CLAUDE.md](../CLAUDE.md) | 死命令、工具表、每次开工前先看这个 |
+| [维护手册.md](维护手册.md) | 怎么部署、怎么改配置、提交前跑什么 |
 | [TOOLING.md](TOOLING.md) | 用工具的规矩，826 那天踩出来的 21 个坑 |
 | [PITFALLS.md](PITFALLS.md) | 栽过的坑和它们现在的形状（最长的一篇，出错先搜它） |
 | [RETROSPECTIVE.md](RETROSPECTIVE.md) | 栽过的跟头，以及现在拦住它们的闸门 |
