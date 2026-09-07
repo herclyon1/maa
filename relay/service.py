@@ -30,6 +30,7 @@ AUTO-MAS through its scheduled task, which runs in the interactive session.
 """
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 import sys
@@ -360,7 +361,13 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         # 硬保险：15 秒还没退干净就强制退出进程。
         # 用户 2026-08-31：「中继服务卡在 STOP_PENDING 这个不要再出现了，
         # 来龙去脉见 docs/CODE-HISTORY.md「service.py:SvcStop」
-        killer = threading.Timer(15, lambda: os._exit(0))
+        def _force_exit() -> None:
+            # 走到这里说明 main() 返回后进程自己没退干净（有线程卡在 C 调用里）。
+            # 记一笔，让「停服务为什么要十几秒」有据可查，而不是每次重新猜。
+            logging.getLogger("ark.service").warning(
+                "停止 15 秒后进程仍未退出，硬保险强制退出（谁没退见上一行之前的日志）")
+            os._exit(0)
+        killer = threading.Timer(15, _force_exit)
         killer.daemon = True     # 它自己不能反过来拖住退出
         killer.start()
 
@@ -376,6 +383,11 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             import traceback
             servicemanager.LogErrorMsg(traceback.format_exc())
             raise
+        # 这一行和「收到停止信号」之间、和 SCM 记的停止时刻之间的差，
+        # 就是停服务真正花在哪的证据（2026-09-07 量到 sc stop → STOPPED 约 20 秒）。
+        logging.getLogger("ark.service").info(
+            "主流程已返回，向 SCM 报告已停止；还活着的线程：%s",
+            "、".join(t.name for t in threading.enumerate() if t is not threading.current_thread()))
 
     def main(self) -> None:
         """开机流程。每一步一个函数，顺序就是这里写的顺序。"""
