@@ -31,6 +31,33 @@ log = logging.getLogger("ark.engine")
 _SCRIPTS_CACHE: dict = {"at": -1e9, "val": False}
 _SCRIPTS_TTL = 3.0
 
+_RUNTIME_URL = "http://127.0.0.1:36163/api/dispatch/runtime-snapshot"
+# AUTO-MAS 给脚本/用户标的终态。不在这里面的（运行、等待、以及没见过的）都算还在跑。
+_SNAPSHOT_DONE = {"完成", "异常", "失败", "跳过", "中止", "取消"}
+
+
+def _judge_snapshot(snap) -> bool:
+    """runtime-snapshot 里有没有还没跑完的任务。2026-09-07 10:18 真实样本见测试。"""
+    for task in (snap or {}).get("tasks") or []:
+        info = task.get("task_info") or []
+        if not info:
+            return True          # 刚派下去，还没有任何状态
+        for item in info:
+            if str(item.get("status") or "") not in _SNAPSHOT_DONE:
+                return True
+    return False
+
+
+def _automas_busy():
+    """问 AUTO-MAS 有没有任务在跑。True/False；问不到返回 None。"""
+    import json  # noqa: PLC0415
+    import urllib.request  # noqa: PLC0415
+    try:
+        with urllib.request.urlopen(_RUNTIME_URL, timeout=3) as r:
+            return _judge_snapshot(json.loads(r.read().decode("utf-8")))
+    except Exception:  # noqa: BLE001 - 接口不在就退回进程检查
+        return None
+
 
 class Engine:
     def __init__(self, cfg: Config, source: Source, state: State, notifier: Notifier):
@@ -295,30 +322,34 @@ class Engine:
 
     @staticmethod
     def _scripts_running() -> bool:
-        """True while any managed script is still working.
+        """True while AUTO-MAS says a task is in progress, or a game process is alive.
 
-        A failure is only worth reporting once nothing is still trying. This is
-        deliberately a process check rather than a timer: a retry run can take
-        20+ minutes, so any fixed grace period would either fire early or delay
-        real alerts past usefulness.
+        先问 AUTO-MAS（/api/dispatch/runtime-snapshot：队列里每个脚本的状态），
+        问不到再看进程。只看进程栽过：2026-09-07 10:15 OK-WW 正在跑第三趟，
+        进程名单里没有它，中继以为什么都没在跑，喊了「OK-WW 没有运行」
+        「MaaEnd 没有运行」两条假报警——AUTO-MAS 要整段脚本结束才写记录。
+        A failure is only worth reporting once nothing is still trying.
         """
         if os.name != "nt":
             return False
         # 一轮 tick 里这个判断要问十来次（跳过模式、积压告警、漏跑、临时查看、
-        # 日报、关机……各问一遍），每问一次起一个 tasklist，慢的时候一次一两秒。
-        # 三秒内的答案直接复用：进程列表三秒内不会变出一个新游戏来。
+        # 日报、关机……各问一遍）。三秒内的答案直接复用。
         now = time.monotonic()
         if now - _SCRIPTS_CACHE["at"] < _SCRIPTS_TTL:
             return _SCRIPTS_CACHE["val"]
-        try:
-            out = subprocess.run(["tasklist", "/FO", "CSV", "/NH"],
-                                 capture_output=True, timeout=20).stdout
-        except (OSError, subprocess.SubprocessError):
-            val = True  # cannot tell -> wait rather than cry wolf
+        busy = _automas_busy()
+        if busy:
+            val = True
         else:
-            # Endfield.exe is on this list because MaaEnd has NO process of its
-            # 来龙去脉见 docs/CODE-HISTORY.md「engine.py:_scripts_running」
-            val = any(n in out for n in (b"MAA.exe", b"MaaEnd.exe", b"Endfield.exe"))
+            try:
+                out = subprocess.run(["tasklist", "/FO", "CSV", "/NH"],
+                                     capture_output=True, timeout=20).stdout
+            except (OSError, subprocess.SubprocessError):
+                val = True  # cannot tell -> wait rather than cry wolf
+            else:
+                # Endfield.exe is on this list because MaaEnd has NO process of its
+                # 来龙去脉见 docs/CODE-HISTORY.md「engine.py:_scripts_running」
+                val = any(n in out for n in (b"MAA.exe", b"MaaEnd.exe", b"Endfield.exe"))
         _SCRIPTS_CACHE["at"], _SCRIPTS_CACHE["val"] = now, val
         return val
 

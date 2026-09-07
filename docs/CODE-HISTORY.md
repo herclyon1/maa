@@ -739,3 +739,21 @@ _apply_one 就在 v1 上面又贴了一层——两段检查同时存在，旧�
 `threading.Timer` 是 Python 线程，收尾阶段拿不到 GIL，永远跑不到 `os._exit`。
 改法：`SvcDoRun` 末尾自己 `ReportServiceStatus(SERVICE_STOPPED)` + `logging.shutdown()`
 + `os._exit(0)`，只给心跳线程 3 秒把下线（bye）发出去。
+
+## engine.py:_scripts_running（2026-09-07 补）
+
+只看进程名单（MAA.exe / MaaEnd.exe / Endfield.exe）栽了：OK-WW 不在名单里。
+2026-09-07 早班 OK-WW 09:19 起跑了三趟，AUTO-MAS 要整段脚本结束（10:16）才写
+运行记录，10:15 缺项检查一看「没进程在跑、OK-WW 没记录、MaaEnd 没记录」，
+发了两条「没有运行」假报警。改成先问 AUTO-MAS 的 `GET /api/dispatch/runtime-snapshot`
+（每个脚本 完成/异常/运行/等待），问不到才退回进程检查。
+
+## claim.py:(模块级)（2026-09-07 补，v5）
+
+领完奖游戏直接进整屏「挑战成功」结算页（截图在会话记录里：奖励六格、
+「退出副本」「重新挑战 剩余62」、「281秒后自动退出」）。ESC 关不掉，上游紧跟着的
+`wait_click_feature('claim_cancel_button…', raise_if_not_found=True)` 10 秒超时抛
+WaitFailedException，AUTO-MAS 判失败重试；三趟各领到一次（3/3→0），但日常体力
+一步都没轮到。09-02 也是同样模式，只是第四趟碰上「次数已达上限」那种弹窗才退出去。
+v5 把上游那四行收进锚点（`_CLAIM_OLD_FULL`），领完奖 OCR 找「退出副本」点掉，
+点到了就跳过 ESC 等弹窗那段。
