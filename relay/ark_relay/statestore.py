@@ -115,12 +115,25 @@ def _registered(section: str, key: str) -> bool:
     return any(fnmatch.fnmatchcase(key, pat) for pat in FIELDS.get(section, {}))
 
 
+# 这个进程里已经清扫过旧文件的目录。清扫要**每个进程一次**，不能只在
+# state.json 不存在时做：2026-09-08 加了第二批旧文件（日报标记、告警队列、
+# 更新记账）之后，机器上 state.json 早就存在了，那一批一个都没迁进来——
+# 而 `report-*.sent` 没迁进来意味着昨天的日报会被当成没发过、再发一遍。
+_SWEPT: set = set()
+
+
 class StateStore:
     def __init__(self, state_dir: Path):
         self.dir = Path(state_dir)
         self.path = self.dir / FILE
         self._data: dict | None = None
         self._mtime = -1.0
+        if str(self.dir) not in _SWEPT:
+            _SWEPT.add(str(self.dir))
+            try:
+                self._sweep_legacy()
+            except OSError:
+                log.warning("清扫旧状态文件时出错，下次进程启动再试", exc_info=True)
 
     # ---------- 读 ----------
     def _load(self) -> dict:
@@ -137,8 +150,6 @@ class StateStore:
             except (OSError, ValueError):
                 log.warning("state.json 读不出来，按空处理（旧内容在磁盘上没动）", exc_info=True)
                 data = {}
-        else:
-            data = self._migrate()
         for s in SECTIONS:
             data.setdefault(s, {})
         self._data, self._mtime = data, m
@@ -176,20 +187,37 @@ class StateStore:
         self._data = data
 
     # ---------- 迁移 ----------
-    def _migrate(self) -> dict:
-        """state.json 还不存在：把旧文件读进来。只读不删，旧文件改名 .migrated。"""
-        data: dict = {s: {} for s in SECTIONS}
+
+    def _sweep_legacy(self) -> None:
+        """把还留在磁盘上的旧状态文件迁进来。每个进程对每个目录只做一次。
+
+        已经有值的键不覆盖：state.json 是权威，旧文件只是没人清理的遗留。
+        迁完把旧文件改名 `.migrated` 留着，跑稳几天再删。
+        """
+        if not self.dir.is_dir():
+            return
+        data = None
         moved = []
+
+        def take(section: str, key: str, value) -> bool:
+            nonlocal data
+            if value in ("", {}, None) and value is not False:
+                return False
+            if data is None:
+                data = self._load()
+            if key in data.get(section, {}):
+                return False        # 已经有值：state.json 说了算
+            data.setdefault(section, {})[key] = value
+            return True
+
         for name, (section, key, how) in LEGACY.items():
             f = self.dir / name
             if not f.is_file():
                 continue
-            value = _read_legacy(f, how)
-            if value in ("", {}, None):
-                continue
-            data[section][key] = value
-            moved.append(name)
-        # 按天/按卡池分文件的标记：一次全迁
+            if take(section, key, _read_legacy(f, how)):
+                moved.append(name)
+            else:
+                moved.append(name)   # 值已在 state.json 里：旧文件也该收走
         for pattern, (section, tmpl, how) in LEGACY_GLOB.items():
             head, _, tail = pattern.partition("*")
             for f in sorted(self.dir.glob(pattern)):
@@ -201,14 +229,21 @@ class StateStore:
                     continue
                 # 空内容原样保留成空串：`interim-*.sent` 的空标记表示「发过、条数不详」，
                 # 换成 "1" 会被读成「只覆盖了 1 条」，当天已报过的轮次就会重播一遍。
-                data[section][tmpl.format(stem)] = value
+                if value == "" and how == "text":
+                    if data is None:
+                        data = self._load()
+                    data.setdefault(section, {}).setdefault(tmpl.format(stem), "")
+                    moved.append(f.name)
+                    continue
+                take(section, tmpl.format(stem), value)
                 moved.append(f.name)
-        if moved:
+        if not moved:
+            return
+        if data is not None:
             self._flush(data)
-            for name in moved:
-                try:
-                    (self.dir / name).rename(self.dir / f"{name}.migrated")
-                except OSError:
-                    log.warning("旧状态文件 %s 改名失败，下次启动会再迁一次（幂等）", name)
-            log.info("状态已迁入 state.json：%s", "、".join(moved))
-        return data
+        for name in moved:
+            try:
+                (self.dir / name).rename(self.dir / f"{name}.migrated")
+            except OSError:
+                log.warning("旧状态文件 %s 改名失败，下次启动会再迁一次（幂等）", name)
+        log.info("状态已迁入 state.json：%s", "、".join(sorted(moved)))

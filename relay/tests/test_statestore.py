@@ -84,5 +84,32 @@ check("告警队列", st.load_pending(), {"MaaEnd|endfield": {"run_id": "x"}})
 st.mark_report_sent("2026-09-07")
 check("写完能读回", st.report_sent("2026-09-07"), True)
 
+print("[state.json 已存在时，后来才补的旧文件也要迁——不能只在首次建档时迁]")
+d4 = Path(tempfile.mkdtemp())
+import ark_relay.statestore as SS
+SS._SWEPT.clear()
+first = StateStore(d4)
+first.set("weekly", "garden", {"done_week": "2026-W37"})    # 先有了 state.json
+(d4 / "report-2026-09-07.sent").write_text("", encoding="utf-8")
+(d4 / "pending.json").write_text(json.dumps({"MaaEnd|endfield": {"run_id": "y"}}), encoding="utf-8")
+(d4 / "gameupdate-pending.json").write_text(json.dumps({"鸣潮": "客户端待更新"}), encoding="utf-8")
+SS._SWEPT.clear()                                            # 模拟下一次进程启动
+later = StateStore(d4)
+check("后补的日报标记迁进来了", later.get("marks", "report:2026-09-07"), True)
+check("后补的告警队列迁进来了", later.get("queues", "pending"), {"MaaEnd|endfield": {"run_id": "y"}})
+check("后补的待更新登记迁进来了", later.get("updates", "gameupdate_pending"), {"鸣潮": "客户端待更新"})
+check("原有的值没被动", later.get("weekly", "garden"), {"done_week": "2026-W37"})
+check("旧文件收走了", sorted(p.name for p in d4.glob("*.sent")), [])
+
+print("[state.json 里已有值时，旧文件不许覆盖它]")
+d5 = Path(tempfile.mkdtemp())
+SS._SWEPT.clear()
+s5 = StateStore(d5)
+s5.set("versions", "okww", "v3.6.7")
+(d5 / "okww-version.txt").write_text("v3.6.5", encoding="utf-8")   # 陈旧的遗留
+SS._SWEPT.clear()
+check("以 state.json 为准", StateStore(d5).get("versions", "okww"), "v3.6.7")
+check("陈旧文件也收走", (d5 / "okww-version.txt").exists(), False)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
