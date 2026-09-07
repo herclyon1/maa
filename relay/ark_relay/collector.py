@@ -595,19 +595,41 @@ def _okww_got_in(text: str) -> bool:
     return bool(_OKWW_ACTIVITY.search(text, i if i >= 0 else 0))
 
 
+# 通知里只许出现人话（用户 2026-09-07：「你写进通知的任何东西都要是人话」）。
+# 任务类名、异常名、日志原文都留在日志里，这里翻成中文；翻不出来就只说「这一步出错」。
+_OKWW_TASK_ZH = {
+    "DailyTask": "日常清单", "FarmEchoTask": "周本", "TacetTask": "无音区",
+    "NightmareNestTask": "残象聚落", "GardenTask": "周常乐园", "DomainTask": "模拟领域",
+    "FarmWorldBossTask": "世界 Boss", "CombatCheck": "战斗", "BaseCombatTask": "战斗",
+    "TaskExecutor": "任务执行", "AutoCombatTask": "战斗",
+}
+_OKWW_EXC_ZH = {
+    "WaitFailedException": "等一个画面没等到", "CannotFindException": "画面上找不到要点的东西",
+    "NotInCombatException": "没有进入战斗", "CharDeadException": "角色倒下了",
+    "TimeoutError": "超时", "TaskDisabledException": "任务被关掉了",
+}
+_OKWW_MSG_ZH = (
+    ("farm 4c error", "打完 Boss 领完奖之后没能退出副本"),
+    ("Game window is not connected", "连不上游戏窗口"),
+    ("not in combat", "没有进入战斗"),
+    ("can't find boss_proceed", "图鉴里找不到「前往」按钮"),
+)
+_OKWW_WAIT_SEC = re.compile(r"wait_until timeout .*? (\d+(?:\.\d+)?) seconds")
+_ASCII_LETTER = re.compile(r"[A-Za-z]")
+
+
 def _okww_error(text: str) -> str:
-    """失败的真实原因：最后一串 traceback 里最里层任务的那一句 + 异常类名。
+    """失败的真实原因，人话。取最后一串 traceback 里最里层任务那一段。
 
     OK-WW 出异常时会连打三段 traceback（任务自己、DailyTask.run_task_by_class、
-    TaskExecutor「Daily Task exception stopped」），三段说的是同一件事；
-    最里层那段带着人话（如「farm 4c error, try handle monthly card」）。
-    2026-09-07：日报只写 AUTO-MAS 那句「流程产生错误，请检查游戏状态」，看不出是哪一步。
+    TaskExecutor「Daily Task exception stopped」），三段说的是同一件事；最里层那段
+    带着说明（如「farm 4c error, try handle monthly card」）。2026-09-07 之前日报只写
+    AUTO-MAS 那句「流程产生错误，请检查游戏状态」，看不出是哪一步。
     """
     heads = list(_OKWW_TB_HEAD.finditer(text))
     if not heads:
         return ""
     last = heads[-1]
-    # 同一串：往前找 10 秒内、非外层包装的那一段
     cluster = [m for m in heads if last.start() - m.start() < 6000]
     inner = [m for m in cluster if m.group(1) not in ("DailyTask", "TaskExecutor")]
     head = (inner or cluster)[0]
@@ -615,7 +637,17 @@ def _okww_error(text: str) -> str:
     nxt = heads[heads.index(head) + 1].start() if heads.index(head) + 1 < len(heads) else len(text)
     excs = _OKWW_EXC_LINE.findall(text[head.end():nxt])
     exc = excs[-1][0].rsplit(".", 1)[-1] if excs else ""
-    return f"{task} 抛 {exc}：{msg}" if exc else f"{task}：{msg}"
+    task_zh = _OKWW_TASK_ZH.get(task) or "这一步"
+    msg_zh = next((zh for en, zh in _OKWW_MSG_ZH if en in msg), "")
+    what = msg_zh or _OKWW_EXC_ZH.get(exc) or "出错"
+    # 紧挨着 traceback 前面那句「wait_until timeout … N seconds」说明等了多久
+    before = text[max(0, head.start() - 600):head.start()]
+    if (w := _OKWW_WAIT_SEC.findall(before)) and "等" in what:
+        sec = w[-1][:-2] if w[-1].endswith(".0") else w[-1]
+        what += f"（等了 {sec} 秒）"
+    out = f"{task_zh}：{what}"
+    # 「Boss」是玩家的日常用语，日报里本来就这么写；别的英文一律不许进通知
+    return out if not _ASCII_LETTER.search(out.replace("Boss", "")) else f"{task_zh}：出错"
 
 
 def parse_okww_log(log_path: Path) -> dict:
