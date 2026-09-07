@@ -388,6 +388,16 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         logging.getLogger("ark.service").info(
             "主流程已返回，向 SCM 报告已停止；还活着的线程：%s",
             "、".join(t.name for t in threading.enumerate() if t is not threading.current_thread()))
+        # 最后一步自己做，不交给解释器收尾。剩下的线程全是 daemon，但它们卡在
+        # C 调用里（SSL 读、WMI 等待），Py_Finalize 会等；15 秒硬保险那个 Timer
+        # 在收尾阶段拿不到 GIL，触发不了。2026-09-07 量到 sc stop → STOPPED 20~27 秒。
+        # 来龙去脉见 docs/CODE-HISTORY.md「service.py:stop_event」
+        for t in threading.enumerate():
+            if t.name == "phone-heartbeat":
+                t.join(3)          # 给它把下线心跳（bye）发出去的时间
+        self.ReportServiceStatus(win32service.SERVICE_STOPPED)
+        logging.shutdown()
+        os._exit(0)
 
     def main(self) -> None:
         """开机流程。每一步一个函数，顺序就是这里写的顺序。"""

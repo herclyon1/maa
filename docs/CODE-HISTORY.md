@@ -731,3 +731,11 @@ _apply_one 就在 v1 上面又贴了一层——两段检查同时存在，旧�
 
 2026-09-07 改成手动复位（第二个参数 1）：信号一直亮着，三个线程各自都能
 看到。回归测试 `tests/test_stop_event_manual_reset.py` 盯着这个参数。
+
+补记（同日）：事件改成手动复位后，「收到停止信号」到「主流程已返回」只差 0 秒，
+可 `sc stop` 到 SCM 报告 STOPPED 仍要 20～27 秒，且 15 秒硬保险一次都没触发。
+原因是 `SvcDoRun` 返回后进程交给解释器收尾：剩下的 daemon 线程卡在 C 调用里
+（手机通道的 SSL 读、WMI 进程监视的 COM 等待），`Py_Finalize` 等它们；硬保险那个
+`threading.Timer` 是 Python 线程，收尾阶段拿不到 GIL，永远跑不到 `os._exit`。
+改法：`SvcDoRun` 末尾自己 `ReportServiceStatus(SERVICE_STOPPED)` + `logging.shutdown()`
++ `os._exit(0)`，只给心跳线程 3 秒把下线（bye）发出去。

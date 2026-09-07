@@ -18,5 +18,14 @@ text = SRC.read_text(encoding="utf-8")
 hits = re.findall(r"self\.stop_event\s*=\s*win32event\.CreateEvent\(None,\s*(\d)\s*,", text)
 print("  stop_event 的 CreateEvent 第二个参数：", hits)
 ok = hits == ["1"]
+
+# 第二道：main() 返回后必须自己报告 STOPPED 并 os._exit，不能交给解释器收尾。
+# 2026-09-07 实测：主流程 09:16:42 返回、剩下的全是 daemon 线程，SCM 却 27.5 秒后
+# 才看到停止，15 秒硬保险一次都没触发（Timer 线程在收尾阶段拿不到 GIL）。
+run = text[text.index("def SvcDoRun"):text.index("\n    def ", text.index("def SvcDoRun") + 10)]
+tail_ok = ("ReportServiceStatus(win32service.SERVICE_STOPPED)" in run
+           and run.rstrip().endswith("os._exit(0)"))
+print("  SvcDoRun 以 ReportServiceStatus(STOPPED) + os._exit 收尾：", tail_ok)
+ok = ok and tail_ok
 print("all checks passed" if ok else "FAILED: stop_event 不是手动复位（CreateEvent 第二个参数要是 1）")
 sys.exit(0 if ok else 1)
