@@ -672,6 +672,18 @@ def parse_okww_log(log_path: Path) -> dict:
         return {}
 
     out: dict = {}
+    readings, entries = _okww_stamina_fields(text, out)
+    _okww_health(text, out, entries)
+    _okww_farm_fields(text, out)
+    _okww_stamina_left(text, out, readings)
+    _okww_progress(text, out)
+    if steps := _okww_steps(text, entries):
+        out["okww_steps"] = steps
+    return out
+
+
+def _okww_stamina_fields(text: str, out: dict) -> "tuple[list[int], int]":
+    """波片消耗、进本次数、备用体力。返回 (读数序列, 进本次数) 给后面的判断用。"""
     readings = [int(m.group(1)) for m in _OKWW_STAMINA.finditer(text)]
     # 收尾那句「current stamina: 8 not enough to continue」是最后一次读数，
     # 不算进去会把最后一局的消耗漏掉（2026-09-02 实录：168→88→8 只算出 80）。
@@ -688,6 +700,11 @@ def parse_okww_log(log_path: Path) -> dict:
         backs = [int(x) for x in back]
         if used := sum(a - b for a, b in zip(backs, backs[1:]) if a > b):
             out["okww_backup_spent"] = used
+    return readings, entries
+
+
+def _okww_health(text: str, out: dict, entries: int) -> None:
+    """进没进游戏、失败的真实原因。"""
     # 根本没进游戏：等窗口出错、一局没开、**之后再没干任何活**。大版本更新日
     # 库洛启动器停在「更新」按钮上，OK-WW 只会等游戏窗口（2026-09-02 09:18 实录）。
     # 「之后再没干任何活」这一条是 2026-09-07 加的：那天三趟开头都有一句
@@ -698,6 +715,10 @@ def parse_okww_log(log_path: Path) -> dict:
         out["okww_unreachable"] = True
     if err := _okww_error(text):
         out["okww_error"] = err
+
+
+def _okww_farm_fields(text: str, out: dict) -> None:
+    """刷的是什么本、单倍双倍各几局、按满难度估的产出。"""
     farm, reward = _okww_farm(text)
     if farm:
         out["okww_farm"] = farm
@@ -710,6 +731,9 @@ def parse_okww_log(log_path: Path) -> dict:
             out["okww_runs_single"] = single
         if (per := _SIM_REWARD_PER_RUN.get(reward)) and (double or single):
             out["okww_farm_drops"] = {reward: per * (2 * double + single)}
+
+
+def _okww_stamina_left(text: str, out: dict, readings: list) -> None:
     if end := _OKWW_STAMINA_END.findall(text):
         out["okww_stamina_left"] = int(end[-1])
         out["okww_stamina_left_exact"] = True
@@ -717,6 +741,10 @@ def parse_okww_log(log_path: Path) -> dict:
         # 没抓到收尾那行时才退回开打前的读数，并标明它不是结束余量。
         out["okww_stamina_left"] = readings[-1]
         out["okww_stamina_left_exact"] = False
+
+
+def _okww_progress(text: str, out: dict) -> None:
+    """残象聚落、日常进度、日常点数、为什么停。"""
     if nest := _OKWW_NEST.findall(text):
         out["okww_nest"] = f"{nest[-1][0]}/{nest[-1][1]}"
     if _OKWW_NEST_FULL.search(text):
@@ -741,6 +769,10 @@ def parse_okww_log(log_path: Path) -> dict:
         out["okww_stopped"] = "体力不够再开一局"
     elif "not enough stamina" in text:
         out["okww_stopped"] = "体力不够，一局都没开成"
+
+
+def _okww_steps(text: str, entries: int) -> list[str]:
+    """日报「备注」里的步骤清单，每一项按它自己的成败标注。"""
     # 只报有信息量的：领邮件、领电台、领每日奖励每轮都会做，写进报告只是噪音。
     # 运营 2026-08-25：「除了周常乐园、刷取的关卡、残像聚落之外也别写上去了」。
     # 出现在日志里 != 做成了。凝素领域可能因为体力不够而根本没进本，梦魇任务
@@ -796,9 +828,9 @@ def parse_okww_log(log_path: Path) -> dict:
         steps.append("周常乐园")
     if "check discarded echo" in text:
         steps.append("声骸五合一")
-    if steps:
-        out["okww_steps"] = steps
-    return out
+    return steps
+
+
 
 
 def refresh_raw(entry: dict, history_root: Path | None) -> dict:
@@ -846,6 +878,49 @@ def refresh_raw(entry: dict, history_root: Path | None) -> dict:
 
 def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
     """Parse one result JSON. Returns None if it is not a run record."""
+    got = _record_identity(json_path, history_root)
+    if got is None:
+        return None
+    raw, date_str, user, stem, started, finished = got
+    judged = _judge_result(raw, json_path, stem)
+    if judged is None:
+        return None
+    script, result, ok, failed = judged
+
+    transitional = _is_transitional(result)
+    if transitional:
+        # 不是故障，是被下一轮取代。别让它出现在失败清单里。
+        failed = []
+
+    log_path = json_path.with_suffix(".log")
+    # Prefer the log's own timestamps; fall back to filename/mtime only when
+    # the log is missing or has none (e.g. "未捕获到日志" runs).
+    duration_known = False
+    if log_path.exists() and (span := _log_span(log_path)):
+        started, finished = span
+        duration_known = True
+
+    # AUTO-MAS always hands us empty drop/recruit stats, so recover them from
+    # the log. Only fill what is genuinely missing - if a future AUTO-MAS
+    failed = _enrich_record(raw, script, log_path, ok, failed, finished)
+
+    return RunRecord(
+        run_id=f"{date_str}/{user}/{stem}",
+        script=script,
+        user=user,
+        started=started,
+        finished=finished,
+        ok=ok,
+        failed_tasks=failed,
+        transitional=transitional,
+        raw=raw,
+        log_path=log_path if log_path.exists() else None,
+        duration_known=duration_known,
+    )
+
+
+def _record_identity(json_path: Path, history_root: Path):
+    """读 JSON、从路径和文件名认出日期/账号/开始时刻。不是运行记录返回 None。"""
     try:
         raw = json.loads(json_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -875,6 +950,11 @@ def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
     finished = datetime.fromtimestamp(json_path.stat().st_mtime, tz=SERVER_TZ)
     if finished < started:  # clock skew or a copied file; don't produce negatives
         finished = started
+    return raw, date_str, user, stem, started, finished
+
+
+def _judge_result(raw: dict, json_path: Path, stem: str):
+    """三个程序各自的成败判据。返回 (脚本, 结果原文, 成败, 失败清单)；认不出返回 None。"""
 
     # Which script produced this record, and did it succeed?
     if "maa_result" in raw:
@@ -927,22 +1007,11 @@ def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
         failed = [] if ok else ([result] if result else ["未知错误"])
     else:
         return None
+    return script, result, ok, failed
 
-    transitional = _is_transitional(result)
-    if transitional:
-        # 不是故障，是被下一轮取代。别让它出现在失败清单里。
-        failed = []
 
-    log_path = json_path.with_suffix(".log")
-    # Prefer the log's own timestamps; fall back to filename/mtime only when
-    # the log is missing or has none (e.g. "未捕获到日志" runs).
-    duration_known = False
-    if log_path.exists() and (span := _log_span(log_path)):
-        started, finished = span
-        duration_known = True
-
-    # AUTO-MAS always hands us empty drop/recruit stats, so recover them from
-    # the log. Only fill what is genuinely missing - if a future AUTO-MAS
+def _enrich_record(raw: dict, script: str, log_path: Path, ok: bool, failed: list, finished) -> list:
+    """把日志里算出来的字段并进 raw，算回满时刻；失败清单可能换成日志里的真实原因。"""
     # version starts populating these, its numbers win over our parsing.
     if log_path.exists():
         if script == "MAA":
@@ -970,20 +1039,7 @@ def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
             raw["sanity_full_at"] = _full_at_sentence(
                 int(raw["okww_stamina_left"]), _OKWW_STAMINA_CAP,
                 _OKWW_SEC_PER_POINT, finished)
-
-    return RunRecord(
-        run_id=f"{date_str}/{user}/{stem}",
-        script=script,
-        user=user,
-        started=started,
-        finished=finished,
-        ok=ok,
-        failed_tasks=failed,
-        transitional=transitional,
-        raw=raw,
-        log_path=log_path if log_path.exists() else None,
-        duration_known=duration_known,
-    )
+    return failed
 
 
 def scan(history_root: Path, seen: set[str]) -> list[RunRecord]:
