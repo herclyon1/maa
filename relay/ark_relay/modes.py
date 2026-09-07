@@ -84,8 +84,9 @@ def next_boot(now: datetime, min_ahead_min: int = 0) -> datetime:
     return future[0] if future else now + timedelta(days=1)
 
 
-def _skip_flag(state_dir: Path) -> Path:
-    return Path(state_dir) / "skip-next-shutdown.flag"
+def _store(state_dir: Path):
+    from .statestore import StateStore  # noqa: PLC0415 - 避免导入环
+    return StateStore(state_dir)
 
 
 def skip_armed(state_dir: Path) -> bool:
@@ -96,38 +97,30 @@ def skip_armed(state_dir: Path) -> bool:
     就是把**下一次真正要执行的关机指令**吃掉一次，用完即失效。
     用户 2026-08-31：「你给一个人类好去调这个模式的方法，独立于你的。」
     """
-    return _skip_flag(state_dir).exists()
+    return bool(_store(state_dir).get("modes", "skip_next_shutdown"))
 
 
 def set_skip_shutdown(state_dir: Path, on: bool) -> tuple[bool, str]:
     """打开/取消「下一次别关机」。给待办指令和桌面开关共用。"""
-    f = _skip_flag(state_dir)
+    store = _store(state_dir)
     if on:
-        atomic_write_text(f, "skip")
+        store.set("modes", "skip_next_shutdown", True)
         return True, "下一次跑完不关机（只跳过这一次，之后恢复正常）"
-    if f.exists():
-        try:
-            f.unlink()
-        except OSError:
-            return False, "取消失败：标记文件删不掉"
+    if store.get("modes", "skip_next_shutdown"):
+        store.pop("modes", "skip_next_shutdown")
         return True, "已取消，跑完照常关机"
     return True, "本来就没开，跑完照常关机"
 
 
 def take_skip(state_dir: Path) -> bool:
     """有就用掉并返回 True。用完即失效，下一趟队列照常关机。"""
-    f = _skip_flag(state_dir)
-    if not f.exists():
+    store = _store(state_dir)
+    if not store.get("modes", "skip_next_shutdown"):
         return False
-    try:
-        f.unlink()
-    except OSError:
-        log.warning("跳过关机的标记删不掉，可能会连着跳过两次", exc_info=True)
+    store.pop("modes", "skip_next_shutdown")
     return True
 
 
-def _skipped_file(state_dir: Path) -> Path:
-    return Path(state_dir) / "shutdown-skipped.txt"
 
 
 def shutdown_skipped(state_dir: Path) -> str:
@@ -141,18 +134,13 @@ def shutdown_skipped(state_dir: Path) -> str:
     现在它**吃掉这一次机会**：记下当时的机会标识，到期后只要标识没变
     （没有新队列跑完），就不再补关；新队列一跑完标识就变，恢复正常关机。
     """
-    try:
-        return _skipped_file(state_dir).read_text(encoding="utf-8").strip()
-    except OSError:
-        return ""
+    return str(_store(state_dir).get("modes", "shutdown_skipped") or "")
 
 
 def mark_shutdown_skipped(state_dir: Path, key: str) -> None:
-    atomic_write_text(_skipped_file(state_dir), key)
+    _store(state_dir).set("modes", "shutdown_skipped", key)
 
 
-def _debug_file(state_dir: Path) -> Path:
-    return Path(state_dir) / "debug-until.txt"
 
 
 def debug_until(state_dir: Path) -> str:
@@ -163,10 +151,7 @@ def debug_until(state_dir: Path) -> str:
     disk right now, and reading one as a malformed value would turn the mode
     off under someone who had just switched it on.
     """
-    try:
-        return _debug_file(state_dir).read_text(encoding="utf-8").strip()
-    except OSError:
-        return ""
+    return str(_store(state_dir).get("modes", "debug_until") or "")
 
 
 def debug_active(state_dir: Path, now: datetime | None = None) -> bool:
@@ -198,14 +183,14 @@ def set_debug(state_dir: Path, cycles: int = 1, off: bool = False,
     of the next run, and midnight falls in the middle of the night with the
     machine still being worked on.
     """
-    path = _debug_file(state_dir)
+    store = _store(state_dir)
     if off:
-        path.unlink(missing_ok=True)
+        store.pop("modes", "debug_until")
         # 手动关掉 = 「维护结束，恢复正常」。被吃掉的那次关机机会要一并清掉，
         # 否则机器会一直空开到下一趟队列跑完——2026-08-31 我维护完关掉它，
         # 机器就是这样准备空开一整夜的。**自然到期不清**，那才是用户要的
         # 「跳过这一次」；只有明确说「关掉」时才恢复。
-        _skipped_file(state_dir).unlink(missing_ok=True)
+        store.pop("modes", "shutdown_skipped")
         return True, "调试模式已关闭，恢复正常运行（队列若被停用需另行恢复）"
     try:
         cycles = max(1, int(cycles))
@@ -218,11 +203,9 @@ def set_debug(state_dir: Path, cycles: int = 1, off: bool = False,
     for _ in range(cycles - 1):
         boot = next_boot(boot)
     end = boot - timedelta(minutes=DEBUG_LEAD_MIN)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # Atomic: a torn value fails towards "debug on" by design, which means the
-    # machine then never powers itself off. Deliberate as a fallback, not as
-    # something a power cut should be able to cause.
-    atomic_write_text(path, end.strftime("%Y-%m-%d %H:%M"))
+    # 原子写：撕裂的值按设计倒向「调试开着」，也就是机器不会自己关机。
+    # 这是有意的兜底，但不该由一次断电造成——state.json 的写入本身是原子的。
+    store.set("modes", "debug_until", end.strftime("%Y-%m-%d %H:%M"))
     return True, (f"🔧 调试模式已开启，至 {end:%m-%d %H:%M}"
                   f"（下次预定开机 {boot:%m-%d %H:%M} 前 {DEBUG_LEAD_MIN} 分钟）："
                   "不关机、不报漏跑。注意：要让机器什么都不刷，还需停用相应队列。")

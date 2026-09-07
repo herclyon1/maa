@@ -13,7 +13,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import texts
-from .config import Config, RunRecord, SERVER_TZ, USER_TZ, atomic_write_text, both_clocks
+from .statestore import StateStore
+from .config import Config, RunRecord, SERVER_TZ, USER_TZ, both_clocks
 
 log = logging.getLogger("ark.core")
 
@@ -36,8 +37,11 @@ class State:
     def __init__(self, state_dir: Path):
         self.dir = state_dir
         self.dir.mkdir(parents=True, exist_ok=True)
-        self.seen_path = self.dir / "seen.txt"
+        self.seen_path = self.dir / "seen.txt"      # 只追加、会长很大，留作文件
         self._seen: set[str] | None = None
+        # 当天标记和告警队列都在 state.json 里（docs/状态模型.md）：原来是十几个
+        # 零散的 .sent / .json，谁写谁读全靠记，一处写晚就出一个假状态。
+        self.store = StateStore(state_dir)
 
     @property
     def seen(self) -> set[str]:
@@ -134,29 +138,18 @@ class State:
     # disk and is only removed once a channel has actually accepted it.
 
     @property
-    def pending_path(self) -> Path:
-        return self.dir / "pending.json"
-
     def save_pending(self, payload: dict) -> None:
-        tmp = self.pending_path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=1),
-                       encoding="utf-8")
-        tmp.replace(self.pending_path)  # atomic: never leave a half-written file
+        self.store.set("queues", "pending", dict(payload))
 
     def load_pending(self) -> dict:
-        if not self.pending_path.exists():
-            return {}
-        try:
-            data = json.loads(self.pending_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return {}
-        return data if isinstance(data, dict) else {}
+        data = self.store.get("queues", "pending")
+        return dict(data) if isinstance(data, dict) else {}
 
     def report_sent(self, day: str) -> bool:
-        return (self.dir / f"report-{day}.sent").exists()
+        return self.store.get("marks", f"report:{day}") is not None
 
     def interim_sent(self, day: str) -> bool:
-        return (self.dir / f"interim-{day}.sent").exists()
+        return self.store.get("marks", f"interim:{day}") is not None
 
     def interim_covered(self, day: str) -> int:
         """How many ledger entries the day's interim reports already cover.
@@ -166,18 +159,13 @@ class State:
         swallowed by a boolean "already sent today" - the operator's design
         is one interim per finished daytime round, not one per day.
         """
-        try:
-            raw = (self.dir / f"interim-{day}.sent").read_text(
-                encoding="utf-8").strip()
-        except OSError:
+        raw = self.store.get("marks", f"interim:{day}")
+        if raw is None:
             return 0
-        if not raw:
-            # Legacy empty marker (pre-2026-08-20): sent, count unknown -
-            # never re-announce the day's already-reported rounds.
-            return 10**6
         try:
-            return int(raw)
-        except ValueError:
+            return int(str(raw).strip())
+        except (TypeError, ValueError):
+            # 旧的空标记（2026-08-20 之前）：发过，条数不详——绝不重播已报过的轮次。
             return 10**6
 
     def mark_interim_sent(self, day: str, covered: int = 1) -> None:
@@ -186,18 +174,20 @@ class State:
         # unknown" and returns 10**6, which silently suppresses every further
         # interim report that day - a failure that looks exactly like a quiet
         # afternoon.
-        atomic_write_text(self.dir / f"interim-{day}.sent", str(covered))
+        self.store.set("marks", f"interim:{day}", str(covered))
 
     def mark_report_sent(self, day: str) -> None:
-        (self.dir / f"report-{day}.sent").touch()
+        self.store.set("marks", f"report:{day}",
+                       datetime.now(tz=SERVER_TZ).isoformat(timespec="seconds"))
 
     # 卡池开服前一天要在群里播一条。按「游戏+开始时刻」记，不按天记——
     # 按天记的话，同一天有两个游戏换池就只播得出一个。
     def banner_announced(self, key: str) -> bool:
-        return (self.dir / f"banner-{key}.sent").exists()
+        return self.store.get("marks", f"banner:{key}") is not None
 
     def mark_banner_announced(self, key: str) -> None:
-        (self.dir / f"banner-{key}.sent").touch()
+        self.store.set("marks", f"banner:{key}",
+                       datetime.now(tz=SERVER_TZ).isoformat(timespec="seconds"))
 
 
 def is_last_run_of_day(rec: RunRecord, cfg: Config) -> bool:

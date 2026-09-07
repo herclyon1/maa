@@ -12,7 +12,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import modes                      # noqa: E402
+from ark_relay import modes
+from ark_relay.statestore import StateStore                      # noqa: E402
 from ark_relay.config import SERVER_TZ           # noqa: E402
 
 FAILED = []
@@ -56,14 +57,14 @@ def main(tmp: Path):
           modes.debug_until(tmp), "2026-08-23 21:10")
 
     # Legacy bare-date files on disk must keep meaning end-of-day, not "off".
-    (tmp / "debug-until.txt").write_text("2026-08-22", encoding="utf-8")
+    StateStore(tmp).set("modes", "debug_until", "2026-08-22")
     check("旧格式当天 23:59 仍生效",
           modes.debug_active(tmp, at("2026-08-22 23:59")), True)
     check("旧格式次日 00:01 失效",
           modes.debug_active(tmp, at("2026-08-23 00:01")), False)
 
     # Garbage fails towards ON: the wrong failure powers off a box in use.
-    (tmp / "debug-until.txt").write_text("???", encoding="utf-8")
+    StateStore(tmp).set("modes", "debug_until", "???")
     check("值损坏时保守取生效",
           modes.debug_active(tmp, at("2026-08-23 12:00")), True)
 

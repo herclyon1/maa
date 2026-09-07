@@ -30,12 +30,13 @@ FIELDS: dict[str, dict[str, str]] = {
     },
     "marks": {
         "report:*": "某天日报已发（值=时刻）",
-        "interim:*": "某天临时日报覆盖到第几条",
+        "interim:*": "某天临时日报覆盖到第几条记录",
+        "banner:*": "某个卡池的开服播报已发（键=游戏+开始时刻）",
     },
     "modes": {
-        "skip_next_shutdown": "下一次别关机（一次性）",
-        "shutdown_skipped": "哪一次关机机会已被吃掉（key）",
-        "debug_until": "调试模式到什么时候",
+        "skip_next_shutdown": "下一次别关机（一次性，人按的）",
+        "shutdown_skipped": "哪一次关机机会已被调试模式吃掉（机会标识）",
+        "debug_until": "调试模式到什么时候（YYYY-MM-DD HH:MM）",
     },
     "versions": {
         "okww": "上次贴补丁时 OK-WW 的版本",
@@ -43,19 +44,48 @@ FIELDS: dict[str, dict[str, str]] = {
         "code": "本机中继代码版本",
     },
     "updates": {},
-    "queues": {},
+    "queues": {
+        "pending": "还没推出去的失败告警：{脚本|账号: 记录}",
+    },
 }
 
 # 旧文件 → (段, 键, 读法)。读法：json = 整个文件是 JSON；text = 纯文本去空白
+# 通配迁移：文件名模式 → (段, 键模板, 读法)。`*` 捕获的那一段填进键模板的 {}。
+LEGACY_GLOB = {
+    "report-*.sent": ("marks", "report:{}", "flag"),
+    "interim-*.sent": ("marks", "interim:{}", "text"),
+    "banner-*.sent": ("marks", "banner:{}", "flag"),
+}
+
 LEGACY = {
     "annihilation.json": ("weekly", "annihilation", "json"),
+    "pending.json": ("queues", "pending", "json"),
+    "skip-next-shutdown.flag": ("modes", "skip_next_shutdown", "flag"),
+    "shutdown-skipped.txt": ("modes", "shutdown_skipped", "text"),
     "garden.json": ("weekly", "garden", "json"),
     "weeklyboss.json": ("weekly", "boss", "json"),
     "okww-version.txt": ("versions", "okww", "text"),
     "maaend-version.txt": ("versions", "maaend", "text"),
     "debug-until.txt": ("modes", "debug_until", "text"),
-    "shutdown-skipped.txt": ("modes", "shutdown_skipped", "text"),
 }
+
+
+def _read_legacy(f: Path, how: str):
+    """按读法把旧文件读成值。读不出来返回 None（调用方跳过）。"""
+    try:
+        raw = f.read_text(encoding="utf-8")
+    except OSError:
+        log.warning("旧状态文件 %s 读不出来，跳过", f.name)
+        return None
+    if how == "json":
+        try:
+            return json.loads(raw)
+        except ValueError:
+            log.warning("旧状态文件 %s 不是 JSON，跳过", f.name)
+            return None
+    if how == "flag":
+        return True         # 文件存在本身就是值
+    return raw.strip()
 
 
 def _registered(section: str, key: str) -> bool:
@@ -131,16 +161,23 @@ class StateStore:
             f = self.dir / name
             if not f.is_file():
                 continue
-            try:
-                raw = f.read_text(encoding="utf-8")
-                value = json.loads(raw) if how == "json" else raw.strip()
-            except (OSError, ValueError):
-                log.warning("旧状态文件 %s 读不出来，跳过", name)
-                continue
+            value = _read_legacy(f, how)
             if value in ("", {}, None):
                 continue
             data[section][key] = value
             moved.append(name)
+        # 按天/按卡池分文件的标记：一次全迁
+        for pattern, (section, tmpl, how) in LEGACY_GLOB.items():
+            head, _, tail = pattern.partition("*")
+            for f in sorted(self.dir.glob(pattern)):
+                stem = f.name[len(head):-len(tail)] if tail else f.name[len(head):]
+                value = _read_legacy(f, how)
+                if value is None:
+                    continue
+                # 空内容原样保留成空串：`interim-*.sent` 的空标记表示「发过、条数不详」，
+                # 换成 "1" 会被读成「只覆盖了 1 条」，当天已报过的轮次就会重播一遍。
+                data[section][tmpl.format(stem)] = value
+                moved.append(f.name)
         if moved:
             self._flush(data)
             for name in moved:

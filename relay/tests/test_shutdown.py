@@ -40,6 +40,7 @@ from ark_relay.config import Config, SERVER_TZ           # noqa: E402
 from ark_relay.core import State                        # noqa: E402
 from ark_relay.notify import Notifier                   # noqa: E402
 from ark_relay import engine as eng                     # noqa: E402
+from ark_relay.statestore import StateStore
 from ark_relay import plan                              # noqa: E402
 
 cfg = Config()
@@ -126,19 +127,21 @@ E._unfinished_queues = lambda now, entries: []
 
 # _maybe_shutdown 查调试模式时用的是**真实**当前时间（生产里 now 就是真实
 # 时间，这个参数只为其余判定服务），所以到期点要按真实时钟写。
-dbg = STATE / "debug-until.txt"
-skipped = STATE / "shutdown-skipped.txt"
+store = StateStore(STATE)                    # 开关都在 state.json 的 modes 段
+def dbg_set(v): store.set("modes", "debug_until", v)
+def dbg_clear(): store.pop("modes", "debug_until")
+def skipped_clear(): store.pop("modes", "shutdown_skipped")
 real = datetime.now(tz=SERVER_TZ)
-skipped.unlink(missing_ok=True)
+skipped_clear()
 
-dbg.write_text(f"{real + timedelta(hours=1):%Y-%m-%d %H:%M}", encoding="utf-8")
+dbg_set(f"{real + timedelta(hours=1):%Y-%m-%d %H:%M}")
 E._shutdown_issued = False; issued.clear()
 check("调试模式生效中：不关机", E._maybe_shutdown(at(23, 0)), False)
 check("生效中没有发出关机命令", len(issued), 0)
 check("并且把这一次机会记下来了",
-      skipped.read_text(encoding="utf-8").strip(), "2026-08-21:1")
+      store.get("modes", "shutdown_skipped"), "2026-08-21:1")
 
-dbg.write_text(f"{real - timedelta(hours=1):%Y-%m-%d %H:%M}", encoding="utf-8")
+dbg_set(f"{real - timedelta(hours=1):%Y-%m-%d %H:%M}")
 E._shutdown_issued = False; issued.clear()
 check("到期后没有新队列跑完：仍然不关机（人可能正在用）",
       E._maybe_shutdown(at(23, 30)), False)
@@ -150,7 +153,7 @@ E._shutdown_issued = False; issued.clear()
 check("下一趟队列跑完：恢复正常关机", E._maybe_shutdown(at(23, 40)), True)
 check("这次确实发出了关机命令", len(issued), 1)
 
-dbg.unlink(missing_ok=True); skipped.unlink(missing_ok=True)
+dbg_clear(); skipped_clear()
 ledger(run)
 E._shutdown_issued = False; issued.clear()
 check("没开过调试模式时，本来就该关机", E._maybe_shutdown(at(23, 0)), True)
@@ -158,14 +161,13 @@ check("没开过调试模式时，本来就该关机", E._maybe_shutdown(at(23, 
 print("\n[人工开关] 桌面那个 .bat：只跳过下一次，用完即失效")
 # 用户 2026-08-31：「你给一个人类好去调这个模式的方法，独立于你的。」
 # 它不带到期时间，就是把**下一次真正要执行的关机**吃掉一次。
-flag = STATE / "skip-next-shutdown.flag"
-dbg.unlink(missing_ok=True); skipped.unlink(missing_ok=True)
+dbg_clear(); skipped_clear()
 ledger(run)
-flag.write_text("skip", encoding="utf-8")
+store.set("modes", "skip_next_shutdown", True)
 E._shutdown_issued = False; issued.clear()
 check("按下之后：这一次不关机", E._maybe_shutdown(at(23, 0)), False)
 check("没有发出关机命令", len(issued), 0)
-check("标记被用掉了（用完即失效）", flag.exists(), False)
+check("标记被用掉了（用完即失效）", bool(store.get("modes", "skip_next_shutdown")), False)
 
 E._shutdown_issued = False; issued.clear()
 check("同一次机会不会因为标记没了就补关",
@@ -175,23 +177,23 @@ ledger(run, dict(run, run_id="y"))
 E._shutdown_issued = False; issued.clear()
 check("下一趟队列跑完：正常关机（不用再按一次才关）",
       E._maybe_shutdown(at(23, 40)), True)
-skipped.unlink(missing_ok=True)
+skipped_clear()
 
 print("\n[手动关调试] 明确关掉要恢复正常，自然到期不恢复")
 from ark_relay import modes                                 # noqa: E402
 # 2026-08-31：我维护完手动关掉调试模式，机器却因为「这次已跳过」的标记
 # 还在，准备空开一整夜到早班跑完。明确说「关掉」＝维护结束，标记要一起清。
-dbg.write_text(f"{real + timedelta(hours=1):%Y-%m-%d %H:%M}", encoding="utf-8")
-skipped.unlink(missing_ok=True); flag.unlink(missing_ok=True)
+dbg_set(f"{real + timedelta(hours=1):%Y-%m-%d %H:%M}")
+skipped_clear(); store.pop("modes", "skip_next_shutdown")
 ledger(run)
 E._shutdown_issued = False; issued.clear()
 E._maybe_shutdown(at(23, 0))                       # 生效中，吃掉一次
-check("先确认标记确实写下了", skipped.exists(), True)
+check("先确认标记确实写下了", bool(store.get("modes", "shutdown_skipped")), True)
 modes.set_debug(STATE, off=True)                   # 人明确关掉
-check("手动关掉后标记被清掉", skipped.exists(), False)
+check("手动关掉后标记被清掉", bool(store.get("modes", "shutdown_skipped")), False)
 E._shutdown_issued = False; issued.clear()
 check("于是恢复正常关机", E._maybe_shutdown(at(23, 5)), True)
-skipped.unlink(missing_ok=True); dbg.unlink(missing_ok=True)
+skipped_clear(); dbg_clear()
 
 print("\n[手机开关] 待办指令 skip_shutdown：手机上改仓库里那个文件")
 # 用户 2026-08-31：「我要的是手机上面操作」。中继本来就有「公开仓库放一个
@@ -200,7 +202,7 @@ os.environ["ARK_STATE_DIR"] = str(STATE)
 from ark_relay.commands import apply_command, ALLOWED       # noqa: E402
 
 check("动作在白名单里", "skip_shutdown" in ALLOWED, True)
-skipped.unlink(missing_ok=True); flag.unlink(missing_ok=True)
+skipped_clear(); store.pop("modes", "skip_next_shutdown")
 
 ok, msg = apply_command({"action": "skip_shutdown"})
 check("下指令后开关打开", (ok, modes.skip_armed(STATE)), (True, True))
@@ -219,14 +221,14 @@ check("关机前拉到了「别关机」：不关", E._maybe_shutdown(at(23, 0))
 check("并且没有发出关机命令", len(issued), 0)
 
 # 拉不到不等于有人喊停
-skipped.unlink(missing_ok=True); flag.unlink(missing_ok=True)
+skipped_clear(); store.pop("modes", "skip_next_shutdown")
 def boom():
     raise RuntimeError("网络不通")
 E._before_shutdown = boom
 E._shutdown_issued = False; issued.clear()
 check("关机前那一拉失败：按原计划关机", E._maybe_shutdown(at(23, 0)), True)
 E._before_shutdown = None
-skipped.unlink(missing_ok=True)
+skipped_clear()
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
