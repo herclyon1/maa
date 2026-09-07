@@ -1,0 +1,29 @@
+{
+ "OK-WW-05-19-17": {
+  "script": "OK-WW",
+  "ok": false,
+  "failed_tasks": [
+   "周本：打完 Boss 领完奖之后没能退出副本"
+  ],
+  "duration_known": true,
+  "okww_steps": [
+   "周本（领了 1 次，然后没能退出副本）"
+  ],
+  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+ },
+ "OK-WW-07-27-50": {
+  "script": "OK-WW",
+  "ok": true,
+  "failed_tasks": [],
+  "duration_known": true,
+  "okww_steps": [
+   "无音区 ×1",
+   "周本（已完成，本周已领满）",
+   "周常乐园（本周已完成）"
+  ],
+  "okww_farm": "无音区·玄幽东岳",
+  "okww_runs": 1,
+  "okww_stamina_spent": 60,
+  "okww_stamina_left": 15
+ }
+}
