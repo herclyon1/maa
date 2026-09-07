@@ -138,8 +138,6 @@ const SCHEMA = [
       hint:"开着＝有活动就刷活动关，活动结束后自动回到上面那个固定关。开着时下面的序号才生效" },
     { key:"活动关序号", path:"Task.ActivityStageIndex", type:"number",
       hint:"刷活动里的第几关，数的是活动关卡列表从上往下的位置，第一关填 1。只在上面那项开着时才有用" },
-    { key:"剿灭",       path:"Info.Annihilation", type:"text", ro:true,
-      hint:"每周自动开关：打满后置为关闭，下周一自动恢复。此处仅显示当前状态" },
   ]},
   { title:"终末地 · 基质刷取", owner:"MaaEnd", src:"master", game:"MaaEnd", fields:[
     { path:"AutoEssence/@enabled", type:"bool", label:"跑这个任务",
@@ -426,11 +424,27 @@ function render() {
     html += `</section>`;
   }
 
-  const wb = (relay["周本"]) || {};
-  if (inShift("OK-WW")) html += `<section><h2>鸣潮周本 <small>战歌重奏</small></h2>
-    <div class="row" data-row="wb|OK-WW|开"><label>打周本
-      <span class="hint">和剿灭一个逻辑：本周打完自动停，下周一 04:00 自动开回来。
-      现在是关着的——它出厂设置是「一直刷」，次数得你定</span></label>
+  /* 三个「一周一次」的东西一个形状：本周做完自动停，下周一 04:00 自动恢复。
+     用户 2026-09-07：「逻辑上一致的东西就应该强统一」——手机页、中继判定、通知三处一致。 */
+  const weekly = relay["周常"] || {};
+  const wb = weekly["周本"] || relay["周本"] || {};
+  const wg = weekly["周常乐园"] || {};
+  const an = weekly["剿灭"] || {};
+  const doneTag = (d) => d ? `<span class="ro">本周已完成，下周一自动恢复</span>` : `<span class="ro">本周还没做</span>`;
+  html += `<section><h2>周常 <small>一周一次的事</small></h2>
+    <p class="hint">三项同一套逻辑：本周做完自动停掉，下周一 04:00 自动恢复。做完和恢复都会有「🗓️ 周常」通知。</p>`;
+  if (inShift("MAA")) html += `
+    <div class="row"><label>明日方舟 · 剿灭
+      <span class="hint">MAA 打满本周剿灭后把开关置为关闭，省掉之后每趟白跑的一分钟；这里只显示状态，不给改</span></label>
+      ${doneTag(an["本周已完成"])}</div>`;
+  if (inShift("OK-WW")) html += `
+    <div class="row" data-row="wg|OK-WW|开"><label>鸣潮 · 周常乐园
+      <span class="hint">不花体力。开着时每趟去看一眼有没有做完，做完就停到下周一。关掉就不再检查</span></label>
+      <span class="sw"><input type="checkbox" data-id="wg|OK-WW|开" id="wg-on" ${wg["开"] !== false ? "checked" : ""}><span></span></span>
+    </div>
+    <div class="row">${doneTag(wg["本周已完成"])}</div>
+    <div class="row" data-row="wb|OK-WW|开"><label>鸣潮 · 周本 <small>战歌重奏</small>
+      <span class="hint">花体力。一周领 3 次奖励，每次 60 结晶波片；领满就停到下周一。现在是关着的就不打</span></label>
       <span class="sw"><input type="checkbox" data-id="wb|OK-WW|开" id="wb-on" ${wb["开"] ? "checked" : ""}><span></span></span>
     </div>
     <div class="row" data-row="wb|OK-WW|第几个周本"><label>打第几个
@@ -438,19 +452,16 @@ function render() {
       OK-WW 只认位置不认名字，新 Boss 上线顺序会变，换本时记得来改</span></label>
       <input type="number" data-id="wb|OK-WW|第几个周本" id="wb-idx" value="${wb["第几个周本"] || 1}"></div>
     <div class="row" data-row="wb|OK-WW|打几次"><label>一周打几次
-      <span class="hint">奖励是**进本时扣 60 结晶波片**直接给的，没有打完开宝箱这一步。
-      一周只能领 3 次，填 3 就够，三次共 180 波片。
-      波片不够时会自动跳过这次周本（不空转、也不会白打），下一趟再补。
+      <span class="hint">一周只能领 3 次奖励，填 3 就够。波片不够时会自动跳过这次，下一趟再补。
       这项在 OK-WW 里出厂是 10000，等于一直打</span></label>
       <input type="number" data-id="wb|OK-WW|打几次" id="wb-cnt" value="${wb["打几次"] || 1}"></div>
     <div class="row" data-row="wb|OK-WW|难度等级"><label>难度等级
-      <span class="hint">**周本要选最高的 90** —— 等级决定奖励档次。
-      （OK-WW 这一项的说明写的是「挑能掉声骸的最低级」，那是刷声骸的思路，
-      和周本正好相反，别被它带偏）</span></label>
+      <span class="hint">周本要选最高的 90，等级决定奖励档次。
+      （OK-WW 这一项的说明写的是「挑能掉声骸的最低级」，那是刷声骸的思路，和周本正好相反）</span></label>
       <select data-id="wb|OK-WW|难度等级" id="wb-lvl">${["50","60","70","80","90"].map(v =>
         `<option value="${v}"${String(wb["难度等级"]) === v ? " selected" : ""}>${v}${v === "90" ? "（推荐）" : ""}</option>`).join("")}</select></div>
-    ${wb["本周已打"] ? `<div class="row"><span class="ro">本周已经打过了，下周一自动恢复</span></div>` : ""}
-  </section>`;
+    <div class="row">${wb["本周已打"] ? `<span class="ro">本周三次已领满，下周一自动恢复</span>` : `<span class="ro">本周还没领满</span>`}</div>`;
+  html += `</section>`;
 
   html += `<section><h2>这台手机</h2>
     <div class="row"><label>免输入链接
@@ -565,9 +576,20 @@ function wire() {
 
   for (const el of document.querySelectorAll("[data-id]")) {
     el.addEventListener("change", () => {
+      if (el.dataset.id.startsWith("wg|")) {
+        const wgNow = ((((snap && snap.relay) || {})["周常"]) || {})["周常乐园"] || {};
+        const from = wgNow["开"] !== false, to = el.checked;
+        const id = el.dataset.id;
+        const row = document.querySelector(`[data-row="${CSS.escape(id)}"]`);
+        if (from === to) { delete edits[id]; if (row) row.classList.remove("changed"); }
+        else { edits[id] = { label:"周常乐园 · 检查开关", src:"wg", key:"开", from, to };
+               if (row) row.classList.add("changed"); }
+        updateBar();
+        return;
+      }
       if (el.dataset.id.startsWith("wb|")) {
         const key = el.dataset.id.slice("wb|OK-WW|".length);
-        const wbNow = (((snap && snap.relay) || {})["周本"]) || {};
+        const wbNow = ((((snap && snap.relay) || {})["周常"]) || {})["周本"] || (((snap && snap.relay) || {})["周本"]) || {};
         const from = key === "开" ? !!wbNow["开"]
           : key === "难度等级" ? String(wbNow[key] ?? "")
           : Number(wbNow[key] ?? 1);
@@ -576,7 +598,7 @@ function wire() {
         const id = el.dataset.id;
         const row = document.querySelector(`[data-row="${CSS.escape(id)}"]`);
         if (String(from) === String(to)) { delete edits[id]; if (row) row.classList.remove("changed"); }
-        else { edits[id] = { label:`鸣潮周本 · ${WB_ZH[key] || key}`, src:"wb", key, from, to };
+        else { edits[id] = { label:`周本 · ${WB_ZH[key] || key}`, src:"wb", key, from, to };
                if (row) row.classList.add("changed"); }
         updateBar();
         return;
@@ -954,7 +976,8 @@ $("#go").onclick = async () => {
   $("#confirm").close();
   const all = Object.values(edits);
   const wbEdits = all.filter((e) => e.src === "wb");
-  const items = all.filter((e) => e.src !== "wb");
+  const wgEdits = all.filter((e) => e.src === "wg");
+  const items = all.filter((e) => e.src !== "wb" && e.src !== "wg");
   let sent = 0;
   for (const e of items) {
     const body = e.src === "master"
@@ -965,8 +988,12 @@ $("#go").onclick = async () => {
   }
   /* 周本是一条指令带四个参数，不能一项一条发——分开发的话，中间那条
      会拿着别的三个旧值去覆盖。所以按现值合成一次发。 */
+  if (wgEdits.length) {
+    try { await send({ action:"weekly_garden", on: !!wgEdits[wgEdits.length - 1].to }); sent += wgEdits.length; }
+    catch (err) { toast("周常乐园开关发不出去：" + err.message); }
+  }
   if (wbEdits.length) {
-    const base = (((snap && snap.relay) || {})["周本"]) || {};
+    const base = ((((snap && snap.relay) || {})["周常"]) || {})["周本"] || (((snap && snap.relay) || {})["周本"]) || {};
     const get = (k, d) => {
       const hit = wbEdits.find((e) => e.key === k);
       return hit ? hit.to : (base[k] ?? d);
