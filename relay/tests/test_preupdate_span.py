@@ -21,7 +21,9 @@ def check(label, got, want):
 
 print("[_span：旧 → 新，缺旧版明说]")
 check("正常", preupdate._span("v1", "v2"), "v1 → v2")
-check("同版只报一次", preupdate._span("v2", "v2"), "v2")
+check("同版=旧版没读到（不许吞成一个版本号）", preupdate._span("v2", "v2"), "（旧版本没读到）→ v2")
+check("取旧版：跳过等于新版的", preupdate._pick_old(("", "v2", "v1", "v0"), "v2"), "v1")
+check("取旧版：全等于新版→空", preupdate._pick_old(("v2", "", "v2"), "v2"), "")
 check("旧版没读到要明说", preupdate._span("", "v2"), "（旧版本没读到）→ v2")
 check("旧名字仍可用", preupdate._maaend_span("v1", "v2"), "v1 → v2")
 

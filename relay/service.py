@@ -714,7 +714,8 @@ def _stage_preupdate(cfg, notifier, log) -> None:
             if note := preupdate.run_maa(maa, problems=problems):
                 log.info("预更新：%s", note)
                 notifier.send("🆕 预更新", note)
-            if updated := preupdate.run(maaend, problems=problems):
+            if updated := preupdate.run(maaend, problems=problems,
+                                        state_dir=cfg.state_dir):
                 log.info("预更新：MaaEnd 已更新：%s", updated)
                 notifier.send("🆕 预更新",
                               f"MaaEnd 已更新：{updated}")
@@ -810,13 +811,25 @@ def _stage_gameupdate(cfg, notifier, log) -> None:
 
 
 def _stage_annihilation(engine, notifier, log) -> None:
-    """新的一周恢复剿灭，并在开机时校正一次开关。"""
+    """新的一周恢复剿灭和鸣潮周本，并在开机时校正一次开关。"""
     # A new game-week means last week's 剿灭 no longer counts.
+    lines: list[str] = []
     try:
         if msg := engine._annihilation.maybe_reopen():  # noqa: SLF001
-            notifier.send("🗓️ 剿灭", msg)
+            lines.append(msg)
     except Exception:  # noqa: BLE001
         log.exception("剿灭周期检查出错，跳过")
+    # 鸣潮周本和剿灭一个作息。用户 2026-09-07：这条通知要带上周本。
+    try:
+        if boss := engine._weeklyboss.maybe_reopen():  # noqa: SLF001
+            engine._weeklyboss.enforce()   # 先真挂上，再说「已挂上」  # noqa: SLF001
+            lines.append(boss)
+        elif lines:
+            lines.append(engine._weeklyboss.week_line())  # noqa: SLF001
+    except Exception:  # noqa: BLE001
+        log.exception("周本周期检查出错，跳过")
+    if lines:
+        notifier.send("🗓️ 新的一周", "\n".join(lines))
 
     # Assert the annihilation switch once at startup rather than leaving it
     # to tick(): ticks are driven by file events and alarms, and neither has

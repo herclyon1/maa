@@ -229,6 +229,34 @@ class WeeklyBossGate:
         return True, ("周本已开：第 {} 个，打 {} 次".format(v["第几个周本"], v["打几次"])
                       if v["开"] else "周本已关")
 
+    def week_line(self, now: "datetime | None" = None) -> str:
+        """「新的一周」通知里周本那一行：这周是什么状态。永远有话说。"""
+        v = self.settings(now)
+        if not v["开"]:
+            return "鸣潮周本：开关关着，本周不打"
+        what = v["名字"] or f"第 {v['第几个周本']} 个周本"
+        if v["本周已打"]:
+            return f"鸣潮周本：{what} 本周已领满"
+        return (f"鸣潮周本已重新挂上：{what}，打 {v['打几次']} 次，"
+                f"{v['难度等级']} 级")
+
+    def maybe_reopen(self, now: "datetime | None" = None) -> str:
+        """开机时调。上周记的「已领满」过了周就清掉，返回 week_line；没过周返回空串。
+
+        和 annihilation.maybe_reopen 一个形状。enforce() 本来就是拿 done_week
+        跟本周比，不清也会挂回来；清掉是为了这条通知只发一次。
+        用户 2026-09-07：剿灭那条「新的一周」通知要带上鸣潮周本。
+        """
+        s = self._load()
+        done = s.get("done_week")
+        week = week_key(now or datetime.now(tz=SERVER_TZ))
+        if not done or done == week:
+            return ""
+        s.pop("done_week", None)
+        self._save(s)
+        log.info("新的一周，周本记账已清（上周 %s）", done)
+        return self.week_line(now)
+
     # ---------- 打完了 ----------
 
     def on_success(self, now: "datetime | None" = None) -> str:

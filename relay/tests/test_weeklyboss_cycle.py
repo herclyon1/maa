@@ -62,7 +62,7 @@ check("还剩 2 次，开关不许摘", W.TASK_NAME in tasks(), True)
 print("\n[领满才摘掉，之后不再检测]")
 left(0)
 g.on_success(at(31, 12))
-check("记成本周已打", g.settings()["本周已打"], True)
+check("记成本周已打", g.settings(at(31, 12))["本周已打"], True)
 g.enforce(at(31, 12))
 check("附加任务里已摘掉", W.TASK_NAME in tasks(), False)
 g.enforce(at(31, 20))          # 同一周内反复跑，不许再挂回去

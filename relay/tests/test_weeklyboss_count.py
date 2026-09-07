@@ -50,12 +50,12 @@ write("周本本周剩余次数原文: [Box(text='本周剩余可收取次数：
 g = gate()
 msg = g.on_success(NOW)
 check("说清楚还剩几次", "还剩 2 次" in msg, True)
-check("没记成已打完", g.settings()["本周已打"], False)
+check("没记成已打完", g.settings(NOW)["本周已打"], False)
 
 print("\n[归零才记账]")
 write("周本本周剩余次数原文: [Box(text='本周剩余可收取次数：0/3')]")
 msg = g.on_success(NOW)
-check("记成已打完", g.settings()["本周已打"], True)
+check("记成已打完", g.settings(NOW)["本周已打"], True)
 check("话说得对", "领满三次" in msg, True)
 
 print("\n[读不到时宁可不记]")
@@ -63,7 +63,7 @@ STATE2 = TMP / "s2"; STATE2.mkdir()
 write("什么都没有")
 g2 = W.WeeklyBossGate(STATE2, None); g2.configure(enabled=True)
 check("不记账", g2.on_success(NOW), "")
-check("开关继续挂着", g2.settings()["本周已打"], False)
+check("开关继续挂着", g2.settings(NOW)["本周已打"], False)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

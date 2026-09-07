@@ -415,7 +415,7 @@ def _maaend_autostart_instance(maaend_dir: Path, value: str) -> str | None:
 
 
 def run(maaend_dir: Path | None, budget_s: float = BUDGET_SECONDS,
-        problems: list[str] | None = None) -> str:
+        problems: list[str] | None = None, state_dir: Path | None = None) -> str:
     """Launch MaaEnd, wait for its update check, close it. Returns a note or "".
 
     The note is non-empty only when an update actually landed - that is the
@@ -437,7 +437,7 @@ def run(maaend_dir: Path | None, budget_s: float = BUDGET_SECONDS,
         return ""
 
     try:
-        return _run_maaend(Path(maaend_dir), exe, budget_s, problems)
+        return _run_maaend(Path(maaend_dir), exe, budget_s, problems, state_dir)
     finally:
         _maaend_autostart_instance(Path(maaend_dir), was_instance)
 
@@ -459,12 +459,51 @@ def _span(old: str, new: str) -> str:
     """
     if old and old != new:
         return f"{old} → {new}"
-    if old == new:
-        return new
+    # 旧版等于新版不是「没更新」，是旧版号读错了——更新后的进程自报的
+    # 「当前版本」就是新版号。2026-09-06、09-07 两天的 MaaEnd 通知都只有
+    # 一个版本号，就是这条分支把它当成「同版只报一次」吞掉的。
     return f"（旧版本没读到）→ {new}"
 
 
 _maaend_span = _span      # 旧名字，测试和别处还在用
+
+_VERSION_FILE = "maaend-version.txt"   # 中继自己记的、上一次确认过的 MaaEnd 版本
+
+
+def _pick_old(candidates, new: str) -> str:
+    """旧版本号：按可信度顺序取第一个非空、且**不等于新版本**的。
+
+    等于新版本的一律不算——那是更新之后读到的。四个来源见 _run_maaend。
+    """
+    for c in candidates:
+        if c and c != new:
+            return c
+    return ""
+
+
+def _remembered_version(state_dir) -> str:
+    """中继上一次预更新确认过的 MaaEnd 版本。没有就空串。
+
+    MaaEnd 装更新会把自己的 debug 目录连旧日志一起换掉（2026-09-07 实测：
+    更新后目录里只剩新进程那一份日志），interface.json 也已经是新的。
+    那时只有中继自己记的这一份还知道昨天是什么版本。
+    """
+    if not state_dir:
+        return ""
+    try:
+        return (Path(state_dir) / _VERSION_FILE).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def _remember_version(state_dir, ver: str) -> None:
+    if not state_dir or not ver:
+        return
+    try:
+        Path(state_dir).mkdir(parents=True, exist_ok=True)
+        atomic_write_text(Path(state_dir) / _VERSION_FILE, ver)
+    except OSError:
+        log.warning("预更新：MaaEnd 版本号记不下来，下次更新通知可能缺旧版号", exc_info=True)
 
 
 def _maaend_file_version(maaend_dir: Path) -> str:
@@ -483,7 +522,8 @@ def _maaend_file_version(maaend_dir: Path) -> str:
 
 
 def _run_maaend(maaend_dir: Path, exe: Path, budget_s: float,
-                problems: list[str] | None = None) -> str:
+                problems: list[str] | None = None,
+                state_dir: Path | None = None) -> str:
     """The body of run(), with auto-run already disarmed by the caller."""
     before = _newest_log(maaend_dir)
     before_name = before.name if before else ""
@@ -495,9 +535,21 @@ def _run_maaend(maaend_dir: Path, exe: Path, budget_s: float,
              budget_s)
 
     updated_to = ""
-    # 升级前的版本号。先从上一次启动的日志里兜个底，本次启动自己写的
-    # 「当前版本: vX」一出现就覆盖掉它——那个才是准的。
-    old_ver = _maaend_file_version(maaend_dir) or _maaend_version_in(before)
+    # 升级前的版本号，四个来源，按可信度排：
+    #   launch_ver  本次启动、装更新**之前**那个进程自报的「当前版本」
+    #   file_ver    启动前读的 interface.json
+    #   prev_ver    上一次启动的日志
+    #   kept_ver    中继上次预更新记下的版本（MaaEnd 更新会把旧日志清掉）
+    # 最后由 _pick_old 取第一个不等于新版本的。**更新后的进程也会写一行
+    # 「当前版本」，写的是新版号**——2026-09-06/07 两天就是被它覆盖了旧版号。
+    launch_ver = ""
+    file_ver = _maaend_file_version(maaend_dir)
+    prev_ver = _maaend_version_in(before)
+    kept_ver = _remembered_version(state_dir)
+
+    def old_for(new: str) -> str:
+        return _pick_old((launch_ver, file_ver, prev_ver, kept_ver), new)
+
     settled = False
     # Poll quickly at first: measured on the machine, MaaEnd answers its own
     # update check about one second after launch when there is nothing to do
@@ -509,10 +561,10 @@ def _run_maaend(maaend_dir: Path, exe: Path, budget_s: float,
         if current is None or current.name == before_name:
             continue        # this launch has not opened its log yet
         text = _read(current)
-        if m2 := _CURRENT.search(text):
-            # MaaEnd 装完更新会重启自己、另起一个日志文件，那个进程不再写
-            # 「当前版本」。所以要在重启之前就把它记下来。
-            old_ver = m2.group(1)
+        if (m2 := _CURRENT.search(text)) and not _UPDATED.search(text):
+            # 装完更新重启后的进程也写「当前版本」，但那已经是新版号，
+            # 只有同一份日志里没有「刚更新完成」时它才是旧版号。
+            launch_ver = m2.group(1)
         if m := _UPDATED.search(text):
             updated_to = m.group(1)
             # This *is* a conclusion. When MaaEnd starts up straight after
@@ -525,7 +577,7 @@ def _run_maaend(maaend_dir: Path, exe: Path, budget_s: float,
             # until we killed it at 08:51:07.
             settled = True
             log.info("预更新：MaaEnd 刚更新完成 → %s（本次启动不再检查）",
-                     _maaend_span(old_ver, updated_to))
+                     _maaend_span(old_for(updated_to), updated_to))
             break
         if m := _DONE.search(text):
             version, has_update = m.group(1), m.group(2)
@@ -533,6 +585,7 @@ def _run_maaend(maaend_dir: Path, exe: Path, budget_s: float,
             # restarted process to report false.
             if has_update == "false":
                 settled = True
+                _remember_version(state_dir, version)
                 log.info("预更新：MaaEnd 已是 %s%s", version,
                          f"（本次更新自 → {updated_to}）" if updated_to else "（无需更新）")
                 break
@@ -544,7 +597,8 @@ def _run_maaend(maaend_dir: Path, exe: Path, budget_s: float,
 
     _close(exe)
     if updated_to and settled:
-        return _maaend_span(old_ver, updated_to)
+        _remember_version(state_dir, updated_to)
+        return _maaend_span(old_for(updated_to), updated_to)
     return ""
 
 
