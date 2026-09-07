@@ -27,6 +27,7 @@ import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from .statestore import StateStore
 from .config import SERVER_TZ, atomic_write_text
 
 log = logging.getLogger("ark.annihilation")
@@ -153,6 +154,7 @@ class WeeklyGate:
 
     def __init__(self, state_dir: Path, automas_dir: Path | None):
         self.path = Path(state_dir) / "annihilation.json"
+        self._store = StateStore(state_dir)   # 状态收口：真正落盘在 state.json 的 weekly 段
         self.automas_dir = automas_dir
 
     def settings(self, now: datetime | None = None) -> dict:
@@ -168,15 +170,10 @@ class WeeklyGate:
         return f"{self.NAME}：本周还没打满，开关开着（{v['当前'] or '读不到'}）"
 
     def _load(self) -> dict:
-        try:
-            return json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return {}
+        return dict(self._store.get("weekly", "annihilation") or {})
 
     def _save(self, data: dict) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_text(self.path,
-                          json.dumps(data, ensure_ascii=False, indent=1))
+        self._store.set("weekly", "annihilation", dict(data))
 
     def on_success(self, now: datetime | None = None) -> str:
         """Called when an annihilation pass completed. Closes it for the week."""

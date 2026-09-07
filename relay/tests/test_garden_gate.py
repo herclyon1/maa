@@ -73,7 +73,7 @@ def test_gate(tmp: Path) -> None:
     check("第一次记账有回话", bool(msg), True)
     check("记账**不碰配置**（落盘留给 enforce）",
           garden.TASK_NAME in _read(automas), True)
-    check("状态文件记下了本周", json.loads((tmp / "garden.json").read_text())["done_week"],
+    check("状态文件记下了本周", json.loads((tmp / "state.json").read_text())["weekly"]["garden"]["done_week"],
           week_key(now))
     check("同一周重复记账不再啰嗦", g.on_success(now), "")
 
@@ -86,7 +86,7 @@ def test_gate(tmp: Path) -> None:
     nxt = now + timedelta(days=7)
     check("新的一周会把检查放回去", g.enforce(nxt), True)
     check("检查回来了", garden.TASK_NAME in _read(automas), True)
-    check("过期记账已清掉", json.loads((tmp / "garden.json").read_text()), {})
+    check("过期记账已清掉", json.loads((tmp / "state.json").read_text())["weekly"].get("garden") or {}, {})
 
     # 找不到母本时必须安静地不动手，而不是抛异常把中继带崩
     g2 = garden.GardenGate(tmp, tmp / "nowhere")

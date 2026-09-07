@@ -30,7 +30,8 @@ from datetime import datetime
 from pathlib import Path
 
 from .annihilation import week_key          # 周界口径和剿灭完全一致
-from .config import SERVER_TZ, atomic_write_text, master_config_dir
+from .statestore import StateStore
+from .config import SERVER_TZ, master_config_dir
 
 log = logging.getLogger("ark.weeklyboss")
 
@@ -180,18 +181,15 @@ class WeeklyBossGate:
 
     def __init__(self, state_dir: Path, automas_dir=None):
         self.path = Path(state_dir) / "weeklyboss.json"
+        self._store = StateStore(state_dir)   # 状态收口：真正落盘在 state.json 的 weekly 段
         self.automas_dir = automas_dir
         self._last_error = ""
 
     def _load(self) -> dict:
-        try:
-            return json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return {}
+        return dict(self._store.get("weekly", "boss") or {})
 
     def _save(self, data: dict) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_text(self.path, json.dumps(data, ensure_ascii=False, indent=1))
+        self._store.set("weekly", "boss", dict(data))
 
     # ---------- 人来开关 ----------
 
