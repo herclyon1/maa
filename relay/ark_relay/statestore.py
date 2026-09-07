@@ -243,7 +243,10 @@ class StateStore:
             self._flush(data)
         for name in moved:
             try:
-                (self.dir / name).rename(self.dir / f"{name}.migrated")
+                # replace 而不是 rename：同名的 .migrated 可能已经在了（上一轮迁过、
+                # 之后旧代码又写了一次），Windows 上 rename 会因目标存在而失败，
+                # 于是那个文件每次启动都被重迁一遍、每次都报一条警告。
+                (self.dir / name).replace(self.dir / f"{name}.migrated")
             except OSError:
-                log.warning("旧状态文件 %s 改名失败，下次启动会再迁一次（幂等）", name)
+                log.warning("旧状态文件 %s 收不走，下次启动再试（不影响读写）", name)
         log.info("状态已迁入 state.json：%s", "、".join(sorted(moved)))
