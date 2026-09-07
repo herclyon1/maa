@@ -344,7 +344,10 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
 
     def __init__(self, args):
         super().__init__(args)
-        self.stop_event = win32event.CreateEvent(None, 0, 0, None)
+        # 第二个参数 1 = 手动复位。这个事件有三个线程在看（主循环、手机通道、
+        # 心跳），自动复位的话谁先看到谁把信号吃掉，其余两个永远等不到。
+        # 来龙去脉见 docs/CODE-HISTORY.md「service.py:stop_event」
+        self.stop_event = win32event.CreateEvent(None, 1, 0, None)
 
     def SvcStop(self):  # noqa: N802 - name required by the framework
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)

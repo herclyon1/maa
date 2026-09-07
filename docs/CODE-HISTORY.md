@@ -715,3 +715,19 @@ _apply_one 就在 v1 上面又贴了一层——两段检查同时存在，旧�
 判据用 new 的第一行（各版本独有的那句注释/代码），出现超过一次就是叠了。
 ```
 
+
+## service.py:stop_event
+
+`CreateEvent(None, 0, 0, None)` 的第二个参数 0 是**自动复位**：任何一个
+`WaitForSingleObject` 看到信号就顺手把它清掉。这个事件却有三个消费者——
+主循环的 `WaitForMultipleObjects`、手机通道 `listen()` 的 `stop()`、
+心跳 `loop()` 的 `stop()`。停服务时谁先轮到谁拿走信号，其余的继续认为
+「没停」。
+
+后果按日期：
+* 2026-08-31 几次卡在 STOP_PENDING（主循环没抢到信号，靠 15 秒 `os._exit` 硬保险退出）。
+* 2026-09-07 09:02 部署停服务，手机通道把 `close()` 掐断的连接当意外断线，
+  在日志里打了整段 `AttributeError: 'NoneType' object has no attribute 'peek'`。
+
+2026-09-07 改成手动复位（第二个参数 1）：信号一直亮着，三个线程各自都能
+看到。回归测试 `tests/test_stop_event_manual_reset.py` 盯着这个参数。
