@@ -11,6 +11,7 @@ document disagrees, this page wins and the code is a bug.
 | 1 | **Daily report** | after the evening queue finishes, once a day | `📋 08-20 · 全绿 ✅` |
 | 2 | **Interim look** | after a daytime queue finishes | `🔎 08-20 · …（临时查看）` |
 | 3 | **Manual run** | after a hand-triggered queue finishes | `🔎 08-20 · …（手动执行）` |
+| 3a | **Tacet-field drops** | right after 1/2/3, when OK-WW farmed a Tacet Suppression that day | `🖼️ 无音区产出` — one text line (configured index, zone name, echo sets) then ONE image: the final results page (six drop slots). Group robot only (image messages); each screenshot sent once (`state/tacet-shots-<day>.sent`). Operator 2026-09-07: only the drops page, nothing else. |
 
 They do not consume or cancel each other:
 
