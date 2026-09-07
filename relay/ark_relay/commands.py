@@ -38,7 +38,7 @@ log = logging.getLogger("ark.commands")
 # ---------- gate ① : the whitelist ----------
 
 # Actions that only change what happens next, and undo themselves.
-REVERSIBLE = {"skip_today", "debug_mode", "skip_shutdown", "weekly_boss"}
+REVERSIBLE = {"skip_today", "debug_mode", "skip_shutdown", "weekly_boss", "weekly_garden"}
 
 # Actions that write to a config file on disk.
 MUTATING = {"set_stage", "set_medicine", "toggle_task", "set_wait_time",
@@ -562,6 +562,15 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
                 enabled=None if "on" not in cmd else bool(cmd.get("on")),
                 index=cmd.get("index"), count=cmd.get("count"),
                 level=cmd.get("level"))
+            if ok:
+                gate.enforce()
+            return ok, msg
+        if action == "weekly_garden":
+            # 鸣潮周常乐园的检查开关。和周本、剿灭一套逻辑：做完自动停，周一恢复。
+            from .garden import GardenGate  # noqa: PLC0415
+            state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
+            gate = GardenGate(state_dir, os.environ.get("ARK_AUTOMAS_DIR"))
+            ok, msg = gate.configure(enabled=None if "on" not in cmd else bool(cmd.get("on")))
             if ok:
                 gate.enforce()
             return ok, msg

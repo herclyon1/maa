@@ -490,13 +490,19 @@ def state_payload(cfg, state_dir: Path) -> dict:
     except Exception as exc:  # noqa: BLE001
         out["config"] = {"_错误": f"{type(exc).__name__}: {exc}"}
     try:
-        from . import weeklyboss  # noqa: PLC0415
+        from . import annihilation, garden, weeklyboss  # noqa: PLC0415
+        automas = getattr(cfg, "automas_dir", None)
+        wb = weeklyboss.WeeklyBossGate(state_dir, automas).settings()
         out["relay"] = {
             "调试模式": modes.debug_until(state_dir) or "",
             "下次别关机": modes.skip_armed(state_dir),
-            "周本": weeklyboss.WeeklyBossGate(state_dir,
-                                              getattr(cfg, "automas_dir", None)
-                                              ).settings(),
+            "周本": wb,
+            # 三个「一周一次」的东西一个形状：本周已完成 / 开关 / 各自的设置
+            "周常": {
+                "剿灭": annihilation.WeeklyGate(state_dir, automas).settings(),
+                "周常乐园": garden.GardenGate(state_dir, automas).settings(),
+                "周本": wb,
+            },
         }
     except Exception:  # noqa: BLE001
         out["relay"] = {}

@@ -50,7 +50,14 @@ def _daily_file(automas_dir) -> "Path | None":
 
 
 class GardenGate:
-    """记住哪一个游戏周的周常乐园已经做完了。"""
+    """记住哪一个游戏周的周常乐园已经做完了。
+
+    和剿灭、周本同一套接口（用户 2026-09-07：「逻辑上一致的东西就应该强统一」）：
+    settings() 给手机页，week_line() 给「新的一周」通知，on_success() 记账，
+    enforce() 推开关，maybe_reopen() 周一清账。状态文件：{"enabled": 开关, "done_week": 本周}。
+    """
+
+    NAME = "鸣潮 · 周常乐园"
 
     def __init__(self, state_dir: Path, automas_dir=None):
         self.path = Path(state_dir) / "garden.json"
@@ -67,6 +74,33 @@ class GardenGate:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(self.path, json.dumps(data, ensure_ascii=False, indent=1))
 
+    # ---------- 给手机页和通知看的 ----------
+
+    def settings(self, now: datetime | None = None) -> dict:
+        s = self._load()
+        week = week_key(now or datetime.now(tz=SERVER_TZ))
+        return {"开": bool(s.get("enabled", True)),
+                "本周已完成": s.get("done_week") == week}
+
+    def week_line(self, now: datetime | None = None) -> str:
+        v = self.settings(now)
+        if not v["开"]:
+            return f"{self.NAME}：开关关着，本周不检查"
+        if v["本周已完成"]:
+            return f"{self.NAME}：本周已完成，暂停检查到下周一"
+        return f"{self.NAME}：本周还没做，每趟都会去检查"
+
+    def configure(self, *, enabled: bool | None = None) -> tuple[bool, str]:
+        s = self._load()
+        if enabled is not None:
+            s["enabled"] = bool(enabled)
+            if not enabled:
+                s.pop("done_week", None)
+        self._save(s)
+        return True, ("周常乐园检查已开" if s.get("enabled", True) else "周常乐园检查已关")
+
+    # ---------- 做完了 ----------
+
     def on_success(self, now: datetime | None = None) -> str:
         """报告里出现「周常乐园（本周已完成）」时调用。只记账，不落盘。
 
@@ -78,9 +112,24 @@ class GardenGate:
         state = self._load()
         if state.get("done_week") == week:
             return ""
-        self._save({"done_week": week})
+        state["done_week"] = week
+        self._save(state)
         log.info("本周周常乐园已完成，待脚本停下后关闭检查（周一 04:00 后恢复）")
-        return "本周周常乐园已完成，稍后暂停检查到下周一"
+        return f"{self.NAME}：本周已完成，暂停检查到下周一"
+
+    def maybe_reopen(self, now: datetime | None = None) -> str:
+        """开机时调。上周的记账过了周就清掉，返回 week_line；没过周返回空串。"""
+        state = self._load()
+        done = state.get("done_week")
+        week = week_key(now or datetime.now(tz=SERVER_TZ))
+        if not done or done == week:
+            return ""
+        state.pop("done_week", None)
+        self._save(state)
+        log.info("新的一周，周常乐园记账已清（上周 %s）", done)
+        return self.week_line(now)
+
+    # ---------- 把开关推到该在的位置 ----------
 
     def enforce(self, now: datetime | None = None) -> bool:
         """把开关推到该在的位置。返回是否真的改了东西。
@@ -90,7 +139,7 @@ class GardenGate:
         now = now or datetime.now(tz=SERVER_TZ)
         week = week_key(now)
         state = self._load()
-        want_off = state.get("done_week") == week
+        want_on = bool(state.get("enabled", True)) and state.get("done_week") != week
 
         f = _daily_file(self.automas_dir)
         if f is None:
@@ -107,16 +156,14 @@ class GardenGate:
             return False
         tasks = list(cfg.get(KEY) or [])
         has = TASK_NAME in tasks
-
-        if want_off and has:
-            tasks.remove(TASK_NAME)
-        elif not want_off and not has and state:
-            # 周翻篇了：把检查放回去，并清掉记账。
+        if want_on == has:
+            if state.get("done_week") and state["done_week"] != week:
+                state.pop("done_week", None); self._save(state)   # 过期的记账，顺手清掉
+            return False
+        if want_on:
             tasks.append(TASK_NAME)
         else:
-            if not want_off and state:
-                self._save({})          # 过期的记账，顺手清掉
-            return False
+            tasks.remove(TASK_NAME)
 
         cfg[KEY] = tasks
         # 原子替换：copytree 可能正在读这个目录，撕裂的 JSON 会让 OK-WW 起不来。
@@ -132,10 +179,10 @@ class GardenGate:
             tmp.unlink(missing_ok=True)
             return False
         self._last_write_error = ""
-
-        if want_off:
-            log.info("已关闭周常乐园检查（周一 04:00 后自动恢复）")
+        if want_on:
+            if state.get("done_week") and state["done_week"] != week:
+                state.pop("done_week", None); self._save(state)
+            log.info("周常乐园检查已恢复")
         else:
-            self._save({})
-            log.info("新的一周，周常乐园检查已恢复")
+            log.info("已关闭周常乐园检查（%s）", "周一 04:00 后自动恢复" if state.get("enabled", True) else "开关关着")
         return True

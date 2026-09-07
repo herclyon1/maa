@@ -11,6 +11,7 @@ document disagrees, this page wins and the code is a bug.
 | 1 | **Daily report** | after the evening queue finishes, once a day | `📋 08-20 · 全绿 ✅` |
 | 2 | **Interim look** | after a daytime queue finishes | `🔎 08-20 · …（临时查看）` |
 | 3 | **Manual run** | after a hand-triggered queue finishes | `🔎 08-20 · …（手动执行）` |
+| 3b | **Weekly gate** | when one of the three once-a-week items reaches its weekly cap (MAA 剿灭, OK-WW 周常乐园, OK-WW 周本) | `🗓️ 周常` — one line, same shape for all three: `明日方舟 · 剿灭：本周已打满，暂停到下周一（届时恢复为 Annihilation）` / `鸣潮 · 周常乐园：本周已完成，暂停检查到下周一` / `鸣潮 · 周本：本周三次已领满，暂停到下周一`. Monday boot sends ONE `🗓️ 新的一周` with all three status lines. Operator 2026-09-07: the three must share page logic, judgement and notifications. |
 | 3a | **Tacet-field drops** | right after 1/2/3, when OK-WW farmed a Tacet Suppression that day | `🖼️ 无音区产出` — one text line (configured index, zone name, echo sets) then ONE image: the final results page (six drop slots). Group robot only (image messages); each screenshot sent once (`state/tacet-shots-<day>.sent`). Operator 2026-09-07: only the drops page, nothing else. |
 
 They do not consume or cancel each other:

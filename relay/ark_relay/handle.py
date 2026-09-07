@@ -323,16 +323,16 @@ def _handle(eng, rec: RunRecord) -> None:
         # 两种都认。判据和周常乐园一致——只有真跑完那一步才算数。
         if any(("4C声骸" in s or "刷4C" in s) and "已完成" in s for s in steps):
             if msg := eng._weeklyboss.on_success(rec.finished):
-                eng.notifier.send("⚔️ 鸣潮周本", msg)
+                eng.notifier.send("🗓️ 周常", msg)
         if any("周常乐园" in s and "已完成" in s for s in steps) and eng._garden:
             if msg := eng._garden.on_success(rec.finished):
                 # 2026-08-26：这里原本写的是 `notes.append(msg)`，可这个作用域里
                 # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
-                eng.notifier.send("🌳 周常乐园", msg)
+                eng.notifier.send("🗓️ 周常", msg)
         if (rec.raw.get("annihilation") and rec.raw.get("annihilation_done")
                 and eng._annihilation):
             if msg := eng._annihilation.on_success(rec.finished):
-                eng.notifier.send("🗓️ 剿灭", msg)
+                eng.notifier.send("🗓️ 周常", msg)
         # AUTO-MAS 说「这个脚本正常退出了」，不等于它把活干成了。
         # 所以退出之前先按证据核对一遍，没干成的必须出声。
         # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」

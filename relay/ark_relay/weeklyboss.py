@@ -170,7 +170,12 @@ def _mirror(name: str, want: dict) -> None:
 
 
 class WeeklyBossGate:
-    """记住哪一个游戏周的周本已经打完了。默认关闭，要人明确打开。"""
+    """记住哪一个游戏周的周本已经打完了。默认关闭，要人明确打开。
+
+    和剿灭、周常乐园同一套接口：settings / week_line / on_success / enforce / maybe_reopen。
+    """
+
+    NAME = "鸣潮 · 周本"
 
     def __init__(self, state_dir: Path, automas_dir=None):
         self.path = Path(state_dir) / "weeklyboss.json"
@@ -233,12 +238,11 @@ class WeeklyBossGate:
         """「新的一周」通知里周本那一行：这周是什么状态。永远有话说。"""
         v = self.settings(now)
         if not v["开"]:
-            return "鸣潮周本：开关关着，本周不打"
-        what = v["名字"] or f"第 {v['第几个周本']} 个周本"
+            return f"{self.NAME}：开关关着，本周不打"
+        what = v["名字"] or f"第 {v['第几个周本']} 个"
         if v["本周已打"]:
-            return f"鸣潮周本：{what} 本周已领满"
-        return (f"鸣潮周本已重新挂上：{what}，打 {v['打几次']} 次，"
-                f"{v['难度等级']} 级")
+            return f"{self.NAME}：{what} 本周三次已领满，暂停到下周一"
+        return f"{self.NAME}：{what}，打 {v['打几次']} 次，{v['难度等级']} 级，本周还没领满"
 
     def maybe_reopen(self, now: "datetime | None" = None) -> str:
         """开机时调。上周记的「已领满」过了周就清掉，返回 week_line；没过周返回空串。
@@ -276,11 +280,11 @@ class WeeklyBossGate:
             return ""
         if left > 0:
             log.info("周本：本周还剩 %d 次没领，开关继续挂着", left)
-            return f"周本这趟跑完了，但本周还剩 {left} 次没领，下一趟接着打"
+            return f"{self.NAME}：这趟领了，本周还剩 {left} 次没领，下一趟接着打"
         s["done_week"] = week
         self._save(s)
         log.info("本周周本三次已领满，待脚本停下后摘掉（周一 04:00 后恢复）")
-        return "本周周本已领满三次，稍后暂停到下周一"
+        return f"{self.NAME}：本周三次已领满，暂停到下周一"
 
     # ---------- 把开关推到该在的位置 ----------
 

@@ -56,7 +56,7 @@ print("\n[归零才记账]")
 write("周本本周剩余次数原文: [Box(text='本周剩余可收取次数：0/3')]")
 msg = g.on_success(NOW)
 check("记成已打完", g.settings(NOW)["本周已打"], True)
-check("话说得对", "领满三次" in msg, True)
+check("话说得对", "三次已领满" in msg and msg.startswith("鸣潮 · 周本："), True)
 
 print("\n[读不到时宁可不记]")
 STATE2 = TMP / "s2"; STATE2.mkdir()

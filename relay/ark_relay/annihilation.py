@@ -144,11 +144,28 @@ def _write_setting(automas_dir: Path, value: str) -> tuple[bool, str]:
 
 
 class WeeklyGate:
-    """Remembers which game-week's 剿灭 is already done."""
+    """Remembers which game-week's 剿灭 is already done.
+
+    和周常乐园、周本同一套接口：settings / week_line / on_success / enforce / maybe_reopen。
+    """
+
+    NAME = "明日方舟 · 剿灭"
 
     def __init__(self, state_dir: Path, automas_dir: Path | None):
         self.path = Path(state_dir) / "annihilation.json"
         self.automas_dir = automas_dir
+
+    def settings(self, now: datetime | None = None) -> dict:
+        s = self._load()
+        week = week_key(now or datetime.now(tz=SERVER_TZ))
+        return {"本周已完成": s.get("done_week") == week,
+                "当前": read_setting(self.automas_dir) if self.automas_dir else ""}
+
+    def week_line(self, now: datetime | None = None) -> str:
+        v = self.settings(now)
+        if v["本周已完成"]:
+            return f"{self.NAME}：本周已打满，暂停到下周一"
+        return f"{self.NAME}：本周还没打满，开关开着（{v['当前'] or '读不到'}）"
 
     def _load(self) -> dict:
         try:
@@ -186,7 +203,7 @@ class WeeklyGate:
         # switch again after it has been wiped back open.
         self._save({"done_week": week, "restore_to": current or DEFAULT_WHEN_UNKNOWN})
         log.info("本周剿灭已完成，待脚本停下后关闭（周一 04:00 后恢复为 %s）", current)
-        return f"本周剿灭已完成，稍后暂停到下周一（届时恢复为 {current}）"
+        return f"{self.NAME}：本周已打满，暂停到下周一（届时恢复为 {current}）"
 
     def enforce(self, now: datetime | None = None) -> bool:
         """Once this week's pass is done, push the switch back to Close.
@@ -246,4 +263,4 @@ class WeeklyGate:
             return ""
         self._save({})
         log.info("新的一周，剿灭已恢复为 %s", restore)
-        return f"新的一周，剿灭已重新开启（{restore}）"
+        return f"{self.NAME}：新的一周，已重新开启（{restore}）"

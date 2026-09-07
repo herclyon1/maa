@@ -846,24 +846,33 @@ def _stage_gameupdate(cfg, notifier, log) -> None:
 
 
 def _stage_annihilation(engine, notifier, log) -> None:
-    """新的一周恢复剿灭和鸣潮周本，并在开机时校正一次开关。"""
-    # A new game-week means last week's 剿灭 no longer counts.
-    lines: list[str] = []
-    try:
-        if msg := engine._annihilation.maybe_reopen():  # noqa: SLF001
-            lines.append(msg)
-    except Exception:  # noqa: BLE001
-        log.exception("剿灭周期检查出错，跳过")
-    # 鸣潮周本和剿灭一个作息。用户 2026-09-07：这条通知要带上周本。
-    try:
-        if boss := engine._weeklyboss.maybe_reopen():  # noqa: SLF001
-            engine._weeklyboss.enforce()   # 先真挂上，再说「已挂上」  # noqa: SLF001
-            lines.append(boss)
-        elif lines:
-            lines.append(engine._weeklyboss.week_line())  # noqa: SLF001
-    except Exception:  # noqa: BLE001
-        log.exception("周本周期检查出错，跳过")
-    if lines:
+    """新的一周恢复三个「一周一次」的开关，并在开机时校正一次。
+
+    剿灭、周常乐园、周本一套逻辑、一条通知（用户 2026-09-07：「逻辑上一致的
+    东西就应该强统一」）。任一个过了周，就把三个的本周状态一起发出去。
+    """
+    gates = [("剿灭", engine._annihilation), ("周常乐园", engine._garden),  # noqa: SLF001
+             ("周本", engine._weeklyboss)]  # noqa: SLF001
+    rolled: dict[str, str] = {}
+    for name, gate in gates:
+        if gate is None:
+            continue
+        try:
+            if line := gate.maybe_reopen():
+                if hasattr(gate, "enforce") and name != "剿灭":
+                    gate.enforce()      # 先真挂回去，再说「已恢复」
+                rolled[name] = line
+        except Exception:  # noqa: BLE001
+            log.exception("%s 周期检查出错，跳过", name)
+    if rolled:
+        lines = []
+        for name, gate in gates:
+            if gate is None:
+                continue
+            try:
+                lines.append(rolled.get(name) or gate.week_line())
+            except Exception:  # noqa: BLE001
+                log.exception("%s 状态读不出来", name)
         notifier.send("🗓️ 新的一周", "\n".join(lines))
 
     # Assert the annihilation switch once at startup rather than leaving it
