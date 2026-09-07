@@ -30,13 +30,12 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from datetime import datetime
 from pathlib import Path
 
 from .annihilation import week_key          # 周界口径必须和剿灭完全一致
 from .statestore import StateStore
-from .config import SERVER_TZ, master_config_dir
+from .config import SERVER_TZ, master_config_dir, atomic_write_text
 
 log = logging.getLogger("ark.garden")
 
@@ -153,16 +152,12 @@ class GardenGate:
 
         cfg[KEY] = tasks
         # 原子替换：copytree 可能正在读这个目录，撕裂的 JSON 会让 OK-WW 起不来。
-        tmp = f.with_suffix(".json.tmp")
         try:
-            tmp.write_text(json.dumps(cfg, ensure_ascii=False, indent=2),
-                           encoding="utf-8")
-            os.replace(tmp, f)
+            atomic_write_text(f, json.dumps(cfg, ensure_ascii=False, indent=2))
         except OSError as exc:
             if str(exc) != self._last_write_error:
                 log.warning("周常乐园开关写不进去：%s", exc)
                 self._last_write_error = str(exc)
-            tmp.unlink(missing_ok=True)
             return False
         self._last_write_error = ""
         if want_on:

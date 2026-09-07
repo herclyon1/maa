@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from .config import atomic_write_text
 import subprocess
 import time
 from pathlib import Path
@@ -81,9 +82,7 @@ def _okww_autostart(okww_dir: Path, value: bool) -> bool | None:
         return was
     data[_OKWW_AUTOSTART_KEY] = value
     try:
-        tmp = cfg.with_suffix(cfg.suffix + ".tmp")
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=4), encoding="utf-8")
-        tmp.replace(cfg)
+        atomic_write_text(cfg, json.dumps(data, ensure_ascii=False, indent=4))
     except OSError:
         log.warning("预更新：写不回 OK-WW 的 Basic Options，跳过 OK-WW", exc_info=True)
         return None

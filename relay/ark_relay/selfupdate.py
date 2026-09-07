@@ -34,14 +34,13 @@ import hashlib
 import http.client
 import json
 import logging
-import os
 import time
 import urllib.error
 import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-from .config import SERVER_TZ
+from .config import SERVER_TZ, atomic_write_bytes
 
 log = logging.getLogger("ark.update")
 
@@ -198,20 +197,11 @@ def _sha1(data: bytes) -> str:
 
 
 def _atomic_write(target: Path, data: bytes) -> None:
-    """Temp file + os.replace, so a power cut never leaves half a .py behind.
+    """Temp file + os.replace + fsync，见 config.atomic_write_bytes。
 
-    This machine powers itself off twice a day, and a truncated .py would make
-    the relay fail to start on the next boot with a SyntaxError - the kind of
-    death nobody would notice (the SCM guarding it would just keep restarting a
-    process that is bound to fail). The config side already does this; the same
-    reasoning applies to code.
+    这里保留一层薄封装只是因为调用点多；实现只有一份，2026-09-08 合的。
     """
-    tmp = target.with_suffix(target.suffix + ".tmp")
-    with tmp.open("wb") as f:
-        f.write(data)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, target)
+    atomic_write_bytes(target, data)
 
 
 def _safe_target(root: Path, rel: str) -> Path | None:

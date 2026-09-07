@@ -44,12 +44,27 @@ def atomic_write_text(path: Path, text: str, newline: str | None = None) -> None
     QueueConfig.json fails "safe" into a machine that schedules nothing, with
     only a .bak sitting next to the corpse.
     """
+    atomic_write_bytes(path, text.encode("utf-8") if newline is None
+                       else text.replace("\n", newline).encode("utf-8"))
+
+
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    """同上，写字节。`.ps1` 要带 BOM、`.py` 是代码，都走这里。
+
+    **fsync 不能省。** 2026-09-08 数过：这个仓库里有 5 处手抄的「临时文件 + replace」
+    全都漏了 fsync——replace 本身是原子的，但没 fsync 的话数据可能还在页缓存里，
+    这台机器每天硬断电两次，断在那个窗口就是一个内容为空的新文件。
+    """
     tmp = path.with_suffix(path.suffix + ".tmp")
-    with tmp.open("w", encoding="utf-8", newline=newline) as f:
-        f.write(text)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, path)
+    try:
+        with tmp.open("wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except OSError:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 # Every env lookup below MUST be lazy (default_factory). Dataclass field

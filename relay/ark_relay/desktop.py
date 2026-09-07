@@ -26,7 +26,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
-from .config import atomic_write_text
+from .config import atomic_write_text, atomic_write_bytes
 
 log = logging.getLogger("ark.desktop")
 
@@ -330,9 +330,7 @@ class Desktop:
         if not (self.agent.exists() and stamp.exists() and stamp.read_text().strip() == want):
             # 必须带 BOM：Windows PowerShell 5.1 读没有 BOM 的 .ps1 按 ANSI（GBK）
             # 解析，脚本里的「」会把字符串撑破，整段解析失败（2026-09-02 实测）。
-            tmp = self.agent.with_suffix(".tmp")
-            tmp.write_bytes(b"\xef\xbb\xbf" + AGENT_PS.encode("utf-8"))
-            tmp.replace(self.agent)
+            atomic_write_bytes(self.agent, b"\xef\xbb\xbf" + AGENT_PS.encode("utf-8"))
             atomic_write_text(stamp, want)
 
     @staticmethod

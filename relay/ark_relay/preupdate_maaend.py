@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from .config import atomic_write_text
 import subprocess
 import time
 from pathlib import Path
@@ -44,9 +45,7 @@ def _maaend_autostart_instance(maaend_dir: Path, value: str) -> str | None:
         return was
     settings["autoStartInstanceId"] = value
     try:
-        tmp = cfg.with_suffix(cfg.suffix + ".tmp")
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(cfg)
+        atomic_write_text(cfg, json.dumps(data, ensure_ascii=False, indent=2))
     except OSError:
         log.warning("预更新：写不回 MaaEnd 的 settings，跳过 MaaEnd", exc_info=True)
         return None
