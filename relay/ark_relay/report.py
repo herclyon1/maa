@@ -280,8 +280,9 @@ def _attach_tacet_shots(eng, day: str) -> list[str]:
         if not eng.notifier.send_group_image(p):
             done.append(p.name)
     if done:
+        # 更早拍的那几张也记成「已处理」：下次日报只发这之后新拍的。
         try:
-            sent_file.write_text("\n".join(sorted(already | set(done))), encoding="utf-8")
+            sent_file.write_text("\n".join(sorted(already | {p.name for p in cands})), encoding="utf-8")
         except OSError:
             log.warning("无音区截图的记账写不下来", exc_info=True)
         log.info("🖼️ 无音区截图已发 %d 张：%s", len(done), "、".join(done))
