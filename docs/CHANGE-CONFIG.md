@@ -67,7 +67,7 @@ scripts/mac/config-check.py --diff      # 只显示变了的，和改之前对�
 | 关卡序号 | **从 1 起算**,不是从 0。826 就死在这里 |
 | 理智药 | 有两处:常规的和活动关的(`活动关理智药`)。改错一处等于没改 |
 | AT-4 之类的活动关 | 活动一结束这个关卡就不存在了,固定关指着它会让之后每趟都失败。要么活动结束前改回去,要么打开「优先刷取活动关」 |
-| `Info.IfQuickConfig` | 只有它为 true 时 AUTO-MAS 才会重写下游配置。这台机器是 true |
+| `Info.IfQuickConfig` | 只有它为 true 时 AUTO-MAS 才会重写下游配置。**这台机器：MaaEnd / OK-WW 都是 false（2026-08-28 起），改 MAS 侧不生效，要改母本；明日方舟没有这个开关，走 MAS 是对的。**查生效值跑 `scripts/mac/lib/effective_config.py` |
 | MaaEnd 理智任务 | 权威在 AUTO-MAS 的 `ScriptConfig`,不是 MaaEnd 自己的 `mxu-MaaEnd.json`——后者会被覆盖 |
 | 剿灭 `Close` | 既是「本周已完成」也是「被人关掉了」。后者没人会自动打开,等于每周少一份奖励 |
 

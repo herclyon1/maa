@@ -56,6 +56,7 @@ ssh "$USER_AT" "pwsh -NoProfile -EncodedCommand $b64"
 * 改配置：`POST /api/scripts/user/update {"scriptId","userId","data"}`
 * 队列：`POST /api/queue/update {"queueId","data"}`
 * 起停：`POST /api/dispatch/start {"taskId","mode"}` / `/api/dispatch/stop {"taskId"}`
+  —— **手动派发一律走 `scripts/mac/run-one.sh MAA|MaaEnd|OK-WW`**，它内含忙闲闸门。裸调 `/api/dispatch/start` 会和 AUTO-MAS 自己的整队重试打架——2026-09-01 上午就是这么弄成「MAA 重复吃药、三个游戏同时在线」，最后只能拔电重启。
 * 字段定义看 `GET /openapi.json` 的 `components.schemas`
 
 **`ValueError: 配置已锁定, 无法修改`**：有任务在跑时配置只读。

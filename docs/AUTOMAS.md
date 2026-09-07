@@ -88,7 +88,9 @@ MaaEnd 和 OK-WW 是端游，`EmulatorId` 都是 `-`，**这是对的，不是�
 
 ### 调度中心
 
-运行时面板，没有要配的东西。`/api/dispatch/start` 手动起一个任务，
+运行时面板，没有要配的东西。**手动派发一律走 `scripts/mac/run-one.sh MAA|MaaEnd|OK-WW`**，它内含忙闲闸门。裸调 `/api/dispatch/start` 会和 AUTO-MAS 自己的整队重试打架——2026-09-01 上午就是这么弄成「MAA 重复吃药、三个游戏同时在线」，最后只能拔电重启。
+
+`/api/dispatch/start` 手动起一个任务，
 `/api/dispatch/stop` 中止，`/api/dispatch/get|set/power` 读写电源标志
 （当前 `NoAction`，与队列一致）。
 
@@ -165,7 +167,7 @@ OK-WW 只有**次数**概念，没有"刷到库存够 N 就停"：
 AUTO-MAS 为每个脚本存一份**自己的配置母本**，每次跑之前用母本覆盖程序自己的副本。
 **改程序目录里那份是白改的。**
 
-OK-WW 这边由用户配置的 `Info.IfQuickConfig`（当前 `true`）控制，
+OK-WW 这边由用户配置的 `Info.IfQuickConfig`（**当前 `false`，2026-08-28 起**）控制，
 AUTO-MAS 接管的范围是 `DailyTask` / `MultiAccountDailyTask` 的高频字段。
 
 | 字段 | AUTO-MAS 母本（`wuwa` 用户 `Task`） | OK-WW 副本（`configs/DailyTask.json`） |

@@ -483,12 +483,19 @@ The file holds a **moment**, `YYYY-MM-DD HH:MM` on the server clock, and the
 mode releases **ten minutes before the next scheduled power-on** - not at
 midnight.
 
+**不要直接写状态文件。** 2026-09-08 起这些开关都住在 `state/state.json` 里，
+而中继的状态存取有内存缓存（每个进程只扫一次旧文件），从外面写文件它读不到——
+你会以为调试模式开上了，其实没有。走中继自己的写入路径：
+
 ```bash
-# what "leave it alone tonight" means: through to just before the next cycle
-ssh $ARK_HOST 'powershell -NoProfile -Command "Set-Content C:\ProgramData\ark-relay\state\debug-until.txt -Value \"2026-08-23 08:30\" -NoNewline"'
-# release early
-ssh $ARK_HOST 'del C:\ProgramData\ark-relay\state\debug-until.txt'
+# 开：跳过下一次开机周期（写的是 state.json 的 modes.debug_until）
+scripts/mac/winps.sh '& "D:\ark\automas\environment\python\python.exe" -c "import sys; sys.path.insert(0, r\"C:\ProgramData\ark-relay\"); from pathlib import Path; from ark_relay.modes import set_debug; print(set_debug(Path(r\"C:\ProgramData\ark-relay\state\"), cycles=1)[1])"'
+# 关：同一个函数，off=True
+scripts/mac/winps.sh '& "D:\ark\automas\environment\python\python.exe" -c "import sys; sys.path.insert(0, r\"C:\ProgramData\ark-relay\"); from pathlib import Path; from ark_relay.modes import set_debug; print(set_debug(Path(r\"C:\ProgramData\ark-relay\state\"), off=True)[1])"'
 ```
+
+平时更省事的是手机页上的开关，或者往 inbox 里放一条 `debug_mode` 指令。
+状态都长什么样见 [状态模型.md](状态模型.md)。
 
 `modes.set_debug(state_dir, cycles=1)` computes that moment. A power-on less
 than 150 minutes away counts as the cycle already under way and is skipped -
@@ -515,9 +522,12 @@ forty minutes later, in the middle of an AUTO-MAS update.
 
 ### Skip mode - one queue sits out one occasion
 
+**同样不要直接写文件**（2026-09-08 起「今天跳过某队列」记在 `state.json` 的
+`queues.skip_day:<日期>`）。走手机页，或者往 inbox 里放一条 `skip_today`
+指令；要在命令行做就调中继自己的函数：
+
 ```bash
-# server-time date in the filename, queue name in the body
-echo -n 晚班 > flag && scp flag $ARK_HOST:'C:/ProgramData/ark-relay/state/skip-2026-08-22.flag'
+scripts/mac/winps.sh '& "D:\ark\automas\environment\python\python.exe" -c "import os, sys; os.environ[\"ARK_STATE_DIR\"]=r\"C:\ProgramData\ark-relay\state\"; sys.path.insert(0, r\"C:\ProgramData\ark-relay\"); from ark_relay.commands import apply_command; print(apply_command({\"action\": \"skip_today\", \"queue\": \"晚班\"}))"'
 ```
 
 The first relay tick that sees the flag disables that queue in AUTO-MAS and

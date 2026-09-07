@@ -67,13 +67,17 @@ JSON patch.
 
 | Action | Reversible | Needs confirmation |
 |---|---|---|
-| `run_now` | - | **not implemented; refuses explicitly** (an older version wrote a marker nothing consumed and reported success) |
+| `run_now` | - | **会真的开跑一趟**：调 `/api/dispatch/start` 派发那条队列。手动派发的唯一正门是 `scripts/mac/run-one.sh`（内含忙闲闸门），不要裸调 dispatch |
 | `skip_today` | yes | no - disables that queue for the day and restores it afterwards. Takes `"day":"YYYY-MM-DD"`; the inbox is only read at boot, so a stale one is refused rather than skipping the wrong day |
 | `debug_mode` | yes, self-expiring | no - `days:N` or `off:true`; while active: no shutdown, no missed-run alarms |
 | `set_stage` | no, writes config | **yes** |
 | `set_medicine` | no, writes config | **yes** |
 | `set_wait_time` | no, writes config | **yes** - 60-600 only, see [CONFIG.md](../docs/CONFIG.md) |
 | `toggle_task` | no, writes config | **yes** - not implemented; refuses explicitly |
+| `skip_shutdown` | yes | no - **一次性、不带时效**：吃掉下一次真正要执行的关机，用完即失效。开了不取消会一直等到下一趟队列跑完才关，机器可能白开一夜。桌面 `中继关机开关.bat` 和手机页按的都是它 |
+| `weekly_boss` | yes | no - 鸣潮周本「打第几个」。次数（3）和难度（90 级）是游戏规则，钉死在中继里不给改 |
+| `set_config` | no, writes config | **yes** - 改 MAS 侧用户配置，**只改已存在的字段**，凭空造的会被拒 |
+| `set_master` | no, writes config | **yes** - 改脚本自己的母本配置（MaaEnd / OK-WW / MAA）。这两个脚本的快速配置是关的，MAS 侧改了不生效，所以手机页那两段走的是这条 |
 
 `sanity_plan`, `maaend_option` and `queue` are handled in `inbox.py` before the
 whitelist, as all-or-nothing batches, because their fields depend on each other.

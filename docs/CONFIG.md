@@ -102,7 +102,9 @@ for real: someone set Endfield's sanity task to weapon growth in MaaEnd's own UI
 on 2026-08-16, and the relay wrote to the same doomed copy that night.
 
 The one exception is `Info.IfQuickConfig`. The rewrite only happens when that
-user has it true; this machine does.
+user has it true.
+
+**这台机器的实况（2026-08-28 起）：MaaEnd 和 OK-WW 的 `IfQuickConfig` 都是 `false`，MAS 侧改它们的字段一律不下发（`app/task/Okww/AutoProxy.py:320`、`MaaEnd/AutoProxy.py:537` 直接 return），真正生效的是各自的母本配置。明日方舟没有这个开关，它每次派发都会被写进 gui.new.json，走 MAS 是对的。**查真正生效的值一律跑 `scripts/mac/winrun.sh --py scripts/mac/lib/effective_config.py`。
 
 ## AUTO-MAS
 
@@ -509,6 +511,8 @@ sc.exe failure sshd reset= 86400 actions= restart/5000/restart/10000/restart/300
 | `ARK_HISTORY_DIR` | AUTO-MAS's `history` directory (required) |
 | `ARK_AUTOMAS_DIR` | AUTO-MAS root - schedule reading and config edits |
 | `ARK_MAAEND_DIR` | MaaEnd root |
+| `ARK_OKWW_DIR` | OK-WW root（`D:\ark\okww`）。周本的母本／副本配置和它自己的日志都从这里推出来 |
+| `ARK_OKWW_LOG` | 直接指定 OK-WW 的日志文件。不设就取 `ARK_OKWW_DIR` 下 `data/apps/ok-ww/working/logs` 里最新的那个 |
 | `ARK_MAS_PORT` | AUTO-MAS backend port, default `36163`. The pre-update asks it over HTTP on localhost rather than launching anything. |
 | `ARK_STATE_DIR` | relay state, default `./ark-state` |
 | `ARK_LAST_RUN_AFTER` | fallback for the day's last run time, default `21:30`; the real cutoff comes from QueueConfig |

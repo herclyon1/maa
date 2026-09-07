@@ -18,7 +18,8 @@
 AUTO-MAS 那条路走不通:`OkwwTaskIndexValidator` 只允许 `[1, 7]`
 (日常 / 多账号日常),指不到 `FarmEchoTask`。所以只能挂附加任务。
 
-单独跑一次:`/api/dispatch/start` 传 `{"taskId": <OK-WW 脚本 id>,
+单独跑一次:走 `scripts/mac/run-one.sh OK-WW`。它底下调的是
+`/api/dispatch/start` 传 `{"taskId": <OK-WW 脚本 id>,
 "mode": "AutoProxy"}`。**mode 只接受 `AutoProxy` / `ScriptConfig` / `Update`**
 (见 `app/models/schema.py` 的 `TaskCreateIn`),传别的一律 422。
 
