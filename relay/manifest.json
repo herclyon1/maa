@@ -1,7 +1,7 @@
 {
- "version": 20260907022828,
+ "version": 20260907023328,
  "files": {
-  "RELEASE-NOTES.md": "d31c091666c53b4ad72b29051d66c67b415916cc",
+  "RELEASE-NOTES.md": "11c55abd9e41a8f3104aeed8a99e7194303fcbb7",
   "ark_relay/__init__.py": "297e0c5d45a732b40a24be0bfd40f07b174d2a9a",
   "ark_relay/__main__.py": "a1c292210b8a315a205d5c45d42296b892c8f7a8",
   "ark_relay/annihilation.py": "72666453ea441dd4ac6f3675024f4d3b927bccde",
@@ -29,7 +29,7 @@
   "ark_relay/okww_patch.py": "a6922852dc3ef8d306e07aa19e37d3c5ca169a08",
   "ark_relay/okww_patches/__init__.py": "31ab5f0e16d1e9d5233e2a8ce0ecb7d2b78fcaaf",
   "ark_relay/okww_patches/claim.py": "2438cdfd1d3fe4c36261fd103195d04a9286c3ef",
-  "ark_relay/okww_patches/core.py": "bc78d7c17fd03a415a11077e38f93fe1c49e14f9",
+  "ark_relay/okww_patches/core.py": "37d095fe4ca2627bc982a4436a5094e962e25fee",
   "ark_relay/okww_patches/count.py": "6478c59ee4f2f6e8b1b510a7c48cf62e95aed6be",
   "ark_relay/okww_patches/domain.py": "a7e5822f3783b444e48fdebddad34a2cfa8d72e1",
   "ark_relay/okww_patches/farmerr.py": "c8f54e4f686a37a154c0ed7e2497c1dac0c4b574",
@@ -61,6 +61,6 @@
   "ark_relay/weeklyboss.py": "e43ff00cb36020cb619d0fc2301a4ad1b089ab79",
   "ark_relay/wuwa_tacet.py": "039ad08fb1e159551b794607fa05c942d4623677",
   "run.py": "0db6cde8fb8119323d991ec512d1b2b43e869b93",
-  "service.py": "ef881d1cda188bec5aad3f2aa319b46f14e65095"
+  "service.py": "f95c02602ffa80f4c52bf5ba90d135ae81b686ab"
  }
 }
