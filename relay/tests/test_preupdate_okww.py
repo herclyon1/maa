@@ -72,8 +72,7 @@ def main(root: Path) -> int:
           basic(d)["Auto Start Game When App Starts"], True)
     check("目录为 None 时也安全", preupdate.run_okww(None), "")
 
-    src = (Path(__file__).resolve().parents[1] / "ark_relay"
-           / "preupdate.py").read_text(encoding="utf-8")
+    src = "".join(q.read_text(encoding="utf-8") for q in sorted((Path(__file__).resolve().parents[1] / "ark_relay").glob("preupdate*.py")))  # 预更新拆成了五个文件，一起看
     # 2026-08-25：控制台令牌拿不到时退回 session 0，OK-WW 的更新流程根本不跑，
     # 而未变的版本文件被读成"无需更新"——那天 v3.6.5 已经发布十四小时。
     # 拿不到桌面就必须拒绝启动，并把这件事报上去。

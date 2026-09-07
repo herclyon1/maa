@@ -17,6 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import preupdate  # noqa: E402
+from ark_relay import preupdate_maaend as PM  # noqa: E402  # 实现在这个模块里，猴子补丁要打在它身上
 
 fails = []
 def check(label, got, want):
@@ -33,8 +34,8 @@ POST_UPDATE_LOG = (
     f"2026-09-07 08:47:05 INFO  [App] 检查更新: MaaEnd, 当前版本: {NEW}, 频道: beta\n")
 
 # 不真的拉起 MaaEnd
-preupdate._spawn_interactive = lambda *a, **k: True
-preupdate._close = lambda exe: None
+PM._spawn_interactive = lambda *a, **k: True
+PM._close = lambda exe: None
 
 
 def run_case(label, *, file_ver, prev_log, kept, logs):
@@ -58,7 +59,7 @@ def run_case(label, *, file_ver, prev_log, kept, logs):
         f = d / "debug" / name
         f.write_text(text, encoding="utf-8")
         return f
-    preupdate._newest_log = newest
+    PM._newest_log = newest
     got = preupdate._run_maaend(d, d / "MaaEnd.exe", 6, [], state)
     return got, state
 

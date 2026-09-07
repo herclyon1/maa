@@ -36,7 +36,7 @@ if okww_patch.ensure_if_updated(state, None):
     fails.append("没有目录时应安静返回空")
 
 # 预更新：不许在 30 秒内就下「查过了」的结论
-src = (pathlib.Path(__file__).resolve().parents[1] / "ark_relay" / "preupdate.py").read_text(encoding="utf-8")
+src = "".join(q.read_text(encoding="utf-8") for q in sorted((pathlib.Path(__file__).resolve().parents[1] / "ark_relay").glob("preupdate*.py")))  # 预更新拆成了五个文件，一起看
 if preupdate.OKWW_MIN_WAIT_SECONDS < 40:
     fails.append("最少等待要覆盖 OK-WW 30 秒后的那次检查")
 if "time.monotonic() - launched >= OKWW_MIN_WAIT_SECONDS" not in src:

@@ -11,7 +11,7 @@ import ast
 import sys
 from pathlib import Path
 
-SRC = Path(__file__).resolve().parents[1] / "ark_relay" / "preupdate.py"
+SRC_FILES = sorted((Path(__file__).resolve().parents[1] / "ark_relay").glob("preupdate*.py"))  # 拆成了五个文件
 # The functions that actually start a program. run() delegates its body to
 # _run_maaend so the auto-run disarm can wrap it in a try/finally.
 LAUNCHERS = {"_run_maaend", "run_maa"}
@@ -41,7 +41,9 @@ def calls_named(fn, name):
 
 
 def main() -> int:
-    tree = ast.parse(SRC.read_text(encoding="utf-8"))
+    tree = ast.parse("")
+    for f in SRC_FILES:
+        tree.body += ast.parse(f.read_text(encoding="utf-8")).body
     fns = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
     fns_node = fns
 
@@ -63,7 +65,7 @@ def main() -> int:
             check(f"{name} 不应直接 Popen", False, f"第 {lines} 行")
 
     # The desktop is the whole point; losing this string re-breaks it silently.
-    src = SRC.read_text(encoding="utf-8")
+    src = "".join(f.read_text(encoding="utf-8") for f in SRC_FILES)
     check("指定了 winsta0\\default 桌面", "winsta0" in src)
     # MAA must never be opened in a way that lets it start a round at boot.
     # --skip-startup-auto-run is MAA's own argument for that; losing it here
