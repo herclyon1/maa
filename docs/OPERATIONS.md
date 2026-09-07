@@ -26,6 +26,19 @@ before: "the Mi Home timers are not set" survived here for six days while the
 morning round ran every one of them. Anything inherited rather than checked is
 a candidate for the same failure.
 
+## 游戏机桌面上的按钮
+
+那台机器的桌面上有一个 `中继关机开关.bat`（源码 `scripts/win/skip-shutdown.bat`）。
+它管的是「下一次跑完别关机」——一次性、不带时效，用完即失效，开了不取消机器会
+一直等到下一趟队列跑完才关。它调的是中继自己的 `ark_relay.modes.set_skip_shutdown`，
+**不许改成直接写状态文件**：2026-09-08 状态收口后旧写法静默失效过一次，按下去
+界面显示「不关机」、机器照常关。
+
+手动派发走 `scripts/mac/run-one.sh`，它底下是机器上的 `scripts/win/dispatch_guard.py`
+（派发前查忙闲、停的时候按 接口→等→残留才杀→复查 的顺序）。**禁裸调
+`/api/dispatch/start`、禁 `taskkill`**，2026-09-01 上午那次拔电重启就是这么来的。
+
+
 ## Map
 
 ```

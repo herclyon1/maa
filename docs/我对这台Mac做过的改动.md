@@ -1,5 +1,9 @@
 # 我对这台 Mac 和 ins 做过的改动
 
+> 还原点放在 `~/Claude/mac-backups/`，**不在仓库里**。
+> 2026-09-08 移出去的：这个仓库是公开的，个人电脑的 Dock 配置和启动器备份
+> 不该挂在上面（当初是 `git add -A` 顺手扫进来的，跟着不相干的功能提交了）。
+
 > 由 Claude 维护。**每次改动系统级设置都要更新这份文件。**
 > 最后更新：2026-09-08
 
@@ -67,9 +71,9 @@ sudo pfctl -a 'com.apple/hotspot-bypass' -F all
 | Dock 固定程序 | 21 个出厂默认 | **8 个**（按 knowledgeC 实际使用时长选） | 见下方备份 |
 | Tailscale 接收子网路由 | 关 | **关**（中途开过，已关回） | — |
 
-**Dock 备份**：`~/Claude/maa-automation/.dock-backup-20260905-025845.plist`
+**Dock 备份**：`~/Claude/mac-backups/.dock-backup-20260905-025845.plist`
 ```bash
-cp ~/Claude/maa-automation/.dock-backup-20260905-025845.plist ~/Library/Preferences/com.apple.dock.plist && killall Dock
+cp ~/Claude/mac-backups/.dock-backup-20260905-025845.plist ~/Library/Preferences/com.apple.dock.plist && killall Dock
 ```
 
 **当前 Dock**：Claude / Chrome / 鸣潮 / WeChat / 明日方舟 / System Settings / Terminal / NeteaseMusic
@@ -91,7 +95,7 @@ cp ~/Claude/maa-automation/.dock-backup-20260905-025845.plist ~/Library/Preferen
 ```bash
 ~/Claude/maa-automation/scripts/mac/make-stream-apps.sh
 ```
-原二进制备份：`~/Claude/maa-automation/.launcher-backup-20260830-232059/`
+原二进制备份：`~/Claude/mac-backups/.launcher-backup-20260830-232059/`
 
 ---
 

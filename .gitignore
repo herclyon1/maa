@@ -11,3 +11,8 @@
 !relay/tests/replay/**/*.log
 __pycache__/
 .DS_Store
+
+# 个人电脑的备份和还原点：放 ~/Claude/mac-backups/，别再被 git add -A 扫进公开仓库
+.dock-backup-*.plist
+.launcher-backup-*/
+*.orig
