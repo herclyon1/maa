@@ -61,11 +61,10 @@ _maaend / _maa / _automas / _okww。这里保留公共的记账函数，并把�
 """
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from pathlib import Path
 
-from .config import atomic_write_text, SERVER_TZ
+from .config import SERVER_TZ
 
 from .preupdate_common import (  # noqa: F401
     log,
@@ -233,10 +232,9 @@ def should_run(state_dir: "Path | None", now: datetime,
     """
     if not state_dir:
         return True
-    f = Path(state_dir) / "preupdate.json"
-    try:
-        st = json.loads(f.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    from .statestore import StateStore  # noqa: PLC0415
+    st = StateStore(state_dir).get("updates", "preupdate")
+    if not isinstance(st, dict):
         return True
     if st.get("day") != now.strftime("%Y-%m-%d"):
         return True
@@ -252,10 +250,11 @@ def should_run(state_dir: "Path | None", now: datetime,
 def mark_run(state_dir: "Path | None", now: datetime, *, clean: bool) -> None:
     if not state_dir:
         return
+    from .statestore import StateStore  # noqa: PLC0415
     try:
-        atomic_write_text(Path(state_dir) / "preupdate.json", json.dumps(
-            {"day": now.strftime("%Y-%m-%d"), "at": now.isoformat(),
-             "clean": bool(clean)}, ensure_ascii=False))
+        StateStore(state_dir).set("updates", "preupdate",
+                                  {"day": now.strftime("%Y-%m-%d"), "at": now.isoformat(),
+                                   "clean": bool(clean)})
     except OSError:
         log.warning("预更新的记账写不下来，下次重启可能会重跑一遍", exc_info=True)
 

@@ -381,20 +381,19 @@ def remote_ak_version(fetch=None) -> str:
 
 
 
-def _record_path(state_dir: Path) -> Path:
-    return Path(state_dir) / "arknights-client.json"
+def _store(state_dir):
+    from .statestore import StateStore  # noqa: PLC4015 - 避免导入环
+    return StateStore(state_dir)
 
 
 def recorded_ak_version(state_dir: Path) -> str:
-    try:
-        return str(json.loads(_record_path(state_dir).read_text(encoding="utf-8")).get("version") or "")
-    except (OSError, ValueError):
-        return ""
+    d = _store(state_dir).get("updates", "arknights_client") or {}
+    return str(d.get("version") or "") if isinstance(d, dict) else ""
 
 
 def record_ak_version(state_dir: Path, version: str) -> None:
-    atomic_write_text(_record_path(state_dir), json.dumps(
-        {"version": version, "at": datetime.now(tz=SERVER_TZ).isoformat()}, ensure_ascii=False))
+    _store(state_dir).set("updates", "arknights_client",
+                          {"version": version, "at": datetime.now(tz=SERVER_TZ).isoformat()})
 
 
 def download(url: str, dest: Path, *, timeout: float = 1500) -> bool:
@@ -504,25 +503,18 @@ def update_arknights(state_dir: Path, ldconsole: Path, idx: int, *,
 
 # ─────────────────────────── 调度 ───────────────────────────
 
-def _stamp(state_dir: Path) -> Path:
-    return Path(state_dir) / "gameupdate.json"
-
-
 def should_run(state_dir: Path | None, now: datetime, *, boot_id: str) -> bool:
     """每次开机跑一遍；同一次开机不重跑（部署重启服务不算新开机）。"""
     if not state_dir:
         return False
-    try:
-        d = json.loads(_stamp(state_dir).read_text(encoding="utf-8"))
-        return d.get("boot") != boot_id
-    except (OSError, ValueError):
-        return True
+    d = _store(state_dir).get("updates", "gameupdate")
+    return not isinstance(d, dict) or d.get("boot") != boot_id
 
 
 def mark_run(state_dir: Path | None, now: datetime, *, boot_id: str) -> None:
     if state_dir:
-        atomic_write_text(_stamp(state_dir), json.dumps(
-            {"boot": boot_id, "at": now.isoformat()}, ensure_ascii=False))
+        _store(state_dir).set("updates", "gameupdate",
+                              {"boot": boot_id, "at": now.isoformat()})
 
 
 # ─────────────────────────── 登记：哪个游戏要更新 ───────────────────────────
@@ -530,17 +522,10 @@ def mark_run(state_dir: Path | None, now: datetime, *, boot_id: str) -> None:
 # 直接先跳过这个游戏，等所有其他游戏跑完之后，再单独拉这个游戏进行更新，
 # 然后再去重跑。」所以：开机只登记，队列跑完引擎再来做（run_deferred）。
 
-def _pending_path(state_dir: Path) -> Path:
-    return Path(state_dir) / "gameupdate-pending.json"
-
-
 def pending(state_dir: Path) -> dict[str, str]:
     """{游戏: 为什么}。"""
-    try:
-        d = json.loads(_pending_path(state_dir).read_text(encoding="utf-8"))
-        return {str(k): str(v) for k, v in (d or {}).items()}
-    except (OSError, ValueError, AttributeError):
-        return {}
+    d = _store(state_dir).get("updates", "gameupdate_pending")
+    return {str(k): str(v) for k, v in d.items()} if isinstance(d, dict) else {}
 
 
 def mark_pending(state_dir: Path, game: str, why: str) -> bool:
@@ -549,7 +534,7 @@ def mark_pending(state_dir: Path, game: str, why: str) -> bool:
     if game in d:
         return False
     d[game] = why
-    atomic_write_text(_pending_path(state_dir), json.dumps(d, ensure_ascii=False))
+    _store(state_dir).set("updates", "gameupdate_pending", d)
     log.info("游戏更新：已登记 %s 待更新（%s）", game, why)
     return True
 
@@ -558,7 +543,7 @@ def clear_pending(state_dir: Path, game: str) -> None:
     d = pending(state_dir)
     if game in d:
         d.pop(game)
-        atomic_write_text(_pending_path(state_dir), json.dumps(d, ensure_ascii=False))
+        _store(state_dir).set("updates", "gameupdate_pending", d)
 
 
 def last_run_ok(state_dir: Path, now: datetime, script: str) -> bool | None:
@@ -601,8 +586,8 @@ def needs_rerun(state_dir: Path, now: datetime, script: str) -> bool:
 
 
 def off(state_dir: Path) -> bool:
-    """总开关：state/gameupdate-off.flag 存在就整套不动。"""
-    return (Path(state_dir) / "gameupdate-off.flag").exists()
+    """总开关：state.json 的 updates.gameupdate_off 为真就整套不动。"""
+    return bool(_store(state_dir).get("updates", "gameupdate_off"))
 
 
 # ─────────────────────────── 鸣潮：官方公告里的更新维护日 ───────────────────────────
@@ -653,7 +638,7 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
     notes: list[str] = []
     problems: list[str] = []
     if off(cfg.state_dir):
-        log.info("游戏更新：总开关关着（gameupdate-off.flag），不检查")
+        log.info("游戏更新：总开关关着（state.json 的 updates.gameupdate_off），不检查")
         return notes, problems
     ld, idx = ldconsole_of(cfg.maa_dir)
     if ld:
@@ -741,22 +726,16 @@ def _queues_today(automas_dir, now: datetime) -> list[dict]:
     return out
 
 
-def _skips_path(state_dir: Path) -> Path:
-    return Path(state_dir) / "queue-skips.json"
-
-
 def skips(state_dir: Path) -> list[dict]:
-    try:
-        return list(json.loads(_skips_path(state_dir).read_text(encoding="utf-8")))
-    except (OSError, ValueError):
-        return []
+    d = _store(state_dir).get("updates", "queue_skips")
+    return list(d) if isinstance(d, list) else []
 
 
 def _add_skip(state_dir: Path, rec: dict) -> None:
     lst = skips(state_dir)
     if not any(r.get("queueId") == rec.get("queueId") and r.get("scriptId") == rec.get("scriptId") for r in lst):
         lst.append(rec)
-    atomic_write_text(_skips_path(state_dir), json.dumps(lst, ensure_ascii=False))
+    _store(state_dir).set("updates", "queue_skips", lst)
 
 
 def restore_skips(state_dir: Path, restorer=None) -> list[str]:
@@ -772,26 +751,23 @@ def restore_skips(state_dir: Path, restorer=None) -> list[str]:
         except Exception:  # noqa: BLE001
             log.exception("加回队列失败：%s", rec)
         left.append(rec)
-    atomic_write_text(_skips_path(state_dir), json.dumps(left, ensure_ascii=False))
+    _store(state_dir).set("updates", "queue_skips", left)
     return done
 
 
-def _windows_path(state_dir: Path) -> Path:
-    return Path(state_dir) / "maintenance-today.json"
-
-
 def save_windows(state_dir: Path, wins: dict) -> None:
-    atomic_write_text(_windows_path(state_dir), json.dumps(
-        {g: {"start": w[0].isoformat(), "end": w[1].isoformat(), "why": w[2]} for g, w in wins.items()},
-        ensure_ascii=False))
+    _store(state_dir).set("updates", "maintenance_windows",
+        {g: {"start": w[0].isoformat(), "end": w[1].isoformat(), "why": w[2]} for g, w in wins.items()})
 
 
 def windows(state_dir: Path) -> dict[str, tuple[datetime, datetime, str]]:
+    d = _store(state_dir).get("updates", "maintenance_windows")
+    if not isinstance(d, dict):
+        return {}
     try:
-        d = json.loads(_windows_path(state_dir).read_text(encoding="utf-8"))
         return {g: (datetime.fromisoformat(v["start"]), datetime.fromisoformat(v["end"]), str(v.get("why") or ""))
                 for g, v in d.items()}
-    except (OSError, ValueError, KeyError, TypeError):
+    except (ValueError, KeyError, TypeError):
         return {}
 
 

@@ -18,6 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ark_relay.config import SERVER_TZ                    # noqa: E402
+from ark_relay.statestore import StateStore              # noqa: E402
 from ark_relay.preupdate import RETRY_MIN, mark_run, should_run  # noqa: E402
 
 FAILED: list[str] = []
@@ -49,10 +50,9 @@ def main() -> int:
           should_run(d, now + timedelta(minutes=RETRY_MIN)), True)
 
     # 记账文件坏掉不能变成「从此不跑」
-    (d / "preupdate.json").write_text("{坏的", encoding="utf-8")
+    (d / "state.json").write_text("{坏的", encoding="utf-8")     # 状态文件整个坏掉
     check("记账文件损坏 → 照跑", should_run(d, now), True)
-    (d / "preupdate.json").write_text(json.dumps({"day": "2026-08-31"}),
-                                      encoding="utf-8")
+    StateStore(d).set("updates", "preupdate", {"day": "2026-08-31"})   # 缺 at
     check("记账缺时间戳 → 照跑", should_run(d, now), True)
 
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
