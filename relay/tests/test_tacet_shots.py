@@ -31,8 +31,8 @@ def png(path, w=1920, h=1080, noisy=False):
         im = Image.frombytes("RGB", (w, h), os.urandom(w * h * 3))
     im.save(path, format="PNG")
 
-png(shots / "10-58-35.184_tacet_list_original.png")
-png(shots / "11-02-10.000_tacet_arrived_original.png")
+png(shots / "10-58-35.184_tacet_drops_original.png")
+png(shots / "11-02-10.000_tacet_drops_original.png")
 png(shots / "09-58-35.184_weekly_remaining_original.png")   # 别的截图不发
 
 class N:
@@ -49,20 +49,20 @@ class Eng:
 
 day = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
 e = Eng()
-print("[两张都发，带说明]")
+print("[只发最新那一张，带说明]")
 done = report._attach_tacet_shots(e, day)
-check("发了两张", sorted(done), ["10-58-35.184_tacet_list_original.png", "11-02-10.000_tacet_arrived_original.png"])
-check("先发一条说明", e.notifier.groups[0][0], "🖼️ 无音区截图")
+check("只发最新一张", done, ["11-02-10.000_tacet_drops_original.png"])
+check("先发一条说明", e.notifier.groups[0][0], "🖼️ 无音区产出")
 check("说明里有序号、名字、套装", all(k in e.notifier.groups[0][1] for k in ("第 2 个", "玄幽东岳", "羽落空尘之歌", "清邪荡煞之心")), True)
-check("说明写清两张是什么", "F2 列表页、到达后" in e.notifier.groups[0][1], True)
+check("说明写清是结算页", "刷完的结算页" in e.notifier.groups[0][1], True)
 check("别的截图不发", "09-58-35.184_weekly_remaining_original.png" in e.notifier.images, False)
 
 print("[同一天再发日报：已发过的不重复]")
 e2 = Eng()
 check("第二次什么都不发", report._attach_tacet_shots(e2, day), [])
 check("也不发说明", e2.notifier.groups, [])
-png(shots / "12-30-00.000_tacet_list_original.png")
-check("新拍的那张会发", report._attach_tacet_shots(e2, day), ["12-30-00.000_tacet_list_original.png"])
+png(shots / "12-30-00.000_tacet_drops_original.png")
+check("新拍的那张会发", report._attach_tacet_shots(e2, day), ["12-30-00.000_tacet_drops_original.png"])
 
 print("[没配 OK-WW 目录：安静]")
 e3 = Eng(); e3.cfg.okww_dir = None

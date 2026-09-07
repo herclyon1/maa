@@ -252,7 +252,7 @@ def _tacet_caption(eng) -> str:
 
 
 def _attach_tacet_shots(eng, day: str) -> list[str]:
-    """日报发完，把这一天无音区的截图（OK-WW 补丁 tacetshot 拍的）用群机器人跟在后面。
+    """日报发完，把这一天无音区刷完的结算页（OK-WW 补丁 tacetshot 拍的）用群机器人跟在后面。
 
     用户 2026-09-07：「我想确认一下是不是刷的是我想要的无音区种类，因为我不放心。
     刷完之后能不能贴一张截图在日报通知里面？」每张只发一次（状态目录记文件名）。
@@ -266,17 +266,15 @@ def _attach_tacet_shots(eng, day: str) -> list[str]:
         already = set(sent_file.read_text(encoding="utf-8").split())
     except OSError:
         already = set()
-    picks = []
-    for tag in ("tacet_list", "tacet_arrived"):
-        cands = [p for p in shots.glob(f"*_{tag}_original.png")
-                 if datetime.fromtimestamp(p.stat().st_mtime, tz=SERVER_TZ).strftime("%Y-%m-%d") == day
-                 and p.name not in already]
-        if cands:
-            picks.append((tag, max(cands, key=lambda p: p.stat().st_mtime)))
-    if not picks:
+    # 只发一张：刷完最后一轮的结算页（用户 2026-09-07：「不要发没有用的截图，
+    # 我只需要刷完之后产出的那一张就行」）。同一天拍了多张就发最新的。
+    cands = [p for p in shots.glob("*_tacet_drops_original.png")
+             if datetime.fromtimestamp(p.stat().st_mtime, tz=SERVER_TZ).strftime("%Y-%m-%d") == day
+             and p.name not in already]
+    if not cands:
         return []
-    which = "、".join({"tacet_list": "F2 列表页", "tacet_arrived": "到达后"}[t] for t, _ in picks)
-    eng.notifier.send_group("🖼️ 无音区截图", f"{_tacet_caption(eng)}。下面是{which}。")
+    picks = [("tacet_drops", max(cands, key=lambda p: p.stat().st_mtime))]
+    eng.notifier.send_group("🖼️ 无音区产出", f"{_tacet_caption(eng)}。下面是刷完的结算页。")
     done = []
     for _tag, p in picks:
         if not eng.notifier.send_group_image(p):
