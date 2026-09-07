@@ -35,7 +35,7 @@ BAD = P._Patch(name="会叠加的", parts=("x.py",), old="    call()", new=V1,
 print("\n[干净地贴一次]")
 F.write_text("def f():\n    call()\n", encoding="utf-8")
 msgs = P._apply_one(TMP, BAD)
-check("贴上了", "已重新贴上" in " ".join(msgs), True)
+check("贴上了", "已贴上" in " ".join(msgs), True)
 check("特征串只出现一次", F.read_text(encoding="utf-8").count('log("跳过")'), 1)
 
 print("\n[present 变了之后再贴一次 —— 必须被自查抓住]")

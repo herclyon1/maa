@@ -182,7 +182,7 @@ def test_applies(tmp: Path) -> None:
           "from ok import Logger, WaitFailedException" in domain, False)
     check("只改一处 import，没波及别的 from ok",
           domain.count("from ok import"), 1)
-    check("撤销这件事有留言", any("已撤销" in n for n in notes), True)
+    check("撤销这件事有留言", any("已还原成上游原样" in n for n in notes), True)
 
     nest = (d / "NightmareNestTask.py").read_text(encoding="utf-8")
     patched = (Path(__file__).resolve().parents[1] / "ark_relay" / "okww_files"
