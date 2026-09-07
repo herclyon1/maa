@@ -13,6 +13,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import okww_patch as P
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
 
 fails = []
 def check(label, got, want):
@@ -21,7 +23,7 @@ def check(label, got, want):
     if not ok:
         fails.append(label)
 
-TMP = Path(tempfile.mkdtemp())
+TMP = tmpdir()
 F = TMP / "x.py"
 
 # 一条会自我叠加的补丁：new 里带着 old

@@ -9,6 +9,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import selfupdate as su  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
 
 fails = []
 def check(label, got, want):
@@ -18,7 +20,7 @@ def check(label, got, want):
         fails.append(label)
 
 def fresh():
-    root = Path(tempfile.mkdtemp())
+    root = tmpdir()
     (root / "state").mkdir()
     return root
 

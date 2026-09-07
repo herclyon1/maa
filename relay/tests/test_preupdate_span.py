@@ -27,7 +27,9 @@ check("取旧版：全等于新版→空", preupdate._pick_old(("v2", "", "v2"),
 check("旧版没读到要明说", preupdate._span("", "v2"), "（旧版本没读到）→ v2")
 check("旧名字仍可用", preupdate._maaend_span("v1", "v2"), "v1 → v2")
 
-TMP = Path(tempfile.mkdtemp())
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
+TMP = tmpdir()
 print("[MaaEnd：从 interface.json 读版本，不依赖日志时机]")
 (TMP / "interface.json").write_text(json.dumps({"version": "v2.26.0-beta.9"}), encoding="utf-8")
 check("读到", preupdate._maaend_file_version(TMP), "v2.26.0-beta.9")

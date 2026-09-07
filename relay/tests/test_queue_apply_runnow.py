@@ -14,11 +14,13 @@ import tempfile
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from ark_relay import commands, queues  # noqa: E402
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
 
 fails = []
 
 # ---- queues.apply：真跑一遍，改完读回 ----
-tmp = pathlib.Path(tempfile.mkdtemp())
+tmp = tmpdir()
 (tmp / "config").mkdir()
 (tmp / "config" / "QueueConfig.json").write_text(json.dumps({
     "instances": [{"uid": "q1"}],

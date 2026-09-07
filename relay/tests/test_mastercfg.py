@@ -14,6 +14,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ark_relay import mastercfg  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
 
 FAILED: list[str] = []
 
@@ -26,7 +28,7 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 
 def _fixture() -> tuple[Path, Path]:
     """造一份假的 AUTO-MAS 母本目录 + 假的 MaaEnd 安装目录。"""
-    root = Path(tempfile.mkdtemp())
+    root = tmpdir()
     cfgdir = root / "automas" / "data" / "sid" / "Default" / "ConfigFile"
     cfgdir.mkdir(parents=True)
     (cfgdir / "mxu-MaaEnd.json").write_text(json.dumps({"instances": [{"tasks": [

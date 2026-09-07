@@ -19,7 +19,9 @@ def check(label, got, want):
     if not ok:
         fails.append(label)
 
-TMP = Path(tempfile.mkdtemp())
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
+TMP = tmpdir()
 os.environ["ARK_OKWW_LOG"] = str(TMP / "ok.log")
 STATE = TMP / "state"; STATE.mkdir()
 CFG = TMP / "automas" / "data" / "sid" / "Default" / "ConfigFile"; CFG.mkdir(parents=True)

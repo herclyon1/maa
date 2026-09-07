@@ -12,7 +12,9 @@ def check(label, got, want):
     if not ok:
         fails.append(label)
 
-d = Path(tempfile.mkdtemp())
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
+d = tmpdir()
 s = StateStore(d)
 print("[空目录：读到空段，不落盘]")
 check("weekly 空", s.section("weekly"), {})
@@ -38,7 +40,7 @@ s2.set("versions", "okww", "v3.6.7")
 check("第一个实例也看到", s.get("versions", "okww"), "v3.6.7")
 
 print("[旧文件迁入]")
-d2 = Path(tempfile.mkdtemp())
+d2 = tmpdir()
 (d2 / "garden.json").write_text(json.dumps({"done_week": "2026-W36"}), encoding="utf-8")
 (d2 / "weeklyboss.json").write_text(json.dumps({"index": 1, "name": "千傀重楼", "done_week": "2026-W37"}), encoding="utf-8")
 (d2 / "okww-version.txt").write_text("v3.6.7", encoding="utf-8")
@@ -52,7 +54,7 @@ check("旧文件改名保留", (d2 / "garden.json.migrated").exists() and not (d
 check("再来一个实例不重复迁", StateStore(d2).get("weekly", "garden"), {"done_week": "2026-W36"})
 
 print("[按天/按卡池的旧标记也迁：一次全搬]")
-d3 = Path(tempfile.mkdtemp())
+d3 = tmpdir()
 (d3 / "report-2026-09-06.sent").write_text("", encoding="utf-8")
 (d3 / "interim-2026-09-06.sent").write_text("7", encoding="utf-8")
 (d3 / "interim-2026-09-05.sent").write_text("", encoding="utf-8")     # 旧空标记
@@ -85,7 +87,7 @@ st.mark_report_sent("2026-09-07")
 check("写完能读回", st.report_sent("2026-09-07"), True)
 
 print("[state.json 已存在时，后来才补的旧文件也要迁——不能只在首次建档时迁]")
-d4 = Path(tempfile.mkdtemp())
+d4 = tmpdir()
 import ark_relay.statestore as SS
 SS._SWEPT.clear()
 first = StateStore(d4)
@@ -102,7 +104,7 @@ check("原有的值没被动", later.get("weekly", "garden"), {"done_week": "202
 check("旧文件收走了", sorted(p.name for p in d4.glob("*.sent")), [])
 
 print("[state.json 里已有值时，旧文件不许覆盖它]")
-d5 = Path(tempfile.mkdtemp())
+d5 = tmpdir()
 SS._SWEPT.clear()
 s5 = StateStore(d5)
 s5.set("versions", "okww", "v3.6.7")

@@ -9,6 +9,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay.engine import Engine
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
 
 fails = []
 def check(label, got, want):
@@ -17,7 +19,7 @@ def check(label, got, want):
     if not ok: fails.append(label)
 
 E = object.__new__(Engine)
-E.state = types.SimpleNamespace(dir=Path(tempfile.mkdtemp()))
+E.state = types.SimpleNamespace(dir=tmpdir())
 rec = types.SimpleNamespace(script="OK-WW", user="wuwa", failed_tasks=["流程产生错误"])
 
 k = E._alert_key(rec)

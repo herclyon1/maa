@@ -7,7 +7,9 @@ import json, os, sys, tempfile, time
 from datetime import datetime
 from pathlib import Path
 
-TMP = Path(tempfile.mkdtemp())
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
+TMP = tmpdir()
 AUTOMAS = TMP / "AUTO-MAS"; (AUTOMAS / "config").mkdir(parents=True)
 MAAEND = TMP / "MaaEnd"; (MAAEND / "debug").mkdir(parents=True)
 

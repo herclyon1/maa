@@ -20,6 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay.config import SERVER_TZ                    # noqa: E402
 from ark_relay.statestore import StateStore              # noqa: E402
 from ark_relay.preupdate import RETRY_MIN, mark_run, should_run  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
 
 FAILED: list[str] = []
 
@@ -30,7 +32,7 @@ def check(what, got, want):
 
 
 def main() -> int:
-    d = Path(tempfile.mkdtemp())
+    d = tmpdir()
     now = datetime(2026, 8, 31, 8, 45, tzinfo=SERVER_TZ)
 
     check("没记账过 → 跑", should_run(d, now), True)

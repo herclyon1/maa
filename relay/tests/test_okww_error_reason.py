@@ -47,7 +47,9 @@ STUCK = """2026-09-02 09:18:58,791 ERROR ok.core.start_controller start_controll
 2026-09-02 09:19:10,000 ERROR ok.core.start_controller start_controller:waiting for game to start error 鸣潮 is not connected
 """
 import tempfile
-d = Path(tempfile.mkdtemp())
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
+d = tmpdir()
 (d / "today.log").write_text(TODAY, encoding="utf-8")
 (d / "stuck.log").write_text(STUCK, encoding="utf-8")
 

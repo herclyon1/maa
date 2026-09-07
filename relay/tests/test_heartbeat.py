@@ -7,6 +7,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import phone  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
 
 fails = []
 def check(label, got, want):
@@ -16,7 +18,7 @@ def check(label, got, want):
         fails.append(label)
 
 sent = []
-STATE = Path(tempfile.mkdtemp())
+STATE = tmpdir()
 hb = phone.Heartbeat("t", STATE, post=lambda payload, title: sent.append(title))
 stop = {"v": False}
 th = threading.Thread(target=hb.loop, args=(lambda: stop["v"],), daemon=True)

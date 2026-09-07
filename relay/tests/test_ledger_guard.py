@@ -11,6 +11,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay.core import State, format_daily  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
 
 fails = []
 def check(label, got, want):
@@ -25,7 +27,7 @@ GOOD = {"run_id": "2026-08-21/arknights/21-30-00", "script": "MAA",
         "failed_tasks": [], "raw": {"sanity": 6}}
 
 def ledger(*lines):
-    d = Path(tempfile.mkdtemp())
+    d = tmpdir()
     (d / "ledger-2026-08-21.jsonl").write_text("\n".join(lines), encoding="utf-8")
     return State(d)
 

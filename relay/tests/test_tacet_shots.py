@@ -18,7 +18,9 @@ def check(label, got, want):
     if not ok:
         fails.append(label)
 
-TMP = Path(tempfile.mkdtemp())
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
+TMP = tmpdir()
 shots = TMP / "okww" / "data" / "apps" / "ok-ww" / "working" / "screenshots"; shots.mkdir(parents=True)
 state = TMP / "state"; state.mkdir()
 cfgdir = TMP / "automas" / "data" / "sid" / "Default" / "ConfigFile"; cfgdir.mkdir(parents=True)

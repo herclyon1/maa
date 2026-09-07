@@ -11,9 +11,11 @@ import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from ark_relay import collector  # noqa: E402
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
 
 fails = []
-root = pathlib.Path(tempfile.mkdtemp())
+root = tmpdir()
 d = root / "2026-09-06" / "wuwa"; d.mkdir(parents=True)
 (d / "OK-WW-05-20-17.json").write_text(json.dumps({"general_result": "OK-WW 在完成任务前退出"}, ensure_ascii=False), encoding="utf-8")
 (d / "OK-WW-05-20-17.log").write_text(

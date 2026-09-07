@@ -12,7 +12,9 @@ Server酱 排在第一位不是随手定的：它没有 IP 白名单，用户实
 import os, sys, tempfile
 from pathlib import Path
 
-TMP = Path(tempfile.mkdtemp())
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
+TMP = tmpdir()
 os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP),
                   SERVERCHAN_KEY="", WECOM_CORPID="", ARK_LLM_KEY="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

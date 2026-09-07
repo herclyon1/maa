@@ -14,9 +14,11 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from ark_relay import core                      # noqa: E402
 from ark_relay.config import SERVER_TZ          # noqa: E402
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
 
 fails = []
-d = pathlib.Path(tempfile.mkdtemp())
+d = tmpdir()
 st = core.State(d)
 good = {"run_id": "a", "script": "MAA", "user": "u", "ok": True,
         "started": datetime(2026, 9, 6, 9, 0, tzinfo=SERVER_TZ).isoformat(),

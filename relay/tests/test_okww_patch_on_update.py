@@ -11,9 +11,11 @@ import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from ark_relay import okww_patch, preupdate  # noqa: E402
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
 
 fails = []
-tmp = pathlib.Path(tempfile.mkdtemp())
+tmp = tmpdir()
 okww = tmp / "okww"; (okww / "data" / "apps" / "ok-ww").mkdir(parents=True)
 state = tmp / "state"; state.mkdir()
 app = okww / "data" / "apps" / "ok-ww" / "app.json"

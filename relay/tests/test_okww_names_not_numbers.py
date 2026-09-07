@@ -11,12 +11,14 @@ import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from ark_relay import collector, wuwa_tacet  # noqa: E402
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
 
 fails = []
 BAD = re.compile(r"#\s*\d|声骸与角色突破材料|武器突破材料$|副本奖励")
 
 def run(log_text):
-    p = pathlib.Path(tempfile.mkdtemp()) / "x.log"
+    p = tmpdir() / "x.log"
     p.write_text(log_text, encoding="utf-8")
     return collector.parse_okww_log(p)
 

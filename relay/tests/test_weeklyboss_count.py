@@ -14,8 +14,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import weeklyboss as W
 from ark_relay.config import SERVER_TZ
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
 
-TMP = Path(tempfile.mkdtemp())
+TMP = tmpdir()
 LOG = TMP / "ok-ww.log"
 os.environ["ARK_OKWW_LOG"] = str(LOG)
 STATE = TMP / "state"; STATE.mkdir()

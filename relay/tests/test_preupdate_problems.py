@@ -13,7 +13,9 @@ service.py 再把它作为**报警**发出去（不是日常通知）。
 import ast, os, sys, tempfile
 from pathlib import Path
 
-TMP = Path(tempfile.mkdtemp())
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
+TMP = tmpdir()
 os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import preupdate            # noqa: E402

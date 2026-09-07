@@ -11,9 +11,11 @@ import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from ark_relay import collector  # noqa: E402
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
 
 fails = []
-root = pathlib.Path(tempfile.mkdtemp())
+root = tmpdir()
 d = root / "2026-09-06" / "endfield"; d.mkdir(parents=True)
 good = ("[2026-09-06 09:41:39.529] 任务开始: 🎁赠送干员礼物\n[2026-09-06 09:44:06.485] 任务完成: 🎁赠送干员礼物\n"
         "[2026-09-06 09:51:43.971] 任务开始: 🛒据点交易\n[2026-09-06 09:53:39.232] 任务完成: 🛒据点交易\n"

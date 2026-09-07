@@ -12,7 +12,9 @@ import json, os, sys, tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-TMP = Path(tempfile.mkdtemp())
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
+TMP = tmpdir()
 os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay.plan import activity_countdown        # noqa: E402

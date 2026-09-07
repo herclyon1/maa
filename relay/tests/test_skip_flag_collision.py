@@ -15,8 +15,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import modes
 from ark_relay.statestore import StateStore
 from ark_relay.config import SERVER_TZ
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
 
-STATE = Path(tempfile.mkdtemp()) / "state"; STATE.mkdir(parents=True)
+STATE = tmpdir() / "state"; STATE.mkdir(parents=True)
 NOW = datetime(2026, 8, 31, 12, 44, tzinfo=SERVER_TZ)
 
 fails = []

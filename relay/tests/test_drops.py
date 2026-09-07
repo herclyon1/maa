@@ -17,6 +17,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import collector  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
 
 fails = []
 def check(label, got, want):
@@ -30,7 +32,7 @@ def ts(hhmmss: str, rest: str) -> str:
     return f"[2026-08-15 {hhmmss}.091]{P} {rest}"
 
 def parse(log: str) -> dict:
-    p = Path(tempfile.mkdtemp()) / "run.log"
+    p = tmpdir() / "run.log"
     p.write_text(log, encoding="utf-8")
     return collector.parse_maa_log(p)
 

@@ -63,7 +63,9 @@ check("报了更新", out.startswith("鸣潮 客户端已通过启动器更新")
 check("点的是按钮中心", d.clicks[0], (140, 140))
 
 print("[明日方舟：版本记录、比对、装包（按 09-03 实测的 adb 路径）]")
-ST = Path(tempfile.mkdtemp())
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
+ST = tmpdir()
 calls = []
 state = {"ver": "2.7.61", "up": False}
 def run(args):

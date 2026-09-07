@@ -19,6 +19,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import preupdate  # noqa: E402
 from ark_relay import preupdate_maaend as PM  # noqa: E402  # 实现在这个模块里，猴子补丁要打在它身上
 from ark_relay.statestore import StateStore  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
 
 fails = []
 def check(label, got, want):
@@ -41,7 +43,7 @@ PM._close = lambda exe: None
 
 def run_case(label, *, file_ver, prev_log, kept, logs):
     """logs：按时间顺序出现的 (文件名, 内容)；第一份是启动前就有的。"""
-    d = Path(tempfile.mkdtemp()); (d / "debug").mkdir()
+    d = tmpdir(); (d / "debug").mkdir()
     state = d / "state"
     if file_ver:
         (d / "interface.json").write_text(json.dumps({"version": file_ver}), encoding="utf-8")

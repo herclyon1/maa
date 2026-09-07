@@ -11,6 +11,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import garden as G  # noqa: E402
 from ark_relay.config import SERVER_TZ  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
 
 fails = []
 def check(label, got, want):
@@ -19,7 +21,7 @@ def check(label, got, want):
     if not ok:
         fails.append(label)
 
-TMP = Path(tempfile.mkdtemp())
+TMP = tmpdir()
 CFG = TMP / "automas" / "data" / "sid" / "Default" / "ConfigFile"; CFG.mkdir(parents=True)
 (CFG / "DailyTask.json").write_text(json.dumps({G.KEY: ["Check Weekly Garden"]}), encoding="utf-8")
 def tasks():
