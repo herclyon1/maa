@@ -35,11 +35,14 @@ def defined_names(cls: ast.ClassDef) -> set[str]:
             out.add(node.name)
         elif isinstance(node, ast.Assign):
             for tgt in node.targets:
-                if (isinstance(tgt, ast.Attribute)
-                        and isinstance(tgt.value, ast.Name) and tgt.value.id == "self"):
-                    out.add(tgt.attr)
-                elif isinstance(tgt, ast.Name):
-                    out.add(tgt.id)          # class-level attribute
+                # 一行赋多个属性也算定义：`self.a, self.b = x, y`。
+                # 2026-09-08 漏过这种写法，把 _DirWatch 正常的三个属性报成「没定义」。
+                for t in (tgt.elts if isinstance(tgt, (ast.Tuple, ast.List)) else [tgt]):
+                    if (isinstance(t, ast.Attribute)
+                            and isinstance(t.value, ast.Name) and t.value.id == "self"):
+                        out.add(t.attr)
+                    elif isinstance(t, ast.Name):
+                        out.add(t.id)        # class-level attribute
         elif isinstance(node, ast.AnnAssign):
             tgt = node.target
             if (isinstance(tgt, ast.Attribute)

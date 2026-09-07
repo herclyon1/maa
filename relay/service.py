@@ -879,94 +879,252 @@ def _stage_annihilation(engine, notifier, log) -> None:
     engine._enforce_annihilation()  # noqa: SLF001
 
 
-def _loop(svc, cfg, engine, notifier, inbox, collect, deferred_inbox, log) -> None:
-    """主循环：等事件或闹钟，跑 tick，拉起 AUTO-MAS。"""
-    # Wake on the directory changing, not on a timer. AUTO-MAS writes a
-    # run record the moment a script finishes, and Windows will say so;
-    # asking every thirty seconds instead was just the lazy way to find out.
-    #
-    # The timeout stays, because some of what tick() does is genuinely
-    # time-based - the report cutoff, "a queue was due and produced
-    # nothing", the shutdown window - and none of those are announced by a
-    # file appearing. So: whichever comes first, a change or the interval.
-    watch = None
-    try:
-        if cfg.history_dir:
-            watch = win32file.FindFirstChangeNotification(
-                str(cfg.history_dir), True,   # True = include subdirectories
+class _DirWatch:
+    """AUTO-MAS 历史目录的变更通知：挂载、重建、重新武装，都在这里。
+
+    从 `_loop` 拆出（2026-09-08）。行为一字未改，只是把「挂载 / 重建 / 重新武装」
+    这三段从主循环中间搬进一个有名字的地方——原来它们和 AUTO-MAS 保活交织在一起，
+    一个函数 241 行，改哪一段都要先读完另外两段。
+
+    Wake on the directory changing, not on a timer. AUTO-MAS writes a run record
+    the moment a script finishes, and Windows will say so; asking every thirty
+    seconds instead was just the lazy way to find out.
+
+    The loop's timeout stays, because some of what tick() does is genuinely
+    time-based - the report cutoff, "a queue was due and produced nothing", the
+    shutdown window - and none of those are announced by a file appearing.
+    So: whichever comes first, a change or the interval.
+    """
+
+    def __init__(self, cfg, notifier, log):
+        self.cfg, self.notifier, self.log = cfg, notifier, log
+        self.handle = None
+        try:
+            if cfg.history_dir:
+                self.handle = win32file.FindFirstChangeNotification(
+                    str(cfg.history_dir), True,   # True = include subdirectories
+                    win32con.FILE_NOTIFY_CHANGE_FILE_NAME
+                    | win32con.FILE_NOTIFY_CHANGE_LAST_WRITE)
+                log.info("已挂上目录变更通知，记录一落盘立即处理")
+        except Exception:  # noqa: BLE001 - a missing notifier must not stop the relay
+            log.exception("目录变更通知挂载失败，先退回定时检查，稍后自动重试")
+            self.handle = None
+        # 重建节奏。开机时挂载失败（比如目录还没就绪）同样要进重试，
+        # 不能只有「重新武装失败」那条路才有。
+        self.retry_at = time.monotonic() + 5.0
+        self.retry_delay = 5.0
+
+    def maybe_rebuild(self) -> None:
+        """监听掉了就退避重建。重建成功后运行记录重新变成「一落盘就处理」。"""
+        if self.handle is not None or not self.cfg.history_dir:
+            return
+        if time.monotonic() < self.retry_at:
+            return
+        try:
+            self.handle = win32file.FindFirstChangeNotification(
+                str(self.cfg.history_dir), True,
                 win32con.FILE_NOTIFY_CHANGE_FILE_NAME
                 | win32con.FILE_NOTIFY_CHANGE_LAST_WRITE)
-            log.info("已挂上目录变更通知，记录一落盘立即处理")
-    except Exception:  # noqa: BLE001 - a missing notifier must not stop the relay
-        log.exception("目录变更通知挂载失败，先退回定时检查，稍后自动重试")
-        watch = None
-    # 重建节奏。开机时挂载失败（比如目录还没就绪）同样要进重试，
-    # 不能只有「重新武装失败」那条路才有。
-    watch_retry_at = time.monotonic() + 5.0
-    watch_retry_delay = 5.0
+            self.log.info("目录变更通知已重建，恢复「记录一落盘立即处理」")
+            self.retry_delay = 5.0
+        except Exception:  # noqa: BLE001 - 重建失败就再等等，别刷屏
+            self.handle = None
+            self.retry_delay = min(self.retry_delay * 2, 60.0)
+            self.log.warning("目录变更通知重建失败，%.0f 秒后再试",
+                             self.retry_delay)
+        self.retry_at = time.monotonic() + self.retry_delay
 
-    # Four things can wake this loop, none of them a timer: the service
-    # being stopped, a run record landing on disk, the AUTO-MAS backend
-    # dying, and a python.exe starting (so a freshly launched backend gets
-    # its handle immediately instead of at the next liveness check). The
-    # timeout is not an interval either - it is an alarm clock. The engine
-    # knows the exact next moment any clock-based decision can change
-    # (a missed-run alert coming due, the report cutoff, a wake-up
-    # checkpoint), so the loop sleeps until precisely then.
-    automas = _automas_handle()
-    if automas:
-        log.info("已挂上 AUTO-MAS 进程句柄，它一退出立即拉起")
-    proc_evt = win32event.CreateEvent(None, 0, 0, None)
-    wmi_alive = {"ok": False}
-    wmi_alive["ok"] = _start_process_watch(proc_evt, wmi_alive, log)
-    if wmi_alive["ok"]:
-        log.info("已订阅进程启动事件（WMI 内核 trace），AUTO-MAS 一启动立即挂句柄")
-    else:
-        log.warning("进程启动事件订阅不可用，AUTO-MAS 缺席时退回 %d 秒活性检查",
-                    AUTOMAS_CHECK_SECONDS)
+    def rearm(self) -> None:
+        """收到通知后立刻重新武装，然后给写文件的一点时间。
 
+        Re-arm before handling, so a write that lands while we work is not lost.
+        A record that appears during tick() would otherwise wait for the timeout
+        - the exact latency this removes.
+
+        Re-arming can fail, and it used to fail silently: the handle then never
+        signals again, the loop falls back to waking only on the alarm clock,
+        and run records sit unprocessed until the next clock-based deadline - up
+        to the hour-long backstop. Everything still happens, just late and with
+        no indication why. Degrading quietly is the failure mode this system has
+        been bitten by most, so say it out loud.
+        """
+        try:
+            win32file.FindNextChangeNotification(self.handle)
+        except Exception:  # noqa: BLE001 - report and degrade knowingly
+            self.log.exception("目录变更通知重新武装失败，改用闹钟兜底")
+            self.close()
+            self.retry_at = time.monotonic() + 5.0
+            self.retry_delay = 5.0
+            self.notifier.send(texts.WATCH_LOST, texts.watch_lost_body(), alert=True)
+        # AUTO-MAS writes the .json and .log separately; give it a
+        # moment so the first notification does not read a half-file.
+        time.sleep(2)
+
+    def close(self) -> None:
+        if self.handle is None:
+            return
+        try:
+            win32file.FindCloseChangeNotification(self.handle)
+        except Exception:  # noqa: BLE001
+            pass
+        self.handle = None
+
+
+class _AutomasKeeper:
+    """AUTO-MAS 后端的保活：挂句柄、判缺席、退避拉起、连败告警。
+
+    从 `_loop` 拆出（2026-09-08），行为一字未改。
+
+    Two of the four things that can wake the loop live here: the backend dying,
+    and a python.exe starting (so a freshly launched backend gets its handle
+    immediately instead of at the next liveness check).
+    """
+
+    def __init__(self, log, notifier):
+        self.log, self.notifier = log, notifier
+        self.handle = _automas_handle()
+        if self.handle:
+            log.info("已挂上 AUTO-MAS 进程句柄，它一退出立即拉起")
+        self.proc_evt = win32event.CreateEvent(None, 0, 0, None)
+        self.wmi_alive = {"ok": False}
+        self.wmi_alive["ok"] = _start_process_watch(self.proc_evt, self.wmi_alive, log)
+        if self.wmi_alive["ok"]:
+            log.info("已订阅进程启动事件（WMI 内核 trace），AUTO-MAS 一启动立即挂句柄")
+        else:
+            log.warning("进程启动事件订阅不可用，AUTO-MAS 缺席时退回 %d 秒活性检查",
+                        AUTOMAS_CHECK_SECONDS)
+        # One-shot deadline for "AUTO-MAS should have appeared by now" - armed
+        # only while no handle is held. Doubles on every failed revival so a
+        # broken backend is retried with backoff, never on a beat.
+        self.revive_wait = float(REVIVE_FIRST_WAIT)
+        self.revive_deadline = (time.monotonic() + self.revive_wait) if not self.handle else None
+        self.revive_failures = 0
+        self.revive_alerted = False
+        # When the shell was first seen alive with no backend behind it.
+        self.shell_only_since = None
+        self.shell_grace_noted = False
+        self.next_check = 0.0
+
+    def cap_wait(self, wait_s: float) -> float:
+        """句柄不在时，别睡过「该来了」那一刻。"""
+        if self.handle:
+            return wait_s
+        if self.wmi_alive["ok"] and self.revive_deadline is not None:
+            return min(wait_s, max(1.0, self.revive_deadline - time.monotonic()))
+        if not self.wmi_alive["ok"]:
+            return min(wait_s, AUTOMAS_CHECK_SECONDS)
+        return wait_s
+
+    def _adopted(self) -> None:
+        self.shell_only_since = None
+        self.shell_grace_noted = False
+        self.revive_deadline = None
+        self.revive_wait = float(REVIVE_FIRST_WAIT)
+        self.revive_failures = 0
+        self.revive_alerted = False
+
+    def on_process_started(self) -> None:
+        """有 python.exe 起来了：如果是后端，立刻挂上句柄，不等下一次活性检查。"""
+        if self.handle:
+            return
+        self.handle = _automas_handle()
+        if self.handle:
+            self.log.info("AUTO-MAS 已启动，进程句柄已挂上")
+            self._adopted()
+
+    def check(self, died: bool, now: float) -> None:
+        """后端死了、或者「该来了」时刻到了：查一次，必要时拉起。"""
+        if died:
+            self.log.warning("AUTO-MAS 后端退出了")
+            win32api.CloseHandle(self.handle)
+            self.handle = None
+        due_check = (
+            self.handle is None
+            and ((self.wmi_alive["ok"] and self.revive_deadline is not None
+                  and now >= self.revive_deadline)
+                 or (not self.wmi_alive["ok"] and now >= self.next_check)))
+        if not (died or due_check):
+            return
+        self.next_check = now + AUTOMAS_CHECK_SECONDS
+        if not _automas_running():
+            self._revive(now)
+        # Adopt whichever backend now exists - our revival, or one that
+        # was there all along. A revived backend is a new process, so
+        # the old handle (already closed above) never signals again.
+        self.handle = _automas_handle()
+        if self.handle:
+            self.log.info("AUTO-MAS 进程句柄已挂上")
+            self._adopted()
+        else:
+            # Arm with the CURRENT wait, then double for the next
+            # failure - doubling first made the very first retry gap
+            # 360s instead of the documented 180s.
+            self.revive_deadline = now + self.revive_wait
+            self.revive_wait = min(self.revive_wait * 2, float(REVIVE_MAX_WAIT))
+
+    def _revive(self, now: float) -> None:
+        # Two gates before the force-kill, because reviving is not
+        # free: it kills a window somebody may be looking at.
+        if _installer_running():
+            self.log.warning("AUTO-MAS 后端不在，但安装程序正在运行——不动它")
+            self.shell_only_since = None
+            self.shell_grace_noted = False
+        elif _automas_shell_running():
+            # 窗口在、后端不在：可能正在首次配置或自更新，先给一段宽限。
+            if self.shell_only_since is None:
+                self.shell_only_since = now
+            waited = now - self.shell_only_since
+            if waited < SHELL_GRACE_SECONDS:
+                if not self.shell_grace_noted:
+                    self.shell_grace_noted = True
+                    self.log.warning(
+                        "AUTO-MAS 窗口在、后端不在，先等 %d 分钟再动"
+                        "（可能正在首次配置或更新）",
+                        SHELL_GRACE_SECONDS // 60)
+            else:
+                self.log.warning("AUTO-MAS 窗口在、后端已缺席 %d 分钟，"
+                                 "正在拉起（第 %d 次）",
+                                 int(waited // 60), self.revive_failures + 1)
+                _revive_automas()
+                self.revive_failures += 1
+        else:
+            # No shell at all: nothing to kill, so revive at once.
+            self.log.warning("AUTO-MAS 后端不在，正在拉起（第 %d 次）",
+                             self.revive_failures + 1)
+            _revive_automas()
+            self.revive_failures += 1
+        if self.revive_failures >= REVIVE_ALERT_AFTER and not self.revive_alerted:
+            self.revive_alerted = True
+            self.notifier.send(texts.AUTOMAS_DOWN,
+                               texts.automas_down_body(self.revive_failures), alert=True)
+
+
+def _loop(svc, cfg, engine, notifier, inbox, collect, deferred_inbox, log) -> None:
+    """主循环：等事件或闹钟，跑 tick，拉起 AUTO-MAS。
+
+    四件事能唤醒它，没有一件是定时器：服务被停、运行记录落盘、AUTO-MAS 后端退出、
+    有 python.exe 启动。超时也不是「间隔」，是闹钟——引擎知道下一个纯时间决定
+    会在什么时刻改变（漏跑告警到点、日报截止、开机检查点），循环就睡到那一刻。
+    """
+    watch = _DirWatch(cfg, notifier, log)
+    keeper = _AutomasKeeper(log, notifier)
     # If every alarm is far away (or there are none), still wake
     # occasionally: an alarm-clock with a bug in it must degrade into
     # lateness, not into a relay that sleeps forever.
     backstop = 3600.0
     last_alarm_note = ""
-    # One-shot deadline for "AUTO-MAS should have appeared by now" - armed
-    # only while no handle is held. Doubles on every failed revival so a
-    # broken backend is retried with backoff, never on a beat.
-    revive_wait = float(REVIVE_FIRST_WAIT)
-    revive_deadline = (time.monotonic() + revive_wait) if not automas else None
-    revive_failures = 0
-    revive_alerted = False
-    # When the shell was first seen alive with no backend behind it.
-    shell_only_since = None
-    shell_grace_noted = False
-    next_automas_check = 0.0
     next_inbox_retry = 0.0
     while True:
-        # 监听掉了就退避重建。重建成功后运行记录重新变成「一落盘就处理」。
-        if watch is None and cfg.history_dir \
-                and time.monotonic() >= watch_retry_at:
-            try:
-                watch = win32file.FindFirstChangeNotification(
-                    str(cfg.history_dir), True,
-                    win32con.FILE_NOTIFY_CHANGE_FILE_NAME
-                    | win32con.FILE_NOTIFY_CHANGE_LAST_WRITE)
-                log.info("目录变更通知已重建，恢复「记录一落盘立即处理」")
-                watch_retry_delay = 5.0
-            except Exception:  # noqa: BLE001 - 重建失败就再等等，别刷屏
-                watch = None
-                watch_retry_delay = min(watch_retry_delay * 2, 60.0)
-                log.warning("目录变更通知重建失败，%.0f 秒后再试",
-                            watch_retry_delay)
-            watch_retry_at = time.monotonic() + watch_retry_delay
+        watch.maybe_rebuild()
 
-        handles = [svc.stop_event, proc_evt]
+        handles = [svc.stop_event, keeper.proc_evt]
         proc_idx = 1
         watch_idx = automas_idx = -1
-        if watch:
-            handles.append(watch); watch_idx = len(handles) - 1
-        if automas:
-            handles.append(automas); automas_idx = len(handles) - 1
+        if watch.handle:
+            handles.append(watch.handle); watch_idx = len(handles) - 1
+        if keeper.handle:
+            handles.append(keeper.handle); automas_idx = len(handles) - 1
+
         wait_s = backstop
         try:
             if alarm := engine.next_deadline():
@@ -980,62 +1138,20 @@ def _loop(svc, cfg, engine, notifier, inbox, collect, deferred_inbox, log) -> No
                     log.info("下一个闹钟 %s", note)
         except Exception:  # noqa: BLE001 - a broken alarm must not stop the loop
             log.exception("计算下一个时刻出错，退回备用间隔")
-        if not automas:
-            if wmi_alive["ok"] and revive_deadline is not None:
-                # Event-driven path: sleep exactly until the revival
-                # deadline; a start event will wake us sooner.
-                wait_s = min(wait_s, max(1.0, revive_deadline - time.monotonic()))
-            elif not wmi_alive["ok"]:
-                # Degraded path: no start events, so liveness has to be
-                # re-checked on a timer until a handle can be re-acquired.
-                wait_s = min(wait_s, AUTOMAS_CHECK_SECONDS)
+        wait_s = keeper.cap_wait(wait_s)
         if not inbox.last_fetch_ok:
             wait_s = min(wait_s, 300)   # wake in time for the fetch retry
+
         rc = win32event.WaitForMultipleObjects(
             handles, False, int(wait_s * 1000))
         if rc == win32event.WAIT_OBJECT_0:
             log.info("收到停止信号，退出")
-            if watch:
-                win32file.FindCloseChangeNotification(watch)
+            watch.close()
             return
-        if rc == win32event.WAIT_OBJECT_0 + proc_idx and not automas:
-            # Some python.exe just started; adopt it if it is the backend.
-            if automas := _automas_handle():
-                log.info("AUTO-MAS 已启动，进程句柄已挂上")
-                revive_deadline = None
-                revive_wait = float(REVIVE_FIRST_WAIT)
-                revive_failures = 0
-                revive_alerted = False
-        if watch and rc == win32event.WAIT_OBJECT_0 + watch_idx:
-            # Re-arm before handling, so a write that lands while we work is
-            # not lost. A record that appears during tick() would otherwise
-            # wait for the timeout - the exact latency this removes.
-            #
-            # Re-arming can fail, and it used to fail silently: the handle
-            # then never signals again, the loop falls back to waking only
-            # on the alarm clock, and run records sit unprocessed until the
-            # next clock-based deadline - up to the hour-long backstop.
-            # Everything still happens, just late and with no indication
-            # why. Degrading quietly is the failure mode this system has
-            # been bitten by most, so say it out loud.
-            try:
-                win32file.FindNextChangeNotification(watch)
-            except Exception:  # noqa: BLE001 - report and degrade knowingly
-                log.exception("目录变更通知重新武装失败，改用闹钟兜底")
-                try:
-                    win32file.FindCloseChangeNotification(watch)
-                except Exception:  # noqa: BLE001
-                    pass
-                watch = None
-                # 重建时刻：掉了不是终点。原来这里只发一条「去重启中继」
-                # 就完事，剩下整个开机周期都靠闹钟兜底——和 WMI 订阅那个
-                # 一次性 bug 是同一族（2026-08-30 全量审查一起修的）。
-                watch_retry_at = time.monotonic() + 5.0
-                watch_retry_delay = 5.0
-                notifier.send(texts.WATCH_LOST, texts.watch_lost_body(), alert=True)
-            # AUTO-MAS writes the .json and .log separately; give it a
-            # moment so the first notification does not read a half-file.
-            time.sleep(2)
+        if rc == win32event.WAIT_OBJECT_0 + proc_idx:
+            keeper.on_process_started()
+        if watch.handle and rc == win32event.WAIT_OBJECT_0 + watch_idx:
+            watch.rearm()
 
         try:
             engine.tick()
@@ -1054,72 +1170,8 @@ def _loop(svc, cfg, engine, notifier, inbox, collect, deferred_inbox, log) -> No
             log.info("脚本已停，补做之前推迟的待办检查")
             collect("推迟补做")
 
-        now = time.monotonic()
-        died = bool(automas) and rc == win32event.WAIT_OBJECT_0 + automas_idx
-        if died:
-            log.warning("AUTO-MAS 后端退出了")
-            win32api.CloseHandle(automas)
-            automas = None
-        due_check = (
-            automas is None
-            and ((wmi_alive["ok"] and revive_deadline is not None
-                  and now >= revive_deadline)
-                 or (not wmi_alive["ok"] and now >= next_automas_check)))
-        if died or due_check:
-            next_automas_check = now + AUTOMAS_CHECK_SECONDS
-            if not _automas_running():
-                # Two gates before the force-kill, because reviving is not
-                # free: it kills a window somebody may be looking at.
-                if _installer_running():
-                    log.warning("AUTO-MAS 后端不在，但安装程序正在运行——不动它")
-                    shell_only_since = None
-                    shell_grace_noted = False
-                elif _automas_shell_running():
-                    # Shell up, backend down. Either the stuck state this
-                    # guard exists for, or a first run still setting itself
-                    # up. Only the clock tells them apart, so wait.
-                    if shell_only_since is None:
-                        shell_only_since = now
-                    waited = now - shell_only_since
-                    if waited < SHELL_GRACE_SECONDS:
-                        if not shell_grace_noted:
-                            shell_grace_noted = True
-                            log.warning(
-                                "AUTO-MAS 窗口在、后端不在，先等 %d 分钟再动"
-                                "（可能正在首次配置或更新）",
-                                SHELL_GRACE_SECONDS // 60)
-                    else:
-                        log.warning("AUTO-MAS 窗口在、后端已缺席 %d 分钟，"
-                                    "正在拉起（第 %d 次）",
-                                    int(waited // 60), revive_failures + 1)
-                        _revive_automas()
-                        revive_failures += 1
-                else:
-                    # No shell at all: nothing to kill, so revive at once.
-                    log.warning("AUTO-MAS 后端不在，正在拉起（第 %d 次）",
-                                revive_failures + 1)
-                    _revive_automas()
-                    revive_failures += 1
-                if revive_failures >= REVIVE_ALERT_AFTER and not revive_alerted:
-                    revive_alerted = True
-                    notifier.send(texts.AUTOMAS_DOWN, texts.automas_down_body(revive_failures), alert=True)
-            # Adopt whichever backend now exists - our revival, or one that
-            # was there all along. A revived backend is a new process, so
-            # the old handle (already closed above) never signals again.
-            if automas := _automas_handle():
-                log.info("AUTO-MAS 进程句柄已挂上")
-                shell_only_since = None
-                shell_grace_noted = False
-                revive_deadline = None
-                revive_wait = float(REVIVE_FIRST_WAIT)
-                revive_failures = 0
-                revive_alerted = False
-            else:
-                # Arm with the CURRENT wait, then double for the next
-                # failure - doubling first made the very first retry gap
-                # 360s instead of the documented 180s.
-                revive_deadline = now + revive_wait
-                revive_wait = min(revive_wait * 2, float(REVIVE_MAX_WAIT))
+        keeper.check(bool(keeper.handle) and rc == win32event.WAIT_OBJECT_0 + automas_idx,
+                     time.monotonic())
 
 
 if __name__ == "__main__":
