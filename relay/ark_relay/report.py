@@ -8,6 +8,7 @@ import logging
 from pathlib import Path
 from datetime import datetime, timedelta
 
+from . import texts
 from . import banners, collector, core, plan, summary
 from .config import SERVER_TZ
 
@@ -274,7 +275,7 @@ def _attach_tacet_shots(eng, day: str) -> list[str]:
     if not cands:
         return []
     picks = [("tacet_drops", max(cands, key=lambda p: p.stat().st_mtime))]
-    eng.notifier.send_group("🖼️ 无音区产出", f"{_tacet_caption(eng)}。下面是刷完的结算页。")
+    eng.notifier.send_group(texts.TACET_DROPS, f"{_tacet_caption(eng)}。下面是刷完的结算页。")
     done = []
     for _tag, p in picks:
         if not eng.notifier.send_group_image(p):

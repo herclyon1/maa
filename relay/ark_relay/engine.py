@@ -18,6 +18,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from . import texts
 from . import handle, missed, modes, plan, report, shutdown
 from .config import SERVER_TZ, Config, RunRecord
 from .core import State
@@ -124,7 +125,7 @@ class Engine:
                 # the operator gets the same push dozens of times a boot.
                 if msg not in self._mode_notified:
                     self._mode_notified.add(msg)
-                    self.notifier.send("⏭️ 跳过模式", msg)
+                    self.notifier.send(texts.SKIP_MODE, msg)
         except Exception:  # noqa: BLE001 - modes must never stop the loop
             log.exception("跳过模式处理出错")
         active = modes.debug_active(self.state.dir)
@@ -235,7 +236,7 @@ class Engine:
         for n in notes:
             log.info("补丁：%s", n)
         if notes:
-            self.notifier.send(f"🩹 OK-WW 补丁（{len(notes)} 条）",
+            self.notifier.send(texts.patches(len(notes)),
                                "\n".join(f"· {n}" for n in notes))
 
     def _weekly_gates(self) -> None:
@@ -291,11 +292,11 @@ class Engine:
                 notes, problems, reran = gameupdate.run_deferred(
                     self.cfg, now=now, dispatch=_dispatch)
                 for n in notes:
-                    self.notifier.send("🆕 游戏更新", n)
+                    self.notifier.send(texts.GAME_UPDATE, n)
                 if reran:
-                    self.notifier.send("🔁 更新后重跑", "、".join(reran) + " 已单独开跑")
+                    self.notifier.send(texts.RERUN_AFTER_UPDATE, texts.rerun_body(reran))
                 if problems:
-                    self.notifier.send(f"⚠️ 游戏更新没能确认（{len(problems)} 项）",
+                    self.notifier.send(texts.unconfirmed("游戏更新", len(problems)),
                                        "\n".join(f"· {x}" for x in problems))
             except Exception:  # noqa: BLE001
                 log.exception("游戏更新（队列后）出错")

@@ -63,11 +63,12 @@ for name in ("run_maa", "run", "run_automas", "run_okww"):
     check(f"{name} 传了 problems", f"problems=problems)" in src)
     break
 check("四个都传了", src.count("problems=problems") >= 4)
-i = src.find("预更新没能确认")
-block = src[i:i + 400] if i >= 0 else ""
-check("有「预更新没能确认」这条通知", i >= 0)
-check("走 alert=True（报警，会全渠道发）", "alert=True" in block)
-check("明说了这不是「无需更新」", "这不是「无需更新」" in src)
+i = src.find('texts.unconfirmed("预更新"')
+check("有「预更新没能确认」这条通知（标题来自 texts）", i >= 0)
+seg = src[i:i + 400]
+check("走 alert=True（报警，会全渠道发）", "alert=True" in seg)
+check("明说了这不是「无需更新」", "preupdate_unconfirmed_tail()" in seg
+      and "这不是「无需更新」" in Path("ark_relay/texts.py").read_text(encoding="utf-8"))
 # 2026-09-06：MaaEnd 升级后 AUTO-MAS 的任务表缓存不刷新（#573），升级完必须重启它
 check("MaaEnd 升级后重启 AUTO-MAS 刷新缓存", "_revive_automas()" in src.split("preupdate.run(maaend", 1)[1][:1500])
 

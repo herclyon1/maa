@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
+from . import texts
 from . import core, modes, plan
 from .config import SERVER_TZ
 
@@ -77,10 +78,8 @@ def _check_missed_runs(eng, now: datetime | None = None,
                 log.info("🔌 %s 还没有记录，但脚本进程在跑，先不喊", q["name"])
                 continue
             late = int((now - due).total_seconds() // 60)
-            title, body = core.format_missing(
-                f"{q['name']} 没有运行", due,
-                f"已经晚了 {late} 分钟，今天没有任何该时段的运行记录。\n"
-                "可能原因：AUTO-MAS 没启动、定时没触发、模拟器或游戏起不来。")
+            title, body = core.format_missing(texts.not_run(q['name']), due,
+                                              texts.missed_queue_body(late))
             if not eng.notifier.send(title, body, alert=True):
                 eng._missed_alerted.add(key)
                 log.warning("🔌 %s 该跑没跑，已告警", q["name"])
@@ -135,11 +134,8 @@ def _check_partial_queues(eng, now: datetime, day: str,
                 eng._missed_alerted.add(key)
                 continue
             late = int((now - due).total_seconds() // 60)
-            title, body = core.format_missing(
-                f"{kind} 没有运行（{q['name']}）", due,
-                f"这一轮跑了 {'、'.join(sorted(ran))}，但 {kind} 一次记录都没有，"
-                f"已经晚了 {late} 分钟。\n"
-                "队列本身是跑了的，所以不是没开机——是这一项自己没起来。")
+            title, body = core.format_missing(texts.not_run_in(kind, q['name']), due,
+                                              texts.missed_item_body(list(ran), kind, late))
             if not eng.notifier.send(title, body, alert=True):
                 eng._missed_alerted.add(key)
                 log.warning("🔌 %s 缺项：%s 没跑，已告警", q["name"], kind)

@@ -12,6 +12,7 @@ import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from . import texts
 from . import collector, core, efstatus, outcome, summary
 from .config import SERVER_TZ, RunRecord, atomic_write_text
 
@@ -323,23 +324,23 @@ def _handle(eng, rec: RunRecord) -> None:
         # 两种都认。判据和周常乐园一致——只有真跑完那一步才算数。
         if any(s.startswith("周本") and "已完成" in s for s in steps):
             if msg := eng._weeklyboss.on_success(rec.finished):
-                eng.notifier.send("🗓️ 周常", msg)
+                eng.notifier.send(texts.WEEKLY, msg)
         if any("周常乐园" in s and "已完成" in s for s in steps) and eng._garden:
             if msg := eng._garden.on_success(rec.finished):
                 # 2026-08-26：这里原本写的是 `notes.append(msg)`，可这个作用域里
                 # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
-                eng.notifier.send("🗓️ 周常", msg)
+                eng.notifier.send(texts.WEEKLY, msg)
         if (rec.raw.get("annihilation") and rec.raw.get("annihilation_done")
                 and eng._annihilation):
             if msg := eng._annihilation.on_success(rec.finished):
-                eng.notifier.send("🗓️ 周常", msg)
+                eng.notifier.send(texts.WEEKLY, msg)
         # AUTO-MAS 说「这个脚本正常退出了」，不等于它把活干成了。
         # 所以退出之前先按证据核对一遍，没干成的必须出声。
         # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
         if msg := eng._verify_outcome(rec):
             log.warning("⚠️ %s %s 有项目没干成：\n%s",
                         rec.script, rec.run_id, msg)
-            eng.notifier.send("⚠️ 这一轮没干完", msg, alert=True)
+            eng.notifier.send(texts.ROUND_INCOMPLETE, msg, alert=True)
             return
         log.info("✅ %s %s（%d 分钟）静默记账",
                  rec.script, rec.run_id, rec.duration_min)
@@ -437,10 +438,8 @@ def _flush_pending(eng) -> None:
         # Self-healed is not the same as fine: the fault happened and will
         # happen again. Report it as an unresolved problem that this run
         # got past, never as "nothing to do".
-        body = (f"第 1 次失败，第 {attempts} 次才成功。"
-                f"这次自己缓过来了，但问题依然存在。\n") + body
-        if eng.notifier.send(f"⚠️ {rec.script} 出错（本次自愈，问题未解决）",
-                              body, alert=True):
+        body = texts.self_healed_body(attempts) + body
+        if eng.notifier.send(texts.self_healed(rec.script), body, alert=True):
             return  # keep it on disk; retry next tick
         eng._recovered.pop((rec.script, rec.user), None)
         eng._persist_pending()   # only now is it safe to forget
@@ -459,10 +458,8 @@ def _flush_pending(eng) -> None:
             mkey = f"维护|{rec.script}"
             if not eng._already_alerted(day, mkey):
                 hint = maint or efstatus.update_hint()
-                body = (f"{rec.script} 连试 {attempts} 次都没进游戏（{'官方停服维护中' if maint else '每个任务 20 秒内失败、一个没完成'}），"
-                        "不是配置问题。队列跑完后中继会等开服、更新客户端、再单独补跑它。"
-                        + (f"\n{hint}" if hint else ""))
-                if eng.notifier.send(f"⏸ {rec.script} 进不了游戏，稍后补跑", body):
+                body = texts.cant_enter_body(rec.script, attempts, bool(maint), hint or "")
+                if eng.notifier.send(texts.cant_enter(rec.script), body):
                     return  # 发不出去就下个 tick 再来
                 eng._mark_alerted(day, mkey)
             eng._pending.pop((rec.script, rec.user), None)
@@ -479,8 +476,7 @@ def _flush_pending(eng) -> None:
         tail = eng.log_tails.pop(rec.run_id, "") or collector.log_tail(rec)
         diagnosis = summary.diagnose(eng.cfg, rec.script, rec.failed_tasks, tail)
         title, body = core.format_failure(rec, diagnosis)
-        body = (f"重试 {attempts} 次全部失败，需要处理。\n" if attempts > 1
-                else "需要处理。\n") + body
+        body = texts.failed_body_head(attempts) + body
         errors = eng.notifier.send(title, body, alert=True)
         if errors:
             log.error("告警推送出错，保留待重发: %s", "；".join(errors))

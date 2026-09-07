@@ -26,6 +26,7 @@ import threading
 import time
 from pathlib import Path
 
+from . import texts
 from . import watch
 
 from .config import SERVER_TZ, Config, both_clocks
@@ -224,7 +225,7 @@ def cmd_local(cfg: Config) -> int:
     # Monday rollover left Annihilation stuck at Close indefinitely.
     try:
         if msg := engine._annihilation.maybe_reopen():  # noqa: SLF001
-            engine.notifier.send("🗓️ 剿灭", msg)
+            engine.notifier.send(texts.WEEKLY, msg)
     except Exception:  # noqa: BLE001
         log.exception("剿灭周期检查出错，跳过")
     # Deployed Windows machines run service.py, where new records arrive as

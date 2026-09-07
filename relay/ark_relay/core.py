@@ -12,6 +12,7 @@ import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from . import texts
 from .config import Config, RunRecord, SERVER_TZ, USER_TZ, atomic_write_text, both_clocks
 
 log = logging.getLogger("ark.core")
@@ -216,7 +217,7 @@ def is_last_run_of_day(rec: RunRecord, cfg: Config) -> bool:
 
 def format_failure(rec: RunRecord, diagnosis: str = "") -> tuple[str, str]:
     """Immediate alert for a failed run. Title, body."""
-    title = f"❌ {rec.script} 失败"
+    title = texts.failed(rec.script)
     # duration_known=False means start/finish came from filename/mtime, which
     # is hours wrong on this install ("未捕获到日志" runs - exactly the class
     # most likely to be a failure alert). Never present those as fact.
@@ -571,7 +572,7 @@ def format_missing(what: str, expected_at: datetime, detail: str = "") -> tuple[
 
     This is the alert only a relay outside the monitored machine can produce.
     """
-    title = f"🔌 {what}"
+    title = texts.missing(what)
     body = [f"预计 {both_clocks(expected_at)} 应发生，至今没有。"]
     if detail:
         body += ["", detail]

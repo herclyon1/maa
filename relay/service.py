@@ -51,6 +51,7 @@ import win32file  # noqa: E402
 import win32service  # noqa: E402
 import win32serviceutil  # noqa: E402
 
+from ark_relay import texts
 from ark_relay.config import SERVER_TZ, both_clocks  # noqa: E402
 
 # Degraded path only: how often to re-check AUTO-MAS liveness when the WMI
@@ -489,7 +490,7 @@ def _stage_patch_okww(cfg, notifier, log) -> None:
         # 一次启动只推一条。原来一条补丁一条推送，OK-WW 一更新就八条一起砸到手机上
         # （用户 2026-09-06：「你这个通知一直在轰炸我」）。
         if notes:
-            notifier.send(f"🩹 OK-WW 补丁（{len(notes)} 条）", "\n".join(f"· {n}" for n in notes))
+            notifier.send(texts.patches(len(notes)), "\n".join(f"· {n}" for n in notes))
     except Exception:  # noqa: BLE001 - 贴不上也不能挡住服务启动
         log.exception("启动时贴 OK-WW 补丁失败，服务照常继续")
 
@@ -546,7 +547,7 @@ def _stage_announce_update(notifier, log) -> None:
                 "本机现在跑的是旧代码。下次开机会自动重试；",
                 "要立刻生效请在控制端执行 scripts/mac/deploy-relay.sh。",
             ])
-            if errors := notifier.send("⚠️ 中继自更新没成功", body, alert=True):
+            if errors := notifier.send(texts.SELFUPDATE_FAILED, body, alert=True):
                 log.error("更新失败通知没发出去: %s", "；".join(errors))
             else:
                 log.info("已推送更新失败通知")
@@ -663,19 +664,17 @@ def _stage_inbox_and_phone(svc, cfg, engine, notifier, log):
             from ark_relay import commands as _cmd  # noqa: PLC0415
             ok, msg = _cmd.estop()
             log.warning("🛑 红按钮：%s", msg)
-            notifier.send("🛑 已停一切", msg)
+            notifier.send(texts.ESTOP, msg)
             push_state("红按钮")
             return
         if engine.scripts_running():
             # 脚本在跑的时候改配置会被 AUTO-MAS 用内存里那份冲掉。
-            notifier.send("📱 手机指令暂缓",
-                          f"「{action}」现在不能执行：脚本正在运行，"
-                          "此时改配置会被冲掉。等这一趟跑完再按一次。")
+            notifier.send(texts.PHONE_DEFERRED, texts.phone_deferred_body(action))
             return
         ok, msg = apply_command(body)
         log.info("📱 手机指令 %s：%s", action, msg)
         # 用户 2026-08-31 要的：按下保存之后要有通知说改动成功。
-        notifier.send("📱 配置已修改" if ok else "📱 配置没改成", msg)
+        notifier.send(texts.CONFIG_CHANGED if ok else texts.CONFIG_FAILED, msg)
         push_state("改完配置")
 
     ensure_automas()
@@ -748,11 +747,11 @@ def _stage_preupdate(cfg, notifier, log) -> None:
             # launch of MaaEnd afterwards is unaffected either way.
             if note := preupdate.run_maa(maa, problems=problems):
                 log.info("预更新：%s", note)
-                notifier.send("🆕 预更新", note)
+                notifier.send(texts.PREUPDATE, note)
             if updated := preupdate.run(maaend, problems=problems,
                                         state_dir=cfg.state_dir):
                 log.info("预更新：MaaEnd 已更新：%s", updated)
-                notifier.send("🆕 预更新",
+                notifier.send(texts.PREUPDATE,
                               f"MaaEnd 已更新：{updated}")
                 # AUTO-MAS 开机时就把 MaaEnd 的任务表预载进内存缓存了，MaaEnd 在它之后
                 # 被升级，缓存不会跟着刷新：2026-09-06 上游把 SellProduct 的定义文件改名，
@@ -767,13 +766,13 @@ def _stage_preupdate(cfg, notifier, log) -> None:
                 from ark_relay import gameupdate as _gu  # noqa: PLC0415
                 if back := _gu.maaend_reenable_if_updated(cfg):
                     log.info("预更新：%s", back)
-                    notifier.send("🔓 终末地日常已开回", back)
+                    notifier.send(texts.MAAEND_REENABLED, back)
             except Exception:  # noqa: BLE001
                 log.exception("开回 MaaEnd 任务出错")
             # AUTO-MAS is asked, not launched - it is already running.
             if note := preupdate.run_automas(cfg.automas_dir,
                                              problems=problems):
-                notifier.send("🆕 预更新", note)
+                notifier.send(texts.PREUPDATE, note)
             # OK-WW last: it is the newest of the four and the only one whose
             # update comes from a CNB git mirror rather than MirrorChyan.
             okww = cfg.okww_dir or (Path(cfg.automas_dir).parent / "okww"
@@ -782,12 +781,12 @@ def _stage_preupdate(cfg, notifier, log) -> None:
             # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_preupdate」
             if note := preupdate.run_okww(okww, problems=problems):
                 log.info("预更新：%s", note)
-                notifier.send("🆕 预更新", note)
+                notifier.send(texts.PREUPDATE, note)
             patch_notes = okww_patch.ensure_patches(okww)
             for note in patch_notes:
                 log.info("预更新：%s", note)
             if patch_notes:      # 合成一条推，别一条补丁一条推
-                notifier.send(f"🩹 OK-WW 补丁（{len(patch_notes)} 条）",
+                notifier.send(texts.patches(len(patch_notes)),
                               "\n".join(f"· {n}" for n in patch_notes))
             preupdate.mark_run(cfg.state_dir, _pre_now,
                                clean=not problems)
@@ -796,11 +795,8 @@ def _stage_preupdate(cfg, notifier, log) -> None:
                 # the machine running a version nobody chose.
                 body = "\n".join(f"· {p}" for p in problems)
                 log.error("预更新有 %d 项没能确认：\n%s", len(problems), body)
-                notifier.send(
-                    f"⚠️ 预更新没能确认（{len(problems)} 项）",
-                    body + "\n\n这不是「无需更新」——是这一轮没能确认有没有更新。"
-                           "机器可能仍在跑旧版本。",
-                    alert=True)
+                notifier.send(texts.unconfirmed("预更新", len(problems)),
+                              body + texts.preupdate_unconfirmed_tail(), alert=True)
     except Exception:  # noqa: BLE001 - a pre-update must never stop the relay
         log.exception("预更新出错，跳过（本轮照旧）")
 
@@ -815,7 +811,7 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
                      _gu2.maaend_reenable_spmed_if_updated(cfg)):
             if back:
                 log.info("开机：%s", back)
-                notifier.send("🔓 终末地日常已开回", back)
+                notifier.send(texts.MAAEND_REENABLED, back)
     except Exception:  # noqa: BLE001
         log.exception("开回 MaaEnd 任务出错")
 
@@ -835,11 +831,11 @@ def _stage_gameupdate(cfg, notifier, log) -> None:
             notes, gproblems = gameupdate.boot_check(cfg, budget_s=budget, now=_gu_now)
             for n in notes:
                 log.info("游戏更新：%s", n)
-                notifier.send("🆕 游戏更新", n)
+                notifier.send(texts.GAME_UPDATE, n)
             if gproblems:
                 body = "\n".join(f"· {x}" for x in gproblems)
                 log.warning("游戏更新有 %d 项没能确认：\n%s", len(gproblems), body)
-                notifier.send(f"⚠️ 游戏更新没能确认（{len(gproblems)} 项）", body)
+                notifier.send(texts.unconfirmed("游戏更新", len(gproblems)), body)
             gameupdate.mark_run(cfg.state_dir, _gu_now, boot_id=_boot_id)
     except Exception:  # noqa: BLE001 - 更新客户端出错不能拖垮中继
         log.exception("游戏更新出错，跳过（本轮照旧）")
@@ -873,7 +869,7 @@ def _stage_annihilation(engine, notifier, log) -> None:
                 lines.append(rolled.get(name) or gate.week_line())
             except Exception:  # noqa: BLE001
                 log.exception("%s 状态读不出来", name)
-        notifier.send("🗓️ 新的一周", "\n".join(lines))
+        notifier.send(texts.NEW_WEEK, "\n".join(lines))
 
     # Assert the annihilation switch once at startup rather than leaving it
     # to tick(): ticks are driven by file events and alarms, and neither has
@@ -1036,13 +1032,7 @@ def _loop(svc, cfg, engine, notifier, inbox, collect, deferred_inbox, log) -> No
                 # 一次性 bug 是同一族（2026-08-30 全量审查一起修的）。
                 watch_retry_at = time.monotonic() + 5.0
                 watch_retry_delay = 5.0
-                notifier.send(
-                    "⚠️ 中继的目录监听掉了",
-                    "运行记录暂时不再是一落盘就处理，要等下一个定时判定点"
-                    "（最长一小时）。中继会自己反复重建监听，恢复了就不用管；\n"
-                    "如果这条之后一直没恢复，重启中继：\n"
-                    "net stop ark-relay & net start ark-relay",
-                    alert=True)
+                notifier.send(texts.WATCH_LOST, texts.watch_lost_body(), alert=True)
             # AUTO-MAS writes the .json and .log separately; give it a
             # moment so the first notification does not read a half-file.
             time.sleep(2)
@@ -1112,11 +1102,7 @@ def _loop(svc, cfg, engine, notifier, inbox, collect, deferred_inbox, log) -> No
                     revive_failures += 1
                 if revive_failures >= REVIVE_ALERT_AFTER and not revive_alerted:
                     revive_alerted = True
-                    notifier.send(
-                        "🔌 AUTO-MAS 拉不起来",
-                        f"已连续尝试拉起 {revive_failures} 次仍不见后端进程，"
-                        "需要人工看一眼。服务会按翻倍退避继续重试。",
-                        alert=True)
+                    notifier.send(texts.AUTOMAS_DOWN, texts.automas_down_body(revive_failures), alert=True)
             # Adopt whichever backend now exists - our revival, or one that
             # was there all along. A revived backend is a new process, so
             # the old handle (already closed above) never signals again.
