@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from datetime import datetime, timedelta
 
 from . import banners, collector, core, plan, summary
@@ -137,6 +138,7 @@ def _maybe_daily_report(eng, now: datetime | None = None) -> None:
         return
     eng.state.mark_report_sent(day)
     log.info("📋 %s 日报已推送（%d 条记录）", day, len(entries))
+    _attach_tacet_shots(eng, day)
 
 
 def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
@@ -226,4 +228,63 @@ def send_daily_now(eng, mark: bool = True, label: str = "临时查看") -> bool:
         return False
     if mark:
         eng.state.mark_report_sent(day)
+    _attach_tacet_shots(eng, day)
     return True
+
+
+def _tacet_shots_dir(eng) -> "Path | None":
+    root = getattr(eng.cfg, "okww_dir", None)
+    if not root:
+        return None
+    d = Path(root) / "data" / "apps" / "ok-ww" / "working" / "screenshots"
+    return d if d.is_dir() else None
+
+
+def _tacet_caption(eng) -> str:
+    """「配置刷第 N 个：名字，掉 套装」——和日报里那一行同一个来源。"""
+    try:
+        from . import weeklyboss, wuwa_tacet  # noqa: PLC0415
+        daily = weeklyboss._read(weeklyboss._file(eng.cfg.automas_dir, "DailyTask.json"))  # noqa: SLF001
+        idx = int((daily or {}).get("Which Tacet Suppression to Farm") or 1)
+        return f"配置刷第 {idx} 个：{wuwa_tacet.label(idx)}，掉 {wuwa_tacet.reward(idx)}"
+    except Exception:  # noqa: BLE001
+        return "配置的无音区序号没读到"
+
+
+def _attach_tacet_shots(eng, day: str) -> list[str]:
+    """日报发完，把这一天无音区的截图（OK-WW 补丁 tacetshot 拍的）用群机器人跟在后面。
+
+    用户 2026-09-07：「我想确认一下是不是刷的是我想要的无音区种类，因为我不放心。
+    刷完之后能不能贴一张截图在日报通知里面？」每张只发一次（状态目录记文件名）。
+    返回发出去的文件名，测试用。
+    """
+    shots = _tacet_shots_dir(eng)
+    if shots is None:
+        return []
+    sent_file = Path(eng.state.dir) / f"tacet-shots-{day}.sent"
+    try:
+        already = set(sent_file.read_text(encoding="utf-8").split())
+    except OSError:
+        already = set()
+    picks = []
+    for tag in ("tacet_list", "tacet_arrived"):
+        cands = [p for p in shots.glob(f"*_{tag}_original.png")
+                 if datetime.fromtimestamp(p.stat().st_mtime, tz=SERVER_TZ).strftime("%Y-%m-%d") == day
+                 and p.name not in already]
+        if cands:
+            picks.append((tag, max(cands, key=lambda p: p.stat().st_mtime)))
+    if not picks:
+        return []
+    which = "、".join({"tacet_list": "F2 列表页", "tacet_arrived": "到达后"}[t] for t, _ in picks)
+    eng.notifier.send_group("🖼️ 无音区截图", f"{_tacet_caption(eng)}。下面是{which}。")
+    done = []
+    for _tag, p in picks:
+        if not eng.notifier.send_group_image(p):
+            done.append(p.name)
+    if done:
+        try:
+            sent_file.write_text("\n".join(sorted(already | set(done))), encoding="utf-8")
+        except OSError:
+            log.warning("无音区截图的记账写不下来", exc_info=True)
+        log.info("🖼️ 无音区截图已发 %d 张：%s", len(done), "、".join(done))
+    return done

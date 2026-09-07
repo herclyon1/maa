@@ -217,6 +217,29 @@ class WeCom:
         return data["media_id"]
 
 
+_WECOM_IMAGE_LIMIT = 1_800_000   # 官方 2MB，留点余量给 base64 之外的字段
+
+
+def _image_bytes_for_wecom(path: Path, limit: int = _WECOM_IMAGE_LIMIT) -> bytes:
+    """读图；超过上限就用 Pillow 缩成 JPEG。游戏截图 1920×1080 的 PNG 常有 2.3MB。"""
+    raw = path.read_bytes()
+    if len(raw) <= limit and path.suffix.lower() in (".png", ".jpg", ".jpeg"):
+        return raw
+    from io import BytesIO  # noqa: PLC0415
+    from PIL import Image  # noqa: PLC0415
+    img = Image.open(BytesIO(raw)).convert("RGB")
+    width = 1280
+    for quality in (85, 75, 60):
+        im = img if img.width <= width else img.resize(
+            (width, round(img.height * width / img.width)))
+        buf = BytesIO()
+        im.save(buf, format="JPEG", quality=quality, optimize=True)
+        if buf.tell() <= limit:
+            return buf.getvalue()
+        width = 960
+    return buf.getvalue()
+
+
 class WeComBot:
     """企业微信群机器人 - a webhook, with no trusted-IP list.
 
@@ -254,6 +277,20 @@ class WeComBot:
             if data.get("errcode") != 0:
                 raise RuntimeError(
                     f"群机器人发送失败: {data.get('errcode')} {data.get('errmsg')}")
+
+    def send_image(self, path: Path) -> None:
+        """群机器人的图片消息：base64 + md5，官方上限 2MB、jpg/png。"""
+        import base64  # noqa: PLC0415
+        import hashlib  # noqa: PLC0415
+        raw = _image_bytes_for_wecom(Path(path))
+        data = _post_json(self.url, {
+            "msgtype": "image",
+            "image": {"base64": base64.b64encode(raw).decode("ascii"),
+                      "md5": hashlib.md5(raw).hexdigest()},  # noqa: S324 - 接口要的就是 md5
+        })
+        if data.get("errcode") != 0:
+            raise RuntimeError(
+                f"群机器人发图失败: {data.get('errcode')} {data.get('errmsg')}")
 
 
 class ServerChan:
@@ -528,6 +565,17 @@ class Notifier:
             for n, e in fresh.items():
                 self._announced_down[n] = self._fingerprint(e)
             self._save_down()
+
+    def send_group_image(self, path: Path) -> list[str]:
+        """走群机器人发图。自建应用那条路要 IP 白名单（60020），这条不用。"""
+        if not self.wecom_bot.enabled:
+            return ["群机器人未配置"]
+        try:
+            self.wecom_bot.send_image(Path(path))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("群机器人发图失败: %s", exc)
+            return [str(exc)]
+        return []
 
     def send_image(self, path: Path) -> list[str]:
         if not self.wecom.enabled:

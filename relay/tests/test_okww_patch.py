@@ -144,6 +144,11 @@ def _make(root: Path, daily=UPSTREAM_DAILY, domain=UPSTREAM_DOMAIN,
         + "\n\n    def _prepare(self):\n        try:\n            pass\n"
         + okww_patch._LETPASS_OLD + "\n",
         encoding="utf-8")
+    # 无音区截图补丁改的是 TacetTask.py；锚点在 farm_tacet 的 while 里（12 空格）。
+    (d / "TacetTask.py").write_text(
+        "class TacetTask:\n    def farm_tacet(self, config=None):\n        while True:\n"
+        + okww_patch._TACETSHOT_OLD + "\n                pass\n",
+        encoding="utf-8")
     return d
 
 

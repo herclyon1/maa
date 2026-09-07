@@ -25,6 +25,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from .okww_patches.tacetshot import _TACETSHOT_OLD, _TACETSHOT_NEW, _tacetshot_present, _TACETSHOT
 from .okww_patches.claim import _CLAIM_OLD, _CLAIM_NEW, _CLAIM_V1, _CLAIM_V2, _CLAIM_V3, _CLAIM_V4, _CLAIM_TAIL, _CLAIM_OLD_FULL, _claim_present, _CLAIM
 from .okww_patches.core import _SRC, _Patch, _atomic_write, _atomic_write_bytes, _verify_or_revert, _stacked, _apply_one, _revert_text
 from .okww_patches.count import _COUNT_OLD, _COUNT_V1, _COUNT_NEW, _count_present, _COUNT
@@ -55,6 +56,7 @@ __all__ = [
     '_CLAIM_V4',
     '_CLAIM_TAIL',
     '_CLAIM_OLD_FULL',
+    '_TACETSHOT_OLD', '_TACETSHOT_NEW', '_tacetshot_present', '_TACETSHOT',
     '_claim_present',
     '_CLAIM',
     '_SRC',
@@ -201,6 +203,7 @@ def ensure_patches(okww_dir: Path | None) -> list[str]:
     done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
                              _CLAIM_V4, _CLAIM_OLD, "打完 Boss 真正领周本奖励 v4"))
     done.extend(_apply_one(root, _CLAIM))
+    done.extend(_apply_one(root, _TACETSHOT))
     # 取证补丁已经问到答案（画面是「结晶波片不足」弹窗），撤回。
     done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
                              _TEAMSHOT_NEW, _TEAMSHOT_OLD,
