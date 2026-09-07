@@ -583,6 +583,41 @@ def _forgery_label(text: str) -> str:
     return f"凝素领域（第 {idx + 1} 个）"
 
 
+_OKWW_GAME_ERR = "waiting for game to start error"
+_OKWW_ACTIVITY = re.compile(r" INFO TaskExecutor \w+:")
+_OKWW_TB_HEAD = re.compile(r" ERROR TaskExecutor (\w+):(.*?) Traceback \(most recent call last\):")
+_OKWW_EXC_LINE = re.compile(r"^\s*([\w.]*(?:Exception|Error)\w*)\b(.*)$", re.M)
+
+
+def _okww_got_in(text: str) -> bool:
+    """最后一次「等不到游戏窗口」之后还有没有任务执行器在干活。有 = 后来进去了。"""
+    i = text.rfind(_OKWW_GAME_ERR)
+    return bool(_OKWW_ACTIVITY.search(text, i if i >= 0 else 0))
+
+
+def _okww_error(text: str) -> str:
+    """失败的真实原因：最后一串 traceback 里最里层任务的那一句 + 异常类名。
+
+    OK-WW 出异常时会连打三段 traceback（任务自己、DailyTask.run_task_by_class、
+    TaskExecutor「Daily Task exception stopped」），三段说的是同一件事；
+    最里层那段带着人话（如「farm 4c error, try handle monthly card」）。
+    2026-09-07：日报只写 AUTO-MAS 那句「流程产生错误，请检查游戏状态」，看不出是哪一步。
+    """
+    heads = list(_OKWW_TB_HEAD.finditer(text))
+    if not heads:
+        return ""
+    last = heads[-1]
+    # 同一串：往前找 10 秒内、非外层包装的那一段
+    cluster = [m for m in heads if last.start() - m.start() < 6000]
+    inner = [m for m in cluster if m.group(1) not in ("DailyTask", "TaskExecutor")]
+    head = (inner or cluster)[0]
+    task, msg = head.group(1), head.group(2).strip()
+    nxt = heads[heads.index(head) + 1].start() if heads.index(head) + 1 < len(heads) else len(text)
+    excs = _OKWW_EXC_LINE.findall(text[head.end():nxt])
+    exc = excs[-1][0].rsplit(".", 1)[-1] if excs else ""
+    return f"{task} 抛 {exc}：{msg}" if exc else f"{task}：{msg}"
+
+
 def parse_okww_log(log_path: Path) -> dict:
     """Recover stamina spend / entry count / daily progress from an OK-WW log.
 
@@ -612,10 +647,16 @@ def parse_okww_log(log_path: Path) -> dict:
         backs = [int(x) for x in back]
         if used := sum(a - b for a, b in zip(backs, backs[1:]) if a > b):
             out["okww_backup_spent"] = used
-    # 根本没进游戏：等窗口出错、一局没开。大版本更新日库洛启动器停在「更新」
-    # 按钮上，OK-WW 只会等游戏窗口，等不到就是这个形状（2026-09-02 09:18 实录）。
-    if "waiting for game to start error" in text and not entries:
+    # 根本没进游戏：等窗口出错、一局没开、**之后再没干任何活**。大版本更新日
+    # 库洛启动器停在「更新」按钮上，OK-WW 只会等游戏窗口（2026-09-02 09:18 实录）。
+    # 「之后再没干任何活」这一条是 2026-09-07 加的：那天三趟开头都有一句
+    # 「waiting for game to start error … is not connected」（窗口连接的瞬时错，
+    # 几秒后就连上了），接着跑了 41 分钟、倒在周本结算页，也没开过无音区的局，
+    # 于是全被判成「进不了游戏（服务器维护／客户端待更新）」。用户：分类机制有问题。
+    if "waiting for game to start error" in text and not entries and not _okww_got_in(text):
         out["okww_unreachable"] = True
+    if err := _okww_error(text):
+        out["okww_error"] = err
     farm, reward = _okww_farm(text)
     if farm:
         out["okww_farm"] = farm
@@ -857,6 +898,9 @@ def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
         for key, value in parsed.items():
             if not raw.get(key):
                 raw[key] = value
+        # OK-WW 的失败清单只有 AUTO-MAS 那句笼统话；日志里有真实原因就换成它
+        if script not in ("MAA", "MaaEnd") and not ok and raw.get("okww_error"):
+            failed = [raw["okww_error"]]
     if flat := flatten_drops(raw):
         raw["drop_statistics"] = flat
     # 回满时间：MAA 自己写在结果 JSON 里，另外两个得算。用这条记录的结束时刻
