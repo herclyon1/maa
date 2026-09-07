@@ -125,7 +125,7 @@ def _apply_one(root: Path, p: _Patch) -> list[str]:
     if (dup := _stacked(f, p)) is not None:
         return [dup]
     log.info("OK-WW 补丁：%s 已重新贴上", p.name)
-    return [f"OK-WW 补丁：{p.name} 已重新贴上（上次更新把它覆盖了）"]
+    return [f"OK-WW 补丁：{p.name} 已贴上"]
 
 def _revert_text(root: Path, parts: tuple, new: str, old: str,
                  label: str) -> list[str]:
@@ -148,4 +148,4 @@ def _revert_text(root: Path, parts: tuple, new: str, old: str,
     if bak is None:
         return [f"OK-WW 补丁：{label} 撤销失败，写不进去"]
     log.info("OK-WW 补丁：%s 已撤销，还原成上游原样", label)
-    return [f"OK-WW 补丁：{label} 已撤销（证据不足，见 2026-08-30 的结论）"]
+    return [f"OK-WW 补丁：{label} 已还原成上游原样"]

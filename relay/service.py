@@ -362,10 +362,20 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         # 用户 2026-08-31：「中继服务卡在 STOP_PENDING 这个不要再出现了，
         # 来龙去脉见 docs/CODE-HISTORY.md「service.py:SvcStop」
         def _force_exit() -> None:
-            # 走到这里说明 main() 返回后进程自己没退干净（有线程卡在 C 调用里）。
-            # 记一笔，让「停服务为什么要十几秒」有据可查，而不是每次重新猜。
+            # 走到这里说明主循环 15 秒内没从 tick 里出来（2026-09-07 10:29 一次，
+            # 日志里没有任何线索）。把每个线程卡在哪一行打出来，下次就不用猜。
+            import sys  # noqa: PLC0415
+            import traceback  # noqa: PLC0415
+            names = {t.ident: t.name for t in threading.enumerate()}
+            dump = []
+            for ident, frame in sys._current_frames().items():  # noqa: SLF001
+                if ident == threading.get_ident():
+                    continue
+                stack = traceback.format_stack(frame)[-4:]
+                dump.append(f"[{names.get(ident, ident)}]\n" + "".join(stack))
             logging.getLogger("ark.service").warning(
-                "停止 15 秒后进程仍未退出，硬保险强制退出（谁没退见上一行之前的日志）")
+                "停止 15 秒后进程仍未退出，硬保险强制退出。各线程卡在：\n%s", "\n".join(dump))
+            logging.shutdown()
             os._exit(0)
         killer = threading.Timer(15, _force_exit)
         killer.daemon = True     # 它自己不能反过来拖住退出
