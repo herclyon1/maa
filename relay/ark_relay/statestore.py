@@ -51,6 +51,9 @@ FIELDS: dict[str, dict[str, str]] = {
         "arknights_client": "记下的明日方舟客户端版本：{version, at}",
         "queue_skips": "为更新而临时从队列里摘掉的脚本，列表",
         "maintenance_windows": "今天各游戏的停服维护时段：{游戏: {start,end,why}}",
+        "maaend_disabled_1_5_3": "为 1.5.3 临时关掉的 MaaEnd 任务：{tasks, since}",
+        "maaend_reenable_next_boot": "补跑时临时关掉、下次开机开回的任务：{tasks}",
+        "maaend_disabled_spmed": "加强剂坏掉时关掉的任务：{tasks, since}",
     },
     "queues": {
         "pending": "还没推出去的失败告警：{脚本|账号: 记录}",
@@ -58,6 +61,7 @@ FIELDS: dict[str, dict[str, str]] = {
         "inbox_version": "待办清单处理到哪一版",
         "skip_restore": "跳过模式停用了哪个队列，用于过后恢复",
         "skip_day:*": "某天要跳过哪个队列（值=队列名）",
+        "channels_down": "哪些推送渠道正挂着，避免每次重启都重报一遍",
     },
 }
 
@@ -80,6 +84,10 @@ LEGACY = {
     "gameupdate-off.flag": ("updates", "gameupdate_off", "flag"),
     "arknights-client.json": ("updates", "arknights_client", "json"),
     "queue-skips.json": ("updates", "queue_skips", "json"),
+    "maaend-disabled-for-1.5.3.json": ("updates", "maaend_disabled_1_5_3", "json"),
+    "maaend-reenable-next-boot.json": ("updates", "maaend_reenable_next_boot", "json"),
+    "maaend-disabled-spmed.json": ("updates", "maaend_disabled_spmed", "json"),
+    "channels-down.json": ("queues", "channels_down", "json"),
     "phone-seen.json": ("queues", "phone_seen", "json"),
     "inbox-version.txt": ("queues", "inbox_version", "text"),
     "skip-restore.json": ("queues", "skip_restore", "json"),

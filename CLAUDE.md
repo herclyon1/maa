@@ -56,6 +56,7 @@
 | 要做什么 | 用什么 |
 |---|---|
 | 核实鸣潮配置真的落地了 | `scripts/mac/okww-check.sh` —— 比对 MAS 侧和 OK-WW 实际读到的那份（底下是 `scripts/win/okww-landed.py`）。「设置看着好好的、实际没生效」查这个 |
+| 发布手机页 | `scripts/mac/deploy-web.sh` —— 改了 `web/` 下任何文件之后**必须**跑，不跑手机上还是旧的 |
 | 串流到 ins 打游戏 | `scripts/mac/stream-ins.sh`（菜单用）/ `--relative`（游戏内转视角）。桌面上那三个启动器点的就是它 |
 | **手动跑单个脚本 / 停干净** | `scripts/mac/run-one.sh MAA\|MaaEnd\|OK-WW`（`status` 看在跑什么、`stop` 按顺序停）—— **唯一正门**，内含忙闲闸门。禁裸调 `/api/dispatch/start`、禁 `taskkill` |
 | 在游戏机上跑脚本 | `scripts/mac/winrun.sh --py <本地.py>`（要看屏幕用 `--py1`） |

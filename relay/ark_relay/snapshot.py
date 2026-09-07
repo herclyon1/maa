@@ -22,7 +22,9 @@ from pathlib import Path
 
 log = logging.getLogger("ark.snapshot")
 
-API = "http://127.0.0.1:36163"
+def _api() -> str:
+    from .config import mas_base  # noqa: PLC0415
+    return mas_base()
 # 读**母本**，不是 OK-WW 自己那份。AUTO-MAS 每次跑之前会无条件把母本
 # 整个拷过去（见 config.master_config_dir 的注释），所以脚本目录里那份
 # 反映的是**上一趟**用的配置，不是当前生效的。2026-08-31 我拿它判断
@@ -35,7 +37,7 @@ def _post(path: str, body: "dict | None" = None, timeout: int = 15) -> dict:
     # AUTO-MAS 的**每个**端点都是 POST，包括读取用的那些。GET 会返回
     # Method Not Allowed——2026-08-26 在这上面花过时间。
     req = urllib.request.Request(
-        API + path, data=json.dumps(body or {}).encode(),
+        _api() + path, data=json.dumps(body or {}).encode(),
         headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310
         return json.loads(r.read().decode())

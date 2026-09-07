@@ -32,7 +32,7 @@ log = logging.getLogger("ark.engine")
 _SCRIPTS_CACHE: dict = {"at": -1e9, "val": False}
 _SCRIPTS_TTL = 3.0
 
-_RUNTIME_URL = "http://127.0.0.1:36163/api/dispatch/runtime-snapshot"
+_RUNTIME_PATH = "/api/dispatch/runtime-snapshot"   # 全仓唯一确认过的 GET 端点
 # AUTO-MAS 给脚本/用户标的终态。不在这里面的（运行、等待、以及没见过的）都算还在跑。
 _SNAPSHOT_DONE = {"完成", "异常", "失败", "跳过", "中止", "取消"}
 
@@ -53,8 +53,10 @@ def _automas_busy():
     """问 AUTO-MAS 有没有任务在跑。True/False；问不到返回 None。"""
     import json  # noqa: PLC0415
     import urllib.request  # noqa: PLC0415
+
+    from .config import mas_base  # noqa: PLC0415
     try:
-        with urllib.request.urlopen(_RUNTIME_URL, timeout=3) as r:
+        with urllib.request.urlopen(mas_base() + _RUNTIME_PATH, timeout=3) as r:
             return _judge_snapshot(json.loads(r.read().decode("utf-8")))
     except Exception:  # noqa: BLE001 - 接口不在就退回进程检查
         return None

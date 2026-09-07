@@ -513,6 +513,11 @@ sc.exe failure sshd reset= 86400 actions= restart/5000/restart/10000/restart/300
 | `ARK_MAAEND_DIR` | MaaEnd root |
 | `ARK_OKWW_DIR` | OK-WW root（`D:\ark\okww`）。周本的母本／副本配置和它自己的日志都从这里推出来 |
 | `ARK_OKWW_LOG` | 直接指定 OK-WW 的日志文件。不设就取 `ARK_OKWW_DIR` 下 `data/apps/ok-ww/working/logs` 里最新的那个 |
+| `ARK_KEEP_TMP` | 只影响测试：设成 1 就不清理临时目录，留现场排查用 |
+
+**没有 `.env.example`。** 2026-09-08 删掉了：它列的四个变量代码一个都不读，
+而真正要设的三十多个一个没写——照它填等于什么都没设。要设什么以这张表为准，
+这张表由 `scripts/mac/check-docs.py` 的 `[env]` 一节盯着，漏一个闸门就红。
 | `ARK_MAS_PORT` | AUTO-MAS backend port, default `36163`. The pre-update asks it over HTTP on localhost rather than launching anything. |
 | `ARK_STATE_DIR` | relay state, default `./ark-state` |
 | `ARK_LAST_RUN_AFTER` | fallback for the day's last run time, default `21:30`; the real cutoff comes from QueueConfig |

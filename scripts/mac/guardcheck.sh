@@ -293,6 +293,42 @@ else
 fi
 
 echo
+echo "▶ 派发闸门"
+# 2026-09-08：闸门写好了，但拒绝时退出码是 0——调用方分辨不出「拒绝」和「派发成功」，
+# 等于只对人生效。这里喂一个「有脚本在跑」的假状态，断言它必须非零退出并说明理由。
+cat > "$TMP/guard_busy.py" <<'PY'
+import sys, pathlib
+sys.path.insert(0, str(pathlib.Path("scripts/win").resolve()))
+import dispatch_guard as g
+g.running = lambda: (["MAA"], ["Endfield.exe"])          # 假装有脚本和游戏在跑
+g.ids = lambda: {"MAA": "id-1"}                          # 真调接口就说明没被拦住
+g.post = lambda *a, **k: (_ for _ in ()).throw(AssertionError("闸门放行了，居然真去派发"))
+sys.exit(g.start("MAA"))
+PY
+refuses "忙的时候拒绝派发，且非零退出" "拒绝派发" python3 "$TMP/guard_busy.py"
+
+cat > "$TMP/guard_free.py" <<'PY'
+import sys, pathlib
+sys.path.insert(0, str(pathlib.Path("scripts/win").resolve()))
+import dispatch_guard as g
+g.running = lambda: ([], [])                             # 闲着
+g.ids = lambda: {"MAA": "id-1"}
+g.post = lambda *a, **k: {"status": "success"}
+sys.exit(g.start("MAA"))
+PY
+accepts "闲的时候正常派发（不误杀）" python3 "$TMP/guard_free.py"
+
+cat > "$TMP/guard_name.py" <<'PY'
+import sys, pathlib
+sys.path.insert(0, str(pathlib.Path("scripts/win").resolve()))
+import dispatch_guard as g
+g.running = lambda: ([], [])
+g.ids = lambda: {"MAA": "id-1"}
+g.post = lambda *a, **k: (_ for _ in ()).throw(AssertionError("不该走到派发"))
+sys.exit(g.start("不存在的脚本"))
+PY
+refuses "脚本名不存在时拒绝" "没有叫" python3 "$TMP/guard_name.py"
+
 echo "▶ 仓库自检本身"
 # 这里只验「lint 不会误杀干净的树」。测试那一项部署流程自己会跑一遍，
 # 在这儿再跑一遍纯属重复，一次部署白等十几秒。

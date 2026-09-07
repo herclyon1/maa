@@ -220,7 +220,10 @@ def _toggle_task(name: str, on: bool) -> tuple[bool, str]:
                    "用 set_config 指名道姓地写路径，比猜任务名安全")
 
 
-MAS_API = "http://127.0.0.1:36163"
+# 地址只有一处出处，见 config.mas_base()
+def _mas_api() -> str:
+    from .config import mas_base  # noqa: PLC0415 - 避免导入环
+    return mas_base()
 
 
 def _mas(path: str, body: "dict | None" = None, timeout: int = 20) -> dict:
@@ -230,7 +233,7 @@ def _mas(path: str, body: "dict | None" = None, timeout: int = 20) -> dict:
     直接改文件的值会被静静冲掉。
     """
     req = urllib.request.Request(
-        MAS_API + path, data=json.dumps(body or {}).encode(),
+        _mas_api() + path, data=json.dumps(body or {}).encode(),
         headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310
         return json.loads(r.read().decode())

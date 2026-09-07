@@ -888,10 +888,12 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
 # 的说明里有「适配新版本」「装备制造弹窗」「栖云生态点」。上游一换版本就开回来。
 
 def maaend_reenable_if_updated(cfg) -> str:
-    rec_p = Path(cfg.state_dir) / "maaend-disabled-for-1.5.3.json"
-    try:
-        rec = json.loads(rec_p.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    # 记在 state.json 的 updates.maaend_disabled_1_5_3。2026-09-08 之前读的是独立文件，而
+    # 状态收口的清扫会把旧文件改名成 .migrated——读写两侧必须一起改，只加迁移
+    # 不改读法的话，这条记录会永远读不到，那几项日常一直关着没人知道。
+    store = _store(cfg.state_dir)
+    rec = store.get("updates", "maaend_disabled_1_5_3")
+    if not isinstance(rec, dict) or not rec:
         return ""
     from .preupdate import _maaend_file_version  # noqa: PLC0415
     ver = _maaend_file_version(cfg.maaend_dir) if cfg.maaend_dir else ""
@@ -912,7 +914,7 @@ def maaend_reenable_if_updated(cfg) -> str:
             on.append(t["taskName"])
     if on:
         atomic_write_text(target, json.dumps(j, ensure_ascii=False, indent=2))
-    rec_p.unlink(missing_ok=True)
+    store.pop("updates", "maaend_disabled_1_5_3")
     zh = {"GiftOperator": "赠送干员礼物", "GearAssembly": "装备制造", "DeliveryJobs": "转交委托", "EnvironmentMonitoring": "环境监测"}
     return (f"MaaEnd 已更新到 {ver}（之前是 {since}），关掉的 {len(on)} 项日常已开回来："
             + "、".join(zh.get(n, n) for n in on)) if on else ""
@@ -937,13 +939,15 @@ def maaend_set_enabled(cfg, names: set, enabled: bool) -> list[str]:
 
 def maaend_reenable_next_boot(cfg) -> str:
     """补跑时临时关掉的（如当天已跑过的自动采集），下次开机开回。"""
-    rec_p = Path(cfg.state_dir) / "maaend-reenable-next-boot.json"
-    try:
-        rec = json.loads(rec_p.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    # 记在 state.json 的 updates.maaend_reenable_next_boot。2026-09-08 之前读的是独立文件，而
+    # 状态收口的清扫会把旧文件改名成 .migrated——读写两侧必须一起改，只加迁移
+    # 不改读法的话，这条记录会永远读不到，那几项日常一直关着没人知道。
+    store = _store(cfg.state_dir)
+    rec = store.get("updates", "maaend_reenable_next_boot")
+    if not isinstance(rec, dict) or not rec:
         return ""
     on = maaend_set_enabled(cfg, set(rec.get("tasks") or []), True)
-    rec_p.unlink(missing_ok=True)
+    store.pop("updates", "maaend_reenable_next_boot")
     zh = {"AutoCollect": "自动采集", "AutoUseSpMedication": "应急理智加强剂"}
     return ("已开回：" + "、".join(zh.get(n, n) for n in on)) if on else ""
 
@@ -976,10 +980,12 @@ def spmed_fix_present(maaend_dir) -> bool:
 
 def maaend_reenable_spmed_if_updated(cfg) -> str:
     """应急理智加强剂在 beta.5 坏了（09-03）；上游把它修好了就开回来。"""
-    rec_p = Path(cfg.state_dir) / "maaend-disabled-spmed.json"
-    try:
-        rec = json.loads(rec_p.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    # 记在 state.json 的 updates.maaend_disabled_spmed。2026-09-08 之前读的是独立文件，而
+    # 状态收口的清扫会把旧文件改名成 .migrated——读写两侧必须一起改，只加迁移
+    # 不改读法的话，这条记录会永远读不到，那几项日常一直关着没人知道。
+    store = _store(cfg.state_dir)
+    rec = store.get("updates", "maaend_disabled_spmed")
+    if not isinstance(rec, dict) or not rec:
         return ""
     from .preupdate import _maaend_file_version  # noqa: PLC0415
     ver = _maaend_file_version(cfg.maaend_dir) if cfg.maaend_dir else ""
@@ -989,5 +995,5 @@ def maaend_reenable_spmed_if_updated(cfg) -> str:
         log.info("MaaEnd 已是 %s，但加强剂那条判据还是坏的写法，继续关着", ver)
         return ""
     on = maaend_set_enabled(cfg, set(rec.get("tasks") or []), True)
-    rec_p.unlink(missing_ok=True)
+    store.pop("updates", "maaend_disabled_spmed")
     return f"MaaEnd 已是 {ver}，加强剂的判据已修好，任务开回来" if on else ""

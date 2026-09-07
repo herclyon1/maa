@@ -23,9 +23,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-HOST = "100.65.39.119"
+import os
+
+# 和其余脚本一个口径：ARK_HOST 优先，没设才回落到这台机器的地址。
+# 写死常量的话，换一台机器要改源码；而别的脚本全都认 ARK_HOST，只有它不认。
+HOST = os.environ.get("ARK_HOST") or "100.65.39.119"
 HERE = Path(__file__).resolve().parent
 SNAP = HERE.parent.parent / "relay" / "state" / "config-snapshot.json"
+SNAP_AT = "_snapshot_at"          # 快照自己的时间戳，flatten 之前 pop 掉
+RUNTIME_SEGMENTS = ("进程", "ark-relay")   # 运行时状态，不是配置
 
 # 远端读取脚本。只输出 JSON，中文走 winrun 的字节通道，不经过 936 控制台。
 PROBE = r'''
@@ -62,6 +68,14 @@ def fetch() -> dict:
         sys.exit(f"✗ 远端返回的不是 JSON：\n{r.stdout[:600]}")
 
 
+def _now_both() -> str:
+    """「09-08 07:30（东京 08:30）」——两地时差一小时，不标是哪边的钟等于没标。"""
+    from datetime import datetime, timedelta, timezone
+    tokyo = datetime.now(timezone(timedelta(hours=9)))
+    server = tokyo - timedelta(hours=1)
+    return f"{server:%Y-%m-%d %H:%M}（东京 {tokyo:%H:%M}）"
+
+
 def flatten(d, pre=""):
     for k, v in sorted(d.items()):
         key = f"{pre}.{k}" if pre else k
@@ -82,8 +96,22 @@ def main() -> int:
         if not SNAP.exists():
             sys.exit("✗ 还没有快照，先跑一次 --save")
         old = json.loads(SNAP.read_text(encoding="utf-8"))
+        # 快照自报年龄。不标时间的「你的实际配置」是谎话——2026-09-08 审出来时
+        # 那份基线是 13 天前的，里面写着 09-05 已经改掉的错地区，而它被当成现状读。
+        at = old.pop(SNAP_AT, "")
+        if at:
+            print(f"快照存于 {at}")
+        else:
+            print("⚠️  这份快照没有时间戳（老格式），不知道多旧——比完建议重新 --save")
+        # 运行时状态不是配置，比对它只会天天冒出无意义的差异
+        for seg in RUNTIME_SEGMENTS:
+            old.pop(seg, None)
+            cur.pop(seg, None)
         o, c = dict(flatten(old)), dict(flatten(cur))
-        changed = [(k, o.get(k, "（原本没有）"), c[k])
+        # 两边都要兜底：快照的键会随 snapshot.py 改版增减，只在一侧存在是常态。
+        # 2026-09-08 之前这里写的是 c[k]，遇到「只在旧快照里」的键当场 KeyError——
+        # 而这个工具正是「改完配置必须跑一次」的那个验证步骤，最需要它的时候罢工。
+        changed = [(k, o.get(k, "（原本没有）"), c.get(k, "（现在没有）"))
                    for k in sorted(set(o) | set(c)) if o.get(k) != c.get(k)]
         if not changed:
             print("✅ 和快照完全一致，没有任何变化")
@@ -96,9 +124,11 @@ def main() -> int:
     print(json.dumps(cur, ensure_ascii=False, indent=1, sort_keys=True))
     if a.save:
         SNAP.parent.mkdir(parents=True, exist_ok=True)
-        SNAP.write_text(json.dumps(cur, ensure_ascii=False, indent=1,
+        stamped = dict(cur)
+        stamped[SNAP_AT] = _now_both()
+        SNAP.write_text(json.dumps(stamped, ensure_ascii=False, indent=1,
                                    sort_keys=True), encoding="utf-8")
-        print(f"\n快照已存: {SNAP}")
+        print(f"\n快照已存: {SNAP}（{stamped[SNAP_AT]}）")
     return 0
 
 

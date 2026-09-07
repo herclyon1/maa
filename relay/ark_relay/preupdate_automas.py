@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import json
-import os
 import time
+
+from .config import mas_base
 from pathlib import Path
 
 
@@ -27,7 +28,9 @@ from .preupdate_maaend import _span
 # _revive_automas would normally relaunch it. It does not, because
 # INSTALLER_HINTS already vetoes revival while "auto-mas-setup" is in the
 # task list. That gate was built for the manual installer; it covers this too.
-_MAS_PORT = os.environ.get("ARK_MAS_PORT", "36163")
+# 模块级读 os.environ 会在 .env 加载之前求值（见 config.py 那段注释），
+# 所以地址只能在用的时候现算——config.mas_base() 是唯一出处。
+_MAS_PORT = None   # 旧名字，别处 import 过；真正的地址走 config.mas_base()
 _MAS_HTTP_TIMEOUT = 20
 # Boot is 08:40 and the queue checks in at 09:00. Downloading is harmless at any
 # point - the package just sits there - but starting an install we cannot finish
@@ -53,7 +56,7 @@ def _mas_post(path: str, body: dict | None = None) -> dict:
     import urllib.request  # noqa: PLC0415 - only this path needs it
     data = json.dumps(body or {}).encode()
     req = urllib.request.Request(  # noqa: S310 - fixed localhost URL
-        f"http://127.0.0.1:{_MAS_PORT}{path}", data=data, method="POST",
+        mas_base() + path, data=data, method="POST",
         headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=_MAS_HTTP_TIMEOUT) as resp:  # noqa: S310
         return json.loads(resp.read().decode("utf-8", "replace"))

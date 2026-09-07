@@ -72,6 +72,18 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
         raise
 
 
+def mas_base() -> str:
+    """AUTO-MAS 后端的地址。**必须是函数，不能做成模块级常量。**
+
+    模块级常量会在 .env 加载之前求值（见下面那段注释），于是 `ARK_MAS_PORT`
+    变成「设了也不生效」，比现在的半生效更难查。
+
+    2026-09-08 之前这个地址在 relay 里有四份：commands.py、snapshot.py、engine.py
+    各自写死 36163，只有预更新那份认 `ARK_MAS_PORT`——改端口只有四分之一生效。
+    """
+    return f"http://127.0.0.1:{os.environ.get('ARK_MAS_PORT', '36163')}"
+
+
 # Every env lookup below MUST be lazy (default_factory). Dataclass field
 # defaults are evaluated at import time, which happens before .env is loaded -
 # reading os.environ eagerly here silently yields empty config.

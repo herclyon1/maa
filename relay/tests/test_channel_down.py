@@ -59,7 +59,7 @@ check("same fault stays quiet", len(sent), 1)
 n2 = Cap(cfg)
 n2._announce_outage({"企业微信": ERR2}, ["Server酱"])
 check("restart does not re-announce", len(sent), 1)
-check("record is on disk", (TMP / "channels-down.json").exists(), True)
+check("record is on disk", "channels_down" in json.loads((TMP / "state.json").read_text(encoding="utf-8"))["queues"], True)
 
 print("\n[a different fault on the same channel is news again]")
 n2._announce_outage({"企业微信": ERR3}, ["Server酱"])
@@ -76,7 +76,7 @@ check("announced after recovery", len(sent), 3)
 
 print("\n[a channel that never broke is not in the file]")
 check("only the broken one recorded",
-      list(json.loads((TMP / "channels-down.json").read_text(encoding="utf-8")).keys()),
+      list(json.loads((TMP / "state.json").read_text(encoding="utf-8"))["queues"]["channels_down"].keys()),
       ["企业微信"])
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))

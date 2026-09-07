@@ -16,6 +16,7 @@
 | `relay/` | 中继源码与测试 |
 | `queue/` | 下发给机器的指令 |
 | `scripts/` | 控制端与游戏机两侧的工具脚本 |
+| `web/` | 手机遥控页面（GitHub Pages） |
 | `docs/` | 运维参考、配置清单、故障记录 |
 
 维护说明、配置清单与故障记录在 [`docs/`](docs/)，索引见 [docs/README.md](docs/README.md)。

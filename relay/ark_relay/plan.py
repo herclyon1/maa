@@ -430,6 +430,8 @@ def _asar_value_labels(automas_dir, state_dir) -> dict:
         log.warning("找不到 app.asar，剿灭那一项会留下英文取值")
         return {}
     stamp = f"{st.st_size}-{int(st.st_mtime)}"
+    # 纯缓存：从 AUTO-MAS 的 asar 包里解出来的中文标注，丢了自己会重建。
+    # 故意留作文件，不进 state.json——它是派生数据，不是状态。
     cache = Path(state_dir) / "asar-labels.json"
     try:
         got = json.loads(cache.read_text(encoding="utf-8"))

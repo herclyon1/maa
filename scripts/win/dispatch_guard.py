@@ -104,33 +104,41 @@ def stop_all():
     return not busy
 
 
-def start(name):
+def start(name) -> int:
+    """派发一个脚本。返回退出码：0 成功，非 0 被拒。
+
+    **拒绝必须是非零退出。** 2026-09-08 之前这里只 print 一行 ❌ 然后 return，
+    退出码还是 0——调用方（run-one.sh、以及以后任何自动化）分辨不出「拒绝了」
+    和「派发成功了」，闸门等于只对人生效。
+    """
     busy = status()
     if busy:
         print(f"❌ 拒绝派发：{busy} 还在跑。先 stop 或等它完——"
               "带病派发就是上午三个游戏同时在线的起点。")
-        return
+        return 2
     table = ids()
     if name not in table:
         print(f"❌ 没有叫「{name}」的脚本。有：{'、'.join(table)}")
-        return
+        return 3
     r = post("/api/dispatch/start", {"taskId": table[name], "mode": "AutoProxy"})
     print(f"派发「{name}」:", r.get("status"), r.get("message", ""))
+    return 0 if str(r.get("status", "")).lower() == "success" else 4
 
 
-def start_queue(name):
+def start_queue(name) -> int:
     print("⚠️ 你在派**整条队列**。队列成员失败时 AUTO-MAS 会整队从头重试，"
           "中途 taskkill 任何成员都会引发连锁——2026-09-01 上午就是这么乱的。")
     busy = status()
     if busy:
         print(f"❌ 拒绝：{busy} 在跑。")
-        return
+        return 2
     table = qids()
     if name not in table:
         print(f"❌ 没有叫「{name}」的队列。有：{'、'.join(table)}")
-        return
+        return 3
     r = post("/api/dispatch/start", {"taskId": table[name], "mode": "AutoProxy"})
     print(f"派发队列「{name}」:", r.get("status"), r.get("message", ""))
+    return 0 if str(r.get("status", "")).lower() == "success" else 4
 
 
 if __name__ == "__main__":
@@ -138,10 +146,11 @@ if __name__ == "__main__":
     if a[0] == "status":
         status()
     elif a[0] == "start" and len(a) > 1:
-        start(a[1])
+        sys.exit(start(a[1]))
     elif a[0] == "start-queue" and len(a) > 1:
-        start_queue(a[1])
+        sys.exit(start_queue(a[1]) or 0)
     elif a[0] == "stop":
         stop_all()
     else:
         print(__doc__)
+        sys.exit(64)

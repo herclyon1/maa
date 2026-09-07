@@ -20,7 +20,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-from .config import Config, atomic_write_text
+from .config import Config
 
 log = logging.getLogger("ark.notify")
 
@@ -403,7 +403,7 @@ class Notifier:
         self.serverchan = ServerChan(cfg)
         # 每个渠道上一次的失败原因，用来压掉重复告警（见 _fan_out）。
         self._last_send_error: dict[str, str] = {}
-        self._down_path = Path(cfg.state_dir) / "channels-down.json"
+        self._state_dir = Path(cfg.state_dir)
         self._announced_down: dict[str, str] = self._load_down()
         self._announcing = False  # the outage alert itself goes out via _fan_out
 
@@ -422,17 +422,17 @@ class Notifier:
         s = re.sub(r"from ip: ?[0-9a-fA-F:.]+", "", s)
         return " ".join(s.split())[:160]
 
+    def _store(self):
+        from .statestore import StateStore  # noqa: PLC0415 - 避免导入环
+        return StateStore(self._state_dir)
+
     def _load_down(self) -> dict[str, str]:
-        try:
-            data = json.loads(self._down_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return {}
+        data = self._store().get("queues", "channels_down")
         return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else {}
 
     def _save_down(self) -> None:
         try:
-            atomic_write_text(self._down_path,
-                              json.dumps(self._announced_down, ensure_ascii=False))
+            self._store().set("queues", "channels_down", dict(self._announced_down))
         except OSError:
             # Worst case the notice repeats once more. Never let bookkeeping
             # about an alert break the alert path itself.
