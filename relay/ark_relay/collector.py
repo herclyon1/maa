@@ -775,6 +775,21 @@ def parse_okww_log(log_path: Path) -> dict:
             steps.append(nest)
         else:
             steps.append(f"{nest}（开了界面就退出，一次没打）")
+    # 周本（战歌重奏）：之前根本不在这张清单里，于是「打完记账、周一恢复」那套
+    # 从来没被记录触发过（2026-09-07 三次奖励都领了，账上还是「本周还没领满」）。
+    if "Teleport to Boss Weekly Challenge" in text:
+        claims = text.count("周本领奖：已点确认")
+        left = [int(m) for m in re.findall(r"本周剩余可收取次数[：:]\s*(\d+)\s*/", text)]
+        if "farm 4c error" in text:
+            steps.append(f"周本（领了 {claims} 次，然后没能退出副本）" if claims
+                         else "周本（没做完，原因见失败于）")
+        elif "收取物资次数已达到上限" in text:
+            steps.append("周本（已完成，本周已领满）")
+        elif claims:
+            remain = max((left[-1] if left else claims) - claims, 0)
+            steps.append(f"周本（已完成，领了 {claims} 次，本周还剩 {remain} 次）")
+        else:
+            steps.append("周本（打了，没领到奖励）")
     if "weekly garden already completed" in text:
         steps.append("周常乐园（本周已完成）")
     elif "GardenTask:" in text:

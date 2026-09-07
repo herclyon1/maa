@@ -321,7 +321,7 @@ def _handle(eng, rec: RunRecord) -> None:
         steps = rec.raw.get("okww_steps") or []
         # 周本：任务名译作「传送并刷取4C声骸」，任务本身显示「刷4C(大世界/副本)」，
         # 两种都认。判据和周常乐园一致——只有真跑完那一步才算数。
-        if any(("4C声骸" in s or "刷4C" in s) and "已完成" in s for s in steps):
+        if any(s.startswith("周本") and "已完成" in s for s in steps):
             if msg := eng._weeklyboss.on_success(rec.finished):
                 eng.notifier.send("🗓️ 周常", msg)
         if any("周常乐园" in s and "已完成" in s for s in steps) and eng._garden:
