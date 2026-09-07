@@ -32,6 +32,7 @@ FIELDS: dict[str, dict[str, str]] = {
         "report:*": "某天日报已发（值=时刻）",
         "interim:*": "某天临时日报覆盖到第几条记录",
         "banner:*": "某个卡池的开服播报已发（键=游戏+开始时刻）",
+        "alerted:*": "某天已经告警过的事（键=日期，值=告警标识列表）",
     },
     "modes": {
         "skip_next_shutdown": "下一次别关机（一次性，人按的）",
@@ -42,6 +43,7 @@ FIELDS: dict[str, dict[str, str]] = {
         "okww": "上次贴补丁时 OK-WW 的版本",
         "maaend": "上次预更新确认过的 MaaEnd 版本",
         "code": "本机中继代码版本",
+        "announced": "已经播报过更新的那个版本，避免重复推送",
     },
     "updates": {
         "preupdate": "预更新今天跑过没有：{day, at, clean}",
@@ -71,6 +73,7 @@ LEGACY_GLOB = {
     "report-*.sent": ("marks", "report:{}", "flag"),
     "interim-*.sent": ("marks", "interim:{}", "text"),
     "banner-*.sent": ("marks", "banner:{}", "flag"),
+    "alerted-*.json": ("marks", "alerted:{}", "json"),
     "skip-*.flag": ("queues", "skip_day:{}", "text"),
 }
 
@@ -97,6 +100,7 @@ LEGACY = {
     "weeklyboss.json": ("weekly", "boss", "json"),
     "okww-version.txt": ("versions", "okww", "text"),
     "code-version.txt": ("versions", "code", "text"),
+    "announced-version.txt": ("versions", "announced", "text"),
     "maaend-version.txt": ("versions", "maaend", "text"),
     "debug-until.txt": ("modes", "debug_until", "text"),
 }

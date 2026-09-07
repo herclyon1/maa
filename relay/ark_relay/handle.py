@@ -14,7 +14,7 @@ from pathlib import Path
 
 from . import texts
 from . import collector, core, efstatus, outcome, summary
-from .config import SERVER_TZ, RunRecord, atomic_write_text
+from .config import SERVER_TZ, RunRecord
 
 log = logging.getLogger("ark.handle")
 
@@ -392,25 +392,21 @@ def _alert_key(eng, rec) -> str:
 
 
 def _alerted_file(eng, day: str) -> Path:
+    """旧名字，留着给还在按名字引它的地方。记账实际在 state.json 的 marks.alerted:<day>。"""
     return Path(eng.state.dir) / f"alerted-{day}.json"
 
 
 def _already_alerted(eng, day: str, key: str) -> bool:
-    try:
-        return key in json.loads(eng._alerted_file(day).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return False
+    got = eng.state.store.get("marks", f"alerted:{day}")
+    return key in got if isinstance(got, list) else False
 
 
 def _mark_alerted(eng, day: str, key: str) -> None:
-    f = eng._alerted_file(day)
-    try:
-        cur = json.loads(f.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        cur = []
+    got = eng.state.store.get("marks", f"alerted:{day}")
+    cur = list(got) if isinstance(got, list) else []
     if key not in cur:
         cur.append(key)
-    atomic_write_text(f, json.dumps(cur, ensure_ascii=False))
+    eng.state.store.set("marks", f"alerted:{day}", cur)
 
 
 def _flush_pending(eng) -> None:

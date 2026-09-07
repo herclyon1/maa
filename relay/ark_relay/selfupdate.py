@@ -328,19 +328,19 @@ def pending_announcement(root: Path) -> dict | None:
 
 
 def _announced_version(root: Path) -> int:
+    from .statestore import StateStore  # noqa: PLC0415
     try:
-        return int((root / "state" / "announced-version.txt")
-                   .read_text(encoding="utf-8").strip() or 0)
-    except (OSError, ValueError):
+        return int(str(StateStore(root / "state").get("versions", "announced") or 0).strip() or 0)
+    except (TypeError, ValueError):
         return 0
 
 
 def _remember_announced(root: Path, version: int) -> None:
     if not version:
         return
+    from .statestore import StateStore  # noqa: PLC0415
     try:
-        _atomic_write(root / "state" / "announced-version.txt",
-                      str(version).encode("utf-8"))
+        StateStore(root / "state").set("versions", "announced", str(version))
     except OSError:
         # Worst case the same update is announced twice. Better than dropping it.
         log.warning("记不住已通知的版本号，可能重复推送一次", exc_info=True)

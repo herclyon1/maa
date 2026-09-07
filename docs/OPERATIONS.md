@@ -54,7 +54,7 @@ is closed happens either on the game machine or in GitHub Actions.
 
 | Host | Address | Role |
 |---|---|---|
-| Game machine | Tailscale `$ARK_HOST`, hostname `INS` | runs AUTO-MAS + MAA + MaaEnd + the relay |
+| Game machine | Tailscale `$ARK_HOST`, hostname `INS` | runs AUTO-MAS + MAA + MaaEnd + OK-WW + the relay |
 | Mac | Tailscale, Tokyo | control; not depended on |
 | HP server | Osaka; cloudflared tunnel + sshd on :2222 + RustDesk | **unused by this system** since the relay's server mode was retired. Its credentials are kept outside this repository |
 
@@ -166,7 +166,7 @@ no timestamped log at all.
 |---|---|---|
 | 08:40 / 08:45 | smart plug cuts then restores power | Mi Home timer |
 | 08:46-08:47 | boot, auto-login, AUTO-MAS + relay start | BIOS "restore on AC", logon tasks |
-| 09:00 | queue `早班`: MAA then MaaEnd, ~85 min | AUTO-MAS timer |
+| 09:00 | queue `早班`: MAA → MaaEnd → OK-WW, ~85 min | AUTO-MAS timer |
 | 21:20 | the machine powers on | BIOS RTC (`08-10 21:20:16 BOOT` in the event log) |
 | 21:30 | queue `晚班`: MAA only, ~45 min | AUTO-MAS timer |
 | after the last queue | relay sends the report, then powers off | relay |

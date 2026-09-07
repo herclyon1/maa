@@ -19,7 +19,14 @@ def check(label, got, want):
     if not ok: fails.append(label)
 
 E = object.__new__(Engine)
-E.state = types.SimpleNamespace(dir=tmpdir())
+
+
+def _fake_state(d):
+    """替身 state：带上真的 StateStore，记账走 state.json（2026-09-08 收口后）。"""
+    from ark_relay.statestore import StateStore
+    return types.SimpleNamespace(dir=d, store=StateStore(d))
+
+E.state = _fake_state(tmpdir())
 rec = types.SimpleNamespace(script="OK-WW", user="wuwa", failed_tasks=["流程产生错误"])
 
 k = E._alert_key(rec)

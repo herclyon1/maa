@@ -32,7 +32,22 @@ above.
 | `inbox.py` | fetch and apply `queue/config.json` |
 | `selfupdate.py` | fetch and apply `relay/manifest.json` |
 | `commands.py` | the command whitelist and its gates |
-| `queues.py` / `modes.py` / `annihilation.py` / `sanity_plan.py` / `maaend.py` | config writers |
+| `queues.py` / `modes.py` / `sanity_plan.py` / `maaend.py` / `mastercfg.py` | config writers |
+| `statestore.py` | 唯一的状态档案 `state/state.json`：六段、字段表登记过才能写、旧文件自动迁入 |
+| `texts.py` | 所有通知文案。标题不许写死在别处，闸门盯着 |
+| `handle.py` / `missed.py` / `report.py` / `shutdown.py` | 从 engine 拆出来的四块：记账告警 / 漏跑缺项 / 日报 / 关机决策 |
+| `annihilation.py` / `garden.py` / `weeklyboss.py` | 三个「一周一次」的门，同一套接口 |
+| `preupdate.py`（聚合）+ `preupdate_common.py` / `preupdate_maa.py` / `preupdate_maaend.py` / `preupdate_automas.py` / `preupdate_okww.py` | 开机窗口里把四个程序更新掉，按程序分文件 |
+| `gameupdate.py` | 队列跑完后更新游戏客户端，再单独补跑 |
+| `okww_patch.py` + `okww_patches/` | 贴在 OK-WW 源码上的本地补丁，一个补丁一个文件 |
+| `wuwa_tacet.py` / `wuwa_forgery.py` | 鸣潮副本序号 → 名字 → 掉落，手机页与此同源 |
+| `banners.py` / `efstatus.py` / `snapshot.py` / `desktop.py` / `phone.py` | 卡池播报 / 终末地开服状态 / 配置快照 / 桌面助手 / 手机通道 |
+| `outcome.py` | 跑完核对「到底干成了什么」，没干成必须出声 |
+| `maintenance.py` | 三个游戏官方停服维护公告的机器可读来源 |
+| `skland.py` | 森空岛客户端，拿终末地的角色练度 |
+| `config.py` / `names.py` / `__main__.py` | 配置读取与地址出处 / 队列名归一 / 命令行入口 |
+
+模块表和实际文件由 `tests/test_module_table.py` 盯着，加文件不登记会红。
 
 ## Running it
 
