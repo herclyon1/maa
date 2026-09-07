@@ -7,7 +7,37 @@
   ],
   "duration_known": true,
   "okww_steps": [
-   "周本（领了 1 次，然后没能退出副本）"
+   "残象聚落（已刷满）",
+   "周本（领了 1 次，然后没能退出副本）",
+   "周常乐园"
+  ],
+  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+ },
+ "OK-WW-06-00-55": {
+  "script": "OK-WW",
+  "ok": false,
+  "failed_tasks": [
+   "周本：打完 Boss 领完奖之后没能退出副本"
+  ],
+  "duration_known": true,
+  "okww_steps": [
+   "残象聚落（已刷满）",
+   "周本（领了 1 次，然后没能退出副本）",
+   "周常乐园（本周已完成）"
+  ],
+  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+ },
+ "OK-WW-06-08-44": {
+  "script": "OK-WW",
+  "ok": false,
+  "failed_tasks": [
+   "周本：打完 Boss 领完奖之后没能退出副本"
+  ],
+  "duration_known": true,
+  "okww_steps": [
+   "残象聚落（已刷满）",
+   "周本（领了 1 次，然后没能退出副本）",
+   "周常乐园（本周已完成）"
   ],
   "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
  },
@@ -18,6 +48,7 @@
   "duration_known": true,
   "okww_steps": [
    "无音区 ×1",
+   "残象聚落（已刷满）",
    "周本（已完成，本周已领满）",
    "周常乐园（本周已完成）"
   ],

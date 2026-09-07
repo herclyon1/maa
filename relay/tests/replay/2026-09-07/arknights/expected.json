@@ -1,0 +1,20 @@
+{
+ "MAA-05-00-00": {
+  "script": "MAA",
+  "ok": true,
+  "failed_tasks": [],
+  "duration_known": true
+ },
+ "MAA-05-03-55": {
+  "script": "MAA",
+  "ok": true,
+  "failed_tasks": [],
+  "duration_known": true
+ },
+ "MAA-17-30-01": {
+  "script": "MAA",
+  "ok": true,
+  "failed_tasks": [],
+  "duration_known": true
+ }
+}
