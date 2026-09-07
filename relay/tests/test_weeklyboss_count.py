@@ -30,7 +30,7 @@ def check(label, got, want):
 
 def gate():
     g = W.WeeklyBossGate(STATE, None)
-    g.configure(enabled=True, index=1, count=3)
+    g.configure(index=1)
     return g
 
 def write(*lines):
@@ -61,7 +61,7 @@ check("话说得对", "三次已领满" in msg and msg.startswith("鸣潮 · 周
 print("\n[读不到时宁可不记]")
 STATE2 = TMP / "s2"; STATE2.mkdir()
 write("什么都没有")
-g2 = W.WeeklyBossGate(STATE2, None); g2.configure(enabled=True)
+g2 = W.WeeklyBossGate(STATE2, None); g2.configure(index=1)
 check("不记账", g2.on_success(NOW), "")
 check("开关继续挂着", g2.settings(NOW)["本周已打"], False)
 

@@ -43,7 +43,7 @@ def left(n):
     LOG.write_text(f"周本本周剩余次数原文: [本周剩余可收取次数：{n}/3]\n", encoding="utf-8")
 
 g = W.WeeklyBossGate(STATE, TMP / "automas")
-g.configure(enabled=True, index=1, count=3, level="90")
+g.configure(index=1)
 
 print("\n[开着就挂上，配置一起写对]")
 g.enforce(at(31, 10))
@@ -79,10 +79,10 @@ check("下周一自动挂回来", W.TASK_NAME in tasks(), True)
 check("状态不再显示「本周已打」",
       g.settings(datetime(2026, 9, 7, 4, 1, tzinfo=SERVER_TZ))["本周已打"], False)
 
-print("\n[关掉总开关就一直摘着]")
-g.configure(enabled=False)
-g.enforce(datetime(2026, 9, 7, 5, 0, tzinfo=SERVER_TZ))
-check("关掉就摘掉", W.TASK_NAME in tasks(), False)
+print("\n[没有总开关：和剿灭一样，只有「本周做完」才摘掉]")
+check("settings 里没有开关", "开" in g.settings(datetime(2026, 9, 7, 5, 0, tzinfo=SERVER_TZ)), False)
+check("次数固定 3", g.settings()["打几次"], 3)
+check("等级固定 90", g.settings()["难度等级"], "90")
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

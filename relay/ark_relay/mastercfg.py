@@ -227,6 +227,92 @@ def write_maaend(automas_dir, maaend_dir, path: str, value) -> tuple[bool, str]:
     return True, f"{label}：{before!r} → {now!r}"
 
 
+# ─────────────────────────────── MAA ───────────────────────────────
+# 基建无人机用在哪。AUTO-MAS 不管这项（它的用户配置里没有），只在 MAA 自己的
+# gui.new.json 里：Configurations/<Current>/TaskQueue/<基建那项>/UsesOfDrones。
+# 取值和译名抄自 MAA 源码 InfrastSettingsUserControlModel.UsesOfDronesList
+# 与 docs/protocol/integration.md（2026-09-07 核对，v6.17）。
+# 母本在 AUTO-MAS 的 data/<MAA脚本id>/Default/ConfigFile/gui.new.json，MAA 目录里那份
+# 每次拉起前被母本盖掉，但两份都写、两份都校验（来龙去脉见记忆 maa-config-master-copy）。
+MAA_DRONES: tuple[tuple[str, str], ...] = (
+    ("_NotUse", "不使用"),
+    ("Money", "贸易站 · 龙门币"),
+    ("SyntheticJade", "贸易站 · 合成玉"),
+    ("CombatRecord", "制造站 · 作战记录"),
+    ("PureGold", "制造站 · 赤金"),
+    ("OriginStone", "制造站 · 源石碎片"),
+    ("Chip", "制造站 · 芯片"),
+)
+MAA_DRONES_PATH = "Infrast/UsesOfDrones"
+
+
+def maa_master(automas_dir) -> Path | None:
+    root = Path(automas_dir) / "data" if automas_dir else None
+    return next((f for f in (root.glob("*/Default/ConfigFile/gui.new.json") if root else [])), None)
+
+
+def _maa_infrast(doc: dict) -> dict | None:
+    cfgs = doc.get("Configurations") or {}
+    c = cfgs.get(doc.get("Current") or "Default") or cfgs.get("Default") or {}
+    for t in c.get("TaskQueue") or []:
+        if isinstance(t, dict) and "UsesOfDrones" in t:
+            return t
+    return None
+
+
+def read_maa(automas_dir) -> dict:
+    out: dict = {"values": {}, "options": {}, "labels": {}}
+    f = maa_master(automas_dir)
+    if not f or not f.is_file():
+        return out
+    try:
+        task = _maa_infrast(json.loads(f.read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        log.warning("母本 gui.new.json 读不出来", exc_info=True)
+        return out
+    if task is None:
+        return out
+    out["values"][MAA_DRONES_PATH] = str(task.get("UsesOfDrones") or "")
+    out["options"][MAA_DRONES_PATH] = [[label, key] for key, label in MAA_DRONES]
+    out["labels"][MAA_DRONES_PATH] = "基建无人机用在哪"
+    return out
+
+
+def write_maa(automas_dir, maa_dir, path: str, value) -> tuple[bool, str]:
+    """改基建无人机用途。母本和 MAA 目录那份都写；取值只认 MAA 声明过的七个。"""
+    if str(path) != MAA_DRONES_PATH:
+        return False, f"MAA 只开放 {MAA_DRONES_PATH} 这一项，已拒绝 {path!r}"
+    keys = {k for k, _ in MAA_DRONES}
+    if str(value) not in keys:
+        return False, f"无人机用途不认识取值 {value!r}，它只接受 {sorted(keys)}"
+    targets = [maa_master(automas_dir)]
+    if maa_dir:
+        targets.append(Path(maa_dir) / "config" / "gui.new.json")
+    before = None
+    written = []
+    for f in targets:
+        if not f or not f.is_file():
+            continue
+        doc = json.loads(f.read_text(encoding="utf-8"))
+        task = _maa_infrast(doc)
+        if task is None:
+            return False, f"{f.name} 里找不到带 UsesOfDrones 的基建任务，已拒绝"
+        if before is None:
+            before = task.get("UsesOfDrones")
+        task["UsesOfDrones"] = str(value)
+        atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=4))
+        back = _maa_infrast(json.loads(f.read_text(encoding="utf-8")))
+        if not back or back.get("UsesOfDrones") != str(value):
+            return False, f"{f} 写完回读不对"
+        written.append(f.name)
+    if not written:
+        return False, "找不到 MAA 的母本配置"
+    zh = dict(MAA_DRONES)
+    if before == str(value):
+        return True, f"基建无人机本来就用在{zh[str(value)]}"
+    return True, f"基建无人机用在哪：{zh.get(str(before), before)} → {zh[str(value)]}（写了 {len(written)} 份）"
+
+
 # ─────────────────────────────── OK-WW ───────────────────────────────
 
 def okww_file(automas_dir, name: str) -> Path | None:

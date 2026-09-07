@@ -34,18 +34,16 @@ g = W.WeeklyBossGate(STATE, TMP / "automas")
 
 print("[机器上 09-07 的状态：上周领满，周一开机]")
 line = g.maybe_reopen(MON)
-check("说清打哪个、几次、几级", line, "鸣潮 · 周本：千傀重楼，打 3 次，90 级，本周还没领满")
+check("说清打哪个", line, "鸣潮 · 周本：千傀重楼，本周还没领满")
 check("记账已清", "done_week" in g._load(), False)
 check("同一次开机再问就不再说", g.maybe_reopen(MON), "")
-check("week_line 仍能报状态", g.week_line(MON), "鸣潮 · 周本：千傀重楼，打 3 次，90 级，本周还没领满")
+check("week_line 仍能报状态", g.week_line(MON), "鸣潮 · 周本：千傀重楼，本周还没领满")
 
 print("[本周已领满 / 开关关着]")
 g.on_success  # noqa: B018 - 只是确认接口还在
 s = g._load(); s["done_week"] = "2026-W37"; g._save(s)
 check("已领满", g.week_line(MON), "鸣潮 · 周本：千傀重楼 本周三次已领满，暂停到下周一")
-g.configure(enabled=False)
-check("关着", g.week_line(MON), "鸣潮 · 周本：开关关着，本周不打")
-check("关着时过周不发", g.maybe_reopen(MON), "")
+check("没有总开关", "开" in g.settings(MON), False)
 
 print("[开机那一段：剿灭、周常乐园、周本合成一条「新的一周」，三行都在]")
 class _Any:
@@ -81,16 +79,16 @@ class Eng:
 A_NEW = "明日方舟 · 剿灭：新的一周，已重新开启（Annihilation）"
 A_LINE = "明日方舟 · 剿灭：本周还没打满，开关开着（Annihilation）"
 G_LINE = "鸣潮 · 周常乐园：本周还没做，每趟都会去检查"
-B_LINE = "鸣潮 · 周本：千傀重楼，打 3 次，90 级，本周还没领满"
+B_LINE = "鸣潮 · 周本：千傀重楼，本周还没领满"
 
 sent.clear()
 service._stage_annihilation(Eng(Gate(A_NEW, A_LINE), Gate(G_LINE, G_LINE), Gate(B_LINE, B_LINE)), N(), Log())
 check("三个都过周：一条通知三行", sent, [("🗓️ 新的一周", "\n".join([A_NEW, G_LINE, B_LINE]))])
 
-sent.clear(); boss = Gate("", "鸣潮 · 周本：开关关着，本周不打"); garden = Gate("", G_LINE)
+sent.clear(); boss = Gate("", "鸣潮 · 周本：千傀重楼 本周三次已领满，暂停到下周一"); garden = Gate("", G_LINE)
 service._stage_annihilation(Eng(Gate(A_NEW, A_LINE), garden, boss), N(), Log())
 check("只有剿灭过周：另外两个也报状态", sent,
-      [("🗓️ 新的一周", "\n".join([A_NEW, G_LINE, "鸣潮 · 周本：开关关着，本周不打"]))])
+      [("🗓️ 新的一周", "\n".join([A_NEW, G_LINE, "鸣潮 · 周本：千傀重楼 本周三次已领满，暂停到下周一"]))])
 
 sent.clear(); boss = Gate(B_LINE, B_LINE); garden = Gate(G_LINE, G_LINE)
 service._stage_annihilation(Eng(Gate("", A_LINE), garden, boss), N(), Log())

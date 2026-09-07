@@ -54,7 +54,8 @@ class GardenGate:
 
     和剿灭、周本同一套接口（用户 2026-09-07：「逻辑上一致的东西就应该强统一」）：
     settings() 给手机页，week_line() 给「新的一周」通知，on_success() 记账，
-    enforce() 推开关，maybe_reopen() 周一清账。状态文件：{"enabled": 开关, "done_week": 本周}。
+    enforce() 推开关，maybe_reopen() 周一清账。状态文件：{"done_week": 本周}。没有总开关：
+    和剿灭一样做完就停、周一恢复（用户 2026-09-07：「三个周常都应该只显示状态」）。
     """
 
     NAME = "鸣潮 · 周常乐园"
@@ -79,25 +80,13 @@ class GardenGate:
     def settings(self, now: datetime | None = None) -> dict:
         s = self._load()
         week = week_key(now or datetime.now(tz=SERVER_TZ))
-        return {"开": bool(s.get("enabled", True)),
-                "本周已完成": s.get("done_week") == week}
+        return {"本周已完成": s.get("done_week") == week}
 
     def week_line(self, now: datetime | None = None) -> str:
         v = self.settings(now)
-        if not v["开"]:
-            return f"{self.NAME}：开关关着，本周不检查"
         if v["本周已完成"]:
             return f"{self.NAME}：本周已完成，暂停检查到下周一"
         return f"{self.NAME}：本周还没做，每趟都会去检查"
-
-    def configure(self, *, enabled: bool | None = None) -> tuple[bool, str]:
-        s = self._load()
-        if enabled is not None:
-            s["enabled"] = bool(enabled)
-            if not enabled:
-                s.pop("done_week", None)
-        self._save(s)
-        return True, ("周常乐园检查已开" if s.get("enabled", True) else "周常乐园检查已关")
 
     # ---------- 做完了 ----------
 
@@ -139,7 +128,7 @@ class GardenGate:
         now = now or datetime.now(tz=SERVER_TZ)
         week = week_key(now)
         state = self._load()
-        want_on = bool(state.get("enabled", True)) and state.get("done_week") != week
+        want_on = state.get("done_week") != week      # 和剿灭一样：没有总开关，做完就停
 
         f = _daily_file(self.automas_dir)
         if f is None:
@@ -184,5 +173,5 @@ class GardenGate:
                 state.pop("done_week", None); self._save(state)
             log.info("周常乐园检查已恢复")
         else:
-            log.info("已关闭周常乐园检查（%s）", "周一 04:00 后自动恢复" if state.get("enabled", True) else "开关关着")
+            log.info("已关闭周常乐园检查（周一 04:00 后自动恢复）")
         return True

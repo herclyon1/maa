@@ -514,6 +514,7 @@ def state_payload(cfg, state_dir: Path) -> dict:
     try:
         from . import mastercfg  # noqa: PLC0415
         out["master"] = {
+            "MAA": mastercfg.read_maa(getattr(cfg, "automas_dir", None)),
             "MaaEnd": mastercfg.read_maaend(getattr(cfg, "automas_dir", None),
                                             getattr(cfg, "maaend_dir", None)),
             "OK-WW": mastercfg.read_okww(getattr(cfg, "automas_dir", None),

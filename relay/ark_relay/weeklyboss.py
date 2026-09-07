@@ -44,6 +44,7 @@ KEY = "Additional Tasks to Run After Daily Task"
 # 所以直接钉在最高级，不存在冲突。2026-08-31 用户指出机器上是 80，错的。
 LEVELS = ("50", "60", "70", "80", "90")
 MAX_LEVEL = LEVELS[-1]
+COUNT = 3                                   # 一周只能领 3 次奖励，游戏规则
 
 DAILY = "DailyTask.json"
 FARM = "FarmEchoTask.json"
@@ -195,62 +196,36 @@ class WeeklyBossGate:
     # ---------- 人来开关 ----------
 
     def settings(self, now: "datetime | None" = None) -> dict:
+        """给手机页看的。一周 3 次、90 级是游戏规则，固定死，不给改（用户 2026-09-07）；
+        也没有总开关——和剿灭一样，打满自动停，周一自动开回来。"""
         s = self._load()
         # 「本周已打」必须拿 done_week 跟**当前这一周**比，不能只看有没有值。
-        # 只看有没有值的话，过了周一 04:00 明明已经在打新一周了，
-        # 手机上还显示「本周已打」——状态是骗人的。enforce() 一直是对的
-        # （它用的就是这个比对），错的只有对外显示这一处。2026-08-31 测出来的。
         week = week_key(now or datetime.now(tz=SERVER_TZ))
-        return {"开": bool(s.get("enabled")),
-                "名字": str(s.get("name") or ""),
+        return {"名字": str(s.get("name") or ""),
                 "第几个周本": int(s.get("index") or 1),
-                "打几次": int(s.get("count") or 1),
-                "难度等级": str(s.get("level") or MAX_LEVEL),
+                "打几次": COUNT,
+                "难度等级": MAX_LEVEL,
                 "本周已打": s.get("done_week") == week}
 
-    def configure(self, *, enabled: "bool | None" = None,
-                  index: "int | None" = None,
-                  count: "int | None" = None,
-                  level: "str | None" = None) -> tuple[bool, str]:
+    def configure(self, *, index: "int | None" = None) -> tuple[bool, str]:
         s = self._load()
-        if enabled is not None:
-            s["enabled"] = bool(enabled)
-            if not enabled:
-                s.pop("done_week", None)     # 关掉就把记账清了
         if index is not None:
             if not 1 <= int(index) <= 20:
                 return False, f"周本序号 {index} 不像话（应在 1~20）"
             s["index"] = int(index)
-        if count is not None:
-            if not 1 <= int(count) <= 20:
-                return False, f"打的次数 {count} 不像话（应在 1~20）"
-            s["count"] = int(count)
-        if level is not None:
-            if str(level) not in LEVELS:
-                return False, f"等级 {level} 不在可选范围（{'/'.join(LEVELS)}）"
-            s["level"] = str(level)
         self._save(s)
-        v = self.settings()
-        return True, ("周本已开：第 {} 个，打 {} 次".format(v["第几个周本"], v["打几次"])
-                      if v["开"] else "周本已关")
+        return True, f"周本：打第 {self.settings()['第几个周本']} 个"
 
     def week_line(self, now: "datetime | None" = None) -> str:
         """「新的一周」通知里周本那一行：这周是什么状态。永远有话说。"""
         v = self.settings(now)
-        if not v["开"]:
-            return f"{self.NAME}：开关关着，本周不打"
         what = v["名字"] or f"第 {v['第几个周本']} 个"
         if v["本周已打"]:
             return f"{self.NAME}：{what} 本周三次已领满，暂停到下周一"
-        return f"{self.NAME}：{what}，打 {v['打几次']} 次，{v['难度等级']} 级，本周还没领满"
+        return f"{self.NAME}：{what}，本周还没领满"
 
     def maybe_reopen(self, now: "datetime | None" = None) -> str:
-        """开机时调。上周记的「已领满」过了周就清掉，返回 week_line；没过周返回空串。
-
-        和 annihilation.maybe_reopen 一个形状。enforce() 本来就是拿 done_week
-        跟本周比，不清也会挂回来；清掉是为了这条通知只发一次。
-        用户 2026-09-07：剿灭那条「新的一周」通知要带上鸣潮周本。
-        """
+        """开机时调。上周记的「已领满」过了周就清掉，返回 week_line；没过周返回空串。"""
         s = self._load()
         done = s.get("done_week")
         week = week_key(now or datetime.now(tz=SERVER_TZ))
@@ -265,8 +240,6 @@ class WeeklyBossGate:
 
     def on_success(self, now: "datetime | None" = None) -> str:
         s = self._load()
-        if not s.get("enabled"):
-            return ""
         week = week_key(now or datetime.now(tz=SERVER_TZ))
         if s.get("done_week") == week:
             return ""
@@ -292,7 +265,7 @@ class WeeklyBossGate:
         """可以反复跑：一次摘掉不代表一直摘着，周一到了要挂回来。"""
         s = self._load()
         week = week_key(now or datetime.now(tz=SERVER_TZ))
-        want_on = bool(s.get("enabled")) and s.get("done_week") != week
+        want_on = s.get("done_week") != week
 
         daily_f = _file(self.automas_dir, DAILY)
         daily = _read(daily_f)
@@ -326,8 +299,8 @@ class WeeklyBossGate:
             if farm is not None:
                 want = {"Teleport to Boss": WEEKLY,
                         "Which Weekly Boss to Teleport": int(s.get("index") or 1),
-                        "Repeat Farm Count": int(s.get("count") or 1),
-                        "Boss Level": str(s.get("level") or MAX_LEVEL)}
+                        "Repeat Farm Count": COUNT,
+                        "Boss Level": MAX_LEVEL}
                 if any(farm.get(k) != v for k, v in want.items()):
                     farm.update(want)
                     if _write(farm_f, farm):
@@ -338,7 +311,6 @@ class WeeklyBossGate:
 
         if changed:
             log.info("周本已%s（第 %s 个，打 %s 次）",
-                     "挂上" if want_on else "摘掉",
-                     s.get("index") or 1, s.get("count") or 1)
+                     "挂上" if want_on else "摘掉", s.get("index") or 1, COUNT)
         self._last_error = ""
         return changed
