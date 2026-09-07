@@ -154,17 +154,14 @@ def ensure_if_updated(state_dir: Path, okww_dir: Path | None) -> list[str]:
         return []
     if not version:
         return []
-    stamp = Path(state_dir) / "okww-version.txt"
-    try:
-        seen = stamp.read_text(encoding="utf-8").strip()
-    except OSError:
-        seen = ""
+    from .statestore import StateStore  # noqa: PLC0415
+    store = StateStore(state_dir)
+    seen = str(store.get("versions", "okww") or "")
     if seen == version:
         return []
     notes = ensure_patches(okww_dir)
     try:
-        stamp.parent.mkdir(parents=True, exist_ok=True)
-        stamp.write_text(version, encoding="utf-8")
+        store.set("versions", "okww", version)
     except OSError:
         log.warning("记不住 OK-WW 版本号，下一轮会再贴一遍（幂等，无害）")
     if seen and notes:

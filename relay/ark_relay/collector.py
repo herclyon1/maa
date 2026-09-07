@@ -611,12 +611,18 @@ _OKWW_EXC_ZH = {
 }
 _OKWW_MSG_ZH = (
     ("farm 4c error", "打完 Boss 领完奖之后没能退出副本"),
+    ("can't find gray_book_boss", "按 F2 打不开图鉴，多半是键位改过了"),
+    ("NightmareNestTask Failed", "打了但没打成"),
+    ("Logger.error() got an unexpected keyword", "旧版补丁自己的日志调用写错（已撤回）"),
+    ("can not battle pass", "打不过，可能已经结束"),
     ("Game window is not connected", "连不上游戏窗口"),
     ("not in combat", "没有进入战斗"),
     ("can't find boss_proceed", "图鉴里找不到「前往」按钮"),
 )
 _OKWW_WAIT_SEC = re.compile(r"wait_until timeout .*? (\d+(?:\.\d+)?) seconds")
 _ASCII_LETTER = re.compile(r"[A-Za-z]")
+_OKWW_ANY_ERR = re.compile(r" ERROR TaskExecutor (\w+):(.*)")
+_OKWW_UNTRANSLATED: set = set()
 
 
 def _okww_error(text: str) -> str:
@@ -638,6 +644,18 @@ def _okww_error(text: str) -> str:
     nxt = heads[heads.index(head) + 1].start() if heads.index(head) + 1 < len(heads) else len(text)
     excs = _OKWW_EXC_LINE.findall(text[head.end():nxt])
     exc = excs[-1][0].rsplit(".", 1)[-1] if excs else ""
+    if task in ("DailyTask", "TaskExecutor"):
+        # 包装层自己抛的（如「NightmareNestTask Failed」「run_task_by_class <class …>」）：
+        # 真正的任务名在这句里，真正的原因在它前面那条 ERROR 里
+        if m := re.search(r"<class '[\w.]*\.(\w+)'>", msg):
+            task = m.group(1)
+        elif m := re.match(r"(\w+Task) Failed", msg):
+            task = m.group(1)
+        before = text[max(0, head.start() - 1500):head.start()]
+        prior = [m for m in _OKWW_ANY_ERR.finditer(before)
+                 if m.group(1) not in ("DailyTask", "TaskExecutor", "CombatCheck", "BaseCombatTask")]
+        if prior:
+            task, msg = prior[-1].group(1), prior[-1].group(2).strip()
     # 模糊描述比英文更禁止（用户 2026-09-07：「描述模糊是第一大禁止」）。
     # 所以这里没有「这一步出错」这种兜底：翻得出就写具体的；翻不出就明说
     # 「中继还不认识这条错」并把原文打进日志，等着补翻译——说清楚不知道，不是糊弄。
@@ -645,9 +663,12 @@ def _okww_error(text: str) -> str:
     msg_zh = next((zh for en, zh in _OKWW_MSG_ZH if en in msg), "")
     exc_zh = _OKWW_EXC_ZH.get(exc)
     if task_zh is None or not (msg_zh or exc_zh):
-        logging.getLogger("ark.collector").warning(
-            "OK-WW 报错中继还没有翻译，通知里只能说不认识：任务 %s，异常 %s，原文「%s」",
-            task, exc or "（没抓到异常名）", msg)
+        sig = (task, exc, msg[:80])
+        if sig not in _OKWW_UNTRANSLATED:      # 同一条原文一个进程里只提醒一次
+            _OKWW_UNTRANSLATED.add(sig)
+            logging.getLogger("ark.collector").warning(
+                "OK-WW 报错中继还没有翻译，通知里只能说不认识：任务 %s，异常 %s，原文「%s」",
+                task, exc or "（没抓到异常名）", msg)
         who = task_zh or "某个任务"
         return f"{who}：报了中继还不认识的错，原文已记进日志，要补翻译"
     what = msg_zh or exc_zh
@@ -1067,6 +1088,15 @@ def scan(history_root: Path, seen: set[str]) -> list[RunRecord]:
         # age means clock skew (mtime in the future); never skip those forever.
         if 0 <= age < 120 and not path.with_suffix(".log").exists():
             continue
+        # 先按路径算 run_id，处理过的不再解析。原来是每个周期把整个 history 目录
+        # 几百条记录全部重新解析一遍再过滤——2026-09-07 实测启动一次要十几秒，
+        # 停服务因此撞上 15 秒硬保险，而且 8 月的老失败记录每次都重新报一遍警。
+        try:
+            rel = path.relative_to(history_root)
+            if f"{rel.parts[0]}/{rel.parts[1]}/{path.stem}" in seen:
+                continue
+        except (ValueError, IndexError):
+            pass
         rec = parse_record(path, history_root)
         if rec and rec.run_id not in seen:
             out.append(rec)

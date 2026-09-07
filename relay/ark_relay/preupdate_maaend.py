@@ -6,7 +6,6 @@ import subprocess
 import time
 from pathlib import Path
 
-from .config import atomic_write_text
 
 from .preupdate_common import BUDGET_SECONDS, _CURRENT, _DONE, _UPDATED, _newest_log, _note, _read, _spawn_interactive, log
 
@@ -126,22 +125,20 @@ def _remembered_version(state_dir) -> str:
 
     MaaEnd 装更新会把自己的 debug 目录连旧日志一起换掉（2026-09-07 实测：
     更新后目录里只剩新进程那一份日志），interface.json 也已经是新的。
-    那时只有中继自己记的这一份还知道昨天是什么版本。
+    那时只有中继自己记的这一份还知道昨天是什么版本。记在 state.json 的 versions 段。
     """
     if not state_dir:
         return ""
-    try:
-        return (Path(state_dir) / _VERSION_FILE).read_text(encoding="utf-8").strip()
-    except OSError:
-        return ""
+    from .statestore import StateStore  # noqa: PLC0415
+    return str(StateStore(state_dir).get("versions", "maaend") or "")
 
 
 def _remember_version(state_dir, ver: str) -> None:
     if not state_dir or not ver:
         return
+    from .statestore import StateStore  # noqa: PLC0415
     try:
-        Path(state_dir).mkdir(parents=True, exist_ok=True)
-        atomic_write_text(Path(state_dir) / _VERSION_FILE, ver)
+        StateStore(state_dir).set("versions", "maaend", ver)
     except OSError:
         log.warning("预更新：MaaEnd 版本号记不下来，下次更新通知可能缺旧版号", exc_info=True)
 
