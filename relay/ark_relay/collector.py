@@ -783,7 +783,7 @@ def parse_okww_log(log_path: Path) -> dict:
         if "farm 4c error" in text:
             steps.append(f"周本（领了 {claims} 次，然后没能退出副本）" if claims
                          else "周本（没做完，原因见失败于）")
-        elif "收取物资次数已达到上限" in text:
+        elif "收取物资次数已达到上限" in text or (left and left[-1] == 0 and not claims):
             steps.append("周本（已完成，本周已领满）")
         elif claims:
             remain = max((left[-1] if left else claims) - claims, 0)

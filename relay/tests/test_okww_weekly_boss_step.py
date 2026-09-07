@@ -31,7 +31,8 @@ ERR = "2026-09-07 10:00:43,366 ERROR TaskExecutor FarmEchoTask:farm 4c error, tr
 check("领满后进本：已完成、已领满", steps(HEAD + OCR.format(k=0) + CAP), ["周本（已完成，本周已领满）"])
 check("领了一次正常退出", steps(HEAD + OCR.format(k=3) + CLAIM), ["周本（已完成，领了 1 次，本周还剩 2 次）"])
 check("领了一次但卡结算页（今早）", steps(HEAD + OCR.format(k=3) + CLAIM + ERR), ["周本（领了 1 次，然后没能退出副本）"])
-check("没开周本就不写", steps("2026-09-07 11:34:06,670 INFO TaskExecutor TacetTask:click f2 to open the book\n"), [])
+check("没开周本就不写", steps("2026-09-07 11:34:06,670 INFO TaskExecutor DailyTask:open_daily\n"), [])
+check("剩余 0 次、没弹上限对话（09-02 的样本）：也算已领满", steps(HEAD + OCR.format(k=0)), ["周本（已完成，本周已领满）"])
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
