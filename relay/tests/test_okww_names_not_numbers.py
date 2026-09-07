@@ -47,11 +47,31 @@ raw3 = run("2026-09-05 09:20:00,000 INFO ForgeryTask: start\n"
 if "陨翼云渊" not in raw3.get("okww_farm", ""):
     fails.append(f"凝素领域应写副本名，得到 {raw3.get('okww_farm')!r}")
 
-# 表和手机页同源：app.js 里 TACET 的每一行都要和这里一致
+# 手机页能选到的每一个序号，报告都得叫得出名字。
+# 2026-09-08：手机页 FORGE 有 5 项、报告的表只有 4 条，选第 5 个就写成「凝素领域·#5」。
 js = (pathlib.Path(__file__).resolve().parents[2] / "web" / "app.js").read_text(encoding="utf-8")
 for idx, (_, sets) in wuwa_tacet.TACET.items():
     if f'[["{sets[0]}", "{sets[1]}"], {idx}]' not in js:
         fails.append(f"手机页 TACET 里第 {idx} 项和 wuwa_tacet 对不上")
+
+from ark_relay import wuwa_forgery  # noqa: E402
+import re as _re
+for m in _re.finditer(r'\["(\d+) · [^"]*（([^）"]+)）", (\d+)\]', js):
+    idx = int(m.group(3))
+    if wuwa_forgery.FORGERY.get(idx, ("",))[0] != m.group(2):
+        fails.append(f"手机页 FORGE 第 {idx} 项（{m.group(2)}）和 wuwa_forgery 对不上")
+
+# 手机页给的每个序号都必须查得到名字，不许退化成「第 N 个」
+for m in _re.finditer(r'\["\d+ · [^"]*", (\d+)\]', js):
+    if "没登记" in wuwa_forgery.label(int(m.group(1))):
+        fails.append(f"手机页能选第 {m.group(1)} 个凝素领域，但对照表里没有它")
+
+# 明日安排那一支也不许退化成序号（plan.py 以前自己抄了一份只有 4 条的表）
+from ark_relay import plan  # noqa: E402
+for i in (1, 5, 15):
+    line = f"体力刷 {wuwa_forgery.label(i)}，出 {wuwa_forgery.reward(i)}"
+    if "#" in line or "没登记" in line:
+        fails.append(f"明日安排第 {i} 个凝素领域退化成序号：{line}")
 
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

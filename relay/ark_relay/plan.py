@@ -222,13 +222,15 @@ def _okww_plan_bits(automas_dir: Path | None,
         zh = _okww_zh(okww_dir)
         bits: list[str] = []
         which = daily.get("Which to Farm") or ""
+        # 两处都用共用的对照表，序号一律 1 起算（和游戏 F2 列表一致）。
+        # 2026-09-08 之前这里自己抄了一份 collector._FORGERY_NAMES，那份只有 4 条，
+        # 而手机页早就能选第 5 个——选了就写成「凝素领域·#5」。
+        from . import wuwa_forgery, wuwa_tacet  # noqa: PLC0415 - 避免导入环
         if which == "Forgery Challenge":
             idx = int(daily.get("Which Forgery Challenge to Farm") or 1)
-            name = collector._FORGERY_NAMES.get(idx - 1, f"#{idx}")
-            bits.append(f"体力刷 凝素领域·{name}")
+            bits.append(f"体力刷 {wuwa_forgery.label(idx)}，出 {wuwa_forgery.reward(idx)}")
         elif which == "Tacet Suppression":
             idx = int(daily.get("Which Tacet Suppression to Farm") or 1)
-            from . import wuwa_tacet  # noqa: PLC0415
             bits.append(f"体力刷 {wuwa_tacet.label(idx)}，出 {wuwa_tacet.reward(idx)}")
         elif which == "Simulation Challenge":
             tgt = str(daily.get("Material Selection") or "")

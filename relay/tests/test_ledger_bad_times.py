@@ -2,7 +2,8 @@
 
 read_ledger 原来只查键在不在。日报和关机判定都要拿 started/finished 去
 fromisoformat，值不合法照样 ValueError → 日报发不出 → 关机等日报 → 机器开一夜。
-机器一天被硬断电两次，一行写坏是能发生的事。
+账本是一行一条追加写的，写到一半被关机打断就会留下半行——一天两次关机，
+这是能发生的事。
 """
 import json
 import pathlib

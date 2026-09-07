@@ -18,7 +18,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import wuwa_tacet
+from . import wuwa_forgery, wuwa_tacet
 from .config import SERVER_TZ, RunRecord
 
 # AUTO-MAS names history folders and files on the game's day-boundary clock,
@@ -524,23 +524,6 @@ _OKWW_DAILY_TARGET = 180
 # 要带上限，否则「活跃度 110」看着像出错了。
 _OKWW_POINTS_TARGET = 100
 
-# 凝素领域刷的是第几个。OK-WW 的配置只存序号，日志也只写序号
-# （`Teleport to Forgery Challenge 0`，0 起算），报告里写「凝素领域 ×3」
-# 机器看得懂、人看不懂。用户 2026-08-26：「他那个凝素领域第一个机器看得懂，
-# 人看不懂是什么啊」。
-#
-# 下面这张表是 2026-08-26 在游戏里实拍 F2 →「素材获取」→「凝素领域」列表抄的
-# （瑝珑·梦州，武器类型筛选＝全部）。
-#
-# **它不是永久有效的**：列表顺序由游戏决定，加了武器类型筛选、
-# 或者版本更新加了新副本，序号就会错位。所以查不到的序号一律退回
-# 「第 N 个」，宁可少说也不要报一个错名字。
-_FORGERY_NAMES = {
-    0: "陨翼云渊（迅刀）",
-    1: "静灭云渊（音感仪）",
-    2: "裂斩云渊（长刃）",
-    3: "碎蚀云渊（臂铠）",
-}
 _OKWW_FORGERY_INDEX = re.compile(r"info_set Teleport to Forgery Challenge (\d+)")
 # 模拟领域的目标：OK-WW 源码 SimulationTask 三选一，译文来自它自己的 ok.po
 _OKWW_SIM_TARGET = re.compile(r"info_set Target Simulation Challenge (.+?)\s*$", re.M)
@@ -562,7 +545,9 @@ def _okww_farm(text: str, info: dict | None = None) -> "tuple[str, str]":
         tgt = _SIM_ZH.get(hits[-1].strip(), hits[-1].strip()) if hits else ""
         return (f"模拟领域·{tgt}" if tgt else "模拟领域", tgt or "模拟领域奖励")
     if "ForgeryTask:" in text:
-        return (_forgery_label(text), "武器突破材料")
+        hits = _OKWW_FORGERY_INDEX.findall(text)
+        idx = int(hits[-1]) + 1 if hits else 0
+        return (_forgery_label(text), wuwa_forgery.reward(idx))
     if "TacetTask:" in text:
         # 「无音区 #2 / 声骸与角色突破材料」这种写法人看不懂（用户 2026-09-06）。
         # 序号查 wuwa_tacet 的对照表，写名字和它固定掉的两个套装；没登记就明说。
@@ -579,14 +564,15 @@ def _okww_farm(text: str, info: dict | None = None) -> "tuple[str, str]":
 
 
 def _forgery_label(text: str) -> str:
-    """「凝素领域」后面跟哪个副本。认不出就只说序号。"""
+    """「凝素领域」后面跟哪个副本。认不出就只说序号。
+
+    日志里的序号是 0 起算（`Teleport to Forgery Challenge 0`），对照表是 1 起算
+    （和游戏 F2 列表一致）。**换算只在这一处做**，调用方拿到的一律是人话。
+    """
     hits = _OKWW_FORGERY_INDEX.findall(text)
     if not hits:
-        return "凝素领域"
-    idx = int(hits[-1])
-    if name := _FORGERY_NAMES.get(idx):
-        return f"凝素领域·{name}"
-    return f"凝素领域（第 {idx + 1} 个）"
+        return "凝素领域"          # 步骤清单里是「做了 凝素领域 ×5」，别塞括号
+    return wuwa_forgery.label(int(hits[-1]) + 1)
 
 
 _OKWW_GAME_ERR = "waiting for game to start error"

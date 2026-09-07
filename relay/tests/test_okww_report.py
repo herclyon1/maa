@@ -92,8 +92,10 @@ check("0 → 陨翼云渊", fl("info_set Teleport to Forgery Challenge 0"),
       "凝素领域·陨翼云渊（迅刀）")
 check("3 → 碎蚀云渊", fl("info_set Teleport to Forgery Challenge 3"),
       "凝素领域·碎蚀云渊（臂铠）")
-check("表里没有的序号退回「第 N 个」（1 起算）",
-      fl("info_set Teleport to Forgery Challenge 9"), "凝素领域（第 10 个）")
+check("第 10 个（2026-09-04 补全的后半段）",
+      fl("info_set Teleport to Forgery Challenge 9"), "凝素领域·余烬终课（佩枪）")
+check("表里真没有的序号要明说没登记，不许编名字",
+      fl("info_set Teleport to Forgery Challenge 98"), "凝素领域（第 99 个，对照表没登记）")
 check("日志里根本没这行就只说「凝素领域」", fl("什么都没有"), "凝素领域")
 
 named = TMP / "named.log"

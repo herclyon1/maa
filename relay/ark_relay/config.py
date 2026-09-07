@@ -38,11 +38,9 @@ def atomic_write_text(path: Path, text: str, newline: str | None = None) -> None
     """Write via temp file + os.replace, so a power cut mid-write can never
     leave a truncated file behind.
 
-    This machine powers itself off twice a day - including via the relay's own
-    `shutdown /s /t 60`, which does not wait for in-flight work - and every
-    config writer here edits files AUTO-MAS cannot run without. A truncated
-    QueueConfig.json fails "safe" into a machine that schedules nothing, with
-    only a .bak sitting next to the corpse.
+    这里写的都是 AUTO-MAS 没有就起不来的配置。写坏一份 QueueConfig.json，机器会
+    「安全地」失败成什么都不调度，旁边只剩一个 .bak。os.replace 保证读的人要么看到
+    旧的、要么看到新的，绝不会看到半截。
     """
     atomic_write_bytes(path, text.encode("utf-8") if newline is None
                        else text.replace("\n", newline).encode("utf-8"))
@@ -51,9 +49,16 @@ def atomic_write_text(path: Path, text: str, newline: str | None = None) -> None
 def atomic_write_bytes(path: Path, data: bytes) -> None:
     """同上，写字节。`.ps1` 要带 BOM、`.py` 是代码，都走这里。
 
-    **fsync 不能省。** 2026-09-08 数过：这个仓库里有 5 处手抄的「临时文件 + replace」
-    全都漏了 fsync——replace 本身是原子的，但没 fsync 的话数据可能还在页缓存里，
-    这台机器每天硬断电两次，断在那个窗口就是一个内容为空的新文件。
+    2026-09-08 把 5 处手抄的「临时文件 + replace」并到这里。它们各写各的，有的漏
+    fsync、有的失败了不清理临时文件、报错方式还各不相同——同一件事五种写法，
+    改一处别处不会跟着改。
+
+    这台机器每天**只硬断电一次**：早上 08:40 智能插座断电、08:45 通电，
+    而那一刻机器已经关着（前一晚队列跑完自己关的），没有正在写的文件。中继自己那次
+    `shutdown /s /f` 是正常关机，系统会把缓存刷下去。
+    所以「断电断在写文件的瞬间」在这台机器上基本不会发生——2026-09-08 操作者纠正过我
+    一次夸大的说法。fsync 留着是因为它本来就该有、代价也只有一次系统调用，不是因为
+    这里有个已知的坑。
     """
     tmp = path.with_suffix(path.suffix + ".tmp")
     try:
