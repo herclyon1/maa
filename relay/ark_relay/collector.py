@@ -13,6 +13,7 @@ Filename = start time. File mtime = finish time.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -637,17 +638,25 @@ def _okww_error(text: str) -> str:
     nxt = heads[heads.index(head) + 1].start() if heads.index(head) + 1 < len(heads) else len(text)
     excs = _OKWW_EXC_LINE.findall(text[head.end():nxt])
     exc = excs[-1][0].rsplit(".", 1)[-1] if excs else ""
-    task_zh = _OKWW_TASK_ZH.get(task) or "这一步"
+    # 模糊描述比英文更禁止（用户 2026-09-07：「描述模糊是第一大禁止」）。
+    # 所以这里没有「这一步出错」这种兜底：翻得出就写具体的；翻不出就明说
+    # 「中继还不认识这条错」并把原文打进日志，等着补翻译——说清楚不知道，不是糊弄。
+    task_zh = _OKWW_TASK_ZH.get(task)
     msg_zh = next((zh for en, zh in _OKWW_MSG_ZH if en in msg), "")
-    what = msg_zh or _OKWW_EXC_ZH.get(exc) or "出错"
+    exc_zh = _OKWW_EXC_ZH.get(exc)
+    if task_zh is None or not (msg_zh or exc_zh):
+        logging.getLogger("ark.collector").warning(
+            "OK-WW 报错中继还没有翻译，通知里只能说不认识：任务 %s，异常 %s，原文「%s」",
+            task, exc or "（没抓到异常名）", msg)
+        who = task_zh or "某个任务"
+        return f"{who}：报了中继还不认识的错，原文已记进日志，要补翻译"
+    what = msg_zh or exc_zh
     # 紧挨着 traceback 前面那句「wait_until timeout … N seconds」说明等了多久
     before = text[max(0, head.start() - 600):head.start()]
     if (w := _OKWW_WAIT_SEC.findall(before)) and "等" in what:
         sec = w[-1][:-2] if w[-1].endswith(".0") else w[-1]
         what += f"（等了 {sec} 秒）"
-    out = f"{task_zh}：{what}"
-    # 「Boss」是玩家的日常用语，日报里本来就这么写；别的英文一律不许进通知
-    return out if not _ASCII_LETTER.search(out.replace("Boss", "")) else f"{task_zh}：出错"
+    return f"{task_zh}：{what}"
 
 
 def parse_okww_log(log_path: Path) -> dict:
