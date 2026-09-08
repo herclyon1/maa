@@ -15,7 +15,7 @@ Source of truth is `relay/ark_relay/okww_patch.py` - the `_APPLIES` and `_REVERT
 lives in `relay/ark_relay/okww_patches/<name>.py`. Run it and it tells you what it
 changed; an empty answer means everything was already in place.
 
-**Applied every boot:**
+**Applied every boot（10 条）:**
 
 | # | What | Where |
 |---|---|---|
@@ -28,6 +28,7 @@ changed; an empty answer means everything was already in place.
 | 7 | Retry cap | `okww_patches/retrycap.py` |
 | 8 | Let-pass | `okww_patches/letpass.py` |
 | 9 | Read the remaining-runs count before entering; at 0/3 skip the boss instead of fighting it for nothing (v3, 2026-09-09) | `okww_patches/count.py` |
+| 10 | 限时提前开放 bosses: recognise 「提前到达目标位置可能影响剧情体验」 and confirm it. Without this, 天傀劫煞 could not be teleported to at all (2026-09-09) | `okww_patches/bosstip.py` |
 
 **Deliberately reverted every boot** (they are listed so an old copy left behind by
 an update is removed, and so nobody re-adds them): the four earlier versions of the
