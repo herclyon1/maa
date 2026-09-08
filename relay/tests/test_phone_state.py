@@ -447,5 +447,20 @@ before = dead.sent_today()
 check("发失败返回 False", dead.beat(), False)
 check("发失败不许记数（否则网一断就自己把额度耗光）", dead.sent_today(), before)
 
+# ---- The beat has to carry the cadence it is beating at ----
+# The page decides "no heartbeat for a while = powered off" from a fixed window.
+# Once the daily cap drops the relay to one beat every 5 minutes, that verdict is
+# wrong for three and a half minutes out of every five - a red 「关机中」 while the
+# queue is running. The page cannot guess the cadence; this message is the only
+# place it can learn it.
+_sent = []
+_hb = phone.Heartbeat("t", tmpdir(), post=lambda payload, title: _sent.append(payload))
+check("正常节奏报 30", (_hb.beat(), _sent[-1]), (True, b"hb 30"))
+for _ in range(phone.HB_DAILY_CAP):
+    _hb._bump()
+check("过了日上限报 300", (_hb.beat(), _sent[-1]), (True, b"hb 300"))
+check("报的就是 interval() 说的那个",
+      _sent[-1].decode(), f"hb {_hb.interval()}")
+
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

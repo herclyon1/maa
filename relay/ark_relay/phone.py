@@ -181,7 +181,14 @@ class Heartbeat:
 
     def beat(self) -> bool:
         try:
-            self._post(b"hb", "hb")
+            # The current cadence rides along in the message. The page decides
+            # "no heartbeat for a while = powered off" from a fixed 90 seconds,
+            # and once the daily cap drops this to one beat every 5 minutes that
+            # verdict is wrong for three and a half minutes out of every five -
+            # a red 「关机中」 while the queue is running. It cannot know the
+            # cadence unless it is told, and widening its window instead would
+            # slow down the one thing it exists for: seeing a real power-off.
+            self._post(f"hb {self.interval()}".encode(), "hb")
         except Exception:
             log.debug("心跳没发出去", exc_info=True)
             return False
