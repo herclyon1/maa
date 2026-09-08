@@ -1,0 +1,264 @@
+[2026-09-04 21:30:49.763][INF][Bootstrapper]           <2> ===================================
+[2026-09-04 21:30:49.785][INF][Bootstrapper]           <2> MaaAssistantArknights GUI started
+[2026-09-04 21:30:49.786][INF][Bootstrapper]           <2> Version v6.17.1
+[2026-09-04 21:30:49.786][INF][Bootstrapper]           <2> Built at 2026-09-04T18:19:20.1663160+08:00
+[2026-09-04 21:30:49.787][INF][Bootstrapper]           <2> Maa ENV: Production
+[2026-09-04 21:30:49.787][INF][Bootstrapper]           <2> Command Line: D:\ark\maa\MAA.dll
+[2026-09-04 21:30:49.787][INF][Bootstrapper]           <2> User Dir D:\ark\maa\
+[2026-09-04 21:30:49.842][INF][Bootstrapper]           <2> Run as Administrator
+[2026-09-04 21:30:49.842][INF][Bootstrapper]           <2> ===================================
+[2026-09-04 21:30:50.191][INF][ConfigurationHelper]    <2> D:\ark\maa\config\gui.json.bak saved
+[2026-09-04 21:30:50.770][INF][ConfigurationHelper]    <2> D:\ark\maa\config\gui.new.json.bak saved
+[2026-09-04 21:30:52.092][ERR][AutoStart]              <2> Failed to set startup: No value exists with that name.
+[2026-09-04 21:30:52.126][INF][AsstProxy]              <2> AsstSetUserDir dirame: D:\ark\maa\
+[2026-09-04 21:30:52.126][INF][AsstProxy]              <2> AsstSetUserDir ret: true
+[2026-09-04 21:30:52.292][INF][ItemListHelper]         <2> Loading item list from D:\ark\maa\resource\item_index.json
+[2026-09-04 21:30:54.078][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[1]理智作战(FightTask).StagePlan has been set: `["SR-5"]` -> `["SR-5"]`, save scheduled
+[2026-09-04 21:30:54.093][INF][FightSettingsUserControlModel] <2> UpdateStageList Enter
+[2026-09-04 21:30:54.094][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[1]理智作战(FightTask).StagePlan has been set: `["SR-5"]` -> `["SR-5"]`, save scheduled
+[2026-09-04 21:30:54.095][INF][FightSettingsUserControlModel] <2> UpdateStageList Exit, 2 ms
+[2026-09-04 21:30:54.096][INF][DepotMaintainTaskUserControlModel] <2> UpdateStageList Enter
+[2026-09-04 21:30:54.096][INF][DepotMaintainTaskUserControlModel] <2> UpdateStageList Exit, 0 ms
+[2026-09-04 21:30:54.216][INF][AsstProxy]              <6> Using GPU NVIDIA GeForce RTX 4070 (Driver 32.0.15.9186 2026-01-20)
+[2026-09-04 21:30:54.345][INF][AsstProxy]              <6> LoadResource Enter
+[2026-09-04 21:30:54.347][INF][AsstProxy]              <6> Moved D:\ark\maa\cache\resource\tasks.json to D:\ark\maa\cache\resource\tasks\tasks.json
+[2026-09-04 21:30:54.347][INF][AsstProxy]              <6> Load resource: D:\ark\maa\resource
+[2026-09-04 21:30:54.347][INF][AsstProxy]              <6> AsstLoadResource dirname: D:\ark\maa
+[2026-09-04 21:30:55.374][INF][HttpResponseLoggingExtension] <11> HTTP: NotModified GET https://api.maa.plus/MaaAssistantArknights/api/announcements/wpf.md "6a99f020-1797" Thu, 03 Sep 2026 22:09:36 GMT 1252.585ms
+[2026-09-04 21:30:56.210][INF][WindowManager]          <2> Whether the window placement was set successfully: true
+[2026-09-04 21:30:56.391][INF][HttpResponseLoggingExtension] <2> HTTP: NotModified GET https://api.maa.plus/MaaAssistantArknights/api/resource/tasks.json "6a9a8506-565f" Fri, 04 Sep 2026 08:44:54 GMT 2283.516ms
+[2026-09-04 21:30:56.395][INF][HttpResponseLoggingExtension] <2> HTTP: NotModified GET https://api.maa.plus/MaaAssistantArknights/api/gui/StageActivityV2.json "6a9a8506-2f46" Fri, 04 Sep 2026 08:44:54 GMT 2294.553ms
+[2026-09-04 21:30:56.412][INF][FightSettingsUserControlModel] <2> UpdateStageList Enter
+[2026-09-04 21:30:56.413][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[1]理智作战(FightTask).StagePlan has been set: `["SR-5"]` -> `[""]`, save scheduled
+[2026-09-04 21:30:56.414][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[1]理智作战(FightTask).StagePlan has been set: `[""]` -> `["SR-5"]`, save scheduled
+[2026-09-04 21:30:56.415][INF][FightSettingsUserControlModel] <2> UpdateStageList Exit, 3 ms
+[2026-09-04 21:30:56.415][INF][DepotMaintainTaskUserControlModel] <2> UpdateStageList Enter
+[2026-09-04 21:30:56.415][INF][DepotMaintainTaskUserControlModel] <2> UpdateStageList Exit, 0 ms
+[2026-09-04 21:30:56.911][INF][ResourceIntegrityChecker] <12> Integrity check passed, 9310 file(s) verified
+[2026-09-04 21:30:56.931][INF][AsstProxy]              <6> AsstLoadResource ret: true
+[2026-09-04 21:30:56.931][INF][AsstProxy]              <6> Load resource: D:\ark\maa\cache\resource
+[2026-09-04 21:30:56.931][INF][AsstProxy]              <6> AsstLoadResource dirname: D:\ark\maa\cache
+[2026-09-04 21:30:57.017][INF][AsstProxy]              <6> AsstLoadResource ret: true
+[2026-09-04 21:30:57.017][INF][AsstProxy]              <6> LoadResource Exit, 2,672 ms
+[2026-09-04 21:30:57.018][INF][RunningState]           <6> Init: false to true (called from Init)
+[2026-09-04 21:30:57.132][INF][RunningState]           <2> InterruptLock: depth=1 (called from TimerCanceledAsync)
+[2026-09-04 21:30:57.166][INF][TaskQueueViewModel]     <2> Timer wait time: 10
+[2026-09-04 21:30:57.204][INF][HttpResponseLoggingExtension] <2> HTTP: OK GET https://mirrorchyan.com/api/resources/MAA/latest null null 288.481ms
+[2026-09-04 21:30:57.254][INF][VersionUpdateDialogViewModel] <2> MirrorChyan response: {"code":0,"msg":"current version is latest","data":{"version_name":"v6.17.1","version_number":758,"channel":"beta","os":"windows","arch":"amd64","release_note":"placeholder","cdk_expired_time":<已隐藏>}}
+[2026-09-04 21:30:57.364][INF][HttpResponseLoggingExtension] <2> HTTP: OK GET https://mirrorchyan.com/api/resources/MaaResource/latest null null 106.154ms
+[2026-09-04 21:30:57.364][INF][ResourceUpdater]        <2> {"code":0,"msg":"success","data":{"version_name":"2026-09-04 12:15:16.000","version_number":287,"url":"https://mirrorchyan.com/api/resources/download/3IrhaJ4M6vxG0vK2nXBgPvMyPoh","sha256":"b23bec350d21be78bdb1cdb8d90faa3d5c331b51d39b2ac3d5101d87a0b681c6","channel":"stable","os":"","arch":"","update_type":"incremental","release_note":"月行水上","filesize":22509,"cdk_expired_time":<已隐藏>}}
+[2026-09-04 21:30:57.365][INF][ResourceUpdater]        <2> New version found: 2026-09-04+12:15:16.000, 月行水上
+[2026-09-04 21:30:57.417][INF][HttpService]            <2> Start to download file from "https://mirrorchyan.com/api/resources/download/3IrhaJ4M6vxG0vK2nXBgPvMyPoh" and save to D:\ark\maa\MaaResourceMirrorchyan.zip.temp
+[2026-09-04 21:30:57.571][INF][HttpResponseLoggingExtension] <2> HTTP: OK GET https://download2.mirrorchyan.com/MaaResource/9953/any/patch/9942.zip?auth_key=<已隐藏> "FCBAED94C460E9FA55C726378C6CBB66" Fri, 04 Sep 2026 12:16:03 GMT 154.512ms
+[2026-09-04 21:30:57.585][INF][HttpService]            <2> Remove download temp file D:\ark\maa\MaaResourceMirrorchyan.zip.temp
+[2026-09-04 21:31:07.174][INF][TaskQueueViewModel]     <2> Timer canceled: false
+[2026-09-04 21:31:07.174][INF][RunningState]           <2> InterruptLock: depth=0 (called from TimerCanceledAsync)
+[2026-09-04 21:31:07.174][INF][RunningState]           <2> Idle: true to false (called from Init)
+[2026-09-04 21:31:07.182][INF][RunningState]           <2> Idle: false to true (called from Init)
+[2026-09-04 21:31:07.186][INF][TaskQueueViewModel]     <2> LinkStart Enter
+[2026-09-04 21:31:07.187][INF][TaskQueueViewModel]     <2> Main windows log clear.
+[2026-09-04 21:31:07.188][INF][TaskQueueViewModel]     <2> 
+[2026-09-04 21:31:07.188][INF][TaskQueueViewModel]     <2> Build Time:
+2026/9/4 18:19:20
+Resource Time:
+2026/9/4 09:07:54
+[2026-09-04 21:31:07.202][INF][AsstProxy]              <2> Using GPU NVIDIA GeForce RTX 4070 (Driver 32.0.15.9186 2026-01-20)
+[2026-09-04 21:31:07.203][INF][RunningState]           <2> Idle: true to false (called from LinkStartWithTasks)
+[2026-09-04 21:31:07.207][INF][TaskQueueViewModel]     <2> 正在连接模拟器……
+[2026-09-04 21:31:07.274][INF][AsstProxy]              <21> name: LDPlayer, extras: {"path":"D:\\LD-MRFZ\\LDPlayer9\\","index":1000,"pid":6216}
+[2026-09-04 21:31:07.275][INF][AsstProxy]              <21> handle: 2373527077856, adbPath: D:\LD-MRFZ\LDPlayer9\adb.exe, address: 127.0.0.1:7555, config: LDPlayer
+[2026-09-04 21:31:08.830][INF][AsstProxy]              <21> handle: 2373527077856, adbPath: D:\LD-MRFZ\LDPlayer9\adb.exe, address: 127.0.0.1:7555, config: LDPlayer, return: true
+[2026-09-04 21:31:08.832][INF][TaskQueueViewModel]     <2> 最快截图耗时: 15ms (LDExtras)
+[2026-09-04 21:31:08.833][INF][TaskQueueViewModel]     <2> Index 0, Type "StartUp", Name 开始唤醒, IsEnable true
+[2026-09-04 21:31:08.844][INF][TaskQueueViewModel]     <2> Index 1, Type "Fight", Name 理智作战, IsEnable true
+[2026-09-04 21:31:08.845][INF][FightSettingsUserControlModel] <2> GetFightStage: from ["SR-5"], selected SR-5
+[2026-09-04 21:31:08.848][INF][TaskQueueViewModel]     <2> Index 2, Type "Infrast", Name 基建换班, IsEnable true
+[2026-09-04 21:31:08.865][INF][TaskQueueViewModel]     <2> Index 3, Type "Recruit", Name 自动公招, IsEnable true
+[2026-09-04 21:31:08.867][INF][TaskQueueViewModel]     <2> Index 4, Type "Mall", Name 信用收支, IsEnable true
+[2026-09-04 21:31:08.881][INF][TaskQueueViewModel]     <2> Index 5, Type "Award", Name 领取奖励, IsEnable true
+[2026-09-04 21:31:08.883][INF][TaskQueueViewModel]     <2> Index 6, Type "Roguelike", Name 自动肉鸽, IsEnable false
+[2026-09-04 21:31:08.885][INF][TaskQueueViewModel]     <2> 正在运行中……
+[2026-09-04 21:31:08.898][INF][TaskQueueViewModel]     <2> 开始任务: 开始唤醒
+[2026-09-04 21:31:08.899][INF][AsstProxy]              <2> Start Task Chain: StartUp, Task ID: 1
+[2026-09-04 21:31:08.909][INF][TaskQueueViewModel]     <2> LinkStart Exit, 1,723 ms
+[2026-09-04 21:32:08.020][INF][TaskQueueViewModel]     <2> 完成任务: 开始唤醒
+[2026-09-04 21:32:08.020][INF][AsstProxy]              <2> Completed Task Chain: StartUp, Task ID: 1
+[2026-09-04 21:32:08.514][INF][TaskQueueViewModel]     <2> 开始任务: 理智作战
+[2026-09-04 21:32:08.514][INF][AsstProxy]              <2> Start Task Chain: Fight, Task ID: 2
+[2026-09-04 21:32:36.627][INF][TaskQueueViewModel]     <2> 已使用理智药 1(+1)
+药: 1, 库存: 3
+[2026-09-04 21:32:39.658][INF][TaskQueueViewModel]     <2> 开始行动 1~10 次, -120理智
+理智: 195/210  药: 1
+[2026-09-04 21:35:33.965][INF][TaskQueueViewModel]     <2> SR-5 掉落统计: 
+龙门币 : 1440 (+1440)
+旧磁带 : 120 (+120)
+糖 : 5 (+5)
+装置 : 5 (+5)
+当前次数 : 10
+[2026-09-04 21:35:33.981][INF][ToolboxViewModel]       <2> Depot updated from stage drops, 4 items processed
+[2026-09-04 21:35:33.983][INF][GameDataReportService]  <2> Start PostWithRetryAsync, url: https://penguin-stats.io/PenguinStats/api/v2/report
+[2026-09-04 21:35:33.983][INF][GameDataReportService]  <2> Request headers: {"User-Agent":"MaaAssistantArknights/6.17.1","X-Penguin-Idempotency-Key":"<已隐藏>","authorization":"PenguinID 303948262"}
+[2026-09-04 21:35:33.986][INF][GameDataReportService]  <2> Request body: {"drops":[{"dropType":"NORMAL_DROP","itemId":"act54side_token_tape","quantity":120},{"dropType":"NORMAL_DROP","itemId":"30062","quantity":5},{"dropType":"NORMAL_DROP","itemId":"30022","quantity":5}],"server":"CN","source":"MaaAssistantArknights","stageId":"act54side_05","times":10,"version":"v6.17.1"}
+[2026-09-04 21:35:33.989][INF][GameDataReportService]  <2> Start PostWithRetryAsync, url: https://backend.yituliu.cn/maa/upload/stageDrop
+[2026-09-04 21:35:33.989][INF][GameDataReportService]  <2> Request headers: {"User-Agent":"MaaAssistantArknights/6.17.1","authorization":"PenguinID 303948262"}
+[2026-09-04 21:35:33.989][INF][GameDataReportService]  <2> Request body: {"drops":[{"dropType":"NORMAL_DROP","itemId":"act54side_token_tape","quantity":120},{"dropType":"NORMAL_DROP","itemId":"30062","quantity":5},{"dropType":"NORMAL_DROP","itemId":"30022","quantity":5}],"server":"CN","source":"MaaAssistantArknights","stageId":"act54side_05","times":10,"version":"v6.17.1"}
+[2026-09-04 21:35:34.176][INF][HttpResponseLoggingExtension] <2> HTTP: OK POST https://backend.yituliu.cn/maa/upload/stageDrop null null 186.943ms
+[2026-09-04 21:35:42.397][INF][TaskQueueViewModel]     <2> 已使用理智药 2(+1)
+药: 1, 库存: 2
+[2026-09-04 21:35:42.756][INF][HttpResponseLoggingExtension] <2> HTTP: OK POST https://penguin-stats.io/PenguinStats/api/v2/report null null 8768.269ms
+[2026-09-04 21:35:45.457][INF][TaskQueueViewModel]     <2> 开始行动 11~20 次, -120理智
+理智: 156/210  药: 2
+[2026-09-04 21:38:34.528][INF][TaskQueueViewModel]     <2> SR-5 掉落统计: 
+龙门币 : 2880 (+1440)
+旧磁带 : 240 (+120)
+糖 : 12 (+7)
+装置 : 12 (+7)
+当前次数 : 10
+[2026-09-04 21:38:34.542][INF][ToolboxViewModel]       <2> Depot updated from stage drops, 4 items processed
+[2026-09-04 21:38:34.542][INF][GameDataReportService]  <2> Start PostWithRetryAsync, url: https://penguin-stats.io/PenguinStats/api/v2/report
+[2026-09-04 21:38:34.542][INF][GameDataReportService]  <2> Request headers: {"User-Agent":"MaaAssistantArknights/6.17.1","X-Penguin-Idempotency-Key":"<已隐藏>","authorization":"PenguinID 303948262"}
+[2026-09-04 21:38:34.542][INF][GameDataReportService]  <2> Request body: {"drops":[{"dropType":"NORMAL_DROP","itemId":"act54side_token_tape","quantity":120},{"dropType":"NORMAL_DROP","itemId":"30062","quantity":7},{"dropType":"NORMAL_DROP","itemId":"30022","quantity":7}],"server":"CN","source":"MaaAssistantArknights","stageId":"act54side_05","times":10,"version":"v6.17.1"}
+[2026-09-04 21:38:34.543][INF][GameDataReportService]  <2> Start PostWithRetryAsync, url: https://backend.yituliu.cn/maa/upload/stageDrop
+[2026-09-04 21:38:34.543][INF][GameDataReportService]  <2> Request headers: {"User-Agent":"MaaAssistantArknights/6.17.1","authorization":"PenguinID 303948262"}
+[2026-09-04 21:38:34.543][INF][GameDataReportService]  <2> Request body: {"drops":[{"dropType":"NORMAL_DROP","itemId":"act54side_token_tape","quantity":120},{"dropType":"NORMAL_DROP","itemId":"30062","quantity":7},{"dropType":"NORMAL_DROP","itemId":"30022","quantity":7}],"server":"CN","source":"MaaAssistantArknights","stageId":"act54side_05","times":10,"version":"v6.17.1"}
+[2026-09-04 21:38:34.751][INF][HttpResponseLoggingExtension] <2> HTTP: OK POST https://backend.yituliu.cn/maa/upload/stageDrop null null 208.560ms
+[2026-09-04 21:38:35.963][INF][HttpResponseLoggingExtension] <2> HTTP: OK POST https://penguin-stats.io/PenguinStats/api/v2/report null null 1421.198ms
+[2026-09-04 21:38:43.130][INF][TaskQueueViewModel]     <2> 已使用理智药 3(+1)
+药: 1, 库存: 1
+[2026-09-04 21:38:50.686][INF][TaskQueueViewModel]     <2> 开始行动 21~29 次, -108理智
+理智: 116/210  药: 3
+[2026-09-04 21:41:39.987][INF][TaskQueueViewModel]     <2> SR-5 掉落统计: 
+龙门币 : 4176 (+1296)
+旧磁带 : 348 (+108)
+装置 : 19 (+7)
+糖 : 17 (+5)
+当前次数 : 9
+[2026-09-04 21:41:39.991][INF][ToolboxViewModel]       <2> Depot updated from stage drops, 4 items processed
+[2026-09-04 21:41:39.991][INF][GameDataReportService]  <2> Start PostWithRetryAsync, url: https://penguin-stats.io/PenguinStats/api/v2/report
+[2026-09-04 21:41:39.991][INF][GameDataReportService]  <2> Request headers: {"User-Agent":"MaaAssistantArknights/6.17.1","X-Penguin-Idempotency-Key":"<已隐藏>","authorization":"PenguinID 303948262"}
+[2026-09-04 21:41:39.991][INF][GameDataReportService]  <2> Request body: {"drops":[{"dropType":"NORMAL_DROP","itemId":"act54side_token_tape","quantity":108},{"dropType":"NORMAL_DROP","itemId":"30062","quantity":7},{"dropType":"NORMAL_DROP","itemId":"30022","quantity":5}],"server":"CN","source":"MaaAssistantArknights","stageId":"act54side_05","times":9,"version":"v6.17.1"}
+[2026-09-04 21:41:39.992][INF][GameDataReportService]  <2> Start PostWithRetryAsync, url: https://backend.yituliu.cn/maa/upload/stageDrop
+[2026-09-04 21:41:39.992][INF][GameDataReportService]  <2> Request headers: {"User-Agent":"MaaAssistantArknights/6.17.1","authorization":"PenguinID 303948262"}
+[2026-09-04 21:41:39.992][INF][GameDataReportService]  <2> Request body: {"drops":[{"dropType":"NORMAL_DROP","itemId":"act54side_token_tape","quantity":108},{"dropType":"NORMAL_DROP","itemId":"30062","quantity":7},{"dropType":"NORMAL_DROP","itemId":"30022","quantity":5}],"server":"CN","source":"MaaAssistantArknights","stageId":"act54side_05","times":9,"version":"v6.17.1"}
+[2026-09-04 21:41:40.177][INF][HttpResponseLoggingExtension] <2> HTTP: OK POST https://backend.yituliu.cn/maa/upload/stageDrop null null 185.247ms
+[2026-09-04 21:41:41.135][INF][HttpResponseLoggingExtension] <2> HTTP: OK POST https://penguin-stats.io/PenguinStats/api/v2/report null null 1143.577ms
+[2026-09-04 21:41:52.995][INF][TaskQueueViewModel]     <2> 已使用理智药 4(+1)
+药: 1, 库存: 1
+[2026-09-04 21:41:56.014][INF][TaskQueueViewModel]     <2> 开始行动 30~39 次, -120理智
+理智: 129/210  药: 4
+[2026-09-04 21:44:45.046][INF][TaskQueueViewModel]     <2> SR-5 掉落统计: 
+龙门币 : 5616 (+1440)
+旧磁带 : 468 (+120)
+装置 : 27 (+8)
+糖 : 21 (+4)
+当前次数 : 10
+[2026-09-04 21:44:45.048][INF][ToolboxViewModel]       <2> Depot updated from stage drops, 4 items processed
+[2026-09-04 21:44:45.049][INF][GameDataReportService]  <2> Start PostWithRetryAsync, url: https://penguin-stats.io/PenguinStats/api/v2/report
+[2026-09-04 21:44:45.049][INF][GameDataReportService]  <2> Request headers: {"User-Agent":"MaaAssistantArknights/6.17.1","X-Penguin-Idempotency-Key":"<已隐藏>","authorization":"PenguinID 303948262"}
+[2026-09-04 21:44:45.049][INF][GameDataReportService]  <2> Request body: {"drops":[{"dropType":"NORMAL_DROP","itemId":"act54side_token_tape","quantity":120},{"dropType":"NORMAL_DROP","itemId":"30062","quantity":8},{"dropType":"NORMAL_DROP","itemId":"30022","quantity":4}],"server":"CN","source":"MaaAssistantArknights","stageId":"act54side_05","times":10,"version":"v6.17.1"}
+[2026-09-04 21:44:45.049][INF][GameDataReportService]  <2> Start PostWithRetryAsync, url: https://backend.yituliu.cn/maa/upload/stageDrop
+[2026-09-04 21:44:45.049][INF][GameDataReportService]  <2> Request headers: {"User-Agent":"MaaAssistantArknights/6.17.1","authorization":"PenguinID 303948262"}
+[2026-09-04 21:44:45.049][INF][GameDataReportService]  <2> Request body: {"drops":[{"dropType":"NORMAL_DROP","itemId":"act54side_token_tape","quantity":120},{"dropType":"NORMAL_DROP","itemId":"30062","quantity":8},{"dropType":"NORMAL_DROP","itemId":"30022","quantity":4}],"server":"CN","source":"MaaAssistantArknights","stageId":"act54side_05","times":10,"version":"v6.17.1"}
+[2026-09-04 21:44:45.235][INF][HttpResponseLoggingExtension] <2> HTTP: OK POST https://backend.yituliu.cn/maa/upload/stageDrop null null 185.829ms
+[2026-09-04 21:44:47.619][INF][HttpResponseLoggingExtension] <2> HTTP: OK POST https://penguin-stats.io/PenguinStats/api/v2/report null null 2570.243ms
+[2026-09-04 21:45:09.486][INF][TaskQueueViewModel]     <2> 完成任务: 理智作战
+理智: 9/210  
+[2026-09-04 21:45:09.487][INF][AsstProxy]              <2> Completed Task Chain: Fight, Task ID: 2
+[2026-09-04 21:45:09.988][INF][TaskQueueViewModel]     <2> 开始任务: 基建换班
+[2026-09-04 21:45:09.988][INF][AsstProxy]              <2> Start Task Chain: Infrast, Task ID: 3
+[2026-09-04 21:45:26.634][INF][TaskQueueViewModel]     <2> 当前设施: 发电站 01
+[2026-09-04 21:45:48.597][INF][TaskQueueViewModel]     <2> 当前设施: 发电站 02
+[2026-09-04 21:46:07.763][INF][TaskQueueViewModel]     <2> 当前设施: 办公室 01
+[2026-09-04 21:46:33.197][INF][TaskQueueViewModel]     <2> 当前设施: 控制中枢 01
+[2026-09-04 21:47:16.213][INF][TaskQueueViewModel]     <2> 当前设施: 制造站 01
+[2026-09-04 21:47:57.706][INF][TaskQueueViewModel]     <2> 当前设施: 制造站 02
+[2026-09-04 21:48:16.227][INF][TaskQueueViewModel]     <2> 当前设施: 制造站 03
+[2026-09-04 21:48:29.006][INF][TaskQueueViewModel]     <2> 当前设施: 制造站 04
+[2026-09-04 21:48:51.607][INF][TaskQueueViewModel]     <2> 当前设施: 贸易站 01
+[2026-09-04 21:49:29.689][INF][TaskQueueViewModel]     <2> 当前设施: 贸易站 02
+[2026-09-04 21:49:51.212][INF][TaskQueueViewModel]     <2> 当前设施: 贸易站 03
+[2026-09-04 21:50:18.765][INF][TaskQueueViewModel]     <2> 当前设施: 会客室 01
+[2026-09-04 21:51:36.115][INF][TaskQueueViewModel]     <2> 当前设施: 宿舍 01
+[2026-09-04 21:51:54.824][INF][TaskQueueViewModel]     <2> 当前设施: 宿舍 02
+[2026-09-04 21:52:05.797][INF][TaskQueueViewModel]     <2> 当前设施: 宿舍 03
+[2026-09-04 21:52:16.839][INF][TaskQueueViewModel]     <2> 当前设施: 宿舍 04
+[2026-09-04 21:52:35.807][INF][TaskQueueViewModel]     <2> 当前设施: 训练室 01
+[2026-09-04 21:52:37.870][INF][TaskQueueViewModel]     <2> 训练室空闲中
+[2026-09-04 21:52:44.331][INF][TaskQueueViewModel]     <2> 完成任务: 基建换班
+[2026-09-04 21:52:44.331][INF][AsstProxy]              <2> Completed Task Chain: Infrast, Task ID: 3
+[2026-09-04 21:52:44.849][INF][TaskQueueViewModel]     <2> 开始任务: 自动公招
+[2026-09-04 21:52:44.849][INF][AsstProxy]              <2> Start Task Chain: Recruit, Task ID: 4
+[2026-09-04 21:52:54.704][INF][TaskQueueViewModel]     <2> 公招识别结果: 
+近卫干员
+重装干员
+先锋干员
+新手
+费用回复
+[2026-09-04 21:52:54.736][INF][TaskQueueViewModel]     <2> 3 ★ Tags
+[2026-09-04 21:52:55.333][INF][TaskQueueViewModel]     <2> 已刷新标签
+[2026-09-04 21:52:59.033][INF][TaskQueueViewModel]     <2> 当前槽位已刷新1次
+[2026-09-04 21:52:59.191][INF][TaskQueueViewModel]     <2> 公招识别结果: 
+近卫干员
+医疗干员
+新手
+费用回复
+生存
+[2026-09-04 21:52:59.209][INF][TaskQueueViewModel]     <2> 3 ★ Tags
+[2026-09-04 21:52:59.210][INF][GameDataReportService]  <2> Start PostWithRetryAsync, url: https://penguin-stats.io/PenguinStats/api/v2/report
+[2026-09-04 21:52:59.210][INF][GameDataReportService]  <2> Request headers: {"User-Agent":"MaaAssistantArknights/6.17.1","X-Penguin-Idempotency-Key":"<已隐藏>","authorization":"PenguinID 303948262"}
+[2026-09-04 21:52:59.212][INF][GameDataReportService]  <2> Request body: {"drops":[{"dropType":"NORMAL_DROP","itemId":"近卫干员","quantity":1},{"dropType":"NORMAL_DROP","itemId":"医疗干员","quantity":1},{"dropType":"NORMAL_DROP","itemId":"新手","quantity":1},{"dropType":"NORMAL_DROP","itemId":"费用回复","quantity":1},{"dropType":"NORMAL_DROP","itemId":"生存","quantity":1}],"server":"CN","source":"MaaAssistantArknights","stageId":"recruit","version":"v6.17.1"}
+[2026-09-04 21:52:59.215][INF][GameDataReportService]  <2> Start PostWithRetryAsync, url: https://backend.yituliu.cn/maa/upload/recruit
+[2026-09-04 21:52:59.215][INF][GameDataReportService]  <2> Request headers: {}
+[2026-09-04 21:52:59.215][INF][GameDataReportService]  <2> Request body: {"level":3,"result":[{"level":3,"opers":[{"id":"char_155_tiger","level":5,"name":"因陀罗"},{"id":"char_356_broca","level":5,"name":"布洛卡"},{"id":"char_143_ghost","level":5,"name":"幽灵鲨"},{"id":"char_343_tknogi","level":5,"name":"月禾"},{"id":"char_163_hpsts","level":5,"name":"火神"},{"id":"char_215_mantic","level":5,"name":"狮蝎"},{"id":"char_478_kirara","level":5,"name":"绮良"},{"id":"char_475_akafyu","level":5,"name":"赤冬"},{"id":"char_337_utage","level":4,"name":"宴"},{"id":"char_235_jesica","level":4,"name":"杰西卡"},{"id":"char_289_gyuki","level":4,"name":"缠丸"},{"id":"char_127_estell","level":4,"name":"艾丝黛尔"},{"id":"char_281_popka","level":3,"name":"泡普卡"},{"id":"char_208_melan","level":3,"name":"玫兰莎"}],"tags":["生存"]},{"level":3,"opers":[{"id":"char_155_tiger","level":5,"name":"因陀罗"},{"id":"char_356_broca","level":5,"name":"布洛卡"},{"id":"char_143_ghost","level":5,"name":"幽灵鲨"},{"id":"char_294_ayer","level":5,"name":"断崖"},{"id":"char_274_astesi","level":5,"name":"星极"},{"id":"char_415_flint","level":5,"name":"燧石"},{"id":"char_421_crow","level":5,"name":"羽毛笔"},{"id":"char_308_swire","level":5,"name":"诗怀雅"},{"id":"char_475_akafyu","level":5,"name":"赤冬"},{"id":"char_301_cutter","level":4,"name":"刻刀"},{"id":"char_337_utage","level":4,"name":"宴"},{"id":"char_185_frncat","level":4,"name":"慕斯"},{"id":"char_130_doberm","level":4,"name":"杜宾"},{"id":"char_347_jaksel","level":4,"name":"杰克"},{"id":"char_137_brownb","level":4,"name":"猎蜂"},{"id":"char_289_gyuki","level":4,"name":"缠丸"},{"id":"char_127_estell","level":4,"name":"艾丝黛尔"},{"id":"char_271_spikes","level":4,"name":"芳汀"},{"id":"char_193_frostl","level":4,"name":"霜叶"},{"id":"char_283_midn","level":3,"name":"月见夜"},{"id":"char_281_popka","level":3,"name":"泡普卡"},{"id":"char_208_melan","level":3,"name":"玫兰莎"},{"id":"char_286_cast3","level":1,"name":"Castle-3"}],"tags":["近卫干员"]},{"level":3,"opers":[{"id":"char_155_tiger","level":5,"name":"因陀罗"},{"id":"char_356_broca","level":5,"name":"布洛卡"},{"id":"char_143_ghost","level":5,"name":"幽灵鲨"},{"id":"char_475_akafyu","level":5,"name":"赤冬"},{"id":"char_337_utage","level":4,"name":"宴"},{"id":"char_289_gyuki","level":4,"name":"缠丸"},{"id":"char_127_estell","level":4,"name":"艾丝黛尔"},{"id":"char_281_popka","level":3,"name":"泡普卡"},{"id":"char_208_melan","level":3,"name":"玫兰莎"}],"tags":["生存","近卫干员"]},{"level":3,"opers":[{"id":"char_171_bldsk","level":5,"name":"华法琳"},{"id":"char_128_plosis","level":5,"name":"白面鸮"},{"id":"char_436_whispr","level":5,"name":"絮雨"},{"id":"char_108_silent","level":5,"name":"赫默"},{"id":"char_117_myrrh","level":4,"name":"末药"},{"id":"char_385_finlpp","level":4,"name":"清流"},{"id":"char_298_susuro","level":4,"name":"苏苏洛"},{"id":"char_181_flower","level":4,"name":"调香师"},{"id":"char_212_ansel","level":3,"name":"安赛尔"},{"id":"char_120_hibisc","level":3,"name":"芙蓉"},{"id":"char_285_medic2","level":1,"name":"Lancet-2"}],"tags":["医疗干员"]},{"level":3,"opers":[{"id":"char_115_headbr","level":5,"name":"凛冬"},{"id":"char_102_texas","level":5,"name":"德克萨斯"},{"id":"char_401_elysm","level":5,"name":"极境"},{"id":"char_261_sddrag","level":5,"name":"苇草"},{"id":"char_349_chiave","level":5,"name":"贾维"},{"id":"char_151_myrtle","level":4,"name":"桃金娘"},{"id":"char_149_scave","level":4,"name":"清道夫"},{"id":"char_290_vigna","level":4,"name":"红豆"},{"id":"char_452_bstalk","level":4,"name":"豆苗"},{"id":"char_192_falco","level":3,"name":"翎羽"},{"id":"char_123_fang","level":3,"name":"芬"},{"id":"char_240_wyvern","level":3,"name":"香草"}],"tags":["费用回复"]},{"level":2,"opers":[{"id":"char_009_12fce","level":2,"name":"12F"},{"id":"char_502_nblade","level":2,"name":"夜刀"},{"id":"char_503_rang","level":2,"name":"巡林者"},{"id":"char_501_durin","level":2,"name":"杜林"},{"id":"char_500_noirc","level":2,"name":"黑角"}],"tags":["新手"]}],"server":"CN","source":"MaaAssistantArknights","tags":["近卫干员","医疗干员","新手","费用回复","生存"],"uuid":"303948262","version":"v6.17.1"}
+[2026-09-04 21:52:59.429][INF][HttpResponseLoggingExtension] <2> HTTP: OK POST https://backend.yituliu.cn/maa/upload/recruit null null 213.235ms
+[2026-09-04 21:52:59.875][INF][TaskQueueViewModel]     <2> 已确认招募 1
+[2026-09-04 21:53:02.088][INF][TaskQueueViewModel]     <2> 公招识别结果: 
+狙击干员
+医疗干员
+新手
+费用回复
+群攻
+[2026-09-04 21:53:02.094][INF][TaskQueueViewModel]     <2> 3 ★ Tags
+[2026-09-04 21:53:02.745][INF][TaskQueueViewModel]     <2> 已确认招募 2
+[2026-09-04 21:53:04.309][INF][HttpResponseLoggingExtension] <2> HTTP: OK POST https://penguin-stats.io/PenguinStats/api/v2/report null null 5097.227ms
+[2026-09-04 21:53:04.963][INF][TaskQueueViewModel]     <2> 公招识别结果: 
+近卫干员
+医疗干员
+治疗
+新手
+生存
+[2026-09-04 21:53:04.975][INF][TaskQueueViewModel]     <2> 3 ★ Tags
+[2026-09-04 21:53:05.618][INF][TaskQueueViewModel]     <2> 已确认招募 3
+[2026-09-04 21:53:07.885][INF][TaskQueueViewModel]     <2> 公招识别结果: 
+重装干员
+术师干员
+远程位
+新手
+快速复活
+[2026-09-04 21:53:07.892][INF][TaskQueueViewModel]     <2> 4 ★ Tags
+[2026-09-04 21:53:08.291][INF][TaskQueueViewModel]     <2> 选择 Tags：
+快速复活
+远程位
+重装干员
+[2026-09-04 21:53:08.840][INF][TaskQueueViewModel]     <2> 已确认招募 4
+[2026-09-04 21:53:10.136][INF][TaskQueueViewModel]     <2> 完成任务: 自动公招
+[2026-09-04 21:53:10.136][INF][AsstProxy]              <2> Completed Task Chain: Recruit, Task ID: 4
+[2026-09-04 21:53:10.637][INF][TaskQueueViewModel]     <2> 开始任务: 信用收支
+[2026-09-04 21:53:10.637][INF][AsstProxy]              <2> Start Task Chain: Mall, Task ID: 5
+[2026-09-04 21:53:24.657][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[4](MallTask).IsVisitFriendsAvailable has been set: `true` -> `true`, save scheduled
+[2026-09-04 21:53:24.658][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[4](MallTask).VisitFriendsLastTime has been set: `2026/07/14 00:00:00` -> `2026/09/04 00:00:00`, save scheduled
+[2026-09-04 21:53:24.658][INF][TaskQueueViewModel]     <2> 完成任务: 访问好友
+[2026-09-04 21:53:41.933][INF][TaskQueueViewModel]     <2> 完成任务: 信用收支
+[2026-09-04 21:53:41.933][INF][AsstProxy]              <2> Completed Task Chain: Mall, Task ID: 5
+[2026-09-04 21:53:42.435][INF][TaskQueueViewModel]     <2> 开始任务: 领取奖励
+[2026-09-04 21:53:42.435][INF][AsstProxy]              <2> Start Task Chain: Award, Task ID: 6
+[2026-09-04 21:53:50.286][INF][TaskQueueViewModel]     <2> 完成任务: 领取奖励
+[2026-09-04 21:53:50.286][INF][AsstProxy]              <2> Completed Task Chain: Award, Task ID: 6
+[2026-09-04 21:53:50.311][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[1]理智作战(FightTask).StagePlan has been set: `["SR-5"]` -> `[""]`, save scheduled
+[2026-09-04 21:53:50.320][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[1]理智作战(FightTask).StagePlan has been set: `[""]` -> `["SR-5"]`, save scheduled
+[2026-09-04 21:53:50.329][INF][RunningState]           <2> Idle: false to true (called from ProcTaskChainMsg)
+[2026-09-04 21:53:50.335][INF][TaskQueueViewModel]     <2> 任务已全部完成！
+(用时 0h 22m 41s)
+理智将在 2026-09-05 17:51 回满。(19h 57m 后)
+[2026-09-04 21:53:50.354][INF][RunningState]           <2> InterruptLock: depth=1 (called from CheckAfterCompleted)
+[2026-09-04 21:53:50.355][INF][TaskQueueViewModel]     <2> Post actions: 退出 明日方舟 -> 退出 MAA

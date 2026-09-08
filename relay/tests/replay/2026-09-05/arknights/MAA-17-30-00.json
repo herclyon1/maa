@@ -1,0 +1,18 @@
+{
+  "recruit_statistics": {
+    "3★": 3,
+    "4★": 1
+  },
+  "drop_statistics": {
+    "SR-5": {
+      "龙门币": 1584,
+      "旧磁带": 132,
+      "装置": 7,
+      "糖": 6,
+      "教宗": 1
+    }
+  },
+  "sanity": 4,
+  "sanity_full_at": "理智将在 2026-09-06 18:14 回满。(20h 25m 后)",
+  "maa_result": "Success!"
+}

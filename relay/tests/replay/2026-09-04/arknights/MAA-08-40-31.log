@@ -1,0 +1,179 @@
+[2026-09-04 12:41:16.517][INF][Bootstrapper]           <2> ===================================
+[2026-09-04 12:41:16.537][INF][Bootstrapper]           <2> MaaAssistantArknights GUI started
+[2026-09-04 12:41:16.537][INF][Bootstrapper]           <2> Version v6.17.0
+[2026-09-04 12:41:16.538][INF][Bootstrapper]           <2> Built at 2026-09-03T04:34:56.4793602+08:00
+[2026-09-04 12:41:16.539][INF][Bootstrapper]           <2> Maa ENV: Production
+[2026-09-04 12:41:16.539][INF][Bootstrapper]           <2> Command Line: D:\ark\maa\MAA.dll
+[2026-09-04 12:41:16.539][INF][Bootstrapper]           <2> User Dir D:\ark\maa\
+[2026-09-04 12:41:16.592][INF][Bootstrapper]           <2> Run as Administrator
+[2026-09-04 12:41:16.592][INF][Bootstrapper]           <2> ===================================
+[2026-09-04 12:41:16.932][INF][ConfigurationHelper]    <2> D:\ark\maa\config\gui.json.bak saved
+[2026-09-04 12:41:17.490][INF][ConfigurationHelper]    <2> D:\ark\maa\config\gui.new.json.bak saved
+[2026-09-04 12:41:18.969][ERR][AutoStart]              <2> Failed to set startup: No value exists with that name.
+[2026-09-04 12:41:19.008][INF][AsstProxy]              <2> AsstSetUserDir dirame: D:\ark\maa\
+[2026-09-04 12:41:19.008][INF][AsstProxy]              <2> AsstSetUserDir ret: true
+[2026-09-04 12:41:19.166][INF][ItemListHelper]         <2> Loading item list from D:\ark\maa\resource\item_index.json
+[2026-09-04 12:41:20.798][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[1]理智作战(FightTask).StagePlan has been set: `["1-7"]` -> `["1-7"]`, save scheduled
+[2026-09-04 12:41:20.813][INF][FightSettingsUserControlModel] <2> UpdateStageList Enter
+[2026-09-04 12:41:20.814][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[1]理智作战(FightTask).StagePlan has been set: `["1-7"]` -> `["1-7"]`, save scheduled
+[2026-09-04 12:41:20.815][INF][FightSettingsUserControlModel] <2> UpdateStageList Exit, 1 ms
+[2026-09-04 12:41:20.815][INF][DepotMaintainTaskUserControlModel] <2> UpdateStageList Enter
+[2026-09-04 12:41:20.816][INF][DepotMaintainTaskUserControlModel] <2> UpdateStageList Exit, 0 ms
+[2026-09-04 12:41:20.942][INF][AsstProxy]              <8> Using GPU NVIDIA GeForce RTX 4070 (Driver 32.0.15.9186 2026-01-20)
+[2026-09-04 12:41:21.046][INF][AsstProxy]              <8> LoadResource Enter
+[2026-09-04 12:41:21.047][INF][AsstProxy]              <8> Moved D:\ark\maa\cache\resource\tasks.json to D:\ark\maa\cache\resource\tasks\tasks.json
+[2026-09-04 12:41:21.048][INF][AsstProxy]              <8> Load resource: D:\ark\maa\resource
+[2026-09-04 12:41:21.048][INF][AsstProxy]              <8> AsstLoadResource dirname: D:\ark\maa
+[2026-09-04 12:41:21.983][INF][ResourceIntegrityChecker] <12> Integrity check passed, 9280 file(s) verified
+[2026-09-04 12:41:22.000][INF][HttpResponseLoggingExtension] <12> HTTP: NotModified GET https://api.maa.plus/MaaAssistantArknights/api/announcements/wpf.md "6a99f020-1797" Thu, 03 Sep 2026 22:09:36 GMT 1159.839ms
+[2026-09-04 12:41:22.542][INF][AsstProxy]              <8> AsstLoadResource ret: true
+[2026-09-04 12:41:22.542][INF][AsstProxy]              <8> Load resource: D:\ark\maa\cache\resource
+[2026-09-04 12:41:22.542][INF][AsstProxy]              <8> AsstLoadResource dirname: D:\ark\maa\cache
+[2026-09-04 12:41:22.566][INF][WindowManager]          <2> Whether the window placement was set successfully: true
+[2026-09-04 12:41:22.614][INF][HttpResponseLoggingExtension] <2> HTTP: NotModified GET https://api.maa.plus/MaaAssistantArknights/api/gui/StageActivityV2.json "6a8d6cad-2f68" Tue, 25 Aug 2026 10:21:33 GMT 1793.724ms
+[2026-09-04 12:41:22.614][INF][HttpResponseLoggingExtension] <2> HTTP: NotModified GET https://api.maa.plus/MaaAssistantArknights/api/resource/tasks.json "6a797c6b-56ef" Mon, 10 Aug 2026 07:23:23 GMT 1789.114ms
+[2026-09-04 12:41:22.620][INF][AsstProxy]              <8> AsstLoadResource ret: true
+[2026-09-04 12:41:22.620][INF][AsstProxy]              <8> LoadResource Exit, 1,574 ms
+[2026-09-04 12:41:22.621][INF][RunningState]           <8> Init: false to true (called from Init)
+[2026-09-04 12:41:22.624][INF][FightSettingsUserControlModel] <2> UpdateStageList Enter
+[2026-09-04 12:41:22.625][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[1]理智作战(FightTask).StagePlan has been set: `["1-7"]` -> `[""]`, save scheduled
+[2026-09-04 12:41:22.626][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[1]理智作战(FightTask).StagePlan has been set: `[""]` -> `["1-7"]`, save scheduled
+[2026-09-04 12:41:22.627][INF][FightSettingsUserControlModel] <2> UpdateStageList Exit, 3 ms
+[2026-09-04 12:41:22.627][INF][DepotMaintainTaskUserControlModel] <2> UpdateStageList Enter
+[2026-09-04 12:41:22.627][INF][DepotMaintainTaskUserControlModel] <2> UpdateStageList Exit, 0 ms
+[2026-09-04 12:41:22.736][INF][RunningState]           <2> InterruptLock: depth=1 (called from TimerCanceledAsync)
+[2026-09-04 12:41:22.748][INF][TaskQueueViewModel]     <2> Timer wait time: 10
+[2026-09-04 12:41:22.854][INF][HttpResponseLoggingExtension] <2> HTTP: OK GET https://mirrorchyan.com/api/resources/MAA/latest null null 243.896ms
+[2026-09-04 12:41:22.903][INF][VersionUpdateDialogViewModel] <2> MirrorChyan response: {"code":0,"msg":"current version is latest","data":{"version_name":"v6.17.0","version_number":755,"channel":"beta","os":"windows","arch":"amd64","release_note":"placeholder","cdk_expired_time":<已隐藏>}}
+[2026-09-04 12:41:23.012][INF][HttpResponseLoggingExtension] <2> HTTP: OK GET https://mirrorchyan.com/api/resources/MaaResource/latest null null 103.619ms
+[2026-09-04 12:41:23.012][INF][ResourceUpdater]        <2> {"code":0,"msg":"success","data":{"version_name":"2026-09-04 01:07:54.000","version_number":286,"url":"https://mirrorchyan.com/api/resources/download/3IqfBIdxNn8MMlu5HH1pdVpWn77","sha256":"186ed2d36d6ecf86d9419e7888f1e6ba18ac10217da0bb732765d91e98891aa0","channel":"stable","os":"","arch":"","update_type":"incremental","release_note":"月行水上","filesize":552314,"cdk_expired_time":<已隐藏>}}
+[2026-09-04 12:41:23.013][INF][ResourceUpdater]        <2> New version found: 2026-09-04+01:07:54.000, 月行水上
+[2026-09-04 12:41:23.064][INF][HttpService]            <2> Start to download file from "https://mirrorchyan.com/api/resources/download/3IqfBIdxNn8MMlu5HH1pdVpWn77" and save to D:\ark\maa\MaaResourceMirrorchyan.zip.temp
+[2026-09-04 12:41:23.216][INF][HttpResponseLoggingExtension] <2> HTTP: OK GET https://download2.mirrorchyan.com/MaaResource/9942/any/patch/9848.zip?auth_key=<已隐藏> "C74B74214CD062DD402F643461D1F84F" Fri, 04 Sep 2026 01:09:33 GMT 151.348ms
+[2026-09-04 12:41:23.279][INF][HttpService]            <2> Remove download temp file D:\ark\maa\MaaResourceMirrorchyan.zip.temp
+[2026-09-04 12:41:32.755][INF][TaskQueueViewModel]     <2> Timer canceled: false
+[2026-09-04 12:41:32.755][INF][RunningState]           <2> InterruptLock: depth=0 (called from TimerCanceledAsync)
+[2026-09-04 12:41:32.756][INF][RunningState]           <2> Idle: true to false (called from Init)
+[2026-09-04 12:41:32.762][INF][RunningState]           <2> Idle: false to true (called from Init)
+[2026-09-04 12:41:32.766][INF][TaskQueueViewModel]     <2> LinkStart Enter
+[2026-09-04 12:41:32.768][INF][TaskQueueViewModel]     <2> Main windows log clear.
+[2026-09-04 12:41:32.768][INF][TaskQueueViewModel]     <2> 
+[2026-09-04 12:41:32.768][INF][TaskQueueViewModel]     <2> Build Time:
+2026/9/3 04:34:56
+Resource Time:
+2026/9/1 04:10:06
+[2026-09-04 12:41:32.789][INF][AsstProxy]              <2> Using GPU NVIDIA GeForce RTX 4070 (Driver 32.0.15.9186 2026-01-20)
+[2026-09-04 12:41:32.789][INF][RunningState]           <2> Idle: true to false (called from LinkStartWithTasks)
+[2026-09-04 12:41:32.811][INF][TaskQueueViewModel]     <2> 正在连接模拟器……
+[2026-09-04 12:41:32.843][INF][AsstProxy]              <14> name: LDPlayer, extras: {"path":"D:\\LD-MRFZ\\LDPlayer9\\","index":1000,"pid":21092}
+[2026-09-04 12:41:32.843][INF][AsstProxy]              <14> handle: 2148784865472, adbPath: D:\LD-MRFZ\LDPlayer9\adb.exe, address: 127.0.0.1:7555, config: LDPlayer
+[2026-09-04 12:41:34.405][INF][AsstProxy]              <14> handle: 2148784865472, adbPath: D:\LD-MRFZ\LDPlayer9\adb.exe, address: 127.0.0.1:7555, config: LDPlayer, return: true
+[2026-09-04 12:41:34.408][INF][TaskQueueViewModel]     <2> 最快截图耗时: 19ms (LDExtras)
+[2026-09-04 12:41:34.409][INF][TaskQueueViewModel]     <2> Index 0, Type "StartUp", Name 开始唤醒, IsEnable true
+[2026-09-04 12:41:34.419][INF][TaskQueueViewModel]     <2> Index 1, Type "Fight", Name 理智作战, IsEnable false
+[2026-09-04 12:41:34.419][INF][TaskQueueViewModel]     <2> Index 2, Type "Infrast", Name 基建换班, IsEnable true
+[2026-09-04 12:41:34.423][INF][TaskQueueViewModel]     <2> Index 3, Type "Recruit", Name 自动公招, IsEnable true
+[2026-09-04 12:41:34.425][INF][TaskQueueViewModel]     <2> Index 4, Type "Mall", Name 信用收支, IsEnable true
+[2026-09-04 12:41:34.438][INF][TaskQueueViewModel]     <2> Index 5, Type "Award", Name 领取奖励, IsEnable true
+[2026-09-04 12:41:34.440][INF][TaskQueueViewModel]     <2> Index 6, Type "Roguelike", Name 自动肉鸽, IsEnable false
+[2026-09-04 12:41:34.442][INF][TaskQueueViewModel]     <2> 正在运行中……
+[2026-09-04 12:41:34.477][INF][TaskQueueViewModel]     <2> 开始任务: 开始唤醒
+[2026-09-04 12:41:34.479][INF][AsstProxy]              <2> Start Task Chain: StartUp, Task ID: 1
+[2026-09-04 12:41:34.487][INF][TaskQueueViewModel]     <2> LinkStart Exit, 1,720 ms
+[2026-09-04 12:42:39.339][INF][TaskQueueViewModel]     <2> 完成任务: 开始唤醒
+[2026-09-04 12:42:39.340][INF][AsstProxy]              <2> Completed Task Chain: StartUp, Task ID: 1
+[2026-09-04 12:42:39.836][INF][TaskQueueViewModel]     <2> 开始任务: 基建换班
+[2026-09-04 12:42:39.836][INF][AsstProxy]              <2> Start Task Chain: Infrast, Task ID: 2
+[2026-09-04 12:43:05.090][INF][TaskQueueViewModel]     <2> 当前设施: 发电站 01
+[2026-09-04 12:43:30.533][INF][TaskQueueViewModel]     <2> 当前设施: 发电站 02
+[2026-09-04 12:43:51.481][INF][TaskQueueViewModel]     <2> 当前设施: 办公室 01
+[2026-09-04 12:44:18.659][INF][TaskQueueViewModel]     <2> 当前设施: 控制中枢 01
+[2026-09-04 12:44:52.216][INF][TaskQueueViewModel]     <2> 当前设施: 制造站 01
+[2026-09-04 12:45:41.495][INF][TaskQueueViewModel]     <2> 当前设施: 制造站 02
+[2026-09-04 12:46:03.927][INF][TaskQueueViewModel]     <2> 当前设施: 制造站 03
+[2026-09-04 12:46:26.194][INF][TaskQueueViewModel]     <2> 当前设施: 制造站 04
+[2026-09-04 12:46:51.985][INF][TaskQueueViewModel]     <2> 当前设施: 贸易站 01
+[2026-09-04 12:47:21.819][INF][TaskQueueViewModel]     <2> 当前设施: 贸易站 02
+[2026-09-04 12:47:43.105][INF][TaskQueueViewModel]     <2> 当前设施: 贸易站 03
+[2026-09-04 12:48:03.845][INF][TaskQueueViewModel]     <2> 当前设施: 会客室 01
+[2026-09-04 12:48:35.733][INF][TaskQueueViewModel]     <2> 已开启线索交流
+[2026-09-04 12:49:08.853][INF][TaskQueueViewModel]     <2> 当前设施: 宿舍 01
+[2026-09-04 12:49:27.112][INF][TaskQueueViewModel]     <2> 当前设施: 宿舍 02
+[2026-09-04 12:49:37.870][INF][TaskQueueViewModel]     <2> 当前设施: 宿舍 03
+[2026-09-04 12:49:53.308][INF][TaskQueueViewModel]     <2> 当前设施: 宿舍 04
+[2026-09-04 12:50:18.142][INF][TaskQueueViewModel]     <2> 当前设施: 训练室 01
+[2026-09-04 12:50:20.192][INF][TaskQueueViewModel]     <2> 训练室空闲中
+[2026-09-04 12:50:26.565][INF][TaskQueueViewModel]     <2> 完成任务: 基建换班
+[2026-09-04 12:50:26.565][INF][AsstProxy]              <2> Completed Task Chain: Infrast, Task ID: 2
+[2026-09-04 12:50:27.071][INF][TaskQueueViewModel]     <2> 开始任务: 自动公招
+[2026-09-04 12:50:27.072][INF][AsstProxy]              <2> Start Task Chain: Recruit, Task ID: 3
+[2026-09-04 12:50:42.567][INF][TaskQueueViewModel]     <2> 公招识别结果: 
+狙击干员
+医疗干员
+新手
+费用回复
+群攻
+[2026-09-04 12:50:42.574][INF][TaskQueueViewModel]     <2> 3 ★ Tags
+[2026-09-04 12:50:42.577][INF][GameDataReportService]  <2> Start PostWithRetryAsync, url: https://penguin-stats.io/PenguinStats/api/v2/report
+[2026-09-04 12:50:42.577][INF][GameDataReportService]  <2> Request headers: {"User-Agent":"MaaAssistantArknights/6.17.0","X-Penguin-Idempotency-Key":"<已隐藏>","authorization":"PenguinID 303948262"}
+[2026-09-04 12:50:42.579][INF][GameDataReportService]  <2> Request body: {"drops":[{"dropType":"NORMAL_DROP","itemId":"狙击干员","quantity":1},{"dropType":"NORMAL_DROP","itemId":"医疗干员","quantity":1},{"dropType":"NORMAL_DROP","itemId":"新手","quantity":1},{"dropType":"NORMAL_DROP","itemId":"费用回复","quantity":1},{"dropType":"NORMAL_DROP","itemId":"群攻","quantity":1}],"server":"CN","source":"MaaAssistantArknights","stageId":"recruit","version":"v6.17.0"}
+[2026-09-04 12:50:42.583][INF][GameDataReportService]  <2> Start PostWithRetryAsync, url: https://backend.yituliu.cn/maa/upload/recruit
+[2026-09-04 12:50:42.583][INF][GameDataReportService]  <2> Request headers: {}
+[2026-09-04 12:50:42.583][INF][GameDataReportService]  <2> Request body: {"level":3,"result":[{"level":3,"opers":[{"id":"char_346_aosta","level":5,"name":"奥斯塔"},{"id":"char_379_sesa","level":5,"name":"慑砂"},{"id":"char_279_excu","level":5,"name":"送葬人"},{"id":"char_219_meteo","level":5,"name":"陨星"},{"id":"char_440_pinecn","level":4,"name":"松果"},{"id":"char_118_yuki","level":4,"name":"白雪"},{"id":"char_282_catap","level":3,"name":"空爆"}],"tags":["狙击干员","群攻"]},{"level":3,"opers":[{"id":"char_365_aprl","level":5,"name":"四月"},{"id":"char_346_aosta","level":5,"name":"奥斯塔"},{"id":"char_158_milu","level":5,"name":"守林人"},{"id":"char_218_cuttle","level":5,"name":"安哲拉"},{"id":"char_379_sesa","level":5,"name":"慑砂"},{"id":"char_145_prove","level":5,"name":"普罗旺斯"},{"id":"char_367_swllow","level":5,"name":"灰喉"},{"id":"char_363_toddi","level":5,"name":"熔泉"},{"id":"char_204_platnm","level":5,"name":"白金"},{"id":"char_129_bluep","level":5,"name":"蓝毒"},{"id":"char_279_excu","level":5,"name":"送葬人"},{"id":"char_219_meteo","level":5,"name":"陨星"},{"id":"char_302_glaze","level":4,"name":"安比尔"},{"id":"char_235_jesica","level":4,"name":"杰西卡"},{"id":"char_440_pinecn","level":4,"name":"松果"},{"id":"char_133_mm","level":4,"name":"梅"},{"id":"char_126_shotst","level":4,"name":"流星"},{"id":"char_118_yuki","level":4,"name":"白雪"},{"id":"char_190_clour","level":4,"name":"红云"},{"id":"char_366_acdrop","level":4,"name":"酸糖"},{"id":"char_124_kroos","level":3,"name":"克洛丝"},{"id":"char_211_adnach","level":3,"name":"安德切尔"},{"id":"char_282_catap","level":3,"name":"空爆"},{"id":"char_503_rang","level":2,"name":"巡林者"},{"id":"char_4000_jnight","level":1,"name":"正义骑士号"}],"tags":["狙击干员"]},{"level":3,"opers":[{"id":"char_346_aosta","level":5,"name":"奥斯塔"},{"id":"char_356_broca","level":5,"name":"布洛卡"},{"id":"char_143_ghost","level":5,"name":"幽灵鲨"},{"id":"char_379_sesa","level":5,"name":"慑砂"},{"id":"char_294_ayer","level":5,"name":"断崖"},{"id":"char_373_lionhd","level":5,"name":"莱恩哈特"},{"id":"char_344_beewax","level":5,"name":"蜜蜡"},{"id":"char_279_excu","level":5,"name":"送葬人"},{"id":"char_219_meteo","level":5,"name":"陨星"},{"id":"char_440_pinecn","level":4,"name":"松果"},{"id":"char_253_greyy","level":4,"name":"格雷伊"},{"id":"char_118_yuki","level":4,"name":"白雪"},{"id":"char_127_estell","level":4,"name":"艾丝黛尔"},{"id":"char_109_fmout","level":4,"name":"远山"},{"id":"char_281_popka","level":3,"name":"泡普卡"},{"id":"char_121_lava","level":3,"name":"炎熔"},{"id":"char_282_catap","level":3,"name":"空爆"}],"tags":["群攻"]},{"level":3,"opers":[{"id":"char_171_bldsk","level":5,"name":"华法琳"},{"id":"char_128_plosis","level":5,"name":"白面鸮"},{"id":"char_436_whispr","level":5,"name":"絮雨"},{"id":"char_108_silent","level":5,"name":"赫默"},{"id":"char_117_myrrh","level":4,"name":"末药"},{"id":"char_385_finlpp","level":4,"name":"清流"},{"id":"char_298_susuro","level":4,"name":"苏苏洛"},{"id":"char_181_flower","level":4,"name":"调香师"},{"id":"char_212_ansel","level":3,"name":"安赛尔"},{"id":"char_120_hibisc","level":3,"name":"芙蓉"},{"id":"char_285_medic2","level":1,"name":"Lancet-2"}],"tags":["医疗干员"]},{"level":3,"opers":[{"id":"char_115_headbr","level":5,"name":"凛冬"},{"id":"char_102_texas","level":5,"name":"德克萨斯"},{"id":"char_401_elysm","level":5,"name":"极境"},{"id":"char_261_sddrag","level":5,"name":"苇草"},{"id":"char_349_chiave","level":5,"name":"贾维"},{"id":"char_151_myrtle","level":4,"name":"桃金娘"},{"id":"char_149_scave","level":4,"name":"清道夫"},{"id":"char_290_vigna","level":4,"name":"红豆"},{"id":"char_452_bstalk","level":4,"name":"豆苗"},{"id":"char_192_falco","level":3,"name":"翎羽"},{"id":"char_123_fang","level":3,"name":"芬"},{"id":"char_240_wyvern","level":3,"name":"香草"}],"tags":["费用回复"]},{"level":2,"opers":[{"id":"char_009_12fce","level":2,"name":"12F"},{"id":"char_502_nblade","level":2,"name":"夜刀"},{"id":"char_503_rang","level":2,"name":"巡林者"},{"id":"char_501_durin","level":2,"name":"杜林"},{"id":"char_500_noirc","level":2,"name":"黑角"}],"tags":["新手"]},{"level":2,"opers":[{"id":"char_503_rang","level":2,"name":"巡林者"}],"tags":["新手","狙击干员"]}],"server":"CN","source":"MaaAssistantArknights","tags":["狙击干员","医疗干员","新手","费用回复","群攻"],"uuid":"303948262","version":"v6.17.0"}
+[2026-09-04 12:50:42.779][INF][HttpResponseLoggingExtension] <2> HTTP: OK POST https://backend.yituliu.cn/maa/upload/recruit null null 195.951ms
+[2026-09-04 12:50:43.203][INF][TaskQueueViewModel]     <2> 已刷新标签
+[2026-09-04 12:50:46.094][INF][HttpResponseLoggingExtension] <2> HTTP: OK POST https://penguin-stats.io/PenguinStats/api/v2/report null null 3513.653ms
+[2026-09-04 12:50:46.897][INF][TaskQueueViewModel]     <2> 当前槽位已刷新1次
+[2026-09-04 12:50:46.999][INF][TaskQueueViewModel]     <2> 公招识别结果: 
+狙击干员
+重装干员
+医疗干员
+辅助干员
+远程位
+[2026-09-04 12:50:47.006][INF][TaskQueueViewModel]     <2> 3 ★ Tags
+[2026-09-04 12:50:47.007][INF][GameDataReportService]  <2> Start PostWithRetryAsync, url: https://penguin-stats.io/PenguinStats/api/v2/report
+[2026-09-04 12:50:47.007][INF][GameDataReportService]  <2> Request headers: {"User-Agent":"MaaAssistantArknights/6.17.0","X-Penguin-Idempotency-Key":"<已隐藏>","authorization":"PenguinID 303948262"}
+[2026-09-04 12:50:47.008][INF][GameDataReportService]  <2> Request body: {"drops":[{"dropType":"NORMAL_DROP","itemId":"狙击干员","quantity":1},{"dropType":"NORMAL_DROP","itemId":"重装干员","quantity":1},{"dropType":"NORMAL_DROP","itemId":"医疗干员","quantity":1},{"dropType":"NORMAL_DROP","itemId":"辅助干员","quantity":1},{"dropType":"NORMAL_DROP","itemId":"远程位","quantity":1}],"server":"CN","source":"MaaAssistantArknights","stageId":"recruit","version":"v6.17.0"}
+[2026-09-04 12:50:47.008][INF][GameDataReportService]  <2> Start PostWithRetryAsync, url: https://backend.yituliu.cn/maa/upload/recruit
+[2026-09-04 12:50:47.008][INF][GameDataReportService]  <2> Request headers: {}
+[2026-09-04 12:50:47.008][INF][GameDataReportService]  <2> Request body: {"level":3,"result":[{"level":3,"opers":[{"id":"char_174_slbell","level":5,"name":"初雪"},{"id":"char_254_vodfox","level":5,"name":"巫恋"},{"id":"char_343_tknogi","level":5,"name":"月禾"},{"id":"char_326_glacus","level":5,"name":"格劳克斯"},{"id":"char_242_otter","level":5,"name":"梅尔"},{"id":"char_195_glassb","level":5,"name":"真理"},{"id":"char_183_skgoat","level":4,"name":"地灵"},{"id":"char_258_podego","level":4,"name":"波登可"},{"id":"char_278_orchid","level":3,"name":"梓兰"},{"id":"char_4136_phonor","level":1,"name":"PhonoR-0"}],"tags":["辅助干员"]},{"level":3,"opers":[{"id":"char_174_slbell","level":5,"name":"初雪"},{"id":"char_254_vodfox","level":5,"name":"巫恋"},{"id":"char_343_tknogi","level":5,"name":"月禾"},{"id":"char_326_glacus","level":5,"name":"格劳克斯"},{"id":"char_242_otter","level":5,"name":"梅尔"},{"id":"char_195_glassb","level":5,"name":"真理"},{"id":"char_183_skgoat","level":4,"name":"地灵"},{"id":"char_258_podego","level":4,"name":"波登可"},{"id":"char_278_orchid","level":3,"name":"梓兰"},{"id":"char_4136_phonor","level":1,"name":"PhonoR-0"}],"tags":["辅助干员","远程位"]},{"level":3,"opers":[{"id":"char_365_aprl","level":5,"name":"四月"},{"id":"char_346_aosta","level":5,"name":"奥斯塔"},{"id":"char_158_milu","level":5,"name":"守林人"},{"id":"char_218_cuttle","level":5,"name":"安哲拉"},{"id":"char_379_sesa","level":5,"name":"慑砂"},{"id":"char_145_prove","level":5,"name":"普罗旺斯"},{"id":"char_367_swllow","level":5,"name":"灰喉"},{"id":"char_363_toddi","level":5,"name":"熔泉"},{"id":"char_204_platnm","level":5,"name":"白金"},{"id":"char_129_bluep","level":5,"name":"蓝毒"},{"id":"char_279_excu","level":5,"name":"送葬人"},{"id":"char_219_meteo","level":5,"name":"陨星"},{"id":"char_302_glaze","level":4,"name":"安比尔"},{"id":"char_235_jesica","level":4,"name":"杰西卡"},{"id":"char_440_pinecn","level":4,"name":"松果"},{"id":"char_133_mm","level":4,"name":"梅"},{"id":"char_126_shotst","level":4,"name":"流星"},{"id":"char_118_yuki","level":4,"name":"白雪"},{"id":"char_190_clour","level":4,"name":"红云"},{"id":"char_366_acdrop","level":4,"name":"酸糖"},{"id":"char_124_kroos","level":3,"name":"克洛丝"},{"id":"char_211_adnach","level":3,"name":"安德切尔"},{"id":"char_282_catap","level":3,"name":"空爆"},{"id":"char_503_rang","level":2,"name":"巡林者"},{"id":"char_4000_jnight","level":1,"name":"正义骑士号"}],"tags":["狙击干员"]},{"level":3,"opers":[{"id":"char_365_aprl","level":5,"name":"四月"},{"id":"char_346_aosta","level":5,"name":"奥斯塔"},{"id":"char_158_milu","level":5,"name":"守林人"},{"id":"char_218_cuttle","level":5,"name":"安哲拉"},{"id":"char_379_sesa","level":5,"name":"慑砂"},{"id":"char_145_prove","level":5,"name":"普罗旺斯"},{"id":"char_367_swllow","level":5,"name":"灰喉"},{"id":"char_363_toddi","level":5,"name":"熔泉"},{"id":"char_204_platnm","level":5,"name":"白金"},{"id":"char_129_bluep","level":5,"name":"蓝毒"},{"id":"char_279_excu","level":5,"name":"送葬人"},{"id":"char_219_meteo","level":5,"name":"陨星"},{"id":"char_302_glaze","level":4,"name":"安比尔"},{"id":"char_235_jesica","level":4,"name":"杰西卡"},{"id":"char_440_pinecn","level":4,"name":"松果"},{"id":"char_133_mm","level":4,"name":"梅"},{"id":"char_126_shotst","level":4,"name":"流星"},{"id":"char_118_yuki","level":4,"name":"白雪"},{"id":"char_190_clour","level":4,"name":"红云"},{"id":"char_366_acdrop","level":4,"name":"酸糖"},{"id":"char_124_kroos","level":3,"name":"克洛丝"},{"id":"char_211_adnach","level":3,"name":"安德切尔"},{"id":"char_282_catap","level":3,"name":"空爆"},{"id":"char_503_rang","level":2,"name":"巡林者"},{"id":"char_4000_jnight","level":1,"name":"正义骑士号"}],"tags":["狙击干员","远程位"]},{"level":3,"opers":[{"id":"char_174_slbell","level":5,"name":"初雪"},{"id":"char_171_bldsk","level":5,"name":"华法琳"},{"id":"char_365_aprl","level":5,"name":"四月"},{"id":"char_164_nightm","level":5,"name":"夜魔"},{"id":"char_346_aosta","level":5,"name":"奥斯塔"},{"id":"char_158_milu","level":5,"name":"守林人"},{"id":"char_218_cuttle","level":5,"name":"安哲拉"},{"id":"char_254_vodfox","level":5,"name":"巫恋"},{"id":"char_306_leizi","level":5,"name":"惊蛰"},{"id":"char_379_sesa","level":5,"name":"慑砂"},{"id":"char_145_prove","level":5,"name":"普罗旺斯"},{"id":"char_343_tknogi","level":5,"name":"月禾"},{"id":"char_326_glacus","level":5,"name":"格劳克斯"},{"id":"char_242_otter","level":5,"name":"梅尔"},{"id":"char_367_swllow","level":5,"name":"灰喉"},{"id":"char_363_toddi","level":5,"name":"熔泉"},{"id":"char_338_iris","level":5,"name":"爱丽丝"},{"id":"char_204_platnm","level":5,"name":"白金"},{"id":"char_128_plosis","level":5,"name":"白面鸮"},{"id":"char_195_glassb","level":5,"name":"真理"},{"id":"char_436_whispr","level":5,"name":"絮雨"},{"id":"char_373_lionhd","level":5,"name":"莱恩哈特"},{"id":"char_129_bluep","level":5,"name":"蓝毒"},{"id":"char_344_beewax","level":5,"name":"蜜蜡"},{"id":"char_108_silent","level":5,"name":"赫默"},{"id":"char_279_excu","level":5,"name":"送葬人"},{"id":"char_219_meteo","level":5,"name":"陨星"},{"id":"char_328_cammou","level":4,"name":"卡达"},{"id":"char_183_skgoat","level":4,"name":"地灵"},{"id":"char_141_nights","level":4,"name":"夜烟"},{"id":"char_302_glaze","level":4,"name":"安比尔"},{"id":"char_117_myrrh","level":4,"name":"末药"},{"id":"char_235_jesica","level":4,"name":"杰西卡"},{"id":"char_440_pinecn","level":4,"name":"松果"},{"id":"char_253_greyy","level":4,"name":"格雷伊"},{"id":"char_133_mm","level":4,"name":"梅"},{"id":"char_258_podego","level":4,"name":"波登可"},{"id":"char_126_shotst","level":4,"name":"流星"},{"id":"char_469_indigo","level":4,"name":"深靛"},{"id":"char_385_finlpp","level":4,"name":"清流"},{"id":"char_118_yuki","level":4,"name":"白雪"},{"id":"char_190_clour","level":4,"name":"红云"},{"id":"char_298_susuro","level":4,"name":"苏苏洛"},{"id":"char_181_flower","level":4,"name":"调香师"},{"id":"char_452_bstalk","level":4,"name":"豆苗"},{"id":"char_109_fmout","level":4,"name":"远山"},{"id":"char_366_acdrop","level":4,"name":"酸糖"},{"id":"char_124_kroos","level":3,"name":"克洛丝"},{"id":"char_210_stward","level":3,"name":"史都华德"},{"id":"char_211_adnach","level":3,"name":"安德切尔"},{"id":"char_212_ansel","level":3,"name":"安赛尔"},{"id":"char_278_orchid","level":3,"name":"梓兰"},{"id":"char_121_lava","level":3,"name":"炎熔"},{"id":"char_282_catap","level":3,"name":"空爆"},{"id":"char_120_hibisc","level":3,"name":"芙蓉"},{"id":"char_009_12fce","level":2,"name":"12F"},{"id":"char_503_rang","level":2,"name":"巡林者"},{"id":"char_501_durin","level":2,"name":"杜林"},{"id":"char_4227_gallus","level":1,"name":"GALLUS²"},{"id":"char_285_medic2","level":1,"name":"Lancet-2"},{"id":"char_4136_phonor","level":1,"name":"PhonoR-0"},{"id":"char_4000_jnight","level":1,"name":"正义骑士号"}],"tags":["远程位"]},{"level":3,"opers":[{"id":"char_148_nearl","level":5,"name":"临光"},{"id":"char_201_moeshd","level":5,"name":"可颂"},{"id":"char_226_hmau","level":5,"name":"吽"},{"id":"char_163_hpsts","level":5,"name":"火神"},{"id":"char_378_asbest","level":5,"name":"石棉"},{"id":"char_107_liskam","level":5,"name":"雷蛇"},{"id":"char_196_sunbr","level":4,"name":"古米"},{"id":"char_381_bubble","level":4,"name":"泡泡"},{"id":"char_150_snakek","level":4,"name":"蛇屠箱"},{"id":"char_199_yak","level":4,"name":"角峰"},{"id":"char_284_spot","level":3,"name":"斑点"},{"id":"char_122_beagle","level":3,"name":"米格鲁"},{"id":"char_500_noirc","level":2,"name":"黑角"},{"id":"char_4093_frston","level":1,"name":"Friston-3"}],"tags":["重装干员"]},{"level":3,"opers":[{"id":"char_171_bldsk","level":5,"name":"华法琳"},{"id":"char_128_plosis","level":5,"name":"白面鸮"},{"id":"char_436_whispr","level":5,"name":"絮雨"},{"id":"char_108_silent","level":5,"name":"赫默"},{"id":"char_117_myrrh","level":4,"name":"末药"},{"id":"char_385_finlpp","level":4,"name":"清流"},{"id":"char_298_susuro","level":4,"name":"苏苏洛"},{"id":"char_181_flower","level":4,"name":"调香师"},{"id":"char_212_ansel","level":3,"name":"安赛尔"},{"id":"char_120_hibisc","level":3,"name":"芙蓉"},{"id":"char_285_medic2","level":1,"name":"Lancet-2"}],"tags":["医疗干员"]},{"level":3,"opers":[{"id":"char_171_bldsk","level":5,"name":"华法琳"},{"id":"char_128_plosis","level":5,"name":"白面鸮"},{"id":"char_436_whispr","level":5,"name":"絮雨"},{"id":"char_108_silent","level":5,"name":"赫默"},{"id":"char_117_myrrh","level":4,"name":"末药"},{"id":"char_385_finlpp","level":4,"name":"清流"},{"id":"char_298_susuro","level":4,"name":"苏苏洛"},{"id":"char_181_flower","level":4,"name":"调香师"},{"id":"char_212_ansel","level":3,"name":"安赛尔"},{"id":"char_120_hibisc","level":3,"name":"芙蓉"},{"id":"char_285_medic2","level":1,"name":"Lancet-2"}],"tags":["医疗干员","远程位"]}],"server":"CN","source":"MaaAssistantArknights","tags":["狙击干员","重装干员","医疗干员","辅助干员","远程位"],"uuid":"303948262","version":"v6.17.0"}
+[2026-09-04 12:50:47.073][INF][HttpResponseLoggingExtension] <2> HTTP: OK POST https://backend.yituliu.cn/maa/upload/recruit null null 65.011ms
+[2026-09-04 12:50:47.500][INF][HttpResponseLoggingExtension] <2> HTTP: OK POST https://penguin-stats.io/PenguinStats/api/v2/report null null 492.015ms
+[2026-09-04 12:50:47.632][INF][TaskQueueViewModel]     <2> 已刷新标签
+[2026-09-04 12:50:51.323][INF][TaskQueueViewModel]     <2> 当前槽位已刷新2次
+[2026-09-04 12:50:51.429][INF][TaskQueueViewModel]     <2> 公招识别结果: 
+近卫干员
+重装干员
+先锋干员
+新手
+费用回复
+[2026-09-04 12:50:51.434][INF][TaskQueueViewModel]     <2> 3 ★ Tags
+[2026-09-04 12:50:51.434][INF][GameDataReportService]  <2> Start PostWithRetryAsync, url: https://penguin-stats.io/PenguinStats/api/v2/report
+[2026-09-04 12:50:51.435][INF][GameDataReportService]  <2> Request headers: {"User-Agent":"MaaAssistantArknights/6.17.0","X-Penguin-Idempotency-Key":"<已隐藏>","authorization":"PenguinID 303948262"}
+[2026-09-04 12:50:51.435][INF][GameDataReportService]  <2> Request body: {"drops":[{"dropType":"NORMAL_DROP","itemId":"近卫干员","quantity":1},{"dropType":"NORMAL_DROP","itemId":"重装干员","quantity":1},{"dropType":"NORMAL_DROP","itemId":"先锋干员","quantity":1},{"dropType":"NORMAL_DROP","itemId":"新手","quantity":1},{"dropType":"NORMAL_DROP","itemId":"费用回复","quantity":1}],"server":"CN","source":"MaaAssistantArknights","stageId":"recruit","version":"v6.17.0"}
+[2026-09-04 12:50:51.435][INF][GameDataReportService]  <2> Start PostWithRetryAsync, url: https://backend.yituliu.cn/maa/upload/recruit
+[2026-09-04 12:50:51.435][INF][GameDataReportService]  <2> Request headers: {}
+[2026-09-04 12:50:51.435][INF][GameDataReportService]  <2> Request body: {"level":3,"result":[{"level":3,"opers":[{"id":"char_148_nearl","level":5,"name":"临光"},{"id":"char_201_moeshd","level":5,"name":"可颂"},{"id":"char_226_hmau","level":5,"name":"吽"},{"id":"char_163_hpsts","level":5,"name":"火神"},{"id":"char_378_asbest","level":5,"name":"石棉"},{"id":"char_107_liskam","level":5,"name":"雷蛇"},{"id":"char_196_sunbr","level":4,"name":"古米"},{"id":"char_381_bubble","level":4,"name":"泡泡"},{"id":"char_150_snakek","level":4,"name":"蛇屠箱"},{"id":"char_199_yak","level":4,"name":"角峰"},{"id":"char_284_spot","level":3,"name":"斑点"},{"id":"char_122_beagle","level":3,"name":"米格鲁"},{"id":"char_500_noirc","level":2,"name":"黑角"},{"id":"char_4093_frston","level":1,"name":"Friston-3"}],"tags":["重装干员"]},{"level":3,"opers":[{"id":"char_155_tiger","level":5,"name":"因陀罗"},{"id":"char_356_broca","level":5,"name":"布洛卡"},{"id":"char_143_ghost","level":5,"name":"幽灵鲨"},{"id":"char_294_ayer","level":5,"name":"断崖"},{"id":"char_274_astesi","level":5,"name":"星极"},{"id":"char_415_flint","level":5,"name":"燧石"},{"id":"char_421_crow","level":5,"name":"羽毛笔"},{"id":"char_308_swire","level":5,"name":"诗怀雅"},{"id":"char_475_akafyu","level":5,"name":"赤冬"},{"id":"char_301_cutter","level":4,"name":"刻刀"},{"id":"char_337_utage","level":4,"name":"宴"},{"id":"char_185_frncat","level":4,"name":"慕斯"},{"id":"char_130_doberm","level":4,"name":"杜宾"},{"id":"char_347_jaksel","level":4,"name":"杰克"},{"id":"char_137_brownb","level":4,"name":"猎蜂"},{"id":"char_289_gyuki","level":4,"name":"缠丸"},{"id":"char_127_estell","level":4,"name":"艾丝黛尔"},{"id":"char_271_spikes","level":4,"name":"芳汀"},{"id":"char_193_frostl","level":4,"name":"霜叶"},{"id":"char_283_midn","level":3,"name":"月见夜"},{"id":"char_281_popka","level":3,"name":"泡普卡"},{"id":"char_208_melan","level":3,"name":"玫兰莎"},{"id":"char_286_cast3","level":1,"name":"Castle-3"}],"tags":["近卫干员"]},{"level":3,"opers":[{"id":"char_115_headbr","level":5,"name":"凛冬"},{"id":"char_102_texas","level":5,"name":"德克萨斯"},{"id":"char_401_elysm","level":5,"name":"极境"},{"id":"char_261_sddrag","level":5,"name":"苇草"},{"id":"char_349_chiave","level":5,"name":"贾维"},{"id":"char_151_myrtle","level":4,"name":"桃金娘"},{"id":"char_149_scave","level":4,"name":"清道夫"},{"id":"char_290_vigna","level":4,"name":"红豆"},{"id":"char_452_bstalk","level":4,"name":"豆苗"},{"id":"char_192_falco","level":3,"name":"翎羽"},{"id":"char_123_fang","level":3,"name":"芬"},{"id":"char_240_wyvern","level":3,"name":"香草"},{"id":"char_502_nblade","level":2,"name":"夜刀"},{"id":"char_4188_confes","level":1,"name":"CONFESS-47"}],"tags":["先锋干员"]},{"level":3,"opers":[{"id":"char_115_headbr","level":5,"name":"凛冬"},{"id":"char_102_texas","level":5,"name":"德克萨斯"},{"id":"char_401_elysm","level":5,"name":"极境"},{"id":"char_261_sddrag","level":5,"name":"苇草"},{"id":"char_349_chiave","level":5,"name":"贾维"},{"id":"char_151_myrtle","level":4,"name":"桃金娘"},{"id":"char_149_scave","level":4,"name":"清道夫"},{"id":"char_290_vigna","level":4,"name":"红豆"},{"id":"char_452_bstalk","level":4,"name":"豆苗"},{"id":"char_192_falco","level":3,"name":"翎羽"},{"id":"char_123_fang","level":3,"name":"芬"},{"id":"char_240_wyvern","level":3,"name":"香草"}],"tags":["费用回复"]},{"level":3,"opers":[{"id":"char_115_headbr","level":5,"name":"凛冬"},{"id":"char_102_texas","level":5,"name":"德克萨斯"},{"id":"char_401_elysm","level":5,"name":"极境"},{"id":"char_261_sddrag","level":5,"name":"苇草"},{"id":"char_349_chiave","level":5,"name":"贾维"},{"id":"char_151_myrtle","level":4,"name":"桃金娘"},{"id":"char_149_scave","level":4,"name":"清道夫"},{"id":"char_290_vigna","level":4,"name":"红豆"},{"id":"char_452_bstalk","level":4,"name":"豆苗"},{"id":"char_192_falco","level":3,"name":"翎羽"},{"id":"char_123_fang","level":3,"name":"芬"},{"id":"char_240_wyvern","level":3,"name":"香草"}],"tags":["先锋干员","费用回复"]},{"level":2,"opers":[{"id":"char_009_12fce","level":2,"name":"12F"},{"id":"char_502_nblade","level":2,"name":"夜刀"},{"id":"char_503_rang","level":2,"name":"巡林者"},{"id":"char_501_durin","level":2,"name":"杜林"},{"id":"char_500_noirc","level":2,"name":"黑角"}],"tags":["新手"]},{"level":2,"opers":[{"id":"char_500_noirc","level":2,"name":"黑角"}],"tags":["新手","重装干员"]},{"level":2,"opers":[{"id":"char_502_nblade","level":2,"name":"夜刀"}],"tags":["先锋干员","新手"]}],"server":"CN","source":"MaaAssistantArknights","tags":["近卫干员","重装干员","先锋干员","新手","费用回复"],"uuid":"303948262","version":"v6.17.0"}
+[2026-09-04 12:50:51.435][INF][TaskQueueViewModel]     <2> 无招聘许可，已返回
+[2026-09-04 12:50:51.498][INF][HttpResponseLoggingExtension] <2> HTTP: OK POST https://backend.yituliu.cn/maa/upload/recruit null null 63.484ms
+[2026-09-04 12:50:51.900][INF][HttpResponseLoggingExtension] <2> HTTP: OK POST https://penguin-stats.io/PenguinStats/api/v2/report null null 465.479ms
+[2026-09-04 12:50:54.108][INF][TaskQueueViewModel]     <2> 完成任务: 自动公招
+[2026-09-04 12:50:54.108][INF][AsstProxy]              <2> Completed Task Chain: Recruit, Task ID: 3
+[2026-09-04 12:50:54.609][INF][TaskQueueViewModel]     <2> 开始任务: 信用收支
+[2026-09-04 12:50:54.609][INF][AsstProxy]              <2> Start Task Chain: Mall, Task ID: 4
+[2026-09-04 12:51:42.395][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[4](MallTask).IsVisitFriendsAvailable has been set: `true` -> `true`, save scheduled
+[2026-09-04 12:51:42.395][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[4](MallTask).VisitFriendsLastTime has been set: `2026/07/14 00:00:00` -> `2026/09/04 00:00:00`, save scheduled
+[2026-09-04 12:51:42.395][INF][TaskQueueViewModel]     <2> 完成任务: 访问好友
+[2026-09-04 12:52:26.586][INF][TaskQueueViewModel]     <2> 完成任务: 信用收支
+[2026-09-04 12:52:26.586][INF][AsstProxy]              <2> Completed Task Chain: Mall, Task ID: 4
+[2026-09-04 12:52:27.086][INF][TaskQueueViewModel]     <2> 开始任务: 领取奖励
+[2026-09-04 12:52:27.087][INF][AsstProxy]              <2> Start Task Chain: Award, Task ID: 5
+[2026-09-04 12:52:38.066][INF][TaskQueueViewModel]     <2> 完成任务: 领取奖励
+[2026-09-04 12:52:38.066][INF][AsstProxy]              <2> Completed Task Chain: Award, Task ID: 5
+[2026-09-04 12:52:38.072][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[1]理智作战(FightTask).StagePlan has been set: `["1-7"]` -> `[""]`, save scheduled
+[2026-09-04 12:52:38.077][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[1]理智作战(FightTask).StagePlan has been set: `[""]` -> `["1-7"]`, save scheduled
+[2026-09-04 12:52:38.081][INF][RunningState]           <2> Idle: false to true (called from ProcTaskChainMsg)
+[2026-09-04 12:52:38.084][INF][TaskQueueViewModel]     <2> 任务已全部完成！
+(用时 0h 11m 3s)
+[2026-09-04 12:52:38.095][INF][RunningState]           <2> InterruptLock: depth=1 (called from CheckAfterCompleted)
+[2026-09-04 12:52:38.096][INF][TaskQueueViewModel]     <2> Post actions: 退出 明日方舟 -> 退出 MAA

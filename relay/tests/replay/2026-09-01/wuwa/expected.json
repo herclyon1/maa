@@ -1,0 +1,223 @@
+{
+ "OK-WW-00-02-34": {
+  "script": "OK-WW",
+  "ok": false,
+  "failed_tasks": [
+   "周本：打完 Boss 领完奖之后没能退出副本"
+  ],
+  "duration_known": true,
+  "okww_steps": [
+   "残象聚落（已刷满）",
+   "周本（没做完，原因见失败于）"
+  ],
+  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+ },
+ "OK-WW-00-39-08": {
+  "script": "OK-WW",
+  "ok": false,
+  "failed_tasks": [
+   "周本：打完 Boss 领完奖之后没能退出副本"
+  ],
+  "duration_known": true,
+  "okww_steps": [
+   "残象聚落（已刷满）",
+   "周本（没做完，原因见失败于）"
+  ],
+  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+ },
+ "OK-WW-00-48-43": {
+  "script": "OK-WW",
+  "ok": false,
+  "failed_tasks": [
+   "周本：打完 Boss 领完奖之后没能退出副本"
+  ],
+  "duration_known": true,
+  "okww_steps": [
+   "残象聚落（已刷满）",
+   "周本（没做完，原因见失败于）"
+  ],
+  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+ },
+ "OK-WW-00-51-35": {
+  "script": "OK-WW",
+  "ok": true,
+  "failed_tasks": [],
+  "duration_known": true,
+  "okww_steps": [
+   "残象聚落（已刷满）",
+   "周本（打了，没领到奖励）"
+  ]
+ },
+ "OK-WW-01-05-37": {
+  "script": "OK-WW",
+  "ok": true,
+  "failed_tasks": [],
+  "duration_known": true,
+  "okww_steps": [
+   "残象聚落（已刷满）",
+   "周本（打了，没领到奖励）"
+  ]
+ },
+ "OK-WW-01-52-47": {
+  "script": "OK-WW",
+  "ok": false,
+  "failed_tasks": [
+   "OK-WW 在完成任务前退出"
+  ],
+  "duration_known": true,
+  "okww_steps": [
+   "残象聚落（已刷满）",
+   "周本（打了，没领到奖励）"
+  ]
+ },
+ "OK-WW-01-59-11": {
+  "script": "OK-WW",
+  "ok": false,
+  "failed_tasks": [
+   "周本：打完 Boss 领完奖之后没能退出副本"
+  ],
+  "duration_known": true,
+  "okww_steps": [
+   "残象聚落（已刷满）",
+   "周本（没做完，原因见失败于）"
+  ],
+  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+ },
+ "OK-WW-02-01-22": {
+  "script": "OK-WW",
+  "ok": false,
+  "failed_tasks": [
+   "周本：打完 Boss 领完奖之后没能退出副本"
+  ],
+  "duration_known": true,
+  "okww_steps": [
+   "残象聚落（已刷满）",
+   "周本（没做完，原因见失败于）"
+  ],
+  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+ },
+ "OK-WW-03-04-49": {
+  "script": "OK-WW",
+  "ok": false,
+  "failed_tasks": [
+   "周本：打完 Boss 领完奖之后没能退出副本"
+  ],
+  "duration_known": true,
+  "okww_steps": [
+   "残象聚落（已刷满）",
+   "周本（没做完，原因见失败于）"
+  ],
+  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+ },
+ "OK-WW-03-07-57": {
+  "script": "OK-WW",
+  "ok": false,
+  "failed_tasks": [
+   "周本：打完 Boss 领完奖之后没能退出副本"
+  ],
+  "duration_known": true,
+  "okww_steps": [
+   "残象聚落（已刷满）",
+   "周本（没做完，原因见失败于）"
+  ],
+  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+ },
+ "OK-WW-03-09-48": {
+  "script": "OK-WW",
+  "ok": false,
+  "failed_tasks": [
+   "周本：打完 Boss 领完奖之后没能退出副本"
+  ],
+  "duration_known": true,
+  "okww_steps": [
+   "残象聚落（已刷满）",
+   "周本（没做完，原因见失败于）"
+  ],
+  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+ },
+ "OK-WW-03-18-38": {
+  "script": "OK-WW",
+  "ok": false,
+  "failed_tasks": [
+   "周本：打完 Boss 领完奖之后没能退出副本"
+  ],
+  "duration_known": true,
+  "okww_steps": [
+   "残象聚落（已刷满）",
+   "周本（没做完，原因见失败于）"
+  ],
+  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+ },
+ "OK-WW-03-20-31": {
+  "script": "OK-WW",
+  "ok": false,
+  "failed_tasks": [
+   "OK-WW 在完成任务前退出"
+  ],
+  "duration_known": true,
+  "okww_steps": [
+   "残象聚落（已刷满）",
+   "周本（打了，没领到奖励）"
+  ]
+ },
+ "OK-WW-03-23-36": {
+  "script": "OK-WW",
+  "ok": false,
+  "failed_tasks": [
+   "周本：打完 Boss 领完奖之后没能退出副本"
+  ],
+  "duration_known": true,
+  "okww_steps": [
+   "残象聚落（已刷满）",
+   "周本（领了 1 次，然后没能退出副本）"
+  ],
+  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+ },
+ "OK-WW-05-43-17": {
+  "script": "OK-WW",
+  "ok": false,
+  "failed_tasks": [
+   "周本：打完 Boss 领完奖之后没能退出副本"
+  ],
+  "duration_known": true,
+  "okww_steps": [
+   "残象聚落（已刷满）",
+   "周本（没做完，原因见失败于）"
+  ],
+  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+ },
+ "OK-WW-06-35-43": {
+  "script": "OK-WW",
+  "ok": false,
+  "failed_tasks": [
+   "任务执行：等一个画面没等到"
+  ],
+  "duration_known": true,
+  "okww_steps": [
+   "残象聚落（已刷满）",
+   "周本（领了 1 次，然后没能退出副本）"
+  ],
+  "okww_error": "任务执行：等一个画面没等到"
+ },
+ "OK-WW-06-50-26": {
+  "script": "OK-WW",
+  "ok": false,
+  "failed_tasks": [
+   "OK-WW 在完成任务前退出"
+  ],
+  "duration_known": true
+ },
+ "OK-WW-06-58-23": {
+  "script": "OK-WW",
+  "ok": true,
+  "failed_tasks": [],
+  "duration_known": true,
+  "okww_steps": [
+   "模拟领域（未进本）",
+   "残象聚落（已刷满）",
+   "周本（打了，没领到奖励）"
+  ],
+  "okww_farm": "模拟领域",
+  "okww_stamina_left": 2
+ }
+}

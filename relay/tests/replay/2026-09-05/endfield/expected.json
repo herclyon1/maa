@@ -1,0 +1,40 @@
+{
+ "MaaEnd-05-27-42": {
+  "script": "MaaEnd",
+  "ok": false,
+  "failed_tasks": [
+   "基质刷取"
+  ],
+  "duration_known": true,
+  "tasks_failed": [
+   "基质刷取"
+  ],
+  "tasks_done": [
+   "赠送干员礼物",
+   "装备制造",
+   "拜访好友",
+   "基建任务",
+   "信用点购物",
+   "转交委托",
+   "售卖产品",
+   "环境监测",
+   "自动囤货",
+   "售卖弹性物资",
+   "购买稳定物资",
+   "应急理智加强剂",
+   "选剑演武",
+   "自动采集",
+   "日常奖励领取"
+  ]
+ },
+ "MaaEnd-05-56-35": {
+  "script": "MaaEnd",
+  "ok": true,
+  "failed_tasks": [],
+  "duration_known": true,
+  "tasks_done": [
+   "基质刷取",
+   "结束进程"
+  ]
+ }
+}

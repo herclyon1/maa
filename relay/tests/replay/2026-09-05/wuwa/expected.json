@@ -1,0 +1,16 @@
+{
+ "OK-WW-05-18-27": {
+  "script": "OK-WW",
+  "ok": true,
+  "failed_tasks": [],
+  "duration_known": true,
+  "okww_steps": [
+   "无音区 ×2",
+   "残象聚落（已刷满）"
+  ],
+  "okww_farm": "无音区·玄幽东岳",
+  "okww_runs": 2,
+  "okww_stamina_spent": 240,
+  "okww_stamina_left": 0
+ }
+}

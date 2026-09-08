@@ -1,0 +1,343 @@
+2026-09-01 06:01:34,727 INFO MainThread ok:ok-script init v3.6.6, ['D:\\ark\\okww\\data\\apps\\ok-ww\\working\\main.py', '-t', '1', '-e'], pid=21184 config: {'debug': False, 'custom_tasks': True, 'gui': {'type': 'qt'}, 'config_folder': 'configs', 'blur_area': <function blur_area at 0x000001BE396ABF60>, 'gui_icon': 'icons/icon.png', 'global_configs': [<ok.util.config.ConfigOption object at 0x000001BE18533E00>, <ok.util.config.ConfigOption object at 0x000001BE18533E30>, <ok.util.config.ConfigOption object at 0x000001BE1A80EC30>], 'custom_tabs': [['src.gui.CharacterCodeTab', 'CharacterCodeTab']], 'ocr': {'lib': 'onnxocr', 'auto_simplify': True, 'params': {'use_openvino': True, 'use_npu': True}}, 'my_app': ['src.globals', 'Globals'], 'start_timeout': 120, 'wait_until_settle_time': 0, 'template_matching': {'coco_feature_json': 'assets\\coco_annotations.json', 'default_horizontal_variance': 0.002, 'default_vertical_variance': 0.002, 'default_threshold': 0.8, 'feature_processor': <function process_feature at 0x000001BE1A8016C0>, 'vcenter_features': ['monthly_card', 'skip_dialog_check'], 'hcenter_features': ['monthly_card', 'suisui_forte3', 'message_dialog', 'claim_stamina_sign', 'skip_dialog_check', 'login_close', 'garden_confirm', 'garden_continue_game', 'garden_unpause', 'garden_get_gold', 'garden_get_purple', 'garden_get_skip', 'garden_not_interested_confirm', 'garden_not_interested', 'a_garden_back', 'garden_get_confirm_gray', 'the_garden_max', 'garden_shop_close', 'garden_new_stage', 'a_garden_restart', 'suisui_forte2', 'suisui_e1', 'e_forte', 'f_break_full']}, 'windows': {'top_hwnd_class': [re.compile('CAgreementDlg'), re.compile('CLoginDlg_P_'), 'CefBrowserWindow', 'Chrome_RenderWidgetHostHWND', '#32770', re.compile('CNativeLoginDlg'), 'Static', 'ComboBox', 'ComboLBox', 'Button'], 'calculate_pc_exe_path': <function calculate_pc_exe_path at 0x000001BE396ABEC0>, 'exe': 'Client-Win64-Shipping.exe', 'hwnd_class': 'UnrealWindow', 'interaction': 'PostMessage', 'capture_method': ['WGC', 'BitBlt_RenderFull'], 'check_hdr': False, 'force_no_hdr': False, 'check_night_light': True, 'force_no_night_light': False}, 'window_size': {'width': 1200, 'height': 800, 'min_width': 1200, 'min_height': 800}, 'supported_resolution': {'ratio': '16:9', 'resize_to': [(2560, 1440), (1920, 1080), (1600, 900), (1280, 720)], 'min_size': (1280, 720)}, 'links': {'default': {'github': 'https://github.com/ok-oldking/ok-wuthering-waves', 'discord': 'https://discord.gg/vVyCatEBgA', 'download': 'https://ok-script.com/ok-ww', 'sponsor': 'https://patreon.com/ok_oldking', 'share': 'Download OK-WW from https://ok-script.com/ok-ww', 'faq': 'https://ok-script.com/ok-ww/'}, 'zh_CN': {'github': 'https://github.com/ok-oldking/ok-wuthering-waves', 'discord': 'https://discord.gg/vVyCatEBgA', 'sponsor': 'https://afdian.com/a/ok-oldking', 'share': '下载okww https://ok-script.com/ok-ww', 'faq': 'https://ok-script.com/ok-ww', 'qq_group': 'https://qm.qq.com/q/SUQpIpmq4', 'qq_channel': 'https://pd.qq.com/s/djmm6l44y'}}, 'about': '\n    <p style="color:red;">\n    <strong>本软件是免费开源的。</strong> 如果你被收费，请立即退款。请访问QQ频道或GitHub下载最新的官方版本。\n    </p>\n    <p style="color:red;">\n        <strong>本软件仅供个人使用，用于学习Python编程、计算机视觉、UI自动化等。</strong> 请勿将其用于任何营利性或商业用途。\n    </p>\n    <p style="color:red;">\n        <strong>使用本软件可能会导致账号被封。</strong> 请在了解风险后再使用。\n    </p>\n', 'screenshots_folder': 'screenshots', 'gui_title': 'OK-WW', 'log_file': 'logs/ok-ww.log', 'error_log_file': 'logs/ok-ww_error.log', 'launcher_log_file': 'logs/launcher.log', 'launcher_error_log_file': 'logs/launcher_error.log', 'version': 'v3.6.6', 'onetime_tasks': [['src.task.DailyTask', 'DailyTask'], ['src.task.FarmEchoTask', 'FarmEchoTask'], ['src.task.NightmareNestTask', 'NightmareNestTask'], ['src.task.TacetTask', 'TacetTask'], ['src.task.ForgeryTask', 'ForgeryTask'], ['src.task.SimulationTask', 'SimulationTask'], ['src.task.MultiAccountDailyTask', 'MultiAccountDailyTask'], ['src.task.MergeEchoTask', 'MergeEchoTask'], ['src.task.EnhanceEchoTask', 'EnhanceEchoTask'], ['src.task.ChangeEchoTask', 'ChangeEchoTask'], ['src.task.GardenTask', 'GardenTask']], 'trigger_tasks': [['src.task.AutoCombatTask', 'AutoCombatTask'], ['src.task.AutoPickTask', 'AutoPickTask'], ['src.task.AutoLoginTask', 'AutoLoginTask'], ['src.task.SkipDialogTask', 'AutoDialogTask'], ['src.task.FastTravelTask', 'FastTravelTask'], ['src.task.MouseResetTask', 'MouseResetTask']], 'scene': ['src.scene.WWScene', 'WWScene'], 'update_pyappify': {'to_version': '1.2.3', 'zip_url': 'https://github.com/ok-oldking/ok-wuthering-waves/releases/download/v3.5.30/ok-ww-win32.zip', 'sha256': '447207edbfb6944beb994347048e155df99775eb18c87dcae54dda125071c94a'}, 'profile': 'China'}
+2026-09-01 06:01:34,727 INFO MainThread ok:pyappify  app_version:v3.6.6, app_profile:China, pyappify_version:1.2.3 pyappify_upgradeable:True, pyappify_executable:D:\ark\okww\ok-ww.exe
+2026-09-01 06:01:34,732 INFO MainThread capture:check available WINDOWS_BUILD_NUMBER:26200 >= 20348 True
+2026-09-01 06:01:34,785 INFO MainThread ok:use_dml result is True
+2026-09-01 06:01:34,786 INFO MainThread ok:SetProcessDpiAwareness 0
+2026-09-01 06:01:34,788 INFO MainThread ok:do_init, config: {'debug': False, 'custom_tasks': True, 'gui': {'type': 'qt'}, 'config_folder': 'configs', 'blur_area': <function blur_area at 0x000001BE396ABF60>, 'gui_icon': 'icons/icon.png', 'global_configs': [<ok.util.config.ConfigOption object at 0x000001BE18533E00>, <ok.util.config.ConfigOption object at 0x000001BE18533E30>, <ok.util.config.ConfigOption object at 0x000001BE1A80EC30>], 'custom_tabs': [['src.gui.CharacterCodeTab', 'CharacterCodeTab']], 'ocr': {'lib': 'onnxocr', 'auto_simplify': True, 'params': {'use_openvino': True, 'use_npu': True}}, 'my_app': ['src.globals', 'Globals'], 'start_timeout': 120, 'wait_until_settle_time': 0, 'template_matching': {'coco_feature_json': 'assets\\coco_annotations.json', 'default_horizontal_variance': 0.002, 'default_vertical_variance': 0.002, 'default_threshold': 0.8, 'feature_processor': <function process_feature at 0x000001BE1A8016C0>, 'vcenter_features': ['monthly_card', 'skip_dialog_check'], 'hcenter_features': ['monthly_card', 'suisui_forte3', 'message_dialog', 'claim_stamina_sign', 'skip_dialog_check', 'login_close', 'garden_confirm', 'garden_continue_game', 'garden_unpause', 'garden_get_gold', 'garden_get_purple', 'garden_get_skip', 'garden_not_interested_confirm', 'garden_not_interested', 'a_garden_back', 'garden_get_confirm_gray', 'the_garden_max', 'garden_shop_close', 'garden_new_stage', 'a_garden_restart', 'suisui_forte2', 'suisui_e1', 'e_forte', 'f_break_full']}, 'windows': {'top_hwnd_class': [re.compile('CAgreementDlg'), re.compile('CLoginDlg_P_'), 'CefBrowserWindow', 'Chrome_RenderWidgetHostHWND', '#32770', re.compile('CNativeLoginDlg'), 'Static', 'ComboBox', 'ComboLBox', 'Button'], 'calculate_pc_exe_path': <function calculate_pc_exe_path at 0x000001BE396ABEC0>, 'exe': 'Client-Win64-Shipping.exe', 'hwnd_class': 'UnrealWindow', 'interaction': 'PostMessage', 'capture_method': ['WGC', 'BitBlt_RenderFull'], 'check_hdr': False, 'force_no_hdr': False, 'check_night_light': True, 'force_no_night_light': False, 'start_exe': True, 'start_method': 'start'}, 'window_size': {'width': 1200, 'height': 800, 'min_width': 1200, 'min_height': 800}, 'supported_resolution': {'ratio': '16:9', 'resize_to': [(2560, 1440), (1920, 1080), (1600, 900), (1280, 720)], 'min_size': (1280, 720)}, 'links': {'default': {'github': 'https://github.com/ok-oldking/ok-wuthering-waves', 'discord': 'https://discord.gg/vVyCatEBgA', 'download': 'https://ok-script.com/ok-ww', 'sponsor': 'https://patreon.com/ok_oldking', 'share': 'Download OK-WW from https://ok-script.com/ok-ww', 'faq': 'https://ok-script.com/ok-ww/'}, 'zh_CN': {'github': 'https://github.com/ok-oldking/ok-wuthering-waves', 'discord': 'https://discord.gg/vVyCatEBgA', 'sponsor': 'https://afdian.com/a/ok-oldking', 'share': '下载okww https://ok-script.com/ok-ww', 'faq': 'https://ok-script.com/ok-ww', 'qq_group': 'https://qm.qq.com/q/SUQpIpmq4', 'qq_channel': 'https://pd.qq.com/s/djmm6l44y'}}, 'about': '\n    <p style="color:red;">\n    <strong>本软件是免费开源的。</strong> 如果你被收费，请立即退款。请访问QQ频道或GitHub下载最新的官方版本。\n    </p>\n    <p style="color:red;">\n        <strong>本软件仅供个人使用，用于学习Python编程、计算机视觉、UI自动化等。</strong> 请勿将其用于任何营利性或商业用途。\n    </p>\n    <p style="color:red;">\n        <strong>使用本软件可能会导致账号被封。</strong> 请在了解风险后再使用。\n    </p>\n', 'screenshots_folder': 'screenshots', 'gui_title': 'OK-WW', 'log_file': 'logs/ok-ww.log', 'error_log_file': 'logs/ok-ww_error.log', 'launcher_log_file': 'logs/launcher.log', 'launcher_error_log_file': 'logs/launcher_error.log', 'version': 'v3.6.6', 'onetime_tasks': [['src.task.DailyTask', 'DailyTask'], ['src.task.FarmEchoTask', 'FarmEchoTask'], ['src.task.NightmareNestTask', 'NightmareNestTask'], ['src.task.TacetTask', 'TacetTask'], ['src.task.ForgeryTask', 'ForgeryTask'], ['src.task.SimulationTask', 'SimulationTask'], ['src.task.MultiAccountDailyTask', 'MultiAccountDailyTask'], ['src.task.MergeEchoTask', 'MergeEchoTask'], ['src.task.EnhanceEchoTask', 'EnhanceEchoTask'], ['src.task.ChangeEchoTask', 'ChangeEchoTask'], ['src.task.GardenTask', 'GardenTask']], 'trigger_tasks': [['src.task.AutoCombatTask', 'AutoCombatTask'], ['src.task.AutoPickTask', 'AutoPickTask'], ['src.task.AutoLoginTask', 'AutoLoginTask'], ['src.task.SkipDialogTask', 'AutoDialogTask'], ['src.task.FastTravelTask', 'FastTravelTask'], ['src.task.MouseResetTask', 'MouseResetTask']], 'scene': ['src.scene.WWScene', 'WWScene'], 'update_pyappify': {'to_version': '1.2.3', 'zip_url': 'https://github.com/ok-oldking/ok-wuthering-waves/releases/download/v3.5.30/ok-ww-win32.zip', 'sha256': '447207edbfb6944beb994347048e155df99775eb18c87dcae54dda125071c94a'}, 'profile': 'China'}
+2026-09-01 06:01:34,823 INFO MainThread DeviceManager:__init__ start
+2026-09-01 06:01:34,826 INFO MainThread hwnd_window:HwndWindow init title:None player_id:-1 exe_name:['Client-Win64-Shipping.exe'] hwnd_class:UnrealWindow top_hwnd_class:[re.compile('CAgreementDlg'), re.compile('CLoginDlg_P_'), 'CefBrowserWindow', 'Chrome_RenderWidgetHostHWND', '#32770', re.compile('CNativeLoginDlg'), 'Static', 'ComboBox', 'ComboLBox', 'Button']
+2026-09-01 06:01:34,829 INFO MainThread hwnd_window:do_update_window_size hwnd changed from 0 to 2294744 top 2294744 D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe UnrealWindow real:0,0,1920,1080
+2026-09-01 06:01:34,876 INFO MainThread hwnd_window:do_update_window_size changed,visible:False,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-01 06:01:34,876 INFO MainThread DeviceManager:__init__ end
+2026-09-01 06:01:34,890 INFO MainThread TaskExecutor:install ocr translations error for en_US
+2026-09-01 06:01:34,891 INFO DefaultOCRInit TaskExecutor:start init default ocr
+2026-09-01 06:01:34,895 INFO screenshot screenshot:remove_old_files D:\ark\okww\data\apps\ok-ww\working\screenshots
+2026-09-01 06:01:35,080 INFO DefaultOCRInit TaskExecutor:init onnxocr {'use_openvino': True, 'use_npu': True}
+2026-09-01 06:01:35,102 INFO DefaultOCRInit TaskExecutor:use_openvino: True
+2026-09-01 06:01:35,103 INFO DefaultOCRInit TaskExecutor:use_npu: True
+2026-09-01 06:01:35,103 INFO DefaultOCRInit TaskExecutor:use_angle_cls: False
+2026-09-01 06:01:35,103 INFO DefaultOCRInit TaskExecutor:det_model_dir: D:\ark\okww\data\apps\ok-ww\python\Lib\site-packages\onnxocr\models\ppocrv5\det\det.onnx
+2026-09-01 06:01:35,103 INFO DefaultOCRInit TaskExecutor:rec_model_dir: D:\ark\okww\data\apps\ok-ww\python\Lib\site-packages\onnxocr\models\ppocrv5\rec\rec.onnx
+2026-09-01 06:01:35,103 INFO DefaultOCRInit TaskExecutor:rec_image_shape: 3, 48, 320
+2026-09-01 06:01:35,333 INFO MainThread app:translator install success <PySide6.QtCore.QLocale()/* Chinese, Simplified Han, China */ at 0x000001BE3DF96B40>, 开发工具
+2026-09-01 06:01:35,335 INFO MainThread TaskExecutor:install ocr translations error for zh_CN
+2026-09-01 06:01:35,452 INFO DefaultOCRInit TaskExecutor:openvino cache_dir: D:\ark\okww\data\apps\ok-ww\working\cache\openvino
+2026-09-01 06:01:35,517 INFO MainThread task_manager:Found tasks: []
+2026-09-01 06:01:35,519 INFO MainThread task_manager:Debug file watcher initialized, watching dirs ['D:\\ark\\okww\\data\\apps\\ok-ww\\working\\ok_tasks']
+2026-09-01 06:01:35,519 INFO MainThread ok:do_init, end
+2026-09-01 06:01:35,519 INFO MainThread ok:OK start id:1915963518240 pid:21184
+2026-09-01 06:01:35,670 INFO DefaultOCRInit TaskExecutor:openvino core.available_devices ['CPU', 'GPU']
+2026-09-01 06:01:35,700 INFO MainThread MainWindow:main window __init__
+2026-09-01 06:01:35,704 INFO MainThread MainWindow:Refresh primary button color: #00689b
+2026-09-01 06:01:36,298 INFO DefaultOCRInit TaskExecutor:openvino async infer requests: 1
+2026-09-01 06:01:36,306 INFO DefaultOCRInit TaskExecutor:openvino cache_dir: D:\ark\okww\data\apps\ok-ww\working\cache\openvino
+2026-09-01 06:01:36,322 INFO DefaultOCRInit TaskExecutor:openvino core.available_devices ['CPU', 'GPU']
+2026-09-01 06:01:36,330 INFO MainThread ok:translation installed for zh_CN
+2026-09-01 06:01:36,664 INFO DefaultOCRInit TaskExecutor:openvino async infer requests: 1
+2026-09-01 06:01:36,829 INFO DefaultOCRInit TaskExecutor:ocr_lib init <onnxocr.onnx_paddleocr.ONNXPaddleOcr object at 0x000001BE3D0EB500> onnxocr, result: use_npu=True, test_ocr=[[[[[17.0, 41.0], [327.0, 44.0], [326.0, 134.0], [16.0, 131.0]], ('okscript', 0.9995973110198975)]]]
+2026-09-01 06:01:36,830 INFO DefaultOCRInit TaskExecutor:default ocr init end, result: use_npu=True, test_ocr=[[[[[17.0, 41.0], [327.0, 44.0], [326.0, 134.0], [16.0, 131.0]], ('okscript', 0.9995973110198975)]]], cost: 1.94s
+2026-09-01 06:01:37,736 INFO MainThread Loaded 0 tasks from cache
+2026-09-01 06:01:37,761 INFO MainThread Windows Task Scheduler COM service initialized, root=\OK-WW
+2026-09-01 06:01:37,763 INFO MainThread Saved 0 tasks to cache
+2026-09-01 06:01:37,764 INFO MainThread ScheduleTaskTab:Loaded 0 tasks
+2026-09-01 06:01:38,609 INFO MainThread UpdateCard:initialized current_version='v3.6.6', pyappify_module='D:\\ark\\okww\\data\\apps\\ok-ww\\working\\pyappify\\__init__.py', pyappify_app_version='v3.6.6', test_mode=False
+2026-09-01 06:01:38,643 INFO MainThread pyappify_startup:get_startup_version_change from_version=v3.6.6-beta.1, to_version=v3.6.6, is_updated=False, is_downgraded=False
+2026-09-01 06:01:38,997 INFO MainThread MainWindow:main window __init__ done
+2026-09-01 06:01:39,065 INFO MainThread ok:Attempting to minimize window for process with PID: 13568
+2026-09-01 06:01:39,082 INFO MainThread ok:pyappify no need to upgrade True 1.2.3 447207edbfb6944beb994347048e155df99775eb18c87dcae54dda125071c94a ['https://github.com/ok-oldking/ok-wuthering-waves/releases/download/v3.5.30/ok-ww-win32.zip']
+2026-09-01 06:01:39,082 INFO MainThread MainWindow:Window has fully displayed
+2026-09-01 06:01:39,083 INFO MainThread ok:start runtime with task param 0 True
+2026-09-01 06:01:39,083 INFO MainThread MainWindow:MainWindow showEvent Kill Launcher After Start
+2026-09-01 06:01:39,084 INFO ok.core.start_controller start_controller:enable param task <src.task.DailyTask.DailyTask object at 0x000001BE3DFA2B10>
+2026-09-01 06:01:39,084 INFO PyAppifyShutdown ok:Attempting to terminate process with PID: 13568
+2026-09-01 06:01:39,085 INFO ok.core.start_controller start_controller:do_start: call do_refresh True
+2026-09-01 06:01:39,085 INFO MainThread pyappify_startup:get_startup_version_change from_version=v3.6.6-beta.1, to_version=v3.6.6, is_updated=False, is_downgraded=False
+2026-09-01 06:01:39,087 INFO MainThread MainWindow:update success, show copyright
+2026-09-01 06:01:39,092 INFO MainThread MainWindow:schedule pyappify update check in 30000ms
+2026-09-01 06:01:39,112 INFO PyAppifyShutdown ok:_wait_for_process_exit success 13568
+2026-09-01 06:01:39,119 INFO MainThread ok:app.exec()
+2026-09-01 06:01:39,147 INFO ok.core.start_controller DeviceManager:update_pc_device pc_device: {'address': '', 'imei': 'pc_2294744', 'device': 'windows', 'model': '', 'nick': '鸣潮  ', 'width': 1920, 'height': 1080, 'hwnd': '鸣潮  ', 'capture': 'windows', 'connected': True, 'full_path': 'D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe', 'real_hwnd': 2294744, 'exe': ['Client-Win64-Shipping.exe']}
+2026-09-01 06:01:39,148 INFO ok.core.start_controller DeviceManager:first start use first or connected device {'address': '', 'imei': 'pc_2294744', 'device': 'windows', 'model': '', 'nick': '鸣潮  ', 'width': 1920, 'height': 1080, 'hwnd': '鸣潮  ', 'capture': 'windows', 'connected': True, 'full_path': 'D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe', 'real_hwnd': 2294744, 'exe': ['Client-Win64-Shipping.exe'], 'resolution': '1920x1080'}
+2026-09-01 06:01:39,148 INFO ok.core.start_controller DeviceManager:preferred device did change pc_2294744
+2026-09-01 06:01:39,153 INFO ok.core.start_controller start_controller:start_device: {'address': '', 'imei': 'pc_2294744', 'device': 'windows', 'model': '', 'nick': '鸣潮  ', 'width': 1920, 'height': 1080, 'hwnd': '鸣潮  ', 'capture': 'windows', 'connected': True, 'full_path': 'D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe', 'real_hwnd': 2294744, 'exe': ['Client-Win64-Shipping.exe'], 'resolution': '1920x1080'}
+2026-09-01 06:01:39,154 INFO ok.core.start_controller start_controller:test check_device_error msg: 鸣潮   is not connected, please select the game window.
+2026-09-01 06:01:39,154 ERROR ok.core.start_controller start_controller:waiting for game to start error Selected capture method is not supported by the game or your system! 
+2026-09-01 06:01:39,161 INFO RefreshAdb hwnd_window:do_update_window_size hwnd changed from 0 to 2294744 top 2294744 D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe UnrealWindow real:0,0,1920,1080
+2026-09-01 06:01:39,169 INFO RefreshAdb hwnd_window:hwnd changed,connected:1
+2026-09-01 06:01:39,170 INFO RefreshAdb hwnd_window:do_update_window_size changed,visible:False,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-01 06:01:39,171 INFO RefreshAdb capture:check available WINDOWS_BUILD_NUMBER:26200 >= 20348 True
+2026-09-01 06:01:39,171 INFO RefreshAdb windows_graphics:start_or_stop start WGC capture
+2026-09-01 06:01:39,399 INFO RefreshAdb update:use WGC capture
+2026-09-01 06:01:39,400 INFO RefreshAdb DeviceManager:capture method <class 'ok.device.capture_methods.windows_graphics.WindowsGraphicsCaptureMethod'>
+2026-09-01 06:01:39,407 INFO MainThread pyappify_startup:get_startup_version_change from_version=v3.6.6-beta.1, to_version=v3.6.6, is_updated=False, is_downgraded=False
+2026-09-01 06:01:40,042 INFO global MainWindow:Window geometry updated in ok_config {'window_x': 360, 'window_y': 116, 'window_width': 1200, 'window_height': 800, 'window_maximized': False, 'navigation_expanded': True, 'use_overlay': False}
+2026-09-01 06:01:41,157 INFO ok.core.start_controller DeviceManager:update_pc_device pc_device: {'address': '', 'imei': 'pc_2294744', 'device': 'windows', 'model': '', 'nick': '鸣潮  ', 'width': 1920, 'height': 1080, 'hwnd': '鸣潮  ', 'capture': 'windows', 'connected': True, 'full_path': 'D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe', 'real_hwnd': 2294744, 'exe': ['Client-Win64-Shipping.exe']}
+2026-09-01 06:01:41,159 INFO ok.core.start_controller hwnd_window:do_update_window_size hwnd changed from 0 to 2294744 top 2294744 D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe UnrealWindow real:0,0,1920,1080
+2026-09-01 06:01:41,161 INFO ok.core.start_controller hwnd_window:hwnd changed,connected:1
+2026-09-01 06:01:41,162 INFO ok.core.start_controller hwnd_window:do_update_window_size changed,visible:False,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-01 06:01:41,162 INFO ok.core.start_controller capture:check available WINDOWS_BUILD_NUMBER:26200 >= 20348 True
+2026-09-01 06:01:41,176 INFO ok.core.start_controller update:use WGC capture
+2026-09-01 06:01:41,176 INFO ok.core.start_controller DeviceManager:capture method <class 'ok.device.capture_methods.windows_graphics.WindowsGraphicsCaptureMethod'>
+2026-09-01 06:01:41,177 INFO ok.core.start_controller start_controller:test check_device_error msg: 鸣潮   is not connected, please select the game window.
+2026-09-01 06:01:41,192 INFO ok.core.start_controller start_controller:check_device_error: capturing frame (1920, 1080)
+2026-09-01 06:01:41,192 INFO ok.core.start_controller start_controller:check_device_error: checking feature_set size
+2026-09-01 06:01:41,193 INFO ok.core.start_controller FeatureSet:FeatureSet: Width and height changed from 0x0 to 1920x1080
+2026-09-01 06:01:41,193 INFO ok.core.start_controller start_controller:check_device_error: checking resolution
+2026-09-01 06:01:41,193 INFO ok.core.start_controller TaskExecutor:start check_frame_and_resolution
+2026-09-01 06:01:41,319 INFO ok.core.start_controller gpu_driver_settings:Windows HDR enabled: False (\\.\DISPLAY1: enabled=False, supported=False, bits=8)
+2026-09-01 06:01:41,348 INFO ok.core.start_controller gpu_driver_settings:NVIDIA filter profile in use: Unknown (NVIDIA filter profile slot not found for D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe)
+2026-09-01 06:01:41,606 INFO ok.core.start_controller gpu_driver_settings:NVIDIA Image Sharpening enabled: False
+2026-09-01 06:01:41,607 INFO ok.core.start_controller gpu_driver_settings:AMD image sharpening check skipped: ADLXPybind is not installed
+2026-09-01 06:01:41,851 INFO ok.core.start_controller gpu_driver_settings:NVIDIA RTX Dynamic Vibrance enabled: False
+2026-09-01 06:01:41,851 INFO ok.core.start_controller gpu_driver_settings:NVIDIA RTX HDR enabled: False (Windows HDR is not enabled)
+2026-09-01 06:01:41,851 INFO ok.core.start_controller gpu_driver_settings:GPU driver post-processing detected features: []
+2026-09-01 06:01:41,851 INFO ok.core.start_controller TaskExecutor:queued onetime_task 📅 Daily Task
+2026-09-01 06:01:41,851 INFO ok.core.start_controller start_controller:enabled task <src.task.DailyTask.DailyTask object at 0x000001BE3DFA2B10>
+2026-09-01 06:01:41,854 INFO TaskExecutor TaskExecutor:start execute
+2026-09-01 06:01:41,855 INFO TaskExecutor TaskExecutor:get queued onetime_task 📅 Daily Task
+2026-09-01 06:01:41,913 INFO TaskExecutor MouseResetTask:start mouse reset
+2026-09-01 06:01:42,416 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-09-01 06:01:42,437 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:01:42,457 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:01:42,478 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:01:42,500 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:01:42,856 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:01:44,932 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:01:44,995 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:01:46,083 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:01:46,100 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:01:46,157 WARNING TaskExecutor task:find_one:found [<Labels.confirm_btn_hcenter_vcenter: 'confirm_btn_hcenter_vcenter'>, <Labels.confirm_btn_highlight_hcenter_vcenter: 'confirm_btn_highlight_hcenter_vcenter'>] too many 2
+2026-09-01 06:01:46,359 INFO TaskExecutor DailyTask:left_click Labels.confirm_btn_hcenter_vcenter (1419, 678) after_sleep 2
+2026-09-01 06:01:58,423 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-09-01 06:01:58,423 INFO TaskExecutor DailyTask:open_daily
+2026-09-01 06:01:58,423 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-09-01 06:01:58,941 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-09-01 06:01:58,941 INFO TaskExecutor DailyTask:click f2 to open the book
+2026-09-01 06:02:02,980 INFO TaskExecutor DailyTask:send f2 key to open
+2026-09-01 06:02:03,017 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:03,033 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:04,071 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_quest', x=48, y=156, width=57, height=67, confidence=72)
+2026-09-01 06:02:06,472 INFO TaskExecutor DailyTask:left_click gray_book_quest (77, 190) after_sleep 1.5
+2026-09-01 06:02:09,085 INFO pyappify-update UpdateCard:calling pyappify.get_version_list(release_only=True)
+2026-09-01 06:02:09,583 INFO TaskExecutor DailyTask:info_set current daily progress 0
+2026-09-01 06:02:09,650 INFO TaskExecutor DailyTask:info_set total daily points 90
+2026-09-01 06:02:10,151 INFO TaskExecutor NightmareNestTask:opened gray_book_boss
+2026-09-01 06:02:10,151 INFO TaskExecutor NightmareNestTask:click f2 to open the book
+2026-09-01 06:02:10,949 INFO pyappify-update UpdateCard:pyappify.get_version_list(release_only=True) result=[{'version': 'v3.6.6', 'previous_version': 'v3.6.5', 'update_note': ['chore(deps): upgrade ok-script to 2.0.5 (ok-oldking)', 'fix(workshop): sanitize team URLs and log requests (ok-oldking)']}, {'version': 'v3.6.5', 'previous_version': 'v3.6.4', 'update_note': ['fix(tacet): calibrate book scroll header and add closed-loop retry for #1599 (#1605) (EEEEEEEEdison)', 'fix(qingxiao): 修复大招前 h2 不开,增加 h2 释放保护与轮询保护 R 释放 (#1604) (EEEEEEEEdison)', 'refactor: 赞妮/菲比/漂泊者 v23 适配上游 3.6.4 base（char-only） (#1603) (EEEEEEEEdison)']}, {'version': 'v3.6.4', 'previous_version': 'v3.5.32', 'update_note': ['修复测试 (ok-oldking)', '更新ok-script版本 (ok-oldking)', '适配3.6跳任务 (ok-oldking)', '支持清霄 (ok-oldking)', 'Reorganize team controls and add team deletion translations (ok-oldking)', 'Add custom team deletion (ok-oldking)', 'Handle unreadable custom team folders gracefully (ok-oldking)', 'Fix Rover wind form initialization (ok-oldking)', '适配合成声骸UI改变 (ok-oldking)', 'fix: 迁移漂泊者为 Rover 并刷新形态日志 (#1582) (EEEEEEEEdison)']}, {'version': 'v3.5.32', 'previous_version': 'v3.5.31', 'update_note': ['修复缺少DLL启动报错 (ok-oldking)', '优化自定义队伍ui (ok-oldking)', '更新自定义角色代码添加工坊 (ok-oldking)', '优化梦魇聚落：未拾取声骸时重新传送回当前聚落保底 (#1572) (EEEEEEEEdison)', '更新夸克下载链接 (ok-oldking)', 'Update docs.yml (ok-oldking)']}, {'version': 'v3.5.31', 'previous_version': 'v3.5.30', 'update_note': ['设置升级启动器 (ok-oldking)', '修复依赖版本错误 (ok-oldking)']}, {'version': 'v3.5.30', 'previous_version': 'v3.5.29', 'update_note': ['优化ui (ok-oldking)']}, {'version': 'v3.5.29', 'previous_version': 'v3.5.28', 'update_note': ['旧版启动器不再检查升级 (ok-oldking)']}, {'version': 'v3.5.28', 'previous_version': None, 'update_note': ['更新ok-script版本 (ok-oldking)', 'add website to pyappify (ok-oldking)', 'reduce package size']}]
+2026-09-01 06:02:10,952 INFO MainThread UpdateCard:loaded 8 valid versions into selector: ['v3.6.6', 'v3.6.5', 'v3.6.4', 'v3.5.32', 'v3.5.31', 'v3.5.30', 'v3.5.29', 'v3.5.28']
+2026-09-01 06:02:10,953 INFO MainThread UpdateCard:update_available=False, current_version='v3.6.6', newest_update_index=None
+2026-09-01 06:02:11,178 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=86)
+2026-09-01 06:02:13,581 INFO TaskExecutor NightmareNestTask:left_click gray_book_boss (76, 321) after_sleep 1.5
+2026-09-01 06:02:15,082 INFO TaskExecutor NightmareNestTask:open_boss_book canxiang
+2026-09-01 06:02:15,883 INFO TaskExecutor NightmareNestTask:left_click canxiang (460, 896) after_sleep 2
+2026-09-01 06:02:18,968 INFO TaskExecutor NightmareNestTask:nightmare nest: 指定点位都已打满，跳过
+2026-09-01 06:02:18,968 INFO TaskExecutor DailyTask:Daily task completed, start teleport to farm 4C echo
+2026-09-01 06:02:19,482 INFO TaskExecutor FarmEchoTask:profile: Other {'combat_wait_time': 0, 'bypass_end_wait': False, 'treat_as_not_in_realm': False}
+2026-09-01 06:02:19,482 INFO TaskExecutor FarmEchoTask:in_realm: None
+2026-09-01 06:02:19,482 INFO TaskExecutor FarmEchoTask:info_set current task wait main esc=True
+2026-09-01 06:02:22,040 INFO TaskExecutor FarmEchoTask:info_set current task in main esc=True
+2026-09-01 06:02:22,040 INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0
+2026-09-01 06:02:22,040 INFO TaskExecutor FarmEchoTask:info_set current task wait main esc=True
+2026-09-01 06:02:22,551 INFO TaskExecutor FarmEchoTask:info_set current task in main esc=True
+2026-09-01 06:02:22,551 INFO TaskExecutor FarmEchoTask:click f2 to open the book
+2026-09-01 06:02:26,579 INFO TaskExecutor FarmEchoTask:send f2 key to open
+2026-09-01 06:02:27,633 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=86)
+2026-09-01 06:02:30,035 INFO TaskExecutor FarmEchoTask:left_click gray_book_boss (76, 321) after_sleep 1.5
+2026-09-01 06:02:31,537 INFO TaskExecutor FarmEchoTask:open_boss_book zhange
+2026-09-01 06:02:32,339 INFO TaskExecutor FarmEchoTask:left_click zhange (460, 658) after_sleep 2
+2026-09-01 06:02:35,053 INFO TaskExecutor FarmEchoTask:left_click boss_proceed (1824, 416) after_sleep 1
+2026-09-01 06:02:36,064 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:36,112 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:36,173 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:36,769 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：3/3_0.99, x60_0.79]
+2026-09-01 06:02:38,423 INFO TaskExecutor FarmEchoTask:left_click 推荐等级90 (281, 609) after_sleep 1
+2026-09-01 06:02:42,547 INFO TaskExecutor FarmEchoTask:left_click team_start_challenge (1791, 994) after_sleep 1
+2026-09-01 06:02:43,919 INFO TaskExecutor FarmEchoTask:v3 开启挑战后读到: []
+2026-09-01 06:02:46,953 INFO TaskExecutor TaskExecutor:wait_until timeout <bound method BaseWWTask.click_skip_dialog_confirm of <src.task.FarmEchoTask.FarmEchoTask object at 0x000001BE3EA639B0>> 3 seconds
+2026-09-01 06:02:52,076 INFO TaskExecutor FarmEchoTask:teleport_to_boss prepared as realm
+2026-09-01 06:02:52,081 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:52,100 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:52,153 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:52,208 INFO TaskExecutor FarmEchoTask:info_set Liberation Key r
+2026-09-01 06:02:52,208 INFO TaskExecutor FarmEchoTask:info_set Echo Key q
+2026-09-01 06:02:52,211 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:52,247 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:52,261 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:52,328 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:52,386 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:52,401 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:52,441 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:52,495 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:52,536 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:52,618 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:52,660 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:52,700 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:52,740 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:52,779 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:52,816 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:52,852 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:52,888 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:52,925 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:52,962 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,029 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,066 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,102 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,138 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,201 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,238 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,275 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,313 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,352 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,388 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,433 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,471 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,508 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,545 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,581 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,593 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,613 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,649 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,691 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,704 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,740 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,761 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,801 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,839 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,878 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,916 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:53,931 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:54,038 INFO TaskExecutor FarmEchoTask:info_set Chars 千咲, 洛瑟菈, 绯雪
+2026-09-01 06:02:54,038 INFO TaskExecutor FarmEchoTask:loaded chars success Chisa 0.9998399615287781
+2026-09-01 06:02:54,038 INFO TaskExecutor FarmEchoTask:loaded chars success Lucilla 0.9982779622077942
+2026-09-01 06:02:54,038 INFO TaskExecutor FarmEchoTask:loaded chars success Hiyuki 0.8686536550521851
+2026-09-01 06:02:54,052 INFO TaskExecutor CombatCheck:target lost try retarget 3
+2026-09-01 06:02:54,118 INFO TaskExecutor FarmEchoTask:enter combat None
+2026-09-01 06:02:54,118 INFO TaskExecutor FarmEchoTask:start wait in combat
+2026-09-01 06:02:54,119 INFO TaskExecutor FarmEchoTask:combat_wait_time: 0
+2026-09-01 06:02:54,181 INFO TaskExecutor FarmEchoTask:boss_string is []
+2026-09-01 06:02:54,183 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:54,230 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:56,302 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:56,343 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:02:56,389 INFO TaskExecutor BaseCombatTask:switch selection result current=Chisa(Healer) target=Lucilla(SubDps) has_intro=False reason=unbuffed_subdps
+2026-09-01 06:02:56,390 INFO TaskExecutor BaseCombatTask:switch_next_char Chisa(Healer) -> Lucilla(SubDps) has_intro False has_sub_dps_intro False current_con 0
+2026-09-01 06:02:56,447 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.057s
+2026-09-01 06:03:04,227 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:03:04,287 INFO TaskExecutor BaseCombatTask:switch selection result current=Lucilla(SubDps) target=Chisa(Healer) has_intro=False reason=unbuffed_healer
+2026-09-01 06:03:04,287 INFO TaskExecutor BaseCombatTask:switch_next_char Lucilla(SubDps) -> Chisa(Healer) has_intro False has_sub_dps_intro False current_con 0
+2026-09-01 06:03:04,811 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.524s
+2026-09-01 06:03:06,174 INFO TaskExecutor BaseCombatTask:switch selection result current=Chisa(Healer) target=Lucilla(SubDps) has_intro=False reason=unbuffed_subdps
+2026-09-01 06:03:06,174 INFO TaskExecutor BaseCombatTask:switch_next_char Chisa(Healer) -> Lucilla(SubDps) has_intro False has_sub_dps_intro False current_con 0
+2026-09-01 06:03:06,229 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.056s
+2026-09-01 06:03:09,845 INFO TaskExecutor Lucilla:Lucilla perform lib
+2026-09-01 06:03:21,100 INFO TaskExecutor Lucilla:Lucilla transform ended, stop pulse heavy early
+2026-09-01 06:03:21,101 INFO TaskExecutor Lucilla:Lucilla perform lib end
+2026-09-01 06:03:21,103 INFO TaskExecutor BaseCombatTask:switch selection result current=Lucilla(SubDps) target=Chisa(Healer) has_intro=False reason=unbuffed_healer
+2026-09-01 06:03:21,103 INFO TaskExecutor BaseCombatTask:switch_next_char Lucilla(SubDps) -> Chisa(Healer) has_intro False has_sub_dps_intro False current_con 0.0
+2026-09-01 06:03:21,195 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.091s
+2026-09-01 06:03:22,091 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:03:22,458 INFO TaskExecutor BaseCombatTask:switch selection result current=Chisa(Healer) target=Lucilla(SubDps) has_intro=False reason=unbuffed_subdps
+2026-09-01 06:03:22,458 INFO TaskExecutor BaseCombatTask:switch_next_char Chisa(Healer) -> Lucilla(SubDps) has_intro False has_sub_dps_intro False current_con 0
+2026-09-01 06:03:22,513 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.055s
+2026-09-01 06:03:23,059 INFO TaskExecutor Lucilla:Lucilla energy full but liberation not castable, switch
+2026-09-01 06:03:23,062 INFO TaskExecutor BaseCombatTask:switch selection result current=Lucilla(SubDps) target=Hiyuki(MainDps) has_intro=False reason=support_buffs_active_return_to_main_dps
+2026-09-01 06:03:23,062 INFO TaskExecutor BaseCombatTask:switch_next_char Lucilla(SubDps) -> Hiyuki(MainDps) has_intro False has_sub_dps_intro False current_con 0.0
+2026-09-01 06:03:23,167 INFO TaskExecutor globals:yolo_model Using OpenVinoYolo8Detect
+2026-09-01 06:03:24,046 INFO TaskExecutor OpenVinoYolo8Detect:OpenVINO model compiled successfully for CPU 640x640.
+2026-09-01 06:03:24,137 INFO TaskExecutor CombatCheck:target lost try retarget 3
+2026-09-01 06:03:27,153 ERROR TaskExecutor CombatCheck:target_enemy failed, try recheck break out of combat 
+2026-09-01 06:03:27,153 ERROR TaskExecutor BaseCombatTask:combat check not in combat 
+2026-09-01 06:03:27,171 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:03:27,238 INFO TaskExecutor FarmEchoTask:raise_not_in_combat char dead
+2026-09-01 06:03:27,239 INFO TaskExecutor FarmEchoTask:info_set Revive Failed
+2026-09-01 06:03:27,243 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 103, in run
+    return self.do_run()
+           ^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 198, in do_run
+    self.combat_once(wait_combat_time=5, raise_if_not_found=False)
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\BaseCombatTask.py", line 387, in combat_once
+    raise e
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\BaseCombatTask.py", line 385, in combat_once
+    self.get_current_char().perform()
+  File "D:\ark\okww\data\apps\ok-ww\working\src\char\BaseChar.py", line 228, in perform
+    self.do_perform()
+  File "D:\ark\okww\data\apps\ok-ww\working\src\char\Lucilla.py", line 22, in do_perform
+    self.switch_next_char()
+  File "D:\ark\okww\data\apps\ok-ww\working\src\char\BaseChar.py", line 355, in switch_next_char
+    self.task.switch_next_char(self, post_action=post_action, free_intro=free_intro,
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\BaseCombatTask.py", line 618, in switch_next_char
+    self.check_combat()
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\BaseCombatTask.py", line 797, in check_combat
+    self.raise_not_in_combat('combat check not in combat')
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\BaseCombatTask.py", line 328, in raise_not_in_combat
+    raise exception_type(message)
+src.task.BaseCombatTask.CharDeadException: combat check not in combat
+
+2026-09-01 06:03:27,263 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:03:28,759 INFO TaskExecutor TaskExecutor:wait_until timeout <bound method BaseWWTask.has_claim of <src.task.FarmEchoTask.FarmEchoTask object at 0x000001BE3EA639B0>> 1.5 seconds
+2026-09-01 06:03:28,766 ERROR TaskExecutor DailyTask:run_task_by_class <class 'src.task.FarmEchoTask.FarmEchoTask'> Traceback (most recent call last):
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\task.py", line 1116, in run_task_by_class
+    task.run()
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 103, in run
+    return self.do_run()
+           ^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 198, in do_run
+    self.combat_once(wait_combat_time=5, raise_if_not_found=False)
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\BaseCombatTask.py", line 387, in combat_once
+    raise e
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\BaseCombatTask.py", line 385, in combat_once
+    self.get_current_char().perform()
+  File "D:\ark\okww\data\apps\ok-ww\working\src\char\BaseChar.py", line 228, in perform
+    self.do_perform()
+  File "D:\ark\okww\data\apps\ok-ww\working\src\char\Lucilla.py", line 22, in do_perform
+    self.switch_next_char()
+  File "D:\ark\okww\data\apps\ok-ww\working\src\char\BaseChar.py", line 355, in switch_next_char
+    self.task.switch_next_char(self, post_action=post_action, free_intro=free_intro,
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\BaseCombatTask.py", line 618, in switch_next_char
+    self.check_combat()
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\BaseCombatTask.py", line 797, in check_combat
+    self.raise_not_in_combat('combat check not in combat')
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\BaseCombatTask.py", line 328, in raise_not_in_combat
+    raise exception_type(message)
+src.task.BaseCombatTask.CharDeadException: combat check not in combat
+
+2026-09-01 06:03:28,774 INFO TaskExecutor DailyTask:info_set 错误 combat check not in combat
+2026-09-01 06:03:28,788 ERROR TaskExecutor TaskExecutor:📅 Daily Task exception stopped Traceback (most recent call last):
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\TaskExecutor.py", line 607, in execute
+    task.run()
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\DailyTask.py", line 123, in run
+    self.run_additional_tasks()
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\DailyTask.py", line 176, in run_additional_tasks
+    self.run_task_by_class(FarmEchoTask)
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\task.py", line 1120, in run_task_by_class
+    raise e
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\task.py", line 1116, in run_task_by_class
+    task.run()
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 103, in run
+    return self.do_run()
+           ^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 198, in do_run
+    self.combat_once(wait_combat_time=5, raise_if_not_found=False)
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\BaseCombatTask.py", line 387, in combat_once
+    raise e
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\BaseCombatTask.py", line 385, in combat_once
+    self.get_current_char().perform()
+  File "D:\ark\okww\data\apps\ok-ww\working\src\char\BaseChar.py", line 228, in perform
+    self.do_perform()
+  File "D:\ark\okww\data\apps\ok-ww\working\src\char\Lucilla.py", line 22, in do_perform
+    self.switch_next_char()
+  File "D:\ark\okww\data\apps\ok-ww\working\src\char\BaseChar.py", line 355, in switch_next_char
+    self.task.switch_next_char(self, post_action=post_action, free_intro=free_intro,
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\BaseCombatTask.py", line 618, in switch_next_char
+    self.check_combat()
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\BaseCombatTask.py", line 797, in check_combat
+    self.raise_not_in_combat('combat check not in combat')
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\BaseCombatTask.py", line 328, in raise_not_in_combat
+    raise exception_type(message)
+src.task.BaseCombatTask.CharDeadException: combat check not in combat
+
+2026-09-01 06:03:28,789 INFO TaskExecutor AutoCombatTask:warm_up_char_features loaded 59 character templates
+2026-09-01 06:03:28,813 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:03:28,872 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 06:03:28,938 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json

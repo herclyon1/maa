@@ -1,0 +1,241 @@
+2026-09-01 10:58:40,187 INFO MainThread ok:ok-script init v3.6.6, ['D:\\ark\\okww\\data\\apps\\ok-ww\\working\\main.py', '-t', '1', '-e'], pid=15604 config: {'debug': False, 'custom_tasks': True, 'gui': {'type': 'qt'}, 'config_folder': 'configs', 'blur_area': <function blur_area at 0x000001CB7EFDBF60>, 'gui_icon': 'icons/icon.png', 'global_configs': [<ok.util.config.ConfigOption object at 0x000001CB65E93E00>, <ok.util.config.ConfigOption object at 0x000001CB65E93E30>, <ok.util.config.ConfigOption object at 0x000001CB67D61A90>], 'custom_tabs': [['src.gui.CharacterCodeTab', 'CharacterCodeTab']], 'ocr': {'lib': 'onnxocr', 'auto_simplify': True, 'params': {'use_openvino': True, 'use_npu': True}}, 'my_app': ['src.globals', 'Globals'], 'start_timeout': 120, 'wait_until_settle_time': 0, 'template_matching': {'coco_feature_json': 'assets\\coco_annotations.json', 'default_horizontal_variance': 0.002, 'default_vertical_variance': 0.002, 'default_threshold': 0.8, 'feature_processor': <function process_feature at 0x000001CB67D316C0>, 'vcenter_features': ['monthly_card', 'skip_dialog_check'], 'hcenter_features': ['monthly_card', 'suisui_forte3', 'message_dialog', 'claim_stamina_sign', 'skip_dialog_check', 'login_close', 'garden_confirm', 'garden_continue_game', 'garden_unpause', 'garden_get_gold', 'garden_get_purple', 'garden_get_skip', 'garden_not_interested_confirm', 'garden_not_interested', 'a_garden_back', 'garden_get_confirm_gray', 'the_garden_max', 'garden_shop_close', 'garden_new_stage', 'a_garden_restart', 'suisui_forte2', 'suisui_e1', 'e_forte', 'f_break_full']}, 'windows': {'top_hwnd_class': [re.compile('CAgreementDlg'), re.compile('CLoginDlg_P_'), 'CefBrowserWindow', 'Chrome_RenderWidgetHostHWND', '#32770', re.compile('CNativeLoginDlg'), 'Static', 'ComboBox', 'ComboLBox', 'Button'], 'calculate_pc_exe_path': <function calculate_pc_exe_path at 0x000001CB7EFDBEC0>, 'exe': 'Client-Win64-Shipping.exe', 'hwnd_class': 'UnrealWindow', 'interaction': 'PostMessage', 'capture_method': ['WGC', 'BitBlt_RenderFull'], 'check_hdr': False, 'force_no_hdr': False, 'check_night_light': True, 'force_no_night_light': False}, 'window_size': {'width': 1200, 'height': 800, 'min_width': 1200, 'min_height': 800}, 'supported_resolution': {'ratio': '16:9', 'resize_to': [(2560, 1440), (1920, 1080), (1600, 900), (1280, 720)], 'min_size': (1280, 720)}, 'links': {'default': {'github': 'https://github.com/ok-oldking/ok-wuthering-waves', 'discord': 'https://discord.gg/vVyCatEBgA', 'download': 'https://ok-script.com/ok-ww', 'sponsor': 'https://patreon.com/ok_oldking', 'share': 'Download OK-WW from https://ok-script.com/ok-ww', 'faq': 'https://ok-script.com/ok-ww/'}, 'zh_CN': {'github': 'https://github.com/ok-oldking/ok-wuthering-waves', 'discord': 'https://discord.gg/vVyCatEBgA', 'sponsor': 'https://afdian.com/a/ok-oldking', 'share': '下载okww https://ok-script.com/ok-ww', 'faq': 'https://ok-script.com/ok-ww', 'qq_group': 'https://qm.qq.com/q/SUQpIpmq4', 'qq_channel': 'https://pd.qq.com/s/djmm6l44y'}}, 'about': '\n    <p style="color:red;">\n    <strong>本软件是免费开源的。</strong> 如果你被收费，请立即退款。请访问QQ频道或GitHub下载最新的官方版本。\n    </p>\n    <p style="color:red;">\n        <strong>本软件仅供个人使用，用于学习Python编程、计算机视觉、UI自动化等。</strong> 请勿将其用于任何营利性或商业用途。\n    </p>\n    <p style="color:red;">\n        <strong>使用本软件可能会导致账号被封。</strong> 请在了解风险后再使用。\n    </p>\n', 'screenshots_folder': 'screenshots', 'gui_title': 'OK-WW', 'log_file': 'logs/ok-ww.log', 'error_log_file': 'logs/ok-ww_error.log', 'launcher_log_file': 'logs/launcher.log', 'launcher_error_log_file': 'logs/launcher_error.log', 'version': 'v3.6.6', 'onetime_tasks': [['src.task.DailyTask', 'DailyTask'], ['src.task.FarmEchoTask', 'FarmEchoTask'], ['src.task.NightmareNestTask', 'NightmareNestTask'], ['src.task.TacetTask', 'TacetTask'], ['src.task.ForgeryTask', 'ForgeryTask'], ['src.task.SimulationTask', 'SimulationTask'], ['src.task.MultiAccountDailyTask', 'MultiAccountDailyTask'], ['src.task.MergeEchoTask', 'MergeEchoTask'], ['src.task.EnhanceEchoTask', 'EnhanceEchoTask'], ['src.task.ChangeEchoTask', 'ChangeEchoTask'], ['src.task.GardenTask', 'GardenTask']], 'trigger_tasks': [['src.task.AutoCombatTask', 'AutoCombatTask'], ['src.task.AutoPickTask', 'AutoPickTask'], ['src.task.AutoLoginTask', 'AutoLoginTask'], ['src.task.SkipDialogTask', 'AutoDialogTask'], ['src.task.FastTravelTask', 'FastTravelTask'], ['src.task.MouseResetTask', 'MouseResetTask']], 'scene': ['src.scene.WWScene', 'WWScene'], 'update_pyappify': {'to_version': '1.2.3', 'zip_url': 'https://github.com/ok-oldking/ok-wuthering-waves/releases/download/v3.5.30/ok-ww-win32.zip', 'sha256': '447207edbfb6944beb994347048e155df99775eb18c87dcae54dda125071c94a'}, 'profile': 'China'}
+2026-09-01 10:58:40,187 INFO MainThread ok:pyappify  app_version:v3.6.6, app_profile:China, pyappify_version:1.2.3 pyappify_upgradeable:True, pyappify_executable:D:\ark\okww\ok-ww.exe
+2026-09-01 10:58:40,205 INFO MainThread capture:check available WINDOWS_BUILD_NUMBER:26200 >= 20348 True
+2026-09-01 10:58:40,541 INFO MainThread ok:use_dml result is True
+2026-09-01 10:58:40,542 INFO MainThread ok:SetProcessDpiAwareness 0
+2026-09-01 10:58:40,556 INFO MainThread ok:do_init, config: {'debug': False, 'custom_tasks': True, 'gui': {'type': 'qt'}, 'config_folder': 'configs', 'blur_area': <function blur_area at 0x000001CB7EFDBF60>, 'gui_icon': 'icons/icon.png', 'global_configs': [<ok.util.config.ConfigOption object at 0x000001CB65E93E00>, <ok.util.config.ConfigOption object at 0x000001CB65E93E30>, <ok.util.config.ConfigOption object at 0x000001CB67D61A90>], 'custom_tabs': [['src.gui.CharacterCodeTab', 'CharacterCodeTab']], 'ocr': {'lib': 'onnxocr', 'auto_simplify': True, 'params': {'use_openvino': True, 'use_npu': True}}, 'my_app': ['src.globals', 'Globals'], 'start_timeout': 120, 'wait_until_settle_time': 0, 'template_matching': {'coco_feature_json': 'assets\\coco_annotations.json', 'default_horizontal_variance': 0.002, 'default_vertical_variance': 0.002, 'default_threshold': 0.8, 'feature_processor': <function process_feature at 0x000001CB67D316C0>, 'vcenter_features': ['monthly_card', 'skip_dialog_check'], 'hcenter_features': ['monthly_card', 'suisui_forte3', 'message_dialog', 'claim_stamina_sign', 'skip_dialog_check', 'login_close', 'garden_confirm', 'garden_continue_game', 'garden_unpause', 'garden_get_gold', 'garden_get_purple', 'garden_get_skip', 'garden_not_interested_confirm', 'garden_not_interested', 'a_garden_back', 'garden_get_confirm_gray', 'the_garden_max', 'garden_shop_close', 'garden_new_stage', 'a_garden_restart', 'suisui_forte2', 'suisui_e1', 'e_forte', 'f_break_full']}, 'windows': {'top_hwnd_class': [re.compile('CAgreementDlg'), re.compile('CLoginDlg_P_'), 'CefBrowserWindow', 'Chrome_RenderWidgetHostHWND', '#32770', re.compile('CNativeLoginDlg'), 'Static', 'ComboBox', 'ComboLBox', 'Button'], 'calculate_pc_exe_path': <function calculate_pc_exe_path at 0x000001CB7EFDBEC0>, 'exe': 'Client-Win64-Shipping.exe', 'hwnd_class': 'UnrealWindow', 'interaction': 'PostMessage', 'capture_method': ['WGC', 'BitBlt_RenderFull'], 'check_hdr': False, 'force_no_hdr': False, 'check_night_light': True, 'force_no_night_light': False, 'start_exe': True, 'start_method': 'start'}, 'window_size': {'width': 1200, 'height': 800, 'min_width': 1200, 'min_height': 800}, 'supported_resolution': {'ratio': '16:9', 'resize_to': [(2560, 1440), (1920, 1080), (1600, 900), (1280, 720)], 'min_size': (1280, 720)}, 'links': {'default': {'github': 'https://github.com/ok-oldking/ok-wuthering-waves', 'discord': 'https://discord.gg/vVyCatEBgA', 'download': 'https://ok-script.com/ok-ww', 'sponsor': 'https://patreon.com/ok_oldking', 'share': 'Download OK-WW from https://ok-script.com/ok-ww', 'faq': 'https://ok-script.com/ok-ww/'}, 'zh_CN': {'github': 'https://github.com/ok-oldking/ok-wuthering-waves', 'discord': 'https://discord.gg/vVyCatEBgA', 'sponsor': 'https://afdian.com/a/ok-oldking', 'share': '下载okww https://ok-script.com/ok-ww', 'faq': 'https://ok-script.com/ok-ww', 'qq_group': 'https://qm.qq.com/q/SUQpIpmq4', 'qq_channel': 'https://pd.qq.com/s/djmm6l44y'}}, 'about': '\n    <p style="color:red;">\n    <strong>本软件是免费开源的。</strong> 如果你被收费，请立即退款。请访问QQ频道或GitHub下载最新的官方版本。\n    </p>\n    <p style="color:red;">\n        <strong>本软件仅供个人使用，用于学习Python编程、计算机视觉、UI自动化等。</strong> 请勿将其用于任何营利性或商业用途。\n    </p>\n    <p style="color:red;">\n        <strong>使用本软件可能会导致账号被封。</strong> 请在了解风险后再使用。\n    </p>\n', 'screenshots_folder': 'screenshots', 'gui_title': 'OK-WW', 'log_file': 'logs/ok-ww.log', 'error_log_file': 'logs/ok-ww_error.log', 'launcher_log_file': 'logs/launcher.log', 'launcher_error_log_file': 'logs/launcher_error.log', 'version': 'v3.6.6', 'onetime_tasks': [['src.task.DailyTask', 'DailyTask'], ['src.task.FarmEchoTask', 'FarmEchoTask'], ['src.task.NightmareNestTask', 'NightmareNestTask'], ['src.task.TacetTask', 'TacetTask'], ['src.task.ForgeryTask', 'ForgeryTask'], ['src.task.SimulationTask', 'SimulationTask'], ['src.task.MultiAccountDailyTask', 'MultiAccountDailyTask'], ['src.task.MergeEchoTask', 'MergeEchoTask'], ['src.task.EnhanceEchoTask', 'EnhanceEchoTask'], ['src.task.ChangeEchoTask', 'ChangeEchoTask'], ['src.task.GardenTask', 'GardenTask']], 'trigger_tasks': [['src.task.AutoCombatTask', 'AutoCombatTask'], ['src.task.AutoPickTask', 'AutoPickTask'], ['src.task.AutoLoginTask', 'AutoLoginTask'], ['src.task.SkipDialogTask', 'AutoDialogTask'], ['src.task.FastTravelTask', 'FastTravelTask'], ['src.task.MouseResetTask', 'MouseResetTask']], 'scene': ['src.scene.WWScene', 'WWScene'], 'update_pyappify': {'to_version': '1.2.3', 'zip_url': 'https://github.com/ok-oldking/ok-wuthering-waves/releases/download/v3.5.30/ok-ww-win32.zip', 'sha256': '447207edbfb6944beb994347048e155df99775eb18c87dcae54dda125071c94a'}, 'profile': 'China'}
+2026-09-01 10:58:40,845 INFO MainThread DeviceManager:__init__ start
+2026-09-01 10:58:40,853 INFO MainThread hwnd_window:HwndWindow init title:None player_id:-1 exe_name:['Client-Win64-Shipping.exe'] hwnd_class:UnrealWindow top_hwnd_class:[re.compile('CAgreementDlg'), re.compile('CLoginDlg_P_'), 'CefBrowserWindow', 'Chrome_RenderWidgetHostHWND', '#32770', re.compile('CNativeLoginDlg'), 'Static', 'ComboBox', 'ComboLBox', 'Button']
+2026-09-01 10:58:40,856 INFO MainThread DeviceManager:__init__ end
+2026-09-01 10:58:40,929 INFO MainThread TaskExecutor:install ocr translations error for en_US
+2026-09-01 10:58:40,929 INFO DefaultOCRInit TaskExecutor:start init default ocr
+2026-09-01 10:58:40,965 INFO screenshot screenshot:remove_old_files D:\ark\okww\data\apps\ok-ww\working\screenshots
+2026-09-01 10:58:41,893 INFO DefaultOCRInit TaskExecutor:init onnxocr {'use_openvino': True, 'use_npu': True}
+2026-09-01 10:58:41,914 INFO DefaultOCRInit TaskExecutor:use_openvino: True
+2026-09-01 10:58:41,914 INFO DefaultOCRInit TaskExecutor:use_npu: True
+2026-09-01 10:58:41,914 INFO DefaultOCRInit TaskExecutor:use_angle_cls: False
+2026-09-01 10:58:41,914 INFO DefaultOCRInit TaskExecutor:det_model_dir: D:\ark\okww\data\apps\ok-ww\python\Lib\site-packages\onnxocr\models\ppocrv5\det\det.onnx
+2026-09-01 10:58:41,914 INFO DefaultOCRInit TaskExecutor:rec_model_dir: D:\ark\okww\data\apps\ok-ww\python\Lib\site-packages\onnxocr\models\ppocrv5\rec\rec.onnx
+2026-09-01 10:58:41,914 INFO DefaultOCRInit TaskExecutor:rec_image_shape: 3, 48, 320
+2026-09-01 10:58:43,109 INFO MainThread app:translator install success <PySide6.QtCore.QLocale()/* Chinese, Simplified Han, China */ at 0x000001CB0B72FDC0>, 开发工具
+2026-09-01 10:58:43,110 INFO MainThread TaskExecutor:install ocr translations error for zh_CN
+2026-09-01 10:58:43,715 INFO DefaultOCRInit TaskExecutor:openvino cache_dir: D:\ark\okww\data\apps\ok-ww\working\cache\openvino
+2026-09-01 10:58:43,931 INFO MainThread task_manager:Found tasks: []
+2026-09-01 10:58:43,938 INFO MainThread task_manager:Debug file watcher initialized, watching dirs ['D:\\ark\\okww\\data\\apps\\ok-ww\\working\\ok_tasks']
+2026-09-01 10:58:43,938 INFO MainThread ok:do_init, end
+2026-09-01 10:58:43,938 INFO MainThread ok:OK start id:1973099769120 pid:15604
+2026-09-01 10:58:44,289 INFO DefaultOCRInit TaskExecutor:openvino core.available_devices ['CPU', 'GPU']
+2026-09-01 10:58:44,311 INFO MainThread MainWindow:main window __init__
+2026-09-01 10:58:44,341 INFO MainThread MainWindow:Refresh primary button color: #00689b
+2026-09-01 10:58:45,842 INFO DefaultOCRInit TaskExecutor:openvino async infer requests: 1
+2026-09-01 10:58:45,847 INFO DefaultOCRInit TaskExecutor:openvino cache_dir: D:\ark\okww\data\apps\ok-ww\working\cache\openvino
+2026-09-01 10:58:45,860 INFO DefaultOCRInit TaskExecutor:openvino core.available_devices ['CPU', 'GPU']
+2026-09-01 10:58:46,028 INFO MainThread ok:translation installed for zh_CN
+2026-09-01 10:58:46,498 INFO DefaultOCRInit TaskExecutor:openvino async infer requests: 1
+2026-09-01 10:58:46,607 INFO DefaultOCRInit TaskExecutor:ocr_lib init <onnxocr.onnx_paddleocr.ONNXPaddleOcr object at 0x000001CB0A701880> onnxocr, result: use_npu=True, test_ocr=[[[[[17.0, 41.0], [327.0, 44.0], [326.0, 134.0], [16.0, 131.0]], ('okscript', 0.9995973110198975)]]]
+2026-09-01 10:58:46,607 INFO DefaultOCRInit TaskExecutor:default ocr init end, result: use_npu=True, test_ocr=[[[[[17.0, 41.0], [327.0, 44.0], [326.0, 134.0], [16.0, 131.0]], ('okscript', 0.9995973110198975)]]], cost: 5.68s
+2026-09-01 10:58:47,326 INFO MainThread Loaded 0 tasks from cache
+2026-09-01 10:58:47,461 INFO MainThread Windows Task Scheduler COM service initialized, root=\OK-WW
+2026-09-01 10:58:47,462 INFO MainThread Saved 0 tasks to cache
+2026-09-01 10:58:47,463 INFO MainThread ScheduleTaskTab:Loaded 0 tasks
+2026-09-01 10:58:48,149 INFO MainThread UpdateCard:initialized current_version='v3.6.6', pyappify_module='D:\\ark\\okww\\data\\apps\\ok-ww\\working\\pyappify\\__init__.py', pyappify_app_version='v3.6.6', test_mode=False
+2026-09-01 10:58:48,171 INFO MainThread pyappify_startup:get_startup_version_change from_version=v3.6.6-beta.1, to_version=v3.6.6, is_updated=False, is_downgraded=False
+2026-09-01 10:58:48,881 INFO MainThread MainWindow:main window __init__ done
+2026-09-01 10:58:48,931 INFO MainThread ok:Attempting to minimize window for process with PID: 7552
+2026-09-01 10:58:48,942 INFO MainThread ok:pyappify no need to upgrade True 1.2.3 447207edbfb6944beb994347048e155df99775eb18c87dcae54dda125071c94a ['https://github.com/ok-oldking/ok-wuthering-waves/releases/download/v3.5.30/ok-ww-win32.zip']
+2026-09-01 10:58:48,942 INFO MainThread MainWindow:Window has fully displayed
+2026-09-01 10:58:48,942 INFO MainThread ok:start runtime with task param 0 True
+2026-09-01 10:58:48,942 INFO MainThread MainWindow:MainWindow showEvent Kill Launcher After Start
+2026-09-01 10:58:48,942 INFO ok.core.start_controller start_controller:enable param task <src.task.DailyTask.DailyTask object at 0x000001CB0C158560>
+2026-09-01 10:58:48,943 INFO PyAppifyShutdown ok:Attempting to terminate process with PID: 7552
+2026-09-01 10:58:48,943 INFO ok.core.start_controller start_controller:do_start: call do_refresh True
+2026-09-01 10:58:48,943 INFO MainThread pyappify_startup:get_startup_version_change from_version=v3.6.6-beta.1, to_version=v3.6.6, is_updated=False, is_downgraded=False
+2026-09-01 10:58:48,944 INFO MainThread MainWindow:update success, show copyright
+2026-09-01 10:58:48,948 INFO MainThread MainWindow:schedule pyappify update check in 30000ms
+2026-09-01 10:58:48,964 INFO PyAppifyShutdown ok:_wait_for_process_exit success 7552
+2026-09-01 10:58:48,967 INFO MainThread ok:app.exec()
+2026-09-01 10:58:48,977 INFO ok.core.start_controller DeviceManager:update_pc_device pc_device: {'address': '', 'imei': 'pc', 'device': 'windows', 'model': '', 'nick': 'Client-Win64-Shipping.exe', 'width': 0, 'height': 0, 'hwnd': 'Client-Win64-Shipping.exe', 'capture': 'windows', 'connected': False, 'full_path': 'D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe', 'real_hwnd': 0, 'exe': ['Client-Win64-Shipping.exe']}
+2026-09-01 10:58:48,977 INFO ok.core.start_controller DeviceManager:first start use first or connected device {'address': '', 'imei': 'pc', 'device': 'windows', 'model': '', 'nick': 'Client-Win64-Shipping.exe', 'width': 0, 'height': 0, 'hwnd': 'Client-Win64-Shipping.exe', 'capture': 'windows', 'connected': False, 'full_path': 'D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe', 'real_hwnd': 0, 'exe': ['Client-Win64-Shipping.exe']}
+2026-09-01 10:58:48,977 INFO ok.core.start_controller DeviceManager:preferred device did change pc
+2026-09-01 10:58:48,979 INFO ok.core.start_controller start_controller:start_device: {'address': '', 'imei': 'pc', 'device': 'windows', 'model': '', 'nick': 'Client-Win64-Shipping.exe', 'width': 0, 'height': 0, 'hwnd': 'Client-Win64-Shipping.exe', 'capture': 'windows', 'connected': False, 'full_path': 'D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe', 'real_hwnd': 0, 'exe': ['Client-Win64-Shipping.exe']}
+2026-09-01 10:58:48,980 INFO ok.core.start_controller DeviceManager:calculate_pc_exe_path caller path D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe, result D:\Wuthering Waves Game\Wuthering Waves.exe
+2026-09-01 10:58:48,982 INFO RefreshAdb capture:check available WINDOWS_BUILD_NUMBER:26200 >= 20348 True
+2026-09-01 10:58:48,982 WARNING RefreshAdb windows_graphics:start_or_stop not self.hwnd_window.exists
+2026-09-01 10:58:48,982 INFO RefreshAdb windows_graphics:destroy windows capture
+2026-09-01 10:58:48,982 WARNING RefreshAdb windows_graphics:start_or_stop not self.hwnd_window.exists
+2026-09-01 10:58:48,982 INFO RefreshAdb windows_graphics:destroy windows capture
+2026-09-01 10:58:48,982 WARNING RefreshAdb windows_graphics:start_or_stop not self.hwnd_window.exists
+2026-09-01 10:58:48,982 INFO RefreshAdb windows_graphics:destroy windows capture
+2026-09-01 10:58:48,982 INFO RefreshAdb windows_graphics:destroy windows capture
+2026-09-01 10:58:48,982 INFO RefreshAdb update:use BitBlt_RenderFull capture render_full: True
+2026-09-01 10:58:48,982 INFO RefreshAdb DeviceManager:capture method <class 'ok.device.capture_methods.bitblt.BitBltCaptureMethod'>
+2026-09-01 10:58:48,995 INFO ok.core.start_controller start_controller:starting game D:\Wuthering Waves Game\Wuthering Waves.exe
+2026-09-01 10:58:48,995 INFO ok.core.start_controller process:try execute D:\Wuthering Waves Game\Wuthering Waves.exe None with start
+2026-09-01 10:58:49,330 INFO MainThread pyappify_startup:get_startup_version_change from_version=v3.6.6-beta.1, to_version=v3.6.6, is_updated=False, is_downgraded=False
+2026-09-01 10:58:49,942 INFO global MainWindow:Window geometry updated in ok_config {'window_x': 360, 'window_y': 116, 'window_width': 1200, 'window_height': 800, 'window_maximized': False, 'navigation_expanded': True, 'use_overlay': False}
+2026-09-01 10:59:18,950 INFO pyappify-update UpdateCard:calling pyappify.get_version_list(release_only=True)
+2026-09-01 10:59:20,065 INFO ok.core.start_controller hwnd_window:do_update_window_size hwnd changed from 0 to 132602 top 132602 D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe UnrealWindow real:0,0,1920,1080
+2026-09-01 10:59:20,621 INFO ok.core.start_controller hwnd_window:hwnd changed,connected:1
+2026-09-01 10:59:20,621 INFO ok.core.start_controller hwnd_window:do_update_window_size changed,visible:False,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-01 10:59:20,622 INFO ok.core.start_controller start_controller:waiting for started window to stabilize, current size 1920x1080
+2026-09-01 10:59:21,187 INFO pyappify-update UpdateCard:pyappify.get_version_list(release_only=True) result=[{'version': 'v3.6.6', 'previous_version': 'v3.6.5', 'update_note': ['chore(deps): upgrade ok-script to 2.0.5 (ok-oldking)', 'fix(workshop): sanitize team URLs and log requests (ok-oldking)']}, {'version': 'v3.6.5', 'previous_version': 'v3.6.4', 'update_note': ['fix(tacet): calibrate book scroll header and add closed-loop retry for #1599 (#1605) (EEEEEEEEdison)', 'fix(qingxiao): 修复大招前 h2 不开,增加 h2 释放保护与轮询保护 R 释放 (#1604) (EEEEEEEEdison)', 'refactor: 赞妮/菲比/漂泊者 v23 适配上游 3.6.4 base（char-only） (#1603) (EEEEEEEEdison)']}, {'version': 'v3.6.4', 'previous_version': 'v3.5.32', 'update_note': ['修复测试 (ok-oldking)', '更新ok-script版本 (ok-oldking)', '适配3.6跳任务 (ok-oldking)', '支持清霄 (ok-oldking)', 'Reorganize team controls and add team deletion translations (ok-oldking)', 'Add custom team deletion (ok-oldking)', 'Handle unreadable custom team folders gracefully (ok-oldking)', 'Fix Rover wind form initialization (ok-oldking)', '适配合成声骸UI改变 (ok-oldking)', 'fix: 迁移漂泊者为 Rover 并刷新形态日志 (#1582) (EEEEEEEEdison)']}, {'version': 'v3.5.32', 'previous_version': 'v3.5.31', 'update_note': ['修复缺少DLL启动报错 (ok-oldking)', '优化自定义队伍ui (ok-oldking)', '更新自定义角色代码添加工坊 (ok-oldking)', '优化梦魇聚落：未拾取声骸时重新传送回当前聚落保底 (#1572) (EEEEEEEEdison)', '更新夸克下载链接 (ok-oldking)', 'Update docs.yml (ok-oldking)']}, {'version': 'v3.5.31', 'previous_version': 'v3.5.30', 'update_note': ['设置升级启动器 (ok-oldking)', '修复依赖版本错误 (ok-oldking)']}, {'version': 'v3.5.30', 'previous_version': 'v3.5.29', 'update_note': ['优化ui (ok-oldking)']}, {'version': 'v3.5.29', 'previous_version': 'v3.5.28', 'update_note': ['旧版启动器不再检查升级 (ok-oldking)']}, {'version': 'v3.5.28', 'previous_version': None, 'update_note': ['更新ok-script版本 (ok-oldking)', 'add website to pyappify (ok-oldking)', 'reduce package size']}]
+2026-09-01 10:59:21,191 INFO MainThread UpdateCard:loaded 8 valid versions into selector: ['v3.6.6', 'v3.6.5', 'v3.6.4', 'v3.5.32', 'v3.5.31', 'v3.5.30', 'v3.5.29', 'v3.5.28']
+2026-09-01 10:59:21,192 INFO MainThread UpdateCard:update_available=False, current_version='v3.6.6', newest_update_index=None
+2026-09-01 10:59:22,656 INFO ok.core.start_controller start_controller:started window size stable for 2s: 1920x1080
+2026-09-01 10:59:22,657 INFO ok.core.start_controller DeviceManager:update_pc_device pc_device: {'address': '', 'imei': 'pc_132602', 'device': 'windows', 'model': '', 'nick': '鸣潮  ', 'width': 1920, 'height': 1080, 'hwnd': '鸣潮  ', 'capture': 'windows', 'connected': True, 'full_path': 'D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe', 'real_hwnd': 132602, 'exe': ['Client-Win64-Shipping.exe']}
+2026-09-01 10:59:22,657 INFO ok.core.start_controller DeviceManager:first start use first or connected device {'address': '', 'imei': 'pc_132602', 'device': 'windows', 'model': '', 'nick': '鸣潮  ', 'width': 1920, 'height': 1080, 'hwnd': '鸣潮  ', 'capture': 'windows', 'connected': True, 'full_path': 'D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe', 'real_hwnd': 132602, 'exe': ['Client-Win64-Shipping.exe'], 'resolution': '1920x1080'}
+2026-09-01 10:59:22,657 INFO ok.core.start_controller DeviceManager:preferred device did change pc_132602
+2026-09-01 10:59:22,658 INFO ok.core.start_controller start_controller:test check_device_error msg: 鸣潮   is not connected, please select the game window.
+2026-09-01 10:59:22,663 ERROR ok.core.start_controller bitblt_utils:capture_by_bitblt invalid params: hwnd=0, w=1920, h=1080 
+2026-09-01 10:59:22,663 ERROR ok.core.start_controller start_controller:Game window is not connected BitBlt_True_0x0 
+2026-09-01 10:59:22,663 ERROR ok.core.start_controller start_controller:waiting for game to start error 鸣潮   is not connected, please select the game window. 
+2026-09-01 10:59:22,670 INFO RefreshAdb hwnd_window:do_update_window_size hwnd changed from 0 to 132602 top 132602 D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe UnrealWindow real:0,0,1920,1080
+2026-09-01 10:59:22,680 INFO RefreshAdb hwnd_window:hwnd changed,connected:1
+2026-09-01 10:59:22,680 INFO RefreshAdb hwnd_window:do_update_window_size changed,visible:False,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-01 10:59:22,683 INFO RefreshAdb capture:check available WINDOWS_BUILD_NUMBER:26200 >= 20348 True
+2026-09-01 10:59:22,684 INFO RefreshAdb windows_graphics:start_or_stop start WGC capture
+2026-09-01 10:59:22,909 INFO RefreshAdb update:use WGC capture
+2026-09-01 10:59:22,910 INFO RefreshAdb DeviceManager:capture method <class 'ok.device.capture_methods.windows_graphics.WindowsGraphicsCaptureMethod'>
+2026-09-01 10:59:24,665 INFO ok.core.start_controller DeviceManager:update_pc_device pc_device: {'address': '', 'imei': 'pc_132602', 'device': 'windows', 'model': '', 'nick': '鸣潮  ', 'width': 1920, 'height': 1080, 'hwnd': '鸣潮  ', 'capture': 'windows', 'connected': True, 'full_path': 'D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe', 'real_hwnd': 132602, 'exe': ['Client-Win64-Shipping.exe']}
+2026-09-01 10:59:24,666 INFO ok.core.start_controller hwnd_window:do_update_window_size hwnd changed from 0 to 132602 top 132602 D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe UnrealWindow real:0,0,1920,1080
+2026-09-01 10:59:24,668 INFO ok.core.start_controller hwnd_window:hwnd changed,connected:1
+2026-09-01 10:59:24,671 INFO ok.core.start_controller hwnd_window:do_update_window_size changed,visible:False,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-01 10:59:24,671 INFO ok.core.start_controller capture:check available WINDOWS_BUILD_NUMBER:26200 >= 20348 True
+2026-09-01 10:59:28,719 WARNING ok.core.start_controller update:Windows Graphics Capture did not produce a frame within 1.5s
+2026-09-01 10:59:28,719 INFO ok.core.start_controller windows_graphics:destroy windows capture
+2026-09-01 10:59:28,746 INFO ok.core.start_controller update:use BitBlt_RenderFull capture render_full: True
+2026-09-01 10:59:28,746 INFO ok.core.start_controller windows_graphics:destroy windows capture
+2026-09-01 10:59:28,746 INFO ok.core.start_controller DeviceManager:capture method <class 'ok.device.capture_methods.bitblt.BitBltCaptureMethod'>
+2026-09-01 10:59:28,747 INFO ok.core.start_controller start_controller:test check_device_error msg: 鸣潮   is not connected, please select the game window.
+2026-09-01 10:59:38,619 INFO ok.core.start_controller start_controller:check_device_error: capturing frame (1920, 1080)
+2026-09-01 10:59:38,619 INFO ok.core.start_controller start_controller:check_device_error: checking feature_set size
+2026-09-01 10:59:38,619 INFO ok.core.start_controller FeatureSet:FeatureSet: Width and height changed from 0x0 to 1920x1080
+2026-09-01 10:59:38,620 INFO ok.core.start_controller start_controller:check_device_error: checking resolution
+2026-09-01 10:59:38,620 INFO ok.core.start_controller TaskExecutor:start check_frame_and_resolution
+2026-09-01 10:59:38,948 INFO ok.core.start_controller gpu_driver_settings:Windows HDR enabled: False (\\.\DISPLAY1: enabled=False, supported=False, bits=8)
+2026-09-01 10:59:38,968 INFO ok.core.start_controller gpu_driver_settings:NVIDIA filter profile in use: Unknown (NVIDIA filter profile slot not found for D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe)
+2026-09-01 10:59:39,229 INFO ok.core.start_controller gpu_driver_settings:NVIDIA Image Sharpening enabled: False
+2026-09-01 10:59:39,230 INFO ok.core.start_controller gpu_driver_settings:AMD image sharpening check skipped: ADLXPybind is not installed
+2026-09-01 10:59:39,435 INFO ok.core.start_controller gpu_driver_settings:NVIDIA RTX Dynamic Vibrance enabled: False
+2026-09-01 10:59:39,435 INFO ok.core.start_controller gpu_driver_settings:NVIDIA RTX HDR enabled: False (Windows HDR is not enabled)
+2026-09-01 10:59:39,435 INFO ok.core.start_controller gpu_driver_settings:GPU driver post-processing detected features: []
+2026-09-01 10:59:39,435 INFO ok.core.start_controller TaskExecutor:queued onetime_task 📅 Daily Task
+2026-09-01 10:59:39,436 INFO ok.core.start_controller start_controller:enabled task <src.task.DailyTask.DailyTask object at 0x000001CB0C158560>
+2026-09-01 10:59:39,439 INFO TaskExecutor TaskExecutor:start execute
+2026-09-01 10:59:39,439 INFO TaskExecutor TaskExecutor:executor is paused sleep
+2026-09-01 10:59:39,439 INFO TaskExecutor TaskExecutor:get queued onetime_task 📅 Daily Task
+2026-09-01 10:59:39,482 INFO TaskExecutor MouseResetTask:start mouse reset
+2026-09-01 10:59:39,994 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-09-01 10:59:40,012 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 10:59:40,055 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 10:59:40,076 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 10:59:40,101 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 10:59:40,259 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 10:59:55,869 ERROR TaskExecutor bitblt_utils:capture_by_bitblt exception: BitBlt failed 
+2026-09-01 11:00:13,179 INFO TaskExecutor DailyTask:wait_login Box(name='Labels.switch_account', x=1796, y=533, width=43, height=42, confidence=92) [点击连接_1.00]
+2026-09-01 11:00:31,339 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 11:00:31,443 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 11:00:32,543 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 11:00:32,565 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 11:00:32,620 WARNING TaskExecutor task:find_one:found [<Labels.confirm_btn_hcenter_vcenter: 'confirm_btn_hcenter_vcenter'>, <Labels.confirm_btn_highlight_hcenter_vcenter: 'confirm_btn_highlight_hcenter_vcenter'>] too many 2
+2026-09-01 11:00:32,821 INFO TaskExecutor DailyTask:left_click Labels.confirm_btn_hcenter_vcenter (1419, 678) after_sleep 2
+2026-09-01 11:00:45,688 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-09-01 11:00:45,688 INFO TaskExecutor DailyTask:open_daily
+2026-09-01 11:00:45,688 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-09-01 11:00:46,223 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-09-01 11:00:46,223 INFO TaskExecutor DailyTask:click f2 to open the book
+2026-09-01 11:00:50,286 INFO TaskExecutor DailyTask:send f2 key to open
+2026-09-01 11:00:50,334 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 11:00:50,353 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 11:00:51,402 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_quest', x=48, y=156, width=57, height=67, confidence=70)
+2026-09-01 11:00:53,805 INFO TaskExecutor DailyTask:left_click gray_book_quest (77, 190) after_sleep 1.5
+2026-09-01 11:00:56,844 INFO TaskExecutor DailyTask:info_set current daily progress 120
+2026-09-01 11:00:56,882 INFO TaskExecutor DailyTask:info_set total daily points 90
+2026-09-01 11:00:57,385 INFO TaskExecutor NightmareNestTask:opened gray_book_boss
+2026-09-01 11:00:57,385 INFO TaskExecutor NightmareNestTask:click f2 to open the book
+2026-09-01 11:00:58,450 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=86)
+2026-09-01 11:01:00,852 INFO TaskExecutor NightmareNestTask:left_click gray_book_boss (76, 321) after_sleep 1.5
+2026-09-01 11:01:02,353 INFO TaskExecutor NightmareNestTask:open_boss_book canxiang
+2026-09-01 11:01:03,155 INFO TaskExecutor NightmareNestTask:left_click canxiang (460, 896) after_sleep 2
+2026-09-01 11:01:06,374 INFO TaskExecutor NightmareNestTask:nightmare nest: 指定点位都已打满，跳过
+2026-09-01 11:01:06,374 INFO TaskExecutor DailyTask:Daily task completed, start teleport to farm 4C echo
+2026-09-01 11:01:06,899 INFO TaskExecutor FarmEchoTask:profile: Other {'combat_wait_time': 0, 'bypass_end_wait': False, 'treat_as_not_in_realm': False}
+2026-09-01 11:01:06,899 INFO TaskExecutor FarmEchoTask:in_realm: None
+2026-09-01 11:01:06,899 INFO TaskExecutor FarmEchoTask:info_set current task wait main esc=True
+2026-09-01 11:01:09,468 INFO TaskExecutor FarmEchoTask:info_set current task in main esc=True
+2026-09-01 11:01:09,468 INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0
+2026-09-01 11:01:09,468 INFO TaskExecutor FarmEchoTask:info_set current task wait main esc=True
+2026-09-01 11:01:09,996 INFO TaskExecutor FarmEchoTask:info_set current task in main esc=True
+2026-09-01 11:01:09,996 INFO TaskExecutor FarmEchoTask:click f2 to open the book
+2026-09-01 11:01:14,041 INFO TaskExecutor FarmEchoTask:send f2 key to open
+2026-09-01 11:01:15,099 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=86)
+2026-09-01 11:01:17,502 INFO TaskExecutor FarmEchoTask:left_click gray_book_boss (76, 321) after_sleep 1.5
+2026-09-01 11:01:19,003 INFO TaskExecutor FarmEchoTask:open_boss_book zhange
+2026-09-01 11:01:19,804 INFO TaskExecutor FarmEchoTask:left_click zhange (460, 658) after_sleep 2
+2026-09-01 11:01:22,536 INFO TaskExecutor FarmEchoTask:left_click boss_proceed (1824, 416) after_sleep 1
+2026-09-01 11:01:23,556 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 11:01:23,612 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 11:01:23,814 INFO TaskExecutor FeatureSet:find_one_feature gray_teleport took 203.58ms (check_size: 0.00ms, prepare: 203.08ms, match: 0.50ms, post: 0.00ms)
+2026-09-01 11:01:23,816 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 11:01:24,414 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：1/3_1.00, x60_0.78]
+2026-09-01 11:01:26,063 INFO TaskExecutor FarmEchoTask:left_click 推荐等级90 (281, 609) after_sleep 1
+2026-09-01 11:01:39,288 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_click_feature.<locals>.<lambda> at 0x000001CB0AB7F4C0> 10 seconds
+2026-09-01 11:01:39,518 INFO TaskExecutor FarmEchoTask:波片不足挡住开启挑战，点取消跳过本次周本
+2026-09-01 11:01:39,520 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 11:01:39,543 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-01 11:01:39,622 WARNING TaskExecutor task:find_one:found [<Labels.cancel_button_hcenter_vcenter: 'cancel_button_hcenter_vcenter'>, <Labels.cancel_button_highlight_hcenter_vcenter: 'cancel_button_highlight_hcenter_vcenter'>] too many 2
+2026-09-01 11:01:39,823 INFO TaskExecutor FarmEchoTask:left_click Labels.cancel_button_hcenter_vcenter (476, 679) after_sleep 2
+2026-09-01 11:01:42,826 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-09-01 11:01:47,430 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-09-01 11:01:47,430 INFO TaskExecutor DailyTask:open_daily
+2026-09-01 11:01:47,430 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-09-01 11:01:47,956 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-09-01 11:01:47,957 INFO TaskExecutor DailyTask:click f2 to open the book
+2026-09-01 11:01:52,002 INFO TaskExecutor DailyTask:send f2 key to open
+2026-09-01 11:01:53,073 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_quest', x=48, y=156, width=57, height=67, confidence=70)
+2026-09-01 11:01:55,475 INFO TaskExecutor DailyTask:left_click gray_book_quest (77, 190) after_sleep 1.5
+2026-09-01 11:01:58,507 INFO TaskExecutor DailyTask:info_set current daily progress 120
+2026-09-01 11:01:58,533 INFO TaskExecutor DailyTask:info_set total daily points 90
+2026-09-01 11:01:58,533 INFO TaskExecutor SimulationTask:info_set current task wait main esc=True
+2026-09-01 11:02:01,099 INFO TaskExecutor SimulationTask:info_set current task in main esc=True
+2026-09-01 11:02:01,099 INFO TaskExecutor SimulationTask:click f2 to open the book
+2026-09-01 11:02:05,142 INFO TaskExecutor SimulationTask:send f2 key to open
+2026-09-01 11:02:06,208 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=86)
+2026-09-01 11:02:08,610 INFO TaskExecutor SimulationTask:left_click gray_book_boss (76, 321) after_sleep 1.5
+2026-09-01 11:02:10,197 INFO TaskExecutor SimulationTask:info_set current_stamina 2
+2026-09-01 11:02:10,198 INFO TaskExecutor SimulationTask:info_set back_up_stamina 0
+2026-09-01 11:02:10,198 INFO TaskExecutor SimulationTask:not enough stamina
+2026-09-01 11:02:14,212 INFO TaskExecutor DailyTask:info_set current task claim daily
+2026-09-01 11:02:14,213 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-09-01 11:02:14,741 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-09-01 11:02:14,741 INFO TaskExecutor DailyTask:click f2 to open the book
+2026-09-01 11:02:18,794 INFO TaskExecutor DailyTask:send f2 key to open
+2026-09-01 11:02:19,860 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_quest', x=48, y=156, width=57, height=67, confidence=70)
+2026-09-01 11:02:22,077 INFO update_window_size hwnd_window:hwnd changed,connected:1
+2026-09-01 11:02:22,077 INFO update_window_size hwnd_window:do_update_window_size changed,visible:True,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-01 11:02:22,284 INFO TaskExecutor DailyTask:left_click gray_book_quest (77, 190) after_sleep 1.5
+2026-09-01 11:02:23,820 INFO TaskExecutor DailyTask:claim daily reward via  coordinate
+2026-09-01 11:02:25,022 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-09-01 11:02:29,645 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-09-01 11:02:29,646 INFO TaskExecutor DailyTask:info_set current task claim mail
+2026-09-01 11:02:32,422 INFO update_window_size hwnd_window:hwnd changed,connected:1
+2026-09-01 11:02:32,422 INFO update_window_size hwnd_window:do_update_window_size changed,visible:False,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-01 11:02:33,560 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-09-01 11:02:38,173 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-09-01 11:02:39,174 INFO TaskExecutor DailyTask:battle pass
+2026-09-01 11:02:52,561 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-09-01 11:02:55,122 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-09-01 11:02:55,122 INFO TaskExecutor DailyTask:Daily Task Completed
+2026-09-01 11:02:55,124 INFO TaskExecutor TaskExecutor:Successfully Executed Task, Exiting Game and App!
+2026-09-01 11:03:00,126 INFO TaskExecutor DeviceManager:stop_hwnd D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe
+2026-09-01 11:03:00,126 INFO TaskExecutor process:Killing process(es) with absolute path: D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe
+2026-09-01 11:03:00,127 INFO TaskExecutor process:Trying to kill the exe {'name': 'Client-Win64-Shipping.exe', 'exe': 'D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe', 'pid': 1236}
+2026-09-01 11:03:00,200 INFO update_window_size hwnd_window:hwnd changed,connected:0
+2026-09-01 11:03:00,202 INFO update_window_size hwnd_window:do_update_window_size changed,visible:False,exists:0 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-09-01 11:03:00,238 INFO MainThread handler:handler stopping ok.task.task
+2026-09-01 11:03:00,238 INFO MainThread handler:handler stopping StartCard
+2026-09-01 11:03:00,238 INFO MainThread handler:handler stopping RefreshAdb
+2026-09-01 11:03:00,239 INFO MainThread handler:handler stopping ok.core.start_controller
+2026-09-01 11:03:00,240 INFO MainThread handler:handler stopping global
+2026-09-01 11:03:00,411 INFO MainThread MainWindow:Window closed exit_event.is_set
+2026-09-01 11:03:00,432 INFO MainThread ok:quit app

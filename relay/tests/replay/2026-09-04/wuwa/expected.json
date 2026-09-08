@@ -1,0 +1,16 @@
+{
+ "OK-WW-05-00-00": {
+  "script": "OK-WW",
+  "ok": true,
+  "failed_tasks": [],
+  "duration_known": true,
+  "okww_steps": [
+   "模拟领域 ×3",
+   "残象聚落（已刷满）"
+  ],
+  "okww_farm": "模拟领域·贝币",
+  "okww_runs": 3,
+  "okww_stamina_spent": 199,
+  "okww_stamina_left": 37
+ }
+}

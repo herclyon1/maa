@@ -11,7 +11,12 @@ sys.path.insert(0, str(ROOT))
 from ark_relay import collector  # noqa: E402
 
 REPLAY = ROOT / "tests" / "replay"
-FLOOR = 10          # 语料下限，见 main() 里的说明
+FLOOR = 40          # 语料下限，见 main() 里的说明
+# 2026-09-08 从 10 抬到 40：语料库从 1 天（10 条）扩到 4 天（42 条），
+# 覆盖到 09-01 周本卡在结算页那一串、09-04/09-05 基质刷取刷错地区那两趟、
+# 以及 09-01 终末地「赠送干员礼物」失败。下限的作用是**防止语料悄悄消失**
+# ——`.gitignore` 的 `*.log` 就曾经把整个语料库挡在库外，而这个测试当时
+# 一条样本都没有也照样打印 all checks passed。
 FIELDS = ("okww_steps", "okww_unreachable", "okww_error", "okww_farm", "okww_runs",
           "okww_stamina_spent", "okww_stamina_left", "maaend_name_mismatch", "tasks_failed",
           "tasks_done", "okww_exit_race", "maaend_unreachable")
