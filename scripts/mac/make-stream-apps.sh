@@ -54,11 +54,13 @@ PLIST
   # 2026-08-30 我图省事写成了脚本，双击时 macOS 弹「需要安装 Rosetta」——
   # 脚本当 app 主程序，LaunchServices 判不出架构就会这样。原版本来就是编译的。
   local src; src=$(mktemp /tmp/launcher-XXXX.c)
-  # 失败必须看得见。原来是 `execv(...); return 1;`：Moonlight 被挪走、改名、
-  # 或者哪次升级不认某个开关，从 Finder 双击就是「点了没反应」——没有弹窗、
-  # 没有崩溃报告、没有系统日志，Moonlight 自己那份日志是 0 字节（报错走的 stderr）。
-  # 用户唯一能自助的入口，失败时零线索。现在 fork 出来跑、接住 stderr，
-  # 非零退出就用 osascript 把退出码和错误原文弹出来。
+  # Failure has to be visible. This used to be `execv(...); return 1;`, so
+  # Moonlight moved, renamed, quarantined, or an upgrade that no longer accepts
+  # one of the baked-in flags all came out the same from Finder: nothing happens.
+  # No dialog, no crash report, nothing in the system log, and Moonlight's own log
+  # is zero bytes because its complaints go to stderr, which Finder discards. This
+  # is the one place the user helps himself. Now it forks, catches stdout/stderr,
+  # and on a non-zero exit puts the code and Moonlight's own words in an alert.
   cat > "$src" <<CSRC
 #include <fcntl.h>
 #include <stdio.h>
