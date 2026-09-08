@@ -335,7 +335,9 @@ function echoFarmBlock(relay) {
   const opts = BOSSES.map((b) => `<option value="${b[0]}">${b[0]}. ${b[1]}</option>`).join("");
   return `<div class="row"><label>刷 4C 声骸
       <span class="hint">盯着一个强敌反复打，捡它掉的 4 花声骸。按时间停，不按次数。
-      名字后面的号是游戏里「讨伐强敌」列表从上往下数的位置</span></label>
+      名字后面的号是游戏里「讨伐强敌」列表从上往下数的位置。
+      刷的期间不领奖励，一片结晶波片都不花，等级自动压到最低档（等级不影响声骸掉落，只影响打不打得过）。
+      要从大世界开始：人还站在 boss 场里的话传送这步会失败</span></label>
       <select id="efboss">${opts}</select></div>
     <div class="row"><label>刷到几点（机器时间）
       <span class="hint">填 08:30 这种。已经过了就算明天的这个点</span></label>
