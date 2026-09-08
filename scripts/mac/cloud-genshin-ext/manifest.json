@@ -2,11 +2,16 @@
   "manifest_version": 3,
   "name": "Cloud Genshin ping prewarm",
   "version": "1.0",
-  "description": "Keeps the cloud-game ping-server WebSockets warm so the SDK's 1-second latency test completes over WARP.",
+  "description": "Keeps the cloud-game ping-server WebSockets warm so the SDK's 1-second latency test completes over WARP, and shows a stream-stats overlay.",
   "content_scripts": [
     {
-      "matches": ["https://ys.mihoyo.com/cloud/*"],
-      "js": ["content.js"],
+      "matches": [
+        "https://ys.mihoyo.com/cloud/*"
+      ],
+      "js": [
+        "content.js",
+        "stats.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     }
