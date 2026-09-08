@@ -42,8 +42,7 @@ above.
 | `gameupdate.py`（聚合）+ `gameupdate_games.py` | 队列跑完后更新游戏客户端，再单独补跑；三家游戏各自的更新流程单独一个文件 |
 | `okww_patch.py` + `okww_patches/` | 贴在 OK-WW 源码上的本地补丁，一个补丁一个文件 |
 | `wuwa_tacet.py` / `wuwa_forgery.py` | 鸣潮副本序号 → 名字 → 掉落，手机页与此同源 |
-| `banners.py`（聚合）+ `banners_common.py` / `banners_wuwa.py` / `banners_endfield.py` / `banners_arknights.py` | 卡池播报：三个游戏各自的取数和解析按游戏分文件，共用的那几件在 common 里 |
-| `efstatus.py` / `snapshot.py` / `desktop.py` / `phone.py` | 终末地开服状态 / 配置快照 / 桌面助手 / 手机通道 |
+| `banners.py` / `efstatus.py` / `snapshot.py` / `desktop.py` / `phone.py` | 卡池播报 / 终末地开服状态 / 配置快照 / 桌面助手 / 手机通道 |
 | `outcome.py` | 跑完核对「到底干成了什么」，没干成必须出声 |
 | `maintenance.py` | 三个游戏官方停服维护公告的机器可读来源 |
 | `skland.py` | 森空岛客户端，拿终末地的角色练度 |

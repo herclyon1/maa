@@ -1,11 +1,8 @@
 # Lines of Chinese comment/docstring per file. **This may only shrink.**
 # Why, and what stays Chinese on purpose: scripts/mac/lib/zh_ratchet.py
-# total 2132 lines in 188 files
+# total 2132 lines in 185 files
 # regenerate: python3 scripts/mac/lib/zh_ratchet.py --update
-relay/ark_relay/banners.py 5
-relay/ark_relay/banners_arknights.py 3
-relay/ark_relay/banners_endfield.py 6
-relay/ark_relay/banners_wuwa.py 2
+relay/ark_relay/banners.py 16
 relay/ark_relay/collector.py 5
 relay/ark_relay/collector_maa.py 4
 relay/ark_relay/collector_maaend.py 6
@@ -43,7 +40,7 @@ relay/make-manifest.py 4
 relay/tests/_tmp.py 3
 relay/tests/test_alert_dedup.py 4
 relay/tests/test_atomic_write.py 7
-relay/tests/test_banners.py 37
+relay/tests/test_banners.py 36
 relay/tests/test_channel_down.py 1
 relay/tests/test_command_table.py 5
 relay/tests/test_commands_gates.py 18
@@ -115,7 +112,7 @@ relay/tests/test_scan_skips_seen.py 3
 relay/tests/test_scoreboard.py 9
 relay/tests/test_scripts_running_asks_automas.py 4
 relay/tests/test_self_attrs.py 3
-relay/tests/test_selfupdate_doors.py 29
+relay/tests/test_selfupdate_doors.py 30
 relay/tests/test_shutdown.py 22
 relay/tests/test_silent_green_guards.py 11
 relay/tests/test_skip_flag_collision.py 6

@@ -294,5 +294,26 @@ check("哈希不一样的才算",
 check("本机没有的文件不算（它根本不会被创建）",
       su._wanted_files(root, {"nope.py": sha}), [])
 
+# ---- A manifest file this machine does not have: abandon the round ----
+# 2026-09-08: banners.py was split into five files and pushed to main. The old
+# behaviour was to write the edited banners.py, skip the four new modules it
+# imports, stamp the version as up to date, and restart the process - which then
+# died on ModuleNotFoundError, and because the version was already stamped it
+# would never try again. Half an update is far more dangerous than none.
+import ark_relay.selfupdate as SU                                  # noqa: E402
+from _tmp import tmpdir                                            # noqa: E402
+
+_root = tmpdir()
+(_root / "state").mkdir()          # 失败记录写在 state/ 下，机器上一直有这个目录
+(_root / "old.py").write_bytes(b"x = 1\n")
+_files = {"old.py": SU._sha1(b"x = 2\n"), "brand_new.py": SU._sha1(b"y = 1\n")}
+_got = SU._stage_files(_root, "https://example.invalid/", _files, None, 7, 6, ["old.py"])
+check("有新文件时整轮放弃", _got, None)
+check("一个字节都没落盘", (_root / "old.py").read_bytes(), b"x = 1\n")
+check("新文件也没被创建", (_root / "brand_new.py").exists(), False)
+_fail = (SU.take_failure(_root) or {}).get("reason", "")
+check("留了话说清要人工部署", "部署脚本" in _fail, True)
+check("话里点名了是哪个文件", "brand_new.py" in _fail, True)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

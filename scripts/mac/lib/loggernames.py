@@ -25,10 +25,6 @@ ALLOW = {
     "relay/tests/test_okww_patch.py": "ark.okww_patch",
     # 2026-09-08 按接缝拆出来的几块，沿用母模块的日志名——翻日志时它们本来就该
     # 和母模块混在一起看，分开反而要记住去 grep 两个名字。
-    "relay/ark_relay/banners_common.py": "ark.banners",
-    "relay/ark_relay/banners_arknights.py": "ark.banners",
-    "relay/ark_relay/banners_endfield.py": "ark.banners",
-    "relay/ark_relay/banners_wuwa.py": "ark.banners",
     "relay/ark_relay/collector_okww.py": "ark.collector",
     "relay/ark_relay/collector_maa.py": "ark.collector",
     "relay/ark_relay/collector_maaend.py": "ark.collector",

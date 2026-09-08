@@ -83,3 +83,4 @@ exist - the next session will never read it, so writing it was wasted.
 | [CODE-HISTORY.md](CODE-HISTORY.md) | The backstory lifted out of code comments; pointers in the code lead here |
 | [IMPROVEMENT-PLAN.md](IMPROVEMENT-PLAN.md) | The optimisation plan proposed on 2026-09-06 and the record of carrying it out |
 | [SWEEP-0830.md](SWEEP-0830.md) | One systematic sweep of the 08-29 evening run / 08-30 morning run |
+| [SURVEY-2026-09-08.md](SURVEY-2026-09-08.md) | 46 verified findings from a read-only survey of every piece of software here, ranked by what a silent failure costs |

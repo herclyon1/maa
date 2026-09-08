@@ -510,10 +510,20 @@ def _stage_files(root: Path, base: str, files: dict, deadline: float | None,
             log.warning("manifest 里的路径越界，已忽略: %s", rel)
             continue
         if not target.exists():
-            # New files are a bigger step than updating one, and a relay that
-            # can create arbitrary files is a wider door than this needs.
-            log.info("跳过新增文件（需人工部署一次）: %s", rel)
-            continue
+            # New files are a bigger step than updating one, and a relay that can
+            # create arbitrary files is a wider door than this needs. But skipping
+            # one and applying the rest is the worst of both: a module split lands
+            # its edited importer without the modules it imports, the version gets
+            # stamped as up to date, the process restarts into ModuleNotFoundError
+            # and never recovers on its own. So the whole round is abandoned - the
+            # same answer as a file that cannot be fetched - and the operator is
+            # told, because only a manual deploy can move this forward.
+            log.warning("清单里有本机没有的新文件 %s，整轮更新放弃"
+                        "（新文件只能由一次人工部署送上来）", rel)
+            _record_failure(root, f"{rel}：清单里的新文件，自更新不会创建文件。"
+                            "在电脑上跑一次部署脚本就能补上",
+                            remote_ver, local_ver, wanted)
+            return None
         if _sha1(target.read_bytes()) == want:
             continue
         data = _get_with_retry(base + rel, expect_sha=want, deadline=deadline)
