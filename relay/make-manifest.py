@@ -29,7 +29,13 @@ _nested = [p.relative_to(HERE).as_posix()
            + sorted((HERE / "ark_relay" / "okww_patches").glob("*.py"))]
 files = sorted(
     [p.relative_to(HERE).as_posix() for p in (HERE / "ark_relay").glob("*.py")]
-    + _nested + ["run.py", "service.py"] + _extra)
+    # 顶层的 .py 一律收（不再手写名单）。2026-09-08 栽过：`boot_stages.py` 从
+    # service.py 拆出来之后没进这份手写名单，于是**没被推上机器**——而逐文件哈希
+    # 核对只检查「清单里有的文件」，清单里没有它，那道闸门一路绿灯，
+    # 服务却因为 ModuleNotFoundError 起不来，通知链路直接断了。
+    # 手写名单和「目录里实际有什么」迟早会分家，所以改成扫目录。
+    + _nested + [p.name for p in HERE.glob("*.py")
+                 if p.name != "make-manifest.py"] + _extra)
 # Monotonic version. selfupdate refuses any manifest older than the one the
 # machine has applied: a CDN can hold a whole stale snapshot (old manifest plus
 # matching old files), which is internally consistent and would silently roll
