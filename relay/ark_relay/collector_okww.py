@@ -170,6 +170,10 @@ _OKWW_MSG_ZH = (
     ("Game window is not connected", "连不上游戏窗口"),
     ("not in combat", "没有进入战斗"),
     ("can't find boss_proceed", "图鉴里找不到「前往」按钮"),
+    # All three of the morning's failures on 2026-09-08 carried exactly this, and
+    # the notification never showed it - see the wrapper branch in _okww_say.
+    ("Please start in game world and in team",
+     "开跑时游戏不在大世界、或者没有出战队伍，OK-WW 不肯开工"),
 )
 _OKWW_WRAPPER = "Daily Task exception stopped"
 _OKWW_WAIT_SEC = re.compile(r"wait_until timeout .*? (\d+(?:\.\d+)?) seconds")
@@ -314,6 +318,13 @@ def _okww_say(task: str, msg: str, exc: str, text: str = "", at: int = 0) -> str
         # It must NOT go in _OKWW_MSG_ZH: that table also decides which of the three
         # tracebacks is worth reporting, and the replay corpus caught the wrapper
         # winning over 「等一个画面没等到」 on 2026-09-01's record.
+        # Before settling for the wrapper, use what upstream printed as its own
+        # 「错误 …」 line. On the morning of 2026-09-08 all three failures had
+        # 「Please start in game world and in team!」 sitting right there while the
+        # notification said only that the daily list had stopped.
+        err = (okww_info(text).get("error") or "").strip() if text else ""
+        if err and _OKWW_WRAPPER not in err:
+            return _okww_say(task, err, "")      # text="" so this branch cannot recurse
         return f"{task_zh}：日常清单整个停了（真正的原因在它上面那条）"
     if task_zh is None or not (msg_zh or exc_zh):
         sig = (task, exc, msg[:80])
