@@ -1,4 +1,4 @@
-"""OK-WW 补丁：retrycap。从 okww_patch.py 拆出（2026-09-06，只搬不改）。"""
+"""OK-WW patch: retrycap. Split out of okww_patch.py (2026-09-06, moved verbatim)."""
 from __future__ import annotations
 
 
@@ -7,7 +7,7 @@ from .core import _SRC, _Patch
 
 
 
-# ---- 兜底重试上限：连败三次就退出，不许无限转 ----------------------------
+# ---- Cap on catch-all retries: bail out after three failures in a row, never spin forever ----
 # 来龙去脉见 docs/CODE-HISTORY.md「retrycap.py:(模块级)」
 _RETRYCAP_OLD = """            logger.error('farm 4c error, try handle monthly card', e)
             if self.handle_claim_button() or self.handle_monthly_card():"""

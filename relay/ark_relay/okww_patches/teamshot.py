@@ -1,4 +1,4 @@
-"""OK-WW 补丁：teamshot。从 okww_patch.py 拆出（2026-09-06，只搬不改）。"""
+"""OK-WW patch: teamshot. Split out of okww_patch.py (2026-09-06, moved verbatim)."""
 from __future__ import annotations
 
 
@@ -7,7 +7,7 @@ from .core import _SRC, _Patch
 
 
 
-# ---- 找不到「开启挑战」时留证据 -------------------------------------------
+# ---- Leave evidence when "start challenge" cannot be found ----------------
 # 来龙去脉见 docs/CODE-HISTORY.md「teamshot.py:(模块级)」
 _TEAMSHOT_OLD = """            self.click_team_challenge()"""
 

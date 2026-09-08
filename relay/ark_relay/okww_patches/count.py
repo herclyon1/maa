@@ -1,4 +1,4 @@
-"""OK-WW 补丁：count。从 okww_patch.py 拆出（2026-09-06，只搬不改）。"""
+"""OK-WW patch: count. Split out of okww_patch.py (2026-09-06, moved verbatim)."""
 from __future__ import annotations
 
 
@@ -7,7 +7,7 @@ from .core import _SRC, _Patch
 
 
 
-# ---- 进本之前拍一张 Boss 页面，看本周还剩几次 ----------------------------
+# ---- Shoot the boss page before entering, to read this week's runs left ---
 # 来龙去脉见 docs/CODE-HISTORY.md「count.py:(模块级)」
 _COUNT_OLD = """                self.click_configured_boss_level()"""
 
@@ -47,8 +47,9 @@ _COUNT_NEW = """                # 本地补丁：选等级之前把「本周剩�
 
 
 def _count_present(text: str) -> bool:
-    # 判据认本版独有的字串，不能只认那句没变过的截图名——
-    # 否则改了内容也贴不上去（今天已栽过一次）。v2 加了 Boss 名的 OCR。
+    # The probe must match a string unique to THIS version, not the screenshot
+    # name that never changes -- otherwise a changed body never gets applied
+    # (that bit us once today). v2 added the OCR of the boss name.
     return "周本名称原文" in text
 
 

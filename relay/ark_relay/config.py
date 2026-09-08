@@ -38,27 +38,33 @@ def atomic_write_text(path: Path, text: str, newline: str | None = None) -> None
     """Write via temp file + os.replace, so a power cut mid-write can never
     leave a truncated file behind.
 
-    这里写的都是 AUTO-MAS 没有就起不来的配置。写坏一份 QueueConfig.json，机器会
-    「安全地」失败成什么都不调度，旁边只剩一个 .bak。os.replace 保证读的人要么看到
-    旧的、要么看到新的，绝不会看到半截。
+    What gets written here is the config AUTO-MAS cannot start without. A
+    corrupted QueueConfig.json makes the machine "safely" fail into scheduling
+    nothing at all, leaving a lone .bak beside it. os.replace guarantees a
+    reader sees either the old file or the new one, never a truncated one.
     """
     atomic_write_bytes(path, text.encode("utf-8") if newline is None
                        else text.replace("\n", newline).encode("utf-8"))
 
 
 def atomic_write_bytes(path: Path, data: bytes) -> None:
-    """同上，写字节。`.ps1` 要带 BOM、`.py` 是代码，都走这里。
+    """Same as above, for bytes. `.ps1` files need a BOM and `.py` files are
+    code; both go through here.
 
-    2026-09-08 把 5 处手抄的「临时文件 + replace」并到这里。它们各写各的，有的漏
-    fsync、有的失败了不清理临时文件、报错方式还各不相同——同一件事五种写法，
-    改一处别处不会跟着改。
+    2026-09-08: five hand-copied "temp file + replace" snippets were folded into
+    this one function. Each did its own thing - some skipped fsync, some left the
+    temp file behind on failure, and they all reported errors differently. Five
+    spellings of one operation, where fixing one fixes none of the others.
 
-    这台机器每天**只硬断电一次**：早上 08:40 智能插座断电、08:45 通电，
-    而那一刻机器已经关着（前一晚队列跑完自己关的），没有正在写的文件。中继自己那次
-    `shutdown /s /f` 是正常关机，系统会把缓存刷下去。
-    所以「断电断在写文件的瞬间」在这台机器上基本不会发生——2026-09-08 操作者纠正过我
-    一次夸大的说法。fsync 留着是因为它本来就该有、代价也只有一次系统调用，不是因为
-    这里有个已知的坑。
+    This machine takes a hard power cut **exactly once a day**: the smart plug
+    cuts power at 08:40 and restores it at 08:45, and at that moment the machine
+    is already off (it shut itself down the previous night when the queue
+    finished), so no file is being written. The relay's own `shutdown /s /f` is a
+    clean shutdown and the OS flushes its caches.
+    So "the power dies mid-write" essentially cannot happen on this machine - the
+    operator corrected an overstatement of mine on 2026-09-08. fsync stays because
+    it is the right thing to do and costs one syscall, not because there is a
+    known trap here.
     """
     tmp = path.with_suffix(path.suffix + ".tmp")
     try:
@@ -73,13 +79,17 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
 
 
 def mas_base() -> str:
-    """AUTO-MAS 后端的地址。**必须是函数，不能做成模块级常量。**
+    """Base URL of the AUTO-MAS backend. **Must be a function, never a
+    module-level constant.**
 
-    模块级常量会在 .env 加载之前求值（见下面那段注释），于是 `ARK_MAS_PORT`
-    变成「设了也不生效」，比现在的半生效更难查。
+    A module-level constant is evaluated before .env is loaded (see the comment
+    below), which turns `ARK_MAS_PORT` into "set it and nothing happens" - harder
+    to track down than today's partial effect.
 
-    2026-09-08 之前这个地址在 relay 里有四份：commands.py、snapshot.py、engine.py
-    各自写死 36163，只有预更新那份认 `ARK_MAS_PORT`——改端口只有四分之一生效。
+    Before 2026-09-08 this address existed in four copies inside the relay:
+    commands.py, snapshot.py and engine.py each hardcoded 36163, and only the
+    pre-update path honoured `ARK_MAS_PORT` - so changing the port took effect in
+    one place out of four.
     """
     return f"http://127.0.0.1:{os.environ.get('ARK_MAS_PORT', '36163')}"
 
@@ -123,12 +133,14 @@ class Config:
     # records arrive as directory-change events and this number never ticks.
     poll_seconds: int = field(default_factory=lambda: _env_int("ARK_POLL_SECONDS", 300))
 
-    # 手机端那根管道。两个都空 = 整个功能关掉。
+    # The pipe to the phone. Both empty = the whole feature is off.
     phone_topic: str = field(default_factory=lambda: _env("ARK_PHONE_TOPIC"))
     phone_pin: str = field(default_factory=lambda: _env("ARK_PHONE_PIN"))
 
-    # 森空岛通行证 token，日报末尾的终末地卡池要用。空=那一行不出。
-    # 鸣潮和明日方舟的卡池不需要任何 token，见 banners.py。
+    # Skland pass token, needed for the Endfield banner line at the end of the
+    # daily report. Empty = that line is omitted.
+    # The Wuthering Waves and Arknights banners need no token at all, see
+    # banners.py.
     skland_token: str = field(default_factory=lambda: _env("SKLAND_TOKEN"))
 
     # Push channels. Empty string = channel disabled.
@@ -137,7 +149,7 @@ class Config:
     wecom_secret: str = field(default_factory=lambda: _env("WECOM_SECRET"))
     wecom_agentid: str = field(default_factory=lambda: _env("WECOM_AGENTID"))
     wecom_touser: str = field(default_factory=lambda: _env("WECOM_TOUSER", "@all"))
-    # 企业微信群机器人: a webhook URL with no trusted-IP list, so it works from
+    # WeCom group bot: a webhook URL with no trusted-IP list, so it works from
     # any machine on rotating consumer broadband - unlike the self-built app
     # above, which answers errcode=60020 the day the IP changes.
     # The URL contains its own key: treat the whole thing as a secret.
@@ -201,8 +213,9 @@ class Config:
     maaend_dir: Path | None = field(
         default_factory=lambda: _env_path("ARK_MAAEND_DIR")
     )
-    # MAA 装在哪。要它是为了读 MAA **自己**的 asst.log——AUTO-MAS 的
-    # history 日志里没有子任务级别的失败，基建整个跪掉也看不出来。
+    # Where MAA is installed. Needed to read MAA's **own** asst.log - AUTO-MAS's
+    # history log has no subtask-level failures, so the whole base-management
+    # task can collapse without it showing up there.
     maa_dir: Path | None = field(
         default_factory=lambda: _env_path("ARK_MAA_DIR")
     )
@@ -228,8 +241,10 @@ class Config:
         never was set on the machine), that stayed None, and
         `_archive_maaend_evidence` hit `if not src.is_dir(): return` on its
         very first line — silently, every single time, since the day it was
-        written. 2026-08-28 早上三轮选剑演武失败的 on_error 截图就是这么丢的：
-        MaaEnd 一重启就把 debug 目录清空，而本该抢救它们的代码从没跑过。
+        written. That is how the on_error screenshots from the three failed
+        sword-selection duels on the morning of 2026-08-28 were lost: MaaEnd
+        wipes its debug directory on every restart, and the code meant to
+        rescue those screenshots had never once run.
 
         Resolving here fixes every consumer at once instead of one call site.
         Import is deferred: `plan` imports this module.
@@ -277,10 +292,11 @@ class RunRecord:
     # filename/mtime fallback is off by hours on this install, so a duration
     # derived from it must not be presented as fact.
     duration_known: bool = True
-    # 这一轮不是"失败"，是"被下一轮取代了"。AUTO-MAS 把「游戏更新成功，
-    # 即将重启任务」和真故障一起塞进 `_OKWW_BUILTIN_FATAL`（见
-    # `task/Okww/AutoProxy.py:50-54`），于是客户端更新一次就报一次失败。
-    # 那不是故障：它后面紧跟着一条真正的结果记录。
+    # This run is not a "failure", it was "superseded by the next one".
+    # AUTO-MAS lumps 「游戏更新成功，即将重启任务」 in with genuine faults inside
+    # `_OKWW_BUILTIN_FATAL` (see `task/Okww/AutoProxy.py:50-54`), so every client
+    # update reports one failure. That is not a fault: a real result record
+    # follows immediately after it.
     transitional: bool = False
 
     @property
@@ -307,26 +323,33 @@ class RunRecord:
         return r if isinstance(r, dict) else {}
 
 def master_config_dir(automas_dir: "str | Path | None", marker: str) -> "Path | None":
-    """AUTO-MAS 母本目录里含 `marker` 的那一个。
+    """The AUTO-MAS master config directory that contains `marker`.
 
-    脚本跑之前 AUTO-MAS 会把 `<automas>/data/<脚本id>/Default/ConfigFile/`
-    整个拷到脚本自己的配置目录，**无条件**（`AutoProxy.py:514-515`，
-    和 `IfQuickConfig` 无关）。所以在脚本那边改的东西下一轮就没了，
-    唯一长期生效的地方就是这里。
+    Before a script runs, AUTO-MAS copies
+    `<automas>/data/<script id>/Default/ConfigFile/` wholesale into that
+    script's own config directory, **unconditionally** (`AutoProxy.py:514-515`,
+    unrelated to `IfQuickConfig`). So anything edited on the script's side is
+    gone by the next run, and this is the only place a change survives.
 
-    脚本 id 不固定，按标志文件认：OK-WW 是 `DailyTask.json`，
-    MaaEnd 是 `mxu-MaaEnd.json`。
-    
+    Script ids are not fixed, so the directory is identified by a marker file:
+    `DailyTask.json` for OK-WW, `mxu-MaaEnd.json` for MaaEnd.
 
-    **副本算不算数：不算，别手写。**（2026-09-08 读源码定案，此前有两处相反说法）
-    AUTO-MAS 的 `app/task/Okww/AutoProxy.py:365-374`：只要用户配置的 `Mode` 不是
-    「直控」（这台机器是「脚本」），它就 `copytree(母本 → OK-WW 的 configs)`，
-    **整个目录换掉，而且在 IfQuickConfig 判断之外，是无条件的**。
-    所以只写母本就够；手写副本不但多余，还会掩盖「母本没写成功」——两边都对的时候
-    你分不出是母本生效了还是副本兜住了。
-    （2026-08-31 那次「母本 90、副本 80」是母本写晚了：16:20 才写，而当天的运行
-    在那之前，跑的时候母本还是旧值，拷过去的自然也是旧值。不是没拷。）
-    要看真正生效的那份：`scripts/mac/lib/okww_effective.py`。
+
+    **Does the script-side copy count? No - do not write it by hand.**
+    (Settled on 2026-09-08 by reading the source; two contradictory claims
+    existed before that.)
+    AUTO-MAS's `app/task/Okww/AutoProxy.py:365-374`: as long as the user's
+    configured `Mode` is not 「直控」 (this machine is on 「脚本」), it runs
+    `copytree(master -> OK-WW's configs)` - **replacing the whole directory,
+    outside the IfQuickConfig branch, unconditionally**.
+    So writing the master alone is enough; writing the copy by hand is not only
+    redundant, it masks a failed master write - when both sides agree you cannot
+    tell whether the master took effect or the copy covered for it.
+    (The 2026-08-31 case of "master 90, copy 80" was a late master write: it was
+    written at 16:20, after that day's run, so at run time the master still held
+    the old value and the copy naturally got the old value too. Nothing failed to
+    copy.)
+    To see the config actually in effect: `scripts/mac/lib/okww_effective.py`.
 """
     if not automas_dir:
         return None

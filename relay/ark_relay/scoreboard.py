@@ -23,15 +23,17 @@ from datetime import datetime
 
 from .config import SERVER_TZ, USER_TZ
 
-# 一个版本的记分牌：{"runs": 总趟数, "failed": 真失败趟数, "since": 第一趟的时刻}
-# 只留最近这些个版本，免得 state.json 无限长——部署一天十几次，一周就上百个键。
+# One version's scoreboard: {"runs": total runs, "failed": genuinely failed
+# runs, "since": timestamp of the first run}.
+# Keep only this many recent versions so state.json stays bounded -- a dozen
+# deploys a day turns into hundreds of keys within a week.
 KEEP_VERSIONS = 8
 
 
 def record(store, code_version: str, ok: bool, transitional: bool = False) -> None:
     """Count one finished run against the code version that ran it."""
     if not code_version:
-        return                     # 版本号读不到时不记——记成空键比不记更难查
+        return                     # No version, no record -- an empty key is harder to trace than a missing one
     board = dict(store.get("versions", "scoreboard") or {})
     row = dict(board.get(code_version) or {})
     row["runs"] = int(row.get("runs") or 0) + 1

@@ -217,11 +217,14 @@ class WeCom:
         return data["media_id"]
 
 
-_WECOM_IMAGE_LIMIT = 1_800_000   # 官方 2MB，留点余量给 base64 之外的字段
+_WECOM_IMAGE_LIMIT = 1_800_000   # official cap is 2MB; leave room for the fields around the base64
 
 
 def _image_bytes_for_wecom(path: Path, limit: int = _WECOM_IMAGE_LIMIT) -> bytes:
-    """读图；超过上限就用 Pillow 缩成 JPEG。游戏截图 1920×1080 的 PNG 常有 2.3MB。"""
+    """Read the image; if it is over the cap, shrink it to JPEG with Pillow.
+
+    A 1920x1080 game screenshot in PNG is routinely 2.3MB.
+    """
     raw = path.read_bytes()
     if len(raw) <= limit and path.suffix.lower() in (".png", ".jpg", ".jpeg"):
         return raw
@@ -255,11 +258,13 @@ class WeComBot:
     sends a handful of messages a day, all of them to the same person.
     """
 
-    # 2026-08-31：原来发的是 markdown。企业微信自己收得下，但这个群是**微信群**，
-    # 微信不认机器人的 markdown，用户手机上只看到一行「暂不支持此消息类型，
-    # 点击前往企业微信查看」——等于每一条群通知都白发了。改成纯文本，
-    # 微信和企业微信都认。text 的字节上限是 2048（markdown 是 4096），
-    # 所以这里的余量也要跟着降。
+    # 2026-08-31: this used to send markdown. 企业微信 itself accepts it, but
+    # this group is a **WeChat** group, and WeChat does not understand a robot's
+    # markdown - all the user saw on the phone was the single line 「暂不支持此
+    # 消息类型，点击前往企业微信查看」, i.e. every group notification was wasted.
+    # Switched to plain text, which both WeChat and 企业微信 understand. The byte
+    # cap for text is 2048 (markdown's is 4096), so the margin here had to come
+    # down with it.
     _LIMIT = 1800
 
     def __init__(self, cfg: Config):
@@ -279,7 +284,7 @@ class WeComBot:
                     f"群机器人发送失败: {data.get('errcode')} {data.get('errmsg')}")
 
     def send_image(self, path: Path) -> None:
-        """群机器人的图片消息：base64 + md5，官方上限 2MB、jpg/png。"""
+        """A group robot image message: base64 + md5; official cap 2MB, jpg/png."""
         import base64  # noqa: PLC0415
         import hashlib  # noqa: PLC0415
         raw = _image_bytes_for_wecom(Path(path))
@@ -349,18 +354,23 @@ def _hint(name: str, err: str) -> str:
     return ""
 
 
-# 报警：全渠道扇出。一个渠道挂了，另一个必须顶上——理由见 Notifier 的类注释。
+# Alerts: fan out to every channel. If one channel is dead another must take
+# over - reasoning in the Notifier class docstring.
 _ALERT_ORDER = ("企业微信", "企业微信机器人", "Server酱")
 
-# 日常：只发一个，第一个成功就停，后面的根本不会被调用。
+# Routine: send to one channel only, stop at the first success - the later ones
+# are never even called.
 #
-# Server酱 排第一是实测结论：它没有 IP 白名单，用户 2026-08-24 明确说
-# "server酱长期稳定（从来没出过问题）"。企业微信恰恰相反——两台机器都在
-# 家宽后面，公网 IP 一转就 errcode 60020 全拒。
+# Server酱 comes first as a measured conclusion: it has no IP allowlist, and the
+# user said explicitly on 2026-08-24: "server酱长期稳定（从来没出过问题）".
+# 企业微信 is the exact opposite - both machines sit behind consumer broadband,
+# and the moment the public IP rotates everything is refused with errcode 60020.
 #
-# 为什么不是"全发更保险"：同一份日报同时落到微信和 Server酱只是烦，不会
-# 更可靠。冗余的价值在报警，不在日常；把两者混为一谈的结果是真告警被日常
-# 噪声淹掉。用户 2026-08-24 当场提的："不要重复"。
+# Why not "send everywhere, it is safer": the same daily report landing in both
+# WeChat and Server酱 is merely annoying, not more reliable. Redundancy is worth
+# it for alerts, not for routine traffic; conflating the two ends with real
+# alerts drowned in routine noise. The user, on the spot on 2026-08-24:
+# "不要重复".
 _ROUTINE_ORDER = ("Server酱", "企业微信机器人", "企业微信")
 
 
@@ -401,7 +411,8 @@ class Notifier:
         self.wecom = WeCom(cfg)
         self.wecom_bot = WeComBot(cfg)
         self.serverchan = ServerChan(cfg)
-        # 每个渠道上一次的失败原因，用来压掉重复告警（见 _fan_out）。
+        # The last failure reason per channel, used to suppress repeat alerts
+        # (see _fan_out).
         self._last_send_error: dict[str, str] = {}
         self._state_dir = Path(cfg.state_dir)
         self._announced_down: dict[str, str] = self._load_down()
@@ -423,7 +434,7 @@ class Notifier:
         return " ".join(s.split())[:160]
 
     def _store(self):
-        from .statestore import StateStore  # noqa: PLC0415 - 避免导入环
+        from .statestore import StateStore  # noqa: PLC0415 - avoids an import cycle
         return StateStore(self._state_dir)
 
     def _load_down(self) -> dict[str, str]:
@@ -456,7 +467,7 @@ class Notifier:
         """Try channels in `order`. -> (delivered names, {name: error})
 
         `stop_on_first` returns as soon as one channel accepts, so the later
-        ones are never even attempted - that is what keeps a routine报告 from
+        ones are never even attempted - that is what keeps a routine report from
         landing on the phone twice.
         """
         delivered: list[str] = []
@@ -477,9 +488,11 @@ class Notifier:
                 call()
             except Exception as exc:  # noqa: BLE001 - report, never crash the loop
                 failed[name] = str(exc)
-                # 同一条失败只说一次。企业微信的 60020（IP 不在白名单）是持续性的，
-                # 2026-08-26 一天刷了 74 条一模一样的告警——重复的噪音会把真正
-                # 变化了的失败淹掉。错误内容变了才再说一次；恢复了也说一次。
+                # Say the same failure once. 企业微信's 60020 (IP not in the
+                # allowlist) is persistent: on 2026-08-26 it produced 74
+                # identical alerts in one day, and repeated noise drowns the
+                # failures that actually changed. Speak up again only when the
+                # error text changes; also say so once when it recovers.
                 if self._last_send_error.get(name) != str(exc):
                     log.warning("%s推送失败: %s", name, exc)
                     self._last_send_error[name] = str(exc)
@@ -498,8 +511,9 @@ class Notifier:
         stop holding it. A non-empty list means every channel refused it.
 
         `alert=True` fans out to **every** channel - use it only for faults
-        someone has to act on. Everything else (日报、预更新、剿灭、待办)
-        goes to **one** channel; see the note on `_ROUTINE_ORDER`.
+        someone has to act on. Everything else (the daily report, pre-update,
+        annihilation, the to-do list) goes to **one** channel; see the note on
+        `_ROUTINE_ORDER`.
         """
         if alert:
             delivered, failed = self._fan_out(title, body)
@@ -508,10 +522,12 @@ class Notifier:
                 title, body, order=_ROUTINE_ORDER, stop_on_first=True)
         if not delivered:
             errs = [f"{n}: {e}" for n, e in failed.items()]
-            # 返回非空 = **一条渠道都没送到**。11 个调用点里有很多把返回值丢了
-            # （`notifier.send("🆕 预更新", note)` 这种），于是「这条通知谁都没
-            # 收到」会被静默扔掉。在这里记一条 ERROR，任何调用点都漏不掉。
-            # 2026-08-30 全量审查时发现，和「静默变绿」是同一类毛病。
+            # A non-empty return = **not one channel got it**. Many of the 11
+            # call sites throw the return value away (things like
+            # `notifier.send("🆕 预更新", note)`), so "nobody received this
+            # notification" was being silently dropped. Log an ERROR here, which
+            # no call site can miss. Found in the full audit on 2026-08-30; it is
+            # the same class of defect as a silent green.
             log.error("通知一条渠道都没送到：%s ｜ 标题：%s", "；".join(errs), title)
             return errs
         # A channel that started working again becomes announceable once more.
@@ -524,11 +540,13 @@ class Notifier:
         return []
 
     def send_group(self, title: str, body: str) -> list[str]:
-        """只发企业微信群机器人。
+        """Send via the 企业微信 group robot only.
 
-        用户 2026-08-31 定的：卡池开服前一天在群里说一声，其余时间他自己
-        看 Server酱 就行。所以这条**不能**走 `send()`——那个按
-        `_ROUTINE_ORDER` 走，Server酱 优先，第一个成功就停，永远到不了群里。
+        Decided by the user on 2026-08-31: say something in the group the day
+        before a banner goes live, and the rest of the time he just reads
+        Server酱. So this **must not** go through `send()` - that follows
+        `_ROUTINE_ORDER`, where Server酱 comes first and the first success
+        stops the loop, so it would never reach the group.
         """
         delivered, failed = self._fan_out(title, body,
                                           order=("企业微信机器人",),
@@ -567,7 +585,8 @@ class Notifier:
             self._save_down()
 
     def send_group_image(self, path: Path) -> list[str]:
-        """走群机器人发图。自建应用那条路要 IP 白名单（60020），这条不用。"""
+        """Send an image via the group robot. The self-built-app route needs an
+        IP allowlist (60020); this one does not."""
         if not self.wecom_bot.enabled:
             return ["群机器人未配置"]
         try:

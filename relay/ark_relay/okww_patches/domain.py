@@ -1,4 +1,4 @@
-"""OK-WW 补丁：domain。从 okww_patch.py 拆出（2026-09-06，只搬不改）。"""
+"""OK-WW patch: domain. Split out of okww_patch.py (2026-09-06, moved verbatim)."""
 from __future__ import annotations
 
 import logging
@@ -11,7 +11,8 @@ log = logging.getLogger("ark.okww_patch")
 
 
 
-# ── 补丁二：副本没打通不该把整个每日任务带走 ──────────────────
+# ── Patch two: failing to clear an instance must not take the whole daily task
+#    down with it ─────────────────────────────────────────────────────────────
 # 来龙去脉见 docs/CODE-HISTORY.md「domain.py:(模块级)」
 _DOMAIN_IMPORT_OLD = "from ok import Logger\n"
 _DOMAIN_IMPORT_NEW = "from ok import Logger, WaitFailedException\n"
@@ -19,7 +20,8 @@ _DOMAIN_IMPORT_NEW = "from ok import Logger, WaitFailedException\n"
 _DOMAIN_OLD = """            except (NotInCombatException, CharDeadException):
                 self.log_info('farm_in_domain: death recovered, exiting domain')"""
 
-# 下面这段必须和提给上游的 PR 一字不差，否则本地版和上游版会悄悄分叉。
+# The block below must match the PR filed upstream word for word, otherwise the
+# local version and the upstream version diverge silently.
 _DOMAIN_NEW = """            except (NotInCombatException, CharDeadException, WaitFailedException):
                 # WaitFailedException: 副本没打通（限时结束 / 敌人没清完）就不会掉宝箱，
                 # walk_to_treasure 找不到目标会抛它。和死亡一样当成“这一局没打成”，
@@ -34,7 +36,8 @@ def _domain_present(text: str) -> bool:
 
 
 def _apply_domain(root: Path) -> list[str]:
-    """副本失败不再拖垮整个每日任务。两段替换，所以单独走一条路。"""
+    """A failed instance no longer drags the whole daily task down. Two separate
+    replacements, hence its own code path."""
     f = root.joinpath(*_SRC, "DomainTask.py")
     label = "副本失败不拖垮每日任务"
     if not f.exists():

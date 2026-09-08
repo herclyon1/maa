@@ -1,15 +1,17 @@
-"""机器上**真实生效**的配置，一处读、两处用。
+"""The config **actually in effect** on the machine: read in one place, used in two.
 
-用户 2026-08-31：「手机上的所有状态必须和机器保持一致，否则你动了配置
+The user, 2026-08-31: 「手机上的所有状态必须和机器保持一致，否则你动了配置
 不同步到我这边会造成麻烦。」
 
-所以手机看到的东西和 `scripts/mac/config-check.py` 看到的必须是**同一份
-代码读出来的**——两份各写一遍，早晚会各说各话，而「界面显示的和机器上
-真实的不一样」正是 826 那类事故的温床。config-check 现在也调这里。
+So what the phone shows and what `scripts/mac/config-check.py` shows must come out of
+**the same code** — write the reader twice and the two will disagree sooner or later,
+and "the screen says one thing, the machine another" is exactly the soil incidents of
+the 826 kind grow in. config-check calls in here now as well.
 
-数据从 AUTO-MAS 自己的后端 API 拿，不读它的配置文件：后端在跑的时候会用
-内存里那份覆写文件，读文件会读到一个「马上就要被冲掉」的值。
-OK-WW 自己的配置 AUTO-MAS 管不到，只能读文件。
+The data comes from AUTO-MAS's own backend API, not from its config files: while the
+backend is running it overwrites those files from its in-memory copy, so reading a file
+gets you a value that is about to be flushed away. OK-WW's own config is outside
+AUTO-MAS's reach, so that one can only be read from file.
 """
 from __future__ import annotations
 
@@ -25,17 +27,18 @@ log = logging.getLogger("ark.snapshot")
 def _api() -> str:
     from .config import mas_base  # noqa: PLC0415
     return mas_base()
-# 读**母本**，不是 OK-WW 自己那份。AUTO-MAS 每次跑之前会无条件把母本
-# 整个拷过去（见 config.master_config_dir 的注释），所以脚本目录里那份
-# 反映的是**上一趟**用的配置，不是当前生效的。2026-08-31 我拿它判断
-# 「周本配没配上」，得出的结论和母本正好相反。
+# Read the **master copy**, not OK-WW's own. Before every run AUTO-MAS copies the
+# master over wholesale (see the comment on config.master_config_dir), so the copy in
+# the script directory reflects the config used on the **previous** round, not the one
+# in effect now. On 2026-08-31 I used it to decide whether the weekly boss was
+# configured and reached the exact opposite conclusion from the master copy.
 OKWW_FILES = ("NightmareNestTask.json", "DailyTask.json", "FarmEchoTask.json",
               "TacetTask.json", "ForgeryTask.json")
 
 
 def _post(path: str, body: "dict | None" = None, timeout: int = 15) -> dict:
-    # AUTO-MAS 的**每个**端点都是 POST，包括读取用的那些。GET 会返回
-    # Method Not Allowed——2026-08-26 在这上面花过时间。
+    # **Every** AUTO-MAS endpoint is POST, the read-only ones included. GET returns
+    # Method Not Allowed — this cost time on 2026-08-26.
     req = urllib.request.Request(
         _api() + path, data=json.dumps(body or {}).encode(),
         headers={"Content-Type": "application/json"})
@@ -82,10 +85,12 @@ def _mas(out: dict) -> None:
 
 
 def _queues(out: dict) -> None:
-    # 用 .get：不同版本的 AUTO-MAS 字段不一样，2026-08-31 就因为
-    # 直接下标 StartUpEnabled 抛了 KeyError，整段队列信息一条都拿不到。
-    # 每趟班有哪几个脚本。手机上按班次筛配置要用它——用户 2026-09-04：
-    # 「早班晚班切换的时候应该只显示当次班次的游戏，否则极容易和早班混淆。」
+    # Use .get: field names differ between AUTO-MAS versions, and on 2026-08-31
+    # indexing StartUpEnabled directly raised KeyError, which took out the whole
+    # queue section — not a single line of it came through.
+    # Which scripts each shift runs. The phone filters config by shift with this —
+    # the user, 2026-09-04: 「早班晚班切换的时候应该只显示当次班次的游戏，否则极
+    # 容易和早班混淆。」
     names = {sid: str((v.get("Info") or {}).get("Name") or "")
              for sid, v in _post("/api/scripts/get")["data"].items()}
     out["队列"] = {}
@@ -95,7 +100,7 @@ def _queues(out: dict) -> None:
             items = _post("/api/queue/item/get", {"queueId": qid})["data"].values()
             scripts = [names.get(str((i.get("Info") or {}).get("ScriptId")), "")
                        for i in items]
-        except Exception:  # noqa: BLE001 - 取不到就当没有，别把整段队列信息拖垮
+        except Exception:  # noqa: BLE001 - unreadable = absent; don't sink the queue section
             scripts = []
         out["队列"][str(info.get("Name") or "?")] = {
             "定时": info.get("TimeEnabled"),
@@ -105,11 +110,12 @@ def _queues(out: dict) -> None:
 
 
 def _automas_dir() -> "str | None":
-    """AUTO-MAS 根目录。环境变量优先，其次读中继的 .env。
+    """AUTO-MAS root directory. Environment variable first, then the relay's .env.
 
-    这个模块既被服务进程 import（环境变量齐全），也被 config-check.py
-    当独立探针跑（什么都没有）。2026-08-31 只读 os.environ，探针那条路
-    永远拿不到，快照里就只剩一句「找不到母本目录」。
+    This module is imported by the service process (where the environment is complete)
+    and also run by config-check.py as a standalone probe (where nothing is set). On
+    2026-08-31 it read os.environ only, so the probe path never found anything and the
+    snapshot held nothing but the one line 「找不到母本目录」.
     """
     if v := os.environ.get("ARK_AUTOMAS_DIR"):
         return v
@@ -125,7 +131,7 @@ def _automas_dir() -> "str | None":
 
 
 def _okww(out: dict) -> None:
-    from .config import master_config_dir  # noqa: PLC0415 - 避免导入环
+    from .config import master_config_dir  # noqa: PLC0415 - avoid an import cycle
 
     d = master_config_dir(_automas_dir(), "DailyTask.json")
     if d is None:
@@ -161,7 +167,7 @@ def _runtime(out: dict) -> None:
 
 
 def read() -> dict:
-    """读一份完整快照。任何一段取不到就记一条错，不影响其余。"""
+    """Read one full snapshot. A section that fails records an error; the rest is unaffected."""
     out: dict = {}
     for label, fn in (("_MAS错误", _mas), ("_队列错误", _queues),
                       ("_OKWW错误", _okww), ("_运行时错误", _runtime)):

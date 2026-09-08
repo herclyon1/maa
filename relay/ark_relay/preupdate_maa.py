@@ -1,4 +1,4 @@
-"""preupdate_maa：从 preupdate.py 拆出（2026-09-08，只搬不改）。"""
+"""preupdate_maa: split out of preupdate.py (2026-09-08, moved verbatim)."""
 from __future__ import annotations
 
 import json
@@ -19,13 +19,15 @@ from .preupdate_maaend import _close, _span
 # and it has not been caught breaking a queue here. Moving it into the boot
 # window anyway costs a few seconds and removes the possibility.
 _MAA_LATEST = re.compile(r'"msg"\s*:\s*"current version is latest"')
-# MAA **刚更新过之后的第一次启动会跳过更新检查**，于是那句 latest 永远等不到。
-# 2026-09-05 实测：08:46:07 启动 v6.17.1（昨天刚从 6.17.0 升上来），
-# 日志里 `IsFirstBoot has been set: \`true\` -> \`false\``，整段**一次
-# mirrorchyan 请求都没有**，中继白等满 180 秒再报一条「没能确认」的假警报；
-# 同一天 09:00:50 那次启动 IsFirstBoot 已是 false，09:00:56 就正常问了。
-# 认出这行就不必再等——**这不是故障**，而且更新也不会因此漏掉：
-# 09:00 队列自己那次启动会补上检查。
+# **The first startup right after MAA updated skips the update check**, so the
+# "latest" line never arrives. Measured 2026-09-05: 08:46:07 started v6.17.1
+# (upgraded from 6.17.0 the day before) and the log had
+# `IsFirstBoot has been set: \`true\` -> \`false\`` with **not a single
+# mirrorchyan request** in the whole span; the relay waited out all 180 seconds
+# and then raised a false "could not confirm" alert. On the same day, the
+# 09:00:50 startup already had IsFirstBoot false and asked normally at 09:00:56.
+# Recognising this line means we stop waiting -- **this is not a fault**, and no
+# update is missed either: the 09:00 queue's own startup performs the check.
 _MAA_FIRST_BOOT = re.compile(r"IsFirstBoot has been set: `true` -> `false`")
 _MAA_APPLIED = re.compile(r"Delegated pending update completed successfully")
 _MAA_READY = re.compile(r"LoadResource Exit")
@@ -93,7 +95,9 @@ _MAA_PENDING_VER = re.compile(r"MirrorChyanApp(v[\w.\-+]+)\.zip$", re.IGNORECASE
 
 
 def _maa_pending_version(maa_dir: Path | None) -> str:
-    """已下载待装的那个包是哪个版本——从 MirrorChyan 包名读；读不到返回空串。"""
+    """Which version the downloaded, not-yet-installed package is -- read from
+    the MirrorChyan file name. Empty string when it cannot be read.
+    """
     if not maa_dir:
         return ""
     try:
@@ -127,9 +131,11 @@ _MAA_VERSION = re.compile(r"Version (v[\w.\-+]+)")
 
 
 def _maa_version(log_path: Path) -> str:
-    """MAA 自己在 gui.log 里报的版本号（`Bootstrapper ... Version v6.17.0-beta.6`）。
+    """The version MAA reports for itself in gui.log
+    (`Bootstrapper ... Version v6.17.0-beta.6`).
 
-    读不到就返回空串——它只用来把日志写得具体一点，不值得让预更新失败。
+    Returns an empty string when it cannot be read -- this only makes the log
+    more specific, and is not worth failing the pre-update over.
     """
     try:
         tail = log_path.read_text(encoding="utf-8", errors="replace")[-200_000:]
@@ -142,12 +148,16 @@ def _maa_version(log_path: Path) -> str:
 def _maa_await_verdict(log_path: Path, before_len: int, maa_dir: Path | None,
                        staged_before: bool, budget_s: float,
                        problems: list[str] | None) -> tuple[str, bool]:
-    """守着 gui.log 等 MAA 把更新这件事交代清楚，返回（已应用的说明, 有没有结论）。
+    """Watch gui.log until MAA has settled the update question. Returns
+    (description of what was applied, whether there was a verdict at all).
 
-    单独成一步，是因为 MAA 交代清楚的方式有四种——刚更新过所以自己跳过了检查、
-    明说已是最新、把新版下载落地、本来就有暂存现在就绪——每一种都得写清楚
-    为什么可以就此收手。四套判据夹在启动和善后中间，run_maa 的主干
-    「开 → 等 → 关」就看不出来了。等不到结论的那条问题也在这里记给调用方。
+    This is its own step because MAA settles the question in four different
+    ways -- it just updated so it skipped the check itself; it says outright it
+    is up to date; it landed the download of a new build; something was already
+    staged and is now ready -- and each one needs its own written reason for
+    why we may stop here. With all four sets of criteria wedged between the
+    launch and the cleanup, run_maa's spine (open -> wait -> close) becomes
+    unreadable. The "no verdict" problem is also recorded for the caller here.
     """
     applied = ""
     answered = False
@@ -161,22 +171,23 @@ def _maa_await_verdict(log_path: Path, before_len: int, maa_dir: Path | None,
             answered = True
             log.info("预更新：MAA 刚更新过，这次是首次启动，它自己跳过了更新检查；"
                      "09:00 队列启动时会补上")
-            break             # 等不到 latest，等下去只会白等满 180 秒
+            break             # "latest" will never come; waiting only burns the full 180 seconds
         if _MAA_LATEST.search(text):
             answered = True
-            # 别把这行省掉：另外三个程序在「已是最新」时都写一句，
-            # 只有 MAA 曾经是哑的，于是日志里看不出它到底查没查过。
+            # Do not drop this line: the other three programs each log a line
+            # when they are already up to date. Only MAA used to be silent, so
+            # the log did not show whether it had checked at all.
             log.info("预更新：MAA 已是 %s（无需更新）", _maa_version(log_path) or "最新版")
-            break             # 明说了已是最新，没有下载要等
+            break             # It said outright it is up to date; no download to wait for
         if not staged_before and maa_update_pending(maa_dir):
             answered = True
             log.info("预更新：MAA 已把新版下载到 %s，下轮启动时装上",
                      _MAA_PENDING_DIR)
-            break             # 下载落地了，剩下的交给 09:00 那次启动
+            break             # The download landed; the 09:00 startup handles the rest
         if _MAA_READY.search(text) and staged_before:
             answered = True
             log.info("预更新：MAA 的挂起更新已就绪，下轮启动时装上")
-            break             # 本来就有暂存，装完即可，不必等新的
+            break             # Something was already staged; installing it is enough, no need to wait for more
     else:
         log.warning("预更新：MAA 在 %.0f 秒内没给出更新结论，照常继续", budget_s)
         _note(problems,
@@ -187,14 +198,16 @@ def _maa_await_verdict(log_path: Path, before_len: int, maa_dir: Path | None,
 
 def _maa_summary(maa_dir: Path | None, log_path: Path, before_ver: str,
                  applied: str, answered: bool, staged_before: bool) -> str:
-    """把等到的结论翻成给人看的一句话；没什么可报的就返回空串。
+    """Turn the verdict into one human-readable line; empty string when there
+    is nothing to report.
 
-    单独成一步，是因为这一段跑在 finally 关掉 MAA **之后**：装完的那次重启才会
-    把新版本号写进 gui.log 末尾，早读一步读到的还是旧的。摘出来放在这里，
-    也就不会有人顺手把它挪回 try 里面去。
+    This is its own step because it runs **after** the finally block has closed
+    MAA: only the restart that follows the install writes the new version at
+    the end of gui.log, and reading a step earlier still gets the old one.
+    Pulled out here, nobody casually moves it back inside the try.
     """
     if applied:
-        # 装完后 MAA 重启，gui.log 末尾那行 Version 就是新版本号
+        # MAA restarts after installing, so the last Version line in gui.log is the new one
         return f"MAA 已更新：{_span(before_ver, _maa_version(log_path) or '新版本')}"
     if answered and not staged_before and maa_update_pending(maa_dir):
         target = _maa_pending_version(maa_dir) or "新版本"

@@ -1,5 +1,6 @@
-"""ark-relay: MAA / AUTO-MAS 通知中继。
+"""ark-relay: notification relay for MAA / AUTO-MAS.
 
-本机模式与服务器模式共用全部业务逻辑，只有 transport 层不同。
+Local mode and server mode share all business logic; only the transport
+layer differs.
 """
 __version__ = "0.1.0"

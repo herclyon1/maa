@@ -84,23 +84,25 @@ def next_boot(now: datetime, min_ahead_min: int = 0) -> datetime:
 
 
 def _store(state_dir: Path):
-    from .statestore import StateStore  # noqa: PLC0415 - 避免导入环
+    from .statestore import StateStore  # noqa: PLC0415 - avoids an import cycle
     return StateStore(state_dir)
 
 
 def skip_armed(state_dir: Path) -> bool:
-    """人有没有按下「下一次别关机」。
+    """Whether the operator has pressed "don't shut down next time".
 
-    这是给**人**用的开关，桌面上那个 `中继关机开关.bat` 写的就是这个文件。
-    和调试模式的区别：调试模式带到期时间，是我维护时用的；这个不带时间，
-    就是把**下一次真正要执行的关机指令**吃掉一次，用完即失效。
-    用户 2026-08-31：「你给一个人类好去调这个模式的方法，独立于你的。」
+    This is the switch for a **human**: the `中继关机开关.bat` on the desktop
+    writes exactly this file. How it differs from debug mode: debug mode carries
+    an expiry and is what I use while doing maintenance; this one carries no
+    time at all, it just swallows **the next shutdown command that would really
+    be executed**, once, and is spent afterwards.
+    The user, 2026-08-31: 「你给一个人类好去调这个模式的方法，独立于你的。」
     """
     return bool(_store(state_dir).get("modes", "skip_next_shutdown"))
 
 
 def set_skip_shutdown(state_dir: Path, on: bool) -> tuple[bool, str]:
-    """打开/取消「下一次别关机」。给待办指令和桌面开关共用。"""
+    """Turn "don't shut down next time" on or off. Shared by the todo commands and the desktop switch."""
     store = _store(state_dir)
     if on:
         store.set("modes", "skip_next_shutdown", True)
@@ -112,7 +114,7 @@ def set_skip_shutdown(state_dir: Path, on: bool) -> tuple[bool, str]:
 
 
 def take_skip(state_dir: Path) -> bool:
-    """有就用掉并返回 True。用完即失效，下一趟队列照常关机。"""
+    """Consume the flag and return True if it was set. It is spent afterwards - the next queue run shuts down as usual."""
     store = _store(state_dir)
     if not store.get("modes", "skip_next_shutdown"):
         return False
@@ -123,15 +125,20 @@ def take_skip(state_dir: Path) -> bool:
 
 
 def shutdown_skipped(state_dir: Path) -> str:
-    """哪一次关机机会已经被调试模式吃掉了，''=没有。
+    """Which shutdown opportunity debug mode has already swallowed; '' means none.
 
-    用户 2026-08-31：「我开了调试模式是指把一次队列的中继关机指令跳过，
+    The user, 2026-08-31: 「我开了调试模式是指把一次队列的中继关机指令跳过，
     而不是中继一直尝试关机，要不然人类没办法使用这个电脑。」
 
-    原来调试模式只是让每一次判定返回 False，而判定每 30 秒重来一次——
-    到期后条件没变，机器立刻就关了，等于调试模式只是把关机推迟到到期时刻。
-    现在它**吃掉这一次机会**：记下当时的机会标识，到期后只要标识没变
-    （没有新队列跑完），就不再补关；新队列一跑完标识就变，恢复正常关机。
+    Debug mode used to do nothing but return False from every decision, and the
+    decision is retaken every 30 seconds - so once the mode expired the
+    conditions were unchanged and the machine powered off immediately, which
+    made debug mode merely a postponement of the shutdown until expiry.
+    Now it **swallows that one opportunity**: it records the identifier of the
+    opportunity at the time, and after expiry, as long as that identifier has
+    not changed (no new queue has finished), there is no catch-up shutdown. The
+    identifier changes the moment a new queue finishes, and normal shutdown
+    resumes.
     """
     return str(_store(state_dir).get("modes", "shutdown_skipped") or "")
 
@@ -185,10 +192,13 @@ def set_debug(state_dir: Path, cycles: int = 1, off: bool = False,
     store = _store(state_dir)
     if off:
         store.pop("modes", "debug_until")
-        # 手动关掉 = 「维护结束，恢复正常」。被吃掉的那次关机机会要一并清掉，
-        # 否则机器会一直空开到下一趟队列跑完——2026-08-31 我维护完关掉它，
-        # 机器就是这样准备空开一整夜的。**自然到期不清**，那才是用户要的
-        # 「跳过这一次」；只有明确说「关掉」时才恢复。
+        # Turning it off by hand means "maintenance is over, back to normal", so
+        # the swallowed shutdown opportunity has to be cleared along with it;
+        # otherwise the machine idles powered on until the next queue finishes -
+        # on 2026-08-31 I turned it off after maintenance and the machine was
+        # about to idle all night exactly like that. **A natural expiry must not
+        # clear it**: that is the "skip this one time" the user asked for. Only
+        # an explicit "turn it off" restores normal shutdown.
         store.pop("modes", "shutdown_skipped")
         return True, "调试模式已关闭，恢复正常运行（队列若被停用需另行恢复）"
     try:
@@ -202,8 +212,9 @@ def set_debug(state_dir: Path, cycles: int = 1, off: bool = False,
     for _ in range(cycles - 1):
         boot = next_boot(boot)
     end = boot - timedelta(minutes=DEBUG_LEAD_MIN)
-    # 原子写：撕裂的值按设计倒向「调试开着」，也就是机器不会自己关机。
-    # 这是有意的兜底，但不该由一次断电造成——state.json 的写入本身是原子的。
+    # Atomic write: by design a torn value falls towards "debug is on", i.e. the
+    # machine will not power itself off. That fallback is deliberate, but it must
+    # not be triggered by a power cut - the write of state.json is itself atomic.
     store.set("modes", "debug_until", end.strftime("%Y-%m-%d %H:%M"))
     return True, (f"🔧 调试模式已开启，至 {end:%m-%d %H:%M}"
                   f"（下次预定开机 {boot:%m-%d %H:%M} 前 {DEBUG_LEAD_MIN} 分钟）："
@@ -213,7 +224,7 @@ def set_debug(state_dir: Path, cycles: int = 1, off: bool = False,
 # ---------- skip mode (跳过模式) ----------
 
 def _restore_marker(state_dir: Path):
-    """跳过模式的恢复标记：停用了哪个队列、哪天、最后一个时段。没有返回 None。"""
+    """Skip mode's restore marker: which queue was disabled, on which day, and its last time slot. None when absent."""
     d = _store(state_dir).get("queues", "skip_restore")
     return d if isinstance(d, dict) and d else None
 
@@ -235,12 +246,15 @@ def process_skip(state_dir: Path, automas_dir: Path | None,
 
 
 def _is_day(text: str) -> bool:
-    """键里那一段是不是 YYYY-MM-DD。
+    """Whether that part of the key is a YYYY-MM-DD date.
 
-    这个段里还住着别的功能的键。原来清理陈旧标记 glob 的是 skip-*.flag，
-    把「下一次别关机」的 skip-next-shutdown.flag 一并扫掉了——人在手机上按下
-    开关，30 秒内就被删，日志还写「未曾生效（当天机器没开机）」，而机器正开着。
-    那个开关因此从加进来的第一天起就是坏的，且坏得不出声。只认日期形状。
+    Other features keep their keys in this same section. The stale-marker
+    cleanup used to glob skip-*.flag, which swept away skip-next-shutdown.flag,
+    the "don't shut down next time" switch, along with it - a person pressed the
+    switch on their phone, it was deleted within 30 seconds, and the log said
+    「未曾生效（当天机器没开机）」 while the machine was in fact running. That
+    switch was therefore broken from the first day it was added, and broken
+    silently. Only accept the date shape.
     """
     try:
         datetime.strptime(text, "%Y-%m-%d")
@@ -294,7 +308,7 @@ def _maybe_engage(state_dir: Path, automas_dir: Path | None,
     ok, detail = queues.apply(Path(automas_dir), queue, enabled=False)
     if not ok:
         store.pop("queues", "skip_restore")
-        return [*out, f"跳过「{queue}」失败：{detail}"]   # 标记留着，下个 tick 重试
+        return [*out, f"跳过「{queue}」失败：{detail}"]   # keep the flag; retry on the next tick
     store.pop("queues", f"skip_day:{day}")
     return [*out, f"今天（{day}）跳过队列「{queue}」：已临时停用，过后自动恢复"]
 

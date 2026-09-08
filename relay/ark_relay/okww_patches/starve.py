@@ -1,4 +1,4 @@
-"""OK-WW 补丁：starve。从 okww_patch.py 拆出（2026-09-06，只搬不改）。"""
+"""OK-WW patch: starve. Split out of okww_patch.py (2026-09-06, moved verbatim, no changes)."""
 from __future__ import annotations
 
 import logging
@@ -10,7 +10,7 @@ log = logging.getLogger("ark.okww_patch")
 
 
 
-# ── 补丁四：主C饿死兜底 ────────────────────────────────────────
+# ── Patch 4: main-DPS starvation fallback ─────────────────────
 # 来龙去脉见 docs/CODE-HISTORY.md「starve.py:(模块级)」
 _STARVE_OLD = """    def _choose_switch_target_by_buff_time(self, current_char, candidates):
         if not candidates:

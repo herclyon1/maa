@@ -1,38 +1,49 @@
-"""森空岛（鹰角官方社区）客户端：拿终末地的角色练度。
+"""Skland (Hypergryph's official community) client: reads Endfield character progression.
 
-**为什么要它**：我们能看到游戏里刷了什么，但看不到「练到什么程度、还差什么」。
-森空岛是官方社区，账号数据就在那儿，比截图识别可靠得多。
+**Why we need it**: we can see what the game farmed, but not "how far a
+character is trained and what is still missing". Skland is the official
+community, the account data is right there, and it is far more reliable than
+reading it off screenshots.
 
-**凭证怎么来**（用户 2026-08-27 提供）：浏览器登录 skland.com 之后打开
-`https://web-api.skland.com/account/info/hg`，返回 JSON 的 `data.content`
-就是 token。它**等同账号登录凭证**，只存在机器的 `.env` 里（仓库是公开的，
-`.gitignore` 第一行就是 `.env`），任何日志和报告里都不许出现它。
+**Where the credential comes from** (supplied by the user, 2026-08-27): log in
+to skland.com in a browser, then open
+`https://web-api.skland.com/account/info/hg`; `data.content` in the returned
+JSON is the token. It is **equivalent to the account login credential**, it
+lives only in the machine's `.env` (this repo is public and `.env` is the first
+line of `.gitignore`), and it must never appear in any log or report.
 
-**token 会过期**，所以这里做成自动链路：token → code → cred，
-cred 有 `/api/v1/auth/refresh` 可以续；全部失败才回头找人。
-用户的原话是「你最好这东西搞个自动化，我记得token会过期的」。
+**The token expires**, so this is built as an automatic chain: token -> code ->
+cred, and cred can be renewed via `/api/v1/auth/refresh`; only when all of that
+fails do we go back to a person. The user's own words were
+「你最好这东西搞个自动化，我记得token会过期的」.
 
-**签名**：每个请求都要带 `sign`：
+**Signing**: every request carries `sign`:
 
     secret = path + query + timestamp + json({platform,timestamp,dId,vName})
-    sign   = MD5(HMAC-SHA256(cred.token, secret))     # 二次摘要是 MD5 不是 SHA256
+    sign   = MD5(HMAC-SHA256(cred.token, secret))     # the second digest is MD5, not SHA256
 
-2026-08-27 踩的坑，三条一起错才会 403：
+Pitfalls hit on 2026-08-27 - all three were wrong at once, which is what made it
+a 403:
 
-* `platform` 必须是 **"3"**，不是 "1"。
-* `vName` 必须是 **"1.0.0"**，不是空串。
-* `serverId` 取 `bindingList[].roles[].serverId`，**不是 `channelMasterId`**。
+* `platform` must be **"3"**, not "1".
+* `vName` must be **"1.0.0"**, not an empty string.
+* `serverId` comes from `bindingList[].roles[].serverId`, **not
+  `channelMasterId`**.
 
-错了就统一回 HTTP 403 `{"code":10001,"message":"操作失败，请稍后重试"}`，
-**它不告诉你错在哪**。对照组是明日方舟的 `/api/v1/game/player/info`，
-同一套签名一次就通——所以「签名对不对」这个方向从一开始就是错的。
+Any of these gets the same HTTP 403 `{"code":10001,"message":"操作失败，请稍后重试"}`,
+and **it does not tell you what is wrong**. The control case is Arknights'
+`/api/v1/game/player/info`, which goes through first try with the same signing -
+so "is the signature correct" was the wrong line of investigation from the start.
 
-时间戳要和服务器对齐：先 `GET /web/v1/auth/refresh`（它不需要 sign）拿到
-`timestamp`，记下本地时间差，之后每次请求用 `服务器时间 + 本地流逝`。
-长期直接用 refresh 那一刻的原始时间戳会被判「请勿修改设备本地时间」(10003)。
+Timestamps have to be aligned with the server: first `GET /web/v1/auth/refresh`
+(which needs no sign) to get `timestamp`, record the offset from local time, and
+from then on send `server time + local elapsed` on every request. Reusing the
+raw timestamp from the moment of the refresh for any length of time is rejected
+as 「请勿修改设备本地时间」 (10003).
 
-接口出处：otae-1204/otae-bot-entari `docs/skland_endfield_personal_api.md`
-（2026-07 逆向 + 2026-08-19 复查，逐个端点都有 code:0 实测记录）。
+Endpoint source: otae-1204/otae-bot-entari `docs/skland_endfield_personal_api.md`
+(reverse-engineered 2026-07, re-checked 2026-08-19, with a measured code:0 record
+for every endpoint).
 """
 from __future__ import annotations
 
@@ -52,10 +63,10 @@ log = logging.getLogger("ark.skland")
 _UA = ("Skland/1.32.1 (com.hypergryph.skland; build:103201004; "
        "Android 33; ) Okhttp/4.11.0")
 _HEADERS = {"User-Agent": _UA, "Accept-Encoding": "gzip", "Connection": "close"}
-# 终末地这套端点认死这两个值，见模块开头。
+# The Endfield endpoints insist on exactly these two values; see the module docstring.
 _SIGN_KEYS = {"platform": "3", "timestamp": "", "dId": "", "vName": "1.0.0"}
 
-SKLAND_APP_CODE = "4ca99fa6b56cc2ba"     # 森空岛的 appCode，换 code 用
+SKLAND_APP_CODE = "4ca99fa6b56cc2ba"     # Skland's appCode, used to exchange for a code
 GRANT_URL = "https://as.hypergryph.com/user/oauth2/v2/grant"
 ZONAI = "https://zonai.skland.com"
 CRED_URL = "https://zonai.skland.com/api/v1/user/auth/generate_cred_by_code"
@@ -68,7 +79,7 @@ _TIMEOUT = 20
 
 
 class SklandError(RuntimeError):
-    """接口报错。**不带凭证内容**——异常会进日志。"""
+    """An API error. **Never carries credential content** - exceptions end up in the log."""
 
 
 @dataclass
@@ -77,20 +88,23 @@ class Cred:
     token: str
     userId: str = ""
     dId: str = ""
-    """设备指纹。**必须和 cred 是同一份会话**——换 cred 时用的哪个，
-    之后每个请求（含 refresh）就得一直用哪个，签名里也得是它。
-    2026-08-27 实测：换 cred 时不带 dId，refresh 直接回「设备信息无效」。"""
+    """Device fingerprint. **Must belong to the same session as the cred**: whichever
+    one was used when exchanging for the cred has to be used on every request
+    afterwards (refresh included), and it has to be the one inside the signature.
+    Measured 2026-08-27: leave dId out of the cred exchange and refresh answers
+    「设备信息无效」 straight away."""
 
-    def __repr__(self) -> str:          # 防止不小心把凭证打进日志
+    def __repr__(self) -> str:          # keeps credentials from being logged by accident
         return (f"Cred(userId={self.userId!r}, cred=<hidden>, token=<hidden>, "
                 f"dId={'<有>' if self.dId else '<空>'})")
 
 
 def _read(resp) -> dict:
-    """读响应。请求头里带了 Accept-Encoding: gzip（照抄上游那份），
-    而 urllib 不会自动解压——第一次调用就撞在这上面：
-    `'utf-8' codec can't decode byte 0x8b`，0x8b 正是 gzip 的魔数。
-    按实际的 Content-Encoding 判断，别假设。"""
+    """Read a response. The request headers carry Accept-Encoding: gzip (copied
+    from the upstream implementation) and urllib does not decompress on its own -
+    the very first call hit exactly that:
+    `'utf-8' codec can't decode byte 0x8b`, and 0x8b is the gzip magic number.
+    Decide from the actual Content-Encoding; do not assume."""
     raw = resp.read()
     if resp.headers.get("Content-Encoding", "").lower() == "gzip" or raw[:2] == b"\x1f\x8b":
         raw = gzip.decompress(raw)
@@ -111,15 +125,17 @@ def _get(url: str, headers: dict) -> dict:
         return _read(r)
 
 
-# ── 设备指纹（dId）──────────────────────────────────────────────
-# `/web/v1/` 那套端点（终末地就在里面）不认没有 dId 的请求：
-# 2026-08-27 实测，只带 sign 会被 403 挡回来，body 是
-# {"code":10001,"message":"操作失败，请稍后重试"}——**它不告诉你缺什么**。
-# 对照组：明日方舟的 /api/v1/game/player/info 同样的签名一次就通，
-# 所以问题不在签名，在这套 web 端点额外要设备指纹。
+# ── Device fingerprint (dId) ───────────────────────────────────
+# The `/web/v1/` endpoints (Endfield lives among them) reject requests without a
+# dId: measured 2026-08-27, sending only `sign` is turned away with a 403 whose
+# body is {"code":10001,"message":"操作失败，请稍后重试"} - **it does not tell you
+# what is missing**. Control case: Arknights' /api/v1/game/player/info goes
+# through first try with the same signing, so the problem is not the signature,
+# it is that these web endpoints additionally require a device fingerprint.
 #
-# 下面这三个常量原样取自 FrostN0v0/nonebot-plugin-skland 的 api/dId.py
-# （唯一公开可查的实现）。是一段固定的设备画像负载，换取一个 deviceId。
+# The three constants below are taken verbatim from api/dId.py in
+# FrostN0v0/nonebot-plugin-skland (the only publicly available implementation).
+# They are a fixed device-profile payload that is exchanged for a deviceId.
 V4_URL = "https://fp-it.portal101.cn/deviceprofile/v4"
 V4_DATA = (
     "4ac13cbe759d757cf4fd5465233024db2b7ae6bfbddd6d2d3eb964b246b2d4c3a8405b1601c3f3cc556257bd2784bfa6"
@@ -161,7 +177,7 @@ _did_cache = ""
 
 
 def get_did() -> str:
-    """取设备指纹。一次会话里缓存着用，别每个请求都去要一遍。"""
+    """Fetch the device fingerprint. Cached for the session - do not request one per call."""
     global _did_cache  # noqa: PLW0603
     if _did_cache:
         return _did_cache
@@ -178,27 +194,30 @@ def get_did() -> str:
     return _did_cache
 
 
-# 服务器时间减本地时间。refresh 一次就记下来，之后所有请求都按它校正。
+# Server time minus local time. Recorded once at refresh; every later request is
+# corrected by it.
 _clock_skew = 0
 _synced = False
 
 
 def server_now() -> int:
-    """和森空岛服务器对齐的 Unix 秒。
+    """Unix seconds aligned with the Skland server.
 
-    直接用本地时间，机器的钟稍微偏一点就会被判「请勿修改设备本地时间」；
-    直接用 refresh 返回的那个固定值，过一会儿就变成过期时间戳。所以记差值。
+    Using local time directly means a slightly off machine clock is rejected as
+    「请勿修改设备本地时间」; using the fixed value refresh returned means it
+    becomes a stale timestamp after a while. Hence the recorded offset.
     """
     return int(time.time()) + _clock_skew
 
 
 def sign_headers(cred: Cred, url: str, method: str = "get",
                  body: dict | None = None, use_did: bool = False) -> dict:
-    """带签名的请求头。算法见模块开头。
+    """Signed request headers. The algorithm is in the module docstring.
 
-    `use_did=True` 时把设备指纹一起算进签名。旧凭据（我们这条 token→code→cred
-    的链路）可以不用；从森空岛 App 当前登录态里抠出来的 cred 则必须带上
-    完整的 smidV2，否则报 10001「设备信息无效」。
+    With `use_did=True` the device fingerprint is folded into the signature.
+    Older credentials (our own token -> code -> cred chain) can do without it; a
+    cred lifted out of a live Skland app session must carry the full smidV2 or
+    it fails with 10001 「设备信息无效」.
     """
     ts = server_now()
     parsed = urlparse(url)
@@ -216,10 +235,11 @@ def sign_headers(cred: Cred, url: str, method: str = "get",
 
 
 def login(token: str, d_id: str = "") -> Cred:
-    """token → code → cred。token 过期时这里会抛，信息里不含凭证。
+    """token -> code -> cred. Raises when the token has expired; the message carries no credential.
 
-    换 cred 这一步就要把设备指纹带上，并且和返回的 cred 绑成一对——
-    不带的话 cred 本身能换到，但下一步 refresh 就是「设备信息无效」。
+    The device fingerprint has to be sent on the cred exchange itself and stays
+    paired with the cred that comes back - without it the cred exchange still
+    succeeds, but the very next refresh answers 「设备信息无效」.
     """
     d_id = d_id or get_did()
     r = _post(GRANT_URL, {"appCode": SKLAND_APP_CODE, "token": token, "type": 0})
@@ -235,9 +255,10 @@ def login(token: str, d_id: str = "") -> Cred:
 
 
 def refresh(cred: Cred) -> Cred:
-    """续 cred 的 token，顺便和服务器对表。这个接口本身不需要 sign。
+    """Renew the cred's token and align clocks with the server on the way. This endpoint itself needs no sign.
 
-    **业务接口之前必须先调它一次**，否则时间戳没对齐。
+    **It must be called once before any business endpoint**, otherwise the
+    timestamps are not aligned.
     """
     global _clock_skew  # noqa: PLW0603
     r = _get(REFRESH_URL, {**_HEADERS, "cred": cred.cred, "dId": cred.dId})
@@ -253,10 +274,10 @@ def refresh(cred: Cred) -> Cred:
 
 
 def endfield_role(cred: Cred) -> tuple[str, str]:
-    """终末地的 (roleId, serverId)。
+    """Endfield's (roleId, serverId).
 
-    `serverId` 取 `roles[].serverId`——**不是 `channelMasterId`**，
-    拿错了同样只会得到一个不解释原因的 403。
+    `serverId` comes from `roles[].serverId` - **not `channelMasterId`**. Take
+    the wrong one and all you get is the same 403 that explains nothing.
     """
     for app in bindings(cred):
         if app.get("appCode") != "endfield":
@@ -268,11 +289,11 @@ def endfield_role(cred: Cred) -> tuple[str, str]:
     raise SklandError("这个账号下没找到终末地的角色绑定")
 
 
-def endfield_card(cred: Cred, role_id: str = "", server_id: str = "") -> dict:  # deadcode: allow —— 森空岛接口的公开入口，docs/SKLAND-API.md 记着，临时查练度时手动调
-    """终末地个人详情。练度在 `data.detail` 里。"""
+def endfield_card(cred: Cred, role_id: str = "", server_id: str = "") -> dict:  # deadcode: allow -- public entry point of the Skland API, documented in docs/SKLAND-API.md, called by hand for ad-hoc progression checks
+    """Endfield personal detail. Progression lives in `data.detail`."""
     if not _synced:
-        # 忘了对表就会拿到一个「过期」的时间戳，报 10003。
-        # 与其指望调用方记得，不如在这里替他做掉。
+        # Forgetting to align clocks yields an "expired" timestamp and a 10003.
+        # Rather than rely on the caller remembering, do it for them here.
         cred = refresh(cred)
     if not role_id or not server_id:
         role_id, server_id = endfield_role(cred)
@@ -284,13 +305,13 @@ def endfield_card(cred: Cred, role_id: str = "", server_id: str = "") -> dict:  
 
 
 def get(cred: Cred, path: str) -> dict:
-    """按签名规则 GET 一个 zonai 路径。给 banners.py 用，省得它重造签名链路。"""
+    """GET a zonai path following the signing rules. Used by banners.py so it need not rebuild the signing chain."""
     url = ZONAI + path if path.startswith("/") else path
     return _get(url, sign_headers(cred, url))
 
 
 def bindings(cred: Cred) -> list[dict]:
-    """绑定的游戏账号列表（含终末地）。"""
+    """The list of bound game accounts (Endfield included)."""
     r = _get(BINDING_URL, sign_headers(cred, BINDING_URL))
     if r.get("code") not in (0, None):
         raise SklandError(f"取绑定角色失败：{r.get('message')}")

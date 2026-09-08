@@ -1,7 +1,8 @@
-"""关机判定：这一趟到底该不该关，为什么。
+"""Shutdown decision: should this round power the machine off, and why.
 
-从 engine.py 拆出来（2026-09-06，只搬不改）。真正执行关机命令的是
-Engine._power_off，这里只判定；每一道门都对应一次真实事故，见各处注释。
+Split out of engine.py (2026-09-06, moved verbatim). The command itself is issued by
+Engine._power_off; this module only decides. Every gate here corresponds to a real
+incident - see the comment at each one.
 """
 from __future__ import annotations
 
@@ -81,9 +82,10 @@ def _boot_time(eng, now: datetime | None = None) -> datetime | None:
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     try:
         import ctypes  # noqa: PLC0415 - Windows only, imported where used
-        # 返回值是 64 位；不声明 restype 的话 ctypes 按 32 位 int 截断，
-        # 开机超过 24.8 天就变成负数——这台机器一天两开机撞不到，但
-        # 「靠巧合正确」不算正确。
+        # The return value is 64-bit; without a declared restype ctypes truncates it
+        # to a 32-bit int, and any uptime past 24.8 days turns negative. This machine
+        # boots twice a day and never gets there, but "correct by coincidence" is not
+        # correct.
         ctypes.windll.kernel32.GetTickCount64.restype = ctypes.c_ulonglong
         ms = ctypes.windll.kernel32.GetTickCount64()
     except (AttributeError, OSError):
@@ -175,7 +177,8 @@ def _last_round_manual(eng, now: datetime, entries: list[dict]) -> bool:
     except (KeyError, ValueError):
         return False
     newest = max(starts)
-    # 队列后由中继自己派发的补跑不是「人手动跑的」，跑完该关机
+    # A catch-up run the relay itself dispatched after the queue is not "a human
+    # ran it by hand"; when it finishes, the machine should power off
     since = getattr(eng, "_gu_rerun_at", None)
     if since is not None and newest >= since:
         return False
@@ -187,11 +190,12 @@ def _last_round_manual(eng, now: datetime, entries: list[dict]) -> bool:
 # ---------- power off, once everything has actually been delivered ----------
 
 def _shutdown_key(eng, now: datetime) -> str:
-    """这一次「该关机了」的机会标识。
+    """Identifier for this one "time to power off" opportunity.
 
-    用当天流水的条数：一趟队列跑完就会增加，所以「晚班跑完那一次」和
-    「早班跑完那一次」是两个不同的机会。调试模式吃掉的是其中一次，
-    不是从此不关机。
+    It is the number of ledger entries for the day: the count grows every time a queue
+    finishes, so "the one after the evening shift" and "the one after the morning
+    shift" are two different opportunities. Debug mode eats one of them; it does not
+    stop the machine powering off from then on.
     """
     day = now.strftime("%Y-%m-%d")
     return f"{day}:{len(eng.state.read_ledger(day))}"
@@ -199,7 +203,9 @@ def _shutdown_key(eng, now: datetime) -> str:
 
 @dataclass(frozen=True)
 class Verdict:
-    """关不关、为什么、哪道门。`code` 给上层做副作用和去重用，`reason` 给人看。"""
+    """Power off or not, why, and which gate. `code` drives the caller's side effects
+    and de-duplication; `reason` is what a human reads.
+    """
 
     go: bool
     code: str
@@ -207,16 +213,17 @@ class Verdict:
 
 
 def decide(eng, now: datetime) -> Verdict:
-    """纯判定：只读状态，不写任何东西。每一道门都对应一次真实事故。
+    """Pure decision: reads state, writes nothing. Every gate maps to a real incident.
 
     来龙去脉见 docs/CODE-HISTORY.md「shutdown.py:decide」。
     """
     if not eng.cfg.shutdown_after_run:
         return Verdict(False, "off", "关机功能没开")
     key = eng._shutdown_key(now)
-    # 调试模式**吃掉这一次关机机会**而不是每 30 秒推迟一次（用户 2026-08-31：
-    # 「我开了调试模式是指把一次队列的中继关机指令跳过，而不是中继一直尝试关机」）。
-    # 记标识的副作用在 _maybe_shutdown 里做，这里只判。
+    # Debug mode **eats this one shutdown opportunity** rather than deferring it
+    # every 30 seconds (the user, 2026-08-31: 「我开了调试模式是指把一次队列的中继
+    # 关机指令跳过，而不是中继一直尝试关机」). Recording the key is a side effect and
+    # happens in _maybe_shutdown; this function only decides.
     if modes.debug_active(eng.state.dir):
         return Verdict(False, "debug", f"调试模式生效，这一次关机机会（{key}）跳过")
     if modes.shutdown_skipped(eng.state.dir) == key:
@@ -227,8 +234,9 @@ def decide(eng, now: datetime) -> Verdict:
     entries = eng._recent_entries(now)
     if not (eng._handled_any or eng._work_is_done(now, entries)) and not idle:
         return Verdict(False, "nothing-done", "本次开机还没有跑完任何队列")
-    # 开机时长下限防「开机即关机」死循环；空开机检查点例外——它本来就是
-    # 对无事可做的开机的快速关机，窗口只有五分钟，循环不起来（2026-08-19）。
+    # The minimum-uptime floor guards against a "boot, power off at once" loop. The
+    # idle checkpoint is exempt: it exists precisely to shut down a boot with nothing
+    # to do, its window is only five minutes, and it cannot loop (2026-08-19).
     if (not idle and (now - eng._started_at).total_seconds()
             < eng.cfg.shutdown_min_uptime):
         return Verdict(False, "uptime", "开机不够久")
@@ -244,7 +252,8 @@ def decide(eng, now: datetime) -> Verdict:
         return Verdict(False, "unfinished", "；".join(unfinished))
     day = now.strftime("%Y-%m-%d")
     cutoff = eng._report_cutoff(now)   # same source as the report itself
-    # 空账本 = 今天本来就没排任何事，没有日报可等；只有真跑过才等日报（2026-08-19 开了一夜）。
+    # An empty ledger means nothing was scheduled today, so there is no daily report
+    # to wait for; wait only when something actually ran (2026-08-19: up all night).
     if (now >= cutoff and not eng.state.report_sent(day)
             and eng.state.read_ledger(day)):
         return Verdict(False, "report", "到点该关机了，但日报还没发出去，继续等")
@@ -252,7 +261,7 @@ def decide(eng, now: datetime) -> Verdict:
 
 
 def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
-    """判定 + 副作用。判定在 decide()，这里只做判定说了「关」之后的事。"""
+    """Decision plus side effects. decide() judges; this does what follows a "go"."""
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     v = decide(eng, now)
     if v.code == "debug":
@@ -264,7 +273,8 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
         return False
     if not v.go:
         if v.code in ("manual", "unfinished"):
-            # 原因变了才写一行，免得四十行一样的把要紧的埋掉
+            # One line only when the reason changes, so forty identical lines
+            # don't bury what matters
             if v.reason != eng._last_wait_note:
                 eng._last_wait_note = v.reason
                 log.info("不关机：%s", v.reason)
@@ -273,23 +283,28 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
         return False
     eng._last_wait_note = ""
     day = now.strftime("%Y-%m-%d")
-    # 绝不静默关机：当天正式日报还没发（早班跑完就是这种情况）就先补一份
-    # 临时查看。定时任务做不了这件事——它得落在「跑完」和「关机」之间，而那个空档会动。
+    # Never power off silently: if the day's real report has not gone out yet (the
+    # case after the morning shift), send an interim view first. A scheduled task
+    # cannot do this - it would have to land between "finished" and "power off", and
+    # that gap moves.
     if (eng.cfg.report_before_shutdown and not eng.state.report_sent(day)
             and not eng.state.interim_sent(day)):
         log.info("关机前补发一份当前进度")
         if eng.send_daily_now(mark=False):
             eng.state.mark_interim_sent(
                 day, len(eng.state.read_ledger(day)))
-    # 关机前最后拉一次待办：人可能刚在手机上按了「今晚别关机」。只在这一刻拉一次，
-    # 拉不到不等于有人喊停。
+    # One last pull of pending orders before powering off: someone may have just
+    # pressed "don't shut down tonight" on the phone. Pull once, at this moment only;
+    # a failed pull does not mean somebody called a halt.
     if eng._before_shutdown is not None:
         try:
             eng._before_shutdown()
         except Exception:
             log.warning("关机前的待办检查失败，按原计划关机", exc_info=True)
-    # 人按过「这次别关机」（手机指令或桌面 .bat）：吃掉这一次，用完即失效。
-    # 必须放在所有门之后、真关之前，否则会被一次「其实还没到时候」白白消耗掉。
+    # Somebody pressed "skip this shutdown" (phone order or desktop .bat): it eats
+    # this one occasion and then expires. It must sit after every gate and before the
+    # actual power off, or a round that was not ready to shut down anyway would burn
+    # it for nothing.
     if modes.take_skip(eng.state.dir):
         modes.mark_shutdown_skipped(eng.state.dir, eng._shutdown_key(now))
         log.info("⏸ 有人按了「这次别关机」，本次关机已跳过；"

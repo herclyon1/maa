@@ -1,19 +1,25 @@
-"""推送给人看的文案，只在这一个模块里。
+"""Every piece of copy pushed to the user, in this one module and nowhere else.
 
-三条规矩（用户 2026-09-07，两次被点名后定死）：
-1. **只许人话**：英文只准出现产品名和「Boss」；任务类名、异常名、日志原文不进通知。
-2. **不许模糊**：「出错」「异常」「有问题」「这一步」「未知」不许单独当结论——
-   翻得出就写具体的，翻不出就明说「中继还不认识，原文已记日志」。
-3. **同类同句式**：三个周常一个样、四个程序的更新通知一个样。
+Three rules, fixed by the user on 2026-09-07 after calling this out twice:
+1. **Plain language only**: the only English allowed is product names and
+   「Boss」; task class names, exception names and raw log text never reach a
+   notification.
+2. **Nothing vague**: 「出错」「异常」「有问题」「这一步」「未知」 must not stand
+   alone as a verdict - if it can be translated, write the specific thing; if it
+   cannot, say so outright with 「中继还不认识，原文已记日志」.
+3. **Same kind, same phrasing**: the three weeklies read alike, and so do the
+   update notifications for the four programs.
 
-`tests/test_texts_gate.py` 守着：代码里所有 notifier.send 的标题必须来自这里，
-这里每一句、以及各处的中文对照表，都要过 `plain()`。
+`tests/test_texts_gate.py` enforces this: every notifier.send title in the code
+must come from here, and every sentence here - along with the Chinese lookup
+tables elsewhere - has to pass `plain()`.
 """
 from __future__ import annotations
 
 import re
 
-# 允许出现的英文：产品名、游戏里的通用说法、必须原样给人抄的命令
+# English that is allowed: product names, common in-game terms, and commands a
+# person has to copy verbatim.
 ALLOWED_WORDS = {
     "MAA", "MaaEnd", "OK-WW", "AUTO-MAS", "MXU", "Boss", "Annihilation", "F2",
     "PIN", "net", "stop", "start", "ark-relay", "deploy-relay.sh", "scripts/mac/deploy-relay.sh",
@@ -24,7 +30,7 @@ _WORD = re.compile(r"[A-Za-z][A-Za-z0-9./\-]*")
 
 
 def plain(text: str) -> list[str]:
-    """一句文案哪里不像人话。空列表 = 合格。"""
+    """Where one piece of copy fails to read as plain language. An empty list means it passes."""
     problems = []
     for w in _WORD.findall(text):
         if w not in ALLOWED_WORDS and not re.fullmatch(r"v?\d[\d.]*(?:-beta\.\d+)?", w):
@@ -35,12 +41,12 @@ def plain(text: str) -> list[str]:
     return problems
 
 
-# ---------------- 标题 ----------------
+# ---------------- titles ----------------
 PREUPDATE = "🆕 预更新"
 GAME_UPDATE = "🆕 游戏更新"
 RERUN_AFTER_UPDATE = "🔁 更新后重跑"
-WEEKLY = "🗓️ 周常"                 # 剿灭 / 周常乐园 / 周本 做完时，一个标题
-NEW_WEEK = "🗓️ 新的一周"           # 周一开机，三项状态各一行
+WEEKLY = "🗓️ 周常"                 # one title for annihilation / weekly garden / weekly boss finishing
+NEW_WEEK = "🗓️ 新的一周"           # Monday boot: one line of state for each of the three
 SKIP_MODE = "⏭️ 跳过模式"
 ESTOP = "🛑 已停一切"
 PHONE_DEFERRED = "📱 手机指令暂缓"
@@ -59,7 +65,7 @@ def patches(n: int) -> str:
 
 
 def unconfirmed(what: str, n: int) -> str:
-    """预更新 / 游戏更新 有几项没能确认。"""
+    """How many items the pre-update / game update could not confirm."""
     return f"⚠️ {what}没能确认（{n} 项）"
 
 
@@ -68,7 +74,8 @@ def failed(script: str) -> str:
 
 
 def self_healed(script: str) -> str:
-    # 原来叫「出错（本次自愈，问题未解决）」——「出错」是模糊词，改成说清发生了什么
+    # This used to read 「出错（本次自愈，问题未解决）」 - 「出错」 is one of the
+    # vague words, so it now says what actually happened.
     return f"⚠️ {script} 中途失败过，重试后成功"
 
 
@@ -88,7 +95,7 @@ def not_run_in(kind: str, queue: str) -> str:
     return f"{kind} 没有运行（{queue}）"
 
 
-# ---------------- 正文 ----------------
+# ---------------- bodies ----------------
 def self_healed_body(attempts: int) -> str:
     return f"第 1 次失败，第 {attempts} 次才成功。这次自己缓过来了，原因还在，见下。\n"
 
@@ -138,7 +145,7 @@ def missed_item_body(ran: list[str], kind: str, late_min: int) -> str:
             "队列本身是跑了的，所以不是没开机——是这一项自己没起来。")
 
 
-# 给闸门用：本模块所有常量和示例文案
+# For the gate: every constant in this module, plus sample copy
 def samples() -> list[str]:
     return [
         PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, SKIP_MODE, ESTOP,

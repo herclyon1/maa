@@ -197,9 +197,10 @@ def _sha1(data: bytes) -> str:
 
 
 def _atomic_write(target: Path, data: bytes) -> None:
-    """Temp file + os.replace + fsync，见 config.atomic_write_bytes。
+    """Temp file + os.replace + fsync; see config.atomic_write_bytes.
 
-    这里保留一层薄封装只是因为调用点多；实现只有一份，2026-09-08 合的。
+    This thin wrapper is kept only because there are many call sites; there is
+    a single implementation, merged 2026-09-08.
     """
     atomic_write_bytes(target, data)
 
@@ -221,11 +222,13 @@ def _safe_target(root: Path, rel: str) -> Path | None:
 
 
 def _applied_version(root: Path) -> int:
-    """本机现在跑的代码版本。记在 state.json 的 versions.code。
+    """The code version this machine is running. Kept in state.json under versions.code.
 
-    2026-09-08 从独立的 code-version.txt 搬进来：那份文件由部署脚本从外面直接写，
-    而中继自己也写，两个写者各写各的格式，谁也不知道对方的存在——正是桌面那个
-    关机开关坏掉的同一类问题。现在两边都走 statestore。
+    Moved in from the standalone code-version.txt on 2026-09-08: that file was
+    written directly from outside by the deploy script while the relay wrote it
+    too, two writers each with their own format and neither aware of the other -
+    exactly the same class of problem that broke the shutdown switch on the
+    desktop. Both sides now go through statestore.
     """
     from .statestore import StateStore  # noqa: PLC0415
     try:
@@ -418,10 +421,11 @@ def _best_manifest(base: str, deadline: float | None = None) -> dict | None:
 
 
 def _manifest_version(manifest: dict) -> int:
-    """读出清单自称的版本号；没有这个字段、或者填的不是数字，一律算 0。
+    """Read the version the manifest claims; no such field, or a non-number, counts as 0.
 
-    单独成步，是因为「读不出来算 0」不是随手的兜底，而是下面 _is_downgrade
-    那道闸门的前提：0 会真的参与比较，不是一个中性的「未知」。
+    This is its own step because "unreadable counts as 0" is not a casual
+    fallback but the premise of the _is_downgrade gate below: the 0 really does
+    take part in the comparison, it is not a neutral "unknown".
     """
     try:
         return int(manifest.get("version") or 0)
@@ -430,10 +434,12 @@ def _manifest_version(manifest: dict) -> int:
 
 
 def _is_downgrade(remote_ver: int, local_ver: int) -> bool:
-    """这次拿到的清单，是不是比本机已经应用过的那一版还旧。
+    """Whether the manifest just fetched is older than the version already applied here.
 
-    单独成步，是因为这道闸门整个靠一个反直觉的写法成立（见下面第二段注释），
-    夹在 check 中间很容易被后来的人「顺手简化」掉，而简化的代价是静默降级。
+    This is its own step because the whole gate rests on one counter-intuitive
+    formulation (see the second comment paragraph below); buried inside check()
+    it would be easy for someone later to "simplify while they are at it", and
+    the price of that simplification is a silent downgrade.
     """
     # Refuse a manifest older than the one the machine already has. Downloads
     # go through a CDN, and a CDN can perfectly well be caching the previous
@@ -454,10 +460,11 @@ def _is_downgrade(remote_ver: int, local_ver: int) -> bool:
 
 
 def _wanted_files(root: Path, files: dict) -> list[str]:
-    """算出这一轮打算改哪些文件——在任何一次下载之前先算好。
+    """Work out which files this round intends to change - before any download.
 
-    单独成步，是因为这份名单只服务于失败报告：下载中途放弃时，报告要能说出
-    「本来要改的是这几个」，而不是只说停在了哪一个上。
+    This is its own step because the list serves only the failure report: when a
+    download is abandoned midway, the report has to be able to say "these are
+    the files that were going to change" rather than only which one it stopped on.
     """
     # What this round intends to change, worked out before any fetching, so a
     # failure report can say what did not land rather than only where it stopped.
@@ -472,11 +479,14 @@ def _wanted_files(root: Path, files: dict) -> list[str]:
 def _stage_files(root: Path, base: str, files: dict, deadline: float | None,
                  remote_ver: int, local_ver: int,
                  wanted: list[str]) -> list[tuple[str, Path, bytes]] | None:
-    """把该改的文件全部下载并校验完，一个字节都不落盘，攒成一份清单返回。
+    """Download and verify every file that needs changing, write not one byte to disk, return the batch.
 
-    中途只要有一个文件拿不到正确内容，就记下失败原因并返回 None，表示这一轮
-    整体放弃。单独成步，是为了让「先全下完、再一次性写」这条铁律在函数边界上
-    就成立：攒和写分属两个函数，就不可能写出一边下一边写的代码。
+    If any single file cannot be fetched with the correct content, record the
+    failure reason and return None, meaning this round is abandoned as a whole.
+    It is its own step so that the iron rule "download everything first, then
+    write once" holds at a function boundary: staging and writing live in two
+    different functions, which makes it impossible to write code that writes
+    while it downloads.
     """
     # Download and verify every file that needs changing first, writing none of
     # them to disk; only once they all pass is anything written, in one go.
@@ -520,10 +530,12 @@ def _stage_files(root: Path, base: str, files: dict, deadline: float | None,
 
 def _write_staged(root: Path, staged: list[tuple[str, Path, bytes]],
                   remote_ver: int, local_ver: int, wanted: list[str]) -> list[str]:
-    """把攒好的内容一口气写到盘上，返回真正写成功的那些。
+    """Write the staged content to disk in one go; return the ones that really landed.
 
-    单独成步，是因为走到这里网络已经完全退场：这一段只会因为磁盘或权限出错，
-    和上面「下载拿不到」是两种完全不同的故障，能做的处置也不一样。
+    This is its own step because by the time it runs the network is entirely out
+    of the picture: this section can only fail on disk or permissions, which is a
+    completely different fault from "could not fetch it" above and calls for a
+    different response.
     """
     updated: list[str] = []
     for rel, target, data in staged:

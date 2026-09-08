@@ -1,6 +1,6 @@
-"""日报与临时查看：什么时候发、发什么。
+"""Daily report and interim look: when to send, and what to send.
 
-从 engine.py 拆出来（2026-09-06，只搬不改）。
+Split out of engine.py (2026-09-06, moved verbatim).
 """
 from __future__ import annotations
 
@@ -18,7 +18,8 @@ log = logging.getLogger("ark.report")
 
 
 def _fill_single_run_sanity(entries: list[dict]) -> None:
-    """只刷了一趟的终末地记录，消耗要拿当天上一条的余量来补。
+    """For an Endfield record with only one run, the sanity spent has to be
+    filled in from the previous entry's remaining sanity that same day.
 
     来龙去脉见 docs/CODE-HISTORY.md「report.py:_fill_single_run_sanity」。
     """
@@ -101,8 +102,9 @@ def _maybe_interim_report(eng, now: datetime | None = None) -> None:
 def _maybe_daily_report(eng, now: datetime | None = None) -> None:
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     day = now.strftime("%Y-%m-%d")
-    # 先补昨天：下面所有判断都以「今天」为准，昨天那份日报如果没发出去，
-    # 过了零点就再也没有机会补，只能在这里先了结。
+    # Yesterday first: every check below is written against "today", so if
+    # yesterday's report never went out, past midnight there is no other chance
+    # to make it up. It has to be settled here.
     # 来龙去脉见 docs/CODE-HISTORY.md「report.py:_maybe_daily_report」
     yday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
     if not eng.state.report_sent(yday) and (
@@ -146,20 +148,25 @@ def _maybe_daily_report(eng, now: datetime | None = None) -> None:
 def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     """Model writes the report from the raw records; code only decides the
     headline (green / how many failed), which must never be a guess."""
-    # 账本里的 raw 是记账那一刻的解析结果；解析器升级后旧条目会缺字段。
-    # 出报告前按 history 日志重算一遍（用户 2026-09-02 指出鸣潮那块全是老账）。
+    # `raw` in the ledger is whatever the parser produced at bookkeeping time;
+    # after a parser upgrade, older entries are missing fields. Recompute from
+    # the history logs before reporting (the user pointed out on 2026-09-02
+    # that the Wuthering Waves section was all stale bookkeeping).
     entries = [collector.refresh_raw(e, eng.cfg.history_dir) for e in entries]
     _fill_single_run_sanity(entries)
     tomorrow = plan.next_plan(eng.cfg.automas_dir)
     failed = [e for e in entries if not e["ok"]]
     head = "全绿 ✅" if not failed else f"{len(failed)} 项出错 ⚠️"
     title = f"📋 {day[5:]} · {head}"
-    # 活动倒计时挂在每份日报上（用户 2026-08-20 要的）：他要的是每天看一眼
-    # 还剩几天，而不是等到最后一天才被提醒。
+    # The event countdown rides on every daily report (the user asked for this
+    # on 2026-08-20): he wants to glance at the days remaining every day, not
+    # be reminded only on the last one.
     # 来龙去脉见 docs/CODE-HISTORY.md「report.py:_compose_daily」
     act = plan.activity_countdown(eng.cfg.automas_dir)
-    # 卡池倒计时同理，挂在最后（用户 2026-08-30 的要求：放在通知末尾）。
-    # 三个游戏各自 try 住，一个源挂了不影响其余，全挂了就少这一段。
+    # The banner countdown works the same way and goes last (the user asked on
+    # 2026-08-30 for it at the end of the notification). Each of the three
+    # games is wrapped in its own try, so one dead source does not take the
+    # others down; if all of them die, only this section is missing.
     try:
         bnow = datetime.now(tz=SERVER_TZ).replace(tzinfo=None)
         rows, nxt = banners.collect(bnow, skland_token=eng.cfg.skland_token)
@@ -168,10 +175,13 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     except Exception:
         log.warning("卡池那一段整体失败", exc_info=True)
         pool = ""
-    # 这一版跑得怎么样，由中继自己数、贴在每份日报末尾。用户 2026-09-06：
-    # 「我说『修好了』而它写『失败 1 趟』，谎话当场现形。」——所以它必须在
-    # 我写的任何文字之后，而且我碰不到它的数字（来源是 versions/scoreboard，
-    # 每趟跑完由 append_ledger 记）。
+    # How this version has been doing is counted by the relay itself and stuck
+    # at the end of every daily report. The user, 2026-09-06:
+    # 「我说『修好了』而它写『失败 1 趟』，谎话当场现形。」
+    # ("I say 'fixed it' while it writes '1 failed run' and the lie is exposed
+    # on the spot.") So it must come after anything I write, and I must not be
+    # able to touch its numbers -- they come from versions/scoreboard, recorded
+    # by append_ledger after every run.
     score = scoreboard.line(eng.state.store, str(eng.state.store.get("versions", "code") or ""))
     tail = "".join(f"\n\n{x}" for x in (act, pool, score) if x)
     written = summary.daily_report(eng.cfg, entries, tomorrow)
@@ -179,19 +189,21 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
         log.info("📋 日报由模型撰写（%d 条记录）", len(entries))
         foot = core.daily_footnote(entries)
         return title, written + tail + (f"\n\n{foot}" if foot else "")
-    # 用户 2026-08-30 定的：模型写日报是**废除的规划**（太贵），
-    # 结构化模板就是最终形态、目前够用。所以走到这里不是故障，
-    # 是常态路径——原来打 WARNING 会让人以为坏了，天天在日志里留一条假伤。
+    # Settled by the user on 2026-08-30: having the model write the report is
+    # an **abandoned plan** (too expensive); the structured template is the
+    # final form and is good enough for now. So reaching this point is not a
+    # fault, it is the normal path -- logging WARNING here used to make it look
+    # broken and left a fake injury in the log every single day.
     log.info("日报用结构化模板（模型撰写已废弃，这是正常路径）")
     title2, body = core.format_daily(day, entries, "", tomorrow)
-    # 终末地日常名单当注释放在最后最后（用户 2026-09-02）
+    # The Endfield daily list goes at the very end as a footnote (user, 2026-09-02)
     foot = core.daily_footnote(entries)
     return title2, body + tail + (f"\n\n{foot}" if foot else "")
 
 
 def _announce_banners(eng, now: datetime,
                       nxt: "dict[str, tuple[datetime, str]]") -> None:
-    """开服前一天在企业微信群里说一声。
+    """Say so in the WeCom group the day before a banner opens.
 
     来龙去脉见 docs/CODE-HISTORY.md「report.py:_announce_banners」。
     """
@@ -204,7 +216,7 @@ def _announce_banners(eng, now: datetime,
     if not title:
         return
     if eng.notifier.send_group(title, body):
-        return                      # 没送到就不打标记，下一轮再试
+        return                      # Not delivered, so do not mark it; retry next round
     for game, when, _ in fresh:
         eng.state.mark_banner_announced(f"{game}-{when:%Y%m%d%H%M}")
     log.info("📣 已在群里播报明天开的卡池：%s",
@@ -249,11 +261,14 @@ def _tacet_shots_dir(eng) -> "Path | None":
 
 
 def _tacet_caption(eng, day: str = "") -> str:
-    """「实际刷了第 N 个：名字，掉 套装」。
+    """The caption line: 「实际刷了第 N 个：名字，掉 套装」.
 
-    序号取 **OK-WW 自己报的实际传送目标**（账本里的 okww_info），不是配置里写的
-    「想刷哪个」——用户 2026-09-07 不放心的正是这两者可能不一样。两者不一致时
-    两个都说出来，让人一眼看见。读不到实际值才退回配置值，并且明说那是配置值。
+    The index comes from **the teleport target OK-WW itself reported**
+    (okww_info in the ledger), not from the "which one do we want" written in
+    the config -- what the user was uneasy about on 2026-09-07 is exactly that
+    the two can differ. When they disagree, say both, so it is visible at a
+    glance. Only when the actual value cannot be read does it fall back to the
+    configured one, and then it says outright that it is the configured value.
     """
     from . import weeklyboss, wuwa_tacet  # noqa: PLC0415
     want = None
@@ -267,7 +282,7 @@ def _tacet_caption(eng, day: str = "") -> str:
         for e in reversed(eng.state.read_ledger(day or "")):
             v = (e.get("raw") or {}).get("okww_info") or {}
             if "Teleport to Tacet Suppression" in v:
-                got = int(v["Teleport to Tacet Suppression"]) + 1   # 上游从 0 起算
+                got = int(v["Teleport to Tacet Suppression"]) + 1   # Upstream counts from 0
                 break
     except Exception:  # noqa: BLE001
         got = None
@@ -282,11 +297,16 @@ def _tacet_caption(eng, day: str = "") -> str:
 
 
 def _attach_tacet_shots(eng, day: str) -> list[str]:
-    """日报发完，把这一天无音区刷完的结算页（OK-WW 补丁 tacetshot 拍的）用群机器人跟在后面。
+    """After the daily report goes out, send the day's Tacet Suppression
+    settlement screen (captured by the OK-WW tacetshot patch) behind it via the
+    group bot.
 
-    用户 2026-09-07：「我想确认一下是不是刷的是我想要的无音区种类，因为我不放心。
-    刷完之后能不能贴一张截图在日报通知里面？」每张只发一次（状态目录记文件名）。
-    返回发出去的文件名，测试用。
+    The user, 2026-09-07: 「我想确认一下是不是刷的是我想要的无音区种类，因为我不放心。
+    刷完之后能不能贴一张截图在日报通知里面？」("I want to confirm it is farming
+    the kind of Tacet Suppression I want, because I am not comfortable. Can you
+    put a screenshot in the daily report notification once it finishes?")
+    Each image is sent only once (the file name is recorded in the state dir).
+    Returns the file names sent, for tests.
     """
     shots = _tacet_shots_dir(eng)
     if shots is None:
@@ -296,8 +316,11 @@ def _attach_tacet_shots(eng, day: str) -> list[str]:
         already = set(sent_file.read_text(encoding="utf-8").split())
     except OSError:
         already = set()
-    # 只发一张：刷完最后一轮的结算页（用户 2026-09-07：「不要发没有用的截图，
-    # 我只需要刷完之后产出的那一张就行」）。同一天拍了多张就发最新的。
+    # Send exactly one: the settlement screen of the last round
+    # (user, 2026-09-07: 「不要发没有用的截图，我只需要刷完之后产出的那一张就行」
+    # -- "do not send useless screenshots, I only need the one produced after
+    # the farming finishes"). If several were captured the same day, send the
+    # newest.
     cands = [p for p in shots.glob("*_tacet_drops_original.png")
              if datetime.fromtimestamp(p.stat().st_mtime, tz=SERVER_TZ).strftime("%Y-%m-%d") == day
              and p.name not in already]
@@ -310,7 +333,8 @@ def _attach_tacet_shots(eng, day: str) -> list[str]:
         if not eng.notifier.send_group_image(p):
             done.append(p.name)
     if done:
-        # 更早拍的那几张也记成「已处理」：下次日报只发这之后新拍的。
+        # Mark the earlier captures as handled too: the next report only sends
+        # ones captured after this point.
         try:
             sent_file.write_text("\n".join(sorted(already | {p.name for p in cands})), encoding="utf-8")
         except OSError:

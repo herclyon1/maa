@@ -1,4 +1,4 @@
-"""OK-WW 补丁：letpass。从 okww_patch.py 拆出（2026-09-06，只搬不改）。"""
+"""OK-WW patch: letpass. Split out of okww_patch.py (2026-09-06, moved verbatim)."""
 from __future__ import annotations
 
 
@@ -7,7 +7,7 @@ from .core import _SRC, _Patch
 
 
 
-# ---- 让「主动跳过」这个信号穿过兜底 ----------------------------------------
+# ---- Let the "deliberate skip" signal pass through the catch-all ----------
 # 来龙去脉见 docs/CODE-HISTORY.md「letpass.py:(模块级)」
 _LETPASS_OLD = """        except Exception as e:
             raise RuntimeError('Teleport to boss failed') from e"""
@@ -31,7 +31,8 @@ _LETPASS = _Patch(
     new=_LETPASS_NEW,
     present=_letpass_present,
     breaks="波片不足时虽然会跳过，但每次都留一条 farm 4c error 并重试三遍",
-    # 叠层只数我们自己的标记：上游 v3.6.7 在别处也写了一行
-    # `except TaskDisabledException:`，数通用行会把它算成我们叠了一层（09-06 假警报）。
+    # Stacking detection counts only our own marker: upstream v3.6.7 also writes a line
+    # `except TaskDisabledException:` elsewhere, so counting the generic line would report
+    # our patch as stacked (that was the 09-06 false alarm).
     unique="这是「主动跳过」的信号",
 )

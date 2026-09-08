@@ -1,8 +1,10 @@
-"""终末地官方公告：今天是不是版本更新日（= 早上停服维护）。
+"""Endfield official bulletins: is today a version-update day (= morning downtime)?
 
-只用来给「进不了游戏」的判定加一句依据，不做主判据：2026-09-02 实测，
-聚合口里没有单独的维护公告，只有开服后才出现的「版本更新说明」
-（startAt = 开服时刻）。取不到就返回空串，绝不影响主流程。
+Only used to add one supporting line to the "cannot get into the game" verdict,
+never as the primary evidence: measured 2026-09-02, the aggregate endpoint carries
+no standalone maintenance notice, only the "version update notes" post that appears
+after the servers are back up (startAt = the time service resumed). If nothing can
+be fetched this returns an empty string and never affects the main flow.
 """
 from __future__ import annotations
 
@@ -31,7 +33,10 @@ def _items(node, out: list) -> None:
 
 
 def update_hint(now: datetime | None = None, fetch=None) -> str:
-    """「官方公告：今天 10:00「雪凇幽梦」版本更新」或空串。fetch 可注入。"""
+    """Returns e.g. 「官方公告：今天 10:00「雪凇幽梦」版本更新」, or an empty string.
+
+    fetch can be injected.
+    """
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     try:
         if fetch is None:
@@ -52,6 +57,6 @@ def update_hint(now: datetime | None = None, fetch=None) -> str:
             m = re.search(r"「([^」]+)」", head)
             name = f"「{m.group(1)}」" if m else ""
             return f"官方公告：今天 {at:%H:%M} {name}版本更新"
-    except Exception:  # noqa: BLE001 - 只是加一句依据
+    except Exception:  # noqa: BLE001 - this is only supporting evidence
         return ""
     return ""

@@ -33,22 +33,28 @@ AUTOMAS_NAME_TZ = timezone(timedelta(hours=4))
 _FAILED_LIST = re.compile(r"失败[:：]\s*(.+)$")
 
 # "[2026-08-14 06:45:11.432] 任务开始: ..."
-# MAA/MaaEnd 写 "[2026-08-25 09:37:25.186]"，OK-WW 写
-# "2026-08-25 12:31:32,941 INFO ..."——没有方括号、毫秒用逗号。
-# 只认前者会让 OK-WW 的每条记录都显示"时长未知"。
+# MAA/MaaEnd write "[2026-08-25 09:37:25.186]", OK-WW writes
+# "2026-08-25 12:31:32,941 INFO ..." -- no brackets, comma before the
+# milliseconds. Matching only the first form makes every OK-WW record show
+# "duration unknown".
 _LOG_TS = re.compile(r"^\[?(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
 _MAA_SUCCESS = "Success!"
-# AUTO-MAS 对 OK-WW 的两句判词（app/task/Okww/AutoProxy.py）：
-# 日志里有 _OKWW_SUCCESS_LOG 记成功；否则进程一没就记「在完成任务前退出」。
+# AUTO-MAS's two verdicts on OK-WW (app/task/Okww/AutoProxy.py): if the log
+# contains _OKWW_SUCCESS_LOG it records success; otherwise, the moment the
+# process is gone, it records 「在完成任务前退出」("exited before finishing").
 _OKWW_EXITED = "在完成任务前退出"
 _OKWW_DONE = "Daily Task Completed"
 
-# AUTO-MAS 会把"这一轮被打断、马上重来"也写成非成功结果，于是中继照单
-# 报成失败。字符串抄自 AUTO-MAS 源码，不是我编的：
+# AUTO-MAS also writes "this round was interrupted and is restarting right
+# away" as a non-success result, and the relay used to report that as a
+# failure at face value. The strings are copied from AUTO-MAS's source, not
+# invented here:
 #   task/Okww/AutoProxy.py:52
 #       ("游戏更新成功, 游戏即将重启", "游戏更新成功，即将重启任务")
-#   —— 它和「未连接游戏客户端」「流程产生错误」一起放在 _OKWW_BUILTIN_FATAL 里。
-# 这类记录后面一定跟着一条真正的结果，所以既不算成功也不算失败。
+#   -- they sit in _OKWW_BUILTIN_FATAL alongside 「未连接游戏客户端」and
+#   「流程产生错误」.
+# A record like this is always followed by a real result, so it counts as
+# neither a success nor a failure.
 _TRANSITIONAL = (
     "游戏更新成功，即将重启任务",
     "游戏更新成功, 游戏即将重启",
@@ -61,7 +67,9 @@ def _is_transitional(result: str) -> bool:
 
 
 def _maaend_all_done(text: str) -> bool:
-    """每个「任务开始」都有同名「任务完成」、没有任何「任务失败」，且至少跑了一个任务。"""
+    """Every 「任务开始」has a 「任务完成」with the same name, there is no
+    「任务失败」at all, and at least one task ran.
+    """
     started = [_strip_emoji(m.group(1)) for m in _END_TASK_START.finditer(text)]
     done = {_strip_emoji(m.group(1)) for m in _END_TASK_DONE.finditer(text)}
     if not started or _END_TASK_FAIL.search(text):
@@ -137,11 +145,14 @@ _HAS_TS = re.compile(r"^\[\d{4}-\d{2}-\d{2}")
 
 
 def _maa_scan_lines(text: str) -> "tuple[dict[str, dict[str, int]], list[str], int, int, int]":
-    """逐行扫一遍 MAA 日志，把「关卡·掉落·次数·消耗理智·吃药」一次收齐。
+    """Scan the MAA log line by line, collecting stage, drops, run count,
+    sanity spent and potions used in a single pass.
 
-    单独成步是因为这是整个解析里唯一有状态的一段：in_block / current 要在行与
-    行之间传下去，读的时候必须连着看；而它后面的组装是无状态的纯拼装。
-    返回 (每关掉落, 关卡出现顺序, 消耗理智, 吃药数, 总次数)。
+    It is its own step because this is the only stateful part of the whole
+    parse: in_block / current have to carry across lines, so it has to be read
+    as one piece; everything that assembles the result afterwards is stateless.
+    Returns (drops per stage, stages in order of appearance, sanity spent,
+    potions used, total run count).
     """
     # Per stage, because the running total below is per stage. One round can
     # farm more than one - annihilation then the daily stage, or an event
@@ -198,10 +209,12 @@ def _maa_scan_lines(text: str) -> "tuple[dict[str, dict[str, int]], list[str], i
 
 
 def _maa_annihilation(text: str, spent: int, out: dict) -> None:
-    """判定这份日志里的剿灭打没打满周上限，结论写进 out。
+    """Decide whether annihilation in this log hit the weekly cap; the verdict
+    goes into `out`.
 
-    单独成步是因为它和上面按行扫的那段证据不同：这里是在整篇 text 上做正则，
-    判据是进度有没有到上限，而不是 MAA 退没退干净。
+    It is its own step because the evidence differs from the line-by-line scan
+    above: this runs regexes over the whole text, and the criterion is whether
+    progress reached the cap -- not whether MAA exited cleanly.
     """
     if _ANNIHILATION.search(text):
         out["annihilation"] = True
@@ -252,10 +265,12 @@ def parse_maa_log(log_path: Path) -> dict:
 
 def _full_at_sentence(current: int, cap: int, sec_per_point: int,
                       ref: datetime) -> str:
-    """写成 MAA 那句话的形状，好让 core._sanity_full 原样接手。
+    """Format it in the shape of MAA's own sentence, so core._sanity_full can
+    take it as is.
 
-    复用它是为了不把"本日/次日"和东京时间的换算再写第二遍——那两处一旦走样，
-    报告里就会出现两种不同的时间说法。
+    Reusing that avoids writing the "today/tomorrow" wording and the Tokyo-time
+    conversion a second time -- the moment those two drift apart, the report
+    starts stating the time two different ways.
     """
     if current >= cap:
         return ""
@@ -264,16 +279,19 @@ def _full_at_sentence(current: int, cap: int, sec_per_point: int,
 
 
 def flatten_drops(raw: dict) -> dict:
-    """把按关卡嵌套的掉落压平成 {物品: 数量}。
+    """Flatten stage-nested drops into {item: count}.
 
-    AUTO-MAS 早先把 `drop_statistics` 留空，所以这里一直是自己解析 MAA 日志再
-    填进去。本项目给 AUTO-MAS 提的 PR 让它从 v5.4.0-beta.8 起真的填了这个字段
-    ——形状是按关卡嵌套的 `{"AT-4": {"龙门币": 1296, ...}}`，比这里自己解析出来
-    的多一层。而合并逻辑是"raw 里没有才填"，于是嵌套那份原样进了报告，渲染成
-    `产出 AT-4×{'龙门币': 1296, ...}`。2026-08-25 实测到。
+    AUTO-MAS used to leave `drop_statistics` empty, so this code has always
+    parsed the MAA log itself and filled it in. This project's own PR to
+    AUTO-MAS made it really populate that field from v5.4.0-beta.8 on -- in the
+    stage-nested shape `{"AT-4": {"龙门币": 1296, ...}}`, one level deeper than
+    what is parsed here. And the merge rule is "fill in only what raw lacks",
+    so the nested version went into the report untouched and rendered as
+    `产出 AT-4×{'龙门币': 1296, ...}`. Observed 2026-08-25.
 
-    换句话说这是自己的上游改动打到自己身上：加字段时只想着 AUTO-MAS 那边，
-    没回头看这边的消费代码假设了什么形状。
+    In other words, our own upstream change came back to hit us: when adding
+    the field, only the AUTO-MAS side was considered, without going back to
+    check what shape the consuming code here assumed.
     """
     src = raw.get("drop_statistics")
     if not isinstance(src, dict) or not src:
@@ -308,27 +326,37 @@ _END_SANITY = re.compile(r"当前理智\s*(\d+)\s*/\s*(\d+)")
 # MaaEnd also says whether it knocked off because sanity ran out, and that
 # decides whether anything needs attention more directly than the number does.
 _END_SANITY_OUT = re.compile(r"理智不足[，,]\s*结束任务")
-# 协议空间一次结算扣多少理智。优先从日志里的读数差自己标定；只有当整份日志
-# 里看不到一次下降时才用这个数（例如 2026-08-24：两条读数都是 201，扣费发生在
-# 最后一次结算，之后就没有读数了）。160 是 2026-08-25 实测出来的：241 → 81。
-# 关卡等级变了这个数会变，但只要那天的日志里出现过一次下降，就会用实测值覆盖。
+# How much sanity one Protocol Space settlement costs. Prefer calibrating it
+# from the drop between readings in the log; this constant is only used when
+# the whole log shows no drop at all (e.g. 2026-08-24: both readings were 201
+# because the charge happened at the last settlement, after which there were no
+# more readings). 160 was measured on 2026-08-25: 241 -> 81.
+# The number changes with the stage level, but as long as that day's log shows
+# a single drop, the measured value overrides this.
 _END_PS_COST = 160
-# 理智/波片的恢复速率，用来算"几点回满"。MAA 自己会把这句话写进结果 JSON，
-# 另外两个不写，所以这里自己算。
-#   终末地：每 7 分 12 秒回 1 点，24 小时共 200 点（官方口径）。
-#           与实测吻合：2026-08-24 收工 41 → 08-25 开跑 241，隔 24 小时正好 +200。
-#   鸣潮：  每 6 分钟回 1 点，上限 240，空到满正好 24 小时。
+# Recovery rates for sanity / waveplates, used to work out "full at what time".
+# MAA writes that sentence into its result JSON itself; the other two do not,
+# so it is computed here.
+#   Endfield: 1 point every 7m12s, 200 points per 24 hours (official figure).
+#             Matches measurement: 2026-08-24 ended at 41 -> 08-25 started at
+#             241, exactly +200 over 24 hours.
+#   Wuthering Waves: 1 point every 6 minutes, cap 240, empty to full in exactly
+#             24 hours.
 _END_SANITY_SEC_PER_POINT = 432
 _OKWW_STAMINA_CAP = 240
 _OKWW_SEC_PER_POINT = 360
 _END_SANITY_SPENT = re.compile(r"尝试使用理智消耗许可")
 _END_SANITY_REFUSED = re.compile(r"理智不足[，,]\s*尝试不使用理智消耗许可")
 _END_PS_ENTER = re.compile(r"进入协议空间成功")
-# re.M：这三条既按单行 search，也对整段 finditer。没有 re.M 时 `$` 只认整段末尾，
-# finditer 一条都抓不到——parse_maaend_log 的 tasks_failed 因此一直是空的（09-06 测试抓出）。
+# re.M: these three are used both with search on a single line and with
+# finditer over the whole text. Without re.M, `$` only matches the very end of
+# the text and finditer catches nothing -- which is why parse_maaend_log's
+# tasks_failed was always empty (caught by a test on 09-06).
 _END_TASK_DONE = re.compile(r"任务完成[:：]\s*(\S.+?)\s*$", re.M)
-# 用户 2026-09-02：日报三家一个语义模板，MaaEnd 不产这些数「只能我们自己来」。
-# 刷本段的形状（2026-09-01 实录）：
+# The user, 2026-09-02: one semantic template across all three games in the
+# daily report; MaaEnd does not produce these numbers, so 「只能我们自己来」
+# ("we have to do it ourselves").
+# Shape of the farming section (recorded 2026-09-01):
 #   任务开始: 🎱基质刷取 / 📌目标地点：枢纽区 / 当前理智 234/360 / 是无暇基质 ×N
 #   ✅已完成一次基质刷取 / 当前理智 154/360 / … / 任务完成: 🎱基质刷取
 _END_TASK_START = re.compile(r"任务开始[:：]\s*(\S.+?)\s*$", re.M)
@@ -346,7 +374,9 @@ def _strip_emoji(name: str) -> str:
 
 
 def _maaend_farm(text: str) -> dict:
-    """刷本那一段：刷了什么、在哪、几次、掉了什么。没有刷本任务就返回 {}。"""
+    """The farming section: what was farmed, where, how many runs, what
+    dropped. Returns {} when there is no farming task.
+    """
     out: dict = {}
     lines = text.splitlines()
     start = end = None
@@ -380,27 +410,33 @@ def _maaend_farm(text: str) -> dict:
         out["maaend_farm_drops"] = drops
     readings = [int(a) for a, _ in _END_SANITY.findall(body)]
     steps = [a - b for a, b in zip(readings, readings[1:]) if a > b]
-    # 「当前理智」是在**每次领取之前**播报的，最后一次领取之后没有读数。
-    # 所以 n 次领取只会看到 n 个读数、n-1 个步长，直接求和永远少算最后一趟：
-    # 09-03 实录 979/899/819/739/659，五次领取按相邻差只得 320，真花了 400。
-    # 正确写法是「趟数 × 每趟步长」，不是把相邻差加起来。
+    # 「当前理智」is announced **before each claim**, and there is no reading
+    # after the last one. So n claims show only n readings and n-1 steps, and
+    # summing them always undercounts the final run: recorded 09-03 as
+    # 979/899/819/739/659 -- five claims give only 320 by adjacent differences,
+    # when 400 was actually spent.
+    # The correct form is "runs x step per run", not the sum of the differences.
     if steps and runs:
         out["maaend_sanity_spent"] = runs * sorted(steps)[len(steps) // 2]
     elif runs and len(readings) >= 2:
         out["maaend_sanity_spent"] = readings[0] - readings[-1]
-    # 只跑了一趟时这一趟自己看不到步长（只有一个读数），
-    # 留空交给上层用当天前一条记录去补——09-04 那趟就是这个形状，
-    # 日报里「消耗」印成了一条横杠。
+    # With only one run there is no step to see within it (a single reading),
+    # so leave it empty and let the caller fill it in from that day's previous
+    # record -- the 09-04 run had exactly this shape, and the daily report
+    # printed a dash for "spent".
     elif runs:
         out["maaend_sanity_runs_only"] = runs
     return out
 
 
 
-# 2026-09-02 终末地服务器维护（「雪凇幽梦」版本更新，10:00 开服）：MaaEnd 三趟
-# 每个任务都在 20 秒整失败、一个没完成，截图停在标题画面。AUTO-MAS 把它写成
-# 「任务执行情况解析失败」，中继照单报了三次失败。这种「根本没进游戏」的
-# 形状很好认：任务全部秒败、零完成。用户要求：认出来就当天跳过、不报警。
+# 2026-09-02, Endfield server maintenance (the 「雪凇幽梦」version update,
+# servers up at 10:00): across three MaaEnd rounds every task failed at exactly
+# 20 seconds with none completed, and the screenshots sat on the title screen.
+# AUTO-MAS wrote it up as 「任务执行情况解析失败」and the relay reported three
+# failures at face value. This "never got into the game" shape is easy to
+# recognise: every task fails instantly, zero completed. The user asked for it
+# to be recognised, skipped for the day, and not alerted on.
 _TASK_START = re.compile(r"\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)[.\d]*\]\s*任务开始:\s*(.+)")
 _TASK_END = re.compile(r"\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)[.\d]*\]\s*任务(完成|失败):\s*(.+)")
 _UNREACHABLE_QUICK_SEC = 30
@@ -408,10 +444,13 @@ _UNREACHABLE_MIN_FAILS = 3
 
 
 def maaend_unreachable(text: str) -> bool:
-    """每个任务都在半分钟内失败、一个没完成 = 根本没进游戏。
+    """Every task failed within half a minute and none completed = it never
+    got into the game.
 
-    服务器维护、客户端待更新、卡在标题画面都是这个形状。正常失败是某一
-    步卡住几分钟，别的任务照样完成，不会满足这个条件。
+    Server maintenance, a client waiting to update, and being stuck on the
+    title screen all have this shape. An ordinary failure is one step hanging
+    for minutes while other tasks still complete, which never meets this
+    condition.
     """
     starts: dict[str, datetime] = {}
     fails = done = quick = 0
@@ -423,7 +462,7 @@ def maaend_unreachable(text: str) -> bool:
             continue
         name = m.group(3).strip()
         if "结束进程" in name:
-            continue          # 收尾任务，不是游戏内任务
+            continue          # A wrap-up task, not an in-game one
         if m.group(2) == "完成":
             done += 1
             continue
@@ -474,7 +513,8 @@ def parse_maaend_log(log_path: Path) -> dict:
         out["maaend_medicine"] = n
     if m := _END_COLLECT_ROUTES.findall(text):
         out["maaend_collect_routes"] = int(m[-1])
-    # 「路线N：xxx」出现几次 = 走了几条；「…采集失败」几条 = 没采到的
+    # How many times 「路线N：xxx」appears = how many routes were walked;
+    # how many 「…采集失败」lines = the ones that gathered nothing
     started = set(re.findall(r"路线(\d+)[：:]", text))
     failed_r = set(re.findall(r"(?:路线|线路)(\d+)[：:][^\n]*采集失败", text))
     if started:
@@ -482,17 +522,23 @@ def parse_maaend_log(log_path: Path) -> dict:
         out["maaend_collect_total"] = len(started)
     if hits := _END_SANITY.findall(text):
         got, cap = (int(x) for x in hits[-1])
-        # 「当前理智」是在协议空间的**奖励结算界面**读的，而扣费发生在紧随其后的
-        # 「确认领取奖励」。所以最后一条读数是**扣费之前**的数字：只要最后一次
-        # 真的扣成了，直接报它就会高出整整一次的量。
+        # 「当前理智」is read off Protocol Space's **reward settlement screen**,
+        # while the charge happens on the 「确认领取奖励」that immediately
+        # follows. So the last reading is the number **before** the charge: if
+        # the last claim really went through, reporting it directly overstates
+        # the remainder by one full run.
         #
-        # 单次消耗从读数差自己标定——实测 2026-08-25：241 → 81，一次 160。
-        # 写死数字会在关卡等级变化时失准，而这个差值本身就是当次的真实消耗。
+        # The per-run cost is calibrated from the difference between readings
+        # -- measured 2026-08-25: 241 -> 81, i.e. 160 per run. A hardcoded
+        # number goes wrong when the stage level changes, whereas this
+        # difference is itself that run's real cost.
         readings = [int(a) for a, _ in hits]
         drops = [a - b for a, b in zip(readings, readings[1:]) if a > b]
-        # 只看**最后一次**结算扣没扣：整段里扣过几次不作数。实测 2026-08-25，
-        # 最后一次是 "理智不足，尝试不使用理智消耗许可"，没扣，所以 81 就是终值；
-        # 若按"扣费次数 > 拒绝次数"来判断，会把 81 再减 160 变成 0。
+        # Look only at whether the **last** settlement charged: how many times
+        # it charged over the whole log does not matter. Measured 2026-08-25,
+        # the last one was "理智不足，尝试不使用理智消耗许可" -- no charge, so
+        # 81 is the final value. Judging by "charges > refusals" would subtract
+        # another 160 from 81 and give 0.
         tail = text[text.rfind("当前理智"):]
         last_claim_spent = (_END_SANITY_SPENT.search(tail)
                             and not _END_SANITY_REFUSED.search(tail))
@@ -517,41 +563,54 @@ def parse_maaend_log(log_path: Path) -> dict:
 # daily quest ended up. Asked for on 2026-08-25 with "虽然它没有掉落物的显示，
 # 但只能说够用了".
 _OKWW_STAMINA = re.compile(r"info_set current_stamina (\d+)")
-# 绿色那个备用值。get_stamina() 一直分开存两个字段，我们只用了一个。
+# The green reserve value. get_stamina() has always stored two separate
+# fields; we only used one of them.
 _OKWW_BACKUP = re.compile(r"info_set back_up_stamina (\d+)")
-# 结束时的真实余量：OK-WW 停手时自己会打这一行。
-# `info_set current_stamina` 是**每轮开打前**记的，拿最后一条当「剩余」会
-# 永远多算一轮——2026-08-28 实际刷到 0，报告却写「剩余波片 80/240」，
-# 用户当场指出是误报。单次消耗还会在 40/80 之间自动切换，靠外部推算也不可靠，
-# 所以只认它自己报的这个数。
-# 2026-09-04：这个正则原来把后半句 `not enough to continue` 也写死了，
-# 可 OK-WW 收尾还有第二种写法——当天实录是
-# `current stamina: 37 must_use completed, no need to use back_up`。
-# 没匹配上的后果是当天日报把最后一趟整个漏掉：真实 236→37（消耗 199、剩 37），
-# 报成「消耗 159、剩余 77」。所以只认前半句，后面写什么都行。
+# The real remainder at the end: OK-WW prints this line itself when it stops.
+# `info_set current_stamina` is recorded **before each round**, so taking the
+# last one as "remaining" always overcounts by one round -- on 2026-08-28 it
+# actually farmed down to 0 while the report said 「剩余波片 80/240」, and the
+# user pointed out the misreport on the spot. The per-run cost also switches
+# between 40 and 80 on its own, so deriving it from outside is unreliable too;
+# only the number OK-WW reports itself is accepted.
+# 2026-09-04: this regex used to hardcode the second half
+# `not enough to continue` as well, but OK-WW has a second wrap-up wording --
+# recorded that day as
+# `current stamina: 37 must_use completed, no need to use back_up`.
+# Failing to match cost that day's report the entire last run: the truth was
+# 236 -> 37 (199 spent, 37 left) and it was reported as 「消耗 159、剩余 77」.
+# So only the first half is matched, and whatever follows is fine.
 _OKWW_STAMINA_END = re.compile(r"current stamina:\s*(\d+)")
 _OKWW_DAILY = re.compile(r"info_set current daily progress (\d+)")
 _OKWW_POINTS = re.compile(r"info_set total daily points (\d+)")
 # One of these is logged per domain entry, so counting them counts the runs.
 _OKWW_ENTRY = re.compile(r"使用单倍体力|当前体力大于等于双倍|使用双倍")
-# 残象聚落的真实进度。用户 2026-08-29：「能不能给一下残像聚落的真实刷取结果，
-# xx/41 这种」。日志里每次开图鉴都会打一行 `已击败残象：N/M`，取最后一条。
-# ⚠️ 这个数是 OCR 出来的，前导数字可能被吞（10/41 读成 0/41），所以只做参考、
-# 不拿它下「刷没刷动」的结论——那个看 nest_cleared。
+# Real Nightmare Nest progress. The user, 2026-08-29: 「能不能给一下残像聚落的
+# 真实刷取结果，xx/41 这种」("can you give the real farming result for the
+# Nightmare Nests, something like xx/41"). The log prints a line
+# `已击败残象：N/M` every time the compendium is opened; take the last one.
+# WARNING: this number comes from OCR and a leading digit can be swallowed
+# (10/41 read as 0/41), so it is for reference only -- never draw the "did it
+# actually farm anything" conclusion from it; that is what nest_cleared is for.
 _OKWW_NEST = re.compile(r"已击败残象[：:]\s*(\d+)\s*/\s*(\d+)")
 _OKWW_NEST_FULL = re.compile(r"指定点位都已打满")
 _OKWW_DAILY_TARGET = 180
-# 游戏内日常活跃度满值。会超出（周常乐园等还会继续加），所以报出来时
-# 要带上限，否则「活跃度 110」看着像出错了。
+# The full value of the in-game daily activity meter. It can go above this
+# (the weekly garden and others keep adding), so the cap must be reported
+# alongside it, or 「活跃度 110」looks like an error.
 _OKWW_POINTS_TARGET = 100
 
 _OKWW_FORGERY_INDEX = re.compile(r"info_set Teleport to Forgery Challenge (\d+)")
-# 模拟领域的目标：OK-WW 源码 SimulationTask 三选一，译文来自它自己的 ok.po
+# The Simulation Challenge target: one of three in OK-WW's SimulationTask
+# source; the translations come from its own ok.po
 _OKWW_SIM_TARGET = re.compile(r"info_set Target Simulation Challenge (.+?)\s*$", re.M)
 _SIM_ZH = {"Shell Credit": "贝币", "Resonator EXP": "共鸣者经验", "Weapon EXP": "武器经验"}
-# 满难度（联盟等级 ≥70 / SOL3 第 8 阶）贝币模拟领域每局 40 波片给 84,000 贝币
-# （game8 / fandom 2026-09 数据；用户联盟等级早已满，周本都打 90 级）。
-# 双倍 = 80 波片给两份。用户 2026-09-02：「产出必须显示出来，不许标游戏未显示数量」。
+# At full difficulty (Union Level >= 70 / SOL3 tier 8) the Shell Credit
+# Simulation Challenge gives 84,000 Shell Credits per run for 40 waveplates
+# (game8 / fandom data, 2026-09; the user's Union Level has long been maxed and
+# he fights the level 90 weekly boss). Double = 80 waveplates for two lots.
+# The user, 2026-09-02: 「产出必须显示出来，不许标游戏未显示数量」("the yield
+# must be shown; do not label it as a quantity the game did not display").
 _SIM_REWARD_PER_RUN = {"贝币": 84000}
 _OKWW_DOUBLE = re.compile(r"当前体力大于等于双倍|使用双倍")
 _OKWW_SINGLE = re.compile(r"使用单倍体力")
@@ -559,7 +618,9 @@ _OKWW_TACET_INDEX = re.compile(r"info_set Teleport to Tacet Suppression (\d+)")
 
 
 def _okww_farm(text: str, info: dict | None = None) -> "tuple[str, str]":
-    """(刷的本, 产出类别)。OK-WW 不读奖励界面，产出只能说类别。"""
+    """(the domain farmed, the yield category). OK-WW never reads the reward
+    screen, so the yield can only be stated as a category.
+    """
     info = info if info is not None else okww_info(text)
     if "SimulationTask:" in text:
         hits = _OKWW_SIM_TARGET.findall(text)
@@ -570,11 +631,16 @@ def _okww_farm(text: str, info: dict | None = None) -> "tuple[str, str]":
         idx = int(hits[-1]) + 1 if hits else 0
         return (_forgery_label(text), wuwa_forgery.reward(idx))
     if "TacetTask:" in text:
-        # 「无音区 #2 / 声骸与角色突破材料」这种写法人看不懂（用户 2026-09-06）。
-        # 序号查 wuwa_tacet 的对照表，写名字和它固定掉的两个套装；没登记就明说。
-        # 序号先认上游自己报的「实际传送到第几个」（info_set，0 起算），
-        # 读不到才退回从提示语里刮。配置里写的是「想刷哪个」，这里要的是
-        # 「实际刷了哪个」——用户 2026-09-07 不放心的正是这两者可能不一样。
+        # Wording like 「无音区 #2 / 声骸与角色突破材料」means nothing to a
+        # reader (user, 2026-09-06). Look the index up in wuwa_tacet's table
+        # and write the name plus the two sets it always drops; when it is not
+        # registered, say so outright.
+        # For the index, prefer what upstream reports itself -- "which one it
+        # actually teleported to" (info_set, counting from 0) -- and only fall
+        # back to scraping it out of the prompt text. The config says "which one
+        # do we want to farm"; what is needed here is "which one was actually
+        # farmed" -- and the two possibly differing is exactly what the user was
+        # uneasy about on 2026-09-07.
         got = (info.get("fields") or {}).get("Teleport to Tacet Suppression")
         hits = _OKWW_TACET_INDEX.findall(text)
         if got is None and not hits:
@@ -585,14 +651,16 @@ def _okww_farm(text: str, info: dict | None = None) -> "tuple[str, str]":
 
 
 def _forgery_label(text: str) -> str:
-    """「凝素领域」后面跟哪个副本。认不出就只说序号。
+    """Which instance follows 「凝素领域」. When it cannot be identified, only
+    the index is stated.
 
-    日志里的序号是 0 起算（`Teleport to Forgery Challenge 0`），对照表是 1 起算
-    （和游戏 F2 列表一致）。**换算只在这一处做**，调用方拿到的一律是人话。
+    The index in the log counts from 0 (`Teleport to Forgery Challenge 0`);
+    the lookup table counts from 1 (matching the game's F2 list). **The
+    conversion happens only here**, and callers always get plain language.
     """
     hits = _OKWW_FORGERY_INDEX.findall(text)
     if not hits:
-        return "凝素领域"          # 步骤清单里是「做了 凝素领域 ×5」，别塞括号
+        return "凝素领域"          # The step list reads 「做了 凝素领域 ×5」; do not stuff brackets in
     return wuwa_forgery.label(int(hits[-1]) + 1)
 
 
@@ -603,13 +671,19 @@ _OKWW_EXC_LINE = re.compile(r"^\s*([\w.]*(?:Exception|Error)\w*)\b(.*)$", re.M)
 
 
 def _okww_got_in(text: str) -> bool:
-    """最后一次「等不到游戏窗口」之后还有没有任务执行器在干活。有 = 后来进去了。"""
+    """Whether any task executor was still working after the last
+    "cannot get the game window". If so, it got in later on.
+    """
     i = text.rfind(_OKWW_GAME_ERR)
     return bool(_OKWW_ACTIVITY.search(text, i if i >= 0 else 0))
 
 
-# 通知里只许出现人话（用户 2026-09-07：「你写进通知的任何东西都要是人话」）。
-# 任务类名、异常名、日志原文都留在日志里，这里翻成中文；翻不出来就只说「这一步出错」。
+# Notifications may contain plain language only (user, 2026-09-07:
+# 「你写进通知的任何东西都要是人话」-- "anything you put in a notification has
+# to be plain language"). Task class names, exception names and raw log text
+# stay in the log; here they are translated into Chinese. (The original note
+# added "and when it cannot be translated it just says 「这一步出错」"; see
+# _okww_say -- that catch-all was later removed on purpose.)
 _OKWW_TASK_ZH = {
     "DailyTask": "日常清单", "FarmEchoTask": "周本", "TacetTask": "无音区",
     "NightmareNestTask": "残象聚落", "GardenTask": "周常乐园", "DomainTask": "模拟领域",
@@ -641,26 +715,31 @@ _OKWW_INFO = re.compile(r" INFO TaskExecutor (\w+):info_set (.+)$", re.M)
 _OKWW_INFO_NUM = ("current_stamina", "back_up_stamina", "current daily progress",
                   "total daily points", "Teleport to Tacet Suppression",
                   "Teleport to Boss Weekly Challenge")
-# 值里带空格的键：整行都是值，不能按最后一个空格切
+# Keys whose value contains spaces: the rest of the line is the value, so it
+# must not be split on the last space
 _OKWW_INFO_REST = ("Chars", "Revive", "Target Simulation Challenge")
 
 
 def okww_info(text: str, until: int | None = None) -> dict:
-    """OK-WW 自己写下的结构化状态（`info_set 键 值`），取每个键的最后一次。
+    """The structured state OK-WW writes itself (`info_set key value`), taking
+    the last occurrence of each key.
 
-    这是**上游自己报的状态**，不是我们从散文里猜的：`current task` 是它认为
-    自己在做哪一步，`错误` 是它自己判定的失败原因，`Teleport to Tacet
-    Suppression` 是它**实际**传送去的第几个无音区（0 起算）。
-    2026-09-08 之前这些全靠正则从提示语里刮，上游一改措辞就失效。
+    This is **the state upstream reports itself**, not something guessed out of
+    prose: `current task` is the step it believes it is on, `错误` is the
+    failure reason it decided on, and `Teleport to Tacet Suppression` is which
+    Tacet Suppression it **actually** teleported to (counting from 0).
+    Before 2026-09-08 all of this was scraped out of the prompt text with
+    regexes, which broke the moment upstream reworded anything.
 
-    返回 {"fields": {键: 值}, "tasks": [依次出现的 current task], "error": 原因或空}。
+    Returns {"fields": {key: value}, "tasks": [current task in order of
+    appearance], "error": the reason, or empty}.
     """
     fields: dict = {}
     tasks: list[str] = []
     error = ""
     for m in _OKWW_INFO.finditer(text):
         if until is not None and m.start() >= until:
-            break           # 只看这一刻之前的状态
+            break           # Only the state before this point
         body = m.group(2).strip()
         if body.startswith("current task"):
             what = body[len("current task"):].strip()
@@ -688,17 +767,21 @@ def okww_info(text: str, until: int | None = None) -> dict:
 
 
 def _okww_error(text: str) -> str:
-    """失败的真实原因，人话。取最后一串 traceback 里最里层任务那一段。
+    """The real reason for the failure, in plain language. Taken from the
+    innermost task's section of the last traceback cluster.
 
-    OK-WW 出异常时会连打三段 traceback（任务自己、DailyTask.run_task_by_class、
-    TaskExecutor「Daily Task exception stopped」），三段说的是同一件事；最里层那段
-    带着说明（如「farm 4c error, try handle monthly card」）。2026-09-07 之前日报只写
-    AUTO-MAS 那句「流程产生错误，请检查游戏状态」，看不出是哪一步。
+    When OK-WW raises, it prints three tracebacks in a row (the task itself,
+    DailyTask.run_task_by_class, and TaskExecutor's
+    「Daily Task exception stopped」); all three describe the same event, and the
+    innermost one carries the explanation (such as
+    「farm 4c error, try handle monthly card」). Before 2026-09-07 the daily
+    report only carried AUTO-MAS's 「流程产生错误，请检查游戏状态」, which does
+    not say which step it was.
     """
     info = okww_info(text)
     heads = list(_OKWW_TB_HEAD.finditer(text))
     if not heads:
-        # 没有 traceback，但上游自己说了「错误 …」：照它说的写
+        # No traceback, but upstream said 「错误 …」itself: write what it said
         if info["error"] and info["tasks"]:
             step = info["tasks"][-1].split()[0]
             return _okww_say(_OKWW_TASK_BY_STEP.get(step, step), info["error"], "")
@@ -711,15 +794,18 @@ def _okww_error(text: str) -> str:
     nxt = heads[heads.index(head) + 1].start() if heads.index(head) + 1 < len(heads) else len(text)
     excs = _OKWW_EXC_LINE.findall(text[head.end():nxt])
     exc = excs[-1][0].rsplit(".", 1)[-1] if excs else ""
-    # 上游自己记下的当前任务比包装层的类名可靠：`run_task_by_class <class …>`
-    # 那种只说得出「谁在调」，`current task` 说的是「在做哪一步」。
+    # The current task upstream recorded itself is more reliable than the
+    # wrapper layer's class name: `run_task_by_class <class …>` only says who
+    # called it, while `current task` says which step is being done.
     if task in ("DailyTask", "TaskExecutor"):
         before_tasks = okww_info(text, until=head.start())["tasks"]
         if before_tasks:
             task = _OKWW_TASK_BY_STEP.get(before_tasks[-1].split()[0], task)
     if task in ("DailyTask", "TaskExecutor"):
-        # 包装层自己抛的（如「NightmareNestTask Failed」「run_task_by_class <class …>」）：
-        # 真正的任务名在这句里，真正的原因在它前面那条 ERROR 里
+        # Raised by the wrapper layer itself (such as
+        # 「NightmareNestTask Failed」or 「run_task_by_class <class …>」): the real
+        # task name is in that sentence, and the real reason is in the ERROR
+        # line before it
         if m := re.search(r"<class '[\w.]*\.(\w+)'>", msg):
             task = m.group(1)
         elif m := re.match(r"(\w+Task) Failed", msg):
@@ -729,9 +815,12 @@ def _okww_error(text: str) -> str:
                  if m.group(1) not in ("DailyTask", "TaskExecutor", "CombatCheck", "BaseCombatTask")]
         if prior:
             task, msg = prior[-1].group(1), prior[-1].group(2).strip()
-    # 模糊描述比英文更禁止（用户 2026-09-07：「描述模糊是第一大禁止」）。
-    # 所以这里没有「这一步出错」这种兜底：翻得出就写具体的；翻不出就明说
-    # 「中继还不认识这条错」并把原文打进日志，等着补翻译——说清楚不知道，不是糊弄。
+    # A vague description is banned even harder than English (user,
+    # 2026-09-07: 「描述模糊是第一大禁止」-- "vague descriptions are the number
+    # one prohibition"). So there is no 「这一步出错」catch-all here: if it can
+    # be translated, say something specific; if it cannot, say outright that
+    # 「中继还不认识这条错」and put the raw text in the log, pending a
+    # translation -- saying clearly that we do not know is not fobbing him off.
     return _okww_say(task, msg, exc, text, head.start())
 
 
@@ -743,27 +832,35 @@ _OKWW_TASK_BY_STEP = {
 
 
 def _okww_say(task: str, msg: str, exc: str, text: str = "", at: int = 0) -> str:
-    """把（任务, 原文, 异常名）说成一句人话。翻不出就明说，不许含糊。"""
+    """Turn (task, raw message, exception name) into one plain-language
+    sentence. When it cannot be translated, say so outright -- never be vague.
+    """
     task_zh = _OKWW_TASK_ZH.get(task)
     msg_zh = next((zh for en, zh in _OKWW_MSG_ZH if en in msg), "")
     exc_zh = _OKWW_EXC_ZH.get(exc)
     if task_zh is None or not (msg_zh or exc_zh):
         sig = (task, exc, msg[:80])
-        if sig not in _OKWW_UNTRANSLATED:      # 同一条原文一个进程里只提醒一次
+        if sig not in _OKWW_UNTRANSLATED:      # Warn once per process for the same raw message
             _OKWW_UNTRANSLATED.add(sig)
             logging.getLogger("ark.collector").warning(
                 "OK-WW 报错中继还没有翻译，通知里只能说不认识：任务 %s，异常 %s，原文「%s」",
                 task, exc or "（没抓到异常名）", msg)
         who = task_zh or "某个任务"
-        # **把原文抄进通知里**，不要只说「已记进日志」。2026-09-08 撞上了：
-        # OK-WW 早班连败三次，通知说「原文已记进日志」，而机器跑完早班就断电了——
-        # 日志要到晚上 21:20 那趟开机才够得着。人看着告警、想知道出了什么事的那一刻，
-        # 恰恰是日志最够不着的那一刻。原文是英文，但「看得懂的英文一行」
-        # 比「看不懂发生了什么」强得多；禁英文是为了别让他看不懂，不是为了让他没得看。
+        # **Copy the raw text into the notification**; do not only say
+        # 「已记进日志」("recorded in the log"). Hit on 2026-09-08: OK-WW failed
+        # three times in a row on the morning shift, the notification said the
+        # raw text was in the log -- and the machine powers off as soon as the
+        # morning shift ends, so the log is out of reach until the 21:20 boot.
+        # The moment someone reads the alert and wants to know what happened is
+        # exactly the moment the log is least reachable. The raw text is
+        # English, but one line of English he can read beats not knowing what
+        # happened; banning English exists so he can understand, not so that he
+        # has nothing to look at.
         raw = " ".join((msg or "").split())[:110] or exc or "（连原文都没抓到）"
         return f"{who}：中继还不认识这条错，原文照抄——「{raw}」"
     what = msg_zh or exc_zh
-    # 紧挨着 traceback 前面那句「wait_until timeout … N seconds」说明等了多久
+    # The 「wait_until timeout … N seconds」line right before the traceback says
+    # how long it waited
     before = text[max(0, at - 600):at] if text else ""
     if (w := _OKWW_WAIT_SEC.findall(before)) and "等" in what:
         sec = w[-1][:-2] if w[-1].endswith(".0") else w[-1]
@@ -795,10 +892,13 @@ def parse_okww_log(log_path: Path) -> dict:
 
 
 def _okww_stamina_fields(text: str, out: dict) -> "tuple[list[int], int]":
-    """波片消耗、进本次数、备用体力。返回 (读数序列, 进本次数) 给后面的判断用。"""
+    """Waveplates spent, domain entries, reserve stamina. Returns
+    (the series of readings, the entry count) for the checks that follow.
+    """
     readings = [int(m.group(1)) for m in _OKWW_STAMINA.finditer(text)]
-    # 收尾那句「current stamina: 8 not enough to continue」是最后一次读数，
-    # 不算进去会把最后一局的消耗漏掉（2026-09-02 实录：168→88→8 只算出 80）。
+    # The wrap-up line 「current stamina: 8 not enough to continue」is the last
+    # reading; leaving it out loses the final run's cost (recorded 2026-09-02:
+    # 168 -> 88 -> 8 came out as only 80).
     tail = [int(x) for x in _OKWW_STAMINA_END.findall(text)]
     series = readings + tail[-1:]
     spent = sum(a - b for a, b in zip(series, series[1:]) if a > b)
@@ -816,13 +916,19 @@ def _okww_stamina_fields(text: str, out: dict) -> "tuple[list[int], int]":
 
 
 def _okww_health(text: str, out: dict, entries: int) -> None:
-    """进没进游戏、失败的真实原因。"""
-    # 根本没进游戏：等窗口出错、一局没开、**之后再没干任何活**。大版本更新日
-    # 库洛启动器停在「更新」按钮上，OK-WW 只会等游戏窗口（2026-09-02 09:18 实录）。
-    # 「之后再没干任何活」这一条是 2026-09-07 加的：那天三趟开头都有一句
-    # 「waiting for game to start error … is not connected」（窗口连接的瞬时错，
-    # 几秒后就连上了），接着跑了 41 分钟、倒在周本结算页，也没开过无音区的局，
-    # 于是全被判成「进不了游戏（服务器维护／客户端待更新）」。用户：分类机制有问题。
+    """Whether it got into the game, and the real reason for a failure."""
+    # Never got into the game: the window wait errored, not a single run
+    # started, **and nothing else was done afterwards**. On a major version
+    # update day the Kuro launcher sits on the 「更新」button and OK-WW just
+    # waits for the game window (recorded 2026-09-02 09:18).
+    # The "nothing else was done afterwards" clause was added 2026-09-07: that
+    # day all three rounds opened with
+    # 「waiting for game to start error … is not connected」(a transient window
+    # connection error that cleared a few seconds later), then ran for 41
+    # minutes, fell over on the weekly boss settlement screen and never started
+    # a Tacet Suppression run -- so all of them were judged "cannot get into
+    # the game (server maintenance / client waiting to update)". The user: the
+    # classification mechanism is broken.
     if "waiting for game to start error" in text and not entries and not _okww_got_in(text):
         out["okww_unreachable"] = True
     if err := _okww_error(text):
@@ -830,7 +936,9 @@ def _okww_health(text: str, out: dict, entries: int) -> None:
 
 
 def _okww_farm_fields(text: str, out: dict) -> None:
-    """刷的是什么本、单倍双倍各几局、按满难度估的产出。"""
+    """Which domain was farmed, how many single and double runs, and the yield
+    estimated at full difficulty.
+    """
     info = okww_info(text)
     if info["fields"] or info["tasks"]:
         out["okww_info"] = info["fields"]
@@ -853,13 +961,14 @@ def _okww_stamina_left(text: str, out: dict, readings: list) -> None:
         out["okww_stamina_left"] = int(end[-1])
         out["okww_stamina_left_exact"] = True
     elif readings:
-        # 没抓到收尾那行时才退回开打前的读数，并标明它不是结束余量。
+        # Only when the wrap-up line was not caught does it fall back to the
+        # pre-run reading, flagged as not being the final remainder.
         out["okww_stamina_left"] = readings[-1]
         out["okww_stamina_left_exact"] = False
 
 
 def _okww_progress(text: str, out: dict) -> None:
-    """残象聚落、日常进度、日常点数、为什么停。"""
+    """Nightmare Nests, daily progress, daily points, and why it stopped."""
     if nest := _OKWW_NEST.findall(text):
         out["okww_nest"] = f"{nest[-1][0]}/{nest[-1][1]}"
     if _OKWW_NEST_FULL.search(text):
@@ -871,28 +980,38 @@ def _okww_progress(text: str, out: dict) -> None:
         out["okww_points"] = f"{top}/{_OKWW_POINTS_TARGET}"
         if top >= _OKWW_POINTS_TARGET:
             out["okww_points"] += "（已满）"
-        # 第一次读到的活跃度就 ≥ 目标 = 这一轮开始前日常已经做完了
-        # （当天的第二次运行）。这轮不刷任何东西是**正确行为**，
-        # 下游的渲染和结果核对都要用这个标志，别把「无事可做」判成「没干成」。
+        # The very first activity reading already >= the target means the
+        # dailies were finished before this round started (the second run of
+        # the day). Farming nothing this round is **correct behaviour**; both
+        # the rendering and the result check downstream need this flag, so that
+        # "nothing to do" is not judged as "failed to do it".
         if int(points[0]) >= _OKWW_POINTS_TARGET:
             out["okww_daily_done_at_start"] = True
     # Why it stopped, in its own words. "used all stamina" is the good ending.
     if "used all stamina" in text:
-        # 「用尽」是错的：OK-WW 的 used all stamina 意思是
-        # **剩下的不够再开一局**（凝素领域单次 40，剩 37 就进不去），
-        # 不是剩 0。2026-08-29 用户点名：「用尽不是零吗？还剩 20 多」。
+        # "Used up" is wrong: OK-WW's `used all stamina` means **what is left
+        # is not enough for another run** (a Forgery Challenge run costs 40, so
+        # 37 left cannot get in), not that 0 is left. The user called this out
+        # on 2026-08-29: 「用尽不是零吗？还剩 20 多」("doesn't used up mean
+        # zero? there are still 20-odd left").
         out["okww_stopped"] = "体力不够再开一局"
     elif "not enough stamina" in text:
         out["okww_stopped"] = "体力不够，一局都没开成"
 
 
 def _okww_steps(text: str, entries: int) -> list[str]:
-    """日报「备注」里的步骤清单，每一项按它自己的成败标注。"""
-    # 只报有信息量的：领邮件、领电台、领每日奖励每轮都会做，写进报告只是噪音。
-    # 运营 2026-08-25：「除了周常乐园、刷取的关卡、残像聚落之外也别写上去了」。
-    # 出现在日志里 != 做成了。凝素领域可能因为体力不够而根本没进本，梦魇任务
-    # 可能抛异常被 DailyTask 吞掉——把这两种都写成"完成"就是假的。所以每一项
-    # 都按它自己的成败标注。
+    """The step list in the daily report's 「备注」, each item marked with its
+    own success or failure.
+    """
+    # Only report what carries information: collecting mail, the radio and the
+    # daily reward happen every round and are pure noise in a report.
+    # The operator, 2026-08-25: 「除了周常乐园、刷取的关卡、残像聚落之外也别写
+    # 上去了」("apart from the weekly garden, the stage farmed and the
+    # Nightmare Nests, do not list anything else either").
+    # Appearing in the log != having succeeded. A Forgery Challenge may never
+    # have been entered for want of stamina, and a Nightmare task may have
+    # raised an exception that DailyTask swallowed -- writing either of those
+    # up as "done" would be a lie. So each item is marked with its own outcome.
     steps = []
     for needle, name in (
         ("ForgeryTask:", _forgery_label(text)),
@@ -907,23 +1026,28 @@ def _okww_steps(text: str, entries: int) -> list[str]:
             steps.append(f"{name}（未进本）")
     if "NightmareNestTask:" in text:
         nest = "残象聚落" if "canxiang" in text else "梦魇巢穴"
-        # 出现在日志里 != 打过。2026-08-27 连着三轮走到 `open_boss_book canxiang`
-        # 却一场没打，而这里照样写成「残象聚落」，日报因此报了全绿。
-        # 判据换成「有没有真的进本」，并且把「已满跳过」和「找不到点位」分开说。
+        # Appearing in the log != having fought. On 2026-08-27 three rounds in
+        # a row reached `open_boss_book canxiang` without a single fight, while
+        # this still wrote 「残象聚落」-- so the daily report came out all green.
+        # The criterion is now "did it actually enter", and "skipped because
+        # full" is stated separately from "location not found".
         if "NightmareNestTask Failed" in text:
             steps.append(f"{nest}（失败）")
         elif "列表里没找到指定的点位" in text:
             steps.append(f"{nest}（点位名对不上，一次没打）")
         elif "指定点位都已打满" in text:
-            # 「跳过」是 find_nest 内部的说法，不该漏进给人看的报告：
-            # 打满了是**干完了**，不是没干。
+            # 「跳过」("skipped") is find_nest's internal wording and must not
+            # leak into a report a person reads: hitting the cap means it is
+            # **done**, not that it did nothing.
             steps.append(f"{nest}（已刷满）")
         elif re.search(r"is not complete|click_team_challenge|echo captured", text):
             steps.append(nest)
         else:
             steps.append(f"{nest}（开了界面就退出，一次没打）")
-    # 周本（战歌重奏）：之前根本不在这张清单里，于是「打完记账、周一恢复」那套
-    # 从来没被记录触发过（2026-09-07 三次奖励都领了，账上还是「本周还没领满」）。
+    # The weekly boss (Sonata Reverb): it was not in this list at all, so the
+    # "record it when done, reset on Monday" bookkeeping was never triggered by
+    # a record (on 2026-09-07 all three rewards were claimed and the books
+    # still said 「本周还没领满」).
     if "Teleport to Boss Weekly Challenge" in text:
         claims = text.count("周本领奖：已点确认")
         left = [int(m) for m in re.findall(r"本周剩余可收取次数[：:]\s*(\d+)\s*/", text)]
@@ -949,9 +1073,14 @@ def _okww_steps(text: str, entries: int) -> list[str]:
 
 
 def refresh_raw(entry: dict, history_root: Path | None) -> dict:
-    """账本里的 raw 是记账那一刻的解析结果；解析器升级后旧条目缺新字段。
-    出报告前按 run_id 找回 history 日志重算一遍，新键覆盖旧键。找不到日志就原样。
-    2026-09-02 晚：日报里鸣潮「刷 模拟领域 ×2 / 波片 80」就是早上老解析器记的账。"""
+    """`raw` in the ledger is whatever the parser produced at bookkeeping
+    time, so older entries lack fields added by later parser versions.
+    Before reporting, find the history log by run_id and recompute; new keys
+    overwrite old ones. If the log cannot be found, the entry is left as is.
+    Evening of 2026-09-02: the Wuthering Waves line in the report,
+    「刷 模拟领域 ×2 / 波片 80」, was bookkeeping done by the morning's older
+    parser.
+    """
     if not history_root:
         return entry
     raw = dict(entry.get("raw") or {})
@@ -968,17 +1097,21 @@ def refresh_raw(entry: dict, history_root: Path | None) -> dict:
             parsed = parse_okww_log(log_path)
         else:
             return entry
-    except Exception:  # noqa: BLE001 - 重算失败就用原来的
+    except Exception:  # noqa: BLE001 - if the recompute fails, keep the original
         return entry
     raw.update(parsed)
     out = dict(entry)
     out["raw"] = raw
     if parsed.get("sanity") is not None and out.get("sanity") is None:
         out["sanity"] = parsed["sanity"]
-    # 成败也按现在的判据重判：账是记账那一刻判的，判据升级后（例如 09-06
-    # 「AUTO-MAS 认不出改名的任务」「OK-WW 退出时少写一句」两条）旧账还是 ❌，
-    # 晚上的日报会照旧把做完的趟写成失败。只往「做完了」的方向改：
-    # parse_record 说 ok 才覆盖，说不 ok 不动旧账（旧账里的失败有当时的依据）。
+    # Re-judge success or failure by today's criteria too: the books were
+    # judged at bookkeeping time, so after a criteria upgrade (for instance the
+    # two from 09-06: "AUTO-MAS does not recognise a renamed task" and "OK-WW
+    # omits a line when exiting") an old entry is still marked failed, and the
+    # evening report keeps writing a finished run up as a failure. Changes only
+    # ever go towards "it was done": overwrite only when parse_record says ok,
+    # and leave the old entry alone when it says not ok (a failure in the books
+    # had its own evidence at the time).
     try:
         rec = parse_record(log_path.with_suffix(".json"), Path(history_root))
     except Exception:  # noqa: BLE001
@@ -1004,7 +1137,8 @@ def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
 
     transitional = _is_transitional(result)
     if transitional:
-        # 不是故障，是被下一轮取代。别让它出现在失败清单里。
+        # Not a fault -- superseded by the next round. Keep it out of the
+        # failure list.
         failed = []
 
     log_path = json_path.with_suffix(".log")
@@ -1035,7 +1169,9 @@ def parse_record(json_path: Path, history_root: Path) -> RunRecord | None:
 
 
 def _record_identity(json_path: Path, history_root: Path):
-    """读 JSON、从路径和文件名认出日期/账号/开始时刻。不是运行记录返回 None。"""
+    """Read the JSON and work out date / account / start time from the path
+    and file name. Returns None when it is not a run record.
+    """
     try:
         raw = json.loads(json_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -1069,7 +1205,9 @@ def _record_identity(json_path: Path, history_root: Path):
 
 
 def _judge_result(raw: dict, json_path: Path, stem: str):
-    """三个程序各自的成败判据。返回 (脚本, 结果原文, 成败, 失败清单)；认不出返回 None。"""
+    """The success criteria of each of the three programs. Returns
+    (script, raw result, ok, failure list); None when it is not recognised.
+    """
 
     # Which script produced this record, and did it succeed?
     if "maa_result" in raw:
@@ -1083,12 +1221,15 @@ def _judge_result(raw: dict, json_path: Path, stem: str):
         # "未捕获到日志" means AUTO-MAS could not tell - treat as failure, not success.
         ok = "失败" not in result and "未捕获" not in result and bool(result)
         failed = _split_failed(result) if not ok else []
-        # AUTO-MAS 按**它自己那张任务名表**对日志：上游一改某个任务的显示名，
-        # 它就找不到那条「任务完成」，记成「部分任务执行失败: X」。
-        # 2026-09-06 早班：MaaEnd v2.28.0-beta.1 把 SellProduct 显示名改成「据点交易」，
-        # 日志里 17 个任务全部「任务完成」、一条「任务失败」都没有，AUTO-MAS 照样记失败，
-        # 还白跑了两趟重试。以 MaaEnd 自己的日志为准：每个「任务开始」都有对应的
-        # 「任务完成」、没有「任务失败」，这趟就是做完了。
+        # AUTO-MAS matches the log against **its own table of task names**: the
+        # moment upstream renames a task's display name, it cannot find that
+        # 「任务完成」and records 「部分任务执行失败: X」.
+        # Morning shift 2026-09-06: MaaEnd v2.28.0-beta.1 changed SellProduct's
+        # display name to 「据点交易」; the log had all 17 tasks at 「任务完成」
+        # and not one 「任务失败」, and AUTO-MAS still recorded a failure and
+        # wasted two retry rounds. MaaEnd's own log is authoritative: if every
+        # 「任务开始」has a matching 「任务完成」and there is no 「任务失败」,
+        # the round was finished.
         if not ok and failed and "未捕获" not in result:
             try:
                 text = json_path.with_suffix(".log").read_text(encoding="utf-8", errors="replace")
@@ -1107,10 +1248,14 @@ def _judge_result(raw: dict, json_path: Path, stem: str):
         script = prefix or "通用脚本"
         result = str(raw.get("general_result") or "")
         ok = result.strip() == _MAA_SUCCESS
-        # AUTO-MAS 先读日志再看进程：OK-WW 写完「Daily Task Completed」几秒内就自己退出，
-        # AUTO-MAS 若在那几秒里只看到进程没了，就记「在完成任务前退出」。
-        # 2026-09-06 早班就是：09:36:18 Completed，09:36:24 退出，被记成失败，
-        # 重试那趟无事可做又记成 ✅。以 OK-WW 自己的日志为准：写了 Completed 就是做完了。
+        # AUTO-MAS reads the log first and then looks at the process: OK-WW
+        # exits on its own within seconds of writing 「Daily Task Completed」,
+        # and if AUTO-MAS only sees the process gone during those seconds it
+        # records 「在完成任务前退出」.
+        # That is exactly the 2026-09-06 morning shift: Completed at 09:36:18,
+        # exit at 09:36:24, recorded as a failure -- and the retry round, with
+        # nothing left to do, was recorded green. OK-WW's own log is
+        # authoritative: if it wrote Completed, the round was finished.
         if not ok and _OKWW_EXITED in result:
             try:
                 if _OKWW_DONE in json_path.with_suffix(".log").read_text(
@@ -1126,7 +1271,10 @@ def _judge_result(raw: dict, json_path: Path, stem: str):
 
 
 def _enrich_record(raw: dict, script: str, log_path: Path, ok: bool, failed: list, finished) -> list:
-    """把日志里算出来的字段并进 raw，算回满时刻；失败清单可能换成日志里的真实原因。"""
+    """Merge the fields computed from the log into raw and work out the
+    full-again time; the failure list may be replaced by the real reason from
+    the log.
+    """
     # version starts populating these, its numbers win over our parsing.
     if log_path.exists():
         if script == "MAA":
@@ -1138,13 +1286,15 @@ def _enrich_record(raw: dict, script: str, log_path: Path, ok: bool, failed: lis
         for key, value in parsed.items():
             if not raw.get(key):
                 raw[key] = value
-        # OK-WW 的失败清单只有 AUTO-MAS 那句笼统话；日志里有真实原因就换成它
+        # OK-WW's failure list holds only AUTO-MAS's vague sentence; when the
+        # log has the real reason, use that instead
         if script not in ("MAA", "MaaEnd") and not ok and raw.get("okww_error"):
             failed = [raw["okww_error"]]
     if flat := flatten_drops(raw):
         raw["drop_statistics"] = flat
-    # 回满时间：MAA 自己写在结果 JSON 里，另外两个得算。用这条记录的结束时刻
-    # 当起点——那正是最后一次读数的时刻。
+    # Full-again time: MAA writes it into its result JSON itself, the other two
+    # have to be computed. Use this record's finish time as the starting point
+    # -- that is exactly when the last reading was taken.
     if not raw.get("sanity_full_at"):
         if script == "MaaEnd" and raw.get("sanity") is not None:
             raw["sanity_full_at"] = _full_at_sentence(
@@ -1182,9 +1332,12 @@ def scan(history_root: Path, seen: set[str]) -> list[RunRecord]:
         # age means clock skew (mtime in the future); never skip those forever.
         if 0 <= age < 120 and not path.with_suffix(".log").exists():
             continue
-        # 先按路径算 run_id，处理过的不再解析。原来是每个周期把整个 history 目录
-        # 几百条记录全部重新解析一遍再过滤——2026-09-07 实测启动一次要十几秒，
-        # 停服务因此撞上 15 秒硬保险，而且 8 月的老失败记录每次都重新报一遍警。
+        # Compute run_id from the path first and skip anything already
+        # processed. This used to re-parse all several hundred records in the
+        # whole history directory every cycle and filter afterwards -- measured
+        # 2026-09-07, a single startup took over ten seconds, which made
+        # stopping the service hit the hard 15-second cutoff, and old failed
+        # records from August raised their alerts again every single time.
         try:
             rel = path.relative_to(history_root)
             if f"{rel.parts[0]}/{rel.parts[1]}/{path.stem}" in seen:

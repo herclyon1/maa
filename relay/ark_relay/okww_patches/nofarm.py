@@ -1,4 +1,4 @@
-"""OK-WW 补丁：nofarm。从 okww_patch.py 拆出（2026-09-06，只搬不改）。"""
+"""OK-WW patch: nofarm. Split out of okww_patch.py (2026-09-06, moved verbatim)."""
 from __future__ import annotations
 
 
@@ -7,7 +7,7 @@ from .core import _SRC, _Patch
 
 
 
-# ---- 禁用刷体力，把波片留给周本 --------------------------------------------
+# ---- Disable stamina farming, keep the waveplates for the weekly boss ----
 # 来龙去脉见 docs/CODE-HISTORY.md「nofarm.py:(模块级)」
 _NOFARM_OLD = """        target = self.config.get('Which to Farm', self.support_tasks[0])
         if target == self.support_tasks[0]:"""

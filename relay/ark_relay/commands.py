@@ -220,17 +220,18 @@ def _toggle_task(name: str, on: bool) -> tuple[bool, str]:
                    "用 set_config 指名道姓地写路径，比猜任务名安全")
 
 
-# 地址只有一处出处，见 config.mas_base()
+# The address has exactly one source; see config.mas_base()
 def _mas_api() -> str:
-    from .config import mas_base  # noqa: PLC0415 - 避免导入环
+    from .config import mas_base  # noqa: PLC0415 - avoids an import cycle
     return mas_base()
 
 
 def _mas(path: str, body: "dict | None" = None, timeout: int = 20) -> dict:
-    """AUTO-MAS 后端。**每个端点都是 POST**，读取的也是。
+    """The AUTO-MAS backend. **Every endpoint is POST**, including the reads.
 
-    走 API 而不是改文件：后端在跑的时候会用内存里那份覆写文件，
-    直接改文件的值会被静静冲掉。
+    Go through the API rather than editing files: while the backend is running
+    it overwrites the file from its in-memory copy, so a value written straight
+    into the file is silently wiped out.
     """
     req = urllib.request.Request(
         _mas_api() + path, data=json.dumps(body or {}).encode(),
@@ -240,7 +241,7 @@ def _mas(path: str, body: "dict | None" = None, timeout: int = 20) -> dict:
 
 
 def _find_user(script: str) -> "tuple[str, str, dict]":
-    """按脚本名找到 (scriptId, userId, 当前用户配置)。"""
+    """Find (scriptId, userId, current user config) by script name."""
     scripts = _mas("/api/scripts/get")["data"]
     for sid, sc in scripts.items():
         name = str((sc.get("Info") or {}).get("Name") or "")
@@ -275,15 +276,21 @@ def _nest(path: str, value) -> dict:
 
 
 def _set_config(cmd: dict) -> tuple[bool, str]:
-    """改任意一项配置。手机端所有设置都走这一条。
+    """Change any single config item. Every setting on the phone goes through this.
 
-    2026-08-31 实测过 `/api/scripts/user/update` 是**合并语义**：只写传进去
-    的那些键，其余原样不动（先存全量、写回同值、全量比对验的）。
+    Measured 2026-08-31: `/api/scripts/user/update` has **merge semantics** -
+    it writes only the keys passed in and leaves the rest untouched (verified by
+    saving the whole config, writing back the same value, and diffing the whole
+    config).
 
-    这里必须做的三件事，一件都不能省——826 就是省了才出的事：
-      * 改之前先把**现值**读出来，报告里写「A → B」而不是只写 B；
-      * 路径必须在现有配置里真的存在，不存在就拒绝，不许凭空造字段；
-      * 写完**回读验证**，验的是「这个键现在是不是这个值」。
+    Three things are mandatory here and none may be skipped - 826 happened
+    because they were:
+      * read the **current value** before changing it, so the report says
+        "A -> B" rather than just B;
+      * the path must actually exist in the current config, and is refused if it
+        does not - no inventing fields out of thin air;
+      * **read back and verify** after writing, checking whether that key really
+        holds that value now.
     """
     script = str(cmd.get("script") or "").strip()
     path = str(cmd.get("path") or "").strip()
@@ -320,10 +327,12 @@ def _set_config(cmd: dict) -> tuple[bool, str]:
 
 
 def _set_master(cmd: dict) -> tuple[bool, str]:
-    """改脚本自己那份配置（母本）。
+    """Change the script's own config (the master copy).
 
-    终末地和鸣潮的「快速配置」是关的，MAS 用户配置里那些字段根本不下发
-    （查证见 mastercfg 模块开头）。手机上这两段改的是母本，不是 MAS。
+    Endfield and Wuthering Waves have 「快速配置」 turned off, so those fields in
+    the MAS user config are never pushed down at all (evidence at the top of the
+    mastercfg module). On the phone, those two sections edit the master copy,
+    not MAS.
     """
     from . import mastercfg  # noqa: PLC0415
     game = str(cmd.get("game") or "").strip()
@@ -349,11 +358,14 @@ def _set_master(cmd: dict) -> tuple[bool, str]:
 
 
 def estop() -> tuple[bool, str]:
-    """红按钮：停一切脚本和游戏。手机页面上那个红色的。
+    """The red button: stop every script and game. The red one on the phone page.
 
-    顺序抄 scripts/windows/dispatch_guard.py（2026-09-01 上午的乱象换来的）：
-    ① 全部经 AUTO-MAS 接口停（队列和脚本都停，它才不会当异常去重试）；
-    ② 等 12 秒，还有残留才 taskkill；③ 复查有没有被重新拉起，拉起再停一轮。
+    The order is copied from scripts/windows/dispatch_guard.py (bought with the
+    mess of the morning of 2026-09-01):
+    (1) stop everything through the AUTO-MAS API (queues and scripts both, so it
+    does not treat this as a fault and retry); (2) wait 12 seconds, and only
+    taskkill what is left; (3) check again whether anything was relaunched, and
+    if so run another stop round.
     """
     import subprocess  # noqa: PLC0415
     import time  # noqa: PLC0415
@@ -384,7 +396,7 @@ def estop() -> tuple[bool, str]:
 
 
 def mas_up() -> bool:
-    """AUTO-MAS 后端接口活着没有。"""
+    """Whether the AUTO-MAS backend API is alive."""
     try:
         _mas("/api/queue/get", timeout=5)
         return True
@@ -407,10 +419,11 @@ def _script_id(script: str) -> str:
 
 
 def skip_script_in_queue(queue: str, script: str) -> dict | None:
-    """把一个脚本从队列里摘出去（经 AUTO-MAS 接口），返回加回时要用的记录。
+    """Pull one script out of a queue (through the AUTO-MAS API); returns the record needed to put it back.
 
-    维护日「当天队列里不跑它」用的。2026-09-03 在 早班 上实测：
-    item/delete 摘掉，item/add → item/update(ScriptId) → item/order 能一字不差地加回。
+    Used on maintenance days for "do not run it in today's queue". Measured on
+    the 早班 queue on 2026-09-03: item/delete takes it out, and
+    item/add -> item/update(ScriptId) -> item/order puts it back exactly as it was.
     """
     qid, sid = _queue_id(queue), _script_id(script)
     items = _mas("/api/queue/item/get", {"queueId": qid})
@@ -427,12 +440,12 @@ def skip_script_in_queue(queue: str, script: str) -> dict | None:
 
 
 def restore_script_in_queue(rec: dict) -> bool:
-    """按 skip_script_in_queue 的记录加回去，位置也放回原处。"""
+    """Add it back per the skip_script_in_queue record, restoring its position too."""
     qid, sid = rec["queueId"], rec["scriptId"]
     items = _mas("/api/queue/item/get", {"queueId": qid})
     order = [i["uid"] for i in items["index"]]
     if any((items["data"].get(u, {}).get("Info") or {}).get("ScriptId") == sid for u in order):
-        return True                                   # 已经在了
+        return True                                   # already there
     r = _mas("/api/queue/item/add", {"queueId": qid})
     uid = r.get("queueItemId")
     if not uid:
@@ -447,10 +460,11 @@ def restore_script_in_queue(rec: dict) -> bool:
 
 
 def run_script(script: str) -> tuple[bool, str]:
-    """单独派发一个脚本（不是整条队列），走 AUTO-MAS 的 dispatch 接口。
+    """Dispatch a single script (not a whole queue) through the AUTO-MAS dispatch API.
 
-    游戏更新完要重跑那一个游戏时用。派整条队列会把其它游戏也再跑一遍，
-    2026-09-01 就是这么把 MAA 多跑了一趟、还吃了理智药。
+    Used when one game has to be re-run after its client update. Dispatching the
+    whole queue would run the other games again too - that is exactly how MAA
+    got an extra run on 2026-09-01, and burned sanity potions doing it.
     """
     try:
         scripts = _mas("/api/scripts/get")["data"]
@@ -470,21 +484,22 @@ def run_script(script: str) -> tuple[bool, str]:
 
 
 def _run_now(queue: str) -> tuple[bool, str]:
-    """立刻跑一趟队列。走 AUTO-MAS 的 dispatch 接口。"""
+    """Run one round of a queue right now, through the AUTO-MAS dispatch API."""
     queue = names.canonical(queue)
     try:
         queues = _mas("/api/queue/get")["data"]
     except Exception as exc:  # noqa: BLE001
         return False, f"取不到队列列表: {exc}"
-    have = []      # 别叫 names，会把模块名遮住（见 queues.apply 的注释）
+    have = []      # do not call this `names`: it would shadow the module (see the comment in queues.apply)
     for qid, q in queues.items():
         name = str((q.get("Info") or {}).get("Name") or "")
         have.append(name)
         if name == queue:
             try:
-                # mode 的合法值只有 AutoProxy / ScriptConfig / Update
-                # （app/models/schema.py 的 TaskCreateIn）。2026-08-31 我写成
-                # 「队列」，接口直接 422——手机上按「现在跑一趟」毫无反应。
+                # The only valid values for mode are AutoProxy / ScriptConfig /
+                # Update (TaskCreateIn in app/models/schema.py). On 2026-08-31 it
+                # was written as 「队列」 and the API returned a flat 422 - pressing
+                # "run a round now" on the phone did absolutely nothing.
                 r = _mas("/api/dispatch/start",
                          {"taskId": qid, "mode": "AutoProxy"})
             except Exception as exc:  # noqa: BLE001
@@ -508,7 +523,8 @@ def _skip_today(queue: str, want_day: str = "") -> tuple[bool, str]:
                        "指令在收件箱里过期了，未生效。需要就重新排一条")
     queue = names.canonical(queue)
     from .statestore import StateStore  # noqa: PLC0415
-    # 原子写：空值会被读成默认队列名，撕裂的写入等于跳过一个没人要求跳过的队列。
+    # Atomic write: an empty value would be read as the default queue name, so a
+    # torn write means skipping a queue nobody asked to skip.
     StateStore(Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))).set(
         "queues", f"skip_day:{day}", str(queue))
     return True, f"今天（{day}）将跳过队列「{queue}」"
@@ -557,8 +573,11 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
         if action == "set_master":
             return _set_master(cmd)
         if action == "weekly_boss":
-            # 鸣潮周本（战歌重奏）。和剿灭、周常乐园一套：打满自动摘掉，周一 04:00 挂回来。
-            # 能改的只有「打第几个」：一周 3 次、90 级是固定的（用户 2026-09-07）。
+            # The Wuthering Waves weekly boss (战歌重奏). Same setup as
+            # annihilation and the weekly garden: once the quota is full it is
+            # removed automatically and hung back on Monday at 04:00.
+            # The only thing that can be changed is which one to fight: 3 times a
+            # week at level 90 is fixed (per the user, 2026-09-07).
             from .weeklyboss import WeeklyBossGate  # noqa: PLC0415
             state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
             gate = WeeklyBossGate(state_dir, os.environ.get("ARK_AUTOMAS_DIR"))
@@ -567,16 +586,19 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
                 gate.enforce()
             return ok, msg
         if action == "skip_shutdown":
-            # 手机上按的那个「今晚别关机」。不带到期时间：把**下一次**
-            # 真正要执行的关机吃掉一次，用完即失效，下一趟队列照常关。
-            # 用户 2026-08-31：「你给一个人类好去调这个模式的方法，
-            # 独立于你的」「我要的是手机上面操作」。
+            # The 「今晚别关机」 button on the phone. It carries no expiry: it eats
+            # the **next** shutdown that would actually be executed, once, and is
+            # spent after that - the queue after it shuts down as usual.
+            # The user, 2026-08-31: 「你给一个人类好去调这个模式的方法，
+            # 独立于你的」「我要的是手机上面操作」.
             from .modes import set_skip_shutdown  # noqa: PLC0415
             state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
-            # 取消的写法两种都认。规范是 off:true，但别的动作
-            # （weekly_boss / toggle_task）用的是 on，一个界面两套写法迟早
-            # 发错。2026-08-31 实测就发现手机上只有「开」没有「取消」，
-            # 发 on:false 会被当成「开」。宽进：两种都当取消。
+            # Both spellings of "cancel" are accepted. The canonical form is
+            # off:true, but other actions (weekly_boss / toggle_task) use `on`,
+            # and two spellings in one interface get sent wrongly sooner or
+            # later. Measured 2026-08-31: the phone only had 「开」 and no
+            # 「取消」, and sending on:false was read as 「开」. Be liberal: treat
+            # both as cancel.
             off = bool(cmd.get("off")) or cmd.get("on") is False
             return set_skip_shutdown(state_dir, not off)
     except Exception as exc:

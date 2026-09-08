@@ -1,4 +1,4 @@
-"""preupdate_automas：从 preupdate.py 拆出（2026-09-08，只搬不改）。"""
+"""preupdate_automas: split out of preupdate.py (2026-09-08, moved verbatim, no changes)."""
 from __future__ import annotations
 
 import json
@@ -28,9 +28,10 @@ from .preupdate_maaend import _span
 # _revive_automas would normally relaunch it. It does not, because
 # INSTALLER_HINTS already vetoes revival while "auto-mas-setup" is in the
 # task list. That gate was built for the manual installer; it covers this too.
-# 模块级读 os.environ 会在 .env 加载之前求值（见 config.py 那段注释），
-# 所以地址只能在用的时候现算——config.mas_base() 是唯一出处。
-_MAS_PORT = None   # 旧名字，别处 import 过；真正的地址走 config.mas_base()
+# Reading os.environ at module level evaluates before .env is loaded (see the
+# comment in config.py), so the address can only be computed at call time -
+# config.mas_base() is the single source.
+_MAS_PORT = None   # old name, imported elsewhere; the real address comes from config.mas_base()
 _MAS_HTTP_TIMEOUT = 20
 # Boot is 08:40 and the queue checks in at 09:00. Downloading is harmless at any
 # point - the package just sits there - but starting an install we cannot finish
@@ -113,13 +114,17 @@ def run_automas(automas_dir: Path | None,
     wait_until = time.monotonic() + MAS_WAIT_SECONDS
     while True:
         try:
-            # if_force 是必须的，不是保险起见。AUTO-MAS 的检查结果缓存四小时
-            # （`app/services/update.py:178-184`），而 MirrorChyan 的下载地址是
-            # **一次性令牌**，随检查响应带回来、存进 `mirror_chyan_download_url`。
-            # 走缓存 = 拿一个早就过期的令牌去下载，三次重试全 404，更新包一个字节
-            # 都不落地，然后我们在这儿干等 600 秒超时。
-            # 2026-08-29 实测：不强制 → 404；强制 → 换到新令牌，状态码 200。
-            # 这就是 AUTO-MAS 从 08-27 起反复「开始下载」却始终装不上的原因。
+            # if_force is required, not a precaution. AUTO-MAS caches the check
+            # result for four hours (`app/services/update.py:178-184`), while
+            # MirrorChyan's download address is a **single-use token** that comes
+            # back with the check response and is stored in
+            # `mirror_chyan_download_url`. Going through the cache = downloading
+            # with a long-expired token: all three retries 404, not one byte of
+            # the package lands, and then we sit here for the full 600-second
+            # timeout.
+            # Measured 2026-08-29: without force -> 404; with force -> a fresh
+            # token, status 200. This is why AUTO-MAS kept saying it had started
+            # downloading from 08-27 on and never managed to install.
             answer = _mas_post("/api/update/check",
                                {"current_version": version, "if_force": True})
             break

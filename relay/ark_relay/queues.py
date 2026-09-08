@@ -42,11 +42,13 @@ def _script_ids(automas_dir: Path) -> dict[str, str]:
 
 
 def _apply_enabled(target: dict, enabled: bool, changes: list[str]) -> str | None:
-    """拨队列自己的定时开关，改动记进 changes；返回错误文本，没有错就返回 None。
+    """Flip the queue's own schedule switch, recording edits into changes.
 
-    单独成一步，是因为它必须先挡住非布尔值再动配置：这一步定的是「明天到底开不
-    开跑」，写错了整条队列会在错的状态里过夜，而后面的写盘没有任何结构性 diff
-    能把它认出来。
+    Returns an error string, or None when there was no error. It is a separate
+    step because it has to reject non-boolean values before touching the config:
+    this step decides whether the queue runs at all tomorrow, and getting it
+    wrong leaves the whole queue in the wrong state overnight - the write that
+    follows has no structural diff that could catch it.
     """
     # The value arrives from a JSON file a person hand-edits. A string
     # "false" is truthy, so it would switch the queue ON while the push
@@ -62,11 +64,13 @@ def _apply_enabled(target: dict, enabled: bool, changes: list[str]) -> str | Non
 
 def _apply_scripts(automas_dir: Path, target: dict, scripts: list[str],
                    changes: list[str], removed: list[dict]) -> str | None:
-    """把队列裁成只剩 scripts 指定的那几个脚本，裁掉的原条目收进 removed。
+    """Trim the queue down to only the scripts listed, collecting cut entries into removed.
 
-    单独成一步，是因为这是本模块里唯一会**删配置**的一段：三道校验（认不认得这
-    个脚本名、这个脚本在不在队列里、剩下的该留谁）得连着看，才说得清为什么只能
-    移出不能加回。返回错误文本，没有错就返回 None。
+    It is a separate step because this is the only place in this module that
+    **deletes config**: the three checks (is the script name recognised, is the
+    script in the queue at all, which of the rest should stay) have to be read
+    together to explain why items can only be moved out and not added back.
+    Returns an error string, or None when there was no error.
     """
     ids = _script_ids(Path(automas_dir))
     unknown = [s for s in scripts if s not in ids]
@@ -117,10 +121,13 @@ def apply(automas_dir: Path, name: str, enabled: bool | None = None,
         return False, f"读不了 QueueConfig: {exc}"
 
     target = None
-    # 不能叫 names：那是模块名，函数开头 names.canonical() 还要用它。
-    # 2026-09-02 到 09-06 这里就叫 names，Python 把它当本函数的局部变量，
-    # 第一行 names.canonical() 直接 UnboundLocalError——跳过队列、待办里的
-    # 队列开关，四天里每一次调用都崩。pyflakes 一行就能报（F823），现已进 lint。
+    # This must not be called `names`: that is the module name, and
+    # names.canonical() at the top of this function still needs it.
+    # From 2026-09-02 to 09-06 it was called `names` here, so Python treated it
+    # as a local of this function and the very first line, names.canonical(),
+    # raised UnboundLocalError - skip-queue and the queue switch in the todo
+    # list crashed on every single call for four days. pyflakes reports this in
+    # one line (F823), and that check is now part of lint.
     have = []
     for inst in data.get("instances", []):
         node = data.get(inst.get("uid")) or {}

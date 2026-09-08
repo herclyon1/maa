@@ -1,4 +1,4 @@
-"""preupdate_common：从 preupdate.py 拆出（2026-09-08，只搬不改）。"""
+"""preupdate_common: split out of preupdate.py (2026-09-08, moved verbatim)."""
 from __future__ import annotations
 
 import logging
@@ -19,8 +19,9 @@ BUDGET_SECONDS = 180
 # The line MaaEnd writes once its update check has settled.
 _DONE = re.compile(r"更新检查完成: 最新版本=(\S+?), 有更新=(true|false)")
 _UPDATED = re.compile(r"检测到刚更新完成: (\S+)")
-# 「检查更新: MaaEnd, 当前版本: v2.26.0-beta.1, 频道: beta」——启动时写的那行。
-# 更新通知要带上「从哪个版本升上来的」，只报新版本号看不出发生了什么。
+# 「检查更新: MaaEnd, 当前版本: v2.26.0-beta.1, 频道: beta」 - the line written at
+# startup. The update notification has to say which version we came up from;
+# reporting only the new version number does not show what happened.
 _CURRENT = re.compile(r"当前版本[:：]\s*(\S+?)[,，]")
 
 
@@ -58,23 +59,30 @@ def _read(path: Path) -> str:
 
 
 def _read_from(path: Path, byte_offset: int) -> str:
-    """从**字节**偏移开始读，再解码。
+    """Read from a **byte** offset, then decode.
 
-    2026-08-26：原来是 `_read(path)[before_len:]`，而 `before_len` 是
-    `stat().st_size`——**字节数**，切的却是解码后的**字符**串。
-    MAA 的 gui.log 满是中文，一个汉字 3 字节 1 字符，于是偏移永远偏大，
-    一刀切过头把新增内容整段跳掉，判据再也匹配不到，
-    每次都白等满 180 秒然后报「没给出更新结论」。
+    2026-08-26: this used to be `_read(path)[before_len:]`, where `before_len`
+    was `stat().st_size` - a **byte** count, applied to slice the decoded
+    **character** string. MAA's gui.log is full of Chinese, where one character
+    is 3 bytes and 1 character, so the offset was always too large; the slice
+    overshot and skipped the whole of the new content, the patterns never
+    matched again, and every round waited out the full 180 seconds and then
+    reported 「没给出更新结论」.
 
-    日志是 UTF-8 且只在末尾追加，所以按字节 seek 再解码是安全的。
+    The log is UTF-8 and only ever appended to, so seeking by byte and then
+    decoding is safe.
 
-    **但「只在末尾追加」这个前提，MAA 自己会打破**：它每次启动都把上一份
-    `gui.log` 挪成 `gui.bak.log`，新开一份从 0 字节写起。我们记的偏移是
-    启动**前**那份的大小（几百 KB），拿去 seek 一份 12 KB 的新文件，
-    read 永远返回空——2026-09-04 就是这样：MAA 08:46:26 已经答了
-    「current version is latest」，判据一个字也没看见，白等满 180 秒，
-    再报一条「没能确认」的假警报，还把 tick 后面的事都耽误了。
-    所以文件比偏移还小 = 它被轮转或截断过，从头读。
+    **But MAA itself breaks that "only ever appended to" premise**: on every
+    launch it moves the previous `gui.log` aside as `gui.bak.log` and starts a
+    fresh one at byte 0. The offset we recorded is the size of the file from
+    **before** the launch (a few hundred KB); seeking that far into a new 12 KB
+    file makes read return empty forever. That is exactly what happened on
+    2026-09-04: MAA had already answered 「current version is latest」 at
+    08:46:26, the patterns saw not one character of it, we waited out the full
+    180 seconds, raised a false 「没能确认」 alarm, and held up everything else
+    in that tick as well.
+    So a file smaller than the offset means it was rotated or truncated: read
+    from the start.
     """
     try:
         with path.open("rb") as fh:
@@ -87,20 +95,24 @@ def _read_from(path: Path, byte_offset: int) -> str:
         return ""
 
 
-# 计划任务这条路：拿不到控制台令牌时，用它把程序丢进交互桌面会话。
+# The scheduled-task route: used to drop a program into the interactive desktop
+# session when the console token cannot be had.
 #
-# 2026-08-26 实测，**真实的 LocalSystem 服务也拿不到令牌**：
+# Measured 2026-08-26: **a real LocalSystem service cannot get the token either**:
 #   08-26 08:51:30 预更新：拿控制台令牌失败，拒绝在 session 0 启动 ok-ww.exe
 #   pywintypes.error: (1314, 'WTSQueryUserToken', '客户端没有所需的特权。')
-# 1314 是缺 SE_TCB_NAME。LocalSystem 名义上有这个特权，但 pywin32 的服务宿主
-# 里它不是启用状态，所以调用照样被拒。三条预更新报错是同一个根因，不是三件事。
+# 1314 means SE_TCB_NAME is missing. LocalSystem nominally holds that privilege,
+# but inside pywin32's service host it is not in the enabled state, so the call
+# is refused all the same. All three pre-update errors share this one root
+# cause; they are not three separate things.
 #
-# 而**同一个仓库里早就有一条走得通的路**：`_revive_automas()` 用 `schtasks /run`
-# 拉 AUTO-MAS，`scripts/mac/winrun.sh --py1` 用 `Register-ScheduledTask` +
-# `LogonType Interactive` 在桌面会话里跑脚本。计划任务由 Task Scheduler 服务
-# 代为创建进程，不需要调用方持有 SE_TCB_NAME。
+# And **a route that works has been in this very repo all along**:
+# `_revive_automas()` starts AUTO-MAS with `schtasks /run`, and
+# `scripts/mac/winrun.sh --py1` runs scripts in the desktop session with
+# `Register-ScheduledTask` + `LogonType Interactive`. The Task Scheduler service
+# creates the process on our behalf, so the caller does not need SE_TCB_NAME.
 def _spawn_via_task(exe: Path, cwd: Path, args: tuple[str, ...] = ()) -> bool:
-    """用一次性计划任务把 exe 拉进交互桌面会话。成功返回 True。"""
+    """Start exe in the interactive desktop session via a one-shot scheduled task. True on success."""
     task = "ark-preupdate-launch"
     quoted = subprocess.list2cmdline(list(args)) if args else ""
     ps = (
@@ -115,7 +127,8 @@ def _spawn_via_task(exe: Path, cwd: Path, args: tuple[str, ...] = ()) -> bool:
         f'Register-ScheduledTask -TaskName "{task}" -Action $a -Principal $p '
         f'-Force | Out-Null;'
         f'Start-ScheduledTask -TaskName "{task}";'
-        # 起来之后就把任务注销掉，别在系统里留垃圾。程序本身不受影响。
+        # Unregister the task once it has started so no litter is left on the
+        # system. The program itself is unaffected.
         f'Start-Sleep -Seconds 3;'
         f'Unregister-ScheduledTask -TaskName "{task}" -Confirm:$false '
         f'-ErrorAction SilentlyContinue'
@@ -140,41 +153,47 @@ _PWSH7 = Path(r"C:\Program Files\PowerShell\7\pwsh.exe")
 
 
 def _pwsh() -> str:
-    """只认 PowerShell 7。5.1 默认不是 UTF-8，中文路径会被 ANSI 解码毁掉。
+    """PowerShell 7 only. 5.1 does not default to UTF-8 and mangles Chinese paths through ANSI decoding.
 
-    不存在也不退回 5.1：退回去的话命令「跑成功了」但结果是乱码，比失败更坏。
-    这里只写一条 ERROR，调用方拿到不存在的路径会当场报 OSError。
+    If it is missing we still do not fall back to 5.1: falling back makes the
+    command "succeed" while producing mojibake, which is worse than failing.
+    This only writes one ERROR line; the caller gets a path that does not exist
+    and raises OSError on the spot.
     """
     if not _PWSH7.exists():
         log.error("找不到 %s：这台机器必须装 PowerShell 7", _PWSH7)
     return str(_PWSH7)
 
 
-# TOKEN_INFORMATION_CLASS 的两个取值。pywin32 各版本对这些常量的暴露位置
-# 不一致（win32security / ntsecuritycon 都出现过），所以按名字取、取不到就用
-# 文档里的数字，免得因为一个常量名让整条路走不通。
+# Two values of TOKEN_INFORMATION_CLASS. pywin32 versions disagree about where
+# these constants are exposed (both win32security and ntsecuritycon have been
+# seen), so look them up by name and fall back to the documented numbers - one
+# constant name must not be able to break the whole route.
 _TOKEN_ELEVATION_TYPE = 18
 _TOKEN_LINKED_TOKEN = 19
 _ELEVATION_LIMITED = 3          # TokenElevationTypeLimited
 
 
 def _console_primary_token(session: int):
-    """控制台用户的令牌，**要没被 UAC 过滤的那一个**。
+    """The console user's token - **the one UAC has not filtered**.
 
-    `WTSQueryUserToken` 交回来的是登录用户的**受限**令牌。用它去启动
-    清单里写了 `requireAdministrator` 的程序（OK-WW 就是），
-    `CreateProcessAsUser` 必然失败：
+    `WTSQueryUserToken` hands back the logged-in user's **restricted** token.
+    Use it to start a program whose manifest says `requireAdministrator`
+    (OK-WW does) and `CreateProcessAsUser` is bound to fail:
 
         pywintypes.error: (740, 'CreateProcessAsUser', '请求的操作需要提升。')
 
-    2026-08-27 之前每次开机都撞这一下，然后整条路退到计划任务方式——
-    能用，但每轮预更新都往日志里刷一段 traceback，把真正的新错埋掉，
-    而且计划任务那条路一旦也坏了就彻底没有交互会话可用。
+    Before 2026-08-27 every boot hit this and the whole route fell back to the
+    scheduled task - which works, but sprayed a traceback into the log on every
+    pre-update round, burying genuinely new errors, and left no interactive
+    session at all if the scheduled-task route ever broke too.
 
-    UAC 把管理员账户的令牌拆成一对：手上这个是受限的一半，完整的那一半
-    通过 `TokenLinkedToken` 挂在它上面。取过来复制成主令牌即可。
+    UAC splits an administrator account's token into a pair: the one in hand is
+    the restricted half, and the full half hangs off it via `TokenLinkedToken`.
+    Fetch that and duplicate it into a primary token.
 
-    任何一步失败都原样返回受限令牌——最坏情况和改动前完全一致。
+    A failure at any step returns the restricted token unchanged - the worst
+    case is exactly what it was before this change.
     """
     import win32con  # noqa: PLC0415
     import win32security  # noqa: PLC0415
@@ -185,7 +204,7 @@ def _console_primary_token(session: int):
     try:
         cls_elev = getattr(win32security, "TokenElevationType", _TOKEN_ELEVATION_TYPE)
         if win32security.GetTokenInformation(token, cls_elev) != _ELEVATION_LIMITED:
-            return token                     # 没被拆分，本来就是完整的
+            return token                     # not split; it was already the full token
         cls_link = getattr(win32security, "TokenLinkedToken", _TOKEN_LINKED_TOKEN)
         linked = win32security.GetTokenInformation(token, cls_link)
         primary = win32security.DuplicateTokenEx(
@@ -210,11 +229,14 @@ def _console_primary_token(session: int):
 
 
 def _startup_info(minimized: bool):
-    """给 CreateProcessAsUser 造 STARTUPINFO：指定桌面，需要时让它最小化开窗。
+    """Build the STARTUPINFO for CreateProcessAsUser: name the desktop and, when asked, open the window minimized.
 
-    单独成一步，是因为这几行合起来就是「在别人的桌面上开窗」这件事的全部设置，
-    两条都是踩出来的：没有 lpDesktop 进程照样死，最小化是用户明确要的。
-    夹在取令牌和拼命令行中间，它看着像样板代码，很容易被顺手删掉。
+    A separate step because these few lines are the entirety of the settings for
+    "open a window on somebody else's desktop", and both were learned the hard
+    way: without lpDesktop the process dies anyway, and minimizing is something
+    the user explicitly asked for. Sandwiched between fetching the token and
+    assembling the command line it looks like boilerplate and is easy to delete
+    in passing.
     """
     import win32con  # noqa: PLC0415
     import win32process  # noqa: PLC0415
@@ -223,18 +245,21 @@ def _startup_info(minimized: bool):
     # Without this the process has no window station and dies the same way.
     startup.lpDesktop = "winsta0\\default"
     if minimized:
-        # 用户 2026-09-02：「检查更新的时候桌面我希望不要出现任何东西」。
-        # 启动时就让它最小化；不认这个标志的程序会照常弹窗（待实测）。
+        # The user, 2026-09-02: 「检查更新的时候桌面我希望不要出现任何东西」.
+        # Start it minimized; a program that ignores this flag will still pop up
+        # a window (not yet verified in practice).
         startup.dwFlags |= win32con.STARTF_USESHOWWINDOW
         startup.wShowWindow = win32con.SW_SHOWMINNOACTIVE
     return startup
 
 
 def _close_handles(handles) -> None:
-    """把 CreateProcessAsUser 交回来的句柄挨个关掉。
+    """Close the handles CreateProcessAsUser hands back, one by one.
 
-    单独成一步，是因为「关不掉」绝不能影响结论：进程已经起来了，一次失败的
-    Close 只是句柄泄漏，不该被上面那个 except 接走、变成「启动失败」。
+    A separate step because "could not close" must never affect the verdict: the
+    process is already running, and one failed Close is a handle leak, not
+    something that should be caught by the except above and turned into "launch
+    failed".
     """
     for h in handles:
         try:
@@ -245,12 +270,14 @@ def _close_handles(handles) -> None:
 
 def _spawn_fallback(exe: Path, cwd: Path, args: tuple[str, ...],
                     *, require_console: bool) -> bool:
-    """令牌那条路走不通之后的退路：先试计划任务，再看要不要退回普通启动。
+    """The way out when the token route fails: try the scheduled task first, then decide whether to fall back to a plain launch.
 
-    单独成一步，是因为这里的先后是有讲究的。计划任务由 Task Scheduler 代为建
-    进程，不要求调用方持有 SE_TCB_NAME，所以它先上；它也失败时，
-    require_console 决定是**诚实地失败**还是退回 session 0——而退回去正是
-    2026-08-25 把「没检查成」读成「无需更新」的那条路。这个分支要能一眼看全。
+    A separate step because the order matters. The Task Scheduler creates the
+    process on our behalf and does not require the caller to hold SE_TCB_NAME,
+    so it goes first; when that fails too, require_console decides between
+    **failing honestly** and falling back to session 0 - and that fallback is
+    exactly the path that on 2026-08-25 turned 「没检查成」 into 「无需更新」.
+    This branch has to be readable at a glance.
     """
     if _spawn_via_task(exe, cwd, args):
         return True
@@ -305,14 +332,17 @@ def _spawn_interactive(exe: Path, cwd: Path,
                 return False
             log.info("预更新：没有交互会话，退回普通启动")
             return _spawn_detached(exe, cwd, args)
-        # 未过滤的令牌——受限令牌启动 requireAdministrator 的程序必然报 740。
+        # The unfiltered token - a restricted token starting a
+        # requireAdministrator program always fails with 740.
         token = _console_primary_token(session)
         env = win32profile.CreateEnvironmentBlock(token, False)
         startup = _startup_info(minimized)
         # CreateProcessAsUser wants the exe repeated as argv[0].
         cmd = subprocess.list2cmdline([str(exe), *args])
-        # hidden：桌面助手那种控制台程序不能开窗——09-03 实测它的 PowerShell 窗口
-        # 把游戏盖住，OCR 读到的是自己的窗口。CREATE_NO_WINDOW 让它没有控制台。
+        # hidden: console programs such as the desktop helper must not open a
+        # window - measured 09-03, its PowerShell window covered the game and
+        # OCR was reading our own window. CREATE_NO_WINDOW leaves it without a
+        # console.
         flags = (0x08000000 if hidden else win32con.CREATE_NEW_CONSOLE) | win32process.CREATE_UNICODE_ENVIRONMENT
         handles = win32process.CreateProcessAsUser(
             token, str(exe), cmd, None, None, False, flags,
@@ -321,9 +351,10 @@ def _spawn_interactive(exe: Path, cwd: Path,
         log.info("预更新：已在会话 %s 启动 %s", session, exe.name)
         return True
     except Exception:
-        # 令牌拿不到不代表没救：换计划任务那条路，它由 Task Scheduler 代为
-        # 建进程，不要求调用方持有 SE_TCB_NAME。**这才是常态路径**——
-        # 2026-08-26 实测真实服务每次都走到这里。
+        # Failing to get the token is not the end of it: switch to the
+        # scheduled-task route, where Task Scheduler creates the process for us
+        # and the caller needs no SE_TCB_NAME. **This is the normal path** -
+        # measured 2026-08-26, the real service ends up here every time.
         log.warning("预更新：拿控制台令牌失败，改用计划任务方式", exc_info=True)
         return _spawn_fallback(exe, cwd, args, require_console=require_console)
     finally:

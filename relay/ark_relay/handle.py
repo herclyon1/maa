@@ -1,7 +1,8 @@
-"""记账与告警：一条运行记录落盘之后，判它、记它、存证据、决定推不推。
+"""Bookkeeping and alerting: once a run record lands, judge it, record it, keep the evidence, decide whether to push.
 
-从 engine.py 拆出来（2026-09-06，只搬不改）。这里的每个函数第一个参数都是
-Engine 实例，读它的 cfg / state / notifier / _pending。
+Split out of engine.py (2026-09-06, moved verbatim, no changes). The first
+argument of every function here is the Engine instance, whose cfg / state /
+notifier / _pending they read.
 """
 from __future__ import annotations
 
@@ -24,12 +25,14 @@ log = logging.getLogger("ark.handle")
 
 
 def _okww_master_config(automas_dir: str | Path | None, name: str) -> dict:
-    """读 OK-WW **真正生效**的那份配置。
+    """Read the OK-WW config that is **actually in effect**.
 
-    OK-WW 自己目录里那份跑之前会被 AUTO-MAS 整个换掉、跑完再还原，
-    所以事后去读它读到的是「假的」。真正生效的在
-    `<automas>/data/<脚本id>/Default/ConfigFile/`。
-    脚本 id 不固定，扫一遍即可——这台机器上只有 OK-WW 有这个目录结构。
+    The copy in OK-WW's own directory is replaced wholesale by AUTO-MAS before a
+    run and restored afterwards, so reading it after the fact reads a fake. The
+    one actually in effect is under
+    `<automas>/data/<script id>/Default/ConfigFile/`.
+    The script id is not fixed, so just scan - on this machine only OK-WW has
+    this directory structure.
     """
     if not automas_dir:
         return {}
@@ -50,7 +53,7 @@ def _okww_master_config(automas_dir: str | Path | None, name: str) -> dict:
 
 
 def _okww_nest_expected(automas_dir: str | Path | None) -> bool | None:
-    """这一轮本来该不该打残象聚落。**读不到配置返回 None，不是 False。**
+    """Whether this round was supposed to farm tacet nests. **Returns None, not False, when the config cannot be read.**
 
     来龙去脉见 docs/CODE-HISTORY.md「handle.py:_okww_nest_expected」。
     """
@@ -67,17 +70,18 @@ def _okww_nest_expected(automas_dir: str | Path | None) -> bool | None:
 
 
 
-# MAA 的行首时间戳：[2026-08-30 09:09:41.495][INF]...
+# MAA's line-leading timestamp: [2026-08-30 09:09:41.495][INF]...
 _MAA_TS = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
 
-# 尾巴取多少。一轮约三万行 / 六七 MB，留 16 MB 足够覆盖一整轮。
+# How much of the tail to take. One round is roughly 30,000 lines / 6-7 MB, so
+# 16 MB is plenty to cover a whole round.
 _MAA_LOG_TAIL = 16 * 1024 * 1024
 
 
 
 def _maaend_app_log(maaend_dir: "str | Path | None",
                     started: datetime) -> str:
-    """这一轮 MaaEnd **自己**写的 app 日志。
+    """The app log MaaEnd wrote **itself** for this round.
 
     来龙去脉见 docs/CODE-HISTORY.md「handle.py:_maaend_app_log」。
     """
@@ -88,7 +92,8 @@ def _maaend_app_log(maaend_dir: "str | Path | None",
         return ""
     cut = started.timestamp()
     out: list[str] = []
-    # 文件名形如 2026-08-29-7.log；maafw*/go-service 是框架日志，不看。
+    # Filenames look like 2026-08-29-7.log; maafw* / go-service are framework
+    # logs and are not read.
     for f in sorted(d.glob("20??-??-??-*.log")):
         try:
             if f.stat().st_mtime < cut:
@@ -102,7 +107,7 @@ def _maaend_app_log(maaend_dir: "str | Path | None",
 
 def _maa_app_log(maa_dir: "str | Path | None", started: datetime,
                  until: "datetime | None" = None) -> "str | None":
-    """这一轮 MAA **自己**写的 asst.log，只保留本轮时间窗内的行。
+    """The asst.log MAA wrote **itself** for this round, keeping only the lines inside this round's time window.
 
     来龙去脉见 docs/CODE-HISTORY.md「handle.py:_maa_app_log」。
     """
@@ -112,7 +117,8 @@ def _maa_app_log(maa_dir: "str | Path | None", started: datetime,
     if not f.is_file():
         return None
     try:
-        # 一轮就有三万多行，整文件读没必要；取尾巴再按时间切。
+        # One round alone is over 30,000 lines, so reading the whole file is
+        # unnecessary; take the tail and then cut by time.
         size = f.stat().st_size
         with f.open("rb") as fh:
             if size > _MAA_LOG_TAIL:
@@ -120,10 +126,11 @@ def _maa_app_log(maa_dir: "str | Path | None", started: datetime,
             raw = fh.read().decode("utf-8", errors="replace")
     except OSError:
         return None
-    # 必须有上界：只给起点不给终点，会把**后面几趟**的行也扫进来，
-    # 等于把今早的错算到昨晚头上。
-    # `until` 给 None 时例外，不设上界——那种记录的时间本来就不可信，
-    # 宁可多取也不要把整趟切没了。
+    # An upper bound is mandatory: a start with no end sweeps in lines from the
+    # **later rounds** as well, which is charging this morning's error to last
+    # night. The exception is `until` being None, where no upper bound is set -
+    # the times on such a record are untrustworthy to begin with, and taking too
+    # much beats cutting the whole round away.
     # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_maa_app_log」
     cut = started.strftime("%Y-%m-%d %H:%M:%S")
     top = until.strftime("%Y-%m-%d %H:%M:%S") if until else None
@@ -132,24 +139,28 @@ def _maa_app_log(maa_dir: "str | Path | None", started: datetime,
     for line in raw.splitlines():
         m = _MAA_TS.match(line)
         if m:
-            # 时间戳是定宽的，字典序等于时间序，这里可以直接比。
+            # The timestamp is fixed-width, so lexical order is chronological
+            # order and it can be compared directly here.
             ts = m.group(1)
             keep = ts >= cut and (top is None or ts <= top)
-        # 没有时间戳的是上一条的续行，跟着上一条走——不要单独判断，
-        # 否则 traceback 那些行会被无条件带进来（arklog.py 里记过这个坑）。
+        # A line with no timestamp is a continuation of the previous one and
+        # follows it - do not judge it on its own, or traceback lines get pulled
+        # in unconditionally (this trap is recorded in arklog.py).
         if keep:
             out.append(line)
-    # 一行都没落在窗口里 = 这一轮的日志没找到，和「读不到文件」一样无从核对。
-    # 返回 "" 会被判据当成「什么错都没有」，那又是一次假全绿。
+    # Not a single line inside the window = this round's log was not found,
+    # which is just as uncheckable as "cannot read the file". Returning "" would
+    # be read by the checks as "no errors at all", which is another false green.
     return "\n".join(out) if out else None
 
 
 
 def _maaend_new_shots(maaend_dir: str | Path | None,
                       started: datetime) -> list[str]:
-    """这一轮新出现的 on_error 截图文件名。
+    """The on_error screenshot filenames that appeared during this round.
 
-    MaaEnd 卡住时不报错，但万能跳转失败会存图——那是唯一的证据。
+    MaaEnd does not report an error when it gets stuck, but a failed
+    universal-navigation step saves an image - that image is the only evidence.
     """
     if not maaend_dir:
         return []
@@ -164,7 +175,7 @@ def _maaend_new_shots(maaend_dir: str | Path | None,
 # ---------- per record ----------
 
 def _warn_if_evidence_stale(eng, rec: RunRecord, dst: Path) -> None:
-    """存下来的 debug 日志未必是失败那次的——对不上就明说，别让人被误导。
+    """The archived debug log is not necessarily from the failing run - say so plainly when it does not line up, rather than misleading the reader.
 
     来龙去脉见 docs/CODE-HISTORY.md「handle.py:_warn_if_evidence_stale」。
     """
@@ -176,7 +187,7 @@ def _warn_if_evidence_stale(eng, rec: RunRecord, dst: Path) -> None:
         started = hh * 3600 + mm * 60 + ss
         for f in dst.glob("*.log"):
             if f.name.startswith("automas-"):
-                continue          # 这份按 run_id 取的，必然对得上
+                continue          # this one was taken by run_id, so it always lines up
             mt = datetime.fromtimestamp(f.stat().st_mtime, tz=SERVER_TZ)
             ended = mt.hour * 3600 + mt.minute * 60 + mt.second
             if ended < started:
@@ -189,7 +200,7 @@ def _warn_if_evidence_stale(eng, rec: RunRecord, dst: Path) -> None:
 
 
 def _okww_log_file(okww_dir: "str | Path | None") -> "Path | None":
-    """OK-WW 最新的那份日志。找不到出声，不许静静地返回 None。"""
+    """OK-WW's newest log. Say something when it is not found; never return None silently."""
     if not okww_dir:
         log.warning("okww_dir 没解析出来，OK-WW 的日志切片存不了")
         return None
@@ -201,8 +212,9 @@ def _okww_log_file(okww_dir: "str | Path | None") -> "Path | None":
         return None
 
 
-# 拍一张全屏。**必须在交互会话里跑**——中继是服务，跑在 session 0，
-# 那里根本没有桌面，在这边拍只会得到一张黑图（memory relay-runs-in-session-0）。
+# Take a full-screen shot. **Must run in an interactive session** - the relay is
+# a service running in session 0, which has no desktop at all, so shooting from
+# here only ever yields a black image (memory relay-runs-in-session-0).
 _SHOT_PS1 = r"""
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 $b = [Windows.Forms.SystemInformation]::VirtualScreen
@@ -214,20 +226,21 @@ $bmp.Save('%OUT%', [Drawing.Imaging.ImageFormat]::Png)
 
 
 def _screenshot_to(out: Path) -> bool:
-    """在交互会话里拍一张屏幕存到 out。成功返回 True。"""
-    from .preupdate_common import _PWSH7, _spawn_via_task  # noqa: PLC0415 - 避免导入环
+    """Take a screenshot in an interactive session and save it to `out`. True on success."""
+    from .preupdate_common import _PWSH7, _spawn_via_task  # noqa: PLC0415 - avoids an import cycle
     ps1 = Path(tempfile.gettempdir()) / f"ark-shot-{os.getpid()}.ps1"
     try:
         ps1.write_text(_SHOT_PS1.replace("%OUT%", str(out)), encoding="utf-8")
         _spawn_via_task(_PWSH7, ps1.parent,
                         ("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(ps1)))
-        # 计划任务是异步起的，等图落盘。10 秒还没有就是没拍成。
+        # The scheduled task starts asynchronously, so wait for the image to
+        # land. Nothing after 10 seconds means the shot did not happen.
         for _ in range(20):
             if out.is_file() and out.stat().st_size > 10_000:
                 return True
             time.sleep(0.5)
         return False
-    except Exception:   # 拍不成不许拖垮记账
+    except Exception:   # a failed screenshot must never take bookkeeping down
         log.warning("截图失败", exc_info=True)
         return False
     finally:
@@ -235,17 +248,22 @@ def _screenshot_to(out: Path) -> bool:
 
 
 def _archive_okww_evidence(eng, rec: RunRecord) -> None:
-    """OK-WW 失败时，把日志切片和**一张当场的屏幕截图**抢救下来。
+    """When OK-WW fails, rescue a log slice and **a screenshot taken right then**.
 
-    2026-09-08 早班撞的：OK-WW 连败三次，全都是上游 `ensure_main` 等不到
-    「大世界 + 队伍」而抛 `Please start in game world and in team!`。
-    要判断游戏卡在哪个画面，只能看那一刻屏幕上是什么——而 OK-WW 的 debug 截图
-    是关着的，中继当时只给 MaaEnd 存证据。结果是**日志说了「等不到大世界」，
-    却没有任何东西说得出当时是什么挡着**。08-26 那次同样的症状，真因是一个
-    「选择复苏物品」弹窗挡了二十分钟（docs/OKWW-STUCK-DIALOG.md），
-    那次是靠人去看屏幕才知道的——不能每次都靠人正好在场。
+    Hit on the morning shift of 2026-09-08: OK-WW failed three times in a row,
+    every one of them upstream `ensure_main` failing to reach 「大世界 + 队伍」 and
+    throwing `Please start in game world and in team!`.
+    The only way to tell which screen the game was stuck on is to see what was on
+    the screen at that moment - and OK-WW's debug screenshots are switched off,
+    while the relay only archived evidence for MaaEnd at the time. The result was
+    that **the log said 「等不到大世界」 and nothing whatsoever could say what was
+    in the way**. On 08-26, with the same symptom, the real cause was a
+    「选择复苏物品」 dialog blocking things for twenty minutes
+    (docs/OKWW-STUCK-DIALOG.md), and that was only found because a person went and
+    looked at the screen - we cannot depend on someone happening to be there.
 
-    整段包 try：抢救证据绝不能挡住记账。
+    The whole body is wrapped in try: rescuing evidence must never block
+    bookkeeping.
     """
     dst = Path(eng.cfg.state_dir) / "evidence" / rec.run_id.replace("/", "_")
     try:
@@ -264,7 +282,7 @@ def _archive_okww_evidence(eng, rec: RunRecord) -> None:
                 if src_f.is_file():
                     shutil.copy2(src_f, dst / ("automas-" + src_f.name))
                     n += 1
-        # 屏幕。这是这个函数存在的理由。
+        # The screen. This is the reason this function exists.
         if _screenshot_to(dst / "screen.png"):
             n += 1
         else:
@@ -275,9 +293,10 @@ def _archive_okww_evidence(eng, rec: RunRecord) -> None:
 
 
 def _archive_maaend_evidence(eng, rec: RunRecord) -> None:
-    """把这一轮的 on_error 截图和 debug 日志抢救到中继自己的目录。
+    """Rescue this round's on_error screenshots and debug logs into the relay's own directory.
 
-    存到 state/evidence/<run_id>/，绝不能挡住记账，所以整段包 try。
+    Saved to state/evidence/<run_id>/. It must never block bookkeeping, so the
+    whole body is wrapped in try.
     """
     try:
         if not eng.cfg.maaend_dir:
@@ -301,9 +320,10 @@ def _archive_maaend_evidence(eng, rec: RunRecord) -> None:
         for f in logs[-2:]:
             shutil.copy2(f, dst / f.name)
             n += 1
-        # AUTO-MAS 自己那一轮的 .log/.json **一定对得上这次失败**，
-        # 而 MaaEnd 的 debug 日志未必——见下面那条时间范围检查。
-        # 2026-09-05 就是靠 history 里的 .json 才看出失败的是「基质刷取」的。
+        # AUTO-MAS's own .log/.json for that round **always lines up with this
+        # failure**, whereas MaaEnd's debug log may not - see the time-range check
+        # below. On 2026-09-05 it was the .json in history that revealed the
+        # failing task was 「基质刷取」.
         if eng.cfg.history_dir:
             for suffix in (".log", ".json"):
                 src_f = Path(eng.cfg.history_dir) / (rec.run_id + suffix)
@@ -314,7 +334,8 @@ def _archive_maaend_evidence(eng, rec: RunRecord) -> None:
         eng._warn_if_evidence_stale(rec, dst)
     except Exception:
         log.exception("MaaEnd 证据存档失败（不影响记账）")
-    # 根本没进游戏 = 客户端待更新的信号：登记，队列跑完后去更新再重跑
+    # Never entering the game at all is the signal that the client needs an
+    # update: register it, and after the queue finishes update and re-run
     if (rec.raw or {}).get("maaend_unreachable"):
         from . import gameupdate  # noqa: PLC0415
         gameupdate.mark_pending(eng.cfg.state_dir, "终末地", "今天 MaaEnd 进不了游戏（客户端待更新）")
@@ -322,29 +343,34 @@ def _archive_maaend_evidence(eng, rec: RunRecord) -> None:
         from . import gameupdate  # noqa: PLC0415
         gameupdate.mark_pending(eng.cfg.state_dir, "鸣潮", "今天 OK-WW 等不到游戏窗口（客户端待更新）")
     if not rec.ok:
-        # 撞上官方停服维护的失败：标上，日报画 ⏸、不报警，队列后等开服再补跑
+        # A failure that ran into official downtime: mark it, draw ⏸ in the daily
+        # report, raise no alert, and after the queue wait for the servers to come
+        # back and make the run up
         from . import gameupdate  # noqa: PLC0415
         if why := gameupdate.in_maintenance(eng.cfg.state_dir, rec.script, rec.started):
             rec.raw["maintenance"] = why
 
 
 def _verify_outcome(eng, rec: RunRecord) -> str | None:
-    """按证据核对这一轮到底干成了什么；全干成返回 None。
+    """Check against the evidence what this round actually accomplished; returns None when everything was done.
 
-    判据在 `outcome.py`，样本取自真实日志。这里只负责把日志文本
-    和「本来该干什么」凑齐——**核对失败绝不能挡住记账**，
-    所以整段包在 try 里：核对本身出错只写日志，不改变原有行为。
+    The criteria live in `outcome.py`, with samples taken from real logs. This
+    function only assembles the log text and what was supposed to happen -
+    **a failed check must never block bookkeeping**, so the whole body is wrapped
+    in try: an error in the check itself only writes a log line and does not
+    change existing behaviour.
     """
     try:
         text = ""
         if rec.log_path and rec.log_path.exists():
             text = rec.log_path.read_text(encoding="utf-8", errors="replace")
         if not text:
-            return None                     # 没日志就没法核对，别瞎报
+            return None                     # no log means nothing to check against; do not report blindly
         if rec.script == "OK-WW":
             expect_nest = _okww_nest_expected(eng.cfg.automas_dir)
             if expect_nest is None:
-                # 读不到配置就说读不到，不许悄悄把残象聚落那一项去掉。
+                # If the config cannot be read, say so; never quietly drop the
+                # tacet-nest check.
                 checks = outcome.okww_checks(text, expect_nest=False)
                 checks.append(outcome.Check(
                     "能读到 OK-WW 生效中的配置", False,
@@ -355,14 +381,18 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
                 checks = outcome.okww_checks(text, expect_nest=expect_nest)
             return outcome.summarize(checks, "OK-WW")
         if rec.script == "MAA":
-            # 只看 MAA 自己的日志：AUTO-MAS 的 history 里没有子任务成败。
-            # 结束时刻只在它可信时才当上界用（见 RunRecord.duration_known）。
-            # 留 5 分钟余量：MAA 收尾那几行可能落在 AUTO-MAS 记完之后。
+            # Only MAA's own log is read: AUTO-MAS's history carries no per-
+            # subtask success or failure.
+            # The finish time is used as the upper bound only when it is
+            # trustworthy (see RunRecord.duration_known).
+            # Leave 5 minutes of slack: MAA's wrap-up lines can land after
+            # AUTO-MAS has already recorded the run.
             until = (rec.finished + timedelta(minutes=5)
                      if rec.duration_known else None)
             maa_log = _maa_app_log(eng.cfg.maa_dir, rec.started, until)
             if maa_log is None:
-                # 空文本喂给 maa_checks 会全部判过 = 又一次假全绿。
+                # Feeding empty text to maa_checks passes every check = another
+                # false green.
                 return outcome.summarize([outcome.Check(
                     "能读到 MAA 自己的日志", False,
                     f"maa_dir={eng.cfg.maa_dir}，"
@@ -371,26 +401,30 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
             return outcome.summarize(outcome.maa_checks(maa_log), "MAA")
         if rec.script == "MaaEnd":
             shots = _maaend_new_shots(eng.cfg.maaend_dir, rec.started)
-            # AUTO-MAS 的 history 日志 + MaaEnd 自己的 app 日志一起看：
-            # 收尾标记只在后者里，任务开始/完成只在前者里，缺一条就误判。
+            # Read AUTO-MAS's history log together with MaaEnd's own app log:
+            # the wrap-up marker only exists in the latter and task start/finish
+            # only in the former, so missing either one misjudges the round.
             both = text + "\n" + _maaend_app_log(eng.cfg.maaend_dir, rec.started)
             return outcome.summarize(
                 outcome.maaend_checks(both, shots), "MaaEnd")
     except Exception as exc:
         log.exception("结果核对本身出错")
-        # 原来这里直接 return None，也就是「全干成」。核对崩了却报全绿，
-        # 是这一类 bug 里最坏的一种：出问题的时候恰恰最不该说没问题。
-        # 记账照旧不受影响（本函数只决定要不要额外报一句）。
+        # This used to just return None, i.e. "everything was done". Reporting
+        # all green when the check itself crashed is the worst kind of bug in
+        # this class: the moment something is wrong is exactly the moment not to
+        # say nothing is. Bookkeeping is unaffected either way (this function
+        # only decides whether to say one extra thing).
         return (f"{rec.script} 这一轮的结果核对没跑成（{type(exc).__name__}: "
                 f"{exc}），所以「干成了没有」这次没人验过。")
     return None
 
 
 def _append_ledger_once(eng, rec: RunRecord) -> None:
-    """把这一趟记进当天的流水账，同一条记录被重放时不重复记。
+    """Append this run to the day's ledger, without double-counting a replayed record.
 
-    单独成步是因为记账必须幂等，而它下面的判定和推送都可能中途出错、
-    让整条记录从头再处理一遍——圈成一步之后，重放时只会跳过它。
+    Its own step because bookkeeping has to be idempotent, while the judging and
+    pushing below it can fail midway and send the whole record through from the
+    start again - fenced off as one step, a replay simply skips it.
     """
     # mark_seen only happens after _handle returns, so a crash later in
     # this method (disk full during save_pending, annihilation copy2)
@@ -406,24 +440,31 @@ def _append_ledger_once(eng, rec: RunRecord) -> None:
 
 
 def _weekly_gates(eng, rec: RunRecord) -> None:
-    """三道周门（周本、周常乐园、剿灭）：这一趟把哪道打完了，打完就报一句。
+    """The three weekly gates (weekly boss, weekly garden, annihilation): which one this run finished, and one line about it when it did.
 
-    单独成步是因为这三段形状一模一样——看证据、问周门、有话才发；
-    和它前后的自愈通知、结果核对互不相干，混在一处读容易看串行。
+    Its own step because the three blocks have exactly the same shape - look at
+    the evidence, ask the weekly gate, say something only if there is something
+    to say; they have nothing to do with the self-heal notice or the outcome
+    check around them, and mixed together the lines are easy to read across.
     """
-    # 只有真打满周上限的那一趟才算数：MAA 因为理智不够提前收工时照样报
-    # Success!，照它摘掉剿灭会让这一周剩下的日子都不打、上限也补不满。
+    # Only a run that genuinely fills the weekly quota counts: MAA still reports
+    # Success! when it stops early for lack of sanity, and removing annihilation
+    # on the strength of that means it is not run for the rest of the week and
+    # the quota is never filled.
     # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
     steps = rec.raw.get("okww_steps") or []
-    # 周本：任务名译作「传送并刷取4C声骸」，任务本身显示「刷4C(大世界/副本)」，
-    # 两种都认。判据和周常乐园一致——只有真跑完那一步才算数。
+    # Weekly boss: the task name is translated as 「传送并刷取4C声骸」 while the task
+    # itself displays 「刷4C(大世界/副本)」; both are accepted. The criterion matches
+    # the weekly garden - only actually finishing that step counts.
     if any(s.startswith("周本") and "已完成" in s for s in steps):
         if msg := eng._weeklyboss.on_success(rec.finished):
             eng.notifier.send(texts.WEEKLY, msg)
     if any("周常乐园" in s and "已完成" in s for s in steps) and eng._garden:
         if msg := eng._garden.on_success(rec.finished):
-            # 照剿灭那一支写：两条周门本来就该是同一个形状。
-            # （2026-08-26 这里曾写成 notes.append，而这个作用域里没有 notes。）
+            # Written the same way as the annihilation branch: the two weekly
+            # gates were always meant to have the same shape.
+            # (On 2026-08-26 this was written as notes.append, and there is no
+            # `notes` in this scope.)
             # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
             eng.notifier.send(texts.WEEKLY, msg)
     if (rec.raw.get("annihilation") and rec.raw.get("annihilation_done")
@@ -433,10 +474,12 @@ def _weekly_gates(eng, rec: RunRecord) -> None:
 
 
 def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
-    """AUTO-MAS 报「这一趟正常退出」之后要做的全部事情。
+    """Everything to do after AUTO-MAS reports that this round exited normally.
 
-    单独成步是因为成功和失败两条路没有一行是共用的：这条管自愈通知、周门、
-    结果核对；失败那条管中途重启、更新日、软失败和暂存。
+    Its own step because the success and failure paths share not one line: this
+    one handles the self-heal notice, the weekly gates and the outcome check,
+    while the failure one handles mid-round restarts, update days, soft failures
+    and holding.
     """
     # A later success means AUTO-MAS got past it on its own. Report it
     # anyway - once for the whole event, not once per failed attempt.
@@ -445,8 +488,9 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
         eng._persist_pending()
         log.info("↩️ %s 重试后成功，改为自愈通知", rec.script)
     _weekly_gates(eng, rec)
-    # AUTO-MAS 说「这个脚本正常退出了」，不等于它把活干成了。
-    # 所以退出之前先按证据核对一遍，没干成的必须出声。
+    # AUTO-MAS saying 「这个脚本正常退出了」 does not mean it got the work done.
+    # So check against the evidence before returning, and anything not done has
+    # to be said out loud.
     # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
     if msg := eng._verify_outcome(rec):
         log.warning("⚠️ %s %s 有项目没干成：\n%s",
@@ -459,16 +503,18 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
 
 
 def _hold_for_retry(eng, rec: RunRecord, key: tuple) -> None:
-    """真失败的收尾：挂进待推队列、落盘、把证据抢救出来。
+    """Wrapping up a genuine failure: queue it for pushing, persist it, rescue the evidence.
 
-    单独成步是因为这是失败路径上唯一「不再往下判、只做善后」的一段，
-    而且每一步都得赶在下一次出错之前做完，顺序不能动。
+    Its own step because it is the only section of the failure path that stops
+    judging and just cleans up, and because every step of it has to be finished
+    before the next thing can go wrong - the order must not be changed.
     """
     # Hold it. Only alert once the script has stopped retrying entirely.
     eng._pending[key] = rec
     eng._persist_pending()   # queued to disk before anything else can go wrong
-    # 失败一落账就立刻把证据搬走：MaaEnd 下一次启动的瞬间会自己清空
-    # 上一轮的截图和日志，等人来看的时候什么都不剩了。
+    # Move the evidence away the moment a failure is recorded: the instant
+    # MaaEnd next starts it clears the previous round's screenshots and logs
+    # itself, and by the time a person looks there is nothing left.
     # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
     if rec.script == "MaaEnd":
         eng._archive_maaend_evidence(rec)
@@ -485,9 +531,11 @@ def _handle(eng, rec: RunRecord) -> None:
         _handle_success(eng, rec, key)
         return
 
-    # "被下一轮取代"不是失败，不进待推队列。AUTO-MAS 把「游戏更新成功，
-    # 即将重启任务」和真故障一起放进 _OKWW_BUILTIN_FATAL，于是鸣潮客户端
-    # 每更新一次就报一次假失败（2026-08-28 用户点名要修的那条）。
+    # "Superseded by the next round" is not a failure and does not enter the
+    # pending queue. AUTO-MAS puts 「游戏更新成功，即将重启任务」 into
+    # _OKWW_BUILTIN_FATAL alongside real faults, so every Wuthering Waves client
+    # update produced one fake failure (the one the user named on 2026-08-28 as
+    # needing a fix).
     if rec.transitional:
         log.info("↪️ %s %s 是中途重启（%s），不算失败",
                  rec.script, rec.run_id,
@@ -497,7 +545,9 @@ def _handle(eng, rec: RunRecord) -> None:
         return
 
     if rec.script == "MAA" and not rec.ok and eng._maintenance_today("明日方舟"):
-        # 大版本更新日：包体/资源没就绪时跑失败不是要人处理的事，晚班再试
+        # Major version update day: failing because the package or assets are not
+        # ready yet is not something a person has to act on; the evening shift
+        # tries again
         log.warning("🟡 更新日 MAA 没跑成，晚班再试，不拉警报")
         rec.raw["maintenance_day"] = True
         return
@@ -516,15 +566,17 @@ def _maintenance_today(eng, game: str) -> bool:
         return False
 
 
-# 同一件事当天只报一次。键 = 脚本 + 失败在哪一步：同一步反复失败是同一件事，
-# 换一步失败才是新事，才值得再推一条。
+# One report per thing per day. The key = script + which step failed: failing
+# repeatedly on the same step is the same thing, and only failing on a different
+# step is a new thing worth another push.
 # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:(模块级)」
 def _alert_key(eng, rec) -> str:
     return f"{rec.script}|{rec.user}|{','.join(sorted(rec.failed_tasks or ['?']))}"
 
 
 def _alerted_file(eng, day: str) -> Path:
-    """旧名字，留着给还在按名字引它的地方。记账实际在 state.json 的 marks.alerted:<day>。"""
+    """Old name, kept for the places that still reference it by name. The bookkeeping
+    actually lives in state.json under marks.alerted:<day>."""
     return Path(eng.state.dir) / f"alerted-{day}.json"
 
 
@@ -549,8 +601,9 @@ def _flush_pending(eng) -> None:
         day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
         attempts = sum(1 for e in eng.state.read_ledger(day)
                        if e["script"] == rec.script and e["user"] == rec.user)
-        # 鸣潮客户端更新→重启→重跑成功：这是插曲不是故障。2026-09-02 早班
-        # 因此推了一条 ⚠️「本次自愈，问题未解决」，用户点名是假报警。
+        # Wuthering Waves client update -> restart -> successful re-run: an
+        # episode, not a fault. On the morning shift of 2026-09-02 this pushed a
+        # ⚠️「本次自愈，问题未解决」 that the user named as a false alarm.
         if core.episode_kinds(eng.state.read_ledger(day)).get(rec.run_id) == "update":
             eng._recovered.pop((rec.script, rec.user), None)
             eng._persist_pending()
@@ -578,9 +631,10 @@ def _flush_pending(eng) -> None:
         day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
         attempts = sum(1 for e in eng.state.read_ledger(day)
                        if e["script"] == rec.script and e["user"] == rec.user)
-        # 终末地根本没进游戏（服务器维护／客户端待更新）：不是要人处理的
-        # 故障。当天只发一条说明，不拉警报。用户 2026-09-02：「检测到
-        # 服务器在维护时候就跳过，不报警」。
+        # Endfield never entered the game at all (server maintenance / client
+        # update pending): not a fault anyone has to act on. Send one explanation
+        # that day and raise no alert. The user, 2026-09-02: 「检测到
+        # 服务器在维护时候就跳过，不报警」.
         maint = (rec.raw or {}).get("maintenance")
         if maint or (rec.script == "MaaEnd" and (rec.raw or {}).get("maaend_unreachable")):
             mkey = f"维护|{rec.script}"
@@ -588,7 +642,7 @@ def _flush_pending(eng) -> None:
                 hint = maint or efstatus.update_hint()
                 body = texts.cant_enter_body(rec.script, attempts, bool(maint), hint or "")
                 if eng.notifier.send(texts.cant_enter(rec.script), body):
-                    return  # 发不出去就下个 tick 再来
+                    return  # if it cannot be sent, come back next tick
                 eng._mark_alerted(day, mkey)
             eng._pending.pop((rec.script, rec.user), None)
             eng._persist_pending()

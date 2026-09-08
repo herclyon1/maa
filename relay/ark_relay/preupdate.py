@@ -55,9 +55,10 @@ finish, or the network is slow, the round proceeds exactly as it does today -
 one wasted attempt, then the retry succeeds.
 
 
-预更新按程序拆成了五个模块（2026-09-08，只搬不改）：preupdate_common /
-_maaend / _maa / _automas / _okww。这里保留公共的记账函数，并把所有名字原样导出，
-调用方和测试照旧写 preupdate.xxx。
+The pre-update is split per program into five modules (2026-09-08, moved
+verbatim): preupdate_common / _maaend / _maa / _automas / _okww. This module
+keeps the shared bookkeeping functions and re-exports every name unchanged, so
+callers and tests still write preupdate.xxx.
 """
 from __future__ import annotations
 
@@ -88,10 +89,13 @@ from .preupdate_okww import (
     run_okww,
 )
 
-# 这里只转公开名。2026-09-08 之前，门面把五个模块的 53 个私有名也一并再导出、
-# 并且写进了 __all__——等于对外宣称「_close、_read 这些是给你用的」，
-# __all__ 就不再说明公开接口了，而且改哪个模块的私有实现都要回来动这张表。
-# 现在要用私有名的地方（gameupdate、desktop、commands、几个测试）直接引老家模块。
+# Only public names are forwarded here. Before 2026-09-08 this facade also
+# re-exported all 53 private names from the five modules and listed them in
+# __all__ -- which announced "_close, _read and friends are yours to use",
+# stopped __all__ from describing the public interface at all, and meant that
+# changing any module's private implementation forced an edit to this list.
+# The places that need a private name (gameupdate, desktop, commands, a few
+# tests) now import it from the module it lives in.
 __all__ = [
     "BUDGET_SECONDS",
     "MAS_BUDGET_SECONDS",
@@ -112,21 +116,25 @@ __all__ = [
 
 
 
-# 一天跑一遍就够。原来只看「今天还有没有要跑 MaaEnd 的队列」，没有记
-# 「今天已经跑过了」——于是**每次服务重启都重跑一整轮**，把 MAA、MaaEnd、
-# OK-WW 挨个拉起来查更新。2026-08-31 我一上午部署了三次，它就跑了三次，
-# 第三次 MAA 没在 180 秒内给出结论，报了一条「没能确认」。
-# 那条告警本身没说错，只是根本不该有第三次。
-RETRY_MIN = 20          # 上一轮有没确认的项时，隔多久才允许再试
+# Once a day is enough. This used to only ask "is there still a queue today
+# that runs MaaEnd?" without recording "already ran today" -- so **every
+# service restart re-ran the whole round**, launching MAA, MaaEnd and OK-WW
+# one by one to check for updates. On 2026-08-31 I deployed three times in one
+# morning and it ran three times; on the third, MAA did not reach a conclusion
+# within 180 seconds and raised a "could not confirm" alert.
+# That alert was not wrong -- there simply should never have been a third run.
+RETRY_MIN = 20          # How long before a retry is allowed when the last round left something unconfirmed
 
 
 def should_run(state_dir: "Path | None", now: datetime,
                *, had_problems: bool = False) -> bool:
-    """今天该不该跑预更新。
+    """Whether the pre-update should run today.
 
-    * 今天已经**干净地**跑完过 → 不跑（服务重启不该重来一遍）
-    * 今天跑过但有没确认的项 → 允许重试，但至少隔 RETRY_MIN 分钟，
-      免得连续部署把它变成连环重试
+    * Already finished **cleanly** today -> do not run (a service restart must
+      not redo it)
+    * Ran today but left something unconfirmed -> a retry is allowed, but only
+      after at least RETRY_MIN minutes, so back-to-back deploys cannot turn it
+      into a chain of retries
     """
     if not state_dir:
         return True

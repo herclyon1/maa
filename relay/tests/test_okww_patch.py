@@ -7,6 +7,7 @@
 这里用临时目录造一份「上游原样」的文件，跑真的 ensure_patches，
 再回读文件内容验收。不 mock 写盘那一步：写坏文件正是要防的事故。
 """
+import ast
 import logging
 import sys
 import tempfile
@@ -287,10 +288,18 @@ def main() -> int:
           "_sha(cur) not in _NEST_KNOWN_OURS" in patch_src, True)
 
     # ── 2026-08-27：补丁以前只在开机预更新里贴，白天部署完要等第二天才生效 ──
+    # 判据按**函数体**取，不按字符窗口。2026-09-08 栽过：原来是
+    # `svc.split("服务模式启动")[1][:1400]`，把注释翻成英文之后那段变长，
+    # 要找的那句被挤出了 1400 字的窗口，测试当场变红——而代码一个字都没错。
+    # 按窗口切等于让断言依赖注释长度，那不是判据，是巧合。
     svc = (Path(__file__).resolve().parents[1] / "service.py").read_text(encoding="utf-8")
-    head = svc.split("服务模式启动")[1][:1400]
-    check("服务一启动就贴补丁", "ensure_patches(okww_at_boot)" in head, True)
-    check("贴不上也不挡住服务启动", "服务照常继续" in head, True)
+    tree = ast.parse(svc)
+    stage = next((n for n in tree.body
+                  if isinstance(n, ast.FunctionDef) and n.name == "_stage_patch_okww"), None)
+    check("service.py 里有 _stage_patch_okww", stage is not None, True)
+    body = ast.get_source_segment(svc, stage) if stage else ""
+    check("服务一启动就贴补丁", "ensure_patches(okww_at_boot)" in body, True)
+    check("贴不上也不挡住服务启动", "服务照常继续" in body, True)
 
     # ── 明日安排：必须反映真正生效的配置，不是母本 ──
     plan_src = (root / "ark_relay" / "plan.py").read_text(encoding="utf-8")

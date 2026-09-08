@@ -1,11 +1,13 @@
-"""OK-WW 补丁：无音区刷完的结算页留一张给日报。
+"""OK-WW patch: keep one shot of the tacet-field result screen for the daily report.
 
-用户 2026-09-07：「我想确认一下是不是刷的是我想要的无音区种类，因为我不放心。
-刷完之后能不能贴一张截图在日报通知里面？」随后：「不要发没有用的截图，
+The user, 2026-09-07: 「我想确认一下是不是刷的是我想要的无音区种类，因为我不放心。
+刷完之后能不能贴一张截图在日报通知里面？」and then: 「不要发没有用的截图，
 我只需要刷完之后产出的那一张就行。」
-花完体力 4 秒后屏幕就是结算页（六格产出 + 退出副本 / 重新挑战），OK-WW 在
-最后一轮点「退出副本」之前那一刻拍下来。图落在 OK-WW 自己的 screenshots 目录，
-中继发日报时带上（report.py:_attach_tacet_shots）。
+Four seconds after the stamina is spent the screen is the result page (six drop
+slots + exit dungeon / retry); OK-WW takes the shot on the last round, at the
+moment just before it clicks 退出副本. The image lands in OK-WW's own screenshots
+directory, and the relay attaches it to the daily report
+(report.py:_attach_tacet_shots).
 """
 from __future__ import annotations
 
@@ -28,7 +30,8 @@ _TACETSHOT_NEW = """                can_continue, used = self.use_stamina(once=s
                         pass
                     self.click_relative(0.365, 0.853, hcenter=True)"""
 
-# v1（传送前列表页 + 到达后各一张）的原文，留着**只为了还原**。用户说那两张没用。
+# The v1 text (one shot of the list page before teleporting, one after arriving),
+# kept **only so it can be reverted**. The user said those two shots were useless.
 _TACETSHOT_V1_OLD = """            self.open_boss_book('wuyin')
             index = config.get('Which Tacet Suppression to Farm', 1) - 1
             self.teleport_to_tacet(index)

@@ -1,30 +1,39 @@
-"""周常乐园：本周做完就把检查关掉，周一 04:00 自动开回来。
+"""Weekly garden: once done for the week, turn the check off; it comes back
+automatically Monday 04:00.
 
-和 `annihilation.py` 是同一个形状——「一周只需要做一次的事，别每天都去看一眼」。
-剿灭那边关的是 MAA 的 `Info.Annihilation`，这边关的是 OK-WW 的
-`Task.AdditionalTasks` 里那项 `Check Weekly Garden`。
+Same shape as `annihilation.py` -- "something that only needs doing once a week
+should not be looked at every day". Annihilation turns off MAA's
+`Info.Annihilation`; this turns off the `Check Weekly Garden` entry in OK-WW's
+`Task.AdditionalTasks`.
 
-为什么值得做：上游的 `check_weekly_garden()` 每轮都要导航到乐园页面、截图、
-判断有没有完成。一周里后六天全是白跑，纯粹的时间浪费。
+Why it is worth doing: upstream's `check_weekly_garden()` navigates to the garden
+page, takes a screenshot and decides whether it is done, every single run. Six days
+out of seven that is a wasted trip, pure lost time.
 
-**为什么走配置层而不是改 OK-WW 源码**：OK-WW 的自动更新会整段覆盖 `src`
-（2026-08-26 实测，v3.6.5 → v3.6.6-beta.1 之后本地补丁连备份一起消失）。
-配置不在覆盖范围内，所以同样的效果，配置层做就天然免疫。
-非改源码不可的那些放 `okww_patch.py`，能在配置层做的一律别去改源码。
+**Why this goes through the config layer instead of patching OK-WW source**: OK-WW's
+auto-update overwrites all of `src` (measured 2026-08-26: after v3.6.5 ->
+v3.6.6-beta.1 the local patches disappeared along with their backups). Config is not
+in the overwritten set, so the same effect done at the config layer is immune by
+construction. Things that cannot avoid touching source live in `okww_patch.py`;
+anything that can be done in config must never be done by patching source.
 
-**2026-08-28 改为直接写母本，不再走 AUTO-MAS 的 API。**
-原先写的是 MAS 用户配置的 `Task.AdditionalTasks`，那条路要求
-`Info.IfQuickConfig` 开着才会被下发。用户当天要求废掉快速配置
-（它只能开关已存在的任务、还制造静默故障），于是这个功能整个失效了。
+**Changed 2026-08-28 to write the master copy directly instead of going through the
+AUTO-MAS API.** It used to write `Task.AdditionalTasks` in the MAS user config, but
+that path only gets pushed down when `Info.IfQuickConfig` is on. The user asked that
+day to abolish quick config (it can only toggle tasks that already exist, and it
+creates silent failures), so this feature stopped working entirely.
 
-现在直接改母本 `<automas>/data/<脚本id>/Default/ConfigFile/DailyTask.json`
-里的 `Additional Tasks to Run After Daily Task`。这条路不依赖快速配置：
-母本目录是 AUTO-MAS 每轮**无条件**拷给 OK-WW 的那一份。
+It now edits `Additional Tasks to Run After Daily Task` in the master copy at
+`<automas>/data/<script id>/Default/ConfigFile/DailyTask.json`. That path does not
+depend on quick config: the master directory is the one AUTO-MAS copies over to
+OK-WW **unconditionally** every run.
 
-`annihilation.py` 当年写文件被冲掉，是因为它写的是 **MAS 自己的配置**
-（MAS 运行期间用内存副本覆盖）。母本 `ConfigFile/` 目录 MAS 只读不写
-（`Okww/AutoProxy.py:82,264` 只有读；回写那段在 `OkNte` 里，不是 OK-WW），
-所以不存在同样的问题。写入用原子替换，避免和 copytree 撞车撕裂文件。
+The reason `annihilation.py` had its file writes wiped back then is that it wrote
+**MAS's own config** (which MAS overwrites from its in-memory copy while running).
+MAS only reads, never writes, the master `ConfigFile/` directory
+(`Okww/AutoProxy.py:82,264` only read; the write-back lives in `OkNte`, not OK-WW),
+so the same problem does not arise. Writes use atomic replacement so they cannot
+collide with copytree and leave a torn file.
 """
 from __future__ import annotations
 
@@ -33,7 +42,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-from .annihilation import week_key          # 周界口径必须和剿灭完全一致
+from .annihilation import week_key          # the week boundary must match annihilation exactly
 from .statestore import StateStore
 from .config import SERVER_TZ, master_config_dir, atomic_write_text
 
@@ -50,20 +59,23 @@ def _daily_file(automas_dir) -> "Path | None":
 
 
 class GardenGate:
-    """记住哪一个游戏周的周常乐园已经做完了。
+    """Remember which game week's weekly garden has already been done.
 
-    和剿灭、周本同一套接口（用户 2026-09-07：「逻辑上一致的东西就应该强统一」）：
-    settings() 给手机页，week_line() 给「新的一周」通知，on_success() 记账，
-    enforce() 推开关，maybe_reopen() 周一清账。状态文件：{"done_week": 本周}。没有总开关：
-    和剿灭一样做完就停、周一恢复（用户 2026-09-07：「三个周常都应该只显示状态」）。
+    Same interface as annihilation and the weekly boss (the user, 2026-09-07:
+    「逻辑上一致的东西就应该强统一」): settings() feeds the phone page, week_line()
+    feeds the "new week" notification, on_success() books it, enforce() pushes the
+    switch, maybe_reopen() clears the books on Monday. State file:
+    {"done_week": this week}. There is no master on/off switch: like annihilation it
+    stops once done and resumes Monday (the user, 2026-09-07:
+    「三个周常都应该只显示状态」).
     """
 
     NAME = "鸣潮 · 周常乐园"
 
     def __init__(self, state_dir: Path, automas_dir=None):
-        self._store = StateStore(state_dir)   # 状态收口：真正落盘在 state.json 的 weekly 段
+        self._store = StateStore(state_dir)   # single state funnel: this lands in the weekly section of state.json
         self.automas_dir = automas_dir
-        self._last_write_error = ""     # 同一条写失败只说一次，见 enforce()
+        self._last_write_error = ""     # say the same write failure only once, see enforce()
 
     def _load(self) -> dict:
         return dict(self._store.get("weekly", "garden") or {})
@@ -71,7 +83,7 @@ class GardenGate:
     def _save(self, data: dict) -> None:
         self._store.set("weekly", "garden", dict(data))
 
-    # ---------- 给手机页和通知看的 ----------
+    # ---------- for the phone page and the notifications ----------
 
     def settings(self, now: datetime | None = None) -> dict:
         s = self._load()
@@ -84,13 +96,14 @@ class GardenGate:
             return f"{self.NAME}：本周已完成，暂停检查到下周一"
         return f"{self.NAME}：本周还没做，每趟都会去检查"
 
-    # ---------- 做完了 ----------
+    # ---------- done for this week ----------
 
     def on_success(self, now: datetime | None = None) -> str:
-        """报告里出现「周常乐园（本周已完成）」时调用。只记账，不落盘。
+        """Called when the report shows the weekly garden as done for the week.
 
-        落盘交给 `enforce()`：这一刻队列多半还在跑下一个脚本，
-        而配置在任务运行期间是锁的，现在写必然失败。
+        Only books it; does not write the config. Writing is left to `enforce()`:
+        at this moment the queue is most likely still running the next script, and
+        the config is locked while a task runs, so writing now would certainly fail.
         """
         now = now or datetime.now(tz=SERVER_TZ)
         week = week_key(now)
@@ -103,7 +116,11 @@ class GardenGate:
         return f"{self.NAME}：本周已完成，暂停检查到下周一"
 
     def maybe_reopen(self, now: datetime | None = None) -> str:
-        """开机时调。上周的记账过了周就清掉，返回 week_line；没过周返回空串。"""
+        """Called at boot.
+
+        Clears last week's booking once the week has rolled over and returns
+        week_line; returns an empty string if the week has not rolled over.
+        """
         state = self._load()
         done = state.get("done_week")
         week = week_key(now or datetime.now(tz=SERVER_TZ))
@@ -114,17 +131,18 @@ class GardenGate:
         log.info("新的一周，周常乐园记账已清（上周 %s）", done)
         return self.week_line(now)
 
-    # ---------- 把开关推到该在的位置 ----------
+    # ---------- push the switch to where it should be ----------
 
     def enforce(self, now: datetime | None = None) -> bool:
-        """把开关推到该在的位置。返回是否真的改了东西。
+        """Push the switch to where it should be. Returns whether anything changed.
 
-        必须可以反复跑：一次关掉不代表一直关着，而且周一到了要开回来。
+        Must be safe to run repeatedly: turning it off once does not mean it stays
+        off, and it has to come back on when Monday arrives.
         """
         now = now or datetime.now(tz=SERVER_TZ)
         week = week_key(now)
         state = self._load()
-        want_on = state.get("done_week") != week      # 和剿灭一样：没有总开关，做完就停
+        want_on = state.get("done_week") != week      # like annihilation: no master switch, stop once done
 
         f = _daily_file(self.automas_dir)
         if f is None:
@@ -143,7 +161,7 @@ class GardenGate:
         has = TASK_NAME in tasks
         if want_on == has:
             if state.get("done_week") and state["done_week"] != week:
-                state.pop("done_week", None); self._save(state)   # 过期的记账，顺手清掉
+                state.pop("done_week", None); self._save(state)   # stale booking, clear it while we are here
             return False
         if want_on:
             tasks.append(TASK_NAME)
@@ -151,7 +169,8 @@ class GardenGate:
             tasks.remove(TASK_NAME)
 
         cfg[KEY] = tasks
-        # 原子替换：copytree 可能正在读这个目录，撕裂的 JSON 会让 OK-WW 起不来。
+        # Atomic replace: copytree may be reading this directory right now, and a torn
+        # JSON file would stop OK-WW from starting.
         try:
             atomic_write_text(f, json.dumps(cfg, ensure_ascii=False, indent=2))
         except OSError as exc:

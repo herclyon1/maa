@@ -1,11 +1,13 @@
-"""中继的状态，一个文件、一张字段表（根治第 3 项，设计见 docs/STATE-MODEL.md）。
+"""The relay's state: one file, one field table (root fix #3; design in docs/STATE-MODEL.md).
 
-`state/state.json` 分段：marks / modes / weekly / versions / updates / queues。
-每个键都得在 FIELDS 里登记过，没登记的写不进去——和手机页「只改已存在的字段」
-一个规矩，防的是 826 那种凭空造字段。
+`state/state.json` has sections: marks / modes / weekly / versions / updates / queues.
+Every key must be registered in FIELDS; an unregistered key cannot be written -
+the same rule as the phone page's "only change fields that already exist",
+guarding against inventing fields out of thin air the way 826 did.
 
-旧文件（garden.json、annihilation.json、weeklyboss.json …）第一次启动时自动迁入；
-迁入后旧文件留着不删（改名 .migrated），跑稳三天再清。
+Old files (garden.json, annihilation.json, weeklyboss.json ...) are migrated in
+automatically on first start; after migration the old file is kept rather than
+deleted (renamed to .migrated) and cleaned up after three stable days.
 """
 from __future__ import annotations
 
@@ -21,7 +23,8 @@ log = logging.getLogger("ark.statestore")
 FILE = "state.json"
 SECTIONS = ("marks", "modes", "weekly", "versions", "updates", "queues")
 
-# 字段表：段 → {键（可带 * 通配）: 说明}。改这里等于改契约，要连 docs/STATE-MODEL.md 一起改。
+# The field table: section -> {key (may contain a * wildcard): description}.
+# Changing this changes the contract - change docs/STATE-MODEL.md along with it.
 FIELDS: dict[str, dict[str, str]] = {
     "weekly": {
         "annihilation": "剿灭：{done_week, restore_to}",
@@ -68,8 +71,10 @@ FIELDS: dict[str, dict[str, str]] = {
     },
 }
 
-# 旧文件 → (段, 键, 读法)。读法：json = 整个文件是 JSON；text = 纯文本去空白
-# 通配迁移：文件名模式 → (段, 键模板, 读法)。`*` 捕获的那一段填进键模板的 {}。
+# Old file -> (section, key, how to read). How: json = the whole file is JSON;
+# text = plain text, stripped.
+# Wildcard migration: filename pattern -> (section, key template, how to read).
+# Whatever `*` captures is filled into the {} of the key template.
 LEGACY_GLOB = {
     "report-*.sent": ("marks", "report:{}", "flag"),
     "interim-*.sent": ("marks", "interim:{}", "text"),
@@ -108,7 +113,7 @@ LEGACY = {
 
 
 def _read_legacy(f: Path, how: str):
-    """按读法把旧文件读成值。读不出来返回 None（调用方跳过）。"""
+    """Read an old file into a value per `how`. Returns None if unreadable (the caller skips it)."""
     try:
         raw = f.read_text(encoding="utf-8")
     except OSError:
@@ -121,7 +126,7 @@ def _read_legacy(f: Path, how: str):
             log.warning("旧状态文件 %s 不是 JSON，跳过", f.name)
             return None
     if how == "flag":
-        return True         # 文件存在本身就是值
+        return True         # the file existing is itself the value
     return raw.strip()
 
 
@@ -129,10 +134,12 @@ def _registered(section: str, key: str) -> bool:
     return any(fnmatch.fnmatchcase(key, pat) for pat in FIELDS.get(section, {}))
 
 
-# 这个进程里已经清扫过旧文件的目录。清扫要**每个进程一次**，不能只在
-# state.json 不存在时做：2026-09-08 加了第二批旧文件（日报标记、告警队列、
-# 更新记账）之后，机器上 state.json 早就存在了，那一批一个都没迁进来——
-# 而 `report-*.sent` 没迁进来意味着昨天的日报会被当成没发过、再发一遍。
+# Directories whose old files this process has already swept. The sweep must run
+# **once per process**, not only when state.json is missing: after a second batch
+# of old files was added on 2026-09-08 (report marks, alert queue, update
+# bookkeeping), state.json already existed on the machine, so not one of that
+# batch got migrated - and `report-*.sent` not being migrated means yesterday's
+# daily report counts as never sent and goes out a second time.
 _SWEPT: set = set()
 
 
@@ -149,7 +156,7 @@ class StateStore:
             except OSError:
                 log.warning("清扫旧状态文件时出错，下次进程启动再试", exc_info=True)
 
-    # ---------- 读 ----------
+    # ---------- read ----------
     def _load(self) -> dict:
         try:
             m = self.path.stat().st_mtime
@@ -177,7 +184,7 @@ class StateStore:
     def get(self, section: str, key: str, default=None):
         return self._load().get(section, {}).get(key, default)
 
-    # ---------- 写 ----------
+    # ---------- write ----------
     def set(self, section: str, key: str, value) -> None:
         if not _registered(section, key):
             raise KeyError(f"state.{section}.{key} 没在字段表里登记，拒绝写入（见 docs/STATE-MODEL.md）")
@@ -200,13 +207,15 @@ class StateStore:
             self._mtime = -1.0
         self._data = data
 
-    # ---------- 迁移 ----------
+    # ---------- migration ----------
 
     def _sweep_legacy(self) -> None:
-        """把还留在磁盘上的旧状态文件迁进来。每个进程对每个目录只做一次。
+        """Migrate in whatever old state files are still on disk. Once per process, per directory.
 
-        已经有值的键不覆盖：state.json 是权威，旧文件只是没人清理的遗留。
-        迁完把旧文件改名 `.migrated` 留着，跑稳几天再删。
+        A key that already has a value is not overwritten: state.json is
+        authoritative, the old file is just leftovers nobody cleaned up.
+        After migrating, the old file is renamed `.migrated` and kept, to be
+        deleted after a few stable days.
         """
         if not self.dir.is_dir():
             return
@@ -220,7 +229,7 @@ class StateStore:
             if data is None:
                 data = self._load()
             if key in data.get(section, {}):
-                return False        # 已经有值：state.json 说了算
+                return False        # already has a value: state.json wins
             data.setdefault(section, {})[key] = value
             return True
 
@@ -231,18 +240,20 @@ class StateStore:
             if take(section, key, _read_legacy(f, how)):
                 moved.append(name)
             else:
-                moved.append(name)   # 值已在 state.json 里：旧文件也该收走
+                moved.append(name)   # value already in state.json: the old file should still be taken away
         for pattern, (section, tmpl, how) in LEGACY_GLOB.items():
             head, _, tail = pattern.partition("*")
             for f in sorted(self.dir.glob(pattern)):
                 if f.name in LEGACY:
-                    continue        # 上面按全名迁过了（skip-next-shutdown.flag 会撞 skip-*.flag）
+                    continue        # migrated by full name above (skip-next-shutdown.flag collides with skip-*.flag)
                 stem = f.name[len(head):-len(tail)] if tail else f.name[len(head):]
                 value = _read_legacy(f, how)
                 if value is None:
                     continue
-                # 空内容原样保留成空串：`interim-*.sent` 的空标记表示「发过、条数不详」，
-                # 换成 "1" 会被读成「只覆盖了 1 条」，当天已报过的轮次就会重播一遍。
+                # Empty content is kept as an empty string: an empty
+                # `interim-*.sent` marker means "sent, count unknown". Turning it
+                # into "1" would read as "only covered 1 record", and rounds
+                # already reported that day would be replayed.
                 if value == "" and how == "text":
                     if data is None:
                         data = self._load()
@@ -257,9 +268,11 @@ class StateStore:
             self._flush(data)
         for name in moved:
             try:
-                # replace 而不是 rename：同名的 .migrated 可能已经在了（上一轮迁过、
-                # 之后旧代码又写了一次），Windows 上 rename 会因目标存在而失败，
-                # 于是那个文件每次启动都被重迁一遍、每次都报一条警告。
+                # replace, not rename: a .migrated of the same name may already
+                # be there (migrated in an earlier round, then written again by
+                # old code); on Windows rename fails when the target exists, so
+                # that file would be re-migrated on every start and warn every
+                # time.
                 (self.dir / name).replace(self.dir / f"{name}.migrated")
             except OSError:
                 log.warning("旧状态文件 %s 收不走，下次启动再试（不影响读写）", name)

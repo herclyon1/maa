@@ -28,21 +28,25 @@ from .notify import Notifier
 from .transport import Source
 
 log = logging.getLogger("ark.engine")
-# `_scripts_running` 的短缓存，见那个方法的注释。
+# Short-lived cache for `_scripts_running`; see the comment on that method.
 _SCRIPTS_CACHE: dict = {"at": -1e9, "val": False}
 _SCRIPTS_TTL = 3.0
 
-_RUNTIME_PATH = "/api/dispatch/runtime-snapshot"   # 全仓唯一确认过的 GET 端点
-# AUTO-MAS 给脚本/用户标的终态。不在这里面的（运行、等待、以及没见过的）都算还在跑。
+_RUNTIME_PATH = "/api/dispatch/runtime-snapshot"   # the only confirmed GET endpoint
+# Terminal states AUTO-MAS marks on a script/user. Anything not listed here
+# (running, waiting, and anything we have never seen) counts as still running.
 _SNAPSHOT_DONE = {"完成", "异常", "失败", "跳过", "中止", "取消"}
 
 
 def _judge_snapshot(snap) -> bool:
-    """runtime-snapshot 里有没有还没跑完的任务。2026-09-07 10:18 真实样本见测试。"""
+    """Does runtime-snapshot still hold an unfinished task?
+
+    The real 2026-09-07 10:18 sample this was written against is in the tests.
+    """
     for task in (snap or {}).get("tasks") or []:
         info = task.get("task_info") or []
         if not info:
-            return True          # 刚派下去，还没有任何状态
+            return True          # just dispatched, no status of any kind yet
         for item in info:
             if str(item.get("status") or "") not in _SNAPSHOT_DONE:
                 return True
@@ -50,7 +54,7 @@ def _judge_snapshot(snap) -> bool:
 
 
 def _automas_busy():
-    """问 AUTO-MAS 有没有任务在跑。True/False；问不到返回 None。"""
+    """Ask AUTO-MAS whether a task is running. True/False; None when it cannot be asked."""
     import json  # noqa: PLC0415
     import urllib.request  # noqa: PLC0415
 
@@ -58,7 +62,7 @@ def _automas_busy():
     try:
         with urllib.request.urlopen(mas_base() + _RUNTIME_PATH, timeout=3) as r:
             return _judge_snapshot(json.loads(r.read().decode("utf-8")))
-    except Exception:  # noqa: BLE001 - 接口不在就退回进程检查
+    except Exception:  # noqa: BLE001 - no endpoint -> fall back to the process check
         return None
 
 
@@ -68,8 +72,9 @@ class Engine:
         self.source = source
         self.state = state
         self.notifier = notifier
-        # 关机前最后拉一次待办用的钩子，由 service 接上（见 _maybe_shutdown）。
-        # 单机跑测试时是 None，那就不拉。
+        # Hook for the last pull of pending orders before powering off, wired up by
+        # service (see _maybe_shutdown). None when running tests standalone, and then
+        # nothing is pulled.
         self._before_shutdown = None
         # Populated by the HTTP layer in server mode, where the log tail
         # arrives with the payload instead of being read off local disk.
@@ -91,14 +96,16 @@ class Engine:
         self._debug_last: bool | None = None  # log mode transitions, not every tick
         from .annihilation import WeeklyGate  # noqa: PLC0415 - optional feature
         self._annihilation = WeeklyGate(state.dir, cfg.automas_dir)
-        # 周常乐园和剿灭是同一个形状的问题：一周只需要做一次的事，
-        # 别每天都跑去看一眼。区别只在剿灭关的是 MAA 的开关、
-        # 这个关的是 OK-WW 的「Check Weekly Garden」附加任务。
+        # The weekly garden and annihilation are the same shape of problem: something
+        # that only needs doing once a week should not be visited every day. The only
+        # difference is which switch gets turned off - annihilation's is MAA's, this
+        # one's is OK-WW's "Check Weekly Garden" additional task.
         from .garden import GardenGate     # noqa: PLC0415 - optional feature
-        # 2026-08-28 起直接写母本，不再走 MAS 的接口——那条路要求快速配置
-        # 开着，而快速配置已经废掉了。
+        # Since 2026-08-28 this writes the master copy directly instead of going
+        # through the MAS API - that path requires quick-config to be on, and
+        # quick-config has been abandoned.
         self._garden = GardenGate(state.dir, cfg.automas_dir)
-        from .weeklyboss import WeeklyBossGate  # noqa: PLC0415 - 避免导入环
+        from .weeklyboss import WeeklyBossGate  # noqa: PLC0415 - avoid import cycle
         self._weeklyboss = WeeklyBossGate(state.dir, cfg.automas_dir)
 
     # ---------- operator modes ----------
@@ -137,9 +144,11 @@ class Engine:
                          modes.debug_until(self.state.dir))
             elif self._debug_last is not None:
                 log.info("🔧 调试模式已结束，恢复正常判定")
-                # 用户 2026-09-02 定的：调试模式是「跳过这一次跑完后的关机」
-                # 的一次性开关，关掉它**不会**有人再去执行那条关机——机器就
-                # 开到下一趟队列跑完为止。这是默认设计，别在这里补关。
+                # Settled by the user on 2026-09-02: debug mode is a one-shot
+                # switch that skips the shutdown after this one round, and turning it
+                # off does **not** make anyone go back and run that shutdown - the
+                # machine simply stays up until the next queue finishes. That is the
+                # intended design; do not add a catch-up shutdown here.
             self._debug_last = active
 
     # ---------- survive restarts ----------
@@ -207,9 +216,12 @@ class Engine:
                 continue
             self.state.mark_seen(rec.run_id)
             self._handled_any = True
-        # 每一段各自兜住，一段坏了不许连累后面的。2026-09-04 「明日安排」那段
-        # 一个 ImportError 把它后面的补更新、日报、自动关机全带走，机器白开
-        # 一上午没人发现——关机和日报是最后两段，恰恰最不该被前面的段拖死。
+        # Every step is caught on its own; a broken one must not take the rest with
+        # it. On 2026-09-04 a single ImportError in the "tomorrow's schedule" step
+        # carried off the deferred update, the daily report and the auto shutdown
+        # behind it, and the machine stayed powered up all morning with nobody
+        # noticing - shutdown and the daily report are the last two steps, exactly the
+        # ones that must not be killed off by an earlier one.
         for what, step in (
             ("OK-WW 补丁", self._patch_okww_if_updated),
             ("推送积压告警", self._flush_pending),
@@ -228,7 +240,7 @@ class Engine:
         return len(records)
 
     def _patch_okww_if_updated(self) -> None:
-        """OK-WW 运行时自己更新了就把补丁贴回去；有脚本在跑时不动它。"""
+        """Re-apply the patches if OK-WW updated itself; leave it alone while a script runs."""
         if self._scripts_running():
             return
         from . import okww_patch  # noqa: PLC0415
@@ -248,18 +260,21 @@ class Engine:
         except Exception:
             log.warning("周常乐园开关没能落盘，下轮再试", exc_info=True)
 
-    # ---------- 队列跑完之后再更新游戏客户端 ----------
+    # ---------- update the game clients only after the queue is done ----------
 
     def _deferred_update_busy(self) -> bool:
         t = getattr(self, "_gu_thread", None)
         return bool(t is not None and t.is_alive())
 
     def _maybe_deferred_update(self) -> None:
-        """有登记、队列都跑完了、没脚本在跑 → 起后台线程去更新再重跑。
+        """Registered + queues finished + nothing running -> update in a background
+        thread, then re-run.
 
-        用户 2026-09-02 定的顺序：先让别的游戏跑完，再单独更新、单独重跑。
-        线程活着期间 _maybe_shutdown 不关机；重跑本身是 AUTO-MAS 派发的
-        脚本，跑起来之后照常由 _scripts_running 挡住关机。一天最多起一次。
+        The order the user settled on 2026-09-02: let the other games finish first,
+        then update on its own and re-run on its own. _maybe_shutdown will not power
+        off while the thread is alive; the re-run itself is a script dispatched by
+        AUTO-MAS, so once it starts _scripts_running blocks shutdown as usual. At most
+        once a day.
         """
         from . import gameupdate  # noqa: PLC0415
         if self._deferred_update_busy() or not gameupdate.pending(self.state.dir):
@@ -276,7 +291,7 @@ class Engine:
         elif unfinished := self._unfinished_queues(now, self._recent_entries(now)):
             why = "队列没跑完：" + "；".join(unfinished)
         if why:
-            # 只在原因变化时写一行，免得每 30 秒刷屏
+            # One line only when the reason changes, so it does not spam every 30s
             if why != getattr(self, "_gu_wait_note", ""):
                 self._gu_wait_note = why
                 log.info("游戏更新：有登记但先不动（%s）", why)
@@ -307,7 +322,8 @@ class Engine:
         self._gu_thread.start()
         log.info("游戏更新：队列已跑完，后台开始更新 %s", "、".join(gameupdate.pending(self.state.dir)))
 
-    # MaaEnd 里这几项失败是上游/游戏本身的问题，不是要人半夜处理的故障：
+    # These MaaEnd items fail because of upstream or the game itself; they are not
+    # faults anybody has to get up in the middle of the night for:
     # 来龙去脉见 docs/CODE-HISTORY.md「engine.py:Engine」
     SOFT_FAILS = {"应急理智加强剂", "自动采集"}
 
@@ -327,16 +343,19 @@ class Engine:
     def _scripts_running() -> bool:
         """True while AUTO-MAS says a task is in progress, or a game process is alive.
 
-        先问 AUTO-MAS（/api/dispatch/runtime-snapshot：队列里每个脚本的状态），
-        问不到再看进程。只看进程栽过：2026-09-07 10:15 OK-WW 正在跑第三趟，
-        进程名单里没有它，中继以为什么都没在跑，喊了「OK-WW 没有运行」
-        「MaaEnd 没有运行」两条假报警——AUTO-MAS 要整段脚本结束才写记录。
+        Ask AUTO-MAS first (/api/dispatch/runtime-snapshot: the state of every script
+        in the queue) and fall back to the process list only when it cannot be reached.
+        Going by processes alone has burned us: on 2026-09-07 10:15 OK-WW was on its
+        third round, it was not in the process list, the relay took that to mean nothing
+        was running, and it raised two false alarms, 「OK-WW 没有运行」 and
+        「MaaEnd 没有运行」 - AUTO-MAS only writes a record once the whole script ends.
         A failure is only worth reporting once nothing is still trying.
         """
         if os.name != "nt":
             return False
-        # 一轮 tick 里这个判断要问十来次（跳过模式、积压告警、漏跑、临时查看、
-        # 日报、关机……各问一遍）。三秒内的答案直接复用。
+        # One tick asks this a dozen times over (skip mode, held-back alerts, missed
+        # runs, interim report, daily report, shutdown ... each asks separately). An
+        # answer less than three seconds old is reused as is.
         now = time.monotonic()
         if now - _SCRIPTS_CACHE["at"] < _SCRIPTS_TTL:
             return _SCRIPTS_CACHE["val"]
@@ -350,8 +369,9 @@ class Engine:
             except (OSError, subprocess.SubprocessError):
                 val = True  # cannot tell -> wait rather than cry wolf
             else:
-                # Endfield.exe 也要数进来：MaaEnd **没有自己的进程**，是 AUTO-MAS 的
-                # python 在进程内驱动它，只盯 MaaEnd.exe 会在整个终末地阶段全瞎。
+                # Endfield.exe has to be counted too: MaaEnd **has no process of
+                # its own**, AUTO-MAS's python drives it in-process, so watching only
+                # MaaEnd.exe goes blind for the entire Endfield stretch.
                 # 来龙去脉见 docs/CODE-HISTORY.md「engine.py:_scripts_running」
                 val = any(n in out for n in (b"MAA.exe", b"MaaEnd.exe", b"Endfield.exe"))
         _SCRIPTS_CACHE["at"], _SCRIPTS_CACHE["val"] = now, val
@@ -428,7 +448,7 @@ class Engine:
         except Exception:
             log.exception("剿灭开关校正出错")
 
-    # ---------- 记账与告警（handle.py） ----------
+    # ---------- bookkeeping and alerts (handle.py) ----------
     def _handle(self, rec: RunRecord) -> None:
         return handle._handle(self, rec)
 
@@ -459,7 +479,7 @@ class Engine:
     def _flush_pending(self) -> None:
         return handle._flush_pending(self)
 
-    # ---------- 漏跑与缺项（missed.py） ----------
+    # ---------- missed runs and missing items (missed.py) ----------
     def _check_missed_runs(self, now: datetime | None = None,
                            grace_min: int = MISSED_GRACE_MIN) -> None:
         return missed._check_missed_runs(self, now, grace_min)
@@ -468,7 +488,7 @@ class Engine:
                               entries: list[dict]) -> None:
         return missed._check_partial_queues(self, now, day, entries)
 
-    # ---------- 日报与临时查看（report.py） ----------
+    # ---------- daily report and interim view (report.py) ----------
     def _report_cutoff(self, now: datetime) -> datetime:
         return report._report_cutoff(self, now)
 
@@ -487,7 +507,7 @@ class Engine:
     def send_daily_now(self, mark: bool = True, label: str = "临时查看") -> bool:
         return report.send_daily_now(self, mark, label)
 
-    # ---------- 关机判定（shutdown.py） ----------
+    # ---------- shutdown decision (shutdown.py) ----------
     def _idle_checkpoint(self, now: datetime | None = None) -> bool:
         return shutdown._idle_checkpoint(self, now)
 
@@ -516,7 +536,7 @@ class Engine:
         return shutdown._maybe_shutdown(self, now)
 
     def _power_off(self) -> bool:
-        """真正下关机命令。留在这里是为了测试能替换掉 subprocess。"""
+        """Issue the actual shutdown command. It lives here so tests can swap out subprocess."""
         log.info("本轮已处理完毕，60 秒后关机")
         try:
             subprocess.run(["shutdown", "/s", "/t", "60",

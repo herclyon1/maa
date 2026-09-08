@@ -1,19 +1,25 @@
-"""在真实桌面（console 会话）里截屏、认字、点按钮。
+"""Take screenshots, read text and click buttons on the real desktop (console session).
 
-中继是 LocalSystem 服务，跑在 session 0，没有桌面。要操作启动器这类图形程序，
-得把一段脚本派到 console 会话里执行——`preupdate._spawn_interactive` 已经
-的「交互式计划任务」方式起进程，这里复用它，起的是 **Windows PowerShell 5.1**。
-为什么不是 pwsh 7：2026-09-02 在机器上实测 pwsh 7.6.5 加载不了 WinRT 类型
-（`Unable to find type [Windows.Media.Ocr.OcrEngine]`），系统自带的 OCR 只有 5.1
-能调。5.1 的编码坑逐条堵：脚本文件带 BOM 写入，请求/结果用
-`[IO.File]::ReadAllText/WriteAllText(..., UTF8)`。这是全仓库唯一允许用 5.1 的地方。
+The relay is a LocalSystem service running in session 0, which has no desktop.
+To drive a GUI program such as a launcher, a script has to be dispatched into
+the console session - `preupdate._spawn_interactive` already starts processes
+that way ("interactive scheduled task"), so this reuses it, starting
+**Windows PowerShell 5.1**.
+Why not pwsh 7: measured on the machine on 2026-09-02, pwsh 7.6.5 cannot load
+the WinRT types (`Unable to find type [Windows.Media.Ocr.OcrEngine]`); the
+built-in OCR can only be called from 5.1. Every 5.1 encoding trap is plugged
+one by one: the script file is written with a BOM, and request/result go
+through `[IO.File]::ReadAllText/WriteAllText(..., UTF8)`. This is the only
+place in the whole repo where 5.1 is allowed.
 
-OCR 用系统自带的 Windows.Media.Ocr，2026-09-02 在机器上核对过，
-可用语言含 zh-Hans-CN。启动器的「更新游戏 / 开始游戏」、游戏里的
-「请重启游戏 / 点击任意位置继续」都靠它读出来，不再猜坐标。
+OCR uses the built-in Windows.Media.Ocr; verified on the machine on
+2026-09-02, its available languages include zh-Hans-CN. The launcher's
+更新游戏 / 开始游戏 and the in-game 请重启游戏 / 点击任意位置继续 are all read
+with it, so no coordinates have to be guessed any more.
 
-协议：请求 JSON → 助手 → 结果 JSON，都落在 state/desktop/ 下，
-助手写完结果才退出；这边轮询结果文件，超时就当失败。
+Protocol: request JSON -> agent -> result JSON, all under state/desktop/. The
+agent only exits after writing the result; this side polls for the result file
+and treats a timeout as failure.
 """
 from __future__ import annotations
 
@@ -32,8 +38,10 @@ log = logging.getLogger("ark.desktop")
 
 POWERSHELL = Path(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")
 
-# 助手脚本。整段内嵌在这里而不是单独的 .ps1，因为部署清单只收 ark_relay/*.py
-# （见 make-manifest.py）；内嵌也让它和调用方永远是同一个版本。
+# The agent script. Embedded here in full rather than as a separate .ps1,
+# because the deploy manifest only picks up ark_relay/*.py (see
+# make-manifest.py); embedding also keeps it and its caller on the same version
+# forever.
 AGENT_PS = r'''
 param([string]$req, [string]$res)
 $ErrorActionPreference = 'Stop'
@@ -284,17 +292,19 @@ class Line:
 
 
 class Screen:
-    """一次 OCR 的结果。`has("更新游戏")` 这种问法忽略空格。"""
+    """The result of one OCR pass. Queries like `has("更新游戏")` ignore whitespace."""
 
     def __init__(self, lines: list[Line], shot: Path | None = None):
         self.lines = lines
         self.shot = shot
 
     def find(self, text: str) -> Line | None:
-        """先精确，再容忍 1 个字的误差（≥4 字才容错）。
+        """Exact match first, then tolerate one wrong character (only for >=4 chars).
 
-        2026-09-02 实测：鹰角启动器的「开始游戏」被系统 OCR 认成「丹始游戏」，
-        差一个字。四字按钮错一字仍当命中，两字以下不容错，免得乱点。
+        Measured 2026-09-02: the Hypergryph launcher's 开始游戏 is read by the
+        system OCR as 丹始游戏 - one character off. A four-character button with
+        one wrong character still counts as a hit; two characters or fewer get
+        no tolerance at all, so we do not click the wrong thing.
         """
         want = text.replace(" ", "")
         for ln in self.lines:
@@ -314,7 +324,8 @@ class Screen:
 
 
 class Desktop:
-    """把动作派到桌面会话里做。所有方法失败都返回空结果，不抛。"""
+    """Dispatch actions into the desktop session. Every method returns an empty
+    result on failure and never raises."""
 
     def __init__(self, state_dir: Path, spawn=None, timeout: float = 90):
         self.dir = Path(state_dir) / "desktop"
@@ -322,22 +333,25 @@ class Desktop:
         self.timeout = timeout
         self._spawn = spawn or self._spawn_default
 
-    # -- 派发 --
+    # -- dispatch --
     def _ensure_agent(self) -> None:
         self.dir.mkdir(parents=True, exist_ok=True)
         want = hashlib.sha256(AGENT_PS.encode("utf-8")).hexdigest()
         stamp = self.dir / "agent.sha256"
         if not (self.agent.exists() and stamp.exists() and stamp.read_text().strip() == want):
-            # 必须带 BOM：Windows PowerShell 5.1 读没有 BOM 的 .ps1 按 ANSI（GBK）
-            # 解析，脚本里的「」会把字符串撑破，整段解析失败（2026-09-02 实测）。
+            # The BOM is mandatory: Windows PowerShell 5.1 parses a .ps1 without
+            # one as ANSI (GBK), the 「」 in the script blow the strings apart and
+            # the whole file fails to parse (measured 2026-09-02).
             atomic_write_bytes(self.agent, b"\xef\xbb\xbf" + AGENT_PS.encode("utf-8"))
             atomic_write_text(stamp, want)
 
     @staticmethod
     def _spawn_default(exe: Path, cwd: Path, args: tuple[str, ...]) -> bool:
-        # 走交互式计划任务，不走令牌直起：2026-09-02 实测令牌方式起来的助手
-        # 截到图却 OCR 出 0 行（用户环境没完整加载），计划任务方式读出 45 行。
-        from .preupdate_common import _spawn_via_task  # noqa: PLC0415 - 避免循环导入
+        # Go through an interactive scheduled task, not a direct token-based
+        # start: measured 2026-09-02, an agent started via the token took the
+        # screenshot but OCR'd 0 lines (the user environment was not fully
+        # loaded), while the scheduled-task route read 45 lines.
+        from .preupdate_common import _spawn_via_task  # noqa: PLC0415 - avoids a circular import
         return _spawn_via_task(exe, cwd, args)
 
     def run(self, actions: list[dict], focus: str | None = None,
@@ -369,7 +383,7 @@ class Desktop:
         log.warning("桌面助手 %s 超时没有结果", rid)
         return {"ok": False, "log": ["超时"], "ocr": [], "shot": str(shot)}
 
-    # -- 常用组合 --
+    # -- common combinations --
     def read(self, focus: str | None = None, settle_ms: int = 0) -> Screen:
         acts = ([{"act": "wait", "ms": settle_ms}] if settle_ms else []) + [{"act": "ocr"}]
         data = self.run(acts, focus=focus)
@@ -390,7 +404,7 @@ class Desktop:
 
 
 def kill(*names: str) -> None:
-    """taskkill 几个进程名，不在也不报错。"""
+    """taskkill a few process names; not being there is not an error."""
     for name in names:
         try:
             subprocess.run(["taskkill", "/F", "/IM", name],

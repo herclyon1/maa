@@ -1,4 +1,4 @@
-"""OK-WW 补丁：farmerr。从 okww_patch.py 拆出（2026-09-06，只搬不改）。"""
+"""OK-WW patch: farmerr. Split out of okww_patch.py (2026-09-06, moved verbatim)."""
 from __future__ import annotations
 
 
@@ -7,7 +7,7 @@ from .core import _SRC, _Patch
 
 
 
-# ---- 周本活锁：把被吞掉的异常打出来 ----------------------------------------
+# ---- Weekly-boss livelock: print the exception that was being swallowed ----
 # 来龙去脉见 docs/CODE-HISTORY.md「farmerr.py:(模块级)」
 _FARMERR_OLD = """            logger.error('farm 4c error, try handle monthly card', e)"""
 

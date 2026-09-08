@@ -1,11 +1,13 @@
-"""队列的名字，以及改名后对旧名字的兼容。
+"""Queue names, plus compatibility with the names they used to have.
 
-2026-09-01 用户要求：队列名改成「早班」「晚班」，一目了然。原来叫
-「新队列」（AUTO-MAS 新建时的默认名）和「Evening-MAA」。
+On 2026-09-01 the user asked for the queues to be renamed to 早班 and 晚班,
+so they read at a glance. They used to be called 新队列 (the default name
+AUTO-MAS gives a newly created queue) and "Evening-MAA".
 
-旧名字还可能出现在：手机页面排队中的指令、跳过标记文件、
-恢复标记里。改名不能让它们变成「没有这个队列」——统一走 canonical()。
-这个模块不 import 任何东西，谁都能引用，没有循环。
+The old names can still show up in: commands already queued on the phone
+page, skip marker files, and resume markers. The rename must not turn those
+into "no such queue" - everything goes through canonical().
+This module imports nothing, so anyone can reference it with no cycles.
 """
 
 MORNING = "早班"
@@ -18,5 +20,5 @@ ALIASES = {
 
 
 def canonical(name: str) -> str:
-    """把旧名字换成现在的名字；本来就是现名或未知名原样返回。"""
+    """Map an old name to the current one; current or unknown names pass through."""
     return ALIASES.get((name or "").strip(), (name or "").strip())

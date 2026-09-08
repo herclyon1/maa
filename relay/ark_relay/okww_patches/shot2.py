@@ -1,4 +1,4 @@
-"""OK-WW 补丁：shot2。从 okww_patch.py 拆出（2026-09-06，只搬不改）。"""
+"""OK-WW patch: shot2. Split out of okww_patch.py (2026-09-06, moved verbatim)."""
 from __future__ import annotations
 
 
@@ -7,7 +7,7 @@ from .core import _SRC, _Patch
 
 
 
-# ---- 周本退秘境前先留证据 -------------------------------------------------
+# ---- Weekly boss: grab evidence before leaving the realm ------------------
 # 来龙去脉见 docs/CODE-HISTORY.md「shot2.py:(模块级)」
 _SHOT2_OLD = """                    if self._in_realm and not self.in_world():
                         self.send_key('esc', after_sleep=0.5)"""

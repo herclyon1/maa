@@ -1,4 +1,4 @@
-"""OK-WW 补丁：shot。从 okww_patch.py 拆出（2026-09-06，只搬不改）。"""
+"""OK-WW patch: shot. Split out of okww_patch.py (2026-09-06, moved verbatim)."""
 from __future__ import annotations
 
 
@@ -7,7 +7,7 @@ from .core import _SRC, _Patch
 
 
 
-# ── 补丁：周本领奖那一刻先截一张图 ────────────────────────────
+# ── Patch: grab a screenshot at the moment of the weekly-boss claim ──
 # 来龙去脉见 docs/CODE-HISTORY.md「shot.py:(模块级)」
 _SHOT_OLD = """                        self.send_key('esc', after_sleep=0.5)
                         self.wait_click_feature('claim_cancel_button_hcenter_vcenter', relative_x=2,

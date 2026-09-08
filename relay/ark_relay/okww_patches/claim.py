@@ -1,4 +1,4 @@
-"""OK-WW 补丁：claim。从 okww_patch.py 拆出（2026-09-06，只搬不改）。"""
+"""OK-WW patch: claim. Split out of okww_patch.py (2026-09-06, moved verbatim)."""
 from __future__ import annotations
 
 
@@ -7,7 +7,7 @@ from .core import _SRC, _Patch
 
 
 
-# ---- 真正领周本奖励 --------------------------------------------------------
+# ---- actually claim the weekly boss reward ---------------------------------
 # 来龙去脉见 docs/CODE-HISTORY.md「claim.py:(模块级)」
 _CLAIM_OLD = """                    if self._in_realm and not self.in_world():
                         self.send_key('esc', after_sleep=0.5)"""
@@ -75,8 +75,9 @@ _CLAIM_NEW = """                    if self._in_realm and not self.in_world():
                                                     settle_time=1)"""
 
 
-# 上游紧跟在 _CLAIM_OLD 后面的四行：按 ESC 后等「退出副本」弹窗。
-# 2026-09-07 起领奖补丁把它们一并收进锚点，因为领完奖后这四行必须跳过。
+# The four upstream lines that follow _CLAIM_OLD: after pressing ESC, wait for the
+# 「退出副本」 dialog. Since 2026-09-07 the claim patch pulls them into its anchor as
+# well, because after claiming the reward these four lines must be skipped.
 _CLAIM_TAIL = """                        self.wait_click_feature('claim_cancel_button_hcenter_vcenter', relative_x=2,
                                                 raise_if_not_found=True,
                                                 post_action=lambda: self.send_key('esc', after_sleep=1),
@@ -84,9 +85,11 @@ _CLAIM_TAIL = """                        self.wait_click_feature('claim_cancel_b
 _CLAIM_OLD_FULL = _CLAIM_OLD + "\n" + _CLAIM_TAIL
 
 
-# 领奖补丁 v4（OCR 认弹窗 + 备用体力那版）的原文，留着**只为了还原**。
-# 它领完奖后照旧按 ESC 等弹窗，可领完奖是整屏结算页，ESC 关不掉——
-# 2026-09-07 早班三趟都在这 10 秒超时，日常体力一次没刷。
+# The text of claim patch v4 (the OCR dialog recognition + backup stamina version),
+# kept **only so it can be reverted**. It still pressed ESC and waited for the dialog
+# after claiming, but what follows a claim is a full-screen results page that ESC
+# cannot close -- all three runs of the 2026-09-07 morning shift timed out here after
+# 10 seconds, and the daily stamina farming never ran once.
 _CLAIM_V4 = """                    if self._in_realm and not self.in_world():
                         # 本地补丁：退秘境之前把周本奖励领了。
                         # 弹窗原文（整屏 OCR 读到的）：
@@ -127,8 +130,10 @@ _CLAIM_V4 = """                    if self._in_realm and not self.in_world():
                         self.send_key('esc', after_sleep=0.5)"""
 
 
-# 领奖补丁的上一版，留着**只为了还原**。改这条补丁之前必须先把它还原，
-# 否则 _apply_one 找不到 old、报「贴不上了」。今晚在这上面栽过三次。
+# The previous version of the claim patch, kept **only so it can be reverted**. It
+# must be reverted before this patch is changed, otherwise _apply_one cannot find
+# `old` and reports that the patch no longer applies. This tripped us up three times
+# in one evening.
 _CLAIM_V1 = """                    if self._in_realm and not self.in_world():
                         # 本地补丁：退秘境之前先把周本奖励领了。
                         # 领奖＝走到结晶前按 F、花 60 波片，不是进本时扣。
@@ -148,7 +153,8 @@ _CLAIM_V1 = """                    if self._in_realm and not self.in_world():
                         self.send_key('esc', after_sleep=0.5)"""
 
 
-# 领奖补丁 v2（加了取证截图那版）的原文，留着**只为了还原**。
+# The text of claim patch v2 (the one that added evidence screenshots), kept
+# **only so it can be reverted**.
 _CLAIM_V2 = """                    if self._in_realm and not self.in_world():
                         # 本地补丁：退秘境之前先把周本奖励领了。
                         # 领奖＝走到结晶前按 F、花 60 波片，不是进本时扣。
@@ -176,7 +182,8 @@ _CLAIM_V2 = """                    if self._in_realm and not self.in_world():
                         self.send_key('esc', after_sleep=0.5)"""
 
 
-# 领奖补丁 v3（带 >=60 门槛那版）的原文，留着**只为了还原**。
+# The text of claim patch v3 (the one with the >=60 threshold), kept
+# **only so it can be reverted**.
 _CLAIM_V3 = """                    if self._in_realm and not self.in_world():
                         # 本地补丁：退秘境之前把周本奖励领了。
                         # 领奖弹窗长这样（2026-09-01 整屏 OCR 一字不差读到的）：

@@ -1,25 +1,33 @@
-"""脚本自己那份配置（母本）的读与写。
+"""Reading and writing each script's own config (the master copy).
 
-**为什么存在**（2026-09-03 夜查证）：AUTO-MAS 的「快速配置」关掉之后，
-MAS 用户配置里那些字段就**不再下发**给脚本——
+**Why this exists** (established on the night of 2026-09-03): once AUTO-MAS's
+"quick config" is switched off, the fields in the MAS user config are **no
+longer pushed down** to the scripts --
 
-* `app/task/Okww/AutoProxy.py:320` `if not ...get("Info","IfQuickConfig"): return`，
-  于是 `Which to Farm` / `Material Selection` 那一批根本没写进 OK-WW；
-* `app/task/MaaEnd/AutoProxy.py:537` 之后，理智任务那套只在开着时才从 MAS 读。
+* `app/task/Okww/AutoProxy.py:320` `if not ...get("Info","IfQuickConfig"): return`,
+  so `Which to Farm` / `Material Selection` and that whole batch never reach
+  OK-WW at all;
+* after `app/task/MaaEnd/AutoProxy.py:537`, the sanity tasks are only read from
+  MAS while it is on.
 
-两个脚本现在都是 `IfQuickConfig=False`。手机页面在这天之前改的正是那些字段：
-按下去有回执、值也真写进了 MAS，可脚本跑的时候看的是母本，**等于没改**。
-真正长期生效的地方只有母本，见 `config.master_config_dir` 的说明。
+Both scripts now run with `IfQuickConfig=False`. Those are exactly the fields
+the phone page had been editing until that day: the button gave a receipt and
+the value really did land in MAS, but the script reads the master copy when it
+runs, so it **changed nothing**. The only place that takes effect for good is
+the master copy -- see the notes on `config.master_config_dir`.
 
-（明日方舟不一样：AUTO-MAS 里根本没有 MAA 的快速配置这回事，
-`IfQuickConfig` 只定义在 MaaEnd 和 OK-WW 两个配置类上。MAA 的
-`Info.Mode` 简洁/详细只决定拷哪份底子当基础，关卡、理智药、连战、剿灭
-每次派发都会被覆盖写进 gui.new.json——`app/task/Maa/AutoProxy.py:796-845`。
-所以 MAA 那几项走 MAS 是对的，不归这个模块管。）
+(Arknights is different: AUTO-MAS has no quick-config concept for MAA at all,
+`IfQuickConfig` is defined only on the MaaEnd and OK-WW config classes. MAA's
+`Info.Mode` simple/detailed only decides which baseline gets copied as the
+starting point; stage, sanity potions, series count and annihilation are
+overwritten into gui.new.json on every dispatch --
+`app/task/Maa/AutoProxy.py:796-845`. So routing those MAA items through MAS is
+correct, and they are not this module's business.)
 
-**中文名不自己编**：MaaEnd 每个选项和每个取值都在自己的任务定义里带一个
-`"$xxx.yyy"` 形式的语言包键，照着解析就是官方译名。OK-WW 同理，用它的
-`ok.po`。上游改了名字这边跟着变。
+**Never invent the Chinese names**: every MaaEnd option and every one of its
+values carries a language-pack key of the form `"$xxx.yyy"` in its own task
+definition, and resolving that gives the official translation. Same for OK-WW,
+via its `ok.po`. When upstream renames something, this follows.
 """
 from __future__ import annotations
 
@@ -32,27 +40,31 @@ from .config import atomic_write_text, master_config_dir
 
 log = logging.getLogger("ark.mastercfg")
 
-# 手机上真正会出现的那些项。**不是能改的全给**：整份选项塞进一条 ntfy
-# 消息会超上限被截断，页面 JSON.parse 直接失败（2026-08-31 栽过）。
-# 这里只留每天真会动的。
+# The items that actually show up on the phone. **Not everything editable**:
+# stuffing the full option set into one ntfy message exceeds the size limit and
+# gets truncated, and the page's JSON.parse then fails outright (that bit us on
+# 2026-08-31). Only what really gets changed day to day is kept here.
 MAAEND_SHOWN: dict[str, tuple[str, ...]] = {
     "AutoEssence": (
         "@enabled",
-        "AutoEssenceDoOverride",        # 使用刻写券
-        "AutoEssenceObtainMode",        # 领取方式：不领取／单倍／双倍
-        "AutoEssenceRepeatCount",       # 最大循环次数
-        "AutoEssenceChooseLocation",    # 地区选择
-        "EssenceFilterAfterBattle",     # 战后基质筛选
+        "AutoEssenceDoOverride",        # Use override vouchers (使用刻写券)
+        "AutoEssenceObtainMode",        # Claim mode: none / single / double (领取方式)
+        "AutoEssenceRepeatCount",       # Max loop count (最大循环次数)
+        "AutoEssenceChooseLocation",    # Region choice (地区选择)
+        "EssenceFilterAfterBattle",     # Post-battle essence filtering (战后基质筛选)
     ),
     "AutoUseSpMedication": ("@enabled",),
     "AutoCollect": (
         "@enabled",
-        # 只给一个开关，手机上看不出它到底会去采哪几条、哪天采。
-        # 2026-09-04 用户：「自动采集任务，你应该显示采集路线。」
-        # 那天它 0.16 秒就「完成」，正是因为计划表只勾了周一和周四，
-        # 页面上却一个字都看不出来。
-        "AutoCollectRoutes",            # 采哪几条路线
-        "AutoCollectSchedule",          # 哪几天采
+        # With only a switch, the phone gives no way to see which routes it
+        # will gather or on which days.
+        # The user, 2026-09-04: 「自动采集任务，你应该显示采集路线。」
+        # ("For the auto-gather task you should show the gathering routes.")
+        # That day it "finished" in 0.16 seconds, precisely because the
+        # schedule only had Monday and Thursday ticked -- and the page said
+        # nothing about it at all.
+        "AutoCollectRoutes",            # Which routes to gather (采哪几条路线)
+        "AutoCollectSchedule",          # Which days to gather (哪几天采)
     ),
 }
 
@@ -65,8 +77,9 @@ OKWW_SHOWN: dict[str, tuple[str, ...]] = {
     ),
 }
 
-# 只读展示，不给改：残象聚落点位有死命令「只刷落渊南丘」，
-# 我自己已经改回「刷全部」两次。放出来看得见，但按不动。
+# Shown read-only, not editable: the Nightmare Nest locations carry a standing
+# order -- 「只刷落渊南丘」("farm Nanqiu only") -- and I have reverted it to
+# "farm all" twice myself. Visible, but not clickable.
 OKWW_READONLY: dict[str, tuple[str, ...]] = {
     "NightmareNestTask.json": ("Only Farm These Nests",),
 }
@@ -75,12 +88,12 @@ _COMMENT = re.compile(r"^\s*//.*$", re.M)
 
 
 def _jsonc(path: Path) -> dict:
-    """MaaEnd 的任务定义是带 // 注释的 JSON。"""
+    """MaaEnd task definitions are JSON with // comments."""
     return json.loads(_COMMENT.sub("", path.read_text(encoding="utf-8")))
 
 
 class _Locale:
-    """`$key` → 中文。查不到就把 `$` 去掉原样返回，绝不编。"""
+    """`$key` -> Chinese. On a miss, strip the `$` and return it as is. Never invent one."""
 
     def __init__(self, maaend_dir: Path | None) -> None:
         self.table: dict[str, str] = {}
@@ -110,8 +123,11 @@ def _maaend_task(doc: dict, name: str) -> dict | None:
 
 
 def read_maaend(automas_dir, maaend_dir) -> dict:
-    """`{"values": {"任务/选项": 值}, "options": {"任务/选项": [[中文, 取值]]},
-    "labels": {"任务/选项": 中文名}}`。读不到就返回空，页面那段不显示。"""
+    """Returns `{"values": {"task/option": value},
+    "options": {"task/option": [[Chinese label, value]]},
+    "labels": {"task/option": Chinese name}}`. Empty when it cannot be read,
+    and the page then hides that section.
+    """
     out: dict = {"values": {}, "options": {}, "labels": {}}
     f = maaend_master(automas_dir)
     if not f or not f.is_file():
@@ -131,8 +147,9 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
         except (OSError, ValueError, TypeError):
             spec = {}
         defs = spec.get("option") or {}
-        # `task` 在真文件里是**数组**（一个文件可以声明多个任务），
-        # 里面按 name 找。2026-09-04 我照着自造的样例写成 dict，上机就炸。
+        # In the real file `task` is an **array** (one file can declare several
+        # tasks); find it by name inside. On 2026-09-04 I wrote it as a dict
+        # based on a sample I had made up myself, and it blew up on the machine.
         decl = next((t for t in (spec.get("task") or [])
                      if isinstance(t, dict) and t.get("name") == task_name), {})
         out["labels"][f"{task_name}/@enabled"] = zh(
@@ -166,7 +183,9 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
 
 
 def write_maaend(automas_dir, maaend_dir, path: str, value) -> tuple[bool, str]:
-    """改母本里的一项。存在才写、写完回读，和 `commands._set_config` 一个规矩。"""
+    """Change one item in the master copy. Write only what already exists, then
+    read it back -- the same rule as `commands._set_config`.
+    """
     task_name, _, opt = str(path).partition("/")
     f = maaend_master(automas_dir)
     if not f or not f.is_file():
@@ -187,7 +206,7 @@ def write_maaend(automas_dir, maaend_dir, path: str, value) -> tuple[bool, str]:
             return False, (f"{task_name} 里没有 {opt} 这一项，已拒绝"
                            "（不许凭空造字段——826 就是这么出的事）")
         kind = str(cur.get("type") or "")
-        # 取值必须是这一项自己声明过的，不许乱填
+        # The value must be one this item itself declares; no filling in whatever
         try:
             defs = _jsonc(Path(maaend_dir) / "tasks" / f"{task_name}.json").get("option") or {}
             allowed = {str(c.get("name")) for c in (defs.get(opt) or {}).get("cases") or []}
@@ -228,12 +247,16 @@ def write_maaend(automas_dir, maaend_dir, path: str, value) -> tuple[bool, str]:
 
 
 # ─────────────────────────────── MAA ───────────────────────────────
-# 基建无人机用在哪。AUTO-MAS 不管这项（它的用户配置里没有），只在 MAA 自己的
-# gui.new.json 里：Configurations/<Current>/TaskQueue/<基建那项>/UsesOfDrones。
-# 取值和译名抄自 MAA 源码 InfrastSettingsUserControlModel.UsesOfDronesList
-# 与 docs/protocol/integration.md（2026-09-07 核对，v6.17）。
-# 母本在 AUTO-MAS 的 data/<MAA脚本id>/Default/ConfigFile/gui.new.json，MAA 目录里那份
-# 每次拉起前被母本盖掉，但两份都写、两份都校验（来龙去脉见记忆 maa-config-master-copy）。
+# What the infrastructure drones are used on. AUTO-MAS does not handle this
+# item (it is not in its user config); it lives only in MAA's own gui.new.json:
+# Configurations/<Current>/TaskQueue/<the infrastructure task>/UsesOfDrones.
+# The values and their Chinese names are taken from MAA's source,
+# InfrastSettingsUserControlModel.UsesOfDronesList, and from
+# docs/protocol/integration.md (checked 2026-09-07, v6.17).
+# The master copy is at AUTO-MAS's
+# data/<MAA script id>/Default/ConfigFile/gui.new.json; the copy in the MAA
+# directory is overwritten by the master before every launch, but both are
+# written and both are verified (background: memory maa-config-master-copy).
 MAA_DRONES: tuple[tuple[str, str], ...] = (
     ("_NotUse", "不使用"),
     ("Money", "贸易站 · 龙门币"),
@@ -279,7 +302,10 @@ def read_maa(automas_dir) -> dict:
 
 
 def write_maa(automas_dir, maa_dir, path: str, value) -> tuple[bool, str]:
-    """改基建无人机用途。母本和 MAA 目录那份都写；取值只认 MAA 声明过的七个。"""
+    """Change what the infrastructure drones are used on. Both the master copy
+    and the copy in the MAA directory are written; only the seven values MAA
+    itself declares are accepted.
+    """
     if str(path) != MAA_DRONES_PATH:
         return False, f"MAA 只开放 {MAA_DRONES_PATH} 这一项，已拒绝 {path!r}"
     keys = {k for k, _ in MAA_DRONES}
@@ -320,7 +346,8 @@ def okww_file(automas_dir, name: str) -> Path | None:
     return (d / name) if d else None
 
 
-# 选了「刷什么」里的哪一项，下面才出现哪一项子设置。抄自 OK-WW 的 sub_configs。
+# Which sub-setting appears below depends on which entry of "what to farm" is
+# selected. Taken from OK-WW's own sub_configs.
 OKWW_SUBS = {
     "Tacet Suppression": ["DailyTask.json/Which Tacet Suppression to Farm"],
     "Forgery Challenge": ["DailyTask.json/Which Forgery Challenge to Farm"],
@@ -334,7 +361,7 @@ _LIST = {
 
 
 def _okww_cases(okww_dir) -> dict[str, list[str]]:
-    """下拉候选从 OK-WW **自己的源码**里读，不自己编。"""
+    """The dropdown candidates are read from OK-WW's **own source**, never invented here."""
     out: dict[str, list[str]] = {}
     if not okww_dir:
         return out
@@ -354,10 +381,13 @@ def _okww_cases(okww_dir) -> dict[str, list[str]]:
 
 
 def read_okww(automas_dir, okww_dir) -> dict:
-    """值、候选、中文名。中文名全部来自 OK-WW 自带的 ok.po。
+    """Values, candidates and Chinese names. Every Chinese name comes from the
+    ok.po that ships with OK-WW.
 
-    2026-09-03 才发现原来页面上那两个序号的标签是我自己编的，而且编反了：
-    `Forgery Challenge` 官方译作「凝素领域」，`Tacet Suppression` 是「无音区」。
+    Only on 2026-09-03 did it turn out that the labels for those two indices on
+    the page were ones I had made up myself -- and had swapped: the official
+    translation of `Forgery Challenge` is 「凝素领域」, and `Tacet Suppression`
+    is 「无音区」.
     """
     out: dict = {"values": {}, "options": {}, "labels": {}, "readonly": {},
                  "subs": OKWW_SUBS}

@@ -1,10 +1,11 @@
 """Entry point.
 
-    python -m ark_relay local     跑在游戏机器上，直接读 history，自己判定自己推送
+    python -m ark_relay local     runs on the game machine: reads history directly,
+                                  judges for itself and pushes for itself
 
-    python -m ark_relay check     自检：配置、目录、推送渠道
-    python -m ark_relay test      发一条测试消息
-    python -m ark_relay report    立刻推一次今天的日报
+    python -m ark_relay check     self-check: config, directories, push channels
+    python -m ark_relay test      send one test message
+    python -m ark_relay report    push today's daily report right now
 
 There is no server mode any more. The 7×24 half of the system - "did the
 machine ever power on" - is GitHub Actions asking the Tailscale API for the
@@ -135,7 +136,8 @@ def cmd_test(cfg: Config) -> int:
         print("✗ 没有配置任何推送渠道")
         return 1
     now = datetime.now(tz=SERVER_TZ)
-    # 自检就是要把每条通道都打一遍，所以这里显式全发。
+    # The point of a self-check is to exercise every channel, so this sends to all
+    # of them explicitly.
     errors = n.send("🔧 中继自检",
                     f"这是一条测试消息。\n当前 {both_clocks(now)}", alert=True)
     for e in errors:

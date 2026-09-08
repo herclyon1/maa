@@ -1,23 +1,27 @@
-"""跑完之后核对「到底干成了什么」——没干成就必须出声。
+"""After a run, verify **what actually got done** -- and speak up when it did not.
 
-**为什么存在**（2026-08-27 全天的账）：
+**Why this exists** (the reckoning of 2026-08-27):
 
-那天 OK-WW 连着三轮没打残象聚落、MaaEnd 卡在一个弹窗上把「失败」当「做完」
-自己关掉、AUTO-MAS 队列停住不推进——**三件事都没有任何报错**，
-而中继照样给用户报「全绿」。用户的原话是：
+That day OK-WW skipped the nightmare nests three runs in a row, MaaEnd got stuck on
+a dialog, treated "failed" as "done" and closed itself, and the AUTO-MAS queue
+stopped advancing -- **none of the three reported any error at all**, and the relay
+still told the user everything was green. The user's own words:
 
 > 他不报错，他直接把自己关掉了，他不说自己被卡在某个地方，他不提醒，
 > 直接把整个队列都给卡死了。
 
-根子在 `collector.py`：它当时的判据是「日志里提到过这个任务名」就算做了。
-**出现在日志里 ≠ 做成了。**一个任务可以打开界面、找不到目标、原地退出，
-全程一个 ERROR 都不打。
+The root cause was in `collector.py`: its criterion at the time was "the task name
+appeared in the log" == it ran. **Appearing in the log != having succeeded.** A task
+can open a screen, fail to find its target, and quit where it stands without
+printing a single ERROR.
 
-所以这里换一种判据：**要证据，不要痕迹。**
-每一项都问「有没有它真的发生过的证据」，没有就列进「没干成」，
-由 engine 发通知，而不是静默记账。
+So the criterion here is different: **demand evidence, not traces.**
+Every item asks "is there evidence this actually happened"; if not it goes into the
+"did not get done" list and engine sends a notification, instead of being silently
+booked as fine.
 
-判据全部来自实测日志，不是猜的；每条都注明出处。
+Every criterion comes from real measured logs, not guesswork; each one cites its
+source.
 """
 from __future__ import annotations
 
@@ -28,45 +32,50 @@ from dataclasses import dataclass
 
 @dataclass
 class Check:
-    """一项核对结果。`ok=False` 就会被报出去。"""
+    """One verification result. `ok=False` gets reported."""
 
-    label: str          # 人话，直接进通知
+    label: str          # plain language, goes straight into the notification
     ok: bool
-    detail: str = ""    # 为什么这么判，给排查用
+    detail: str = ""    # why it was judged this way, for troubleshooting
 
 
 # ── OK-WW ──────────────────────────────────────────────────────────
-# 真的进过战斗的证据。开界面、传送、找目标都不算——2026-08-27 三轮
-# 全都走到了 `open_boss_book canxiang` 却一场没打。
+# Evidence that combat was actually entered. Opening a screen, teleporting or
+# searching for a target do not count -- on 2026-08-27 all three runs got as far as
+# `open_boss_book canxiang` and never fought once.
 _NEST_ENGAGED = re.compile(r"is not complete|click_team_challenge|"
                            r"wait_in_team_and_world|echo captured")
-# 我们自己补丁打出来的两句，用来区分「正常跳过」和「故障」。
+# Two lines printed by our own patch, used to tell a normal skip from a failure.
 _NEST_ALL_FULL = "指定点位都已打满，跳过"
 _NEST_NOT_FOUND = "列表里没找到指定的点位"
-# DailyTask 跑完的标志（上游自己打的）。
+# Marker that DailyTask finished (printed by upstream itself).
 _DAILY_DONE = "Daily Task Completed"
-# 体力真的花掉的证据 vs 明说没花。
+# Evidence that stamina was actually spent vs. an explicit statement that it was not.
 _STAMINA_SPENT = re.compile(r"enter combat|walk_to_treasure|used all stamina")
 _STAMINA_SHORT = "not enough stamina"
 
 
-# open_daily 打开日常页后读到的活跃度。第一次读数就 ≥ 100 说明这一轮
-# 开始前日常已经完成——OK-WW 会正确地只领奖退出，什么都不刷。
+# The activity points read after open_daily opens the dailies page. A first reading
+# already >= 100 means the dailies were finished before this run started -- OK-WW
+# correctly just claims the rewards and quits without farming anything.
 _DAILY_POINTS = re.compile(r"info_set total daily points (\d+)")
 _DAILY_POINTS_TARGET = 100
 
 
 def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
                 expect_stamina: bool = True) -> list[Check]:
-    """核对一轮 OK-WW。`text` 是这一轮的日志全文。
+    """Verify one OK-WW run. `text` is the full log of that run.
 
-    `expect_nest` 由配置决定（配了「只刷指定点位」或开了每日声骸就该打）。
+    `expect_nest` comes from the config (a configured 「只刷指定点位」 nest filter or
+    the daily echo option enabled means nests should have been farmed).
     """
     out: list[Check] = []
 
-    # 2026-08-27 13:24 的误报：当天第二轮运行时日常早已完成，OK-WW 只领奖
-    # 退出——完全正确，这里却报了「残象聚落没干成」「刷体力没干成」。
-    # 「本来就无事可做」和「该做没做成」必须分开。
+    # The false alarm of 2026-08-27 13:24: on that day's second run the dailies were
+    # long since finished, so OK-WW just claimed the rewards and quit -- entirely
+    # correct, yet this code reported the nests and the stamina farming as failures.
+    # "there was nothing to do in the first place" and "it should have been done and
+    # was not" must be kept apart.
     m = _DAILY_POINTS.search(text)
     if m and int(m.group(1)) >= _DAILY_POINTS_TARGET:
         done = _DAILY_DONE in text
@@ -107,25 +116,31 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
 
 
 # ── MaaEnd ─────────────────────────────────────────────────────────
-# 万能跳转失败会存一张 on_error 截图。2026-08-27 那次卡弹窗，
-# 20 分钟里存了三张，而 MaaEnd 自己一个 ERROR 都没报。
-# MaaEnd 收尾标记。**它写在 MaaEnd 自己的 app 日志里**
-# （`<maaend>/debug/YYYY-MM-DD-N.log`：`INFO [App] 自动执行任务完成，关闭自身`），
-# 不在 AUTO-MAS 的 history 日志里。2026-08-29 只喂了后者，于是这条恒为假、
-# 天天误报「MaaEnd 没跑完」。修的是数据源，不是判据。
+# A failed universal jump saves an on_error screenshot. During the 2026-08-27 dialog
+# hang it saved three of them in 20 minutes, while MaaEnd itself reported not one
+# ERROR.
+# MaaEnd's completion marker. **It is written to MaaEnd's own app log**
+# (`<maaend>/debug/YYYY-MM-DD-N.log`: `INFO [App] 自动执行任务完成，关闭自身`),
+# not to the AUTO-MAS history log. On 2026-08-29 only the latter was fed in, so this
+# check was always false and falsely reported "MaaEnd did not finish" every day.
+# The fix was the data source, not the criterion.
 _MAAEND_DONE = "自动执行任务完成"
 _MAAEND_STUCK = re.compile(r"SceneAnyEnterWorld|PipelineTask bad next")
 
 
 def maaend_checks(text: str, on_error_names: list[str]) -> list[Check]:
-    """核对一轮 MaaEnd。`on_error_names` 是这一轮新增的截图文件名。"""
+    """Verify one MaaEnd run.
+
+    `on_error_names` are the screenshot filenames newly added during that run.
+    """
     out: list[Check] = []
     done = _MAAEND_DONE in text
     out.append(Check("MaaEnd 跑完", done,
                      "" if done else "日志里没有「自动执行任务完成」"))
 
-    # 附加的结构性判据：每个「任务开始」都该有对应的「任务完成／任务失败」。
-    # 它不依赖任何一句固定文案，收尾标记那条万一又被改名也还有这道兜底。
+    # An additional structural criterion: every 「任务开始」 should have a matching
+    # 「任务完成」/「任务失败」. It does not depend on any single fixed phrase, so if the
+    # completion marker gets renamed again this still catches the problem.
     started = re.findall(r"任务开始[:：]\s*(\S+)", text)
     ended = re.findall(r"任务(?:完成|失败)[:：]\s*(\S+)", text)
     dangling = Counter(started) - Counter(ended)
@@ -134,12 +149,15 @@ def maaend_checks(text: str, on_error_names: list[str]) -> list[Check]:
                          "" if not dangling else
                          "开了没收尾：" + "、".join(sorted(dangling))))
 
-    # 万能跳转失败（SceneAnyEnterWorld / PipelineTask bad next）永远算故障——
-    # 2026-08-27 那次就是「卡弹窗、自己不报错，只有截图能抓出来」，不能放宽。
-    # 其余节点的截图不一样：MaaEnd 会重试，重试成功任务照常完成。
-    # 2026-08-29 早班存了 6 张 ScenePrivateMapZoomOut，而环境监测和基质刷取
-    # 都报了「任务完成」——把它写成「没干成」是误报。所以只在**确实没跑完**时
-    # 才判故障，否则如实列出来但不算故障。
+    # A failed universal jump (SceneAnyEnterWorld / PipelineTask bad next) always
+    # counts as a fault -- 2026-08-27 was exactly the "stuck on a dialog, reports no
+    # error itself, only the screenshots catch it" case, so this must not be relaxed.
+    # Screenshots from other nodes are different: MaaEnd retries, and a successful
+    # retry completes the task as normal. The 2026-08-29 morning run saved 6
+    # ScenePrivateMapZoomOut shots while both the environment survey and the essence
+    # farming reported 「任务完成」 -- calling that a failure is a false alarm. So a
+    # fault is only declared when the run **really did not finish**; otherwise the
+    # screenshots are listed honestly but not counted as a fault.
     stuck = [n for n in on_error_names if _MAAEND_STUCK.search(n)]
     if stuck:
         out.append(Check("界面没卡住", False,
@@ -157,20 +175,24 @@ def maaend_checks(text: str, on_error_names: list[str]) -> list[Check]:
 
 
 # ── MAA ────────────────────────────────────────────────────────────
-# 2026-08-30 之前这里**什么都没有**：`_verify_outcome` 走到 MAA 直接
-# return None（=全干成），所以 MAA 只要进程正常退出就恒为绿。
+# Before 2026-08-30 there was **nothing here**: `_verify_outcome` reached MAA and
+# simply returned None (= everything succeeded), so MAA was permanently green as
+# long as the process exited normally.
 #
-# 第一版我按「错误字符串出现次数」判，空跑真实日志立刻打脸：08-29 晚和
-# 08-30 早**两趟都会被推送**，而推的正是 `skill has no recognition result`
-# 和 `Unknown task` 这两条已经确认无害的噪音。把「全绿」换成「每轮误报两条」
-# 比原来更糟——狼来了喊多了，真出事那次就没人看了。
+# The first version judged by "how many times an error string appears", and a dry
+# run against real logs immediately proved it wrong: **both** the 08-29 evening and
+# the 08-30 morning runs would have been pushed, and what they pushed was
+# `skill has no recognition result` and `Unknown task` -- two lines already confirmed
+# to be harmless noise. Replacing "always green" with "two false alarms per run" is
+# worse than before: cry wolf often enough and nobody looks on the day it is real.
 #
-# 换成结构化判据：MAA 每条任务链都会打一对
+# So the criterion became structural: MAA prints a pair for every task chain
 #   TaskChainStart  {"taskchain":"Infrast", ...}
 #   TaskChainCompleted {"taskchain":"Infrast", ...}
-# 实测两趟都是 StartUp/Fight/Infrast/Recruit/Mall/Award/CloseDown 各一对，
-# 零 Error、零 Stopped、零悬挂。**开了没收尾**才是真出事——
-# 那正是「队列卡死、脚本自己不吭声」的形状。
+# Measured across both runs: one pair each of StartUp/Fight/Infrast/Recruit/Mall/
+# Award/CloseDown, zero Error, zero Stopped, zero dangling. **Started but never
+# closed out** is the real failure -- that is exactly the shape of "the queue is
+# wedged and the script says nothing".
 _MAA_CHAIN = re.compile(
     r'TaskChain(Start|Completed|Error|Stopped)\b.*?"taskchain":"(\w+)"')
 
@@ -180,16 +202,19 @@ _MAA_STARTUP = re.compile(
 
 
 def _one_run_only(text: str) -> str:
-    """只留这一轮。第二个 StartUp 之后的都是下一轮的，砍掉。
+    """Keep only this run. Everything after the second StartUp belongs to the next
+    run and is cut off.
 
-    时间窗是 [开始, 结束+5分钟]，那 5 分钟是给收尾行留的余量。两趟挨得近时
-    余量会伸进下一趟：2026-08-31 晚上第一趟 21:30:50→21:33:38（窗口到
-    21:38:38），第二趟 21:33:43 就开跑，`Infrast` 21:35 开始、21:43 完成——
-    于是第一趟的窗口捞到了下一趟的「Infrast 开始」却够不到它的「完成」，
-    报了一条「开了没收尾：Infrast」。基建其实好好干完了，纯误报。
+    The time window is [start, end + 5 minutes], those 5 minutes being slack for the
+    closing lines. When two runs sit close together the slack reaches into the next
+    one: on the evening of 2026-08-31 the first run went 21:30:50 -> 21:33:38 (window
+    out to 21:38:38) while the second started at 21:33:43, with `Infrast` starting
+    21:35 and completing 21:43 -- so the first run's window picked up the next run's
+    "Infrast started" but could not reach its "completed", and reported a dangling
+    Infrast. Infrastructure had in fact finished fine; a pure false alarm.
 
-    MAA 每轮都以 StartUp 开头，所以第二个 StartUp 就是越界的标志。
-    只有一个 StartUp（或一个都没有）时原样返回，不做任何事。
+    Every MAA run begins with StartUp, so the second StartUp marks the boundary.
+    With only one StartUp (or none) the text is returned unchanged.
     """
     hits = list(_MAA_STARTUP.finditer(text))
     if len(hits) < 2:
@@ -199,7 +224,7 @@ def _one_run_only(text: str) -> str:
 
 
 def maa_checks(text: str) -> list[Check]:
-    """核对一轮 MAA。`text` 是这一轮时间窗内的 asst.log。"""
+    """Verify one MAA run. `text` is the asst.log within that run's time window."""
     text = _one_run_only(text)
     started: Counter = Counter()
     ended: Counter = Counter()
@@ -214,7 +239,8 @@ def maa_checks(text: str) -> list[Check]:
 
     out: list[Check] = []
     if not started:
-        # 一条任务链事件都没有 = 窗口切错了或日志不对，绝不能当成「没问题」。
+        # Not a single task chain event = the window was cut wrong or the log is the
+        # wrong one. This must never be treated as "no problem".
         out.append(Check("读到了这一轮的任务链事件", False,
                          "asst.log 里没有 TaskChainStart，这一轮无从核对"))
         return out
@@ -229,7 +255,7 @@ def maa_checks(text: str) -> list[Check]:
 
 
 def summarize(checks: list[Check], who: str) -> str | None:
-    """有没干成的就返回一段人话；全都干成了返回 None。"""
+    """Return a plain-language paragraph if anything failed; None if all succeeded."""
     bad = [c for c in checks if not c.ok]
     if not bad:
         return None

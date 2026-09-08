@@ -1,24 +1,34 @@
-"""把本地给 OK-WW 打的补丁重新贴回去——因为它的自动更新会整段覆盖 src。
+"""Re-apply our local patches to OK-WW - its auto-update replaces `src` wholesale.
 
-2026-08-25 打的补丁，到 08-26 全没了：OK-WW 从 v3.6.5 更新到 v3.6.6-beta.1
-时整个 `src` 目录被替换，连我留在同目录的 `.bak` 一起消失。用户的原话是
-「一个是 bug，两个是功能增加，Bug 可能被修了，但是功能增加我们需要呀」——
-功能不能指望上游，只能每次开机自己贴回去。
+The patches applied on 2026-08-25 were all gone by 08-26: updating OK-WW from
+v3.6.5 to v3.6.6-beta.1 replaced the entire `src` directory, taking the `.bak`
+files left beside them with it. The user's own words:
+「一个是 bug，两个是功能增加，Bug 可能被修了，但是功能增加我们需要呀」
+(one is a bug, two are feature additions; the bug may have been fixed, but we
+need the features). The features cannot be left to upstream, so they get
+re-applied on every boot.
 
-设计上的三条：
+Three design rules:
 
-* **幂等。** 已经在就什么都不做，返回空。每次开机跑一遍的代价必须接近零。
-* **认不出上游那段就不动。** 上游改了结构还硬替换，只会把文件改坏。
-  宁可报「贴不上了」让人去看，也不许猜着改。
-* **改完必须回读 + 编译。** 写进去不等于对，语法坏了会让整个日常任务起不来。
+* **Idempotent.** Already there means do nothing and return nothing. Running this
+  once per boot must cost close to zero.
+* **If the upstream text is unrecognisable, leave it alone.** Forcing a
+  replacement after upstream restructured the code just corrupts the file.
+  Better to report "this no longer applies" and have a human look than to patch
+  by guesswork.
+* **Every write is followed by a read-back and a compile.** Written is not the
+  same as correct, and broken syntax stops the whole daily task from starting.
 
-**这里只放「非改源码不可」的补丁。** 能在配置层做的一律不要来这儿：
-周常乐园的「本周只查一次」就是配置层做的（`garden.py`，照 `annihilation.py`
-那套周门写的），因为配置不会被更新覆盖，天然免疫这个问题。
+**Only patches that genuinely require touching the source belong here.** Anything
+achievable at the config layer must not come here: the weekly garden's "check
+once a week" lives in the config layer (`garden.py`, modelled on the weekly gate
+in `annihilation.py`), because config is not overwritten by updates and is
+therefore immune to this problem by construction.
 
-**已提给上游的补丁在合并之后就该从这里删掉**，别让本地版本和上游版本
-长期并存——两边都改同一段代码，早晚打架。每条补丁的 `upstream` 字段
-记着它的去向。
+**A patch that has been accepted upstream should be deleted from here once it is
+merged** - do not leave the local version and the upstream version coexisting for
+long, because both edit the same code and will eventually collide. Each patch's
+`upstream` field records where it went.
 """
 from __future__ import annotations
 
@@ -45,7 +55,8 @@ from .okww_patches.teamshot import _TEAMSHOT_OLD, _TEAMSHOT_NEW, _teamshot_prese
 
 log = logging.getLogger("ark.okww_patch")
 
-# 测试和别处按旧名字从这里取，子模块里的名字全部原样再导出。
+# The tests and other callers import the old names from here, so every name in
+# the submodules is re-exported verbatim.
 __all__ = [
     'ensure_patches', 'ensure_if_updated',
     '_CLAIM_OLD',
@@ -137,12 +148,15 @@ __all__ = [
 
 
 def ensure_if_updated(state_dir: Path, okww_dir: Path | None) -> list[str]:
-    """OK-WW 的版本号变了才贴一遍；没变什么都不做。给 engine.tick 用。
+    """Re-apply only when OK-WW's version changed; otherwise do nothing. Used by
+    engine.tick.
 
-    OK-WW 的自动更新发生在它自己启动时，不一定在开机预更新那一段：2026-09-06
-    预更新 08:46 说「无需更新」，09:20 那趟启动时它自己装了新版，src 整段被换掉，
-    补丁全没了，那趟裸跑，直到 11:30 重启服务才贴回去。版本号在
-    data/apps/ok-ww/app.json 的 current_version 里，每轮看一眼，变了就贴。
+    OK-WW updates itself when it launches, which is not necessarily during the
+    boot-time pre-update: on 2026-09-06 the pre-update said 「无需更新」 at 08:46,
+    and then the 09:20 round installed a new version on launch, replacing all of
+    `src` and wiping every patch. That round ran unpatched until the service was
+    restarted at 11:30. The version lives in `current_version` inside
+    data/apps/ok-ww/app.json; check it every round and re-apply when it changed.
     """
     if not okww_dir:
         return []
@@ -170,7 +184,8 @@ def ensure_if_updated(state_dir: Path, okww_dir: Path | None) -> list[str]:
 
 
 def ensure_patches(okww_dir: Path | None) -> list[str]:
-    """确保本地补丁在位。返回这次实际做了什么（空表示本来就在位）。
+    """Make sure the local patches are in place. Returns what was actually done
+    this time (empty means everything was already in place).
 
     来龙去脉见 docs/CODE-HISTORY.md「okww_patch.py:ensure_patches」。
     """
@@ -179,17 +194,21 @@ def ensure_patches(okww_dir: Path | None) -> list[str]:
     root = Path(okww_dir)
     done: list[str] = []
     done.extend(_apply_nest(root))
-    # 2026-08-31 加回来一条：周本要在日常刷体力之前跑，否则只剩 60 体力。
-    # 这条不是「上游顺序不合理」的审美问题，是**用户要的分配做不到**：
-    # 一次周本宝箱 60 体力，三次就是 180，而日常那步会先把 180 吃光。
+    # Restored on 2026-08-31: the weekly boss has to run before the daily stamina
+    # farming, otherwise only 60 stamina is left. This is not an aesthetic
+    # complaint about upstream ordering, it makes **the allocation the user asked
+    # for impossible**: one weekly-boss chest costs 60 stamina, three cost 180,
+    # and the daily step burns all 180 first.
     done.extend(_apply_one(root, _STAMINA))
     done.extend(_apply_one(root, _NOFARM))
-    # 这一条 2026-08-31 已撤回，所以这里做的是**还原**：当初的前提就是错的，
-    # OK-WW 自己的 error() 本来就会打堆栈，异常并没有被吞掉。
+    # Withdrawn on 2026-08-31, so what happens here is a **revert**: the premise
+    # was wrong to begin with - OK-WW's own error() already prints the stack, and
+    # the exception was never swallowed.
     # 来龙去脉见 docs/CODE-HISTORY.md「okww_patch.py:ensure_patches」
     done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
                              _FARMERR_NEW, _FARMERR_OLD, "周本活锁：打出被吞掉的异常"))
-    # 截图补丁已经问到答案（Boss 死后画面上没有自动领奖这回事），还原。
+    # The screenshot patch has answered its question (there is no auto-claim on
+    # screen after the boss dies), so revert it.
     done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
                              _SHOT2_NEW, _SHOT2_OLD, "退秘境前留证据截图"))
     done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
@@ -204,12 +223,14 @@ def ensure_patches(okww_dir: Path | None) -> list[str]:
     done.extend(_revert_text(root, (*_SRC, "TacetTask.py"),
                              _TACETSHOT_V1, _TACETSHOT_V1_OLD, "无音区留两张图给日报 v1"))
     done.extend(_apply_one(root, _TACETSHOT))
-    # 取证补丁已经问到答案（画面是「结晶波片不足」弹窗），撤回。
+    # The evidence patch has answered its question (the screen shows the
+    # 「结晶波片不足」 popup), so withdraw it.
     done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
                              _TEAMSHOT_NEW, _TEAMSHOT_OLD,
                              "开启挑战找不到时留证据截图"))
-    # 历史版本必须先全部还原，否则会叠加：v1/v2 的替换文本末尾都带着
-    # 锚点本身，present() 一变就会再贴一层。
+    # Every historical version has to be reverted first or they stack: the v1/v2
+    # replacement texts each end with the anchor itself, so one change to
+    # present() applies another layer on top.
     done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
                              _COUNT_V1, _COUNT_OLD, "进本前拍一张看剩余次数 v1"))
     done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
@@ -224,12 +245,13 @@ def ensure_patches(okww_dir: Path | None) -> list[str]:
     done.extend(_apply_one(root, _RETRYCAP))
     done.extend(_apply_one(root, _LETPASS))
     done.extend(_apply_one(root, _COUNT))
-    # 截图补丁的问题已经问完了：2026-08-31 拍到的是「确认离开」退出弹窗，
-    # 不是领奖弹窗（claim_cancel_button 这个名字指的是通用双按钮弹窗）。
-    # 留着只会每打一次 Boss 就多存一张没用的图，所以主动还原。
+    # The screenshot patch's question is settled: what it captured on 2026-08-31
+    # was the 「确认离开」 exit popup, not a claim popup (the name
+    # claim_cancel_button refers to the generic two-button popup). Keeping it only
+    # saves one useless image per boss fight, so revert it deliberately.
     done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
                              _SHOT_NEW, _SHOT_OLD, "周本领奖前留证据截图"))
-    # 以下三条：撤销，不是应用。
+    # The three below are reverts, not applications.
     for p in PATCHES:
         done.extend(_revert_text(root, p.parts, p.new, p.old, p.name))
     done.extend(_revert_text(root, (*_SRC, "DomainTask.py"),

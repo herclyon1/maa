@@ -1,4 +1,4 @@
-"""preupdate_maaend：从 preupdate.py 拆出（2026-09-08，只搬不改）。"""
+"""preupdate_maaend: split out of preupdate.py (2026-09-08, moved verbatim)."""
 from __future__ import annotations
 
 import json
@@ -81,7 +81,7 @@ def run(maaend_dir: Path | None, budget_s: float = BUDGET_SECONDS,
 
 
 def _maaend_version_in(log_file: Path | None) -> str:
-    """某个 MaaEnd 日志里最后一次自报的版本号；读不到返回空串。"""
+    """The last version MaaEnd reported about itself in a given log; "" if unreadable."""
     if not log_file:
         return ""
     hits = _CURRENT.findall(_read(log_file))
@@ -89,29 +89,35 @@ def _maaend_version_in(log_file: Path | None) -> str:
 
 
 def _span(old: str, new: str) -> str:
-    """「旧版 → 新版」——四个程序的更新通知统一用这一种写法。
+    """「旧版 → 新版」 - the one shape all four programs' update notices use.
 
-    旧版号没拿到就明说「旧版本没读到」，不编也不省：2026-08-30 MaaEnd
-    的通知只有「已更新：v2.27.0-beta.1」，看不出从哪升上来的，用户
-    2026-09-01 要求四个程序样式统一、都带「老版本号 → 新版本号」。
+    When the old version could not be read, say so outright with 「旧版本没读到」:
+    do not invent it and do not drop it. On 2026-08-30 the MaaEnd notice read only
+    「已更新：v2.27.0-beta.1」, with no way to tell what it came from; the user, on
+    2026-09-01, asked for one consistent shape across all four programs, each
+    carrying 「老版本号 → 新版本号」.
     """
     if old and old != new:
         return f"{old} → {new}"
-    # 旧版等于新版不是「没更新」，是旧版号读错了——更新后的进程自报的
-    # 「当前版本」就是新版号。2026-09-06、09-07 两天的 MaaEnd 通知都只有
-    # 一个版本号，就是这条分支把它当成「同版只报一次」吞掉的。
+    # Old == new does not mean "no update", it means the old version was read
+    # wrong - the post-update process reports the new version as its
+    # 「当前版本」. On 2026-09-06 and 09-07 the MaaEnd notices carried only one
+    # version number, because this branch swallowed it as "same version, report
+    # once".
     return f"（旧版本没读到）→ {new}"
 
 
-_maaend_span = _span      # 旧名字，测试和别处还在用
+_maaend_span = _span      # old name, still used by the tests and elsewhere
 
-_VERSION_FILE = "maaend-version.txt"   # 中继自己记的、上一次确认过的 MaaEnd 版本
+_VERSION_FILE = "maaend-version.txt"   # the last MaaEnd version the relay itself confirmed
 
 
 def _pick_old(candidates, new: str) -> str:
-    """旧版本号：按可信度顺序取第一个非空、且**不等于新版本**的。
+    """Old version: the first candidate, in order of trustworthiness, that is
+    non-empty and **not equal to the new version**.
 
-    等于新版本的一律不算——那是更新之后读到的。四个来源见 _run_maaend。
+    Anything equal to the new version is discarded - that reading was taken after
+    the update. The four sources are listed in _run_maaend.
     """
     for c in candidates:
         if c and c != new:
@@ -120,11 +126,13 @@ def _pick_old(candidates, new: str) -> str:
 
 
 def _remembered_version(state_dir) -> str:
-    """中继上一次预更新确认过的 MaaEnd 版本。没有就空串。
+    """The MaaEnd version the relay confirmed during its previous pre-update. "" if none.
 
-    MaaEnd 装更新会把自己的 debug 目录连旧日志一起换掉（2026-09-07 实测：
-    更新后目录里只剩新进程那一份日志），interface.json 也已经是新的。
-    那时只有中继自己记的这一份还知道昨天是什么版本。记在 state.json 的 versions 段。
+    Installing a MaaEnd update replaces its debug directory, old logs included
+    (measured 2026-09-07: after the update the directory held only the new
+    process's log), and interface.json is already the new one by then. At that
+    point this record the relay keeps for itself is the only thing that still
+    knows yesterday's version. Stored in the `versions` section of state.json.
     """
     if not state_dir:
         return ""
@@ -143,11 +151,13 @@ def _remember_version(state_dir, ver: str) -> None:
 
 
 def _maaend_file_version(maaend_dir: Path) -> str:
-    """MaaEnd 自己的 interface.json 里的 version——不依赖日志时机。
+    """The `version` in MaaEnd's own interface.json - independent of log timing.
 
-    2026-08-30 08:46:23 启动、08:46:33 就「刚更新完成」：更新包是前一天
-    跑队列时下载好的，启动即装、装完重启，旧版本那行日志根本没机会被
-    读到。文件里的版本号在启动**之前**读，就没有这个时机问题。
+    2026-08-30: launched 08:46:23 and already 「刚更新完成」 by 08:46:33. The update
+    package had been downloaded during the previous day's queue run, so it
+    installed on launch and restarted immediately, and the old-version log line
+    never had a chance to be read. Reading the version out of the file **before**
+    launch has no such timing problem.
     """
     try:
         data = json.loads((Path(maaend_dir) / "interface.json")
@@ -171,13 +181,16 @@ def _run_maaend(maaend_dir: Path, exe: Path, budget_s: float,
              budget_s)
 
     updated_to = ""
-    # 升级前的版本号，四个来源，按可信度排：
-    #   launch_ver  本次启动、装更新**之前**那个进程自报的「当前版本」
-    #   file_ver    启动前读的 interface.json
-    #   prev_ver    上一次启动的日志
-    #   kept_ver    中继上次预更新记下的版本（MaaEnd 更新会把旧日志清掉）
-    # 最后由 _pick_old 取第一个不等于新版本的。**更新后的进程也会写一行
-    # 「当前版本」，写的是新版号**——2026-09-06/07 两天就是被它覆盖了旧版号。
+    # The pre-upgrade version, four sources, ordered by trustworthiness:
+    #   launch_ver  the 「当前版本」 self-reported by this launch's process
+    #               **before** the update was installed
+    #   file_ver    interface.json, read before launch
+    #   prev_ver    the previous launch's log
+    #   kept_ver    the version the relay recorded during its last pre-update
+    #               (a MaaEnd update wipes the old logs)
+    # _pick_old then takes the first one that differs from the new version.
+    # **The post-update process also writes a 「当前版本」 line, carrying the new
+    # version** - that is what overwrote the old version on 2026-09-06/07.
     launch_ver = ""
     file_ver = _maaend_file_version(maaend_dir)
     prev_ver = _maaend_version_in(before)
@@ -198,8 +211,9 @@ def _run_maaend(maaend_dir: Path, exe: Path, budget_s: float,
             continue        # this launch has not opened its log yet
         text = _read(current)
         if (m2 := _CURRENT.search(text)) and not _UPDATED.search(text):
-            # 装完更新重启后的进程也写「当前版本」，但那已经是新版号，
-            # 只有同一份日志里没有「刚更新完成」时它才是旧版号。
+            # The process restarted after installing an update writes
+            # 「当前版本」 too, but by then it is the new version; it is the old
+            # version only when the same log has no 「刚更新完成」 in it.
             launch_ver = m2.group(1)
         if m := _UPDATED.search(text):
             updated_to = m.group(1)
@@ -239,7 +253,7 @@ def _run_maaend(maaend_dir: Path, exe: Path, budget_s: float,
 
 
 def _close(exe: Path) -> None:
-    """Leave nothing running. AUTO-MAS kills it before每轮 anyway, but a pre-update
+    """Leave nothing running. AUTO-MAS kills it before every round anyway, but a pre-update
     that leaves a window on the desktop is a pre-update that changed the thing it
     was supposed to leave alone."""
     try:

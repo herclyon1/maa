@@ -37,10 +37,12 @@ class State:
     def __init__(self, state_dir: Path):
         self.dir = state_dir
         self.dir.mkdir(parents=True, exist_ok=True)
-        self.seen_path = self.dir / "seen.txt"      # 只追加、会长很大，留作文件
+        self.seen_path = self.dir / "seen.txt"      # append-only and grows large; stays its own file
         self._seen: set[str] | None = None
-        # 当天标记和告警队列都在 state.json 里（docs/STATE-MODEL.md）：原来是十几个
-        # 零散的 .sent / .json，谁写谁读全靠记，一处写晚就出一个假状态。
+        # The day's markers and the alert queue all live in state.json
+        # (docs/STATE-MODEL.md): they used to be a dozen scattered .sent / .json
+        # files where who wrote and who read what was carried in someone's head,
+        # and one late write produced a false state.
         self.store = StateStore(state_dir)
 
     @property
@@ -74,7 +76,8 @@ class State:
             "ok": rec.ok,
             "failed_tasks": rec.failed_tasks,
             "duration_known": rec.duration_known,
-            # 让写日报的模型知道这条不是失败，是被下一轮取代
+            # Tells the model writing the report that this is not a failure but
+            # a record superseded by the next round
             "transitional": rec.transitional,
             # The model reads this verbatim. Keeping AUTO-MAS's own output
             # means the report can never disagree with what actually happened.
@@ -87,14 +90,17 @@ class State:
         day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
         with self.ledger_path(day).open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        # 顺手给当前代码版本记一笔分。放在这里是因为**每一趟跑完都必经这一行**，
-        # 我写进日报的任何字都动不了它——这正是用户 2026-09-06 要的：
+        # Score the current code version while we are here. It sits here because
+        # **every finished run has to pass through this line**, so nothing I write
+        # into the daily report can touch it - which is exactly what the user
+        # asked for on 2026-09-06:
         # 「我说『修好了』而它写『失败 1 趟』，谎话当场现形。」
         try:
             scoreboard.record(self.store, str(self.store.get("versions", "code") or ""),
                               rec.ok, rec.transitional)
         except Exception:
-            # 记分牌不许拖垮记账：账本是主线，这一笔是附带的。
+            # The scoreboard must never take the bookkeeping down with it: the
+            # ledger is the main line, this entry is incidental.
             log.warning("记分牌没记上", exc_info=True)
 
     # What every consumer of a ledger entry assumes is present. Checked once,
@@ -128,9 +134,12 @@ class State:
                 log.warning("账目里有一条残缺记录（缺 %s），已跳过: %.120s",
                             "、".join(missing), ln)
                 continue
-            # 键在不等于值对。日报和关机判定都要拿 started/finished 去
-            # fromisoformat，一条解析不了的记录会让整天的日报发不出去，
-            # 关机等日报，机器就开一夜。和上面缺键是同一类事，同样跳过。
+            # A key being present does not mean its value is right. Both the
+            # daily report and the shutdown decision run started/finished through
+            # fromisoformat, and one unparseable record stops the whole day's
+            # report from going out; shutdown waits for that report, so the
+            # machine stays on all night. Same class of problem as the missing
+            # keys above, and skipped the same way.
             bad = [k for k in ("started", "finished")
                    if not _is_iso(entry.get(k))]
             if bad:
@@ -173,7 +182,8 @@ class State:
         try:
             return int(str(raw).strip())
         except (TypeError, ValueError):
-            # 旧的空标记（2026-08-20 之前）：发过，条数不详——绝不重播已报过的轮次。
+            # An old empty marker (before 2026-08-20): sent, count unknown -
+            # never replay rounds that were already reported.
             return 10**6
 
     def mark_interim_sent(self, day: str, covered: int = 1) -> None:
@@ -188,8 +198,9 @@ class State:
         self.store.set("marks", f"report:{day}",
                        datetime.now(tz=SERVER_TZ).isoformat(timespec="seconds"))
 
-    # 卡池开服前一天要在群里播一条。按「游戏+开始时刻」记，不按天记——
-    # 按天记的话，同一天有两个游戏换池就只播得出一个。
+    # The day before a banner goes live, say something in the group. Recorded by
+    # "game + start time", not by day - keyed by day, two games rotating banners
+    # on the same day would only ever get one announcement out.
     def banner_announced(self, key: str) -> bool:
         return self.store.get("marks", f"banner:{key}") is not None
 
@@ -252,9 +263,10 @@ def _fmt_failed(names: list[str], limit: int = 3) -> str:
     wrong and unreadable on a phone.
     """
     names = names or ["未知"]
-    # 一定要带上「失败于」三个字。2026-08-27 的日报里这行只写了
-    # 「赠送干员礼物、装备制造、基建任务」，看的人完全不知道这是失败清单
-    # 还是运行清单——❌ 是哪一步断的，必须一眼能看出来。
+    # The words 「失败于」 must be there. In the daily report of 2026-08-27 this
+    # line read only 「赠送干员礼物、装备制造、基建任务」, and the reader had no way
+    # to tell whether that was the failure list or the run list - which step the
+    # ❌ broke on has to be obvious at a glance.
     if len(names) <= limit:
         return "失败于：" + "、".join(names)
     return f"失败于 {len(names)} 项：" + "、".join(names[:limit]) + "…"
@@ -304,14 +316,18 @@ def _sanity_full(raw: str, ref: datetime) -> str:
 
 
 def episode_kinds(entries: list[dict]) -> dict[str, str]:
-    """把「看着像失败、其实不是故障」的记录分出来。run_id → 类型。
+    """Pick out records that look like failures but are not faults. run_id -> kind.
 
-    "update"      鸣潮：一串连续失败里含「游戏更新成功，即将重启任务」，
-                  且紧接着就有一趟成功——整串都是客户端更新的插曲。
-                  2026-09-02 早班：09:18 更新重启、09:20 失败、09:28 成功，
-                  日报却写「❌ ❌」还推了一条 ⚠️ 自愈，用户点名的假报警。
-    "maintenance" 终末地：任务全部秒败、零完成（collector.maaend_unreachable），
-                  根本没进游戏——服务器维护或客户端待更新，不是配置问题。
+    "update"      Wuthering Waves: a run of consecutive failures containing
+                  「游戏更新成功，即将重启任务」 followed immediately by a success -
+                  the whole run is an episode of the client updating.
+                  2026-09-02 morning shift: 09:18 update restart, 09:20 failure,
+                  09:28 success, yet the report said 「❌ ❌」 and pushed a ⚠️
+                  self-heal notice - a false alarm the user called out by name.
+    "maintenance" Endfield: every task fails instantly with zero completions
+                  (collector.maaend_unreachable), i.e. the game was never
+                  entered - server maintenance or a client update pending, not a
+                  configuration problem.
     """
     kinds: dict[str, str] = {}
     groups: dict[tuple, list[dict]] = {}
@@ -345,15 +361,19 @@ _KIND_NOTE = {"update": "游戏更新后重跑，不算失败",
               "soft": "其余都做了，只有上游还没修好的那项没成"}
 
 
-# ── 三个游戏一个版式：以 MAA 为样板 ─────────────────────────
-# 用户 2026-09-02：「模范生就是 MAA，你要青出于蓝而胜于蓝」。五行的**语义**：
-#   做了　刷（什么）×次数
-#   消耗　理智 N，吃药 N（鸣潮：波片 N，备用体力 N；终末地：理智 N，加强剂 N）
-#   产出　这次刷本的掉落（鸣潮不读奖励界面，只能说类别）
-#   剩余　理智 N/上限，回满时刻
-#   备注　额外任务：公招、残像聚落、日常清单、自动采集……
-# 没有的写「—」。三家字段都来自 collector 的解析器，MaaEnd/OK-WW 自己不产
-# 这些数，是我们从它们的日志里算出来的。
+# ── One layout for all three games, modelled on MAA ─────────────────────────
+# The user, 2026-09-02: 「模范生就是 MAA，你要青出于蓝而胜于蓝」. The **meaning** of
+# the five rows:
+#   做了　farmed (what) x times
+#   消耗　sanity N, potions N (Wuthering Waves: waveplates N, backup stamina N;
+#         Endfield: sanity N, boosters N)
+#   产出　what this farming run dropped (Wuthering Waves does not read the reward
+#         screen, so only the category can be given)
+#   剩余　sanity N/cap, and when it refills
+#   备注　extra tasks: recruitment, tacet nests, the daily list, auto-collect ...
+# Anything absent is written as 「—」. All three games' fields come from
+# collector's parsers; MaaEnd and OK-WW do not produce these numbers themselves,
+# we compute them from their logs.
 _LABELS = ("做了", "消耗", "产出", "剩余", "备注")
 
 
@@ -362,11 +382,14 @@ def _row(label: str, parts: list[str]) -> str:
 
 
 def _block_maa(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ...]:
-    """明日方舟这一趟的五行内容：做了／消耗／产出／剩余／备注。
+    """The five rows for one Arknights run: 做了 / 消耗 / 产出 / 剩余 / 备注.
 
-    单独成步是因为三家的取数规则毫无重合：关卡名、理智、理智药、公招都只有
-    MAA 有。合在一处时想改 MAA 得先跳过另外两家六十来行，改错了也看不出来。
-    返回的五个列表按 _LABELS 的顺序排，交给 _block 拼成五行。
+    Its own function because the three games share no data-extraction rules at
+    all: stage names, sanity, sanity potions and recruitment exist only for MAA.
+    Merged into one place, changing MAA meant skipping sixty-odd lines belonging
+    to the other two, and getting it wrong was invisible.
+    The five returned lists are ordered per _LABELS; _block assembles them into
+    the five rows.
     """
     did: list[str] = []
     cost: list[str] = []
@@ -376,17 +399,20 @@ def _block_maa(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ...]:
     if stages := raw.get("stages"):
         did.append("刷 " + "、".join(stages) + (f" ×{t}" if (t := raw.get("run_times")) else ""))
     elif not raw.get("sanity_spent"):
-        # 作战关掉时这一趟只做基建、公招、领取。原来五行全是「—」，
-        # 看不出它到底跑没跑，也看不出为什么没刷关卡。
+        # With combat turned off, the run only does base, recruitment and
+        # collecting rewards. All five rows used to read 「—」, which showed
+        # neither whether it ran at all nor why no stage was farmed.
         did.append("只做日常（未刷关卡）")
     if raw.get("sanity_spent") or raw.get("medicine_used"):
         cost.append(f"理智 {raw.get('sanity_spent') or 0}，吃药 {raw.get('medicine_used') or 0}")
     if drops := _fmt_items(e.get("drops") or {}):
         out.append(drops)
-    # 刷完关卡把理智花到 0，那个 0 是真数据，要照印。
-    # 但作战关掉的那趟根本没读过理智，MAA 同样记 0——那是「没有数据」，
-    # 印成「剩余 理智 0」就是谎话（账号里明明还有理智）。
-    # 用有没有真的打过来区分：打过才认这个数。
+    # Farming a stage down to 0 sanity means that 0 is real data and must be
+    # printed as-is. But a run with combat turned off never read sanity at all
+    # and MAA records 0 for that too - that 0 means "no data", and printing it as
+    # 「剩余 理智 0」 is a lie (the account plainly still has sanity).
+    # Tell them apart by whether anything was actually fought: only then is the
+    # number trusted.
     fought = bool(raw.get("stages") or raw.get("sanity_spent"))
     if e.get("sanity") is not None and (fought or e.get("sanity")):
         s = f"理智 {e['sanity']}"
@@ -400,11 +426,14 @@ def _block_maa(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ...]:
 
 
 def _block_okww(raw: dict, finished: datetime) -> tuple[list[str], ...]:
-    """鸣潮（OK-WW）这一趟的五行内容：做了／消耗／产出／剩余／备注。
+    """The five rows for one Wuthering Waves (OK-WW) run: 做了 / 消耗 / 产出 / 剩余 / 备注.
 
-    单独成步是因为鸣潮的口径自成一套：体力叫「波片」、另有一份备用体力、
-    剩余读数不一定是精确值，额外任务要从 okww_steps 里逐条挑。
-    返回的五个列表按 _LABELS 的顺序排，交给 _block 拼成五行。
+    Its own function because Wuthering Waves measures everything its own way:
+    stamina is called 「波片」, there is a separate pool of backup stamina, the
+    remaining figure is not necessarily exact, and extra tasks have to be picked
+    out of okww_steps one by one.
+    The five returned lists are ordered per _LABELS; _block assembles them into
+    the five rows.
     """
     did: list[str] = []
     cost: list[str] = []
@@ -433,7 +462,7 @@ def _block_okww(raw: dict, finished: datetime) -> tuple[list[str], ...]:
             s += "，" + full
         left.append(s)
     for step in raw.get("okww_steps") or []:
-        # 刷本那一项已经在「做了」里，这里只留额外任务
+        # The farming entry is already in 做了; keep only the extra tasks here
         if any(k in step for k in ("模拟领域", "凝素领域", "无音区")):
             continue
         notes.append(step)
@@ -446,11 +475,14 @@ def _block_okww(raw: dict, finished: datetime) -> tuple[list[str], ...]:
 
 
 def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ...]:
-    """终末地（MaaEnd）这一趟的五行内容：做了／消耗／产出／剩余／备注。
+    """The five rows for one Endfield (MaaEnd) run: 做了 / 消耗 / 产出 / 剩余 / 备注.
 
-    单独成步是因为终末地独有几件事：理智有上限、会溢出要提醒，日常清单长，
-    得缩成「日常 1-N 项完成」再把名单放到通知末尾。
-    返回的五个列表按 _LABELS 的顺序排，交给 _block 拼成五行。
+    Its own function because Endfield has a few things nothing else has: sanity
+    has a cap and can overflow, which needs a warning, and the daily list is long
+    enough that it has to be collapsed into 「日常 1-N 项完成」 with the names moved
+    to the end of the notification.
+    The five returned lists are ordered per _LABELS; _block assembles them into
+    the five rows.
     """
     did: list[str] = []
     cost: list[str] = []
@@ -481,8 +513,9 @@ def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ..
     done = [t for t in (raw.get("tasks_done") or []) if not any(k in t for k in _END_FARM_NOTE_SKIP)]
     failed = raw.get("tasks_failed") or []
     if done or failed:
-        # 用户 2026-09-02：备注太多，缩成「日常 1-16 项完成」，名单当注释
-        # 放到整条通知的最末（见 daily_footnote）。
+        # The user, 2026-09-02: too many notes - collapse them into
+        # 「日常 1-16 项完成」 and move the list to the very end of the
+        # notification as a footnote (see daily_footnote).
         n = f"日常 1-{len(done)} 项完成" if done else "日常 0 项"
         if failed:
             n += "；失败 " + "、".join(failed)
@@ -508,12 +541,14 @@ def _block(e: dict, finished: datetime) -> list[str]:
     return [_row(l, v) for l, v in zip(_LABELS, rows)]
 
 
-# 「做了」里已经写了刷本，日常清单里就不再重复它，也不算「结束进程」那种收尾
+# Farming is already stated in 做了, so it is not repeated in the daily list,
+# and wrap-up steps like 「结束进程」 do not count either
 _END_FARM_NOTE_SKIP = ("基质刷取", "协议空间", "结束进程")
 
 def daily_footnote(entries: list[dict]) -> str:
-    """通知最末的注释：终末地日常清单的编号对照。「日常 1-16 项完成」里的
-    数字就是这里的序号。取当天最后一趟成功的 MaaEnd；没有就返回空串。"""
+    """The footnote at the end of the notification: the numbered key to Endfield's
+    daily list. The number in 「日常 1-16 项完成」 is the index here. Uses the last
+    successful MaaEnd run of the day; returns an empty string if there is none."""
     for e in reversed(entries):
         if e.get("script") != "MaaEnd" or not e.get("ok"):
             continue
@@ -556,7 +591,8 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
         tag = "（剿灭检查）" if raw.get("annihilation") else ""
         lines.append(icon + f" {e['script']}{tag}　"
                      + _span(started, finished, e.get('duration_known', True)))
-        # 没跑成的、剿灭检查那一分钟：只有一行备注，不摆五个空格子。
+        # For a run that did not go through, and for the one-minute annihilation
+        # check: a single note row, not five empty slots.
         if kind == "soft":
             note = "没做成：" + "、".join(e.get("failed_tasks") or []) + "（上游问题，不算失败）"
             if routes := raw.get("maaend_collect_done"):

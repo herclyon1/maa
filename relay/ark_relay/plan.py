@@ -20,9 +20,11 @@ from .config import SERVER_TZ, USER_TZ, atomic_write_text
 
 log = logging.getLogger("ark.plan")
 
-# 活动结束后这条提醒还出现多久。MAA 的活动缓存会把早已过期的活动一直留着
-# （"红丝绒" 几个月前就没了还在里面），所以必须有窗口；三天足够跨过一个周末，
-# 又不至于变成常驻噪声。提醒正文会写出剩余时长，免得看起来像卡住了。
+# How long this reminder keeps showing after an event has ended. MAA's event
+# cache holds on to events that expired long ago ("红丝绒" was gone months back
+# and is still in there), so a window is mandatory; three days is enough to span
+# a weekend without turning into permanent noise. The reminder text spells out
+# how much of the window is left, so it does not look stuck.
 _EXPIRED_REMINDER = timedelta(days=3)
 
 # AUTO-MAS stores per-user settings under an opaque uid; walk to them by shape
@@ -66,8 +68,9 @@ def _script_kind(path: str) -> str:
         return "MaaEnd"
     if "maa" in p:
         return "MAA"
-    # 路径是 D:\ark\okww，里面没有 "maa"——2026-08-27 之前这里返回空串，
-    # 明日安排里 OK-WW 那行因此永远是光秃秃的一个名字。
+    # The path is D:\ark\okww, which contains no "maa" - before 2026-08-27 this
+    # returned "", so the OK-WW line in tomorrow's plan was forever nothing but
+    # a bare name.
     if "okww" in p or "ok-ww" in p:
         return "OK-WW"
     return ""
@@ -90,8 +93,9 @@ def _scripts(cfg_dir: Path) -> dict[str, dict]:
             if not isinstance(user, dict):
                 continue
             info, task = user.get("Info") or {}, user.get("Task") or {}
-            # 作战开关。关掉时明天一关都不刷，明日安排必须照实说，
-            # 否则那行「理智 1-7（固定）」写的是一件明天不会发生的事。
+            # The combat switch. With it off, not a single stage is farmed
+            # tomorrow, and the plan has to say so - otherwise the line
+            # 「理智 1-7（固定）」 describes something that will not happen.
             if "IfFight" in task:
                 entry["fight"] = bool(task.get("IfFight"))
             if info.get("Stage"):
@@ -156,12 +160,13 @@ _OKWW_PO_CACHE: dict[str, str] | None = None
 
 
 def _okww_zh(okww_dir: Path | None) -> dict[str, str]:
-    """OK-WW 自带的官方简体中文译文表（msgid → msgstr）。
+    """OK-WW's own official Simplified Chinese translation table (msgid -> msgstr).
 
-    汇报里不该出现英文任务名。2026-08-27 的明日安排写着
-    「附加 Check Weekly Garden、Merge Echo If discar」，既是英文又被截断。
-    译文用**它自己的语言包**，不自己编——`Tacet Discord Nest` 官方译作
-    「残像聚落」，我先前凭感觉写成「无音区巢穴」就是错的。
+    English task names must not appear in a report. Tomorrow's plan on
+    2026-08-27 read 「附加 Check Weekly Garden、Merge Echo If discar」 - English
+    and truncated at that. Translations come from **its own language pack**, they
+    are never invented: `Tacet Discord Nest` is officially 「残像聚落」, and the
+    「无音区巢穴」 I wrote from intuition earlier was simply wrong.
     """
     global _OKWW_PO_CACHE  # noqa: PLW0603
     if _OKWW_PO_CACHE is not None:
@@ -185,25 +190,29 @@ def _okww_zh(okww_dir: Path | None) -> dict[str, str]:
     return _OKWW_PO_CACHE
 
 
-# OK-WW 的附加任务清单里，「刷满所有梦魇巢穴」那一项的键名。巢穴那一行和附加
-# 任务那一行都要认它（一个据它写「刷到打满」，一个据它把这项从附加里剔掉），
-# 抄成两份迟早会对不上。
+# The key for the 「刷满所有梦魇巢穴」 entry in OK-WW's additional-task list. Both
+# the nest line and the additional-task line have to recognise it (one uses it to
+# write 「刷到打满」, the other to drop the entry from the additional list), and two
+# copies of the string would eventually disagree.
 _NEST_FULL = "Auto Farm all Nightmare Nest"
 
 
 def _okww_farm_bit(daily: dict, zh: dict[str, str]) -> str:
-    """体力那一行：明天把体力刷在哪个副本、出什么。空串表示这一行不写。
+    """The stamina line: which instance tomorrow's stamina goes into, and what it
+    yields. "" means the line is omitted.
 
-    单独成一步，是因为这里是一棵四选一的分支树，每个分支各有各的名字表；
-    它和后面的巢穴、附加任务两行没有任何共用的中间量，混在一处读的时候
-    看不出哪几行是互斥的。
+    A step of its own because this is a four-way branch tree where each branch
+    has its own name table; it shares no intermediate value with the nest and
+    additional-task lines that follow, and reading them interleaved hides which
+    lines are mutually exclusive.
     """
-    from . import collector  # noqa: PLC0415 - 复用凝素领域的名字表，避免两处维护
+    from . import collector  # noqa: PLC0415 - reuse of the forgery name table, kept in one place
     which = daily.get("Which to Farm") or ""
-    # 两处都用共用的对照表，序号一律 1 起算（和游戏 F2 列表一致）。
-    # 2026-09-08 之前这里自己抄了一份 collector._FORGERY_NAMES，那份只有 4 条，
-    # 而手机页早就能选第 5 个——选了就写成「凝素领域·#5」。
-    from . import wuwa_forgery, wuwa_tacet  # noqa: PLC0415 - 避免导入环
+    # Both branches use the shared lookup tables, always 1-based (matching the
+    # in-game F2 list). Before 2026-09-08 this file kept its own copy of
+    # collector._FORGERY_NAMES, which had only 4 entries, while the phone page
+    # could already pick the 5th - and picking it wrote 「凝素领域·#5」.
+    from . import wuwa_forgery, wuwa_tacet  # noqa: PLC0415 - avoids an import cycle
     if which == "Forgery Challenge":
         idx = int(daily.get("Which Forgery Challenge to Farm") or 1)
         return f"体力刷 {wuwa_forgery.label(idx)}，出 {wuwa_forgery.reward(idx)}"
@@ -221,17 +230,22 @@ def _okww_farm_bit(daily: dict, zh: dict[str, str]) -> str:
 
 def _okww_nest_bit(daily: dict, nest: dict, adds: list[str],
                    zh: dict[str, str]) -> str:
-    """残象聚落那一行：打哪些点位、打到什么程度。空串表示这一行不写。
+    """The tacet nest line: which spots get fought, and how far. "" means the line
+    is omitted.
 
-    单独成一步，是因为「明天到底打不打、打多少」这件事散在三个不同的配置键里
-    （附加任务清单里的刷满勾、日常任务里的每日声骸勾、巢穴任务自己的点位范围），
-    得先合成一句话才能写进汇报；这段合并逻辑和它前后两行互不相干。
+    A step of its own because "will it be fought tomorrow, and how much" is
+    spread across three different config keys (the farm-to-full checkbox in the
+    additional-task list, the daily-echo checkbox in the daily task, and the nest
+    task's own spot range), and they have to be merged into one sentence before
+    anything can be reported. That merge logic has nothing to do with the lines
+    on either side of it.
     """
     nest_label = zh.get("Tacet Discord Nest", "残像聚落")
-    # 「自动刷所有梦魇巢穴」这个勾其实只决定走刷满还是走抓一个声骸就停，
-    # 刷什么范围由巢穴任务自己的两个选项管。所以不能原样列成一条附加任务：
-    # 上一行刚说「只打落渊南丘」，下一行再来个「附加 自动刷所有梦魇巢穴」，
-    # 自相矛盾。把它折进巢穴那一行，写它真正的效果。
+    # The 「自动刷所有梦魇巢穴」 checkbox only decides between farming to full and
+    # stopping after one echo; the range farmed is governed by the nest task's own
+    # two options. So it must not be listed verbatim as an additional task: one
+    # line saying 「只打落渊南丘」 followed by 「附加 自动刷所有梦魇巢穴」
+    # contradicts itself. Fold it into the nest line and state its real effect.
     scope = (nest.get("Only Farm These Nests") or "").strip()
     where = f"只打{scope}" if scope else "全部点位"
     if _NEST_FULL in adds:
@@ -244,15 +258,19 @@ def _okww_nest_bit(daily: dict, nest: dict, adds: list[str],
 
 
 def _okww_extra_bit(cfg_dir: Path, adds: list[str], zh: dict[str, str]) -> str:
-    """附加任务那一行。空串表示这一行不写。
+    """The additional-task line. "" means the line is omitted.
 
-    单独成一步，是因为这一步要多读一个配置文件（FarmEchoTask.json）、还要去问
-    中继自己的周本记账，才能判断「传送刷 4C 声骸」这一项到底是刷声骸还是被
-    周本补丁征用了。这些都和前两行读的配置无关，留在主函数里会把主线埋掉。
+    A step of its own because it has to read one more config file
+    (FarmEchoTask.json) and consult the relay's own weekly-boss bookkeeping to
+    decide whether the 「传送刷 4C 声骸」 entry really farms echoes or has been
+    commandeered by the weekly-boss patch. None of that relates to the config the
+    two preceding lines read, and leaving it in the main function buries the main
+    thread of it.
     """
-    # 「Teleport and Farm 4C Echo」在我们这里被周本补丁征用：FarmEchoTask 的
-    # Teleport to Boss = Weekly Challenge 时，它跑的是周本领奖，不是刷声骸。
-    # 用户 2026-09-02：「我敢百分百确定鸣潮没有传送刷取 4C 的任务」——写周本。
+    # 「Teleport and Farm 4C Echo」 is commandeered here by the weekly-boss patch:
+    # when FarmEchoTask's Teleport to Boss = Weekly Challenge, it collects the
+    # weekly-boss reward rather than farming echoes. The user, 2026-09-02:
+    # 「我敢百分百确定鸣潮没有传送刷取 4C 的任务」 - so report the weekly boss.
     farm_f = cfg_dir / "FarmEchoTask.json"
     try:
         farm_cfg = json.loads(farm_f.read_text(encoding="utf-8")) if farm_f.is_file() else {}
@@ -268,7 +286,8 @@ def _okww_extra_bit(cfg_dir: Path, adds: list[str], zh: dict[str, str]) -> str:
             idx = int(farm_cfg.get("Which Weekly Boss to Teleport") or 1)
             done, nm = _weekly_boss_state()
             label = f"周本 {nm or f'战歌重奏第 {idx} 个'}" + (f"（{lvl} 级）" if lvl else "")
-            # 用户 2026-09-02：「不是说都刷完了吗？」——本周已打满就明说明天不打
+            # The user, 2026-09-02: 「不是说都刷完了吗？」 - once the week's quota
+            # is full, say outright that it will not be fought tomorrow
             rest.append(label + ("，本周已打满，明天不打" if done else "，明天会打"))
         else:
             rest.append(zh.get(str(a), str(a)))
@@ -277,18 +296,22 @@ def _okww_extra_bit(cfg_dir: Path, adds: list[str], zh: dict[str, str]) -> str:
         if len(rest) > 2:
             shown += f" 等 {len(rest)} 项"
         return "附加 " + shown
-    # 没有附加任务就不写——「无附加任务」这一行不携带任何信息。
+    # No additional tasks means no line at all - 「无附加任务」 carries no
+    # information.
     return ""
 
 
 def _okww_plan_bits(automas_dir: Path | None,
                     okww_dir: Path | None = None) -> list[str]:
-    """明日 OK-WW 会刷什么，从真正生效的母本配置里读出来。
+    """What OK-WW will farm tomorrow, read from the master config that actually
+    takes effect.
 
-    2026-08-27 的日报里 OK-WW 那行是光秃秃的「· OK-WW」——用户看不到
-    明天要刷哪个副本、打不打残象聚落。信息就在
-    `<automas>/data/<脚本id>/Default/ConfigFile/` 里（跑之前会整个复制给
-    OK-WW 的那份母本），读它，不读会被覆盖的 OK-WW 自带配置。
+    In the 2026-08-27 daily report the OK-WW line was a bare 「· OK-WW」 - the user
+    could not see which instance would be farmed or whether the tacet nests would
+    be fought. The information lives in
+    `<automas>/data/<script id>/Default/ConfigFile/` (the master copied wholesale
+    to OK-WW before each run); read that, not OK-WW's own config, which gets
+    overwritten.
     """
     if not automas_dir:
         return []
@@ -307,9 +330,11 @@ def _okww_plan_bits(automas_dir: Path | None,
                     if nest_f.is_file() else {})
         except (OSError, ValueError):
             continue
-        # 快速配置会用 AUTO-MAS 用户配置里的 Task.* 覆盖掉母本的对应键，
-        # 所以母本里的附加任务清单**不是**实际会跑的那一份。
-        # 2026-08-27 的明日安排里因此列出了三个根本不会执行的附加任务。
+        # Quick config overrides the corresponding master keys with Task.* from
+        # the AUTO-MAS user config, so the additional-task list in the master is
+        # **not** the one that will actually run. That is why tomorrow's plan on
+        # 2026-08-27 listed three additional tasks that were never going to
+        # execute.
         quick = _okww_quick_overrides(automas_dir)
         if quick is not None:
             daily = {**daily, **quick}
@@ -324,7 +349,8 @@ def _okww_plan_bits(automas_dir: Path | None,
 
 
 def _weekly_boss_state() -> "tuple[bool, str]":
-    """(本周是否已打满, Boss 名) —— 读中继自己的周本记账（weeklyboss 模块）。"""
+    """(quota full this week?, boss name) - reads the relay's own weekly-boss
+    bookkeeping (the weeklyboss module)."""
     try:
         import os  # noqa: PLC0415
         from .weeklyboss import WeeklyBossGate  # noqa: PLC0415
@@ -336,10 +362,11 @@ def _weekly_boss_state() -> "tuple[bool, str]":
 
 
 def _okww_quick_overrides(automas_dir: Path | None) -> dict | None:
-    """AUTO-MAS「快速配置」实际下发给 OK-WW 的那几个键。
+    """The keys AUTO-MAS's 「快速配置」 (quick config) actually pushes to OK-WW.
 
-    返回 None 表示没开快速配置（母本原样生效）。
-    键名对照抄自 `app/task/Okww/AutoProxy.py`，改那边时这里要跟着改。
+    None means quick config is off (the master config takes effect as written).
+    The key mapping is copied from `app/task/Okww/AutoProxy.py`; when that
+    changes, this has to change with it.
     """
     if not automas_dir:
         return None
@@ -361,8 +388,9 @@ def _okww_quick_overrides(automas_dir: Path | None) -> dict | None:
     if not isinstance(root, dict):
         return None
     for script in root.values():
-        # 顶层不全是脚本节点，还混着列表之类的东西——2026-08-27 实测
-        # 直接 .get() 会 AttributeError，把整份明日安排打断。
+        # The top level is not all script nodes; lists and the like are mixed in.
+        # Measured 2026-08-27: calling .get() straight away raises AttributeError
+        # and breaks the whole plan.
         if not isinstance(script, dict):
             continue
         if (script.get("Info") or {}).get("Name") != "OK-WW":
@@ -382,11 +410,13 @@ def _okww_quick_overrides(automas_dir: Path | None) -> dict | None:
 
 
 def _maaend_extra_bits(maaend_dir: Path | None, when) -> list[str]:
-    """MaaEnd 那一轮除了日常之外还会跑什么——目前只关心自动采集。
+    """What the MaaEnd round runs besides the dailies - for now, only AutoCollect.
 
-    2026-08-27 用户在 MaaEnd 里给 AUTO-MAS 实例加了 AutoCollect，排在第一位，
-    实测跑了 33 分钟。它只在选中的星期跑，而明日安排此前完全看不出这件事：
-    到了那天早班会毫无预兆地多花半小时，理智药和协议空间全被推后。
+    On 2026-08-27 the user added AutoCollect to the AUTO-MAS instance inside
+    MaaEnd, in first position; measured, it ran for 33 minutes. It only runs on
+    the selected weekdays, and tomorrow's plan gave no hint of this at all: on one
+    of those days the morning shift would spend an unannounced extra half hour,
+    pushing back the sanity potions and the protocol space.
     """
     if not maaend_dir:
         return []
@@ -423,17 +453,19 @@ def _maaend_extra_bits(maaend_dir: Path | None, when) -> list[str]:
 
 
 def _tomorrow():
-    """服务器时区的明天。明日安排讲的是那一天，不是今天。"""
+    """Tomorrow in the server timezone. The plan is about that day, not today."""
     return datetime.now(SERVER_TZ) + timedelta(days=1)
 
 
-# 排班里显示的是游戏名，不是工具名。用户 2026-08-31：「那个排班搞好看一点」。
-# 他关心的是哪个游戏明天干什么，MAA / MaaEnd / OK-WW 是实现细节。
+# The schedule shows game names, not tool names. The user, 2026-08-31:
+# 「那个排班搞好看一点」. What he cares about is which game does what tomorrow;
+# MAA / MaaEnd / OK-WW are implementation detail.
 _GAME_OF = {"MAA": "明日方舟", "MaaEnd": "终末地", "OK-WW": "鸣潮"}
 
 
 def maintenance_lines(day) -> list[str]:
-    """明日安排里的停服维护提示（用户 2026-09-03：「这个务必要体现」）。"""
+    """Server-maintenance notices in tomorrow's plan (the user, 2026-09-03:
+    「这个务必要体现」 - this must be shown)."""
     try:
         from datetime import datetime as _dt  # noqa: PLC0415
         from . import maintenance  # noqa: PLC0415
@@ -447,17 +479,21 @@ def maintenance_lines(day) -> list[str]:
             for game, (start, end, _why) in wins.items()]
 
 
-# 剿灭那个字段的值是英文枚举（Annihilation / Chernobog@Annihilation …），
-# 中文只存在 AUTO-MAS 前端的打包产物里。这段原来在 phone.py，
-# 2026-09-04 那边瘦身时被当成「不再需要」删掉了，可这里还 import 着它——
-# 于是每一轮 tick 都 ImportError，把它后面的补更新、日报、自动关机全带走，
-# 整整一上午没人发现。所以搬到唯一还用它的地方，不再跨模块借。
+# The annihilation field's values are an English enum (Annihilation /
+# Chernobog@Annihilation, ...); the Chinese exists only inside the AUTO-MAS
+# frontend's bundled build. This block used to live in phone.py and was deleted
+# there on 2026-09-04 as "no longer needed" while that file was slimmed down -
+# but this file still imported it, so every tick raised ImportError and took the
+# catch-up update, the daily report and the auto-shutdown down with it, unnoticed
+# for a whole morning. Hence it now lives in the only place that still uses it,
+# with nothing borrowed across modules.
 _LABEL_PAIR = re.compile(
     r'label\s*:\s*"([^"]{1,40})"\s*,\s*value\s*:\s*"([^"]{1,60})"')
 
 
 def _asar_value_labels(automas_dir, state_dir) -> dict:
-    """`{英文取值: 中文名}`，从前端打包产物里抽，按大小+时间戳缓存。"""
+    """`{English value: Chinese name}`, extracted from the frontend bundle and
+    cached by size + mtime."""
     if not automas_dir:
         return {}
     asar = Path(automas_dir) / "resources" / "app.asar"
@@ -467,8 +503,9 @@ def _asar_value_labels(automas_dir, state_dir) -> dict:
         log.warning("找不到 app.asar，剿灭那一项会留下英文取值")
         return {}
     stamp = f"{st.st_size}-{int(st.st_mtime)}"
-    # 纯缓存：从 AUTO-MAS 的 asar 包里解出来的中文标注，丢了自己会重建。
-    # 故意留作文件，不进 state.json——它是派生数据，不是状态。
+    # Pure cache: the Chinese labels extracted from AUTO-MAS's asar bundle,
+    # rebuilt by itself if lost. Deliberately a file of its own rather than part
+    # of state.json - it is derived data, not state.
     cache = Path(state_dir) / "asar-labels.json"
     try:
         got = json.loads(cache.read_text(encoding="utf-8"))
@@ -517,8 +554,9 @@ def next_plan(automas_dir: Path | None) -> str:
             s = scripts.get(uid) or {}
             bits = []
             if s.get("fight") is False:
-                # 作战关掉时明天不会刷任何关卡。还照着关卡号写「理智 1-7（固定）」
-                # 等于给出一个明天不会发生的安排。
+                # With combat off no stage is farmed tomorrow. Printing
+                # 「理智 1-7（固定）」 from the stage number anyway would announce
+                # a plan that will not happen.
                 bits.append("不刷关卡（只做日常）")
             elif s.get("stage"):
                 mode = "固定" if s.get("stage_mode") == "Fixed" else s.get("stage_mode", "")
@@ -530,9 +568,10 @@ def next_plan(automas_dir: Path | None) -> str:
                 # ever reopen it, because the gate only restores a week it
                 # recorded closing itself. Either way the weekly reward is not
                 # being collected, and silence about that costs a reward a week.
-                # 值是英文枚举（Annihilation / Chernobog@Annihilation …），
-                # 中文在 AUTO-MAS 前端的打包产物里。汇报里不该出现英文——
-                # 2026-08-31 用户在手机上看到「剿灭 Annihilation」。
+                # The values are an English enum (Annihilation /
+                # Chernobog@Annihilation, ...), with the Chinese living in the
+                # AUTO-MAS frontend bundle. English must not appear in a report -
+                # on 2026-08-31 the user saw 「剿灭 Annihilation」 on his phone.
                 zh = {}
                 try:
                     zh = _asar_value_labels(automas_dir, Path(os.environ.get(
@@ -548,9 +587,10 @@ def next_plan(automas_dir: Path | None) -> str:
                             else ("不吃理智药" if int(med) <= 0 else f"理智药 {med} 个"))
             if s.get("kind") == "MaaEnd":
                 # AUTO-MAS's SanityTaskType is only the tab; on its own it reads
-                # as the answer and is not one - "干员养成" does not say whether
-                # that means 经验 or 进阶, and the reward set decides which item
-                # actually drops. Report the resolved chain instead.
+                # as the answer and is not one - 「干员养成」 does not say whether
+                # that means 经验 (exp) or 进阶 (ascension), and the reward set
+                # decides which item actually drops. Report the resolved chain
+                # instead.
                 from . import sanity_plan  # noqa: PLC0415 - avoids a cycle
                 if label := sanity_plan.read(automas_dir).get("label"):
                     bits.append(f"理智用于 {label}")
@@ -559,8 +599,10 @@ def next_plan(automas_dir: Path | None) -> str:
                 bits.append(f"理智用于 {s['sanity_use']}")
             if s.get("kind") == "OK-WW":
                 bits += _okww_plan_bits(automas_dir, s.get("path"))
-            # 一行一件事。原来是「· MAA　理智 1-7 · 剿灭 … · 理智药不限」，
-            # 同一个「·」既当项目符号又当分隔符，手机上一行折成三行看不清。
+            # One thing per line. It used to read
+            # 「· MAA　理智 1-7 · 剿灭 … · 理智药不限」, where the same 「·」 served
+            # as both bullet and separator, and on a phone that one line wrapped
+            # into three unreadable ones.
             label = s.get("name", "?")
             game = _GAME_OF.get(str(s.get("kind") or ""), "")
             lines.append(f"▸ {game}" if game else f"▸ {label}")
@@ -581,7 +623,7 @@ def recent_due_queues(automas_dir: Path | None, now, window_minutes: int = 120) 
     A queue that just became due may still be working through its items, and
     between two of them no game process exists at all - MAA has exited, the
     next game is still launching. Powering off in that window costs a run; it
-    cost the 终月地 half of 2026-08-16.
+    cost the Endfield half of 2026-08-16.
 
     But the wait cannot be open-ended either. If a script simply never runs -
     it crashed, the game would not start - waiting for it forever would keep
@@ -683,7 +725,7 @@ def activity_countdown(automas_dir: Path | None, now=None,
                 # reads identically on day 1 and day 3, so it looks stuck even
                 # though it does expire - which is exactly how the operator
                 # read it on 2026-08-24.
-                gone = _EXPIRED_REMINDER + left           # 还剩多久不再提
+                gone = _EXPIRED_REMINDER + left    # how long until it stops showing
                 g_days, g_rem = divmod(int(gone.total_seconds()), 86400)
                 g_hours = g_rem // 3600
                 g_span = (f"{g_days} 天 {g_hours} 时" if g_days

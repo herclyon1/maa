@@ -1,1 +1,1 @@
-"""OK-WW 源码补丁，一个补丁一个文件；总控在 ark_relay/okww_patch.py。"""
+"""OK-WW source patches, one patch per file; the driver is ark_relay/okww_patch.py."""

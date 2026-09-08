@@ -1,4 +1,4 @@
-"""OK-WW 补丁：core。从 okww_patch.py 拆出（2026-09-06，只搬不改）。"""
+"""OK-WW patch: core. Split out of okww_patch.py (2026-09-06, moved verbatim)."""
 from __future__ import annotations
 
 import logging
@@ -19,29 +19,32 @@ _SRC = ("data", "apps", "ok-ww", "working", "src", "task")
 
 @dataclass(frozen=True)
 class _Patch:
-    name: str               # 人话名字，进通知
-    parts: tuple            # 相对 okww_dir 的路径
-    old: str                # 上游原样那段
-    new: str                # 我们要的那段
-    present: Callable[[str], bool]      # 已经在位了吗
-    breaks: str             # 贴不上会怎样，写给人看
-    upstream: str = ""      # 提给上游之后填 PR 链接；合并了就删掉这条补丁
-    # 这条补丁**跨版本不变**的特征串（比如那句日志）。贴完之后它在文件里
-    # 必须只出现一次，出现两次就说明补丁叠上去了。
-    # 不能拿 new 的头一行当判据：叠加是「旧版本 + 新版本」并存，两版的头一行
-    # 往往不一样，按它数只会数到一次，正好把叠加放过去。
+    name: str               # Plain-language name; goes into notifications
+    parts: tuple            # Path relative to okww_dir
+    old: str                # The upstream snippet, verbatim
+    new: str                # The snippet we want instead
+    present: Callable[[str], bool]      # Is it already in place?
+    breaks: str             # What breaks if it cannot be applied; written for a human
+    upstream: str = ""      # PR link once filed upstream; delete this patch once merged
+    # A marker string of this patch that **stays the same across versions**
+    # (a log line, say). After applying, it must appear exactly once in the
+    # file; twice means patches got stacked.
+    # The first line of `new` must not be used as the marker: stacking means
+    # "old version + new version" side by side, and the two versions' first
+    # lines usually differ, so counting on it finds exactly one -- letting the
+    # stack through.
     # 来龙去脉见 docs/CODE-HISTORY.md「core.py:_Patch」
     unique: str = ""
 
 
 def _atomic_write(f: Path, text: str) -> Path | None:
-    """备份 → 原子替换。返回备份路径，写不进去返回 None。"""
+    """Back up, then replace atomically. Returns the backup path, or None if the write failed."""
     bak = f.with_name(f"{f.stem}.py.bak-{time.strftime('%Y%m%d-%H%M%S')}")
     try:
         shutil.copy2(f, bak)
         tmp = f.with_suffix(".py.tmp")
         tmp.write_text(text, encoding="utf-8")
-        os.replace(tmp, f)      # 原子替换，别让半截文件被 OK-WW 读到
+        os.replace(tmp, f)      # Atomic swap -- never let OK-WW read a half-written file
     except OSError:
         log.warning("OK-WW 补丁：写不进去 %s", f.name, exc_info=True)
         return None
@@ -49,7 +52,9 @@ def _atomic_write(f: Path, text: str) -> Path | None:
 
 
 def _atomic_write_bytes(f: Path, data: bytes) -> Path | None:
-    """原样写字节。整份替换不能经过 write_text——它会按平台改写行尾。"""
+    """Write bytes verbatim. A whole-file replacement must not go through
+    write_text -- that rewrites line endings per platform.
+    """
     bak = f.with_name(f"{f.stem}.py.bak-{time.strftime('%Y%m%d-%H%M%S')}")
     try:
         shutil.copy2(f, bak)
@@ -64,7 +69,9 @@ def _atomic_write_bytes(f: Path, data: bytes) -> Path | None:
 
 def _verify_or_revert(f: Path, bak: Path, present: Callable[[str], bool],
                       label: str) -> str:
-    """回读 + 编译。写进去不等于对，语法坏了整个日常任务都起不来。"""
+    """Read back, then compile. Written is not the same as correct: broken
+    syntax takes down the whole daily task.
+    """
     back = f.read_text(encoding="utf-8", errors="replace")
     if not present(back):
         shutil.copy2(bak, f)
@@ -80,7 +87,7 @@ def _verify_or_revert(f: Path, bak: Path, present: Callable[[str], bool],
 
 
 def _stacked(f: Path, p: _Patch) -> "str | None":
-    """贴完之后自查有没有叠加。返回告警文字，正常时 None。
+    """After applying, check for stacking. Returns warning text, or None when fine.
 
     来龙去脉见 docs/CODE-HISTORY.md「core.py:_stacked」。
     """
@@ -99,8 +106,10 @@ def _stacked(f: Path, p: _Patch) -> "str | None":
 
 
 def _apply_one(root: Path, p: _Patch) -> list[str]:
-    # 改 new 的同时一定要改 present()：判据还认着旧文本的话，补丁会被判成
-    # 「没在位」而反复重贴，也可能被判成「已在位」而根本不贴，两种都不出声。
+    # Whenever `new` changes, present() must change with it: if the probe still
+    # matches the old text, the patch is judged "not in place" and re-applied
+    # over and over, or judged "already in place" and never applied at all.
+    # Both fail silently.
     # 来龙去脉见 docs/CODE-HISTORY.md「core.py:_apply_one」
     f = root.joinpath(*p.parts)
     if not f.exists():
@@ -113,9 +122,10 @@ def _apply_one(root: Path, p: _Patch) -> list[str]:
         return [f"OK-WW 补丁：读不了 {f.name}"]
 
     if p.present(text):
-        return []                      # 幂等：在位就不留痕迹也不报噪音
+        return []                      # Idempotent: already in place, so leave no trace and make no noise
     if p.old not in text:
-        # 上游改了结构。硬替换只会把文件改坏，所以停手并出声。
+        # Upstream changed the structure. A forced replacement would only
+        # corrupt the file, so stop and say so.
         log.warning("OK-WW 补丁：认不出上游 %s 那段，结构可能变了，不动它", p.name)
         return [f"OK-WW 补丁：{p.name}**贴不上了**（上游结构变了），"
                 f"{p.breaks}，需要人工看一眼"]
@@ -132,11 +142,13 @@ def _apply_one(root: Path, p: _Patch) -> list[str]:
 
 def _revert_text(root: Path, parts: tuple, new: str, old: str,
                  label: str) -> list[str]:
-    """把一段本地改动还原回上游原样。找不到就当已经还原了，不出声。
+    """Revert one local change back to the upstream original. If it is not found,
+    treat it as already reverted and say nothing.
 
-    **只停止重打是不够的**：`ensure_patches` 只会打不会撤，
-    从清单里删掉一条补丁，已经贴在机器上的那份还在，
-    要等 OK-WW 下次更新覆盖文件才会消失。所以要主动撤。
+    **Merely stopping to re-apply is not enough**: `ensure_patches` only applies,
+    never reverts. Dropping a patch from the list leaves the copy already on the
+    machine in place, and it only disappears when OK-WW's next update overwrites
+    the file. So revert it deliberately.
     """
     f = root.joinpath(*parts)
     if not f.exists():
@@ -146,7 +158,7 @@ def _revert_text(root: Path, parts: tuple, new: str, old: str,
     except OSError:
         return [f"OK-WW 补丁：读不了 {f.name}，{label} 没能撤销"]
     if new not in text:
-        return []                       # 幂等：已经是上游原样
+        return []                       # Idempotent: already the upstream original
     bak = _atomic_write(f, text.replace(new, old, 1))
     if bak is None:
         return [f"OK-WW 补丁：{label} 撤销失败，写不进去"]

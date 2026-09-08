@@ -69,7 +69,7 @@ def main() -> int:
             print(f"  ✗ {p}: {exc}")
 
     print("▶ 等各扇门凑齐（判据同机器：最新清单 = 本地版本，且每个文件至少一扇门给得对）")
-    want_ver = local.get("version")
+    want_ver = int(local.get("version") or 0)
 
     def door_manifest(base: str, name: str):
         try:
@@ -83,7 +83,15 @@ def main() -> int:
         seen = {}
         for name, base in DOORS:
             m = door_manifest(base, name)
-            seen[name] = m.get("version") if m else None
+            # 版本号一律按整数比。2026-09-08 我手改清单时把它写成了字符串推了上去，
+            # 于是这里拿字符串和整数比大小，直接 TypeError，整个脚本挂掉——
+            # 而它正是「推上去的东西机器到底拿不拿得到」的唯一验证手段。
+            # 工具自己崩掉比不报还糟：那一刻我以为只是没刷新，其实是没在验。
+            v = m.get("version") if m else None
+            try:
+                seen[name] = int(v) if v is not None else None
+            except (TypeError, ValueError):
+                seen[name] = None
         states = "  ".join(f"{n}={seen[n] or '?'}" for n, _ in DOORS)
         best = max((v for v in seen.values() if v), default=None)
         if best != want_ver:

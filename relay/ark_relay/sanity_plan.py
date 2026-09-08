@@ -1,20 +1,25 @@
-"""MaaEnd 的理智到底花在哪——读写**真正生效**的那一份。
+"""Where MaaEnd's sanity actually goes -- read and write the copy that **really
+takes effect**.
 
-**2026-08-28 改：直接读写 MaaEnd 母本，不再走 AUTO-MAS 的 ScriptConfig。**
+**Changed 2026-08-28: read and write the MaaEnd master copy directly, no longer via
+AUTO-MAS's ScriptConfig.**
 
-原先写的是 MAS 用户配置的 `Task.SanityTaskType`，那条路要求
-`Info.IfQuickConfig` 开着才会被下发到 MaaEnd。快速配置当天被废掉
-（它只能开关**已存在**的任务、还制造静默故障：母本里没有 `AutoEssence`
-时选「基质刷取」会被整段跳过，而界面标签照样显示已生效），
-于是这个模块整个失效了。
+It used to write `Task.SanityTaskType` in the MAS user config, but that path only
+gets pushed down to MaaEnd when `Info.IfQuickConfig` is on. Quick config was
+abolished that day (it can only toggle tasks that **already exist**, and it creates
+silent failures: with no `AutoEssence` in the master copy, selecting 「基质刷取」 is
+skipped entirely while the UI label still shows it as in effect), so this whole
+module stopped working.
 
-现在直接改母本
-`<automas>/data/<脚本id>/Default/ConfigFile/mxu-MaaEnd.json`：
-理智任务就是 AUTO-MAS 实例里 `ProtocolSpace` 和 `AutoEssence` 这两个任务，
-谁 `enabled` 谁就是当前方案。这条路不依赖快速配置——母本目录是
-AUTO-MAS 每轮**无条件**拷给 MaaEnd 的那一份。
+It now edits the master copy directly:
+`<automas>/data/<script id>/Default/ConfigFile/mxu-MaaEnd.json`. The sanity tasks are
+the `ProtocolSpace` and `AutoEssence` tasks in the AUTO-MAS instance; whichever one
+is `enabled` is the current plan. This path does not depend on quick config -- the
+master directory is the one AUTO-MAS copies over to MaaEnd **unconditionally** every
+run.
 
-以下是旧实现的背景，留着当教训：AUTO-MAS 开着快速配置时会这样重写：
+What follows is background on the old implementation, kept as a lesson. With quick
+config on, AUTO-MAS rewrites it like this:
 
     task["optionValues"]["ProtocolSpaceTab"] = {"caseName": sanity_task_type}
     for option in ("OperatorProgression", "WeaponProgression", "CrisisDrills"):
@@ -121,7 +126,7 @@ def _case(ov: dict, key: str) -> str:
 
 
 def read(automas_dir: "Path | None") -> dict:
-    """当前方案：{tab, line, rewards_set, item, label}。读不了返回 {}。"""
+    """The current plan: {tab, line, rewards_set, item, label}. {} if unreadable."""
     f = _master(automas_dir)
     if f is None:
         return {}
@@ -159,11 +164,13 @@ def read(automas_dir: "Path | None") -> dict:
 
 
 def _validate_plan(tab: str, line: str, rewards_set: str) -> str | None:
-    """先把三个入参核一遍；返回错误文本，全合法就返回 None。
+    """Check the three arguments first; return an error text, or None if all legal.
 
-    单独成一步，是因为这一段跟母本一个字都不沾——纯粹是「这三个值本身合不合
-    法」，而它必须整段跑完在任何读写母本的动作之前：这三个值决定明天的理智
-    花在哪里，让一个不合法的值走到写盘那一步就已经晚了。
+    This is a separate step because it does not touch the master copy at all -- it is
+    purely "are these three values legal in themselves", and it must run to completion
+    before anything reads or writes the master copy: these three values decide where
+    tomorrow's sanity goes, and letting an illegal value reach the write is already
+    too late.
     """
     if tab not in TAB_LABELS:
         return f"理智任务类型不合法: {tab!r}（可选 {'、'.join(TAB_LABELS)}）"
@@ -177,11 +184,13 @@ def _validate_plan(tab: str, line: str, rewards_set: str) -> str | None:
 
 
 def _toggle_sanity_tasks(have: dict, want_task: str, changes: list[str]) -> None:
-    """开 want_task、关另一个理智任务，改动记进 changes。
+    """Enable want_task, disable the other sanity task; record edits in changes.
 
-    单独成一步，是因为「谁 enabled 谁就是当前方案」是这个模块的根本判据，
-    这里只碰 enabled 这一个字段，和后面写下拉项那段没有共用的中间状态。
-    母本里不存在的那个任务在这里会被跳过——**只切换已存在的任务，不新建**。
+    This is a separate step because "whichever one is enabled is the current plan" is
+    this module's fundamental criterion. It touches only the enabled field and shares
+    no intermediate state with the code below that writes the dropdowns.
+    A task that does not exist in the master copy is skipped here -- **only toggle
+    tasks that already exist, never create them**.
     """
     for name in SANITY_TASKS:
         t = have.get(name)
@@ -196,11 +205,15 @@ def _toggle_sanity_tasks(have: dict, want_task: str, changes: list[str]) -> None
 def _write_options(ov: dict, want_task: str, tab: str, line: str,
                    rewards_set: str, location: str,
                    changes: list[str]) -> str | None:
-    """把地点/下拉项写进选中那个任务的 optionValues，改动记进 changes。
+    """Write the locations/dropdowns into the chosen task's optionValues.
 
-    单独成一步，是因为基质刷取和协议空间在这里彻底分家：一边写地点复选框，
-    一边写三个联动的下拉项，而且后者每写一个都要先确认母本里本来就有这个键。
-    返回错误文本，没有错就返回 None。
+    Edits are recorded in changes.
+
+    This is a separate step because essence farming and protocol space part ways
+    completely here: one writes location checkboxes, the other writes three linked
+    dropdowns, and every one of the latter must first confirm the key already exists
+    in the master copy.
+    Returns an error text, or None when there is no error.
     """
     if tab == "Essence":
         if location:
@@ -215,7 +228,8 @@ def _write_options(ov: dict, want_task: str, tab: str, line: str,
             if not key or not want:
                 continue
             if key not in ov:
-                # 母本里没有的键凭空造出来，MaaEnd 那边不认，等于白写。
+                # A key invented out of thin air is not recognised by MaaEnd, so
+                # writing it would achieve nothing.
                 return f"母本的 {want_task} 里没有字段 {key!r}，拒绝新建"
             if _case(ov, key) != want:
                 changes.append(f"{key}: {_case(ov, key)} → {want}")
@@ -225,12 +239,16 @@ def _write_options(ov: dict, want_task: str, tab: str, line: str,
 
 def set_plan(automas_dir: "Path | None", tab: str, line: str = "",
              rewards_set: str = "", location: str = "") -> tuple[bool, str]:
-    """把方案写进母本——AUTO-MAS 每轮拷给 MaaEnd 的那一份。
+    """Write the plan into the master copy.
 
-    `tab == "Essence"` → 开 `AutoEssence`、关 `ProtocolSpace`；
-    其余 → 开 `ProtocolSpace` 并写它的下拉项、关 `AutoEssence`。
-    **只切换已存在的任务，不新建**：母本里没有 `AutoEssence` 却选基质刷取，
-    正是 2026-08-28 那个「界面显示已生效、实际整段跳过」的静默故障。
+    That is the copy AUTO-MAS hands to MaaEnd every run.
+
+    `tab == "Essence"` -> enable `AutoEssence`, disable `ProtocolSpace`;
+    anything else -> enable `ProtocolSpace` and write its dropdowns, disable
+    `AutoEssence`.
+    **Only toggle tasks that already exist, never create them**: selecting essence
+    farming when the master copy has no `AutoEssence` is exactly the silent failure of
+    2026-08-28 where the UI showed it as in effect while the whole thing was skipped.
     """
     if err := _validate_plan(tab, line, rewards_set):
         return False, err

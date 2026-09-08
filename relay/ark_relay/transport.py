@@ -53,8 +53,9 @@ def record_to_payload(rec: RunRecord) -> dict:
         # itself for every selfupdate; dropping this flag let the reloaded copy
         # default back to True and present that duration as fact.
         "duration_known": rec.duration_known,
-        # 必须一起带走：这条标记着"被下一轮取代"而不是"失败"，
-        # 丢了就会在重放/日报里重新变成一条假失败。
+        # Must ride along too: this flag marks a record as "superseded by the
+        # next round" rather than "failed". Drop it and the record turns back
+        # into a fake failure in replays and in the daily report.
         "transitional": rec.transitional,
         "log_tail": "" if (rec.ok or rec.transitional)
                     else collector.log_tail(rec),
@@ -77,8 +78,9 @@ def payload_to_record(p: dict) -> RunRecord:
         # effective behaviour then, so keep it as the default rather than
         # marking every pre-existing held record as untrustworthy.
         duration_known=bool(p.get("duration_known", True)),
-        # 老 payload 里没有这个键，默认 False——那正是改之前的行为，
-        # 不会把历史记录改判。
+        # Older payloads have no such key; default to False, which is exactly
+        # the behaviour before this was added, so historical records are not
+        # re-judged.
         transitional=bool(p.get("transitional", False)),
     )
     return rec

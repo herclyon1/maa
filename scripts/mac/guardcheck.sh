@@ -389,6 +389,17 @@ EOF
 refuses "多余的 noqa 必须被拒" "RUF100" \
   uvx ruff check --config ruff.toml --no-cache "$TMP/ruff/x.py"
 
+# 2026-09-08 的真事故：core.State.save_pending 上面被贴了一行多余的 @property，
+# 属性一被访问就抛 TypeError，告警永远落不了账，同一条失败每十几秒重推一次。
+cat > "$TMP/ruff/x.py" <<'EOF'
+class A:
+    @property
+    def save_pending(self, payload: dict) -> None:
+        pass
+EOF
+refuses "带参数的 @property 必须被拒" "PLR0206" \
+  uvx ruff check --config ruff.toml --no-cache "$TMP/ruff/x.py"
+
 echo "▶ 仓库自检本身"
 # 这里只验「lint 不会误杀干净的树」。测试那一项部署流程自己会跑一遍，
 # 在这儿再跑一遍纯属重复，一次部署白等十几秒。

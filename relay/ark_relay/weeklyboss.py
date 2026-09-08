@@ -1,24 +1,30 @@
-"""鸣潮周本（战歌重奏）：本周打完就摘掉，周一 04:00 自动挂回来。
+"""Wuthering Waves weekly boss (战歌重奏): switched off once done for the week,
+switched back on automatically at 04:00 on Monday.
 
-和 `garden.py`、`annihilation.py` 是同一个形状——「一周只需要做一次的事，
-别每天都去做一遍」。用户 2026-08-31 要的就是「和剿灭逻辑一致」。
+Same shape as `garden.py` and `annihilation.py` - "something that only needs
+doing once a week must not be done every day". What the user asked for on
+2026-08-31 was exactly 「和剿灭逻辑一致」 (same logic as annihilation).
 
-## 它到底改什么
+## What it actually changes
 
-两个文件，都在 OK-WW 的**母本**配置目录（AUTO-MAS 每轮无条件拷给 OK-WW 的
-那一份，不受「快速配置」开关影响，理由见 garden.py 的说明）：
+Two files, both in OK-WW's **master** config directory (the one AUTO-MAS copies
+to OK-WW unconditionally every round, unaffected by the "quick config" switch;
+reasoning is in garden.py):
 
-* `DailyTask.json` 的 `Additional Tasks to Run After Daily Task`
-  里加/去 `Teleport and Farm 4C Echo`（译文「传送并刷取4C声骸」）
-* `FarmEchoTask.json` 的 `Teleport to Boss` 设成 `Weekly Challenge`
-  （译文「战歌重奏」，就是周本），并按设置写 `Which Weekly Boss to Teleport`
-  和 `Repeat Farm Count`
+* adds/removes `Teleport and Farm 4C Echo` (「传送并刷取4C声骸」 in the game's
+  translation) in `DailyTask.json`'s
+  `Additional Tasks to Run After Daily Task`
+* sets `FarmEchoTask.json`'s `Teleport to Boss` to `Weekly Challenge`
+  (「战歌重奏」, i.e. the weekly boss), and writes
+  `Which Weekly Boss to Teleport` and `Repeat Farm Count` from the settings
 
-## 为什么默认关着
+## Why it is off by default
 
-`Repeat Farm Count` 出厂是 **10000**。照搬着打开，它会一直打下去。
-周本一周能拿几次奖励是游戏规则，我没有可靠出处，所以不替用户定——
-**默认关闭，次数由用户在手机上给**。编游戏规则去改生产配置正是 826 的成因。
+`Repeat Farm Count` ships as **10000**. Turned on as-is, it would keep fighting
+forever. How many times a week the weekly boss pays out is a game rule I have no
+reliable source for, so it is not decided on the user's behalf - **off by
+default, the count comes from the user on the phone**. Inventing game rules and
+writing them into production config is precisely what caused incident 826.
 """
 from __future__ import annotations
 
@@ -29,27 +35,30 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from .annihilation import week_key          # 周界口径和剿灭完全一致
+from .annihilation import week_key          # week boundary identical to annihilation
 from .statestore import StateStore
 from .config import SERVER_TZ, master_config_dir, atomic_write_text
 
 log = logging.getLogger("ark.weeklyboss")
 
-TASK_NAME = "Teleport and Farm 4C Echo"     # 传送并刷取4C声骸
+TASK_NAME = "Teleport and Farm 4C Echo"     # 「传送并刷取4C声骸」
 TASK_ZH = "传送并刷取4C声骸"
 KEY = "Additional Tasks to Run After Daily Task"
-# 上游对 Boss Level 的说明是 "Choose the Lowest that Drop a Echo"——
-# 那是**刷声骸**的思路：能掉声骸的最低级最好打。周本正相反，
-# **等级决定奖励档次，必须挑最高的**。这两种用途共用同一个配置项，
-# 而我们的 FarmEchoTask 只被周本用（日常刷声骸走残象聚落），
-# 所以直接钉在最高级，不存在冲突。2026-08-31 用户指出机器上是 80，错的。
+# Upstream describes Boss Level as "Choose the Lowest that Drop a Echo" - that is
+# the **echo-farming** mindset: the lowest level that still drops echoes is the
+# easiest fight. The weekly boss is the opposite: **the level decides the reward
+# tier, so it must be the highest**. Both uses share one config key, but our
+# FarmEchoTask is used by the weekly boss only (day-to-day echo farming goes
+# through the tacet nests), so pinning it to the maximum level creates no
+# conflict. On 2026-08-31 the user pointed out the machine was set to 80, which
+# was wrong.
 LEVELS = ("50", "60", "70", "80", "90")
 MAX_LEVEL = LEVELS[-1]
-COUNT = 3                                   # 一周只能领 3 次奖励，游戏规则
+COUNT = 3                                   # game rule: only 3 reward claims per week
 
 DAILY = "DailyTask.json"
 FARM = "FarmEchoTask.json"
-WEEKLY = "Weekly Challenge"                 # 战歌重奏
+WEEKLY = "Weekly Challenge"                 # 「战歌重奏」
 
 
 def _file(automas_dir, name: str) -> "Path | None":
@@ -67,7 +76,8 @@ def _read(f: "Path | None") -> "dict | None":
 
 
 def _write(f: Path, cfg: dict) -> bool:
-    # 原子替换：AUTO-MAS 可能正在拷这个目录，撕裂的 JSON 会让 OK-WW 起不来。
+    # Atomic replace: AUTO-MAS may be copying this directory right now, and torn
+    # JSON stops OK-WW from starting at all.
     try:
         atomic_write_text(f, json.dumps(cfg, ensure_ascii=False, indent=2))
     except OSError:
@@ -76,12 +86,16 @@ def _write(f: Path, cfg: dict) -> bool:
 
 
 def _okww_log() -> "Path | None":
-    """OK-WW 最新的那份日志。找不到返回 None，并**出声**——不许静静地什么都不做。
+    """OK-WW's newest log. Returns None when there is none, and **says so out
+    loud** - failing silently here is not allowed.
 
-    2026-09-08 审出来的：`ARK_OKWW_DIR` 没设时，这里原来直接 return，于是
-    「本周还剩几次」读不到、周本记账不推进、名字也读不到——手机上显示「本周还没领满」，
-    机器每天再去打一趟，而且日志里一个字都没有。环境变量是能丢的（换机、改部署脚本、
-    .env 写错一行），丢了必须听得见。
+    Found in review on 2026-09-08: with `ARK_OKWW_DIR` unset this used to just
+    return, so the remaining-claims count could not be read, the weekly-boss
+    bookkeeping never advanced and the boss name was never read either - the
+    phone kept showing 「本周还没领满」 and the machine went and fought it again
+    every day, with not one word about it in the log. An environment variable can
+    go missing (a new machine, an edited deploy script, one wrong line in .env),
+    and when it does it must be audible.
     """
     if path := os.environ.get("ARK_OKWW_LOG"):
         return Path(path)
@@ -99,16 +113,21 @@ def _okww_log() -> "Path | None":
 
 
 def remaining_from_log() -> "int | None":
-    """OK-WW 日志里最近一次读到的「本周剩余可收取次数」。读不到返回 None。
+    """The most recent 「本周剩余可收取次数」 (claims left this week) read from the
+    OK-WW log. None when it cannot be read.
 
-    本地补丁「进本前拍一张看剩余次数」会把那一行 OCR 出来打进日志，形如
-    `周本本周剩余次数原文: [... '本周剩余可收取次数：2/3' ...]`。
-    只取斜杠前那个数。
+    The local patch that "takes a screenshot before entering to read the claims
+    left" OCRs that line into the log, shaped like
+    `周本本周剩余次数原文: [... '本周剩余可收取次数：2/3' ...]`.
+    Only the number before the slash is taken.
 
-    为什么要读它：`on_success` 原来只要任务跑完就记「本周已打」，
-    而**一趟不一定能领满三次**——奖励是进本时扣 60 波片，波片不够就少领。
-    2026-08-31 实测：贝币刷取把波片吃到只剩 1 点，第二天早上只回到 ~147，
-    只够领两次；按「跑完即打完」记账，第三次就永远丢了。
+    Why read it at all: `on_success` used to mark the week done as soon as the
+    task finished, but **one round does not necessarily claim all three times** -
+    the reward costs 60 waveplates on entry, and short on waveplates you claim
+    fewer. Measured 2026-08-31: shell-credit farming had burned waveplates down
+    to 1, and by the next morning they had only recovered to ~147, enough for two
+    claims. Bookkeeping that treats "the round finished" as "the week is done"
+    loses the third claim for good.
     """
     f = _okww_log()
     if f is None:
@@ -128,7 +147,8 @@ _NAME_RE = re.compile(r"周本名称原文:\s*\[(.*?)\]")
 
 
 def name_from_log() -> str:
-    """OK-WW 日志里最近一次 OCR 到的周本名（补丁「周本名称原文」）。读不到返回空串。"""
+    """The most recent weekly-boss name OCR'd into the OK-WW log (by the
+    「周本名称原文」 patch). "" when it cannot be read."""
     f = _okww_log()
     if f is None:
         return ""
@@ -140,21 +160,24 @@ def name_from_log() -> str:
     hits = _NAME_RE.findall(text)
     if not hits:
         return ""
-    # OCR 结果形如 "千傀重楼_0.99"，取第一个词、去掉置信度
+    # OCR output looks like "千傀重楼_0.99": take the first token, drop the score
     first = hits[-1].split(",")[0].strip().strip("'\"")
     return re.sub(r"_[\d.]+$", "", first).strip()
 
 
 class WeeklyBossGate:
-    """记住哪一个游戏周的周本已经打完了。默认关闭，要人明确打开。
+    """Remembers which game week the weekly boss has already been cleared in.
+    Off by default; someone has to turn it on explicitly.
 
-    和剿灭、周常乐园同一套接口：settings / week_line / on_success / enforce / maybe_reopen。
+    Same interface as annihilation and the weekly garden:
+    settings / week_line / on_success / enforce / maybe_reopen.
     """
 
     NAME = "鸣潮 · 周本"
 
     def __init__(self, state_dir: Path, automas_dir=None):
-        self._store = StateStore(state_dir)   # 状态收口：真正落盘在 state.json 的 weekly 段
+        # single state entry point: persisted in state.json's `weekly` section
+        self._store = StateStore(state_dir)
         self.automas_dir = automas_dir
         self._last_error = ""
 
@@ -164,13 +187,16 @@ class WeeklyBossGate:
     def _save(self, data: dict) -> None:
         self._store.set("weekly", "boss", dict(data))
 
-    # ---------- 人来开关 ----------
+    # ---------- turned on and off by a person ----------
 
     def settings(self, now: "datetime | None" = None) -> dict:
-        """给手机页看的。一周 3 次、90 级是游戏规则，固定死，不给改（用户 2026-09-07）；
-        也没有总开关——和剿灭一样，打满自动停，周一自动开回来。"""
+        """What the phone page shows. 3 times a week and level 90 are game rules:
+        fixed, not editable (user, 2026-09-07). There is no master switch either -
+        like annihilation, it stops itself once the quota is full and comes back
+        on by itself on Monday."""
         s = self._load()
-        # 「本周已打」必须拿 done_week 跟**当前这一周**比，不能只看有没有值。
+        # 「本周已打」 must compare done_week against **the current week**, not
+        # merely check that it has a value.
         week = week_key(now or datetime.now(tz=SERVER_TZ))
         return {"名字": str(s.get("name") or ""),
                 "第几个周本": int(s.get("index") or 1),
@@ -188,7 +214,8 @@ class WeeklyBossGate:
         return True, f"周本：打第 {self.settings()['第几个周本']} 个"
 
     def week_line(self, now: "datetime | None" = None) -> str:
-        """「新的一周」通知里周本那一行：这周是什么状态。永远有话说。"""
+        """The weekly-boss line in the "new week" notification: where this week
+        stands. It always has something to say."""
         v = self.settings(now)
         what = v["名字"] or f"第 {v['第几个周本']} 个"
         if v["本周已打"]:
@@ -196,7 +223,8 @@ class WeeklyBossGate:
         return f"{self.NAME}：{what}，本周还没领满"
 
     def maybe_reopen(self, now: "datetime | None" = None) -> str:
-        """开机时调。上周记的「已领满」过了周就清掉，返回 week_line；没过周返回空串。"""
+        """Called at boot. Once the week has rolled over, clears last week's
+        "quota full" mark and returns week_line; returns "" if it has not."""
         s = self._load()
         done = s.get("done_week")
         week = week_key(now or datetime.now(tz=SERVER_TZ))
@@ -207,7 +235,7 @@ class WeeklyBossGate:
         log.info("新的一周，周本记账已清（上周 %s）", done)
         return self.week_line(now)
 
-    # ---------- 打完了 ----------
+    # ---------- done for the week ----------
 
     def on_success(self, now: "datetime | None" = None) -> str:
         s = self._load()
@@ -230,10 +258,11 @@ class WeeklyBossGate:
         log.info("本周周本三次已领满，待脚本停下后摘掉（周一 04:00 后恢复）")
         return f"{self.NAME}：本周三次已领满，暂停到下周一"
 
-    # ---------- 把开关推到该在的位置 ----------
+    # ---------- push the switch to where it should be ----------
 
     def enforce(self, now: "datetime | None" = None) -> bool:
-        """可以反复跑：一次摘掉不代表一直摘着，周一到了要挂回来。"""
+        """Safe to run repeatedly: switching it off once does not keep it off -
+        it has to go back on when Monday arrives."""
         s = self._load()
         week = week_key(now or datetime.now(tz=SERVER_TZ))
         want_on = s.get("done_week") != week
@@ -262,7 +291,8 @@ class WeeklyBossGate:
                 log.warning("周本开关写不进 %s", DAILY)
                 return False
 
-        # 打开时顺带把「传送到哪」写对，否则挂上去也不知道去哪
+        # While turning it on, also write the teleport target - otherwise the task
+        # is armed with nowhere to go
         if want_on:
             farm_f = _file(self.automas_dir, FARM)
             farm = _read(farm_f)

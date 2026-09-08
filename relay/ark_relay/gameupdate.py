@@ -1,22 +1,29 @@
-"""大版本更新日，把三个游戏的客户端自己更新掉。
+"""On a major-version update day, update the three game clients ourselves.
 
-用户 2026-09-02：「大版本鸣潮和终末地都有启动器去更新，明日方舟是通过模拟器
+The user, 2026-09-02: 「大版本鸣潮和终末地都有启动器去更新，明日方舟是通过模拟器
 里面去更新安装包然后再手动点进去更新……希望你能帮我实现自动化。」
 
-三家三条路，都在开机窗口（预更新之后、队列之前）跑：
+Three games, three paths, all run in the boot window (after the pre-update, before the
+queue):
 
-* 终末地：鹰角启动器（进程 Games，窗口「鹰角启动器」）。读屏：按钮是
-  「更新游戏」就点，等它变成「开始游戏」；然后拉一次游戏过「资源初始化
-  更新完成，请重启游戏」和着色器编译，看到「点击任意位置继续」才算完。
-  2026-09-02 手动走过一遍，每一步的字都是当天屏幕上读到的。
-* 鸣潮：库洛启动器（Wuthering Waves.exe 是壳）。同样读屏点「更新」，
-  等「开始游戏」。OK-WW 自己也会处理更新，这里只是让它别撞上正在下载。
-* 明日方舟：不点模拟器界面。官方版本接口给 clientVersion，和上次记下的
-  已装版本比，不同就下载 APK（官方直链，2 GB 上下，支持断点续传），
-  起雷电、`ldconsole installapp` 装进去，装完读 dumpsys 核对版本，再退出
-  模拟器。第一次没有记录时先起模拟器读一次已装版本记下来。
+* 终末地: the Hypergryph launcher (process Games, window 「鹰角启动器」). Read the
+  screen: when the button says 「更新游戏」, click it and wait for it to become
+  「开始游戏」; then start the game once to get past 「资源初始化更新完成，请重启游戏」
+  and the shader compilation - it is only done once 「点击任意位置继续」 shows up.
+  Walked through by hand on 2026-09-02; every string here was read off the screen that
+  day.
+* 鸣潮: the Kuro launcher (Wuthering Waves.exe is the shell). Same thing: read the
+  screen, click 「更新」, wait for 「开始游戏」. OK-WW handles updates itself as well;
+  all this does is keep it from colliding with a download in progress.
+* 明日方舟: the emulator UI is never clicked. The official version endpoint gives
+  clientVersion; compare it against the installed version recorded last time, and when
+  they differ download the APK (official direct link, around 2 GB, resumable), start
+  LDPlayer, install it with `ldconsole installapp`, read dumpsys afterwards to confirm
+  the version, then quit the emulator. With no record yet, start the emulator once first
+  to read and record the installed version.
 
-每一步的结论都写日志；没能确认的进 problems，由调用方发「⚠️ 没能确认」。
+Every step logs its conclusion; anything that could not be confirmed goes into problems,
+and the caller pushes 「⚠️ 没能确认」.
 """
 from __future__ import annotations
 
@@ -41,7 +48,7 @@ AK_APK_URL = "https://ak.hypergryph.com/downloads/android_lastest"
 AK_PACKAGE = "com.hypergryph.arknights"
 
 
-# ─────────────────────────── 通用 ───────────────────────────
+# ─────────────────────────── common ───────────────────────────
 
 def _spawn(exe: Path, cwd: Path | None = None) -> bool:
     from .preupdate_common import _spawn_interactive  # noqa: PLC0415
@@ -53,10 +60,10 @@ def _note(problems: list[str] | None, msg: str) -> None:
         problems.append(msg)
 
 
-# ─────────────────────────── 终末地 ───────────────────────────
+# ─────────────────────────── Endfield 终末地 ───────────────────────────
 
 def endfield_paths(maaend_dir: Path | None) -> tuple[Path | None, Path | None]:
-    """(游戏 exe, 启动器 exe)。游戏路径从 MaaEnd 自己的配置读，不猜。"""
+    """(game exe, launcher exe). The game path is read from MaaEnd's own config, not guessed."""
     if not maaend_dir:
         return None, None
     cfg = Path(maaend_dir) / "config" / "mxu-MaaEnd.json"
@@ -67,7 +74,8 @@ def endfield_paths(maaend_dir: Path | None) -> tuple[Path | None, Path | None]:
     if not m:
         return None, None
     game = Path(m.group(1).replace("\\\\", "\\"))
-    # D:\endfield\Hypergryph Launcher\games\Endfield Game\Endfield.exe → 上三级是启动器目录
+    # D:\endfield\Hypergryph Launcher\games\Endfield Game\Endfield.exe -> three
+    # levels up is the launcher directory
     launcher = game.parents[2] / "Launcher.exe" if len(game.parents) >= 3 else None
     return game, (launcher if launcher and launcher.exists() else None)
 
@@ -75,7 +83,7 @@ def endfield_paths(maaend_dir: Path | None) -> tuple[Path | None, Path | None]:
 def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
                     budget_s: float = 2400, poll_s: float = 30,
                     problems: list[str] | None = None, sleep=time.sleep) -> str:
-    """返回给人看的一句话；没更新返回空串。"""
+    """Returns one sentence for a human; empty string when nothing was updated."""
     kill("Endfield.exe")
     if not _spawn(launcher):
         _note(problems, "终末地：启动器没能在桌面会话里起来")
@@ -107,7 +115,8 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
     if not ready:
         _note(problems, f"终末地：{budget_s / 60:.0f} 分钟内没等到「开始游戏」，启动器留在后台继续下，下次开机再确认")
         return ""
-    # 装完了。拉一次游戏把「资源初始化」和着色器编译做掉，否则早班第一趟必卡。
+    # Installed. Start the game once to get 「资源初始化」 and the shader compilation
+    # out of the way, or the morning shift's first round is certain to stall.
     desk.click_text("开始游戏", focus="Games")
     sleep(90)
     deadline = time.monotonic() + 900
@@ -136,13 +145,15 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
     return "终末地 客户端已通过启动器更新"
 
 
-# ─────────────────────────── 「到登录界面」三家各自的判据 ───────────────────────────
-# 三家登录界面的字，全部来自用户 2026-09-03 给的截图原文，不是猜的：
-#   终末地「点击任意位置继续」（09-02 更新时也读到过）
-#   明日方舟「开始唤醒」（雷电里，Ver 2.7.61 截图）
-#   鸣潮「点击连接」（CN_Android_Product_3.6.0 截图）
-# 没读到就一直等到预算用完，然后按「没准备好」报——不按时间硬算就绪
-# （用户：「合着窗口四五分钟后还在更新你就按就绪处理了？」）。
+# ─────────────── "reached the login screen": one test per game ───────────────
+# The login-screen strings for all three games come verbatim from the screenshots the
+# user supplied on 2026-09-03; not one of them is a guess:
+#   终末地「点击任意位置继续」(also read during the 09-02 update)
+#   明日方舟「开始唤醒」(inside LDPlayer, Ver 2.7.61 screenshot)
+#   鸣潮「点击连接」(CN_Android_Product_3.6.0 screenshot)
+# If the string is never read, wait until the budget runs out and then report "not
+# ready" - readiness is never inferred from elapsed time (the user:
+# 「合着窗口四五分钟后还在更新你就按就绪处理了？」).
 READY_WORDS = {
     "终末地": ("点击任意位置继续",),
     "鸣潮": ("点击连接",),
@@ -152,7 +163,8 @@ READY_WORDS = {
 
 def wait_ready(desk: Desktop, game: str, *, focus: str, alive, budget_s: float = 900,
                poll_s: float = 30, sleep=time.sleep) -> str:
-    """等到登录界面。返回依据句（空串 = 预算内没读到，或进程没了）。"""
+    """Wait for the login screen. Returns the evidence sentence (empty = not read
+    within the budget, or the process is gone)."""
     t0 = time.monotonic()
     last = ""
     while time.monotonic() - t0 < budget_s:
@@ -181,10 +193,11 @@ def _alive(exe: str):
     return f
 
 
-# ─────────────────────────── 鸣潮 ───────────────────────────
+# ─────────────────────────── Wuthering Waves 鸣潮 ───────────────────────────
 
 def wuwa_launcher(okww_dir: Path | None) -> Path | None:
-    """启动器（壳）路径：从 OK-WW 自己的配置里找以 Wuthering Waves.exe 结尾的值。"""
+    """Path to the launcher (the shell): the value ending in Wuthering Waves.exe,
+    taken from OK-WW's own config."""
     if not okww_dir:
         return None
     root = Path(okww_dir) / "data" / "apps" / "ok-ww" / "working" / "configs"
@@ -203,7 +216,7 @@ def wuwa_launcher(okww_dir: Path | None) -> Path | None:
 
 def update_wuwa(desk: Desktop, launcher: Path, *, budget_s: float = 2400, poll_s: float = 30,
                 problems: list[str] | None = None, sleep=time.sleep) -> str:
-    from .preupdate_okww import _okww_quiesce  # noqa: PLC0415 - 关壳和游戏进程的现成办法
+    from .preupdate_okww import _okww_quiesce  # noqa: PLC0415 - kills shell + game
     if not _spawn(launcher):
         _note(problems, "鸣潮：启动器没能在桌面会话里起来")
         return ""
@@ -225,7 +238,8 @@ def update_wuwa(desk: Desktop, launcher: Path, *, budget_s: float = 2400, poll_s
         sleep(poll_s)
         scr = desk.read(focus="title:鸣潮")
         if scr.has("开始游戏"):
-            # 装完了。点「开始游戏」把游戏拉到登录界面（着色器就是这时候编的）
+            # Installed. Click 「开始游戏」 to bring the game up to the login screen
+            # (this is when the shaders get compiled)
             desk.click_text("开始游戏", focus="title:鸣潮")
             sleep(90)
             how = wait_ready(desk, "鸣潮", focus="Client-Win64-Shipping",
@@ -239,10 +253,11 @@ def update_wuwa(desk: Desktop, launcher: Path, *, budget_s: float = 2400, poll_s
     return ""
 
 
-# ─────────────────────────── 明日方舟 ───────────────────────────
+# ─────────────────────────── Arknights 明日方舟 ───────────────────────────
 
 def ldconsole_of(maa_dir: Path | None) -> tuple[Path | None, int]:
-    """(ldconsole.exe, 实例序号)。从 MAA 自己的配置读 AdbPath / 雷电快捷方式。"""
+    """(ldconsole.exe, instance index). Read from MAA's own config: AdbPath and the
+    LDPlayer shortcut."""
     if not maa_dir:
         return None, 0
     try:
@@ -259,13 +274,16 @@ def ldconsole_of(maa_dir: Path | None) -> tuple[Path | None, int]:
     return (exe if exe.exists() else None), idx
 
 
-# 09-03 在机器上逐段实测得出的做法（都写死在这，别再猜）：
-# * `ldconsole launch/isrunning/quit` 对这台的实例**不管用**（isrunning 永远 stop，
-#   quit/quitall 关不掉）。起模拟器要走 MAA 用的那条快捷方式：dnplayer.exe index=1000，
-#   而且必须在交互会话起（session 0 起出来是僵尸进程）。
-# * 判「起来了」用 adb：`adb devices` 出现 emulator-7554，dumpsys 能读到 versionName。
-# * 拉起游戏：`adb shell am start -n com.hypergryph.arknights/com.u8.sdk.U8UnityContext`
-#   （resolve-activity 查到的入口）；关游戏 `am force-stop`；关模拟器 taskkill dnplayer。
+# Worked out step by step on the machine on 09-03 (written down here; stop guessing):
+# * `ldconsole launch/isrunning/quit` **does not work** on this machine's instance
+#   (isrunning always says stop, quit/quitall cannot close it). Starting the emulator
+#   goes through the shortcut MAA uses: dnplayer.exe index=1000, and it must be started
+#   in an interactive session (from session 0 it comes up as a zombie process).
+# * "It is up" is judged with adb: emulator-7554 appears in `adb devices`, and dumpsys
+#   can read a versionName.
+# * Start the game: `adb shell am start -n com.hypergryph.arknights/com.u8.sdk.U8UnityContext`
+#   (the entry point resolve-activity found); stop the game with `am force-stop`; stop
+#   the emulator with taskkill dnplayer.
 AK_ACTIVITY = "com.hypergryph.arknights/com.u8.sdk.U8UnityContext"
 _EMU_EXES = ("dnplayer.exe", "LdVBoxHeadless.exe", "LdBoxHeadless.exe")
 
@@ -279,7 +297,7 @@ def _sh(args, t=120) -> str:
 
 
 def _sh_long(args) -> str:
-    return _sh(args, 900)        # 装 2 GB 的 APK
+    return _sh(args, 900)        # installing a 2 GB APK
 
 
 def adb_of(ldconsole: Path) -> Path:
@@ -295,7 +313,7 @@ def adb_device(ldconsole: Path, run=None) -> str:
 
 
 def installed_ak_version(ldconsole: Path, idx: int, run=None) -> str:
-    """dumpsys 里的 versionName。模拟器没起来就返回空串。"""
+    """versionName from dumpsys. Empty string when the emulator is not up."""
     run = run or _sh
     dev = adb_device(ldconsole, run)
     if not dev:
@@ -306,7 +324,7 @@ def installed_ak_version(ldconsole: Path, idx: int, run=None) -> str:
 
 
 def emulator_shortcut(maa_dir: Path | None, idx: int) -> tuple[Path, tuple[str, ...]]:
-    """MAA 起模拟器用的那条快捷方式的目标：(dnplayer.exe, ('index=1000',))。"""
+    """Target of the shortcut MAA uses to start the emulator: (dnplayer.exe, ('index=1000',))."""
     ld, _ = ldconsole_of(maa_dir)
     exe = Path(ld).parent / "dnplayer.exe" if ld else Path(r"D:\LD-MRFZ\LDPlayer9\dnplayer.exe")
     return exe, (f"index={idx}",)
@@ -319,7 +337,8 @@ def _spawn_args(exe: Path, args: tuple[str, ...]) -> bool:
 
 def emulator_boot(maa_dir: Path | None, ldconsole: Path, idx: int, *, run=None, sleep=time.sleep,
                   spawn=None, wait_s: float = 240) -> bool:
-    """起雷电到 adb 通。先清掉僵尸进程（isrunning 不可信，只看 adb）。"""
+    """Start LDPlayer until adb answers. Clear zombie processes first (isrunning is
+    not trustworthy; go by adb only)."""
     run = run or _sh
     spawn = spawn or _spawn_args
     if not adb_device(ldconsole, run):
@@ -339,8 +358,10 @@ def emulator_boot(maa_dir: Path | None, ldconsole: Path, idx: int, *, run=None, 
 
 def ak_prewarm(ldconsole: Path, dev: str, desk: Desktop, *, run=None, sleep=time.sleep,
                budget_s: float = 900) -> str:
-    """拉起方舟走到登录界面。09-03 实测：首屏是带「START」的加载页，要点一下
-    屏幕底部中央（1600x900 下约 (800,855)）才到「开始唤醒」。返回依据句。"""
+    """Start Arknights and get it to the login screen. Measured on 09-03: the first
+    screen is a loading page carrying 「START」, and it only reaches 「开始唤醒」 after a
+    tap at the bottom centre of the screen (about (800,855) at 1600x900). Returns the
+    evidence sentence."""
     run = run or _sh
     adb = str(adb_of(ldconsole))
     run([adb, "-s", dev, "shell", f"am start -n {AK_ACTIVITY}"])
@@ -353,8 +374,9 @@ def ak_prewarm(ldconsole: Path, dev: str, desk: Desktop, *, run=None, sleep=time
         if scr.has(*READY_WORDS["明日方舟"]):
             log.info("游戏更新：明日方舟到登录界面（读到「开始唤醒」）")
             return "读到「开始唤醒」"
-        # 「START」是花体字，OCR 未必认得出（09-03 实测读不到但盲点有效）；
-        # 没到登录界面就点一下屏幕底部中央——在登录界面那个位置是空的，点了无害。
+        # 「START」 is set in a decorative font and OCR may not read it (on 09-03 it
+        # could not be read, but a blind tap worked). While not at the login screen, tap
+        # the bottom centre - at the login screen that spot is empty, so it is harmless.
         run([adb, "-s", dev, "shell", f"input tap {W // 2} {int(H * 0.95)}"])
         log.info("游戏更新：明日方舟还没到登录界面，点了一下底部（START 位置）")
         sleep(20)
@@ -382,7 +404,7 @@ def remote_ak_version(fetch=None) -> str:
 
 
 def _store(state_dir):
-    from .statestore import StateStore  # noqa: PLC0415 - 避免导入环
+    from .statestore import StateStore  # noqa: PLC0415 - avoid an import cycle
     return StateStore(state_dir)
 
 
@@ -397,7 +419,7 @@ def record_ak_version(state_dir: Path, version: str) -> None:
 
 
 def download(url: str, dest: Path, *, timeout: float = 1500) -> bool:
-    """断点续传下到 dest。完成后按 Content-Length 核对大小。"""
+    """Resumable download to dest. Checks the size against Content-Length when done."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     part = dest.with_suffix(dest.suffix + ".part")
     have = part.stat().st_size if part.exists() else 0
@@ -407,7 +429,7 @@ def download(url: str, dest: Path, *, timeout: float = 1500) -> bool:
         cr = r.headers.get("Content-Range") or ""
         total = int(cr.rsplit("/", 1)[-1]) if "/" in cr else have + int(r.headers.get("Content-Length") or 0)
         if r.status == 200:
-            have = 0                      # 服务器不认 Range，从头来
+            have = 0                      # server ignored Range, start over
         with open(part, "ab" if have else "wb") as f:
             while True:
                 chunk = r.read(1 << 20)
@@ -430,7 +452,7 @@ def update_arknights(state_dir: Path, ldconsole: Path, idx: int, *,
                      fetch=None, run=None, sleep=time.sleep, downloader=download,
                      desk: Desktop | None = None, maa_dir: Path | None = None,
                      spawn=None) -> str:
-    """返回「明日方舟 已更新：旧 → 新」或空串。"""
+    """Returns 「明日方舟 已更新：旧 → 新」 or an empty string."""
     run = run or _sh
     try:
         remote = remote_ak_version(fetch)
@@ -446,7 +468,8 @@ def update_arknights(state_dir: Path, ldconsole: Path, idx: int, *,
         return emulator_boot(maa_dir, ldconsole, idx, run=run, sleep=sleep, spawn=spawn)
 
     if not local:
-        # 第一次：起模拟器读一次已装版本记下来，之后才有得比
+        # First time: start the emulator, read the installed version and record it;
+        # only then is there anything to compare against
         if not boot():
             _note(problems, "明日方舟：起雷电读已装版本没成功（4 分钟内 adb 没通）")
             return ""
@@ -484,7 +507,8 @@ def update_arknights(state_dir: Path, ldconsole: Path, idx: int, *,
         if now_ver == remote:
             break
     if now_ver == remote and desk is not None:
-        # 拉起一次让它把版本资源下完、走到登录界面（用户 2026-09-03：到登录界面才算 OK）
+        # Start it once so it finishes downloading the version's assets and reaches
+        # the login screen (the user, 2026-09-03: only the login screen counts as OK)
         how = ak_prewarm(ldconsole, dev, desk, run=run, sleep=sleep)
         log.info("游戏更新：明日方舟预热%s", f"完成（{how}）" if how else "没等到登录界面")
         if not how:
@@ -501,10 +525,11 @@ def update_arknights(state_dir: Path, ldconsole: Path, idx: int, *,
     return f"明日方舟 已更新：{local} → {remote}（APK 已装进雷电）"
 
 
-# ─────────────────────────── 调度 ───────────────────────────
+# ─────────────────────────── scheduling ───────────────────────────
 
 def should_run(state_dir: Path | None, now: datetime, *, boot_id: str) -> bool:
-    """每次开机跑一遍；同一次开机不重跑（部署重启服务不算新开机）。"""
+    """Runs once per boot; never twice within one boot (a deploy restarting the
+    service is not a new boot)."""
     if not state_dir:
         return False
     d = _store(state_dir).get("updates", "gameupdate")
@@ -517,19 +542,21 @@ def mark_run(state_dir: Path | None, now: datetime, *, boot_id: str) -> None:
                               {"boot": boot_id, "at": now.isoformat()})
 
 
-# ─────────────────────────── 登记：哪个游戏要更新 ───────────────────────────
-# 用户 2026-09-02：「预更新的窗口只有几分钟，更新游戏来不及。检测到有更新之后
+# ─────────────────── register which game needs updating ───────────────────
+# The user, 2026-09-02: 「预更新的窗口只有几分钟，更新游戏来不及。检测到有更新之后
 # 直接先跳过这个游戏，等所有其他游戏跑完之后，再单独拉这个游戏进行更新，
-# 然后再去重跑。」所以：开机只登记，队列跑完引擎再来做（run_deferred）。
+# 然后再去重跑。」 So: the boot only registers, and the engine does the work once the
+# queue has finished (run_deferred).
 
 def pending(state_dir: Path) -> dict[str, str]:
-    """{游戏: 为什么}。"""
+    """{game: why}."""
     d = _store(state_dir).get("updates", "gameupdate_pending")
     return {str(k): str(v) for k, v in d.items()} if isinstance(d, dict) else {}
 
 
 def mark_pending(state_dir: Path, game: str, why: str) -> bool:
-    """登记一条；已经登记过同一个游戏就不重复。返回是否新登记。"""
+    """Register one entry; a game already registered is not registered twice.
+    Returns whether this was a new registration."""
     d = pending(state_dir)
     if game in d:
         return False
@@ -547,7 +574,7 @@ def clear_pending(state_dir: Path, game: str) -> None:
 
 
 def last_run_ok(state_dir: Path, now: datetime, script: str) -> bool | None:
-    """今天这个脚本最后一趟成没成；今天没跑过返回 None。"""
+    """Whether this script's last round today succeeded; None when it has not run today."""
     last = None
     for e in _today(state_dir, now):
         if e.get("script") == script:
@@ -567,14 +594,18 @@ _UNREACHABLE_FLAG = {"MaaEnd": "maaend_unreachable", "OK-WW": "okww_unreachable"
 
 
 def needs_rerun(state_dir: Path, now: datetime, script: str) -> bool:
-    """只有「今天最后一趟是因为客户端过时进不了游戏」才值得更新后重跑。
+    """Only "today's last round failed because an outdated client could not get into
+    the game" is worth re-running after an update.
 
-    2026-09-02 晚上的事故：MaaEnd 因为上游没适配新版本，四个任务真失败了；
-    我按「最后一趟没成功就重跑」把它又派发了一遍，把正在玩的用户挤下线。
-    普通任务失败重跑也还是失败，只会白白抢号——那种失败不归更新管。
+    The incident on the evening of 2026-09-02: four MaaEnd tasks genuinely failed
+    because upstream had not adapted to the new version; I dispatched it again on the
+    rule "the last round did not succeed, so re-run", and it kicked the user off the
+    account while he was playing. An ordinary task failure fails again on a re-run and
+    only steals the account for nothing - that kind of failure is not the update's
+    business.
     """
     if any(r.get("script") == script for r in skips(state_dir)):
-        return True                     # 今天从队列里摘掉的，更新完必须补跑
+        return True                     # pulled from today's queue: must be re-run
     last = None
     for e in _today(state_dir, now):
         if e.get("script") == script:
@@ -586,21 +617,23 @@ def needs_rerun(state_dir: Path, now: datetime, script: str) -> bool:
 
 
 def off(state_dir: Path) -> bool:
-    """总开关：state.json 的 updates.gameupdate_off 为真就整套不动。"""
+    """Master switch: when state.json's updates.gameupdate_off is true, none of this runs."""
     return bool(_store(state_dir).get("updates", "gameupdate_off"))
 
 
-# ─────────────────────────── 鸣潮：官方公告里的更新维护日 ───────────────────────────
+# ─────────── Wuthering Waves: the maintenance day named in the official notice ───────────
 _WW_NOTICE_URL = ("https://aki-gm-resources-back.aki-game.com/gamenotice/G152/"
                   "76402e5b20be2c39f095a152090afddc/zh-Hans.json")
 _WW_MAINT = re.compile(r"更新维护时间[：:]\s*(\d{4})年(\d{1,2})月(\d{1,2})日")
 
 
 def wuwa_update_day(now: datetime, fetch=None) -> str:
-    """公告里最新的「版本内容说明」写的更新维护日是今天 → 返回依据句；否则空串。
+    """Returns the evidence sentence when the newest 「版本内容说明」 notice names today
+    as the maintenance day; otherwise an empty string.
 
-    公告是提前几天发的，写法固定：「更新维护时间：2026年8月20日04:00 ~ …」
-    （2026-09-02 核对）。一个 HTTP 请求，不开启动器。
+    The notice goes up a few days ahead and always in the same form:
+    「更新维护时间：2026年8月20日04:00 ~ …」 (checked 2026-09-02). One HTTP request; the
+    launcher is not opened.
     """
     try:
         data = fetch() if fetch else json.loads(
@@ -617,22 +650,26 @@ def wuwa_update_day(now: datetime, fetch=None) -> str:
         if (y, mo, d) == (now.year, now.month, now.day):
             ver = next((t for t, _ in items if body == dict(items).get(t)), "")
             return f"官方公告：今天更新维护（{ver.strip().splitlines()[-1] if ver else '新版本'}）"
-    except Exception:  # noqa: BLE001 - 只是信号
+    except Exception:  # noqa: BLE001 - it is only a signal
         return ""
     return ""
 
 
-# ─────────────────────────── 开机：只做便宜的判断 ───────────────────────────
+# ─────────────────────── boot: only the cheap checks ───────────────────────
 
 def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
                hint=None, fetch=None, wuwa_fetch=None, maint_sources=None,
                skipper=None) -> tuple[list[str], list[str]]:
-    """开机窗口里做的事：一个 HTTP 读方舟版本号、一个 HTTP 读终末地公告。
+    """What the boot window does: one HTTP read of the Arknights version, one HTTP read
+    of the Endfield notice.
 
-    方舟版本不同：窗口够（≥10 分钟）就当场装，不够就登记；
-    终末地公告说今天版本更新：登记；启动器一次都不开。
-    鸣潮：公告写的更新维护日是今天就登记（OK-WW 只会点游戏内的「即将重启」，
-    不会点启动器上的「更新」——用户 2026-09-02 指出的）。
+    Arknights version differs: install on the spot when the window is long enough
+    (>= 10 minutes), otherwise register it.
+    Endfield notice says there is a version update today: register it; the launcher is
+    never opened once.
+    Wuthering Waves: register when the notice names today as the maintenance day (OK-WW
+    only clicks the in-game 「即将重启」, never 「更新」 on the launcher - pointed out by
+    the user on 2026-09-02).
     """
     now = now or datetime.now(tz=SERVER_TZ)
     notes: list[str] = []
@@ -646,10 +683,10 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
             remote = remote_ak_version(fetch)
             local = recorded_ak_version(cfg.state_dir)
             if remote and local and remote != local:
-                # 用户 2026-09-02：「你能保证 10 分钟之内更新完吗？」——不能。一律延后。
+                # The user, 2026-09-02: 「你能保证 10 分钟之内更新完吗？」 No. Always defer.
                 mark_pending(cfg.state_dir, "明日方舟", f"官方版本 {remote}，已装 {local}")
             elif remote and not local:
-                # 第一次：起模拟器记一次已装版本（约一分钟）
+                # First time: start the emulator to record the installed version (~1 min)
                 if n := update_arknights(cfg.state_dir, ld, idx, budget_s=min(budget_s, 300),
                                          problems=problems, fetch=fetch):
                     notes.append(n)
@@ -665,13 +702,16 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
     except Exception:  # noqa: BLE001
         h = ""
     if h and last_run_ok(cfg.state_dir, now, "MaaEnd") is not True:
-        # 今天已经成功过就不登记；普通任务失败也不归更新管（needs_rerun 会再拦一道）
+        # Do not register when it already succeeded today; an ordinary task failure is
+        # not the update's business either (needs_rerun blocks that a second time)
         mark_pending(cfg.state_dir, "终末地", h)
     w = wuwa_update_day(n0, fetch=None if wuwa_fetch is None else wuwa_fetch)
     if w and last_run_ok(cfg.state_dir, now, "OK-WW") is not True:
         mark_pending(cfg.state_dir, "鸣潮", w)
-    # 三家官方停服维护公告（maintenance.py）：今天在维护的游戏，把窗口落盘并登记。
-    # 用户 2026-09-02 定的：维护中不算失败；队列跑完后等到开服，更新，补跑，再关机。
+    # The three official maintenance notices (maintenance.py): for a game under
+    # maintenance today, persist the window and register it. Settled by the user on
+    # 2026-09-02: maintenance does not count as a failure; after the queue finishes, wait
+    # for the servers to come back, update, re-run, and only then power off.
     try:
         from . import maintenance  # noqa: PLC0415
         wins = maintenance.today(now, sources=maint_sources) if maint_sources is not None else maintenance.today(now)
@@ -683,9 +723,11 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
         if last_run_ok(cfg.state_dir, now, script) is True:
             continue
         mark_pending(cfg.state_dir, game, why)
-        # 用户 2026-09-03：「当天队列里不跑他」。今天队列时刻落在维护窗口
-        # （开服后再算 45 分钟客户端更新）里的，经接口把它从队列摘掉；
-        # 补跑完再加回（restore_skips）。摘/加回 09-03 在早班上实测可逆。
+        # The user, 2026-09-03: 「当天队列里不跑他」. Where today's queue time falls
+        # inside the maintenance window (plus 45 minutes after the servers return, for
+        # the client update), pull the script out of the queue through the API and add
+        # it back after the re-run (restore_skips). Pull and restore were measured to be
+        # reversible on the morning shift on 09-03.
         from datetime import timedelta as _td  # noqa: PLC0415
         for q in _queues_today(cfg.automas_dir, now):
             for due in q["dues"]:
@@ -709,7 +751,7 @@ def _skip_default(queue: str, script: str):
 
 
 def _queues_today(automas_dir, now: datetime) -> list[dict]:
-    """今天还没到的队列时刻：[{name, dues:[datetime]}]。"""
+    """Today's queue times that have not come yet: [{name, dues:[datetime]}]."""
     from . import plan  # noqa: PLC0415
     out = []
     for q in plan.schedule(automas_dir) if automas_dir else []:
@@ -739,7 +781,8 @@ def _add_skip(state_dir: Path, rec: dict) -> None:
 
 
 def restore_skips(state_dir: Path, restorer=None) -> list[str]:
-    """把今天摘掉的都加回去。返回加回了谁。每次调用都试，成功的才从记录里去掉。"""
+    """Add back everything pulled today; returns which ones. Every call retries, and
+    only the ones that succeed are dropped from the record."""
     from . import commands  # noqa: PLC0415
     restorer = restorer or commands.restore_script_in_queue
     left, done = [], []
@@ -772,8 +815,9 @@ def windows(state_dir: Path) -> dict[str, tuple[datetime, datetime, str]]:
 
 
 def in_maintenance(state_dir: Path, script: str, at: datetime) -> str:
-    """这个脚本在这一刻是不是撞上了官方停服维护（开服后再宽限 45 分钟给客户端更新）。
-    返回依据句；不是返回空串。"""
+    """Whether this script hits an official maintenance window at this moment (plus a
+    45-minute grace after the servers return, for the client update). Returns the
+    evidence sentence, or an empty string when it does not."""
     from . import maintenance  # noqa: PLC0415
     from datetime import timedelta  # noqa: PLC0415
     game = next((g for g, s in maintenance.SCRIPT_OF.items() if s == script), "")
@@ -786,14 +830,16 @@ def in_maintenance(state_dir: Path, script: str, at: datetime) -> str:
     return ""
 
 
-# ─────────────────────────── 队列跑完之后：更新 + 重跑 ───────────────────────────
+# ─────────────── after the queue finishes: update + re-run ───────────────
 
 def _prepare_client(cfg, desk: Desktop, game: str, problems: list[str], sleep) -> tuple[bool, str]:
-    """更新到登录界面。返回 (准备好了没, 通知句)。没准备好时 problems 里有原因。
+    """Update through to the login screen. Returns (ready, notification sentence). When
+    it is not ready, the reason is in problems.
 
-    单独成步：这是整条流程里唯一按游戏分叉的地方——三家的启动器、时间预算、
-    「算准备好了」的判据各不相同；拎出来之后主流程就只剩「等准备好 → 等开服
-    → 补跑」这一条直线。
+    Its own step because this is the only place in the whole flow that forks per game -
+    launcher, time budget and the "counts as ready" test all differ between the three.
+    With it pulled out, the main flow is a straight line: wait until ready -> wait for
+    the servers -> re-run.
     """
     before = len(problems)
     if game == "终末地":
@@ -817,27 +863,33 @@ def _prepare_client(cfg, desk: Desktop, game: str, problems: list[str], sleep) -
 def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, clock, sleep,
                          problems: list[str], expect_new: bool,
                          local0: str) -> tuple[bool, str]:
-    """一遍遍地更新，直到客户端准备好、或者等过了 deadline。返回 (准备好了没, 通知句)。
+    """Update over and over until the client is ready or the deadline passes. Returns
+    (ready, notification sentence).
 
-    单独成步：这里的重试藏着一条容易写错的规矩——每轮失败要按 mark 把这一轮
-    写进 problems 的**全部**条目整批收回（原因见循环末尾的注释）。它和外层
-    「准备好之后做什么」是两件事，混在一个函数里那条规矩很难看清。
+    Its own step because the retry here hides a rule that is easy to get wrong: on every
+    failed round, **every** entry that round wrote into problems has to be taken back as
+    a batch, cut at mark (the reason is in the comment at the end of the loop). That is a
+    separate matter from the outer "what to do once it is ready", and mixing the two into
+    one function makes the rule hard to see.
     """
     ready, note = False, ""
     while True:
         mark = len(problems)
         ready, note = _prepare_client(cfg, desk, game, problems, sleep)
         if game == "明日方舟" and expect_new and ready and not note:
-            # prepare 说「无需更新」= 官方版本号还没变（维护中包体还没放出来），继续等
+            # prepare saying "no update needed" = the official version number has not
+            # changed yet (during maintenance the package is not out), so keep waiting
             ready = False
             if not problems or "版本号还没变" not in problems[-1]:
                 problems.append(f"明日方舟：官方版本号还没变（还是 {local0}），维护中包体还没放出来")
         if ready or clock() >= deadline:
             break
-        # 更新包多半还没放出来：把这轮的问题整批收回，10 分钟后再试。
-        # 按 mark 切、不是只删最后一条：一次 prepare 可能写两条
-        # （装完版本不对 + 没读到登录界面），只删一条会把另一条留到
-        # 最终报告里，明明后来成功了却还是报错。
+        # The update package is most likely not out yet: take this round's problems
+        # back as a batch and try again in 10 minutes.
+        # Cut at mark rather than dropping only the last entry: one prepare can write two
+        # (wrong version after install + login screen never read), and dropping one would
+        # leave the other in the final report - reporting a failure even though it
+        # succeeded later.
         log.info("游戏更新：%s 还没准备好（%s），10 分钟后再试", game, problems[-1] if problems else "")
         del problems[mark:]
         sleep(600)
@@ -846,10 +898,11 @@ def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, c
 
 def _rerun_script(cfg, now: datetime, dispatch, script: str,
                   reran: list[str], problems: list[str]) -> None:
-    """客户端更新完之后，把当天那趟没跑成的脚本补跑一次。
+    """Once the client is updated, re-run the script whose round failed today.
 
-    单独成步：「要不要补跑、跑完算成功还是算问题」和上面的更新等待没有共享
-    状态，是一件自成一体的小事；留在主循环里只会把那段循环撑长。
+    Its own step because "should it be re-run, and does the result count as success or
+    as a problem" shares no state with the update wait above; it is a self-contained
+    little job, and leaving it in the main loop only makes that loop longer.
     """
     if needs_rerun(cfg.state_dir, now, script) and dispatch is not None:
         ok, msg = dispatch(script)
@@ -862,12 +915,16 @@ def _rerun_script(cfg, now: datetime, dispatch, script: str,
 
 def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = None,
                  dispatch=None, sleep=time.sleep, clock=None) -> tuple[list[str], list[str], list[str]]:
-    """把登记过的都做掉。返回 (更新通知, 问题, 重跑了哪些脚本)。
+    """Work through everything registered. Returns (update notices, problems, scripts
+    that were re-run).
 
-    用户 2026-09-03 定的顺序：**队列跑完立刻更新**（下载、安装、拉起游戏过
-    着色器编译，到「点击任意位置继续」的登录界面才算准备好），不等开服；
-    准备好之后如果离开服还超过 10 分钟就先把游戏关掉，到点再单独补跑。
-    更新包还没放出来（维护中常见）就每 10 分钟再试，最多试到开服后 2 小时。
+    The order the user settled on 2026-09-03: **update the moment the queue finishes**
+    (download, install, start the game to get through shader compilation - it only
+    counts as ready at the 「点击任意位置继续」 login screen), without waiting for the
+    servers to come back; once ready, if the servers are still more than 10 minutes
+    away, close the game and re-run separately when the time comes. When the update
+    package is not out yet (common during maintenance), retry every 10 minutes, up to
+    2 hours past the servers returning.
     """
     now = now or datetime.now(tz=SERVER_TZ)
     clock = clock or (lambda: datetime.now(tz=SERVER_TZ))
@@ -886,7 +943,8 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
         script = maintenance.SCRIPT_OF.get(game, "")
         start, end = (wins.get(game) or (None, None, ""))[:2]
         deadline = (end + _td(hours=2)) if end else clock() + _td(hours=1)
-        expect_new = bool(end)              # 有维护窗口 = 今天一定有新版本，没看到新版本就不算准备好
+        expect_new = bool(end)              # maintenance window = a new version today;
+                                            # without one it does not count as ready
         local0 = recorded_ak_version(cfg.state_dir) if game == "明日方舟" else ""
         ready, note = _prepare_until_ready(cfg, desk, game, deadline=deadline, clock=clock,
                                            sleep=sleep, problems=problems,
@@ -896,7 +954,8 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
         if not ready:
             problems.append(f"{game}：到 {deadline:%m-%d %H:%M} 仍没准备好客户端，今天不补跑")
             continue
-        # 准备好了。离开服还远就先关游戏等着；到点补跑
+        # Ready. If the servers are still far off, close the game and wait; re-run
+        # when the time comes
         if end and clock() < end:
             if end - clock() > _td(minutes=10):
                 kill("Endfield.exe", "Client-Win64-Shipping.exe")
@@ -911,14 +970,18 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
     return notes, problems, reran
 
 
-# ─────────────────────────── MaaEnd 临时关掉的任务：上游更新后开回 ───────────────────────────
-# 2026-09-02 MaaEnd v2.27.0-beta.4 没适配 1.5.3，用户指示先关掉四项；beta.5（09-02 夜）
-# 的说明里有「适配新版本」「装备制造弹窗」「栖云生态点」。上游一换版本就开回来。
+# ───────── MaaEnd tasks switched off temporarily: back on after an upstream update ─────────
+# On 2026-09-02 MaaEnd v2.27.0-beta.4 had not adapted to 1.5.3 and the user told us to
+# switch four items off; the notes for beta.5 (the night of 09-02) mention 「适配新版本」,
+# 「装备制造弹窗」 and 「栖云生态点」. Switch them back on as soon as upstream changes
+# version.
 
 def maaend_reenable_if_updated(cfg) -> str:
-    # 记在 state.json 的 updates.maaend_disabled_1_5_3。2026-09-08 之前读的是独立文件，而
-    # 状态收口的清扫会把旧文件改名成 .migrated——读写两侧必须一起改，只加迁移
-    # 不改读法的话，这条记录会永远读不到，那几项日常一直关着没人知道。
+    # Kept in state.json under updates.maaend_disabled_1_5_3. Before 2026-09-08 this
+    # read a standalone file, and the state-consolidation sweep renames the old file to
+    # .migrated - the read side and the write side must change together. Add the
+    # migration without changing the read and this record can never be read again,
+    # leaving those dailies switched off with nobody knowing.
     store = _store(cfg.state_dir)
     rec = store.get("updates", "maaend_disabled_1_5_3")
     if not isinstance(rec, dict) or not rec:
@@ -928,7 +991,7 @@ def maaend_reenable_if_updated(cfg) -> str:
     since = str(rec.get("since") or "v2.27.0-beta.4")
     if not ver or ver == since:
         return ""
-    # 母本在 AUTO-MAS 的 data/<脚本id>/Default/ConfigFile/mxu-MaaEnd.json
+    # The master copy is at AUTO-MAS's data/<script id>/Default/ConfigFile/mxu-MaaEnd.json
     root = Path(cfg.automas_dir) / "data" if cfg.automas_dir else None
     target = next((f for f in (root.glob("*/Default/ConfigFile/mxu-MaaEnd.json") if root else [])), None)
     if not target:
@@ -949,7 +1012,8 @@ def maaend_reenable_if_updated(cfg) -> str:
 
 
 def maaend_set_enabled(cfg, names: set, enabled: bool) -> list[str]:
-    """改母本 mxu-MaaEnd.json 里几项的 enabled。返回真改动了的。"""
+    """Set `enabled` on a few items in the master mxu-MaaEnd.json. Returns the ones
+    that actually changed."""
     root = Path(cfg.automas_dir) / "data" if cfg.automas_dir else None
     target = next((f for f in (root.glob("*/Default/ConfigFile/mxu-MaaEnd.json") if root else [])), None)
     if not target:
@@ -966,10 +1030,13 @@ def maaend_set_enabled(cfg, names: set, enabled: bool) -> list[str]:
 
 
 def maaend_reenable_next_boot(cfg) -> str:
-    """补跑时临时关掉的（如当天已跑过的自动采集），下次开机开回。"""
-    # 记在 state.json 的 updates.maaend_reenable_next_boot。2026-09-08 之前读的是独立文件，而
-    # 状态收口的清扫会把旧文件改名成 .migrated——读写两侧必须一起改，只加迁移
-    # 不改读法的话，这条记录会永远读不到，那几项日常一直关着没人知道。
+    """Items switched off temporarily for a re-run (e.g. 自动采集, already done that
+    day) are switched back on at the next boot."""
+    # Kept in state.json under updates.maaend_reenable_next_boot. Before 2026-09-08
+    # this read a standalone file, and the state-consolidation sweep renames the old
+    # file to .migrated - the read side and the write side must change together. Add the
+    # migration without changing the read and this record can never be read again,
+    # leaving those dailies switched off with nobody knowing.
     store = _store(cfg.state_dir)
     rec = store.get("updates", "maaend_reenable_next_boot")
     if not isinstance(rec, dict) or not rec:
@@ -980,17 +1047,22 @@ def maaend_reenable_next_boot(cfg) -> str:
     return ("已开回：" + "、".join(zh.get(n, n) for n in on)) if on else ""
 
 
-# 坏掉的那个节点长什么样（beta.5，2026-09-03 从机器上读的原文）：
+# What the broken node looks like (beta.5, read verbatim off the machine 2026-09-03):
 #   "all_of": ["YellowConfirmButtonType2", {"param": {...}, "type": "OCR"}]
-# all_of 的元素是**节点**，识别得写在 node 的 recognition 里；把 type/param
-# 直接挂在节点顶层，框架不认，那一条判据等于没写，确认按钮就点不下去。
-# 上游 PR #5453 正是把它包进 recognition，顺带把 roi 放宽并加了等画面静止。
+# The elements of all_of are **nodes**, and the recognition has to be written inside the
+# node's own recognition block; hanging type/param straight off the top of the node is
+# something the framework does not understand, which makes that test as good as absent
+# and leaves the confirm button unclickable.
+# Upstream PR #5453 does exactly that - wraps it in recognition, and while there widens
+# the roi and adds a wait for the screen to settle.
 def spmed_fix_present(maaend_dir) -> bool:
-    """加强剂那个确认节点是不是已经修好了。
+    """Has the confirm node for the sanity booster been fixed yet?
 
-    换版本**不等于**这个 bug 修好了：2026-09-03 的修复（上游 PR #5453）
-    到当晚还没合入，只按版本号开回来就是白失败一次。判据改成直接看
-    资源文件里那条判据的形状——修好了才开，与哪个版本无关。
+    A new version does **not** mean this bug is fixed: the 2026-09-03 fix (upstream PR
+    #5453) had still not been merged that evening, so switching the task back on by
+    version number alone just buys another wasted failure. The test now looks straight at
+    the shape of that check in the resource file - switch it back on only once it is
+    fixed, whatever the version.
     """
     if not maaend_dir:
         return False
@@ -1007,10 +1079,13 @@ def spmed_fix_present(maaend_dir) -> bool:
 
 
 def maaend_reenable_spmed_if_updated(cfg) -> str:
-    """应急理智加强剂在 beta.5 坏了（09-03）；上游把它修好了就开回来。"""
-    # 记在 state.json 的 updates.maaend_disabled_spmed。2026-09-08 之前读的是独立文件，而
-    # 状态收口的清扫会把旧文件改名成 .migrated——读写两侧必须一起改，只加迁移
-    # 不改读法的话，这条记录会永远读不到，那几项日常一直关着没人知道。
+    """The 应急理智加强剂 task broke in beta.5 (09-03); switch it back on once upstream
+    has fixed it."""
+    # Kept in state.json under updates.maaend_disabled_spmed. Before 2026-09-08 this
+    # read a standalone file, and the state-consolidation sweep renames the old file to
+    # .migrated - the read side and the write side must change together. Add the
+    # migration without changing the read and this record can never be read again,
+    # leaving those dailies switched off with nobody knowing.
     store = _store(cfg.state_dir)
     rec = store.get("updates", "maaend_disabled_spmed")
     if not isinstance(rec, dict) or not rec:

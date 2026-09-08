@@ -171,8 +171,9 @@ def _fetch(url: str, timeout: int = 20, attempts: int = 3) -> dict | None:
             return fallback
         if i + 1 < attempts:
             time.sleep(3 * (i + 1))
-    # 只有**每一扇门都没答应**才算故障，这时把每扇门各自的结果都写出来，
-    # 而不是只留一条「取不到」让人猜是哪条路断了。
+    # Only **every door failing to answer** counts as a fault, and when that happens
+    # write out what each door did, instead of a single "could not fetch" that leaves
+    # the reader guessing which route is down.
     log.warning("待办文件一扇门都没取到（试了 %d 扇 × %d 轮）：%s",
                 len(urls), attempts, "；".join(errors[-len(urls):]) or "无详情")
     return None
@@ -180,13 +181,16 @@ def _fetch(url: str, timeout: int = 20, attempts: int = 3) -> dict | None:
 
 def _fetch_once(url: str, timeout: int = 20,
                 errors: "list[str] | None" = None) -> dict | None:
-    """取一扇门。**失败只记 debug**，由调用方决定要不要报警。
+    """Try one door. **A failure is logged at debug only**; the caller decides
+    whether it warrants an alarm.
 
-    这里原来是直接打 WARNING 的，于是 raw.githubusercontent 这扇
-    **故意垫底、本来就最不通**的门每次超时都在日志里留一条
-    「取不到待办文件」——而前面三扇 jsDelivr 明明拿到了，待办也应用了。
-    2026-08-30 我自己就被这条骗过一次，跟用户说「待办下发又失败了」，
-    实际上那一轮完全正常。**一扇门失败不是故障，全部失败才是。**
+    This used to log a WARNING directly, so raw.githubusercontent -- the door that is
+    **deliberately last and known to be the least reachable** -- left a "could not
+    fetch the queue file" line in the log on every timeout, even though the three
+    jsDelivr doors ahead of it had succeeded and the queue had been applied. On
+    2026-08-30 that line fooled me into telling the user the queue delivery had failed
+    again, when that run had in fact been completely fine. **One door failing is not a
+    fault; all of them failing is.**
     """
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "ark-relay"})
@@ -235,9 +239,11 @@ class Inbox:
             return 0
 
     def _remember(self, version: int) -> None:
-        # 原子写：这段可能跑在关机倒计时里（service.py 在 tick() 之后才做延后的
-        # 收件，而 tick 可能已经发了 `shutdown /s /t 60`）。写坏的记账会被读成
-        # 版本 0，下次开机把上一批指令整批重放一遍。state.json 的写入是原子的。
+        # Atomic write: this can run inside the shutdown countdown (service.py does
+        # the deferred inbox pass after tick(), and tick may already have issued
+        # `shutdown /s /t 60`). A corrupted record reads back as version 0, which
+        # would replay the whole previous batch of commands on the next boot. Writes
+        # to state.json are atomic.
         self._store().set("queues", "inbox_version", str(version))
 
     def poll(self) -> tuple[int, list[str]]:
@@ -328,8 +334,9 @@ class Inbox:
             out.append(("✅ " if ok else "✗ ") + detail)
 
         for cmd in [c for c in others if c.get("action") == "sanity_plan"]:
-            # 决定 MaaEnd 把理智花在哪。写的是 AUTO-MAS 的**母本**——
-            # MaaEnd 自己那份每轮启动都会被母本整个覆盖。
+            # Decides where MaaEnd spends its sanity. This writes the AUTO-MAS
+            # **master copy** -- MaaEnd's own copy is overwritten wholesale from the
+            # master on every startup.
             if not self.automas_dir:
                 out.append("✗ 理智方案：找不到 AUTO-MAS 目录，跳过")
                 continue

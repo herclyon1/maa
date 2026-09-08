@@ -1,16 +1,18 @@
-"""三个游戏官方「停服维护公告」——机器可读的来源，2026-09-02/03 逐个核对。
+"""Official downtime-maintenance bulletins for the three games -- machine-readable
+sources, each verified 2026-09-02/03.
 
-用户 2026-09-02：「游戏官方都会提前好几天发更新公告，写什么时候停服维护。
+The user, 2026-09-02: 「游戏官方都会提前好几天发更新公告，写什么时候停服维护。
 拿到这个就简单了：服务器更新的时候就不跑他，等跑完队列之后检测时间是否已经
 过了停服时间，还在停服就等，一直等到开服，更新，补跑，跑完再关机。」
 
-| 游戏 | 来源 | 格式（实录） |
+| Game | Source | Format (as observed) |
 |---|---|---|
-| 明日方舟 | ak.hypergryph.com/news 页里嵌的 Next.js 数据 `initialData.LATEST.list[]`，标题「[明日方舟]09月04日06:00版本更新停机维护公告」，正文「2026年09月04日06:00 - 12:00」 | 见 _AK_* |
-| 终末地 | endfield.hypergryph.com/news 页里嵌的 `bulletins[]`，标题「…版本预下载与更新预告」，正文「版本维护时间 2026/09/02 06:00 - 2026/09/02 12:00（UTC+8）」 | 见 _EF_* |
-| 鸣潮 | 游戏内公告 JSON，「X.Y版本内容说明」正文「更新维护时间：2026年8月20日04:00 ~ 2026年8月20日11:00（UTC+8）」 | 见 _WW_* |
+| Arknights | the Next.js data `initialData.LATEST.list[]` embedded in the ak.hypergryph.com/news page, title 「[明日方舟]09月04日06:00版本更新停机维护公告」, body 「2026年09月04日06:00 - 12:00」 | see _AK_* |
+| Endfield | the `bulletins[]` embedded in the endfield.hypergryph.com/news page, title 「…版本预下载与更新预告」, body 「版本维护时间 2026/09/02 06:00 - 2026/09/02 12:00（UTC+8）」 | see _EF_* |
+| Wuthering Waves | the in-game bulletin JSON, 「X.Y版本内容说明」, body 「更新维护时间：2026年8月20日04:00 ~ 2026年8月20日11:00（UTC+8）」 | see _WW_* |
 
-每个 `*_window()` 返回 (开始, 结束, 依据句) 或 None。取不到就 None，绝不猜。
+Each `*_window()` returns (start, end, evidence line) or None. If nothing can be
+fetched it returns None; it never guesses.
 """
 from __future__ import annotations
 
@@ -43,7 +45,7 @@ def _dt(y: int, mo: int, d: int, hh: int, mm: int) -> datetime:
     return datetime(y, mo, d, hh, mm, tzinfo=SERVER_TZ)
 
 
-# ── 明日方舟 ──
+# ── Arknights ──
 _AK_NEWS = "https://ak.hypergryph.com/news"
 _AK_ITEM = re.compile(r'\\"cid\\":\\"(\d+)\\",\\"tab\\":\\"\w+\\",\\"sticky\\":(?:true|false),\\"title\\":\\"([^"\\]+)')
 _AK_TITLE = re.compile(r"(\d{1,2})月(\d{1,2})日(\d{1,2}):(\d{2}).*?(停机维护|停机更新|维护公告)")
@@ -67,7 +69,7 @@ def arknights_window(now: datetime | None = None, get=_get) -> Window | None:
     return None
 
 
-# ── 终末地 ──
+# ── Endfield ──
 _EF_NEWS = "https://endfield.hypergryph.com/news"
 _EF_ITEM = re.compile(r'\\"cid\\":\\"(\d+)\\",\\"tab\\":\\"\w+\\",\\"sticky\\":(?:true|false),\\"title\\":\\"([^"\\]+)')
 _EF_BODY = re.compile(r"维护时间\s*(\d{4})/(\d{1,2})/(\d{1,2})\s*(\d{1,2}):(\d{2})\s*[-~～]\s*(\d{4})/(\d{1,2})/(\d{1,2})\s*(\d{1,2}):(\d{2})")
@@ -88,7 +90,7 @@ def endfield_window(now: datetime | None = None, get=_get) -> Window | None:
     return None
 
 
-# ── 鸣潮 ──
+# ── Wuthering Waves ──
 _WW_NOTICE = ("https://aki-gm-resources-back.aki-game.com/gamenotice/G152/"
               "76402e5b20be2c39f095a152090afddc/zh-Hans.json")
 _WW_BODY = re.compile(r"更新维护时间[：:]\s*(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})\s*[~～-]\s*(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})")
@@ -114,7 +116,10 @@ SOURCES = {"明日方舟": arknights_window, "终末地": endfield_window, "鸣�
 
 
 def today(now: datetime | None = None, sources=None) -> dict[str, Window]:
-    """今天有停服维护的游戏 → 窗口。每家一次网络请求，失败就当没有。"""
+    """Games with downtime maintenance today -> their window.
+
+    One network request per game; a failure is treated as "no maintenance".
+    """
     now = now or datetime.now(tz=SERVER_TZ)
     out: dict[str, Window] = {}
     for game, fn in (sources if sources is not None else SOURCES).items():

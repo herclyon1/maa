@@ -1,40 +1,47 @@
-"""三个游戏的「新角色卡池」倒计时与下一期时间。
+"""Countdowns for the three games' new-character banners, and when the next one
+starts.
 
-**只报全新角色首发的池子**——复刻、常驻、中坚轮换一律不报。
-用户 2026-08-30 原话：「我有且只要全新角色的卡池信息，其他的不要，
-因为我都有老角色了。」
+**Only banners that debut a brand-new character are reported** -- reruns, standard
+and rotating banners are never reported. The user, 2026-08-30: 「我有且只要全新角色的
+卡池信息，其他的不要，因为我都有老角色了。」
 
-## 数据源（2026-08-30 逐个实测，全部走官方）
+## Data sources (each measured 2026-08-30; all official)
 
-| 游戏 | 来源 | 拿到什么 |
+| Game | Source | What it gives |
 |------|------|---------|
-| 鸣潮 | 库街区 `api.kurobbs.com/wiki/core/homepage/getPage`（免 token） | 池子名、起止时间；角色名要再查 `getEntryDetail` |
-| 鸣潮预告 | 官方游戏内公告 `aki-gm-resources-back.aki-game.com` | 整个版本上下半的**全新五星**和池名 |
-| 终末地 | 森空岛 `zonai.skland.com/web/v1/wiki/char-pool` | 池子名、起止时间戳；角色名要再查 `item/info` |
-| 终末地预告 | 官方公告 `game-hub.hypergryph.com/bulletin/v2/aggregate` | 整版上下半的**全新干员**和池名 |
-| 明日方舟 | PRTS `卡池一览/限时寻访` | 池子名、UP 干员、精确起止 |
-| 方舟预告 | 一图流前端仓库 `gachaScheduleOptions.js`（人工维护） | 下一期池名和大致开始日 |
+| Wuthering Waves | Kuro BBS `api.kurobbs.com/wiki/core/homepage/getPage` (no token) | banner name, start/end; character names need a further `getEntryDetail` |
+| Wuthering Waves preview | official in-game bulletin `aki-gm-resources-back.aki-game.com` | the **brand-new 5-stars** and banner names for both halves of the version |
+| Endfield | Skland `zonai.skland.com/web/v1/wiki/char-pool` | banner name, start/end timestamps; character names need a further `item/info` |
+| Endfield preview | official bulletin `game-hub.hypergryph.com/bulletin/v2/aggregate` | the **brand-new operators** and banner names for both halves of the version |
+| Arknights | PRTS `卡池一览/限时寻访` | banner name, UP operators, exact start/end |
+| Arknights preview | the Yituliu frontend repo `gachaScheduleOptions.js` (hand-maintained) | the next banner's name and rough start date |
 
-**为什么必须走官方而不是 Fandom**：2026-08-30 实测，同一时刻
-Fandom（国际服）给的是「False Promise for Tomorrow / Denia」，
-而库街区（国服）给的是「予明日以谎言 / 达妮娅」。
-名字和角色都对不上，服务器进度也不同步。用 Fandom 会报错东西。
+**Why this must use official sources and not Fandom**: measured 2026-08-30, at the
+same moment Fandom (global servers) said 「False Promise for Tomorrow / Denia」 while
+Kuro BBS (CN servers) said 「予明日以谎言 / 达妮娅」. Neither the names nor the
+characters line up, and the servers are not on the same schedule. Using Fandom would
+report the wrong thing.
 
-## 下一期时间
+## When the next banner starts
 
-**鸣潮是唯一能拿到「下一期是谁」的**：官方在版本更新当天发的
-「N.N版本内容说明」公告里，把整个版本上下半的全新五星和对应池名
-一次性列全，等于提前三周官宣。这一节天然不含复刻，正好对上口径。
+**Wuthering Waves is the only one where "who is next" can be obtained**: the
+「N.N版本内容说明」 bulletin the publisher posts on version-update day lists every
+brand-new 5-star for both halves of the version together with its banner name -- an
+official announcement three weeks ahead. That section contains no reruns by
+construction, which is exactly the criterion we want.
 
-方舟和终末地拿不到人，只拿得到**什么时候换**：
+For Arknights and Endfield the characters are not available, only **when the
+changeover happens**:
 
-* 终末地：本期结束即下期开始（连轴换）
-* 明日方舟：`gacha_table.json` 随客户端更新推送，里面**已经有未来的池子**
+* Endfield: the next banner starts the moment the current one ends (back to back)
+* Arknights: `gacha_table.json` ships with the client update and **already contains
+  future banners**
 
-所以除鸣潮外，「下一期」是推出来的，不是官宣的——渲染时必须说清楚，
-不许写成好像官方已经公布了。
+So outside Wuthering Waves, "the next banner" is inferred, not announced -- the
+rendering must say so, and must never read as though the publisher had announced it.
 
-取不到就返回空——报告少一行，好过没有报告。
+If nothing can be fetched this returns empty: one line missing from the report beats
+having no report.
 """
 from __future__ import annotations
 
@@ -48,8 +55,9 @@ from datetime import datetime, timedelta
 
 log = logging.getLogger("ark.banners")
 
-# PRTS 认 User-Agent：curl 的默认 UA 能过，浏览器 UA 反而 403。
-# 别"优化"成 Chrome UA，会全线 403（2026-08-30 实测两次）。
+# PRTS checks the User-Agent: curl's default UA gets through, a browser UA gets a
+# 403 instead. Do not "optimise" this into a Chrome UA; everything 403s (measured
+# twice, 2026-08-30).
 _UA_PLAIN = "curl/8.7.1"
 _UA_BROWSER = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
@@ -57,7 +65,9 @@ _UA_BROWSER = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
 
 @dataclass(frozen=True)
 class Banner:
-    """一个卡池。`chars` 是这一池首发的新角色，可能不止一个。"""
+    """One banner. `chars` are the new characters debuting on it; there can be
+    more than one.
+    """
 
     game: str
     name: str
@@ -66,21 +76,25 @@ class Banner:
     end: datetime
 
 
-# ── 明日方舟：PRTS ──────────────────────────────────────────────
-# 一行长这样（实测）：
+# ── Arknights: PRTS ────────────────────────────────────────────
+# One row looks like this (as observed):
 #   |[[文件:X.jpg|400px|link=Y]]<br/>[[Y|【限定寻访·夏季】车辙与风的归所]]
 #   |2026-08-01 12:00~<br/>2026-08-15 03:59
 #   |{{干员头像|予愿安洁莉娜|limited=1}}{{干员头像|珊比}}
 _AK_TIME = re.compile(r"(\d{4}-\d\d-\d\d \d\d:\d\d)\s*~\s*<br\s*/?>\s*"
                       r"(\d{4}-\d\d-\d\d \d\d:\d\d)")
-# 两种写法都要认：[[页面|显示名]] 和 [[页面]]；图片链接跳过。
+# Both spellings must be recognised: [[page|shown]] and [[page]]; image links are
+# skipped.
 _AK_LINK = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
 _AK_FILE = re.compile(r"^(?:文件|File):", re.I)
 _AK_CHAR = re.compile(r"\{\{干员头像\|([^|}]+)")
 
 
 def parse_arknights(wt: str) -> list[Banner]:
-    """解析 PRTS 的寻访表。表是新在前的，这里按时间正序返回。"""
+    """Parse the PRTS banner table.
+
+    The table is newest-first; this returns entries in chronological order.
+    """
     out: list[Banner] = []
     for row in wt.split("\n|-"):
         m = _AK_TIME.search(row)
@@ -104,16 +118,16 @@ def parse_arknights(wt: str) -> list[Banner]:
     return out
 
 
-# ── 终末地：森空岛官方 ──────────────────────────────────────────
-# char-pool 里 chars[].name 是空的，必须再查 item/info；
-# gid 从 chars[].pcLink 的 `gameEntryId=` 后面取。
-# 这个接口只属于终末地：带 ?gameId=1 返回的还是终末地，
-# 而 /api/v1/game/arknights/* 全部 404。
+# ── Endfield: official Skland API ──────────────────────────────
+# chars[].name in char-pool is empty, so item/info has to be queried as well; the gid
+# comes from what follows `gameEntryId=` in chars[].pcLink.
+# This endpoint belongs to Endfield alone: passing ?gameId=1 still returns Endfield,
+# and every /api/v1/game/arknights/* path 404s.
 _SK_UP = "label_type_up"
 
 
 def parse_endfield(pools: list, name_of) -> list[Banner]:
-    """`pools` 是 char-pool 的 data.list；`name_of(gid)` 返回角色名。"""
+    """`pools` is char-pool's data.list; `name_of(gid)` returns a character name."""
     out: list[Banner] = []
     for p in pools:
         try:
@@ -123,7 +137,7 @@ def parse_endfield(pools: list, name_of) -> list[Banner]:
             continue
         names = []
         for c in p.get("chars") or []:
-            if c.get("dotType") != _SK_UP:          # 只要 UP，不要陪跑的
+            if c.get("dotType") != _SK_UP:          # only the UP characters, not the filler
                 continue
             gid = str(c.get("pcLink", "")).split("gameEntryId=")[-1]
             if gid.isdigit() and (nm := name_of(gid)):
@@ -135,18 +149,22 @@ def parse_endfield(pools: list, name_of) -> list[Banner]:
     return out
 
 
-# 官方「版本更新说明」公告里，整版上下半的新干员和池名一起给，
-# 和鸣潮的版本公告是一个路数：
+# The official 「版本更新说明」 bulletin gives the new operators and banner names for
+# both halves of the version together, the same way the Wuthering Waves version
+# bulletin does:
 #     ■ 全新干员
 #     6星干员【诀】【梨诺】
 #     ■ 全新寻访及申领
 #     1.「临渊望北」特许寻访 · ... 6星干员【诀】获取概率提升 ...
 #     3.「晨星于此闪耀」特许寻访 · ... 6星干员【梨诺】获取概率提升 ...
-# 「全新干员」那一节天然不含复刻，正好是判首发的依据。
+# The 「全新干员」 section contains no reruns by construction, which is exactly what
+# makes it usable as the debut criterion.
 _EF_DEBUT_SEG = re.compile(r"全新干员(.{0,300}?)■", re.S)
-# 只要 6 星。2026-09-02 的公告「6星干员【提弗洛斯】、5星干员【噗切娜】」——
-# 噗切娜是赠送的 5 星，根本不进卡池，却被当成下一期报出去了。
-# 用户定的：终末地、明日方舟只报 6 星限定新 UP；鸣潮只报 5 星（它的最高稀有度）。
+# 6-stars only. The 2026-09-02 bulletin read 「6星干员【提弗洛斯】、5星干员【噗切娜】」
+# -- 噗切娜 is a gifted 5-star that never appears on a banner at all, yet it got
+# reported as the next banner.
+# Set by the user: for Endfield and Arknights report only new limited 6-star UPs; for
+# Wuthering Waves only 5-stars (its highest rarity).
 _EF_SIX = re.compile(r"6星干员((?:【[^】]+】)+)")
 _EF_BRACKET = re.compile(r"【([^】]+)】")
 _EF_POOL = re.compile(r"「([^」]+)」特许寻访")
@@ -157,12 +175,13 @@ _VER = re.compile(r"(\d+)\.(\d+)")
 
 
 def newest_version(entries: "list[tuple[str, str]]") -> str:
-    """从 [(标题, 正文)] 里挑版本号最大的那条正文。
+    """From [(title, body)], pick the body with the highest version number.
 
-    3.6 快结束时 3.7 的版本说明会先发出来，两条并存。原来是把所有
-    「版本内容说明」拼在一起，一旦 3.7 排在 3.6 前面，「在开的那位之后」
-    这条判据就会指到错的人身上。只认版本号最大的那条，3.7 一发布
-    不用改代码就能自动报出来。
+    As 3.6 nears its end the 3.7 version notes are posted first and both exist at
+    once. This used to concatenate every 「版本内容说明」, so as soon as 3.7 came before
+    3.6 the "whoever comes after the one currently running" criterion pointed at the
+    wrong character. Only the highest version number is accepted, so 3.7 gets reported
+    automatically the moment it is published, with no code change.
     """
     best, best_key = "", (-1, -1)
     for title, body in entries:
@@ -175,10 +194,12 @@ def newest_version(entries: "list[tuple[str, str]]") -> str:
 
 def upcoming(debut: "list[tuple[str, str]]", live: "set[str]"
              ) -> "list[tuple[str, str]]":
-    """公告按时间顺序列全版的池子，在开的那位之后的才是还没开的。
+    """The bulletin lists the version's banners in order; only the ones after the
+    banner currently running have yet to open.
 
-    不能只用「不在 live 里」——本版上半已经开完了，那位也不在 live 里，
-    照那个判据会把**上一期**当成下一期报出去。
+    "Not in live" alone will not do -- the first half of this version has already
+    finished, so that character is not in live either, and by that criterion the
+    **previous** banner would get reported as the next one.
     """
     idx = max((i for i, (w, _) in enumerate(debut) if w in live), default=None)
     return debut[idx + 1:] if idx is not None else []
@@ -189,16 +210,19 @@ _EF_OPEN = re.compile(r"开放时间[：:]\s*(\d{4})/(\d{1,2})/(\d{1,2})\s*(\d{1
 
 
 def parse_endfield_notice(html: str) -> "list[tuple[str, str]]":
-    """从版本更新说明取 (干员, 池名)，按公告里的先后顺序。只要 6 星首发。"""
+    """Extract (operator, banner name) from the version update notes, in the order
+    they appear in the bulletin. 6-star debuts only.
+    """
     return [(n, pool) for n, pool, _, debut in endfield_pools_from_notice(html) if debut]
 
 
 def endfield_pools_from_notice(html: str) -> "list[tuple[str, str, datetime | None, bool]]":
-    """公告里每一期 6 星 UP 池：(干员, 池名, 开放时刻或 None, 是否首发)。
+    """Every 6-star UP banner in the bulletin: (operator, banner name, opening time
+    or None, is it a debut).
 
-    用户 2026-09-03：「不要光顾着删卡池，你要补充预期卡池的角色」。
-    2026-09-02 的公告：「冬猎」提弗洛斯（首发，版本更新后开）；
-    「绚丽异彩」重构寻访#1 伊冯（复刻，2026/09/24 12:00 开）。
+    The user, 2026-09-03: 「不要光顾着删卡池，你要补充预期卡池的角色」.
+    From the 2026-09-02 bulletin: 「冬猎」 提弗洛斯 (debut, opens after the version
+    update); 「绚丽异彩」 重构寻访#1 伊冯 (rerun, opens 2026/09/24 12:00).
     """
     txt = re.sub(r"<[^>]+>", " ", html or "").replace("&nbsp;", " ")
     txt = re.sub(r"\s+", " ", txt)
@@ -224,15 +248,16 @@ def endfield_pools_from_notice(html: str) -> "list[tuple[str, str, datetime | No
     return out
 
 
-# ── 鸣潮：库街区 wiki 首页（免 token）──────────────────────────
-# POST /wiki/core/homepage/getPage，只要三个固定 header。
-# data.contentJson.sideModules[] 里 title 含「角色…唤取」的模块，
-# content.tabs[] 是同时开着的几个池子：
-#   tab.name                        池名
+# ── Wuthering Waves: the Kuro BBS wiki homepage (no token) ─────
+# POST /wiki/core/homepage/getPage with just three fixed headers.
+# In data.contentJson.sideModules[], the modules whose title contains 「角色…唤取」;
+# their content.tabs[] are the banners running concurrently:
+#   tab.name                        banner name
 #   tab.countDown.dateRange         ["2026-08-20 11:00", "2026-09-10 09:59"]
-#   tab.imgs[0].linkConfig.entryId  角色条目 id
-# **imgs 后几项在所有 tab 里是同一组通用条目，只有第一项是角色。**
-# 武器池不报。
+#   tab.imgs[0].linkConfig.entryId  character entry id
+# **The imgs after the first are the same generic entries in every tab; only the
+# first one is the character.**
+# Weapon banners are not reported.
 def parse_wuwa(home: dict, name_of) -> list[Banner]:
     out: list[Banner] = []
     content = ((home or {}).get("data") or {}).get("contentJson") or {}
@@ -259,7 +284,7 @@ def parse_wuwa(home: dict, name_of) -> list[Banner]:
     return out
 
 
-# 官方公告正文里「全新角色」那一节，格式是固定的：
+# The 「全新角色」 section in the body of the official bulletin has a fixed format:
 #     5星共鸣者「景燃」（热熔 | 长刃）
 #     ...
 #     ※可通过[身赴三途]角色活动唤取获得。
@@ -268,7 +293,10 @@ _WW_POOL = re.compile(r"可通过[\[「]([^\]」]+)[\]」]角色活动唤取")
 
 
 def parse_wuwa_preview(content: str) -> "list[tuple[str, str]]":
-    """从版本公告正文取 (角色, 池名)。只截「全新角色」一节，复刻不在其中。"""
+    """Extract (character, banner name) from the version bulletin body.
+
+    Only the 「全新角色」 section is sliced out, and reruns are not in it.
+    """
     text = re.sub(r"<[^>]+>", "", content or "").replace("&nbsp;", "")
     i = text.find("全新角色")
     if i < 0:
@@ -284,48 +312,61 @@ def parse_wuwa_preview(content: str) -> "list[tuple[str, str]]":
     return out
 
 
-# ── 首发判定 ────────────────────────────────────────────────────
+# ── Deciding what counts as a debut ────────────────────────────
 _RERUN = ("复刻", "Rerun", "rerun")
-# 按定义就不可能有首发角色的池子，直接按名字排掉。
-# 2026-08-30 第一版没排，「联合行动23」被判成首发（诺威尔、杏仁都是老干员）。
+# Banners that by definition cannot debut a character, excluded by name.
+# The first version on 2026-08-30 did not exclude them and judged 「联合行动23」 a debut
+# (诺威尔 and 杏仁 are both old operators).
 _NOT_DEBUT = ("联合行动", "中坚寻访", "中坚甄选", "概率提升")
 
 
 def debut_only(banners: list[Banner]) -> list[Banner]:
-    """只留首发。传进来的必须是**按开始时间正序的完整历史**。"""
+    """Keep debuts only.
+
+    What is passed in must be the **complete history, sorted by start time**.
+    """
     seen: set[str] = set()
     out: list[Banner] = []
     for b in banners:
         skip = any(k in b.name for k in _RERUN + _NOT_DEBUT)
         fresh = tuple(c for c in b.chars if c not in seen)
-        seen.update(b.chars)          # 轮换池里的角色也要记，它们不是新人
+        seen.update(b.chars)          # record rotating-banner characters too; they are not new
         if skip or not fresh:
             continue
         out.append(Banner(b.game, b.name, fresh, b.start, b.end))
     return out
 
 
-# 日报里的顺序：和上面三块运行记录一致（MAA → 鸣潮 → 终末地）
+# Order within the daily report: same as the three run-record blocks above
+# (MAA -> Wuthering Waves -> Endfield)
 _GAME_ORDER = ("明日方舟", "鸣潮", "终末地")
 
 
 def _stamp(when: datetime) -> str:
-    # 有些源只给到日期；硬凑一个 00:00 出来是假精确。
+    # Some sources only give a date; inventing a 00:00 would be false precision.
     return f"{when:%m-%d}" if (when.hour, when.minute) == (0, 0) else f"{when:%m-%d %H:%M}"
 
 
-# ── 版本前瞻 ──
-# 用户 2026-09-03：鸣潮、终末地每个版本的前瞻时间是**固定规律**，不是「约」。实录：
-#   鸣潮 3.6：版本 08-20（周四）更新，前瞻通讯 08-07（周五）19:00 → 版本前 13 天
-#   终末地「雪凇幽梦」：版本 09-02（周三）更新，前瞻节目 08-21（周五）19:00 → 版本前 12 天
-# 官方一发前瞻公告就用公告的时刻；没发时按这个规律算，标「按规律」。
-# 方舟版本时间不固定，下一期看一图流（next_starts 里已带）。
-_PREVIEW_RULE = {"鸣潮": (13, 19, 0), "终末地": (12, 19, 0)}   # (版本前几天, 时, 分)
+# ── Version preview streams ──
+# The user, 2026-09-03: the preview stream time for each Wuthering Waves and Endfield
+# version follows a **fixed rule**, it is not an approximation. As recorded:
+#   Wuthering Waves 3.6: version updates 08-20 (Thu), preview stream 08-07 (Fri)
+#     19:00 -> 13 days before the version
+#   Endfield 「雪凇幽梦」: version updates 09-02 (Wed), preview stream 08-21 (Fri)
+#     19:00 -> 12 days before the version
+# Once the publisher posts a preview announcement, use the time from it; until then
+# compute from this rule and label it as derived from the rule.
+# Arknights version timing is not fixed; its next banner comes from Yituliu (already
+# carried in next_starts).
+_PREVIEW_RULE = {"鸣潮": (13, 19, 0), "终末地": (12, 19, 0)}   # (days before the version, hour, minute)
 
 
 def previews(now: datetime, rows: list[Banner], version_end: "dict[str, datetime]",
              official: "dict[str, tuple[datetime, str]] | None" = None) -> "dict[str, str]":
-    """{游戏: 前瞻那一行的正文}。official[游戏] = (前瞻时刻, 标题) 有就用它。"""
+    """{game: the body of the preview line}.
+
+    When official[game] = (preview time, title) is present it is used instead.
+    """
     out: dict[str, str] = {}
     for game, (days, hh, mm) in _PREVIEW_RULE.items():
         if official and game in official:
@@ -346,18 +387,20 @@ def previews(now: datetime, rows: list[Banner], version_end: "dict[str, datetime
 def render(banners: list[Banner], now: datetime,
            next_starts: "dict[str, tuple[datetime, str]] | None" = None,
            preview: "dict[str, str] | None" = None) -> str:
-    """日报末尾那一段，按游戏分块，每块最多两行：
+    """The section at the end of the daily report, one block per game, at most two
+    lines each:
 
         明日方舟
         · 当期　「池名」角色　剩 3 天 4 小时（09-05 03:59 结束）
         · 预告　09-04 开（还有 1 天）　是谁
 
-    用户 2026-09-02：「要有当期新 UP 角色的卡池倒计时（如果没有 UP 就不显示），
-    而且得要有卡池预告」，并且三家视觉上要一样。所以：
-    · 没有在开的 UP → 不写「当期」那行；没有预告 → 不写「预告」那行；
-      两样都没有 → 这个游戏整块不出现。
-    · `next_starts[游戏] = (开始时刻, 是谁)`。是谁为空表示官方只换了时间、
-      没公布人——那种情况措辞必须是「约」，不能写成官宣。
+    The user, 2026-09-02: 「要有当期新 UP 角色的卡池倒计时（如果没有 UP 就不显示），
+    而且得要有卡池预告」, and the three games must look the same. So:
+    · no UP banner running -> omit the "current" line; no preview -> omit the
+      "preview" line; neither -> the game's whole block is absent.
+    · `next_starts[game] = (start time, who)`. An empty `who` means the publisher
+      only moved the date without announcing the character -- in that case the wording
+      must be hedged, never phrased as an official announcement.
     """
     live: dict[str, list[Banner]] = {}
     for b in sorted((x for x in banners if x.start <= now <= x.end), key=lambda x: x.end):
@@ -384,26 +427,33 @@ def render(banners: list[Banner], now: datetime,
     return "🎴 卡池\n" + "\n".join(blocks) if blocks else ""
 
 
-# ── 汇总：三个源拉一遍，渲染成日报末尾那一段 ──────────────────
-# urlencode 出来的结尾就是 "&page="，正好给后面拼页面标题。
-# 2026-08-31 之前这里多切了 [:-6]，把 "&page=" 整个削掉，请求变成
-# ...&format=json卡池一览/限时寻访 —— PRTS 回一页 HTML，解析必炸，
-# 每次日报都在日志里留两条 WARNING，方舟那几行从来没出来过。
+# ── Aggregation: pull all three sources and render the report section ──
+# urlencode leaves the string ending in "&page=", exactly right for appending the page
+# title. Before 2026-08-31 there was a stray [:-6] here that chopped "&page=" off
+# entirely, turning the request into ...&format=json卡池一览/限时寻访 -- PRTS returned
+# a page of HTML, parsing blew up every time, two WARNINGs landed in the log with
+# every daily report, and the Arknights lines never appeared at all.
 _PRTS = "https://prts.wiki/api.php?" + urllib.parse.urlencode(
     {"action": "parse", "prop": "wikitext", "format": "json", "page": ""})
-# 只读这一页就够。2026-08-31 核对过：「卡池一览/常驻标准寻访」那页是
-# **干员轮换池**，表格结构也不同（序号/寻访页面/开启时间，没有池名），
-# 解析出来恒为 0 条；而且里面每一个干员——提丰、引星棘刺、逻各斯、鸿雪、
-# 衡沙——都能在限时寻访里追到更早的首发，轮换池永远不会有新人。
-# 哪天方舟真在别的页首发干员了，把那页加回这里即可。
+# This one page is enough. Verified 2026-08-31: the 「卡池一览/常驻标准寻访」 page is
+# the **operator rotation pool**, its table has a different structure (index / banner
+# page / opening time, with no banner name) and always parses to zero rows; and every
+# operator on it -- 提丰, 引星棘刺, 逻各斯, 鸿雪, 衡沙 -- can be traced to an earlier
+# debut in the limited banners, so the rotation pool never contains a newcomer.
+# If Arknights ever really debuts an operator on another page, add that page back
+# here.
 _AK_PAGES = ("卡池一览/限时寻访",)
 
-# 2026-08-31 在游戏机上实测：raw.githubusercontent.com 通是通，但要 **33 秒**，
-# 超过超时就直接失败，方舟和终末地的预告因此时有时无。同一份文件走
-# jsDelivr 只要 2.8~4.6 秒。所以按实测速度排镜像，raw 放最后兜底。
-# gitmirror 和 ghfast.top 当时完全不通，别加回来。
+# Measured on the game machine 2026-08-31: raw.githubusercontent.com is reachable,
+# but takes **33 seconds** -- past the timeout it simply fails, which is why the
+# Arknights and Endfield previews came and went. The same file over jsDelivr takes
+# only 2.8-4.6 seconds. So the mirrors are ordered by measured speed, with raw last as
+# a fallback. gitmirror and ghfast.top were completely unreachable at the time; do not
+# add them back.
 def gh_raw(owner: str, repo: str, branch: str, path: str) -> list[str]:
-    """同一个 GitHub 文件的几条路，按在游戏机上实测的速度排。"""
+    """Several routes to the same GitHub file, ordered by speed measured on the
+    game machine.
+    """
     return [
         f"https://fastly.jsdelivr.net/gh/{owner}/{repo}@{branch}/{path}",
         f"https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{path}",
@@ -413,18 +463,22 @@ def gh_raw(owner: str, repo: str, branch: str, path: str) -> list[str]:
     ]
 
 
-# 下一期排期：官方不公布，PRTS 也只记已经开过的。一图流前端仓库里
-# 有人手工维护着未来排期，`accuracyFlag: false` 表示这条是预测不是官宣。
+# The next banner's schedule: the publisher does not announce it, and PRTS only
+# records banners that have already run. Someone hand-maintains a future schedule in
+# the Yituliu frontend repo; `accuracyFlag: false` marks an entry as a prediction
+# rather than an official announcement.
 _AK_SCHEDULE = gh_raw("Arknights-yituliu", "frontend-v2-plus", "main",
                       "src/utils/gachaScheduleOptions.js")
 _KURO = "https://api.kurobbs.com"
 _ZONAI = "https://zonai.skland.com"
-# 终末地官方公告聚合口，免 token。code 是渠道常量。
+# Endfield's official bulletin aggregate endpoint, no token needed. code is a
+# channel constant.
 _EF_BULLETIN = ("https://game-hub.hypergryph.com/bulletin/v2/aggregate"
                 "?lang=zh-cn&platform=Windows&channel=1&type=0"
                 "&code=endfield_5SD9TN&hideDetail=0")
-# 跨版本的下一期只有手工维护的这份有。时刻不采信它（见 docs/BANNER-SOURCES.md），
-# 只用来取「下一个是谁」。
+# The next banner across a version boundary exists only in this hand-maintained file.
+# Its times are not trusted (see docs/BANNER-SOURCES.md); it is used only to get who
+# the next character is.
 _EF_SCHEDULE = gh_raw("Arknights-yituliu", "ef-frontend-v1", "main",
                       "custom/core/gacha/data/pool_info_table.json")
 
@@ -446,7 +500,10 @@ def _text(url: str, ua: str, timeout: int = 20) -> str:
 
 
 def _first(urls: list[str], ua: str, timeout: int = 12) -> str:
-    """挨个试，第一条通的就返回。全挂了才抛最后一个异常。"""
+    """Try each in turn and return the first that works.
+
+    Only when all of them fail is the last exception raised.
+    """
     err: Exception = RuntimeError("没有可用地址")
     for u in urls:
         try:
@@ -458,7 +515,9 @@ def _first(urls: list[str], ua: str, timeout: int = 12) -> str:
 
 
 def parse_ak_schedule(js: str) -> "list[tuple[str, datetime, bool]]":
-    """一图流的排期数组 → [(池名, 开始日, 是否官宣)]，按时间正序。"""
+    """Yituliu's schedule array -> [(banner name, start date, officially announced)],
+    in chronological order.
+    """
     out: "list[tuple[str, datetime, bool]]" = []
     for m in re.finditer(r"\{([^{}]*)\}", js or ""):
         blk = m.group(1)
@@ -478,8 +537,12 @@ _rarity_cache: dict[str, int] = {}
 
 
 def ak_rarity(name: str, fetch=None) -> int:
-    """PRTS 干员页的稀有度字段，**0 起算**（5 = 六星，2026-09-03 用予愿安洁莉娜核对）。
-    取不到返回 -1。只查在开的那几个名字，每个名字缓存到进程结束。"""
+    """The rarity field on a PRTS operator page, **counted from 0** (5 = six-star,
+    verified 2026-09-03 against 予愿安洁莉娜).
+
+    Returns -1 when it cannot be fetched. Only the names currently running are looked
+    up, and each name is cached for the life of the process.
+    """
     if name in _rarity_cache:
         return _rarity_cache[name]
     try:
@@ -493,7 +556,10 @@ def ak_rarity(name: str, fetch=None) -> int:
 
 
 def six_star_only(b: Banner, fetch=None) -> Banner:
-    """方舟池子只留六星（用户定的）。稀有度查不到的名字**去掉**，不冒充。"""
+    """Keep only six-stars on Arknights banners (set by the user).
+
+    A name whose rarity cannot be looked up is **dropped**, never faked.
+    """
     keep = tuple(c for c in b.chars if ak_rarity(c, fetch) == 5)
     return Banner(b.game, b.name, keep, b.start, b.end)
 
@@ -505,17 +571,21 @@ _AK_SPAN = re.compile(r"(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})\s*[-~～]\s
 
 
 def _ak_article_text(raw: str) -> str:
-    """官网文章是 Next.js 渲染，正文在 JSON 字符串里、HTML 被转义两层。"""
+    """Official-site articles are Next.js rendered: the body sits inside a JSON
+    string and the HTML is escaped twice.
+    """
     body = raw.encode("utf-8").decode("unicode_escape", errors="ignore").encode("latin-1", errors="ignore").decode("utf-8", errors="ignore")
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", body))
 
 
 def arknights_next_from_news(now: datetime, get=None) -> "tuple[datetime, str] | None":
-    """官网最新一条「…寻访即将开启」：(开启时刻, 六星「池名」)。没有/已开就 None。
+    """The newest 「…寻访即将开启」 post on the official site: (opening time,
+    six-star「banner name」). None when there is none, or it has already opened.
 
-    用户 2026-09-03：「明日方舟官方早都公布角色了，中继完全没跟进」。
-    实录 08-29 公告 1457：【石白深蓝之夜】限时寻访 09月04日 12:00 - 09月18日 03:59，
-    ★★★★★★：结城理（占6★出率的50%）。年份公告里没有，按「离现在最近」补。
+    The user, 2026-09-03: 「明日方舟官方早都公布角色了，中继完全没跟进」.
+    As recorded, bulletin 1457 of 08-29: 【石白深蓝之夜】限时寻访 09月04日 12:00 -
+    09月18日 03:59, ★★★★★★：结城理（占6★出率的50%）. The year is absent from the
+    bulletin and is filled in as the one nearest to now.
     """
     get = get or (lambda u: _text(u, _UA_BROWSER))
     page = get(_AK_NEWS)
@@ -540,7 +610,11 @@ def arknights_next_from_news(now: datetime, get=None) -> "tuple[datetime, str] |
 
 
 def _arknights(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | None]":
-    """PRTS 两页合起来判首发。下一期时间 PRTS 不给，返回 None 由调用方补。"""
+    """Both PRTS pages combined to decide debuts.
+
+    PRTS does not give the next banner's time, so None is returned and the caller
+    fills it in.
+    """
     rows: list[Banner] = []
     for page in _AK_PAGES:
         url = _PRTS + urllib.parse.quote(page)
@@ -551,17 +625,19 @@ def _arknights(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | Non
             log.warning("PRTS 取不到 %s", page, exc_info=True)
     rows.sort(key=lambda b: b.start)
     debut = debut_only(rows)
-    # 只对在开的那几个查稀有度（历史几十条不查），六星才报
+    # Look up rarity only for the ones currently running (not the dozens of historical
+    # entries); report six-stars only
     debut = [six_star_only(b) if b.start <= now <= b.end else b for b in debut]
     debut = [b for b in debut if b.chars]
-    # 官网「寻访即将开启」公告最准：有名有时刻。有就用它。
+    # The official site's 「寻访即将开启」 post is the most accurate: it has both the
+    # names and the time. Use it whenever it exists.
     try:
         if official := arknights_next_from_news(now):
             return debut, official
     except Exception:
         log.warning("方舟官网寻访公告取不到", exc_info=True)
     if when := min((b.start for b in rows if b.start > now), default=None):
-        return debut, (when, "")      # PRTS 已经收录了，时间准，人未知
+        return debut, (when, "")      # PRTS already lists it: the time is accurate, the character unknown
     try:
         sched = parse_ak_schedule(_first(_AK_SCHEDULE, _UA_BROWSER))
     except Exception:
@@ -576,7 +652,9 @@ def _arknights(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | Non
 
 def _endfield(cred, sk_get, now: datetime
               ) -> "tuple[list[Banner], tuple[datetime, str] | None]":
-    """在开的池子走森空岛（时刻权威），首发/预告走官方版本公告。"""
+    """Running banners come from Skland (authoritative on timing); debuts and
+    previews come from the official version bulletin.
+    """
     try:
         pools = (sk_get("/web/v1/wiki/char-pool")["data"] or {}).get("list") or []
     except Exception:
@@ -594,7 +672,7 @@ def _endfield(cred, sk_get, now: datetime
     live = parse_endfield(pools, name_of)
     end = min((b.end for b in live), default=None)
 
-    # 官方公告：这一版有哪些新干员、各在哪个池
+    # Official bulletin: which new operators this version has, and on which banner
     html = ""
     debut: "list[tuple[str, str]]" = []
     notice_ok = True
@@ -615,7 +693,8 @@ def _endfield(cred, sk_get, now: datetime
     if not end or end <= now:
         return got, None
 
-    # 下一期优先用官方公告：开放时刻在未来的那一期（复刻也报，标「复刻」）
+    # Prefer the official bulletin for the next banner: the one whose opening time is
+    # in the future (reruns are reported too, labelled as such)
     on = {c for b in live for c in b.chars}
     try:
         pools = endfield_pools_from_notice(html) if notice_ok else []
@@ -629,7 +708,8 @@ def _endfield(cred, sk_get, now: datetime
     if rest:
         return got, (end, "、".join(f"{w}「{p}」" if p else w for w, p in rest))
 
-    # 本版两半都开完了，跨版本的只有一图流那份手工表有
+    # Both halves of this version have finished; only Yituliu's hand-maintained table
+    # covers the next version
     try:
         table = json.loads(_first(_EF_SCHEDULE, _UA_BROWSER))
     except Exception:
@@ -655,8 +735,9 @@ def _ef_after(row: dict, now: datetime) -> bool:
         return False
 
 
-# 这个 hash 是渠道常量、不随版本变；真失效了就去
-# 555me/game-CDN-List 的 data/ww/game/notice.json 里读 metadata.source_url。
+# This hash is a channel constant and does not change with the version; if it ever
+# does stop working, read metadata.source_url from data/ww/game/notice.json in
+# 555me/game-CDN-List.
 _WW_NOTICE = ("https://aki-gm-resources-back.aki-game.com/gamenotice/G152/"
               "76402e5b20be2c39f095a152090afddc/zh-Hans.json")
 _WW_HDR = {"wiki_type": "9", "source": "h5",
@@ -664,9 +745,12 @@ _WW_HDR = {"wiki_type": "9", "source": "h5",
 
 
 def _wuwa(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | None]":
-    """当前池走 wiki 首页，下一期走官方公告。两个都不要 token。"""
+    """Current banners come from the wiki homepage, the next one from the official
+    bulletin. Neither needs a token.
+    """
     def post(path, payload=None):
-        # data 必须非 None，否则 urllib 发成 GET —— 这两个接口只认 POST。
+        # data must not be None, or urllib sends a GET -- these two endpoints only
+        # accept POST.
         h = dict(_WW_HDR)
         body = b""
         if payload is not None:
@@ -687,8 +771,9 @@ def _wuwa(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | None]":
                 cache[eid] = ""
         return cache[eid]
 
-    # 先取公告：它的「全新角色」一节是判断首发/复刻的唯一权威依据。
-    # getPage 只给池子，不说谁是新人；3.6 上半两个池里达妮娅是复刻。
+    # Fetch the bulletin first: its 「全新角色」 section is the only authoritative basis
+    # for telling a debut from a rerun. getPage gives only the banners and says nothing
+    # about who is new; of the two banners in the first half of 3.6, 达妮娅 was a rerun.
     debut: "list[tuple[str, str]]" = []
     notice_ok = True
     try:
@@ -710,8 +795,9 @@ def _wuwa(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | None]":
     pools = parse_wuwa(home, name_of)
     end = min((b.end for b in pools), default=None)
 
-    # 公告拿不到就宁可多报一条复刻，也不把倒计时整个丢掉——反正
-    # 同版本几个池子结束时间一样，这一行的价值主要在那个时刻。
+    # If the bulletin cannot be fetched, better to report one extra rerun than to lose
+    # the countdown entirely -- the banners within a version all end at the same time
+    # anyway, and the value of this line is mostly in that moment.
     names = {w for w, _ in debut}
     got = [b for b in pools if set(b.chars) & names] if notice_ok else pools
 
@@ -728,15 +814,17 @@ def _wuwa(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | None]":
 def collect(now: datetime, *, skland_token: str = "",
             cred=None, sk_get=None
             ) -> "tuple[list[Banner], dict[str, tuple[datetime, str]]]":
-    """把三个游戏拉一遍。任何一个取不到就少一条，不影响其余。
+    """Pull all three games. If one cannot be fetched, that line is missing and the
+    others are unaffected.
 
-    只有终末地需要 `skland_token`（或调用方直接给 `cred`/`sk_get`，
-    测试就是这么注入的）。方舟走 PRTS、鸣潮走库街区，都不要 token。
-    签名链路在 skland.py，这里不重造。
+    Only Endfield needs `skland_token` (or the caller supplies `cred`/`sk_get`
+    directly, which is how the tests inject it). Arknights uses PRTS and Wuthering
+    Waves uses Kuro BBS; neither needs a token.
+    The request-signing chain lives in skland.py and is not rebuilt here.
     """
     if sk_get is None and skland_token:
         try:
-            from . import skland  # noqa: PLC0415 - 只有这一处用得上
+            from . import skland  # noqa: PLC0415 - needed only here
             cred = skland.login(skland_token)
             def sk_get(path):
                 return skland.get(cred, path)
@@ -749,7 +837,7 @@ def collect(now: datetime, *, skland_token: str = "",
         ak, ak_next = _arknights(now)
         rows += ak
         if ak_next:
-            nxt["明日方舟"] = ak_next      # _arknights 已经给的是 (时刻, 是谁)
+            nxt["明日方舟"] = ak_next      # _arknights already returns (time, who)
     except Exception:
         log.warning("方舟卡池整段失败", exc_info=True)
     if sk_get is not None:
@@ -771,8 +859,12 @@ def collect(now: datetime, *, skland_token: str = "",
 
 
 def version_ends(now: datetime, rows: list[Banner]) -> "dict[str, datetime]":
-    """各游戏这一版什么时候结束（= 下一版更新时刻）。终末地取当期池子结束；
-    鸣潮取公告里的更新维护开始 + 42 天（3.x 每版六周）。取不到就没有。"""
+    """When each game's current version ends (= when the next one updates).
+
+    Endfield takes the end of the current banner; Wuthering Waves takes the start of
+    the maintenance window in the bulletin + 42 days (every 3.x version runs six
+    weeks). Games that cannot be determined are simply absent.
+    """
     out: dict[str, datetime] = {}
     ef = [b.end for b in rows if b.game == "终末地" and b.start <= now]
     if ef:
@@ -788,7 +880,7 @@ def version_ends(now: datetime, rows: list[Banner]) -> "dict[str, datetime]":
 
 
 def section(now: datetime, **kw) -> str:
-    """日报末尾那一段。"""
+    """The section at the end of the daily report."""
     rows, nxt = collect(now, **kw)
     return render(rows, now, nxt, previews(now, rows, version_ends(now, rows)))
 
@@ -796,10 +888,12 @@ def section(now: datetime, **kw) -> str:
 def opening_tomorrow(now: datetime,
                      nxt: "dict[str, tuple[datetime, str]]"
                      ) -> "list[tuple[str, datetime, str]]":
-    """明天开的新池子。用户 2026-08-31 定的：只有这种才发到微信群。
+    """New banners opening tomorrow. Set by the user 2026-08-31: only these get sent
+    to the WeChat group.
 
-    比的是**日期**不是「24 小时内」——日报是晚上发的，21:30 看
-    「24 小时内」会把后天早上六点开的池子算进来，那不是明天。
+    The comparison is on the **date**, not "within 24 hours" -- the daily report goes
+    out in the evening, and at 21:30 "within 24 hours" would sweep in a banner opening
+    at six the morning after tomorrow, which is not tomorrow.
     """
     day = (now + timedelta(days=1)).date()
     return sorted(((g, w, who) for g, (w, who) in nxt.items()
@@ -807,7 +901,7 @@ def opening_tomorrow(now: datetime,
 
 
 def group_notice(due: "list[tuple[str, datetime, str]]") -> "tuple[str, str]":
-    """发到群里的那条。没有就返回两个空串。"""
+    """The message sent to the group. Two empty strings when there is nothing."""
     if not due:
         return "", ""
     lines = []

@@ -1,6 +1,7 @@
-"""漏跑与缺项告警：该跑的队列没跑、跑了却少一个脚本。
+"""Missed-run and missing-item alerts: a queue that should have run did not,
+or it ran but one of its scripts is missing.
 
-从 engine.py 拆出来（2026-09-06，只搬不改）。
+Split out of engine.py (2026-09-06, moved verbatim, no logic changes).
 """
 from __future__ import annotations
 
@@ -73,8 +74,10 @@ def _check_missed_runs(eng, now: datetime | None = None,
                 eng._missed_alerted.add(key)
                 continue
             if eng._scripts_running():
-                # 09-03 11:15：MaaEnd 正被 AUTO-MAS 重试第三次、进程好好的，
-                # 这里却因为「75 分钟没有记录」喊了「MaaEnd 没有运行」。
+                # 09-03 11:15: AUTO-MAS was on its third retry of MaaEnd and
+                # the process was perfectly alive, yet this code shouted
+                # "MaaEnd is not running" purely because there had been no
+                # record for 75 minutes.
                 log.info("🔌 %s 还没有记录，但脚本进程在跑，先不喊", q["name"])
                 continue
             late = int((now - due).total_seconds() // 60)
@@ -89,12 +92,12 @@ def _check_missed_runs(eng, now: datetime | None = None,
 def _check_partial_queues(eng, now: datetime, day: str,
                           entries: list[dict]) -> None:
     if eng._scripts_running():
-        return          # 还有脚本在跑，缺的那项可能正是它
+        return          # a script is still running - it may well be the missing one
     """Alert when a queue ran but one of its scripts never did.
 
     The check above only asks "did this queue produce anything", and on
     2026-08-16 that was not enough: MAA ran, so the queue counted as having
-    run, while 终末地 never started at all and nobody was told. A queue that
+    run, while Endfield never started at all and nobody was told. A queue that
     delivers half of what it promised is a fault, and it is invisible from
     the outside - the day looks green.
 

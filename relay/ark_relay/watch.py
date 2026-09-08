@@ -62,9 +62,10 @@ def _windows(path: str, wake: threading.Event) -> bool:
         return False
 
     def run() -> None:
-        # 掉了要重建。原来这里退出就完了，剩下整个进程生命周期都只靠定时兜底
-        # ——和 service.py 的 WMI 订阅、目录监听是同一族 bug，
-        # 2026-08-30 全量审查时一起修的。
+        # Rebuild when it drops. This used to just return, and for the rest of
+        # the process lifetime the interval backstop was the only thing left
+        # -- the same family of bug as service.py's WMI subscription and its
+        # directory watch, all fixed together in the 2026-08-30 full review.
         nonlocal handle
         infinite = 0xFFFFFFFF
         delay = 5.0
@@ -76,7 +77,7 @@ def _windows(path: str, wake: threading.Event) -> bool:
                 if not k.FindNextChangeNotification(handle):
                     break
             handle = None
-            wake.set()          # 让调用方立刻走一次兜底扫描
+            wake.set()          # Make the caller run one backstop scan right away
             log.warning("目录监听掉了，%.0f 秒后重建；期间靠定时兜底", delay)
             time.sleep(delay)
             handle = _open()
@@ -100,7 +101,7 @@ def _kqueue(path: str, wake: threading.Event) -> bool:
     kq.control([ev], 0, 0)
 
     def run() -> None:
-        # 同上：掉了要重建，不是退出就算了。
+        # Same as above: rebuild when it drops, do not just return.
         nonlocal fd, kq
         delay = 5.0
         while True:

@@ -1,4 +1,4 @@
-"""Run 剿灭 once a week instead of once a day.
+"""Run annihilation (剿灭) once a week instead of once a day.
 
 AUTO-MAS runs it as a separate pass before every queue, so every run produces
 two records - one of them a one-minute launch that farms nothing because MAA
@@ -66,16 +66,19 @@ def week_key(now: datetime) -> str:
 
 
 def read_setting(automas_dir: Path | None) -> str:
-    """当前的剿灭设置。**后端优先**——文件里的可能还没被刷新。
+    """The current annihilation setting. **Ask the backend first** - the file
+    may not have been refreshed yet.
 
-    读文件的坑和写文件是同一个：AUTO-MAS 在跑的时候，文件里那份可能
-    既不是它内存里的、也不是最终会落盘的。回读校验读到旧值，就会得出
-    「写失败了」或者「写成功了」两种都不可靠的结论。
+    Reading the file has the same trap as writing it: while AUTO-MAS is running,
+    what is in the file is neither what it holds in memory nor what will
+    eventually be persisted. A read-back check that picks up the stale value
+    concludes either "the write failed" or "the write succeeded", and neither
+    conclusion can be trusted.
     """
     try:
-        from .commands import _find_user  # noqa: PLC0415 - 避免导入环
+        from .commands import _find_user  # noqa: PLC0415 - avoids an import cycle
         return str((_find_user("MAA")[2].get("Info") or {}).get("Annihilation") or "")
-    except Exception:  # noqa: BLE001 - 后端不在就退回读文件
+    except Exception:  # noqa: BLE001 - backend down: fall back to reading the file
         pass
     if not automas_dir:
         return ""
@@ -89,17 +92,20 @@ def read_setting(automas_dir: Path | None) -> str:
 
 
 def _write_via_api(value: str) -> tuple[bool, str]:
-    """通过 AUTO-MAS 后端改。**优先走这条**。
+    """Change it through the AUTO-MAS backend. **This is the preferred path.**
 
-    直接改配置文件的问题：AUTO-MAS 在跑的时候会用内存里那份覆写文件，
-    写进去的值几秒后就被冲回去。2026-08-31 04:01 就是这样——恢复写入
-    成功、当场回读也对，随后被冲回 Close，而 `maybe_reopen` 回读通过后
-    就把记账清了，于是再没有人重试，整周的剿灭一次都没打。
+    The problem with editing the config file directly: while AUTO-MAS runs it
+    overwrites the file from its own in-memory copy, so a value written there is
+    wiped seconds later. That is what happened at 04:01 on 2026-08-31 - the
+    restore write succeeded and the immediate read-back agreed, then it was wiped
+    back to Close; `maybe_reopen`, having passed its read-back, cleared the
+    bookkeeping, so nothing ever retried and annihilation went unfought for the
+    entire week.
 
-    走后端 API 写的是**运行中的那份**，不存在还没落盘的内存副本，
-    也就没有东西能把它冲掉。
+    Writing through the backend API changes **the copy that is running**. There
+    is no unpersisted in-memory copy left, so there is nothing that can wipe it.
     """
-    from .commands import _find_user, _mas  # noqa: PLC0415 - 避免导入环
+    from .commands import _find_user, _mas  # noqa: PLC0415 - avoids an import cycle
     sid, uid, user = _find_user("MAA")
     if (user.get("Info") or {}).get("Annihilation") == value:
         return True, ""
@@ -114,8 +120,9 @@ def _write_via_api(value: str) -> tuple[bool, str]:
 
 
 def _write_setting(automas_dir: Path, value: str) -> tuple[bool, str]:
-    # 后端在跑就走它；连不上（AUTO-MAS 没起来）才退回改文件——
-    # 那种情况下没有内存副本，改文件是安全的。
+    # Use the backend when it is running; fall back to editing the file only when
+    # it cannot be reached (AUTO-MAS is not up) - in that case there is no
+    # in-memory copy, so editing the file is safe.
     try:
         return _write_via_api(value)
     except Exception as exc:  # noqa: BLE001
@@ -145,15 +152,17 @@ def _write_setting(automas_dir: Path, value: str) -> tuple[bool, str]:
 
 
 class WeeklyGate:
-    """Remembers which game-week's 剿灭 is already done.
+    """Remembers which game-week's annihilation is already done.
 
-    和周常乐园、周本同一套接口：settings / week_line / on_success / enforce / maybe_reopen。
+    Same interface as the weekly garden and the weekly boss:
+    settings / week_line / on_success / enforce / maybe_reopen.
     """
 
     NAME = "明日方舟 · 剿灭"
 
     def __init__(self, state_dir: Path, automas_dir: Path | None):
-        self._store = StateStore(state_dir)   # 状态收口：真正落盘在 state.json 的 weekly 段
+        # single state entry point: persisted in state.json's `weekly` section
+        self._store = StateStore(state_dir)
         self.automas_dir = automas_dir
 
     def settings(self, now: datetime | None = None) -> dict:
@@ -188,7 +197,7 @@ class WeeklyGate:
             return ""
         # Bookkeeping only here; nothing is written to the config.
         #
-        # This moment is "the annihilation (剿灭) pass has just produced its
+        # This moment is "the annihilation pass has just produced its
         # record", so the queue is most likely still running the next script,
         # and while AUTO-MAS runs it overwrites ScriptConfig from its own
         # in-memory copy - a Close written now is silently wiped (measured
@@ -212,7 +221,7 @@ class WeeklyGate:
         the gate just wrote. That is exactly what was measured on 2026-08-20 -
         the gate's state file said "done for this week" while the switch was
         still open, so the morning and evening rounds each burned another
-        empty annihilation (剿灭) pass (about 1 minute apiece, plus a full
+        empty annihilation pass (about 1 minute apiece, plus a full
         game launch each time). on_success returns immediately because
         done_week already matches, so it never closes the switch a second
         time, and the hole would stay open until the following Monday.
@@ -252,8 +261,8 @@ class WeeklyGate:
         # Read it back before forgetting the week. AUTO-MAS rewrites this file
         # from its own memory while a queue runs, so a write that "succeeded"
         # can be gone seconds later - and clearing the state first meant
-        # enforce() had nothing left to retry with, leaving 剿灭 off for the
-        # whole new week while the operator was told it had been restored.
+        # enforce() had nothing left to retry with, leaving annihilation off for
+        # the whole new week while the operator was told it had been restored.
         if read_setting(self.automas_dir) != restore:
             log.warning("剿灭恢复写入后又被改回，保留状态待下次重试")
             return ""

@@ -1,4 +1,4 @@
-"""OK-WW 补丁：stamina。从 okww_patch.py 拆出（2026-09-06，只搬不改）。"""
+"""OK-WW patch: stamina. Split out of okww_patch.py (2026-09-06, moved verbatim)."""
 from __future__ import annotations
 
 
@@ -7,17 +7,21 @@ from .core import _SRC, _Patch
 
 
 
-# ── 补丁：附加任务提到体力刷取之前 ──────────────────────────────
-# 周本（战歌重奏）在附加任务里，开一个宝箱要 60 体力。而日常刷取那步
-# `must_use = 180 - used_stamina`，会先把体力吃到 180——排在后面的周本
-# 就只剩 60，三个宝箱只开得到一个。
+# ── Patch: move the additional tasks ahead of stamina farming ──────────
+# The weekly boss (战歌重奏) sits in the additional tasks, and opening one chest
+# there costs 60 stamina. The daily farming step does
+# `must_use = 180 - used_stamina`, so it eats stamina up to 180 first — the
+# weekly boss runs after it with only 60 left and opens one of the three chests.
 #
-# 提前之后：周本先花掉 180，回主界面重读一次体力，日常那步自己就判定
-# 不需要再刷了（`need_stamina = not daily_reward_ready and used_stamina < 180`）。
+# After the move: the weekly boss spends the 180 first, we return to the main
+# screen and re-read stamina, and the daily step then decides on its own that no
+# farming is needed (`need_stamina = not daily_reward_ready and used_stamina < 180`).
 #
-# **必须重读体力**：不重读的话 `used_stamina` 还是打 Boss 之前的值，
-# 日常照样再刷 180，等于两头都花，一天要 360 体力。
-# **必须先 ensure_main**：打完 Boss 人不在主界面，直接翻日常面板会失败。
+# **Stamina must be re-read**: without the re-read `used_stamina` is still the
+# value from before the boss fight, the daily step farms another 180, and we pay
+# at both ends — 360 stamina a day.
+# **ensure_main must come first**: after the boss fight we are not on the main
+# screen, and opening the daily panel from there fails.
 _STAMINA_OLD = """        if need_stamina:
             target = self.config.get('Which to Farm', self.support_tasks[0])
             if target == self.support_tasks[0]:
@@ -67,14 +71,17 @@ _STAMINA_NEW = """        # 本地补丁：附加任务提到体力刷取之前�
 
 
 def _stamina_present(text: str) -> bool:
-    """附加任务是不是已经排在体力刷取前面了。
+    """Are the additional tasks already ordered ahead of stamina farming?
 
-    判据不能用 `if need_stamina:`——新版把那个分支整个去掉了（体力要刷到光，
-    不再按「够不够 180」来决定刷不刷）。2026-08-31 就因为这个判据没跟上，
-    补丁贴上去之后被自己判成「没贴上」，当场还原。
+    The test must not be `if need_stamina:` — the new version removes that branch
+    entirely (stamina is farmed until it runs out, no longer gated on "is there at
+    least 180"). On 2026-08-31 this test failed to follow that change: the patch
+    was applied, our own check then judged it "not applied", and it was reverted
+    on the spot.
     """
-    # 判据用 claim_daily：`Which to Farm` 在更早的梦魇判定里也出现过，
-    # 拿它当锚点会永远判成「没贴上」（2026-08-31 踩过）。
+    # Anchor on claim_daily: `Which to Farm` also appears in the earlier
+    # nightmare check, so anchoring on that would always report "not applied"
+    # (hit on 2026-08-31).
     a = text.find("self.run_additional_tasks()")
     b = text.find("self.claim_daily()")
     return a != -1 and b != -1 and a < b

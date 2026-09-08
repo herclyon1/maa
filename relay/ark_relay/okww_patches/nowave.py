@@ -1,4 +1,4 @@
-"""OK-WW 补丁：nowave。从 okww_patch.py 拆出（2026-09-06，只搬不改）。"""
+"""OK-WW patch: nowave. Split out of okww_patch.py (2026-09-06, moved verbatim)."""
 from __future__ import annotations
 
 
@@ -7,7 +7,7 @@ from .core import _SRC, _Patch
 
 
 
-# ---- 波片不足时干净跳过，不空转不白打 --------------------------------------
+# ---- Skip cleanly when waveplates are short: no spinning, no unrewarded runs ----
 # 来龙去脉见 docs/CODE-HISTORY.md「nowave.py:(模块级)」
 _NOWAVE_OLD = """            self.click_team_challenge()"""
 
@@ -80,8 +80,9 @@ _NOWAVE_NEW = """            # 本地补丁 v3：波片不足的弹窗是**点�
             self.wait_click_skip_dialog_confirm()"""
 
 
-# v1 那一版的原文。留着**只为了还原**：它的替换文本末尾自带锚点，
-# 不先还原成上游原样，新版补丁就贴不上去，而且贴不上是不出声的。
+# The v1 text. Kept **only so it can be reverted**: its replacement text carries
+# the anchor at its own tail, so unless the file is restored to upstream's original
+# first, the new patch will not apply — and failing to apply is silent.
 # 来龙去脉见 docs/CODE-HISTORY.md「nowave.py:(模块级)」
 _NOWAVE_V1 = """            # 本地补丁：波片不足时游戏会弹「无法获取奖励，是否继续进入」，
             # 它挡住「开启挑战」，上游只会超时→重试→再传送，空转。
@@ -94,8 +95,9 @@ _NOWAVE_V1 = """            # 本地补丁：波片不足时游戏会弹「无�
                 raise TaskDisabledException()"""
 
 
-# 上一版 v3 的原文，留着**只为了还原**。它把锚点 click_team_challenge()
-# 整句吃掉了，所以再想改这条补丁，必须先把它还原成上游原样，否则新的贴不上。
+# The previous v3 text, kept **only so it can be reverted**. It swallowed the whole
+# anchor line click_team_challenge(), so before this patch can be changed again the
+# file must be restored to upstream's original, or the new one will not apply.
 # 来龙去脉见 docs/CODE-HISTORY.md「nowave.py:(模块级)」
 _NOWAVE_V3A = """            # 本地补丁 v3：波片不足的弹窗是**点了「开启挑战」之后**才弹的。
             # v1/v2 把检查放在点之前，那时画面还是配队页，OCR 读到空表，
@@ -120,7 +122,8 @@ _NOWAVE_V3A = """            # 本地补丁 v3：波片不足的弹窗是**点�
             self.wait_click_skip_dialog_confirm()"""
 
 
-# 上一版（取证只拍图不处理那版），留着只为了还原。
+# The version before that (evidence only: screenshot, no handling), kept only so it
+# can be reverted.
 _NOWAVE_V3B = """            # 本地补丁 v3：波片不足的弹窗是**点了「开启挑战」之后**才弹的。
             # v1/v2 把检查放在点之前，那时画面还是配队页，OCR 读到空表，
             # 一次都没命中（2026-08-31 实测：本周 3/3 一次奖励都没领到，
@@ -157,9 +160,11 @@ _NOWAVE_V3B = """            # 本地补丁 v3：波片不足的弹窗是**点�
 
 
 def _nowave_present(text: str) -> bool:
-    # 认 **这一版独有** 的字串。只认那句没变过的日志会让改动静默不部署——
-    # 2026-08-31 已经栽过一次：v2 加了调试输出，判据没跟着改，
-    # _apply_one 判成「已在位」直接返回，我却在日志里找那行输出。
+    # Match a string that is **unique to this version**. Matching only the log line
+    # that never changes lets a change go undeployed silently — this bit us on
+    # 2026-08-31: v2 added debug output, the test was not updated along with it,
+    # _apply_one judged the patch "already in place" and returned, while I was
+    # looking for that output in the log.
     return "波片不足挡住开启挑战" in text
 
 
@@ -170,6 +175,6 @@ _NOWAVE = _Patch(
     new=_NOWAVE_NEW,
     present=_nowave_present,
     breaks="波片不够时周本会空转十几分钟，而且是不拿奖励地白打",
-    # v1 和 v3 都会打这句日志，所以它出现两次＝两段检查并存。
+    # v1 and v3 both emit this log line, so two occurrences means two checks coexist.
     unique="结晶波片不足，取消并跳过本次周本",
 )

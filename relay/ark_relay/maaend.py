@@ -123,10 +123,11 @@ def _flatten(obj: Any, path: str = "") -> dict[str, Any]:
 
 def _apply_one(mc: "MaaEndConfig", cfg: dict, ch: dict,
                applied: list[str], touched_opts: set[str]) -> str:
-    """把一条改动写进内存里的 cfg。返回空字符串表示成功，否则是拒绝的理由。
+    """Write one change into the in-memory cfg. Empty string means success, otherwise it is the reason for refusing.
 
-    拆出来是为了让 apply_changes 只剩「取配置 → 逐条应用 → 结构化 diff → 备份写入」
-    四步；四种选项类型各自的校验都在这里。
+    Split out so that apply_changes is left with just four steps: read the
+    config, apply the changes one by one, run the structural diff, back up and
+    write. The validation for each of the four option types lives here.
     """
     task = str(ch.get("task") or "")
     option = str(ch.get("option") or "")
@@ -136,13 +137,16 @@ def _apply_one(mc: "MaaEndConfig", cfg: dict, ch: dict,
     values = node.setdefault("optionValues", {})
     current = values.get(option)
     if current is None:
-        # 不许凭空造键是有意的：选项名打错一个字，就会写进一条 MaaEnd 根本不看的设置，
-        # 而人会以为改生效了。
+        # Refusing to invent keys is deliberate: one typo in an option name
+        # would write a setting MaaEnd never reads, while the person believes
+        # the change took effect.
         return f"任务 {task} 没有选项 {option!r}（拼错了？）"
 
     kind = current.get("type")
-    # 指令的形状必须和选项类型对得上。没有这一道时，冲着开关发的 `case` 会掉到
-    # bool(ch.get("value")) 上写成 False——安静地给出错答案，比直接拒绝坏得多。
+    # The shape of the command has to match the option type. Without this check,
+    # a `case` aimed at a switch fell through to bool(ch.get("value")) and was
+    # written as False - a silently wrong answer, which is far worse than an
+    # outright refusal.
     expected = {"select": "case", "switch": "value",
                 "checkbox": "cases", "input": "values"}.get(kind)
     if expected and expected not in ch:
@@ -189,7 +193,8 @@ def _apply_one(mc: "MaaEndConfig", cfg: dict, ch: dict,
     else:
         return f"{task}.{option} 是未知类型 {kind!r}，不敢改"
 
-    # 「顺便把这个任务本身开/关掉」跟同一条指令一起走。
+    # "And while you are at it, enable/disable the task itself" rides along on
+    # the same command.
     if "enabled" in ch:
         want = bool(ch["enabled"])
         if bool(node.get("enabled")) != want:
@@ -201,18 +206,21 @@ def _apply_one(mc: "MaaEndConfig", cfg: dict, ch: dict,
 
 
 def _stray_changes(original: str, cfg: dict, touched_opts: set[str]) -> tuple[int, str]:
-    """写盘之前的结构化 diff。返回 (改动条数, 越界说明)，越界说明为空才准写。
+    """Structural diff run before writing to disk.
 
-    和 AUTO-MAS 那条路用的是同一道闸：曾经有个只想改三处设置的正则，
-    顺手弄坏了一整段不相干的配置，只有 diff 抓住了它。
+    Returns (number of changed leaves, out-of-scope explanation); writing is
+    only allowed when that explanation is empty. This is the same gate the
+    AUTO-MAS path uses: a regex that only meant to change three settings once
+    wrecked a whole unrelated section of config, and only the diff caught it.
     """
     before_flat, after_flat = _flatten(json.loads(original)), _flatten(cfg)
     added, removed = set(after_flat) - set(before_flat), set(before_flat) - set(after_flat)
     changed = {k for k in before_flat.keys() & after_flat.keys()
                if before_flat[k] != after_flat[k]}
-    # 增删在**我们动过的那个选项内部**是合法的——多选项从七天改成两天，
-    # 本来就会少五个叶子——但别处不行。这样划范围既保住了当年抓到正则的那道闸，
-    # 又不会把真实改动误判成越界。
+    # Additions and removals are legal **inside the option we actually touched**
+    # - a checkbox going from seven days to two is supposed to lose five leaves
+    # - but nowhere else. Scoping it this way keeps the gate that caught the
+    # regex back then, without misreading a real change as out of scope.
     stray = [p for p in (added | removed)
              if not any(f"/optionValues/{opt}/" in p for opt in touched_opts)]
     if stray:
@@ -222,7 +230,7 @@ def _stray_changes(original: str, cfg: dict, touched_opts: set[str]) -> tuple[in
 
 
 def _backup_and_write(mc: "MaaEndConfig", updated: str) -> tuple[str, str]:
-    """备份现有配置再原子写入。返回 (备份文件名, 失败说明)。"""
+    """Back up the current config, then write atomically. Returns (backup file name, failure explanation)."""
     stamp = datetime.now(tz=SERVER_TZ)
     backup = mc.config_path.with_name(
         f"{mc.config_path.stem}.bak-{stamp:%Y%m%d-%H%M%S}.json")
@@ -236,11 +244,13 @@ def _backup_and_write(mc: "MaaEndConfig", updated: str) -> tuple[str, str]:
 
 
 def apply_changes(root: Path, changes: list[dict]) -> tuple[bool, str]:
-    """整批应用选项改动。返回 (成功与否, 给人看的说明)。
+    """Apply a whole batch of option changes. Returns (success, human-readable explanation).
 
-    整批而不是一条一条，因为 MaaEnd 的选项之间是有关联的：切到干员养成、
-    再选它的奖励集合，本来是**一个**意图，落地一半会让机器去刷没人要的东西。
-    要么全部校验通过并落盘，要么文件一个字都不动。
+    A batch rather than one at a time, because MaaEnd's options are related to
+    each other: switching to operator progression and then picking its reward
+    set is **one** intent, and landing half of it makes the machine farm things
+    nobody wants. Either every change validates and gets written, or the file
+    is not touched at all.
     """
     mc = MaaEndConfig(root)
     if not mc.config_path.exists():

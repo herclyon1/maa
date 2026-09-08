@@ -1,23 +1,29 @@
-"""鸣潮凝素领域：序号 → 名字 → 产出的武器材料。
+"""Wuthering Waves Forgery Challenges: index -> name -> the weapon material it yields.
 
-OK-WW 只存一个序号（F2「素材获取 → 凝素领域」列表从上往下第几个），日志里也只有序号，
-报告里写「凝素领域 ×3」机器看得懂、人看不懂。用户 2026-08-26：「他那个凝素领域第一个
-机器看得懂，人看不懂是什么啊」。
+OK-WW stores only an index (the position in the F2「素材获取 → 凝素领域」list,
+counting from the top), and the logs carry only that index, so a report saying
+「凝素领域 ×3」 is readable by a machine and not by a person. The user, 2026-08-26:
+「他那个凝素领域第一个机器看得懂，人看不懂是什么啊」.
 
-这张表是 2026-09-04 在游戏里逐屏读出来的**完整**列表，出处
-docs/WUWA-TACET-INDEX.md；手机页 web/app.js 的 FORGE 与此同源。
-序号 **1 起算**，和游戏里的列表位置一致——调用方不要再自己 ±1。
+This table is the **complete** list, read screen by screen in-game on 2026-09-04;
+source of record is docs/WUWA-TACET-INDEX.md, and the FORGE table in the phone
+page web/app.js comes from the same source.
+Indices start at **1**, matching the position in the in-game list - callers must
+not apply an offset of their own.
 
-**它不是永久有效的**：列表顺序由游戏决定，加了武器类型筛选、或者版本更新加了新副本，
-序号就会错位。查不到的序号一律写「第 N 个」，宁可少说也不要报一个错名字。
+**It is not valid forever**: the list order is decided by the game, so adding a
+weapon-type filter, or a version update introducing new instances, shifts the
+indices. An index that is not in the table is always reported as 「第 N 个」 -
+better to say less than to report a wrong name.
 
-2026-09-08 从 collector 里搬出来并补全：原来那份只有 4 条（0..3），而手机页早就能
-选到第 5 个，选了就会在明日安排里写成「凝素领域·#5」——正是「井号二是什么玩意儿」
-那一类。
+2026-09-08, moved out of collector and completed: the old copy had only 4 entries
+(0..3), while the phone page could already select the 5th, and selecting it wrote
+「凝素领域·#5」 into tomorrow's plan - exactly the 「井号二是什么玩意儿」 class
+of problem.
 """
 from __future__ import annotations
 
-# 序号（1 起算）→ (名字, 产出武器材料, 地区)
+# index (1-based) -> (name, weapon material it yields, region)
 FORGERY: dict[int, tuple[str, str, str]] = {
     1: ("陨翼云渊", "迅刀", "瑝珑·梦州"),
     2: ("静灭云渊", "音感仪", "瑝珑·梦州"),
@@ -38,7 +44,8 @@ FORGERY: dict[int, tuple[str, str, str]] = {
 
 
 def label(index: int) -> str:
-    """「凝素领域·陨翼云渊（迅刀）」；没登记的写明第几个，不编名字。"""
+    """Display name, e.g. 「凝素领域·陨翼云渊（迅刀）」; an unlisted index reports
+    its position instead - never invent a name."""
     hit = FORGERY.get(int(index))
     if not hit:
         return f"凝素领域（第 {index} 个，对照表没登记）"
@@ -46,6 +53,6 @@ def label(index: int) -> str:
 
 
 def reward(index: int) -> str:
-    """产出：这个副本给哪种武器的突破材料。"""
+    """Yield: which weapon type's ascension material this instance gives."""
     hit = FORGERY.get(int(index))
     return f"{hit[1]}突破材料" if hit else "武器突破材料"
