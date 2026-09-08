@@ -11,7 +11,7 @@
 
 ## The inventory — what `ensure_patches()` actually does, in order
 
-Source of truth is `relay/ark_relay/okww_patch.py:ensure_patches`; each patch's text
+Source of truth is `relay/ark_relay/okww_patch.py` - the `_APPLIES` and `_REVERTS` tables, read by `active_patches()`, and pinned to this page by `tests/test_patch_inventory.py`; each patch's text
 lives in `relay/ark_relay/okww_patches/<name>.py`. Run it and it tells you what it
 changed; an empty answer means everything was already in place.
 
@@ -27,7 +27,7 @@ changed; an empty answer means everything was already in place.
 | 6 | Skip the weekly boss when waveplates are short, instead of failing inside it | `okww_patches/nowave.py` |
 | 7 | Retry cap | `okww_patches/retrycap.py` |
 | 8 | Let-pass | `okww_patches/letpass.py` |
-| 9 | Screenshot the remaining-runs count before entering | `okww_patches/count.py` |
+| 9 | Read the remaining-runs count before entering; at 0/3 skip the boss instead of fighting it for nothing (v3, 2026-09-09) | `okww_patches/count.py` |
 
 **Deliberately reverted every boot** (they are listed so an old copy left behind by
 an update is removed, and so nobody re-adds them): the four earlier versions of the

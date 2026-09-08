@@ -141,6 +141,18 @@ final class Link {
             switch state {
             case .ready:
                 self.set(ip, true)
+                // Hang up ourselves before sshd's LoginGraceTime (120 s) does it for
+                // us. A connection that sits unauthenticated until sshd kills it
+                // leaves `fatal: Timeout before authentication` in the machine's
+                // sshd log every two minutes - the exact signature of a brute-force
+                // scan, written by our own monitor, burying anything real. A client
+                // close at 100 s is logged as an ordinary disconnect. The .cancelled
+                // path then reconnects at once, so the green dot never blinks.
+                self.queue.asyncAfter(deadline: .now() + 100) { [weak self, weak c] in
+                    guard let self = self, let c = c else { return }
+                    self.lock.lock(); let mine = self.conns[ip] === c; self.lock.unlock()
+                    if mine { c.cancel() }
+                }
                 // **必须挂一个读**，否则对端发来的 FIN 只是躺在缓冲区里，
                 // 状态机根本不动。2026-09-08 本地实测：只连不读，对端关闭之后
                 // 隔了 60 秒才发现；挂上读之后是 19 毫秒。

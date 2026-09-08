@@ -38,7 +38,7 @@ from pathlib import Path
 from .okww_patches.tacetshot import _TACETSHOT_OLD, _TACETSHOT_NEW, _TACETSHOT_V1, _TACETSHOT_V1_OLD, _tacetshot_present, _TACETSHOT
 from .okww_patches.claim import _CLAIM_OLD, _CLAIM_NEW, _CLAIM_V1, _CLAIM_V2, _CLAIM_V3, _CLAIM_V4, _CLAIM_TAIL, _CLAIM_OLD_FULL, _claim_present, _CLAIM
 from .okww_patches.core import _SRC, _Patch, _atomic_write, _atomic_write_bytes, _verify_or_revert, _stacked, _apply_one, _revert_text
-from .okww_patches.count import _COUNT_OLD, _COUNT_V1, _COUNT_NEW, _count_present, _COUNT
+from .okww_patches.count import _COUNT_OLD, _COUNT_V1, _COUNT_V2, _COUNT_NEW, _count_present, _COUNT
 from .okww_patches.domain import _DOMAIN_IMPORT_OLD, _DOMAIN_IMPORT_NEW, _DOMAIN_OLD, _DOMAIN_NEW, _domain_present, _apply_domain
 from .okww_patches.farmerr import _FARMERR_OLD, _FARMERR_NEW, _farmerr_present, _FARMERR
 from .okww_patches.letpass import _LETPASS_OLD, _LETPASS_NEW, _letpass_present, _LETPASS
@@ -58,7 +58,7 @@ log = logging.getLogger("ark.okww_patch")
 # The tests and other callers import the old names from here, so every name in
 # the submodules is re-exported verbatim.
 __all__ = [
-    'ensure_patches', 'ensure_if_updated', 'nest_patch_present',
+    'ensure_patches', 'ensure_if_updated', 'nest_patch_present', 'active_patches',
     '_CLAIM_OLD',
     '_CLAIM_NEW',
     '_CLAIM_V1',
@@ -206,6 +206,57 @@ def _ensure_stamina(root: Path) -> list[str]:
     return done
 
 
+# ---------------------------------------------------------------- the inventory
+# Everything ensure_patches does is listed here, in two tables, so "what is
+# running on the machine right now" is a lookup and not a read of a 100-line
+# function that mixed 9 applications with 18 reverts (survey 2026-09-08, #46).
+#
+# _REVERTS: historical versions and withdrawn patches, restored to upstream text
+# before anything is applied. They have to come first or versions stack (see
+# core._Patch.unique). Each entry: (path parts, text as it was applied, upstream
+# text, label). An entry stays here for as long as an update could re-expose the
+# old text - which, after OK-WW's 09-06 src replacement, means for as long as
+# the .bak files it left beside them could be restored by hand.
+_FE = (*_SRC, "FarmEchoTask.py")
+_REVERTS: "list[tuple[tuple, str, str, str]]" = [
+    # Withdrawn 2026-08-31: OK-WW's own error() already prints the stack.
+    (_FE, _FARMERR_NEW, _FARMERR_OLD, "周本活锁：打出被吞掉的异常"),
+    # Evidence screenshots whose questions have been answered.
+    (_FE, _SHOT2_NEW, _SHOT2_OLD, "退秘境前留证据截图"),
+    (_FE, _TEAMSHOT_NEW, _TEAMSHOT_OLD, "开启挑战找不到时留证据截图"),
+    (_FE, _SHOT_NEW, _SHOT_OLD, "周本领奖前留证据截图"),
+    # Earlier versions of patches that are still applied (current version below).
+    (_FE, _CLAIM_V1, _CLAIM_OLD, "打完 Boss 真正领周本奖励 v1"),
+    (_FE, _CLAIM_V2, _CLAIM_OLD, "打完 Boss 真正领周本奖励 v2"),
+    (_FE, _CLAIM_V3, _CLAIM_OLD, "打完 Boss 真正领周本奖励 v3"),
+    (_FE, _CLAIM_V4, _CLAIM_OLD, "打完 Boss 真正领周本奖励 v4"),
+    ((*_SRC, "TacetTask.py"), _TACETSHOT_V1, _TACETSHOT_V1_OLD, "无音区留两张图给日报 v1"),
+    (_FE, _COUNT_V1, _COUNT_OLD, "进本前拍一张看剩余次数 v1"),
+    (_FE, _COUNT_V2, _COUNT_OLD, "进本前拍一张看剩余次数 v2"),
+    (_FE, _NOWAVE_V1 + "\n", "", "波片不足时跳过周本 v1"),
+    (_FE, _NOWAVE_V2, _NOWAVE_OLD, "波片不足时跳过周本 v2"),
+    (_FE, _NOWAVE_V3A, _NOWAVE_OLD, "波片不足时跳过周本 v3a"),
+    (_FE, _NOWAVE_V3B, _NOWAVE_OLD, "波片不足时跳过周本 v3b"),
+    # Withdrawn outright.
+    *[(p.parts, p.new, p.old, p.name) for p in PATCHES],
+    ((*_SRC, "DomainTask.py"), _DOMAIN_NEW, _DOMAIN_OLD, "副本失败不拖垮每日任务"),
+    ((*_SRC, "DomainTask.py"), _DOMAIN_IMPORT_NEW, _DOMAIN_IMPORT_OLD, "副本补丁的 import"),
+    ((*_SRC, "BaseCombatTask.py"), _STARVE_NEW, _STARVE_OLD, "主C饿死兜底"),
+]
+
+# _APPLIES: what is in effect on the machine, in application order. The nest
+# file replacement and the stamina/nofarm pair are steps of their own (the
+# nest is a whole-file swap; nofarm's anchor lives inside stamina's body).
+_APPLIES: "list[_Patch]" = [_CLAIM, _TACETSHOT, _NOWAVE, _RETRYCAP, _LETPASS, _COUNT]
+
+
+def active_patches() -> list[str]:
+    """Names of everything applied every boot, in order - the source of truth for
+    docs/OKWW-PATCHES.md and for anyone asking what runs."""
+    return (["巢穴任务（整份文件替换）", _STAMINA.name, _NOFARM.name]
+            + [p.name for p in _APPLIES])
+
+
 def ensure_patches(okww_dir: Path | None) -> list[str]:
     """Make sure the local patches are in place. Returns what was actually done
     this time (empty means everything was already in place).
@@ -217,70 +268,9 @@ def ensure_patches(okww_dir: Path | None) -> list[str]:
     root = Path(okww_dir)
     done: list[str] = []
     done.extend(_apply_nest(root))
-    # Restored on 2026-08-31: the weekly boss has to run before the daily stamina
-    # farming, otherwise only 60 stamina is left. This is not an aesthetic
-    # complaint about upstream ordering, it makes **the allocation the user asked
-    # for impossible**: one weekly-boss chest costs 60 stamina, three cost 180,
-    # and the daily step burns all 180 first.
     done.extend(_ensure_stamina(root))
-    # Withdrawn on 2026-08-31, so what happens here is a **revert**: the premise
-    # was wrong to begin with - OK-WW's own error() already prints the stack, and
-    # the exception was never swallowed.
-    # 来龙去脉见 docs/CODE-HISTORY.md「okww_patch.py:ensure_patches」
-    done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
-                             _FARMERR_NEW, _FARMERR_OLD, "周本活锁：打出被吞掉的异常"))
-    # The screenshot patch has answered its question (there is no auto-claim on
-    # screen after the boss dies), so revert it.
-    done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
-                             _SHOT2_NEW, _SHOT2_OLD, "退秘境前留证据截图"))
-    done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
-                             _CLAIM_V1, _CLAIM_OLD, "打完 Boss 真正领周本奖励 v1"))
-    done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
-                             _CLAIM_V2, _CLAIM_OLD, "打完 Boss 真正领周本奖励 v2"))
-    done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
-                             _CLAIM_V3, _CLAIM_OLD, "打完 Boss 真正领周本奖励 v3"))
-    done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
-                             _CLAIM_V4, _CLAIM_OLD, "打完 Boss 真正领周本奖励 v4"))
-    done.extend(_apply_one(root, _CLAIM))
-    done.extend(_revert_text(root, (*_SRC, "TacetTask.py"),
-                             _TACETSHOT_V1, _TACETSHOT_V1_OLD, "无音区留两张图给日报 v1"))
-    done.extend(_apply_one(root, _TACETSHOT))
-    # The evidence patch has answered its question (the screen shows the
-    # 「结晶波片不足」 popup), so withdraw it.
-    done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
-                             _TEAMSHOT_NEW, _TEAMSHOT_OLD,
-                             "开启挑战找不到时留证据截图"))
-    # Every historical version has to be reverted first or they stack: the v1/v2
-    # replacement texts each end with the anchor itself, so one change to
-    # present() applies another layer on top.
-    done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
-                             _COUNT_V1, _COUNT_OLD, "进本前拍一张看剩余次数 v1"))
-    done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
-                             _NOWAVE_V1 + "\n", "", "波片不足时跳过周本 v1"))
-    done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
-                             _NOWAVE_V2, _NOWAVE_OLD, "波片不足时跳过周本 v2"))
-    done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
-                             _NOWAVE_V3A, _NOWAVE_OLD, "波片不足时跳过周本 v3a"))
-    done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
-                             _NOWAVE_V3B, _NOWAVE_OLD, "波片不足时跳过周本 v3b"))
-    done.extend(_apply_one(root, _NOWAVE))
-    done.extend(_apply_one(root, _RETRYCAP))
-    done.extend(_apply_one(root, _LETPASS))
-    done.extend(_apply_one(root, _COUNT))
-    # The screenshot patch's question is settled: what it captured on 2026-08-31
-    # was the 「确认离开」 exit popup, not a claim popup (the name
-    # claim_cancel_button refers to the generic two-button popup). Keeping it only
-    # saves one useless image per boss fight, so revert it deliberately.
-    done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
-                             _SHOT_NEW, _SHOT_OLD, "周本领奖前留证据截图"))
-    # The three below are reverts, not applications.
-    for p in PATCHES:
-        done.extend(_revert_text(root, p.parts, p.new, p.old, p.name))
-    done.extend(_revert_text(root, (*_SRC, "DomainTask.py"),
-                             _DOMAIN_NEW, _DOMAIN_OLD, "副本失败不拖垮每日任务"))
-    done.extend(_revert_text(root, (*_SRC, "DomainTask.py"),
-                             _DOMAIN_IMPORT_NEW, _DOMAIN_IMPORT_OLD,
-                             "副本补丁的 import"))
-    done.extend(_revert_text(root, (*_SRC, "BaseCombatTask.py"),
-                             _STARVE_NEW, _STARVE_OLD, "主C饿死兜底"))
+    for parts, new, old, label in _REVERTS:
+        done.extend(_revert_text(root, parts, new, old, label))
+    for patch in _APPLIES:
+        done.extend(_apply_one(root, patch))
     return done

@@ -55,11 +55,18 @@ today = datetime.now(timezone(timedelta(hours=8))).strftime("%Y%m%d")
 n = int(cur.get("version", 0))
 ver = max(int(today + "01"), n + 1)
 
+# What the push says. Action ids are for the program; the user reads Chinese.
+ZH = {"set_master": "改脚本自己的设置", "set_config": "改设置", "debug_mode": "调试模式",
+      "skip_shutdown": "下次跑完不关机", "run_now": "现在跑一趟", "skip_today": "跳过一趟",
+      "weekly_boss": "改打第几个周本", "estop": "停止一切", "maaend_option": "改终末地选项"}
+label = "空（安全状态）" if not cmds else "、".join(ZH.get(c["action"], c["action"]) for c in cmds)
 out = {
     "version": ver,
-    "name": ("空（安全状态）" if not cmds else
-             "、".join(c["action"] for c in cmds)),
-    "note": cur.get("note", ""),
+    "name": label,
+    # The note is the body of the push the user gets. It used to carry over the
+    # previous file's note, which since 09-08 was a paragraph of guidance written
+    # for me - and he received it as a notification. One plain sentence instead.
+    "note": f"从电脑发来的指令：{label}",
     "commands": cmds,           # 覆盖，不追加——旧指令绝不留下
 }
 open(box, "w", encoding="utf-8").write(
