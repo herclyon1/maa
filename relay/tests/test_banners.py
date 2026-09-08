@@ -45,8 +45,8 @@ def check(what, got, want):
         FAILED.append(f"{what}: 得到 {got!r}，应为 {want!r}")
 
 
-def main() -> int:
-    # ── 鸣潮 ───────────────────────────────────────────────
+def _wuwa() -> None:
+    """鸣潮：库街区首页 + 官方公告。"""
     home = json.loads((FX / "wuwa_home.json").read_text(encoding="utf-8"))
     notice = (FX / "wuwa_notice.html").read_text(encoding="utf-8")
     names = {"1536353668409655296": "清宵", "1488852222116831232": "达妮娅"}
@@ -68,8 +68,11 @@ def main() -> int:
           "达妮娅" in {w for w, _ in debut}, False)
     check("正文取不到时返回空而不是炸", parse_wuwa_preview(""), [])
     check("没有那一节时返回空", parse_wuwa_preview("<p>啥也没有</p>"), [])
+    return pools, debut
 
-    # ── 明日方舟 ────────────────────────────────────────────
+
+def _arknights() -> None:
+    """明日方舟：PRTS 卡池一览 + 一图流排期。"""
     page = urllib.parse.quote(_AK_PAGES[0])
     q = urllib.parse.parse_qs(urllib.parse.urlparse(_PRTS + page).query)
     check("PRTS 的 URL 必须带 page 参数",
@@ -98,7 +101,9 @@ def main() -> int:
           [("P3R联动", "2026-09-04", False), ("感谢庆典", "2026-11-01", False)])
     check("排期是空文本时返回空", parse_ak_schedule(""), [])
 
-    # ── 终末地 ─────────────────────────────────────────────
+
+def _endfield() -> None:
+    """终末地：森空岛 char-pool + 官方版本说明。"""
     ef_pools = json.loads((FX / "endfield_pools.json").read_text(encoding="utf-8"))
     ef = parse_endfield(ef_pools, lambda gid: {"1683": "梨诺"}.get(gid, ""))
     check("终末地池名", [b.name for b in ef], ["晨星于此闪耀"])
@@ -120,8 +125,11 @@ def main() -> int:
     check("公告取不到时返回空", parse_endfield_notice(""), [])
     check("没有「全新干员」那一节时返回空",
           parse_endfield_notice("<p>只有更新维护时间</p>"), [])
+    return ef_debut
 
-    # ── 「下一期」只能取在开的那位之后的 ────────────────────
+
+def _next_after_current(debut, ef_debut) -> None:
+    """「下一期」只能取在开的那位之后的。"""
     check("本版最后一个在开时，本版没有下一期了",
           upcoming(ef_debut, {"梨诺"}), [])
     check("本版第一个在开时，下一期是第二个",
@@ -133,7 +141,9 @@ def main() -> int:
     check("一个都没在开时不猜",
           upcoming(debut, set()), [])
 
-    # ── 渲染 ───────────────────────────────────────────────
+
+def _render(pools) -> None:
+    """渲染成通知里的那几行。"""
     now = datetime(2026, 8, 31, 0, 0, 0)
     live = [b for b in pools if b.chars == ("清宵",)]
     out = render(live, now,
@@ -154,7 +164,9 @@ def main() -> int:
     check("只给到日期的源不许凑出 00:00", "00:00" in dateonly, False)
     check("只给到日期时写到日", "09-04 开" in dateonly, True)
 
-    # ── 3.7 发布后 3.6 还挂着，必须只认版本号大的那条 ──────
+
+def _newest_version() -> None:
+    """3.7 发布后 3.6 还挂着，只认版本号大的那条。"""
     check("两版并存时取版本号大的",
           newest_version([("「甲」3.6版本内容说明", "旧"),
                           ("「乙」3.7版本内容说明", "新")]), "新")
@@ -175,7 +187,9 @@ def main() -> int:
     check("每条镜像都指向同一个文件",
           all(m.endswith("a/b.js") for m in mirrors), True)
 
-    # ── 只有「明天开」的才发群 ──────────────────────────
+
+def _opening_tomorrow() -> None:
+    """只有「明天开」的才发群。"""
     # 日报是晚上发的。按「24 小时内」算的话，21:30 会把后天早上六点开的
     # 也算进来——那不是明天。所以比的是日期。
     evening = datetime(2026, 8, 31, 21, 30)
@@ -206,8 +220,12 @@ def main() -> int:
     check("人名带上", "景燃「身赴三途」" in body, True)
     check("没有要播的就不发", group_notice([]), ("", ""))
 
-    check("一条都没有时整段为空", render([], now, {}), "")
-    # ── 前瞻行 ──
+    check("一条都没有时整段为空",
+          render([], datetime(2026, 8, 31, 0, 0, 0), {}), "")
+
+
+def _preview_line() -> None:
+    """前瞻行。"""
     from ark_relay import banners as _b  # noqa: PLC0415
     pv = _b.previews(datetime(2026, 9, 3), [], {"终末地": datetime(2026, 9, 30, 11, 59), "鸣潮": datetime(2026, 10, 1, 4, 0)})
     check("终末地前瞻：版本前 12 天 19:00", pv["终末地"].startswith("09-18 19:00"), True)
@@ -217,7 +235,9 @@ def main() -> int:
     out3 = render([], datetime(2026, 9, 3), {}, {"鸣潮": "09-18 19:00（…）"})
     check("只有前瞻也出这个游戏的块", "鸣潮\n· 前瞻　09-18 19:00（…）" in out3, True)
 
-    # ── 只报最高稀有度（用户 2026-09-03）────────────────────
+
+def _top_rarity_only() -> None:
+    """只报最高稀有度（用户 2026-09-03）。"""
     from ark_relay import banners as _b  # noqa: PLC0415
     notice_html = "<p>■ 全新干员 6星干员【提弗洛斯】、5星干员【噗切娜】 ■ 全新武器 …</p><p>1.「冬猎」特许寻访 · 寻访说明：6星干员【提弗洛斯】获取概率提升</p>"
     check("终末地公告：5 星赠送角色不进首发名单", parse_endfield_notice(notice_html), [("提弗洛斯", "冬猎")])
@@ -246,7 +266,11 @@ def main() -> int:
     check("方舟池只留六星（PRTS 稀有度 5=六星）", _b.six_star_only(b6, fake_prts).chars, ("予愿安洁莉娜", "珊比"))
     check("稀有度查不到的名字去掉，不冒充", _b.six_star_only(_b.Banner("明日方舟", "x", ("无名",), datetime(2026, 8, 1), datetime(2026, 8, 15)), fake_prts).chars, ())
 
-    # ── 按游戏分块，每家一个样（用户 2026-09-02）──────────────
+
+def _per_game_blocks(pools) -> None:
+    """按游戏分块，每家一个样（用户 2026-09-02）。"""
+    now = datetime(2026, 8, 31, 0, 0, 0)
+    live = [b for b in pools if b.chars == ("清宵",)]
     both = render(live, now, {"鸣潮": (datetime(2026, 9, 10, 9, 59, 59), "景燃「身赴三途」"),
                               "明日方舟": (datetime(2026, 9, 4, 0, 0, 0), "P3R联动（排期是预测，未官宣）")})
     lines = both.splitlines()
@@ -258,6 +282,20 @@ def main() -> int:
           [l.split("　")[0] for l in lines[lines.index("鸣潮") + 1:]], ["· 当期", "· 预告"])
     check("当期带结束时刻", "（09-10 09:59 结束）" in both, True)
 
+
+def main() -> int:
+    # 一节一个函数。原来这里是一个 215 行的 main：哪一节红了，
+    # 得自己数行号才知道是鸣潮还是终末地那一段。
+    pools, debut = _wuwa()
+    _arknights()
+    ef_debut = _endfield()
+    _next_after_current(debut, ef_debut)
+    _render(pools)
+    _newest_version()
+    _opening_tomorrow()
+    _preview_line()
+    _top_rarity_only()
+    _per_game_blocks(pools)
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1
 

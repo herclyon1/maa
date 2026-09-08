@@ -158,6 +158,71 @@ def read(automas_dir: "Path | None") -> dict:
             "enabled": True, "label": " → ".join(p for p in parts if p)}
 
 
+def _validate_plan(tab: str, line: str, rewards_set: str) -> str | None:
+    """先把三个入参核一遍；返回错误文本，全合法就返回 None。
+
+    单独成一步，是因为这一段跟母本一个字都不沾——纯粹是「这三个值本身合不合
+    法」，而它必须整段跑完在任何读写母本的动作之前：这三个值决定明天的理智
+    花在哪里，让一个不合法的值走到写盘那一步就已经晚了。
+    """
+    if tab not in TAB_LABELS:
+        return f"理智任务类型不合法: {tab!r}（可选 {'、'.join(TAB_LABELS)}）"
+    if tab != "Essence" and line:
+        legal = LINE_OPTIONS.get(tab, ())
+        if legal and line not in legal:
+            return f"{TAB_LABELS[tab]} 不接受 {line!r}（可选 {'、'.join(legal)}）"
+    if rewards_set and rewards_set not in ("RewardsSetA", "RewardsSetB"):
+        return f"奖励组不合法: {rewards_set!r}（只能 RewardsSetA / RewardsSetB）"
+    return None
+
+
+def _toggle_sanity_tasks(have: dict, want_task: str, changes: list[str]) -> None:
+    """开 want_task、关另一个理智任务，改动记进 changes。
+
+    单独成一步，是因为「谁 enabled 谁就是当前方案」是这个模块的根本判据，
+    这里只碰 enabled 这一个字段，和后面写下拉项那段没有共用的中间状态。
+    母本里不存在的那个任务在这里会被跳过——**只切换已存在的任务，不新建**。
+    """
+    for name in SANITY_TASKS:
+        t = have.get(name)
+        if t is None:
+            continue
+        want_on = name == want_task
+        if bool(t.get("enabled")) != want_on:
+            changes.append(f"{name}: {'开' if want_on else '关'}")
+            t["enabled"] = want_on
+
+
+def _write_options(ov: dict, want_task: str, tab: str, line: str,
+                   rewards_set: str, location: str,
+                   changes: list[str]) -> str | None:
+    """把地点/下拉项写进选中那个任务的 optionValues，改动记进 changes。
+
+    单独成一步，是因为基质刷取和协议空间在这里彻底分家：一边写地点复选框，
+    一边写三个联动的下拉项，而且后者每写一个都要先确认母本里本来就有这个键。
+    返回错误文本，没有错就返回 None。
+    """
+    if tab == "Essence":
+        if location:
+            cur = (ov.get("AutoEssenceChooseLocation") or {}).get("caseNames") or []
+            if cur != [location]:
+                changes.append(f"地点: {cur} → [{location}]")
+                ov["AutoEssenceChooseLocation"] = {"type": "checkbox",
+                                                   "caseNames": [location]}
+    else:
+        for key, want in (("ProtocolSpaceTab", tab), (tab, line),
+                          (f"{line}RewardsSetOption" if line else "", rewards_set)):
+            if not key or not want:
+                continue
+            if key not in ov:
+                # 母本里没有的键凭空造出来，MaaEnd 那边不认，等于白写。
+                return f"母本的 {want_task} 里没有字段 {key!r}，拒绝新建"
+            if _case(ov, key) != want:
+                changes.append(f"{key}: {_case(ov, key)} → {want}")
+                ov[key] = {"type": "select", "caseName": want}
+    return None
+
+
 def set_plan(automas_dir: "Path | None", tab: str, line: str = "",
              rewards_set: str = "", location: str = "") -> tuple[bool, str]:
     """把方案写进母本——AUTO-MAS 每轮拷给 MaaEnd 的那一份。
@@ -167,14 +232,8 @@ def set_plan(automas_dir: "Path | None", tab: str, line: str = "",
     **只切换已存在的任务，不新建**：母本里没有 `AutoEssence` 却选基质刷取，
     正是 2026-08-28 那个「界面显示已生效、实际整段跳过」的静默故障。
     """
-    if tab not in TAB_LABELS:
-        return False, f"理智任务类型不合法: {tab!r}（可选 {'、'.join(TAB_LABELS)}）"
-    if tab != "Essence" and line:
-        legal = LINE_OPTIONS.get(tab, ())
-        if legal and line not in legal:
-            return False, f"{TAB_LABELS[tab]} 不接受 {line!r}（可选 {'、'.join(legal)}）"
-    if rewards_set and rewards_set not in ("RewardsSetA", "RewardsSetB"):
-        return False, f"奖励组不合法: {rewards_set!r}（只能 RewardsSetA / RewardsSetB）"
+    if err := _validate_plan(tab, line, rewards_set):
+        return False, err
 
     f = _master(automas_dir)
     if f is None:
@@ -196,34 +255,12 @@ def set_plan(automas_dir: "Path | None", tab: str, line: str = "",
                        f"先在 MaaEnd 界面加上并同步进母本")
 
     changes: list[str] = []
-    for name in SANITY_TASKS:
-        t = have.get(name)
-        if t is None:
-            continue
-        want_on = name == want_task
-        if bool(t.get("enabled")) != want_on:
-            changes.append(f"{name}: {'开' if want_on else '关'}")
-            t["enabled"] = want_on
+    _toggle_sanity_tasks(have, want_task, changes)
 
     ov = have[want_task].setdefault("optionValues", {})
-    if tab == "Essence":
-        if location:
-            cur = (ov.get("AutoEssenceChooseLocation") or {}).get("caseNames") or []
-            if cur != [location]:
-                changes.append(f"地点: {cur} → [{location}]")
-                ov["AutoEssenceChooseLocation"] = {"type": "checkbox",
-                                                   "caseNames": [location]}
-    else:
-        for key, want in (("ProtocolSpaceTab", tab), (tab, line),
-                          (f"{line}RewardsSetOption" if line else "", rewards_set)):
-            if not key or not want:
-                continue
-            if key not in ov:
-                # 母本里没有的键凭空造出来，MaaEnd 那边不认，等于白写。
-                return False, f"母本的 {want_task} 里没有字段 {key!r}，拒绝新建"
-            if _case(ov, key) != want:
-                changes.append(f"{key}: {_case(ov, key)} → {want}")
-                ov[key] = {"type": "select", "caseName": want}
+    if err := _write_options(ov, want_task, tab, line, rewards_set, location,
+                             changes):
+        return False, err
 
     if not changes:
         return True, "已经是这个方案，无需改动"

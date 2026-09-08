@@ -297,7 +297,12 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
     return None
 
 
-def _handle(eng, rec: RunRecord) -> None:
+def _append_ledger_once(eng, rec: RunRecord) -> None:
+    """把这一趟记进当天的流水账，同一条记录被重放时不重复记。
+
+    单独成步是因为记账必须幂等，而它下面的判定和推送都可能中途出错、
+    让整条记录从头再处理一遍——圈成一步之后，重放时只会跳过它。
+    """
     # mark_seen only happens after _handle returns, so a crash later in
     # this method (disk full during save_pending, annihilation copy2)
     # replays the record on every retry tick - and each replay used to
@@ -309,44 +314,84 @@ def _handle(eng, rec: RunRecord) -> None:
         log.info("记录 %s 已在账上（上次处理中途出错的重试），跳过重记", rec.run_id)
     else:
         eng.state.append_ledger(rec)
+
+
+def _weekly_gates(eng, rec: RunRecord) -> None:
+    """三道周门（周本、周常乐园、剿灭）：这一趟把哪道打完了，打完就报一句。
+
+    单独成步是因为这三段形状一模一样——看证据、问周门、有话才发；
+    和它前后的自愈通知、结果核对互不相干，混在一处读容易看串行。
+    """
+    # 只有真打满周上限的那一趟才算数：MAA 因为理智不够提前收工时照样报
+    # Success!，照它摘掉剿灭会让这一周剩下的日子都不打、上限也补不满。
+    # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
+    steps = rec.raw.get("okww_steps") or []
+    # 周本：任务名译作「传送并刷取4C声骸」，任务本身显示「刷4C(大世界/副本)」，
+    # 两种都认。判据和周常乐园一致——只有真跑完那一步才算数。
+    if any(s.startswith("周本") and "已完成" in s for s in steps):
+        if msg := eng._weeklyboss.on_success(rec.finished):
+            eng.notifier.send(texts.WEEKLY, msg)
+    if any("周常乐园" in s and "已完成" in s for s in steps) and eng._garden:
+        if msg := eng._garden.on_success(rec.finished):
+            # 照剿灭那一支写：两条周门本来就该是同一个形状。
+            # （2026-08-26 这里曾写成 notes.append，而这个作用域里没有 notes。）
+            # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
+            eng.notifier.send(texts.WEEKLY, msg)
+    if (rec.raw.get("annihilation") and rec.raw.get("annihilation_done")
+            and eng._annihilation):
+        if msg := eng._annihilation.on_success(rec.finished):
+            eng.notifier.send(texts.WEEKLY, msg)
+
+
+def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
+    """AUTO-MAS 报「这一趟正常退出」之后要做的全部事情。
+
+    单独成步是因为成功和失败两条路没有一行是共用的：这条管自愈通知、周门、
+    结果核对；失败那条管中途重启、更新日、软失败和暂存。
+    """
+    # A later success means AUTO-MAS got past it on its own. Report it
+    # anyway - once for the whole event, not once per failed attempt.
+    if (bad := eng._pending.pop(key, None)) is not None:
+        eng._recovered[key] = bad
+        eng._persist_pending()
+        log.info("↩️ %s 重试后成功，改为自愈通知", rec.script)
+    _weekly_gates(eng, rec)
+    # AUTO-MAS 说「这个脚本正常退出了」，不等于它把活干成了。
+    # 所以退出之前先按证据核对一遍，没干成的必须出声。
+    # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
+    if msg := eng._verify_outcome(rec):
+        log.warning("⚠️ %s %s 有项目没干成：\n%s",
+                    rec.script, rec.run_id, msg)
+        eng.notifier.send(texts.ROUND_INCOMPLETE, msg, alert=True)
+        return
+    log.info("✅ %s %s（%d 分钟）静默记账",
+             rec.script, rec.run_id, rec.duration_min)
+    return
+
+
+def _hold_for_retry(eng, rec: RunRecord, key: tuple) -> None:
+    """真失败的收尾：挂进待推队列、落盘、把证据抢救出来。
+
+    单独成步是因为这是失败路径上唯一「不再往下判、只做善后」的一段，
+    而且每一步都得赶在下一次出错之前做完，顺序不能动。
+    """
+    # Hold it. Only alert once the script has stopped retrying entirely.
+    eng._pending[key] = rec
+    eng._persist_pending()   # queued to disk before anything else can go wrong
+    # 失败一落账就立刻把证据搬走：MaaEnd 下一次启动的瞬间会自己清空
+    # 上一轮的截图和日志，等人来看的时候什么都不剩了。
+    # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
+    if rec.script == "MaaEnd":
+        eng._archive_maaend_evidence(rec)
+    log.info("⏳ %s 失败，暂不推送，等重试结果", rec.script)
+
+
+def _handle(eng, rec: RunRecord) -> None:
+    _append_ledger_once(eng, rec)
     key = (rec.script, rec.user)
 
     if rec.ok:
-        # A later success means AUTO-MAS got past it on its own. Report it
-        # anyway - once for the whole event, not once per failed attempt.
-        if (bad := eng._pending.pop(key, None)) is not None:
-            eng._recovered[key] = bad
-            eng._persist_pending()
-            log.info("↩️ %s 重试后成功，改为自愈通知", rec.script)
-        # 只有真打满周上限的那一趟才算数：MAA 因为理智不够提前收工时照样报
-        # Success!，照它摘掉剿灭会让这一周剩下的日子都不打、上限也补不满。
-        # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
-        steps = rec.raw.get("okww_steps") or []
-        # 周本：任务名译作「传送并刷取4C声骸」，任务本身显示「刷4C(大世界/副本)」，
-        # 两种都认。判据和周常乐园一致——只有真跑完那一步才算数。
-        if any(s.startswith("周本") and "已完成" in s for s in steps):
-            if msg := eng._weeklyboss.on_success(rec.finished):
-                eng.notifier.send(texts.WEEKLY, msg)
-        if any("周常乐园" in s and "已完成" in s for s in steps) and eng._garden:
-            if msg := eng._garden.on_success(rec.finished):
-                # 照剿灭那一支写：两条周门本来就该是同一个形状。
-                # （2026-08-26 这里曾写成 notes.append，而这个作用域里没有 notes。）
-                # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
-                eng.notifier.send(texts.WEEKLY, msg)
-        if (rec.raw.get("annihilation") and rec.raw.get("annihilation_done")
-                and eng._annihilation):
-            if msg := eng._annihilation.on_success(rec.finished):
-                eng.notifier.send(texts.WEEKLY, msg)
-        # AUTO-MAS 说「这个脚本正常退出了」，不等于它把活干成了。
-        # 所以退出之前先按证据核对一遍，没干成的必须出声。
-        # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
-        if msg := eng._verify_outcome(rec):
-            log.warning("⚠️ %s %s 有项目没干成：\n%s",
-                        rec.script, rec.run_id, msg)
-            eng.notifier.send(texts.ROUND_INCOMPLETE, msg, alert=True)
-            return
-        log.info("✅ %s %s（%d 分钟）静默记账",
-                 rec.script, rec.run_id, rec.duration_min)
+        _handle_success(eng, rec, key)
         return
 
     # "被下一轮取代"不是失败，不进待推队列。AUTO-MAS 把「游戏更新成功，
@@ -369,15 +414,7 @@ def _handle(eng, rec: RunRecord) -> None:
         log.warning("🟡 %s 只是 %s 没做成（上游问题），记日报不拉警报",
                     rec.script, "、".join(rec.failed_tasks))
         return
-    # Hold it. Only alert once the script has stopped retrying entirely.
-    eng._pending[key] = rec
-    eng._persist_pending()   # queued to disk before anything else can go wrong
-    # 失败一落账就立刻把证据搬走：MaaEnd 下一次启动的瞬间会自己清空
-    # 上一轮的截图和日志，等人来看的时候什么都不剩了。
-    # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
-    if rec.script == "MaaEnd":
-        eng._archive_maaend_evidence(rec)
-    log.info("⏳ %s 失败，暂不推送，等重试结果", rec.script)
+    _hold_for_retry(eng, rec, key)
 
 
 def _maintenance_today(eng, game: str) -> bool:

@@ -209,6 +209,59 @@ def _console_primary_token(session: int):
     return primary
 
 
+def _startup_info(minimized: bool):
+    """给 CreateProcessAsUser 造 STARTUPINFO：指定桌面，需要时让它最小化开窗。
+
+    单独成一步，是因为这几行合起来就是「在别人的桌面上开窗」这件事的全部设置，
+    两条都是踩出来的：没有 lpDesktop 进程照样死，最小化是用户明确要的。
+    夹在取令牌和拼命令行中间，它看着像样板代码，很容易被顺手删掉。
+    """
+    import win32con  # noqa: PLC0415
+    import win32process  # noqa: PLC0415
+
+    startup = win32process.STARTUPINFO()
+    # Without this the process has no window station and dies the same way.
+    startup.lpDesktop = "winsta0\\default"
+    if minimized:
+        # 用户 2026-09-02：「检查更新的时候桌面我希望不要出现任何东西」。
+        # 启动时就让它最小化；不认这个标志的程序会照常弹窗（待实测）。
+        startup.dwFlags |= win32con.STARTF_USESHOWWINDOW
+        startup.wShowWindow = win32con.SW_SHOWMINNOACTIVE
+    return startup
+
+
+def _close_handles(handles) -> None:
+    """把 CreateProcessAsUser 交回来的句柄挨个关掉。
+
+    单独成一步，是因为「关不掉」绝不能影响结论：进程已经起来了，一次失败的
+    Close 只是句柄泄漏，不该被上面那个 except 接走、变成「启动失败」。
+    """
+    for h in handles:
+        try:
+            h.Close()
+        except Exception:  # noqa: BLE001 - handle cleanup only
+            pass
+
+
+def _spawn_fallback(exe: Path, cwd: Path, args: tuple[str, ...],
+                    *, require_console: bool) -> bool:
+    """令牌那条路走不通之后的退路：先试计划任务，再看要不要退回普通启动。
+
+    单独成一步，是因为这里的先后是有讲究的。计划任务由 Task Scheduler 代为建
+    进程，不要求调用方持有 SE_TCB_NAME，所以它先上；它也失败时，
+    require_console 决定是**诚实地失败**还是退回 session 0——而退回去正是
+    2026-08-25 把「没检查成」读成「无需更新」的那条路。这个分支要能一眼看全。
+    """
+    if _spawn_via_task(exe, cwd, args):
+        return True
+    if require_console:
+        log.warning("预更新：计划任务也没能把 %s 放进交互会话，本轮放弃",
+                    exe.name)
+        return False
+    log.warning("预更新：计划任务也失败，退回普通启动")
+    return _spawn_detached(exe, cwd, args)
+
+
 def _spawn_interactive(exe: Path, cwd: Path,
                        args: tuple[str, ...] = (),
                        *, require_console: bool = False,
@@ -255,14 +308,7 @@ def _spawn_interactive(exe: Path, cwd: Path,
         # 未过滤的令牌——受限令牌启动 requireAdministrator 的程序必然报 740。
         token = _console_primary_token(session)
         env = win32profile.CreateEnvironmentBlock(token, False)
-        startup = win32process.STARTUPINFO()
-        # Without this the process has no window station and dies the same way.
-        startup.lpDesktop = "winsta0\\default"
-        if minimized:
-            # 用户 2026-09-02：「检查更新的时候桌面我希望不要出现任何东西」。
-            # 启动时就让它最小化；不认这个标志的程序会照常弹窗（待实测）。
-            startup.dwFlags |= win32con.STARTF_USESHOWWINDOW
-            startup.wShowWindow = win32con.SW_SHOWMINNOACTIVE
+        startup = _startup_info(minimized)
         # CreateProcessAsUser wants the exe repeated as argv[0].
         cmd = subprocess.list2cmdline([str(exe), *args])
         # hidden：桌面助手那种控制台程序不能开窗——09-03 实测它的 PowerShell 窗口
@@ -271,11 +317,7 @@ def _spawn_interactive(exe: Path, cwd: Path,
         handles = win32process.CreateProcessAsUser(
             token, str(exe), cmd, None, None, False, flags,
             env, str(cwd), startup)
-        for h in handles:
-            try:
-                h.Close()
-            except Exception:  # noqa: BLE001 - handle cleanup only
-                pass
+        _close_handles(handles)
         log.info("预更新：已在会话 %s 启动 %s", session, exe.name)
         return True
     except Exception:
@@ -283,14 +325,7 @@ def _spawn_interactive(exe: Path, cwd: Path,
         # 建进程，不要求调用方持有 SE_TCB_NAME。**这才是常态路径**——
         # 2026-08-26 实测真实服务每次都走到这里。
         log.warning("预更新：拿控制台令牌失败，改用计划任务方式", exc_info=True)
-        if _spawn_via_task(exe, cwd, args):
-            return True
-        if require_console:
-            log.warning("预更新：计划任务也没能把 %s 放进交互会话，本轮放弃",
-                        exe.name)
-            return False
-        log.warning("预更新：计划任务也失败，退回普通启动")
-        return _spawn_detached(exe, cwd, args)
+        return _spawn_fallback(exe, cwd, args, require_console=require_console)
     finally:
         if token is not None:
             try:

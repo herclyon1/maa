@@ -139,6 +139,69 @@ def _maa_version(log_path: Path) -> str:
     return hits[-1] if hits else ""
 
 
+def _maa_await_verdict(log_path: Path, before_len: int, maa_dir: Path | None,
+                       staged_before: bool, budget_s: float,
+                       problems: list[str] | None) -> tuple[str, bool]:
+    """守着 gui.log 等 MAA 把更新这件事交代清楚，返回（已应用的说明, 有没有结论）。
+
+    单独成一步，是因为 MAA 交代清楚的方式有四种——刚更新过所以自己跳过了检查、
+    明说已是最新、把新版下载落地、本来就有暂存现在就绪——每一种都得写清楚
+    为什么可以就此收手。四套判据夹在启动和善后中间，run_maa 的主干
+    「开 → 等 → 关」就看不出来了。等不到结论的那条问题也在这里记给调用方。
+    """
+    applied = ""
+    answered = False
+    deadline = time.monotonic() + budget_s
+    while time.monotonic() < deadline:
+        time.sleep(1)
+        text = _read_from(log_path, before_len)
+        if _MAA_APPLIED.search(text):
+            applied = "已应用挂起的更新"
+        if _MAA_FIRST_BOOT.search(text):
+            answered = True
+            log.info("预更新：MAA 刚更新过，这次是首次启动，它自己跳过了更新检查；"
+                     "09:00 队列启动时会补上")
+            break             # 等不到 latest，等下去只会白等满 180 秒
+        if _MAA_LATEST.search(text):
+            answered = True
+            # 别把这行省掉：另外三个程序在「已是最新」时都写一句，
+            # 只有 MAA 曾经是哑的，于是日志里看不出它到底查没查过。
+            log.info("预更新：MAA 已是 %s（无需更新）", _maa_version(log_path) or "最新版")
+            break             # 明说了已是最新，没有下载要等
+        if not staged_before and maa_update_pending(maa_dir):
+            answered = True
+            log.info("预更新：MAA 已把新版下载到 %s，下轮启动时装上",
+                     _MAA_PENDING_DIR)
+            break             # 下载落地了，剩下的交给 09:00 那次启动
+        if _MAA_READY.search(text) and staged_before:
+            answered = True
+            log.info("预更新：MAA 的挂起更新已就绪，下轮启动时装上")
+            break             # 本来就有暂存，装完即可，不必等新的
+    else:
+        log.warning("预更新：MAA 在 %.0f 秒内没给出更新结论，照常继续", budget_s)
+        _note(problems,
+              f"MAA 预更新：{budget_s:.0f} 秒内没给出更新结论，"
+              "**本轮没有确认过是否有更新**")
+    return applied, answered
+
+
+def _maa_summary(maa_dir: Path | None, log_path: Path, before_ver: str,
+                 applied: str, answered: bool, staged_before: bool) -> str:
+    """把等到的结论翻成给人看的一句话；没什么可报的就返回空串。
+
+    单独成一步，是因为这一段跑在 finally 关掉 MAA **之后**：装完的那次重启才会
+    把新版本号写进 gui.log 末尾，早读一步读到的还是旧的。摘出来放在这里，
+    也就不会有人顺手把它挪回 try 里面去。
+    """
+    if applied:
+        # 装完后 MAA 重启，gui.log 末尾那行 Version 就是新版本号
+        return f"MAA 已更新：{_span(before_ver, _maa_version(log_path) or '新版本')}"
+    if answered and not staged_before and maa_update_pending(maa_dir):
+        target = _maa_pending_version(maa_dir) or "新版本"
+        return f"MAA 有更新：{_span(before_ver, target)}（已下载，下轮启动时装上）"
+    return ""
+
+
 def run_maa(maa_dir: Path | None, budget_s: float = BUDGET_SECONDS,
             problems: list[str] | None = None) -> str:
     """Apply any pending MAA update, and let it look for the next one.
@@ -176,8 +239,6 @@ def run_maa(maa_dir: Path | None, budget_s: float = BUDGET_SECONDS,
         _note(problems, "MAA 预更新：改不动配置，没有检查更新")
         return ""
     before_len = log_path.stat().st_size if log_path.exists() else 0
-    applied = ""
-    answered = False
     try:
         # session 0 has no desktop; MAA's updater does not run there.
         if not _spawn_interactive(exe, maa_dir, require_console=True, minimized=True):
@@ -185,45 +246,11 @@ def run_maa(maa_dir: Path | None, budget_s: float = BUDGET_SECONDS,
             _note(problems, "MAA 预更新：拿不到控制台会话，**没有检查更新**")
             return ""
         log.info("预更新：已启动 MAA（已临时关闭「启动后直接运行」），最多 %.0f 秒", budget_s)
-        deadline = time.monotonic() + budget_s
-        while time.monotonic() < deadline:
-            time.sleep(1)
-            text = _read_from(log_path, before_len)
-            if _MAA_APPLIED.search(text):
-                applied = "已应用挂起的更新"
-            if _MAA_FIRST_BOOT.search(text):
-                answered = True
-                log.info("预更新：MAA 刚更新过，这次是首次启动，它自己跳过了更新检查；"
-                         "09:00 队列启动时会补上")
-                break             # 等不到 latest，等下去只会白等满 180 秒
-            if _MAA_LATEST.search(text):
-                answered = True
-                # 别把这行省掉：另外三个程序在「已是最新」时都写一句，
-                # 只有 MAA 曾经是哑的，于是日志里看不出它到底查没查过。
-                log.info("预更新：MAA 已是 %s（无需更新）", _maa_version(log_path) or "最新版")
-                break             # 明说了已是最新，没有下载要等
-            if not staged_before and maa_update_pending(maa_dir):
-                answered = True
-                log.info("预更新：MAA 已把新版下载到 %s，下轮启动时装上",
-                         _MAA_PENDING_DIR)
-                break             # 下载落地了，剩下的交给 09:00 那次启动
-            if _MAA_READY.search(text) and staged_before:
-                answered = True
-                log.info("预更新：MAA 的挂起更新已就绪，下轮启动时装上")
-                break             # 本来就有暂存，装完即可，不必等新的
-        else:
-            log.warning("预更新：MAA 在 %.0f 秒内没给出更新结论，照常继续", budget_s)
-            _note(problems,
-                  f"MAA 预更新：{budget_s:.0f} 秒内没给出更新结论，"
-                  "**本轮没有确认过是否有更新**")
+        applied, answered = _maa_await_verdict(
+            log_path, before_len, maa_dir, staged_before, budget_s, problems)
     finally:
         _close(exe)
         if was:
             _maa_run_directly(Path(maa_dir), True)   # put it back as we found it
-    if applied:
-        # 装完后 MAA 重启，gui.log 末尾那行 Version 就是新版本号
-        return f"MAA 已更新：{_span(before_ver, _maa_version(log_path) or '新版本')}"
-    if answered and not staged_before and maa_update_pending(maa_dir):
-        target = _maa_pending_version(maa_dir) or "新版本"
-        return f"MAA 有更新：{_span(before_ver, target)}（已下载，下轮启动时装上）"
-    return ""
+    return _maa_summary(maa_dir, log_path, before_ver, applied, answered,
+                        staged_before)

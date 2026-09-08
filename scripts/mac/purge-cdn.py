@@ -95,6 +95,13 @@ def main() -> int:
         fresh = [n for n, _ in DOORS if seen[n] == want_ver]
         missing, only_raw = [], []
         for rel, sha in sorted(local.get("files", {}).items()):
+            if rel == "RELEASE-NOTES.md":
+                # 部署流程是「先按当前内容建清单，推完再把说明清空」，所以这个文件的
+                # 哈希**必然**和清单对不上——设计如此，lint 第 14 项也放行它。
+                # 2026-09-08 之前这里没放行，于是每次部署后跑本脚本都会在最后一轮
+                # 报「还有 1 个文件没有任何门给得对」，而通道其实早就好了。
+                # 假警报会让人不再看警报，比不报还糟。
+                continue
             served_by = []
             for name, base in DOORS:
                 if seen[name] != want_ver:

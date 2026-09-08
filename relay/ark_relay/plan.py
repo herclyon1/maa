@@ -185,6 +185,102 @@ def _okww_zh(okww_dir: Path | None) -> dict[str, str]:
     return _OKWW_PO_CACHE
 
 
+# OK-WW 的附加任务清单里，「刷满所有梦魇巢穴」那一项的键名。巢穴那一行和附加
+# 任务那一行都要认它（一个据它写「刷到打满」，一个据它把这项从附加里剔掉），
+# 抄成两份迟早会对不上。
+_NEST_FULL = "Auto Farm all Nightmare Nest"
+
+
+def _okww_farm_bit(daily: dict, zh: dict[str, str]) -> str:
+    """体力那一行：明天把体力刷在哪个副本、出什么。空串表示这一行不写。
+
+    单独成一步，是因为这里是一棵四选一的分支树，每个分支各有各的名字表；
+    它和后面的巢穴、附加任务两行没有任何共用的中间量，混在一处读的时候
+    看不出哪几行是互斥的。
+    """
+    from . import collector  # noqa: PLC0415 - 复用凝素领域的名字表，避免两处维护
+    which = daily.get("Which to Farm") or ""
+    # 两处都用共用的对照表，序号一律 1 起算（和游戏 F2 列表一致）。
+    # 2026-09-08 之前这里自己抄了一份 collector._FORGERY_NAMES，那份只有 4 条，
+    # 而手机页早就能选第 5 个——选了就写成「凝素领域·#5」。
+    from . import wuwa_forgery, wuwa_tacet  # noqa: PLC0415 - 避免导入环
+    if which == "Forgery Challenge":
+        idx = int(daily.get("Which Forgery Challenge to Farm") or 1)
+        return f"体力刷 {wuwa_forgery.label(idx)}，出 {wuwa_forgery.reward(idx)}"
+    if which == "Tacet Suppression":
+        idx = int(daily.get("Which Tacet Suppression to Farm") or 1)
+        return f"体力刷 {wuwa_tacet.label(idx)}，出 {wuwa_tacet.reward(idx)}"
+    if which == "Simulation Challenge":
+        tgt = str(daily.get("Material Selection") or "")
+        tgt_zh = collector._SIM_ZH.get(tgt, zh.get(tgt, tgt))
+        return f"体力刷 模拟领域·{tgt_zh}" if tgt_zh else "体力刷 模拟领域"
+    if which:
+        return f"体力刷 {zh.get(which, which)}"
+    return ""
+
+
+def _okww_nest_bit(daily: dict, nest: dict, adds: list[str],
+                   zh: dict[str, str]) -> str:
+    """残象聚落那一行：打哪些点位、打到什么程度。空串表示这一行不写。
+
+    单独成一步，是因为「明天到底打不打、打多少」这件事散在三个不同的配置键里
+    （附加任务清单里的刷满勾、日常任务里的每日声骸勾、巢穴任务自己的点位范围），
+    得先合成一句话才能写进汇报；这段合并逻辑和它前后两行互不相干。
+    """
+    nest_label = zh.get("Tacet Discord Nest", "残像聚落")
+    # 「自动刷所有梦魇巢穴」这个勾其实只决定走刷满还是走抓一个声骸就停，
+    # 刷什么范围由巢穴任务自己的两个选项管。所以不能原样列成一条附加任务：
+    # 上一行刚说「只打落渊南丘」，下一行再来个「附加 自动刷所有梦魇巢穴」，
+    # 自相矛盾。把它折进巢穴那一行，写它真正的效果。
+    scope = (nest.get("Only Farm These Nests") or "").strip()
+    where = f"只打{scope}" if scope else "全部点位"
+    if _NEST_FULL in adds:
+        return f"{nest_label} {where}，刷到打满"
+    if daily.get("Farm Nightmare Nest for Daily Echo"):
+        return f"{nest_label} {where}，只取一个每日声骸就停"
+    if scope:
+        return f"{nest_label} {where}（未满才打）"
+    return ""
+
+
+def _okww_extra_bit(cfg_dir: Path, adds: list[str], zh: dict[str, str]) -> str:
+    """附加任务那一行。空串表示这一行不写。
+
+    单独成一步，是因为这一步要多读一个配置文件（FarmEchoTask.json）、还要去问
+    中继自己的周本记账，才能判断「传送刷 4C 声骸」这一项到底是刷声骸还是被
+    周本补丁征用了。这些都和前两行读的配置无关，留在主函数里会把主线埋掉。
+    """
+    # 「Teleport and Farm 4C Echo」在我们这里被周本补丁征用：FarmEchoTask 的
+    # Teleport to Boss = Weekly Challenge 时，它跑的是周本领奖，不是刷声骸。
+    # 用户 2026-09-02：「我敢百分百确定鸣潮没有传送刷取 4C 的任务」——写周本。
+    farm_f = cfg_dir / "FarmEchoTask.json"
+    try:
+        farm_cfg = json.loads(farm_f.read_text(encoding="utf-8")) if farm_f.is_file() else {}
+    except (OSError, ValueError):
+        farm_cfg = {}
+    weekly = str(farm_cfg.get("Teleport to Boss") or "") == "Weekly Challenge"
+    rest = []
+    for a in adds:
+        if a == _NEST_FULL:
+            continue
+        if a == "Teleport and Farm 4C Echo" and weekly:
+            lvl = str(farm_cfg.get("Boss Level") or "")
+            idx = int(farm_cfg.get("Which Weekly Boss to Teleport") or 1)
+            done, nm = _weekly_boss_state()
+            label = f"周本 {nm or f'战歌重奏第 {idx} 个'}" + (f"（{lvl} 级）" if lvl else "")
+            # 用户 2026-09-02：「不是说都刷完了吗？」——本周已打满就明说明天不打
+            rest.append(label + ("，本周已打满，明天不打" if done else "，明天会打"))
+        else:
+            rest.append(zh.get(str(a), str(a)))
+    if rest:
+        shown = "、".join(rest[:2])
+        if len(rest) > 2:
+            shown += f" 等 {len(rest)} 项"
+        return "附加 " + shown
+    # 没有附加任务就不写——「无附加任务」这一行不携带任何信息。
+    return ""
+
+
 def _okww_plan_bits(automas_dir: Path | None,
                     okww_dir: Path | None = None) -> list[str]:
     """明日 OK-WW 会刷什么，从真正生效的母本配置里读出来。
@@ -199,7 +295,6 @@ def _okww_plan_bits(automas_dir: Path | None,
     root = Path(automas_dir) / "data"
     if not root.is_dir():
         return []
-    from . import collector  # noqa: PLC0415 - 复用凝素领域的名字表，避免两处维护
     for sid in root.iterdir():
         d = sid / "Default" / "ConfigFile"
         daily_f = d / "DailyTask.json"
@@ -220,69 +315,11 @@ def _okww_plan_bits(automas_dir: Path | None,
             daily = {**daily, **quick}
 
         zh = _okww_zh(okww_dir)
-        bits: list[str] = []
-        which = daily.get("Which to Farm") or ""
-        # 两处都用共用的对照表，序号一律 1 起算（和游戏 F2 列表一致）。
-        # 2026-09-08 之前这里自己抄了一份 collector._FORGERY_NAMES，那份只有 4 条，
-        # 而手机页早就能选第 5 个——选了就写成「凝素领域·#5」。
-        from . import wuwa_forgery, wuwa_tacet  # noqa: PLC0415 - 避免导入环
-        if which == "Forgery Challenge":
-            idx = int(daily.get("Which Forgery Challenge to Farm") or 1)
-            bits.append(f"体力刷 {wuwa_forgery.label(idx)}，出 {wuwa_forgery.reward(idx)}")
-        elif which == "Tacet Suppression":
-            idx = int(daily.get("Which Tacet Suppression to Farm") or 1)
-            bits.append(f"体力刷 {wuwa_tacet.label(idx)}，出 {wuwa_tacet.reward(idx)}")
-        elif which == "Simulation Challenge":
-            tgt = str(daily.get("Material Selection") or "")
-            tgt_zh = collector._SIM_ZH.get(tgt, zh.get(tgt, tgt))
-            bits.append(f"体力刷 模拟领域·{tgt_zh}" if tgt_zh else "体力刷 模拟领域")
-        elif which:
-            bits.append(f"体力刷 {zh.get(which, which)}")
-        nest_label = zh.get("Tacet Discord Nest", "残像聚落")
         adds = [str(a) for a in (daily.get(
             "Additional Tasks to Run After Daily Task") or [])]
-        # 「自动刷所有梦魇巢穴」这个勾其实只决定走刷满还是走抓一个声骸就停，
-        # 刷什么范围由巢穴任务自己的两个选项管。所以不能原样列成一条附加任务：
-        # 上一行刚说「只打落渊南丘」，下一行再来个「附加 自动刷所有梦魇巢穴」，
-        # 自相矛盾。把它折进巢穴那一行，写它真正的效果。
-        FULL = "Auto Farm all Nightmare Nest"
-        scope = (nest.get("Only Farm These Nests") or "").strip()
-        where = f"只打{scope}" if scope else "全部点位"
-        if FULL in adds:
-            bits.append(f"{nest_label} {where}，刷到打满")
-        elif daily.get("Farm Nightmare Nest for Daily Echo"):
-            bits.append(f"{nest_label} {where}，只取一个每日声骸就停")
-        elif scope:
-            bits.append(f"{nest_label} {where}（未满才打）")
-        # 「Teleport and Farm 4C Echo」在我们这里被周本补丁征用：FarmEchoTask 的
-        # Teleport to Boss = Weekly Challenge 时，它跑的是周本领奖，不是刷声骸。
-        # 用户 2026-09-02：「我敢百分百确定鸣潮没有传送刷取 4C 的任务」——写周本。
-        farm_f = d / "FarmEchoTask.json"
-        try:
-            farm_cfg = json.loads(farm_f.read_text(encoding="utf-8")) if farm_f.is_file() else {}
-        except (OSError, ValueError):
-            farm_cfg = {}
-        weekly = str(farm_cfg.get("Teleport to Boss") or "") == "Weekly Challenge"
-        rest = []
-        for a in adds:
-            if a == FULL:
-                continue
-            if a == "Teleport and Farm 4C Echo" and weekly:
-                lvl = str(farm_cfg.get("Boss Level") or "")
-                idx = int(farm_cfg.get("Which Weekly Boss to Teleport") or 1)
-                done, nm = _weekly_boss_state()
-                label = f"周本 {nm or f'战歌重奏第 {idx} 个'}" + (f"（{lvl} 级）" if lvl else "")
-                # 用户 2026-09-02：「不是说都刷完了吗？」——本周已打满就明说明天不打
-                rest.append(label + ("，本周已打满，明天不打" if done else "，明天会打"))
-            else:
-                rest.append(zh.get(str(a), str(a)))
-        if rest:
-            shown = "、".join(rest[:2])
-            if len(rest) > 2:
-                shown += f" 等 {len(rest)} 项"
-            bits.append("附加 " + shown)
-        # 没有附加任务就不写——「无附加任务」这一行不携带任何信息。
-        return bits
+        return [b for b in (_okww_farm_bit(daily, zh),
+                            _okww_nest_bit(daily, nest, adds, zh),
+                            _okww_extra_bit(d, adds, zh)) if b]
     return []
 
 

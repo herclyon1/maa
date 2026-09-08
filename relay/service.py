@@ -596,16 +596,14 @@ def _stage_announce_update(notifier, log) -> None:
         log.exception("推送更新通知出错，跳过")
 
 
-def _stage_inbox_and_phone(svc, cfg, engine, notifier, log):
-    """待办信箱 + 手机通道。返回 (inbox, collect, deferred_inbox)，主循环要用。"""
-    from ark_relay.inbox import Inbox  # noqa: PLC0415
+def _make_collect(inbox, engine, notifier, log, deferred_inbox):
+    """造一个「查一遍待办信箱、有新东西就推一条」的动作。
 
-    inbox = Inbox(cfg.state_dir, cfg.inbox_url,
-                  cfg.maaend_dir or _maaend_dir(cfg), cfg.automas_dir)
-
-    # A config command that arrives while a queue is running waits here
-    # until every script has stopped, then lands.
-    deferred_inbox = [False]
+    单独成步是因为它要在三个时机上被调用——开机、每轮巡检、关机前——
+    三处必须是同一套判断。判断里最要紧的一条是：脚本在跑的时候不能落地，
+    此时写进去的配置会被 AUTO-MAS 内存里那份冲掉，所以原地推迟，
+    并把「欠着一次」记在 deferred_inbox 里给主循环看。
+    """
 
     def collect(reason: str) -> None:
         """Check for queued changes and push whatever landed.
@@ -631,27 +629,16 @@ def _stage_inbox_and_phone(svc, cfg, engine, notifier, log):
         else:
             log.debug("待办检查（%s）：无新配置（当前 v%s）", reason, version)
 
-    # 开机时取一次就够：机器每趟队列都要重开一次，而配置几乎总是在它关着的时候
-    # 改的，所以下一次开机必定会取到。在线/离线不许靠轮询，做法见 phone.py 的模块说明。
-    # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_inbox_and_phone」
+    return collect
+
+
+def _make_phone_cmd(engine, notifier, log, hb, push_state):
+    """造一个「手机上按了一下之后做什么」的回调。
+
+    单独成步是因为它有两个入口：开机时先把攒着的指令挨条补做，
+    之后长连接每监听到一条再调一次——两处必须是同一套逻辑。
+    """
     from ark_relay.commands import apply_command  # noqa: PLC0415
-    from ark_relay.phone import Mailbox  # noqa: PLC0415
-
-    box = Mailbox(cfg.phone_topic, cfg.phone_pin, cfg.state_dir)
-    svc._mailbox = box          # SvcStop 要用它掐断长连接
-
-    def push_state(why: str) -> None:
-        if not box.enabled:
-            return
-        try:
-            from ark_relay.phone import state_payload  # noqa: PLC0415
-            box.publish(state_payload(cfg, cfg.state_dir))
-            log.info("📱 已上报状态到手机（%s）", why)
-        except Exception:
-            log.warning("状态没能上报到手机（%s）", why, exc_info=True)
-
-    from ark_relay.phone import Heartbeat  # noqa: PLC0415
-    hb = Heartbeat(box.topic, cfg.state_dir)
 
     def run_phone_cmd(body: dict) -> None:
         """手机上按的一条。刷新只回状态；其余是真改配置，改完立刻通知。"""
@@ -681,6 +668,37 @@ def _stage_inbox_and_phone(svc, cfg, engine, notifier, log):
         notifier.send(texts.CONFIG_CHANGED if ok else texts.CONFIG_FAILED, msg)
         push_state("改完配置")
 
+    return run_phone_cmd
+
+
+def _start_phone_channel(svc, cfg, engine, notifier, log):
+    """把手机通道整个拉起来：信箱、心跳、两条后台线程。
+
+    单独成步是因为这一段只干一件事——让手机既能看见状态、也能改配置——
+    而且它对外只留一个出口：上报状态用的 push_state，关机前还要再用一次。
+    """
+    # 开机时取一次就够：机器每趟队列都要重开一次，而配置几乎总是在它关着的时候
+    # 改的，所以下一次开机必定会取到。在线/离线不许靠轮询，做法见 phone.py 的模块说明。
+    # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_inbox_and_phone」
+    from ark_relay.phone import Mailbox  # noqa: PLC0415
+
+    box = Mailbox(cfg.phone_topic, cfg.phone_pin, cfg.state_dir)
+    svc._mailbox = box          # SvcStop 要用它掐断长连接
+
+    def push_state(why: str) -> None:
+        if not box.enabled:
+            return
+        try:
+            from ark_relay.phone import state_payload  # noqa: PLC0415
+            box.publish(state_payload(cfg, cfg.state_dir))
+            log.info("📱 已上报状态到手机（%s）", why)
+        except Exception:
+            log.warning("状态没能上报到手机（%s）", why, exc_info=True)
+
+    from ark_relay.phone import Heartbeat  # noqa: PLC0415
+    hb = Heartbeat(box.topic, cfg.state_dir)
+    run_phone_cmd = _make_phone_cmd(engine, notifier, log, hb, push_state)
+
     ensure_automas()
     push_state("开机")
     if box.enabled:
@@ -700,6 +718,22 @@ def _stage_inbox_and_phone(svc, cfg, engine, notifier, log):
                 == win32event.WAIT_OBJECT_0),
             name="phone-heartbeat", daemon=True).start()
 
+    return push_state
+
+
+def _stage_inbox_and_phone(svc, cfg, engine, notifier, log):
+    """待办信箱 + 手机通道。返回 (inbox, collect, deferred_inbox)，主循环要用。"""
+    from ark_relay.inbox import Inbox  # noqa: PLC0415
+
+    inbox = Inbox(cfg.state_dir, cfg.inbox_url,
+                  cfg.maaend_dir or _maaend_dir(cfg), cfg.automas_dir)
+
+    # A config command that arrives while a queue is running waits here
+    # until every script has stopped, then lands.
+    deferred_inbox = [False]
+    collect = _make_collect(inbox, engine, notifier, log, deferred_inbox)
+    push_state = _start_phone_channel(svc, cfg, engine, notifier, log)
+
     # 关机前最后拉一次待办 + 上报一次状态：人可能刚在手机上按了
     # 「今晚别关机」，而且手机上那份状态得停在机器关机那一刻的样子。
     def before_shutdown() -> None:
@@ -715,6 +749,65 @@ def _note(problems, msg: str) -> None:
     problems.append(msg)
 
 
+def _preupdate_maaend(maaend, cfg, notifier, log, problems) -> None:
+    """MaaEnd 这一档的预更新：升级它，升完再收拾它留下的两个尾巴。
+
+    单独成步是因为它比另外三个多一截：换了版本要让 AUTO-MAS 重读任务表，
+    还要把之前为了等版本而临时关掉的任务开回来。
+    """
+    from ark_relay import preupdate  # noqa: PLC0415
+
+    if updated := preupdate.run(maaend, problems=problems,
+                                state_dir=cfg.state_dir):
+        log.info("预更新：MaaEnd 已更新：%s", updated)
+        notifier.send(texts.PREUPDATE,
+                      f"MaaEnd 已更新：{updated}")
+        # AUTO-MAS 开机时就把 MaaEnd 的任务表预载进内存缓存了，MaaEnd 在它之后
+        # 被升级，缓存不会跟着刷新：2026-09-06 上游把 SellProduct 的定义文件改名，
+        # MAS 拿着旧表对不上「任务完成: 🛒据点交易」，整趟判失败还重试两次。
+        # 维护者（AUTO-MAS#573）：「缓存更新逻辑的问题，重启 MAS 就好」。
+        # 本机验证属实，所以升级完就把 MAS 重启一遍，让它重新读一次 MaaEnd。
+        log.info("预更新：MaaEnd 换了版本，重启 AUTO-MAS 刷新它的任务表缓存")
+        _revive_automas()
+        if not ensure_automas(timeout=120):
+            _note(problems, "MaaEnd 更新后重启 AUTO-MAS，120 秒内接口没起来")
+    try:
+        from ark_relay import gameupdate as _gu  # noqa: PLC0415
+        if back := _gu.maaend_reenable_if_updated(cfg):
+            log.info("预更新：%s", back)
+            notifier.send(texts.MAAEND_REENABLED, back)
+    except Exception:
+        log.exception("开回 MaaEnd 任务出错")
+
+
+def _preupdate_okww(cfg, notifier, log, problems) -> None:
+    """OK-WW 这一档的预更新：先更新，再把本地补丁重贴回去。
+
+    单独成步是因为它和另外三个不一样——它的更新会整段覆盖 src，
+    所以「更新」和「重贴补丁」是绑死的一对，只做一半等于没做。
+    """
+    # okww_patch 2026-08-26 之前一直漏在这行外面：下面 549 行用它，
+    # 一跑到就 NameError，也就是说**补丁重贴从来没有真正执行过**。
+    # tests/test_undefined_names.py 就是为了这类错加的。
+    from ark_relay import okww_patch, preupdate  # noqa: PLC0415
+
+    # OK-WW last: it is the newest of the four and the only one whose
+    # update comes from a CNB git mirror rather than MirrorChyan.
+    okww = cfg.okww_dir or (Path(cfg.automas_dir).parent / "okww"
+                            if cfg.automas_dir else None)
+    # OK-WW 的自动更新会整段覆盖 src，把本地补丁抹掉，所以更新之后必须重贴。
+    # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_preupdate」
+    if note := preupdate.run_okww(okww, problems=problems):
+        log.info("预更新：%s", note)
+        notifier.send(texts.PREUPDATE, note)
+    patch_notes = okww_patch.ensure_patches(okww)
+    for note in patch_notes:
+        log.info("预更新：%s", note)
+    if patch_notes:      # 合成一条推，别一条补丁一条推
+        notifier.send(texts.patches(len(patch_notes)),
+                      "\n".join(f"· {n}" for n in patch_notes))
+
+
 def _stage_preupdate(cfg, notifier, log) -> None:
     """开机窗口里把四个程序的更新做掉（一天一次）。"""
     # MaaEnd 只在启动时查更新，查到就下载并**重启自己的进程**，而 AUTO-MAS 盯的是它
@@ -722,10 +815,7 @@ def _stage_preupdate(cfg, notifier, log) -> None:
     # 让它在没人盯着的时候更新完。
     # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_preupdate」
     try:
-        # okww_patch 2026-08-26 之前一直漏在这行外面：下面 549 行用它，
-        # 一跑到就 NameError，也就是说**补丁重贴从来没有真正执行过**。
-        # tests/test_undefined_names.py 就是为了这类错加的。
-        from ark_relay import okww_patch, plan, preupdate  # noqa: PLC0415
+        from ark_relay import plan, preupdate  # noqa: PLC0415
 
         # 一天跑一遍就够：每次服务重启都重跑，会把 MAA/MaaEnd/OK-WW
         # 挨个再拉起来查一遍更新。2026-08-31 我一上午部署三次，
@@ -755,46 +845,12 @@ def _stage_preupdate(cfg, notifier, log) -> None:
             if note := preupdate.run_maa(maa, problems=problems):
                 log.info("预更新：%s", note)
                 notifier.send(texts.PREUPDATE, note)
-            if updated := preupdate.run(maaend, problems=problems,
-                                        state_dir=cfg.state_dir):
-                log.info("预更新：MaaEnd 已更新：%s", updated)
-                notifier.send(texts.PREUPDATE,
-                              f"MaaEnd 已更新：{updated}")
-                # AUTO-MAS 开机时就把 MaaEnd 的任务表预载进内存缓存了，MaaEnd 在它之后
-                # 被升级，缓存不会跟着刷新：2026-09-06 上游把 SellProduct 的定义文件改名，
-                # MAS 拿着旧表对不上「任务完成: 🛒据点交易」，整趟判失败还重试两次。
-                # 维护者（AUTO-MAS#573）：「缓存更新逻辑的问题，重启 MAS 就好」。
-                # 本机验证属实，所以升级完就把 MAS 重启一遍，让它重新读一次 MaaEnd。
-                log.info("预更新：MaaEnd 换了版本，重启 AUTO-MAS 刷新它的任务表缓存")
-                _revive_automas()
-                if not ensure_automas(timeout=120):
-                    _note(problems, "MaaEnd 更新后重启 AUTO-MAS，120 秒内接口没起来")
-            try:
-                from ark_relay import gameupdate as _gu  # noqa: PLC0415
-                if back := _gu.maaend_reenable_if_updated(cfg):
-                    log.info("预更新：%s", back)
-                    notifier.send(texts.MAAEND_REENABLED, back)
-            except Exception:
-                log.exception("开回 MaaEnd 任务出错")
+            _preupdate_maaend(maaend, cfg, notifier, log, problems)
             # AUTO-MAS is asked, not launched - it is already running.
             if note := preupdate.run_automas(cfg.automas_dir,
                                              problems=problems):
                 notifier.send(texts.PREUPDATE, note)
-            # OK-WW last: it is the newest of the four and the only one whose
-            # update comes from a CNB git mirror rather than MirrorChyan.
-            okww = cfg.okww_dir or (Path(cfg.automas_dir).parent / "okww"
-                                    if cfg.automas_dir else None)
-            # OK-WW 的自动更新会整段覆盖 src，把本地补丁抹掉，所以更新之后必须重贴。
-            # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_preupdate」
-            if note := preupdate.run_okww(okww, problems=problems):
-                log.info("预更新：%s", note)
-                notifier.send(texts.PREUPDATE, note)
-            patch_notes = okww_patch.ensure_patches(okww)
-            for note in patch_notes:
-                log.info("预更新：%s", note)
-            if patch_notes:      # 合成一条推，别一条补丁一条推
-                notifier.send(texts.patches(len(patch_notes)),
-                              "\n".join(f"· {n}" for n in patch_notes))
+            _preupdate_okww(cfg, notifier, log, problems)
             preupdate.mark_run(cfg.state_dir, _pre_now,
                                clean=not problems)
             if problems:

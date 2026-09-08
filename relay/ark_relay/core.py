@@ -353,106 +353,151 @@ def _row(label: str, parts: list[str]) -> str:
     return f"· {label}　" + ("；".join(x for x in parts if x) or "—")
 
 
-def _block(e: dict, finished: datetime) -> list[str]:  # noqa: C901
-    raw = e.get("raw") or {}
-    script = e.get("script")
+def _block_maa(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ...]:
+    """明日方舟这一趟的五行内容：做了／消耗／产出／剩余／备注。
+
+    单独成步是因为三家的取数规则毫无重合：关卡名、理智、理智药、公招都只有
+    MAA 有。合在一处时想改 MAA 得先跳过另外两家六十来行，改错了也看不出来。
+    返回的五个列表按 _LABELS 的顺序排，交给 _block 拼成五行。
+    """
     did: list[str] = []
     cost: list[str] = []
     out: list[str] = []
     left: list[str] = []
     notes: list[str] = []
+    if stages := raw.get("stages"):
+        did.append("刷 " + "、".join(stages) + (f" ×{t}" if (t := raw.get("run_times")) else ""))
+    elif not raw.get("sanity_spent"):
+        # 作战关掉时这一趟只做基建、公招、领取。原来五行全是「—」，
+        # 看不出它到底跑没跑，也看不出为什么没刷关卡。
+        did.append("只做日常（未刷关卡）")
+    if raw.get("sanity_spent") or raw.get("medicine_used"):
+        cost.append(f"理智 {raw.get('sanity_spent') or 0}，吃药 {raw.get('medicine_used') or 0}")
+    if drops := _fmt_items(e.get("drops") or {}):
+        out.append(drops)
+    # 刷完关卡把理智花到 0，那个 0 是真数据，要照印。
+    # 但作战关掉的那趟根本没读过理智，MAA 同样记 0——那是「没有数据」，
+    # 印成「剩余 理智 0」就是谎话（账号里明明还有理智）。
+    # 用有没有真的打过来区分：打过才认这个数。
+    fought = bool(raw.get("stages") or raw.get("sanity_spent"))
+    if e.get("sanity") is not None and (fought or e.get("sanity")):
+        s = f"理智 {e['sanity']}"
+        if full := _sanity_full(e.get("sanity_full_at"), finished):
+            s += "，" + full
+        left.append(s)
+    if recruits := _fmt_items(e.get("recruits") or {}):
+        notes.append("公招 " + recruits)
+
+    return did, cost, out, left, notes
+
+
+def _block_okww(raw: dict, finished: datetime) -> tuple[list[str], ...]:
+    """鸣潮（OK-WW）这一趟的五行内容：做了／消耗／产出／剩余／备注。
+
+    单独成步是因为鸣潮的口径自成一套：体力叫「波片」、另有一份备用体力、
+    剩余读数不一定是精确值，额外任务要从 okww_steps 里逐条挑。
+    返回的五个列表按 _LABELS 的顺序排，交给 _block 拼成五行。
+    """
+    did: list[str] = []
+    cost: list[str] = []
+    out: list[str] = []
+    left: list[str] = []
+    notes: list[str] = []
+    runs = raw.get("okww_runs") or 0
+    farm = raw.get("okww_farm") or "模拟领域"
+    if runs:
+        dbl = raw.get("okww_runs_double") or 0
+        did.append(f"刷 {farm} ×{runs}" + ("（双倍）" if dbl == runs else f"（双倍 {dbl}）" if dbl else ""))
+    if raw.get("okww_stamina_spent") or raw.get("okww_backup_spent"):
+        cost.append(f"波片 {raw.get('okww_stamina_spent') or 0}，"
+                    f"备用体力 {raw.get('okww_backup_spent') or 0}")
+    if drops := _fmt_items(raw.get("okww_farm_drops") or {}):
+        out.append(drops)
+    elif runs:
+        out.append(str(raw.get("okww_farm_reward") or "副本奖励"))
+    wl = raw.get("okww_stamina_left")
+    if wl is not None:
+        back = raw.get("okww_backup_stamina")
+        s = f"波片 {wl}/240" + (f"，备用 {back}" if back is not None else "")
+        if not (raw.get("okww_stamina_left_exact") or raw.get("okww_stopped")):
+            s += "　※最后一次读数"
+        if full := _sanity_full(raw.get("sanity_full_at"), finished):
+            s += "，" + full
+        left.append(s)
+    for step in raw.get("okww_steps") or []:
+        # 刷本那一项已经在「做了」里，这里只留额外任务
+        if any(k in step for k in ("模拟领域", "凝素领域", "无音区")):
+            continue
+        notes.append(step)
+    if raw.get("okww_nest_full") and not any("残象聚落" in n or "残像聚落" in n for n in notes):
+        notes.append("残象聚落（已刷满）")
+    if raw.get("okww_daily_done_at_start"):
+        notes.append("今日日常此前已完成，本轮仅领奖")
+
+    return did, cost, out, left, notes
+
+
+def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ...]:
+    """终末地（MaaEnd）这一趟的五行内容：做了／消耗／产出／剩余／备注。
+
+    单独成步是因为终末地独有几件事：理智有上限、会溢出要提醒，日常清单长，
+    得缩成「日常 1-N 项完成」再把名单放到通知末尾。
+    返回的五个列表按 _LABELS 的顺序排，交给 _block 拼成五行。
+    """
+    did: list[str] = []
+    cost: list[str] = []
+    out: list[str] = []
+    left: list[str] = []
+    notes: list[str] = []
+    farm = raw.get("maaend_farm")
+    runs = raw.get("maaend_farm_runs") or raw.get("protocol_runs") or 0
+    if farm:
+        place = raw.get("maaend_farm_place")
+        did.append(f"刷 {farm}" + (f"·{place}" if place else "") + f" ×{runs}")
+    if raw.get("maaend_sanity_spent") or raw.get("maaend_medicine"):
+        cost.append(f"理智 {raw.get('maaend_sanity_spent') or 0}，"
+                    f"加强剂 {raw.get('maaend_medicine') or 0}")
+    elif farm and raw.get("sanity_exhausted"):
+        cost.append("理智不足，一次没开成")
+    if drops := _fmt_items(raw.get("maaend_farm_drops") or {}):
+        out.append(drops)
+    if e.get("sanity") is not None:
+        s = f"理智 {e['sanity']}"
+        if cap := raw.get("sanity_cap"):
+            s += f"/{cap}"
+            if e["sanity"] > cap:
+                s += "　⚠️ 已超上限，理智在溢出"
+        if full := _sanity_full(e.get("sanity_full_at"), finished):
+            s += "，" + full
+        left.append(s)
+    done = [t for t in (raw.get("tasks_done") or []) if not any(k in t for k in _END_FARM_NOTE_SKIP)]
+    failed = raw.get("tasks_failed") or []
+    if done or failed:
+        # 用户 2026-09-02：备注太多，缩成「日常 1-16 项完成」，名单当注释
+        # 放到整条通知的最末（见 daily_footnote）。
+        n = f"日常 1-{len(done)} 项完成" if done else "日常 0 项"
+        if failed:
+            n += "；失败 " + "、".join(failed)
+        notes.append(n)
+    if routes := raw.get("maaend_collect_routes"):
+        notes.append(f"自动采集 {routes} 条路线")
+
+    return did, cost, out, left, notes
+
+
+def _block(e: dict, finished: datetime) -> list[str]:
+    raw = e.get("raw") or {}
+    script = e.get("script")
+    rows: tuple[list[str], ...] = ([], [], [], [], [])
 
     if script == "MAA":
-        if stages := raw.get("stages"):
-            did.append("刷 " + "、".join(stages) + (f" ×{t}" if (t := raw.get("run_times")) else ""))
-        elif not raw.get("sanity_spent"):
-            # 作战关掉时这一趟只做基建、公招、领取。原来五行全是「—」，
-            # 看不出它到底跑没跑，也看不出为什么没刷关卡。
-            did.append("只做日常（未刷关卡）")
-        if raw.get("sanity_spent") or raw.get("medicine_used"):
-            cost.append(f"理智 {raw.get('sanity_spent') or 0}，吃药 {raw.get('medicine_used') or 0}")
-        if drops := _fmt_items(e.get("drops") or {}):
-            out.append(drops)
-        # 刷完关卡把理智花到 0，那个 0 是真数据，要照印。
-        # 但作战关掉的那趟根本没读过理智，MAA 同样记 0——那是「没有数据」，
-        # 印成「剩余 理智 0」就是谎话（账号里明明还有理智）。
-        # 用有没有真的打过来区分：打过才认这个数。
-        fought = bool(raw.get("stages") or raw.get("sanity_spent"))
-        if e.get("sanity") is not None and (fought or e.get("sanity")):
-            s = f"理智 {e['sanity']}"
-            if full := _sanity_full(e.get("sanity_full_at"), finished):
-                s += "，" + full
-            left.append(s)
-        if recruits := _fmt_items(e.get("recruits") or {}):
-            notes.append("公招 " + recruits)
-
+        rows = _block_maa(e, raw, finished)
     elif script == "OK-WW":
-        runs = raw.get("okww_runs") or 0
-        farm = raw.get("okww_farm") or "模拟领域"
-        if runs:
-            dbl = raw.get("okww_runs_double") or 0
-            did.append(f"刷 {farm} ×{runs}" + ("（双倍）" if dbl == runs else f"（双倍 {dbl}）" if dbl else ""))
-        if raw.get("okww_stamina_spent") or raw.get("okww_backup_spent"):
-            cost.append(f"波片 {raw.get('okww_stamina_spent') or 0}，"
-                        f"备用体力 {raw.get('okww_backup_spent') or 0}")
-        if drops := _fmt_items(raw.get("okww_farm_drops") or {}):
-            out.append(drops)
-        elif runs:
-            out.append(str(raw.get("okww_farm_reward") or "副本奖励"))
-        wl = raw.get("okww_stamina_left")
-        if wl is not None:
-            back = raw.get("okww_backup_stamina")
-            s = f"波片 {wl}/240" + (f"，备用 {back}" if back is not None else "")
-            if not (raw.get("okww_stamina_left_exact") or raw.get("okww_stopped")):
-                s += "　※最后一次读数"
-            if full := _sanity_full(raw.get("sanity_full_at"), finished):
-                s += "，" + full
-            left.append(s)
-        for step in raw.get("okww_steps") or []:
-            # 刷本那一项已经在「做了」里，这里只留额外任务
-            if any(k in step for k in ("模拟领域", "凝素领域", "无音区")):
-                continue
-            notes.append(step)
-        if raw.get("okww_nest_full") and not any("残象聚落" in n or "残像聚落" in n for n in notes):
-            notes.append("残象聚落（已刷满）")
-        if raw.get("okww_daily_done_at_start"):
-            notes.append("今日日常此前已完成，本轮仅领奖")
-
+        rows = _block_okww(raw, finished)
     elif script == "MaaEnd":
-        farm = raw.get("maaend_farm")
-        runs = raw.get("maaend_farm_runs") or raw.get("protocol_runs") or 0
-        if farm:
-            place = raw.get("maaend_farm_place")
-            did.append(f"刷 {farm}" + (f"·{place}" if place else "") + f" ×{runs}")
-        if raw.get("maaend_sanity_spent") or raw.get("maaend_medicine"):
-            cost.append(f"理智 {raw.get('maaend_sanity_spent') or 0}，"
-                        f"加强剂 {raw.get('maaend_medicine') or 0}")
-        elif farm and raw.get("sanity_exhausted"):
-            cost.append("理智不足，一次没开成")
-        if drops := _fmt_items(raw.get("maaend_farm_drops") or {}):
-            out.append(drops)
-        if e.get("sanity") is not None:
-            s = f"理智 {e['sanity']}"
-            if cap := raw.get("sanity_cap"):
-                s += f"/{cap}"
-                if e["sanity"] > cap:
-                    s += "　⚠️ 已超上限，理智在溢出"
-            if full := _sanity_full(e.get("sanity_full_at"), finished):
-                s += "，" + full
-            left.append(s)
-        done = [t for t in (raw.get("tasks_done") or []) if not any(k in t for k in _END_FARM_NOTE_SKIP)]
-        failed = raw.get("tasks_failed") or []
-        if done or failed:
-            # 用户 2026-09-02：备注太多，缩成「日常 1-16 项完成」，名单当注释
-            # 放到整条通知的最末（见 daily_footnote）。
-            n = f"日常 1-{len(done)} 项完成" if done else "日常 0 项"
-            if failed:
-                n += "；失败 " + "、".join(failed)
-            notes.append(n)
-        if routes := raw.get("maaend_collect_routes"):
-            notes.append(f"自动采集 {routes} 条路线")
+        rows = _block_maaend(e, raw, finished)
 
-    return [_row(l, v) for l, v in zip(_LABELS, (did, cost, out, left, notes))]
+    return [_row(l, v) for l, v in zip(_LABELS, rows)]
 
 
 # 「做了」里已经写了刷本，日常清单里就不再重复它，也不算「结束进程」那种收尾

@@ -123,6 +123,77 @@ def _okww_stamp(okww_dir: Path) -> float:
         return 0.0
 
 
+def _okww_await_update(root: Path, budget_s: float, before_version: str,
+                       before_avail: tuple[str, ...],
+                       before_stamp: float) -> tuple[str, bool, str]:
+    """盯着 app.json 等 OK-WW 把更新做完，返回（升到的新版本, 查过没有, 报错）。
+
+    单独成一步，是因为这里要同时回答两个不同的问题：「更新装上了吗」，
+    和「它到底有没有去问过上游」。后一个才是 2026-08-25 漏掉一个版本的原因，
+    判据有三条（版本列表刷新过、app.json 被重写过、版本号变了），而且还得撑过
+    OKWW_MIN_WAIT_SECONDS——它是启动 30 秒之后才排那次检查的。这一整套判据
+    夹在启动和善后中间，run_okww 的主干就看不出来了。
+    """
+    deadline = time.monotonic() + budget_s
+    launched = time.monotonic()
+    settled = ""
+    checked = False           # 见到过它真的动了：状态变化 / 版本列表刷新 / 版本变化
+    failed = ""
+    while time.monotonic() < deadline:
+        time.sleep(3)
+        version, state, err, avail = _okww_state(root)
+        if err:
+            log.warning("预更新：OK-WW 更新报错 %s", err[:200])
+            failed = err[:200]
+            break
+        if avail and avail != before_avail:
+            checked = True    # 版本列表刷新过 = 确实向上游问过
+        if before_stamp and _okww_stamp(root) > before_stamp:
+            # 本来就是最新版时列表内容不会变，但文件照样会被重写。
+            # 这一条才是「它确实跑起来查过了」的直接证据。
+            checked = True
+        if state and state not in ("idle", ""):
+            checked = True
+            continue          # 正在下载/安装，继续等
+        if version and version != before_version:
+            settled, checked = version, True
+            break
+        if (checked and state == "idle"
+                and time.monotonic() - launched >= OKWW_MIN_WAIT_SECONDS):
+            break             # 问过了、30 秒后的那次检查也过了、已经安顿下来
+    return settled, checked, failed
+
+
+def _okww_report(problems: list[str] | None, budget_s: float,
+                 before_version: str, before_avail: tuple[str, ...],
+                 settled: str, checked: bool, failed: str) -> None:
+    """把等来的结果写进日志，该报警的报警。
+
+    单独成一步，是因为这四个分支之间的分寸是拿事故换来的：安静**不等于**
+    没有更新，所以「没见到任何检查迹象」和「查过了，确实没有」必须是两条
+    不同的话；查到了新版却没装上，也得单独说一句。摆在一起，改哪一条都看得见
+    另外三条。
+    """
+    if failed:
+        _note(problems, f"OK-WW 预更新：更新报错 {failed}")
+    elif settled:
+        log.info("预更新：OK-WW 已更新 %s → %s", before_version, settled)
+    elif not checked:
+        # 这正是 2026-08-25 的漏网：安静 ≠ 没有更新。
+        log.warning("预更新：OK-WW %.0f 秒内没有任何检查迹象（版本列表没刷新）",
+                    budget_s)
+        _note(problems,
+              f"OK-WW 预更新：{budget_s:.0f} 秒内没有任何检查迹象，"
+              f"**无法确认是否检查过更新**（当前 {before_version or '版本未知'}）")
+    else:
+        newest = before_avail[0] if before_avail else ""
+        log.info("预更新：OK-WW 无需更新（%s）", before_version or "版本未知")
+        if newest and newest != before_version:
+            _note(problems,
+                  f"OK-WW 预更新：查到有 {newest}，但没装上"
+                  f"（仍是 {before_version or '版本未知'}）")
+
+
 def run_okww(okww_dir: Path | None,
              budget_s: float = OKWW_BUDGET_SECONDS,
              problems: list[str] | None = None) -> str:
@@ -158,51 +229,10 @@ def run_okww(okww_dir: Path | None,
                             "（不是「无需更新」）")
             return ""
         log.info("预更新：已启动 OK-WW（已临时关掉自动开游戏），最多 %.0f 秒", budget_s)
-        deadline = time.monotonic() + budget_s
-        launched = time.monotonic()
-        settled = ""
-        checked = False           # 见到过它真的动了：状态变化 / 版本列表刷新 / 版本变化
-        failed = ""
-        while time.monotonic() < deadline:
-            time.sleep(3)
-            version, state, err, avail = _okww_state(root)
-            if err:
-                log.warning("预更新：OK-WW 更新报错 %s", err[:200])
-                failed = err[:200]
-                break
-            if avail and avail != before_avail:
-                checked = True    # 版本列表刷新过 = 确实向上游问过
-            if before_stamp and _okww_stamp(root) > before_stamp:
-                # 本来就是最新版时列表内容不会变，但文件照样会被重写。
-                # 这一条才是「它确实跑起来查过了」的直接证据。
-                checked = True
-            if state and state not in ("idle", ""):
-                checked = True
-                continue          # 正在下载/安装，继续等
-            if version and version != before_version:
-                settled, checked = version, True
-                break
-            if (checked and state == "idle"
-                    and time.monotonic() - launched >= OKWW_MIN_WAIT_SECONDS):
-                break             # 问过了、30 秒后的那次检查也过了、已经安顿下来
-        if failed:
-            _note(problems, f"OK-WW 预更新：更新报错 {failed}")
-        elif settled:
-            log.info("预更新：OK-WW 已更新 %s → %s", before_version, settled)
-        elif not checked:
-            # 这正是 2026-08-25 的漏网：安静 ≠ 没有更新。
-            log.warning("预更新：OK-WW %.0f 秒内没有任何检查迹象（版本列表没刷新）",
-                        budget_s)
-            _note(problems,
-                  f"OK-WW 预更新：{budget_s:.0f} 秒内没有任何检查迹象，"
-                  f"**无法确认是否检查过更新**（当前 {before_version or '版本未知'}）")
-        else:
-            newest = before_avail[0] if before_avail else ""
-            log.info("预更新：OK-WW 无需更新（%s）", before_version or "版本未知")
-            if newest and newest != before_version:
-                _note(problems,
-                      f"OK-WW 预更新：查到有 {newest}，但没装上"
-                      f"（仍是 {before_version or '版本未知'}）")
+        settled, checked, failed = _okww_await_update(
+            root, budget_s, before_version, before_avail, before_stamp)
+        _okww_report(problems, budget_s, before_version, before_avail,
+                     settled, checked, failed)
         # Close OK-WW *and* anything it may have pulled up with it. A
         # pre-update that leaves 鸣潮 running has not left the machine alone.
         _close(exe)

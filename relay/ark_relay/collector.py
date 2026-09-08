@@ -136,19 +136,13 @@ _MEDICINE = re.compile(r"已使用理智药\s*(\d+)")
 _HAS_TS = re.compile(r"^\[\d{4}-\d{2}-\d{2}")
 
 
-def parse_maa_log(log_path: Path) -> dict:
-    """Recover stage / drops / sanity spend from a MAA log. {} when unreadable.
+def _maa_scan_lines(text: str) -> "tuple[dict[str, dict[str, int]], list[str], int, int, int]":
+    """逐行扫一遍 MAA 日志，把「关卡·掉落·次数·消耗理智·吃药」一次收齐。
 
-    Deliberately forgiving: a log line that does not match is skipped rather
-    than aborting the parse. A daily report missing one item is a small loss;
-    a report that fails to render because of one odd line is a large one.
+    单独成步是因为这是整个解析里唯一有状态的一段：in_block / current 要在行与
+    行之间传下去，读的时候必须连着看；而它后面的组装是无状态的纯拼装。
+    返回 (每关掉落, 关卡出现顺序, 消耗理智, 吃药数, 总次数)。
     """
-    try:
-        text = log_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return {}
-
-    out: dict = {}
     # Per stage, because the running total below is per stage. One round can
     # farm more than one - annihilation then the daily stage, or an event
     # stage alongside a permanent one - and each keeps its own running total.
@@ -200,6 +194,42 @@ def parse_maa_log(log_path: Path) -> dict:
         if m := _MEDICINE.search(line):
             medicine = max(medicine, int(m.group(1)))
 
+    return per_stage, stages, spent, medicine, times
+
+
+def _maa_annihilation(text: str, spent: int, out: dict) -> None:
+    """判定这份日志里的剿灭打没打满周上限，结论写进 out。
+
+    单独成步是因为它和上面按行扫的那段证据不同：这里是在整篇 text 上做正则，
+    判据是进度有没有到上限，而不是 MAA 退没退干净。
+    """
+    if _ANNIHILATION.search(text):
+        out["annihilation"] = True
+        if hits := _ANNI_PROGRESS.findall(text):
+            got, cap = (int(x) for x in hits[-1])   # last line = final state
+            out["annihilation_progress"] = [got, cap]
+            out["annihilation_done"] = got >= cap
+        else:
+            # No progress line at all means MAA saw the cap was already met and
+            # left without fighting - which is also "done for this week".
+            out["annihilation_done"] = not spent
+
+
+def parse_maa_log(log_path: Path) -> dict:
+    """Recover stage / drops / sanity spend from a MAA log. {} when unreadable.
+
+    Deliberately forgiving: a log line that does not match is skipped rather
+    than aborting the parse. A daily report missing one item is a small loss;
+    a report that fails to render because of one odd line is a large one.
+    """
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {}
+
+    out: dict = {}
+    per_stage, stages, spent, medicine, times = _maa_scan_lines(text)
+
     drops: dict[str, int] = {}
     for stage_drops in per_stage.values():
         for name, total in stage_drops.items():
@@ -215,16 +245,7 @@ def parse_maa_log(log_path: Path) -> dict:
         out["medicine_used"] = medicine
     if times:
         out["run_times"] = times
-    if _ANNIHILATION.search(text):
-        out["annihilation"] = True
-        if hits := _ANNI_PROGRESS.findall(text):
-            got, cap = (int(x) for x in hits[-1])   # last line = final state
-            out["annihilation_progress"] = [got, cap]
-            out["annihilation_done"] = got >= cap
-        else:
-            # No progress line at all means MAA saw the cap was already met and
-            # left without fighting - which is also "done for this week".
-            out["annihilation_done"] = not spent
+    _maa_annihilation(text, spent, out)
     return out
 
 

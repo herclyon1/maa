@@ -417,23 +417,24 @@ def _best_manifest(base: str, deadline: float | None = None) -> dict | None:
     return fallback
 
 
-def check(root: Path, base_url: str = "",
-          budget_s: float = BUDGET_SECONDS) -> list[str]:
-    """Fetch and apply any changed files. Returns human-readable lines.
+def _manifest_version(manifest: dict) -> int:
+    """读出清单自称的版本号；没有这个字段、或者填的不是数字，一律算 0。
 
-    `budget_s` is the wall-clock budget for the whole round; overrunning it
-    means giving up cleanly. That is a hard requirement on the boot path: when
-    the CDN caches are out of sync every file has to try all four doors (raw
-    among them being slow), and 21 files is enough to drag past the 09:00 queue
-    slot. Better to skip this update than to hold up the farming.
+    单独成步，是因为「读不出来算 0」不是随手的兜底，而是下面 _is_downgrade
+    那道闸门的前提：0 会真的参与比较，不是一个中性的「未知」。
     """
-    base = (base_url or DEFAULT_BASE).rstrip("/") + "/"
-    deadline = time.monotonic() + budget_s if budget_s else None
-    manifest = _best_manifest(base, deadline)
-    if manifest is None:
-        return []
-    files = manifest["files"]
+    try:
+        return int(manifest.get("version") or 0)
+    except (TypeError, ValueError):
+        return 0
 
+
+def _is_downgrade(remote_ver: int, local_ver: int) -> bool:
+    """这次拿到的清单，是不是比本机已经应用过的那一版还旧。
+
+    单独成步，是因为这道闸门整个靠一个反直觉的写法成立（见下面第二段注释），
+    夹在 check 中间很容易被后来的人「顺手简化」掉，而简化的代价是静默降级。
+    """
     # Refuse a manifest older than the one the machine already has. Downloads
     # go through a CDN, and a CDN can perfectly well be caching the previous
     # release as a whole set (old manifest + old .py, internally consistent and
@@ -441,11 +442,6 @@ def check(root: Path, base_url: str = "",
     # the log looks entirely normal. Version numbers only ever go up, so this
     # gate turns a downgrade into an explicit warning rather than a silent
     # rollback.
-    try:
-        remote_ver = int(manifest.get("version") or 0)
-    except (TypeError, ValueError):
-        remote_ver = 0
-    local_ver = _applied_version(root)
     # Note this must not be written as `remote_ver and local_ver and ...`: an
     # old manifest with no version yields remote_ver == 0, which that form
     # waves straight through, and the machine gets "updated" back to old code.
@@ -454,11 +450,34 @@ def check(root: Path, base_url: str = "",
     # looking perfectly normal.
     # Once this machine has applied a versioned manifest, anything older
     # (including an unversioned one) must be rejected.
-    if local_ver and remote_ver < local_ver:
-        log.warning("拿到的清单更旧（v%s < 本机 v%s，0 表示没有版本号），"
-                    "多半是缓存未刷新，本次不更新", remote_ver, local_ver)
-        return []
+    return bool(local_ver and remote_ver < local_ver)
 
+
+def _wanted_files(root: Path, files: dict) -> list[str]:
+    """算出这一轮打算改哪些文件——在任何一次下载之前先算好。
+
+    单独成步，是因为这份名单只服务于失败报告：下载中途放弃时，报告要能说出
+    「本来要改的是这几个」，而不是只说停在了哪一个上。
+    """
+    # What this round intends to change, worked out before any fetching, so a
+    # failure report can say what did not land rather than only where it stopped.
+    wanted: list[str] = []
+    for rel, want in sorted(files.items()):
+        target = _safe_target(root, rel)
+        if target is not None and target.exists() and _sha1(target.read_bytes()) != want:
+            wanted.append(rel)
+    return wanted
+
+
+def _stage_files(root: Path, base: str, files: dict, deadline: float | None,
+                 remote_ver: int, local_ver: int,
+                 wanted: list[str]) -> list[tuple[str, Path, bytes]] | None:
+    """把该改的文件全部下载并校验完，一个字节都不落盘，攒成一份清单返回。
+
+    中途只要有一个文件拿不到正确内容，就记下失败原因并返回 None，表示这一轮
+    整体放弃。单独成步，是为了让「先全下完、再一次性写」这条铁律在函数边界上
+    就成立：攒和写分属两个函数，就不可能写出一边下一边写的代码。
+    """
     # Download and verify every file that needs changing first, writing none of
     # them to disk; only once they all pass is anything written, in one go.
     #
@@ -474,16 +493,6 @@ def check(root: Path, base_url: str = "",
     # path while root may not be resolved (on macOS /var is a symlink to
     # /private/var), so recovering it would raise ValueError - and by then the
     # files would already be written.
-    # What this round intends to change, worked out before any fetching, so a
-    # failure report can say what did not land rather than only where it stopped.
-    wanted: list[str] = []
-    for rel, want in sorted(files.items()):
-        target = _safe_target(root, rel)
-        if target is not None and target.exists() and _sha1(target.read_bytes()) != want:
-            wanted.append(rel)
-    if not wanted:
-        _clear_failure(root)        # nothing to do means nothing is outstanding
-
     staged: list[tuple[str, Path, bytes]] = []
     for rel, want in sorted(files.items()):
         target = _safe_target(root, rel)
@@ -504,9 +513,18 @@ def check(root: Path, base_url: str = "",
             _record_failure(root, f"{rel}：所有门都拿不到正确内容（缓存未刷新，"
                             "或时间预算不够走最慢的 raw）",
                             remote_ver, local_ver, wanted)
-            return []
+            return None
         staged.append((rel, target, data))
+    return staged
 
+
+def _write_staged(root: Path, staged: list[tuple[str, Path, bytes]],
+                  remote_ver: int, local_ver: int, wanted: list[str]) -> list[str]:
+    """把攒好的内容一口气写到盘上，返回真正写成功的那些。
+
+    单独成步，是因为走到这里网络已经完全退场：这一段只会因为磁盘或权限出错，
+    和上面「下载拿不到」是两种完全不同的故障，能做的处置也不一样。
+    """
     updated: list[str] = []
     for rel, target, data in staged:
         try:
@@ -521,6 +539,42 @@ def check(root: Path, base_url: str = "",
                             remote_ver, local_ver, wanted)
             break
         updated.append(rel)
+    return updated
+
+
+def check(root: Path, base_url: str = "",
+          budget_s: float = BUDGET_SECONDS) -> list[str]:
+    """Fetch and apply any changed files. Returns human-readable lines.
+
+    `budget_s` is the wall-clock budget for the whole round; overrunning it
+    means giving up cleanly. That is a hard requirement on the boot path: when
+    the CDN caches are out of sync every file has to try all four doors (raw
+    among them being slow), and 21 files is enough to drag past the 09:00 queue
+    slot. Better to skip this update than to hold up the farming.
+    """
+    base = (base_url or DEFAULT_BASE).rstrip("/") + "/"
+    deadline = time.monotonic() + budget_s if budget_s else None
+    manifest = _best_manifest(base, deadline)
+    if manifest is None:
+        return []
+    files = manifest["files"]
+
+    remote_ver = _manifest_version(manifest)
+    local_ver = _applied_version(root)
+    if _is_downgrade(remote_ver, local_ver):
+        log.warning("拿到的清单更旧（v%s < 本机 v%s，0 表示没有版本号），"
+                    "多半是缓存未刷新，本次不更新", remote_ver, local_ver)
+        return []
+
+    wanted = _wanted_files(root, files)
+    if not wanted:
+        _clear_failure(root)        # nothing to do means nothing is outstanding
+
+    staged = _stage_files(root, base, files, deadline, remote_ver, local_ver, wanted)
+    if staged is None:
+        return []
+
+    updated = _write_staged(root, staged, remote_ver, local_ver, wanted)
 
     if updated:
         # Stale bytecode has run on this machine before, so clear it here too.

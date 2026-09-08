@@ -39,6 +39,72 @@ def _script_ids(automas_dir: Path) -> dict[str, str]:
         if s.get("kind"):
             out[s["kind"]] = uid
     return out
+
+
+def _apply_enabled(target: dict, enabled: bool, changes: list[str]) -> str | None:
+    """拨队列自己的定时开关，改动记进 changes；返回错误文本，没有错就返回 None。
+
+    单独成一步，是因为它必须先挡住非布尔值再动配置：这一步定的是「明天到底开不
+    开跑」，写错了整条队列会在错的状态里过夜，而后面的写盘没有任何结构性 diff
+    能把它认出来。
+    """
+    # The value arrives from a JSON file a person hand-edits. A string
+    # "false" is truthy, so it would switch the queue ON while the push
+    # reported it OFF; this writer has no structural diff to catch that.
+    if not isinstance(enabled, bool):
+        return f"enabled 必须是 true/false，收到 {enabled!r}"
+    info = target.setdefault("Info", {})
+    if bool(info.get("TimeEnabled")) != enabled:
+        info["TimeEnabled"] = enabled
+        changes.append(f"定时{'开启' if enabled else '关闭'}")
+    return None
+
+
+def _apply_scripts(automas_dir: Path, target: dict, scripts: list[str],
+                   changes: list[str], removed: list[dict]) -> str | None:
+    """把队列裁成只剩 scripts 指定的那几个脚本，裁掉的原条目收进 removed。
+
+    单独成一步，是因为这是本模块里唯一会**删配置**的一段：三道校验（认不认得这
+    个脚本名、这个脚本在不在队列里、剩下的该留谁）得连着看，才说得清为什么只能
+    移出不能加回。返回错误文本，没有错就返回 None。
+    """
+    ids = _script_ids(Path(automas_dir))
+    unknown = [s for s in scripts if s not in ids]
+    if unknown:
+        return (f"认不出脚本 {'、'.join(unknown)}"
+                f"（可用：{'、'.join(ids)}）")
+    want = {ids[s] for s in scripts}
+    sub = (target.get("SubConfigsInfo") or {}).get("QueueItem") or {}
+    # This code can only REMOVE items - there is no insertion path (a
+    # QueueItem needs a fresh uid and AUTO-MAS-shaped structure). Asking to
+    # restore a script that is not in the queue used to fall through to
+    # "已经是这个状态" - a ✅ for a machine that keeps farming without it.
+    have = {(item.get("Info") or {}).get("ScriptId")
+            for uid, item in sub.items()
+            if uid != "instances" and isinstance(item, dict)}
+    if missing := [s for s in scripts if ids[s] not in have]:
+        return (f"加回脚本尚未实现：{'、'.join(missing)} 不在队列里，"
+                "只能移出不能加回。removed-*.json 里有原条目，需人工加回")
+    keep_uids, dropped = [], []
+    for uid, item in sub.items():
+        if uid == "instances" or not isinstance(item, dict):
+            continue
+        sid = (item.get("Info") or {}).get("ScriptId")
+        (keep_uids if sid in want else dropped).append(uid)
+        if sid not in want:
+            removed.append({"uid": uid, "item": item})
+    if dropped:
+        for uid in dropped:
+            sub.pop(uid, None)
+        sub["instances"] = [i for i in (sub.get("instances") or [])
+                            if i.get("uid") not in dropped]
+        back = {v: k for k, v in ids.items()}
+        gone = [back.get((r["item"].get("Info") or {}).get("ScriptId"), "?")
+                for r in removed]
+        changes.append(f"移出 {'、'.join(gone)}")
+    return None
+
+
 def apply(automas_dir: Path, name: str, enabled: bool | None = None,
           scripts: list[str] | None = None) -> tuple[bool, str]:
     """Enable/disable a queue and/or set which scripts it runs."""
@@ -69,51 +135,12 @@ def apply(automas_dir: Path, name: str, enabled: bool | None = None,
     removed: list[dict] = []
 
     if enabled is not None:
-        # The value arrives from a JSON file a person hand-edits. A string
-        # "false" is truthy, so it would switch the queue ON while the push
-        # reported it OFF; this writer has no structural diff to catch that.
-        if not isinstance(enabled, bool):
-            return False, f"enabled 必须是 true/false，收到 {enabled!r}"
-        info = target.setdefault("Info", {})
-        if bool(info.get("TimeEnabled")) != enabled:
-            info["TimeEnabled"] = enabled
-            changes.append(f"定时{'开启' if enabled else '关闭'}")
+        if err := _apply_enabled(target, enabled, changes):
+            return False, err
 
     if scripts is not None:
-        ids = _script_ids(Path(automas_dir))
-        unknown = [s for s in scripts if s not in ids]
-        if unknown:
-            return False, (f"认不出脚本 {'、'.join(unknown)}"
-                           f"（可用：{'、'.join(ids)}）")
-        want = {ids[s] for s in scripts}
-        sub = (target.get("SubConfigsInfo") or {}).get("QueueItem") or {}
-        # This code can only REMOVE items - there is no insertion path (a
-        # QueueItem needs a fresh uid and AUTO-MAS-shaped structure). Asking to
-        # restore a script that is not in the queue used to fall through to
-        # "已经是这个状态" - a ✅ for a machine that keeps farming without it.
-        have = {(item.get("Info") or {}).get("ScriptId")
-                for uid, item in sub.items()
-                if uid != "instances" and isinstance(item, dict)}
-        if missing := [s for s in scripts if ids[s] not in have]:
-            return False, (f"加回脚本尚未实现：{'、'.join(missing)} 不在队列里，"
-                           "只能移出不能加回。removed-*.json 里有原条目，需人工加回")
-        keep_uids, dropped = [], []
-        for uid, item in sub.items():
-            if uid == "instances" or not isinstance(item, dict):
-                continue
-            sid = (item.get("Info") or {}).get("ScriptId")
-            (keep_uids if sid in want else dropped).append(uid)
-            if sid not in want:
-                removed.append({"uid": uid, "item": item})
-        if dropped:
-            for uid in dropped:
-                sub.pop(uid, None)
-            sub["instances"] = [i for i in (sub.get("instances") or [])
-                                if i.get("uid") not in dropped]
-            back = {v: k for k, v in ids.items()}
-            gone = [back.get((r["item"].get("Info") or {}).get("ScriptId"), "?")
-                    for r in removed]
-            changes.append(f"移出 {'、'.join(gone)}")
+        if err := _apply_scripts(automas_dir, target, scripts, changes, removed):
+            return False, err
 
     if not changes:
         return True, "已经是这个状态，无需改动"

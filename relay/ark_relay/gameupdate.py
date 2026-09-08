@@ -788,6 +788,78 @@ def in_maintenance(state_dir: Path, script: str, at: datetime) -> str:
 
 # ─────────────────────────── 队列跑完之后：更新 + 重跑 ───────────────────────────
 
+def _prepare_client(cfg, desk: Desktop, game: str, problems: list[str], sleep) -> tuple[bool, str]:
+    """更新到登录界面。返回 (准备好了没, 通知句)。没准备好时 problems 里有原因。
+
+    单独成步：这是整条流程里唯一按游戏分叉的地方——三家的启动器、时间预算、
+    「算准备好了」的判据各不相同；拎出来之后主流程就只剩「等准备好 → 等开服
+    → 补跑」这一条直线。
+    """
+    before = len(problems)
+    if game == "终末地":
+        g, l = endfield_paths(cfg.maaend_dir)
+        if not (g and l):
+            problems.append("终末地：找不到启动器"); return False, ""
+        n = update_endfield(desk, g, l, budget_s=2400, problems=problems, sleep=sleep)
+    elif game == "鸣潮":
+        l = wuwa_launcher(cfg.okww_dir)
+        if not l:
+            problems.append("鸣潮：找不到启动器"); return False, ""
+        n = update_wuwa(desk, l, budget_s=2400, problems=problems, sleep=sleep)
+    else:
+        ld, idx = ldconsole_of(cfg.maa_dir)
+        if not ld:
+            problems.append("明日方舟：找不到雷电 ldconsole"); return False, ""
+        n = update_arknights(cfg.state_dir, ld, idx, budget_s=1800, problems=problems, sleep=sleep, desk=desk, maa_dir=cfg.maa_dir)
+    return len(problems) == before, n
+
+
+def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, clock, sleep,
+                         problems: list[str], expect_new: bool,
+                         local0: str) -> tuple[bool, str]:
+    """一遍遍地更新，直到客户端准备好、或者等过了 deadline。返回 (准备好了没, 通知句)。
+
+    单独成步：这里的重试藏着一条容易写错的规矩——每轮失败要按 mark 把这一轮
+    写进 problems 的**全部**条目整批收回（原因见循环末尾的注释）。它和外层
+    「准备好之后做什么」是两件事，混在一个函数里那条规矩很难看清。
+    """
+    ready, note = False, ""
+    while True:
+        mark = len(problems)
+        ready, note = _prepare_client(cfg, desk, game, problems, sleep)
+        if game == "明日方舟" and expect_new and ready and not note:
+            # prepare 说「无需更新」= 官方版本号还没变（维护中包体还没放出来），继续等
+            ready = False
+            if not problems or "版本号还没变" not in problems[-1]:
+                problems.append(f"明日方舟：官方版本号还没变（还是 {local0}），维护中包体还没放出来")
+        if ready or clock() >= deadline:
+            break
+        # 更新包多半还没放出来：把这轮的问题整批收回，10 分钟后再试。
+        # 按 mark 切、不是只删最后一条：一次 prepare 可能写两条
+        # （装完版本不对 + 没读到登录界面），只删一条会把另一条留到
+        # 最终报告里，明明后来成功了却还是报错。
+        log.info("游戏更新：%s 还没准备好（%s），10 分钟后再试", game, problems[-1] if problems else "")
+        del problems[mark:]
+        sleep(600)
+    return ready, note
+
+
+def _rerun_script(cfg, now: datetime, dispatch, script: str,
+                  reran: list[str], problems: list[str]) -> None:
+    """客户端更新完之后，把当天那趟没跑成的脚本补跑一次。
+
+    单独成步：「要不要补跑、跑完算成功还是算问题」和上面的更新等待没有共享
+    状态，是一件自成一体的小事；留在主循环里只会把那段循环撑长。
+    """
+    if needs_rerun(cfg.state_dir, now, script) and dispatch is not None:
+        ok, msg = dispatch(script)
+        log.info("游戏更新：补跑 %s → %s", script, msg)
+        if ok:
+            reran.append(script)
+        else:
+            problems.append(f"{script}：更新后没能补跑（{msg}）")
+
+
 def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = None,
                  dispatch=None, sleep=time.sleep, clock=None) -> tuple[list[str], list[str], list[str]]:
     """把登记过的都做掉。返回 (更新通知, 问题, 重跑了哪些脚本)。
@@ -809,60 +881,16 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
     wins = windows(cfg.state_dir)
     from datetime import timedelta as _td  # noqa: PLC0415
 
-    def prepare(game: str) -> tuple[bool, str]:
-        """更新到登录界面。返回 (准备好了没, 通知句)。没准备好时 problems 里有原因。"""
-        before = len(problems)
-        if game == "终末地":
-            g, l = endfield_paths(cfg.maaend_dir)
-            if not (g and l):
-                problems.append("终末地：找不到启动器"); return False, ""
-            n = update_endfield(desk, g, l, budget_s=2400, problems=problems, sleep=sleep)
-        elif game == "鸣潮":
-            l = wuwa_launcher(cfg.okww_dir)
-            if not l:
-                problems.append("鸣潮：找不到启动器"); return False, ""
-            n = update_wuwa(desk, l, budget_s=2400, problems=problems, sleep=sleep)
-        else:
-            ld, idx = ldconsole_of(cfg.maa_dir)
-            if not ld:
-                problems.append("明日方舟：找不到雷电 ldconsole"); return False, ""
-            n = update_arknights(cfg.state_dir, ld, idx, budget_s=1800, problems=problems, sleep=sleep, desk=desk, maa_dir=cfg.maa_dir)
-        return len(problems) == before, n
-
-    def rerun(script: str) -> None:
-        if needs_rerun(cfg.state_dir, now, script) and dispatch is not None:
-            ok, msg = dispatch(script)
-            log.info("游戏更新：补跑 %s → %s", script, msg)
-            if ok:
-                reran.append(script)
-            else:
-                problems.append(f"{script}：更新后没能补跑（{msg}）")
-
     from . import maintenance  # noqa: PLC0415
     for game, why in list(todo.items()):
         script = maintenance.SCRIPT_OF.get(game, "")
         start, end = (wins.get(game) or (None, None, ""))[:2]
         deadline = (end + _td(hours=2)) if end else clock() + _td(hours=1)
-        ready, note = False, ""
         expect_new = bool(end)              # 有维护窗口 = 今天一定有新版本，没看到新版本就不算准备好
         local0 = recorded_ak_version(cfg.state_dir) if game == "明日方舟" else ""
-        while True:
-            mark = len(problems)
-            ready, note = prepare(game)
-            if game == "明日方舟" and expect_new and ready and not note:
-                # prepare 说「无需更新」= 官方版本号还没变（维护中包体还没放出来），继续等
-                ready = False
-                if not problems or "版本号还没变" not in problems[-1]:
-                    problems.append(f"明日方舟：官方版本号还没变（还是 {local0}），维护中包体还没放出来")
-            if ready or clock() >= deadline:
-                break
-            # 更新包多半还没放出来：把这轮的问题整批收回，10 分钟后再试。
-            # 按 mark 切、不是只删最后一条：一次 prepare 可能写两条
-            # （装完版本不对 + 没读到登录界面），只删一条会把另一条留到
-            # 最终报告里，明明后来成功了却还是报错。
-            log.info("游戏更新：%s 还没准备好（%s），10 分钟后再试", game, problems[-1] if problems else "")
-            del problems[mark:]
-            sleep(600)
+        ready, note = _prepare_until_ready(cfg, desk, game, deadline=deadline, clock=clock,
+                                           sleep=sleep, problems=problems,
+                                           expect_new=expect_new, local0=local0)
         if note:
             notes.append(note + f"（依据：{why}）")
         if not ready:
@@ -876,7 +904,7 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
             while clock() < end:
                 sleep(60)
             sleep(120)
-        rerun(script)
+        _rerun_script(cfg, now, dispatch, script, reran, problems)
         clear_pending(cfg.state_dir, game)
     if done := restore_skips(cfg.state_dir):
         log.info("游戏更新：已把摘掉的加回队列：%s", "、".join(done))
