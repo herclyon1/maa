@@ -73,7 +73,15 @@ def _mas(out: dict) -> None:
             elif name == "MaaEnd":
                 t = u.get("Task", {})
                 st = t.get("SanityTaskType")
+                # Info.IfQuickConfig off means AUTO-MAS never pushes these fields
+                # down: MaaEnd runs from its own mxu-MaaEnd.json and this section
+                # is a dead copy. Printing it under a heading that says 「真实生效」
+                # is the 826 shape - acting on a value whose meaning was assumed.
+                # Endfield and Wuthering Waves have had quick config off for weeks.
+                quick = bool((u.get("Info") or {}).get("IfQuickConfig"))
                 out["MaaEnd"] = {
+                    "这些字段生效吗": "生效" if quick else
+                        "❌ 不生效：快速配置是关的，真正跑的是 mxu-MaaEnd.json（母本）",
                     "理智任务": st,
                     "详细": t.get(st) if st else None,
                     "开理智": t.get("IfSanity"),
@@ -81,7 +89,12 @@ def _mas(out: dict) -> None:
                     "基质地点": t.get("AutoEssenceSpecifiedLocation"),
                 }
             elif "OK-WW" in str(name) or "ok-ww" in str(name):
-                out["OK-WW(MAS侧)"] = u.get("Task", {})
+                quick = bool((u.get("Info") or {}).get("IfQuickConfig"))
+                out["OK-WW(MAS侧)"] = {
+                    "这些字段生效吗": "生效" if quick else
+                        "❌ 不生效：快速配置是关的，真正跑的是 OK-WW 自己的母本配置",
+                    **(u.get("Task", {}) or {}),
+                }
 
 
 def _queues(out: dict) -> None:

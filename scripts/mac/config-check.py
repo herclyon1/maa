@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""把游戏机上**真实生效**的配置一次性读回来。
+"""Read back, in one go, what is really configured on the gaming machine.
+
+**Only the MAA section is what is really in effect.** Endfield and Wuthering Waves
+have quick config switched off, so AUTO-MAS never pushes those fields down and each
+game runs from its own master config instead. Both sections now open with a line
+saying whether their fields are live; do not draw a conclusion from a section that
+says they are not. For what those two really run:
+`winrun.sh --py scripts/mac/lib/effective_config.py`.
 
     scripts/mac/config-check.py              # 打印当前全部关键配置
     scripts/mac/config-check.py --save       # 存快照
