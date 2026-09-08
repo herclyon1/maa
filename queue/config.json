@@ -1,7 +1,7 @@
 {
-  "version": 2026090904,
-  "name": "echo_farm",
-  "note": "从电脑发来的指令：echo_farm",
+  "version": 2026090905,
+  "name": "开始刷 4C 声骸",
+  "note": "从电脑发来的指令：开始刷 4C 声骸",
   "commands": [
     {
       "action": "echo_farm",
