@@ -366,10 +366,16 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state):
             notifier.send(texts.ESTOP if ok else texts.ESTOP_FAILED, msg, alert=not ok)
             push_state("红按钮")
             return
-        if engine.scripts_running():
+        # These two write the relay's own StateStore and nothing else, so the
+        # AUTO-MAS in-memory copy cannot clobber them and the gate below does not
+        # apply. 「下次跑完不关机」 in particular is only ever pressed **while** a
+        # run is going - that is the whole point of it - and it was the one command
+        # the gate reliably threw away.
+        if engine.scripts_running() and action not in ("skip_shutdown", "debug_mode"):
             # Config changed while a script is running gets clobbered by
             # AUTO-MAS's in-memory copy.
-            notifier.send(texts.PHONE_DEFERRED, texts.phone_deferred_body(action))
+            notifier.send(texts.PHONE_DEFERRED,
+                          texts.phone_deferred_body(texts.action_name(action)))
             return
         ok, msg = apply_command(body)
         log.info("📱 手机指令 %s：%s", action, msg)

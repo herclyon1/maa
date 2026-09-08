@@ -105,6 +105,27 @@ def failed_body_head(attempts: int) -> str:
     return f"重试 {attempts} 次全部失败，需要处理。\n" if attempts > 1 else "需要处理。\n"
 
 
+# An action id must never reach a push as it is: `set_config` is written for
+# the program, and 「set_config」現在不能执行 answers nothing.
+_ACTION_ZH = {
+    "set_stage": "改关卡",
+    "set_medicine": "改吃几瓶理智药",
+    "set_wait_time": "改等待时间",
+    "toggle_task": "开关某个任务",
+    "run_now": "现在就跑一趟",
+    "skip_today": "今天这趟跳过",
+    "debug_mode": "调试模式",
+    "set_config": "改设置",
+    "set_master": "改设置",
+    "weekly_boss": "改打第几个周本",
+    "skip_shutdown": "下次跑完不关机",
+}
+
+
+def action_name(action: str) -> str:
+    return _ACTION_ZH.get(action, "这条设置")
+
+
 def phone_deferred_body(action: str) -> str:
     return (f"「{action}」现在不能执行：脚本正在运行，此时改配置会被冲掉。"
             "等这一趟跑完再按一次。")
