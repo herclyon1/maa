@@ -1,14 +1,6 @@
 {
-  "version": 2026090905,
-  "name": "开始刷 4C 声骸",
-  "note": "从电脑发来的指令：开始刷 4C 声骸",
-  "commands": [
-    {
-      "action": "echo_farm",
-      "confirmed": true,
-      "boss": 1,
-      "until": "08:30",
-      "name": "天傀劫煞"
-    }
-  ]
+  "version": 2026090906,
+  "name": "空（安全状态）",
+  "note": "从电脑发来的指令：空（安全状态）",
+  "commands": []
 }
