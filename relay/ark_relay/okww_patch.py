@@ -42,7 +42,7 @@ from .okww_patches.count import _COUNT_OLD, _COUNT_V1, _COUNT_NEW, _count_presen
 from .okww_patches.domain import _DOMAIN_IMPORT_OLD, _DOMAIN_IMPORT_NEW, _DOMAIN_OLD, _DOMAIN_NEW, _domain_present, _apply_domain
 from .okww_patches.farmerr import _FARMERR_OLD, _FARMERR_NEW, _farmerr_present, _FARMERR
 from .okww_patches.letpass import _LETPASS_OLD, _LETPASS_NEW, _letpass_present, _LETPASS
-from .okww_patches.nest import _NEST_DIR, _NEST_UPSTREAM, _NEST_PATCHED, _sha, _NEST_MARKER, _NEST_KNOWN_OURS, _apply_nest
+from .okww_patches.nest import _NEST_DIR, _NEST_UPSTREAM, _NEST_PATCHED, _sha, _NEST_MARKER, _NEST_KNOWN_OURS, _apply_nest, nest_patch_present
 from .okww_patches.nofarm import _NOFARM_OLD, _NOFARM_NEW, _nofarm_present, _NOFARM
 from .okww_patches.nowave import _NOWAVE_OLD, _NOWAVE_V2, _NOWAVE_NEW, _NOWAVE_V1, _NOWAVE_V3A, _NOWAVE_V3B, _nowave_present, _NOWAVE
 from .okww_patches.retrycap import _RETRYCAP_OLD, _RETRYCAP_NEW, _retrycap_present, _RETRYCAP
@@ -58,7 +58,7 @@ log = logging.getLogger("ark.okww_patch")
 # The tests and other callers import the old names from here, so every name in
 # the submodules is re-exported verbatim.
 __all__ = [
-    'ensure_patches', 'ensure_if_updated',
+    'ensure_patches', 'ensure_if_updated', 'nest_patch_present',
     '_CLAIM_OLD',
     '_CLAIM_NEW',
     '_CLAIM_V1',

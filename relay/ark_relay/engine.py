@@ -260,7 +260,7 @@ class Engine:
         for n in notes:
             log.info("补丁：%s", n)
         if notes:
-            self.notifier.send(texts.patches(len(notes)),
+            self.notifier.send(texts.patches(len(notes), notes),
                                "\n".join(f"· {n}" for n in notes))
 
     def _weekly_gates(self) -> None:

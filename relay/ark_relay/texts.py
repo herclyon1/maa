@@ -61,7 +61,17 @@ MAAEND_REENABLED = "🔓 终末地日常已开回"
 TACET_DROPS = "🖼️ 无音区产出"
 
 
-def patches(n: int) -> str:
+# A patch that could not be applied shared this title with a patch that went on
+# cleanly, so the phone banner looked the same either way - and a refused nest patch
+# means the machine farms every nest all night while the plan still says 「只打落渊
+# 南丘」. The lines themselves already say 「贴不上了」/「写不进去」; the title has to.
+_PATCH_TROUBLE = ("贴不上", "写不进", "叠了", "没能检查", "对不上")
+
+
+def patches(n: int, notes: "list[str] | None" = None) -> str:
+    bad = sum(1 for x in (notes or []) if any(k in x for k in _PATCH_TROUBLE))
+    if bad:
+        return f"⚠️ OK-WW 补丁有 {bad} 条没贴上（共 {n} 条）"
     return f"🩹 OK-WW 补丁（{n} 条）"
 
 

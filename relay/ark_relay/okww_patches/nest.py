@@ -64,6 +64,26 @@ _NEST_KNOWN_OURS = {
 }
 
 
+def nest_patch_present(okww_dir) -> bool | None:
+    """Is our NightmareNestTask in place? None when it cannot be told.
+
+    「Only Farm These Nests」 is an option **our copy of the file adds**; upstream
+    has no such setting. So when the patch is refused - upstream restructured the
+    file and the hash no longer matches - the option in the config is read by
+    nobody and every nest gets farmed. The config value stays exactly as it was,
+    which is why tomorrow's plan and the round check both went on saying
+    「只打落渊南丘」 while the machine spent the night farming all of them. Reading
+    the config alone cannot see this; the file has to be looked at.
+    """
+    if not okww_dir:
+        return None
+    f = Path(okww_dir).joinpath(*_SRC, "NightmareNestTask.py")
+    try:
+        return _NEST_MARKER in f.read_bytes()
+    except OSError:
+        return None
+
+
 def _apply_nest(root: Path) -> list[str]:
     f = root.joinpath(*_SRC, "NightmareNestTask.py")
     label = "巢穴任务（续刷 / 不空转 / 可指定点位）"

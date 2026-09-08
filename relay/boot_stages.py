@@ -192,7 +192,7 @@ def _stage_patch_okww(cfg, notifier, log) -> None:
         # single OK-WW update dumped eight of them on the phone at once
         # (the user, 2026-09-06: 「你这个通知一直在轰炸我」).
         if notes:
-            notifier.send(texts.patches(len(notes)), "\n".join(f"· {n}" for n in notes))
+            notifier.send(texts.patches(len(notes), notes), "\n".join(f"· {n}" for n in notes))
     except Exception:
         log.exception("启动时贴 OK-WW 补丁失败，服务照常继续")
 
@@ -536,7 +536,7 @@ def _preupdate_okww(cfg, notifier, log, problems) -> None:
     for note in patch_notes:
         log.info("预更新：%s", note)
     if patch_notes:      # one combined push, not one per patch
-        notifier.send(texts.patches(len(patch_notes)),
+        notifier.send(texts.patches(len(patch_notes), patch_notes),
                       "\n".join(f"· {n}" for n in patch_notes))
 
 

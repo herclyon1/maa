@@ -253,7 +253,18 @@ def _okww_nest_bit(daily: dict, nest: dict, adds: list[str],
     # line saying 「只打落渊南丘」 followed by 「附加 自动刷所有梦魇巢穴」
     # contradicts itself. Fold it into the nest line and state its real effect.
     scope = (nest.get("Only Farm These Nests") or "").strip()
-    where = f"只打{scope}" if scope else "全部点位"
+    # 「Only Farm These Nests」 is an option our patched copy of the file adds. If
+    # the patch was refused, nothing reads that value and every nest gets farmed -
+    # while the config still says what it always said. Saying 「只打落渊南丘」 on the
+    # strength of the config alone is how the machine spent a night farming all of
+    # them with every report agreeing it had not.
+    import os as _os  # noqa: PLC0415
+    from .okww_patch import nest_patch_present  # noqa: PLC0415
+    patched = nest_patch_present(_os.environ.get("ARK_OKWW_DIR"))
+    if scope and patched is False:
+        where = f"⚠️ 本该只打{scope}，但巢穴补丁没贴上，实际会刷全部点位"
+    else:
+        where = f"只打{scope}" if scope else "全部点位"
     if _NEST_FULL in adds:
         return f"{nest_label} {where}，刷到打满"
     if daily.get("Farm Nightmare Nest for Daily Echo"):
