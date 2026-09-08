@@ -107,6 +107,8 @@ _said = _okww_say("TaskExecutor", "📅 Daily Task exception stopped", "Exceptio
 check("这条真实日志行翻得出来", "还不认识" in _said, False)
 check("说的是日常清单停了", "日常清单整个停了" in _said, True)
 check("指到真正的原因在哪", "真正的原因" in _said, True)
+check("不许抢掉更靠谱的那条：回放里 09-01 那条仍报「等一个画面没等到」",
+      "Daily Task exception stopped" in str(__import__("ark_relay.collector_okww", fromlist=["x"])._OKWW_MSG_ZH), False)
 check("不认识的错还是照旧说不认识",
       "还不认识" in _okww_say("TaskExecutor", "完全没见过的错", "WeirdError"), True)
 

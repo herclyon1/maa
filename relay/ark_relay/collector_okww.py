@@ -170,15 +170,8 @@ _OKWW_MSG_ZH = (
     ("Game window is not connected", "连不上游戏窗口"),
     ("not in combat", "没有进入战斗"),
     ("can't find boss_proceed", "图鉴里找不到「前往」按钮"),
-    # The outermost of the three tracebacks OK-WW prints for one failure: it only
-    # says the daily list stopped, and the reason is in the innermost one. Seen on
-    # 2026-09-08 21:50 as 「📅 Daily Task exception stopped」 with exception name
-    # `Exception`, which no table entry matched, so the notification could only say
-    # it did not recognise it. `Exception` itself is deliberately left untranslated:
-    # a bare exception name carries no meaning, and mapping it would silence every
-    # other genuinely unknown failure that happens to be raised as one.
-    ("Daily Task exception stopped", "日常清单整个停了（真正的原因是上面那条）"),
 )
+_OKWW_WRAPPER = "Daily Task exception stopped"
 _OKWW_WAIT_SEC = re.compile(r"wait_until timeout .*? (\d+(?:\.\d+)?) seconds")
 _ASCII_LETTER = re.compile(r"[A-Za-z]")
 _OKWW_ANY_ERR = re.compile(r" ERROR TaskExecutor (\w+):(.*)")
@@ -312,6 +305,16 @@ def _okww_say(task: str, msg: str, exc: str, text: str = "", at: int = 0) -> str
     task_zh = _OKWW_TASK_ZH.get(task)
     msg_zh = next((zh for en, zh in _OKWW_MSG_ZH if en in msg), "")
     exc_zh = _OKWW_EXC_ZH.get(exc)
+    if task_zh is not None and not (msg_zh or exc_zh) and _OKWW_WRAPPER in msg:
+        # The outermost of the three tracebacks OK-WW prints for one failure. It
+        # only says the daily list stopped; the reason is in the innermost one, and
+        # the caller normally reports that instead. This branch is the last resort,
+        # for when the wrapper is all there is - seen on 2026-09-08 21:50, where the
+        # relay could only say it did not recognise the error.
+        # It must NOT go in _OKWW_MSG_ZH: that table also decides which of the three
+        # tracebacks is worth reporting, and the replay corpus caught the wrapper
+        # winning over 「等一个画面没等到」 on 2026-09-01's record.
+        return f"{task_zh}：日常清单整个停了（真正的原因在它上面那条）"
     if task_zh is None or not (msg_zh or exc_zh):
         sig = (task, exc, msg[:80])
         if sig not in _OKWW_UNTRANSLATED:      # Warn once per process for the same raw message
