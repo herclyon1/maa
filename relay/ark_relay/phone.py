@@ -207,6 +207,12 @@ class Heartbeat:
     def loop(self, stop) -> None:
         """Body of the background thread. Exits when stop() returns true, sending
         bye on the way out."""
+        # One beat on the way in, whoever is watching. Stopping the service sends a
+        # bye, and beats only go out while someone holds a watch, so after a deploy
+        # the last thing the phone had heard was 「关机中」 - on 2026-09-09 the user
+        # was looking at a red 「关机中」 while the page itself was showing the game
+        # running on that machine. The last message must match reality.
+        self.beat()
         while not stop():
             wait = 5
             if self.watched():

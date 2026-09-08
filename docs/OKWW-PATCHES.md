@@ -29,6 +29,9 @@ changed; an empty answer means everything was already in place.
 | 8 | Let-pass | `okww_patches/letpass.py` |
 | 9 | Read the remaining-runs count before entering; at 0/3 skip the boss instead of fighting it for nothing (v3, 2026-09-09) | `okww_patches/count.py` |
 | 10 | 限时提前开放 bosses: recognise 「提前到达目标位置可能影响剧情体验」 and confirm it. Without this, 天傀劫煞 could not be teleported to at all (2026-09-09) | `okww_patches/bosstip.py` |
+| 12 | While the echo farm marker is present, revive in place instead of giving up: upstream returns False from `revive_action` inside a realm, so one death stopped the whole task and the machine stood still until someone noticed (2026-09-09) | `okww_patches/revive.py` |
+| 13 | The revived death still travels up as an exception, so the loop catches it and takes the next lap | `okww_patches/revive.py` |
+| 14 | Import `CharRevivedException` into FarmEchoTask so patch 13 has the name | `okww_patches/revive.py` |
 | 11 | Same boss, second half: confirming that dialog drops the player straight into the arena, with no fast-travel UI and no team screen, so both of upstream's branches raise 「Teleport to boss failed」. This returns as soon as it sees the flag (2026-09-09) | `okww_patches/bosstip.py` (`_EARLYOPEN`) |
 
 **Deliberately reverted every boot** (they are listed so an old copy left behind by

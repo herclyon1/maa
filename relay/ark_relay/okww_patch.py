@@ -39,6 +39,9 @@ from .okww_patches.tacetshot import _TACETSHOT_OLD, _TACETSHOT_NEW, _TACETSHOT_V
 from .okww_patches.bosstip import (_BOSSTIP_OLD, _BOSSTIP_OLD_FULL, _BOSSTIP_NEW, _BOSSTIP_V1,
                                    _BOSSTIP_V2, _BOSSTIP_V3, _bosstip_present, _BOSSTIP,
                                    _EARLY_OLD, _EARLY_NEW, _EARLYOPEN)
+from .okww_patches.revive import (_REVIVE, _REVIVE_OLD, _REVIVE_NEW, _REVIVEIMP,
+                                  _REVIVEIMP_OLD, _REVIVEIMP_NEW, _REVIVELOOP,
+                                  _REVIVELOOP_OLD, _REVIVELOOP_NEW)
 from .okww_patches.claim import _CLAIM_OLD, _CLAIM_NEW, _CLAIM_V1, _CLAIM_V2, _CLAIM_V3, _CLAIM_V4, _CLAIM_V5, _CLAIM_V6, _CLAIM_TAIL, _CLAIM_OLD_FULL, _claim_present, _CLAIM
 from .okww_patches.core import _SRC, _Patch, _atomic_write, _atomic_write_bytes, _verify_or_revert, _stacked, _apply_one, _revert_text
 from .okww_patches.count import _COUNT_OLD, _COUNT_V1, _COUNT_V2, _COUNT_NEW, _count_present, _COUNT
@@ -64,6 +67,9 @@ __all__ = [
     'ensure_patches', 'ensure_if_updated', 'nest_patch_present', 'active_patches',
     '_BOSSTIP', '_BOSSTIP_OLD', '_BOSSTIP_NEW', '_bosstip_present',
     '_EARLYOPEN', '_EARLY_OLD', '_EARLY_NEW',
+    '_REVIVE', '_REVIVE_OLD', '_REVIVE_NEW',
+    '_REVIVEIMP', '_REVIVEIMP_OLD', '_REVIVEIMP_NEW',
+    '_REVIVELOOP', '_REVIVELOOP_OLD', '_REVIVELOOP_NEW',
     '_CLAIM_OLD',
     '_CLAIM_NEW',
     '_CLAIM_V1',
@@ -260,7 +266,8 @@ _REVERTS: "list[tuple[tuple, str, str, str]]" = [
 # _APPLIES: what is in effect on the machine, in application order. The nest
 # file replacement and the stamina/nofarm pair are steps of their own (the
 # nest is a whole-file swap; nofarm's anchor lives inside stamina's body).
-_APPLIES: "list[_Patch]" = [_CLAIM, _TACETSHOT, _NOWAVE, _RETRYCAP, _LETPASS, _COUNT, _BOSSTIP, _EARLYOPEN]
+_APPLIES: "list[_Patch]" = [_CLAIM, _TACETSHOT, _NOWAVE, _RETRYCAP, _LETPASS, _COUNT, _BOSSTIP, _EARLYOPEN,
+                            _REVIVEIMP, _REVIVE, _REVIVELOOP]
 
 
 def active_patches() -> list[str]:

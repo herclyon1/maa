@@ -423,6 +423,18 @@ class Engine:
             return None
         cands: list[tuple[datetime, str]] = []
 
+        # A farm has two clock needs and neither was registered here, so the loop
+        # slept until whatever the next queue alarm happened to be. On 2026-09-09 the
+        # gaps ran to 21 minutes: OK-WW stopped at 06:45 and nothing looked at it
+        # until 07:06. Its deadline is a moment like any other, and while it runs the
+        # loop has to come back often enough to notice the task has died.
+        from . import echofarm  # noqa: PLC0415
+        if rec := echofarm.current(self.cfg.state_dir):
+            if until := echofarm.deadline_of(rec):
+                cands.append((until, "刷声骸到点收工"))
+            cands.append((now + timedelta(minutes=echofarm.RESTART_QUIET_MINUTES),
+                          "看一眼刷声骸还活着没"))
+
         def today_and_tomorrow(hh: int, mm: int):
             due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
             return due, due + timedelta(days=1)

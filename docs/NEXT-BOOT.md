@@ -6,10 +6,19 @@ It runs from the phone page, farms 天傀劫煞 (讨伐强敌 position 1) about 
 minute, picks up an echo nearly every lap, spends no waveplates, and stops itself at
 the configured clock time. Verified live from 06:02 to 06:10 machine time.
 
-The character still dies every ten laps or so, and OK-WW stops the whole task when
-it does. The relay now relaunches the farm after three minutes of log silence and
-counts the relaunches; the count is in the message it pushes when the farm ends.
-Verified live: the task died at 06:14, the relay had it farming again by 06:22.
+The character dies every ten laps or so. OK-WW used to stop the whole task on a
+death - inside a realm its `revive_action` gives up, because there is no teleport
+tower to run back to. It now clicks the revive button by its own text and the loop
+takes the next lap (`okww_patches/revive.py`). **That patch has not yet been seen to
+fire**: it was deployed at 07:21 and no death happened before 07:32. If the log ever
+carries 「死亡弹窗上没找到复活按钮」 it also prints everything it read off the screen,
+which is what to look at.
+
+The relay still relaunches the farm as a backstop after three minutes of log silence,
+and the count of relaunches is in the message it pushes when the farm ends. The farm's
+two moments (its deadline, and the three-minute liveness check) are now registered as
+alarms; before that the loop slept until the next queue alarm and the measured gap was
+21 minutes.
 
 ### Rough edges, neither blocking
 - **`enter_configured_boss_realm_from_f` raises every lap**

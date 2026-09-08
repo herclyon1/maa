@@ -126,6 +126,7 @@ def _make(root: Path, daily=UPSTREAM_DAILY, domain=UPSTREAM_DOMAIN,
     # run() 那段是「周本活锁：打出被吞掉的异常」的锚点，缩进 12 空格，
     # 上游长这样（2026-08-31 从机器上抄的真实形状）。
     (d / "FarmEchoTask.py").write_text(
+        okww_patch._REVIVEIMP_OLD + "\n\n"
         "class FarmEchoTask:\n"
         "    def run(self):\n        try:\n            return self.do_run()\n"
         "        except Exception as e:\n"
@@ -137,7 +138,8 @@ def _make(root: Path, daily=UPSTREAM_DAILY, domain=UPSTREAM_DOMAIN,
         + okww_patch._SHOT2_OLD + "\n" + okww_patch._CLAIM_TAIL + "\n"
         "                if True:\n                    if True:\n"
         + okww_patch._SHOT_OLD
-        + "\n            except Exception:\n                pass\n"
+        + "\n" + okww_patch._REVIVELOOP_OLD + "\n                    pass\n"
+        + "\n" + okww_patch._REVIVE_OLD + "\n"
         "\n    def teleport_to_configured_boss(self):\n        if True:\n"
         + okww_patch._TEAMSHOT_OLD
         + "\n" + okww_patch._EARLY_OLD + "\n            pass"

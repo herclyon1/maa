@@ -167,5 +167,28 @@ except Exception as exc:  # noqa: BLE001
 check("不抛异常", raised, "")
 check("坏的那档被跳过，好的还在", got is not None, True)
 
+print("\n[正在刷声骸时，收工时刻和「看一眼还活着没」都要能把循环叫醒]")
+# 2026-09-09: neither of the farm's moments was registered here, so the loop
+# slept until the next queue alarm - 21 minutes measured. OK-WW stopped at
+# 06:45 and nothing looked at it until 07:06.
+from ark_relay import echofarm  # noqa: E402
+e7 = build()
+_store = echofarm._store(e7.cfg.state_dir)
+_store.set("queues", "echo_farm", {"boss": 1, "name": "天傀劫煞",
+                                   "until": at(8, 30).strftime("%Y-%m-%d %H:%M"),
+                                   "started": at(6, 2).strftime("%Y-%m-%d %H:%M"),
+                                   "saved": {}})
+try:
+    when, why = e7.next_deadline(at(7, 0))
+    check("先去看一眼它还活着没", "刷声骸" in why, True)
+    check("而且很快就看", (when - at(7, 0)).total_seconds() / 60.0,
+          float(echofarm.RESTART_QUIET_MINUTES))
+    when2, why2 = e7.next_deadline(at(8, 29))
+    check("快到点时叫醒的是收工那一下", "收工" in why2, True)
+    check("就是 08:30 那一刻", when2.strftime("%H:%M"), "08:30")
+finally:
+    _store.pop("queues", "echo_farm")
+check("没在刷的时候不多这两个闹钟", "刷声骸" in build().next_deadline(at(7, 0))[1], False)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
