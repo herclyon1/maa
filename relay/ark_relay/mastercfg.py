@@ -56,8 +56,8 @@ MAAEND_SHOWN: dict[str, tuple[str, ...]] = {
     "AutoUseSpMedication": (
         "@enabled",
         # The user, 2026-09-09: 「你把终末地吃理智的设置做进手机控制页里面」.
-        # 「只吃几天内过期的」 is the setting that decided whether a whole batch of
-        # boosters got drunk on one day (Days3) or spread out (All).
+        # The expiry window is the setting that decided whether a whole batch of
+        # boosters got drunk on one day (Days3) or spread out over time (All).
         "AutoUseSpMedicationExpireWithinDays",   # Use boosters expiring within N days
         "AutoUseSpMedicationUseCount",           # At most this many per run
         "AutoUseSpMedicationMaxSanity",          # Only while sanity is below this
