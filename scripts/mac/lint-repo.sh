@@ -14,7 +14,7 @@ FAIL=0
 note() { printf '  ✗ %s\n' "$1"; FAIL=1; }
 ok()   { printf '  ✅ %s\n' "$1"; }
 
-echo "▶ 1/20 shellcheck"
+echo "▶ 1/21 shellcheck"
 if command -v shellcheck >/dev/null || [ -x "$HOME/.local/bin/shellcheck" ]; then
   SC="$(command -v shellcheck || echo "$HOME/.local/bin/shellcheck")"
   bad=""
@@ -28,7 +28,7 @@ fi
 
 # 2026-08-26：我在 winrun.sh 的清理逻辑里用了 `powershell`（5.1），每次都失败。
 # 5.1 默认不是 UTF-8，读中文 JSON 必挂。规矩立完当轮就违反了，所以要机器来查。
-echo "▶ 2/20 不许用 powershell 5.1（要用 pwsh 7）"
+echo "▶ 2/21 不许用 powershell 5.1（要用 pwsh 7）"
 # grep -rn 的输出是 `文件:行号:内容`，所以过滤注释要跳过前两段，
 # 不能直接 `^\s*#`——2026-08-26 第一版就是这么写的，注释全都漏了过去。
 # 2026-09-06：原正则只认 `powershell ` 带空格，`["powershell", "-NoProfile"` 这种
@@ -44,14 +44,14 @@ hits=$(grep -rn "['\"\` ]powershell[ '\",]" scripts/ relay/ 2>/dev/null \
 
 # 2026-08-26：`pwsh -c "... \"A|B\" ..."` 被 bash/ssh/cmd 三层引号吃掉，
 # 报 `'Wuthering' 不是内部或外部命令`。正解是 base64 -EncodedCommand。
-echo "▶ 3/20 ssh 送 PowerShell 必须走 base64"
+echo "▶ 3/21 ssh 送 PowerShell 必须走 base64"
 hits=$(grep -rn 'ssh .*pwsh -\(NoProfile \)\?-\?[Cc]ommand' scripts/ 2>/dev/null \
        | grep -v EncodedCommand | grep -v "^\s*#" || true)
 [ -z "$hits" ] && ok "没有内联拼接的远端 PowerShell" || { note "有内联 -Command（应改 -EncodedCommand）"; echo "$hits" | head -5 | sed 's/^/       /'; }
 
 # 2026-08-26：deploy-relay.sh 在 `cd` 之后才解析 $(dirname "${BASH_SOURCE[0]}")，
 # 相对路径当场失效，取日志那步静默失败。当天 cwd 类问题共撞 37 次。
-echo "▶ 4/20 脚本目录必须在 cd 之前算好"
+echo "▶ 4/21 脚本目录必须在 cd 之前算好"
 hits=""
 while IFS= read -r f; do
   cdline=$(grep -n '^cd ' "$f" | head -1 | cut -d: -f1)
@@ -64,7 +64,7 @@ done < <(find scripts -name '*.sh' ! -path "*/lint-repo.sh")
 [ -z "$hits" ] && ok "没有 cd 之后才解析脚本目录的写法" || note "在 cd 之后解析路径: $hits"
 
 # 2026-08-26：RELEASE-NOTES.md 忘了加进清单，部署报成功而机器上根本没这个文件。
-echo "▶ 5/20 部署清单要包含更新说明"
+echo "▶ 5/21 部署清单要包含更新说明"
 if grep -q 'RELEASE-NOTES.md' relay/make-manifest.py 2>/dev/null; then
   ok "make-manifest 会带上 RELEASE-NOTES.md"
 else
@@ -74,10 +74,10 @@ fi
 # 2026-08-26：新写的测试函数被 `>>` 追加到了 `main()` 之后，调用时还没定义。
 # 测试跑一遍就会 NameError，所以这条直接用「全部测试能跑通」兜住。
 if [ -n "${LINT_SKIP_TESTS:-}" ]; then
-  echo "▶ 6/20 中继测试全绿"
+  echo "▶ 6/21 中继测试全绿"
   echo "  ⏭ 已跳过（调用方自己会跑一遍，这里再跑是重复）"
 else
-echo "▶ 6/20 中继测试全绿"
+echo "▶ 6/21 中继测试全绿"
 # 并行跑：这道闸每次部署会被跑两遍（部署自己一遍、闸门自检里的
 # lint-repo 一遍），串行十几秒全是白等。判据没松：退出码要 0，
 # 且最后一行必须写着 passed。
@@ -111,7 +111,7 @@ fi
 # 它永远不会被调用，测试照样打印 "all checks passed"、闸门照样放行。
 # 上面那条「测试全绿」拦不住：那个函数根本没被执行，谈不上红不红。
 # 所以这里查的是「定义了却没人调用」这一整类，而不是某一次的写法。
-echo "▶ 7/20 没有永远不会被执行的代码"
+echo "▶ 7/21 没有永远不会被执行的代码"
 if out=$(python3 scripts/mac/lib/deadcode.py relay scripts 2>&1); then
   ok "$(tail -1 <<<"$out")"
 else
@@ -119,7 +119,7 @@ else
   sed 's/^/    /' <<<"$out"
 fi
 
-echo "▶ 8/20 手机页文案不许有私人措辞"
+echo "▶ 8/21 手机页文案不许有私人措辞"
 # 规矩见 docs/PHONE-COPY-RULES.md。文档拦不住，闸门才拦得住：
 # 2026-09-04 页面上写着「上游 beta.5 那阵它是坏的……中继在 09-04 开机时开了回来」，
 # 用户的话是「太私人措辞了」。命中下面这些词就拒绝提交。
@@ -140,7 +140,7 @@ fi
 # （它只看名字有没有绑定过，不看先读后绑定）。pyflakes 的 F823 一行就报。
 # 顺带用机器上那个版本的 Python（3.14）严格编译：`'\d'` 这类非法转义在 3.12+
 # 是 SyntaxWarning、将来是 SyntaxError，本地 3.9 一声不吭。
-echo "▶ 9/20 静态检查（pyflakes + 3.14 严格编译）"
+echo "▶ 9/21 静态检查（pyflakes + 3.14 严格编译）"
 PY314="$HOME/.local/bin/python3.14"
 if ! command -v uvx >/dev/null; then
   note "uvx 没装（brew install uv），pyflakes 跑不了"
@@ -169,7 +169,7 @@ else
   note "找不到 $PY314，没法按机器的 Python 版本编译"
 fi
 
-echo "▶ 10/20 测试语料必须入库"
+echo "▶ 10/21 测试语料必须入库"
 # 2026-09-08：.gitignore 的 *.log 把 relay/tests 下的 12 个日志样本挡在库外，
 # 新克隆里 10 条回放全判失败、两个测试直接崩，而代码一个字没错。
 # 语料不入库 = 闸门在别的机器上失效，且失效得像「代码坏了」。
@@ -179,7 +179,7 @@ while IFS= read -r f; do
 done < <(find relay/tests/fixtures relay/tests/replay -name '*.log' -o -name '*.json' 2>/dev/null)
 [ "$missing" = 0 ] && ok "测试语料都在库里"
 
-echo "▶ 11/20 中继的状态只能由中继自己写"
+echo "▶ 11/21 中继的状态只能由中继自己写"
 # 2026-09-08：状态收口把开关搬进 state.json，桌面那个 .bat 还在写旧的
 # skip-next-shutdown.flag——按下去界面显示「不关机」，中继照常关机，一声不吭。
 # 凡是中继会读的状态，外部脚本只能调它的函数，不许自己写文件。
@@ -192,7 +192,7 @@ else
   ok "没有外部脚本直接写状态文件"
 fi
 
-echo "▶ 12/20 公开仓库里不许有他人身份信息"
+echo "▶ 12/21 公开仓库里不许有他人身份信息"
 # 仓库是 public 的。别人的姓名、主机名、登录方式一旦提交就等于公开挂出去。
 if hits=$(grep -rnE '卢智超|Administrator[^a-zA-Z].{0,20}(空密码|无密码|自动登录)' \
           --include='*.md' --include='*.py' --include='*.sh' --include='*.js' \
@@ -203,7 +203,7 @@ else
   ok "没有他人身份信息"
 fi
 
-echo "▶ 13/20 文档和脚本都要有入口"
+echo "▶ 13/21 文档和脚本都要有入口"
 # 2026-09-08：40 篇文档没有任何索引，只有 5 篇能从 CLAUDE.md 走到；
 # 66 个脚本里只有 18 个在工具表里，包括「手动派发唯一入口」run-one.sh。
 # 没有入口 = 下一次会话读不到 = 写了白写，而且会重复造一个。
@@ -223,7 +223,7 @@ for f in scripts/mac/*.sh scripts/windows/*.py scripts/windows/*.bat; do
 done
 [ "$miss" = 0 ] && ok "每个入口脚本都有文档提到"
 
-echo "▶ 14/20 部署清单要和代码对得上"
+echo "▶ 14/21 部署清单要和代码对得上"
 # 2026-09-08 审出来：历史上 546 个带 manifest 的提交里，174 个改了真代码却和清单
 # 对不上（32%）。后果是**静默的**：机器开机比哈希，发现「本机文件都和清单一致」，
 # 不下载、不写日志、不播报，还照样把版本号刻上去——那次修改永远上不了机器。
@@ -251,7 +251,7 @@ else
   sed 's/^/       /' <<<"$out"
 fi
 
-echo "▶ 15/20 文档自检（check-docs --local）"
+echo "▶ 15/21 文档自检（check-docs --local）"
 # 2026-09-08：这个检查器一直存在、一直在报错，却没有任何闸门会跑它，所以
 # 「文档说的和代码做的对不对得上」这件事从来没人盯。只跑本地部分（纯只读、不联网）。
 if out=$(python3 scripts/mac/check-docs.py --local 2>&1); then
@@ -261,7 +261,7 @@ else
   grep -E "FAIL" <<<"$out" | sed 's/^/       /'
 fi
 
-echo "▶ 16/20 日志名要和模块名对得上"
+echo "▶ 16/21 日志名要和模块名对得上"
 # 2026-09-08 审出来：selfupdate.py 的日志名叫 ark.update、statestore.py 叫 ark.state、
 # sanity_plan.py 叫 ark.sanity。翻日志时按模块名 grep 一无所获，会得出「这个模块没跑」
 # 的错误结论——PITFALLS.md 里那条 WinError 10054 当时就是这么被找了半天。
@@ -273,7 +273,7 @@ else
   sed 's/^/       /' <<<"$out"
 fi
 
-echo "▶ 17/20 测试里的 check() 只准有一个意思"
+echo "▶ 17/21 测试里的 check() 只准有一个意思"
 # 2026-09-08：66 个测试各写各的 check()，其中两个把第二、第三个参数的意思写反了
 # （名字, 成立与否, 补充说明）。在那两个文件里按大多数人的习惯写一句比较，
 # 期望值会被当成说明打出来，断言退化成「实际值是不是真的」——永远通过，一声不吭。
@@ -285,7 +285,7 @@ else
   sed 's/^/       /' <<<"$out"
 fi
 
-echo "▶ 18/20 指向 CODE-HISTORY 的锚点要唯一、上面那句话要说完"
+echo "▶ 18/21 指向 CODE-HISTORY 的锚点要唯一、上面那句话要说完"
 # 2026-09-08: that document has 5 groups of same-named sections, so a pointer into it
 # lands on the first one - which explains a different thing entirely. The same move
 # left two dozen half-finished sentences in the code (「…has NO process of its」 and then
@@ -298,7 +298,7 @@ else
   sed 's/^/       /' <<<"$out"
 fi
 
-echo "▶ 19/20 ruff（让那些 noqa 真的有人验）"
+echo "▶ 19/21 ruff（让那些 noqa 真的有人验）"
 # 2026-09-08: the repo held 521 `# noqa:` comments while there was no ruff config and
 # nothing - no script, no CI - had ever run ruff. Not one of them had been checked.
 # One named the rule PLC4015 (the real one is PLC0415) and had been quietly wrong ever
@@ -314,7 +314,19 @@ else
   sed 's/^/       /' <<<"$out" | head -12
 fi
 
-echo "▶ 20/20 注释里的中文只准变少"
+echo "▶ 20/21 桌面串流图标是不是当前参数编出来的"
+# The parameters live in one file, but the two desktop apps are compiled snapshots
+# of them: change a value and stream-ins.sh picks it up at once while the icons the
+# user double-clicks keep the old one. Both still launch and neither complains, so
+# nothing noticed - MAC-CHANGES.md claimed the two agree with no check behind it.
+if out=$(python3 scripts/mac/lib/stream_apps_current.py); then
+  ok "$(tail -1 <<<"$out")"
+else
+  note "桌面图标和当前参数对不上："
+  sed 's/^/       /' <<<"$out"
+fi
+
+echo "▶ 21/21 注释里的中文只准变少"
 # The user, 2026-09-08: 「除了 readme 之外的部分都用英文，因为是你看的不是人看的。」
 # docs/ was converted that day; the code still carries three thousand-odd lines.
 # Converting them in one sweep would touch nearly every file, so this is a ratchet,
