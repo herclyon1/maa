@@ -1,7 +1,7 @@
 {
- "version": 20260908202150,
+ "version": 20260908202236,
  "files": {
-  "RELEASE-NOTES.md": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+  "RELEASE-NOTES.md": "a62b01a22f95f5270bc8ccaa9890e03edc6f7b4e",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
   "ark_relay/__main__.py": "5564de3621066afa4ce9eee284ce09be374ed3aa",
   "ark_relay/annihilation.py": "5ec4c927c131d2aefc58aebbdda591c37fb672e4",
@@ -77,7 +77,7 @@
   "ark_relay/wuwa_boss.py": "6c93e8e3d82b1bef731f67da4a955cb0dcb0a798",
   "ark_relay/wuwa_forgery.py": "b77d8a2194ebca4c4a1425c39ae4c50380af4443",
   "ark_relay/wuwa_tacet.py": "919a879226eee64140007501f8a64563a6a878f7",
-  "boot_stages.py": "3f445d644434741f6250722ef73249389438119c",
+  "boot_stages.py": "499daf978ece1f10560db84f488c1c8e48b0e8cb",
   "run.py": "0db6cde8fb8119323d991ec512d1b2b43e869b93",
   "service.py": "31da505707d191d1c7c10b57840a6152216eff4e"
  }

@@ -290,8 +290,8 @@ def _stage_announce_update(notifier, log) -> None:
             body = "\n".join(lines)
             # Two deploys of the same change - one refused by a gate, fixed, and
             # deployed again - are one change to the person reading his phone, and
-            # he got the same paragraph twice within five minutes on 2026-09-09
-            # (「为什么这个有时候一模一样的更新要部署两次」). The version differs, so
+            # he got the same paragraph twice within five minutes on 2026-09-09 and
+            # asked why the identical update ships twice. The version differs, so
             # nothing upstream can tell; the notes are what he actually reads, so
             # they are what gets compared. A changed line pushes as normal.
             from ark_relay.statestore import StateStore  # noqa: PLC0415
