@@ -1,5 +1,50 @@
 # OK-WW local patches — what changed, why, and what counts as success
 
+> **Corrected 2026-09-08. Everything below the inventory describes a state that no
+> longer exists** and was misleading on the one morning it was needed: 09-08's
+> failure was an `ensure_main` timeout, and the first section here sends the reader
+> looking for a `_ensure_main_keep_book` patch that **does not exist anywhere in the
+> code**. Section 2 (「领奖顺序」) is now a deliberate *revert*, not an application,
+> and section 3's "planned feature" (choosing which nest to farm) has been shipped
+> for weeks. The header's 「Patched file: DailyTask.py」 is wrong too: six files are
+> touched. Read the inventory first; treat the rest as history.
+
+## The inventory — what `ensure_patches()` actually does, in order
+
+Source of truth is `relay/ark_relay/okww_patch.py:ensure_patches`; each patch's text
+lives in `relay/ark_relay/okww_patches/<name>.py`. Run it and it tells you what it
+changed; an empty answer means everything was already in place.
+
+**Applied every boot:**
+
+| # | What | Where |
+|---|---|---|
+| 1 | `NightmareNestTask.py` replaced wholesale with our copy — this is where the fixed `ensure_main` and 「只刷指定点位」 live | `okww_files/NightmareNestTask.patched.py` |
+| 2 | Weekly boss runs **before** the daily stamina farming — otherwise the daily step burns all 180 stamina and the three 60-stamina chests are impossible | `okww_patches/stamina.py` |
+| 3 | 「这次不刷体力」 marker honoured | `okww_patches/nofarm.py` |
+| 4 | After the boss dies, walk to the crystal and actually spend the 60 waveplates — entering the domain does not claim it | `okww_patches/claim.py` |
+| 5 | Two screenshots of the tacet field, for the daily report | `okww_patches/tacetshot.py` |
+| 6 | Skip the weekly boss when waveplates are short, instead of failing inside it | `okww_patches/nowave.py` |
+| 7 | Retry cap | `okww_patches/retrycap.py` |
+| 8 | Let-pass | `okww_patches/letpass.py` |
+| 9 | Screenshot the remaining-runs count before entering | `okww_patches/count.py` |
+
+**Deliberately reverted every boot** (they are listed so an old copy left behind by
+an update is removed, and so nobody re-adds them): the four earlier versions of the
+claim patch, tacetshot v1, count v1, nowave v1/v2/v3a/v3b, `farmerr` (its premise
+was wrong - OK-WW's own `error()` already prints the stack), `shot` / `shot2` /
+`teamshot` (evidence screenshots whose questions have been answered), 「领奖顺序」,
+the two `DomainTask` patches, and `starve`.
+
+**Why every historical version is reverted before the current one is applied:** the
+v1/v2 replacement texts each end with the anchor they matched, so applying a new
+version on top stacks another layer instead of replacing it. See
+`docs/CODE-HISTORY.md`「okww_patch.py:ensure_patches」.
+
+---
+
+## History (out of date, kept for the upstream detail)
+
 Patched file: `D:\ark\okww\data\apps\ok-ww\working\src\task\DailyTask.py`
 Backups: `.bak-20260825-132036`, `.bak3-20260825-133303`
 **OK-WW's auto-update overwrites these changes** (updates come over CNB git). Until upstream merges
