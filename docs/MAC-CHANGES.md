@@ -191,3 +191,10 @@ are CDN nodes in Singapore (240d:c010, Tencent Singapore) and Japan (2404:2280, 
 and the traffic never leaves Southeast Asia. A round trip from Tokyo to Shanghai takes at
 least 25 ms at the speed of light, so 10 ms is physically impossible. On top of that,
 Wuthering Waves' servers are IPv4-only, so there is no IPv6 path to take.
+
+### 云原神.app(2026-09-09 新增)
+
+桌面上的第四个启动器。作用:WARP 没连就 `warp-cli connect`,然后用 Chrome 打开 `https://ys.mihoyo.com/cloud/`。
+主程序是 clang 编译的 arm64 二进制,壳脚本在 `Contents/Resources/run.sh`。
+重建:`scripts/mac/make-cloud-genshin-app.sh`。删掉即撤销,不改任何系统设置。
+配套的 Chrome 插件见 `docs/CLOUD-GENSHIN-WARP.md`。
