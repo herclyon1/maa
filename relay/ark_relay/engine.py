@@ -233,6 +233,7 @@ class Engine:
         # noticing - shutdown and the daily report are the last two steps, exactly the
         # ones that must not be killed off by an earlier one.
         for what, step in (
+            ("刷声骸到点收工", self._echo_farm_deadline),
             ("OK-WW 补丁", self._patch_okww_if_updated),
             ("推送积压告警", self._flush_pending),
             ("剿灭开关", self._enforce_annihilation),
@@ -248,6 +249,18 @@ class Engine:
             except Exception:
                 log.exception("本轮「%s」这一段出错，跳过它继续", what)
         return len(records)
+
+    def _echo_farm_deadline(self) -> None:
+        """End a 「farm until HH:MM」 run when its moment arrives.
+
+        OK-WW counts runs, not minutes, so the clock has to live here. Checked on
+        every tick, which is event-driven already - no timer of its own.
+        """
+        from . import echofarm  # noqa: PLC0415
+        note = echofarm.tick(self.cfg)
+        if note:
+            log.info("刷声骸：%s", note)
+            self.notifier.send(texts.ECHO_FARM_DONE, note)
 
     def _patch_okww_if_updated(self) -> None:
         """Re-apply the patches if OK-WW updated itself; leave it alone while a script runs."""

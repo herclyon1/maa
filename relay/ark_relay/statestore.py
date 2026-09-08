@@ -62,6 +62,7 @@ FIELDS: dict[str, dict[str, str]] = {
         "maaend_disabled_spmed": "加强剂坏掉时关掉的任务：{tasks, since}",
     },
     "queues": {
+        "echo_farm": "正在刷的声骸 boss：{boss, name, until, started, saved}",
         "pending": "还没推出去的失败告警：{脚本|账号: 记录}",
         "phone_seen": "手机指令去重用的消息 id 列表",
         "inbox_version": "待办清单处理到哪一版",

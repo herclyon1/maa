@@ -315,6 +315,26 @@ function labelOf(g, f) {
 
 // 「现在在跑什么」每条状态包都带着，页面以前一个字不显示——而它正是
 // 「按下去会不会被丢掉」和「这趟跑到哪个游戏了」的答案。
+// 刷 4C 声骸那一块。正在刷的时候只给「提前收工」，不给再开一趟——中继那边也会拒。
+function echoFarmBlock(relay) {
+  const cur = (relay || {})["刷声骸"] || {};
+  if (cur["到"]) {
+    return `<div class="hint">🥚 正在刷「${cur["名字"] || "?"}」，刷到 ${String(cur["到"]).slice(11)} 为止（${cur["从"] ? String(cur["从"]).slice(11) + " 开始" : ""}）</div>
+      <div class="acts"><button class="wide" id="echofarmstop">提前收工（并还原配置）</button></div>`;
+  }
+  const opts = ((snap && snap.bosses) || []).map(
+    (b) => `<option value="${b[0]}">${b[0]}. ${b[1]}</option>`).join("");
+  if (!opts) return "";
+  return `<div class="row"><label>刷 4C 声骸
+      <span class="hint">盯着一个强敌反复打，捡它掉的 4 花声骸。按时间停，不按次数。
+      名字后面的号是游戏里「讨伐强敌」列表从上往下数的位置</span></label>
+      <select id="efboss">${opts}</select></div>
+    <div class="row"><label>刷到几点（机器时间）
+      <span class="hint">填 08:30 这种。已经过了就算明天的这个点</span></label>
+      <input type="text" id="efuntil" value="08:30" inputmode="numeric"></div>
+    <div class="acts"><button class="wide" id="echofarm">开始刷</button></div>`;
+}
+
 function runLine() {
   const run = (snap && snap.run) || {};
   const busy = run["在跑的"] || [];
@@ -360,6 +380,7 @@ function render() {
         ${thisShift && thisShift.length ? "这趟跑：" + thisShift.join("、") : ""}</span></label>
       <select id="queue">${qopts}</select></div>` : ""}
     ${runLine()}
+    ${echoFarmBlock(relay)}
     ${relay["调试模式"] ? `<div class="warn">🔧 调试模式开着，到 ${relay["调试模式"]}——这期间跑完不关机。
       <button id="debugoff">取消调试模式</button></div>` : ""}
     <div class="acts">
@@ -553,6 +574,22 @@ function wire() {
       `已让「${theQueue()}」现在开跑。机器关着时这条会等到下次开机才执行，` +
       "那时候它本来也要跑，所以等于没多跑一趟");
   };
+  // 刷 4C 声骸：选一个 boss、选刷到几点，中继到点自己收工并还原配置。
+  // 用户 2026-09-09：「刷的时候不要按次数，而是时间来，比如说刷到北京时间八点半这种。」
+  const ef = $("#echofarm");
+  if (ef) ef.onclick = () => {
+    const boss = Number(($("#efboss") || {}).value || 0);
+    const until = (($("#efuntil") || {}).value || "").trim();
+    const nm = (((snap && snap.bosses) || []).find((b) => b[0] === boss) || [])[1] || `第 ${boss} 个`;
+    if (!boss || !/^\d{1,2}:\d{2}$/.test(until)) {
+      toast("先选 boss，再填结束时刻（08:30 这种）", 4000); return;
+    }
+    if (!confirm(`刷「${nm}」到机器时间 ${until} 为止？期间脚本会一直在打，别的任务不跑。`)) return;
+    oneShot({ action: "echo_farm", confirmed: true, boss, until, name: nm },
+            `已让它刷「${nm}」到 ${until}。到点中继会自己收工并把配置还原`);
+  };
+  const efs = $("#echofarmstop");
+  if (efs) efs.onclick = () => oneShot({ action: "echo_farm_stop" }, "已收工，配置还原");
   // 调试模式：中继早就认「取消」这条指令，页面一直没有按钮发它。
   const dbg = $("#debugoff");
   if (dbg) dbg.onclick = () => {

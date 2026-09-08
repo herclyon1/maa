@@ -42,6 +42,8 @@ above.
 | `gameupdate.py`（聚合）+ `gameupdate_games.py` | 队列跑完后更新游戏客户端，再单独补跑；三家游戏各自的更新流程单独一个文件 |
 | `okww_patch.py` + `okww_patches/` | 贴在 OK-WW 源码上的本地补丁，一个补丁一个文件 |
 | `wuwa_tacet.py` / `wuwa_forgery.py` | 鸣潮副本序号 → 名字 → 掉落，手机页与此同源 |
+| `echofarm.py` | 刷 4C 声骸：改配置、在 session 1 起 OK-WW、到点收工并还原配置 |
+| `wuwa_boss.py` | 鸣潮「讨伐强敌」列表序号 → boss 名字，手机页的下拉与此同源 |
 | `banners.py` / `efstatus.py` / `snapshot.py` / `desktop.py` / `phone.py` | 卡池播报 / 终末地开服状态 / 配置快照 / 桌面助手 / 手机通道 |
 | `outcome.py` | 跑完核对「到底干成了什么」，没干成必须出声 |
 | `maintenance.py` | 三个游戏官方停服维护公告的机器可读来源 |
@@ -92,6 +94,8 @@ JSON patch.
 | `toggle_task` | no, writes config | **yes** - not implemented; refuses explicitly |
 | `skip_shutdown` | yes | no - **一次性、不带时效**：吃掉下一次真正要执行的关机，用完即失效。开了不取消会一直等到下一趟队列跑完才关，机器可能白开一夜。桌面 `中继关机开关.bat` 和手机页按的都是它 |
 | `weekly_boss` | yes | no - 鸣潮周本「打第几个」。次数（3）和难度（90 级）是游戏规则，钉死在中继里不给改 |
+| `echo_farm` | yes | yes - 鸣潮：盯着 F2「讨伐强敌」里的第几个 boss 刷 4C 声骸，**刷到指定时刻为止**（`until` 写 `08:30` 这种，按机器的钟）。开跑前把 FarmEchoTask 的原配置整份存下来，收工时还原——那份配置和每日的周本共用 |
+| `echo_farm_stop` | yes | no - 提前收工：停掉刷取并把配置还原 |
 | `set_config` | no, writes config | **yes** - 改 MAS 侧用户配置，**只改已存在的字段**，凭空造的会被拒 |
 | `set_master` | no, writes config | **yes** - 改脚本自己的母本配置（MaaEnd / OK-WW / MAA）。这两个脚本的快速配置是关的，MAS 侧改了不生效，所以手机页那两段走的是这条 |
 

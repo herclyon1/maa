@@ -38,11 +38,11 @@ log = logging.getLogger("ark.commands")
 # ---------- gate ① : the whitelist ----------
 
 # Actions that only change what happens next, and undo themselves.
-REVERSIBLE = {"skip_today", "debug_mode", "skip_shutdown", "weekly_boss"}
+REVERSIBLE = {"skip_today", "debug_mode", "skip_shutdown", "weekly_boss", "echo_farm_stop"}
 
 # Actions that write to a config file on disk.
 MUTATING = {"set_stage", "set_medicine", "toggle_task", "set_wait_time",
-            "set_config", "set_master", "run_now"}
+            "set_config", "set_master", "run_now", "echo_farm"}
 
 ALLOWED = REVERSIBLE | MUTATING
 
@@ -665,6 +665,20 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             if ok:
                 gate.enforce()
             return ok, msg
+        if action == "echo_farm":
+            # Farm one overworld boss for its 4-cost echoes until a wall-clock time.
+            # The count OK-WW understands is set high; echofarm owns the clock.
+            from . import echofarm  # noqa: PLC0415
+            from .config import Config  # noqa: PLC0415
+            from .wuwa_boss import label  # noqa: PLC0415
+            return echofarm.start(Config(), cmd.get("boss"), cmd.get("until"),
+                                  str(cmd.get("name") or "") or label(cmd.get("boss")))
+        if action == "echo_farm_stop":
+            from . import echofarm  # noqa: PLC0415
+            from .config import Config  # noqa: PLC0415
+            cfg = Config()
+            note = echofarm.finish(cfg, "手动停止")
+            return (True, note) if note else (True, "本来就没有在刷声骸")
         if action == "skip_shutdown":
             # The 「今晚别关机」 button on the phone. It carries no expiry: it eats
             # the **next** shutdown that would actually be executed, once, and is

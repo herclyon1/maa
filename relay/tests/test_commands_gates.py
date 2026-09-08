@@ -115,6 +115,7 @@ minimal = {
     "set_wait_time": {"value": None}, "toggle_task": {"name": "x"},
     "set_config": {}, "set_master": {}, "run_now": {},
     "skip_today": {}, "debug_mode": {"off": True}, "weekly_boss": {},
+    "echo_farm": {"boss": 1, "until": "08:30"}, "echo_farm_stop": {},
     "skip_shutdown": {"off": True},
 }
 check("每个白名单动作都准备了样例指令",

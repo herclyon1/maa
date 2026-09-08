@@ -563,6 +563,9 @@ def state_payload(cfg, state_dir: Path) -> dict:
         wb = weeklyboss.WeeklyBossGate(state_dir, automas).settings()
         out["relay"] = {
             "调试模式": modes.debug_until(state_dir) or "",
+            "刷声骸": (lambda r: {"名字": r.get("name"), "到": r.get("until"),
+                                  "从": r.get("started")} if r else {})(
+                __import__("ark_relay.echofarm", fromlist=["x"]).current(state_dir)),
             "下次别关机": modes.skip_armed(state_dir),
             "周本": wb,
             # The three "once a week" things share one shape: done this week /
@@ -575,6 +578,11 @@ def state_payload(cfg, state_dir: Path) -> dict:
         }
     except Exception:  # noqa: BLE001
         out["relay"] = {}
+    try:
+        from .wuwa_boss import choices  # noqa: PLC0415
+        out["bosses"] = [[i, n] for i, n in choices()]
+    except Exception:  # noqa: BLE001
+        out["bosses"] = []
     try:
         out["options"] = _options(cfg)
     except Exception:  # noqa: BLE001
