@@ -114,5 +114,24 @@ for bad in (0, 31, "一", None):
     check(f"拒绝 {bad!r}", echofarm.start(c2, bad, "08:30")[0], False)
     check(f"拒绝 {bad!r} 后配置没动", cfg_now(c2), ORIGINAL)
 
+print("\n[收工那一步本身：先停计划任务，再把 OK-WW 的进程停干净]")
+# The real function, not the stub - it is what actually ends the run on the machine.
+import subprocess as _sp                                          # noqa: E402
+import ark_relay.preupdate_okww as _pk                            # noqa: E402
+_ran, _quiesced = [], []
+_real_run, _real_q = _sp.run, _pk._okww_quiesce
+_sp.run = lambda *a, **k: _ran.append(list(a[0]) if a else []) or None
+_pk._okww_quiesce = lambda *a, **k: _quiesced.append(1)
+try:
+    # The stub above replaced the module attribute; reload to get the real one back.
+    import importlib                                              # noqa: E402
+    _mod = importlib.reload(sys.modules["ark_relay.echofarm"])
+    _mod.stop_okww()
+    check("结束了计划任务", any("schtasks" in c and "/end" in c for c in _ran), True)
+    check("任务名对得上", any(_mod.TASK_NAME in c for c in _ran), True)
+    check("把 OK-WW 的进程也停了", _quiesced, [1])
+finally:
+    _sp.run, _pk._okww_quiesce = _real_run, _real_q
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
