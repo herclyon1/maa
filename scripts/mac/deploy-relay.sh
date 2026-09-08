@@ -336,7 +336,11 @@ echo "   （relay/RELEASE-NOTES.md 已清空——下次部署前必须写清楚
 # GitHub 上还是旧版本号，自更新一比「清单比本机旧」就拒绝更新——
 # 它是对的，只是永远等不到新清单。2026-08-30 查了半天 CDN 缓存，
 # 真因在这里：不是缓存没刷新，是根本没推上去。
-if git -C "$HERE/.." diff --quiet -- relay/manifest.json; then
+# RELEASE-NOTES.md 也一起提交：它刚被这次部署清空了，是被跟踪文件。
+# 2026-09-08 之前脚本不管它，于是每次部署我都得手工再补一个「部署后清空 RELEASE-NOTES」
+# 提交——历史里因此有一串一模一样的标题，而且忘了补的那几次工作树一直是脏的，
+# git status 就不能再用来判断「我有没有没提交的活」。
+if git -C "$HERE/.." diff --quiet -- relay/manifest.json relay/RELEASE-NOTES.md; then
   echo "▶ manifest 没变化，不用推"
 else
   # 这三步任何一步失败都必须出声并以非零退出。原来 add/commit 都吞掉了错误，
@@ -345,7 +349,8 @@ else
   # 那正是第 328 行注释里写的那个坑，当时只修了一半。
   # 机器侧此刻已经部署好了，所以这里非零退出的语义是：「机器好了，仓库没同步，
   # 自更新用不了，去手工处理」。
-  if ! git -C "$HERE/.." add relay/manifest.json relay/state/last-deployed-notes.sha1; then
+  if ! git -C "$HERE/.." add relay/manifest.json relay/state/last-deployed-notes.sha1 \
+       relay/RELEASE-NOTES.md; then
     echo "✋ git add 失败：manifest 没能提交，自更新会一直看到旧清单" >&2
     exit 9
   fi

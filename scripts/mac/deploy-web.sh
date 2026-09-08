@@ -55,5 +55,28 @@ if ! git -C "$HERE" diff --quiet -- web/; then
     && echo "▶ 版本号已提交（$V）" \
     || { echo "✋ 版本号提交失败，工作树还是脏的" >&2; exit 9; }
 fi
-echo "✅ 已发布：https://herclyon1.github.io/maa/"
-echo "   等 1~2 分钟生效；手机上直接刷新即可，不用清缓存。"
+# 推完不等于发布好了。GitHub Pages 要重新构建，一两分钟内取到的还是上一版——
+# 这是整套部署里最后一条「推完就宣布成功」的路（2026-09-08 审出来）。
+# 中继那条早就是「哈希核对 + 服务确认 RUNNING」才算完，这条也得实测。
+echo "▶ 等 Pages 真的发出新版本"
+python3 - "$V" <<'PY'
+import sys, time, urllib.request
+v = sys.argv[1]
+url = "https://herclyon1.github.io/maa/index.html"
+for i in range(1, 21):                      # 最多等 100 秒
+    try:
+        req = urllib.request.Request(url, headers={"Cache-Control": "no-cache"})
+        html = urllib.request.urlopen(req, timeout=10).read().decode("utf-8", "replace")
+    except Exception as e:                  # noqa: BLE001
+        print(f"  [{i}/20] 取不到：{type(e).__name__}")
+    else:
+        if f"app.js?v={v}" in html:
+            print(f"✅ 手机页已经在发 v={v}（实测取回来核对过）")
+            print("   https://herclyon1.github.io/maa/ 手机上直接刷新即可，不用清缓存。")
+            raise SystemExit(0)
+        print(f"  [{i}/20] 还是旧版")
+    time.sleep(5)
+print("⚠️ 等了 100 秒，Pages 还在发旧版。代码推上去了，但**手机上此刻拿到的还是上一版**。")
+print("   再等几分钟自己刷新页面核对，或重跑本脚本。")
+raise SystemExit(1)
+PY

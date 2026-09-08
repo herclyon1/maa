@@ -1274,7 +1274,7 @@ outside the machine - silently, which is the whole hazard this file is about.
 | `scripts/mac/purge-cdn.py` | purge jsDelivr and wait for the new version to be served |
 | `scripts/mac/edit-json.py` | safe remote JSON edit: locate → replace → validate → structural diff |
 | `scripts/mac/check-docs.py` | verify the facts in these docs against repo and machine |
-| `scripts/mac/mem-sample.sh` | LaunchAgent, samples Mac memory every 600s (a time series, not polling) |
+| `scripts/mac/mem-sample.sh` | 内存压力采样器。**采集期已结束（2026-08-17～09-08，3169 条），LaunchAgent 已撤除，现在跑它不会有人读**。结论和数据在 `data/README.md` 与 `data/mem-pressure.csv`；留着脚本是为了将来想再采一段时不用重写 |
 | `scripts/mac/push.py` | manual push to the notification channels |
 | `scripts/mac/make-app.sh` | wrap a script as a double-clickable .app |
 | `scripts/mac/strip-transcript-images.py` | shrink a session transcript that has grown huge with screenshots |

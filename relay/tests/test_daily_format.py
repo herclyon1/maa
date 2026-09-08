@@ -13,6 +13,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir
 from ark_relay import collector, core
 from ark_relay.config import SERVER_TZ
 
@@ -41,8 +43,7 @@ check("进本 2 局", ww.get("okww_runs"), 2)
 check("波片 168→88→8 花了 160", ww.get("okww_stamina_spent"), 160)
 check("备用体力没动", ww.get("okww_backup_spent"), None)
 check("进了游戏就不是 unreachable", ww.get("okww_unreachable"), None)
-import tempfile as _tf  # noqa: E402
-bad = Path(_tf.mkdtemp()) / "bad.log"; bad.write_text("2026-09-02 09:18:58,791 ERROR ok.core.start_controller start_controller:waiting for game to start error 鸣潮 is not connected\n", encoding="utf-8")
+bad = tmpdir() / "bad.log"; bad.write_text("2026-09-02 09:18:58,791 ERROR ok.core.start_controller start_controller:waiting for game to start error 鸣潮 is not connected\n", encoding="utf-8")
 check("等不到窗口且一局没开 → unreachable", collector.parse_okww_log(bad).get("okww_unreachable"), True)
 check("剩 8", ww.get("okww_stamina_left"), 8)
 check("两局都是双倍", ww.get("okww_runs_double"), 2)

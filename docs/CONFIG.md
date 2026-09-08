@@ -515,9 +515,31 @@ sc.exe failure sshd reset= 86400 actions= restart/5000/restart/10000/restart/300
 | `ARK_OKWW_LOG` | 直接指定 OK-WW 的日志文件。不设就取 `ARK_OKWW_DIR` 下 `data/apps/ok-ww/working/logs` 里最新的那个 |
 | `ARK_KEEP_TMP` | 只影响测试：设成 1 就不清理临时目录，留现场排查用 |
 
+| `ARK_PHONE_TOPIC` | 手机遥控用的 ntfy 主题。**没有它整个手机页就是聋的**——机器收不到指令、页面也看不到状态 |
+| `ARK_PHONE_PIN` | 手机页的口令。指令要带对才认；不设等于谁拿到主题名谁能下指令 |
+| `ARK_INBOX_URL` | 仓库信箱那份 `queue/config.json` 的地址。不设走内置的 GitHub 地址，改它只在换仓库时用 |
+| `SKLAND_TOKEN` | 森空岛的登录凭证。日报里的理智、卡池、练度都靠它；过期了那几段会静静地空掉 |
+| `WECOM_TOUSER` | 企业微信推给谁，默认 `@all`。当前企业微信通道因 60020 不可用，全部推送走 Server酱 |
+| `ARK_LLM_KEY` | 日报开头那句人话总结用的模型密钥。**不设不会报错**，只是少那一句 |
+| `ARK_LLM_BASE_URL` | 上面那个模型的地址，默认 `https://api.deepseek.com` |
+| `ARK_LLM_MODEL` | 模型名，默认 `deepseek-chat` |
+
+以下三个不在游戏机上，是 Mac 侧脚本和 GitHub Actions 用的：
+
+| 变量 | 意思 |
+|---|---|
+| `TS_OAUTH_CLIENT_ID` / `TS_OAUTH_SECRET` | 开机监督（`scripts/watchdog.py`）问 Tailscale「那台机器在不在线」用的只读 OAuth 客户端。要放进仓库 Secrets，见 `docs/欠的活.md` |
+| `CHECK_CRON` | 同上，GitHub Actions 传进来的定时表达式；空值表示手动触发（全查但只打印不推送） |
+| `IDMAP_STORE` | 只给闸门自检用：让 `idmap.py` 写到一张临时表里，不污染真的登记表 |
+| `UPSTREAM_POST_OFFLINE` | 只给闸门自检用：让 `upstream-post.py` 读缓存而不联网 |
+
+
 **没有 `.env.example`。** 2026-09-08 删掉了：它列的四个变量代码一个都不读，
 而真正要设的三十多个一个没写——照它填等于什么都没设。要设什么以这张表为准，
 这张表由 `scripts/mac/check-docs.py` 的 `[env]` 一节盯着，漏一个闸门就红。
+（2026-09-08 修好了那道闸门本身：它原来只认 `ARK_` 前缀、只扫 `relay/`、
+只认 `environ("X")` 这一种写法，于是 13 个变量从缝里漏过去，
+而这句话还在这里写着「漏一个就红」——说有检查而其实没有，比没有更糟。）
 | `ARK_MAS_PORT` | AUTO-MAS backend port, default `36163`. The pre-update asks it over HTTP on localhost rather than launching anything. |
 | `ARK_STATE_DIR` | relay state, default `./ark-state` |
 | `ARK_LAST_RUN_AFTER` | fallback for the day's last run time, default `21:30`; the real cutoff comes from QueueConfig |

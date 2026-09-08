@@ -1,7 +1,7 @@
 {
- "version": 20260908005310,
+ "version": 20260908010037,
  "files": {
-  "RELEASE-NOTES.md": "b686b058fb57dc722203f93169971501e16efba0",
+  "RELEASE-NOTES.md": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
   "ark_relay/__init__.py": "297e0c5d45a732b40a24be0bfd40f07b174d2a9a",
   "ark_relay/__main__.py": "554327b91e5ed190c4ef184bcd48c0c50299da56",
   "ark_relay/annihilation.py": "407adf683acea1f5d565dafd6f728bd1d0aa7c4f",

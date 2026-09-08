@@ -108,16 +108,25 @@ def check_command_whitelist() -> None:
 
 
 def check_env_vars() -> None:
-    print("\n[env] ARK_* variables used in code vs docs/CONFIG.md")
+    print("\n[env] 代码读的环境变量 vs docs/CONFIG.md")
+    # 2026-09-08 这道闸门本身有三个洞，13 个变量从缝里漏了过去，
+    # 而 CONFIG.md 上还写着「这张表由 check-docs 的 [env] 一节盯着，漏一个闸门就红」：
+    #   ① 只认 ARK_ 前缀 —— SKLAND_TOKEN、WECOM_TOUSER、TS_OAUTH_* 一个都不查；
+    #   ② 只扫 relay/ —— scripts/ 里的 watchdog、idmap、upstream-post 全在视野外；
+    #   ③ 只认 environ("X") 双引号写法 —— 而 config.py 里绝大多数是 _env("X", 默认值)。
     used: set[str] = set()
-    for py in (REPO / "relay").rglob("*.py"):
-        used |= set(re.findall(r'environ(?:\.get)?[(\[]"(ARK_[A-Z_]+)"', py.read_text(encoding="utf-8")))
+    for py in list((REPO / "relay").rglob("*.py")) + list((REPO / "scripts").rglob("*.py")):
+        if "okww_files" in py.parts:
+            continue                      # 上游原样文件，不归我们管
+        text = py.read_text(encoding="utf-8")
+        used |= set(re.findall(r"""environ(?:\.get)?[(\[]\s*["']([A-Z][A-Z0-9_]+)["']""", text))
+        used |= set(re.findall(r"""_env\(\s*["']([A-Z][A-Z0-9_]+)["']""", text))
     doc = (REPO / "docs" / "CONFIG.md").read_text(encoding="utf-8")
     missing = sorted(v for v in used if v not in doc)
     if missing:
-        bad("read by the relay but absent from docs/CONFIG.md: " + ", ".join(missing))
+        bad("代码读了但 docs/CONFIG.md 没写：" + ", ".join(missing))
     else:
-        ok(f"all {len(used)} ARK_* variables the relay reads are documented")
+        ok(f"代码读的 {len(used)} 个环境变量都在 docs/CONFIG.md 里")
 
 
 # ---------- 2. local directives ----------
