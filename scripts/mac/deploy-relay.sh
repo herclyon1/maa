@@ -119,8 +119,18 @@ echo "▶ 1/5 重建 manifest"
 python3 make-manifest.py
 
 lap
-echo "▶ 2/5 语法自检"
+echo "▶ 2/5 语法自检 + 改动覆盖"
 python3 -m py_compile ark_relay/*.py service.py run.py
+# 「改了什么就得证明什么」——用户 2026-09-06 的死命令：
+# 「没有回放案例的改动不许部署。部署脚本读 git diff 里改了哪些模块，
+#   每个模块必须被至少一个回放案例真正执行到。」
+# 判据比原话稍宽一点，理由写在那个脚本的开头：回放语料天然盖不到 shutdown、
+# gameupdate 这类模块，硬要求回放覆盖只会逼人关掉这道闸。所以要求是
+# 「至少有一个测试真的执行到它」，判定类模块另外单独点名提醒。
+if ! python3 "$HERE/../scripts/mac/lib/changed_covered.py"; then
+  echo "  ✋ 有模块改了却没有任何测试跑到它，不给部署。" >&2
+  exit 8
+fi
 
 FILES=$(python3 -c "import json;print(' '.join(json.load(open('manifest.json'))['files']))")
 

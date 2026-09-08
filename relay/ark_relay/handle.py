@@ -7,8 +7,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import shutil
+import tempfile
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -183,6 +186,92 @@ def _warn_if_evidence_stale(eng, rec: RunRecord, dst: Path) -> None:
                             f"{hh:02d}:{mm:02d}:{ss:02d}")
     except Exception:
         log.debug("证据时间范围检查失败", exc_info=True)
+
+
+def _okww_log_file(okww_dir: "str | Path | None") -> "Path | None":
+    """OK-WW 最新的那份日志。找不到出声，不许静静地返回 None。"""
+    if not okww_dir:
+        log.warning("okww_dir 没解析出来，OK-WW 的日志切片存不了")
+        return None
+    logs = Path(okww_dir) / "data" / "apps" / "ok-ww" / "working" / "logs"
+    try:
+        return max(logs.glob("*.log*"), key=lambda q: q.stat().st_mtime)
+    except (OSError, ValueError):
+        log.warning("OK-WW 的日志目录 %s 里没有日志", logs)
+        return None
+
+
+# 拍一张全屏。**必须在交互会话里跑**——中继是服务，跑在 session 0，
+# 那里根本没有桌面，在这边拍只会得到一张黑图（memory relay-runs-in-session-0）。
+_SHOT_PS1 = r"""
+Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+$b = [Windows.Forms.SystemInformation]::VirtualScreen
+$bmp = New-Object Drawing.Bitmap $b.Width, $b.Height
+$g = [Drawing.Graphics]::FromImage($bmp)
+$g.CopyFromScreen($b.Left, $b.Top, 0, 0, $bmp.Size)
+$bmp.Save('%OUT%', [Drawing.Imaging.ImageFormat]::Png)
+"""
+
+
+def _screenshot_to(out: Path) -> bool:
+    """在交互会话里拍一张屏幕存到 out。成功返回 True。"""
+    from .preupdate_common import _PWSH7, _spawn_via_task  # noqa: PLC0415 - 避免导入环
+    ps1 = Path(tempfile.gettempdir()) / f"ark-shot-{os.getpid()}.ps1"
+    try:
+        ps1.write_text(_SHOT_PS1.replace("%OUT%", str(out)), encoding="utf-8")
+        _spawn_via_task(_PWSH7, ps1.parent,
+                        ("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(ps1)))
+        # 计划任务是异步起的，等图落盘。10 秒还没有就是没拍成。
+        for _ in range(20):
+            if out.is_file() and out.stat().st_size > 10_000:
+                return True
+            time.sleep(0.5)
+        return False
+    except Exception:   # 拍不成不许拖垮记账
+        log.warning("截图失败", exc_info=True)
+        return False
+    finally:
+        ps1.unlink(missing_ok=True)
+
+
+def _archive_okww_evidence(eng, rec: RunRecord) -> None:
+    """OK-WW 失败时，把日志切片和**一张当场的屏幕截图**抢救下来。
+
+    2026-09-08 早班撞的：OK-WW 连败三次，全都是上游 `ensure_main` 等不到
+    「大世界 + 队伍」而抛 `Please start in game world and in team!`。
+    要判断游戏卡在哪个画面，只能看那一刻屏幕上是什么——而 OK-WW 的 debug 截图
+    是关着的，中继当时只给 MaaEnd 存证据。结果是**日志说了「等不到大世界」，
+    却没有任何东西说得出当时是什么挡着**。08-26 那次同样的症状，真因是一个
+    「选择复苏物品」弹窗挡了二十分钟（docs/OKWW-STUCK-DIALOG.md），
+    那次是靠人去看屏幕才知道的——不能每次都靠人正好在场。
+
+    整段包 try：抢救证据绝不能挡住记账。
+    """
+    dst = Path(eng.cfg.state_dir) / "evidence" / rec.run_id.replace("/", "_")
+    try:
+        dst.mkdir(parents=True, exist_ok=True)
+        n = 0
+        if log_path := _okww_log_file(eng.cfg.okww_dir):
+            try:
+                tail = log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-800:]
+                (dst / "ok-script.tail.log").write_text("\n".join(tail), encoding="utf-8")
+                n += 1
+            except OSError:
+                log.warning("OK-WW 日志读不出来：%s", log_path, exc_info=True)
+        if eng.cfg.history_dir:
+            for suffix in (".log", ".json"):
+                src_f = Path(eng.cfg.history_dir) / (rec.run_id + suffix)
+                if src_f.is_file():
+                    shutil.copy2(src_f, dst / ("automas-" + src_f.name))
+                    n += 1
+        # 屏幕。这是这个函数存在的理由。
+        if _screenshot_to(dst / "screen.png"):
+            n += 1
+        else:
+            log.error("❌ OK-WW 失败截图没拍成——下次还是只能猜屏幕上是什么")
+        log.info("📦 OK-WW 失败证据已存档 %d 个文件 → %s", n, dst)
+    except Exception:
+        log.warning("存 OK-WW 失败证据时出错，跳过", exc_info=True)
 
 
 def _archive_maaend_evidence(eng, rec: RunRecord) -> None:
@@ -383,6 +472,8 @@ def _hold_for_retry(eng, rec: RunRecord, key: tuple) -> None:
     # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
     if rec.script == "MaaEnd":
         eng._archive_maaend_evidence(rec)
+    elif rec.script == "OK-WW":
+        _archive_okww_evidence(eng, rec)
     log.info("⏳ %s 失败，暂不推送，等重试结果", rec.script)
 
 
