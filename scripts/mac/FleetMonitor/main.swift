@@ -63,6 +63,42 @@ final class Link {
     /// 状态一变就叫醒界面，不等任何定时器。
     var onChange: (() -> Void)?
 
+    // 这条线只知道「连得上」和「连不上」，不知道是谁的错。本机 Wi-Fi 一抖、
+    // tailscaled 一重启，每一台都连不上——而窗口会把它写成一句斩钉截铁的
+    // 「no reply — powered off」，页脚还写着「replies verified」。那正是这个
+    // 程序唯一存在理由的反面：他会以为 21:30 的队列死了，去断电或重开，
+    // 而那一趟正在跑。所以要能说「不知道」。
+    private let path = NWPathMonitor()
+    private var pathOK = true
+    private var lastUpAt = Date.distantPast
+
+    /// 本机这一侧看起来是好的吗——不好的时候，全体「连不上」不是证据。
+    var trustworthy: Bool {
+        lock.lock(); defer { lock.unlock() }
+        if !pathOK { return false }
+        guard !up.isEmpty else { return true }
+        // 全体同时掉线，几乎一定是这一端：真机器不会一起断电。
+        // 刚才还有人在线，就更是。
+        if up.values.allSatisfy({ !$0 }) && Date().timeIntervalSince(lastUpAt) < 60 {
+            return false
+        }
+        return true
+    }
+
+    private var pathStarted = false
+
+    func watchLocalPath() {
+        lock.lock(); let already = pathStarted; pathStarted = true; lock.unlock()
+        if already { return }          // refresh() 每轮都会叫它一次，只准真开一次
+        path.pathUpdateHandler = { [weak self] p in
+            guard let self = self else { return }
+            self.lock.lock(); let changed = self.pathOK != (p.status == .satisfied)
+            self.pathOK = (p.status == .satisfied); self.lock.unlock()
+            if changed { DispatchQueue.main.async { self.onChange?() } }
+        }
+        path.start(queue: queue)
+    }
+
     func track(_ ips: [String]) {
         lock.lock()
         let gone = Set(conns.keys).subtracting(ips)
@@ -164,6 +200,7 @@ final class Link {
         lock.lock()
         let changed = up[ip] != value
         up[ip] = value
+        if value { lastUpAt = Date() }
         lock.unlock()
         if changed { DispatchQueue.main.async { self.onChange?() } }
     }
@@ -619,6 +656,8 @@ final class Controller: NSObject, NSApplicationDelegate {
     private var seenOnlineAt: [String: Date] = [:]
     private var machines: [Machine] = []
     private var lastGood: Date?
+    /// 上一轮里，那条一直连着的线说的话算不算数（本机没网时不算）。
+    private var linkTrusted = true
     /// Backstop only - the bus subscription is what actually drives updates.
     // 60 秒，不是 300。2026-09-08：机器关掉 17 分钟之后 Dock 上还是绿的 2/2。
     // 判离线要连续两次探测失败，300 秒一轮就意味着**最坏十分钟才变色**——
@@ -762,15 +801,22 @@ final class Controller: NSObject, NSApplicationDelegate {
             return
         }
         // 让 Link 盯住除本机以外的每一台。
+        link.watchLocalPath()
         link.track(list.filter { !$0.isSelf }.map(\.ip))
         // **在不在，以那条一直连着的线为准。** Tailscale 的 online 只当参考：
         // 它对一台已经断电的机器能报 active 好几个小时（2026-09-03 实测四小时），
         // 而那条 TCP 连接在关机时毫秒级就断了。
-        list = list.map { m in
-            guard !m.isSelf, let alive = self.link.isUp(m.ip) else { return m }
-            if alive { return m.online ? m : m.answering(Probe(answered: true, ms: 0, direct: false)) }
-            return m.silent()
+        // 本机这一侧不对劲的时候，那条线说的「连不上」不是证据，这一步整个跳过：
+        // 宁可用 Tailscale 那份旧一点的答案，也不要一个自信的错答案。
+        let trust = self.link.trustworthy
+        if trust {
+            list = list.map { m in
+                guard !m.isSelf, let alive = self.link.isUp(m.ip) else { return m }
+                if alive { return m.online ? m : m.answering(Probe(answered: true, ms: 0, direct: false)) }
+                return m.silent()
+            }
         }
+        self.linkTrusted = trust
         machines = list
         lastGood = Date()
         if Tailscale.recheckSoon {
@@ -815,7 +861,10 @@ final class Controller: NSObject, NSApplicationDelegate {
             }
         }
         let f = DateFormatter(); f.dateFormat = "HH:mm:ss"
-        footer.stringValue = "Updated \(f.string(from: Date())) · pushed on change · replies verified"
+        footer.stringValue = linkTrusted
+            ? "Updated \(f.string(from: Date())) · pushed on change · replies verified"
+            : "Updated \(f.string(from: Date())) · THIS MAC cannot reach the tailnet — "
+              + "the machines below may well be up; nothing here is verified"
     }
 
     /// No up/down popups, on purpose.
