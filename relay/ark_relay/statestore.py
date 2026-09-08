@@ -43,6 +43,7 @@ FIELDS: dict[str, dict[str, str]] = {
         "debug_until": "调试模式到什么时候（YYYY-MM-DD HH:MM）",
     },
     "versions": {
+        "announced_notes": "上一条「已更新」推送的说明原文（一模一样就不再推）",
         "okww": "上次贴补丁时 OK-WW 的版本",
         "maaend": "上次预更新确认过的 MaaEnd 版本",
         "code": "本机中继代码版本",

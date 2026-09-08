@@ -288,10 +288,25 @@ def _stage_announce_update(notifier, log) -> None:
                              else "（改动清单由上一版代码写入，本次没有）")
             lines += ["", "更新在开机后、队列开跑前落地，本轮直接使用新代码。"]
             body = "\n".join(lines)
+            # Two deploys of the same change - one refused by a gate, fixed, and
+            # deployed again - are one change to the person reading his phone, and
+            # he got the same paragraph twice within five minutes on 2026-09-09
+            # (「为什么这个有时候一模一样的更新要部署两次」). The version differs, so
+            # nothing upstream can tell; the notes are what he actually reads, so
+            # they are what gets compared. A changed line pushes as normal.
+            from ark_relay.statestore import StateStore  # noqa: PLC0415
+            _st = StateStore(HERE / "state")
+            _last = str(_st.get("versions", "announced_notes") or "")
+            if notes and notes == _last:
+                log.info("这次更新的说明和上一条一模一样，不再推一遍（v%s）",
+                         note.get("version") or "?")
+                selfupdate._remember_announced(HERE, int(note.get("version") or 0))
+                return
             if errors := notifier.send(title, body):
                 log.error("更新通知没发出去: %s", "；".join(errors))
             else:
                 log.info("已推送更新通知：%d 个文件", len(files))
+                _st.set("versions", "announced_notes", notes)
     except Exception:
         log.exception("推送更新通知出错，跳过")
 

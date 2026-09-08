@@ -34,12 +34,16 @@ esac
 python3 - "$BOX" "$BODY" <<'PY'
 import json, re, sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 box, body = sys.argv[1], sys.argv[2]
 
-# 白名单和中继那份必须一致；这里再挡一道，省得推上去才被机器拒绝。
-ALLOWED = {"skip_today", "debug_mode", "skip_shutdown", "weekly_boss",
-           "set_stage", "set_medicine", "toggle_task", "set_wait_time",
-           "set_config", "set_master", "run_now"}
+# Read the relay's own whitelist rather than keeping a second copy. The copy that
+# used to live here drifted the moment a command was added: on 2026-09-09 the new
+# echo_farm was refused by this script while the machine accepted it perfectly well.
+# `python3 -` has no __file__, so the repo root comes from the inbox path itself
+# ($REPO/queue/config.json).
+sys.path.insert(0, str(Path(box).resolve().parents[1] / "relay"))
+from ark_relay.commands import ALLOWED  # noqa: E402
 
 cmds = json.loads(body)
 if isinstance(cmds, dict):
