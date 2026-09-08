@@ -813,6 +813,24 @@ const CONFIRM_MS = 8 * 1000;
 let lastHb = 0;
 let liveES = null;
 let pendingUntil = 0;
+// 上一次跟外面说话成功了没有。没有它的话，页面分不清「机器关了」和「我这边没网」，
+// 于是他在信号差的地方看到的是一句斩钉截铁的「关机中」，据此以为机器没开。
+let netOk = true;
+addEventListener("online", () => { netOk = true; updateLive(); });
+addEventListener("offline", () => { netOk = false; updateLive(); });
+
+function offline() {
+  return !navigator.onLine || !netOk;
+}
+
+function why(err) {
+  // 浏览器的原文是英文（Failed to fetch / NetworkError），直接甩给他等于没说。
+  const m = String((err && err.message) || err || "");
+  if (/fetch|network|load failed/i.test(m)) return "网络不通";
+  if (/429/.test(m)) return "发得太频繁，被限流了";
+  if (/abort|timeout/i.test(m)) return "等太久没回应";
+  return m || "原因不明";
+}
 
 function updateLive() {
   if (!cfg) return;
@@ -821,6 +839,10 @@ function updateLive() {
     setStatus(`开机中 · 实时${snap ? `（配置是 ${ago(snap.at)}的）` : ""}`, "on");
   } else if (Date.now() < pendingUntil) {
     setStatus("正在确认是否在线…", "");
+  } else if (offline()) {
+    // 连不上就只说连不上。这台机器可能开着，只是话传不过来。
+    setStatus(snap ? `连不上 · 先看看你这边有没有网（最后状态 ${ago(snap.at)}前）`
+                   : "连不上 · 先看看你这边有没有网", "");
   } else if (snap) {
     setStatus(`关机中 · 最后状态 ${ago(snap.at)}前`, "off");
   } else {
@@ -834,7 +856,8 @@ function askWatch() {
   if (!cfg || !cfg.topic || !cfg.pin) return;
   if (!(lastHb && Date.now() - lastHb < HB_FRESH_MS)) pendingUntil = Date.now() + CONFIRM_MS;
   updateLive();          // 马上显示「正在确认…」，别让旧的「关机中」多挂 5 秒
-  send({ action: "watch" }).catch(() => {});
+  send({ action: "watch" }).then(() => { netOk = true; })
+                           .catch(() => { netOk = false; updateLive(); });
 }
 setInterval(() => { if (!document.hidden) askWatch(); }, WATCH_RENEW_MS);
 
@@ -854,7 +877,8 @@ async function probeHb() {
       } catch {}
     }
     lastHb = (bye >= hb) ? 0 : hb;
-  } catch {}
+    netOk = true;
+  } catch { netOk = false; }
 }
 
 function startLive() {
@@ -935,7 +959,10 @@ async function boot() {
       setStatus(`信箱里有 ${pinScan.seen} 条消息但 PIN 对不上——检查设置里的 PIN`, "off");
     }
   } catch (e) {
-    setStatus("读不到信箱：" + e.message, "off");
+    // 读不到信箱不等于机器关了，多半是这一端没网。红色的「关机中」是断言，
+    // 这里没有资格下这个断言；而且 5 秒后 updateLive 还会把它换成「关机中」。
+    netOk = false;
+    setStatus("读不到信箱（" + why(e) + "）· 先看看你这边有没有网", "");
   }
 }
 
@@ -947,27 +974,42 @@ $("#go").onclick = async () => {
   if (saving) return;
   saving = true;
   $("#confirm").close();
-  const all = Object.values(edits);
+  // 带上 edits 里的键：发成功一项就删一项，发不出去的必须原样留在页面上。
+  const all = Object.entries(edits).map(([id, e]) => ({ ...e, _id: id }));
   const wbEdits = all.filter((e) => e.src === "wb");
   const items = all.filter((e) => e.src !== "wb");
   let sent = 0;
+  let failed = null;           // 第一项发不出去的原因；有它就不许说「已发出」
+  const doneKeys = [];         // 真发出去的那几项，只清这些
   for (const e of items) {
     const body = e.src === "master"
       ? { action:"set_master", confirmed:true, game:e.owner, path:e.path, value:e.to }
       : { action:"set_config", confirmed:true, script:e.owner, path:e.path, value:e.to };
-    try { await send(body); sent++; }
-    catch (err) { toast("第 " + (sent + 1) + " 项发不出去：" + err.message); break; }
+    try { await send(body); sent++; doneKeys.push(e._id); }
+    catch (err) { failed = err; break; }
   }
   /* 周本只剩「打第几个」一项可改；次数 3、等级 90 固定在中继里。 */
   if (wbEdits.length) {
     try {
       await send({ action:"weekly_boss", index: Number(wbEdits[wbEdits.length - 1].to) || 1 });
       sent += wbEdits.length;
-    } catch (err) { toast("周本设置发不出去：" + err.message); }
+      for (const w of wbEdits) doneKeys.push(w._id);
+    } catch (err) { if (!failed) failed = err; }
+  }
+  // 发出去的清掉，没发出去的原样留在页面上——原来只要成功过一项就 `edits = {}`，
+  // 剩下的改动连同它们的提示一起消失（两次 toast 用的是同一个元素，后一次会把
+  // 前一次的错误文本盖掉，那句话实际停留 0 毫秒）。他会以为全发了。
+  for (const k of doneKeys) delete edits[k];
+  updateBar(); render();
+  if (failed) {
+    const left = Object.keys(edits).length;
+    toast(sent
+      ? `发出去 ${sent} 项，剩下 ${left} 项没发出去（${why(failed)}）。没发出去的还在页面上，可以再按一次保存。`
+      : `一项都没发出去（${why(failed)}）。改动还在页面上，可以再按一次保存。`, 7000);
+  } else if (sent) {
+    toast(`${sent} 项已发出。机器开着就是马上生效，关着就是下次开机；生效后会有通知。`, 5000);
   }
   if (sent) {
-    edits = {}; updateBar();
-    toast(`${sent} 项已发出。机器开着就是马上生效，关着就是下次开机；生效后会有通知。`, 5000);
     const after = now();          // 只认这一刻之后上报的状态
     setTimeout(() => ping(after), 2000);
   }
