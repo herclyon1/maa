@@ -4,6 +4,25 @@
 Long-running work lives in [BACKLOG.md](BACKLOG.md); settled limits nobody intends to change
 live in [OPERATIONS.md](OPERATIONS.md).
 
+## Deploy the banners split (2026-09-08)
+
+`banners.py` was split into a facade plus four per-game modules, verified byte-identical
+function by function, and then **reverted from main** the same evening: self-update never
+creates files, so pushing it would have written the edited importer without the modules it
+imports and left the relay dead on ModuleNotFoundError with the version stamped as current.
+(The abort-on-missing-file guard that stops that class of accident is now on the machine, so
+a repeat would be loud instead of fatal.)
+
+The split itself is finished and green - it was not deployed on the night of 09-08 only
+because the machine boots at 21:20 and powers off after the evening queue, and a refactor
+with no user-visible effect is not worth keeping it running for.
+
+To land it: restore commit `1cf0e67`'s versions of `relay/ark_relay/banners*.py`,
+`relay/tests/test_banners.py`, `scripts/mac/lib/loggernames.py` and `relay/README.md`
+(the four modules are also parked in this session's scratchpad), regenerate the manifest,
+then `ARK_HOST=... scripts/mac/deploy-relay.sh` - **deploy, not self-update**, because only
+deploy can create files. Do it early in a boot window, not minutes before a queue.
+
 ## ~~Evening run finished but the machine never shut down (2026-09-04)~~ explained
 
 **Cause: I set "skip the shutdown this once" and forgot to cancel it when the work was done.**
