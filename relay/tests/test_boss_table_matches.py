@@ -5,7 +5,6 @@ The page cannot read the table from the state payload - ntfy caps a message at
 forgery table, the page carries a copy. Two copies of a list that decides which
 boss gets farmed will disagree eventually; this is the thing that stops them.
 """
-import json
 import re
 import sys
 from pathlib import Path
