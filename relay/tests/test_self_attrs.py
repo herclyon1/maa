@@ -68,7 +68,8 @@ def used_names(cls: ast.ClassDef) -> dict[str, int]:
 
 
 def main() -> int:
-    files = sorted(list((ROOT / "ark_relay").glob("*.py")) + [ROOT / "service.py"])
+    files = sorted(list((ROOT / "ark_relay").glob("*.py"))
+                   + [ROOT / "service.py", ROOT / "boot_stages.py"])
     # 地板：glob 扫到 0 个文件也会打印「通过」，闸门就成了摆设——
     # 目录改名、路径写错都会静默失效。2026-09-08 回放测试栽过一次。
     if len(files) < 20:

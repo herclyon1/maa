@@ -29,6 +29,9 @@ for name in ("win32serviceutil", "win32service", "win32event", "win32api",
     sys.modules.setdefault(name, _Stub(name))
 
 import service  # noqa: E402
+# `_revive_automas` 2026-09-08 随开机流程搬去了 boot_stages.py，
+# `_AutomasKeeper._revive` 现在调的是那一份，所以要替换的也是那一份。
+import boot_stages  # noqa: E402
 
 fails = []
 def check(label, got, want):
@@ -110,17 +113,17 @@ k2.shell_grace_noted = False
 k2.next_check = 0.0
 orig_running, orig_shell, orig_inst, orig_revive = (
     service._automas_running, service._automas_shell_running,
-    service._installer_running, service._revive_automas)
+    service._installer_running, boot_stages._revive_automas)
 service._automas_running = lambda: False
 service._automas_shell_running = lambda: False
 service._installer_running = lambda: False
-service._revive_automas = lambda: None
+boot_stages._revive_automas = lambda: None
 k2._revive(1000.0)
 check("到阈值告一次", n.sent, [service.texts.AUTOMAS_DOWN])
 k2._revive(1000.0)
 check("再败不重复告", n.sent, [service.texts.AUTOMAS_DOWN])
 service._automas_running, service._automas_shell_running = orig_running, orig_shell
-service._installer_running, service._revive_automas = orig_inst, orig_revive
+service._installer_running, boot_stages._revive_automas = orig_inst, orig_revive
 
 print("[保活：窗口在、后端不在 → 先给宽限，超时才动手]")
 k3 = service._AutomasKeeper.__new__(service._AutomasKeeper)
@@ -133,7 +136,7 @@ revived = []
 service._automas_running = lambda: False
 service._automas_shell_running = lambda: True
 service._installer_running = lambda: False
-service._revive_automas = lambda: revived.append(1)
+boot_stages._revive_automas = lambda: revived.append(1)
 k3._revive(1000.0)
 check("宽限期内不拉起", revived, [])
 k3._revive(1000.0 + service.SHELL_GRACE_SECONDS - 1)
@@ -141,7 +144,7 @@ check("还在宽限期，仍不拉起", revived, [])
 k3._revive(1000.0 + service.SHELL_GRACE_SECONDS)
 check("超过宽限才拉起", revived, [1])
 service._automas_running, service._automas_shell_running = orig_running, orig_shell
-service._installer_running, service._revive_automas = orig_inst, orig_revive
+service._installer_running, boot_stages._revive_automas = orig_inst, orig_revive
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

@@ -124,7 +124,8 @@ def _check_scope(scope: ast.AST, visible: set[str], path: Path) -> None:
 
 
 def main() -> int:
-    files = sorted(ROOT.glob("ark_relay/*.py")) + [ROOT / "service.py", ROOT / "run.py"]
+    files = sorted(ROOT.glob("ark_relay/*.py")) + [ROOT / "service.py",
+                                                   ROOT / "boot_stages.py", ROOT / "run.py"]
     # 地板：glob 扫到 0 个文件也会打印「通过」，闸门就成了摆设——
     # 目录改名、路径写错都会静默失效。2026-09-08 回放测试栽过一次。
     if len(files) < 20:

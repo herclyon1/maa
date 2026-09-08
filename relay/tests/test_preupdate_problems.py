@@ -8,7 +8,9 @@
 
 **假的「没问题」比诚实的失败更糟**：没人会去查一件被报告为正常的事。
 所以每个 run_* 都要能把「我没能确认」这件事送出函数，
-service.py 再把它作为**报警**发出去（不是日常通知）。
+开机流程再把它作为**报警**发出去（不是日常通知）。
+（那段开机流程 2026-09-08 从 service.py 搬进了同目录的 boot_stages.py，
+整段一起走的，判据一个字没动。）
 """
 import os, sys
 import re
@@ -59,15 +61,15 @@ try:
 except Exception as e:                      # noqa: BLE001
     check(f"默认不传也安全（炸了：{e}）", False)
 
-print("\n[service.py 用报警级发出去，而不是日常通知]")
-src = (Path(__file__).resolve().parents[1] / "service.py").read_text(encoding="utf-8")
+print("\n[开机流程用报警级发出去，而不是日常通知]")
+src = (Path(__file__).resolve().parents[1] / "boot_stages.py").read_text(encoding="utf-8")
 check("收集 problems", "problems: list[str] = []" in src)
 # 2026-09-08 修：原来这里写了个循环，第一轮就 break，而且 f-string 里没有占位符，
 # 于是四个函数只查了一个、查的还是「源码里随便哪儿有 problems=problems」。
 # 现在逐个查：每个 preupdate.<函数>( 的调用参数里都要带 problems=problems。
 for fname in ("run_maa", "run", "run_automas", "run_okww"):
     calls = re.findall(rf"preupdate\.{fname}\((?:[^()]|\([^()]*\))*\)", src, re.S)
-    check(f"service.py 里调了 preupdate.{fname}", len(calls) >= 1, True)
+    check(f"boot_stages.py 里调了 preupdate.{fname}", len(calls) >= 1, True)
     check(f"preupdate.{fname} 每次调用都传了 problems",
           all("problems=problems" in c for c in calls), True)
 i = src.find('texts.unconfirmed("预更新"')

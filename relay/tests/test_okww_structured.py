@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from ark_relay import collector  # noqa: E402
+from ark_relay import collector_okww  # noqa: E402
 
 fails = []
 def check(label, got, want):
@@ -22,7 +22,7 @@ REAL = (ROOT / "tests" / "replay" / "2026-09-07" / "wuwa" / "OK-WW-07-27-50.log"
         ).read_text(encoding="utf-8", errors="replace")
 
 print("[真实日志：读出上游自己报的状态]")
-info = collector.okww_info(REAL)
+info = collector_okww.okww_info(REAL)
 check("实际传送到第几个无音区（0 起算）", info["fields"].get("Teleport to Tacet Suppression"), 1)
 check("体力", info["fields"].get("current_stamina"), 75)
 check("备用体力", info["fields"].get("back_up_stamina"), 26)
@@ -32,15 +32,15 @@ check("走过哪几步", info["tasks"][:3], ["check weekly garden", "claim daily
 check("上游没报错误", info["error"], "")
 
 print("[刷的是哪个无音区：以上游报的实际序号为准]")
-check("玄幽东岳（配置写 2、上游报 1）", collector._okww_farm(REAL)[0], "无音区·玄幽东岳")
+check("玄幽东岳（配置写 2、上游报 1）", collector_okww._okww_farm(REAL)[0], "无音区·玄幽东岳")
 faked = REAL.replace("info_set Teleport to Tacet Suppression 1",
                      "info_set Teleport to Tacet Suppression 3")
-check("上游报 3 就是第 4 个", collector._okww_farm(faked)[0], "无音区·冰原运输港")
+check("上游报 3 就是第 4 个", collector_okww._okww_farm(faked)[0], "无音区·冰原运输港")
 
 print("[上游自己说「错误 …」时，照它说的写，不用刮 traceback]")
 said = ("2026-09-08 01:00:00,000 INFO TaskExecutor DailyTask:info_set current task farm echo\n"
         "2026-09-08 01:00:01,000 INFO TaskExecutor DailyTask:info_set 错误 combat check not in combat\n")
-check("说清哪一步、什么事", collector._okww_error(said), "周本：没有进入战斗")
+check("说清哪一步、什么事", collector_okww._okww_error(said), "周本：没有进入战斗")
 
 print("[包装层抛的错：任务名取出错那一刻的 current task，不是全程最后一个]")
 wrapped = (
@@ -49,7 +49,7 @@ wrapped = (
     "ok.task.exceptions.WaitFailedException\n"
     "2026-09-08 01:00:02,000 INFO TaskExecutor DailyTask:info_set current task claim daily\n")
 check("说的是残象聚落，不是后面那步领日常",
-      collector._okww_error(wrapped), "残象聚落：打了但没打成")
+      collector_okww._okww_error(wrapped), "残象聚落：打了但没打成")
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

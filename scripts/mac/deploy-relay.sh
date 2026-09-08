@@ -23,11 +23,11 @@ USER_AT="Administrator@${HOST}"
 # 跨境到乌鲁木齐，每次 ssh/scp 都要重新握手一次；这个脚本要跑四十多次，
 # 光握手就占掉大半时间。开连接复用：第一次连上之后所有后续调用走同一条
 # 通道，ControlPersist 让通道在脚本结束后再留一会儿，紧接着的 winrun 也蹭得上。
-CM_PATH="${TMPDIR:-/tmp}/ark-cm-$$"
-SSH_OPTS=(-o ConnectTimeout=15 -o ControlMaster=auto
-          -o "ControlPath=${CM_PATH}" -o ControlPersist=180)
-cleanup_cm() { ssh -O exit -o "ControlPath=${CM_PATH}" "$USER_AT" 2>/dev/null || true; }
-trap cleanup_cm EXIT
+# 连接复用交给 ~/.ssh/config 里的 `Host ins` 那一段（ControlMaster/ControlPath/
+# ControlPersist 都在那儿）。**这里不许再自带 ControlPath**：自带等于另开一条主连接，
+# 和别的脚本、和我在命令行随手敲的 ssh 各连各的。2026-09-08 实测：不共享每次握手
+# 2.3 秒，共享之后 0.37 秒——跨境每个远程操作都要先付这笔钱，一天付几百次。
+SSH_OPTS=(-o ConnectTimeout=15)
 REMOTE_DIR='C:/ProgramData/ark-relay'
 PY='D:\ark\automas\environment\python\python.exe'
 # 两个绝对路径都要在任何 cd 之前算好。2026-08-26 我在 cd 之后才去解析
@@ -120,7 +120,7 @@ python3 make-manifest.py
 
 lap
 echo "▶ 2/5 语法自检 + 改动覆盖"
-python3 -m py_compile ark_relay/*.py service.py run.py
+python3 -m py_compile ark_relay/*.py service.py boot_stages.py run.py
 # 「改了什么就得证明什么」——用户 2026-09-06 的死命令：
 # 「没有回放案例的改动不许部署。部署脚本读 git diff 里改了哪些模块，
 #   每个模块必须被至少一个回放案例真正执行到。」

@@ -6,7 +6,9 @@ sanity_plan.py 叫 `ark.sanity`。出事时按模块名去 grep 日志，一条�
 当年就是这么被多找了一阵子。
 
 故意共用一个名字的几家写在 ALLOW 里：okww_patches 四个模块算一家补丁、
-preupdate_common 跟着 preupdate 一家、__main__ 用根名 ark。
+preupdate_common 跟着 preupdate 一家、
+gameupdate_games 跟着 gameupdate 一家（三家游戏的更新流程从它拆出来，日志还是同一件事）、
+__main__ 用根名 ark。
 """
 import re
 import sys
@@ -14,12 +16,19 @@ from pathlib import Path
 
 ALLOW = {
     "relay/ark_relay/__main__.py": "ark",
+    "relay/ark_relay/gameupdate_games.py": "ark.gameupdate",
     "relay/ark_relay/okww_patches/core.py": "ark.okww_patch",
     "relay/ark_relay/okww_patches/domain.py": "ark.okww_patch",
     "relay/ark_relay/okww_patches/nest.py": "ark.okww_patch",
     "relay/ark_relay/okww_patches/starve.py": "ark.okww_patch",
     "relay/ark_relay/preupdate_common.py": "ark.preupdate",
     "relay/tests/test_okww_patch.py": "ark.okww_patch",
+    # 2026-09-08 按接缝拆出来的几块，沿用母模块的日志名——翻日志时它们本来就该
+    # 和母模块混在一起看，分开反而要记住去 grep 两个名字。
+    "relay/ark_relay/collector_okww.py": "ark.collector",
+    "relay/ark_relay/collector_maa.py": "ark.collector",
+    "relay/ark_relay/collector_maaend.py": "ark.collector",
+    "relay/boot_stages.py": "ark.service",
 }
 PAT = re.compile(r'getLogger\("([^"]+)"\)')
 

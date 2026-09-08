@@ -23,7 +23,7 @@ from _tmp import tmpdir
 TMP = tmpdir()
 os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import collector      # noqa: E402
+from ark_relay import collector, collector_maaend      # noqa: E402
 
 fails = []
 def check(label, got, want=True):
@@ -49,7 +49,7 @@ got = parse("""\
 [2026-08-24 09:37:26.000] 确认领取奖励
 [2026-08-24 09:37:31.284] 理智不足，结束任务
 """)
-check("看不到下降时用兜底的单次消耗", got.get("sanity"), 201 - collector._END_PS_COST)
+check("看不到下降时用兜底的单次消耗", got.get("sanity"), 201 - collector_maaend._END_PS_COST)
 check("上限照报", got.get("sanity_cap"), 360)
 
 print("\n[最后一次被拒了 —— 读数就是终值]")

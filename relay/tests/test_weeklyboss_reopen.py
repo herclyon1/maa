@@ -61,7 +61,9 @@ for name in ("win32serviceutil", "win32service", "win32event", "win32api",
              "win32con", "win32file", "servicemanager", "win32process",
              "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
     sys.modules.setdefault(name, _Stub(name))
-import service  # noqa: E402
+# 开机的各个阶段 2026-09-08 从 service.py 搬进了 boot_stages.py；
+# 私有名要用就直接引它本尊，不经 service.py 转手。
+import boot_stages  # noqa: E402
 
 sent = []
 class N:
@@ -84,22 +86,22 @@ G_LINE = "鸣潮 · 周常乐园：本周还没做，每趟都会去检查"
 B_LINE = "鸣潮 · 周本：千傀重楼，本周还没领满"
 
 sent.clear()
-service._stage_annihilation(Eng(Gate(A_NEW, A_LINE), Gate(G_LINE, G_LINE), Gate(B_LINE, B_LINE)), N(), Log())
+boot_stages._stage_annihilation(Eng(Gate(A_NEW, A_LINE), Gate(G_LINE, G_LINE), Gate(B_LINE, B_LINE)), N(), Log())
 check("三个都过周：一条通知三行", sent, [("🗓️ 新的一周", "\n".join([A_NEW, G_LINE, B_LINE]))])
 
 sent.clear(); boss = Gate("", "鸣潮 · 周本：千傀重楼 本周三次已领满，暂停到下周一"); garden = Gate("", G_LINE)
-service._stage_annihilation(Eng(Gate(A_NEW, A_LINE), garden, boss), N(), Log())
+boot_stages._stage_annihilation(Eng(Gate(A_NEW, A_LINE), garden, boss), N(), Log())
 check("只有剿灭过周：另外两个也报状态", sent,
       [("🗓️ 新的一周", "\n".join([A_NEW, G_LINE, "鸣潮 · 周本：千傀重楼 本周三次已领满，暂停到下周一"]))])
 
 sent.clear(); boss = Gate(B_LINE, B_LINE); garden = Gate(G_LINE, G_LINE)
-service._stage_annihilation(Eng(Gate("", A_LINE), garden, boss), N(), Log())
+boot_stages._stage_annihilation(Eng(Gate("", A_LINE), garden, boss), N(), Log())
 check("剿灭没过周（上周没打）：仍然三行", sent, [("🗓️ 新的一周", "\n".join([A_LINE, G_LINE, B_LINE]))])
 check("周本说「恢复」之前先真挂上", boss.enforced, 1)
 check("周常乐园同理", garden.enforced, 1)
 
 sent.clear()
-service._stage_annihilation(Eng(Gate("", A_LINE), Gate("", G_LINE), Gate("", B_LINE)), N(), Log())
+boot_stages._stage_annihilation(Eng(Gate("", A_LINE), Gate("", G_LINE), Gate("", B_LINE)), N(), Log())
 check("都没过周：不发", sent, [])
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))

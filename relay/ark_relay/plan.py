@@ -206,7 +206,7 @@ def _okww_farm_bit(daily: dict, zh: dict[str, str]) -> str:
     additional-task lines that follow, and reading them interleaved hides which
     lines are mutually exclusive.
     """
-    from . import collector  # noqa: PLC0415 - reuse of the forgery name table, kept in one place
+    from . import collector_okww  # noqa: PLC0415 - reuse of the forgery name table, kept in one place
     which = daily.get("Which to Farm") or ""
     # Both branches use the shared lookup tables, always 1-based (matching the
     # in-game F2 list). Before 2026-09-08 this file kept its own copy of
@@ -221,7 +221,7 @@ def _okww_farm_bit(daily: dict, zh: dict[str, str]) -> str:
         return f"体力刷 {wuwa_tacet.label(idx)}，出 {wuwa_tacet.reward(idx)}"
     if which == "Simulation Challenge":
         tgt = str(daily.get("Material Selection") or "")
-        tgt_zh = collector._SIM_ZH.get(tgt, zh.get(tgt, tgt))
+        tgt_zh = collector_okww._SIM_ZH.get(tgt, zh.get(tgt, tgt))
         return f"体力刷 模拟领域·{tgt_zh}" if tgt_zh else "体力刷 模拟领域"
     if which:
         return f"体力刷 {zh.get(which, which)}"

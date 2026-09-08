@@ -33,7 +33,7 @@ check("它用 os.replace", "os.replace" in body, True)
 
 # 2. 别处不许再出现「.tmp 然后 replace」这一对
 offenders = []
-for p in sorted((ROOT / "ark_relay").glob("*.py")) + [ROOT / "service.py"]:
+for p in sorted((ROOT / "ark_relay").glob("*.py")) + [ROOT / "service.py", ROOT / "boot_stages.py"]:
     if p.name == "config.py":
         continue
     src = p.read_text(encoding="utf-8")

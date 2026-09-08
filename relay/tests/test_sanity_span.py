@@ -11,7 +11,7 @@
 """
 import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from ark_relay import collector, report
+from ark_relay import collector_maaend, collector_okww, report
 
 fails = []
 
@@ -26,7 +26,7 @@ end5 = "\n".join([
     *["[2026-09-03 09:06:00.000] ✅已完成一次基质刷取"] * 5,
     "[2026-09-03 09:07:00.000] 任务完成: 🎱基质刷取",
 ])
-chk("终末地五趟消耗", collector._maaend_farm(end5).get("maaend_sanity_spent"), 400)
+chk("终末地五趟消耗", collector_maaend._maaend_farm(end5).get("maaend_sanity_spent"), 400)
 
 # 终末地：只刷一趟，一个读数——这一条算不出，交给上层补
 end1 = "\n".join([
@@ -35,7 +35,7 @@ end1 = "\n".join([
     "[2026-09-04 09:44:45.736] 当前理智 37/360",
     "[2026-09-04 09:44:49.380] 任务完成: 🎱基质刷取",
 ])
-one = collector._maaend_farm(end1)
+one = collector_maaend._maaend_farm(end1)
 chk("单趟不硬编数字", one.get("maaend_sanity_spent"), None)
 chk("单趟留了口子", one.get("maaend_sanity_runs_only"), 1)
 es = [{"script": "MaaEnd", "sanity": 116, "raw": {}},
@@ -49,11 +49,11 @@ ok = "\n".join([
     "info_set current_stamina 77",
     "current stamina: 37 must_use completed, no need to use back_up",
 ])
-got = collector._okww_stamina(ok) if hasattr(collector, "_okww_stamina") else None
+got = collector_okww._okww_stamina(ok) if hasattr(collector_okww, "_okww_stamina") else None
 if got is None:
-    tail = collector._OKWW_STAMINA_END.findall(ok)
+    tail = collector_okww._OKWW_STAMINA_END.findall(ok)
     chk("鸣潮收尾读数认得出", tail[-1] if tail else None, "37")
-    series = [int(m.group(1)) for m in collector._OKWW_STAMINA.finditer(ok)] + [int(tail[-1])]
+    series = [int(m.group(1)) for m in collector_okww._OKWW_STAMINA.finditer(ok)] + [int(tail[-1])]
     chk("鸣潮消耗", sum(a - b for a, b in zip(series, series[1:]) if a > b), 199)
 
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))

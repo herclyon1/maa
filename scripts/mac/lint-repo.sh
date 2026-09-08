@@ -149,7 +149,7 @@ else
   # 2026-09-08 把 relay/tests 也纳进来：之前不查，于是 55 条报告在里面躺着，
   # 其中 test_preupdate_problems.py 那条 f-string 缺占位符指向一个真断言错误——
   # 它用 for + break 只查了四个函数里的第一个。
-  hits=$(uvx pyflakes relay/ark_relay relay/tests relay/service.py relay/run.py relay/make-manifest.py scripts 2>&1 \
+  hits=$(uvx pyflakes relay/ark_relay relay/tests relay/service.py relay/boot_stages.py relay/run.py relay/make-manifest.py scripts 2>&1 \
          | grep -v 'okww_files' || true)
   [ -z "$hits" ] && ok "pyflakes 零报告" || { note "pyflakes 有报告（未定义名 / 先读后绑定 / 无用导入）"; sed 's/^/       /' <<<"$hits" | head -12; }
 fi
@@ -158,6 +158,7 @@ if [ -x "$PY314" ]; then
 import compileall, sys
 ok = compileall.compile_dir('relay/ark_relay', quiet=1, force=True, legacy=False)
 ok = compileall.compile_file('relay/service.py', quiet=1, force=True) and ok
+ok = compileall.compile_file('relay/boot_stages.py', quiet=1, force=True) and ok
 ok = compileall.compile_dir('scripts', quiet=1, force=True) and ok
 sys.exit(0 if ok else 1)" 2>&1); then
     ok "3.14 严格编译通过（无非法转义）"

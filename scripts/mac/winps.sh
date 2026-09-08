@@ -53,21 +53,27 @@ FULL="\$ErrorActionPreference='Continue'
 \$__out = @()
 try { \$__out = @(& { ${SCRIPT} } 2>&1 | Out-String -Stream) }
 catch { \$__out = @('winps: 脚本抛异常: ' + \$_.Exception.Message) }
-\$__out -join \"\`n\" | Set-Content -Path '${OUT}' -Encoding utf8"
+\$__out -join \"\`n\" | Set-Content -Path '${OUT}' -Encoding utf8
+# 结果在**同一次连接里**用 base64 带回来，顺手删掉临时文件。
+# 原来是写文件 → scp 取回 → 再 ssh 删，三次跨境往返；scp 还要单独谈一条 SFTP 通道。
+# 2026-09-08 实测那两步占 winps 的一大半。base64 是纯 ASCII，照样绕开 936 控制台。
+Write-Output ('WINPS_B64=' + [Convert]::ToBase64String([IO.File]::ReadAllBytes('${OUT}')))
+Remove-Item '${OUT}' -Force -ErrorAction SilentlyContinue"
 
 B64=$(printf '%s' "$FULL" | iconv -f UTF-8 -t UTF-16LE | base64 | tr -d '\n')
 
-if ! ssh -o ConnectTimeout=20 -o ServerAliveInterval=15 \
-     -o ServerAliveCountMax=$(( TIMEOUT / 15 + 3 )) "$USER_AT" \
-     "\"${PWSH}\" -NoProfile -EncodedCommand ${B64}" >/dev/null 2>&1; then
+RAW=$(ssh -o ConnectTimeout=20 -o ServerAliveInterval=15 \
+      -o ServerAliveCountMax=$(( TIMEOUT / 15 + 3 )) "$USER_AT" \
+      "\"${PWSH}\" -NoProfile -EncodedCommand ${B64}" 2>/dev/null | tr -d '\r') || \
   echo "winps: 远端 pwsh 以非零退出结束（下面是它写下的输出，可能不完整）" >&2
-fi
 
-if ! scp -q -o ConnectTimeout=20 "${USER_AT}:${OUT}" "$TMP" 2>/dev/null; then
-  echo "winps: 远端没有产生输出文件——脚本可能根本没跑起来，或机器不可达。" >&2
+OUTB64=$(sed -n 's/^WINPS_B64=//p' <<<"$RAW")
+if [ -z "$OUTB64" ]; then
+  echo "winps: 远端没有产生输出——脚本可能根本没跑起来，或机器不可达。" >&2
   exit 4
 fi
-ssh -o ConnectTimeout=15 "$USER_AT" "del /Q ${OUT//\//\\}" >/dev/null 2>&1 || true
+printf '%s' "$OUTB64" | base64 -d > "$TMP" 2>/dev/null || {
+  echo "winps: 输出解码失败，远端可能中途被打断" >&2; exit 4; }
 
 # 去 BOM、统一换行；空输出如实说明，不当成成功。
 python3 - "$TMP" <<'PY'

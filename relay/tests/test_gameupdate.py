@@ -5,6 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import gameupdate as gu
+from ark_relay import gameupdate_games as gug
 from ark_relay.desktop import Line, Screen
 
 fails = []
@@ -28,8 +29,12 @@ class FakeDesk:
     def click(self, x, y, focus=None):
         self.clicks.append((x, y)); return True
 
+# 打桩要打在名字真正被查找的那个模块上：2026-09-08 三家游戏的更新流程搬进了
+# gameupdate_games，update_endfield 查的是那边的 _spawn/kill；run_deferred 还在
+# gameupdate 里，它用的 kill 得单独打一份。
 spawned = []
-gu._spawn = lambda exe, cwd=None: spawned.append(exe.name) or True
+gug._spawn = lambda exe, cwd=None: spawned.append(exe.name) or True
+gug.kill = lambda *names: None
 gu.kill = lambda *names: None
 nosleep = lambda s: None  # noqa: E731
 
@@ -54,8 +59,12 @@ out = gu.update_endfield(d, Path("Endfield.exe"), Path("Launcher.exe"), problems
 check("空", out, ""); check("问题里说没读到", any("没读到按钮" in x for x in probs), True)
 
 print("[鸣潮：读到「更新」就点，等到「开始游戏」]")
-import ark_relay.preupdate as pu  # noqa: E402
-pu._okww_quiesce = lambda: None
+# 打在 preupdate_okww 上：update_wuwa 是 `from .preupdate_okww import _okww_quiesce`，
+# 查的是那个模块的属性。这里原来打在 preupdate 上，而 preupdate 早已不再转发私有名，
+# 于是打了个谁也不看的属性，真正跑的是**真**的 _okww_quiesce——在 Windows 上跑测试
+# 会把用户正开着的鸣潮进程杀掉。
+import ark_relay.preupdate_okww as pok  # noqa: E402
+pok._okww_quiesce = lambda **k: None
 d = FakeDesk([["公告", "立即更新"], ["下载中"], ["开始游戏"], ["点击连接"]]); probs = []
 out = gu.update_wuwa(d, Path("Wuthering Waves.exe"), poll_s=0, problems=probs, sleep=nosleep)
 check("报了更新", out.startswith("鸣潮 客户端已通过启动器更新"), True)

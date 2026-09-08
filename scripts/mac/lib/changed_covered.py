@@ -92,7 +92,8 @@ def comment_only(base: str, rel: str) -> bool:
 
 def changed_modules(base: str) -> tuple[set[str], set[str]]:
     """(行为可能变了的模块, 只改了注释的模块)。"""
-    out = _sh("git", "diff", "--name-only", base, "--", "relay/ark_relay", "relay/service.py")
+    out = _sh("git", "diff", "--name-only", base, "--", "relay/ark_relay",
+              "relay/service.py", "relay/boot_stages.py")
     real, cosmetic = set(), set()
     for line in out.splitlines():
         p = Path(line)
@@ -152,7 +153,8 @@ def executed_modules(want_replay: bool) -> tuple[set[str], set[str]]:
         data = json.loads(Path(out).read_text(encoding="utf-8"))
         _FUNCS.update(data["funcs"])
         return {Path(f).stem for f in data["files"]
-                if "ark_relay" in f or Path(f).name == "service.py"}
+                if "ark_relay" in f
+                or Path(f).name in ("service.py", "boot_stages.py")}
 
     def run(only: str = "") -> set[str]:
         """跑一遍收覆盖。整套 90 个测试**分片并行**跑。

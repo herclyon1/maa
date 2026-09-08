@@ -292,11 +292,14 @@ def main() -> int:
     # `svc.split("服务模式启动")[1][:1400]`，把注释翻成英文之后那段变长，
     # 要找的那句被挤出了 1400 字的窗口，测试当场变红——而代码一个字都没错。
     # 按窗口切等于让断言依赖注释长度，那不是判据，是巧合。
-    svc = (Path(__file__).resolve().parents[1] / "service.py").read_text(encoding="utf-8")
+    # 2026-09-08：开机的各个阶段从 service.py 搬进了同目录的 boot_stages.py，
+    # 这一段要找的东西整段跟着走了，所以读的文件换成它。判据本身一个字没动：
+    # 「服务一启动就贴补丁」「贴不上也不挡住服务启动」。
+    svc = (Path(__file__).resolve().parents[1] / "boot_stages.py").read_text(encoding="utf-8")
     tree = ast.parse(svc)
     stage = next((n for n in tree.body
                   if isinstance(n, ast.FunctionDef) and n.name == "_stage_patch_okww"), None)
-    check("service.py 里有 _stage_patch_okww", stage is not None, True)
+    check("boot_stages.py 里有 _stage_patch_okww", stage is not None, True)
     body = ast.get_source_segment(svc, stage) if stage else ""
     check("服务一启动就贴补丁", "ensure_patches(okww_at_boot)" in body, True)
     check("贴不上也不挡住服务启动", "服务照常继续" in body, True)

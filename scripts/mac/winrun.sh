@@ -49,8 +49,13 @@ USER_AT="Administrator@${HOST}"
 # ControlPersist 让通道在脚本结束后还留一会儿，**连着敲的下一条 winrun
 # 也蹭得上**——手动驱动游戏界面时一步一截图，这一项就是快慢的分水岭。
 # 路径按主机名固定（不带 $$），deploy-relay.sh 用的是同一套写法。
-CM_PATH="${TMPDIR:-/tmp}/ark-cm-${HOST}"
-SSH_OPTS=(-o ControlMaster=auto -o "ControlPath=${CM_PATH}" -o ControlPersist=300)
+# 连接复用交给 ~/.ssh/config 里的 `Host ins` 那一段（ControlMaster/ControlPath/
+# ControlPersist 都在那儿）。**这里不许再自带 ControlPath**：自带等于另开一条主连接，
+# 和别的脚本、和我在命令行随手敲的 ssh 各连各的。2026-09-08 实测：不共享每次握手
+# 2.3 秒，共享之后 0.37 秒——跨境每个远程操作都要先付这笔钱，一天付几百次。
+# 数组不能是空的：macOS 自带 bash 3.2 下，`set -u` 遇到空数组展开会报
+# unbound variable。放一个无害的默认超时占位。
+SSH_OPTS=(-o ConnectTimeout=30)
 STRIP='import sys;d=open(sys.argv[1],"rb").read();d=d[3:] if d.startswith(b"\xef\xbb\xbf") else d;sys.stdout.write(d.decode("utf-8","replace").replace("\r\n","\n"))'
 
 # 在游戏机上跑一段 PowerShell，不经过任何一层引号解析。
@@ -272,29 +277,15 @@ if [ "${1:-}" = "--py" ]; then
   TMP="$(mktemp)"
   trap 'rm -f "$TMP" "$TMP.guard"' EXIT
 
-  # ① 清上一轮残留：先杀掉还占着 winrun.out 的旧 python，再删旧输出。
-  #    不做这一步，上一轮的僵尸进程会让这一轮拿到空文件或陈旧内容。
+  # ① 上一轮的残留由**看门狗自己顺手收**（见下面 guard 里那几行），不再单开一次 pwsh。
   #
-  #    这段第一版是用 `powershell -Command "...嵌套引号..."` 拼的，每次都失败——
-  #    在同一行里同时踩了当天刚立的两条规矩：用了 5.1 而不是 pwsh，
-  #    以及硬拼引号而不是 base64。改成 run_remote_ps 之后一次通过。
-  run_remote_ps '
-    Get-CimInstance Win32_Process -Filter "Name=''python.exe''" -EA SilentlyContinue |
-      Where-Object { $_.CommandLine -like "*winrun-run*" -or
-                     $_.CommandLine -like "*winrun-guard*" } |
-      ForEach-Object { Stop-Process -Id $_.ProcessId -Force -EA SilentlyContinue }
-    # 顺手收掉历史残留：唯一文件名之后这些都没人用了，留着只会堆垃圾。
-    Get-ChildItem C:\ProgramData\winrun-*.out, C:\ProgramData\winrun-run-*.py,
-                  C:\ProgramData\winrun-guard-*.py -EA SilentlyContinue |
-      Where-Object { $_.LastWriteTime -lt (Get-Date).AddMinutes(-10) } |
-      Remove-Item -Force -EA SilentlyContinue
-    Remove-Item C:\ProgramData\winrun.out -Force -EA SilentlyContinue
-    "cleanup-ok"
-  ' | grep -q "cleanup-ok" \
-    || echo "winrun: 警告——清理上一轮残留失败，结果可能是陈旧的" >&2
-  # 判据用**它自己打印的暗号**，不用退出码：这段全程 -EA SilentlyContinue，
-  # pwsh 的退出码在这里根本不反映成败，一直误报「清理失败」，
-  # 而虚假的警告会把真正的失败淹掉。
+  #    原来这里要跑一段 PowerShell：杀掉还占着 winrun.out 的旧 python，再删旧输出。
+  #    那是**唯一文件名之前**的事——那时候所有运行都写同一个 winrun.out，
+  #    上一轮的僵尸会让这一轮拿到空文件或陈旧内容。现在每次运行的三个文件名都带
+  #    唯一 id，抢不了，也读不串。而这一段每次要付一个 pwsh 冷启动：
+  #    2026-09-08 实测 2.6 秒，占整趟 winrun 的五分之一，为的是防一个不存在的隐患。
+  #
+  #    僵尸进程本身不用管：看门狗到点会 os._exit 自己打死自己。
 
   # 要送的文件先在本地摆好，最后**一次传完**。2026-09-08 量的：跨境每次 scp
   # 约 1.5 秒，而这条路原来要 scp 四五次（脚本、看门狗、arklog、被 import 的模块），
@@ -311,6 +302,15 @@ sys.path.insert(0, r"C:\ProgramData")      # 让脚本能 import arklog
 # 机器的钟打在第一行：我在东京、机器在北京，差一小时。
 # 手打时刻窗口时若抄了手机（东京）上的时间，这行就在同屏打脸。
 print("[机器时间] " + time.strftime("%m-%d %H:%M:%S"), flush=True)
+# 顺手收掉十分钟前的残留（原来这一步单开一次 pwsh，光冷启动就 2.6 秒）。
+import glob
+_now = time.time()
+for _p in glob.glob(r"C:\ProgramData\winrun-*"):
+    try:
+        if _now - os.path.getmtime(_p) > 600:
+            os.remove(_p)
+    except OSError:
+        pass
 LIMIT = ${WINRUN_TIMEOUT}
 def _bail():
     print("\n[winrun] 远端脚本超过 %d 秒硬上限，已强制中止。" % LIMIT, flush=True)
@@ -318,7 +318,22 @@ def _bail():
     os._exit(124)
 t = threading.Timer(LIMIT, _bail); t.daemon = True; t.start()
 sys.argv = ["winrun-run.py"] + sys.argv[1:]
-runpy.run_path(r"${REMOTE_PY//\//\\}", run_name="__main__")
+# 退出码由**看门狗自己打进输出**，不靠 cmd 传。
+# 2026-09-08 踩的坑：cmd 里「if errorlevel 1 (A) else (B) 与 C」这种写法，
+# 后面那个 C 会被算进 else 分支——脚本一失败就走 if 分支，取输出那一步整个被跳过，
+# 表现是「远端没有产生输出」，而其实脚本跑了、还打了东西。
+# 注意这段在 heredoc 里且分隔符没加引号，所以**不许出现反引号**：
+# bash 会把反引号当命令替换执行掉，把看门狗写坏（刚刚就这么栽了一次）。
+_rc = 0
+try:
+    runpy.run_path(r"${REMOTE_PY//\//\\}", run_name="__main__")
+except SystemExit as _e:
+    _rc = _e.code if isinstance(_e.code, int) else (0 if _e.code is None else 1)
+except BaseException:
+    import traceback
+    traceback.print_exc()
+    _rc = 1
+print("[winrun-rc] %d" % _rc, flush=True)
 GUARD
   # 顺手送上 arklog.py：读日志的三个坑（时钟、字典序、格式）都在里面堵掉了，
   # 临时脚本 `from arklog import since` 就能用，不用每次自己拼过滤。
@@ -340,32 +355,48 @@ GUARD
   rm -f "$TMP.guard"
   # 一条流推完。COPYFILE_DISABLE + --no-mac-metadata：不然 Mac 会把扩展属性
   # 打成 `._xxx` 一起送过去，在机器上撒一地垃圾（2026-09-08 部署那边刚踩过）。
-  if ! (cd "$STAGE" && COPYFILE_DISABLE=1 tar --no-mac-metadata -czf - .) \
-       | ssh "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$USER_AT" \
-         "tar xzf - -C C:/ProgramData"; then
-    echo "winrun: 送不上去（打包传输失败）" >&2; rm -rf "$STAGE"; exit 3
-  fi
-  rm -rf "$STAGE"
 
-  # ② 跑。输出写到机器上的 UTF-8 文件再整体拷回，中文不经过 936 的控制台。
+  # ② 跑，并且**在同一次 ssh 里把结果带回来**。
+  #
+  #    输出仍然先写成机器上的 UTF-8 文件（中文不经过 936 控制台），但取回来不再另开
+  #    一次 scp——scp 要单独谈一条 SFTP 通道，2026-09-08 实测那一步要 6 秒，
+  #    占整趟 winrun 的将近一半。改成同一条命令里跑完就 base64 打到 stdout：
+  #    base64 是纯 ASCII，照样绕开 936；顺手把三个临时文件删掉，省下第三次往返。
+  #
+  #    exit code 用**自己打的暗号**传回来，不用 ssh 的退出码：ssh 的退出码这里同时
+  #    背着「远端 python 非零退出」和「连接本身失败」两件事，分不开。
   #    本地这层也加上限：ssh 自己不会因为远端卡住而返回。
-  if ! ssh "${SSH_OPTS[@]}" -o ConnectTimeout=30 -o ServerAliveInterval=15 \
-      -o ServerAliveCountMax=$(( WINRUN_TIMEOUT / 15 + 4 )) "$USER_AT" \
-      "set PYTHONUTF8=1&& set PYTHONIOENCODING=utf-8&& \"C:\\Program Files\\Python314\\python.exe\" ${REMOTE_GUARD//\//\\} $* > ${REMOTE_OUT//\//\\} 2>&1" \
-      >/dev/null 2>&1; then
-    # python 自己非零退出也会走到这里，所以不能直接判死——先把输出取回来看。
-    SSH_FAILED=1
-  else
-    SSH_FAILED=0
-  fi
-
-  # ③ 取结果。取不回来是硬错误，必须出声。
-  if ! scp -q "${SSH_OPTS[@]}" -o ConnectTimeout=30 "${USER_AT}:${REMOTE_OUT}" "$TMP" 2>/dev/null; then
-    echo "winrun: 远端没有产生输出文件（脚本可能根本没跑起来，或机器不可达）" >&2
+  RUN_CMD="set PYTHONUTF8=1&& set PYTHONIOENCODING=utf-8&& \
+\"C:\\Program Files\\Python314\\python.exe\" ${REMOTE_GUARD//\//\\} $* > ${REMOTE_OUT//\//\\} 2>&1 \
+& \"C:\\Program Files\\Python314\\python.exe\" -c \"import base64,sys;sys.stdout.write('WINRUN_B64='+base64.b64encode(open(r'${REMOTE_OUT//\//\\}','rb').read()).decode())\" \
+& del /Q ${REMOTE_PY//\//\\} ${REMOTE_GUARD//\//\\} ${REMOTE_OUT//\//\\}"
+  # 送文件和跑脚本合成**一次** ssh：`tar xzf -` 先把这一趟要用的文件解出来，
+  # `&&` 保证解包成功才跑（解包失败就没有任何暗号回来，走下面的「没有输出」那条路）。
+  # 2026-09-08 实测：分成两次是 4.8 秒，合并成一次 2.6 秒——跨境每一次往返都是钱。
+  RAW=$( (cd "$STAGE" && COPYFILE_DISABLE=1 tar --no-mac-metadata -czf - .) \
+        | ssh "${SSH_OPTS[@]}" -o ConnectTimeout=30 -o ServerAliveInterval=15 \
+          -o ServerAliveCountMax=$(( WINRUN_TIMEOUT / 15 + 4 )) "$USER_AT" \
+          "tar xzf - -C C:/ProgramData && $RUN_CMD" 2>/dev/null | tr -d '\r')
+  rm -rf "$STAGE"
+  B64=$(sed -n 's/^WINRUN_B64=//p' <<<"$RAW")
+  if [ -z "$B64" ]; then
+    echo "winrun: 远端没有产生输出（脚本可能根本没跑起来，或机器不可达）" >&2
     exit 4
   fi
-  ssh "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$USER_AT" \
-    "del /Q ${REMOTE_PY//\//\\} ${REMOTE_GUARD//\//\\} ${REMOTE_OUT//\//\\}" >/dev/null 2>&1 || true
+  printf '%s' "$B64" | base64 -d > "$TMP" 2>/dev/null || {
+    echo "winrun: 输出解码失败，远端可能中途被打断" >&2; exit 4; }
+  # 看门狗在正文最后一行报了退出码；取出来再把那一行抹掉，别让它出现在结果里。
+  # `tr -d '\r'` 不能省：Windows 写出来的是 CRLF，取到的退出码其实是 "0\r"，
+  # 和 "0" 一比就不相等，于是每次都误报「非零退出」。而调试打印时那个回车会把
+  # 光标拉回行首，屏幕上看起来正好是 RC=[0]——2026-09-08 我盯着它找了半天。
+  RC=$(sed -n 's/^\[winrun-rc\] //p' "$TMP" | tail -1 | tr -d '\r')
+  SSH_FAILED=0
+  [ -n "$RC" ] && [ "$RC" != "0" ] && SSH_FAILED=1
+  if [ -z "$RC" ]; then
+    echo "winrun: 远端脚本没有报出退出码——它多半是被硬中止了（超时或进程被杀）" >&2
+    SSH_FAILED=1
+  fi
+  grep -v '^\[winrun-rc\] ' "$TMP" > "$TMP.clean" && mv "$TMP.clean" "$TMP"
 
   # ④ 空输出**不再当成成功**。这正是 826 那天骗过我的那一步。
   if [ ! -s "$TMP" ]; then

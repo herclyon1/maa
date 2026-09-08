@@ -24,8 +24,11 @@ set -euo pipefail
 
 HOST="${ARK_HOST:-100.65.39.119}"
 USER_AT="Administrator@${HOST}"
-CM_PATH="${TMPDIR:-/tmp}/ark-cm-${HOST}"
-SSH_OPTS=(-o ControlMaster=auto -o "ControlPath=${CM_PATH}" -o ControlPersist=300
+# 连接复用交给 ~/.ssh/config 里的 `Host ins` 那一段（ControlMaster/ControlPath/
+# ControlPersist 都在那儿）。**这里不许再自带 ControlPath**：自带等于另开一条主连接，
+# 和别的脚本、和我在命令行随手敲的 ssh 各连各的。2026-09-08 实测：不共享每次握手
+# 2.3 秒，共享之后 0.37 秒——跨境每个远程操作都要先付这笔钱，一天付几百次。
+SSH_OPTS=(
           -o ConnectTimeout=20)
 ADB='D:\LD-MRFZ\LDPlayer9\adb.exe'
 DEV="127.0.0.1:7555"
@@ -36,8 +39,9 @@ REMOTE_PNG='C:\ProgramData\ark-shot.png'
 # 重来一次——第二次会自己重新建通道。2026-09-04 手动打保全时被卡过一次。
 run() {
   if ! ssh "${SSH_OPTS[@]}" -o BatchMode=yes "$USER_AT" "$@" 2>/dev/null; then
-    ssh -O exit -o "ControlPath=${CM_PATH}" "$USER_AT" 2>/dev/null || true
-    rm -f "$CM_PATH"
+    # `-O exit` 让 ssh 自己按配置里的 ControlPath 去关掉那条主连接，
+    # 不用我们知道它在哪——路径现在归 ~/.ssh/config 管。
+    ssh -O exit "$USER_AT" 2>/dev/null || true
     ssh "${SSH_OPTS[@]}" "$USER_AT" "$@"
   fi
 }
@@ -50,7 +54,7 @@ fetch_shot() {
   with_connect "\"$ADB\" -s $DEV shell screencap -p /sdcard/ark.png & \
                 \"$ADB\" -s $DEV pull /sdcard/ark.png $REMOTE_PNG >nul 2>&1" >/dev/null
   scp -q "${SSH_OPTS[@]}" "${USER_AT}:$(printf '%s' "$REMOTE_PNG" | tr '\\' '/')" "$dest" \
-    || { rm -f "$CM_PATH"; scp -q "${SSH_OPTS[@]}" \
+    || { ssh -O exit "$USER_AT" 2>/dev/null || true; scp -q "${SSH_OPTS[@]}" \
          "${USER_AT}:$(printf '%s' "$REMOTE_PNG" | tr '\\' '/')" "$dest"; }
   printf '%s  %s 字节\n' "$dest" "$(wc -c < "$dest" | tr -d ' ')"
 }

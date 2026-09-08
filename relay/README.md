@@ -24,7 +24,7 @@ above.
 | `service.py` | Windows service host: process watch, alarm clock, inbox deferral |
 | `core.py` | judgement - what happened, was it a failure, what is pending |
 | `engine.py` | the round: reports, shutdown, catch-up, manual-round detection |
-| `collector.py` | parse AUTO-MAS history records and MAA/MaaEnd logs |
+| `collector.py`（聚合）+ `collector_maa.py` / `collector_maaend.py` / `collector_okww.py` | 扫 AUTO-MAS 的 history 记录、判成败；三个游戏的日志解析按游戏分文件 |
 | `watch.py` | directory-change notification (Windows ctypes / macOS kqueue) |
 | `plan.py` | read AUTO-MAS's schedule; there is no second copy of it |
 | `notify.py` / `transport.py` | channels and HTTP with the right retry policy |
@@ -39,7 +39,7 @@ above.
 | `scoreboard.py` | 每个代码版本跑过几趟、失败几趟。数在 `append_ledger` 里记，日报末尾贴一行——我写的字动不了它 |
 | `annihilation.py` / `garden.py` / `weeklyboss.py` | 三个「一周一次」的门，同一套接口 |
 | `preupdate.py`（聚合）+ `preupdate_common.py` / `preupdate_maa.py` / `preupdate_maaend.py` / `preupdate_automas.py` / `preupdate_okww.py` | 开机窗口里把四个程序更新掉，按程序分文件 |
-| `gameupdate.py` | 队列跑完后更新游戏客户端，再单独补跑 |
+| `gameupdate.py`（聚合）+ `gameupdate_games.py` | 队列跑完后更新游戏客户端，再单独补跑；三家游戏各自的更新流程单独一个文件 |
 | `okww_patch.py` + `okww_patches/` | 贴在 OK-WW 源码上的本地补丁，一个补丁一个文件 |
 | `wuwa_tacet.py` / `wuwa_forgery.py` | 鸣潮副本序号 → 名字 → 掉落，手机页与此同源 |
 | `banners.py` / `efstatus.py` / `snapshot.py` / `desktop.py` / `phone.py` | 卡池播报 / 终末地开服状态 / 配置快照 / 桌面助手 / 手机通道 |
