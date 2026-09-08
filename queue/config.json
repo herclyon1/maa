@@ -1,5 +1,5 @@
 {
-  "version": 2026090901,
+  "version": 2026090902,
   "name": "set_master",
   "note": "中继按「版本号严格变大」整批应用这个文件里的 commands。所以这里**不能留着上一次的指令**：下次为了改别的东西而抬版本号时，旧指令会被一并重放。2026-09-08 清空——此前它一直留着 2026-08-23 的 debug_mode，谁改一次配置，机器就会跟着白开一夜。要下指令就把 commands 填上、version 抬到今天，做完再清回空。",
   "commands": [
@@ -7,7 +7,7 @@
       "action": "set_master",
       "confirmed": true,
       "game": "MaaEnd",
-      "path": "AutoUseSpMedication/AutoUseSpMedicationExpireWithinDays",
+      "path": "AutoEssence/AutoEssenceSpMedicationExpireWithinDays",
       "value": "All"
     }
   ]
