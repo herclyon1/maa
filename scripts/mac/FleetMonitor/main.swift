@@ -39,6 +39,135 @@
 
 import AppKit
 import Foundation
+import Network
+
+
+// MARK: - Live link
+//
+// ToDesk 那种「掉线立刻变红」不是靠更勤地去问，是靠**一直连着**：连接断了本身就是信号。
+// 用户 2026-09-08：「最坏 10 分钟我都不能接受，要跟 todesk 一样实时检测。」
+//
+// 所以对每台机器保持一条 TCP 连接（连它的 22 端口，Tailscale 内网可达）。
+//   * 正常关机 → sshd 关闭，对端发 FIN/RST → **毫秒级**知道；
+//   * 直接断电 → 没有 RST，靠 TCP keepalive：空闲 5 秒开始探，每 2 秒一次，3 次不应 → 约 11 秒；
+//   * 机器回来 → 重连成功那一刻就绿。
+// 两种情况都不需要定时轮询，和这个仓库「在线/离线不许靠轮询」的规矩一致。
+//
+// 原来的 disco ping 保留，但降级成「量延迟、看是不是直连」的细节来源，
+// 不再承担「在不在」这个判断——它要 5 分钟一轮、两次不应才算数，最坏十分钟。
+final class Link {
+    private var conns: [String: NWConnection] = [:]
+    private var up: [String: Bool] = [:]
+    private let lock = NSLock()
+    private let queue = DispatchQueue(label: "fleetmonitor.link")
+    /// 状态一变就叫醒界面，不等任何定时器。
+    var onChange: (() -> Void)?
+
+    func track(_ ips: [String]) {
+        lock.lock()
+        let gone = Set(conns.keys).subtracting(ips)
+        lock.unlock()
+        for ip in gone { drop(ip) }
+        for ip in ips where !ip.isEmpty { ensure(ip) }
+    }
+
+    func isUp(_ ip: String) -> Bool? {
+        lock.lock(); defer { lock.unlock() }
+        return up[ip]
+    }
+
+    private func drop(_ ip: String) {
+        lock.lock(); let c = conns.removeValue(forKey: ip); up.removeValue(forKey: ip); lock.unlock()
+        c?.cancel()
+    }
+
+    private func ensure(_ ip: String) {
+        lock.lock(); let existing = conns[ip]; lock.unlock()
+        if existing != nil { return }
+        connect(ip)
+    }
+
+    private func connect(_ ip: String) {
+        let tcp = NWProtocolTCP.Options()
+        tcp.enableKeepalive = true
+        tcp.keepaliveIdle = 5          // 空闲 5 秒就开始探
+        tcp.keepaliveInterval = 2      // 每 2 秒一次
+        tcp.keepaliveCount = 3         // 3 次不应就判死 → 断电约 11 秒被发现
+        tcp.connectionTimeout = 6
+        tcp.noDelay = true
+        let params = NWParameters(tls: nil, tcp: tcp)
+        guard let port = NWEndpoint.Port(rawValue: 22) else { return }
+        let c = NWConnection(host: NWEndpoint.Host(ip), port: port, using: params)
+        lock.lock(); conns[ip] = c; lock.unlock()
+
+        c.stateUpdateHandler = { [weak self, weak c] state in
+            guard let self = self else { return }
+            switch state {
+            case .ready:
+                self.set(ip, true)
+                // **必须挂一个读**，否则对端发来的 FIN 只是躺在缓冲区里，
+                // 状态机根本不动。2026-09-08 本地实测：只连不读，对端关闭之后
+                // 隔了 60 秒才发现；挂上读之后是 19 毫秒。
+                // 「一直连着」不等于「一直听着」，这一步是实时的全部关键。
+                self.listen(ip, c)
+            case .failed, .cancelled:
+                // **断了不等于关机。** sshd 的 LoginGraceTime 会在 120 秒后主动踢掉
+                // 没认证的连接，那和真关机一样是一个干净的 FIN——直接判离线的话，
+                // 每两分钟闪一次红，这个红点就再也没人信了。
+                // 所以断了立刻重连，**重连也失败才算离线**：
+                //   * sshd 踢人 → 马上又连上 → 一直绿，用户什么都看不到；
+                //   * 真关机   → 重连连不上 → 一两秒内变红。
+                self.lock.lock(); let mine = self.conns[ip] === c; self.lock.unlock()
+                if mine {
+                    self.lock.lock(); self.conns[ip] = nil; self.lock.unlock()
+                    self.queue.async { [weak self] in self?.connect(ip) }
+                }
+            case .waiting:
+                // 连不上（机器关着、路由不通）——这才是「不在」。
+                self.set(ip, false)
+                // 一直重试，机器回来那一刻就绿。3 秒是重连节奏，不是判据。
+                self.queue.asyncAfter(deadline: .now() + 3) { [weak self] in
+                    guard let self = self else { return }
+                    self.lock.lock(); let mine = self.conns[ip] === c; self.lock.unlock()
+                    if mine {
+                        c?.cancel()
+                        self.lock.lock(); self.conns[ip] = nil; self.lock.unlock()
+                        self.connect(ip)
+                    }
+                }
+            default:
+                break
+            }
+        }
+        c.start(queue: queue)
+    }
+
+    /// 挂一个读，等对端说话或关闭。收到任何东西都不重要，重要的是**它还在**。
+    private func listen(_ ip: String, _ c: NWConnection?) {
+        guard let c = c else { return }
+        c.receive(minimumIncompleteLength: 1, maximumLength: 4096) { [weak self, weak c] _, _, done, err in
+            guard let self = self else { return }
+            if done || err != nil {
+                // 对端关了。可能是关机，也可能是 sshd 的 LoginGraceTime 踢人——
+                // 分不出来，所以不在这里下结论，交给 .failed 那条路去重连再判。
+                self.lock.lock(); let mine = self.conns[ip] === c; self.lock.unlock()
+                if mine {
+                    c?.cancel()          // 触发 .cancelled → 立刻重连 → 连不上才判离线
+                }
+                return
+            }
+            self.listen(ip, c)
+        }
+    }
+
+    private func set(_ ip: String, _ value: Bool) {
+        lock.lock()
+        let changed = up[ip] != value
+        up[ip] = value
+        lock.unlock()
+        if changed { DispatchQueue.main.async { self.onChange?() } }
+    }
+}
 
 // MARK: - Model
 
@@ -491,9 +620,26 @@ final class Controller: NSObject, NSApplicationDelegate {
     private var machines: [Machine] = []
     private var lastGood: Date?
     /// Backstop only - the bus subscription is what actually drives updates.
-    private let heartbeatSeconds: TimeInterval = 300
+    // 60 秒，不是 300。2026-09-08：机器关掉 17 分钟之后 Dock 上还是绿的 2/2。
+    // 判离线要连续两次探测失败，300 秒一轮就意味着**最坏十分钟才变色**——
+    // 而这个程序存在的唯一理由就是「一眼看出那台机器在不在」。
+    // 探测本身只是两个 ping，便宜得很，没有理由省这一下。
+    private let heartbeatSeconds: TimeInterval = 60
+
+    // 不许被 App Nap 掐住。没有这一句时，系统会把后台应用的定时器拖到几十秒甚至
+    // 几分钟才触发一次——上面那个 60 秒就成了摆设，而屏幕上那个绿点还是绿的。
+    // 这正是 2026-09-08 那次的真因：逻辑是对的，定时器根本没按时跑。
+    private var napBlocker: NSObjectProtocol?
+
+    /// 一直连着的那条线。它说了算，见 Link 的说明。
+    private let link = Link()
 
     func applicationDidFinishLaunching(_ note: Notification) {
+        napBlocker = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .idleSystemSleepDisabled],
+            reason: "watching whether the machines answer")
+        // 连接状态一变就重画，不等任何定时器——这就是「实时」的那部分。
+        link.onChange = { [weak self] in self?.apply(self?.machines) }
         buildWindow()
         refresh()
         Timer.scheduledTimer(withTimeInterval: heartbeatSeconds, repeats: true) { [weak self] _ in
@@ -598,7 +744,7 @@ final class Controller: NSObject, NSApplicationDelegate {
     }
 
     private func apply(_ result: [Machine]?) {
-        guard let list = result else {
+        guard var list = result else {
             // A failed read is not news about the fleet, so do not throw away
             // what was last known true - blanking the window to an error made
             // a five-second hiccup look like everything had gone dark. Keep the
@@ -614,6 +760,16 @@ final class Controller: NSObject, NSApplicationDelegate {
                 self?.refresh()
             }
             return
+        }
+        // 让 Link 盯住除本机以外的每一台。
+        link.track(list.filter { !$0.isSelf }.map(\.ip))
+        // **在不在，以那条一直连着的线为准。** Tailscale 的 online 只当参考：
+        // 它对一台已经断电的机器能报 active 好几个小时（2026-09-03 实测四小时），
+        // 而那条 TCP 连接在关机时毫秒级就断了。
+        list = list.map { m in
+            guard !m.isSelf, let alive = self.link.isUp(m.ip) else { return m }
+            if alive { return m.online ? m : m.answering(Probe(answered: true, ms: 0, direct: false)) }
+            return m.silent()
         }
         machines = list
         lastGood = Date()
