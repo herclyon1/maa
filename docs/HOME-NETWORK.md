@@ -191,3 +191,25 @@ Mac: `sudo networksetup -setMTU en0 1460`. Measured at 1460 with the DF flag, 20
 0% loss, download 9.6–10.8 MB/s; at 1200 it is 9.0–10.2 MB/s, **a difference inside the
 noise — both saturate the 100 Mbps port**. 1460 is the exact ceiling with no headroom; if
 it ever plays up again, drop to 1400.
+
+## 2026-09-09: Cloud Genshin (ys.mihoyo.com/cloud) with and without WARP
+
+Measured from the Mac, WARP toggled on for ~30 s per test and restored to Disconnected.
+
+| Target | Direct (transix) | Via WARP (exit `loc=JP`, colo KIX) |
+|---|---|---|
+| `ys.mihoyo.com/cloud/` (Alibaba CDN, Jiangsu 222.192.186.x) | TCP connect times out | **200 in 1.3 s** |
+| `api-cloudgame.mihoyo.com` gamer/api | reachable (203.107.36.87) | `retcode:0` |
+| `webstatic.mihoyo.com` | reachable over IPv6 | reachable |
+| ping `106.15.149.70` (Alibaba Shanghai, last video server) | 25% loss (08-30) | **0% loss, 258 ms** |
+
+Conclusions:
+- The page does **not** need a mainland-China IP. The earlier note in memory saying so
+  was wrong: the direct failure is the dead transix→China path to the Jiangsu CDN node.
+- With WARP on, the page and the API both work from the Mac. Whether the UDP video
+  stream is playable through WARP is **untested** (needs a real session).
+- Phones on the Mac hotspot are routed around WARP by `hotspot-bypass`, so WARP never
+  helps a phone; only the Mac itself benefits.
+- Free alternatives that do not involve `ins`: none for a CN-server account.
+  HoYoverse's global Genshin Cloud does not serve Japan; GeForce NOW Japan has a free
+  tier but runs the global client, which cannot log into a CN account.
