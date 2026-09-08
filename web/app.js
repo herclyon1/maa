@@ -954,10 +954,10 @@ function updateLive() {
     setStatus("正在确认是否在线…", "");
   } else if (offline()) {
     // 连不上就只说连不上。这台机器可能开着，只是话传不过来。
-    setStatus(snap ? `连不上 · 先看看你这边有没有网（最后状态 ${ago(snap.at)}前）`
+    setStatus(snap ? `连不上 · 先看看你这边有没有网（最后状态 ${ago(snap.at)}）`
                    : "连不上 · 先看看你这边有没有网", "");
   } else if (snap) {
-    setStatus(`关机中 · 最后状态 ${ago(snap.at)}前`, "off");
+    setStatus(`关机中 · 最后状态 ${ago(snap.at)}`, "off");
   } else {
     setStatus("关机中 · 还没有过状态", "off");
   }
