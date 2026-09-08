@@ -146,7 +146,6 @@ class State:
     # and this machine reboots twice a day. Anything not yet delivered goes to
     # disk and is only removed once a channel has actually accepted it.
 
-    @property
     def save_pending(self, payload: dict) -> None:
         self.store.set("queues", "pending", dict(payload))
 
