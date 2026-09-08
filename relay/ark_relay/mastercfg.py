@@ -54,8 +54,8 @@ MAAEND_SHOWN: dict[str, tuple[str, ...]] = {
         "EssenceFilterAfterBattle",     # Post-battle essence filtering (战后基质筛选)
         # MaaEnd v2.28 folded the sanity booster into essence farming: these two
         # replace the standalone AutoUseSpMedication task (still present in the
-        # config as an orphan, see read_maaend). The user asked for the booster
-        # settings on the page on 2026-09-09: 「你把终末地吃理智的设置做进手机控制页里面」.
+        # config as an orphan, see read_maaend). These are the booster settings the
+        # user asked to have on the page on 2026-09-09 (his words: 「你把终末地吃理智的设置做进手机控制页里面」).
         "AutoUseSpMedication",                    # When sanity runs out: stop / use booster
         "AutoEssenceSpMedicationExpireWithinDays",  # Use boosters expiring within N days
     ),
