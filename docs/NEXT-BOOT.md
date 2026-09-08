@@ -21,6 +21,19 @@ Tomorrow's 09:00 run answers it either way: `_archive_okww_evidence` now takes a
 screenshot when it fails, and the notification names the real reason. If it fails
 again, look at the screenshot first - it shows which screen the game was sitting on.
 
+## A 4C echo farm is running until 08:30 (2026-09-09 04:32)
+
+OK-WW is farming 天傀劫煞 (position 1 in 讨伐强敌) for 4-cost echoes, started by hand
+through the relay's own `echo_farm` command. The relay ends it at **08:30 machine
+time** on an engine tick, stops OK-WW, and puts FarmEchoTask's config back to what
+it was (Weekly Challenge / level 90 / 3 runs) - that file is shared with the daily's
+weekly-boss step, so if the morning run farms the wrong thing, **look here first**:
+`state.json` → `queues.echo_farm`, and the saved config inside it.
+
+If the machine was power-cut before 08:30, the record is still in state.json and the
+config is still pointed at the overworld boss. The first tick after the next boot
+ends it and restores the config, but check that it did.
+
 ## Deploy the banners split (2026-09-08)
 
 `banners.py` was split into a facade plus four per-game modules, verified byte-identical
