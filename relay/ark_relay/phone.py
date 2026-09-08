@@ -547,8 +547,13 @@ def state_payload(cfg, state_dir: Path) -> dict:
         out["config"] = {
             sec: {k: v for k, v in (vals or {}).items() if k in keep}
             for sec, vals in full.items() if sec == "MAA"}
+        # The orchestrator is always up while the machine is; listing it made
+        # 「现在没有脚本在跑」 impossible to ever show, and 「在跑：AUTO-MAS」 tells him
+        # nothing. Only scripts and games count as running.
+        from .config import ORCHESTRATOR_PROC  # noqa: PLC0415
+        orch = ORCHESTRATOR_PROC[:-4]
         out["run"] = {"服务": full.get("ark-relay"),
-                      "在跑的": [n for n, on in (full.get("进程") or {}).items() if on]}
+                      "在跑的": [n for n, on in (full.get("进程") or {}).items() if on and n != orch]}
         out["queues"] = [{"名": n, **v} for n, v in (full.get("队列") or {}).items()]
     except Exception as exc:  # noqa: BLE001
         out["config"] = {"_错误": f"{type(exc).__name__}: {exc}"}

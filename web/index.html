@@ -53,7 +53,13 @@
        border-bottom:1px solid var(--line)}
   .row:last-child{border-bottom:0}
   .row label{font-size:15px;line-height:1.35}
-  section > p.hint{margin:0;padding:12px 15px;color:var(--dim);font-size:13px;line-height:1.5;border-bottom:1px solid var(--line)}
+  /* 卡片里任何直接子元素都不许贴着卡片边缘。以前只有 .row / .acts / h2 各自带
+     内边距，别的东西（说明段、状态行）一放进来就是齐着边框的一坨——用户 2026-09-09：
+     「这个排版问题我不希望再看见」。所以这里给默认值：不是那几个已经带边距的
+     类，一律 12px 15px；新加的元素不用记着补边距。 */
+  section > *:not(h2):not(.row):not(.acts):not(pre):not(.warn):not(.setup):not(.picks){padding:12px 15px}
+  section > p.hint,section > .hint{margin:0;color:var(--dim);font-size:13px;line-height:1.5;border-bottom:1px solid var(--line)}
+  section > .hint:last-child{border-bottom:0}
   .row .hint{display:block;color:var(--dim);font-size:12px;margin-top:3px;
              line-height:1.45}
   .row > :not(label){align-self:flex-end}
