@@ -251,6 +251,16 @@ if ($cmd -like 'launch*') {
   }
 }
 
+# The screen sleeps after 5 minutes and CopyFromScreen then returns the last frame
+# drawn before it went dark - no error, just an old picture. `shot` is what CLAUDE.md
+# names as the way to see the real screen, and it is used precisely when nothing has
+# touched the machine for a while. On 2026-08-24 a frame frozen 27 minutes earlier
+# was read as "the installer never started"; the taskbar clock in the image was the
+# only clue, and a cropped game view has no clock in it at all.
+# A zero-distance relative mouse move wakes the display without moving the cursor.
+[ArkW]::mouse_event(0x0001, 0, 0, 0, [UIntPtr]::Zero)
+Start-Sleep -Milliseconds 700
+
 $b   = [System.Windows.Forms.SystemInformation]::VirtualScreen
 $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
 $g   = [System.Drawing.Graphics]::FromImage($bmp)

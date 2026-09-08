@@ -119,7 +119,25 @@ public class ArkD {
     }
   }
 
+  # The screen sleeps after 5 minutes and CopyFromScreen then hands back the last
+  # frame drawn before it went dark - no error, just a stale picture. Everything
+  # that reads the screen at the end of a queue is reading it after 45 minutes of
+  # MAA driving the emulator over ADB, which produces no system input at all, so
+  # the display is always asleep by then. On 2026-08-24 a frozen frame from 27
+  # minutes earlier was read as "the installer never started".
+  # A zero-distance relative mouse move wakes the display without moving the
+  # cursor or clicking anything; the wait is for the panel to actually come back.
+  # Once per agent run is enough - the move itself resets the idle timer.
+  $script:ArkWoke = $false
+  function WakeDisplay() {
+    if ($script:ArkWoke) { return }
+    $script:ArkWoke = $true
+    [ArkD]::mouse_event(0x0001, 0, 0, 0, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 700
+  }
+
   function Shot([string]$path) {
+    WakeDisplay
     $b = [Windows.Forms.Screen]::PrimaryScreen.Bounds
     $bmp = New-Object Drawing.Bitmap $b.Width, $b.Height
     $g = [Drawing.Graphics]::FromImage($bmp)

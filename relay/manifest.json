@@ -1,5 +1,5 @@
 {
- "version": 20260908132712,
+ "version": 20260908133011,
  "files": {
   "RELEASE-NOTES.md": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
@@ -13,7 +13,7 @@
   "ark_relay/commands.py": "bd4071f9548bfe0be73dd96c90cbbcb3984e357b",
   "ark_relay/config.py": "cf166425be3c543a936c9a9b2dbfa1840e69ccd1",
   "ark_relay/core.py": "53ee468109ebc49fdb6cf58784bf2c813b4e52e8",
-  "ark_relay/desktop.py": "27cdf214d82bf260f0219e9061405f59f40c570d",
+  "ark_relay/desktop.py": "ba89cb2d2cdb243ea0da7d9b5d03040f3e2a8750",
   "ark_relay/efstatus.py": "f39f98d710f8c37d48c188118eca4e40ff26b849",
   "ark_relay/engine.py": "e8fb5e8e748fdd642f366c2a55679a1bdf029894",
   "ark_relay/gameupdate.py": "b6538bacc93819f4e4a9713828b744097b5fed6e",
