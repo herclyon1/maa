@@ -79,6 +79,24 @@ if hits:
     bad += ["启动后日志里有报错：" + h.strip()[:160] for h in hits[:5]]
 print(f"SMOKE 启动后日志 {len(after)} 行，报错 {len(hits)} 行")
 
+# The command channel. On 2026-09-08 the machine's .env pointed the inbox at a
+# file I had deleted from the repo that day; every order after that 404-ed on all
+# four doors and nothing but the relay's own log said so. A deploy must not be
+# called complete while the machine cannot reach the address the service uses.
+try:
+    import re as _re
+    from pathlib import Path as _P
+    from ark_relay import inbox as _inbox
+    _env = _P(r"C:\ProgramData\ark-relay\.env").read_text(encoding="utf-8", errors="replace")
+    _m = _re.search(r"^ARK_INBOX_URL=(.*)$", _env, _re.M)
+    _url = (_m.group(1).strip().strip('"') if _m else "") or _inbox.DEFAULT_URL
+    if _inbox._fetch(_url) is None:
+        bad.append(f"待办通道取不到：{_url}（服务用的就是这个地址；.env 的 ARK_INBOX_URL 是不是指着已删掉的文件？）")
+    else:
+        print(f"  ✓ 待办通道能取到：{_url}")
+except Exception as _exc:  # noqa: BLE001
+    bad.append(f"待办通道检查本身出错：{type(_exc).__name__}: {_exc}")
+
 if bad:
     print("SMOKE_FAIL")
     for b in bad:

@@ -123,5 +123,28 @@ check("终末地那条说了跳过", "✗ 终末地：找不到安装路径" in 
 check("队列那条说了跳过", "✗ 队列：找不到 AUTO-MAS 目录" in body, True)
 check("理智方案那条说了跳过", "✗ 理智方案：找不到 AUTO-MAS 目录" in body, True)
 
+# ---- A stale configured address must fall back to the built-in one ----
+# 2026-09-08 I deleted inbox/todo.json while the machine's .env still pointed at
+# it. Every order after that 404-ed on all four doors and only the relay's own
+# log knew. The command channel must not die over one stale line in .env.
+_calls = []
+def _fake_fetch(url, *a, **k):
+    _calls.append(url)
+    return None if "todo.json" in url else {"version": 5, "commands": [], "name": "x"}
+_real_fetch = inbox._fetch
+inbox._fetch = _fake_fetch
+try:
+    _ib = inbox.Inbox(tmpdir(), "https://raw.githubusercontent.com/herclyon1/maa/main/inbox/todo.json")
+    _got = _ib._fetch_or_none()
+    check("过期地址取不到时退回内置地址", _got is not None and _got.get("version"), 5)
+    check("先试了配置的，再试内置的", [("todo.json" in u) for u in _calls], [True, False])
+    check("之后直接用内置地址", _ib.url, inbox.DEFAULT_URL)
+    _calls.clear()
+    _ib2 = inbox.Inbox(tmpdir(), inbox.DEFAULT_URL)
+    _ib2._fetch_or_none()
+    check("本来就是内置地址时不重复试", len(_calls), 1)
+finally:
+    inbox._fetch = _real_fetch
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

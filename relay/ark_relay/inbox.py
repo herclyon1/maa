@@ -307,7 +307,20 @@ class Inbox:
         return version, [title, "", *body, "", *messages]
 
     def _fetch_or_none(self) -> dict | None:
-        return _fetch(self.url)
+        data = _fetch(self.url)
+        if data is None and self.url != DEFAULT_URL:
+            # A configured address that no door can serve is almost always a
+            # stale one. On 2026-09-08 I deleted inbox/todo.json from the repo
+            # while the machine's .env still pointed at it; every order sent
+            # after that 404-ed on all four doors and the relay only wrote a
+            # warning to its own log. Fall back to the built-in address and say
+            # so loudly - a dead command channel must not stay quiet.
+            log.warning("配置的待办地址 %s 一扇门都取不到，改试内置地址 %s", self.url, DEFAULT_URL)
+            data = _fetch(DEFAULT_URL)
+            if data is not None:
+                self.url = DEFAULT_URL
+                log.warning("内置地址取到了：.env 里的 ARK_INBOX_URL 指着一个已经不存在的文件，请删掉那一行")
+        return data
 
     def _apply(self, commands: list) -> list[str]:
         out: list[str] = []
