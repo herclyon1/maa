@@ -807,7 +807,14 @@ async function doSave() {
    updateLive 的定时器是本地计时，不碰网络——页面上没有轮询。
 
    为什么机器不盲跳：ntfy.sh 每个 IP 每天 250 条，盲跳会把额度吃光。 */
-const HB_FRESH_MS = 90 * 1000;
+const HB_FRESH_MS = 90 * 1000;      // 正常节奏（30 秒一跳）下的判定窗口
+// 机器把当前心跳节奏写在消息里（"hb 30" / "hb 300"）。日上限一到它就降到 5 分钟
+// 一跳，而这边固定按 90 秒判「关机中」——于是每 5 分钟里有 3 分半是假的红，
+// 机器正在跑。窗口不能一味放宽：那会拖慢它唯一存在的理由（看出真的关机了）。
+let hbEvery = 30;                   // 秒，由心跳消息本身报上来
+function hbWindowMs() {
+  return Math.max(HB_FRESH_MS, hbEvery * 2000 + 30000);
+}
 const WATCH_RENEW_MS = 8 * 60 * 1000;
 const CONFIRM_MS = 8 * 1000;
 let lastHb = 0;
@@ -834,9 +841,10 @@ function why(err) {
 
 function updateLive() {
   if (!cfg) return;
-  const alive = lastHb && (Date.now() - lastHb < HB_FRESH_MS);
+  const alive = lastHb && (Date.now() - lastHb < hbWindowMs());
   if (alive) {
-    setStatus(`开机中 · 实时${snap ? `（配置是 ${ago(snap.at)}的）` : ""}`, "on");
+    setStatus(`开机中 · ${hbEvery > 60 ? `每 ${Math.round(hbEvery / 60)} 分钟报一次` : "实时"}`
+              + (snap ? `（配置是 ${ago(snap.at)}的）` : ""), "on");
   } else if (Date.now() < pendingUntil) {
     setStatus("正在确认是否在线…", "");
   } else if (offline()) {
@@ -854,7 +862,7 @@ setInterval(updateLive, 5000);
 function askWatch() {
   // 「我在看」：机器收到立刻跳一次。8 秒内没回应就按关机算。
   if (!cfg || !cfg.topic || !cfg.pin) return;
-  if (!(lastHb && Date.now() - lastHb < HB_FRESH_MS)) pendingUntil = Date.now() + CONFIRM_MS;
+  if (!(lastHb && Date.now() - lastHb < hbWindowMs())) pendingUntil = Date.now() + CONFIRM_MS;
   updateLive();          // 马上显示「正在确认…」，别让旧的「关机中」多挂 5 秒
   send({ action: "watch" }).then(() => { netOk = true; })
                            .catch(() => { netOk = false; updateLive(); });
@@ -873,7 +881,11 @@ async function probeHb() {
         const e = JSON.parse(l);
         if (e.event !== "message") continue;
         if (e.message === "bye") bye = Math.max(bye, e.time * 1000);
-        else hb = Math.max(hb, e.time * 1000);
+        else {
+          hb = Math.max(hb, e.time * 1000);
+          const m = /^hb\s+(\d+)$/.exec(String(e.message || ""));
+          if (m) hbEvery = Number(m[1]) || hbEvery;
+        }
       } catch {}
     }
     lastHb = (bye >= hb) ? 0 : hb;
@@ -891,7 +903,11 @@ function startLive() {
         if (d.event && d.event !== "message") return;
         if (d.topic === cfg.topic + "-hb") {
           if (d.message === "bye") { lastHb = 0; pendingUntil = 0; }
-          else lastHb = d.time * 1000;
+          else {
+            lastHb = d.time * 1000;
+            const hm = /^hb\s+(\d+)$/.exec(String(d.message || ""));
+            if (hm) hbEvery = Number(hm[1]) || hbEvery;
+          }
           updateLive();
           return;
         }
