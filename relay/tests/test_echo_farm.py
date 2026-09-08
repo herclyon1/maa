@@ -57,6 +57,9 @@ def cfg_now(c):
 launched = []
 echofarm._launch = lambda: (launched.append(1), (True, ""))[1]
 echofarm.stop_okww = lambda: launched.append("stop")
+# The marker file lives in C:\ProgramData on the machine. Point it at a temp path so
+# the tests never write into the repo (and never into a real machine path either).
+echofarm.NO_CLAIM = str(tmpdir() / "no-claim")
 
 print("[配置路径：按机器上的真实布局找，找不到就说找不到]")
 _empty = tmpdir()
@@ -80,6 +83,8 @@ after = cfg_now(c)
 check("改成了打强敌", after["Teleport to Boss"], "Boss Challenge")
 check("第几个", after["Which Boss Challenge to Teleport"], 1)
 check("次数交给时钟，不再是 3", after["Repeat Farm Count"], echofarm.BIG_COUNT)
+check("等级压到最低档，不然打不过", after["Boss Level"], echofarm.FARM_LEVEL)
+check("最低档不是原来那个 90", echofarm.FARM_LEVEL != ORIGINAL["Boss Level"], True)
 check("原配置一字不落地存着", echofarm.current(c.state_dir)["saved"], ORIGINAL)
 
 print("\n[正在刷的时候不许再开一趟]")
@@ -121,6 +126,72 @@ for bad in (0, 31, "一", None):
     c2 = fresh()
     check(f"拒绝 {bad!r}", echofarm.start(c2, bad, "08:30")[0], False)
     check(f"拒绝 {bad!r} 后配置没动", cfg_now(c2), ORIGINAL)
+
+
+print("\n[刷声骸期间必须挂着「不领奖」标记：领一次奖 60 波片，通宵刷会掏空账号]")
+echofarm._launch = lambda: (launched.append(1), (True, ""))[1]
+c = fresh()
+check("开跑前没有标记", echofarm.no_claim_on(), False)
+echofarm.start(c, 1, "08:30", "天傀劫煞")
+check("开跑后标记挂上了", echofarm.no_claim_on(), True)
+echofarm.finish(c, "手动停止")
+check("收工后标记撤了", echofarm.no_claim_on(), False)
+
+print("\n[启动失败也不许把标记留在机器上]")
+c = fresh()
+echofarm._launch = lambda: (False, "计划任务起不来")
+echofarm.start(c, 1, "08:30", "天傀劫煞")
+check("失败后没留标记", echofarm.no_claim_on(), False)
+echofarm._launch = lambda: (launched.append(1), (True, ""))[1]
+
+print("\n[OK-WW 长时间一行日志都不写就自己停下来并说话]")
+# 2026-09-09: the game exited mid-farm and OK-WW sat against a window that was no
+# longer there - six minutes without a single line and not one word about it.
+# Silence that long now ends the run and says so.
+import ark_relay.weeklyboss as _wb                                # noqa: E402
+_real_log = _wb._okww_log
+_logfile = tmpdir() / "ok-ww.log"
+_logfile.write_text("x", encoding="utf-8")
+_wb._okww_log = lambda: _logfile
+try:
+    check("读不出日志时不猜", echofarm.quiet_minutes(datetime(2026, 9, 9, 5, 0, tzinfo=SERVER_TZ)) is not None, True)
+    c = fresh()
+    echofarm.start(c, 1, "08:30", "天傀劫煞")
+    _rec = echofarm.current(c.state_dir)
+    _rec["started"] = "2026-09-09 04:00"
+    echofarm._store(c.state_dir).set("queues", "echo_farm", _rec)
+    import os as _os
+    _quiet_since = datetime(2026, 9, 9, 4, 30, tzinfo=SERVER_TZ).timestamp()
+    _os.utime(_logfile, (_quiet_since, _quiet_since))
+    check("刚开跑一分钟不算停", echofarm.tick(c, datetime(2026, 9, 9, 4, 1, tzinfo=SERVER_TZ)), "")
+    _before = len(launched)
+    check("停了三分钟就自己重开", echofarm.tick(c, datetime(2026, 9, 9, 4, 35, tzinfo=SERVER_TZ)), "")
+    check("真的重开了一次", len(launched) - _before, 1)
+    check("重开次数记下来了", echofarm.current(c.state_dir)["restarts"], 1)
+    check("刚重开完不重复开", echofarm.tick(c, datetime(2026, 9, 9, 4, 36, tzinfo=SERVER_TZ)), "")
+    check("还是只开过一次", len(launched) - _before, 1)
+    check("这时还在刷，没收工", bool(echofarm.current(c.state_dir)), True)
+
+    print("\n[重开了还是不写日志就别硬撑，收工并说清重开过几次]")
+    _rec2 = echofarm.current(c.state_dir)
+    _rec2["restarts"] = echofarm.MAX_RESTARTS
+    echofarm._store(c.state_dir).set("queues", "echo_farm", _rec2)
+    note = echofarm.tick(c, datetime(2026, 9, 9, 4, 55, tzinfo=SERVER_TZ))
+    check("收工了", "天傀劫煞" in note and "重开" in note, True)
+    check("配置还原了", cfg_now(c), ORIGINAL)
+    check("状态清空", echofarm.current(c.state_dir), {})
+    check("标记也撤了", echofarm.no_claim_on(), False)
+    _wb._okww_log = lambda: None
+    c = fresh()
+    echofarm.start(c, 1, "08:30", "天傀劫煞")
+    check("读不到日志时不许乱停", echofarm.tick(c, datetime(2026, 9, 9, 5, 0, tzinfo=SERVER_TZ)), "")
+    echofarm.finish(c, "收尾")
+finally:
+    _wb._okww_log = _real_log
+
+print("\n[开跑时刻读不出来也不当成卡死]")
+check("读不出开跑时刻返回 None", echofarm._started_at({"started": "不是时间"}), None)
+check("读得出就是那个时刻", echofarm._started_at({"started": "2026-09-09 04:00"}).hour, 4)
 
 print("\n[收工那一步本身：先停计划任务，再把 OK-WW 的进程停干净]")
 # The real function, not the stub - it is what actually ends the run on the machine.

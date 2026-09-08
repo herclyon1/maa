@@ -22,17 +22,18 @@ changed; an empty answer means everything was already in place.
 | 1 | `NightmareNestTask.py` replaced wholesale with our copy — this is where the fixed `ensure_main` and 「只刷指定点位」 live | `okww_files/NightmareNestTask.patched.py` |
 | 2 | Weekly boss runs **before** the daily stamina farming — otherwise the daily step burns all 180 stamina and the three 60-stamina chests are impossible | `okww_patches/stamina.py` |
 | 3 | 「这次不刷体力」 marker honoured | `okww_patches/nofarm.py` |
-| 4 | After the boss dies, walk to the crystal and actually spend the 60 waveplates — entering the domain does not claim it | `okww_patches/claim.py` |
+| 4 | After the boss dies, walk to the crystal and actually spend the 60 waveplates — entering the domain does not claim it. **v6 (2026-09-09) adds a gate**: while `C:\ProgramData\ark-okww-farm.no-claim` exists the reward is never claimed, because the 4-cost echo farm reuses this branch and an overnight loop would spend 60 waveplates a lap | `okww_patches/claim.py` |
 | 5 | Two screenshots of the tacet field, for the daily report | `okww_patches/tacetshot.py` |
 | 6 | Skip the weekly boss when waveplates are short, instead of failing inside it | `okww_patches/nowave.py` |
 | 7 | Retry cap | `okww_patches/retrycap.py` |
 | 8 | Let-pass | `okww_patches/letpass.py` |
 | 9 | Read the remaining-runs count before entering; at 0/3 skip the boss instead of fighting it for nothing (v3, 2026-09-09) | `okww_patches/count.py` |
 | 10 | 限时提前开放 bosses: recognise 「提前到达目标位置可能影响剧情体验」 and confirm it. Without this, 天傀劫煞 could not be teleported to at all (2026-09-09) | `okww_patches/bosstip.py` |
+| 11 | Same boss, second half: confirming that dialog drops the player straight into the arena, with no fast-travel UI and no team screen, so both of upstream's branches raise 「Teleport to boss failed」. This returns as soon as it sees the flag (2026-09-09) | `okww_patches/bosstip.py` (`_EARLYOPEN`) |
 
 **Deliberately reverted every boot** (they are listed so an old copy left behind by
-an update is removed, and so nobody re-adds them): the four earlier versions of the
-claim patch, tacetshot v1, count v1, nowave v1/v2/v3a/v3b, `farmerr` (its premise
+an update is removed, and so nobody re-adds them): the six earlier versions of the
+claim patch, three earlier versions of the bosstip patch, tacetshot v1, count v1, nowave v1/v2/v3a/v3b, `farmerr` (its premise
 was wrong - OK-WW's own `error()` already prints the stack), `shot` / `shot2` /
 `teamshot` (evidence screenshots whose questions have been answered), 「领奖顺序」,
 the two `DomainTask` patches, and `starve`.

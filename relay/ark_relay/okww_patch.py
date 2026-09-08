@@ -36,8 +36,10 @@ import logging
 from pathlib import Path
 
 from .okww_patches.tacetshot import _TACETSHOT_OLD, _TACETSHOT_NEW, _TACETSHOT_V1, _TACETSHOT_V1_OLD, _tacetshot_present, _TACETSHOT
-from .okww_patches.bosstip import _BOSSTIP_OLD, _BOSSTIP_NEW, _bosstip_present, _BOSSTIP
-from .okww_patches.claim import _CLAIM_OLD, _CLAIM_NEW, _CLAIM_V1, _CLAIM_V2, _CLAIM_V3, _CLAIM_V4, _CLAIM_TAIL, _CLAIM_OLD_FULL, _claim_present, _CLAIM
+from .okww_patches.bosstip import (_BOSSTIP_OLD, _BOSSTIP_OLD_FULL, _BOSSTIP_NEW, _BOSSTIP_V1,
+                                   _BOSSTIP_V2, _BOSSTIP_V3, _bosstip_present, _BOSSTIP,
+                                   _EARLY_OLD, _EARLY_NEW, _EARLYOPEN)
+from .okww_patches.claim import _CLAIM_OLD, _CLAIM_NEW, _CLAIM_V1, _CLAIM_V2, _CLAIM_V3, _CLAIM_V4, _CLAIM_V5, _CLAIM_V6, _CLAIM_TAIL, _CLAIM_OLD_FULL, _claim_present, _CLAIM
 from .okww_patches.core import _SRC, _Patch, _atomic_write, _atomic_write_bytes, _verify_or_revert, _stacked, _apply_one, _revert_text
 from .okww_patches.count import _COUNT_OLD, _COUNT_V1, _COUNT_V2, _COUNT_NEW, _count_present, _COUNT
 from .okww_patches.domain import _DOMAIN_IMPORT_OLD, _DOMAIN_IMPORT_NEW, _DOMAIN_OLD, _DOMAIN_NEW, _domain_present, _apply_domain
@@ -61,12 +63,15 @@ log = logging.getLogger("ark.okww_patch")
 __all__ = [
     'ensure_patches', 'ensure_if_updated', 'nest_patch_present', 'active_patches',
     '_BOSSTIP', '_BOSSTIP_OLD', '_BOSSTIP_NEW', '_bosstip_present',
+    '_EARLYOPEN', '_EARLY_OLD', '_EARLY_NEW',
     '_CLAIM_OLD',
     '_CLAIM_NEW',
     '_CLAIM_V1',
     '_CLAIM_V2',
     '_CLAIM_V3',
     '_CLAIM_V4',
+    '_CLAIM_V5',
+    '_CLAIM_V6',
     '_CLAIM_TAIL',
     '_CLAIM_OLD_FULL',
     '_TACETSHOT_OLD', '_TACETSHOT_NEW', '_TACETSHOT_V1', '_TACETSHOT_V1_OLD', '_tacetshot_present', '_TACETSHOT',
@@ -220,6 +225,7 @@ def _ensure_stamina(root: Path) -> list[str]:
 # old text - which, after OK-WW's 09-06 src replacement, means for as long as
 # the .bak files it left beside them could be restored by hand.
 _FE = (*_SRC, "FarmEchoTask.py")
+_BW = (*_SRC, "BaseWWTask.py")
 _REVERTS: "list[tuple[tuple, str, str, str]]" = [
     # Withdrawn 2026-08-31: OK-WW's own error() already prints the stack.
     (_FE, _FARMERR_NEW, _FARMERR_OLD, "周本活锁：打出被吞掉的异常"),
@@ -232,6 +238,11 @@ _REVERTS: "list[tuple[tuple, str, str, str]]" = [
     (_FE, _CLAIM_V2, _CLAIM_OLD, "打完 Boss 真正领周本奖励 v2"),
     (_FE, _CLAIM_V3, _CLAIM_OLD, "打完 Boss 真正领周本奖励 v3"),
     (_FE, _CLAIM_V4, _CLAIM_OLD, "打完 Boss 真正领周本奖励 v4"),
+    (_FE, _CLAIM_V5, _CLAIM_OLD_FULL, "打完 Boss 真正领周本奖励 v5"),
+    (_FE, _CLAIM_V6, _CLAIM_OLD_FULL, "打完 Boss 真正领周本奖励 v6"),
+    (_BW, _BOSSTIP_V1, _BOSSTIP_OLD, "限时提前开放的 boss v1"),
+    (_BW, _BOSSTIP_V2, _BOSSTIP_OLD, "限时提前开放的 boss v2"),
+    (_BW, _BOSSTIP_V3, _BOSSTIP_OLD_FULL, "限时提前开放的 boss v3"),
     ((*_SRC, "TacetTask.py"), _TACETSHOT_V1, _TACETSHOT_V1_OLD, "无音区留两张图给日报 v1"),
     (_FE, _COUNT_V1, _COUNT_OLD, "进本前拍一张看剩余次数 v1"),
     (_FE, _COUNT_V2, _COUNT_OLD, "进本前拍一张看剩余次数 v2"),
@@ -249,7 +260,7 @@ _REVERTS: "list[tuple[tuple, str, str, str]]" = [
 # _APPLIES: what is in effect on the machine, in application order. The nest
 # file replacement and the stamina/nofarm pair are steps of their own (the
 # nest is a whole-file swap; nofarm's anchor lives inside stamina's body).
-_APPLIES: "list[_Patch]" = [_CLAIM, _TACETSHOT, _NOWAVE, _RETRYCAP, _LETPASS, _COUNT, _BOSSTIP]
+_APPLIES: "list[_Patch]" = [_CLAIM, _TACETSHOT, _NOWAVE, _RETRYCAP, _LETPASS, _COUNT, _BOSSTIP, _EARLYOPEN]
 
 
 def active_patches() -> list[str]:

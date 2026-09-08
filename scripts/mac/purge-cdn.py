@@ -68,6 +68,14 @@ def main() -> int:
         except Exception as exc:  # noqa: BLE001 - 清不动不致命，后面校验说了算
             print(f"  ✗ {p}: {exc}")
 
+    if "--no-wait" in sys.argv:
+        # Called straight after a direct deploy: the machine already has the code over
+        # ssh, so waiting for the mirrors only makes the deploy feel slow. 2026-09-09
+        # the user timed it at seven minutes and asked what happened to the speed work
+        # - 90 s of that was the deploy and the rest was this loop.
+        print("▶ 缓存已清；不等各扇门同步（机器刚才是直连部署的，代码早就到了）")
+        return 0
+
     print("▶ 等各扇门凑齐（判据同机器：最新清单 = 本地版本，且每个文件至少一扇门给得对）")
     want_ver = int(local.get("version") or 0)
 

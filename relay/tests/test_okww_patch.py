@@ -140,6 +140,7 @@ def _make(root: Path, daily=UPSTREAM_DAILY, domain=UPSTREAM_DOMAIN,
         + "\n            except Exception:\n                pass\n"
         "\n    def teleport_to_configured_boss(self):\n        if True:\n"
         + okww_patch._TEAMSHOT_OLD
+        + "\n" + okww_patch._EARLY_OLD + "\n            pass"
         + "\n\n    def _choose_level(self):\n        if True:\n            if True:\n"
         + okww_patch._COUNT_OLD
         + "\n\n    def _prepare(self):\n        try:\n            pass\n"
@@ -155,7 +156,7 @@ def _make(root: Path, daily=UPSTREAM_DAILY, domain=UPSTREAM_DOMAIN,
     # 剧情提示框那条补丁改的是 BaseWWTask.py，锚点在 click_on_book_target 里（8 空格）。
     (d / "BaseWWTask.py").write_text(
         "class BaseWWTask:\n    def click_on_book_target(self, serial_number, total_number):\n"
-        + okww_patch._BOSSTIP_OLD + "\n        return feature\n",
+        + okww_patch._BOSSTIP_OLD + "\n        return feature.name == 'team_close'\n",
         encoding="utf-8")
     return d
 
