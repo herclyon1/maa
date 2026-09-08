@@ -521,7 +521,13 @@ class Notifier:
             delivered, failed = self._fan_out(
                 title, body, order=_ROUTINE_ORDER, stop_on_first=True)
         if not delivered:
-            errs = [f"{n}: {e}" for n, e in failed.items()]
+            # `or [...]`：一个通道都没配的时候 `failed` 是空的，返回空列表就等于
+            # 告诉调用方「送到了」——正是「假的绿」。send_group 早就这么兜了，
+            # send 漏了，2026-09-08 补测试时发现的不对称。
+            # 现在生产上够不到这条路（Config.validate 不许一个通道都不配就启动），
+            # 但这种「够不到所以无所谓」的判断错过一次就够了。
+            errs = ([f"{n}: {e}" for n, e in failed.items()]
+                    or ["一个通知渠道都没有配，这条消息没有任何人收到"])
             # A non-empty return = **not one channel got it**. Many of the 11
             # call sites throw the return value away (things like
             # `notifier.send("🆕 预更新", note)`), so "nobody received this

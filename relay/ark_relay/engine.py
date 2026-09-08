@@ -202,7 +202,17 @@ class Engine:
 
     def tick(self) -> int:
         """Process whatever is new. Returns how many records were handled."""
-        self._observe_modes()
+        # Guarded like every other step below, and for the same reason. This one
+        # sits before the loop, so an exception here kills the *whole* tick -
+        # including the daily report and the shutdown decision at the end of it,
+        # every single round. That is the exact shape of the 2026-09-04 incident
+        # described below, and service.py's outer try only converts it into
+        # "the relay quietly does nothing", which is worse than a crash.
+        # `modes.process_skip` guards itself; `debug_active` / `debug_until` did not.
+        try:
+            self._observe_modes()
+        except Exception:
+            log.exception("读模式开关出错，本轮按「没开任何模式」继续")
         try:
             records = self.source.fetch(self.state.seen)
         except Exception:
