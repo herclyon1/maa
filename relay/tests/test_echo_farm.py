@@ -124,7 +124,7 @@ _sp.run = lambda *a, **k: _ran.append(list(a[0]) if a else []) or None
 _pk._okww_quiesce = lambda *a, **k: _quiesced.append(1)
 try:
     # The stub above replaced the module attribute; reload to get the real one back.
-    import importlib                                              # noqa: E402
+    import importlib
     _mod = importlib.reload(sys.modules["ark_relay.echofarm"])
     _mod.stop_okww()
     check("结束了计划任务", any("schtasks" in c and "/end" in c for c in _ran), True)
