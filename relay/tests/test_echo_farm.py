@@ -40,20 +40,28 @@ class Cfg:
 
 
 def fresh():
+    """An OK-WW tree shaped the way the machine's is: the live config sits under
+    the pyappify working directory, not at the install root. The first attempt on
+    2026-09-09 looked at the root and the command answered 「找不到」."""
     root = tmpdir()
-    (root / "configs").mkdir(parents=True)
-    (root / "configs" / "FarmEchoTask.json").write_text(
-        json.dumps(ORIGINAL, ensure_ascii=False), encoding="utf-8")
+    d = root.joinpath(*echofarm._WORKING, "configs")
+    d.mkdir(parents=True)
+    (d / "FarmEchoTask.json").write_text(json.dumps(ORIGINAL, ensure_ascii=False), encoding="utf-8")
     return Cfg(root)
 
 
 def cfg_now(c):
-    return json.loads((c.okww_dir / "configs" / "FarmEchoTask.json").read_text(encoding="utf-8"))
+    return json.loads(echofarm._cfg_path(c.okww_dir).read_text(encoding="utf-8"))
 
 
 launched = []
 echofarm._launch = lambda: (launched.append(1), (True, ""))[1]
 echofarm.stop_okww = lambda: launched.append("stop")
+
+print("[配置路径：按机器上的真实布局找，找不到就说找不到]")
+_empty = tmpdir()
+check("没有配置文件时不假装有", echofarm._cfg_path(_empty).is_file(), False)
+check("目录是 None 时返回 None", echofarm._cfg_path(None), None)
 
 print("[结束时刻：认得 08:30，认不出的一律拒绝]")
 now = datetime(2026, 9, 9, 4, 0, tzinfo=SERVER_TZ)

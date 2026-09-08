@@ -62,7 +62,8 @@ ver = max(int(today + "01"), n + 1)
 # What the push says. Action ids are for the program; the user reads Chinese.
 ZH = {"set_master": "改脚本自己的设置", "set_config": "改设置", "debug_mode": "调试模式",
       "skip_shutdown": "下次跑完不关机", "run_now": "现在跑一趟", "skip_today": "跳过一趟",
-      "weekly_boss": "改打第几个周本", "estop": "停止一切", "maaend_option": "改终末地选项"}
+      "weekly_boss": "改打第几个周本", "estop": "停止一切", "maaend_option": "改终末地选项",
+      "echo_farm": "开始刷 4C 声骸", "echo_farm_stop": "刷声骸收工"}
 label = "空（安全状态）" if not cmds else "、".join(ZH.get(c["action"], c["action"]) for c in cmds)
 out = {
     "version": ver,

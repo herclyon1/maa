@@ -38,8 +38,23 @@ OKWW_TASK_INDEX = 2
 BIG_COUNT = 100000
 
 
-def _cfg_path(okww_dir) -> Path | None:
-    return (Path(okww_dir) / "configs" / "FarmEchoTask.json") if okww_dir else None
+# OK-WW's live config lives under its pyappify working directory, not at the
+# install root - the same place okww_patches/core.py reaches for `src/task`.
+# Getting this wrong cost the first attempt on 2026-09-09: the command answered
+# 「找不到 OK-WW 的 FarmEchoTask 配置」 and nothing ran.
+_WORKING = ("data", "apps", "ok-ww", "working")
+
+
+def _cfg_path(okww_dir) -> "Path | None":
+    if not okww_dir:
+        return None
+    root = Path(okww_dir)
+    here = root.joinpath(*_WORKING, "configs", "FarmEchoTask.json")
+    if here.is_file():
+        return here
+    # A directory that already points inside working/ is accepted as it is.
+    flat = root / "configs" / "FarmEchoTask.json"
+    return flat if flat.is_file() else here
 
 
 def _store(state_dir):
@@ -82,8 +97,9 @@ def _write_cfg(path: Path, values: dict) -> dict:
 
 def _launch() -> tuple[bool, str]:
     """Start OK-WW's FarmEchoTask on the interactive desktop."""
-    py = Path(r"D:\ark\okww\data\apps\ok-ww\python\pythonw.exe")
-    main = Path(r"D:\ark\okww\data\apps\ok-ww\working\main.py")
+    root = Path(os.environ.get("ARK_OKWW_DIR") or r"D:\ark\okww")
+    py = root / "data" / "apps" / "ok-ww" / "python" / "pythonw.exe"
+    main = root.joinpath(*_WORKING, "main.py")
     if not py.is_file() or not main.is_file():
         return False, f"找不到 OK-WW 的程序（{py} / {main}）"
     Path(BAT).write_text(
