@@ -35,6 +35,12 @@ class _Patch:
     # stack through.
     # 来龙去脉见 docs/CODE-HISTORY.md「core.py:_Patch」
     unique: str = ""
+    # Whether "already in place" may also be checked by looking for `new` in the
+    # file. It may not when another patch rewrites part of this patch's body -
+    # then `new` is legitimately no longer there verbatim. Only _STAMINA is in
+    # that position today (_NOFARM's anchor sits inside it); test_patch_body.py
+    # computes the set and fails if this flag stops matching it.
+    body_check: bool = True
 
 
 def _atomic_write(f: Path, text: str) -> Path | None:
@@ -122,6 +128,19 @@ def _apply_one(root: Path, p: _Patch) -> list[str]:
         return [f"OK-WW 补丁：读不了 {f.name}"]
 
     if p.present(text):
+        # present() is a probe, not a comparison with the current body. Several
+        # of them only check an ordering or a log line, so editing the patch text
+        # leaves them saying "already in place" and the file is never touched -
+        # measured on 2026-09-08: change ensure_main(time_out=180) to 600 in
+        # _STAMINA_NEW and re-applying returns nothing while the file keeps 180.
+        # Nothing downstream can see that: the deploy gate greps this very list,
+        # and an empty list reads as success. So when the probe says yes but the
+        # file holds neither the upstream text nor the text we now want, say so.
+        if p.body_check and p.new and p.old not in text and p.new not in text:
+            log.warning("OK-WW 补丁：%s 的正文和机器上那份对不上", p.name)
+            return [f"OK-WW 补丁：{p.name} **写不进去**——机器上那份是旧正文，"
+                    f"而判定「已贴上」的探针看不出区别。改了补丁正文就要连它的"
+                    f"历史版本一起加进撤销名单，否则新正文永远上不了机器。"]
         return []                      # Idempotent: already in place, so leave no trace and make no noise
     if p.old not in text:
         # Upstream changed the structure. A forced replacement would only

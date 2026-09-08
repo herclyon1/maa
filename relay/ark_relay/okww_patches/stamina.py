@@ -95,4 +95,7 @@ _STAMINA = _Patch(
     present=_stamina_present,
     breaks="周本只能分到日常刷剩的 60 体力，三个宝箱只开得到一个；且剩余体力会闲置",
     upstream="ok-oldking/ok-wuthering-waves#1647",
-)
+    # _NOFARM's anchor sits inside this patch's body, so once both are applied
+    # _STAMINA.new is legitimately no longer in the file verbatim and "is the body
+    # there" cannot be used as a check. test_patch_body.py watches this exception.
+    body_check=False)

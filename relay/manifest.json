@@ -1,5 +1,5 @@
 {
- "version": 20260908095039,
+ "version": 20260908095541,
  "files": {
   "RELEASE-NOTES.md": "be58c979ac1f2dd8b35680fcfaae5aa9168595e7",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
@@ -33,7 +33,7 @@
   "ark_relay/okww_patch.py": "e3899f122aabb7524a6a5362c33acfa014fdd224",
   "ark_relay/okww_patches/__init__.py": "7c076f7b2e6c9cd58e03e6f623206b9aacf2eb35",
   "ark_relay/okww_patches/claim.py": "38ac0a6249afd371ffc638b6e77d463e5d296285",
-  "ark_relay/okww_patches/core.py": "762bb6987f834f2d51add43943e20723424e16d8",
+  "ark_relay/okww_patches/core.py": "edd080c54b1dd294ef3b8ab895c7f240978443b8",
   "ark_relay/okww_patches/count.py": "ecb4147778fd1eaaba8db599d33c6b5818345c93",
   "ark_relay/okww_patches/domain.py": "2d5f60ff6d3b97111fd0e89a6035bdbbc9da3c4b",
   "ark_relay/okww_patches/farmerr.py": "fb4cafb600c556cd7663c532103e3cb9185d4ced",
@@ -45,7 +45,7 @@
   "ark_relay/okww_patches/reward.py": "284a40e8f9fa645521e6492227a6c3464afab52c",
   "ark_relay/okww_patches/shot.py": "be76dd2f578e7cf902515b830862e584a572ed98",
   "ark_relay/okww_patches/shot2.py": "68485983705542cd588c37cc6cfad62539521d6f",
-  "ark_relay/okww_patches/stamina.py": "4edd05c29436f1461e29d93fec5d1017ee1f94c8",
+  "ark_relay/okww_patches/stamina.py": "843065d4437be936e941e6377d93198a5bdede5d",
   "ark_relay/okww_patches/starve.py": "b2bfdf873fa2539a2a374a1f876c332299027663",
   "ark_relay/okww_patches/tacetshot.py": "4b64afeaffa35ff7fcf61216f4bcb5de96f1287b",
   "ark_relay/okww_patches/teamshot.py": "d8cc2c0b623cf28c1af093e14eaf4b3ef27e767d",
