@@ -207,6 +207,12 @@ def _okww_farm_bit(daily: dict, zh: dict[str, str]) -> str:
     lines are mutually exclusive.
     """
     from . import collector_okww  # noqa: PLC0415 - reuse of the forgery name table, kept in one place
+    # The hand-set flag wins over every configured value: the patched OK-WW skips
+    # stamina entirely while it is there. Announcing what stamina will be spent on
+    # while nothing is being spent is the lie this line used to tell.
+    from .config import no_stamina_farm  # noqa: PLC0415
+    if no_stamina_farm():
+        return "⚠️ 今天不刷体力：有人挂了「不刷体力」的开关，波片会一直涨到上限。删掉标记文件才恢复"
     which = daily.get("Which to Farm") or ""
     # Both branches use the shared lookup tables, always 1-based (matching the
     # in-game F2 list). Before 2026-09-08 this file kept its own copy of

@@ -181,6 +181,13 @@ def _runtime(out: dict) -> None:
         out["进程"] = {n[:-4] if n.endswith(".exe") else n: n in tl for n in names}
     except Exception:  # noqa: BLE001
         pass
+    # A hand-set one-shot switch with no display anywhere is a switch that gets
+    # forgotten. This one stops all stamina spending, so forgetting it means
+    # waveplates sit at the cap overflowing while every other surface says farming
+    # is happening.
+    from .config import no_stamina_farm  # noqa: PLC0415
+    if no_stamina_farm():
+        out["⚠️ 不刷体力"] = "开着（有人挂的一次性开关，删掉标记文件才恢复）"
 
 
 def read() -> dict:

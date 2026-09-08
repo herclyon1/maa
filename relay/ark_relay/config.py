@@ -408,3 +408,24 @@ BUSY_PROCS: tuple[str, ...] = SCRIPT_PROCS + GAME_PROCS
 # A python process with this on its command line is OK-WW itself.
 OKWW_CMDLINE = "ok-ww"
 PYTHON_HOSTS: tuple[str, ...] = ("pythonw.exe", "python.exe")
+
+
+# ---------------------------------------------------------------- one-shot flags
+# The patched OK-WW checks for this file and skips stamina farming entirely when it
+# is there. It is set by hand while testing the weekly boss and has to be deleted
+# afterwards - and nothing reported it: tomorrow's plan still announced what stamina
+# would be spent on, healthcheck still ticked, and the phone page still offered the
+# choice. Forgetting it means waveplates sit at the 240 cap overflowing every minute
+# while every surface says farming is happening. Same shape as 「下次跑完不关机」,
+# which has already cost a whole night twice.
+NO_STAMINA_FARM_FLAG = r"C:\ProgramData\ark-relay\state\no-stamina-farm.flag"
+
+
+def no_stamina_farm() -> bool:
+    """Is the hand-set "do not spend any stamina" flag in place?"""
+    from pathlib import Path as _P  # noqa: PLC0415
+    import os as _os  # noqa: PLC0415
+    root = _os.environ.get("ARK_STATE_DIR")
+    if root:
+        return (_P(root) / "no-stamina-farm.flag").exists()
+    return _P(NO_STAMINA_FARM_FLAG).exists()
