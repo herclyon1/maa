@@ -796,7 +796,7 @@ tested, so do not treat that as a conclusion.**
 
 ### 2 & 3. 终末地 「选剑演武」 ×2 - **this one is our settings**, fixed
 
-See [AUTOMAS.md](AUTOMAS.md#选剑演武游戏里成功maaend报失败已关掉).
+See [AUTOMAS.md](AUTOMAS.md#选剑演武-succeeds-in-the-game-reported-as-a-failure-by-maaend--now-disabled).
 I had added the task the same day; its recognition is unreliable, and on failure
 it also left the character stuck in the challenge, which dragged down essence
 farming. Now disabled.

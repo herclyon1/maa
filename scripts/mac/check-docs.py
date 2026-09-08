@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import unicodedata
 import subprocess
 import sys
 from pathlib import Path
@@ -85,6 +86,49 @@ def check_links() -> None:
                 ok(f"{rel} -> {target}")
             else:
                 bad(f"{rel} links to {target}, which does not exist")
+
+
+def _slug(heading: str) -> str:
+    """GitHub 给标题生成锚点的规则（够用的那一部分）。"""
+    h = re.sub(r"`([^`]*)`", r"\1", heading)
+    h = re.sub(r"\*\*|\*|~~", "", h).strip().lower()
+    out = []
+    for ch in h:
+        if ch.isalnum() or ch in "-_" or unicodedata.category(ch).startswith("L"):
+            out.append(ch)
+        elif ch in " \t":
+            out.append("-")
+    return "".join(out)
+
+
+def check_anchors() -> None:
+    """`[文字](别的文件.md#小节)` 里的小节必须真的存在。
+
+    2026-09-08 加的：那天把 docs 全部转成英文，标题一改，两条跨文件锚点就指空了
+    （ENDFIELD-ITEMS → HEADLESS 的扫库那节、PITFALLS → AUTOMAS 的选剑演武那节）。
+    [links] 那一节只查文件在不在，`#` 后面被它剥掉了，所以这类断链一声不吭。
+    点过去落在文件开头，读的人还以为自己读的就是那一节。
+    """
+    print("\n[anchors] 跨文件链接里的小节要真的存在")
+    heads: dict[str, set[str]] = {}
+    for md in markdown_files():
+        heads[md.name] = {_slug(m.group(1)) for m in
+                          re.finditer(r"^#{1,6}\s+(.+?)\s*$", md.read_text(encoding="utf-8"), re.M)}
+    n = 0
+    for md in markdown_files():
+        for m in re.finditer(r"\[[^\]]*\]\(([^)\s#]*)#([^)\s]+)\)",
+                             md.read_text(encoding="utf-8")):
+            target, anchor = m.group(1), m.group(2)
+            name = Path(target).name or md.name
+            if name not in heads:
+                continue                       # 站外或非 md，[links] 那节管
+            n += 1
+            if anchor.lower() in heads[name]:
+                ok(f"{md.relative_to(REPO)} -> {target}#{anchor}")
+            else:
+                bad(f"{md.relative_to(REPO)} 指向 {name} 的 #{anchor}，那里没有这个小节")
+    if not n:
+        ok("没有跨文件的小节链接")
 
 
 def check_command_whitelist() -> None:
@@ -286,6 +330,7 @@ def main() -> int:
     directives = collect_directives()
 
     check_links()
+    check_anchors()
     check_command_whitelist()
     check_env_vars()
     check_repo_paths(directives)

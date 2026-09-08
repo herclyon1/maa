@@ -64,7 +64,7 @@ from the ascension column; essences sit on tab 2, which it never visits.
 `resource/pipeline/nodes.json` plus the node that switches tabs, and see whether the tab is parameterized.
 If it is → point it at the essence column with `pipeline_override`, rerun, and diff `IMS.json`;
 if it is not → only then is this a real gap worth an issue.
-For how to call it, see [HEADLESS.md](HEADLESS.md#maaend-扫库要用-tasksstart不是-tasksrun).
+For how to call it, see [HEADLESS.md](HEADLESS.md#maaend-depot-scan-use-tasksstart-not-tasksrun).
 
 ## Purposes by official `type`
 
