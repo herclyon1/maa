@@ -111,6 +111,16 @@ const TACET = [
 /* 待保存清单里也要显示成套装名，不能又变回数字。 */
 /* 凝素领域同样只存序号。每个地区 5 个，固定按迅刀/音感仪/长刃/臂铠/佩枪排；
    这里只放梦州那一组，全表在 docs/WUWA-TACET-INDEX.md。 */
+/* 讨伐强敌列表的位置 → boss 名字。源头是 relay/ark_relay/wuwa_boss.py，
+   两边由 relay/tests/test_boss_table_matches.py 钉在一起。状态包放不下这张表
+   （ntfy 单条上限 3900 字节，加进去当天就撑爆了），所以照 FORGE 的老办法抄一份。 */
+const BOSSES = [
+  [1, "天傀劫煞"],
+  [2, "万囿牢·朽躯"],
+  [3, "梦魇亚当·重锤"],
+  [4, "无铭探索者"],
+];
+
 const FORGE = [
   ["1 · 迅刀（陨翼云渊）", 1],
   ["2 · 音感仪（静灭云渊）", 2],
@@ -322,9 +332,7 @@ function echoFarmBlock(relay) {
     return `<div class="hint">🥚 正在刷「${cur["名字"] || "?"}」，刷到 ${String(cur["到"]).slice(11)} 为止（${cur["从"] ? String(cur["从"]).slice(11) + " 开始" : ""}）</div>
       <div class="acts"><button class="wide" id="echofarmstop">提前收工（并还原配置）</button></div>`;
   }
-  const opts = ((snap && snap.bosses) || []).map(
-    (b) => `<option value="${b[0]}">${b[0]}. ${b[1]}</option>`).join("");
-  if (!opts) return "";
+  const opts = BOSSES.map((b) => `<option value="${b[0]}">${b[0]}. ${b[1]}</option>`).join("");
   return `<div class="row"><label>刷 4C 声骸
       <span class="hint">盯着一个强敌反复打，捡它掉的 4 花声骸。按时间停，不按次数。
       名字后面的号是游戏里「讨伐强敌」列表从上往下数的位置</span></label>
@@ -580,7 +588,7 @@ function wire() {
   if (ef) ef.onclick = () => {
     const boss = Number(($("#efboss") || {}).value || 0);
     const until = (($("#efuntil") || {}).value || "").trim();
-    const nm = (((snap && snap.bosses) || []).find((b) => b[0] === boss) || [])[1] || `第 ${boss} 个`;
+    const nm = (BOSSES.find((b) => b[0] === boss) || [])[1] || `第 ${boss} 个`;
     if (!boss || !/^\d{1,2}:\d{2}$/.test(until)) {
       toast("先选 boss，再填结束时刻（08:30 这种）", 4000); return;
     }

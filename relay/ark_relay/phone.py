@@ -579,11 +579,6 @@ def state_payload(cfg, state_dir: Path) -> dict:
     except Exception:  # noqa: BLE001
         out["relay"] = {}
     try:
-        from .wuwa_boss import choices  # noqa: PLC0415
-        out["bosses"] = [[i, n] for i, n in choices()]
-    except Exception:  # noqa: BLE001
-        out["bosses"] = []
-    try:
         out["options"] = _options(cfg)
     except Exception:  # noqa: BLE001
         out["options"] = {}
