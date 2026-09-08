@@ -24,8 +24,10 @@ test runs.
 """
 from __future__ import annotations
 
+import io
 import json
 import subprocess
+import tokenize
 import sys
 import tempfile
 from pathlib import Path
@@ -47,15 +49,53 @@ def base_ref(argv: list[str]) -> str:
     return ref or "HEAD~1"
 
 
-def changed_modules(base: str) -> set[str]:
+def _code_only(text: str) -> str:
+    """把源码里的注释和 docstring 剥掉，只留会执行的部分。
+
+    改注释不可能改变行为，所以不该要求为它举证。判据要精确：
+    「这次改动动没动会跑的字节」，而不是「这个文件的字节变没变」。
+    """
+    out = []
+    try:
+        toks = list(tokenize.generate_tokens(io.StringIO(text).readline))
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return text                      # 读不了就按「变了」算，宁可多问一句
+    prev_type = tokenize.INDENT
+    for tok in toks:
+        if tok.type == tokenize.COMMENT:
+            continue
+        # 独立成句的字符串（docstring）：前一个有意义的 token 是换行/缩进
+        if tok.type == tokenize.STRING and prev_type in (
+                tokenize.NEWLINE, tokenize.NL, tokenize.INDENT, tokenize.DEDENT):
+            continue
+        if tok.type not in (tokenize.NL, tokenize.NEWLINE, tokenize.INDENT,
+                            tokenize.DEDENT, tokenize.ENCODING):
+            out.append(tok.string)
+        if tok.type not in (tokenize.COMMENT,):
+            prev_type = tok.type
+    return " ".join(out)
+
+
+def comment_only(base: str, rel: str) -> bool:
+    """这个文件相对 base 是不是只改了注释/docstring。"""
+    old = subprocess.run(["git", "show", f"{base}:{rel}"], cwd=REPO,
+                         capture_output=True, text=True)
+    if old.returncode != 0:
+        return False                     # 新文件：要举证
+    now = (REPO / rel).read_text(encoding="utf-8")
+    return _code_only(old.stdout) == _code_only(now)
+
+
+def changed_modules(base: str) -> tuple[set[str], set[str]]:
+    """(行为可能变了的模块, 只改了注释的模块)。"""
     out = _sh("git", "diff", "--name-only", base, "--", "relay/ark_relay", "relay/service.py")
-    mods = set()
+    real, cosmetic = set(), set()
     for line in out.splitlines():
         p = Path(line)
         if p.suffix != ".py" or "okww_files" in p.parts or p.name == "__init__.py":
             continue
-        mods.add(p.stem)
-    return mods
+        (cosmetic if comment_only(base, line) else real).add(p.stem)
+    return real, cosmetic
 
 
 def executed_modules(want_replay: bool) -> tuple[set[str], set[str]]:
@@ -95,9 +135,12 @@ def executed_modules(want_replay: bool) -> tuple[set[str], set[str]]:
 
 def main(argv: list[str]) -> int:
     base = base_ref(argv)
-    changed = changed_modules(base)
+    changed, cosmetic = changed_modules(base)
+    if cosmetic:
+        print(f"改动覆盖：{len(cosmetic)} 个模块只改了注释/docstring，不要求举证"
+              f"（会执行的字节一个都没变）")
     if not changed:
-        print(f"改动覆盖：自 {base[:8]} 起没有中继模块被改，无需证明")
+        print(f"改动覆盖：自 {base[:8]} 起没有会改变行为的改动，无需证明")
         return 0
     tested, replayed = executed_modules(bool(changed & JUDGING))
     if not tested:
