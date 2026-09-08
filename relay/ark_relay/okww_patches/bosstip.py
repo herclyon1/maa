@@ -1,7 +1,8 @@
 """OK-WW patch: the story-spoiler dialog on a limited-time-early boss.
 
-2026-09-09, farming 天傀劫煞 (first row of 讨伐强敌, tagged 限时提前开放): clicking
-「直接挑战」 pops 「提前到达目标位置可能影响剧情体验，是否确认前往？」 with 取消/确认.
+2026-09-09, farming the first row of 讨伐强敌, which carries the 限时提前开放 tag:
+clicking its challenge button pops a spoiler dialog reading 「提前到达目标位置可能影响
+剧情体验，是否确认前往？」 over two buttons, cancel on the left and confirm on the right.
 Upstream's click_on_book_target does not know that dialog, so the wait that follows
 it times out every time and the whole run dies with 「Teleport to boss failed」 -
 three attempts, then our retry cap stops the task. The user had to click 确认 by

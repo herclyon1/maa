@@ -152,6 +152,11 @@ def _make(root: Path, daily=UPSTREAM_DAILY, domain=UPSTREAM_DOMAIN,
         "        while True:\n            while True:\n"
         + okww_patch._TACETSHOT_OLD + "\n                    pass\n",
         encoding="utf-8")
+    # 剧情提示框那条补丁改的是 BaseWWTask.py，锚点在 click_on_book_target 里（8 空格）。
+    (d / "BaseWWTask.py").write_text(
+        "class BaseWWTask:\n    def click_on_book_target(self, serial_number, total_number):\n"
+        + okww_patch._BOSSTIP_OLD + "\n        return feature\n",
+        encoding="utf-8")
     return d
 
 
