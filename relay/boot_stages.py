@@ -360,7 +360,10 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state):
             from ark_relay import commands as _cmd  # noqa: PLC0415
             ok, msg = _cmd.estop()
             log.warning("🛑 红按钮：%s", msg)
-            notifier.send(texts.ESTOP, msg)
+            # The title has to follow the answer. It used to be 「已停一切」 whatever
+            # came back, so the one case that needs the operator - the relay could
+            # not get the machine quiet - was pushed to his phone as a success.
+            notifier.send(texts.ESTOP if ok else texts.ESTOP_FAILED, msg, alert=not ok)
             push_state("红按钮")
             return
         if engine.scripts_running():

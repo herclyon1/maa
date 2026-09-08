@@ -357,19 +357,46 @@ def _set_master(cmd: dict) -> tuple[bool, str]:
     return False, f"不认识的游戏 {game!r}"
 
 
-def estop() -> tuple[bool, str]:
-    """The red button: stop every script and game. The red one on the phone page.
+# What the red button has to leave dead. MaaEnd has no process of its own, so
+# Endfield.exe stands in for it; Games.exe is the Endfield launcher, which is what
+# runs on a client-update day. 鸣潮 shows up under three names and none of them is
+# ok-ww.exe, which is why the 08-26 verification passed while the game was running.
+# exe -> what to call it when telling the operator. The push has to be in Chinese
+# and a process name is not something he should have to decode at a glance.
+_ESTOP_NAMES = {
+    "MAA.exe": "明日方舟的脚本",
+    "MaaEnd.exe": "终末地的脚本",
+    "dnplayer.exe": "雷电模拟器",
+    "Endfield.exe": "终末地",
+    "Games.exe": "终末地启动器",
+    "ok-ww.exe": "鸣潮的脚本",
+    "Wuthering Waves.exe": "鸣潮",
+    "Client-Win64-Shipping.exe": "鸣潮",
+    "KRSDKExternal.exe": "鸣潮的登录组件",
+}
+_ESTOP_EXES = tuple(_ESTOP_NAMES)
 
-    The order is copied from scripts/windows/dispatch_guard.py (bought with the
-    mess of the morning of 2026-09-01):
-    (1) stop everything through the AUTO-MAS API (queues and scripts both, so it
-    does not treat this as a fault and retry); (2) wait 12 seconds, and only
-    taskkill what is left; (3) check again whether anything was relaunched, and
-    if so run another stop round.
+
+def _estop_alive() -> list[str]:
+    """Which of those are still alive. Empty means nothing is left.
+
+    On a machine where the process list cannot be read, every name is reported as
+    still alive: not knowing must never read as "all clear".
     """
     import subprocess  # noqa: PLC0415
-    import time  # noqa: PLC0415
-    from .preupdate_okww import _okww_quiesce  # noqa: PLC0415
+    if os.name != "nt":
+        return []
+    try:
+        out = subprocess.run(["tasklist", "/FO", "CSV", "/NH"],
+                             capture_output=True, timeout=20).stdout.decode("utf-8", "replace")
+    except (OSError, subprocess.SubprocessError):
+        return ["进程表读不到"]
+    low = out.lower()
+    return [e for e in _ESTOP_EXES if e.lower() in low]
+
+
+def _estop_stop_via_mas() -> list[str]:
+    """Ask AUTO-MAS to stop every queue and script. Returns the names it accepted."""
     stopped: list[str] = []
     try:
         ids = {str((v.get("Info") or {}).get("Name") or ""): sid
@@ -384,15 +411,68 @@ def estop() -> tuple[bool, str]:
                 pass
     except Exception as exc:  # noqa: BLE001
         log.warning("红按钮：AUTO-MAS 接口停不了（%s），直接杀进程", exc)
-    time.sleep(12 if stopped else 2)
-    for exe in ("MAA.exe", "MaaEnd.exe", "dnplayer.exe", "Endfield.exe"):
+    return stopped
+
+
+def _estop_kill() -> None:
+    import subprocess  # noqa: PLC0415
+    from .preupdate_okww import _okww_quiesce  # noqa: PLC0415
+    for exe in _ESTOP_EXES:
         subprocess.run(["taskkill", "/IM", exe, "/T", "/F"], capture_output=True)
     _okww_quiesce()
-    time.sleep(6)
-    for exe in ("MAA.exe", "MaaEnd.exe", "dnplayer.exe", "Endfield.exe"):
-        subprocess.run(["taskkill", "/IM", exe, "/T", "/F"], capture_output=True)
-    _okww_quiesce()
-    return True, "已停一切：" + ("、".join(stopped) if stopped else "接口没停到东西") + "；脚本和游戏进程已结束"
+
+
+def estop(sleep=None) -> tuple[bool, str]:
+    """The red button: stop every script and game. The red one on the phone page.
+
+    The order is copied from scripts/windows/dispatch_guard.py (bought with the
+    mess of the morning of 2026-09-01):
+    (1) stop everything through the AUTO-MAS API (queues and scripts both, so it
+    does not treat this as a fault and retry); (2) wait 12 seconds, and only
+    taskkill what is left; (3) check again whether anything was relaunched, and
+    if so run another stop round.
+
+    Step (3) was missing here for as long as this function existed, and so was any
+    check at all: it killed twice and then returned a hard-coded 「已停一切」.
+    That is the exact shape of 2026-08-26, whose conclusion in the user's own words
+    was 「你没有进行任何有效的停止行为，全是我手动关的」 - except that this version
+    also pushes him a success message. AUTO-MAS relaunches the whole queue when a
+    member is killed under it, so "killed it twice" says nothing about whether
+    anything is still running half a minute later.
+
+    Killing AUTO-MAS itself is deliberately NOT done here: service.py's reviver
+    holds its process handle and brings it back within seconds. When the relay
+    cannot get the machine quiet, the honest answer is to say so and let the
+    operator use scripts/mac/estop.sh, which stops this service first.
+    """
+    import time  # noqa: PLC0415
+    sleep = sleep or time.sleep
+
+    stopped = _estop_stop_via_mas()
+    sleep(12 if stopped else 2)
+    _estop_kill()
+    sleep(6)
+    _estop_kill()
+    sleep(6)
+
+    alive = _estop_alive()
+    if alive:
+        # Relaunched from under us: another stop round, then the truth either way.
+        log.warning("红按钮：杀完还活着 %s，再停一轮", alive)
+        _estop_stop_via_mas()
+        sleep(8)
+        _estop_kill()
+        sleep(6)
+        alive = _estop_alive()
+
+    head = "、".join(stopped) if stopped else "接口没停到东西"
+    if alive:
+        zh = sorted({_ESTOP_NAMES.get(a, a) for a in alive})
+        return False, (f"没能停干净。接口这边：{head}。"
+                       f"还活着：{'、'.join(zh)}。"
+                       "调度器会把被停掉的队列整队重试，中继自己压不住它——"
+                       "请到电脑上跑那个紧急停止的脚本，它会先把中继停掉再动手。")
+    return True, f"已停一切：{head}；脚本和游戏都确认没了"
 
 
 def mas_up() -> bool:

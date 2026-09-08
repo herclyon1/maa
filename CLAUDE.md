@@ -100,10 +100,14 @@
   这一条压过上面那条。
 * **引用他原话时保留中文原文**，外面用英文叙述——翻译他的话等于毁掉证据。
 
-代码里的中文注释还没换完（2026-09-08 时 3109 行 / 228 个文件）。一次全换要动几乎
-每个文件，所以做成棘轮：`scripts/mac/lib/zh_ratchet.py`，登记在
-`relay/tests/zh-baseline.txt`，`lint-repo.sh` 第 20 项挡住变多。
+代码里的中文注释还没换完。2026-09-08 实测：注释和 docstring 一共 8130 行，
+带中文的 2350 行（29%）；其中 **41 个文件中文过半**，那才是真欠账，主要在
+`relay/tests/` 和 `scripts/` 下，`relay/ark_relay/` 基本换完了（剩的多是引他的原话）。
+一次全换要动几乎每个文件，所以做成棘轮：`scripts/mac/lib/zh_ratchet.py`，
+登记在 `relay/tests/zh-baseline.txt`，`lint-repo.sh` 第 20 项挡住变多。
 **碰到哪个文件就顺手把那个文件的注释换成英文**，数字只准降。
+（登记的是「带中文的行数」，不是待办数——引他原话那些行永远会留在里面。）
+改完用 `scripts/mac/lib/comments_only.py <改前目录快照> <文件…>` 证明只动了注释。
 
 ## 开机后先看 docs/NEXT-BOOT.md
 

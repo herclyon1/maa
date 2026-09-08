@@ -33,6 +33,19 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 LEDGER = ROOT / "relay" / "tests" / "zh-baseline.txt"
 ROOTS = ("relay", "scripts")
 HAN = re.compile(r"[一-鿿]")
+ASCII_WORD = re.compile(r"[A-Za-z]")
+
+
+def narration(line: str) -> bool:
+    """Is this line Chinese narration, rather than English prose that quotes Chinese?
+
+    English prose has to be able to name things: 「已停一切」, 鸣潮, a file called
+    中继关机开关.bat. Counting every line that contains a Chinese character would tax
+    correct English for quoting - and quoting the user's own words is required, since
+    translating them destroys the evidence. A line where Chinese outweighs the Latin
+    letters is narration; a line of English carrying a quoted term is not.
+    """
+    return len(HAN.findall(line)) > len(ASCII_WORD.findall(line))
 
 
 def count(path: pathlib.Path) -> int:
@@ -41,7 +54,7 @@ def count(path: pathlib.Path) -> int:
     n = 0
     try:
         for tok in tokenize.generate_tokens(io.StringIO(src).readline):
-            if tok.type == tokenize.COMMENT and HAN.search(tok.string):
+            if tok.type == tokenize.COMMENT and narration(tok.string):
                 n += 1
     except (tokenize.TokenError, IndentationError, SyntaxError):
         pass
@@ -53,7 +66,7 @@ def count(path: pathlib.Path) -> int:
         if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
             doc = ast.get_docstring(node, clean=False)
             if doc:
-                n += sum(1 for line in doc.splitlines() if HAN.search(line))
+                n += sum(1 for line in doc.splitlines() if narration(line))
     return n
 
 
@@ -64,7 +77,7 @@ def count_shell(path: pathlib.Path) -> int:
     the ledger only has to be consistent with itself for the ratchet to work.
     """
     return sum(1 for line in path.read_text(encoding="utf-8").splitlines()
-               if line.lstrip().startswith("#") and HAN.search(line))
+               if line.lstrip().startswith("#") and narration(line))
 
 
 def survey() -> dict[str, int]:
