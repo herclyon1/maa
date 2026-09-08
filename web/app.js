@@ -160,6 +160,12 @@ const SCHEMA = [
   { title:"终末地 · 另外两个任务", owner:"MaaEnd", src:"master", game:"MaaEnd", fields:[
     { path:"AutoUseSpMedication/@enabled", type:"bool",
       hint:"理智不足时自动使用应急理智加强剂" },
+    { path:"AutoUseSpMedication/AutoUseSpMedicationExpireWithinDays", type:"select",
+      hint:"只吃几天内会过期的加强剂。选「全部」则不看剩余天数都吃；选「3 天内」会把同一批到期的药攒到最后三天一起吃掉" },
+    { path:"AutoUseSpMedication/AutoUseSpMedicationUseCount", type:"number",
+      hint:"一趟最多吃几瓶" },
+    { path:"AutoUseSpMedication/AutoUseSpMedicationMaxSanity", type:"number",
+      hint:"理智高于这个数就不吃。填得比上限还大等于不看理智，一直吃到瓶数为止" },
     { path:"AutoCollect/@enabled", type:"bool",
       hint:"按下面的线路和周期自动采集材料" },
     /* 光一个开关看不出它会去采哪几条、哪天采，所以把路线和排班一起显示。 */

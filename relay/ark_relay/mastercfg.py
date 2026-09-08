@@ -53,7 +53,15 @@ MAAEND_SHOWN: dict[str, tuple[str, ...]] = {
         "AutoEssenceChooseLocation",    # Region choice (地区选择)
         "EssenceFilterAfterBattle",     # Post-battle essence filtering (战后基质筛选)
     ),
-    "AutoUseSpMedication": ("@enabled",),
+    "AutoUseSpMedication": (
+        "@enabled",
+        # The user, 2026-09-09: 「你把终末地吃理智的设置做进手机控制页里面」.
+        # 「只吃几天内过期的」 is the setting that decided whether a whole batch of
+        # boosters got drunk on one day (Days3) or spread out (All).
+        "AutoUseSpMedicationExpireWithinDays",   # Use boosters expiring within N days
+        "AutoUseSpMedicationUseCount",           # At most this many per run
+        "AutoUseSpMedicationMaxSanity",          # Only while sanity is below this
+    ),
     "AutoCollect": (
         "@enabled",
         # With only a switch, the phone gives no way to see which routes it
@@ -122,6 +130,39 @@ def _maaend_task(doc: dict, name: str) -> dict | None:
     return None
 
 
+# Options whose definition MaaEnd keeps under another task's file. The standalone
+# 应急理智加强剂 task has no tasks/AutoUseSpMedication.json in v2.28.0-beta.4
+# (searched the install four levels deep on 2026-09-09); its window option is
+# declared inside tasks/ProtocolSpace.json as ProtocolSpaceSpMedicationExpireWithinDays,
+# whose cases carry the labels `$option.AutoUseSpMedicationExpireWithinDays.cases.*`
+# - MaaEnd's own statement that the two are the same option. Without this the page
+# had no choices to offer and the write path accepted any string unvalidated.
+MAAEND_BORROWED_DEFS: dict[str, tuple[str, str]] = {
+    "AutoUseSpMedication/AutoUseSpMedicationExpireWithinDays":
+        ("ProtocolSpace", "ProtocolSpaceSpMedicationExpireWithinDays"),
+}
+
+
+def _maaend_option_def(maaend_dir, task_name: str, opt: str) -> dict:
+    """The definition of one option, from its own task file or a borrowed one."""
+    if not maaend_dir:
+        return {}
+    try:
+        defs = _jsonc(Path(maaend_dir) / "tasks" / f"{task_name}.json").get("option") or {}
+    except (OSError, ValueError, TypeError):
+        defs = {}
+    if opt in defs:
+        return defs[opt] or {}
+    src = MAAEND_BORROWED_DEFS.get(f"{task_name}/{opt}")
+    if not src:
+        return {}
+    try:
+        other = _jsonc(Path(maaend_dir) / "tasks" / f"{src[0]}.json").get("option") or {}
+    except (OSError, ValueError, TypeError):
+        return {}
+    return other.get(src[1]) or {}
+
+
 def read_maaend(automas_dir, maaend_dir) -> dict:
     """Returns `{"values": {"task/option": value},
     "options": {"task/option": [[Chinese label, value]]},
@@ -165,7 +206,7 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
             cur = (task.get("optionValues") or {}).get(opt)
             if cur is None:
                 continue
-            d = defs.get(opt) or {}
+            d = defs.get(opt) or _maaend_option_def(maaend_dir, task_name, opt)
             out["labels"][key] = zh(d.get("label")) or opt
             kind = str(cur.get("type") or d.get("type") or "")
             if kind == "switch":
@@ -210,11 +251,8 @@ def write_maaend(automas_dir, maaend_dir, path: str, value) -> tuple[bool, str]:
                            "（不许凭空造字段——826 就是这么出的事）")
         kind = str(cur.get("type") or "")
         # The value must be one this item itself declares; no filling in whatever
-        try:
-            defs = _jsonc(Path(maaend_dir) / "tasks" / f"{task_name}.json").get("option") or {}
-            allowed = {str(c.get("name")) for c in (defs.get(opt) or {}).get("cases") or []}
-        except (OSError, ValueError, TypeError):
-            allowed = set()
+        allowed = {str(c.get("name"))
+                   for c in (_maaend_option_def(maaend_dir, task_name, opt).get("cases") or [])}
         if kind == "switch":
             before = bool(cur.get("value"))
             cur["value"] = bool(value)
