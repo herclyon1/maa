@@ -2,6 +2,9 @@
 # Build ~/Desktop/云原神.app: turns Cloudflare WARP on if needed, then opens the cloud-game page in Chrome.
 # The main executable is a compiled arm64 binary (a shell script there makes macOS ask for Rosetta).
 set -euo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/app-icon.sh
+. "$HERE/lib/app-icon.sh"
 APP="$HOME/Desktop/云原神.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -52,5 +55,5 @@ int main(void){
 C
 clang -arch arm64 -O2 -o "$APP/Contents/MacOS/launcher" "$SRC"
 rm -f "$SRC"
-touch "$APP"
+set_app_icon "$APP" "$HERE/icons/cloud-genshin.png"
 echo "built $APP"

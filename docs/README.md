@@ -69,6 +69,7 @@ exist - the next session will never read it, so writing it was wasted.
 | [PLAY-MANUAL.md](PLAY-MANUAL.md) | Manual for playing remotely (streaming) |
 | [MAC-COMPAT.md](MAC-COMPAT.md) | How compatible the three helper programs are with the Mac |
 | [MAC-CHANGES.md](MAC-CHANGES.md) | What has been changed on this Mac and on ins |
+| [CLOUD-GENSHIN-WARP.md](CLOUD-GENSHIN-WARP.md) | Playing cloud Genshin through WARP from this Mac: the two-step routine and the desktop launcher (written 2026-09-09 by another session) |
 
 ## Rules for writing
 
