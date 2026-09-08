@@ -8,7 +8,6 @@ __main__.cmd_report
 __main__.cmd_test
 banners.collect
 banners.version_ends
-commands.estop
 commands.mas_up
 desktop.kill
 gameupdate.maaend_reenable_if_updated
