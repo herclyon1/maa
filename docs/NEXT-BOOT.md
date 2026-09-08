@@ -4,6 +4,23 @@
 Long-running work lives in [BACKLOG.md](BACKLOG.md); settled limits nobody intends to change
 live in [OPERATIONS.md](OPERATIONS.md).
 
+## Why was Wuthering Waves not in the open world? (2026-09-08 morning)
+
+All three of the morning's OK-WW records carry the same line from upstream:
+**`Please start in game world and in team!`** - read back with the relay's own parser
+on the evening of 09-08, after the notification was fixed to show it. OK-WW refuses to
+start unless the game is in the open world with a team out, and it waited out its
+600-second timeout three times over.
+
+So it was neither our patch nor an upstream bug. **What is still unknown is why the
+game was in some other state** when OK-WW reached it: it launches the game itself, so
+either the launch stopped somewhere before the world loaded (an announcement, an
+update prompt, a login screen) or the account had no team out.
+
+Tomorrow's 09:00 run answers it either way: `_archive_okww_evidence` now takes a
+screenshot when it fails, and the notification names the real reason. If it fails
+again, look at the screenshot first - it shows which screen the game was sitting on.
+
 ## Deploy the banners split (2026-09-08)
 
 `banners.py` was split into a facade plus four per-game modules, verified byte-identical
