@@ -411,6 +411,17 @@ echo "▶ 未测函数棘轮（changed_covered --ratchet）"
 accepts "棘轮判据自检（新增 vs 搬家分得清）" \
   python3 scripts/mac/lib/changed_covered.py --ratchet-selftest
 
+echo "▶ 注释里的中文只准变少（zh_ratchet）"
+# The ledger is a file of counts, so the gate rots the moment counting drifts:
+# a miscount reads as "nothing grew" and new Chinese narration walks straight in.
+# Feed it a file that is nothing but a new Chinese comment and demand a refusal.
+ZH_PROBE=relay/ark_relay/_guardcheck_zh_probe.py
+printf '# \346\226\260\345\212\240\347\232\204\344\270\255\346\226\207\346\263\250\351\207\212\n_x = 1\n' > "$ZH_PROBE"
+refuses "新增中文注释必须被拒" "_guardcheck_zh_probe" \
+  python3 scripts/mac/lib/zh_ratchet.py
+rm -f "$ZH_PROBE"
+accepts "干净的树不被误杀" python3 scripts/mac/lib/zh_ratchet.py
+
 echo "▶ 仓库自检本身"
 # 这里只验「lint 不会误杀干净的树」。测试那一项部署流程自己会跑一遍，
 # 在这儿再跑一遍纯属重复，一次部署白等十几秒。
