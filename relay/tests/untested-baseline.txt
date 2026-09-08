@@ -15,13 +15,13 @@ core.State.mark_banner_announced
 core.format_failure
 desktop.kill
 engine.Engine.next_deadline
-gameupdate.ak_prewarm
-gameupdate.download
 gameupdate.maaend_reenable_if_updated
 gameupdate.maaend_reenable_next_boot
 gameupdate.maaend_reenable_spmed_if_updated
 gameupdate.maaend_set_enabled
 gameupdate.spmed_fix_present
+gameupdate_games.ak_prewarm
+gameupdate_games.download
 maaend.MaaEndConfig.describe
 mastercfg.write_maa
 phone.Heartbeat.bye

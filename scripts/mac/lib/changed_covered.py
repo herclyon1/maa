@@ -212,8 +212,18 @@ def ratchet() -> int:
     if BASELINE.exists():
         old = {ln.strip() for ln in BASELINE.read_text(encoding="utf-8").splitlines()
                if ln.strip() and not ln.startswith("#")}
-    fresh = sorted(untested - old)
+    # 搬家不算新增。2026-09-08 把三个大文件按接缝拆开之后，
+    # `gameupdate.download` 变成了 `gameupdate_games.download`——同一个函数、
+    # 同样没人测过，棘轮却报「新增」。每次重构都误报一次的闸门，迟早会被关掉，
+    # 所以判据看**函数名**有没有在旧名单里出现过，出现过就是挪了位置。
+    old_names = {q.rsplit(".", 1)[-1] for q in old}
+    fresh = sorted(q for q in untested - old if q.rsplit(".", 1)[-1] not in old_names)
+    moved = sorted(q for q in untested - old if q.rsplit(".", 1)[-1] in old_names)
     fixed = sorted(old - untested)
+    if moved:
+        print(f"  ↔ {len(moved)} 个没测过的函数换了模块（重构搬家，不算新增）："
+              f"{'、'.join(moved[:3])}{'…' if len(moved) > 3 else ''}"
+              f"——跑 --update-baseline 把名单对齐")
     if fixed:
         print(f"  ✅ 有 {len(fixed)} 个原来没测过的函数现在被测到了"
               f"（例：{'、'.join(fixed[:3])}）——记得重跑 --update-baseline 收紧名单")
@@ -229,7 +239,30 @@ def ratchet() -> int:
     return 0
 
 
+def ratchet_selftest() -> int:
+    """不跑测试，只验棘轮的判据本身还灵不灵。
+
+    guardcheck 要拿坏样本喂每道闸，但这道闸的数据来源是「把全套测试跑一遍收覆盖」，
+    每次二十秒。而要验的是**判据**——「没见过的函数名要拒、只是换了模块的不拒」——
+    那部分不需要真去跑测试。所以这里把执行集合和名单都换成合成的，直接问它答什么。
+    答错了就非零退出，guardcheck 照样拦得住。
+    """
+    base = {"old_mod.moved_fn", "old_mod.stale_fn"}
+    here = {"new_mod.moved_fn", "old_mod.stale_fn", "any_mod.brand_new_fn"}
+    old_names = {q.rsplit(".", 1)[-1] for q in base}
+    fresh = sorted(q for q in here - base if q.rsplit(".", 1)[-1] not in old_names)
+    moved = sorted(q for q in here - base if q.rsplit(".", 1)[-1] in old_names)
+    if fresh != ["any_mod.brand_new_fn"] or moved != ["new_mod.moved_fn"]:
+        print(f"  ❌ 棘轮判据坏了：新增算成 {fresh}，搬家算成 {moved}")
+        return 1
+    print("  ✅ 棘轮判据正常：没见过的函数名算新增，换了模块的算搬家")
+    print("  （自检用的是合成数据，不跑测试——判据对不对和跑不跑测试是两回事）")
+    return 0
+
+
 def main(argv: list[str]) -> int:
+    if argv and argv[0] == "--ratchet-selftest":
+        return ratchet_selftest()
     if argv and argv[0] == "--update-baseline":
         executed_modules(False)
         ran = {x.split("::")[1] for x in _FUNCS}

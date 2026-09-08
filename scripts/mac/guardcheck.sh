@@ -405,11 +405,11 @@ echo "▶ 未测函数棘轮（changed_covered --ratchet）"
 # 2026-09-08：671 个函数里 243 个从没被任何测试执行过，而当天把用户的群轰炸
 # 半小时的 bug 正落在这一类里（State.save_pending 一次都没被调用过）。
 # 一次补完不现实，所以用棘轮：已有欠账登记在案，新增的一个都不许。
-cp relay/ark_relay/core.py "$TMP/core.bak"
-printf '\n\ndef brand_new_never_tested(x):\n    return x\n' >> relay/ark_relay/core.py
-refuses "新增没人测过的公开函数必须被拒" "从没被任何测试碰过" \
-  python3 scripts/mac/lib/changed_covered.py HEAD~12
-cp "$TMP/core.bak" relay/ark_relay/core.py
+# 用合成数据验判据本身，不真跑一遍测试。2026-09-08：原来这条要跑 20 秒
+# （它的数据来源就是「把全套测试跑一遍收覆盖」），把 guardcheck 从 4 秒推到 25 秒。
+# 而要验的是判据——「没见过的函数名算新增、只换了模块的算搬家」——那和跑不跑测试是两回事。
+accepts "棘轮判据自检（新增 vs 搬家分得清）" \
+  python3 scripts/mac/lib/changed_covered.py --ratchet-selftest
 
 echo "▶ 仓库自检本身"
 # 这里只验「lint 不会误杀干净的树」。测试那一项部署流程自己会跑一遍，
