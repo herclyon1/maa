@@ -135,9 +135,10 @@ print("\n[点名的任务不存在：不许连累别的任务]")
 check("返回空", gameupdate.maaend_set_enabled(Cfg(root), {"不存在的任务"}, True), [])
 check("文件还是没动", path.read_bytes(), before)
 
-print("\n[找不到 AUTO-MAS 目录时安静返回空，别抛]")
-check("空目录", gameupdate.maaend_set_enabled(Cfg(tmpdir()), {"自动吃药"}, True), [])
-check("automas_dir 是 None", gameupdate.maaend_set_enabled(Cfg(None), {"自动吃药"}, True), [])
+print("\n[找不到母本时返回 None，和「本来就开着」的 [] 分得开——否则调用方会把备忘录删掉]")
+check("空目录", gameupdate.maaend_set_enabled(Cfg(tmpdir()), {"自动吃药"}, True), None)
+check("automas_dir 是 None", gameupdate.maaend_set_enabled(Cfg(None), {"自动吃药"}, True), None)
+check("None 不等于空表", gameupdate.maaend_set_enabled(Cfg(None), {"自动吃药"}, True) == [], False)
 
 # ------------------------------------------------- MaaEnd：理智药补丁在不在
 

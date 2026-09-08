@@ -131,6 +131,9 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
     out: dict = {"values": {}, "options": {}, "labels": {}}
     f = maaend_master(automas_dir)
     if not f or not f.is_file():
+        # Silence here meant the phone page dropped whole sections with no trace
+        # on either end. The file has been renamed and damaged on this machine.
+        log.warning("母本配置文件不在：%s（手机页那一段会标成读不到）", f or "没找到路径")
         return out
     try:
         doc = json.loads(f.read_text(encoding="utf-8"))
@@ -287,6 +290,9 @@ def read_maa(automas_dir) -> dict:
     out: dict = {"values": {}, "options": {}, "labels": {}}
     f = maa_master(automas_dir)
     if not f or not f.is_file():
+        # Silence here meant the phone page dropped whole sections with no trace
+        # on either end. The file has been renamed and damaged on this machine.
+        log.warning("母本配置文件不在：%s（手机页那一段会标成读不到）", f or "没找到路径")
         return out
     try:
         task = _maa_infrast(json.loads(f.read_text(encoding="utf-8")))

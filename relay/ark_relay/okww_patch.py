@@ -49,7 +49,7 @@ from .okww_patches.retrycap import _RETRYCAP_OLD, _RETRYCAP_NEW, _retrycap_prese
 from .okww_patches.reward import _REWARD_OLD, _REWARD_NEW, _reward_present, PATCHES
 from .okww_patches.shot import _SHOT_OLD, _SHOT_NEW, _shot_present, _SHOT
 from .okww_patches.shot2 import _SHOT2_OLD, _SHOT2_NEW, _shot2_present, _SHOT2
-from .okww_patches.stamina import _STAMINA_OLD, _STAMINA_NEW, _stamina_present, _STAMINA
+from .okww_patches.stamina import _STAMINA_OLD, _STAMINA_NEW, _STAMINA_V1, _stamina_present, _STAMINA
 from .okww_patches.starve import _STARVE_OLD, _STARVE_NEW, _starve_present, _apply_starve
 from .okww_patches.teamshot import _TEAMSHOT_OLD, _TEAMSHOT_NEW, _teamshot_present, _TEAMSHOT
 
@@ -199,6 +199,9 @@ def ensure_patches(okww_dir: Path | None) -> list[str]:
     # complaint about upstream ordering, it makes **the allocation the user asked
     # for impossible**: one weekly-boss chest costs 60 stamina, three cost 180,
     # and the daily step burns all 180 first.
+    # v1 has to come off first or v2 stacks on top of it (see core._Patch.unique).
+    done.extend(_revert_text(root, (*_SRC, "DailyTask.py"),
+                             _STAMINA_V1, _STAMINA_OLD, "附加任务先于体力刷取 v1"))
     done.extend(_apply_one(root, _STAMINA))
     done.extend(_apply_one(root, _NOFARM))
     # Withdrawn on 2026-08-31, so what happens here is a **revert**: the premise

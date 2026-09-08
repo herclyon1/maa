@@ -50,6 +50,7 @@ NEW_WEEK = "🗓️ 新的一周"           # Monday boot: one line of state for
 SKIP_MODE = "⏭️ 跳过模式"
 ESTOP = "🛑 已停一切"
 ESTOP_FAILED = "🛑 没能停干净，需要你动手"
+NO_SHUTDOWN = "🌙 今晚不关机"
 PHONE_DEFERRED = "📱 手机指令暂缓"
 CONFIG_CHANGED = "📱 配置已修改"
 CONFIG_FAILED = "📱 配置没改成"
@@ -181,7 +182,7 @@ def missed_item_body(ran: list[str], kind: str, late_min: int) -> str:
 def samples() -> list[str]:
     return [
         PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, SKIP_MODE, ESTOP,
-        ESTOP_FAILED,
+        ESTOP_FAILED, NO_SHUTDOWN,
         PHONE_DEFERRED, CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
         AUTOMAS_DOWN, ROUND_INCOMPLETE, MAAEND_REENABLED, TACET_DROPS,
         patches(3), unconfirmed("预更新", 2), failed("MaaEnd"), self_healed("OK-WW"),

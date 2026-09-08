@@ -812,7 +812,7 @@ def _wuwa(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | None]":
 
 
 def collect(now: datetime, *, skland_token: str = "",
-            cred=None, sk_get=None
+            cred=None, sk_get=None, failed: "list[str] | None" = None
             ) -> "tuple[list[Banner], dict[str, tuple[datetime, str]]]":
     """Pull all three games. If one cannot be fetched, that line is missing and the
     others are unaffected.
@@ -821,7 +821,12 @@ def collect(now: datetime, *, skland_token: str = "",
     directly, which is how the tests inject it). Arknights uses PRTS and Wuthering
     Waves uses Kuro BBS; neither needs a token.
     The request-signing chain lives in skland.py and is not rebuilt here.
+
+    `failed`, when given, is filled with the games whose source could not be read.
+    Without it a missing section of the report looked exactly like "no banner
+    running" - and he reads this section every day to decide when to save stones.
     """
+    failed = failed if failed is not None else []
     if sk_get is None and skland_token:
         try:
             from . import skland  # noqa: PLC0415 - needed only here
@@ -831,6 +836,7 @@ def collect(now: datetime, *, skland_token: str = "",
         except Exception:
             log.warning("森空岛登录失败，终末地卡池这一行不出", exc_info=True)
             sk_get = None
+            failed.append("终末地（森空岛登录失败）")
     rows: list[Banner] = []
     nxt: "dict[str, tuple[datetime, str]]" = {}
     try:
@@ -840,6 +846,7 @@ def collect(now: datetime, *, skland_token: str = "",
             nxt["明日方舟"] = ak_next      # _arknights already returns (time, who)
     except Exception:
         log.warning("方舟卡池整段失败", exc_info=True)
+        failed.append("明日方舟")
     if sk_get is not None:
         try:
             ef, ef_next = _endfield(cred, sk_get, now)
@@ -848,6 +855,7 @@ def collect(now: datetime, *, skland_token: str = "",
                 nxt["终末地"] = ef_next
         except Exception:
             log.warning("终末地卡池整段失败", exc_info=True)
+            failed.append("终末地")
     try:
         ww, ww_next = _wuwa(now)
         rows += ww
@@ -855,6 +863,7 @@ def collect(now: datetime, *, skland_token: str = "",
             nxt["鸣潮"] = ww_next
     except Exception:
         log.warning("鸣潮卡池整段失败", exc_info=True)
+        failed.append("鸣潮")
     return rows, nxt
 
 

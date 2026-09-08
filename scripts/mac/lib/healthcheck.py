@@ -140,4 +140,18 @@ check("AUTO-MAS 预更新有明确结论（装了 / 无需更新 / 干净放弃�
       any(("留到下次开机再装" in l or "无需更新" in l or "已更新" in l)
           and "AUTO-MAS" in l for l in recent))
 
+print("\n=== 7. 会让机器整夜不关的一次性开关 ===")
+# 09-03 and 09-04 the machine stayed on all night because 「这次别关机」 was
+# left armed; it eats the next shutdown and never expires. NEXT-BOOT.md closed
+# that with "check state.json's modes before signing off" - and nothing did.
+try:
+    _st = json.loads(Path(r"C:\ProgramData\ark-relay\state\state.json").read_text(encoding="utf-8"))
+    _modes = _st.get("modes") or {}
+    check("「这次别关机」没留着", not _modes.get("skip_next_shutdown"),
+          "留着！它会吃掉下一次关机，机器整夜开着——用手机页或 order.sh 取消")
+    check("调试模式没留着", not _modes.get("debug_until"),
+          f"留着，到 {_modes.get('debug_until')}——跑完就不关机")
+except Exception as _exc:  # noqa: BLE001
+    check("读得到 state.json 的 modes", False, f"{type(_exc).__name__}: {_exc}")
+
 print(f"\n{'=' * 46}\n通过 {len(OK)} 项" + (f"，失败 {len(BAD)} 项：{BAD}" if BAD else "，全部通过"))

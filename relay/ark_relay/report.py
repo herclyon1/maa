@@ -169,12 +169,18 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     # others down; if all of them die, only this section is missing.
     try:
         bnow = datetime.now(tz=SERVER_TZ).replace(tzinfo=None)
-        rows, nxt = banners.collect(bnow, skland_token=eng.cfg.skland_token)
+        failed: list[str] = []
+        rows, nxt = banners.collect(bnow, skland_token=eng.cfg.skland_token, failed=failed)
         pool = banners.render(rows, bnow, nxt, banners.previews(bnow, rows, banners.version_ends(bnow, rows)))
         eng._announce_banners(bnow, nxt)
+        # A source that could not be read must say so in the report itself.
+        # Otherwise a missing game reads as "nothing running there", and the day
+        # a banner opens is exactly the day he finds out the token had expired.
+        if failed:
+            pool = (pool + "\n" if pool else "") + "⚠️ 卡池没取到：" + "、".join(failed) + "（不是没有卡池，是没读到）"
     except Exception:
         log.warning("卡池那一段整体失败", exc_info=True)
-        pool = ""
+        pool = "⚠️ 卡池那一段整体没取到（不是没有卡池，是没读到）"
     # How this version has been doing is counted by the relay itself and stuck
     # at the end of every daily report. The user, 2026-09-06:
     # 「我说『修好了』而它写『失败 1 趟』，谎话当场现形。」

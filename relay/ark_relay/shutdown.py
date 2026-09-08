@@ -10,7 +10,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from . import modes, plan
+from . import modes, texts, plan
 from .config import SERVER_TZ
 
 log = logging.getLogger("ark.shutdown")
@@ -260,6 +260,37 @@ def decide(eng, now: datetime) -> Verdict:
     return Verdict(True, "go", "本轮已处理完毕")
 
 
+# Reasons that mean "the machine will sit here until someone looks". The other
+# codes are either transient by design (uptime, nothing-done, report) or already
+# announced when they were switched on (debug, skipped, off).
+_STUCK_CODES = ("running", "pending", "updating", "manual", "unfinished", "issued")
+
+
+def _say_if_moment_passed(eng, now: datetime, v) -> None:
+    """Push once a day when the moment to shut down has passed and it did not.
+
+    09-03 and 09-04 the machine stayed on all night and he found out the next
+    day. The decision itself is event-driven (it runs whenever anything lands);
+    this only adds a single message the first time the cutoff is behind us and
+    the verdict is one of the stuck ones - no polling, at most one per day.
+    """
+    if v.code not in _STUCK_CODES:
+        return
+    try:
+        if now < eng._report_cutoff(now):
+            return
+        day = now.strftime("%Y-%m-%d")
+        key = f"alerted:{day}"
+        done = list(eng.state.store.get("marks", key) or [])
+        if "no-shutdown" in done:
+            return
+        eng.state.store.set("marks", key, done + ["no-shutdown"])
+        eng.notifier.send(texts.NO_SHUTDOWN, f"到点了但没关机：{v.reason}。"
+                          "机器会一直开着，直到这个原因消失或者你来处理。", alert=True)
+    except Exception:
+        log.warning("「今晚不关机」这条没推出去", exc_info=True)
+
+
 def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
     """Decision plus side effects. decide() judges; this does what follows a "go"."""
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
@@ -272,14 +303,13 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
                      "到期后不会补关，等下一趟队列跑完再判", key)
         return False
     if not v.go:
-        if v.code in ("manual", "unfinished"):
-            # One line only when the reason changes, so forty identical lines
-            # don't bury what matters
-            if v.reason != eng._last_wait_note:
-                eng._last_wait_note = v.reason
-                log.info("不关机：%s", v.reason)
-        elif v.code == "report":
-            log.info(v.reason)
+        # One line whenever the reason changes, for every reason - not just three
+        # of them. The other eight were silent, and three of those (running /
+        # pending / updating) are the ones that keep the machine on all night.
+        if v.reason != eng._last_wait_note:
+            eng._last_wait_note = v.reason
+            log.info("不关机：%s", v.reason)
+        _say_if_moment_passed(eng, now, v)
         return False
     eng._last_wait_note = ""
     day = now.strftime("%Y-%m-%d")

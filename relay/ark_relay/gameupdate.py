@@ -597,13 +597,19 @@ def maaend_reenable_if_updated(cfg) -> str:
             + "、".join(zh.get(n, n) for n in on)) if on else ""
 
 
-def maaend_set_enabled(cfg, names: set, enabled: bool) -> list[str]:
+def maaend_set_enabled(cfg, names: set, enabled: bool) -> "list[str] | None":
     """Set `enabled` on a few items in the master mxu-MaaEnd.json. Returns the ones
-    that actually changed."""
+    that actually changed; **None when the master could not be found at all**.
+
+    The two used to be the same empty list, so a caller could not tell "already
+    on" from "could not even open the file" - and the callers below delete their
+    reminder record right after, so a renamed or damaged master file (it has
+    happened on this machine) meant the dailies stayed off with nobody knowing."""
     root = Path(cfg.automas_dir) / "data" if cfg.automas_dir else None
     target = next((f for f in (root.glob("*/Default/ConfigFile/mxu-MaaEnd.json") if root else [])), None)
     if not target:
-        return []
+        log.warning("找不到 MaaEnd 的母本 mxu-MaaEnd.json，%s 这几项没能改", "、".join(sorted(names)))
+        return None
     j = json.loads(target.read_text(encoding="utf-8"))
     changed = []
     for t in j.get("instances", [{}])[0].get("tasks", []):
@@ -628,6 +634,10 @@ def maaend_reenable_next_boot(cfg) -> str:
     if not isinstance(rec, dict) or not rec:
         return ""
     on = maaend_set_enabled(cfg, set(rec.get("tasks") or []), True)
+    if on is None:
+        # Keep the reminder: it is the only record that these were switched off
+        # on purpose, and deleting it would leave them off for good.
+        return "MaaEnd 的母本找不到，临时关掉的日常还没能开回来，下次开机再试"
     store.pop("updates", "maaend_reenable_next_boot")
     zh = {"AutoCollect": "自动采集", "AutoUseSpMedication": "应急理智加强剂"}
     return ("已开回：" + "、".join(zh.get(n, n) for n in on)) if on else ""
@@ -641,7 +651,7 @@ def maaend_reenable_next_boot(cfg) -> str:
 # and leaves the confirm button unclickable.
 # Upstream PR #5453 does exactly that - wraps it in recognition, and while there widens
 # the roi and adds a wait for the screen to settle.
-def spmed_fix_present(maaend_dir) -> bool:
+def spmed_fix_present(maaend_dir) -> "bool | None":
     """Has the confirm node for the sanity booster been fixed yet?
 
     A new version does **not** mean this bug is fixed: the 2026-09-03 fix (upstream PR
@@ -659,6 +669,13 @@ def spmed_fix_present(maaend_dir) -> bool:
         return False
     if not isinstance(node, dict):
         return False
+    if "recognition" not in node:
+        # v2.28.0-beta.4 (read off the machine 2026-09-09): the node exists but
+        # carries no recognition block at all - the check was moved elsewhere.
+        # That is not the broken shape, and it is not the fixed shape either; it
+        # is a shape this test does not know. Saying "not fixed" here kept the
+        # answer False for a version on which the task completes every day.
+        return None
     all_of = ((node.get("recognition") or {}).get("param") or {}).get("all_of") or []
     inline = [x for x in all_of if isinstance(x, dict)]
     return bool(inline) and all("recognition" in x for x in inline)
@@ -680,9 +697,17 @@ def maaend_reenable_spmed_if_updated(cfg) -> str:
     ver = _maaend_file_version(cfg.maaend_dir) if cfg.maaend_dir else ""
     if not ver or ver == str(rec.get("since") or ""):
         return ""
-    if not spmed_fix_present(cfg.maaend_dir):
+    fixed = spmed_fix_present(cfg.maaend_dir)
+    if fixed is False:
         log.info("MaaEnd 已是 %s，但加强剂那条判据还是坏的写法，继续关着", ver)
         return ""
     on = maaend_set_enabled(cfg, set(rec.get("tasks") or []), True)
+    if on is None:
+        return "MaaEnd 的母本找不到，加强剂任务还没能开回来，下次开机再试"
     store.pop("updates", "maaend_disabled_spmed")
-    return f"MaaEnd 已是 {ver}，加强剂的判据已修好，任务开回来" if on else ""
+    if not on:
+        return ""
+    if fixed is None:
+        return (f"MaaEnd 已是 {ver}，加强剂那个节点换了写法、看不出修没修，"
+                "按新版本先开回来；要是明天又失败就再关")
+    return f"MaaEnd 已是 {ver}，加强剂的判据已修好，任务开回来"

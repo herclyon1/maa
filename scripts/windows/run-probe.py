@@ -23,8 +23,17 @@ def main() -> None:
                 data = json.load(handle)
         except (OSError, ValueError):
             continue
-        result = data.get("maa_result") or data.get("maaend_result") or "?"
-        kind = "MAA" if "maa_result" in data else "MaaEnd"
+        # OK-WW records carry neither: AUTO-MAS writes them under general_result
+        # (collector.py reads the same key). Without this every Wuthering Waves
+        # run, successful or not, printed as `FAIL ... MaaEnd ?`.
+        if "maa_result" in data:
+            kind, result = "MAA", data.get("maa_result") or "?"
+        elif "maaend_result" in data:
+            kind, result = "MaaEnd", data.get("maaend_result") or "?"
+        elif "general_result" in data:
+            kind, result = "OK-WW", data.get("general_result") or "?"
+        else:
+            kind, result = "?", "?"
         ok = "1" if result.strip() == "Success!" else "0"
         # json.dumps with ensure_ascii escapes every non-ASCII character.
         print("REC|%s|%s|%s|%s" % (os.path.basename(path)[:-5], kind, ok,

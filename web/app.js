@@ -294,6 +294,8 @@ function setupScreen() {
 }
 
 let lastGoodConfig = null;
+let lastGoodMaster = null;
+try { lastGoodMaster = JSON.parse(localStorage.getItem(LS + "-master") || "null"); } catch {}
 try { lastGoodConfig = JSON.parse(localStorage.getItem(LS + "-config") || "null"); } catch {}
 
 /* 字段的显示名：一律用**脚本自己**的译名（MaaEnd 的语言包、OK-WW 的 ok.po、
@@ -307,6 +309,17 @@ function labelOf(g, f) {
       ? (M.labels || {})[f.path]
       : ((((snap && snap.options) || {})._labels || {})[`${g.script}|${f.path}`]))
     || f.label || f.key || f.path.split("/").pop();
+}
+
+// 「现在在跑什么」每条状态包都带着，页面以前一个字不显示——而它正是
+// 「按下去会不会被丢掉」和「这趟跑到哪个游戏了」的答案。
+function runLine() {
+  const run = (snap && snap.run) || {};
+  const busy = run["在跑的"] || [];
+  if (!snap) return "";
+  return busy.length
+    ? `<div class="hint">🎮 现在在跑：${busy.join("、")}（这时改设置会被推迟到跑完）</div>`
+    : `<div class="hint">现在没有脚本在跑</div>`;
 }
 
 function render() {
@@ -344,6 +357,9 @@ function render() {
         <span class="hint">下面两个按钮作用在这趟班上，配置也只显示这趟班要跑的游戏。
         ${thisShift && thisShift.length ? "这趟跑：" + thisShift.join("、") : ""}</span></label>
       <select id="queue">${qopts}</select></div>` : ""}
+    ${runLine()}
+    ${relay["调试模式"] ? `<div class="warn">🔧 调试模式开着，到 ${relay["调试模式"]}——这期间跑完不关机。
+      <button id="debugoff">取消调试模式</button></div>` : ""}
     <div class="acts">
       <button id="runnow">让它现在跑一趟</button>
       <button id="skiptoday">跳过它下一趟</button>
@@ -358,9 +374,25 @@ function render() {
     const M = ((snap && snap.master) || {})[g.game] || {};
     const cur = g.src === "master" ? (M.values || {}) : (c[g.sec] || {});
     const ro = M.readonly || {};
-    /* 母本读不到就整段不摆——空壳比没有更误导人（2026-09-02 那次「一坨屎」）。 */
-    if (g.src === "master" && !Object.keys(cur).length && !Object.keys(ro).length) continue;
-    html += `<section><h2>${g.title}</h2>`;
+    /* 母本读不到：不摆空壳（2026-09-02 那次「一坨屎」），但也不能一声不吭地把
+       整段抽掉——那看着像功能被删了。明说读不到，有上次那份就退回去用。 */
+    let masterNote = "";
+    let curM = cur;
+    if (g.src === "master" && !Object.keys(cur).length && !Object.keys(ro).length) {
+      const last = (lastGoodMaster || {})[g.game];
+      if (!last || !Object.keys(last.values || {}).length) {
+        html += `<section><h2>${g.title}</h2><div class="warn">⚠️ 这一段的配置文件读不到（机器上那份母本不在或坏了），这次没法改</div></section>`;
+        continue;
+      }
+      masterNote = `<div class="warn">⚠️ 配置文件这次读不到——下面是上次读到的，改了要等它能读到才生效</div>`;
+      curM = last.values || {};
+    } else if (g.src === "master" && Object.keys(cur).length) {
+      lastGoodMaster = lastGoodMaster || {};
+      lastGoodMaster[g.game] = M;
+      try { localStorage.setItem(LS + "-master", JSON.stringify(lastGoodMaster)); } catch {}
+    }
+    html += `<section><h2>${g.title}</h2>${masterNote}`;
+    if (curM !== cur) Object.assign(cur, curM);
     /* 选择树：OK-WW 自己声明了「选了哪个才出现哪些子项」（sub_configs）。
        选「模拟领域」时不该还摆着「刷第几个无音区」——那是给人看的噪音。 */
     const hidden = new Set();
@@ -497,10 +529,28 @@ function wire() {
       if (r) r.classList.add("changed");
     }
   };
-  $("#runnow").onclick = () => oneShot(
-    { action:"run_now", confirmed:true, queue:theQueue() },
-    `已让「${theQueue()}」现在开跑。机器关着时这条会等到下次开机才执行，` +
-    "那时候它本来也要跑，所以等于没多跑一趟");
+  // 这是页面上唯一会真花掉理智/波片的按钮，却一直是单击直发——而无损的
+  // 红按钮反倒有确认框，两边的防护装反了。后端把 run_now 归进「要人确认」，
+  // 页面不该替人把 confirmed:true 填好。另外正在跑的时候派一趟等于让 AUTO-MAS
+  // 和手动派发打架（09-01 上午三个游戏同时在线就是这么来的），先拦下。
+  $("#runnow").onclick = () => {
+    const busy = ((snap && snap.run) || {})["在跑的"] || [];
+    if (busy.length) {
+      toast(`现在正在跑 ${busy.join("、")}，跑完再派。硬要派会和它打架。`, 5000);
+      return;
+    }
+    if (!confirm(`让「${theQueue()}」现在多跑一趟？这会真的花掉理智／波片。`)) return;
+    oneShot(
+      { action:"run_now", confirmed:true, queue:theQueue() },
+      `已让「${theQueue()}」现在开跑。机器关着时这条会等到下次开机才执行，` +
+      "那时候它本来也要跑，所以等于没多跑一趟");
+  };
+  // 调试模式：中继早就认「取消」这条指令，页面一直没有按钮发它。
+  const dbg = $("#debugoff");
+  if (dbg) dbg.onclick = () => {
+    if (!confirm("取消调试模式？取消后这一趟跑完会照常关机。")) return;
+    oneShot({ action:"debug_mode", off:true, confirmed:true }, "已取消调试模式，跑完照常关机");
+  };
   // 已经设过就变成「取消」。只能开不能关是半个功能——2026-08-31 实测发现的。
   // 这里**不能**用渲染函数里的 `relay`：绑定发生在另一个函数里，
   // 那个名字在这个作用域不存在，点一下就 ReferenceError，按钮彻底失灵。

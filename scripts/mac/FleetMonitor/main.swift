@@ -674,8 +674,13 @@ final class Controller: NSObject, NSApplicationDelegate {
     private let link = Link()
 
     func applicationDidFinishLaunching(_ note: Notification) {
+        // Only App Nap has to be held off. `.userInitiated` on its own already
+        // implies "no idle system sleep", so with it (plus the explicit flag that
+        // was here) this Mac never slept again: `pmset -g assertions` showed
+        // PreventUserIdleSystemSleep held by FleetMonitor for hours. The
+        // variant that allows sleep is the one meant for exactly this.
         napBlocker = ProcessInfo.processInfo.beginActivity(
-            options: [.userInitiated, .idleSystemSleepDisabled],
+            options: [.userInitiatedAllowingIdleSystemSleep],
             reason: "watching whether the machines answer")
         // 连接状态一变就重画，不等任何定时器——这就是「实时」的那部分。
         link.onChange = { [weak self] in self?.apply(self?.machines) }

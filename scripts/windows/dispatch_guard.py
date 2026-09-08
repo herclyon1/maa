@@ -44,7 +44,10 @@ def post(path, body=None):
 def okww_pids():
     out = subprocess.run(
         [PWSH, "-NoProfile", "-Command",
-         "Get-CimInstance Win32_Process -Filter \"Name='pythonw.exe'\" | "
+         # Both hosts: AUTO-MAS runs OK-WW under pythonw.exe, okww-task.sh under
+         # python.exe. Watching only the first left the manual path invisible
+         # to this gate and to the red button alike.
+         "Get-CimInstance Win32_Process -Filter \"Name='pythonw.exe' or Name='python.exe'\" | "
          "Where-Object { $_.CommandLine -like '*ok-ww*' } | "
          "Select-Object -ExpandProperty ProcessId"],
         capture_output=True, text=True, errors="replace").stdout.split()

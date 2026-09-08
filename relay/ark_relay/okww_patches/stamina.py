@@ -43,13 +43,50 @@ _STAMINA_OLD = """        if need_stamina:
         self.run_additional_tasks()
         self.log_info('Daily Task Completed', notify=True)"""
 
-_STAMINA_NEW = """        # 本地补丁：附加任务提到体力刷取之前，而且体力要花完。
+_STAMINA_V1 = """        # 本地补丁：附加任务提到体力刷取之前，而且体力要花完。
         # 周本在附加任务里，开一个宝箱 60 体力；日常刷取那步
         # must_use = 180 - used_stamina，排在前面就先把 180 吃光，
         # 轮到周本只剩 60，三个宝箱只开得到一个。
         # daily=False → must_use=0 → 刷到体力不够进本为止，
         # 所以周本花掉的那 180 之外，剩下的也不会闲置。
         self.run_additional_tasks()
+        self.ensure_main(time_out=180)
+        self.open_daily()
+
+        target = self.config.get('Which to Farm', self.support_tasks[0])
+        if target == self.support_tasks[0]:
+            self.get_task_by_class(TacetTask).farm_tacet(config=self.config)
+        elif target == self.support_tasks[1]:
+            self.get_task_by_class(ForgeryTask).farm_forgery(config=self.config)
+        else:
+            self.get_task_by_class(SimulationTask).farm_simulation(config=self.config)
+        self.sleep(4)
+
+        self.claim_daily()
+
+        self.claim_mail()
+        self.sleep(1)
+        self.claim_battle_pass()
+        self.log_info('Daily Task Completed', notify=True)"""
+
+_STAMINA_NEW = """        # 本地补丁：附加任务提到体力刷取之前，而且体力要花完。
+        # 周本在附加任务里，开一个宝箱 60 体力；日常刷取那步
+        # must_use = 180 - used_stamina，排在前面就先把 180 吃光，
+        # 轮到周本只剩 60，三个宝箱只开得到一个。
+        # daily=False → must_use=0 → 刷到体力不够进本为止，
+        # 所以周本花掉的那 180 之外，剩下的也不会闲置。
+        # 本地补丁 v2：上游敢把 run_additional_tasks() 裸着写，是因为它排在
+        # run() 的最后一句，炸了只丢一行日志。挪到最前面之后，周本抛任何普通
+        # 异常都会连带吃掉当趟的刷体力和每日/邮件/通行证——09-07、09-08 各连废
+        # 三趟就是这么来的。所以照上游给 check_weekly_garden 的写法兜一层。
+        try:
+            self.run_additional_tasks()
+        except Exception as _e:
+            self.log_error(f'附加任务出错，不拖垮当趟日常: {_e}', exception=_e)
+            try:
+                self.screenshot('additional_tasks_error')
+            except Exception:
+                pass
         self.ensure_main(time_out=180)
         self.open_daily()
 
@@ -82,9 +119,11 @@ def _stamina_present(text: str) -> bool:
     # Anchor on claim_daily: `Which to Farm` also appears in the earlier
     # nightmare check, so anchoring on that would always report "not applied"
     # (hit on 2026-08-31).
+    # v2 (2026-09-09) wraps the call; the marker below only exists in v2, so v1
+    # on disk reads as "not applied" and gets replaced after the V1 revert.
     a = text.find("self.run_additional_tasks()")
     b = text.find("self.claim_daily()")
-    return a != -1 and b != -1 and a < b
+    return a != -1 and b != -1 and a < b and "附加任务出错，不拖垮当趟日常" in text
 
 
 _STAMINA = _Patch(
