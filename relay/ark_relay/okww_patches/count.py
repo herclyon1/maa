@@ -65,7 +65,7 @@ _COUNT_NEW = """                # 本地补丁：选等级之前把「本周剩�
                 # 走法和波片不足那条一样（TaskDisabledException = 跳过本次）。
                 import re as _re
                 _lt = ' '.join(str(_b) for _b in (_left or []))
-                if _re.search(r'次数[^0-9]{0,6}0\s*[/／]\s*3', _lt):
+                if _re.search(r'次数[^0-9]{0,6}0\\s*[/／]\\s*3', _lt):
                     self.log_info('本周周本次数已领满（0/3），不进本，跳过')
                     try:
                         self.ensure_main(time_out=30)
