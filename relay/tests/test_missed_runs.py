@@ -5,7 +5,7 @@ The distinction used to be made with the relay's own start time, which every
 selfupdate resets. An update that ran past the queue's time therefore made the
 new process disqualify itself and swallow a real missed run.
 """
-import json, os, sys, tempfile
+import json, os, sys
 from datetime import datetime
 from pathlib import Path
 

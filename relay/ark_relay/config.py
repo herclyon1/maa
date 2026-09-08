@@ -316,7 +316,18 @@ def master_config_dir(automas_dir: "str | Path | None", marker: str) -> "Path | 
 
     脚本 id 不固定，按标志文件认：OK-WW 是 `DailyTask.json`，
     MaaEnd 是 `mxu-MaaEnd.json`。
-    """
+    
+
+    **副本算不算数：不算，别手写。**（2026-09-08 读源码定案，此前有两处相反说法）
+    AUTO-MAS 的 `app/task/Okww/AutoProxy.py:365-374`：只要用户配置的 `Mode` 不是
+    「直控」（这台机器是「脚本」），它就 `copytree(母本 → OK-WW 的 configs)`，
+    **整个目录换掉，而且在 IfQuickConfig 判断之外，是无条件的**。
+    所以只写母本就够；手写副本不但多余，还会掩盖「母本没写成功」——两边都对的时候
+    你分不出是母本生效了还是副本兜住了。
+    （2026-08-31 那次「母本 90、副本 80」是母本写晚了：16:20 才写，而当天的运行
+    在那之前，跑的时候母本还是旧值，拷过去的自然也是旧值。不是没拷。）
+    要看真正生效的那份：`scripts/mac/lib/okww_effective.py`。
+"""
     if not automas_dir:
         return None
     root = Path(automas_dir) / "data"

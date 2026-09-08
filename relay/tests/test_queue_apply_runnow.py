@@ -9,7 +9,6 @@ commands._run_now 里各留着一个叫 names 的局部列表。Python 把它当
 import json
 import pathlib
 import sys
-import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 

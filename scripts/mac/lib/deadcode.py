@@ -33,7 +33,12 @@ SKIP_DIRS = {".git", "__pycache__", ".venv", "node_modules", "build", "dist"}
 SKIP_PARTS = {"okww_files"}
 # 「定义了没人调用」只在这些地方算铁案：测试里的孤立函数一定是漏跑的，
 # 脚本里的孤立函数一定是忘了接。库模块对外提供 API，不适用。
-UNUSED_SCOPE = ("relay/tests/", "scripts/")
+# 2026-09-08 补上 relay/ark_relay/：这个包没有外部使用者（只有 service.py 和测试
+# 引它），所以「包里定义了、全仓没人调用」同样是铁案。补之前躺着四个死函数，其中
+# core.is_last_run_of_day 更糟——它按「最后一趟跑完的时刻」判日报时点，正是
+# docs/PITFALLS.md 记的那个「晚班早收工就永远发不出日报、机器也不关机」的错法，
+# 真正在用的是 report.py 那份按队列表算的。留着就等着哪天有人照它抄。
+UNUSED_SCOPE = ("relay/tests/", "scripts/", "relay/ark_relay/")
 # 这些名字由外部约定调用，不会在仓库里被显式提到。
 CONVENTION = {"main", "__init__", "__repr__", "__str__", "__enter__", "__exit__"}
 

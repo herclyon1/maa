@@ -8,7 +8,7 @@
 改成两件事：说活动商店该搬空了（结束后真正还来得及做的事），并写出这条提醒
 还会出现多久，免得同一句话连出三天看起来像卡死。
 """
-import json, os, sys, tempfile
+import json, os, sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 

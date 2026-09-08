@@ -7,7 +7,7 @@
 
 现在改成读游戏页面上的「本周剩余可收取次数」，归零才记账。
 """
-import os, sys, tempfile
+import os, sys
 from datetime import datetime
 from pathlib import Path
 

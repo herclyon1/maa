@@ -351,13 +351,13 @@ def _set_master(cmd: dict) -> tuple[bool, str]:
 def estop() -> tuple[bool, str]:
     """红按钮：停一切脚本和游戏。手机页面上那个红色的。
 
-    顺序抄 scripts/win/dispatch_guard.py（2026-09-01 上午的乱象换来的）：
+    顺序抄 scripts/windows/dispatch_guard.py（2026-09-01 上午的乱象换来的）：
     ① 全部经 AUTO-MAS 接口停（队列和脚本都停，它才不会当异常去重试）；
     ② 等 12 秒，还有残留才 taskkill；③ 复查有没有被重新拉起，拉起再停一轮。
     """
     import subprocess  # noqa: PLC0415
     import time  # noqa: PLC0415
-    from .preupdate import _okww_quiesce  # noqa: PLC0415
+    from .preupdate_okww import _okww_quiesce  # noqa: PLC0415
     stopped: list[str] = []
     try:
         ids = {str((v.get("Info") or {}).get("Name") or ""): sid

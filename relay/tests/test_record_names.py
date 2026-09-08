@@ -11,7 +11,6 @@ Nothing about the file's *contents* changed - only its name.
 import json
 import sys
 import tempfile
-from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

@@ -16,7 +16,7 @@ from pathlib import Path
 
 from .config import atomic_write_text
 
-log = logging.getLogger("ark.state")
+log = logging.getLogger("ark.statestore")
 
 FILE = "state.json"
 SECTIONS = ("marks", "modes", "weekly", "versions", "updates", "queues")

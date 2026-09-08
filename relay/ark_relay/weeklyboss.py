@@ -57,23 +57,6 @@ def _file(automas_dir, name: str) -> "Path | None":
     return (d / name) if d else None
 
 
-def _okww_file(name: str) -> "Path | None":
-    """OK-WW 自己那份配置。**必须一起写**，光写母本不够。
-
-    2026-08-31 实测：母本 `Boss Level` 已经是 '90'（16:20 写的），
-    而 OK-WW 自己那份还停在 '80'（08:06 的），派发跑起来点的是
-    「推荐等级80」。`master_config_dir` 的注释说 AUTO-MAS 跑之前会
-    无条件把母本拷过去——**至少 /api/dispatch/start 这条路没有拷**。
-
-    两边都写就没有这个问题：真拷了，值一样；没拷，OK-WW 读到的也对。
-    """
-    root = os.environ.get("ARK_OKWW_DIR")
-    if not root:
-        return None
-    f = Path(root) / "data" / "apps" / "ok-ww" / "working" / "configs" / name
-    return f if f.is_file() else None
-
-
 def _read(f: "Path | None") -> "dict | None":
     if f is None or not f.is_file():
         return None
@@ -92,6 +75,29 @@ def _write(f: Path, cfg: dict) -> bool:
     return True
 
 
+def _okww_log() -> "Path | None":
+    """OK-WW 最新的那份日志。找不到返回 None，并**出声**——不许静静地什么都不做。
+
+    2026-09-08 审出来的：`ARK_OKWW_DIR` 没设时，这里原来直接 return，于是
+    「本周还剩几次」读不到、周本记账不推进、名字也读不到——手机上显示「本周还没领满」，
+    机器每天再去打一趟，而且日志里一个字都没有。环境变量是能丢的（换机、改部署脚本、
+    .env 写错一行），丢了必须听得见。
+    """
+    if path := os.environ.get("ARK_OKWW_LOG"):
+        return Path(path)
+    root = os.environ.get("ARK_OKWW_DIR")
+    if not root:
+        log.warning("ARK_OKWW_DIR 没设，读不到 OK-WW 的日志——"
+                    "周本记账、剩余次数、周本名字全都会失效")
+        return None
+    logs = Path(root) / "data" / "apps" / "ok-ww" / "working" / "logs"
+    try:
+        return max(logs.glob("*.log*"), key=lambda q: q.stat().st_mtime)
+    except (OSError, ValueError):
+        log.warning("OK-WW 的日志目录 %s 里没有日志，周本记账这一轮跳过", logs)
+        return None
+
+
 def remaining_from_log() -> "int | None":
     """OK-WW 日志里最近一次读到的「本周剩余可收取次数」。读不到返回 None。
 
@@ -104,17 +110,10 @@ def remaining_from_log() -> "int | None":
     2026-08-31 实测：贝币刷取把波片吃到只剩 1 点，第二天早上只回到 ~147，
     只够领两次；按「跑完即打完」记账，第三次就永远丢了。
     """
-    path = os.environ.get("ARK_OKWW_LOG")
-    if not path:
-        root = os.environ.get("ARK_OKWW_DIR")
-        if not root:
-            return None
-        logs = Path(root) / "data" / "apps" / "ok-ww" / "working" / "logs"
-        try:
-            cand = max(logs.glob("*.log*"), key=lambda q: q.stat().st_mtime)
-        except (OSError, ValueError):
-            return None
-        path = str(cand)
+    f = _okww_log()
+    if f is None:
+        return None
+    path = str(f)
     try:
         text = Path(path).read_text(encoding="utf-8", errors="replace")
     except OSError:
@@ -130,16 +129,10 @@ _NAME_RE = re.compile(r"周本名称原文:\s*\[(.*?)\]")
 
 def name_from_log() -> str:
     """OK-WW 日志里最近一次 OCR 到的周本名（补丁「周本名称原文」）。读不到返回空串。"""
-    path = os.environ.get("ARK_OKWW_LOG")
-    if not path:
-        root = os.environ.get("ARK_OKWW_DIR")
-        if not root:
-            return ""
-        logs = Path(root) / "data" / "apps" / "ok-ww" / "working" / "logs"
-        try:
-            path = str(max(logs.glob("*.log*"), key=lambda q: q.stat().st_mtime))
-        except (OSError, ValueError):
-            return ""
+    f = _okww_log()
+    if f is None:
+        return ""
+    path = str(f)
     try:
         text = Path(path).read_text(encoding="utf-8", errors="replace")
     except OSError:
@@ -150,21 +143,6 @@ def name_from_log() -> str:
     # OCR 结果形如 "千傀重楼_0.99"，取第一个词、去掉置信度
     first = hits[-1].split(",")[0].strip().strip("'\"")
     return re.sub(r"_[\d.]+$", "", first).strip()
-
-
-def _mirror(name: str, want: dict) -> None:
-    """把 want 里的字段同步到 OK-WW 自己那份配置。副本没有就安静跳过。"""
-    f = _okww_file(name)
-    if f is None:
-        return
-    cur = _read(f)
-    if cur is None or all(cur.get(k) == v for k, v in want.items()):
-        return
-    cur.update(want)
-    if _write(f, cur):
-        log.info("周本配置已同步到 OK-WW 自己那份 %s：%s", name, want)
-    else:
-        log.warning("周本配置同步不进 OK-WW 自己那份 %s", name)
 
 
 class WeeklyBossGate:
@@ -283,7 +261,6 @@ class WeeklyBossGate:
             if not _write(daily_f, daily):
                 log.warning("周本开关写不进 %s", DAILY)
                 return False
-            _mirror(DAILY, {KEY: tasks})
 
         # 打开时顺带把「传送到哪」写对，否则挂上去也不知道去哪
         if want_on:
@@ -300,7 +277,6 @@ class WeeklyBossGate:
                         changed = True
                     else:
                         log.warning("周本的传送设置写不进 %s", FARM)
-                _mirror(FARM, want)          # 母本一致了也要保证副本一致
 
         if changed:
             log.info("周本已%s（第 %s 个，打 %s 次）",

@@ -15,4 +15,4 @@
 #   scripts/mac/okww-check.sh
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-exec "$HERE/winrun.sh" --timeout 250 --py "$HERE/../win/okww-landed.py"
+exec "$HERE/winrun.sh" --timeout 250 --py "$HERE/../windows/okww-landed.py"

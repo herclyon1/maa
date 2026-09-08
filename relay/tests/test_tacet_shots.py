@@ -3,7 +3,7 @@
 用户 2026-09-07：「我想确认一下是不是刷的是我想要的无音区种类，因为我不放心。
 刷完之后能不能贴一张截图在日报通知里面？」
 """
-import io, json, os, sys, tempfile, types
+import json, os, sys, types
 from datetime import datetime
 from pathlib import Path
 

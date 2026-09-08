@@ -46,7 +46,6 @@ ok.task.exceptions.WaitFailedException
 STUCK = """2026-09-02 09:18:58,791 ERROR ok.core.start_controller start_controller:waiting for game to start error 鸣潮 is not connected
 2026-09-02 09:19:10,000 ERROR ok.core.start_controller start_controller:waiting for game to start error 鸣潮 is not connected
 """
-import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir  # noqa: E402
 d = tmpdir()

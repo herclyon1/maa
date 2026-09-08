@@ -7,7 +7,6 @@
 import pathlib
 import re
 import sys
-import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from ark_relay import collector, wuwa_tacet  # noqa: E402
@@ -67,7 +66,6 @@ for m in _re.finditer(r'\["\d+ · [^"]*", (\d+)\]', js):
         fails.append(f"手机页能选第 {m.group(1)} 个凝素领域，但对照表里没有它")
 
 # 明日安排那一支也不许退化成序号（plan.py 以前自己抄了一份只有 4 条的表）
-from ark_relay import plan  # noqa: E402
 for i in (1, 5, 15):
     line = f"体力刷 {wuwa_forgery.label(i)}，出 {wuwa_forgery.reward(i)}"
     if "#" in line or "没登记" in line:

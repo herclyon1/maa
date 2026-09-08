@@ -20,7 +20,7 @@ ALLOWED = {"_spawn_detached"}   # the fallback is the one place Popen belongs
 FAILED = []
 
 
-def check(name, ok, detail=""):
+def require(name, ok, detail=""):
     print(f"  {'ok  ' if ok else 'FAIL'} {name}{'' if ok else ': ' + detail}")
     if not ok:
         FAILED.append(name)
@@ -47,39 +47,39 @@ def main() -> int:
     fns = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
     fns_node = fns
 
-    check("_spawn_interactive 存在", "_spawn_interactive" in fns)
+    require("_spawn_interactive 存在", "_spawn_interactive" in fns)
     for name in sorted(LAUNCHERS):
         fn = fns.get(name)
         if fn is None:
-            check(f"{name} 存在", False, "函数不见了")
+            require(f"{name} 存在", False, "函数不见了")
             continue
         lines = popen_calls(fn)
-        check(f"{name} 不直接 Popen", not lines, f"第 {lines} 行仍在直接启动")
-        check(f"{name} 走 _spawn_interactive", calls_named(fn, "_spawn_interactive"))
+        require(f"{name} 不直接 Popen", not lines, f"第 {lines} 行仍在直接启动")
+        require(f"{name} 走 _spawn_interactive", calls_named(fn, "_spawn_interactive"))
 
     for name, fn in fns.items():
         if name in ALLOWED or name in LAUNCHERS:
             continue
         lines = popen_calls(fn)
         if lines:
-            check(f"{name} 不应直接 Popen", False, f"第 {lines} 行")
+            require(f"{name} 不应直接 Popen", False, f"第 {lines} 行")
 
     # The desktop is the whole point; losing this string re-breaks it silently.
     src = "".join(f.read_text(encoding="utf-8") for f in SRC_FILES)
-    check("指定了 winsta0\\default 桌面", "winsta0" in src)
+    require("指定了 winsta0\\default 桌面", "winsta0" in src)
     # MAA must never be opened in a way that lets it start a round at boot.
     # --skip-startup-auto-run is MAA's own argument for that; losing it here
     # would turn the pre-update into an unscheduled farming run at 08:40.
-    check("MAA 用官方的 --skip-startup-auto-run",
+    require("MAA 用官方的 --skip-startup-auto-run",
           "--skip-startup-auto-run" in src)
-    check("并保留改配置这道二重锁", "_maa_run_directly" in src)
-    check("拿的是控制台会话令牌", "WTSQueryUserToken" in src)
+    require("并保留改配置这道二重锁", "_maa_run_directly" in src)
+    require("拿的是控制台会话令牌", "WTSQueryUserToken" in src)
     # AUTO-MAS is the one of the three that must never be launched by the
     # pre-update: it is already running, and its update is an HTTP question.
     fns = {n.name for n in tree.body if isinstance(n, ast.FunctionDef)}
-    check("有 run_automas", "run_automas" in fns)
+    require("有 run_automas", "run_automas" in fns)
     if "run_automas" in fns:
-        check("run_automas 不启动任何进程",
+        require("run_automas 不启动任何进程",
               not popen_calls(fns_node["run_automas"]) and
               not calls_named(fns_node["run_automas"], "_spawn_interactive"))
     # AUTO-MAS installs by extracting UpdatePack_*.zip and launching
@@ -93,22 +93,22 @@ def main() -> int:
         joined = " ".join(literals)
         for ep in ("/api/update/check", "/api/update/download",
                    "/api/update/install"):
-            check(f"run_automas 会调 {ep}", ep in joined)
-        check("安装前先等更新包落地",
+            require(f"run_automas 会调 {ep}", ep in joined)
+        require("安装前先等更新包落地",
               calls_named(fns_node["run_automas"], "_wait_for_package"))
         # AUTO-MAS's backend is not listening the moment the relay wakes at
         # boot. Asking once and giving up is what actually happened on
         # 2026-08-24 08:45:33, nine minutes before its backend answered.
         has_loop = any(isinstance(n, (ast.While, ast.For))
                        for n in ast.walk(fns_node["run_automas"]))
-        check("等 AUTO-MAS 后端起来（不是问一次就放弃）", has_loop)
-        check("等待时长有上限", "MAS_WAIT_SECONDS" in src)
+        require("等 AUTO-MAS 后端起来（不是问一次就放弃）", has_loop)
+        require("等待时长有上限", "MAS_WAIT_SECONDS" in src)
     src_all = src
-    check("等包的实现在", "def _wait_for_package" in src_all)
+    require("等包的实现在", "def _wait_for_package" in src_all)
     # The gate that makes this safe lives in service.py, not here.
     svc = (Path(__file__).resolve().parents[1] / "service.py").read_text(
         encoding="utf-8")
-    check("中继在安装器运行时不抢着拉起 AUTO-MAS",
+    require("中继在安装器运行时不抢着拉起 AUTO-MAS",
           "auto-mas-setup" in svc and "_installer_running" in svc)
 
     print("all checks passed" if not FAILED else f"FAILED: {FAILED}")

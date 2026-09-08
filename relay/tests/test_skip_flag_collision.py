@@ -7,7 +7,7 @@ skip-next-shutdown.flag，两者住同一个 state 目录。process_skip 每一�
 没开机）」——而机器正开着。发现于 2026-08-31：按下后回读 True，40 秒后
 再读已经没了。
 """
-import sys, tempfile
+import sys
 from datetime import datetime
 from pathlib import Path
 

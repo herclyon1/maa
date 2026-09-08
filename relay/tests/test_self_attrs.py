@@ -14,7 +14,6 @@ method planned and never written - is a static fact about the source. This
 checks it, so it can never again depend on a particular morning to surface.
 """
 import ast
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]

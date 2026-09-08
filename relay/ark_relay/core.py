@@ -9,12 +9,12 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 from . import texts
 from .statestore import StateStore
-from .config import Config, RunRecord, SERVER_TZ, USER_TZ, both_clocks
+from .config import RunRecord, SERVER_TZ, USER_TZ, both_clocks
 
 log = logging.getLogger("ark.core")
 
@@ -188,23 +188,6 @@ class State:
     def mark_banner_announced(self, key: str) -> None:
         self.store.set("marks", f"banner:{key}",
                        datetime.now(tz=SERVER_TZ).isoformat(timespec="seconds"))
-
-
-def is_last_run_of_day(rec: RunRecord, cfg: Config) -> bool:
-    """True once the day's final scheduled queue has finished.
-
-    Configured as ARK_LAST_RUN_AFTER (server time). Anything finishing at or
-    after that hour is treated as the day's closer.
-    """
-    try:
-        hh, mm = (int(x) for x in cfg.last_run_after.split(":"))
-    except ValueError:
-        hh, mm = 21, 30
-    finished = rec.finished.astimezone(SERVER_TZ)
-    cutoff = finished.replace(hour=hh, minute=mm, second=0, microsecond=0)
-    return finished >= cutoff
-
-
 def format_failure(rec: RunRecord, diagnosis: str = "") -> tuple[str, str]:
     """Immediate alert for a failed run. Title, body."""
     title = texts.failed(rec.script)
@@ -567,18 +550,3 @@ def format_missing(what: str, expected_at: datetime, detail: str = "") -> tuple[
     if detail:
         body += ["", detail]
     return title, "\n".join(body)
-
-
-def stale_seconds(last: datetime | None, now: datetime | None = None) -> float:
-    now = now or datetime.now(tz=SERVER_TZ)
-    if last is None:
-        return float("inf")
-    return (now - last).total_seconds()
-
-
-def next_occurrence(hhmm: str, now: datetime | None = None) -> datetime:
-    """Next time-of-day on the server clock, today or tomorrow."""
-    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
-    hh, mm = (int(x) for x in hhmm.split(":"))
-    candidate = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
-    return candidate if candidate > now else candidate + timedelta(days=1)

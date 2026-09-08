@@ -6,7 +6,7 @@ in memory, and every self-update restarts the process. The message also carries
 a fresh request hint and the current egress IP each time, so it never repeats
 byte for byte.
 """
-import json, os, sys, tempfile
+import json, os, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))

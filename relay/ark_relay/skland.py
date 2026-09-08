@@ -268,7 +268,7 @@ def endfield_role(cred: Cred) -> tuple[str, str]:
     raise SklandError("这个账号下没找到终末地的角色绑定")
 
 
-def endfield_card(cred: Cred, role_id: str = "", server_id: str = "") -> dict:
+def endfield_card(cred: Cred, role_id: str = "", server_id: str = "") -> dict:  # deadcode: allow —— 森空岛接口的公开入口，docs/SKLAND-API.md 记着，临时查练度时手动调
     """终末地个人详情。练度在 `data.detail` 里。"""
     if not _synced:
         # 忘了对表就会拿到一个「过期」的时间戳，报 10003。

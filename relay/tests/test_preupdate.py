@@ -3,7 +3,7 @@ which kills the round AUTO-MAS just launched. The pre-update moves that check in
 the boot-to-queue gap. These cover the decision logic and the log parsing - the
 launching itself is Windows-only.
 """
-import json, os, sys, tempfile, time
+import json, os, sys, time
 from datetime import datetime
 from pathlib import Path
 
@@ -38,6 +38,7 @@ os.environ.update(ARK_HISTORY_DIR=str(TMP), ARK_AUTOMAS_DIR=str(AUTOMAS),
                   ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import preupdate            # noqa: E402
+from ark_relay import preupdate_common  # noqa: E402
 from ark_relay.config import SERVER_TZ   # noqa: E402
 
 fails = []
@@ -73,19 +74,19 @@ def log_line(name, body):
 
 log_line("2026-08-22-1.log", "old session\n")
 time.sleep(0.05)
-check("newest log picked", preupdate._newest_log(MAAEND).name, "2026-08-22-1.log")
+check("newest log picked", preupdate_common._newest_log(MAAEND).name, "2026-08-22-1.log")
 
 # The regexes must match the real lines, copied verbatim from the machine.
 real = ("2026-08-22 11:49:39 INFO  [App] 检测到刚更新完成: v2.26.0-beta.1\n"
         "2026-08-22 11:49:40 INFO  [App] 更新检查完成: 最新版本=v2.26.0-beta.1, 有更新=false\n")
-check("updated-to parsed", bool(preupdate._UPDATED.search(real)), True)
-check("version captured",  preupdate._UPDATED.search(real).group(1), "v2.26.0-beta.1")
-m = preupdate._DONE.search(real)
+check("updated-to parsed", bool(preupdate_common._UPDATED.search(real)), True)
+check("version captured",  preupdate_common._UPDATED.search(real).group(1), "v2.26.0-beta.1")
+m = preupdate_common._DONE.search(real)
 check("settled parsed",    bool(m), True)
 check("has_update false",  m.group(2), "false")
 
 mid = "2026-08-22 09:00:00 INFO  [App] 更新检查完成: 最新版本=v2.27.0, 有更新=true\n"
-check("still downloading", preupdate._DONE.search(mid).group(2), "true")
+check("still downloading", preupdate_common._DONE.search(mid).group(2), "true")
 
 print("\n[failure is cheap]")
 check("no maaend dir -> no-op", preupdate.run(None), "")

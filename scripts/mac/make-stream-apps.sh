@@ -20,19 +20,18 @@
 #     见 memory/tcc-breaks-after-autoupdate.md
 set -euo pipefail
 
-MOON=/Applications/Moonlight.app/Contents/MacOS/Moonlight
-HOST=100.65.39.119
-APP=Desktop
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/moonlight-params.sh
+source "$HERE/lib/moonlight-params.sh"
+HOST="$MOON_HOST"
+APP="$MOON_APP"
 DESK="$HOME/Desktop"
 
-# 所有启动器共用。--no-performance-overlay 关掉左上角浮层；
+# 共用的那部分在 lib/moonlight-params.sh 里；这里只加启动器特有的两项：
+# --no-performance-overlay 关掉左上角浮层（命令行那条反而要开着看链路质量）；
 # --capture-system-keys always 让 ⌘（映射成 Win 键）等系统快捷键透传给 Windows。
-COMMON='--fps 60 --video-decoder hardware --hdr
-        --no-vsync --no-frame-pacing --no-game-optimization
-        --display-mode borderless --keep-awake
-        --no-performance-overlay --capture-system-keys always
-        --absolute-mouse'
-COMMON=$(echo $COMMON)
+# shellcheck disable=SC2086  # 有意按空白拆成多个参数
+COMMON=$(echo $MOON_COMMON --no-performance-overlay --capture-system-keys always --absolute-mouse)
 
 make_one() {   # $1=app名  $2=码率  $3=编码  $4=yuv444开关
   local name="$1" br="$2" codec="$3" yuv="$4" res="$5"
@@ -74,6 +73,6 @@ CSRC
   echo "  ✓ $name  (码率 $br, $codec, $yuv)"
 }
 
-make_one "串流到ins"         70000 AV1  --no-yuv444 2880x1864
-make_one "串流到ins-HEVC444" 55000 HEVC --yuv444   2880x1864
-echo "完成。参数要改就改本脚本顶部，然后重跑。"
+make_one "串流到ins"         "$MOON_BITRATE" "$MOON_CODEC" "$MOON_YUV" "$MOON_RES"
+make_one "串流到ins-HEVC444" 55000            HEVC           --yuv444    "$MOON_RES"
+echo "完成。参数要改就改 scripts/mac/lib/moonlight-params.sh，然后重跑本脚本。"

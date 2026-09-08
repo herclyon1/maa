@@ -8,7 +8,7 @@ _apply_one 在 v1 上面又贴了一层——两段检查同时存在，旧那�
 **这种叠加是看不出来的**：文件语法没错、present() 也为真、
 _verify_or_revert 照样过。所以要有一道专门的自查。
 """
-import sys, tempfile
+import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

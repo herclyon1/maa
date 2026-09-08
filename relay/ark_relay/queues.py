@@ -39,21 +39,6 @@ def _script_ids(automas_dir: Path) -> dict[str, str]:
         if s.get("kind"):
             out[s["kind"]] = uid
     return out
-
-
-def describe(automas_dir: Path | None) -> list[str]:
-    """One line per queue, for the report."""
-    from . import plan  # noqa: PLC0415
-    if not automas_dir:
-        return []
-    ids = {v: k for k, v in _script_ids(Path(automas_dir)).items()}
-    out = []
-    for q in plan.schedule(automas_dir):
-        kinds = [ids.get(u, "?") for u in q.get("items", [])]
-        out.append(f"{q['name']} {'/'.join(q.get('times') or [])}：{'、'.join(kinds) or '(空)'}")
-    return out
-
-
 def apply(automas_dir: Path, name: str, enabled: bool | None = None,
           scripts: list[str] | None = None) -> tuple[bool, str]:
     """Enable/disable a queue and/or set which scripts it runs."""

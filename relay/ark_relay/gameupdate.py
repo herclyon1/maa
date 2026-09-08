@@ -44,7 +44,7 @@ AK_PACKAGE = "com.hypergryph.arknights"
 # ─────────────────────────── 通用 ───────────────────────────
 
 def _spawn(exe: Path, cwd: Path | None = None) -> bool:
-    from .preupdate import _spawn_interactive  # noqa: PLC0415
+    from .preupdate_common import _spawn_interactive  # noqa: PLC0415
     return _spawn_interactive(exe, cwd or exe.parent, require_console=True)
 
 
@@ -203,7 +203,7 @@ def wuwa_launcher(okww_dir: Path | None) -> Path | None:
 
 def update_wuwa(desk: Desktop, launcher: Path, *, budget_s: float = 2400, poll_s: float = 30,
                 problems: list[str] | None = None, sleep=time.sleep) -> str:
-    from .preupdate import _okww_quiesce  # noqa: PLC0415 - 关壳和游戏进程的现成办法
+    from .preupdate_okww import _okww_quiesce  # noqa: PLC0415 - 关壳和游戏进程的现成办法
     if not _spawn(launcher):
         _note(problems, "鸣潮：启动器没能在桌面会话里起来")
         return ""
@@ -313,7 +313,7 @@ def emulator_shortcut(maa_dir: Path | None, idx: int) -> tuple[Path, tuple[str, 
 
 
 def _spawn_args(exe: Path, args: tuple[str, ...]) -> bool:
-    from .preupdate import _spawn_interactive  # noqa: PLC0415
+    from .preupdate_common import _spawn_interactive  # noqa: PLC0415
     return _spawn_interactive(exe, exe.parent, args, require_console=True)
 
 
@@ -895,7 +895,7 @@ def maaend_reenable_if_updated(cfg) -> str:
     rec = store.get("updates", "maaend_disabled_1_5_3")
     if not isinstance(rec, dict) or not rec:
         return ""
-    from .preupdate import _maaend_file_version  # noqa: PLC0415
+    from .preupdate_maaend import _maaend_file_version  # noqa: PLC0415
     ver = _maaend_file_version(cfg.maaend_dir) if cfg.maaend_dir else ""
     since = str(rec.get("since") or "v2.27.0-beta.4")
     if not ver or ver == since:
@@ -987,7 +987,7 @@ def maaend_reenable_spmed_if_updated(cfg) -> str:
     rec = store.get("updates", "maaend_disabled_spmed")
     if not isinstance(rec, dict) or not rec:
         return ""
-    from .preupdate import _maaend_file_version  # noqa: PLC0415
+    from .preupdate_maaend import _maaend_file_version  # noqa: PLC0415
     ver = _maaend_file_version(cfg.maaend_dir) if cfg.maaend_dir else ""
     if not ver or ver == str(rec.get("since") or ""):
         return ""

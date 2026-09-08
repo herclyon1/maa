@@ -4,7 +4,7 @@
 材料（一周三次，要消耗体力）。我希望手机网页界面操作逻辑、中继每周判定他们的
 逻辑、推送的通知里应该统一。目前通知是散开的而且没有周常乐园。」
 """
-import json, sys, tempfile
+import json, sys
 from datetime import datetime
 from pathlib import Path
 

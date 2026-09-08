@@ -298,7 +298,7 @@ echo "▶ 派发闸门"
 # 等于只对人生效。这里喂一个「有脚本在跑」的假状态，断言它必须非零退出并说明理由。
 cat > "$TMP/guard_busy.py" <<'PY'
 import sys, pathlib
-sys.path.insert(0, str(pathlib.Path("scripts/win").resolve()))
+sys.path.insert(0, str(pathlib.Path("scripts/windows").resolve()))
 import dispatch_guard as g
 g.running = lambda: (["MAA"], ["Endfield.exe"])          # 假装有脚本和游戏在跑
 g.ids = lambda: {"MAA": "id-1"}                          # 真调接口就说明没被拦住
@@ -309,7 +309,7 @@ refuses "忙的时候拒绝派发，且非零退出" "拒绝派发" python3 "$TM
 
 cat > "$TMP/guard_free.py" <<'PY'
 import sys, pathlib
-sys.path.insert(0, str(pathlib.Path("scripts/win").resolve()))
+sys.path.insert(0, str(pathlib.Path("scripts/windows").resolve()))
 import dispatch_guard as g
 g.running = lambda: ([], [])                             # 闲着
 g.ids = lambda: {"MAA": "id-1"}
@@ -320,7 +320,7 @@ accepts "闲的时候正常派发（不误杀）" python3 "$TMP/guard_free.py"
 
 cat > "$TMP/guard_name.py" <<'PY'
 import sys, pathlib
-sys.path.insert(0, str(pathlib.Path("scripts/win").resolve()))
+sys.path.insert(0, str(pathlib.Path("scripts/windows").resolve()))
 import dispatch_guard as g
 g.running = lambda: ([], [])
 g.ids = lambda: {"MAA": "id-1"}
@@ -328,6 +328,37 @@ g.post = lambda *a, **k: (_ for _ in ()).throw(AssertionError("不该走到派�
 sys.exit(g.start("不存在的脚本"))
 PY
 refuses "脚本名不存在时拒绝" "没有叫" python3 "$TMP/guard_name.py"
+
+echo
+echo "▶ 断言函数形状（checkshape）"
+# 2026-09-08：两个测试把 check() 的第二、第三个参数写反了意思，
+# 在那两个文件里按大多数人的习惯写比较，断言退化成「实际值是不是真值」，永远通过。
+mkdir -p "$TMP/shape"
+cat > "$TMP/shape/test_bad.py" <<'EOF'
+def require(a, b):
+    pass
+EOF
+refuses "require 参数写反必须被拒" "应该是 (name, ok" \
+  python3 scripts/mac/lib/checkshape.py "$TMP/shape"
+
+cat > "$TMP/shape/test_bad.py" <<'EOF'
+from pathlib import Path
+x = Path("ark_relay/texts.py")
+EOF
+refuses "依赖工作目录的路径必须被拒" "换个地方跑就找不到" \
+  python3 scripts/mac/lib/checkshape.py "$TMP/shape"
+
+echo
+echo "▶ 日志名对得上模块名（loggernames）"
+# 2026-09-08：selfupdate.py 打的日志叫 ark.update。出事时按模块名 grep 一条都搜不到，
+# 很容易得出「这个模块根本没跑」的错误结论。
+mkdir -p "$TMP/logname"
+cat > "$TMP/logname/whatever.py" <<'EOF'
+import logging
+log = logging.getLogger("ark.something_else")
+EOF
+refuses "日志名和模块名不一致必须被拒" "应该是" \
+  python3 scripts/mac/lib/loggernames.py "$TMP/logname"
 
 echo "▶ 仓库自检本身"
 # 这里只验「lint 不会误杀干净的树」。测试那一项部署流程自己会跑一遍，

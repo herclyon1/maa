@@ -9,9 +9,7 @@ MAA / MaaEnd / OK-WW 挨个拉起来查更新。那天上午部署了三次，�
 留出重试的口子：这一轮真有没确认的项时，隔 RETRY_MIN 分钟还能再试一次——
 早上 08:45 查失败、09:00 队列就要开跑，那一次重试是有价值的。
 """
-import json
 import sys
-import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 

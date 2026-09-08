@@ -9,7 +9,7 @@
 Server酱 排在第一位不是随手定的：它没有 IP 白名单，用户实测"长期稳定，从来没出过
 问题"；企业微信在家宽后面，公网 IP 一转就 60020 全拒。
 """
-import os, sys, tempfile
+import os, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))

@@ -55,11 +55,14 @@
 
 | 要做什么 | 用什么 |
 |---|---|
-| 核实鸣潮配置真的落地了 | `scripts/mac/okww-check.sh` —— 比对 MAS 侧和 OK-WW 实际读到的那份（底下是 `scripts/win/okww-landed.py`）。「设置看着好好的、实际没生效」查这个 |
+| 核实鸣潮配置真的落地了 | `scripts/mac/okww-check.sh` —— 比对 MAS 侧和 OK-WW 实际读到的那份（底下是 `scripts/windows/okww-landed.py`）。「设置看着好好的、实际没生效」查这个 |
 | 发布手机页 | `scripts/mac/deploy-web.sh` —— 改了 `web/` 下任何文件之后**必须**跑，不跑手机上还是旧的 |
+| 重编 Fleet Monitor（Dock 上那个看机器在不在的） | `scripts/mac/build-fleetmonitor.sh` —— 改了 `scripts/mac/FleetMonitor/main.swift` 之后跑，它编译、装包、重启。二进制不入库 |
 | 串流到 ins 打游戏 | `scripts/mac/stream-ins.sh`（菜单用）/ `--relative`（游戏内转视角）。桌面上那三个启动器点的就是它 |
 | **手动跑单个脚本 / 停干净** | `scripts/mac/run-one.sh MAA\|MaaEnd\|OK-WW`（`status` 看在跑什么、`stop` 按顺序停）—— **唯一正门**，内含忙闲闸门。禁裸调 `/api/dispatch/start`、禁 `taskkill` |
 | 在游戏机上跑脚本 | `scripts/mac/winrun.sh --py <本地.py>`（要看屏幕用 `--py1`） |
+| 拉起方舟那个雷电实例 | `scripts/windows/emu-start.py`（winrun 送上去跑）—— 机器上有两个雷电实例，方舟装在 1000 号那个（adb 7555）。双击 `dnplayer.exe` 起的是 0 号，方舟不在里面 |
+| 打月行水 SR-4 | `scripts/windows/sr4-run.py`（在游戏机本地跑）—— 这关战斗中反复弹剧情，遥控赶不上时机，MAA 的 Copilot 也会被剧情卡死，所以整个搬到本地循环里做 |
 | **读远端日志** | `from arklog import since, summarise, mtime, OKWW_LOG`（winrun 自动送上机器）。**自己拼 `l[:19] > "..."` 或 `datetime.now()` 会被拒绝发送**；相对窗口用 `since_minutes(path, 90)` |
 | **在游戏机上跑 PowerShell** | `scripts/mac/winps.sh '<脚本>'` —— 唯一正门，整段 base64。**不许再手拼 ssh + 引号** |
 | 看游戏机真实屏幕 / 发按键 | `scripts/mac/wingui.sh shot\|key\|click\|scroll\|focus\|launch` |

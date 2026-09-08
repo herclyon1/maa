@@ -13,6 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import preupdate                       # noqa: E402
+from ark_relay import preupdate_okww  # noqa: E402
 
 FAILED = []
 
@@ -48,23 +49,23 @@ def basic(d: Path) -> dict:
 def main(root: Path) -> int:
     d = make(root, autostart=True)
 
-    was = preupdate._okww_autostart(d, False)
+    was = preupdate_okww._okww_autostart(d, False)
     check("读到原值 True", was, True)
     check("已关掉自动开游戏", basic(d)["Auto Start Game When App Starts"], False)
     check("其他设置没被动到", basic(d)["Mute Game while in Background"], True)
     check("非布尔项也完好", basic(d)["Use DirectML"], "Yes")
-    preupdate._okww_autostart(d, True)
+    preupdate_okww._okww_autostart(d, True)
     check("能原样放回去", basic(d)["Auto Start Game When App Starts"], True)
 
-    check("读得到 app.json 状态", preupdate._okww_state(d)[:3],
+    check("读得到 app.json 状态", preupdate_okww._okww_state(d)[:3],
           ("v3.6.4", "idle", ""))
     # 第四项是判断"到底检查过没有"的唯一依据，见 _okww_state 的注释。
     check("状态里带得出可用版本列表",
-          isinstance(preupdate._okww_state(d)[3], tuple), True)
+          isinstance(preupdate_okww._okww_state(d)[3], tuple), True)
 
     bad = root / "bad"
     (bad / "data" / "apps" / "ok-ww" / "working" / "configs").mkdir(parents=True)
-    check("配置读不懂时返回 None", preupdate._okww_autostart(bad, False), None)
+    check("配置读不懂时返回 None", preupdate_okww._okww_autostart(bad, False), None)
 
     # No ok-ww.exe -> do nothing, and never leave the switch flipped.
     check("找不到 ok-ww.exe 时什么都不做", preupdate.run_okww(d, budget_s=1), "")

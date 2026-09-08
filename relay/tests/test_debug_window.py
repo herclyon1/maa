@@ -7,7 +7,7 @@ What was asked for was "until the next cycle is about to start", i.e. ten
 minutes before the 08:40 power-on on the 23rd.
 """
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

@@ -12,7 +12,7 @@ next timestamped line is what closes the block. An earlier version of this file
 used timestamps without brackets, which `_HAS_TS` does not match - so the block
 never closed and the tests passed without exercising the real path.
 """
-import sys, tempfile
+import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

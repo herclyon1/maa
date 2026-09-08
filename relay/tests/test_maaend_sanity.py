@@ -15,7 +15,7 @@
 
 两天的差别正是判断依据：**只看最后一次结算扣没扣**，而不是整段里扣过几次。
 """
-import os, sys, tempfile
+import os, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))

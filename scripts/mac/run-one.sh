@@ -7,10 +7,10 @@
 #
 # 为什么必须走这里：2026-09-01 上午,「派整条队列 + taskkill 队列成员」
 # 让 AUTO-MAS 的整队重试和手动派发打架——MAA 重复吃药、三个游戏同时在线。
-# 详见 scripts/win/dispatch_guard.py 顶部注释。
+# 详见 scripts/windows/dispatch_guard.py 顶部注释。
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-G="$HERE/../win/dispatch_guard.py"
+G="$HERE/../windows/dispatch_guard.py"
 case "${1:-status}" in
   status|stop) exec "$HERE/winrun.sh" --timeout 220 --py "$G" "${1}" ;;
   *)

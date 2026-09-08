@@ -48,7 +48,7 @@ from pathlib import Path
 
 from .config import SERVER_TZ, atomic_write_text, master_config_dir
 
-log = logging.getLogger("ark.sanity")
+log = logging.getLogger("ark.sanity_plan")
 
 TAB_LABELS = {
     "OperatorProgression": "干员养成",

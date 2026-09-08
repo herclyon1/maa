@@ -4,7 +4,7 @@ The tricky case is the first update after this feature ships: the process that
 applies it is running the old code and cannot leave a marker, so the
 announcement has to be derivable from the version file alone.
 """
-import json, sys, tempfile
+import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

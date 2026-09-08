@@ -42,7 +42,7 @@ from pathlib import Path
 
 from .config import SERVER_TZ, atomic_write_bytes
 
-log = logging.getLogger("ark.update")
+log = logging.getLogger("ark.selfupdate")
 
 DEFAULT_BASE = "https://raw.githubusercontent.com/herclyon1/maa/main/relay/"
 MANIFEST = "manifest.json"

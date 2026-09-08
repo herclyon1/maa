@@ -4,7 +4,7 @@
 用户：「赶紧去修，报了三次了。」键=脚本+失败在哪一步：
 同一步反复失败不许反复推；换一步失败是新事，照报；跨天重置。
 """
-import sys, tempfile, types
+import sys, types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

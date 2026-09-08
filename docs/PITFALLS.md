@@ -889,7 +889,7 @@ pywintypes.com_error: (-2147352567, '发生意外。',
   <urlopen error _ssl.c:1064: The handshake operation timed out>
 ```
 
-同一次开机里 `ark.update` 取 manifest 也失败了一次（WinError 10054），
+同一次开机里 `ark.selfupdate`（当时叫 `ark.update`） 取 manifest 也失败了一次（WinError 10054），
 但它**换了镜像重试成功**（拿到清单只是比本机旧，所以没更新）。
 `ark.inbox` 这条没有看到重试。这就是之前记下的「自更新和待办下发不可靠」。
 

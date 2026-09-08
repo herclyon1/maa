@@ -2,4 +2,8 @@
 ark-state/
 __pycache__/
 *.pyc
+# 本机缓存，记的是某一刻游戏机上真实生效的配置，不是仓库内容。
+# 2026-09-08：工作树里那份停在 08-26，`基质地点: VFTheHub` 正是 09-05 修掉的
+# 那个刷不出基质的地区，而且没有时间戳——照它下判断会得出反的结论，已删。
+# 要用就现取：scripts/mac/config-check.py --save
 state/config-snapshot.json

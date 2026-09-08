@@ -6,7 +6,7 @@ fields directly - including the deterministic report layout, which is the last
 fallback when the wording model is down. A KeyError there means the daily
 report is never sent, and the shutdown path waits for a sent report.
 """
-import json, sys, tempfile
+import json, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

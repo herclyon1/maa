@@ -13,6 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import preupdate                       # noqa: E402
+from ark_relay import preupdate_maa  # noqa: E402
 
 FAILED = []
 
@@ -42,10 +43,10 @@ def read_flag(d: Path):
 
 def main(root: Path) -> int:
     d = make_maa(root, True)
-    was = preupdate._maa_run_directly(d, False)
+    was = preupdate_maa._maa_run_directly(d, False)
     check("读到原值 True", was, True)
     check("已关掉自动开跑", read_flag(d), False)
-    preupdate._maa_run_directly(d, True)
+    preupdate_maa._maa_run_directly(d, True)
     check("能原样放回去", read_flag(d), True)
 
     # Nothing else in the file may move.
@@ -59,7 +60,7 @@ def main(root: Path) -> int:
     (bad / "config").mkdir(parents=True, exist_ok=True)
     (bad / "config" / "gui.new.json").write_text("{}", encoding="utf-8")
     check("配置读不懂时返回 None（跳过而非乱改）",
-          preupdate._maa_run_directly(bad, False), None)
+          preupdate_maa._maa_run_directly(bad, False), None)
 
     # The pending-update gate: no NewVersion directory means MAA has nothing
     # waiting, so the pre-update must not start it at all. This is the common

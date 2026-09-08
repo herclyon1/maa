@@ -16,3 +16,8 @@ __pycache__/
 .dock-backup-*.plist
 .launcher-backup-*/
 *.orig
+
+# Fleet Monitor 编出来的可执行文件不入库：2026-09-08 发现库里那份比源码旧四天，
+# 谁照它跑谁拿到的是没修过的版本。要用就跑 scripts/mac/build-fleetmonitor.sh 现编。
+scripts/mac/FleetMonitor/FleetMonitor
+

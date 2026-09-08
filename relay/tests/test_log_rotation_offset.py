@@ -7,7 +7,8 @@
 """
 import sys, pathlib, tempfile
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from ark_relay.preupdate import _read_from, _MAA_LATEST  # noqa: E402
+from ark_relay.preupdate_common import _read_from
+from ark_relay.preupdate_maa import _MAA_LATEST# noqa: E402
 
 fails = []
 with tempfile.TemporaryDirectory() as d:

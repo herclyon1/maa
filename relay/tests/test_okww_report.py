@@ -9,7 +9,7 @@ OK-WW 是纯图像识别的战斗脚本，从不读结算界面，所以没有 M
 另一处要点：AUTO-MAS 把 OK-WW 归在 `general_result` 这个通用键下，
 和「通用脚本」共用，**光看键名认不出是哪个脚本**——只能靠文件名前缀。
 """
-import json, os, sys, tempfile
+import json, os, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))

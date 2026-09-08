@@ -4,7 +4,7 @@
 账本步骤里只有「无音区 ×1、残象聚落、周常乐园」，周本一个字没有，
 handle 里找「4C声骸 已完成」自然找不到，周本状态一直是「本周还没领满」。
 """
-import sys, tempfile
+import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

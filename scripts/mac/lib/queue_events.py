@@ -9,8 +9,10 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 STATE = Path(r"C:\ProgramData\ark-queue-watch.json")
-FILES = {"MAA": r"D:\ark\maa\debug\gui.log",
-         "OK-WW": r"D:\ark\okww\data\apps\ok-ww\working\logs\ok-script.log"}
+# 路径取 arklog 那一份（winrun 会把 arklog.py 一并送到 C:\ProgramData）。
+# 2026-09-08 之前这里自己抄了一份，抄本一旦和真路径分家，下面只会「静默少一路」。
+from arklog import MAA_GUI_LOG, OKWW_LOG  # noqa: E402
+FILES = {"MAA": MAA_GUI_LOG, "OK-WW": OKWW_LOG}
 KEEP = re.compile(r"开始任务|完成任务|任务出错|已停止|停止任务|理智不足|体力不足|"
                   r"指定点位|Daily Task Completed|not enough stamina|"
                   r"Traceback|Failed|失败|超时|异常|连接失败|error")
@@ -48,6 +50,10 @@ if st.get("procs") != now:
 for name, path in FILES.items():
     p = Path(path)
     if not p.is_file():
+        # 2026-09-08 修：原来这里直接 continue。日志路径写错、程序换了目录、
+        # 盘没挂上——三种情况在监视器里长得都和「这一路很安静」一模一样，
+        # 而这个脚本存在的意义正是替人盯着。看不到就得说出来。
+        out.append(f"[{name}] 读不到日志：{path} 不存在——这一路的动静**没有人在看**")
         continue
     size = p.stat().st_size
     prev = int(st.get(f"pos_{name}") or 0)
@@ -88,8 +94,10 @@ try:
     if fresh:
         out += fresh[-15:]
     st["mxu_ids"] = list(seen)[-4000:]
-except Exception:
-    pass
+except Exception as e:                      # noqa: BLE001
+    # 同上：MXU 那头拿不到日志，终末地这一路就是瞎的。安静地 pass 等于谎报平安。
+    out.append(f"[MaaEnd] 取不到 MXU 日志（{type(e).__name__}: {e}）——"
+               f"终末地这一路的动静**没有人在看**")
 
 STATE.write_text(json.dumps(st, ensure_ascii=False), encoding="utf-8")
 for l in out[-20:]:

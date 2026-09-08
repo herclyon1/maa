@@ -12,7 +12,6 @@ maafw.log 只覆盖 09:57–09:59——**那是重试成功那次**，证据目�
 """
 import pathlib
 import sys
-import types
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 

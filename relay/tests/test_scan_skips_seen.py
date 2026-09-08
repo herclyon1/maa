@@ -3,7 +3,7 @@
 2026-09-07 实测：每个周期把整个 history 目录几百条记录全部重新解析一遍再过滤，
 启动一次十几秒、停服务撞 15 秒硬保险、8 月的老失败记录每次都重新报警。
 """
-import json, os, sys, tempfile, time
+import json, os, sys, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

@@ -337,7 +337,7 @@ class Desktop:
     def _spawn_default(exe: Path, cwd: Path, args: tuple[str, ...]) -> bool:
         # 走交互式计划任务，不走令牌直起：2026-09-02 实测令牌方式起来的助手
         # 截到图却 OCR 出 0 行（用户环境没完整加载），计划任务方式读出 45 行。
-        from .preupdate import _spawn_via_task  # noqa: PLC0415 - 避免循环导入
+        from .preupdate_common import _spawn_via_task  # noqa: PLC0415 - 避免循环导入
         return _spawn_via_task(exe, cwd, args)
 
     def run(self, actions: list[dict], focus: str | None = None,

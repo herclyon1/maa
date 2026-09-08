@@ -9,7 +9,6 @@
 
 这条测试盯两件事：实现只有一份、别处不许再抄。
 """
-import ast
 import re
 import sys
 from pathlib import Path

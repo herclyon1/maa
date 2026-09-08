@@ -5,7 +5,7 @@ machine down) and the three ways the fix could itself cost a run: powering off
 before the queue, mid-queue, or on a machine somebody booted afterwards to work
 on.
 """
-import json, os, sys, tempfile
+import json, os, sys
 from datetime import datetime, timedelta
 from pathlib import Path
 

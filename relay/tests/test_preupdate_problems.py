@@ -10,7 +10,8 @@
 所以每个 run_* 都要能把「我没能确认」这件事送出函数，
 service.py 再把它作为**报警**发出去（不是日常通知）。
 """
-import ast, os, sys, tempfile
+import os, sys
+import re
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -61,16 +62,20 @@ except Exception as e:                      # noqa: BLE001
 print("\n[service.py 用报警级发出去，而不是日常通知]")
 src = (Path(__file__).resolve().parents[1] / "service.py").read_text(encoding="utf-8")
 check("收集 problems", "problems: list[str] = []" in src)
-for name in ("run_maa", "run", "run_automas", "run_okww"):
-    check(f"{name} 传了 problems", f"problems=problems)" in src)
-    break
-check("四个都传了", src.count("problems=problems") >= 4)
+# 2026-09-08 修：原来这里写了个循环，第一轮就 break，而且 f-string 里没有占位符，
+# 于是四个函数只查了一个、查的还是「源码里随便哪儿有 problems=problems」。
+# 现在逐个查：每个 preupdate.<函数>( 的调用参数里都要带 problems=problems。
+for fname in ("run_maa", "run", "run_automas", "run_okww"):
+    calls = re.findall(rf"preupdate\.{fname}\((?:[^()]|\([^()]*\))*\)", src, re.S)
+    check(f"service.py 里调了 preupdate.{fname}", len(calls) >= 1, True)
+    check(f"preupdate.{fname} 每次调用都传了 problems",
+          all("problems=problems" in c for c in calls), True)
 i = src.find('texts.unconfirmed("预更新"')
 check("有「预更新没能确认」这条通知（标题来自 texts）", i >= 0)
 seg = src[i:i + 400]
 check("走 alert=True（报警，会全渠道发）", "alert=True" in seg)
 check("明说了这不是「无需更新」", "preupdate_unconfirmed_tail()" in seg
-      and "这不是「无需更新」" in Path("ark_relay/texts.py").read_text(encoding="utf-8"))
+      and "这不是「无需更新」" in (Path(__file__).resolve().parents[1] / "ark_relay" / "texts.py").read_text(encoding="utf-8"))
 # 2026-09-06：MaaEnd 升级后 AUTO-MAS 的任务表缓存不刷新（#573），升级完必须重启它
 check("MaaEnd 升级后重启 AUTO-MAS 刷新缓存", "_revive_automas()" in src.split("preupdate.run(maaend", 1)[1][:1500])
 

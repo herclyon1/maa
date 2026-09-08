@@ -91,11 +91,21 @@ cp ~/Claude/mac-backups/.dock-backup-20260905-025845.plist ~/Library/Preferences
 **⚠ 主可执行文件必须是编译的 Mach-O，不能是 shell 脚本**——写成脚本双击会弹
 「需要安装 Rosetta」，因为 LaunchServices 判不出架构。
 
-**要改参数改构建脚本再重跑，别直接改 app**：
+**要改参数改这一处，然后重跑构建脚本**：
 ```bash
+# 参数在 scripts/mac/lib/moonlight-params.sh，改完跑这个
 ~/Claude/maa-automation/scripts/mac/make-stream-apps.sh
 ```
+2026-09-08 起，桌面启动器和命令行的 `scripts/mac/stream-ins.sh` 共用
+`scripts/mac/lib/moonlight-params.sh` 一份参数。之前两边各抄一份，
+改了码率只改一处、另一处照旧，而两处都能正常启动，不会报错——只是画质对不上。
+
 原二进制备份：`~/Claude/mac-backups/.launcher-backup-20260830-232059/`
+
+**桌面上还有第三个：`强制关闭串流.app`，仓库里没有它的源码。**
+它不是 `make-stream-apps.sh` 生成的（包标识符的算法对不上），是 Swift 编的，
+里面只看得到一个 "Moonlight" 字面量和 Process 的几个方法。
+没动它，也不建议照猜重造——真要重做，先问用户当初是怎么建的。
 
 ---
 

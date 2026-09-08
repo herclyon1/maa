@@ -1,5 +1,5 @@
 """state.json：一个文件、登记过的字段才能写、原子落盘、旧文件自动迁入。"""
-import json, sys, tempfile
+import json, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

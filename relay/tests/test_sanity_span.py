@@ -51,7 +51,6 @@ ok = "\n".join([
 ])
 got = collector._okww_stamina(ok) if hasattr(collector, "_okww_stamina") else None
 if got is None:
-    import re
     tail = collector._OKWW_STAMINA_END.findall(ok)
     chk("鸣潮收尾读数认得出", tail[-1] if tail else None, "37")
     series = [int(m.group(1)) for m in collector._OKWW_STAMINA.finditer(ok)] + [int(tail[-1])]

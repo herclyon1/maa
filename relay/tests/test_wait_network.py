@@ -7,7 +7,7 @@ abandoned before the doors were ever reachable.
 是全套里最慢的一个（第二名的两倍），而且没网就挂。现在用假时钟和假解析器——
 不碰网络、瞬间跑完，等待时长也变成可精确断言的。
 """
-import socket, sys, time, types
+import socket, sys, types
 from pathlib import Path
 
 # service.py imports pywin32, which does not exist on this machine. Load just

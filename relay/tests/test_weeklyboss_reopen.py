@@ -4,7 +4,7 @@
 周本那边 weeklyboss.json 里 done_week 还是上周（2026-W36），
 用户看不到周本这周会不会打、打哪个、打几次。
 """
-import json, os, sys, tempfile, types
+import json, os, sys, types
 from datetime import datetime
 from pathlib import Path
 

@@ -12,11 +12,10 @@
 """
 import json
 import sys
-import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import preupdate  # noqa: E402
+from ark_relay import preupdate_maaend  # noqa: E402
 from ark_relay import preupdate_maaend as PM  # noqa: E402  # 实现在这个模块里，猴子补丁要打在它身上
 from ark_relay.statestore import StateStore  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -63,7 +62,7 @@ def run_case(label, *, file_ver, prev_log, kept, logs):
         f.write_text(text, encoding="utf-8")
         return f
     PM._newest_log = newest
-    got = preupdate._run_maaend(d, d / "MaaEnd.exe", 6, [], state)
+    got = preupdate_maaend._run_maaend(d, d / "MaaEnd.exe", 6, [], state)
     return got, state
 
 

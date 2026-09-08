@@ -8,7 +8,7 @@
 「周本排在体力副本之前」由 DailyTask 的顺序补丁保证，
 见 test_okww_patch.py 与 docs/OKWW-WEEKLY-BOSS.md。
 """
-import json, os, sys, tempfile
+import json, os, sys
 from datetime import datetime
 from pathlib import Path
 

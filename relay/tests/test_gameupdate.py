@@ -1,12 +1,11 @@
 """大版本更新自动化：决策逻辑用假桌面/假命令跑一遍，不碰网络不碰机器。"""
 import json
 import sys
-import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import gameupdate as gu  # noqa: E402
-from ark_relay.desktop import Desktop, Line, Screen  # noqa: E402
+from ark_relay.desktop import Line, Screen  # noqa: E402
 
 fails = []
 def check(label, got, want):

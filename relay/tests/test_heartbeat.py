@@ -1,6 +1,5 @@
 """心跳：有人看才跳、看了立刻跳、停服务发 bye、超过日上限放慢。不碰网络。"""
 import sys
-import tempfile
 import threading
 import time
 from pathlib import Path

@@ -8,7 +8,6 @@ fromisoformat，值不合法照样 ValueError → 日报发不出 → 关机等�
 import json
 import pathlib
 import sys
-import tempfile
 from datetime import datetime
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
