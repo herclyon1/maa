@@ -451,3 +451,26 @@ littered 18 of them on the machine. Per-file hash verification cannot see that �
 checks that the files in the manifest are present and correct, never that nothing extra
 arrived. The "import every module on the machine" smoke step, added the day before,
 found them.
+
+
+## 2026-09-08 (evening): MXU polling — evaluated and declined
+
+The user handed the call back to me: 「MaaEnd 的 MXU 接口要不要开轮询，这个你自己评估
+收益值不值得，不值得就不做。」
+
+**Not doing it.** The reasoning, so nobody re-opens this without new information:
+
+* MaaEnd's own log is already structured — every task emits `任务开始` / `任务完成` /
+  `任务失败` markers, and the relay already判 on exactly those. The judgement is not
+  guessing at prose; it reads markers. So the MXU interface would replace a working
+  source with a different working source.
+* MXU's `127.0.0.1:12701` only listens while MaaEnd's process is alive. Getting
+  per-task state out of it during a round therefore means **a poll loop** — and the
+  relay today is purely event-driven (directory-change notifications plus alarms).
+  Adding a permanent poll to feed a judgement that is already correct is a cost with
+  no matching benefit, and the standing order is 「不许默认轮询，要用先问」.
+* The one thing MXU would add — sub-task progress *while* a round is still running —
+  is not something any current alert or report needs. Nothing is waiting on it.
+
+If a future failure turns out to be invisible in MaaEnd's own log but visible over
+12701, that is new information and worth revisiting. Until then this is closed.

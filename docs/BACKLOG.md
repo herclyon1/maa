@@ -119,8 +119,11 @@ wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change"
       wins when the two disagree. **Do not touch this the night before a queue run**: one misread line in
       freshly written log parsing turns the whole night into false alarms. (moved in from OPERATIONS.md)
 
-- [ ] **The git history of this public repo still contains a person's real name and how that machine is
-      logged into** (needs your decision before anything moves; exactly which two strings is written in
+- [x] ~~**The git history of this public repo still contains a person's real name and how that machine is
+      logged into**~~ — **closed 2026-09-08 by the user's decision: 「git 历史里那个真名和登录方式不管」.**
+      Not doing it. The working tree stays clean and check 12 keeps watching that; the history keeps
+      what it has. Do not re-open this or re-propose rewriting history — it has been asked and answered.
+      Everything below is the original entry, kept for the reasoning (needs your decision before anything moves; exactly which two strings is written in
       the regex of `lint-repo.sh` check 12, and is not repeated here - writing it here would trip that
       gate itself). The working tree was cleaned long ago and the gate keeps watching it; but that
       "redaction" in e9c2e75 only changed the current files, and the original text is still there in
@@ -130,7 +133,7 @@ wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change"
       is `git filter-repo --replace-text <replacement table>` followed by `git push --force`.
       This is irreversible and public-facing, so **I will not touch it without you explicitly saying to
       clear it**. Leaving it is also acceptable - that machine is only reachable inside the Tailscale
-      network and has no entry point on the public internet.
+      network and has no entry point on the public internet.)
 
 ## Done (kept around for a while so the same question is not asked twice)
 
