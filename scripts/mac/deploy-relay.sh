@@ -214,8 +214,9 @@ fi
 
 lap
 echo "▶ 4/5 逐文件核对哈希"
-scp -q "${SSH_OPTS[@]}" manifest.json "${USER_AT}:${REMOTE_DIR}/_manifest_check.json"
-scp -q "${SSH_OPTS[@]}" /tmp/ark-verify.py "${USER_AT}:C:/Users/Administrator/ark-verify.py"
+# 清单和校验脚本在第 3 步已经送上去了，而清单是第 1 步生成的、中间不会变，
+# 所以这里**不再重送一遍**。2026-09-08 量的：跨境每次 scp 1.7 秒（即使复用连接，
+# 它也要另谈一条 SFTP 通道），这一对白送两遍就是 3.4 秒。
 ssh "${SSH_OPTS[@]}" "$USER_AT" "\"$PY\" -X utf8 C:\\Users\\Administrator\\ark-verify.py"
 ssh "${SSH_OPTS[@]}" "$USER_AT" \
   "del C:\\Users\\Administrator\\ark-verify.py & del ${REMOTE_DIR//\//\\}\\_manifest_check.json" >/dev/null 2>&1 || true
