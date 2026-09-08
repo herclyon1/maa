@@ -98,7 +98,14 @@ class MaaEndConfig:
             t = self.find_task(self.load(), task)
         except (OSError, json.JSONDecodeError):
             return ""
-        v = ((t or {}).get("optionValues") or {}).get(option) or {}
+        v = ((t or {}).get("optionValues") or {}).get(option)
+        # An absent option has to come back as '' - the docstring promises it and
+        # every caller tests the result for truth. Falling through to the json
+        # dump below turned "MaaEnd has never heard of this" into the string
+        # "{}", which is truthy, so a report line would state the current value
+        # of a setting that does not exist.
+        if not isinstance(v, dict):
+            return ""
         if v.get("type") == "select":
             return str(v.get("caseName") or "")
         if v.get("type") == "switch":

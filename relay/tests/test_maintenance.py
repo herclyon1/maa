@@ -37,5 +37,31 @@ check("09-02 当天：只有终末地", list(M.today(datetime(2026, 9, 2, 8, 46,
 check("09-03：谁都不维护", M.today(datetime(2026, 9, 3, 8, 46, tzinfo=SERVER_TZ), sources=src), {})
 bad = {"明日方舟": lambda n: (_ for _ in ()).throw(OSError("net"))}
 check("取不到就当没有，不炸", M.today(now, sources=bad), {})
+# ---- 明日安排里的维护提示（用户 2026-09-03：「这个务必要体现」）----
+# maintenance_lines 是这条要求唯一的落点，之前没有任何测试碰过它。漏掉这一行，
+# 队列会在停服时段照常开跑：全是失败，客户端也不会更新。
+from ark_relay import plan as P                                     # noqa: E402
+from datetime import date                                           # noqa: E402
+
+_real_today = M.today
+M.today = lambda at: {"明日方舟": ak}
+lines = P.maintenance_lines(date(2026, 9, 4))
+check("维护当天出一行", len(lines), 1)
+check("点名游戏", "明日方舟" in lines[0], True)
+check("写清窗口", "09-04 06:00–12:00" in lines[0], True)
+check("说清当天不跑它", "当天队列里不跑它" in lines[0], True)
+check("说清跑完就更新客户端", "更新客户端" in lines[0], True)
+check("说清开服后补跑", "12:00 开服后单独补跑" in lines[0], True)
+
+M.today = lambda at: {"明日方舟": ak, "终末地": ef}
+check("两家维护就出两行", len(P.maintenance_lines(date(2026, 9, 4))), 2)
+
+M.today = lambda at: {}
+check("没人维护就一行都不出", P.maintenance_lines(date(2026, 9, 3)), [])
+
+M.today = lambda at: (_ for _ in ()).throw(OSError("net"))
+check("取不到公告时安静返回空，不许把明日安排带走", P.maintenance_lines(date(2026, 9, 4)), [])
+M.today = _real_today
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

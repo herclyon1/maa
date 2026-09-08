@@ -31,10 +31,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ark_relay.banners import (
-    _AK_PAGES, _PRTS, debut_only, parse_ak_schedule, parse_arknights,
+    debut_only, parse_ak_schedule, parse_arknights,
     gh_raw, group_notice, newest_version, opening_tomorrow, parse_endfield,
     parse_endfield_notice, parse_wuwa, parse_wuwa_preview, render, upcoming,
 )
+# 2026-09-08 按游戏拆成 banners_wuwa / banners_endfield / banners_arknights 之后，
+# 门面 banners.py 只转公开名。这两个私有名直接从它们所在的模块引。
+from ark_relay.banners_arknights import _AK_PAGES, _PRTS
 
 FX = Path(__file__).parent / "fixtures"
 FAILED: list[str] = []
