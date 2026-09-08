@@ -1,58 +1,67 @@
-# 自动过剧情 / 打活动 —— 调研结论（2026-08-26）
+# Auto-story / event clearing — research conclusion (2026-08-26)
 
-**结论：用户要的「全自动」（自动寻路 → 开地图传送 → 触发 NPC 对话 → 跳过）不存在。
-鸣潮和终末地的全部项目都是「你把剧情触发出来，它帮你点完」。别再重复调研。**
+**Conclusion: the "fully automatic" thing the user asked for (auto-pathing → open the map and
+teleport → trigger the NPC dialogue → skip it) does not exist. Every project for 鸣潮 and 终末地 is
+"you trigger the story, it does the clicking". Do not research this again.**
 
-| 项目 | 游戏 | 后台 | 自动选分支 | 寻路/传送 |
+| Project | Game | Background | Picks dialogue branches | Pathing / teleport |
 |---|---|---|---|---|
-| **MaaEnd** `RealTimeTask` | 终末地 | 实时辅助性质 | ✅ `AutoSkipChoose` | ❌ `QuickTeleport` 是**用户从列表选目的地** |
-| [WWA](https://github.com/wakening/WutheringWavesAssistant) `AutoStoryService` | 鸣潮 | ❌ **必须前台** | ✅ | ❌ |
-| [better-wuthering-waves](https://github.com/babalae/better-wuthering-waves) | 鸣潮 | ✅ 后台 | ⚠️ 只会选最后一项 | ❌ |
-| **OK-WW** `SkipDialogTask` | 鸣潮 | ✅ 后台 | ❌ | ❌ |
+| **MaaEnd** `RealTimeTask` | 终末地 | real-time assist by design | ✅ `AutoSkipChoose` | ❌ `QuickTeleport` is **the user picking a destination from a list** |
+| [WWA](https://github.com/wakening/WutheringWavesAssistant) `AutoStoryService` | 鸣潮 | ❌ **must be foreground** | ✅ | ❌ |
+| [better-wuthering-waves](https://github.com/babalae/better-wuthering-waves) | 鸣潮 | ✅ background | ⚠️ only ever picks the last option | ❌ |
+| **OK-WW** `SkipDialogTask` | 鸣潮 | ✅ background | ❌ | ❌ |
 
-## 源码证据（不要信 README 的宣传语）
+## Source evidence (do not believe the READMEs' sales copy)
 
-- **WWA** `src/service/auto_story_service.py`：`npc_interact_action` 全文三行——
-  `sleep(0.5)` → `pick_up()` → return，触发条件是屏幕上**已出现** `NpcInteract.png` 交互框。
-  `execute()` 第一行就是 `if not is_foreground_window(): ... return`，**不在前台不干活**。
-  `explore_workflow.py` 同理，只有 `_skip`/`_play`/`_dialogue`/`_pickup`，无路线/寻路/地图节点。
-- **better-wuthering-waves**（★155，C#，babalae 团队）README 功能只有一行：
-  「快速点击F过剧情，可以后台过。可以自动点击跳过按钮。默认选择最后一项选项」。
-  作者自述「项目随时会弃坑」。
-- **MaaEnd `RealTimeTask`** 节点：`AutoFight` / `AutoPick` / `AutoZipline` / `AutoPuzzleSolving` /
-  `SklandMap`（森空岛地图叠加）/ `QuickTeleport` —— 典型「你玩它帮你点」。
+- **WWA** `src/service/auto_story_service.py`: `npc_interact_action` is three lines end to end —
+  `sleep(0.5)` → `pick_up()` → return, and it fires only once the `NpcInteract.png` interaction box
+  is **already on screen**. The first line of `execute()` is `if not is_foreground_window(): ... return`,
+  so **it does nothing unless the game is in the foreground**.
+  `explore_workflow.py` is the same shape: only `_skip`/`_play`/`_dialogue`/`_pickup`, no routes,
+  no pathing, no map nodes.
+- **better-wuthering-waves** (★155, C#, the babalae team): the README's feature list is a single line —
+  「快速点击F过剧情，可以后台过。可以自动点击跳过按钮。默认选择最后一项选项」
+  (mash F through the story, works in the background, auto-clicks the skip button, defaults to the
+  last option). The author says of it 「项目随时会弃坑」 — the project may be dropped at any time.
+- **MaaEnd `RealTimeTask`** nodes: `AutoFight` / `AutoPick` / `AutoZipline` / `AutoPuzzleSolving` /
+  `SklandMap` (森空岛 map overlay) / `QuickTeleport` — the classic "you play, it clicks for you".
 
-## MaaEnd 的自动剧情开关（已装未用）
+## MaaEnd's auto-story switches (installed, not in use)
 
-挂在 **`RealTimeTask`** 下（`RealtimeAssist` 是精简预设）：
+They hang off **`RealTimeTask`** (`RealtimeAssist` is a trimmed-down preset):
 
-| 开关 | 作用 |
+| Switch | What it does |
 |---|---|
-| `AutoSkip` | 自动剧情（总开关） |
-| `AutoSkipAll` | 跳过所有剧情，自动点跳过按钮 |
-| `AutoSkipChoose` | **自动选择剧情分支** |
-| `AutoSkipNext` | 加速剧情播放（不断点屏幕） |
-| `EnableCloseSpecialPanel` | 自动关剧情文档 / 语音记录界面 |
+| `AutoSkip` | Auto-story (master switch) |
+| `AutoSkipAll` | Skip every cutscene, auto-click the skip button |
+| `AutoSkipChoose` | **Auto-select the dialogue branch** |
+| `AutoSkipNext` | Speed the story up (keeps tapping the screen) |
+| `EnableCloseSpecialPanel` | Auto-close the story-document / voice-log screens |
 
-**`RealTimeTask` 是 AUTO-MAS 没接出来的 27 个任务之一**，MAS 界面里看不到，
-要走 MaaEnd 自己的界面（MXU `127.0.0.1:12701`）或 API。见 [HEADLESS.md](HEADLESS.md)。
+**`RealTimeTask` is one of the 27 tasks AUTO-MAS does not expose**, so it is invisible in the MAS UI.
+Reach it through MaaEnd's own UI (MXU `127.0.0.1:12701`) or its API. See [HEADLESS.md](HEADLESS.md).
 
-## 为什么没人做全自动
+## Why nobody has built the fully automatic version
 
-寻路要机器理解任务状态 + 地图 + 导航，比「看见按钮就点」难一个数量级。
-做得最深的原神那套（[BetterGI](https://github.com/babalae/better-genshin-impact)）
-也只有**用户自己录好的路线回放**，没有自主找任务点。
+Pathing requires the machine to understand quest state + the map + navigation, which is an order of
+magnitude harder than "see a button, click it". The deepest work of this kind, the Genshin one
+([BetterGI](https://github.com/babalae/better-genshin-impact)), still only **replays routes the user
+recorded themselves** — it does not find quest markers on its own.
 
-## 顺带记下的相关项目
+## Related projects noted along the way
 
-- [`zzc-tongji/ok-ww-enhanced`](https://github.com/zzc-tongji/ok-ww-enhanced) ★24 ——
-  OK-WW 增强版，加了 `-t/--task`、`-e/--exit` 命令行（跑完自动退出），**对无人值守调度有用**。无剧情/活动。
-- [`ok-oldking/ok-end-field`](https://github.com/ok-oldking/ok-end-field) ★7 ——
-  OK-WW 同作者的终末地版，有「自动跳过剧情」，但 MaaEnd（★3708）成熟得多，没必要换。
-- WWA 有 `src/core/activity.py` 活动框架（版本判定/时间窗/可用性）+
-  `SoarToTheBeatMacroReplayTask`（律动九霄类小游戏的宏录制回放）——**活动这块只有它有**。
+- [`zzc-tongji/ok-ww-enhanced`](https://github.com/zzc-tongji/ok-ww-enhanced) ★24 —
+  an enhanced OK-WW that adds `-t/--task` and `-e/--exit` command-line flags (exits by itself when done),
+  which is **useful for unattended scheduling**. No story, no events.
+- [`ok-oldking/ok-end-field`](https://github.com/ok-oldking/ok-end-field) ★7 —
+  the 终末地 build by OK-WW's author, has "auto-skip story", but MaaEnd (★3708) is far more mature;
+  no reason to switch.
+- WWA has an event framework in `src/core/activity.py` (version detection / time windows / availability)
+  plus `SoarToTheBeatMacroReplayTask` (macro record-and-replay for rhythm-style minigames like 律动九霄) —
+  **it is the only one that covers events at all**.
 
-## 装之前要确认的两件事
+## Two things to confirm before installing any of this
 
-1. WWA 占前台，跟后台跑的 OK-WW **不能同时**操作鸣潮，会抢画面。
-2. 两个脚本同时操作同一游戏要在调度上错开。
+1. WWA holds the foreground, so it and background OK-WW **cannot** drive 鸣潮 at the same time —
+   they fight over the screen.
+2. Two scripts driving the same game must be staggered in the schedule.

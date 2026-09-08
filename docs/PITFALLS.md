@@ -1,6 +1,7 @@
 # Pitfalls
 
-> 代码注释里搬出来的逐条事故经过在 [CODE-HISTORY.md](CODE-HISTORY.md)，按「文件:函数」索引。
+> The incident-by-incident accounts moved out of the code comments live in
+> [CODE-HISTORY.md](CODE-HISTORY.md), indexed by "file:function".
 
 Everything here actually happened, with the cause that turned out to be true -
 not the one that looked true at the time. Kept because each one cost hours and
@@ -137,9 +138,9 @@ be laziness.
 | relay scanned `history/` every 30s | `FindFirstChangeNotification` - a record is handled the moment it lands |
 | checked every 120s whether AUTO-MAS's backend was alive | WMI `Win32_ProcessStartTrace` + `OpenProcess` handle - woken the instant it exits |
 | Fleet Monitor asked `tailscale status` every 30s | `watch-ipn-bus` long connection - the state change is pushed |
-| Fleet Monitor 拿 tailscaled 的 `Online` 当「机器开着」 | 那是控制面的说法，不是能不能连上。断电不会登出，09-03 关机四小时后它还报 Online=True。现在每台声称在线的机器都要真回一个 disco ping 才画绿 |
-| 手机页改终末地／鸣潮的设置，按下有回执但脚本照旧 | 这两个脚本的「快速配置」是关的，AUTO-MAS 直接 return，不把 MAS 用户配置下发给它们（`app/task/Okww/AutoProxy.py:320`、`MaaEnd/AutoProxy.py:537`）。真正生效的是各自的母本配置。**明日方舟没有这个开关**，它的关卡和理智药每次派发都会被写进 gui.new.json，走 MAS 是对的 |
-| Fleet Monitor 每天弹两次上下线通知（还在开机时连弹） | 定时开机和跑完关机是这套机器的日常，没人需要被告知；开机瞬间「能连上但还没答话」会让状态来回跳，通知跟着刷。已整个去掉，状态看 Dock 图标；真出事由中继自己的渠道报 |
+| Fleet Monitor took tailscaled's `Online` to mean "the machine is up" | That is the control plane's opinion, not whether it can be reached. Losing power does not log the node out: on 09-03 it still reported Online=True four hours after shutdown. Now every machine that claims to be online must actually answer a disco ping before it is painted green |
+| Changing the 终末地 / 鸣潮 settings from the phone page acknowledged the press, but the scripts ran unchanged | 「快速配置」 is off for both of those scripts, so AUTO-MAS returns immediately and never pushes the MAS user config down to them (`app/task/Okww/AutoProxy.py:320`, `MaaEnd/AutoProxy.py:537`). What actually takes effect is each one's own master config. **明日方舟 has no such switch**: its stage and medicine are written into gui.new.json on every dispatch, so going through MAS is the right route for it |
+| Fleet Monitor raised two up/down notifications a day (several in a row at boot) | Scheduled power-on and post-run shutdown are this machine's normal day; nobody needs to be told. At the moment of boot, "reachable but not answering yet" makes the state flap, and the notifications flap with it. Removed entirely - the state is the Dock icon, and a real problem is reported through the relay's own channel |
 | Mac probed every 10 min for a chance to push code | deleted; the machine fetches from GitHub at boot |
 | main loop woke every 300s to ask "is it time yet" | an alarm clock: compute the next exact instant and sleep to it |
 
@@ -378,7 +379,7 @@ or guessed once, and then copied forward:
 | folder `MAA-v5.1.0-win-x64` = version 5.1.0 | v6.17.0-beta.5 |
 | folder `MaaEnd-…-v1.6.5` = version 1.6.5 | v2.25.0-rc.1 |
 | MAA's push switches "false on both profiles" | both true - it had been pushing all along |
-| （2026-08-24 又犯了一次）"MAA 目录里四个开关都是 false，所以不是 MAA 发的" | 是 MAA 发的。查的是会被覆盖的副本，母本在 AUTO-MAS 的 `data/<uid>/Default/ConfigFile/` 下，那里是 `true`。同一个坑第二次，这次把校验补到了母本上 |
+| (made again on 2026-08-24) "all four switches in the MAA directory are false, so MAA is not the sender" | MAA was the sender. What had been checked was the copy that gets overwritten; the master lives under AUTO-MAS at `data/<uid>/Default/ConfigFile/`, and there it is `true`. Second time in the same hole - this time the check was extended to the master |
 | the second MAA profile is "the owner's manual config" | an automation profile with `RunDirectly` + `PostActions: Shutdown` |
 | `Notify.IfServerChan = true` | false |
 | "everything touched was backed up first" | MaaEnd's config backup does not exist |
@@ -748,14 +749,14 @@ Use `--ps` for genuine one-liners. Anything with a quote in it, or longer than
 one line, goes in a file.
 
 
-## MAA 基建换班每天挂一次：不是分辨率，是基建视图没缩放到位
+## MAA's base shift change fails once a day: not the resolution, the base view not being zoomed out far enough
 
-2026-08-28 用户问「中继通知我有四项失败……是不是我们这边设置没弄好」。
-逐项查完的结论：
+On 2026-08-28 the user asked: 「中继通知我有四项失败……是不是我们这边设置没弄好」.
+Going through them one at a time:
 
-### 1. MAA「基建换班」——**不是我们的设置**，慢性偶发，会复现
+### 1. MAA 「基建换班」 - **not our settings**, chronic, intermittent, reproducible
 
-`asst.log` 的因果链：
+The causal chain in `asst.log`:
 
 ```
 13:18:04  InfrastInfoTask | zoom gesture sent
@@ -766,122 +767,156 @@ one line, goes in a file.
 13:18:11  ERR InfrastInfoTask | facility layout recognition failed after 3 attempts
 ```
 
-**MAA 每次失败都会存一张现场图**，那个目录就是完整病历：
+**MAA saves a picture of the scene on every failure**, so that directory is the
+complete case history:
 
     D:\ark\maa\debug\infrast\facility_layout\
-      08-26 15:24:41 / 08-26 21:35:36 / 08-27 21:35:18 / 08-28 13:18:11   共 4 次 / 3 天
+      08-26 15:24:41 / 08-26 21:35:36 / 08-27 21:35:18 / 08-28 13:18:11   4 times over 3 days
 
-08-27 与 08-28 两张图**症状完全相同**：基建视图没缩放到位，
-右边一列（加工站 / 办公室 / 训练室 / 会客室）卡在画面右缘外，
-`InfrastInfoTask` 认不出完整布局。
+The 08-27 and 08-28 images show **exactly the same symptom**: the base view is
+not zoomed out far enough, so the right-hand column (加工站 / 办公室 / 训练室 /
+会客室) sits outside the right edge of the frame and `InfrastInfoTask` cannot
+recognise a complete layout.
 
-**排除了分辨率**：模拟器 LDPlayer9 `advancedSettings.resolution = 1600×900`、
-`resolutionDpi = 240`、16:9，高于 MAA 要求的 1280×720 下限；
-`asst.log` 里 MAA 全程用 `1.25` 的缩放因子（1600÷1280）正常处理，
-**没有任何分辨率相关告警**。
+**Resolution is ruled out**: the LDPlayer9 emulator has
+`advancedSettings.resolution = 1600×900`, `resolutionDpi = 240`, 16:9 - above
+MAA's 1280×720 floor; `asst.log` shows MAA handling everything normally with a
+scale factor of `1.25` (1600÷1280), and **there is no resolution-related warning
+anywhere**.
 
-**影响**：AUTO-MAS 看到「部分任务执行失败」就重跑一轮（`RunTimesLimit=3`），
-第二轮基本都成功。代价是每次多跑约 11 分钟，不丢任务。
+**Impact**: AUTO-MAS sees 「部分任务执行失败」 and runs the round again
+(`RunTimesLimit=3`); the second round almost always succeeds. The cost is about
+11 extra minutes per occurrence, with no task lost.
 
-**能不能修**：MAA 侧的识别问题，我们这边没有对应开关。
-`基建换班` 的 `CustomFileType=user_defined` 但 `Filename=""`、`PlanSelect=-1`，
-等于没启用自定义排班——**没有验证过启用它能否绕过布局识别，别当成结论。**
+**Can it be fixed**: it is a recognition problem on MAA's side and there is no
+corresponding switch here. 「基建换班」 has `CustomFileType=user_defined` but
+`Filename=""` and `PlanSelect=-1`, i.e. a custom shift plan is not actually
+enabled - **whether enabling it would bypass the layout recognition has not been
+tested, so do not treat that as a conclusion.**
 
-### 2 & 3. 终末地「选剑演武」×2 ——**是我们的设置**，已修
+### 2 & 3. 终末地 「选剑演武」 ×2 - **this one is our settings**, fixed
 
-见 [AUTOMAS.md](AUTOMAS.md#选剑演武游戏里成功maaend报失败已关掉)。
-我当天才加的任务，识别不可靠，失败时还把角色卡在挑战里连累基质刷取。已关闭。
+See [AUTOMAS.md](AUTOMAS.md#选剑演武游戏里成功maaend报失败已关掉).
+I had added the task the same day; its recognition is unreliable, and on failure
+it also left the character stuck in the challenge, which dragged down essence
+farming. Now disabled.
 
-### 4. 鸣潮「游戏更新成功，即将重启任务」——误报
+### 4. 鸣潮 「游戏更新成功，即将重启任务」 - a false alarm
 
-不是故障，是鸣潮客户端更新后 OK-WW 正常重启任务的流程，紧接着就 DONE。
+Not a fault: it is OK-WW's normal task-restart flow after the 鸣潮 client
+updates, and DONE follows immediately after.
 
-### 顺带：这些历史怎么查
+### Incidentally: how to look this history up
 
 ```
 mas-api.py get /api/history/search '{"mode":"DAILY","start_date":"...","end_date":"..."}'
 ```
-返回每个脚本每轮的 `status` 和 `error_info`。**但它只记「部分任务执行失败」，
-不记是哪个任务**——具体任务名要去 MXU 的运行日志或 MAA 的 `gui.log` 找，
-失败原因要去 MaaCore 的 `asst.log`（`gui.log` 只说「任务出错」不说为什么）。
+returns `status` and `error_info` for every round of every script. **But it only
+records 「部分任务执行失败」, not which task it was** - the task name has to come
+from MXU's run log or MAA's `gui.log`, and the reason for the failure from
+MaaCore's `asst.log` (`gui.log` only says 「任务出错」, never why).
 
-## 部署中继前先看预更新在不在跑（2026-08-29）
+## Check whether the pre-update is running before deploying the relay (2026-08-29)
 
-`deploy-relay.sh` 停服务时卡在 `STOP_PENDING`，脚本判失败并提示手动 `sc start`。
-真因不在部署脚本：中继 00:35:37 正在下载 AUTO-MAS v5.4.0 → v5.5.0-beta.1，
-下载线程没结束，服务就停不干净。我把服务进程强杀了（`taskkill /PID <pid> /T /F`），
-服务恢复策略自动把它拉了回来，`sc start` 随后报 1056「已在运行」——那是正常的。
+`deploy-relay.sh` hung at `STOP_PENDING` while stopping the service, declared
+failure and asked for a manual `sc start`. The real cause was not in the deploy
+script: at 00:35:37 the relay was downloading AUTO-MAS v5.4.0 → v5.5.0-beta.1,
+and with the download thread still alive the service could not stop cleanly. I
+force-killed the service process (`taskkill /PID <pid> /T /F`), the service
+recovery policy brought it straight back, and the subsequent `sc start` reported
+1056 「已在运行」 - which is normal.
 
-**代价**：那次 AUTO-MAS 下载被打断。事后核对 `main.py`、`QueueConfig.json`、
-`ScriptConfig.json` 都在，没有半截下载目录，4 个 AUTO-MAS 进程正常——这次没坏，
-但纯属运气。
+**The cost**: that AUTO-MAS download was interrupted. Checking afterwards,
+`main.py`, `QueueConfig.json` and `ScriptConfig.json` were all present, there was
+no half-written download directory, and all 4 AUTO-MAS processes were healthy -
+nothing broke this time, but purely by luck.
 
-**规矩**：部署前先看 `relay.log` 末尾有没有「预更新：…开始下载」而没有对应的完成行；
-有就等它结束再部署。
+**Rule**: before deploying, look at the end of `relay.log` for a
+「预更新：…开始下载」 with no matching completion line; if there is one, wait for
+it to finish before deploying.
 
-## 补丁机制没法更新自己贴过的补丁（2026-08-29，已修）
+## The patch mechanism could not update a patch it had applied itself (2026-08-29, fixed)
 
-`okww_patch._apply_nest` 原本只认「上游原版」和「当前最新版」两个哈希，
-机器上是我们**上一版**补丁时两边都不像，被判成「有人手改过」而拒绝覆盖。
-`_NEST_KNOWN_OURS` 那张表能救，但要求**每次改补丁都手动补一条哈希**——我忘了。
+`okww_patch._apply_nest` originally recognised only two hashes, "upstream
+original" and "current latest". On the machine sat **our previous** patch, which
+matched neither, so it was judged "somebody edited this by hand" and the
+overwrite was refused. The `_NEST_KNOWN_OURS` table can rescue that case, but it
+requires **manually adding a hash every time the patch changes** - and I forgot.
 
-**部署脚本照常显示成功**，只在服务启动日志里留了一行 warning。
+**The deploy script reported success as usual**, leaving nothing but one warning
+line in the service startup log.
 
-已改成认「我方标记」`Only Farm These Nests`（我们自己造的配置常量，
-上游源码里绝不会出现），见到就照常覆盖。测试见
-`relay/tests/test_okww_patch_refresh.py`。**靠人记的步骤迟早会漏，标记不会。**
+It now recognises a marker of our own, `Only Farm These Nests` (a config constant
+we invented, which will never appear in upstream source): when it is there, the
+overwrite proceeds as normal. Tests in
+`relay/tests/test_okww_patch_refresh.py`. **A step that relies on someone
+remembering will eventually be skipped; a marker will not.**
 
-## AUTO-MAS 更新不上不是 CDK 的问题（2026-08-29，已修）
+## AUTO-MAS failing to update was not a CDK problem (2026-08-29, fixed)
 
-从 08-27 起每次开机都打「预更新：AUTO-MAS 有更新，开始下载」，然后没有下文，
-版本卡在 v5.4.0。日志里没有任何失败行，看着像网慢。
+From 08-27 on, every boot logged 「预更新：AUTO-MAS 有更新，开始下载」 and then
+nothing further, with the version stuck at v5.4.0. There was no failure line in
+the log at all; it looked like a slow network.
 
-真因是两件事凑一起：
+The real cause was two things together:
 
-* `app/services/update.py:178-184` 把更新检查结果**缓存四小时**；
-* MirrorChyan 的下载地址是**一次性令牌**，随检查响应带回来存进
-  `mirror_chyan_download_url`，下载时直接拿它用。
+* `app/services/update.py:178-184` **caches the update-check result for four
+  hours**;
+* MirrorChyan's download address is a **single-use token**, returned with the
+  check response, stored in `mirror_chyan_download_url` and used directly at
+  download time.
 
-走缓存 = 拿早就作废的令牌去下 → 三次重试全 404 → `UpdatePack_*.zip` 一个字节
-都不落地 → 中继在 `_wait_for_package` 干等 600 秒超时。
+Hitting the cache = downloading with a token that expired long ago → all three
+retries 404 → not a single byte of `UpdatePack_*.zip` lands → the relay waits out
+its 600-second timeout in `_wait_for_package`.
 
-**CDK 一直是好的**：版本检查从头到尾都成功（能查到 v5.5.0-beta.1）。
+**The CDK was fine all along**: the version check succeeded from start to finish
+(it could see v5.5.0-beta.1).
 
-修法：`/api/update/check` 带 `if_force: True`（`UpdateCheckIn` 本来就有这个字段）。
-机器上实测：不强制 → 404；强制 → 换到新令牌、状态码 200、**9.93 秒下完 102.8MB**。
-所以 600 秒预算从来不是瓶颈。测试见 `relay/tests/test_preupdate_mas_force.py`。
+The fix: send `/api/update/check` with `if_force: True` (`UpdateCheckIn` already
+has the field). Measured on the machine: without forcing → 404; with forcing → a
+fresh token, status 200, **102.8MB downloaded in 9.93 seconds**. So the
+600-second budget was never the bottleneck. Tests in
+`relay/tests/test_preupdate_mas_force.py`.
 
-**教训**：「开始 X」之后既没有成功也没有失败行，别当成「还在进行中」。
-去被调用方的日志里看它到底做了什么。
+**The lesson**: when "X started" is followed by neither a success nor a failure
+line, do not read it as "still in progress". Go to the callee's log and see what
+it actually did.
 
-## WMI 进程订阅死了不会自己回来（2026-08-29 发现，2026-08-30 已修）
+## A dead WMI process subscription does not come back on its own (found 2026-08-29, fixed 2026-08-30)
 
-`relay/service.py` 用 `Win32_ProcessStartTrace` 订阅 python.exe 启动，
-好让 AUTO-MAS 一起来就立刻挂上句柄。这个订阅会周期性地被 RPC 打断：
+`relay/service.py` subscribes to python.exe starts with
+`Win32_ProcessStartTrace` so that a handle can be attached the moment AUTO-MAS
+comes up. That subscription is periodically broken by RPC:
 
 ```
 pywintypes.com_error: (-2147352567, '发生意外。',
   (0, 'SWbemEventSource', '远程过程调用失败。 ', None, 0, -2147023170), None)
 ```
 
-**兜底是有的**：`_start_process_watch` 的 run() 捕获异常、记日志、
-把 `alive["ok"]` 翻成 False、唤醒主循环改用 `AUTOMAS_CHECK_SECONDS = 120`
-的定时活性检查。所以不是静默失败。
+**There was a fallback**: run() in `_start_process_watch` catches the exception,
+logs it, flips `alive["ok"]` to False and wakes the main loop onto the timed
+liveness check at `AUTOMAS_CHECK_SECONDS = 120`. So it was not a silent failure.
 
-**当时缺的是重订阅**：`_start_process_watch` 只被调一次，线程一死就再也不会重来，
-剩下整个开机周期都停在 120 秒轮询上。代价是 AUTO-MAS 启动后中继最晚要 120 秒才挂上
-句柄，而不是内核事件的「立刻」。
+**What was missing was re-subscribing**: `_start_process_watch` was called only
+once, so once the thread died it never came back and the rest of that entire
+power-on cycle stayed on the 120-second poll. The cost is that the relay attaches
+its handle up to 120 seconds after AUTO-MAS starts, instead of the "immediately"
+of a kernel event.
 
-**规模**：`relay.log` 里 08-24 到 08-29 共 24 次，约每天 4 次。
-机器一天只开两次机（08:45 / 21:20），所以中继**大部分运行时间都在降级模式**。
+**Scale**: 24 occurrences in `relay.log` between 08-24 and 08-29, about 4 a day.
+The machine only powers on twice a day (08:45 / 21:20), so the relay spent **most
+of its running time in degraded mode**.
 
-**已修（2026-08-30）**：`service._start_process_watch` 的 run() 断了就退避重订阅
-（5 秒起翻倍、封顶 60 秒），恢复时把 `alive["ok"]` 翻回 True 并记一行日志。
-来龙去脉见 `docs/CODE-HISTORY.md` 的「service.py:run」。
-（这里不写行号——2026-09-08 审查时那个行号已经飘了 355 行，指到别的函数上去了。
-文档里引代码一律用函数名。）
+**Fixed (2026-08-30)**: run() in `service._start_process_watch` re-subscribes
+with backoff when it breaks (starting at 5 seconds, doubling, capped at 60), and
+on recovery flips `alive["ok"]` back to True and logs a line. The full story is
+under "service.py:run" in `docs/CODE-HISTORY.md`.
+(No line number here - during the 2026-09-08 review that line number had drifted
+by 355 lines and pointed at a different function. Code references in the docs use
+function names.)
 
-### 顺带：待办下发那条路今晚又失败了
+### Incidentally: the todo-delivery path failed again that night
 
 ```
 08-29 21:21:38 WARNING ark.inbox  取不到待办文件
@@ -889,9 +924,11 @@ pywintypes.com_error: (-2147352567, '发生意外。',
   <urlopen error _ssl.c:1064: The handshake operation timed out>
 ```
 
-同一次开机里 `ark.selfupdate`（当时叫 `ark.update`） 取 manifest 也失败了一次（WinError 10054），
-但它**换了镜像重试成功**（拿到清单只是比本机旧，所以没更新）。
-`ark.inbox` 这条没有看到重试。这就是之前记下的「自更新和待办下发不可靠」。
+In the same power-on, `ark.selfupdate` (then called `ark.update`) also failed
+once fetching the manifest (WinError 10054), but it **retried against a different
+mirror and succeeded** (the manifest it got was merely older than the local one,
+so nothing was updated). No retry is visible for `ark.inbox`. This is exactly the
+previously recorded "self-update and todo delivery are unreliable".
 
 ## A local variable with a module's name breaks the whole function, and 61 green tests never noticed (2026-09-06)
 

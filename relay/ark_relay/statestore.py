@@ -1,4 +1,4 @@
-"""中继的状态，一个文件、一张字段表（根治第 3 项，设计见 docs/状态模型.md）。
+"""中继的状态，一个文件、一张字段表（根治第 3 项，设计见 docs/STATE-MODEL.md）。
 
 `state/state.json` 分段：marks / modes / weekly / versions / updates / queues。
 每个键都得在 FIELDS 里登记过，没登记的写不进去——和手机页「只改已存在的字段」
@@ -21,7 +21,7 @@ log = logging.getLogger("ark.statestore")
 FILE = "state.json"
 SECTIONS = ("marks", "modes", "weekly", "versions", "updates", "queues")
 
-# 字段表：段 → {键（可带 * 通配）: 说明}。改这里等于改契约，要连 docs/状态模型.md 一起改。
+# 字段表：段 → {键（可带 * 通配）: 说明}。改这里等于改契约，要连 docs/STATE-MODEL.md 一起改。
 FIELDS: dict[str, dict[str, str]] = {
     "weekly": {
         "annihilation": "剿灭：{done_week, restore_to}",
@@ -44,6 +44,7 @@ FIELDS: dict[str, dict[str, str]] = {
         "maaend": "上次预更新确认过的 MaaEnd 版本",
         "code": "本机中继代码版本",
         "announced": "已经播报过更新的那个版本，避免重复推送",
+        "scoreboard": "每个代码版本跑过几趟、失败几趟（日报末尾那一行的来源）",
     },
     "updates": {
         "preupdate": "预更新今天跑过没有：{day, at, clean}",
@@ -179,7 +180,7 @@ class StateStore:
     # ---------- 写 ----------
     def set(self, section: str, key: str, value) -> None:
         if not _registered(section, key):
-            raise KeyError(f"state.{section}.{key} 没在字段表里登记，拒绝写入（见 docs/状态模型.md）")
+            raise KeyError(f"state.{section}.{key} 没在字段表里登记，拒绝写入（见 docs/STATE-MODEL.md）")
         data = self._load()
         data[section][key] = value
         self._flush(data)

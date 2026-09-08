@@ -1,312 +1,367 @@
-# 鸣潮周本(战歌重奏)
+# Wuthering Waves weekly boss (战歌重奏)
 
-2026-08-31 做的。本文记录机制、已知缺陷和证据,避免重复排查。
+Built 2026-08-31. This records the mechanism, the known defects and the evidence, so the
+same investigation is not repeated.
 
-## 怎么跑起来的
+## How it is made to run
 
-周本不是独立任务,它是 `FarmEchoTask`(刷 4C 声骸)的一个模式:
+The weekly boss is not a task of its own; it is one mode of `FarmEchoTask` (farming 4C
+echoes):
 
-* `FarmEchoTask.json` 里 `Teleport to Boss = "Weekly Challenge"`(译名**战歌重奏**)
-* `Which Weekly Boss to Teleport` 是**位置序号**,不是名字。OK-WW 只知道
-  「周本一共 9 个」(`total_weekly_number = 9`),不知道任何一个叫什么。
-  顺序是游戏 F2 列表的顺序,新 Boss 上线会变。
-* `Repeat Farm Count` = 打几轮。**周本一周只能领 3 次奖励**,填 3 就够;
-  填多了第 4 轮开不了本,`gray_start_battle` 找不到会抛异常退出任务。
-* 挂进 `DailyTask.json` 的 `Additional Tasks to Run After Daily Task`,
-  值是 `Teleport and Farm 4C Echo`(译名**传送并刷取4C声骸**)。
+* In `FarmEchoTask.json`, `Teleport to Boss = "Weekly Challenge"` (Chinese name
+  **战歌重奏**)
+* `Which Weekly Boss to Teleport` is a **positional index**, not a name. All OK-WW knows
+  is that "there are 9 weekly bosses in total" (`total_weekly_number = 9`); it knows none
+  of their names. The order is the order of the in-game F2 list, and it changes when a new
+  boss is released.
+* `Repeat Farm Count` = how many rounds to run. **Rewards can only be claimed 3 times per
+  week**, so 3 is enough; set it higher and the 4th round cannot open the instance,
+  `gray_start_battle` is not found, and the task exits on an exception.
+* Hooked into `DailyTask.json` under `Additional Tasks to Run After Daily Task`, with the
+  value `Teleport and Farm 4C Echo` (Chinese name **传送并刷取4C声骸**).
 
-AUTO-MAS 那条路走不通:`OkwwTaskIndexValidator` 只允许 `[1, 7]`
-(日常 / 多账号日常),指不到 `FarmEchoTask`。所以只能挂附加任务。
+The AUTO-MAS route does not work: `OkwwTaskIndexValidator` only allows `[1, 7]` (dailies /
+multi-account dailies), which cannot point at `FarmEchoTask`. So the additional-task hook
+is the only way.
 
-单独跑一次:走 `scripts/mac/run-one.sh OK-WW`。它底下调的是
-`/api/dispatch/start` 传 `{"taskId": <OK-WW 脚本 id>,
-"mode": "AutoProxy"}`。**mode 只接受 `AutoProxy` / `ScriptConfig` / `Update`**
-(见 `app/models/schema.py` 的 `TaskCreateIn`),传别的一律 422。
+To run it once on its own: use `scripts/mac/run-one.sh OK-WW`. Underneath it calls
+`/api/dispatch/start` with `{"taskId": <the OK-WW script id>, "mode": "AutoProxy"}`.
+**`mode` accepts only `AutoProxy` / `ScriptConfig` / `Update`** (see `TaskCreateIn` in
+`app/models/schema.py`); anything else is a 422.
 
-## 顺序补丁:周本要排在刷体力之前
+## Ordering patch: the weekly boss has to come before stamina farming
 
-`DailyTask.run()` 上游顺序是「残象聚落 → 刷体力 → 领奖 → 附加任务」,
-而刷体力那步 `must_use = 180 - used_stamina` 会先把 180 吃光,
-排在后面的周本只剩 60,三个宝箱只开得到一个。
+Upstream, `DailyTask.run()` goes "nightmare nests → stamina farming → claim rewards →
+additional tasks", and the stamina step's `must_use = 180 - used_stamina` eats all 180
+first, leaving only 60 for the weekly boss that runs afterwards — enough to open one of
+the three chests.
 
-`okww_patch.py` 的 `_STAMINA` 补丁把 `run_additional_tasks()` 提到刷体力之前,
-并把刷取改成不传 `daily`(→ `must_use = 0` → 刷到体力不够进本为止),
-这样周本花掉的 180 之外剩下的也不闲置。
+The `_STAMINA` patch in `okww_patch.py` moves `run_additional_tasks()` ahead of stamina
+farming, and changes the farming call to not pass `daily` (→ `must_use = 0` → farm until
+there is not enough stamina to enter), so whatever is left over after the weekly boss's
+180 does not sit idle either.
 
-两件事一件不能少:打完 Boss 人不在主界面,要先 `ensure_main`;
-不重读体力的话 `used_stamina` 还是打 Boss 之前的值,日常会再刷 180。
+Two things are both required: after the boss fight the character is not on the main
+screen, so `ensure_main` has to run first; and without re-reading stamina, `used_stamina`
+is still the value from before the boss fight and the dailies would farm another 180.
 
-## 奖励怎么给的（2026-09-01 用整屏 OCR 才真正搞清）
+## How the reward is actually granted (only understood on 2026-09-01, with full-screen OCR)
 
-**打完 Boss 走到结晶前按 F，弹出下面这个框，点「确认」花 60 波片领取：**
+**After the boss is beaten, walk up to the crystal and press F; the dialog below pops up,
+and clicking 「确认」 spends 60 waveplates to claim:**
 
 > 领取奖励需消耗60点结晶波片，请确认是否领取？　[取消] [确认]
 
-这是 2026-09-01 05:09 整屏 OCR **一字不差读到的原文**，不是推断。
+That is the exact text read by full-screen OCR at 05:09 on 2026-09-01, **word for word**,
+not an inference.
 
-### 之前写在这份文档里的结论是错的，作废
+### The conclusion previously written in this document was wrong and is withdrawn
 
-我 8-31 在这里写过「**奖励是进本时扣 60 波片直接给的，没有打完开宝箱
-这一步**」——**错的**。那句「结晶波片不足，无法获取奖励，请确认是否继续
-进入？」只是**进本前的提醒**（波片不够，进去也领不到，还进吗），
-不是扣费。我把提醒读成了扣费，还据此写了三条补丁、汇报了两次。
+On 8-31 I wrote here that "**the reward is deducted as 60 waveplates on entry and granted
+directly; there is no beat-it-then-open-a-chest step**" — **that is wrong**. The line
+「结晶波片不足，无法获取奖励，请确认是否继续进入？」 is only **a warning before entering**
+(you do not have enough waveplates, you will not be able to claim, enter anyway?), not a
+charge. I read a warning as a charge, and on that basis wrote three patches and reported
+twice.
 
-用户 2026-09-01 凌晨看着屏幕直接指出来：「打完之后拿声骸直接一直重开去
-刷，这不是拿宝箱奖励」「这是声骸模式」。日志完全印证：三轮都是
-打 Boss → `farm echo on the face` → 点掉退出弹窗 → 重开，
-本周剩余次数一直 3/3、波片一点没掉。
+The user pointed it out directly while watching the screen in the early hours of
+2026-09-01: 「打完之后拿声骸直接一直重开去刷，这不是拿宝箱奖励」「这是声骸模式」. The log
+confirms it completely: all three rounds went beat the boss →
+`farm echo on the face` → dismiss the exit dialog → restart, with the weekly remaining
+count staying at 3/3 and not a single waveplate spent.
 
-**`FarmEchoTask` + `Teleport to Boss = Weekly Challenge` 本来就是
-「刷 4C 声骸」的模式**——传送到周本 Boss 那儿反复刷，领奖那一步
-根本不在这条代码路径里。
+**`FarmEchoTask` + `Teleport to Boss = Weekly Challenge` is a "farm 4C echoes" mode to
+begin with** — teleport to the weekly boss and farm it repeatedly; the claim step is
+simply not on that code path.
 
-### 现在的做法
+### What is done now
 
-在「打完 Boss 退秘境」之前插入领奖：
+Claiming is inserted before "leave the instance after beating the boss":
 
 ```python
-walk_to_treasure()            # 走到结晶前，顺带按 F
-pick_f(handle_claim=False)    # 再按一次 F，别把弹窗关掉
-_o = ocr(整屏)                 # 认弹窗
+walk_to_treasure()            # walk up to the crystal, pressing F on the way
+pick_f(handle_claim=False)    # press F once more, without dismissing the dialog
+_o = ocr(full screen)         # recognize the dialog
 if '领取奖励需消耗' in _o and '结晶波片' in _o:
-    波片 = 从 OCR 里读 "N/240"
-    if 波片 >= 60: click_dialog_right_button()   # 确认
-    else:          click_dialog_left_button()    # 取消，不白费一次次数
+    waveplates = read "N/240" out of the OCR text
+    if waveplates >= 60: click_dialog_right_button()   # 确认
+    else:                click_dialog_left_button()    # 取消, so a claim is not wasted
 ```
 
-**为什么不用 `has_claim_stamina()`**：它找的是 `claim_stamina_sign` 模板，
-2026-09-01 实测**认不出这个弹窗**——弹窗明明在屏幕上、整屏 OCR 一字不差
-读到了，模板仍返回假。OCR 是这条路上实测可靠的那个。
+**Why not `has_claim_stamina()`**: it looks for the `claim_stamina_sign` template, and
+measured on 2026-09-01 it **does not recognize this dialog** — the dialog is plainly on
+screen and full-screen OCR read it word for word, yet the template still returns false.
+OCR is the one that is measurably reliable on this path.
 
-### 难度等级必须选最高
+### The difficulty level must be the highest
 
-`Boss Level` 可选 `50/60/70/80/90`。上游的说明是
-**"Choose the Lowest that Drop a Echo"** —— 那是**刷声骸**的思路，
-能掉声骸的最低级最好打。**周本正相反，等级决定奖励档次，必须选最高的 90。**
-母本原来是 80，2026-08-31 用户指出是错的。周本门现在接管这一项并钉在 90。
+`Boss Level` can be `50/60/70/80/90`. Upstream's description is
+**"Choose the Lowest that Drop a Echo"** — that is the **echo-farming** line of thinking:
+the lowest level that still drops an echo is the easiest to beat. **For the weekly boss it
+is the exact opposite: the level determines the reward tier, so it must be the highest,
+90.** The master config was 80; the user pointed out on 2026-08-31 that this was wrong.
+The weekly boss gate now owns this setting and pins it to 90.
 
-我们的 `FarmEchoTask` 只被周本用（日常刷声骸走 `NightmareNestTask`
-残象聚落），所以不存在两种用途抢同一个配置项的问题。
+Our `FarmEchoTask` is used by the weekly boss only (daily echo farming goes through
+`NightmareNestTask`, the nightmare nests), so there is no conflict of two uses fighting
+over the same setting.
 
-### 作废的推断
+### Withdrawn inferences
 
-排查过程中我下过两次错结论，都记在这里免得再犯：
+I reached two wrong conclusions during the investigation; both are recorded here so they
+are not repeated:
 
-1. **「OK-WW 不支持拿周本宝箱」** —— 不成立，压根没有宝箱这回事。
-2. **「异常被 `logger.error(msg, e)` 当 printf 参数吞掉了」** —— 也不成立。
-   `ok/util/logger.py` 的签名是 `error(self, message, exception=None)`，
-   第二个参数本来就是异常，内部走 `exception_to_str(exception)` 打印堆栈。
-   **完整堆栈从 12:35 起就躺在日志里**，是我没去读、跑去猜。
-   我照标准库的印象加了 `exc_info=True`，那个封装不认，当场 `TypeError`，
-   把 16:00 那趟整个搞崩了。教训：第三方 logger 不等于 `logging.Logger`。
+1. **"OK-WW cannot claim the weekly boss chest"** — does not hold; there is no chest in
+   the first place.
+2. **"The exception was swallowed by `logger.error(msg, e)` treating it as a printf
+   argument"** — also does not hold. The signature in `ok/util/logger.py` is
+   `error(self, message, exception=None)`; the second parameter is meant to be an
+   exception, and internally it prints the stack via `exception_to_str(exception)`.
+   **The full stack trace had been sitting in the log since 12:35**; I simply had not read
+   it and went guessing instead. Going by my impression of the standard library I added
+   `exc_info=True`, which that wrapper does not accept — an immediate `TypeError` that
+   wrecked the whole 16:00 run. Lesson: a third-party logger is not `logging.Logger`.
 
-## 2026-08-31 早班为什么没打周本
+## Why the morning run of 2026-08-31 did not do the weekly boss
 
-不是门坏了，是**配置落地比队列晚**。母本改动时间：
+The gate was not broken; **the config landed later than the queue did**. Modification
+times of the master config:
 
-| 文件 | 写入 | 内容 |
+| File | Written | Content |
 |---|---|---|
-| `FarmEchoTask.json` | 08-31 **08:06:23** | 传送=Weekly Challenge、序号 1、打 3 次 |
-| `DailyTask.json` | 08-31 **12:52:53** | 附加任务表里才有 `Teleport and Farm 4C Echo` |
+| `FarmEchoTask.json` | 08-31 **08:06:23** | teleport=Weekly Challenge, index 1, 3 rounds |
+| `DailyTask.json` | 08-31 **12:52:53** | only then did the additional-task list contain `Teleport and Farm 4C Echo` |
 
-早班队列 09:xx→10:14 跑的时候，附加任务表里**还没有**周本那一项，
-所以 `FarmEchoTask` 压根没被调起来：早班日志 `boss_string is [Lv` 出现
-**0 次**，`GardenTask` 990 行，体力 240→160→80 全花在贝币上。
+When the morning queue ran, 09:xx→10:14, the additional-task list **did not yet have** the
+weekly boss entry, so `FarmEchoTask` was never invoked at all: `boss_string is [Lv`
+appears **0 times** in the morning log, `GardenTask` has 990 lines, and stamina 240→160→80
+all went to Shell Credit.
 
-`WeeklyBossGate.enforce()` 每一拍都在跑，逻辑也对——上机实测它读到的
-母本是全的、返回 `False`（本来就不用改）。真正的教训是
-**改完配置要确认它在队列开跑之前已经落到母本**，
-光看「我改过了」不算数，要看文件时间。
+`WeeklyBossGate.enforce()` was running on every tick and its logic was correct too — on
+the machine it was verified that the master config it read was complete and it returned
+`False` (nothing needed changing). The real lesson is that
+**after changing a config you have to confirm it landed in the master config before the
+queue starts**; "I changed it" does not count, the file's timestamp does.
 
-配置路径（`master_config_dir` 解出来的那条，权威源）：
+Config paths (the ones `master_config_dir` resolves to — the authoritative source):
 
 ```
 D:\ark\automas\data\<uuid>\Default\ConfigFile\DailyTask.json
 D:\ark\automas\data\<uuid>\Default\ConfigFile\FarmEchoTask.json
 ```
 
-`D:\ark\okww\...\working\configs\` 下面那两份是**过期副本**
-（08-24 / 08-29），`config-check.py` 的「OK-WW(本体)」读的就是它，
-拿它判断当前配置会得出相反结论。2026-08-31 我据此误判过一次。
+The two files under `D:\ark\okww\...\working\configs\` are **stale copies** (08-24 /
+08-29). They are what the "OK-WW(本体)" section of `config-check.py` reads, and judging the
+current configuration by them leads to the opposite conclusion. I misdiagnosed it that way
+once, on 2026-08-31.
 
-## 什么时候补
+## When to catch up
 
-2026-08-31 是**周一**，周本 04:00 刚重置，整周都在。当天体力只剩 26，
-而宝箱一个 60——**打 Boss 捡声骸免费且不限次，受限的是宝箱（每周 3 次）**，
-所以当天再派发一趟只会白打不开箱。配置现在是对的，
-下一趟满体力的队列会自己打满三次，180 开箱 + 剩 60 刷贝币。
+2026-08-31 was a **Monday**, the weekly boss had just reset at 04:00, and the whole week
+was still ahead. Stamina that day was down to 26, while one chest costs 60 —
+**beating the boss and picking up echoes is free and unlimited; what is limited is the
+chest (3 per week)** — so dispatching another run that day would only have fought for
+nothing without opening a chest. The configuration is correct now, and the next queue with
+full stamina will do all three by itself: 180 for the chests, the remaining 60 for Shell
+Credit.
 
-## 2026-08-31 16:52 那趟：修好之后的表现
+## The 16:52 run of 2026-08-31: behaviour after the fix
 
-| 项 | 结果 |
+| Item | Result |
 |---|---|
-| 难度等级 | `left_click 推荐等级90` —— **90 级选中了** |
-| Boss 轮次 | 三轮：16:52:56 / 16:54:02 / 16:55:19，每轮都 `farm echo on the face` |
-| 空转 | `farm 4c error` **0 次**（此前一趟是 21 圈、12 分钟） |
-| 体力 | 跑完读到 27，**确实被消耗了**（此前一趟是 56→56 一点没动） |
+| Difficulty level | `left_click 推荐等级90` — **level 90 was selected** |
+| Boss rounds | three: 16:52:56 / 16:54:02 / 16:55:19, each with `farm echo on the face` |
+| Spinning | `farm 4c error` **0 times** (the previous run had 21 loops over 12 minutes) |
+| Stamina | read as 27 after the run, **so it really was spent** (the previous run went 56→56, untouched) |
 
-**还没证到的**：三次奖励是不是都拿到了。跑之前没有硬读数，只能推算，
-不算数。真正的验收是**满波片那趟**（三次共 180），看波片是不是掉 180。
+**Not yet proven**: whether all three rewards were actually claimed. There was no hard
+reading taken before the run, so it can only be inferred, which does not count. The real
+acceptance test is **a run with full waveplates** (180 for three claims): does the
+waveplate count drop by 180.
 
-### 两个已经踩过的坑，记在这里
+### Two traps already stepped in, recorded here
 
-* **`present()` 的判据必须跟着 `new` 一起改。** 我给这条补丁加了调试行，
-  判据还是那句没变过的日志，`_apply_one` 判成「已在位」直接返回，
-  新版本**一声不吭地没部署**，我却在日志里找那行输出，白等一趟。
-* **停 OK-WW 不能只找 `python.exe`。** 它跑在 `pythonw.exe` 里
-  （`D:\ark\okww\data\apps\ok-ww\python\pythonw.exe ...\main.py -t 1 -e`），
-  而且杀掉之后 AUTO-MAS 会把它再拉起来，`/api/dispatch/stop` 也清不掉
-  「任务已在运行」这个状态。`wmic` 在新版 Windows 已经没有了，
-  要用 `C:\Program Files\PowerShell\7\pwsh.exe` 的 `Get-CimInstance`。
+* **The `present()` predicate has to change along with `new`.** I added a debug line to
+  this patch but left the predicate as the same log line as before, so `_apply_one` decided
+  it was "already in place" and returned, the new version **was silently not deployed**,
+  and I sat waiting for that output in the log — a wasted run.
+* **Stopping OK-WW is not just a matter of finding `python.exe`.** It runs inside
+  `pythonw.exe` (`D:\ark\okww\data\apps\ok-ww\python\pythonw.exe ...\main.py -t 1 -e`), and
+  after it is killed AUTO-MAS starts it again; `/api/dispatch/stop` does not clear the
+  "task already running" state either. `wmic` no longer exists on current Windows, so use
+  `Get-CimInstance` from `C:\Program Files\PowerShell\7\pwsh.exe`.
 
-## 2026-08-31 傍晚：三个连环真相
+## The evening of 2026-08-31: three linked truths
 
-拍到画面之后才把整条链搞对，前面写的推断作废了两轮。按顺序记：
+Only after capturing the screen did the whole chain come out right; two rounds of earlier
+inference are withdrawn. In order:
 
-### 一、奖励是进本时扣波片，弹窗在「开启挑战」**之后**
+### 1. The reward is charged on entry, and the dialog comes **after** 「开启挑战」
 
-顺序是：配队页 →（点「开启挑战」）→ 弹「结晶波片不足，无法获取奖励，
-请确认是否继续进入？」→ [取消] [确认]。
+The order is: team screen → (click 「开启挑战」) → the dialog
+「结晶波片不足，无法获取奖励，请确认是否继续进入？」 → [取消] [确认].
 
-上游 `click_team_challenge()` 是这样：
+Upstream's `click_team_challenge()` reads:
 
 ```python
 self.wait_click_feature('team_start_challenge', raise_if_not_found=True, ...)
-self.wait_click_skip_dialog_confirm()      # ← 把弹窗上的「确认」点掉
+self.wait_click_skip_dialog_confirm()      # ← clicks the 「确认」 on that dialog
 ```
 
-**「确认」的意思正是「不拿奖励也要进去」。** 所以波片不够时它照样打完
-三轮 Boss，一次奖励都没领到。
+**「确认」 means exactly "go in even without the reward".** So when waveplates are short it
+still fights three rounds of the boss and claims nothing.
 
-我前两版补丁把检查放在**点之前**，那时画面还是配队页，OCR 读到空表
-（`v2 开启挑战前读到: []`，同一刻的截图也证实了），一次都没命中。
-v3 把 `click_team_challenge()` 拆成两步，点完再判，有弹窗就点「取消」
-并抛 `TaskDisabledException` 干净跳过。
+My first two patch versions put the check **before** that click, when the screen was still
+the team screen and OCR read an empty table (`v2 开启挑战前读到: []`, corroborated by a
+screenshot from the same moment); it never hit once. v3 splits `click_team_challenge()`
+into two steps, checks after the click, and if the dialog is there clicks 「取消」 and
+raises `TaskDisabledException` to skip cleanly.
 
-### 二、本周一次都没领到
+### 2. Not one claim had been made this week
 
-游戏页面直接写着 **本周剩余可收取次数：3/3**，单次 💎×60。
-这是**读到的**，不是算的——我此前用体力消耗推算出「已用 2 次」，
-错的，那 120 点是贝币和残象聚落花的。
+The game screen says it outright: **本周剩余可收取次数：3/3**, 💎×60 per claim. That was
+**read**, not calculated — I had previously inferred "2 already used" from stamina
+consumption, which was wrong; those 120 points went to Shell Credit and the nightmare
+nests.
 
-顺带一个好消息：等级 90 是 16:20 才生效的，而三次都还在，
-**没有一次被 80 级浪费掉**。
+Some good news alongside it: level 90 only took effect at 16:20, and all three claims were
+still available, so **not one of them was wasted at level 80**.
 
-### 三、「跑完」不等于「领满」
+### 3. "The run finished" is not "all claims taken"
 
-`on_success` 原来只要任务跑完就记 `done_week` 并摘掉开关。可一趟能领几次
-取决于波片：一次 60，三次 180。实测贝币刷取把波片吃到只剩 1 点
-（`current stamina: 1 not enough to continue`），第二天早上只回到约 147，
-只够领两次——按「跑完即打完」记账，第三次就永远丢了，而且不出声。
+`on_success` originally recorded `done_week` and removed the switch as soon as the task
+finished. But how many claims one run can take depends on waveplates: 60 each, 180 for
+three. Measured, Shell Credit farming ate the waveplates down to 1
+(`current stamina: 1 not enough to continue`), and by the next morning they had only
+recovered to about 147, enough for two claims — accounting by "finished = done" would lose
+the third one forever, and silently.
 
-现在补丁在进本前把「本周剩余可收取次数」OCR 出来打进日志，
-`on_success` 读它：大于 0 就不记账、开关继续挂着，归零才记；
-读不到时宁可不记（下一趟再看），不拿猜测去关一个还能用的开关。
+The patch now OCRs 「本周剩余可收取次数」 before entering and writes it into the log, and
+`on_success` reads that: greater than 0 means do not record it, leave the switch on; only
+zero records it. If it cannot be read, prefer not to record (look again next run) — do not
+use a guess to switch off something that is still usable.
 
-### 又一次踩同一个坑
+### Stepping in the same trap again
 
-`present()` 的判据必须跟着 `new` 一起改。今天上午刚把这条写进文档，
-下午改 v2 时又忘了改判据，`_apply_one` 判成「已在位」直接返回，
-新版本**静默没部署**，我却在日志里找那行调试输出，白等一趟。
-现在三条补丁的判据都认各自版本独有的字串。
+The `present()` predicate has to change along with `new`. I had written this into the
+document that very morning, and in the afternoon while making v2 I forgot the predicate
+again: `_apply_one` decided it was "already in place" and returned, the new version was
+**silently not deployed**, and I sat looking in the log for that debug output — another
+wasted run. All three patches now key their predicate on a string unique to their own
+version.
 
-## 收口：2026-08-31 18:58 那趟的实测数字
+## Wrapping up: the measured numbers from the 18:58 run of 2026-08-31
 
-| 项 | 修之前 | 修之后 |
+| Item | Before the fix | After the fix |
 |---|---|---|
-| 波片不足时 | 照样进本、不拿奖励白打 3 轮 | **跳过 1 次，干净退出** |
-| `farm 4c error` | 3 条（最早那次 21 条、空转 12 分钟） | **0 条** |
-| Boss 白打 | 3 轮 | **0 轮** |
-| 本周剩余次数 | 读不到，只能靠体力推算（推错两次） | **直接读到 3/3** |
+| When waveplates are short | goes in anyway, fights 3 rounds for nothing | **skips once, exits cleanly** |
+| `farm 4c error` | 3 lines (21 lines and 12 minutes of spinning on the earliest run) | **0 lines** |
+| Wasted boss fights | 3 rounds | **0 rounds** |
+| Weekly remaining count | unreadable, inferred from stamina (wrongly, twice) | **read directly as 3/3** |
 
-一共四条本地补丁支撑这个结果，缺一不可：
+Four local patches hold this result up, and none can be dropped:
 
-1. **顺序**（`_STAMINA`）—— 周本排在日常刷体力之前，否则 180 波片先被吃光。
-2. **波片不足就跳过**（`_NOWAVE` v3）—— 判定必须放在**点了「开启挑战」之后**，
-   那时弹窗才出现；放在之前读到的是配队页，OCR 空表。
-3. **读剩余次数**（`_COUNT`）—— 让中继按真实次数记账，而不是「跑完即打完」。
-4. **放行主动跳过的信号**（`_LETPASS`）——
-   `teleport_to_configured_boss_and_prepare` 把所有异常包成 `RuntimeError`，
-   连「主动跳过」也包了进去，`run()` 收不到就当成错误重试三遍。
+1. **Ordering** (`_STAMINA`) — the weekly boss goes ahead of the daily stamina farming, or
+   the 180 waveplates are eaten first.
+2. **Skip when waveplates are short** (`_NOWAVE` v3) — the check must sit **after**
+   「开启挑战」 is clicked, which is when the dialog appears; before that you read the team
+   screen and OCR returns an empty table.
+3. **Read the remaining count** (`_COUNT`) — so the relay accounts by the real count
+   instead of "finished = done".
+4. **Let the deliberate-skip signal through** (`_LETPASS`) —
+   `teleport_to_configured_boss_and_prepare` wraps every exception into a `RuntimeError`,
+   including the deliberate skip; `run()` never sees it and treats it as an error to be
+   retried three times.
 
-难度等级钉在 **90**（可选 50/60/70/80/90），由周本门接管，
-母本和 OK-WW 自己那份**两边都写**——只写母本不生效，实测过。
+The difficulty level is pinned to **90** (of 50/60/70/80/90), owned by the weekly boss
+gate, and written to **both** the master config and OK-WW's own copy — writing only the
+master config does not take effect, measured.
 
-### 还没证到的
+### Not yet proven
 
-三次奖励真正到手的那一刻。奖励是进本扣 60 波片，三次要 180；
-2026-08-31 傍晚波片被贝币刷取吃到只剩 1 点，当天补不上。
-按「跑完≠领满」的新记账，开关会一直挂着，够一次领一次，整周内补满。
+The moment all three rewards actually land. The reward costs 60 waveplates on entry, 180
+for three; on the evening of 2026-08-31 Shell Credit farming had eaten the waveplates down
+to 1 and there was no making it up that day. Under the new "finished ≠ all claimed"
+accounting the switch stays on, claiming one whenever there is enough, filling up over the
+course of the week.
 
-## 打通了：2026-09-01 07:27 的完整证据
+## It works: the complete evidence from 07:27 on 2026-09-01
 
-| 时刻 | 证据 |
+| Time | Evidence |
 |---|---|
-| 07:26 | 进本前读到 **3/3** |
+| 07:26 | read **3/3** before entering |
 | 07:27:47 | `周本领奖：认出弹窗，点确认` |
 | 07:27:49 | `周本领奖：波片不够，动用备用体力` |
 | 07:27:57 | `周本领奖：已点确认` |
-| 07:28 | 屏幕「**挑战成功**」：×450、×180、贝币 ×54000、×10、×3、×8 |
-| 07:33 / 07:36 | 再读两次都是 **2/3** |
+| 07:28 | on screen 「**挑战成功**」: ×450, ×180, Shell Credit ×54000, ×10, ×3, ×8 |
+| 07:33 / 07:36 | read twice more, **2/3** both times |
 
-波片 52＋备用 34 −60 ≈ 剩 1，**确实扣了 60**。
+52 waveplates + 34 reserve − 60 ≈ 1 left, so **60 really was deducted**.
 
-## 这一套是怎么运转的（和剿灭同一个作息）
+## How the whole thing runs (the same rhythm as Annihilation)
 
-### 周一 04:00 自动刷新
+### Automatic reset Monday 04:00
 
-`WeeklyBossGate` 和剿灭**共用** `annihilation.week_key`（周一 04:00 分界，
-04:00 之前仍算上一周）。到点 `done_week` 就对不上当前周，开关自动挂回来。
+`WeeklyBossGate` and Annihilation **share** `annihilation.week_key` (the boundary is Monday
+04:00; before 04:00 still counts as the previous week). At the boundary `done_week` no
+longer matches the current week and the switch comes back on by itself.
 
-### 顺序：周本优先于体力副本
+### Ordering: the weekly boss goes before the stamina instances
 
-`DailyTask.run()` 的实际顺序（上机读出来的）：
+The actual order in `DailyTask.run()` (read on the machine):
 
 ```
-ensure_main → open_daily → run_additional_tasks（周本在这里）
-            → farm_tacet / farm_forgery / farm_simulation（体力副本）
+ensure_main → open_daily → run_additional_tasks (the weekly boss is here)
+            → farm_tacet / farm_forgery / farm_simulation (stamina instances)
             → claim_daily → claim_mail → claim_battle_pass
 ```
 
-上游原本是「体力副本 → 附加任务」，那样 180 波片先被日常吃光，
-轮到周本就没了。`_STAMINA` 补丁把 `run_additional_tasks()` 提到前面。
+Upstream had it as "stamina instances → additional tasks", which lets the dailies eat the
+180 waveplates first, leaving nothing for the weekly boss. The `_STAMINA` patch moves
+`run_additional_tasks()` to the front.
 
-### 记账：领满三次才算完
+### Accounting: only three claims count as done
 
-**「跑完」不等于「领满」。** 一次领奖 60 波片，三次 180，波片不够时
-一趟只领得到一两次。所以 `on_success` **读游戏页面报的
-「本周剩余可收取次数」**（补丁在进本前 OCR 出来打进日志），
-归零才写 `done_week`；大于 0 就不记账、开关继续挂着，下一趟接着领。
-读不到时宁可不记——不拿猜测去关一个还能用的开关。
+**"The run finished" is not "all claims taken".** One claim is 60 waveplates, three is 180,
+and when waveplates are short a single run only gets one or two. So `on_success` **reads
+the 「本周剩余可收取次数」 reported by the game screen** (the patch OCRs it before entering
+and writes it into the log) and only writes `done_week` when it reaches zero; greater than
+zero means do not record it, leave the switch on, and the next run carries on claiming. If
+it cannot be read, prefer not to record — do not use a guess to switch off something that
+is still usable.
 
-### 领奖那一步
+### The claiming step
 
 ```
-打完 Boss → walk_to_treasure()（走到结晶前，顺带按 F）
-         → pick_f(handle_claim=False)（再按一次，别把弹窗关掉）
-         → 整屏 OCR 认「领取奖励需消耗60点结晶波片，请确认是否领取？」
-         → click_dialog_right_button()（确认）
-         → 若弹 gem_add_stamina（问要不要用备用体力）→ 点掉它
+beat the boss → walk_to_treasure() (walk up to the crystal, pressing F on the way)
+              → pick_f(handle_claim=False) (press F again, without dismissing the dialog)
+              → full-screen OCR recognizes 「领取奖励需消耗60点结晶波片，请确认是否领取？」
+              → click_dialog_right_button() (确认)
+              → if gem_add_stamina pops up (asking whether to use reserve stamina) → dismiss it
 ```
 
-**不能用 `has_claim_stamina()`**：它找 `claim_stamina_sign` 模板，
-实测认不出这个弹窗——弹窗明明在屏幕上、整屏 OCR 一字不差读到了，
-模板仍返回假。**这条路上 OCR 可靠、模板不可靠。**
+**`has_claim_stamina()` must not be used**: it looks for the `claim_stamina_sign` template,
+and measured it does not recognize this dialog — the dialog is plainly on screen and
+full-screen OCR read it word for word, yet the template still returns false. **On this path
+OCR is reliable and the template is not.**
 
-### 难度锁 90
+### Difficulty locked at 90
 
-`Boss Level` 可选 50/60/70/80/90，**周本必须最高**（等级决定奖励档次）。
-上游那句说明 "Choose the Lowest that Drop a Echo" 是**刷声骸**的思路，
-和周本正相反。周本门接管这一项，母本和 OK-WW 自己那份**两边都写**
-（只写母本不生效，实测过）。
+`Boss Level` can be 50/60/70/80/90, and **the weekly boss must use the highest** (the level
+determines the reward tier). Upstream's description "Choose the Lowest that Drop a Echo" is
+the **echo-farming** line of thinking and is the exact opposite of what the weekly boss
+needs. The weekly boss gate owns this setting and writes it to **both** the master config
+and OK-WW's own copy (writing only the master config does not take effect, measured).
 
-## 排查时最容易走错的两个岔路
+## The two easiest wrong turns when investigating
 
-1. **「打不过」是假象。** 看到「挑战失败」先别怪练度：
-   日志里若是 `enter combat` 后几秒就 `target_enemy failed`、
-   `boss_string is []`，那是**画面读不到**（WGC 捕获失效退回 BitBlt 抓黑帧），
-   不是战斗输了。2026-09-01 我杀游戏重启后就是这样，重启 OK-WW
-   让它重新初始化捕获，一次就过。
-2. **别为了测试把波片刷光。** 测周本期间用
-   `C:\ProgramData\ark-relay\state\no-stamina-farm.flag` 把日常刷体力停掉，
-   测完删掉恢复。见 [[never-burn-the-resource-youre-testing-for]]。
+1. **"It cannot win the fight" is an illusion.** Seeing 「挑战失败」, do not blame character
+   investment first: if the log shows `target_enemy failed` and `boss_string is []` within
+   seconds of `enter combat`, then **the screen cannot be read** (WGC capture failed and it
+   fell back to BitBlt, which grabs black frames) — the fight was not lost. That is exactly
+   what happened on 2026-09-01 after I killed and restarted the game; restarting OK-WW so
+   it re-initializes capture fixed it on the first try.
+2. **Do not burn all the waveplates for the sake of testing.** While testing the weekly
+   boss, stop the daily stamina farming with
+   `C:\ProgramData\ark-relay\state\no-stamina-farm.flag`, and delete it afterwards to
+   restore. See [[never-burn-the-resource-youre-testing-for]].

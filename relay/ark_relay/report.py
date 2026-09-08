@@ -9,7 +9,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 
 from . import texts
-from . import banners, collector, core, plan, summary
+from . import banners, collector, core, plan, scoreboard, summary
 from .config import SERVER_TZ
 
 log = logging.getLogger("ark.report")
@@ -168,7 +168,12 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     except Exception:
         log.warning("卡池那一段整体失败", exc_info=True)
         pool = ""
-    tail = "".join(f"\n\n{x}" for x in (act, pool) if x)
+    # 这一版跑得怎么样，由中继自己数、贴在每份日报末尾。用户 2026-09-06：
+    # 「我说『修好了』而它写『失败 1 趟』，谎话当场现形。」——所以它必须在
+    # 我写的任何文字之后，而且我碰不到它的数字（来源是 versions/scoreboard，
+    # 每趟跑完由 append_ledger 记）。
+    score = scoreboard.line(eng.state.store, str(eng.state.store.get("versions", "code") or ""))
+    tail = "".join(f"\n\n{x}" for x in (act, pool, score) if x)
     written = summary.daily_report(eng.cfg, entries, tomorrow)
     if written:
         log.info("📋 日报由模型撰写（%d 条记录）", len(entries))

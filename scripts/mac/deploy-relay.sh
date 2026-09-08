@@ -326,7 +326,25 @@ if [ -n "$PATCH_TROUBLE" ]; then
   exit 3
 fi
 
-echo "✅ 部署完成：文件哈希已核对，服务已确认 RUNNING"
+# 「部署完成」这四个字只能在冒烟过了之后打印（用户 2026-09-06 的死命令）。
+# 哈希对得上只证明**字节到了**，不证明**代码跑得起来**：一个坏 import、
+# 一个模块级常量写错、一处只有机器那版 Python 3.14 才报的语法警告——
+# 三种都能通过哈希核对，然后在第一次 tick 才炸，而服务全程显示 RUNNING。
+echo "▶ 5.5/5 冒烟（机器上导入全部模块、读状态表、读启动后的日志）"
+scp -q "${SSH_OPTS[@]}" "$HERE/../scripts/windows/smoke.py" \
+  "${USER_AT}:C:/Users/Administrator/ark-smoke.py"
+SMOKE=$(ssh "${SSH_OPTS[@]}" "$USER_AT" \
+  "\"$PY\" -X utf8 C:\\Users\\Administrator\\ark-smoke.py" 2>&1 | tr -d '\r')
+ssh "${SSH_OPTS[@]}" "$USER_AT" "del C:\\Users\\Administrator\\ark-smoke.py" >/dev/null 2>&1 || true
+sed 's/^/    /' <<<"$SMOKE"
+if ! grep -q '^SMOKE_OK$' <<<"$SMOKE"; then
+  echo
+  echo "❌❌ 冒烟没过——文件到了、服务也 RUNNING，但代码跑不起来。"
+  echo "      **这次不算部署完成**，上面那几行就是原因。"
+  exit 7
+fi
+
+echo "✅ 部署完成：文件哈希已核对，服务已确认 RUNNING，机器上冒烟已通过"
 lap
 printf "⏱  全程 %d 秒\n" "$((SECONDS-_T0))"
 echo "   （relay/RELEASE-NOTES.md 已清空——下次部署前必须写清楚这次改了什么）"

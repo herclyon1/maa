@@ -1,77 +1,85 @@
-# 改游戏机配置的规程
+# Procedure for changing the game machine's configuration
 
-**这份文档是给新会话照着执行的。** 不照做就会重演 826。
+**This document exists for a new session to follow step by step.** Not following it is how 826
+happens again.
 
-826 那次:我**编造了字段的含义**就去改生产配置,结果刷错关卡、烧掉理智药,
-而且中止操作一条都没生效。教训不是「要小心」,是下面这套动作一步都不能省。
+What happened on 826: I **invented the meaning of a field** and then changed production config
+with it, which farmed the wrong stage and burned sanity potions — and not one of my abort
+attempts took effect. The lesson is not "be careful", it is that not a single step below may be
+skipped.
 
-## 铁律
+## Hard rules
 
-1. **字段含义只能从权威来源确认,不许推断。** 按位置对齐是猜,蒙对比猜错更危险。
-2. **任何关于配置的断言,先跑 `scripts/mac/config-check.py`,贴出输出再下结论。**
-   不许凭印象,不许凭「我刚才改过」。
-3. **改 JSON,不改界面。** 界面只在 JSON 做不到时才用。
-4. **改完必须回读,而且要验「这个值是不是我以为的那个东西」**,
-   不是验「值存进去了」。
-5. **脚本运行期间不许改配置。** AUTO-MAS 在跑的时候会用内存里那份覆写文件,
-   写进去的值会被静静冲掉。
+1. **A field's meaning may only be confirmed from an authoritative source; it must not be
+   inferred.** Lining fields up by position is guessing, and guessing right is more dangerous
+   than guessing wrong.
+2. **Before asserting anything about the configuration, run `scripts/mac/config-check.py` and
+   paste its output, then draw the conclusion.** Not from memory, and not from "I just changed
+   it myself".
+3. **Change the JSON, not the UI.** The UI is only for what the JSON cannot do.
+4. **After changing, read it back — and verify "is this value the thing I think it is"**, not
+   merely "did the value get stored".
+5. **Never change the configuration while a script is running.** While AUTO-MAS is running it
+   overwrites the file from its own in-memory copy, and whatever was written is silently wiped.
 
-## 改之前
+## Before changing
 
 ```bash
 export ARK_HOST=100.65.39.119
-scripts/mac/config-check.py --save     # 先存一份快照，改完能 --diff
+scripts/mac/config-check.py --save     # take a snapshot first, so --diff works afterwards
 ```
 
-确认三件事:
+Confirm three things:
 
-* **改的是母本还是副本。** AUTO-MAS 会在每次运行前重写 MAA 和 MaaEnd 各自的
-  配置,所以**改它们自己的配置文件等于没改,但看起来像改了**。
-  权威在 `AUTO-MAS/config/` 下:全局 `Config.json`、队列 `QueueConfig.json`、
-  每个用户 `ScriptConfig.json`。
-* **脚本有没有在跑。** 在跑就等,或者走 `scripts/mac/mas-api.py`——
-  它通过运行中的后端写,不会被内存副本冲掉。
-* **这个字段到底是什么意思。** 见下面「已知会咬人的字段」。
+* **Whether you are changing the master or a copy.** AUTO-MAS rewrites MAA's and MaaEnd's own
+  configuration before every run, so **changing their own config files changes nothing while
+  looking like it did**. The authority lives under `AUTO-MAS/config/`: global `Config.json`,
+  queues `QueueConfig.json`, per-user `ScriptConfig.json`.
+* **Whether a script is running.** If one is, wait — or go through
+  `scripts/mac/mas-api.py`, which writes through the running backend and therefore cannot be
+  wiped by the in-memory copy.
+* **What this field actually means.** See "Fields known to bite" below.
 
-## 改的时候
+## While changing
 
-两条路,按情况选:
+Two routes, pick by situation:
 
-* **走 API(推荐,不用停程序)**
+* **Through the API (recommended, no need to stop the program)**
 
   ```bash
-  scripts/mac/mas-api.py paths                 # 先看有哪些端点
+  scripts/mac/mas-api.py paths                 # see which endpoints exist first
   scripts/mac/mas-api.py get /api/scripts/get
   ```
 
-  注意:**每个端点都是 POST**,用 GET 会返回 Method Not Allowed,读取的端点也一样。
+  Note: **every endpoint is POST**. GET returns Method Not Allowed, including on read endpoints.
 
-* **直接改 JSON(要先停 AUTO-MAS)**
+* **Editing the JSON directly (AUTO-MAS must be stopped first)**
 
-  取下来 → 改 → 用 `scripts/mac/edit-json.py` 做**结构化 diff**,
-  证明只有该变的键变了 → 原子写回 → 回读。
-  绝对不许在整个文件上做正则替换。
+  Pull it down → edit → use `scripts/mac/edit-json.py` for a **structured diff** proving that
+  only the keys that should have changed did → atomic write-back → read back.
+  Never run a regex replace over a whole file.
 
-## 改完之后
+## After changing
 
 ```bash
-scripts/mac/config-check.py --diff      # 只显示变了的，和改之前对照
+scripts/mac/config-check.py --diff      # shows only what changed, against the before snapshot
 ```
 
-然后**看一趟真实运行的结果**,别停在「配置写进去了」。
+Then **watch one real run**; do not stop at "the config was written".
 
-## 已知会咬人的字段
+## Fields known to bite
 
-| 字段 | 咬人的地方 |
+| Field | Where it bites |
 |---|---|
-| 关卡序号 | **从 1 起算**,不是从 0。826 就死在这里 |
-| 理智药 | 有两处:常规的和活动关的(`活动关理智药`)。改错一处等于没改 |
-| AT-4 之类的活动关 | 活动一结束这个关卡就不存在了,固定关指着它会让之后每趟都失败。要么活动结束前改回去,要么打开「优先刷取活动关」 |
-| `Info.IfQuickConfig` | 只有它为 true 时 AUTO-MAS 才会重写下游配置。**这台机器：MaaEnd / OK-WW 都是 false（2026-08-28 起），改 MAS 侧不生效，要改母本；明日方舟没有这个开关，走 MAS 是对的。**查生效值跑 `scripts/mac/lib/effective_config.py` |
-| MaaEnd 理智任务 | 权威在 AUTO-MAS 的 `ScriptConfig`,不是 MaaEnd 自己的 `mxu-MaaEnd.json`——后者会被覆盖 |
-| 剿灭 `Close` | 既是「本周已完成」也是「被人关掉了」。后者没人会自动打开,等于每周少一份奖励 |
+| Stage index | **Counts from 1**, not from 0. This is exactly what 826 died on |
+| Sanity potions | There are two of them: the regular one and the event-stage one (`活动关理智药`). Changing the wrong one is the same as changing nothing |
+| Event stages such as AT-4 | The stage stops existing the moment the event ends, and a fixed-stage config pointing at it makes every later run fail. Either change it back before the event ends, or turn on 「优先刷取活动关」 |
+| `Info.IfQuickConfig` | AUTO-MAS only rewrites downstream configuration when this is true. **On this machine: MaaEnd and OK-WW are both false (since 2026-08-28), so changing them on the MAS side has no effect — change the master instead; 明日方舟 has no such switch, so going through MAS is correct for it.** To see the effective value, run `scripts/mac/lib/effective_config.py` |
+| MaaEnd sanity tasks | The authority is AUTO-MAS's `ScriptConfig`, not MaaEnd's own `mxu-MaaEnd.json` — the latter gets overwritten |
+| 剿灭 `Close` | It means both "already done this week" and "somebody turned it off". Nobody turns the latter back on automatically, which costs one reward every week |
 
-## 如果要改的东西不在上面
+## If what you need to change is not listed above
 
-**去查,别猜。** 查不到就问用户,不许「按位置对齐」推断含义。
-这一条没有例外——826 就是例外的代价。
+**Go look it up; do not guess.** If you cannot find it, ask the operator; inferring a meaning by
+"lining fields up by position" is not allowed. There is no exception to this rule — 826 is what
+the exception costs.

@@ -26,17 +26,21 @@ before: "the Mi Home timers are not set" survived here for six days while the
 morning round ran every one of them. Anything inherited rather than checked is
 a candidate for the same failure.
 
-## 游戏机桌面上的按钮
+## The buttons on the game machine's desktop
 
-那台机器的桌面上有一个 `中继关机开关.bat`（源码 `scripts/windows/skip-shutdown.bat`）。
-它管的是「下一次跑完别关机」——一次性、不带时效，用完即失效，开了不取消机器会
-一直等到下一趟队列跑完才关。它调的是中继自己的 `ark_relay.modes.set_skip_shutdown`，
-**不许改成直接写状态文件**：2026-09-08 状态收口后旧写法静默失效过一次，按下去
-界面显示「不关机」、机器照常关。
+That machine's desktop carries a `中继关机开关.bat` (source: `scripts/windows/skip-shutdown.bat`).
+What it controls is "do not shut down after the next run" - one-shot, with no expiry, spent as
+soon as it is used. Set it and forget to cancel it, and the machine waits until the next queue
+run finishes before it shuts down. It calls the relay's own `ark_relay.modes.set_skip_shutdown`;
+**it must not be changed to write the state file directly**: after the 2026-09-08 state
+consolidation the old approach failed silently once - the button showed 「不关机」 on screen and
+the machine shut down as usual.
 
-手动派发走 `scripts/mac/run-one.sh`，它底下是机器上的 `scripts/windows/dispatch_guard.py`
-（派发前查忙闲、停的时候按 接口→等→残留才杀→复查 的顺序）。**禁裸调
-`/api/dispatch/start`、禁 `taskkill`**，2026-09-01 上午那次拔电重启就是这么来的。
+Manual dispatch goes through `scripts/mac/run-one.sh`, which sits on top of
+`scripts/windows/dispatch_guard.py` on the machine (check busy/idle before dispatching; when
+stopping, follow the order API → wait → kill only what is left over → re-check). **A bare call to
+`/api/dispatch/start` is forbidden, and so is `taskkill`** - that is exactly how the power-pull
+reboot on the morning of 2026-09-01 happened.
 
 
 ## Map
@@ -496,19 +500,20 @@ The file holds a **moment**, `YYYY-MM-DD HH:MM` on the server clock, and the
 mode releases **ten minutes before the next scheduled power-on** - not at
 midnight.
 
-**不要直接写状态文件。** 2026-09-08 起这些开关都住在 `state/state.json` 里，
-而中继的状态存取有内存缓存（每个进程只扫一次旧文件），从外面写文件它读不到——
-你会以为调试模式开上了，其实没有。走中继自己的写入路径：
+**Do not write the state file directly.** Since 2026-09-08 these levers live inside
+`state/state.json`, and the relay's state access is memory-cached (each process scans the old
+files only once), so a write from outside is never read back - you will believe debug mode is on
+when it is not. Go through the relay's own write path:
 
 ```bash
-# 开：跳过下一次开机周期（写的是 state.json 的 modes.debug_until）
+# on: skip the next power-on cycle (this writes modes.debug_until in state.json)
 scripts/mac/winps.sh '& "D:\ark\automas\environment\python\python.exe" -c "import sys; sys.path.insert(0, r\"C:\ProgramData\ark-relay\"); from pathlib import Path; from ark_relay.modes import set_debug; print(set_debug(Path(r\"C:\ProgramData\ark-relay\state\"), cycles=1)[1])"'
-# 关：同一个函数，off=True
+# off: the same function, off=True
 scripts/mac/winps.sh '& "D:\ark\automas\environment\python\python.exe" -c "import sys; sys.path.insert(0, r\"C:\ProgramData\ark-relay\"); from pathlib import Path; from ark_relay.modes import set_debug; print(set_debug(Path(r\"C:\ProgramData\ark-relay\state\"), off=True)[1])"'
 ```
 
-平时更省事的是手机页上的开关，或者往 inbox 里放一条 `debug_mode` 指令。
-状态都长什么样见 [状态模型.md](状态模型.md)。
+Day to day, the switch on the phone page is easier, or drop a `debug_mode` command into the
+inbox. For what the state looks like, see [STATE-MODEL.md](STATE-MODEL.md).
 
 `modes.set_debug(state_dir, cycles=1)` computes that moment. A power-on less
 than 150 minutes away counts as the cycle already under way and is skipped -
@@ -535,9 +540,9 @@ forty minutes later, in the middle of an AUTO-MAS update.
 
 ### Skip mode - one queue sits out one occasion
 
-**同样不要直接写文件**（2026-09-08 起「今天跳过某队列」记在 `state.json` 的
-`queues.skip_day:<日期>`）。走手机页，或者往 inbox 里放一条 `skip_today`
-指令；要在命令行做就调中继自己的函数：
+**Again, do not write the file directly** (since 2026-09-08 "skip this queue today" is recorded
+in `state.json` as `queues.skip_day:<date>`). Use the phone page, or drop a `skip_today` command
+into the inbox; to do it from the command line, call the relay's own function:
 
 ```bash
 scripts/mac/winps.sh '& "D:\ark\automas\environment\python\python.exe" -c "import os, sys; os.environ[\"ARK_STATE_DIR\"]=r\"C:\ProgramData\ark-relay\state\"; sys.path.insert(0, r\"C:\ProgramData\ark-relay\"); from ark_relay.commands import apply_command; print(apply_command({\"action\": \"skip_today\", \"queue\": \"晚班\"}))"'
@@ -1150,22 +1155,22 @@ All three update through MirrorChyan on the beta channel, and that is where the
 similarity ends. Each needed a different answer in the relay's pre-update, so
 the differences are written down rather than rediscovered.
 
-| | 何时发现更新 | 如何应用 | 中途会不会打断队列 | 中继怎么处理 |
+| | When it notices an update | How it applies it | Can it interrupt a queue mid-run | What the relay does |
 |---|---|---|---|---|
-| **MAA** | 运行期间自己查（日志见 21:30 那次） | 下载后放进 `<MAA>\NewVersion`，**下次启动**由 Bootstrapper 应用 | 不会——应用被推迟到下次启动 | 看 `NewVersion` 目录在不在；在才用 `MAA.exe --skip-startup-auto-run` 启动一次让它装完 |
-| **MaaEnd (MXU)** | 每次启动时查 | 当场下载并**重启自己** | 会——如果在跑任务时启动 | 开机时用 `--autostart` 先启动一次（这是唯一能跳过「更新完成」弹窗的分支），并临时清空 `autoStartInstanceId` 保证不开跑 |
-| **AUTO-MAS** | 后端每 4 小时查一次 | 需要显式 download + install；install 解压 `UpdatePack_*.zip` 后启动 `AUTO-MAS-Setup.exe` | 不会——`Run/IfAutoUpdateAfterQueue` 默认 false 且本机未设 | 直接调它自己的 HTTP 接口：check → download → 等包落地 → install |
-| **OK-WW（鸣潮）** | 启动时由 pyappify 检查 | 从 **CNB git 镜像** `cnb.cool/ok-oldking/ok-ww-update2.git` 拉取；`app.json` 里 `"update_method": "AUTO_UPDATE"` | 会——它 `Auto Start Game When App Starts` 开着，一启动就连游戏一起开 | 开机时临时关掉那个开关，用 `ok-ww.exe` 启动（**必须走这个外壳**，直接跑内置 python 会让 pyappify 上下文缺失、`/api/updates` 报 `pyappify_version: None`），等 `app.json` 的 `update_state` 落回 idle，关掉并还原 |
+| **MAA** | checks by itself while running (see the log of that 21:30 run) | downloads into `<MAA>\NewVersion`; the Bootstrapper applies it **at the next launch** | no - applying is deferred to the next launch | look at whether the `NewVersion` directory is there; only if it is, launch once with `MAA.exe --skip-startup-auto-run` to let it finish installing |
+| **MaaEnd (MXU)** | checks at every launch | downloads on the spot and **restarts itself** | yes - if it is launched while a task is running | at boot, launch it once with `--autostart` (the only branch that skips the 「更新完成」 dialog), and temporarily blank `autoStartInstanceId` so it does not start running |
+| **AUTO-MAS** | the backend checks every 4 hours | needs an explicit download + install; install unpacks `UpdatePack_*.zip` and then starts `AUTO-MAS-Setup.exe` | no - `Run/IfAutoUpdateAfterQueue` defaults to false and is not set on this machine | call its own HTTP API directly: check → download → wait for the package to land → install |
+| **OK-WW (鸣潮)** | pyappify checks at launch | pulls from the **CNB git mirror** `cnb.cool/ok-oldking/ok-ww-update2.git`; `"update_method": "AUTO_UPDATE"` in `app.json` | yes - it has `Auto Start Game When App Starts` on, so launching it launches the game along with it | at boot, turn that switch off temporarily and launch via `ok-ww.exe` (**it must go through this wrapper**: running the bundled python directly leaves the pyappify context missing and `/api/updates` reports `pyappify_version: None`), wait for `app.json`'s `update_state` to fall back to idle, then close it and restore the switch |
 
-四条容易踩的：
+The ones that are easy to step on:
 
-- **MAA 的待装更新可以脱离网络判断**：`NewVersion` 目录就是全部信号。MirrorChyan 的匿名查询帮不上忙——`MaaResource` 查得到，`MAA` 和 `MaaEnd` 返回 `{"code":8001,"resource not found"}`，要 CDK。两台机器都验过。
-- **MaaEnd 不带 `--autostart` 就查不完**：刚更新过的那次开机，`App.tsx` 弹出「更新完成」框之后直接 `return`，后面的更新检查根本不执行。症状是中继空等满 180 秒。
-- **AUTO-MAS 装更新时进程会退出**，而中继本来会立刻把它拉起来。之所以不打架，是因为 `INSTALLER_HINTS` 里的 `auto-mas-setup` 正好就是它启动的安装器名字。改动那份名单前先想想这条。
+- **MAA's pending update can be judged without the network**: the `NewVersion` directory is the whole signal. MirrorChyan's anonymous query is no help - `MaaResource` can be queried, while `MAA` and `MaaEnd` return `{"code":8001,"resource not found"}` and need a CDK. Verified on both machines.
+- **MaaEnd cannot finish the check without `--autostart`**: on the boot right after an update, `App.tsx` pops the 「更新完成」 box and then returns immediately, so the update check after it never runs at all. The symptom is the relay waiting out the full 180 seconds for nothing.
+- **The AUTO-MAS process exits while it installs an update**, and the relay would otherwise bring it straight back up. The reason they do not fight is that `auto-mas-setup` in `INSTALLER_HINTS` happens to be exactly the name of the installer it starts. Think about this before changing that list.
 
 
-- **OK-WW 是四个里唯一不走 MirrorChyan 的。** MirrorChyan 确实收录了 `okww`（匿名查询就能拿到版本），但那只是初装下载渠道；它自带的更新器是 git 型的，国服 profile 指向 CNB。实测这台机器上 `cnb.cool` 是 200/0.32 秒，而 `github.com` 完全连不上，所以 CNB 这条路是对的，不要改。
-- **改 OK-WW 的配置前必须先停掉它。** 2026-08-24 踩过：我留着一个 `ok web` 实例，它把设置持在内存里又写回磁盘，于是「关掉自动开游戏」白改，`ok-ww.exe` 读到 True 就把鸣潮拉起来了。和 MAA 的母本/副本是同一类错误——**改一个正在运行的进程拥有的文件，等于改副本**。`preupdate._okww_quiesce()` 就是为此存在的。
+- **OK-WW is the only one of the four that does not go through MirrorChyan.** MirrorChyan does carry `okww` (an anonymous query returns a version), but that is only the first-install download channel; its own updater is the git kind, and the CN-server profile points at CNB. Measured on this machine, `cnb.cool` answers 200 in 0.32 s while `github.com` is completely unreachable, so the CNB route is correct - do not change it.
+- **OK-WW must be stopped before its config is changed.** Stepped on this 2026-08-24: an `ok web` instance was left running, it holds the settings in memory and writes them back to disk, so turning off "auto-start the game" achieved nothing - `ok-ww.exe` read True and brought 鸣潮 up. Same class of mistake as MAA's master vs. copy - **editing a file owned by a running process is editing a copy**. `preupdate._okww_quiesce()` exists for exactly this.
 
 ## Update channels
 
@@ -1274,7 +1279,7 @@ outside the machine - silently, which is the whole hazard this file is about.
 | `scripts/mac/purge-cdn.py` | purge jsDelivr and wait for the new version to be served |
 | `scripts/mac/edit-json.py` | safe remote JSON edit: locate → replace → validate → structural diff |
 | `scripts/mac/check-docs.py` | verify the facts in these docs against repo and machine |
-| `scripts/mac/mem-sample.sh` | 内存压力采样器。**采集期已结束（2026-08-17～09-08，3169 条），LaunchAgent 已撤除，现在跑它不会有人读**。结论和数据在 `data/README.md` 与 `data/mem-pressure.csv`；留着脚本是为了将来想再采一段时不用重写 |
+| `scripts/mac/mem-sample.sh` | memory-pressure sampler. **The collection period is over (2026-08-17 to 09-08, 3169 samples), the LaunchAgent has been removed, and running it now produces output nobody reads**. Findings and data are in `data/README.md` and `data/mem-pressure.csv`; the script is kept so that another stretch of sampling would not have to be rewritten |
 | `scripts/mac/push.py` | manual push to the notification channels |
 | `scripts/mac/make-app.sh` | wrap a script as a double-clickable .app |
 | `scripts/mac/strip-transcript-images.py` | shrink a session transcript that has grown huge with screenshots |
@@ -1328,9 +1333,11 @@ outside the machine - silently, which is the whole hazard this file is about.
 
 ## Known limits
 
-待办**不在这里**，在 [欠的活.md](欠的活.md) —— 2026-09-08 之前同一条要写两遍
-（企业微信 60020、watchdog 的三个 secret 两处各有一份），改了一处另一处就成了错的。
-这一节只留「已经想清楚、不打算改」的既定行为，它们不是活，是这套系统的性格。
+Todos are **not here**, they are in [BACKLOG.md](BACKLOG.md) - before 2026-09-08 the same
+entry had to be written twice (the WeCom 60020 problem and the three watchdog secrets each
+had a copy in both places), and editing one made the other wrong.
+This section keeps only the settled behaviour that has been thought through and is not going
+to change; those are not work items, they are this system's character.
 
 ### Accepted limits - understood, not going to be fixed
 
@@ -1369,13 +1376,19 @@ under PlayCover locally.
 4. **Read the whole shop before buying anything.** Tokens are finite and what
    you buy first decides what you can no longer afford.
 
-## 运行约束（自 README 迁入）
+## Operating constraints (moved in from README)
 
-这些不是建议，是这套系统的既定行为，代码按此实现：
+These are not suggestions. They are this system's settled behaviour, and the code implements
+them:
 
-1. **关机权归中继**：队列结束且汇报送达后由中继关机；除此之外不关机。
-2. **配置改动优先于按时开跑**：宁可推迟一轮，也不使用过期配置运行。
-3. **更新在开机窗口落地并立即生效**：开机到队列启动之间的空档用于自更新，
-   更新后立刻重启进程，不等到下一次开机；生效后立即推送通知。
-4. **不使用轮询**：文件、进程、状态变化一律走事件通知，定时事件走精确闹钟。
-   现存的唯一周期唤醒是一小时一次的保险丝，不承担任何发现职责。
+1. **The relay owns the power-off**: the relay shuts the machine down once the queue has
+   finished and the report has been delivered; nothing else shuts it down.
+2. **A configuration change outranks starting on time**: it is better to delay a round than
+   to run with a stale configuration.
+3. **Updates land in the boot window and take effect immediately**: the gap between boot and
+   the queue starting is used for self-updating, the process is restarted right after an
+   update rather than waiting for the next boot, and a notification is pushed the moment the
+   update is in effect.
+4. **No polling**: file, process and state changes all go through event notifications, and
+   time-based events use exact alarms. The only periodic wake-up that remains is an hourly
+   fuse, and it carries no detection duty at all.

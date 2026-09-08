@@ -1,10 +1,11 @@
-# OK-WW 卡死排查：模态弹窗 → 全线 `target_enemy failed`
+# OK-WW hang: a modal dialog → `target_enemy failed` across the board
 
-2026-08-26 补跑时 OK-WW 连续四次 `📅 Daily Task exception stopped`
-（16:04、16:27、16:29、16:32），此后进程直接不在了。这份记录写清楚
-**真因是什么**、**我在哪几步误判了**，以及**下次怎么一步到位**。
+On 2026-08-26, during a catch-up run, OK-WW hit `📅 Daily Task exception stopped`
+four times in a row (16:04, 16:27, 16:29, 16:32), after which the process was simply
+gone. This note records **what the real cause was**, **which steps I misdiagnosed**,
+and **how to go straight to the answer next time**.
 
-## 症状
+## Symptoms
 
 ```
 ERROR CombatCheck: target lost try retarget 10
@@ -12,21 +13,25 @@ ERROR CombatCheck: target_enemy failed, try recheck break out of combat
 Exception: can't find gray_book_boss, make sure f2 is the hotkey for book
 ```
 
-统计：开残象书 16 次 / 进入战斗 9 次 / **战斗成功结束 0 次** / 计数一直 0/41。
-体力刷取（ForgeryTask）被完全挡住：领日常奖励 0 行、日常完成 0 行。
+Counts: echo book opened 16 times / combat entered 9 times / **combat finished
+successfully 0 times** / the counter stayed at 0/41 throughout. Stamina farming
+(`ForgeryTask`) was blocked completely: 0 lines for claiming daily rewards, 0 lines
+for daily completion.
 
-## 真因
+## Real cause
 
-游戏被一个**「选择复苏物品」模态弹窗**挡住了，而且挡了至少 20 分钟。
+The game was blocked by a **「选择复苏物品」 modal dialog**, and it had been blocked
+for at least 20 minutes.
 
-OK-WW 不认识这个弹窗，它的 `click_skip_dialog_confirm` 试过、超时了。
-弹窗一直在，于是每一次特征识别都落在同一张被遮挡的画面上：
-锁不到敌人 → `target_enemy failed` → 上游 `CombatCheck` 直接
-`break out of combat` → `DomainTask.farm_in_domain` 顺着往下走到
-`walk_to_treasure()` 去捡宝箱 → 副本里一个敌人都没杀，当然没有宝箱 →
-`WaitFailedException` → 整个 Daily Task 异常退出。
+OK-WW does not recognize this dialog; its `click_skip_dialog_confirm` tried and timed
+out. The dialog stayed up, so every feature-recognition pass landed on the same
+obscured frame: no enemy could be locked → `target_enemy failed` → upstream
+`CombatCheck` went straight to `break out of combat` → `DomainTask.farm_in_domain`
+carried on down to `walk_to_treasure()` to pick up the chest → not a single enemy had
+been killed in the domain, so of course there was no chest → `WaitFailedException` →
+the whole Daily Task exited on an exception.
 
-完整调用链（`ok-script.log` 16:32:15）：
+The full call chain (`ok-script.log`, 16:32:15):
 
 ```
 DailyTask.run → ForgeryTask.farm_forgery → DomainTask.farm_domain_with_recovery_loop
@@ -34,59 +39,68 @@ DailyTask.run → ForgeryTask.farm_forgery → DomainTask.farm_domain_with_recov
   → walk_to_box → do_walk_to_box → wait_until → WaitFailedException
 ```
 
-**处置**：对游戏窗口发一个 `{ESC}` 把弹窗关掉。不点「确认」——
-那会消耗一个复苏物品（当时库存 9 + 4）。ESC 之后画面立刻正常：
-角色满血 17267/17267、Lv.90，正站在凝素领域里，倒计时在走，限时击败敌人 0/5。
-重新触发 OK-WW 后，`target_enemy failed` **归零**，
-`switch_next_char Chisa(Healer) ↔ Lucilla(SubDps)` 连招轮换正常跑起来。
+**The fix on the spot**: send `{ESC}` to the game window to dismiss the dialog. Do not
+click 「确认」 — that would consume one revival item (stock at the time was 9 + 4).
+Right after ESC the screen was normal again: character at full HP 17267/17267, Lv.90,
+standing inside the Forgery Challenge domain, countdown running, timed enemy kills at
+0/5. After re-triggering OK-WW, `target_enemy failed` **dropped to zero** and the
+`switch_next_char Chisa(Healer) ↔ Lucilla(SubDps)` rotation ran normally.
 
-## 我误判的三步（下次直接跳过）
+## The three things I got wrong (skip them next time)
 
-### 1. 「游戏崩了，进程只剩 3MB 空壳」——错
+### 1. "The game crashed, the process is a 3MB empty shell" — wrong
 
-`Wuthering Waves.exe` 只是外壳，**真正的游戏进程是
-`Client-Win64-Shipping.exe`**（当时 331 个线程，活得好好的）。
-查游戏死活一律查后者。
+`Wuthering Waves.exe` is only the launcher shell; **the actual game process is
+`Client-Win64-Shipping.exe`** (331 threads at the time, perfectly alive). To check
+whether the game is alive or dead, always check the latter.
 
-### 2. 「游戏机锁屏了」——错，而且是我自己的工具骗了我
+### 2. "The game machine's screen is locked" — wrong, and my own tool lied to me
 
-我在 ssh 会话里调 `GetCursorPos`，拿到 `err=1459`
-（`ERROR_REQUIRES_INTERACTIVE_WINDOWSTATION`），据此推断桌面被切走。
+I called `GetCursorPos` from an ssh session and got `err=1459`
+(`ERROR_REQUIRES_INTERACTIVE_WINDOWSTATION`), and concluded from that the desktop had
+been switched away.
 
-实际上 **ssh 会话本来就没有交互窗口站**，这个错和游戏机状态毫无关系。
-同理跨会话拿 `MainWindowHandle` 和 `WorkingSetSize` 也不可信——
-那天真实游戏进程的 `MainWindowHandle` 报的是 0。
+In reality **an ssh session simply has no interactive window station**; that error has
+nothing to do with the state of the game machine. Likewise, reading
+`MainWindowHandle` and `WorkingSetSize` across sessions is not trustworthy either —
+that day the real game process reported a `MainWindowHandle` of 0.
 
-**凡是要知道「屏幕现在到底什么样」，用 `scripts/mac/wingui.sh shot`**，
-它注册一个 `/it`（交互式）计划任务，在 session 1 里真截屏。
+**Whenever you need to know "what is actually on the screen right now", use
+`scripts/mac/wingui.sh shot`**, which registers an `/it` (interactive) scheduled task
+and takes a real screenshot inside session 1.
 
-### 3. 「看 OK-WW 自己存的截图就知道现在什么样」——错
+### 3. "OK-WW's own saved screenshots show the current state" — wrong
 
-OK-WW 只在**出错时**存截图，而且当时 16:27:11 和 16:32:15 两张
-**一模一样**。看着像「游戏卡死不动」，其实是它对着同一张被弹窗遮挡的画面
-反复识别失败。它存的是它看到的，不是现在的。
+OK-WW saves screenshots **only on errors**, and the two from that day, 16:27:11 and
+16:32:15, were **identical**. That looks like "the game is frozen", but really it was
+OK-WW failing recognition over and over against the same frame obscured by the dialog.
+What it saves is what it saw, not what is there now.
 
-## 工具
+## Tools
 
-`scripts/mac/wingui.sh`（2026-08-26 因这件事写的）：
+`scripts/mac/wingui.sh` (written 2026-08-26 because of this incident):
 
 ```bash
-ARK_HOST=100.65.39.119 scripts/mac/wingui.sh shot 现在.png   # 真实屏幕
-ARK_HOST=100.65.39.119 scripts/mac/wingui.sh key esc         # 关弹窗
-ARK_HOST=100.65.39.119 scripts/mac/wingui.sh key f2          # 开传送目录
+ARK_HOST=100.65.39.119 scripts/mac/wingui.sh shot now.png    # the real screen
+ARK_HOST=100.65.39.119 scripts/mac/wingui.sh key esc         # close the dialog
+ARK_HOST=100.65.39.119 scripts/mac/wingui.sh key f2          # open the teleport list
 ```
 
-`key` 一律先 `SetForegroundWindow`：**鸣潮失焦时照常渲染但不收输入**，
-不置前台的话按键全部落空，而且没有任何报错。
+`key` always calls `SetForegroundWindow` first: **Wuthering Waves keeps rendering while
+unfocused but accepts no input**. Without bringing it to the foreground every keystroke
+is dropped, and nothing reports an error.
 
-## 还没解决的
+## Still unresolved
 
-* **上游不认识这个弹窗。** `click_skip_dialog_confirm` 覆盖不到
-  「选择复苏物品」。值得给 ok-oldking/ok-wuthering-waves 提一个 issue：
-  任意模态弹窗兜底 ESC，而不是只认已知的几个。
-* **弹窗当初怎么冒出来的**没有定论。角色满血，不像是阵亡触发；
-  更可能是自动战斗过程中误触了物品栏。日志里没有对应记录。
-* **凝素领域「第 1 个」到底是哪个副本**，代码里查不到。上游写死了
-  `'The Forgery Challenge number in the F2 list.'`，即
-  `serial_number - 1` 点游戏内 F2 列表的第几行，顺序由游戏决定。
-  只能实拍一次 F2 列表定下来，**而且游戏更新后顺序可能变**，不是一劳永逸。
+* **Upstream does not know this dialog.** `click_skip_dialog_confirm` does not cover
+  「选择复苏物品」. Worth filing an issue with ok-oldking/ok-wuthering-waves: fall back
+  to ESC for any modal dialog, instead of only recognizing the few known ones.
+* **How the dialog appeared in the first place** is undetermined. The character was at
+  full HP, so it does not look like a death trigger; more likely the item bar was hit by
+  accident during auto-combat. There is no corresponding record in the log.
+* **Which domain "number 1" in the Forgery Challenge list actually is** cannot be found
+  in the code. Upstream hardcodes
+  `'The Forgery Challenge number in the F2 list.'`, i.e. `serial_number - 1` picks that
+  row of the in-game F2 list, and the order is decided by the game. It can only be
+  pinned down by photographing the F2 list once, **and the order may change after a game
+  update** — this is not settled once and for all.

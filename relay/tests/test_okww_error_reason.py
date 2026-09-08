@@ -81,13 +81,20 @@ u = collector.parse_okww_log(d / "unknown.log")
 check("按异常写", u.get("okww_error"), "无音区：等一个画面没等到（等了 10 秒）")
 check("不漏英文", bool(_re.search(r"[A-Za-z]", u.get("okww_error") or "")), False)
 
-print("[原文和异常都不认识：不许说「出错」这种模糊话，要明说不认识、要补翻译]")
+print("[原文和异常都不认识：明说不认识，并且**把原文抄进来**]")
+# 2026-09-08 改的：原来这里只说「原文已记进日志，要补翻译」。那天 OK-WW 早班连败三次，
+# 通知就是这么写的——而机器跑完早班就断电了，日志要等到 21:20 那趟开机才够得着。
+# 人看着告警想知道出了什么事的那一刻，恰恰是日志最够不着的那一刻。
+# 所以现在原文照抄进通知：英文一行看得懂，总比「不知道发生了什么」强。
 UNK2 = UNKNOWN.replace("ok.task.exceptions.WaitFailedException", "ok.task.exceptions.SomethingNewException")
 (d / "unk2.log").write_text(UNK2, encoding="utf-8")
 u2 = collector.parse_okww_log(d / "unk2.log")
-check("明说不认识", u2.get("okww_error"), "无音区：报了中继还不认识的错，原文已记进日志，要补翻译")
-check("不出现「出错」「这一步」这类模糊词", any(k in (u2.get("okww_error") or "") for k in ("这一步", "出错", "异常", "错误")), False)
-check("不漏英文", bool(_re.search(r"[A-Za-z]", u2.get("okww_error") or "")), False)
+got = u2.get("okww_error") or ""
+check("点名了是哪一步", got.startswith("无音区："), True)
+check("明说不认识", "中继还不认识这条错" in got, True)
+check("原文照抄进来了", "some brand new english message" in got, True)
+check("不出现「出错」「这一步」这类模糊词",
+      any(k in got.split("原文照抄")[0] for k in ("这一步", "出错", "异常", "错误")), False)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

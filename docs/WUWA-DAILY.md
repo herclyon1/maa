@@ -1,113 +1,130 @@
-# 鸣潮日常：从开机到结束，每一步是什么
+# Wuthering Waves daily run: every step from power-on to finish
 
-**这份文档的每一行都是 2026-08-27 08:20 从机器上原样读出来的**，不是从
-上游 README 抄的，也不是回忆。配置项名字就是 `working/configs/*.json`
-里的键名，源码行号就是机器上那份（含我们四个补丁）的行号。
+**Every line in this file was read off the machine as it stood at 2026-08-27
+08:20** — not copied from the upstream README, and not from memory. The config
+names are the key names in `working/configs/*.json`; the source line numbers are
+the line numbers of the copy on the machine (the one carrying our four patches).
 
-改了配置就回来更新这里，否则下次又要从头查一遍。
+When the config changes, come back and update this file, or the whole thing has to
+be looked up from scratch next time.
 
-## 0. 谁在什么时候拉起它
+## 0. Who starts it, and when
 
-| 时刻（北京） | 谁 | 干什么 |
+| Time (Beijing) | Who | What it does |
 |---|---|---|
-| 08:45 | 智能插座通电 | 主机上电开机 |
-| 开机后 | `ark-relay` 服务 | 预更新：依次拉起 MAA / MaaEnd / AUTO-MAS / OK-WW 检查更新，更新完把我们的四个补丁重新贴回去 |
-| 09:00 | AUTO-MAS 队列「早班」 | 1. MAA → 2. MaaEnd → **3. OK-WW** |
-| 21:30 | AUTO-MAS 队列「晚班」 | 只有 MAA |
+| 08:45 | smart plug powers on | the box gets mains power and boots |
+| after boot | the `ark-relay` service | pre-update: brings up MAA / MaaEnd / AUTO-MAS / OK-WW in turn to check for updates, then re-applies our four patches |
+| 09:00 | AUTO-MAS queue 「早班」 (morning shift) | 1. MAA → 2. MaaEnd → **3. OK-WW** |
+| 21:30 | AUTO-MAS queue 「晚班」 (evening shift) | MAA only |
 
-OK-WW 在 AUTO-MAS 里的条目：`RootPath=D:\ark\okww`、`Game.WaitTime=60`、
-`RunTimesLimit=3`（失败最多重来 3 次）、`RunTimeLimit=120` 分钟。
-**晚班没有鸣潮**，鸣潮一天只跑早班这一次。
+OK-WW's entry in AUTO-MAS: `RootPath=D:\ark\okww`, `Game.WaitTime=60`,
+`RunTimesLimit=3` (at most 3 retries on failure), `RunTimeLimit=120` minutes.
+**The evening shift has no Wuthering Waves**; Wuthering Waves runs once a day, on
+the morning shift only.
 
-## 1. OK-WW 起来之后
+## 1. Once OK-WW is up
 
-`Basic Options` 里：
+In `Basic Options`:
 
-* `Auto Start Game When App Starts = true` —— OK-WW 一启动就自己开游戏
-* `Kill Launcher After Start = true` —— 进游戏后杀掉启动器
-* `Auto Resize Game Window = true`、`capture = WGC`、`interaction = PostMessage`
-* 真正的游戏进程是 `Client-Win64-Shipping.exe`
-  （`Wuthering Waves.exe` 只是个壳，别拿它判断游戏死没死）
+* `Auto Start Game When App Starts = true` — OK-WW starts the game itself the
+  moment it launches
+* `Kill Launcher After Start = true` — kill the launcher once the game is in
+* `Auto Resize Game Window = true`, `capture = WGC`, `interaction = PostMessage`
+* The real game process is `Client-Win64-Shipping.exe`
+  (`Wuthering Waves.exe` is only a shell; do not use it to decide whether the game
+  is alive)
 
-登录由 `AutoLoginTask` 负责。
+Login is handled by `AutoLoginTask`.
 
-> **键位必须是游戏默认**：`Game Hotkey` 现在是
-> `Echo=q / Liberation=r / Resonance=e / Tool=t / Jump=space / Dodge=lshift`。
-> OK-WW 的 `load_hotkey()` **只把 Echo 和 Liberation 真的写进去**，
-> Resonance / Tool 那两行在上游是注释掉的——所以游戏里改过共鸣键，
-> 脚本会安静地一无所获。2026-08-26 的「刷不动体力」就是这么来的。
+> **The keybinds have to be the game's defaults**: `Game Hotkey` is currently
+> `Echo=q / Liberation=r / Resonance=e / Tool=t / Jump=space / Dodge=lshift`.
+> OK-WW's `load_hotkey()` **only actually writes Echo and Liberation**; the
+> Resonance / Tool lines are commented out upstream — so if the resonance key was
+> changed inside the game, the script silently gets nothing. The 2026-08-26
+> "can't farm stamina" was exactly this.
 
-## 2. 日常任务本体（`DailyTask.run`，机器上第 77–139 行）
+## 2. The daily task itself (`DailyTask.run`, lines 77–139 on the machine)
 
 ```
-78   validate_additional_tasks()      # 附加任务的前置条件先检查
-80   WWOneTimeTask.run(self)          # 通用开场
-82   ensure_main(180)                 # 确保站在主界面
+78   validate_additional_tasks()      # check the additional tasks' preconditions first
+80   WWOneTimeTask.run(self)          # common opening
+82   ensure_main(180)                 # make sure we are on the main screen
 
 88   used_stamina, daily_reward_ready = open_daily()
-89   need_stamina   = 没领日常奖励 且 已用体力 < 180
-90   need_nightmare = 没领日常奖励 且 Which to Farm ≠ 声之领域
+89   need_stamina   = daily reward not claimed AND stamina used < 180
+90   need_nightmare = daily reward not claimed AND Which to Farm != 声之领域
 
-96   ── 梦魇巢穴（拿每日声骸）
-117  ── 刷体力
-133  run_additional_tasks()           # ← 我们的补丁：提到领奖之前
-135  claim_daily()                    # 领日常活跃奖励
-136  claim_mail()                     # 领邮件
-138  claim_battle_pass()              # 领通行证
-139  「Daily Task Completed」并通知
+96   ── Nightmare Nest (get the daily echo)
+117  ── farm stamina
+133  run_additional_tasks()           # ← our patch: moved ahead of claiming rewards
+135  claim_daily()                    # claim the daily activity rewards
+136  claim_mail()                     # claim mail
+138  claim_battle_pass()              # claim the battle pass
+139  print 「Daily Task Completed」 and notify
 ```
 
-### 2.1 梦魇巢穴这一段（第 96–115 行）
+### 2.1 The Nightmare Nest section (lines 96–115)
 
-当前配置 `Farm Nightmare Nest for Daily Echo = true`、
-`Which to Farm = Forgery Challenge`（≠ 声之领域），所以这段**会跑**，
-走的是 `run_capture_mode()`（第 90–103 行），不是全量的 `run()`：
+The current config is `Farm Nightmare Nest for Daily Echo = true` and
+`Which to Farm = Forgery Challenge` (≠ 声之领域), so this section **does run**, and
+it goes through `run_capture_mode()` (lines 90–103), not the full `run()`:
 
 ```
 while nest := _next_nest_with_progress():
     combat_nest(nest)
-    if _capture_success:      # 掉出一个声骸就走人
+    if _capture_success:      # one echo dropped, leave
         break
 ```
 
-* `NightmareNestTask` 的配置是
-  `Which to Farm = ["Tacet Discord Nest"]`、**`Only Farm These Nests = "落渊南丘"`**
-* `find_nest()` 只挑**没打满**的巢穴（`numerator != denominator`），
-  `_wanted_nest_rows()` 再把范围收到「落渊南丘」这一个点位。
-* **所以：南丘没满 → 进去打；南丘满了 → `get_nest_to_go()` 返回空 →
-  while 一次都不进 → 整段跳过。** 这正是要的行为。
-* 目的是拿**一个**每日声骸凑活跃度，不是把南丘刷满。
-* 打完计数没涨就永久跳过这个点位（`_next_nest_with_progress`，我们的补丁），
-  不会像上游那样每两分钟原地重进、无限循环。
-* 这一段外面套了 try/except：巢穴炸了也不会带走后面的领奖（我们的补丁）。
+* `NightmareNestTask`'s config is
+  `Which to Farm = ["Tacet Discord Nest"]` and
+  **`Only Farm These Nests = "落渊南丘"`**
+* `find_nest()` only picks nests that are **not yet full**
+  (`numerator != denominator`), and `_wanted_nest_rows()` then narrows the range to
+  the single spot 落渊南丘.
+* **So: 南丘 not full → go in and fight; 南丘 full → `get_nest_to_go()` returns
+  empty → the while loop never runs once → the whole section is skipped.** That is
+  exactly the wanted behaviour.
+* The point is to get **one** daily echo toward the activity count, not to farm
+  南丘 to the cap.
+* If the count did not go up after a fight, that spot is skipped permanently
+  (`_next_nest_with_progress`, our patch), instead of re-entering on the spot every
+  two minutes forever the way upstream does.
+* This section is wrapped in a try/except: a blown-up nest no longer takes the
+  reward claiming after it down with it (our patch).
 
-### 2.2 刷体力这一段（第 117–128 行）
+### 2.2 The stamina section (lines 117–128)
 
-`Which to Farm = "Forgery Challenge"` → 走 `ForgeryTask.farm_forgery()`，
-`Which Forgery Challenge to Farm = 1` → **凝素领域·陨翼云渊（迅刀）**。
-刷到 180 体力为止。
+`Which to Farm = "Forgery Challenge"` → goes to `ForgeryTask.farm_forgery()`, and
+`Which Forgery Challenge to Farm = 1` → **凝素领域·陨翼云渊（迅刀）**. It farms until
+180 stamina is spent.
 
-### 2.3 附加任务（第 133 行）
+### 2.3 Additional tasks (line 133)
 
 `Additional Tasks to Run After Daily Task = ["Check Weekly Garden"]`
-—— 只有周常乐园。`Monthly Card Config` 另外管：
-`Check Monthly Card = true`、`Monthly Card Time = 4`（每天 4 点后领月卡）。
+— the weekly garden only. `Monthly Card Config` is separate:
+`Check Monthly Card = true`, `Monthly Card Time = 4` (claim the monthly card after
+04:00 each day).
 
-## 3. 结束
+## 3. Finishing
 
-`DailyTask` 的 `Exit After Task = true` → 任务完了退出游戏；
-`Basic Options` 的 `Exit App when Game Exits = true` → 游戏退了 OK-WW 也退。
-AUTO-MAS 看到进程结束，这个队列条目就算完。
+`DailyTask`'s `Exit After Task = true` → quit the game when the task is done;
+`Basic Options`' `Exit App when Game Exits = true` → OK-WW quits when the game
+does. AUTO-MAS sees the process end and counts that queue entry as complete.
 
-## 4. 我们在上游之上加了什么
+## 4. What we added on top of upstream
 
-四个补丁，每次 OK-WW 自动更新后由 `ark_relay/okww_patch.py` 重新贴回去
-（上游更新会整段覆盖 `src`）。细节见 [OKWW-PATCHES.md](OKWW-PATCHES.md)。
+Four patches, re-applied by `ark_relay/okww_patch.py` after every OK-WW auto-update
+(an upstream update overwrites the whole of `src`). Details in
+[OKWW-PATCHES.md](OKWW-PATCHES.md).
 
-1. **领奖顺序** —— 附加任务提到 `claim_daily` 之前，否则周常乐园打完的奖励永远领不到
-2. **副本失败不拖垮每日任务** —— `DomainTask` 的异常不再一路穿到 `DailyTask.run`
-3. **巢穴任务**（整文件替换，带哈希护栏）—— 续刷 / 不空转 / **可指定点位**
-4. **主C饿死兜底** —— `BaseCombatTask`
+1. **Reward order** — additional tasks moved ahead of `claim_daily`, otherwise the
+   rewards from a finished weekly garden are never collected
+2. **A failed domain no longer drags down the daily task** — `DomainTask`'s
+   exception no longer propagates all the way up into `DailyTask.run`
+3. **The nest task** (whole file replaced, with a hash guard) — resume farming /
+   no spinning in place / **a specific spot can be named**
+4. **Main-DPS starvation fallback** — `BaseCombatTask`
 
-上游 v3.6.6 里**这四个补丁一个都没有**（v3.6.6 相对 beta.1 只改了
-`pyproject.toml` 和 `requirements.txt`），所以还得靠我们自己贴。
+Upstream v3.6.6 has **none of these four** (relative to beta.1, v3.6.6 only changed
+`pyproject.toml` and `requirements.txt`), so we still have to apply them ourselves.

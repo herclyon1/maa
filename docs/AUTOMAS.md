@@ -1,394 +1,438 @@
-# AUTO-MAS 与 OK-WW：界面、配置与无界面操作
+# AUTO-MAS and OK-WW: the UI, the config, and headless operation
 
-写于 2026-08-25。**这份文档的目的是：下次不必再摸索一遍。**
-凡是这里写的结论，都是当天在真机上读源码或调 API 核对过的，不是推测。
+Written 2026-08-25. **The purpose of this document is that nobody has to work this out again.**
+Every conclusion here was checked that day on the real machine, either by reading source or by
+calling the API. None of it is guesswork.
 
-相关：[HEADLESS.md](HEADLESS.md)（各程序的无界面入口）、
-[CONFIG.md](CONFIG.md)（具体配置项与母本/副本）、[PITFALLS.md](PITFALLS.md)。
+Related: [HEADLESS.md](HEADLESS.md) (headless entry points for each program),
+[CONFIG.md](CONFIG.md) (the individual config items, and master copy vs working copy),
+[PITFALLS.md](PITFALLS.md).
 
 ---
 
-## 先说结论：不用点界面
+## Conclusion first: you do not have to click the UI
 
-AUTO-MAS 的 Electron 窗口只是外壳，后面是一个 **FastAPI 后端**，
-监听 `<tailscale-ip>:36163`，**无鉴权**，126 个端点。
+The AUTO-MAS Electron window is only a shell. Behind it is a **FastAPI backend** listening on
+`<tailscale-ip>:36163`, **with no authentication**, exposing 126 endpoints.
 
 ```bash
 export ARK_HOST=100.65.39.119
-scripts/mac/mas-api.py paths                       # 全部端点 + 必填字段
+scripts/mac/mas-api.py paths                       # every endpoint + required fields
 scripts/mac/mas-api.py get /api/queue/get
 scripts/mac/mas-api.py get /api/scripts/user/get '{"scriptId":"<uid>"}'
 ```
 
-**走 API 改配置不需要重启 AUTO-MAS。** 这一点很重要，因为直接改
-`config/*.json` 文件**会失效**：AUTO-MAS 把配置读进内存，退出时反写，
-你在它运行期间改的文件会被它的内存值覆盖。走 API 是后端自己落盘，不存在这个问题。
+**Changing config through the API does not require restarting AUTO-MAS.** This matters, because
+editing the `config/*.json` files directly **does not take effect**: AUTO-MAS reads the config
+into memory and writes it back on exit, so any file you edit while it is running gets overwritten
+by its in-memory values. Going through the API means the backend itself persists the change, so
+the problem does not arise.
 
-> 2026-08-24 就踩过：改了文件、界面没变化，误以为"没生效"，其实是写法不对。
+> Already stepped in this on 2026-08-24: edited the files, saw no change in the UI, concluded
+> "it did not take effect" — when in fact the writing method was simply wrong.
 
 ---
 
-## 五个界面分别是什么
+## What the five screens are
 
-| 界面 | API 前缀 | 存的是什么 | 谁引用它 |
+| Screen | API prefix | What it stores | Who references it |
 |---|---|---|---|
-| **脚本管理** | `/api/scripts/*` | 每个自动化程序一条：装在哪、超时多久、重试几次；下挂**用户** | 调度队列按 `ScriptId` 引用 |
-| **计划管理** | `/api/plan/*` | 按星期几切换刷什么的**计划表**，可选功能 | 用户的 `StageMode`/`SanityMode` 填计划 uid 才生效 |
-| **模拟器管理** | `/api/emulator/*` | 模拟器可执行文件、多开序号、老板键、等待超时 | 脚本的 `Emulator.Id`；端游脚本填 `-` |
-| **调度队列** | `/api/queue/*` | 一条队列 = 一串**队列项**（每项一个脚本）+ 一串**定时项** | 就是每天真正跑起来的东西 |
-| **调度中心** | `/api/dispatch/*` | **没有静态配置**，是运行时面板：手动起停、电源标志 | — |
+| **脚本管理** | `/api/scripts/*` | One entry per automation program: where it is installed, timeout, retry count; **users** hang beneath it | The dispatch queue references it by `ScriptId` |
+| **计划管理** | `/api/plan/*` | A **plan table** that switches what to farm by day of week; optional feature | Only takes effect once a user's `StageMode`/`SanityMode` holds a plan uid |
+| **模拟器管理** | `/api/emulator/*` | Emulator executable, multi-instance index, boss key, wait timeout | A script's `Emulator.Id`; PC-client scripts hold `-` |
+| **调度队列** | `/api/queue/*` | One queue = a list of **queue items** (one script each) + a list of **timer items** | This is the thing that actually runs every day |
+| **调度中心** | `/api/dispatch/*` | **No static config**; it is a runtime panel: manual start/stop, power flag | — |
 
 ### 脚本管理
 
-一个"脚本"就是一个自动化程序的接入点。当前三个：
+A "script" is the integration point for one automation program. Currently three:
 
-| 名称 | 类型 | 路径 | 备注 |
+| Name | Type | Path | Notes |
 |---|---|---|---|
-| MAA | `MaaConfig` | `D:\ark\maa` | 明日方舟，走模拟器 |
-| MaaEnd | `MaaEndConfig` | `D:\ark\maaend` | 终末地，端游 `Win32-Front` |
-| OK-WW | `OkwwConfig` | `D:\ark\okww`（字段名是 `RootPath`） | 鸣潮，端游 |
+| MAA | `MaaConfig` | `D:\ark\maa` | 明日方舟, runs through the emulator |
+| MaaEnd | `MaaEndConfig` | `D:\ark\maaend` | 终末地, PC client, `Win32-Front` |
+| OK-WW | `OkwwConfig` | `D:\ark\okww` (the field is called `RootPath`) | 鸣潮, PC client |
 
-每个脚本下面挂**用户**（`/api/scripts/user/*`）：账号、启用状态、任务开关、
-理智/关卡怎么配。当前各一个：`arknights` / `endfield` / `wuwa`。
+**Users** hang beneath each script (`/api/scripts/user/*`): account, enabled state, task
+toggles, and how sanity/stages are configured. Currently one each: `arknights` / `endfield` / `wuwa`.
 
-**注意字段名不统一**：MAA 和 MaaEnd 用 `Info.Path`，OK-WW 用 `Info.RootPath`。
+**Note that the field names are not consistent**: MAA and MaaEnd use `Info.Path`, OK-WW uses
+`Info.RootPath`.
 
-**`Script` 和 `IfUseMasConfig` 显示为 `null` 是正常的。** 这两个字段属于
-`GeneralUserConfig`（"通用脚本"类型），`OkwwConfig` 根本没有它们，响应模型统一
-带上所以是 `null`。界面上那个"没有脚本名字 / nodata"就是这个，不是漏配。
+**`Script` and `IfUseMasConfig` showing as `null` is normal.** Those two fields belong to
+`GeneralUserConfig` (the "通用脚本" type); `OkwwConfig` simply does not have them, and the
+response model includes them uniformly, hence `null`. That is what the "no script name / nodata"
+in the UI is; it is not a missing setting.
 
 ### 计划管理
 
-计划表让你按星期几换刷取目标。**它是可选的**：
+Plan tables let you change farming targets by day of week. **They are optional**:
 
-- MAA 用户的 `Info.StageMode`：`"Fixed"` = 用用户自己的固定关卡；否则填计划 uid。
-- MaaEnd 用户的 `Info.SanityMode`：同理。
+- A MAA user's `Info.StageMode`: `"Fixed"` = use the user's own fixed stage; otherwise it holds a plan uid.
+- A MaaEnd user's `Info.SanityMode`: same idea.
 
-**当前两个都是 `Fixed`**（MAA 固定 AT-4、理智药 0；MaaEnd 走用户里的理智任务字段），
-所以那张「新 MAA 计划表」是个**没人引用的空壳**——全字段 `-`，
-`grep` 整个 config 目录只在它自己的定义文件里出现。删不删都不影响运行。
+**Both are currently `Fixed`** (MAA fixed on AT-4 with 0 sanity potions; MaaEnd uses the sanity
+task fields on the user), so the 「新 MAA 计划表」 plan table is an **empty shell that nothing
+references** — every field is `-`, and a `grep` across the whole config directory finds it only in
+its own definition file. Deleting it or keeping it makes no difference to operation.
 
 ### 模拟器管理
 
-当前一个：雷电 `D:\LD-MRFZ\LDPlayer9\ldconsole.exe`，`MaxWaitTime` 300，
-`ForceKillOnClose` false。MAA 引用它，多开序号 `1000`。
-MaaEnd 和 OK-WW 是端游，`EmulatorId` 都是 `-`，**这是对的，不是漏配**。
+Currently one: LDPlayer at `D:\LD-MRFZ\LDPlayer9\ldconsole.exe`, `MaxWaitTime` 300,
+`ForceKillOnClose` false. MAA references it, with multi-instance index `1000`.
+MaaEnd and OK-WW are PC-client games, so their `EmulatorId` is `-`; **that is correct, not a
+missing setting**.
 
 ### 调度队列
 
-一条队列由两组东西构成，各有独立端点：
+A queue is made of two groups of things, each with its own endpoints:
 
-- **队列项** `/api/queue/item/*` —— 有序的脚本列表，字段只有 `Info.ScriptId`
-- **定时项** `/api/queue/time/*` —— `Enabled` + `Days`（星期数组）+ `Time`
+- **Queue items** `/api/queue/item/*` — an ordered list of scripts; the only field is `Info.ScriptId`
+- **Timer items** `/api/queue/time/*` — `Enabled` + `Days` (array of weekdays) + `Time`
 
-队列自身 `Info` 有 `Name` / `TimeEnabled` / `StartUpEnabled` / `AfterAccomplish`。
+The queue's own `Info` has `Name` / `TimeEnabled` / `StartUpEnabled` / `AfterAccomplish`.
 
-当前两条见 [CONFIG.md](CONFIG.md)。两条都是 `AfterAccomplish=NoAction`——
-**关机归中继管，不归 AUTO-MAS**。
+The two current queues are in [CONFIG.md](CONFIG.md). Both are `AfterAccomplish=NoAction` —
+**shutdown is the relay's job, not AUTO-MAS's**.
 
 ### 调度中心
 
-运行时面板，没有要配的东西。**手动派发一律走 `scripts/mac/run-one.sh MAA|MaaEnd|OK-WW`**，它内含忙闲闸门。裸调 `/api/dispatch/start` 会和 AUTO-MAS 自己的整队重试打架——2026-09-01 上午就是这么弄成「MAA 重复吃药、三个游戏同时在线」，最后只能拔电重启。
+A runtime panel; there is nothing to configure. **Manual dispatch always goes through
+`scripts/mac/run-one.sh MAA|MaaEnd|OK-WW`**, which has the busy/idle gate built in. Calling
+`/api/dispatch/start` bare fights with AUTO-MAS's own whole-queue retry — that is exactly how, on
+the morning of 2026-09-01, we ended up with 「MAA 重复吃药、三个游戏同时在线」 and had to pull the
+power to recover.
 
-`/api/dispatch/start` 手动起一个任务，
-`/api/dispatch/stop` 中止，`/api/dispatch/get|set/power` 读写电源标志
-（当前 `NoAction`，与队列一致）。
+`/api/dispatch/start` starts one task manually, `/api/dispatch/stop` aborts it, and
+`/api/dispatch/get|set/power` reads and writes the power flag (currently `NoAction`, matching the
+queues).
 
 ---
 
-## OK-WW（鸣潮）能做什么
+## What OK-WW (鸣潮) can do
 
-OK-WW 是 ok-script 系，任务清单可以直接从
-`D:\ark\okww\data\apps\ok-ww\working\configs\*.json` 的文件名读出来，
-每个任务类在 `src/task/*.py`。
+OK-WW is an ok-script family program. Its task list can be read straight off the filenames in
+`D:\ark\okww\data\apps\ok-ww\working\configs\*.json`, and each task class lives in `src/task/*.py`.
 
-| 任务 | 类 | 说明 |
+| Task | Class | Notes |
 |---|---|---|
-| 📅 日常 | `DailyTask` | 体力打无音区/凝素领域/模拟领域三选一，可带附加任务 |
+| 📅 日常 | `DailyTask` | Spends stamina on one of 无音区 / 凝素领域 / 模拟领域, optionally with additional tasks |
 | 👥 多账号日常 | `MultiAccountDailyTask` | |
-| 🌊 无音区 | `TacetTask` | 按 F2 列表序号 |
-| ⚒️ 凝素领域 | `ForgeryTask` | 按 F2 列表序号，`structure=[5,5,5,5]` 共 20 个，**每次 40 体力** |
-| 🧪 模拟领域 | `SimulationTask` | 按材料选：共鸣者经验 / 武器经验 / 贝币，**每次 40 体力** |
-| 🌙 梦魇巢穴 | `NightmareNestTask` | 跑图清「梦魇净化」「无音区巢穴」，**没有体力常量，不吃波片，只吃时间** |
+| 🌊 无音区 | `TacetTask` | By index in the F2 list |
+| ⚒️ 凝素领域 | `ForgeryTask` | By index in the F2 list, `structure=[5,5,5,5]` for 20 total, **40 stamina each time** |
+| 🧪 模拟领域 | `SimulationTask` | Chosen by material: 共鸣者经验 / 武器经验 / 贝币, **40 stamina each time** |
+| 🌙 梦魇巢穴 | `NightmareNestTask` | Runs the map clearing 「梦魇净化」 and 「无音区巢穴」; **has no stamina constant, spends no waveplates, only time** |
 | 🎡 周常乐园 | `GardenTask` | |
-| 🌀 声骸刷取 | `FarmEchoTask` | **周本就在这里**，见下 |
-| 其余 | | 自动战斗、五合一、批量强化/改主属性、星轨刷图、自动登录、跳过对话、防鼠标漂移、诊断 |
+| 🌀 声骸刷取 | `FarmEchoTask` | **The weekly boss lives here**, see below |
+| Everything else | | Auto combat, five-in-one merge, batch enhance / reroll main stat, star-track farming, auto login, dialogue skip, mouse-drift protection, diagnostics |
 
-### 周本：**做不了**，别浪费时间配
+### Weekly bosses: **cannot be done**, do not waste time configuring it
 
-2026-08-25 读 `FarmEchoTask.py` 源码确认：**它只捡声骸，不领 boss 的材料奖励。**
-唯一处理收获的是 `pick_echo()` / `yolo_find_echo()`，**没有任何消耗波片吸收、
-点击领取奖励的逻辑**；也**不检查每周三次的限制**（`total_weekly_number = 9`
-只用于 UI 选项校验，`Repeat Farm Count: 10000` 就是个重复次数，不会自动停）。
+Confirmed 2026-08-25 by reading the `FarmEchoTask.py` source: **it only picks up echoes, it does
+not claim the boss's material rewards.** The only thing that handles the harvest is
+`pick_echo()` / `yolo_find_echo()`; there is **no logic at all for spending waveplates to absorb
+or for clicking to claim rewards**. It also **does not check the three-per-week limit**
+(`total_weekly_number = 9` is only used to validate the UI option, and `Repeat Farm Count: 10000`
+is just a repeat count, it will not stop on its own).
 
-所以周本材料（如「万囮牢·朽躯」）**只能手动打和领**。
+So weekly boss materials (e.g. 「万囮牢·朽躯」) **can only be fought and claimed by hand**.
 
-（教训：我一度看到 `Teleport to Boss = Weekly Challenge` 就说"有周本功能"，
-只验证了它能传送过去，没验证到了之后干什么。用户当场指出。）
+(Lesson: at one point I saw `Teleport to Boss = Weekly Challenge` and declared "it has weekly boss
+support", having verified only that it can teleport there and not what it does once it arrives.
+The user caught it on the spot.)
 
-### 周本传送本身是有的（但如上，只捡声骸）
+### The weekly-boss teleport itself does exist (but as above, it only picks up echoes)
 
-`FarmEchoTask` 的 `Teleport to Boss` 有三档：`No` / **`Weekly Challenge`** / `Boss Challenge`。
+`FarmEchoTask`'s `Teleport to Boss` has three settings: `No` / **`Weekly Challenge`** / `Boss Challenge`.
 
-- 选 `Weekly Challenge` 时的子项：`Which Weekly Boss to Teleport`（1 起，F2 列表从上往下，
-  共 9 个）、`Boss Level`（50/60/70/80/90）
-- 选 `Boss Challenge` 时：`Which Boss Challenge to Teleport`（共 20 个）、`Boss Level`
+- Sub-options when `Weekly Challenge` is selected: `Which Weekly Boss to Teleport` (1-based,
+  top-to-bottom in the F2 list, 9 total), `Boss Level` (50/60/70/80/90)
+- When `Boss Challenge` is selected: `Which Boss Challenge to Teleport` (20 total), `Boss Level`
 
-**但它接不进 AUTO-MAS 的队列。** 两道限制：
+**But it cannot be wired into an AUTO-MAS queue.** Two constraints:
 
-1. `OkwwTaskIndexValidator` 只允许 `TaskIndex ∈ {1, 7}`，即 AUTO-MAS 只能启动
-   **日常**或**多账号日常**，起不了别的任务。
-2. `FarmEchoTask` 没有 `support_schedule_task = True`，OK-WW 自带的调度器也排不了它
-   （`DailyTask`/`TacetTask`/`ForgeryTask`/`NightmareNestTask` 都有，它没有）。
+1. `OkwwTaskIndexValidator` only permits `TaskIndex ∈ {1, 7}`, i.e. AUTO-MAS can only launch
+   **日常** or **多账号日常**; it cannot launch anything else.
+2. `FarmEchoTask` does not set `support_schedule_task = True`, so OK-WW's own scheduler cannot
+   schedule it either (`DailyTask`/`TacetTask`/`ForgeryTask`/`NightmareNestTask` all set it; this
+   one does not).
 
-**可行的路子**：直接命令行跑，这条已经验证过——
-`python.exe -m ok run_task <任务名> -e`（见 HEADLESS.md）。要定期跑就挂到中继上。
+**The workable route**: run it from the command line directly, which has already been verified —
+`python.exe -m ok run_task <task name> -e` (see HEADLESS.md). To run it periodically, hang it off
+the relay.
 
-### 没有"库存保持"功能
+### There is no "maintain inventory" feature
 
-OK-WW 只有**次数**概念，没有"刷到库存够 N 就停"：
+OK-WW only has the concept of **counts**; there is no "farm until inventory reaches N, then stop":
 
-- `FarmEchoTask` 的 `Repeat Farm Count`（默认 10000）是重复次数
-- AUTO-MAS 侧的 `ProxyTimesLimit`（每日代理次数）、`RunTimesLimit`（重试）、
-  `RunTimeLimit`（单次超时）也都是次数/时间，不是库存目标
+- `FarmEchoTask`'s `Repeat Farm Count` (default 10000) is a repeat count
+- On the AUTO-MAS side, `ProxyTimesLimit` (daily proxy runs), `RunTimesLimit` (retries) and
+  `RunTimeLimit` (per-run timeout) are also counts/times, not inventory targets
 
-要按库存决定刷不刷，只能在外面自己判断。**终末地那边有库存数据**
-（IMS，见 HEADLESS.md），鸣潮这边没有等价物。
+To decide whether to farm based on inventory, the decision has to be made outside. **终末地 does
+have inventory data** (IMS, see HEADLESS.md); 鸣潮 has no equivalent.
 
-### 也没有材料图鉴
+### Nor is there a material index
 
-`ForgeryTask` 只认 **F2 列表里的序号**，不认材料名，更没有"某某武器要什么材料"的表。
-想刷特定武器突破材料，得自己知道那个凝素领域在 F2 列表里排第几，把序号填进去。
-
----
-
-## 母本与副本（这是最容易搞错的地方）
-
-AUTO-MAS 为每个脚本存一份**自己的配置母本**，每次跑之前用母本覆盖程序自己的副本。
-**改程序目录里那份是白改的。**
-
-OK-WW 这边由用户配置的 `Info.IfQuickConfig`（**当前 `false`，2026-08-28 起**）控制，
-AUTO-MAS 接管的范围是 `DailyTask` / `MultiAccountDailyTask` 的高频字段。
-
-| 字段 | AUTO-MAS 母本（`wuwa` 用户 `Task`） | OK-WW 副本（`configs/DailyTask.json`） |
-|---|---|---|
-| 体力用途 | `WhichToFarm` = Tacet Suppression | `Which to Farm` = Tacet Suppression |
-| 无音区序号 | 1 | 1 |
-| 凝素领域序号 | 1 | 1 |
-| 模拟领域材料 | Shell Credit | Shell Credit |
-| 日常声骸走梦魇巢穴 | true | true |
-| **附加任务** | **`["Check Weekly Garden"]`** | **`["Check Weekly Garden", "Auto Farm all Nightmare Nest"]`** |
-| 跑完退出 | 母本不管 | `Exit After Task` = true |
-
-**只有附加任务一处不同。** 附加任务总共就两个可选值
-（`CHECK_WEEKLY_GARDEN`、`AUTO_FARM_NIGHTMARE_NEST`），所以副本比母本多的就是「全梦魇巢穴」。
-因为母本覆盖副本，**实际生效的是只有周常乐园**。
-
-`Info.Mode` 有三档：`脚本`（用脚本级配置）/ `用户`（用用户级）/ `直控`
-（直接用 OK-WW 自己的配置，不覆盖）。当前 `wuwa` 是 `脚本`。
+`ForgeryTask` only understands **the index in the F2 list**, not material names, and there is
+certainly no table of "which materials weapon X needs". To farm a specific weapon-breakthrough
+material, you have to know yourself where that 凝素领域 sits in the F2 list and put that index in.
 
 ---
 
-## 游戏由谁启动
+## Master copy vs working copy (this is the easiest thing to get wrong)
 
-| 脚本 | 谁拉起游戏 | 依据 |
+AUTO-MAS keeps its **own master copy** of the config for each script, and before every run it
+overwrites the program's own working copy with the master.
+**Editing the copy inside the program's directory achieves nothing.**
+
+On the OK-WW side this is governed by the user config's `Info.IfQuickConfig` (**currently `false`,
+since 2026-08-28**), and the scope AUTO-MAS takes over is the high-frequency fields of
+`DailyTask` / `MultiAccountDailyTask`.
+
+| Field | AUTO-MAS master (`wuwa` user's `Task`) | OK-WW working copy (`configs/DailyTask.json`) |
 |---|---|---|
-| MAA | AUTO-MAS 起模拟器 | `Emulator.Id` |
-| MaaEnd | AUTO-MAS 起端游 | `Game.Path` 指向 `Endfield.exe` |
-| OK-WW | **OK-WW 自己** | MAS 侧 `Game.Enabled=false`；OK-WW 侧 `Basic Options.json` 的 `Auto Start Game When App Starts=true` |
+| What stamina is spent on | `WhichToFarm` = Tacet Suppression | `Which to Farm` = Tacet Suppression |
+| 无音区 index | 1 | 1 |
+| 凝素领域 index | 1 | 1 |
+| 模拟领域 material | Shell Credit | Shell Credit |
+| Daily echoes via 梦魇巢穴 | true | true |
+| **Additional tasks** | **`["Check Weekly Garden"]`** | **`["Check Weekly Garden", "Auto Farm all Nightmare Nest"]`** |
+| Exit after run | Not managed by the master | `Exit After Task` = true |
 
-OK-WW 的游戏客户端路径在它自己的 `configs/devices.json`：
-`pc_full_path = D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe`。
+**Additional tasks are the only difference.** There are only two possible values for additional
+tasks (`CHECK_WEEKLY_GARDEN`, `AUTO_FARM_NIGHTMARE_NEST`), so what the working copy has beyond the
+master is "all nightmare nests". Because the master overwrites the working copy, **what actually
+takes effect is 周常乐园 only**.
 
-所以 OK-WW 那条 `Game.Enabled=false` **是对的，别去打开它**——打开了会变成两边都想启动游戏。
+`Info.Mode` has three settings: `脚本` (use script-level config) / `用户` (use user-level) /
+`直控` (use OK-WW's own config directly, no overwrite). `wuwa` is currently `脚本`.
 
-## 母本 vs 脚本自己那份：你在 MaaEnd 界面上的改动会被冲掉
+---
 
-2026-08-28：用户说「我记得手动在 MaaEnd 上加过自动采集」，而我报的任务表里没有。
-两份一比就清楚了：
+## Who launches the game
 
-    D:\ark\maaend\config\mxu-MaaEnd.json          08-28 10:41  AUTO-MAS 实例 15 个（有 AutoCollect）
-    <automas>\data\<sid>\Default\ConfigFile\...   08-21 12:39  AUTO-MAS 实例 14 个（没有）
+| Script | Who brings the game up | Basis |
+|---|---|---|
+| MAA | AUTO-MAS starts the emulator | `Emulator.Id` |
+| MaaEnd | AUTO-MAS starts the PC client | `Game.Path` points at `Endfield.exe` |
+| OK-WW | **OK-WW itself** | On the MAS side `Game.Enabled=false`; on the OK-WW side `Basic Options.json` has `Auto Start Game When App Starts=true` |
 
-`AutoProxy.py:514-515` 每轮跑之前 `shutil.rmtree` 掉 `<maaend>\config` 再
-`copytree` 母本过去。**在 MaaEnd 界面里加的任务，下一轮就没了。**
-和 OK-WW 是同一个套路，见 [[maa-config-master-copy]]。
+OK-WW's game client path lives in its own `configs/devices.json`:
+`pc_full_path = D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe`.
 
-要让改动长期生效，必须写进**母本**。已把 live 的任务表同步进母本
-（AutoCollect 因此保住），并加了 `AutoEssence`、停用 `ProtocolSpace`。
+So OK-WW's `Game.Enabled=false` **is correct; do not turn it on** — turning it on means both sides
+try to launch the game.
 
-### MAS 那六个「摆设开关」的正解
+## Master copy vs the script's own copy: your edits in the MaaEnd UI get wiped
+
+2026-08-28: the user said 「我记得手动在 MaaEnd 上加过自动采集」, and the task list I had reported
+did not contain it. Comparing the two copies made it obvious:
+
+    D:\ark\maaend\config\mxu-MaaEnd.json          08-28 10:41  AUTO-MAS instance, 15 tasks (has AutoCollect)
+    <automas>\data\<sid>\Default\ConfigFile\...   08-21 12:39  AUTO-MAS instance, 14 tasks (does not)
+
+`AutoProxy.py:514-515` does a `shutil.rmtree` of `<maaend>\config` before every run and then
+`copytree`s the master over. **A task added in the MaaEnd UI is gone on the next run.**
+This is the same pattern as OK-WW, see [[maa-config-master-copy]].
+
+For a change to survive, it has to be written into the **master**. The live task list has now been
+synced into the master (which is how AutoCollect was saved), plus `AutoEssence` was added and
+`ProtocolSpace` disabled.
+
+### What is really going on with those six "decorative" MAS switches
 
 `IfAutoCollect` / `IfTrialOfSwordmancy` / `IfAutoEcoFarm` / `IfSeizeEntrustTask` /
-`IfResourceRecycleStation` / `IfPullCountCalculator`——**MaaEnd 确实有这六个功能**，
-不是 MAS 凭空造的开关。它们成为摆设，是因为**母本的任务表里没有这些任务**：
-MAS 只能开关已存在的任务，不会新建。要用就先把任务加进母本。
+`IfResourceRecycleStation` / `IfPullCountCalculator` — **MaaEnd really does have these six
+features**; MAS did not invent the switches. They became decorative because **the master's task
+list does not contain those tasks**: MAS can only toggle tasks that already exist, it will not
+create them. To use one, first add the task to the master.
 
-## OK-WW 的 `-t` 与「周常」
+## OK-WW's `-t` and 「周常」
 
-`AutoProxy.py:257-258`：`okww_args = ["-t", str(TaskIndex), "-e"]`。
-`-t` 是 OK-WW `onetime_tasks` 的下标（1 起算），`-e` 是跑完自行退出。
+`AutoProxy.py:257-258`: `okww_args = ["-t", str(TaskIndex), "-e"]`.
+`-t` is the index into OK-WW's `onetime_tasks` (1-based), `-e` means exit on completion.
 
     1 DailyTask   2 FarmEchoTask  3 NightmareNestTask  4 TacetTask   5 ForgeryTask
     6 SimulationTask  7 MultiAccountDailyTask  8 MergeEchoTask
     9 EnhanceEchoTask  10 ChangeEchoTask  11 GardenTask
 
-**TaskIndex = 1 → 只跑 DailyTask（每日一条龙）。每周乐园是第 11 个独立任务**，
-只能通过 DailyTask 的「附加任务」带起来。
+**TaskIndex = 1 → runs DailyTask only (the daily all-in-one). 周常乐园 is a separate task, number
+11**, and can only be pulled in through DailyTask's 「附加任务」.
 
-**没有「记忆周常已完成」这种功能。** 有的是 `Check Weekly Garden`：
-原文「领完每日奖励后检查每周乐园进度，不足 6000 分就跑乐园任务」——
-**每次去查进度**，不是记住结果。它在「附加任务」里；2026-08-28 之前
-MAS 的快速配置把附加任务覆盖成 `[]`，**所以每周乐园一直没跑过**。
-现在已加回 `["Check Weekly Garden"]`。
+**There is no such thing as "remember that the weekly is done".** What exists is
+`Check Weekly Garden`, whose original description reads
+「领完每日奖励后检查每周乐园进度，不足 6000 分就跑乐园任务」 — it **checks the progress every
+time**, it does not remember a result. It lives under 「附加任务」; before 2026-08-28 the MAS
+quick-config overwrote additional tasks with `[]`, **which is why 周常乐园 had never once run**.
+It is now back to `["Check Weekly Garden"]`.
 
-另两个附加任务没加（很花时间，要用自己开）：
-`Merge Echo If discarded > 1000`、`Teleport and Farm 4C Echo`。
+The other two additional tasks were not added (they take a lot of time; enable them yourself when
+you want them): `Merge Echo If discarded > 1000`, `Teleport and Farm 4C Echo`.
 
-### DailyTask 里两个键容易念混
+### Two keys in DailyTask that are easy to conflate
 
-* `Which to Farm = "Forgery Challenge"` → **凝素领域**（`.po`：「凝素領域」）
-* `Which Forgery Challenge to Farm = 1` → 「**F2 列表中的第几个**凝素领域」
-* `Material Selection = "Shell Credit"` → 原文是
-  「Resonator EXP / Weapon EXP / Shell Credit」，是**模拟领域**那个任务的材料选择，
-  和凝素领域无关。**别把这两个并成一句念。**
+* `Which to Farm = "Forgery Challenge"` → **凝素领域** (in the `.po`: 「凝素領域」)
+* `Which Forgery Challenge to Farm = 1` → 「**which** 凝素领域 **in the F2 list**」
+* `Material Selection = "Shell Credit"` → the original reads
+  「Resonator EXP / Weapon EXP / Shell Credit」; it is the material choice for the **模拟领域**
+  task and has nothing to do with 凝素领域. **Do not read these two as one sentence.**
 
-## 关快速配置 ≠ 不再覆盖配置目录
+## Turning quick-config off ≠ the config directory stops being overwritten
 
-2026-08-28 用户问：「我不是已经关了快速配置吗，不是说不会覆盖吗？」——
-是我前面把两件事说混了。它们是分开的：
+2026-08-28, the user asked 「我不是已经关了快速配置吗，不是说不会覆盖吗？」 — I had earlier
+conflated two separate things. They are separate:
 
-| | 受什么控制 | 现在的状态 |
+| | Governed by | Current state |
 |---|---|---|
-| **整个 config 目录被替换**（`rmtree` + `copytree`） | **无条件**，`AutoProxy.py:514-515` 没有任何 `if` | **每轮都做** |
-| **替换之后再往里覆盖字段**（`If*` 开关 / 理智任务 / 地点） | `Info.IfQuickConfig` | 已关，不再覆盖 |
+| **The whole config directory being replaced** (`rmtree` + `copytree`) | **Unconditional**; `AutoProxy.py:514-515` has no `if` at all | **Happens every run** |
+| **Fields being overwritten afterwards** (the `If*` switches / sanity tasks / locations) | `Info.IfQuickConfig` | Off, no longer overwritten |
 
-`Info.Mode` 只决定从**哪个**母本目录拷（`简洁` → `Default`，否则 → 用户 UUID），
-不决定拷不拷（`AutoProxy.py:499-507`）。
+`Info.Mode` only decides **which** master directory is copied from (`简洁` → `Default`, otherwise
+→ the user UUID); it does not decide whether the copy happens (`AutoProxy.py:499-507`).
 
-**所以：在 MaaEnd / OK-WW 界面里改的东西，不管快速配置开不开，下一轮都会被冲掉。**
-唯一长期生效的地方是母本 `<automas>\data\<scriptId>\<Default|uuid>\ConfigFile\`。
+**So: anything changed in the MaaEnd / OK-WW UI gets wiped on the next run, whether quick-config
+is on or off.** The only place a change survives is the master at
+`<automas>\data\<scriptId>\<Default|uuid>\ConfigFile\`.
 
-## MAA 的 `StageMode`
+## MAA's `StageMode`
 
-`Info.StageMode` 是关卡配置模式，只有两种取值：
+`Info.StageMode` is the stage configuration mode, and has only two kinds of value:
 
-* **`"Fixed"`（固定）** —— 关卡和药量全部直接取 `Info.*`，见
-  `AutoProxy.py:727-731`。参与的键是 `MAA_STAGE_KEY`（`constants.py`）：
-  `MedicineNumb / SeriesNumb / Stage / Stage_1 / Stage_2 / Stage_3 / Stage_Remain`。
-* **一个计划表的 UUID** —— 走 `PlanConfig.json`，按星期几取不同关卡和药量
-  （`AutoProxy.py:733-739`）。`AutoProxy.py:421` 也用它判断是否走计划表分支。
+* **`"Fixed"`** — the stage and the potion count are taken directly from `Info.*`, see
+  `AutoProxy.py:727-731`. The keys involved are `MAA_STAGE_KEY` (`constants.py`):
+  `MedicineNumb / SeriesNumb / Stage / Stage_1 / Stage_2 / Stage_3 / Stage_Remain`.
+* **A plan table's UUID** — goes through `PlanConfig.json`, taking a different stage and potion
+  count per day of week (`AutoProxy.py:733-739`). `AutoProxy.py:421` also uses it to decide
+  whether to take the plan-table branch.
 
-当前是 `Fixed`：`Stage=AT-4`、`MedicineNumb=999`、`SeriesNumb=0`。
-**计划表里那份（所有天 `Stage='-' MedicineNumb=0`）根本不读。**
+Currently `Fixed`: `Stage=AT-4`, `MedicineNumb=999`, `SeriesNumb=0`.
+**The copy in the plan table (every day `Stage='-' MedicineNumb=0`) is never read at all.**
 
-## 战后自动筛选与手动 EssenceFilter 的规则已对齐
+## Post-battle auto-filter and the manual EssenceFilter rules are now aligned
 
-用户要求两者一致、都只锁无瑕。已把 `AutoEssence` 的战后筛选打开并逐项对齐
-`maaend_essence.py` 的默认值，写完当场回读比对，9 项全部一致：
+The user asked for the two to match, both locking flawless only. `AutoEssence`'s post-battle
+filter has been enabled and aligned item by item with the defaults in `maaend_essence.py`; the
+values were read back and compared immediately after writing, and all 9 items match:
 
     input_language CN｜rarity6 ✓ rarity5 ✗ rarity4 ✗
     flawless ✓ pure ✗｜keep_future_promising ✗ keep_slot3 ✗ discard_unmatched ✗
 
-注意子选项名和手动那套**不同前缀**：战后的全部是
-`EssenceFilterAfterBattle*`（如 `EssenceFilterAfterBattleFlawlessEssence`），
-手动那套是 `FlawlessEssence`。改一边不会自动同步另一边。
+Note that the sub-option names use a **different prefix** from the manual set: the post-battle
+ones are all `EssenceFilterAfterBattle*` (e.g. `EssenceFilterAfterBattleFlawlessEssence`), while
+the manual set is `FlawlessEssence`. Changing one does not sync the other.
 
-## 2026-08-28：快速配置已废除，中继改为直接读写母本
+## 2026-08-28: quick-config abolished, the relay now reads and writes the master directly
 
-我当天先把 MaaEnd 和 OK-WW 的 `IfQuickConfig` 关掉了，理由是「MAS 覆盖不全、
-还制造静默故障」。**这是错的，因为我们自己的中继就是通过 MAS 的用户字段工作的：**
+That day I first turned `IfQuickConfig` off for MaaEnd and OK-WW, on the grounds that "MAS's
+coverage is incomplete and it manufactures silent failures". **That was wrong, because our own
+relay works through MAS's user fields:**
 
-| 中继功能 | 写哪个 MAS 字段 | 快速配置关掉后 |
+| Relay feature | Which MAS field it writes | After quick-config is off |
 |---|---|---|
-| `garden.py` 周常乐园记忆 | OK-WW `Task.AdditionalTasks` | **失效** |
-| `sanity_plan.py` 理智计划 | MaaEnd `Task.SanityTaskType` 等 | **失效** |
-| `annihilation.py` 剿灭记忆 | MAA `Info.Annihilation` | 不受影响（MAA 无快速配置） |
+| `garden.py` weekly-garden memory | OK-WW `Task.AdditionalTasks` | **Broken** |
+| `sanity_plan.py` sanity plan | MaaEnd `Task.SanityTaskType` etc. | **Broken** |
+| `annihilation.py` annihilation memory | MAA `Info.Annihilation` | Unaffected (MAA has no quick-config) |
 
-**当天已把中继改成不依赖它**（用户原话：「中继依赖你就改成不依赖呀，
-你怎么就这么会偷懒？」——把开关开回去是绕远路，不是修）：
+**The relay was changed the same day so that it no longer depends on it** (the user's words:
+「中继依赖你就改成不依赖呀，你怎么就这么会偷懒？」 — turning the switch back on is a detour, not
+a fix):
 
-* `garden.py` 改写母本 `DailyTask.json` 的
-  `Additional Tasks to Run After Daily Task`
-* `sanity_plan.py` 改读写母本 `mxu-MaaEnd.json`——理智方案就是
-  `ProtocolSpace` / `AutoEssence` 谁 `enabled`，并支持写淤积点地区
-* 两者都走 `config.master_config_dir()` 按标志文件找母本目录
-* 母本里没有对应任务时**明确拒绝并说清原因**，不再静默跳过
+* `garden.py` now rewrites `Additional Tasks to Run After Daily Task` in the master's
+  `DailyTask.json`
+* `sanity_plan.py` now reads and writes the master's `mxu-MaaEnd.json` — the sanity plan is simply
+  which of `ProtocolSpace` / `AutoEssence` is `enabled`, and it also supports writing the
+  sedimentation-point region
+* Both locate the master directory via `config.master_config_dir()`, using a marker file
+* When the master has no corresponding task, they now **refuse explicitly and say why**, instead
+  of silently skipping
 
-`IfQuickConfig` 现在两个都是 `false`，中继功能上机验证正常：
-`sanity_plan.read()` 回「基质刷取 → 枢纽区」，`garden` 读到
-`done_week=2026-W35` 且 `enforce()` 判定无需改动。
+`IfQuickConfig` is now `false` for both, and the relay features were verified on the machine:
+`sanity_plan.read()` returned 「基质刷取 → 枢纽区」, and `garden` read `done_week=2026-W35` with
+`enforce()` deciding no change was needed.
 
-### 同一天的另外两个误判
+### Two more misjudgements the same day
 
-1. **OK-WW 的 `AdditionalTasks=[]` 不是「被 MAS 覆盖成空」**，是
-   `garden.py` 主动关的——`state/garden.json` 写着 `{"done_week": "2026-W35"}`，
-   本周乐园已完成，周一 04:00 会自动加回 `Check Weekly Garden`。
-   我据此往母本里加了这一项，等于让它这周白跑六天，已撤回。
-   **查乐园状态看 `garden.json`，别看配置。**
+1. **OK-WW's `AdditionalTasks=[]` was not "MAS overwriting it with empty"**; `garden.py` turned it
+   off deliberately — `state/garden.json` says `{"done_week": "2026-W35"}`, this week's garden is
+   already done, and `Check Weekly Garden` gets added back automatically at 04:00 on Monday.
+   I added that entry to the master on the strength of the wrong reading, which would have made it
+   run pointlessly for six days this week; that has been reverted.
+   **To check garden status read `garden.json`, not the config.**
 
-2. **MAS 那六个开关不是「摆设」，是任务在 08-14 那次配置损坏时丢了。**
-   `mxu-MaaEnd.json.corrupt-20260814-054934` 里 AUTO-MAS 实例有 **17 个**任务，
-   包含 `SeizeEntrustTask` / `AutoCollect` / `ResourceRecycleStation` /
-   `AutoEcoFarm` / `AutoEssence`；之后的所有配置只剩 14 个。
-   已从该备份恢复三个（AutoCollect 与 AutoEssence 另行加回），母本现 19 个。
+2. **Those six MAS switches are not "decorative"; the tasks were lost in the config corruption on
+   08-14.** In `mxu-MaaEnd.json.corrupt-20260814-054934` the AUTO-MAS instance has **17** tasks,
+   including `SeizeEntrustTask` / `AutoCollect` / `ResourceRecycleStation` / `AutoEcoFarm` /
+   `AutoEssence`; every config after that has only 14. Three have been restored from that backup
+   (AutoCollect and AutoEssence were added back separately), and the master now has 19.
 
-   **`TrialOfSwordmancy`（选剑演武）连那份备份里都没有**，无从恢复，
-   要用得在 MaaEnd 界面重新加，然后**同步进母本**否则下一轮又没了。
+   **`TrialOfSwordmancy` (选剑演武) is not even in that backup**, so there is nothing to restore
+   from. To use it, it has to be re-added in the MaaEnd UI and then **synced into the master**, or
+   it will be gone again on the next run.
 
-## MaaEnd 任务清单与顺序（2026-08-28 定）
+## MaaEnd task list and order (settled 2026-08-28)
 
-| # | 任务 | 说明 |
+| # | Task | Notes |
 |---:|---|---|
-| 1 | 🎁赠送干员礼物 | 送礼并领回礼 |
-| 2 | 🔧装备制造 | 自动制造指定等级装备 |
-| 3 | 🤝拜访好友 | 生产助力与情报交流 |
-| 4 | 🎁基建任务 | 领基建产物并补货、收放线索 |
-| 5 | CreditShoppingN2 | 信用商店 |
-| 6 | 🚚转交委托 | 接取并转交委托 |
-| 7 | 🛒售卖产品 | 售卖第一页货品换调度券 |
+| 1 | 🎁赠送干员礼物 | Give gifts and collect the return gifts |
+| 2 | 🔧装备制造 | Auto-craft equipment of the specified tier |
+| 3 | 🤝拜访好友 | Production assistance and intel exchange |
+| 4 | 🎁基建任务 | Collect base products, restock, and collect/place clues |
+| 5 | CreditShoppingN2 | Credit store |
+| 6 | 🚚转交委托 | Accept and hand over commissions |
+| 7 | 🛒售卖产品 | Sell the first page of goods for dispatch vouchers |
 | 8 | 🌿环境监测 | |
-| 9 | 📦自动囤货 | 买弹性需求物资 |
+| 9 | 📦自动囤货 | Buy elastic-demand supplies |
 | 10 | 💰售卖弹性物资 | |
-| 11 | 🏪购买稳定物资 | 每周刷新的那些 |
-| 12 | 💊应急理智加强剂 | +40 理智，**必须排在花理智的任务之前** |
-| 13 | ⚔️协议空间（**关**） | 消耗理智刷协议空间——原来的理智去向 |
-| 14 | 🗡️选剑演武 | 每日选剑演武，按数学期望自动抽牌 + 自动战斗 |
-| 15 | 🎱基质刷取 | 重度淤积点·枢纽区，吃理智 |
-| 16 | 🧺自动采集 | **周一/周四**，15 条线路，约 30 分钟，**需保持前台且别动鼠标** |
-| 17 | 📅日常奖励领取 | 收尾，必须最后 |
+| 11 | 🏪购买稳定物资 | The ones that refresh weekly |
+| 12 | 💊应急理智加强剂 | +40 sanity, **must come before any task that spends sanity** |
+| 13 | ⚔️协议空间 (**off**) | Spends sanity farming 协议空间 — where the sanity used to go |
+| 14 | 🗡️选剑演武 | Daily 选剑演武: auto card draw by expected value + auto combat |
+| 15 | 🎱基质刷取 | 重度淤积点·枢纽区, spends sanity |
+| 16 | 🧺自动采集 | **Monday/Thursday**, 15 routes, about 30 minutes, **needs to stay in the foreground and the mouse must not be touched** |
+| 17 | 📅日常奖励领取 | Wrap-up, must be last |
 
-**自动采集从第 1 位挪到第 16 位**：它最长、最脆（要前台、不能动鼠标），
-排第一意味着它一卡后面 16 个任务全泡汤；挪到后面，前面那些短任务已经做完了。
-放在日常奖励之前，不影响收尾。
+**自动采集 was moved from position 1 to position 16**: it is the longest and the most fragile (it
+needs the foreground and no mouse movement), so putting it first meant one stall took out all 16
+tasks behind it. Moved to the back, the short tasks in front are already done. Placing it before
+日常奖励领取 does not disturb the wrap-up.
 
-`AutoCollectSchedule` 只勾了 `Monday` + `Thursday`——**一周两次**，其余五天跳过。
+`AutoCollectSchedule` has only `Monday` + `Thursday` ticked — **twice a week**, skipped the other
+five days.
 
-**`Run.RunTimeLimit = 40` 不是总时长上限**，是从**最后一条日志**算起的卡死超时
-（`AutoProxy.py:877-880`）。只要 MaaEnd 一直在写日志，30 分钟的采集不会被砍。
+**`Run.RunTimeLimit = 40` is not a total-duration cap**; it is a stall timeout measured from the
+**last log line** (`AutoProxy.py:877-880`). As long as MaaEnd keeps writing logs, a 30-minute
+collection run will not be cut off.
 
-## 早班队列顺序
+## Morning queue order
 
-`MAA → OK-WW → MaaEnd`（2026-08-28 调整，原来是 MAA → MaaEnd → OK-WW）。
-理由：MaaEnd 周一/周四带自动采集要多花半小时，排最后不挡住鸣潮。
-改法：`POST /api/queue/item/order`，`indexList` 是**队列项 ID**按新顺序排列。
+`MAA → OK-WW → MaaEnd` (changed 2026-08-28; it used to be MAA → MaaEnd → OK-WW).
+Reason: on Mondays and Thursdays MaaEnd takes an extra half hour for 自动采集, so putting it last
+keeps it from blocking 鸣潮.
+How to change it: `POST /api/queue/item/order`, where `indexList` is the **queue-item IDs**
+arranged in the new order.
 
-## 选剑演武：游戏里成功、MaaEnd 报失败——已关掉
+## 选剑演武: succeeds in the game, reported as a failure by MaaEnd — now disabled
 
-2026-08-28 首次启用当天就出问题，**已设为 `enabled: false`**。
+It broke on 2026-08-28, the very day it was first enabled, and has been set to `enabled: false`.
 
-**现象**：任务在游戏里跑完了、奖励也到手（`获得 武陵调度券 ×320000`，
-正是挑战界面写的「奖励数额 320000」），MaaEnd 仍然报 `任务失败: 🗡️选剑演武`。
+**Symptom**: the task ran to completion in the game and the reward arrived
+(`获得 武陵调度券 ×320000`, exactly the 「奖励数额 320000」 shown on the challenge screen), yet
+MaaEnd still reported `任务失败: 🗡️选剑演武`.
 
-**根因**（`maafw.log`）：识别节点 `TrialOfSwordmancyEnemyCard5` 的模板匹配
-只有 **0.286**，阈值 0.7，认不出敌人卡牌 → `Tasker.Task.Failed`。
+**Root cause** (`maafw.log`): the recognition node `TrialOfSwordmancyEnemyCard5` scored only
+**0.286** on template matching against a threshold of 0.7, so it could not identify the enemy
+cards → `Tasker.Task.Failed`.
 
-**为什么必须关掉，而不是"反正奖励拿到了"**：
+**Why it must be disabled rather than shrugged off as "the reward arrived anyway"**:
 
-1. **它失败时把角色留在挑战场里。** 紧接着的基质刷取因此连锁失败——
-   MXU 日志：`↩️返回大世界`（21 秒出不去）→ `✈️准备传送到最近锚点`
-   （33 秒，人不在大世界）→ 任务失败。**基质那次失败的根因是它，不是基质配置。**
-2. **它烧掉 AUTO-MAS 的重试预算**（`RunTimesLimit=3`）。当天三轮全被它触发。
+1. **When it fails it leaves the character inside the challenge arena.** The 基质刷取 that follows
+   therefore failed as a knock-on — from the MXU log: `↩️返回大世界` (21 seconds, could not get
+   out) → `✈️准备传送到最近锚点` (33 seconds, not in the open world) → task failed.
+   **The root cause of that 基质 failure was this task, not the 基质 config.**
+2. **It burns AUTO-MAS's retry budget** (`RunTimesLimit=3`). All three rounds that day were
+   consumed by it.
 
-**要重新启用的话**，先解决识别：换 `刷镀层` 模式（不进战斗、不需要认卡牌），
-或者确认游戏分辨率/画质与上游模板一致。**不要在没解决识别之前打开它。**
+**To re-enable it**, fix the recognition first: switch to `刷镀层` mode (which does not enter
+combat and does not need to identify cards), or confirm that the game's resolution and graphics
+settings match the upstream templates. **Do not turn it on before the recognition is fixed.**

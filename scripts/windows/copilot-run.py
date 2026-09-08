@@ -20,7 +20,7 @@ Usage:
 
 `startup` 是打活动关的第一步：MAA 自己处理开屏、公告和登录，
 把游戏摆到主界面。**不要手动掐时间等开机**，见
-docs/MAA-打活动关与保全派驻.md「走通一次活动 EX 的配方」。
+docs/MAA-EVENTS-AND-SSS.md「走通一次活动 EX 的配方」。
 """
 import json
 import subprocess

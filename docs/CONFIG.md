@@ -36,7 +36,7 @@ which sounds wrong for an unattended machine and is not: `powercfg` reports
 |---|---|
 | The MAA user still has `Notify/IfServerChan = true` **with a ServerChan key saved**, under a master `Notify/Enabled = false` | One toggle away from AUTO-MAS pushing on its own. NOTIFICATIONS.md says the relay is the only notifier; the key should be cleared, not merely switched off |
 | `Timers/ForceScheduledStart = true` in MAA | Inert while all 8 timers are off. Enable any one of them later and MAA starts on its own clock, colliding with AUTO-MAS |
-| ~~The **second** MAA profile (`第二个配置`) had `PostActions = Shutdown`, `RunDirectly = true` and `StartEmulator = true` pointing at `#0 guan.lnk`~~ | **已于 2026-08-24 删除**（操作者要求）。那是 MuMu 时代的遗留配置，AUTO-MAS 从不驱动它，但三个开关凑在一起意味着谁手动切过去，MAA 就会自己开模拟器、启动即跑、跑完关机。母本和 MAA 目录里的四份文件都已清掉，各留一份 `.bak-delprofile-20260824-114507` 备份 |
+| ~~The **second** MAA profile (`第二个配置`) had `PostActions = Shutdown`, `RunDirectly = true` and `StartEmulator = true` pointing at `#0 guan.lnk`~~ | **Deleted on 2026-08-24** (the operator asked for it). It was a leftover from the MuMu era and AUTO-MAS never drove it, but those three switches together mean that anyone who manually switches to it makes MAA start the emulator itself, run immediately, and power off when done. All four files in the master config and the MAA directory have been cleaned, each leaving one `.bak-delprofile-20260824-114507` backup |
 | `Update/CheckOnStartup = true` in MAA | MaaEnd's first-attempt failures were caused by exactly this shape of thing (self-update restarting the process). The MAA doc says update settings are AUTO-MAS's to adjust, so this is left alone and watched, not changed |
 
 ### Available and switched off, by choice
@@ -104,7 +104,7 @@ on 2026-08-16, and the relay wrote to the same doomed copy that night.
 The one exception is `Info.IfQuickConfig`. The rewrite only happens when that
 user has it true.
 
-**这台机器的实况（2026-08-28 起）：MaaEnd 和 OK-WW 的 `IfQuickConfig` 都是 `false`，MAS 侧改它们的字段一律不下发（`app/task/Okww/AutoProxy.py:320`、`MaaEnd/AutoProxy.py:537` 直接 return），真正生效的是各自的母本配置。明日方舟没有这个开关，它每次派发都会被写进 gui.new.json，走 MAS 是对的。**查真正生效的值一律跑 `scripts/mac/winrun.sh --py scripts/mac/lib/effective_config.py`。
+**How this machine actually stands (since 2026-08-28): `IfQuickConfig` is `false` for both MaaEnd and OK-WW, so field edits made on the MAS side are never pushed down (`app/task/Okww/AutoProxy.py:320` and `MaaEnd/AutoProxy.py:537` return immediately), and what really takes effect is each program's own master config. 明日方舟 has no such switch - every dispatch writes into gui.new.json, so going through MAS is correct there.** To find out which values are really in effect, always run `scripts/mac/winrun.sh --py scripts/mac/lib/effective_config.py`.
 
 ## AUTO-MAS
 
@@ -150,23 +150,27 @@ space failure, followed by `晚班` at 21:30. With it off, both rounds are
 purely time-triggered, with 15 min of slack in the morning and 10 in the evening.
 
 
-### 两次开机是两套机制，不是同一套
+### The two power-ons are two different mechanisms, not one
 
-早晚都会自己开机，但**原理不同**，混为一谈会得出错误结论：
+The machine powers itself on both morning and evening, but **the mechanism differs**,
+and conflating them leads to wrong conclusions:
 
-| | 机制 | 前提 |
+| | Mechanism | Precondition |
 |---|---|---|
-| **早上 08:45** | 智能插座断电再通电，主板「来电自启」把机器带起来 | BIOS 里 *Restore on AC Power Loss* 必须是 Power On；机器必须处于关机态（S5），不能是睡眠 |
-| **晚上 21:20** | 主板 RTC 定时开机 | BIOS 里设置了定时开机；同样要求关机态 |
+| **08:45, morning** | the smart plug cuts power and restores it; the motherboard's "power on after AC loss" brings the machine up | *Restore on AC Power Loss* in the BIOS must be Power On; the machine must be powered off (S5), not asleep |
+| **21:20, evening** | the motherboard's RTC alarm | a scheduled power-on is set in the BIOS; it likewise requires the powered-off state |
 
-**为什么要写下来**：`powercfg /waketimers` 报「系统中不存在活动的唤醒计时器」，
-`Get-ScheduledTask` 里所有 `ark-*` 任务的 `WakeToRun` 也都是 `False`——因为这两套
-机制都在 BIOS/硬件层，Windows 根本看不见。2026-08-24 我据此差点得出"关机后不会
-自己醒"的错误结论，是靠翻事件日志 6005（连续七天 08:45:1x，误差六秒内）才纠正
-过来。**下次不要再从 Windows 侧找答案，这里就是答案。**
+**Why this is written down**: `powercfg /waketimers` reports 「系统中不存在活动的唤醒计时器」,
+and `WakeToRun` is `False` for every `ark-*` task in `Get-ScheduledTask` - because both
+mechanisms live in the BIOS/hardware layer, where Windows cannot see them at all. On
+2026-08-24 I nearly concluded from that "the machine does not wake itself after a
+shutdown", which is wrong; digging through event log 6005 (seven days in a row at
+08:45:1x, within six seconds of each other) is what corrected it.
+**Do not go looking on the Windows side for this answer again - the answer is here.**
 
-推论：**关机是安全的**，两套机制都要求机器处于关机态才生效。反过来，让机器
-睡眠（而不是关机）会同时废掉这两条路。
+Corollary: **shutting down is safe**, because both mechanisms require the machine to be
+powered off before they work. Conversely, putting the machine to sleep (instead of
+shutting it down) breaks both paths at once.
 
 ### config/ScriptConfig.json (per user)
 
@@ -187,22 +191,25 @@ purely time-triggered, with 15 min of slack in the morning and 10 in the evening
 <!-- check: json D:\ark\automas\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/Stage AT-4 -->
 <!-- check: json D:\ark\automas\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/StageMode Fixed -->
 <!-- check: json D:\ark\automas\config\ScriptConfig.json */SubConfigsInfo/UserData/*/Info/MedicineNumb 0 -->
-### `Info/Annihilation` 是随游戏周变化的，不能写死校验
+### `Info/Annihilation` changes with the game week and must not be checked against a fixed value
 
-这个值有两个合法状态，中继按游戏周在两者之间来回切（`relay/ark_relay/annihilation.py`）：
+The value has two legal states, and the relay flips between them by game week
+(`relay/ark_relay/annihilation.py`):
 
-| 时机 | 值 | 原因 |
+| When | Value | Why |
 |---|---|---|
-| 游戏周开始（周一 04:00 后第一次开机） | `Annihilation` | 本周剿灭还没打，要打 |
-| 本周剿灭跑成功之后 | `Close` | 打过了，再打是白扔理智 |
+| start of the game week (first boot after Monday 04:00) | `Annihilation` | this week's annihilation has not been run yet, so run it |
+| after this week's annihilation succeeds | `Close` | it has been run; running it again throws sanity away |
 
-原先这里写死校验 `Close`，结果 2026-08-24 早上开机后必然报错——那天正是新游戏周，
-中继刚打了日志 `新的一周，剿灭已恢复为 Annihilation`，**机器是对的，校验是错的**。
-写死一个随时间变化的值，只会每周一制造一次假警报。
+This page used to hard-code a check for `Close`, which then failed by construction at the
+2026-08-24 morning boot - that day was the start of a new game week, and the relay had just
+logged `新的一周，剿灭已恢复为 Annihilation`. **The machine was right and the check was
+wrong.** Hard-coding a value that changes over time only manufactures one false alarm every
+Monday.
 
-所以这里不设固定校验。要确认状态，看中继日志里的那两句话，或者直接读
-`ScriptConfig.json` 的 `*/SubConfigsInfo/UserData/*/Info/Annihilation`
-并对照上表判断是否合理。
+So there is no fixed check here. To confirm the state, read those two lines in the relay log,
+or read `*/SubConfigsInfo/UserData/*/Info/Annihilation` out of `ScriptConfig.json` directly
+and judge it against the table above.
 <!-- check: json D:\ark\automas\config\ScriptConfig.json */Game/WaitTime 60 -->
 
 **`Info.Annihilation` is asymmetric and the asymmetry is silent.** AUTO-MAS
@@ -214,18 +221,22 @@ reopens it and the weekly reward stops being collected indefinitely. The daily
 plan prints the switch's state for exactly this reason; if it reads
 `剿灭 本周已完成/关闭` on a Monday, check that file.
 
-### 固定关卡现在是 1-7（2026-08-31 用 config-check.py 实测）
+### The fixed stage is 1-7 today (measured with config-check.py on 2026-08-31)
 
-一度在 2026-08-23 改成活动关 AT-4 刷「墟」，**现在已经改回 1-7**。
-`活动关优先` 是 false，所以活动 09-01 04:00 结束也不会出事。
+It was changed to the event stage AT-4 on 2026-08-23 to farm 「墟」, and **has since been
+changed back to 1-7**. `活动关优先` is false, so nothing breaks when the event ends at
+09-01 04:00.
 
-⚠️ 这一段以前写着「现在是 AT-4」，而机器上早就是 1-7 了。**文档说谎比没有
-文档更危险**——826 那次就是从错误的字段含义出发的。所以：
-**任何关于配置的断言，先跑 `scripts/mac/config-check.py`，贴出输出再说结论。**
+⚠️ This section used to say "it is AT-4 now" while the machine had long been on 1-7.
+**A document that lies is more dangerous than no document** - the 826 incident started from
+a wrong idea of what a field meant. Therefore:
+**before asserting anything about the configuration, run `scripts/mac/config-check.py` and
+paste its output, then state the conclusion.**
 
-活动关那条路本身仍然有效，只是需要人手动切换。要让它不再需要人，
-用 AUTO-MAS 自己的 `Task/IfActivityFirst`（界面上的「优先刷取活动关」）：
-有活动就刷 `ActivityStageIndex` 指的活动关，没有就回落到固定关。
+The event-stage route still works as such; it just needs a human to switch it. To take the
+human out of it, use AUTO-MAS's own `Task/IfActivityFirst` (「优先刷取活动关」 in the UI):
+when an event is running it farms the event stage that `ActivityStageIndex` points at, and
+otherwise it falls back to the fixed stage.
 
 ### Why the fallback stage is 1-7, and what that means for material planning
 
@@ -270,27 +281,29 @@ Sources: [固源岩组](https://prts.wiki/w/%E5%9B%BA%E6%BA%90%E5%B2%A9%E7%BB%84
 fails every run. Whenever the current stage is an event stage, its end time is a
 hard deadline for changing it.
 
-### 队列报错的两种形态，别混为一谈
+### Two shapes of queue error, do not conflate them
 
-两种看起来都像"登录出问题"，原因完全不同。**先分清是哪一种再动手**，
-这两个我都搞混过。
+Both look like "something went wrong with the login" and their causes are entirely
+different. **Work out which one it is before touching anything** - I have confused these
+two in both directions.
 
-| 形态 | 特征 | 原因 |
+| Shape | Signature | Cause |
 |---|---|---|
-| **整天全红** | 明日方舟连试 6 次、终末地连试 3 次，全部失败。**只发生过一天** | 账号密码没填全（`Info/Id` 非空而 `Info/Password` 为空）。这天之外账号都是填好的 |
-| **首轮十四项齐报错** | 刚进到登录界面，紧接着十四个任务项一次性全部报错 | **更新打断**。这是常态性的，不是账号问题 |
+| **Red all day** | 明日方舟 fails 6 attempts in a row, 终末地 fails 3 in a row, all of them. **It has happened on exactly one day** | the account credentials are half-filled (`Info/Id` non-empty while `Info/Password` is empty). On every other day the account fields are filled in correctly |
+| **Fourteen items erroring together in the first round** | the login screen has just come up, and then fourteen task items all error at once | **an update interrupted it**. This is the routine case, not an account problem |
 
-**判定方法**：看**范围和次数**，不要看报错文字。
+**How to decide**: look at **the scope and the count**, not at the error text.
 
-- 跨两个游戏、整天反复失败 → 查账号配置
-- 单轮、进登录界面后十四项一起炸 → 更新打断
+- across both games, failing repeatedly all day → check the account configuration
+- one round, fourteen items blowing up together right after the login screen → an update interrupted it
 
-**不要因为一次账号事故就把所有登录类报错都归因于账号。** 反过来也一样：
-2026-08-20 09:00 那批 ERROR 和一次 MAA 更新时间重合，我据此写下"更新打断了队列"，
-而那天恰恰是账号那天——**时间重合两次都骗到了我**，一次骗我怪更新，
-一次差点骗我把所有事都怪到账号头上。
+**Do not attribute every login-shaped error to the account just because of one account
+incident.** The reverse holds too: the batch of ERRORs at 2026-08-20 09:00 coincided with a
+MAA update, and on that basis I wrote "an update interrupted the queue" - while that day was
+precisely the account day. **The timing coincidence fooled me both times**: once into
+blaming an update, and once into nearly blaming everything on the account.
 
-游戏本身是登录着的：标题界面显示「账户登出」而非「切换账号」。
+The game itself is signed in: the title screen shows 「账户登出」 rather than 「切换账号」.
 
 **`Info/Id` must stay empty unless `Info/Password` is filled too.**
 `app/task/MaaEnd/AutoProxy.py` short-circuits on it:
@@ -403,25 +416,28 @@ last updated 2026-08-20. `resource/version.json` carries the resource date, not
 the program version. Never quote the folder name as a version - it has been
 wrong here by a whole major release.
 
-### MAA 的通知开关有两份，会被覆盖的那份不算数
+### MAA's notification switches exist in two copies, and the one that gets overwritten does not count
 
-**改 MAA 自己的 `config/gui.new.json` 是没用的。** AUTO-MAS 为每个脚本存着一份
-母本，每次拉起 MAA 之前把它**覆盖**进 MAA 的目录：
+**Editing MAA's own `config/gui.new.json` achieves nothing.** AUTO-MAS keeps a master copy
+for every script and **overwrites** MAA's directory with it before each launch:
 
 ```
 D:\ark\automas\data\754d129e-d587-435b-b75f-a0b91aac7020\Default\ConfigFile\gui.new.json
 ```
 
-（路径里的 uid 是 MAA 脚本在 AUTO-MAS 里的 id，见 `/api/scripts/get`。
-合并逻辑在 `app/task/MAA/tools/UpdateMAA.py`，是双向的——所以在 MAA 界面里改完
-也可能被同步回母本，反过来同样。）
+(The uid in that path is the MAA script's id inside AUTO-MAS, see `/api/scripts/get`.
+The merge logic lives in `app/task/MAA/tools/UpdateMAA.py` and is bidirectional - so a change
+made in MAA's UI may also be synced back into the master copy, and vice versa.)
 
-2026-08-24 就栽在这上面：MAA 目录里四个开关全是 `false`，`check-docs.py` 84 项
-全绿，但手机照样收到 `[MAA] 任务已全部完成`。因为**校验查的是副本**，而母本里
-`SendWhenComplete` 是 `true`，每次运行前又被盖回去。目录里那个
-`gui.new.json.bak-notify-off` 备份说明这事以前处理过、后来被同步回滚了。
+This is exactly what went wrong on 2026-08-24: all four switches in MAA's directory were
+`false` and all 84 `check-docs.py` items were green, yet the phone still received
+`[MAA] 任务已全部完成`. Because **the checks were looking at the copy**, while
+`SendWhenComplete` was `true` in the master and got written back over the copy before every
+run. The `gui.new.json.bak-notify-off` backup in that directory shows this had been dealt
+with before and was later reverted by the sync.
 
-**所以两份都要关，而且两份都要校验。** 下面的检查项现在覆盖母本。
+**So both copies must be turned off, and both copies must be checked.** The check directives
+below now cover the master copy.
 
 <!-- check: json D:\ark\automas\data\754d129e-d587-435b-b75f-a0b91aac7020\Default\ConfigFile\gui.new.json Configurations/*/Gui/ExternalNotification/SendWhenComplete False -->
 <!-- check: json D:\ark\automas\data\754d129e-d587-435b-b75f-a0b91aac7020\Default\ConfigFile\gui.new.json Configurations/*/Gui/ExternalNotification/SendWhenError False -->
@@ -511,35 +527,39 @@ sc.exe failure sshd reset= 86400 actions= restart/5000/restart/10000/restart/300
 | `ARK_HISTORY_DIR` | AUTO-MAS's `history` directory (required) |
 | `ARK_AUTOMAS_DIR` | AUTO-MAS root - schedule reading and config edits |
 | `ARK_MAAEND_DIR` | MaaEnd root |
-| `ARK_OKWW_DIR` | OK-WW root（`D:\ark\okww`）。周本的母本／副本配置和它自己的日志都从这里推出来 |
-| `ARK_OKWW_LOG` | 直接指定 OK-WW 的日志文件。不设就取 `ARK_OKWW_DIR` 下 `data/apps/ok-ww/working/logs` 里最新的那个 |
-| `ARK_KEEP_TMP` | 只影响测试：设成 1 就不清理临时目录，留现场排查用 |
+| `ARK_OKWW_DIR` | OK-WW root (`D:\ark\okww`). The weekly boss master/copy configs and OK-WW's own logs are all derived from this |
+| `ARK_OKWW_LOG` | names OK-WW's log file directly. Unset, it takes the newest file under `ARK_OKWW_DIR`'s `data/apps/ok-ww/working/logs` |
+| `ARK_KEEP_TMP` | affects tests only: set it to 1 and temporary directories are not cleaned up, so the scene is left intact for investigation |
 
-| `ARK_PHONE_TOPIC` | 手机遥控用的 ntfy 主题。**没有它整个手机页就是聋的**——机器收不到指令、页面也看不到状态 |
-| `ARK_PHONE_PIN` | 手机页的口令。指令要带对才认；不设等于谁拿到主题名谁能下指令 |
-| `ARK_INBOX_URL` | 仓库信箱那份 `queue/config.json` 的地址。不设走内置的 GitHub 地址，改它只在换仓库时用 |
-| `SKLAND_TOKEN` | 森空岛的登录凭证。日报里的理智、卡池、练度都靠它；过期了那几段会静静地空掉 |
-| `WECOM_TOUSER` | 企业微信推给谁，默认 `@all`。当前企业微信通道因 60020 不可用，全部推送走 Server酱 |
-| `ARK_LLM_KEY` | 日报开头那句人话总结用的模型密钥。**不设不会报错**，只是少那一句 |
-| `ARK_LLM_BASE_URL` | 上面那个模型的地址，默认 `https://api.deepseek.com` |
-| `ARK_LLM_MODEL` | 模型名，默认 `deepseek-chat` |
+| `ARK_PHONE_TOPIC` | the ntfy topic the phone remote uses. **Without it the whole phone page is deaf** - the machine receives no commands and the page sees no status |
+| `ARK_PHONE_PIN` | the phone page's passphrase. A command is only accepted when it carries the right one; leaving it unset means anyone who learns the topic name can issue commands |
+| `ARK_INBOX_URL` | the address of the repository inbox's `queue/config.json`. Unset, it uses the built-in GitHub address; change it only when moving to another repository |
+| `SKLAND_TOKEN` | the 森空岛 login credential. Sanity, banners and investment levels in the daily report all depend on it; when it expires those sections quietly go empty |
+| `WECOM_TOUSER` | who WeCom pushes to, default `@all`. The WeCom channel is currently unusable because of 60020, so all pushes go through Server酱 |
+| `ARK_LLM_KEY` | the model key for the one plain-language summary sentence at the top of the daily report. **Leaving it unset raises no error**, it just drops that sentence |
+| `ARK_LLM_BASE_URL` | that model's address, default `https://api.deepseek.com` |
+| `ARK_LLM_MODEL` | the model name, default `deepseek-chat` |
 
-以下三个不在游戏机上，是 Mac 侧脚本和 GitHub Actions 用的：
+The following are not on the game machine; they are used by the Mac-side scripts and by
+GitHub Actions:
 
-| 变量 | 意思 |
+| Variable | Meaning |
 |---|---|
-| `TS_OAUTH_CLIENT_ID` / `TS_OAUTH_SECRET` | 开机监督（`scripts/watchdog.py`）问 Tailscale「那台机器在不在线」用的只读 OAuth 客户端。要放进仓库 Secrets，见 `docs/欠的活.md` |
-| `CHECK_CRON` | 同上，GitHub Actions 传进来的定时表达式；空值表示手动触发（全查但只打印不推送） |
-| `IDMAP_STORE` | 只给闸门自检用：让 `idmap.py` 写到一张临时表里，不污染真的登记表 |
-| `UPSTREAM_POST_OFFLINE` | 只给闸门自检用：让 `upstream-post.py` 读缓存而不联网 |
+| `TS_OAUTH_CLIENT_ID` / `TS_OAUTH_SECRET` | the read-only OAuth client that boot supervision (`scripts/watchdog.py`) uses to ask Tailscale whether that machine is online. They belong in the repository secrets, see `docs/BACKLOG.md` |
+| `CHECK_CRON` | same context: the schedule expression GitHub Actions passes in; an empty value means a manual trigger (check everything, but only print, do not push) |
+| `IDMAP_STORE` | for the gate self-check only: makes `idmap.py` write into a temporary table instead of polluting the real registry |
+| `UPSTREAM_POST_OFFLINE` | for the gate self-check only: makes `upstream-post.py` read from cache instead of going online |
 
 
-**没有 `.env.example`。** 2026-09-08 删掉了：它列的四个变量代码一个都不读，
-而真正要设的三十多个一个没写——照它填等于什么都没设。要设什么以这张表为准，
-这张表由 `scripts/mac/check-docs.py` 的 `[env]` 一节盯着，漏一个闸门就红。
-（2026-09-08 修好了那道闸门本身：它原来只认 `ARK_` 前缀、只扫 `relay/`、
-只认 `environ("X")` 这一种写法，于是 13 个变量从缝里漏过去，
-而这句话还在这里写着「漏一个就红」——说有检查而其实没有，比没有更糟。）
+**There is no `.env.example`.** It was deleted on 2026-09-08: the code read none of the four
+variables it listed, and none of the thirty-odd that actually have to be set were in it -
+filling it in was the same as setting nothing. This table is the authority on what to set,
+and it is watched by the `[env]` section of `scripts/mac/check-docs.py`, which goes red if a
+variable is missing from it.
+(On 2026-09-08 that gate itself was fixed: it used to recognize only the `ARK_` prefix, only
+scan `relay/`, and only recognize the `environ("X")` spelling, so 13 variables slipped
+through the cracks while this very sentence claimed "it goes red if one is missing" -
+claiming a check exists when it does not is worse than having none.)
 | `ARK_MAS_PORT` | AUTO-MAS backend port, default `36163`. The pre-update asks it over HTTP on localhost rather than launching anything. |
 | `ARK_STATE_DIR` | relay state, default `./ark-state` |
 | `ARK_LAST_RUN_AFTER` | fallback for the day's last run time, default `21:30`; the real cutoff comes from QueueConfig |

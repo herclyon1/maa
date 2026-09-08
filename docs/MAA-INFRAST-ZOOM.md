@@ -1,12 +1,12 @@
-# 基建「双指滑动到总览」失败的真因（2026-08-28 查实）
+# Why the infrastructure 「双指滑动到总览」 gesture fails (established 2026-08-28)
 
-## 结论：上游已知 bug，已修，已在我们跑的版本里
+## Conclusion: a known upstream bug, already fixed, already in the version we run
 
-**MAA issue [#17895]，修复提交 `b2fc6bf`（2026-08-26 16:51），
-已确认是 `v6.17.0-beta.7` 的祖先提交（`compare` 返回 `behind_by=0`）。**
-我们 08-28 晚班起跑 beta.7，当晚首次尝试即成功。
+**MAA issue [#17895], fix commit `b2fc6bf` (2026-08-26 16:51), confirmed to be an ancestor of
+`v6.17.0-beta.7` (`compare` returns `behind_by=0`).**
+We started running beta.7 with the 08-28 evening shift, and the first attempt that night succeeded.
 
-修复改了三处：
+The fix changes three things:
 
 ```cpp
 // src/MaaCore/Controller/Controller.cpp
@@ -17,33 +17,38 @@
 + return m_scale_proxy->inject_input_event(event);
 ```
 
-1. **捏合手势坐标没走缩放代理**——按 1280×720 的基准值直发给 1600×900 的设备，
-   行程只有应有的 80%，所以缩放缩不到位。**这就是根因。**
-2. `InfrastInfoTask.cpp`：单步瞬移 → 20 步插值（每步 25ms）+ 抬手前保持 100ms。
-3. `resource/tasks/tasks.json`：`InfrastInfoZoomOutPointer1` 起点 `y 700 → 640`。
+1. **The pinch gesture coordinates never went through the scale proxy** — the 1280×720 baseline values
+   were sent straight to a 1600×900 device, so the travel was only 80% of what it should be and the
+   zoom never reached its target. **That is the root cause.**
+2. `InfrastInfoTask.cpp`: a single-step teleport → 20 interpolated steps (25 ms each) + hold 100 ms
+   before lifting.
+3. `resource/tasks/tasks.json`: `InfrastInfoZoomOutPointer1` start point `y 700 → 640`.
 
-### 只影响非 720p 设备
+### It only affects non-720p devices
 
-缩放系数 = 设备宽 / 1280。我们 1600×900 → 1.25，捏合行程被砍掉 20%。
-**原生 1280×720 的用户系数是 1.0，乘不乘一样，不会中招。**
+Scale factor = device width / 1280. Ours is 1600×900 → 1.25, so the pinch travel is cut by 20%.
+**A user on native 1280×720 has a factor of 1.0; multiplying changes nothing, so they never hit it.**
 
-所以「改模拟器分辨率能不能避免」的答案是：**能，但不需要**——
-beta.7 已从根上修复，而 1600×900 在官方兼容表里是雷电「完美支持」的配置。
-官方对分辨率的要求原文是「仅对 **720p 以上 16:9 分辨率**支持较好」
-（`docs/zh-cn/manual/device/windows.md`），1600×900 完全在范围内。
+So the answer to "would changing the emulator resolution avoid it" is: **yes, but it is not needed** —
+beta.7 fixes it at the root, and 1600×900 is a configuration the official compatibility table lists
+as 「完美支持」 for LDPlayer.
+The official wording of the resolution requirement is 「仅对 **720p 以上 16:9 分辨率**支持较好」
+(`docs/zh-cn/manual/device/windows.md`), and 1600×900 is well inside that range.
 
-### 不要再提 issue
+### Do not file another issue
 
-已有 #17895，且已修复关闭。相关：#17913、#17926。
+#17895 already exists and is fixed and closed. Related: #17913, #17926.
 
 ---
 
-## 以下是当时的现场取证（保留，用于将来比对）
+## What follows is the evidence gathered at the time (kept for future comparison)
 
-**结论：MAA 自身缺陷，不是我们的配置、不是模拟器分辨率、不是 beta 版本。**
-每次失败后的重试都成功过，所以基建换班从未真正漏做。
+**Conclusion: a defect in MAA itself — not our configuration, not the emulator resolution, not the
+beta build.**
+The retry after each failure always succeeded, so the infrastructure shift change was never actually
+skipped.
 
-## 现象
+## Symptom
 
 ```
 InfrastInfoTask | zoom gesture sent
@@ -51,96 +56,101 @@ InfrastInfoTask | no facility matched, attempt 1 / 2 / 3
 [ERR] InfrastInfoTask | facility layout recognition failed after 3 attempts
 ```
 
-## 历史成败（asst.log + asst.bak.log 全量）
+## History of successes and failures (all of asst.log + asst.bak.log)
 
-| 时刻 | 首次尝试 | 版本 |
+| Time | First attempt | Version |
 |---|---|---|
-| 08-26 15:24:37 | ❌ → 15:27:54 重试 ✅ | beta.6 |
-| 08-26 21:35:32 | ❌ → 21:38:55 重试 ✅ | beta.6 |
+| 08-26 15:24:37 | ❌ → 15:27:54 retry ✅ | beta.6 |
+| 08-26 21:35:32 | ❌ → 21:38:55 retry ✅ | beta.6 |
 | 08-26 22:58:57 | ✅ | beta.6 |
 | 08-27 09:08:02 | ✅ | beta.6 |
-| 08-27 21:35:12 | ❌ → 21:38:55 重试 ✅ | beta.6 |
-| 08-28 13:18:04 | ❌ → 13:23:56 重试 ✅ | beta.6 |
+| 08-27 21:35:12 | ❌ → 21:38:55 retry ✅ | beta.6 |
+| 08-28 13:18:04 | ❌ → 13:23:56 retry ✅ | beta.6 |
 | 08-28 21:35:58 | ✅ | beta.7 |
 
-**beta.6 首次成功 2/6，beta.7 只有 1 个样本。**
-「beta.7 修好了」在统计上完全不成立——33% 的成功率下抽中一次成功是常事。
+**beta.6 succeeded on the first attempt 2 times out of 6; beta.7 has exactly one sample.**
+"beta.7 fixed it" does not hold statistically at all — at a 33% success rate, drawing one success is
+an everyday event.
 
-## 机制（源码 `src/MaaCore/Task/Infrast/InfrastInfoTask.cpp`）
+## Mechanism (source `src/MaaCore/Task/Infrast/InfrastInfoTask.cpp`)
 
-`InfrastFacilityImageAnalyzer::analyze()` 的返回是 `return !m_result.empty();`
-——**九类设施在两种模板尺寸下一个都没匹配到，才会返回 false**。
+`InfrastFacilityImageAnalyzer::analyze()` returns `return !m_result.empty();`
+— **it returns false only when not one of the nine facility classes matches at either template size**.
 
-模板是两个**离散固定尺寸**（`resource/tasks/tasks.json`）：
+The templates come in two **discrete fixed sizes** (`resource/tasks/tasks.json`):
 
-| 设施 | 正常模板 | 最小模板 | 阈值 |
+| Facility | Normal template | Mini template | Threshold |
 |---|---|---|---|
 | 制造站 | 201×96 | 70×64 | 0.90 |
 | 贸易站 | 199×93 | 71×63 | 0.90 |
 | 会客室 | 95×83 | 60×43 | 0.95 |
 
-MAA 自己的注释已经写明这个失败模式：
+MAA's own comment already spells out this failure mode:
 
 > A pinch may advance only one zoom level. When the first gesture leaves the
 > overview at an intermediate scale, waiting cannot make the fixed-size normal
 > or mini templates match; pinch again before retrying.
 
-## 实测（拿 MAA 自己的模板对失败帧做匹配）
+## Measured (matching MAA's own templates against the failing frames)
 
-失败帧：`D:\ark\maa\debug\infrast\facility_layout\*_raw.png`（1280×720）
+Failing frames: `D:\ark\maa\debug\infrast\facility_layout\*_raw.png` (1280×720)
 
-| 帧 | 设施 | 正常模板 | 最小模板 | 阈值 |
+| Frame | Facility | Normal template | Mini template | Threshold |
 |---|---|---|---|---|
 | 08-28 | 制造站 | 0.499 | **0.814** | 0.90 |
 | 08-28 | 贸易站 | 0.509 | 0.788 | 0.90 |
 | 08-28 | 会客室 | 0.540 | 0.719 | 0.95 |
 | 08-27 | 制造站 | 0.497 | **0.805** | 0.90 |
 
-多尺度扫描：画面里制造站实际约 82×39，**卡在 201×96 与 70×64 之间**。
+Multi-scale scan: 制造站 on screen is about 82×39, **stuck between 201×96 and 70×64**.
 
-两天的数字几乎相同（0.805 / 0.814），是同一个稳定的中间缩放态；
-离阈值只差 0.09，所以表现为间歇性——捏合到位就过，差一档就 0.81。
+The numbers from the two days are almost identical (0.805 / 0.814), so it is the same stable
+intermediate zoom state; it is only 0.09 short of the threshold, which is why it shows up
+intermittently — pinch all the way and it passes, one notch short and it reads 0.81.
 
-## 已排除
+## Ruled out
 
-* **分辨率**：LDPlayer9 1600×900 / DPI 240 / 16:9，asst.log 无分辨率告警。
-* **触控模式**：`ConnectSettings.TouchMode = MiniTouch`，支持多指；
-  日志是 `zoom gesture sent` 而非 `unsupported`（源码里不支持多指会打后者）。
-* **捏合落点**：`(980,180)→(650,350)` 与 `(300,640)→(630,370)`，
-  在失败帧上两点都落在空白格背景，没打在设施卡上。
-* **版本**：见上表。
+* **Resolution**: LDPlayer9 1600×900 / DPI 240 / 16:9, and asst.log carries no resolution warning.
+* **Touch mode**: `ConnectSettings.TouchMode = MiniTouch`, which supports multi-touch; the log says
+  `zoom gesture sent`, not `unsupported` (the source prints the latter when multi-touch is unsupported).
+* **Where the pinch lands**: `(980,180)→(650,350)` and `(300,640)→(630,370)`; on the failing frames
+  both points land on empty-cell background, not on a facility card.
+* **Version**: see the table above.
 
-## 影响
+## Impact
 
-`NumOfTrade 0` 这类错值**不影响换班**：`Infrast.DefaultInfrast = user_defined`，
-房间遍历由自定义排班表驱动。08-28 晚班 `NumOfTrade 0` 那轮，
-实际处理的房间是 `Trade=[0,1,2,3] Mfg=[0,1,2,3,4] Power=[0,1,2] Dorm=[0,1,2,3,4]`，
-与正常各晚完全一致。（真正没做的长这样：08-23 09时 `Trade=[] Mfg=[]`。）
+A wrong value like `NumOfTrade 0` **does not affect the shift change**: `Infrast.DefaultInfrast =
+user_defined`, so room iteration is driven by the custom roster. On the 08-28 evening shift round that
+reported `NumOfTrade 0`, the rooms actually processed were
+`Trade=[0,1,2,3] Mfg=[0,1,2,3,4] Power=[0,1,2] Dorm=[0,1,2,3,4]`, exactly the same as on every normal
+evening. (A round that genuinely did nothing looks like this: 08-23 09:00 `Trade=[] Mfg=[]`.)
 
-代价只是失败那轮多花约 5 分钟重试。
+The cost is only about 5 extra minutes of retrying on the round that failed.
 
-## 决定性对比：成功帧 vs 失败帧（宿舍，同模板同 ROI）
+## The decisive comparison: a succeeding frame vs a failing frame (宿舍, same template, same ROI)
 
-| 帧 | ×1.00 得分 | 最佳尺度 | 阈值 |
+| Frame | Score at ×1.00 | Best scale | Threshold |
 |---|---|---|---|
-| 08-28 失败 `facility_layout` | 0.787 ❌ | ×1.07 → 0.988 | 0.90 |
-| 08-27 失败 `facility_layout` | 0.752 ❌ | ×1.08 → 0.992 | 0.90 |
-| 08-27 成功那轮 `enter_facility` | **0.964 ✅** | ×1.02 → 0.972 | 0.90 |
-| 08-26 成功那轮 `enter_facility` | **0.964 ✅** | ×1.02 → 0.972 | 0.90 |
+| 08-28 failing `facility_layout` | 0.787 ❌ | ×1.07 → 0.988 | 0.90 |
+| 08-27 failing `facility_layout` | 0.752 ❌ | ×1.08 → 0.992 | 0.90 |
+| 08-27 succeeding round `enter_facility` | **0.964 ✅** | ×1.02 → 0.972 | 0.90 |
+| 08-26 succeeding round `enter_facility` | **0.964 ✅** | ×1.02 → 0.972 | 0.90 |
 
-**成功时画面正好落在模板原生尺度；失败时大 7~8%。**
-所以失败帧不是「已经缩到最小仍然对不上」，而是**捏合没缩到位，还差最后一档**。
-（制造站模板在成功帧上也只有 0.85——它本来就不是靠制造站过的，
-宿舍 0.964 才是把 `analyze()` 拉过线的那个。别用制造站下结论。）
+**On success the screen sits exactly at the template's native scale; on failure it is 7~8% larger.**
+So a failing frame is not "zoomed all the way out and still not matching" — **the pinch did not zoom
+far enough, it is one notch short**.
+(On the succeeding frame the 制造站 template only scores 0.85 — 制造站 was never what carried it;
+宿舍 at 0.964 is what pulled `analyze()` over the line. Do not draw conclusions from 制造站.)
 
-**分辨率无关**：成功帧和失败帧都出自同一台 1600×900 模拟器、同样降采样到 1280×720。
-MAA 官方要求原文是「仅对 **720p 以上 16:9 分辨率**支持较好」
-（`docs/zh-cn/manual/device/windows.md`），1600×900 完全在范围内；
-雷电在官方表里是「完美支持」。**改分辨率不解决这个问题。**
+**Resolution is irrelevant**: the succeeding and the failing frames both come from the same
+1600×900 emulator, downsampled to 1280×720 the same way.
+MAA's official requirement reads 「仅对 **720p 以上 16:9 分辨率**支持较好」
+(`docs/zh-cn/manual/device/windows.md`), and 1600×900 is well inside that range;
+LDPlayer is listed as 「完美支持」 in the official table. **Changing the resolution does not solve this.**
 
-## 雷电截图增强模式：开着的，而且生效（别再怀疑）
+## LDPlayer's screenshot enhancement mode: it is on, and it is working (stop doubting it)
 
-配置 `ConnectSettings.Extras.LDPlayer.IsEnabled = True`，运行时实证（asst.log 21:31）：
+Configuration `ConnectSettings.Extras.LDPlayer.IsEnabled = True`, with runtime evidence (asst.log 21:31):
 
 ```
 Loading library[libname=D:\LD-MRFZ\LDPlayer9\ldopengl64]
@@ -149,35 +159,38 @@ LDExtras cost 24 ms
 The fastest way is LDExtras , cost: 24 ms
 ```
 
-**注意别误读**：紧邻上方那几行 `screencap | busybox nc` / `gzip -1` / `screencap -p`
-是 MAA 在 `Try to find the fastest way to screencap` 阶段**挨个测速**，
-不是在用 adb 截图。测完选的是 LDExtras（24ms，adb 各法 238/261/496ms）。
-2026-08-28 我就是把测速读成了「在用 adb」，还断言「增强模式没开」，两处都错。
+**Careful not to misread this**: the `screencap | busybox nc` / `gzip -1` / `screencap -p` lines
+immediately above are MAA **timing each method one by one** during its
+`Try to find the fastest way to screencap` phase — it is not taking screenshots over adb. When the
+timing finished it picked LDExtras (24 ms, against 238/261/496 ms for the adb methods).
+On 2026-08-28 I read that timing pass as "it is using adb" and asserted "enhancement mode is off";
+both were wrong.
 
-截图通道是雷电直取的高速通道、画面干净（成功帧宿舍 0.964），
-**所以那 7~8% 是游戏内缩放没到位，不是截图糊。**
+The screenshot channel is LDPlayer's own fast direct path and the image is clean (宿舍 scores 0.964 on
+the succeeding frame), **so those 7~8% are in-game zoom falling short, not a blurry screenshot.**
 
-## 复发率
+## Recurrence rate
 
-首次尝试 7 次里失败 4 次（约 57%），**会复发**；但 4 次失败后的重试 **4/4 全部成功**，
-代价只是那一轮多花约 5 分钟。
+4 of the 7 first attempts failed (about 57%), so **it does recur**; but the retry after all 4 failures
+succeeded **4 out of 4**, at a cost of about 5 extra minutes on that round.
 
-## 修法（未执行，等用户定）
+## Possible fixes (not carried out, awaiting the user's decision)
 
-| 方案 | 做法 | 风险 |
+| Option | What it does | Risk |
 |---|---|---|
-| A 不动 | 靠 MAA 自己重试自愈 | 无。每次多花约 5 分钟 |
-| B 提 issue | 把本文的匹配得分给上游：捏合幅度不足 / 建议加尺度容差或增加重试次数 | 无。见效慢 |
-| C 本地改捏合坐标 | 改 `resource/tasks/tasks.json` 的 `InfrastInfoZoomOutPointer0/1`，加大起点间距、缩小终点间距 | **高**：① MAA 启动时跑 `ResourceIntegrityChecker`（08-28 晚班「Integrity check passed, 9302 file(s) verified」），改动可能被判失败；② `tasks.json` 会被 OTA 更新覆盖 |
+| A: do nothing | Let MAA heal itself with its own retry | None. About 5 extra minutes each time |
+| B: file an issue | Give upstream the match scores from this document: the pinch travel is too short / suggest adding scale tolerance or more retries | None. Slow to take effect |
+| C: change the pinch coordinates locally | Edit `InfrastInfoZoomOutPointer0/1` in `resource/tasks/tasks.json`, widening the start-point spacing and narrowing the end-point spacing | **High**: ① MAA runs `ResourceIntegrityChecker` at startup (08-28 evening shift: "Integrity check passed, 9302 file(s) verified"), and the edit may be judged a failure; ② `tasks.json` gets overwritten by OTA updates |
 
-推荐 **A + B**。C 在整改前不要做。
+Recommended: **A + B**. Do not do C before that is sorted out.
 
 
-## 2026-08-29 晚班（v6.17.0-beta.7）：基建又失败了，但症状换了
+## 2026-08-29 evening shift (v6.17.0-beta.7): infrastructure failed again, but with different symptoms
 
-昨晚 21:30 那趟的 `asst.log` 实读结果，先说清楚**哪些是日志里写的，哪些是我没证据的**。
+What the `asst.log` of last night's 21:30 round actually says. First, **which parts are written in the
+log and which parts I have no evidence for**.
 
-### 日志里确实有的
+### What the log really contains
 
 ```
 21:36:20 [INF] InfrastInfoTask | zoom gesture sent
@@ -188,9 +201,9 @@ The fastest way is LDExtras , cost: 24 ms
 21:42:21 [TRC] asst::InfrastAbstractTask::on_run_fails | leave, 2006 ms
 ```
 
-整段 **ERR 37 条 / WRN 1869 条**，去重后排前面的是：
+The whole stretch has **37 ERR lines / 1869 WRN lines**; deduplicated, the most frequent are:
 
-| 次数 | 内容 |
+| Count | Content |
 |------|------|
 | ×20 | `skill has no recognition result` |
 | ×7 | `Unknown task: FightSeries-OldMethodFlag` |
@@ -198,20 +211,24 @@ The fastest way is LDExtras , cost: 24 ms
 | ×1 | `asst::InfrastAbstractTask::click_clear_button clear failed` |
 | ×1 | `asst::VisionHelper::correct_rect image is empty` |
 
-`on_run_fails` 跑了，说明**基建任务确实失败了**，不是「报了错但过了」。
+`on_run_fails` did run, which means **the infrastructure task really did fail** — this is not
+"it logged an error but got through".
 
-### 和早上那次的区别
+### How it differs from the morning failure
 
-早上是**缩放手势的坐标没乘分辨率系数**（上游 #17895）。
-昨晚 `zoom gesture sent` 之后**没有任何 zoom 相关的报错**，
-失败点是 `click_clear_button`（清空干员选择的按钮）和
-20 次 `skill has no recognition result`（干员技能图标识别不出来）。
+The morning one was **the zoom gesture coordinates not being multiplied by the resolution factor**
+(upstream #17895).
+Last night there was **no zoom-related error at all** after `zoom gesture sent`; the failure points
+were `click_clear_button` (the button that clears the operator selection) and 20 occurrences of
+`skill has no recognition result` (the operator skill icons not being recognized).
 
-**这两者是不是同一个根因，我没有证据，不要当成一回事。**
-「识别不出来」这一族症状看着像同源（模板在当前分辨率下匹配不上），
-但缩放这一条在 beta.7 里已经修了，昨晚也没报缩放错。
+**Whether the two share a root cause is something I have no evidence for; do not treat them as the
+same thing.**
+The "cannot recognize it" family of symptoms looks like it has a common origin (templates failing to
+match at the current resolution), but the zoom part is already fixed in beta.7, and last night
+reported no zoom error.
 
-### 待查
+### Still to investigate
 
-- `FightSeries-OldMethodFlag` 这个任务被引用了 7 次却找不到定义，
-  可能是程序版本和资源版本对不上。没查。
+- `FightSeries-OldMethodFlag` is referenced 7 times but has no definition anywhere; possibly the
+  program version and the resource version do not match. Not investigated.

@@ -25,7 +25,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CACHE = REPO_ROOT / "data" / "upstream-templates"
-# 一眼 AI 的写法（docs/提ISSUE的规矩.md 第三节），任何一条命中都不许发
+# 一眼 AI 的写法（docs/UPSTREAM-ISSUE-RULES.md 第三节），任何一条命中都不许发
 AI_TONE = [
     (re.compile(r"^\s*#{1,3}\s", re.M), "自造的 # 标题（模板没有的标题不要加）"),
     (re.compile(r"\*\*[^*\n]{2,}\*\*"), "加粗"),

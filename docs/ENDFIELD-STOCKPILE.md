@@ -1,28 +1,28 @@
-# 终末地养成材料：一套要多少、该囤多少
+# 终末地 build materials: what one build costs, and how much to stockpile
 
-**全部数字取自森空岛官方接口**（`calculate/rules`、`material-list`、
-`user-game-data`），2026-08-27 实测，不是估的。
-接口用法见 [SKLAND-API.md](SKLAND-API.md)。
+**Every number here comes from 森空岛's official endpoints** (`calculate/rules`, `material-list`,
+`user-game-data`), measured on 2026-08-27. None of it is estimated.
+Endpoint usage is in [SKLAND-API.md](SKLAND-API.md).
 
-「一套」= **1 名六星角色 + 1 把配套专武，从 1 级白板练到目标档**。
-四档定义来自官方前端常量：基础 60/技6/武60、晋级 80/技9/武80、
-高阶 90/技9/武90、完美 90/技12/武90。
+"One build" = **one six-star operator + their matching signature weapon, taken from level 1 with
+nothing invested up to the target tier**. The four tiers are defined by the official front-end
+constants: 基础 60/技6/武60, 晋级 80/技9/武80, 高阶 90/技9/武90, 完美 90/技12/武90.
 
-## 一、一套「完美」要多少
+## 1. What one 完美 build costs
 
-以莱万汀 +《熔铸火焰》为样本：
+Sampled on 莱万汀 + 《熔铸火焰》:
 
-| 项目 | 数量 |
+| Item | Amount |
 |---|--:|
 | 金币 | 1,693,510 |
 | 干员经验 | 1,792,290 |
 | 武器经验 | 2,524,080 |
 
-## 二、通用材料（16 名六星全部一样，囤这些不会错）
+## 2. Universal materials (identical for all 16 six-stars — stockpiling these is never wrong)
 
-**角色部分**（突破 + 技能练到 12 级）：
+**Operator side** (promotions + skills to level 12):
 
-| 材料 | 一套 |
+| Material | Per build |
 |---|--:|
 | 协议棱柱组 | 472 |
 | 协议棱柱 | 328 |
@@ -36,9 +36,9 @@
 | 中红柱状菌 | 5 |
 | 轻红柱状菌 | 3 |
 
-**专武部分**（全突破）：
+**Signature weapon side** (all promotions):
 
-| 材料 | 一套 |
+| Material | Per build |
 |---|--:|
 | 重型强固模具 | 50 |
 | 强固模具 | 23 |
@@ -46,35 +46,36 @@
 | 重黯石 | 5 |
 | 轻黯石 | 3 |
 
-## 三、浮动材料（按角色/武器不同，只会用到其中一种）
+## 3. Variable materials (they differ by operator/weapon; only one of each group is ever used)
 
-**角色**：
+**Operators**:
 
-| 组别 | 一套 | 16 人里有几个用到 |
+| Group | Per build | How many of the 16 use it |
 |---|--:|---|
-| 三相纳米片 / D96钢样品四 / 象限拟合液 / 快子遴捡晶格 / 超距辉映管 **五选一** | 116（少数 20 或 136） | 各 8~11 人 |
-| 受蚀玉化叶 / 岩天使叶 / 红矛叶 **三选一** | 84 | 9 / 6 / 1 人 |
-| 星门菌 / 塔罗斯菌 / 血菌 **三选一** | 8 | 7 / 2 / 7 人 |
+| 三相纳米片 / D96钢样品四 / 象限拟合液 / 快子遴捡晶格 / 超距辉映管 — **pick 1 of 5** | 116 (a few need 20 or 136) | 8–11 each |
+| 受蚀玉化叶 / 岩天使叶 / 红矛叶 — **pick 1 of 3** | 84 | 9 / 6 / 1 |
+| 星门菌 / 塔罗斯菌 / 血菌 — **pick 1 of 3** | 8 | 7 / 2 / 7 |
 
-**专武**：
+**Signature weapons**:
 
-| 组别 | 一套 | 16 把里有几把用到 |
+| Group | Per build | How many of the 16 use it |
 |---|--:|---|
-| 超距辉映管 / D96钢样品四 / 象限拟合液 / 快子遴捡晶格 / 三相纳米片 / 协议纹石 **六选一** | 16（协议纹石 8） | 各 1~5 把 |
-| 武陵石 / 燎石 **二选一** | 8 | 8 / 7 把 |
+| 超距辉映管 / D96钢样品四 / 象限拟合液 / 快子遴捡晶格 / 三相纳米片 / 协议纹石 — **pick 1 of 6** | 16 (协议纹石: 8) | 1–5 each |
+| 武陵石 / 燎石 — **pick 1 of 2** | 8 | 8 / 7 |
 
-> 「五选一」的那 116 个是**唯一真正的大头浮动项**。抽到新角色之前
-> 无法确定要哪一种，这是囤货最难提前准备的部分。
+> Those 116 units in the pick-1-of-5 group are **the only variable item that is genuinely large**.
+> Which of the five you need cannot be known before the operator is pulled, which makes this the
+> hardest part of the stockpile to prepare for in advance.
 
-## 四、库存现状与瓶颈（2026-08-27 17:48）
+## 4. Inventory and bottlenecks as they stand (2026-08-27 17:48)
 
-按「通用材料够练几套完美」排序：
+Sorted by "how many 完美 builds the universal material on hand covers":
 
-| 材料 | 一套 | 库存 | 够几套 |
+| Material | Per build | On hand | Builds covered |
 |---|--:|--:|--:|
-| **协议棱柱** | 328 | 1,486 | **4** ← 瓶颈 |
+| **协议棱柱** | 328 | 1,486 | **4** ← bottleneck |
 | **重型强固模具** | 50 | 294 | **5** |
-| 金币（折金票） | 1,693,510 | 6,809,727 | 4 |
+| 金币 (counting 金票) | 1,693,510 | 6,809,727 | 4 |
 | 武器经验 | 2,524,080 | 16,861,000 | 6 |
 | 协议棱柱组 | 472 | 3,905 | 8 |
 | 强固模具 | 23 | 232 | 10 |
@@ -82,28 +83,31 @@
 | 重红柱状菌 | 5 | 58 | 11 |
 | 干员经验 | 1,792,290 | 24,443,000 | 13 |
 | 至晶多齿叶 | 16 | 288 | 18 |
-| 其余通用材料 | — | — | 20~125 |
+| all other universal materials | — | — | 20–125 |
 
-**结论：协议棱柱与金币是硬瓶颈，都只够 4 套。**
-经验材料严重过剩（干员经验够 13 套），继续刷经验本没有意义。
+**Conclusion: 协议棱柱 and 金币 are the hard bottlenecks; both cover only 4 builds.**
+EXP materials are wildly in surplus (干员经验 covers 13 builds), so farming more EXP stages
+accomplishes nothing.
 
-浮动材料的现状（缺口按「练满一套完美」算）：
-超距辉映管 22、象限拟合液 3、快子遴捡晶格 3、三相纳米片 84、
-D96钢样品四 0 —— 五选一里**只有三相纳米片勉强够一套**，其余都不够。
+Where the variable materials stand (shortfall measured against maxing one 完美 build):
+超距辉映管 22, 象限拟合液 3, 快子遴捡晶格 3, 三相纳米片 84, D96钢样品四 0 — within the
+pick-1-of-5 group **only 三相纳米片 just barely covers one build**; none of the others do.
 
-## 五、囤多少合适
+## 5. How much is worth stockpiling
 
-社区**没有**公开的囤货数值推荐（查过 cmyyx/cep 与几家攻略站）。
-定性上攻略一致点名「协议棱柱是精英化核心稀缺资源」，与上面算出的瓶颈吻合。
+The community has **no** published numeric stockpiling targets (checked cmyyx/cep and several guide
+sites). Qualitatively the guides agree in calling out 「协议棱柱是精英化核心稀缺资源」, which matches
+the bottleneck computed above.
 
-按「随时能立刻拉满 N 个新角色」的口径，目标值 = 一套 × N：
+Measured as "able to max out N new operators the moment they arrive", the target = per build × N:
 
-| 目标 | 协议棱柱 | 协议棱柱组 | 重型强固模具 | 金币 |
+| Target | 协议棱柱 | 协议棱柱组 | 重型强固模具 | 金币 |
 |---|--:|--:|--:|--:|
-| 备 2 套 | 656 | 944 | 100 | 339 万 |
-| 备 3 套 | 984 | 1,416 | 150 | 508 万 |
-| **备 4 套（现状）** | 1,312 | 1,888 | 200 | 677 万 |
+| ready for 2 builds | 656 | 944 | 100 | 3,390,000 |
+| ready for 3 builds | 984 | 1,416 | 150 | 5,080,000 |
+| **ready for 4 builds (where we are)** | 1,312 | 1,888 | 200 | 6,770,000 |
 
-浮动材料无法按套囤——抽到角色之前不知道要哪一种。
-可行的做法是把**五选一的五种各囤到 116**（合计 580），
-这样任何新角色到手都能直接拉满；现状离这个目标差得很远。
+Variable materials cannot be stockpiled per build — which one is needed is unknown until the
+operator is pulled. The workable approach is to hold **116 of each of the five in the pick-1-of-5
+group** (580 in total), so that any new operator can be maxed immediately. The current stock is
+nowhere near that.

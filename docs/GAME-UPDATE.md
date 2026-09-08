@@ -1,45 +1,71 @@
-# 游戏客户端自动更新（大版本更新日）
+# Game client auto-update (major version update days)
 
-用户 2026-09-02 要的：大版本更新时中继自己把游戏客户端更新掉。
-同一天定下的两条约束：**不每天探测**（大版本很少）；**开机窗口来不及装大包**，
-所以检测到要更新就先让别的游戏跑完，再单独更新、单独重跑那一个。
+What the operator asked for on 2026-09-02: on a major version update, the relay updates the
+game client itself. Two constraints were fixed the same day: **do not probe every day** (major
+versions are rare); **the boot window is too short to install a large package**, so once an
+update is detected, let the other games finish first, then update and re-run that one game
+on its own.
 
-## 三家各走哪条路
+## Which route each of the three takes
 
-| 游戏 | 怎么知道要更新 | 怎么更新 | 谁来重跑 |
+| Game | How we learn an update is needed | How it updates | Who re-runs it |
 |---|---|---|---|
-| 明日方舟 | 开机读一次官方版本接口，和 `state/arknights-client.json` 记的已装版本比 | 下 APK（官方直链，断点续传）→ `ldconsole launch/installapp` → dumpsys 核对 → 退出模拟器 | 当天 MAA 没跑成才单独派发 MAA |
-| 终末地 | ① 官方公告当天有「版本更新说明」；② 当天 MaaEnd 因客户端过时进不了游戏（任务全部 20 秒内失败、零完成） | 鹰角启动器（进程 Games）读屏：点「更新游戏」→ 等「开始游戏」→ 拉一次游戏过「请重启游戏」和着色器编译 → 看到「点击任意位置继续」 | 当天 MaaEnd 没跑成才单独派发 MaaEnd |
-| 鸣潮 | 不管 | OK-WW 自己经库洛启动器更新（2026-09-02 实录：更新→重启→重跑成功） | 不用 |
+| 明日方舟 | Read the official version endpoint once at boot and compare it with the installed version recorded in `state/arknights-client.json` | Download the APK (official direct link, resumable) → `ldconsole launch/installapp` → verify with dumpsys → quit the emulator | MAA is dispatched on its own only if it did not get a successful run that day |
+| 终末地 | (1) the official bulletin that day carries a 「版本更新说明」; (2) MaaEnd cannot get into the game that day because the client is out of date (every task fails within 20 seconds, zero completions) | Screen-read the Hypergryph launcher (process `Games`): click 「更新游戏」 → wait for 「开始游戏」 → launch the game once to get past 「请重启游戏」 and the shader compilation → until 「点击任意位置继续」 appears | MaaEnd is dispatched on its own only if it did not get a successful run that day |
+| 鸣潮 | Not tracked | OK-WW updates itself through the Kuro launcher (recorded 2026-09-02: update → restart → re-run succeeded) | Not needed |
 
-## 时序（2026-09-03 用户定稿）
+## Timeline (finalized by the operator 2026-09-03)
 
-1. **开机**：读三家官方停服维护公告（方舟官网 / 终末地官网 / 鸣潮公告接口）。今天在维护的
-   游戏：登记待更新；今天队列时刻落在维护窗口（开服后再算 45 分钟）里的，**经 AUTO-MAS 接口
-   把它从队列里摘掉**（item/delete，记录在 `state/queue-skips.json`），当天队列就不跑它。
-2. **队列跑完、机器空闲**：后台线程**立刻**更新客户端——下载、安装、拉起游戏过着色器编译，
-   到「点击任意位置继续」的登录界面才算准备好。更新包还没放出来就每 10 分钟再试，最多到
-   开服后 2 小时。
-3. **准备好之后**：离开服还超过 10 分钟就先把游戏关掉；到开服时刻再缓 2 分钟，单独补跑
-   那个脚本；补跑完把摘掉的加回队列原位（item/add → update → order），然后照常关机。
-4. 只有「因维护/进不了游戏没跑成」或「今天被摘掉」的脚本才补跑；普通任务失败不补跑
-   （09-02 晚把正在玩的用户挤下线的教训）。
+1. **At boot**: read the official maintenance/downtime bulletins of all three games (明日方舟
+   official site / 终末地 official site / 鸣潮 bulletin endpoint). A game under maintenance
+   today: register it as pending an update; if today's queue time falls inside the maintenance
+   window (counting another 45 minutes after service resumes), **remove it from the queue
+   through the AUTO-MAS API** (item/delete, recorded in `state/queue-skips.json`), so today's
+   queue does not run it.
+2. **Once the queue has finished and the machine is idle**: a background thread updates the
+   client **immediately** — download, install, launch the game through the shader compilation,
+   and it counts as ready only when the 「点击任意位置继续」 login screen is reached. If the
+   update package has not been released yet, retry every 10 minutes, up to 2 hours after
+   service resumes.
+3. **Once ready**: if service resumption is still more than 10 minutes away, close the game
+   first; at the resumption time wait another 2 minutes, then run that one script as a make-up
+   run; when it is done, put the removed script back at its original position in the queue
+   (item/add → update → order), then shut down as usual.
+4. Only scripts that "did not get a run because of maintenance / could not get into the game"
+   or "were removed from today's queue" get a make-up run; ordinary task failures do not
+   (the lesson of the evening of 09-02, when a make-up run kicked the operator off mid-session).
 
-## 旧时序（已废）
+## Old timeline (obsolete)
 
-1. **开机**（预更新之后）：`gameupdate.boot_check` 只做两个 HTTP 请求。方舟版本不同且离队列还有 ≥10 分钟就当场装，不够就登记；终末地公告说今天版本更新就登记。登记在 `state/gameupdate-pending.json`。
-2. **队列跑着**：不动。MaaEnd 进不了游戏那种失败会被认出并登记（不报警，见日报 ⏸）。
-3. **队列都跑完、没脚本在跑**：引擎起后台线程 `gameupdate.run_deferred`，逐个更新；期间 `_maybe_shutdown` 不关机。
-4. **更新完**：当天那个脚本最后一趟没成功 → `commands.run_script` 单独派发它（不是整条队列）；跑完照常记账、关机。
+1. **At boot** (after the pre-update): `gameupdate.boot_check` makes only two HTTP requests.
+   If the 明日方舟 version differs and there are ≥10 minutes left before the queue, install on
+   the spot; if not, register it. If the 终末地 bulletin says there is a version update today,
+   register it. Registrations go in `state/gameupdate-pending.json`.
+2. **While the queue runs**: nothing. The MaaEnd "cannot get into the game" kind of failure is
+   recognized and registered (no alert; it shows as ⏸ in the daily report).
+3. **Once the whole queue is done and no script is running**: the engine starts the background
+   thread `gameupdate.run_deferred` and updates them one by one; during that time
+   `_maybe_shutdown` does not power off.
+4. **After the update**: if that script's last attempt of the day did not succeed →
+   `commands.run_script` dispatches that one script (not the whole queue); when it finishes,
+   accounting and shutdown proceed as usual.
 
-通知：`🆕 游戏更新`（成功）、`🔁 更新后重跑`、`⚠️ 游戏更新没能确认`（哪一步没确认，不冒充成功）。
+Notifications: `🆕 游戏更新` (success), `🔁 更新后重跑`, `⚠️ 游戏更新没能确认` (which step could
+not be confirmed — it never claims success it does not have).
 
-## 桌面助手
+## Desktop helper
 
-`ark_relay/desktop.py`：把一段 Windows PowerShell 5.1 经交互式计划任务派到桌面会话，截屏 + 系统自带中文 OCR + 按读到的字点击。
-**这是全仓库唯一允许 5.1 的地方**：pwsh 7.6.5 实测加载不了 WinRT 的 OCR 类型。编码坑：脚本带 BOM 写入、请求/结果显式 UTF-8。
+`ark_relay/desktop.py`: dispatches a block of Windows PowerShell 5.1 into the desktop session
+through an interactive scheduled task — screenshot + the built-in Windows Chinese OCR + click
+on whatever text was read.
+**This is the only place in the whole repository where 5.1 is allowed**: pwsh 7.6.5 was measured
+to be unable to load the WinRT OCR types. Encoding traps: the script is written with a BOM, and
+the request/result are explicitly UTF-8.
 
-## 09-03 演练记录
-- 方舟：开雷电 → 拉起游戏 → 盲点 START → 读到「开始唤醒」，用部署后的中继代码整段跑通，89 秒。
-- 用真公告干跑 09-04 开机判定：登记方舟待更新、早班摘掉 MAA，正常。
-- 未实战：新版 APK 下载安装（2.1 GB）；更新后首次登录的弹窗。
+## 09-03 rehearsal record
+- 明日方舟: start LDPlayer → launch the game → click START blind → read 「开始唤醒」; the whole
+  sequence ran through on the deployed relay code, 89 seconds.
+- Dry-ran the 09-04 boot decision against a real bulletin: 明日方舟 registered as pending an
+  update, MAA removed from the morning queue — correct.
+- Not yet exercised for real: downloading and installing a new APK (2.1 GB); the popups on the
+  first login after an update.

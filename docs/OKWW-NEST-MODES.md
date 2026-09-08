@@ -1,8 +1,8 @@
-# 残象聚落有两种模式，我们一直跑的是「只抓一个声骸」那种
+# The Tacet Discord Nest has two modes, and the one we have always run is "grab a single echo"
 
-**2026-08-29 查实。不是死选项，是界面上的复选框，我们没勾。**
+**Established 2026-08-29. It is not a fixed choice, it is a checkbox in the UI that we never ticked.**
 
-## 两条分支（`working/src/task/DailyTask.py:85-106`）
+## The two branches (`working/src/task/DailyTask.py:85-106`)
 
 ```python
 condition1 = AUTO_FARM_NIGHTMARE_NEST in additional_tasks   # 'Auto Farm all Nightmare Nest'
@@ -12,10 +12,11 @@ if condition1:    self.run_task_by_class(NightmareNestTask)  # 刷满
 elif condition2:  ...run_capture_mode()                      # 抓一个声骸就停
 ```
 
-我们母本里 `Additional Tasks = []`、`Farm Nightmare Nest for Daily Echo = True`
-→ 走 `elif`，**每次只打一轮就收工**。
+Our master config has `Additional Tasks = []` and
+`Farm Nightmare Nest for Daily Echo = True`, so it takes the `elif` branch and
+**runs exactly one round before calling it a day**.
 
-## 捕获模式为什么「打两只就完成」——两层都在叫停
+## Why capture mode "finishes after two kills" - two layers both stop it
 
 ```python
 def run_capture_mode(self):
@@ -30,10 +31,15 @@ def _should_continue_combat_after_pickup(self):
                                      # ② 捕获模式恒为 False → combat_nest 打完一轮就 break
 ```
 
-开关自己的说明也写着：`'Farm 1 Echo from Nightmare Nest to complete Daily Task when needed.'`
-——**「Farm 1 Echo」，它就是设计成只刷一个的**，用来凑日常，不是用来刷满的。
+① one echo captured, and the whole loop ends. ② in capture mode this is always
+False, so `combat_nest` breaks after a single round.
 
-## 08-28 早班实测（`history/2026-08-28/wuwa/OK-WW-09-34-19.log`）
+The switch's own description says it too:
+`'Farm 1 Echo from Nightmare Nest to complete Daily Task when needed.'`
+- **"Farm 1 Echo": it is designed to farm exactly one**, to satisfy the daily,
+not to clear the nest.
+
+## Measured on the 08-28 morning round (`history/2026-08-28/wuwa/OK-WW-09-34-19.log`)
 
 ```
 13:36:24  已击败残象：0/41 is not complete
@@ -45,93 +51,114 @@ def _should_continue_combat_after_pickup(self):
 13:40:48  ForgeryTask 开始                                             ← 6/41 就换任务了
 ```
 
-**那几次重新传送不是「怪只刷几只」**（我一度这么说过，错的，用户当场纠正），
-是 `combat_nest` 里没捡到声骸时的兜底重传。
+(The annotations: the re-teleport is the fallback for picking an echo up; the
+"Captured echo during combat" line is only printed in capture mode; the task
+switched away at 6/41.)
 
-## 同一个任务有两条入口，行为完全不同
+**Those re-teleports are not "only a few monsters spawn"** - I said that once,
+it was wrong, and the operator corrected it on the spot. They are the fallback
+re-teleport inside `combat_nest` when no echo was picked up.
 
-| 入口 | 走哪个方法 | 行为 |
+## The same task has two entry points, and they behave completely differently
+
+| Entry point | Which method it takes | Behaviour |
 |---|---|---|
-| AUTO-MAS 队列（`main.py -t 1`）→ **每日任务** | `DailyTask` → `elif condition2` → `run_capture_mode()` | 抓一个声骸就停 |
-| 界面上「噩梦巢穴任务」的开始按钮 / `okww-task.sh <下标>` | `NightmareNestTask.run()` | 刷到打满 |
+| AUTO-MAS queue (`main.py -t 1`) -> **daily task** | `DailyTask` -> `elif condition2` -> `run_capture_mode()` | stops after grabbing one echo |
+| The start button for 「噩梦巢穴任务」 in the UI / `okww-task.sh <index>` | `NightmareNestTask.run()` | farms until the nest is cleared |
 
-memory [[okww-nest-truth]] 里「一晚清空四个点位」说的是**第二条**入口，
-和队列里跑的不是同一条路。两条都成立，别互相拿来否定。
+The line in memory [[okww-nest-truth]] about clearing four sites in one night
+(「一晚清空四个点位」) is about **the second** entry point, not the one the queue
+runs. Both are true; do not use one to disprove the other.
 
-## ⚠️ 日志里的计数不能当进度证据
+## ⚠️ The counter in the log is not evidence of progress
 
-`已击败残象：0/41` 里的 `0` **可能是 OCR 吞掉了前导数字**（实际是 10/41）。
-2026-08-29 我拿 08-26 日志里一片 `0/41` 断言「从来没有点位被清空过」，
-错的——[[okww-nest-truth]] 第一条就明文警告过这一点。
-**判断进度看游戏界面，不看日志里那个数。**
+In `已击败残象：0/41` the `0` **may be OCR having swallowed the leading digit**
+(the real value being 10/41). On 2026-08-29 I took a run of `0/41` lines in the
+08-26 log and asserted "no site has ever been cleared" - wrong, and the first
+line of [[okww-nest-truth]] warns about exactly this in plain words.
+**Judge progress from the game screen, not from that number in the log.**
 
-## 改法
+## How to change it
 
-母本 `<automas>/data/c5e96ddc-…/Default/ConfigFile/DailyTask.json`：
+Master config `<automas>/data/c5e96ddc-…/Default/ConfigFile/DailyTask.json`:
 
 ```json
 "Additional Tasks to Run After Daily Task": ["Auto Farm all Nightmare Nest"]
 ```
 
-* **中继不会冲掉它**：`garden.py:enforce()` 读出整个列表后只增删
-  `"Check Weekly Garden"` 一个元素，其余原样保留。
-* `Only Farm These Nests = '落渊南丘'` 继续生效——刷满模式同样走 `find_nest`，
-  死命令[[okww-only-nanqiu]]不受影响。
-* `Farm Nightmare Nest for Daily Echo` 留着不用动：`if condition1` 优先，
-  `elif` 不会再进。
+* **The relay will not clobber it**: `garden.py:enforce()` reads the whole list
+  and only adds or removes the single element `"Check Weekly Garden"`, leaving
+  the rest as it is.
+* `Only Farm These Nests = '落渊南丘'` still applies - the clear-the-nest mode
+  goes through `find_nest` as well, so the standing order [[okww-only-nanqiu]]
+  is unaffected.
+* Leave `Farm Nightmare Nest for Daily Echo` alone: `if condition1` wins, and
+  the `elif` is never reached again.
 
-**代价**：刷满 41 只比抓 1 个声骸慢得多，会挤占早班队列时间。改之前要先算这笔账。
+**The cost**: clearing all 41 is far slower than grabbing one echo, and it eats
+into the morning queue's time. Work that out before making the change.
 
-## UI 能不能改？能。三个问题一起答
+## Can the UI do it? Yes. Three questions answered together
 
-| 问 | 答 | 依据 |
+| Question | Answer | Basis |
 |---|---|---|
-| 界面上真的啥都改不了？ | **能改**，`ADDITIONAL_TASKS` 是 `multi_selection`，四个选项的复选框 | `DailyTask.__init__` 的 `config_type` |
-| 我们的补丁在界面上有显示吗？ | **有**，`Only Farm These Nests` 带 `config_description`，ok-script 会渲染成带说明的文本框 | `NightmareNestTask.__init__:59-61` |
-| 是不是只是没法用无头 API 调？ | **不是**，配置就是 `configs/*.json` 纯文本，AUTO-MAS 每轮把母本整个拷过去，改母本即可 | `AutoProxy.py:514-515` |
+| Can really nothing be changed from the UI? | **It can**: `ADDITIONAL_TASKS` is `multi_selection`, four checkboxes | the `config_type` in `DailyTask.__init__` |
+| Does our patch show up in the UI? | **Yes**: `Only Farm These Nests` carries a `config_description`, which ok-script renders as a text box with help text | `NightmareNestTask.__init__:59-61` |
+| Is it just that a headless API cannot set it? | **No**: the config is plain text in `configs/*.json`, and AUTO-MAS copies the whole master config over on every round, so editing the master is enough | `AutoProxy.py:514-515` |
 
-## 那个复选框的标签是误导的（2026-08-29 定论）
+## That checkbox's label is misleading (settled 2026-08-29)
 
-界面上叫「**自动刷所有梦魇巢穴**」，但它**不控制刷什么范围**，只控制走哪个方法：
+In the UI it is called 「**自动刷所有梦魇巢穴**」 ("auto farm all nightmare
+nests"), but it **does not control what gets farmed**, only which method runs:
 
 ```
 勾上  → run_task_by_class(NightmareNestTask) → run()   刷满模式（_capture_mode=False）
 不勾  → run_capture_mode()                             抓一个声骸就停
 ```
 
-（`ok/task/task.py:1111 run_task_by_class` → `task.run()`，已核实。）
+Ticked: the clear-the-nest mode (`_capture_mode=False`). Unticked: stop after
+grabbing one echo.
 
-范围由**噩梦巢穴任务自己的两个选项**决定，我们早就设好了：
+(`ok/task/task.py:1111 run_task_by_class` -> `task.run()`, verified.)
 
-* `Which to Farm = ['Tacet Discord Nest']` —— 只残象聚落，**不碰梦魇拔除**
-* `Only Farm These Nests = '落渊南丘'` —— 只那一个点位
+The scope is decided by **the nightmare-nest task's own two options**, which we
+set long ago:
 
-所以「只刷完落渊南丘那一个残象聚落」**不用写一行代码**，勾上即可。
-打满后 `find_nest` 返回 None → 日志「指定点位都已打满，跳过」→ 收工，
-符合死命令 [[okww-only-nanqiu]]。
+* `Which to Farm = ['Tacet Discord Nest']` - Tacet Discord Nests only,
+  **nothing to do with Nightmare Eradication**
+* `Only Farm These Nests = '落渊南丘'` - that one site only
 
-**已改**（母本 + 实运行两份）：
+So "clear only the Tacet Discord Nest at 落渊南丘" **needs no code at all**, just
+the checkbox. Once it is cleared `find_nest` returns None, the log says
+「指定点位都已打满，跳过」 and the task finishes - which satisfies the standing
+order [[okww-only-nanqiu]].
+
+**Changed** (both the master config and the live copy):
 `"Additional Tasks to Run After Daily Task": ["Auto Farm all Nightmare Nest"]`
 
-## ⚠️ 杀 OK-WW 必须连 pythonw 一起杀
+## ⚠️ Killing OK-WW means killing pythonw too
 
-`ok-ww.exe` 只是 pyappify 启动器，真正跑的是
-`data\apps\ok-ww\python\pythonw.exe ...\working\main.py`。
+`ok-ww.exe` is only the pyappify launcher; what actually runs is
+`data\apps\ok-ww\python\pythonw.exe ...\working\main.py`.
 
-2026-08-29 我 `taskkill /IM ok-ww.exe /F` 之后向用户报了「无残留进程」——
-**错的**：pythonw 子进程还活着，一直占着命名互斥锁
-`ok-script-<hash>`（属主记录在 `%TEMP%\ok-script-<hash>.pid`），
-导致后续每次启动都以
-`RuntimeError: Another application instance is still running` 退出码 1 结束。
+On 2026-08-29, after `taskkill /IM ok-ww.exe /F`, I reported "no leftover
+processes" to the operator - **wrong**: the pythonw child was still alive and
+still holding the named mutex `ok-script-<hash>` (its owner recorded in
+`%TEMP%\ok-script-<hash>.pid`), so every subsequent start exited with
+`RuntimeError: Another application instance is still running` and exit code 1.
 
-检查残留时**必须把 `pythonw` 也算进去**，并用命令行而不是进程名判断：
+When checking for leftovers you **must include `pythonw`**, and judge by the
+command line rather than the process name:
 
 ```powershell
 Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' or Name='python.exe'" |
   ForEach-Object { $_.ProcessId.ToString() + ' :: ' + $_.CommandLine }
 ```
 
-顺带两条工具坑：
-* `wmic` 在这台机器上已经没有了（新版 Windows 移除），用 `Get-CimInstance`。
-* pwsh 里 `\"` 不是转义。内联 PowerShell 带引号必须落成 `.ps1` 文件再 `-File` 跑，
-  否则命令**静默返回空**——我据此三次得出「没有相关进程」，全是假的。
+Two tooling traps while we are here:
+* `wmic` no longer exists on this machine (removed in recent Windows); use
+  `Get-CimInstance`.
+* In pwsh, `\"` is not an escape. Inline PowerShell containing quotes must be
+  written to a `.ps1` file and run with `-File`, otherwise the command
+  **silently returns nothing** - which is how I concluded "there is no such
+  process" three times running, all of it false.

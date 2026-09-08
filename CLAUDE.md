@@ -82,24 +82,25 @@
 | **单跑 MaaEnd 基质筛选** | `winrun.sh --py scripts/mac/lib/maaend_essence.py`（`--go` 才真跑）—— 自导航到基质页，锁毕业词条；**不废弃**，废弃没给开关 |
 | **查三个脚本实际会跑什么** | `winrun.sh --py scripts/mac/lib/effective_config.py` —— 按 `IfQuickConfig` 和 `StageMode` 分支取**真正生效**的那一份。`config-check.py` 只读 MAS 侧，快速配置关掉之后它会误导人 |
 | **盯队列进度** | `winrun.sh --py scripts/mac/lib/queue_events.py` —— 只吐增量事件，配 Monitor 挂后台。**必须用 winrun 不能用 winps**：winps 走 936 控制台，中文会变「杩涚▼」 |
-| **改手机页任何一条说明** | 先读 `docs/手机页文案的规矩.md`——只写「这个开关干什么、改了会怎样」，不写上游/版本号/日期/我的口吻。`lint-repo.sh` 第 8 项会拒 |
-| **打活动关 / 打保全派驻** | 先读 `docs/MAA-打活动关与保全派驻.md`——**动手前读完对应那节**。2026-08-23 指挥打活动关卡了整整一天，全部时间花在摸索上，那天的坑都在里面 |
+| **改手机页任何一条说明** | 先读 `docs/PHONE-COPY-RULES.md`——只写「这个开关干什么、改了会怎样」，不写上游/版本号/日期/我的口吻。`lint-repo.sh` 第 8 项会拒 |
+| **打活动关 / 打保全派驻** | 先读 `docs/MAA-EVENTS-AND-SSS.md`——**动手前读完对应那节**。2026-08-23 指挥打活动关卡了整整一天，全部时间花在摸索上，那天的坑都在里面 |
 | **驱动模拟器里的游戏（点/滑/截图）** | `scripts/mac/adbdo.sh tap\|swipe\|shot\|seq` —— 走复用 ssh，一步约 1 秒；**别用 winrun 干这个**，它走计划任务一步 10 秒 |
-| **往上游提 issue / 讨论 / PR** | 先 `scripts/mac/upstream-post.py rules <repo>` 看规矩，`dup` 查重（含讨论区），草稿 `lint` 过了才许发；**只走网页表单**，命令行提不上标签。规矩全文在 `docs/提ISSUE的规矩.md` |
+| **往上游提 issue / 讨论 / PR** | 先 `scripts/mac/upstream-post.py rules <repo>` 看规矩，`dup` 查重（含讨论区），草稿 `lint` 过了才许发；**只走网页表单**，命令行提不上标签。规矩全文在 `docs/UPSTREAM-ISSUE-RULES.md` |
 | 仓库自检 | `scripts/mac/lint-repo.sh` |
 | shell 脚本静态检查 | `~/.local/bin/shellcheck -S warning` |
 
-## 中英文的分界（别再来回改）
+## 中英文的分界（判据是「谁读」）
 
-* **用户会读到的每个字都必须是中文**：推送通知、手机页文案、`RELEASE-NOTES.md`、
-  `docs/欠的活.md`、`docs/待查.md`。`texts.py` 有闸门挡着，英文和模糊措辞都会被拒。
-* **代码注释和 `docs/` 里的其余部分**：用哪种语言由写的人定，英文中文都行。
-  用户 2026-09-06 拍板：「文档留英文——只有我读」，所以**不许发起翻译运动**，
-  也不许为了统一语言去重写一条已经说清楚的注释。
-* 2026-09-08 审出「注释中英混排、同一个理由有六种写法」时，一度想全改成中文；
-  那和上面这条拍板冲突，所以只把规矩写在这里，代码一个字没动。
+用户 2026-09-08：「除了 readme 之外的部分都用英文，因为是你看的不是人看的。」
 
-## 开机后先看 docs/待查.md
+* **英文**：`docs/**`（含索引）、代码注释与 docstring、脚本里的注释和它打印给我看的话、
+  闸门的报错文案、commit message、文件名。
+* **中文——只有他会读到的那几处**：根目录 `README.md`、推送通知（`ark_relay/texts.py`，
+  有闸门挡英文）、手机页文案（`web/`，lint 第 8 项挡）、`relay/RELEASE-NOTES.md`。
+  这一条压过上面那条。
+* **引用他原话时保留中文原文**，外面用英文叙述——翻译他的话等于毁掉证据。
+
+## 开机后先看 docs/NEXT-BOOT.md
 
 里面是上次收工时没查完、要在有机器的时候查的事。处理完就从那里删掉。
 

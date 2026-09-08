@@ -1,83 +1,85 @@
-# 文档索引
+# Documentation index
 
-40 篇文档，按「你现在想干什么」分组。每篇一句话说清它答的是什么问题。
+40 documents, grouped by "what are you trying to do right now". One line each,
+saying which question that document answers.
 
-规矩：**新加文档必须在这里登记**，`scripts/mac/lint-repo.sh` 第 13 道闸门会检查。
-没有入口的文档等于不存在——下一次会话不会读到它，写了也白写。
+Rule: **a newly added document must be registered here**; gate 13 of
+`scripts/mac/lint-repo.sh` checks it. A document with no entry point does not
+exist - the next session will never read it, so writing it was wasted.
 
-## 开工必读
+## Read before starting work
 
-| 文档 | 答什么问题 |
+| Document | Question it answers |
 |---|---|
-| [../CLAUDE.md](../CLAUDE.md) | 死命令、工具表、每次开工前先看这个 |
-| [维护手册.md](维护手册.md) | 怎么部署、怎么改配置、提交前跑什么 |
-| [TOOLING.md](TOOLING.md) | 用工具的规矩，826 那天踩出来的 21 个坑 |
-| [PITFALLS.md](PITFALLS.md) | 栽过的坑和它们现在的形状（最长的一篇，出错先搜它） |
-| [RETROSPECTIVE.md](RETROSPECTIVE.md) | 栽过的跟头，以及现在拦住它们的闸门 |
-| [提ISSUE的规矩.md](提ISSUE的规矩.md) | 给上游提 issue / PR 之前必读 |
+| [../CLAUDE.md](../CLAUDE.md) | Standing orders, the tool table; read this before every session |
+| [MAINTENANCE.md](MAINTENANCE.md) | How to deploy, how to change config, what to run before committing |
+| [TOOLING.md](TOOLING.md) | The rules for using the tools; the 21 pitfalls dug up on 826 |
+| [PITFALLS.md](PITFALLS.md) | Pitfalls already fallen into and the shape they have now (the longest one; search it first when something breaks) |
+| [RETROSPECTIVE.md](RETROSPECTIVE.md) | The mistakes made, and the gates that now stop them |
+| [UPSTREAM-ISSUE-RULES.md](UPSTREAM-ISSUE-RULES.md) | Read before filing an issue / PR upstream |
 
-## 日常运维
+## Daily operations
 
-| 文档 | 答什么问题 |
+| Document | Question it answers |
 |---|---|
-| [OPERATIONS.md](OPERATIONS.md) | 运维总纲：时刻表、开关机、排查路径（最全，也最长） |
-| [ESTOP.md](ESTOP.md) | 红按钮：一键停掉游戏机上的一切 |
-| [CHANGE-CONFIG.md](CHANGE-CONFIG.md) | 改游戏机配置的规程（改哪份、怎么验证） |
-| [状态模型.md](状态模型.md) | 中继的状态都存在哪、哪个键是什么意思 |
-| [NOTIFICATIONS.md](NOTIFICATIONS.md) | 有哪些通知、什么时候发、长什么样 |
-| [GAME-UPDATE.md](GAME-UPDATE.md) | 游戏客户端大版本更新日会发生什么 |
-| [待查.md](待查.md) | 还没查清楚的事 |
-| [欠的活.md](欠的活.md) | 答应了还没做的事 |
+| [OPERATIONS.md](OPERATIONS.md) | The operations master document: the schedule, power on/off, diagnostic paths (the most complete, and the longest) |
+| [ESTOP.md](ESTOP.md) | The red button: stop everything on the game machine in one command |
+| [CHANGE-CONFIG.md](CHANGE-CONFIG.md) | The procedure for changing the game machine's config (which copy to edit, how to verify) |
+| [STATE-MODEL.md](STATE-MODEL.md) | Where the relay keeps its state, and what each key means |
+| [NOTIFICATIONS.md](NOTIFICATIONS.md) | Which notifications exist, when they are sent, what they look like |
+| [GAME-UPDATE.md](GAME-UPDATE.md) | What happens on a day a game client takes a major version update |
+| [NEXT-BOOT.md](NEXT-BOOT.md) | Things not yet figured out |
+| [BACKLOG.md](BACKLOG.md) | Things promised and not yet done |
 
-## 配置与接口
+## Configuration and interfaces
 
-| 文档 | 答什么问题 |
+| Document | Question it answers |
 |---|---|
-| [CONFIG.md](CONFIG.md) | 配置清单：环境变量、各程序的配置项、哪份才生效 |
-| [AUTOMAS.md](AUTOMAS.md) | AUTO-MAS 的界面、配置和无界面操作 |
-| [HEADLESS.md](HEADLESS.md) | 三个程序怎么在没有界面的情况下跑 |
-| [SKLAND-API.md](SKLAND-API.md) | 森空岛（终末地）接口 |
-| [BANNER-SOURCES.md](BANNER-SOURCES.md) | 卡池数据从哪来 |
+| [CONFIG.md](CONFIG.md) | The config inventory: environment variables, each program's settings, and which copy actually takes effect |
+| [AUTOMAS.md](AUTOMAS.md) | AUTO-MAS: its screens, its configuration, and driving it without a UI |
+| [HEADLESS.md](HEADLESS.md) | How all three programs run with no UI at all |
+| [SKLAND-API.md](SKLAND-API.md) | The 森空岛 API (终末地) |
+| [BANNER-SOURCES.md](BANNER-SOURCES.md) | Where the banner data comes from |
 
-## 三个游戏各自的知识
+## Knowledge specific to each of the three games
 
-| 文档 | 答什么问题 |
+| Document | Question it answers |
 |---|---|
-| [GAME.md](GAME.md) | 三个游戏的通用知识 |
-| [MAA-打活动关与保全派驻.md](MAA-打活动关与保全派驻.md) | 明日方舟：打活动关、保全派驻怎么配 |
-| [MAA-INFRAST-ZOOM.md](MAA-INFRAST-ZOOM.md) | 明日方舟：基建「双指滑动到总览」为什么失败 |
-| [ENDFIELD-GUIDES.md](ENDFIELD-GUIDES.md) | 终末地：外部资料源（不懂就先查这里） |
-| [ENDFIELD-ITEMS.md](ENDFIELD-ITEMS.md) | 终末地：物品 id、中文名、用途 |
-| [ENDFIELD-STOCKPILE.md](ENDFIELD-STOCKPILE.md) | 终末地：养成材料一套要多少、该囤多少 |
-| [ENDFIELD-ACTIVITIES.md](ENDFIELD-ACTIVITIES.md) | 终末地：活动中心 |
-| [MAAEND-TRIAL-SWORDMANCY.md](MAAEND-TRIAL-SWORDMANCY.md) | 终末地：选剑演武为什么失败 |
-| [WUWA-DAILY.md](WUWA-DAILY.md) | 鸣潮：日常从开机到结束每一步是什么 |
-| [OKWW-WEEKLY-BOSS.md](OKWW-WEEKLY-BOSS.md) | 鸣潮：周本怎么打、奖励怎么领 |
-| [OKWW-NEST-MODES.md](OKWW-NEST-MODES.md) | 鸣潮：残象聚落两种模式的区别 |
-| [OKWW-PATCHES.md](OKWW-PATCHES.md) | 鸣潮：本地补丁改了什么、怎么算成功 |
-| [OKWW-STUCK-DIALOG.md](OKWW-STUCK-DIALOG.md) | 鸣潮：卡死排查（模态弹窗那一类） |
-| [鸣潮-无音区序号对照.md](鸣潮-无音区序号对照.md) | 鸣潮：无音区序号对照（未完成） |
-| [AUTO-STORY.md](AUTO-STORY.md) | 自动过剧情 / 打活动的调研结论 |
+| [GAME.md](GAME.md) | Knowledge common to all three games |
+| [MAA-EVENTS-AND-SSS.md](MAA-EVENTS-AND-SSS.md) | 明日方舟: how to configure event stages and 保全派驻 |
+| [MAA-INFRAST-ZOOM.md](MAA-INFRAST-ZOOM.md) | 明日方舟: why the infrastructure 「双指滑动到总览」 gesture fails |
+| [ENDFIELD-GUIDES.md](ENDFIELD-GUIDES.md) | 终末地: external reference sources (look here first when you do not know something) |
+| [ENDFIELD-ITEMS.md](ENDFIELD-ITEMS.md) | 终末地: item ids, Chinese names, what they are for |
+| [ENDFIELD-STOCKPILE.md](ENDFIELD-STOCKPILE.md) | 终末地: how much a full set of upgrade materials costs, and how much to stockpile |
+| [ENDFIELD-ACTIVITIES.md](ENDFIELD-ACTIVITIES.md) | 终末地: the activity centre |
+| [MAAEND-TRIAL-SWORDMANCY.md](MAAEND-TRIAL-SWORDMANCY.md) | 终末地: why 选剑演武 fails |
+| [WUWA-DAILY.md](WUWA-DAILY.md) | 鸣潮: every step of the daily run, from power-on to finish |
+| [OKWW-WEEKLY-BOSS.md](OKWW-WEEKLY-BOSS.md) | 鸣潮: how the weekly boss is fought and how its reward is claimed |
+| [OKWW-NEST-MODES.md](OKWW-NEST-MODES.md) | 鸣潮: the difference between the two 残象聚落 modes |
+| [OKWW-PATCHES.md](OKWW-PATCHES.md) | 鸣潮: what the local patches change, and what counts as success |
+| [OKWW-STUCK-DIALOG.md](OKWW-STUCK-DIALOG.md) | 鸣潮: diagnosing a hang (the modal-dialog class of them) |
+| [WUWA-TACET-INDEX.md](WUWA-TACET-INDEX.md) | 鸣潮: 无音区 index mapping (unfinished) |
+| [AUTO-STORY.md](AUTO-STORY.md) | Findings on automating story playback / event stages |
 
-## 这台 Mac 和网络
+## This Mac and the network
 
-| 文档 | 答什么问题 |
+| Document | Question it answers |
 |---|---|
-| [HOME-NETWORK.md](HOME-NETWORK.md) | 东京家里的网络：拓扑、病因与选项 |
-| [PLAY-MANUAL.md](PLAY-MANUAL.md) | 远程玩游戏（串流）手册 |
-| [MAC-COMPAT.md](MAC-COMPAT.md) | 三个辅助程序对 Mac 的兼容性 |
-| [我对这台Mac做过的改动.md](我对这台Mac做过的改动.md) | 在这台 Mac 和 ins 上动过什么 |
+| [HOME-NETWORK.md](HOME-NETWORK.md) | The home network in Tokyo: topology, cause and options |
+| [PLAY-MANUAL.md](PLAY-MANUAL.md) | Manual for playing remotely (streaming) |
+| [MAC-COMPAT.md](MAC-COMPAT.md) | How compatible the three helper programs are with the Mac |
+| [MAC-CHANGES.md](MAC-CHANGES.md) | What has been changed on this Mac and on ins |
 
-## 写东西的规矩
+## Rules for writing
 
-| 文档 | 答什么问题 |
+| Document | Question it answers |
 |---|---|
-| [手机页文案的规矩.md](手机页文案的规矩.md) | 手机遥控页面的文案怎么写 |
+| [PHONE-COPY-RULES.md](PHONE-COPY-RULES.md) | How to write the copy on the phone remote page |
 
-## 存档（读的时候注意日期）
+## Archive (mind the dates when reading)
 
-| 文档 | 是什么 |
+| Document | What it is |
 |---|---|
-| [CODE-HISTORY.md](CODE-HISTORY.md) | 从代码注释里搬出来的来龙去脉，代码里的指针指向这里 |
-| [优化方案.md](优化方案.md) | 2026-09-06 提出的优化方案和后续执行记录 |
-| [SWEEP-0830.md](SWEEP-0830.md) | 08-29 晚班 / 08-30 早班的一次系统排查 |
+| [CODE-HISTORY.md](CODE-HISTORY.md) | The backstory lifted out of code comments; pointers in the code lead here |
+| [IMPROVEMENT-PLAN.md](IMPROVEMENT-PLAN.md) | The optimisation plan proposed on 2026-09-06 and the record of carrying it out |
+| [SWEEP-0830.md](SWEEP-0830.md) | One systematic sweep of the 08-29 evening run / 08-30 morning run |

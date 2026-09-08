@@ -1,45 +1,50 @@
-# 远程玩游戏手册
+# Remote game operation manual
 
-写给接手操作游戏机的人。这台机器在乌鲁木齐，跑北京时间，你在 Mac 这头，
-中间隔着 Tailscale。下面每一条都是实际踩过才写下来的，不是设想。
+For whoever takes over driving the game machine. That machine sits in Urumqi and
+runs on Beijing time, you are at the Mac end, and Tailscale is in between.
+Every line below was written after actually hitting it, not imagined.
 
-## 0. 先接受一件事：一次操作 = 30~40 秒
+## 0. Accept one thing first: one action = 30~40 seconds
 
-不是网慢。是这条链路本身：
+It is not a slow network. It is the link itself:
 
 ```
-Mac ──ssh──> 游戏机 ──建一个交互式计划任务──> session 1 的桌面
-                              └─> pwsh 跑 ark-gui.ps1 ─> 发按键/点击 ─> 截全屏
-Mac <──scp── 取回截图和日志
+Mac ──ssh──> game machine ──creates an interactive scheduled task──> the desktop of session 1
+                              └─> pwsh runs ark-gui.ps1 ─> sends keys/clicks ─> full-screen shot
+Mac <──scp── pulls back the screenshot and the log
 ```
 
-为什么这么绕：ssh 登进去落在 **session 0，那里没有桌面**，图形程序从那儿启动会直接死
-（[relay-runs-in-session-0] 已经坑过一次）。要操作真实画面，只能靠 `/it` 的计划任务
-跑到已登录的 session 1 去。
+Why it goes the long way around: an ssh login lands in **session 0, which has no
+desktop**, and a graphical program started from there dies outright
+([relay-runs-in-session-0] already cost us once). To touch the real screen the
+only route is a `/it` scheduled task that runs over in the already-logged-in
+session 1.
 
-**结论：能一次做完的事绝不分三次做。** 见第 2 节。
+**Conclusion: never split into three round trips what one round trip can do.**
+See section 2.
 
-## 1. 三个工具
+## 1. Three tools
 
-| 工具 | 干什么 |
+| Tool | What it does |
 |------|--------|
-| `scripts/mac/wingui.sh` | 发动作、截图、取回 |
-| `scripts/mac/lib/shotcrop.py` | 裁图缩图 + **把图上坐标换算成点击坐标** |
-| `ssh Administrator@$ARK_HOST` | 查文件、查进程。不要用它启动图形程序 |
+| `scripts/mac/wingui.sh` | Send actions, take screenshots, pull them back |
+| `scripts/mac/lib/shotcrop.py` | Crop and scale images + **convert image coordinates into click coordinates** |
+| `ssh Administrator@$ARK_HOST` | Inspect files and processes. Do not use it to start graphical programs |
 
-环境变量：
+Environment variables:
 
 ```bash
 export ARK_HOST=100.65.39.119
 export ARK_GUI_PROC=Endfield                 # 终末地
-export ARK_GUI_PROC=Client-Win64-Shipping    # 鸣潮（默认值）
+export ARK_GUI_PROC=Client-Win64-Shipping    # 鸣潮 (default)
 ```
 
-`ARK_GUI_PROC` 决定按键点击往哪个窗口发。**发错窗口 = 动作全丢，而且不报错。**
+`ARK_GUI_PROC` decides which window the keys and clicks go to. **Wrong window =
+every action is lost, and nothing reports an error.**
 
-## 2. seq 是让这件事能用的关键
+## 2. seq is what makes this workable at all
 
-单个动作：
+A single action:
 
 ```bash
 ./scripts/mac/wingui.sh key f7
@@ -47,194 +52,234 @@ export ARK_GUI_PROC=Client-Win64-Shipping    # 鸣潮（默认值）
 ./scripts/mac/wingui.sh shot
 ```
 
-一串动作（**一次 ssh 往返跑完**）：
+A run of actions (**one ssh round trip for all of them**):
 
 ```bash
 ./scripts/mac/wingui.sh seq 'key esc; wait 3000; key r; wait 3000; click 1642 866; wait 3000'
 ```
 
-实测：拍 3 张照片，拆开做要 6 次往返 ≈ 4 分钟；串成一条 seq 是 1 次往返 ≈ 100 秒。
+Measured: taking 3 photos as separate steps is 6 round trips ≈ 4 minutes;
+strung into one seq it is 1 round trip ≈ 100 seconds.
 
-### seq 里能写什么
+### What can go inside a seq
 
-| 动作 | 说明 |
+| Action | Notes |
 |------|------|
-| `key <键>` / 直接写 `<键>` | `esc` `enter` `f1`~`f12` `a`~`z` `0`~`9`。前缀 `key ` 可写可不写 |
-| `esc2` | 连按两次 ESC，中间隔 1.2 秒 |
-| `click <x> <y>` | 左键点击**屏幕实际坐标** |
-| `look <dx> <dy>` | 转视角，相对鼠标移动。正数向右/向下 |
-| `hold <键> <毫秒>` | 按住不放。走路跑步跳跃都靠它 |
-| `rdown` `rup` `ldown` `lup` | 鼠标键按下/抬起。长按拖拽、右键转视角用 |
-| `scroll <格数> [x y]` | 滚轮，负数向下。**不给坐标就在屏幕中央滚**，翻不动侧边栏 |
-| `wait <毫秒>` | 等 |
+| `key <key>` / just `<key>` | `esc` `enter` `f1`~`f12` `a`~`z` `0`~`9`. The `key ` prefix is optional |
+| `esc2` | Press ESC twice, 1.2 s apart |
+| `click <x> <y>` | Left click at **real screen coordinates** |
+| `look <dx> <dy>` | Turn the camera, relative mouse movement. Positive is right/down |
+| `hold <key> <ms>` | Hold the key down. Walking, running and jumping all use this |
+| `rdown` `rup` `ldown` `lup` | Mouse button down/up. For press-and-drag and for right-button camera turning |
+| `scroll <notches> [x y]` | Scroll wheel, negative is down. **Without coordinates it scrolls at the centre of the screen**, which will not move a sidebar |
+| `wait <ms>` | Wait |
 
-每个动作**自带**收尾等待（按键 2.5 秒、点击 1.8 秒），你写的 `wait` 是**额外**加的。
-界面切换给 3000，读条给 30000 以上。
+Every action **carries its own** trailing wait (2.5 s for a key, 1.8 s for a
+click); the `wait` you write is **on top of** that. Give 3000 for a screen
+change, 30000 or more for a loading bar.
 
-### 超时不用你操心
+### Timeouts are not your problem
 
-脚本会按动作串自己算等待预算（把所有 `wait`/`hold` 的毫秒加起来，
-每个动作再留 5 秒，最后加 30 秒开销）。要手动指定就 `ARK_GUI_WAIT=300`。
+The script works out its own wait budget from the action list (it sums every
+`wait`/`hold` in milliseconds, allows 5 seconds more per action, then adds 30
+seconds of overhead). To set it by hand, use `ARK_GUI_WAIT=300`.
 
-以前这里写死 40 秒，长 seq 会报「没有产出结果」但**远端其实跑完了**——
-这种假失败最坑，已经改掉了。
+This used to be hard-coded to 40 seconds, so a long seq would report "no result
+produced" while **the remote side had in fact finished**. That kind of false
+failure is the worst kind, and it has been fixed.
 
-## 3. 截图：不裁不看
+## 3. Screenshots: crop before you look
 
-`wingui.sh` 取回的是整个虚拟桌面 **3840x1243**（双显示器拼的），一张 7~10 MB。
+What `wingui.sh` brings back is the whole virtual desktop, **3840x1243** (two
+monitors stitched together), 7~10 MB per image.
 
-- **不要直接 Read 原图。** 会把上下文撑爆，窗口会白屏（[claude-desktop-white-screen-huge-transcript]）。
-- 游戏窗口在 **左上角 0,0 - 1920,1080**。
+- **Do not Read the raw image.** It blows up the context and the window goes
+  white ([claude-desktop-white-screen-huge-transcript]).
+- The game window is in the **top-left corner, 0,0 - 1920,1080**.
 
 ```bash
-python3 scripts/mac/lib/shotcrop.py <原图> <输出.png>                    # 默认裁游戏区，缩到 1400 宽
-python3 scripts/mac/lib/shotcrop.py <原图> <输出.png> 1130,280,1900,930 1350   # 只看右半边的列表
+python3 scripts/mac/lib/shotcrop.py <source> <out.png>                    # default: crop the game area, scale to 1400 wide
+python3 scripts/mac/lib/shotcrop.py <source> <out.png> 1130,280,1900,930 1350   # only the list on the right half
 ```
 
-看小字（进度数字、星数、键位标签）就把范围裁小、宽度给大，等于放大镜。
+To read small text (progress numbers, star counts, key labels), crop tighter and
+ask for a bigger width - that is your magnifying glass.
 
-## 4. 坐标：图上量到的 ≠ 能点的
+## 4. Coordinates: what you measured on the image ≠ what you can click
 
-**这是最容易犯的错。** 你在一张裁过又缩过的图上量到 (1197, 632)，
-直接 `click 1197 632` 会点到完全不相干的地方。
+**This is the easiest mistake to make.** You measure (1197, 632) on an image
+that was cropped and then scaled, and `click 1197 632` lands somewhere entirely
+unrelated.
 
 ```bash
 python3 scripts/mac/lib/shotcrop.py --map 0,0,1920,1080 1400 1197 632
-# -> 1642 867      ← 这个才是 click 要的
+# -> 1642 867      ← this is what click wants
 ```
 
-参数就是你裁图时用的那两个（范围 + 宽度）。`shotcrop.py` 裁完会把这条命令打出来，照抄改数字就行。
+The arguments are the same two you used when cropping (region + width).
+`shotcrop.py` prints this command after cropping; copy it and change the numbers.
 
-## 5. 「做成了没有」只看游戏里的数字
+## 5. "Did it work" is answered only by numbers inside the game
 
-我点了按钮 ≠ 生效了。实际发生过：点「保存」画面没反应，我以为失败，
-去机器上 `dir` 一看文件写下来了。
+I clicked the button ≠ it took effect. This actually happened: I clicked "保存",
+the screen did not react, I assumed it had failed, then a `dir` on the machine
+showed the file had been written.
 
-判定要么看**游戏内计数器**（`6/10` → `7/10`），要么看**落盘证据**（文件、日志）。
-一次都不要用「我点了所以应该成了」结案。
+Judge it either by an **in-game counter** (`6/10` → `7/10`) or by **evidence on
+disk** (a file, a log). Never close a case with "I clicked it so it must have
+worked."
 
-## 6. 已知键位
+## 6. Known key bindings
 
-### 终末地（`ARK_GUI_PROC=Endfield`）
+### 终末地 (`ARK_GUI_PROC=Endfield`)
 
-| 键 | 界面 |
+| Key | Screen |
 |----|------|
-| **J** | 任务日志（主线/支线在这，不在 F8） |
+| **J** | 任务日志 - main and side quests are here, not under F8 |
 | **F7** | 活动中心 |
-| F8 | 行动手册（**理智在这个界面顶栏**） |
+| F8 | 行动手册 (**sanity is in the top bar of this screen**) |
 | F9 | 武库 |
-| F5 | 采购中心（**商店，有真钱购买按钮，别乱点**） |
+| F5 | 采购中心 (**the shop, it has real-money purchase buttons, do not click around**) |
 | B / C | 背包 / 干员 |
 | TAB | 探索大地图 |
 | ESC | 系统菜单 |
-| **R** | 拍照模式（快捷工具已切到相机时） |
+| **R** | 拍照模式 (when the quick tool is already switched to the camera) |
 
-拍照模式内：`Z` 重置视角、`X` 隐藏界面、右键旋转、滚轮拉远近、
-`TAB` 切换干员/镜头、`WASD` 移动干员、`ESC` 退出。
-快门在 `1642 866`，拍完弹预览，保存在 `1752 976`，再按两次 ESC 回世界。
+Inside 拍照模式: `Z` resets the view, `X` hides the UI, right button rotates,
+the wheel zooms, `TAB` switches between operator and camera, `WASD` moves the
+operator, `ESC` exits. The shutter is at `1642 866`; a preview pops up after the
+shot, save is at `1752 976`, then two ESC presses return you to the world.
 
-**别从世界界面右上角读理智。** 那个带闪电圈的 `2400/2400` 是场景设施的能量条，
-不是理智。理智在 F8 顶栏。
+**Do not read sanity off the top-right of the world screen.** That
+`2400/2400` with the lightning ring is a scene facility's energy bar, not
+sanity. Sanity is in the F8 top bar.
 
-**侧边栏的橙色小方块是「未读」不是「未做」**，点开就消失。
-判断做没做完只看详情页有没有绿色的「已全部领取」。
+**The small orange square in the sidebar means "unread", not "not done"** - it
+disappears as soon as you open the entry. Whether something is finished is told
+only by the green 「已全部领取」 on the detail page.
 
-键位不用猜也不用问：进游戏后右上角每个图标上面都印着自己的键，
-裁 `1330,0,1920,100` 放大就能读。**遇到不认识的界面先这么读一遍，别试。**
+You never have to guess or ask about key bindings: once in the game, every icon
+in the top-right corner has its own key printed above it. Crop
+`1330,0,1920,100` and enlarge it to read them. **When you meet a screen you do
+not recognise, read this first instead of experimenting.**
 
-### 批量点击的陷阱（2026-08-29 实际翻车）
+### The trap in batched clicks (a real crash on 2026-08-29)
 
-对话类界面有个「待发送」按钮，点一下推进一句。我图省事把
-`click 1136 845; wait 4000` 重复了 6 次串成一条 seq。
+Dialogue screens have a 「待发送」 button; one click advances one line. To save
+effort I repeated `click 1136 845; wait 4000` six times in a single seq.
 
-结果对话在第 4 下就走完了，**后面两下落到了世界画面上**，
-打开了地图、又弹出「自定义标记」对话框，差一点就把标记加进去了。
+The dialogue ended on the fourth click, so **the last two landed on the world
+screen**, opened the map and popped up the 「自定义标记」 dialog - it came
+within one click of adding a marker.
 
-**规则：重复点同一个坐标时，次数按「最少还需要几下」估，宁可少不可多。**
-目标一消失，多余的点击就会穿透到下面那层界面，而下面那层是什么你并不知道。
-点完就截图确认，不要连点到「应该差不多了」。
+**Rule: when clicking the same coordinate repeatedly, count by "the fewest
+clicks still needed" - too few beats too many.** The moment the target is gone,
+the extra clicks fall through to whatever screen is underneath, and you do not
+know what that screen is. Take a screenshot to confirm once you are done; do not
+keep clicking until "that's probably enough."
 
-### 鸣潮（`ARK_GUI_PROC=Client-Win64-Shipping`）
+### 鸣潮 (`ARK_GUI_PROC=Client-Win64-Shipping`)
 
-**红线：绝对不许改鸣潮的键位设置。** 改过键位 = OK-WW 自动化静默零输出，
-打不过先查键位别查配队（[wuwa-keybinds-must-be-default]）。
-只读设置界面可以，动一下都不行。
+**Red line: never change 鸣潮's key bindings.** Changed key bindings = OK-WW
+automation silently produces nothing; if a fight is being lost, check the key
+bindings before the team composition ([wuwa-keybinds-must-be-default]). Reading
+the settings screen is fine, touching anything in it is not.
 
-启动：`./scripts/mac/wingui.sh launch wuwa`，起来后点「点击连接」在 `979 1008`，
-进世界要等 50 秒以上。
+Launch: `./scripts/mac/wingui.sh launch wuwa`; once it is up, click 「点击连接」
+at `979 1008`; entering the world takes over 50 seconds.
 
-| 位置 | 说明 |
+| Where | Notes |
 |------|------|
-| 左上角任务条 | 当前追踪的任务名 + 下一步目标 + 距离。**这是你唯一的导航依据** |
-| 任务条里的按键提示 | 例如「`V` 查看飞讯」——游戏会直接告诉你按哪个键，照做就行 |
-| 飞讯「待发送」按钮 | `1136 845`，点一下推进一句对话 |
-| ESC | 逐层关闭面板；在世界里按会开系统菜单 |
+| Quest bar, top left | The tracked quest name + next objective + distance. **This is your only navigation source** |
+| The key hint inside the quest bar | For example 「`V` 查看飞讯」 - the game tells you outright which key to press, so press it |
+| 飞讯 「待发送」 button | `1136 845`, one click advances one line of dialogue |
+| ESC | Closes panels one layer at a time; pressed in the world it opens the system menu |
 
-任务条上写着多少米，就得走多少米。
+However many metres the quest bar says, that is how far you have to walk.
 
-**鸣潮没有自动寻路。** 点任务文字、点任务图标都只会重新追踪，角色不会自己走
-（2026-08-29 实测三次，人一步没动）。远距离只有一条路：
-开地图（`M`）→ 找离目标最近的**信标**（解锁过的）→ 点它 → 弹窗里点「传送」→
-剩下的距离手动跑。
+**鸣潮 has no auto-pathing.** Clicking the quest text or the quest icon only
+re-tracks it; the character does not walk (tested three times on 2026-08-29, the
+character did not take a step). For any distance there is exactly one route:
+open the map (`M`) → find the **beacon** nearest the target (one you have
+unlocked) → click it → click 「传送」 in the popup → run the remaining distance
+by hand.
 
-大地图上认标记：
+Reading markers on the world map:
 
-- **黄色箭头 = 你自己**，箭头方向就是角色朝向。别拿它当目标点。
-- 金色圆圈带十字准星 = 追踪中的任务目标。
-- 点**空白地图**会弹「自定义标记」对话框——ESC 退出，别点「添加」。
-- 点**标记本身**只弹信息框，不会传送；只有信标才给「传送」按钮。
+- **The yellow arrow is you**, and its direction is which way the character
+  faces. Do not mistake it for the destination.
+- A golden circle with a crosshair = the quest objective being tracked.
+- Clicking **empty map** pops the 「自定义标记」 dialog - ESC out of it, do not
+  click 「添加」.
+- Clicking **a marker itself** only opens an info box, it does not teleport;
+  only beacons offer a 「传送」 button.
 
-### 剧情可以跳过
+### Cutscenes can be skipped
 
-过场动画和对话**左上角有跳过按钮**。进剧情后先看左上角，
-不用一句一句点完。
+Cutscenes and dialogue **have a skip button in the top-left corner**. Look
+there first when a story sequence starts instead of clicking through it line by
+line.
 
-### 走路导航：看路标图标，不要看米数
+### Walking navigation: follow the waypoint icon, not the metre count
 
-**米数是三维直线距离，它不告诉你方向。** 绕柱子、走错层、从目标旁边经过，
-米数都会变大，你根本分不清是走反了还是被挡住了。
+**The metre count is a 3D straight-line distance, and it tells you nothing about
+direction.** Going around a pillar, ending up on the wrong floor, walking past
+the target - the number goes up in all of those, and you cannot tell being
+turned around from being blocked.
 
-2026-08-29 实测翻车：距离走势 6→12→15→26→26→30→29，
-已经走到 6 米了又走回 29 米，连试七次没有一次稳定下降。
+Real failure on 2026-08-29: the distance went 6→12→15→26→26→30→29 - already
+down to 6 metres and back out to 29, seven attempts in a row without one steady
+decrease.
 
-**画面上有路标。** 追踪中的任务目标在世界里会显示成一个
-**金色圆圈带十字**的图标（近距离时才出现），旁边跟一个 `>` 或 `<` 箭头，
-表示目标还在那个方向偏出去。
+**There is a waypoint on screen.** The tracked quest objective is drawn in the
+world as a **golden circle with a cross** (it only appears at close range), with
+a `>` or `<` arrow beside it meaning the target is further off in that
+direction.
 
-正确的走法：
+The way that works:
 
 ```
-1. 截图，找到那个金色路标图标
-2. 用 look <dx> 0 转视角，把路标转到**画面水平正中**（x ≈ 960）
-   每转一次截图确认，图标应该在往中间移
-3. 路标居中之后再 hold w，一次走 2000~3000ms
-4. 米数这时才应该稳定下降。不降就说明中间隔着墙或者有高低差
+1. Take a screenshot and find that golden waypoint icon
+2. Use look <dx> 0 to turn until the waypoint is horizontally centred (x ≈ 960)
+   Screenshot after each turn to confirm; the icon should be moving inward
+3. Only once it is centred, hold w, 2000~3000ms at a time
+4. Only now should the metre count fall steadily. If it does not, there is a
+   wall or a height difference in the way
 ```
 
-**高低差**：路标图标明显偏画面上方 = 目标在楼上，要找楼梯或爬上去；
-明显偏下方 = 目标在楼下，要跳下去。跳跃默认是空格。
+**Height difference**: the waypoint icon clearly above centre = the target is
+upstairs, find stairs or climb; clearly below = the target is downstairs, drop
+down. Jump is space by default.
 
-**别站在栏杆或平台边缘上操作。** 角色卡在窄边上时移动会被地形约束，
-走出来的轨迹和你的预期完全不同。先下到平地再导航。
+**Do not operate while standing on a railing or the edge of a platform.** When
+the character is stuck on a narrow edge, movement is constrained by the terrain
+and the path taken has nothing to do with what you intended. Get down to flat
+ground before navigating.
 
-### 那个金色图标会「贴边」，别指望把它转到画面正中
+### That golden icon sticks to the screen edge - do not expect to centre it
 
-图标旁边跟着 `>` `<` `⌄` 时，说明**目标在画面外**，图标被钉在画面边缘的固定位置，
-只有那个小箭头是有效信息（目标在哪个方向）。转镜头它几乎不动。
+When the icon has a `>`, `<` or `⌄` beside it, the **target is off screen** and
+the icon is pinned to a fixed position at the edge; the only useful information
+is that little arrow (which direction the target is in). Turning the camera
+barely moves it.
 
-只有目标**进入画面**时，图标才落到真实位置上，并且旁边会显示「N米」。
-**看到「N米」才说明你真的看见目标了。**
+Only when the target **comes on screen** does the icon settle onto its real
+position, with "N metres" shown beside it. **Seeing "N metres" is what tells you
+that you actually have the target in view.**
 
-### 屏幕左下角的坐标读数就是米，可以直接解方程
+### The coordinate readout in the bottom-left corner is in metres, so solve for the target
 
-左下角有一串 `-24,6,1`，是 **(x, 高度, z)，单位就是米**。
-任务条上的距离是到目标的三维直线距离。
+The bottom-left corner shows something like `-24,6,1`: that is **(x, height, z),
+in metres**. The distance in the quest bar is the 3D straight-line distance to
+the target.
 
-两者一凑，目标位置就是可解的：站在几个不同位置各读一次
-「坐标 + 距离」，三个点以上就能把目标坐标解出来。
+Put the two together and the target position is solvable: stand in several
+different places and read "coordinates + distance" at each; three points or more
+are enough to solve for the target coordinates.
 
-2026-08-29 实测：用 8 组样本网格搜索，解出目标 `(-7,-2,5)`，
-**平均偏差 0.27 米**。这把「到处乱走碰运气」变成了「算得出还差多少」。
+Measured on 2026-08-29: a grid search over 8 samples solved the target as
+`(-7,-2,5)`, with an **average error of 0.27 metres**. This turns "wander about
+and hope" into "compute how far is left."
 
 ```python
 best, bestErr = None, 1e18
@@ -245,65 +290,82 @@ for a in range(-60, 41):
       if e < bestErr: bestErr, best = e, (a,b,c)
 ```
 
-有了目标坐标，每走一步读一次坐标，就能算出这一步是靠近还是远离，
-不用再靠米数猜方向。**方向键的世界方向也要这么标定**：走一小段，
-看坐标差，就知道 `w/a/s/d` 各自对应世界的哪个方向。
+With the target coordinates in hand, read the coordinates after every step and
+you can tell whether that step closed the gap or opened it, instead of guessing
+direction from the metre count. **Calibrate the world direction of the movement
+keys the same way**: walk a short distance, look at the coordinate delta, and
+you know which world direction each of `w/a/s/d` maps to.
 
-### 但是：室内狭窄地形，这套还是会输
+### But: in tight indoor terrain this whole method still loses
 
-同样是 2026-08-29 实测，在「心的密室」副本里：
-角色卡在岩石和墙的夹角，`a` 能往 +x 走但同时会**自动爬墙**（高度 +7），
-`d` 能降高度但 x 往反方向走，`w` 直接撞墙原地不动。
-坐标解得再准，也找不到那条既降高度又前进的路。
+Also measured on 2026-08-29, inside the 「心的密室」 instance: the character was
+wedged in the corner between a rock and a wall, `a` moved +x but **automatically
+climbed the wall** at the same time (height +7), `d` lowered the height but
+moved x the wrong way, and `w` walked straight into the wall and stayed put. No
+matter how precise the solved coordinates are, there is no route that both
+lowers height and moves forward.
 
-**结论：对话、菜单、跳剧情、传送、开阔地跑图 —— 这套能做。
-狭窄室内的三维走位 —— 40 秒一拍做不了，别硬耗。**
-遇到这种地形，把坐标和目标位置交出去让人接管几十秒，比耗一小时划算。
+**Conclusion: dialogue, menus, skipping cutscenes, teleporting, running across
+open ground - this method handles all of that. Three-dimensional movement in
+tight indoor spaces - it cannot, at 40 seconds per frame, so do not grind at
+it.** In terrain like that, hand over the coordinates and the target position
+and let a person take over for half a minute; it beats burning an hour.
 
-### 「不再提醒」只在跳过剧情这类地方勾
+### Tick 「不再提醒」 only where it is about skipping cutscenes
 
-鸣潮很多操作会先弹一个二次确认框。在这条 40 秒一次往返的链路上，
-每个确认框都是实打实的一次往返，跳一段剧情要多花快一分钟。
+鸣潮 puts a second confirmation dialog in front of many actions. On a link with a
+40-second round trip, every confirmation dialog is one more real round trip, and
+skipping one story sequence costs the best part of an extra minute.
 
-确认框里通常有个**「不再提醒」**，勾上以后同类操作就不再问了，能省掉大量往返。
+Those dialogs usually carry a **「不再提醒」** checkbox; tick it and the same
+class of action stops asking, which saves a great many round trips.
 
-**但只在这两类地方勾：**
+**But tick it only in these two places:**
 
-- 跳过剧情 / 跳过过场动画的确认
-- 纯界面操作的确认（关闭面板、退出某个界面）
+- Confirmations for skipping story / skipping cutscenes
+- Confirmations for pure UI actions (closing a panel, leaving a screen)
 
-**这些地方一律不许勾，也不许点确认，必须先问：**
+**Never tick it, and never click confirm, in these places - ask first:**
 
-- 任何会花掉账号里东西的（体力、材料、货币、抽卡次数）
-- 任何带「购买 / 充值 / 兑换 / 删除 / 分解 / 放弃」字样的
-- 任何你说不清点下去会发生什么的
+- Anything that spends something on the account (stamina, materials, currency,
+  gacha pulls)
+- Anything with the words 「购买 / 充值 / 兑换 / 删除 / 分解 / 放弃」 on it
+- Anything where you cannot say what clicking it will do
 
-区别在于：跳过剧情点错了最多是少看一段剧情，可以回看；
-花资源的确认框一旦关掉提醒，后面每一次误点都会直接扣东西，而且没有回头路。
+The difference: getting a skip-cutscene click wrong costs you a story sequence
+at worst, and you can watch it again; once the reminder is turned off on a
+resource-spending dialog, every later misclick takes something directly, with no
+way back.
 
-## 7. 红线
+## 7. Red lines
 
-1. **不许点任何购买/充值/兑换按钮。** 遇到商店界面立刻 ESC 退出来。
-2. **不许点账户登出、切换账号、删除存档。**
-3. **不许改鸣潮键位。** 见上。
-4. **不许关机。** 关机 = 断掉自己的手。
-5. **报错必须当场说。** 不许绕过去不提，不许用「已知问题/不影响结果」搪塞。
-   静默失败是最高优先级的 bug。
-6. **不许把推断当事实。** 没实测过的就说「没测过」。
-7. 操作前先截一张图确认当前在哪个界面。往一个不知道是什么的画面上盲点，
-   是这套工具唯一会造成真实损失的用法。
+1. **Do not click any purchase / top-up / exchange button.** Hit ESC out of a
+   shop screen immediately.
+2. **Do not click account logout, account switching, or delete save.**
+3. **Do not change 鸣潮 key bindings.** See above.
+4. **Do not shut the machine down.** Shutting it down = cutting off your own hands.
+5. **Report an error the moment it happens.** Do not work around it silently, and
+   do not fob it off as "known issue / does not affect the result". A silent
+   failure is the highest-priority bug there is.
+6. **Do not present an inference as a fact.** If it has not been tested, say
+   "not tested".
+7. Take a screenshot before acting, to confirm which screen you are on. Blindly
+   clicking into a screen you cannot identify is the one use of these tools that
+   causes real loss.
 
-## 8. 卡住了就问
+## 8. If you are stuck, ask
 
 ```
 SendMessage({to: "main", message: "..."})
 ```
 
-这条链路实测双向都通。`ListAgents` 在子进程里是禁用的，
-但 `"main"` 这个地址写死在 SendMessage 的文档里，直接用就行。
+This link is confirmed to work in both directions. `ListAgents` is disabled in a
+subprocess, but the address `"main"` is written into SendMessage's own
+documentation, so just use it.
 
-**什么时候该问：** 界面不认识、键位查不到、连续两次尝试没推进、
-要做的事可能花掉账号里的资源、任何你觉得「这一下点下去可能不好收场」的时刻。
+**When to ask:** an unfamiliar screen, a key binding you cannot look up, two
+attempts in a row with no progress, anything that might spend a resource on the
+account, and any moment where clicking feels like it might not end well.
 
-问的时候把这三样一起发过来：你现在在哪个界面、你打算干什么、你卡在哪一步。
-不要只发「卡住了」。
+When you ask, send these three things together: which screen you are on, what
+you are trying to do, and which step you are stuck on. Do not just send "stuck".

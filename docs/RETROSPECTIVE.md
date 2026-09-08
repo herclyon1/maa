@@ -1,74 +1,81 @@
-# 栽过的跟头,以及现在拦住它们的东西
+# The mistakes made, and what stops them now
 
-写这份东西的理由很直接:同一类错误犯第二次,说明当时只是"下次注意",没有留下
-任何会替我记住的机制。所以每一条都要回答一个问题——**下次再犯,谁会先叫停?**
+The reason for writing this down is blunt: making the same kind of mistake a
+second time means the first time produced nothing but "be more careful next
+time" - no mechanism that remembers on my behalf. So every row has to answer one
+question - **next time, who calls a halt first?**
 
-标着「无自动防护」的,是诚实承认拦不住的,只能靠规矩。不粉饰。
+Rows marked "no automated guard" are the honest admissions: nothing catches
+them, only the rule does. Not dressed up.
 
-## 一、把没验证的东西当事实说出去
+## 1. Stating something unverified as if it were a fact
 
-这是最贵的一类,因为错误的结论会被当成决策依据。
+The most expensive kind, because a wrong conclusion gets used as the basis of a
+decision.
 
-| 犯过的 | 现在拦它的 |
+| What happened | What stops it now |
 |---|---|
-| 从 GBK 乱码字节里读出"家具零件""沿途的点滴"两个**根本不存在**的掉落名,当成真实数据汇报 | `winrun.sh` 三种模式全程 UTF-8,文件按字节取回;`--py` 让脚本不经过任何控制台 |
-| 说物资只有六条换算线(实际八条)——因为按名字过滤,把"碳""技巧概要"筛掉了 | 规矩:**按结构过滤,并且打印被丢掉的是什么**。无自动防护 |
-| 说 MaaEnd「没有库存读取功能」——IMS 一直都在 | 死命令:报错先查官方文档。`docs/HEADLESS.md` 记了 IMS 的位置 |
-| 说 43 个物品是「全量库存」——那是历次任务累积的缓存 | 无自动防护。规矩:说"全量"之前先找到那次全量扫描的日志 |
-| 说库存扫描「消耗理智」 | 无自动防护 |
-| 说 `Missing` 是「账号缺干员」——真因是练度要求 | 回调不再截断;`ignore_requirements` 已写进文档 |
-| 说 MaaEnd 界面层「闭源」——它在 `MistEO/MXU`,AGPL | 无自动防护。规矩:说"闭源"前先搜日志原文、看 `.gitmodules` |
-| 把 MaaEnd「天天更新」的结论套到 MAA 头上,没有任何测量 | 无自动防护。规矩:说频率就去数,MAA 实测 7 周 8 次 |
-| 说 AUTO-MAS 自动安装「可能失败」,零证据,用来把决定推给用户 | 见 `no-unfounded-risk-hedging` 记忆。规矩:先找风险机制,找不到就把功能做完整 |
+| Read two drop names, 家具零件 and 沿途的点滴, out of mojibaked GBK bytes - **neither of them exists** - and reported them as real data | `winrun.sh` is UTF-8 end to end in all three modes, and files come back as bytes; `--py` keeps a script out of any console |
+| Said materials had only six conversion lines (there are eight) - because the filter went by name and dropped 碳 and 技巧概要 | Rule: **filter by structure, and print what got dropped**. No automated guard |
+| Said MaaEnd "has no inventory readout" - IMS was there the whole time | Standing order: read the official docs before experimenting. `docs/HEADLESS.md` records where IMS lives |
+| Called 43 items "the whole depot" - it was a cache accumulated over past runs | No automated guard. Rule: before saying "whole", find the log of the scan that actually covered everything |
+| Said an inventory scan "costs sanity" | No automated guard |
+| Read `Missing` as "the account does not own that operator" - the real cause was the training-level requirement | Callbacks are no longer truncated; `ignore_requirements` is written down |
+| Called MaaEnd's UI layer "closed source" - it is `MistEO/MXU`, AGPL | No automated guard. Rule: before saying "closed source", search the log text and read `.gitmodules` |
+| Carried the "updates every day" conclusion from MaaEnd over to MAA without measuring anything | No automated guard. Rule: if you state a frequency, go and count it. MAA, measured: 8 times in 7 weeks |
+| Said the AUTO-MAS auto-install "might fail", with zero evidence, to push the decision back onto the user | See the `no-unfounded-risk-hedging` memory. Rule: find the failure mechanism first; if there is none, finish the feature |
 
-**共同点**:这些全是"我推断出来的"被说成"我查到的"。唯一真防线是每句结论后面
-跟一个可复查的来源。
+**What they share**: all of these are "something I inferred" told as "something
+I looked up". The only real defence is a re-checkable source behind every
+conclusion.
 
-## 二、编码与引号
+## 2. Encoding and quoting
 
-| 犯过的 | 现在拦它的 |
+| What happened | What stops it now |
 |---|---|
-| Windows 控制台 CP936 把 UTF-8 输出撕碎,导致上面那条幻觉 | `winrun.sh` 全部三模式;`.ps1` 带 BOM;`PYTHONUTF8=1` |
-| PowerShell 转义单引号 `''` 写在 bash 单引号里,字符串提前结束,命令根本没跑 | **`winrun.sh --py`**:脚本当文件推送,没有任何一层解析它 |
-| `set PYTHONUTF8=1 && cmd` 把尾随空格算进值里,Python 拒绝启动 | 同上,`--py` 内部已写成 `set X=1&&` |
-| 每次运行前不清 `winrun.out`,失败时读到上一次的陈旧输出 | `winrun.sh` 每次运行前先删 |
+| The Windows console's CP936 shredded UTF-8 output, which produced the hallucination above | `winrun.sh` in all three modes; `.ps1` written with a BOM; `PYTHONUTF8=1` |
+| A PowerShell escaped single quote `''` written inside a bash single-quoted string ended the string early, so the command never ran at all | **`winrun.sh --py`**: the script is pushed as a file, and no layer parses it |
+| `set PYTHONUTF8=1 && cmd` counted the trailing space as part of the value and Python refused to start | Same as above; `--py` already writes it internally as `set X=1&&` |
+| Not clearing `winrun.out` before each run, so a failure read back the previous run's stale output | `winrun.sh` deletes it before every run |
 
-## 三、泄密
+## 3. Leaks
 
-| 犯过的 | 现在拦它的 |
+| What happened | What stops it now |
 |---|---|
-| 宽泛 grep 把 `WECOM_SECRET` 打进转录 | **`scripts/mac/redact.py`**,并且 `winrun.sh --get` **默认**走它 |
-| 打印整份配置,带出 `cdkEncrypted` 开头几十个字符 | 同上。要原始字节得显式用 `--get-raw` |
+| A broad grep printed `WECOM_SECRET` into the transcript | **`scripts/mac/redact.py`**, and `winrun.sh --get` goes through it **by default** |
+| Printing a whole config carried out the first few dozen characters of `cdkEncrypted` | Same as above. Raw bytes require an explicit `--get-raw` |
 
-安全的那个必须是默认值——转录写下就收不回来。
+The safe one has to be the default - once something is in the transcript it
+cannot be taken back.
 
-## 四、动手前不看清楚
+## 4. Acting before looking properly
 
-| 犯过的 | 现在拦它的 |
+| What happened | What stops it now |
 |---|---|
-| `vclick` 把鼠标悬停高亮当成点击成功 | 改成点击后比对独立检查区域 |
-| 只比较三个颜色通道里的一个(白色和主题蓝的 B 都是 255) | 三通道全比 |
-| `$i.mi.dx = …` 改的是副本,输入从来没发出去 | 无自动防护(PowerShell 值类型语义) |
-| 自动重试把已经拨好的开关又拨回去,然后报告失败 | 删掉自动重试 |
-| 盲点 ADB 坐标,反复点进采购中心和生息演算 | 规矩:点之前截图,点之后截图 |
-| 拿 `--help` 试没读过文档的 `MAA.Updater.exe`,它在 session 0 挂死 | 死命令:先读源码/文档。这次是从 `main.cpp` 顶部注释拿到的正确用法 |
-| 路径替换脚本连 12 个 `.bak-*` 备份一起改了 | 无自动防护。规矩:批量改写先打印将要改动的清单 |
+| `vclick` took a mouse-hover highlight for a successful click | Changed to compare an independent check region after the click |
+| Compared only one of the three colour channels (white and the theme blue both have B = 255) | All three channels are compared |
+| `$i.mi.dx = …` mutated a copy, so the input was never sent | No automated guard (PowerShell value-type semantics) |
+| An automatic retry flipped a switch that had already been set back again, then reported failure | The automatic retry was deleted |
+| Blind ADB coordinates, repeatedly clicking into 采购中心 and 生息演算 | Rule: screenshot before the click, screenshot after |
+| Tried `--help` on `MAA.Updater.exe` without having read anything about it; it hung in session 0 | Standing order: read the source or the docs first. The correct usage came from the comment at the top of `main.cpp` |
+| A path-rewriting script edited 12 `.bak-*` backups along with the real files | No automated guard. Rule: a bulk rewrite prints the list of what it is about to change first |
 
-## 五、流程
+## 5. Process
 
-| 犯过的 | 现在拦它的 |
+| What happened | What stops it now |
 |---|---|
-| **测试红着就部署** | **`deploy-relay.sh` 第 0 步跑全部测试,不全绿直接退出**(已实测拦截) |
-| `_boot_time` 方法根本不存在,服务半夜崩掉 | `tests/test_self_attrs.py`:AST 扫描每个 `self.x` |
-| 记录文件改名后收集器认不出 | `tests/test_record_names.py` 两种命名都测 |
-| 修完 bug 顺手把之前压制的关机又放出来了 | `tests/test_debug_window.py`;`docs/PITFALLS.md` 有专章 |
-| 后台轮询 8 小时 54 分,约 1600 次 SSH | 死命令:轮询须经批准。无自动防护 |
-| 任务没做完就放弃(EX-8、Missing 调查) | 死命令:卡住换方法,缩范围要问 |
-| 目录搬家后 Windows 偷偷建了 Block 防火墙规则,API 全挂 | `check-docs.py` 有远端检查;搬家后必须重验端口 |
-| `Invoke-WebRequest` 24 分钟下 19MB | `docs/OPERATIONS.md` 明确:大文件一律 `curl.exe` |
-| 不看就默认 Python 3.13(当时 3.14 已发布) | 规矩:装之前先查最新版号 |
+| **Deployed with tests red** | **`deploy-relay.sh` step 0 runs the whole test suite and exits unless everything is green** (measured: it has blocked a deploy) |
+| The `_boot_time` method did not exist at all, and the service crashed in the middle of the night | `tests/test_self_attrs.py`: an AST scan of every `self.x` |
+| The collector stopped recognising record files after they were renamed | `tests/test_record_names.py` tests both naming schemes |
+| Fixing a bug also released a previously suppressed shutdown | `tests/test_debug_window.py`; `docs/PITFALLS.md` has a section on it |
+| Polled in the background for 8 hours 54 minutes, roughly 1600 SSH calls | Standing order: polling needs approval. No automated guard |
+| Abandoned a task before it was done (EX-8, the `Missing` investigation) | Standing order: when stuck, change method; narrowing the scope has to be asked |
+| After the directory move, Windows quietly created a Block firewall rule and every API went down | `check-docs.py` has remote checks; ports must be re-verified after a move |
+| `Invoke-WebRequest` took 24 minutes to download 19MB | `docs/OPERATIONS.md` states it plainly: large files always go through `curl.exe` |
+| Assumed Python 3.13 without looking (3.14 was already out) | Rule: look up the current version number before installing |
 
-## 怎么用这份东西
+## How to use this
 
-出错之后,先在这里找同类。找得到,说明防护没起作用或者根本没有——那就先补防护
-再谈修复。找不到,才是新类型,处理完加一行进来。
+After something goes wrong, look here for the same kind first. If it is here,
+the guard either failed or was never there - fix the guard before the bug. Only
+if it is not here is it a new kind; deal with it, then add a row.

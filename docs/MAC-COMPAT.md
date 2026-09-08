@@ -1,123 +1,133 @@
-# 三个游戏的辅助程序对 Mac 的兼容性
+# Mac compatibility of the three games' helper programs
 
-2026-08-29 查证。结论：**想在 Mac 上跑「自动剧情」，一个都没有。**
+Verified 2026-08-29. Conclusion: **for "auto story mode" on a Mac, there is not one option.**
 
-## 第一层：游戏本身就没有官方 Mac 客户端
+## Layer one: the games themselves have no official Mac client
 
-| 游戏 | 官方 macOS 客户端 |
+| Game | Official macOS client |
 |------|------------------|
-| 原神 | 没有。只能靠 PlayCover 装 iOS 版（仅 Apple Silicon）、或 CrossOver / Whisky 跑 PC 版 |
-| 鸣潮 | 没找到官方 Mac 客户端 |
-| 终末地 | PC 是 Windows，另有安卓 / iOS 端 |
+| 原神 | None. Only via PlayCover running the iOS build (Apple Silicon only), or CrossOver / Whisky running the PC build |
+| 鸣潮 | No official Mac client found |
+| 终末地 | PC build is Windows; there are also Android / iOS builds |
 
-非官方途径跑网游本身就有封号风险，这一点各家教程自己都写了。
+Running an online game through unofficial routes carries a ban risk in itself — every one of
+those guides says so themselves.
 
-## 第二层：辅助程序
+## Layer two: the helper programs
 
-| 游戏 | 工具 | 有没有自动剧情 | 有没有 Mac 包 | 怎么控制游戏 |
+| Game | Tool | Auto story? | Mac build? | How it drives the game |
 |------|------|--------------|-------------|-------------|
-| 原神 | BetterGI（babalae/better-genshin-impact） | 有（自动对话、自动跳过） | **没有**。官方快速上手页原文：「BetterGI 只支持 Windows 系统」，要求 Win10+ 64 位 | 截 Windows 窗口 + Win32 注入输入 |
-| 鸣潮 | 更好的鸣潮 BetterWW（babalae/better-wuthering-waves） | **有，而且是主打功能**——仓库标题就是「后台自动剧情」 | **没有**。v0.12 的 release 只有 `.exe` 和 `.7z` | 同上 |
-| 鸣潮 | OK-WW（ok-oldking/ok-wuthering-waves） | 日常流程里有对话跳过 | **没有**。v3.6.6 的 release 全是 `win32` 包 | 同上 |
-| 终末地 | MaaEnd | 没有专门的自动剧情，主要是日常 | **有**。v2.26.0 带 `macos-aarch64.dmg` 和 `macos-x86_64.dmg`，还有 Linux 包 | Win32 前台（只在 Windows）**或 ADB**（安卓模拟器/真机） |
+| 原神 | BetterGI (babalae/better-genshin-impact) | Yes (auto dialogue, auto skip) | **No.** The official quick-start page says verbatim: 「BetterGI 只支持 Windows 系统」, and requires Win10+ 64-bit | Captures the Windows window + injects input via Win32 |
+| 鸣潮 | 更好的鸣潮 BetterWW (babalae/better-wuthering-waves) | **Yes, and it is the headline feature** — the repo's own title is 「后台自动剧情」 | **No.** The v0.12 release ships only `.exe` and `.7z` | Same as above |
+| 鸣潮 | OK-WW (ok-oldking/ok-wuthering-waves) | Dialogue skipping inside the daily routine | **No.** Every asset in the v3.6.6 release is a `win32` package | Same as above |
+| 终末地 | MaaEnd | No dedicated auto story; it is mainly dailies | **Yes.** v2.26.0 ships `macos-aarch64.dmg` and `macos-x86_64.dmg`, plus Linux packages | Win32 foreground (Windows only) **or ADB** (Android emulator / real device) |
 
-## 为什么只有 MaaEnd 有 Mac 包
+## Why only MaaEnd has a Mac build
 
-这三家的其他工具都是同一个路子：**截 Windows 游戏窗口 + 用 Win32 API 注入键鼠**。
-这套 API 在 macOS 上根本不存在，所以移植不是「懒得做」，是做不了。
+Every other tool from these three projects takes the same route: **capture the Windows game
+window + inject keyboard and mouse through the Win32 API**. That API simply does not exist on
+macOS, so porting is not "nobody bothered", it is not possible.
 
-MaaEnd 走了另一条路——**ADB 连安卓端**，这条路本身跨平台，所以它顺手就出了
-macOS 和 Linux 包。它的 README 只写了「PC 端 (Win32 前台) 与安卓端 (ADB)」，
-没提 macOS，但 release 里确实有 dmg。
+MaaEnd took a different route — **ADB to the Android build** — and that route is cross-platform
+by nature, so macOS and Linux packages came almost for free. Its README only mentions
+「PC 端 (Win32 前台) 与安卓端 (ADB)」 and never mentions macOS, but the release really does
+contain dmgs.
 
-## 但 MaaEnd 这条路对我们没用
+## But MaaEnd's route is useless to us
 
-1. 在 Mac 上它只能走 ADB，也就是必须跑**安卓版终末地**，
-   要么真机要么模拟器。Apple Silicon 上安卓模拟器的选择非常有限。
-2. **它本来就没有自动剧情。** 它做的是日常。
+1. On a Mac it can only go through ADB, which means it must run the **Android build of 终末地**,
+   on either a real device or an emulator. Android emulator options on Apple Silicon are very limited.
+2. **It has no auto story mode in the first place.** What it does is dailies.
 
-## BetterWW 到底能做什么（查源码确认，不是看简介）
+## What BetterWW can actually do (confirmed by reading the source, not the blurb)
 
-**它只做剧情，不做日常。** 仓库里 `GameTask` 下只有三个功能目录：
-`AutoSkip`（跳剧情）、`AutoPick`（自动拾取）、`GameLoading`（识别读条）。
-没有体力、周本、声骸、悬赏、深渊——那些是 OK-WW 的活。
+**It only does story, not dailies.** There are exactly three feature directories under `GameTask`
+in the repo: `AutoSkip` (skip story), `AutoPick` (auto pickup), `GameLoading` (recognise the
+loading bar). No stamina, weekly bosses, echoes, bounties or abyss — those are OK-WW's job.
 
-**没有自动寻路。** 整个仓库里没有任何寻路、走路、路径录制回放的代码。
+**There is no auto pathfinding.** The entire repo contains no pathfinding, walking, or
+route record/replay code at all.
 
-### 「后台」是怎么做到的
+### How the "background" part works
 
-两件事凑起来：
+Two things combined:
 
-1. **截图认窗口句柄，不认前台。** `Fischless.GameCapture` 实现了三种：
-   `BitBlt`、`DwmSharedSurface`、`Graphics`（Windows Graphics Capture）。
-   都是对着游戏窗口的 HWND 截，窗口被挡住、不在前台都能截到。
+1. **Capture goes by window handle, not by foreground.** `Fischless.GameCapture` implements
+   three backends: `BitBlt`, `DwmSharedSurface`, `Graphics` (Windows Graphics Capture).
+   All of them capture against the game window's HWND, so they still work when the window is
+   covered or not in front.
 
-2. **输入走 `PostMessage`，不走 `SendInput`。**
-   `AutoSkipTrigger.cs` 里调的是 `_simulator.KeyPressBackground(...)`
-   和 `skipRa.BackgroundClick()`，底层是 `PostMessageSimulator`——
-   直接往游戏窗口的消息队列里投消息，不需要窗口有焦点，
-   也不会抢走你正在用的鼠标键盘。
+2. **Input goes through `PostMessage`, not `SendInput`.**
+   `AutoSkipTrigger.cs` calls `_simulator.KeyPressBackground(...)` and `skipRa.BackgroundClick()`,
+   which sit on top of `PostMessageSimulator` — it posts messages straight into the game window's
+   message queue, needs no window focus, and does not steal the mouse and keyboard you are using.
 
-3. **认按钮靠模板匹配**（`SkipButtonRo`、`NotPromptAgainButtonRo` 这些图片资源），
-   不是 OCR。所以它对分辨率和滤镜很敏感：
-   只支持 16:9、推荐 1920x1080 窗口化、不许开 HDR 和显卡滤镜、要管理员权限。
-   环境要求 Windows 10 64 位 + .NET 8。
+3. **Buttons are recognised by template matching** (image resources like `SkipButtonRo`,
+   `NotPromptAgainButtonRo`), not OCR. That makes it very sensitive to resolution and filters:
+   16:9 only, 1920x1080 windowed recommended, no HDR and no GPU filters, administrator rights
+   required. Environment requirements are Windows 10 64-bit + .NET 8.
 
-### 这跟我们 wingui.sh 的做法差在哪
+### How this differs from what our wingui.sh does
 
-我们的 `wingui.sh` 用 `keybd_event` / `mouse_event`——那是**全局前台输入**，
-必须把游戏切到前台、会抢鼠标，而且要靠计划任务绕到 session 1，
-一次往返 30~40 秒。
+Our `wingui.sh` uses `keybd_event` / `mouse_event` — that is **global foreground input**:
+the game has to be brought to the front, it steals the mouse, and it has to detour through a
+scheduled task to reach session 1, so one round trip takes 30-40 seconds.
 
-BetterWW 是**在那台机器本地、对着窗口句柄发消息**，延迟接近零，
-而且不抢焦点。这两者不是同一个量级的东西。
+BetterWW is **local on that machine, posting messages to a window handle**, so latency is close
+to zero and it never takes focus. The two are not in the same league.
 
-## 结论
+## Conclusion
 
-**自动剧情在 Mac 上是零选项。** 三个有自动剧情的工具（BetterGI、BetterWW、OK-WW）
-全是 Windows 独占；唯一出 Mac 包的 MaaEnd 恰好没有自动剧情。
+**Auto story mode on a Mac has zero options.** All three tools that have auto story (BetterGI,
+BetterWW, OK-WW) are Windows-only; the one tool that ships a Mac build, MaaEnd, happens to be
+the one without auto story.
 
-**真正该做的是反过来想。** 2026-08-29 我们花了一下午证明：
-从 Mac 远程驱动游戏，瓶颈根本不是平台兼容性，是**一次操作 30~40 秒的往返延迟**
-（见 [PLAY-MANUAL.md](PLAY-MANUAL.md)）。寻路基本等于 0。
+**The right move is to turn the question around.** On 2026-08-29 we spent an afternoon proving
+that when driving the game remotely from the Mac, the bottleneck is not platform compatibility
+at all — it is the **30-40 second round trip per action** (see [PLAY-MANUAL.md](PLAY-MANUAL.md)).
+Pathfinding is essentially zero.
 
-而 **BetterWW 的「后台自动剧情」正是我们today做不到的那件事，
-它在乌鲁木齐那台 Windows 机器上是原生能跑的，延迟为零。**
+And **BetterWW's 「后台自动剧情」 is exactly the thing we today cannot do, and it runs natively
+with zero latency on that Windows machine in 乌鲁木齐.**
 
-所以路线是：Windows 机器当执行端、Mac 当控制端——也就是现在这套。
-要自动剧情就在那台机器上装 BetterWW，不要试图搬到 Mac 上。
+So the line is: the Windows machine is the execution end, the Mac is the control end — which is
+exactly the current setup. If you want auto story, install BetterWW on that machine; do not try
+to move it onto the Mac.
 
-封号风险照旧：这些都是第三方工具，库洛和米哈游都有权封号。
+Ban risk is unchanged: these are all third-party tools, and both 库洛 and 米哈游 are within their
+rights to ban accounts.
 
-## 补充：Mac 上不用虚拟机跑 Windows 程序，有办法但这件事上没用
+## Addendum: running Windows programs on a Mac without a VM — possible, but useless here
 
-2026-08-29 查证。
+Verified 2026-08-29.
 
-### 不用虚拟机的路子确实存在
+### The no-VM routes do exist
 
-| 方案 | 状态 |
+| Option | Status |
 |------|------|
-| **CrossOver 26**（2026-02 发布） | Wine + Apple GPTK 4，Intel 和 Apple Silicon 都支持，不装 Windows、不要 Windows 授权。商业软件 |
-| **Whisky** | **已停止维护**，作者自己让大家转 CrossOver。老装的还能用，但没有更新和支持 |
-| Apple Game Porting Toolkit | 苹果自己的 D3D→Metal 翻译层，CrossOver 26 里已经打包了 |
-| 虚拟机（Parallels / VMware / UTM） | 跑 Windows 11 ARM，靠 Windows 自带的 x86 模拟跑 x86 程序 |
+| **CrossOver 26** (released 2026-02) | Wine + Apple GPTK 4, supports both Intel and Apple Silicon, no Windows install and no Windows licence needed. Commercial software |
+| **Whisky** | **No longer maintained**; the author tells people to move to CrossOver. Existing installs still work, but there are no updates and no support |
+| Apple Game Porting Toolkit | Apple's own D3D→Metal translation layer, already bundled inside CrossOver 26 |
+| VMs (Parallels / VMware / UTM) | Run Windows 11 ARM and rely on Windows' built-in x86 emulation for x86 programs |
 
-### 但鸣潮这条链在两个地方各断一次
+### But the 鸣潮 chain breaks in two separate places
 
-**第一断：游戏本身在 Wine 下根本起不来。**
-鸣潮用的是库洛的反作弊（ACE 的改版）。实测结论是
-Whisky 和 Game Porting Toolkit 都会被反作弊挡住，游戏启动不了。
-Linux/Proton 那边是同样的问题。
+**Break one: the game itself will not even start under Wine.**
+鸣潮 uses 库洛's anti-cheat (a modified ACE). Measured results are that both Whisky and Game
+Porting Toolkit get blocked by the anti-cheat and the game does not launch. Linux/Proton hits
+the same problem.
 
-**第二断：就算游戏能跑，BetterWW 也接不上。**
-它靠的是 `DwmSharedSurface` / Windows Graphics Capture 截窗口，
-再用 `PostMessage` 往那个 HWND 发消息。这几个 API 在 Wine 里基本没实现，
-而且它必须和游戏在**同一个 Wine prefix** 里才可能看到对方的窗口句柄。
+**Break two: even if the game ran, BetterWW could not attach to it.**
+It relies on `DwmSharedSurface` / Windows Graphics Capture to capture the window, then
+`PostMessage` to send messages to that HWND. Those APIs are essentially unimplemented in Wine,
+and on top of that it would have to be in the **same Wine prefix** as the game to see the
+window handle at all.
 
-**Mac 上唯一能玩鸣潮的路是 PlayCover**——在 Apple Silicon 上原生跑 iOS 版。
-但那是个 iOS 应用，**根本没有 Win32 窗口**，BetterWW 连能发消息的对象都不存在。
+**The only way to play 鸣潮 on a Mac is PlayCover** — running the iOS build natively on Apple
+Silicon. But that is an iOS app: it **has no Win32 window at all**, so BetterWW does not even
+have an object to post messages to.
 
-### 结论
+### Conclusion
 
-这件事上 Mac 不是「慢一点」或者「麻烦一点」，是**结构上走不通**。
-Windows 机器必须留着当执行端。
+On this particular question the Mac is not "a bit slower" or "a bit more awkward" — it is
+**structurally impossible**. The Windows machine has to stay as the execution end.

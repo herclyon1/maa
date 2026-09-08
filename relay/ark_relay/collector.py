@@ -755,7 +755,13 @@ def _okww_say(task: str, msg: str, exc: str, text: str = "", at: int = 0) -> str
                 "OK-WW 报错中继还没有翻译，通知里只能说不认识：任务 %s，异常 %s，原文「%s」",
                 task, exc or "（没抓到异常名）", msg)
         who = task_zh or "某个任务"
-        return f"{who}：报了中继还不认识的错，原文已记进日志，要补翻译"
+        # **把原文抄进通知里**，不要只说「已记进日志」。2026-09-08 撞上了：
+        # OK-WW 早班连败三次，通知说「原文已记进日志」，而机器跑完早班就断电了——
+        # 日志要到晚上 21:20 那趟开机才够得着。人看着告警、想知道出了什么事的那一刻，
+        # 恰恰是日志最够不着的那一刻。原文是英文，但「看得懂的英文一行」
+        # 比「看不懂发生了什么」强得多；禁英文是为了别让他看不懂，不是为了让他没得看。
+        raw = " ".join((msg or "").split())[:110] or exc or "（连原文都没抓到）"
+        return f"{who}：中继还不认识这条错，原文照抄——「{raw}」"
     what = msg_zh or exc_zh
     # 紧挨着 traceback 前面那句「wait_until timeout … N seconds」说明等了多久
     before = text[max(0, at - 600):at] if text else ""

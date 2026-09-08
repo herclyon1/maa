@@ -1,80 +1,84 @@
-# 红按钮 —— 一键停掉游戏机上的一切
+# Red button — stop everything on the game machine in one shot
 
 ```bash
-scripts/mac/estop.sh              # 停一切：杀进程 + 关队列定时
-scripts/mac/estop.sh --list       # 只看在跑什么，不动手
-scripts/mac/estop.sh --keep-queue # 只杀进程，不碰队列定时
-scripts/mac/estop.sh --restore    # 停完之后，把队列定时改回 True
+scripts/mac/estop.sh              # stop everything: kill processes + disable the queue timers
+scripts/mac/estop.sh --list       # only show what is running, change nothing
+scripts/mac/estop.sh --keep-queue # kill processes only, leave the queue timers alone
+scripts/mac/estop.sh --restore    # after a stop, set the queue timers back to True
 ```
 
-**用户喊「中止」时直接跑它，不要临时拼命令。**
+**When the user says 「中止」, run this. Do not improvise a command on the spot.**
 
 ---
 
-## 为什么要有这个东西
+## Why this exists
 
-2026-08-26 的事故里，问题本身（改错配置）只烧了 2 个理智药，
-**真正失控的是「停」这一步**：
+In the 2026-08-26 incident, the problem itself (a wrong config edit) burned only 2 sanity
+potions. **What actually went out of control was the "stop" step:**
 
-| 我做的 | 结果 |
+| What I did | Result |
 |---|---|
-| `dispatch/stop` | MAA 停了，但 AUTO-MAS 立刻用**新 PID** 把 Endfield 拉回来 |
-| 杀 MAA/MaaEnd/Endfield/AUTO-MAS，然后 `tasklist` 查这四个名字 | 看到「没有运行的任务」，宣布「全部已停，已确认」 |
-| **可鸣潮当时还开着** | 我的检查清单里没有它 —— 那是个**假的已确认** |
-| 去杀鸣潮 | 引号转义炸了（`'Wuthering' 不是内部或外部命令`） |
-| 重试 | ssh 超时 |
-| 最后 | **用户自己关机才真正停下来** |
+| `dispatch/stop` | MAA stopped, but AUTO-MAS immediately brought Endfield back up under a **new PID** |
+| Killed MAA/MaaEnd/Endfield/AUTO-MAS, then ran `tasklist` for those four names | Saw "no running tasks" and declared "everything stopped, confirmed" |
+| **But 鸣潮 was still running** | It was not on my checklist — that was a **false confirmation** |
+| Went to kill 鸣潮 | Quote escaping blew up (`'Wuthering' 不是内部或外部命令`) |
+| Retried | ssh timed out |
+| In the end | **The user shut the machine down himself; that is what actually stopped it** |
 
-用户定性：「出现问题后你没有进行任何有效的停止行为，全是我手动关的」。
+The user's verdict: 「出现问题后你没有进行任何有效的停止行为，全是我手动关的」
 
-所以这个脚本的每一条设计都对应上面某一行失败。
+So every design decision in this script maps to one of the failure rows above.
 
-## 设计要点（改它之前先读）
+## Design points (read before changing it)
 
-1. **杀两轮**，不是一轮。AUTO-MAS 被杀的瞬间可能刚拉起一个新进程。
-2. **AUTO-MAS 必须一起杀**。只杀游戏没用，编排器还在就会重新拉起来。
-3. **先杀进程，MAS API 只当补充**。事故当天 MAS 的配置接口一直回
-   `配置已锁定, 无法修改`，连试 18 次都写不进去；而进程一定杀得掉。
-4. **用 `pwsh` 7，不用 `powershell` 5.1**。5.1 读 UTF-8 会乱码。
-5. **ssh 送命令用 base64 `-EncodedCommand`**，不要拼引号 —— 那天就是这么炸的。
-6. **最后必须回查**，而且清单要完整。漏一个进程名 = 这次停止无效。
+1. **Kill twice**, not once. AUTO-MAS may have just launched a new process at the moment it was killed.
+2. **AUTO-MAS must be killed too.** Killing only the games is useless — the orchestrator will relaunch them.
+3. **Kill processes first; the MAS API is only a supplement.** On the day of the incident the MAS
+   config endpoint kept returning `配置已锁定, 无法修改` — 18 attempts, none of them wrote.
+   A process, by contrast, can always be killed.
+4. **Use `pwsh` 7, not `powershell` 5.1.** 5.1 mangles UTF-8 on read.
+5. **Send commands over ssh as base64 `-EncodedCommand`**, never by stitching quotes together —
+   that is exactly what blew up that day.
+6. **Always verify afterwards**, with a complete list. One missed process name = the stop did not work.
 
-## 覆盖的进程名
+## Process names covered
 
 ```
 AUTO-MAS  MaaEnd  MAA  Endfield
-Client-Win64  Wuthering  wuwa        ← 鸣潮客户端（UE，名字待现场核实）
-ok-ww  okww  ok_ww  KRSDK  KRLauncher ← OK-WW 与库洛启动器
+Client-Win64  Wuthering  wuwa        ← 鸣潮 client (UE; real name still to be verified on the machine)
+ok-ww  okww  ok_ww  KRSDK  KRLauncher ← OK-WW and the Kuro launcher
 ```
 
-要加名字改脚本顶部的 `PATTERN`。
+To add a name, edit `PATTERN` at the top of the script.
 
-## 后遗症：队列定时会被关掉
+## Side effect: the queue timers get disabled
 
-默认模式会把两个队列的 `TimeEnabled` 设成 `False`，防止 MAS 被重新打开后自动开跑。
-**不 `--restore` 的话第二天早班不会跑。** 脚本结束时会提醒这一点。
+The default mode sets `TimeEnabled` to `False` on both queues, so the queues do not start on
+their own if MAS is reopened. **Without `--restore`, the next morning run will not happen.**
+The script prints a reminder about this when it finishes.
 
-只想杀进程、不想动定时，用 `--keep-queue`。
+To kill processes only and leave the timers untouched, use `--keep-queue`.
 
-## 不动的东西
+## What is left alone
 
-`ark-relay` 服务照常跑 —— 它只负责通知和开机预更新，运行中不会拉起游戏。
-真要连它一起停：
+The `ark-relay` service keeps running — it only handles notifications and the boot-time
+pre-update, and it never launches a game while running. To stop it as well:
 
 ```bash
 ssh Administrator@100.65.39.119 'sc stop ark-relay'
 ```
 
-停了它就没有任何通知了，包括「机器出事」的通知。**不建议默认停。**
+With it stopped there are no notifications at all, including "the machine is in trouble"
+notifications. **Not recommended as a default.**
 
-## 测试状态
+## Test status
 
-| 项 | 状态 |
+| Item | Status |
 |---|---|
-| bash 语法 (`bash -n`) | ✅ 通过 |
-| 目标机离线时优雅报错 | ✅ 通过 |
-| **对着真机实测（杀进程 / 回查 / restore）** | ⏳ **未做** —— 事故当天机器已关机 |
-| **鸣潮客户端真实进程名核实** | ⏳ **未做** —— 必须开着鸣潮跑一次 `--list` |
+| bash syntax (`bash -n`) | ✅ passes |
+| Graceful error when the target machine is offline | ✅ passes |
+| **Tested against the real machine (kill / verify / restore)** | ⏳ **not done** — the machine was already off on the day of the incident |
+| **Real process name of the 鸣潮 client verified** | ⏳ **not done** — requires running `--list` with 鸣潮 open |
 
-**下次开机第一件事就是把这两项补上。** 在实测通过之前，
-不要假设这个脚本一定管用。
+**Doing these two is the first thing to do after the next boot.** Until they pass on the real
+machine, do not assume this script works.

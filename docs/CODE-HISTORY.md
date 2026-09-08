@@ -1,7 +1,9 @@
-# 代码里搬出来的来龙去脉
+# The backstory lifted out of the code
 
-第三步（2026-09-06）：代码只留「为什么这样写」一句，事故经过搬到这里。
-每一节的标题是 `文件:函数`，正文是从那个位置原样搬出来的注释。
+Step three (2026-09-06): the code keeps only the single line saying "why it is written this way",
+and the incident history moves here.
+Each section's heading is `file:function`, and the body is the comment lifted verbatim from that
+location.
 
 ## service.py:(模块级)
 
@@ -17,14 +19,19 @@
 ## service.py:SvcStop
 
 ```
-# 硬保险：15 秒还没退干净就强制退出进程。
-# 用户 2026-08-31：「中继服务卡在 STOP_PENDING 这个不要再出现了，
-# 直接浪费很长时间，杜绝。」——那天一上午卡了四次，每次部署白等
-# 十分钟，还得远程强杀。
-# 为什么强退是对的：卡在 STOP_PENDING 比强退坏得多——部署整个瘫掉、
-# 通知链路一直断着、还要人去救。而这个进程的状态全是原子写盘的
-# （见 config.atomic_write_text），强退不会写坏任何东西；
-# 真丢的只是「本轮还没处理完的那几条记录」，下次启动会重新扫到。
+# Hard backstop: if it has not exited cleanly after 15 seconds, force the
+# process to exit.
+# The user, 2026-08-31: 「中继服务卡在 STOP_PENDING 这个不要再出现了，
+# 直接浪费很长时间，杜绝。」 - it hung four times that one morning, ten
+# minutes of waiting wasted on every deploy, and every time it had to be
+# force-killed remotely.
+# Why forcing the exit is right: hanging in STOP_PENDING is far worse than a
+# forced exit - deployment is paralysed outright, the notification path stays
+# broken, and a person has to come and rescue it. And every piece of this
+# process's state is written to disk atomically (see config.atomic_write_text),
+# so a forced exit cannot corrupt anything; the only real loss is "the few
+# records this round had not finished processing", and the next startup picks
+# them up again.
 ```
 
 ## service.py:main
@@ -42,22 +49,27 @@
 ## service.py:_stage_patch_okww
 
 ```
-# 每次启动都贴一次 OK-WW 补丁——幂等，在位就一句话都不写。
+# Re-apply the OK-WW patches on every startup - idempotent, and it writes not
+# a single line when they are already in place.
 #
-# 以前只在开机预更新那一段里贴，于是白天改完补丁、部署、服务重启，
-# 补丁**要等到第二天开机才生效**。2026-08-27 就这么发生了：残像聚落
-# 「只刷落渊南丘」的修复推上了机器，文件却还是旧的，我以为已经好了。
-# 「更新必须立即生效」是死命令，部署完就该是最终状态，不能留一个
-# 「等下次开机」的尾巴。
+# They used to be applied only inside the boot-time pre-update stage, so a
+# patch edited during the day, deployed, with the service restarted,
+# **would not take effect until the machine booted the next day**. That is
+# exactly what happened on 2026-08-27: the 残像聚落 fix for
+# 「只刷落渊南丘」 was pushed to the machine, the file on it was still the old
+# one, and I thought it was already done.
+# 「更新必须立即生效」 is a standing order - once the deploy is finished the
+# state must be final, with no "wait for the next boot" tail left hanging.
 ```
 
 ## service.py:_stage_announce_update
 
 ```
-# 人话优先。用户 2026-08-26：「更新内容用人话写」——
-# 一串文件名对着看不懂代码的人等于什么都没说。RELEASE-NOTES.md
-# 由部署时一起推上来，写的是「修好了你遇到过的哪个毛病」。
-# 文件名退居其次，只在没有说明文件时才列出来兜底。
+# Plain language first. The user, 2026-08-26: 「更新内容用人话写」 -
+# a string of file names tells someone who cannot read code nothing at all.
+# RELEASE-NOTES.md is pushed along with the deploy and says "which problem
+# that you actually ran into has been fixed".
+# File names come second, listed only as a fallback when there is no notes file.
 ```
 
 ## service.py:_stage_inbox_and_phone
@@ -67,10 +79,12 @@
 # pushed while it is off - which is nearly always - lands before that
 # day's run. Re-checking on a timer was added and removed again: it
 # bought nothing the boot check did not already cover.
-# ---------- 手机端 ----------
-# 用户 2026-08-31 定的形状：开机必取一次指令、必上报一次状态；
-# 关机前必上报；手机按刷新能实时拿到状态（仅机器开着时）；
-# 在线/离线不许靠轮询。做法见 phone.py 的模块说明。
+# ---------- phone side ----------
+# The shape the user set on 2026-08-31: on boot it must fetch commands once
+# and report status once; it must report before shutdown; pressing refresh on
+# the phone gets the status in real time (only while the machine is on);
+# online/offline must not rely on polling. How it is done is in the module
+# docstring of phone.py.
 ```
 
 ## service.py:_stage_preupdate
@@ -100,10 +114,11 @@
 ```
 
 ```
-# OK-WW 的自动更新会整段覆盖 src，把本地补丁抹掉
-# （2026-08-26 实测：v3.6.5 → v3.6.6-beta.1 之后两个补丁全没了，
-#  连备份一起）。所以每轮开机都贴一次——幂等，在位就什么都不做。
-# 放在 run_okww 之后：先让它更新完，再往新代码上贴。
+# OK-WW's auto-update overwrites the whole of src and wipes the local patches
+# out (measured 2026-08-26: after v3.6.5 → v3.6.6-beta.1 both patches were
+# gone, backups included). So they are re-applied on every boot - idempotent,
+# doing nothing when they are already in place.
+# Placed after run_okww: let it finish updating first, then patch the new code.
 ```
 
 ## service.py:_loop
@@ -119,38 +134,50 @@
 ## okww_patch.py:ensure_patches
 
 ```
-# 2026-08-31 撤回：前提就是错的。ok.util.logger.Logger.error 的签名是
-# error(self, message, exception=None)，第二个参数**本来就是异常**，
-# 它内部走 exception_to_str(exception) 打印堆栈。上游写法没问题。
-# 而我加的 exc_info=True 这个封装根本不认，当场 TypeError，
-# 把一次可恢复的重试变成了硬崩溃（16:00 那趟就是这么死的）。
+# Withdrawn 2026-08-31: the premise itself was wrong. The signature of
+# ok.util.logger.Logger.error is error(self, message, exception=None) - the
+# second parameter **is the exception already**, and internally it prints the
+# stack through exception_to_str(exception). There is nothing wrong with the
+# upstream code. The exc_info=True I added is something that wrapper does not
+# understand at all: an instant TypeError, turning a recoverable retry into a
+# hard crash (that is how the 16:00 round died).
 ```
 
 ```
-2026-08-30 从四个减到一个。留下的只有残象聚落那份整份替换，
-因为「只刷指定点位」上游根本没有，只能靠换掉整个文件拿到。
+Cut from four patches down to one on 2026-08-30. The only one left is the
+whole-file replacement for 残象聚落, because "farm only the sites I name"
+does not exist upstream at all and can only be obtained by swapping the entire
+file.
 
-撤掉的三个，理由都是**没有证据说它们现在还在起作用**：
+The three that were withdrawn, all for the same reason - **there is no
+evidence that they still do anything**:
 
-* 主C饿死兜底 —— 是我们自己改过游戏键位造成的（已在上游 #1632
-承认并自行关闭 PR）。键位改回默认后症状再没出现。
-* 副本失败不拖垮每日任务 —— 对应 08-26 那次「走向宝箱捡不到东西 →
-等待超时 → 整个日常崩掉」，多半是背包满。而这条补丁是 08-28 才加的，
-**症状 08-27 就已经不再出现**，加它之前病就好了。
-* 领奖置底 —— 上游作者 2026-08-29 关闭了 PR #1631，没有留任何说明。
-而且这个顺序是作者有意为之，`config_description` 里明写着。
-改成 issue 去问「能不能做成可配置」，本地不再改。
+* Main-DPS starvation backstop - it was caused by our own change to the game
+keybinds (admitted upstream in #1632, and we closed the PR ourselves). Once
+the keybinds were put back to default, the symptom never appeared again.
+* Do not let a failed instance take the whole daily task down - it corresponds
+to the 08-26 case of "walk to the chest, pick up nothing → wait times out →
+the whole daily run collapses", most likely a full bag. But this patch was
+only added on 08-28, and **the symptom had already stopped appearing on
+08-27**; the illness was gone before the medicine arrived.
+* Move reward claiming to the end - the upstream author closed PR #1631 on
+2026-08-29 without leaving any explanation. And that ordering is deliberate on
+the author's part; it is spelled out in `config_description`.
+Turn it into an issue asking "could this be made configurable", and stop
+changing it locally.
 
-三个都主动还原，不是只停止重打。
+All three were actively reverted, not merely left un-reapplied.
 ```
 
 ## engine.py:Engine
 
 ```
-# MaaEnd 里这几项失败是上游/游戏本身的问题，不是要人半夜处理的故障：
-#   应急理智加强剂：beta.5 在「选择加强剂」那步坏了（09-03 实录，已关掉等上游）
-#   自动采集：15 条路线里总有两三条「采集失败」，任务整体就报失败，其余都采了
-# 用户 2026-09-03：「今天下午或者明天再报错你就滚」——这类只进日报，不推 ⚠️。
+# These particular failures inside MaaEnd are problems of upstream or of the
+# game itself, not faults that need a person in the middle of the night:
+#   应急理智加强剂: beta.5 is broken at the 「选择加强剂」 step (recorded 09-03, turned off pending upstream)
+#   自动采集: out of 15 routes there are always two or three 「采集失败」, which makes the task as a whole report failure while everything else was collected
+# The user, 2026-09-03: 「今天下午或者明天再报错你就滚」 - these go into the
+# daily report only; they are not pushed as ⚠️.
 ```
 
 ## engine.py:_scripts_running
@@ -166,20 +193,26 @@
 ## handle.py:_maa_app_log
 
 ```
-# 只有起点没有终点会把**后面几趟**也扫进来。2026-08-30 空跑时
-# 08-29 晚班读到 72810 行（今早那趟的两倍），技能失败数变成 20+21=41，
-# 等于把今早的错算到了昨晚头上。所以必须有上界。
-# `until` 给 None 时不设上界——`duration_known=False` 的记录时间不可信，
-# 那种情况宁可多取也不要把整趟切没了。
+# A start marker with no end marker sweeps **the rounds that follow** in too.
+# During the dry run on 2026-08-30, the 08-29 evening shift read 72810 lines
+# (twice what this morning's round had) and the skill-failure count became
+# 20+21=41 - which charges this morning's errors to last night. So there has
+# to be an upper bound.
+# When `until` is None no upper bound is set - the timestamps on a record with
+# `duration_known=False` cannot be trusted, and in that case it is better to
+# take too much than to cut a whole round away.
 ```
 
 ```
-AUTO-MAS 的 history 日志只记「脚本跑完了没有」，**没有子任务级别的成败**。
-所以在 2026-08-30 之前，基建整个失败（`InfrastAbstractTask::on_run_fails`）
-也照样被记成全绿——用户连着两天看到的「全绿」就是这么来的。
+AUTO-MAS's history log only records "did the script finish or not"; **there is
+no per-subtask success or failure**. So before 2026-08-30 a complete
+infrastructure failure (`InfrastAbstractTask::on_run_fails`) was still recorded
+as all green - that is where the "all green" the user saw two days running
+came from.
 
-和 MaaEnd 不一样的地方：MaaEnd 每轮一个新文件，可以按 mtime 挑；
-MAA 是**一个滚动的 asst.log**，只能按行首时间戳切。
+Where it differs from MaaEnd: MaaEnd writes a new file per round, so rounds can
+be picked by mtime; MAA has **one rolling asst.log**, which can only be cut by
+the timestamps at the start of each line.
 ```
 
 ## handle.py:_handle
@@ -193,35 +226,44 @@ MAA 是**一个滚动的 asst.log**，只能按行首时间戳切。
 ```
 
 ```
-# 2026-08-26：这里原本写的是 `notes.append(msg)`，可这个作用域里
-# 根本没有 notes——一路 NameError 把整个 _handle 打断，那条
-# OK-WW 记录当场「处理运行记录失败」。照 🗓️ 剿灭 那支写，
-# 两条周门本来就该是一个形状。
+# 2026-08-26: this used to read `notes.append(msg)`, but there is no notes in
+# this scope at all - a NameError tore through the whole of _handle, and that
+# OK-WW record turned into 「处理运行记录失败」 on the spot. Write it the way
+# the 🗓️ 剿灭 branch does; the two weekly gates were always supposed to have
+# the same shape.
 ```
 
 ```
-# AUTO-MAS 说「这个脚本正常退出了」，不等于它把活干成了。
-# 2026-08-27：OK-WW 连着三轮没打残象聚落、MaaEnd 卡在弹窗上
-# 把失败当做完自己关掉——两边一个 ERROR 都没报，而这里照样
-# 记 ✅、照样静默。用户的原话是「他不报错，他直接把自己关掉了」。
-# 所以退出之前先按证据核对一遍，没干成的必须出声。
+# AUTO-MAS saying "this script exited normally" does not mean it got the work
+# done. 2026-08-27: OK-WW skipped 残象聚落 three rounds running, and MaaEnd
+# got stuck on a popup and closed itself, treating a failure as completion -
+# neither side reported a single ERROR, and this code still recorded ✅ and
+# still stayed silent. The user's own words were 「他不报错，他直接把自己关掉了」.
+# So check against the evidence before exiting; anything that did not get done
+# has to speak up.
 ```
 
 ```
-# MaaEnd 启动时会「Auto-cleared log files and debug artifacts」——
-# 上一轮的 on_error 截图和日志在**下一次启动的瞬间**就被它自己删光。
-# 2026-08-27 早上卡弹窗那三张截图就是这么没的：中午一重试，证据全无，
-# 事后只能凭当时抄下的文件名说话。所以失败一落账就立刻把证据搬走。
+# MaaEnd does an "Auto-cleared log files and debug artifacts" at startup -
+# the previous round's on_error screenshots and logs are deleted by MaaEnd
+# itself **the instant it next starts**. That is how the three screenshots of
+# the popup that blocked the morning of 2026-08-27 were lost: one retry at
+# noon and the evidence was gone, leaving nothing afterwards but the file
+# names I had copied down at the time. So the moment a failure is recorded,
+# move the evidence out immediately.
 ```
 
 ## handle.py:(模块级)
 
 ```
-# 同一件事当天只报一次。2026-09-01 群里同一个 OK-WW 失败连推三条
-# （17:00 / 08:29 / 11:54），用户：「赶紧去修，报了三次了。」
-# 键 = 脚本 + 失败在哪一步：同一步反复失败是同一件事，不许反复推；
-# 换了一步失败就是新事，照报。当天记账在 state/alerted-<日期>.json，
-# 日报仍会汇总全部失败趟数，静默的只是重复的即时推送。
+# The same thing is reported only once a day. On 2026-09-01 the same OK-WW
+# failure was pushed to the group three times in a row (17:00 / 08:29 /
+# 11:54), and the user said: 「赶紧去修，报了三次了。」
+# The key is script + which step failed: repeated failures at the same step
+# are the same thing and must not be pushed again; a failure at a different
+# step is a new thing and gets reported as usual. The day's ledger is
+# state/alerted-<日期>.json; the daily report still totals up every failed
+# round, and all that is silenced is the duplicate instant push.
 ```
 
 ## report.py:_maybe_daily_report
@@ -247,243 +289,309 @@ MAA 是**一个滚动的 asst.log**，只能按行首时间戳切。
 ## claim.py:(模块级)
 
 ```
-# ---- 真正领周本奖励 --------------------------------------------------------
+# ---- Actually claim the weekly boss reward --------------------------------
 #
-# 2026-09-01 凌晨,用户看着屏幕说的:「打完之后拿声骸直接一直重开去刷,
-# 这不是拿宝箱奖励」「这是声骸模式」。日志完全印证:三轮都是
-# 打 Boss → farm echo on the face → 点掉退出弹窗 → 重开,
-# 本周剩余次数一直 3/3、波片 91 一点没掉。
+# Early on 2026-09-01, watching the screen, the user said:
+# 「打完之后拿声骸直接一直重开去刷,这不是拿宝箱奖励」「这是声骸模式」.
+# The log confirms it completely: all three rounds went
+# Boss fight → farm echo on the face → dismiss the exit popup → restart,
+# with the remaining weekly count sitting at 3/3 the whole time and 波片
+# never moving off 91.
 #
-# **我之前的整个前提是错的。** `FarmEchoTask` + `Teleport to Boss =
-# Weekly Challenge` 是**刷 4C 声骸**的模式——传送到周本 Boss 那儿反复刷,
-# 领奖那一步根本不在这条代码路径里。那句「结晶波片不足,无法获取奖励,
-# 请确认是否继续进入」只是**进本前的提醒**,不是「进本时扣波片发奖励」,
-# 我把它读反了,还据此写了文档和三条补丁。
+# **My entire premise was wrong.** `FarmEchoTask` + `Teleport to Boss =
+# Weekly Challenge` is the mode for **farming 4C 声骸** - teleport to the
+# weekly boss and grind it over and over; the reward-claiming step is not on
+# this code path at all. That line 「结晶波片不足,无法获取奖励,
+# 请确认是否继续进入」 is only **a warning shown before entering**, not
+# "entering deducts 波片 and hands out the reward"; I read it backwards, and
+# then wrote a document and three patches on top of that.
 #
-# 真正的领奖:打完 Boss **走到结晶前按 F,花 60 波片**。同仓库的
-# `TacetTask` 里就有这套现成写法(凝素领域也是花体力领奖):
+# The real claim: after killing the Boss, **walk up to the crystal, press F,
+# and spend 60 波片**. `TacetTask` in the same repository already has this
+# ready-made idiom (凝素领域 also spends stamina to claim):
 #     walk_to_treasure() → pick_f(handle_claim=False)
 #     → has_claim_stamina() → use_stamina(once=60)
 #
-# 插在「退秘境」之前。安全性:`has_claim_stamina()` 是门,认不出那个
-# 界面就什么都不花、原样走老路;整段包在 try 里,任何异常都只是回到
-# 原来的行为,不会把日常任务带崩。
+# Inserted before 「退秘境」. Safety: `has_claim_stamina()` is the gate - if it
+# does not recognize that screen, nothing is spent and the old path runs
+# unchanged; the whole block is wrapped in try, so any exception merely falls
+# back to the previous behaviour and cannot take the daily task down.
 ```
 
 ## core.py:_Patch
 
 ```
-# 这条补丁**跨版本不变**的特征串（比如那句日志）。贴完之后它必须只出现
-# 一次；出现多次就说明旧版本没还原干净、叠了两层。
-# 为什么不能拿 new 的头一行当判据：叠加是「旧版本 + 新版本」并存，
-# 新版本仍然只出现一次，数它永远抓不到。2026-09-01 就是这么漏掉的。
+# The signature string of this patch that **does not change across versions**
+# (the log line, for instance). Once applied it must appear exactly once;
+# appearing more than once means an old version was not cleanly reverted and
+# two layers are stacked.
+# Why the first line of `new` cannot be the test: stacking means "old version
+# + new version" coexist, and the new version still appears only once, so
+# counting it can never catch the problem. That is exactly how it slipped
+# through on 2026-09-01.
 ```
 
 ## core.py:_apply_one
 
 ```
-# 注意 present() 的判据必须跟着 new 一起改。
-# 2026-08-31 踩过：我给「波片不足时跳过周本」加了调试行，present() 认的
-# 还是那句没变过的日志，_apply_one 判成「已在位」直接返回，新版本
-# **一声不吭地没部署**，我却在日志里找那行调试输出，白等一趟。
-# 判据要认 new 里**这一版独有**的东西，改了内容就要跟着改判据。
+# Note that the test in present() has to change together with `new`.
+# Stepped on it 2026-08-31: I added a debug line to "skip the weekly boss when
+# 波片 is short", but present() was still matching that log line, which had
+# never changed, so _apply_one decided "already in place" and returned at once
+# - the new version **was silently never deployed** - while I sat looking for
+# that debug output in the log and wasted a whole round.
+# The test must match something in `new` that is **unique to this version**;
+# change the content and the test has to change with it.
 ```
 
 ## count.py:(模块级)
 
 ```
-# ---- 进本之前拍一张 Boss 页面，看本周还剩几次 ----------------------------
+# ---- Before entering, take a shot of the Boss page to see how many attempts are left this week ----
 #
-# 2026-08-31 用户问：「你确定刷的两次周本奖励是 90 级的副本？」——问得对，
-# 等级 90 是 16:20 才写进母本、16:41 才同步过去，之前几趟点的都是
-# 「推荐等级80」。而「已用 2 次」这个数是我从体力消耗**推算**的，
-# 不是读到的。推算已经错过好几回了，这次去读真的。
+# On 2026-08-31 the user asked: 「你确定刷的两次周本奖励是 90 级的副本？」 -
+# a fair question. Level 90 was only written into the master copy at 16:20 and
+# only synced across at 16:41; every earlier round had been clicking
+# 「推荐等级80」. And the "2 attempts used" number was something I **inferred**
+# from stamina consumption, not something I read. Inference has been wrong
+# several times already, so this time go and read the real thing.
 #
-# 安全性：波片不足时进不去（会弹「结晶波片不足」，我们的补丁取消并跳过），
-# **不消耗次数**。所以这张图可以在波片不够的时候放心拍。
+# Safety: when 波片 is short you cannot get in (the 「结晶波片不足」 popup comes
+# up and our patch cancels and skips), and **no attempt is consumed**. So this
+# screenshot can be taken safely even when 波片 is short.
 ```
 
 ## domain.py:(模块级)
 
 ```
-# ── 补丁二：副本没打通不该把整个每日任务带走 ──────────────────
-# 2026-08-26 实测：凝素领域限时没打完 → 不掉宝箱 → walk_to_treasure 抛
-# WaitFailedException → 它不在 except 里 → 一路穿到 DailyTask.run。
-# 当天连续四次「Daily Task exception stopped」，领奖 / 邮件 / 附加任务全跳过，
-# total daily points 0。而紧邻的 farm_domain_with_recovery_loop 里作者写了
-# max_recovery_retries=3 的恢复重试，只能通过 return False 进入，
-# 于是对这个失败模式完全是死代码。
+# ── Patch 2: an instance that was not cleared should not take the whole daily task with it ──
+# Measured 2026-08-26: 凝素领域 not cleared inside the time limit → no chest
+# drops → walk_to_treasure raises WaitFailedException → it is not in the
+# except → it propagates all the way to DailyTask.run.
+# Four consecutive 「Daily Task exception stopped」 that day, with reward
+# claiming / mail / additional tasks all skipped and total daily points 0.
+# Meanwhile, right next to it in farm_domain_with_recovery_loop, the author
+# wrote a recovery retry with max_recovery_retries=3 that can only be entered
+# through `return False`, so for this failure mode it is entirely dead code.
 ```
 
 ## farmerr.py:(模块级)
 
 ```
-# ---- 周本活锁：把被吞掉的异常打出来 ----------------------------------------
+# ---- Weekly boss livelock: print the exception that was being swallowed ----
 #
-# 2026-08-31 实测：12:35:53→12:47:44 之间「传送 → found a claim reward → 传送」
-# 转了 21 圈、35 秒一圈，白烧 12 分钟才真打上 Boss。上游那段是：
+# Measured 2026-08-31: between 12:35:53 and 12:47:44 it went round the loop
+# 「传送 → found a claim reward → 传送」 21 times at 35 seconds a lap, burning
+# 12 minutes before it actually got to fight the Boss. The upstream code is:
 #
 #     except Exception as e:
 #         logger.error('farm 4c error, try handle monthly card', e)
 #         if self.handle_claim_button() or self.handle_monthly_card():
 #             self.run()
 #
-# logging 把第二个位置参数当成 msg 的 printf 参数，而 msg 里没有 %s，
-# 于是**异常内容整个丢掉**——日志里只剩一句没有信息量的 'farm 4c error'，
-# 真因查不到。这条补丁只把它改成 exc_info=True，**不动任何控制流**：
-# 递归、重试次数、判定全部原样。下一次周本一跑，真因就会自己写在日志里。
+# logging treats the second positional argument as a printf argument for msg,
+# and msg contains no %s, so **the exception content is thrown away entirely**
+# - all the log keeps is one contentless 'farm 4c error' line, and the real
+# cause cannot be found. This patch only changes it to exc_info=True and
+# **touches no control flow at all**: the recursion, the retry count and the
+# conditions are all left exactly as they are. The next time the weekly boss
+# runs, the real cause will write itself into the log.
 #
-# 递归没有上限这件事是上游的设计问题，已提 issue，本地不擅自改控制流——
-# 改了就等于在没有证据的情况下动生产脚本。
+# The recursion having no bound is an upstream design problem; an issue has
+# been filed, and we do not change control flow locally on our own initiative
+# - doing that would mean touching a production script with no evidence.
 ```
 
 ## letpass.py:(模块级)
 
 ```
-# ---- 让「主动跳过」这个信号穿过兜底 ----------------------------------------
+# ---- Let the "deliberate skip" signal pass through the catch-all ----------
 #
-# teleport_to_configured_boss_and_prepare 的兜底把**所有**异常包成 RuntimeError：
+# The catch-all in teleport_to_configured_boss_and_prepare wraps **every**
+# exception into a RuntimeError:
 #     except Exception as e:
 #         raise RuntimeError('Teleport to boss failed') from e
-# 于是我们主动抛的 TaskDisabledException 也被包住，run() 那句
-# `except TaskDisabledException: pass` 永远看不到它，落进后面的通用兜底，
-# 打一条 farm 4c error 再递归重试。
+# so the TaskDisabledException we raise deliberately gets wrapped as well, the
+# `except TaskDisabledException: pass` in run() never sees it, and it falls
+# into the generic catch-all further down, which logs one farm 4c error and
+# then recurses to retry.
 #
-# 2026-08-31 实测：波片不足时确实跳过了、Boss 一轮都没白打，但日志里
-# 仍有 3 条 farm 4c error、跳过也重复了 3 次——就是被这层包装挡的。
-# 放行 TaskDisabledException，其余照旧包成 RuntimeError。
+# Measured 2026-08-31: when 波片 was short it did skip, and not one Boss round
+# was wasted, but the log still carried 3 farm 4c error lines and the skip was
+# repeated 3 times - blocked by exactly that wrapping layer.
+# Let TaskDisabledException through; everything else is still wrapped into
+# RuntimeError as before.
 ```
 
 ## nest.py:_apply_nest
 
 ```
-# 上游永远不会包含我们自己造的这个配置常量，所以见到它就说明现场那份
-# 是我们贴过的某个版本，照常覆盖。
-# 为什么不只靠 _NEST_KNOWN_OURS：那张表要求**每次改补丁都手动补一条哈希**，
-# 2026-08-29 我改了补丁却忘了补，于是修复推不上去，部署还照常报成功
-# （只在日志里留了一行 warning）。靠人记的步骤迟早会漏，标记不会。
+# Upstream will never contain this configuration constant we invented
+# ourselves, so seeing it means the copy on the machine is some version we
+# applied, and it gets overwritten as usual.
+# Why not rely on _NEST_KNOWN_OURS alone: that table requires **a hash to be
+# added by hand every time the patch changes**, and on 2026-08-29 I changed
+# the patch and forgot to add one, so the fix could not be pushed while the
+# deploy still reported success (it left exactly one warning line in the log).
+# A step that depends on a person remembering will be missed sooner or later;
+# a marker will not.
 ```
 
 ## nofarm.py:(模块级)
 
 ```
-# ---- 禁用刷体力，把波片留给周本 --------------------------------------------
+# ---- Disable stamina farming, keep 波片 for the weekly boss ----------------
 #
-# 用户 2026-09-01 03:25：「把刷贝币刷体力的任务禁用，这样就不可能会出现
-# 波片被消耗的情况。」周本领一次奖要 60 波片，三次 180；而日常刷取
-# （凝素/深渊/模拟领域）会把波片吃光——两者抢同一份资源。
-# 2026-08-31 就是这么被吃掉的：18:23 贝币刷取把波片从 41 花到 1。
+# The user, 2026-09-01 03:25: 「把刷贝币刷体力的任务禁用，这样就不可能会出现
+# 波片被消耗的情况。」 Claiming the weekly reward once costs 60 波片, three
+# times 180; and daily farming (凝素/深渊/模拟领域) eats 波片 to nothing - the
+# two compete for the same resource.
+# That is exactly how it got eaten on 2026-08-31: at 18:23 贝币 farming spent
+# 波片 down from 41 to 1.
 #
-# `Which to Farm` 只有三个选项（凝素/深渊/模拟领域），**没有「不刷」**，
-# 所以只能打补丁。用**标记文件**而不是配置项：想恢复只要删掉那个文件，
-# 不用改代码、不用重新部署。
+# `Which to Farm` has only three options (凝素/深渊/模拟领域) and **no "do not
+# farm"**, so the only way is a patch. It uses a **marker file** rather than a
+# config option: to restore the behaviour just delete that file - no code
+# change, no redeploy.
 ```
 
 ## nowave.py:(模块级)
 
 ```
-# ---- 波片不足时干净跳过，不空转不白打 --------------------------------------
+# ---- Skip cleanly when 波片 is short: no spinning, no wasted fights --------
 #
-# 2026-08-31 拍到了失败那一刻的画面，游戏弹的是：
+# On 2026-08-31 I captured the screen at the moment of failure; what the game
+# put up was:
 #     「结晶波片不足，无法获取奖励，请确认是否继续进入？」[取消][确认]
 #
-# 三件事因此对上了：
-#   * 周本没有「打完开宝箱」这一步，奖励是**进本时扣 60 结晶波片**直接给的；
-#   * 波片不够时这个弹窗**挡住了「开启挑战」**，wait_click_feature 超时抛
-#     WaitFailedException，run() 兜底又递归重来 → 12:35→12:47 空转 21 圈；
-#   * 选「确认」是不拿奖励地进去，所以三轮打完体力 56→56 一动没动，纯白打。
+# Three things fell into place because of it:
+#   * The weekly boss has no "kill it, then open a chest" step; the reward is
+#     handed over directly by **deducting 60 结晶波片 on entry**;
+#   * When 波片 is short, that popup **blocks 「开启挑战」**, wait_click_feature
+#     times out and raises WaitFailedException, and run()'s catch-all recurses
+#     and starts over → 21 empty laps from 12:35 to 12:47;
+#   * Choosing 「确认」 means going in without taking the reward, which is why
+#     stamina read 56→56 after three rounds - pure wasted effort.
 #
-# 波片不够进去也拿不到奖励，正确做法是点「取消」并把这次周本安静跳过。
-# 抛 TaskDisabledException 是因为 run() 对它的处理就是 `pass`——
-# FarmEchoTask 静默结束，日常任务继续往下跑，不会像抛普通异常那样
-# 把整个日常带崩（我 16:00 那次就是这么崩的）。
+# Going in without enough 波片 gets no reward either, so the right move is to
+# click 「取消」 and quietly skip this weekly boss.
+# TaskDisabledException is raised because run() handles it with `pass` -
+# FarmEchoTask ends silently, the daily task carries on, and it does not take
+# the whole daily run down the way an ordinary exception would (which is
+# exactly how my 16:00 round crashed).
 ```
 
 ```
-# v1 那一版的原文。留着**只为了还原**：它的替换文本末尾自带锚点
-# `self.click_team_challenge()`，所以我把 present() 改成认 v3 之后，
-# _apply_one 又在它上面贴了一层——两段检查同时存在，v1 在前面先跑，
-# 而 v1 正是会误判的那版。2026-09-01 实测：波片 91（>60）也被判成
-# 「不足」跳过了。补丁的 new 里带着自己的 old，是这次叠加的根源。
+# The original text of the v1 version. Kept **only so that it can be
+# reverted**: its replacement text carries the anchor
+# `self.click_team_challenge()` at the end, so once I changed present() to
+# match v3, _apply_one pasted another layer on top of it - two checks present
+# at once, with v1 running first, and v1 is precisely the version that
+# misjudges. Measured 2026-09-01: 波片 91 (>60) was still judged 「不足」 and
+# skipped. A patch whose `new` carries its own `old` inside it is the root of
+# this stacking.
 ```
 
 ```
-# 上一版 v3 的原文，留着**只为了还原**。它把锚点 click_team_challenge()
-# 整句吃掉了，所以再想改这条补丁，必须先把它还原成上游原样，
-# 否则 _apply_one 找不到 old、报「贴不上了」——2026-09-01 就是这样，
-# 而我 grep 部署输出时只筛了「部署完成/❌」，把那条告警漏了过去，
-# 机器上跑了 95 分钟的空转我却以为新补丁在跑。
+# The original text of the previous version, v3, kept **only so that it can be
+# reverted**. It swallowed the whole anchor line click_team_challenge(), so
+# changing this patch again requires first restoring it to the upstream
+# original; otherwise _apply_one cannot find `old` and reports 「贴不上了」 -
+# which is what happened on 2026-09-01, and when I grepped the deploy output I
+# filtered only for 「部署完成/❌」 and let that warning slip past, so the
+# machine spun for 95 minutes while I believed the new patch was running.
 ```
 
 ## retrycap.py:(模块级)
 
 ```
-# ---- 兜底重试上限：连败三次就退出，不许无限转 ----------------------------
+# ---- Catch-all retry cap: quit after three failures in a row, never spin forever ----
 #
-# 上游 run() 的兜底是 handle_claim_button() 成立就无上限递归重试。
-# 2026-09-01 实测转了 81 轮、50 分钟。用户：「一直卡循环了……你没有写
-# 退出机制。」加上限：连续 3 次 farm 4c error 就结束本次任务，
-# 抛 TaskDisabledException（run 自己会安静吞掉，不拖垮日常）。
+# The catch-all in the upstream run() retries recursively with no bound at all
+# as long as handle_claim_button() holds. Measured 2026-09-01: 81 laps, 50
+# minutes. The user: 「一直卡循环了……你没有写退出机制。」 Add a cap: after 3
+# consecutive farm 4c error the task ends, raising TaskDisabledException (run()
+# swallows it quietly, so the dailies are not dragged down).
 ```
 
 ## shot.py:(模块级)
 
 ```
-# ── 补丁：周本领奖那一刻先截一张图 ────────────────────────────
-# 2026-08-31：周本打满三轮，体力一点没动，说明奖励没领到。
-# 那行代码是 `wait_click_feature('claim_cancel_button…', relative_x=2)`——
-# `relative_x` 是「框内相对 X」，2 就是从取消按钮左边缘往右两个按钮宽度，
-# **本意就是去点右边的领取按钮**（用户说领取在弹窗右下角）。日志里点在
-# (538, 675)，偏够没偏够，不看那一刻的画面就说不清。
+# ── Patch: take a screenshot at the moment the weekly reward is claimed ──
+# 2026-08-31: three full weekly rounds and stamina had not moved at all, which
+# means the reward was never claimed.
+# The line in question is `wait_click_feature('claim_cancel_button…',
+# relative_x=2)` - `relative_x` is "X relative to the box", so 2 means two
+# button widths to the right of the cancel button's left edge, and **the
+# intent is precisely to click the claim button on the right** (the user says
+# the claim button is at the bottom right of the popup). The log clicked at
+# (538, 675); whether that offset is enough or not cannot be settled without
+# seeing the screen at that moment.
 #
-# 这个补丁**不改任何行为**，只是在点击之前存一张图。下次周本一跑就有证据，
-# 不用再靠猜按钮坐标——猜坐标去改生产脚本正是 826 那类错。
+# This patch **changes no behaviour at all**; it only saves an image before
+# the click. The next weekly run produces evidence, so there is no more
+# guessing at button coordinates - guessing coordinates and then editing a
+# production script is exactly the 826 class of mistake.
 ```
 
 ## shot2.py:(模块级)
 
 ```
-# ---- 周本退秘境前先留证据 -------------------------------------------------
+# ---- Leave evidence before leaving the weekly instance --------------------
 #
-# 2026-08-31 定位到：打完 Boss、捡完声骸之后，`do_run` 走的是
+# Pinned down 2026-08-31: after the Boss is killed and the 声骸 collected,
+# `do_run` goes:
 #     if self._in_realm and not self.in_world():
-#         self.send_key('esc', ...)                 ← 直接退秘境
-# 宝箱那一步整个不存在。上一版截图拍在 esc **之后**，只拍到「确认离开」
-# 弹窗，白拍一次。这次挪到 esc **之前**，拍的是 Boss 刚死那一刻的画面，
-# 用来确认宝箱到底以什么形式出现（F 提示？图标？还是要走过去？）。
+#         self.send_key('esc', ...)                 ← leaves the instance directly
+# The chest step does not exist at all. The previous version took its
+# screenshot **after** the esc and caught only the 「确认离开」 popup - one
+# wasted shot. This one moves it **before** the esc, capturing the screen at
+# the moment the Boss dies, to establish what form the chest actually takes
+# (an F prompt? an icon? or something you have to walk to?).
 #
-# 零行为改动：只加一次截图，try 包住，失败也不影响流程。
+# Zero behaviour change: one extra screenshot, wrapped in try, and a failure
+# does not affect the flow either.
 ```
 
 ## starve.py:(模块级)
 
 ```
-# ── 补丁四：主C饿死兜底 ────────────────────────────────────────
-# 协奏攒不满时 has_buff() 恒为 False，_unbuffed_non_main_target 会让两个辅助
-# 无限互切，主C永远上不了场——而主C正是唯一有机会把协奏打起来的人。
-# 2026-08-26 实测：56 次切人决策里主C 0 次，全程零输出被磨死。
-# 根因是游戏键位被改过（见 issue #1626），已经修好；这条留作保险，
-# 平时处于休眠状态（实测健康局面下切人序列与上游完全一致）。
-# 2026-08-27：它当初是手工打的、没进这个清单，OK-WW 一更新就被冲掉了。
+# ── Patch 4: main-DPS starvation backstop ─────────────────────────────
+# When 协奏 cannot be filled, has_buff() is permanently False and
+# _unbuffed_non_main_target makes the two supports swap between each other
+# forever, so the main DPS never gets on the field - and the main DPS is the
+# only one with any chance of building 协奏 up.
+# Measured 2026-08-26: across 56 swap decisions the main DPS was picked 0
+# times, and the team was ground down with zero damage output the whole way.
+# The root cause was that the game keybinds had been changed (see issue #1626)
+# and is already fixed; this is kept as insurance and normally lies dormant
+# (measured: in a healthy fight the swap sequence is identical to upstream).
+# 2026-08-27: it was originally applied by hand and never entered this list,
+# so a single OK-WW update washed it away.
 ```
 
 ## teamshot.py:(模块级)
 
 ```
-# ---- 找不到「开启挑战」时留证据 -------------------------------------------
+# ---- Leave evidence when 「开启挑战」 cannot be found ----------------------
 #
-# 2026-08-31 真因（堆栈从 12:35 起就在日志里，是我没去读）：
+# The real cause, 2026-08-31 (the stack had been in the log since 12:35; I
+# just had not read it):
 #     teleport_to_configured_boss_and_prepare
 #       → teleport_to_configured_boss
 #         → click_team_challenge()
 #           → wait_click_feature('team_start_challenge', raise_if_not_found=True)
 #             → WaitFailedException
-# 传送到周本之后找不到「开启挑战」按钮，于是抛异常 → 重试 → 再传送，
-# 12:35→12:47 空转 21 圈。上游 #1551 讲的是同一个模板匹配失败。
+# After teleporting to the weekly boss the 「开启挑战」 button cannot be found,
+# so it raises → retries → teleports again: 21 empty laps from 12:35 to 12:47.
+# Upstream #1551 is about the same template match failing.
 #
-# 周本这条路在点按钮之前还有一次写死坐标的点击 self.click(0.880, 0.911)，
-# 那一下歪了后面就全错。到底是模板没匹配上还是页面根本没打开，
-# **不看那一刻的画面说不清**，所以先留图再抛，`raise` 保证行为不变。
+# On this weekly path there is one more click at hard-coded coordinates before
+# the button, self.click(0.880, 0.911), and if that one lands wrong everything
+# after it is wrong. Whether the template failed to match or the page never
+# opened at all **cannot be settled without seeing the screen at that moment**,
+# so save the image first and then raise; the `raise` guarantees the behaviour
+# is unchanged.
 ```
 
 ## service.py:_wait_for_network
@@ -508,77 +616,95 @@ seconds here is cheap. Failing to wait costs the entire update.
 ## service.py:run
 
 ```
-2026-08-30 之前这里是「一次性」的：RPC 一抖（relay.log 里
-`SWbemEventSource 远程过程调用失败`，08-24 到 08-29 共 24 次），
-线程直接退出，剩下**整个开机周期**都停在 120 秒轮询上。
-机器一天只开两次机，所以中继大部分运行时间都在降级模式跑。
-兜底有，但兜底不该是终点。
+Before 2026-08-30 this was one-shot: one hiccup in RPC (in relay.log,
+`SWbemEventSource 远程过程调用失败`, 24 times between 08-24 and 08-29) and the
+thread simply exited, leaving **the whole rest of that boot cycle** stuck on
+120-second polling. The machine boots only twice a day, so the relay spent
+most of its running time in degraded mode.
+There is a fallback, but a fallback should not be where it ends.
 ```
 
 ## service.py:collect
 
 ```
-改配置必须避开脚本运行期。AUTO-MAS 在跑的时候会用它内存里的那份
-覆写 ScriptConfig.json，此时写进去的值会被静静冲掉——2026-08-20
-实测两次：set_wait_time 120 被冲回 60，剿灭开关被冲回打开，于是
-每轮又白跑一次剿灭。engine.scripts_running() 本来就是为这件事
-准备的守卫，这里补上调用。
+Configuration changes must stay clear of the window in which a script is
+running. While AUTO-MAS is running, it overwrites ScriptConfig.json from the
+copy in its memory, so values written during that window are wiped silently -
+measured twice on 2026-08-20: set_wait_time 120 was pushed back to 60 and the
+剿灭 switch was pushed back to on, so every round wasted another 剿灭 run.
+engine.scripts_running() exists precisely for this; this adds the call that
+was missing.
 ```
 
 ## handle.py:_okww_nest_expected
 
 ```
-原来读不到就返回 False，于是「配置说不用打」和「我根本没读到配置」
-长得一模一样——后者会让残象聚落那一项**整个消失**，OK-WW 照报全绿。
-`_okww_master_config` 在没有 automas_dir、没有 data 目录、JSON 读坏
-这三种情况下都返回 `{}`，任何一种都会走到这里。
-这就是 2026-08-30 排查出的那一类 bug：前置不满足 → 静默什么都不做 → 看着像成功。
+It used to return False when it could not read the config, so "the config says
+it does not need doing" and "I never managed to read the config at all" looked
+exactly alike - and the latter makes the 残象聚落 item **disappear entirely**
+while OK-WW still reports all green.
+`_okww_master_config` returns `{}` in three cases - no automas_dir, no data
+directory, and a broken JSON read - and any one of them ends up here.
+This is the class of bug diagnosed on 2026-08-30: a precondition is not met →
+it silently does nothing → it looks like success.
 ```
 
 ## handle.py:_maaend_app_log
 
 ```
-收尾标记「INFO [App] 自动执行任务完成，关闭自身」只出现在
-`<maaend>/debug/YYYY-MM-DD-N.log` 里，**不在 AUTO-MAS 的 history 日志里**。
-2026-08-29 早班就是只核对了后者，于是「MaaEnd 跑完」这条恒为假，
-推了一条「这一轮没干完」的假告警——而 MaaEnd 当时 09:54:38 明明打了那句。
-判据没错，错在没把它该看的文件给它。
+The completion marker 「INFO [App] 自动执行任务完成，关闭自身」 appears only in
+`<maaend>/debug/YYYY-MM-DD-N.log`, **not in AUTO-MAS's history log**.
+The 2026-08-29 morning shift checked only the latter, so "MaaEnd finished" was
+permanently false and a false alert saying "this round did not finish" was
+pushed - while MaaEnd had plainly printed that line at 09:54:38.
+The test was not wrong; what was wrong was not giving it the file it was
+supposed to read.
 ```
 
 ## handle.py:_warn_if_evidence_stale
 
 ```
-中继是靠监视 AUTO-MAS 的 history 才知道失败的，而 AUTO-MAS 整轮跑完
-才写记录。等消息到手，MaaEnd 往往已经重试成功、启动时把 debug 清空了，
-于是存下来的是**重试成功那次**的日志。
+The relay only learns about a failure by watching AUTO-MAS's history, and
+AUTO-MAS writes the record only once the whole round is over. By the time the
+message arrives, MaaEnd has usually already retried successfully and cleared
+debug on startup, so what gets saved is the log of **the retry that
+succeeded**.
 
-2026-09-05 就这么绕了一圈：证据目录名是失败那次（MaaEnd-05-27-42），
-里面的 maafw.log 却只覆盖 09:57–09:59，那是成功那次（MaaEnd-05-56-35）。
-真正定位问题靠的是同时存下来的 AUTO-MAS 那份 .json。
+That is the circle it went round on 2026-09-05: the evidence directory was
+named after the failing run (MaaEnd-05-27-42), but the maafw.log inside it
+covered only 09:57-09:59, which belongs to the successful run
+(MaaEnd-05-56-35). What actually located the problem was the AUTO-MAS .json
+saved alongside it.
 
-run_id 形如 `<日期>/<用户>/MaaEnd-HH-MM-SS`，末段就是这一轮的开始时刻。
+run_id has the form `<日期>/<用户>/MaaEnd-HH-MM-SS`, and the last segment is
+the start time of that round.
 ```
 
 ## report.py:_fill_single_run_sanity
 
 ```
-「当前理智」是每次领取**之前**播报的，所以一趟只有一个读数、零个步长，
-这一条自己算不出消耗。2026-09-04 的日报里就印成了一条横杠：
-那趟其实从 116 刷到 37，花了 79，只是这两个数分别落在前后两条记录里。
+「当前理智」 is announced **before** each claim, so one round has a single
+reading and zero steps, and this record cannot compute the consumption on its
+own. The daily report of 2026-09-04 printed a dash for it: that round actually
+went from 116 down to 37, spending 79, except that the two numbers landed in
+two separate records, one before and one after.
 
-只在同一天、同一脚本、且两边都有余量读数时补，补不出来就维持空着——
-宁可空，也不写一个编出来的数。
+Fill it in only when both readings come from the same day and the same script
+and both have a remaining-sanity value; when it cannot be filled, leave it
+empty - better empty than a number that was made up.
 ```
 
 ## report.py:_announce_banners
 
 ```
-用户 2026-08-31 定的：只有「任意游戏的新卡池开放的前一天」才发群，
-其余时间他自己看 Server酱。所以走 send_group 而不是 send——
-后者 Server酱 优先且第一个成功就停，永远到不了群里。
+Set by the user on 2026-08-31: send to the group only on 「任意游戏的新卡池开放的前一天」
+(the day before any game opens a new banner), and the rest of the time he reads Server酱 himself. So it goes through
+send_group and not send - the latter prefers Server酱 and stops at the first
+success, so it would never reach the group.
 
-按「游戏+开始时刻」打标记：同一天两个游戏换池要各播一条，
-而同一期不许因为日报补发就播第二遍。
+Marked by "game + start time": two games rotating banners on the same day each
+get their own announcement, while the same banner must not be announced a
+second time just because the daily report was resent.
 ```
 
 ## shutdown.py:_boot_time
@@ -674,67 +800,89 @@ far narrower than the gap between the morning and evening queues.
 ## shutdown.py:decide
 
 ```
-- 功能没开 -> never
-- 调试模式 / 已被吃掉的这一次机会 -> never（2026-08-31 改判，见下）
-- 已经下过关机令 -> never（2026-08-16 一分钟内报了三次、关了两次）
-- 本次开机还没跑完队列 -> never
-- 开机不够久 -> never（防开机即关机的死循环）
-- 有脚本在跑 / 有告警没推 / 客户端在更新 -> never
-- 最近一轮是手动跑的 -> never（2026-08-21 把正在维护的机器关了）
-- 队列还差脚本 -> never（2026-08-16 两个脚本之间的空档关掉了终末地）
-- 到点了但日报没发 -> never（关机等日报，日报从不静默）
+- the feature is off -> never
+- debug mode / this one opportunity already consumed -> never (judgement changed 2026-08-31, see below)
+- a shutdown order has already gone out -> never (2026-08-16 it reported three times within one minute and shut down twice)
+- this boot has not finished its queue yet -> never
+- not up long enough -> never (guards against the boot-then-shut-down-again loop)
+- a script is running / an alert has not been pushed / a client is updating -> never
+- the most recent round was run by hand -> never (2026-08-21 it powered off a machine that was being worked on)
+- the queue is still missing a script -> never (2026-08-16 it shut 终末地 down in the gap between two scripts)
+- the time has come but the daily report has not gone out -> never (hold the shutdown for the report; the report is never silent)
 ```
 
 ## core.py:_stacked
 
 ```
-2026-09-01 踩的坑：v1 的替换文本**末尾自带锚点**
-`self.click_team_challenge()`，我把 present() 改成认新版本之后，
-_apply_one 就在 v1 上面又贴了一层——两段检查同时存在，旧那段先跑，
-而它正是会误判的那版。波片 91（>60）也被判成「不足」跳过。
-没有这道自查，叠加是**看不出来的**：文件语法没错、present() 也为真。
+The trap stepped on 2026-09-01: the replacement text of v1 **carries the
+anchor at its very end**, `self.click_team_challenge()`, so once I changed
+present() to match the new version, _apply_one pasted another layer on top of
+v1 - two checks present at once, with the old one running first, and that one
+is precisely the version that misjudges. 波片 91 (>60) was judged 「不足」 and
+skipped as well.
+Without this self-check, stacking is **invisible**: the file's syntax is fine
+and present() is true as well.
 
-判据用 new 的第一行（各版本独有的那句注释/代码），出现超过一次就是叠了。
+The test uses the first line of `new` (the comment or code line unique to each
+version); appearing more than once means it is stacked.
 ```
 
 ## service.py:stop_event
 
-`CreateEvent(None, 0, 0, None)` 的第二个参数 0 是**自动复位**：任何一个
-`WaitForSingleObject` 看到信号就顺手把它清掉。这个事件却有三个消费者——
-主循环的 `WaitForMultipleObjects`、手机通道 `listen()` 的 `stop()`、
-心跳 `loop()` 的 `stop()`。停服务时谁先轮到谁拿走信号，其余的继续认为
-「没停」。
+The second argument `0` in `CreateEvent(None, 0, 0, None)` means **auto-reset**:
+whichever `WaitForSingleObject` sees the signal clears it on its way past. But
+this event has three consumers - the main loop's `WaitForMultipleObjects`, the
+phone channel's `listen()` through `stop()`, and the heartbeat's `loop()`
+through `stop()`. When the service is stopped, whoever gets there first takes
+the signal away and the rest go on believing that nothing has stopped.
 
-后果按日期：
-* 2026-08-31 几次卡在 STOP_PENDING（主循环没抢到信号，靠 15 秒 `os._exit` 硬保险退出）。
-* 2026-09-07 09:02 部署停服务，手机通道把 `close()` 掐断的连接当意外断线，
-  在日志里打了整段 `AttributeError: 'NoneType' object has no attribute 'peek'`。
+The consequences, by date:
+* 2026-08-31: several hangs in STOP_PENDING (the main loop did not win the signal
+  and had to leave through the 15-second `os._exit` backstop).
+* 2026-09-07 09:02: a deploy stopped the service, the phone channel treated the
+  connection that `close()` had cut as an unexpected disconnect, and printed a
+  whole `AttributeError: 'NoneType' object has no attribute 'peek'` into the log.
 
-2026-09-07 改成手动复位（第二个参数 1）：信号一直亮着，三个线程各自都能
-看到。回归测试 `tests/test_stop_event_manual_reset.py` 盯着这个参数。
+Changed to manual reset (second argument 1) on 2026-09-07: the signal stays lit,
+so all three threads can each see it. The regression test
+`tests/test_stop_event_manual_reset.py` watches this argument.
 
-补记（同日）：事件改成手动复位后，「收到停止信号」到「主流程已返回」只差 0 秒，
-可 `sc stop` 到 SCM 报告 STOPPED 仍要 20～27 秒，且 15 秒硬保险一次都没触发。
-原因是 `SvcDoRun` 返回后进程交给解释器收尾：剩下的 daemon 线程卡在 C 调用里
-（手机通道的 SSL 读、WMI 进程监视的 COM 等待），`Py_Finalize` 等它们；硬保险那个
-`threading.Timer` 是 Python 线程，收尾阶段拿不到 GIL，永远跑不到 `os._exit`。
-改法：`SvcDoRun` 末尾自己 `ReportServiceStatus(SERVICE_STOPPED)` + `logging.shutdown()`
-+ `os._exit(0)`，只给心跳线程 3 秒把下线（bye）发出去。
+Addendum (same day): after the event was switched to manual reset, the gap
+between "stop signal received" and "the main flow has returned" is 0 seconds,
+yet `sc stop` still takes 20-27 seconds before the SCM reports STOPPED, and the
+15-second backstop never fired once. The reason is that once `SvcDoRun` returns,
+the process is handed over to the interpreter's shutdown: the remaining daemon
+threads are stuck inside C calls (the phone channel's SSL read, the WMI process
+monitor's COM wait) and `Py_Finalize` waits for them; the backstop's
+`threading.Timer` is a Python thread, cannot get the GIL during that shutdown,
+and so never reaches `os._exit`.
+The fix: at the end of `SvcDoRun`, call `ReportServiceStatus(SERVICE_STOPPED)`
++ `logging.shutdown()` + `os._exit(0)` itself, giving the heartbeat thread only
+3 seconds to send its goodbye (bye).
 
 ## engine.py:_scripts_running（2026-09-07 补）
 
-只看进程名单（MAA.exe / MaaEnd.exe / Endfield.exe）栽了：OK-WW 不在名单里。
-2026-09-07 早班 OK-WW 09:19 起跑了三趟，AUTO-MAS 要整段脚本结束（10:16）才写
-运行记录，10:15 缺项检查一看「没进程在跑、OK-WW 没记录、MaaEnd 没记录」，
-发了两条「没有运行」假报警。改成先问 AUTO-MAS 的 `GET /api/dispatch/runtime-snapshot`
-（每个脚本 完成/异常/运行/等待），问不到才退回进程检查。
+Looking only at the process list (MAA.exe / MaaEnd.exe / Endfield.exe) failed:
+OK-WW is not on that list.
+On the 2026-09-07 morning shift OK-WW started at 09:19 and ran three rounds, but
+AUTO-MAS writes the run record only when the whole script section ends (10:16).
+At 10:15 the missing-item check saw "no process running, no OK-WW record, no
+MaaEnd record" and sent two false 「没有运行」 alarms. Changed to ask AUTO-MAS's
+`GET /api/dispatch/runtime-snapshot` first (完成/异常/运行/等待 per script), and
+fall back to the process check only when that cannot be reached.
 
 ## claim.py:(模块级)（2026-09-07 补，v5）
 
-领完奖游戏直接进整屏「挑战成功」结算页（截图在会话记录里：奖励六格、
-「退出副本」「重新挑战 剩余62」、「281秒后自动退出」）。ESC 关不掉，上游紧跟着的
-`wait_click_feature('claim_cancel_button…', raise_if_not_found=True)` 10 秒超时抛
-WaitFailedException，AUTO-MAS 判失败重试；三趟各领到一次（3/3→0），但日常体力
-一步都没轮到。09-02 也是同样模式，只是第四趟碰上「次数已达上限」那种弹窗才退出去。
-v5 把上游那四行收进锚点（`_CLAIM_OLD_FULL`），领完奖 OCR 找「退出副本」点掉，
-点到了就跳过 ESC 等弹窗那段。
+Once the reward is claimed, the game goes straight into a full-screen
+「挑战成功」 results page (the screenshot is in the session record: six reward
+cells, 「退出副本」 and 「重新挑战 剩余62」, 「281秒后自动退出」). ESC does not
+dismiss it, so the upstream call that follows immediately,
+`wait_click_feature('claim_cancel_button…', raise_if_not_found=True)`, times out
+after 10 seconds and raises WaitFailedException; AUTO-MAS judges that a failure
+and retries. Each of the three rounds claimed once (3/3→0), but daily stamina
+farming never got its turn at all. 09-02 followed the same pattern, except that
+on the fourth round it happened to hit a 「次数已达上限」 popup and got out that
+way.
+v5 pulls those four upstream lines into the anchor (`_CLAIM_OLD_FULL`): after
+claiming, it OCRs for 「退出副本」 and clicks it, and if the click lands it skips
+the ESC-and-popup stretch.

@@ -12,7 +12,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from . import texts
+from . import scoreboard, texts
 from .statestore import StateStore
 from .config import RunRecord, SERVER_TZ, USER_TZ, both_clocks
 
@@ -39,7 +39,7 @@ class State:
         self.dir.mkdir(parents=True, exist_ok=True)
         self.seen_path = self.dir / "seen.txt"      # 只追加、会长很大，留作文件
         self._seen: set[str] | None = None
-        # 当天标记和告警队列都在 state.json 里（docs/状态模型.md）：原来是十几个
+        # 当天标记和告警队列都在 state.json 里（docs/STATE-MODEL.md）：原来是十几个
         # 零散的 .sent / .json，谁写谁读全靠记，一处写晚就出一个假状态。
         self.store = StateStore(state_dir)
 
@@ -87,6 +87,15 @@ class State:
         day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
         with self.ledger_path(day).open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        # 顺手给当前代码版本记一笔分。放在这里是因为**每一趟跑完都必经这一行**，
+        # 我写进日报的任何字都动不了它——这正是用户 2026-09-06 要的：
+        # 「我说『修好了』而它写『失败 1 趟』，谎话当场现形。」
+        try:
+            scoreboard.record(self.store, str(self.store.get("versions", "code") or ""),
+                              rec.ok, rec.transitional)
+        except Exception:
+            # 记分牌不许拖垮记账：账本是主线，这一笔是附带的。
+            log.warning("记分牌没记上", exc_info=True)
 
     # What every consumer of a ledger entry assumes is present. Checked once,
     # here, rather than defended against at each of the dozen places that read

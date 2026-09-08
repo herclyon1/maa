@@ -2,7 +2,7 @@
 
 OK-WW 只存一个序号（F2「素材获取 → 无音清剿」列表从上往下第几个），日志里也只有序号。
 这张表是 2026-09-04 在游戏里用「合鸣筛选」逐个核对出来的，出处
-docs/鸣潮-无音区序号对照.md；手机页 web/app.js 的 TACET 与此同源。
+docs/WUWA-TACET-INDEX.md；手机页 web/app.js 的 TACET 与此同源。
 **只放核对过的**，没核对的序号一律写「第 N 个无音区（对照表没登记）」，不许猜。
 """
 from __future__ import annotations

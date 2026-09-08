@@ -1,0 +1,144 @@
+# Rules for filing issues / PRs upstream
+
+**Read this before writing a single word, and follow every line of it.**
+
+Why this file exists: on 2026-09-01 a MaaEnd maintainer closed my #5365 as
+`NOT_PLANNED`, in these words:
+
+> **不要用ai来提issue 请重新开一个issue描述好问题并上传日志**
+
+Their analysis bot also wrote my failure into its conclusion:
+「issue 无 `MaaEnd-logs-*.zip` 附件（用户说明包含本机路径与账号信息未上传）」.
+
+In other words, **two mistakes at once: the writing was obviously AI-generated,
+and the log that was owed was not handed over.**
+
+---
+
+## 0. Run the tool first, then start writing (a gate as of 2026-09-06)
+
+    scripts/mac/upstream-post.py rules <owner/repo>            pull the templates, print this repo's rules (where to post, title prefix, required fields)
+    scripts/mac/upstream-post.py dup   <owner/repo> keyword…    duplicate search: issues and discussions together
+    scripts/mac/upstream-post.py lint  <owner/repo> <template> draft.md   check it item by item; if it does not pass, it may not be posted
+
+Draft format: the first line is `# title`, and the rest is split into sections
+named by the template's field names (`<field name>:` on a line of its own). The lint
+checks: title prefix, every field present and non-empty, no placeholder hints left
+in, no self-invented `#` headings / bold / tables / hedging, length, and — when the
+template asks for logs — that an attachment is mentioned. It also warns when the
+template wants the post to go to Discussions instead.
+
+OK-WW's actual rules (as printed by the tool): **feature suggestions go to
+Discussions → Ideas, not to issues**; the title prefix is `[Enhancement]`; all
+seven fields must be filled; **a PR that is a new feature or a large change has to
+be discussed in Discussions first** (the PR template says so explicitly, and all
+four earlier PRs were closed for this reason). Duplicate searches have to include
+Discussions: on 09-06, 「指定梦魇巢穴点位」 already existed as Discussions #954, which
+made our #1622 a duplicate.
+
+## 1. Read first, write second
+
+1. **Read that repository's templates**
+   `gh api repos/<owner>/<repo>/contents/.github/ISSUE_TEMPLATE --jq '.[].name'`
+   then pull down the matching `.yml` / `.md` and see exactly which fields exist
+   and which are `required: true`.
+2. **Read a dozen issues written by real people**
+   `gh issue list -R <repo> --state all --limit 15 --json number,title,author`
+   Read a few of them in full and **copy their structure and tone**; do not invent
+   your own.
+3. **Search for duplicates**, but **do not write the search process into the body**
+   (listing 「搜过 #xxx #xxx」 is one of the classic sources of the AI smell).
+
+## 2. Not one required field may be skipped
+
+**A blank `required` field means the issue was filed for nothing.** In particular:
+
+* **Logs: hand them over in the form they specify.** MaaEnd says outright
+  「请上传导出后的 `MaaEnd-logs-xxx.zip`」「❌ 不要复制文字发送」「❌ 不要截图日志」 —
+  and what I did was exactly the pasted text they explicitly forbid.
+* **Screenshots: the software screen and the game screen, both.** When it says
+  「❌ 不要留空」, it may not be left blank.
+* **"It contains local paths / account information" is not an excuse for
+  withholding the log.** If it needs redacting, redact it and **hand over the
+  complete file** (replace the paths and the account name, and delete nothing else
+  — not one timestamp, stack frame or task name). If it genuinely cannot be
+  uploaded, use the fallback they offer (MaaEnd allows uploading to the user group,
+  stating the group name and the file name).
+
+**Only through the web form; the command line will not do.** It happened again on
+2026-09-06: #574, filed with `gh issue create`, did not carry the `AI`/`bug` labels
+the template applies automatically, so the maintainer filtering by label could not
+see it. The operator pointed it out on the spot; it was closed and re-filed as
+#575. When filling the form in a browser, checkboxes must be **really clicked** —
+setting the value by script gets reset by the form, and submitting reports
+"required checkbox is missing".
+
+**How to upload an attachment with the browser tools (working as of 2026-09-06)**:
+GitHub's new comment box has no `<input type=file>`, so `find` cannot locate one.
+What works: use javascript_tool to insert your own
+`<input type=file id=ark-upload aria-label="ark upload picker">` next to the
+comment box, get its ref with `find`, put the local zip into it with `file_upload`,
+then use JS to load `input.files[0]` into a `DataTransfer` and
+`dispatchEvent(new DragEvent('drop', …))` on the comment box, wait until a
+`user-attachments/files` link appears in the text, and then click Comment. **After
+posting, verify with gh that the comment is really there** (the first attempt did
+not go through and then navigated away, losing the draft).
+
+**Attachments can only be dragged in on the web page.** The `gh` command line
+cannot upload attachments; those `user-attachments` links are generated by the web
+upload. So the flow is: get the files ready locally → open the web form → drag the
+files in. The command line is only for reading templates, checking for duplicates,
+and editing the body afterwards.
+
+## 3. Style: do not let it be spotted as AI at a glance
+
+The features I was recognised by, each one to be avoided:
+
+| Not this | This |
+|---|---|
+| self-invented section headings `## 现象 / ## 分析 / ## 环境` | use the fields their template gives you, and add no headings of your own |
+| three parallel suggestions, numbered list items all the same length | write as many sentences as there are; uneven lengths are normal |
+| bold everywhere, dense `「」` | basically do not use bold |
+| a table listing versions, times, results | one sentence: how many runs on which day, and how long it took |
+| volunteering context: duplicate-search results, related issues, an environment table | describe only the one thing that happened to you |
+| a closing formula, 「如需完整日志可另行提供」 | just upload the log |
+| throwing in a fix and a priority | describing the symptom is enough; if you really have an idea, one sentence — 「方向可行的话我可以提 PR」 |
+
+**Keep the length to about a third of my first draft.** What a real person looks
+like: one sentence saying where it got stuck, the log attached, "has anyone else
+seen this". Colloquialisms are fine (「挺绕的」「不看源码想不到」), and admitting you
+did not see it happen is fine (「自动跑的，失败当时人不在」).
+
+## 4. Run through this checklist before filing
+
+- [ ] Have you read the template? Is every `required` field filled?
+- [ ] Is the log handed over **in the form they asked for** (a zip file, not text)?
+- [ ] Are both the software screenshot and the game screenshot there?
+- [ ] Does the body contain self-invented `##` headings, bold, tables, parallel
+      numbered lists?
+- [ ] Is there any hedging along the lines of 「如需……可另行提供」?
+- [ ] Is it still too long?
+- [ ] Does it report one problem, or several stuffed together?
+
+## 5. Per-repository requirements
+
+**MaaEnd/MaaEnd** — `bug_report.yml`, all four items required:
+问题描述及复现步骤, **日志文件** (must be `MaaEnd-logs-xxx.zip`, exported with the
+🗄️ button at the top right of 「运行日志」 in the UI), **软件画面截图**, and
+**游戏画面截图**. Before submitting they require reading the
+[问题反馈指南](https://github.com/MaaEnd/MaaEnd/blob/v2/docs/zh_cn/users/troubleshooting.md)
+and confirming you are on the latest version.
+
+**ok-oldking/ok-wuthering-waves** — three `.md` templates
+(报告bug / 新功能建议 / 问题咨询), one set in Chinese and one in English. The fields
+are looser, but 「考虑过的替代方案」 and 「补充信息」 **do not have to be forced full**;
+leave them blank when there is nothing, since filling them in too completely is
+itself what makes it look machine-written.
+
+**What to do when upstream will not take the change**: propose "make it
+configurable" rather than "change the default behaviour". The author dislikes other
+people changing his design, but usually does not object to one more switch. Our
+「领奖顺序」 PR #1631 was closed precisely because what it proposed was a change of
+order.
+
+Related: `docs/OKWW-WEEKLY-BOSS.md`, `docs/BACKLOG.md`

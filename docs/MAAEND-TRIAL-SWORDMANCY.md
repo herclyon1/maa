@@ -1,43 +1,45 @@
-# 选剑演武 08-28 的四次失败，是四个不同的失败点
+# The four 选剑演武 failures on 08-28 are four different failure points
 
-**不要把它们当成一个问题。**下面每条都有日志行号或截图。
+**Do not treat them as one problem.** Every item below has a log line number or a
+screenshot behind it.
 
-## 任务配置（`mxu-MaaEnd.json` → `instances[0].tasks[14]`，启用=True）
+## Task configuration (`mxu-MaaEnd.json` → `instances[0].tasks[14]`, enabled=True)
 
-| 中文 | 键 | 我们的取值 |
+| UI label | Key | Our value |
 |---|---|---|
 | 模式 | `TrialOfSwordmancyMode` | `Daily`（每日选剑演武） |
 | 数据溢出处理 | `TrialOfSwordmancyOverflow` | `None`（不接受溢出） |
-| 启用自动战斗 | `TrialOfSwordmancyAutoFight` | 是 |
-| 每次战斗前传送回复血量 | `TrialOfSwordmancyRecoverBeforeBattle` | 否 |
-| 自动战斗设置 | `AutoFightSetting` | 是 |
-| ├ 自动切换低血量干员到后台 | `AutoFightHealthDangerousSwitch` | 是 |
-| ├ 自动闪避 | `AutoFightDodge` | 是 |
-| │  └ 兼容模式 | `AutoFightDodgeCompat` | 否 |
-| ├ 自动锁定目标 | `AutoFightLockTarget` | 是 |
-| ├ 使用排轴 | `AutoFightAxis` | 否 |
+| 启用自动战斗 | `TrialOfSwordmancyAutoFight` | yes |
+| 每次战斗前传送回复血量 | `TrialOfSwordmancyRecoverBeforeBattle` | no |
+| 自动战斗设置 | `AutoFightSetting` | yes |
+| ├ 自动切换低血量干员到后台 | `AutoFightHealthDangerousSwitch` | yes |
+| ├ 自动闪避 | `AutoFightDodge` | yes |
+| │  └ 兼容模式 | `AutoFightDodgeCompat` | no |
+| ├ 自动锁定目标 | `AutoFightLockTarget` | yes |
+| ├ 使用排轴 | `AutoFightAxis` | no |
 | ├ 保留技能能量 | `AutoFightReserveSkillLevel` | 1 |
-| └ 自动打断敌人蓄力 | `AutoFightBreakAccumulatingPower` | 是 |
+| └ 自动打断敌人蓄力 | `AutoFightBreakAccumulatingPower` | yes |
 
-其他模式：`Coating`（刷镀层）、`Farm25`（刷25点，无奖励、不自动战斗）。
-溢出档位：`None` / `Once`（至多1次）/ `Twice`（至多2次）。
-官方说明写着「开启数据溢出可以取得更高的预期收益，但**自动战斗大概率失败**」。
+The other modes: `Coating`（刷镀层）, `Farm25`（刷25点，无奖励、不自动战斗）.
+Overflow settings: `None` / `Once`（至多1次）/ `Twice`（至多2次）.
+The official description says 「开启数据溢出可以取得更高的预期收益，但**自动战斗大概率失败**」.
 
-**这 12 项没有配错的。**`AutoFightSetting` 那 7 个子项就是它自己的子树，
-同一套也出现在 `tasks[13] ProtocolSpace` 上。
+**None of these 12 items is misconfigured.** The 7 sub-items under
+`AutoFightSetting` are its own subtree, and the same set also appears on
+`tasks[13] ProtocolSpace`.
 
-## 四次失败
+## The four failures
 
-| # | 时间 | 抽牌 | 战斗 | 失败点 |
+| # | Time | Cards drawn | Combat | Failure point |
 |---|---|---|---|---|
-| 1 | 14:00:45→14:01:53 | **无** | **无** | 没进牌桌 |
-| 2 | 14:05:51→14:08:04 | 有 | 打满 45 秒正常退出 | **战后收尾识别** |
-| 3 | 14:17:20→ | 有 | 打满 | 同上 |
-| 4 | 21:04（我手动单跑） | 无 | 无 | **没导航到场地** |
+| 1 | 14:00:45→14:01:53 | **none** | **none** | never reached the card table |
+| 2 | 14:05:51→14:08:04 | yes | full 45 seconds, exited normally | **post-combat wrap-up recognition** |
+| 3 | 14:17:20→ | yes | full | same as above |
+| 4 | 21:04 (my manual single run) | none | none | **never navigated to the venue** |
 
-### 第一轮：连牌桌都没进
+### Round 1: it never even reached the card table
 
-整个任务只有 4 行：
+The whole task is 4 lines:
 
 ```
 14:00:45.289  任务开始: 🗡️选剑演武
@@ -46,20 +48,22 @@
 14:01:53.628  任务失败: 🗡️选剑演武
 ```
 
-`EnterTrialMenuSuccess = Or(DrawCard, EnemyCard5)` 从未匹配，`EnemyCard5` 得分 0.286（阈值 0.7）。
+`EnterTrialMenuSuccess = Or(DrawCard, EnemyCard5)` never matched; `EnemyCard5`
+scored 0.286 (threshold 0.7).
 
-### 第二轮：打完了，卡在战后收尾
+### Round 2: it finished the fight and stuck on the wrap-up
 
 ```
 14:07:03.959  进入战斗场景
-14:07:04.228  共 4 名干员参战     （技能／闪避／连携／终结技全打出来）
+14:07:04.228  共 4 名干员参战     (skills / dodges / concerto / ultimates all fired)
 14:07:49.411  退出战斗场景
-14:07:54.554  获得 武陵调度券 ×320000   ← 这个数不可信，见下
+14:07:54.554  获得 武陵调度券 ×320000   <- this number is not trustworthy, see below
 14:08:04.217  任务失败: 🗡️选剑演武
 ```
 
-框架日志 `maafw.bak.2026.08.28-14.16.02.869.log` 的 14:07:45–14:08:06 窗口里，
-它在反复轮询三个收尾节点，全部 `Node.Recognition.Failed`：
+In the framework log `maafw.bak.2026.08.28-14.16.02.869.log`, over the
+14:07:45–14:08:06 window, it polls three wrap-up nodes over and over, all
+`Node.Recognition.Failed`:
 
 ```
 TrialOfSwordmancyFightSuccess              73×
@@ -67,18 +71,18 @@ TrialOfSwordmancyReEnterTrialMenuSuccess  126×
 TrialOfSwordmancyRewardExhausted          126×
 ```
 
-**没有打任何失败原因**——它自己有一条 `trialofswordmancy.recognition_failed
-=「选剑演武：识别失败」`，这次没触发。
+**It printed no failure reason at all** — it has a string of its own,
+`trialofswordmancy.recognition_failed =「选剑演武：识别失败」`, and that never fired.
 
-### 第四轮（21:04 单跑）：人在大世界
+### Round 4 (the 21:04 single run): the character is out in the open world
 
-`debug/on_error/2026.08.28-21.04.13.353_TrialOfSwordmancyMain.png`：
-角色站在源石研究园外的大世界，左上角是「探索」模式和日常任务指引，
-**根本没到演武场**。
+`debug/on_error/2026.08.28-21.04.13.353_TrialOfSwordmancyMain.png`: the character
+is standing in the open world outside 源石研究园, the top left shows 「探索」 mode
+and the daily task guidance, and it **never got to the 演武场 at all**.
 
-## ⚠️「获得 武陵调度券 ×N」不能当作拿到奖励的证据
+## ⚠️「获得 武陵调度券 ×N」 is not evidence that a reward was received
 
-文案来自 `locales/go-service/zh_cn.json`：
+The wording comes from `locales/go-service/zh_cn.json`:
 
 ```
 ims.add_item_found   获得 %s ×%d
@@ -86,54 +90,62 @@ ims.item_current     当前 %s：%d
 ims.sync_item_found  识别到 %s：%d
 ```
 
-数字是 OCR 出来的。**所有 `调度券` 的读数都不可信**：
+The numbers are OCR'd. **Every 调度券 reading is untrustworthy**:
 
 ```
 08-14  ×2790000  ×3380000  ×835000  ×1970000  ×5030000
-08-25  ×49800  ┐ 两天同一个数
+08-25  ×49800  ┐ same number on both days
 08-26  ×49800  ┘
-08-28  ×320000（第二轮）  ×320000（第三轮）  ← 两轮同一个数
+08-28  ×320000 (round 2)  ×320000 (round 3)  <- same number in both rounds
 ```
 
-同期其他物品都正常：`行动资历 ×1150`、`协议棱柱 ×5`、`高级作战记录 ×1`。
-而且 `nodes.json:14036` 有「识别武陵调度券是否溢出」的阈值判断，
-说明它是有上限的存量，一次不可能掉几百万。
+Other items over the same period read normally: `行动资历 ×1150`, `协议棱柱 ×5`,
+`高级作战记录 ×1`. On top of that, `nodes.json:14036` has a threshold check for
+「识别武陵调度券是否溢出」, which means it is a capped stock — several million cannot
+drop in one go.
 
-**判断「今天打完没有」要用游戏自己的话**：21:04 单跑时它报「今日奖励次数已用尽」。
-第一轮没进去，所以次数是第二、三轮吃掉的。
+**To decide whether today's runs are done, use the game's own words**: during the
+21:04 single run it reported 「今日奖励次数已用尽」. Round 1 never got in, so the
+attempts were consumed by rounds 2 and 3.
 
-## 已排除的假设
+## Hypotheses already ruled out
 
-* **配置没配好** —— 12 项逐条核对无误，见上表。
-* **难度过高打不过**（上游作者的说法）—— 第一轮和第四轮**根本没有战斗**，不适用；
-  第二三轮战斗跑满并正常退出。赢没赢日志里没写，尚不能证实也不能证伪。
-* **抽卡失败**（上游作者的说法）—— 第一轮日志里**一条手牌/牌库行都没有**，牌桌都没进。
+* **Bad configuration** — all 12 items checked one by one, all correct, see the
+  table above.
+* **Too hard to beat** (the upstream author's suggestion) — rounds 1 and 4 had
+  **no combat at all**, so it does not apply; rounds 2 and 3 ran the fight to the
+  end and exited normally. The log does not record whether it won, so that part can
+  be neither confirmed nor refuted.
+* **Card draw failed** (the upstream author's suggestion) — round 1's log has
+  **not a single hand or deck line**; it never reached the card table.
 
-## 上游 issue 对照（2026-08-28 搜过 MaaEnd/MaaEnd）
+## Cross-check against upstream issues (searched MaaEnd/MaaEnd on 2026-08-28)
 
-我们跑的是 **v2.26.0-rc.1**（`D:\ark\maaend\interface.json` 的 `version`）。
+We are running **v2.26.0-rc.1** (the `version` in `D:\ark\maaend\interface.json`).
 
-### 寻路类失败（第一轮、21:04 单跑）——**已有 issue，仍未修**
+### Pathfinding failures (round 1, and the 21:04 single run) — **issues exist, still unfixed**
 
-| # | 状态 | 版本 | 标题 |
+| # | State | Version | Title |
 |---|---|---|---|
 | [#5034] | **open** | v2.25.0-beta.2 | 选剑演武-寻路异常：「传送至传送点后朝向错误跳下下一层 导致任务失败」 |
 | [#5061] | **open** | v2.25.0-beta.3 | 寻路与作战bug：「选剑演武作战失败报错」 |
 | #5021 / #5040 | open | v2.25.x | 多任务寻路失败合并反馈 |
 | #4930 / #4987 / #4365 | closed | v2.2x | 选剑演武寻路失败 / 偶发性寻路失败 |
 
-#5034 的描述和我们 21:04 的 `on_error` 截图吻合：**人停在大世界，没到演武场**。
-两个 open issue 都是 v2.25.x 提的，我们 v2.26.0-rc.1 仍然中招——**这一类会复现。**
+#5034's description matches our 21:04 `on_error` screenshot: **the character stops
+in the open world and never reaches the 演武场**. Both open issues were filed
+against v2.25.x, and we hit it on v2.26.0-rc.1 too — **this class reproduces.**
 
-### 战后收尾识别失败（第二、三轮）——**没搜到对应 issue**
+### Post-combat wrap-up recognition failure (rounds 2 and 3) — **no matching issue found**
 
-关键词 `选剑演武` / `TrialOfSwordmancy` / `选剑演武 识别` 全搜过，
-08-20 之后没有任何 选剑演武 故障 issue。已关闭的识别类
-（#3968、#4418、#4432「选剑演武：识别失败」）症状不同——
-**它们会打出那条 `选剑演武：识别失败`，我们这次一个字都没打。**
+Searched the keywords `选剑演武` / `TrialOfSwordmancy` / `选剑演武 识别`; there is no
+选剑演武 fault issue at all after 08-20. The closed recognition ones
+(#3968, #4418, #4432「选剑演武：识别失败」) have different symptoms —
+**they print that `选剑演武：识别失败` line, and ours printed not one word of it.**
 
-所以「战斗打完、`FightSuccess` / `ReEnterTrialMenuSuccess` / `RewardExhausted`
-三个节点轮询 100+ 次全 `Recognition.Failed`、无任何失败文案」这个形态，
-目前**没有现成 issue**。
+So this shape — combat finished, `FightSuccess` / `ReEnterTrialMenuSuccess` /
+`RewardExhausted` polled 100+ times each, all `Recognition.Failed`, and no failure
+text of any kind — currently has **no existing issue**.
 
-**但只有一天数据，且跑的是 rc 版**，先再观察一天再决定要不要报。
+**But this is one day of data, on an rc build**, so observe one more day before
+deciding whether to report it.
