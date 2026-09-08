@@ -361,3 +361,50 @@ def master_config_dir(automas_dir: "str | Path | None", marker: str) -> "Path | 
         if (d / marker).is_file():
             return d
     return None
+
+
+# ---------------------------------------------------------------- process names
+# One list of "what counts as the fleet running", instead of five. Five places
+# each carried their own hard-coded set and no two agreed: estop.sh's regex,
+# dispatch_guard's two tuples, snapshot's dict, the queue monitor's tuple,
+# watch-run.sh's findstr. Three could not see Wuthering Waves' own process or the
+# emulator, and one was still looking for MuMuPlayer, removed from this machine on
+# 2026-08-24. A blind list does not report an error - it reports "nothing is
+# running", and that is the answer that gets acted on: the phone page shows idle
+# while the game is playing, and a script is dispatched on top of a running one.
+#
+# Two facts every one of these lists has to know:
+#   * MaaEnd has no process of its own - AUTO-MAS's python drives it in-process,
+#     so Endfield.exe stands in for a MaaEnd run.
+#   * OK-WW does not run as ok-ww.exe. That is only the pyappify launcher and it
+#     does not exist at all on an automated run; what runs is pythonw.exe with
+#     working/main.py on its command line, so a name-only check is blind to it and
+#     the game (Client-Win64-Shipping.exe) is the visible evidence.
+#
+# It lives in config.py rather than a module of its own because self-update never
+# creates files: a new module reaches this machine only through a deploy, and
+# until then every reader of it is silently degraded.
+
+# Games and emulators. Seeing any of these means something is being played.
+GAME_PROCS: tuple[str, ...] = (
+    "Endfield.exe",                 # Endfield itself; also the evidence that MaaEnd is running
+    "Client-Win64-Shipping.exe",    # Wuthering Waves itself
+    "Wuthering Waves.exe",          # its launcher
+    "dnplayer.exe",                 # LDPlayer; Arknights lives inside it
+)
+
+# The scripts themselves.
+SCRIPT_PROCS: tuple[str, ...] = (
+    "MAA.exe",
+    "MaaEnd.exe",
+    "ok-ww.exe",                    # launcher only; absent on an automated run, see above
+)
+
+ORCHESTRATOR_PROC = "AUTO-MAS.exe"
+
+# What a "is anything running" check must be able to see.
+BUSY_PROCS: tuple[str, ...] = SCRIPT_PROCS + GAME_PROCS
+
+# A python process with this on its command line is OK-WW itself.
+OKWW_CMDLINE = "ok-ww"
+PYTHON_HOSTS: tuple[str, ...] = ("pythonw.exe", "python.exe")

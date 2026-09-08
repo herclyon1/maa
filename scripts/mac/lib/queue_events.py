@@ -38,8 +38,12 @@ def procs():
     out = subprocess.run(["tasklist", "/fo", "csv", "/nh"], capture_output=True,
                          text=True, encoding="utf-8", errors="replace").stdout
     s = {l.split('","')[0].lstrip('"') for l in out.splitlines() if l}
+    # Same list as BUSY_PROCS in relay/ark_relay/config.py; test_procnames.py pins
+    # together. This one used to look for MuMuPlayer, which was removed from the
+    # machine on 2026-08-24, and did not look for the emulator that replaced it.
     return sorted(p for p in s if any(k in p for k in
-        ("MaaEnd.exe", "Endfield.exe", "ok-ww.exe", "MAA.exe", "MuMuPlayer", "Client-Win64")))
+        ("MAA.exe", "MaaEnd.exe", "ok-ww.exe", "Endfield.exe",
+         "Client-Win64-Shipping.exe", "Wuthering Waves.exe", "dnplayer.exe")))
 
 st = load(); out = []
 now = procs()

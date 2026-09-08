@@ -160,8 +160,12 @@ def _runtime(out: dict) -> None:
     try:
         tl = subprocess.run(["tasklist"], capture_output=True, text=True,
                             errors="replace", timeout=20).stdout
-        out["进程"] = {n: (n + ".exe") in tl
-                       for n in ("AUTO-MAS", "MAA", "MaaEnd", "Endfield", "ok-ww")}
+        # One list, in config.py. This one used to be blind to Wuthering Waves'
+        # own process and to the emulator, so while the game was playing the
+        # phone page's 「在跑的」 was empty - it reads as idle at a glance.
+        from .config import BUSY_PROCS, ORCHESTRATOR_PROC  # noqa: PLC0415
+        names = (ORCHESTRATOR_PROC,) + BUSY_PROCS
+        out["进程"] = {n[:-4] if n.endswith(".exe") else n: n in tl for n in names}
     except Exception:  # noqa: BLE001
         pass
 

@@ -64,7 +64,10 @@ while true; do
     fi
   done <<< "$out"
 
-  busy=$(remote 'tasklist /NH | findstr /i "MAA.exe MaaEnd.exe Endfield.exe" >nul 2>&1 && echo RUN || echo IDLE')
+  # Same list as BUSY_PROCS in relay/ark_relay/config.py; test_procnames.py pins
+  # them together. This had three names, so a solo Wuthering Waves run read as
+  # IDLE the whole way through and was called finished after six minutes.
+  busy=$(remote 'tasklist /NH | findstr /i "MAA.exe MaaEnd.exe Endfield.exe Client-Win64-Shipping.exe ok-ww.exe dnplayer.exe" >nul 2>&1 && echo RUN || echo IDLE')
   if [ "$busy" = "IDLE" ] && [ -n "$seen" ]; then
     idle=$((idle + 1))
     if [ "$idle" -ge 3 ]; then
