@@ -30,6 +30,27 @@ def ts(v) -> str:
         return ""
 
 
+def taken_at(detail: dict) -> tuple[str, str]:
+    """When Skland took this snapshot, and how old it is now.
+
+    A sheet headed 「你的账号练度」 with no date on it is a lie the moment the file
+    survives a day: the reader plans levelling and farming from it without any way
+    to tell whether it is ten minutes or three weeks old. snapshot.load prints the
+    age on every read for exactly this reason; this script reads the JSON directly
+    and so had to be told separately. The moment is already in the payload as
+    `currentTs`, and the formatter above was already here.
+    """
+    raw = detail.get("currentTs") or detail.get("ts")
+    try:
+        at = datetime.fromtimestamp(int(raw), CST)
+    except (TypeError, ValueError):
+        return "不知道（这份数据里没有抓取时刻）", "不知道"
+    days = (datetime.now(CST) - at).days
+    age = ("今天" if days <= 0 else f"{days} 天前"
+           + ("　⚠️ 已经很旧了，照它排养成之前先刷新" if days >= 3 else ""))
+    return at.strftime("%Y-%m-%d %H:%M") + "（服务器时间）", age
+
+
 def equip_name(e) -> str:
     if not isinstance(e, dict):
         return ""
@@ -160,6 +181,8 @@ def build(detail: dict, min_rarity: int = 6) -> list[Sheet]:
         ["当前主线", ((base.get("mainMission") or {}).get("description", ""))],
         ["本表范围", f"只统计 {MIN_RARITY} 星及以上，共 {len(chars)} 名"
                        if MIN_RARITY > 1 else f"全部 {len(chars)} 名"],
+        ["数据抓取时刻", taken_at(base if "currentTs" in base else detail)[0]],
+        ["这份数据多旧了", taken_at(base if "currentTs" in base else detail)[1]],
         ["数据抓取自", "森空岛 /api/v1/game/endfield/card/detail"],
         ["词条为什么是英文", "官方接口只给字段名，这份数据里没有译名表，不自己编"],
     ])
@@ -183,7 +206,9 @@ def main() -> int:
     detail = d.get("detail") or d
     sheets = build(detail, MIN_RARITY)
     write_xlsx(str(out), sheets)
+    when, age = taken_at(detail)
     print(f"已生成 {out}")
+    print(f"  数据抓取于 {when} · {age}")
     for s in sheets:
         print(f"  「{s.name}」{len(s.rows)} 行 × {len(s.header)} 列")
     return 0

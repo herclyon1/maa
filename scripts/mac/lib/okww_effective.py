@@ -88,11 +88,20 @@ def main() -> int:
             if only != "落渊南丘":
                 print(f"  ❌ 只刷落渊南丘没设上：Only Farm These Nests = {only!r}")
                 bad += 1
-            if "Auto Farm all Nightmare Nest" in adds:
-                print("  ❌ 附加任务里挂着「Auto Farm all Nightmare Nest」= 全量刷")
+            # "Auto Farm all Nightmare Nest" does NOT mean "farm every nest".
+            # It selects which routine runs; what gets farmed is decided by
+            # `Which to Farm` plus `Only Farm These Nests`. Without it OK-WW grabs
+            # one echo and calls the nest done. Verified 2026-08-29, written up in
+            # docs/OKWW-NEST-MODES.md. This file was left on the 08-28 reading and
+            # so reported ❌ against the correct config - and a memory names it as
+            # the one command to verify nests with, so following it would have
+            # meant unticking the box and quietly losing 落渊南丘.
+            if "Auto Farm all Nightmare Nest" not in adds:
+                print("  ❌ 附加任务里没有「Auto Farm all Nightmare Nest」"
+                      "= 抓一个声骸就收工，落渊南丘刷不满")
                 bad += 1
             if bad == 0:
-                print("  ✅ 只刷落渊南丘，没有全量刷")
+                print("  ✅ 只刷落渊南丘，而且是刷满模式")
     print(f"\n对照：OK-WW 自己目录 {DECOY_DIR} 里那份**跑的时候会被换掉**，不作数。")
     return 1 if bad else 0
 
