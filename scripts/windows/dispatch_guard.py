@@ -150,7 +150,11 @@ if __name__ == "__main__":
     elif a[0] == "start-queue" and len(a) > 1:
         sys.exit(start_queue(a[1]) or 0)
     elif a[0] == "stop":
-        stop_all()
+        # Failing to stop cleanly has to exit non-zero, for the same reason start
+        # does: on 2026-09-08 start got its exit code and stop was overlooked, so
+        # 「停干净了」 and 「AUTO-MAS 又把它拉起来了」 reached the caller as the
+        # same 0 - and that is the one answer run-one.sh acts on.
+        sys.exit(0 if stop_all() else 1)
     else:
         print(__doc__)
         sys.exit(64)

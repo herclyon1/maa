@@ -405,7 +405,19 @@ GUARD
     exit 5
   fi
   python3 -c "$STRIP" "$TMP"
-  [ "$SSH_FAILED" = 1 ] && echo "winrun: 注意——远端命令以非零退出结束（上面是它的输出）" >&2
+  # The remote's exit code has to come out as it is. This used to `exit 0`
+  # unconditionally and only drop a line on stderr, so the 「拒绝派发必须非零退出」
+  # added to dispatch_guard on 2026-09-08 had no effect at all on run-one.sh, the
+  # only path that actually calls it: a refused dispatch and a successful one gave
+  # the caller the same code. okww_effective.py's `return 1` and emu-start.py's
+  # SystemExit(2) were flattened the same way. Out of 1..255, or not a number: 1.
+  if [ "$SSH_FAILED" = 1 ]; then
+    echo "winrun: 远端命令以非零退出结束（上面是它的输出）" >&2
+    case "$RC" in
+      ''|*[!0-9]*) exit 1 ;;
+      *) [ "$RC" -ge 1 ] && [ "$RC" -le 255 ] && exit "$RC" || exit 1 ;;
+    esac
+  fi
   exit 0
 fi
 

@@ -39,8 +39,36 @@ SSH=(ssh -o ConnectTimeout=25 -o ServerAliveInterval=5 -o ServerAliveCountMax=3)
 # 决定了谁先死，AUTO-MAS 可能排在最后，坑一模一样。
 TIER1_MAS='AUTO-MAS'                                   # 编排器：必须第一个死
 TIER2_SCRIPT='MaaEnd|^MAA$|ok-ww|okww|ok_ww'           # 脚本
-TIER3_GAME='Endfield|Client-Win64|Wuthering|wuwa|KRSDK|KRLauncher'  # 游戏本体
+TIER3_GAME='Endfield|Client-Win64|Wuthering|wuwa|KRSDK|KRLauncher|dnplayer|LdVBoxHeadless'
 PATTERN="$TIER1_MAS|$TIER2_SCRIPT|$TIER3_GAME"
+
+# OK-WW does not run under a process called ok-ww. `ok-ww.exe` is only the pyappify
+# launcher and does not exist at all on an automated run: what runs is
+# data\apps\ok-ww\python\pythonw.exe ...\working\main.py. A ProcessName match
+# cannot see a command line, so tier 2 matched **zero** processes - and the final
+# check used the same list, so it printed 「✅ 进程干净了」 while the game was still
+# playing itself. dispatch_guard.py already solved this with Win32_Process +
+# CommandLine; this catches up. Get-Targets = matched by name, plus any python
+# whose command line mentions ok-ww.
+PS_TARGETS=$(cat <<'PSFN'
+function Get-Targets($re) {
+  $byName = @(Get-Process | Where-Object { $_.ProcessName -match $re })
+  $extra = @()
+  if ($re -match "ok.?ww") {
+    $ids = @(Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' or Name='python.exe'" |
+             Where-Object { $_.CommandLine -like "*ok-ww*" } |
+             Select-Object -ExpandProperty ProcessId)
+    foreach ($i in $ids) {
+      if ($byName.Id -notcontains $i) {
+        $pp = Get-Process -Id $i -ErrorAction SilentlyContinue
+        if ($pp) { $extra += $pp }
+      }
+    }
+  }
+  return @($byName + $extra)
+}
+PSFN
+)
 
 MODE="stop"
 KEEP_QUEUE=0
@@ -61,8 +89,8 @@ run_ps() {
   "${SSH[@]}" "$USER_AT" "pwsh -NoProfile -EncodedCommand $b64" 2>&1
 }
 
-list_ps="Get-Process | Where-Object { \$_.ProcessName -match '$PATTERN' } |
-  ForEach-Object { '  ' + \$_.ProcessName + '  pid=' + \$_.Id }"
+list_ps="$PS_TARGETS
+Get-Targets '$PATTERN' | ForEach-Object { '  ' + \$_.ProcessName + '  pid=' + \$_.Id }"
 
 # 杀一层，然后原地等它真的消失（最多 ~6 秒），再返回。
 # 「发了 Stop-Process」不等于「它死了」；不等就进下一层，等于没分层。
@@ -73,19 +101,20 @@ list_ps="Get-Process | Where-Object { \$_.ProcessName -match '$PATTERN' } |
 mk_kill_tier() {
   local re="$1"
   cat <<PSEOF
+$PS_TARGETS
 \$re = '$re'
-\$hit = Get-Process | Where-Object { \$_.ProcessName -match \$re }
+\$hit = Get-Targets \$re
 if (-not \$hit) { Write-Output 'NONE' }
 foreach (\$p in \$hit) {
   Write-Output ('KILL ' + \$p.ProcessName + ' ' + \$p.Id)
   Stop-Process -Id \$p.Id -Force -ErrorAction SilentlyContinue
 }
 for (\$i = 0; \$i -lt 12; \$i++) {
-  \$left = Get-Process | Where-Object { \$_.ProcessName -match \$re }
+  \$left = Get-Targets \$re
   if (-not \$left) { Write-Output 'GONE'; break }
   Start-Sleep -Milliseconds 500
 }
-foreach (\$p in (Get-Process | Where-Object { \$_.ProcessName -match \$re })) {
+foreach (\$p in (Get-Targets \$re)) {
   Write-Output ('STUCK ' + \$p.ProcessName + ' ' + \$p.Id)
 }
 PSEOF

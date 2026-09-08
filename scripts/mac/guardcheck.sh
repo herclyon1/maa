@@ -318,6 +318,37 @@ sys.exit(g.start("MAA"))
 PY
 accepts "闲的时候正常派发（不误杀）" python3 "$TMP/guard_free.py"
 
+# 2026-09-08: start got a non-zero exit that day and stop was overlooked, so
+# "stopped it clean" and "AUTO-MAS pulled it straight back up" reached the caller
+# as the same 0. That is the one answer run-one.sh acts on.
+cat > "$TMP/guard_stop_dirty.py" <<'PY'
+import sys, pathlib
+sys.path.insert(0, str(pathlib.Path("scripts/windows").resolve()))
+import dispatch_guard as g
+g.time.sleep = lambda *_: None
+g.qids = lambda: {}
+g.ids = lambda: {"MAA": "id-1"}
+g.post = lambda *a, **k: {"message": "ok"}
+g.subprocess.run = lambda *a, **k: None
+g.okww_pids = lambda: []
+g.running = lambda: (["MAA"], [])                        # 怎么停都还在跑
+sys.exit(0 if g.stop_all() else 1)
+PY
+refuses "停不干净必须非零退出" "还没停干净" python3 "$TMP/guard_stop_dirty.py"
+
+cat > "$TMP/guard_stop_clean.py" <<'PY'
+import sys, pathlib
+sys.path.insert(0, str(pathlib.Path("scripts/windows").resolve()))
+import dispatch_guard as g
+g.time.sleep = lambda *_: None
+g.qids = lambda: {}
+g.ids = lambda: {"MAA": "id-1"}
+g.post = lambda *a, **k: {"message": "ok"}
+g.running = lambda: ([], [])
+sys.exit(0 if g.stop_all() else 1)
+PY
+accepts "停干净了正常退 0（不误杀）" python3 "$TMP/guard_stop_clean.py"
+
 cat > "$TMP/guard_name.py" <<'PY'
 import sys, pathlib
 sys.path.insert(0, str(pathlib.Path("scripts/windows").resolve()))
