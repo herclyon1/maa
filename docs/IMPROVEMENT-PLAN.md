@@ -383,3 +383,71 @@ same period:
   was 215 lines);
 * the replay corpus grown from 1 day / 10 records to 4 days / 42 records, with
   FLOOR raised from 10 to 40.
+
+
+## 2026-09-08 (afternoon): what "hard to maintain" actually measured, and what was done
+
+The user asked "is it maintainable now?" and I answered with an adjective ("no, today
+proves it"). He called that out as giving up. He was right: the answer has to be a
+number that can move.
+
+**The measurement.** Run the whole suite with a tracer and record which code is never
+executed:
+
+    671 functions in the relay, 243 (36%) never touched by any test
+    modules never reached at all: __main__.py  skland.py  snapshot.py  watch.py
+
+That morning's bug — a stray `@property` on `State.save_pending` that made the relay
+re-push the same failure alert every twelve seconds for half an hour — landed exactly
+in those 243. The function had never been called by a test, so a wrong decorator went
+green all the way onto the machine.
+
+**What was done.**
+
+| | morning | after |
+|---|---|---|
+| functions no test ever executes | 243 / 671 (36%) | 34 / 671 (5%) |
+| modules never reached | 4 | 0 |
+| tests | 90 | 96 (+300 assertions) |
+| gates (lint / guardcheck) | 19 / 35 | 19 / 36 |
+| deploy wall clock | 183 s | 66 s |
+
+Six new test files, each written against "what breaks silently if this test does not
+exist" rather than for coverage: notifications not delivered (a fault nobody learns
+about), the daily report not sent (shutdown waits on it — the machine stays up all
+night), config written wrong (wrong stage, burnt sanity potions — the 826 incident),
+alerts re-pushed (that morning), self-update unable to fetch new code while the screen
+stays green. Every assertion was mutation-verified: break the production code on
+purpose, confirm the test goes red — 53 mutations in total.
+
+**Two real defects fell out of writing them**, neither guessed:
+
+* `Engine.tick()` read the mode switches *outside* the per-step guard. One throw there
+  takes the whole tick with it — including the daily report and the shutdown decision —
+  every single round. Same shape as the 2026-09-04 incident, different entrance.
+* `Notifier.send()` returned `[]` — the "delivered" contract — when no channel was
+  configured at all. `send_group` had guarded that case; `send` had not.
+
+**The ratchet.** Finishing all 243 at once is not realistic and a coverage threshold
+would only produce useless tests. So the remaining 34 are registered in
+`relay/tests/untested-baseline.txt` and the list may only shrink: adding a public
+function that no test executes is refused at deploy time. Proven with a bad sample in
+`guardcheck.sh`. It reuses the tracer run that `changed_covered.py` already does, so it
+costs nothing extra.
+
+**Deploy speed.** Stage timings showed the gates were never the bottleneck — the file
+transfer was. One `scp` per file cost 1.7 s each even with connection reuse (190 ms
+cross-border round trip, several exchanges per session); 71 files took 119 s, two thirds
+of the whole deploy. One `tar` stream does the same 71 files in 2 s. The hash check
+after the push is unchanged. The coverage gate went 36 s → 9 s by dropping `uvx
+coverage` for a `sys.settrace` call-event recorder (this gate needs one bit per file,
+not per-line accounting) and sharding across cores. Three tests were sleeping on the
+real clock for 17 s combined — spotted by CPU share, not by reading: `test_gameupdate`
+spent 6.5 s at 3% CPU, which is waiting, not computing.
+
+**The first thing the new smoke check caught** was the tar switch itself: macOS `tar`
+ships extended attributes as `._name` AppleDouble entries, so the first packed push
+littered 18 of them on the machine. Per-file hash verification cannot see that — it only
+checks that the files in the manifest are present and correct, never that nothing extra
+arrived. The "import every module on the machine" smoke step, added the day before,
+found them.
