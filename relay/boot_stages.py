@@ -617,6 +617,19 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
                 notifier.send(texts.MAAEND_REENABLED, back)
     except Exception:
         log.exception("开回 MaaEnd 任务出错")
+    # Entries for tasks this MaaEnd no longer has are removed, not warned about
+    # (the user, 2026-09-09: 「你光报警不去修吗？」). Two independent signals are
+    # required before a line is deleted; see mastercfg.prune_maaend_orphans.
+    try:
+        from ark_relay import mastercfg as _mc  # noqa: PLC0415
+        removed, note = _mc.prune_maaend_orphans(cfg.automas_dir, cfg.maaend_dir)
+        if removed:
+            log.info("开机：%s", note)
+            notifier.send(texts.MAAEND_PRUNED, note)
+        elif note:
+            log.warning("MaaEnd 死条目清理没做：%s", note)
+    except Exception:
+        log.exception("清理 MaaEnd 死条目出错")
 
 
 def _stage_gameupdate(cfg, notifier, log) -> None:

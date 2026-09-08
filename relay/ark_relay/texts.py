@@ -59,6 +59,7 @@ WATCH_LOST = "⚠️ 中继的目录监听掉了"
 AUTOMAS_DOWN = "🔌 AUTO-MAS 拉不起来"
 ROUND_INCOMPLETE = "⚠️ 这一轮没干完"
 MAAEND_REENABLED = "🔓 终末地日常已开回"
+MAAEND_PRUNED = "🧹 终末地配置清掉了死条目"
 TACET_DROPS = "🖼️ 无音区产出"
 
 
@@ -182,7 +183,7 @@ def missed_item_body(ran: list[str], kind: str, late_min: int) -> str:
 def samples() -> list[str]:
     return [
         PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, SKIP_MODE, ESTOP,
-        ESTOP_FAILED, NO_SHUTDOWN,
+        ESTOP_FAILED, NO_SHUTDOWN, MAAEND_PRUNED,
         PHONE_DEFERRED, CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
         AUTOMAS_DOWN, ROUND_INCOMPLETE, MAAEND_REENABLED, TACET_DROPS,
         patches(3), unconfirmed("预更新", 2), failed("MaaEnd"), self_healed("OK-WW"),

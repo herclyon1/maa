@@ -82,5 +82,23 @@ check("回读是 All", mastercfg.read_maaend(automas, FX)["values"].get(K), "All
 ok, msg = mastercfg.write_maaend(automas, FX, "AutoEssence/不存在的项", "x")
 check("定义里没有的项仍然拒绝造", ok, False)
 
+print("\n[死条目不光报警，要清掉——但要两个独立信号都说它死了才动手]")
+removed, note = mastercfg.prune_maaend_orphans(automas, FX)
+check("清掉的正是那一条", removed, ["AutoUseSpMedication"])
+check("话里说清清了什么、备份在哪", "AutoUseSpMedication" in note and "bak-orphans" in note, True)
+after = mastercfg.read_maaend(automas, FX)
+check("清完不再是孤儿", after.get("orphans"), [])
+check("别的任务一个没少", sorted(t["taskName"] for t in json.loads((cf / "mxu-MaaEnd.json").read_text(encoding="utf-8"))["instances"][0]["tasks"]),
+      ["AutoCollect", "AutoEssence"])
+check("再跑一遍什么都不做", mastercfg.prune_maaend_orphans(automas, FX), ([], ""))
+check("备份文件在", bool(list(cf.glob("mxu-MaaEnd.json.bak-orphans-*"))), True)
+# CreditShoppingN2 is declared by a file that only parses with the full JSONC
+# stripper; the definitions index knows it, so it must never be pruned.
+(cf / "mxu-MaaEnd.json").write_text(json.dumps({"instances": [{"tasks": [
+    {"taskName": "CreditShoppingN2", "enabled": True, "optionValues": {}},
+    {"taskName": "__MXU_WEBHOOK__", "enabled": True, "optionValues": {}}]}]}), encoding="utf-8")
+check("定义里有的不算孤儿（CreditShoppingN2）", mastercfg.read_maaend(automas, FX).get("orphans"), [])
+check("不会误删", mastercfg.prune_maaend_orphans(automas, FX)[0], [])
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

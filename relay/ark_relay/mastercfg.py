@@ -34,6 +34,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from datetime import datetime
 from pathlib import Path
 
 from .config import atomic_write_text, master_config_dir
@@ -93,19 +94,45 @@ _COMMENT = re.compile(r"^\s*//.*$", re.M)
 _HAN = re.compile(r"[一-鿿]")
 
 
-def _jsonc(path: Path) -> dict:
-    """MaaEnd task definitions are JSON with comments and trailing commas.
+def _strip_jsonc(text: str) -> str:
+    """Remove // and /* */ comments and trailing commas, leaving strings alone.
 
-    Line comments only was not enough: CreditShopping.json and PuzzleSolver.json
-    in v2.28 use block comments / trailing commas, failed to parse, and every task
-    they declare then looked like an orphan (CreditShoppingN2 showed up as "gone").
-    Same stripping as maaend._load_jsonc.
+    Regex stripping is not enough: MaaEnd writes `"enabled": false //不购买任意物品`
+    - a comment after a value on the same line - and CreditShopping.json and
+    PuzzleSolver.json failed to parse on that, so the tasks they declare
+    (CreditShoppingN2) were reported as orphans. A regex that removes `//.*`
+    anywhere would eat "https://" inside strings, so this walks the text.
     """
-    text = path.read_text(encoding="utf-8")
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-    text = _COMMENT.sub("", text)
-    text = re.sub(r",(\s*[}\]])", r"\1", text)
-    return json.loads(text)
+    out = []
+    i, n = 0, len(text)
+    in_str = False
+    while i < n:
+        c = text[i]
+        if in_str:
+            out.append(c)
+            if c == "\\" and i + 1 < n:
+                out.append(text[i + 1]); i += 2; continue
+            if c == '"':
+                in_str = False
+            i += 1; continue
+        if c == '"':
+            in_str = True; out.append(c); i += 1; continue
+        if text.startswith("//", i):
+            j = text.find("\n", i)
+            i = n if j == -1 else j
+            continue
+        if text.startswith("/*", i):
+            j = text.find("*/", i + 2)
+            i = n if j == -1 else j + 2
+            continue
+        out.append(c); i += 1
+    cleaned = "".join(out)
+    return re.sub(r",(\s*[}\]])", r"\1", cleaned)
+
+
+def _jsonc(path: Path) -> dict:
+    """MaaEnd task definitions are JSON with comments and trailing commas."""
+    return json.loads(_strip_jsonc(path.read_text(encoding="utf-8")))
 
 
 class _Locale:
@@ -561,3 +588,50 @@ def write_okww(automas_dir, path: str, value) -> tuple[bool, str]:
     if now != new:
         return False, f"写了但没生效：「{key}」现在是 {now!r}"
     return True, f"「{key}」：{before!r} → {now!r}"
+
+
+def prune_maaend_orphans(automas_dir, maaend_dir) -> tuple[list[str], str]:
+    """Remove config entries for tasks this MaaEnd no longer has. Returns (removed, note).
+
+    v2.28 dropped the standalone AutoUseSpMedication task (the booster moved into
+    AutoEssence). The config kept the entry, the page warned about it, and the
+    user's answer was the right one: 「你光报警不去修吗？」 A dead entry costs a
+    warning every day and nothing else, so it goes.
+
+    Two independent signals are required before anything is deleted, because the
+    definition index alone is not proof: a definition file that fails to parse
+    makes every task it declares look absent (that happened with CreditShopping.json
+    the same night). A task that is missing from the definitions **and** has no
+    `task.<name>.label` in MaaEnd's own language pack is one MaaEnd does not know.
+    MXU's internal entries (`__*`) are never touched. The file is backed up first.
+    """
+    f = maaend_master(automas_dir)
+    if not f or not f.is_file():
+        return [], "找不到 MaaEnd 的母本"
+    _, tasks = _maaend_defs(maaend_dir)
+    if not tasks:
+        return [], "读不到 MaaEnd 的任务定义，不动配置"
+    zh = _Locale(Path(maaend_dir) if maaend_dir else None)
+    if not zh.table:
+        return [], "读不到 MaaEnd 的语言包，不动配置"
+    doc = json.loads(f.read_text(encoding="utf-8"))
+    removed: list[str] = []
+    for inst in doc.get("instances") or []:
+        keep = []
+        for t in inst.get("tasks") or []:
+            name = str(t.get("taskName") or "")
+            dead = (name and not name.startswith("__") and name not in tasks
+                    and f"task.{name}.label" not in zh.table)
+            (removed if dead else keep).append(name if dead else t)
+        inst["tasks"] = keep
+    if not removed:
+        return [], ""
+    bak = f.with_name(f.name + f".bak-orphans-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
+    bak.write_bytes(f.read_bytes())
+    atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=2))
+    back = json.loads(f.read_text(encoding="utf-8"))
+    left = [t.get("taskName") for inst in back.get("instances") or [] for t in inst.get("tasks") or []]
+    if any(n in left for n in removed):
+        return [], f"写完回读不对，{bak.name} 是原样"
+    return removed, (f"MaaEnd 这一版已经没有这些任务，配置里的死条目已清掉：{'、'.join(removed)}"
+                     f"（原文件备份为 {bak.name}）")
