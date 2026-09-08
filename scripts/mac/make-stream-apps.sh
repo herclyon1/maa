@@ -54,14 +54,49 @@ PLIST
   # 2026-08-30 我图省事写成了脚本，双击时 macOS 弹「需要安装 Rosetta」——
   # 脚本当 app 主程序，LaunchServices 判不出架构就会这样。原版本来就是编译的。
   local src; src=$(mktemp /tmp/launcher-XXXX.c)
+  # 失败必须看得见。原来是 `execv(...); return 1;`：Moonlight 被挪走、改名、
+  # 或者哪次升级不认某个开关，从 Finder 双击就是「点了没反应」——没有弹窗、
+  # 没有崩溃报告、没有系统日志，Moonlight 自己那份日志是 0 字节（报错走的 stderr）。
+  # 用户唯一能自助的入口，失败时零线索。现在 fork 出来跑、接住 stderr，
+  # 非零退出就用 osascript 把退出码和错误原文弹出来。
   cat > "$src" <<CSRC
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/wait.h>
 #include <unistd.h>
+
 int main(void) {
     char *a[] = { "$MOON", "stream", "$HOST", "$APP",
                   "--bitrate", "$br", "--video-codec", "$codec", "$yuv", "--resolution", "$res",
 $(printf '%s\n' $COMMON | sed 's/.*/                  "&",/')
                   (char*)0 };
-    execv("$MOON", a);
+    char log[] = "/tmp/stream-launcher-XXXXXX";
+    int fd = mkstemp(log);
+    pid_t pid = fork();
+    if (pid == 0) {
+        if (fd >= 0) { dup2(fd, 1); dup2(fd, 2); }
+        execv("$MOON", a);
+        _exit(127);
+    }
+    int st = 0, code = -1;
+    if (pid > 0 && waitpid(pid, &st, 0) == pid && WIFEXITED(st)) code = WEXITSTATUS(st);
+    if (code == 0) { unlink(log); return 0; }
+    char buf[1200];
+    size_t n = 0;
+    FILE *f = fopen(log, "r");
+    if (f) { n = fread(buf, 1, sizeof buf - 1, f); fclose(f); }
+    buf[n] = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (buf[i] == '"' || buf[i] == 92) buf[i] = ' ';
+    }
+    char script[2600];
+    snprintf(script, sizeof script,
+             "display alert \"串流没起来\" message \"退出码 %d。原因在下面，"
+             "多半是 Moonlight 换了位置，或者升级之后不认某个开关。\n\n%s\n\n"
+             "完整输出：%s\" as critical",
+             code, n ? buf : "（它一个字都没输出）", log);
+    execl("/usr/bin/osascript", "osascript", "-e", script, (char*)0);
     return 1;
 }
 CSRC
