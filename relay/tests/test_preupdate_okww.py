@@ -6,6 +6,7 @@ honours "Auto Start Game When App Starts", which is on for unattended running.
 Launching it at boot without disarming that would start the game itself, which
 is the same hazard MAA's RunDirectly and MaaEnd's autostart already taught us.
 """
+import ast
 import json
 import sys
 import tempfile
@@ -87,9 +88,17 @@ def main(root: Path) -> int:
     # 2026-08-24: flipping the JSON was not enough - a leftover `ok web` held the
     # settings in memory and wrote them back, so ok-ww.exe read True and started
     # 鸣潮 during a check that was meant to open nothing.
-    check("改配置前先停掉在跑的实例", "_okww_quiesce()\n    was = _okww_autostart" in src, True)
-    check("收尾也清一次，不留游戏在后台",
-          src.count("_okww_quiesce()") >= 3, True)
+    check("改配置前先停掉在跑的实例", "_okww_quiesce(" in src
+          and src.index("_okww_quiesce(", src.index("def run_okww"))
+          < src.index("was = _okww_autostart"), True)
+    # 数的是**真正的调用点**，不是字面量出现次数。2026-09-08 栽过一次：
+    # 给 _okww_quiesce 加了个可注入的 sleep 参数（为了测试不真等两秒），
+    # 定义那一行就不再长得像 `_okww_quiesce()`，字面量计数少了一个，测试当场变红——
+    # 而调用点一个没少。按字面量数等于让断言依赖签名的写法。
+    calls = sum(1 for n in ast.walk(ast.parse(src))
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                and n.func.id == "_okww_quiesce")
+    check("收尾也清一次，不留游戏在后台", calls >= 2, True)
 
     print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
     return 0 if not FAILED else 1

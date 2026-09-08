@@ -62,7 +62,10 @@ def run_case(label, *, file_ver, prev_log, kept, logs):
         f.write_text(text, encoding="utf-8")
         return f
     PM._newest_log = newest
-    got = preupdate_maaend._run_maaend(d, d / "MaaEnd.exe", 6, [], state)
+    # 不真等：这个用例本来就是拿现成的日志文件喂进去，轮询间隔一秒纯属空耗。
+    # 2026-09-08 之前这一个测试要跑 6 秒，而部署每次都要跑整套测试。
+    got = preupdate_maaend._run_maaend(d, d / "MaaEnd.exe", 6, [], state,
+                                       sleep=lambda _s: None)
     return got, state
 
 

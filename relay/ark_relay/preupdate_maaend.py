@@ -53,7 +53,8 @@ def _maaend_autostart_instance(maaend_dir: Path, value: str) -> str | None:
 
 
 def run(maaend_dir: Path | None, budget_s: float = BUDGET_SECONDS,
-        problems: list[str] | None = None, state_dir: Path | None = None) -> str:
+        problems: list[str] | None = None, state_dir: Path | None = None,
+        sleep=time.sleep) -> str:
     """Launch MaaEnd, wait for its update check, close it. Returns a note or "".
 
     The note is non-empty only when an update actually landed - that is the
@@ -75,7 +76,8 @@ def run(maaend_dir: Path | None, budget_s: float = BUDGET_SECONDS,
         return ""
 
     try:
-        return _run_maaend(Path(maaend_dir), exe, budget_s, problems, state_dir)
+        return _run_maaend(Path(maaend_dir), exe, budget_s, problems, state_dir,
+                           sleep=sleep)
     finally:
         _maaend_autostart_instance(Path(maaend_dir), was_instance)
 
@@ -169,7 +171,7 @@ def _maaend_file_version(maaend_dir: Path) -> str:
 
 def _run_maaend(maaend_dir: Path, exe: Path, budget_s: float,
                 problems: list[str] | None = None,
-                state_dir: Path | None = None) -> str:
+                state_dir: Path | None = None, sleep=time.sleep) -> str:
     """The body of run(), with auto-run already disarmed by the caller."""
     before = _newest_log(maaend_dir)
     before_name = before.name if before else ""
@@ -205,7 +207,9 @@ def _run_maaend(maaend_dir: Path, exe: Path, budget_s: float,
     # (12:37:12 launch, 12:37:13 "有更新=false"). The common case - no update -
     # should cost seconds, not a fixed wait.
     while time.monotonic() < deadline:
-        time.sleep(1)
+        # `sleep` 可注入是为了测试。2026-09-08 量到 test_preupdate_maaend_oldver
+        # 有 6 秒是**纯等**（CPU 1%）——部署每次都跑这套测试，空等就是部署时间。
+        sleep(1)
         current = _newest_log(Path(maaend_dir))
         if current is None or current.name == before_name:
             continue        # this launch has not opened its log yet

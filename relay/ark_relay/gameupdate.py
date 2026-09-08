@@ -224,12 +224,12 @@ def update_wuwa(desk: Desktop, launcher: Path, *, budget_s: float = 2400, poll_s
     scr = desk.read(focus="title:鸣潮")
     if scr.has("开始游戏"):
         log.info("游戏更新：鸣潮启动器已是「开始游戏」，无需更新")
-        _okww_quiesce()
+        _okww_quiesce(sleep=sleep)
         return ""
     btn = scr.find("立即更新") or scr.find("更新游戏") or scr.find("更新")
     if btn is None:
         _note(problems, f"鸣潮：启动器画面没读到按钮（截图 {scr.shot}）：{scr.dump(12)}")
-        _okww_quiesce()
+        _okww_quiesce(sleep=sleep)
         return ""
     desk.click(*btn.center, focus="title:鸣潮")
     log.info("游戏更新：鸣潮已点「%s」，等它下载安装", btn.text)
@@ -244,12 +244,12 @@ def update_wuwa(desk: Desktop, launcher: Path, *, budget_s: float = 2400, poll_s
             sleep(90)
             how = wait_ready(desk, "鸣潮", focus="Client-Win64-Shipping",
                              alive=_alive("Client-Win64-Shipping.exe"), sleep=sleep)
-            _okww_quiesce()
+            _okww_quiesce(sleep=sleep)
             if not how:
                 _note(problems, "鸣潮：更新后游戏没走到登录界面")
             return "鸣潮 客户端已通过启动器更新" + (f"，已到登录界面（{how}）" if how else "")
     _note(problems, f"鸣潮：{budget_s / 60:.0f} 分钟内没等到「开始游戏」，先把启动器关掉免得和 OK-WW 撞车")
-    _okww_quiesce()
+    _okww_quiesce(sleep=sleep)
     return ""
 
 

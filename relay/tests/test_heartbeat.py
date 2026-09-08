@@ -19,14 +19,17 @@ def check(label, got, want):
 sent = []
 STATE = tmpdir()
 hb = phone.Heartbeat("t", STATE, post=lambda payload, title: sent.append(title))
+# 把等待切片缩到 20 毫秒：这个测试验的是「有人看才跳」的逻辑，不是真的计时。
+# 2026-09-08 之前它真等 4 秒，而部署每次都跑整套测试。
+hb._slice_s = 0.02
 stop = {"v": False}
 th = threading.Thread(target=hb.loop, args=(lambda: stop["v"],), daemon=True)
 th.start()
 
-time.sleep(2.5)
+time.sleep(0.2)
 check("没人看：一跳不跳", sent, [])
 hb.watch()
-time.sleep(1.5)
+time.sleep(0.2)
 check("说「我在看」：立刻跳", sent, ["hb"])
 check("计数落盘", hb.sent_today(), 1)
 check("有人看时的间隔", hb.interval(), phone.HEARTBEAT_SEC)

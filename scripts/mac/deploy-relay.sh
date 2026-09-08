@@ -193,9 +193,19 @@ if [ -z "$CHANGED" ]; then
   echo "    机器上的文件和本地一致，无需推送"
 else
   echo "    需要推送 $(printf '%s\n' "$CHANGED" | grep -c .) 个（共 $(wc -w <<<"$FILES") 个）"
-  for f in $CHANGED; do
-    scp -q "${SSH_OPTS[@]}" "$f" "${USER_AT}:${REMOTE_DIR}/${f}"
-  done
+  # **一条流推完，不要一个文件一次 scp。** 2026-09-08 量的：复用连接的前提下，
+  # 每个 scp 仍要 1.7 秒（跨境 190ms 往返 × 每次会话建立的那几个来回），
+  # 71 个文件推了 119 秒，占整趟部署的三分之二；同样这 71 个文件用一条
+  # tar 管道 **2 秒**。判据一个字没松：推完那道逐文件哈希核对照跑。
+  # Windows 10 起自带 bsdtar（C:\Windows\System32\tar.exe），所以两头都有 tar。
+  if ! tar czf - $CHANGED | ssh "${SSH_OPTS[@]}" "$USER_AT" \
+       "tar xzf - -C ${REMOTE_DIR}"; then
+    echo "    ⚠️ 打包推送失败，退回一个一个推（会慢很多，顺便看看机器上 tar 还在不在）" >&2
+    for f in $CHANGED; do
+      scp -q "${SSH_OPTS[@]}" "$f" "${USER_AT}:${REMOTE_DIR}/${f}" || {
+        echo "  ✋ 推 $f 失败" >&2; exit 5; }
+    done
+  fi
 fi
 
 lap

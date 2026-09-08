@@ -195,6 +195,8 @@ class Heartbeat:
         except Exception:  # noqa: BLE001
             pass
 
+    _slice_s = 1        # 见 loop() 里的说明
+
     def loop(self, stop) -> None:
         """Body of the background thread. Exits when stop() returns true, sending
         bye on the way out."""
@@ -203,12 +205,15 @@ class Heartbeat:
             if self.watched():
                 self.beat()
                 wait = self.interval()
-            # Wait in 1-second slices: stopping the service must exit at once,
-            # and an incoming watch() must be able to beat at once
+            # Wait in slices rather than one long sleep: stopping the service must
+            # exit at once, and an incoming watch() must be able to beat at once.
+            # `slice_s` is only ever shortened by the test — 2026-09-08 that test
+            # spent 4 s of real wall-clock asleep, and the deploy runs the whole
+            # suite every time, so a sleeping test is deploy time.
             for _ in range(wait):
                 if stop() or self._kick.is_set():
                     break
-                time.sleep(1)
+                time.sleep(self._slice_s)
             self._kick.clear()
         self.bye()
 

@@ -26,10 +26,12 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import subprocess
 import tokenize
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
@@ -103,32 +105,63 @@ def executed_modules(want_replay: bool) -> tuple[set[str], set[str]]:
 
     回放那一趟只在**判定类模块被改过**时才跑——它要多花十几秒，而没改判定逻辑时
     这个数字没人会看。部署要快是死命令，这道闸门自己不能变成拖累。
+
+    用 `sys.settrace` 只收「哪个文件里有函数被调用过」，不收行号。
+    2026-09-08 之前这里是 `uvx coverage run` + `uvx coverage json` 跑两趟，
+    36 秒——其中一大半是 uvx 每次解析包的开销和 coverage 逐行记账，
+    而我们只需要知道「这个文件有没有被执行」这一个比特。
     """
     driver = tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8")
     driver.write(
-        "import runpy, sys, pathlib\n"
+        "import json, pathlib, runpy, sys\n"
         "only = sys.argv[1] if len(sys.argv) > 1 else ''\n"
-        "root = pathlib.Path(sys.argv[0]).parent\n"
-        "for t in sorted(pathlib.Path('tests').glob('test_*.py')):\n"
+        "out = sys.argv[2]\n"
+        "hit = set()\n"
+        "def tracer(frame, event, arg):\n"
+        "    hit.add(frame.f_code.co_filename)\n"
+        "    return None          # 只要 call 事件，不逐行跟\n"
+        "tests = sorted(pathlib.Path('tests').glob('test_*.py'))\n"
+        "if only.startswith('shard:'):\n"
+        "    i, n = (int(x) for x in only.split(':')[1].split('/'))\n"
+        "    tests = tests[i::n]\n"
+        "    only = ''\n"
+        "sys.settrace(tracer)\n"
+        "for t in tests:\n"
         "    if only and t.name != only:\n"
         "        continue\n"
         "    try:\n"
         "        runpy.run_path(str(t), run_name='__main__')\n"
         "    except BaseException:\n"
-        "        pass          # 这一趟只为收覆盖，成败由真正的测试闸门去判\n")
+        "        pass          # 这一趟只为收覆盖，成败由真正的测试闸门去判\n"
+        "sys.settrace(None)\n"
+        "pathlib.Path(out).write_text(json.dumps(sorted(hit)), encoding='utf-8')\n")
     driver.close()
 
-    def run(only: str = "") -> set[str]:
-        cov = Path(tempfile.mkdtemp()) / "cov.json"
-        subprocess.run(["uvx", "coverage", "run", "--source=ark_relay,service",
-                        driver.name, only], cwd=RELAY, capture_output=True, text=True)
-        subprocess.run(["uvx", "coverage", "json", "-q", "-o", str(cov)],
+    def _one(args: tuple[str, str]) -> set[str]:
+        shard, out = args
+        subprocess.run([sys.executable, driver.name, shard, out],
                        cwd=RELAY, capture_output=True, text=True)
-        if not cov.exists():
+        if not Path(out).exists():
             return set()
-        data = json.loads(cov.read_text(encoding="utf-8"))
-        return {Path(f).stem for f, v in data.get("files", {}).items()
-                if v.get("summary", {}).get("covered_lines")}
+        files = json.loads(Path(out).read_text(encoding="utf-8"))
+        return {Path(f).stem for f in files
+                if "ark_relay" in f or Path(f).name == "service.py"}
+
+    def run(only: str = "") -> set[str]:
+        """跑一遍收覆盖。整套 90 个测试**分片并行**跑。
+
+        2026-09-08：串行带 settrace 要 37 秒，而部署总共才三分钟出头，
+        这道闸门自己就占五分之一。分成 CPU 核数那么多片，各跑各的，
+        结果取并集——判据一个字没松，只是不再排队。
+        """
+        if only:
+            d = Path(tempfile.mkdtemp())
+            return _one((only, str(d / "hit.json")))
+        n = max(2, min(8, (os.cpu_count() or 4)))
+        d = Path(tempfile.mkdtemp())
+        jobs = [(f"shard:{i}/{n}", str(d / f"hit{i}.json")) for i in range(n)]
+        with ThreadPoolExecutor(max_workers=n) as pool:
+            return set().union(*pool.map(_one, jobs))
 
     return run(), (run("test_replay.py") if want_replay else set())
 

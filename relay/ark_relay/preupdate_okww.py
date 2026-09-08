@@ -41,7 +41,7 @@ OKWW_BUDGET_SECONDS = 240
 OKWW_MIN_WAIT_SECONDS = 45
 
 
-def _okww_quiesce() -> None:
+def _okww_quiesce(sleep=time.sleep) -> None:
     """Stop anything that would rewrite OK-WW's config from memory.
 
     Learned the hard way on 2026-08-24: a leftover `ok web` instance held the
@@ -68,7 +68,10 @@ def _okww_quiesce() -> None:
                        capture_output=True, timeout=60)
     except (OSError, subprocess.SubprocessError):
         pass
-    time.sleep(2)
+    # 等两秒让进程真的退干净。`sleep` 可注入是为了测试：2026-09-08 量到
+    # test_gameupdate 里 6 秒是**纯等**（CPU 3%），全套测试有 17 秒是这类空等。
+    # 部署每次都要跑这套测试，空等直接变成部署时间。
+    sleep(2)
 
 
 def _okww_autostart(okww_dir: Path, value: bool) -> bool | None:
