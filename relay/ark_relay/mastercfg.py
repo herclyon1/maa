@@ -52,15 +52,12 @@ MAAEND_SHOWN: dict[str, tuple[str, ...]] = {
         "AutoEssenceRepeatCount",       # Max loop count (最大循环次数)
         "AutoEssenceChooseLocation",    # Region choice (地区选择)
         "EssenceFilterAfterBattle",     # Post-battle essence filtering (战后基质筛选)
-    ),
-    "AutoUseSpMedication": (
-        "@enabled",
-        # The user asked for these three on the page on 2026-09-09: 「你把终末地吃理智的设置做进手机控制页里面」.
-        # The expiry window is the setting that decided whether a whole batch of
-        # boosters got drunk on one day (Days3) or spread out over time (All).
-        "AutoUseSpMedicationExpireWithinDays",   # Use boosters expiring within N days
-        "AutoUseSpMedicationUseCount",           # At most this many per run
-        "AutoUseSpMedicationMaxSanity",          # Only while sanity is below this
+        # MaaEnd v2.28 folded the sanity booster into essence farming: these two
+        # replace the standalone AutoUseSpMedication task (still present in the
+        # config as an orphan, see read_maaend). The user asked for the booster
+        # settings on the page on 2026-09-09: 「你把终末地吃理智的设置做进手机控制页里面」.
+        "AutoUseSpMedication",                    # When sanity runs out: stop / use booster
+        "AutoEssenceSpMedicationExpireWithinDays",  # Use boosters expiring within N days
     ),
     "AutoCollect": (
         "@enabled",
@@ -93,6 +90,7 @@ OKWW_READONLY: dict[str, tuple[str, ...]] = {
 }
 
 _COMMENT = re.compile(r"^\s*//.*$", re.M)
+_HAN = re.compile(r"[一-鿿]")
 
 
 def _jsonc(path: Path) -> dict:
@@ -130,37 +128,49 @@ def _maaend_task(doc: dict, name: str) -> dict | None:
     return None
 
 
-# Options whose definition MaaEnd keeps under another task's file. The standalone
-# 应急理智加强剂 task has no tasks/AutoUseSpMedication.json in v2.28.0-beta.4
-# (searched the install four levels deep on 2026-09-09); its window option is
-# declared inside tasks/ProtocolSpace.json as ProtocolSpaceSpMedicationExpireWithinDays,
-# whose cases carry the labels `$option.AutoUseSpMedicationExpireWithinDays.cases.*`
-# - MaaEnd's own statement that the two are the same option. Without this the page
-# had no choices to offer and the write path accepted any string unvalidated.
-MAAEND_BORROWED_DEFS: dict[str, tuple[str, str]] = {
-    "AutoUseSpMedication/AutoUseSpMedicationExpireWithinDays":
-        ("ProtocolSpace", "ProtocolSpaceSpMedicationExpireWithinDays"),
-}
+def _maaend_defs(maaend_dir) -> tuple[dict, dict]:
+    """(option definitions, task declarations) for the whole MaaEnd install.
 
-
-def _maaend_option_def(maaend_dir, task_name: str, opt: str) -> dict:
-    """The definition of one option, from its own task file or a borrowed one."""
+    Read from the files `interface.json` imports, which is MaaEnd's own list of
+    where its definitions live. Reading `tasks/<task>.json` by name stopped
+    working in v2.28.0-beta.4: AutoEssence moved to tasks/AutoEssence/AutoEssence.json,
+    the page lost every label and choice for it and showed raw keys instead
+    (2026-09-09, on the user's phone). Option names are unique across the install,
+    so one flat index is enough. A file that fails to parse is skipped and logged;
+    CreditShopping.json and PuzzleSolver.json fail today and are not ours.
+    """
+    opts: dict = {}
+    tasks: dict = {}
     if not maaend_dir:
-        return {}
+        return opts, tasks
+    root = Path(maaend_dir)
+    files: list[Path] = []
     try:
-        defs = _jsonc(Path(maaend_dir) / "tasks" / f"{task_name}.json").get("option") or {}
+        iface = _jsonc(root / "interface.json")
+        files = [root / rel for rel in (iface.get("import") or []) if isinstance(rel, str)]
     except (OSError, ValueError, TypeError):
-        defs = {}
-    if opt in defs:
-        return defs[opt] or {}
-    src = MAAEND_BORROWED_DEFS.get(f"{task_name}/{opt}")
-    if not src:
-        return {}
-    try:
-        other = _jsonc(Path(maaend_dir) / "tasks" / f"{src[0]}.json").get("option") or {}
-    except (OSError, ValueError, TypeError):
-        return {}
-    return other.get(src[1]) or {}
+        log.warning("读不到 MaaEnd 的 interface.json，退回按文件名找定义")
+    if not files:
+        files = sorted((root / "tasks").glob("**/*.json"))
+    for f in files:
+        try:
+            d = _jsonc(f)
+        except (OSError, ValueError, TypeError) as exc:
+            log.debug("MaaEnd 定义文件读不了 %s: %s", f.name, exc)
+            continue
+        for name, spec in (d.get("option") or {}).items():
+            opts.setdefault(name, spec or {})
+        for t in d.get("task") or []:
+            if isinstance(t, dict) and t.get("name"):
+                tasks.setdefault(t["name"], t)
+    return opts, tasks
+
+
+def _maaend_option_def(maaend_dir, task_name: str, opt: str, opts: dict | None = None) -> dict:
+    """The definition of one option, from the install-wide index."""
+    if opts is None:
+        opts, _ = _maaend_defs(maaend_dir)
+    return opts.get(opt) or {}
 
 
 def read_maaend(automas_dir, maaend_dir) -> dict:
@@ -182,20 +192,24 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
         log.warning("母本 mxu-MaaEnd.json 读不出来", exc_info=True)
         return out
     zh = _Locale(Path(maaend_dir) if maaend_dir else None)
+    all_opts, all_tasks = _maaend_defs(maaend_dir)
+    # A task the config still carries but no definition file declares any more.
+    # v2.28 removed the standalone AutoUseSpMedication task (the booster moved into
+    # AutoEssence); the config kept the entry, and nothing said it was dead.
+    if all_tasks:
+        out["orphans"] = [t.get("taskName") for inst in doc.get("instances") or []
+                          for t in inst.get("tasks") or []
+                          if t.get("taskName") and t.get("taskName") not in all_tasks]
+    # The page must never show a raw key. Anything that fails to translate is
+    # listed here, logged, and shown on the page as untranslated - instead of
+    # quietly appearing as English (the user, 2026-09-09: 「不是说强制要求了人话界面吗」).
+    out["untranslated"] = []
     for task_name, wanted in MAAEND_SHOWN.items():
         task = _maaend_task(doc, task_name)
         if task is None:
             continue
-        try:
-            spec = _jsonc(Path(maaend_dir) / "tasks" / f"{task_name}.json")
-        except (OSError, ValueError, TypeError):
-            spec = {}
-        defs = spec.get("option") or {}
-        # In the real file `task` is an **array** (one file can declare several
-        # tasks); find it by name inside. On 2026-09-04 I wrote it as a dict
-        # based on a sample I had made up myself, and it blew up on the machine.
-        decl = next((t for t in (spec.get("task") or [])
-                     if isinstance(t, dict) and t.get("name") == task_name), {})
+        defs = all_opts
+        decl = all_tasks.get(task_name) or {}
         out["labels"][f"{task_name}/@enabled"] = zh(
             decl.get("label") or f"$task.{task_name}.label")
         for opt in wanted:
@@ -203,11 +217,27 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
             if opt == "@enabled":
                 out["values"][key] = bool(task.get("enabled"))
                 continue
+            d = defs.get(opt) or _maaend_option_def(maaend_dir, task_name, opt, defs)
             cur = (task.get("optionValues") or {}).get(opt)
             if cur is None:
-                continue
-            d = defs.get(opt) or _maaend_option_def(maaend_dir, task_name, opt)
-            out["labels"][key] = zh(d.get("label")) or opt
+                # Not in the config yet: MaaEnd then runs its default. Show the
+                # default so the page can offer the choice (and write_maaend may
+                # create the key, since the definition declares it).
+                if not d:
+                    continue
+                kind0 = str(d.get("type") or "")
+                if kind0 == "select":
+                    cur = {"type": "select", "caseName": d.get("default_case")}
+                elif kind0 == "switch":
+                    cur = {"type": "switch", "value": bool(d.get("default"))}
+                else:
+                    continue
+            label = zh(d.get("label"))
+            if not label or label == d.get("label", "").lstrip("$") or not _HAN.search(label):
+                out["untranslated"].append(key)
+                log.warning("MaaEnd 选项 %s 没有中文名（定义%s），手机页会标成没翻译",
+                            key, "找到了" if d else "找不到")
+            out["labels"][key] = label or opt
             kind = str(cur.get("type") or d.get("type") or "")
             if kind == "switch":
                 out["values"][key] = bool(cur.get("value"))
@@ -223,6 +253,10 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
                          for c in (d.get("cases") or []) if c.get("name")]
                 if cases:
                     out["options"][key] = cases
+                else:
+                    if key not in out["untranslated"]:
+                        out["untranslated"].append(key)
+                    log.warning("MaaEnd 选项 %s 是选择项但没有可选值，手机页只能给个文本框", key)
     return out
 
 
@@ -245,14 +279,23 @@ def write_maaend(automas_dir, maaend_dir, path: str, value) -> tuple[bool, str]:
             return True, f"{task_name} 本来就是{'开' if before else '关'}着的"
         task["enabled"] = bool(value)
     else:
+        d = _maaend_option_def(maaend_dir, task_name, opt)
         cur = (task.get("optionValues") or {}).get(opt)
         if cur is None:
-            return False, (f"{task_name} 里没有 {opt} 这一项，已拒绝"
-                           "（不许凭空造字段——826 就是这么出的事）")
+            # Only a key MaaEnd's own definition declares for this task may be
+            # created, in the shape the definition gives it. Anything else is
+            # inventing a field, which is how 826 happened.
+            if d.get("type") == "select" and d.get("default_case") is not None:
+                task.setdefault("optionValues", {})[opt] = {"type": "select",
+                                                            "caseName": d["default_case"]}
+                cur = task["optionValues"][opt]
+                log.info("母本里 %s 还没有 %s，按 MaaEnd 定义的默认值 %r 建了这一项", task_name, opt, d["default_case"])
+            else:
+                return False, (f"{task_name} 里没有 {opt} 这一项，已拒绝"
+                               "（不许凭空造字段——826 就是这么出的事）")
         kind = str(cur.get("type") or "")
         # The value must be one this item itself declares; no filling in whatever
-        allowed = {str(c.get("name"))
-                   for c in (_maaend_option_def(maaend_dir, task_name, opt).get("cases") or [])}
+        allowed = {str(c.get("name")) for c in (d.get("cases") or [])}
         if kind == "switch":
             before = bool(cur.get("value"))
             cur["value"] = bool(value)

@@ -156,16 +156,12 @@ const SCHEMA = [
       hint:"从勾选的地区里随机挑一个。藏剑谷与清波寨成功率较高，试验园区较低" },
     { path:"AutoEssence/EssenceFilterAfterBattle", type:"bool",
       hint:"每轮结束后立即筛选并锁定符合条件的基质" },
+    { path:"AutoEssence/AutoUseSpMedication", type:"select",
+      hint:"刷基质时理智用完了怎么办：结束任务，或者吃应急理智加强剂接着刷" },
+    { path:"AutoEssence/AutoEssenceSpMedicationExpireWithinDays", type:"select",
+      hint:"只吃几天内会过期的加强剂。选「全部」则不看剩余天数；「3 天内」会把同一批到期的药攒到最后三天一起吃掉" },
   ]},
   { title:"终末地 · 另外两个任务", owner:"MaaEnd", src:"master", game:"MaaEnd", fields:[
-    { path:"AutoUseSpMedication/@enabled", type:"bool",
-      hint:"理智不足时自动使用应急理智加强剂" },
-    { path:"AutoUseSpMedication/AutoUseSpMedicationExpireWithinDays", type:"select",
-      hint:"只吃几天内会过期的加强剂。选「全部」则不看剩余天数都吃；选「3 天内」会把同一批到期的药攒到最后三天一起吃掉" },
-    { path:"AutoUseSpMedication/AutoUseSpMedicationUseCount", type:"number",
-      hint:"一趟最多吃几瓶" },
-    { path:"AutoUseSpMedication/AutoUseSpMedicationMaxSanity", type:"number",
-      hint:"理智高于这个数就不吃。填得比上限还大等于不看理智，一直吃到瓶数为止" },
     { path:"AutoCollect/@enabled", type:"bool",
       hint:"按下面的线路和周期自动采集材料" },
     /* 光一个开关看不出它会去采哪几条、哪天采，所以把路线和排班一起显示。 */
@@ -396,6 +392,12 @@ function render() {
       lastGoodMaster = lastGoodMaster || {};
       lastGoodMaster[g.game] = M;
       try { localStorage.setItem(LS + "-master", JSON.stringify(lastGoodMaster)); } catch {}
+    }
+    if (g.src === "master" && Array.isArray(M.untranslated) && M.untranslated.length) {
+      masterNote += `<div class="warn">⚠️ 有 ${M.untranslated.length} 项的名字没翻译出来（脚本这一版换了定义文件的位置），显示的是原始键名</div>`;
+    }
+    if (g.src === "master" && Array.isArray(M.orphans) && M.orphans.length) {
+      masterNote += `<div class="warn">⚠️ 配置里还留着这一版脚本已经没有的任务：${M.orphans.join("、")}——它不会再跑，设置改了也没用</div>`;
     }
     html += `<section><h2>${g.title}</h2>${masterNote}`;
     if (curM !== cur) Object.assign(cur, curM);
