@@ -24,6 +24,7 @@ test runs.
 """
 from __future__ import annotations
 
+import ast
 import io
 import json
 import os
@@ -37,6 +38,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[3]
 RELAY = REPO / "relay"
 # 判定类模块：回放语料本来就该盖住它们，只被单测碰到不算完。
+_FUNCS: set[str] = set()          # 这一轮里被执行过的 <文件>::<函数>
 JUDGING = {"collector", "core", "handle", "report", "outcome"}
 
 
@@ -117,8 +119,11 @@ def executed_modules(want_replay: bool) -> tuple[set[str], set[str]]:
         "only = sys.argv[1] if len(sys.argv) > 1 else ''\n"
         "out = sys.argv[2]\n"
         "hit = set()\n"
+        "funcs = set()\n"
         "def tracer(frame, event, arg):\n"
-        "    hit.add(frame.f_code.co_filename)\n"
+        "    c = frame.f_code\n"
+        "    hit.add(c.co_filename)\n"
+        "    funcs.add(c.co_filename + '::' + c.co_name)\n"
         "    return None          # 只要 call 事件，不逐行跟\n"
         "tests = sorted(pathlib.Path('tests').glob('test_*.py'))\n"
         "if only.startswith('shard:'):\n"
@@ -134,7 +139,8 @@ def executed_modules(want_replay: bool) -> tuple[set[str], set[str]]:
         "    except BaseException:\n"
         "        pass          # 这一趟只为收覆盖，成败由真正的测试闸门去判\n"
         "sys.settrace(None)\n"
-        "pathlib.Path(out).write_text(json.dumps(sorted(hit)), encoding='utf-8')\n")
+        "pathlib.Path(out).write_text(\n"
+        "    json.dumps({'files': sorted(hit), 'funcs': sorted(funcs)}), encoding='utf-8')\n")
     driver.close()
 
     def _one(args: tuple[str, str]) -> set[str]:
@@ -143,8 +149,9 @@ def executed_modules(want_replay: bool) -> tuple[set[str], set[str]]:
                        cwd=RELAY, capture_output=True, text=True)
         if not Path(out).exists():
             return set()
-        files = json.loads(Path(out).read_text(encoding="utf-8"))
-        return {Path(f).stem for f in files
+        data = json.loads(Path(out).read_text(encoding="utf-8"))
+        _FUNCS.update(data["funcs"])
+        return {Path(f).stem for f in data["files"]
                 if "ark_relay" in f or Path(f).name == "service.py"}
 
     def run(only: str = "") -> set[str]:
@@ -166,7 +173,74 @@ def executed_modules(want_replay: bool) -> tuple[set[str], set[str]]:
     return run(), (run("test_replay.py") if want_replay else set())
 
 
+
+# ---------- 棘轮：不许再新增「没有任何测试碰过」的函数 ----------
+#
+# 2026-09-08 量出来：中继 671 个函数里 243 个（36%）从没被任何测试执行过，
+# 而当天把用户的群轰炸半小时的那个 bug，正落在这 243 个里——`State.save_pending`
+# 一次都没被调用过，所以贴错一个装饰器一路绿灯上了机器。
+#
+# 一次把 243 个补完不现实，硬定一个覆盖率门槛只会逼人写没用的测试。
+# 所以用棘轮：**已有的欠账登记在案，新增的一个都不许**。
+# 名单缩小是好事（补了测试），名单变大就拒绝——想加新函数，就得让某个测试真的跑到它。
+BASELINE = REPO / "relay" / "tests" / "untested-baseline.txt"
+
+
+def public_funcs() -> set[str]:
+    """所有模块级函数和类方法，`模块.函数` 形式。私有辅助（_ 开头）不算。"""
+    out = set()
+    for f in sorted((REPO / "relay" / "ark_relay").rglob("*.py")):
+        if "okww_files" in f.parts:
+            continue
+        tree = ast.parse(f.read_text(encoding="utf-8"))
+        for n in tree.body:
+            if isinstance(n, ast.FunctionDef) and not n.name.startswith("_"):
+                out.add(f"{f.stem}.{n.name}")
+            elif isinstance(n, ast.ClassDef):
+                out |= {f"{f.stem}.{n.name}.{m.name}" for m in n.body
+                        if isinstance(m, ast.FunctionDef) and not m.name.startswith("_")}
+    return out
+
+
+def ratchet() -> int:
+    """名单只准变短。返回非零表示新增了没人碰过的函数。"""
+    ran = {x.split("::")[1] for x in _FUNCS}
+    untested = {q for q in public_funcs() if q.split(".")[-1] not in ran}
+    old = set()
+    if BASELINE.exists():
+        old = {ln.strip() for ln in BASELINE.read_text(encoding="utf-8").splitlines()
+               if ln.strip() and not ln.startswith("#")}
+    fresh = sorted(untested - old)
+    fixed = sorted(old - untested)
+    if fixed:
+        print(f"  ✅ 有 {len(fixed)} 个原来没测过的函数现在被测到了"
+              f"（例：{'、'.join(fixed[:3])}）——记得重跑 --update-baseline 收紧名单")
+    if fresh:
+        print(f"  ❌ 新增了 {len(fresh)} 个从没被任何测试碰过的函数：")
+        for q in fresh[:10]:
+            print(f"       {q}")
+        print("     加新函数就得让某个测试真的跑到它。今天那个把群轰炸半小时的 bug，"
+              "就是落在这一类里。")
+        return 1
+    print(f"  ✅ 没有新增的未测函数（历史欠账 {len(untested)} 个，登记在 "
+          f"{BASELINE.relative_to(REPO)}）")
+    return 0
+
+
 def main(argv: list[str]) -> int:
+    if argv and argv[0] == "--update-baseline":
+        executed_modules(False)
+        ran = {x.split("::")[1] for x in _FUNCS}
+        BASELINE.write_text(
+            "# 「从没被任何测试执行过」的公开函数。这是历史欠账的登记表，**只准变短**。\n"
+            "# 新增未测函数会被 changed_covered.py 直接拒掉——2026-09-08 那个把群\n"
+            "# 轰炸半小时的 bug，就落在这张表里（State.save_pending 一次都没被调用过）。\n"
+            "# 重新生成：python3 scripts/mac/lib/changed_covered.py --update-baseline\n"
+            + "\n".join(sorted(q for q in public_funcs() if q.split(".")[-1] not in ran))
+            + "\n", encoding="utf-8")
+        n = len(BASELINE.read_text(encoding="utf-8").strip().splitlines()) - 4
+        print(f"基线已重写：{n} 个未测函数登记在 {BASELINE.relative_to(REPO)}")
+        return 0
     base = base_ref(argv)
     changed, cosmetic = changed_modules(base)
     if cosmetic:
@@ -193,7 +267,7 @@ def main(argv: list[str]) -> int:
         print("     改了什么就得证明什么——补一个能跑到它的测试，或者把这次改动收回。")
         return 1
     print("  ✅ 每个改过的模块都有测试真的跑到它")
-    return 0
+    return ratchet()
 
 
 if __name__ == "__main__":

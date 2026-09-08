@@ -400,6 +400,17 @@ EOF
 refuses "带参数的 @property 必须被拒" "PLR0206" \
   uvx ruff check --config ruff.toml --no-cache "$TMP/ruff/x.py"
 
+echo
+echo "▶ 未测函数棘轮（changed_covered --ratchet）"
+# 2026-09-08：671 个函数里 243 个从没被任何测试执行过，而当天把用户的群轰炸
+# 半小时的 bug 正落在这一类里（State.save_pending 一次都没被调用过）。
+# 一次补完不现实，所以用棘轮：已有欠账登记在案，新增的一个都不许。
+cp relay/ark_relay/core.py "$TMP/core.bak"
+printf '\n\ndef brand_new_never_tested(x):\n    return x\n' >> relay/ark_relay/core.py
+refuses "新增没人测过的公开函数必须被拒" "从没被任何测试碰过" \
+  python3 scripts/mac/lib/changed_covered.py HEAD~12
+cp "$TMP/core.bak" relay/ark_relay/core.py
+
 echo "▶ 仓库自检本身"
 # 这里只验「lint 不会误杀干净的树」。测试那一项部署流程自己会跑一遍，
 # 在这儿再跑一遍纯属重复，一次部署白等十几秒。
