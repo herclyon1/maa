@@ -39,7 +39,7 @@ from .okww_patches.tacetshot import _TACETSHOT_OLD, _TACETSHOT_NEW, _TACETSHOT_V
 from .okww_patches.bosstip import (_BOSSTIP_OLD, _BOSSTIP_OLD_FULL, _BOSSTIP_NEW, _BOSSTIP_V1,
                                    _BOSSTIP_V2, _BOSSTIP_V3, _bosstip_present, _BOSSTIP,
                                    _EARLY_OLD, _EARLY_NEW, _EARLYOPEN)
-from .okww_patches.revive import (_REVIVE, _REVIVE_OLD, _REVIVE_NEW, _REVIVEIMP,
+from .okww_patches.revive import (_REVIVE, _REVIVE_OLD, _REVIVE_NEW, _REVIVE_V1, _REVIVEIMP,
                                   _REVIVEIMP_OLD, _REVIVEIMP_NEW, _REVIVELOOP,
                                   _REVIVELOOP_OLD, _REVIVELOOP_NEW)
 from .okww_patches.claim import _CLAIM_OLD, _CLAIM_NEW, _CLAIM_V1, _CLAIM_V2, _CLAIM_V3, _CLAIM_V4, _CLAIM_V5, _CLAIM_V6, _CLAIM_TAIL, _CLAIM_OLD_FULL, _claim_present, _CLAIM
@@ -67,7 +67,7 @@ __all__ = [
     'ensure_patches', 'ensure_if_updated', 'nest_patch_present', 'active_patches',
     '_BOSSTIP', '_BOSSTIP_OLD', '_BOSSTIP_NEW', '_bosstip_present',
     '_EARLYOPEN', '_EARLY_OLD', '_EARLY_NEW',
-    '_REVIVE', '_REVIVE_OLD', '_REVIVE_NEW',
+    '_REVIVE', '_REVIVE_OLD', '_REVIVE_NEW', '_REVIVE_V1',
     '_REVIVEIMP', '_REVIVEIMP_OLD', '_REVIVEIMP_NEW',
     '_REVIVELOOP', '_REVIVELOOP_OLD', '_REVIVELOOP_NEW',
     '_CLAIM_OLD',
@@ -249,6 +249,7 @@ _REVERTS: "list[tuple[tuple, str, str, str]]" = [
     (_BW, _BOSSTIP_V1, _BOSSTIP_OLD, "限时提前开放的 boss v1"),
     (_BW, _BOSSTIP_V2, _BOSSTIP_OLD, "限时提前开放的 boss v2"),
     (_BW, _BOSSTIP_V3, _BOSSTIP_OLD_FULL, "限时提前开放的 boss v3"),
+    (_FE, _REVIVE_V1, _REVIVE_OLD, "刷声骸时原地复活 v1"),
     ((*_SRC, "TacetTask.py"), _TACETSHOT_V1, _TACETSHOT_V1_OLD, "无音区留两张图给日报 v1"),
     (_FE, _COUNT_V1, _COUNT_OLD, "进本前拍一张看剩余次数 v1"),
     (_FE, _COUNT_V2, _COUNT_OLD, "进本前拍一张看剩余次数 v2"),

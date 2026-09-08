@@ -36,6 +36,47 @@ _REVIVE_NEW = """    def revive_action(self):
                 return False
             try:
                 _o = self.ocr(box=self.box_of_screen(0.0, 0.0, 1.0, 1.0)) or []
+                _txt = ' '.join(str(_b) for _b in _o)
+                if '复苏物品' not in _txt and '复活' not in _txt:
+                    self.log_info(f'刷声骸模式：这不像死亡弹窗，不乱点。整屏读到 {_o}')
+                    return False
+                # 弹窗长这样（2026-09-09 截图）：标题「选择复苏物品」，中间两格
+                # 复苏物品，底下一个「确认」。**不能按「复苏」两个字找按钮**——
+                # 标题里就有，上一版点的正是标题，什么也没发生。要点的是「确认」，
+                # 而且要限定它短，否则会点到那句带「确认」的说明文字上。
+                _btn = None
+                for _b in _o:
+                    _n = str(getattr(_b, 'name', '') or '').strip()
+                    if '确认' in _n and len(_n) <= 6:
+                        _btn = _b
+                        break
+                if _btn is None:
+                    self.log_info(f'刷声骸模式：死亡弹窗上没找到「确认」，整屏读到 {_o}')
+                    return False
+                self.log_info(f'刷声骸模式：角色阵亡，用一个复苏物品点「{_btn}」，接着刷')
+                self.click(_btn, after_sleep=3)
+                self.wait_in_team_and_world(time_out=120)
+                self.is_revived = True
+                return True
+            except Exception as _e:
+                self.log_info(f'刷声骸模式：复活这一步没做成 {_e!r}')
+                return False"""
+
+
+# v1 of this patch, kept **only so it can be reverted**. It looked for a button
+# whose text contained 复活/复苏/原地 and clicked the dialog's own title instead.
+_REVIVE_V1 = """    def revive_action(self):
+        if self._in_realm:
+            # 本地补丁：秘境里没有传送点可回，上游到这里就放弃复活，于是角色一死
+            # 整个任务就停掉。刷声骸是通宵跑的，停一次就白站一整晚——2026-09-09
+            # 死了三次，最后一次站了 25 分钟。死亡弹窗本身就在屏幕上（OK-WW 正是
+            # 靠认出它才判定角色死了），按文字找到「复活」点掉，接着刷下一趟。
+            # **按文字找按钮**，不按固定坐标：固定坐标会把别的弹窗一起点掉。
+            import os as _os
+            if not _os.path.exists('C:/ProgramData/ark-okww-farm.no-claim'):
+                return False
+            try:
+                _o = self.ocr(box=self.box_of_screen(0.0, 0.0, 1.0, 1.0)) or []
                 _btn = next((_b for _b in _o
                              if any(_k in str(_b) for _k in ('复活', '复苏', '原地'))), None)
                 if _btn is None:
@@ -52,7 +93,7 @@ _REVIVE_NEW = """    def revive_action(self):
 
 
 def _revive_present(text: str) -> bool:
-    return "刷声骸模式：角色阵亡，点" in text
+    return "刷声骸模式：角色阵亡，用一个复苏物品点" in text
 
 
 _REVIVE = _Patch(
@@ -62,7 +103,7 @@ _REVIVE = _Patch(
     new=_REVIVE_NEW,
     present=_revive_present,
     breaks="角色一死整趟就停，剩下的时间全站着不动",
-    unique="刷声骸模式：角色阵亡，点",
+    unique="刷声骸模式：角色阵亡，用一个复苏物品点",
 )
 
 
