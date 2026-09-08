@@ -397,7 +397,7 @@ function render() {
       masterNote += `<div class="warn">⚠️ 有 ${M.untranslated.length} 项的名字没翻译出来（脚本这一版换了定义文件的位置），显示的是原始键名</div>`;
     }
     if (g.src === "master" && Array.isArray(M.orphans) && M.orphans.length) {
-      masterNote += `<div class="warn">⚠️ 配置里还留着这一版脚本已经没有的任务：${M.orphans.join("、")}——它不会再跑，设置改了也没用</div>`;
+      masterNote += `<div class="warn">⚠️ 这一版脚本的定义文件里没有这些任务，配置里却还留着：${M.orphans.join("、")}——这些设置改了不会有效果</div>`;
     }
     html += `<section><h2>${g.title}</h2>${masterNote}`;
     if (curM !== cur) Object.assign(cur, curM);

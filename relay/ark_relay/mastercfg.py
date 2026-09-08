@@ -94,8 +94,18 @@ _HAN = re.compile(r"[一-鿿]")
 
 
 def _jsonc(path: Path) -> dict:
-    """MaaEnd task definitions are JSON with // comments."""
-    return json.loads(_COMMENT.sub("", path.read_text(encoding="utf-8")))
+    """MaaEnd task definitions are JSON with comments and trailing commas.
+
+    Line comments only was not enough: CreditShopping.json and PuzzleSolver.json
+    in v2.28 use block comments / trailing commas, failed to parse, and every task
+    they declare then looked like an orphan (CreditShoppingN2 showed up as "gone").
+    Same stripping as maaend._load_jsonc.
+    """
+    text = path.read_text(encoding="utf-8")
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    text = _COMMENT.sub("", text)
+    text = re.sub(r",(\s*[}\]])", r"\1", text)
+    return json.loads(text)
 
 
 class _Locale:
@@ -197,9 +207,12 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
     # v2.28 removed the standalone AutoUseSpMedication task (the booster moved into
     # AutoEssence); the config kept the entry, and nothing said it was dead.
     if all_tasks:
-        out["orphans"] = [t.get("taskName") for inst in doc.get("instances") or []
-                          for t in inst.get("tasks") or []
-                          if t.get("taskName") and t.get("taskName") not in all_tasks]
+        # MXU's own entries (__MXU_WEBHOOK__ and the like) are not MaaEnd tasks and
+        # never appear in its definitions; they are not orphans.
+        out["orphans"] = sorted({t.get("taskName") for inst in doc.get("instances") or []
+                                 for t in inst.get("tasks") or []
+                                 if t.get("taskName") and not str(t.get("taskName")).startswith("__")
+                                 and t.get("taskName") not in all_tasks})
     # The page must never show a raw key. Anything that fails to translate is
     # listed here, logged, and shown on the page as untranslated - instead of
     # quietly appearing as English (the user, 2026-09-09: 「不是说强制要求了人话界面吗」).
