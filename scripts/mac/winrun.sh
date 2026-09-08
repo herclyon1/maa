@@ -296,8 +296,11 @@ if [ "${1:-}" = "--py" ]; then
   # pwsh 的退出码在这里根本不反映成败，一直误报「清理失败」，
   # 而虚假的警告会把真正的失败淹掉。
 
-  scp -q "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$LOCAL_PY" "${USER_AT}:${REMOTE_PY}" \
-    || { echo "winrun: 送不上去 $LOCAL_PY（scp 失败）" >&2; exit 3; }
+  # 要送的文件先在本地摆好，最后**一次传完**。2026-09-08 量的：跨境每次 scp
+  # 约 1.5 秒，而这条路原来要 scp 四五次（脚本、看门狗、arklog、被 import 的模块），
+  # 一次空跑就是 8 秒。这是我一天里用得最多的一条路，省下来的是我的每一次排查。
+  STAGE="$(mktemp -d)"
+  cp "$LOCAL_PY" "$STAGE/$(basename "${REMOTE_PY}")"
 
   # 远端看门狗：脚本自己超时就把自己打死，不用等本地那层。
   # 只有本地 ssh 超时的话，远端进程会继续跑并占住 winrun.out——正是上面
@@ -320,8 +323,7 @@ GUARD
   # 顺手送上 arklog.py：读日志的三个坑（时钟、字典序、格式）都在里面堵掉了，
   # 临时脚本 `from arklog import since` 就能用，不用每次自己拼过滤。
   if [ -f "$(dirname "${BASH_SOURCE[0]}")/lib/arklog.py" ]; then
-    scp -q "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$(dirname "${BASH_SOURCE[0]}")/lib/arklog.py" \
-      "${USER_AT}:C:/ProgramData/arklog.py" || true
+    cp "$(dirname "${BASH_SOURCE[0]}")/lib/arklog.py" "$STAGE/arklog.py"
     # 顺带把被送的脚本 import 到的同目录模块也送过去。
     # 2026-08-28：maaend_task.py import maaend_essence，只送单文件 → 远端
     # ModuleNotFoundError。逐个特判会一直漏，所以按 import 语句自动带。
@@ -329,14 +331,21 @@ GUARD
                 | awk '{print $2}' | sort -u); do
       _f="$(dirname "${BASH_SOURCE[0]}")/lib/${_m}.py"
       if [ -f "$_f" ] && [ "$_m" != "arklog" ]; then
-        scp -q "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$_f" "${USER_AT}:C:/ProgramData/${_m}.py" || true
+        cp "$_f" "$STAGE/${_m}.py"
       fi
     done
   fi
 
-  scp -q "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$TMP.guard" "${USER_AT}:${REMOTE_GUARD}" \
-    || { echo "winrun: 看门狗送不上去（scp 失败）" >&2; exit 3; }
+  cp "$TMP.guard" "$STAGE/$(basename "${REMOTE_GUARD}")"
   rm -f "$TMP.guard"
+  # 一条流推完。COPYFILE_DISABLE + --no-mac-metadata：不然 Mac 会把扩展属性
+  # 打成 `._xxx` 一起送过去，在机器上撒一地垃圾（2026-09-08 部署那边刚踩过）。
+  if ! (cd "$STAGE" && COPYFILE_DISABLE=1 tar --no-mac-metadata -czf - .) \
+       | ssh "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$USER_AT" \
+         "tar xzf - -C C:/ProgramData"; then
+    echo "winrun: 送不上去（打包传输失败）" >&2; rm -rf "$STAGE"; exit 3
+  fi
+  rm -rf "$STAGE"
 
   # ② 跑。输出写到机器上的 UTF-8 文件再整体拷回，中文不经过 936 的控制台。
   #    本地这层也加上限：ssh 自己不会因为远端卡住而返回。
