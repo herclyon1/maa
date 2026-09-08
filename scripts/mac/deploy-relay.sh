@@ -198,8 +198,12 @@ else
   # 71 个文件推了 119 秒，占整趟部署的三分之二；同样这 71 个文件用一条
   # tar 管道 **2 秒**。判据一个字没松：推完那道逐文件哈希核对照跑。
   # Windows 10 起自带 bsdtar（C:\Windows\System32\tar.exe），所以两头都有 tar。
-  if ! tar czf - $CHANGED | ssh "${SSH_OPTS[@]}" "$USER_AT" \
-       "tar xzf - -C ${REMOTE_DIR}"; then
+  # COPYFILE_DISABLE + --no-mac-metadata：macOS 的 tar 默认会把扩展属性打成
+  # `._文件名` 一并塞进包里。2026-09-08 第一次用打包推送就在机器上撒了 18 个
+  # `._xxx.py`，而逐文件哈希核对**发现不了**——它只检查清单里有的文件，
+  # 多出来的东西它不看。是机器上那道冒烟（挨个 import）把它们抓出来的。
+  if ! COPYFILE_DISABLE=1 tar --no-mac-metadata -czf - $CHANGED \
+       | ssh "${SSH_OPTS[@]}" "$USER_AT" "tar xzf - -C ${REMOTE_DIR}"; then
     echo "    ⚠️ 打包推送失败，退回一个一个推（会慢很多，顺便看看机器上 tar 还在不在）" >&2
     for f in $CHANGED; do
       scp -q "${SSH_OPTS[@]}" "$f" "${USER_AT}:${REMOTE_DIR}/${f}" || {

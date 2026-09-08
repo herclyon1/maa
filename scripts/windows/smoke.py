@@ -25,9 +25,15 @@ sys.path.insert(0, str(ROOT))
 bad = []
 
 # 1. Every module must import under the machine's Python.
+pys = [p for p in (ROOT / "ark_relay").rglob("*.py") if "okww_files" not in p.parts]
+# macOS 的 tar 会把扩展属性打成 `._文件名` 一起送过来（2026-09-08 撞过）。
+# 那不是模块，别去 import 它——但也**别当没看见**：多出来的文件说明推送方式有问题。
+junk = [p for p in pys if p.name.startswith("._")]
+if junk:
+    bad.append(f"目录里混进了 {len(junk)} 个不该有的文件，例如 {junk[0].name}"
+               f"（macOS 打包时带上了扩展属性，推送方式要修）")
 mods = sorted(p.relative_to(ROOT).with_suffix("").as_posix().replace("/", ".")
-              for p in (ROOT / "ark_relay").rglob("*.py")
-              if "okww_files" not in p.parts and p.name != "__init__.py")
+              for p in pys if p.name != "__init__.py" and not p.name.startswith("._"))
 for m in mods:
     try:
         importlib.import_module(m)
