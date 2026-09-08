@@ -35,7 +35,7 @@ class Clock:
 def load(clock):
     """按给定时钟装一份被测函数。它自己 `import socket`，所以解析器要打真模块。"""
     ns = {"time": types.SimpleNamespace(monotonic=clock.monotonic, sleep=clock.sleep)}
-    exec(compile(SRC[start:end], "service.py", "exec"), ns)   # noqa: S102
+    exec(compile(SRC[start:end], "service.py", "exec"), ns)
     return ns["_wait_for_network"]
 
 

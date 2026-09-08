@@ -111,7 +111,7 @@ def main() -> int:
         adb("pull", "/sdcard/hold.png", out_png)
         print("HOLD_SHOT_READY", out_png, flush=True)
 
-        import os
+        import os  # noqa: PLC0415
         target = r"C:\ProgramData\deploy-target.txt"
         if os.path.exists(target):
             os.remove(target)

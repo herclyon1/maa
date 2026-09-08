@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay.engine import Engine
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 
 fails = []
 def check(label, got, want):
@@ -23,7 +23,7 @@ E = object.__new__(Engine)
 
 def _fake_state(d):
     """替身 state：带上真的 StateStore，记账走 state.json（2026-09-08 收口后）。"""
-    from ark_relay.statestore import StateStore
+    from ark_relay.statestore import StateStore  # noqa: PLC0415
     return types.SimpleNamespace(dir=d, store=StateStore(d))
 
 E.state = _fake_state(tmpdir())

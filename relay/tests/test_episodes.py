@@ -11,8 +11,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import collector, core, efstatus  # noqa: E402
-from ark_relay.config import SERVER_TZ  # noqa: E402
+from ark_relay import collector, core, efstatus
+from ark_relay.config import SERVER_TZ
 
 fails = []
 def check(label, got, want):

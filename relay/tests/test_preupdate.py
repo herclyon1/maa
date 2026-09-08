@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 TMP = tmpdir()
 AUTOMAS = TMP / "AUTO-MAS"; (AUTOMAS / "config").mkdir(parents=True)
 MAAEND = TMP / "MaaEnd"; (MAAEND / "debug").mkdir(parents=True)

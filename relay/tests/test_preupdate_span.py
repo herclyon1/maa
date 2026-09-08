@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import preupdate_maa, preupdate_maaend  # noqa: E402
+from ark_relay import preupdate_maa, preupdate_maaend
 
 fails = []
 def check(label, got, want):
@@ -45,7 +45,7 @@ check("从包名读", preupdate_maa._maa_pending_version(maa), "v6.17.0-beta.8")
 check("下载中的 .temp 不算", preupdate_maa._maa_pending_version(maa), "v6.17.0-beta.8")
 
 print("[四段文案同一种形状]")
-import re
+import re  # noqa: E402
 shape = re.compile(r"^(MAA|MaaEnd|AUTO-MAS|OK-WW) (已|有)更新：\S+ → \S+")
 for msg in [f"MAA 已更新：{preupdate_maaend._span('v6.17.0-beta.7', 'v6.17.0-beta.8')}",
             f"MaaEnd 已更新：{preupdate_maaend._span('v2.26.0', 'v2.27.0-beta.1')}",

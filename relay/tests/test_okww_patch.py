@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import okww_patch                       # noqa: E402
+from ark_relay import okww_patch
 
 # 「故意改坏」那个用例会让 py_compile 抛异常，模块用 exc_info 记了一整段
 # traceback。它是预期内的，打在测试输出最上面只会让人以为测试炸了。
@@ -167,9 +167,9 @@ def test_applies(tmp: Path) -> None:
     # 夹具造的是上游原版。先把三条旧补丁真的贴上去，再看 ensure_patches
     # 会不会把它们撤掉——不然测的只是「本来就没打」这种废话。
     for one in okww_patch.PATCHES:
-        okww_patch._apply_one(tmp, one)                           # noqa: SLF001
-    okww_patch._apply_domain(tmp)                                 # noqa: SLF001
-    okww_patch._apply_starve(tmp)                                 # noqa: SLF001
+        okww_patch._apply_one(tmp, one)
+    okww_patch._apply_domain(tmp)
+    okww_patch._apply_starve(tmp)
     pre_daily = (d / "DailyTask.py").read_text(encoding="utf-8")
     check("前置：领奖顺序确实先被改了",
           pre_daily.find("run_additional_tasks") < pre_daily.find("claim_daily"),
@@ -229,7 +229,7 @@ def test_refuses_unknown(tmp: Path) -> None:
     before = (d / "DomainTask.py").read_text(encoding="utf-8")
     # ensure_patches 从 2026-08-30 起不再应用这条补丁，但 _apply_domain
     # 的「认不出就停手」这份安全行为仍然值得钉住——万一以后再启用。
-    notes = okww_patch._apply_domain(tmp)                         # noqa: SLF001
+    notes = okww_patch._apply_domain(tmp)
     check("文件一个字都没动",
           (d / "DomainTask.py").read_text(encoding="utf-8"), before)
     check("有一条「贴不上了」的告警",
@@ -243,17 +243,17 @@ def test_reverts_on_syntax_error(tmp: Path) -> None:
     # 补丁拆成子模块后，_apply_domain 读的是 okww_patches.domain 里的那份常量，
     # 要改就改它本尊；改聚合模块的副本不起作用。
     from ark_relay.okww_patches import domain as _domain           # noqa: PLC0415
-    bad = _domain._DOMAIN_NEW + "\n   this is not python("        # noqa: SLF001
-    orig_new = _domain._DOMAIN_NEW                                # noqa: SLF001
-    _domain._DOMAIN_NEW = bad                                     # noqa: SLF001
+    bad = _domain._DOMAIN_NEW + "\n   this is not python("
+    orig_new = _domain._DOMAIN_NEW
+    _domain._DOMAIN_NEW = bad
     try:
         before = (d / "DomainTask.py").read_text(encoding="utf-8")
-        notes = okww_patch._apply_domain(tmp)                     # noqa: SLF001
+        notes = okww_patch._apply_domain(tmp)
         check("已经还原成上游版",
               (d / "DomainTask.py").read_text(encoding="utf-8"), before)
         check("而且说了「已还原」", any("已还原" in n for n in notes), True)
     finally:
-        _domain._DOMAIN_NEW = orig_new                         # noqa: SLF001
+        _domain._DOMAIN_NEW = orig_new
 
 
 def test_missing_dir_is_quiet(tmp: Path) -> None:

@@ -96,7 +96,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
-from snapshot import load  # noqa: E402
+from snapshot import load
 
 CEP = "https://raw.githubusercontent.com/cmyyx/cep/main/src/"
 # 单条词条的级数上限，按词条类型分。见上面「三、cost 是什么」。

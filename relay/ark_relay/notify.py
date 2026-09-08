@@ -286,7 +286,7 @@ class WeComBot:
         data = _post_json(self.url, {
             "msgtype": "image",
             "image": {"base64": base64.b64encode(raw).decode("ascii"),
-                      "md5": hashlib.md5(raw).hexdigest()},  # noqa: S324 - 接口要的就是 md5
+                      "md5": hashlib.md5(raw).hexdigest()},
         })
         if data.get("errcode") != 0:
             raise RuntimeError(

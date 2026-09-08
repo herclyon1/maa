@@ -15,11 +15,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import preupdate_maaend  # noqa: E402
-from ark_relay import preupdate_maaend as PM  # noqa: E402  # 实现在这个模块里，猴子补丁要打在它身上
-from ark_relay.statestore import StateStore  # noqa: E402
+from ark_relay import preupdate_maaend
+from ark_relay import preupdate_maaend as PM  # 实现在这个模块里，猴子补丁要打在它身上
+from ark_relay.statestore import StateStore
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 
 fails = []
 def check(label, got, want):

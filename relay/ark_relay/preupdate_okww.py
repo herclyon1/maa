@@ -52,7 +52,7 @@ def _okww_quiesce() -> None:
     for name in ("ok-ww.exe", "Wuthering Waves.exe",
                  "Client-Win64-Shipping.exe", "KRSDKExternal.exe"):
         try:
-            subprocess.run(["taskkill", "/F", "/IM", name],  # noqa: S603, S607
+            subprocess.run(["taskkill", "/F", "/IM", name],
                            capture_output=True, timeout=30)
         except (OSError, subprocess.SubprocessError):
             pass
@@ -62,7 +62,7 @@ def _okww_quiesce() -> None:
           "$_.CommandLine -like '*-m ok *' } | "
           "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }")
     try:
-        subprocess.run([_pwsh(), "-NoProfile", "-Command", ps],  # noqa: S603, S607
+        subprocess.run([_pwsh(), "-NoProfile", "-Command", ps],
                        capture_output=True, timeout=60)
     except (OSError, subprocess.SubprocessError):
         pass

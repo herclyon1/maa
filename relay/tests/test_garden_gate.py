@@ -14,9 +14,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import garden                             # noqa: E402
-from ark_relay.annihilation import week_key              # noqa: E402
-from ark_relay.config import SERVER_TZ                   # noqa: E402
+from ark_relay import garden
+from ark_relay.annihilation import week_key
+from ark_relay.config import SERVER_TZ
 
 FAILED = []
 
@@ -90,7 +90,7 @@ def test_gate(tmp: Path) -> None:
 
     # 找不到母本时必须安静地不动手，而不是抛异常把中继带崩
     g2 = garden.GardenGate(tmp, tmp / "nowhere")
-    g2._save({"done_week": week_key(now)})                    # noqa: SLF001
+    g2._save({"done_week": week_key(now)})
     check("母本找不到时 enforce 返回 False 而不炸", g2.enforce(now), False)
 
 

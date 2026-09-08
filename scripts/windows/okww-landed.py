@@ -4,8 +4,8 @@ for line in (root / ".env").read_text(encoding="utf-8").splitlines():
     line=line.strip()
     if line and not line.startswith("#") and "=" in line:
         k,v=line.split("=",1); os.environ.setdefault(k.strip(), v.strip())
-from ark_relay import weeklyboss as W
-ok = lambda b: "✅" if b else "❌"
+from ark_relay import weeklyboss as W  # noqa: E402
+ok = lambda b: "✅" if b else "❌"  # noqa: E731
 A = os.environ.get("ARK_AUTOMAS_DIR")
 
 print("=== 1. 周本配置：母本 vs OK-WW 自己那份 ===")

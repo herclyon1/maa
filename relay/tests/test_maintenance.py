@@ -4,8 +4,8 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import maintenance as M  # noqa: E402
-from ark_relay.config import SERVER_TZ  # noqa: E402
+from ark_relay import maintenance as M
+from ark_relay.config import SERVER_TZ
 
 FX = Path(__file__).parent / "fixtures" / "maint"
 fails = []

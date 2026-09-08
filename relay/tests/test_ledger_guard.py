@@ -10,9 +10,9 @@ import json, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.core import State, format_daily  # noqa: E402
+from ark_relay.core import State, format_daily
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 
 fails = []
 def check(label, got, want):

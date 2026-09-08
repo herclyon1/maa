@@ -353,7 +353,7 @@ def _row(label: str, parts: list[str]) -> str:
     return f"· {label}　" + ("；".join(x for x in parts if x) or "—")
 
 
-def _block(e: dict, finished: datetime) -> list[str]:
+def _block(e: dict, finished: datetime) -> list[str]:  # noqa: C901
     raw = e.get("raw") or {}
     script = e.get("script")
     did: list[str] = []

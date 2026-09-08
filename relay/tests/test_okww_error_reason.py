@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import collector  # noqa: E402
+from ark_relay import collector
 
 fails = []
 def check(label, got, want):
@@ -56,7 +56,7 @@ print("[今天的形状：开头窗口连不上、后来跑了 41 分钟、倒�
 t = collector.parse_okww_log(d / "today.log")
 check("不是「进不了游戏」", t.get("okww_unreachable"), None)
 check("真实原因是人话", t.get("okww_error"), "周本：打完 Boss 领完奖之后没能退出副本")
-import re as _re
+import re as _re  # noqa: E402
 check("通知字段里除 Boss 外不许有英文", bool(_re.search(r"[A-Za-z]", (t.get("okww_error") or "").replace("Boss", ""))), False)
 
 print("[2026-09-02 的形状：只会等窗口，什么都没干]")
@@ -65,7 +65,7 @@ check("这才是进不了游戏", s.get("okww_unreachable"), True)
 check("没有 traceback 就没有原因", s.get("okww_error"), None)
 
 print("[记录里失败清单换成真实原因]")
-import json
+import json  # noqa: E402
 h = d / "2026-09-07" / "wuwa"; h.mkdir(parents=True)
 (h / "OK-WW-05-19-17.json").write_text(json.dumps({"general_result": "OK-WW 流程产生错误，请检查游戏状态"}), encoding="utf-8")
 (h / "OK-WW-05-19-17.log").write_text(TODAY, encoding="utf-8")

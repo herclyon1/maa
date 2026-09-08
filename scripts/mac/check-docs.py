@@ -49,7 +49,7 @@ skips: list[str] = []
 
 
 def ok(msg: str) -> None:
-    global passes
+    global passes  # noqa: PLW0603
     passes += 1
     print(f"  ok    {msg}")
 
@@ -252,11 +252,11 @@ def check_json_values(directives) -> None:
             if rc != 0:
                 cache[path] = None
             else:
-                import base64
+                import base64  # noqa: PLC0415
                 try:
                     cache[path] = json.loads(
                         base64.b64decode(out.strip()).decode("utf-8"))
-                except Exception:
+                except Exception:  # noqa: BLE001
                     cache[path] = None
         doc = cache[path]
         if doc is None:

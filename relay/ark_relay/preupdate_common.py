@@ -122,7 +122,7 @@ def _spawn_via_task(exe: Path, cwd: Path, args: tuple[str, ...] = ()) -> bool:
     )
     exe_ps = _pwsh()
     try:
-        r = subprocess.run(  # noqa: S603
+        r = subprocess.run(
             [exe_ps, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
             capture_output=True, timeout=60, check=False)
     except (OSError, subprocess.SubprocessError):
@@ -192,7 +192,7 @@ def _console_primary_token(session: int):
             linked, win32security.SecurityImpersonation,
             win32con.MAXIMUM_ALLOWED,
             getattr(win32security, "TokenPrimary", 1))
-    except Exception:  # noqa: BLE001 - 拿不到就用受限的，不比以前差
+    except Exception:
         log.debug("预更新：取不到未过滤的控制台令牌，沿用受限令牌", exc_info=True)
         return token
     finally:
@@ -200,11 +200,11 @@ def _console_primary_token(session: int):
             try:
                 if h is not None:
                     h.Close()
-            except Exception:  # noqa: BLE001, S110 - handle cleanup only
+            except Exception:  # noqa: BLE001 - handle cleanup only
                 pass
     try:
         token.Close()
-    except Exception:  # noqa: BLE001, S110 - handle cleanup only
+    except Exception:  # noqa: BLE001 - handle cleanup only
         pass
     return primary
 
@@ -274,11 +274,11 @@ def _spawn_interactive(exe: Path, cwd: Path,
         for h in handles:
             try:
                 h.Close()
-            except Exception:  # noqa: BLE001, S110 - handle cleanup only
+            except Exception:  # noqa: BLE001 - handle cleanup only
                 pass
         log.info("预更新：已在会话 %s 启动 %s", session, exe.name)
         return True
-    except Exception:  # noqa: BLE001 - any failure falls back, never raises
+    except Exception:
         # 令牌拿不到不代表没救：换计划任务那条路，它由 Task Scheduler 代为
         # 建进程，不要求调用方持有 SE_TCB_NAME。**这才是常态路径**——
         # 2026-08-26 实测真实服务每次都走到这里。
@@ -295,7 +295,7 @@ def _spawn_interactive(exe: Path, cwd: Path,
         if token is not None:
             try:
                 token.Close()
-            except Exception:  # noqa: BLE001, S110
+            except Exception:  # noqa: BLE001
                 pass
 
 
@@ -303,7 +303,7 @@ def _spawn_detached(exe: Path, cwd: Path,
                     args: tuple[str, ...] = ()) -> bool:
     """Plain detached launch - correct when the relay itself is interactive."""
     try:
-        subprocess.Popen(  # noqa: S603
+        subprocess.Popen(
             [str(exe), *args], cwd=str(cwd),
             creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP
                            | subprocess.DETACHED_PROCESS))

@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 TMP = tmpdir()
 AUTOMAS = TMP / "AUTO-MAS"; (AUTOMAS / "config").mkdir(parents=True)
 STATE = TMP / "state"; STATE.mkdir()
@@ -42,7 +42,7 @@ from ark_relay.config import Config, SERVER_TZ           # noqa: E402
 from ark_relay.core import State                        # noqa: E402
 from ark_relay.notify import Notifier                   # noqa: E402
 from ark_relay import engine as eng                     # noqa: E402
-from ark_relay.statestore import StateStore
+from ark_relay.statestore import StateStore  # noqa: E402
 from ark_relay import plan                              # noqa: E402
 
 cfg = Config()

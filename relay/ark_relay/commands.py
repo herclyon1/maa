@@ -235,7 +235,7 @@ def _mas(path: str, body: "dict | None" = None, timeout: int = 20) -> dict:
     req = urllib.request.Request(
         _mas_api() + path, data=json.dumps(body or {}).encode(),
         headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode())
 
 
@@ -374,11 +374,11 @@ def estop() -> tuple[bool, str]:
         log.warning("红按钮：AUTO-MAS 接口停不了（%s），直接杀进程", exc)
     time.sleep(12 if stopped else 2)
     for exe in ("MAA.exe", "MaaEnd.exe", "dnplayer.exe", "Endfield.exe"):
-        subprocess.run(["taskkill", "/IM", exe, "/T", "/F"], capture_output=True)  # noqa: S603, S607
+        subprocess.run(["taskkill", "/IM", exe, "/T", "/F"], capture_output=True)
     _okww_quiesce()
     time.sleep(6)
     for exe in ("MAA.exe", "MaaEnd.exe", "dnplayer.exe", "Endfield.exe"):
-        subprocess.run(["taskkill", "/IM", exe, "/T", "/F"], capture_output=True)  # noqa: S603, S607
+        subprocess.run(["taskkill", "/IM", exe, "/T", "/F"], capture_output=True)
     _okww_quiesce()
     return True, "已停一切：" + ("、".join(stopped) if stopped else "接口没停到东西") + "；脚本和游戏进程已结束"
 
@@ -579,7 +579,7 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             # 发 on:false 会被当成「开」。宽进：两种都当取消。
             off = bool(cmd.get("off")) or cmd.get("on") is False
             return set_skip_shutdown(state_dir, not off)
-    except Exception as exc:  # noqa: BLE001 - report, never crash the agent
+    except Exception as exc:
         log.exception("执行指令失败: %s", action)
         return False, f"执行出错: {exc}"
     return False, f"未处理的动作: {action}"

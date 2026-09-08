@@ -44,14 +44,14 @@ sys.path.insert(0, str(HERE))
 os.chdir(HERE)
 
 import servicemanager  # noqa: E402
-import win32api
-import win32con
-import win32event
+import win32api  # noqa: E402
+import win32con  # noqa: E402
+import win32event  # noqa: E402
 import win32file  # noqa: E402
 import win32service  # noqa: E402
 import win32serviceutil  # noqa: E402
 
-from ark_relay import texts
+from ark_relay import texts  # noqa: E402
 from ark_relay.config import SERVER_TZ, both_clocks  # noqa: E402
 
 # Degraded path only: how often to re-check AUTO-MAS liveness when the WMI
@@ -68,7 +68,8 @@ REVIVE_MAX_WAIT = 1800
 # alert existed, a backend that refused to come back was discovered only by
 # the runs it failed to schedule.
 REVIVE_ALERT_AFTER = 3
-# How long a *live* Electron shell with no backend is left alone before the
+# 一个活着但没有后端的 Electron 壳，多久之后才允许强杀它。取 15 分钟是因为首次运行的
+# 环境向导（装 Python、pip、git，再克隆后端）合法地会好几分钟没有后端，和「卡住」长得一样。
 # 来龙去脉见 docs/CODE-HISTORY.md「service.py:(模块级)」
 SHELL_GRACE_SECONDS = 900
 # Processes whose presence vetoes any revival outright.
@@ -140,7 +141,7 @@ def _automas_handle():
         pid = raw.split()[-1]
         try:
             return win32api.OpenProcess(win32con.SYNCHRONIZE, False, int(pid))
-        except (ValueError, Exception):  # noqa: B014 - pywin32 raises its own
+        except (ValueError, Exception):  # noqa: BLE001
             return None
     return None
 
@@ -218,7 +219,7 @@ def _start_process_watch(evt, alive: dict, log) -> bool:
                     while True:
                         watcher.NextEvent()   # 阻塞到内核报告一次进程启动
                         win32event.SetEvent(evt)
-                except Exception:  # noqa: BLE001 - 降级但绝不放弃
+                except Exception:
                     # 完整堆栈只写第一次，之后写一行：WMI 要是彻底坏了，
                     # 60 秒重试一次会把日志刷爆。
                     if not logged_detail:
@@ -253,7 +254,7 @@ def _start_process_watch(evt, alive: dict, log) -> bool:
 
 def _maaend_dir(cfg):
     """MaaEnd's install path, as AUTO-MAS records it."""
-    from ark_relay import plan
+    from ark_relay import plan  # noqa: PLC0415
     return plan.script_dir(cfg.automas_dir, "MaaEnd")
 
 
@@ -359,8 +360,8 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         box = getattr(self, "_mailbox", None)
         if box is not None:
             box.close()
-        # 硬保险：15 秒还没退干净就强制退出进程。
-        # 用户 2026-08-31：「中继服务卡在 STOP_PENDING 这个不要再出现了，
+        # 硬保险：15 秒还没退干净就强制退出进程。卡在 STOP_PENDING 比强退坏得多，
+        # 而这个进程的状态全是原子写盘的，强退写不坏任何东西。
         # 来龙去脉见 docs/CODE-HISTORY.md「service.py:SvcStop」
         def _force_exit() -> None:
             # 走到这里说明主循环 15 秒内没从 tick 里出来（2026-09-07 10:29 一次，
@@ -369,7 +370,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             import traceback  # noqa: PLC0415
             names = {t.ident: t.name for t in threading.enumerate()}
             dump = []
-            for ident, frame in sys._current_frames().items():  # noqa: SLF001
+            for ident, frame in sys._current_frames().items():
                 if ident == threading.get_ident():
                     continue
                 stack = traceback.format_stack(frame)[-4:]
@@ -390,8 +391,8 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         )
         try:
             self.main()
-        except Exception:  # noqa: BLE001 - a crash here must reach the event log
-            import traceback
+        except Exception:
+            import traceback  # noqa: PLC0415
             servicemanager.LogErrorMsg(traceback.format_exc())
             raise
         # 这一行和「收到停止信号」之间、和 SCM 记的停止时刻之间的差，
@@ -417,7 +418,8 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             return
         log, cfg, notifier, engine = booted
         _stage_patch_okww(cfg, notifier, log)
-        # New code before anything else uses it. This block was silently lost
+        # 自更新要排在任何人用到新代码之前，网络等待又要排在自更新之前
+        # （冷启动时还没有 DNS）。这两句的先后顺序本身就是判据，别挪。
         # 来龙去脉见 docs/CODE-HISTORY.md「service.py:main」
         _wait_for_network(log)
         if _stage_selfupdate(log):
@@ -432,7 +434,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
 
 def _stage_bootstrap():
     """开机第一步：环境变量、日志、配置、引擎。配置不可用返回 None。"""
-    import logging
+    import logging  # noqa: PLC0415
 
     # The scheduled-task launcher used to set these before starting Python,
     # and .env never carried them - so a service, which does not go through
@@ -444,18 +446,18 @@ def _stage_bootstrap():
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.environ.setdefault("ARK_LOG_FILE", str(HERE / "relay.log"))
 
-    from ark_relay.__main__ import _force_utf8_console, _load_dotenv, _setup_logging
+    from ark_relay.__main__ import _force_utf8_console, _load_dotenv, _setup_logging  # noqa: PLC0415
     _force_utf8_console()
     # Absolute path: a service starts with an unrelated working directory,
     # and a silently empty config would disable every push channel.
     _load_dotenv(HERE / ".env")
     _setup_logging(verbose=False)
 
-    from ark_relay.config import Config
-    from ark_relay.core import State
-    from ark_relay.engine import Engine
-    from ark_relay.notify import Notifier
-    from ark_relay.transport import LocalSource
+    from ark_relay.config import Config  # noqa: PLC0415
+    from ark_relay.core import State  # noqa: PLC0415
+    from ark_relay.engine import Engine  # noqa: PLC0415
+    from ark_relay.notify import Notifier  # noqa: PLC0415
+    from ark_relay.transport import LocalSource  # noqa: PLC0415
 
     log = logging.getLogger("ark.service")
     cfg = Config()
@@ -475,7 +477,8 @@ def _stage_bootstrap():
 def _stage_patch_okww(cfg, notifier, log) -> None:
     """每次启动贴一次 OK-WW 补丁（幂等）。"""
     # 每次启动都贴一次 OK-WW 补丁——幂等，在位就一句话都不写。
-    # 「更新必须立即生效」是死命令，部署完就该是最终状态，不能留一个
+    # 放在这里而不是只放在开机预更新那一段：部署完就该是最终状态，
+    # 不能留一个「等下次开机才生效」的尾巴。
     # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_patch_okww」
     try:
         # 就地 import：模块级 import 会在服务安装阶段就被求值，
@@ -491,14 +494,14 @@ def _stage_patch_okww(cfg, notifier, log) -> None:
         # （用户 2026-09-06：「你这个通知一直在轰炸我」）。
         if notes:
             notifier.send(texts.patches(len(notes)), "\n".join(f"· {n}" for n in notes))
-    except Exception:  # noqa: BLE001 - 贴不上也不能挡住服务启动
+    except Exception:
         log.exception("启动时贴 OK-WW 补丁失败，服务照常继续")
 
 
 def _stage_selfupdate(log) -> bool:
     """拉新代码；真更新了就发起重启并返回 True，调用方立刻退出。"""
     try:
-        from ark_relay import selfupdate
+        from ark_relay import selfupdate  # noqa: PLC0415
 
         if changed := selfupdate.check(HERE):
             # Take effect now, not next boot. The files are on disk but this
@@ -512,13 +515,13 @@ def _stage_selfupdate(log) -> bool:
             # the relay down until tomorrow, which is worse than the problem
             # being fixed.
             log.info("代码已更新，重启以立即生效: %s", "、".join(changed))
-            subprocess.Popen(  # noqa: S603
+            subprocess.Popen(
                 ["cmd", "/c", "timeout /t 3 /nobreak >nul & "
                               "net stop ark-relay & net start ark-relay"],
                 creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP
                                | subprocess.DETACHED_PROCESS))
             return
-    except Exception:  # noqa: BLE001 - never let this stop the relay
+    except Exception:
         log.exception("自更新出错，跳过")
     return False
 
@@ -565,7 +568,8 @@ def _stage_announce_update(notifier, log) -> None:
             prev = note.get("previous")
             lines.append(f"版本 v{prev} → v{note.get('version') or '?'}"
                          if prev else f"版本 v{note.get('version') or '?'}")
-            # 人话优先。用户 2026-08-26：「更新内容用人话写」——
+            # 人话优先：先取 RELEASE-NOTES.md 里「修好了你遇到过的哪个毛病」，
+            # 没有说明文件时才退回列文件名兜底。
             # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_announce_update」
             notes = ""
             try:
@@ -588,13 +592,13 @@ def _stage_announce_update(notifier, log) -> None:
                 log.error("更新通知没发出去: %s", "；".join(errors))
             else:
                 log.info("已推送更新通知：%d 个文件", len(files))
-    except Exception:  # noqa: BLE001 - a receipt must never break the relay
+    except Exception:
         log.exception("推送更新通知出错，跳过")
 
 
 def _stage_inbox_and_phone(svc, cfg, engine, notifier, log):
     """待办信箱 + 手机通道。返回 (inbox, collect, deferred_inbox)，主循环要用。"""
-    from ark_relay.inbox import Inbox
+    from ark_relay.inbox import Inbox  # noqa: PLC0415
 
     inbox = Inbox(cfg.state_dir, cfg.inbox_url,
                   cfg.maaend_dir or _maaend_dir(cfg), cfg.automas_dir)
@@ -617,7 +621,7 @@ def _stage_inbox_and_phone(svc, cfg, engine, notifier, log):
         deferred_inbox[0] = False
         try:
             version, messages = inbox.poll()
-        except Exception:  # noqa: BLE001 - never let this stop the relay
+        except Exception:
             log.exception("待办检查出错，跳过")
             return
         if messages:
@@ -627,11 +631,11 @@ def _stage_inbox_and_phone(svc, cfg, engine, notifier, log):
         else:
             log.debug("待办检查（%s）：无新配置（当前 v%s）", reason, version)
 
-    # Once, at startup. The machine boots for each queue, so a change
-    # 在线/离线不许靠轮询。做法见 phone.py 的模块说明。
+    # 开机时取一次就够：机器每趟队列都要重开一次，而配置几乎总是在它关着的时候
+    # 改的，所以下一次开机必定会取到。在线/离线不许靠轮询，做法见 phone.py 的模块说明。
     # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_inbox_and_phone」
-    from ark_relay.commands import apply_command
-    from ark_relay.phone import Mailbox
+    from ark_relay.commands import apply_command  # noqa: PLC0415
+    from ark_relay.phone import Mailbox  # noqa: PLC0415
 
     box = Mailbox(cfg.phone_topic, cfg.phone_pin, cfg.state_dir)
     svc._mailbox = box          # SvcStop 要用它掐断长连接
@@ -640,10 +644,10 @@ def _stage_inbox_and_phone(svc, cfg, engine, notifier, log):
         if not box.enabled:
             return
         try:
-            from ark_relay.phone import state_payload
+            from ark_relay.phone import state_payload  # noqa: PLC0415
             box.publish(state_payload(cfg, cfg.state_dir))
             log.info("📱 已上报状态到手机（%s）", why)
-        except Exception:  # noqa: BLE001 - 上报失败不许拖垮中继
+        except Exception:
             log.warning("状态没能上报到手机（%s）", why, exc_info=True)
 
     from ark_relay.phone import Heartbeat  # noqa: PLC0415
@@ -702,7 +706,7 @@ def _stage_inbox_and_phone(svc, cfg, engine, notifier, log):
         collect("关机前")
         push_state("关机前")
 
-    engine._before_shutdown = before_shutdown  # noqa: SLF001
+    engine._before_shutdown = before_shutdown
     collect("启动")
     return inbox, collect, deferred_inbox
 
@@ -713,7 +717,9 @@ def _note(problems, msg: str) -> None:
 
 def _stage_preupdate(cfg, notifier, log) -> None:
     """开机窗口里把四个程序的更新做掉（一天一次）。"""
-    # MaaEnd updates itself at startup and restarts its own process when it
+    # MaaEnd 只在启动时查更新，查到就下载并**重启自己的进程**，而 AUTO-MAS 盯的是它
+    # 启动的那个 pid——有新版的那天队列里第一趟必败。所以把这一步挪到开机窗口来做，
+    # 让它在没人盯着的时候更新完。
     # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_preupdate」
     try:
         # okww_patch 2026-08-26 之前一直漏在这行外面：下面 549 行用它，
@@ -739,7 +745,8 @@ def _stage_preupdate(cfg, notifier, log) -> None:
             # ever does become daily noise, coalesce the two into one
             # message rather than going silent.
             maa = plan.script_dir(cfg.automas_dir, "MAA")
-            # Anything that could not be *checked* lands here. A pre-update
+            # 凡是「没能确认」的都进这个筐，随后按**报警**发出去。
+            # 假的「没问题」比诚实的失败更糟：没人会去查一件被报告为正常的事。
             # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_preupdate」
             problems: list[str] = []
             # MAA first: its update is applied by a delegated process at
@@ -767,7 +774,7 @@ def _stage_preupdate(cfg, notifier, log) -> None:
                 if back := _gu.maaend_reenable_if_updated(cfg):
                     log.info("预更新：%s", back)
                     notifier.send(texts.MAAEND_REENABLED, back)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 log.exception("开回 MaaEnd 任务出错")
             # AUTO-MAS is asked, not launched - it is already running.
             if note := preupdate.run_automas(cfg.automas_dir,
@@ -777,7 +784,7 @@ def _stage_preupdate(cfg, notifier, log) -> None:
             # update comes from a CNB git mirror rather than MirrorChyan.
             okww = cfg.okww_dir or (Path(cfg.automas_dir).parent / "okww"
                                     if cfg.automas_dir else None)
-            # OK-WW 的自动更新会整段覆盖 src，把本地补丁抹掉
+            # OK-WW 的自动更新会整段覆盖 src，把本地补丁抹掉，所以更新之后必须重贴。
             # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_preupdate」
             if note := preupdate.run_okww(okww, problems=problems):
                 log.info("预更新：%s", note)
@@ -797,7 +804,7 @@ def _stage_preupdate(cfg, notifier, log) -> None:
                 log.error("预更新有 %d 项没能确认：\n%s", len(problems), body)
                 notifier.send(texts.unconfirmed("预更新", len(problems)),
                               body + texts.preupdate_unconfirmed_tail(), alert=True)
-    except Exception:  # noqa: BLE001 - a pre-update must never stop the relay
+    except Exception:
         log.exception("预更新出错，跳过（本轮照旧）")
 
 
@@ -812,7 +819,7 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
             if back:
                 log.info("开机：%s", back)
                 notifier.send(texts.MAAEND_REENABLED, back)
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.exception("开回 MaaEnd 任务出错")
 
 
@@ -837,7 +844,7 @@ def _stage_gameupdate(cfg, notifier, log) -> None:
                 log.warning("游戏更新有 %d 项没能确认：\n%s", len(gproblems), body)
                 notifier.send(texts.unconfirmed("游戏更新", len(gproblems)), body)
             gameupdate.mark_run(cfg.state_dir, _gu_now, boot_id=_boot_id)
-    except Exception:  # noqa: BLE001 - 更新客户端出错不能拖垮中继
+    except Exception:
         log.exception("游戏更新出错，跳过（本轮照旧）")
 
 
@@ -847,8 +854,8 @@ def _stage_annihilation(engine, notifier, log) -> None:
     剿灭、周常乐园、周本一套逻辑、一条通知（用户 2026-09-07：「逻辑上一致的
     东西就应该强统一」）。任一个过了周，就把三个的本周状态一起发出去。
     """
-    gates = [("剿灭", engine._annihilation), ("周常乐园", engine._garden),  # noqa: SLF001
-             ("周本", engine._weeklyboss)]  # noqa: SLF001
+    gates = [("剿灭", engine._annihilation), ("周常乐园", engine._garden),
+             ("周本", engine._weeklyboss)]
     rolled: dict[str, str] = {}
     for name, gate in gates:
         if gate is None:
@@ -858,7 +865,7 @@ def _stage_annihilation(engine, notifier, log) -> None:
                 if hasattr(gate, "enforce") and name != "剿灭":
                     gate.enforce()      # 先真挂回去，再说「已恢复」
                 rolled[name] = line
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.exception("%s 周期检查出错，跳过", name)
     if rolled:
         lines = []
@@ -867,7 +874,7 @@ def _stage_annihilation(engine, notifier, log) -> None:
                 continue
             try:
                 lines.append(rolled.get(name) or gate.week_line())
-            except Exception:  # noqa: BLE001
+            except Exception:
                 log.exception("%s 状态读不出来", name)
         notifier.send(texts.NEW_WEEK, "\n".join(lines))
 
@@ -876,7 +883,7 @@ def _stage_annihilation(engine, notifier, log) -> None:
     # fired yet on a machine that just booted. By the time the first tick
     # arrives it is usually the queue's own start time, so that round would
     # still pay for the pointless annihilation pass.
-    engine._enforce_annihilation()  # noqa: SLF001
+    engine._enforce_annihilation()
 
 
 class _DirWatch:
@@ -906,7 +913,7 @@ class _DirWatch:
                     win32con.FILE_NOTIFY_CHANGE_FILE_NAME
                     | win32con.FILE_NOTIFY_CHANGE_LAST_WRITE)
                 log.info("已挂上目录变更通知，记录一落盘立即处理")
-        except Exception:  # noqa: BLE001 - a missing notifier must not stop the relay
+        except Exception:
             log.exception("目录变更通知挂载失败，先退回定时检查，稍后自动重试")
             self.handle = None
         # 重建节奏。开机时挂载失败（比如目录还没就绪）同样要进重试，
@@ -950,7 +957,7 @@ class _DirWatch:
         """
         try:
             win32file.FindNextChangeNotification(self.handle)
-        except Exception:  # noqa: BLE001 - report and degrade knowingly
+        except Exception:
             self.log.exception("目录变更通知重新武装失败，改用闹钟兜底")
             self.close()
             self.retry_at = time.monotonic() + 5.0
@@ -1136,7 +1143,7 @@ def _loop(svc, cfg, engine, notifier, inbox, collect, deferred_inbox, log) -> No
                 if note != last_alarm_note:
                     last_alarm_note = note
                     log.info("下一个闹钟 %s", note)
-        except Exception:  # noqa: BLE001 - a broken alarm must not stop the loop
+        except Exception:
             log.exception("计算下一个时刻出错，退回备用间隔")
         wait_s = keeper.cap_wait(wait_s)
         if not inbox.last_fetch_ok:
@@ -1155,10 +1162,11 @@ def _loop(svc, cfg, engine, notifier, inbox, collect, deferred_inbox, log) -> No
 
         try:
             engine.tick()
-        except Exception:  # noqa: BLE001 - the loop must survive anything
+        except Exception:
             log.exception("本轮处理出错，继续")
 
-        # A pause order that failed to download is not a pause order. On
+        # 「暂停」的指令没下载下来，就等于没有这条指令——所以取失败要重试，
+        # 每 5 分钟一次，不能一次失败就当今天没人下过指令。
         # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_loop」
         if not inbox.last_fetch_ok and time.monotonic() >= next_inbox_retry:
             next_inbox_retry = time.monotonic() + 300

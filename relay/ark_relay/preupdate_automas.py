@@ -55,10 +55,10 @@ def _automas_version(automas_dir: Path) -> str:
 def _mas_post(path: str, body: dict | None = None) -> dict:
     import urllib.request  # noqa: PLC0415 - only this path needs it
     data = json.dumps(body or {}).encode()
-    req = urllib.request.Request(  # noqa: S310 - fixed localhost URL
+    req = urllib.request.Request(
         mas_base() + path, data=data, method="POST",
         headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=_MAS_HTTP_TIMEOUT) as resp:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=_MAS_HTTP_TIMEOUT) as resp:
         return json.loads(resp.read().decode("utf-8", "replace"))
 
 

@@ -35,7 +35,7 @@ def _script_ids(automas_dir: Path) -> dict[str, str]:
     cfg_dir = Path(automas_dir) / "config"
     if not cfg_dir.is_dir():
         return out
-    for uid, s in plan._scripts(cfg_dir).items():  # noqa: SLF001
+    for uid, s in plan._scripts(cfg_dir).items():
         if s.get("kind"):
             out[s["kind"]] = uid
     return out

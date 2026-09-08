@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay.outcome import maaend_checks, okww_checks, summarize  # noqa: E402
+from ark_relay.outcome import maaend_checks, okww_checks, summarize
 
 FAILED = []
 

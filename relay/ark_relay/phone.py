@@ -87,7 +87,7 @@ def unpack(pin: str, raw: str, *, now: "float | None" = None) -> "dict | None":
         try:
             msg["body"] = json.loads(
                 gzip.decompress(base64.b64decode(msg["gz"])).decode("utf-8"))
-        except Exception:  # noqa: BLE001 - 坏包当没看见，和 JSON 解不开一个待遇
+        except Exception:
             log.warning("信箱里那条消息解压失败，丢弃", exc_info=True)
             return None
     return msg
@@ -161,7 +161,7 @@ class Heartbeat:
     def beat(self) -> bool:
         try:
             self._post(b"hb", "hb")
-        except Exception:  # noqa: BLE001 - 心跳失败本身就是信息，不告警
+        except Exception:
             log.debug("心跳没发出去", exc_info=True)
             return False
         self._bump()
@@ -262,7 +262,7 @@ class Mailbox:
         try:
             with urllib.request.urlopen(req, timeout=20) as r:
                 return 200 <= r.status < 300
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.warning("状态没能发到信箱", exc_info=True)
             return False
 
@@ -277,7 +277,7 @@ class Mailbox:
         try:
             with urllib.request.urlopen(req, timeout=25) as r:
                 raw = r.read().decode("utf-8", "replace")
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.warning("取不到信箱里的指令", exc_info=True)
             return []
         out: list[dict] = []
@@ -313,7 +313,7 @@ class Mailbox:
         if r is not None:
             try:
                 r.close()
-            except Exception:  # noqa: BLE001 - 关不掉也不能拖住停止流程
+            except Exception:
                 log.debug("手机通道关不掉，忽略", exc_info=True)
 
     def listen(self, on_cmd, stop) -> None:
@@ -365,9 +365,9 @@ class Mailbox:
                             self._save_seen()
                         try:
                             on_cmd(msg["body"])
-                        except Exception:  # noqa: BLE001
+                        except Exception:
                             log.exception("手机指令处理出错，连接继续")
-            except Exception:  # noqa: BLE001
+            except Exception:
                 if stop():
                     return
                 log.warning("手机通道断了，%d 秒后重连", delay, exc_info=True)
@@ -459,7 +459,7 @@ def _options(cfg) -> dict:
                 # 不该在手机上点）。那张关卡表一个人就占一千多字节，
                 # 整包会顶到 ntfy 的上限去。
         out["_labels"] = names
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.warning("AUTO-MAS 的中文标注读不到", exc_info=True)
     return out
 
@@ -516,7 +516,7 @@ def state_payload(cfg, state_dir: Path) -> dict:
             "OK-WW": mastercfg.read_okww(getattr(cfg, "automas_dir", None),
                                          getattr(cfg, "okww_dir", None)),
         }
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.warning("母本配置读不到", exc_info=True)
         out["master"] = {}
     try:

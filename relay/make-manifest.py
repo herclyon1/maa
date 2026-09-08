@@ -32,7 +32,7 @@ files = sorted(
 # the machine back without this gate.
 manifest = {"version": int(datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")),
             "files": {
-    f: hashlib.sha1((HERE / f).read_bytes()).hexdigest()  # noqa: S324 - change detection
+    f: hashlib.sha1((HERE / f).read_bytes()).hexdigest()
     for f in files}}
 (HERE / "manifest.json").write_text(
     json.dumps(manifest, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")

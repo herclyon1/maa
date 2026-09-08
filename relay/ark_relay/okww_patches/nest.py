@@ -73,6 +73,7 @@ def _apply_nest(root: Path) -> list[str]:
     if _sha(cur) == _sha(patched):
         return []                       # 幂等：已经是我们这份
     # 上游永远不会包含我们自己造的这个配置常量，所以见到它就说明现场那份
+    # 是我们某个旧版本贴过的，可以放心覆盖；见不到才要按哈希再确认一遍。
     # 来龙去脉见 docs/CODE-HISTORY.md「nest.py:_apply_nest」
     ours_by_marker = _NEST_MARKER in cur
     if not ours_by_marker and _sha(cur) not in _NEST_KNOWN_OURS and \

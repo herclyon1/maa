@@ -45,7 +45,7 @@ ATTEMPTS, GAP = 8, 20
 
 def _get(url: str, timeout: int = 20) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": "ark-purge"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read()
 
 
@@ -103,7 +103,7 @@ def main() -> int:
                     got = _get(base + f"relay/{rel}", TIMEOUTS.get(name, 20))
                 except Exception:  # noqa: BLE001
                     continue
-                if hashlib.sha1(got).hexdigest() == sha:  # noqa: S324
+                if hashlib.sha1(got).hexdigest() == sha:
                     served_by.append(name)
             if not served_by:
                 missing.append(rel)

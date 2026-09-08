@@ -35,7 +35,7 @@ def start(path, wake: threading.Event) -> bool:
             return _windows(str(path), wake)
         if hasattr(select, "kqueue"):
             return _kqueue(str(path), wake)
-    except Exception:  # noqa: BLE001 - no watcher is a valid outcome
+    except Exception:
         log.exception("目录监听启动失败，退回定时扫描")
     return False
 

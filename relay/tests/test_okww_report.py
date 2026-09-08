@@ -13,7 +13,7 @@ import json, os, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 TMP = tmpdir()
 os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -87,7 +87,7 @@ print("\n[凝素领域要报人话名字，不是序号]")
 # 用户 2026-08-26：「他那个凝素领域第一个机器看得懂，人看不懂是什么啊」。
 # 序号→名字的表是实拍游戏内列表抄的，认不出的序号必须退回「第 N 个」，
 # 宁可少说也不能报错名字——列表顺序会随筛选和版本变。
-fl = collector._forgery_label                                  # noqa: SLF001
+fl = collector._forgery_label
 check("0 → 陨翼云渊", fl("info_set Teleport to Forgery Challenge 0"),
       "凝素领域·陨翼云渊（迅刀）")
 check("3 → 碎蚀云渊", fl("info_set Teleport to Forgery Challenge 3"),

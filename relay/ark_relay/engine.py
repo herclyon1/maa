@@ -128,7 +128,7 @@ class Engine:
                 if msg not in self._mode_notified:
                     self._mode_notified.add(msg)
                     self.notifier.send(texts.SKIP_MODE, msg)
-        except Exception:  # noqa: BLE001 - modes must never stop the loop
+        except Exception:
             log.exception("跳过模式处理出错")
         active = modes.debug_active(self.state.dir)
         if active != self._debug_last:
@@ -196,13 +196,13 @@ class Engine:
         self._observe_modes()
         try:
             records = self.source.fetch(self.state.seen)
-        except Exception:  # noqa: BLE001 - 读不到记录，时钟类的事照做
+        except Exception:
             log.exception("读取运行记录失败，本轮按没有新记录处理")
             records = []
         for rec in records:
             try:
                 self._handle(rec)
-            except Exception:  # noqa: BLE001 - one bad record must not stop the loop
+            except Exception:
                 log.exception("处理运行记录失败: %s", rec.run_id)
                 continue
             self.state.mark_seen(rec.run_id)
@@ -223,7 +223,7 @@ class Engine:
         ):
             try:
                 step()
-            except Exception:  # noqa: BLE001 - 这一段坏了，下一段照跑
+            except Exception:
                 log.exception("本轮「%s」这一段出错，跳过它继续", what)
         return len(records)
 
@@ -245,7 +245,7 @@ class Engine:
         try:
             self._garden.enforce()
             self._weeklyboss.enforce()
-        except Exception:  # noqa: BLE001 - 一道省时间的门，不许拖垮主流程
+        except Exception:
             log.warning("周常乐园开关没能落盘，下轮再试", exc_info=True)
 
     # ---------- 队列跑完之后再更新游戏客户端 ----------
@@ -300,7 +300,7 @@ class Engine:
                 if problems:
                     self.notifier.send(texts.unconfirmed("游戏更新", len(problems)),
                                        "\n".join(f"· {x}" for x in problems))
-            except Exception:  # noqa: BLE001
+            except Exception:
                 log.exception("游戏更新（队列后）出错")
 
         self._gu_thread = threading.Thread(target=work, name="game-update", daemon=True)
@@ -350,7 +350,8 @@ class Engine:
             except (OSError, subprocess.SubprocessError):
                 val = True  # cannot tell -> wait rather than cry wolf
             else:
-                # Endfield.exe is on this list because MaaEnd has NO process of its
+                # Endfield.exe 也要数进来：MaaEnd **没有自己的进程**，是 AUTO-MAS 的
+                # python 在进程内驱动它，只盯 MaaEnd.exe 会在整个终末地阶段全瞎。
                 # 来龙去脉见 docs/CODE-HISTORY.md「engine.py:_scripts_running」
                 val = any(n in out for n in (b"MAA.exe", b"MaaEnd.exe", b"Endfield.exe"))
         _SCRIPTS_CACHE["at"], _SCRIPTS_CACHE["val"] = now, val
@@ -424,7 +425,7 @@ class Engine:
             return
         try:
             self._annihilation.enforce()
-        except Exception:  # noqa: BLE001 - a failed fix must not break the tick
+        except Exception:
             log.exception("剿灭开关校正出错")
 
     # ---------- 记账与告警（handle.py） ----------

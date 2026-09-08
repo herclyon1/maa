@@ -26,8 +26,10 @@ class _Patch:
     present: Callable[[str], bool]      # 已经在位了吗
     breaks: str             # 贴不上会怎样，写给人看
     upstream: str = ""      # 提给上游之后填 PR 链接；合并了就删掉这条补丁
-    # 这条补丁**跨版本不变**的特征串（比如那句日志）。贴完之后它必须只出现
-    # 为什么不能拿 new 的头一行当判据：叠加是「旧版本 + 新版本」并存，
+    # 这条补丁**跨版本不变**的特征串（比如那句日志）。贴完之后它在文件里
+    # 必须只出现一次，出现两次就说明补丁叠上去了。
+    # 不能拿 new 的头一行当判据：叠加是「旧版本 + 新版本」并存，两版的头一行
+    # 往往不一样，按它数只会数到一次，正好把叠加放过去。
     # 来龙去脉见 docs/CODE-HISTORY.md「core.py:_Patch」
     unique: str = ""
 
@@ -97,7 +99,8 @@ def _stacked(f: Path, p: _Patch) -> "str | None":
 
 
 def _apply_one(root: Path, p: _Patch) -> list[str]:
-    # 注意 present() 的判据必须跟着 new 一起改。
+    # 改 new 的同时一定要改 present()：判据还认着旧文本的话，补丁会被判成
+    # 「没在位」而反复重贴，也可能被判成「已在位」而根本不贴，两种都不出声。
     # 来龙去脉见 docs/CODE-HISTORY.md「core.py:_apply_one」
     f = root.joinpath(*p.parts)
     if not f.exists():

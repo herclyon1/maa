@@ -9,7 +9,7 @@
 """
 import sys, tempfile, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from ark_relay import plan  # noqa: E402
+from ark_relay import plan
 
 with tempfile.TemporaryDirectory() as d:
     # 没有 AUTO-MAS 目录也必须能返回，不能抛

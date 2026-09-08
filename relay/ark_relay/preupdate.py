@@ -66,23 +66,23 @@ from pathlib import Path
 
 from .config import SERVER_TZ
 
-from .preupdate_common import (  # noqa: F401  —— 门面，转的是公开名
+from .preupdate_common import (
     log,
     BUDGET_SECONDS,
 )
-from .preupdate_maaend import (  # noqa: F401  —— 门面，转的是公开名
+from .preupdate_maaend import (
     run,
 )
-from .preupdate_maa import (  # noqa: F401  —— 门面，转的是公开名
+from .preupdate_maa import (
     maa_update_pending,
     run_maa,
 )
-from .preupdate_automas import (  # noqa: F401  —— 门面，转的是公开名
+from .preupdate_automas import (
     MAS_BUDGET_SECONDS,
     MAS_WAIT_SECONDS,
     run_automas,
 )
-from .preupdate_okww import (  # noqa: F401  —— 门面，转的是公开名
+from .preupdate_okww import (
     OKWW_BUDGET_SECONDS,
     OKWW_MIN_WAIT_SECONDS,
     run_okww,
@@ -170,7 +170,7 @@ def wanted_today(automas_dir: Path | None, now: datetime | None = None) -> bool:
     cfg_dir = Path(automas_dir) / "config" if automas_dir else None
     if not cfg_dir or not cfg_dir.is_dir():
         return False
-    scripts = plan._scripts(cfg_dir)  # noqa: SLF001 - same package
+    scripts = plan._scripts(cfg_dir)
     for q in plan.schedule(automas_dir):
         for hhmm in q.get("times", []):
             try:

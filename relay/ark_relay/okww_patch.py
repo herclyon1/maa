@@ -184,7 +184,8 @@ def ensure_patches(okww_dir: Path | None) -> list[str]:
     # 一次周本宝箱 60 体力，三次就是 180，而日常那步会先把 180 吃光。
     done.extend(_apply_one(root, _STAMINA))
     done.extend(_apply_one(root, _NOFARM))
-    # 2026-08-31 撤回：前提就是错的。ok.util.logger.Logger.error 的签名是
+    # 这一条 2026-08-31 已撤回，所以这里做的是**还原**：当初的前提就是错的，
+    # OK-WW 自己的 error() 本来就会打堆栈，异常并没有被吞掉。
     # 来龙去脉见 docs/CODE-HISTORY.md「okww_patch.py:ensure_patches」
     done.extend(_revert_text(root, (*_SRC, "FarmEchoTask.py"),
                              _FARMERR_NEW, _FARMERR_OLD, "周本活锁：打出被吞掉的异常"))

@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import preupdate_automas as P  # noqa: E402  # run_automas 住在这个模块里，猴子补丁要打在它身上
+from ark_relay import preupdate_automas as P  # run_automas 住在这个模块里，猴子补丁要打在它身上
 
 FAILED = []
 

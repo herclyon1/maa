@@ -17,7 +17,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, r"C:\ProgramData\ark-relay")
-from arklog import RELAY_LOG, mtime, since        # noqa: E402
+from arklog import RELAY_LOG, mtime, since
 
 OK, BAD = [], []
 

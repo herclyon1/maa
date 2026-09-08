@@ -101,13 +101,13 @@ def _post(url: str, payload: dict, headers: dict | None = None) -> dict:
     req = urllib.request.Request(
         url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         headers={**_HEADERS, "Content-Type": "application/json", **(headers or {})})
-    with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:   # noqa: S310
+    with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
         return _read(r)
 
 
 def _get(url: str, headers: dict) -> dict:
     req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:   # noqa: S310
+    with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
         return _read(r)
 
 
@@ -162,7 +162,7 @@ _did_cache = ""
 
 def get_did() -> str:
     """取设备指纹。一次会话里缓存着用，别每个请求都去要一遍。"""
-    global _did_cache
+    global _did_cache  # noqa: PLW0603
     if _did_cache:
         return _did_cache
     payload = {"appId": "default", "organization": ORG_ID, "os": "web",
@@ -211,7 +211,7 @@ def sign_headers(cred: Cred, url: str, method: str = "get",
     secret = f"{parsed.path}{query}{ts}{ca_str}"
     hexed = hmac.new(cred.token.encode(), secret.encode(), hashlib.sha256).hexdigest()
     return {"cred": cred.cred, **_HEADERS,
-            "sign": hashlib.md5(hexed.encode()).hexdigest(),   # noqa: S324 - 接口就这么定的
+            "sign": hashlib.md5(hexed.encode()).hexdigest(),
             **header_ca}
 
 
@@ -239,11 +239,11 @@ def refresh(cred: Cred) -> Cred:
 
     **业务接口之前必须先调它一次**，否则时间戳没对齐。
     """
-    global _clock_skew
+    global _clock_skew  # noqa: PLW0603
     r = _get(REFRESH_URL, {**_HEADERS, "cred": cred.cred, "dId": cred.dId})
     if r.get("code") not in (0, None):
         raise SklandError(f"刷新失败：{r.get('message')}")
-    global _synced
+    global _synced  # noqa: PLW0603
     if server_ts := r.get("timestamp"):
         _clock_skew = int(server_ts) - int(time.time())
         _synced = True

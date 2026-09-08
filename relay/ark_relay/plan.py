@@ -163,7 +163,7 @@ def _okww_zh(okww_dir: Path | None) -> dict[str, str]:
     译文用**它自己的语言包**，不自己编——`Tacet Discord Nest` 官方译作
     「残像聚落」，我先前凭感觉写成「无音区巢穴」就是错的。
     """
-    global _OKWW_PO_CACHE
+    global _OKWW_PO_CACHE  # noqa: PLW0603
     if _OKWW_PO_CACHE is not None:
         return _OKWW_PO_CACHE
     _OKWW_PO_CACHE = {}

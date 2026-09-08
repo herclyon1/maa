@@ -70,7 +70,7 @@ def fetch() -> dict:
 
 def _now_both() -> str:
     """「09-08 07:30（东京 08:30）」——两地时差一小时，不标是哪边的钟等于没标。"""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
     tokyo = datetime.now(timezone(timedelta(hours=9)))
     server = tokyo - timedelta(hours=1)
     return f"{server:%Y-%m-%d %H:%M}（东京 {tokyo:%H:%M}）"

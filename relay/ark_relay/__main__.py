@@ -129,7 +129,7 @@ def cmd_check(cfg: Config) -> int:
 
 
 def cmd_test(cfg: Config) -> int:
-    from datetime import datetime
+    from datetime import datetime  # noqa: PLC0415
     n = Notifier(cfg)
     if not n.channels:
         print("✗ 没有配置任何推送渠道")
@@ -153,7 +153,7 @@ def cmd_report(cfg: Config, mark: bool = True) -> int:
     return 0 if _build_local_engine(cfg).send_daily_now(mark=mark) else 1
 
 
-def _acquire_singleton(cfg: Config) -> object | None:  # noqa: C901
+def _acquire_singleton(cfg: Config) -> object | None:
     """Refuse to start twice.
 
     Two relays watching the same directory means every alert and every daily
@@ -162,7 +162,7 @@ def _acquire_singleton(cfg: Config) -> object | None:  # noqa: C901
     """
     cfg.state_dir.mkdir(parents=True, exist_ok=True)
     lock = cfg.state_dir / "relay.lock"
-    try:  # noqa: PLR1702
+    try:
         # Exclusive create: fails if another instance already holds it.
         fh = lock.open("x")
     except FileExistsError:
@@ -211,7 +211,7 @@ def cmd_local(cfg: Config) -> int:
     try:
         if _acquire_singleton(cfg) is None:
             return 1
-    except Exception:  # noqa: BLE001
+    except Exception:
         # The lock is a convenience, not a precondition. A relay that refuses
         # to start because its own guard misbehaved is worse than two relays.
         logging.getLogger("ark").exception("单实例锁异常，忽略并继续启动")
@@ -224,9 +224,9 @@ def cmd_local(cfg: Config) -> int:
     # path does this at startup; without it here, running local mode across a
     # Monday rollover left Annihilation stuck at Close indefinitely.
     try:
-        if msg := engine._annihilation.maybe_reopen():  # noqa: SLF001
+        if msg := engine._annihilation.maybe_reopen():
             engine.notifier.send(texts.WEEKLY, msg)
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.exception("剿灭周期检查出错，跳过")
     # Deployed Windows machines run service.py, where new records arrive as
     # directory-change events through pywin32. This mode gets the same shape
@@ -245,7 +245,7 @@ def cmd_local(cfg: Config) -> int:
         except KeyboardInterrupt:
             log.info("退出")
             return 0
-        except Exception:  # noqa: BLE001 - the loop must survive anything
+        except Exception:
             log.exception("本轮处理出错，继续")
         try:
             if wake.wait(timeout=_sleep_until_alarm(engine, backstop)):
@@ -264,7 +264,7 @@ def _sleep_until_alarm(engine, cap: float) -> float:
         if alarm := engine.next_deadline():
             due, _why = alarm
             return max(1.0, min((due - datetime.now(tz=SERVER_TZ)).total_seconds() + 1, cap))
-    except Exception:  # noqa: BLE001 - a broken alarm degrades into lateness
+    except Exception:
         logging.getLogger("ark").exception("计算下一个时刻出错，退回备用间隔")
     return cap
 

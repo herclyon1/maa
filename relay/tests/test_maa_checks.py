@@ -13,8 +13,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay.handle import _maa_app_log  # noqa: E402
-from ark_relay.outcome import maa_checks, summarize  # noqa: E402
+from ark_relay.handle import _maa_app_log
+from ark_relay.outcome import maa_checks, summarize
 
 FAILED = []
 
@@ -75,7 +75,7 @@ def main():
     check("空文本同样不许全绿", summarize(maa_checks(""), "MAA") is not None, True)
 
     print("_maa_app_log 的切窗：起点和终点都要管")
-    import tempfile
+    import tempfile  # noqa: PLC0415
     with tempfile.TemporaryDirectory() as d:
         dbg = Path(d) / "debug"
         dbg.mkdir()

@@ -9,9 +9,9 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from ark_relay import collector, wuwa_tacet  # noqa: E402
+from ark_relay import collector, wuwa_tacet
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 
 fails = []
 BAD = re.compile(r"#\s*\d|声骸与角色突破材料|武器突破材料$|副本奖励")
@@ -54,7 +54,7 @@ for idx, (_, sets) in wuwa_tacet.TACET.items():
         fails.append(f"手机页 TACET 里第 {idx} 项和 wuwa_tacet 对不上")
 
 from ark_relay import wuwa_forgery  # noqa: E402
-import re as _re
+import re as _re  # noqa: E402
 for m in _re.finditer(r'\["(\d+) · [^"]*（([^）"]+)）", (\d+)\]', js):
     idx = int(m.group(3))
     if wuwa_forgery.FORGERY.get(idx, ("",))[0] != m.group(2):

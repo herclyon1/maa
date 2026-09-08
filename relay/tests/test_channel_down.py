@@ -10,7 +10,7 @@ import json, os, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 TMP = tmpdir()
 os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP),
                   SERVERCHAN_KEY="", WECOM_CORPID="", ARK_LLM_KEY="")

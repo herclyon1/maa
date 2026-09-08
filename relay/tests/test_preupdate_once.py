@@ -15,11 +15,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay.config import SERVER_TZ                    # noqa: E402
-from ark_relay.statestore import StateStore              # noqa: E402
-from ark_relay.preupdate import RETRY_MIN, mark_run, should_run  # noqa: E402
+from ark_relay.config import SERVER_TZ
+from ark_relay.statestore import StateStore
+from ark_relay.preupdate import RETRY_MIN, mark_run, should_run
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 
 FAILED: list[str] = []
 

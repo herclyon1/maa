@@ -36,7 +36,7 @@ def update_hint(now: datetime | None = None, fetch=None) -> str:
     try:
         if fetch is None:
             req = urllib.request.Request(_URL, headers={"User-Agent": _UA})
-            with urllib.request.urlopen(req, timeout=8) as r:   # noqa: S310
+            with urllib.request.urlopen(req, timeout=8) as r:
                 data = json.loads(r.read().decode("utf-8"))
         else:
             data = fetch()

@@ -20,7 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay.config import Config  # noqa: E402
+from ark_relay.config import Config
 
 FAILED = []
 
@@ -73,9 +73,9 @@ def main() -> int:
         check("AUTO-MAS 里查不到就是 None，不许编路径", c4.maaend_dir, None)
 
     print("\n=== 解析不出来时必须喊，不许静默 return ===")
-    import logging
-    from ark_relay import engine as E
-    from ark_relay import handle as H
+    import logging  # noqa: PLC0415
+    from ark_relay import engine as E  # noqa: PLC0415
+    from ark_relay import handle as H  # noqa: PLC0415
 
     class _Rec:
         run_id = "r/1"

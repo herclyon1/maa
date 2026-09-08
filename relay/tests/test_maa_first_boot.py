@@ -13,7 +13,7 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from ark_relay.preupdate_maa import _MAA_FIRST_BOOT, _MAA_LATEST# noqa: E402
+from ark_relay.preupdate_maa import _MAA_FIRST_BOOT, _MAA_LATEST
 
 fails = []
 

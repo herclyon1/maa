@@ -13,8 +13,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ark_relay import modes
-from ark_relay.statestore import StateStore                      # noqa: E402
-from ark_relay.config import SERVER_TZ           # noqa: E402
+from ark_relay.statestore import StateStore
+from ark_relay.config import SERVER_TZ
 
 FAILED = []
 

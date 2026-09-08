@@ -70,7 +70,7 @@ RAW_TIMEOUT = 45
 def _get_once(url: str, timeout: int = 20) -> bytes | None:
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "ark-relay"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.read()
     except (urllib.error.URLError, OSError, ValueError,
             http.client.HTTPException) as exc:
@@ -193,7 +193,7 @@ def _get_with_retry(url: str, attempts: int = 3, timeout: int = 20,
 
 
 def _sha1(data: bytes) -> str:
-    return hashlib.sha1(data).hexdigest()  # noqa: S324 - change detection, not security
+    return hashlib.sha1(data).hexdigest()
 
 
 def _atomic_write(target: Path, data: bytes) -> None:

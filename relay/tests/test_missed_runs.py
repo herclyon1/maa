@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 TMP = tmpdir()
 AUTOMAS = TMP / "AUTO-MAS"; (AUTOMAS / "config").mkdir(parents=True)
 STATE = TMP / "state"; STATE.mkdir()
@@ -117,7 +117,7 @@ reset()
 (STATE / "ledger-2026-08-21.jsonl").write_text(json.dumps({
     "script": "MAA", "started": at(21, 31).isoformat(),
     "finished": at(21, 55).isoformat(), "ok": True, "run_id": "x"}), encoding="utf-8")
-import ark_relay.plan as _plan
+import ark_relay.plan as _plan  # noqa: E402
 _orig = _plan.recent_due_queues
 _plan.recent_due_queues = lambda d, n, window_minutes=120: [
     {"name": "Evening-MAA", "due": at(21, 30), "kinds": ["MAA", "MaaEnd"]}]

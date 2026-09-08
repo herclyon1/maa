@@ -190,7 +190,7 @@ def _fetch_once(url: str, timeout: int = 20,
     """
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "ark-relay"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read()
     except (urllib.error.URLError, OSError, ValueError,
             http.client.HTTPException) as exc:
@@ -275,7 +275,7 @@ class Inbox:
         log.info("收到待办 v%s（当前 v%s）：%s", version, have, note or "(无说明)")
         try:
             messages = self._apply(commands)
-        except Exception as exc:  # noqa: BLE001 - a torn batch must still report
+        except Exception as exc:
             # Without this, an exception mid-batch (copy2 on a locked file,
             # disk full) escaped to the caller, which swallowed it - so a
             # half-applied batch produced NO push and NO version marker, and

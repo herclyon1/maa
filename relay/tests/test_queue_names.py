@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 STATE = tmpdir()
 os.environ["ARK_STATE_DIR"] = str(STATE)
 from ark_relay import commands, names  # noqa: E402

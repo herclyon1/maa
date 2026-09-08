@@ -101,7 +101,8 @@ def _maybe_interim_report(eng, now: datetime | None = None) -> None:
 def _maybe_daily_report(eng, now: datetime | None = None) -> None:
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     day = now.strftime("%Y-%m-%d")
-    # Yesterday first. Everything below keys off "today", so a report that
+    # 先补昨天：下面所有判断都以「今天」为准，昨天那份日报如果没发出去，
+    # 过了零点就再也没有机会补，只能在这里先了结。
     # 来龙去脉见 docs/CODE-HISTORY.md「report.py:_maybe_daily_report」
     yday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
     if not eng.state.report_sent(yday) and (
@@ -153,7 +154,8 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     failed = [e for e in entries if not e["ok"]]
     head = "全绿 ✅" if not failed else f"{len(failed)} 项出错 ⚠️"
     title = f"📋 {day[5:]} · {head}"
-    # Event countdown rides on every report (operator order, 2026-08-20):
+    # 活动倒计时挂在每份日报上（用户 2026-08-20 要的）：他要的是每天看一眼
+    # 还剩几天，而不是等到最后一天才被提醒。
     # 来龙去脉见 docs/CODE-HISTORY.md「report.py:_compose_daily」
     act = plan.activity_countdown(eng.cfg.automas_dir)
     # 卡池倒计时同理，挂在最后（用户 2026-08-30 的要求：放在通知末尾）。
@@ -163,7 +165,7 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
         rows, nxt = banners.collect(bnow, skland_token=eng.cfg.skland_token)
         pool = banners.render(rows, bnow, nxt, banners.previews(bnow, rows, banners.version_ends(bnow, rows)))
         eng._announce_banners(bnow, nxt)
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.warning("卡池那一段整体失败", exc_info=True)
         pool = ""
     tail = "".join(f"\n\n{x}" for x in (act, pool) if x)
@@ -251,7 +253,7 @@ def _tacet_caption(eng, day: str = "") -> str:
     from . import weeklyboss, wuwa_tacet  # noqa: PLC0415
     want = None
     try:
-        daily = weeklyboss._read(weeklyboss._file(eng.cfg.automas_dir, "DailyTask.json"))  # noqa: SLF001
+        daily = weeklyboss._read(weeklyboss._file(eng.cfg.automas_dir, "DailyTask.json"))
         want = int((daily or {}).get("Which Tacet Suppression to Farm") or 0) or None
     except Exception:  # noqa: BLE001
         want = None

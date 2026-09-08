@@ -4,8 +4,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import gameupdate as gu  # noqa: E402
-from ark_relay.desktop import Line, Screen  # noqa: E402
+from ark_relay import gameupdate as gu
+from ark_relay.desktop import Line, Screen
 
 fails = []
 def check(label, got, want):
@@ -31,7 +31,7 @@ class FakeDesk:
 spawned = []
 gu._spawn = lambda exe, cwd=None: spawned.append(exe.name) or True
 gu.kill = lambda *names: None
-nosleep = lambda s: None
+nosleep = lambda s: None  # noqa: E731
 
 print("[终末地：已是「开始游戏」就什么都不做]")
 d = FakeDesk([["登录", "开始游戏"]])
@@ -54,7 +54,7 @@ out = gu.update_endfield(d, Path("Endfield.exe"), Path("Launcher.exe"), problems
 check("空", out, ""); check("问题里说没读到", any("没读到按钮" in x for x in probs), True)
 
 print("[鸣潮：读到「更新」就点，等到「开始游戏」]")
-import ark_relay.preupdate as pu
+import ark_relay.preupdate as pu  # noqa: E402
 pu._okww_quiesce = lambda: None
 d = FakeDesk([["公告", "立即更新"], ["下载中"], ["开始游戏"], ["点击连接"]]); probs = []
 out = gu.update_wuwa(d, Path("Wuthering Waves.exe"), poll_s=0, problems=probs, sleep=nosleep)
@@ -77,8 +77,8 @@ def run(args):
     if " install " in s: state["ver"] = "2.8.01"
     if "taskkill" in s or "quit" in s: state["up"] = False
     return ""
-spawn = lambda exe, args: state.__setitem__("up", True) or True
-fetch = lambda: {"clientVersion": "2.7.61", "resVersion": "x"}
+spawn = lambda exe, args: state.__setitem__("up", True) or True  # noqa: E731
+fetch = lambda: {"clientVersion": "2.7.61", "resVersion": "x"}  # noqa: E731
 out = gu.update_arknights(ST, Path("ldconsole.exe"), 1000, fetch=fetch, run=run, sleep=nosleep, downloader=lambda *a, **k: True, spawn=spawn)
 check("首次：只记录不更新", out, "")
 check("记录了已装版本", gu.recorded_ak_version(ST), "2.7.61")
@@ -86,7 +86,7 @@ check("首次读完关掉了模拟器", any("taskkill" in " ".join(map(str, c)) 
 calls.clear()
 out = gu.update_arknights(ST, Path("ldconsole.exe"), 1000, fetch=fetch, run=run, sleep=nosleep, downloader=lambda *a, **k: True, spawn=spawn)
 check("同版本：不动", out, ""); check("同版本不起模拟器", calls, [])
-fetch2 = lambda: {"clientVersion": "2.8.01"}
+fetch2 = lambda: {"clientVersion": "2.8.01"}  # noqa: E731
 dl = []
 def downloader(url, dest, timeout=0):
     dl.append(dest.name); dest.parent.mkdir(parents=True, exist_ok=True); dest.write_bytes(b"apk"); return True
@@ -98,7 +98,7 @@ check("装完记录更新", gu.recorded_ak_version(ST), "2.8.01")
 check("装完删了包", (ST / "apk" / "arknights-2.8.01.apk").exists(), False)
 
 print("[登记：哪个游戏要更新]")
-from datetime import datetime as _dt
+from datetime import datetime as _dt  # noqa: E402
 check("空", gu.pending(ST), {})
 check("登记", gu.mark_pending(ST, "终末地", "公告说今天版本更新"), True)
 check("重复登记不算", gu.mark_pending(ST, "终末地", "又来"), False)
@@ -173,7 +173,7 @@ notes, probs, reran = gu.run_deferred(cfg, now=now, desk=FakeDesk([["开始游�
 check("普通失败 → 不重跑 OK-WW", reran, [])
 
 print("[维护日：窗口落盘、撞上算维护、队列后等开服再补跑]")
-from datetime import timedelta as _td
+from datetime import timedelta as _td  # noqa: E402
 w_start = _dt(2026, 9, 4, 6, 0, tzinfo=gu.SERVER_TZ); w_end = _dt(2026, 9, 4, 12, 0, tzinfo=gu.SERVER_TZ)
 gu.save_windows(ST, {"明日方舟": (w_start, w_end, "官方公告：09-04 06:00–12:00 停机维护")})
 check("09:00 的 MAA 撞上维护", bool(gu.in_maintenance(ST, "MAA", _dt(2026, 9, 4, 9, 0, tzinfo=gu.SERVER_TZ))), True)
@@ -206,7 +206,7 @@ gu.clear_pending(ST, "明日方舟")
 print("[维护日：队列时刻落在窗口里 → 摘掉；补跑完加回]")
 gu.save_windows(ST, {})
 (ST / "queue-skips.json").unlink(missing_ok=True)
-import ark_relay.plan as _plan
+import ark_relay.plan as _plan  # noqa: E402
 _plan_backup = _plan.schedule
 _plan.schedule = lambda d: [{"name": "早班", "times": ["09:00"]}, {"name": "晚班", "times": ["21:30"]}]
 cfg.automas_dir = ST
@@ -228,14 +228,14 @@ cfg.maa_dir = None   # 找不到雷电 → 准备失败 → 每 10 分钟重试�
 notes, probs, reran = gu.run_deferred(cfg, now=_dt(2026, 9, 4, 10, 30, tzinfo=gu.SERVER_TZ), desk=FakeDesk([["x"]]), dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=lambda s: None, clock=clk2)
 check("准备不了 → 不补跑、问题里说明", (reran, any("仍没准备好" in p for p in probs)), ([], True))
 gu.clear_pending(ST, "明日方舟")
-import ark_relay.gameupdate as _gu2
+import ark_relay.gameupdate as _gu2  # noqa: E402
 _orig_restore = _gu2.restore_skips
 done = gu.restore_skips(ST, restorer=lambda rec: restored.append(rec["script"]) or True)
 check("加回", (done, restored, gu.skips(ST)), (["MAA→「早班」"], ["MAA"], []))
 _plan.schedule = _plan_backup
 
 print("[每次开机只跑一遍]")
-from datetime import datetime
+from datetime import datetime  # noqa: E402
 check("没记录→跑", gu.should_run(ST, datetime.now(), boot_id="b1"), True)
 gu.mark_run(ST, datetime.now(), boot_id="b1")
 check("同一次开机→不跑", gu.should_run(ST, datetime.now(), boot_id="b1"), False)

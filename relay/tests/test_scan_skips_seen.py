@@ -7,9 +7,9 @@ import json, os, sys, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import collector  # noqa: E402
+from ark_relay import collector
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 
 root = tmpdir()
 for day, stem in (("2026-08-25", "MAA-05-00-00"), ("2026-09-07", "MAA-05-00-00")):

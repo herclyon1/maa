@@ -243,7 +243,7 @@ def _close(exe: Path) -> None:
     that leaves a window on the desktop is a pre-update that changed the thing it
     was supposed to leave alone."""
     try:
-        subprocess.run(  # noqa: S603
+        subprocess.run(
             ["taskkill", "/IM", exe.name, "/F"],
             capture_output=True, timeout=30, check=False)
     except (OSError, subprocess.SubprocessError):

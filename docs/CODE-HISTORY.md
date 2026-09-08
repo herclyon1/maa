@@ -91,8 +91,6 @@
 # the one that stays.
 ```
 
-## service.py:_stage_preupdate
-
 ```
 # Anything that could not be *checked* lands here. A pre-update
 # that cannot tell whether an update exists must say so: on
@@ -100,8 +98,6 @@
 # never ran, and the unchanged version file was reported as
 # 无需更新 while v3.6.5 had been out for fourteen hours.
 ```
-
-## service.py:_stage_preupdate
 
 ```
 # OK-WW 的自动更新会整段覆盖 src，把本地补丁抹掉
@@ -128,6 +124,24 @@
 # 它内部走 exception_to_str(exception) 打印堆栈。上游写法没问题。
 # 而我加的 exc_info=True 这个封装根本不认，当场 TypeError，
 # 把一次可恢复的重试变成了硬崩溃（16:00 那趟就是这么死的）。
+```
+
+```
+2026-08-30 从四个减到一个。留下的只有残象聚落那份整份替换，
+因为「只刷指定点位」上游根本没有，只能靠换掉整个文件拿到。
+
+撤掉的三个，理由都是**没有证据说它们现在还在起作用**：
+
+* 主C饿死兜底 —— 是我们自己改过游戏键位造成的（已在上游 #1632
+承认并自行关闭 PR）。键位改回默认后症状再没出现。
+* 副本失败不拖垮每日任务 —— 对应 08-26 那次「走向宝箱捡不到东西 →
+等待超时 → 整个日常崩掉」，多半是背包满。而这条补丁是 08-28 才加的，
+**症状 08-27 就已经不再出现**，加它之前病就好了。
+* 领奖置底 —— 上游作者 2026-08-29 关闭了 PR #1631，没有留任何说明。
+而且这个顺序是作者有意为之，`config_description` 里明写着。
+改成 issue 去问「能不能做成可配置」，本地不再改。
+
+三个都主动还原，不是只停止重打。
 ```
 
 ## engine.py:Engine
@@ -159,6 +173,15 @@
 # 那种情况宁可多取也不要把整趟切没了。
 ```
 
+```
+AUTO-MAS 的 history 日志只记「脚本跑完了没有」，**没有子任务级别的成败**。
+所以在 2026-08-30 之前，基建整个失败（`InfrastAbstractTask::on_run_fails`）
+也照样被记成全绿——用户连着两天看到的「全绿」就是这么来的。
+
+和 MaaEnd 不一样的地方：MaaEnd 每轮一个新文件，可以按 mtime 挑；
+MAA 是**一个滚动的 asst.log**，只能按行首时间戳切。
+```
+
 ## handle.py:_handle
 
 ```
@@ -169,16 +192,12 @@
 # to get from 0 to 1800.
 ```
 
-## handle.py:_handle
-
 ```
 # 2026-08-26：这里原本写的是 `notes.append(msg)`，可这个作用域里
 # 根本没有 notes——一路 NameError 把整个 _handle 打断，那条
 # OK-WW 记录当场「处理运行记录失败」。照 🗓️ 剿灭 那支写，
 # 两条周门本来就该是一个形状。
 ```
-
-## handle.py:_handle
 
 ```
 # AUTO-MAS 说「这个脚本正常退出了」，不等于它把活干成了。
@@ -187,8 +206,6 @@
 # 记 ✅、照样静默。用户的原话是「他不报错，他直接把自己关掉了」。
 # 所以退出之前先按证据核对一遍，没干成的必须出声。
 ```
-
-## handle.py:_handle
 
 ```
 # MaaEnd 启动时会「Auto-cleared log files and debug artifacts」——
@@ -382,8 +399,6 @@
 # 把整个日常带崩（我 16:00 那次就是这么崩的）。
 ```
 
-## nowave.py:(模块级)
-
 ```
 # v1 那一版的原文。留着**只为了还原**：它的替换文本末尾自带锚点
 # `self.click_team_challenge()`，所以我把 present() 改成认 v3 之后，
@@ -391,8 +406,6 @@
 # 而 v1 正是会误判的那版。2026-09-01 实测：波片 91（>60）也被判成
 # 「不足」跳过了。补丁的 new 里带着自己的 old，是这次叠加的根源。
 ```
-
-## nowave.py:(模块级)
 
 ```
 # 上一版 v3 的原文，留着**只为了还原**。它把锚点 click_team_challenge()
@@ -512,26 +525,6 @@ seconds here is cheap. Failing to wait costs the entire update.
 准备的守卫，这里补上调用。
 ```
 
-## okww_patch.py:ensure_patches
-
-```
-2026-08-30 从四个减到一个。留下的只有残象聚落那份整份替换，
-因为「只刷指定点位」上游根本没有，只能靠换掉整个文件拿到。
-
-撤掉的三个，理由都是**没有证据说它们现在还在起作用**：
-
-* 主C饿死兜底 —— 是我们自己改过游戏键位造成的（已在上游 #1632
-承认并自行关闭 PR）。键位改回默认后症状再没出现。
-* 副本失败不拖垮每日任务 —— 对应 08-26 那次「走向宝箱捡不到东西 →
-等待超时 → 整个日常崩掉」，多半是背包满。而这条补丁是 08-28 才加的，
-**症状 08-27 就已经不再出现**，加它之前病就好了。
-* 领奖置底 —— 上游作者 2026-08-29 关闭了 PR #1631，没有留任何说明。
-而且这个顺序是作者有意为之，`config_description` 里明写着。
-改成 issue 去问「能不能做成可配置」，本地不再改。
-
-三个都主动还原，不是只停止重打。
-```
-
 ## handle.py:_okww_nest_expected
 
 ```
@@ -550,17 +543,6 @@ seconds here is cheap. Failing to wait costs the entire update.
 2026-08-29 早班就是只核对了后者，于是「MaaEnd 跑完」这条恒为假，
 推了一条「这一轮没干完」的假告警——而 MaaEnd 当时 09:54:38 明明打了那句。
 判据没错，错在没把它该看的文件给它。
-```
-
-## handle.py:_maa_app_log
-
-```
-AUTO-MAS 的 history 日志只记「脚本跑完了没有」，**没有子任务级别的成败**。
-所以在 2026-08-30 之前，基建整个失败（`InfrastAbstractTask::on_run_fails`）
-也照样被记成全绿——用户连着两天看到的「全绿」就是这么来的。
-
-和 MaaEnd 不一样的地方：MaaEnd 每轮一个新文件，可以按 mtime 挑；
-MAA 是**一个滚动的 asst.log**，只能按行首时间戳切。
 ```
 
 ## handle.py:_warn_if_evidence_stale
@@ -714,7 +696,6 @@ _apply_one 就在 v1 上面又贴了一层——两段检查同时存在，旧�
 
 判据用 new 的第一行（各版本独有的那句注释/代码），出现超过一次就是叠了。
 ```
-
 
 ## service.py:stop_event
 

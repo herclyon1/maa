@@ -30,7 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay.banners import (  # noqa: E402
+from ark_relay.banners import (
     _AK_PAGES, _PRTS, debut_only, parse_ak_schedule, parse_arknights,
     gh_raw, group_notice, newest_version, opening_tomorrow, parse_endfield,
     parse_endfield_notice, parse_wuwa, parse_wuwa_preview, render, upcoming,
@@ -208,7 +208,7 @@ def main() -> int:
 
     check("一条都没有时整段为空", render([], now, {}), "")
     # ── 前瞻行 ──
-    from ark_relay import banners as _b
+    from ark_relay import banners as _b  # noqa: PLC0415
     pv = _b.previews(datetime(2026, 9, 3), [], {"终末地": datetime(2026, 9, 30, 11, 59), "鸣潮": datetime(2026, 10, 1, 4, 0)})
     check("终末地前瞻：版本前 12 天 19:00", pv["终末地"].startswith("09-18 19:00"), True)
     check("鸣潮前瞻：版本前 13 天 19:00", pv["鸣潮"].startswith("09-18 19:00"), True)
@@ -218,10 +218,10 @@ def main() -> int:
     check("只有前瞻也出这个游戏的块", "鸣潮\n· 前瞻　09-18 19:00（…）" in out3, True)
 
     # ── 只报最高稀有度（用户 2026-09-03）────────────────────
-    from ark_relay import banners as _b
+    from ark_relay import banners as _b  # noqa: PLC0415
     notice_html = "<p>■ 全新干员 6星干员【提弗洛斯】、5星干员【噗切娜】 ■ 全新武器 …</p><p>1.「冬猎」特许寻访 · 寻访说明：6星干员【提弗洛斯】获取概率提升</p>"
     check("终末地公告：5 星赠送角色不进首发名单", parse_endfield_notice(notice_html), [("提弗洛斯", "冬猎")])
-    import json as _json
+    import json as _json  # noqa: PLC0415
     full = _json.loads((FX / "ef_bulletin_full_2026-09-03.json").read_text(encoding="utf-8"))
     def _walk(o, acc):
         if isinstance(o, dict):
@@ -237,11 +237,11 @@ def main() -> int:
           [("提弗洛斯", "冬猎", None, True), ("伊冯", "绚丽异彩", "09-24 12:00", False)])
     ak_list = (FX / "maint" / "ak_news.html").read_text(encoding="utf-8", errors="replace")
     ak_art = (FX / "ak_banner_1457.html").read_text(encoding="utf-8", errors="replace")
-    ak_get = lambda u: ak_art if u.endswith("/1457") else ak_list
+    ak_get = lambda u: ak_art if u.endswith("/1457") else ak_list  # noqa: E731
     nxt = _b.arknights_next_from_news(datetime(2026, 9, 3, 0, 0), get=ak_get)
     check("方舟下一期：09-04 12:00 结城理「石白深蓝之夜」", (nxt[0].strftime("%m-%d %H:%M"), nxt[1]) if nxt else None, ("09-04 12:00", "结城理「石白深蓝之夜」"))
     check("已经开了就不当下一期", _b.arknights_next_from_news(datetime(2026, 9, 5, 0, 0), get=ak_get), None)
-    fake_prts = lambda n: {"予愿安洁莉娜": "|稀有度=5", "珊比": "|稀有度=5", "嘉辛塔": "|稀有度=4"}.get(n, "")
+    fake_prts = lambda n: {"予愿安洁莉娜": "|稀有度=5", "珊比": "|稀有度=5", "嘉辛塔": "|稀有度=4"}.get(n, "")  # noqa: E731
     b6 = _b.Banner("明日方舟", "车辙与风的归所", ("予愿安洁莉娜", "珊比", "嘉辛塔"), datetime(2026, 8, 1), datetime(2026, 8, 15))
     check("方舟池只留六星（PRTS 稀有度 5=六星）", _b.six_star_only(b6, fake_prts).chars, ("予愿安洁莉娜", "珊比"))
     check("稀有度查不到的名字去掉，不冒充", _b.six_star_only(_b.Banner("明日方舟", "x", ("无名",), datetime(2026, 8, 1), datetime(2026, 8, 15)), fake_prts).chars, ())

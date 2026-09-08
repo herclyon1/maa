@@ -9,10 +9,10 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import garden as G  # noqa: E402
-from ark_relay.config import SERVER_TZ  # noqa: E402
+from ark_relay import garden as G
+from ark_relay.config import SERVER_TZ
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 
 fails = []
 def check(label, got, want):

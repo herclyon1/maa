@@ -393,7 +393,7 @@ def kill(*names: str) -> None:
     """taskkill 几个进程名，不在也不报错。"""
     for name in names:
         try:
-            subprocess.run(["taskkill", "/F", "/IM", name],  # noqa: S603, S607
+            subprocess.run(["taskkill", "/F", "/IM", name],
                            capture_output=True, timeout=30)
         except (OSError, subprocess.SubprocessError):
             pass

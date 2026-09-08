@@ -8,8 +8,8 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import report, notify  # noqa: E402
-from ark_relay.config import SERVER_TZ  # noqa: E402
+from ark_relay import report, notify
+from ark_relay.config import SERVER_TZ
 
 fails = []
 def check(label, got, want):

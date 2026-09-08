@@ -31,7 +31,7 @@ Window = tuple[datetime, datetime, str]
 
 def _get(url: str, timeout: int = 20) -> str:
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
-    with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read().decode("utf-8", "replace")
 
 
@@ -120,7 +120,7 @@ def today(now: datetime | None = None, sources=None) -> dict[str, Window]:
     for game, fn in (sources if sources is not None else SOURCES).items():
         try:
             w = fn(now)
-        except Exception:  # noqa: BLE001 - 公告取不到不是事故
+        except Exception:
             log.warning("维护公告：%s 取不到", game, exc_info=True)
             continue
         if w and w[0].date() <= now.date() <= w[1].date():

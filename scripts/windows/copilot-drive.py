@@ -101,7 +101,7 @@ def callback(msg, details, arg):
 
 
 def adb(*args) -> None:
-    import subprocess
+    import subprocess  # noqa: PLC0415
     try:
         subprocess.run([ADB, "-s", ADDRESS, *args], capture_output=True, timeout=25)
     except Exception:                        # noqa: BLE001

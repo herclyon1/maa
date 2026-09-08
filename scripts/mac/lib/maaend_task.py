@@ -27,7 +27,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from maaend_essence import (AGENTS, MAAEND, api, ensure_resource,  # noqa: E402
+from maaend_essence import (AGENTS, MAAEND, api, ensure_resource,
                             pick_instance, preflight)
 
 

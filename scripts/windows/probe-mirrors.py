@@ -46,7 +46,7 @@ def probe(url: str) -> tuple[int, list[int], dict, int | None]:
         t = time.time()
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "ark-probe"})
-            with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:  # noqa: S310
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
                 body = resp.read()
             data = json.loads(body)
             version = data.get("version")

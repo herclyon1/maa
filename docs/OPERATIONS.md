@@ -1326,23 +1326,11 @@ outside the machine - silently, which is the whole hazard this file is about.
 | Self-update failed right after boot with `getaddrinfo failed` | no resolver yet, not a flaky mirror. All four doors failing in the same second is the tell |
 | Report says something happened at an impossible hour | the history filename is on a UTC+4 clock |
 
-## Open items
+## Known limits
 
-Split by what is needed to close them, so the list is not read as work handed
-to the operator when most of it is not.
-
-### Requires access outside this repository
-
-- **WeCom `errcode=60020`.** Either add the current egress IP in the admin
-  console (the alarm carries it), or create a group bot and set `WECOM_BOT_URL`,
-  which has no trusted-IP list and survives a changing home IP. Server酱 is
-  carrying everything meanwhile.
-- **The watchdog needs three repository secrets** - `TS_OAUTH_CLIENT_ID`,
-  `TS_OAUTH_SECRET`, `SERVERCHAN_KEY` - and `enabled: true` in
-  `queue/watchdog.json`.
-- **`ARK_LLM` (DeepSeek) reports the model unavailable.** Reports fall back to
-  structured formatting with no prose line, which costs one sentence and
-  nothing else. Needs a working key.
+待办**不在这里**，在 [欠的活.md](欠的活.md) —— 2026-09-08 之前同一条要写两遍
+（企业微信 60020、watchdog 的三个 secret 两处各有一份），改了一处另一处就成了错的。
+这一节只留「已经想清楚、不打算改」的既定行为，它们不是活，是这套系统的性格。
 
 ### Accepted limits - understood, not going to be fixed
 
@@ -1363,19 +1351,6 @@ to the operator when most of it is not.
   window would also widen the "wait for a script that never ran" hold that
   shares it. The realistic case - a selfupdate restart minutes after the run -
   is fixed.
-
-### Outstanding work - not blocked on anything external
-
-- **Alarms are only as timely as AUTO-MAS's writes.** It flushes every attempt
-  at once when the script ends, so a 09:17 login failure cannot be known before
-  ~09:58; the relay's own file-to-push latency is 34 s. Fixing it means tailing
-  MaaEnd's live log as a second source and deciding which one wins when they
-  disagree. Deliberately not done the evening before a run: a new log parser
-  that misreads a line turns a working night into false alarms.
-- ~~**MaaEnd's first-attempt failure has no confirmed cause.**~~ Solved
-  2026-08-22: MaaEnd updates itself at startup and restarts its own process,
-  orphaning the log monitor AUTO-MAS just attached. `preupdate.py` now does that
-  update in the boot-to-queue gap. See [PITFALLS.md](PITFALLS.md).
 
 ## Appendix: driving PlayCover games on the Mac
 

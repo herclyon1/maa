@@ -32,7 +32,7 @@ NOISE = re.compile(r"GameDataReportService|HttpResponseLogging|penguin-stats|yit
 
 def load():
     try: return json.loads(STATE.read_text(encoding="utf-8"))
-    except Exception: return {}
+    except Exception: return {}  # noqa: BLE001
 
 def procs():
     out = subprocess.run(["tasklist", "/fo", "csv", "/nh"], capture_output=True,
@@ -73,7 +73,7 @@ try:
     d = json.loads(raw)
     rows = d if isinstance(d, list) else sum((v for v in d.values() if isinstance(v, list)), [])
     seen = set(st.get("mxu_ids") or [])
-    strip = lambda h: re.sub(r"<[^>]+>", "", str(h)).replace("\n", " ").strip()
+    strip = lambda h: re.sub(r"<[^>]+>", "", str(h)).replace("\n", " ").strip()  # noqa: E731
     fresh = []
     for r in rows:
         rid = r.get("id")

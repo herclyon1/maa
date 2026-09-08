@@ -375,14 +375,14 @@ def emulator_quit(ldconsole: Path, idx: int, run=None, sleep=time.sleep) -> None
 
 def remote_ak_version(fetch=None) -> str:
     data = fetch() if fetch else json.loads(
-        urllib.request.urlopen(urllib.request.Request(  # noqa: S310
+        urllib.request.urlopen(urllib.request.Request(
             AK_VERSION_URL, headers={"User-Agent": _UA}), timeout=20).read())
     return str((data or {}).get("clientVersion") or "")
 
 
 
 def _store(state_dir):
-    from .statestore import StateStore  # noqa: PLC4015 - 避免导入环
+    from .statestore import StateStore  # noqa: PLC0415 - 避免导入环
     return StateStore(state_dir)
 
 
@@ -403,7 +403,7 @@ def download(url: str, dest: Path, *, timeout: float = 1500) -> bool:
     have = part.stat().st_size if part.exists() else 0
     req = urllib.request.Request(url, headers={"User-Agent": _UA, "Range": f"bytes={have}-"})
     deadline = time.monotonic() + timeout
-    with urllib.request.urlopen(req, timeout=60) as r:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=60) as r:
         cr = r.headers.get("Content-Range") or ""
         total = int(cr.rsplit("/", 1)[-1]) if "/" in cr else have + int(r.headers.get("Content-Length") or 0)
         if r.status == 200:
@@ -604,7 +604,7 @@ def wuwa_update_day(now: datetime, fetch=None) -> str:
     """
     try:
         data = fetch() if fetch else json.loads(
-            urllib.request.urlopen(urllib.request.Request(  # noqa: S310
+            urllib.request.urlopen(urllib.request.Request(
                 _WW_NOTICE_URL, headers={"User-Agent": _UA}), timeout=20).read())
         items = [(str(n.get("tabTitle") or ""), str(n.get("content") or ""))
                  for n in (data.get("game") or []) if "版本内容说明" in str(n.get("tabTitle") or "")]
@@ -655,7 +655,7 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
                     notes.append(n)
             else:
                 log.info("游戏更新：明日方舟已是 %s，无需更新", remote or "?")
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.exception("游戏更新：明日方舟开机检查出错")
             problems.append("明日方舟：开机检查出错（见日志）")
     from . import efstatus  # noqa: PLC0415
@@ -748,7 +748,7 @@ def restore_skips(state_dir: Path, restorer=None) -> list[str]:
             if restorer(rec):
                 done.append(f"{rec['script']}→「{rec['queue']}」")
                 continue
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.exception("加回队列失败：%s", rec)
         left.append(rec)
     _store(state_dir).set("updates", "queue_skips", left)

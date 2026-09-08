@@ -435,13 +435,13 @@ def _json(url: str, ua: str, data: "bytes | None" = None,
     if headers:
         h.update(headers)
     req = urllib.request.Request(url, data=data, headers=h)
-    with urllib.request.urlopen(req, timeout=timeout) as r:   # noqa: S310
+    with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read())
 
 
 def _text(url: str, ua: str, timeout: int = 20) -> str:
     req = urllib.request.Request(url, headers={"User-Agent": ua})
-    with urllib.request.urlopen(req, timeout=timeout) as r:   # noqa: S310
+    with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read().decode("utf-8", "replace")
 
 
@@ -451,7 +451,7 @@ def _first(urls: list[str], ua: str, timeout: int = 12) -> str:
     for u in urls:
         try:
             return _text(u, ua, timeout)
-        except Exception as e:  # noqa: BLE001, PERF203
+        except Exception as e:  # noqa: BLE001
             log.debug("镜像取不到 %s：%s", u, e)
             err = e
     raise err
@@ -547,7 +547,7 @@ def _arknights(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | Non
         try:
             rows += parse_arknights(
                 _json(url, _UA_PLAIN)["parse"]["wikitext"]["*"])
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.warning("PRTS 取不到 %s", page, exc_info=True)
     rows.sort(key=lambda b: b.start)
     debut = debut_only(rows)
@@ -558,13 +558,13 @@ def _arknights(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | Non
     try:
         if official := arknights_next_from_news(now):
             return debut, official
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.warning("方舟官网寻访公告取不到", exc_info=True)
     if when := min((b.start for b in rows if b.start > now), default=None):
         return debut, (when, "")      # PRTS 已经收录了，时间准，人未知
     try:
         sched = parse_ak_schedule(_first(_AK_SCHEDULE, _UA_BROWSER))
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.warning("一图流方舟排期取不到", exc_info=True)
         return debut, None
     nxt = next(((n, d, ok) for n, d, ok in sched if d > now), None)
@@ -579,7 +579,7 @@ def _endfield(cred, sk_get, now: datetime
     """在开的池子走森空岛（时刻权威），首发/预告走官方版本公告。"""
     try:
         pools = (sk_get("/web/v1/wiki/char-pool")["data"] or {}).get("list") or []
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.warning("森空岛卡池取不到", exc_info=True)
         return [], None
 
@@ -606,7 +606,7 @@ def _endfield(cred, sk_get, now: datetime
             for n in ((d.get("data") or {}).get("list") or [])
             if "版本更新说明" in str(n.get("title") or "")])
         debut = parse_endfield_notice(html)
-    except Exception:  # noqa: BLE001
+    except Exception:
         notice_ok = False
         log.warning("终末地官方公告取不到，这一版分不出首发和复刻", exc_info=True)
 
@@ -632,7 +632,7 @@ def _endfield(cred, sk_get, now: datetime
     # 本版两半都开完了，跨版本的只有一图流那份手工表有
     try:
         table = json.loads(_first(_EF_SCHEDULE, _UA_BROWSER))
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.warning("一图流终末地排期取不到（几条镜像都不通）", exc_info=True)
         return got, (end, "")
     seen = {b.name for b in live} | {p for _, p in debut}
@@ -682,7 +682,7 @@ def _wuwa(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | None]":
                 d = post("/wiki/core/catalogue/item/getEntryDetail",
                          {"id": eid})["data"] or {}
                 cache[eid] = str(d.get("name") or "")
-            except Exception:  # noqa: BLE001
+            except Exception:
                 log.warning("库街区条目 %s 查不到名字", eid, exc_info=True)
                 cache[eid] = ""
         return cache[eid]
@@ -698,13 +698,13 @@ def _wuwa(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | None]":
                                for n in (notice.get("game") or [])
                                if "版本内容说明" in str(n.get("tabTitle") or "")])
         debut = parse_wuwa_preview(body)
-    except Exception:  # noqa: BLE001
+    except Exception:
         notice_ok = False
         log.warning("鸣潮官方公告取不到，这一版分不出首发和复刻", exc_info=True)
 
     try:
         home = post("/wiki/core/homepage/getPage")
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.warning("库街区首页取不到", exc_info=True)
         return [], None
     pools = parse_wuwa(home, name_of)
@@ -738,9 +738,9 @@ def collect(now: datetime, *, skland_token: str = "",
         try:
             from . import skland  # noqa: PLC0415 - 只有这一处用得上
             cred = skland.login(skland_token)
-            def sk_get(path):  # noqa: E306
+            def sk_get(path):
                 return skland.get(cred, path)
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.warning("森空岛登录失败，终末地卡池这一行不出", exc_info=True)
             sk_get = None
     rows: list[Banner] = []
@@ -750,7 +750,7 @@ def collect(now: datetime, *, skland_token: str = "",
         rows += ak
         if ak_next:
             nxt["明日方舟"] = ak_next      # _arknights 已经给的是 (时刻, 是谁)
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.warning("方舟卡池整段失败", exc_info=True)
     if sk_get is not None:
         try:
@@ -758,14 +758,14 @@ def collect(now: datetime, *, skland_token: str = "",
             rows += ef
             if ef_next and ef_next[0] > now:
                 nxt["终末地"] = ef_next
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.warning("终末地卡池整段失败", exc_info=True)
     try:
         ww, ww_next = _wuwa(now)
         rows += ww
         if ww_next and ww_next[0] > now:
             nxt["鸣潮"] = ww_next
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.warning("鸣潮卡池整段失败", exc_info=True)
     return rows, nxt
 

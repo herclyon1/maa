@@ -143,7 +143,7 @@ class Touch:
         try:
             self.p.stdin.close()
             self.p.wait(timeout=8)
-        except Exception:
+        except Exception:  # noqa: BLE001
             self.p.terminate()
 
 

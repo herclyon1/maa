@@ -13,8 +13,8 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import preupdate                       # noqa: E402
-from ark_relay import preupdate_maaend  # noqa: E402
+from ark_relay import preupdate
+from ark_relay import preupdate_maaend
 
 FAILED = []
 

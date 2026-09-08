@@ -18,7 +18,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
-from xlsx import Sheet, write_xlsx  # noqa: E402
+from xlsx import Sheet, write_xlsx
 
 CST = timezone(timedelta(hours=8))
 
@@ -170,7 +170,7 @@ MIN_RARITY = 6
 
 
 def main() -> int:
-    global MIN_RARITY
+    global MIN_RARITY  # noqa: PLW0603
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     if "--all" in sys.argv:
         MIN_RARITY = 1

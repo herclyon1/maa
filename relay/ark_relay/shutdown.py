@@ -286,7 +286,7 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
     if eng._before_shutdown is not None:
         try:
             eng._before_shutdown()
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.warning("关机前的待办检查失败，按原计划关机", exc_info=True)
     # 人按过「这次别关机」（手机指令或桌面 .bat）：吃掉这一次，用完即失效。
     # 必须放在所有门之后、真关之前，否则会被一次「其实还没到时候」白白消耗掉。

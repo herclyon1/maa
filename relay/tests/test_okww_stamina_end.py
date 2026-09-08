@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay import collector  # noqa: E402
+from ark_relay import collector
 
 FAILED = []
 
@@ -50,7 +50,7 @@ NEST = """
 
 
 def _parse(text):
-    import tempfile
+    import tempfile  # noqa: PLC0415
     with tempfile.TemporaryDirectory() as td:
         f = Path(td) / "OK-WW.log"
         f.write_text(text, encoding="utf-8")

@@ -12,10 +12,10 @@ from datetime import datetime
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from ark_relay import core                      # noqa: E402
-from ark_relay.config import SERVER_TZ          # noqa: E402
+from ark_relay import core
+from ark_relay.config import SERVER_TZ
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 
 fails = []
 d = tmpdir()

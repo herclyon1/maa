@@ -3,7 +3,7 @@ import json, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.statestore import StateStore  # noqa: E402
+from ark_relay.statestore import StateStore
 
 fails = []
 def check(label, got, want):
@@ -88,7 +88,7 @@ check("写完能读回", st.report_sent("2026-09-07"), True)
 
 print("[state.json 已存在时，后来才补的旧文件也要迁——不能只在首次建档时迁]")
 d4 = tmpdir()
-import ark_relay.statestore as SS
+import ark_relay.statestore as SS  # noqa: E402
 SS._SWEPT.clear()
 first = StateStore(d4)
 first.set("weekly", "garden", {"done_week": "2026-W37"})    # 先有了 state.json

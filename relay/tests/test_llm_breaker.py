@@ -6,7 +6,7 @@ import sys, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import summary  # noqa: E402
+from ark_relay import summary
 
 fails = []
 def check(label, got, want):
@@ -52,7 +52,7 @@ check("daily_report returns empty, caller falls back",
 print("\n[an explicit check must really ask again]")
 try:
     summary.check(Cfg())
-except Exception:
+except Exception:  # noqa: BLE001
     pass
 check("breaker was reset by check()", len(calls), 2)
 

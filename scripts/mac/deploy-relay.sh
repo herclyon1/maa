@@ -355,6 +355,10 @@ else
   fi
   if git -C "$HERE/.." push -q origin HEAD; then
     echo "▶ manifest 已推上 GitHub，自更新下次开机就能看到"
+    # 顺手清 jsDelivr：不清的话各扇门要到十几小时后才发新清单，自更新在那之前
+    # 看到的是旧版本号，什么都不做也什么都不说。机器此刻已经部署好了，所以清缓存
+    # 失败只是「自更新这条后路暂时不通」，不该让整个部署判失败。
+    python3 "$HERE/purge-cdn.py" || echo "⚠️ CDN 没清干净，自更新这条后路要等缓存自然过期" >&2
   else
     echo "✋ manifest 提交了但推送失败——自更新会一直看到旧清单，请手动 push" >&2
     exit 9

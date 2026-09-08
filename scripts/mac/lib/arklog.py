@@ -160,7 +160,7 @@ def summarise(lines: list[str], marks: dict[str, str], *, width: int = 22) -> No
 
 def mtime(path: str | Path) -> str:
     """文件最后写入时刻（机器的钟）。判断「有没有在动」用它，别猜。"""
-    import time
+    import time  # noqa: PLC0415
     return time.strftime("%m-%d %H:%M:%S",
                          time.localtime(Path(path).stat().st_mtime))
 

@@ -363,7 +363,7 @@ def read_okww(automas_dir, okww_dir) -> dict:
                  "subs": OKWW_SUBS}
     try:
         from . import plan  # noqa: PLC0415
-        zh = plan._okww_zh(Path(okww_dir) if okww_dir else None)  # noqa: SLF001
+        zh = plan._okww_zh(Path(okww_dir) if okww_dir else None)
     except Exception:  # noqa: BLE001
         zh = {}
     cases = _okww_cases(okww_dir)

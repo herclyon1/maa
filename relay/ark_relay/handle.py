@@ -117,9 +117,10 @@ def _maa_app_log(maa_dir: "str | Path | None", started: datetime,
             raw = fh.read().decode("utf-8", errors="replace")
     except OSError:
         return None
-    # 只有起点没有终点会把**后面几趟**也扫进来。2026-08-30 空跑时
-    # 等于把今早的错算到了昨晚头上。所以必须有上界。
-    # 那种情况宁可多取也不要把整趟切没了。
+    # 必须有上界：只给起点不给终点，会把**后面几趟**的行也扫进来，
+    # 等于把今早的错算到昨晚头上。
+    # `until` 给 None 时例外，不设上界——那种记录的时间本来就不可信，
+    # 宁可多取也不要把整趟切没了。
     # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_maa_app_log」
     cut = started.strftime("%Y-%m-%d %H:%M:%S")
     top = until.strftime("%Y-%m-%d %H:%M:%S") if until else None
@@ -180,7 +181,7 @@ def _warn_if_evidence_stale(eng, rec: RunRecord, dst: Path) -> None:
                             "多半是**别的轮次**的日志，别拿它当这次失败的依据",
                             f.name, mt.strftime("%H:%M:%S"),
                             f"{hh:02d}:{mm:02d}:{ss:02d}")
-    except Exception:  # noqa: BLE001 - 只是提示，坏了也不许影响存档
+    except Exception:
         log.debug("证据时间范围检查失败", exc_info=True)
 
 
@@ -222,7 +223,7 @@ def _archive_maaend_evidence(eng, rec: RunRecord) -> None:
                     n += 1
         log.info("📦 MaaEnd 失败证据已存档 %d 个文件 → %s", n, dst)
         eng._warn_if_evidence_stale(rec, dst)
-    except Exception:  # noqa: BLE001 - 存档失败不许影响记账
+    except Exception:
         log.exception("MaaEnd 证据存档失败（不影响记账）")
     # 根本没进游戏 = 客户端待更新的信号：登记，队列跑完后去更新再重跑
     if (rec.raw or {}).get("maaend_unreachable"):
@@ -286,7 +287,7 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
             both = text + "\n" + _maaend_app_log(eng.cfg.maaend_dir, rec.started)
             return outcome.summarize(
                 outcome.maaend_checks(both, shots), "MaaEnd")
-    except Exception as exc:  # noqa: BLE001 - 核对出错不许影响记账
+    except Exception as exc:
         log.exception("结果核对本身出错")
         # 原来这里直接 return None，也就是「全干成」。核对崩了却报全绿，
         # 是这一类 bug 里最坏的一种：出问题的时候恰恰最不该说没问题。
@@ -317,7 +318,8 @@ def _handle(eng, rec: RunRecord) -> None:
             eng._recovered[key] = bad
             eng._persist_pending()
             log.info("↩️ %s 重试后成功，改为自愈通知", rec.script)
-        # Only a pass that actually reached the weekly cap counts. MAA
+        # 只有真打满周上限的那一趟才算数：MAA 因为理智不够提前收工时照样报
+        # Success!，照它摘掉剿灭会让这一周剩下的日子都不打、上限也补不满。
         # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
         steps = rec.raw.get("okww_steps") or []
         # 周本：任务名译作「传送并刷取4C声骸」，任务本身显示「刷4C(大世界/副本)」，
@@ -327,7 +329,8 @@ def _handle(eng, rec: RunRecord) -> None:
                 eng.notifier.send(texts.WEEKLY, msg)
         if any("周常乐园" in s and "已完成" in s for s in steps) and eng._garden:
             if msg := eng._garden.on_success(rec.finished):
-                # 2026-08-26：这里原本写的是 `notes.append(msg)`，可这个作用域里
+                # 照剿灭那一支写：两条周门本来就该是同一个形状。
+                # （2026-08-26 这里曾写成 notes.append，而这个作用域里没有 notes。）
                 # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
                 eng.notifier.send(texts.WEEKLY, msg)
         if (rec.raw.get("annihilation") and rec.raw.get("annihilation_done")
@@ -369,7 +372,8 @@ def _handle(eng, rec: RunRecord) -> None:
     # Hold it. Only alert once the script has stopped retrying entirely.
     eng._pending[key] = rec
     eng._persist_pending()   # queued to disk before anything else can go wrong
-    # MaaEnd 启动时会「Auto-cleared log files and debug artifacts」——
+    # 失败一落账就立刻把证据搬走：MaaEnd 下一次启动的瞬间会自己清空
+    # 上一轮的截图和日志，等人来看的时候什么都不剩了。
     # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
     if rec.script == "MaaEnd":
         eng._archive_maaend_evidence(rec)
@@ -384,8 +388,8 @@ def _maintenance_today(eng, game: str) -> bool:
         return False
 
 
-# 同一件事当天只报一次。2026-09-01 群里同一个 OK-WW 失败连推三条
-# 键 = 脚本 + 失败在哪一步：同一步反复失败是同一件事，不许反复推；
+# 同一件事当天只报一次。键 = 脚本 + 失败在哪一步：同一步反复失败是同一件事，
+# 换一步失败才是新事，才值得再推一条。
 # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:(模块级)」
 def _alert_key(eng, rec) -> str:
     return f"{rec.script}|{rec.user}|{','.join(sorted(rec.failed_tasks or ['?']))}"

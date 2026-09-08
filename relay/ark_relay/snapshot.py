@@ -39,7 +39,7 @@ def _post(path: str, body: "dict | None" = None, timeout: int = 15) -> dict:
     req = urllib.request.Request(
         _api() + path, data=json.dumps(body or {}).encode(),
         headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode())
 
 
@@ -167,7 +167,7 @@ def read() -> dict:
                       ("_OKWW错误", _okww), ("_运行时错误", _runtime)):
         try:
             fn(out)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             out[label] = f"{type(exc).__name__}: {exc}"
             log.warning("快照的 %s 这一段读不到", label, exc_info=True)
     return out
