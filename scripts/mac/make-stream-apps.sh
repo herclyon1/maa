@@ -32,9 +32,11 @@ DESK="$HOME/Desktop"
 # --capture-system-keys always 让 ⌘（映射成 Win 键）等系统快捷键透传给 Windows。
 # shellcheck disable=SC2086  # 有意按空白拆成多个参数
 COMMON=$(echo $MOON_COMMON --no-performance-overlay --capture-system-keys always --absolute-mouse)
+# shellcheck source=lib/app-icon.sh
+. "$(dirname "$0")/lib/app-icon.sh"
 
-make_one() {   # $1=app名  $2=码率  $3=编码  $4=yuv444开关
-  local name="$1" br="$2" codec="$3" yuv="$4" res="$5"
+make_one() {   # $1=app名  $2=码率  $3=编码  $4=yuv444开关  # $5=分辨率  $6=图标png
+  local name="$1" br="$2" codec="$3" yuv="$4" res="$5" icon="$6"
   local d="$DESK/$name.app"
   mkdir -p "$d/Contents/MacOS"
   [ -f "$d/Contents/Info.plist" ] || cat > "$d/Contents/Info.plist" <<PLIST
@@ -105,11 +107,13 @@ CSRC
   clang -arch arm64 -O2 -o "$d/Contents/MacOS/launcher" "$src"
   rm -f "$src"
   chmod +x "$d/Contents/MacOS/launcher"
+  set_app_icon "$d" "$icon"
   rm -rf "$d/Contents/_CodeSignature"
   codesign -f -s - "$d" 2>/dev/null || true
   echo "  ✓ $name  (码率 $br, $codec, $yuv)"
 }
 
-make_one "串流到ins"         "$MOON_BITRATE" "$MOON_CODEC" "$MOON_YUV" "$MOON_RES"
-make_one "串流到ins-HEVC444" 55000            HEVC           --yuv444    "$MOON_RES"
+ICONS="$(dirname "$0")/icons"
+make_one "串流到ins"         "$MOON_BITRATE" "$MOON_CODEC" "$MOON_YUV" "$MOON_RES" "$ICONS/stream.png"
+make_one "串流到ins-HEVC444" 55000            HEVC           --yuv444    "$MOON_RES" "$ICONS/stream-444.png"
 echo "完成。参数要改就改 scripts/mac/lib/moonlight-params.sh，然后重跑本脚本。"

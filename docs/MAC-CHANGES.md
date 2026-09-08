@@ -198,3 +198,9 @@ Wuthering Waves' servers are IPv4-only, so there is no IPv6 path to take.
 主程序是 clang 编译的 arm64 二进制,壳脚本在 `Contents/Resources/run.sh`。
 重建:`scripts/mac/make-cloud-genshin-app.sh`。删掉即撤销,不改任何系统设置。
 配套的 Chrome 插件见 `docs/CLOUD-GENSHIN-WARP.md`。
+
+### 桌面启动器图标(2026-09-09)
+
+五个桌面 app 都有图标了：串流到ins / 串流到ins-HEVC444 用 Moonlight 图标（444 版带红色角标），云原神用官网图标，强制关闭串流用系统红色停止牌，优盘体检原本就有。
+图标源图在 `scripts/mac/icons/`，生成逻辑在 `scripts/mac/lib/app-icon.sh`，两个构建脚本重跑会自动带上。
+`强制关闭串流.app` 没有构建脚本，图标是直接写进桌面那份的；重做它时记得也调一下 `set_app_icon`。
