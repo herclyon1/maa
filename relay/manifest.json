@@ -1,5 +1,5 @@
 {
- "version": 20260908174217,
+ "version": 20260908174742,
  "files": {
   "RELEASE-NOTES.md": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
@@ -30,7 +30,7 @@
   "ark_relay/notify.py": "24ca53f40a828cc0e3f9c1bb2edd81436d296216",
   "ark_relay/okww_files/NightmareNestTask.patched.py": "8838b7666d0649c670a14326b0f48186b166fe57",
   "ark_relay/okww_files/NightmareNestTask.upstream.py": "c93bdc9ce1898d56cf15268d84e70107fe2ac4bf",
-  "ark_relay/okww_patch.py": "81eabde0bf95d38e74c90d8042caf9427d5b1c93",
+  "ark_relay/okww_patch.py": "e36b7c9cb97a0f4d40945401f7e0727349214fe6",
   "ark_relay/okww_patches/__init__.py": "7c076f7b2e6c9cd58e03e6f623206b9aacf2eb35",
   "ark_relay/okww_patches/claim.py": "38ac0a6249afd371ffc638b6e77d463e5d296285",
   "ark_relay/okww_patches/core.py": "edd080c54b1dd294ef3b8ab895c7f240978443b8",

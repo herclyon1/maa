@@ -183,6 +183,29 @@ def ensure_if_updated(state_dir: Path, okww_dir: Path | None) -> list[str]:
     return notes
 
 
+def _ensure_stamina(root: Path) -> list[str]:
+    """Move _STAMINA to its current version, with _NOFARM riding inside it.
+
+    _NOFARM's anchor sits inside _STAMINA's body, so on a machine where both are
+    applied the file holds v1 *with NOFARM's rewrite in it* - and the plain v1
+    text no longer matches. On 2026-09-09 that made the v1 revert a no-op, so v2
+    found neither the upstream text nor its own marker and reported 「贴不上了」
+    (caught by the deploy gate, which is what that gate is for). So the revert has
+    to recognise both shapes of v1 before v2 goes on, and NOFARM goes back on top
+    afterwards, the same as before.
+    """
+    done: list[str] = []
+    path = (*_SRC, "DailyTask.py")
+    v1_with_nofarm = _STAMINA_V1.replace(_NOFARM_OLD, _NOFARM_NEW)
+    if v1_with_nofarm != _STAMINA_V1:
+        done.extend(_revert_text(root, path, v1_with_nofarm, _STAMINA_OLD,
+                                 "附加任务先于体力刷取 v1（含不刷体力开关）"))
+    done.extend(_revert_text(root, path, _STAMINA_V1, _STAMINA_OLD, "附加任务先于体力刷取 v1"))
+    done.extend(_apply_one(root, _STAMINA))
+    done.extend(_apply_one(root, _NOFARM))
+    return done
+
+
 def ensure_patches(okww_dir: Path | None) -> list[str]:
     """Make sure the local patches are in place. Returns what was actually done
     this time (empty means everything was already in place).
@@ -199,11 +222,7 @@ def ensure_patches(okww_dir: Path | None) -> list[str]:
     # complaint about upstream ordering, it makes **the allocation the user asked
     # for impossible**: one weekly-boss chest costs 60 stamina, three cost 180,
     # and the daily step burns all 180 first.
-    # v1 has to come off first or v2 stacks on top of it (see core._Patch.unique).
-    done.extend(_revert_text(root, (*_SRC, "DailyTask.py"),
-                             _STAMINA_V1, _STAMINA_OLD, "附加任务先于体力刷取 v1"))
-    done.extend(_apply_one(root, _STAMINA))
-    done.extend(_apply_one(root, _NOFARM))
+    done.extend(_ensure_stamina(root))
     # Withdrawn on 2026-08-31, so what happens here is a **revert**: the premise
     # was wrong to begin with - OK-WW's own error() already prints the stack, and
     # the exception was never swallowed.
