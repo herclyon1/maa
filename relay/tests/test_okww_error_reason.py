@@ -96,5 +96,19 @@ check("原文照抄进来了", "some brand new english message" in got, True)
 check("不出现「出错」「这一步」这类模糊词",
       any(k in got.split("原文照抄")[0] for k in ("这一步", "出错", "异常", "错误")), False)
 
+# ---- The outermost of the three tracebacks (real line, 2026-09-08 21:50) ----
+# The relay logged 「OK-WW 报错中继还没有翻译…任务 TaskExecutor，异常 Exception，
+# 原文「📅 Daily Task exception stopped」」. That wrapper only says the daily list
+# stopped; the reason is in the innermost traceback. Leaving it untranslated meant
+# the notification could only say it did not recognise the error.
+from ark_relay.collector_okww import _okww_say                      # noqa: E402
+
+_said = _okww_say("TaskExecutor", "📅 Daily Task exception stopped", "Exception")
+check("这条真实日志行翻得出来", "还不认识" in _said, False)
+check("说的是日常清单停了", "日常清单整个停了" in _said, True)
+check("指到真正的原因在哪", "真正的原因" in _said, True)
+check("不认识的错还是照旧说不认识",
+      "还不认识" in _okww_say("TaskExecutor", "完全没见过的错", "WeirdError"), True)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
