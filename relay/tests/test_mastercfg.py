@@ -38,7 +38,7 @@ def _fixture() -> tuple[Path, Path]:
             "AutoEssenceRepeatCount": {"type": "input",
                                        "values": {"AutoEssenceRepeatCountValue": "5"}},
         }},
-        {"taskName": "AutoUseSpMedication", "enabled": False, "optionValues": {}},
+        {"taskName": "AutoCollect", "enabled": False, "optionValues": {}},
     ]}]}, ensure_ascii=False), encoding="utf-8")
     (cfgdir / "DailyTask.json").write_text(json.dumps({
         "Which to Farm": "Simulation Challenge",
@@ -104,7 +104,7 @@ def main() -> int:
           == [["枢纽区", "VFTheHub"], ["清波寨", "WLQingboStockade"]])
     require("循环次数按输入框读，保持字符串",
           v.get("AutoEssence/AutoEssenceRepeatCount") == "5")
-    require("任务开关读得到", v.get("AutoUseSpMedication/@enabled") is False)
+    require("任务开关读得到", v.get("AutoCollect/@enabled") is False)
 
     print("\n=== 2. 终末地：写母本 ===")
     ok, msg = mastercfg.write_maaend(automas, maaend,
@@ -120,9 +120,9 @@ def main() -> int:
     now = mastercfg.read_maaend(automas, maaend)["values"]
     require("次数写进输入框且仍是字符串",
           ok and now["AutoEssence/AutoEssenceRepeatCount"] == "9", msg)
-    ok, msg = mastercfg.write_maaend(automas, maaend, "AutoUseSpMedication/@enabled", True)
+    ok, msg = mastercfg.write_maaend(automas, maaend, "AutoCollect/@enabled", True)
     now = mastercfg.read_maaend(automas, maaend)["values"]
-    require("任务开关能开回来", ok and now["AutoUseSpMedication/@enabled"] is True, msg)
+    require("任务开关能开回来", ok and now["AutoCollect/@enabled"] is True, msg)
 
     print("\n=== 3. 终末地：该拒绝的要拒绝（826 的三条） ===")
     ok, msg = mastercfg.write_maaend(automas, maaend, "NoSuchTask/@enabled", True)
