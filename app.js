@@ -232,19 +232,29 @@ async function readMessages(since = "48h") {
    中文下拉不声不响就没了；砍完还超就发一个读不懂的包，页面只好一直显示旧值，
    看上去像刷新坏了。实测通道其实允许 15MB：超过 4096 字节 ntfy 会自动存成附件
    并给出网址，取回来一字不差。所以现在什么都不砍。 */
-async function envelope(e) {
-  /* 一条 ntfy 消息 → 我们的信封对象。走附件时正文里是一句提示，真身在附件网址上。 */
+function envelope(e) {
+  /* 一条 ntfy 消息 → 我们的信封对象。 */
   try {
     const m = JSON.parse(e.message);
-    if (m && m.kind) return m;
-  } catch {}
-  const url = e.attachment && e.attachment.url;
-  if (!url) return null;
-  try {
-    const r = await fetch(url + "?_=" + Date.now(), { cache: "no-store" });
-    if (!r.ok) return null;
-    return JSON.parse(await r.text());
+    return m && m.kind ? m : null;
   } catch { return null; }
+}
+
+/* 太大的状态被切成了多条普通消息（不用附件：附件三小时就过期，而昨晚关机前
+   发的那份正是第二天早上要看的；普通消息和别的一样保留十二小时）。
+   同一份状态的每一片带同一个 sid 和自己的 i/n，凑齐才还原——凑不齐就当没有，
+   绝不把半份状态当成完整的显示出来。 */
+const chunkBox = new Map();
+
+async function joinChunks(m) {
+  if (m.gzp === undefined) return null;
+  const got = chunkBox.get(m.sid) || new Map();
+  got.set(m.i, m.gzp);
+  chunkBox.set(m.sid, got);
+  if (got.size < m.n) return null;
+  chunkBox.delete(m.sid);
+  const blob = Array.from({ length: m.n }, (_, i) => got.get(i)).join("");
+  return await unwrap({ gz: blob });
 }
 
 async function unwrap(m) {
@@ -264,14 +274,19 @@ let pinScan = { seen: 0, matched: 0 };
 async function latestState(since = "48h") {
   const msgs = await readMessages(since);
   pinScan = { seen: 0, matched: 0 };
+  chunkBox.clear();
   for (let i = msgs.length - 1; i >= 0; i--) {
-    const m = await envelope(msgs[i]);
+    const m = envelope(msgs[i]);
     if (!m || m.kind !== "state") continue;
     pinScan.seen++;
-    if (m.pin === cfg.pin) {
-      pinScan.matched++;
-      try { return await unwrap(m); } catch { return null; }
+    if (m.pin !== cfg.pin) continue;
+    pinScan.matched++;
+    if (m.gzp !== undefined) {
+      // 切片是从新往旧扫到的，同一份的都会遇上；凑齐了就还原，凑不齐接着往前找
+      try { const done = await joinChunks(m); if (done) return done; } catch {}
+      continue;
     }
+    try { return await unwrap(m); } catch { return null; }
   }
   return null;
 }
@@ -847,9 +862,9 @@ async function ping(minAt) {
       try {
         const d = JSON.parse(ev.data);
         if (d.event && d.event !== "message") return;
-        const m = await envelope(d);
+        const m = envelope(d);
         if (!m || m.kind !== "state" || m.pin !== cfg.pin) return;
-        const body = await unwrap(m);
+        const body = m.gzp !== undefined ? await joinChunks(m) : await unwrap(m);
         if (body && (!sseLatest || body.at > sseLatest.at)) sseLatest = body;
       } catch {}
     };
