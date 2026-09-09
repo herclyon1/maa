@@ -199,7 +199,13 @@ import subprocess as _sp                                          # noqa: E402
 import ark_relay.preupdate_okww as _pk                            # noqa: E402
 _ran, _quiesced = [], []
 _real_run, _real_q = _sp.run, _pk._okww_quiesce
-_sp.run = lambda *a, **k: _ran.append(list(a[0]) if a else []) or None
+class _Done:
+    returncode = 0
+    stdout = b""
+    stderr = b""
+
+
+_sp.run = lambda *a, **k: (_ran.append(list(a[0]) if a else []), _Done())[1]
 _pk._okww_quiesce = lambda *a, **k: _quiesced.append(1)
 try:
     # The stub above replaced the module attribute; reload to get the real one back.
@@ -209,6 +215,17 @@ try:
     check("结束了计划任务", any("schtasks" in c and "/end" in c for c in _ran), True)
     check("任务名对得上", any(_mod.TASK_NAME in c for c in _ran), True)
     check("把 OK-WW 的进程也停了", _quiesced, [1])
+    check("游戏也关干净了就不多话", _mod.stop_okww(sleep=lambda _s: None), "")
+
+    print("\n[游戏关不掉就必须说出来，不许报「已收工」]")
+    # 2026-09-09: 收工 said 「配置已还原」 twice while 鸣潮 was still on screen. The
+    # relay is a service in session 0 and taskkill from there does not reach the game.
+    _mod.game_alive = lambda: ["Client-Win64-Shipping.exe"]
+    _ran.clear()
+    _note = _mod.stop_okww(sleep=lambda _s: None)
+    check("话里点名还活着的进程", "Client-Win64-Shipping.exe" in _note, True)
+    check("话里说了要人去关", "手动关" in _note, True)
+    check("从交互桌面那边补了一刀", any(_mod.STOP_TASK in c for c in _ran), True)
 finally:
     _sp.run, _pk._okww_quiesce = _real_run, _real_q
 

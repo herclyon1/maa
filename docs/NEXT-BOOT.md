@@ -45,3 +45,17 @@ alarms; before that the loop slept until the next queue alarm and the measured g
 - The launcher no longer leaves a cmd.exe console on top of the game.
 - `echofarm.tick` ends the run and pushes a line if OK-WW's log goes quiet for 12
   minutes.
+
+
+## 2026-09-09 08:25 — 「收工」 lied twice
+
+Pressing 收工 reported 「已收工、配置已还原」 while 鸣潮 was still on screen, twice.
+The relay is a service in session 0; `taskkill /F /IM` fired from there does not reach
+the game, which runs in the logged-in session under its anti-cheat. Nobody noticed
+because the return code was never read.
+
+The kill now goes out the same door the launch does - a .bat run by a scheduled task
+in the interactive session - and `stop_okww` counts the processes afterwards and names
+whatever is still up instead of claiming success. **The service-side path has not been
+exercised yet**: it was deployed at 08:24 and the desktop was already clean. First
+chance to see it is the next 收工 pressed from the phone while the game is running.

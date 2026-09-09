@@ -49,29 +49,11 @@ lap() { printf '      （%d 秒）\n' "$((SECONDS-_TP))"; _TP=$SECONDS; }
 # 放在 `if __name__` 之后——从没运行过，却一路绿灯上了机器。
 # 闸门自己会坏，而且坏了不吭声。每次部署前拿已知的坏样本验一遍：
 # 拦不住的闸门比没有闸门更危险——它会让人以为这一类错已经不可能发生。
-echo "▶ 0b/5 闸门自检（拿坏样本验每道闸还拦不拦得住）"
-if ! out=$("$HERE/../scripts/mac/guardcheck.sh" 2>&1); then
-  sed 's/^/    /' <<<"$out"
-  echo "  ✋ 部署已取消：闸门失效了，先修闸门。"
-  exit 1
-fi
-echo "  $(tail -1 <<<"$out")"
-
-lap
-echo "▶ 0a/5 没有永远不会被执行的代码"
-if ! out=$(python3 "$HERE/../scripts/mac/lib/deadcode.py" \
-        "$HERE" "$HERE/../scripts" 2>&1); then
-  sed 's/^/    /' <<<"$out"
-  echo "  ✋ 部署已取消：上面这些代码写了等于没写。"
-  exit 1
-fi
-echo "  $(tail -1 <<<"$out")"
-
-lap
-echo "▶ 0/5 回归测试（不全绿就不部署）"
-# 并行跑。四十个测试各自起一个 python，串行要十几秒，而这十几秒
-# 每次部署都要付两遍（lint-repo 那道闸里还会再跑一遍）。
-# 判据一个没松：照样要退出码为 0，且最后一行必须写着 passed。
+echo "▶ 0/5 本地四道闸并行（闸门自检 · 死代码 · 回归测试 · 语法与改动覆盖）"
+# These four read the working tree and nothing else, so they have no reason to wait
+# for each other. Serially they were 28 s of a 71 s deploy. Every gate still runs and
+# every one of them can still stop the deploy, with the same exit code as before -
+# 提速不许动判据.
 run_one_test() {
   local f="$1" out
   if ! out=$(python3 "$f" 2>&1) || ! grep -qiE "passed|^PASS" <<<"$(tail -1 <<<"$out")"; then
@@ -81,14 +63,59 @@ run_one_test() {
   fi
 }
 export -f run_one_test
-if ! printf '%s\n' tests/test_*.py \
-     | xargs -P 8 -I{} bash -c 'run_one_test "$1"' _ {}; then
+
+GATED=$(mktemp -d)
+trap 'rm -rf "$GATED"' EXIT
+
+( "$HERE/../scripts/mac/guardcheck.sh" >"$GATED/guard.out" 2>&1
+  echo $? >"$GATED/guard.rc" ) &
+( python3 "$HERE/../scripts/mac/lib/deadcode.py" "$HERE" "$HERE/../scripts" \
+      >"$GATED/dead.out" 2>&1
+  echo $? >"$GATED/dead.rc" ) &
+( printf '%s\n' tests/test_*.py \
+    | xargs -P 8 -I{} bash -c 'run_one_test "$1"' _ {} >"$GATED/tests.out" 2>&1
+  echo $? >"$GATED/tests.rc" ) &
+( python3 -m py_compile ark_relay/*.py service.py boot_stages.py run.py \
+      >"$GATED/cov.out" 2>&1 \
+    && python3 "$HERE/../scripts/mac/lib/changed_covered.py" >>"$GATED/cov.out" 2>&1
+  echo $? >"$GATED/cov.rc" ) &
+wait
+
+if [ "$(cat "$GATED/guard.rc")" != 0 ]; then
+  sed 's/^/    /' "$GATED/guard.out"
+  echo "  ✋ 部署已取消：闸门失效了，先修闸门。"
+  exit 1
+fi
+echo "  $(tail -1 "$GATED/guard.out")"
+
+if [ "$(cat "$GATED/dead.rc")" != 0 ]; then
+  sed 's/^/    /' "$GATED/dead.out"
+  echo "  ✋ 部署已取消：上面这些代码写了等于没写。"
+  exit 1
+fi
+echo "  $(tail -1 "$GATED/dead.out")"
+
+if [ "$(cat "$GATED/tests.rc")" != 0 ]; then
+  cat "$GATED/tests.out"
   echo "  ✋ 有测试没过（见上）。"
   echo "     部署已取消。先修测试，或者确认这些断言本身该更新。"
   exit 1
 fi
 echo "  $(ls tests/test_*.py | wc -l | tr -d ' ') 个测试全过"
 
+# 「改了什么就得证明什么」——用户 2026-09-06 的死命令：
+# 「没有回放案例的改动不许部署。部署脚本读 git diff 里改了哪些模块，
+#   每个模块必须被至少一个回放案例真正执行到。」
+# 判据比原话稍宽一点，理由写在那个脚本的开头：回放语料天然盖不到 shutdown、
+# gameupdate 这类模块，硬要求回放覆盖只会逼人关掉这道闸。所以要求是
+# 「至少有一个测试真的执行到它」，判定类模块另外单独点名提醒。
+cat "$GATED/cov.out"
+if [ "$(cat "$GATED/cov.rc")" != 0 ]; then
+  echo "  ✋ 有模块改了却没有任何测试跑到它（或语法就不过），不给部署。" >&2
+  exit 8
+fi
+
+lap
 # ── 0.5 闸：更新说明必须是新的 ──────────────────────────────
 # 2026-08-26 用户当场指出：「你的更新内容不能一直都是一样的，我看你更新了
 # 两次，第二次还在用旧的内容」。说明是静态文件，不换内容就会一直播报同一份，
@@ -117,20 +144,6 @@ fi
 lap
 echo "▶ 1/5 重建 manifest"
 python3 make-manifest.py
-
-lap
-echo "▶ 2/5 语法自检 + 改动覆盖"
-python3 -m py_compile ark_relay/*.py service.py boot_stages.py run.py
-# 「改了什么就得证明什么」——用户 2026-09-06 的死命令：
-# 「没有回放案例的改动不许部署。部署脚本读 git diff 里改了哪些模块，
-#   每个模块必须被至少一个回放案例真正执行到。」
-# 判据比原话稍宽一点，理由写在那个脚本的开头：回放语料天然盖不到 shutdown、
-# gameupdate 这类模块，硬要求回放覆盖只会逼人关掉这道闸。所以要求是
-# 「至少有一个测试真的执行到它」，判定类模块另外单独点名提醒。
-if ! python3 "$HERE/../scripts/mac/lib/changed_covered.py"; then
-  echo "  ✋ 有模块改了却没有任何测试跑到它，不给部署。" >&2
-  exit 8
-fi
 
 FILES=$(python3 -c "import json;print(' '.join(json.load(open('manifest.json'))['files']))")
 

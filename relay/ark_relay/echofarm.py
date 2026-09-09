@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import subprocess
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -188,11 +189,64 @@ def quiet_minutes(now: datetime | None = None) -> "float | None":
     return (now - touched).total_seconds() / 60.0
 
 
-def stop_okww() -> None:
-    """End the farm process. The game itself is left alone."""
+# What 「收工」 has to leave behind: nothing of OK-WW's and nothing of the game's.
+GAME_PROCS = ("ok-ww.exe", "Wuthering Waves.exe",
+              "Client-Win64-Shipping.exe", "KRSDKExternal.exe")
+STOP_BAT = r"C:\ProgramData\ark-okww-stop.bat"
+STOP_TASK = "ark-okww-stop"
+
+
+def game_alive() -> "list[str]":
+    """Which of the game's processes are still up. [] when the desktop is clean."""
+    try:
+        out = subprocess.run(["tasklist"], capture_output=True, timeout=30).stdout
+        low = (out or b"").decode("utf-8", "replace").lower()
+    except (OSError, AttributeError, subprocess.SubprocessError):
+        return []
+    return [n for n in GAME_PROCS if n.lower() in low]
+
+
+def _kill_on_desktop() -> None:
+    """Kill the game from the interactive desktop instead of from session 0.
+
+    2026-09-09: 收工 reported success twice and 鸣潮 stayed on screen. The relay is a
+    service in session 0, and `taskkill /F /IM` fired from there does not reach the
+    game - it runs under the anti-cheat, in the logged-in session. Nothing noticed,
+    because the return code was never looked at. So the kill goes out the same door
+    the launch does: a .bat run by a scheduled task in the interactive session.
+    """
+    try:
+        Path(STOP_BAT).write_text(
+            "@echo off\r\n"
+            + "\r\n".join(f'taskkill /F /IM "{n}"' for n in GAME_PROCS) + "\r\n",
+            encoding="utf-8")
+    except OSError:
+        log.warning("收工：写不出 %s，没法从桌面那边关游戏", STOP_BAT)
+        return
+    subprocess.run(["schtasks", "/delete", "/tn", STOP_TASK, "/f"], capture_output=True)
+    mk = subprocess.run(["schtasks", "/create", "/tn", STOP_TASK, "/tr", STOP_BAT, "/sc", "once",
+                         "/st", "00:00", "/ru", "Administrator", "/it", "/f"], capture_output=True)
+    if mk.returncode != 0:
+        log.warning("收工：建不了关游戏的计划任务")
+        return
+    subprocess.run(["schtasks", "/run", "/tn", STOP_TASK], capture_output=True)
+
+
+def stop_okww(sleep=time.sleep) -> str:
+    """End the farm and the game. '' when the desktop really is clean, otherwise a
+    line saying what is still up - saying 「已收工」 over a running game is a lie."""
     subprocess.run(["schtasks", "/end", "/tn", TASK_NAME], capture_output=True)
     from .preupdate_okww import _okww_quiesce  # noqa: PLC0415
     _okww_quiesce()
+    if not game_alive():
+        return ""
+    _kill_on_desktop()
+    for _ in range(10):
+        left = game_alive()
+        if not left:
+            return ""
+        sleep(1)
+    return "；**游戏没关掉（" + "、".join(game_alive()) + "），得去机器上手动关**"
 
 
 def start(cfg, boss: int, until_hhmm: str, name: str = "") -> tuple[bool, str]:
@@ -244,9 +298,9 @@ def finish(cfg, why: str) -> str:
     rec = current(cfg.state_dir)
     if not rec:
         return ""
-    stop_okww()
+    note = stop_okww() or ""
     _set_no_claim(False)
-    note = "" if not no_claim_on() else "；**不领奖标记没删掉，周本会不领奖，去删 " + NO_CLAIM + "**"
+    note += "" if not no_claim_on() else "；**不领奖标记没删掉，周本会不领奖，去删 " + NO_CLAIM + "**"
     path = _cfg_path(getattr(cfg, "okww_dir", None) or os.environ.get("ARK_OKWW_DIR"))
     saved = rec.get("saved")
     if path and path.is_file() and isinstance(saved, dict):

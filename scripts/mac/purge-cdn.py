@@ -26,6 +26,7 @@ import json
 import sys
 import time
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -60,13 +61,25 @@ def main() -> int:
     paths = ["queue/config.json", "queue/watchdog.json", "relay/manifest.json"]
     paths += [f"relay/{rel}" for rel in local.get("files", {})]
 
+    # Purge in parallel. One request per file, ~1 s each, and there are 80 of them:
+    # serially that was 85 s of the deploy's runtime, longer than the deploy itself.
+    # jsDelivr's purge endpoint takes them independently, so nothing is ordered here.
     print(f"▶ 清缓存：{len(paths)} 个文件")
-    for p in paths:
+
+    def _one(rel: str) -> "tuple[str, str]":
         try:
-            ok = json.loads(_get(PURGE + p)).get("status") in ("finished", "pending")
-            print(("  ✓ " if ok else "  ? ") + p)
+            ok = json.loads(_get(PURGE + rel)).get("status") in ("finished", "pending")
+            return rel, ("  ✓ " if ok else "  ? ") + rel
         except Exception as exc:  # noqa: BLE001 - 清不动不致命，后面校验说了算
-            print(f"  ✗ {p}: {exc}")
+            return rel, f"  ✗ {rel}: {exc}"
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        lines = dict(pool.map(_one, paths))
+    bad = [lines[p] for p in paths if not lines[p].startswith("  ✓")]
+    # Only the failures are worth 80 lines of terminal; the rest is a count.
+    print(f"  ✓ {len(paths) - len(bad)} 个清掉了")
+    for line in bad:
+        print(line)
 
     if "--no-wait" in sys.argv:
         # Called straight after a direct deploy: the machine already has the code over
