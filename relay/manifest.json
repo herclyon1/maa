@@ -1,7 +1,7 @@
 {
- "version": 20260909052911,
+ "version": 20260909053538,
  "files": {
-  "RELEASE-NOTES.md": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+  "RELEASE-NOTES.md": "da34096ec105fb11efd83d2edb5d9f686aa11951",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
   "ark_relay/__main__.py": "5564de3621066afa4ce9eee284ce09be374ed3aa",
   "ark_relay/annihilation.py": "5ec4c927c131d2aefc58aebbdda591c37fb672e4",
@@ -32,7 +32,7 @@
   "ark_relay/okww_files/DailyTask.run.upstream.txt": "a447990af6460e8e523aa74d5f4932b323233537",
   "ark_relay/okww_files/NightmareNestTask.patched.py": "8838b7666d0649c670a14326b0f48186b166fe57",
   "ark_relay/okww_files/NightmareNestTask.upstream.py": "c93bdc9ce1898d56cf15268d84e70107fe2ac4bf",
-  "ark_relay/okww_files/ark_overrides.tasks.py": "31dbc378a7e6d815efa288b36f1c3be76c9dbd44",
+  "ark_relay/okww_files/ark_overrides.tasks.py": "08f1630b4c6d547a5d7f0024c20d5b716086fcd4",
   "ark_relay/okww_overlay.py": "0c61da73346a2e91d241652325e691804a819e56",
   "ark_relay/okww_patch.py": "a5c829143b7395fbf803a54fe7db3f69c09b7137",
   "ark_relay/okww_patches/__init__.py": "7c076f7b2e6c9cd58e03e6f623206b9aacf2eb35",
