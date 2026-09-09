@@ -39,6 +39,8 @@ CHANGES = {
     "无音区结算页留一张图": "tacet_drops",
     "附加任务提到刷体力之前": "附加任务出错，不拖垮当趟日常",
     "标记文件在就不刷体力": "刷体力已禁用（标记文件在）",
+    "附加任务一趟只跑一次": "makes their trailing call a no-op",
+    "每趟开始时把那个标记清零": "self._ark_additional_ran = False",
     "限时提前开放的剧情提示框": "限时提前开放的剧情提示框",
     "限时提前开放后直接进场": "限时提前开放：确认后直接进场",
     "主动跳过的信号照原样抛": "isinstance(exc.__cause__, TaskDisabledException)",
@@ -70,7 +72,7 @@ for banned in ("def farm_do_run(", "def farm_teleport(", "def daily_run(",
     check(f"没有 {banned.strip('def (')}", banned in src, False)
 
 print("[包一层的必须真的调用上游那份]")
-for captured in ("farm_run(self", "farm_combat(self", "pick_level(self", "tacet_stamina(self",
+for captured in ("daily_run(self", "farm_run(self", "farm_combat(self", "pick_level(self", "tacet_stamina(self",
                  "open_daily(self", "run_additional(self", "original(self",
                  "inner(self", "outer(self", "prepare(self"):
     check(f"调用了 {captured.split('(')[0]}", captured in src)

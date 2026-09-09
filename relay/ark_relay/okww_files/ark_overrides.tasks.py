@@ -368,6 +368,15 @@ def _install_hooks():
         return can_continue, used
 
     # -- daily: additional tasks first, and never let them sink the run -----
+    daily_run = DailyTask.run
+
+    @override(DailyTask, "run")
+    def daily(self):
+        # One flag per run. Without resetting it here the second daily of a boot
+        # would skip its additional tasks entirely.
+        self._ark_additional_ran = False
+        return daily_run(self)
+
     open_daily = DailyTask.open_daily
 
     @override(DailyTask, "open_daily")
@@ -378,8 +387,7 @@ def _install_hooks():
         # leaves the call bare because it is their last statement; moved ahead of
         # everything it has to be wrapped, or one weekly-boss error takes the
         # daily, the mail and the pass down with it.
-        if not getattr(self, "_ark_additional_done", False):
-            self._ark_additional_done = True
+        if not getattr(self, "_ark_additional_ran", False):
             try:
                 self.run_additional_tasks()
             except Exception as exc:  # noqa: BLE001
@@ -394,13 +402,15 @@ def _install_hooks():
 
     @override(DailyTask, "run_additional_tasks")
     def run_additional_tasks(self):
-        if getattr(self, "_ark_additional_done", False) and getattr(self, "_ark_additional_ran", False):
+        # Upstream calls this as the last statement of run(). We call it early, from
+        # open_daily; this makes their trailing call a no-op instead of a second run.
+        # The first shape reset the flag in a finally, so the trailing call ran the
+        # weekly boss a second time - it only went unnoticed because there was
+        # nothing left for it to do.
+        if getattr(self, "_ark_additional_ran", False):
             return None
         self._ark_additional_ran = True
-        try:
-            return run_additional(self)
-        finally:
-            self._ark_additional_ran = False
+        return run_additional(self)
 
     # -- daily: the stamina farm itself -------------------------------------
     def _farm_hook(cls, name):
