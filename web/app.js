@@ -226,10 +226,27 @@ async function readMessages(since = "48h") {
   }).filter((e) => e && e.event === "message");
 }
 
-/* 状态包可能是压缩的。机器那头只在明文会超 ntfy 大小上限时才压
-   （选项表那一堆中文候选占了一多半），压不下也压。两种都要认：
-   以前超限的处理是**砍字段**——先砍明日安排、再砍选项表，
-   于是手机上那些中文下拉不声不响就没了。 */
+/* 一条状态可能以三种形态到达：明文、压缩过的、或者太大被 ntfy 转成的附件。
+   三种都要认。
+   2026-09-09 之前超限的处理是**砍字段**——先砍明日安排、再砍选项表，手机上那些
+   中文下拉不声不响就没了；砍完还超就发一个读不懂的包，页面只好一直显示旧值，
+   看上去像刷新坏了。实测通道其实允许 15MB：超过 4096 字节 ntfy 会自动存成附件
+   并给出网址，取回来一字不差。所以现在什么都不砍。 */
+async function envelope(e) {
+  /* 一条 ntfy 消息 → 我们的信封对象。走附件时正文里是一句提示，真身在附件网址上。 */
+  try {
+    const m = JSON.parse(e.message);
+    if (m && m.kind) return m;
+  } catch {}
+  const url = e.attachment && e.attachment.url;
+  if (!url) return null;
+  try {
+    const r = await fetch(url + "?_=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) return null;
+    return JSON.parse(await r.text());
+  } catch { return null; }
+}
+
 async function unwrap(m) {
   if (m.body !== undefined) return m.body;
   if (!m.gz) return null;
@@ -248,8 +265,7 @@ async function latestState(since = "48h") {
   const msgs = await readMessages(since);
   pinScan = { seen: 0, matched: 0 };
   for (let i = msgs.length - 1; i >= 0; i--) {
-    let m;
-    try { m = JSON.parse(msgs[i].message); } catch { continue; }
+    const m = await envelope(msgs[i]);
     if (!m || m.kind !== "state") continue;
     pinScan.seen++;
     if (m.pin === cfg.pin) {
@@ -372,17 +388,6 @@ function render() {
   } else {
     lastGoodConfig = c;
     try { localStorage.setItem(LS + "-config", JSON.stringify(c)); } catch {}
-  }
-
-  /* 状态包超过通道上限时中继会砍掉几段再发。以前砍完还是超，手机拿到一个读不懂
-     的包，只能继续显示旧值——看上去像「刷新没反应」。现在砍了会写在包里，这里
-     把缺了什么说出来，而不是让旧值冒充新值。 */
-  const CUT_NAMES = { plan: "明日安排", options: "可选项", master: "母本配置",
-                      queues: "班次", config: "配置" };
-  if (snap && snap["_砍掉的"] && snap["_砍掉的"].length) {
-    html += `<div class="warn">⚠️ 状态包太大，这次没带上：`
-      + snap["_砍掉的"].map((k) => CUT_NAMES[k] || k).join("、")
-      + `。其余照常显示</div>`;
   }
 
   const qs = (snap && snap.queues) || [];
@@ -842,7 +847,7 @@ async function ping(minAt) {
       try {
         const d = JSON.parse(ev.data);
         if (d.event && d.event !== "message") return;
-        const m = JSON.parse(d.message);
+        const m = await envelope(d);
         if (!m || m.kind !== "state" || m.pin !== cfg.pin) return;
         const body = await unwrap(m);
         if (body && (!sseLatest || body.at > sseLatest.at)) sseLatest = body;
