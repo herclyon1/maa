@@ -86,13 +86,9 @@ class _Marker:
 def _install():
     from src.task.FarmEchoTask import FarmEchoTask
 
-    # This one replaces upstream's method outright rather than wrapping it, so
-    # upstream's own version never runs. Pinning its hash is what keeps that honest:
-    # the day they change `revive_action`, ours is stale by definition and would go
-    # on running silently. With the pin, it refuses to bind and says why.
-    # Recomputed on the machine with inspect.getsource; update it deliberately after
-    # reading what upstream changed, never to make a warning go away.
-    @override(FarmEchoTask, "revive_action", expect_sha="e99b2d74c31a")
+    revive = FarmEchoTask.revive_action
+
+    @override(FarmEchoTask, "revive_action")
     def revive_action(self):
         # Inside a realm upstream gives up on reviving - there is no teleport tower
         # to run back to - so one death stops the whole task. For an overnight farm
@@ -100,18 +96,11 @@ def _install():
         # OK-WW already recognises it, so find the confirm button by its own text and
         # take the next lap. **By text, not by position**: the dialog is titled
         # 「选择复苏物品」, and matching 复苏 clicked the title itself on 2026-09-09.
-        if not self._in_realm:
-            self.teleport_to_heal()
-            self.run_until(lambda: False, 's', 1, running=True)
-            self.teleport_to_nearest_boss()
-            self.sleep(0.5)
-            self.run_until(lambda: self.in_combat() or self.find_treasure_icon(),
-                           'w', time_out=12, running=True, target=True)
-            self.execute_treasure_hunt()
-            self.is_revived = True
-            return True
-        if not farming_echoes():
-            return False
+        # Only the one case upstream refuses is ours: inside a realm it returns
+        # False, because there is no teleport tower to run back to. Everything else
+        # is theirs and still runs, so their improvements to it flow through.
+        if not (self._in_realm and farming_echoes()):
+            return revive(self)
         try:
             found = self.ocr(box=self.box_of_screen(0.0, 0.0, 1.0, 1.0)) or []
             text = ' '.join(str(b) for b in found)

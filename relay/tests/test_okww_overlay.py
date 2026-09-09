@@ -59,8 +59,11 @@ check("多等那次不许自己抛，找不到才抛", "raise_if_not_found=False
 # every whole-method replacement must carry one.
 whole = [l for l in src.splitlines() if "@override(" in l]
 pinned = [l for l in whole if "expect_sha=" in l]
-check("整个方法替换的那条钉住了上游哈希", len(pinned) >= 1)
-check("被替换的方法名在钉住的那行里", any("revive_action" in l for l in pinned))
+check("整段替换的都钉住了上游哈希", len(pinned) >= 1)
+# revive_action stopped being a replacement on 2026-09-09: only the case upstream
+# refuses (inside a realm) is ours now, and their body still runs for the rest.
+check("被替换的是那两个小方法", any("click_team_challenge" in l or "find_nest" in l
+                                    for l in pinned))
 
 print("[没贴上必须报出来，不许闷着]")
 real = okww_overlay.REPORT

@@ -56,7 +56,7 @@ for name, marker in CHANGES.items():
 
 # A replacement stops upstream's body from running, so it must be pinned.
 # Everything else wraps.
-REPLACEMENTS = {"revive_action", "click_team_challenge", "find_nest"}
+REPLACEMENTS = {"click_team_challenge", "find_nest"}
 
 print("[只有两处整段替换，而且都钉了指纹]")
 bound = re.findall(r'@override\((\w+), "(\w+)"([^)]*)\)', src)
@@ -75,7 +75,7 @@ for banned in ("def farm_do_run(", "def farm_teleport(", "def daily_run(",
     check(f"没有 {banned.strip('def (')}", banned in src, False)
 
 print("[包一层的必须真的调用上游那份]")
-for captured in ("nest_run(self", "next_nest(self", "daily_run(self", "farm_run(self", "farm_combat(self", "pick_level(self", "tacet_stamina(self",
+for captured in ("revive(self", "nest_run(self", "next_nest(self", "daily_run(self", "farm_run(self", "farm_combat(self", "pick_level(self", "tacet_stamina(self",
                  "open_daily(self", "run_additional(self", "original(self",
                  "inner(self", "outer(self", "prepare(self"):
     check(f"调用了 {captured.split('(')[0]}", captured in src)
