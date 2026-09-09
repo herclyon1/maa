@@ -30,6 +30,7 @@ already handled are remembered by ntfy's own message id, so nothing runs twice.
 from __future__ import annotations
 
 import base64
+import hashlib
 import gzip
 import json
 import logging
@@ -77,6 +78,28 @@ def pack(pin: str, body: dict, kind: str = "cmd", *, gz: bool = False) -> str:
     else:
         env["body"] = body
     return json.dumps(env, ensure_ascii=False, separators=(",", ":"))
+
+
+def pack_chunks(pin: str, body: dict, kind: str, room: int) -> "list[str]":
+    """One state too big to travel inline, split into ordinary messages.
+
+    Not attachments: ntfy expires those after three hours, and the state pushed
+    before the machine shuts down for the night is exactly the one read the next
+    morning. Ordinary messages are kept for twelve hours, the same as every other
+    message the phone relies on.
+
+    Every piece carries the same `sid` and its own `i` of `n`, so the phone can tell
+    a complete set from a half-arrived one and never renders half a state.
+    """
+    raw = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
+    blob = base64.b64encode(gzip.compress(raw.encode("utf-8"))).decode("ascii")
+    sid = hashlib.sha1(f"{time.time()}{len(blob)}".encode()).hexdigest()[:10]
+    slices = [blob[i:i + room] for i in range(0, len(blob), room)] or [""]
+    now = int(time.time())
+    return [json.dumps({"v": 1, "kind": kind, "pin": pin, "ts": now,
+                        "sid": sid, "i": i, "n": len(slices), "gzp": s},
+                       ensure_ascii=False, separators=(",", ":"))
+            for i, s in enumerate(slices)]
 
 
 def unpack(pin: str, raw: str, *, now: "float | None" = None) -> "dict | None":
@@ -289,23 +312,37 @@ class Mailbox:
     # section to fit. That threw away features to solve a problem that did not
     # exist, and when trimming was not enough the message went out unparseable and
     # the phone silently showed values 54 minutes old.
+    # ntfy keeps messages for 12 hours and attachments for only 3. A state pushed
+    # before the machine shuts down at night has to still be readable the next
+    # morning, so it must never travel as an attachment - which is what anything
+    # over 4096 bytes turns into. Over that, it is split into ordinary messages
+    # instead: they last as long as any other message, and nothing is dropped.
     INLINE_MAX = 4096
     MAX_BODY = INLINE_MAX      # old name, kept for callers and tests
+    # Room for the envelope around each slice.
+    CHUNK_ROOM = 400
 
     def publish(self, body: dict, kind: str = "state") -> bool:
         if not self.enabled:
             return False
         data = pack(self.pin, body, kind).encode("utf-8")
         if len(data) > self.INLINE_MAX:
-            # Compressing keeps it inline, which spares the phone a second fetch.
-            # Nothing is dropped either way.
             packed = pack(self.pin, body, kind, gz=True).encode("utf-8")
             if len(packed) < len(data):
                 log.info("状态 %d 字节，压缩到 %d 字节", len(data), len(packed))
                 data = packed
-        if len(data) > self.INLINE_MAX:
-            log.info("状态 %d 字节，超过 %d 就走附件，手机那边会去取",
-                     len(data), self.INLINE_MAX)
+        if len(data) <= self.INLINE_MAX:
+            return self._post(data, kind)
+        parts = pack_chunks(self.pin, body, kind,
+                            self.INLINE_MAX - self.CHUNK_ROOM)
+        log.info("状态 %d 字节，切成 %d 条普通消息发（附件只活 3 小时，消息活 12 小时）",
+                 len(data), len(parts))
+        ok = True
+        for piece in parts:
+            ok = self._post(piece.encode("utf-8"), kind) and ok
+        return ok
+
+    def _post(self, data: bytes, kind: str) -> bool:
         req = urllib.request.Request(f"{NTFY}/{self.topic}", data=data,
                                      method="POST",
                                      headers={"User-Agent": _UA,

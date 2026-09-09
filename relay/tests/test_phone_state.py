@@ -273,23 +273,44 @@ random.seed(826)
 noise = "".join(random.choice("0123456789abcdef") for _ in range(20000))
 
 
-def publish_and_read(body):
-    net = FakeNet()
-    net.queue.append(FakeResp(b"ok"))
-    with_net(net, lambda: mb.publish(body))
-    wire = net.sent[0][1]
-    return wire, phone.unpack(PIN, wire.decode())
-
 
 payload = {"at": 1, "plan": noise[:5000], "options": {"x": noise[5000:15000]},
            "config": {"MAA": {"关卡": "AT-4"}}}
-wire, sent = publish_and_read(payload)
-check("压不下去也照发，一个字段都不砍", sent["body"], payload)
-check("确实超过了内联分界（走附件）", len(wire) > phone.Mailbox.INLINE_MAX, True)
-check("发出去的仍是完整 JSON", sent is not None, True)
-check("明日安排还在", "plan" in sent["body"], True)
-check("选项表还在", "options" in sent["body"], True)
-check("不再往包里塞「砍掉了什么」", "_砍掉的" in sent["body"], False)
+net = FakeNet()
+for _ in range(10):
+    net.queue.append(FakeResp(b"ok"))
+with_net(net, lambda: mb.publish(payload))
+wires = [s[1] for s in net.sent]
+check("压不下去就切成多条，而不是走附件", len(wires) > 1, True)
+# Attachments expire after three hours; the state pushed before the machine shuts
+# down at night is exactly the one read the next morning. Ordinary messages last
+# twelve hours, so oversized states are split into those.
+check("每一条都在内联分界之内（不会被转成附件）",
+      max(len(w) for w in wires) <= phone.Mailbox.INLINE_MAX, True)
+parts = [json.loads(w.decode()) for w in wires]
+check("每条都带同一个 sid", len({p["sid"] for p in parts}), 1)
+check("序号从 0 连到 n-1", [p["i"] for p in parts], list(range(len(parts))))
+check("每条都写明总共几条", {p["n"] for p in parts}, {len(parts)})
+check("每条的 pin 都在（半路截获也认不出内容）", {p["pin"] for p in parts}, {PIN})
+
+import base64 as _b64, gzip as _gz  # noqa: E402
+
+blob = "".join(p["gzp"] for p in sorted(parts, key=lambda x: x["i"]))
+back = json.loads(_gz.decompress(_b64.b64decode(blob)).decode("utf-8"))
+check("拼起来一个字段都不少", back, payload)
+check("明日安排还在", "plan" in back, True)
+check("选项表还在", "options" in back, True)
+
+print("\n[少一片就当没有：绝不把半份状态当完整的显示]")
+short = parts[:-1]
+blob2 = "".join(p["gzp"] for p in sorted(short, key=lambda x: x["i"]))
+broke = False
+try:
+    _gz.decompress(_b64.b64decode(blob2 + "=" * (-len(blob2) % 4)))
+except Exception:  # noqa: BLE001 - any failure to decode is the point
+    broke = True
+check("缺一片就解不开，不会解出半份", broke, True)
+check("总数写在每一片上，凑没凑齐一看便知", short[0]["n"] > len(short), True)
 
 net = FakeNet()
 net.queue.append(urllib.error.URLError("网断了"))
