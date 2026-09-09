@@ -51,15 +51,14 @@ def _okww_quiesce(sleep=time.sleep) -> None:
     windowless update check. Same shape as MAA's master-copy problem: editing a
     file that a running process owns is editing a copy.
     """
-    for name in ("ok-ww.exe", "Wuthering Waves.exe",
-                 "Client-Win64-Shipping.exe", "KRSDKExternal.exe"):
-        try:
-            subprocess.run(["taskkill", "/F", "/IM", name],
-                           capture_output=True, timeout=30)
-        except (OSError, subprocess.SubprocessError):
-            pass
-    # The headless task/web runners are plain python; match them by command line.
-    ps = ("Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | "
+    # **The script dies first, then the game.** The other way round leaves OK-WW
+    # alive for a moment with the game gone, and it starts the game again: on
+    # 2026-09-09 the user stopped the farm from his phone and found 鸣潮 still on
+    # screen, because the game was killed first and OK-WW brought it back.
+    # `pythonw.exe` counts too - the echo farm is launched with it precisely so no
+    # console window covers the game, and matching only `python.exe` left it running.
+    ps = ("Get-CimInstance Win32_Process -Filter "
+          "\"Name='python.exe' OR Name='pythonw.exe'\" | "
           "Where-Object { $_.CommandLine -like '*ok-ww*' -or "
           "$_.CommandLine -like '*-m ok *' } | "
           "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }")
@@ -68,6 +67,13 @@ def _okww_quiesce(sleep=time.sleep) -> None:
                        capture_output=True, timeout=60)
     except (OSError, subprocess.SubprocessError):
         pass
+    for name in ("ok-ww.exe", "Wuthering Waves.exe",
+                 "Client-Win64-Shipping.exe", "KRSDKExternal.exe"):
+        try:
+            subprocess.run(["taskkill", "/F", "/IM", name],
+                           capture_output=True, timeout=30)
+        except (OSError, subprocess.SubprocessError):
+            pass
     # 等两秒让进程真的退干净。`sleep` 可注入是为了测试：2026-09-08 量到
     # test_gameupdate 里 6 秒是**纯等**（CPU 3%），全套测试有 17 秒是这类空等。
     # 部署每次都要跑这套测试，空等直接变成部署时间。

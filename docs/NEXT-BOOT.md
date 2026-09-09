@@ -9,10 +9,11 @@ the configured clock time. Verified live from 06:02 to 06:10 machine time.
 The character dies every ten laps or so. OK-WW used to stop the whole task on a
 death - inside a realm its `revive_action` gives up, because there is no teleport
 tower to run back to. It now clicks the revive button by its own text and the loop
-takes the next lap (`okww_patches/revive.py`). **That patch has not yet been seen to
-fire**: it was deployed at 07:21 and no death happened before 07:32. If the log ever
-carries 「死亡弹窗上没找到复活按钮」 it also prints everything it read off the screen,
-which is what to look at.
+takes the next lap (`okww_patches/revive.py`). **Verified live at 08:08**: the character died, the dialog was confirmed, and the loop
+took the next lap. Each revive spends one 复苏物品. v1 clicked the dialog's own title
+(「选择复苏物品」 contains 复苏) and did nothing; v2 clicks a short 确认 instead, and
+only when the dialog is actually on screen. If the log ever carries
+「死亡弹窗上没找到「确认」」 it also prints everything it read off the screen.
 
 The relay still relaunches the farm as a backstop after three minutes of log silence,
 and the count of relaunches is in the message it pushes when the farm ends. The farm's
