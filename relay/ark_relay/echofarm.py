@@ -300,6 +300,30 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
     return True, f"开始刷{name or f'第 {boss} 个'}，刷到 {until:%H:%M} 为止（机器时间）"
 
 
+def retime(cfg, until_hhmm: str, now: datetime | None = None) -> tuple[bool, str]:
+    """Move a running farm's finishing time, earlier or later.
+
+    Asked for on 2026-09-09: 「他在跑刷声骸了，我想改一下时间，提前或者延后」. Stopping
+    and starting again would rewrite the saved config and lose the restart count, so
+    the deadline is edited in place and nothing else is touched.
+    """
+    rec = current(cfg.state_dir)
+    if not rec:
+        return False, "现在没有在刷声骸，没有可改的时刻"
+    until = resolve_until(until_hhmm, now)
+    if until is None:
+        return False, f"结束时刻看不懂：{until_hhmm!r}（要 21:00 这种）"
+    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    was = rec.get("until")
+    rec["until"] = until.strftime("%Y-%m-%d %H:%M")
+    _store(cfg.state_dir).set("queues", "echo_farm", rec)
+    # A time already past rolls to tomorrow, exactly as it does when a farm is
+    # started - one rule, not two. Stopping now is what the 收工 button is for.
+    mins = int((until - now).total_seconds() // 60)
+    return True, (f"刷{rec.get('name') or '声骸'}的收工时刻从 {str(was)[11:]} 改成 "
+                  f"{until:%H:%M}（还剩 {mins // 60} 小时 {mins % 60} 分）")
+
+
 def finish(cfg, why: str) -> str:
     """Stop the farm and put the config back. '' when nothing was running."""
     rec = current(cfg.state_dir)

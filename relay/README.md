@@ -97,6 +97,7 @@ JSON patch.
 | `weekly_boss` | yes | no - 鸣潮周本「打第几个」。次数（3）和难度（90 级）是游戏规则，钉死在中继里不给改 |
 | `echo_farm` | yes | yes - 鸣潮：盯着 F2「讨伐强敌」里的第几个 boss 刷 4C 声骸，**刷到指定时刻为止**（`until` 写 `08:30` 这种，按机器的钟）。开跑前把 FarmEchoTask 的原配置整份存下来，收工时还原——那份配置和每日的周本共用 |
 | `echo_farm_stop` | yes | no - 提前收工：停掉刷取并把配置还原 |
+| `echo_farm_until` | yes | no - 改正在刷的那趟的收工时刻，提前或延后都行（`until` 写 `21:00` 这种）。只动收工时刻，存下来的原配置、开跑时刻和重开次数都不动 |
 | `set_config` | no, writes config | **yes** - 改 MAS 侧用户配置，**只改已存在的字段**，凭空造的会被拒 |
 | `set_master` | no, writes config | **yes** - 改脚本自己的母本配置（MaaEnd / OK-WW / MAA）。这两个脚本的快速配置是关的，MAS 侧改了不生效，所以手机页那两段走的是这条 |
 

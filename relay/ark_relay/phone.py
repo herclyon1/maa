@@ -286,22 +286,33 @@ class Mailbox:
     def publish(self, body: dict, kind: str = "state") -> bool:
         if not self.enabled:
             return False
-        data = pack(self.pin, body, kind).encode("utf-8")
-        if len(data) > self.MAX_BODY:
-            # Try compression first. Dropping a field means **a feature is gone**;
-            # compressing only costs a few milliseconds.
-            packed = pack(self.pin, body, kind, gz=True).encode("utf-8")
-            if len(packed) <= self.MAX_BODY:
-                log.info("状态 %d 字节超线，压缩后 %d 字节，照发",
-                         len(data), len(packed))
-                data = packed
-        for drop in ("plan", "options"):
+        def smallest(b: dict) -> bytes:
+            # Compressing costs milliseconds; dropping a field costs a feature. So
+            # always take the smaller of the two. The old code compressed once, then
+            # re-packed **uncompressed** after every drop, throwing that away: on
+            # 2026-09-09 it dropped two sections and still went out at 5785 bytes,
+            # over ntfy's limit, so the phone could not parse it at all and silently
+            # kept showing a snapshot 54 minutes old while 「刷新」 appeared to work.
+            plain = pack(self.pin, b, kind).encode("utf-8")
+            if len(plain) <= self.MAX_BODY:
+                return plain
+            gz = pack(self.pin, b, kind, gz=True).encode("utf-8")
+            return gz if len(gz) < len(plain) else plain
+
+        data = smallest(body)
+        dropped: list[str] = []
+        # Ordered by what the phone can most afford to lose.
+        for drop in ("plan", "options", "master", "queues", "config"):
             if len(data) <= self.MAX_BODY:
                 break
             if drop in body:
                 log.warning("状态太大（%d 字节），砍掉「%s」再发", len(data), drop)
                 body = {k: v for k, v in body.items() if k != drop}
-                data = pack(self.pin, body, kind).encode("utf-8")
+                dropped.append(drop)
+                # Say what is missing, so the page can show a gap instead of
+                # quietly rendering stale values as if they were current.
+                body["_砍掉的"] = dropped
+                data = smallest(body)
         if len(data) > self.MAX_BODY:
             log.error("状态还是太大（%d 字节），手机上会解析失败", len(data))
         req = urllib.request.Request(f"{NTFY}/{self.topic}", data=data,

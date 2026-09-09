@@ -38,7 +38,8 @@ log = logging.getLogger("ark.commands")
 # ---------- gate ① : the whitelist ----------
 
 # Actions that only change what happens next, and undo themselves.
-REVERSIBLE = {"skip_today", "debug_mode", "skip_shutdown", "weekly_boss", "echo_farm_stop"}
+REVERSIBLE = {"skip_today", "debug_mode", "skip_shutdown", "weekly_boss", "echo_farm_stop",
+              "echo_farm_until"}
 
 # Actions that write to a config file on disk.
 MUTATING = {"set_stage", "set_medicine", "toggle_task", "set_wait_time",
@@ -673,6 +674,10 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             from .wuwa_boss import label  # noqa: PLC0415
             return echofarm.start(Config(), cmd.get("boss"), cmd.get("until"),
                                   str(cmd.get("name") or "") or label(cmd.get("boss")))
+        if action == "echo_farm_until":
+            from .echofarm import retime  # noqa: PLC0415
+            from .config import Config  # noqa: PLC0415
+            return retime(Config(), cmd.get("until"))
         if action == "echo_farm_stop":
             from . import echofarm  # noqa: PLC0415
             from .config import Config  # noqa: PLC0415

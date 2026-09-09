@@ -1,6 +1,6 @@
 # Lines of Chinese comment/docstring per file. **This may only shrink.**
 # Why, and what stays Chinese on purpose: scripts/mac/lib/zh_ratchet.py
-# total 2131 lines in 185 files
+# total 2125 lines in 186 files
 # regenerate: python3 scripts/mac/lib/zh_ratchet.py --update
 relay/ark_relay/banners.py 16
 relay/ark_relay/collector.py 5
@@ -10,6 +10,7 @@ relay/ark_relay/collector_okww.py 3
 relay/ark_relay/commands.py 2
 relay/ark_relay/config.py 2
 relay/ark_relay/core.py 3
+relay/ark_relay/echofarm.py 1
 relay/ark_relay/gameupdate.py 4
 relay/ark_relay/gameupdate_games.py 1
 relay/ark_relay/garden.py 1
@@ -80,7 +81,7 @@ relay/tests/test_notify_routing.py 11
 relay/tests/test_okww_error_reason.py 7
 relay/tests/test_okww_exit_race.py 3
 relay/tests/test_okww_names_not_numbers.py 11
-relay/tests/test_okww_patch.py 48
+relay/tests/test_okww_patch.py 44
 relay/tests/test_okww_patch_on_update.py 7
 relay/tests/test_okww_patch_refresh.py 10
 relay/tests/test_okww_report.py 21
@@ -135,7 +136,7 @@ scripts/mac/check-docs.py 12
 scripts/mac/cn-route-pf.sh 13
 scripts/mac/config-check.py 25
 scripts/mac/confirm-off.sh 1
-scripts/mac/deploy-relay.sh 117
+scripts/mac/deploy-relay.sh 115
 scripts/mac/deploy-web.sh 13
 scripts/mac/endfield-report.py 9
 scripts/mac/estop.sh 34
@@ -167,7 +168,7 @@ scripts/mac/make-app.sh 3
 scripts/mac/make-stream-apps.sh 16
 scripts/mac/okww-check.sh 10
 scripts/mac/okww-task.sh 18
-scripts/mac/order.sh 13
+scripts/mac/order.sh 12
 scripts/mac/proxy-monitor.sh 5
 scripts/mac/pull-replay.sh 4
 scripts/mac/purge-cdn.py 27

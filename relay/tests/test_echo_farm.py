@@ -105,6 +105,29 @@ check("配置一字不差地还原", cfg_now(c), ORIGINAL)
 check("状态清空", echofarm.current(c.state_dir), {})
 check("再 tick 一次什么都不做", echofarm.tick(c, datetime(2026, 9, 9, 9, 0, tzinfo=SERVER_TZ)), "")
 
+print("\n[跑到一半改收工时刻：提前或延后都行，别的不动]")
+c = fresh()
+echofarm._launch = lambda: (launched.append(1), (True, ""))[1]
+echofarm.start(c, 1, "08:30", "天傀劫煞", now=NOW)
+_before = dict(echofarm.current(c.state_dir))
+ok, msg = echofarm.retime(c, "21:00", now=NOW)
+check("改成功", ok, True)
+check("话里有新旧两个时刻", "08:30" in msg and "21:00" in msg, True)
+check("话里说了还剩多久", "还剩" in msg, True)
+check("记录里的收工时刻真的变了", echofarm.current(c.state_dir)["until"][11:], "21:00")
+check("原配置一字没动", echofarm.current(c.state_dir)["saved"], _before["saved"])
+check("开跑时刻没被改掉", echofarm.current(c.state_dir)["started"], _before["started"])
+check("提前也行", echofarm.retime(c, "05:00", now=NOW)[1].count(":") >= 2, True)
+# A time already past rolls to tomorrow, the same rule as starting a farm.
+check("已经过去的时刻算明天的，和开跑时同一条规则",
+      echofarm.retime(c, "03:00", now=datetime(2026, 9, 9, 4, 0, tzinfo=SERVER_TZ))[0], True)
+check("确实记成了明天", echofarm.current(c.state_dir)["until"][:10], "2026-09-10")
+for bad in ("25:00", "九点", ""):
+    check(f"看不懂的时刻拒绝 {bad!r}", echofarm.retime(c, bad, now=NOW)[0], False)
+echofarm.finish(c, "收尾")
+check("没在刷的时候改不了", echofarm.retime(c, "21:00", now=NOW)[0], False)
+check("而且说清是没在刷", "没有在刷" in echofarm.retime(c, "21:00", now=NOW)[1], True)
+
 print("\n[手动停：一样还原]")
 c = fresh()
 echofarm.start(c, 3, "08:30", "第 3 个")
