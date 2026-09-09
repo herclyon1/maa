@@ -45,6 +45,9 @@ CHANGES = {
     "限时提前开放后直接进场": "限时提前开放：确认后直接进场",
     "主动跳过的信号照原样抛": "isinstance(exc.__cause__, TaskDisabledException)",
     "传送界面来晚了再等一次": "多等 15 秒",
+    "巢穴只刷指定点位": "Only Farm These Nests",
+    "巢穴没打满就接着打": "is not complete",
+    "巢穴白打一局就拉黑": "no progress after an attempt",
 }
 
 print("[每一条改动都还在]")
@@ -53,7 +56,7 @@ for name, marker in CHANGES.items():
 
 # A replacement stops upstream's body from running, so it must be pinned.
 # Everything else wraps.
-REPLACEMENTS = {"revive_action", "click_team_challenge"}
+REPLACEMENTS = {"revive_action", "click_team_challenge", "find_nest"}
 
 print("[只有两处整段替换，而且都钉了指纹]")
 bound = re.findall(r'@override\((\w+), "(\w+)"([^)]*)\)', src)
@@ -72,7 +75,7 @@ for banned in ("def farm_do_run(", "def farm_teleport(", "def daily_run(",
     check(f"没有 {banned.strip('def (')}", banned in src, False)
 
 print("[包一层的必须真的调用上游那份]")
-for captured in ("daily_run(self", "farm_run(self", "farm_combat(self", "pick_level(self", "tacet_stamina(self",
+for captured in ("nest_run(self", "next_nest(self", "daily_run(self", "farm_run(self", "farm_combat(self", "pick_level(self", "tacet_stamina(self",
                  "open_daily(self", "run_additional(self", "original(self",
                  "inner(self", "outer(self", "prepare(self"):
     check(f"调用了 {captured.split('(')[0]}", captured in src)

@@ -200,22 +200,13 @@ def test_applies(tmp: Path) -> None:
           domain.count("from ok import"), 1)
     check("撤销这件事有留言", any("已还原成上游原样" in n for n in notes), True)
 
-    nest = (d / "NightmareNestTask.py").read_text(encoding="utf-8")
-    patched = (Path(__file__).resolve().parents[1] / "ark_relay" / "okww_files"
-               / "NightmareNestTask.patched.py").read_text(encoding="utf-8")
-    check("整份换成了我们的版本", nest == patched, True)
-    # 断言意图，不断言字面。2026-08-29 我把 `if numerator != denominator` 拆成
-    # `if numerator == denominator: seen_full = True`（为了把「打满」「被拉黑」
-    # 「分母读错」三种情况分开报），行为一模一样，这条却红了——守字面就会
-    # 把无害重构报成回归，把人训练成「改测试让它绿」。
-    # 只看代码，不看注释——补丁里那段注释本来就在讲「原来这里有个
-    # numerator == '0'」，连注释一起搜必然误报。
-    nest_code = "\n".join(l.split("#", 1)[0] for l in nest.splitlines())
-    check("旧的「已击败必须为 0」限制没有回来",
-          "numerator == '0'" in nest_code or 'numerator == "0"' in nest_code, False)
-    check("仍然分得清打满与没打满（分子分母要比较）",
-          "numerator == denominator" in nest or "numerator != denominator" in nest, True)
-    check("带了「只刷指定点位」", "Only Farm These Nests" in nest, True)
+    # The whole-file replacement was retired on 2026-09-09: the behaviour moved into
+    # ok_tasks/ark_overrides.py, and a replaced file is the worst thing to leave
+    # behind - an OK-WW update to it would be overwritten silently every boot.
+    nest = (d / "NightmareNestTask.py").read_bytes()
+    upstream = (Path(__file__).resolve().parents[1] / "ark_relay" / "okww_files"
+                / "NightmareNestTask.upstream.py").read_bytes()
+    check("整份替换已撤销，还原成上游原样", nest == upstream, True)
 
     combat = (d / "BaseCombatTask.py").read_text(encoding="utf-8")
     check("主C饿死兜底已撤销", "_starved_main_dps_target" in combat, False)

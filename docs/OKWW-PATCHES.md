@@ -22,8 +22,7 @@ changed; an empty answer means everything was already in place.
 | 1 | `NightmareNestTask.py` replaced wholesale with our copy — this is where the fixed `ensure_main` and 「只刷指定点位」 live | `okww_files/NightmareNestTask.patched.py` |
 | 2 | Weekly boss runs **before** the daily stamina farming — otherwise the daily step burns all 180 stamina and the three 60-stamina chests are impossible | `okww_patches/stamina.py` |
 | 3 | 「这次不刷体力」 marker honoured | `okww_patches/nofarm.py` |
-| 1 | The whole `NightmareNestTask.py` file, replaced (it needs a change upstream has no hook for) | `okww_files/NightmareNestTask.patched.py` |
-| — | Everything else has moved out of this table, see below |
+| — | Nothing. Every change lives in `ark_overrides.py` now, see below |
 
 **Moved out of this table (2026-09-09)**: twelve of the thirteen changes now live in
 `okww_files/ark_overrides.tasks.py`, installed into OK-WW's own `ok_tasks/` folder by

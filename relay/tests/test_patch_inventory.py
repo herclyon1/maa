@@ -22,9 +22,8 @@ def check(label, got, want):
         fails.append(label)
 
 
-print("[还在改源文件的只剩巢穴那一条，其余全搬到 ok_tasks 了]")
-check("在贴的", P.active_patches(), [
-    "巢穴任务（整份文件替换）"])
+print("[一条都不改鸣潮的源文件了，全部搬到 ok_tasks]")
+check("在贴的", P.active_patches(), [])
 check("没有一条既在贴又在撤", {p.new for p in P._APPLIES} & {r[1] for r in P._REVERTS}, set())
 check("撤的每一条都有一个不同于现行版本的正文",
       all(r[1] not in {p.new for p in P._APPLIES} for r in P._REVERTS), True)
@@ -33,7 +32,7 @@ print("\n[docs/OKWW-PATCHES.md 的清单必须提到每一条在贴的补丁的�
 doc = (Path(__file__).resolve().parents[2] / "docs" / "OKWW-PATCHES.md").read_text(encoding="utf-8")
 for mod in ("NightmareNestTask.patched.py", "ark_overrides.tasks.py"):
     check(f"文档提到 {mod}", mod in doc, True)
-check("文档说清了在贴的条数", "1" in doc.split("Deliberately reverted")[0], True)
+check("文档说清了改动都在哪", "ark_overrides" in doc, True)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

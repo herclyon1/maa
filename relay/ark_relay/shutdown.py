@@ -242,6 +242,14 @@ def decide(eng, now: datetime) -> Verdict:
         return Verdict(False, "uptime", "开机不够久")
     if eng._scripts_running():
         return Verdict(False, "running", "还有脚本或游戏在跑")
+    # A farm is a promise to keep going until a stated time. 「还有脚本在跑」 covers
+    # it only while OK-WW is actually up; when the character dies OK-WW stops and the
+    # relay takes up to three minutes to put it back, and a shutdown landing in that
+    # window would end the night's farming without a word.
+    from . import echofarm  # noqa: PLC0415 - avoids an import cycle
+    if rec := echofarm.current(eng.cfg.state_dir):
+        return Verdict(False, "farming",
+                       f"正在刷{rec.get('name') or '声骸'}，刷到 {rec.get('until')} 才收工")
     if eng._pending or eng._recovered:
         return Verdict(False, "pending", "还有告警没推出去")
     if eng._deferred_update_busy():
@@ -263,7 +271,7 @@ def decide(eng, now: datetime) -> Verdict:
 # Reasons that mean "the machine will sit here until someone looks". The other
 # codes are either transient by design (uptime, nothing-done, report) or already
 # announced when they were switched on (debug, skipped, off).
-_STUCK_CODES = ("running", "pending", "updating", "manual", "unfinished", "issued")
+_STUCK_CODES = ("running", "pending", "updating", "manual", "unfinished", "issued", "farming")
 
 
 def _say_if_moment_passed(eng, now: datetime, v) -> None:

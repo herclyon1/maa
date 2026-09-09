@@ -22,8 +22,8 @@ import hashlib
 import inspect
 import json
 import os
-import re  # noqa: F401 - used by copied upstream bodies
-import time  # noqa: F401 - same
+import pathlib
+import re
 import traceback
 
 # The copied method bodies below reach these as module globals. They are filled in by
@@ -433,6 +433,160 @@ def _install_hooks():
     _farm_hook(SimulationTask, "farm_simulation")
 
 
+# ---------------------------------------------------------------------------
+# Nightmare nests. This used to be the last thing replacing a whole upstream file
+# (391 lines over their 255). Two of the three changes are wrappers; only find_nest
+# is replaced, and upstream's is 17 lines.
+# ---------------------------------------------------------------------------
+
+ONLY_NESTS = "Only Farm These Nests"
+# Seconds to wait for the point list to render. Long enough to cover a slow load,
+# short enough not to hang the task when the list really is empty.
+NEST_LIST_TIMEOUT = 15
+# How many line-heights below a nest's name its count may sit, measured in game on
+# 2026-08-27: the name's row centre was 317.5 and its count's 388.0, 70.5px apart,
+# about 2.35 rows; the next nest's name was 148px away, about 4.9 rows. Four rows
+# covers the first and cannot reach the second.
+NEST_ROW_SPAN = 4
+_KNOWN_DENOMINATORS = ("24", "36", "48", "41")
+_NEST_FIND_SHA = "3b0271924cac"
+
+
+def _install_nest():
+    from src.task.NightmareNestTask import NestTarget, NightmareNestTask
+
+    def only_names(self):
+        """The nests the operator asked for, or [] for 「all of them」."""
+        raw = (self.config.get(ONLY_NESTS) or "").strip()
+        if not raw:
+            # The key may predate this task's default_config, in which case OK-WW's
+            # Config drops it on load. The saved file still has it.
+            try:
+                import json
+                cfg = (pathlib.Path(os.getcwd()) / "configs" / "NightmareNestTask.json")
+                raw = str(json.loads(cfg.read_text(encoding="utf-8")).get(ONLY_NESTS) or "").strip()
+            except Exception:  # noqa: BLE001
+                raw = ""
+        return [n.strip() for n in re.split(r"[,，]", raw) if n.strip()]
+
+    def wanted_rows(self):
+        """Row centres of the wanted nests' names, or None when none were asked for."""
+        names = only_names(self)
+        if not names:
+            return None
+        # The list is still rendering right after the click. OCR-ing two seconds in
+        # read nothing, which looked exactly like 「that nest is not in the list」 and
+        # skipped the whole task for a day. Wait for any count to appear instead of
+        # for a fixed number of seconds.
+        for _ in range(NEST_LIST_TIMEOUT):
+            if self.ocr(0.35, 0.13, 1, 0.96, match=self.count_re):
+                break
+            self.sleep(1)
+        boxes = self.ocr(0.35, 0.13, 1, 0.96)
+        rows = [b.y + b.height / 2 for name in names for b in boxes
+                if name in (b.name or "")]
+        # Substring, not equality: OCR reads 「落渊南丘残象聚落」 while the setting says
+        # 「落渊南丘」, and exact matching found nothing.
+        if not rows:
+            # Not 「all full」 - 「the names configured are not in this list」. Same
+            # outcome, opposite cause, and it has to be visible.
+            self.log_error("nightmare nest: 列表里没找到指定的点位 "
+                           f"{names}；实际读到的是 {[b.name for b in boxes]}", notify=True)
+        return rows
+
+    @override(NightmareNestTask, "find_nest", expect_sha=_NEST_FIND_SHA)
+    def find_nest(self):
+        rows = wanted_rows(self)
+        if rows is not None and not rows:
+            return None
+        hit_wanted = False
+        seen_full = False
+        seen_blacklisted = False
+        odd_denoms = []
+        for count_box in self.ocr(0.35, 0.13, 1, 0.96, match=self.count_re):
+            for match in re.finditer(self.count_re, count_box.name):
+                numerator, denominator = match.group(1), match.group(2)
+                if rows is not None:
+                    row = count_box.y + count_box.height / 2
+                    span = count_box.height * NEST_ROW_SPAN
+                    if not any(-count_box.height <= row - w <= span for w in rows):
+                        continue
+                    hit_wanted = True
+                if denominator not in _KNOWN_DENOMINATORS:
+                    odd_denoms.append(count_box.name)
+                    continue
+                if numerator == denominator:
+                    seen_full = True
+                    continue
+                # Upstream also required numerator == '0', so a nest was skipped for
+                # ever once a single echo had been cleared from it. Four nests sat at
+                # 10/41 and 6/48 and the task reported nothing to do.
+                cache_key = self._make_nest_cache_key(count_box, denominator)
+                if cache_key in self._unreachable_nests:
+                    seen_blacklisted = True
+                    self.log_info(f"skip cached unreachable nightmare nest: {cache_key}")
+                    continue
+                self.log_info(f"{count_box} is not complete")
+                if not hasattr(self, "_ark_nest_progress"):
+                    self._ark_nest_progress = {}
+                self._ark_nest_progress[cache_key] = numerator
+                count_box.x = self.width_of_screen(0.9)
+                count_box.y -= count_box.height * 0.9
+                count_box.height = 1
+                count_box.width = 1
+                return NestTarget(count_box, cache_key)
+        if rows is not None and hit_wanted:
+            # 「Nothing to farm」 had four different causes and one message, so a
+            # misread denominator and a real completion looked identical afterwards.
+            if odd_denoms:
+                self.log_error("nightmare nest: 计数的分母不在已知列表（24/36/48/41），"
+                               f"多半是 OCR 读错：{odd_denoms}。本轮跳过，"
+                               "但**这不是打满**，请到游戏里核对真实计数", notify=True)
+            elif seen_blacklisted and not seen_full:
+                self.log_info("nightmare nest: 指定点位本轮已拉黑（打完一局计数没涨），"
+                              "跳过——**不是打满**")
+            elif seen_full:
+                self.log_info("nightmare nest: 指定点位都已打满，跳过")
+            else:
+                self.log_info("nightmare nest: 指定点位没有可用的计数，跳过")
+        return None
+
+    next_nest = NightmareNestTask.get_nest_to_go
+
+    @override(NightmareNestTask, "get_nest_to_go")
+    def get_nest_to_go(self):
+        # find_nest keeps picking any nest that is not full, so a nest the team
+        # cannot beat is chosen again every lap - the game's 「挑战失败」 screen is not
+        # one OK-WW knows, so it re-entered every two minutes for ever. Judge by the
+        # result instead of by that screen: a lap that moved no counter is a lap not
+        # worth repeating, whatever the reason.
+        while (nest := next_nest(self)) is not None:
+            key = getattr(nest, "cache_key", None)
+            if key is None:
+                return nest
+            progress = getattr(self, "_ark_nest_progress", {}).get(key, "")
+            stamp = f"{key}@{progress}"
+            tried = getattr(self, "_ark_nest_tried", None)
+            if tried is None:
+                tried = self._ark_nest_tried = set()
+            if stamp in tried:
+                self._unreachable_nests.add(key)
+                self.log_info("nightmare nest: no progress after an attempt, "
+                              f"skip: {key} (still {progress})")
+                continue
+            tried.add(stamp)
+            return nest
+        return None
+
+    nest_run = NightmareNestTask.run
+
+    @override(NightmareNestTask, "run")
+    def run(self):
+        self._ark_nest_tried = set()
+        self._ark_nest_progress = {}
+        return nest_run(self)
+
+
 def _write_report(error=""):
     try:
         with open(REPORT, "w", encoding="utf-8") as fh:
@@ -446,6 +600,7 @@ try:
     _install_hooks()
     _install()
     _install_teleport()
+    _install_nest()
 except Exception:  # noqa: BLE001 - never stop OK-WW from starting
     _write_report(traceback.format_exc()[-800:])
 else:

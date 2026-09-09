@@ -121,3 +121,31 @@ def _apply_nest(root: Path) -> list[str]:
         return [err]
     log.info("OK-WW 补丁：%s 已重新贴上", label)
     return [f"OK-WW 补丁：{label} 已重新贴上（上次更新把它覆盖了）"]
+
+
+def _restore_nest(root: Path) -> list[str]:
+    """Put upstream's own NightmareNestTask.py back.
+
+    The behaviour moved into ok_tasks/ark_overrides.py on 2026-09-09, so the file
+    replacement is not needed any more - and a replaced file is the worst thing to
+    leave behind, because an OK-WW update to that file would be silently overwritten
+    every boot. Only a file we recognise as ours is replaced: anything else is
+    upstream's, possibly newer than what we stored, and is left alone.
+    """
+    target = root / "data" / "apps" / "ok-ww" / "working" / "src" / "task" / "NightmareNestTask.py"
+    try:
+        cur = target.read_bytes()
+    except OSError:
+        return []
+    want = _NEST_UPSTREAM.read_bytes()
+    if cur == want:
+        return []
+    if _NEST_MARKER not in cur and _sha(cur) not in _NEST_KNOWN_OURS:
+        return []          # upstream's own file, newer than ours - do not touch it
+    try:
+        target.write_bytes(want)
+        if target.read_bytes() != want:
+            return ["巢穴任务：想还原成上游原样，写完回读不对"]
+    except OSError as exc:
+        return [f"巢穴任务：想还原成上游原样，写不进去（{exc}）"]
+    return ["巢穴任务：整份替换已撤销，还原成上游原样（改动已搬到 ok_tasks）"]

@@ -48,7 +48,8 @@ from .okww_patches.count import _COUNT_OLD, _COUNT_V1, _COUNT_V2, _COUNT_NEW, _c
 from .okww_patches.domain import _DOMAIN_IMPORT_OLD, _DOMAIN_IMPORT_NEW, _DOMAIN_OLD, _DOMAIN_NEW, _domain_present, _apply_domain
 from .okww_patches.farmerr import _FARMERR_OLD, _FARMERR_NEW, _farmerr_present, _FARMERR
 from .okww_patches.letpass import _LETPASS_OLD, _LETPASS_NEW, _letpass_present, _LETPASS
-from .okww_patches.nest import _NEST_DIR, _NEST_UPSTREAM, _NEST_PATCHED, _sha, _NEST_MARKER, _NEST_KNOWN_OURS, _apply_nest, nest_patch_present
+from .okww_patches.nest import (_NEST_DIR, _NEST_UPSTREAM, _NEST_PATCHED, _sha, _NEST_MARKER,
+                                _NEST_KNOWN_OURS, _apply_nest, _restore_nest, nest_patch_present)
 from .okww_patches.nofarm import _NOFARM_OLD, _NOFARM_NEW, _nofarm_present, _NOFARM
 from .okww_patches.nowave import _NOWAVE_OLD, _NOWAVE_V2, _NOWAVE_NEW, _NOWAVE_V1, _NOWAVE_V3A, _NOWAVE_V3B, _nowave_present, _NOWAVE
 from .okww_patches.retrycap import _RETRYCAP_OLD, _RETRYCAP_NEW, _retrycap_present, _RETRYCAP
@@ -117,6 +118,7 @@ __all__ = [
     '_NEST_MARKER',
     '_NEST_KNOWN_OURS',
     '_apply_nest',
+    '_restore_nest',
     '_NOFARM_OLD',
     '_NOFARM_NEW',
     '_nofarm_present',
@@ -297,7 +299,7 @@ _APPLIES: "list[_Patch]" = []
 def active_patches() -> list[str]:
     """Names of everything applied every boot, in order - the source of truth for
     docs/OKWW-PATCHES.md and for anyone asking what runs."""
-    return ["巢穴任务（整份文件替换）"] + [p.name for p in _APPLIES]
+    return [p.name for p in _APPLIES]
 
 
 def ensure_patches(okww_dir: Path | None) -> list[str]:
@@ -310,7 +312,7 @@ def ensure_patches(okww_dir: Path | None) -> list[str]:
         return []
     root = Path(okww_dir)
     done: list[str] = []
-    done.extend(_apply_nest(root))
+    done.extend(_restore_nest(root))
     done.extend(_ensure_stamina(root))
     for parts, new, old, label in _REVERTS:
         done.extend(_revert_text(root, parts, new, old, label))
