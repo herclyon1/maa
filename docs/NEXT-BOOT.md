@@ -1,5 +1,20 @@
 # Check these when the machine is next up
 
+## 2026-09-10 — confirm the boot self-update carried the two notification fixes
+
+The machine was already off when the fixes for the false 「巢穴补丁没贴上」 warning and
+the 「今晚不关机」 notice landed, so they were pushed to the repo rather than deployed
+straight onto the machine. The boot self-update should pull them and announce
+`relay/RELEASE-NOTES.md`. When the machine is up:
+
+- Check that the code version on the machine matches the pushed commit.
+- Check that the update announcement went out. If it did, clear
+  `relay/RELEASE-NOTES.md` and stamp `relay/state/last-deployed-notes.sha1` so the
+  same text is not announced a second time. If it did not, run
+  `scripts/mac/deploy-relay.sh` (the notes are still in place).
+- Watch the evening plan: 残像聚落 must no longer carry the nest-patch warning.
+
+
 ## 2026-09-09 — the 4-cost echo farm now loops; two rough edges left
 
 It runs from the phone page, farms 天傀劫煞 (讨伐强敌 position 1) about one lap a
