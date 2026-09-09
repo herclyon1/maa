@@ -22,12 +22,12 @@ def check(label, got, want):
         fails.append(label)
 
 
-print("[在贴的清单是固定的十四条，顺序也固定]")
+print("[在贴的清单是固定的十三条，顺序也固定]")
 check("在贴的", P.active_patches(), [
     "巢穴任务（整份文件替换）", P._STAMINA.name, P._NOFARM.name, P._CLAIM.name,
     P._TACETSHOT.name, P._NOWAVE.name, P._RETRYCAP.name, P._LETPASS.name,
     P._COUNT.name, P._BOSSTIP.name, P._EARLYOPEN.name,
-    P._REVIVEIMP.name, P._REVIVE.name, P._REVIVELOOP.name])
+    P._REVIVEIMP.name, P._REVIVELOOP.name])
 check("没有一条既在贴又在撤", {p.new for p in P._APPLIES} & {r[1] for r in P._REVERTS}, set())
 check("撤的每一条都有一个不同于现行版本的正文",
       all(r[1] not in {p.new for p in P._APPLIES} for r in P._REVERTS), True)
@@ -38,7 +38,7 @@ for mod in ("NightmareNestTask.patched.py", "stamina.py", "nofarm.py", "claim.py
             "tacetshot.py", "nowave.py", "retrycap.py", "letpass.py", "count.py",
             "bosstip.py", "revive.py"):
     check(f"文档提到 {mod}", mod in doc, True)
-check("文档说清了在贴的条数", "14" in doc.split("Deliberately reverted")[0], True)
+check("文档说清了在贴的条数", "13" in doc.split("Deliberately reverted")[0], True)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

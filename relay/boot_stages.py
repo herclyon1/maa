@@ -186,6 +186,14 @@ def _stage_patch_okww(cfg, notifier, log) -> None:
         okww_at_boot = cfg.okww_dir or (
             Path(cfg.automas_dir).parent / "okww" if cfg.automas_dir else None)
         notes = _okww_patch.ensure_patches(okww_at_boot)
+        # The overrides that live in OK-WW's own ok_tasks/ folder instead of in its
+        # source files. Installed here so a deploy leaves the machine in its final
+        # state, and read back so an override that did not take is audible.
+        from ark_relay import okww_overlay as _overlay  # noqa: PLC0415
+        if line := _overlay.install(okww_at_boot):
+            notes.append(line)
+        if line := _overlay.report_line():
+            notes.append(line)
         for note in notes:
             log.info("启动：%s", note)
         # One push per startup. It used to push one message per patch, so a

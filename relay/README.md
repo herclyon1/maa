@@ -41,6 +41,7 @@ above.
 | `preupdate.py`（聚合）+ `preupdate_common.py` / `preupdate_maa.py` / `preupdate_maaend.py` / `preupdate_automas.py` / `preupdate_okww.py` | 开机窗口里把四个程序更新掉，按程序分文件 |
 | `gameupdate.py`（聚合）+ `gameupdate_games.py` | 队列跑完后更新游戏客户端，再单独补跑；三家游戏各自的更新流程单独一个文件 |
 | `okww_patch.py` + `okww_patches/` | 贴在 OK-WW 源码上的本地补丁，一个补丁一个文件 |
+| `okww_overlay.py` | 装进 OK-WW 自己的 `ok_tasks/` 扩展目录，不改它的源文件；装完读回报告，有没贴上的就报出来 |
 | `wuwa_tacet.py` / `wuwa_forgery.py` | 鸣潮副本序号 → 名字 → 掉落，手机页与此同源 |
 | `echofarm.py` | 刷 4C 声骸：改配置、在 session 1 起 OK-WW、到点收工并还原配置 |
 | `wuwa_boss.py` | 鸣潮「讨伐强敌」列表序号 → boss 名字，手机页的下拉与此同源 |

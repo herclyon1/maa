@@ -250,6 +250,7 @@ _REVERTS: "list[tuple[tuple, str, str, str]]" = [
     (_BW, _BOSSTIP_V2, _BOSSTIP_OLD, "限时提前开放的 boss v2"),
     (_BW, _BOSSTIP_V3, _BOSSTIP_OLD_FULL, "限时提前开放的 boss v3"),
     (_FE, _REVIVE_V1, _REVIVE_OLD, "刷声骸时原地复活 v1"),
+    (_FE, _REVIVE_NEW, _REVIVE_OLD, "刷声骸时原地复活 v2（已搬到 ok_tasks，源文件还原）"),
     ((*_SRC, "TacetTask.py"), _TACETSHOT_V1, _TACETSHOT_V1_OLD, "无音区留两张图给日报 v1"),
     (_FE, _COUNT_V1, _COUNT_OLD, "进本前拍一张看剩余次数 v1"),
     (_FE, _COUNT_V2, _COUNT_OLD, "进本前拍一张看剩余次数 v2"),
@@ -268,7 +269,7 @@ _REVERTS: "list[tuple[tuple, str, str, str]]" = [
 # file replacement and the stamina/nofarm pair are steps of their own (the
 # nest is a whole-file swap; nofarm's anchor lives inside stamina's body).
 _APPLIES: "list[_Patch]" = [_CLAIM, _TACETSHOT, _NOWAVE, _RETRYCAP, _LETPASS, _COUNT, _BOSSTIP, _EARLYOPEN,
-                            _REVIVEIMP, _REVIVE, _REVIVELOOP]
+                            _REVIVEIMP, _REVIVELOOP]
 
 
 def active_patches() -> list[str]:
