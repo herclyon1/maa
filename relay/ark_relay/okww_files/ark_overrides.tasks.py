@@ -120,6 +120,71 @@ def _install():
             return False
 
 
+class _EarlyOpen(Exception):
+    """Confirmed the 限时提前开放 dialog and landed straight in the arena."""
+
+
+def _install_teleport():
+    from ok import TaskDisabledException
+    from src.task.BaseWWTask import BaseWWTask
+    from src.task.FarmEchoTask import FarmEchoTask
+
+    inner = BaseWWTask.click_on_book_target
+
+    @override(BaseWWTask, "click_on_book_target")
+    def click_on_book_target(self, serial_number, total_number, structure=None):
+        # A limited-time-early boss pops a spoiler dialog after the challenge button
+        # is clicked. Its text is matched below. Upstream does not know that dialog,
+        # so the wait that follows
+        # times out and the whole run dies with 「Teleport to boss failed」. The dialog
+        # costs nothing - it is a spoiler warning - but it is identified by its own
+        # text before anything is clicked: a bare 「there is a confirm button」 test
+        # would happily confirm a waveplate prompt, the one mistake this must not make.
+        try:
+            return inner(self, serial_number, total_number, structure)
+        except Exception:
+            try:
+                found = self.ocr(box=self.box_of_screen(0.25, 0.40, 0.78, 0.56)) or []
+            except Exception:
+                raise
+            text = ' '.join(str(b) for b in found)
+            if '确认前往' not in text and '剧情体验' not in text:
+                self.log_info(f'传送前没认出提示框，这块屏幕读到：{text[:120]!r}')
+                raise
+            self.log_info('限时提前开放的剧情提示框，点确认前往')
+            self.click_dialog_right_button()
+            # Confirming drops the player straight into the arena: no fast-travel UI
+            # and no team screen, so neither of upstream's two branches fits. Leaving
+            # by exception skips both of them.
+            self.log_info('限时提前开放：确认后直接进场，跳过队伍和传送这两步')
+            raise _EarlyOpen from None
+
+    outer = FarmEchoTask.teleport_to_configured_boss
+
+    @override(FarmEchoTask, "teleport_to_configured_boss")
+    def teleport_to_configured_boss(self):
+        try:
+            return outer(self)
+        except _EarlyOpen:
+            # True means 「already in the realm」, which is what being dropped into
+            # the arena amounts to.
+            return True
+
+    prepare = FarmEchoTask.teleport_to_configured_boss_and_prepare
+
+    @override(FarmEchoTask, "teleport_to_configured_boss_and_prepare")
+    def teleport_to_configured_boss_and_prepare(self):
+        # 「Skip this on purpose」 is a signal, not a failure. Upstream wraps every
+        # exception here in RuntimeError, so run()'s own `except TaskDisabledException`
+        # never saw it and a deliberate skip was retried as an error.
+        try:
+            return prepare(self)
+        except RuntimeError as exc:
+            if isinstance(exc.__cause__, TaskDisabledException):
+                raise exc.__cause__ from None
+            raise
+
+
 def _write_report(error=""):
     try:
         with open(REPORT, "w", encoding="utf-8") as fh:
@@ -131,6 +196,7 @@ def _write_report(error=""):
 
 try:
     _install()
+    _install_teleport()
 except Exception:  # noqa: BLE001 - never stop OK-WW from starting
     _write_report(traceback.format_exc()[-800:])
 else:

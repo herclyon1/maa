@@ -251,6 +251,9 @@ _REVERTS: "list[tuple[tuple, str, str, str]]" = [
     (_BW, _BOSSTIP_V3, _BOSSTIP_OLD_FULL, "限时提前开放的 boss v3"),
     (_FE, _REVIVE_V1, _REVIVE_OLD, "刷声骸时原地复活 v1"),
     (_FE, _REVIVE_NEW, _REVIVE_OLD, "刷声骸时原地复活 v2（已搬到 ok_tasks，源文件还原）"),
+    (_FE, _EARLY_NEW, _EARLY_OLD, "限时提前开放的 boss：进场后跳过队伍和传送界面（已搬到 ok_tasks，源文件还原）"),
+    (_BW, _BOSSTIP_NEW, _BOSSTIP_OLD_FULL, "限时提前开放的 boss：认出剧情提示框（已搬到 ok_tasks，源文件还原）"),
+    (_FE, _LETPASS_NEW, _LETPASS_OLD, "放行主动跳过的信号（已搬到 ok_tasks，源文件还原）"),
     ((*_SRC, "TacetTask.py"), _TACETSHOT_V1, _TACETSHOT_V1_OLD, "无音区留两张图给日报 v1"),
     (_FE, _COUNT_V1, _COUNT_OLD, "进本前拍一张看剩余次数 v1"),
     (_FE, _COUNT_V2, _COUNT_OLD, "进本前拍一张看剩余次数 v2"),
@@ -268,7 +271,7 @@ _REVERTS: "list[tuple[tuple, str, str, str]]" = [
 # _APPLIES: what is in effect on the machine, in application order. The nest
 # file replacement and the stamina/nofarm pair are steps of their own (the
 # nest is a whole-file swap; nofarm's anchor lives inside stamina's body).
-_APPLIES: "list[_Patch]" = [_CLAIM, _TACETSHOT, _NOWAVE, _RETRYCAP, _LETPASS, _COUNT, _BOSSTIP, _EARLYOPEN,
+_APPLIES: "list[_Patch]" = [_CLAIM, _TACETSHOT, _NOWAVE, _RETRYCAP, _COUNT,
                             _REVIVEIMP, _REVIVELOOP]
 
 

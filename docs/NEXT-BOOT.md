@@ -59,3 +59,31 @@ in the interactive session - and `stop_okww` counts the processes afterwards and
 whatever is still up instead of claiming success. **The service-side path has not been
 exercised yet**: it was deployed at 08:24 and the desktop was already clean. First
 chance to see it is the next 收工 pressed from the phone while the game is running.
+
+
+## 2026-09-09 12:00 — four OK-WW changes moved out of upstream's source files
+
+`okww_overlay.py` installs `ark_overrides.py` into OK-WW's own `ok_tasks/` folder,
+which ok-script executes at startup. Four changes now live there and their anchors in
+OK-WW's source have been reverted to upstream:
+
+- `FarmEchoTask.revive_action` (revive in place while farming echoes)
+- `BaseWWTask.click_on_book_target` (the 限时提前开放 spoiler dialog)
+- `FarmEchoTask.teleport_to_configured_boss` (dropped straight into the arena)
+- `FarmEchoTask.teleport_to_configured_boss_and_prepare` (let a deliberate skip pass)
+
+Verified on the machine: all four report as applied with nothing skipped, and the
+source files match `repo/` byte for byte at those points.
+
+### To check on the next real run
+The last three are exercised by the **weekly boss step of the morning daily**, and
+they have only been verified to bind, not to behave. If tomorrow's Endfield-free
+OK-WW run reports 「Teleport to boss failed」 or a task that should have been skipped
+is retried as an error, look here first. `C:\ProgramData\ark-okww-overlay.json` says
+what bound; the log lines to grep for are 「限时提前开放」 and 「刷声骸模式」.
+
+### Still editing upstream's files (10)
+The nest whole-file replacement, stamina, nofarm, claim, tacetshot, nowave, retrycap,
+count, and the two revive-loop pieces. Each of those sits inside a long method, so
+moving them means copying that method into the overlay and pinning its upstream hash
+with `override(..., expect_sha=...)` so a refactor upstream is loud instead of silent.

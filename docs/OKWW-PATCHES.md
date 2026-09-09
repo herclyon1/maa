@@ -26,18 +26,16 @@ changed; an empty answer means everything was already in place.
 | 5 | Two screenshots of the tacet field, for the daily report | `okww_patches/tacetshot.py` |
 | 6 | Skip the weekly boss when waveplates are short, instead of failing inside it | `okww_patches/nowave.py` |
 | 7 | Retry cap | `okww_patches/retrycap.py` |
-| 8 | Let-pass | `okww_patches/letpass.py` |
 | 9 | Read the remaining-runs count before entering; at 0/3 skip the boss instead of fighting it for nothing (v3, 2026-09-09) | `okww_patches/count.py` |
-| 10 | 限时提前开放 bosses: recognise 「提前到达目标位置可能影响剧情体验」 and confirm it. Without this, 天傀劫煞 could not be teleported to at all (2026-09-09) | `okww_patches/bosstip.py` |
 | 12 | The revived death still travels up as an exception, so the loop catches it and takes the next lap | `okww_patches/revive.py` |
 | 13 | Import `CharRevivedException` into FarmEchoTask so patch 12 has the name | `okww_patches/revive.py` |
 
-**Moving out of this table**: reviving in place now lives in
+**Moving out of this table**: reviving in place, the 限时提前开放 dialog, the
+early-arena return and the let-pass signal now live in
 `okww_files/ark_overrides.tasks.py`, installed into OK-WW's own `ok_tasks/`
 folder by `okww_overlay.py`. Nothing there edits an upstream file, so there is
 no previous version to revert and an OK-WW update cannot half-apply it. Each
 override is checked before it is bound and anything skipped is pushed.
-| 11 | Same boss, second half: confirming that dialog drops the player straight into the arena, with no fast-travel UI and no team screen, so both of upstream's branches raise 「Teleport to boss failed」. This returns as soon as it sees the flag (2026-09-09) | `okww_patches/bosstip.py` (`_EARLYOPEN`) |
 
 **Deliberately reverted every boot** (they are listed so an old copy left behind by
 an update is removed, and so nobody re-adds them): the six earlier versions of the
