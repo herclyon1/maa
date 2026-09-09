@@ -58,7 +58,7 @@
 | 核实鸣潮配置真的落地了 | `scripts/mac/okww-check.sh` —— 比对 MAS 侧和 OK-WW 实际读到的那份（底下是 `scripts/windows/okww-landed.py`）。「设置看着好好的、实际没生效」查这个 |
 | 给机器下命令行指令 | `scripts/mac/order.sh '{"action":...}'`（`--clear` 清空）—— **别手改 `queue/config.json`**：它整份重放，且不清 CDN 指令到不了机器 |
 | 发布手机页 | `scripts/mac/deploy-web.sh` —— 改了 `web/` 下任何文件之后**必须**跑，不跑手机上还是旧的 |
-| **一键截图（刷声骸评分用）** | `scripts/mac/build-echoshot.sh` —— 编译并常驻 `EchoShot.app`，按一下 `¥` 存一张 jpg 到 `~/Pictures/EchoShots`（JIS 键盘；ANSI 上是 `` ` ``，开机时自己判断）。要屏幕录制权限；`--off` 停掉 |
+| **一键截图（刷声骸评分用）** | 按 `¥` 存一张到 `~/Pictures/EchoShots`，Hammerspoon 干的。配置在 `~/.hammerspoon/init.lua`，仓库存档 `scripts/mac/hammerspoon/init.lua`。改了要在菜单栏 Reload Config |
 | 重编 Fleet Monitor（Dock 上那个看机器在不在的） | `scripts/mac/build-fleetmonitor.sh` —— 改了 `scripts/mac/FleetMonitor/main.swift` 之后跑，它编译、装包、重启。二进制不入库 |
 | 串流到 ins 打游戏 | `scripts/mac/stream-ins.sh`（菜单用）/ `--relative`（游戏内转视角）。桌面上那三个启动器点的就是它 |
 | **手动跑单个脚本 / 停干净** | `scripts/mac/run-one.sh MAA\|MaaEnd\|OK-WW`（`status` 看在跑什么、`stop` 按顺序停）—— **唯一正门**，内含忙闲闸门。禁裸调 `/api/dispatch/start`、禁 `taskkill` |

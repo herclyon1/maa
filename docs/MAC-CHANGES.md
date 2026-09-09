@@ -205,33 +205,30 @@ Wuthering Waves' servers are IPv4-only, so there is no IPv6 path to take.
 图标源图在 `scripts/mac/icons/`，生成逻辑在 `scripts/mac/lib/app-icon.sh`，两个构建脚本重跑会自动带上。
 `强制关闭串流.app` 没有构建脚本，图标是直接写进桌面那份的；重做它时记得也调一下 `set_app_icon`。
 
-### EchoShot: one key, one screenshot (2026-09-09)
+### Hammerspoon: one key, one screenshot (2026-09-09)
 
-The user scores Wuthering Waves echoes one screenshot at a time, dozens in a row, while a
-Moonlight stream is fullscreen. He asked for **one** key. Cmd+Shift+3 is three, and he said
-so in exactly those terms.
+Scoring Wuthering Waves echoes means one screenshot per echo, dozens in a row, over a
+fullscreen Moonlight stream. Cmd+Shift+3 is three keys and the user wanted one.
 
-`~/Applications/EchoShot.app` registers a Carbon global hotkey with no modifiers and shells
-out to `screencapture -x -t jpg` into `~/Pictures/EchoShots`. The key depends on the physical
-layout, checked at launch with `KBGetLayoutType`: **¥** (keycode 93) on this machine's JIS
-keyboard, ` (keycode 50) on ANSI. JIS has no key left of 1, so the ANSI default was
-unreachable here - it fired for a synthetic keycode 50 and for nothing the user could press.
-Built by
-`scripts/mac/build-echoshot.sh` from `scripts/mac/EchoShot/main.swift`; the binary is not
-committed. A LaunchAgent (`local.ark.echoshot`) starts it at login.
+**Hammerspoon 1.1.1** (`/Applications/Hammerspoon.app`, Developer ID: Chris Jones VQCYSNZB89,
+notarized, verified with `spctl` before installing). Config lives in `~/.hammerspoon/init.lua`;
+the copy of record is `scripts/mac/hammerspoon/init.lua`. `hs.autoLaunch(true)` is set, so it
+starts at login.
 
-- Carbon's `RegisterEventHotKey` needs no Accessibility or Input Monitoring grant and fires
-  over a fullscreen game. Hammerspoon and skhd would both have worked; they cost an install,
-  a menu-bar app and an Accessibility grant, which is more than the sixty lines here.
-- **Screen Recording must be granted to EchoShot** or every capture writes a zero-byte file.
-  The app deletes those, thuds instead of clicking, and writes the reason to
-  `~/Pictures/EchoShots/echoshot.log`.
-- JPEG, not PNG: the scorer caps uploads at 1 MB and a PNG of this 2772x1280 screen is ~5 MB.
-- The chosen key is grabbed system-wide, so it stops typing everywhere else while the app runs.
-  `scripts/mac/build-echoshot.sh --off` stops it, `--on` starts it again. The key is
-  configurable: `defaults write local.ark.echoshot keyCode -int <keycode>`. Other spare JIS
-  keys: 94 = `_`, 102 = 英数, 104 = かな (the last two switch input method).
+Pressing **¥** (keycode 93 - the JIS number row has no key left of 1, so ANSI's ` does not
+exist on this keyboard) takes `hs.screen.mainScreen():snapshot()` and writes
+`~/Pictures/EchoShots/echo-<timestamp>.jpg`, then shrinks it with `sips -s formatOptions 40`.
+The raw snapshot is 5120x3312 and just under 2 MB; the scorer rejects anything over 1 MB, and
+quality is dropped rather than resolution because the site's own notes say a sharper image
+reads better. Measured result: 0.6-0.7 MB. Verified end to end - a synthetic keycode 93
+produced a real 685 KB capture.
 
-Nothing else on the Mac changed. `com.apple.screencapture` was briefly repointed at the same
-folder and then restored - the defaults are back to stock, and Cmd+Shift+3 still lands on the
-Desktop as PNG.
+**Why not a hand-rolled app.** One was written first (a 60-line Swift binary with a Carbon
+hotkey) and thrown away. An app signed ad-hoc gets its Screen Recording grant keyed to its
+code hash, so **every rebuild looks like a brand-new app to macOS**: the user granted the
+permission, and each recompile silently invalidated it and prompted him again. Hammerspoon
+carries a real Developer ID signature, so one grant holds forever. His words: 「你自己写的软件
+一堆破毛病」. He was right, and the reason was structural rather than a bug worth fixing.
+
+A stale **EchoShot** row may remain in System Settings -> Privacy & Security -> Screen
+Recording. The app is gone; select the row and press "-" to remove it.
