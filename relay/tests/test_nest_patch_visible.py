@@ -39,10 +39,28 @@ def okww(body):
     return root
 
 
-print("[补丁在不在，只能看文件，不能看配置]")
-check("我们那份认得出来", nest_patch_present(okww(b"x = 1\n" + _NEST_MARKER)), True)
-check("上游那份认得出来", nest_patch_present(okww(b"class NightmareNestTask:\n    pass\n")), False)
-check("文件不在时说不知道", nest_patch_present(okww(None)), None)
+print("[改动在不在，看 OK-WW 自己写下的那份报告，不看配置也不看源文件]")
+# Since 2026-09-09 the change lives in ok_tasks/ark_overrides.py, so the source file
+# is upstream's own and looking at it would report 「没贴上」 on a healthy machine -
+# which is what tomorrow's plan said that night.
+from ark_relay import okww_overlay  # noqa: E402
+
+_real_report = okww_overlay.last_report
+try:
+    okww_overlay.last_report = lambda: {"applied": ["NightmareNestTask.find_nest"],
+                                        "skipped": [], "error": ""}
+    check("绑上了就是在", nest_patch_present(okww(None)), True)
+    okww_overlay.last_report = lambda: {
+        "applied": [], "error": "",
+        "skipped": [{"what": "NightmareNestTask.find_nest", "why": "上游正文变了"}]}
+    check("被跳过了就是不在", nest_patch_present(okww(None)), False)
+    okww_overlay.last_report = lambda: {"error": "Traceback ..."}
+    check("整个文件炸了也是不在", nest_patch_present(okww(None)), False)
+    okww_overlay.last_report = lambda: {}
+    check("还没有报告时说不知道，不瞎猜", nest_patch_present(okww(None)), None)
+finally:
+    okww_overlay.last_report = _real_report
+check("目录是 None 时说不知道", nest_patch_present(None), None)
 check("目录是 None 时说不知道", nest_patch_present(None), None)
 
 print("\n[补丁没贴上时，明日安排必须改口]")

@@ -77,11 +77,23 @@ def nest_patch_present(okww_dir) -> bool | None:
     """
     if not okww_dir:
         return None
-    f = Path(okww_dir).joinpath(*_SRC, "NightmareNestTask.py")
-    try:
-        return _NEST_MARKER in f.read_bytes()
-    except OSError:
-        return None
+    # Since 2026-09-09 the change lives in ok_tasks/ark_overrides.py, not in a
+    # replaced NightmareNestTask.py, and OK-WW writes down what it managed to bind
+    # at startup. Looking at the source file still would report 「补丁没贴上」 on a
+    # perfectly healthy machine, which is exactly what tomorrow's plan said tonight.
+    from ..okww_overlay import last_report  # noqa: PLC0415 - avoids an import cycle
+    got = last_report()
+    if got:
+        if got.get("error"):
+            return False
+        bound = got.get("applied") or []
+        if any(b.endswith(".find_nest") for b in bound):
+            return True
+        if any(s.get("what", "").endswith(".find_nest") for s in (got.get("skipped") or [])):
+            return False
+    # No report yet: OK-WW has not started since the overlay was installed. Say
+    # 「cannot tell」 rather than guessing either way.
+    return None
 
 
 def _apply_nest(root: Path) -> list[str]:

@@ -229,7 +229,9 @@ def decide(eng, now: datetime) -> Verdict:
     if modes.shutdown_skipped(eng.state.dir) == key:
         return Verdict(False, "skipped", "这一次关机机会已被调试模式吃掉，人可能正在用电脑")
     if eng._shutdown_issued:
-        return Verdict(False, "issued", "关机令已经下过了")
+        # Not a reason the machine stays on - it is the opposite. Worded as
+        # 「关机令已经下过了」 it read like someone had ordered it to stay awake.
+        return Verdict(False, "issued", "关机命令已经发出去了，机器正在关")
     idle = eng._idle_checkpoint(now)
     entries = eng._recent_entries(now)
     if not (eng._handled_any or eng._work_is_done(now, entries)) and not idle:
@@ -271,7 +273,10 @@ def decide(eng, now: datetime) -> Verdict:
 # Reasons that mean "the machine will sit here until someone looks". The other
 # codes are either transient by design (uptime, nothing-done, report) or already
 # announced when they were switched on (debug, skipped, off).
-_STUCK_CODES = ("running", "pending", "updating", "manual", "unfinished", "issued", "farming")
+# 「该关却没关」 - the ones worth one message a day. 「issued」 is deliberately not
+# here: it means the shutdown command has already gone out, so telling him
+# 「机器会一直开着」 was the exact opposite of what was happening (2026-09-09).
+_STUCK_CODES = ("running", "pending", "updating", "manual", "unfinished", "farming")
 
 
 def _say_if_moment_passed(eng, now: datetime, v) -> None:
