@@ -374,6 +374,17 @@ function render() {
     try { localStorage.setItem(LS + "-config", JSON.stringify(c)); } catch {}
   }
 
+  /* 状态包超过通道上限时中继会砍掉几段再发。以前砍完还是超，手机拿到一个读不懂
+     的包，只能继续显示旧值——看上去像「刷新没反应」。现在砍了会写在包里，这里
+     把缺了什么说出来，而不是让旧值冒充新值。 */
+  const CUT_NAMES = { plan: "明日安排", options: "可选项", master: "母本配置",
+                      queues: "班次", config: "配置" };
+  if (snap && snap["_砍掉的"] && snap["_砍掉的"].length) {
+    html += `<div class="warn">⚠️ 状态包太大，这次没带上：`
+      + snap["_砍掉的"].map((k) => CUT_NAMES[k] || k).join("、")
+      + `。其余照常显示</div>`;
+  }
+
   const qs = (snap && snap.queues) || [];
   /* 选中的班次记住，并且**只显示这趟班要跑的游戏**。用户 2026-09-04：
      「早班晚班切换的时候应该只显示当次班次的游戏，否则极容易和早班混淆。」
