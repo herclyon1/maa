@@ -330,7 +330,7 @@ function echoFarmBlock(relay) {
   const cur = (relay || {})["刷声骸"] || {};
   if (cur["到"]) {
     return `<div class="hint">🥚 正在刷「${cur["名字"] || "?"}」，刷到 ${String(cur["到"]).slice(11)} 为止（${cur["从"] ? String(cur["从"]).slice(11) + " 开始" : ""}）</div>
-      <div class="acts"><button class="wide" id="echofarmstop">提前收工（并还原配置）</button></div>`;
+      <div class="acts"><button class="wide" id="echofarmstop">提前收工（关掉脚本和游戏）</button></div>`;
   }
   const opts = BOSSES.map((b) => `<option value="${b[0]}">${b[0]}. ${b[1]}</option>`).join("");
   return `<div class="row"><label>刷 4C 声骸
@@ -599,7 +599,10 @@ function wire() {
             `已让它刷「${nm}」到 ${until}。到点中继会自己收工并把配置还原`);
   };
   const efs = $("#echofarmstop");
-  if (efs) efs.onclick = () => oneShot({ action: "echo_farm_stop" }, "已收工，配置还原");
+  if (efs) efs.onclick = () => {
+    if (!confirm("现在收工？会关掉脚本和游戏，配置还原成你原来那份。")) return;
+    oneShot({ action: "echo_farm_stop" }, "已收工，脚本和游戏都关了，配置还原");
+  };
   // 调试模式：中继早就认「取消」这条指令，页面一直没有按钮发它。
   const dbg = $("#debugoff");
   if (dbg) dbg.onclick = () => {
