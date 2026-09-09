@@ -516,8 +516,18 @@ def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ..
         # The user, 2026-09-02: too many notes - collapse them into
         # 「日常 1-16 项完成」 and move the list to the very end of the
         # notification as a footnote (see daily_footnote).
-        n = f"日常 1-{len(done)} 项完成" if done else "日常 0 项"
-        if failed:
+        # A short list is clearer named than numbered: 「日常 1-1 项完成」 told the
+        # reader nothing on 2026-09-09, where the one item was 据点交易.
+        if not done:
+            n = "日常 0 项"
+        elif len(done) <= 3:
+            n = "做了 " + "、".join(done)
+        else:
+            n = f"日常 1-{len(done)} 项完成"
+        # Only when AUTO-MAS still called the run a success: the renderer already
+        # names the failure on a run marked failed, and saying it twice on the
+        # same line contradicted the retry note on 2026-09-09.
+        if failed and e.get("ok"):
             n += "；失败 " + "、".join(failed)
         notes.append(n)
     if routes := raw.get("maaend_collect_routes"):
@@ -526,7 +536,8 @@ def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ..
     return did, cost, out, left, notes
 
 
-def _block(e: dict, finished: datetime) -> list[str]:
+def _rows_for(e: dict, finished: datetime) -> tuple[list[str], ...]:
+    """The five lists for one run, before they are turned into rows."""
     raw = e.get("raw") or {}
     script = e.get("script")
     rows: tuple[list[str], ...] = ([], [], [], [], [])
@@ -537,8 +548,41 @@ def _block(e: dict, finished: datetime) -> list[str]:
         rows = _block_okww(raw, finished)
     elif script == "MaaEnd":
         rows = _block_maaend(e, raw, finished)
+    return rows
 
-    return [_row(l, v) for l, v in zip(_LABELS, rows)]
+
+def _block(e: dict, finished: datetime) -> list[str]:
+    return [_row(l, v) for l, v in zip(_LABELS, _rows_for(e, finished))]
+
+
+def retried_notes(entries: list[dict]) -> dict[str, str]:
+    """For a failed run whose failed tasks a later run of the same script finished
+    that same day: run_id -> a line saying when the retry got them.
+
+    2026-09-09: Endfield ran 1h20m, everything went through except 据点交易, and
+    AUTO-MAS retried it two minutes later and it worked. The report showed a red
+    run with nothing in it and a green two-minute run with five empty rows, so
+    there was no way to tell the day had in fact gone fine.
+    """
+    out: dict[str, str] = {}
+    for e in entries:
+        if e.get("ok") or not e.get("failed_tasks"):
+            continue
+        want = set(e["failed_tasks"])
+        for later in entries:
+            if later is e or not later.get("ok"):
+                continue
+            if later.get("script") != e.get("script") or later.get("user") != e.get("user"):
+                continue
+            if (later.get("started") or "") <= (e.get("started") or ""):
+                continue
+            done = set((later.get("raw") or {}).get("tasks_done") or [])
+            if want <= done:
+                when = str(later.get("finished") or "")[11:16]
+                out[e["run_id"]] = ("、".join(sorted(want))
+                                    + f"　后来在 {when} 那趟重试里做成了")
+                break
+    return out
 
 
 # Farming is already stated in 做了, so it is not repeated in the daily list,
@@ -549,13 +593,20 @@ def daily_footnote(entries: list[dict]) -> str:
     """The footnote at the end of the notification: the numbered key to Endfield's
     daily list. The number in 「日常 1-16 项完成」 is the index here. Uses the last
     successful MaaEnd run of the day; returns an empty string if there is none."""
-    for e in reversed(entries):
-        if e.get("script") != "MaaEnd" or not e.get("ok"):
+    best: list[str] = []
+    for e in entries:
+        if e.get("script") != "MaaEnd":
             continue
         raw = e.get("raw") or {}
-        done = [t for t in (raw.get("tasks_done") or []) if not any(k in t for k in _END_FARM_NOTE_SKIP)]
-        if done:
-            return "———————\n日常：" + " ".join(f"{i}.{n}" for i, n in enumerate(done, 1))
+        done = [t for t in (raw.get("tasks_done") or [])
+                if not any(k in t for k in _END_FARM_NOTE_SKIP)]
+        # The longest list of the day, whether or not that run was marked failed.
+        # Taking the last **successful** run picked the two-minute retry on
+        # 2026-09-09 and printed a one-item 「daily list」.
+        if len(done) > len(best):
+            best = done
+    if best:
+        return "———————\n日常：" + " ".join(f"{i}.{n}" for i, n in enumerate(best, 1))
     return ""
 
 
@@ -570,9 +621,13 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
         return f"📋 {day} 日报", "今天没有任何运行记录。"
 
     kinds = episode_kinds(entries)
-    failed = [e for e in entries if not e["ok"] and e["run_id"] not in kinds]
+    retried = retried_notes(entries)
+    failed = [e for e in entries if not e["ok"]
+              and e["run_id"] not in kinds and e["run_id"] not in retried]
     if failed:
         head = f"{len(failed)} 项失败 ⚠️"
+    elif retried:
+        head = "全绿 ✅（有项目重试后成功）"
     elif "soft" in kinds.values():
         head = "全绿 ✅（个别上游项没成）"
     elif "maintenance" in kinds.values():
@@ -587,7 +642,8 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
         finished = datetime.fromisoformat(e["finished"])
         raw = e.get("raw") or {}
         kind = kinds.get(e["run_id"], "")
-        icon = "✅" if e["ok"] else _KIND_ICON.get(kind, "❌")
+        icon = ("✅" if e["ok"]
+                else _KIND_ICON.get(kind) or ("↻" if e["run_id"] in retried else "❌"))
         tag = "（剿灭检查）" if raw.get("annihilation") else ""
         lines.append(icon + f" {e['script']}{tag}　"
                      + _span(started, finished, e.get('duration_known', True)))
@@ -603,7 +659,20 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             lines += [_row("备注", [_KIND_NOTE[kind]]), ""]
             continue
         if not e["ok"]:
-            lines += [_row("备注", [_fmt_failed(e.get("failed_tasks") or [])]), ""]
+            # A run that failed one task out of twenty still did the other
+            # nineteen. Printing only 「失败于：X」 threw all of it away - on
+            # 2026-09-09 an 80-minute Endfield run that collected the whole
+            # daily, the pass rewards and 135000 折金票 was reduced to one line
+            # naming the single step that did not work.
+            did, cost, out, left, notes = _rows_for(e, finished)
+            notes.insert(0, retried.get(e["run_id"])
+                         or _fmt_failed(e.get("failed_tasks") or []))
+            if not (did or cost or out or left):
+                lines += [_row("备注", notes), ""]
+                continue
+            lines += [_row(l, v) for l, v in
+                      zip(_LABELS, (did, cost, out, left, notes))]
+            lines.append("")
             continue
         if raw.get("annihilation"):
             prog = raw.get("annihilation_progress")
@@ -617,7 +686,14 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
                 note = "已打剿灭"
             lines += [_row("备注", [note]), ""]
             continue
-        lines += _block(e, finished)
+        did, cost, out, left, notes = _rows_for(e, finished)
+        if notes and not (did or cost or out or left):
+            # Four 「—」 rows above one real line is noise. The two-minute retry on
+            # 2026-09-09 printed exactly that.
+            lines += [_row("备注", notes), ""]
+            continue
+        lines += [_row(l, v) for l, v in
+                  zip(_LABELS, (did, cost, out, left, notes))]
         lines.append("")
 
     if prose:

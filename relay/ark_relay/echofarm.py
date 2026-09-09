@@ -249,8 +249,14 @@ def stop_okww(sleep=time.sleep) -> str:
     return "；**游戏没关掉（" + "、".join(game_alive()) + "），得去机器上手动关**"
 
 
-def start(cfg, boss: int, until_hhmm: str, name: str = "") -> tuple[bool, str]:
-    """Point OK-WW at one overworld boss and farm it until `until_hhmm`."""
+def start(cfg, boss: int, until_hhmm: str, name: str = "",
+          now: datetime | None = None) -> tuple[bool, str]:
+    """Point OK-WW at one overworld boss and farm it until `until_hhmm`.
+
+    `now` exists so the deadline can be pinned in a test. Without it the test had
+    to trust the wall clock, and it started failing the moment the real time went
+    past 08:30 - a test that only passes in the morning is not a test.
+    """
     path = _cfg_path(getattr(cfg, "okww_dir", None) or os.environ.get("ARK_OKWW_DIR"))
     if not path or not path.is_file():
         return False, "找不到 OK-WW 的 FarmEchoTask 配置"
@@ -260,7 +266,7 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "") -> tuple[bool, str]:
         return False, f"「第几个」要是数字，收到 {boss!r}"
     if not 1 <= boss <= 30:
         return False, f"「第几个」超出范围：{boss}"
-    until = resolve_until(until_hhmm)
+    until = resolve_until(until_hhmm, now)
     if until is None:
         return False, f"结束时刻看不懂：{until_hhmm!r}（要 08:30 这种）"
     running = current(cfg.state_dir)
@@ -287,7 +293,8 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "") -> tuple[bool, str]:
     _store(cfg.state_dir).set("queues", "echo_farm", {
         "boss": boss, "name": name or f"第 {boss} 个",
         "until": until.strftime("%Y-%m-%d %H:%M"),
-        "started": datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d %H:%M"),
+        "started": (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+                   .strftime("%Y-%m-%d %H:%M"),
         "saved": saved,
     })
     return True, f"开始刷{name or f'第 {boss} 个'}，刷到 {until:%H:%M} 为止（机器时间）"

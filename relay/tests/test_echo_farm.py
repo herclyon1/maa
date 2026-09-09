@@ -68,6 +68,7 @@ check("目录是 None 时返回 None", echofarm._cfg_path(None), None)
 
 print("[结束时刻：认得 08:30，认不出的一律拒绝]")
 now = datetime(2026, 9, 9, 4, 0, tzinfo=SERVER_TZ)
+NOW = now
 check("今天还没到就是今天", echofarm.resolve_until("08:30", now).strftime("%m-%d %H:%M"), "09-09 08:30")
 check("已经过了就是明天", echofarm.resolve_until("03:00", now).strftime("%m-%d %H:%M"), "09-10 03:00")
 for bad in ("25:00", "8点半", "", None, "08:70"):
@@ -75,7 +76,7 @@ for bad in ("25:00", "8点半", "", None, "08:70"):
 
 print("\n[开跑：配置改成打指定 boss，原来那份完整存下来]")
 c = fresh()
-ok, msg = echofarm.start(c, 1, "08:30", "天傀劫煞")
+ok, msg = echofarm.start(c, 1, "08:30", "天傀劫煞", now=NOW)
 check("开跑了", ok, True)
 check("话里有目标和时刻", "天傀劫煞" in msg and "08:30" in msg, True)
 check("真的启动了一次", len(launched), 1)
@@ -156,7 +157,7 @@ _wb._okww_log = lambda: _logfile
 try:
     check("读不出日志时不猜", echofarm.quiet_minutes(datetime(2026, 9, 9, 5, 0, tzinfo=SERVER_TZ)) is not None, True)
     c = fresh()
-    echofarm.start(c, 1, "08:30", "天傀劫煞")
+    echofarm.start(c, 1, "08:30", "天傀劫煞", now=NOW)
     _rec = echofarm.current(c.state_dir)
     _rec["started"] = "2026-09-09 04:00"
     echofarm._store(c.state_dir).set("queues", "echo_farm", _rec)
