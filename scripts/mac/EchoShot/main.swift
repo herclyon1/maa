@@ -10,20 +10,27 @@
 // Monitoring grant and fires over a fullscreen game. Only the screenshot itself needs a
 // permission: Screen Recording, granted once to this app.
 //
-// Default key is ` (the one left of 1, keycode 50) with no modifiers, which no Wuthering
-// Waves default binding uses. Override it by writing a different keycode:
-//     defaults write local.ark.echoshot keyCode -int 50
+// The default key depends on the physical layout, because the obvious ANSI choice does not
+// exist on the user's machine: this MacBook Air has a JIS keyboard, whose number row starts
+// at 1 - there is no key left of it, so ANSI's ` (keycode 50) is unreachable. JIS gets the
+// yen key at the top right of the number row instead (keycode 93). Neither is bound by
+// Wuthering Waves or by macOS. Override with:
+//     defaults write local.ark.echoshot keyCode -int <keycode>
+// Other keys a JIS keyboard has to spare: 94 = _, 102 = 英数, 104 = かな (the last two switch
+// input method, so only pick them if Japanese is never typed on this machine).
 import AppKit
 import Carbon.HIToolbox
 
 let folder = ("~/Pictures/EchoShots" as NSString).expandingTildeInPath
-let defaultKeyCode: UInt32 = 50  // kVK_ANSI_Grave
 
 // The hotkey is grabbed globally, so the chosen key stops typing anywhere else on the Mac.
-// That is the whole point for `, but it is also the reason the key is configurable.
+// That is the point, and it is also why the key is configurable.
 let keyCode: UInt32 = {
     let stored = UserDefaults.standard.integer(forKey: "keyCode")
-    return stored > 0 ? UInt32(stored) : defaultKeyCode
+    if stored > 0 { return UInt32(stored) }
+    return KBGetLayoutType(Int16(LMGetKbdType())) == kKeyboardJIS
+        ? 93   // kVK_JIS_Yen, top right of the number row
+        : 50   // kVK_ANSI_Grave, left of 1
 }()
 
 func timestamp() -> String {

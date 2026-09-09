@@ -21,12 +21,12 @@ case "${1:-}" in
   --off)
     stop_it
     launchctl disable "$LABEL" 2>/dev/null || true
-    echo "✅ 已停。反引号键 \` 恢复正常打字。要再开：$0 --on"
+    echo "✅ 已停。那个键恢复正常打字。要再开：$0 --on"
     exit 0 ;;
   --on)
     launchctl enable "$LABEL" 2>/dev/null || true
     launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null || open "$APP"
-    echo "✅ 已开。按一下 \` 截一张。"
+    echo "✅ 已开。按一下热键截一张。"
     exit 0 ;;
   "") ;;
   *) echo "不认识的参数: $1" >&2; exit 2 ;;
@@ -92,9 +92,11 @@ fi
 
 cat <<'MSG'
 
-按一下 ` 键（键盘左上角、数字 1 的左边）就截一张，存到 ~/Pictures/EchoShots。
+按一下 ¥ 键（JIS 键盘数字键行最右边、delete 左边）就截一张，存到 ~/Pictures/EchoShots。
+ANSI 键盘上是数字 1 左边那个 ` 键，开机时自己判断，不用你选。
 听到「叮」＝存好了；听到「咚」＝没截到，那是屏幕录制权限没给：
 系统设置 → 隐私与安全性 → 屏幕录制 → 打开 EchoShot。给完再按一次。
 
-这个键被独占了，以后在别处打不出反引号。不需要时：scripts/mac/build-echoshot.sh --off
+这个键被独占了，以后在别处打不出这个字符。不需要时：scripts/mac/build-echoshot.sh --off
+想换成别的键：defaults write local.ark.echoshot keyCode -int <键码>，再跑一次这个脚本。
 MSG

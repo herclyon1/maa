@@ -211,8 +211,12 @@ The user scores Wuthering Waves echoes one screenshot at a time, dozens in a row
 Moonlight stream is fullscreen. He asked for **one** key. Cmd+Shift+3 is three, and he said
 so in exactly those terms.
 
-`~/Applications/EchoShot.app` registers a Carbon global hotkey on **`** (keycode 50, no
-modifiers) and shells out to `screencapture -x -t jpg` into `~/Pictures/EchoShots`. Built by
+`~/Applications/EchoShot.app` registers a Carbon global hotkey with no modifiers and shells
+out to `screencapture -x -t jpg` into `~/Pictures/EchoShots`. The key depends on the physical
+layout, checked at launch with `KBGetLayoutType`: **¥** (keycode 93) on this machine's JIS
+keyboard, ` (keycode 50) on ANSI. JIS has no key left of 1, so the ANSI default was
+unreachable here - it fired for a synthetic keycode 50 and for nothing the user could press.
+Built by
 `scripts/mac/build-echoshot.sh` from `scripts/mac/EchoShot/main.swift`; the binary is not
 committed. A LaunchAgent (`local.ark.echoshot`) starts it at login.
 
@@ -223,9 +227,10 @@ committed. A LaunchAgent (`local.ark.echoshot`) starts it at login.
   The app deletes those, thuds instead of clicking, and writes the reason to
   `~/Pictures/EchoShots/echoshot.log`.
 - JPEG, not PNG: the scorer caps uploads at 1 MB and a PNG of this 2772x1280 screen is ~5 MB.
-- The ` key is grabbed system-wide, so it stops typing everywhere else while the app runs.
+- The chosen key is grabbed system-wide, so it stops typing everywhere else while the app runs.
   `scripts/mac/build-echoshot.sh --off` stops it, `--on` starts it again. The key is
-  configurable: `defaults write local.ark.echoshot keyCode -int <keycode>`.
+  configurable: `defaults write local.ark.echoshot keyCode -int <keycode>`. Other spare JIS
+  keys: 94 = `_`, 102 = 英数, 104 = かな (the last two switch input method).
 
 Nothing else on the Mac changed. `com.apple.screencapture` was briefly repointed at the same
 folder and then restored - the defaults are back to stock, and Cmd+Shift+3 still lands on the
