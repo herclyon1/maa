@@ -223,7 +223,12 @@ check("relay 那一段和快照无关，照样有内容",
 
 # ---------------------------------------------------------------- publish
 
-print("\n[publish：宁可压缩，也不静默砍掉功能；砍了要说出来]")
+print("\n[publish：什么都不砍。通道不是 4096，那只是「转成附件」的分界]")
+# Measured 2026-09-09: a 9046-byte body posts fine, ntfy stores it as an attachment
+# and hands back a URL that returns it byte-for-byte. 4096 was treated as a hard
+# ceiling here and the state was trimmed section by section to fit - features thrown
+# away for a problem that did not exist, and when trimming was not enough the message
+# went out unparseable and the page kept showing values almost an hour old.
 
 mb = phone.Mailbox("topic-abc", PIN, tmpdir())
 check("有 topic 有 pin 才算启用", mb.enabled, True)
@@ -249,21 +254,19 @@ check("收回来解得开且内容一致",
 big = {"at": 1,
        "options": {"_labels": {f"MAA|Info.键{i}": f"中文标注{i}" for i in range(150)}},
        "plan": "明天早班要跑的东西" * 40}
-check("这份状态明文确实超线",
-      len(phone.pack(PIN, big, "state").encode()) > phone.Mailbox.MAX_BODY, True)
+check("这份状态明文确实超过内联分界",
+      len(phone.pack(PIN, big, "state").encode()) > phone.Mailbox.INLINE_MAX, True)
 
 net = FakeNet()
 net.queue.append(FakeResp(b"ok"))
 check("超线的状态照样发得出去", with_net(net, lambda: mb.publish(big)), True)
 wire = net.sent[0][1]
-check("超线时改走压缩", "gz" in json.loads(wire.decode()), True)
-check("压完在上限之内（超了就会被截断，手机上解析失败）",
-      len(wire) <= phone.Mailbox.MAX_BODY, True)
+check("能压进内联就压，省手机一次取附件", "gz" in json.loads(wire.decode()), True)
 check("压缩没丢东西：options 和 plan 都还在",
       phone.unpack(PIN, wire.decode())["body"], big)
 
-# Random text does not compress; this is the path where fields really do get
-# dropped - and the point is that what goes out is still parseable JSON.
+# Random text does not compress. This used to be the path where fields got dropped;
+# now it simply goes out whole and ntfy turns it into an attachment.
 import random  # noqa: E402
 
 random.seed(826)
@@ -278,24 +281,15 @@ def publish_and_read(body):
     return wire, phone.unpack(PIN, wire.decode())
 
 
-wire, sent = publish_and_read(
-    {"at": 1, "plan": noise[:5000], "options": {"x": "小"},
-     "config": {"MAA": {"关卡": "AT-4"}}})
-check("压不下去时砍字段，但发出去的仍是完整 JSON（手机上解析得开）",
-      sent is not None, True)
-check("砍完在上限之内", len(wire) <= phone.Mailbox.MAX_BODY, True)
-check("先砍 plan；砍到装得下就停手，选项表能留就留",
-      ("plan" in sent["body"], "options" in sent["body"]), (False, True))
-check("配置这种要紧的一个字段都不砍",
-      sent["body"].get("config"), {"MAA": {"关卡": "AT-4"}})
-
-wire, sent = publish_and_read(
-    {"at": 1, "plan": noise[:5000], "options": {"x": noise[5000:15000]},
-     "config": {"MAA": {"关卡": "AT-4"}}})
-check("砍了 plan 还装不下，才轮到选项表",
-      ("plan" in sent["body"], "options" in sent["body"]), (False, False))
-check("砍到最后配置还在", sent["body"].get("config"), {"MAA": {"关卡": "AT-4"}})
-check("最终发出去的一定在上限之内", len(wire) <= phone.Mailbox.MAX_BODY, True)
+payload = {"at": 1, "plan": noise[:5000], "options": {"x": noise[5000:15000]},
+           "config": {"MAA": {"关卡": "AT-4"}}}
+wire, sent = publish_and_read(payload)
+check("压不下去也照发，一个字段都不砍", sent["body"], payload)
+check("确实超过了内联分界（走附件）", len(wire) > phone.Mailbox.INLINE_MAX, True)
+check("发出去的仍是完整 JSON", sent is not None, True)
+check("明日安排还在", "plan" in sent["body"], True)
+check("选项表还在", "options" in sent["body"], True)
+check("不再往包里塞「砍掉了什么」", "_砍掉的" in sent["body"], False)
 
 net = FakeNet()
 net.queue.append(urllib.error.URLError("网断了"))

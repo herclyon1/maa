@@ -281,40 +281,31 @@ class Mailbox:
     # ntfy's real limit is 4096 bytes. A 200-byte margin is plenty - 3600 was too
     # conservative, and after the queues and the weekly boss were added on
     # 2026-08-31 it went over and dropped tomorrow's plan.
-    MAX_BODY = 3900
+    # ntfy turns anything over 4096 bytes into an attachment and hands back a URL,
+    # so this is not a ceiling on what can be sent - it is the point where the
+    # message stops travelling inline. Measured on 2026-09-09: a 9046-byte body
+    # posted fine and came back byte-for-byte from its attachment URL.
+    # It used to be treated as a hard limit, and the state was trimmed section by
+    # section to fit. That threw away features to solve a problem that did not
+    # exist, and when trimming was not enough the message went out unparseable and
+    # the phone silently showed values 54 minutes old.
+    INLINE_MAX = 4096
+    MAX_BODY = INLINE_MAX      # old name, kept for callers and tests
 
     def publish(self, body: dict, kind: str = "state") -> bool:
         if not self.enabled:
             return False
-        def smallest(b: dict) -> bytes:
-            # Compressing costs milliseconds; dropping a field costs a feature. So
-            # always take the smaller of the two. The old code compressed once, then
-            # re-packed **uncompressed** after every drop, throwing that away: on
-            # 2026-09-09 it dropped two sections and still went out at 5785 bytes,
-            # over ntfy's limit, so the phone could not parse it at all and silently
-            # kept showing a snapshot 54 minutes old while 「刷新」 appeared to work.
-            plain = pack(self.pin, b, kind).encode("utf-8")
-            if len(plain) <= self.MAX_BODY:
-                return plain
-            gz = pack(self.pin, b, kind, gz=True).encode("utf-8")
-            return gz if len(gz) < len(plain) else plain
-
-        data = smallest(body)
-        dropped: list[str] = []
-        # Ordered by what the phone can most afford to lose.
-        for drop in ("plan", "options", "master", "queues", "config"):
-            if len(data) <= self.MAX_BODY:
-                break
-            if drop in body:
-                log.warning("状态太大（%d 字节），砍掉「%s」再发", len(data), drop)
-                body = {k: v for k, v in body.items() if k != drop}
-                dropped.append(drop)
-                # Say what is missing, so the page can show a gap instead of
-                # quietly rendering stale values as if they were current.
-                body["_砍掉的"] = dropped
-                data = smallest(body)
-        if len(data) > self.MAX_BODY:
-            log.error("状态还是太大（%d 字节），手机上会解析失败", len(data))
+        data = pack(self.pin, body, kind).encode("utf-8")
+        if len(data) > self.INLINE_MAX:
+            # Compressing keeps it inline, which spares the phone a second fetch.
+            # Nothing is dropped either way.
+            packed = pack(self.pin, body, kind, gz=True).encode("utf-8")
+            if len(packed) < len(data):
+                log.info("状态 %d 字节，压缩到 %d 字节", len(data), len(packed))
+                data = packed
+        if len(data) > self.INLINE_MAX:
+            log.info("状态 %d 字节，超过 %d 就走附件，手机那边会去取",
+                     len(data), self.INLINE_MAX)
         req = urllib.request.Request(f"{NTFY}/{self.topic}", data=data,
                                      method="POST",
                                      headers={"User-Agent": _UA,
