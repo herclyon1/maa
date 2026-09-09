@@ -205,26 +205,28 @@ Wuthering Waves' servers are IPv4-only, so there is no IPv6 path to take.
 图标源图在 `scripts/mac/icons/`，生成逻辑在 `scripts/mac/lib/app-icon.sh`，两个构建脚本重跑会自动带上。
 `强制关闭串流.app` 没有构建脚本，图标是直接写进桌面那份的；重做它时记得也调一下 `set_app_icon`。
 
-### Screenshot destination moved to ~/Pictures/EchoShots (2026-09-09)
+### EchoShot: one key, one screenshot (2026-09-09)
 
-The user wanted one keystroke that drops a Wuthering Waves echo screenshot into a folder,
-so the echoes can be scored in batches instead of one at a time. The native
-**Cmd+Shift+3** hotkey already survives Moonlight's fullscreen capture, so nothing new was
-installed - only where it writes and in what format:
+The user scores Wuthering Waves echoes one screenshot at a time, dozens in a row, while a
+Moonlight stream is fullscreen. He asked for **one** key. Cmd+Shift+3 is three, and he said
+so in exactly those terms.
 
-```
-defaults write com.apple.screencapture location "$HOME/Pictures/EchoShots"
-defaults write com.apple.screencapture type jpg          # PNG of a 2772x1280 screen is ~5 MB; the scorer caps at 1 MB
-defaults write com.apple.screencapture disable-shadow -bool true
-killall SystemUIServer
-```
+`~/Applications/EchoShot.app` registers a Carbon global hotkey on **`** (keycode 50, no
+modifiers) and shells out to `screencapture -x -t jpg` into `~/Pictures/EchoShots`. Built by
+`scripts/mac/build-echoshot.sh` from `scripts/mac/EchoShot/main.swift`; the binary is not
+committed. A LaunchAgent (`local.ark.echoshot`) starts it at login.
 
-This is global: **every** screenshot on this Mac now lands there, not on the Desktop.
-To undo:
+- Carbon's `RegisterEventHotKey` needs no Accessibility or Input Monitoring grant and fires
+  over a fullscreen game. Hammerspoon and skhd would both have worked; they cost an install,
+  a menu-bar app and an Accessibility grant, which is more than the sixty lines here.
+- **Screen Recording must be granted to EchoShot** or every capture writes a zero-byte file.
+  The app deletes those, thuds instead of clicking, and writes the reason to
+  `~/Pictures/EchoShots/echoshot.log`.
+- JPEG, not PNG: the scorer caps uploads at 1 MB and a PNG of this 2772x1280 screen is ~5 MB.
+- The ` key is grabbed system-wide, so it stops typing everywhere else while the app runs.
+  `scripts/mac/build-echoshot.sh --off` stops it, `--on` starts it again. The key is
+  configurable: `defaults write local.ark.echoshot keyCode -int <keycode>`.
 
-```
-defaults delete com.apple.screencapture location
-defaults delete com.apple.screencapture type
-defaults delete com.apple.screencapture disable-shadow
-killall SystemUIServer
-```
+Nothing else on the Mac changed. `com.apple.screencapture` was briefly repointed at the same
+folder and then restored - the defaults are back to stock, and Cmd+Shift+3 still lands on the
+Desktop as PNG.

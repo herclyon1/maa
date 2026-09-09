@@ -21,3 +21,4 @@ __pycache__/
 # 谁照它跑谁拿到的是没修过的版本。要用就跑 scripts/mac/build-fleetmonitor.sh 现编。
 scripts/mac/FleetMonitor/FleetMonitor
 
+scripts/mac/EchoShot/EchoShot
