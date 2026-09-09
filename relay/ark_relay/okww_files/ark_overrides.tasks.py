@@ -75,7 +75,13 @@ class _Marker:
 def _install():
     from src.task.FarmEchoTask import FarmEchoTask
 
-    @override(FarmEchoTask, "revive_action")
+    # This one replaces upstream's method outright rather than wrapping it, so
+    # upstream's own version never runs. Pinning its hash is what keeps that honest:
+    # the day they change `revive_action`, ours is stale by definition and would go
+    # on running silently. With the pin, it refuses to bind and says why.
+    # Recomputed on the machine with inspect.getsource; update it deliberately after
+    # reading what upstream changed, never to make a warning go away.
+    @override(FarmEchoTask, "revive_action", expect_sha="e99b2d74c31a")
     def revive_action(self):
         # Inside a realm upstream gives up on reviving - there is no teleport tower
         # to run back to - so one death stops the whole task. For an overnight farm
@@ -150,7 +156,18 @@ def _install_teleport():
             text = ' '.join(str(b) for b in found)
             if '确认前往' not in text and '剧情体验' not in text:
                 self.log_info(f'传送前没认出提示框，这块屏幕读到：{text[:120]!r}')
-                raise
+                # Not the spoiler dialog, so the wait simply ran out. Upstream gives
+                # the game 10 seconds and 19 runs across five days have died on that
+                # one - 2026-09-09's pilot among them, with the team screen appearing
+                # right after the timeout. Give it one more look before giving up:
+                # slower than upstream is free, a dead daily is not.
+                again = self.wait_feature(
+                    ['fast_travel_custom', 'gray_teleport', 'remove_custom', 'team_close'],
+                    time_out=15, settle_time=0.5, raise_if_not_found=False)
+                if not again:
+                    raise
+                self.log_info('传送界面来晚了，多等 15 秒等到了，接着走')
+                return again.name == 'team_close'
             self.log_info('限时提前开放的剧情提示框，点确认前往')
             self.click_dialog_right_button()
             # Confirming drops the player straight into the arena: no fast-travel UI

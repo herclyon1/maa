@@ -47,8 +47,15 @@ def okww_pids():
          # Both hosts: AUTO-MAS runs OK-WW under pythonw.exe, okww-task.sh under
          # python.exe. Watching only the first left the manual path invisible
          # to this gate and to the red button alike.
+         #
+         # Match the install path, not a bare 「ok-ww」. PowerShell's -like is
+         # case-insensitive, so 「*ok-ww*」 also matched this very script's own
+         # command line whenever it was called as `run-one.sh OK-WW` - the gate saw
+         # itself, reported 「ok-ww 还在跑」 and refused every manual dispatch, while
+         # `run-one.sh status` (no such argument) said the machine was idle.
+         # A path fragment cannot appear in an argument: it carries separators.
          "Get-CimInstance Win32_Process -Filter \"Name='pythonw.exe' or Name='python.exe'\" | "
-         "Where-Object { $_.CommandLine -like '*ok-ww*' } | "
+         r"Where-Object { $_.CommandLine -like '*\ok-ww\*' } | "
          "Select-Object -ExpandProperty ProcessId"],
         capture_output=True, text=True, errors="replace").stdout.split()
     return out
