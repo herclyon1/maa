@@ -22,15 +22,18 @@ changed; an empty answer means everything was already in place.
 | 1 | `NightmareNestTask.py` replaced wholesale with our copy — this is where the fixed `ensure_main` and 「只刷指定点位」 live | `okww_files/NightmareNestTask.patched.py` |
 | 2 | Weekly boss runs **before** the daily stamina farming — otherwise the daily step burns all 180 stamina and the three 60-stamina chests are impossible | `okww_patches/stamina.py` |
 | 3 | 「这次不刷体力」 marker honoured | `okww_patches/nofarm.py` |
-| 3 | Everything else has moved out of this table - see below |
+| 1 | The whole `NightmareNestTask.py` file, replaced (it needs a change upstream has no hook for) | `okww_files/NightmareNestTask.patched.py` |
+| — | Everything else has moved out of this table, see below |
 
-**Moved out of this table (2026-09-09)**: ten of the thirteen changes now live in
+**Moved out of this table (2026-09-09)**: twelve of the thirteen changes now live in
 `okww_files/ark_overrides.tasks.py`, installed into OK-WW's own `ok_tasks/`
 folder by `okww_overlay.py`. Three are wrappers around upstream's own methods;
 four are whole-method copies, each pinned to the hash of upstream's pristine
 source and regenerated from `okww_patches/` by `test_okww_overlay_copies.py`.
-Only the nest file replacement and the two DailyTask stamina changes still edit
-OK-WW's source. Nothing there edits an upstream file, so there is
+Only the nest file replacement still edits OK-WW's source, because it needs a
+change in the middle of a class upstream gives no hook for; it carries its own
+pristine baseline (`NightmareNestTask.upstream.py`) for the same reason the copies
+carry hashes. Nothing there edits an upstream file, so there is
 no previous version to revert and an OK-WW update cannot half-apply it. Each
 override is checked before it is bound and anything skipped is pushed.
 

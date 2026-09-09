@@ -72,7 +72,14 @@ trap 'rm -rf "$GATED"' EXIT
 ( python3 "$HERE/../scripts/mac/lib/deadcode.py" "$HERE" "$HERE/../scripts" \
       >"$GATED/dead.out" 2>&1
   echo $? >"$GATED/dead.rc" ) &
-( printf '%s\n' tests/test_*.py \
+# test_manifest_covers_tree.py rewrites relay/manifest.json to prove the generator
+# picks up a new file. That is shared state, so it cannot run beside anything else
+# that reads or rebuilds the manifest - once these gates went parallel it started
+# failing, and for three deploys in a row the failure was invisible because the
+# output was being filtered. It runs on its own, first.
+( python3 tests/test_manifest_covers_tree.py >"$GATED/manifest.out" 2>&1
+  echo $? >"$GATED/manifest.rc"
+  printf '%s\n' tests/test_*.py | grep -v test_manifest_covers_tree.py \
     | xargs -P 8 -I{} bash -c 'run_one_test "$1"' _ {} >"$GATED/tests.out" 2>&1
   echo $? >"$GATED/tests.rc" ) &
 ( python3 -m py_compile ark_relay/*.py service.py boot_stages.py run.py \
@@ -81,21 +88,26 @@ trap 'rm -rf "$GATED"' EXIT
   echo $? >"$GATED/cov.rc" ) &
 wait
 
-if [ "$(cat "$GATED/guard.rc")" != 0 ]; then
+if [ "$(cat "$GATED/guard.rc" 2>/dev/null || echo 1)" != 0 ]; then
   sed 's/^/    /' "$GATED/guard.out"
   echo "  ✋ 部署已取消：闸门失效了，先修闸门。"
   exit 1
 fi
 echo "  $(tail -1 "$GATED/guard.out")"
 
-if [ "$(cat "$GATED/dead.rc")" != 0 ]; then
+if [ "$(cat "$GATED/dead.rc" 2>/dev/null || echo 1)" != 0 ]; then
   sed 's/^/    /' "$GATED/dead.out"
   echo "  ✋ 部署已取消：上面这些代码写了等于没写。"
   exit 1
 fi
 echo "  $(tail -1 "$GATED/dead.out")"
 
-if [ "$(cat "$GATED/tests.rc")" != 0 ]; then
+if [ "$(cat "$GATED/manifest.rc" 2>/dev/null || echo 1)" != 0 ]; then
+  cat "$GATED/manifest.out" 2>/dev/null
+  echo "  ✋ 清单覆盖那道测试没过（它会改 manifest.json，所以单独先跑）。"
+  exit 1
+fi
+if [ "$(cat "$GATED/tests.rc" 2>/dev/null || echo 1)" != 0 ]; then
   cat "$GATED/tests.out"
   echo "  ✋ 有测试没过（见上）。"
   echo "     部署已取消。先修测试，或者确认这些断言本身该更新。"
@@ -110,7 +122,7 @@ echo "  $(ls tests/test_*.py | wc -l | tr -d ' ') 个测试全过"
 # gameupdate 这类模块，硬要求回放覆盖只会逼人关掉这道闸。所以要求是
 # 「至少有一个测试真的执行到它」，判定类模块另外单独点名提醒。
 cat "$GATED/cov.out"
-if [ "$(cat "$GATED/cov.rc")" != 0 ]; then
+if [ "$(cat "$GATED/cov.rc" 2>/dev/null || echo 1)" != 0 ]; then
   echo "  ✋ 有模块改了却没有任何测试跑到它（或语法就不过），不给部署。" >&2
   exit 8
 fi

@@ -1,0 +1,60 @@
+    def run(self):
+        self.validate_additional_tasks()
+
+        WWOneTimeTask.run(self)
+        self.logged_in = False
+        self.ensure_main(time_out=180)
+
+        additional_tasks = self.config.get(ADDITIONAL_TASKS) or []
+        condition1 = AUTO_FARM_NIGHTMARE_NEST in additional_tasks
+        condition2 = self.config.get('Farm Nightmare Nest for Daily Echo')
+
+        used_stamina, daily_reward_ready = self.open_daily()
+        need_stamina = not daily_reward_ready and used_stamina < 180
+        need_nightmare = condition1 or (
+                condition2
+                and not daily_reward_ready
+                and self.config.get('Which to Farm', self.support_tasks[0]) != self.support_tasks[0]
+        )
+
+        if need_nightmare:
+            try:
+                # 劫持 NightmareNestTask.ensure_main 避免梦魇打完关书
+                self.get_task_by_class(NightmareNestTask).ensure_main = lambda *args, **kwargs: None
+
+                if condition1:
+                    self.log_debug('Auto Farm all Nightmare Nest')
+                    self.run_task_by_class(NightmareNestTask)
+                elif condition2:
+                    self.log_debug('Farm Nightmare Nest for Daily Echo')
+                    self.get_task_by_class(NightmareNestTask).run_capture_mode()
+            except TaskDisabledException:
+                raise
+            except Exception as e:
+                self.log_error("NightmareNestTask Failed", e)
+                self.screenshot('NightmareNestTask')
+                self.ensure_main(time_out=180)
+            finally:
+                # 还原 ensure_main，防范实例状态污染
+                self.get_task_by_class(NightmareNestTask).__dict__.pop('ensure_main', None)
+
+        if need_stamina:
+            target = self.config.get('Which to Farm', self.support_tasks[0])
+            if target == self.support_tasks[0]:
+                self.get_task_by_class(TacetTask).farm_tacet(daily=True, used_stamina=used_stamina,
+                                                             config=self.config)
+            elif target == self.support_tasks[1]:
+                self.get_task_by_class(ForgeryTask).farm_forgery(daily=True, used_stamina=used_stamina,
+                                                                 config=self.config)
+            else:
+                self.get_task_by_class(SimulationTask).farm_simulation(daily=True, used_stamina=used_stamina,
+                                                                       config=self.config)
+            self.sleep(4)
+
+        self.claim_daily()
+
+        self.claim_mail()
+        self.sleep(1)
+        self.claim_battle_pass()
+        self.run_additional_tasks()
+        self.log_info('Daily Task Completed', notify=True)

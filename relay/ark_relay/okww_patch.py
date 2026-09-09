@@ -233,6 +233,16 @@ def _ensure_stamina(root: Path) -> list[str]:
 _FE = (*_SRC, "FarmEchoTask.py")
 _BW = (*_SRC, "BaseWWTask.py")
 _TT = (*_SRC, "TacetTask.py")
+_DT = (*_SRC, "DailyTask.py")
+
+# Both stamina changes live inside DailyTask.run, and one sits inside the other's
+# region, so reverting them one at a time made the second look stacked. The whole
+# method is put back in one move instead: unambiguous, and it cannot half-happen.
+_DAILY_RUN_PRISTINE = (Path(__file__).with_name("okww_files")
+                       / "DailyTask.run.upstream.txt").read_text(encoding="utf-8")
+_DAILY_RUN_PATCHED = (_DAILY_RUN_PRISTINE
+                      .replace(_STAMINA_OLD, _STAMINA_NEW, 1)
+                      .replace(_NOFARM_OLD, _NOFARM_NEW, 1))
 _REVERTS: "list[tuple[tuple, str, str, str]]" = [
     # Withdrawn 2026-08-31: OK-WW's own error() already prints the stack.
     (_FE, _FARMERR_NEW, _FARMERR_OLD, "周本活锁：打出被吞掉的异常"),
@@ -252,6 +262,8 @@ _REVERTS: "list[tuple[tuple, str, str, str]]" = [
     (_BW, _BOSSTIP_V3, _BOSSTIP_OLD_FULL, "限时提前开放的 boss v3"),
     (_FE, _REVIVE_V1, _REVIVE_OLD, "刷声骸时原地复活 v1"),
     (_FE, _REVIVE_NEW, _REVIVE_OLD, "刷声骸时原地复活 v2（已搬到 ok_tasks，源文件还原）"),
+    (_DT, _DAILY_RUN_PATCHED, _DAILY_RUN_PRISTINE,
+     "日常里的体力两条（已搬到 ok_tasks，整段还原）"),
     (_FE, _CLAIM_NEW, _CLAIM_OLD_FULL, "打完 Boss 真正领周本奖励（已搬到 ok_tasks，源文件还原）"),
     (_TT, _TACETSHOT_NEW, _TACETSHOT_OLD, "无音区结算页留一张给日报（已搬到 ok_tasks，源文件还原）"),
     (_FE, _NOWAVE_NEW, _NOWAVE_OLD, "波片不足时跳过周本（已搬到 ok_tasks，源文件还原）"),
@@ -285,8 +297,7 @@ _APPLIES: "list[_Patch]" = []
 def active_patches() -> list[str]:
     """Names of everything applied every boot, in order - the source of truth for
     docs/OKWW-PATCHES.md and for anyone asking what runs."""
-    return (["巢穴任务（整份文件替换）", _STAMINA.name, _NOFARM.name]
-            + [p.name for p in _APPLIES])
+    return ["巢穴任务（整份文件替换）"] + [p.name for p in _APPLIES]
 
 
 def ensure_patches(okww_dir: Path | None) -> list[str]:

@@ -26,6 +26,10 @@ _extra = [f for f in ("RELEASE-NOTES.md",) if (HERE / f).exists()]
 # "deploy succeeded but the feature is not live".
 _nested = [p.relative_to(HERE).as_posix()
            for p in sorted((HERE / "ark_relay" / "okww_files").glob("*.py"))
+           # Pristine upstream fragments are kept as .txt so the linters do not try
+           # to compile a method body as a module. They still have to ship: on
+           # 2026-09-09 one was left out and the service crashed on import.
+           + sorted((HERE / "ark_relay" / "okww_files").glob("*.txt"))
            + sorted((HERE / "ark_relay" / "okww_patches").glob("*.py"))]
 files = sorted(
     [p.relative_to(HERE).as_posix() for p in (HERE / "ark_relay").glob("*.py")]

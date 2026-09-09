@@ -531,11 +531,83 @@ def tacet_farm(self, daily=False, used_stamina=0, config=None):
             must_use -= used
 
 
+# DailyTask.run, upstream's own body with our changes applied.
+# What the changes are and why: okww_patches/stamina.py + nofarm.py.
+def daily_run(self):
+    self.validate_additional_tasks()
+
+    WWOneTimeTask.run(self)
+    self.logged_in = False
+    self.ensure_main(time_out=180)
+
+    additional_tasks = self.config.get(ADDITIONAL_TASKS) or []
+    condition1 = AUTO_FARM_NIGHTMARE_NEST in additional_tasks
+    condition2 = self.config.get('Farm Nightmare Nest for Daily Echo')
+
+    used_stamina, daily_reward_ready = self.open_daily()
+    need_stamina = not daily_reward_ready and used_stamina < 180
+    need_nightmare = condition1 or (
+            condition2
+            and not daily_reward_ready
+            and self.config.get('Which to Farm', self.support_tasks[0]) != self.support_tasks[0]
+    )
+
+    if need_nightmare:
+        try:
+            self.get_task_by_class(NightmareNestTask).ensure_main = lambda *args, **kwargs: None
+
+            if condition1:
+                self.log_debug('Auto Farm all Nightmare Nest')
+                self.run_task_by_class(NightmareNestTask)
+            elif condition2:
+                self.log_debug('Farm Nightmare Nest for Daily Echo')
+                self.get_task_by_class(NightmareNestTask).run_capture_mode()
+        except TaskDisabledException:
+            raise
+        except Exception as e:
+            self.log_error("NightmareNestTask Failed", e)
+            self.screenshot('NightmareNestTask')
+            self.ensure_main(time_out=180)
+        finally:
+            self.get_task_by_class(NightmareNestTask).__dict__.pop('ensure_main', None)
+
+    try:
+        self.run_additional_tasks()
+    except Exception as _e:
+        self.log_error(f'附加任务出错，不拖垮当趟日常: {_e}', exception=_e)
+        try:
+            self.screenshot('additional_tasks_error')
+        except Exception:
+            pass
+    self.ensure_main(time_out=180)
+    self.open_daily()
+
+    target = self.config.get('Which to Farm', self.support_tasks[0])
+    import os as _os
+    if _os.path.exists(r'C:\ProgramData\ark-relay\state\no-stamina-farm.flag'):
+        self.log_info('本地补丁：刷体力已禁用（标记文件在），这一趟不花波片')
+    elif target == self.support_tasks[0]:
+        self.get_task_by_class(TacetTask).farm_tacet(config=self.config)
+    elif target == self.support_tasks[1]:
+        self.get_task_by_class(ForgeryTask).farm_forgery(config=self.config)
+    else:
+        self.get_task_by_class(SimulationTask).farm_simulation(config=self.config)
+    self.sleep(4)
+
+    self.claim_daily()
+
+    self.claim_mail()
+    self.sleep(1)
+    self.claim_battle_pass()
+    self.log_info('Daily Task Completed', notify=True)
+
+
 def _install_copies():
     global logger, TaskDisabledException, CharRevivedException, WWOneTimeTask
     from ok import Logger
     from ok import TaskDisabledException as _TDE
     from src.task.BaseCombatTask import CharRevivedException as _CRE
+    from src.task.DailyTask import DailyTask
     from src.task.FarmEchoTask import FarmEchoTask
     from src.task.TacetTask import TacetTask
     from src.task.WWOneTimeTask import WWOneTimeTask as _WOT
@@ -547,6 +619,7 @@ def _install_copies():
     override(FarmEchoTask, "do_run", expect_sha="944d6ebebea1")(farm_do_run)
     override(FarmEchoTask, "teleport_to_configured_boss", expect_sha="d0c3a2650802")(farm_teleport)
     override(TacetTask, "farm_tacet", expect_sha="d8194fb3edab")(tacet_farm)
+    override(DailyTask, "run", expect_sha="a447990af646")(daily_run)
 
 
 def _write_report(error=""):

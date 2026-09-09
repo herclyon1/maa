@@ -39,6 +39,7 @@ RECIPE = {
     "FarmEchoTask.py:do_run": ("farm_do_run", [P._CLAIM, P._REVIVELOOP]),
     "FarmEchoTask.py:teleport_to_configured_boss": ("farm_teleport", [P._COUNT, P._NOWAVE]),
     "TacetTask.py:farm_tacet": ("tacet_farm", [P._TACETSHOT]),
+    "DailyTask.py:run": ("daily_run", [P._STAMINA, P._NOFARM]),
 }
 
 src = okww_overlay.source_text()
