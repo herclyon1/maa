@@ -1,25 +1,21 @@
-"""The copied methods in the overlay must equal upstream's own plus our patches.
+"""Every change must hook the smallest method that holds it, and every replacement
+must be pinned.
 
-Four of our changes sit in the middle of long methods, so the overlay carries a copy
-of the whole method. A copy is the one thing here that can go stale silently: edit it
-by hand and it stops matching what `okww_patches/` says we do, and nobody notices.
+The first shape of the overlay carried five whole-method copies, 30 to 90 lines each.
+Upstream ships roughly every other day; each copy would have gone stale the first time
+they touched that method. The pin would have said so, but the change would have
+stopped happening all the same. So the rule is: hook one call deeper, and replace a
+method outright only when upstream's own body is the thing that has to go.
 
-So the copies are checked against their recipe: take the pristine method (the fixture
-below is the exact text `inspect.getsource` returns on the machine, from OK-WW's own
-repo/ copy), apply the patches that belong in it, and the result must be what the
-overlay actually ships, character for character. The pinned hashes are checked too:
-a wrong one means the override refuses to bind on the machine and the change silently
-does not happen.
+This pins that rule. It is not a style preference: a copy is exposure to every edit
+upstream makes inside it, and a wrapper is exposure to none.
 """
-import json
-import hashlib
 import re
 import sys
-import textwrap
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import okww_overlay, okww_patch as P
+from ark_relay import okww_overlay
 
 fails = []
 
@@ -31,72 +27,53 @@ def check(label, got, want=True):
         fails.append(label)
 
 
-PRISTINE = json.loads((Path(__file__).parent / "fixtures" / "okww-pristine-methods.json")
-                      .read_text(encoding="utf-8"))
-
-RECIPE = {
-    "FarmEchoTask.py:run": ("farm_run", [P._RETRYCAP]),
-    "FarmEchoTask.py:do_run": ("farm_do_run", [P._CLAIM, P._REVIVELOOP]),
-    "FarmEchoTask.py:teleport_to_configured_boss": ("farm_teleport", [P._COUNT, P._NOWAVE]),
-    "TacetTask.py:farm_tacet": ("tacet_farm", [P._TACETSHOT]),
-    "DailyTask.py:run": ("daily_run", [P._STAMINA, P._NOFARM]),
-}
-
 src = okww_overlay.source_text()
 
+# Everything we change, and the marker that proves it is still in the file.
+CHANGES = {
+    "刷声骸时角色阵亡原地复活": "刷声骸模式：角色阵亡，用一个复苏物品点",
+    "复活之后接着刷下一趟": "刷声骸模式：复活成功，接着刷下一趟",
+    "连败三次就收手": "次失败，退出本次任务，不再重试",
+    "周本进本前读剩余次数": "本周周本次数已领满（0/3）",
+    "波片不足就跳过周本": "波片不足挡住开启挑战",
+    "无音区结算页留一张图": "tacet_drops",
+    "附加任务提到刷体力之前": "附加任务出错，不拖垮当趟日常",
+    "标记文件在就不刷体力": "刷体力已禁用（标记文件在）",
+    "限时提前开放的剧情提示框": "限时提前开放的剧情提示框",
+    "限时提前开放后直接进场": "限时提前开放：确认后直接进场",
+    "主动跳过的信号照原样抛": "isinstance(exc.__cause__, TaskDisabledException)",
+    "传送界面来晚了再等一次": "多等 15 秒",
+}
 
-def code_only(text: str) -> str:
-    """Drop whole-line comments. The copies carry code, never the reasoning: that
-    lives once, in okww_patches/, so it cannot drift into two versions."""
-    return "\n".join(l for l in text.splitlines() if not l.strip().startswith("#"))
+print("[每一条改动都还在]")
+for name, marker in CHANGES.items():
+    check(name, marker in src)
 
+# A replacement stops upstream's body from running, so it must be pinned.
+# Everything else wraps.
+REPLACEMENTS = {"revive_action", "click_team_challenge"}
 
-def shipped(fn_name: str) -> str:
-    """The function the overlay actually ships, by name."""
-    lines = src.splitlines(keepends=True)
-    start = next(i for i, l in enumerate(lines) if l.startswith(f"def {fn_name}("))
-    end = start + 1
-    while end < len(lines) and (lines[end].startswith((" ", "\t")) or not lines[end].strip()):
-        end += 1
-    return "".join(lines[start:end]).rstrip("\n")
+print("[只有两处整段替换，而且都钉了指纹]")
+bound = re.findall(r'@override\((\w+), "(\w+)"([^)]*)\)', src)
+bound += [(c, m, r) for c, m, r in re.findall(r'override\((\w+), "(\w+)"([^)]*)\)\(', src)]
+names = {m for _, m, _ in bound}
+check("绑上的方法数不为零", len(names) > 0)
+for cls, meth, rest in bound:
+    if meth in REPLACEMENTS:
+        check(f"{cls}.{meth} 钉了指纹", "expect_sha" in rest)
+    else:
+        check(f"{cls}.{meth} 不是整段替换", "expect_sha" in rest, False)
 
+print("[不许再出现整段抄件：抄件里必然带着上游的循环和分支]")
+for banned in ("def farm_do_run(", "def farm_teleport(", "def daily_run(",
+               "def tacet_farm(", "def farm_run("):
+    check(f"没有 {banned.strip('def (')}", banned in src, False)
 
-print("[每一份抄过来的正文 = 上游原文 + 我们登记在案的补丁]")
-for key, (fn_name, patches) in RECIPE.items():
-    want = PRISTINE[key]["source"]
-    for p in patches:
-        check(f"{key}：「{p.name}」的锚点在上游原文里", p.old in want)
-        want = want.replace(p.old, p.new, 1)
-    want = textwrap.dedent(code_only(want)).rstrip("\n")
-    want = want.replace(f"def {key.split(':')[1]}(", f"def {fn_name}(", 1)
-    check(f"{key}：抄的和配方一字不差", code_only(shipped(fn_name)).rstrip("\n"), want)
-
-print("[钉住的指纹必须是上游原文的指纹，不是我们改完之后的]")
-for key, (fn_name, _) in RECIPE.items():
-    want_sha = hashlib.sha1(PRISTINE[key]["source"].encode("utf-8")).hexdigest()[:12]
-    m = re.search(rf'expect_sha="([0-9a-f]+)"\)\({fn_name}\)', src)
-    check(f"{key}：钉了指纹", bool(m))
-    if m:
-        check(f"{key}：指纹对得上（{want_sha}）", m.group(1), want_sha)
-
-print("[整段替换的一律要钉指纹；包一层的不用钉，但必须真的调用上游那份]")
-# The two shapes must not be confused. A copy runs instead of upstream and needs the
-# pin. A wrapper runs upstream inside it, which is why it needs no pin - and why it
-# has to actually call the original it captured, or it is a copy pretending not to be.
-copies = {fn for fn, _ in RECIPE.values()} | {"revive_action"}
-for name in copies:
-    m = re.search(rf'override\([^)]*?"{name}"[^)]*expect_sha=', src) or \
-        re.search(rf'expect_sha="[0-9a-f]+"\)\({name}\)', src)
-    check(f"{name} 钉了指纹", bool(m))
-
-for captured, wrapped in (("inner", "click_on_book_target"),
-                          ("outer", "teleport_to_configured_boss"),
-                          ("prepare", "teleport_to_configured_boss_and_prepare")):
-    block = src.split(f'@override(FarmEchoTask, "{wrapped}")')[-1] \
-        if f'@override(FarmEchoTask, "{wrapped}")' in src \
-        else src.split(f'@override(BaseWWTask, "{wrapped}")')[-1]
-    head = block.split("@override")[0]
-    check(f"包 {wrapped} 的那层调用了上游原方法", f"{captured}(self" in head)
+print("[包一层的必须真的调用上游那份]")
+for captured in ("farm_run(self", "farm_combat(self", "pick_level(self", "tacet_stamina(self",
+                 "open_daily(self", "run_additional(self", "original(self",
+                 "inner(self", "outer(self", "prepare(self"):
+    check(f"调用了 {captured.split('(')[0]}", captured in src)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

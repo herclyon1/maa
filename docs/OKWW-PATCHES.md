@@ -26,16 +26,25 @@ changed; an empty answer means everything was already in place.
 | — | Everything else has moved out of this table, see below |
 
 **Moved out of this table (2026-09-09)**: twelve of the thirteen changes now live in
-`okww_files/ark_overrides.tasks.py`, installed into OK-WW's own `ok_tasks/`
-folder by `okww_overlay.py`. Three are wrappers around upstream's own methods;
-four are whole-method copies, each pinned to the hash of upstream's pristine
-source and regenerated from `okww_patches/` by `test_okww_overlay_copies.py`.
-Only the nest file replacement still edits OK-WW's source, because it needs a
-change in the middle of a class upstream gives no hook for; it carries its own
-pristine baseline (`NightmareNestTask.upstream.py`) for the same reason the copies
-carry hashes. Nothing there edits an upstream file, so there is
-no previous version to revert and an OK-WW update cannot half-apply it. Each
-override is checked before it is bound and anything skipped is pushed.
+`okww_files/ark_overrides.tasks.py`, installed into OK-WW's own `ok_tasks/` folder by
+`okww_overlay.py`. Nothing there edits an upstream file.
+
+**Each change hooks the smallest method that contains it.** The first shape of that
+file carried five whole-method copies, 30 to 90 lines each; upstream ships roughly
+every other day, and each copy would have gone stale the first time they touched that
+method - the pin would have said so, but the change would have stopped happening.
+Hooking one call deeper removes the exposure: 「skip the weekly boss when waveplates
+are short」 used to copy a 28-line teleport method and now replaces the three-line
+challenge button it calls. Twelve of the fourteen bindings are wrappers that run
+upstream's own body inside them; only `revive_action` and `click_team_challenge`
+replace it, and both are pinned to its hash.
+
+`test_okww_overlay_copies.py` enforces the rule: a wrapper must call the original, a
+replacement must be pinned, and the names of the old copies must not come back.
+
+Only the nest file replacement still edits OK-WW's source, because it needs a change
+in the middle of a class upstream gives no hook for; it carries its own pristine
+baseline (`NightmareNestTask.upstream.py`) for the same reason.
 
 **Deliberately reverted every boot** (they are listed so an old copy left behind by
 an update is removed, and so nobody re-adds them): the six earlier versions of the
