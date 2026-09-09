@@ -41,14 +41,16 @@ BIG_COUNT = 100000
 # reward. Farming 4-cost echoes is free; claiming costs 60 waveplates every time, and
 # an unattended overnight loop would empty both the waveplates and the reserve.
 NO_CLAIM = r"C:\ProgramData\ark-okww-farm.no-claim"
-# OK-WW writes to its log constantly while it works. On 2026-09-09 the game exited
-# mid-farm and OK-WW sat against a window that was gone: not one line for six
-# minutes, no error, nothing pushed. Silence this long now ends the run and says so.
-STALL_MINUTES = 12
+# Give up only after restarts have genuinely had their chance. From the second
+# restart the game is killed too, so half an hour with no lap at all means neither
+# the script nor a fresh client can get anywhere - worth stopping and saying so.
+STALL_MINUTES = 30
 # OK-WW stops the whole task when the character dies: 2026-09-09 it farmed eleven laps
 # and then died once, and everything stood still for the rest of the night. A farm that
 # runs unattended has to get back up on its own, so silence this long relaunches it.
-RESTART_QUIET_MINUTES = 3
+# A lap takes about a minute; a death plus a revive about two. Five minutes
+# without a single lap means it is stuck, however busy the log looks.
+RESTART_QUIET_MINUTES = 5
 # Enough to cover a night, few enough that something genuinely broken still gives up
 # and says so instead of relaunching into a wall until morning.
 MAX_RESTARTS = 40
@@ -175,18 +177,52 @@ def no_claim_on() -> bool:
     return Path(NO_CLAIM).exists()
 
 
+# What counts as the farm getting somewhere. A wedged game still produces plenty of
+# log lines - window-size changes, update checks, feature loads - so 「the log is
+# moving」 is not the same as 「the farm is moving」. On 2026-09-09 the game hung on a
+# loading screen for sixteen minutes while the log kept scrolling, and a watchdog
+# that only measured silence never fired once.
+PROGRESS = ("farm echo", "enter combat", "刷声骸模式", "已经在场地里")
+_TAIL_BYTES = 300_000
+
+
 def quiet_minutes(now: datetime | None = None) -> "float | None":
-    """How long OK-WW's log has been silent, or None when there is no log to read."""
+    """Minutes since the farm last got anywhere. None when there is no log to read.
+
+    Measured from the newest line that says something actually happened, not from
+    the file's mtime: a stuck game is noisy, and noise is not progress.
+    """
     from .weeklyboss import _okww_log  # noqa: PLC0415 - avoids an import cycle
     f = _okww_log()
     if not f:
         return None
     try:
-        touched = datetime.fromtimestamp(f.stat().st_mtime, tz=SERVER_TZ)
+        size = f.stat().st_size
+        with f.open("rb") as fh:
+            if size > _TAIL_BYTES:
+                fh.seek(size - _TAIL_BYTES)
+            tail = fh.read().decode("utf-8", "replace")
     except OSError:
         return None
+    stamp = ""
+    for line in tail.splitlines():
+        if any(k in line for k in PROGRESS):
+            stamp = line[:19]
+    if not stamp:
+        # Nothing in the whole tail: either the run just started (the caller已经
+        # 用开跑时刻挡住这种) or it has been stuck for longer than the tail covers.
+        try:
+            touched = datetime.fromtimestamp(f.stat().st_mtime, tz=SERVER_TZ)
+        except OSError:
+            return None
+        now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+        return (now - touched).total_seconds() / 60.0
+    try:
+        last = datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S").replace(tzinfo=SERVER_TZ)
+    except ValueError:
+        return None
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
-    return (now - touched).total_seconds() / 60.0
+    return (now - last).total_seconds() / 60.0
 
 
 # What 「收工」 has to leave behind: nothing of OK-WW's and nothing of the game's.
@@ -375,9 +411,17 @@ def tick(cfg, now: datetime | None = None) -> str:
             break
     tries = int(rec.get("restarts") or 0)
     if tries >= MAX_RESTARTS or (tries and quiet >= STALL_MINUTES):
-        return finish(cfg, f"OK-WW 已经 {quiet:.0f} 分钟一行日志都没写"
-                           + f"，重开 {tries} 次都没能让它继续写日志"
+        return finish(cfg, f"已经 {quiet:.0f} 分钟没刷到任何东西"
+                           + (f"，重开 {tries} 次都没救回来" if tries else "")
                            + "，先停下来")
+    # The first relaunch restarts OK-WW only, which is cheap and fixes the common
+    # case (the script died, the game is fine). From the second on, the game is
+    # restarted too: on 2026-09-09 the game itself wedged on a loading screen -
+    # 「等不到回大世界」 - and relaunching the script against a wedged client did
+    # nothing at all, twice, while the farm stood still for sixteen minutes.
+    if tries >= 1:
+        log.warning("刷声骸：重开脚本没用，连游戏一起重启（第 %d 次）", tries + 1)
+        stop_okww()
     ok, why = _launch()
     rec["restarts"] = tries + 1
     rec["restarted"] = now.strftime("%Y-%m-%d %H:%M")

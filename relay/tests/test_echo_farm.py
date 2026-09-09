@@ -175,7 +175,7 @@ print("\n[OK-WW 长时间一行日志都不写就自己停下来并说话]")
 import ark_relay.weeklyboss as _wb                                # noqa: E402
 _real_log = _wb._okww_log
 _logfile = tmpdir() / "ok-ww.log"
-_logfile.write_text("x", encoding="utf-8")
+_logfile.write_text("2026-09-09 04:30:00 INFO farm echo on the face\n", encoding="utf-8")
 _wb._okww_log = lambda: _logfile
 try:
     check("读不出日志时不猜", echofarm.quiet_minutes(datetime(2026, 9, 9, 5, 0, tzinfo=SERVER_TZ)) is not None, True)
@@ -189,11 +189,22 @@ try:
     _os.utime(_logfile, (_quiet_since, _quiet_since))
     check("刚开跑一分钟不算停", echofarm.tick(c, datetime(2026, 9, 9, 4, 1, tzinfo=SERVER_TZ)), "")
     _before = len(launched)
-    check("停了三分钟就自己重开", echofarm.tick(c, datetime(2026, 9, 9, 4, 35, tzinfo=SERVER_TZ)), "")
+    check("五分钟没刷到东西就自己重开", echofarm.tick(c, datetime(2026, 9, 9, 4, 36, tzinfo=SERVER_TZ)), "")
     check("真的重开了一次", len(launched) - _before, 1)
     check("重开次数记下来了", echofarm.current(c.state_dir)["restarts"], 1)
-    check("刚重开完不重复开", echofarm.tick(c, datetime(2026, 9, 9, 4, 36, tzinfo=SERVER_TZ)), "")
+    check("刚重开完不重复开", echofarm.tick(c, datetime(2026, 9, 9, 4, 38, tzinfo=SERVER_TZ)), "")
     check("还是只开过一次", len(launched) - _before, 1)
+    check("第一次只重开脚本，不动游戏", "stop" in launched[_before:], False)
+
+    # 2026-09-09: the game itself wedged on a loading screen and restarting the
+    # script against it did nothing, twice, while the farm stood still.
+    _rec3 = echofarm.current(c.state_dir)
+    _rec3["restarted"] = "2026-09-09 04:36"
+    echofarm._store(c.state_dir).set("queues", "echo_farm", _rec3)
+    _mid = len(launched)
+    check("还是没进展就再来一次", echofarm.tick(c, datetime(2026, 9, 9, 4, 42, tzinfo=SERVER_TZ)), "")
+    check("第二次连游戏一起重启", "stop" in launched[_mid:], True)
+    check("重开次数记到 2", echofarm.current(c.state_dir)["restarts"], 2)
     check("这时还在刷，没收工", bool(echofarm.current(c.state_dir)), True)
 
     print("\n[重开了还是不写日志就别硬撑，收工并说清重开过几次]")
@@ -212,6 +223,34 @@ try:
     echofarm.finish(c, "收尾")
 finally:
     _wb._okww_log = _real_log
+
+print("\n[判据是「有没有刷到东西」，不是「日志有没有在写」]")
+# 2026-09-09: the game hung on a loading screen for sixteen minutes while OK-WW kept
+# writing window-size and update-check lines. A watchdog that measured silence saw a
+# busy log and never fired, and restarting the script against a wedged game did
+# nothing twice over.
+_noisy = tmpdir() / "noisy.log"
+_wb2 = __import__("ark_relay.weeklyboss", fromlist=["x"])
+_real2 = _wb2._okww_log
+_wb2._okww_log = lambda: _noisy
+try:
+    _noisy.write_text(
+        "2026-09-09 04:00:00 INFO farm echo on the face\n"
+        + "".join(f"2026-09-09 04:{m:02d}:00 INFO hwnd_window:do_update_window_size changed\n"
+                 for m in range(1, 40)),
+        encoding="utf-8")
+    stuck = echofarm.quiet_minutes(datetime(2026, 9, 9, 4, 40, tzinfo=SERVER_TZ))
+    check("日志一直在写，但四十分钟没刷到东西 → 算卡住", round(stuck), 40)
+    _noisy.write_text(
+        "2026-09-09 04:00:00 INFO hwnd_window:do_update_window_size changed\n"
+        "2026-09-09 04:39:00 INFO FarmEchoTask:farm echo walk_find_echo True\n",
+        encoding="utf-8")
+    fresh_ = echofarm.quiet_minutes(datetime(2026, 9, 9, 4, 40, tzinfo=SERVER_TZ))
+    check("刚刷到东西就不算卡住", round(fresh_), 1)
+    check("阈值给到五分钟（一趟约一分钟，死一次约两分钟）",
+          echofarm.RESTART_QUIET_MINUTES, 5)
+finally:
+    _wb2._okww_log = _real2
 
 print("\n[开跑时刻读不出来也不当成卡死]")
 check("读不出开跑时刻返回 None", echofarm._started_at({"started": "不是时间"}), None)
