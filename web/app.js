@@ -330,6 +330,10 @@ function echoFarmBlock(relay) {
   const cur = (relay || {})["刷声骸"] || {};
   if (cur["到"]) {
     return `<div class="hint">🥚 正在刷「${cur["名字"] || "?"}」，刷到 ${String(cur["到"]).slice(11)} 为止（${cur["从"] ? String(cur["从"]).slice(11) + " 开始" : ""}）</div>
+      <div class="row"><label>改成刷到几点
+        <span class="hint">提前或延后都行，填 21:00 这种。已经过了的时刻＝立刻收工</span></label>
+        <input type="text" id="efnew" value="${String(cur["到"]).slice(11)}" inputmode="numeric"></div>
+      <div class="acts"><button class="wide" id="echofarmuntil">改收工时刻</button></div>
       <div class="acts"><button class="wide" id="echofarmstop">提前收工（关掉脚本和游戏）</button></div>`;
   }
   const opts = BOSSES.map((b) => `<option value="${b[0]}">${b[0]}. ${b[1]}</option>`).join("");
@@ -597,6 +601,12 @@ function wire() {
     if (!confirm(`刷「${nm}」到机器时间 ${until} 为止？期间脚本会一直在打，别的任务不跑。`)) return;
     oneShot({ action: "echo_farm", confirmed: true, boss, until, name: nm },
             `已让它刷「${nm}」到 ${until}。到点中继会自己收工并把配置还原`);
+  };
+  const efu = $("#echofarmuntil");
+  if (efu) efu.onclick = () => {
+    const v = ($("#efnew").value || "").trim();
+    if (!confirm(`把收工时刻改成 ${v}（机器时间）？`)) return;
+    oneShot({ action: "echo_farm_until", until: v }, "收工时刻已改");
   };
   const efs = $("#echofarmstop");
   if (efs) efs.onclick = () => {
