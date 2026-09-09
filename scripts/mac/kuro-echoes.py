@@ -7,6 +7,19 @@ which is the honest answer to "who are these for" - no guessing from set names.
 
 Kuro BBS only ever exposes *equipped* echoes. Nothing here can see the bag.
 
+**Currently blocked, and the block is not the token.** Measured 2026-09-10 with the token in
+.env: /gamer/role/list and /encourage/signIn/initSignInV2 both answer 200 with real data, so
+the credential is alive. Every /aki/roleBox/* endpoint - roleData, getRoleDetail, baseData,
+refreshData, requestToken - answers `10901 禁止访问`, under source h5, ios and android alike,
+with and without a devCode. That token was copied out of a www.kurobbs.com session; the data
+box wants a token from an *app* session plus that session's own did, from which b-at is
+derived. Getting one means capturing it off the phone. Until then this script stops after
+naming the account.
+
+A wrong header reads exactly like a dead credential: with source "ios" the same live token
+answers 「登录已过期，请重新登录」. Match the header to where a token came from before ever
+telling anyone their credential expired.
+
 The token comes from ~/.config/ark/.env (KUROBBS_TOKEN), the same private file the push
 credentials live in - never the repo, never a CLI argument. KUROBBS_DID is optional: the
 account endpoints accept a synthetic devCode, and only requestToken is picky about it, so a
@@ -40,11 +53,18 @@ SERVER_ID = "76402e5b20be2c39f095a152090afddc"
 ENV = pathlib.Path.home() / ".config" / "ark" / ".env"
 UA = ("Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) "
       "AppleWebKit/605.1.15 (KHTML, like Gecko)  KuroGameBox/3.1.3")
+# The token in .env was copied out of a logged-in www.kurobbs.com session, so it is an h5
+# token. Presented with source "ios" every call answers 「登录已过期，请重新登录」 - which
+# reads exactly like an expired token and is not one. Measured 2026-09-10: the same token,
+# same second, source "h5" + version returns real data. Match the header to where the token
+# came from before ever concluding that a credential died.
+SOURCE = "h5"
+KURO_VERSION = "3.1.3"
 
 
 def post(path: str, headers: dict, data: dict) -> dict:
     body = urllib.parse.urlencode(data).encode()
-    head = {"source": "ios", "User-Agent": UA,
+    head = {"source": SOURCE, "version": KURO_VERSION, "User-Agent": UA,
             "Content-Type": "application/x-www-form-urlencoded; charset=utf-8"}
     head.update(headers)
     req = urllib.request.Request(MAIN + path, data=body, headers=head, method="POST")
