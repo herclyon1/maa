@@ -99,3 +99,26 @@ not proven either way - prove it before writing anything upstream.
 Worth building on our side regardless: when a task fails, keep the matching slice of
 `maafw.log` as evidence so the daily report can say why instead of just naming the
 step.
+
+
+## 2026-09-09 14:00 — nothing edits OK-WW's source any more
+
+All thirteen changes live in `ok_tasks/ark_overrides.py`. Eighteen bindings, of which
+fifteen are wrappers that run upstream's own body inside them; three replace it and
+are pinned to its hash (`revive_action`, `click_team_challenge`, `find_nest`). The
+nest file replacement was retired and upstream's own file restored.
+
+**Check `C:\ProgramData\ark-okww-overlay.json` after an OK-WW update.** A pinned
+replacement that no longer matches refuses to bind, and the relay pushes which one and
+why. That is the designed behaviour, not a fault - go and read what upstream changed,
+then update the pin deliberately.
+
+### A four-hour 天傀劫煞 farm is running until 17:52
+Safeguards, all verified live at 14:00:
+- three minutes of log silence relaunches OK-WW, up to 40 times, and the engine now
+  carries an alarm for that check so the loop actually wakes for it
+- the character revives in place on death, so a death no longer ends the run
+- the automatic shutdown is held off while a farm is recorded
+- no reward is ever claimed while farming, so no waveplates are spent
+- at 17:52 it stops, restores Boss Level 90 and Repeat Farm Count 30, drops the marker
+  and pushes a summary including how many times it had to be relaunched
