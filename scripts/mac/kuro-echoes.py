@@ -15,7 +15,13 @@ with the real token and an *invented* did, every /aki/roleBox/* endpoint answers
 /encourage/signIn/initSignInV2 answer 200 on the same token in the same second. So 10901 is
 "wrong device", not "no permission" and not "expired".
 
-Put the did from the same session that issued the token in .env as KUROBBS_DID.
+Both values have to come from the **phone app**, not from www.kurobbs.com. The web session
+stores no did at all - the only long ids in its localStorage are analytics (`distinct_id` is
+Sensors Analytics, `HMACCOUNT` is Baidu Tongji) - and the web token draws 10901 from the data
+box with did empty, absent, or set to anything. XutheringWavesUID's own tutorial
+(维里奈.com/kurobbs.html) says the same: capture the app's 角色卡 request with ProxyPin and
+read `did` and `token` out of the ~1.3 KB packet. Put that pair in .env as KUROBBS_TOKEN and
+KUROBBS_DID.
 
 A wrong header reads exactly like a dead credential: with source "ios" the same live token
 answers 「登录已过期，请重新登录」. Match the header to where a token came from before ever
