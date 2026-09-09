@@ -198,29 +198,6 @@ def ensure_if_updated(state_dir: Path, okww_dir: Path | None) -> list[str]:
     return notes
 
 
-def _ensure_stamina(root: Path) -> list[str]:
-    """Move _STAMINA to its current version, with _NOFARM riding inside it.
-
-    _NOFARM's anchor sits inside _STAMINA's body, so on a machine where both are
-    applied the file holds v1 *with NOFARM's rewrite in it* - and the plain v1
-    text no longer matches. On 2026-09-09 that made the v1 revert a no-op, so v2
-    found neither the upstream text nor its own marker and reported 「贴不上了」
-    (caught by the deploy gate, which is what that gate is for). So the revert has
-    to recognise both shapes of v1 before v2 goes on, and NOFARM goes back on top
-    afterwards, the same as before.
-    """
-    done: list[str] = []
-    path = (*_SRC, "DailyTask.py")
-    v1_with_nofarm = _STAMINA_V1.replace(_NOFARM_OLD, _NOFARM_NEW)
-    if v1_with_nofarm != _STAMINA_V1:
-        done.extend(_revert_text(root, path, v1_with_nofarm, _STAMINA_OLD,
-                                 "附加任务先于体力刷取 v1（含不刷体力开关）"))
-    done.extend(_revert_text(root, path, _STAMINA_V1, _STAMINA_OLD, "附加任务先于体力刷取 v1"))
-    done.extend(_apply_one(root, _STAMINA))
-    done.extend(_apply_one(root, _NOFARM))
-    return done
-
-
 # ---------------------------------------------------------------- the inventory
 # Everything ensure_patches does is listed here, in two tables, so "what is
 # running on the machine right now" is a lookup and not a read of a 100-line
@@ -266,6 +243,14 @@ _REVERTS: "list[tuple[tuple, str, str, str]]" = [
     (_FE, _REVIVE_NEW, _REVIVE_OLD, "刷声骸时原地复活 v2（已搬到 ok_tasks，源文件还原）"),
     (_DT, _DAILY_RUN_PATCHED, _DAILY_RUN_PRISTINE,
      "日常里的体力两条（已搬到 ok_tasks，整段还原）"),
+    # v1 of the stamina change, in both shapes it can be on disk: NOFARM's
+    # rewrite sits inside its body, so a machine with both carries v1 *with*
+    # NOFARM in it and the plain v1 text does not match.
+    (_DT, _STAMINA_V1.replace(_NOFARM_OLD, _NOFARM_NEW), _STAMINA_OLD,
+     "附加任务先于体力刷取 v1（含不刷体力开关）"),
+    (_DT, _STAMINA_V1, _STAMINA_OLD, "附加任务先于体力刷取 v1"),
+    (_DT, _STAMINA_NEW, _STAMINA_OLD, "附加任务先于体力刷取（已搬到 ok_tasks）"),
+    (_DT, _NOFARM_NEW, _NOFARM_OLD, "禁用刷体力（已搬到 ok_tasks）"),
     (_FE, _CLAIM_NEW, _CLAIM_OLD_FULL, "打完 Boss 真正领周本奖励（已搬到 ok_tasks，源文件还原）"),
     (_TT, _TACETSHOT_NEW, _TACETSHOT_OLD, "无音区结算页留一张给日报（已搬到 ok_tasks，源文件还原）"),
     (_FE, _NOWAVE_NEW, _NOWAVE_OLD, "波片不足时跳过周本（已搬到 ok_tasks，源文件还原）"),
@@ -313,7 +298,6 @@ def ensure_patches(okww_dir: Path | None) -> list[str]:
     root = Path(okww_dir)
     done: list[str] = []
     done.extend(_restore_nest(root))
-    done.extend(_ensure_stamina(root))
     for parts, new, old, label in _REVERTS:
         done.extend(_revert_text(root, parts, new, old, label))
     for patch in _APPLIES:
