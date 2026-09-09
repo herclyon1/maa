@@ -1,0 +1,210 @@
+[
+ {
+  "run_id": "2026-09-09/arknights/MAA-05-00-00",
+  "script": "MAA",
+  "user": "arknights",
+  "started": "2026-09-09T09:00:49+08:00",
+  "finished": "2026-09-09T09:18:43+08:00",
+  "ok": true,
+  "failed_tasks": [],
+  "raw": {
+   "recruit_statistics": {
+    "4★": 2,
+    "3★": 2
+   },
+   "drop_statistics": {
+    "龙门币": 2304,
+    "旧磁带": 192,
+    "装置": 12,
+    "糖": 9
+   },
+   "sanity": 3,
+   "sanity_full_at": "理智将在 2026-09-10 05:51 回满。(20h 32m 后)",
+   "maa_result": "Success!",
+   "stages": [
+    "SR-5"
+   ],
+   "sanity_spent": 192,
+   "medicine_used": 1,
+   "run_times": 16
+  },
+  "duration_known": true,
+  "transitional": false,
+  "sanity": 3,
+  "sanity_full_at": "理智将在 2026-09-10 05:51 回满。(20h 32m 后)",
+  "drops": {
+   "龙门币": 2304,
+   "旧磁带": 192,
+   "装置": 12,
+   "糖": 9
+  },
+  "recruits": {
+   "4★": 2,
+   "3★": 2
+  }
+ },
+ {
+  "run_id": "2026-09-09/wuwa/OK-WW-05-18-52",
+  "script": "OK-WW",
+  "user": "wuwa",
+  "started": "2026-09-09T09:19:09+08:00",
+  "finished": "2026-09-09T09:29:01+08:00",
+  "ok": true,
+  "failed_tasks": [],
+  "raw": {
+   "general_result": "Success!",
+   "okww_stamina_spent": 120,
+   "okww_runs": 1,
+   "okww_backup_stamina": 48,
+   "okww_info": {
+    "current daily progress": 60,
+    "total daily points": 0,
+    "Liberation Key": "r",
+    "Echo Key": "q",
+    "Chars": "千咲, 洛瑟菈, 绯雪",
+    "current_stamina": 130,
+    "back_up_stamina": 48,
+    "Teleport to Tacet Suppression": 1
+   },
+   "okww_farm": "无音区·玄幽东岳",
+   "okww_farm_reward": "声骸套装 羽落空尘之歌、清邪荡煞之心（按无音区固定掉落）",
+   "okww_runs_double": 1,
+   "okww_stamina_left": 10,
+   "okww_stamina_left_exact": true,
+   "okww_nest": "0/41",
+   "okww_nest_full": true,
+   "okww_daily": "60/180",
+   "okww_points": "0/100",
+   "okww_steps": [
+    "无音区 ×1",
+    "残象聚落（已刷满）"
+   ],
+   "sanity_full_at": "理智将在 2026-09-10 08:29 回满。"
+  },
+  "duration_known": true,
+  "transitional": false,
+  "sanity": null,
+  "sanity_full_at": "理智将在 2026-09-10 08:29 回满。",
+  "drops": {},
+  "recruits": {}
+ },
+ {
+  "run_id": "2026-09-09/endfield/MaaEnd-05-29-04",
+  "script": "MaaEnd",
+  "user": "endfield",
+  "started": "2026-09-09T09:30:10+08:00",
+  "finished": "2026-09-09T10:49:59+08:00",
+  "ok": false,
+  "failed_tasks": [
+   "据点交易"
+  ],
+  "raw": {
+   "maaend_result": "MaaEnd 部分任务执行失败: 🛒据点交易",
+   "drop_statistics": {
+    "血菌块": 1,
+    "高级认知载体": 3,
+    "重黯石子簇": 1,
+    "重黯石": 3,
+    "重红柱状菌": 1,
+    "血菌": 2,
+    "燎石": 2,
+    "武器检查套组": 9,
+    "信用": 760,
+    "折金票": 148000,
+    "协议棱柱组": 57,
+    "武库配额": 20,
+    "嵌晶玉": 250,
+    "协议棱柱": 9,
+    "武陵调度券": 1122000,
+    "通行证经验": 2000,
+    "行动资历": 1150,
+    "应急理智加强剂": 5,
+    "高级作战记录": 1,
+    "谷地调度券": 323000,
+    "理智消耗许可": 25,
+    "理智萃取器": 5
+   },
+   "tasks_done": [
+    "赠送干员礼物",
+    "装备制造",
+    "拜访好友",
+    "基建任务",
+    "信用点购物",
+    "转交委托",
+    "环境监测",
+    "自动囤货",
+    "售卖弹性物资",
+    "购买稳定物资",
+    "选剑演武",
+    "基质刷取",
+    "自动采集",
+    "日常奖励领取"
+   ],
+   "tasks_failed": [
+    "据点交易"
+   ],
+   "maaend_farm": "基质刷取",
+   "maaend_farm_place": "藏剑谷",
+   "maaend_farm_runs": 18,
+   "maaend_farm_drops": {
+    "无暇基质": 54,
+    "高纯基质": 36
+   },
+   "maaend_sanity_spent": 1422,
+   "sanity": 6,
+   "sanity_cap": 360,
+   "sanity_full_at": "理智将在 2026-09-11 05:18 回满。"
+  },
+  "duration_known": true,
+  "transitional": false,
+  "sanity": 6,
+  "sanity_full_at": "理智将在 2026-09-11 05:18 回满。",
+  "drops": {
+   "血菌块": 1,
+   "高级认知载体": 3,
+   "重黯石子簇": 1,
+   "重黯石": 3,
+   "重红柱状菌": 1,
+   "血菌": 2,
+   "燎石": 2,
+   "武器检查套组": 9,
+   "信用": 760,
+   "折金票": 148000,
+   "协议棱柱组": 57,
+   "武库配额": 20,
+   "嵌晶玉": 250,
+   "协议棱柱": 9,
+   "武陵调度券": 1122000,
+   "通行证经验": 2000,
+   "行动资历": 1150,
+   "应急理智加强剂": 5,
+   "高级作战记录": 1,
+   "谷地调度券": 323000,
+   "理智消耗许可": 25,
+   "理智萃取器": 5
+  },
+  "recruits": {}
+ },
+ {
+  "run_id": "2026-09-09/endfield/MaaEnd-06-50-02",
+  "script": "MaaEnd",
+  "user": "endfield",
+  "started": "2026-09-09T10:51:05+08:00",
+  "finished": "2026-09-09T10:53:14+08:00",
+  "ok": true,
+  "failed_tasks": [],
+  "raw": {
+   "maaend_result": "Success!",
+   "tasks_done": [
+    "据点交易",
+    "结束进程"
+   ]
+  },
+  "duration_known": true,
+  "transitional": false,
+  "sanity": null,
+  "sanity_full_at": "",
+  "drops": {},
+  "recruits": {}
+ }
+]

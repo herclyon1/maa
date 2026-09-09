@@ -1,7 +1,7 @@
 {
- "version": 20260909002337,
+ "version": 20260909031008,
  "files": {
-  "RELEASE-NOTES.md": "7d04e6a4e7ae60f24115bcc783e7d48ba06fdc46",
+  "RELEASE-NOTES.md": "52ae75cec47a2b62838562cfa3bbf2c61322a517",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
   "ark_relay/__main__.py": "5564de3621066afa4ce9eee284ce09be374ed3aa",
   "ark_relay/annihilation.py": "5ec4c927c131d2aefc58aebbdda591c37fb672e4",
@@ -12,9 +12,9 @@
   "ark_relay/collector_okww.py": "95fdf53a71ff16519076e5b2f4d28418c84817ad",
   "ark_relay/commands.py": "1b15a8727cbb77eb4f5f12fdd400f80046b6ce8f",
   "ark_relay/config.py": "ae21c1863ebd69b6829eb6920a96a59638ed391a",
-  "ark_relay/core.py": "53ee468109ebc49fdb6cf58784bf2c813b4e52e8",
+  "ark_relay/core.py": "d2520a1da8abdaa363b3d1e0f24c5000cdf525af",
   "ark_relay/desktop.py": "ba89cb2d2cdb243ea0da7d9b5d03040f3e2a8750",
-  "ark_relay/echofarm.py": "3d58a10cdb0219361a53a10e31208f19cf93c3cf",
+  "ark_relay/echofarm.py": "96a78cc9dc72ec131573d142bca34e8c4b43c01a",
   "ark_relay/efstatus.py": "f39f98d710f8c37d48c188118eca4e40ff26b849",
   "ark_relay/engine.py": "3c643e5e85e0c5b519b46d06491485a66237d260",
   "ark_relay/gameupdate.py": "e982c6558f91594cc5578d4c1cf8200ee9147b9f",
