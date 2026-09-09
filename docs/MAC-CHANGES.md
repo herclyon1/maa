@@ -204,3 +204,27 @@ Wuthering Waves' servers are IPv4-only, so there is no IPv6 path to take.
 五个桌面 app 都有图标了：串流到ins / 串流到ins-HEVC444 用 Moonlight 图标（444 版带红色角标），云原神用官网图标，强制关闭串流用系统红色停止牌，优盘体检原本就有。
 图标源图在 `scripts/mac/icons/`，生成逻辑在 `scripts/mac/lib/app-icon.sh`，两个构建脚本重跑会自动带上。
 `强制关闭串流.app` 没有构建脚本，图标是直接写进桌面那份的；重做它时记得也调一下 `set_app_icon`。
+
+### Screenshot destination moved to ~/Pictures/EchoShots (2026-09-09)
+
+The user wanted one keystroke that drops a Wuthering Waves echo screenshot into a folder,
+so the echoes can be scored in batches instead of one at a time. The native
+**Cmd+Shift+3** hotkey already survives Moonlight's fullscreen capture, so nothing new was
+installed - only where it writes and in what format:
+
+```
+defaults write com.apple.screencapture location "$HOME/Pictures/EchoShots"
+defaults write com.apple.screencapture type jpg          # PNG of a 2772x1280 screen is ~5 MB; the scorer caps at 1 MB
+defaults write com.apple.screencapture disable-shadow -bool true
+killall SystemUIServer
+```
+
+This is global: **every** screenshot on this Mac now lands there, not on the Desktop.
+To undo:
+
+```
+defaults delete com.apple.screencapture location
+defaults delete com.apple.screencapture type
+defaults delete com.apple.screencapture disable-shadow
+killall SystemUIServer
+```
