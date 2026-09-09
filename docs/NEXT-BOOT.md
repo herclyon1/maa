@@ -82,8 +82,20 @@ OK-WW run reports 「Teleport to boss failed」 or a task that should have been 
 is retried as an error, look here first. `C:\ProgramData\ark-okww-overlay.json` says
 what bound; the log lines to grep for are 「限时提前开放」 and 「刷声骸模式」.
 
-### Still editing upstream's files (10)
-The nest whole-file replacement, stamina, nofarm, claim, tacetshot, nowave, retrycap,
-count, and the two revive-loop pieces. Each of those sits inside a long method, so
-moving them means copying that method into the overlay and pinning its upstream hash
-with `override(..., expect_sha=...)` so a refactor upstream is loud instead of silent.
+### Done: ten of thirteen moved (2026-09-09 12:45)
+Only the nest whole-file replacement and the two DailyTask stamina changes still edit
+OK-WW's source. Everything else is in `ark_overrides.py`: three wrappers and four
+whole-method copies, each copy pinned to upstream's pristine hash. Verified on the
+machine - eight bindings applied, nothing skipped.
+
+### 2026-09-09 — do not file the MaaEnd 「silent failure」 issue as first framed
+80% of MaaEnd task failures print no reason in the log AUTO-MAS captures. That looked
+like an upstream logging bug until the framework log turned up: MaaEnd writes its own
+`debug/maafw.log`, 17 MB for a single run, and that is the log upstream's issue
+template asks for. The reason is very likely in there; the user-facing log simply does
+not repeat it. The framework log for the failing run had already rotated, so this is
+not proven either way - prove it before writing anything upstream.
+
+Worth building on our side regardless: when a task fails, keep the matching slice of
+`maafw.log` as evidence so the daily report can say why instead of just naming the
+step.

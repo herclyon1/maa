@@ -232,6 +232,7 @@ def _ensure_stamina(root: Path) -> list[str]:
 # the .bak files it left beside them could be restored by hand.
 _FE = (*_SRC, "FarmEchoTask.py")
 _BW = (*_SRC, "BaseWWTask.py")
+_TT = (*_SRC, "TacetTask.py")
 _REVERTS: "list[tuple[tuple, str, str, str]]" = [
     # Withdrawn 2026-08-31: OK-WW's own error() already prints the stack.
     (_FE, _FARMERR_NEW, _FARMERR_OLD, "周本活锁：打出被吞掉的异常"),
@@ -251,6 +252,13 @@ _REVERTS: "list[tuple[tuple, str, str, str]]" = [
     (_BW, _BOSSTIP_V3, _BOSSTIP_OLD_FULL, "限时提前开放的 boss v3"),
     (_FE, _REVIVE_V1, _REVIVE_OLD, "刷声骸时原地复活 v1"),
     (_FE, _REVIVE_NEW, _REVIVE_OLD, "刷声骸时原地复活 v2（已搬到 ok_tasks，源文件还原）"),
+    (_FE, _CLAIM_NEW, _CLAIM_OLD_FULL, "打完 Boss 真正领周本奖励（已搬到 ok_tasks，源文件还原）"),
+    (_TT, _TACETSHOT_NEW, _TACETSHOT_OLD, "无音区结算页留一张给日报（已搬到 ok_tasks，源文件还原）"),
+    (_FE, _NOWAVE_NEW, _NOWAVE_OLD, "波片不足时跳过周本（已搬到 ok_tasks，源文件还原）"),
+    (_FE, _RETRYCAP_NEW, _RETRYCAP_OLD, "兜底重试上限（已搬到 ok_tasks，源文件还原）"),
+    (_FE, _COUNT_NEW, _COUNT_OLD, "进本前拍一张看剩余次数（已搬到 ok_tasks，源文件还原）"),
+    (_FE, _REVIVEIMP_NEW, _REVIVEIMP_OLD, "刷声骸复活：把复活异常引进来（已搬到 ok_tasks，源文件还原）"),
+    (_FE, _REVIVELOOP_NEW, _REVIVELOOP_OLD, "刷声骸复活后继续下一趟（已搬到 ok_tasks，源文件还原）"),
     (_FE, _EARLY_NEW, _EARLY_OLD, "限时提前开放的 boss：进场后跳过队伍和传送界面（已搬到 ok_tasks，源文件还原）"),
     (_BW, _BOSSTIP_NEW, _BOSSTIP_OLD_FULL, "限时提前开放的 boss：认出剧情提示框（已搬到 ok_tasks，源文件还原）"),
     (_FE, _LETPASS_NEW, _LETPASS_OLD, "放行主动跳过的信号（已搬到 ok_tasks，源文件还原）"),
@@ -271,8 +279,7 @@ _REVERTS: "list[tuple[tuple, str, str, str]]" = [
 # _APPLIES: what is in effect on the machine, in application order. The nest
 # file replacement and the stamina/nofarm pair are steps of their own (the
 # nest is a whole-file swap; nofarm's anchor lives inside stamina's body).
-_APPLIES: "list[_Patch]" = [_CLAIM, _TACETSHOT, _NOWAVE, _RETRYCAP, _COUNT,
-                            _REVIVEIMP, _REVIVELOOP]
+_APPLIES: "list[_Patch]" = []
 
 
 def active_patches() -> list[str]:

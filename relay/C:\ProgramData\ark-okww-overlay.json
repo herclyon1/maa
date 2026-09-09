@@ -1,1 +1,1 @@
-{"applied": [], "skipped": [], "error": "Traceback (most recent call last):\n  File \"ark_overrides.py\", line 215, in <module>\n  File \"ark_overrides.py\", line 76, in _install\nModuleNotFoundError: No module named 'src'\n"}
+{"applied": [], "skipped": [], "error": "Traceback (most recent call last):\n  File \"ark_overrides.py\", line 562, in <module>\n  File \"ark_overrides.py\", line 536, in _install_copies\nModuleNotFoundError: No module named 'ok'\n"}

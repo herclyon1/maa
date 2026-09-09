@@ -22,18 +22,15 @@ changed; an empty answer means everything was already in place.
 | 1 | `NightmareNestTask.py` replaced wholesale with our copy — this is where the fixed `ensure_main` and 「只刷指定点位」 live | `okww_files/NightmareNestTask.patched.py` |
 | 2 | Weekly boss runs **before** the daily stamina farming — otherwise the daily step burns all 180 stamina and the three 60-stamina chests are impossible | `okww_patches/stamina.py` |
 | 3 | 「这次不刷体力」 marker honoured | `okww_patches/nofarm.py` |
-| 4 | After the boss dies, walk to the crystal and actually spend the 60 waveplates — entering the domain does not claim it. **v6 (2026-09-09) adds a gate**: while `C:\ProgramData\ark-okww-farm.no-claim` exists the reward is never claimed, because the 4-cost echo farm reuses this branch and an overnight loop would spend 60 waveplates a lap | `okww_patches/claim.py` |
-| 5 | Two screenshots of the tacet field, for the daily report | `okww_patches/tacetshot.py` |
-| 6 | Skip the weekly boss when waveplates are short, instead of failing inside it | `okww_patches/nowave.py` |
-| 7 | Retry cap | `okww_patches/retrycap.py` |
-| 9 | Read the remaining-runs count before entering; at 0/3 skip the boss instead of fighting it for nothing (v3, 2026-09-09) | `okww_patches/count.py` |
-| 12 | The revived death still travels up as an exception, so the loop catches it and takes the next lap | `okww_patches/revive.py` |
-| 13 | Import `CharRevivedException` into FarmEchoTask so patch 12 has the name | `okww_patches/revive.py` |
+| 3 | Everything else has moved out of this table - see below |
 
-**Moving out of this table**: reviving in place, the 限时提前开放 dialog, the
-early-arena return and the let-pass signal now live in
+**Moved out of this table (2026-09-09)**: ten of the thirteen changes now live in
 `okww_files/ark_overrides.tasks.py`, installed into OK-WW's own `ok_tasks/`
-folder by `okww_overlay.py`. Nothing there edits an upstream file, so there is
+folder by `okww_overlay.py`. Three are wrappers around upstream's own methods;
+four are whole-method copies, each pinned to the hash of upstream's pristine
+source and regenerated from `okww_patches/` by `test_okww_overlay_copies.py`.
+Only the nest file replacement and the two DailyTask stamina changes still edit
+OK-WW's source. Nothing there edits an upstream file, so there is
 no previous version to revert and an OK-WW update cannot half-apply it. Each
 override is checked before it is bound and anything skipped is pushed.
 
