@@ -7,14 +7,15 @@ which is the honest answer to "who are these for" - no guessing from set names.
 
 Kuro BBS only ever exposes *equipped* echoes. Nothing here can see the bag.
 
-**Currently blocked, and the block is not the token.** Measured 2026-09-10 with the token in
-.env: /gamer/role/list and /encourage/signIn/initSignInV2 both answer 200 with real data, so
-the credential is alive. Every /aki/roleBox/* endpoint - roleData, getRoleDetail, baseData,
-refreshData, requestToken - answers `10901 禁止访问`, under source h5, ios and android alike,
-with and without a devCode. That token was copied out of a www.kurobbs.com session; the data
-box wants a token from an *app* session plus that session's own did, from which b-at is
-derived. Getting one means capturing it off the phone. Until then this script stops after
-naming the account.
+**A token on its own is not enough: it is bound to the did that was sent when it was issued.**
+XutheringWavesUID's own login makes one up (`did = str(uuid.uuid4()).upper()`) and hands it to
+the login call, so the pair is what authenticates, not the token alone. Measured 2026-09-10:
+with the real token and an *invented* did, every /aki/roleBox/* endpoint answers
+`10901 禁止访问` under source h5, ios and android alike - while /gamer/role/list and
+/encourage/signIn/initSignInV2 answer 200 on the same token in the same second. So 10901 is
+"wrong device", not "no permission" and not "expired".
+
+Put the did from the same session that issued the token in .env as KUROBBS_DID.
 
 A wrong header reads exactly like a dead credential: with source "ios" the same live token
 answers 「登录已过期，请重新登录」. Match the header to where a token came from before ever
@@ -38,7 +39,6 @@ The endpoints, headers and payloads below were read out of XutheringWavesUID's o
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import pathlib
 import sys
@@ -90,9 +90,12 @@ def main() -> None:
     token = env.get("KUROBBS_TOKEN", "")
     if not token:
         sys.exit(f"✗ {ENV} 里没有 KUROBBS_TOKEN。")
-    # A device id the account never registered still works for the listing calls; only
-    # requestToken may refuse it, and that failure is reported rather than swallowed.
-    did = env.get("KUROBBS_DID", "") or hashlib.md5(token.encode()).hexdigest()
+    did = env.get("KUROBBS_DID", "")
+    if not did:
+        sys.exit(f"✗ {ENV} 里没有 KUROBBS_DID。\n"
+                 "  token 是和签发它的那台设备绑在一起的，少了设备号，数据坞那组接口\n"
+                 "  一律回「禁止访问」（实测：编一个假的也是这个结果）。\n"
+                 "  在登录着库街区的浏览器控制台里跑那行取 did 的命令，取到写进同一个文件。")
 
     roles = need(post("/gamer/role/list", {"token": token, "devCode": did},
                       {"gameId": GAME_ID}), "取账号下的角色")
