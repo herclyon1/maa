@@ -1,5 +1,20 @@
 # Check these when the machine is next up
 
+## 2026-09-10 — MaaEnd v2.28.0-beta.5 cannot gather; wait for the release that carries #5634
+
+Every `AutoCollectRouteNDispatch` node ships disabled and the route options only enable
+`RouteNStart`, so `AutoCollectLoop` finds nothing and the task "completes" in ~36 s
+(upstream MaaEnd/MaaEnd#5628, fixed on main by #5634 on 2026-09-10, not in any release
+yet). The relay now reports it as 「自动采集 真的走了路线」 not done, so it is no longer
+green. The 09-10 afternoon rerun went through MXU's API with the Dispatch nodes added
+to the override (`scratchpad collect_api.py`, not in the repo); the installed
+definition was **not** patched (the sandbox refused the write).
+
+- When MaaEnd updates past beta.5, confirm `D:\ark\maaend\tasks\AutoCollect.json` has
+  `AutoCollectRoute4Dispatch` in the Route4 case, then drop this note.
+- Until then every morning's 自动采集 will be flagged; that is correct, not noise.
+
+
 ## 2026-09-09 — the 4-cost echo farm now loops; two rough edges left
 
 It runs from the phone page, farms 天傀劫煞 (讨伐强敌 position 1) about one lap a
