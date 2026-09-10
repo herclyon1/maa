@@ -7,7 +7,6 @@ gathering section showed only the schedule. The user: 「手机遥控器页面�
 locale (fetched off the machine that day) with the migrated master, and requires
 every new key to appear with a Chinese name, real choices and the picks kept.
 """
-import json
 import re
 import sys
 from pathlib import Path

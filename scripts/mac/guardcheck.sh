@@ -446,7 +446,11 @@ echo "▶ 注释里的中文只准变少（zh_ratchet）"
 # The ledger is a file of counts, so the gate rots the moment counting drifts:
 # a miscount reads as "nothing grew" and new Chinese narration walks straight in.
 # Feed it a file that is nothing but a new Chinese comment and demand a refusal.
-ZH_PROBE=relay/ark_relay/_guardcheck_zh_probe.py
+# The probe lives under scripts/, not relay/: deploy-relay runs this gate in
+# parallel with test_manifest_covers_tree.py, which regenerates the manifest
+# from the relay tree - a probe placed there got listed as a ghost entry
+# (2026-09-10) and the lint self-check below then failed on the manifest.
+ZH_PROBE=scripts/mac/lib/_guardcheck_zh_probe.py
 printf '# \346\226\260\345\212\240\347\232\204\344\270\255\346\226\207\346\263\250\351\207\212\n_x = 1\n' > "$ZH_PROBE"
 refuses "新增中文注释必须被拒" "_guardcheck_zh_probe" \
   python3 scripts/mac/lib/zh_ratchet.py

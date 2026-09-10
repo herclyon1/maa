@@ -61,7 +61,7 @@ print("[每一项都要有中文名——原始键名出现在手机上就是失
 raw = {k: v for k, v in r["labels"].items() if not HAN.search(v or "")}
 check("没有一项是英文键名", raw, {})
 check("没有列进「没翻译」的", r.get("untranslated"), [])
-for k in ("AutoEssence/AutoEssenceObtainMode", "AutoEssence/AutoUseSpMedication", K, "AutoCollect/AutoCollectRoutes"):
+for k in ("AutoEssence/AutoEssenceObtainMode", "AutoEssence/AutoUseSpMedication", K, "AutoCollect/AutoCollectSchedule"):
     check(f"{k} 是选择项，有可选值", bool(r["options"].get(k)), True)
 check("加强剂窗口的可选值就是 MaaEnd 定义的那五档",
       [v for _, v in r["options"].get(K, [])], ["All", "Days10", "Days7", "Days3", "Days1"])

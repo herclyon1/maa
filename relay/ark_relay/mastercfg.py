@@ -69,8 +69,18 @@ MAAEND_SHOWN: dict[str, tuple[str, ...]] = {
         # That day it "finished" in 0.16 seconds, precisely because the
         # schedule only had Monday and Thursday ticked -- and the page said
         # nothing about it at all.
-        "AutoCollectRoutes",            # Which routes to gather (采哪几条路线)
         "AutoCollectSchedule",          # Which days to gather (哪几天采)
+        # v2.28.0-beta.5 split the one route list per region: a switch for the
+        # region, then its rare and common lists. The old AutoCollectRoutes key
+        # is gone from the definitions, so a page still asking for it showed
+        # nothing (the user, 2026-09-10: 「手机遥控器页面你也没修啊」).
+        "AutoCollectValleyIV",
+        "AutoCollectValleyIVRareRoutes",
+        "AutoCollectValleyIVCommonRoutes",
+        "AutoCollectWuling",
+        "AutoCollectWulingRareRoutes",
+        "AutoCollectWulingCommonRoutes",
+        "AutoCollectMode",              # Tick-list or target-inventory gathering
     ),
 }
 
