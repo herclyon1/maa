@@ -57,14 +57,15 @@ MAIN = "https://api.kurobbs.com"
 GAME_ID = 3
 SERVER_ID = "76402e5b20be2c39f095a152090afddc"
 ENV = pathlib.Path.home() / ".config" / "ark" / ".env"
-UA = ("Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) "
-      "AppleWebKit/605.1.15 (KHTML, like Gecko)  KuroGameBox/3.1.3")
-# The token in .env was copied out of a logged-in www.kurobbs.com session, so it is an h5
-# token. Presented with source "ios" every call answers 「登录已过期，请重新登录」 - which
-# reads exactly like an expired token and is not one. Measured 2026-09-10: the same token,
-# same second, source "h5" + version returns real data. Match the header to where the token
-# came from before ever concluding that a credential died.
-SOURCE = "h5"
+UA = ("Mozilla/5.0 (Linux; Android 16; 25098PN5AC Build/BP2A.250605.031.A3; wv) "
+      "AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/143.0.7499.34 "
+      "Mobile Safari/537.36 Kuro/3.0.0 KuroGameBox/3.0.0")
+# `source` must match where the token was issued. A token copied out of www.kurobbs.com is an
+# h5 token and only answers under source "h5"; a token captured from the phone app (the pair
+# with KUROBBS_DID) only answers under "android"/"ios" - the other way round every call says
+# 「登录已过期，请重新登录」, which reads exactly like expiry and is not. Measured 2026-09-10 on
+# both kinds of token. The data box (/aki/roleBox/*) needs the app pair, so app is the default.
+SOURCE = "android"
 KURO_VERSION = "3.1.3"
 
 
@@ -83,7 +84,14 @@ def need(resp: dict, what: str):
     if not resp.get("success") or resp.get("code") != 200:
         msg = resp.get("msg") or resp.get("message") or json.dumps(resp, ensure_ascii=False)
         sys.exit(f"✗ {what}失败：{msg}")
-    return resp.get("data")
+    data = resp.get("data")
+    # The roleBox endpoints hand `data` back as a JSON *string*; the account ones as an object.
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except ValueError:
+            pass
+    return data
 
 
 def main() -> None:
@@ -124,11 +132,15 @@ def main() -> None:
 
     by_char: dict[str, list[str]] = {}
     by_set: dict[str, list[str]] = defaultdict(list)
+    raw: dict[str, dict] = {}
     for i, c in enumerate(chars, 1):
         name = c.get("roleName", str(c["roleId"]))
         detail = post("/aki/roleBox/akiBox/getRoleDetail", box,
                       {**base, "channelId": "19", "countryCode": "1", "id": c["roleId"]})
         data = detail.get("data") or {}
+        if isinstance(data, str):
+            data = json.loads(data)
+        raw[name] = data
         phantoms = ((data.get("phantomData") or {}).get("equipPhantomList")) or []
         sets = [p["fetterDetail"]["name"] for p in phantoms
                 if p and p.get("fetterDetail", {}).get("name")]
@@ -139,6 +151,10 @@ def main() -> None:
         time.sleep(0.4)  # the account API is not a bulk endpoint; do not hammer it
     print(" " * 40, end="\r")
 
+    if "--dump" in sys.argv:
+        out = pathlib.Path(sys.argv[sys.argv.index("--dump") + 1])
+        out.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+        print(f"原始数据已存到 {out}（{len(raw)} 个共鸣者）")
     if "--json" in sys.argv:
         print(json.dumps({"by_character": by_char, "by_set": dict(by_set)},
                          ensure_ascii=False, indent=2))

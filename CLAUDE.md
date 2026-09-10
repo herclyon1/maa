@@ -59,7 +59,7 @@
 | 给机器下命令行指令 | `scripts/mac/order.sh '{"action":...}'`（`--clear` 清空）—— **别手改 `queue/config.json`**：它整份重放，且不清 CDN 指令到不了机器 |
 | 发布手机页 | `scripts/mac/deploy-web.sh` —— 改了 `web/` 下任何文件之后**必须**跑，不跑手机上还是旧的 |
 | **一键截图（刷声骸评分用）** | 按 `¥` 存一张到 `~/Pictures/EchoShots`，Hammerspoon 干的。配置在 `~/.hammerspoon/init.lua`，仓库存档 `scripts/mac/hammerspoon/init.lua`。改了要在菜单栏 Reload Config |
-| **查哪个共鸣者在用哪套声骸** | `scripts/mac/kuro-echoes.py` —— 读 `~/.config/ark/.env` 的 `KUROBBS_TOKEN`，走库街区账号接口。**只看得到已装备的**，背包里的它不知道。报「登录已过期」就是 token 到期了，重新取一个覆盖那一行 |
+| **查哪个共鸣者在用哪套声骸** | `scripts/mac/kuro-echoes.py`（`--dump 文件` 存原始数据）—— 读 `~/.config/ark/.env` 的 `KUROBBS_TOKEN` + `KUROBBS_DID`，**必须是手机 App 抓包得到的那一对**，网页 token 进不了数据坞。**只看得到已装备的**，背包里的它不知道。报「登录已过期」多半是 `source` 头和 token 来源不匹配，不是过期 |
 | 重编 Fleet Monitor（Dock 上那个看机器在不在的） | `scripts/mac/build-fleetmonitor.sh` —— 改了 `scripts/mac/FleetMonitor/main.swift` 之后跑，它编译、装包、重启。二进制不入库 |
 | 串流到 ins 打游戏 | `scripts/mac/stream-ins.sh`（菜单用）/ `--relative`（游戏内转视角）。桌面上那三个启动器点的就是它 |
 | **手动跑单个脚本 / 停干净** | `scripts/mac/run-one.sh MAA\|MaaEnd\|OK-WW`（`status` 看在跑什么、`stop` 按顺序停）—— **唯一正门**，内含忙闲闸门。禁裸调 `/api/dispatch/start`、禁 `taskkill` |
