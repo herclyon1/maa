@@ -653,6 +653,19 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
             log.warning("MaaEnd 死条目清理没做：%s", note)
     except Exception:
         log.exception("清理 MaaEnd 死条目出错")
+    # Same reasoning one level down: option *values* the new version no longer
+    # reads. Left alone, MaaEnd drops them on load and runs the task on its
+    # defaults - 2026-09-10 that was 自动采集 with no routes, reported green.
+    try:
+        from ark_relay import mastercfg as _mc2  # noqa: PLC0415
+        changed, note = _mc2.migrate_maaend_options(cfg.automas_dir, cfg.maaend_dir)
+        if changed:
+            log.info("开机：%s", note)
+            notifier.send(texts.MAAEND_MIGRATED, note)
+        elif note:
+            log.warning("MaaEnd 设置格式迁移没做：%s", note)
+    except Exception:
+        log.exception("迁移 MaaEnd 设置格式出错")
 
 
 def _stage_gameupdate(cfg, notifier, log) -> None:

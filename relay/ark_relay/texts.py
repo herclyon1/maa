@@ -60,6 +60,7 @@ AUTOMAS_DOWN = "🔌 AUTO-MAS 拉不起来"
 ROUND_INCOMPLETE = "⚠️ 这一轮没干完"
 MAAEND_REENABLED = "🔓 终末地日常已开回"
 MAAEND_PRUNED = "🧹 终末地配置清掉了死条目"
+MAAEND_MIGRATED = "🧩 终末地新版本改了设置格式，已按原意换写"
 ECHO_FARM = "🥚 开始刷声骸"
 ECHO_FARM_DONE = "🥚 刷声骸收工"
 TACET_DROPS = "🖼️ 无音区产出"
@@ -187,7 +188,7 @@ def samples() -> list[str]:
         PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, SKIP_MODE, ESTOP,
         ESTOP_FAILED, NO_SHUTDOWN, MAAEND_PRUNED, ECHO_FARM, ECHO_FARM_DONE,
         PHONE_DEFERRED, CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
-        AUTOMAS_DOWN, ROUND_INCOMPLETE, MAAEND_REENABLED, TACET_DROPS,
+        AUTOMAS_DOWN, ROUND_INCOMPLETE, MAAEND_REENABLED, MAAEND_MIGRATED, TACET_DROPS,
         patches(3), unconfirmed("预更新", 2), failed("MaaEnd"), self_healed("OK-WW"),
         cant_enter("MaaEnd"), missing(not_run("早班")), missing(not_run_in("OK-WW", "早班")),
         self_healed_body(3), failed_body_head(3), phone_deferred_body("跳过它下一趟"),

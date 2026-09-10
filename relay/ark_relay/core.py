@@ -14,7 +14,7 @@ from pathlib import Path
 
 from . import scoreboard, texts
 from .statestore import StateStore
-from .config import RunRecord, SERVER_TZ, USER_TZ, both_clocks
+from .config import atomic_write_text, RunRecord, SERVER_TZ, USER_TZ, both_clocks
 
 log = logging.getLogger("ark.core")
 
@@ -102,6 +102,33 @@ class State:
             # The scoreboard must never take the bookkeeping down with it: the
             # ledger is the main line, this entry is incidental.
             log.warning("记分牌没记上", exc_info=True)
+
+    def mark_incomplete(self, day: str, run_id: str, why: str) -> bool:
+        """Write a failed outcome check back onto the day's ledger line.
+
+        Until 2026-09-10 the check only produced a push notification; the
+        ledger kept `ok: true` and the evening report still opened with 全绿.
+        The record stays `ok` (AUTO-MAS did see the process exit normally, and
+        the retry logic keys off that) - `incomplete` is a second, independent
+        fact about the same run: it finished, and it did not do the work.
+        """
+        p = self.ledger_path(day)
+        if not p.exists():
+            return False
+        lines = p.read_text(encoding="utf-8").splitlines()
+        hit = False
+        for i, ln in enumerate(lines):
+            try:
+                entry = json.loads(ln)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(entry, dict) and entry.get("run_id") == run_id:
+                entry["incomplete"] = why
+                lines[i] = json.dumps(entry, ensure_ascii=False)
+                hit = True
+        if hit:
+            atomic_write_text(p, "\n".join(lines) + "\n")
+        return hit
 
     # What every consumer of a ledger entry assumes is present. Checked once,
     # here, rather than defended against at each of the dozen places that read
@@ -624,8 +651,15 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
     retried = retried_notes(entries)
     failed = [e for e in entries if not e["ok"]
               and e["run_id"] not in kinds and e["run_id"] not in retried]
-    if failed:
+    # A run that exited cleanly but demonstrably did not do its work is not
+    # green either (2026-09-10: 自动采集 walked zero routes and the day read 全绿).
+    undone = [e for e in entries if e["ok"] and e.get("incomplete")]
+    if failed and undone:
+        head = f"{len(failed)} 项失败、{len(undone)} 项没干完 ⚠️"
+    elif failed:
         head = f"{len(failed)} 项失败 ⚠️"
+    elif undone:
+        head = f"{len(undone)} 项没干完 ⚠️"
     elif retried:
         head = "全绿 ✅（有项目重试后成功）"
     elif "soft" in kinds.values():
@@ -642,7 +676,7 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
         finished = datetime.fromisoformat(e["finished"])
         raw = e.get("raw") or {}
         kind = kinds.get(e["run_id"], "")
-        icon = ("✅" if e["ok"]
+        icon = ("⚠️" if e["ok"] and e.get("incomplete") else "✅" if e["ok"]
                 else _KIND_ICON.get(kind) or ("↻" if e["run_id"] in retried else "❌"))
         tag = "（剿灭检查）" if raw.get("annihilation") else ""
         lines.append(icon + f" {e['script']}{tag}　"
@@ -687,6 +721,8 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             lines += [_row("备注", [note]), ""]
             continue
         did, cost, out, left, notes = _rows_for(e, finished)
+        if e.get("incomplete"):
+            notes.insert(0, "没干完：" + str(e["incomplete"]).replace("\n", "；"))
         if notes and not (did or cost or out or left):
             # Four 「—」 rows above one real line is noise. The two-minute retry on
             # 2026-09-09 printed exactly that.

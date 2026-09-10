@@ -495,6 +495,11 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
     if msg := eng._verify_outcome(rec):
         log.warning("⚠️ %s %s 有项目没干成：\n%s",
                     rec.script, rec.run_id, msg)
+        # Onto the ledger too, or the evening report opens with 全绿 while this
+        # very message said otherwise (2026-09-10, 自动采集 walked zero routes).
+        day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
+        if not eng.state.mark_incomplete(day, rec.run_id, msg):
+            log.warning("没能把「没干完」写回 %s 的账本，日报会少这一条", rec.run_id)
         eng.notifier.send(texts.ROUND_INCOMPLETE, msg, alert=True)
         return
     log.info("✅ %s %s（%d 分钟）静默记账",

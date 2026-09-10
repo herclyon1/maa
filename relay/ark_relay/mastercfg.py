@@ -635,3 +635,92 @@ def prune_maaend_orphans(automas_dir, maaend_dir) -> tuple[list[str], str]:
         return [], f"写完回读不对，{bak.name} 是原样"
     return removed, (f"MaaEnd 这一版已经没有这些任务，配置里的死条目已清掉：{'、'.join(removed)}"
                      f"（原文件备份为 {bak.name}）")
+
+
+# ── Option format changes between MaaEnd versions ───────────────────────────
+# v2.28.0-beta.5 (2026-09-10) split 自动采集's one route list into a per-region
+# switch plus rare/common checkboxes, and made 基质刷取's location a sub-option of
+# a new AutoEssenceMenu. MaaEnd itself discards a saved value whose option no
+# longer exists and runs on defaults - so the master AUTO-MAS copies over before
+# every run kept feeding it the old keys, and every run silently lost the routes.
+# Each entry: old key -> how to rewrite it. Only what has actually been observed
+# is translated; anything else that is dead is removed and named in the note.
+_COLLECT_SPLIT = {
+    "AutoCollectRoutes": ("AutoCollectValleyIVRareRoutes", "AutoCollectWulingRareRoutes"),
+    "AutoCollectCommonRoutes": ("AutoCollectValleyIVCommonRoutes", "AutoCollectWulingCommonRoutes"),
+}
+
+
+def _cases(opts: dict, name: str) -> list[str]:
+    return [c.get("name") for c in (opts.get(name) or {}).get("cases") or [] if c.get("name")]
+
+
+def migrate_maaend_options(automas_dir, maaend_dir) -> tuple[list[str], str]:
+    """Rewrite option values in the master that this MaaEnd no longer understands.
+
+    Returns (changes, note). A key is dead only when its task's definition file
+    was read successfully **and** the key is absent from the whole install's
+    option index - a definition file that fails to parse (CreditShopping.json
+    does) must not make its options look dead. MXU's own `__*` tasks are never
+    touched. The file is backed up first and read back after.
+    """
+    f = maaend_master(automas_dir)
+    if not f or not f.is_file():
+        return [], "找不到 MaaEnd 的母本"
+    opts, tasks = _maaend_defs(maaend_dir)
+    if not opts or not tasks:
+        return [], "读不到 MaaEnd 的选项定义，不动配置"
+    doc = json.loads(f.read_text(encoding="utf-8"))
+    changes: list[str] = []
+    for inst in doc.get("instances") or []:
+        for task in inst.get("tasks") or []:
+            name = str(task.get("taskName") or "")
+            if not name or name.startswith("__") or name not in tasks:
+                continue
+            ov = task.get("optionValues")
+            if not isinstance(ov, dict):
+                continue
+            # 自动采集: one route list -> per-region switch + rare/common lists.
+            for old, (valley, wuling) in _COLLECT_SPLIT.items():
+                if old not in ov or valley in ov or wuling in ov:
+                    continue
+                picked = set((ov[old] or {}).get("caseNames") or [])
+                for new in (valley, wuling):
+                    mine = [c for c in _cases(opts, new) if c in picked]
+                    ov[new] = {"type": "checkbox", "caseNames": mine}
+                    region = "AutoCollectValleyIV" if "ValleyIV" in new else "AutoCollectWuling"
+                    ov.setdefault(region, {"type": "switch", "value": True})
+                changes.append(f"{name}/{old} → 按区域拆成 {valley}、{wuling}"
+                               f"（保留原来勾的 {len(picked)} 条）")
+            if name == "AutoCollect" and "AutoCollectMode" in opts and "AutoCollectMode" not in ov:
+                ov["AutoCollectMode"] = {"type": "select", "caseName": "Always"}
+                changes.append(f"{name}/AutoCollectMode 补上默认值 Always")
+            # 基质刷取: the location list now hangs under AutoEssenceMenu=Random;
+            # without the menu key MaaEnd falls back to its default location.
+            if name == "AutoEssence":
+                if "AutoEssenceMenu" in opts and "AutoEssenceMenu" not in ov:
+                    ov["AutoEssenceMenu"] = {"type": "select", "caseName": "Random"}
+                    changes.append(f"{name}/AutoEssenceMenu 补上 Random（原来的按地点随机刷）")
+                if ("AutoUseSpMedication" in opts and "AutoUseSpMedication" not in ov
+                        and "AutoEssenceSpMedicationExpireWithinDays" in ov):
+                    ov["AutoUseSpMedication"] = {"type": "select", "caseName": "UseMedication"}
+                    changes.append(f"{name}/AutoUseSpMedication 补上 UseMedication（原来就在吃药）")
+            dead = [k for k in list(ov) if k not in opts]
+            for k in dead:
+                del ov[k]
+            if dead:
+                changes.append(f"{name} 去掉新版本没有的 {len(dead)} 项：{'、'.join(dead)}")
+    if not changes:
+        return [], ""
+    bak = f.with_name(f.name + f".bak-migrate-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
+    bak.write_bytes(f.read_bytes())
+    atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=2))
+    back = json.loads(f.read_text(encoding="utf-8"))
+    for inst in back.get("instances") or []:
+        for task in inst.get("tasks") or []:
+            ov = task.get("optionValues") or {}
+            if str(task.get("taskName") or "") in tasks and any(k not in opts for k in ov):
+                return [], f"写完回读还有死键，{bak.name} 是原样"
+    return changes, ("MaaEnd 换了版本后旧设置的写法它不认了，母本已按原意改写：\n"
+                     + "\n".join(f"· {c}" for c in changes)
+                     + f"\n（原文件备份为 {bak.name}）")

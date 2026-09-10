@@ -26,6 +26,7 @@ source.
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from collections import Counter
 from dataclasses import dataclass
 
@@ -126,6 +127,43 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
 # The fix was the data source, not the criterion.
 _MAAEND_DONE = "自动执行任务完成"
 _MAAEND_STUCK = re.compile(r"SceneAnyEnterWorld|PipelineTask bad next")
+# MaaEnd's own app log, on loading a config written for an older version:
+#   WARN  [Config] 选项 "AutoCollectRoutes" 已不存在，已丢弃保存值
+_MAAEND_DROPPED = re.compile(r'选项 "([^"]+)" 已不存在，已丢弃保存值')
+# What a task leaves in the AUTO-MAS log when it actually does its job. The
+# task name is matched as a substring of the 「任务开始」 line (it carries an
+# emoji prefix). Wording from real logs: routes 2026-09-01, essence and
+# protocol 2026-08-25.
+_MAAEND_WORK = (
+    ("自动采集", re.compile(r"路线\d+[：:]"), "走了路线"),
+    ("基质刷取", re.compile(r"已完成一次基质刷取|理智不足"), "刷了"),
+    ("协议空间", re.compile(r"进入协议空间成功|理智不足"), "进了"),
+)
+_MAAEND_TS = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
+
+
+def _maaend_segments(text: str):
+    """(task name, its lines, seconds it took) for every 「任务开始」…「任务完成」 pair."""
+    lines = text.splitlines()
+    start = None
+    for i, line in enumerate(lines):
+        if m := re.search(r"任务开始[:：]\s*(\S.+?)\s*$", line):
+            start = (i, m.group(1).strip())
+            continue
+        if start is None:
+            continue
+        if m := re.search(r"任务(?:完成|失败)[:：]\s*(\S.+?)\s*$", line):
+            if m.group(1).strip() != start[1]:
+                continue
+            seg = "\n".join(lines[start[0]:i + 1])
+            secs = 0
+            t0, t1 = _MAAEND_TS.match(lines[start[0]]), _MAAEND_TS.match(line)
+            if t0 and t1:
+                fmt = "%Y-%m-%d %H:%M:%S"
+                secs = int((datetime.strptime(t1.group(1), fmt)
+                            - datetime.strptime(t0.group(1), fmt)).total_seconds())
+            yield start[1], seg, secs
+            start = None
 
 
 def maaend_checks(text: str, on_error_names: list[str]) -> list[Check]:
@@ -158,6 +196,32 @@ def maaend_checks(text: str, on_error_names: list[str]) -> list[Check]:
     # farming reported 「任务完成」 -- calling that a failure is a false alarm. So a
     # fault is only declared when the run **really did not finish**; otherwise the
     # screenshots are listed honestly but not counted as a fault.
+    # 2026-09-10: MaaEnd v2.28.0-beta.5 renamed 自动采集's route options. The
+    # master config still carried the old keys, MaaEnd dropped them on load
+    # (「選項 "AutoCollectRoutes" 已不存在，已丢弃保存值」), the scheduler found
+    # nothing to walk, wrote 「任务完成」 after 38 seconds, AUTO-MAS said Success,
+    # and the daily report said 全绿. Every check above passed, because every
+    # check above only asks whether the run *ended*, not whether it *did*
+    # anything. The user's words for why this is worse than a false red: 「明明没有完成任务，却按照完成任务的通知去报」.
+    # So each farming/collecting task must show the trace it leaves when it
+    # really works, and a new version discarding settings is itself a fault.
+    dropped = sorted(set(_MAAEND_DROPPED.findall(text)))
+    if dropped:
+        head = "、".join(dropped[:5]) + ("…" if len(dropped) > 5 else "")
+        out.append(Check("新版本认得全部旧设置", False,
+                         f"MaaEnd 新版本不认 {len(dropped)} 项旧设置，这些项按默认值跑了：{head}"))
+    else:
+        out.append(Check("新版本认得全部旧设置", True))
+    for name, seg, secs in _maaend_segments(text):
+        for key, evidence, what in _MAAEND_WORK:
+            if key not in name:
+                continue
+            if evidence.search(seg):
+                out.append(Check(f"{key} 真的{what}", True))
+            else:
+                out.append(Check(f"{key} 真的{what}", False,
+                                 f"{key} {secs} 秒就报「任务完成」，日志里没有{what}的痕迹"))
+
     stuck = [n for n in on_error_names if _MAAEND_STUCK.search(n)]
     if stuck:
         out.append(Check("界面没卡住", False,
