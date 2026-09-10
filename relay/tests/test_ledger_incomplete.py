@@ -56,7 +56,7 @@ with tempfile.TemporaryDirectory() as d:
     check("标题说几项没干完", "1 项没干完" in title)
     check("那一趟的图标是 ⚠️", "⚠️ MaaEnd" in body)
     check("正文写明没干完的原因", "没干完：" in body and "自动采集" in body)
-    check("多条原因并成一行，冒号后面不带分号", "：；" not in body and "没报错：MaaEnd 新版本" in body)
+    check("多条原因并成一行，冒号后面不带分号", "：；" not in body and "没报错：新版本认得全部旧设置" in body)
     check("好的那趟还是 ✅", "✅ MaaEnd" in body)
 
     print("\n[没有 incomplete 时一切照旧]")
