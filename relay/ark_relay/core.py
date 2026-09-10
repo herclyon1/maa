@@ -722,7 +722,11 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             continue
         did, cost, out, left, notes = _rows_for(e, finished)
         if e.get("incomplete"):
-            notes.insert(0, "没干完：" + str(e["incomplete"]).replace("\n", "；"))
+            # summarize() writes one bullet per line; on a phone the note is one
+            # line, so the bullets are joined with 「；」 - but not right after a
+            # 「：」, where 「：；」 read as a typo in the first report that went out.
+            why = str(e["incomplete"]).replace("\n· ", "；").replace("\n", "；").replace("：；", "：")
+            notes.insert(0, "没干完：" + why)
         if notes and not (did or cost or out or left):
             # Four 「—」 rows above one real line is noise. The two-minute retry on
             # 2026-09-09 printed exactly that.

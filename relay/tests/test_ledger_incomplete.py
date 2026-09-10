@@ -39,7 +39,9 @@ with tempfile.TemporaryDirectory() as d:
         f.write(json.dumps(e1, ensure_ascii=False) + "\n" + json.dumps(e2, ensure_ascii=False) + "\n")
 
     print("[写回账本]")
-    why = "MaaEnd 没干成：自动采集 真的走了路线（自动采集 38 秒就报「任务完成」，日志里没有走了路线的痕迹）"
+    why = ("MaaEnd 这一轮有 2 项没干成，但它自己没报错：\n"
+           "· 新版本认得全部旧设置：MaaEnd 新版本不认 36 项旧设置\n"
+           "· 自动采集 真的走了路线：自动采集 38 秒就报「任务完成」，日志里没有走了路线的痕迹")
     check("找得到那条并写回", st.mark_incomplete(day, e2["run_id"], why))
     check("找不到的 run_id 返回 False", st.mark_incomplete(day, "nope", why), False)
     back = st.read_ledger(day)
@@ -54,6 +56,7 @@ with tempfile.TemporaryDirectory() as d:
     check("标题说几项没干完", "1 项没干完" in title)
     check("那一趟的图标是 ⚠️", "⚠️ MaaEnd" in body)
     check("正文写明没干完的原因", "没干完：" in body and "自动采集" in body)
+    check("多条原因并成一行，冒号后面不带分号", "：；" not in body and "没报错：MaaEnd 新版本" in body)
     check("好的那趟还是 ✅", "✅ MaaEnd" in body)
 
     print("\n[没有 incomplete 时一切照旧]")
