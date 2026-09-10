@@ -89,6 +89,19 @@ with tempfile.TemporaryDirectory() as d:
     check("留了备份", any(p.name.startswith("mxu-MaaEnd.json.bak-migrate-") for p in cfgdir.iterdir()))
     check("说明是人话，带备份名", "备份" in note and "按原意改写" in note)
 
+    print("\n[界面的「最近关闭」历史也不能留旧键——MaaEnd 每次加载都会拿它报警]")
+    rc_before = before.get("recentlyClosed") or []
+    rc_after = after.get("recentlyClosed") or []
+    check("原样本里确实有带旧键的历史",
+          any("AutoCollectRoutes" in (t.get("optionValues") or {}) for e in rc_before for t in e.get("tasks") or []))
+    check("改完历史里没有 AutoCollectRoutes",
+          any("AutoCollectRoutes" in (t.get("optionValues") or {}) for e in rc_after for t in e.get("tasks") or []), False)
+    check("改完历史里没有 AutoEssenceChallengeMode",
+          any("AutoEssenceChallengeMode" in (t.get("optionValues") or {}) for e in rc_after for t in e.get("tasks") or []), False)
+    check("定义没读到的任务（SellProduct）那条历史不动",
+          any(t.get("taskName") == "SellProduct" for e in rc_after for t in e.get("tasks") or []))
+    check("说明里提到了清历史", "最近关闭" in note)
+
     print("\n[再跑一次：没有改动]")
     changes2, note2 = mastercfg.migrate_maaend_options(automas, maaend)
     check("幂等", (changes2, note2), ([], ""))

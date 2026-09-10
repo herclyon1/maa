@@ -665,6 +665,28 @@ def _cases(opts: dict, name: str) -> list[str]:
     return [c.get("name") for c in (opts.get(name) or {}).get("cases") or [] if c.get("name")]
 
 
+def _stale_entry(entry: dict, opts: dict, tasks: dict) -> bool:
+    """A closed-tab record whose task (definition read) carries a key MaaEnd no longer has."""
+    return any(str(t.get("taskName") or "") in tasks
+               and any(k not in opts for k in (t.get("optionValues") or {}))
+               for t in entry.get("tasks") or [])
+
+
+def _prune_recently_closed(doc: dict, opts: dict, tasks: dict) -> int:
+    """Drop stale records from MXU's recentlyClosed list; returns how many went.
+
+    MXU keeps the tabs the user closed under recentlyClosed, option values and
+    all, and re-validates them on every load. The instance was clean after the
+    16:13 migration on 2026-09-10 and MaaEnd still logged 33 「已不存在」 lines
+    at 16:42 - every one of them from that history.
+    """
+    before = doc.get("recentlyClosed") or []
+    kept = [e for e in before if not _stale_entry(e, opts, tasks)]
+    if len(kept) != len(before):
+        doc["recentlyClosed"] = kept
+    return len(before) - len(kept)
+
+
 def migrate_maaend_options(automas_dir, maaend_dir) -> tuple[list[str], str]:
     """Rewrite option values in the master that this MaaEnd no longer understands.
 
@@ -720,6 +742,8 @@ def migrate_maaend_options(automas_dir, maaend_dir) -> tuple[list[str], str]:
                 del ov[k]
             if dead:
                 changes.append(f"{name} 去掉新版本没有的 {len(dead)} 项：{'、'.join(dead)}")
+    if dropped := _prune_recently_closed(doc, opts, tasks):
+        changes.append(f"清掉界面里 {dropped} 条「最近关闭」的旧记录（全是旧格式的设置）")
     if not changes:
         return [], ""
     bak = f.with_name(f.name + f".bak-migrate-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
@@ -731,6 +755,8 @@ def migrate_maaend_options(automas_dir, maaend_dir) -> tuple[list[str], str]:
             ov = task.get("optionValues") or {}
             if str(task.get("taskName") or "") in tasks and any(k not in opts for k in ov):
                 return [], f"写完回读还有死键，{bak.name} 是原样"
+    if any(_stale_entry(e, opts, tasks) for e in back.get("recentlyClosed") or []):
+        return [], f"写完回读「最近关闭」里还有死键，{bak.name} 是原样"
     return changes, ("MaaEnd 换了版本后旧设置的写法它不认了，母本已按原意改写：\n"
                      + "\n".join(f"· {c}" for c in changes)
                      + f"\n（原文件备份为 {bak.name}）")
