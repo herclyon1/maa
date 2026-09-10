@@ -1,5 +1,22 @@
 # Check these when the machine is next up
 
+## 2026-09-11 — two things landed while the machine was off; one rerun ordered
+
+1. **Relay pushes the phone state in SvcStop** (`relay/service.py`, `boot_stages._start_phone_channel`)
+   so a shutdown by hand leaves the page current. Pushed to the repo only (machine was off);
+   check the boot self-update took it (code version on the machine vs the pushed manifest),
+   otherwise `deploy-relay.sh`. Health check no longer judges medicine count or farm target
+   (`scripts/mac/lib/healthcheck.py`) - those are his choices, not health items.
+2. **Order: run the full 自动采集 once on 09-11** (Friday - not in the schedule, so it needs
+   the day attached). First check whether a MaaEnd release carries #5634
+   (`gh release list -R MaaEnd/MaaEnd`); if yes, update, then run through the UI with all 17
+   rare routes and Friday added; if not, the API path with the dispatch override
+   (`scratchpad collect_api.py` pattern, Friday attached). Route 15/16 ziplines are gone,
+   so all 17 should pass; anything that fails now is worth a report - through the 🗄️ export.
+3. **MAA MedicineNumb is 999 and ate one potion on 09-10 09:00** - his setting; he was asked
+   whether that is intended. Do not touch it.
+
+
 ## 2026-09-10 — MaaEnd v2.28.0-beta.5 cannot gather; wait for the release that carries #5634
 
 Every `AutoCollectRouteNDispatch` node ships disabled and the route options only enable

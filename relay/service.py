@@ -284,6 +284,15 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         # The phone channel's long-lived connection has to be cut deliberately,
         # otherwise it stays blocked on a socket read and the service cannot
         # stop - on 2026-08-31 it hung in STOP_PENDING several times running.
+        # One last state report while the channel is still open: config edits
+        # made by scripts and a shutdown issued by hand never went through
+        # push_state, so the page showed hours-old state after a power-off.
+        push = getattr(self, "_push_state", None)
+        if push is not None:
+            try:
+                push("停止前")
+            except Exception:  # stopping must never hang on this
+                logging.getLogger("ark.service").warning("停止前上报状态失败", exc_info=True)
         box = getattr(self, "_mailbox", None)
         if box is not None:
             box.close()

@@ -94,21 +94,21 @@ u = next(iter(post("/api/scripts/user/get", {"scriptId": sid})["data"].values())
 # condition1 优先），留着不碍事，所以只报状态、不当失败。
 print(f"  ·  每日声骸开关（刷满模式下不生效）= "
       f"{daily.get('Farm Nightmare Nest for Daily Echo')}")
-# 快速配置关了，MAS 侧 WhichToFarm 不再生效（effective_config.py 有说明），
-# 读母本。用户 09-01 起要的是模拟领域·贝币（plan.py 的「体力刷」也按这个写）。
-check("体力去处＝模拟领域·贝币（读母本）",
-      daily.get("Which to Farm") == "Simulation Challenge"
-      and daily.get("Material Selection") == "Shell Credit",
-      f"实际 {daily.get('Which to Farm')!r} / {daily.get('Material Selection')!r}")
+# What he farms is his choice, not a health item (2026-09-11: 「管好程序会不会出
+# bug就行，管我刷什么干嘛」). Shown for information only; the phone page is where
+# it gets changed. The two fields are independent settings.
+print(f"  ·  体力去处 Which to Farm = {daily.get('Which to Farm')!r}；"
+      f"材料 Material Selection = {daily.get('Material Selection')!r}（只显示，不判）")
 
 print("\n=== 4. MAA 关键配置（826 事故相关）===")
 mid = next(k for k, v in scripts.items()
            if (v.get("Info") or {}).get("Name") == "MAA")
 m = next(iter(post("/api/scripts/user/get", {"scriptId": mid})["data"].values()))
-# 关卡随活动变，不当判据，只报出来给人看；药量按用户要求「不吃理智药」守 0。
-print(f"  ·  关卡 Info.Stage = {m['Info'].get('Stage')!r}（StageMode={m['Task'].get('StageMode')!r}）")
-check("理智药 0（用户要求不吃药）", str(m["Info"].get("MedicineNumb")) == "0",
-      f"实际 {m['Info'].get('MedicineNumb')!r}")
+# Stage and medicine count are his choices, shown for information only. The
+# 「用户要求不吃药」 check that stood here from 09-03 was never asked for - I had
+# read the value 0 of the day as a rule (2026-09-11: 「谁跟你说的？」).
+print(f"  ·  关卡 Info.Stage = {m['Info'].get('Stage')!r}（StageMode={m['Task'].get('StageMode')!r}）"
+      f"；理智药 MedicineNumb = {m['Info'].get('MedicineNumb')!r}（只显示，不判）")
 check("活动关优先＝关（826 的元凶）", m["Task"].get("IfActivityFirst") is False)
 check("剿灭 Close", m["Info"].get("Annihilation") == "Close")
 check("理智作战开着", m["Task"].get("IfFight") is True)

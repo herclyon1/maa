@@ -438,6 +438,11 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
         except Exception:
             log.warning("状态没能上报到手机（%s）", why, exc_info=True)
 
+    # SvcStop pushes one last state before the mailbox is cut, so a shutdown
+    # issued by hand (not by the relay) still leaves the phone page current.
+    # 2026-09-11 the page said 「最后状态 1 小时 38 分前」 after such a shutdown.
+    svc._push_state = push_state
+
     from ark_relay.phone import Heartbeat  # noqa: PLC0415
     hb = Heartbeat(box.topic, cfg.state_dir)
     run_phone_cmd = _make_phone_cmd(engine, notifier, log, hb, push_state)
