@@ -14,6 +14,41 @@ definition was **not** patched (the sandbox refused the write).
   `AutoCollectRoute4Dispatch` in the Route4 case, then drop this note.
 - Until then every morning's 自动采集 will be flagged; that is correct, not noise.
 
+### The three routes that failed in the 09-10 16:56 rerun (evidence on the Mac)
+
+Evidence: `~/Claude/ark-evidence/2026-09-10-collect/` - the whole `debug/` folder of that run
+(maafw.log 86 MB, go-service.log, on_error/*.png) plus `nodes.json`. Copied with plain
+`scp`; `winrun.sh --get` mangles binaries (a 12.8 MB zip came back as 23 MB).
+MaaEnd does **not** re-run a failed route at the end: the `AutoCollectRouteNFailed` nodes at
+17:24:19 only report; nothing was retried (I told the user otherwise on 09-10 - wrong).
+
+* **Route1 受蚀玉化叶** (first route right after login, 16:57:13-16:57:42): opened the map,
+  landed on the 武陵 region overview, and `__ScenePrivateMapOverviewEnterMapWulingWulingCity`
+  never matched its tab templates (`MapOverviewWulingChoose/NotChoose`, ROI bottom-right,
+  scores 0.15-0.67 vs threshold 0.9); `__ScenePrivateMapAnyEnterMapOverview` then looped on
+  `OtherAreaEnterMapOverview` (0.44/0.51) until the 20 s timeout. Route2 passed the same
+  screens one second later, and Route17 at 17:22:50 matched the same templates. On-screen:
+  the overview with 「其他地图追踪中…」 in the top-left. No upstream report found for this.
+* **Route15 红矛叶** (17:19:38-17:20:41): teleport to 北部禁区-前哨基地 (anchor at map
+  [1122, 597.7]) succeeded at 17:20:19; `AutoCollectRoute15AssertLocation`
+  (`MapLocateAssertLocation`, target [1117.57, 594.24], zone `Wuling_Base`) failed for 20 s.
+  On-screen: standing at the 长距滑索架 with the 「登上滑索架」 prompt. Upstream #5345 (same
+  anchor, closed 09-01 by the WorldMap fix #5372) covered the earlier phase (anchor icon not
+  found); #5184 (open) is a different symptom. #5559 changed zipline landing localisation
+  on 09-06 - possibly related.
+* **Route16 协议纹石** (17:20:41-17:22:45): teleport to 天师桩研发中心 (anchor [1455.2, 529.6])
+  and the location assert passed; `GotoInteract` (navmesh to [1502, 538.13]) and
+  `FindButtonUsing` (OCR 使用) passed; `AutoCollectRoute16Goto` (RUN to [189.72, 282.57] on
+  tier `Wuling_L8_382`, then DIG points) failed after 68 s. On-screen: facing a wall next to
+  a device with the 「使用」 prompt still up. Route added 09-04 (#5420); no report yet.
+
+Reporting plan (strictly by `docs/UPSTREAM-ISSUE-RULES.md`): wait for the release that
+carries #5634, update, tick only Route1/15/16, run through the MaaEnd UI
+(`MaaEnd.exe --autostart`, stays open), screenshot the software with the log panel, export
+the log bundle with the 🗄️ button (`debug_exports/`), fetch it with scp, then draft
+one issue per route, `upstream-post.py lint`, and post only after the user says so.
+`autoClearLogsOnLaunch` was switched off on 09-11 so the debug folder survives a relaunch.
+
 
 ## 2026-09-09 — the 4-cost echo farm now loops; two rough edges left
 
