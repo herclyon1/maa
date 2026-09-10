@@ -1,0 +1,296 @@
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/OutpostTrading.json
+2026-09-10 10:08:41 INFO  [App] 合并了 7 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 pretask
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/SeizeDeliveryJobs.json
+2026-09-10 10:08:41 INFO  [App] 合并了 48 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 11 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/DeliveryJobs.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 合并了 35 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AutoStockpile.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 合并了 5 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AutoStockStaple.json
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AutoSell.json
+2026-09-10 10:08:41 INFO  [App] 合并了 22 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 合并了 7 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/EnvironmentMonitoring.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/GearAssembly.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/Weapon.json
+2026-09-10 10:08:41 INFO  [App] 合并了 2 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/BatchUseDetector.json
+2026-09-10 10:08:41 INFO  [App] 合并了 3 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/EssenceFilter.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 合并了 19 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/ResourceRecycleStation.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AutoCollect.json
+2026-09-10 10:08:41 INFO  [App] 合并了 10 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AutoEcoFarm.json
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/PuzzleSolver.json
+2026-09-10 10:08:41 INFO  [App] 合并了 3 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/SwitchTeam.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/ImportBluePrints.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/ZiplineImport.json
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AeroSalvage.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 合并了 2 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AutoEssence/AutoEssence.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 合并了 27 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AutoEssence/Location/SelectLocation.json
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AutoEssence/Location/Slot1.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AutoEssence/Location/VFTheHub.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AutoEssence/Location/VFOriginiumSciencePark.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AutoEssence/Location/VFOriginLodespring.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AutoEssence/Location/VFPowerPlateau.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AutoEssence/Location/WLWulingCity.json
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AutoEssence/Location/WLQingboStockade.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AutoEssence/Location/WLMarkerStone.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AutoEssence/Location/WLTestArea.json
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AutoEssence/Location/WLSwordVaultDale.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AutoEssence/Location/WLYinglungPass.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AutoEssence/Location/WLNorthWulingExclusionZone.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AutoEssence/Location/WLSnowyForest.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AutoEssence/Target/Target.json
+2026-09-10 10:08:41 INFO  [App] 合并了 10 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/ProtocolSpace.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 合并了 20 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/DijiangRewards.json
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/VisitFriends.json
+2026-09-10 10:08:41 INFO  [App] 合并了 18 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 合并了 2 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/GiftOperator.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/BatchAddFriends.json
+2026-09-10 10:08:41 INFO  [App] 合并了 4 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/PullCountCalculator.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/BakerEntry.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/ReadAllWiki.json
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/IntelArchive.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/DailyRewards.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 合并了 10 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/ClaimSimulationRewards.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/TrialOfSwordmancy.json
+2026-09-10 10:08:41 INFO  [App] 合并了 6 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/CreditShopping.json
+2026-09-10 10:08:41 INFO  [App] 合并了 23 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AccountSwitch.json
+2026-09-10 10:08:41 INFO  [App] 合并了 3 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/AndroidOpenGame.json
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/CloseGame.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 合并了 2 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/CloseGamePC.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 合并了 8 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/RealTimeTask.json
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/ItemTransfer.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 合并了 38 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 合并了 11 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/Crafting.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/SimpleProductionBatchStart.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/ReceiveProdManual.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/StashBackpack.json
+2026-09-10 10:08:41 INFO  [App] 合并了 2 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 task
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/preset/DailyFull.json
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/preset/QuickDaily.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 preset
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 preset
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/preset/RealtimeAssist.json
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/setting/Keymap.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 preset
+2026-09-10 10:08:41 INFO  [App] 合并了 2 个导入的 global_option
+2026-09-10 10:08:41 INFO  [App] 合并了 2 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 setting
+2026-09-10 10:08:41 INFO  [App] 加载导入文件: tasks/setting/Zipline.json
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 global_option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 option
+2026-09-10 10:08:41 INFO  [App] 合并了 1 个导入的 setting
+2026-09-10 10:08:41 INFO  [App] 平台过滤: 移除了 6 个不支持的控制器 (不支持的类型: MacOS, PlayCover, WlRoots, Linux)
+2026-09-10 10:08:42 DEBUG [Config] 加载配置, 路径: D:/ark/maaend/config/mxu-MaaEnd.json
+2026-09-10 10:08:42 INFO  [Config] 配置加载成功
+2026-09-10 10:08:42 INFO  [App] 窗口图标已设置: D:\ark\maaend/locales/MaaEnd-Tiny.png
+2026-09-10 10:08:42 WARN  [Config] 选项 "SendWrongGift" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "ProtocolSpaceSuccessAction" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "ProtocolSpaceUsePermit" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "AutoCollectRoutes" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "EssenceFilterAfterBattleSelectInputLanguage" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "AutoCollectRoutes" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "AutoEssenceSpecifiedLocation" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "AutoEssenceChallengeMode" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "AutoCollectCommonRoutes" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "AutoEssenceChallengeMode" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "AutoEssenceSpecifiedLocation" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "ValleyIVRefugeeCampAttempt1" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "ValleyIVRefugeeCampAttempt3" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "ValleyIVRefugeeCampAttempt2" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "ValleyIVRefugeeCampAttempt4" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "ValleyIVInfrastructureOutpost" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "SelectInputLanguage" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "ValleyIVRefugeeCampItem1" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "ValleyIVRefugeeCampItem2" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "ValleyIVInfrastructureOutpostAttempt1" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "ValleyIVInfrastructureOutpostAttempt2" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "ValleyIVInfrastructureOutpostItem2" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "ValleyIVInfrastructureOutpostAttempt4" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "ValleyIVReconstructionCommandItem1" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "ValleyIVReconstructionCommand" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "ValleyIVReconstructionCommandAttempt2" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "ValleyIVReconstructionCommandItem2" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "ValleyIVReconstructionCommandAttempt3" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "ValleyIVReconstructionCommandAttempt4" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "WulingSkyKingFlats" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "WulingSkyKingFlatsAttempt1" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "WulingSkyKingFlatsItem2" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "WulingSkyKingFlatsItem1" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "WulingSkyKingFlatsAttempt2" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "WulingSkyKingFlatsAttempt4" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "WulingSkyKingFlatsAttempt3" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "ValleyIVInfrastructureOutpostAttempt3" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "ValleyIVReconstructionCommandAttempt1" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 WARN  [Config] 选项 "ValleyIVInfrastructureOutpostItem1" 已不存在，已丢弃保存值
+2026-09-10 10:08:42 INFO  [App] 窗口图标已设置: D:\ark\maaend/locales/MaaEnd-Tiny.png
+2026-09-10 10:08:42 WARN  [App] 自启动时隐藏主窗口失败: Command plugin:window|hide not allowed by ACL
+2026-09-10 10:08:42 INFO  [App] 已恢复后端状态: 0 个实例
+2026-09-10 10:08:42 INFO  [App] Auto-cleared log files and debug artifacts on launch: 12
+2026-09-10 10:08:42 INFO  [MAA] 初始化 MaaFramework, libDir: (默认)
+2026-09-10 10:08:42 INFO  [App] Restored runtime logs: skipped (auto-clear on launch enabled)
+2026-09-10 10:08:42 INFO  [MAA] MaaFramework 版本: v5.13.0
+2026-09-10 10:08:42 DEBUG [MAA] 检查 MaaFramework 版本...
+2026-09-10 10:08:42 INFO  [MAA] 版本检查结果: {"current":"v5.13.0","minimum":"v5.12.1","is_compatible":true}
+2026-09-10 10:08:42 INFO  [App] 加载完成, 项目: MaaEnd
+2026-09-10 10:08:42 DEBUG [MAA] 获取 MaaFramework 版本...
+2026-09-10 10:08:42 INFO  [Task] [调度器] 启动，轮询间隔 30 秒
+2026-09-10 10:08:42 DEBUG [Config] 保存配置, 路径: D:/ark/maaend/config/mxu-MaaEnd.json
+2026-09-10 10:08:42 INFO  [MAA] MaaFramework 版本: v5.13.0
+2026-09-10 10:08:42 INFO  [MAA] 搜索桌面窗口, classRegex: UnityWndClass , windowRegex: Endfield
+2026-09-10 10:08:42 INFO  [App] 开机自启动：激活配置并启动任务: AUTO-MAS
+2026-09-10 10:08:42 INFO  [App] 命令行 --instance 参数：匹配实例: AUTO-MAS
+2026-09-10 10:08:42 INFO  [MAA] 找到桌面窗口: 1 个
+2026-09-10 10:08:42 DEBUG [MAA]   窗口[0]: handle=721376, class=UnityWndClass, name=Endfield
+2026-09-10 10:08:42 DEBUG [MAA] 获取 MaaFramework 版本...
+2026-09-10 10:08:42 INFO  [App] 命令行 --quit-after-run 参数：任务完成后将关闭自身
+2026-09-10 10:08:42 INFO  [App] 检查更新: MaaEnd, 当前版本: v2.28.0-beta.5, 频道: beta
+2026-09-10 10:08:42 INFO  [MAA] 创建实例: automas
+2026-09-10 10:08:42 INFO  [MAA] MaaFramework 版本: v5.13.0
+2026-09-10 10:08:42 DEBUG [App] 使用缓存 ETag 请求: https://end.maafw.com/anno.md
+2026-09-10 10:08:42 DEBUG [App] 缓存索引加载成功，条目数: 2
+2026-09-10 10:08:42 INFO  [MAA] 创建实例成功: automas
+2026-09-10 10:08:42 DEBUG [MAA] 控制器配置: {"type":"Win32","handle":721376,"screencap_method":32,"mouse_method":1,"keyboard_method":1}
+2026-09-10 10:08:42 INFO  [MAA] 连接控制器, 实例: automas 类型: Win32
+2026-09-10 10:08:43 INFO  [MAA] 控制器连接请求已发送, ctrlId: 100000001
+2026-09-10 10:08:43 INFO  [Config] 配置保存成功
+2026-09-10 10:08:43 DEBUG [App] 跳过本客户端自身触发的 config-changed
+2026-09-10 10:08:43 INFO  [App] 更新检查完成: 最新版本=v2.28.0-beta.5, 有更新=false
+2026-09-10 10:08:43 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: connected
+2026-09-10 10:08:43 DEBUG [App] URL 内容来自缓存: https://end.maafw.com/anno.md
+2026-09-10 10:08:43 DEBUG [App] 使用缓存数据: https://end.maafw.com/anno.md
+2026-09-10 10:08:43 DEBUG [Config] 保存配置, 路径: D:/ark/maaend/config/mxu-MaaEnd.json
+2026-09-10 10:08:43 INFO  [Config] 配置保存成功
+2026-09-10 10:08:43 DEBUG [App] 跳过本客户端自身触发的 config-changed
+2026-09-10 10:08:43 INFO  [MAA] 进程检查: D:\endfield\Hypergryph Launcher\games\Endfield Game\Endfield.exe 运行中: true
+2026-09-10 10:08:43 INFO  [Task] 实例 AUTO-MAS: 前置程序已在运行，跳过执行: Endfield.exe
+2026-09-10 10:08:43 INFO  [MAA] 搜索桌面窗口, classRegex: UnityWndClass , windowRegex: Endfield
+2026-09-10 10:08:43 INFO  [Task] 实例 AUTO-MAS: 等待窗口就绪...
+2026-09-10 10:08:43 INFO  [Task] 实例 AUTO-MAS: 窗口已就绪
+2026-09-10 10:08:43 INFO  [MAA] 找到桌面窗口: 1 个
+2026-09-10 10:08:43 DEBUG [MAA]   窗口[0]: handle=721376, class=UnityWndClass, name=Endfield
+2026-09-10 10:08:43 INFO  [Task] 实例 AUTO-MAS: 窗口已就绪，等待 5 秒稳定后连接...
+2026-09-10 10:08:49 DEBUG [MAA] 获取 MaaFramework 版本...
+2026-09-10 10:08:49 INFO  [MAA] MaaFramework 版本: v5.13.0
+2026-09-10 10:08:49 INFO  [MAA] 创建实例: automas
+2026-09-10 10:08:49 INFO  [MAA] 创建实例成功: automas
+2026-09-10 10:08:49 INFO  [Task] 实例 AUTO-MAS: 自动连接已保存的设备...
+2026-09-10 10:08:49 INFO  [MAA] 搜索桌面窗口, classRegex: UnityWndClass , windowRegex: Endfield
+2026-09-10 10:08:49 INFO  [MAA] 找到桌面窗口: 1 个
+2026-09-10 10:08:49 DEBUG [MAA]   窗口[0]: handle=721376, class=UnityWndClass, name=Endfield
+2026-09-10 10:08:49 INFO  [MAA] 连接控制器, 实例: automas 类型: Win32
+2026-09-10 10:08:49 DEBUG [MAA] 控制器配置: {"type":"Win32","handle":721376,"screencap_method":32,"mouse_method":1,"keyboard_method":1}
+2026-09-10 10:08:49 INFO  [MAA] 控制器连接请求已发送, ctrlId: -1
+2026-09-10 10:08:49 INFO  [Task] 实例 AUTO-MAS: 连接成功，等待 5 秒后继续...
+2026-09-10 10:08:49 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: connected
+2026-09-10 10:08:54 INFO  [Task] 实例 AUTO-MAS: 加载资源...
+2026-09-10 10:08:54 INFO  [MAA] 加载资源, 实例: automas , 路径数: 1
+2026-09-10 10:08:54 DEBUG [MAA]   路径[0]: D:\ark\maaend/resource
+2026-09-10 10:08:54 INFO  [MAA] 资源加载请求已发送, resIds: [100000001]
+2026-09-10 10:08:55 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: resource-loading
+2026-09-10 10:08:55 INFO  [MAA] 启动任务, 实例: automas , 任务数: 1 , cwd: D:\ark\maaend
+2026-09-10 10:08:55 INFO  [Task] 实例 AUTO-MAS: 开始执行任务, 数量: 2, 分段: primary:1, trailing:1
+2026-09-10 10:08:55 INFO  [MAA] Agent 配置: [{"child_exec":"agent/go-service"},{"child_exec":"agent/cpp-algo","child_args":[]}] , 数量: 2 , tcpCompatMode: false
+2026-09-10 10:08:55 DEBUG [MAA]   任务[0]: entry=AutoCollectSchedule, pipelineOverride=[{"EnterCameraModeLongPress":{"key":82},"EnterCameraModeKeyUp":{"key":82},"_AutoEcoFarmEnterCameraModeFallback":{"key":82},"_AutoEcoFarmEnterCameraModeFallbackRelease":{"key":82},"_AutoEcoFarmEnterCameraModeFallbackReleaseOnError":{"key":82},"AutoCollectClick":{"key":70},"MapNavigatorInteract":{"key":70},"AutoPickFalls":{"key":70},"AutoPickInteractive":{"key":70},"ProtocolSpaceTouchExitTouch":{"key":70},"ProtocolSpaceTouchExitTouchRetry":{"key":70}},{"__AutoFightActionComboClick":{"key":69},"__AutoFightActionSkillOperators1":{"key":49},"__AutoFightActionSkillOperators2":{"key":50},"__AutoFightActionSkillOperators3":{"key":51},"__AutoFightActionSkillOperators4":{"key":52},"__AutoFightActionEndSkillOperators1":{"key":49},"__AutoFightActionEndSkillOperators2":{"key":50},"__AutoFightActionEndSkillOperators3":{"key":51},"__AutoFightActionEndSkillOperators4":{"key":52},"__AutoFightActionSwitchCharacterOperators1":{"key":112},"__AutoFightActionSwitchCharacterOperators2":{"key":113},"__AutoFightActionSwitchCharacterOperators3":{"key":114},"__AutoFightActionSwitchCharacterOperators4":{"key":115}},{"MapNavigatorZiplinePreference":{"attach":{"zipline":"auto"}}},{"AutoCollectScheduleEnabled":{"attach":{"monday":true}}},{"AutoCollectScheduleEnabled":{"attach":{"thursday":true}}},{"AutoCollectRoute4Start":{"enabled":true}},{"AutoCollectRoute5Start":{"enabled":true}},{"AutoCollectRoute6Start":{"enabled":true}},{"AutoCollectRoute13Start":{"enabled":true}},{"AutoCollectRoute14Start":{"enabled":true}},{"AutoCollectCommonRoute1Start":{"enabled":true}},{"AutoCollectCommonRoute2Start":{"enabled":true}},{"AutoCollectRoute1Start":{"enabled":true}},{"AutoCollectRoute2Start":{"enabled":true}},{"AutoCollectRoute3Start":{"enabled":true}},{"AutoCollectRoute7Start":{"enabled":true}},{"AutoCollectRoute8Start":{"enabled":true}},{"AutoCollectRoute9Start":{"enabled":true}},{"AutoCollectRoute10Start":{"enabled":true}},{"AutoCollectRoute11Start":{"enabled":true}},{"AutoCollectRoute12Start":{"enabled":true}},{"AutoCollectRoute15Start":{"enabled":true}},{"AutoCollectRoute16Start":{"enabled":true}},{"AutoCollectRoute17Start":{"enabled":true}},{"AutoCollectCommonRoute3Start":{"enabled":true}},{"AutoCollectCommonRoute4Start":{"enabled":true}},{"AutoCollectCommonRoute5Start":{"enabled":true}},{"AutoCollectCommonRoute6Start":{"enabled":true}},{"AutoCollectCommonRoute7Start":{"enabled":true}},{"AutoCollectCommonRoute8Start":{"enabled":true}},{"StashBackpackMain":{"enabled":true}},{"StashBackpackStashQuick":{"enabled":true}},{"StashBackpackUsableItemsLimited":{"enabled":true}}]
+2026-09-10 10:08:56 INFO  [MAA] 任务已提交, taskIds: [200000001]
+2026-09-10 10:08:56 INFO  [Task] 实例 AUTO-MAS: 前段任务已提交, task_ids: [200000001]
+2026-09-10 10:08:56 DEBUG [Config] 保存配置, 路径: D:/ark/maaend/config/mxu-MaaEnd.json
+2026-09-10 10:08:56 INFO  [Config] 配置保存成功
+2026-09-10 10:08:56 DEBUG [App] 跳过本客户端自身触发的 config-changed
+2026-09-10 10:08:56 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: task-progress
+2026-09-10 10:09:12 INFO  [Task] [调度器] 扫描 2 个时间槽: 2026-09-10-10-08 → 2026-09-10-10-09
+2026-09-10 10:09:34 INFO  [Task] 实例 AUTO-MAS: 收尾段切换为 Dummy Controller
+2026-09-10 10:09:34 DEBUG [MAA] 控制器配置: {"type":"Dummy"}
+2026-09-10 10:09:34 INFO  [MAA] 连接控制器, 实例: automas 类型: Dummy
+2026-09-10 10:09:34 INFO  [MAA] 控制器连接请求已发送, ctrlId: 100000141
+2026-09-10 10:09:34 DEBUG [MAA]   任务[0]: entry=MXU_KILLPROC, pipelineOverride=[{"MXU_KILLPROC":{"action":"Custom","custom_action":"MXU_KILLPROC_ACTION","target":[0,0,1,1],"custom_action_param":{"kill_self":false,"process_name":"Endfield.exe"}}}]
+2026-09-10 10:09:34 INFO  [MAA] 启动任务, 实例: automas , 任务数: 1 , cwd: D:\ark\maaend
+2026-09-10 10:09:34 INFO  [MAA] Agent 配置: [{"child_exec":"agent/go-service"},{"child_exec":"agent/cpp-algo","child_args":[]}] , 数量: 2 , tcpCompatMode: false
+2026-09-10 10:09:34 INFO  [Task] 实例 AUTO-MAS: 收尾任务已提交, task_ids: [200000022]
+2026-09-10 10:09:34 INFO  [MAA] 任务已提交, taskIds: [200000022]
+2026-09-10 10:09:34 INFO  [Task] 实例 AUTO-MAS: 任务已提交, task_ids: [200000001,200000022]
+2026-09-10 10:09:34 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: task-progress
+2026-09-10 10:09:35 INFO  [App] 自动执行任务完成，关闭自身
+2026-09-10 10:09:35 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: tasks-completed
