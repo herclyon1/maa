@@ -66,7 +66,10 @@ def load_env(path: Path) -> None:
 
 
 def main(argv: list[str]) -> int:
-    if not argv:
+    # `push.py --help` once went out as a real message titled 「--help」 with
+    # body 「.」 (2026-09-11 01:25, the user: 「你把谁关禁闭了，他给我发help呢」).
+    # Anything starting with "-" is a flag, never a title.
+    if not argv or argv[0] in ("-h", "--help") or (argv[0].startswith("-") and argv[0] != "--all"):
         sys.exit(__doc__)
     send_all = False
     if argv[0] == "--all":
