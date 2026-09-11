@@ -40,6 +40,10 @@ _MAS_HTTP_TIMEOUT = 20
 MAS_BUDGET_SECONDS = 600
 # How long to wait for AUTO-MAS's backend to start listening.
 MAS_WAIT_SECONDS = 180
+# After install the backend restarts itself; how long to wait for it to come back
+# and report the new version. Measured 2026-09-12: install 01:18:55, new backend
+# up 01:19:11 - sixteen seconds.
+MAS_INSTALL_WAIT_SECONDS = 150
 
 
 def _automas_version(automas_dir: Path) -> str:
@@ -51,6 +55,35 @@ def _automas_version(automas_dir: Path) -> str:
         return str(data.get("version") or "")
     except (OSError, ValueError, TypeError):
         return ""
+
+
+def _live_version() -> str:
+    """The version the running backend reports itself (GET /api/core/health).
+
+    Since the Electron build (v5.5.0-beta.3, 2026-09-10) `res/version.json` is a
+    leftover that no update rewrites: it kept saying beta.2 while the backend logged
+    beta.4, so every boot 2026-09-10..12 "found" the same update, downloaded 115 MB
+    and reinstalled it. The backend's own constant is the truth; '' when it cannot
+    be asked, and then the file value stands.
+    """
+    import urllib.request  # noqa: PLC0415
+    try:
+        with urllib.request.urlopen(mas_base() + "/api/core/health",
+                                    timeout=_MAS_HTTP_TIMEOUT) as resp:
+            return str(json.loads(resp.read().decode("utf-8", "replace")).get("version") or "")
+    except Exception:  # noqa: BLE001 - not up yet; the caller keeps waiting
+        return ""
+
+
+def _wait_for_version(want: str, deadline: float) -> str:
+    """Poll the backend until it reports `want` or the deadline passes; returns what it last said."""
+    got = ""
+    while time.monotonic() < deadline:
+        got = _live_version()
+        if got == want:
+            return got
+        time.sleep(5)
+    return got
 
 
 def _mas_post(path: str, body: dict | None = None) -> dict:
@@ -125,6 +158,11 @@ def run_automas(automas_dir: Path | None,
             # Measured 2026-08-29: without force -> 404; with force -> a fresh
             # token, status 200. This is why AUTO-MAS kept saying it had started
             # downloading from 08-27 on and never managed to install.
+            live = _live_version()
+            if live and live != version:
+                log.info("预更新：AUTO-MAS 后端自报 %s（res/version.json 还写着 %s，新版不再改那个文件）",
+                         live, version)
+                version = live
             answer = _mas_post("/api/update/check",
                                {"current_version": version, "if_force": True})
             break
@@ -166,4 +204,15 @@ def run_automas(automas_dir: Path | None,
     except Exception:  # noqa: BLE001
         log.warning("预更新：AUTO-MAS 安装没能启动，本轮照旧", exc_info=True)
         return ""
-    return f"AUTO-MAS 有更新：{_span(version, latest)}（安装中，装完自动重启）"
+    # 「开始安装」 was where the story ended until 2026-09-12: nothing said whether
+    # the install took. The backend restarts itself; wait for it to answer with
+    # the new version and say so either way.
+    got = _wait_for_version(latest, time.monotonic() + MAS_INSTALL_WAIT_SECONDS)
+    if got == latest:
+        log.info("预更新：AUTO-MAS 已更新到 %s（后端重启后自报）", latest)
+        return f"AUTO-MAS 已更新：{_span(version, latest)}"
+    log.warning("预更新：AUTO-MAS 装完 %.0f 秒内后端没有自报 %s（最后一次说的是 %s），留到下次开机再看",
+                MAS_INSTALL_WAIT_SECONDS, latest, got or "问不到")
+    _note(problems, f"AUTO-MAS 预更新：{latest} 的安装已启动，但后端没有自报新版本"
+                    f"（最后说的是 {got or '问不到'}），留到下次开机再看")
+    return f"AUTO-MAS 有更新：{_span(version, latest)}（安装已启动，还没确认装成）"

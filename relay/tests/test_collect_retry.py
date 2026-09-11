@@ -77,6 +77,16 @@ check("隔一天不连续，不算复发", cr.recurrent(d3), ["AutoCollectRoute1
 cr.clear_failures(store, ["AutoCollectRoute15"])
 check("走通一次就清零", "AutoCollectRoute15" not in json.loads(store.read_text(encoding="utf-8")))
 
+print("\n[MXU 真正绑定的端口从它自己的日志里读]")
+md0 = tmpdir() / "m0"
+(md0 / "debug").mkdir(parents=True)
+check("没日志就是默认 12701", cr.mxu_port(md0), 12701)
+(md0 / "debug" / "mxu-tauri.log").write_text(
+    "[2026-09-12][01:27:08][INFO][mxu_lib::web_server] Web server listening on http://127.0.0.1:12701\n"
+    "[2026-09-12][01:27:16][INFO][mxu_lib::web_server] Web server listening on http://127.0.0.1:12702 (fallback from default port 12701)\n",
+    encoding="utf-8")
+check("取最后一次绑定的端口", cr.mxu_port(md0), 12702)
+
 print("\n[run_retry：没有 MXU 记的参数就拒绝，不编；接口封装能发请求]")
 md = tmpdir() / "maaend"
 (md / "debug").mkdir(parents=True)

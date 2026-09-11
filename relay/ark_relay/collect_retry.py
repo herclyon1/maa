@@ -198,6 +198,23 @@ def recurrent(data: dict[str, list[str]], days: int = RECURRENT_DAYS) -> list[st
 
 # ------------------------------------------------------------- the run itself
 
+_LISTEN = re.compile(r"Web server listening on http://127\.0\.0\.1:(\d+)")
+
+
+def mxu_port(maaend_dir: Path, default: int = 12701) -> int:
+    """The port MXU's web server really bound - it falls back to 12702 when 12701 is held (its own log says so)."""
+    p = maaend_dir / "debug" / "mxu-tauri.log"
+    try:
+        lines = p.read_text(encoding="utf-8", errors="replace").splitlines()[-400:]
+    except OSError:
+        return default
+    port = default
+    for line in lines:
+        if m := _LISTEN.search(line):
+            port = int(m.group(1))
+    return port
+
+
 def api(path: str, body: dict | None = None, timeout: int = 30):
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(MXU + path, data=data,
@@ -261,9 +278,18 @@ def run_retry(maaend_dir: Path, routes: list[str], weekday: str, *, spawn, timeo
         return {r: None for r in routes}, "MaaEnd 的日志里找不到上一趟采集的参数，不敢自己编，这次不补跑"
     override = build_override(parts, routes, weekday)
 
+    global MXU  # noqa: PLW0603 - the port is discovered per launch
+    if "MaaEnd.exe" in _running(("MaaEnd.exe",)):
+        MXU = f"http://127.0.0.1:{mxu_port(maaend_dir)}/api"
+        if not _wait(lambda: api("/maa/state", timeout=5) is not None, 10, step=2):
+            # Running but deaf: a leftover instance whose port is gone. Start over.
+            _kill("MaaEnd.exe")
+            time.sleep(3)
     if "MaaEnd.exe" not in _running(("MaaEnd.exe",)):
         spawn(maaend_dir / "MaaEnd.exe", maaend_dir, ())
-    if not _wait(lambda: api("/maa/state") is not None, 60):
+        time.sleep(8)
+    MXU = f"http://127.0.0.1:{mxu_port(maaend_dir)}/api"
+    if not _wait(lambda: api("/maa/state", timeout=5) is not None, 60):
         return {r: None for r in routes}, "MaaEnd 的接口 60 秒没起来"
     game = _game_exe(maaend_dir)
     if game is None:
@@ -370,15 +396,22 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     state_dir = Path(cfg.state_dir)
     stamp = state_dir / "collect-retry" / f"{day}.json"
     if stamp.exists():
+        log.info("自动采集补跑：%s 已经跑过（%s）", day, stamp)
         return False
     if not cfg.maaend_dir or not cfg.history_dir:
+        log.info("自动采集补跑：没配 MaaEnd 目录或历史目录，不跑")
         return False
     entries = eng.state.read_ledger(day)
     zh = _locale(Path(cfg.maaend_dir))
     last, routes = latest_gathering_run(entries, Path(cfg.history_dir), failed_labels_from_locale(zh))
-    if not last or not routes:
+    if not last:
+        log.info("自动采集补跑：%s 没有带采集结论的终末地记录", day)
+        return False
+    if not routes:
+        log.info("自动采集补跑：%s 全部路线走通，没有要补的", last["run_id"])
         return False
     if eng._scripts_running():
+        log.info("自动采集补跑：脚本或游戏还在跑，这次不补（%s）", "、".join(routes))
         return False
     stamp.parent.mkdir(parents=True, exist_ok=True)
     stamp.write_text(json.dumps({"run_id": last["run_id"], "routes": routes, "started": now.isoformat()}),

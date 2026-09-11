@@ -93,25 +93,28 @@ def stop_all():
         r = post("/api/dispatch/stop", {"taskId": tid})
         print(f"  API 停「{name}」: {r.get('message', r)}")
     time.sleep(12)
-    # ② 还有残留才动刀
-    busy, _ = running()
-    if busy:
-        print("  残留:", busy, "→ taskkill")
-        for exe in SCRIPT_EXES:
+    # ② 还有残留才动刀。A game left open counts as residue: the relay's
+    # _scripts_running() sees Endfield.exe and holds every retry and the
+    # shutdown, so 「停干净」 with the game still up (2026-09-12 02:17) was a lie.
+    busy, games = running()
+    if busy or games:
+        print("  残留:", busy + games, "→ taskkill")
+        for exe in SCRIPT_EXES + GAME_EXES:
             subprocess.run(["taskkill", "/IM", exe, "/T", "/F"], capture_output=True)
         for pid in okww_pids():
             subprocess.run(["taskkill", "/PID", pid, "/T", "/F"], capture_output=True)
         time.sleep(8)
     # ③ 复查有没有被重新拉起——拉起就再停一轮，并且出声
-    busy, _ = running()
+    busy, games = running()
     if busy:
         print("  ⚠️ 被 AUTO-MAS 重新拉起:", busy, "→ 再停一轮")
         for name, tid in {**qids(), **ids()}.items():
             post("/api/dispatch/stop", {"taskId": tid})
         time.sleep(8)
-        busy, _ = running()
-    print("停干净:" if not busy else "❌ 还没停干净:", busy or "是")
-    return not busy
+        busy, games = running()
+    left = busy + games
+    print("停干净:" if not left else "❌ 还没停干净:", left or "是")
+    return not left
 
 
 def start(name) -> int:

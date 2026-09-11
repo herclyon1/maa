@@ -40,13 +40,14 @@ def main() -> int:
             return {"if_need_update": False, "latest_version": "v5.4.0"}
         return {}
 
-    orig_post, orig_ver = P._mas_post, P._automas_version
+    orig_post, orig_ver, orig_live = P._mas_post, P._automas_version, P._live_version
     P._mas_post = fake_post
     P._automas_version = lambda _root: "v5.4.0"
+    P._live_version = lambda: ""
     try:
         P.run_automas(Path("."), budget_s=1)
     finally:
-        P._mas_post, P._automas_version = orig_post, orig_ver
+        P._mas_post, P._automas_version, P._live_version = orig_post, orig_ver, orig_live
 
     checks = [b for p, b in calls if p == "/api/update/check"]
     print("=== 查更新的调用 ===")
@@ -57,6 +58,53 @@ def main() -> int:
           all(c.get("current_version") == "v5.4.0" for c in checks), True)
     check("带了 if_force=True（不带就会拿到过期令牌）",
           all(c.get("if_force") is True for c in checks), True)
+
+    # res/version.json is stale since the Electron build; the backend's own
+    # /api/core/health answer must be what the update check is asked with.
+    calls.clear()
+    P._mas_post, P._automas_version, P._live_version = fake_post, (lambda _root: "v5.5.0-beta.2"), (lambda: "v5.5.0-beta.4")
+    try:
+        P.run_automas(Path("."), budget_s=1)
+    finally:
+        P._mas_post, P._automas_version, P._live_version = orig_post, orig_ver, orig_live
+    checks = [b for p, b in calls if p == "/api/update/check"]
+    check("后端自报的版本压过 res/version.json 里的旧值",
+          bool(checks) and all(c.get("current_version") == "v5.5.0-beta.4" for c in checks), True)
+    # And when the backend cannot be asked, the file value still goes out.
+    P._live_version = lambda: ""
+    calls.clear()
+    P._mas_post, P._automas_version = fake_post, (lambda _root: "v5.5.0-beta.2")
+    try:
+        P.run_automas(Path("."), budget_s=1)
+    finally:
+        P._mas_post, P._automas_version, P._live_version = orig_post, orig_ver, orig_live
+    checks = [b for p, b in calls if p == "/api/update/check"]
+    check("问不到后端时退回文件里的版本号",
+          bool(checks) and all(c.get("current_version") == "v5.5.0-beta.2" for c in checks), True)
+
+    # The install path must end with a verdict: the backend came back on the new
+    # version (note says 已更新) or it did not (a problem is recorded).
+    def post_with_update(path, body=None):
+        calls.append((path, dict(body or {})))
+        if path == "/api/update/check":
+            return {"if_need_update": True, "latest_version": "v5.5.0-beta.4"}
+        return {}
+    orig_pack, orig_wait = P._wait_for_package, P._wait_for_version
+    P._mas_post, P._automas_version = post_with_update, (lambda _root: "v5.5.0-beta.2")
+    P._live_version = lambda: "v5.5.0-beta.2"
+    P._wait_for_package = lambda _root, _deadline: Path("UpdatePack_v5.5.0-beta.4.zip")
+    P._wait_for_version = lambda want, deadline: want
+    problems = []
+    note = P.run_automas(Path("."), budget_s=1, problems=problems)
+    check("装成后通知说「已更新」", "已更新" in note and not problems, True)
+    P._wait_for_version = lambda want, deadline: "v5.5.0-beta.2"
+    try:
+        problems = []
+        note = P.run_automas(Path("."), budget_s=1, problems=problems)
+    finally:
+        P._mas_post, P._automas_version, P._live_version = orig_post, orig_ver, orig_live
+        P._wait_for_package, P._wait_for_version = orig_pack, orig_wait
+    check("没确认装成时记为未确认项", bool(problems) and "还没确认" in note, True)
 
     print("\nall checks passed" if not FAILED else f"\nFAILED: {FAILED}")
     return 0 if not FAILED else 1

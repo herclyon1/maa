@@ -113,7 +113,11 @@ def _read_from(path: Path, byte_offset: int) -> str:
 # creates the process on our behalf, so the caller does not need SE_TCB_NAME.
 def _spawn_via_task(exe: Path, cwd: Path, args: tuple[str, ...] = ()) -> bool:
     """Start exe in the interactive desktop session via a one-shot scheduled task. True on success."""
-    task = "ark-preupdate-launch"
+    # One task name per program: two launches seconds apart under a shared
+    # name made Register-ScheduledTask -Force stop the first instance while
+    # the second was starting (2026-09-12 01:27, MaaEnd then Endfield - the
+    # first MaaEnd died holding port 12701 and the second fell back to 12702).
+    task = "ark-preupdate-launch-" + "".join(c if c.isalnum() else "-" for c in exe.stem)[:40]
     quoted = subprocess.list2cmdline(list(args)) if args else ""
     ps = (
         f'$ErrorActionPreference="Stop";'

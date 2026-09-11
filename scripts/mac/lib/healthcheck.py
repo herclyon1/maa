@@ -35,30 +35,40 @@ def post(path, body=None):
         return json.loads(r.read().decode())
 
 
-print("=== 1. OK-WW 三条本地补丁 ===")
+print("=== 1. OK-WW 本地改动（都在 ok_tasks/ark_overrides.py 里，源文件必须是上游原样）===")
+# Since 2026-09-09 nothing is patched into OK-WW's source: the changes are
+# installed as an ok_tasks extension and bind at OK-WW start-up, which writes
+# C:\ProgramData\ark-okww-overlay.json. This section used to look for patch
+# markers inside the source files and went red on every boot after the move
+# (2026-09-12) - the truth is the overlay report plus a pristine source tree.
 work = Path(r"D:\ark\okww\data\apps\ok-ww\working\src\task")
+from ark_relay import okww_overlay                 # noqa: E402
+_ov = okww_overlay.target(r"D:\ark\okww")
+check("覆盖文件在位且和仓库一致",
+      _ov is not None and _ov.is_file()
+      and _ov.read_text(encoding="utf-8") == okww_overlay.source_text(), str(_ov))
+_rep = okww_overlay.last_report()
+_need = {"DailyTask.run", "DailyTask.run_additional_tasks", "NightmareNestTask.find_nest",
+         "NightmareNestTask.get_nest_to_go", "NightmareNestTask.run",
+         "FarmEchoTask.revive_action", "BaseWWTask.click_on_book_target"}
+_applied = set(_rep.get("applied") or [])
+check("上次启动时全部绑定成功（没有跳过、没有报错）",
+      bool(_rep) and not _rep.get("skipped") and not _rep.get("error") and _need <= _applied,
+      f"绑定 {len(_applied)} 条，跳过 {_rep.get('skipped')}，报错 {_rep.get('error') or '无'}，"
+      f"缺 {sorted(_need - _applied) or '无'}")
 daily = (work / "DailyTask.py").read_text(encoding="utf-8", errors="replace")
-# 必须带 self. 前缀：不带的话会匹配到定义/注释里的名字，比出来的位置是错的。
-check("领奖顺序（附加任务在领奖前）",
-      daily.find("self.run_additional_tasks()") < daily.find("self.claim_daily()"),
-      f"{daily.find('self.run_additional_tasks()')} < {daily.find('self.claim_daily()')}")
-domain = (work / "DomainTask.py").read_text(encoding="utf-8", errors="replace")
-# 2026-08-30 主动还原（理由见 okww_patch.ensure_patches 的 docstring），
-# 上游 PR #1625 也已关闭。这里守的是「没有半截残留」。
-check("副本失败补丁已还原（08-30 撤掉，不该再出现）",
-      "WaitFailedException" not in domain)
 nest = (work / "NightmareNestTask.py").read_text(encoding="utf-8", errors="replace")
-# 断言意图不断言字面：2026-08-29 把这段拆成 `if numerator == denominator:` 之后
-# 行为一模一样，守字面的断言却红了。真正要守的是「旧的 已击败必须为0 没回来」。
-nest_code = "\n".join(l.split("#", 1)[0] for l in nest.splitlines())
-check("巢穴：允许续刷（旧的 已击败==0 限制没回来）",
-      "numerator == '0'" not in nest_code and 'numerator == "0"' not in nest_code)
-check("巢穴：打完没进展就跳过", "_next_nest_with_progress" in nest)
-check("巢穴：可指定点位", "Only Farm These Nests" in nest)
+domain = (work / "DomainTask.py").read_text(encoding="utf-8", errors="replace")
 combat = (work / "BaseCombatTask.py").read_text(encoding="utf-8", errors="replace")
-# 同上：饿死是我们改键位造成的，键位改回默认后撤掉（上游 #1632 自行关闭）。
-check("主C饿死补丁已还原（08-30 撤掉，不该再出现）",
-      "_starved_main_dps_target" not in combat)
+# The old in-source patches must not have crept back: a marker here means an
+# upstream file was edited again, and the next OK-WW update would half-apply.
+check("源文件里没有残留的旧补丁（巢穴 / 领奖 / 副本 / 主C）",
+      "_next_nest_with_progress" not in nest and "Only Farm These Nests" not in nest
+      and "ark_" not in daily and "WaitFailedException" not in domain
+      and "_starved_main_dps_target" not in combat)
+check("巢穴源文件 = 登记的上游原样",
+      (work / "NightmareNestTask.py").read_bytes()
+      == Path(r"C:\ProgramData\ark-relay\ark_relay\okww_files\NightmareNestTask.upstream.py").read_bytes())
 
 print("\n=== 2. 补丁能自动重贴（OK-WW 更新会覆盖 src）===")
 ref = Path(r"C:\ProgramData\ark-relay\ark_relay\okww_files")

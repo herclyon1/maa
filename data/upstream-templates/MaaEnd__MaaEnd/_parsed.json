@@ -1,0 +1,85 @@
+{
+ "bug_report.yml": {
+  "kind": "yml",
+  "title": "",
+  "labels": [
+   "bug"
+  ],
+  "fields": [
+   [
+    "问题描述及复现步骤",
+    true
+   ],
+   [
+    "日志文件",
+    true
+   ],
+   [
+    "软件画面截图",
+    true
+   ],
+   [
+    "游戏画面截图",
+    true
+   ]
+  ],
+  "route": "issue",
+  "notes": [
+   "表单模板：必须走网页表单提交（命令行提不上标签，勾选框要真实点击）"
+  ]
+ },
+ "feature_request.yml": {
+  "kind": "yml",
+  "title": "",
+  "labels": [
+   "enhancement"
+  ],
+  "fields": [
+   [
+    "功能描述",
+    true
+   ],
+   [
+    "日志文件",
+    true
+   ],
+   [
+    "MaaEnd 版本",
+    false
+   ],
+   [
+    "其他信息",
+    false
+   ]
+  ],
+  "route": "issue",
+  "notes": [
+   "表单模板：必须走网页表单提交（命令行提不上标签，勾选框要真实点击）"
+  ]
+ },
+ "other_issue.yml": {
+  "kind": "yml",
+  "title": "",
+  "labels": [
+   "question"
+  ],
+  "fields": [
+   [
+    "问题描述",
+    false
+   ],
+   [
+    "MaaEnd 版本",
+    false
+   ],
+   [
+    "其他信息",
+    false
+   ]
+  ],
+  "route": "issue",
+  "notes": [
+   "表单模板：必须走网页表单提交（命令行提不上标签，勾选框要真实点击）"
+  ]
+ }
+}
