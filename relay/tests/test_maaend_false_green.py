@@ -59,5 +59,12 @@ check("协议空间没进去被判为没干成", "协议空间 真的进了" in 
 fake_ok = fake.replace("任务完成: ⚔️协议空间", "进入协议空间成功\n[2026-09-10 09:05:00.000] 任务完成: ⚔️协议空间")
 check("进了就通过", "协议空间 真的进了" not in bad(maaend_checks(fake_ok, [])))
 
+
+print("[排班说今天不采，秒完成是对的，不能当假绿]")
+skipped = ("[2026-09-11 10:01:51.385] 任务开始: 🧺自动采集\n"
+           "[2026-09-11 10:01:51.482] 现在游戏时间是周五，根据执行周期跳过任务\n"
+           "[2026-09-11 10:01:51.566] 任务完成: 🧺自动采集\n")
+check("按周期跳过不报「没走路线」", "自动采集 真的走了路线" not in bad(maaend_checks(skipped, [])))
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

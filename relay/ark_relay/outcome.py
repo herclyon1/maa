@@ -139,6 +139,7 @@ _MAAEND_WORK = (
     ("基质刷取", re.compile(r"已完成一次基质刷取|理智不足"), "刷了"),
     ("协议空间", re.compile(r"进入协议空间成功|理智不足"), "进了"),
 )
+_MAAEND_SKIPPED = re.compile(r"根据执行周期跳过")
 _MAAEND_TS = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
 
 
@@ -217,6 +218,11 @@ def maaend_checks(text: str, on_error_names: list[str]) -> list[Check]:
             if key not in name:
                 continue
             if evidence.search(seg):
+                out.append(Check(f"{key} 真的{what}", True))
+            elif _MAAEND_SKIPPED.search(seg):
+                # The task itself said it was not due today (weekday schedule);
+                # a quick completion is then the right outcome, not a false green.
+                # The real line from 2026-09-11 10:01 is in test_maaend_false_green.
                 out.append(Check(f"{key} 真的{what}", True))
             else:
                 out.append(Check(f"{key} 真的{what}", False,
