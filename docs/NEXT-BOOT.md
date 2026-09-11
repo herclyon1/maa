@@ -1,27 +1,41 @@
 # Check these when the machine is next up
 
-## 2026-09-12 FIRST, before the 09:00 queue — OK-WW's three local patches may be off since 09-09
+## 2026-09-12 (Saturday) — verify the retry feature on a real morning, then decide two things
 
-healthcheck.py section 1 is red on all three nest markers and the reward order
-(`_next_nest_with_progress`, `Only Farm These Nests`, run_additional_tasks before
-claim_daily), while section 2 (`ensure_patches`) reports 「全部已在位 返回 []」. The
-reference files in `relay/ark_relay/okww_files/` do carry the markers, and the working
-`NightmareNestTask.py` was last written 09-09 13:58 - the same day the relay logged
-「OK-WW 有改动没贴上，上游多半改了结构：DailyTask.run」. So the likely state: the
-relay decided the patches no longer fit and left upstream code in place, and
-`ensure_patches` reports "nothing to do" for that. The 09-10 and 09-11 morning OK-WW
-runs were green, but with upstream nest logic (only a 已击败 0 nest is farmed).
+Done overnight 09-12 01:00-02:45 (Beijing), all on the machine:
 
-- Diff working vs reference for NightmareNestTask.py and DailyTask.py; read
-  `okww_patch.ensure_patches` for why it returns [] when the file differs.
-- Re-base the patches on the current upstream files if the structure changed
-  (see [[patch-versions-must-be-reverted]] / [[okww-source-master-copy]]), apply,
-  re-run healthcheck; if it cannot be done before 09:00, the nest step still runs
-  upstream logic - not a loss of resources, just fewer nests.
-- Then fix healthcheck section 1 so it agrees with section 2 (assert working ==
-  reference by hash instead of markers), and make ensure_patches report
-  「没贴上」 loudly rather than [].
+- **Per-route gathering retry ran for real**: `collect-retry --day 2026-09-11` re-ran only
+  routes 15/16 (the ones 09-11 06:17 failed), both reached `AutoCollectRoute15End` /
+  `Route16End` in maafw.log (02:25:51, 02:27:34), stamp
+  `state/collect-retry/2026-09-11.json` says passed=[15,16], failures.json absent (no
+  recurrence). Took 329 s including MaaEnd + game start and shutdown of both.
+- **Evidence bundles built and uploaded for all three**: MAA `report_09-12_02-30-21_part01/02.zip`,
+  OK-WW `ok-ww-log.zip` (70 MB), MaaEnd `MaaEnd-logs-v2.28.0-20260912-023111-part001..003.zip`;
+  errors=[] for each, all on the guest folder page https://gofile.io/d/RIBTYyFV.
+  `scripts/mac/evidence.sh list` mirrors the index.
+- **MaaEnd auto-updated rc.1 → v2.28.0 at 01:27** (during the first, failed retry attempt).
+  `prune_maaend_orphans` / `migrate_maaend_options` run by hand afterwards: nothing to change,
+  AutoCollect options intact. The boot stage will announce the version change.
+- **Saturday added to the master `AutoCollectSchedule`** (Mon/Thu → Mon/Thu/Sat) for the
+  full 17-route run he ordered for today; backup
+  `mxu-MaaEnd.json.bak-20260912-sat` next to the master.
+- AUTO-MAS pre-update was reinstalling the same version every boot since 09-10
+  (stale `res/version.json`); fixed in `preupdate_automas` (asks `/api/core/health`).
+- The OK-WW "patches off since 09-09" item below was a stale health check, not a
+  regression: the overlay report shows all 18 bindings applied; section 1 rewritten.
 
+To do when the machine is next up:
+
+1. After the 09:00 queue: did the relay's shutdown path run the retry by itself?
+   `relay.log` should show 「自动采集补跑」 lines (or the reason it did not:
+   已经跑过 / 脚本还在 / 全部走通). The stamp for 09-12 tells the outcome.
+2. If routes 15/16 failed again in the full run **and** in the retry, `failures.json`
+   carries day 1 of 2; a second consecutive day triggers COLLECT_RECURRENT and the
+   request for a manual upstream issue (evidence bundle already uploaded by then).
+3. **Ask him**: keep Saturday in the gathering schedule, or revert to Mon/Thu?
+   (`mastercfg.write_maaend(..., "AutoCollect/AutoCollectSchedule", [...])`).
+4. `evidence.sh list` should show the ROUND_INCOMPLETE / hold-for-retry uploads from
+   the real flow (handle._ship_evidence) - only the CLI path was exercised tonight.
 
 ## 2026-09-11 — two things landed while the machine was off; one rerun ordered
 
