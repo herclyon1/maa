@@ -17,6 +17,7 @@ exist - the next session will never read it, so writing it was wasted.
 | [PITFALLS.md](PITFALLS.md) | Pitfalls already fallen into and the shape they have now (the longest one; search it first when something breaks) |
 | [RETROSPECTIVE.md](RETROSPECTIVE.md) | The mistakes made, and the gates that now stop them |
 | [UPSTREAM-ISSUE-RULES.md](UPSTREAM-ISSUE-RULES.md) | Read before filing an issue / PR upstream |
+| [EVIDENCE.md](EVIDENCE.md) | Evidence bundles in each upstream's export format, their cloud copy, and the per-route gathering retry |
 
 ## Daily operations
 

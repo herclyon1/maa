@@ -27,12 +27,14 @@ ALLOWED_WORDS = {
 }
 VAGUE = ("未知错误", "这一步", "有问题", "出错")
 _WORD = re.compile(r"[A-Za-z][A-Za-z0-9./\-]*")
+# A link is something the reader taps or copies whole; it is not English prose.
+_URL = re.compile(r"https?://\S+")
 
 
 def plain(text: str) -> list[str]:
     """Where one piece of copy fails to read as plain language. An empty list means it passes."""
     problems = []
-    for w in _WORD.findall(text):
+    for w in _WORD.findall(_URL.sub(" ", text)):
         if w not in ALLOWED_WORDS and not re.fullmatch(r"v?\d[\d.]*(?:-beta\.\d+)?", w):
             problems.append(f"英文「{w}」")
     for v in VAGUE:
@@ -61,6 +63,47 @@ ROUND_INCOMPLETE = "⚠️ 这一轮没干完"
 MAAEND_REENABLED = "🔓 终末地日常已开回"
 MAAEND_PRUNED = "🧹 终末地配置清掉了死条目"
 MAAEND_MIGRATED = "🧩 终末地新版本改了设置格式，已按原意换写"
+COLLECT_RETRY_START = "🔁 自动采集：只补跑失败的路线"
+COLLECT_RETRY_OK = "✅ 自动采集：补跑后全部走完"
+COLLECT_RETRY_FAILED = "⚠️ 自动采集：补跑仍有路线没走通"
+COLLECT_RECURRENT = "🚩 自动采集：有路线连续两天补跑失败，疑似复发性问题"
+EVIDENCE_SAVED = "🗂️ 证据包已存到云端"
+EVIDENCE_SOURCE_CHANGED = "🧷 上游改了导出日志的代码，证据包的打法要重新核对"
+
+
+def collect_retry_start_body(names: str) -> str:
+    return f"这一趟没走通的：{names}。队列已经空了，现在只补跑这几条，别的不动。"
+
+
+def collect_retry_body(passed: list[str], failed: list[str], unknown: list[str], note: str) -> str:
+    lines = []
+    if passed:
+        lines.append("补跑走通：" + "、".join(passed))
+    if failed:
+        lines.append("补跑仍失败：" + "、".join(failed))
+    if unknown:
+        lines.append("没拿到结果：" + "、".join(unknown))
+    if note:
+        lines.append(note)
+    return "\n".join(lines) or "没有要补跑的路线"
+
+
+def collect_recurrent_body(names: list[str]) -> str:
+    return ("连续两天补跑都失败的：" + "、".join(names)
+            + "。这不像偶发，中继不再自动重试这几条；请人工带上证据包去上游报问题。")
+
+
+_SCRIPT_ZH = {"MAA": "明日方舟", "MaaEnd": "终末地", "OK-WW": "鸣潮"}
+
+
+def evidence_saved_body(script: str, started: str, files: int, page: str) -> str:
+    """`started` is the run's start as 「09-11 10:18」, not its run_id (that is a path)."""
+    return f"{_SCRIPT_ZH.get(script, script)} {started} 那趟：{files} 个文件\n下载页：{page}"
+
+
+def evidence_source_changed_body(names: list[str]) -> str:
+    return ("变了的：" + "、".join(names)
+            + "。在重新核对之前，中继打的证据包不保证和官方按钮导出的一样。")
 ECHO_FARM = "🥚 开始刷声骸"
 ECHO_FARM_DONE = "🥚 刷声骸收工"
 TACET_DROPS = "🖼️ 无音区产出"
@@ -189,6 +232,11 @@ def samples() -> list[str]:
         ESTOP_FAILED, NO_SHUTDOWN, MAAEND_PRUNED, ECHO_FARM, ECHO_FARM_DONE,
         PHONE_DEFERRED, CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
         AUTOMAS_DOWN, ROUND_INCOMPLETE, MAAEND_REENABLED, MAAEND_MIGRATED, TACET_DROPS,
+        COLLECT_RETRY_START, COLLECT_RETRY_OK, COLLECT_RETRY_FAILED, COLLECT_RECURRENT,
+        EVIDENCE_SAVED, EVIDENCE_SOURCE_CHANGED,
+        collect_retry_start_body("路线15：红矛叶"), collect_retry_body(["路线16"], ["路线15"], [], ""),
+        collect_recurrent_body(["路线15：红矛叶"]), evidence_saved_body("MaaEnd", "09-11 10:18", 3, "https://gofile.io/d/xxxx"),
+        evidence_source_changed_body(["MaaEnd 导出"]),
         patches(3), unconfirmed("预更新", 2), failed("MaaEnd"), self_healed("OK-WW"),
         cant_enter("MaaEnd"), missing(not_run("早班")), missing(not_run_in("OK-WW", "早班")),
         self_healed_body(3), failed_body_head(3), phone_deferred_body("跳过它下一趟"),

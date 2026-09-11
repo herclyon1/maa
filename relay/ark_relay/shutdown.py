@@ -325,6 +325,14 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
         _say_if_moment_passed(eng, now, v)
         return False
     eng._last_wait_note = ""
+    # The queue is idle and nothing else holds the machine: this is the one
+    # moment to re-run the gathering routes that failed today, before the
+    # power goes. It runs at most once a day and returns False when there is
+    # nothing to retry, so the normal path below is untouched on ordinary days.
+    from . import collect_retry  # noqa: PLC0415
+    if collect_retry.maybe_run(eng, now):
+        log.info("补跑刚做完，这一轮关机判断从头再来")
+        return False
     day = now.strftime("%Y-%m-%d")
     # Never power off silently: if the day's real report has not gone out yet (the
     # case after the morning shift), send an interim view first. A scheduled task

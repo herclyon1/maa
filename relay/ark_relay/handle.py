@@ -501,6 +501,7 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
         if not eng.state.mark_incomplete(day, rec.run_id, msg):
             log.warning("没能把「没干完」写回 %s 的账本，日报会少这一条", rec.run_id)
         eng.notifier.send(texts.ROUND_INCOMPLETE, msg, alert=True)
+        _ship_evidence(eng, rec)
         return
     log.info("✅ %s %s（%d 分钟）静默记账",
              rec.script, rec.run_id, rec.duration_min)
@@ -525,7 +526,36 @@ def _hold_for_retry(eng, rec: RunRecord, key: tuple) -> None:
         eng._archive_maaend_evidence(rec)
     elif rec.script == "OK-WW":
         _archive_okww_evidence(eng, rec)
+    _ship_evidence(eng, rec)
     log.info("⏳ %s 失败，暂不推送，等重试结果", rec.script)
+
+
+def _ship_evidence(eng, rec: RunRecord) -> None:
+    """Build the upstream-format bundle and push it off the machine; log the link.
+
+    The user, 2026-09-11: 「证据全都在电脑上面，都要我开机」. The bundle is the
+    same files the project's own export button would produce (evidence.py),
+    plus this round's AUTO-MAS log and record. Wrapped in try: shipping
+    evidence must never block bookkeeping.
+    """
+    try:
+        from . import evidence  # noqa: PLC0415
+        extra = []
+        if eng.cfg.history_dir:
+            for suffix in (".log", ".json"):
+                f = Path(eng.cfg.history_dir) / (rec.run_id + suffix)
+                if f.is_file():
+                    extra.append(f)
+        res = evidence.save_and_upload(eng.cfg, rec.script, rec.run_id, extra)
+        if res.get("page"):
+            log.info("🗂️ %s 证据包已上传（%d 个文件）→ %s", rec.run_id, len(res["uploaded"]), res["page"])
+            eng.notifier.send(texts.EVIDENCE_SAVED,
+                              texts.evidence_saved_body(rec.script, rec.started.astimezone(SERVER_TZ).strftime("%m-%d %H:%M"),
+                                                        len(res["uploaded"]), res["page"]))
+        else:
+            log.warning("🗂️ %s 证据包没传上去：%s", rec.run_id, "；".join(res.get("errors") or ["没有文件"]))
+    except Exception:
+        log.exception("证据外送出错（不影响记账）")
 
 
 def _handle(eng, rec: RunRecord) -> None:

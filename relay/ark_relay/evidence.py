@@ -16,8 +16,8 @@ file, from the source read on 2026-09-12 and pinned below. The pin is not
 decoration: `check_sources()` fetches the same files from the upstream default
 branch (through jsDelivr, which the machine can reach when github.com cannot)
 and compares hashes, so a change upstream produces a notice the same morning
-instead of a bundle that quietly stopped matching. The user, 2026-09-12:
-「源代码一旦有改动，你就一定要能发现」.
+instead of a bundle that quietly stopped matching (the user's requirement of
+2026-09-12: a source change 一定要能发现).
 
 Where it goes: gofile.io, an anonymous free host reachable from the machine
 (GitHub, R2 and pixeldrain are not; measured 2026-09-12). A guest account is
@@ -31,7 +31,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import re
 import shutil
 import time
 import urllib.error
@@ -121,6 +120,8 @@ def _walk_sorted(dir_: Path, prefix: str) -> list[tuple[Path, str]]:
 def maaend_entries(maaend_dir: Path) -> list[tuple[Path, str]]:
     """The export's file list in MXU's order. Public so a test can check it against a real tree."""
     debug = maaend_dir / "debug"
+    if not debug.is_dir():
+        return []
     regular: list[tuple[Path, str]] = []
     for p in sorted(debug.glob("*"), key=lambda q: q.name):
         if p.is_file() and p.suffix.lower() in (".log", ".dmp"):
@@ -366,17 +367,24 @@ def save_and_upload(cfg, script: str, run_id: str, extra: list[Path] = (), *, up
             except OSError as exc:
                 result["errors"].append(f"copy {p.name}: {exc}")
         result["files"] = [p.name for p in paths]
-    except Exception as exc:  # noqa: BLE001 - evidence must never block bookkeeping
+    except Exception as exc:  # evidence must never block bookkeeping
         log.exception("证据包打不出来")
         result["errors"].append(f"bundle: {type(exc).__name__}: {exc}")
         paths = []
     up = uploader or Gofile(state_dir)
     for p in paths:
-        try:
-            result["uploaded"].append(up.upload(p))
-        except Exception as exc:  # noqa: BLE001 - one failed upload must not lose the rest
-            log.warning("证据上传失败 %s: %s", p.name, exc)
-            result["errors"].append(f"upload {p.name}: {type(exc).__name__}: {exc}")
+        # gofile answered 500 to the very first 24 MB upload on 2026-09-12 and
+        # took the next one fine; three tries with a pause cover that.
+        for attempt in range(1, 4):
+            try:
+                result["uploaded"].append(up.upload(p))
+                break
+            except Exception as exc:  # noqa: BLE001 - one failed upload must not lose the rest
+                log.warning("证据上传失败 %s（第 %d 次）: %s", p.name, attempt, exc)
+                if attempt == 3:
+                    result["errors"].append(f"upload {p.name}: {type(exc).__name__}: {exc}")
+                else:
+                    time.sleep(15 * attempt)
     if result["uploaded"]:
         result["page"] = result["uploaded"][0].get("page", "")
     idx = state_dir / "evidence" / "index.jsonl"

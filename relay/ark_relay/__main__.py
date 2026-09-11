@@ -18,6 +18,7 @@ that tailscaled emits anyway, just by being connected.
 from __future__ import annotations
 
 import argparse
+import json
 import atexit
 import logging
 import os
@@ -155,6 +156,26 @@ def cmd_report(cfg: Config, mark: bool = True) -> int:
     return 0 if _build_local_engine(cfg).send_daily_now(mark=mark) else 1
 
 
+def cmd_collect_retry(cfg: Config, day: str = "") -> int:
+    """Run the per-route gathering retry now (the same code the shutdown path calls); `day` picks the ledger."""
+    from . import collect_retry  # noqa: PLC0415
+    eng = _build_local_engine(cfg)
+    ran = collect_retry.maybe_run(eng, day=day or None)
+    print("补跑已执行" if ran else "今天没有要补跑的路线（或已经补跑过）")
+    return 0
+
+
+def cmd_evidence(cfg: Config, script: str, run_id: str) -> int:
+    """Build and upload the upstream-format evidence bundle for one run."""
+    from . import evidence  # noqa: PLC0415
+    extra = []
+    if cfg.history_dir:
+        extra = [f for f in (Path(cfg.history_dir) / (run_id + s) for s in (".log", ".json")) if f.is_file()]
+    res = evidence.save_and_upload(cfg, script, run_id, extra)
+    print(json.dumps(res, ensure_ascii=False, indent=1))
+    return 0 if res.get("uploaded") else 1
+
+
 def _acquire_singleton(cfg: Config) -> object | None:
     """Refuse to start twice.
 
@@ -273,7 +294,10 @@ def _sleep_until_alarm(engine, cap: float) -> float:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="ark_relay", description="MAA 通知中继")
-    p.add_argument("command", choices=["local", "check", "test", "report"])
+    p.add_argument("command", choices=["local", "check", "test", "report", "collect-retry", "evidence"])
+    p.add_argument("--script", default="MaaEnd", help="evidence 模式：MAA / MaaEnd / OK-WW")
+    p.add_argument("--run-id", default="", help="evidence 模式：账本里的 run_id")
+    p.add_argument("--day", default="", help="collect-retry 模式：看哪一天的账本（默认今天）")
     p.add_argument("--env", type=Path, default=Path(".env"), help="配置文件（默认 ./.env）")
     p.add_argument("--again", action="store_true",
                    help="report 模式：只看一眼当天进度，不占用当天的日报名额")
@@ -292,6 +316,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_test(cfg)
     if args.command == "report":
         return cmd_report(cfg, mark=not args.again)
+    if args.command == "collect-retry":
+        return cmd_collect_retry(cfg, args.day)
+    if args.command == "evidence":
+        return cmd_evidence(cfg, args.script, args.run_id)
     return cmd_local(cfg)
 
 

@@ -53,9 +53,8 @@ _OVERRIDE_LINE = re.compile(r"entry=" + ENTRY + r", pipelineOverride=(\[.*\])\s*
 _NODE = re.compile(r"\[msg=Node\.Action\.Starting\].*?\"name\":\"(AutoCollect(?:Common)?Route\d+)(End|Failed)\"")
 _TAG = re.compile(r"<[^>]+>")
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
-# Two consecutive days of the same route failing its retry: stop retrying,
-# ask for a person. The user, 2026-09-12: 「如果是复发性的问题，中继请立刻标记
-# 这个是复发性问题，然后申请人工去提issue」.
+# Two consecutive days of the same route failing its retry: stop retrying and
+# ask for a person (the user's order of 2026-09-12: mark it recurrent, 申请人工去提issue).
 RECURRENT_DAYS = 2
 
 
@@ -317,10 +316,27 @@ def run_retry(maaend_dir: Path, routes: list[str], weekday: str, *, spawn, timeo
 
 # ------------------------------------------------------------------ glue
 
-def last_maaend_run(ledger_entries: list[dict]) -> dict | None:
-    """The day's last MaaEnd record - AUTO-MAS's own retries come later in the ledger, so last wins."""
+_VERDICT = re.compile(r"任务(完成|失败)[:：]\s*\S*自动采集")
+
+
+def latest_gathering_run(ledger_entries: list[dict], history_dir: Path, labels: dict[str, str]) -> tuple[dict | None, list[str]]:
+    """Walk the day's MaaEnd records from the last one back to the first whose log reached a gathering verdict.
+
+    AUTO-MAS's own retries come later in the ledger, and a retry that was
+    stopped by hand leaves a log with 「任务开始」 and no verdict (2026-09-11
+    10:46 and 10:48). Such a run says nothing about the routes, so the one
+    before it is the one that counts. Returns (record, failed route ids).
+    """
     runs = [e for e in ledger_entries if e.get("script") == "MaaEnd" and e.get("run_id")]
-    return runs[-1] if runs else None
+    for rec in reversed(runs):
+        p = Path(history_dir) / (str(rec["run_id"]) + ".log")
+        if not p.is_file():
+            continue
+        text = p.read_text(encoding="utf-8", errors="replace")
+        if not _VERDICT.search(text):
+            continue
+        return rec, failed_routes(text, labels)
+    return None, []
 
 
 def route_label(rid: str, zh_cn: dict) -> str:
@@ -335,12 +351,14 @@ def _locale(maaend_dir: Path) -> dict:
         return {}
 
 
-def maybe_run(eng, now: datetime | None = None) -> bool:
-    """Once per day, after the queue is idle: retry today's failed routes. True if a retry ran.
+def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
+    """Once per day, after the queue is idle: retry that day's failed routes. True if a retry ran.
 
     Called from the shutdown decision so a power-off waits for it. It reads
     only files the run already produced and refuses (with a logged reason)
-    rather than guess when any of them is missing.
+    rather than guess when any of them is missing. `day` names the ledger to
+    read (default today); the weekday attached to the retry is always the
+    real one, since that is the game's clock.
     """
     from . import texts  # noqa: PLC0415
     from .config import SERVER_TZ  # noqa: PLC0415
@@ -348,7 +366,7 @@ def maybe_run(eng, now: datetime | None = None) -> bool:
 
     cfg = eng.cfg
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
-    day = now.strftime("%Y-%m-%d")
+    day = day or now.strftime("%Y-%m-%d")
     state_dir = Path(cfg.state_dir)
     stamp = state_dir / "collect-retry" / f"{day}.json"
     if stamp.exists():
@@ -356,16 +374,9 @@ def maybe_run(eng, now: datetime | None = None) -> bool:
     if not cfg.maaend_dir or not cfg.history_dir:
         return False
     entries = eng.state.read_ledger(day)
-    last = last_maaend_run(entries)
-    if not last:
-        return False
-    log_path = Path(cfg.history_dir) / (str(last["run_id"]) + ".log")
-    if not log_path.is_file():
-        return False
     zh = _locale(Path(cfg.maaend_dir))
-    routes = failed_routes(log_path.read_text(encoding="utf-8", errors="replace"),
-                           failed_labels_from_locale(zh))
-    if not routes:
+    last, routes = latest_gathering_run(entries, Path(cfg.history_dir), failed_labels_from_locale(zh))
+    if not last or not routes:
         return False
     if eng._scripts_running():
         return False
@@ -378,7 +389,7 @@ def maybe_run(eng, now: datetime | None = None) -> bool:
     try:
         verdict, note = run_retry(Path(cfg.maaend_dir), routes, WEEKDAYS[now.weekday()],
                                   spawn=_spawn_interactive)
-    except Exception as exc:  # noqa: BLE001 - the retry must never take the service down
+    except Exception as exc:  # the retry must never take the service down
         log.exception("补跑本身出错")
         verdict, note = {r: None for r in routes}, f"补跑没跑起来：{type(exc).__name__}"
     passed = [r for r, v in verdict.items() if v is True]

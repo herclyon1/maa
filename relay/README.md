@@ -47,6 +47,8 @@ above.
 | `wuwa_boss.py` | 鸣潮「讨伐强敌」列表序号 → boss 名字，手机页的下拉与此同源 |
 | `banners.py` / `efstatus.py` / `snapshot.py` / `desktop.py` / `phone.py` | 卡池播报 / 终末地开服状态 / 配置快照 / 桌面助手 / 手机通道 |
 | `outcome.py` | 跑完核对「到底干成了什么」，没干成必须出声 |
+| `collect_retry.py` | 自动采集只补跑失败的路线（上游 #5660 不做）；连续两天仍败＝复发，请人工提 issue |
+| `evidence.py` | 按三家上游导出按钮的规则打证据包、钉住其源码、传到云端（gofile） |
 | `maintenance.py` | 三个游戏官方停服维护公告的机器可读来源 |
 | `skland.py` | 森空岛客户端，拿终末地的角色练度 |
 | `config.py` / `names.py` / `__main__.py` | 配置读取与地址出处 / 队列名归一 / 命令行入口 |

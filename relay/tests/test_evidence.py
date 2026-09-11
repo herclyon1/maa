@@ -8,8 +8,10 @@ are checked against the rules read from their source.
 """
 import json
 import os
+import random
 import sys
 import zipfile
+from datetime import datetime as _dt
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -53,7 +55,6 @@ check("三位数编号（条目 ≥100）", 3 if len(entries) >= 100 else 2, 3)
 print("\n[分卷按压缩后大小，规则照 MXU：估算触线才真压一次]")
 vd = tmpdir() / "vol"
 vd.mkdir()
-import random
 rnd = random.Random(7)
 big = []
 for k in range(4):
@@ -72,6 +73,27 @@ small = vd / "small.dmp"
 small.write_bytes(rnd.randbytes(1_000_000))
 vols = ev._volumes(big[:1] + [(rndlog, rndlog.name), (small, small.name)], ev.MAAEND_MAX_VOLUME)
 check("估算太乐观的那个文件仍进本卷（MXU 也是），但之后按真实字节切卷", [len(v) for v in vols], [2, 1])
+
+print("\n[bundle_maaend 真的打包：名字、编号宽度、文件都进去]")
+small = tmpdir() / "mx"
+(small / "debug" / "on_error").mkdir(parents=True)
+(small / "config").mkdir()
+(small / "debug" / "maafw.log").write_bytes(b"log\n" * 1000)
+(small / "config" / "mxu-MaaEnd.json").write_text("{}", encoding="utf-8")
+(small / "debug" / "on_error" / "a.png").write_bytes(b"\x89PNG" + b"\0" * 100)
+out = ev.bundle_maaend(small, tmpdir() / "mxout", "v2.28.0-rc.1", _dt(2026, 9, 11, 12, 23, 50))
+check("一卷，两位编号", [p.name for p in out], ["MaaEnd-logs-v2.28.0-rc.1-20260911-122350-part01.zip"])
+with zipfile.ZipFile(out[0]) as z:
+    check("三个文件都在，顺序对", z.namelist(), ["maafw.log", "config/mxu-MaaEnd.json", "on_error/a.png"])
+check("空目录不出包", ev.bundle_maaend(tmpdir() / "nothing", tmpdir() / "o2", "v"), [])
+
+print("\n[30 天前的本地证据目录会被清掉]")
+st = tmpdir() / "st"
+old_dir = st / "evidence" / "old"; old_dir.mkdir(parents=True)
+new_dir = st / "evidence" / "new"; new_dir.mkdir()
+os.utime(old_dir, (1_600_000_000, 1_600_000_000))
+check("清掉一个", ev.prune(st, 30), 1)
+check("新的留着", new_dir.exists() and not old_dir.exists())
 
 print("\n[MAA：config + resource(_custom) + cache + debug 根文件进 part01，子目录按 20MB 分卷]")
 maa = tmpdir() / "maa"
@@ -121,13 +143,14 @@ class FakeUp:
     def __init__(self): self.n = 0
     def upload(self, path):
         self.n += 1
-        if self.n == 2:
-            raise RuntimeError("boom")
+        if path.name.endswith("_part02.zip"):
+            raise RuntimeError("boom")            # fails all three tries
         return {"id": str(self.n), "name": path.name, "page": "https://gofile.io/d/x", "size": path.stat().st_size}
+ev.time.sleep = lambda s: None                     # no waiting between the retries in a test
 class Cfg:
     state_dir = tmpdir() / "state"; maaend_dir = None; maa_dir = maa; okww_dir = None; history_dir = None
 res = ev.save_and_upload(Cfg, "MAA", "2026-09-11/arknights/MAA-17-30-00", uploader=FakeUp())
-check("两个包，一个传上去一个报错", (len(res["files"]), len(res["uploaded"]), len(res["errors"])), (2, 1, 1))
+check("两个包，一个传上去一个三次都失败", (len(res["files"]), len(res["uploaded"]), len(res["errors"])), (2, 1, 1))
 check("有下载页", res.get("page"), "https://gofile.io/d/x")
 idx = (Cfg.state_dir / "evidence" / "index.jsonl").read_text(encoding="utf-8").strip().splitlines()
 check("索引写了一行", len(idx), 1)

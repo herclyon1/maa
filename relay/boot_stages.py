@@ -233,6 +233,32 @@ def _stage_selfupdate(log) -> bool:
     return False
 
 
+def _stage_evidence_sources(cfg, notifier, log) -> None:
+    """Compare the pinned upstream export sources with their default branches; say so if they moved.
+
+    The evidence bundles copy three upstream functions (evidence.py). If any
+    of those files changes upstream, the copy may no longer match what the
+    project's own button produces - and nobody would know. So every boot
+    fetches the current file (jsDelivr, reachable from the machine) and
+    compares hashes. Unreachable is only logged: that is the CDN, not a change.
+    """
+    try:
+        from ark_relay import evidence, texts  # noqa: PLC0415
+        changed, unreachable = evidence.check_sources()
+        if changed:
+            log.warning("上游导出代码变了：%s", "、".join(changed))
+            notifier.send(texts.EVIDENCE_SOURCE_CHANGED, texts.evidence_source_changed_body(changed))
+        elif unreachable:
+            log.info("上游导出代码核对：%d 个文件今天拉不到，明天再比", len(unreachable))
+        else:
+            log.info("上游导出代码核对：三处都和登记的一致")
+        n = evidence.prune(cfg.state_dir)
+        if n:
+            log.info("清掉 %d 个超过 30 天的本地证据目录", n)
+    except Exception:  # a check must never stop the boot
+        log.exception("核对上游导出代码时出错")
+
+
 def _stage_announce_update(notifier, log) -> None:
     """First thing once the new code is up: announce either the failed update or the applied one."""
     # We only reach here on a process that did NOT just apply an update -

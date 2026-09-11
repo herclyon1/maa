@@ -10,7 +10,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ark_relay import __main__ as cli
+from ark_relay import collect_retry
 from _tmp import tmpdir
+import argparse
 
 fails = []
 
@@ -35,18 +37,16 @@ calls = []
 class FakeEng:
     pass
 cli._build_local_engine = lambda cfg: FakeEng()
-from ark_relay import collect_retry
 orig = collect_retry.maybe_run
-collect_retry.maybe_run = lambda eng: calls.append(eng) or False
+collect_retry.maybe_run = lambda eng, day=None: calls.append((eng, day)) or False
 try:
-    rc = cli.cmd_collect_retry(Cfg)
+    rc = cli.cmd_collect_retry(Cfg, "2026-09-11")
 finally:
     collect_retry.maybe_run = orig
-check("调用了一次 maybe_run", len(calls), 1)
+check("调用了一次 maybe_run，带指定的日期", calls and calls[0][1] == "2026-09-11" and len(calls) == 1)
 check("退出码 0", rc, 0)
 
 print("\n[参数表认得这两个命令]")
-import argparse
 p = argparse.ArgumentParser()
 p.add_argument("command", choices=["local", "check", "test", "report", "collect-retry", "evidence"])
 check("choices 里有", set(p._actions[1].choices) >= {"collect-retry", "evidence"})
