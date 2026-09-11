@@ -1,0 +1,650 @@
+[
+{
+"part": 1,
+"name": "2026-09-10-6.log",
+"size": 18338,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "2026-09-11-1.log",
+"size": 15900,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "2026-09-11-10.log",
+"size": 22299,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "2026-09-11-11.log",
+"size": 14958,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "2026-09-11-2.log",
+"size": 17751,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "2026-09-11-3.log",
+"size": 17499,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "2026-09-11-4.log",
+"size": 15749,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "2026-09-11-5.log",
+"size": 13853,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "2026-09-11-6.log",
+"size": 80928,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "2026-09-11-7.log",
+"size": 22648,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "2026-09-11-8.log",
+"size": 24710,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "2026-09-11-9.log",
+"size": 21653,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "go-service.log",
+"size": 462784,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "go-service.stderr.log",
+"size": 0,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "maafw.bak.2026.09.11-00.09.15.731.log",
+"size": 86102587,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "maafw.bak.2026.09.11-00.29.16.613.log",
+"size": 16891431,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "maafw.bak.2026.09.11-00.36.25.388.log",
+"size": 22245818,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "maafw.bak.2026.09.11-00.44.14.969.log",
+"size": 22362826,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "maafw.bak.2026.09.11-00.54.15.354.log",
+"size": 28237757,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "maafw.bak.2026.09.11-09.39.05.377.log",
+"size": 17604673,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "maafw.bak.2026.09.11-09.44.29.179.log",
+"size": 21205021,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "maafw.bak.2026.09.11-09.47.34.946.log",
+"size": 22574964,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "maafw.bak.2026.09.11-09.53.39.195.log",
+"size": 70196655,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "maafw.bak.2026.09.11-09.59.55.532.log",
+"size": 68553523,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "maafw.bak.2026.09.11-10.46.11.419.log",
+"size": 85244645,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "maafw.bak.2026.09.11-12.19.20.690.log",
+"size": 24775594,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "maafw.log",
+"size": 5471,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "mxu-agent-0-19424.log",
+"size": 758,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "mxu-agent-0-24064.log",
+"size": 506,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "mxu-agent-0-5260.log",
+"size": 253,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "mxu-agent-1-21760.log",
+"size": 306,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "mxu-tauri.log",
+"size": 167930,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "mxu-tauri_2026-09-11_10-46-19.log",
+"size": 1048553,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "config/maa_option.json",
+"size": 127,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "config/mxu-MaaEnd.json",
+"size": 55956,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "config/mxu-MaaEnd.json.bak-0828-114613",
+"size": 73242,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "config/mxu-MaaEnd.json.bak-0828-115839",
+"size": 57480,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "config/mxu-MaaEnd.json.bak-0828-120346",
+"size": 58706,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "config/mxu-MaaEnd.json.bak-0828-120552",
+"size": 59163,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "config/mxu-MaaEnd.json.bak-0828-124148",
+"size": 58706,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "config/mxu-MaaEnd.json.bak-0828-124422",
+"size": 60367,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "config/mxu-MaaEnd.json.bak-0828-142019",
+"size": 60367,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "config/mxu-MaaEnd.json.bak-0828-204556",
+"size": 60368,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "config/mxu-MaaEnd.json.bak-20260815",
+"size": 73025,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "config/mxu-MaaEnd.json.bak-keeplogs-20260910233931",
+"size": 55377,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "config/mxu-MaaEnd.json.corrupt-20260814-054934",
+"size": 3957,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/config/maa_option.json",
+"size": 127,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260817-095807-11280.dmp",
+"size": 79133,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260817-095807-3796.dmp",
+"size": 79849,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260820-141336-17988.dmp",
+"size": 78545,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260820-141336-6108.dmp",
+"size": 79477,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260820-141947-11992.dmp",
+"size": 77449,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260820-141947-7436.dmp",
+"size": 78353,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260821-100452-13908.dmp",
+"size": 79821,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260821-100453-2576.dmp",
+"size": 79529,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260821-122902-21480.dmp",
+"size": 80057,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260821-122903-22068.dmp",
+"size": 78393,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260822-120729-21296.dmp",
+"size": 77833,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260822-120729-5592.dmp",
+"size": 77909,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260822-121940-2768.dmp",
+"size": 79865,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260822-122309-860.dmp",
+"size": 75689,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260822-122310-11824.dmp",
+"size": 78977,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260823-094140-1116.dmp",
+"size": 78997,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260823-094140-12888.dmp",
+"size": 77625,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260824-093933-8300.dmp",
+"size": 77128,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260824-093933-8784.dmp",
+"size": 78543,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260825-094249-24072.dmp",
+"size": 78287,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260825-094250-15456.dmp",
+"size": 78347,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260826-092047-10408.dmp",
+"size": 76955,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260826-092704-2208.dmp",
+"size": 74556,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260826-155452-22408.dmp",
+"size": 77208,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260826-155452-5028.dmp",
+"size": 75971,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260902-094817-2452.dmp",
+"size": 75895,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260902-095505-23516.dmp",
+"size": 78914,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260902-100152-2648.dmp",
+"size": 77947,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260902-225258-18664.dmp",
+"size": 75675,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260903-120414-10552.dmp",
+"size": 79551,
+"mtime": 1789068230.0
+},
+{
+"part": 1,
+"name": "cpp-algo/debug/cpp-algo-20260907-112721-8480.dmp",
+"size": 81432,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "cpp-algo/debug/maafw.bak.2026.09.11-00.09.48.666.log",
+"size": 46025085,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "cpp-algo/debug/maafw.bak.2026.09.11-00.54.15.470.log",
+"size": 18236787,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "cpp-algo/debug/maafw.bak.2026.09.11-10.01.51.202.log",
+"size": 41818619,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "cpp-algo/debug/maafw.bak.2026.09.11-10.46.26.842.log",
+"size": 40418965,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "cpp-algo/debug/maafw.log",
+"size": 9465672,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "record/CreditShoppingShelfSnapshots.json",
+"size": 659707,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "record/ElasticGoodsPrices.json",
+"size": 463102,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "record/IMS.json",
+"size": 2727,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "record/OutpostTradingCache.json",
+"size": 1464,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "record/SellProductCache.json",
+"size": 1432,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "on_error/2026.09.11-10.45.03.675_AutoCollectFinish.png",
+"size": 1207538,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "on_error/2026.09.11-10.43.37.475_AutoCollectRoute16Start.png",
+"size": 1312019,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "on_error/2026.09.11-10.42.35.406_AutoCollectRoute15Start.png",
+"size": 1093442,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "on_error/2026.09.11-10.42.35.171___ScenePrivateMapOverviewWulingRecognizeEnterMapWulingNorthWulingExclusionZone.png",
+"size": 1093442,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "on_error/2026.09.11-00.50.28.706_AutoCollectBeforeStashBackpack.png",
+"size": 241184,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "on_error/2026.09.11-00.50.28.689_SceneEnterWorldDijiang.png",
+"size": 241184,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "on_error/2026.09.11-00.50.28.672_SceneAnyEnterWorld.png",
+"size": 241184,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "on_error/2026.09.11-00.42.26.350_AutoCollectBeforeStashBackpack.png",
+"size": 241504,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "on_error/2026.09.11-00.42.26.334_SceneEnterWorldDijiang.png",
+"size": 241504,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "on_error/2026.09.11-00.42.26.318_SceneAnyEnterWorld.png",
+"size": 241504,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "on_error/2026.09.11-00.35.18.570_AutoCollectBeforeStashBackpack.png",
+"size": 241672,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "on_error/2026.09.11-00.35.18.552_SceneEnterWorldDijiang.png",
+"size": 241672,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "on_error/2026.09.11-00.35.18.532_SceneAnyEnterWorld.png",
+"size": 241672,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "on_error/2026.09.11-00.15.06.820_AutoCollectFinish.png",
+"size": 1180065,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "on_error/2026.09.11-00.14.42.145_AutoCollectRoute16Start.png",
+"size": 1340881,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "on_error/2026.09.10-17.24.20.296_AutoCollectFinish.png",
+"size": 1180690,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "on_error/2026.09.10-17.22.45.80_AutoCollectRoute16Goto.png",
+"size": 1406368,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "on_error/2026.09.10-17.20.41.168_AutoCollectRoute15Start.png",
+"size": 1702394,
+"mtime": 1789068230.0
+},
+{
+"part": 2,
+"name": "on_error/2026.09.10-16.57.42.658_AutoCollectRoute1Start.png",
+"size": 1092182,
+"mtime": 1789068230.0
+},
+{
+"part": 3,
+"name": "on_error/2026.09.10-16.57.42.420___ScenePrivateMapAnyEnterMapOverview.png",
+"size": 1092182,
+"mtime": 1789068230.0
+}
+]
