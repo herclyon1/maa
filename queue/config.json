@@ -1,10 +1,11 @@
 {
-  "version": 2026091101,
-  "name": "下次跑完不关机",
-  "note": "从电脑发来的指令：下次跑完不关机",
+  "version": 2026091102,
+  "name": "调试模式",
+  "note": "从电脑发来的指令：调试模式",
   "commands": [
     {
-      "action": "skip_shutdown"
+      "action": "debug_mode",
+      "minutes": 240
     }
   ]
 }
