@@ -219,8 +219,13 @@ The machine cannot detect on its own that it failed to boot, so that check lives
   Replied accepting that, with two full runs' logs attached; if it happens again I will add a recording.
   The relay's approach of judging by Completed is unaffected (we do not kill the process).
 
-### Upstream issue status (updated 2026-09-01)
+### Upstream issue status (updated 2026-09-11)
 
+* [MaaEnd#5660](https://github.com/MaaEnd/MaaEnd/issues/5660) (2026-09-11) - retry failed
+  gathering routes once at the end of a run instead of failing the whole task. Filed through
+  the web form with the 🗄️-exported bundle (3 parts, pasted from the macOS clipboard - the
+  extension's own upload caps at 10 MB), game screenshots of routes 15/16 and the software
+  screen. This is the re-filing of #5365 done by their rules.
 * [MaaEnd#5365](https://github.com/MaaEnd/MaaEnd/issues/5365) one failed auto-collect route drags down
   the whole run - **to be refiled per the "Todo" entry above**, since this version of the writing was
   judged to be AI.
