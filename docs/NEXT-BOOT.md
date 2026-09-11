@@ -1,5 +1,28 @@
 # Check these when the machine is next up
 
+## 2026-09-12 FIRST, before the 09:00 queue — OK-WW's three local patches may be off since 09-09
+
+healthcheck.py section 1 is red on all three nest markers and the reward order
+(`_next_nest_with_progress`, `Only Farm These Nests`, run_additional_tasks before
+claim_daily), while section 2 (`ensure_patches`) reports 「全部已在位 返回 []」. The
+reference files in `relay/ark_relay/okww_files/` do carry the markers, and the working
+`NightmareNestTask.py` was last written 09-09 13:58 - the same day the relay logged
+「OK-WW 有改动没贴上，上游多半改了结构：DailyTask.run」. So the likely state: the
+relay decided the patches no longer fit and left upstream code in place, and
+`ensure_patches` reports "nothing to do" for that. The 09-10 and 09-11 morning OK-WW
+runs were green, but with upstream nest logic (only a 已击败 0 nest is farmed).
+
+- Diff working vs reference for NightmareNestTask.py and DailyTask.py; read
+  `okww_patch.ensure_patches` for why it returns [] when the file differs.
+- Re-base the patches on the current upstream files if the structure changed
+  (see [[patch-versions-must-be-reverted]] / [[okww-source-master-copy]]), apply,
+  re-run healthcheck; if it cannot be done before 09:00, the nest step still runs
+  upstream logic - not a loss of resources, just fewer nests.
+- Then fix healthcheck section 1 so it agrees with section 2 (assert working ==
+  reference by hash instead of markers), and make ensure_patches report
+  「没贴上」 loudly rather than [].
+
+
 ## 2026-09-11 — two things landed while the machine was off; one rerun ordered
 
 1. **Relay pushes the phone state in SvcStop** (`relay/service.py`, `boot_stages._start_phone_channel`)
