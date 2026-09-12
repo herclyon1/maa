@@ -24,6 +24,17 @@ Done overnight 09-12 01:00-02:45 (Beijing), all on the machine:
 - The OK-WW "patches off since 09-09" item below was a stale health check, not a
   regression: the overlay report shows all 18 bindings applied; section 1 rewritten.
 
+Evening 09-12 (machine was on 18:28-20:21, user powered it on): verified live on the
+machine - the narrowing (master went to Route16 only, notification sent, restored exactly),
+the failure-path evidence shipment (WeCom app refused with 60020 -> group robot took over,
+6 files / 9 messages in 60 s), a fresh daily report sent with the 核对 footer all ✓ and
+`state/banners/2026-09-12.json` withheld=[]. Schedule back to Mon/Thu. Shut down 20:21;
+BIOS timer boots it 21:20 for the evening shift.
+
+Still open (需要他): WeCom admin console - add 112.43.41.80 to the app's 企业可信IP (the
+Chrome tool refuses work.weixin.qq.com, the pane browser has no login); Tencent Cloud -
+log in + 实名 + API key -> COS_* into ~/.config/ark/push.env -> `scripts/mac/cos-setup.py`.
+
 To do when the machine is next up:
 
 0. **Banner section fix is on GitHub only** (manifest 20260912045004, pushed 13:50 Tokyo
