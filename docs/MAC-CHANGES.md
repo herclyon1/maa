@@ -6,7 +6,7 @@
 > `git add -A` and committed alongside unrelated work).
 
 > Maintained by Claude. **Update this file every time a system-level setting is changed.**
-> Last updated: 2026-09-08
+> Last updated: 2026-09-12
 
 ---
 
@@ -87,6 +87,19 @@ cp ~/Claude/mac-backups/.dock-backup-20260905-025845.plist ~/Library/Preferences
 **The current Dock**: Claude / Chrome / 鸣潮 / WeChat / 明日方舟 / System Settings / Terminal / NeteaseMusic
 
 ---
+
+### Chrome: View → Developer → Allow JavaScript from Apple Events (on, 2026-09-12)
+
+Turned on by the user at my request. It lets `osascript` run JavaScript inside a Chrome tab,
+which is the only scriptable way into the 企业微信 admin console from this Mac: both browser
+tools refuse `work.weixin.qq.com`, and the WeCom desktop app's sidebar ignores accessibility
+clicks. Used by `scripts/mac/wecom-trust-ip.sh`. Turn it off again from the same menu.
+
+### Accessibility + Screen Recording for the Claude desktop app (already granted before 09-12)
+
+Confirmed in use 2026-09-12: `osascript` System Events and `screencapture` work from the
+session. Synthetic mouse clicks (a CGEvent helper) are refused by Claude's own action gate,
+so UI work has to go through accessibility actions or Chrome JavaScript.
 
 ## 3. The launchers on the desktop (whose contents I changed)
 

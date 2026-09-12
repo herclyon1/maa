@@ -1324,7 +1324,7 @@ outside the machine - silently, which is the whole hazard this file is about.
 | Protocol space failed | was someone connected over ToDesk - its session panel covers the button |
 | MaaEnd failed on attempt 1, fine on attempt 2 | expected; window race on first launch. Not a fault |
 | No notifications at all | AUTO-MAS's switches are layered - see [CONFIG.md](CONFIG.md) |
-| WeCom `errcode=60020` | the caller IP is not in the trusted list |
+| WeCom `errcode=60020` | the caller IP is not in the trusted list. Add it with `scripts/mac/wecom-trust-ip.sh` (needs the admin console logged in once in Chrome by QR scan) |
 | The emulator started but it was the wrong instance | emulator type must be `ldplayer` + `ldconsole.exe` |
 | A config change reverted itself | AUTO-MAS was running and overwrote it from memory, or the field has a `ge` floor in its schema |
 | A deploy "succeeded" but behaviour is unchanged | compare hashes; use `deploy-relay.sh`, never bare scp |

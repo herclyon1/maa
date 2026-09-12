@@ -90,5 +90,9 @@ Setting COS up once the account owner has an API key: `scripts/mac/cos-setup.py`
 COS_* lines into both .env files and restarts the relay). Measured 2026-09-12 20:04: the
 WeCom **app** API refuses the machine (60020, IP 112.43.41.80 not on the trusted list),
 so the chain skipped to the group robot in one step and delivered 6 files / 9 messages
-in 60 s; the app store comes back the moment the IP is added in the WeCom admin console.
+in 60 s. 21:45 the same day the IP was added in the admin console (`scripts/mac/wecom-trust-ip.sh`
+does that from the Mac; the list held 4 entries afterwards, and a message sent from the machine
+through the app went out) - the app store is back. The IP still rotates (dial-up line), so the
+next 60020 means: run that script again. Verified 21:25: a real failure bundle went to COS as
+one 84 MB archive in 18 s, pulled back with `evidence.sh pull` and unpacked to the 6 files.
 Also: the group robot is store 「wecom-bot」 - human-readable only, no fetch-back API.
