@@ -139,10 +139,10 @@ log.write_text(f"{t0},004 INFO MainThread ok:ok-script init\n{t1},647 INFO TaskE
 (root / "Client" / "Saved" / "LocalStorage.db").write_text("save")
 r = _co.parse_okww_log(log)
 check("弹窗记下了", r.get("okww_restart_dialog"), True)
-check("只有反作弊和存档变了 → 反作弊组件", r.get("okww_client_change"), "anticheat")
+check("只有反作弊和存档变了 → 反作弊组件，带文件名", (r.get("okww_client_change"), r.get("okww_client_files")), ("anticheat", ["AntiCheatExpert/pld.dat"]))
 (root / "Client" / "Content" / "Paks.pak").write_text("new pak")
 r2 = _co.parse_okww_log(log)
-check("pak 变了 → 客户端更新", r2.get("okww_client_change"), "patch")
+check("pak 变了 → 客户端更新，列出文件", (r2.get("okww_client_change"), r2.get("okww_client_files")), ("patch", ["Client/Content/Paks.pak"]))
 (root / "Client" / "Content" / "Paks.pak").unlink(); (root / "Client" / "Binaries" / "Win64" / "AntiCheatExpert" / "pld.dat").unlink()
 check("什么都没变 → 没有变", _co.parse_okww_log(log).get("okww_client_change"), "none")
 del _os.environ["ARK_OKWW_DIR"]

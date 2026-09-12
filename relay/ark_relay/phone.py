@@ -598,7 +598,7 @@ def state_payload(cfg, state_dir: Path) -> dict:
         from .config import ORCHESTRATOR_PROC  # noqa: PLC0415
         orch = ORCHESTRATOR_PROC[:-4]
         out["run"] = {"服务": full.get("ark-relay"),
-                      "在跑的": [n for n, on in (full.get("进程") or {}).items() if on and n != orch]}
+                      "在跑的": [n for n, on in (full.get("程序") or {}).items() if on and n != orch]}
         out["queues"] = [{"名": n, **v} for n, v in (full.get("队列") or {}).items()]
     except Exception as exc:  # noqa: BLE001
         out["config"] = {"_错误": f"{type(exc).__name__}: {exc}"}

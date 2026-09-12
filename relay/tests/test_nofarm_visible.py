@@ -51,7 +51,7 @@ line = plan._okww_farm_bit(DAILY, {"Simulation Domain": "模拟领域"})
 check("不再说在刷什么", line.startswith("体力刷"), False)
 check("说清今天不刷", "今天不刷体力" in line, True)
 check("说清波片会涨到上限", "上限" in line, True)
-check("说清怎么恢复", "删掉标记文件" in line, True)
+check("说清怎么恢复", "关掉这个开关才恢复" in line, True)
 
 print("\n[删掉之后自己恢复，不需要谁去清什么状态]")
 FLAG.unlink()

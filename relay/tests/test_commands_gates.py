@@ -87,12 +87,12 @@ print("[闸门① 白名单：不在表里的动作一律拒绝]")
 for bad in ("format_disk", "poweroff_now", "", "SET_STAGE", "set stage",
             "run_now; rm -rf", "set_config2", None, 123):
     ok, msg = commands.apply_command({"action": bad, "confirmed": True})
-    check(f"拒绝 {bad!r}", (ok, "白名单" in msg), (False, True))
+    check(f"拒绝 {bad!r}", (ok, "不在允许的清单里" in msg), (False, True))
 check("完全没有 action 字段也拒绝",
       commands.apply_command({"confirmed": True})[0], False)
 # Trimmed, not rejected: a name with stray whitespace is still that action.
 check("前后空格会被去掉，不当成陌生动作",
-      "白名单" in commands.apply_command({"action": " set_stage "})[1], False)
+      "不在允许的清单里" in commands.apply_command({"action": " set_stage "})[1], False)
 
 check("ALLOWED 就是两张表的并集",
       commands.ALLOWED, commands.REVERSIBLE | commands.MUTATING)
@@ -227,7 +227,7 @@ before = reset_cfg()
 
 ok, msg = commands._safe_rewrite(CFG, lambda raw: raw.replace('"Fixed"', '"Auto"'),
                                  expect_changed=2)
-check("只改了 1 处但预期 2 处，放弃", (ok, "diff 不符预期" in msg), (False, True))
+check("只改了 1 处但预期 2 处，放弃", (ok, "和预期不符" in msg), (False, True))
 check("放弃时文件没动", cfg_raw(), before)
 
 ok, msg = commands._safe_rewrite(
@@ -391,7 +391,7 @@ check("缺 value 就拒（不许把「没给」当成 None 写进去）",
 f = FakeMas()
 ok, msg = with_mas(f, lambda: commands._set_config(
     {"script": "MAA", "path": "Info.凭空造的", "value": 1}))
-check("路径不存在就拒", (ok, "已拒绝" in msg and "826" in msg), (False, True))
+check("路径不存在就拒（说清中继不会自己新建）", (ok, "已拒绝" in msg and "不会自己新建" in msg), (False, True))
 check("拒绝时一次写请求都没发出去", f.wrote(), [])
 
 f = FakeMas()

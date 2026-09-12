@@ -342,7 +342,7 @@ def write_maaend(automas_dir, maaend_dir, path: str, value) -> tuple[bool, str]:
                 log.info("母本里 %s 还没有 %s，按 MaaEnd 定义的默认值 %r 建了这一项", task_name, opt, d["default_case"])
             else:
                 return False, (f"{task_name} 里没有 {opt} 这一项，已拒绝"
-                               "（不许凭空造字段——826 就是这么出的事）")
+                               "（设置里本来没有它，中继不会自己新建）")
         kind = str(cur.get("type") or "")
         # The value must be one this item itself declares; no filling in whatever
         allowed = {str(c.get("name")) for c in (d.get("cases") or [])}
@@ -466,7 +466,7 @@ def write_maa(automas_dir, maa_dir, path: str, value) -> tuple[bool, str]:
         atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=4))
         back = _maa_infrast(json.loads(f.read_text(encoding="utf-8")))
         if not back or back.get("UsesOfDrones") != str(value):
-            return False, f"{f} 写完回读不对"
+            return False, f"{f} 写进去之后读出来和写的不一样"
         written.append(f.name)
     if not written:
         return False, "找不到 MAA 的母本配置"
@@ -579,7 +579,7 @@ def write_okww(automas_dir, path: str, value) -> tuple[bool, str]:
     doc = json.loads(f.read_text(encoding="utf-8"))
     if key not in doc:
         return False, (f"{name} 里没有「{key}」这一项，已拒绝"
-                       "（不许凭空造字段——826 就是这么出的事）")
+                       "（设置里本来没有它，中继不会自己新建）")
     before = doc[key]
     if isinstance(before, bool):
         new: object = bool(value)
@@ -642,7 +642,7 @@ def prune_maaend_orphans(automas_dir, maaend_dir) -> tuple[list[str], str]:
     back = json.loads(f.read_text(encoding="utf-8"))
     left = [t.get("taskName") for inst in back.get("instances") or [] for t in inst.get("tasks") or []]
     if any(n in left for n in removed):
-        return [], f"写完回读不对，{bak.name} 是原样"
+        return [], f"写进去之后读出来和写的不一样，{bak.name} 是原样"
     return removed, (f"MaaEnd 这一版已经没有这些任务，配置里的死条目已清掉：{'、'.join(removed)}"
                      f"（原文件备份为 {bak.name}）")
 
@@ -754,9 +754,9 @@ def migrate_maaend_options(automas_dir, maaend_dir) -> tuple[list[str], str]:
         for task in inst.get("tasks") or []:
             ov = task.get("optionValues") or {}
             if str(task.get("taskName") or "") in tasks and any(k not in opts for k in ov):
-                return [], f"写完回读还有死键，{bak.name} 是原样"
+                return [], f"写进去之后再读，旧写法的项还在，{bak.name} 是原样"
     if any(_stale_entry(e, opts, tasks) for e in back.get("recentlyClosed") or []):
-        return [], f"写完回读「最近关闭」里还有死键，{bak.name} 是原样"
+        return [], f"写进去之后再读，「最近关闭」里旧写法的项还在，{bak.name} 是原样"
     return changes, ("MaaEnd 换了版本后旧设置的写法它不认了，母本已按原意改写：\n"
                      + "\n".join(f"· {c}" for c in changes)
                      + f"\n（原文件备份为 {bak.name}）")

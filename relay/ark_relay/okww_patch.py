@@ -254,7 +254,7 @@ _REVERTS: "list[tuple[tuple, str, str, str]]" = [
     (_FE, _CLAIM_NEW, _CLAIM_OLD_FULL, "打完 Boss 真正领周本奖励（已搬到 ok_tasks，源文件还原）"),
     (_TT, _TACETSHOT_NEW, _TACETSHOT_OLD, "无音区结算页留一张给日报（已搬到 ok_tasks，源文件还原）"),
     (_FE, _NOWAVE_NEW, _NOWAVE_OLD, "波片不足时跳过周本（已搬到 ok_tasks，源文件还原）"),
-    (_FE, _RETRYCAP_NEW, _RETRYCAP_OLD, "兜底重试上限（已搬到 ok_tasks，源文件还原）"),
+    (_FE, _RETRYCAP_NEW, _RETRYCAP_OLD, "重试次数上限（已搬到 ok_tasks，源文件还原）"),
     (_FE, _COUNT_NEW, _COUNT_OLD, "进本前拍一张看剩余次数（已搬到 ok_tasks，源文件还原）"),
     (_FE, _REVIVEIMP_NEW, _REVIVEIMP_OLD, "刷声骸复活：把复活异常引进来（已搬到 ok_tasks，源文件还原）"),
     (_FE, _REVIVELOOP_NEW, _REVIVELOOP_OLD, "刷声骸复活后继续下一趟（已搬到 ok_tasks，源文件还原）"),
@@ -272,7 +272,7 @@ _REVERTS: "list[tuple[tuple, str, str, str]]" = [
     *[(p.parts, p.new, p.old, p.name) for p in PATCHES],
     ((*_SRC, "DomainTask.py"), _DOMAIN_NEW, _DOMAIN_OLD, "副本失败不拖垮每日任务"),
     ((*_SRC, "DomainTask.py"), _DOMAIN_IMPORT_NEW, _DOMAIN_IMPORT_OLD, "副本补丁的 import"),
-    ((*_SRC, "BaseCombatTask.py"), _STARVE_NEW, _STARVE_OLD, "主C饿死兜底"),
+    ((*_SRC, "BaseCombatTask.py"), _STARVE_NEW, _STARVE_OLD, "主C饿死时的补救"),
 ]
 
 # _APPLIES: what is in effect on the machine, in application order. The nest

@@ -708,6 +708,6 @@ def maaend_reenable_spmed_if_updated(cfg) -> str:
     if not on:
         return ""
     if fixed is None:
-        return (f"MaaEnd 已是 {ver}，加强剂那个节点换了写法、看不出修没修，"
+        return (f"MaaEnd 已是 {ver}，加强剂那一步的写法换了、看不出修没修，"
                 "按新版本先开回来；要是明天又失败就再关")
-    return f"MaaEnd 已是 {ver}，加强剂的判据已修好，任务开回来"
+    return f"MaaEnd 已是 {ver}，加强剂那一步已经修好，任务开回来"

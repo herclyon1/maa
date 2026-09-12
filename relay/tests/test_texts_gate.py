@@ -49,7 +49,7 @@ def _user_facing_literals(path):
             continue
         if _HAN.search(n.value):
             yield n.lineno, n.value
-_HEDGE_ONLY = [v for v in texts.VAGUE if v not in ("未知错误", "这一步", "有问题", "出错")]
+_HEDGE_ONLY = [v for v in texts.VAGUE if v not in ("未知错误", "这一步", "有问题", "出错")] + list(texts.JARGON)
 vague_hits = []
 _scanned_literals = 0
 for f in sorted((ROOT / "ark_relay").glob("*.py")) + [ROOT / "service.py", ROOT / "boot_stages.py"]:
@@ -57,12 +57,16 @@ for f in sorted((ROOT / "ark_relay").glob("*.py")) + [ROOT / "service.py", ROOT 
         continue                            # the model prompt, abandoned path; not a notification
     for ln, val in _user_facing_literals(f):
         _scanned_literals += 1
-        if f.name == "texts.py" and val in texts.VAGUE:
-            continue                        # the word list itself
+        if f.name == "texts.py" and (val in texts.VAGUE or val in texts.JARGON):
+            continue                        # the word lists themselves
+        if f.name in ("statestore.py", "desktop.py"):
+            continue                        # state-file field docs / an embedded PowerShell script, never sent
+        for term in texts._THEIR_TERMS:
+            val = val.replace(term, " ")
         for v in _HEDGE_ONLY:
             if v in val:
                 vague_hits.append(f"{f.name}:{ln} 「{v}」 {val[:50]!r}")
-check("没有一句含糊话（多半/可能/大概/疑似/约…）", vague_hits, [])
+check("没有一句含糊话或术语（多半/可能/疑似/约…、落盘/回读/字段/进程…）", vague_hits, [])
 check("确实扫到了很多句子（至少 300）", _scanned_literals >= 300, True)
 
 print("[代码里不许再出现写死的通知标题]")
@@ -83,6 +87,7 @@ print("[plain() 本身认得出问题]")
 check("英文类名", texts.plain("FarmEchoTask 抛 WaitFailedException"), ["英文「FarmEchoTask」", "英文「WaitFailedException」"])
 check("模糊词", texts.plain("周本：这一步出错"), ["模糊词「这一步」", "模糊词「出错」"])
 check("产品名放行", texts.plain("MaaEnd 已更新：v2.28.0-beta.1 → v2.28.0-beta.2"), [])
+check("文件路径放行（他要看到是哪个文件）", texts.plain("只更新了反作弊组件，文件位于 AntiCheatExpert\\pld.dat"), [])
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

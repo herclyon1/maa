@@ -213,7 +213,7 @@ def narrow_master(cfg, failed_ids: list[str], run_id: str, now: datetime) -> str
         log.error("母本路线收窄后回读不对：%s", after)
         return ""
     total = sum(len(v) for v in before.values())
-    return f"母本路线已收窄为 {len(failed_ids)}/{total} 条（{'、'.join(failed_ids)}）"
+    return f"母本里的采集路线暂时只留 {len(failed_ids)}/{total} 条（{'、'.join(failed_ids)}）"
 
 
 def restore_master(cfg) -> str:
@@ -244,7 +244,7 @@ def restore_master(cfg) -> str:
         return ""
     nf.unlink()
     total = sum(len(v) for v in (saved.get("lists") or {}).values())
-    return f"母本路线已改回原来的 {total} 条（收窄自 {saved.get('run_id', '')}）"
+    return f"母本里的采集路线已改回原来的 {total} 条（{saved.get('run_id', '')} 那趟之后临时改过）"
 
 
 def record_failures(store: Path, day: str, routes: list[str]) -> dict[str, list[str]]:
@@ -384,7 +384,7 @@ def run_retry(maaend_dir: Path, routes: list[str], weekday: str, *, spawn, timeo
         time.sleep(8)
     MXU = f"http://127.0.0.1:{mxu_port(maaend_dir)}/api"
     if not _wait(lambda: api("/maa/state", timeout=5) is not None, 60):
-        return {r: None for r in routes}, "MaaEnd 的接口 60 秒没起来"
+        return {r: None for r in routes}, "MaaEnd 起来 60 秒了还不响应"
     game = _game_exe(maaend_dir)
     if game is None:
         return {r: None for r in routes}, "MaaEnd 配置里没有游戏路径"

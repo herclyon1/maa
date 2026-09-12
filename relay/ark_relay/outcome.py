@@ -310,15 +310,15 @@ def maa_checks(text: str) -> list[Check]:
     if not started:
         # Not a single task chain event = the window was cut wrong or the log is the
         # wrong one. This must never be treated as "no problem".
-        out.append(Check("读到了这一轮的任务链事件", False,
-                         "asst.log 里没有 TaskChainStart，这一轮无从核对"))
+        out.append(Check("MAA 的日志里有这一轮的记录", False,
+                         "MAA 自己的日志里没有这一轮开始的记录，核对不了"))
         return out
 
     dangling = started - ended
-    out.append(Check("每条任务链都收了尾", not dangling,
+    out.append(Check("每一项都做到了结尾", not dangling,
                      "" if not dangling else
                      "开了没收尾：" + "、".join(sorted(dangling))))
-    out.append(Check("没有任务链报错或被中止", not bad,
+    out.append(Check("没有哪一项报错或被中止", not bad,
                      "" if not bad else "、".join(sorted(set(bad)))))
     return out
 

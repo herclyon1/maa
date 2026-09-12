@@ -396,7 +396,7 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
                 return outcome.summarize([outcome.Check(
                     "能读到 MAA 自己的日志", False,
                     f"maa_dir={eng.cfg.maa_dir}，"
-                    "asst.log 里没有这一轮时间窗内的行，基建成败无从核对")],
+                    "MAA 自己的日志里没有这一轮的记录，基建做没做成核对不了")],
                     "MAA")
             return outcome.summarize(outcome.maa_checks(maa_log), "MAA")
         if rec.script == "MaaEnd":

@@ -230,7 +230,7 @@ def _write_options(ov: dict, want_task: str, tab: str, line: str,
             if key not in ov:
                 # A key invented out of thin air is not recognised by MaaEnd, so
                 # writing it would achieve nothing.
-                return f"母本的 {want_task} 里没有字段 {key!r}，拒绝新建"
+                return f"母本的 {want_task} 里没有 {key!r} 这一项，中继不会自己新建，拒绝"
             if _case(ov, key) != want:
                 changes.append(f"{key}: {_case(ov, key)} → {want}")
                 ov[key] = {"type": "select", "caseName": want}
@@ -264,7 +264,7 @@ def set_plan(automas_dir: "Path | None", tab: str, line: str = "",
         return False, f"读不了母本: {exc}"
     ins = _automas_instance(data)
     if not ins:
-        return False, "母本里找不到 AUTO-MAS 实例"
+        return False, "母本里找不到 AUTO-MAS 登记的那个终末地配置"
 
     want_task = "AutoEssence" if tab == "Essence" else "ProtocolSpace"
     have = {t.get("taskName"): t for t in ins.get("tasks") or []}

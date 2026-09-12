@@ -91,7 +91,7 @@ print("\n[该拒绝的一条都不许放过——放过就是安静地写错]")
 for label, change, hint in [
     ("任务名不存在", {"task": "NoSuchTask", "option": "x", "case": "y"}, "没有任务"),
     ("选项名拼错", {"task": "ProtocolSpace", "option": "AutoFihgtDodge", "value": True}, "没有选项"),
-    ("给开关发了 case", {"task": "ProtocolSpace", "option": "AutoFightDodge", "case": "开"}, "需要字段"),
+    ("给开关发了 case", {"task": "ProtocolSpace", "option": "AutoFightDodge", "case": "开"}, "要给的是"),
     ("取值不在合法表里", {"task": "ProtocolSpace", "option": "ProtocolSpaceTab", "case": "凭空捏造"}, "不接受"),
     ("多选项给了非数组", {"task": "ProtocolSpace", "option": "Schedule", "cases": "一"}, "需要 cases 数组"),
     ("多选项含非法值", {"task": "ProtocolSpace", "option": "Schedule", "cases": ["一", "九"]}, "不接受"),

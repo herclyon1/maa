@@ -80,7 +80,7 @@ def _mas(out: dict) -> None:
                 # Endfield and Wuthering Waves have had quick config off for weeks.
                 quick = bool((u.get("Info") or {}).get("IfQuickConfig"))
                 out["MaaEnd"] = {
-                    "这些字段生效吗": "生效" if quick else
+                    "这些设置生效吗": "生效" if quick else
                         "❌ 不生效：快速配置是关的，真正跑的是 mxu-MaaEnd.json（母本）",
                     "理智任务": st,
                     "详细": t.get(st) if st else None,
@@ -91,7 +91,7 @@ def _mas(out: dict) -> None:
             elif "OK-WW" in str(name) or "ok-ww" in str(name):
                 quick = bool((u.get("Info") or {}).get("IfQuickConfig"))
                 out["OK-WW(MAS侧)"] = {
-                    "这些字段生效吗": "生效" if quick else
+                    "这些设置生效吗": "生效" if quick else
                         "❌ 不生效：快速配置是关的，真正跑的是 OK-WW 自己的母本配置",
                     **(u.get("Task", {}) or {}),
                 }
@@ -178,7 +178,7 @@ def _runtime(out: dict) -> None:
         # phone page's 「在跑的」 was empty - it reads as idle at a glance.
         from .config import BUSY_PROCS, ORCHESTRATOR_PROC  # noqa: PLC0415
         names = (ORCHESTRATOR_PROC,) + BUSY_PROCS
-        out["进程"] = {n[:-4] if n.endswith(".exe") else n: n in tl for n in names}
+        out["程序"] = {n[:-4] if n.endswith(".exe") else n: n in tl for n in names}
     except Exception:  # noqa: BLE001
         pass
     # A hand-set one-shot switch with no display anywhere is a switch that gets
@@ -187,7 +187,7 @@ def _runtime(out: dict) -> None:
     # is happening.
     from .config import no_stamina_farm  # noqa: PLC0415
     if no_stamina_farm():
-        out["⚠️ 不刷体力"] = "开着（有人挂的一次性开关，删掉标记文件才恢复）"
+        out["⚠️ 不刷体力"] = "开着（一次性开关，关掉它才恢复）"
 
 
 def read() -> dict:

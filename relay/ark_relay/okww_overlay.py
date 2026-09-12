@@ -43,7 +43,7 @@ def install(okww_dir) -> str:
     """Copy the overrides into place. Returns a line to log, '' when unchanged."""
     dest = target(okww_dir)
     if dest is None:
-        return "找不到 OK-WW 目录，覆盖文件没装上"
+        return "找不到 OK-WW 目录，中继的改动文件没装上"
     want = source_text()
     try:
         if dest.is_file() and dest.read_text(encoding="utf-8") == want:
@@ -51,10 +51,10 @@ def install(okww_dir) -> str:
         dest.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(dest, want)
         if dest.read_text(encoding="utf-8") != want:
-            return "**覆盖文件写下去了但回读不对**，OK-WW 会按上游原样跑"
+            return "**中继的改动文件写下去了，但读出来和写的不一样**，OK-WW 会按原版跑"
     except OSError as exc:
-        return f"**覆盖文件装不上（{exc}）**，OK-WW 会按上游原样跑"
-    return f"OK-WW 覆盖文件已装到 {dest}"
+        return f"**中继的改动文件装不上（{exc}）**，OK-WW 会按原版跑"
+    return f"中继给 OK-WW 的改动文件已装到 {dest}"
 
 
 def last_report() -> dict:
@@ -75,7 +75,7 @@ def report_line() -> str:
     if not got:
         return ""
     if err := got.get("error"):
-        return "OK-WW 覆盖文件自己报错了，改动一条都没生效：" + str(err)[-300:]
+        return "中继给 OK-WW 的改动文件自己报错了，改动一条都没生效：" + str(err)[-300:]
     skipped = got.get("skipped") or []
     if not skipped:
         return ""

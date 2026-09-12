@@ -59,7 +59,7 @@ def main():
 
     print("开了没收尾——这才是「队列卡死、自己不吭声」的形状")
     got = maa_checks(run(drop_end=("Infrast",)))
-    check("判失败", any(c.label == "每条任务链都收了尾" and not c.ok for c in got), True)
+    check("判失败", any(c.label == "每一项都做到了结尾" and not c.ok for c in got), True)
     check("说出是哪条链",
           any("Infrast" in c.detail for c in got if not c.ok), True)
 

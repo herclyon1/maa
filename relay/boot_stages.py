@@ -553,7 +553,7 @@ def _preupdate_maaend(maaend, cfg, notifier, log, problems) -> None:
         log.info("预更新：MaaEnd 换了版本，重启 AUTO-MAS 刷新它的任务表缓存")
         _revive_automas()
         if not ensure_automas(timeout=120):
-            _note(problems, "MaaEnd 更新后重启 AUTO-MAS，120 秒内接口没起来")
+            _note(problems, "MaaEnd 更新后重启 AUTO-MAS，120 秒内没响应")
     try:
         from ark_relay import gameupdate as _gu  # noqa: PLC0415
         if back := _gu.maaend_reenable_if_updated(cfg):

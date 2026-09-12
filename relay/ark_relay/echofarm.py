@@ -317,7 +317,7 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
                              "Repeat Farm Count": BIG_COUNT})
     if back.get("Which Boss Challenge to Teleport") != boss:
         atomic_write_text(path, json.dumps(saved, ensure_ascii=False, indent=1))
-        return False, "写完回读不对，配置已还原，没有开跑"
+        return False, "写进去之后读出来和写的不一样，设置已改回，没有开跑"
 
     _set_no_claim(True)
     ok, why = _launch()
@@ -375,9 +375,9 @@ def finish(cfg, why: str) -> str:
             atomic_write_text(path, json.dumps(saved, ensure_ascii=False, indent=1))
             back = json.loads(path.read_text(encoding="utf-8"))
             if back.get("Teleport to Boss") != saved.get("Teleport to Boss"):
-                note = "；**配置没还原成功，明早周本会按刷声骸的目标打，需要人工改回**"
+                note = "；**刷声骸用的 Boss 设置没改回去，明早的周本会去打今晚刷声骸的那个 Boss，需要人工改回**"
         except OSError:
-            note = "；**配置没能还原，明早周本会按刷声骸的目标打，需要人工改回**"
+            note = "；**刷声骸用的 Boss 设置没能改回去，明早的周本会去打今晚刷声骸的那个 Boss，需要人工改回**"
     else:
         note = "；**找不到配置文件，没能还原**"
     _store(cfg.state_dir).pop("queues", "echo_farm")

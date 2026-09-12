@@ -378,17 +378,19 @@ def parse_okww_log(log_path: Path) -> dict:
         out["okww_steps"] = steps
     if "游戏更新成功, 游戏即将重启" in text:
         out["okww_restart_dialog"] = True
-        out["okww_client_change"] = _client_change(log_path, text)
+        out["okww_client_change"], out["okww_client_files"] = _client_change(log_path, text)
     return out
 
 
 _OKWW_TS = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", re.M)
 
 
-def _client_change(log_path: Path, text: str) -> str:
-    """What the game client changed on disk during this run: 「none」 (nothing
-    outside saves), 「anticheat」 (only files under AntiCheatExpert), 「patch」
-    (anything else), 「unknown」 (game root not found).
+def _client_change(log_path: Path, text: str) -> "tuple[str, list[str]]":
+    """What the game client changed on disk during this run: (「none」 (nothing
+    outside saves) / 「anticheat」 (only files under AntiCheatExpert) / 「patch」
+    (anything else) / 「unknown」 (game root not found), the changed paths relative
+    to the game root, at most twelve). The user, 2026-09-12: the report is to say
+    which files, e.g. 「只更新了反作弊组件，文件位于 AntiCheatExpert\\pld.dat」.
 
     OK-WW writes 「游戏更新成功, 游戏即将重启」 for *any* dialog that says
     游戏即将重启 (BaseWWTask.py:777 matches the text and clicks 确认). On
@@ -399,17 +401,18 @@ def _client_change(log_path: Path, text: str) -> str:
     """
     stamps = _OKWW_TS.findall(text)
     if not stamps:
-        return "unknown"
+        return "unknown", []
     try:
         from datetime import datetime  # noqa: PLC0415
         lo = datetime.strptime(stamps[0], "%Y-%m-%d %H:%M:%S")
         hi = datetime.strptime(stamps[-1], "%Y-%m-%d %H:%M:%S")
     except ValueError:
-        return "unknown"
+        return "unknown", []
     root = wuwa_game_root(log_path)
     if root is None:
-        return "unknown"
-    anticheat = other = 0
+        return "unknown", []
+    anticheat: list[str] = []
+    other: list[str] = []
     for p in (root / "Client").rglob("*"):
         try:
             if not p.is_file():
@@ -418,15 +421,15 @@ def _client_change(log_path: Path, text: str) -> str:
             if "\\Saved\\" in rel or "/Saved/" in rel or ".quality" in rel:
                 continue
             if lo.timestamp() <= p.stat().st_mtime <= hi.timestamp():
-                if "AntiCheatExpert" in rel:
-                    anticheat += 1
-                else:
-                    other += 1
+                # Shown as the part under Client\Binaries\Win64 when it is there:
+                # 「AntiCheatExpert\pld.dat」 says more than the full path.
+                short = rel.split("Win64" + ("\\" if "\\" in rel else "/"), 1)[-1]
+                (anticheat if "AntiCheatExpert" in rel else other).append(short)
         except OSError:
             continue
     if other:
-        return "patch"
-    return "anticheat" if anticheat else "none"
+        return "patch", sorted(other)[:12]
+    return ("anticheat", sorted(anticheat)[:12]) if anticheat else ("none", [])
 
 
 def wuwa_game_root(log_path: Path) -> "Path | None":

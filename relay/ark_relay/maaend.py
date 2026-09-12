@@ -157,7 +157,7 @@ def _apply_one(mc: "MaaEndConfig", cfg: dict, ch: dict,
     expected = {"select": "case", "switch": "value",
                 "checkbox": "cases", "input": "values"}.get(kind)
     if expected and expected not in ch:
-        return (f"{task}.{option} 是 {kind} 型，需要字段 {expected!r}，"
+        return (f"{task}.{option} 是 {kind} 型，要给的是 {expected!r}，"
                 f"收到的是 {sorted(set(ch) - {'task', 'option', 'action', 'enabled'})}")
 
     touched_opts.add(option)
@@ -231,7 +231,7 @@ def _stray_changes(original: str, cfg: dict, touched_opts: set[str]) -> tuple[in
     stray = [p for p in (added | removed)
              if not any(f"/optionValues/{opt}/" in p for opt in touched_opts)]
     if stray:
-        return len(changed), (f"结构化 diff 不符预期，已放弃：{len(stray)} 处改到了"
+        return len(changed), (f"改动的地方和预期不符，已放弃：{len(stray)} 处改到了"
                               f"没打算动的地方，例如 {stray[0]}")
     return len(changed), ""
 

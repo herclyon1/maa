@@ -91,7 +91,7 @@ b._apply = lambda cmds: (_ for _ in ()).throw(OSError("盘满了"))
 ver, msgs = b.poll()
 check("版本号照样记下", b.applied_version, 11)
 check("说了是中途出错", any("应用中途出错" in m for m in msgs), True)
-check("说了本批不会重放", any("不会重放" in m for m in msgs), True)
+check("说了这批指令不会再执行一遍", any("不会再执行一遍" in m for m in msgs), True)
 
 print("\n[记账落在 state.json 里，换一个实例也读得到]")
 d = tmpdir()

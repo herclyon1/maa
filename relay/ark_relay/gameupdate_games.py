@@ -462,10 +462,10 @@ def update_arknights(state_dir: Path, ldconsole: Path, idx: int, *,
     try:
         remote = remote_ak_version(fetch)
     except Exception as exc:  # noqa: BLE001
-        _note(problems, f"明日方舟：官方版本接口取不到（{exc}）")
+        _note(problems, f"明日方舟：官方的版本信息取不到（{exc}）")
         return ""
     if not remote:
-        _note(problems, "明日方舟：官方版本接口没给 clientVersion")
+        _note(problems, "明日方舟：官方的版本信息里没有客户端版本号")
         return ""
     local = recorded_ak_version(state_dir)
 
@@ -517,7 +517,7 @@ def update_arknights(state_dir: Path, ldconsole: Path, idx: int, *,
         how = ak_prewarm(ldconsole, dev, desk, run=run, sleep=sleep)
         log.info("游戏更新：明日方舟预热%s", f"完成（{how}）" if how else "没等到登录界面")
         if not how:
-            _note(problems, "明日方舟：装完拉起后 15 分钟没读到「开始唤醒」")
+            _note(problems, "明日方舟：装完启动后 15 分钟没读到「开始唤醒」")
     emulator_quit(ldconsole, idx, run, sleep)
     if now_ver != remote:
         _note(problems, f"明日方舟：装完读到的版本是 {now_ver or '空'}，不是 {remote}")

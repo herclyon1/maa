@@ -711,11 +711,12 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
                 # OK-WW says 「游戏更新成功」 for any 「游戏即将重启」 dialog. The
                 # collector looked at the game folder; say what it found, in one of
                 # three definite forms - never 「多半」 (the user, 2026-09-12).
+                files = "、".join(raw.get("okww_client_files") or [])
                 note = {
-                    "patch": "游戏弹「即将重启」后更新了客户端文件，重启后重跑，不算失败",
-                    "anticheat": "游戏弹「即将重启」，只更新了反作弊组件，重启后重跑，不算失败",
-                    "none": "游戏弹「即将重启」，客户端文件没有变，重启后重跑，不算失败",
-                }.get(str(raw.get("okww_client_change")), "游戏弹「即将重启」后重跑，客户端有没有换文件没查到，不算失败")
+                    "patch": f"游戏更新成功（更新了客户端文件：{files}），重启后重跑，不算失败",
+                    "anticheat": f"游戏更新成功（只更新了反作弊组件，文件位于 {files}），重启后重跑，不算失败",
+                    "none": "游戏弹了「即将重启」但客户端文件没有变，重启后重跑，不算失败",
+                }.get(str(raw.get("okww_client_change")), "游戏弹了「即将重启」，重启后重跑；客户端有没有换文件没查到，不算失败")
             lines += [_row("备注", [note]), ""]
             continue
         if not e["ok"]:

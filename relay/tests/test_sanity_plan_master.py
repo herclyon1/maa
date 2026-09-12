@@ -85,7 +85,7 @@ def main() -> int:
         print("\n[拒绝造字段 / 拒绝造任务]")
         ok, msg = sanity_plan.set_plan(am, "WeaponProgression", "WeaponEXP")
         check("母本里没有 WeaponProgression 键就拒绝", ok, False)
-        check("说清原因", "拒绝新建" in msg, True)
+        check("说清原因", "中继不会自己新建" in msg, True)
 
         am2 = make(root / "no_ess", essence_on=False)
         d2 = am2 / "data/59da8762/Default/ConfigFile/mxu-MaaEnd.json"

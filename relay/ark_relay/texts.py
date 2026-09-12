@@ -33,19 +33,41 @@ VAGUE = ("未知错误", "这一步", "有问题", "出错",
          "估计", "差不多", "左右", "好像", "不确定", "貌似", "大致", "约 ", "约一", "不一定")
 _WORD = re.compile(r"[A-Za-z][A-Za-z0-9./\-]*")
 # A link is something the reader taps or copies whole; it is not English prose.
+# Neither is a file path (the user asked, 2026-09-12, for 「文件位于
+# AntiCheatExpert\\pld.dat」 in the report) - anything with a separator and an
+# extension, or a Windows drive.
 _URL = re.compile(r"https?://\S+")
+_PATH = re.compile(r"[A-Za-z]:\\\S+|(?<![A-Za-z0-9_/:.])[A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)+")
+
+
+# Engineering words that mean nothing to the reader (the user, 2026-09-12, on
+# 「会按刷声骸的目标打」: 「我都没看懂」). A sentence has to say what happens in
+# the game or on the phone, not what the code did.
+JARGON = ("落盘", "回读", "兜底", "字段", "判据", "判定点", "监听", "句柄", "进程", "线程",
+          "缓存", "重放", "拉起", "收窄", "节点", "实例", "退避", "调度器", "死键", "标记文件",
+          "时间窗", "任务链", "冲掉", "结构化", "白名单", "凭空造", "原子", "幂等", "接口")
 
 
 def plain(text: str) -> list[str]:
     """Where one piece of copy fails to read as plain language. An empty list means it passes."""
     problems = []
-    for w in _WORD.findall(_URL.sub(" ", text)):
+    for w in _WORD.findall(_PATH.sub(" ", _URL.sub(" ", text))):
         if w not in ALLOWED_WORDS and not re.fullmatch(r"v?\d[\d.]*(?:-beta\.\d+)?", w):
             problems.append(f"英文「{w}」")
     for v in VAGUE:
         if v in text:
             problems.append(f"模糊词「{v}」")
+    # Names the programs themselves use are not our jargon: 「结束进程」 is a MaaEnd task.
+    scrubbed = text
+    for term in _THEIR_TERMS:
+        scrubbed = scrubbed.replace(term, " ")
+    for j in JARGON:
+        if j in scrubbed:
+            problems.append(f"术语「{j}」")
     return problems
+
+
+_THEIR_TERMS = ("结束进程",)
 
 
 # ---------------- titles ----------------
@@ -62,8 +84,8 @@ PHONE_DEFERRED = "📱 手机指令暂缓"
 CONFIG_CHANGED = "📱 配置已修改"
 CONFIG_FAILED = "📱 配置没改成"
 SELFUPDATE_FAILED = "⚠️ 中继自更新没成功"
-WATCH_LOST = "⚠️ 中继的目录监听掉了"
-AUTOMAS_DOWN = "🔌 AUTO-MAS 拉不起来"
+WATCH_LOST = "⚠️ 中继暂时不能在脚本跑完时马上处理结果"
+AUTOMAS_DOWN = "🔌 AUTO-MAS 启动不起来"
 ROUND_INCOMPLETE = "⚠️ 这一轮没干完"
 MAAEND_REENABLED = "🔓 终末地日常已开回"
 MAAEND_PRUNED = "🧹 终末地配置清掉了死条目"
@@ -196,7 +218,7 @@ def action_name(action: str) -> str:
 
 
 def phone_deferred_body(action: str) -> str:
-    return (f"「{action}」现在不能执行：脚本正在运行，此时改配置会被冲掉。"
+    return (f"「{action}」现在不能执行：脚本正在运行，现在改设置会被正在跑的脚本覆盖掉。"
             "等这一趟跑完再按一次。")
 
 
@@ -205,13 +227,13 @@ def rerun_body(reran: list[str]) -> str:
 
 
 def watch_lost_body() -> str:
-    return ("运行记录暂时不再是一落盘就处理，要等下一个定时判定点（最长一小时）。"
-            "中继会自己反复重建监听，恢复了就不用管；\n"
+    return ("脚本跑完的结果暂时要等到下一次定时检查才处理（最长一小时），不再是一跑完就处理。"
+            "中继会自己反复尝试恢复，恢复了就不用管；\n"
             "如果这条之后一直没恢复，重启中继：\nnet stop ark-relay & net start ark-relay")
 
 
 def automas_down_body(tries: int) -> str:
-    return f"已连续尝试拉起 {tries} 次仍不见后端进程，需要人工看一眼。服务会按翻倍退避继续重试。"
+    return f"已连续 {tries} 次启动 AUTO-MAS，都没起来，需要人工看一眼。中继会继续试，间隔每次翻倍。"
 
 
 def preupdate_unconfirmed_tail() -> str:

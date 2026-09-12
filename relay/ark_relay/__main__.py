@@ -98,7 +98,7 @@ def _load_dotenv(path: Path) -> None:
 def cmd_check(cfg: Config) -> int:
     print(f"history 目录  {cfg.history_dir or '(未设置)'}")
     print(f"状态目录      {cfg.state_dir}")
-    print(f"兜底扫描      {cfg.poll_seconds} 秒（仅当目录监听挂不上时才用）")
+    print(f"定时扫描      {cfg.poll_seconds} 秒（仅当目录变化通知挂不上时才用）")
     print(f"日报触发      {cfg.last_run_after} 之后（服务器时间，实际以 AUTO-MAS "
           f"最后一个队列时刻为准）")
     # The switches that decide behaviour, printed together. "Why did no interim
@@ -111,7 +111,7 @@ def cmd_check(cfg: Config) -> int:
     print(f"临时查看      {_sw(cfg.interim_report)}"
           f"（ARK_INTERIM_REPORT，白天每轮收尾各一条，不占日报名额）")
     print(f"关机前补发    {_sw(cfg.report_before_shutdown)}"
-          f"（ARK_REPORT_BEFORE_SHUTDOWN，临时查看没送出去时的兜底）")
+          f"（ARK_REPORT_BEFORE_SHUTDOWN，临时查看没送出去时的补发）")
     n = Notifier(cfg)
     print(f"推送渠道      {'、'.join(n.channels) or '(无)'}")
     if cfg.llm_key:
@@ -119,7 +119,7 @@ def cmd_check(cfg: Config) -> int:
         ok, detail = summary.check(cfg)
         print(f"措辞模型      {'✅' if ok else '✗'} {detail}")
     else:
-        print("措辞模型      (未配置，将只发结构化内容——不影响告警和日报)")
+        print("措辞模型      (未配置，将只发固定格式的内容——不影响告警和日报)")
     problems = cfg.validate()
     if problems:
         print("\n有问题：")
@@ -286,7 +286,7 @@ def cmd_local(cfg: Config) -> int:
     wake = threading.Event()
     watching = watch.start(cfg.history_dir, wake)
     log.info("已挂上目录变更通知，记录一落盘立即处理" if watching
-             else f"本平台没有目录监听，退回 {cfg.poll_seconds} 秒兜底扫描")
+             else f"本平台没有目录变化通知，退回 {cfg.poll_seconds} 秒定时扫描")
     backstop = 3600.0 if watching else float(cfg.poll_seconds)
     while True:
         try:

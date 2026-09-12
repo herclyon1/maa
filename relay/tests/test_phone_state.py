@@ -107,7 +107,7 @@ FULL = {
     "MaaEnd": {"Stage": "藏剑谷", "MedicineNumb": 2},
     "OK-WW": {"WhichToFarm": "残象聚落"},
     "ark-relay": "跑着",
-    "进程": {"MAA.exe": True, "Endfield.exe": False, "MaaEnd.exe": True},
+    "程序": {"MAA.exe": True, "Endfield.exe": False, "MaaEnd.exe": True},
     "队列": {"早班": {"定时": True, "脚本": ["MAA", "MaaEnd", "OK-WW"]},
              "晚班": {"定时": True, "脚本": ["MAA"]}},
     "OK-WW配置": {"一大坨": "不该出现在手机包里"},
@@ -173,7 +173,7 @@ check("手机上要显示的字段留下",
 check("手机上不显示的字段不发（整包塞不下）",
       "这个手机上不显示" in out["config"]["MAA"], False)
 check("快照里的大块头没混进来（OK-WW配置/进程原文）",
-      [k for k in out if k in ("OK-WW配置", "进程")], [])
+      [k for k in out if k in ("OK-WW配置", "程序")], [])
 
 check("run 里给出服务状态", out["run"]["服务"], "跑着")
 check("run 里只列真在跑的进程", sorted(out["run"]["在跑的"]), ["MAA.exe", "MaaEnd.exe"])

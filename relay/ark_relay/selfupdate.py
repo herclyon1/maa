@@ -530,8 +530,8 @@ def _stage_files(root: Path, base: str, files: dict, deadline: float | None,
         if data is None:
             log.warning("%s 所有门都拿不到正确内容，本次更新整体放弃（已下 %d 个"
                         "文件都不落盘，下次启动重来）", rel, len(staged))
-            _record_failure(root, f"{rel}：所有门都拿不到正确内容（缓存未刷新，"
-                            "或时间预算不够走最慢的 raw）",
+            _record_failure(root, f"{rel}：几条下载线路都没拿到新代码（线路上还是旧内容，"
+                            "或最慢那条来不及走完）",
                             remote_ver, local_ver, wanted)
             return None
         staged.append((rel, target, data))

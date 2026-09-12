@@ -131,7 +131,7 @@ def _safe_rewrite(path: Path, mutate: Callable[[str], str],
         return True, "已经是这个状态，无需改动"
     if added or removed or len(changed) != expect_changed:
         return False, (
-            f"结构化 diff 不符预期，已放弃："
+            f"改动的地方和预期不符，已放弃："
             f"新增 {len(added)}、删除 {len(removed)}、改动 {len(changed)}"
             f"（预期改动 {expect_changed}、新增 0、删除 0）"
         )
@@ -308,7 +308,7 @@ def _set_config(cmd: dict) -> tuple[bool, str]:
         before = _dig(user, path)
     except KeyError:
         return False, (f"「{script}」里没有 {path} 这一项，已拒绝"
-                       "（不许凭空造字段——826 就是这么出的事）")
+                       "（设置里本来没有它，中继不会自己新建）")
     if before == value:
         return True, f"{script} 的 {path} 本来就是 {value!r}，没有改动"
     try:
@@ -320,7 +320,7 @@ def _set_config(cmd: dict) -> tuple[bool, str]:
         users = _mas("/api/scripts/user/get", {"scriptId": sid})["data"]
         now = _dig(users[uid], path)
     except Exception as exc:  # noqa: BLE001
-        return False, f"写了但回读不了，无法确认: {exc}"
+        return False, f"写进去了，但读出来核对时失败，没法确认: {exc}"
     if now != value:
         return False, (f"写了但没生效：{script} 的 {path} 现在是 {now!r}，"
                        f"不是 {value!r}")
@@ -391,7 +391,7 @@ def _estop_alive() -> list[str]:
         out = subprocess.run(["tasklist", "/FO", "CSV", "/NH"],
                              capture_output=True, timeout=20).stdout.decode("utf-8", "replace")
     except (OSError, subprocess.SubprocessError):
-        return ["进程表读不到"]
+        return ["读不到正在运行的程序列表"]
     low = out.lower()
     return [e for e in _ESTOP_EXES if e.lower() in low]
 
@@ -466,12 +466,12 @@ def estop(sleep=None) -> tuple[bool, str]:
         sleep(6)
         alive = _estop_alive()
 
-    head = "、".join(stopped) if stopped else "接口没停到东西"
+    head = "、".join(stopped) if stopped else "AUTO-MAS 那边一个都没停到"
     if alive:
         zh = sorted({_ESTOP_NAMES.get(a, a) for a in alive})
-        return False, (f"没能停干净。接口这边：{head}。"
+        return False, (f"没能停干净。AUTO-MAS 那边停掉的：{head}。"
                        f"还活着：{'、'.join(zh)}。"
-                       "调度器会把被停掉的队列整队重试，中继自己压不住它——"
+                       "AUTO-MAS 会把被停掉的队列整队重跑，中继拦不住它——"
                        "请到电脑上跑那个紧急停止的脚本，它会先把中继停掉再动手。")
     return True, f"已停一切：{head}；脚本和游戏都确认没了"
 
@@ -619,7 +619,7 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
     """
     action = str(cmd.get("action") or "").strip()
     if action not in ALLOWED:
-        return False, f"动作不在白名单内，已拒绝: {action!r}"
+        return False, f"这个动作不在允许的清单里，已拒绝: {action!r}"
 
     # Gate ②: mutating actions must carry the operator's confirmation.
     if action in MUTATING and not cmd.get("confirmed"):

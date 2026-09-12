@@ -80,7 +80,7 @@ check("返回失败", ok, False)
 check("不含「已停一切」", "已停一切" in msg, False)
 check("点名了还活着的（用中文说游戏名）", "鸣潮" in msg, True)
 check("指到电脑上的紧急停止脚本", "紧急停止" in msg, True)
-check("说清为什么中继自己停不住", "整队重试" in msg, True)
+check("说清为什么中继自己停不住", "整队重跑" in msg, True)
 check("不许在推送里出现进程名", "Client-Win64-Shipping" in msg, False)
 
 print("\n[进程表读不到时按「还活着」算——不知道不许说成全清]")
@@ -115,7 +115,7 @@ def _boom(*a, **k):
 
 
 _sp.run = _boom
-check("读不到时不许返回空", commands._estop_alive(), ["进程表读不到"])
+check("读不到时不许返回空", commands._estop_alive(), ["读不到正在运行的程序列表"])
 _sp.run, _os.name = real_run, real_name
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
