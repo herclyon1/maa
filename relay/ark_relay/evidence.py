@@ -26,10 +26,9 @@ Where it goes (`pick_uploader`, first that is configured):
    (`scripts/mac/evidence.sh pull`). Needs COS_* in .env; nobody but the
    account owner can create that (the user, 2026-09-12: 「gofile换成能脚本取的cos」).
 2. The WeCom app (`WeComFiles`) - the same credentials the relay already pushes
-   with. Each file goes to him as a file message (he opens it in WeCom); files
-   over 20 MB are cut into numbered pieces and joined back by `evidence.sh pull`,
-   which fetches the media by id within WeCom's three-day window. Off-machine,
-   no new account, reachable from the machine.
+   with. The run's one archive goes to him as a file message (he opens it in
+   WeCom) when it is under WeCom's 20 MB cap; `evidence.sh pull` fetches it back
+   by media id within WeCom's three-day window. Off-machine, no new account.
 3. gofile.io (`Gofile`) - last resort: a guest folder only a person can download
    from through the web page (its API refuses guest listing; measured 2026-09-12).
 
@@ -398,14 +397,14 @@ _WECOM_PERMANENT = {40001, 40013, 40014, 41001, 42001, 60020, 60011, 81013, 9300
 class WeComFiles:
     """Evidence as WeCom file messages to the same person the relay already pushes to.
 
-    WeCom caps a file at 20 MB and keeps uploaded media for three days; a bigger
-    file is cut into `<name>.p01of03` pieces (join with `evidence.sh pull` or
-    `copy /b`). The message reaches his phone the moment it is sent, so the
-    evidence is readable with the machine off; the media ids in the index let
-    the Mac fetch the bytes back within the three days.
+    WeCom caps a file at 20 MB and keeps uploaded media for three days. The
+    message reaches his phone the moment it is sent, so the evidence is readable
+    with the machine off; the media id in the index lets the Mac fetch the bytes
+    back within the three days. Bigger archives are refused here and go to the
+    next store - never cut into pieces.
     """
 
-    LIMIT = 19 * 1024 * 1024
+    LIMIT = 20 * 1024 * 1024
 
     def __init__(self, cfg):
         self.cfg = cfg
@@ -446,13 +445,14 @@ class WeComFiles:
 
     def upload(self, path: Path, timeout: int = 600) -> dict:
         data = path.read_bytes()
-        pieces = split_pieces(path.name, data, self.LIMIT)
-        sent = []
-        for name, chunk in pieces:
-            mid = self._upload_piece(name, chunk, timeout)
-            self._send_file(mid)
-            sent.append({"name": name, "media_id": mid, "size": len(chunk)})
-        return {"name": path.name, "size": len(data), "store": "wecom", "pieces": sent,
+        # One file per run, never cut into pieces (the user, 2026-09-12: 「一个游戏
+        # 脚本我只允许一个文件。不分卷，不切段」): over WeCom's cap the file goes to
+        # the next store instead.
+        if len(data) > self.LIMIT:
+            raise PermanentUploadError(f"企业微信文件上限 20 MB，这份 {len(data) // 1_000_000} MB")
+        mid = self._upload_piece(path.name, data, timeout)
+        self._send_file(mid)
+        return {"name": path.name, "size": len(data), "store": "wecom", "media_id": mid,
                 "expires": (datetime.now() + timedelta(days=3)).isoformat(timespec="seconds"),
                 "page": "企业微信"}
 
@@ -479,7 +479,7 @@ class WeComBotFiles:
     under state/evidence/.
     """
 
-    LIMIT = 19 * 1024 * 1024
+    LIMIT = 20 * 1024 * 1024
 
     def __init__(self, webhook: str):
         self.webhook = webhook
@@ -488,29 +488,19 @@ class WeComBotFiles:
 
     def upload(self, path: Path, timeout: int = 600) -> dict:
         data = path.read_bytes()
-        sent = []
-        for name, chunk in split_pieces(path.name, data, self.LIMIT):
-            boundary = "----ark" + uuid.uuid4().hex
-            body = b"".join([
-                f"--{boundary}\r\n".encode(),
-                f'Content-Disposition: form-data; name="media"; filename="{name}"\r\n'.encode(),
-                b"Content-Type: application/octet-stream\r\n\r\n", chunk, f"\r\n--{boundary}--\r\n".encode()])
-            d = _wecom_post(f"https://qyapi.weixin.qq.com/cgi-bin/webhook/upload_media?key={self.key}&type=file",
-                            body, f"multipart/form-data; boundary={boundary}", timeout)
-            mid = d["media_id"]
-            _wecom_post(self.webhook, json.dumps({"msgtype": "file", "file": {"media_id": mid}}).encode(),
-                        "application/json", 60)
-            sent.append({"name": name, "media_id": mid, "size": len(chunk)})
-        return {"name": path.name, "size": len(data), "store": "wecom-bot", "pieces": sent, "page": "企业微信群"}
-
-
-def split_pieces(name: str, data: bytes, limit: int) -> "list[tuple[str, bytes]]":
-    """[(piece name, bytes)]: the file itself when it fits, else numbered pieces
-    `<name>.p01of03` that concatenate back to the original."""
-    if len(data) <= limit:
-        return [(name, data)]
-    n = (len(data) + limit - 1) // limit
-    return [(f"{name}.p{i + 1:02d}of{n:02d}", data[i * limit:(i + 1) * limit]) for i in range(n)]
+        if len(data) > self.LIMIT:
+            raise PermanentUploadError(f"企业微信文件上限 20 MB，这份 {len(data) // 1_000_000} MB")
+        boundary = "----ark" + uuid.uuid4().hex
+        body = b"".join([
+            f"--{boundary}\r\n".encode(),
+            f'Content-Disposition: form-data; name="media"; filename="{path.name}"\r\n'.encode(),
+            b"Content-Type: application/octet-stream\r\n\r\n", data, f"\r\n--{boundary}--\r\n".encode()])
+        d = _wecom_post(f"https://qyapi.weixin.qq.com/cgi-bin/webhook/upload_media?key={self.key}&type=file",
+                        body, f"multipart/form-data; boundary={boundary}", timeout)
+        mid = d["media_id"]
+        _wecom_post(self.webhook, json.dumps({"msgtype": "file", "file": {"media_id": mid}}).encode(),
+                    "application/json", 60)
+        return {"name": path.name, "size": len(data), "store": "wecom-bot", "media_id": mid, "page": "企业微信群"}
 
 
 def pick_uploader(cfg, run_id: str = ""):
@@ -570,9 +560,19 @@ def save_and_upload(cfg, script: str, run_id: str, extra: list[Path] = (), *, up
         log.exception("证据包打不出来")
         result["errors"].append(f"bundle: {type(exc).__name__}: {exc}")
         paths = []
+    # One file per run (the user, 2026-09-12): the upstream export and the
+    # AUTO-MAS record go into a single archive, stored uncompressed (the parts
+    # inside are already deflated). Unpack it to hand the parts to upstream.
+    one: list[Path] = []
+    if paths:
+        try:
+            one = [pack_one(dst.parent / f"{script}-{run_id.replace('/', '_')}.zip", paths)]
+        except OSError as exc:
+            result["errors"].append(f"pack: {exc}")
+    result["archive"] = one[0].name if one else ""
     stores = [uploader] if uploader else uploaders(cfg, run_id)
     dead: set[int] = set()          # stores that refused permanently this round
-    for p in paths:
+    for p in one:
         ok = False
         for i, up in enumerate(stores):
             if i in dead:
@@ -607,6 +607,15 @@ def save_and_upload(cfg, script: str, run_id: str, extra: list[Path] = (), *, up
     with idx.open("a", encoding="utf-8") as f:
         f.write(json.dumps(result, ensure_ascii=False) + "\n")
     return result
+
+
+def pack_one(out: Path, paths: list[Path]) -> Path:
+    """All of a run's evidence files into one archive, stored (not re-compressed)."""
+    import zipfile  # noqa: PLC0415
+    with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_STORED) as z:
+        for p in paths:
+            z.write(p, p.name)
+    return out
 
 
 def prune(state_dir: Path, days: int = 30) -> int:

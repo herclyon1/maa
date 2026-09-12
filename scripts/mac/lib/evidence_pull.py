@@ -10,9 +10,9 @@ newest entry matching the fragment, and fetches its files:
                   in ~/.config/ark/push.env), same signature recipe as the relay's
                   `evidence.Cos`.
 * store "wecom" - `media/get` by media id with the WeCom app credentials in
-                  push.env; pieces named `<file>.p01of03` are joined back into
-                  `<file>`. WeCom keeps media three days; after that the entry's
-                  `expires` says so and the files live only in his WeCom chat.
+                  push.env. WeCom keeps media three days; after that the entry's
+                  `expires` says so and the file lives only in his WeCom chat.
+* store "wecom-bot" - the group robot's media has no download API; prints that.
 * store "gofile" - nothing to fetch by script; prints the page.
 
 Files land in <dest root>/<run_id with / as _>/.
@@ -70,18 +70,15 @@ def wecom_token(e: dict) -> str:
 
 
 def wecom_get(e: dict, u: dict, dest: Path, token: str) -> None:
-    parts = []
-    for piece in u.get("pieces") or []:
-        url = f"https://qyapi.weixin.qq.com/cgi-bin/media/get?access_token={token}&media_id={piece['media_id']}"
-        with urllib.request.urlopen(url, timeout=600) as r:
-            data = r.read()
-        if data[:1] == b"{":
-            d = json.loads(data.decode("utf-8", "replace"))
-            raise SystemExit(f"  ✗ {piece['name']}：企业微信没给文件（{d.get('errcode')} {d.get('errmsg')}）"
-                             f"——媒体只保留 3 天，这一趟登记的到期时间是 {u.get('expires')}")
-        parts.append(data)
-    (dest / u["name"]).write_bytes(b"".join(parts))
-    print(f"  ✓ {u['name']}（企业微信，{len(parts)} 段拼回）")
+    url = f"https://qyapi.weixin.qq.com/cgi-bin/media/get?access_token={token}&media_id={u['media_id']}"
+    with urllib.request.urlopen(url, timeout=600) as r:
+        data = r.read()
+    if data[:1] == b"{":
+        d = json.loads(data.decode("utf-8", "replace"))
+        raise SystemExit(f"  ✗ {u['name']}：企业微信没给文件（{d.get('errcode')} {d.get('errmsg')}）"
+                         f"——媒体只保留 3 天，这一趟登记的到期时间是 {u.get('expires')}")
+    (dest / u["name"]).write_bytes(data)
+    print(f"  ✓ {u['name']}（企业微信）")
 
 
 def main() -> int:
@@ -99,6 +96,9 @@ def main() -> int:
     print(f"{e['run_id']}  {store}  → {dest}")
     if store == "gofile":
         print(f"  gofile 只能人点网页下载：{e.get('page')}")
+        return 0
+    if store == "wecom-bot":
+        print("  群机器人发的文件没有取回接口，去企业微信群里下载")
         return 0
     token = wecom_token(creds) if store == "wecom" else ""
     for u in e.get("uploaded") or []:

@@ -131,11 +131,11 @@ _SCRIPT_ZH = {"MAA": "明日方舟", "MaaEnd": "终末地", "OK-WW": "鸣潮"}
 
 def evidence_saved_body(script: str, started: str, files: int, page: str) -> str:
     """`started` is the run's start as 「09-11 10:18」, not its run_id (that is a path)."""
-    head = f"{_SCRIPT_ZH.get(script, script)} {started} 那趟：{files} 个文件"
+    head = f"{_SCRIPT_ZH.get(script, script)} {started} 那趟：一个压缩包，里面 {files} 个文件"
     if page == "企业微信":
-        return head + "\n已作为文件发到你的企业微信（上面几条就是）；太大的文件切成了几段，段名末尾标着第几段共几段，按顺序拼回去就是原文件。"
+        return head + "\n已作为文件发到你的企业微信（上面那条就是）。"
     if page == "企业微信群":
-        return head + "\n已作为文件发到企业微信群（上面几条就是）；太大的文件切成了几段，段名末尾标着第几段共几段，按顺序拼回去就是原文件。"
+        return head + "\n已作为文件发到企业微信群（上面那条就是）。"
     return head + f"\n下载页：{page}"
 
 

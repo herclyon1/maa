@@ -51,10 +51,15 @@ def env(path: Path) -> dict:
 
 
 def request(cos: Cos, method: str, key: str, body: bytes = b"", params: str = "") -> tuple[int, bytes]:
+    import base64  # noqa: PLC0415
+    import hashlib  # noqa: PLC0415
     url = f"https://{cos.host}/{urllib.parse.quote(key, safe='/')}" + (f"?{params}" if params else "")
-    req = urllib.request.Request(url, data=body if body else None, method=method,
-                                 headers={"Authorization": cos.authorization(method, key),
-                                          "Content-Type": "application/xml" if params else "application/octet-stream"})
+    headers = {"Authorization": cos.authorization(method, key),
+               "Content-Type": "application/xml" if params else "application/octet-stream"}
+    if params:
+        # bucket sub-resource writes (lifecycle, ...) require Content-MD5 (measured 2026-09-12)
+        headers["Content-MD5"] = base64.b64encode(hashlib.md5(body).digest()).decode()
+    req = urllib.request.Request(url, data=body if body else None, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=60) as r:
             return r.status, r.read()

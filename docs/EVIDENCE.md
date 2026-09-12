@@ -68,11 +68,18 @@ The user: 「gofile换成能脚本取的cos」. Three stores, the first configur
    Only the account owner can produce these (实名 account, a bucket, an API key); the
    relay switches to COS the moment they are there - nothing else to change.
 2. **WeCom app file messages** (`WeComFiles`): the credentials the relay already pushes
-   with. Each file is sent to him as a file message; anything over 19 MiB is cut into
-   `<name>.p01of03` pieces. He opens them in WeCom; the Mac fetches the bytes back with
-   `media/get` within WeCom's three-day media window (`evidence.sh pull <run>`, which
-   also joins the pieces). Off the machine, no new account, reachable from Urumqi.
-3. **gofile** (`Gofile`): last resort, web page only.
+   with. The archive is sent to him as one file message when it is under 20 MB; the Mac
+   fetches it back with `media/get` within WeCom's three-day window (`evidence.sh pull`).
+   Refuses anything bigger - the next store takes it. (2026-09-12 20:04 the app API
+   answered 60020: the machine's IP is not on the app's trusted list.)
+3. **WeCom group robot** (`WeComBotFiles`): same 20 MB cap, no trusted-IP list, no
+   fetch-back API - for his eyes in the group.
+4. **gofile** (`Gofile`): last resort, any size, web page only.
+
+**One file per run** (the user, 2026-09-12: 「一个游戏脚本我只允许一个文件。不分卷，不切段」):
+`save_and_upload` packs the upstream export (its own volumes untouched inside) plus the
+AUTO-MAS record into a single stored zip `<script>-<run_id>.zip` and ships only that.
+Unzip it to hand upstream exactly the files their export button would have produced.
 
 `state/evidence/index.jsonl` carries `store`, and per file the COS key or the WeCom
 media ids with `expires`. `scripts/mac/evidence.sh list | pull | open`.

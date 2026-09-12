@@ -143,14 +143,16 @@ class FakeUp:
     def __init__(self): self.n = 0
     def upload(self, path):
         self.n += 1
-        if path.name.endswith("_part02.zip"):
-            raise RuntimeError("boom")            # fails all three tries
         return {"id": str(self.n), "name": path.name, "page": "https://gofile.io/d/x", "size": path.stat().st_size}
 ev.time.sleep = lambda s: None                     # no waiting between the retries in a test
 class Cfg:
     state_dir = tmpdir() / "state"; maaend_dir = None; maa_dir = maa; okww_dir = None; history_dir = None
 res = ev.save_and_upload(Cfg, "MAA", "2026-09-11/arknights/MAA-17-30-00", uploader=FakeUp())
-check("两个包，一个传上去一个三次都失败", (len(res["files"]), len(res["uploaded"]), len(res["errors"])), (2, 1, 1))
+check("两个分卷进一个压缩包，传的只有这一个文件", (len(res["files"]), len(res["uploaded"]), res["archive"]),
+      (2, 1, "MAA-2026-09-11_arknights_MAA-17-30-00.zip"))
+import zipfile as _zf  # noqa: E402
+inner = _zf.ZipFile(Cfg.state_dir / "evidence" / "2026-09-11_arknights_MAA-17-30-00" / res["archive"]).namelist()
+check("压缩包里就是上游格式的那几个文件，原样不动", sorted(inner), sorted(res["files"]))
 check("有下载页", res.get("page"), "https://gofile.io/d/x")
 idx = (Cfg.state_dir / "evidence" / "index.jsonl").read_text(encoding="utf-8").strip().splitlines()
 check("索引写了一行", len(idx), 1)
@@ -180,21 +182,24 @@ sk = hmac.new(b"SK", kt.encode(), hashlib.sha1).hexdigest()
 hs = "put\n/2026-09-12_endfield_MaaEnd-10-05-40/a.zip\n\nhost=ark-evidence-1250000000.cos.ap-shanghai.myqcloud.com\n"
 sts = f"sha1\n{kt}\n{hashlib.sha1(hs.encode()).hexdigest()}\n"
 check("和官方算法逐步算出来的一致", auth.rsplit("=", 1)[-1], hmac.new(sk.encode(), sts.encode(), hashlib.sha1).hexdigest())
-# WeCom pieces: 20 MB cap, numbered, concatenate back
-big = b"x" * (ev.WeComFiles.LIMIT * 2 + 5)
-pcs = ev.split_pieces("MaaEnd-logs-part001.zip", big, ev.WeComFiles.LIMIT)
-check("超过上限切成三段", [n for n, _ in pcs], ["MaaEnd-logs-part001.zip.p01of03", "MaaEnd-logs-part001.zip.p02of03", "MaaEnd-logs-part001.zip.p03of03"])
-check("拼回去一字不差", b"".join(c for _, c in pcs) == big, True)
-check("装得下就不切", ev.split_pieces("a.log", b"abc", 10), [("a.log", b"abc")])
+# One file per run, never pieces (the user, 2026-09-12): over WeCom's cap the store
+# refuses and the chain moves on.
+big = b"x" * (ev.WeComFiles.LIMIT + 5)
+f = tmpdir() / "MaaEnd-logs-part001.zip"; f.write_bytes(big)
 calls = []
 class FakeWe(ev.WeComFiles):
     def token(self): return "T"
     def _upload_piece(self, name, data, timeout): calls.append(("up", name, len(data))); return "MID" + str(len(calls))
     def _send_file(self, media_id): calls.append(("send", media_id))
-f = tmpdir() / "MaaEnd-logs-part001.zip"; f.write_bytes(big)
-r = FakeWe(C1).upload(f)
-check("每段先传后发，顺序不乱", [c[0] for c in calls], ["up", "send"] * 3)
-check("结果记下每段的 media_id 和 3 天有效期", (len(r["pieces"]), r["store"], "expires" in r, r["page"]), (3, "wecom", True, "企业微信"))
+try:
+    FakeWe(C1).upload(f); got = "no error"
+except ev.PermanentUploadError as exc:
+    got = str(exc)
+check("超过 20 MB：不切段，直接说太大让下一条路接手", "20 MB" in got and calls == [], True)
+small = tmpdir() / "MaaEnd-06-05-40.log"; small.write_bytes(b"log")
+r = FakeWe(C1).upload(small)
+check("装得下就一个文件一条消息", [c[0] for c in calls], ["up", "send"])
+check("结果记下 media_id 和 3 天有效期", (r["store"], "expires" in r, r["page"], r["media_id"]), ("wecom", True, "企业微信", "MID1"))
 # token(): cached until near expiry, and a refusal from WeCom is an error, not a silent ""
 class _Resp:
     def __init__(self, body): self.body = body
@@ -238,8 +243,8 @@ try:
     res3 = ev.save_and_upload(Cfg3, "MAA", "2026-09-11/arknights/MAA-17-30-00")
 finally:
     ev.uploaders = orig_uploaders
-check("被拒的那条路只碰一次（两个文件只试了一次，不是六次）", Refuse.n, 1)
-check("第二条路接手，全部传上", (len(res3["uploaded"]), res3.get("store")), (2, "gofile"))
+check("被拒的那条路只碰一次", Refuse.n, 1)
+check("第二条路接手，那一个文件传上了", (len(res3["uploaded"]), res3.get("store")), (1, "gofile"))
 check("被拒记在错误里但不算传输失败", any("60020" in e for e in res3["errors"]) and len(res3["errors"]) == 1, True)
 class C3(C1):
     wecom_bot_url = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=KEY123"
@@ -252,10 +257,15 @@ def fake_post(url, data, ctype, timeout):
 orig_post = ev._wecom_post
 ev._wecom_post = fake_post
 try:
-    r3 = ev.WeComBotFiles(C3.wecom_bot_url).upload(f)
+    r3 = ev.WeComBotFiles(C3.wecom_bot_url).upload(small)
+    try:
+        ev.WeComBotFiles(C3.wecom_bot_url).upload(f); big_got = "no error"
+    except ev.PermanentUploadError as exc:
+        big_got = str(exc)
 finally:
     ev._wecom_post = orig_post
-check("每段：先 upload_media 再 send", posts, ["upload_media", "send"] * 3)
-check("群机器人的结果标 wecom-bot", (r3["store"], len(r3["pieces"])), ("wecom-bot", 3))
+check("群机器人：先 upload_media 再 send，一个文件一条", posts, ["upload_media", "send"])
+check("群机器人的结果标 wecom-bot", (r3["store"], r3["media_id"]), ("wecom-bot", "M1"))
+check("群机器人也不切段", "20 MB" in big_got, True)
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
