@@ -40,8 +40,9 @@ To do when the machine is next up:
 2. If routes 15/16 failed again in the full run **and** in the retry, `failures.json`
    carries day 1 of 2; a second consecutive day triggers COLLECT_RECURRENT and the
    request for a manual upstream issue (evidence bundle already uploaded by then).
-3. **Ask him**: keep Saturday in the gathering schedule, or revert to Mon/Thu?
-   (`mastercfg.write_maaend(..., "AutoCollect/AutoCollectSchedule", [...])`).
+3. ~~Ask him about Saturday~~ - reverted to Mon/Thu on 09-12 18:5x; the user: the schedule
+   is Monday and Thursday only, a one-off run must never be done by editing the schedule
+   (do it the way 09-11 was done: MXU API with the day attached in the override).
 4. `evidence.sh list` should show the ROUND_INCOMPLETE / hold-for-retry uploads from
    the real flow (handle._ship_evidence) - only the CLI path was exercised tonight.
 
