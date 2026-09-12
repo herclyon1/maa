@@ -53,3 +53,35 @@ as 「疑似复发性问题」 with a request for a person to file it upstream.
 
 Manual: `python -m ark_relay collect-retry [--day YYYY-MM-DD]`. State under
 `state/collect-retry/` (one stamp per day, `failures.json` per route).
+
+
+## Where bundles go (2026-09-12 evening) - `evidence.pick_uploader`
+
+The user: 「gofile换成能脚本取的cos」. Three stores, the first configured one wins:
+
+1. **Tencent Cloud COS** (`Cos`): signed PUT of each file to
+   `https://<bucket>.cos.<region>.myqcloud.com/<run_id>/<name>` using the XML API
+   signature (q-sign-algorithm=sha1; verified step by step against the official recipe
+   in `tests/test_evidence.py`). Needs, in the machine's `.env` **and** in the Mac's
+   `~/.config/ark/push.env`: `COS_SECRET_ID`, `COS_SECRET_KEY`, `COS_BUCKET`
+   (`name-appid`, e.g. `ark-evidence-1250000000`), `COS_REGION` (e.g. `ap-shanghai`).
+   Only the account owner can produce these (实名 account, a bucket, an API key); the
+   relay switches to COS the moment they are there - nothing else to change.
+2. **WeCom app file messages** (`WeComFiles`): the credentials the relay already pushes
+   with. Each file is sent to him as a file message; anything over 19 MiB is cut into
+   `<name>.p01of03` pieces. He opens them in WeCom; the Mac fetches the bytes back with
+   `media/get` within WeCom's three-day media window (`evidence.sh pull <run>`, which
+   also joins the pieces). Off the machine, no new account, reachable from Urumqi.
+3. **gofile** (`Gofile`): last resort, web page only.
+
+`state/evidence/index.jsonl` carries `store`, and per file the COS key or the WeCom
+media ids with `expires`. `scripts/mac/evidence.sh list | pull | open`.
+
+Setting COS up once the account owner has an API key: `scripts/mac/cos-setup.py`
+(reads COS_SECRET_ID / COS_SECRET_KEY / COS_APPID from `~/.config/ark/push.env`, creates
+`ark-evidence-<appid>` in ap-shanghai with a 90-day expiry rule, probes it, writes the
+COS_* lines into both .env files and restarts the relay). Measured 2026-09-12 20:04: the
+WeCom **app** API refuses the machine (60020, IP 112.43.41.80 not on the trusted list),
+so the chain skipped to the group robot in one step and delivered 6 files / 9 messages
+in 60 s; the app store comes back the moment the IP is added in the WeCom admin console.
+Also: the group robot is store 「wecom-bot」 - human-readable only, no fetch-back API.

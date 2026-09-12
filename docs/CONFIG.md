@@ -576,6 +576,7 @@ claiming a check exists when it does not is worse than having none.)
 | `SERVERCHAN_KEY` | Server酱 |
 | `WECOM_CORPID` / `WECOM_SECRET` / `WECOM_AGENTID` | WeCom self-built app - dies with `60020` whenever the home IP changes |
 | `WECOM_BOT_URL` | WeCom group bot webhook - no trusted-IP list, better fit for a dial-up home line |
+| `COS_SECRET_ID` / `COS_SECRET_KEY` / `COS_BUCKET` / `COS_REGION` | Tencent Cloud COS for evidence bundles (docs/EVIDENCE.md; `scripts/mac/cos-setup.py` writes them). All four or none; bucket in the `name-appid` form, region like `ap-shanghai`. Absent: evidence goes out as WeCom file messages (app, then group robot), gofile last |
 | `ARK_LLM_PROVIDER` / `_BASE_URL` / `_KEY` / `_MODEL` | prose only; the report is complete without it |
 
 ## Backups

@@ -349,8 +349,10 @@ class ServerChan:
 def _hint(name: str, err: str) -> str:
     """Turn a channel's raw error into something actionable on a phone."""
     if name == "企业微信" and "60020" in err:
-        return ("可信 IP 不匹配。家宽拨号 IP 会变，去企业微信后台"
-                "「应用 → 企业可信IP」把当前出口 IP 重新加进去。")
+        m = re.search(r"from ip:\s*([\d.]+)", err)
+        ip = m.group(1) if m else "（错误里没带地址）"
+        return (f"机器现在的出口地址是 {ip}，不在企业微信应用的可信名单里。家宽拨号地址会变；"
+                "去企业微信管理后台「应用管理 → 这个应用 → 企业可信IP」把这个地址加进去，加了就恢复。")
     return ""
 
 

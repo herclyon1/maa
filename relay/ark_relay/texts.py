@@ -95,7 +95,7 @@ COLLECT_RETRY_OK = "✅ 自动采集：补跑后全部走完"
 COLLECT_RETRY_FAILED = "⚠️ 自动采集：补跑仍有路线没走通"
 COLLECT_RECURRENT = "🚩 自动采集：有路线连续两天补跑失败，是复发性问题"
 COLLECT_NARROWED = "🔁 自动采集：这一轮重跑只走没走通的路线"
-EVIDENCE_SAVED = "🗂️ 证据包已存到云端"
+EVIDENCE_SAVED = "🗂️ 证据包已送出机器"
 EVIDENCE_SOURCE_CHANGED = "🧷 上游改了导出日志的代码，证据包的打法要重新核对"
 
 
@@ -131,7 +131,12 @@ _SCRIPT_ZH = {"MAA": "明日方舟", "MaaEnd": "终末地", "OK-WW": "鸣潮"}
 
 def evidence_saved_body(script: str, started: str, files: int, page: str) -> str:
     """`started` is the run's start as 「09-11 10:18」, not its run_id (that is a path)."""
-    return f"{_SCRIPT_ZH.get(script, script)} {started} 那趟：{files} 个文件\n下载页：{page}"
+    head = f"{_SCRIPT_ZH.get(script, script)} {started} 那趟：{files} 个文件"
+    if page == "企业微信":
+        return head + "\n已作为文件发到你的企业微信（上面几条就是）；太大的文件切成了几段，段名末尾标着第几段共几段，按顺序拼回去就是原文件。"
+    if page == "企业微信群":
+        return head + "\n已作为文件发到企业微信群（上面几条就是）；太大的文件切成了几段，段名末尾标着第几段共几段，按顺序拼回去就是原文件。"
+    return head + f"\n下载页：{page}"
 
 
 def evidence_source_changed_body(names: list[str]) -> str:
@@ -270,6 +275,7 @@ def samples() -> list[str]:
         EVIDENCE_SAVED, EVIDENCE_SOURCE_CHANGED,
         collect_retry_start_body("路线15：红矛叶"), collect_retry_body(["路线16"], ["路线15"], [], ""),
         collect_recurrent_body(["路线15：红矛叶"]), evidence_saved_body("MaaEnd", "09-11 10:18", 3, "https://gofile.io/d/xxxx"),
+        evidence_saved_body("MaaEnd", "09-11 10:18", 3, "企业微信"), evidence_saved_body("MaaEnd", "09-11 10:18", 3, "企业微信群"),
         evidence_source_changed_body(["MaaEnd 导出"]),
         patches(3), unconfirmed("预更新", 2), failed("MaaEnd"), self_healed("OK-WW"),
         cant_enter("MaaEnd"), missing(not_run("早班")), missing(not_run_in("OK-WW", "早班")),

@@ -154,6 +154,14 @@ class Config:
     # above, which answers errcode=60020 the day the IP changes.
     # The URL contains its own key: treat the whole thing as a secret.
     wecom_bot_url: str = field(default_factory=lambda: _env("WECOM_BOT_URL"))
+    # Tencent Cloud COS for evidence bundles (evidence.py). All four or nothing:
+    # bucket in the 「name-appid」 form (ark-evidence-1250000000), region such as
+    # ap-shanghai. Without them evidence goes out through the WeCom app as file
+    # messages (20 MB parts, media kept 3 days), and gofile only as a last resort.
+    cos_secret_id: str = field(default_factory=lambda: _env("COS_SECRET_ID"))
+    cos_secret_key: str = field(default_factory=lambda: _env("COS_SECRET_KEY"))
+    cos_bucket: str = field(default_factory=lambda: _env("COS_BUCKET"))
+    cos_region: str = field(default_factory=lambda: _env("COS_REGION"))
 
     # Wording only - never judgment. See relay/README.md, "Where the model's
     # authority ends".

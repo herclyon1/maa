@@ -19,12 +19,21 @@ and compares hashes, so a change upstream produces a notice the same morning
 instead of a bundle that quietly stopped matching (the user's requirement of
 2026-09-12: a source change 一定要能发现).
 
-Where it goes: gofile.io, an anonymous free host reachable from the machine
-(GitHub, R2 and pixeldrain are not; measured 2026-09-12). A guest account is
-created on first upload and its token kept in the state dir, so every bundle
-lands in one folder the Mac can list. Guest files are kept ten days after
-their last access - long enough to read them while the machine is off, not an
-archive. The local copy under `state/evidence/` stays for thirty days.
+Where it goes (`pick_uploader`, first that is configured):
+
+1. Tencent Cloud COS (`Cos`) - a bucket of his, signed PUT/GET with the XML
+   API, nothing to install. Scriptable retrieval from the Mac
+   (`scripts/mac/evidence.sh pull`). Needs COS_* in .env; nobody but the
+   account owner can create that (the user, 2026-09-12: 「gofile换成能脚本取的cos」).
+2. The WeCom app (`WeComFiles`) - the same credentials the relay already pushes
+   with. Each file goes to him as a file message (he opens it in WeCom); files
+   over 20 MB are cut into numbered pieces and joined back by `evidence.sh pull`,
+   which fetches the media by id within WeCom's three-day window. Off-machine,
+   no new account, reachable from the machine.
+3. gofile.io (`Gofile`) - last resort: a guest folder only a person can download
+   from through the web page (its API refuses guest listing; measured 2026-09-12).
+
+The local copy under `state/evidence/` stays for thirty days.
 """
 from __future__ import annotations
 
@@ -34,11 +43,12 @@ import logging
 import shutil
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 import zipfile
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 log = logging.getLogger("ark.evidence")
@@ -334,6 +344,195 @@ class Gofile:
                 "size": path.stat().st_size, "md5": data.get("md5")}
 
 
+class Cos:
+    """Tencent Cloud COS through the XML API: one signed PUT per file, no SDK.
+
+    Signature per the official recipe (q-sign-algorithm=sha1): SignKey =
+    HMAC-SHA1(SecretKey, KeyTime); StringToSign = "sha1\n{KeyTime}\n{sha1(HttpString)}\n";
+    HttpString = "{method}\n{path}\n\nhost={host}\n". Objects land under
+    `<run_id>/<name>`; the returned `url` is a plain object URL that `sign_url`
+    turns into a GET the Mac can fetch.
+    """
+
+    def __init__(self, secret_id: str, secret_key: str, bucket: str, region: str, prefix: str = ""):
+        self.sid, self.skey, self.bucket, self.region = secret_id, secret_key, bucket, region
+        self.host = f"{bucket}.cos.{region}.myqcloud.com"
+        self.prefix = prefix.strip("/")
+
+    def authorization(self, method: str, key: str, now: "int | None" = None, ttl: int = 3600) -> str:
+        import hashlib  # noqa: PLC0415
+        import hmac  # noqa: PLC0415
+        start = int(now if now is not None else time.time()) - 60
+        key_time = f"{start};{start + ttl}"
+        sign_key = hmac.new(self.skey.encode(), key_time.encode(), hashlib.sha1).hexdigest()
+        path = "/" + urllib.parse.quote(key, safe="/")
+        http_string = f"{method.lower()}\n{path}\n\nhost={self.host}\n"
+        string_to_sign = f"sha1\n{key_time}\n{hashlib.sha1(http_string.encode()).hexdigest()}\n"
+        signature = hmac.new(sign_key.encode(), string_to_sign.encode(), hashlib.sha1).hexdigest()
+        return ("q-sign-algorithm=sha1&q-ak=" + self.sid + "&q-sign-time=" + key_time + "&q-key-time=" + key_time
+                + "&q-header-list=host&q-url-param-list=&q-signature=" + signature)
+
+    def object_key(self, path: Path) -> str:
+        return f"{self.prefix}/{path.name}" if self.prefix else path.name
+
+    def upload(self, path: Path, timeout: int = 900) -> dict:
+        key = self.object_key(path)
+        url = f"https://{self.host}/" + urllib.parse.quote(key, safe="/")
+        req = urllib.request.Request(url, data=path.read_bytes(), method="PUT",
+                                     headers={"Authorization": self.authorization("PUT", key),
+                                              "Content-Type": "application/octet-stream"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            r.read()
+        return {"name": path.name, "size": path.stat().st_size, "store": "cos", "key": key,
+                "url": url, "page": url}
+
+
+class PermanentUploadError(RuntimeError):
+    """The store refused for a reason a retry cannot change (wrong credentials,
+    IP not on the allow-list): move to the next store at once."""
+
+
+_WECOM_PERMANENT = {40001, 40013, 40014, 41001, 42001, 60020, 60011, 81013, 93000}
+
+
+class WeComFiles:
+    """Evidence as WeCom file messages to the same person the relay already pushes to.
+
+    WeCom caps a file at 20 MB and keeps uploaded media for three days; a bigger
+    file is cut into `<name>.p01of03` pieces (join with `evidence.sh pull` or
+    `copy /b`). The message reaches his phone the moment it is sent, so the
+    evidence is readable with the machine off; the media ids in the index let
+    the Mac fetch the bytes back within the three days.
+    """
+
+    LIMIT = 19 * 1024 * 1024
+
+    def __init__(self, cfg):
+        self.cfg = cfg
+        self._token = ""
+        self._until = 0.0
+
+    def token(self) -> str:
+        if self._token and time.time() < self._until:
+            return self._token
+        url = ("https://qyapi.weixin.qq.com/cgi-bin/gettoken"
+               f"?corpid={self.cfg.wecom_corpid}&corpsecret={self.cfg.wecom_secret}")
+        with urllib.request.urlopen(url, timeout=30) as r:
+            d = json.loads(r.read().decode("utf-8"))
+        if d.get("errcode") != 0:
+            raise RuntimeError(f"企业微信 gettoken: {d.get('errcode')} {d.get('errmsg')}")
+        self._token, self._until = d["access_token"], time.time() + int(d.get("expires_in", 7200)) - 300
+        return self._token
+
+    def _post(self, url: str, data: bytes, ctype: str, timeout: int) -> dict:
+        return _wecom_post(url, data, ctype, timeout)
+
+    def _upload_piece(self, name: str, data: bytes, timeout: int) -> str:
+        boundary = "----ark" + uuid.uuid4().hex
+        body = b"".join([
+            f"--{boundary}\r\n".encode(),
+            f'Content-Disposition: form-data; name="media"; filename="{name}"\r\n'.encode(),
+            b"Content-Type: application/octet-stream\r\n\r\n", data, f"\r\n--{boundary}--\r\n".encode()])
+        d = self._post("https://qyapi.weixin.qq.com/cgi-bin/media/upload"
+                       f"?access_token={self.token()}&type=file", body,
+                       f"multipart/form-data; boundary={boundary}", timeout)
+        return d["media_id"]
+
+    def _send_file(self, media_id: str) -> None:
+        self._post(f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={self.token()}",
+                   json.dumps({"touser": self.cfg.wecom_touser, "msgtype": "file",
+                               "agentid": int(self.cfg.wecom_agentid), "file": {"media_id": media_id}}).encode(),
+                   "application/json", 60)
+
+    def upload(self, path: Path, timeout: int = 600) -> dict:
+        data = path.read_bytes()
+        pieces = split_pieces(path.name, data, self.LIMIT)
+        sent = []
+        for name, chunk in pieces:
+            mid = self._upload_piece(name, chunk, timeout)
+            self._send_file(mid)
+            sent.append({"name": name, "media_id": mid, "size": len(chunk)})
+        return {"name": path.name, "size": len(data), "store": "wecom", "pieces": sent,
+                "expires": (datetime.now() + timedelta(days=3)).isoformat(timespec="seconds"),
+                "page": "企业微信"}
+
+
+def _wecom_post(url: str, data: bytes, ctype: str, timeout: int) -> dict:
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": ctype}, method="POST")
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        d = json.loads(r.read().decode("utf-8"))
+    if d.get("errcode") != 0:
+        msg = f"企业微信: {d.get('errcode')} {str(d.get('errmsg'))[:80]}"
+        # 60020 = the machine's dial-up IP is not on the app's trusted list; that
+        # is the state on 2026-09-12 and only the admin console can change it.
+        if d.get("errcode") in _WECOM_PERMANENT:
+            raise PermanentUploadError(msg)
+        raise RuntimeError(msg)
+    return d
+
+
+class WeComBotFiles:
+    """The same, through the group robot's webhook: no trusted-IP list, so it
+    works from the dial-up line when the app API answers 60020. The file lands
+    in the group he reads; nothing fetches it back by script (webhook media
+    has no download API), so this is for his eyes, and the local copy stays
+    under state/evidence/.
+    """
+
+    LIMIT = 19 * 1024 * 1024
+
+    def __init__(self, webhook: str):
+        self.webhook = webhook
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(webhook).query)
+        self.key = (q.get("key") or [""])[0]
+
+    def upload(self, path: Path, timeout: int = 600) -> dict:
+        data = path.read_bytes()
+        sent = []
+        for name, chunk in split_pieces(path.name, data, self.LIMIT):
+            boundary = "----ark" + uuid.uuid4().hex
+            body = b"".join([
+                f"--{boundary}\r\n".encode(),
+                f'Content-Disposition: form-data; name="media"; filename="{name}"\r\n'.encode(),
+                b"Content-Type: application/octet-stream\r\n\r\n", chunk, f"\r\n--{boundary}--\r\n".encode()])
+            d = _wecom_post(f"https://qyapi.weixin.qq.com/cgi-bin/webhook/upload_media?key={self.key}&type=file",
+                            body, f"multipart/form-data; boundary={boundary}", timeout)
+            mid = d["media_id"]
+            _wecom_post(self.webhook, json.dumps({"msgtype": "file", "file": {"media_id": mid}}).encode(),
+                        "application/json", 60)
+            sent.append({"name": name, "media_id": mid, "size": len(chunk)})
+        return {"name": path.name, "size": len(data), "store": "wecom-bot", "pieces": sent, "page": "企业微信群"}
+
+
+def split_pieces(name: str, data: bytes, limit: int) -> "list[tuple[str, bytes]]":
+    """[(piece name, bytes)]: the file itself when it fits, else numbered pieces
+    `<name>.p01of03` that concatenate back to the original."""
+    if len(data) <= limit:
+        return [(name, data)]
+    n = (len(data) + limit - 1) // limit
+    return [(f"{name}.p{i + 1:02d}of{n:02d}", data[i * limit:(i + 1) * limit]) for i in range(n)]
+
+
+def pick_uploader(cfg, run_id: str = ""):
+    """The first store in `uploaders(cfg)`; kept for callers that want one."""
+    return uploaders(cfg, run_id)[0]
+
+
+def uploaders(cfg, run_id: str = "") -> list:
+    """Every configured store, best first: COS, the WeCom app, the WeCom group
+    robot, gofile. `save_and_upload` walks down the list when one refuses."""
+    out: list = []
+    if all(getattr(cfg, k, "") for k in ("cos_secret_id", "cos_secret_key", "cos_bucket", "cos_region")):
+        out.append(Cos(cfg.cos_secret_id, cfg.cos_secret_key, cfg.cos_bucket, cfg.cos_region,
+                       prefix=run_id.replace("/", "_")))
+    if getattr(cfg, "wecom_corpid", "") and getattr(cfg, "wecom_secret", "") and getattr(cfg, "wecom_agentid", ""):
+        out.append(WeComFiles(cfg))
+    if getattr(cfg, "wecom_bot_url", ""):
+        out.append(WeComBotFiles(cfg.wecom_bot_url))
+    out.append(Gofile(Path(cfg.state_dir)))
+    return out
+
+
 # ------------------------------------------------------------------ driver
 
 def bundle_for(script: str, cfg, out_dir: Path) -> list[Path]:
@@ -371,22 +570,38 @@ def save_and_upload(cfg, script: str, run_id: str, extra: list[Path] = (), *, up
         log.exception("证据包打不出来")
         result["errors"].append(f"bundle: {type(exc).__name__}: {exc}")
         paths = []
-    up = uploader or Gofile(state_dir)
+    stores = [uploader] if uploader else uploaders(cfg, run_id)
+    dead: set[int] = set()          # stores that refused permanently this round
     for p in paths:
-        # gofile answered 500 to the very first 24 MB upload on 2026-09-12 and
-        # took the next one fine; three tries with a pause cover that.
-        for attempt in range(1, 4):
-            try:
-                result["uploaded"].append(up.upload(p))
+        ok = False
+        for i, up in enumerate(stores):
+            if i in dead:
+                continue
+            # gofile answered 500 to the very first 24 MB upload on 2026-09-12 and
+            # took the next one fine; three tries with a pause cover that. A
+            # permanent refusal (wrong key, IP not allowed) skips the tries and
+            # the store.
+            for attempt in range(1, 4):
+                try:
+                    result["uploaded"].append(up.upload(p))
+                    ok = True
+                    break
+                except PermanentUploadError as exc:
+                    log.warning("证据上传被拒 %s（%s，换下一条路）: %s", p.name, type(up).__name__, exc)
+                    result["errors"].append(f"{type(up).__name__} {p.name}: {exc}")
+                    dead.add(i)
+                    break
+                except Exception as exc:  # noqa: BLE001 - one failed upload must not lose the rest
+                    log.warning("证据上传失败 %s（%s 第 %d 次）: %s", p.name, type(up).__name__, attempt, exc)
+                    if attempt == 3:
+                        result["errors"].append(f"{type(up).__name__} {p.name}: {type(exc).__name__}: {exc}")
+                    else:
+                        time.sleep(15 * attempt)
+            if ok:
                 break
-            except Exception as exc:  # noqa: BLE001 - one failed upload must not lose the rest
-                log.warning("证据上传失败 %s（第 %d 次）: %s", p.name, attempt, exc)
-                if attempt == 3:
-                    result["errors"].append(f"upload {p.name}: {type(exc).__name__}: {exc}")
-                else:
-                    time.sleep(15 * attempt)
     if result["uploaded"]:
         result["page"] = result["uploaded"][0].get("page", "")
+        result["store"] = result["uploaded"][0].get("store", "gofile")
     idx = state_dir / "evidence" / "index.jsonl"
     idx.parent.mkdir(parents=True, exist_ok=True)
     with idx.open("a", encoding="utf-8") as f:
