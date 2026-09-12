@@ -26,6 +26,12 @@ Done overnight 09-12 01:00-02:45 (Beijing), all on the machine:
 
 To do when the machine is next up:
 
+0. **Banner section fix is on GitHub only** (manifest 20260912040841, pushed 13:10 Tokyo
+   while the machine was off). The 21:20 boot's self-update must pick it up: check
+   `relay.log` for the update line and that the evening report's 卡池 block shows
+   鸣潮 「身赴三途」景燃 as 当期 and no （复刻） preview for 终末地. If self-update did
+   not take it, `deploy-relay.sh` (RELEASE-NOTES.md still carries the text).
+
 1. After the 09:00 queue: did the relay's shutdown path run the retry by itself?
    `relay.log` should show 「自动采集补跑」 lines (or the reason it did not:
    已经跑过 / 脚本还在 / 全部走通). The stamp for 09-12 tells the outcome.
