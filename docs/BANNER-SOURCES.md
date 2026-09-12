@@ -28,6 +28,36 @@ and why that source was chosen. Verified 2026-08-31.
   is the running banners' end (all of a version's banners end on update day). The +42
   guess remains only as a fallback when no banner is running.
 
+## Supervision (2026-09-12, third pass) - what stops an invented line from going out
+
+The user: 「你对卡池信息这一块没有监管工具防止你瞎编或者数据出错吗？」 Three layers,
+all in `banners.py` (`Trace`), exercised by `tests/test_banners.py::_supervision`:
+
+1. **Provenance.** Every value that reaches the section is recorded as
+   `game｜what｜URL or field｜value` and written to `state/banners/YYYY-MM-DD.json` with
+   the rendered text and the check results. `python -m ark_relay banners` (on the
+   machine: `winrun.sh --py` a stub calling `cmd_banners`) prints the section, the
+   sources and any withheld line; exit 1 when something was withheld or a source failed.
+2. **Two official sources per running banner**, compared field by field (name,
+   characters, start, end) and reported in a 核对 footer under the section:
+   - 明日方舟: PRTS row vs the official site's 「…限时寻访即将开启」 post
+   - 鸣潮: Kuro wiki homepage tab vs the in-game notice's own 「[X]角色活动唤取」 post
+     (`recommend[]` in the gamenotice JSON: 5星角色「X」 and 活动时间 span)
+   - 终末地: Skland char-pool vs the version bulletin's 开放时间 line (closing clock)
+   A disagreement prints ✗ with both values; a missing second source prints ✗ too.
+   First live run flagged 终末地 12:59 vs 11:59 - the Mac converting the Skland
+   timestamp in Tokyo time; `parse_endfield` now converts in the server zone.
+3. **The date gate** (`gate_preview`): a 预告 line may contain a date only if a source
+   assigned it to a *start* (news post opening time, bulletin pool opening, maintenance
+   end), or an end when the line says 结束, or a rule/prediction when the line says
+   按规律/预测. Anything else is withheld: the report shows 「⚠️ 这一行没通过来源核对，
+   已扣下」 and the original goes to the log and the trace. This is exactly what the
+   morning's 「09-18 03:59 之后开」 would have hit.
+
+What it cannot catch: a wrong *wording* that carries no date (「先后等版本公告」).
+That is why the notes are now restricted to what a fetched field says, and the tests
+pin the exact text for the 2026-09-12 inputs.
+
 ## What the preview line says when nothing is announced (2026-09-12, second pass)
 
 The first pass of the day still printed 「09-18 03:59 之后开（还有 5 天）」 for Arknights

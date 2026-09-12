@@ -58,9 +58,11 @@ report.plan = types.SimpleNamespace(
     activity_countdown=lambda automas_dir: "",
 )
 report.banners = types.SimpleNamespace(
-    collect=lambda now, skland_token="", failed=None, notes=None: ([], {}),
-    render=lambda rows, now, nxt, previews, notes=None: "",
-    previews=lambda now, rows, ends: [],
+    collect=lambda now, skland_token="", failed=None, notes=None, trace=None: ([], {}),
+    render=lambda rows, now, nxt, previews, notes=None, trace=None: "",
+    previews=lambda now, rows, ends, trace=None: [],
+    Trace=types.SimpleNamespace(new=lambda: None),
+    save_trace=lambda state_dir, now, text, tr: None,
     version_ends=lambda now, rows: {},
 )
 MODEL = {"text": ""}          # "" = 撰写模型不可用，走结构化模板
@@ -117,7 +119,7 @@ class Eng:
     def __init__(self, state, *, interim=True, last_run_after="21:30"):
         self.cfg = types.SimpleNamespace(
             automas_dir=None, history_dir=None, okww_dir=None, skland_token="",
-            last_run_after=last_run_after, interim_report=interim)
+            state_dir=None, last_run_after=last_run_after, interim_report=interim)
         self.state = state
         self.notifier = FakeNotifier()
         self.running = False

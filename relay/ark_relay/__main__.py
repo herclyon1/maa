@@ -176,6 +176,32 @@ def cmd_evidence(cfg: Config, script: str, run_id: str) -> int:
     return 0 if res.get("uploaded") else 1
 
 
+def cmd_banners(cfg: Config) -> int:
+    """Print the banner section as the report would, plus every source it came from
+    and the cross-check results - the audit view of that section."""
+    from datetime import datetime  # noqa: PLC0415
+
+    from . import banners  # noqa: PLC0415
+    from .config import SERVER_TZ  # noqa: PLC0415
+    now = datetime.now(tz=SERVER_TZ).replace(tzinfo=None)
+    failed: list[str] = []
+    notes: dict[str, str] = {}
+    tr = banners.Trace.new()
+    rows, nxt = banners.collect(now, skland_token=cfg.skland_token, failed=failed, notes=notes, trace=tr)
+    text = banners.render(rows, now, nxt, banners.previews(now, rows, banners.version_ends(now, rows), trace=tr), notes, tr)
+    print(text or "（这一段是空的）")
+    if failed:
+        print("没取到：" + "、".join(failed))
+    print("--- 来源")
+    for line in tr.sources:
+        print("  " + line)
+    if tr.withheld:
+        print("--- 扣下的行")
+        for line in tr.withheld:
+            print("  " + line)
+    return 0 if not failed and not tr.withheld else 1
+
+
 def _acquire_singleton(cfg: Config) -> object | None:
     """Refuse to start twice.
 
@@ -294,7 +320,7 @@ def _sleep_until_alarm(engine, cap: float) -> float:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="ark_relay", description="MAA 通知中继")
-    p.add_argument("command", choices=["local", "check", "test", "report", "collect-retry", "evidence"])
+    p.add_argument("command", choices=["local", "check", "test", "report", "collect-retry", "evidence", "banners"])
     p.add_argument("--script", default="MaaEnd", help="evidence 模式：MAA / MaaEnd / OK-WW")
     p.add_argument("--run-id", default="", help="evidence 模式：账本里的 run_id")
     p.add_argument("--day", default="", help="collect-retry 模式：看哪一天的账本（默认今天）")
@@ -320,6 +346,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_collect_retry(cfg, args.day)
     if args.command == "evidence":
         return cmd_evidence(cfg, args.script, args.run_id)
+    if args.command == "banners":
+        return cmd_banners(cfg)
     return cmd_local(cfg)
 
 

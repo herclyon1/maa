@@ -171,8 +171,11 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
         bnow = datetime.now(tz=SERVER_TZ).replace(tzinfo=None)
         failed: list[str] = []
         notes: dict[str, str] = {}
-        rows, nxt = banners.collect(bnow, skland_token=eng.cfg.skland_token, failed=failed, notes=notes)
-        pool = banners.render(rows, bnow, nxt, banners.previews(bnow, rows, banners.version_ends(bnow, rows)), notes)
+        tr = banners.Trace.new()
+        rows, nxt = banners.collect(bnow, skland_token=eng.cfg.skland_token, failed=failed, notes=notes, trace=tr)
+        pool = banners.render(rows, bnow, nxt,
+                              banners.previews(bnow, rows, banners.version_ends(bnow, rows), trace=tr), notes, tr)
+        banners.save_trace(eng.cfg.state_dir, bnow, pool, tr)
         eng._announce_banners(bnow, nxt)
         # A source that could not be read must say so in the report itself.
         # Otherwise a missing game reads as "nothing running there", and the day

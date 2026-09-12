@@ -46,10 +46,36 @@ finally:
 check("调用了一次 maybe_run，带指定的日期", calls and calls[0][1] == "2026-09-11" and len(calls) == 1)
 check("退出码 0", rc, 0)
 
-print("\n[参数表认得这两个命令]")
+print("\n[banners 命令：打印那一段、来源和核对，扣下的行让退出码变 1]")
+from ark_relay import banners as _bn  # noqa: E402
+from datetime import datetime  # noqa: E402
+import io, contextlib  # noqa: E402
+def fake_collect(now, *, skland_token="", failed=None, notes=None, trace=None, **_):
+    b = _bn.Banner("鸣潮", "身赴三途", ("景燃",), datetime(2026, 9, 10, 10, 0), datetime(2026, 9, 29, 11, 59, 59))
+    trace.ends |= _bn._stamps(b.end)
+    trace.src("鸣潮", "当期", "库街区", "身赴三途 景燃")
+    trace.checks.append("鸣潮：库街区=游戏公告 ✓")
+    notes["明日方舟"] = "09-18 03:59 之后开（还有 5 天）　下一池官方还没公告"
+    return [b], {}
+orig_collect = _bn.collect
+_bn.collect = fake_collect
+Cfg.skland_token = ""
+buf = io.StringIO()
+try:
+    with contextlib.redirect_stdout(buf):
+        rc = cli.cmd_banners(Cfg)
+finally:
+    _bn.collect = orig_collect
+out = buf.getvalue()
+check("打印了当期行", "「身赴三途」景燃" in out)
+check("打印了来源", "库街区｜身赴三途 景燃" in out)
+check("编出来的预告被扣下并列出", "扣下的行" in out and "09-18 03:59 之后开" in out)
+check("有扣下的行时退出码 1", rc, 1)
+
+print("\n[参数表认得这几个命令]")
 p = argparse.ArgumentParser()
-p.add_argument("command", choices=["local", "check", "test", "report", "collect-retry", "evidence"])
-check("choices 里有", set(p._actions[1].choices) >= {"collect-retry", "evidence"})
+p.add_argument("command", choices=["local", "check", "test", "report", "collect-retry", "evidence", "banners"])
+check("choices 里有", set(p._actions[1].choices) >= {"collect-retry", "evidence", "banners"})
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

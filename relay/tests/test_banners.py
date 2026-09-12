@@ -113,10 +113,11 @@ def _endfield() -> None:
     ef = parse_endfield(ef_pools, lambda gid: {"1683": "梨诺"}.get(gid, ""))
     check("终末地池名", [b.name for b in ef], ["晨星于此闪耀"])
     check("角色名要按 pcLink 里的 gameEntryId 去查", ef[0].chars, ("梨诺",))
-    # Timestamp conversion depends on the local zone: compare the timestamps, not clock readings
-    check("起止时间戳原样还原",
-          (int(ef[0].start.timestamp()), int(ef[0].end.timestamp())),
-          (1786248000, 1788300000))
+    # Wall clock in the server's zone regardless of where the test runs (from Tokyo the
+    # old local conversion read 12:59 for the bulletin's 11:59, 2026-09-12).
+    check("起止按北京时间还原（1786248000 = 08-09 12:00，1788300000 = 09-02 06:00）",
+          (ef[0].start.strftime("%m-%d %H:%M"), ef[0].end.strftime("%m-%d %H:%M")),
+          ("08-09 12:00", "09-02 06:00"))
 
     not_up = json.loads(json.dumps(ef_pools))
     for c in not_up[0]["chars"]:
@@ -288,6 +289,23 @@ def _per_game_blocks(pools) -> None:
     check("当期带结束时刻", "（09-10 09:59 结束）" in both, True)
 
 
+def _ef_bulletin_html() -> str:
+    """The 版本更新说明 body inside the full 2026-09-03 bulletin fixture."""
+    full = json.loads((FX / "ef_bulletin_full_2026-09-03.json").read_text(encoding="utf-8"))
+    acc: list = []
+    def walk(o):
+        if isinstance(o, dict):
+            if "版本更新说明" in str(o.get("header") or o.get("title") or ""):
+                acc.append(o)
+            for v in o.values():
+                walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+    walk(full)
+    return str(((acc[0].get("data") or {}).get("html")) or acc[0].get("html") or "") if acc else ""
+
+
 def _sept12() -> None:
     """The four things wrong in the 2026-09-12 report, one check each."""
     now = datetime(2026, 9, 12, 12, 0)
@@ -321,8 +339,9 @@ def _sept12() -> None:
         cid = url.rsplit("/", 1)[-1]
         return arts.get(cid, "") if cid != "news?page=2" and cid != "news" else ak_list2
     posts = _b.arknights_banner_posts(now, get=ak_get2)
-    check("近两条首发寻访公告：09-04 和 08-01，各自的发布日",
-          [(st.strftime("%m-%d"), po.strftime("%m-%d")) for st, _, po in posts], [("09-04", "08-29"), ("08-01", "07-25")])
+    check("近两条首发寻访公告：09-04 和 08-01，各自的发布日和结束",
+          [(st.strftime("%m-%d"), po.strftime("%m-%d"), en.strftime("%m-%d %H:%M")) for st, _, po, en, _c in posts],
+          [("09-04", "08-29", "09-18 03:59"), ("08-01", "07-25", "08-15 03:59")])
     check("复刻寻访（砺火成锋 8588）不算", any(u.endswith("/8588") for u in calls), False)
     check("公告提前量文案", _b.announce_lead(posts), "官方惯例开池前约一周公告（上两池分别提前 6 天、7 天）")
     # c3. the official site's combat demos say who of the teased pair comes first
@@ -331,6 +350,56 @@ def _sept12() -> None:
     check("3.6 的两人：清宵 08-17 先、景燃 09-06 后（顺序 = 池子顺序）",
           _b.wuwa_demo_note(site, ["清宵", "景燃"], datetime(2026, 9, 7)), "官网已发「清宵」的战斗演示（08-17）、「景燃」的战斗演示（09-06）")
     check("还没到发布时间的不算", _b.wuwa_demo_note(site, ["景燃"], datetime(2026, 9, 1)), "")
+    art5282 = (FX / "wuwa_site_article_5282.json").read_text(encoding="utf-8")
+    mt = _b.wuwa_maintenance(site, datetime(2026, 8, 15), get=lambda u: art5282 if u.endswith("/5282.json") else "{}")
+    check("官网维护预告：3.6 维护 08-20 04:00~11:00", (mt[0], mt[1].strftime("%m-%d %H:%M"), mt[2].strftime("%m-%d %H:%M")) if mt else None, ("3.6", "08-20 04:00", "08-20 11:00"))
+    check("维护已经过去就不算下一版", _b.wuwa_maintenance(site, now, get=lambda u: art5282), None)
+
+
+def _supervision() -> None:
+    """The user, 2026-09-12: 「你对卡池信息这一块没有监管工具防止你瞎编或者数据出错吗？」"""
+    now = datetime(2026, 9, 12, 12, 0)
+    # 1. the date gate: an end dressed up as a start is withheld
+    tr = _b.Trace.new()
+    tr.ends |= {"09-18", "09-18 03:59"}
+    check("「09-18 03:59 之后开」被扣下", bool(_b.gate_preview("· 预告　09-18 03:59 之后开（还有 5 天）　下一池官方还没公告", tr)), True)
+    check("说了「结束」的当期结束时刻放行", _b.gate_preview("· 预告　当期 09-18 03:59 结束（还有 5 天）　下一池官方还没公告", tr), "")
+    tr.starts |= {"09-24", "09-24 12:00"}
+    check("有来源当作开始的时刻放行", _b.gate_preview("· 预告　09-24 12:00 开（还有 12 天）　伊冯「绚丽异彩」", tr), "")
+    check("按规律的前瞻日期要在规律集合里", bool(_b.gate_preview("· 预告　09-16 19:00（版本 09-29 更新前 13 天，按规律）", tr)), True)
+    tr.rule |= {"09-16 19:00", "09-16", "09-29", "09-29 11:59"}
+    check("登记后放行", _b.gate_preview("· 预告　09-16 19:00（版本 09-29 更新前 13 天，按规律）", tr), "")
+    check("没有日期的说明行放行", _b.gate_preview("· 预告　下一池官方还没公告，官方惯例开池前约一周公告", tr), "")
+    out = render([], now, {}, notes={"明日方舟": "09-18 03:59 之后开（还有 5 天）　下一池官方还没公告"}, trace=tr)
+    check("render 扣下并标注", "已扣下" in out and "09-18" not in out, True)
+    check("扣下的原文进 trace", len(tr.withheld), 1)
+    # 2. cross-checks between two official sources
+    a = _b.Banner("明日方舟", "石白深蓝之夜", ("结城理",), datetime(2026, 9, 4, 12, 0), datetime(2026, 9, 18, 3, 59))
+    check("两源一致 ✓", _b.crosscheck("明日方舟", "PRTS", a, "官网公告", a), "明日方舟：PRTS=官网公告 ✓")
+    b = _b.Banner("明日方舟", "石白深蓝之夜", ("结城理",), datetime(2026, 9, 4, 12, 0), datetime(2026, 9, 19, 3, 59))
+    check("结束对不上要点名", "结束 PRTS 09-18 03:59 / 官网公告 09-19 03:59" in _b.crosscheck("明日方舟", "PRTS", a, "官网公告", b), True)
+    check("第二源没有这个池 ✗", _b.crosscheck("明日方舟", "PRTS", a, "官网公告", None).endswith("找不到 ✗"), True)
+    c = _b.Banner("鸣潮", "身赴三途", ("景燃",), datetime(2026, 9, 10, 10, 0), datetime(2026, 9, 29, 11, 59, 59))
+    d = _b.Banner("鸣潮", "身赴三途", ("景燃",), datetime(2026, 9, 10), datetime(2026, 9, 29, 11, 59, 59))
+    check("一边只有日期时按日比", _b.crosscheck("鸣潮", "库街区", c, "游戏公告", d), "鸣潮：库街区=游戏公告 ✓")
+    e1 = _b.Banner("终末地", "冬猎", ("提弗洛斯",), datetime(2026, 9, 2, 11, 30), datetime(2026, 9, 30, 11, 59, 59))
+    e2 = _b.Banner("终末地", "冬猎", ("提弗洛斯",), datetime(2026, 9, 2, 11, 30), datetime(2026, 9, 30, 11, 59))
+    check("秒不算差异（森空岛 11:59:59 / 公告 11:59）", _b.crosscheck("终末地", "森空岛", e1, "公告", e2), "终末地：森空岛=公告 ✓")
+    # 3. the second 鸣潮 source: the in-game notice's own banner posts
+    notice = json.loads((FX / "wuwa_notice_recommend_2026-09-12.json").read_text(encoding="utf-8"))
+    nb = _b.parse_wuwa_notice_banners(notice)
+    check("游戏公告里的当期池：身赴三途 景燃 09-10 10:00 ~ 09-29 11:59",
+          [(x.name, x.chars, x.start.strftime("%m-%d %H:%M"), x.end.strftime("%m-%d %H:%M")) for x in nb if x.name == "身赴三途"],
+          [("身赴三途", ("景燃",), "09-10 10:00", "09-29 11:59")])
+    check("库街区和游戏公告对得上", _b.crosscheck("鸣潮", "库街区", c, "游戏公告", next(x for x in nb if x.name == "身赴三途")), "鸣潮：库街区=游戏公告 ✓")
+    # 4. the second 终末地 source: the bulletin's closing times
+    ends = _b.endfield_pool_ends(_ef_bulletin_html())
+    check("公告里冬猎 09-30 11:59 结束；绚丽异彩「版本更新维护前」没有钟点所以不在", 
+          {k: v.strftime("%m-%d %H:%M") for k, v in ends.items()}, {("提弗洛斯", "冬猎"): "09-30 11:59"})
+    # 5. the footer
+    tr2 = _b.Trace.new(); tr2.checks.append("鸣潮：库街区=游戏公告 ✓")
+    out2 = render([c], now, {}, trace=tr2)
+    check("页脚列出核对结果", out2.splitlines()[-1], "核对　鸣潮：库街区=游戏公告 ✓")
     # d. Endfield: the official site's banner notice; "after the version update" resolved by the maintenance window
     news = (FX / "ef_news_2026-09-12.txt").read_text(encoding="utf-8")
     arts = {"6097": (FX / "ef_news_6097.txt").read_text(encoding="utf-8"),
@@ -343,20 +412,7 @@ def _sept12() -> None:
           (nxt[0].strftime("%m-%d %H:%M"), nxt[1]) if nxt else None, ("09-02 12:00", "提弗洛斯「冬猎」"))
     check("已经开了的不再是下一期", _b.endfield_next_from_news(now, get=ef_get), None)
     # e. Endfield reruns never become the preview
-    full = json.loads((FX / "ef_bulletin_full_2026-09-03.json").read_text(encoding="utf-8"))
-    def _walk(o, acc):
-        if isinstance(o, dict):
-            if "版本更新说明" in str(o.get("header") or o.get("title") or ""):
-                acc.append(o)
-            for v in o.values():
-                _walk(v, acc)
-        elif isinstance(o, list):
-            for v in o:
-                _walk(v, acc)
-    acc: list = []
-    _walk(full, acc)
-    html = str(((acc[0].get("data") or {}).get("html")) or acc[0].get("html") or "") if acc else ""
-    pools = _b.endfield_pools_from_notice(html)
+    pools = _b.endfield_pools_from_notice(_ef_bulletin_html())
     reruns = [(n, p) for n, p, w, d in pools if not d]
     check("公告里确实有复刻池（伊冯）作为反例", ("伊冯", "绚丽异彩") in reruns, True)
     future = [(n, p, w, d) for n, p, w, d in pools if w and w > now and d]
@@ -382,6 +438,7 @@ def main() -> int:
     _top_rarity_only()
     _per_game_blocks(pools)
     _sept12()
+    _supervision()
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1
 
