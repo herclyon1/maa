@@ -561,6 +561,15 @@ def _ship_evidence(eng, rec: RunRecord) -> None:
 def _handle(eng, rec: RunRecord) -> None:
     _append_ledger_once(eng, rec)
     key = (rec.script, rec.user)
+    if rec.script == "MaaEnd":
+        # A MaaEnd record ending means AUTO-MAS's retry round (if any) is over:
+        # whatever narrowing was done for it must go back before anything else.
+        try:
+            from . import collect_retry  # noqa: PLC0415
+            if back := collect_retry.restore_master(eng.cfg):
+                log.info("🔁 %s", back)
+        except Exception:
+            log.exception("母本路线改回出错")
 
     if rec.ok:
         _handle_success(eng, rec, key)
@@ -589,8 +598,28 @@ def _handle(eng, rec: RunRecord) -> None:
     if rec.script == "MaaEnd" and rec.failed_tasks and set(rec.failed_tasks) <= eng.SOFT_FAILS:
         log.warning("🟡 %s 只是 %s 没做成（上游问题），记日报不拉警报",
                     rec.script, "、".join(rec.failed_tasks))
+        _narrow_for_retry(eng, rec)
         return
     _hold_for_retry(eng, rec, key)
+
+
+def _narrow_for_retry(eng, rec: RunRecord) -> None:
+    """AUTO-MAS is about to re-run 自动采集 in full; make that round walk only the
+    routes that failed (the user, 2026-09-12: 「第二趟并没有生效单独重跑又全量了一遍」)."""
+    ids = list(rec.raw.get("maaend_collect_failed_ids") or [])
+    if "自动采集" not in (rec.failed_tasks or []) or not ids:
+        return
+    try:
+        from . import collect_retry  # noqa: PLC0415
+        note = collect_retry.narrow_master(eng.cfg, ids, rec.run_id, datetime.now(tz=SERVER_TZ))
+    except Exception:
+        log.exception("母本路线收窄出错，这一轮重跑会走全部路线")
+        return
+    if not note:
+        return
+    log.info("🔁 %s", note)
+    labels = list(rec.raw.get("maaend_collect_failed") or ids)
+    eng.notifier.send(texts.COLLECT_NARROWED, texts.collect_narrowed_body(labels))
 
 
 def _maintenance_today(eng, game: str) -> bool:

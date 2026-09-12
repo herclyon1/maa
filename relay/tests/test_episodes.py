@@ -70,11 +70,18 @@ check("插曲说明", "游戏更新后重跑，不算失败" in body, True)
 check("维护说明", "进不了游戏" in body, True)
 
 print("[上游软失败：🟡 不计失败]")
-soft = [ent("m", "MAA", 9, 0, 17, True), ent("s", "MaaEnd", 9, 28, 50, False, failed=["应急理智加强剂", "自动采集"], raw={"maaend_collect_done": 13, "maaend_collect_total": 15})]
+soft = [ent("m", "MAA", 9, 0, 17, True), ent("s", "MaaEnd", 9, 28, 50, False, failed=["应急理智加强剂", "自动采集"],
+            raw={"maaend_collect_done": 13, "maaend_collect_total": 15, "maaend_collect_failed": ["路线15：红矛叶", "路线16：协议纹石"]})]
 check("分类 soft", core.episode_kinds(soft).get("s"), "soft")
 ts, bs = core.format_daily("2026-09-03", soft)
 check("标题不算失败", "全绿 ✅（个别上游项没成）" in ts, True)
-check("画 🟡 并写采了几条", "🟡 MaaEnd" in bs and "自动采集 13 条路线已采" in bs, True)
+# The user, 2026-09-12: 「没做成哪些，做成了哪些」 - the note names the routes.
+check("画 🟡 并点名没走通的路线", "🟡 MaaEnd" in bs
+      and "没做成：应急理智加强剂（上游问题，不算失败）；自动采集 13/15 条走通，没走通：路线15：红矛叶、路线16：协议纹石（不算失败，中继另行补跑）" in bs, True)
+only = [ent("o", "MaaEnd", 9, 28, 50, False, failed=["自动采集"], raw={"maaend_collect_done": 13, "maaend_collect_total": 17, "maaend_collect_failed": ["路线4：xx"]})]
+_, bo = core.format_daily("2026-09-03", only)
+check("只有采集没成时不写「没做成：」空头", "没做成：（" in bo, False)
+check("只有采集没成时的写法", "自动采集 13/17 条走通，没走通：路线4：xx（不算失败，中继另行补跑）" in bo, True)
 mixed = [ent("x", "MaaEnd", 9, 28, 50, False, failed=["赠送干员礼物", "自动采集"])]
 check("混着真失败的不算软", core.episode_kinds(mixed), {})
 

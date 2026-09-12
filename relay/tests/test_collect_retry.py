@@ -125,5 +125,42 @@ rec, rts = cr.latest_gathering_run(led + [{"script": "MaaEnd", "run_id": "d/e"}]
 check("最后一趟全过就没有要补的", (rec["run_id"], rts), ("d/e", []))
 check("路线名是中文", cr.route_label("AutoCollectRoute15", zh), "路线15：红矛叶")
 
+print("\n[AUTO-MAS 自己的重跑轮：母本路线收窄成只剩失败的，下一条记录一到就改回]")
+from datetime import datetime  # noqa: E402
+root = tmpdir()
+mdir = root / "data" / "abc" / "Default" / "ConfigFile"
+mdir.mkdir(parents=True)
+master = {"instances": [{"tasks": [{"taskName": "AutoCollect", "enabled": True, "optionValues": {
+    "AutoCollectSchedule": {"type": "checkbox", "caseNames": ["AutoCollectScheduleSaturday"]},
+    "AutoCollectValleyIVRareRoutes": {"type": "checkbox", "caseNames": ["Route4", "Route5", "Route6", "Route13", "Route14"]},
+    "AutoCollectWulingRareRoutes": {"type": "checkbox", "caseNames": ["Route1", "Route2", "Route3", "Route15", "Route16", "Route17"]},
+    "AutoCollectValleyIVCommonRoutes": {"type": "checkbox", "caseNames": []},
+    "AutoCollectMode": {"type": "select", "caseName": "Always"}}}]}]}
+(mdir / "mxu-MaaEnd.json").write_text(json.dumps(master, ensure_ascii=False), encoding="utf-8")
+class Cfg2:
+    automas_dir = root; state_dir = root / "state"
+Cfg2.state_dir.mkdir()
+note = cr.narrow_master(Cfg2, ["Route15", "Route16", "Route4"], "2026-09-12/endfield/MaaEnd-10-05-00", datetime(2026, 9, 12, 10, 34))
+check("收窄有说明", "3/11" in note, True)
+doc = json.loads((mdir / "mxu-MaaEnd.json").read_text(encoding="utf-8"))
+ov = doc["instances"][0]["tasks"][0]["optionValues"]
+check("武陵只剩 15、16", ov["AutoCollectWulingRareRoutes"]["caseNames"], ["Route15", "Route16"])
+check("四号谷地只剩 4", ov["AutoCollectValleyIVRareRoutes"]["caseNames"], ["Route4"])
+check("排班和模式不动", (ov["AutoCollectSchedule"]["caseNames"], ov["AutoCollectMode"]["caseName"]), (["AutoCollectScheduleSaturday"], "Always"))
+check("原表存了", (Cfg2.state_dir / "collect-retry" / "narrow.json").exists(), True)
+note2 = cr.narrow_master(Cfg2, ["Route15"], "again", datetime(2026, 9, 12, 11, 0))
+saved = json.loads((Cfg2.state_dir / "collect-retry" / "narrow.json").read_text(encoding="utf-8"))
+check("第二次收窄不覆盖原表", saved["lists"]["AutoCollectWulingRareRoutes"], ["Route1", "Route2", "Route3", "Route15", "Route16", "Route17"])
+back = cr.restore_master(Cfg2)
+check("改回有说明", "改回原来的 11 条" in back, True)
+doc = json.loads((mdir / "mxu-MaaEnd.json").read_text(encoding="utf-8"))
+ov = doc["instances"][0]["tasks"][0]["optionValues"]
+check("武陵改回", ov["AutoCollectWulingRareRoutes"]["caseNames"], ["Route1", "Route2", "Route3", "Route15", "Route16", "Route17"])
+check("四号谷地改回", ov["AutoCollectValleyIVRareRoutes"]["caseNames"], ["Route4", "Route5", "Route6", "Route13", "Route14"])
+check("记录删掉了", (Cfg2.state_dir / "collect-retry" / "narrow.json").exists(), False)
+check("没有记录时改回是空操作", cr.restore_master(Cfg2), "")
+check("失败的路线不在表里就不动", cr.narrow_master(Cfg2, ["Route99"], "x", datetime(2026, 9, 12)), "")
+check("全部失败也不动（收窄没有意义）", cr.narrow_master(Cfg2, ["Route1", "Route2", "Route3", "Route15", "Route16", "Route17", "Route4", "Route5", "Route6", "Route13", "Route14"], "x", datetime(2026, 9, 12)), "")
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

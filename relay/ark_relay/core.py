@@ -557,7 +557,14 @@ def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ..
         if failed and e.get("ok"):
             n += "；失败 " + "、".join(failed)
         notes.append(n)
-    if routes := raw.get("maaend_collect_routes"):
+    if total := raw.get("maaend_collect_total"):
+        # Walked/total from the run's own 「路线N：…」 lines: after a narrowed retry
+        # round this reads 「自动采集 2/2 条走通（补跑）」, not a bare 「做了 自动采集」.
+        n = f"自动采集 {raw.get('maaend_collect_done', 0)}/{total} 条走通"
+        if bad := raw.get("maaend_collect_failed"):
+            n += "，没走通：" + "、".join(bad)
+        notes.append(n)
+    elif routes := raw.get("maaend_collect_routes"):
         notes.append(f"自动采集 {routes} 条路线")
 
     return did, cost, out, left, notes
@@ -684,9 +691,18 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
         # For a run that did not go through, and for the one-minute annihilation
         # check: a single note row, not five empty slots.
         if kind == "soft":
-            note = "没做成：" + "、".join(e.get("failed_tasks") or []) + "（上游问题，不算失败）"
-            if routes := raw.get("maaend_collect_done"):
-                note += f"；自动采集 {routes} 条路线已采"
+            others = [t for t in (e.get("failed_tasks") or []) if t != "自动采集"]
+            note = ("没做成：" + "、".join(others) + "（上游问题，不算失败）") if others else ""
+            if "自动采集" in (e.get("failed_tasks") or []):
+                done, total = raw.get("maaend_collect_done"), raw.get("maaend_collect_total")
+                bad = raw.get("maaend_collect_failed") or []
+                # The user, 2026-09-12: 「没做成哪些，做成了哪些」 - name them, do not
+                # just count.
+                part = (f"自动采集 {done}/{total} 条走通" if total else "自动采集没走完")
+                if bad:
+                    part += "，没走通：" + "、".join(bad)
+                part += "（不算失败，中继另行补跑）"
+                note = f"{note}；{part}" if note else part
             lines += [_row("备注", [note]), ""]
             continue
         if kind:

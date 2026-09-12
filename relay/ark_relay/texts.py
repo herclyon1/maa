@@ -67,6 +67,7 @@ COLLECT_RETRY_START = "🔁 自动采集：只补跑失败的路线"
 COLLECT_RETRY_OK = "✅ 自动采集：补跑后全部走完"
 COLLECT_RETRY_FAILED = "⚠️ 自动采集：补跑仍有路线没走通"
 COLLECT_RECURRENT = "🚩 自动采集：有路线连续两天补跑失败，疑似复发性问题"
+COLLECT_NARROWED = "🔁 自动采集：这一轮重跑只走没走通的路线"
 EVIDENCE_SAVED = "🗂️ 证据包已存到云端"
 EVIDENCE_SOURCE_CHANGED = "🧷 上游改了导出日志的代码，证据包的打法要重新核对"
 
@@ -86,6 +87,11 @@ def collect_retry_body(passed: list[str], failed: list[str], unknown: list[str],
     if note:
         lines.append(note)
     return "\n".join(lines) or "没有要补跑的路线"
+
+
+def collect_narrowed_body(names: list[str]) -> str:
+    return ("没走通的：" + "、".join(names)
+            + "。AUTO-MAS 马上重跑自动采集这一项，中继已把路线改成只有这几条；这一轮跑完自动改回原来的路线。")
 
 
 def collect_recurrent_body(names: list[str]) -> str:
@@ -232,7 +238,8 @@ def samples() -> list[str]:
         ESTOP_FAILED, NO_SHUTDOWN, MAAEND_PRUNED, ECHO_FARM, ECHO_FARM_DONE,
         PHONE_DEFERRED, CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
         AUTOMAS_DOWN, ROUND_INCOMPLETE, MAAEND_REENABLED, MAAEND_MIGRATED, TACET_DROPS,
-        COLLECT_RETRY_START, COLLECT_RETRY_OK, COLLECT_RETRY_FAILED, COLLECT_RECURRENT,
+        COLLECT_RETRY_START, COLLECT_RETRY_OK, COLLECT_RETRY_FAILED, COLLECT_RECURRENT, COLLECT_NARROWED,
+        collect_narrowed_body(["路线15：红矛叶"]),
         EVIDENCE_SAVED, EVIDENCE_SOURCE_CHANGED,
         collect_retry_start_body("路线15：红矛叶"), collect_retry_body(["路线16"], ["路线15"], [], ""),
         collect_recurrent_body(["路线15：红矛叶"]), evidence_saved_body("MaaEnd", "09-11 10:18", 3, "https://gofile.io/d/xxxx"),

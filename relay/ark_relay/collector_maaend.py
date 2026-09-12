@@ -241,6 +241,11 @@ def parse_maaend_log(log_path: Path) -> dict:
     if started:
         out["maaend_collect_done"] = len(started - failed_r)
         out["maaend_collect_total"] = len(started)
+    # Which ones, by name, for the report and for the narrowed retry: the line
+    # reads 「路线15：红矛叶采集失败」 - keep 「路线15：红矛叶」 and the id Route15.
+    if failed_lines := re.findall(r"((?:路线|线路)(\d+)[：:][^\n]*?)采集失败", text):
+        out["maaend_collect_failed"] = list(dict.fromkeys(lbl.strip() for lbl, _ in failed_lines))
+        out["maaend_collect_failed_ids"] = list(dict.fromkeys(f"Route{n}" for _, n in failed_lines))
     if hits := _END_SANITY.findall(text):
         got, cap = (int(x) for x in hits[-1])
         # 「当前理智」is read off Protocol Space's **reward settlement screen**,

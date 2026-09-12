@@ -153,6 +153,100 @@ def judge(maafw_log: str, routes: list[str], since: str) -> dict[str, bool | Non
 
 # --------------------------------------------------------- recurrence store
 
+# ── Narrowing the master for AUTO-MAS's own retry round ──────────────────
+# AUTO-MAS retries a failed MaaEnd phase up to RunTimesLimit times, and each retry
+# copies the master config into MaaEnd again (`set_maaend` in
+# app/task/MaaEnd/AutoProxy.py, read 2026-09-12) with only the unfinished tasks
+# enabled. 自动采集 is one task, so the retry walked all 17 routes again (09-12
+# 10:35-11:04) although only four had failed. Rewriting the master's route lists
+# to the failed routes the moment the failing record lands makes that retry the
+# per-route retry; the lists go back as soon as the next MaaEnd record arrives,
+# at the shutdown decision, and at boot - whichever comes first.
+_ROUTE_OPT = re.compile(r"^AutoCollect.*Routes$")
+
+
+def _narrow_file(state_dir) -> Path:
+    return Path(state_dir) / "collect-retry" / "narrow.json"
+
+
+def _route_lists(doc: dict) -> "tuple[dict | None, dict[str, list[str]]]":
+    from . import mastercfg  # noqa: PLC0415
+    task = mastercfg._maaend_task(doc, ENTRY.replace("Schedule", ""))
+    if task is None:
+        return None, {}
+    ov = task.get("optionValues") or {}
+    lists = {k: list(v.get("caseNames") or []) for k, v in ov.items()
+             if isinstance(v, dict) and v.get("type") == "checkbox" and _ROUTE_OPT.match(k)}
+    return task, lists
+
+
+def narrow_master(cfg, failed_ids: list[str], run_id: str, now: datetime) -> str:
+    """Leave only `failed_ids` (Route15, ...) selected in the master's route lists.
+
+    The original lists are saved first (state/collect-retry/narrow.json); an
+    existing save is kept, never overwritten, so two failures in a row still
+    restore the true original. Returns a line for the log/notification, '' when
+    nothing was changed.
+    """
+    from . import mastercfg  # noqa: PLC0415
+    from .config import atomic_write_text  # noqa: PLC0415
+    f = mastercfg.maaend_master(cfg.automas_dir) if cfg.automas_dir else None
+    if not f or not f.is_file() or not failed_ids:
+        return ""
+    doc = json.loads(f.read_text(encoding="utf-8"))
+    task, before = _route_lists(doc)
+    if task is None or not before:
+        return ""
+    kept = {k: [r for r in v if r in failed_ids] for k, v in before.items()}
+    if kept == before or not any(kept.values()):
+        return ""
+    nf = _narrow_file(cfg.state_dir)
+    nf.parent.mkdir(parents=True, exist_ok=True)
+    if not nf.exists():
+        nf.write_text(json.dumps({"run_id": run_id, "at": now.isoformat(), "lists": before},
+                                 ensure_ascii=False), encoding="utf-8")
+    for k, v in kept.items():
+        task["optionValues"][k]["caseNames"] = v
+    atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=2))
+    _, after = _route_lists(json.loads(f.read_text(encoding="utf-8")))
+    if after != kept:
+        log.error("母本路线收窄后回读不对：%s", after)
+        return ""
+    total = sum(len(v) for v in before.values())
+    return f"母本路线已收窄为 {len(failed_ids)}/{total} 条（{'、'.join(failed_ids)}）"
+
+
+def restore_master(cfg) -> str:
+    """Put the saved route lists back. '' when there is nothing to restore."""
+    from . import mastercfg  # noqa: PLC0415
+    from .config import atomic_write_text  # noqa: PLC0415
+    nf = _narrow_file(cfg.state_dir)
+    if not nf.exists():
+        return ""
+    try:
+        saved = json.loads(nf.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        log.exception("收窄记录读不出来，母本路线没法自动改回")
+        return ""
+    f = mastercfg.maaend_master(cfg.automas_dir) if cfg.automas_dir else None
+    if not f or not f.is_file():
+        return ""
+    doc = json.loads(f.read_text(encoding="utf-8"))
+    task, _ = _route_lists(doc)
+    if task is None:
+        return ""
+    for k, v in (saved.get("lists") or {}).items():
+        task.setdefault("optionValues", {}).setdefault(k, {"type": "checkbox"})["caseNames"] = list(v)
+    atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=2))
+    _, after = _route_lists(json.loads(f.read_text(encoding="utf-8")))
+    if {k: after.get(k) for k in saved.get("lists") or {}} != saved.get("lists"):
+        log.error("母本路线改回后回读不对：%s", after)
+        return ""
+    nf.unlink()
+    total = sum(len(v) for v in (saved.get("lists") or {}).values())
+    return f"母本路线已改回原来的 {total} 条（收窄自 {saved.get('run_id', '')}）"
+
+
 def record_failures(store: Path, day: str, routes: list[str]) -> dict[str, list[str]]:
     """Append today's still-failing routes; returns {route: [days]} for all routes."""
     data: dict[str, list[str]] = {}
@@ -395,6 +489,8 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     day = day or now.strftime("%Y-%m-%d")
     state_dir = Path(cfg.state_dir)
     stamp = state_dir / "collect-retry" / f"{day}.json"
+    if back := restore_master(cfg):
+        log.info("自动采集补跑：%s", back)
     if stamp.exists():
         log.info("自动采集补跑：%s 已经跑过（%s）", day, stamp)
         return False

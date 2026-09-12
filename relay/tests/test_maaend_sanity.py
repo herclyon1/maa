@@ -103,5 +103,44 @@ check("超上限也不说", collector._full_at_sentence(400, 360, 432, ref), "")
 check("终末地 7 分 12 秒", collector._END_SANITY_SEC_PER_POINT, 432)
 check("鸣潮 6 分钟", collector._OKWW_SEC_PER_POINT, 360)
 
+print("\n[自动采集：没走通的路线要点名，不只数个数（2026-09-11 那趟真实日志）]")
+real = Path(__file__).resolve().parent / "fixtures" / "collect-retry-2026-09-11" / "automas-MaaEnd-06-17-17.log"
+got = collector.parse_maaend_log(real)
+check("走通 12/14（这份日志里只记了 14 条路线名）", (got.get("maaend_collect_done"), got.get("maaend_collect_total")), (12, 14))
+check("没走通的名字", got.get("maaend_collect_failed"), ["路线15：红矛叶", "路线16：协议纹石"])
+check("没走通的路线号（给收窄用）", got.get("maaend_collect_failed_ids"), ["Route15", "Route16"])
+
+print("\n[记录一到就收窄母本：只有采集失败才收，改回在下一条终末地记录]")
+from ark_relay import handle as _h, collect_retry as _cr  # noqa: E402
+from ark_relay.config import RunRecord  # noqa: E402
+import json as _json  # noqa: E402
+root = tmpdir()
+mdir = root / "data" / "abc" / "Default" / "ConfigFile"; mdir.mkdir(parents=True)
+(mdir / "mxu-MaaEnd.json").write_text(_json.dumps({"instances": [{"tasks": [{"taskName": "AutoCollect", "enabled": True, "optionValues": {
+    "AutoCollectWulingRareRoutes": {"type": "checkbox", "caseNames": ["Route1", "Route15", "Route16"]}}}]}]}), encoding="utf-8")
+sent = []
+class _N:
+    def send(self, title, body, **kw): sent.append((title, body))
+class _E:
+    class cfg:
+        automas_dir = root; state_dir = root / "state"
+    notifier = _N()
+    SOFT_FAILS = {"应急理智加强剂", "自动采集"}
+_E.cfg.state_dir.mkdir()
+rec = RunRecord(script="MaaEnd", user="u", run_id="2026-09-12/endfield/MaaEnd-10-05-00", ok=False,
+                started=datetime(2026, 9, 12, 10, 5, tzinfo=SERVER_TZ), finished=datetime(2026, 9, 12, 10, 34, tzinfo=SERVER_TZ),
+                failed_tasks=["自动采集"], raw={"maaend_collect_failed_ids": ["Route15", "Route16"], "maaend_collect_failed": ["路线15：红矛叶", "路线16：协议纹石"]})
+_h._narrow_for_retry(_E, rec)
+doc = _json.loads((mdir / "mxu-MaaEnd.json").read_text(encoding="utf-8"))
+check("母本只剩 15、16", doc["instances"][0]["tasks"][0]["optionValues"]["AutoCollectWulingRareRoutes"]["caseNames"], ["Route15", "Route16"])
+check("通知点名", sent and sent[0][0].startswith("🔁 自动采集") and "路线15：红矛叶、路线16：协议纹石" in sent[0][1], True)
+check("下一条记录到了就改回", "改回" in _cr.restore_master(_E.cfg), True)
+doc = _json.loads((mdir / "mxu-MaaEnd.json").read_text(encoding="utf-8"))
+check("改回原样", doc["instances"][0]["tasks"][0]["optionValues"]["AutoCollectWulingRareRoutes"]["caseNames"], ["Route1", "Route15", "Route16"])
+rec2 = RunRecord(script="MaaEnd", user="u", run_id="x", ok=False, started=rec.started, finished=rec.finished,
+                 failed_tasks=["应急理智加强剂"], raw={})
+sent.clear(); _h._narrow_for_retry(_E, rec2)
+check("不是采集失败就不收窄", sent, [])
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

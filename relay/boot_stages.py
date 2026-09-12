@@ -697,6 +697,14 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
             log.warning("MaaEnd 设置格式迁移没做：%s", note)
     except Exception:
         log.exception("迁移 MaaEnd 设置格式出错")
+    # Route lists narrowed for an AUTO-MAS retry round must never survive a boot:
+    # the next morning's gathering would walk only yesterday's failed routes.
+    try:
+        from ark_relay import collect_retry as _cr  # noqa: PLC0415
+        if back := _cr.restore_master(cfg):
+            log.warning("开机：%s（上次关机前没改回）", back)
+    except Exception:
+        log.exception("开机改回母本路线出错")
 
 
 def _stage_gameupdate(cfg, notifier, log) -> None:
