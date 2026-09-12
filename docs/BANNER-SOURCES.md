@@ -28,6 +28,34 @@ and why that source was chosen. Verified 2026-08-31.
   is the running banners' end (all of a version's banners end on update day). The +42
   guess remains only as a fallback when no banner is running.
 
+## What the preview line says when nothing is announced (2026-09-12, second pass)
+
+The first pass of the day still printed 「09-18 03:59 之后开（还有 5 天）」 for Arknights
+and 「先后和池名等版本公告」 for 鸣潮 - both invented. Rules now:
+
+- **Arknights**: a new banner does not follow the current one back to back (gaps between
+  debut banners in the PRTS table: 22-39 days). With nothing announced the line carries
+  **no date**: 「下一池官方还没公告，官方惯例开池前约一周公告（上两池分别提前 6 天、7 天）；
+  远期 …」. The lead is measured from the official site's last two debut posts
+  (`arknights_banner_posts`, reruns 「…即将复刻开启」 skipped), not asserted.
+- **鸣潮 / 终末地**: a new version always opens with a new banner, so the version date
+  is a real date: 「09-29 版本更新后开（还有 16 天）」. Who: the wiki teaser badge names
+  the characters; the order is **not** claimed from the badge. The official site's
+  article index (`ArticleMenu.json`, below) shows a 「共鸣者战斗演示 | X」 / 「共鸣者「X」PV」
+  a few days before X's banner - in 3.5 and 3.6 the demo order matched the banner order
+  (秧秧·玄翎 07-06 → 07-10, 穗穗 07-26 → 08-13; 清宵 08-17 → 08-20, 景燃 09-06 → 09-10),
+  so once a demo is up the line adds 「官网已发「X」的战斗演示（MM-DD）」 - the fact, not a
+  derived opening date (the lead ranged 3-18 days).
+
+## 鸣潮: the official site's article index
+
+`https://media-cdn-mingchao.kurogame.com/akiwebsite/website2.0/json/G152/zh/ArticleMenu.json`
+is what mc.kurogames.com/main/news renders: a JSON list with `articleId`, `articleTitle`,
+`articleType` (51 = 新闻: PVs, combat demos; 52 = 公告), `createTime`, `startTime`. The
+per-article body is `json/G152/zh/article/<id>.json`; the 「版本资讯 | 3.x版本」 post
+(two days before the update) is images only, so the order of the two halves is still not
+machine-readable before the 版本内容说明 lands on update day.
+
 ## 鸣潮: who the next version's characters are (wiki teaser badge)
 
 `POST /wiki/core/catalogue/item/getPage` with `catalogueId=1105&page=1&limit=100`

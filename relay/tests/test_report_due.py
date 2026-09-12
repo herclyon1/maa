@@ -58,8 +58,8 @@ report.plan = types.SimpleNamespace(
     activity_countdown=lambda automas_dir: "",
 )
 report.banners = types.SimpleNamespace(
-    collect=lambda now, skland_token="", failed=None: ([], {}),
-    render=lambda rows, now, nxt, previews: "",
+    collect=lambda now, skland_token="", failed=None, notes=None: ([], {}),
+    render=lambda rows, now, nxt, previews, notes=None: "",
     previews=lambda now, rows, ends: [],
     version_ends=lambda now, rows: {},
 )

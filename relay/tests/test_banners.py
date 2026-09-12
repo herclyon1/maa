@@ -302,13 +302,35 @@ def _sept12() -> None:
     check("wiki 预告角标 = 心、锁暝", _b.wuwa_teased(recs, now), ["心", "锁暝"])
     check("角标过期的不算（赞妮 2026-04-29 到期）", "赞妮" in _b.wuwa_teased(recs, datetime(2026, 5, 1)), False)
     check("在开的「新」和「复刻」都不是预告", any(n in _b.wuwa_teased(recs, now) for n in ("景燃", "绯雪", "莫宁")), False)
-    # c. the rendering of an unannounced next banner
-    out = render([], now, {"鸣潮": (datetime(2026, 9, 29, 11, 59, 59), "？下一版新角色官方已预告：心、锁暝（先后和池名等版本公告）")})
-    check("没公告的下一池写「之后开」", "09-29 11:59 之后开（还有 16 天）　下一版新角色官方已预告：心、锁暝" in out, True)
-    check("问号标记不进文案", "？" in out, False)
-    check("没公告时不写「UP 是谁官方未公布」这种废话", "官方未公布" in out, False)
-    title, body = group_notice([("鸣潮", datetime(2026, 9, 29, 11, 59, 59), "？下一版新角色官方还没公告")])
-    check("群播报也不带问号", "？" in body, False)
+    # c. an unannounced next banner is a note, never an invented date
+    note = {"鸣潮": "09-29 版本更新后开（还有 16 天）　下一版新角色官方已预告：心、锁暝"}
+    out = render([], now, {"鸣潮": (datetime(2026, 9, 29, 11, 59, 59), "")}, notes=note)
+    check("有说明时用说明行，不用「约…开 UP 是谁官方未公布」", "官方未公布" in out or "约 " in out, False)
+    check("说明行原样", "· 预告　09-29 版本更新后开（还有 16 天）　下一版新角色官方已预告：心、锁暝" in out, True)
+    ak_note = {"明日方舟": "下一池官方还没公告，官方惯例开池前约一周公告（上两池分别提前 7 天、6 天）；远期 11-01 感谢庆典（一图流预测，未官宣）"}
+    out = render([], now, {}, notes=ak_note)
+    check("方舟没公告时不给任何日期（09-18 那种「之后开」是编的）", "09-18" in out or "之后开" in out, False)
+    check("方舟没公告的说明行出现", "· 预告　下一池官方还没公告，官方惯例开池前约一周公告" in out, True)
+    # c2. the lead of the official posts, and reruns skipped
+    ak_list2 = (FX / "ak_news_list_2026-09-12.txt").read_text(encoding="utf-8")
+    arts = {"1457": (FX / "ak_banner_1457.html").read_text(encoding="utf-8", errors="replace"),
+            "6247": (FX / "ak_banner_6247.html").read_text(encoding="utf-8", errors="replace")}
+    calls: list[str] = []
+    def ak_get2(url):
+        calls.append(url)
+        cid = url.rsplit("/", 1)[-1]
+        return arts.get(cid, "") if cid != "news?page=2" and cid != "news" else ak_list2
+    posts = _b.arknights_banner_posts(now, get=ak_get2)
+    check("近两条首发寻访公告：09-04 和 08-01，各自的发布日",
+          [(st.strftime("%m-%d"), po.strftime("%m-%d")) for st, _, po in posts], [("09-04", "08-29"), ("08-01", "07-25")])
+    check("复刻寻访（砺火成锋 8588）不算", any(u.endswith("/8588") for u in calls), False)
+    check("公告提前量文案", _b.announce_lead(posts), "官方惯例开池前约一周公告（上两池分别提前 6 天、7 天）")
+    # c3. the official site's combat demos say who of the teased pair comes first
+    site = json.loads((FX / "wuwa_site_articles_2026-09-12.json").read_text(encoding="utf-8"))
+    check("09-12 还没有心/锁暝的演示", _b.wuwa_demo_note(site, ["心", "锁暝"], now), "")
+    check("3.6 的两人：清宵 08-17 先、景燃 09-06 后（顺序 = 池子顺序）",
+          _b.wuwa_demo_note(site, ["清宵", "景燃"], datetime(2026, 9, 7)), "官网已发「清宵」的战斗演示（08-17）、「景燃」的战斗演示（09-06）")
+    check("还没到发布时间的不算", _b.wuwa_demo_note(site, ["景燃"], datetime(2026, 9, 1)), "")
     # d. Endfield: the official site's banner notice; "after the version update" resolved by the maintenance window
     news = (FX / "ef_news_2026-09-12.txt").read_text(encoding="utf-8")
     arts = {"6097": (FX / "ef_news_6097.txt").read_text(encoding="utf-8"),
