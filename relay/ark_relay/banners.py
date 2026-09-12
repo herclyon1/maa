@@ -568,8 +568,9 @@ def render(banners: list[Banner], now: datetime,
         elif game in nxt:
             when, who = nxt[game]
             d = when - now
-            head = ("约 " if not who else "") + f"{_stamp(when)} 开（还有 {d.days} 天）"
-            pre = f"· 预告　{head}　{who or 'UP 是谁官方未公布'}"
+            # An empty `who` is the PRTS-registered case: the time is official, the
+            # operator name has not been posted yet. Say exactly that.
+            pre = f"· 预告　{_stamp(when)} 开（还有 {d.days} 天）　{who or '这一池已登记，干员名官方还没公告'}"
         if pre and trace is not None:
             if why := gate_preview(pre, trace):
                 log.error("卡池预告没通过来源核对，扣下：%s ← %s", pre, why)
@@ -817,8 +818,8 @@ def announce_lead(posts: "list[tuple[datetime, str, datetime]]") -> str:
     leads = [(start.date() - posted.date()).days for start, _, posted, _e, _c in posts]
     if not leads:
         return ""
-    return "官方惯例开池前约一周公告（上" + ("两" if len(leads) == 2 else str(len(leads))) + "池分别提前 " \
-        + "、".join(f"{d} 天" for d in leads) + "）"
+    span = f"{min(leads)}" if min(leads) == max(leads) else f"{min(leads)}～{max(leads)}"
+    return f"官方开池前 {span} 天公告（上 {len(leads)} 池实测：" + "、".join(f"提前 {d} 天" for d in leads) + "）"
 
 
 def _arknights(now: datetime, notes: "dict[str, str] | None" = None,

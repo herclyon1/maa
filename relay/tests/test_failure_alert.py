@@ -63,7 +63,7 @@ print("\n[时间不可信时一个字都不许写成事实——文件名时间�
 _, body2 = format_failure(rec(duration_known=False))
 check("不写用时", "用时 18 分钟" in body2, False)
 check("明说时长未知", "时长未知" in body2, True)
-check("明说时间可能有偏差", "可能有偏差" in body2, True)
+check("明说时间取自文件名", "时间取自文件名，不是日志" in body2, True)
 
 print("\n[哪一步坏了必须一眼看见（08-27 丢过「失败于」三个字）]")
 check("单项带「失败于」", "失败于：任务执行：残象聚落" in body, True)

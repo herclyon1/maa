@@ -227,7 +227,7 @@ def decide(eng, now: datetime) -> Verdict:
     if modes.debug_active(eng.state.dir):
         return Verdict(False, "debug", f"调试模式生效，这一次关机机会（{key}）跳过")
     if modes.shutdown_skipped(eng.state.dir) == key:
-        return Verdict(False, "skipped", "这一次关机机会已被调试模式吃掉，人可能正在用电脑")
+        return Verdict(False, "skipped", "这一次关机机会已被调试模式吃掉")
     if eng._shutdown_issued:
         # Not a reason the machine stays on - it is the opposite. Worded as
         # 「关机令已经下过了」 it read like someone had ordered it to stay awake.

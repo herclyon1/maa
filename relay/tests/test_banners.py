@@ -157,12 +157,11 @@ def _render(pools) -> None:
     check("在开的首发池要报", "清宵" in out, True)
     check("复刻不进报告", "达妮娅" in out, False)
     check("下一期报出人名", "景燃「身赴三途」" in out, True)
-    check("官方公布了人就不许写「约」", "预告　约" in out, False)
-    check("官方公布了人就不许写「未公布」", "官方未公布" in out, False)
+    check("官方公布了人就不写「还没公告」", "还没公告" in out, False)
 
     blind = render([], now, {"终末地": (datetime(2026, 9, 2, 6, 0, 0), "")})
-    check("没公布人时必须写「约」", "预告　约" in blind, True)
-    check("没公布人时必须说明未公布", "官方未公布" in blind, True)
+    check("没公布人时说清是登记了池子、干员名还没公告", "这一池已登记，干员名官方还没公告" in blind, True)
+    check("不写「约」「未公布」这种含糊话", "约" in blind or "未公布" in blind, False)
     check("有确切时刻就把时刻写出来", "09-02 06:00" in blind, True)
 
     dateonly = render([], now, {"明日方舟": (datetime(2026, 9, 4, 0, 0, 0),
@@ -325,10 +324,10 @@ def _sept12() -> None:
     out = render([], now, {"鸣潮": (datetime(2026, 9, 29, 11, 59, 59), "")}, notes=note)
     check("有说明时用说明行，不用「约…开 UP 是谁官方未公布」", "官方未公布" in out or "约 " in out, False)
     check("说明行原样", "· 预告　09-29 版本更新后开（还有 16 天）　下一版新角色官方已预告：心、锁暝" in out, True)
-    ak_note = {"明日方舟": "下一池官方还没公告，官方惯例开池前约一周公告（上两池分别提前 7 天、6 天）；远期 11-01 感谢庆典（一图流预测，未官宣）"}
+    ak_note = {"明日方舟": "下一池官方还没公告，官方开池前 6～7 天公告（上 2 池实测：提前 6 天、提前 7 天）；远期 11-01 感谢庆典（一图流预测，未官宣）"}
     out = render([], now, {}, notes=ak_note)
     check("方舟没公告时不给任何日期（09-18 那种「之后开」是编的）", "09-18" in out or "之后开" in out, False)
-    check("方舟没公告的说明行出现", "· 预告　下一池官方还没公告，官方惯例开池前约一周公告" in out, True)
+    check("方舟没公告的说明行出现", "· 预告　下一池官方还没公告，官方开池前 6～7 天公告" in out, True)
     # c2. the lead of the official posts, and reruns skipped
     ak_list2 = (FX / "ak_news_list_2026-09-12.txt").read_text(encoding="utf-8")
     arts = {"1457": (FX / "ak_banner_1457.html").read_text(encoding="utf-8", errors="replace"),
@@ -343,7 +342,7 @@ def _sept12() -> None:
           [(st.strftime("%m-%d"), po.strftime("%m-%d"), en.strftime("%m-%d %H:%M")) for st, _, po, en, _c in posts],
           [("09-04", "08-29", "09-18 03:59"), ("08-01", "07-25", "08-15 03:59")])
     check("复刻寻访（砺火成锋 8588）不算", any(u.endswith("/8588") for u in calls), False)
-    check("公告提前量文案", _b.announce_lead(posts), "官方惯例开池前约一周公告（上两池分别提前 6 天、7 天）")
+    check("公告提前量文案（实测数字，不写「约一周」）", _b.announce_lead(posts), "官方开池前 6～7 天公告（上 2 池实测：提前 6 天、提前 7 天）")
     # c3. the official site's combat demos say who of the teased pair comes first
     site = json.loads((FX / "wuwa_site_articles_2026-09-12.json").read_text(encoding="utf-8"))
     check("09-12 还没有心/锁暝的演示", _b.wuwa_demo_note(site, ["心", "锁暝"], now), "")
@@ -400,6 +399,17 @@ def _supervision() -> None:
     tr2 = _b.Trace.new(); tr2.checks.append("鸣潮：库街区=游戏公告 ✓")
     out2 = render([c], now, {}, trace=tr2)
     check("页脚列出核对结果", out2.splitlines()[-1], "核对　鸣潮：库街区=游戏公告 ✓")
+    # 6. the trace file: one per day next to the state, sources and checks inside
+    import sys as _sys  # noqa: PLC0415
+    _sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _tmp import tmpdir  # noqa: PLC0415
+    sd = tmpdir()
+    tr2.src("鸣潮", "当期", "库街区", "身赴三途 景燃")
+    _b.save_trace(sd, now, out2, tr2)
+    saved = json.loads((sd / "banners" / "2026-09-12.json").read_text(encoding="utf-8"))
+    check("来源落盘", saved["sources"], ["鸣潮｜当期｜库街区｜身赴三途 景燃"])
+    check("核对和正文一起落盘", (saved["checks"], saved["text"] == out2), (["鸣潮：库街区=游戏公告 ✓"], True))
+    _b.save_trace(Path("/nonexistent/x"), now, out2, tr2)   # unwritable: logs, never raises
     # d. Endfield: the official site's banner notice; "after the version update" resolved by the maintenance window
     news = (FX / "ef_news_2026-09-12.txt").read_text(encoding="utf-8")
     arts = {"6097": (FX / "ef_news_6097.txt").read_text(encoding="utf-8"),

@@ -464,7 +464,7 @@ def _maaend_extra_bits(maaend_dir: Path | None, when) -> list[str]:
             routes = len((((t.get("optionValues") or {})
                            .get("AutoCollectRoutes") or {}).get("caseNames") or []))
             if when.weekday() in picked:
-                return [f"⏳ 先跑自动采集（{routes} 条路线，实测约 33 分钟）"]
+                return [f"⏳ 先跑自动采集（{routes} 条路线，上次实测 33 分钟）"]
             return [f"自动采集仅 {label} 跑"]
     return []
 

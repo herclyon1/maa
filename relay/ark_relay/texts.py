@@ -25,7 +25,12 @@ ALLOWED_WORDS = {
     "PIN", "net", "stop", "start", "ark-relay", "deploy-relay.sh", "scripts/mac/deploy-relay.sh",
     "MuMu", "APK", "v",
 }
-VAGUE = ("未知错误", "这一步", "有问题", "出错")
+# Hedges are vagueness too (the user, 2026-09-12, on 「多半是反作弊组件刷新」:
+# 「不允许存在任何不清不楚的句子」). A sentence either states what was measured
+# or says outright what could not be read - it never guesses.
+VAGUE = ("未知错误", "这一步", "有问题", "出错",
+         "多半", "可能", "大概", "大约", "应该是", "似乎", "疑似", "也许", "或许",
+         "估计", "差不多", "左右", "好像", "不确定", "貌似", "大致", "约 ", "约一", "不一定")
 _WORD = re.compile(r"[A-Za-z][A-Za-z0-9./\-]*")
 # A link is something the reader taps or copies whole; it is not English prose.
 _URL = re.compile(r"https?://\S+")
@@ -66,7 +71,7 @@ MAAEND_MIGRATED = "🧩 终末地新版本改了设置格式，已按原意换�
 COLLECT_RETRY_START = "🔁 自动采集：只补跑失败的路线"
 COLLECT_RETRY_OK = "✅ 自动采集：补跑后全部走完"
 COLLECT_RETRY_FAILED = "⚠️ 自动采集：补跑仍有路线没走通"
-COLLECT_RECURRENT = "🚩 自动采集：有路线连续两天补跑失败，疑似复发性问题"
+COLLECT_RECURRENT = "🚩 自动采集：有路线连续两天补跑失败，是复发性问题"
 COLLECT_NARROWED = "🔁 自动采集：这一轮重跑只走没走通的路线"
 EVIDENCE_SAVED = "🗂️ 证据包已存到云端"
 EVIDENCE_SOURCE_CHANGED = "🧷 上游改了导出日志的代码，证据包的打法要重新核对"
@@ -210,7 +215,7 @@ def automas_down_body(tries: int) -> str:
 
 
 def preupdate_unconfirmed_tail() -> str:
-    return "\n\n这不是「无需更新」——是这一轮没能确认有没有更新。机器可能仍在跑旧版本。"
+    return "\n\n这不是「无需更新」——是这一轮没能确认有没有更新。在确认之前，机器跑的还是原来的版本。"
 
 
 def cant_enter_body(script: str, attempts: int, maint: bool, hint: str) -> str:
@@ -222,7 +227,7 @@ def cant_enter_body(script: str, attempts: int, maint: bool, hint: str) -> str:
 
 def missed_queue_body(late_min: int) -> str:
     return (f"已经晚了 {late_min} 分钟，今天没有任何该时段的运行记录。\n"
-            "可能原因：AUTO-MAS 没启动、定时没触发、模拟器或游戏起不来。")
+            "需要人工看三处：AUTO-MAS 有没有在跑、定时有没有触发、模拟器或游戏起没起来。")
 
 
 def missed_item_body(ran: list[str], kind: str, late_min: int) -> str:

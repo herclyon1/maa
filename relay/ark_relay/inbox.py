@@ -289,8 +289,8 @@ class Inbox:
             # day nobody named, edits repeat. Record the version and say what
             # happened instead.
             log.exception("待办 v%s 应用中途出错", version)
-            messages = [f"✗ 应用中途出错：{exc}。此前的指令可能已生效，"
-                        "本批不会重放——请核对配置，未生效的指令用新版本重发"]
+            messages = [f"✗ 应用中途出错：{exc}。出错前的指令已生效，出错后的没有；"
+                        "本批不会重放——请核对配置，没生效的指令用新版本重发"]
         # Recorded even when a command failed. Retrying the same broken batch
         # on every boot would push the same failure every morning and never
         # get better; the failure is reported instead, and the fix is a new

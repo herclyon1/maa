@@ -375,9 +375,9 @@ def finish(cfg, why: str) -> str:
             atomic_write_text(path, json.dumps(saved, ensure_ascii=False, indent=1))
             back = json.loads(path.read_text(encoding="utf-8"))
             if back.get("Teleport to Boss") != saved.get("Teleport to Boss"):
-                note = "；**配置没还原成功，明早周本可能刷错目标**"
+                note = "；**配置没还原成功，明早周本会按刷声骸的目标打，需要人工改回**"
         except OSError:
-            note = "；**配置没能还原，明早周本可能刷错目标**"
+            note = "；**配置没能还原，明早周本会按刷声骸的目标打，需要人工改回**"
     else:
         note = "；**找不到配置文件，没能还原**"
     _store(cfg.state_dir).pop("queues", "echo_farm")

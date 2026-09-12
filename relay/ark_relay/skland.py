@@ -244,7 +244,7 @@ def login(token: str, d_id: str = "") -> Cred:
     d_id = d_id or get_did()
     r = _post(GRANT_URL, {"appCode": SKLAND_APP_CODE, "token": token, "type": 0})
     if r.get("status") not in (0, None):
-        raise SklandError(f"换 code 失败（token 可能过期）：{r.get('msg')}")
+        raise SklandError(f"换 code 失败，森空岛没接受这个 token：{r.get('msg')}")
     code = r["data"]["code"]
     r2 = _post(CRED_URL, {"code": code, "kind": 1}, {"dId": d_id})
     if r2.get("code") not in (0, None) or "data" not in r2:

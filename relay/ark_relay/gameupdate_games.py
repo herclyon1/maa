@@ -145,7 +145,7 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
             break
         sleep(poll_s)
     else:
-        _note(problems, "终末地：更新后 15 分钟没走到标题画面（可能还在编译着色器）")
+        _note(problems, "终末地：更新后 15 分钟没走到标题画面，中继不再等")
     kill("Endfield.exe", "Games.exe")
     return "终末地 客户端已通过启动器更新"
 

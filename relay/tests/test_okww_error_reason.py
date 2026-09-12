@@ -112,5 +112,40 @@ check("不许抢掉更靠谱的那条：回放里 09-01 那条仍报「等一个
 check("不认识的错还是照旧说不认识",
       "还不认识" in _okww_say("TaskExecutor", "完全没见过的错", "WeirdError"), True)
 
+print("\n[「游戏即将重启」弹窗：看客户端到底换没换文件（2026-09-12 09:21 只是反作弊刷新）]")
+import os as _os  # noqa: E402
+from ark_relay import collector_okww as _co  # noqa: E402
+g = tmpdir()
+root = g / "Wuthering Waves Game"
+(root / "Client" / "Binaries" / "Win64" / "AntiCheatExpert").mkdir(parents=True)
+(root / "Client" / "Saved").mkdir(parents=True)
+(root / "Client" / "Content").mkdir(parents=True)
+exe = root / "Client" / "Binaries" / "Win64" / "Client-Win64-Shipping.exe"
+exe.write_text("x")
+_os.utime(exe, (0, 1_700_000_000))          # installed long ago, not written today
+ok = g / "okww"
+cfgd = ok / "data" / "apps" / "ok-ww" / "working" / "configs"
+cfgd.mkdir(parents=True)
+(cfgd / "devices.json").write_text('{"path": "' + str(exe).replace("\\", "\\\\") + '"}', encoding="utf-8")
+_os.environ["ARK_OKWW_DIR"] = str(ok)
+check("从 devices.json 找到游戏根目录", _co.wuwa_game_root(Path("x")), root)
+import time as _time  # noqa: E402
+now = _time.time()
+log = d / "restart.log"
+t0 = _time.strftime("%Y-%m-%d %H:%M:%S", _time.localtime(now - 120))
+t1 = _time.strftime("%Y-%m-%d %H:%M:%S", _time.localtime(now + 60))
+log.write_text(f"{t0},004 INFO MainThread ok:ok-script init\n{t1},647 INFO TaskExecutor DailyTask:游戏更新成功, 游戏即将重启\n", encoding="utf-8")
+(root / "Client" / "Binaries" / "Win64" / "AntiCheatExpert" / "pld.dat").write_text("ace")
+(root / "Client" / "Saved" / "LocalStorage.db").write_text("save")
+r = _co.parse_okww_log(log)
+check("弹窗记下了", r.get("okww_restart_dialog"), True)
+check("只有反作弊和存档变了 → 反作弊组件", r.get("okww_client_change"), "anticheat")
+(root / "Client" / "Content" / "Paks.pak").write_text("new pak")
+r2 = _co.parse_okww_log(log)
+check("pak 变了 → 客户端更新", r2.get("okww_client_change"), "patch")
+(root / "Client" / "Content" / "Paks.pak").unlink(); (root / "Client" / "Binaries" / "Win64" / "AntiCheatExpert" / "pld.dat").unlink()
+check("什么都没变 → 没有变", _co.parse_okww_log(log).get("okww_client_change"), "none")
+del _os.environ["ARK_OKWW_DIR"]
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

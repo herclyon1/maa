@@ -67,6 +67,16 @@ check("没有 ❌", "❌" in body, False)
 check("鸣潮画 ↪️", body.count("↪️ OK-WW"), 2)
 check("终末地画 ⏸", body.count("⏸ MaaEnd"), 3)
 check("插曲说明", "游戏更新后重跑，不算失败" in body, True)
+# 2026-09-12 09:21: the dialog was the anti-cheat module refreshing, no client file
+# changed - the note must not claim the game updated.
+for change, want in (("anticheat", "游戏弹「即将重启」，只更新了反作弊组件，重启后重跑，不算失败"),
+                     ("none", "游戏弹「即将重启」，客户端文件没有变，重启后重跑，不算失败"),
+                     ("patch", "游戏弹「即将重启」后更新了客户端文件，重启后重跑，不算失败"),
+                     ("unknown", "游戏弹「即将重启」后重跑，客户端有没有换文件没查到，不算失败")):
+    ace = [ent("w1", "OK-WW", 9, 20, 1, False, transitional=True, raw={"okww_restart_dialog": True, "okww_client_change": change}),
+           ent("w2", "OK-WW", 9, 22, 15, True)]
+    _, bace = core.format_daily("2026-09-12", ace)
+    check(f"重启弹窗：{change} 的说法是定论不是猜测", want in bace and "多半" not in bace, True)
 check("维护说明", "进不了游戏" in body, True)
 
 print("[上游软失败：🟡 不计失败]")

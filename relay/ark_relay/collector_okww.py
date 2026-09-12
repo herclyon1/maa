@@ -163,10 +163,10 @@ _OKWW_EXC_ZH = {
 }
 _OKWW_MSG_ZH = (
     ("farm 4c error", "打完 Boss 领完奖之后没能退出副本"),
-    ("can't find gray_book_boss", "按 F2 打不开图鉴，多半是键位改过了"),
+    ("can't find gray_book_boss", "按 F2 打不开图鉴——先核对键位是不是游戏默认"),
     ("NightmareNestTask Failed", "打了但没打成"),
     ("Logger.error() got an unexpected keyword", "旧版补丁自己的日志调用写错（已撤回）"),
-    ("can not battle pass", "打不过，可能已经结束"),
+    ("can not battle pass", "没能进入战斗"),
     ("Game window is not connected", "连不上游戏窗口"),
     ("not in combat", "没有进入战斗"),
     ("can't find boss_proceed", "图鉴里找不到「前往」按钮"),
@@ -376,7 +376,76 @@ def parse_okww_log(log_path: Path) -> dict:
     _okww_progress(text, out)
     if steps := _okww_steps(text, entries):
         out["okww_steps"] = steps
+    if "游戏更新成功, 游戏即将重启" in text:
+        out["okww_restart_dialog"] = True
+        out["okww_client_change"] = _client_change(log_path, text)
     return out
+
+
+_OKWW_TS = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", re.M)
+
+
+def _client_change(log_path: Path, text: str) -> str:
+    """What the game client changed on disk during this run: 「none」 (nothing
+    outside saves), 「anticheat」 (only files under AntiCheatExpert), 「patch」
+    (anything else), 「unknown」 (game root not found).
+
+    OK-WW writes 「游戏更新成功, 游戏即将重启」 for *any* dialog that says
+    游戏即将重启 (BaseWWTask.py:777 matches the text and clicks 确认). On
+    2026-09-12 09:21 that dialog came from the anti-cheat module refreshing
+    (only AntiCheatExpert/pld.dat changed, at 09:20:47) - no patch was
+    downloaded, and 「游戏更新后重跑」 overstated it. The report states which of
+    the three it was; it never guesses.
+    """
+    stamps = _OKWW_TS.findall(text)
+    if not stamps:
+        return "unknown"
+    try:
+        from datetime import datetime  # noqa: PLC0415
+        lo = datetime.strptime(stamps[0], "%Y-%m-%d %H:%M:%S")
+        hi = datetime.strptime(stamps[-1], "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return "unknown"
+    root = wuwa_game_root(log_path)
+    if root is None:
+        return "unknown"
+    anticheat = other = 0
+    for p in (root / "Client").rglob("*"):
+        try:
+            if not p.is_file():
+                continue
+            rel = str(p.relative_to(root))
+            if "\\Saved\\" in rel or "/Saved/" in rel or ".quality" in rel:
+                continue
+            if lo.timestamp() <= p.stat().st_mtime <= hi.timestamp():
+                if "AntiCheatExpert" in rel:
+                    anticheat += 1
+                else:
+                    other += 1
+        except OSError:
+            continue
+    if other:
+        return "patch"
+    return "anticheat" if anticheat else "none"
+
+
+def wuwa_game_root(log_path: Path) -> "Path | None":
+    """The game install root, from OK-WW's own devices.json (the exe it launches)."""
+    import os  # noqa: PLC0415
+    base = Path(os.environ.get("ARK_OKWW_DIR") or r"D:\ark\okww")
+    dev = base / "data" / "apps" / "ok-ww" / "working" / "configs" / "devices.json"
+    try:
+        # JSON-escaped Windows path (D:\\Wuthering...) on the machine; a plain
+        # POSIX path in the tests.
+        m = re.search(r"(?:[A-Z]:\\\\|/)[^\"]*?Client-Win64-Shipping\.exe", dev.read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return None
+    if not m:
+        return None
+    exe = Path(m.group(0).replace("\\\\", "\\"))
+    # <root>\Client\Binaries\Win64\Client-Win64-Shipping.exe
+    root = exe.parents[3] if len(exe.parents) > 3 else None
+    return root if root and root.is_dir() else None
 
 
 def _okww_stamina_fields(text: str, out: dict) -> "tuple[list[int], int]":

@@ -106,7 +106,7 @@ check("鸣潮 6 分钟", collector._OKWW_SEC_PER_POINT, 360)
 print("\n[自动采集：没走通的路线要点名，不只数个数（2026-09-11 那趟真实日志）]")
 real = Path(__file__).resolve().parent / "fixtures" / "collect-retry-2026-09-11" / "automas-MaaEnd-06-17-17.log"
 got = collector.parse_maaend_log(real)
-check("走通 12/14（这份日志里只记了 14 条路线名）", (got.get("maaend_collect_done"), got.get("maaend_collect_total")), (12, 14))
+check("走通 15/17（线路1-3 和 路线4-17 两种写法都算）", (got.get("maaend_collect_done"), got.get("maaend_collect_total")), (15, 17))
 check("没走通的名字", got.get("maaend_collect_failed"), ["路线15：红矛叶", "路线16：协议纹石"])
 check("没走通的路线号（给收窄用）", got.get("maaend_collect_failed_ids"), ["Route15", "Route16"])
 

@@ -248,7 +248,7 @@ def format_failure(rec: RunRecord, diagnosis: str = "") -> tuple[str, str]:
         ]
     else:
         lines = [
-            f"{both_clocks(rec.started)}（文件名时间，可能有偏差）",
+            f"{both_clocks(rec.started)}（时间取自文件名，不是日志）",
             f"时长未知 · 账号 {rec.user}",
             "",
         ]
@@ -706,7 +706,17 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             lines += [_row("备注", [note]), ""]
             continue
         if kind:
-            lines += [_row("备注", [_KIND_NOTE[kind]]), ""]
+            note = _KIND_NOTE[kind]
+            if kind == "update" and raw.get("okww_restart_dialog"):
+                # OK-WW says 「游戏更新成功」 for any 「游戏即将重启」 dialog. The
+                # collector looked at the game folder; say what it found, in one of
+                # three definite forms - never 「多半」 (the user, 2026-09-12).
+                note = {
+                    "patch": "游戏弹「即将重启」后更新了客户端文件，重启后重跑，不算失败",
+                    "anticheat": "游戏弹「即将重启」，只更新了反作弊组件，重启后重跑，不算失败",
+                    "none": "游戏弹「即将重启」，客户端文件没有变，重启后重跑，不算失败",
+                }.get(str(raw.get("okww_client_change")), "游戏弹「即将重启」后重跑，客户端有没有换文件没查到，不算失败")
+            lines += [_row("备注", [note]), ""]
             continue
         if not e["ok"]:
             # A run that failed one task out of twenty still did the other

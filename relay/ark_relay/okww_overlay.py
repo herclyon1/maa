@@ -79,5 +79,5 @@ def report_line() -> str:
     skipped = got.get("skipped") or []
     if not skipped:
         return ""
-    return ("OK-WW 有改动没贴上，上游多半改了结构：" +
+    return ("OK-WW 有改动没贴上（上游源码和登记的不一致）：" +
             "；".join(f"{s.get('what')}（{s.get('why')}）" for s in skipped))

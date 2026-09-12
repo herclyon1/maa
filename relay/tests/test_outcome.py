@@ -42,8 +42,8 @@ def main() -> int:
              "ForgeryTask:enter combat None\n")
     got2 = okww_checks(text2, expect_nest=True)
     check("点位找不到算故障", "残象聚落" in bad_labels(got2), True)
-    check("说清是名字对不上",
-          any("名字写错" in c.detail for c in got2 if not c.ok), True)
+    check("说清是名字对不上，让人去核对（不写「多半」）",
+          any("核对配置里的名字" in c.detail and "多半" not in c.detail for c in got2 if not c.ok), True)
 
     print("\n[真的打了——这才算干成]")
     text3 = ("NightmareNestTask:open_boss_book canxiang\n"

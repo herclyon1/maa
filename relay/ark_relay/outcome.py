@@ -92,8 +92,7 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
     if expect_nest:
         if _NEST_NOT_FOUND in text:
             out.append(Check("残象聚落", False,
-                             "配置里的点位名在游戏列表里没找到——多半是名字写错了，"
-                             "或者界面变了"))
+                             "配置里的点位名在游戏列表里没找到，请核对配置里的名字和游戏里的写法"))
         elif _NEST_ALL_FULL in text:
             out.append(Check("残象聚落（已满，跳过）", True, "指定点位都打满了"))
         elif _NEST_ENGAGED.search(text):

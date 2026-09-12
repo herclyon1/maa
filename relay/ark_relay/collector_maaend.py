@@ -236,7 +236,9 @@ def parse_maaend_log(log_path: Path) -> dict:
         out["maaend_collect_routes"] = int(m[-1])
     # How many times 「路线N：xxx」appears = how many routes were walked;
     # how many 「…采集失败」lines = the ones that gathered nothing
-    started = set(re.findall(r"路线(\d+)[：:]", text))
+    # MaaEnd's locale spells the first routes 「线路N：」 and the rest 「路线N：」
+    # (2026-09-12: 线路2、线路3 … 路线4 … 路线17); counting only 路线 read 14/17.
+    started = set(re.findall(r"(?:路线|线路)(\d+)[：:]", text))
     failed_r = set(re.findall(r"(?:路线|线路)(\d+)[：:][^\n]*采集失败", text))
     if started:
         out["maaend_collect_done"] = len(started - failed_r)
