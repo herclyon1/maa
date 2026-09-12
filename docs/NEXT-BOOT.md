@@ -31,6 +31,8 @@ To do when the machine is next up:
    `relay.log` for the update line and that the evening report's 卡池 block shows
    鸣潮 「身赴三途」景燃 as 当期 and no （复刻） preview for 终末地. If self-update did
    not take it, `deploy-relay.sh` (RELEASE-NOTES.md still carries the text).
+   Also check the 核对 footer of the evening report says ✓ for all three, and that
+   `state/banners/2026-09-12.json` exists on the machine with `withheld: []`.
 
 1. After the 09:00 queue: did the relay's shutdown path run the retry by itself?
    `relay.log` should show 「自动采集补跑」 lines (or the reason it did not:
