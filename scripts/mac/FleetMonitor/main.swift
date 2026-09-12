@@ -629,15 +629,16 @@ final class BusWatcher: NSObject, URLSessionDataDelegate {
     }
 }
 
-/// The Dock icon, drawn rather than shipped: green when the whole fleet is up,
-/// red the moment one machine is not. The colour is what carries across a
-/// glance at the Dock; the badge underneath it gives the count.
+/// The Dock icon, drawn rather than shipped. Green from two machines up (the
+/// user, 2026-09-12: 「2设备及以上的时候颜色换成绿色，红色有点膈应人看着」 - the
+/// game machine is off most of the day by design, so 2/3 is the normal state,
+/// not an alarm); red only when fewer than two answer. The badge gives the count.
 func tileIcon(up: Int, total: Int) -> NSImage {
     let size = NSSize(width: 128, height: 128)
     let img = NSImage(size: size)
     img.lockFocus()
-    let allUp = up == total
-    let bg = allUp ? NSColor.systemGreen : NSColor.systemRed
+    let fine = up >= 2 || up == total
+    let bg = fine ? NSColor.systemGreen : NSColor.systemRed
     let r = NSBezierPath(roundedRect: NSRect(x: 8, y: 8, width: 112, height: 112),
                          xRadius: 26, yRadius: 26)
     bg.setFill()
