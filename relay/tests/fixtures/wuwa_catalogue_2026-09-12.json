@@ -1,0 +1,841 @@
+{
+"code": 200,
+"data": {
+"results": {
+"records": [
+{
+"id": 23445,
+"name": "景燃",
+"content": {
+"showTeaserIcon": true,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"2026-08-10 00:00:00",
+"2027-08-01 00:00:00"
+],
+"star": "5"
+}
+},
+{
+"id": 20984,
+"name": "绯雪",
+"content": {
+"showTeaserIcon": true,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2026-04-01 00:00:00",
+"2027-04-01 11:13:23"
+],
+"star": "5"
+}
+},
+{
+"id": 18903,
+"name": "莫宁",
+"content": {
+"showTeaserIcon": true,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-12-02 00:00:00",
+"2027-04-03 11:55:25"
+],
+"star": "5"
+}
+},
+{
+"id": 23654,
+"name": "心",
+"content": {
+"showTeaserIcon": true,
+"showTeaserIconNum": 2,
+"teaserDateRange": [
+"2026-08-29 00:58:25",
+"2027-08-27 01:58:32"
+],
+"star": "5"
+}
+},
+{
+"id": 23655,
+"name": "锁暝",
+"content": {
+"showTeaserIcon": true,
+"showTeaserIconNum": 2,
+"teaserDateRange": [
+"2026-08-29 00:00:00",
+"2027-08-28 02:00:18"
+],
+"star": "5"
+}
+},
+{
+"id": 23444,
+"name": "清宵",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"2026-08-10 00:00:00",
+"2027-08-01 12:49:02"
+],
+"star": "5"
+}
+},
+{
+"id": 22707,
+"name": "穗穗",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"2026-06-25 00:00:00",
+"2027-06-01 00:00:00"
+],
+"star": "5"
+}
+},
+{
+"id": 22708,
+"name": "秧秧·玄翎",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"2026-06-25 00:00:00",
+"2027-06-01 12:08:18"
+],
+"star": "5"
+}
+},
+{
+"id": 22909,
+"name": "漂泊者-女-导电",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"2026-07-02 04:23:34",
+"2027-07-31 04:23:40"
+],
+"star": "5"
+}
+},
+{
+"id": 22910,
+"name": "漂泊者-男-导电",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"2026-07-10 00:00:00",
+"2027-07-31 04:23:51"
+],
+"star": "5"
+}
+},
+{
+"id": 22222,
+"name": "洛瑟菈",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"2026-06-10 00:00:00",
+"2026-07-31 02:57:26"
+],
+"star": "5"
+}
+},
+{
+"id": 22172,
+"name": "露西",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"2026-06-08 00:00:00",
+"2026-08-31 03:17:00"
+],
+"star": "5"
+}
+},
+{
+"id": 22171,
+"name": "丽贝卡",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"2026-06-08 00:00:00",
+"2026-08-31 03:17:41"
+],
+"star": "5"
+}
+},
+{
+"id": 20985,
+"name": "达妮娅",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2026-04-01 00:00:00",
+"2027-04-01 11:12:29"
+],
+"star": "5"
+}
+},
+{
+"id": 20673,
+"name": "西格莉卡",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"2026-03-09 00:00:00",
+"2026-06-25 00:56:01"
+],
+"star": "5"
+}
+},
+{
+"id": 19696,
+"name": "陆·赫斯",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2026-01-07 00:00:00",
+"2027-01-01 14:57:55"
+],
+"star": "5"
+}
+},
+{
+"id": 19695,
+"name": "爱弥斯",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2026-01-07 00:00:00",
+"2028-04-30 14:56:27"
+],
+"star": "5"
+}
+},
+{
+"id": 18902,
+"name": "琳奈",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-12-02 00:00:00",
+"2029-04-01 11:59:00"
+],
+"star": "5"
+}
+},
+{
+"id": 18126,
+"name": "千咲",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-10-19 00:00:00",
+"2027-11-01 13:51:14"
+],
+"star": "5"
+}
+},
+{
+"id": 17824,
+"name": "仇远",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-09-10 00:00:00",
+"2026-11-30 01:11:52"
+],
+"star": "5"
+}
+},
+{
+"id": 17823,
+"name": "嘉贝莉娜",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-09-10 00:00:00",
+"2026-03-31 01:11:52"
+],
+"star": "5"
+}
+},
+{
+"id": 17535,
+"name": "尤诺",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-07-31 00:00:00",
+"2027-10-01 12:38:20"
+],
+"star": "5"
+}
+},
+{
+"id": 17536,
+"name": "奥古斯塔",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-08-28 10:00:00",
+"2028-09-01 12:39:19"
+],
+"star": "5"
+}
+},
+{
+"id": 17113,
+"name": "弗洛洛",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-07-24 04:00:00",
+"2026-09-03 00:00:00"
+],
+"star": "5"
+}
+},
+{
+"id": 16789,
+"name": "露帕",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-03-01 20:15:55",
+"2026-05-01 20:15:49"
+],
+"star": "5"
+}
+},
+{
+"id": 16433,
+"name": "夏空",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-09-17 00:25:06",
+"2026-10-14 01:39:35"
+],
+"star": "5"
+}
+},
+{
+"id": 16790,
+"name": "卡提希娅",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-06-12 10:00:00",
+"2026-07-31 00:00:00"
+],
+"star": "5"
+}
+},
+{
+"id": 16744,
+"name": "赞妮",
+"content": {
+"showTeaserIcon": true,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-04-04 00:00:00",
+"2026-04-29 11:59:00"
+],
+"star": "5"
+}
+},
+{
+"id": 16175,
+"name": "坎特蕾拉",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-08-14 09:00:00",
+"2026-08-07 00:30:45"
+],
+"star": "5"
+}
+},
+{
+"id": 15515,
+"name": "菲比",
+"content": {
+"showTeaserIcon": true,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-04-29 00:00:00",
+"2026-04-29 11:59:19"
+],
+"star": "5"
+}
+},
+{
+"id": 15514,
+"name": "布兰特",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-08-14 09:00:00",
+"2025-08-31 00:30:57"
+],
+"star": "5"
+}
+},
+{
+"id": 15513,
+"name": "洛可可",
+"content": {
+"showTeaserIcon": true,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-07-24 10:00:00",
+"2025-08-14 00:00:00"
+],
+"star": "5"
+}
+},
+{
+"id": 15511,
+"name": "珂莱塔",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-05-22 00:00:00",
+"2026-06-10 11:59:23"
+],
+"star": "5"
+}
+},
+{
+"id": 15093,
+"name": "椿",
+"content": {
+"showTeaserIcon": true,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-03-27 00:00:00",
+"2025-04-17 10:00:00"
+],
+"star": "5"
+}
+},
+{
+"id": 14942,
+"name": "守岸人",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-04-17 10:00:00",
+"2026-04-01 11:59:59"
+],
+"star": "5"
+}
+},
+{
+"id": 14943,
+"name": "相里要",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-04-29 09:00:53",
+"2027-05-30 09:54:49"
+],
+"star": "5"
+}
+},
+{
+"id": 14944,
+"name": "折枝",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-04-29 09:54:15",
+"2027-05-31 09:54:19"
+],
+"star": "5"
+}
+},
+{
+"id": 14734,
+"name": "长离",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-05-22 10:04:58",
+"2027-06-30 11:59:02"
+],
+"star": "5"
+}
+},
+{
+"id": 14234,
+"name": "今汐",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-05-22 01:24:25",
+"2027-06-30 11:59:59"
+],
+"star": "5"
+}
+},
+{
+"id": 13715,
+"name": "吟霖",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-04-29 09:52:28",
+"2027-05-27 09:52:32"
+],
+"star": "5"
+}
+},
+{
+"id": 11718,
+"name": "忌炎",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 3,
+"teaserDateRange": [
+"2025-04-29 09:00:00",
+"2027-05-27 09:52:05"
+],
+"star": "5"
+}
+},
+{
+"id": 16405,
+"name": "漂泊者-女-气动",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"2025-03-27 11:20:34",
+"2025-04-17 11:20:43"
+],
+"star": "5"
+}
+},
+{
+"id": 16404,
+"name": "漂泊者-男-气动",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"2025-03-27 11:26:59",
+"2025-04-17 11:27:11"
+],
+"star": "5"
+}
+},
+{
+"id": 11301,
+"name": "鉴心",
+"content": {
+"showTeaserIcon": null,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"",
+""
+],
+"star": "5"
+}
+},
+{
+"id": 11730,
+"name": "卡卡罗",
+"content": {
+"showTeaserIcon": null,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"",
+""
+],
+"star": "5"
+}
+},
+{
+"id": 11885,
+"name": "安可",
+"content": {
+"showTeaserIcon": null,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"",
+""
+],
+"star": "5"
+}
+},
+{
+"id": 11639,
+"name": "维里奈",
+"content": {
+"showTeaserIcon": null,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"",
+""
+],
+"star": "5"
+}
+},
+{
+"id": 11299,
+"name": "凌阳",
+"content": {
+"showTeaserIcon": null,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"",
+""
+],
+"star": "5"
+}
+},
+{
+"id": 11641,
+"name": "漂泊者-男-衍射",
+"content": {
+"showTeaserIcon": null,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"",
+""
+],
+"star": "5"
+}
+},
+{
+"id": 12790,
+"name": "漂泊者-女-衍射",
+"content": {
+"showTeaserIcon": null,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"",
+""
+],
+"star": "5"
+}
+},
+{
+"id": 13197,
+"name": "漂泊者-男-湮灭",
+"content": {
+"showTeaserIcon": null,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"",
+""
+],
+"star": "5"
+}
+},
+{
+"id": 13198,
+"name": "漂泊者-女-湮灭",
+"content": {
+"showTeaserIcon": null,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"",
+""
+],
+"star": "5"
+}
+},
+{
+"id": 18127,
+"name": "卜灵",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"2025-10-19 00:00:00",
+"2026-12-02 13:51:58"
+],
+"star": "4"
+}
+},
+{
+"id": 15097,
+"name": "灯灯",
+"content": {
+"showTeaserIcon": true,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"2024-09-13 00:00:00",
+"2024-12-31 19:44:38"
+],
+"star": "4"
+}
+},
+{
+"id": 11302,
+"name": "秧秧",
+"content": {
+"showTeaserIcon": null,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"",
+""
+],
+"star": "4"
+}
+},
+{
+"id": 14941,
+"name": "釉瑚",
+"content": {
+"showTeaserIcon": false,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"2024-10-23 00:00:00",
+"2025-11-18 00:00:00"
+],
+"star": "4"
+}
+},
+{
+"id": 11227,
+"name": "白芷",
+"content": {
+"showTeaserIcon": null,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"",
+""
+],
+"star": "4"
+}
+},
+{
+"id": 11719,
+"name": "炽霞",
+"content": {
+"showTeaserIcon": null,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"",
+""
+],
+"star": "4"
+}
+},
+{
+"id": 11300,
+"name": "散华",
+"content": {
+"showTeaserIcon": null,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"",
+""
+],
+"star": "4"
+}
+},
+{
+"id": 11651,
+"name": "秋水",
+"content": {
+"showTeaserIcon": null,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"",
+""
+],
+"star": "4"
+}
+},
+{
+"id": 11303,
+"name": "丹瑾",
+"content": {
+"showTeaserIcon": null,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"",
+""
+],
+"star": "4"
+}
+},
+{
+"id": 11816,
+"name": "莫特斐",
+"content": {
+"showTeaserIcon": null,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"",
+""
+],
+"star": "4"
+}
+},
+{
+"id": 11656,
+"name": "渊武",
+"content": {
+"showTeaserIcon": null,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"",
+""
+],
+"star": "4"
+}
+},
+{
+"id": 11710,
+"name": "桃祈",
+"content": {
+"showTeaserIcon": null,
+"showTeaserIconNum": 1,
+"teaserDateRange": [
+"",
+""
+],
+"star": "4"
+}
+}
+]
+}
+}
+}

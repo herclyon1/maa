@@ -21,6 +21,10 @@
 6. 「已公布但不在开」不等于「下一期」——本版上半开完了也满足这个条件，
    照那个判据会把**上一期**当成下一期报出去。公告是按时间顺序列的，
    要取在开的那位**之后**的。
+7. (2026-09-12) 库街区词条名带空格（「 景燃」），不 strip 就和公告的「景燃」对不上，
+   在开的首发池整行消失；复刻永远不许当「预告」（伊冯的重构寻访曾被报成下一期）；
+   一图流的表只有限定池，它的下一条不是「下一池」；两版都开完时，下一版角色要用
+   wiki 的「预告」角标报出来，没有就明说还没公告。
 """
 import json
 import sys
@@ -30,6 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import ark_relay.banners as _b
 from ark_relay.banners import (
     _AK_PAGES, _PRTS, debut_only, parse_ak_schedule, parse_arknights,
     gh_raw, group_notice, newest_version, opening_tomorrow, parse_endfield,
@@ -108,7 +113,7 @@ def _endfield() -> None:
     ef = parse_endfield(ef_pools, lambda gid: {"1683": "梨诺"}.get(gid, ""))
     check("终末地池名", [b.name for b in ef], ["晨星于此闪耀"])
     check("角色名要按 pcLink 里的 gameEntryId 去查", ef[0].chars, ("梨诺",))
-    # 时间戳换算依赖本机时区，所以比时间戳本身，不比挂钟读数
+    # Timestamp conversion depends on the local zone: compare the timestamps, not clock readings
     check("起止时间戳原样还原",
           (int(ef[0].start.timestamp()), int(ef[0].end.timestamp())),
           (1786248000, 1788300000))
@@ -178,8 +183,8 @@ def _newest_version() -> None:
                           ("10.0版本内容说明", "新")]), "新")
     check("一条都没有时返回空", newest_version([]), "")
 
-    # 2026-08-31 实测：游戏机上 raw.githubusercontent 要 33 秒（超时失败），
-    # jsDelivr 2.8 秒。镜像顺序是按实测速度排的，别退回去。
+    # Measured 2026-08-31 on the game machine: raw.githubusercontent takes 33 s (times
+    # out), jsDelivr 2.8 s. The mirror order follows measured speed; do not revert it.
     mirrors = gh_raw("o", "r", "main", "a/b.js")
     check("jsDelivr 排在最前", "jsdelivr" in mirrors[0], True)
     check("raw.githubusercontent 只做最后兜底",
@@ -190,13 +195,13 @@ def _newest_version() -> None:
 
 def _opening_tomorrow() -> None:
     """只有「明天开」的才发群。"""
-    # 日报是晚上发的。按「24 小时内」算的话，21:30 会把后天早上六点开的
-    # 也算进来——那不是明天。所以比的是日期。
+    # The daily report goes out in the evening. "Within 24 hours" at 21:30 would sweep
+    # in a banner opening at six the morning after tomorrow - not tomorrow. So compare dates.
     evening = datetime(2026, 8, 31, 21, 30)
     pool_nxt = {
-        "终末地": (datetime(2026, 9, 2, 6, 0), "提弗洛斯"),      # 后天，不发
-        "明日方舟": (datetime(2026, 9, 1, 0, 0), "P3R联动"),      # 明天，发
-        "鸣潮": (datetime(2026, 8, 31, 23, 0), "景燃"),          # 今天，不发
+        "终末地": (datetime(2026, 9, 2, 6, 0), "提弗洛斯"),      # the day after tomorrow: no
+        "明日方舟": (datetime(2026, 9, 1, 0, 0), "P3R联动"),      # tomorrow: yes
+        "鸣潮": (datetime(2026, 8, 31, 23, 0), "景燃"),          # today: no
     }
     due = opening_tomorrow(evening, pool_nxt)
     check("只留明天开的", [g for g, _, _ in due], ["明日方舟"])
@@ -283,9 +288,67 @@ def _per_game_blocks(pools) -> None:
     check("当期带结束时刻", "（09-10 09:59 结束）" in both, True)
 
 
+def _sept12() -> None:
+    """The four things wrong in the 2026-09-12 report, one check each."""
+    now = datetime(2026, 9, 12, 12, 0)
+    # a. leading space in the wiki entry name
+    home = json.loads((FX / "wuwa_home.json").read_text(encoding="utf-8"))
+    entry = json.loads((FX / "wuwa_entry_jingran.json").read_text(encoding="utf-8"))
+    got = parse_wuwa(home, lambda e: entry["data"]["name"])
+    check("词条名带空格也要对上", all(b.chars == ("景燃",) for b in got) and bool(got), True)
+    # b. the teaser badge on the wiki catalogue
+    cat = json.loads((FX / "wuwa_catalogue_2026-09-12.json").read_text(encoding="utf-8"))
+    recs = cat["data"]["results"]["records"]
+    check("wiki 预告角标 = 心、锁暝", _b.wuwa_teased(recs, now), ["心", "锁暝"])
+    check("角标过期的不算（赞妮 2026-04-29 到期）", "赞妮" in _b.wuwa_teased(recs, datetime(2026, 5, 1)), False)
+    check("在开的「新」和「复刻」都不是预告", any(n in _b.wuwa_teased(recs, now) for n in ("景燃", "绯雪", "莫宁")), False)
+    # c. the rendering of an unannounced next banner
+    out = render([], now, {"鸣潮": (datetime(2026, 9, 29, 11, 59, 59), "？下一版新角色官方已预告：心、锁暝（先后和池名等版本公告）")})
+    check("没公告的下一池写「之后开」", "09-29 11:59 之后开（还有 16 天）　下一版新角色官方已预告：心、锁暝" in out, True)
+    check("问号标记不进文案", "？" in out, False)
+    check("没公告时不写「UP 是谁官方未公布」这种废话", "官方未公布" in out, False)
+    title, body = group_notice([("鸣潮", datetime(2026, 9, 29, 11, 59, 59), "？下一版新角色官方还没公告")])
+    check("群播报也不带问号", "？" in body, False)
+    # d. Endfield: the official site's banner notice; "after the version update" resolved by the maintenance window
+    news = (FX / "ef_news_2026-09-12.txt").read_text(encoding="utf-8")
+    arts = {"6097": (FX / "ef_news_6097.txt").read_text(encoding="utf-8"),
+            "1164": (FX / "ef_news_1164.txt").read_text(encoding="utf-8")}
+    def ef_get(url):
+        cid = url.rsplit("/", 1)[-1]
+        return arts.get(cid, news) if cid != "news" else news
+    nxt = _b.endfield_next_from_news(datetime(2026, 9, 1, 20, 0), get=ef_get)
+    check("终末地官网：冬猎 提弗洛斯，版本开启后 = 维护结束 09-02 12:00",
+          (nxt[0].strftime("%m-%d %H:%M"), nxt[1]) if nxt else None, ("09-02 12:00", "提弗洛斯「冬猎」"))
+    check("已经开了的不再是下一期", _b.endfield_next_from_news(now, get=ef_get), None)
+    # e. Endfield reruns never become the preview
+    full = json.loads((FX / "ef_bulletin_full_2026-09-03.json").read_text(encoding="utf-8"))
+    def _walk(o, acc):
+        if isinstance(o, dict):
+            if "版本更新说明" in str(o.get("header") or o.get("title") or ""):
+                acc.append(o)
+            for v in o.values():
+                _walk(v, acc)
+        elif isinstance(o, list):
+            for v in o:
+                _walk(v, acc)
+    acc: list = []
+    _walk(full, acc)
+    html = str(((acc[0].get("data") or {}).get("html")) or acc[0].get("html") or "") if acc else ""
+    pools = _b.endfield_pools_from_notice(html)
+    reruns = [(n, p) for n, p, w, d in pools if not d]
+    check("公告里确实有复刻池（伊冯）作为反例", ("伊冯", "绚丽异彩") in reruns, True)
+    future = [(n, p, w, d) for n, p, w, d in pools if w and w > now and d]
+    check("复刻不许成为下一期：09-12 之后只剩伊冯，首发筛选后为空", future, [])
+    # f. WuWa version end comes from the running banner, not +42 days
+    live = [_b.Banner("鸣潮", "身赴三途", ("景燃",), datetime(2026, 9, 10, 10, 0), datetime(2026, 9, 29, 11, 59, 59))]
+    check("鸣潮版本结束 = 在开池子的结束", _b.version_ends(now, live).get("鸣潮"), datetime(2026, 9, 29, 11, 59, 59))
+    pv = _b.previews(now, live, _b.version_ends(now, live))
+    check("前瞻按规律从真实版本结束倒推", pv.get("鸣潮"), "09-16 19:00（版本 09-29 更新前 13 天，按规律）")
+
+
 def main() -> int:
-    # 一节一个函数。原来这里是一个 215 行的 main：哪一节红了，
-    # 得自己数行号才知道是鸣潮还是终末地那一段。
+    # One function per section. This used to be a 215-line main: when a check went
+    # red you had to count line numbers to tell which game's section it was in.
     pools, debut = _wuwa()
     _arknights()
     ef_debut = _endfield()
@@ -296,6 +359,7 @@ def main() -> int:
     _preview_line()
     _top_rarity_only()
     _per_game_blocks(pools)
+    _sept12()
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1
 

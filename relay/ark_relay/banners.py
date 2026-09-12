@@ -276,11 +276,40 @@ def parse_wuwa(home: dict, name_of) -> list[Banner]:
                 continue
             imgs = tab.get("imgs") or []
             eid = (imgs[0].get("linkConfig") or {}).get("entryId") if imgs else None
-            who = name_of(str(eid)) if eid else ""
+            # The wiki entry name can carry whitespace (a leading space on 2026-09-12);
+            # a raw compare against the bulletin's spelling dropped the running banner.
+            who = (name_of(str(eid)) if eid else "").strip()
             if not who:
                 continue
-            out.append(Banner("鸣潮", str(tab.get("name") or ""), (who,), a, b))
+            out.append(Banner("鸣潮", str(tab.get("name") or "").strip(), (who,), a, b))
     out.sort(key=lambda x: x.end)
+    return out
+
+
+def wuwa_teased(records: list, now: datetime) -> list[str]:
+    """Characters the Kuro wiki marks as previewed (announced, not yet released).
+
+    The character catalogue (id 1105) carries a corner badge per entry:
+    `content.showTeaserIcon` with `showTeaserIconNum` 1 = new, 2 = previewed,
+    3 = rerun, valid inside `teaserDateRange`. Read off the wiki on 2026-09-12:
+    景燃 1, 绯雪 3, 莫宁 3, 心 2, 锁暝 2 - matching the badges the page draws. Stale
+    flags stay on old entries (a rerun badge whose range ended 2026-04-29), so the
+    range is required.
+    """
+    out: list[str] = []
+    for r in records or []:
+        c = r.get("content") or {}
+        if not c.get("showTeaserIcon") or str(c.get("showTeaserIconNum")) != "2":
+            continue
+        rng = c.get("teaserDateRange") or []
+        try:
+            a = datetime.strptime(str(rng[0])[:19], "%Y-%m-%d %H:%M:%S")
+            b = datetime.strptime(str(rng[1])[:19], "%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError, IndexError):
+            continue
+        name = str(r.get("name") or "").strip()
+        if name and a <= now <= b:
+            out.append(name)
     return out
 
 
@@ -419,8 +448,13 @@ def render(banners: list[Banner], now: datetime,
         if game in nxt:
             when, who = nxt[game]
             d = when - now
-            head = ("约 " if not who else "") + f"{_stamp(when)} 开（还有 {d.days} 天）"
-            lines.append(f"· 预告　{head}　{who or 'UP 是谁官方未公布'}")
+            if who.startswith("？"):
+                # Not announced: `when` is the earliest it can open (the current
+                # banner's end / the version update), the note says what is known.
+                lines.append(f"· 预告　{_stamp(when)} 之后开（还有 {d.days} 天）　{who[1:]}")
+            else:
+                head = ("约 " if not who else "") + f"{_stamp(when)} 开（还有 {d.days} 天）"
+                lines.append(f"· 预告　{head}　{who or 'UP 是谁官方未公布'}")
         if game in pv:
             lines.append(f"· 前瞻　{pv[game]}")
         blocks.append("\n".join(lines))
@@ -476,12 +510,6 @@ _ZONAI = "https://zonai.skland.com"
 _EF_BULLETIN = ("https://game-hub.hypergryph.com/bulletin/v2/aggregate"
                 "?lang=zh-cn&platform=Windows&channel=1&type=0"
                 "&code=endfield_5SD9TN&hideDetail=0")
-# The next banner across a version boundary exists only in this hand-maintained file.
-# Its times are not trusted (see docs/BANNER-SOURCES.md); it is used only to get who
-# the next character is.
-_EF_SCHEDULE = gh_raw("Arknights-yituliu", "ef-frontend-v1", "main",
-                      "custom/core/gacha/data/pool_info_table.json")
-
 
 def _json(url: str, ua: str, data: "bytes | None" = None,
           headers: "dict | None" = None, timeout: int = 20) -> dict:
@@ -638,16 +666,23 @@ def _arknights(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | Non
         log.warning("方舟官网寻访公告取不到", exc_info=True)
     if when := min((b.start for b in rows if b.start > now), default=None):
         return debut, (when, "")      # PRTS already lists it: the time is accurate, the character unknown
+    # Nothing announced. Yituliu's table only lists *limited* banners (it feeds a
+    # pull-saving calculator), so its next entry is not "the next banner" - on
+    # 2026-09-12 it put the 11-01 anniversary banner as the preview while the banner
+    # after 09-18 was simply not announced yet. Say so, and carry the limited-banner
+    # projection as a far-off note, labelled as the prediction it is.
+    end = max((b.end for b in rows if b.start <= now <= b.end), default=None)
+    far = ""
     try:
         sched = parse_ak_schedule(_first(_AK_SCHEDULE, _UA_BROWSER))
+        if nxt := next(((n, d, ok) for n, d, ok in sched if d > now), None):
+            name, day, official = nxt
+            far = f"；远期 {day:%m-%d} {name}" + ("" if official else "（一图流预测，未官宣）")
     except Exception:
         log.warning("一图流方舟排期取不到", exc_info=True)
+    if not end:
         return debut, None
-    nxt = next(((n, d, ok) for n, d, ok in sched if d > now), None)
-    if not nxt:
-        return debut, None
-    name, day, official = nxt
-    return debut, (day, name if official else f"{name}（排期是预测，未官宣）")
+    return debut, (end, "？下一池官方还没公告" + far)
 
 
 def _endfield(cred, sk_get, now: datetime
@@ -694,45 +729,81 @@ def _endfield(cred, sk_get, now: datetime
         return got, None
 
     # Prefer the official bulletin for the next banner: the one whose opening time is
-    # in the future (reruns are reported too, labelled as such)
+    # in the future. Debuts only - a rerun is never "the next banner" (the user's
+    # rule in the module docstring: new characters only; on 2026-09-12 the report
+    # had put a rerun there, labelled as one, and that was wrong).
     on = {c for b in live for c in b.chars}
     try:
         pools = endfield_pools_from_notice(html) if notice_ok else []
     except Exception:  # noqa: BLE001
         pools = []
-    future = [(n, p, w, d) for n, p, w, d in pools if w and w > now and n not in on]
+    future = [(n, p, w, d) for n, p, w, d in pools if w and w > now and n not in on and d]
     if future:
         n, p, w, d = min(future, key=lambda x: x[2])
-        return got, (w, f"{n}「{p}」" + ("" if d else "（复刻）"))
+        return got, (w, f"{n}「{p}」")
     rest = upcoming(debut, on)
     if rest:
         return got, (end, "、".join(f"{w}「{p}」" if p else w for w, p in rest))
 
-    # Both halves of this version have finished; only Yituliu's hand-maintained table
-    # covers the next version
+    # Both halves of this version have finished. The official site posts the next
+    # version's banner notice about a day before the update; until then nobody has
+    # announced the operator, and the line must say exactly that.
     try:
-        table = json.loads(_first(_EF_SCHEDULE, _UA_BROWSER))
+        if official := endfield_next_from_news(now):
+            return got, official
     except Exception:
-        log.warning("一图流终末地排期取不到（几条镜像都不通）", exc_info=True)
-        return got, (end, "")
-    seen = {b.name for b in live} | {p for _, p in debut}
-    nxt = next((r for r in (table if isinstance(table, list) else [])
-                if str(r.get("poolName") or "") not in seen
-                and _ef_after(r, now)), None)
-    if not nxt:
-        return got, (end, "")
-    who = str(nxt.get("character") or "") or str(nxt.get("poolName") or "")
-    pool = str(nxt.get("poolName") or "")
-    label = f"{who}「{pool}」" if pool and pool != who else who
-    return got, (end, f"{label}（排期是别人手工维护的，未官宣）")
+        log.warning("终末地官网寻访公告取不到", exc_info=True)
+    return got, (end, "？下一版新干员官方还没公告")
 
 
-def _ef_after(row: dict, now: datetime) -> bool:
-    try:
-        return datetime.strptime(str(row.get("poolStart") or ""),
-                                 "%Y/%m/%d %H:%M:%S") > now
-    except (ValueError, TypeError):
-        return False
+_EF_NEWS = "https://endfield.hypergryph.com/news"
+_EF_SIX_UP = re.compile(r"概率提升的6星干员为【([^】]+)】")
+_EF_OPEN_AT = re.compile(r"开放时间[：:]\s*(?:(\d{4})/(\d{1,2})/(\d{1,2})\s*(\d{1,2}):(\d{2})|「[^」]+」版本(?:开启|更新)后)")
+_EF_MAINT = re.compile(r"(?:更新)?维护时间\s*\d{4}/\d{1,2}/\d{1,2}\s*\d{1,2}:\d{2}\s*[-~～]\s*(\d{4})/(\d{1,2})/(\d{1,2})\s*(\d{1,2}):(\d{2})")
+
+
+def endfield_next_from_news(now: datetime, get=None) -> "tuple[datetime, str] | None":
+    """The newest banner notice on the official site whose banner has not opened:
+    (opening time, operator「banner」). None when there is none.
+
+    Same page shape as the Arknights site (a Next.js list of cid/title/displayTime).
+    Recorded 2026-09-12: cid 6097 「冬猎」特许寻访说明, posted 09-01; its body gives
+    the opening as "after the version update - 2026/09/30 11:59" and names the
+    rate-up six-star 【提弗洛斯】. A banner that opens "after the version update"
+    opens when the maintenance window in the pre-download notice ends
+    (2026/09/02 06:00 - 12:00 there).
+    """
+    get = get or (lambda u: _text(u, _UA_BROWSER))
+    page = get(_EF_NEWS)
+    items = _AK_NEWS_ITEM.findall(page)
+    maint = None
+    for cid, title, _ts in items:
+        if "更新预告" in title or "版本更新说明" in title:
+            if m := _EF_MAINT.search(_ak_article_text(get(f"{_EF_NEWS}/{cid}"))):
+                y, mo, d, hh, mm = (int(x) for x in m.groups())
+                maint = datetime(y, mo, d, hh, mm)
+                break
+    seen = set()
+    for cid, title, _ts in items:
+        if cid in seen or "特许寻访说明" not in title:
+            continue
+        seen.add(cid)
+        body = _ak_article_text(get(f"{_EF_NEWS}/{cid}"))
+        six = _EF_SIX_UP.search(body)
+        at = _EF_OPEN_AT.search(body)
+        if not six or not at:
+            continue
+        if at.group(1):
+            y, mo, d, hh, mm = (int(x) for x in at.groups())
+            start = datetime(y, mo, d, hh, mm)
+        elif maint:
+            start = maint
+        else:
+            continue
+        pool = re.search(r"「([^」]+)」特许寻访说明", title)
+        who = six.group(1).strip() + (f"「{pool.group(1)}」" if pool else "")
+        return (start, who) if start > now else None
+    return None
 
 
 # This hash is a channel constant and does not change with the version; if it ever
@@ -740,6 +811,8 @@ def _ef_after(row: dict, now: datetime) -> bool:
 # 555me/game-CDN-List.
 _WW_NOTICE = ("https://aki-gm-resources-back.aki-game.com/gamenotice/G152/"
               "76402e5b20be2c39f095a152090afddc/zh-Hans.json")
+# The character catalogue on the wiki (its id, read off the homepage's index tab).
+_WW_CHAR_CATALOGUE = 1105
 _WW_HDR = {"wiki_type": "9", "source": "h5",
            "referer": "https://wiki.kurobbs.com/"}
 
@@ -765,7 +838,7 @@ def _wuwa(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | None]":
             try:
                 d = post("/wiki/core/catalogue/item/getEntryDetail",
                          {"id": eid})["data"] or {}
-                cache[eid] = str(d.get("name") or "")
+                cache[eid] = str(d.get("name") or "").strip()
             except Exception:
                 log.warning("库街区条目 %s 查不到名字", eid, exc_info=True)
                 cache[eid] = ""
@@ -805,10 +878,23 @@ def _wuwa(now: datetime) -> "tuple[list[Banner], tuple[datetime, str] | None]":
         return got, None
     live = {c for b in pools for c in b.chars}
     rest = upcoming(debut, live)
-    if not rest:
-        return got, (end, "")
-    who = "、".join(f"{w}「{p}」" if p else w for w, p in rest)
-    return got, (end, who)
+    if rest:
+        who = "、".join(f"{w}「{p}」" if p else w for w, p in rest)
+        return got, (end, who)
+    # Both halves are done: the next banner belongs to the next version, whose
+    # bulletin is not out yet. The wiki does mark the characters the publisher has
+    # previewed (the teaser badge), so name them; the order and banner names are
+    # only in the version bulletin.
+    teased: list[str] = []
+    try:
+        page = post("/wiki/core/catalogue/item/getPage",
+                    {"catalogueId": _WW_CHAR_CATALOGUE, "page": 1, "limit": 100})
+        teased = wuwa_teased((((page.get("data") or {}).get("results") or {}).get("records")) or [], now)
+    except Exception:
+        log.warning("库街区角色图鉴取不到，预告角色这一项不出", exc_info=True)
+    if teased:
+        return got, (end, "？下一版新角色官方已预告：" + "、".join(teased) + "（先后和池名等版本公告）")
+    return got, (end, "？下一版新角色官方还没公告")
 
 
 def collect(now: datetime, *, skland_token: str = "",
@@ -878,13 +964,20 @@ def version_ends(now: datetime, rows: list[Banner]) -> "dict[str, datetime]":
     ef = [b.end for b in rows if b.game == "终末地" and b.start <= now]
     if ef:
         out["终末地"] = max(ef)
-    try:
-        from . import maintenance  # noqa: PLC0415
-        w = maintenance.wuwa_window(now)
-        if w:
-            out["鸣潮"] = w[0].replace(tzinfo=None) + timedelta(days=42)
-    except Exception:  # noqa: BLE001
-        pass
+    # The banners of a version all end on update day, so the running banner's end is
+    # the version end. "+42 days" was a guess: 3.6 ran 08-20 to 09-29 (40 days) and
+    # the guess put the update on 10-01 (2026-09-12).
+    ww = [b.end for b in rows if b.game == "鸣潮" and b.start <= now <= b.end]
+    if ww:
+        out["鸣潮"] = max(ww)
+    else:
+        try:
+            from . import maintenance  # noqa: PLC0415
+            w = maintenance.wuwa_window(now)
+            if w:
+                out["鸣潮"] = w[0].replace(tzinfo=None) + timedelta(days=42)
+        except Exception:  # noqa: BLE001
+            pass
     return out
 
 
@@ -917,6 +1010,6 @@ def group_notice(due: "list[tuple[str, datetime, str]]") -> "tuple[str, str]":
     for game, when, who in due:
         stamp = f"{when:%m-%d}" if (when.hour, when.minute) == (0, 0) \
             else f"{when:%m-%d %H:%M}"
-        lines.append(f"· {game}　{stamp} 开" + (f"　{who}" if who else ""))
+        lines.append(f"· {game}　{stamp} 开" + (f"　{who.lstrip('？')}" if who else ""))
     what = "、".join(g for g, _, _ in due)
     return f"🎴 明天开新卡池：{what}", "\n".join(lines)

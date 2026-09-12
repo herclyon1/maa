@@ -7,9 +7,51 @@ and why that source was chosen. Verified 2026-08-31.
 
 | Game | Current banner | Next banner | Token needed |
 |---|---|---|---|
-| 明日方舟 | PRTS `卡池一览/限时寻访` | the yituliu frontend repo (hand-maintained) | No |
-| 终末地 | Skland API | official version bulletin (falls back to yituliu only across versions) | Yes for the current banner, no for the preview |
-| 鸣潮 | Kuro Bbs wiki homepage API | official in-game bulletin | No |
+| 明日方舟 | PRTS `卡池一览/限时寻访` | official site news (「…寻访即将开启」); else "not announced" + the yituliu limited-banner projection as a far-off note | No |
+| 终末地 | Skland API | official version bulletin within the version; official site news (「X」特许寻访说明, ~1 day ahead) across versions; else "not announced" | Yes for the current banner, no for the preview |
+| 鸣潮 | Kuro Bbs wiki homepage API | official in-game bulletin within the version; the wiki character catalogue's teaser badge across versions | No |
+
+## Rules that the 2026-09-12 report broke (and the fixes)
+
+- **Reruns are never "the next banner."** The Endfield bulletin lists 重构寻访 (reruns)
+  with opening times; `_endfield` used to pick the earliest future pool and label it
+  （复刻）. Now only debuts qualify.
+- **A far-off prediction is not "the next banner."** Yituliu's Arknights table is the
+  input to a pull-saving calculator and only carries *limited* banners; its next entry
+  (感谢庆典 11-01) was shown as the preview while the banner after 09-18 was simply not
+  announced. The line now says 「下一池官方还没公告」 and appends the projection as
+  「远期 …（一图流预测，未官宣）」. The Endfield yituliu table is no longer read at all.
+- **Wiki entry names carry whitespace.** `getEntryDetail` for 景燃 returned `" 景燃"`;
+  compared raw against the bulletin it was "not a debut" and the running banner vanished
+  from the report. Names are stripped.
+- **A version is not 42 days.** 3.6 ran 08-20 → 09-29 (40 days); the version end for 鸣潮
+  is the running banners' end (all of a version's banners end on update day). The +42
+  guess remains only as a fallback when no banner is running.
+
+## 鸣潮: who the next version's characters are (wiki teaser badge)
+
+`POST /wiki/core/catalogue/item/getPage` with `catalogueId=1105&page=1&limit=100`
+(the 共鸣者 catalogue; same three headers). Each record's `content` carries the corner
+badge the wiki page draws: `showTeaserIcon` true with `showTeaserIconNum` 1 = 新,
+2 = 预告, 3 = 复刻, valid inside `teaserDateRange`. Read 2026-09-12: 景燃 1, 绯雪 3,
+莫宁 3, 心 2, 锁暝 2. Old entries keep stale flags with expired ranges (赞妮 3 until
+2026-04-29), so the range check is mandatory. The badge names the characters only;
+which half and which banner name come from the version bulletin on update day.
+
+Tag filtering (`tagIds=`) on that endpoint is ignored, and every tag/filter endpoint
+(`getFilterTags`, `config/getTags`, `getTree`) answers 「访问令牌不能为空」 - the
+badge is the only token-free signal.
+
+## 终末地: the official site's banner notices
+
+`https://endfield.hypergryph.com/news` has the same Next.js shape as the Arknights site
+(`cid` / `title` / `displayTime` inside an escaped JSON string; articles at `/news/<cid>`).
+「X」特许寻访说明 is posted about a day before the banner: cid 6097 「冬猎」特许寻访说明
+on 09-01 for the 09-02 opening, body 「开放时间：「雪凇幽梦」版本开启后 - 2026/09/30
+11:59」 and 「概率提升的6星干员为【提弗洛斯】」. "版本开启后" resolves to the end of
+the maintenance window in the 「版本预下载与更新预告」 / 「版本更新说明」 post
+(「维护时间 2026/09/02 06:00 - 2026/09/02 12:00」). Reruns are 「重构寻访」 posts, not
+特许寻访, so they never match.
 
 ## 明日方舟
 
@@ -21,7 +63,9 @@ and why that source was chosen. Verified 2026-08-31.
   no banner name), and parsing it always yields 0 entries; besides, every operator in it —
   提丰, 引星棘刺, 逻各斯, 鸿雪, 衡沙 — can be traced back to an earlier debut in the
   limited-time banners. A rotation banner never carries a new operator.
-- Next banner: `src/utils/gachaScheduleOptions.js` in the
+- Next banner: the official site's 「…寻访即将开启」 post (`arknights_next_from_news`), then a
+  PRTS row with a future start (time only). **Far-off projection only** (never presented as
+  the next banner, 2026-09-12): `src/utils/gachaScheduleOptions.js` in the
   `Arknights-yituliu/frontend-v2-plus` repository.
 
   ```
@@ -67,9 +111,9 @@ and why that source was chosen. Verified 2026-08-31.
   chronological order, so take the one **after** the banner that is currently running
   (`upcoming()`).
 
-- Next banner (**across versions**, fallen back to only when both halves of the current version
-  have already run): `custom/core/gacha/data/pool_info_table.json` in the
-  `Arknights-yituliu/ef-frontend-v1` repository.
+- Next banner (**across versions**): the official site's 「X」特许寻访说明 (see above).
+  **No longer read (2026-09-12)**: `custom/core/gacha/data/pool_info_table.json` in the
+  `Arknights-yituliu/ef-frontend-v1` repository - kept here only as the record of why not.
 
   ```
   https://raw.githubusercontent.com/Arknights-yituliu/ef-frontend-v1/main/custom/core/gacha/data/pool_info_table.json
