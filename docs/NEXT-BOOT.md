@@ -26,7 +26,7 @@ Done overnight 09-12 01:00-02:45 (Beijing), all on the machine:
 
 To do when the machine is next up:
 
-0. **Banner section fix is on GitHub only** (manifest 20260912042941, pushed 13:30 Tokyo
+0. **Banner section fix is on GitHub only** (manifest 20260912045004, pushed 13:50 Tokyo
    while the machine was off). The 21:20 boot's self-update must pick it up: check
    `relay.log` for the update line and that the evening report's 卡池 block shows
    鸣潮 「身赴三途」景燃 as 当期 and no （复刻） preview for 终末地. If self-update did
