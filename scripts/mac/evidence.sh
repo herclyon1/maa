@@ -47,7 +47,12 @@ for ln in p.read_text(encoding="utf-8").splitlines():
         continue
     up = e.get("uploaded") or []
     err = e.get("errors") or []
-    print(f"{e.get('when','')[:16]}  {e.get('script'):6}  {e.get('run_id')}  {len(up)}/{len(e.get('files') or [])} 个文件  {e.get('store','gofile')}  {e.get('page','')}"
+    n = len(e.get('files') or [])
+    # Since the one-file rule a run ships a single archive holding n files;
+    # older rows uploaded the files themselves, so count what was actually sent.
+    shipped = (f"1 个压缩包（内含 {n} 个文件）" if e.get("archive") and up
+               else f"{len(up)}/{n} 个文件")
+    print(f"{e.get('when','')[:16]}  {e.get('script'):6}  {e.get('run_id')}  {shipped}  {e.get('store','gofile')}  {e.get('page','')}"
           + ("  ⚠️ " + "；".join(err) if err else ""))
 EOF
     ;;
