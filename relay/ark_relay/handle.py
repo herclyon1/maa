@@ -378,7 +378,9 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
                     "下没读到 NightmareNestTask.json 和 DailyTask.json，"
                     "所以这一轮该不该打残象聚落无从判断"))
             else:
-                checks = outcome.okww_checks(text, expect_nest=expect_nest)
+                only = (_okww_master_config(eng.cfg.automas_dir, "NightmareNestTask")
+                        .get("Only Farm These Nests") or "").strip()
+                checks = outcome.okww_checks(text, expect_nest=expect_nest, only_nest=only)
             return outcome.summarize(checks, "OK-WW")
         if rec.script == "MAA":
             # Only MAA's own log is read: AUTO-MAS's history carries no per-

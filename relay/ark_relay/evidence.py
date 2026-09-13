@@ -75,8 +75,10 @@ PINS = (
     Pin("MAA 生成日志压缩包（IssueReportUserControlModel.cs）",
         "MaaAssistantArknights/MaaAssistantArknights", "dev-v2",
         "src/MaaWpfGui/ViewModels/UserControl/Settings/IssueReportUserControlModel.cs",
-        "1cd98d5c2147409f046cbccf148350517523ae9f",
-        "b339163cb774a6db4e95f40a7de7462b3c496eed4a433a6dc08f08546f2962c2"),
+        # Re-pinned 2026-09-13: upstream 4f144457 (09-12 14:55Z) only swapped the
+        # static Log calls for a class-scoped logger; GenerateSupportPayload is unchanged.
+        "4f1444577a17f99037aa385c488bef5b70e23f8d",
+        "c11e538956b412accf80760f20aa383997c346dcd6fac94ea8d2cdd377939404"),
     Pin("OK-WW Export Logs（ok-script StartTab.py）", "ok-oldking/ok-script", "master",
         "ok/ui/qt/start/StartTab.py",
         "41a59bc67e6708158a62cae970709e8e37a3305f",

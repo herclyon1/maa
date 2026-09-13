@@ -89,6 +89,15 @@ cfg = json.loads((_mdir / "NightmareNestTask.json").read_text(encoding="utf-8"))
 daily = json.loads((_mdir / "DailyTask.json").read_text(encoding="utf-8"))
 check("巢穴：只刷落渊南丘", cfg.get("Only Farm These Nests") == "落渊南丘",
       f"实际 {cfg.get('Only Farm These Nests')!r}")
+# What the master says is the intent; whether the last run obeyed it is a
+# separate fact (09-10..09-13: master right, every run farmed all four nests).
+from ark_relay import outcome                          # noqa: E402
+_last = outcome.latest_okww_run_log(r"D:\ark\automas\history")
+_ftxt = _last[1] if _last else ""
+_fbad = [c for c in outcome.nest_filter_checks(_ftxt, "落渊南丘") if not c.ok]
+check("巢穴：上一趟真的只进了落渊南丘（按运行日志）",
+      _last is not None and not _fbad,
+      "没有运行日志" if _last is None else "；".join(f"{c.label}：{c.detail}" for c in _fbad) or "")
 check("巢穴：只刷残象聚落（不碰梦魇拔除）",
       cfg.get("Which to Farm") == ["Tacet Discord Nest"],
       f"实际 {cfg.get('Which to Farm')!r}")

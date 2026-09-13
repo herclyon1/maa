@@ -15,7 +15,7 @@ import json
 import logging
 from pathlib import Path
 
-from .config import atomic_write_text
+from .config import atomic_write_text, master_config_dir
 
 log = logging.getLogger("ark.okww_overlay")
 
@@ -25,6 +25,10 @@ _WORKING = ("data", "apps", "ok-ww", "working")
 TASKS_DIR = "ok_tasks"
 FILE_NAME = "ark_overrides.py"
 REPORT = Path(r"C:\ProgramData\ark-okww-overlay.json")
+# Where the overrides read the master ConfigFile directory from. Needed because
+# ok-script's Config drops unknown keys and rewrites configs/ at load, before the
+# extension runs - so 「Only Farm These Nests」 is only ever readable from the master.
+MASTER_POINTER = Path(r"C:\ProgramData\ark-okww-master.txt")
 
 _SOURCE = Path(__file__).with_name("okww_files") / "ark_overrides.tasks.py"
 
@@ -55,6 +59,20 @@ def install(okww_dir) -> str:
     except OSError as exc:
         return f"**中继的改动文件装不上（{exc}）**，OK-WW 会按原版跑"
     return f"中继给 OK-WW 的改动文件已装到 {dest}"
+
+
+def write_master_pointer(automas_dir) -> str:
+    """Tell the overrides where AUTO-MAS's OK-WW master directory is. '' when written, else why not."""
+    d = master_config_dir(automas_dir, "DailyTask.json")
+    if d is None:
+        return "找不到 OK-WW 的母本目录，「只刷落渊南丘」这项设置 OK-WW 跑的时候读不到"
+    try:
+        if MASTER_POINTER.is_file() and MASTER_POINTER.read_text(encoding="utf-8").strip() == str(d):
+            return ""
+        atomic_write_text(MASTER_POINTER, str(d))
+    except OSError as exc:
+        return f"母本目录的指路文件写不了（{exc}），「只刷落渊南丘」这项设置 OK-WW 跑的时候读不到"
+    return ""
 
 
 def last_report() -> dict:

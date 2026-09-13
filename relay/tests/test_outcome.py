@@ -102,6 +102,33 @@ def main() -> int:
     check("未满时照常核对（巢穴没打要报）",
           any(c.label == "残象聚落" and not c.ok for c in got8), True)
 
+    print("\n[只刷落渊南丘：2026-09-13 真实日志——四个点位全进了，四天没人发现]")
+    # Verbatim from history/2026-09-13/wuwa/OK-WW-05-19-22.log (nest lines only).
+    text5 = ("2026-09-13 09:22:07,105 INFO TaskExecutor NightmareNestTask:Box(name='已击败残象：0/41', x=889, y=373, width=195, height=30, confidence=100) is not complete\n"
+             "2026-09-13 09:22:07,306 INFO TaskExecutor NightmareNestTask:left_click 已击败残象：0/41 (1729, 347) after_sleep 2\n"
+             "2026-09-13 09:24:38,554 INFO TaskExecutor NightmareNestTask:left_click 已击败残象：0/48 (1729, 567) after_sleep 2\n"
+             "2026-09-13 09:26:59,672 INFO TaskExecutor NightmareNestTask:left_click 已击败残象：0/48 (1729, 722) after_sleep 2\n"
+             "2026-09-13 09:30:25,602 INFO TaskExecutor NightmareNestTask:left_click 已击败残象：0/24 (1729, 868) after_sleep 2\n"
+             "2026-09-13 09:31:27,063 INFO TaskExecutor NightmareNestTask:nightmare nest: combat detected after pickup\n"
+             "DailyTask:Daily Task Completed\n"
+             "ForgeryTask:used all stamina\n")
+    got5 = okww_checks(text5, expect_nest=True, only_nest="落渊南丘")
+    check("没有「只刷」那一行 = 过滤没生效", "残象聚落只刷指定点位（过滤生效）" in bad_labels(got5), True)
+    check("三种计数上限 = 进了别的点位", "残象聚落没进别的点位" in bad_labels(got5), True)
+    check("细节点名 41、48、24", any("41、48、24" in c.detail for c in got5 if not c.ok), True)
+    check("旧判据仍把它当「有战斗记录」——所以以前是绿的", "残象聚落" not in bad_labels(got5), True)
+
+    print("\n[只刷落渊南丘：2026-09-09 09:21 真实日志——只进了 0/41，正确]")
+    text6 = ("NightmareNestTask:nightmare nest: 只刷 ['落渊南丘']（设置来自母本）\n"
+             "2026-09-09 09:21:24 NightmareNestTask:left_click 已击败残象：0/41 (1729, 347) after_sleep 2\n"
+             "2026-09-09 09:22:21 NightmareNestTask:left_click 已击败残象：0/41 (1729, 347) after_sleep 2\n"
+             "2026-09-09 09:26:01 NightmareNestTask:nightmare nest: 指定点位都已打满，跳过\n"
+             "DailyTask:Daily Task Completed\n"
+             "ForgeryTask:used all stamina\n")
+    got6 = okww_checks(text6, expect_nest=True, only_nest="落渊南丘")
+    check("过滤生效且只进一个点位", bad_labels(got6), [])
+    check("没配过滤就不加这两条", [c.label for c in okww_checks(text6, expect_nest=True) if "指定点位" in c.label or "别的点位" in c.label], [])
+
     print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
     return 0 if not FAILED else 1
 

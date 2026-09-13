@@ -26,7 +26,10 @@ OK-WW 自己的 `data/apps/ok-ww/working/configs/*.json` 看着像配置，
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+
+sys.path.insert(0, r"C:\ProgramData\ark-relay")   # ark_relay.outcome, for the last-run verdict
 
 AUTOMAS = Path(r"D:\ark\automas")
 OKWW_ROOT = Path(r"D:\ark\okww")
@@ -101,8 +104,32 @@ def main() -> int:
                       "= 抓一个声骸就收工，落渊南丘刷不满")
                 bad += 1
             if bad == 0:
-                print("  ✅ 只刷落渊南丘，而且是刷满模式")
+                print("  ✅ 母本设置：只刷落渊南丘，而且是刷满模式")
+    # The master is what is *meant*; the last run's log is what *happened*. From
+    # 2026-09-10 to 09-13 the master said 落渊南丘 and every run farmed all four
+    # nests, and this command printed ✅ each day. Never again without the log.
+    bad += last_run_filter_verdict()
     print(f"\n对照：OK-WW 自己目录 {DECOY_DIR} 里那份**跑的时候会被换掉**，不作数。")
+    return 1 if bad else 0
+
+
+def last_run_filter_verdict() -> int:
+    """Print what the last run actually did about the nest filter; 1 when it broke the rule."""
+    from ark_relay import outcome  # noqa: PLC0415
+    got = outcome.latest_okww_run_log(r"D:\ark\automas\history")
+    if got is None:
+        print("  ⚠️ 没有任何 OK-WW 运行日志，上一趟到底刷了哪些点位无从核对")
+        return 1
+    path, text = got
+    if "NightmareNestTask" not in text:
+        print(f"  · 上一趟（{path.name}）没跑到残象聚落，过滤生效与否这趟看不出")
+        return 0
+    checks = outcome.nest_filter_checks(text, "落渊南丘")
+    bad = [c for c in checks if not c.ok]
+    for c in bad:
+        print(f"  ❌ 上一趟（{path.name}）{c.label}：{c.detail}")
+    if not bad:
+        print(f"  ✅ 上一趟（{path.name}）真的只进了落渊南丘")
     return 1 if bad else 0
 
 

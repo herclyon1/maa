@@ -26,6 +26,7 @@ source.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from datetime import datetime
 from collections import Counter
 from dataclasses import dataclass
@@ -48,6 +49,12 @@ _NEST_ENGAGED = re.compile(r"is not complete|click_team_challenge|"
                            r"wait_in_team_and_world|echo captured")
 # Two lines printed by our own patch, used to tell a normal skip from a failure.
 _NEST_ALL_FULL = "指定点位都已打满，跳过"
+# The overrides log which filter they applied and where it came from; every nest
+# the task then enters is clicked through its count box. Real lines, 2026-09-13:
+#   NightmareNestTask:nightmare nest: 只刷 ['落渊南丘']（设置来自母本）
+#   NightmareNestTask:left_click 已击败残象：0/41 (1729, 347) after_sleep 2
+_NEST_FILTER_LINE = re.compile(r"nightmare nest: 只刷 \[")
+_NEST_CLICK = re.compile(r"left_click 已击败残象[：:]\s*\d+/(\d+)")
 _NEST_NOT_FOUND = "列表里没找到指定的点位"
 # Marker that DailyTask finished (printed by upstream itself).
 _DAILY_DONE = "Daily Task Completed"
@@ -63,14 +70,53 @@ _DAILY_POINTS = re.compile(r"info_set total daily points (\d+)")
 _DAILY_POINTS_TARGET = 100
 
 
+def latest_okww_run_log(history_dir) -> "tuple[Path, str] | None":
+    """(path, text) of the newest OK-WW run log AUTO-MAS kept, looking back a week. None when there is none."""
+    hist = Path(history_dir)
+    if not hist.is_dir():
+        return None
+    days = sorted((d for d in hist.iterdir() if d.is_dir()), reverse=True)[:7]
+    logs = [f for d in days for f in d.rglob("OK-WW-*.log")]
+    if not logs:
+        return None
+    newest = max(logs, key=lambda f: f.stat().st_mtime)
+    return newest, newest.read_text(encoding="utf-8", errors="replace")
+
+
+def nest_filter_checks(text: str, only_nest: str) -> list[Check]:
+    """Did the run honour 「only these nests」? Empty when no filter is configured.
+
+    Two facts, both from lines the run itself writes: the overrides announce the
+    filter they loaded (no announcement = the filter code never had a name to work
+    with), and each nest entered is clicked through its 「已击败残象 N/D」 box, so
+    two different denominators in one run mean two different nests. 2026-09-10 to
+    09-13 every morning clicked 0/41, 0/48, 0/48, 0/24 - all four nests - while the
+    master said 落渊南丘 only, and nothing noticed for four days.
+    """
+    if not (only_nest or "").strip() or "NightmareNestTask" not in text:
+        return []
+    out: list[Check] = []
+    announced = bool(_NEST_FILTER_LINE.search(text))
+    out.append(Check("残象聚落只刷指定点位（过滤生效）", announced,
+                     "" if announced else "日志里没有「nightmare nest: 只刷 […]」这一行：过滤没拿到点位名，按上游行为刷了全部"))
+    denoms = list(dict.fromkeys(_NEST_CLICK.findall(text)))
+    one_site = len(denoms) <= 1
+    out.append(Check("残象聚落没进别的点位", one_site,
+                     "" if one_site else f"这一趟进了 {len(denoms)} 个不同的点位（计数上限 {'、'.join(denoms)}），设置是只刷{only_nest}"))
+    return out
+
+
 def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
-                expect_stamina: bool = True) -> list[Check]:
+                expect_stamina: bool = True, only_nest: str = "") -> list[Check]:
     """Verify one OK-WW run. `text` is the full log of that run.
 
     `expect_nest` comes from the config (a configured 「只刷指定点位」 nest filter or
     the daily echo option enabled means nests should have been farmed).
+    `only_nest` is the configured 「Only Farm These Nests」 value; when set, the run
+    must show the filter was active and must not have walked into other nests.
     """
     out: list[Check] = []
+    out.extend(nest_filter_checks(text, only_nest))
 
     # The false alarm of 2026-08-27 13:24: on that day's second run the dailies were
     # long since finished, so OK-WW just claimed the rewards and quit -- entirely

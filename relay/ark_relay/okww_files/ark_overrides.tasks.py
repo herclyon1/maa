@@ -429,6 +429,14 @@ def _install_hooks():
 # ---------------------------------------------------------------------------
 
 ONLY_NESTS = "Only Farm These Nests"
+# Where the relay says AUTO-MAS's master ConfigFile directory is. The value of
+# ONLY_NESTS has to be read from there: AUTO-MAS copies that directory over
+# configs/ before OK-WW starts, but ok-script's Config drops every key that is
+# not in the task's default_config and **rewrites the file** at load, which
+# happens before this extension runs. Reading configs/ afterwards therefore
+# finds nothing - that is how every run from 2026-09-10 to 09-13 farmed all four
+# nests while the master said 落渊南丘 only.
+MASTER_POINTER = r"C:\ProgramData\ark-okww-master.txt"
 # Seconds to wait for the point list to render. Long enough to cover a slow load,
 # short enough not to hang the task when the list really is empty.
 NEST_LIST_TIMEOUT = 15
@@ -444,19 +452,40 @@ _NEST_FIND_SHA = "3b0271924cac"
 def _install_nest():
     from src.task.NightmareNestTask import NestTarget, NightmareNestTask
 
+    def _read_only(path):
+        try:
+            return str(json.loads(pathlib.Path(path).read_text(encoding="utf-8")).get(ONLY_NESTS) or "").strip()
+        except Exception:  # noqa: BLE001 - a missing or broken file is 「not set here」
+            return ""
+
     def only_names(self):
-        """The nests the operator asked for, or [] for 「all of them」."""
-        raw = (self.config.get(ONLY_NESTS) or "").strip()
+        """The nests the operator asked for, or [] for 「all of them」.
+
+        Sources, in order: the loaded config (only if the key survived), the
+        master directory the relay points at, then configs/ as a last resort.
+        Which one answered is logged once per run, and 「nothing anywhere」 is an
+        error with a push - silently farming every nest is the failure this exists
+        to prevent.
+        """
+        raw, src = (self.config.get(ONLY_NESTS) or "").strip(), "运行中的设置"
         if not raw:
-            # The key may predate this task's default_config, in which case OK-WW's
-            # Config drops it on load. The saved file still has it.
             try:
-                import json
-                cfg = (pathlib.Path(os.getcwd()) / "configs" / "NightmareNestTask.json")
-                raw = str(json.loads(cfg.read_text(encoding="utf-8")).get(ONLY_NESTS) or "").strip()
-            except Exception:  # noqa: BLE001
-                raw = ""
-        return [n.strip() for n in re.split(r"[,，]", raw) if n.strip()]
+                master = pathlib.Path(MASTER_POINTER).read_text(encoding="utf-8").strip()
+            except OSError:
+                master = ""
+            if master:
+                raw, src = _read_only(pathlib.Path(master) / "NightmareNestTask.json"), "母本"
+        if not raw:
+            raw, src = _read_only(pathlib.Path(os.getcwd()) / "configs" / "NightmareNestTask.json"), "configs 目录"
+        names = [n.strip() for n in re.split(r"[,，]", raw) if n.strip()]
+        if getattr(self, "_ark_only_logged", None) != names:
+            self._ark_only_logged = names
+            if names:
+                self.log_info(f"nightmare nest: 只刷 {names}（设置来自{src}）")
+            else:
+                self.log_error("nightmare nest: 没有「只刷指定点位」的设置，会按上游行为刷全部点位；"
+                               "母本、configs 目录和运行中的设置里都没有", notify=True)
+        return names
 
     def wanted_rows(self):
         """Row centres of the wanted nests' names, or None when none were asked for."""
@@ -573,6 +602,7 @@ def _install_nest():
     def run(self):
         self._ark_nest_tried = set()
         self._ark_nest_progress = {}
+        self._ark_only_logged = None      # log the filter's source once per run
         return nest_run(self)
 
 

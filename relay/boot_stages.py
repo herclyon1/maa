@@ -192,6 +192,8 @@ def _stage_patch_okww(cfg, notifier, log) -> None:
         from ark_relay import okww_overlay as _overlay  # noqa: PLC0415
         if line := _overlay.install(okww_at_boot):
             notes.append(line)
+        if line := _overlay.write_master_pointer(cfg.automas_dir):
+            notes.append(line)
         if line := _overlay.report_line():
             notes.append(line)
         for note in notes:
