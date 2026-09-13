@@ -1,30 +1,15 @@
 # Check these when the machine is next up
 
-## 2026-09-13 21:20 boot — deploy and two verifications
+## 2026-09-13 - done at 12:24-12:51 (the user powered the machine on)
 
-Machine was off all afternoon (morning queue ended 10:03 Beijing), so these wait for the
-BIOS boot:
-
-1. **Deploy the relay** (`ARK_HOST=100.65.39.119 ./scripts/mac/deploy-relay.sh`;
-   RELEASE-NOTES already written): report wording for a gathering task skipped by weekday
-   (commit "report: a gathering task skipped by weekday is said so").
-2. **Today's 10:02→10:03 MaaEnd 自动采集 (0 min, reported ✅)**: read
-   `D:\ark\automas\history\...\MaaEnd-*.log` for 09-13 and confirm it carries
-   「现在游戏时间是周日，根据执行周期跳过任务」. That line is what `outcome.maaend_checks`
-   accepts for a quick finish; without it the round would have been flagged. If the line is
-   absent, the green was wrong - say so to the user and find why.
-3. **Master route lists intact?** Read `mastercfg.read_maaend` → every `AutoCollect*Routes`
-   checkbox; expect the full lists (17 routes) and `state/collect-retry/narrow.json` absent.
-   The user's suspicion (09-13 13:16): 「路线是 0 导致他 0 分钟报已完成」. Sunday is skipped
-   by weekday before routes matter, so the log line alone does not settle this - the lists do.
-4. **Was a 0-minute 自动采集 record shown on earlier non-gathering days?** He says it never
-   used to appear. Read the ledger for 09-08 (Tue), 09-09 (Wed), 09-12 (Sat): is there a second
-   MaaEnd record on those days, and how did the report render it. AUTO-MAS runs 自动采集 as its
-   own phase (since when - check history filenames).
-5. **The phone order from ~11:54 Beijing (page still old then)**: check the relay log at
-   boot for 「手机」/set_config lines and whether the mailbox fetch (`since=24h`, ntfy keeps
-   12 h) picked it up and applied it; report the outcome. The new page (v=20260913130424)
-   tracks orders itself from now on.
+All five items closed: relay deployed (three times); the 10:02 record carried
+「现在游戏时间是周日，根据执行周期跳过任务」; master route lists intact (17 ticked, no
+narrow.json); the 0-minute gathering record is no longer listed in the report (it
+appeared from 09-10 when AUTO-MAS split 自动采集 into its own record); the phone order
+(MAA 理智药 999→0) was applied at 12:22 boot. Separately found and fixed the nest filter
+outage 09-10..09-13 - see PITFALLS. **Tomorrow 09-14 (Monday)**: first real gathering
+with narrowing; the health check's 「上一趟真的只进了落渊南丘」 should turn green after
+the morning OK-WW run.
 
 ## 2026-09-12 (Saturday) — verify the retry feature on a real morning, then decide two things
 

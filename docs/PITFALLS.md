@@ -957,3 +957,27 @@ daily report and `_maybe_shutdown` ran, every tick, all morning. Each stage
 now runs inside its own `try` and a failure is logged with its name; the
 source fetch is guarded the same way. `test_tick_isolation.py` raises in one
 stage and asserts the later ones still run.
+
+## ok-script drops unknown config keys at load and rewrites the file - before `ok_tasks` runs (2026-09-10 to 09-13, found 09-13)
+
+`ok/util/config.py:Config.verify_config` keeps only keys present in the task's
+`default_config` and calls `save_file()` when anything differed; `BaseTask.after_init`
+runs it from `task_manager.init_tasks`, which is before `load_user_tasks` executes
+`ok_tasks/ark_overrides.py`. So a key only our overrides know about - `Only Farm
+These Nests` - is gone from both `self.config` and `configs/NightmareNestTask.json`
+by the time any of our code runs, no matter that AUTO-MAS copied the master (with
+the key) over `configs/` seconds earlier. The 09-09 overlay rewrite (710d7a0) had
+assumed "the saved file still has it". Every morning 09-10..09-13 farmed all four
+nests; the user found it from the in-game screen.
+
+Why no gate fired: `okww_effective.py` and the health check read the **master**,
+which was correct all along; the per-run outcome check accepted any nest combat
+as 「有进本/战斗记录」.
+
+Fix: the value is read from the master directory through a pointer file the relay
+writes at boot (`C:\ProgramData\ark-okww-master.txt`, `okww_overlay.write_master_pointer`),
+the overrides log 「nightmare nest: 只刷 […]（设置来自母本）」, and
+`outcome.nest_filter_checks` fails a run without that line or with more than one
+count denominator clicked. Health check and `okww_effective` now judge the last
+run's log as well as the master. Verified live 09-13 12:45: 「只刷 ['落渊南丘']（设置来自母本）」
+then 「指定点位都已打满，跳过」.
