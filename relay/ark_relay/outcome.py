@@ -97,6 +97,34 @@ _PATCH_EFFECTS = (
 )
 
 
+# Which override each effect check vouches for, and the overrides that have no
+# trigger to check against yet (each with the reason). test_okww_overlay_copies
+# refuses a new @override that is in neither list - that is the gate against
+# 「贴了补丁，实际没运行」 recurring: every binding must come with a way to see it ran.
+PATCH_COVERAGE = {
+    "FarmEchoTask.click_configured_boss_level": "周本改动在跑（进本前读剩余次数）",
+    "NightmareNestTask.find_nest": "巢穴改动在跑（只刷指定点位）",
+    "NightmareNestTask.run": "巢穴改动在跑（只刷指定点位）",
+    "NightmareNestTask.get_nest_to_go": "巢穴改动在跑（只刷指定点位）",
+    "DailyTask.run": "日常改动在跑（附加任务提到刷体力之前）",
+    "DailyTask.open_daily": "日常改动在跑（附加任务提到刷体力之前）",
+    "DailyTask.run_additional_tasks": "日常改动在跑（附加任务提到刷体力之前）",
+    "TacetTask.use_stamina": "无音区改动在跑（结算页留图）",
+}
+PATCH_NO_TRIGGER = {
+    "FarmEchoTask.revive_action": "only when a character dies inside a realm during an echo farm",
+    "FarmEchoTask.combat_once": "only after such a revive",
+    "FarmEchoTask.run": "only after three failed laps in a row",
+    "FarmEchoTask.click_team_challenge": "only when the weekly boss shows 开启挑战 with too few 波片",
+    "BaseWWTask.click_on_book_target": "only for a 限时提前开放 boss",
+    "FarmEchoTask.teleport_to_configured_boss": "only when the teleport screen is late",
+    "FarmEchoTask.teleport_to_configured_boss_and_prepare": "only for a 限时提前开放 boss",
+    "TacetTask.farm_tacet": "silent wrapper: drops daily=/used_stamina= so the farm runs to empty; visible only via 波片 0 in the report",
+    "ForgeryTask.farm_forgery": "same as farm_tacet",
+    "SimulationTask.farm_simulation": "same as farm_tacet",
+}
+
+
 def patch_effect_checks(text: str, tacet_shot_today: bool | None = None) -> list[Check]:
     """Did each override actually run where its trigger appeared? Empty entries for paths not triggered."""
     out: list[Check] = []

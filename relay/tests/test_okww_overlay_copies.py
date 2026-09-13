@@ -80,5 +80,22 @@ for captured in ("revive(self", "nest_run(self", "next_nest(self", "daily_run(se
                  "inner(self", "outer(self", "prepare(self"):
     check(f"调用了 {captured.split('(')[0]}", captured in src)
 
+print("\n[每一条绑定都要么有「触发→痕迹」核对，要么明写为什么现在没法核对]")
+# The nest filter was bound and reported applied for four days while doing
+# nothing (09-10..09-13). A binding without a way to see it ran is not allowed.
+from ark_relay import outcome  # noqa: E402
+bound = set(re.findall(r'@override\((\w+), "(\w+)"', src))
+bound |= set(re.findall(r'_farm_hook\((\w+), "(\w+)"\)', src))
+bound = {f"{c}.{m}" for c, m in bound}
+labels = {lbl for lbl, *_ in outcome._PATCH_EFFECTS} | {"无音区改动在跑（结算页留图）"}
+for key in sorted(bound):
+    covered = key in outcome.PATCH_COVERAGE
+    listed = key in outcome.PATCH_NO_TRIGGER
+    check(f"{key} 有核对或有理由", covered or listed)
+    if covered:
+        check(f"{key} 指向的核对真的存在", outcome.PATCH_COVERAGE[key] in labels)
+stale = (set(outcome.PATCH_COVERAGE) | set(outcome.PATCH_NO_TRIGGER)) - bound
+check("登记表里没有已经不存在的绑定", sorted(stale), [])
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
