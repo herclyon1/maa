@@ -197,8 +197,18 @@ Four assumptions that turned out wrong. Do not repeat them:
 
 The EX map of this event (殡仪堂 → ASCENT tower) is one MAA cannot navigate:
 it is a **vertical** list, and 多作业模式 only navigates by swiping left/right
-(its manual: 「只通过左右滑动地图界面就可以导航到」; upstream closed
-MaaAssistantArknights#18182 about this very map as not planned). `copilot_list`
+(its manual: 「只通过左右滑动地图界面就可以导航到」). MAA's own in-app
+announcement of 2026-09-11 (shown by the maintainer when closing
+MaaAssistantArknights#18182) says it outright:
+
+> SideStory「月行水上」SR-EX 不适配多作业模式
+> SR-EX 为异形关卡界面，多作业模式若要适配需要同时改动 开始行动、关卡名复核、切换突袭
+> 等多处流程，本次不做适配。如需在 SR-EX 关卡使用自动战斗，请手动选关并点击「开始行动」，
+> 在随后的编队界面启动 MAA 即可。
+
+That is exactly the `single` recipe below. Check MAA's announcement
+(`https://api.maa.plus/MaaAssistantArknights/api/announcements/wpf.md`) before
+assuming the battle list will work on a new event's EX map. `copilot_list`
 swiped left 30 times at 16:50 and never found a stage. On a horizontal event
 map the battle list with 「一关一式两份」 (normal + `is_raid`) is still the
 first choice - that is what cleared earlier events. What worked here,

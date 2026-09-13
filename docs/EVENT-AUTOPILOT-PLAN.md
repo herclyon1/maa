@@ -41,9 +41,13 @@ work on earlier events. Its own manual states the limit:
 月行水上's EX map (殡仪堂 → ASCENT) is a **vertical** list that scrolls up and
 down; MAA's navigation only swipes left/right and OCRs the stage code, and on
 2026-09-13 16:50 it swiped left 30 times without finding SR-EX-1 even while the
-label was on screen. Upstream closed the report for exactly this event
-(MaaAssistantArknights#18182, 2026-09-11) as not planned. So on this map the
-battle list cannot work; on a horizontal map it is the first thing to try.
+label was on screen. MAA's in-app announcement of 2026-09-11 says it outright:
+「SR-EX 为异形关卡界面，多作业模式…本次不做适配。如需在 SR-EX 关卡使用自动战斗，请手动
+选关并点击「开始行动」，在随后的编队界面启动 MAA 即可」 (the maintainer closed
+MaaAssistantArknights#18182 by pointing at it). So on this map the battle list
+cannot work; on a horizontal map it is the first thing to try. The runner should
+read that announcement feed (`api.maa.plus/.../announcements/wpf.md`) and switch
+to tier 2 when the current event is named in it.
 
 The runner therefore has two tiers: **tier 1** `copilot_list` with both copies
 per stage, started from the map, a 90-second watchdog on repeated
