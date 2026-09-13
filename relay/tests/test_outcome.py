@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay.outcome import maaend_checks, okww_checks, summarize
+from ark_relay.outcome import maaend_checks, okww_checks, patch_effect_checks, summarize
 
 FAILED = []
 
@@ -103,7 +103,6 @@ def main() -> int:
           any(c.label == "残象聚落" and not c.ok for c in got8), True)
 
     print("\n[每条改动：触发了就得有它那句话（2026-09-07 周本、09-13 巢穴真实行）]")
-    from ark_relay.outcome import patch_effect_checks
     wk = ("2026-09-07 10:06:33,670 INFO TaskExecutor FarmEchoTask:left_click boss_proceed (1824, 416) after_sleep 1\n"
           "2026-09-07 10:06:35,359 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：2/3_1.00, x60_0.79]\n")
     check("周本触发且有痕迹", bad_labels(patch_effect_checks(wk)), [])
