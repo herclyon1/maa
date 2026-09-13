@@ -87,6 +87,7 @@ _END_PLACE = re.compile(r"目标地点[:：]\s*(\S+)")
 _END_ESSENCE_DONE = re.compile(r"已完成一次基质刷取")
 _END_ESSENCE_DROP = re.compile(r"^是(\S+?基质)\s*$")
 _END_MEDICINE = re.compile(r"使用(?:了)?应急理智加强剂")
+_END_COLLECT_SKIP = re.compile(r"任务开始[:：]\s*\S*自动采集\s*\n[^\n]*?现在游戏时间是(周[一二三四五六日天])，根据执行周期跳过任务")
 _END_COLLECT_ROUTES = re.compile(r"(\d+)\s*条路线")
 
 
@@ -234,6 +235,12 @@ def parse_maaend_log(log_path: Path) -> dict:
         out["maaend_medicine"] = n
     if m := _END_COLLECT_ROUTES.findall(text):
         out["maaend_collect_routes"] = int(m[-1])
+    # 「任务开始: 🧺自动采集 / 现在游戏时间是周六，根据执行周期跳过任务 / 任务完成」
+    # (real lines, replay 2026-09-05 09:54): the task ran for 0 seconds because
+    # today is not a gathering weekday. Recorded so the report can say that
+    # instead of 「做了 自动采集」, which read as a fake green (user, 2026-09-13).
+    if m := _END_COLLECT_SKIP.search(text):
+        out["maaend_collect_skipped"] = m.group(1)
     # How many times 「路线N：xxx」appears = how many routes were walked;
     # how many 「…采集失败」lines = the ones that gathered nothing
     # MaaEnd's locale spells the first routes 「线路N：」 and the rest 「路线N：」

@@ -538,6 +538,9 @@ def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ..
             s += "，" + full
         left.append(s)
     done = [t for t in (raw.get("tasks_done") or []) if not any(k in t for k in _END_FARM_NOTE_SKIP)]
+    # A skipped gathering day is stated as such, never listed under 做了.
+    if raw.get("maaend_collect_skipped"):
+        done = [t for t in done if "自动采集" not in t]
     failed = raw.get("tasks_failed") or []
     if done or failed:
         # The user, 2026-09-02: too many notes - collapse them into
@@ -566,6 +569,8 @@ def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ..
         notes.append(n)
     elif routes := raw.get("maaend_collect_routes"):
         notes.append(f"自动采集 {routes} 条路线")
+    elif wd := raw.get("maaend_collect_skipped"):
+        notes.append(f"自动采集 今天{wd}不是采集日（排班只有周一、周四），按排班跳过，没走路线")
 
     return did, cost, out, left, notes
 

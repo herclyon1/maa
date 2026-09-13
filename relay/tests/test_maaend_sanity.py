@@ -142,5 +142,16 @@ rec2 = RunRecord(script="MaaEnd", user="u", run_id="x", ok=False, started=rec.st
 sent.clear(); _h._narrow_for_retry(_E, rec2)
 check("不是采集失败就不收窄", sent, [])
 
+print("\n[自动采集：不是采集日的 0 分钟不算「做了」（2026-09-05 周六真实日志）]")
+real = Path(__file__).resolve().parent / "replay" / "2026-09-05" / "endfield" / "MaaEnd-05-27-42.log"
+got = collector.parse_maaend_log(real)
+check("记下是哪天被排班跳过的", got.get("maaend_collect_skipped"), "周六")
+check("跳过的那天没有路线计数", "maaend_collect_total" in got, False)
+from ark_relay import core as _core             # noqa: E402
+_e = {"ok": True, "raw": got, "started": "2026-09-05T09:00:00+08:00"}
+_did, _cost, _out, _left, _notes = _core._block_maaend(_e, got, datetime(2026, 9, 5, 9, 55, tzinfo=SERVER_TZ))
+check("备注说的是按排班跳过", any("周六不是采集日" in n and "按排班跳过" in n for n in _notes), True)
+check("「做了」里不再出现自动采集", any("自动采集" in n and "做了" in n for n in _notes), False)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
