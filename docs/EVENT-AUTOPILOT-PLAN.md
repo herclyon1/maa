@@ -28,7 +28,29 @@ input by MaaCore's minitouch for battles and adb taps for the map. Started by
 a phone order `event_stages` (with `mode: normal | raid`) or by the schedule
 in §6. One run = "clear as many stages as the sanity allows, then stop".
 
-## 2. Getting to the stage: the per-event entry recipe
+## 1b. Why today was one stage at a time, and when the battle list is enough
+
+The user's normal way (2026-09-13): 「用战斗队列，作业全部塞进去，一关一式两份
+（普通＋突袭），很无脑，基本上都可以全部打完」. That is MAA's 多作业模式
+(`copilot_list`, one entry per stage, `is_raid` for the second copy), and it did
+work on earlier events. Its own manual states the limit:
+
+> 开启本功能后改为在**关卡所在的地图界面**开始自动战斗。
+> 请确保列表中的关卡在同一区域（**只通过左右滑动地图界面就可以导航到**）。
+
+月行水上's EX map (殡仪堂 → ASCENT) is a **vertical** list that scrolls up and
+down; MAA's navigation only swipes left/right and OCRs the stage code, and on
+2026-09-13 16:50 it swiped left 30 times without finding SR-EX-1 even while the
+label was on screen. Upstream closed the report for exactly this event
+(MaaAssistantArknights#18182, 2026-09-11) as not planned. So on this map the
+battle list cannot work; on a horizontal map it is the first thing to try.
+
+The runner therefore has two tiers: **tier 1** `copilot_list` with both copies
+per stage, started from the map, a 90-second watchdog on repeated
+`StageNavigationSlowlySwipe*` (that is the failure signature) - **tier 2** the
+per-stage tap recipe below, only when tier 1 cannot navigate.
+
+## 2. Getting to the stage: the per-event entry recipe (tier 2)
 
 MAA cannot navigate every event map (today's ASCENT tower: `copilot_list`
 swiped 30 times and gave up). A generic navigator by OCR is possible but

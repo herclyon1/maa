@@ -196,7 +196,12 @@ Four assumptions that turned out wrong. Do not repeat them:
 #### The recipe that cleared 月行水上 SR-EX-1〜6 in 40 minutes (2026-09-13, measured)
 
 The EX map of this event (殡仪堂 → ASCENT tower) is one MAA cannot navigate:
-`copilot_list` swiped left 30 times at 16:50 and never found a stage. What worked,
+it is a **vertical** list, and 多作业模式 only navigates by swiping left/right
+(its manual: 「只通过左右滑动地图界面就可以导航到」; upstream closed
+MaaAssistantArknights#18182 about this very map as not planned). `copilot_list`
+swiped left 30 times at 16:50 and never found a stage. On a horizontal event
+map the battle list with 「一关一式两份」 (normal + `is_raid`) is still the
+first choice - that is what cleared earlier events. What worked here,
 stage after stage, with **no manual step inside the game beyond three taps**:
 
 1. `copilot-run.py <log> startup` → main screen.
