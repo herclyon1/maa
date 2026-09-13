@@ -14,6 +14,8 @@ extend-exclude = [
     "relay/ark_relay/okww_files",
     # 补丁的「原文/改后」大段字符串，格式照上游，不按我们的规矩
     "relay/ark_relay/okww_patches",
+    # Verbatim upstream files the source pins are tested against
+    "relay/tests/fixtures/source-pins",
 ]
 
 [lint]
