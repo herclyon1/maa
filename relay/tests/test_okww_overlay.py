@@ -171,7 +171,8 @@ d1 = hist / "2026-09-12" / "wuwa"; d1.mkdir(parents=True)
 d2 = hist / "2026-09-13" / "wuwa"; d2.mkdir(parents=True)
 (d1 / "OK-WW-05-20-09.log").write_text("old\n", encoding="utf-8")
 (d2 / "OK-WW-05-19-22.log").write_text("new NightmareNestTask\n", encoding="utf-8")
-import os as _os, time as _time
+import os as _os  # noqa: E402
+import time as _time  # noqa: E402
 _os.utime(d1 / "OK-WW-05-20-09.log", (_time.time() - 86400, _time.time() - 86400))
 got = outcome.latest_okww_run_log(hist)
 check("取到最新那趟", got[0].name if got else None, "OK-WW-05-19-22.log")
