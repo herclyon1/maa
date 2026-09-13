@@ -16,6 +16,7 @@ Only one core may own the emulator at a time - close the MAA GUI first.
 Usage:
   copilot-run.py <log-path> startup            # 把游戏开到主界面，什么都不打
   copilot-run.py <log-path> fight <关卡> [次数] # 直接刷关卡（验证 MAA 认不认这个关卡号）
+  copilot-run.py <log-path> single <stage>     # 单份作业，从「开始行动」界面起（MAA 找不到的地图用这个）
   copilot-run.py <log-path> <stage> [<stage>…] # 按关卡跑作业（本地 JSON）
 
 `startup` 是打活动关的第一步：MAA 自己处理开屏、公告和登录，
@@ -74,6 +75,11 @@ def callback(msg, details, arg):
 
 STARTUP = len(STAGES) == 1 and STAGES[0] == "startup"
 FIGHT = len(STAGES) >= 2 and STAGES[0] == "fight"
+# `single <stage>`: one copilot in filename mode, started **from the squad screen**
+# (the one with 开始行动). This is the mode for a map MAA cannot navigate - the
+# 月行水上 EX map (殡仪堂), where copilot_list swiped left 30 times and gave up on
+# 2026-09-13. Tap into the stage by hand first; see docs/MAA-EVENTS-AND-SSS.md.
+SINGLE = len(STAGES) == 2 and STAGES[0] == "single"
 
 
 def main() -> int:
@@ -139,6 +145,33 @@ def main() -> int:
             if time.time() - last > 60:
                 last = time.time(); say("… 仍在开游戏")
         say("=== StartUp 结束 ===")
+        return 0
+
+    if SINGLE:
+        stage = STAGES[1]
+        task = {
+            "enable": True,
+            "filename": str(MAA / "config" / "copilot" / f"{stage}.json"),
+            "formation": True,
+            "formation_index": 0,
+            "use_sanity_potion": False,
+            "add_trust": False,
+            "ignore_requirements": True,
+            "support_unit_usage": 0,
+            "loop_times": 1,
+        }
+        tid = asst.append_task("Copilot", task)
+        say(f"单份作业已下发 id={tid} 关卡={stage}（从开始行动界面起）")
+        if not tid:
+            say("!! append_task 被拒，看 debug/asst.log"); return 1
+        if not asst.start():
+            say("!! start 失败"); return 1
+        last = time.time()
+        while asst.running():
+            time.sleep(2)
+            if time.time() - last > 120:
+                last = time.time(); say("… 仍在运行")
+        say("=== 单份作业结束 ===")
         return 0
 
     task = {

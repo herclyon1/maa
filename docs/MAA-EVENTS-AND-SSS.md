@@ -193,6 +193,35 @@ Four assumptions that turned out wrong. Do not repeat them:
 | pressing back a few times returns to a neutral screen | back on the main screen pops 「是否确认退出游戏」, and the tap used to dismiss that opened the event shop, twice |
 | MAA can navigate to any stage | it cannot find this event's **EX** map. Tap over by hand and then use `filename` mode; that worked first try |
 
+#### The recipe that cleared 月行水上 SR-EX-1〜6 in 40 minutes (2026-09-13, measured)
+
+The EX map of this event (殡仪堂 → ASCENT tower) is one MAA cannot navigate:
+`copilot_list` swiped left 30 times at 16:50 and never found a stage. What worked,
+stage after stage, with **no manual step inside the game beyond three taps**:
+
+1. `copilot-run.py <log> startup` → main screen.
+2. Tap the event banner (1440,240), wait for the hub, tap 殡仪堂 (1376,696).
+3. On the tower map tap the stage label on the left (x≈240; the list scrolls, so
+   read the y off a screenshot), then 开始行动 (1344,840) → squad screen.
+4. `copilot-run.py <log> single SR-EX-N` — filename mode from the squad screen.
+   Result screen: tap anywhere (800,450) to get back to the map; the next stage
+   is unlocked right there.
+
+Costs: EX-1/2 10, EX-3〜6 15, EX-7 20 (EX-8 not read yet). Sanity 87 at start
+covered six stages.
+
+Operators this account does **not** have (formation stops at them): **结城理**
+(`Unavailable` even with `ignore_requirements` - so `Unavailable` is not only
+"training too low") and **泡普卡** (`Missing`). Every copilot from the 「9 人一摆到底」
+series (author 柠檬味の小小猪 / Linus) uses 结城理 from EX-3 on - keep a second
+choice per stage ready: EX-3/4/5 went through on 圣聆初雪＋予愿安洁莉娜 sets
+(ids 102508, 102596 with operator groups, 102540). After a refused formation the
+game sits on the operator-picker: tap 确认 (1290,850) to get back to the squad screen
+before the next `single`.
+
+Copilots are saved as `D:\ark\maa\config\copilot\SR-EX-N.json` / `-b.json` /
+`-c.json`; the fixture copies are not in the repository (they are upstream content).
+
 #### When 自动编队 is refused — read `reason`, not `why`
 
 The outer layer always says `"why": "OperatorMissing"`; the useful field is
