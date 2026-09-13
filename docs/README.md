@@ -48,6 +48,7 @@ exist - the next session will never read it, so writing it was wasted.
 |---|---|
 | [GAME.md](GAME.md) | Knowledge common to all three games |
 | [MAA-EVENTS-AND-SSS.md](MAA-EVENTS-AND-SSS.md) | 明日方舟: how to configure event stages and 保全派驻 |
+| [EVENT-AUTOPILOT-PLAN.md](EVENT-AUTOPILOT-PLAN.md) | 明日方舟: design for clearing event EX stages with no operator in the loop (proposal) |
 | [MAA-INFRAST-ZOOM.md](MAA-INFRAST-ZOOM.md) | 明日方舟: why the infrastructure 「双指滑动到总览」 gesture fails |
 | [ENDFIELD-GUIDES.md](ENDFIELD-GUIDES.md) | 终末地: external reference sources (look here first when you do not know something) |
 | [ENDFIELD-ITEMS.md](ENDFIELD-ITEMS.md) | 终末地: item ids, Chinese names, what they are for |
