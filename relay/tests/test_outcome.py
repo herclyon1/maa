@@ -102,6 +102,24 @@ def main() -> int:
     check("未满时照常核对（巢穴没打要报）",
           any(c.label == "残象聚落" and not c.ok for c in got8), True)
 
+    print("\n[每条改动：触发了就得有它那句话（2026-09-07 周本、09-13 巢穴真实行）]")
+    from ark_relay.outcome import patch_effect_checks
+    wk = ("2026-09-07 10:06:33,670 INFO TaskExecutor FarmEchoTask:left_click boss_proceed (1824, 416) after_sleep 1\n"
+          "2026-09-07 10:06:35,359 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：2/3_1.00, x60_0.79]\n")
+    check("周本触发且有痕迹", bad_labels(patch_effect_checks(wk)), [])
+    wk_bad = wk.splitlines()[0] + "\n"
+    check("周本触发但没痕迹＝改动没跑到", "周本改动在跑（进本前读剩余次数）" in bad_labels(patch_effect_checks(wk_bad)), True)
+    check("没触发就不评判", patch_effect_checks("DailyTask:Daily Task Completed\n"), [])
+    day = ("2026-09-13 09:21:58,916 INFO TaskExecutor NightmareNestTask:opened gray_book_boss\n"
+           "2026-09-13 12:45:52,773 INFO TaskExecutor NightmareNestTask:nightmare nest: 只刷 ['落渊南丘']（设置来自母本）\n"
+           "2026-09-13 09:33:01,760 INFO TaskExecutor TacetTask:info_set current_stamina 239\n")
+    check("巢穴＋顺序都对", bad_labels(patch_effect_checks(day, tacet_shot_today=True)), [])
+    check("刷了无音区但没留图", "无音区改动在跑（结算页留图）" in bad_labels(patch_effect_checks(day, tacet_shot_today=False)), True)
+    day_old = day.replace("nightmare nest: 只刷 ['落渊南丘']（设置来自母本）", "left_click 已击败残象：0/48")
+    check("09-13 09:19 那种：打开了页面却没有「只刷」＝没跑到", "巢穴改动在跑（只刷指定点位）" in bad_labels(patch_effect_checks(day_old)), True)
+    wrong_order = "\n".join(day.splitlines()[2:3] + day.splitlines()[0:2]) + "\n"
+    check("刷体力在巢穴之前＝顺序改动没生效", "日常改动在跑（附加任务提到刷体力之前）" in bad_labels(patch_effect_checks(wrong_order)), True)
+
     print("\n[只刷落渊南丘：2026-09-13 真实日志——四个点位全进了，四天没人发现]")
     # Verbatim from history/2026-09-13/wuwa/OK-WW-05-19-22.log (nest lines only).
     text5 = ("2026-09-13 09:22:07,105 INFO TaskExecutor NightmareNestTask:Box(name='已击败残象：0/41', x=889, y=373, width=195, height=30, confidence=100) is not complete\n"

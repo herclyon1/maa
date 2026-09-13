@@ -98,6 +98,15 @@ _fbad = [c for c in outcome.nest_filter_checks(_ftxt, "落渊南丘") if not c.o
 check("巢穴：上一趟真的只进了落渊南丘（按运行日志）",
       _last is not None and not _fbad,
       "没有运行日志" if _last is None else "；".join(f"{c.label}：{c.detail}" for c in _fbad) or "")
+# Every override, judged by trigger-vs-effect on the last run (not by the binding report).
+import time as _time                                   # noqa: E402
+_shots = Path(r"D:\ark\okww\data\apps\ok-ww\working\screenshots")
+_today = _time.strftime("%Y-%m-%d")
+_shot_today = any(_time.strftime("%Y-%m-%d", _time.localtime(p.stat().st_mtime)) == _today
+                  for p in _shots.glob("*tacet_drops*")) if _shots.is_dir() else False
+_run_day = _time.strftime("%Y-%m-%d", _time.localtime(_last[0].stat().st_mtime)) if _last else ""
+for _c in outcome.patch_effect_checks(_ftxt, _shot_today if _run_day == _today else None):
+    check(_c.label + "（按上一趟日志）", _c.ok, _c.detail)
 check("巢穴：只刷残象聚落（不碰梦魇拔除）",
       cfg.get("Which to Farm") == ["Tacet Discord Nest"],
       f"实际 {cfg.get('Which to Farm')!r}")

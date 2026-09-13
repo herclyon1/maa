@@ -83,6 +83,39 @@ def latest_okww_run_log(history_dir) -> "tuple[Path, str] | None":
     return newest, newest.read_text(encoding="utf-8", errors="replace")
 
 
+# Each OK-WW override leaves a sentence in the log when its code path runs. A
+# check fires only when the upstream *trigger* for that path is in the log and
+# our sentence is not - "bound" is not "did its job" (nest filter, 09-10..09-13).
+# (label, trigger regex, effect regex, what the trigger means)
+_PATCH_EFFECTS = (
+    ("周本改动在跑（进本前读剩余次数）",
+     r"FarmEchoTask:left_click boss_proceed", r"周本本周剩余次数原文", "周本任务点了「前往」"),
+    ("巢穴改动在跑（只刷指定点位）",
+     r"NightmareNestTask:opened gray_book_boss", r"nightmare nest: 只刷 \[", "巢穴任务打开了残象聚落页"),
+    ("日常改动在跑（附加任务提到刷体力之前）",
+     r"NightmareNestTask:opened gray_book_boss", r"TacetTask:info_set current_stamina|ForgeryTask:info_set current_stamina|SimulationTask:info_set current_stamina", "巢穴任务先跑、刷体力后跑"),
+)
+
+
+def patch_effect_checks(text: str, tacet_shot_today: bool | None = None) -> list[Check]:
+    """Did each override actually run where its trigger appeared? Empty entries for paths not triggered."""
+    out: list[Check] = []
+    for label, trig, effect, what in _PATCH_EFFECTS:
+        if not re.search(trig, text):
+            continue
+        if label.startswith("日常改动"):
+            t = re.search(trig, text); e = re.search(effect, text)
+            ok = bool(t and e and t.start() < e.start())
+            out.append(Check(label, ok, "" if ok else f"{what}——日志里刷体力出现在巢穴之前，或根本没有一方"))
+            continue
+        ok = bool(re.search(effect, text))
+        out.append(Check(label, ok, "" if ok else f"{what}，但日志里没有我们那句话：改动没跑到"))
+    if tacet_shot_today is not None and re.search(r"TacetTask:info_set current_stamina", text):
+        out.append(Check("无音区改动在跑（结算页留图）", tacet_shot_today,
+                         "" if tacet_shot_today else "今天刷了无音区，screenshots 里却没有今天的 tacet_drops 图"))
+    return out
+
+
 def nest_filter_checks(text: str, only_nest: str) -> list[Check]:
     """Did the run honour 「only these nests」? Empty when no filter is configured.
 
