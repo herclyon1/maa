@@ -235,10 +235,10 @@ def parse_maaend_log(log_path: Path) -> dict:
         out["maaend_medicine"] = n
     if m := _END_COLLECT_ROUTES.findall(text):
         out["maaend_collect_routes"] = int(m[-1])
-    # 「任务开始: 🧺自动采集 / 现在游戏时间是周六，根据执行周期跳过任务 / 任务完成」
-    # (real lines, replay 2026-09-05 09:54): the task ran for 0 seconds because
-    # today is not a gathering weekday. Recorded so the report can say that
-    # instead of 「做了 自动采集」, which read as a fake green (user, 2026-09-13).
+    # The gathering task can open and close within a second because today is
+    # not a gathering weekday (real lines: replay 2026-09-05 09:54, task start,
+    # the weekday-skip line, task done). Recorded so the report states that
+    # instead of listing the task as done, which read as a fake green (user, 2026-09-13).
     if m := _END_COLLECT_SKIP.search(text):
         out["maaend_collect_skipped"] = m.group(1)
     # How many times 「路线N：xxx」appears = how many routes were walked;
