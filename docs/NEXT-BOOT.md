@@ -13,7 +13,15 @@ BIOS boot:
    「现在游戏时间是周日，根据执行周期跳过任务」. That line is what `outcome.maaend_checks`
    accepts for a quick finish; without it the round would have been flagged. If the line is
    absent, the green was wrong - say so to the user and find why.
-3. **The phone order from ~11:54 Beijing (page still old then)**: check the relay log at
+3. **Master route lists intact?** Read `mastercfg.read_maaend` → every `AutoCollect*Routes`
+   checkbox; expect the full lists (17 routes) and `state/collect-retry/narrow.json` absent.
+   The user's suspicion (09-13 13:16): 「路线是 0 导致他 0 分钟报已完成」. Sunday is skipped
+   by weekday before routes matter, so the log line alone does not settle this - the lists do.
+4. **Was a 0-minute 自动采集 record shown on earlier non-gathering days?** He says it never
+   used to appear. Read the ledger for 09-08 (Tue), 09-09 (Wed), 09-12 (Sat): is there a second
+   MaaEnd record on those days, and how did the report render it. AUTO-MAS runs 自动采集 as its
+   own phase (since when - check history filenames).
+5. **The phone order from ~11:54 Beijing (page still old then)**: check the relay log at
    boot for 「手机」/set_config lines and whether the mailbox fetch (`since=24h`, ntfy keeps
    12 h) picked it up and applied it; report the outcome. The new page (v=20260913130424)
    tracks orders itself from now on.
