@@ -141,7 +141,8 @@ def evidence_saved_body(script: str, started: str, files: int, page: str) -> str
 
 def evidence_source_changed_body(names: list[str]) -> str:
     return ("变了的：" + "、".join(names)
-            + "。在重新核对之前，中继打的证据包不保证和官方按钮导出的一样。")
+            + "。只盯打包那几个函数，别处改动不会触发这条；所以这是打包代码本身变了。"
+            "在重新核对之前，中继打的证据包不保证和官方按钮导出的一样。")
 ECHO_FARM = "🥚 开始刷声骸"
 ECHO_FARM_DONE = "🥚 刷声骸收工"
 TACET_DROPS = "🖼️ 无音区产出"

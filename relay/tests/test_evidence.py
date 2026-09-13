@@ -138,6 +138,43 @@ changed, unreachable = ev.check_sources(fetch=lambda url: (_ for _ in ()).throw(
 check("拉不到只算「够不着」，不算变了", (changed, len(unreachable)), ([], 3))
 check("三处钉的都有提交号和哈希", all(len(p.commit) == 40 and len(p.sha256) == 64 for p in ev.PINS))
 
+print("\n[只钉打包那几个函数：别处改一行日志不报，函数体改一个字才报]")
+# Fixture copies of the three upstream files as pinned (MAA at 4f144457, 09-12).
+FXP = Path(__file__).resolve().parent / "fixtures" / "source-pins"
+files = {"IssueReportUserControlModel.cs": "MAA 生成日志压缩包（IssueReportUserControlModel.cs）",
+         "file_ops.rs": "MaaEnd 导出（MXU file_ops.rs）",
+         "StartTab.py": "OK-WW Export Logs（ok-script StartTab.py）"}
+def from_fixtures(url):
+    for fname in files:
+        if url.endswith("/" + fname):
+            return (FXP / fname).read_bytes()
+    raise OSError(url)
+changed, unreachable = ev.check_sources(fetch=from_fixtures)
+check("和库里存的副本一致＝一处都不报", (changed, unreachable), ([], []))
+check("三处都钉了函数名", all(p.regions for p in ev.PINS))
+check("每个函数名都在文件里找得到",
+      all("<missing" not in ev.region_text((FXP / f).read_text(encoding="utf-8"), f, pinned[next(p.path for p in ev.PINS if p.path.endswith(f))].regions)
+          for f in files))
+cs = (FXP / "IssueReportUserControlModel.cs").read_text(encoding="utf-8")
+# The 09-12 upstream change, replayed: a logging call outside the packaging code.
+elsewhere = cs.replace('_logger.Error(ex, "Failed to open debug folder");', 'Log.Error(ex, "Failed to open debug folder");', 1)
+check("改了别处的日志调用", elsewhere != cs)
+changed, _ = ev.check_sources(fetch=lambda url: elsewhere.encode() if url.endswith(".cs") else from_fixtures(url))
+check("打包函数没变就不报", changed, [])
+inside = cs.replace("const int PartSize = 20 * 1024 * 1024;", "const int PartSize = 10 * 1024 * 1024;", 1)
+check("分卷大小改了（在函数体里）", inside != cs)
+changed, _ = ev.check_sources(fetch=lambda url: inside.encode() if url.endswith(".cs") else from_fixtures(url))
+check("函数体一变就报", changed, [files["IssueReportUserControlModel.cs"]])
+renamed = cs.replace("public void GenerateSupportPayload()", "public void GenerateSupportPayload2()", 1)
+changed, _ = ev.check_sources(fetch=lambda url: renamed.encode() if url.endswith(".cs") else from_fixtures(url))
+check("函数被改名也报（缺失标记进哈希）", changed, [files["IssueReportUserControlModel.cs"]])
+py = (FXP / "StartTab.py").read_text(encoding="utf-8")
+seg = ev.region_text(py, "StartTab.py", ("export_logs",))
+check("Python 按缩进截到函数结尾", seg.splitlines()[0].strip().startswith("def export_logs") and "export_logs exception" in seg and "def ocr_log_bg" not in seg)
+rs = (FXP / "file_ops.rs").read_text(encoding="utf-8")
+seg = ev.region_text(rs, "file_ops.rs", ("export_logs_blocking",))
+check("Rust 按花括号截到函数结尾", seg.startswith("fn export_logs_blocking(") and seg.rstrip().endswith("}") and "pub async fn export_logs" not in seg)
+
 print("\n[上传：索引里记下每一趟，失败也记]")
 class FakeUp:
     def __init__(self): self.n = 0

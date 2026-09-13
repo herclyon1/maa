@@ -39,6 +39,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import shutil
 import time
 import urllib.error
@@ -53,8 +54,10 @@ from pathlib import Path
 log = logging.getLogger("ark.evidence")
 
 # --------------------------------------------------------------- source pins
-# Read and copied on 2026-09-12; `commit` is the last commit touching the file
-# at that time, `sha256` is of the raw file. Renew both when re-verifying.
+# Read and copied on 2026-09-12 (regions since 09-13); `commit` is the last commit
+# touching the file at that time, `sha256` is of the pinned regions' text (see
+# region_text). Fixture copies live in tests/fixtures/source-pins/. Renew both
+# when re-verifying.
 
 
 @dataclass(frozen=True)
@@ -65,24 +68,89 @@ class Pin:
     path: str
     commit: str
     sha256: str
+    # The functions whose bodies are what this relay mirrors. Only their text is
+    # hashed: on 2026-09-12 upstream MAA swapped five logging calls elsewhere in
+    # the file and the whole-file hash raised an alarm the day after the feature
+    # shipped, for a change that touched nothing the mirror depends on.
+    regions: tuple[str, ...] = ()
+
+
+_HEADER = {
+    ".cs": r"^\s*(?:public|private|internal|protected|static|\s)*[\w<>\[\]?]+\s+{name}\s*(?:<[^>]*>)?\s*\(",
+    ".rs": r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+{name}\b",
+    ".py": r"^\s*def\s+{name}\s*\(",
+}
+
+
+def region_text(raw: str, path: str, names: tuple[str, ...]) -> str:
+    """The bodies of `names` in `raw`, joined, in the given order.
+
+    Brace languages: from the header to the brace that closes the one opened after
+    it. Python: from the header to the last line indented deeper than it. A name
+    that is not found contributes the marker `<missing NAME>`, so a renamed function
+    changes the hash instead of silently shrinking the pinned text.
+    """
+    ext = path[path.rfind("."):]
+    lines = raw.splitlines()
+    out = []
+    for name in names:
+        pat = re.compile(_HEADER[ext].format(name=re.escape(name)))
+        start = next((i for i, ln in enumerate(lines) if pat.match(ln)), None)
+        if start is None:
+            out.append(f"<missing {name}>")
+            continue
+        if ext == ".py":
+            indent = len(lines[start]) - len(lines[start].lstrip())
+            end = start
+            for i in range(start + 1, len(lines)):
+                ln = lines[i]
+                if ln.strip() and (len(ln) - len(ln.lstrip())) <= indent:
+                    break
+                end = i
+            out.append("\n".join(lines[start:end + 1]))
+            continue
+        depth, seen, end = 0, False, start
+        for i in range(start, len(lines)):
+            for ch in lines[i]:
+                if ch == "{":
+                    depth += 1; seen = True
+                elif ch == "}":
+                    depth -= 1
+            if seen and depth == 0:
+                end = i
+                break
+        out.append("\n".join(lines[start:end + 1]))
+    return "\n\n".join(out)
+
+
+def pinned_text(pin: "Pin", raw: bytes) -> bytes:
+    """What gets hashed for `pin`: the named regions when it has any, else the file."""
+    if not pin.regions:
+        return raw
+    return region_text(raw.decode("utf-8", "replace"), pin.path, pin.regions).encode("utf-8")
 
 
 PINS = (
     Pin("MaaEnd 导出（MXU file_ops.rs）", "MistEO/MXU", "main",
         "src-tauri/src/commands/file_ops.rs",
         "eb0e21271ff6a64de8f42a6995c2f709e3463f8f",
-        "041f79df6a804db2835e4c37c91e84d898e841c993d9bb925b93acd4dcc0f379"),
+        "50fbc34dd9b69798687f734a448d40573f592f06d88e49dcc50e51303b8e3bdb",
+        ("export_logs_blocking", "collect_files_recursively", "collect_debug_subdir_files",
+         "add_file_to_zip", "normalize_archive_path", "is_image_file", "has_extension",
+         "estimate_compressed_upper_bound", "pre_compress_measure")),
     Pin("MAA 生成日志压缩包（IssueReportUserControlModel.cs）",
         "MaaAssistantArknights/MaaAssistantArknights", "dev-v2",
         "src/MaaWpfGui/ViewModels/UserControl/Settings/IssueReportUserControlModel.cs",
         # Re-pinned 2026-09-13: upstream 4f144457 (09-12 14:55Z) only swapped the
         # static Log calls for a class-scoped logger; GenerateSupportPayload is unchanged.
         "4f1444577a17f99037aa385c488bef5b70e23f8d",
-        "c11e538956b412accf80760f20aa383997c346dcd6fac94ea8d2cdd377939404"),
+        "4ecfc6390003aa63d2177fe5f2a75e1568cee2881cc88e5b8ed3ee4be6d98093",
+        ("GenerateSupportPayload", "CopyDirectoryIfExists")),
     Pin("OK-WW Export Logs（ok-script StartTab.py）", "ok-oldking/ok-script", "master",
         "ok/ui/qt/start/StartTab.py",
         "41a59bc67e6708158a62cae970709e8e37a3305f",
-        "9c5a481f46834dfb385f5b52110fa021d596a91df1037c91f84672fd5486f94a"),
+        "84d68845c67c9fc8bce4b2f80984eaee29433bdce9d4e53da08f6691984d918b",
+        ("export_logs",)),
 )
 JSDELIVR = "https://cdn.jsdelivr.net/gh/{repo}@{branch}/{path}"
 
@@ -100,7 +168,7 @@ def check_sources(fetch=None, timeout: int = 30) -> tuple[list[str], list[str]]:
         except (urllib.error.URLError, OSError, ValueError):
             unreachable.append(pin.name)
             continue
-        if hashlib.sha256(raw).hexdigest() != pin.sha256:
+        if hashlib.sha256(pinned_text(pin, raw)).hexdigest() != pin.sha256:
             changed.append(pin.name)
     return changed, unreachable
 
