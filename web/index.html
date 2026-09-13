@@ -78,6 +78,12 @@
   .sw input:checked + span{background:var(--ok)}
   .sw input:checked + span::after{transform:translateX(21px)}
   .changed{background:rgba(74,163,255,.09)}
+  .posted{background:rgba(52,199,89,.08)}
+  .row .sent{display:block;font-size:12px;color:var(--ok);margin-top:6px;line-height:1.5}
+  .row .sent.bad{color:var(--bad)}
+  .row .sent .again,#pendbar button{font-size:12px;padding:4px 10px;border-radius:8px;margin-left:6px;box-shadow:none}
+  #pendbar{margin:10px 12px 0;padding:10px 12px;border-radius:11px;background:var(--card);
+           color:var(--ink);font-size:13px;line-height:1.6;border:1px solid var(--line)}
   .acts{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px 15px}
   button{font:inherit;border:0;border-radius:11px;padding:13px;color:var(--ink);
          background:var(--btn);cursor:pointer;box-shadow:var(--sh)}
@@ -145,6 +151,7 @@
   <div class="sub"><i class="dot" id="dot"></i><span id="status">正在读取…</span></div>
 </header>
 
+<div id="pendbar" hidden></div>
 <main id="app"></main>
 
 <div class="savebar" id="savebar">
