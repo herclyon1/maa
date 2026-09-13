@@ -1,5 +1,23 @@
 # Check these when the machine is next up
 
+## 2026-09-13 21:20 boot — deploy and two verifications
+
+Machine was off all afternoon (morning queue ended 10:03 Beijing), so these wait for the
+BIOS boot:
+
+1. **Deploy the relay** (`ARK_HOST=100.65.39.119 ./scripts/mac/deploy-relay.sh`;
+   RELEASE-NOTES already written): report wording for a gathering task skipped by weekday
+   (commit "report: a gathering task skipped by weekday is said so").
+2. **Today's 10:02→10:03 MaaEnd 自动采集 (0 min, reported ✅)**: read
+   `D:\ark\automas\history\...\MaaEnd-*.log` for 09-13 and confirm it carries
+   「现在游戏时间是周日，根据执行周期跳过任务」. That line is what `outcome.maaend_checks`
+   accepts for a quick finish; without it the round would have been flagged. If the line is
+   absent, the green was wrong - say so to the user and find why.
+3. **The phone order from ~11:54 Beijing (page still old then)**: check the relay log at
+   boot for 「手机」/set_config lines and whether the mailbox fetch (`since=24h`, ntfy keeps
+   12 h) picked it up and applied it; report the outcome. The new page (v=20260913130424)
+   tracks orders itself from now on.
+
 ## 2026-09-12 (Saturday) — verify the retry feature on a real morning, then decide two things
 
 Done overnight 09-12 01:00-02:45 (Beijing), all on the machine:
