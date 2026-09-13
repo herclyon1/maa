@@ -1,7 +1,7 @@
 {
- "version": 20260913044135,
+ "version": 20260913044640,
  "files": {
-  "RELEASE-NOTES.md": "2d45ab0e08ea4abfbd6ed9883ee4900b8c6776fe",
+  "RELEASE-NOTES.md": "5c801bd5a89179b44a1c50c1599d8241e0e6a149",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
   "ark_relay/__main__.py": "a8840eb52e6be2c40c84920952642667a756c3ef",
   "ark_relay/annihilation.py": "5ec4c927c131d2aefc58aebbdda591c37fb672e4",
@@ -13,7 +13,7 @@
   "ark_relay/collector_okww.py": "73228dc26ad513f71681e67f48f6b174e5bc8003",
   "ark_relay/commands.py": "bd2af69759c4abbdef45c795dc72eadfee818bdb",
   "ark_relay/config.py": "1c7e19ca75c02ec4d014d3e88195c90a5b6b57ca",
-  "ark_relay/core.py": "c0088806c2642d6086e8f9d58b8b5cba3325c0da",
+  "ark_relay/core.py": "2694b5c50fc90407cbe780cddd6d1ed649e39222",
   "ark_relay/desktop.py": "ba89cb2d2cdb243ea0da7d9b5d03040f3e2a8750",
   "ark_relay/echofarm.py": "de8d306128a756c2c7014d8cd57aafc8c9c386f5",
   "ark_relay/efstatus.py": "f39f98d710f8c37d48c188118eca4e40ff26b849",

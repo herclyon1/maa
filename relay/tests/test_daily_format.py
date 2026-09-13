@@ -112,6 +112,20 @@ _f = dict(_nf, raw={"stages": ["1-7"], "sanity_spent": 120})
 _blk2 = "\n".join(core._block(_f, datetime.fromisoformat(_f["finished"])))
 check("真刷到 0 要照印", "理智 0" in _blk2, True)
 
+print("\n[不是采集日的那条自动采集记录不列出来（2026-09-13 周日 10:02→10:03）]")
+skip = ent("2026-09-13/endfield/MaaEnd-06-02-49", "MaaEnd", 10, 2, 1, True,
+          raw={"tasks_done": ["自动采集", "结束进程"], "maaend_collect_skipped": "周日"})
+real = ent("2026-09-13/endfield/MaaEnd-05-36-46", "MaaEnd", 9, 37, 25, True,
+          raw={"tasks_done": ["赠送干员礼物", "装备制造", "拜访好友"]})
+t2, b2 = core.format_daily("2026-09-13", [real, skip])
+check("日报只有一条 MaaEnd", b2.count("MaaEnd　"), 1)
+check("没有那条 0 分钟的", "10:02→10:03" in b2, False)
+check("标题还是全绿", "全绿" in t2, True)
+walked = ent("2026-09-14/endfield/MaaEnd-06-02-49", "MaaEnd", 10, 2, 30, True,
+            raw={"tasks_done": ["自动采集", "结束进程"], "maaend_collect_total": 17, "maaend_collect_done": 17})
+t3, b3 = core.format_daily("2026-09-14", [walked])
+check("真走了路线的那条照常列", "自动采集 17/17 条走通" in b3, True)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
 

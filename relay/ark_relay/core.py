@@ -575,6 +575,14 @@ def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ..
     return did, cost, out, left, notes
 
 
+def _skipped_gathering_only(e: dict, raw: dict) -> bool:
+    """A clean record whose only content is the gathering task skipped by weekday."""
+    if not e.get("ok") or e.get("incomplete") or not raw.get("maaend_collect_skipped"):
+        return False
+    done = [t for t in (raw.get("tasks_done") or []) if t not in ("自动采集", "结束进程")]
+    return not done and not raw.get("tasks_failed") and not raw.get("maaend_collect_total")
+
+
 def _rows_for(e: dict, finished: datetime) -> tuple[list[str], ...]:
     """The five lists for one run, before they are turned into rows."""
     raw = e.get("raw") or {}
@@ -688,6 +696,11 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
         finished = datetime.fromisoformat(e["finished"])
         raw = e.get("raw") or {}
         kind = kinds.get(e["run_id"], "")
+        if _skipped_gathering_only(e, raw):
+            # Since 09-10 AUTO-MAS runs 自动采集 as its own record; on a day that is
+            # not a gathering day it opens and closes in under a minute. The user,
+            # 2026-09-13: 「如果当日没有自动采集是不显示任何东西的」 - so it is not listed.
+            continue
         icon = ("⚠️" if e["ok"] and e.get("incomplete") else "✅" if e["ok"]
                 else _KIND_ICON.get(kind) or ("↻" if e["run_id"] in retried else "❌"))
         tag = "（剿灭检查）" if raw.get("annihilation") else ""
