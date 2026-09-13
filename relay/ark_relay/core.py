@@ -697,9 +697,9 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
         raw = e.get("raw") or {}
         kind = kinds.get(e["run_id"], "")
         if _skipped_gathering_only(e, raw):
-            # Since 09-10 AUTO-MAS runs 自动采集 as its own record; on a day that is
-            # not a gathering day it opens and closes in under a minute. The user,
-            # 2026-09-13: 「如果当日没有自动采集是不显示任何东西的」 - so it is not listed.
+            # Since 09-10 AUTO-MAS runs the gathering task as its own record; on a
+            # day that is not a gathering day it opens and closes in under a minute.
+            # The user, 2026-09-13: 「如果当日没有自动采集是不显示任何东西的」 - so it is not listed.
             continue
         icon = ("⚠️" if e["ok"] and e.get("incomplete") else "✅" if e["ok"]
                 else _KIND_ICON.get(kind) or ("↻" if e["run_id"] in retried else "❌"))
