@@ -1,5 +1,14 @@
 # Check these when the machine is next up
 
+## 月行水上 EX - where it stands (2026-09-13 17:30)
+
+Normal EX-1〜6 cleared 3★ (recipe in MAA-EVENTS-AND-SSS.md). Left: **EX-7 (20 sanity),
+EX-8 (cost unread), and all eight raids** (突袭: red button on the detail page, 1★ is a
+pass). About 175 sanity in total - more than one day's regeneration, and the 09:00
+queue spends every point on SR-5. **Needs the user's call** (asked 09-13): turn 作战开关
+off for one morning, or accept two or three days of "whatever is left after farming".
+Design for doing this without me: docs/EVENT-AUTOPILOT-PLAN.md.
+
 ## 2026-09-13 - done at 12:24-12:51 (the user powered the machine on)
 
 All five items closed: relay deployed (three times); the 10:02 record carried
