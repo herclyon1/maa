@@ -147,5 +147,35 @@ def _fresh(self):
 check("正文对得上就照贴", Upstream().still_here(), "对得上就贴")
 check("没有被跳过的", ns["_skipped"], [])
 
+print("\n[母本指路文件：改动文件靠它读「只刷落渊南丘」]")
+# ok-script rewrites configs/ at load and drops the key (09-10..09-13 farmed all
+# four nests), so the value is only ever readable from AUTO-MAS's master.
+automas = tmpdir()
+mdir = automas / "data" / "c5e9-okww" / "Default" / "ConfigFile"
+mdir.mkdir(parents=True)
+(mdir / "DailyTask.json").write_text("{}", encoding="utf-8")
+pointer = tmpdir() / "ark-okww-master.txt"
+okww_overlay.MASTER_POINTER = pointer
+check("母本找不到就说清楚", "找不到" in okww_overlay.write_master_pointer(tmpdir()))
+check("写好了不吭声", okww_overlay.write_master_pointer(automas), "")
+check("指向母本目录", pointer.read_text(encoding="utf-8"), str(mdir))
+check("已是这个值就不重写", okww_overlay.write_master_pointer(automas), "")
+check("改动文件里读的是同一个路径", 'r"C:\\ProgramData\\ark-okww-master.txt"' in okww_overlay.source_text())
+
+print("\n[最新一趟 OK-WW 日志：按修改时间取最新，一周内]")
+from ark_relay import outcome  # noqa: E402
+hist = tmpdir()
+check("没有历史目录", outcome.latest_okww_run_log(hist / "nope"), None)
+check("目录空着", outcome.latest_okww_run_log(hist), None)
+d1 = hist / "2026-09-12" / "wuwa"; d1.mkdir(parents=True)
+d2 = hist / "2026-09-13" / "wuwa"; d2.mkdir(parents=True)
+(d1 / "OK-WW-05-20-09.log").write_text("old\n", encoding="utf-8")
+(d2 / "OK-WW-05-19-22.log").write_text("new NightmareNestTask\n", encoding="utf-8")
+import os as _os, time as _time
+_os.utime(d1 / "OK-WW-05-20-09.log", (_time.time() - 86400, _time.time() - 86400))
+got = outcome.latest_okww_run_log(hist)
+check("取到最新那趟", got[0].name if got else None, "OK-WW-05-19-22.log")
+check("连正文一起给", got[1] if got else None, "new NightmareNestTask\n")
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
