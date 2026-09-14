@@ -208,7 +208,14 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     # fault, it is the normal path -- logging WARNING here used to make it look
     # broken and left a fake injury in the log every single day.
     log.info("日报用结构化模板（模型撰写已废弃，这是正常路径）")
+    from . import plan as _plan  # noqa: PLC0415
+    times = [t for q in _plan.schedule(eng.cfg.automas_dir) for t in q.get("times", [])]
+    entries, manual = core.split_manual(entries, times)
     title2, body = core.format_daily(day, entries, "", tomorrow)
+    if manual:
+        log.info("日报：%d 条手动跑的记录不列出来（%s）", len(manual),
+                 "、".join(m.get("run_id", "?") for m in manual))
+        body += f"\n\n另外手动跑过 {len(manual)} 趟（测试，不计入）"
     # The Endfield daily list goes at the very end as a footnote (user, 2026-09-02)
     foot = core.daily_footnote(entries)
     return title2, body + tail + (f"\n\n{foot}" if foot else "")

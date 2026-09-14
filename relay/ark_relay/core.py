@@ -699,6 +699,62 @@ def _daily_head(failed: list, undone: list, retried: dict, kinds: dict) -> str:
     return "全绿 ✅"
 
 
+def _launch_miss(e: dict) -> bool:
+    return (not e.get("ok")
+            and any("模拟器启动失败" in str(t) for t in (e.get("failed_tasks") or [])))
+
+
+MANUAL_GAP_MIN = 45     # a pause this long between records starts a new round
+MANUAL_WINDOW_MIN = 30  # a round starting this close to a queue time is the queue's
+
+
+def split_manual(entries: list[dict], queue_times: list[str]) -> tuple[list[dict], list[dict]]:
+    """(queue rounds, hand-started rounds), by the same rule shutdown.py uses.
+
+    Records are grouped into rounds by the gap between one record's end and the
+    next one's start; a round whose first record starts more than
+    MANUAL_WINDOW_MIN from every queue time was dispatched by hand. Those are
+    test runs (the user, 2026-09-14: 「日报里面该清理的清理掉」) and are kept out
+    of the report's rows. Without queue times nothing
+    can be told apart and everything counts as the queue's.
+    """
+    if not entries or not queue_times:
+        return list(entries), []
+    ordered = sorted(entries, key=lambda e: e.get("started") or "")
+    rounds: list[list[dict]] = []
+    last_end = None
+    for e in ordered:
+        try:
+            start = datetime.fromisoformat(e["started"])
+            end = datetime.fromisoformat(e.get("finished") or e["started"])
+        except (KeyError, ValueError):
+            rounds = rounds or [[]]
+            rounds[-1].append(e)
+            continue
+        if last_end is None or (start - last_end).total_seconds() > MANUAL_GAP_MIN * 60:
+            rounds.append([])
+        rounds[-1].append(e)
+        last_end = max(last_end, end) if last_end else end
+    queue, manual = [], []
+    for r in rounds:
+        try:
+            first = datetime.fromisoformat(r[0]["started"])
+        except (KeyError, ValueError):
+            queue += r
+            continue
+        near = False
+        for hhmm in queue_times:
+            try:
+                hh, mm = (int(x) for x in hhmm.split(":"))
+            except ValueError:
+                continue
+            due = first.replace(hour=hh, minute=mm, second=0, microsecond=0)
+            if abs((first - due).total_seconds()) <= MANUAL_WINDOW_MIN * 60:
+                near = True
+        (queue if near else manual).extend(r)
+    return queue, manual
+
+
 def format_daily(day: str, entries: list[dict], prose: str = "",
                  plan: str = "") -> tuple[str, str]:
     """The one message of the day. Numbers here are copied, never generated.
@@ -706,6 +762,12 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
     Laid out for a narrow phone screen: no nested indentation (full-width
     spaces do not line up across fonts), one fact per short line.
     """
+    # AUTO-MAS's own emulator-launch miss is a one-second attempt with no game in
+    # it; the next attempt starts a second later. It is nothing that happened to
+    # the games, so it gets no row (the user asked what that row even was,
+    # 2026-09-14). Matched on the text as well as the flag, so records written
+    # before the flag existed read the same way.
+    entries = [e for e in entries if not _launch_miss(e)]
     if not entries:
         return f"📋 {day} 日报", "今天没有任何运行记录。"
 
