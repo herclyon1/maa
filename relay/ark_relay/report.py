@@ -221,6 +221,10 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     # 不就没人看了吗？」 - so they live here, once, at the end.
     changes = changes_of_day(eng.cfg.state_dir, day)
     tail2 = f"\n\n今天中继改了什么\n{changes}" if changes else ""
+    # The post-queue per-route retry used to push 「补跑开始 / 补跑后全部走完」;
+    # its outcome belongs here (2026-09-14).
+    if retry := retry_line(eng.cfg.state_dir, day, getattr(eng.cfg, "maaend_dir", None)):
+        body += f"\n\n{retry}"
     return title2, body + tail + (f"\n\n{foot}" if foot else "") + tail2
 
 
@@ -341,6 +345,32 @@ def changes_of_day(state_dir, day: str) -> str:
         return _changes_file(state_dir, day).read_text(encoding="utf-8").strip()
     except OSError:
         return ""
+
+
+def retry_line(state_dir, day: str, maaend_dir=None) -> str:
+    """One line on the day's per-route gathering retry (collect_retry's stamp), '' when none."""
+    if not state_dir:
+        return ""
+    p = Path(state_dir) / "collect-retry" / f"{day}.json"
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    if "passed" not in d and "failed" not in d:
+        return "自动采集补跑：开始了，还没有结果"
+    from . import collect_retry  # noqa: PLC0415
+    zh = collect_retry._locale(Path(maaend_dir)) if maaend_dir else {}
+    name = lambda r: collect_retry.route_label(r, zh)  # noqa: E731
+    parts = []
+    if d.get("passed"):
+        parts.append("走通 " + "、".join(name(r) for r in d["passed"]))
+    if d.get("failed"):
+        parts.append("仍失败 " + "、".join(name(r) for r in d["failed"]))
+    if d.get("unknown"):
+        parts.append("没结论 " + "、".join(name(r) for r in d["unknown"]))
+    if d.get("note"):
+        parts.append(str(d["note"]))
+    return "自动采集补跑：" + ("；".join(parts) if parts else "没有要补的")
 
 
 def test_windows(state_dir) -> list[dict]:

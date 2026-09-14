@@ -551,6 +551,7 @@ def _ship_evidence(eng, rec: RunRecord) -> None:
         res = evidence.save_and_upload(eng.cfg, rec.script, rec.run_id, extra)
         if res.get("page"):
             log.info("🗂️ %s 证据包已上传（%d 个文件）→ %s", rec.run_id, len(res["uploaded"]), res["page"])
+            rec.raw["evidence_page"] = res["page"]     # the failure alarm and the daily row carry it
             eng.notifier.send(texts.EVIDENCE_SAVED,
                               texts.evidence_saved_body(rec.script, rec.started.astimezone(SERVER_TZ).strftime("%m-%d %H:%M"),
                                                         len(res["uploaded"]), res["page"]))

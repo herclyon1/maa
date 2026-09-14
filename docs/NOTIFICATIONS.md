@@ -208,11 +208,11 @@ messages, zero alarms.
 | 🗓️ 新的一周 | info | Monday summary of the three weekly gates |
 | 🧷 上游改了导出日志的代码 | info | evidence bundling needs re-checking (rare) |
 | 🔌 推送通道故障 | info | a channel is dead (once per fault) |
-| 🔄 中继已更新 | log | every deploy; the phone page shows the version |
+| 🔄 中继已更新 | log | the notes go into the daily report's 「今天中继改了什么」 |
 | 🗓️ 周常 | log | the phone page shows the weekly state |
-| ⏭️ 跳过模式 / 🛑 已停一切 / 📱 手机指令暂缓 / 📱 配置已修改 / ✅ … | log | acknowledgements of his own phone orders; the page shows them |
-| 🗂️ 证据包已送出机器 | log | bookkeeping behind a failure already alarmed |
-| 🔁 自动采集：只补跑失败的路线 / ✅ 补跑后全部走完 | log | the daily report carries the outcome |
+| ⏭️ 跳过模式 / 🛑 已停一切 / 📱 手机指令暂缓 / 📱 配置已修改 / ✅ … | log | the answer is on the phone page: per-row receipts for settings, 「机器最近的回执」 for actions |
+| 🗂️ 证据包已送出机器 | log | the link is in the failure alarm and in the daily row (证据包) |
+| 🔁 自动采集：只补跑失败的路线 / ✅ 补跑后全部走完 | log | the daily report has a 「自动采集补跑：走通 … / 仍失败 …」 line |
 | ⚠️ <script> 中途失败过，重试后成功 | log | the daily report carries the retry |
 | 🩹 OK-WW 补丁（N 条） | log | the healthy case |
 | 🥚 开始刷声骸 | log | acknowledgement of his order |

@@ -259,6 +259,10 @@ def format_failure(rec: RunRecord, diagnosis: str = "") -> tuple[str, str]:
             lines.append(rec.sanity_full_at)
     if diagnosis:
         lines += ["", "─" * 12, diagnosis]
+    # The evidence bundle used to be its own push (「证据包已送出机器」); it is
+    # bookkeeping behind this alarm, so the link lives here (2026-09-14).
+    if page := (rec.raw or {}).get("evidence_page"):
+        lines += ["", f"证据包：{page}"]
     return title, "\n".join(lines)
 
 
@@ -780,6 +784,8 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
                      + _span(started, finished, e.get('duration_known', True)) + tries)
         # For a run that did not go through, and for the one-minute annihilation
         # check: a single note row, not five empty slots.
+        if not e["ok"] and not kind and raw.get("evidence_page"):
+            lines.append(_row("证据包", [raw["evidence_page"]]))
         if kind == "soft":
             others = [t for t in (e.get("failed_tasks") or []) if t != "自动采集"]
             note = ("没做成：" + "、".join(others) + "（上游问题，不算失败）") if others else ""

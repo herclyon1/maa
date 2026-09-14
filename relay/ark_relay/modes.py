@@ -355,3 +355,36 @@ def set_tacet_shots(state_dir, on: bool) -> str:
         return "无音区结算截图：以后日报后面会带上"
     f.unlink(missing_ok=True)
     return "无音区结算截图：不发了"
+
+
+# ── Phone-order receipts ──────────────────────────────────────────────────────
+# The relay's answer to each phone order used to be pushed as a notification;
+# since 2026-09-14 it is shown on the phone page instead (the user: 「可以合并到
+# 遥控页里面」). Kept as a short list in the state dir, newest last.
+_RECEIPTS = "phone-receipts.json"
+RECEIPTS_KEEP = 12
+
+
+def add_receipt(state_dir, action: str, ok: bool, text: str) -> None:
+    import json  # noqa: PLC0415
+    from datetime import datetime  # noqa: PLC0415
+    from .config import SERVER_TZ  # noqa: PLC0415
+    p = Path(state_dir) / _RECEIPTS
+    try:
+        items = json.loads(p.read_text(encoding="utf-8")) if p.is_file() else []
+    except (OSError, ValueError):
+        items = []
+    items.append({"at": datetime.now(tz=SERVER_TZ).strftime("%m-%d %H:%M"), "action": action,
+                  "ok": bool(ok), "text": str(text)[:200]})
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(items[-RECEIPTS_KEEP:], ensure_ascii=False), encoding="utf-8")
+
+
+def receipts(state_dir) -> list[dict]:
+    import json  # noqa: PLC0415
+    p = Path(state_dir) / _RECEIPTS
+    try:
+        data = json.loads(p.read_text(encoding="utf-8")) if p.is_file() else []
+        return data if isinstance(data, list) else []
+    except (OSError, ValueError):
+        return []

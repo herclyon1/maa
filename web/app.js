@@ -446,6 +446,12 @@ function render() {
     </div>
     ${snap && snap.plan ? `<pre>${snap.plan.replace(/</g,"&lt;")}</pre>` : ""}
   </section>${cfgNote}`;
+  /* The machine's answer to each order, newest first. Used to be a push per
+     order; the answer belongs where the button was pressed (2026-09-14). */
+  const rc = Array.isArray(relay["最近指令"]) ? relay["最近指令"].slice().reverse() : [];
+  if (rc.length) html += `<section><h2>机器最近的回执</h2>` + rc.map((r) =>
+    `<div class="row"><label>${r.ok ? "✅" : "❌"} ${(r.text || "").replace(/</g,"&lt;")}
+      <span class="hint">${r.at}</span></label></div>`).join("") + `</section>`;
 
   for (const g of SCHEMA) {
     if (!inShift(g.owner)) continue;
@@ -586,7 +592,7 @@ function render() {
    一页；上次看的那页记住。所有卡片都照常渲染，只是藏起来——待保存的改动和回执
    在别的页上也照常记着。用户 2026-09-14：「太长了……我要找某一个功能去修改，
    我要滑到最底下或者滑到某个中间段」。 */
-const TABS = [["状态", /^机器状态|^第一次使用/], ["方舟", /^明日方舟/], ["终末地", /^终末地/],
+const TABS = [["状态", /^机器状态|^第一次使用|^机器最近的回执/], ["方舟", /^明日方舟/], ["终末地", /^终末地/],
               ["鸣潮", /^鸣潮/], ["手机", /^这台手机/]];
 let curTab = (() => { try { return localStorage.getItem("ark-remote-tab") || "状态"; } catch { return "状态"; } })();
 

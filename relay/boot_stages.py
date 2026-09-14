@@ -395,7 +395,7 @@ def _make_collect(inbox, engine, notifier, log, deferred_inbox):
     return collect
 
 
-def _make_phone_cmd(engine, notifier, log, hb, push_state):
+def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
     """Build the callback for what happens after a button is pressed on the phone.
 
     A separate step because it has two entry points: at boot the commands that
@@ -421,6 +421,11 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state):
             from ark_relay import commands as _cmd  # noqa: PLC0415
             ok, msg = _cmd.estop()
             log.warning("🛑 红按钮：%s", msg)
+            try:
+                from ark_relay import modes as _modes  # noqa: PLC0415
+                _modes.add_receipt(cfg_state_dir, action, ok, msg)
+            except Exception:
+                log.exception("红按钮回执没记下")
             # The title has to follow the answer. It used to be 「已停一切」 whatever
             # came back, so the one case that needs the operator - the relay could
             # not get the machine quiet - was pushed to his phone as a success.
@@ -440,8 +445,14 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state):
             return
         ok, msg = apply_command(body)
         log.info("📱 手机指令 %s：%s", action, msg)
-        # Asked for by the user on 2026-08-31: pressing save has to be followed
-        # by a notification saying the change succeeded.
+        # The answer goes onto the phone page (state snapshot) - the user reads
+        # it where he pressed the button (2026-09-14); a failed order is still
+        # pushed as information.
+        try:
+            from ark_relay import modes as _modes  # noqa: PLC0415
+            _modes.add_receipt(cfg_state_dir, action, ok, msg)
+        except Exception:
+            log.exception("手机指令回执没记下")
         notifier.send(texts.CONFIG_CHANGED if ok else texts.CONFIG_FAILED, msg)
         push_state("改完配置")
 
@@ -483,7 +494,7 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
 
     from ark_relay.phone import Heartbeat  # noqa: PLC0415
     hb = Heartbeat(box.topic, cfg.state_dir)
-    run_phone_cmd = _make_phone_cmd(engine, notifier, log, hb, push_state)
+    run_phone_cmd = _make_phone_cmd(engine, notifier, log, hb, push_state, cfg.state_dir)
 
     ensure_automas()
     push_state("开机")

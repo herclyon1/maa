@@ -248,6 +248,18 @@ e2.cfg.state_dir = _tmpd()
 report._maybe_daily_report(e2, at(TODAY, "22:00"))
 check("没部署过就没有这一段", "今天中继改了什么" in e2.notifier.sent[-1][1], False)
 
+print("\n[当天补跑过的结果附在日报里（补跑开始/完成不再单独推）]")
+import json as _json  # noqa: E402
+e = make({TODAY: [entry(TODAY)]})
+e.cfg.state_dir = _tmpd()
+(e.cfg.state_dir / "collect-retry").mkdir()
+(e.cfg.state_dir / "collect-retry" / f"{TODAY}.json").write_text(_json.dumps(
+    {"run_id": "x", "routes": ["AutoCollectRoute15", "AutoCollectRoute16"], "passed": ["AutoCollectRoute15"],
+     "failed": ["AutoCollectRoute16"], "unknown": [], "note": ""}), encoding="utf-8")
+report._maybe_daily_report(e, at(TODAY, "22:00"))
+body = e.notifier.sent[-1][1]
+check("日报里有补跑结果", "自动采集补跑：走通 AutoCollectRoute15；仍失败 AutoCollectRoute16" in body, True)
+
 print("\n[推送失败时不许落记号：落了这一天就永远丢了]")
 e = make({TODAY: [entry(TODAY)]})
 e.notifier.broken = True
