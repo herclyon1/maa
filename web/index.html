@@ -3,12 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0f1216">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f2f2f7">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="遥控">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260915011730">
+<link rel="manifest" href="manifest.webmanifest?v=20260915021340">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915011730">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915011730">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915021340">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915021340">
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
      上面跑的」). System colours from Apple's palette: grouped background, white
@@ -36,13 +40,17 @@
     --tab:#f5f5f5; --tabsel:#121212; --seg:#7676803d;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  /* Dynamic Type: `-apple-system-body` is the system's Body text style, so its size
+     follows Settings › 显示与亮度 › 文字大小 (17px at the default size). Every
+     font-size and line-height below is in em of it, the way Settings scales. */
+  html{font:-apple-system-body;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Noto Sans SC",sans-serif}
   body{margin:0;background:var(--bg);color:var(--ink);
-       font:17px/1.3 -apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Noto Sans SC",sans-serif;
+       font-size:1em;line-height:1.3;font-family:inherit;
        padding:env(safe-area-inset-top) 0 calc(env(safe-area-inset-bottom) + 120px)}
   /* Large title, like every top-level Settings screen. */
   header{padding:14px 20px 6px}
-  h1{margin:0;font-size:34px;line-height:41px;font-weight:700}
-  .sub{color:var(--dim);font-size:15px;margin-top:2px;display:flex;gap:8px;align-items:center}
+  h1{margin:0;font-size:2em;line-height:2.4118em;font-weight:700}
+  .sub{color:var(--dim);font-size:0.8824em;margin-top:2px;display:flex;gap:8px;align-items:center}
   .dot{width:9px;height:9px;border-radius:50%;background:var(--dim);flex:none}
   .dot.on{background:var(--ok)}
   .dot.off{background:var(--bad)}
@@ -89,13 +97,48 @@
   section{margin:0}
   section + section > .group:first-child{margin-top:35px}                        /* card after card: 35 */
   section:has(> .foot:last-child) + section > .group:first-child{margin-top:0}   /* the footer's 24 is the gap */
-  h2{margin:0;padding:28px 20px 6px;font-size:17px;line-height:22px;font-weight:600;color:var(--dim);
+  h2{margin:0;padding:28px 20px 6px;font-size:1em;line-height:1.2941em;font-weight:600;color:var(--dim);
      text-transform:none;display:flex;justify-content:space-between;align-items:baseline}
   section:has(> .foot:last-child) + section > h2{padding-top:4px}
   section:first-child > h2{padding-top:10px}
-  h2 small{color:var(--dim);font-weight:400;font-size:13px}
+  h2 small{color:var(--dim);font-weight:400;font-size:0.7647em}
   /* Group footer: the explanation under a card, 13pt secondary (UITableView footer). */
-  .foot{margin:0;padding:6px 20px 24px;color:var(--dim);font-size:13px;line-height:18px}
+  .foot{margin:0;padding:6px 20px 24px;color:var(--dim);font-size:0.7647em;line-height:1.0588em}
+  /* Large title → compact bar on scroll (Settings, Health): a glass bar over the top,
+     opacity follows the title leaving the screen; the label is 17 semibold. */
+  .topbar{position:fixed;top:0;left:0;right:0;z-index:5;height:calc(env(safe-area-inset-top) + 44px);
+          padding-top:env(safe-area-inset-top);display:flex;align-items:center;justify-content:center;
+          font-size:1em;font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s;
+          background:color-mix(in srgb, var(--bg) 72%, transparent);backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%)}
+  .topbar::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:var(--line);transform:scaleY(.34);transform-origin:bottom}
+  .topbar.on{opacity:1}
+  /* Pull to refresh: the system's indicator - a small spinner that grows as you pull. */
+  .ptr{position:fixed;top:calc(env(safe-area-inset-top) + 8px);left:0;right:0;display:flex;justify-content:center;pointer-events:none;z-index:4;
+       opacity:0;transform:scale(.4);transition:opacity .15s,transform .15s}
+  .ptr.arm{opacity:1;transform:scale(1)}
+  .spin{width:20px;height:20px;border-radius:50%;border:2.5px solid rgba(60,60,67,.18);border-top-color:var(--dim);animation:none}
+  .ptr.go .spin{animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  /* The refresh tile's symbol turns while the machine is being asked. */
+  .tile.busy .tico .sf{animation:spin 1s linear infinite}
+  /* Notice cards come and go with the system's short fade+rise. */
+  .group.notice{animation:rise .28s cubic-bezier(.2,.8,.2,1)}
+  @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .tile{transition:transform .12s,background .15s}
+  .tile:active{transform:scale(.97)}
+  /* Number tiles: Reminders' smart-list tiles (2×2, 195.67×80.33 on the Pro Max,
+     radius 16, gap 8): symbol top-left, big number top-right, name bottom-left. */
+  .group.nums{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:transparent;border-radius:0;overflow:visible}
+  section + section > .group.nums:first-child{margin-top:16px}
+  .num{position:relative;min-height:80px;padding:12px 12px 10px 14px;border-radius:16px;color:#fff;display:flex;flex-direction:column;justify-content:space-between;
+       background:linear-gradient(160deg, color-mix(in srgb, var(--c) 80%, #fff) 0%, var(--c) 100%)}
+  .num .sf{width:24px;height:24px;background:#fff}
+  .num .big{position:absolute;top:8px;right:12px;font-size:1.6471em;line-height:1.2em;font-weight:700;letter-spacing:-.02em}
+  .num .big small{font-size:.5em;font-weight:600;opacity:.85}
+  .num .lab{font-size:1em;line-height:1.2941em;font-weight:600}
+  .num .sub{font-size:0.7647em;line-height:1.0588em;opacity:.85;margin-top:0}
+  .num.err{background:var(--card);color:var(--dim)}
+  .num.err .sf{background:var(--dim)}
   /* ---- 状态页的三种块（docs/PHONE-NATIVE-REFERENCES.md） ---- */
   header .sub{display:none}                       /* the device card carries the status line */
   /* Device card: Find My › Devices › the device's card - icon, name, status line, a word at the right. */
@@ -103,22 +146,22 @@
   .dico{width:44px;height:44px;border-radius:10px;background:rgba(118,118,128,.12);display:flex;align-items:center;justify-content:center;flex:none;color:var(--ink)}
   .dico .sf{width:26px;height:26px}
   .dtext{flex:1 1 auto;min-width:0}
-  .dname{font-size:17px;line-height:22px;font-weight:600}
-  .dsub{display:flex;align-items:center;gap:6px;color:var(--dim);font-size:15px;line-height:20px}
+  .dname{font-size:1em;line-height:1.2941em;font-weight:600}
+  .dsub{display:flex;align-items:center;gap:6px;color:var(--dim);font-size:0.8824em;line-height:1.1765em}
   .dside{display:none}
   section + section > .group.devcard:first-child{margin-top:0}
   /* Notice card: Health › 摘要 (measured on the simulator: inset 16, caption 13 with a
      hairline under it, title 17 semibold, body 15 secondary, capsule button 30 high). */
   .group.notice{padding:0 16px 16px}
   section + section > .group.notice:first-child{margin-top:10px}
-  .ncap{position:relative;padding:14px 0 10px;font-size:13px;line-height:18px;color:var(--dim)}
+  .ncap{position:relative;padding:14px 0 10px;font-size:0.7647em;line-height:1.0588em;color:var(--dim)}
   .ncap::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:var(--line);transform:scaleY(.34);transform-origin:bottom}
-  .ntitle{margin-top:14px;font-size:17px;line-height:22px;font-weight:600}
-  .nbody{margin-top:4px;font-size:15px;line-height:20px;color:var(--dim)}
+  .ntitle{margin-top:14px;font-size:1em;line-height:1.2941em;font-weight:600}
+  .nbody{margin-top:4px;font-size:0.8824em;line-height:1.1765em;color:var(--dim)}
   .nacts{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
-  .pill{font:inherit;font-size:15px;font-weight:600;line-height:20px;height:30px;padding:0 14px;border:0;border-radius:15px;
+  .capsule{font:inherit;font-size:0.8824em;font-weight:600;line-height:1.1765em;height:30px;padding:0 14px;border:0;border-radius:15px;
         color:var(--accent);background:color-mix(in srgb, var(--accent) 18%, transparent);box-shadow:none}
-  .pill.red{color:var(--bad);background:color-mix(in srgb, var(--bad) 16%, transparent)}
+  .capsule.red{color:var(--bad);background:color-mix(in srgb, var(--bad) 16%, transparent)}
   /* Action tiles: two columns, 8 apart, 80 high, radius 16 (Reminders' tiles on the
      simulator); the look of Find My's 「Play Sound / Directions」 tiles. */
   .group.tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:transparent;border-radius:0;overflow:visible}
@@ -129,8 +172,8 @@
   .tile:active{opacity:1;background:color-mix(in srgb, var(--ink) 8%, var(--card))}
   .tico{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;flex:none}
   .tico .sf{width:15px;height:15px;background:#fff}
-  .ttitle{margin-top:8px;font-size:15px;line-height:20px;font-weight:600}
-  .tsub{font-size:13px;line-height:18px;color:var(--dim)}
+  .ttitle{margin-top:8px;font-size:0.8824em;line-height:1.1765em;font-weight:600}
+  .tsub{font-size:0.7647em;line-height:1.0588em;color:var(--dim)}
   .tile.danger .ttitle{color:var(--bad)}
   .sf{display:inline-block;width:22px;height:22px;background:currentColor;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
       -webkit-mask-position:center;mask-position:center;-webkit-mask-size:contain;mask-size:contain}
@@ -142,28 +185,28 @@
   /* One device pixel, like UITableView's hairline (1/scale pt): a 1px box scaled to a third. */
   .row::after{content:"";position:absolute;left:20px;right:20px;bottom:0;height:1px;background:var(--line);transform:scaleY(.34);transform-origin:bottom}
   .row:last-child::after,.group > :last-child.row::after{display:none}
-  .row > label{flex:1 1 0;min-width:40%;font-size:17px;line-height:22px}
+  .row > label{flex:1 1 0;min-width:40%;font-size:1em;line-height:1.2941em}
   .row > :not(label){flex:0 0 auto;max-width:48%}
   .row:has(.pills),.row:has(.picks),.row:has(.pillbox),.row:has(input[type=text]:not(.short)),
   .row:has(pre),.row:has(.ro:not(.short)){flex-direction:column;align-items:stretch;gap:8px}
   .row:has(.pills) > :not(label),.row:has(.picks) > :not(label),.row:has(.pillbox) > :not(label),
   .row:has(input[type=text]:not(.short)) > :not(label),.row:has(.ro:not(.short)) > :not(label){max-width:none;align-self:flex-end}
-  .row .hint{display:block;color:var(--dim);font-size:15px;margin-top:1px;line-height:20px}
-  .row .ro{color:var(--dim);font-size:17px;text-align:right}
+  .row .hint{display:block;color:var(--dim);font-size:0.8824em;margin-top:1px;line-height:1.1765em}
+  .row .ro{color:var(--dim);font-size:1em;text-align:right}
   /* Footers and notes under a group, grey like Settings' explanatory text. */
-  .group > p.hint,.group > .hint{margin:0;padding:10px 20px;color:var(--dim);font-size:13px;line-height:1.4}
-  .warn{margin:8px 16px 0;padding:0;background:transparent;color:var(--warn);font-size:13px;line-height:1.4}
+  .group > p.hint,.group > .hint{margin:0;padding:10px 20px;color:var(--dim);font-size:0.7647em;line-height:1.4}
+  .warn{margin:8px 16px 0;padding:0;background:transparent;color:var(--warn);font-size:0.7647em;line-height:1.4}
   /* Controls. */
-  .row input[type=text]:not(.short){width:100%;max-width:100%;text-align:left;padding:10px 12px;font-size:17px}
+  .row input[type=text]:not(.short){width:100%;max-width:100%;text-align:left;padding:10px 12px;font-size:1em}
   /* Number / short text: the compact value box (tertiary fill, radius 8) a compact
      date picker shows in a Settings row. */
   input[type=text],input[type=number],select{
     background:rgba(118,118,128,.12);border:0;color:var(--ink);
-    border-radius:8px;padding:6px 11px;font-size:17px;line-height:22px;width:96px;text-align:right}
+    border-radius:8px;padding:6px 11px;font-size:1em;line-height:1.2941em;width:96px;text-align:right}
   input[type=text].short{width:auto;min-width:72px;max-width:120px}
   /* Inline picker in a row: value in the secondary colour with chevron.up.chevron.down,
      no box - a menu-style picker row in iOS 26 Settings. */
-  select{width:auto;max-width:100%;height:22px;line-height:22px;text-align:right;color:var(--dim);
+  select{width:auto;max-width:100%;height:22px;line-height:1.2941em;text-align:right;color:var(--dim);
          -webkit-appearance:none;appearance:none;padding:0 20px 0 0;border-radius:0;
          background:transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='18' viewBox='0 0 12 18'%3E%3Cpath d='M2 7l4-4 4 4M2 11l4 4 4-4' fill='none' stroke='%238e8e93' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right center}
   input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
@@ -183,16 +226,17 @@
   .sw input:checked + span::after{transform:translateX(22px)}
   .changed{background:color-mix(in srgb, var(--accent) 8%, var(--card))}
   .posted{background:color-mix(in srgb, var(--ok) 8%, var(--card))}
-  .row .sent{flex:1 0 100%;max-width:none;display:block;font-size:13px;color:var(--ok);margin-top:2px;line-height:1.4;text-align:left}
+  .row .sent{flex:1 0 100%;max-width:none;display:block;font-size:0.7647em;color:var(--ok);margin-top:2px;line-height:1.4;text-align:left}
   .row .sent.bad{color:var(--bad)}
-  .row .sent .again,#pendbar button{font-size:13px;padding:4px 10px;border-radius:8px;margin-left:6px;box-shadow:none}
+  .row .sent .again{font-size:1em;padding:4px 10px;border-radius:8px;margin-left:6px;box-shadow:none}
+  #pendbar button{font-size:0.8667em;padding:4px 10px;border-radius:8px;margin-left:6px;box-shadow:none}
   #pendbar{margin:0 16px 16px;padding:12px 16px;border-radius:var(--r);background:var(--card);
-           color:var(--ink);font-size:15px;line-height:1.45}
+           color:var(--ink);font-size:0.8824em;line-height:1.45}
   #pendbar button{margin-top:6px}
   /* Action buttons: the kit's Row-Button (550:49677): 52pt, 17pt regular, text left-aligned,
      tint for default, #ff383c for destructive, #aeaeb2 disabled. */
   .acts{display:grid;grid-template-columns:1fr;gap:0}
-  .acts button{position:relative;font:inherit;font-size:17px;line-height:22px;border:0;border-radius:0;padding:15.5px 20px;min-height:53.33px;
+  .acts button{position:relative;font:inherit;font-size:1em;line-height:1.2941em;border:0;border-radius:0;padding:15.5px 20px;min-height:53.33px;
                color:var(--accent);background:var(--card);box-shadow:none;cursor:pointer;text-align:left;
                transition:background .15s}
   .acts button:active{background:color-mix(in srgb, var(--ink) 8%, var(--card));opacity:1}
@@ -213,37 +257,37 @@
            box-shadow:0 8px 28px rgba(0,0,0,.16),inset 0 0 0 .5px rgba(255,255,255,.55);
            display:flex;gap:10px;align-items:center;transform:translateY(300%);opacity:0;pointer-events:none;transition:.2s}
   .savebar.show{transform:none;opacity:1;pointer-events:auto}
-  .savebar .n{flex:1;color:var(--dim);font-size:13px}
+  .savebar .n{flex:1;color:var(--dim);font-size:0.7647em}
   .savebar button{padding:10px 16px;border-radius:999px}
-  pre{margin:0;padding:11px 16px;white-space:pre-wrap;font-size:15px;line-height:1.4;color:var(--dim);font-family:inherit}
+  pre{margin:0;padding:11px 16px;white-space:pre-wrap;font-size:0.8824em;line-height:1.4;color:var(--dim);font-family:inherit}
   dialog{border:0;background:var(--card);color:var(--ink);border-radius:26px;padding:0;width:min(92vw,460px)}
-  dialog h2{padding:16px 16px 8px;font-size:17px;font-weight:600;color:var(--ink)}
+  dialog h2{padding:16px 16px 8px;font-size:1em;font-weight:600;color:var(--ink)}
   dialog::backdrop{background:rgba(0,0,0,.4)}
   .dlg-b{padding:0 16px 12px;max-height:52vh;overflow:auto}
   dialog .acts{border-top:.5px solid var(--line)}
-  .diff{font-size:15px;padding:7px 0;border-bottom:.5px solid var(--line)}
+  .diff{font-size:0.8824em;padding:7px 0;border-bottom:.5px solid var(--line)}
   .diff:last-child{border-bottom:0}
   .diff b{font-weight:600}
   .old{color:var(--dim);text-decoration:line-through}
   .new{color:var(--ok)}
   .toast{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom) + 76px);z-index:9;
          background:color-mix(in srgb, var(--card) 80%, transparent);backdrop-filter:blur(22px) saturate(180%);
-         border-radius:18px;padding:12px 14px;font-size:15px;box-shadow:0 8px 24px rgba(0,0,0,.18),inset 0 0 0 .5px rgba(255,255,255,.55);
+         border-radius:18px;padding:12px 14px;font-size:0.8824em;box-shadow:0 8px 24px rgba(0,0,0,.18),inset 0 0 0 .5px rgba(255,255,255,.55);
          opacity:0;transition:.2s;pointer-events:none}
   .toast.show{opacity:1}
   .setup{padding:16px}
   .setup input{width:100%;text-align:left;margin-top:6px}
   .pills{display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end}
-  .pill{background:var(--field);border:0;border-radius:99px;padding:7px 12px;font-size:15px;color:var(--ink);box-shadow:none}
+  .pill{background:var(--field);border:0;border-radius:99px;padding:7px 12px;font-size:0.8824em;color:var(--ink);box-shadow:none}
   .pill.on{background:var(--accent);color:#fff;font-weight:600}
   .row .pills{align-self:stretch}
   .pillbox{align-self:stretch;width:100%}
-  .pillbox>summary{list-style:none;cursor:pointer;text-align:right;font-size:15px;color:var(--dim);padding:4px 0}
+  .pillbox>summary{list-style:none;cursor:pointer;text-align:right;font-size:0.8824em;color:var(--dim);padding:4px 0}
   .pillbox>summary::-webkit-details-marker{display:none}
-  .pillbox>summary::after{content:" ›";font-size:15px}
+  .pillbox>summary::after{content:" ›";font-size:1em}
   .pillbox[open]>summary::after{content:" ⌄"}
   .pillbox>.pills{margin-top:4px}
-  .pillbox .pill{padding:5px 9px;font-size:13px}
+  .pillbox .pill{padding:5px 9px;font-size:0.7647em}
   .picks{display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end;align-self:stretch}
   .pick{background:var(--field);border:2px solid transparent;border-radius:14px;padding:6px 8px;display:flex;gap:4px;align-items:center;box-shadow:none}
   .pick img{width:34px;height:34px;border-radius:50%;display:block}
@@ -251,6 +295,10 @@
 </style>
 </head>
 <body>
+<!-- The compact bar a large title collapses into (UINavigationBar): glass, the
+     title small and centred; shown once the large title has scrolled away. -->
+<div class="topbar" id="topbar" aria-hidden="true"><span>游戏机遥控</span></div>
+<div class="ptr" id="ptr" aria-hidden="true"><i class="spin"></i></div>
 <header>
   <h1>游戏机遥控</h1>
   <div class="sub"><i class="dot" id="dot"></i><span id="status">正在读取…</span></div>
@@ -276,6 +324,6 @@
 </dialog>
 
 <div class="toast" id="toast"></div>
-<script src="app.js?v=20260915011730"></script>
+<script src="app.js?v=20260915021340"></script>
 </body>
 </html>
