@@ -1,17 +1,16 @@
 # Check these when the machine is next up
 
-## 2026-09-14 afternoon - live-test the restored 周本领奖 hook (needs 波片 >= 60)
+## 2026-09-15 morning - first unattended run of the 周本领奖 hook
 
-The claim step (`FarmEchoTask.handle_claim_button` in the OK-WW overlay) was lost
-in d035709 on 09-09 and re-added 09-14 12:17; the file on the machine carries it,
-the binding report is refreshed only when OK-WW next starts. 波片 was 0 at 10:14
-Beijing (backup 47), +1 per 6 min, so >= 60 from about 16:15 Beijing. Then, with
-nothing running: `okww-task.sh --list` (find 周本), `okww-task.sh <index>`, and the
-OK-WW log must show 「周本领奖：认出弹窗」→「周本领奖：已点确认」→「退出副本」; the
-binding report must list `FarmEchoTask.handle_claim_button`. Below 60 波片 it logs
-「结晶波片不足」 - that is the hook working, not the test passing. If today is missed,
-tomorrow's 09:00 queue is the test: the daily report turns 「周本没领到奖励」 red when
-「周本领奖：已点确认」 is absent (outcome.okww_checks).
+The claim now hooks `FarmEchoTask.incr_drop` (same lap, right after the echo
+pickup). The `handle_claim_button` hook of 09-14 12:17 never fired: upstream only
+calls it when it sees a claim dialog itself (13:59 that day: fight → 「farm echo on
+the face」 → task over, one lap). The dialog chain was walked by hand at 14:10-14:16
+(F → 领取奖励 → 确认 → 补充结晶波片 → 兑换 21 → 获得 → ESC → 确认 → 挑战成功 → 退出副本),
+one claim taken, 2 of 3 left this week, 波片 1/240 + backup 26 afterwards - so the
+hook's own end-to-end run is the 09:19 OK-WW of 09-15. Check the OK-WW log for
+「周本领奖：打完了，去结晶按 F」 → 「认出弹窗」 → 「已点确认」 → 「退出副本」; the daily
+report turns 「周本没领到奖励」 red without 「已点确认」.
 
 Also today: 「只补跑失败路线」 works from the live maafw.log (collect_watch.py) -
 drilled twice (12:32, 12:36) and then proven in a real AUTO-MAS retry 13:09-13:47
