@@ -79,6 +79,7 @@ exist - the next session will never read it, so writing it was wasted.
 |---|---|
 | [PHONE-COPY-RULES.md](PHONE-COPY-RULES.md) | How to write the copy on the phone remote page |
 - [HIG-CHECKLIST.md](HIG-CHECKLIST.md) - the phone page checked against Apple's Human Interface Guidelines, rule by rule
+- [PHONE-NATIVE-REFERENCES.md](PHONE-NATIVE-REFERENCES.md) - which Apple app each block of the phone page copies (simulator for numbers, Mac apps for patterns), surveyed 2026-09-15
 
 ## Archive (mind the dates when reading)
 
