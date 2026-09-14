@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay.outcome import maaend_checks, okww_checks, patch_effect_checks, summarize
+from ark_relay.outcome import maa_sanity_short, maaend_checks, okww_checks, patch_effect_checks, summarize
 
 FAILED = []
 
@@ -118,6 +118,14 @@ def main() -> int:
     check("09-13 09:19 那种：打开了页面却没有「只刷」＝没跑到", "巢穴改动在跑（只刷指定点位）" in bad_labels(patch_effect_checks(day_old)), True)
     wrong_order = "\n".join(day.splitlines()[2:3] + day.splitlines()[0:2]) + "\n"
     check("刷体力在巢穴之前＝顺序改动没生效", "日常改动在跑（附加任务提到刷体力之前）" in bad_labels(patch_effect_checks(wrong_order)), True)
+
+    print("\n[MAA 理智不够没打：2026-09-14 09:02 剿灭真实行]")
+    sh = ("[2026-09-14 09:02:17.941][INF][Px14564][Tx21613] asst::FightTimesTaskPlugin::analyze_sanity_remain Current Sanity: 17 , Max Sanity: 210\n"
+          '[2026-09-14 09:02:17.941][INF][Px14564][Tx21613] Assistant::append_callback | SubTaskExtraInfo {"class":"asst::FightTimesTaskPlugin","details":{"sanity_cost":25,"series":1,"times_finished":0},"subtask":"FightTimesTask","taskchain":"Fight","taskid":2}\n')
+    check("17 < 25 且 0 次 = 理智不够", maa_sanity_short(sh), {"have": 17, "cost": 25})
+    check("打了一次就不算", maa_sanity_short(sh.replace('"times_finished":0', '"times_finished":1')), None)
+    check("理智够就不算", maa_sanity_short(sh.replace("Current Sanity: 17", "Current Sanity: 90")), None)
+    check("没有这些行就不判", maa_sanity_short("TaskChainStart Fight\n"), None)
 
     print("\n[只刷落渊南丘：2026-09-13 真实日志——四个点位全进了，四天没人发现]")
     # Verbatim from history/2026-09-13/wuwa/OK-WW-05-19-22.log (nest lines only).

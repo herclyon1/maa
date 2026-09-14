@@ -590,6 +590,17 @@ def _handle(eng, rec: RunRecord) -> None:
                      or rec.raw.get("maaend_result") or "").strip())
         return
 
+    if rec.script == "MAA" and not rec.ok:
+        # 2026-09-14: the Monday annihilation re-arm ran three times into
+        # 「理智 17，需要 25」, each 20-second attempt was booked as a failure and
+        # each shipped an evidence bundle. Nothing was fought, nothing was spent;
+        # say that and stop there.
+        until = rec.finished + timedelta(minutes=5) if rec.duration_known else None
+        short = outcome.maa_sanity_short(_maa_app_log(eng.cfg.maa_dir, rec.started, until) or "")
+        if short:
+            log.warning("🟡 MAA 理智不够（%s/%s），没打，不算失败", short["have"], short["cost"])
+            rec.raw["maa_sanity_short"] = short
+            return
     if rec.script == "MAA" and not rec.ok and eng._maintenance_today("明日方舟"):
         # Major version update day: failing because the package or assets are not
         # ready yet is not something a person has to act on; the evening shift

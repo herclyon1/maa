@@ -372,6 +372,8 @@ def episode_kinds(entries: list[dict]) -> dict[str, str]:
                 kinds[e["run_id"]] = "soft"
             elif not e.get("ok") and raw.get("maintenance_day"):
                 kinds[e["run_id"]] = "soft"
+            elif not e.get("ok") and raw.get("maa_sanity_short"):
+                kinds[e["run_id"]] = "nosanity"
             if e.get("ok"):
                 if any(x.get("transitional") for x in streak):
                     for x in streak:
@@ -382,10 +384,11 @@ def episode_kinds(entries: list[dict]) -> dict[str, str]:
     return kinds
 
 
-_KIND_ICON = {"update": "↪️", "maintenance": "⏸", "soft": "🟡"}
+_KIND_ICON = {"update": "↪️", "maintenance": "⏸", "soft": "🟡", "nosanity": "🟡"}
 _KIND_NOTE = {"update": "游戏更新后重跑，不算失败",
               "maintenance": "进不了游戏（服务器维护／客户端待更新），今天跳过",
-              "soft": "其余都做了，只有上游还没修好的那项没成"}
+              "soft": "其余都做了，只有上游还没修好的那项没成",
+              "nosanity": "理智不够这关的费用，没打，不算失败"}
 
 
 # ── One layout for all three games, modelled on MAA ─────────────────────────
@@ -657,6 +660,25 @@ def daily_footnote(entries: list[dict]) -> str:
     return ""
 
 
+def _daily_head(failed: list, undone: list, retried: dict, kinds: dict) -> str:
+    """The verdict in the report title, worst thing first."""
+    if failed and undone:
+        return f"{len(failed)} 项失败、{len(undone)} 项没干完 ⚠️"
+    if failed:
+        return f"{len(failed)} 项失败 ⚠️"
+    if undone:
+        return f"{len(undone)} 项没干完 ⚠️"
+    if retried:
+        return "全绿 ✅（有项目重试后成功）"
+    if "soft" in kinds.values():
+        return "全绿 ✅（个别上游项没成）"
+    if "nosanity" in kinds.values():
+        return "全绿 ✅（有一关理智不够没打）"
+    if "maintenance" in kinds.values():
+        return "维护日跳过，其余全绿 ✅"
+    return "全绿 ✅"
+
+
 def format_daily(day: str, entries: list[dict], prose: str = "",
                  plan: str = "") -> tuple[str, str]:
     """The one message of the day. Numbers here are copied, never generated.
@@ -674,21 +696,7 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
     # A run that exited cleanly but demonstrably did not do its work is not
     # green either (2026-09-10: 自动采集 walked zero routes and the day read 全绿).
     undone = [e for e in entries if e["ok"] and e.get("incomplete")]
-    if failed and undone:
-        head = f"{len(failed)} 项失败、{len(undone)} 项没干完 ⚠️"
-    elif failed:
-        head = f"{len(failed)} 项失败 ⚠️"
-    elif undone:
-        head = f"{len(undone)} 项没干完 ⚠️"
-    elif retried:
-        head = "全绿 ✅（有项目重试后成功）"
-    elif "soft" in kinds.values():
-        head = "全绿 ✅（个别上游项没成）"
-    elif "maintenance" in kinds.values():
-        head = "维护日跳过，其余全绿 ✅"
-    else:
-        head = "全绿 ✅"
-    title = f"📋 {day[5:]} · {head}"
+    title = f"📋 {day[5:]} · {_daily_head(failed, undone, retried, kinds)}"
 
     lines: list[str] = []
     for e in entries:
@@ -725,6 +733,9 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             continue
         if kind:
             note = _KIND_NOTE[kind]
+            if kind == "nosanity":
+                sh = raw.get("maa_sanity_short") or {}
+                note = f"理智 {sh.get('have')} 不够这关要的 {sh.get('cost')}，没打，不算失败"
             if kind == "update" and raw.get("okww_restart_dialog"):
                 # OK-WW says 「游戏更新成功」 for any 「游戏即将重启」 dialog. The
                 # collector looked at the game folder; say what it found, in one of

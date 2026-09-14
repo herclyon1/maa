@@ -144,6 +144,26 @@ def patch_effect_checks(text: str, tacet_shot_today: bool | None = None) -> list
     return out
 
 
+# MAA's FightTimesTaskPlugin announces the sanity it read and the stage cost before
+# each attempt. Real lines, 2026-09-14 09:02 (annihilation, Monday re-arm):
+#   asst::FightTimesTaskPlugin::analyze_sanity_remain Current Sanity: 17 , Max Sanity: 210
+#   SubTaskExtraInfo {"class":"asst::FightTimesTaskPlugin","details":{"sanity_cost":25,"series":1,"times_finished":0}
+_MAA_SANITY = re.compile(r"analyze_sanity_remain Current Sanity: (\d+) , Max Sanity: (\d+)")
+_MAA_COST = re.compile(r'"sanity_cost":(\d+),"series":\d+,"times_finished":(\d+)')
+
+
+def maa_sanity_short(text: str) -> "dict | None":
+    """{'have': 17, 'cost': 25} when the Fight chain never ran because sanity was below the cost; else None."""
+    have = [int(m.group(1)) for m in _MAA_SANITY.finditer(text)]
+    costs = [(int(m.group(1)), int(m.group(2))) for m in _MAA_COST.finditer(text)]
+    if not have or not costs:
+        return None
+    cost, done = costs[-1]
+    if done == 0 and have[-1] < cost:
+        return {"have": have[-1], "cost": cost}
+    return None
+
+
 def nest_filter_checks(text: str, only_nest: str) -> list[Check]:
     """Did the run honour 「only these nests」? Empty when no filter is configured.
 
