@@ -15,9 +15,12 @@ Two sources, both from Apple, both read 2026-09-14:
    Separator `5469:7924`, Toggles `5433:19059`, Tab Bar `3:70967`,
    Tab Bar Button `5735:65307`, Row-Button `550:49677`, Text styles `5418:17464`.
 
-3. **The simulator itself** - iPhone 17 Pro Max, iOS 26.5, **Simplified Chinese**
-   (so Settings uses the same PingFang metrics as the page), Settings › 辅助功能 and
-   › 动态效果 measured pixel by pixel on 2026-09-15 00:13. Where the kit and the
+3. **The simulator itself** - **Simplified Chinese** (so Settings uses the same
+   PingFang metrics as the page). The numbers below were measured on iPhone 17 Pro
+   Max / iOS 26.5, Settings › 辅助功能 and › 动态效果, pixel by pixel on 2026-09-15
+   00:13; that runtime was deleted the same morning and the device is now iPhone
+   18 Pro Max / iOS 27.0 (`8E793B8A-922B-46BC-86E2-E0F2BE845CA5`) - re-measure
+   there before trusting a number that iOS 27 could have changed. Where the kit and the
    simulator disagree, the simulator wins: card margin 20.33, corner 26-27, row
    53.33, text inset 20 (kit: 16), separator hairline inset 20 on both sides
    (kit: left only), toggle 63×28 inset 18, header 17 semibold 28 above / 6 below,
@@ -25,7 +28,7 @@ Two sources, both from Apple, both read 2026-09-14:
    them, large title ink at the 20 margin. WebKit's own `switch` control renders
    71×31, so it is scaled by .887 to the Settings size.
 
-A rendering check runs in the iOS 26.5 simulator (Xcode 26.6, iPhone 17 Pro Max)
+A rendering check runs in the iOS 27.0 simulator (Xcode 27.0, iPhone 18 Pro Max)
 next to the Settings app; `scripts/mac/sf-symbols-export.swift` pulls the tab
 symbols from the system font. Each rule below is the source's wording condensed,
 followed by what `web/index.html` / `web/app.js` does about it. A change to the

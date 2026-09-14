@@ -3,9 +3,13 @@
 Surveyed 2026-09-15 00:30-00:50 Tokyo, on the user's order 「集百家之所长，不要漏掉
 别的原生软件」. Two sources, and they are not interchangeable:
 
-- **iOS 26.5 simulator (iPhone 17 Pro Max, Simplified Chinese)** - the only place
-  the *numbers* (row height, insets, fonts, toggle size) may come from, because the
-  page renders at phone width with PingFang. Measured pages are listed in
+- **The iOS simulator (Simplified Chinese)** - the only place the *numbers* (row
+  height, insets, fonts, toggle size) may come from, because the page renders at
+  phone width with PingFang. Measured on iOS 26.5 / iPhone 17 Pro Max; since
+  2026-09-15 08:20 the only device is **iPhone 18 Pro Max, iOS 27.0**
+  (`8E793B8A-922B-46BC-86E2-E0F2BE845CA5`, same 440×956 pt) - the 26.5 runtime
+  and its devices were deleted on the user's order, the page's localStorage
+  (mailbox, PIN, game credentials) was carried over. Measured pages are listed in
   HIG-CHECKLIST.md. Apps present: Settings, Health, Shortcuts, Reminders, Fitness,
   Maps, Contacts, Calendar, Passwords, Wallet, Watch, Messages, Files, Safari.
   Absent: Home, App Store, Music, Mail, Clock, Weather, Notes, Camera.
