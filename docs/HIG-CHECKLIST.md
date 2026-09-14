@@ -49,6 +49,8 @@ page that breaks a line here is a regression.
 | Motion | Add motion purposefully; brief and precise; avoid motion on frequent interactions; make it optional | the selection capsule slides in the tab bar (0.28s); tab content switches instantly (a cross-fade read as 「闪一下」 and was removed); switches and pressed rows use the system-like 0.2s; everything is off under `prefers-reduced-motion` |
 | Buttons; kit Row-Button `550:49677` | Full-width text rows in a group; destructive in red. Kit: 52pt row, 17pt regular, text left-aligned, tint / #ff383c destructive / #aeaeb2 disabled | `.acts button` 52px, 17/22, `text-align:left`, `--accent`; `.danger` = `--bad`; disabled = #aeaeb2; stacked full-width rows with inset hairlines (no side-by-side grid - its middle divider never lined up); the 复制免输入链接 row is one of these, not a pill beside a label |
 
+| 状态 tab blocks (2026-09-15) | see PHONE-NATIVE-REFERENCES.md | device card = Find My › Devices card structure (icon, name, status line) on the Settings card metrics; notice cards = Health › 摘要 (inset 16, caption 13 + hairline, title 17 semibold, body 15 secondary, tinted capsule button 30 high, cards 10 apart); action tiles = Reminders' 2×2 tile geometry (two columns, 8 gap, 80 high, radius 16) with Find My's tile look (28pt coloured circle + SF Symbol, 15 semibold title, 13 secondary subtitle); 明日安排 = Settings rows instead of a `<pre>` |
+
 Not done (and why): the swipe-back gesture belongs to a navigation stack
 (pushed detail views); this page has tabs, not a stack, and the HIG tab bar has
 no back gesture. If a detail page is ever added, it gets a real back button and
