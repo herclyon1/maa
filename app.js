@@ -442,7 +442,7 @@ function render() {
     <div class="acts">
       <button id="runnow">让它现在跑一趟</button>
       <button id="skiptoday">跳过它下一趟</button>
-      <button class="wide danger" id="estop">🛑 停止一切脚本和游戏</button>
+      <button class="wide danger" id="estop">停止一切脚本和游戏</button>
     </div>
     ${snap && snap.plan ? `<pre>${snap.plan.replace(/</g,"&lt;")}</pre>` : ""}
   </section>${cfgNote}`;
@@ -592,6 +592,16 @@ function render() {
    一页；上次看的那页记住。所有卡片都照常渲染，只是藏起来——待保存的改动和回执
    在别的页上也照常记着。用户 2026-09-14：「太长了……我要找某一个功能去修改，
    我要滑到最底下或者滑到某个中间段」。 */
+/* Tab icons: SF Symbols cannot be embedded in a web page (Apple licenses the
+   symbol font for native apps only), so these are hand-drawn SVGs in the same
+   monoline, 1.6-stroke, 24-unit style. Labels stay, as the HIG asks. */
+const TAB_ICONS = {
+  "状态": '<path d="M4 14a8 8 0 0 1 16 0"/><path d="M12 14l3.5-4"/><circle cx="12" cy="14" r="1.2" fill="currentColor" stroke="none"/><path d="M6 19h12"/>',
+  "方舟": '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/>',
+  "终末地": '<path d="M3 19l6-10 4 6 2-3 6 7H3z"/><circle cx="17" cy="6" r="2"/>',
+  "鸣潮": '<path d="M3 12h2l2-5 3 10 3-14 3 12 2-5 3 2h1"/>',
+  "手机": '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18h2"/>',
+};
 const TABS = [["状态", /^机器状态|^第一次使用|^机器最近的回执/], ["方舟", /^明日方舟/], ["终末地", /^终末地/],
               ["鸣潮", /^鸣潮/], ["手机", /^这台手机/]];
 let curTab = (() => { try { return localStorage.getItem("ark-remote-tab") || "状态"; } catch { return "状态"; } })();
@@ -617,13 +627,27 @@ function layoutTabs() {
   for (const sec of secs) sec.hidden = sec.dataset.tab !== curTab;
   const nav = $("#tabs");
   nav.hidden = present.size < 2;
-  nav.innerHTML = `<div class="seg">` + TABS.filter(([t]) => present.has(t)).map(([t]) =>
-    `<button type="button" class="${t === curTab ? "on" : ""}" data-tab="${t}">${t}</button>`).join("") + `</div>`;
+  nav.innerHTML = `<div class="seg"><i class="glide"></i>` + TABS.filter(([t]) => present.has(t)).map(([t]) =>
+    `<button type="button" class="${t === curTab ? "on" : ""}" data-tab="${t}" aria-label="${t}">` +
+    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TAB_ICONS[t] || ""}</svg>` +
+    `<span>${t}</span></button>`).join("") + `</div>`;
+  const glide = () => {
+    /* The selection capsule slides to the chosen tab (the Liquid Glass tab bar's
+       own motion); brief, and off under Reduce Motion (HIG: Motion). */
+    const on = nav.querySelector("button.on"), g = nav.querySelector(".glide");
+    if (!on || !g) return;
+    g.style.left = on.offsetLeft + "px"; g.style.width = on.offsetWidth + "px";
+  };
+  requestAnimationFrame(glide);
   for (const b of nav.querySelectorAll("button")) b.onclick = () => {
     curTab = b.dataset.tab;
     try { localStorage.setItem("ark-remote-tab", curTab); } catch {}
+    const main = $("#app");
+    main.classList.add("switching");
     for (const sec of document.querySelectorAll("#app > section")) sec.hidden = sec.dataset.tab !== curTab;
+    requestAnimationFrame(() => main.classList.remove("switching"));
     for (const x of nav.querySelectorAll("button")) x.classList.toggle("on", x.dataset.tab === curTab);
+    glide();
     window.scrollTo({ top: 0 });
   };
 }
