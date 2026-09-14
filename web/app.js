@@ -382,7 +382,7 @@ function echoFarmBlock(relay) {
     return `<div class="hint">🥚 正在刷「${cur["名字"] || "?"}」，刷到 ${String(cur["到"]).slice(11)} 为止（${cur["从"] ? String(cur["从"]).slice(11) + " 开始" : ""}）</div>
       <div class="row"><label>改成刷到几点
         <span class="hint">提前或延后都行，填 21:00 这种。已经过了的时刻＝立刻收工</span></label>
-        <input type="text" id="efnew" value="${String(cur["到"]).slice(11)}" inputmode="numeric"></div>
+        <input type="text" class="short" id="efnew" value="${String(cur["到"]).slice(11)}" inputmode="numeric"></div>
       <div class="acts"><button class="wide" id="echofarmuntil">改收工时刻</button></div>
       <div class="acts"><button class="wide" id="echofarmstop">提前收工（关掉脚本和游戏）</button></div>`;
   }
@@ -392,7 +392,7 @@ function echoFarmBlock(relay) {
       <select id="efboss">${opts}</select></div>
     <div class="row"><label>刷到几点（机器时间）
       <span class="hint">填 08:30 这种，已过就算明天。到点自动收工、配置还原</span></label>
-      <input type="text" id="efuntil" value="08:30" inputmode="numeric"></div>
+      <input type="text" class="short" id="efuntil" value="08:30" inputmode="numeric"></div>
     <div class="acts"><button class="wide" id="echofarm">开始刷</button></div>`;
 }
 

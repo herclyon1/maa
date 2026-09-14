@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0f1216">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260915001654">
+<link rel="manifest" href="manifest.webmanifest?v=20260915002017">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915001654">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915001654">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915002017">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915002017">
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
      上面跑的」). System colours from Apple's palette: grouped background, white
@@ -101,27 +101,33 @@
   .group > *:not(.row):not(.acts):not(pre):not(.setup):not(.warn):not(.hint):not(.group-foot){padding:11px 20px}
   /* Rows: name left, control right, hairline inset to the text like UITableView. */
   .row{position:relative;display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:15.5px 18px 15.5px 20px;min-height:53.33px}
-  .row::after{content:"";position:absolute;left:20px;right:20px;bottom:0;height:.5px;background:var(--line)}
+  /* One device pixel, like UITableView's hairline (1/scale pt): a 1px box scaled to a third. */
+  .row::after{content:"";position:absolute;left:20px;right:20px;bottom:0;height:1px;background:var(--line);transform:scaleY(.34);transform-origin:bottom}
   .row:last-child::after,.group > :last-child.row::after{display:none}
   .row > label{flex:1 1 0;min-width:40%;font-size:17px;line-height:22px}
   .row > :not(label){flex:0 0 auto;max-width:48%}
-  .row:has(.pills),.row:has(.picks),.row:has(.pillbox),.row:has(input[type=text]),
+  .row:has(.pills),.row:has(.picks),.row:has(.pillbox),.row:has(input[type=text]:not(.short)),
   .row:has(pre),.row:has(.ro:not(.short)){flex-direction:column;align-items:stretch;gap:8px}
   .row:has(.pills) > :not(label),.row:has(.picks) > :not(label),.row:has(.pillbox) > :not(label),
-  .row:has(input[type=text]) > :not(label),.row:has(.ro:not(.short)) > :not(label){max-width:none;align-self:flex-end}
+  .row:has(input[type=text]:not(.short)) > :not(label),.row:has(.ro:not(.short)) > :not(label){max-width:none;align-self:flex-end}
   .row .hint{display:block;color:var(--dim);font-size:15px;margin-top:1px;line-height:20px}
   .row .ro{color:var(--dim);font-size:17px;text-align:right}
   /* Footers and notes under a group, grey like Settings' explanatory text. */
   .group > p.hint,.group > .hint{margin:0;padding:10px 20px;color:var(--dim);font-size:13px;line-height:1.4}
   .warn{margin:8px 16px 0;padding:0;background:transparent;color:var(--warn);font-size:13px;line-height:1.4}
   /* Controls. */
-  .row input[type=text]{width:100%;max-width:100%;text-align:left;padding:10px 12px;font-size:17px}
+  .row input[type=text]:not(.short){width:100%;max-width:100%;text-align:left;padding:10px 12px;font-size:17px}
+  /* Number / short text: the compact value box (tertiary fill, radius 8) a compact
+     date picker shows in a Settings row. */
   input[type=text],input[type=number],select{
-    background:var(--field);border:0;color:var(--ink);
-    border-radius:8px;padding:8px 10px;font-size:17px;width:96px;text-align:right}
-  select{width:auto;max-width:100%;text-align:left;color:var(--dim);
-         -webkit-appearance:none;appearance:none;padding-right:26px;
-         background:var(--field) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='16' viewBox='0 0 12 16'%3E%3Cpath d='M2 6l4-4 4 4M2 10l4 4 4-4' fill='none' stroke='%238e8e93' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 8px center}
+    background:rgba(118,118,128,.12);border:0;color:var(--ink);
+    border-radius:8px;padding:6px 11px;font-size:17px;line-height:22px;width:96px;text-align:right}
+  input[type=text].short{width:auto;min-width:72px;max-width:120px}
+  /* Inline picker in a row: value in the secondary colour with chevron.up.chevron.down,
+     no box - a menu-style picker row in iOS 26 Settings. */
+  select{width:auto;max-width:100%;text-align:right;color:var(--dim);
+         -webkit-appearance:none;appearance:none;padding:0 20px 0 0;border-radius:0;
+         background:transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='18' viewBox='0 0 12 18'%3E%3Cpath d='M2 7l4-4 4 4M2 11l4 4 4-4' fill='none' stroke='%238e8e93' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right center}
   input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
   .sw{position:relative;width:63px;height:28px;flex:none}
   .sw input{opacity:0;width:100%;height:100%;margin:0}
@@ -129,7 +135,8 @@
      (the real control, not this CSS copy). app.js adds .native-switch to <html>
      when the browser has it; the drawn track is then hidden. */
   .native-switch .sw{width:auto;height:auto;display:flex}
-  .native-switch .sw input{opacity:1;width:auto;height:auto;margin:0;accent-color:var(--ok)}
+  /* WebKit's switch is 71×31; the Settings toggle measures 63×28 - scale it. */
+  .native-switch .sw input{opacity:1;width:auto;height:auto;margin:0;accent-color:var(--ok);zoom:.887}
   .native-switch .sw span{display:none}
   .sw span{position:absolute;inset:0;background:rgba(60,60,67,.3);border-radius:99px;transition:.2s;pointer-events:none}
   .sw span::after{content:"";position:absolute;width:38px;height:24px;left:2px;top:2px;
@@ -151,7 +158,7 @@
                color:var(--accent);background:var(--card);box-shadow:none;cursor:pointer;text-align:left;
                transition:background .15s}
   .acts button:active{background:color-mix(in srgb, var(--ink) 8%, var(--card));opacity:1}
-  .acts button::after{content:"";position:absolute;left:20px;right:20px;bottom:0;height:.5px;background:var(--line)}
+  .acts button::after{content:"";position:absolute;left:20px;right:20px;bottom:0;height:1px;background:var(--line);transform:scaleY(.34);transform-origin:bottom}
   .group > .acts:last-child button:last-child::after{display:none}
   button{font:inherit;border:0;border-radius:999px;padding:8px 14px;color:var(--accent);
          background:var(--field);cursor:pointer}
@@ -231,6 +238,6 @@
 </dialog>
 
 <div class="toast" id="toast"></div>
-<script src="app.js?v=20260915001654"></script>
+<script src="app.js?v=20260915002017"></script>
 </body>
 </html>
