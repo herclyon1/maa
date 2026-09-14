@@ -54,6 +54,12 @@ day = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
 # 账本里带着 OK-WW 自己报的「实际传送到第 1 个（0 起算）」= 第 2 个无音区
 LEDGER = [{"script": "OK-WW", "raw": {"okww_info": {"Teleport to Tacet Suppression": 1}}}]
 e = Eng()
+print("[开关默认关：一张都不发（用户 2026-09-14：先关掉）]")
+check("默认不发", report._attach_tacet_shots(e, day), [])
+check("默认没发说明", e.notifier.groups, [])
+from ark_relay import modes  # noqa: E402
+check("打开的回话", modes.set_tacet_shots(state, True), "无音区结算截图：以后日报后面会带上")
+check("读回是开", modes.tacet_shots_on(state), True)
 print("[只发最新那一张，带说明]")
 done = report._attach_tacet_shots(e, day)
 check("只发最新一张", done, ["11-02-10.000_tacet_drops_original.png"])
@@ -93,5 +99,8 @@ print("[读不到实际序号时，明说那是设置值]")
 e5 = Eng(); e5.state._ledger = []
 check("明说", "（实际序号没读到）" in report._tacet_caption(e5, day), True)
 
+print("[关掉之后又不发了]")
+check("关的回话", modes.set_tacet_shots(state, False), "无音区结算截图：不发了")
+check("读回是关", modes.tacet_shots_on(state), False)
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

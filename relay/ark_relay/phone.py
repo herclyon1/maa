@@ -612,6 +612,7 @@ def state_payload(cfg, state_dir: Path) -> dict:
                                   "从": r.get("started")} if r else {})(
                 __import__("ark_relay.echofarm", fromlist=["x"]).current(state_dir)),
             "下次别关机": modes.skip_armed(state_dir),
+            "无音区截图": modes.tacet_shots_on(state_dir),
             "周本": wb,
             # The three "once a week" things share one shape: done this week /
             # the switch / their own settings

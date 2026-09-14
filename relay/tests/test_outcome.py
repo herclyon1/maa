@@ -127,6 +127,20 @@ def main() -> int:
     check("理智够就不算", maa_sanity_short(sh.replace("Current Sanity: 17", "Current Sanity: 90")), None)
     check("没有这些行就不判", maa_sanity_short("TaskChainStart Fight\n"), None)
 
+    print("\n[周本没领奖＝没干成（2026-09-14 09:19 真实行）]")
+    wb = ("2026-09-14 10:02:00,000 INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0\n"
+          "2026-09-14 10:02:15,000 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：3/3_1.00, x60_0.79]\n"
+          "2026-09-14 10:04:16,000 INFO TaskExecutor FarmEchoTask:left_click claim_cancel_button_hcenter_vcenter (538, 675) after_sleep 0\n"
+          "DailyTask:Daily Task Completed\n"
+          "ForgeryTask:used all stamina\n")
+    check("打了没领＝红", "周本领到了奖励" in bad_labels(okww_checks(wb, expect_nest=False)), True)
+    check("触发→痕迹也报", "周本领奖改动在跑（打完按 F 领奖）" in bad_labels(patch_effect_checks(wb)), True)
+    wb_ok = wb + "2026-09-14 10:04:20,000 INFO TaskExecutor FarmEchoTask:周本领奖：已点确认\n"
+    check("领了＝绿", "周本领到了奖励" not in bad_labels(okww_checks(wb_ok, expect_nest=False)), True)
+    check("领了＝改动有痕迹", bad_labels(patch_effect_checks(wb_ok)), [])
+    wb_cap = wb.replace("3/3_1.00", "0/3_0.99") + "FarmEchoTask:本周周本次数已领满（0/3），不进本，跳过\n"
+    check("本周领满＝绿", "周本领到了奖励" not in bad_labels(okww_checks(wb_cap, expect_nest=False)), True)
+
     print("\n[只刷落渊南丘：2026-09-13 真实日志——四个点位全进了，四天没人发现]")
     # Verbatim from history/2026-09-13/wuwa/OK-WW-05-19-22.log (nest lines only).
     text5 = ("2026-09-13 09:22:07,105 INFO TaskExecutor NightmareNestTask:Box(name='已击败残象：0/41', x=889, y=373, width=195, height=30, confidence=100) is not complete\n"

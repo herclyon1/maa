@@ -274,6 +274,7 @@ try:
     # The stub above replaced the module attribute; reload to get the real one back.
     import importlib
     _mod = importlib.reload(sys.modules["ark_relay.echofarm"])
+    _mod.STOP_BAT = str(tmpdir() / "ark-okww-stop.bat")   # never the repo cwd
     _mod.stop_okww()
     check("结束了计划任务", any("schtasks" in c and "/end" in c for c in _ran), True)
     check("任务名对得上", any(_mod.TASK_NAME in c for c in _ran), True)

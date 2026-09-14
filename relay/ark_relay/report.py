@@ -192,8 +192,11 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     # on the spot.") So it must come after anything I write, and I must not be
     # able to touch its numbers -- they come from versions/scoreboard, recorded
     # by append_ledger after every run.
-    score = scoreboard.line(eng.state.store, str(eng.state.store.get("versions", "code") or ""))
-    tail = "".join(f"\n\n{x}" for x in (act, pool, score) if x)
+    # The scoreboard line stays computed and logged (the user's 09-06 order was
+    # that I cannot touch its numbers), but the user, 2026-09-14: 「这些全部都没
+    # 用的东西毫无意义」 - so it no longer goes into the message.
+    log.info("记分：%s", scoreboard.line(eng.state.store, str(eng.state.store.get("versions", "code") or "")))
+    tail = "".join(f"\n\n{x}" for x in (act, pool) if x)
     written = summary.daily_report(eng.cfg, entries, tomorrow)
     if written:
         log.info("📋 日报由模型撰写（%d 条记录）", len(entries))
@@ -318,6 +321,9 @@ def _attach_tacet_shots(eng, day: str) -> list[str]:
     Each image is sent only once (the file name is recorded in the state dir).
     Returns the file names sent, for tests.
     """
+    from . import modes  # noqa: PLC0415
+    if not modes.tacet_shots_on(eng.state.dir):
+        return []
     shots = _tacet_shots_dir(eng)
     if shots is None:
         return []

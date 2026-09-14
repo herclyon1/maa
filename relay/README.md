@@ -95,6 +95,7 @@ JSON patch.
 | `set_medicine` | no, writes config | **yes** |
 | `set_wait_time` | no, writes config | **yes** - 60-600 only, see [CONFIG.md](../docs/CONFIG.md) |
 | `toggle_task` | no, writes config | **yes** - not implemented; refuses explicitly |
+| `tacet_shots` | yes | no - 日报后面要不要带无音区结算截图（`on:true/false`，默认不带；手机页那个按钮） |
 | `skip_shutdown` | yes | no - **一次性、不带时效**：吃掉下一次真正要执行的关机，用完即失效。开了不取消会一直等到下一趟队列跑完才关，机器可能白开一夜。桌面 `中继关机开关.bat` 和手机页按的都是它 |
 | `weekly_boss` | yes | no - 鸣潮周本「打第几个」。次数（3）和难度（90 级）是游戏规则，钉死在中继里不给改 |
 | `echo_farm` | yes | yes - 鸣潮：盯着 F2「讨伐强敌」里的第几个 boss 刷 4C 声骸，**刷到指定时刻为止**（`until` 写 `08:30` 这种，按机器的钟）。开跑前把 FarmEchoTask 的原配置整份存下来，收工时还原——那份配置和每日的周本共用 |

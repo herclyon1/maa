@@ -583,10 +583,10 @@ def render(banners: list[Banner], now: datetime,
         blocks.append("\n".join(lines))
     if not blocks:
         return ""
-    out = "🎴 卡池\n" + "\n".join(blocks)
-    if trace is not None and trace.checks:
-        out += "\n核对　" + "；".join(trace.checks)
-    return out
+    # The cross-check results stay in the trace file (state/banners/<day>.json) and
+    # withheld lines still say so; the footer listing them was dropped on
+    # 2026-09-14 at the user's request (it carried nothing he acts on).
+    return "🎴 卡池\n" + "\n".join(blocks)
 
 
 # ── Aggregation: pull all three sources and render the report section ──

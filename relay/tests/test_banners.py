@@ -398,7 +398,7 @@ def _supervision() -> None:
     # 5. the footer
     tr2 = _b.Trace.new(); tr2.checks.append("鸣潮：库街区=游戏公告 ✓")
     out2 = render([c], now, {}, trace=tr2)
-    check("页脚列出核对结果", out2.splitlines()[-1], "核对　鸣潮：库街区=游戏公告 ✓")
+    check("页脚不再印核对结果（用户 09-14）", "核对　" in out2, False)
     # 6. the trace file: one per day next to the state, sources and checks inside
     import sys as _sys  # noqa: PLC0415
     _sys.path.insert(0, str(Path(__file__).resolve().parent))

@@ -90,6 +90,8 @@ def latest_okww_run_log(history_dir) -> "tuple[Path, str] | None":
 _PATCH_EFFECTS = (
     ("周本改动在跑（进本前读剩余次数）",
      r"FarmEchoTask:left_click boss_proceed", r"周本本周剩余次数原文", "周本任务点了「前往」"),
+    ("周本领奖改动在跑（打完按 F 领奖）",
+     r"FarmEchoTask:info_set Teleport to Boss Weekly Challenge", r"周本领奖：", "跑了周本"),
     ("巢穴改动在跑（只刷指定点位）",
      r"NightmareNestTask:opened gray_book_boss", r"nightmare nest: 只刷 \[", "巢穴任务打开了残象聚落页"),
     ("日常改动在跑（附加任务提到刷体力之前）",
@@ -103,6 +105,7 @@ _PATCH_EFFECTS = (
 # 「贴了补丁，实际没运行」 recurring: every binding must come with a way to see it ran.
 PATCH_COVERAGE = {
     "FarmEchoTask.click_configured_boss_level": "周本改动在跑（进本前读剩余次数）",
+    "FarmEchoTask.handle_claim_button": "周本领奖改动在跑（打完按 F 领奖）",
     "NightmareNestTask.find_nest": "巢穴改动在跑（只刷指定点位）",
     "NightmareNestTask.run": "巢穴改动在跑（只刷指定点位）",
     "NightmareNestTask.get_nest_to_go": "巢穴改动在跑（只刷指定点位）",
@@ -230,6 +233,15 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
                              "开了界面就原地退出了"))
         else:
             out.append(Check("残象聚落", False, "这一轮根本没跑到这个任务"))
+
+    # The weekly boss is only worth running for its reward. 2026-09-14: fought
+    # twice, ESC'd the claim dialog twice, and the day read 全绿.
+    if "Teleport to Boss Weekly Challenge" in text:
+        claimed = "周本领奖：已点确认" in text
+        capped = "收取物资次数已达到上限" in text or bool(re.search(r"本周剩余可收取次数[：:]\s*0\s*/", text))
+        skipped = "结晶波片不足，取消并跳过本次周本" in text or "本周周本次数已领满" in text
+        ok_ = claimed or capped or skipped
+        out.append(Check("周本领到了奖励", ok_, "" if ok_ else "周本打了，但没有领奖那一步：奖励没拿到"))
 
     if expect_stamina:
         if _STAMINA_SHORT in text and not _STAMINA_SPENT.search(text):

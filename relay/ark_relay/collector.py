@@ -88,6 +88,10 @@ _OKWW_DONE = "Daily Task Completed"
 _TRANSITIONAL = (
     "游戏更新成功，即将重启任务",
     "游戏更新成功, 游戏即将重启",
+    # AUTO-MAS's own emulator-launch miss: the attempt's log is the single line
+    # 「模拟器启动失败, 无日志记录」 and the next attempt starts one second later
+    # (2026-09-14 10:51:56 → 10:51:57). The report printed it as ❌ MaaEnd 时长未知.
+    "模拟器启动失败",
 )
 
 

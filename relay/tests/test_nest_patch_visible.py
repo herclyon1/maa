@@ -69,16 +69,22 @@ from ark_relay import plan                                         # noqa: E402
 nest = {"Only Farm These Nests": "落渊南丘"}
 zh = {"Tacet Discord Nest": "残象聚落"}
 
+# Presence is read from OK-WW's binding report (okww_overlay.last_report), not
+# from the source file. Until 2026-09-14 this block passed only because a stray
+# report file with an error in it sat in the repo's cwd - stub the report here.
 os.environ["ARK_OKWW_DIR"] = str(okww(b"x = 1\n" + _NEST_MARKER))
+okww_overlay.last_report = lambda: {"applied": ["NightmareNestTask.find_nest"], "skipped": []}
 good = plan._okww_nest_bit({}, nest, [], zh)
 if good is None:
     print("  · 这一段的函数名变了，跳过（下面的标题检查照跑）")
 else:
     check("贴上了就照常说只打南丘", "只打落渊南丘" in good, True)
-    os.environ["ARK_OKWW_DIR"] = str(okww(b"class NightmareNestTask:\n    pass\n"))
+    okww_overlay.last_report = lambda: {
+        "applied": [], "skipped": [{"what": "NightmareNestTask.find_nest", "why": "结构变了"}]}
     bad = plan._okww_nest_bit({}, nest, [], zh)
     check("没贴上就说实话", "实际会刷全部点位" in bad, True)
     check("而且点名了本该只打哪", "本该只打落渊南丘" in bad, True)
+okww_overlay.last_report = _real_report
 os.environ.pop("ARK_OKWW_DIR", None)
 
 print("\n[通知标题要分得出「贴上了」和「贴不上」]")

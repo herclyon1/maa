@@ -35,6 +35,13 @@ rec2 = collector.parse_record(d / "MaaEnd-06-11-14.json", root)
 if rec2 is None or rec2.ok or rec2.failed_tasks != ["自动采集"]:
     fails.append(f"有任务失败的应仍判失败：{rec2 and (rec2.ok, rec2.failed_tasks)}")
 
+# AUTO-MAS's own emulator-launch miss (2026-09-14 10:51:56, verbatim): a one-line
+# log, superseded one second later. Neither a failure nor a success.
+(d / "MaaEnd-06-51-56.json").write_text(json.dumps({"maaend_result": "[自动采集] 模拟器启动失败"}, ensure_ascii=False), encoding="utf-8")
+(d / "MaaEnd-06-51-56.log").write_text("模拟器启动失败, 无日志记录\n", encoding="utf-8")
+rec4 = collector.parse_record(d / "MaaEnd-06-51-56.json", root)
+if rec4 is None or not rec4.transitional or rec4.failed_tasks:
+    fails.append(f"模拟器启动失败那条应是过渡记录：{rec4 and (rec4.transitional, rec4.failed_tasks)}")
 # 开了没收尾的（卡住）也不许洗白
 stuck = good + "[2026-09-06 10:10:00.000] 任务开始: 🧺自动采集\n"
 (d / "MaaEnd-06-14-25.json").write_text(json.dumps({"maaend_result": "MaaEnd 部分任务执行失败: SellProduct"}, ensure_ascii=False), encoding="utf-8")

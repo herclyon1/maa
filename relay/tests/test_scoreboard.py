@@ -98,12 +98,10 @@ day = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
 lines = [json.loads(x) for x in (d4 / f"ledger-{day}.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
 check("账本照样写进去了", [x["run_id"] for x in lines], ["boom"])
 
-print("\n[这一行真的挂在日报末尾，而且在我写的字之后]")
+print("\n[照算照记进日志，但不再印进日报（用户 2026-09-14）]")
 src = (Path(__file__).resolve().parents[1] / "ark_relay" / "report.py").read_text(encoding="utf-8")
-check("日报里调了它", "scoreboard.line(" in src, True)
-i, j = src.index("score = scoreboard.line"), src.index('tail = "".join')
-check("先算出来再拼进 tail", i < j, True)
-check("排在活动和卡池之后", "(act, pool, score)" in src, True)
+check("日报流程里仍然算它", "scoreboard.line(" in src, True)
+check("不再拼进正文", "(act, pool, score)" in src, False)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

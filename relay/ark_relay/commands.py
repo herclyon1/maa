@@ -39,7 +39,7 @@ log = logging.getLogger("ark.commands")
 
 # Actions that only change what happens next, and undo themselves.
 REVERSIBLE = {"skip_today", "debug_mode", "skip_shutdown", "weekly_boss", "echo_farm_stop",
-              "echo_farm_until"}
+              "echo_farm_until", "tacet_shots"}
 
 # Actions that write to a config file on disk.
 MUTATING = {"set_stage", "set_medicine", "toggle_task", "set_wait_time",
@@ -684,6 +684,10 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             cfg = Config()
             note = echofarm.finish(cfg, "手动停止")
             return (True, note) if note else (True, "本来就没有在刷声骸")
+        if action == "tacet_shots":
+            from .modes import set_tacet_shots  # noqa: PLC0415
+            state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
+            return True, set_tacet_shots(state_dir, bool(cmd.get("on", False)))
         if action == "skip_shutdown":
             # The 「今晚别关机」 button on the phone. It carries no expiry: it eats
             # the **next** shutdown that would actually be executed, once, and is

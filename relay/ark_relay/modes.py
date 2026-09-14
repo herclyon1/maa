@@ -340,3 +340,18 @@ def _maybe_restore(state_dir: Path, automas_dir: Path | None,
         return [f"跳过「{queue}」后恢复失败：{detail}——请手动检查"]
     store.pop("queues", "skip_restore")
     return [f"队列「{queue}」的跳过已结束，定时已恢复"]
+
+
+# ── Tacet settlement screenshot push, off by default ─────────────────────────
+# Phone switch added 2026-09-14; the user wants it off until the shots are useful.
+def tacet_shots_on(state_dir) -> bool:
+    return (Path(state_dir) / "tacet-shots.on").exists()
+
+
+def set_tacet_shots(state_dir, on: bool) -> str:
+    f = Path(state_dir) / "tacet-shots.on"
+    if on:
+        f.write_text("on\n", encoding="utf-8")
+        return "无音区结算截图：以后日报后面会带上"
+    f.unlink(missing_ok=True)
+    return "无音区结算截图：不发了"

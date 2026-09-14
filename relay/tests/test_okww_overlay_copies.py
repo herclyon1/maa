@@ -46,6 +46,8 @@ CHANGES = {
     "主动跳过的信号照原样抛": "isinstance(exc.__cause__, TaskDisabledException)",
     "传送界面来晚了再等一次": "多等 15 秒",
     "巢穴只刷指定点位": "Only Farm These Nests",
+    "周本打完按 F 领奖": "周本领奖：已点确认",
+    "周本领完点退出副本": "退出副本",
     "巢穴没打满就接着打": "is not complete",
     "巢穴白打一局就拉黑": "no progress after an attempt",
 }

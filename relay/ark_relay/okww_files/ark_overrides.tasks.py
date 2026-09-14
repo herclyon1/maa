@@ -126,6 +126,66 @@ def _install():
             return False
 
 
+def _install_claim():
+    """Weekly boss (战歌重奏): actually take the reward.
+
+    Upstream FarmEchoTask is 「farm 4-cost echoes」: after the boss it presses F
+    at the crystal, cannot recognise the 「领取奖励需消耗60点结晶波片」 dialog
+    (has_claim's template misses it - measured 2026-09-01), sends ESC and leaves.
+    This lived in a copied do_run until the 2026-09-09 rewrite dropped it; on
+    2026-09-14 the boss was fought twice and nothing was claimed. Hooking
+    handle_claim_button is the smallest point: it runs right after that F.
+    """
+    from src.task.FarmEchoTask import FarmEchoTask
+
+    upstream_claim = FarmEchoTask.handle_claim_button
+
+    def _full_ocr(self):
+        found = self.ocr(box=self.box_of_screen(0.0, 0.0, 1.0, 1.0)) or []
+        return found, " ".join(str(b) for b in found)
+
+    @override(FarmEchoTask, "handle_claim_button")
+    def handle_claim_button(self):
+        weekly = str(self.config.get("Teleport to Boss") or "") == "Weekly Challenge"
+        if not weekly or farming_echoes():
+            return upstream_claim(self)
+        try:
+            self.sleep(1.5)
+            found, text = _full_ocr(self)
+            if "领取奖励需消耗" not in text or "结晶波片" not in text:
+                return upstream_claim(self)
+            self.log_info(f"周本领奖：认出弹窗，点确认。读到 {text[:70]}")
+            btn = self.click_dialog_right_button()
+            if self.wait_feature("gem_add_stamina", horizontal_variance=0.4, vertical_variance=0.05,
+                                 time_out=3, settle_time=0.5):
+                # 「用备用体力补足」 - the two clicks are the game's own dialog, copied
+                # from BaseWWTask.use_stamina (the user, 2026-09-01: use the backup).
+                self.log_info("周本领奖：波片不够，动用备用体力")
+                self.click_relative(0.70, 0.71, hcenter=True, after_sleep=1)
+                self.click_relative(0.70, 0.71, hcenter=True, after_sleep=1)
+                self.back(after_sleep=1)
+                self.click(btn, after_sleep=1)
+            self.sleep(3)
+            self.log_info("周本领奖：已点确认")
+            # The game then shows the full-screen 「挑战成功」 settlement (ESC does
+            # nothing there); 「退出副本」 returns to the open world.
+            last = None
+            for _ in range(8):
+                last, _t = _full_ocr(self)
+                quit_btn = next((b for b in last if "退出副本" in str(b)), None)
+                if quit_btn is not None:
+                    self.click(quit_btn, after_sleep=2)
+                    self.log_info("周本领奖：结算页点了「退出副本」")
+                    self.wait_in_team_and_world(time_out=120)
+                    return True
+                self.sleep(1)
+            self.log_info(f"周本领奖：没等到结算页，整屏读到 {last}")
+            return True
+        except Exception as exc:  # noqa: BLE001 - a failed claim must not kill the run
+            self.log_info(f"周本领奖：这一步没做成 {exc!r}")
+            return upstream_claim(self)
+
+
 class _EarlyOpen(Exception):
     """Confirmed the 限时提前开放 dialog and landed straight in the arena."""
 
@@ -607,6 +667,8 @@ def _install_nest():
 
 
 def _write_report(error=""):
+    if os.name != "nt":
+        return          # the relay's tests exec this file on a Mac; no report there
     try:
         with open(REPORT, "w", encoding="utf-8") as fh:
             json.dump({"applied": _applied, "skipped": _skipped, "error": error},
@@ -620,6 +682,7 @@ try:
     _install()
     _install_teleport()
     _install_nest()
+    _install_claim()
 except Exception:  # noqa: BLE001 - never stop OK-WW from starting
     _write_report(traceback.format_exc()[-800:])
 else:
