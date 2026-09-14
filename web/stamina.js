@@ -153,18 +153,25 @@
     } catch (e) { out["终末地"] = { "错误": e.message }; }
     return out;
   }
-  /* 字段名没有文档，按含义认：带 ap/sanity/stamina 的数字，小的是当前、带 max/limit 的是上限。 */
+  /* 真实样本（2026-09-15 03:45，森空岛 card/detail）：
+       dungeon = {"curStamina": "179", "maxTs": "1789490362", "maxStamina": "360"}
+     值是字符串。先按这三个名字取；名字变了再按含义认（带 stamina/ap/sanity 的数字，
+     带 max 的是上限），都认不出就把看到的名字列出来。 */
   function endfieldFromDungeon(dg) {
     const keys = Object.keys(dg || {});
     if (!keys.length) return { "错误": "森空岛没给终末地的理智" };
-    const nums = keys.filter((k) => typeof dg[k] === "number" && /ap|sanity|stamina|energy|power/i.test(k));
-    if (!nums.length) return { "错误": "终末地的理智没认出来：" + keys.slice(0, 6).join("、") };
-    const big = nums.filter((k) => /max|limit/i.test(k)), small = nums.filter((k) => !/max|limit/i.test(k));
-    const cur = small.length ? Math.min(...small.map((k) => dg[k])) : undefined;
-    const top = big.length ? Math.max(...big.map((k) => dg[k])) : (nums.length > 1 ? Math.max(...nums.map((k) => dg[k])) : undefined);
-    const whenKey = keys.find((k) => /recover|full|complete/i.test(k) && typeof dg[k] === "number" && dg[k] > 1e9);
+    const num = (v) => (v === undefined || v === null || v === "" || isNaN(Number(v))) ? undefined : Number(v);
+    let cur = num(dg.curStamina), top = num(dg.maxStamina), full = num(dg.maxTs);
+    if (cur === undefined || top === undefined) {
+      const cands = keys.filter((k) => /stamina|ap|sanity|energy|power/i.test(k) && num(dg[k]) !== undefined);
+      const big = cands.filter((k) => /max|limit/i.test(k)), small = cands.filter((k) => !/max|limit/i.test(k));
+      if (cur === undefined && small.length) cur = Math.min(...small.map((k) => num(dg[k])));
+      if (top === undefined && big.length) top = Math.max(...big.map((k) => num(dg[k])));
+      if (full === undefined) { const k = keys.find((x) => /ts|time|recover|full/i.test(x) && num(dg[x]) > 1e9); if (k) full = num(dg[k]); }
+    }
+    if (cur === undefined) return { "错误": "终末地的理智没认出来：" + keys.slice(0, 6).join("、") };
     const o = { "理智": cur, "上限": top };
-    if (whenKey) o["回满"] = stampFrom(dg[whenKey]);
+    if (full && cur < (top ?? Infinity)) o["回满"] = stampFrom(full);
     return o;
   }
 
