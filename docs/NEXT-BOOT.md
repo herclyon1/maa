@@ -1,5 +1,17 @@
 # Check these when the machine is next up
 
+## 2026-09-15 boot - two things for the phone's number tiles
+
+1. **Put the Kuro BBS pair into the machine's `.env`** (`C:\ProgramData\ark-relay\.env`):
+   `KUROBBS_TOKEN=` and `KUROBBS_DID=` with the values from the Mac's
+   `~/.config/ark/.env` (winps, never in the repo), then restart the service. Without
+   them the 鸣潮 tile says 「没配库街区 token/did」.
+2. **Endfield stamina**: `resources.endfield_from_dungeon` reads `detail.dungeon` of
+   the Skland card, whose key names are undocumented; on the Mac the card call hit
+   401 (Skland rate-limits cred creation) before the keys could be read. After boot,
+   look at relay.log for 「资源：终末地 读不到」 and, if it says 认不出, print
+   `detail.dungeon` once on the machine and pin the names in the test.
+
 ## 2026-09-15 08:45 boot - the daily report now goes to Server酱 (pushed 09-14 late night, lands by self-update)
 
 The machine shut down at ~21:52 on 09-14 before this was written, so it arrives

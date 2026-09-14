@@ -33,6 +33,7 @@ import base64
 import hashlib
 import gzip
 import json
+from datetime import datetime
 import logging
 import re
 import threading
@@ -647,4 +648,14 @@ def state_payload(cfg, state_dir: Path) -> dict:
         out["plan"] = plan.next_plan(cfg.automas_dir)
     except Exception:  # noqa: BLE001
         out["plan"] = ""
+    # The number tiles on the 状态 tab: live stamina from the games' own accounts
+    # (cached ten minutes) and today's run count from the ledger.
+    try:
+        from . import resources  # noqa: PLC0415
+        from .config import SERVER_TZ  # noqa: PLC0415
+        from .core import State  # noqa: PLC0415
+        out["资源"] = resources.fetch(cfg)
+        out["今天"] = resources.today(State(Path(state_dir)), datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
+    except Exception:  # noqa: BLE001
+        log.warning("资源和今天的统计读不到", exc_info=True)
     return out
