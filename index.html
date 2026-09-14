@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0f1216">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260915002017">
+<link rel="manifest" href="manifest.webmanifest?v=20260915002210">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915002017">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915002017">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915002210">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915002210">
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
      上面跑的」). System colours from Apple's palette: grouped background, white
@@ -125,7 +125,7 @@
   input[type=text].short{width:auto;min-width:72px;max-width:120px}
   /* Inline picker in a row: value in the secondary colour with chevron.up.chevron.down,
      no box - a menu-style picker row in iOS 26 Settings. */
-  select{width:auto;max-width:100%;text-align:right;color:var(--dim);
+  select{width:auto;max-width:100%;height:22px;line-height:22px;text-align:right;color:var(--dim);
          -webkit-appearance:none;appearance:none;padding:0 20px 0 0;border-radius:0;
          background:transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='18' viewBox='0 0 12 18'%3E%3Cpath d='M2 7l4-4 4 4M2 11l4 4 4-4' fill='none' stroke='%238e8e93' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right center}
   input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
@@ -136,7 +136,7 @@
      when the browser has it; the drawn track is then hidden. */
   .native-switch .sw{width:auto;height:auto;display:flex}
   /* WebKit's switch is 71×31; the Settings toggle measures 63×28 - scale it. */
-  .native-switch .sw input{opacity:1;width:auto;height:auto;margin:0;accent-color:var(--ok);zoom:.887}
+  .native-switch .sw input{opacity:1;width:auto;height:auto;margin:-3px 0;accent-color:var(--ok);zoom:.887}
   .native-switch .sw span{display:none}
   .sw span{position:absolute;inset:0;background:rgba(60,60,67,.3);border-radius:99px;transition:.2s;pointer-events:none}
   .sw span::after{content:"";position:absolute;width:38px;height:24px;left:2px;top:2px;
@@ -238,6 +238,6 @@
 </dialog>
 
 <div class="toast" id="toast"></div>
-<script src="app.js?v=20260915002017"></script>
+<script src="app.js?v=20260915002210"></script>
 </body>
 </html>
