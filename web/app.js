@@ -629,23 +629,28 @@ function layoutTabs() {
   nav.hidden = present.size < 2;
   nav.innerHTML = `<div class="seg"><i class="glide"></i>` + TABS.filter(([t]) => present.has(t)).map(([t]) =>
     `<button type="button" class="${t === curTab ? "on" : ""}" data-tab="${t}" aria-label="${t}">` +
-    (TAB_IMAGES[t] ? `<img class="tabimg" src="${TAB_IMAGES[t]}" alt="">`
-                   : `<i class="sf" style="-webkit-mask-image:url(${TAB_ICONS[t]});mask-image:url(${TAB_ICONS[t]})" aria-hidden="true"></i>`) +
+    `<span class="ico">` + (TAB_IMAGES[t] ? `<img class="tabimg" src="${TAB_IMAGES[t]}" alt="">`
+                   : `<i class="sf" style="-webkit-mask-image:url(${TAB_ICONS[t]});mask-image:url(${TAB_ICONS[t]})" aria-hidden="true"></i>`) + `</span>` +
     `<span>${t}</span></button>`).join("") + `</div>`;
-  const glide = () => {
+  const glide = (animate) => {
     /* The selection capsule slides to the chosen tab (the Liquid Glass tab bar's
-       own motion); brief, and off under Reduce Motion (HIG: Motion). */
+       own motion); brief, and off under Reduce Motion (HIG: Motion). On a
+       (re)render it is placed without motion - otherwise every state refresh
+       replayed the slide from the left edge. */
     const on = nav.querySelector("button.on"), g = nav.querySelector(".glide");
     if (!on || !g) return;
+    if (!animate) g.style.transition = "none";
     g.style.left = on.offsetLeft + "px"; g.style.width = on.offsetWidth + "px";
+    if (!animate) { void g.offsetWidth; g.style.transition = ""; }
   };
-  requestAnimationFrame(glide);
+  glide(false);
+  requestAnimationFrame(() => glide(false));
   for (const b of nav.querySelectorAll("button")) b.onclick = () => {
     curTab = b.dataset.tab;
     try { localStorage.setItem("ark-remote-tab", curTab); } catch {}
     for (const sec of document.querySelectorAll("#app > section")) sec.hidden = sec.dataset.tab !== curTab || sec.dataset.empty === "1";
     for (const x of nav.querySelectorAll("button")) x.classList.toggle("on", x.dataset.tab === curTab);
-    glide();
+    glide(true);
     window.scrollTo({ top: 0 });
   };
 }
