@@ -473,6 +473,7 @@ function render() {
       <button id="runnow">让它现在跑一趟</button>
       <button id="skiptoday">跳过它下一趟</button>
       <button class="wide" id="noshut">${relay["下次别关机"] ? "✕ 取消「下次跑完不关机」" : "下次跑完不关机"}</button>
+      <button class="wide" id="tacetshots">${relay["无音区截图"] ? "✕ 关掉「日报后面带无音区结算截图」" : "日报后面带无音区结算截图"}</button>
       <button class="wide danger" id="estop">🛑 停止一切脚本和游戏</button>
     </div>
     ${snap && snap.plan ? `<pre>${snap.plan.replace(/</g,"&lt;")}</pre>` : ""}
@@ -700,6 +701,9 @@ function wire() {
     ? oneShot({ action:"skip_shutdown", off:true }, "已取消，下次跑完照常关机")
     : oneShot({ action:"skip_shutdown" },
         "下一次本该关机时会跳过（只跳这一次，再下一趟照常关）"));
+  $("#tacetshots").onclick = () => (((snap && snap.relay) || {})["无音区截图"]
+    ? oneShot({ action:"tacet_shots", on:false }, "不发了")
+    : oneShot({ action:"tacet_shots", on:true }, "以后日报后面会带上无音区结算截图"));
   // 说明必须准：这条跳的是**机器执行它那一天**。机器关着时你现在按，
   // 它要等下次开机才执行，跳掉的就是那一天，不是今天。
   $("#estop").onclick = () => {
