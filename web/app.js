@@ -621,7 +621,30 @@ function layoutTabs() {
     }
     // A header with nothing under it is not a group (a game whose config has no
     // rows this time); Settings never shows an empty card.
-    if (!sec.querySelector(":scope > .group").children.length) sec.dataset.empty = "1";
+    const group = sec.querySelector(":scope > .group");
+    if (!group.children.length) sec.dataset.empty = "1";
+    /* Settings explains a setting in a footer under the card, not inside the row
+       (Settings › Accessibility › Motion, measured on the simulator 2026-09-14).
+       Each row's hint moves to the group's footer, prefixed by the row's name when
+       the card has more than one row. */
+    if (!sec.querySelector(":scope > .foot")) {
+      const hints = [...group.querySelectorAll(":scope > .row > label > .hint")];
+      if (hints.length) {
+        const foot = document.createElement("div");
+        foot.className = "foot";
+        const rows = group.querySelectorAll(":scope > .row").length;
+        for (const h of hints) {
+          const label = h.parentElement;
+          const title = [...label.childNodes].filter((n) => n !== h && !(n.tagName === "SMALL"))
+            .map((n) => n.textContent).join("").trim();
+          const p = document.createElement("p");
+          p.textContent = (rows > 1 && title ? title + "：" : "") + h.textContent.trim();
+          foot.appendChild(p);
+          h.remove();
+        }
+        sec.appendChild(foot);
+      }
+    }
   }
   if (!present.has(curTab)) curTab = "状态";
   for (const sec of secs) sec.hidden = sec.dataset.tab !== curTab || sec.dataset.empty === "1";
