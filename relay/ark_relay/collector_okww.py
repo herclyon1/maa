@@ -621,7 +621,11 @@ def _okww_steps(text: str, entries: int) -> list[str]:
             steps.append(f"周本（已完成，领了 {claims} 次，本周还剩 {remain} 次）")
         else:
             steps.append("周本（打了，没领到奖励）")
-    if "weekly garden already completed" in text:
+    # Upstream GardenTask logs 「乐园任务完成, 已达到上限」 both when it finds the
+    # week already done and right after finishing it (GardenTask.run, read
+    # 2026-09-14); the older English line is kept for old logs. Without this the
+    # weekly gate never closed and the phone said 「本周还没做」 all week.
+    if "weekly garden already completed" in text or "乐园任务完成" in text:
         steps.append("周常乐园（本周已完成）")
     elif "GardenTask:" in text:
         steps.append("周常乐园")

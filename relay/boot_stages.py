@@ -338,10 +338,20 @@ def _stage_announce_update(notifier, log) -> None:
                          note.get("version") or "?")
                 selfupdate._remember_announced(HERE, int(note.get("version") or 0))
                 return
+            # The notes are what he reads; since 2026-09-14 the push itself is
+            # log-only (docs/NOTIFICATIONS.md), so they go into the day's report
+            # instead (「今天中继改了」 at the end of the daily). Appended per
+            # deploy; the report reads the day's file.
+            if notes:
+                try:
+                    from ark_relay import report as _rp  # noqa: PLC0415
+                    _rp.remember_change(HERE / "state", notes, str(note.get("version") or ""))
+                except Exception:
+                    log.exception("更新说明没记进当天的日报")
             if errors := notifier.send(title, body):
                 log.error("更新通知没发出去: %s", "；".join(errors))
             else:
-                log.info("已推送更新通知：%d 个文件", len(files))
+                log.info("更新说明已记入当天日报（v%s）", note.get("version") or "?")
                 _st.set("versions", "announced_notes", notes)
     except Exception:
         log.exception("推送更新通知出错，跳过")

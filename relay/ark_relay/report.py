@@ -217,7 +217,11 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
         body += f"\n\n另外测试跑过 {len(tests)} 趟（不计入）"
     # The Endfield daily list goes at the very end as a footnote (user, 2026-09-02)
     foot = core.daily_footnote(entries)
-    return title2, body + tail + (f"\n\n{foot}" if foot else "")
+    # Deploys of the day: the user, 2026-09-14: 「更新通知被你删了之后你写的更新内容
+    # 不就没人看了吗？」 - so they live here, once, at the end.
+    changes = changes_of_day(eng.cfg.state_dir, day)
+    tail2 = f"\n\n今天中继改了什么\n{changes}" if changes else ""
+    return title2, body + tail + (f"\n\n{foot}" if foot else "") + tail2
 
 
 def _announce_banners(eng, now: datetime,
@@ -313,6 +317,30 @@ def _tacet_caption(eng, day: str = "") -> str:
     if want is not None:
         return f"设置里写的是第 {want} 个：{wuwa_tacet.label(want)}，掉 {wuwa_tacet.reward(want)}（实际序号没读到）"
     return "无音区序号没读到，设置和实际都没拿到"
+
+
+def _changes_file(state_dir, day: str) -> Path:
+    return Path(state_dir) / f"changes-{day}.txt"
+
+
+def remember_change(state_dir, notes: str, version: str = "", day: str | None = None) -> None:
+    """Keep a deploy's release notes for the day's report (the push is log-only)."""
+    day = day or datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
+    f = _changes_file(state_dir, day)
+    f.parent.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(tz=SERVER_TZ).strftime("%H:%M")
+    with f.open("a", encoding="utf-8") as fh:
+        fh.write(f"· {stamp}{'（v' + version + '）' if version else ''}\n{notes.strip()}\n")
+
+
+def changes_of_day(state_dir, day: str) -> str:
+    """The day's accumulated release notes, '' when nothing was deployed."""
+    if not state_dir:
+        return ""
+    try:
+        return _changes_file(state_dir, day).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
 
 
 def test_windows(state_dir) -> list[dict]:

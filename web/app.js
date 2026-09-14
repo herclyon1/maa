@@ -579,7 +579,7 @@ function render() {
   const an = weekly["剿灭"] || {};
   const doneTag = (d, done, todo) => `<span class="ro">${d ? done : todo}</span>`;
   html += `<section><h2>周常 <small>一周一次的事</small></h2>
-    <p class="hint">三项同一套逻辑：本周做完自动停掉，下周一 04:00 自动恢复，没有开关。做完和恢复都会有「🗓️ 周常」通知。</p>`;
+    <p class="hint">三项同一套逻辑：本周做完自动停掉，下周一 04:00 自动恢复，没有开关。</p>`;
   if (inShift("MAA")) html += `
     <div class="row"><label>明日方舟 · 剿灭
       <span class="hint">MAA 打满本周剿灭后把开关置为关闭，省掉之后每趟白跑的一分钟</span></label>
@@ -640,13 +640,21 @@ function layoutTabs() {
     const hit = TABS.find(([, re]) => re.test(title));
     sec.dataset.tab = hit ? hit[0] : "状态";
     present.add(sec.dataset.tab);
+    /* iOS grouped list: the title sits above the card as a small grey header,
+       the rows live inside one inset card. */
+    if (!sec.querySelector(":scope > .group")) {
+      const g = document.createElement("div");
+      g.className = "group";
+      for (const child of [...sec.children]) if (child.tagName !== "H2") g.appendChild(child);
+      sec.appendChild(g);
+    }
   }
   if (!present.has(curTab)) curTab = "状态";
   for (const sec of secs) sec.hidden = sec.dataset.tab !== curTab;
   const nav = $("#tabs");
   nav.hidden = present.size < 2;
-  nav.innerHTML = TABS.filter(([t]) => present.has(t)).map(([t]) =>
-    `<button type="button" class="${t === curTab ? "on" : ""}" data-tab="${t}">${t}</button>`).join("");
+  nav.innerHTML = `<div class="seg">` + TABS.filter(([t]) => present.has(t)).map(([t]) =>
+    `<button type="button" class="${t === curTab ? "on" : ""}" data-tab="${t}">${t}</button>`).join("") + `</div>`;
   for (const b of nav.querySelectorAll("button")) b.onclick = () => {
     curTab = b.dataset.tab;
     try { localStorage.setItem("ark-remote-tab", curTab); } catch {}
