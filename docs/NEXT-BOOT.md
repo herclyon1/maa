@@ -1,5 +1,24 @@
 # Check these when the machine is next up
 
+## 2026-09-14 afternoon - live-test the restored 周本领奖 hook (needs 波片 >= 60)
+
+The claim step (`FarmEchoTask.handle_claim_button` in the OK-WW overlay) was lost
+in d035709 on 09-09 and re-added 09-14 12:17; the file on the machine carries it,
+the binding report is refreshed only when OK-WW next starts. 波片 was 0 at 10:14
+Beijing (backup 47), +1 per 6 min, so >= 60 from about 16:15 Beijing. Then, with
+nothing running: `okww-task.sh --list` (find 周本), `okww-task.sh <index>`, and the
+OK-WW log must show 「周本领奖：认出弹窗」→「周本领奖：已点确认」→「退出副本」; the
+binding report must list `FarmEchoTask.handle_claim_button`. Below 60 波片 it logs
+「结晶波片不足」 - that is the hook working, not the test passing. If today is missed,
+tomorrow's 09:00 queue is the test: the daily report turns 「周本没领到奖励」 red when
+「周本领奖：已点确认」 is absent (outcome.okww_checks).
+
+Also today: 「只补跑失败路线」 now works from the live maafw.log (collect_watch.py);
+drilled twice on the machine (12:32, 12:36). The first real run is Thursday 09-17's
+gathering; look for `ark.collect_watch` lines and the retry's route count.
+The user set skip_shutdown at 11:52 - the machine will stay up past the evening MAA
+queue once; nothing to cancel, he set it himself.
+
 ## 月行水上 EX - where it stands (2026-09-13 17:30)
 
 Normal EX-1〜6 cleared 3★ (recipe in MAA-EVENTS-AND-SSS.md). Left: **EX-7 (20 sanity),
