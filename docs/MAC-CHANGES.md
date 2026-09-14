@@ -101,6 +101,17 @@ Confirmed in use 2026-09-12: `osascript` System Events and `screencapture` work 
 session. Synthetic mouse clicks (a CGEvent helper) are refused by Claude's own action gate,
 so UI work has to go through accessibility actions or Chrome JavaScript.
 
+### RustDesk 1.4.9 installed (2026-09-14)
+
+Official dmg from github.com/rustdesk/rustdesk (Developer ID zhou huabing, notarized),
+copied to /Applications. Mac ID 236223976; the game machine already ran RustDesk
+1.4.9 as a service (ID 61481661). One permanent password on both, generated here and
+kept only in `~/.config/ark/push.env` (`RUSTDESK_PASSWORD`) and on the user's phone via
+WeCom. Written into `~/Library/Preferences/com.carriez.RustDesk/RustDesk.toml`
+(RustDesk re-encrypts it on load; backup `RustDesk.toml.bak-20260914`) because
+`--password` on macOS demands the admin "install" step. Screen Recording and
+Accessibility for RustDesk are the user's to grant in System Settings.
+
 ## 3. The launchers on the desktop (whose contents I changed)
 
 `串流到ins.app`, `串流到ins-HEVC444.app`
