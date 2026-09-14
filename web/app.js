@@ -421,9 +421,10 @@ const SYM = {"play.fill": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAAB
 function sf(name, extra = "") {
   return `<i class="sf${extra ? " " + extra : ""}" style="-webkit-mask-image:url(${SYM[name]});mask-image:url(${SYM[name]})" aria-hidden="true"></i>`;
 }
+const AI = `<span class="ai on"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>`;
 function tile(id, icon, tint, title, sub, cls = "") {
   return `<button type="button" class="tile${cls ? " " + cls : ""}" id="${id}">
-    <span class="tico" style="background:${tint}">${sf(icon)}</span>
+    <span class="tico" style="background:${tint}">${sf(icon)}${id === "refresh" ? AI : ""}</span>
     <span class="ttitle">${title}</span>${sub ? `<span class="tsub">${sub}</span>` : ""}</button>`;
 }
 function notice(caption, title, body, buttons = "") {
@@ -467,7 +468,7 @@ function numTiles(snap) {
     h += numTile("moon.fill", "#30b0c7", ww["波片"], ww["上限"] != null ? `/${ww["上限"]}` : "", "鸣潮 波片",
       ww["错误"] ? "" : `备用 ${ww["备用"] ?? "–"} · 周本 ${ww["周本"] ?? "–"}/${ww["周本上限"] ?? "–"}`, ww["错误"]);
   }
-  return `<section><div class="group nums">${h}</div>${r && r["取自"] ? `<div class="foot">体力数字取自 ${r["取自"]}，十分钟更新一次</div>` : ""}</section>`;
+  return `<section><div class="group nums">${h}</div>${r && r["取自"] ? `<div class="foot">体力数字是 ${r["取自"]} 读的；下拉刷新会重新读</div>` : ""}</section>`;
 }
 
 function render() {
@@ -604,7 +605,7 @@ function render() {
       if (f.ro) {
         ctl = `<span class="ro">${pick(val)}</span>`;
       } else if (f.type === "bool") {
-        ctl = `<span class="sw"><input type="checkbox" switch data-id="${id}" ${val ? "checked" : ""}><span></span></span>`;
+        ctl = `<span class="sw"><input type="checkbox" data-id="${id}" ${val ? "checked" : ""}><span></span></span>`;
       } else if (f.type === "icons") {
         /* 只画图标的单选。每个选项是这个位置掉的两个声骸套装，
            点一下就选中；名字不画，鼠标悬停和待保存清单里才出现。 */
@@ -824,22 +825,17 @@ function wire() {
     if (!confirm("现在收工？会关掉脚本和游戏，配置还原成你原来那份。")) return;
     oneShot({ action: "echo_farm_stop" }, "已收工，脚本和游戏都关了，配置还原");
   };
-  // 中继开关：点了立刻寄出，行下面挂「已寄出，等机器回执」，机器上报对上了就消掉。
-  for (const el of document.querySelectorAll("[data-relay]")) el.onchange = async () => {
+  /* 中继开关和改配置走同一条路：拨了先进「待保存」，点「保存修改」看一遍改了什么、
+     再确认才寄出（2026-09-15，用户：「改动配置直接就应用了，完全没有二次确认」——
+     09-14 晚把它们改成一拨就发是错的）。寄出后行下面挂「已寄出，等机器回执」。 */
+  for (const el of document.querySelectorAll("[data-relay]")) el.onchange = () => {
     const sw = RELAY_SWITCHES.find((x) => x.id === el.dataset.relay);
     if (!sw) return;
-    const to = el.checked;
-    const body = to ? sw.on : sw.off;
-    try {
-      await send(body);
-      pending[sw.id] = { label: sw.label, src: "relay", body, to, sentAt: now() };
-      savePending();
-      applyPending();
-      toast(`「${sw.label}」已${to ? "打开" : "关掉"}，等机器回执`, 3000);
-    } catch (e) {
-      el.checked = !to;
-      toast("发不出去：" + why(e), 6000);
-    }
+    const to = el.checked, from = !!liveVals[sw.id];
+    const row = el.closest(".row");
+    if (to === from) { delete edits[sw.id]; if (row) row.classList.remove("changed"); }
+    else { edits[sw.id] = { src: "relay", label: sw.label, from, to, body: to ? sw.on : sw.off }; if (row) row.classList.add("changed"); }
+    updateBar();
   };
   // 说明必须准：这条跳的是**机器执行它那一天**。机器关着时你现在按，
   // 它要等下次开机才执行，跳掉的就是那一天，不是今天。
@@ -1103,7 +1099,7 @@ function relayRow(sw, relay) {
   liveVals[sw.id] = on;
   const hint = on && sw.hintOn ? sw.hintOn(v) : sw.hint;
   return `<div class="row" data-row="${sw.id}"><label>${sw.label}<span class="hint">${hint}</span></label>
-    <span class="sw"><input type="checkbox" switch data-relay="${sw.id}" ${on ? "checked" : ""}><span></span></span></div>`;
+    <span class="sw"><input type="checkbox" data-relay="${sw.id}" ${on ? "checked" : ""}><span></span></span></div>`;
 }
 
 async function oneShot(body, okText) {
@@ -1400,8 +1396,16 @@ function myLink() {
 /* 原生行为三件：大标题滚动收进顶栏、下拉刷新、「几分钟前」自己走。 */
 function installNative() {
   const bar = $("#topbar"), h1 = document.querySelector("header h1");
-  if (bar && h1 && "IntersectionObserver" in window) {
-    new IntersectionObserver((es) => bar.classList.toggle("on", !es[0].isIntersecting), { threshold: 0 }).observe(h1);
+  if (bar && h1) {
+    const root = document.documentElement;
+    const onScroll = () => {
+      const y = window.scrollY;
+      const top = h1.offsetTop, hgt = h1.offsetHeight || 41;
+      root.style.setProperty("--bar", String(Math.max(0, Math.min(1, y / 12))));
+      root.style.setProperty("--title", String(Math.max(0, Math.min(1, (y - top + 6) / hgt))));
+    };
+    addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
   }
   const ptr = $("#ptr");
   let y0 = null, pulled = 0, armed = false;
@@ -1414,7 +1418,8 @@ function installNative() {
     if (on !== armed) { armed = on; ptr.classList.toggle("arm", on); }
   }, { passive: true });
   addEventListener("touchend", () => {
-    if (armed && ptr) { ptr.classList.add("go"); ping().finally(() => { ptr.classList.remove("go", "arm"); }); }
+    const ai = $("#ptrai");
+    if (armed && ptr) { ptr.classList.add("go"); if (ai) ai.classList.add("on"); ping().finally(() => { ptr.classList.remove("go", "arm"); if (ai) ai.classList.remove("on"); }); }
     else if (ptr) ptr.classList.remove("arm");
     y0 = null; armed = false;
   }, { passive: true });
@@ -1430,9 +1435,6 @@ function installNative() {
 }
 addEventListener("DOMContentLoaded", installNative);
 
-// Safari 17.4+ renders <input type=checkbox switch> as the system toggle; when the
-// browser has it, index.html hides the CSS-drawn track and shows the real control.
-if ("switch" in document.createElement("input")) document.documentElement.classList.add("native-switch");
 
 async function boot() {
   fromLink();
@@ -1471,7 +1473,8 @@ $("#go").onclick = async () => {
   // 带上 edits 里的键：发成功一项就删一项，发不出去的必须原样留在页面上。
   const all = Object.entries(edits).map(([id, e]) => ({ ...e, _id: id }));
   const wbEdits = all.filter((e) => e.src === "wb");
-  const items = all.filter((e) => e.src !== "wb");
+  const relayEdits = all.filter((e) => e.src === "relay");
+  const items = all.filter((e) => e.src !== "wb" && e.src !== "relay");
   let sent = 0;
   let failed = null;           // 第一项发不出去的原因；有它就不许说「已发出」
   const doneKeys = [];         // 真发出去的那几项，只清这些
@@ -1486,6 +1489,14 @@ $("#go").onclick = async () => {
       savePending();
     }
     catch (err) { failed = err; break; }
+  }
+  // 中继开关：一项一条指令，寄出后挂回执
+  for (const e of relayEdits) {
+    try {
+      await send(e.body); sent++; doneKeys.push(e._id);
+      pending[e._id] = { label: e.label, src: "relay", body: e.body, to: e.to, sentAt: now() };
+      savePending();
+    } catch (err) { if (!failed) failed = err; }
   }
   /* 周本只剩「打第几个」一项可改；次数 3、等级 90 固定在中继里。 */
   if (wbEdits.length) {
