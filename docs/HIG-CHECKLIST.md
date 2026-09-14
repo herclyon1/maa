@@ -51,6 +51,11 @@ page that breaks a line here is a regression.
 
 | 状态 tab blocks (2026-09-15) | see PHONE-NATIVE-REFERENCES.md | device card = Find My › Devices card structure (icon, name, status line) on the Settings card metrics; notice cards = Health › 摘要 (inset 16, caption 13 + hairline, title 17 semibold, body 15 secondary, tinted capsule button 30 high, cards 10 apart); action tiles = Reminders' 2×2 tile geometry (two columns, 8 gap, 80 high, radius 16) with Find My's tile look (28pt coloured circle + SF Symbol, 15 semibold title, 13 secondary subtitle); 明日安排 = Settings rows instead of a `<pre>` |
 
+| App icons (2026-09-15) | Apple's Icon Composer (Xcode 26 › Open Developer Tool) | the home-screen icon is an Icon Composer document (`data/icon-source/remote.icon`: system blue gradient + the `gamecontroller.fill` symbol as a white Liquid Glass layer) exported with 「Export Icon as PNG」 at 1024, the transparent corners filled with the icon's own gradient so the file is a full-bleed square (iOS masks it itself); `apple-touch-icon.png` 180, `icon-192/512.png` |
+| Typography (Dynamic Type) | `-apple-system-body` | the root font is the system Body text style and every size is in em of it, so the page follows Settings › 显示与亮度 › 文字大小 like a native list |
+| Navigation bars | large title collapses into a compact bar on scroll | `.topbar` (glass, 44pt, 17 semibold centred) fades in once `h1` leaves the viewport (IntersectionObserver) |
+| Refresh | pull to refresh with the system-style indicator | touch pull past 72pt at the top arms a small spinner; release calls `ping()`; the 刷新 tile's symbol turns while the machine is being asked |
+
 Not done (and why): the swipe-back gesture belongs to a navigation stack
 (pushed detail views); this page has tabs, not a stack, and the HIG tab bar has
 no back gesture. If a detail page is ever added, it gets a real back button and
