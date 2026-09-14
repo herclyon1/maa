@@ -335,34 +335,34 @@ check("每条正文都进得了 2048 字节",
           for b in posted("webhook")) <= API_CAP, True)
 
 # ------------------------------------ Notifier：一个挂了不能拖垮其余
-print("\n[企业微信长期 60020，Server酱 照发——真通道走完整条 HTTP 路径]")
+print("\n[只发群机器人：真通道走完整条 HTTP 路径，私聊那两条配了也不碰]")
 cfg = Config()
 cfg.serverchan_key = "SCTabc"
 cfg.wecom_corpid, cfg.wecom_secret = "cid", "sec"
 cfg.wecom_agentid, cfg.wecom_touser = "1000002", "@all"
-cfg.wecom_bot_url = ""
+cfg.wecom_bot_url = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=k"
 reset(("gettoken", once(TOKEN)),
-      ("message/send", once({"errcode": 60020, "errmsg": "not allow from ip"})),
-      ("sctapi.ftqq.com", once({"code": 0})))
+      ("message/send", once({"errcode": 0})),
+      ("sctapi.ftqq.com", once({"code": 0})),
+      ("webhook", once({"errcode": 0})))
 n = Notifier(cfg)
-check("两个通道都算配好了", n.channels, ["企业微信", "Server酱"])
+check("三个通道都算配好了", n.channels, ["企业微信", "企业微信机器人", "Server酱"])
 check("算送达（返回空 = 调用方可以不再重推）", n.send("⚠️ OK-WW 失败", "正文", alert=True), [])
-titles = [urllib.parse.parse_qs(b)["title"][0] for b in posted("sctapi.ftqq.com")]
-check("Server酱 真的收到了那条告警", "⚠️ OK-WW 失败" in titles, True)
-check("坏掉的通道被单独通报出去",
-      any("推送通道故障" in t for t in titles), True)
+check("群机器人收到了", len(posted("webhook")), 1)
+check("Server酱 没被碰", posted("sctapi.ftqq.com"), [])
+check("自建应用没被碰", posted("message/send"), [])
 
-print("\n[全挂：返回的每一项是「通道名: 原因」，调用方靠它决定要不要重试]")
+print("\n[群机器人拒收：不落到私聊，返回「通道名: 原因」让调用方留着重试]")
 reset(("gettoken", once(TOKEN)),
-      ("message/send", once({"errcode": 60020, "errmsg": "not allow from ip"})),
-      ("sctapi.ftqq.com", once({"code": 40001, "message": "bad pushkey"})))
+      ("message/send", once({"errcode": 0})),
+      ("sctapi.ftqq.com", once({"code": 0})),
+      ("webhook", once({"errcode": 45009, "errmsg": "api freq out of limit"})))
 n2 = Notifier(cfg)
 errs = n2.send("⚠️ OK-WW 失败", "正文", alert=True)
-check("两个通道各有一条原因", len(errs), 2)
-check("企业微信那条带着 60020",
-      any(e.startswith("企业微信: ") and "60020" in e for e in errs), True)
-check("Server酱 那条带着 40001",
-      any(e.startswith("Server酱: ") and "40001" in e for e in errs), True)
+check("只有群机器人一条原因", len(errs), 1)
+check("原因带着 45009", errs[0].startswith("企业微信机器人: ") and "45009" in errs[0], True)
+check("Server酱 没被碰", posted("sctapi.ftqq.com"), [])
+check("自建应用没被碰", posted("message/send"), [])
 
 print("\n[群通知没配机器人时必须报错，不能返回空当作发过了]")
 # 卡池播报靠这个非空返回值决定「先别落记号，下轮再播」；返回空的话明天开的卡池就永远

@@ -141,31 +141,22 @@ this deployment's key belongs to is not recorded here; the key lives only in
 Delivery rule: **one channel delivering counts as delivered.** See
 [PITFALLS.md](PITFALLS.md) for why that sentence exists.
 
-### One channel by default, every channel for alerts
+### The group robot only (2026-09-14)
 
-Dictated by the operator on 2026-08-24, after a report arrived twice:
+Every message, alerts included, goes to the **WeCom group robot** and nowhere
+else. Server酱 and the self-built WeCom app both deliver into the same private
+chat, so the 2026-08-24 rule (Server酱 first for routine, every channel for
+alerts) put each alert twice in that chat plus once in the group. The operator,
+2026-09-14:
 
-> 中继也不要同时发两边通知，只允许在一侧不通的时候采用另一侧……除了报警之外
-> （报警的时候用双通道全发），其他时候都默认走一个通知。
+> 企业微信通知只保留群机器人的通道，单独私聊的暂停停止掉。
 
-| Kind | Channels |
-|---|---|
-| **Alert** - 漏跑、缺项、脚本出错、自愈、中继自更新失败、目录监听掉线、AUTO-MAS 拉不起来、通道故障公告、`ark-do selftest` | **every** enabled channel |
-| **Everything else** - 日报、临时查看、手动执行、预更新、剿灭、待办、跳过模式 | **one**, first that accepts |
-
-Routine order is **Server酱 → WeCom group bot → WeCom app**, and a later channel
-is attempted *only* when the one before it raises. Server酱 leads because it has
-no trusted-IP list and the operator reports it has never once failed; WeCom sits
-behind consumer broadband whose rotating IP triggers `60020` outright.
-
-In code this is `Notifier.send(..., alert=True)`. The default is routine, so a
-new call site is quiet by default and has to opt in to waking someone up.
-`relay/tests/test_notify_routing.py` pins both paths.
-
-Why not "send everywhere, it's safer": a daily report landing on the phone twice
-is noise, not redundancy, and noise is what gets real alerts ignored. Redundancy
-earns its cost on alerts, where a dead channel must not swallow the message -
-that reasoning is in `Notifier`'s class docstring and stays true there.
+There is no fallback into the private chat: when the robot refuses, `send()`
+returns the failure, the message stays in the relay's pending queue and is
+retried, and the refusal is logged as an error. `Notifier.send(..., alert=True)`
+is kept at the call sites for what it says about the message; it no longer
+changes the routing. Images go through the group robot too (`send_group_image`).
+`relay/tests/test_notify_routing.py` pins this.
 
 `scripts/mac/push.py` on the Mac follows the same rule and the same order, with
 `--all` to override.

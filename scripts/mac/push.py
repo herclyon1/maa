@@ -6,8 +6,8 @@
     echo 正文 | push.py "标题"
     push.py --all "标题" 正文.md    # 强制所有渠道都发
 
-**默认只发一个渠道**，按 Server酱 → 企业微信机器人 → 企业微信 的顺序，
-第一个成功的就停。这是手动汇报工具，同一份报告同时落到微信和 Server酱
+**默认只发群机器人**（2026-09-14 起：私聊那两条路和群里重复，用户要求停掉），
+`--all` 才全发。这是手动汇报工具，同一份报告同时落到微信和 Server酱
 只会让人烦，而不是更可靠（2026-08-24 用户当场提的）。
 
 回退不是可有可无：家宽公网 IP 一转，企业微信就 60020 全拒；Server酱 没有
@@ -104,13 +104,11 @@ def main(argv: list[str]) -> int:
         return 0
 
     # 单渠道 + 回退。顺序见模块开头。
+    # Group robot only (the user, 2026-09-14: 「企业微信通知只保留群机器人的通道，
+    # 单独私聊的暂停停止掉」). --all still reaches every channel for a deliberate test.
     order = (
-        ("Server酱", notifier.serverchan,
-         lambda: notifier.serverchan.send_text(title, body)),
         ("企业微信机器人", notifier.wecom_bot,
          lambda: notifier.wecom_bot.send_text(f"{title}\n\n{body}" if body else title)),
-        ("企业微信", notifier.wecom,
-         lambda: notifier.wecom.send_text(f"{title}\n\n{body}" if body else title)),
     )
     tried: list[str] = []
     for name, channel, call in order:

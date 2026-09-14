@@ -51,37 +51,19 @@ def build(broken=()):
     return n, log
 
 
-print("[日常：只发一个]")
+print("[只有群机器人：日常和报警都只发它]")
 n, log = build()
 check("发出去了", n.send("📋 日报", "正文"), [])
-check("只有 Server酱 被调用", [c for c, _ in log], ["Server酱"])
-
-print("\n[日常：第一个挂了才回退，且仍然只送达一处]")
-n, log = build(broken=("Server酱",))
-n._announcing = True                     # 不让故障公告污染这次计数
-check("发出去了", n.send("📋 日报", "正文"), [])
-routine = [c for c, title in log if title == "📋 日报"]
-check("试了 Server酱，回退到机器人", routine, ["Server酱", "企业微信机器人"])
-check("企业微信没被惊动", "企业微信" in routine, False)
-
-print("\n[日常：全挂了才算失败]")
-n, log = build(broken=("Server酱", "企业微信机器人", "企业微信"))
-n._announcing = True
-check("返回失败", bool(n.send("📋 日报", "正文")), True)
-check("三个都试过", len({c for c, _ in log}), 3)
-
-print("\n[报警：三个渠道全发]")
+check("只有群机器人被调用", [c for c, _ in log], ["企业微信机器人"])
 n, log = build()
-check("发出去了", n.send("⚠️ 出错了", "正文", alert=True), [])
-check("三个都发了", sorted({c for c, _ in log}),
-      sorted(["企业微信", "企业微信机器人", "Server酱"]))
+check("报警也发出去了", n.send("⚠️ 出错了", "正文", alert=True), [])
+check("报警也只有群机器人", [c for c, _ in log], ["企业微信机器人"])
 
-print("\n[报警：一个挂了不影响其余送达]")
-n, log = build(broken=("企业微信",))
+print("\n[群机器人挂了：不落到私聊，算没送到（留在待发队列重试）]")
+n, log = build(broken=("企业微信机器人",))
 n._announcing = True
-check("仍算送达", n.send("⚠️ 出错了", "正文", alert=True), [])
-check("另外两个收到了", sorted({c for c, t in log if t == "⚠️ 出错了"}),
-      sorted(["企业微信", "企业微信机器人", "Server酱"]))
+check("返回失败", bool(n.send("⚠️ 出错了", "正文", alert=True)), True)
+check("Server酱 和企业微信都没被惊动", sorted({c for c, _ in log}), ["企业微信机器人"])
 
 print("\n[默认就是日常，不是报警]")
 n, log = build()

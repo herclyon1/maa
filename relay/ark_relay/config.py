@@ -276,8 +276,12 @@ class Config:
             problems.append("ARK_HISTORY_DIR 未设置（AUTO-MAS 的 history 目录）")
         elif not self.history_dir.is_dir():
             problems.append(f"ARK_HISTORY_DIR 不存在: {self.history_dir}")
-        if not (self.serverchan_key or self.wecom_corpid):
-            problems.append("没有配置任何推送渠道（SERVERCHAN_KEY 或 WECOM_*）")
+        if not (self.serverchan_key or self.wecom_corpid or self.wecom_bot_url):
+            problems.append("没有配置任何推送渠道（WECOM_BOT_URL、SERVERCHAN_KEY 或 WECOM_*）")
+        elif not self.wecom_bot_url:
+            # Since 2026-09-14 every message goes to the group robot and nowhere
+            # else, so without it nothing is ever delivered.
+            problems.append("没有配置群机器人（WECOM_BOT_URL）——通知只发群机器人，没有它一条都送不到")
         if self.wecom_corpid and not (self.wecom_secret and self.wecom_agentid):
             problems.append("企业微信缺少 WECOM_SECRET 或 WECOM_AGENTID")
         return problems

@@ -356,24 +356,15 @@ def _hint(name: str, err: str) -> str:
     return ""
 
 
-# Alerts: fan out to every channel. If one channel is dead another must take
-# over - reasoning in the Notifier class docstring.
-_ALERT_ORDER = ("企业微信", "企业微信机器人", "Server酱")
-
-# Routine: send to one channel only, stop at the first success - the later ones
-# are never even called.
-#
-# Server酱 comes first as a measured conclusion: it has no IP allowlist, and the
-# user said explicitly on 2026-08-24: "server酱长期稳定（从来没出过问题）".
-# 企业微信 is the exact opposite - both machines sit behind consumer broadband,
-# and the moment the public IP rotates everything is refused with errcode 60020.
-#
-# Why not "send everywhere, it is safer": the same daily report landing in both
-# WeChat and Server酱 is merely annoying, not more reliable. Redundancy is worth
-# it for alerts, not for routine traffic; conflating the two ends with real
-# alerts drowned in routine noise. The user, on the spot on 2026-08-24:
-# "不要重复".
-_ROUTINE_ORDER = ("Server酱", "企业微信机器人", "企业微信")
+# One channel, full stop: the 企业微信 group robot. Until 2026-09-14 alerts fanned
+# out to every channel and routine traffic led with Server酱 - both Server酱 and
+# the self-built app land in the same private chat, so every alert reached the
+# user twice there and once in the group. The user, 2026-09-14: 「企业微信通知只保留
+# 群机器人的通道，单独私聊的暂停停止掉」. No fallback into the private chat: when
+# the robot refuses, the message stays in the pending queue and is retried, and
+# the failure is logged as an error. (Supersedes the 2026-08-24 Server酱-first rule.)
+_ALERT_ORDER = ("企业微信机器人",)
+_ROUTINE_ORDER = _ALERT_ORDER
 
 
 class Notifier:
@@ -512,16 +503,12 @@ class Notifier:
         An empty list means the caller may consider the message delivered and
         stop holding it. A non-empty list means every channel refused it.
 
-        `alert=True` fans out to **every** channel - use it only for faults
-        someone has to act on. Everything else (the daily report, pre-update,
-        annihilation, the to-do list) goes to **one** channel; see the note on
-        `_ROUTINE_ORDER`.
+        `alert=True` is kept at the call sites for what it says about the
+        message; since 2026-09-14 it no longer fans out - everything goes to
+        the group robot only (see `_ALERT_ORDER`).
         """
-        if alert:
-            delivered, failed = self._fan_out(title, body)
-        else:
-            delivered, failed = self._fan_out(
-                title, body, order=_ROUTINE_ORDER, stop_on_first=True)
+        delivered, failed = self._fan_out(
+            title, body, order=_ALERT_ORDER if alert else _ROUTINE_ORDER, stop_on_first=True)
         if not delivered:
             # `or [...]`：一个通道都没配的时候 `failed` 是空的，返回空列表就等于
             # 告诉调用方「送到了」——正是「假的绿」。send_group 早就这么兜了，
