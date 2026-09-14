@@ -9,10 +9,10 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="遥控">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260915035717">
+<link rel="manifest" href="manifest.webmanifest?v=20260915045733">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915035717">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915035717">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915045733">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915045733">
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
      上面跑的」). System colours from Apple's palette: grouped background, white
@@ -233,18 +233,25 @@
          background:transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='18' viewBox='0 0 12 18'%3E%3Cpath d='M2 7l4-4 4 4M2 11l4 4 4-4' fill='none' stroke='%238e8e93' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right center}
   input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
   /* The toggle: 63×28 track, 38×24 pill knob (measured in Settings › 动态效果 on the
-     simulator). Motion like UISwitch: the knob slides with a slight spring, the
-     track cross-fades, and while the finger is down the knob stretches wider. */
+     simulator). Motion measured frame by frame on the simulator's own recording
+     (Settings › 动态效果 › 首选非闪动光标, 2026-09-15 04:58, 120 samples/s): the
+     flip takes ~0.34 s in all - the knob stretches and lands on the far side within
+     ~0.1 s, then relaxes back to its 38pt width over the next ~0.2 s while the
+     track cross-fades green↔grey over ~0.2 s. Animations run only after the first
+     touch (.live, set in app.js), so a page load does not replay them. */
   .sw{position:relative;width:63px;height:28px;flex:none}
   .sw input{opacity:0;width:100%;height:100%;margin:0;position:absolute;inset:0;cursor:pointer}
   .sw span{position:absolute;inset:0;background:rgba(60,60,67,.3);border-radius:99px;pointer-events:none;
-           transition:background-color .25s cubic-bezier(.4,0,.2,1)}
+           transition:background-color .2s cubic-bezier(.4,0,.6,1)}
   .sw span::after{content:"";position:absolute;width:38px;height:24px;left:2px;top:2px;background:#fff;border-radius:99px;
-                  box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16);
-                  transition:transform .3s cubic-bezier(.34,1.35,.64,1),width .18s cubic-bezier(.4,0,.2,1)}
+                  box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16)}
   .sw input:checked + span{background:var(--ok)}
   .sw input:checked + span::after{transform:translateX(21px)}
-  .sw input:active + span::after{width:44px}
+  .sw.live input:checked + span::after{animation:knob-on .34s cubic-bezier(.2,.8,.2,1) both}
+  .sw.live input:not(:checked) + span::after{animation:knob-off .34s cubic-bezier(.2,.8,.2,1) both}
+  @keyframes knob-on{0%{transform:translateX(0);width:38px}30%{transform:translateX(13px);width:46px}100%{transform:translateX(21px);width:38px}}
+  @keyframes knob-off{0%{transform:translateX(21px);width:38px}30%{transform:translateX(0);width:46px}100%{transform:translateX(0);width:38px}}
+  .sw input:active + span::after{width:44px;transition:width .12s}
   .sw input:active:checked + span::after{transform:translateX(15px)}
   .changed{background:color-mix(in srgb, var(--accent) 8%, var(--card))}
   .posted{background:color-mix(in srgb, var(--ok) 8%, var(--card))}
@@ -347,6 +354,6 @@
 
 <div class="toast" id="toast"></div>
 <script src="stamina.js?v=20260915035717"></script>
-<script src="app.js?v=20260915035717"></script>
+<script src="app.js?v=20260915045733"></script>
 </body>
 </html>
