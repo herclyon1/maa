@@ -9,10 +9,10 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="遥控">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260915021340">
+<link rel="manifest" href="manifest.webmanifest?v=20260915021450">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915021340">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915021340">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915021450">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915021450">
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
      上面跑的」). System colours from Apple's palette: grouped background, white
@@ -130,6 +130,7 @@
      radius 16, gap 8): symbol top-left, big number top-right, name bottom-left. */
   .group.nums{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:transparent;border-radius:0;overflow:visible}
   section + section > .group.nums:first-child{margin-top:16px}
+  .group.nums + .foot{padding-top:8px}
   .num{position:relative;min-height:80px;padding:12px 12px 10px 14px;border-radius:16px;color:#fff;display:flex;flex-direction:column;justify-content:space-between;
        background:linear-gradient(160deg, color-mix(in srgb, var(--c) 80%, #fff) 0%, var(--c) 100%)}
   .num .sf{width:24px;height:24px;background:#fff}
@@ -324,6 +325,6 @@
 </dialog>
 
 <div class="toast" id="toast"></div>
-<script src="app.js?v=20260915021340"></script>
+<script src="app.js?v=20260915021450"></script>
 </body>
 </html>
