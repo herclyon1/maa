@@ -13,9 +13,11 @@ binding report must list `FarmEchoTask.handle_claim_button`. Below 60 波片 it 
 tomorrow's 09:00 queue is the test: the daily report turns 「周本没领到奖励」 red when
 「周本领奖：已点确认」 is absent (outcome.okww_checks).
 
-Also today: 「只补跑失败路线」 now works from the live maafw.log (collect_watch.py);
-drilled twice on the machine (12:32, 12:36). The first real run is Thursday 09-17's
-gathering; look for `ark.collect_watch` lines and the retry's route count.
+Also today: 「只补跑失败路线」 works from the live maafw.log (collect_watch.py) -
+drilled twice (12:32, 12:36) and then proven in a real AUTO-MAS retry 13:09-13:47
+(Route16 failed, retries walked only Route16; details in EVIDENCE.md). Route16
+failed twice in a row that afternoon and passed on the third try - if it fails on
+Thursday 09-17, look at the evidence screenshots for a player structure first.
 The user set skip_shutdown at 11:52 - the machine will stay up past the evening MAA
 queue once; nothing to cancel, he set it himself.
 

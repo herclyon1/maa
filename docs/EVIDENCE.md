@@ -82,6 +82,13 @@ Drill on the machine: `scripts/mac/collect-watch-drill.sh` (feeds the real
 restarts the relay). Passed twice on 2026-09-14 (12:32, 12:36); the relay logs
 `ark.collect_watch` lines for every step.
 
+Proven in a real AUTO-MAS retry, 2026-09-14 13:09-13:47 (gathering-only run via
+`scripts/mac/lib/maaend_only_task.py`): attempt 1 walked 17 routes, Route16
+failed 13:37:53 → master narrowed 13:37:56; retry started 13:39:16 → master
+restored 13:39:17; the retry walked **only Route16** (13:39:45-13:43:27, failed
+again → narrowed 13:43:30); attempt 3 walked only Route16 and passed (13:44-13:47).
+First run 28 min, retries 4 and 3 min.
+
 
 ## Where bundles go (2026-09-12 evening) - `evidence.pick_uploader`
 
