@@ -5,158 +5,156 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0f1216">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260914194722">
+<link rel="manifest" href="manifest.webmanifest?v=20260914202254">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260914194722">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260914194722">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260914202254">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260914202254">
 <style>
-  /* 浅色是底色，深色只覆盖变量。三种情况都要照顾到：
-     手机设成浅色、手机设成深色、以及页面里手动指定。 */
+  /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
+     上面跑的」). System colours from Apple's palette: grouped background, white
+     inset cards, hairline separators inset to the text, secondary grey text,
+     green switches, blue tint. Dark mode uses the same palette's dark values.
+     Everything else on the page reuses these tokens; no element carries its own. */
   :root{
-    --bg:#f4f6f9; --card:#ffffff; --line:#e2e8f0; --ink:#111826;
-    --dim:#64748b; --field:#f8fafc; --btn:#eef2f7; --sh:0 1px 2px rgba(16,24,40,.06);
-    --accent:#4aa3ff; --ok:#2da44e; --warn:#bf8700; --bad:#cf222e;
-    --r:14px;
+    --bg:#f2f2f7; --card:#ffffff; --line:#c6c6c8; --ink:#000000;
+    --dim:#8e8e93; --field:#f2f2f7; --btn:#ffffff; --sh:none;
+    --accent:#007aff; --ok:#34c759; --warn:#ff9500; --bad:#ff3b30;
+    --seg:#7676801f; --r:10px;
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
-      --bg:#0f1216; --card:#171c22; --line:#242c35; --ink:#e6edf3;
-      --dim:#8b98a5; --field:#0d1117; --btn:#232b34; --sh:none;
-      --ok:#3fb950; --warn:#d29922; --bad:#f85149;
+      --bg:#000000; --card:#1c1c1e; --line:#38383a; --ink:#ffffff;
+      --dim:#8d8d93; --field:#1c1c1e; --btn:#1c1c1e; --sh:none;
+      --accent:#0a84ff; --ok:#30d158; --warn:#ff9f0a; --bad:#ff453a; --seg:#7676803d;
     }
   }
   :root[data-theme="dark"]{
-    --bg:#0f1216; --card:#171c22; --line:#242c35; --ink:#e6edf3;
-    --dim:#8b98a5; --field:#0d1117; --btn:#232b34; --sh:none;
-    --ok:#3fb950; --warn:#d29922; --bad:#f85149;
+    --bg:#000000; --card:#1c1c1e; --line:#38383a; --ink:#ffffff;
+    --dim:#8d8d93; --field:#1c1c1e; --btn:#1c1c1e; --sh:none;
+    --accent:#0a84ff; --ok:#30d158; --warn:#ff9f0a; --bad:#ff453a; --seg:#7676803d;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   body{margin:0;background:var(--bg);color:var(--ink);
-       font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans SC",sans-serif;
+       font:17px/1.3 -apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Noto Sans SC",sans-serif;
        padding:env(safe-area-inset-top) 0 calc(env(safe-area-inset-bottom) + 90px)}
-  header{position:sticky;top:0;z-index:5;background:color-mix(in srgb, var(--bg) 94%, transparent);
-         backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:14px 16px}
-  h1{margin:0;font-size:19px;letter-spacing:.5px}
-  .sub{color:var(--dim);font-size:13px;margin-top:3px;display:flex;gap:8px;align-items:center}
+  /* Large title, like every top-level Settings screen. */
+  header{padding:14px 16px 6px}
+  h1{margin:0;font-size:34px;font-weight:700;letter-spacing:.2px}
+  .sub{color:var(--dim);font-size:15px;margin-top:2px;display:flex;gap:8px;align-items:center}
   .dot{width:9px;height:9px;border-radius:50%;background:var(--dim);flex:none}
-  .dot.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+  .dot.on{background:var(--ok)}
   .dot.off{background:var(--bad)}
-  main{padding:14px 12px;max-width:640px;margin:0 auto}
-  section{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
-          margin-bottom:12px;overflow:hidden;box-shadow:var(--sh)}
-  h2{margin:0;padding:14px 15px;font-size:16px;font-weight:600;border-bottom:1px solid var(--line);
-     display:flex;justify-content:space-between;align-items:center}
-  h2 small{color:var(--dim);font-weight:400;font-size:12px}
-  /* 一行一件事，iOS「设置」那种分组列表：名字靠左、控件靠右、说明小字在名字
-     下面。所有行同一个形状——开关、数字、下拉都在右侧同一条线上。只有占地方的
-     控件（一排图标、一排小按钮、长文本框）才另起一行。用户 2026-09-14：「统一设计
-     内容都是最基本的」。 */
-  .row{display:flex;flex-direction:row;align-items:center;gap:12px;padding:12px 15px;
-       border-bottom:1px solid var(--line)}
-  .row:last-child{border-bottom:0}
-  .row > label{flex:1 1 55%;min-width:0;font-size:15px;line-height:1.35}
+  /* Segmented control (UISegmentedControl) for switching pages. */
+  nav.tabs{position:sticky;top:0;z-index:5;margin:0;padding:8px 16px 10px;
+           background:color-mix(in srgb, var(--bg) 92%, transparent);backdrop-filter:blur(12px);
+           display:flex}
+  nav.tabs .seg{display:flex;width:100%;background:var(--seg);border-radius:9px;padding:2px}
+  nav.tabs button{flex:1 1 0;min-width:0;padding:6px 0;border-radius:7px;font-size:13px;font-weight:500;
+                  background:transparent;box-shadow:none;color:var(--ink);white-space:nowrap}
+  nav.tabs button.on{background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04);font-weight:600}
+  main{padding:4px 16px;max-width:640px;margin:0 auto}
+  /* A section = a small grey header above an inset group, footers in grey below. */
+  section{margin:0 0 22px}
+  h2{margin:0;padding:0 16px 7px;font-size:13px;font-weight:400;color:var(--dim);
+     text-transform:none;display:flex;justify-content:space-between;align-items:flex-end}
+  h2 small{color:var(--dim);font-weight:400;font-size:13px}
+  .group{background:var(--card);border-radius:var(--r);overflow:hidden}
+  .group > *:not(.row):not(.acts):not(pre):not(.setup):not(.warn):not(.hint):not(.group-foot){padding:11px 16px}
+  /* Rows: name left, control right, hairline inset to the text like UITableView. */
+  .row{position:relative;display:flex;flex-direction:row;align-items:center;gap:12px;padding:11px 16px;min-height:44px}
+  .row::after{content:"";position:absolute;left:16px;right:0;bottom:0;height:.5px;background:var(--line)}
+  .row:last-child::after,.group > :last-child.row::after{display:none}
+  .row > label{flex:1 1 55%;min-width:0;font-size:17px;line-height:1.3}
   .row > :not(label){flex:0 1 auto;max-width:45%}
   .row:has(.pills),.row:has(.picks),.row:has(.pillbox),.row:has(input[type=text]),
   .row:has(pre),.row:has(.ro:not(.short)){flex-direction:column;align-items:stretch;gap:8px}
   .row:has(.pills) > :not(label),.row:has(.picks) > :not(label),.row:has(.pillbox) > :not(label),
   .row:has(input[type=text]) > :not(label),.row:has(.ro:not(.short)) > :not(label){max-width:none;align-self:flex-end}
-  .row .ro{text-align:right}
-  /* 顶部分页：内容按游戏分开放，一次只看一页，不用滑一整屏找一项。 */
-  nav.tabs{position:sticky;top:0;z-index:5;display:flex;gap:6px;padding:8px 12px;
-           background:color-mix(in srgb, var(--bg) 94%, transparent);backdrop-filter:blur(8px);
-           border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
-  nav.tabs::-webkit-scrollbar{display:none}
-  nav.tabs button{flex:0 0 auto;padding:7px 13px;border-radius:99px;font-size:14px;
-                  background:transparent;box-shadow:none;color:var(--dim)}
-  nav.tabs button.on{background:var(--accent);color:#06121f;font-weight:600}
-  header{position:static}
-  /* 卡片里任何直接子元素都不许贴着卡片边缘。以前只有 .row / .acts / h2 各自带
-     内边距，别的东西（说明段、状态行）一放进来就是齐着边框的一坨——用户 2026-09-09：
-     「这个排版问题我不希望再看见」。所以这里给默认值：不是那几个已经带边距的
-     类，一律 12px 15px；新加的元素不用记着补边距。 */
-  section > *:not(h2):not(.row):not(.acts):not(pre):not(.warn):not(.setup):not(.picks){padding:12px 15px}
-  section > p.hint,section > .hint{margin:0;color:var(--dim);font-size:13px;line-height:1.5;border-bottom:1px solid var(--line)}
-  section > .hint:last-child{border-bottom:0}
-  .row .hint{display:block;color:var(--dim);font-size:12px;margin-top:3px;
-             line-height:1.45}
-  .row input[type=text]{width:100%;max-width:100%;text-align:left;padding:11px 12px;font-size:16px}
+  .row .hint{display:block;color:var(--dim);font-size:13px;margin-top:2px;line-height:1.35}
+  .row .ro{color:var(--dim);font-size:17px;text-align:right}
+  /* Footers and notes under a group, grey like Settings' explanatory text. */
+  .group > p.hint,.group > .hint{margin:0;padding:10px 16px;color:var(--dim);font-size:13px;line-height:1.4}
+  .warn{margin:8px 16px 0;padding:0;background:transparent;color:var(--warn);font-size:13px;line-height:1.4}
+  /* Controls. */
+  .row input[type=text]{width:100%;max-width:100%;text-align:left;padding:10px 12px;font-size:17px}
   input[type=text],input[type=number],select{
-    background:var(--field);border:1px solid var(--line);color:var(--ink);
-    border-radius:9px;padding:9px 11px;font-size:16px;width:96px;text-align:right}
-  select{width:auto;max-width:100%;text-align:left}
+    background:var(--field);border:0;color:var(--ink);
+    border-radius:8px;padding:8px 10px;font-size:17px;width:96px;text-align:right}
+  select{width:auto;max-width:100%;text-align:left;color:var(--dim);
+         -webkit-appearance:none;appearance:none;padding-right:26px;
+         background:var(--field) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='16' viewBox='0 0 12 16'%3E%3Cpath d='M2 6l4-4 4 4M2 10l4 4 4-4' fill='none' stroke='%238e8e93' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 8px center}
   input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
-  .sw{position:relative;width:50px;height:29px;flex:none}
+  .sw{position:relative;width:51px;height:31px;flex:none}
   .sw input{opacity:0;width:100%;height:100%;margin:0}
-  .sw span{position:absolute;inset:0;background:color-mix(in srgb, var(--ink) 22%, transparent);border-radius:99px;transition:.18s;pointer-events:none}
-  .sw span::after{content:"";position:absolute;width:23px;height:23px;left:3px;top:3px;
-                  background:#fff;border-radius:50%;transition:.18s}
+  .sw span{position:absolute;inset:0;background:#e9e9ea;border-radius:99px;transition:.2s;pointer-events:none}
+  :root[data-theme="dark"] .sw span{background:#39393d}
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .sw span{background:#39393d} }
+  .sw span::after{content:"";position:absolute;width:27px;height:27px;left:2px;top:2px;
+                  background:#fff;border-radius:50%;transition:.2s;box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16)}
   .sw input:checked + span{background:var(--ok)}
-  .sw input:checked + span::after{transform:translateX(21px)}
-  .changed{background:rgba(74,163,255,.09)}
-  .posted{background:rgba(52,199,89,.08)}
-  .row .sent{display:block;font-size:12px;color:var(--ok);margin-top:6px;line-height:1.5}
+  .sw input:checked + span::after{transform:translateX(20px)}
+  .changed{background:color-mix(in srgb, var(--accent) 8%, var(--card))}
+  .posted{background:color-mix(in srgb, var(--ok) 8%, var(--card))}
+  .row .sent{display:block;font-size:13px;color:var(--ok);margin-top:4px;line-height:1.4}
   .row .sent.bad{color:var(--bad)}
-  .row .sent .again,#pendbar button{font-size:12px;padding:4px 10px;border-radius:8px;margin-left:6px;box-shadow:none}
-  #pendbar{margin:10px 12px 0;padding:10px 12px;border-radius:11px;background:var(--card);
-           color:var(--ink);font-size:13px;line-height:1.6;border:1px solid var(--line)}
-  .acts{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px 15px}
-  button{font:inherit;border:0;border-radius:11px;padding:13px;color:var(--ink);
-         background:var(--btn);cursor:pointer;box-shadow:var(--sh)}
-  button:active{transform:scale(.985)}
-  button.primary{background:var(--accent);color:#06121f;font-weight:600}
+  .row .sent .again,#pendbar button{font-size:13px;padding:4px 10px;border-radius:8px;margin-left:6px;box-shadow:none}
+  #pendbar{margin:0 16px 12px;padding:10px 16px;border-radius:var(--r);background:var(--card);
+           color:var(--ink);font-size:13px;line-height:1.5}
+  /* Action buttons: text buttons in a group, like Settings' 「Sign Out」 rows. */
+  .acts{display:grid;grid-template-columns:1fr 1fr;gap:0}
+  .acts button{position:relative;font:inherit;font-size:17px;border:0;border-radius:0;padding:12px 16px;
+               color:var(--accent);background:var(--card);box-shadow:none;cursor:pointer;text-align:center}
+  .acts button::after{content:"";position:absolute;left:16px;right:0;bottom:0;height:.5px;background:var(--line)}
+  .acts button:nth-child(odd):not(.wide){border-right:.5px solid var(--line)}
+  .acts button:last-child::after{display:none}
+  button{font:inherit;border:0;border-radius:8px;padding:8px 14px;color:var(--accent);
+         background:var(--field);cursor:pointer}
+  button:active{opacity:.6}
+  button.primary{background:var(--accent);color:#fff;font-weight:600}
   button.wide{grid-column:1/-1}
   button[disabled]{opacity:.45}
-  .savebar{position:fixed;left:0;right:0;bottom:0;z-index:6;padding:12px 12px calc(12px + env(safe-area-inset-bottom));
-           background:color-mix(in srgb, var(--bg) 96%, transparent);border-top:1px solid var(--line);
+  .acts button.danger{color:var(--bad);background:var(--card)}
+  .savebar{position:fixed;left:0;right:0;bottom:0;z-index:6;padding:10px 16px calc(10px + env(safe-area-inset-bottom));
+           background:color-mix(in srgb, var(--bg) 92%, transparent);backdrop-filter:blur(12px);border-top:.5px solid var(--line);
            display:flex;gap:10px;align-items:center;transform:translateY(120%);transition:.2s}
   .savebar.show{transform:none}
-  .warn{margin:8px 12px;padding:10px 12px;border-radius:10px;background:#fff3cd;color:#7a5b00;font-size:14px}
-  button.danger{background:#c0392b;color:#fff;border-color:#a93226}
-  button.danger:active{background:#922b21}
   .savebar .n{flex:1;color:var(--dim);font-size:13px}
-  pre{margin:0;padding:13px 15px;white-space:pre-wrap;font-size:13px;color:var(--dim);
+  .savebar button{padding:10px 16px;border-radius:10px}
+  pre{margin:0;padding:11px 16px;white-space:pre-wrap;font-size:13px;color:var(--dim);
       font-family:ui-monospace,Menlo,Consolas,monospace}
-  dialog{border:1px solid var(--line);background:var(--card);color:var(--ink);
-         border-radius:var(--r);padding:0;width:min(92vw,460px)}
-  dialog::backdrop{background:rgba(0,0,0,.6)}
-  .dlg-b{padding:14px 16px;max-height:52vh;overflow:auto}
-  .diff{font-size:14px;padding:7px 0;border-bottom:1px solid var(--line)}
+  dialog{border:0;background:var(--card);color:var(--ink);border-radius:14px;padding:0;width:min(92vw,460px)}
+  dialog h2{padding:16px 16px 8px;font-size:17px;font-weight:600;color:var(--ink)}
+  dialog::backdrop{background:rgba(0,0,0,.4)}
+  .dlg-b{padding:0 16px 12px;max-height:52vh;overflow:auto}
+  dialog .acts{border-top:.5px solid var(--line)}
+  .diff{font-size:15px;padding:7px 0;border-bottom:.5px solid var(--line)}
   .diff:last-child{border-bottom:0}
   .diff b{font-weight:600}
   .old{color:var(--dim);text-decoration:line-through}
   .new{color:var(--ok)}
-  .toast{position:fixed;left:12px;right:12px;bottom:96px;z-index:9;background:var(--card);
-         border:1px solid var(--line);border-radius:11px;padding:12px 14px;font-size:14px;
+  .toast{position:fixed;left:16px;right:16px;bottom:96px;z-index:9;background:var(--card);
+         border-radius:12px;padding:12px 14px;font-size:15px;box-shadow:0 8px 24px rgba(0,0,0,.18);
          opacity:0;transition:.2s;pointer-events:none}
   .toast.show{opacity:1}
-  .setup{padding:15px}
+  .setup{padding:16px}
   .setup input{width:100%;text-align:left;margin-top:6px}
-  .ro{color:var(--dim);font-size:14px}
-  /* 多选（终末地的地区选择）：一排小按钮，按一下切一个。手机上比
-     <select multiple> 好按得多，也一眼看得出选了哪几个。 */
   .pills{display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end}
-  .pill{background:var(--btn);border:1px solid var(--line);border-radius:99px;
-        padding:7px 12px;font-size:14px;color:var(--dim);box-shadow:none}
-  .pill.on{background:var(--ok);border-color:var(--ok);color:#fff;font-weight:600}
+  .pill{background:var(--field);border:0;border-radius:99px;padding:7px 12px;font-size:15px;color:var(--ink);box-shadow:none}
+  .pill.on{background:var(--accent);color:#fff;font-weight:600}
   .row .pills{align-self:stretch}
-  /* 选项多的那种收起来：默认只占一行。 */
   .pillbox{align-self:stretch;width:100%}
-  .pillbox>summary{list-style:none;cursor:pointer;text-align:right;
-        font-size:14px;color:var(--dim);padding:6px 0}
+  .pillbox>summary{list-style:none;cursor:pointer;text-align:right;font-size:15px;color:var(--dim);padding:4px 0}
   .pillbox>summary::-webkit-details-marker{display:none}
-  .pillbox>summary::after{content:" ▾";font-size:12px}
-  .pillbox[open]>summary::after{content:" ▴"}
+  .pillbox>summary::after{content:" ›";font-size:15px}
+  .pillbox[open]>summary::after{content:" ⌄"}
   .pillbox>.pills{margin-top:4px}
   .pillbox .pill{padding:5px 9px;font-size:13px}
-  /* 只看图标的单选：每个选项画它掉的两个套装图标。 */
   .picks{display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end;align-self:stretch}
-  .pick{background:var(--btn);border:2px solid var(--line);border-radius:14px;
-        padding:6px 8px;display:flex;gap:4px;align-items:center;box-shadow:none}
+  .pick{background:var(--field);border:2px solid transparent;border-radius:14px;padding:6px 8px;display:flex;gap:4px;align-items:center;box-shadow:none}
   .pick img{width:34px;height:34px;border-radius:50%;display:block}
-  .pick.on{border-color:var(--ok);background:color-mix(in srgb,var(--ok) 14%,transparent)}
+  .pick.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--card))}
   .swatches{display:flex;gap:9px}
-  .sw-c{width:28px;height:28px;border-radius:50%;display:block;cursor:pointer;
-        border:2px solid transparent;box-shadow:0 0 0 1px var(--line) inset}
+  .sw-c{width:28px;height:28px;border-radius:50%;display:block;cursor:pointer;border:2px solid transparent;box-shadow:0 0 0 1px var(--line) inset}
   .sw-c.on{border-color:var(--ink);transform:scale(1.08)}
 </style>
 </head>
@@ -186,6 +184,6 @@
 </dialog>
 
 <div class="toast" id="toast"></div>
-<script src="app.js?v=20260914194722"></script>
+<script src="app.js?v=20260914202254"></script>
 </body>
 </html>
