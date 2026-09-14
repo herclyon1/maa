@@ -459,6 +459,15 @@ function numTile(icon, colour, big, unit, label, sub, err) {
     <span class="big">${big ?? "–"}${unit ? `<small>${unit}</small>` : ""}</span>
     <span class="lab">${label}</span>${sub ? `<span class="sub">${sub}</span>` : ""}</div>`;
 }
+/* 「回满」 the way Health and Reminders date things: 今天 19:24, 明天 01:38, else the date. */
+function whenFull(stamp) {
+  const m = /^(\d\d)-(\d\d) (\d\d:\d\d)$/.exec(stamp || "");
+  if (!m) return stamp ? `回满 ${stamp}` : "";
+  const p = (x) => String(x).padStart(2, "0"), d = new Date(), t = new Date(Date.now() + 864e5);
+  const day = `${m[1]}-${m[2]}`;
+  const name = day === `${p(d.getMonth() + 1)}-${p(d.getDate())}` ? "今天" : day === `${p(t.getMonth() + 1)}-${p(t.getDate())}` ? "明天" : day;
+  return `${name} ${m[3]} 回满`;
+}
 function numTiles(snap) {
   const r = (window.Stamina && Stamina.data) || null, t = (snap && snap["今天"]) || null;
   if (!r && !t) return "";
@@ -467,8 +476,8 @@ function numTiles(snap) {
   if (t) h += numTile("gamecontroller.fill", "#8e8e93", t["跑了"], "趟", "今天跑了", t["失败"] ? `失败 ${t["失败"]} 趟` : (t["最近"] ? `最近一趟 ${t["最近"]}` : "还没跑"));
   if (r) {
     /* The same symbol stands for the same game in the tab bar and here. */
-    h += numTile("shield.fill", "#0088ff", ak["理智"], ak["上限"] != null ? `/${ak["上限"]}` : "", "明日方舟 理智", ak["回满"] ? `回满 ${ak["回满"]}` : "", ak["错误"]);
-    h += numTile("mountain.2.fill", "#ff9500", ef["理智"], ef["上限"] != null ? `/${ef["上限"]}` : "", "终末地 理智", ef["回满"] ? `回满 ${ef["回满"]}` : "", ef["错误"]);
+    h += numTile("shield.fill", "#0088ff", ak["理智"], ak["上限"] != null ? `/${ak["上限"]}` : "", "明日方舟 理智", whenFull(ak["回满"]), ak["错误"]);
+    h += numTile("mountain.2.fill", "#ff9500", ef["理智"], ef["上限"] != null ? `/${ef["上限"]}` : "", "终末地 理智", whenFull(ef["回满"]), ef["错误"]);
     h += numTile("water.waves", "#30b0c7", ww["波片"], ww["上限"] != null ? `/${ww["上限"]}` : "", "鸣潮 波片",
       ww["错误"] ? "" : `备用 ${ww["备用"] ?? "–"} · 周本 ${ww["周本"] ?? "–"}/${ww["周本上限"] ?? "–"}`, ww["错误"]);
   }
