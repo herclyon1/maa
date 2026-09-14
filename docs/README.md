@@ -78,6 +78,7 @@ exist - the next session will never read it, so writing it was wasted.
 | Document | Question it answers |
 |---|---|
 | [PHONE-COPY-RULES.md](PHONE-COPY-RULES.md) | How to write the copy on the phone remote page |
+- [HIG-CHECKLIST.md](HIG-CHECKLIST.md) - the phone page checked against Apple's Human Interface Guidelines, rule by rule
 
 ## Archive (mind the dates when reading)
 
