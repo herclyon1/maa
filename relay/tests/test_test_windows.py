@@ -1,4 +1,4 @@
-"""Hand-started test runs stay out of the daily report's rows.
+"""Records inside a marked test window stay out of the daily report's rows.
 
 Fixture: the real ledger of 2026-09-14 - the 09:00 queue (rows 0-9, retries
 included, running until 11:49) and then my test dispatches from 12:57 (two
@@ -25,24 +25,30 @@ FIX = Path(__file__).resolve().parent / "fixtures" / "ledger-2026-09-14" / "ledg
 entries = [json.loads(x) for x in FIX.read_text(encoding="utf-8").splitlines() if x.strip()]
 check("样本 16 条", len(entries), 16)
 
-print("[真实账本：早班那一串（含重试）算队列的，12:57 起的六条算手动]")
-queue, manual = core.split_manual(entries, ["09:00", "21:30"])
-check("队列 10 条", len(queue), 10)
-check("手动 6 条", [m["run_id"].rsplit("/", 1)[-1] for m in manual],
+print("[真实账本 + 标记的测试窗口：窗口里的六条收起，其余全是正常行]")
+windows = [{"since": "2026-09-14T12:50:00+08:00", "until": "2026-09-14T13:50:00+08:00", "what": "MaaEnd"}]
+queue, tests = core.split_test(entries, windows)
+check("正常 10 条", len(queue), 10)
+check("测试 6 条", [m["run_id"].rsplit("/", 1)[-1] for m in tests],
       ["MaaEnd-08-57-04", "MaaEnd-09-03-54", "MaaEnd-09-06-20", "MaaEnd-09-08-10", "MaaEnd-09-37-59", "MaaEnd-09-43-32"])
-check("队列里的重试没被当成手动（11:21 那趟离 09:00 两小时）",
-      any(e["run_id"].endswith("MaaEnd-07-20-27") for e in queue), True)
+check("队列里的重试照旧是正常行", any(e["run_id"].endswith("MaaEnd-07-20-27") for e in queue), True)
 
-print("\n[没有排班时间就分不出来，全部算队列的]")
-q2, m2 = core.split_manual(entries, [])
-check("全在队列里", (len(q2), m2), (16, []))
+print("\n[没有标记窗口：手动跑的也是正常行（版本更新后的手动重跑必须进日报）]")
+q2, t2 = core.split_test(entries, [])
+check("全部是正常行", (len(q2), t2), (16, []))
+q3, t3 = core.split_test(entries, [{"since": "bad"}])
+check("坏窗口当没有", (len(q3), t3), (16, []))
 
-print("\n[日报只列队列的，手动那几趟不成行]")
+print("\n[窗口没关（until 为空）：从 since 起全算测试——所以测完必须 test-off]")
+q4, t4 = core.split_test(entries, [{"since": "2026-09-14T12:50:00+08:00", "until": None}])
+check("12:50 以后的全收起", len(t4), 6)
+
+print("\n[日报只列正常的，测试那几趟不成行]")
 title, body = core.format_daily("2026-09-14", queue)
-check("没有 12:57 那趟", "12:57" in body, False)
+check("没有 12:57 那趟", "12:58→13:03" in body, False)
 check("早班的终末地还在", "MaaEnd" in body, True)
 t_all, b_all = core.format_daily("2026-09-14", entries)
-check("不过滤的话它们本来会出现", "12:58→13:03" in b_all, True)
+check("不标记的话它们本来会出现", "12:58→13:03" in b_all, True)
 
 print("\n[AUTO-MAS 自己没拉起模拟器的那一秒不成行（10:51 那条）]")
 check("旧记录里 transitional 还是 False", next(e for e in entries if e["run_id"].endswith("06-51-56"))["transitional"], False)

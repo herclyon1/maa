@@ -181,5 +181,15 @@ try:
           f"留着，到 {_modes.get('debug_until')}——跑完就不关机")
 except Exception as _exc:  # noqa: BLE001
     check("读得到 state.json 的 modes", False, f"{type(_exc).__name__}: {_exc}")
+# A test window left open turns the user's own manual runs into 「test, not
+# counted」 in the daily report (run-one.sh --test / test-off, 2026-09-14).
+try:
+    _tw = Path(r"C:\ProgramData\ark-relay\state\test-windows.json")
+    _w = json.loads(_tw.read_text(encoding="utf-8")) if _tw.is_file() else []
+    _open = [x for x in _w if isinstance(x, dict) and x.get("until") is None]
+    check("测试窗口没开着", not _open,
+          f"开着（{_open[0].get('since') if _open else ''} 起）——这期间的记录不进日报正文，跑 run-one.sh test-off")
+except Exception as _exc:  # noqa: BLE001
+    check("读得到测试窗口文件", False, f"{type(_exc).__name__}: {_exc}")
 
 print(f"\n{'=' * 46}\n通过 {len(OK)} 项" + (f"，失败 {len(BAD)} 项：{BAD}" if BAD else "，全部通过"))

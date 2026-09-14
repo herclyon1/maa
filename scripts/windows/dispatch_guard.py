@@ -18,9 +18,11 @@
     dispatch_guard.py stop                      # 停干净所有
 """
 import json
+import os
 import subprocess
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 import urllib.error
 import urllib.request
 
@@ -147,7 +149,65 @@ def stop_all():
     return not left
 
 
-def start(name) -> int:
+# A test dispatch is marked as such, on purpose, by the person dispatching it -
+# never inferred. Everything not inside a marked window is real work (a rerun
+# after a game update, a run started from the phone) and belongs in the daily
+# report as a normal row. The user, 2026-09-14: 「手动趟不进日报的话，如果有一天版本
+# 更新了，必须要手动重跑一次，你不进日报怎么办？」
+TEST_WINDOWS = r"C:\ProgramData\ark-relay\state\test-windows.json"
+
+
+def _windows():
+    try:
+        with open(TEST_WINDOWS, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return []
+
+
+def _save_windows(w):
+    os.makedirs(os.path.dirname(TEST_WINDOWS), exist_ok=True)
+    tmp = TEST_WINDOWS + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(w, fh, ensure_ascii=False)
+    os.replace(tmp, TEST_WINDOWS)
+
+
+def _now_iso():
+    return datetime.now(timezone(timedelta(hours=8))).isoformat(timespec="seconds")
+
+
+def test_on(what):
+    w = _windows()
+    if w and w[-1].get("until") is None:
+        print(f"  测试窗口已经开着（{w[-1]['since']} 起），这趟算在里面")
+        return
+    w.append({"since": _now_iso(), "until": None, "what": what})
+    _save_windows(w)
+    print(f"  测试窗口已开（{w[-1]['since']}）——这之后落盘的记录日报只记一句，不成行。跑完记得 run-one.sh test-off")
+
+
+def test_off() -> int:
+    w = _windows()
+    if not w or w[-1].get("until") is not None:
+        print("  没有开着的测试窗口")
+        return 0
+    w[-1]["until"] = _now_iso()
+    _save_windows(w)
+    print(f"  测试窗口已关（{w[-1]['since']} → {w[-1]['until']}）")
+    return 0
+
+
+def test_status() -> int:
+    w = _windows()
+    if w and w[-1].get("until") is None:
+        print(f"  ⚠️ 测试窗口开着：{w[-1]['since']} 起（{w[-1].get('what', '')}）——这期间的记录不进日报正文")
+        return 1
+    print("  测试窗口：没开")
+    return 0
+
+
+def start(name, test=False) -> int:
     """派发一个脚本。返回退出码：0 成功，非 0 被拒。
 
     **拒绝必须是非零退出。** 2026-09-08 之前这里只 print 一行 ❌ 然后 return，
@@ -163,6 +223,8 @@ def start(name) -> int:
     if name not in table:
         print(f"❌ 没有叫「{name}」的脚本。有：{'、'.join(table)}")
         return 3
+    if test:
+        test_on(name)
     r = post("/api/dispatch/start", {"taskId": table[name], "mode": "AutoProxy"})
     print(f"派发「{name}」:", r.get("status"), r.get("message", ""))
     return 0 if str(r.get("status", "")).lower() == "success" else 4
@@ -189,7 +251,11 @@ if __name__ == "__main__":
     if a[0] == "status":
         status()
     elif a[0] == "start" and len(a) > 1:
-        sys.exit(start(a[1]))
+        sys.exit(start(a[1], test="--test" in a[2:]))
+    elif a[0] == "test-off":
+        sys.exit(test_off())
+    elif a[0] == "test-status":
+        sys.exit(test_status())
     elif a[0] == "start-queue" and len(a) > 1:
         sys.exit(start_queue(a[1]) or 0)
     elif a[0] == "stop":

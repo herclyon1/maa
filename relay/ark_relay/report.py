@@ -4,6 +4,7 @@ Split out of engine.py (2026-09-06, moved verbatim).
 """
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -208,14 +209,12 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     # fault, it is the normal path -- logging WARNING here used to make it look
     # broken and left a fake injury in the log every single day.
     log.info("日报用结构化模板（模型撰写已废弃，这是正常路径）")
-    from . import plan as _plan  # noqa: PLC0415
-    times = [t for q in _plan.schedule(eng.cfg.automas_dir) for t in q.get("times", [])]
-    entries, manual = core.split_manual(entries, times)
+    entries, tests = core.split_test(entries, test_windows(eng.cfg.state_dir))
     title2, body = core.format_daily(day, entries, "", tomorrow)
-    if manual:
-        log.info("日报：%d 条手动跑的记录不列出来（%s）", len(manual),
-                 "、".join(m.get("run_id", "?") for m in manual))
-        body += f"\n\n另外手动跑过 {len(manual)} 趟（测试，不计入）"
+    if tests:
+        log.info("日报：%d 条测试窗口里的记录不列出来（%s）", len(tests),
+                 "、".join(m.get("run_id", "?") for m in tests))
+        body += f"\n\n另外测试跑过 {len(tests)} 趟（不计入）"
     # The Endfield daily list goes at the very end as a footnote (user, 2026-09-02)
     foot = core.daily_footnote(entries)
     return title2, body + tail + (f"\n\n{foot}" if foot else "")
@@ -314,6 +313,18 @@ def _tacet_caption(eng, day: str = "") -> str:
     if want is not None:
         return f"设置里写的是第 {want} 个：{wuwa_tacet.label(want)}，掉 {wuwa_tacet.reward(want)}（实际序号没读到）"
     return "无音区序号没读到，设置和实际都没拿到"
+
+
+def test_windows(state_dir) -> list[dict]:
+    """The test windows run-one.sh marked (state/test-windows.json); [] when none."""
+    if not state_dir:
+        return []
+    p = Path(state_dir) / "test-windows.json"
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except (OSError, ValueError):
+        return []
 
 
 def _attach_tacet_shots(eng, day: str) -> list[str]:

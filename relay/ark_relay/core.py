@@ -704,55 +704,36 @@ def _launch_miss(e: dict) -> bool:
             and any("模拟器启动失败" in str(t) for t in (e.get("failed_tasks") or [])))
 
 
-MANUAL_GAP_MIN = 45     # a pause this long between records starts a new round
-MANUAL_WINDOW_MIN = 30  # a round starting this close to a queue time is the queue's
+def split_test(entries: list[dict], windows: list[dict]) -> tuple[list[dict], list[dict]]:
+    """(real records, records inside a marked test window).
 
-
-def split_manual(entries: list[dict], queue_times: list[str]) -> tuple[list[dict], list[dict]]:
-    """(queue rounds, hand-started rounds), by the same rule shutdown.py uses.
-
-    Records are grouped into rounds by the gap between one record's end and the
-    next one's start; a round whose first record starts more than
-    MANUAL_WINDOW_MIN from every queue time was dispatched by hand. Those are
-    test runs (the user, 2026-09-14: 「日报里面该清理的清理掉」) and are kept out
-    of the report's rows. Without queue times nothing
-    can be told apart and everything counts as the queue's.
+    A test window is opened on purpose by `run-one.sh <script> --test` and
+    closed by `run-one.sh test-off` (state/test-windows.json); nothing is
+    inferred from timing. A hand-started run outside a window is real work -
+    a rerun after a game update, a run started from the phone - and stays a
+    normal row (the user, 2026-09-14: a version-update rerun must be in the
+    report). Test records are kept out of the rows and counted in one line.
     """
-    if not entries or not queue_times:
+    spans = []
+    for w in windows or []:
+        try:
+            since = datetime.fromisoformat(w["since"])
+            until = datetime.fromisoformat(w["until"]) if w.get("until") else None
+        except (KeyError, TypeError, ValueError):
+            continue
+        spans.append((since, until))
+    if not spans:
         return list(entries), []
-    ordered = sorted(entries, key=lambda e: e.get("started") or "")
-    rounds: list[list[dict]] = []
-    last_end = None
-    for e in ordered:
+    real, test = [], []
+    for e in entries:
         try:
-            start = datetime.fromisoformat(e["started"])
-            end = datetime.fromisoformat(e.get("finished") or e["started"])
+            started = datetime.fromisoformat(e["started"])
         except (KeyError, ValueError):
-            rounds = rounds or [[]]
-            rounds[-1].append(e)
+            real.append(e)
             continue
-        if last_end is None or (start - last_end).total_seconds() > MANUAL_GAP_MIN * 60:
-            rounds.append([])
-        rounds[-1].append(e)
-        last_end = max(last_end, end) if last_end else end
-    queue, manual = [], []
-    for r in rounds:
-        try:
-            first = datetime.fromisoformat(r[0]["started"])
-        except (KeyError, ValueError):
-            queue += r
-            continue
-        near = False
-        for hhmm in queue_times:
-            try:
-                hh, mm = (int(x) for x in hhmm.split(":"))
-            except ValueError:
-                continue
-            due = first.replace(hour=hh, minute=mm, second=0, microsecond=0)
-            if abs((first - due).total_seconds()) <= MANUAL_WINDOW_MIN * 60:
-                near = True
-        (queue if near else manual).extend(r)
-    return queue, manual
+        inside = any(since <= started and (until is None or started <= until) for since, until in spans)
+        (test if inside else real).append(e)
+    return real, test
 
 
 def format_daily(day: str, entries: list[dict], prose: str = "",

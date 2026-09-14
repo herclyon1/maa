@@ -73,7 +73,7 @@
 | 重编 Fleet Monitor（Dock 上那个看机器在不在的） | `scripts/mac/build-fleetmonitor.sh` —— 改了 `scripts/mac/FleetMonitor/main.swift` 之后跑，它编译、装包、重启。二进制不入库 |
 | 串流到 ins 打游戏 | `scripts/mac/stream-ins.sh`（菜单用）/ `--relative`（游戏内转视角）。桌面上那三个启动器点的就是它 |
 | **测试只跑终末地的某一个任务** | `winrun.sh --py scripts/mac/lib/maaend_only_task.py disable [任务名]`（默认 AutoCollect）→ `run-one.sh MaaEnd` → 跑完 `... enable`。**测试跑=只派那一个任务**，派整条日常被骂过（09-14） |
-| **手动跑单个脚本 / 停干净** | `scripts/mac/run-one.sh MAA\|MaaEnd\|OK-WW`（`status` 看在跑什么、`stop` 按顺序停）—— **唯一正门**，内含忙闲闸门。禁裸调 `/api/dispatch/start`、禁 `taskkill` |
+| **手动跑单个脚本 / 停干净** | `scripts/mac/run-one.sh MAA\|MaaEnd\|OK-WW`（`status` 看在跑什么、`stop` 按顺序停）—— **唯一正门**，内含忙闲闸门。禁裸调 `/api/dispatch/start`、禁 `taskkill`。**我的测试跑加 `--test`**（开测试窗口，这期间的记录日报只记一句），**测完 `run-one.sh test-off`**；不加 `--test` 的手动跑（版本更新后补跑、用户自己跑）照常进日报 |
 | 在游戏机上跑脚本 | `scripts/mac/winrun.sh --py <本地.py>`（要看屏幕用 `--py1`） |
 | 拉起方舟那个雷电实例 | `scripts/windows/emu-start.py`（winrun 送上去跑）—— 机器上有两个雷电实例，方舟装在 1000 号那个（adb 7555）。双击 `dnplayer.exe` 起的是 0 号，方舟不在里面 |
 | 打月行水 SR-4 | `scripts/windows/sr4-run.py`（在游戏机本地跑）—— 这关战斗中反复弹剧情，遥控赶不上时机，MAA 的 Copilot 也会被剧情卡死，所以整个搬到本地循环里做 |
