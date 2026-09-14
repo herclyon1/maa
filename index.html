@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0f1216">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260915011523">
+<link rel="manifest" href="manifest.webmanifest?v=20260915011730">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915011523">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915011523">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915011730">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915011730">
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
      上面跑的」). System colours from Apple's palette: grouped background, white
@@ -105,7 +105,7 @@
   .dtext{flex:1 1 auto;min-width:0}
   .dname{font-size:17px;line-height:22px;font-weight:600}
   .dsub{display:flex;align-items:center;gap:6px;color:var(--dim);font-size:15px;line-height:20px}
-  .dside{flex:none;color:var(--dim);font-size:15px}
+  .dside{display:none}
   section + section > .group.devcard:first-child{margin-top:0}
   /* Notice card: Health › 摘要 (measured on the simulator: inset 16, caption 13 with a
      hairline under it, title 17 semibold, body 15 secondary, capsule button 30 high). */
@@ -136,7 +136,7 @@
       -webkit-mask-position:center;mask-position:center;-webkit-mask-size:contain;mask-size:contain}
   .foot p{margin:0 0 4px}
   .group{background:var(--card);border-radius:var(--r);overflow:hidden}
-  .group > *:not(.row):not(.acts):not(pre):not(.setup):not(.warn):not(.hint):not(.group-foot){padding:11px 20px}
+  .group:not(.devcard):not(.notice):not(.tiles) > *:not(.row):not(.acts):not(pre):not(.setup):not(.warn):not(.hint):not(.group-foot){padding:11px 20px}
   /* Rows: name left, control right, hairline inset to the text like UITableView. */
   .row{position:relative;display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:15.5px 18px 15.5px 20px;min-height:53.33px}
   /* One device pixel, like UITableView's hairline (1/scale pt): a 1px box scaled to a third. */
@@ -276,6 +276,6 @@
 </dialog>
 
 <div class="toast" id="toast"></div>
-<script src="app.js?v=20260915011523"></script>
+<script src="app.js?v=20260915011730"></script>
 </body>
 </html>
