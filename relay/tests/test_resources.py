@@ -43,7 +43,8 @@ def fake_login(token, did=""):
 
 skland.get_did, skland.login, skland.refresh = (lambda: "Bdev"), fake_login, (lambda c: c)
 skland.bindings = lambda c: [
-    {"appCode": "endfield", "bindingList": [{"uid": "247481631", "channelMasterId": "1"}]},
+    {"appCode": "endfield", "bindingList": [{"uid": "247481631", "channelMasterId": "1",
+                                              "roles": [{"roleId": "1234567890", "serverId": "1"}]}]},
     {"appCode": "arknights", "bindingList": [{"uid": "19237299", "channelMasterId": "1"}]},
 ]
 
@@ -54,7 +55,7 @@ class Tok:
 
 resources._session["sk"] = None
 got = resources.skland_session(Tok)
-check("会话齐全", got, {"cred": "c1", "token": "t1", "dId": "Bdev", "uid": "19237299", "efRole": "247481631", "efServer": "1"})
+check("会话齐全（终末地用 roles[] 的 roleId，不是 uid）", got, {"cred": "c1", "token": "t1", "dId": "Bdev", "uid": "19237299", "efRole": "1234567890", "efServer": "1"})
 resources.skland_session(Tok)
 check("只登录一次", calls["login"], 1)
 

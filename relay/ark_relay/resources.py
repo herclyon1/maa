@@ -31,12 +31,15 @@ def skland_session(cfg) -> dict:
             cred = skland.refresh(cred)
             sk = {"cred": cred.cred, "token": cred.token, "dId": did}
             for app in skland.bindings(cred):
-                for role in app.get("bindingList", []):
-                    if app.get("appCode") == "arknights" and "uid" not in sk:
-                        sk["uid"] = str(role.get("uid") or "")
-                    if app.get("appCode") == "endfield" and "efRole" not in sk:
-                        sk["efRole"] = str(role.get("uid") or role.get("roleId") or "")
-                        sk["efServer"] = str(role.get("channelMasterId") or role.get("serverId") or "1")
+                if app.get("appCode") == "arknights":
+                    for b in app.get("bindingList", []):
+                        if b.get("uid") and "uid" not in sk:
+                            sk["uid"] = str(b["uid"])
+            # Endfield wants roles[].roleId / serverId - uid + channelMasterId only earn a 403
+            try:
+                sk["efRole"], sk["efServer"] = skland.endfield_role(cred)
+            except Exception as exc:  # noqa: BLE001 - no Endfield binding: the tile says so
+                log.info("终末地角色没找到：%s", exc)
             _session["sk"] = sk
         return dict(_session["sk"])
     except Exception as exc:  # noqa: BLE001 - the page shows the reason in the tile
