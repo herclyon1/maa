@@ -467,7 +467,7 @@ function numTiles(snap) {
     h += numTile("moon.fill", "#30b0c7", ww["波片"], ww["上限"] != null ? `/${ww["上限"]}` : "", "鸣潮 波片",
       ww["错误"] ? "" : `备用 ${ww["备用"] ?? "–"} · 周本 ${ww["周本"] ?? "–"}/${ww["周本上限"] ?? "–"}`, ww["错误"]);
   }
-  return `<section><div class="group nums">${h}</div></section>` + (r && r["取自"] ? `<section><div class="foot">体力数字取自 ${r["取自"]}，十分钟更新一次</div></section>` : "");
+  return `<section><div class="group nums">${h}</div>${r && r["取自"] ? `<div class="foot">体力数字取自 ${r["取自"]}，十分钟更新一次</div>` : ""}</section>`;
 }
 
 function render() {
