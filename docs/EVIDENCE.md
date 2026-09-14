@@ -54,6 +54,34 @@ as 「疑似复发性问题」 with a request for a person to file it upstream.
 Manual: `python -m ark_relay collect-retry [--day YYYY-MM-DD]`. State under
 `state/collect-retry/` (one stamp per day, `failures.json` per route).
 
+### AUTO-MAS's own retry round (`relay/ark_relay/collect_watch.py`, 2026-09-14)
+
+AUTO-MAS answers a failed 自动采集 by re-running the whole script up to
+`RunTimesLimit` times, copying the master `mxu-MaaEnd.json` into MaaEnd's config
+dir before **each** attempt (`AutoProxy.set_maaend`, inside the retry loop). The
+relay makes that retry per-route by narrowing the master's `AutoCollect*Routes`
+lists to the failed routes while the failing attempt is still ending.
+
+Why the first version (narrow when the failing *record* lands, 09-12) never
+fired: AUTO-MAS writes all attempts' records of one task at the end of the whole
+task - on 09-14 four attempts were all stamped 11:49:18, and the relay narrowed
+at 11:54:56 and restored the same second. The live source is MaaFW's own log,
+`<MaaEnd>/debug/maafw.log`: `[msg=Node.Action.Starting] ... "name":"AutoCollectRoute10Failed"`
+is logged at the end of the schedule (09-14: 11:20:22, retry launched 11:21:43),
+`[msg=Tasker.Task.Starting] ... "entry":"AutoCollectSchedule"` marks the next
+attempt. The watcher sleeps on a directory-change notification for `debug/`
+(watch.py), reads the appended bytes only, follows the rotation into
+`maafw.bak.<stamp>.log` (MaaFW rotates on process start, i.e. two seconds after
+the Failed line), narrows on each Failed node (`collect_retry.narrow_master`,
+which now accumulates a second route instead of intersecting), and restores at
+the retry's Task.Starting. The record-time restore, the shutdown-time restore
+and the boot-time restore stay as backstops.
+
+Drill on the machine: `scripts/mac/collect-watch-drill.sh` (feeds the real
+09-14 lines into the live log, asserts narrow + restore, truncates the log back,
+restarts the relay). Passed twice on 2026-09-14 (12:32, 12:36); the relay logs
+`ark.collect_watch` lines for every step.
+
 
 ## Where bundles go (2026-09-12 evening) - `evidence.pick_uploader`
 

@@ -77,6 +77,7 @@
 | 调 AUTO-MAS 接口 | `scripts/mac/mas-api.py`（全部 POST） |
 | **看 OK-WW 真正生效的配置** | `scripts/mac/winrun.sh --py scripts/mac/lib/okww_effective.py` —— OK-WW 自己目录那份跑前会被 AUTO-MAS 整个换掉，**不作数** |
 | **收工前体检** | `scripts/mac/winrun.sh --py scripts/mac/lib/healthcheck.py` —— 补丁在不在、临时配置有没有改回来、明早能不能跑 |
+| **验证「只补跑失败路线」还活着** | `scripts/mac/collect-watch-drill.sh` —— 把真实的失败行喂进游戏机的 maafw.log，断言母本几秒内收窄、重跑开始行一到就改回，然后把日志截回去。机器空闲时才能跑，会真发一条通知 |
 | **验证闸门自己还活着** | `scripts/mac/guardcheck.sh` —— 拿已知坏样本喂每道闸门，断言它必须拒绝。**闸门坏了不会吭声**，2026-08-27 就发现「全盘扫描」那道闸只认反斜杠，`Path("C:/")` 直接穿过去 |
 | **翻译任何 id / 枚举 / 下标** | `scripts/mac/lib/idmap.py get <id>` —— 查不到就停下，**不许按位置对齐去猜**。登记要 `--source` |
 | **读森空岛快照** | `from snapshot import load, is_stale` —— `load` 自己会把数据年龄打出来。**刷新只在用户说「刷新」时跑** `refresh_snapshot.refresh()`，不许挂在读取路径上自动拉（那是轮询） |

@@ -118,7 +118,7 @@ def collect_retry_body(passed: list[str], failed: list[str], unknown: list[str],
 
 def collect_narrowed_body(names: list[str]) -> str:
     return ("没走通的：" + "、".join(names)
-            + "。AUTO-MAS 马上重跑自动采集这一项，中继已把路线改成只有这几条；这一轮跑完自动改回原来的路线。")
+            + "。AUTO-MAS 马上重跑自动采集这一项，中继已把路线改成只有这几条；重跑一开始就改回原来的路线。")
 
 
 def collect_recurrent_body(names: list[str]) -> str:
