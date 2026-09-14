@@ -141,22 +141,22 @@ this deployment's key belongs to is not recorded here; the key lives only in
 Delivery rule: **one channel delivering counts as delivered.** See
 [PITFALLS.md](PITFALLS.md) for why that sentence exists.
 
-### The group robot only (2026-09-14)
+### Three channels, three jobs (2026-09-14 evening)
 
-Every message, alerts included, goes to the **WeCom group robot** and nowhere
-else. Server酱 and the self-built WeCom app both deliver into the same private
-chat, so the 2026-08-24 rule (Server酱 first for routine, every channel for
-alerts) put each alert twice in that chat plus once in the group. The operator,
-2026-09-14:
+| Channel | Carries | Code |
+|---|---|---|
+| WeCom group robot | the daily report (and its 补发 / 临时查看) and real alarms someone has to act on | `send(..., daily=True)` / `send(..., alert=True)` |
+| Server酱 | every other notification that means something (中继已更新, 预更新, 周常, 自愈, 补跑…) | `send(...)` |
+| WeCom self-built app (private chat) | nothing on its own - only text the operator dictated (`push.py --private`) | never in an automatic order |
 
-> 企业微信通知只保留群机器人的通道，单独私聊的暂停停止掉。
-
-There is no fallback into the private chat: when the robot refuses, `send()`
-returns the failure, the message stays in the relay's pending queue and is
-retried, and the refusal is logged as an error. `Notifier.send(..., alert=True)`
-is kept at the call sites for what it says about the message; it no longer
-changes the routing. Images go through the group robot too (`send_group_image`).
-`relay/tests/test_notify_routing.py` pins this.
+The operator, 2026-09-14: 「群里面的机器人通知，只允许出现正常的日报、以及日报中的
+真实报错报警通知」「server酱里允许一切有意义的通知」「私聊的通道只允许是我本人亲自口述
+允许让你去发某些内容」「三个不同的通知各司其职，不要混在一起，而且根本目的是不要去
+打扰我」. The group falls back to Server酱 when the robot refuses (an alarm must
+arrive); information Server酱 refuses is returned as undelivered and never
+escalated into the group or the private chat. What is already in the daily
+report is not pushed separately (the narrowed-retry note of `collect_watch`
+is log-only for that reason). `relay/tests/test_notify_routing.py` pins it.
 
 `scripts/mac/push.py` on the Mac follows the same rule and the same order, with
 `--all` to override.

@@ -41,7 +41,7 @@ sent = []
 class FakeNotifier(Notifier):
     # 签名必须跟真的一样：漏跑告警是 alert=True 发的，桩少一个关键字
     # 就会在真实调用点炸 TypeError，而那正是告警路径。
-    def send(self, title, body, *, alert=False):
+    def send(self, title, body, *, alert=False, daily=False):
         sent.append((title, alert))
         return []
 

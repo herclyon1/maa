@@ -335,7 +335,7 @@ check("每条正文都进得了 2048 字节",
           for b in posted("webhook")) <= API_CAP, True)
 
 # ------------------------------------ Notifier：一个挂了不能拖垮其余
-print("\n[只发群机器人：真通道走完整条 HTTP 路径，私聊那两条配了也不碰]")
+print("\n[真通道走完整条 HTTP 路径：日报进群、其余进 Server酱、自建应用不碰]")
 cfg = Config()
 cfg.serverchan_key = "SCTabc"
 cfg.wecom_corpid, cfg.wecom_secret = "cid", "sec"
@@ -347,21 +347,22 @@ reset(("gettoken", once(TOKEN)),
       ("webhook", once({"errcode": 0})))
 n = Notifier(cfg)
 check("三个通道都算配好了", n.channels, ["企业微信", "企业微信机器人", "Server酱"])
-check("算送达（返回空 = 调用方可以不再重推）", n.send("⚠️ OK-WW 失败", "正文", alert=True), [])
-check("群机器人收到了", len(posted("webhook")), 1)
-check("Server酱 没被碰", posted("sctapi.ftqq.com"), [])
-check("自建应用没被碰", posted("message/send"), [])
+check("日报算送达", n.send("📋 日报", "正文", daily=True), [])
+check("群机器人收到了日报", len(posted("webhook")), 1)
+check("Server酱 没收到日报", posted("sctapi.ftqq.com"), [])
+check("普通通知算送达", n.send("🔄 中继已更新", "正文"), [])
+check("Server酱 收到了普通通知", len(posted("sctapi.ftqq.com")), 1)
+check("群机器人没多收", len(posted("webhook")), 1)
+check("自建应用从头到尾没被碰", posted("message/send"), [])
 
-print("\n[群机器人拒收：不落到私聊，返回「通道名: 原因」让调用方留着重试]")
+print("\n[群机器人拒收报警：回退到 Server酱；自建应用仍然不碰]")
 reset(("gettoken", once(TOKEN)),
       ("message/send", once({"errcode": 0})),
       ("sctapi.ftqq.com", once({"code": 0})),
       ("webhook", once({"errcode": 45009, "errmsg": "api freq out of limit"})))
 n2 = Notifier(cfg)
-errs = n2.send("⚠️ OK-WW 失败", "正文", alert=True)
-check("只有群机器人一条原因", len(errs), 1)
-check("原因带着 45009", errs[0].startswith("企业微信机器人: ") and "45009" in errs[0], True)
-check("Server酱 没被碰", posted("sctapi.ftqq.com"), [])
+check("报警仍算送达", n2.send("⚠️ OK-WW 失败", "正文", alert=True), [])
+check("Server酱 接住了", len(posted("sctapi.ftqq.com")) >= 1, True)
 check("自建应用没被碰", posted("message/send"), [])
 
 print("\n[群通知没配机器人时必须报错，不能返回空当作发过了]")

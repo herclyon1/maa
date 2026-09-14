@@ -51,24 +51,34 @@ def build(broken=()):
     return n, log
 
 
-print("[只有群机器人：日常和报警都只发它]")
+print("[三个通道各司其职：日报和真报警进群，其余走 Server酱，私聊永远不自动发]")
 n, log = build()
-check("发出去了", n.send("📋 日报", "正文"), [])
-check("只有群机器人被调用", [c for c, _ in log], ["企业微信机器人"])
+check("日报发出去了", n.send("📋 日报", "正文", daily=True), [])
+check("日报只进群机器人", [c for c, _ in log], ["企业微信机器人"])
 n, log = build()
-check("报警也发出去了", n.send("⚠️ 出错了", "正文", alert=True), [])
-check("报警也只有群机器人", [c for c, _ in log], ["企业微信机器人"])
+check("报警发出去了", n.send("⚠️ 出错了", "正文", alert=True), [])
+check("报警只进群机器人", [c for c, _ in log], ["企业微信机器人"])
+n, log = build()
+check("其余通知发出去了", n.send("🔄 中继已更新", "正文"), [])
+check("其余通知只走 Server酱", [c for c, _ in log], ["Server酱"])
 
-print("\n[群机器人挂了：不落到私聊，算没送到（留在待发队列重试）]")
+print("\n[群机器人挂了：日报/报警回退到 Server酱，绝不落到私聊]")
 n, log = build(broken=("企业微信机器人",))
 n._announcing = True
-check("返回失败", bool(n.send("⚠️ 出错了", "正文", alert=True)), True)
-check("Server酱 和企业微信都没被惊动", sorted({c for c, _ in log}), ["企业微信机器人"])
+check("仍算送达", n.send("⚠️ 出错了", "正文", alert=True), [])
+check("试了群机器人，回退到 Server酱", [c for c, t in log if t == "⚠️ 出错了"], ["企业微信机器人", "Server酱"])
+check("企业微信私聊没被惊动", any(c == "企业微信" for c, _ in log), False)
+
+print("\n[Server酱 挂了：普通通知不往群里塞，也不进私聊，返回没送到]")
+n, log = build(broken=("Server酱",))
+n._announcing = True
+check("返回失败", bool(n.send("🔄 中继已更新", "正文")), True)
+check("只试了 Server酱", sorted({c for c, _ in log}), ["Server酱"])
 
 print("\n[默认就是日常，不是报警]")
 n, log = build()
 n.send("🆕 预更新", "")
-check("预更新只走一处", len(log), 1)
+check("预更新只走一处", [c for c, _ in log], ["Server酱"])
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

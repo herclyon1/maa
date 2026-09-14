@@ -356,15 +356,22 @@ def _hint(name: str, err: str) -> str:
     return ""
 
 
-# One channel, full stop: the 企业微信 group robot. Until 2026-09-14 alerts fanned
-# out to every channel and routine traffic led with Server酱 - both Server酱 and
-# the self-built app land in the same private chat, so every alert reached the
-# user twice there and once in the group. The user, 2026-09-14: 「企业微信通知只保留
-# 群机器人的通道，单独私聊的暂停停止掉」. No fallback into the private chat: when
-# the robot refuses, the message stays in the pending queue and is retried, and
-# the failure is logged as an error. (Supersedes the 2026-08-24 Server酱-first rule.)
-_ALERT_ORDER = ("企业微信机器人",)
-_ROUTINE_ORDER = _ALERT_ORDER
+# Three channels, three jobs (the user, 2026-09-14 evening):
+#
+#   企业微信群机器人  the daily report and the real alarms only - nothing else, no
+#                    「中继已更新」, no progress notes, no test noise
+#   Server酱          every other notification that means something
+#   企业微信自建应用   (the private chat) never on its own - only text the user
+#                    dictates by hand (push.py --private)
+#
+# 「三个不同的通知各司其职，不要混在一起，而且根本目的是不要去打扰我」. Earlier that
+# day everything went to the group; before that, alerts fanned out to all three.
+# The group falls back to Server酱 when the robot refuses (an alarm must reach
+# him); info that Server酱 refuses is returned as undelivered, never escalated.
+_GROUP_ORDER = ("企业微信机器人", "Server酱")
+_INFO_ORDER = ("Server酱",)
+_ALERT_ORDER = _GROUP_ORDER        # kept for the outage announcement path
+_ROUTINE_ORDER = _INFO_ORDER
 
 
 class Notifier:
@@ -497,18 +504,18 @@ class Notifier:
                     break
         return delivered, failed
 
-    def send(self, title: str, body: str, *, alert: bool = False) -> list[str]:
+    def send(self, title: str, body: str, *, alert: bool = False, daily: bool = False) -> list[str]:
         """Returns failures only when the message reached nobody.
 
         An empty list means the caller may consider the message delivered and
         stop holding it. A non-empty list means every channel refused it.
 
-        `alert=True` is kept at the call sites for what it says about the
-        message; since 2026-09-14 it no longer fans out - everything goes to
-        the group robot only (see `_ALERT_ORDER`).
+        `daily=True` (the day's report) and `alert=True` (a real alarm someone
+        has to act on) go to the group robot; everything else is information
+        and goes to Server酱 (see the orders above).
         """
         delivered, failed = self._fan_out(
-            title, body, order=_ALERT_ORDER if alert else _ROUTINE_ORDER, stop_on_first=True)
+            title, body, order=_GROUP_ORDER if (alert or daily) else _INFO_ORDER, stop_on_first=True)
         if not delivered:
             # `or [...]`：一个通道都没配的时候 `failed` 是空的，返回空列表就等于
             # 告诉调用方「送到了」——正是「假的绿」。send_group 早就这么兜了，

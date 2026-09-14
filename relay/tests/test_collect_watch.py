@@ -81,8 +81,7 @@ notes = w.feed("\n".join(failed_lines))
 check("收窄有说明", any("只留 1/12" in x for x in notes), True)
 check("母本只剩 Route10", _lists(f), (["Route10"], []))
 check("记住了没走通的", w.failed, ["Route10"])
-check("通知点名中文路线名（去掉标签）", n.sent and "路线10：晶簇" in n.sent[0][1], True)
-check("同一条只通知一次", len(n.sent), 1)
+check("不单独推送（日报里已经写了没走通的路线）", n.sent, [])
 
 print("\n[重跑一开始（Tasker.Task.Starting）就改回原来的路线]")
 start_line = next(ln for ln in LINES if "Tasker.Task.Starting" in ln)
@@ -99,7 +98,7 @@ r10 = next(ln for ln in LINES if "Route10Failed" in ln)
 w.feed(r10)
 w.feed(r10.replace("Route10", "Route15"))
 check("两条都留", _lists(f), (["Route10"], ["Route15"]))
-check("两条通知", len(n.sent), 2)
+check("还是不推送", n.sent, [])
 w.feed(start_line)
 check("改回全部", _lists(f), (["Route4", "Route5", "Route6", "Route10", "Route13", "Route14"],
                             ["Route1", "Route2", "Route3", "Route15", "Route16", "Route17"]))
@@ -110,7 +109,7 @@ w = collect_watch.Watcher(cfg, n)
 echo = [ln for ln in LINES if "Route10Failed" in ln]
 check("样本里事件被回显了两次", len(echo) >= 2 and all("EventDispatcher::notify" in x for x in echo), True)
 w.feed("\n".join(echo))
-check("只收窄一次、只通知一次", (w.failed, len(n.sent)), (["Route10"], 1))
+check("只收窄一次、不推送", (w.failed, n.sent), (["Route10"], []))
 
 print("\n[读文件：增量读、跟着轮转走]")
 cfg, f, n = _setup()
@@ -145,7 +144,7 @@ with lp.open("a", encoding="utf-8") as fh:
 lp.rename(lp.parent / "maafw.bak.2026.09.14-11.20.24.685.log")     # not polled in between
 lp.write_text("x\n", encoding="utf-8")
 notes = w.poll()
-check("从旧文件尾巴读到失败并收窄", (_lists(f), len(n.sent)), ((["Route10"], []), 1))
+check("从旧文件尾巴读到失败并收窄", _lists(f), (["Route10"], []))
 with lp.open("a", encoding="utf-8") as fh:
     fh.write(start_line.replace("10:53:13", "11:21:43") + "\n")
 w.poll()

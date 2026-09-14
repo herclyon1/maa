@@ -1,21 +1,17 @@
 #!/usr/bin/env python3
 """Push a message to the phone from this Mac.
 
-    push.py "标题"                  # 正文从 stdin 读
+    push.py "标题"                    # 正文从 stdin 读 → Server酱
     push.py "标题" 正文.md
-    echo 正文 | push.py "标题"
-    push.py --all "标题" 正文.md    # 强制所有渠道都发
+    push.py --group "标题" 正文.md    # 企业微信群机器人：只放日报和真报警
+    push.py --private "标题" 正文.md  # 企业微信私聊：只发用户本人口述要发的内容
 
-**默认只发群机器人**（2026-09-14 起：私聊那两条路和群里重复，用户要求停掉），
-`--all` 才全发。这是手动汇报工具，同一份报告同时落到微信和 Server酱
-只会让人烦，而不是更可靠（2026-08-24 用户当场提的）。
-
-回退不是可有可无：家宽公网 IP 一转，企业微信就 60020 全拒；Server酱 没有
-IP 名单，所以把它排在第一位。只有第一个渠道**报错**才试下一个，所以正常
-情况下永远只到一处。
-
-中继（`relay/ark_relay/notify.py`）的行为**不一样，也不该一样**：它发的是
-自动告警，一个渠道挂了就得靠别的顶上，那边保持全渠道扇出。
+Three channels, three jobs (the user, 2026-09-14): the group robot carries the
+daily report and real alarms and nothing else; Server酱 carries every other
+notification that means something; the self-built app's private chat is never
+written to on my own initiative. The group falls back to Server酱 when the
+robot refuses; nothing ever falls back into the private chat. The relay
+(`relay/ark_relay/notify.py`) follows the same split.
 
 Why this exists: the game machine is powered on roughly three hours a day, and
 when it is off there is no way to get a message out - which is exactly when you
@@ -69,11 +65,14 @@ def main(argv: list[str]) -> int:
     # `push.py --help` once went out as a real message titled 「--help」 with
     # body 「.」 (2026-09-11 01:25, the user: 「你把谁关禁闭了，他给我发help呢」).
     # Anything starting with "-" is a flag, never a title.
-    if not argv or argv[0] in ("-h", "--help") or (argv[0].startswith("-") and argv[0] != "--all"):
+    if not argv or argv[0] in ("-h", "--help") or (argv[0].startswith("-") and argv[0] not in ("--group", "--private")):
         sys.exit(__doc__)
-    send_all = False
-    if argv[0] == "--all":
-        send_all, argv = True, argv[1:]
+    # Channels (the user, 2026-09-14): default Server酱 (information); --group is
+    # the group robot (daily report / real alarms only); --private is the
+    # self-built app's private chat, only for text the user dictated himself.
+    mode = "info"
+    if argv[0] in ("--group", "--private"):
+        mode, argv = argv[0][2:], argv[1:]
     if not argv:
         sys.exit(__doc__)
     title = argv[0]
@@ -94,22 +93,20 @@ def main(argv: list[str]) -> int:
         sys.exit(f"✗ {ENV_FILE} 里没有任何可用渠道")
 
     body = body.rstrip()
-    if send_all:
-        errors = notifier.send(title, body)
-        if errors:
-            for e in errors:
-                print(f"  ✗ {e}", file=sys.stderr)
+    joined = f"{title}\n\n{body}" if body else title
+    if mode == "private":
+        try:
+            notifier.wecom.send_text(joined)
+        except Exception as exc:  # noqa: BLE001
+            print(f"  ✗ 企业微信私聊: {exc}", file=sys.stderr)
             return 1
-        print(f"✅ 已发出（渠道：{'、'.join(notifier.channels)}）")
+        print("✅ 已发到企业微信私聊（用户口述的内容）")
         return 0
-
-    # 单渠道 + 回退。顺序见模块开头。
-    # Group robot only (the user, 2026-09-14: 「企业微信通知只保留群机器人的通道，
-    # 单独私聊的暂停停止掉」). --all still reaches every channel for a deliberate test.
-    order = (
-        ("企业微信机器人", notifier.wecom_bot,
-         lambda: notifier.wecom_bot.send_text(f"{title}\n\n{body}" if body else title)),
-    )
+    if mode == "group":
+        order = (("企业微信机器人", notifier.wecom_bot, lambda: notifier.wecom_bot.send_text(joined)),
+                 ("Server酱", notifier.serverchan, lambda: notifier.serverchan.send_text(title, body)))
+    else:
+        order = (("Server酱", notifier.serverchan, lambda: notifier.serverchan.send_text(title, body)),)
     tried: list[str] = []
     for name, channel, call in order:
         if not channel.enabled:

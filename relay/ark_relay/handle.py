@@ -680,7 +680,10 @@ def _flush_pending(eng) -> None:
         # happen again. Report it as an unresolved problem that this run
         # got past, never as "nothing to do".
         body = texts.self_healed_body(attempts) + body
-        if eng.notifier.send(texts.self_healed(rec.script), body, alert=True):
+        # Information, not an alarm: the run got through and the daily report
+        # carries the retry (the user, 2026-09-14: the group is for the report
+        # and real alarms only).
+        if eng.notifier.send(texts.self_healed(rec.script), body):
             return  # keep it on disk; retry next tick
         eng._recovered.pop((rec.script, rec.user), None)
         eng._persist_pending()   # only now is it safe to forget

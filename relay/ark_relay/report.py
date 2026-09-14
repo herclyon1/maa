@@ -110,7 +110,7 @@ def _maybe_daily_report(eng, now: datetime | None = None) -> None:
     if not eng.state.report_sent(yday) and (
             y_entries := eng.state.read_ledger(yday)):
         title, body = eng._compose_daily(yday, y_entries)
-        if errors := eng.notifier.send(title + "（补发）", body):
+        if errors := eng.notifier.send(title + "（补发）", body, daily=True):
             log.error("昨日日报补发失败，稍后重试: %s", "；".join(errors))
         else:
             eng.state.mark_report_sent(yday)
@@ -135,7 +135,7 @@ def _maybe_daily_report(eng, now: datetime | None = None) -> None:
         return
 
     title, body = eng._compose_daily(day, entries)
-    errors = eng.notifier.send(title, body)
+    errors = eng.notifier.send(title, body, daily=True)
     if errors:
         # Do not mark it sent - retry on the next tick rather than lose the day.
         log.error("日报推送失败，稍后重试: %s", "；".join(errors))
@@ -262,7 +262,7 @@ def send_daily_now(eng, mark: bool = True, label: str = "临时查看") -> bool:
     title, body = eng._compose_daily(day, entries)
     if not mark:
         title = title.replace("📋", "🔎", 1) + f"（{label}）"
-    errors = eng.notifier.send(title, body)
+    errors = eng.notifier.send(title, body, daily=True)
     if errors:
         log.error("日报推送失败: %s", "；".join(errors))
         return False

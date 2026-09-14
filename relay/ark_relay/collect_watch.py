@@ -92,7 +92,7 @@ class Watcher:
     # ---------------------------------------------------------------- effects
 
     def _narrow(self, line: str) -> list[str]:
-        from . import collect_retry, texts  # noqa: PLC0415
+        from . import collect_retry  # noqa: PLC0415
         from .config import SERVER_TZ  # noqa: PLC0415
         when = (_STAMP.match(line) or [None, ""])[1]
         try:
@@ -104,13 +104,12 @@ class Watcher:
         if not note:
             return []
         self.narrowed = True
-        log.info("🔁 %s", note)
         zh = collect_retry._locale(Path(self.cfg.maaend_dir)) if self.cfg.maaend_dir else {}
         labels = [collect_retry.route_label(f"AutoCollect{r}", zh) for r in self.failed]
-        try:
-            self.notifier.send(texts.COLLECT_NARROWED, texts.collect_narrowed_body(labels))
-        except Exception:
-            log.exception("收窄通知没发出去")
+        # Log only. The daily report already names the routes that failed and
+        # says the retry was narrowed; a separate push for it was noise (the
+        # user asked why it was not simply part of the daily report, 2026-09-14).
+        log.info("🔁 %s（%s）", note, "、".join(labels))
         return [note]
 
     def _restore(self) -> list[str]:

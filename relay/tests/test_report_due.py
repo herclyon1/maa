@@ -97,7 +97,7 @@ class FakeNotifier:
         self.groups: list = []
         self.broken = False
 
-    def send(self, title, body, *, alert=False):
+    def send(self, title, body, *, alert=False, daily=False):
         self.sent.append((title, body, alert))
         return ["Server酱: 假装挂了"] if self.broken else []
 

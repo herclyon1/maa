@@ -153,6 +153,10 @@ def _install_claim():
         if not weekly or farming_echoes() or not getattr(self, "_in_realm", False):
             return
         try:
+            # Laps after the claim start in the open world (17:51 on 09-14: two
+            # 30-second walks to a crystal that was not there). Only inside the realm.
+            if self.in_world():
+                return
             self.log_info("周本领奖：打完了，去结晶按 F")
             self.walk_to_treasure()
             self.pick_f(handle_claim=False)

@@ -67,7 +67,7 @@ import boot_stages  # noqa: E402
 
 sent = []
 class N:
-    def send(self, title, body): sent.append((title, body))
+    def send(self, title, body, **kw): sent.append((title, body))
 class Log:
     def exception(self, *a, **k): print("    EXC", a)
 class Gate:
