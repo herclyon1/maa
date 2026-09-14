@@ -573,7 +573,7 @@ def _options(cfg) -> dict:
     return out
 
 
-def state_payload(cfg, state_dir: Path) -> dict:
+def state_payload(cfg, state_dir: Path, fresh: bool = False) -> dict:
     """The payload the phone displays. Same code config-check reads (snapshot.py)."""
     from . import modes, plan, snapshot  # noqa: PLC0415 - avoids an import cycle
     out: dict = {"at": int(time.time())}
@@ -654,7 +654,7 @@ def state_payload(cfg, state_dir: Path) -> dict:
         from . import resources  # noqa: PLC0415
         from .config import SERVER_TZ  # noqa: PLC0415
         from .core import State  # noqa: PLC0415
-        out["资源"] = resources.fetch(cfg)
+        out["资源"] = resources.fetch(cfg, max_age=resources.REFRESH_SECONDS if fresh else resources.TTL_SECONDS)
         out["今天"] = resources.today(State(Path(state_dir)), datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
     except Exception:
         log.warning("资源和今天的统计读不到", exc_info=True)

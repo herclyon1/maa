@@ -53,6 +53,11 @@ check("十分钟内不再请求", calls["n"], 0)
 resources._cache["at"] = time.time() - resources.TTL_SECONDS - 1
 resources.fetch(Cfg)
 check("过期才再请求", calls["n"], 1)
+resources._cache["at"] = time.time() - resources.REFRESH_SECONDS - 1
+resources.fetch(Cfg, max_age=resources.REFRESH_SECONDS)
+check("他自己按刷新：一分钟以上就重新读", calls["n"], 2)
+resources.fetch(Cfg, max_age=resources.REFRESH_SECONDS)
+check("一分钟内再按不重复读", calls["n"], 2)
 resources._wuwa = orig
 
 print("\n[今天：从账目数]")

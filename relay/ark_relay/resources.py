@@ -6,10 +6,12 @@ operator's own accounts.
 Why this exists: the status tab's number tiles (docs/PHONE-NATIVE-REFERENCES.md,
 Reminders' 2×2 tiles). The user, 2026-09-15: 「当前理智/波片走token，三个游戏你都有接口」.
 
-Every source is fetched at most once per TTL; the phone snapshot is built often
-(boot, every phone order, every refresh) and none of these numbers move faster
-than a few minutes. A source that fails answers with an error field and never sinks
-the snapshot. Field names are Chinese because the phone shows them verbatim.
+Nothing here runs on a timer. The numbers are read only when a snapshot is being
+built for the phone (boot, a phone order, a refresh he asked for), and a reading
+is reused for TTL_SECONDS unless the snapshot is for his own refresh, which
+re-reads after REFRESH_SECONDS. A source that fails answers with an error field
+and never sinks the snapshot. Field names are Chinese because the phone shows
+them verbatim.
 """
 from __future__ import annotations
 
@@ -23,7 +25,8 @@ from datetime import datetime
 
 log = logging.getLogger("ark.resources")
 
-TTL_SECONDS = 600
+TTL_SECONDS = 600        # a push the machine makes on its own reuses a reading this old
+REFRESH_SECONDS = 60     # a refresh from the phone re-reads once this much has passed
 _TIMEOUT = 12
 
 _lock = threading.Lock()
@@ -161,10 +164,10 @@ def wuwa_from_base(d: dict) -> dict:
 
 # ---------------------------------------------------------------- entry
 
-def fetch(cfg, *, force: bool = False) -> dict:
-    """The phone's resources block. Cached TTL_SECONDS; never raises."""
+def fetch(cfg, *, force: bool = False, max_age: float = TTL_SECONDS) -> dict:
+    """The phone's resources block. A reading younger than max_age is reused; never raises."""
     with _lock:
-        if not force and _cache["data"] and time.time() - _cache["at"] < TTL_SECONDS:
+        if not force and _cache["data"] and time.time() - _cache["at"] < max_age:
             return _cache["data"]
         out: dict = {}
         try:
