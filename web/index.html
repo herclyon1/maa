@@ -60,13 +60,12 @@
   nav.tabs button{position:relative;flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:2px;
                   padding:6px 12px 5px;min-width:56px;border-radius:999px;font-size:10px;font-weight:500;
                   background:transparent;box-shadow:none;color:var(--dim);white-space:nowrap;transition:color .2s}
-  nav.tabs button svg{width:22px;height:22px}
+  nav.tabs button .sf{display:block;width:26px;height:24px;background:currentColor;
+                      -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;
+                      -webkit-mask-size:contain;mask-size:contain}
   nav.tabs button.on{color:var(--accent);font-weight:600}
-  nav.tabs button:active svg{transform:scale(.9);transition:transform .1s}
+  nav.tabs button:active .sf{transform:scale(.9);transition:transform .1s}
   @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) nav.tabs .seg{box-shadow:0 8px 28px rgba(0,0,0,.5),inset 0 0 0 .5px rgba(255,255,255,.12)} }
-  /* Content swaps with a short fade; rows and switches keep the system-like 0.2s. */
-  #app{transition:opacity .15s ease}
-  #app.switching{opacity:0;transition:none}
   @media (prefers-reduced-motion: reduce){
     *,*::before,*::after{transition:none !important;animation:none !important}
   }
@@ -204,6 +203,6 @@
 </dialog>
 
 <div class="toast" id="toast"></div>
-<script src="app.js?v=20260914205453"></script>
+<script src="app.js?v=20260914210016"></script>
 </body>
 </html>
