@@ -2,6 +2,15 @@
 
 ## 2026-09-15 boot - the phone's number tiles
 
+After the boot, open the page in the Pro Max simulator: the 明日方舟/终末地 tiles
+should fill once the snapshot with `密钥.sk` arrives (the 鸣潮 tile already works;
+its credentials are in the simulator). If 终末地 says 认不出, read the key names
+it lists and pin them in `web/stamina.js endfieldFromDungeon`. Also owed to him:
+the toggle / large-title animations are approximations - measuring Apple's needs
+the Simulator app granted for computer use and a device window (see memory
+no-mac-screen-recording).
+
+
 The page reads 明日方舟/终末地 (森空岛) and 鸣潮 (库街区) stamina itself
 (`web/stamina.js`). From the machine it only needs the Skland session, which
 `resources.skland_session` puts into the snapshot as `密钥.sk` (one login per
