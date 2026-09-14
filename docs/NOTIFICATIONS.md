@@ -156,6 +156,28 @@ The operator, 2026-09-14: 「群里面的机器人通知，只允许出现正常
 arrive); information Server酱 refuses is returned as undelivered and never
 escalated into the group or the private chat.
 
+### Guarantee (2026-09-14)
+
+The user, after being pushed to more than ten times in one day: 「根本目的是不要去打扰我」
+「在你整顿好之前，我是不会开的」. What is promised, and what enforces it:
+
+1. **The group robot carries the daily report and real alarms, nothing else.** A
+   title reaches the group only through `daily=True` or `alert=True`, and
+   `route_of` demotes the maintenance titles that are not game alarms.
+2. **Nothing already in the daily report or on the phone page is pushed.** Such
+   titles are on the `log` list in `notify.py`; adding a push means adding a
+   row to the table above with a reason, and the test fails otherwise.
+3. **The private chat is never written to on my own initiative.** It is in no
+   automatic order; `push.py --private` exists only for text he dictates.
+4. **My tests never reach him.** Test dispatches are marked (`run-one.sh --test`)
+   and collapse to one line in the daily report; the drill scripts that emit
+   a push say so in their header and are run only when he asked for a test.
+5. **A new notification is a change to this file first.** No `notifier.send`
+   call site is added without a row in the table and a test line.
+
+If a push reaches him that breaks one of these, the fix is a route change here
+and a test, not an explanation.
+
 ### Every title and where it goes (`notify.route_of`; `test_notify_routing.py` checks this table against the code)
 
 What the daily report or the phone page already says is **not pushed at all**

@@ -66,3 +66,24 @@ gate can** — so a newly discovered bad word goes into the gate, not just into 
 After changing any file under `web/`, you must run `scripts/mac/deploy-web.sh`, otherwise the
 phone still gets the old version — and the moment you are holding a freshly fixed app.js is
 exactly the moment this is easiest to forget.
+
+---
+
+## Layout and controls (2026-09-14) - one shape for everything
+
+The user, 2026-09-14: 「太长了……找某一个功能要滑到最底下」「设计不统一……每一项好像各做
+各的」「学一下苹果的设计逻辑，抄人家就行了，统一设计内容都是最基本的」.
+
+The page copies iOS Settings and nothing else:
+
+| Rule | What it means in `web/` |
+|---|---|
+| **One page per game** | Tabs 状态 / 方舟 / 终末地 / 鸣潮 / 周常 / 手机 (`layoutTabs`); one tab visible at a time; the last tab is remembered. Nothing is ever added outside a tab |
+| **One row shape** | `.row` = name on the left (hint in small grey under it), control on the right, on the same line. Only a row of icons/pills or a long text field may stack |
+| **A setting is a control, never a button** | on/off → `.sw` toggle (config booleans and relay switches alike, `RELAY_SWITCHES`); a choice → select or pills; a number → number field. Buttons are only for actions (刷新, 现在跑一趟, 停止, 开始刷) and live in `.acts` |
+| **Every control answers immediately** | a relay toggle flips at once, the row shows 「已寄出 … 等回执」, and the receipt clears it when the machine reports the new state - the same receipt flow as config edits. A control whose state only changes on the next snapshot is a bug (the 09-14 「点一下」 button was pressed four times) |
+| **No new control style** | before adding anything, find the existing row/control that fits; if none fits, change the shared style, not one row |
+
+**Guarantee (2026-09-14):** these five rules are what 「统一」 means on this page. A change
+that adds a second way to do the same thing, or a control outside a tab, or a button
+where a toggle belongs, is a regression and gets reverted, not argued about.
