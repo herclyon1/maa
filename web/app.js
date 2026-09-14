@@ -520,7 +520,7 @@ function render() {
       if (f.ro) {
         ctl = `<span class="ro">${pick(val)}</span>`;
       } else if (f.type === "bool") {
-        ctl = `<span class="sw"><input type="checkbox" data-id="${id}" ${val ? "checked" : ""}><span></span></span>`;
+        ctl = `<span class="sw"><input type="checkbox" switch data-id="${id}" ${val ? "checked" : ""}><span></span></span>`;
       } else if (f.type === "icons") {
         /* 只画图标的单选。每个选项是这个位置掉的两个声骸套装，
            点一下就选中；名字不画，鼠标悬停和待保存清单里才出现。 */
@@ -1019,7 +1019,7 @@ function relayRow(sw, relay) {
   liveVals[sw.id] = on;
   const hint = on && sw.hintOn ? sw.hintOn(v) : sw.hint;
   return `<div class="row" data-row="${sw.id}"><label>${sw.label}<span class="hint">${hint}</span></label>
-    <span class="sw"><input type="checkbox" data-relay="${sw.id}" ${on ? "checked" : ""}><span></span></span></div>`;
+    <span class="sw"><input type="checkbox" switch data-relay="${sw.id}" ${on ? "checked" : ""}><span></span></span></div>`;
 }
 
 async function oneShot(body, okText) {
@@ -1308,6 +1308,10 @@ function myLink() {
     .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   return location.origin + location.pathname + "#k=" + b;
 }
+
+// Safari 17.4+ renders <input type=checkbox switch> as the system toggle; when the
+// browser has it, index.html hides the CSS-drawn track and shows the real control.
+if ("switch" in document.createElement("input")) document.documentElement.classList.add("native-switch");
 
 async function boot() {
   fromLink();
