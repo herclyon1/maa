@@ -15,7 +15,17 @@ Two sources, both from Apple, both read 2026-09-14:
    Separator `5469:7924`, Toggles `5433:19059`, Tab Bar `3:70967`,
    Tab Bar Button `5735:65307`, Row-Button `550:49677`, Text styles `5418:17464`.
 
-A rendering check runs in the iOS 26.5 simulator (Xcode 26.6, iPhone 17 Pro)
+3. **The simulator itself** - iPhone 17 Pro Max, iOS 26.5, **Simplified Chinese**
+   (so Settings uses the same PingFang metrics as the page), Settings › 辅助功能 and
+   › 动态效果 measured pixel by pixel on 2026-09-15 00:13. Where the kit and the
+   simulator disagree, the simulator wins: card margin 20.33, corner 26-27, row
+   53.33, text inset 20 (kit: 16), separator hairline inset 20 on both sides
+   (kit: left only), toggle 63×28 inset 18, header 17 semibold 28 above / 6 below,
+   footer 13/18 with 6 above / 24 below, cards 35 apart when nothing is between
+   them, large title ink at the 20 margin. WebKit's own `switch` control renders
+   71×31, so it is scaled by .887 to the Settings size.
+
+A rendering check runs in the iOS 26.5 simulator (Xcode 26.6, iPhone 17 Pro Max)
 next to the Settings app; `scripts/mac/sf-symbols-export.swift` pulls the tab
 symbols from the system font. Each rule below is the source's wording condensed,
 followed by what `web/index.html` / `web/app.js` does about it. A change to the
@@ -23,9 +33,9 @@ page that breaks a line here is a regression.
 
 | HIG page | Rule | On the page |
 |---|---|---|
-| Lists and tables; kit Section Title `50:56535`, Footer `35:55757`, Row `550:50430` | iOS grouped style: headers, footers and extra space separate groups. Kit: header 17pt semibold secondary label, 9pt below it; footer 13/18 secondary label, padding 8/16/6; row 52pt, 16pt side padding, title 17/22, subtitle 15/20 | `h2` 17px/600 `--dim` padding-bottom 9; `.foot` 13px/18px padding 8px 16px 6px; `.row` min-height 52, padding 12px 16px, label 17/22, hint 15/20; white inset card `.group` (26px radius, measured in Settings) |
+| Lists and tables; kit Section Title `50:56535`, Footer `35:55757`, Row `550:50430` | iOS grouped style: headers, footers and extra space separate groups. Kit: header 17pt semibold secondary label, 9pt below it; footer 13/18 secondary label, padding 8/16/6; row 52pt, 16pt side padding, title 17/22, subtitle 15/20 | `h2` 17px/600 `--dim` padding 28px 20px 6px; `.foot` 13px/18px padding 6px 20px 24px; `.row` min-height 53.33, padding 15.5px 18px 15.5px 20px, label 17/22, hint 15/20; hairline 1 device pixel inset 20 both sides; white inset card `.group` (26px radius, measured in Settings) |
 | Lists and tables | Keep item text succinct; avoid over-large rows | one setting per row, hint under the name in 13pt; long option sets fold behind 「已选 N/M ›」 (progressive disclosure) |
-| Toggles; kit `5433:19059` | A toggle chooses between two opposing values; make the states obvious, not by colour alone. Kit (iOS 26): track 64×28 radius 100, on #34c759, off `rgba(60,60,67,.3)`, knob a 38×24 white pill | every on/off setting (config and relay) is the same `.sw` 64×28 switch with a 38×24 pill knob; knob position + green; nothing on/off is a button |
+| Toggles; kit `5433:19059` | A toggle chooses between two opposing values; make the states obvious, not by colour alone. Kit (iOS 26): track 64×28 radius 100, on #34c759, off `rgba(60,60,67,.3)`, knob a 38×24 white pill | every on/off setting (config and relay) is Safari's own `<input type=checkbox switch>` scaled to the measured 63×28 (the CSS 63×28 copy is the fallback where the browser lacks it); knob position + green; nothing on/off is a button |
 | Tab bars | Navigation only, not actions; keep tabs visible; single-word labels; use the number of tabs the app needs but 「it's generally easier to navigate among fewer tabs」; avoid overflow (when the width runs out iOS turns the trailing tabs into a More tab) | five tabs 状态 · 方舟 · 终末地 · 鸣潮 · 手机, always visible, floating at the bottom. There is no hard cap of five for tab bars (that number is the HIG's guidance for *segmented controls* on iPhone); with more games than fit, the plan is a 游戏 tab holding a list with detail pages (which then also gets the back button and gesture) |
 | Materials (Liquid Glass) | Controls and navigation float above content in Liquid Glass; do not use it in the content layer; use it sparingly | only the tab bar, the save bar and the toast are glass (translucent + blur + specular edge); cards are solid standard material |
 | Layout | Order by importance, align, group related items, differentiate controls from content | 16pt margins, name left / control right on one baseline, hairline separators inset to the text, min 44pt row height |
