@@ -1,11 +1,11 @@
 {
-  "version": 2026091401,
-  "name": "tacet_shots",
-  "note": "从电脑发来的指令：tacet_shots",
+  "version": 2026091402,
+  "name": "下次跑完不关机",
+  "note": "从电脑发来的指令：下次跑完不关机",
   "commands": [
     {
-      "action": "tacet_shots",
-      "on": false
+      "action": "skip_shutdown",
+      "off": true
     }
   ]
 }
