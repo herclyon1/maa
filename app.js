@@ -675,7 +675,7 @@ function render() {
     <div class="row"><label>已配置<span class="hint">体力数字由这台手机直接问森空岛和库街区，密钥只存在这台手机里</span></label>
       <span class="ro short">${(window.Stamina && Stamina.status()) || "没有"}</span></div>
     <div class="acts"><button id="tokpaste">粘贴密钥串</button>${(window.Stamina && Stamina.status()) ? `<button class="danger" id="tokclear">清除密钥</button>` : ""}</div>
-    <p class="foot">森空岛的登录会话由机器交过来，不用管；库街区的要你粘贴：把电脑上 ~/.config/ark/.env 里 KUROBBS_TOKEN 和 KUROBBS_DID 那两行复制过来</p>
+    <p class="foot">免输入链接会把这里存着的密钥一起带上，换手机开一次那条链接就全有。森空岛的会话由机器交过来；库街区的：打开电脑上 scripts/mac/phone-link.py 打出来的链接，或把 ~/.config/ark/.env 里 KUROBBS_TOKEN 和 KUROBBS_DID 那两行粘贴进来</p>
   </section>`;
 
   $("#app").innerHTML = html;
@@ -1405,11 +1405,12 @@ function fromLink() {
   } catch { return false; }
 }
 
+/* 免输入链接带上这台手机里存着的游戏密钥（#k=信箱和 PIN，&t=密钥），换手机打开它一次就全有了。 */
 function myLink() {
-  const b = btoa(unescape(encodeURIComponent(
-    JSON.stringify({ t: cfg.topic, p: cfg.pin }))))
+  const enc = (o) => btoa(unescape(encodeURIComponent(JSON.stringify(o))))
     .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  return location.origin + location.pathname + "#k=" + b;
+  const tok = window.Stamina ? Stamina.loadTokens() : null;
+  return location.origin + location.pathname + "#k=" + enc({ t: cfg.topic, p: cfg.pin }) + (tok ? "&t=" + enc(tok) : "");
 }
 
 /* 原生行为三件：大标题滚动收进顶栏、下拉刷新、「几分钟前」自己走。 */
