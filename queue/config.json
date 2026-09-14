@@ -1,6 +1,11 @@
 {
-  "version": 2026091103,
-  "name": "空（安全状态）",
-  "note": "从电脑发来的指令：空（安全状态）",
-  "commands": []
+  "version": 2026091401,
+  "name": "tacet_shots",
+  "note": "从电脑发来的指令：tacet_shots",
+  "commands": [
+    {
+      "action": "tacet_shots",
+      "on": false
+    }
+  ]
 }
