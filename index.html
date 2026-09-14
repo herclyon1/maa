@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0f1216">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260914220619">
+<link rel="manifest" href="manifest.webmanifest?v=20260914221149">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260914220619">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260914220619">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260914221149">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260914221149">
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
      上面跑的」). System colours from Apple's palette: grouped background, white
@@ -16,22 +16,24 @@
      green switches, blue tint. Dark mode uses the same palette's dark values.
      Everything else on the page reuses these tokens; no element carries its own. */
   :root{
-    --bg:#f2f2f7; --card:#ffffff; --line:#c6c6c8; --ink:#000000;
-    --dim:#8e8e93; --field:#f2f2f7; --btn:#ffffff; --sh:none;
-    --accent:#007aff; --ok:#34c759; --warn:#ff9500; --bad:#ff3b30;
-    --seg:#7676801f; --r:26px;
+    --bg:#f2f2f7; --card:#ffffff; --line:rgba(60,60,67,.29); --ink:#000000;
+    --dim:rgba(60,60,67,.6); --field:#f2f2f7; --btn:#ffffff; --sh:none;
+    --accent:#0088ff; --ok:#34c759; --warn:#ff9500; --bad:#ff383c;
+    --tab:#1a1a1a; --tabsel:#ededed; --seg:#7676801f; --r:26px;
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
-      --bg:#000000; --card:#1c1c1e; --line:#38383a; --ink:#ffffff;
-      --dim:#8d8d93; --field:#1c1c1e; --btn:#1c1c1e; --sh:none;
-      --accent:#0a84ff; --ok:#30d158; --warn:#ff9f0a; --bad:#ff453a; --seg:#7676803d;
+      --bg:#000000; --card:#1c1c1e; --line:rgba(84,84,88,.65); --ink:#ffffff;
+      --dim:rgba(235,235,245,.6); --field:#2c2c2e; --btn:#1c1c1e; --sh:none;
+      --accent:#0a84ff; --ok:#30d158; --warn:#ff9f0a; --bad:#ff453a;
+      --tab:#f5f5f5; --tabsel:#121212; --seg:#7676803d;
     }
   }
   :root[data-theme="dark"]{
-    --bg:#000000; --card:#1c1c1e; --line:#38383a; --ink:#ffffff;
-    --dim:#8d8d93; --field:#1c1c1e; --btn:#1c1c1e; --sh:none;
-    --accent:#0a84ff; --ok:#30d158; --warn:#ff9f0a; --bad:#ff453a; --seg:#7676803d;
+    --bg:#000000; --card:#1c1c1e; --line:rgba(84,84,88,.65); --ink:#ffffff;
+    --dim:rgba(235,235,245,.6); --field:#2c2c2e; --btn:#1c1c1e; --sh:none;
+    --accent:#0a84ff; --ok:#30d158; --warn:#ff9f0a; --bad:#ff453a;
+    --tab:#f5f5f5; --tabsel:#121212; --seg:#7676803d;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   body{margin:0;background:var(--bg);color:var(--ink);
@@ -47,30 +49,31 @@
   /* Page switcher: the iOS 26/27 floating glass tab bar - a capsule at the
      bottom, translucent with blur and a specular edge, the selected tab a
      brighter capsule inside it. (The top segmented control was the pre-26 idiom.) */
+  /* Tab bar from the iOS 27 UI kit (Tab Bar - iPhone / _Tab Bar Button - iPhone):
+     glass capsule 62pt high with 4pt inset, buttons ≥72×54 with 8/6/7 padding, a
+     28pt symbol line and a 10pt semibold label, selected = #ededed capsule + tint,
+     unselected label #1a1a1a (light) / #f5f5f5 (dark); 25pt above the home indicator. */
   nav.tabs{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 12px);transform:translateX(-50%);
            z-index:6;margin:0;padding:0;display:flex;max-width:calc(100% - 24px)}
-  nav.tabs .seg{position:relative;display:flex;gap:0;padding:4px;border-radius:999px;
+  nav.tabs[hidden]{display:none}
+  nav.tabs .seg{position:relative;display:flex;gap:0;padding:4px;height:62px;border-radius:999px;
                 background:color-mix(in srgb, var(--card) 62%, transparent);
                 backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);
                 box-shadow:0 8px 28px rgba(0,0,0,.16),inset 0 0 0 .5px rgba(255,255,255,.55),inset 0 1px 0 rgba(255,255,255,.7)}
-  nav.tabs .glide{position:absolute;top:4px;bottom:4px;left:4px;width:0;border-radius:999px;
-                  background:color-mix(in srgb, var(--card) 92%, transparent);
-                  box-shadow:0 2px 10px rgba(0,0,0,.12),inset 0 0 0 .5px rgba(255,255,255,.8);
+  nav.tabs .glide{position:absolute;top:4px;bottom:4px;left:4px;width:0;border-radius:999px;background:var(--tabsel);
                   transition:left .28s cubic-bezier(.2,.8,.2,1),width .28s cubic-bezier(.2,.8,.2,1)}
-  /* Every tab: a 28×28 icon box, then a 10pt label - the same box whether the
-     icon is a symbol mask or a project image, so the five line up. */
-  nav.tabs button{position:relative;flex:0 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:3px;
-                  height:52px;padding:6px 12px 0;min-width:60px;border-radius:999px;font-size:10px;font-weight:500;line-height:1;
-                  background:transparent;box-shadow:none;color:var(--dim);white-space:nowrap;transition:color .2s}
+  nav.tabs button{position:relative;flex:0 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;
+                  height:54px;padding:6px 8px 7px;min-width:72px;border-radius:999px;font-size:10px;line-height:12px;font-weight:600;
+                  background:transparent;box-shadow:none;color:var(--tab);white-space:nowrap;transition:color .2s}
   nav.tabs button .ico{display:flex;align-items:center;justify-content:center;width:28px;height:28px;flex:none}
   nav.tabs button .tabimg{display:block;width:26px;height:26px;border-radius:7px;object-fit:cover;
-                          opacity:.55;filter:saturate(.6);transition:opacity .2s,filter .2s}
+                          opacity:.7;filter:saturate(.6);transition:opacity .2s,filter .2s}
   nav.tabs button.on .tabimg{opacity:1;filter:none}
   nav.tabs button .sf{display:block;width:26px;height:26px;background:currentColor;
                       -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;
                       -webkit-mask-size:contain;mask-size:contain}
-  nav.tabs button.on{color:var(--accent);font-weight:600}
-  nav.tabs button:active .sf{transform:scale(.9);transition:transform .1s}
+  nav.tabs button.on{color:var(--accent)}
+  nav.tabs button:active .ico{transform:scale(.9);transition:transform .1s}
   @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) nav.tabs .seg{box-shadow:0 8px 28px rgba(0,0,0,.5),inset 0 0 0 .5px rgba(255,255,255,.12)} }
   @media (prefers-reduced-motion: reduce){
     *,*::before,*::after{transition:none !important;animation:none !important}
@@ -80,11 +83,11 @@
   section{margin:0 0 24px}
   /* Section header as Settings draws it in iOS 26: 20pt medium, secondary grey,
      sitting on the card's text inset (measured on the simulator, 2026-09-14). */
-  h2{margin:0;padding:0 16px 8px;font-size:20px;font-weight:500;color:var(--dim);
+  h2{margin:0;padding:0 16px 9px;font-size:17px;line-height:22px;font-weight:600;color:var(--dim);
      text-transform:none;display:flex;justify-content:space-between;align-items:baseline}
   h2 small{color:var(--dim);font-weight:400;font-size:13px}
   /* Group footer: the explanation under a card, 13pt secondary (UITableView footer). */
-  .foot{margin:0;padding:8px 16px 0;color:var(--dim);font-size:13px;line-height:1.35}
+  .foot{margin:0;padding:8px 16px 6px;color:var(--dim);font-size:13px;line-height:18px}
   .foot p{margin:0 0 4px}
   .group{background:var(--card);border-radius:var(--r);overflow:hidden}
   .group > *:not(.row):not(.acts):not(pre):not(.setup):not(.warn):not(.hint):not(.group-foot){padding:11px 16px}
@@ -92,13 +95,13 @@
   .row{position:relative;display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:12px 16px;min-height:52px}
   .row::after{content:"";position:absolute;left:16px;right:0;bottom:0;height:.5px;background:var(--line)}
   .row:last-child::after,.group > :last-child.row::after{display:none}
-  .row > label{flex:1 1 0;min-width:40%;font-size:17px;line-height:1.3}
+  .row > label{flex:1 1 0;min-width:40%;font-size:17px;line-height:22px}
   .row > :not(label){flex:0 0 auto;max-width:48%}
   .row:has(.pills),.row:has(.picks),.row:has(.pillbox),.row:has(input[type=text]),
   .row:has(pre),.row:has(.ro:not(.short)){flex-direction:column;align-items:stretch;gap:8px}
   .row:has(.pills) > :not(label),.row:has(.picks) > :not(label),.row:has(.pillbox) > :not(label),
   .row:has(input[type=text]) > :not(label),.row:has(.ro:not(.short)) > :not(label){max-width:none;align-self:flex-end}
-  .row .hint{display:block;color:var(--dim);font-size:15px;margin-top:1px;line-height:1.3}
+  .row .hint{display:block;color:var(--dim);font-size:15px;margin-top:1px;line-height:20px}
   .row .ro{color:var(--dim);font-size:17px;text-align:right}
   /* Footers and notes under a group, grey like Settings' explanatory text. */
   .group > p.hint,.group > .hint{margin:0;padding:10px 16px;color:var(--dim);font-size:13px;line-height:1.4}
@@ -112,15 +115,13 @@
          -webkit-appearance:none;appearance:none;padding-right:26px;
          background:var(--field) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='16' viewBox='0 0 12 16'%3E%3Cpath d='M2 6l4-4 4 4M2 10l4 4 4-4' fill='none' stroke='%238e8e93' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 8px center}
   input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
-  .sw{position:relative;width:62px;height:28px;flex:none}
+  .sw{position:relative;width:64px;height:28px;flex:none}
   .sw input{opacity:0;width:100%;height:100%;margin:0}
-  .sw span{position:absolute;inset:0;background:#e9e9ea;border-radius:99px;transition:.2s;pointer-events:none}
-  :root[data-theme="dark"] .sw span{background:#39393d}
-  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .sw span{background:#39393d} }
-  .sw span::after{content:"";position:absolute;width:24px;height:24px;left:2px;top:2px;
-                  background:#fff;border-radius:50%;transition:.2s;box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16)}
+  .sw span{position:absolute;inset:0;background:rgba(60,60,67,.3);border-radius:99px;transition:.2s;pointer-events:none}
+  .sw span::after{content:"";position:absolute;width:38px;height:24px;left:2px;top:2px;
+                  background:#fff;border-radius:99px;transition:.2s;box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16)}
   .sw input:checked + span{background:var(--ok)}
-  .sw input:checked + span::after{transform:translateX(34px)}
+  .sw input:checked + span::after{transform:translateX(22px)}
   .changed{background:color-mix(in srgb, var(--accent) 8%, var(--card))}
   .posted{background:color-mix(in srgb, var(--ok) 8%, var(--card))}
   .row .sent{flex:1 0 100%;max-width:none;display:block;font-size:13px;color:var(--ok);margin-top:2px;line-height:1.4;text-align:left}
@@ -131,7 +132,7 @@
   #pendbar button{margin-top:6px}
   /* Action buttons: text buttons in a group, like Settings' 「Sign Out」 rows. */
   .acts{display:grid;grid-template-columns:1fr;gap:0}
-  .acts button{position:relative;font:inherit;font-size:17px;border:0;border-radius:0;padding:12px 16px;min-height:44px;
+  .acts button{position:relative;font:inherit;font-size:17px;line-height:22px;border:0;border-radius:0;padding:15px 16px;min-height:52px;
                color:var(--accent);background:var(--card);box-shadow:none;cursor:pointer;text-align:center;
                transition:background .15s}
   .acts button:active{background:color-mix(in srgb, var(--ink) 8%, var(--card));opacity:1}
@@ -214,6 +215,6 @@
 </dialog>
 
 <div class="toast" id="toast"></div>
-<script src="app.js?v=20260914220619"></script>
+<script src="app.js?v=20260914221149"></script>
 </body>
 </html>
