@@ -1420,11 +1420,17 @@ function installNative() {
   const bar = $("#topbar"), h1 = document.querySelector("header h1");
   if (bar && h1) {
     const root = document.documentElement;
+    /* Measured on the simulator's recording of Settings (2026-09-15 05:04, a slow
+       drag): the large title fades out while it slides under the bar, and the
+       small title fades in only once the large one is gone - one after the
+       other, not a cross-fade. --big drives the large title, --title the small. */
+    const clamp = (v) => Math.max(0, Math.min(1, v));
     const onScroll = () => {
       const y = window.scrollY;
       const top = h1.offsetTop, hgt = h1.offsetHeight || 41;
-      root.style.setProperty("--bar", String(Math.max(0, Math.min(1, y / 12))));
-      root.style.setProperty("--title", String(Math.max(0, Math.min(1, (y - top + 6) / hgt))));
+      root.style.setProperty("--bar", String(clamp(y / 12)));
+      root.style.setProperty("--big", String(clamp((y - top + 24) / (hgt * 0.9))));
+      root.style.setProperty("--title", String(clamp((y - top - hgt * 0.5) / (hgt * 0.6))));
     };
     addEventListener("scroll", onScroll, { passive: true });
     onScroll();
