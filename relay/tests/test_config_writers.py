@@ -48,6 +48,8 @@ def maa_tree(drones="Money"):
     doc = {"Current": "Default", "Configurations": {"Default": {"TaskQueue": [
         {"Type": "StartUp"},
         {"Type": "Infrast", "UsesOfDrones": drones},
+        {"Type": "Award", "Award": True, "Mail": False, "FreeGacha": False, "Orundum": False,
+         "Mining": False, "SpecialAccess": False},
     ]}}}
     (master / "gui.new.json").write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
     maa = root / "MAA" / "config"
@@ -96,6 +98,24 @@ f.write_text(json.dumps({"Current": "Default",
 ok, msg = mastercfg.write_maa(automas2, maa2, "Infrast/UsesOfDrones", "Money")
 check("拒绝", ok, False)
 check("说清找不到什么", "UsesOfDrones" in msg, True)
+
+print("\n[领取奖励的开关：邮件那项 09-14 发现一直是关的]")
+automas3, maa3 = maa_tree("Money")
+check("读出来是关", mastercfg.read_maa(automas3)["values"].get("Award/Mail"), False)
+ok, msg = mastercfg.write_maa(automas3, maa3, "Award/Mail", True)
+check("成功", ok, True)
+check("报告写清前后", "关 → 开" in msg and "邮件" in msg, True)
+for f in (automas3 / "data" / "abc123" / "Default" / "ConfigFile" / "gui.new.json", maa3 / "config" / "gui.new.json"):
+    check(f"{f.parent.parent.name} 那份写了", mastercfg._maa_award(json.loads(f.read_text(encoding="utf-8")))["Mail"], True)
+check("读回是开", mastercfg.read_maa(automas3)["values"].get("Award/Mail"), True)
+ok, msg = mastercfg.write_maa(automas3, maa3, "Award/Mail", True)
+check("本来就是开的", ok and "本来就是" in msg, True)
+ok, msg = mastercfg.write_maa(automas3, maa3, "Award/Mail", "yes")
+check("非布尔值拒绝", ok, False)
+ok, msg = mastercfg.write_maa(automas3, maa3, "Award/FreeGacha", True)
+check("免费单抽没开放，拒绝", ok, False)
+check("其他开关也在", set(k for k in mastercfg.read_maa(automas3)["values"] if k.startswith("Award/")),
+      {"Award/Mail", "Award/Orundum", "Award/Mining", "Award/SpecialAccess"})
 
 print("\n[找不到母本时不许说成功]")
 ok, msg = mastercfg.write_maa(tmpdir(), None, "Infrast/UsesOfDrones", "Money")

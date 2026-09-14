@@ -401,6 +401,18 @@ MAA_DRONES: tuple[tuple[str, str], ...] = (
     ("Chip", "制造站 · 芯片"),
 )
 MAA_DRONES_PATH = "Infrast/UsesOfDrones"
+# The 领取奖励 (Award) task's switches. Keys and Chinese labels from MAA's
+# AwardTask.cs / zh-cn.xaml (checked 2026-09-14, v6.17). FreeGacha is left out
+# on purpose: MAA itself pops a warning before enabling it. Found 2026-09-14:
+# Mail had been off all along - three days of mail sat unclaimed while the
+# report read 全绿, because Award only checks its own chain finished.
+MAA_AWARD: tuple[tuple[str, str], ...] = (
+    ("Mail", "领取所有邮件奖励"),
+    ("Orundum", "领取幸运墙的每日合成玉奖励"),
+    ("Mining", "领取限时开采许可的每日合成玉奖励"),
+    ("SpecialAccess", "领取周年赠送月卡奖励"),
+)
+MAA_AWARD_PATHS = {f"Award/{k}": zh for k, zh in MAA_AWARD}
 
 
 def maa_master(automas_dir) -> Path | None:
@@ -417,6 +429,15 @@ def _maa_infrast(doc: dict) -> dict | None:
     return None
 
 
+def _maa_award(doc: dict) -> dict | None:
+    cfgs = doc.get("Configurations") or {}
+    c = cfgs.get(doc.get("Current") or "Default") or cfgs.get("Default") or {}
+    for t in c.get("TaskQueue") or []:
+        if isinstance(t, dict) and (t.get("Type") == "Award" or ("Mail" in t and "FreeGacha" in t)):
+            return t
+    return None
+
+
 def read_maa(automas_dir) -> dict:
     out: dict = {"values": {}, "options": {}, "labels": {}}
     f = maa_master(automas_dir)
@@ -426,15 +447,20 @@ def read_maa(automas_dir) -> dict:
         log.warning("母本配置文件不在：%s（手机页那一段会标成读不到）", f or "没找到路径")
         return out
     try:
-        task = _maa_infrast(json.loads(f.read_text(encoding="utf-8")))
+        doc = json.loads(f.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         log.warning("母本 gui.new.json 读不出来", exc_info=True)
         return out
-    if task is None:
-        return out
-    out["values"][MAA_DRONES_PATH] = str(task.get("UsesOfDrones") or "")
-    out["options"][MAA_DRONES_PATH] = [[label, key] for key, label in MAA_DRONES]
-    out["labels"][MAA_DRONES_PATH] = "基建无人机用在哪"
+    task = _maa_infrast(doc)
+    if task is not None:
+        out["values"][MAA_DRONES_PATH] = str(task.get("UsesOfDrones") or "")
+        out["options"][MAA_DRONES_PATH] = [[label, key] for key, label in MAA_DRONES]
+        out["labels"][MAA_DRONES_PATH] = "基建无人机用在哪"
+    award = _maa_award(doc)
+    if award is not None:
+        for key, zh in MAA_AWARD:
+            out["values"][f"Award/{key}"] = bool(award.get(key, False))
+            out["labels"][f"Award/{key}"] = zh
     return out
 
 
@@ -443,8 +469,10 @@ def write_maa(automas_dir, maa_dir, path: str, value) -> tuple[bool, str]:
     and the copy in the MAA directory are written; only the seven values MAA
     itself declares are accepted.
     """
+    if str(path) in MAA_AWARD_PATHS:
+        return _write_maa_award(automas_dir, maa_dir, str(path), value)
     if str(path) != MAA_DRONES_PATH:
-        return False, f"MAA 只开放 {MAA_DRONES_PATH} 这一项，已拒绝 {path!r}"
+        return False, f"MAA 只开放 {MAA_DRONES_PATH} 和 {sorted(MAA_AWARD_PATHS)} 这几项，已拒绝 {path!r}"
     keys = {k for k, _ in MAA_DRONES}
     if str(value) not in keys:
         return False, f"无人机用途不认识取值 {value!r}，它只接受 {sorted(keys)}"
@@ -474,6 +502,40 @@ def write_maa(automas_dir, maa_dir, path: str, value) -> tuple[bool, str]:
     if before == str(value):
         return True, f"基建无人机本来就用在{zh[str(value)]}"
     return True, f"基建无人机用在哪：{zh.get(str(before), before)} → {zh[str(value)]}（写了 {len(written)} 份）"
+
+
+def _write_maa_award(automas_dir, maa_dir, path: str, value) -> tuple[bool, str]:
+    """Flip one switch of the 领取奖励 task in both copies of gui.new.json."""
+    if not isinstance(value, bool):
+        return False, f"{path} 只接受开/关，已拒绝 {value!r}"
+    key = path.split("/", 1)[1]
+    zh = MAA_AWARD_PATHS[path]
+    targets = [maa_master(automas_dir)]
+    if maa_dir:
+        targets.append(Path(maa_dir) / "config" / "gui.new.json")
+    before = None
+    written = []
+    for f in targets:
+        if not f or not f.is_file():
+            continue
+        doc = json.loads(f.read_text(encoding="utf-8"))
+        task = _maa_award(doc)
+        if task is None:
+            return False, f"{f.name} 里找不到领取奖励任务，已拒绝"
+        if before is None:
+            before = bool(task.get(key, False))
+        task[key] = value
+        atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=4))
+        back = _maa_award(json.loads(f.read_text(encoding="utf-8")))
+        if not back or back.get(key) is not value:
+            return False, f"{f} 写进去之后读出来和写的不一样"
+        written.append(f.name)
+    if not written:
+        return False, "找不到 MAA 的母本配置"
+    state = "开" if value else "关"
+    if before is value:
+        return True, f"「{zh}」本来就是{state}的"
+    return True, f"「{zh}」：{'开' if before else '关'} → {state}（写了 {len(written)} 份）"
 
 
 # ─────────────────────────────── OK-WW ───────────────────────────────

@@ -171,6 +171,16 @@ const SCHEMA = [
     { path:"Infrast/UsesOfDrones", type:"select", label:"无人机用在哪",
       hint:"基建的无人机加速哪一间：贸易站加速龙门币或合成玉订单，制造站加速对应产物。这项在 AUTO-MAS 里没有，改的是 MAA 自己的配置" },
   ]},
+  { title:"明日方舟 · 领取奖励", owner:"MAA", src:"master", game:"MAA", fields:[
+    { path:"Award/Mail", type:"bool", label:"领取所有邮件奖励",
+      hint:"开着＝每趟顺手把邮箱里的奖励全收了。关着邮件会一直躺着，到期作废" },
+    { path:"Award/Orundum", type:"bool", label:"领取幸运墙的每日合成玉",
+      hint:"开着＝每天去幸运墙领那份合成玉" },
+    { path:"Award/Mining", type:"bool", label:"领取限时开采许可的合成玉",
+      hint:"开着＝有限时开采许可时每天领它的合成玉" },
+    { path:"Award/SpecialAccess", type:"bool", label:"领取周年赠送月卡",
+      hint:"开着＝周年送的月卡每天的那份也领" },
+  ]},
   { title:"终末地 · 基质刷取", owner:"MaaEnd", src:"master", game:"MaaEnd", fields:[
     { path:"AutoEssence/@enabled", type:"bool", label:"跑这个任务",
       hint:"关掉后不再刷基质，理智会持续累积" },
