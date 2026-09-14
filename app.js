@@ -581,10 +581,9 @@ function render() {
   </section>`;
 
   html += `<section><h2>这台手机</h2>
-    <div class="row"><label>免输入链接
-      <span class="hint">把这条链接存成书签或加到主屏幕，以后打开就直接是控制台，
-      再也不用填信箱和 PIN。链接里带着这两样，别转发给别人</span></label>
-      <button id="mklink">复制链接</button></div>
+    <div class="acts"><button id="mklink">复制免输入链接</button></div>
+    <p class="foot">把这条链接存成书签或加到主屏幕，以后打开就直接是控制台，
+      再也不用填信箱和 PIN。链接里带着这两样，别转发给别人</p>
   </section>`;
 
   $("#app").innerHTML = html;
