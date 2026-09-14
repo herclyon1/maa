@@ -9,10 +9,10 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="遥控">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260915080357">
+<link rel="manifest" href="manifest.webmanifest?v=20260915083948">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915080357">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915080357">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915083948">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915083948">
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
      上面跑的」). System colours from Apple's palette: grouped background, white
@@ -74,9 +74,6 @@
                   height:54px;padding:6px 8px 7px;min-width:72px;border-radius:999px;font-size:10px;line-height:12px;font-weight:600;
                   background:transparent;box-shadow:none;color:var(--tab);white-space:nowrap;transition:color .2s}
   nav.tabs button .ico{display:flex;align-items:center;justify-content:center;width:28px;height:28px;flex:none}
-  nav.tabs button .tabimg{display:block;width:26px;height:26px;border-radius:7px;object-fit:cover;
-                          opacity:.7;filter:saturate(.6);transition:opacity .2s,filter .2s}
-  nav.tabs button.on .tabimg{opacity:1;filter:none}
   nav.tabs button .sf{display:block;width:26px;height:26px;background:currentColor;
                       -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;
                       -webkit-mask-size:contain;mask-size:contain}
@@ -151,15 +148,15 @@
   .group.nums{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:transparent;border-radius:0;overflow:visible}
   section + section > .group.nums:first-child{margin-top:16px}
   .group.nums + .foot{padding-top:8px}
-  .num{position:relative;min-height:80px;padding:12px 12px 10px 14px;border-radius:16px;color:#fff;display:flex;flex-direction:column;justify-content:space-between;
-       background:linear-gradient(160deg, color-mix(in srgb, var(--c) 80%, #fff) 0%, var(--c) 100%)}
-  .num .sf{width:24px;height:24px;background:#fff}
-  .num .big{position:absolute;top:8px;right:12px;font-size:1.6471em;line-height:1.2em;font-weight:700;letter-spacing:-.02em}
-  .num .big small{font-size:.5em;font-weight:600;opacity:.85}
-  .num .lab{font-size:1em;line-height:1.2941em;font-weight:600}
-  .num .sub{font-size:0.7647em;line-height:1.0588em;opacity:.85;margin-top:0}
-  .num.err{background:var(--card);color:var(--dim)}
-  .num.err .sf{background:var(--dim)}
+  .num{position:relative;min-height:80.33px;padding:12px 12px 11px;border-radius:16px;background:var(--card);color:var(--ink);
+       display:flex;flex-direction:column;justify-content:space-between}
+  .nico{width:32px;height:32px;border-radius:50%;background:var(--c);display:flex;align-items:center;justify-content:center}
+  .nico .sf{width:18px;height:18px;background:#fff}
+  .num .big{position:absolute;top:10px;right:14px;font-size:1.4118em;line-height:1.1667em;font-weight:700;letter-spacing:-.02em;color:var(--ink)}
+  .num .big small{font-size:.58em;font-weight:600;color:var(--dim)}
+  .num .lab{margin-top:6px;font-size:0.8824em;line-height:1.1765em;font-weight:600;color:var(--dim)}
+  .num .sub{font-size:0.7647em;line-height:1.0588em;color:var(--dim)}
+  .num.err .sub{color:var(--bad)}
   /* ---- 状态页的三种块（docs/PHONE-NATIVE-REFERENCES.md） ---- */
   header .sub{display:none}                       /* the device card carries the status line */
   /* Device card: Find My › Devices › the device's card - icon, name, status line, a word at the right. */
@@ -199,6 +196,12 @@
   .sf{display:inline-block;width:22px;height:22px;background:currentColor;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
       -webkit-mask-position:center;mask-position:center;-webkit-mask-size:contain;mask-size:contain}
   .foot p{margin:0 0 4px}
+  /* A symbol inline with text (a receipt's ✓/✗, a warning's triangle). */
+  .sf.inl{width:20px;height:20px;vertical-align:-5px;margin-right:6px}
+  .sf.ok{background:#34c759}
+  .sf.bad{background:var(--bad)}
+  .warn .sf.inl{width:15px;height:15px;vertical-align:-3px;margin-right:4px;background:var(--warn)}
+  .row .ro.short{color:var(--dim);font-size:0.8824em;white-space:nowrap}
   .group{background:var(--card);border-radius:var(--r);overflow:hidden}
   .group:not(.devcard):not(.notice):not(.tiles) > *:not(.row):not(.acts):not(pre):not(.setup):not(.warn):not(.hint):not(.group-foot){padding:11px 20px}
   /* Rows: name left, control right, hairline inset to the text like UITableView. */
@@ -355,6 +358,6 @@
 
 <div class="toast" id="toast"></div>
 <script src="stamina.js?v=20260915035717"></script>
-<script src="app.js?v=20260915080357"></script>
+<script src="app.js?v=20260915083948"></script>
 </body>
 </html>
