@@ -28,7 +28,7 @@ _TIMEOUT = 12
 
 _lock = threading.Lock()
 _cache: dict = {"at": 0.0, "data": {}}
-_skland_cred = None       # Skland creds are rate-limited at creation; keep one
+_skland: dict = {"cred": None}   # Skland creds are rate-limited at creation; keep one
 
 KURO_MAIN = "https://api.kurobbs.com"
 KURO_UA = ("Mozilla/5.0 (Linux; Android 16; 25098PN5AC Build/BP2A.250605.031.A3; wv) "
@@ -53,24 +53,23 @@ def _stamp(ts: int | float | None) -> str:
 def _skland(cfg) -> tuple[dict, dict]:
     """(Arknights, Endfield) from one Skland session."""
     from . import skland  # noqa: PLC0415
-    global _skland_cred
     if not getattr(cfg, "skland_token", ""):
         return {"错误": "没配森空岛 token"}, {"错误": "没配森空岛 token"}
-    if _skland_cred is None:
-        _skland_cred = skland.login(cfg.skland_token, skland.get_did())
+    if _skland["cred"] is None:
+        _skland["cred"] = skland.login(cfg.skland_token, skland.get_did())
     try:
-        binds = skland.bindings(_skland_cred)
-    except Exception:
-        # A cred is only good for a while; make one fresh cred and retry once.
-        _skland_cred = skland.login(cfg.skland_token, skland.get_did())
-        binds = skland.bindings(_skland_cred)
+        binds = skland.bindings(_skland["cred"])
+    except Exception:  # noqa: BLE001 - a cred is only good for a while; one fresh cred, one retry
+        _skland["cred"] = skland.login(cfg.skland_token, skland.get_did())
+        binds = skland.bindings(_skland["cred"])
+    cred = _skland["cred"]
     ak: dict = {}
     ef: dict = {}
     uid = next((r.get("uid") for app in binds if app.get("appCode") == "arknights"
                 for r in app.get("bindingList", [])), None)
     if uid:
         try:
-            r = skland.get(_skland_cred, f"/api/v1/game/player/info?uid={uid}")
+            r = skland.get(cred, f"/api/v1/game/player/info?uid={uid}")
             ap = ((r.get("data") or {}).get("status") or {}).get("ap") or {}
             ak = {"理智": ap.get("current"), "上限": ap.get("max"),
                   "回满": _stamp(ap.get("completeRecoveryTime"))}
@@ -79,7 +78,7 @@ def _skland(cfg) -> tuple[dict, dict]:
     else:
         ak = {"错误": "森空岛账号下没绑明日方舟"}
     try:
-        card = skland.endfield_card(_skland_cred)
+        card = skland.endfield_card(cred)
         dg = ((card.get("data") or {}).get("detail") or {}).get("dungeon") or {}
         ef = endfield_from_dungeon(dg)
     except Exception as exc:  # noqa: BLE001

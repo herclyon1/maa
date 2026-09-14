@@ -656,6 +656,6 @@ def state_payload(cfg, state_dir: Path) -> dict:
         from .core import State  # noqa: PLC0415
         out["资源"] = resources.fetch(cfg)
         out["今天"] = resources.today(State(Path(state_dir)), datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.warning("资源和今天的统计读不到", exc_info=True)
     return out

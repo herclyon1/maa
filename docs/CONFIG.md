@@ -535,6 +535,7 @@ sc.exe failure sshd reset= 86400 actions= restart/5000/restart/10000/restart/300
 | `ARK_PHONE_PIN` | the phone page's passphrase. A command is only accepted when it carries the right one; leaving it unset means anyone who learns the topic name can issue commands |
 | `ARK_INBOX_URL` | the address of the repository inbox's `queue/config.json`. Unset, it uses the built-in GitHub address; change it only when moving to another repository |
 | `SKLAND_TOKEN` | the 森空岛 login credential. Sanity, banners and investment levels in the daily report all depend on it; when it expires those sections quietly go empty |
+| `KUROBBS_TOKEN` / `KUROBBS_DID` | the 库街区 app token and the device id it was issued to, as a pair (captured from the phone app, see `scripts/mac/kuro-echoes.py`). Feed the phone page's Wuthering Waves tile: waveplate, backup stamina, weekly-boss claims (`resources.py`). Without them that tile says 「没配库街区 token/did」; everything else is unaffected |
 | `WECOM_TOUSER` | who WeCom pushes to, default `@all`. The WeCom channel is currently unusable because of 60020, so all pushes go through Server酱 |
 | `ARK_LLM_KEY` | the model key for the one plain-language summary sentence at the top of the daily report. **Leaving it unset raises no error**, it just drops that sentence |
 | `ARK_LLM_BASE_URL` | that model's address, default `https://api.deepseek.com` |
