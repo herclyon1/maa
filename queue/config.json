@@ -1,11 +1,6 @@
 {
-  "version": 2026091402,
-  "name": "下次跑完不关机",
-  "note": "从电脑发来的指令：下次跑完不关机",
-  "commands": [
-    {
-      "action": "skip_shutdown",
-      "off": true
-    }
-  ]
+  "version": 2026091403,
+  "name": "空（安全状态）",
+  "note": "从电脑发来的指令：空（安全状态）",
+  "commands": []
 }
