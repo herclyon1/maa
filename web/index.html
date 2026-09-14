@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0f1216">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260915002210">
+<link rel="manifest" href="manifest.webmanifest?v=20260915011523">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915002210">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915002210">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915011523">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915011523">
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
      上面跑的」). System colours from Apple's palette: grouped background, white
@@ -96,6 +96,44 @@
   h2 small{color:var(--dim);font-weight:400;font-size:13px}
   /* Group footer: the explanation under a card, 13pt secondary (UITableView footer). */
   .foot{margin:0;padding:6px 20px 24px;color:var(--dim);font-size:13px;line-height:18px}
+  /* ---- 状态页的三种块（docs/PHONE-NATIVE-REFERENCES.md） ---- */
+  header .sub{display:none}                       /* the device card carries the status line */
+  /* Device card: Find My › Devices › the device's card - icon, name, status line, a word at the right. */
+  .group.devcard{display:flex;align-items:center;gap:12px;padding:12px 16px;min-height:72px}
+  .dico{width:44px;height:44px;border-radius:10px;background:rgba(118,118,128,.12);display:flex;align-items:center;justify-content:center;flex:none;color:var(--ink)}
+  .dico .sf{width:26px;height:26px}
+  .dtext{flex:1 1 auto;min-width:0}
+  .dname{font-size:17px;line-height:22px;font-weight:600}
+  .dsub{display:flex;align-items:center;gap:6px;color:var(--dim);font-size:15px;line-height:20px}
+  .dside{flex:none;color:var(--dim);font-size:15px}
+  section + section > .group.devcard:first-child{margin-top:0}
+  /* Notice card: Health › 摘要 (measured on the simulator: inset 16, caption 13 with a
+     hairline under it, title 17 semibold, body 15 secondary, capsule button 30 high). */
+  .group.notice{padding:0 16px 16px}
+  section + section > .group.notice:first-child{margin-top:10px}
+  .ncap{position:relative;padding:14px 0 10px;font-size:13px;line-height:18px;color:var(--dim)}
+  .ncap::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:var(--line);transform:scaleY(.34);transform-origin:bottom}
+  .ntitle{margin-top:14px;font-size:17px;line-height:22px;font-weight:600}
+  .nbody{margin-top:4px;font-size:15px;line-height:20px;color:var(--dim)}
+  .nacts{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+  .pill{font:inherit;font-size:15px;font-weight:600;line-height:20px;height:30px;padding:0 14px;border:0;border-radius:15px;
+        color:var(--accent);background:color-mix(in srgb, var(--accent) 18%, transparent);box-shadow:none}
+  .pill.red{color:var(--bad);background:color-mix(in srgb, var(--bad) 16%, transparent)}
+  /* Action tiles: two columns, 8 apart, 80 high, radius 16 (Reminders' tiles on the
+     simulator); the look of Find My's 「Play Sound / Directions」 tiles. */
+  .group.tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:transparent;border-radius:0;overflow:visible}
+  section + section > .group.tiles:first-child{margin-top:16px}
+  .group.tiles + *{margin-top:16px}
+  .tile{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:0;min-height:80px;padding:12px 14px 11px;
+        border:0;border-radius:16px;background:var(--card);color:var(--ink);text-align:left;font:inherit;box-shadow:none;cursor:pointer}
+  .tile:active{opacity:1;background:color-mix(in srgb, var(--ink) 8%, var(--card))}
+  .tico{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;flex:none}
+  .tico .sf{width:15px;height:15px;background:#fff}
+  .ttitle{margin-top:8px;font-size:15px;line-height:20px;font-weight:600}
+  .tsub{font-size:13px;line-height:18px;color:var(--dim)}
+  .tile.danger .ttitle{color:var(--bad)}
+  .sf{display:inline-block;width:22px;height:22px;background:currentColor;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+      -webkit-mask-position:center;mask-position:center;-webkit-mask-size:contain;mask-size:contain}
   .foot p{margin:0 0 4px}
   .group{background:var(--card);border-radius:var(--r);overflow:hidden}
   .group > *:not(.row):not(.acts):not(pre):not(.setup):not(.warn):not(.hint):not(.group-foot){padding:11px 20px}
@@ -238,6 +276,6 @@
 </dialog>
 
 <div class="toast" id="toast"></div>
-<script src="app.js?v=20260915002210"></script>
+<script src="app.js?v=20260915011523"></script>
 </body>
 </html>
