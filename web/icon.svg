@@ -1,3 +1,6 @@
+<!-- The raster icons (apple-touch-icon / icon-192 / icon-512) are no longer made from this file:
+     since 2026-09-15 they are exported from Apple's Icon Composer document data/icon-source/remote.icon
+     (white glass gamepad on the system blue gradient). This SVG remains the favicon/mask fallback. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
   <!--
     构图：大手柄压在下半部，上方三道信号弧——「这台机器在别处，隔空控它」。
