@@ -709,6 +709,15 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
         log.exception("开机改回母本路线出错")
 
 
+def _stage_collect_watch(cfg, notifier, log) -> None:
+    """Arm the live watch on MaaEnd's log that narrows the gathering routes for a retry."""
+    try:
+        from ark_relay import collect_watch  # noqa: PLC0415
+        collect_watch.start(cfg, notifier)
+    except Exception:
+        log.exception("挂 MaaEnd 日志监听出错，采集路线收窄这一步不工作")
+
+
 def _stage_gameupdate(cfg, notifier, log) -> None:
     """Major version update days: register the game clients that need updating."""
     # On major update days, update the game clients too (asked for by the user

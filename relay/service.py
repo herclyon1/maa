@@ -376,6 +376,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         inbox, collect, deferred = boot_stages._stage_inbox_and_phone(self, cfg, engine, notifier, log)
         boot_stages._stage_preupdate(cfg, notifier, log)
         boot_stages._stage_reenable_maaend(cfg, notifier, log)
+        boot_stages._stage_collect_watch(cfg, notifier, log)
         boot_stages._stage_gameupdate(cfg, notifier, log)
         boot_stages._stage_annihilation(engine, notifier, log)
         _loop(self, cfg, engine, notifier, inbox, collect, deferred, log)

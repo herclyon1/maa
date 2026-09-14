@@ -1,12 +1,13 @@
 {
- "version": 20260914041716,
+ "version": 20260914042931,
  "files": {
-  "RELEASE-NOTES.md": "388e74d50aadc96c6396c17e0a49ef9469387549",
+  "RELEASE-NOTES.md": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
-  "ark_relay/__main__.py": "a8840eb52e6be2c40c84920952642667a756c3ef",
+  "ark_relay/__main__.py": "7aa20ecc12c6c0e5eb22f379fa4a6052ac94d5d5",
   "ark_relay/annihilation.py": "5ec4c927c131d2aefc58aebbdda591c37fb672e4",
   "ark_relay/banners.py": "06359dc7c7b44df8a6315cb9830fd099178f9c54",
-  "ark_relay/collect_retry.py": "d07b30736f3bf5c344e6127881825943d4c05b00",
+  "ark_relay/collect_retry.py": "6764445b9d003a72f75321874365f1e57295c95d",
+  "ark_relay/collect_watch.py": "e60c97873ee5ec70853880dcd6664236966cda67",
   "ark_relay/collector.py": "0a174d9f52b44ea9d761b10cc0a1f3cb2223c6ce",
   "ark_relay/collector_maa.py": "ad476e2f1bd8de3a6fb9191b63232bf7ae98f45e",
   "ark_relay/collector_maaend.py": "743bfa20d0044faa96087ff02e8db4d6b94b765b",
@@ -22,7 +23,7 @@
   "ark_relay/gameupdate.py": "dc9cbff0a971a4badbe39e7d226c3bfc1a5e95af",
   "ark_relay/gameupdate_games.py": "4732dfec443083f62ee6be13db460ab41a49ac6f",
   "ark_relay/garden.py": "f42fd3451ad45d2bebcccdbfac291d3739996e10",
-  "ark_relay/handle.py": "f19b91080fbc2069bcfcc9a63630da971b9abc4a",
+  "ark_relay/handle.py": "bee4a1fff452f349615c5e7efc700088a1f60b50",
   "ark_relay/inbox.py": "6e336d82b6b3b70b54e8e7e5fe2cbfc13a7f9d80",
   "ark_relay/maaend.py": "bc2786fbf18cde76803fed97fdb331409841b7c7",
   "ark_relay/maintenance.py": "6a7b68c5309c8a82932358ab5539a5d80236ed5c",
@@ -83,8 +84,8 @@
   "ark_relay/wuwa_boss.py": "6c93e8e3d82b1bef731f67da4a955cb0dcb0a798",
   "ark_relay/wuwa_forgery.py": "b77d8a2194ebca4c4a1425c39ae4c50380af4443",
   "ark_relay/wuwa_tacet.py": "919a879226eee64140007501f8a64563a6a878f7",
-  "boot_stages.py": "1685a6adadd382e2f4783bfd2f672010d38353b7",
+  "boot_stages.py": "910093ac548a8d243ec326857551f1093884bd10",
   "run.py": "0db6cde8fb8119323d991ec512d1b2b43e869b93",
-  "service.py": "080c9d2d9ba5274d9b6172697898c12be2060eeb"
+  "service.py": "d20131b97eee060cdc6334603a6c606fe604fb47"
  }
 }

@@ -197,10 +197,19 @@ def narrow_master(cfg, failed_ids: list[str], run_id: str, now: datetime) -> str
     task, before = _route_lists(doc)
     if task is None or not before:
         return ""
-    kept = {k: [r for r in v if r in failed_ids] for k, v in before.items()}
-    if kept == before or not any(kept.values()):
-        return ""
     nf = _narrow_file(cfg.state_dir)
+    if nf.exists():
+        # Already narrowed once this round: the true original is the saved one,
+        # and a second failed route must be added to the kept set, not
+        # intersected with the first narrowing (that dropped it).
+        try:
+            before = json.loads(nf.read_text(encoding="utf-8")).get("lists") or before
+        except (OSError, ValueError):
+            pass
+    kept = {k: [r for r in v if r in failed_ids] for k, v in before.items()}
+    current = {k: list(task["optionValues"][k].get("caseNames") or []) for k in before}
+    if kept == current or not any(kept.values()):
+        return ""
     nf.parent.mkdir(parents=True, exist_ok=True)
     if not nf.exists():
         nf.write_text(json.dumps({"run_id": run_id, "at": now.isoformat(), "lists": before},
