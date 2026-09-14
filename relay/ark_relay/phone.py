@@ -573,7 +573,7 @@ def _options(cfg) -> dict:
     return out
 
 
-def state_payload(cfg, state_dir: Path, fresh: bool = False) -> dict:
+def state_payload(cfg, state_dir: Path) -> dict:
     """The payload the phone displays. Same code config-check reads (snapshot.py)."""
     from . import modes, plan, snapshot  # noqa: PLC0415 - avoids an import cycle
     out: dict = {"at": int(time.time())}
@@ -648,14 +648,15 @@ def state_payload(cfg, state_dir: Path, fresh: bool = False) -> dict:
         out["plan"] = plan.next_plan(cfg.automas_dir)
     except Exception:  # noqa: BLE001
         out["plan"] = ""
-    # The number tiles on the 状态 tab: live stamina from the games' own accounts
-    # (cached ten minutes) and today's run count from the ledger.
+    # The number tiles on the 状态 tab: the page reads the games' stamina itself
+    # (web/stamina.js); it only needs the Skland session from here, plus today's
+    # run count from the ledger.
     try:
         from . import resources  # noqa: PLC0415
         from .config import SERVER_TZ  # noqa: PLC0415
         from .core import State  # noqa: PLC0415
-        out["资源"] = resources.fetch(cfg, max_age=resources.REFRESH_SECONDS if fresh else resources.TTL_SECONDS)
+        out["密钥"] = {"sk": resources.skland_session(cfg)}
         out["今天"] = resources.today(State(Path(state_dir)), datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
     except Exception:
-        log.warning("资源和今天的统计读不到", exc_info=True)
+        log.warning("森空岛会话和今天的统计读不到", exc_info=True)
     return out

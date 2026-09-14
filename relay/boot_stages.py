@@ -482,9 +482,7 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
             return
         try:
             from ark_relay.phone import state_payload  # noqa: PLC0415
-            # A refresh he asked for re-reads the games' stamina (at most once a
-            # minute); every other push reuses what was read in the last ten.
-            box.publish(state_payload(cfg, cfg.state_dir, fresh=(why == "手机请求")))
+            box.publish(state_payload(cfg, cfg.state_dir))
             log.info("📱 已上报状态到手机（%s）", why)
         except Exception:
             log.warning("状态没能上报到手机（%s）", why, exc_info=True)

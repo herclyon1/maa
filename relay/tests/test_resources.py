@@ -1,7 +1,6 @@
-"""resources: the phone's stamina numbers - parsed from real samples, cached, and
-a failing source never sinks the block."""
+"""resources: the Skland session for the phone page (one per process, a failure is
+a reason not an exception) and today's run count from the ledger."""
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -18,47 +17,56 @@ def check(label, got, want):
         fails.append(label)
 
 
-print("[鸣潮 baseData（2026-09-15 01:15 真实样本）]")
-base = {"energy": 232, "maxEnergy": 240, "storeEnergy": 44, "storeEnergyLimit": 480,
-        "weeklyInstCount": 0, "weeklyInstCountLimit": 3, "liveness": 0, "livenessMaxCount": 100}
-check("波片 232/240，备用 44/480，周本 0/3", resources.wuwa_from_base(base),
-      {"波片": 232, "上限": 240, "备用": 44, "备用上限": 480, "周本": 0, "周本上限": 3, "活跃": 0, "活跃上限": 100})
-
-print("\n[终末地 dungeon：按含义认字段，不猜死名字]")
-check("ap/maxAp/apRecoverTime", resources.endfield_from_dungeon({"ap": 86, "maxAp": 160, "apRecoverTime": 1789467867}),
-      {"理智": 86, "上限": 160, "回满": resources._stamp(1789467867)})
-check("sanity/sanityMax", resources.endfield_from_dungeon({"curSanity": 12, "sanityMax": 160}), {"理智": 12, "上限": 160})
-check("空的说明白", resources.endfield_from_dungeon({}), {"错误": "森空岛没给终末地的理智"})
-check("认不出就把名字列出来", resources.endfield_from_dungeon({"foo": 1, "bar": 2})["错误"].startswith("终末地的理智没认出来"), True)
-
-print("\n[fetch：一处失败不拖累别处，结果缓存]")
+print("[森空岛会话：没配 token 就是一句说明]")
 
 
-class Cfg:
+class NoTok:
     skland_token = ""
-    kurobbs_token = ""
-    kurobbs_did = ""
 
 
-resources._cache["at"], resources._cache["data"] = 0.0, {}
-out = resources.fetch(Cfg)
-check("没配 token 就是说明，不是异常", out["明日方舟"], {"错误": "没配森空岛 token"})
-check("鸣潮同理", out["鸣潮"], {"错误": "没配库街区 token/did"})
-check("有取自时刻", bool(out.get("取自")), True)
-calls = {"n": 0}
-orig = resources._wuwa
-resources._wuwa = lambda cfg: calls.__setitem__("n", calls["n"] + 1) or {"波片": 1}
-resources.fetch(Cfg)
-check("十分钟内不再请求", calls["n"], 0)
-resources._cache["at"] = time.time() - resources.TTL_SECONDS - 1
-resources.fetch(Cfg)
-check("过期才再请求", calls["n"], 1)
-resources._cache["at"] = time.time() - resources.REFRESH_SECONDS - 1
-resources.fetch(Cfg, max_age=resources.REFRESH_SECONDS)
-check("他自己按刷新：一分钟以上就重新读", calls["n"], 2)
-resources.fetch(Cfg, max_age=resources.REFRESH_SECONDS)
-check("一分钟内再按不重复读", calls["n"], 2)
-resources._wuwa = orig
+check("没配", resources.skland_session(NoTok), {"错误": "没配森空岛 token"})
+
+print("\n[有 token：登录一次、找出两个游戏的账号，第二次直接复用]")
+from ark_relay import skland  # noqa: E402
+
+calls = {"login": 0}
+
+
+class Cred:
+    cred, token = "c1", "t1"
+
+
+def fake_login(token, did=""):
+    calls["login"] += 1
+    return Cred()
+
+
+skland.get_did, skland.login, skland.refresh = (lambda: "Bdev"), fake_login, (lambda c: c)
+skland.bindings = lambda c: [
+    {"appCode": "endfield", "bindingList": [{"uid": "247481631", "channelMasterId": "1"}]},
+    {"appCode": "arknights", "bindingList": [{"uid": "19237299", "channelMasterId": "1"}]},
+]
+
+
+class Tok:
+    skland_token = "sk-token"
+
+
+resources._session["sk"] = None
+got = resources.skland_session(Tok)
+check("会话齐全", got, {"cred": "c1", "token": "t1", "dId": "Bdev", "uid": "19237299", "efRole": "247481631", "efServer": "1"})
+resources.skland_session(Tok)
+check("只登录一次", calls["login"], 1)
+
+
+def boom(c):
+    raise RuntimeError("HTTP Error 401")
+
+
+resources._session["sk"] = None
+skland.bindings = boom
+check("失败给原因", resources.skland_session(Tok)["错误"].startswith("RuntimeError: HTTP Error 401"), True)
+check("失败后不留半个会话", resources._session["sk"], None)
 
 print("\n[今天：从账目数]")
 

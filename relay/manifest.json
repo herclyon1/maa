@@ -1,7 +1,7 @@
 {
- "version": 20260914174053,
+ "version": 20260914181527,
  "files": {
-  "RELEASE-NOTES.md": "3ef84f8a151880f52f0b5b8df152f4af264b81f8",
+  "RELEASE-NOTES.md": "1180d6a27a574100c090da755a6a60504c8c9c88",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
   "ark_relay/__main__.py": "7aa20ecc12c6c0e5eb22f379fa4a6052ac94d5d5",
   "ark_relay/annihilation.py": "5ec4c927c131d2aefc58aebbdda591c37fb672e4",
@@ -13,7 +13,7 @@
   "ark_relay/collector_maaend.py": "743bfa20d0044faa96087ff02e8db4d6b94b765b",
   "ark_relay/collector_okww.py": "0baf1d2c929c5a33f40a3d19c552465725279d73",
   "ark_relay/commands.py": "63fe486c2bdb0839853ce35ce3dacb7b1ef3d308",
-  "ark_relay/config.py": "778ff389ed7fdb499bf5cd1c2e3fe33c03b61d06",
+  "ark_relay/config.py": "15eaab35c6569cb40b43cf0f3537388915d2265d",
   "ark_relay/core.py": "44ec5b238c685518b9aea3b89d9d0744d03c2cd9",
   "ark_relay/desktop.py": "ba89cb2d2cdb243ea0da7d9b5d03040f3e2a8750",
   "ark_relay/echofarm.py": "2c36f3ebaeaab34b7b3f4741d8d94e6b2c469c7e",
@@ -59,7 +59,7 @@
   "ark_relay/okww_patches/tacetshot.py": "4b64afeaffa35ff7fcf61216f4bcb5de96f1287b",
   "ark_relay/okww_patches/teamshot.py": "d8cc2c0b623cf28c1af093e14eaf4b3ef27e767d",
   "ark_relay/outcome.py": "9dc00b14aac05efa4178321cc29fc84e9f4504c9",
-  "ark_relay/phone.py": "e193cc42f4ede954e9f4b06d30c28c5834ba5461",
+  "ark_relay/phone.py": "de7918ad8b5bb9f8302fec1319a410a86b7dcae8",
   "ark_relay/plan.py": "bd6b4e5a3c675339f0783cd4f8ce158bf1e35479",
   "ark_relay/preupdate.py": "89099b9aa429e1dc2ab4f7aa0e578d1118ed6365",
   "ark_relay/preupdate_automas.py": "e6e8675e4190a1a5646f71f5f8b5135593dd40e8",
@@ -69,7 +69,7 @@
   "ark_relay/preupdate_okww.py": "51dd21b805d0916e7e5006e1eabdcb0682d60a92",
   "ark_relay/queues.py": "5129bacc00cd29b08e33f9108071a71f996e275e",
   "ark_relay/report.py": "eee6e0ff668643714775fa68e316741ec7bbfea4",
-  "ark_relay/resources.py": "97e6f2e3a6752b9d4b61d112cc732edeb818b86b",
+  "ark_relay/resources.py": "75a8af592511cb28db1f2328b2e99a196dd3ac96",
   "ark_relay/sanity_plan.py": "4907067b8ac5ab5ae11af74ab6d28831de794f6e",
   "ark_relay/scoreboard.py": "2e8004a670dc82d346fac844b6c753c5eb42f0a0",
   "ark_relay/selfupdate.py": "48aca72883521126177adc95b912c5d803f1b324",
@@ -85,7 +85,7 @@
   "ark_relay/wuwa_boss.py": "6c93e8e3d82b1bef731f67da4a955cb0dcb0a798",
   "ark_relay/wuwa_forgery.py": "b77d8a2194ebca4c4a1425c39ae4c50380af4443",
   "ark_relay/wuwa_tacet.py": "919a879226eee64140007501f8a64563a6a878f7",
-  "boot_stages.py": "895f36ff0b4a56f4da8bd2e24f1223ec99f68346",
+  "boot_stages.py": "fc8d9b99bb21d3549eb1e5ca4db2e73f233c2e48",
   "run.py": "0db6cde8fb8119323d991ec512d1b2b43e869b93",
   "service.py": "d20131b97eee060cdc6334603a6c606fe604fb47"
  }

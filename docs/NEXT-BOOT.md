@@ -1,16 +1,15 @@
 # Check these when the machine is next up
 
-## 2026-09-15 boot - two things for the phone's number tiles
+## 2026-09-15 boot - the phone's number tiles
 
-1. **Put the Kuro BBS pair into the machine's `.env`** (`C:\ProgramData\ark-relay\.env`):
-   `KUROBBS_TOKEN=` and `KUROBBS_DID=` with the values from the Mac's
-   `~/.config/ark/.env` (winps, never in the repo), then restart the service. Without
-   them the 鸣潮 tile says 「没配库街区 token/did」.
-2. **Endfield stamina**: `resources.endfield_from_dungeon` reads `detail.dungeon` of
-   the Skland card, whose key names are undocumented; on the Mac the card call hit
-   401 (Skland rate-limits cred creation) before the keys could be read. After boot,
-   look at relay.log for 「资源：终末地 读不到」 and, if it says 认不出, print
-   `detail.dungeon` once on the machine and pin the names in the test.
+The page reads 明日方舟/终末地 (森空岛) and 鸣潮 (库街区) stamina itself
+(`web/stamina.js`). From the machine it only needs the Skland session, which
+`resources.skland_session` puts into the snapshot as `密钥.sk` (one login per
+process). Check relay.log for 「森空岛会话给不了手机页」; if Skland rate-limits the
+login (401 on the Mac on 09-15), the tile says so and the next process retries.
+The Kuro token/did are pasted into the page by hand (手机 tab › 游戏账号), never
+put on the machine. Endfield's `detail.dungeon` key names are still unverified -
+the page recognises them by meaning and names the keys it saw when it cannot.
 
 ## 2026-09-15 08:45 boot - the daily report now goes to Server酱 (pushed 09-14 late night, lands by self-update)
 

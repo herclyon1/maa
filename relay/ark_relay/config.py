@@ -142,11 +142,6 @@ class Config:
     # The Wuthering Waves and Arknights banners need no token at all, see
     # banners.py.
     skland_token: str = field(default_factory=lambda: _env("SKLAND_TOKEN"))
-    # Kuro BBS (库街区) app token + device id: the Wuthering Waves waveplate,
-    # backup stamina and weekly-boss claims on the phone page (resources.py).
-    # Must be the pair captured from the phone app, see kuro-echoes.py.
-    kurobbs_token: str = field(default_factory=lambda: _env("KUROBBS_TOKEN"))
-    kurobbs_did: str = field(default_factory=lambda: _env("KUROBBS_DID"))
 
     # Push channels. Empty string = channel disabled.
     serverchan_key: str = field(default_factory=lambda: _env("SERVERCHAN_KEY"))
