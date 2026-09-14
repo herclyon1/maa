@@ -444,14 +444,41 @@ class Cos:
     def object_key(self, path: Path) -> str:
         return f"{self.prefix}/{path.name}" if self.prefix else path.name
 
+    # Answers a retry cannot change. 451 is what COS returns for an account in
+    # arrears (「UnavailableForLegalReasons ... account is arrears」, 2026-09-13);
+    # on 09-14 the 132 MB PUT was instead cut off mid-way three times, 45 s each,
+    # before the chain moved on. A HEAD on the bucket costs nothing and says so first.
+    _REFUSED = {451: "腾讯云账号欠费，要充值", 403: "密钥不对或没有这个桶的权限", 401: "密钥不对"}
+
+    def probe(self, timeout: int = 20) -> str:
+        """'' when the bucket accepts this key; otherwise the reason it never will."""
+        req = urllib.request.Request(f"https://{self.host}/", method="HEAD",
+                                     headers={"Authorization": self.authorization("HEAD", "")})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                r.read()
+        except urllib.error.HTTPError as exc:
+            if exc.code in self._REFUSED:
+                return f"COS 回了 {exc.code}：{self._REFUSED[exc.code]}"
+        except (urllib.error.URLError, OSError):
+            pass            # a network wobble is the PUT's problem, not a verdict
+        return ""
+
     def upload(self, path: Path, timeout: int = 900) -> dict:
+        if reason := self.probe():
+            raise PermanentUploadError(reason)
         key = self.object_key(path)
         url = f"https://{self.host}/" + urllib.parse.quote(key, safe="/")
         req = urllib.request.Request(url, data=path.read_bytes(), method="PUT",
                                      headers={"Authorization": self.authorization("PUT", key),
                                               "Content-Type": "application/octet-stream"})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            r.read()
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                r.read()
+        except urllib.error.HTTPError as exc:
+            if exc.code in self._REFUSED:
+                raise PermanentUploadError(f"COS 回了 {exc.code}：{self._REFUSED[exc.code]}") from exc
+            raise
         return {"name": path.name, "size": path.stat().st_size, "store": "cos", "key": key,
                 "url": url, "page": url}
 

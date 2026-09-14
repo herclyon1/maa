@@ -219,6 +219,36 @@ sk = hmac.new(b"SK", kt.encode(), hashlib.sha1).hexdigest()
 hs = "put\n/2026-09-12_endfield_MaaEnd-10-05-40/a.zip\n\nhost=ark-evidence-1250000000.cos.ap-shanghai.myqcloud.com\n"
 sts = f"sha1\n{kt}\n{hashlib.sha1(hs.encode()).hexdigest()}\n"
 check("和官方算法逐步算出来的一致", auth.rsplit("=", 1)[-1], hmac.new(sk.encode(), sts.encode(), hashlib.sha1).hexdigest())
+# An account in arrears answers 451 (2026-09-13); on 09-14 the 132 MB PUT was cut
+# off three times before the chain moved on. The bucket is asked first.
+import urllib.error, urllib.request  # noqa: E402
+_real_open = urllib.request.urlopen
+opened = []
+def _refuse(req, timeout=0):
+    opened.append((req.get_method(), req.full_url))
+    raise urllib.error.HTTPError(req.full_url, 451, "Unavailable For Legal Reasons", {}, None)
+urllib.request.urlopen = _refuse
+try:
+    zf = tmpdir() / "MaaEnd-x.zip"; zf.write_bytes(b"z" * 1000)
+    try:
+        up.upload(zf); got = "no error"
+    except ev.PermanentUploadError as exc:
+        got = str(exc)
+    check("欠费：探一下就换路，不传大文件", (got, [m for m, _ in opened]), ("COS 回了 451：腾讯云账号欠费，要充值", ["HEAD"]))
+    opened.clear()
+    def _put_refused(req, timeout=0):
+        opened.append(req.get_method())
+        if req.get_method() == "HEAD":
+            raise urllib.error.URLError("wobble")
+        raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", {}, None)
+    urllib.request.urlopen = _put_refused
+    try:
+        up.upload(zf); got = "no error"
+    except ev.PermanentUploadError as exc:
+        got = str(exc)
+    check("探不到就照传；传的时候被拒也换路不重试", (got, opened), ("COS 回了 403：密钥不对或没有这个桶的权限", ["HEAD", "PUT"]))
+finally:
+    urllib.request.urlopen = _real_open
 # One file per run, never pieces (the user, 2026-09-12): over WeCom's cap the store
 # refuses and the chain moves on.
 big = b"x" * (ev.WeComFiles.LIMIT + 5)
