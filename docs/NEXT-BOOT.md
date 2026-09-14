@@ -1,15 +1,12 @@
 # Check these when the machine is next up
 
-## 2026-09-15 morning - first unattended run of the 周本领奖 hook
+## 周本领奖 hook - proven unattended 2026-09-14 17:48-17:52
 
-The claim now hooks `FarmEchoTask.incr_drop` (same lap, right after the echo
-pickup). The `handle_claim_button` hook of 09-14 12:17 never fired: upstream only
-calls it when it sees a claim dialog itself (13:59 that day: fight → 「farm echo on
-the face」 → task over, one lap). The dialog chain was walked by hand at 14:10-14:16
-(F → 领取奖励 → 确认 → 补充结晶波片 → 兑换 21 → 获得 → ESC → 确认 → 挑战成功 → 退出副本),
-one claim taken, 2 of 3 left this week, 波片 1/240 + backup 26 afterwards - so the
-hook's own end-to-end run is the 09:19 OK-WW of 09-15. Check the OK-WW log for
-「周本领奖：打完了，去结晶按 F」 → 「认出弹窗」 → 「已点确认」 → 「退出副本」; the daily
+`okww-task.sh 2` with 波片 36 + backup 26: 「本周剩余可收取次数：2/3」 → fight →
+「周本领奖：打完了，去结晶按 F」17:50:43 → 「认出弹窗，点确认」→ 「波片不够，动用备用
+体力」→ 「已点确认」17:51:00 → 「结算页点了「退出副本」」17:51:03. The two later
+laps then walked to a crystal in the open world for 30 s each - guarded since
+(in_world → skip). Tomorrow's 09:19 OK-WW is the first run inside the daily; the
 report turns 「周本没领到奖励」 red without 「已点确认」.
 
 Also today: 「只补跑失败路线」 works from the live maafw.log (collect_watch.py) -
