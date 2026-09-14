@@ -29,7 +29,7 @@ check("ap/maxAp/apRecoverTime", resources.endfield_from_dungeon({"ap": 86, "maxA
       {"理智": 86, "上限": 160, "回满": resources._stamp(1789467867)})
 check("sanity/sanityMax", resources.endfield_from_dungeon({"curSanity": 12, "sanityMax": 160}), {"理智": 12, "上限": 160})
 check("空的说明白", resources.endfield_from_dungeon({}), {"错误": "森空岛没给终末地的理智"})
-check("认不出的字段名列出来", resources.endfield_from_dungeon({"foo": 1, "bar": 2})["错误"].startswith("终末地理智字段认不出"), True)
+check("认不出就把名字列出来", resources.endfield_from_dungeon({"foo": 1, "bar": 2})["错误"].startswith("终末地的理智没认出来"), True)
 
 print("\n[fetch：一处失败不拖累别处，结果缓存]")
 

@@ -28,7 +28,7 @@ _TIMEOUT = 12
 
 _lock = threading.Lock()
 _cache: dict = {"at": 0.0, "data": {}}
-_skland: dict = {"cred": None}   # Skland creds are rate-limited at creation; keep one
+_session: dict = {"cred": None}   # Skland creds are rate-limited at creation; keep one
 
 KURO_MAIN = "https://api.kurobbs.com"
 KURO_UA = ("Mozilla/5.0 (Linux; Android 16; 25098PN5AC Build/BP2A.250605.031.A3; wv) "
@@ -55,14 +55,14 @@ def _skland(cfg) -> tuple[dict, dict]:
     from . import skland  # noqa: PLC0415
     if not getattr(cfg, "skland_token", ""):
         return {"错误": "没配森空岛 token"}, {"错误": "没配森空岛 token"}
-    if _skland["cred"] is None:
-        _skland["cred"] = skland.login(cfg.skland_token, skland.get_did())
+    if _session["cred"] is None:
+        _session["cred"] = skland.login(cfg.skland_token, skland.get_did())
     try:
-        binds = skland.bindings(_skland["cred"])
+        binds = skland.bindings(_session["cred"])
     except Exception:  # noqa: BLE001 - a cred is only good for a while; one fresh cred, one retry
-        _skland["cred"] = skland.login(cfg.skland_token, skland.get_did())
-        binds = skland.bindings(_skland["cred"])
-    cred = _skland["cred"]
+        _session["cred"] = skland.login(cfg.skland_token, skland.get_did())
+        binds = skland.bindings(_session["cred"])
+    cred = _session["cred"]
     ak: dict = {}
     ef: dict = {}
     uid = next((r.get("uid") for app in binds if app.get("appCode") == "arknights"
@@ -97,7 +97,7 @@ def endfield_from_dungeon(dg: dict) -> dict:
             and any(t in k.lower() for t in ("ap", "sanity", "stamina", "energy", "power"))}
     when = next((v for k, v in dg.items() if any(t in k.lower() for t in ("recover", "full", "complete"))), None)
     if not nums:
-        return {"错误": "终末地理智字段认不出：" + "、".join(list(dg)[:6])}
+        return {"错误": "终末地的理智没认出来，森空岛给的是：" + "、".join(list(dg)[:6])}
     small = [v for k, v in nums.items() if "max" not in k.lower() and "limit" not in k.lower()]
     big = [v for k, v in nums.items() if "max" in k.lower() or "limit" in k.lower()]
     cur = min(small) if small else None

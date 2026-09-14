@@ -1,5 +1,5 @@
 {
- "version": 20260914170730,
+ "version": 20260914171048,
  "files": {
   "RELEASE-NOTES.md": "3ef84f8a151880f52f0b5b8df152f4af264b81f8",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
@@ -69,7 +69,7 @@
   "ark_relay/preupdate_okww.py": "51dd21b805d0916e7e5006e1eabdcb0682d60a92",
   "ark_relay/queues.py": "5129bacc00cd29b08e33f9108071a71f996e275e",
   "ark_relay/report.py": "eee6e0ff668643714775fa68e316741ec7bbfea4",
-  "ark_relay/resources.py": "9a5192f933d3350ed7b0c29bdc4d91d282ac9920",
+  "ark_relay/resources.py": "a75763ef5517a0ccea9505a5a9680e6283c295e5",
   "ark_relay/sanity_plan.py": "4907067b8ac5ab5ae11af74ab6d28831de794f6e",
   "ark_relay/scoreboard.py": "2e8004a670dc82d346fac844b6c753c5eb42f0a0",
   "ark_relay/selfupdate.py": "48aca72883521126177adc95b912c5d803f1b324",
