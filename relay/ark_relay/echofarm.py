@@ -285,6 +285,26 @@ def stop_okww(sleep=time.sleep) -> str:
     return "；**游戏没关掉（" + "、".join(game_alive()) + "），得去机器上手动关**"
 
 
+def _truth(cfg, working: Path) -> dict:
+    """What FarmEchoTask.json should look like after the farm: the AUTO-MAS master.
+
+    AUTO-MAS copies the master over the working file before every run and puts
+    the working file back afterwards, so the working file is whatever the last
+    farm left there - on 2026-09-09 the saved copy was itself a farm's
+    「Boss Challenge / 30」, 「配置已还原」 restored that, and the working file has
+    said so since. The daily was unaffected (it runs from the master); a manual
+    okww-task.sh run of FarmEchoTask would have farmed 30 laps of the wrong boss.
+    """
+    from .config import master_config_dir  # noqa: PLC0415
+    d = master_config_dir(getattr(cfg, "automas_dir", None), "DailyTask.json")
+    if d and (d / "FarmEchoTask.json").is_file():
+        try:
+            return json.loads((d / "FarmEchoTask.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            log.exception("母本的 FarmEchoTask.json 读不出来，退回 working 那份")
+    return json.loads(working.read_text(encoding="utf-8"))
+
+
 def start(cfg, boss: int, until_hhmm: str, name: str = "",
           now: datetime | None = None) -> tuple[bool, str]:
     """Point OK-WW at one overworld boss and farm it until `until_hhmm`.
@@ -310,7 +330,7 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
         return False, (f"已经在刷{running.get('name') or ''}了，刷到 {running.get('until')}。"
                        "要换目标先停掉现在这一趟")
 
-    saved = json.loads(path.read_text(encoding="utf-8"))
+    saved = _truth(cfg, path)
     back = _write_cfg(path, {"Teleport to Boss": "Boss Challenge",
                              "Which Boss Challenge to Teleport": boss,
                              "Boss Level": FARM_LEVEL,

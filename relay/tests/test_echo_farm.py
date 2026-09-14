@@ -135,6 +135,21 @@ note = echofarm.finish(c, "手动停止")
 check("话里说是手动停的", "手动停止" in note, True)
 check("配置还原", cfg_now(c), ORIGINAL)
 
+print("\n[还原的是母本那份，不是 working 里上一次刷声骸留下的]")
+# 2026-09-09: the working file already held a farm's 「Boss Challenge / 30」 when
+# the next farm started, so 「配置已还原」 restored a farm config.
+c = fresh()
+leftover = dict(ORIGINAL, **{"Teleport to Boss": "Boss Challenge", "Repeat Farm Count": 30})
+echofarm._cfg_path(c.okww_dir).write_text(json.dumps(leftover, ensure_ascii=False), encoding="utf-8")
+c.automas_dir = tmpdir()
+_md = c.automas_dir / "data" / "sid" / "Default" / "ConfigFile"; _md.mkdir(parents=True)
+(_md / "DailyTask.json").write_text("{}", encoding="utf-8")
+(_md / "FarmEchoTask.json").write_text(json.dumps(ORIGINAL, ensure_ascii=False), encoding="utf-8")
+echofarm.start(c, 3, "08:30", "第 3 个")
+check("刷的时候是刷声骸的设置", cfg_now(c)["Which Boss Challenge to Teleport"], 3)
+echofarm.finish(c, "手动停止")
+check("停了以后是母本的周本设置，不是 working 里的残留", cfg_now(c), ORIGINAL)
+
 print("\n[启动失败时不许把配置留在改过的样子]")
 c = fresh()
 echofarm._launch = lambda: (False, "计划任务起不来")
