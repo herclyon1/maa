@@ -460,8 +460,11 @@ class Cos:
         except urllib.error.HTTPError as exc:
             if exc.code in self._REFUSED:
                 return f"COS 回了 {exc.code}：{self._REFUSED[exc.code]}"
-        except (urllib.error.URLError, OSError):
-            pass            # a network wobble is the PUT's problem, not a verdict
+        except (urllib.error.URLError, OSError) as exc:
+            # 2026-09-14 13:08: the arrears account no longer even answers - the
+            # connection is cut (WinError 10053) on the HEAD as on the PUT. A
+            # 132 MB PUT tried three times on that is three minutes for nothing.
+            return f"连不上 COS（{getattr(exc, 'reason', exc)}），这一轮不传"
         return ""
 
     def upload(self, path: Path, timeout: int = 900) -> dict:

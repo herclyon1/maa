@@ -246,7 +246,23 @@ try:
         up.upload(zf); got = "no error"
     except ev.PermanentUploadError as exc:
         got = str(exc)
-    check("探不到就照传；传的时候被拒也换路不重试", (got, opened), ("COS 回了 403：密钥不对或没有这个桶的权限", ["HEAD", "PUT"]))
+    check("探的时候连接就断：这一轮不传大文件，换路", (got.startswith("连不上 COS"), opened), (True, ["HEAD"]))
+    opened.clear()
+    def _put_403(req, timeout=0):
+        opened.append(req.get_method())
+        if req.get_method() == "HEAD":
+            class _R:
+                def read(self): return b""
+                def __enter__(self): return self
+                def __exit__(self, *a): return False
+            return _R()
+        raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", {}, None)
+    urllib.request.urlopen = _put_403
+    try:
+        up.upload(zf); got = "no error"
+    except ev.PermanentUploadError as exc:
+        got = str(exc)
+    check("探通了照传；传的时候被拒也换路不重试", (got, opened), ("COS 回了 403：密钥不对或没有这个桶的权限", ["HEAD", "PUT"]))
 finally:
     urllib.request.urlopen = _real_open
 # One file per run, never pieces (the user, 2026-09-12): over WeCom's cap the store

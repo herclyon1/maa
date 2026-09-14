@@ -87,12 +87,43 @@ def status():
     return busy
 
 
-def stop_all():
-    # ① 全部经 API 停——队列和脚本都停，AUTO-MAS 才不会视作异常去重试
-    for name, tid in {**qids(), **ids()}.items():
+def live_tasks():
+    """AUTO-MAS's running dispatch tasks: [(taskId, label)]. The taskId here is
+    what /api/dispatch/stop wants - a dispatch id, not a script or queue id."""
+    try:
+        d = json.loads(urllib.request.urlopen(API + "/api/dispatch/runtime-snapshot",
+                                              timeout=10).read().decode())
+    except (urllib.error.URLError, OSError, ValueError):
+        return []
+    out = []
+    for t in d.get("tasks") or []:
+        names = [i.get("name", "") for i in (t.get("task_info") or [])]
+        out.append((t.get("taskId", ""), "、".join(names) or t.get("mode", "?")))
+    return out
+
+
+def _api_stop():
+    # 2026-09-14: this used to post the *script* and *queue* ids. AUTO-MAS answered
+    # 操作成功 to every one of them and stopped nothing; the taskkill that followed
+    # then read as a crashed attempt and AUTO-MAS retried the script - twice in a
+    # row, the same chain as 2026-09-01. The running task's own id is the one to send.
+    live = live_tasks()
+    if not live:
+        print("  AUTO-MAS 没有在跑的任务")
+    for tid, label in live:
         r = post("/api/dispatch/stop", {"taskId": tid})
-        print(f"  API 停「{name}」: {r.get('message', r)}")
+        print(f"  API 停「{label}」({tid[:8]}): {r.get('message', r)}")
+    return bool(live)
+
+
+def stop_all():
+    # ① 全部经 API 停——AUTO-MAS 才不会视作异常去重试
+    _api_stop()
     time.sleep(12)
+    if live_tasks():
+        print("  ⚠️ API 停了 12 秒后 AUTO-MAS 还说在跑，再停一次")
+        _api_stop()
+        time.sleep(8)
     # ② 还有残留才动刀。A game left open counts as residue: the relay's
     # _scripts_running() sees Endfield.exe and holds every retry and the
     # shutdown, so 「停干净」 with the game still up (2026-09-12 02:17) was a lie.
@@ -108,8 +139,7 @@ def stop_all():
     busy, games = running()
     if busy:
         print("  ⚠️ 被 AUTO-MAS 重新拉起:", busy, "→ 再停一轮")
-        for name, tid in {**qids(), **ids()}.items():
-            post("/api/dispatch/stop", {"taskId": tid})
+        _api_stop()
         time.sleep(8)
         busy, games = running()
     left = busy + games
