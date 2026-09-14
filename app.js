@@ -32,38 +32,13 @@ const sameVal = (a, b) => Array.isArray(a) || Array.isArray(b)
 const hhmm = (ts) => new Date(ts * 1000).toTimeString().slice(0, 5);
 
 /* ---------- 外观 ---------- */
-const THEME_KEY = "ark-remote-theme";
-const ACCENTS = [
-  ["蓝", "#4aa3ff"], ["绿", "#3fb950"], ["紫", "#a371f7"],
-  ["橙", "#e3873c"], ["红", "#f85149"], ["青", "#2dd4bf"],
-];
-
-function loadTheme() {
-  try { return JSON.parse(localStorage.getItem(THEME_KEY)) || {}; }
-  catch { return {}; }
-}
-
+/* Appearance follows the system (HIG「Settings」: respect systemwide settings and
+   do not offer redundant versions of them). The page carries no theme of its own;
+   only the browser chrome colour is kept in step with light/dark. */
 function applyTheme() {
-  const t = loadTheme();
-  // mode 为空 = 跟随系统：什么都不标，交给 prefers-color-scheme
-  if (t.mode === "light" || t.mode === "dark") {
-    document.documentElement.dataset.theme = t.mode;
-  } else {
-    delete document.documentElement.dataset.theme;
-  }
-  document.documentElement.style.setProperty("--accent", t.accent || ACCENTS[0][1]);
+  delete document.documentElement.dataset.theme;
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) {
-    const dark = t.mode === "dark" ||
-      (!t.mode && matchMedia("(prefers-color-scheme: dark)").matches);
-    meta.content = dark ? "#0f1216" : "#f5f7fa";
-  }
-}
-
-function saveTheme(patch) {
-  const t = { ...loadTheme(), ...patch };
-  localStorage.setItem(THEME_KEY, JSON.stringify(t));
-  applyTheme();
+  if (meta) meta.content = matchMedia("(prefers-color-scheme: dark)").matches ? "#000000" : "#f2f2f7";
 }
 
 /* 每一项：在快照里从哪读(sec/key)，写的时候写到哪(script/path) */
@@ -578,45 +553,28 @@ function render() {
   const wg = weekly["周常乐园"] || {};
   const an = weekly["剿灭"] || {};
   const doneTag = (d, done, todo) => `<span class="ro">${d ? done : todo}</span>`;
-  html += `<section><h2>周常 <small>一周一次的事</small></h2>
-    <p class="hint">三项同一套逻辑：本周做完自动停掉，下周一 04:00 自动恢复，没有开关。</p>`;
-  if (inShift("MAA")) html += `
-    <div class="row"><label>明日方舟 · 剿灭
-      <span class="hint">MAA 打满本周剿灭后把开关置为关闭，省掉之后每趟白跑的一分钟</span></label>
-      ${doneTag(an["本周已完成"], "本周已完成，下周一自动恢复", "本周还没打满")}</div>`;
-  if (inShift("OK-WW")) html += `
-    <div class="row"><label>鸣潮 · 周常乐园
-      <span class="hint">不花体力。做完之前每趟去看一眼，做完就停到下周一</span></label>
-      ${doneTag(wg["本周已完成"], "本周已完成，下周一自动恢复", "本周还没做")}</div>
-    <div class="row"><label>鸣潮 · 周本 <small>战歌重奏</small>
+  if (inShift("MAA")) html += `<section><h2>明日方舟 · 周常</h2>
+    <div class="row"><label>剿灭
+      <span class="hint">打满本周剿灭后自动停掉，下周一 04:00 自动恢复</span></label>
+      ${doneTag(an["本周已完成"], "本周已打满", "本周还没打满")}</div>
+  </section>`;
+  if (inShift("OK-WW")) html += `<section><h2>鸣潮 · 周常</h2>
+    <div class="row"><label>周常乐园
+      <span class="hint">不花体力。做完就停到下周一</span></label>
+      ${doneTag(wg["本周已完成"], "本周已完成", "本周还没做")}</div>
+    <div class="row"><label>周本 <small>战歌重奏</small>
       <span class="hint">花体力。一周领 3 次奖励、每次 60 结晶波片、固定打 90 级，领满就停到下周一</span></label>
-      ${doneTag(wb["本周已打"], "本周三次已领满，下周一自动恢复", "本周还没领满")}</div>
+      ${doneTag(wb["本周已打"], "本周已领满", "本周还没领满")}</div>
     <div class="row" data-row="wb|OK-WW|第几个周本"><label>周本打第几个
-      <span class="hint">游戏里按 F2 打开周本列表，从上往下数，第一个填 1。
-      OK-WW 只认位置不认名字，新 Boss 上线顺序会变，换本时记得来改</span></label>
-      <input type="number" data-id="wb|OK-WW|第几个周本" id="wb-idx" value="${wb["第几个周本"] || 1}"></div>`;
-  html += `</section>`;
+      <span class="hint">游戏里按 F2 打开周本列表，从上往下数，第一个填 1。新 Boss 上线顺序会变，换本时记得来改</span></label>
+      <input type="number" data-id="wb|OK-WW|第几个周本" id="wb-idx" value="${wb["第几个周本"] || 1}"></div>
+  </section>`;
 
   html += `<section><h2>这台手机</h2>
     <div class="row"><label>免输入链接
       <span class="hint">把这条链接存成书签或加到主屏幕，以后打开就直接是控制台，
       再也不用填信箱和 PIN。链接里带着这两样，别转发给别人</span></label>
       <button id="mklink">复制链接</button></div>
-  </section>`;
-
-  const th = loadTheme();
-  const mode = th.mode || "auto";
-  html += `<section><h2>外观</h2>
-    <div class="row"><label>深浅模式<span class="hint">跟随系统就是跟着手机的日夜切换</span></label>
-      <select id="th-mode">
-        <option value="auto" ${mode === "auto" ? "selected" : ""}>跟随系统</option>
-        <option value="light" ${mode === "light" ? "selected" : ""}>浅色</option>
-        <option value="dark" ${mode === "dark" ? "selected" : ""}>深色</option>
-      </select></div>
-    <div class="row"><label>主题色</label>
-      <span class="swatches">${ACCENTS.map(([n, c]) =>
-        `<i class="sw-c${(th.accent || ACCENTS[0][1]) === c ? " on" : ""}" data-c="${c}" title="${n}" style="background:${c}"></i>`).join("")}</span>
-    </div>
   </section>`;
 
   $("#app").innerHTML = html;
@@ -629,7 +587,7 @@ function render() {
    在别的页上也照常记着。用户 2026-09-14：「太长了……我要找某一个功能去修改，
    我要滑到最底下或者滑到某个中间段」。 */
 const TABS = [["状态", /^机器状态|^第一次使用/], ["方舟", /^明日方舟/], ["终末地", /^终末地/],
-              ["鸣潮", /^鸣潮/], ["周常", /^周常/], ["手机", /^这台手机|^外观/]];
+              ["鸣潮", /^鸣潮/], ["手机", /^这台手机/]];
 let curTab = (() => { try { return localStorage.getItem("ark-remote-tab") || "状态"; } catch { return "状态"; } })();
 
 function layoutTabs() {
@@ -749,15 +707,6 @@ function wire() {
     { action:"skip_today", queue:theQueue() },
     `「${theQueue()}」下一趟不跑了。机器开着＝跳今天这趟；` +
     "机器关着＝这条等到下次开机才生效，跳的是那一天。只跳一次，之后自动恢复");
-  const tm = $("#th-mode");
-  if (tm) tm.onchange = () => saveTheme({ mode: tm.value === "auto" ? null : tm.value });
-  for (const sw of document.querySelectorAll(".sw-c")) {
-    sw.onclick = () => {
-      saveTheme({ accent: sw.dataset.c });
-      for (const o of document.querySelectorAll(".sw-c")) o.classList.remove("on");
-      sw.classList.add("on");
-    };
-  }
 
   /* 周本那四项走同一个保存栏。原来它自己有一个「保存周本设置」按钮，
      和下面的「保存修改」两套并存——用户 2026-09-04 问「何意味」。
@@ -1381,15 +1330,17 @@ $("#go").onclick = async () => {
   saving = false;
 };
 
+/* 所有重渲染之后都要把未保存的改动写回控件（见 applyEdits 的注释）。
+   包在这里统一接管，免得每个 render() 调用点都要记得跟一句。
+   必须在 boot() 之前装上：boot() 用缓存的状态先画一遍，那一遍要是没走这层，
+   已寄出的回执要等下一次上报才出现——机器关着时就是永远不出现（2026-09-14）。 */
+{
+  const _renderRaw = render;
+  render = (...a) => { _renderRaw(...a); reconcilePending(); applyEdits(); };
+}
+
 applyTheme();
 // 跟随系统时，系统切了日夜要立刻跟上
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 boot();
-
-/* 所有重渲染之后都要把未保存的改动写回控件（见 applyEdits 的注释）。
-   包在这里统一接管，免得每个 render() 调用点都要记得跟一句。 */
-{
-  const _renderRaw = render;
-  render = (...a) => { _renderRaw(...a); reconcilePending(); applyEdits(); };
-}
