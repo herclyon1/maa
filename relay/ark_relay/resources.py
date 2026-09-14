@@ -4,8 +4,7 @@ weekly-boss claims (Wuthering Waves, Kuro BBS `baseData`). Read-only, the
 operator's own accounts.
 
 Why this exists: the status tab's number tiles (docs/PHONE-NATIVE-REFERENCES.md,
-Reminders' 2×2 tiles). The user, 2026-09-15: 「当前理智/波片走token，三个游戏你都有
-接口」.
+Reminders' 2×2 tiles). The user, 2026-09-15: 「当前理智/波片走token，三个游戏你都有接口」.
 
 Every source is fetched at most once per TTL; the phone snapshot is built often
 (boot, every phone order, every refresh) and none of these numbers move faster
