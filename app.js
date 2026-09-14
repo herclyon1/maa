@@ -1415,6 +1415,8 @@ function myLink() {
 
 /* 原生行为三件：大标题滚动收进顶栏、下拉刷新、「几分钟前」自己走。 */
 function installNative() {
+  // 开关的动效只在被人摸过之后才播（.live），页面重画时不会每个开关都弹一下
+  document.addEventListener("pointerdown", (e) => { const sw = e.target.closest && e.target.closest(".sw"); if (sw) sw.classList.add("live"); }, { passive: true });
   const bar = $("#topbar"), h1 = document.querySelector("header h1");
   if (bar && h1) {
     const root = document.documentElement;
