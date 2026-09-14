@@ -21,6 +21,11 @@ page that breaks a line here is a regression.
 | Settings | Minimise settings; respect systemwide settings, no redundant versions | the 外观 group (light/dark override, accent colour) was removed 2026-09-14; the page follows the system appearance |
 | Designing for iOS | Limit onscreen controls; reachable controls in the middle/bottom | one page per tab; the tab bar and save bar at the bottom |
 
-Not done (and why): SF Symbols in the tab bar - the page is a web page without
-the symbol font; text labels only, which the HIG allows (「Include tab labels」).
-Swipe-back between pages does not exist because there is no navigation stack.
+| Tab bars | Consider SF Symbols for tab icons; include labels | SF Symbols are licensed for native apps and cannot be embedded in a web page, so the five icons are hand-drawn SVGs in the same monoline style (`TAB_ICONS`), with labels under them |
+| Motion | Add motion purposefully; brief and precise; avoid motion on frequent interactions; make it optional | the selection capsule slides in the tab bar (0.28s), page content cross-fades (0.15s), switches and pressed rows use the system-like 0.2s; everything is off under `prefers-reduced-motion` |
+| Buttons | Full-width text rows in a group; destructive in red | actions are stacked full-width rows with inset hairlines (no side-by-side grid - its middle divider never lined up); 停止 is red text |
+
+Not done (and why): the swipe-back gesture belongs to a navigation stack
+(pushed detail views); this page has tabs, not a stack, and the HIG tab bar has
+no back gesture. If a detail page is ever added, it gets a real back button and
+the gesture with it.
