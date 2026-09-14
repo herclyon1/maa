@@ -449,6 +449,27 @@ function planRows(text) {
   return `<section><h2>明日安排</h2>${rows}${foot.length ? `<div class="foot">${foot.map((x) => `<p>${x}</p>`).join("")}</div>` : ""}</section>`;
 }
 
+function numTile(icon, colour, big, unit, label, sub, err) {
+  if (err) return `<div class="num err">${sf(icon)}<span class="lab">${label}</span><span class="sub">${err.replace(/</g, "&lt;")}</span></div>`;
+  return `<div class="num" style="--c:${colour}">${sf(icon)}
+    <span class="big">${big ?? "–"}${unit ? `<small>${unit}</small>` : ""}</span>
+    <span class="lab">${label}</span>${sub ? `<span class="sub">${sub}</span>` : ""}</div>`;
+}
+function numTiles(snap) {
+  const r = (snap && snap["资源"]) || null, t = (snap && snap["今天"]) || null;
+  if (!r && !t) return "";
+  const ak = (r || {})["明日方舟"] || {}, ef = (r || {})["终末地"] || {}, ww = (r || {})["鸣潮"] || {};
+  let h = "";
+  if (t) h += numTile("gamecontroller.fill", "#636366", t["跑了"], "趟", "今天跑了", t["失败"] ? `失败 ${t["失败"]} 趟` : (t["最近"] ? `最近一趟 ${t["最近"]}` : "还没跑"));
+  if (r) {
+    h += numTile("bolt.fill", "#0088ff", ak["理智"], ak["上限"] != null ? `/${ak["上限"]}` : "", "明日方舟 理智", ak["回满"] ? `回满 ${ak["回满"]}` : "", ak["错误"]);
+    h += numTile("sparkles", "#ff9500", ef["理智"], ef["上限"] != null ? `/${ef["上限"]}` : "", "终末地 理智", ef["回满"] ? `回满 ${ef["回满"]}` : "", ef["错误"]);
+    h += numTile("moon.fill", "#30b0c7", ww["波片"], ww["上限"] != null ? `/${ww["上限"]}` : "", "鸣潮 波片",
+      ww["错误"] ? "" : `备用 ${ww["备用"] ?? "–"} · 周本 ${ww["周本"] ?? "–"}/${ww["周本上限"] ?? "–"}`, ww["错误"]);
+  }
+  return `<section><div class="group nums">${h}</div></section>` + (r && r["取自"] ? `<section><div class="foot">体力数字取自 ${r["取自"]}，十分钟更新一次</div></section>` : "");
+}
+
 function render() {
   liveVals = {};
   let c = (snap && snap.config) || {};
@@ -492,7 +513,7 @@ function render() {
   if (busy.length) html += notice("现在在跑", busy.join("、"), "这时改设置会被推迟到跑完再生效");
   if (ef["到"]) html += notice("刷声骸", `正在刷「${ef["名字"] || "?"}」`,
     `刷到 ${String(ef["到"]).slice(11)} 为止${ef["从"] ? "，" + String(ef["从"]).slice(11) + " 开始" : ""}`,
-    `<button type="button" class="pill" id="echofarmuntil">改收工时刻</button><button type="button" class="pill red" id="echofarmstop">提前收工</button>`);
+    `<button type="button" class="capsule" id="echofarmuntil">改收工时刻</button><button type="button" class="capsule red" id="echofarmstop">提前收工</button>`);
   /* 动作磁贴（查找 / 家庭的磁贴，提醒事项的几何）。 */
   html += `<section><div class="group tiles">
     ${tile("runnow", "play.fill", "var(--accent)", "现在跑一趟", curQueue ? `${curQueue}${nextAt ? " · 下一趟 " + nextAt : ""}` : "")}
@@ -500,6 +521,8 @@ function render() {
     ${tile("refresh", "arrow.clockwise", "#8e8e93", "刷新", snap ? ago(snap.at) : "还没有数据")}
     ${tile("estop", "stop.fill", "var(--bad)", "停止一切", "脚本和游戏", "danger")}
   </div></section>`;
+  /* 数字磁贴（提醒事项的 2×2 磁贴）：三个游戏的体力和今天跑了几趟，快照里有才显示。 */
+  html += numTiles(snap);
   /* 配置行（设置的行）。 */
   html += `<section><h2>机器状态</h2>
     ${qs.length ? `<div class="row"><label>看哪一趟班
@@ -1112,6 +1135,10 @@ async function ping(minAt) {
     return setStatus("还没设置信箱，先去设置里填", "off");
   }
   setStatus("正在问机器…", "");
+  const rt = $("#refresh"); if (rt) rt.classList.add("busy");
+  try { return await _ping(minAt); } finally { const r2 = $("#refresh"); if (r2) r2.classList.remove("busy"); }
+}
+async function _ping(minAt) {
   const floor = (typeof minAt === "number" ? minAt : null) ?? 0;
   let best = snap;
   let sseLatest = null;
@@ -1369,6 +1396,39 @@ function myLink() {
     .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   return location.origin + location.pathname + "#k=" + b;
 }
+
+/* 原生行为三件：大标题滚动收进顶栏、下拉刷新、「几分钟前」自己走。 */
+function installNative() {
+  const bar = $("#topbar"), h1 = document.querySelector("header h1");
+  if (bar && h1 && "IntersectionObserver" in window) {
+    new IntersectionObserver((es) => bar.classList.toggle("on", !es[0].isIntersecting), { threshold: 0 }).observe(h1);
+  }
+  const ptr = $("#ptr");
+  let y0 = null, pulled = 0, armed = false;
+  const THRESH = 72;
+  addEventListener("touchstart", (e) => { y0 = (window.scrollY <= 0 && e.touches.length === 1) ? e.touches[0].clientY : null; pulled = 0; armed = false; }, { passive: true });
+  addEventListener("touchmove", (e) => {
+    if (y0 === null || !ptr) return;
+    pulled = e.touches[0].clientY - y0;
+    const on = pulled > THRESH;
+    if (on !== armed) { armed = on; ptr.classList.toggle("arm", on); }
+  }, { passive: true });
+  addEventListener("touchend", () => {
+    if (armed && ptr) { ptr.classList.add("go"); ping().finally(() => { ptr.classList.remove("go", "arm"); }); }
+    else if (ptr) ptr.classList.remove("arm");
+    y0 = null; armed = false;
+  }, { passive: true });
+  // 「x 分钟前」 every 30 s, only while the page is visible; no network.
+  setInterval(() => {
+    if (document.hidden || !snap) return;
+    const t = ago(snap.at);
+    const sub = document.querySelector("#refresh .tsub");
+    if (sub) sub.textContent = t;
+    const s2 = $("#status2");
+    if (s2 && /前/.test(s2.textContent)) s2.textContent = s2.textContent.replace(/[0-9]+ (秒|分钟|小时 [0-9]+ 分|天)前/, t);
+  }, 30000);
+}
+addEventListener("DOMContentLoaded", installNative);
 
 // Safari 17.4+ renders <input type=checkbox switch> as the system toggle; when the
 // browser has it, index.html hides the CSS-drawn track and shows the real control.
