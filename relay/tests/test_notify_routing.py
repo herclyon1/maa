@@ -59,7 +59,7 @@ n, log = build()
 check("报警发出去了", n.send("⚠️ 出错了", "正文", alert=True), [])
 check("报警只进群机器人", [c for c, _ in log], ["企业微信机器人"])
 n, log = build()
-check("其余通知发出去了", n.send("🔄 中继已更新", "正文"), [])
+check("其余通知发出去了", n.send("🆕 游戏更新", "正文"), [])
 check("其余通知只走 Server酱", [c for c, _ in log], ["Server酱"])
 
 print("\n[群机器人挂了：日报/报警回退到 Server酱，绝不落到私聊]")
@@ -72,8 +72,52 @@ check("企业微信私聊没被惊动", any(c == "企业微信" for c, _ in log)
 print("\n[Server酱 挂了：普通通知不往群里塞，也不进私聊，返回没送到]")
 n, log = build(broken=("Server酱",))
 n._announcing = True
-check("返回失败", bool(n.send("🔄 中继已更新", "正文")), True)
+check("返回失败", bool(n.send("🆕 游戏更新", "正文")), True)
 check("只试了 Server酱", sorted({c for c, _ in log}), ["Server酱"])
+
+print("\n[日报或手机页已经有的不再推：只记日志，算送达]")
+from ark_relay.notify import route_of  # noqa: E402
+for t in ("🔄 中继已更新（3 个文件）", "🗓️ 周常", "⏭️ 跳过模式", "🛑 已停一切", "📱 配置已修改",
+          "🗂️ 证据包已送出机器", "🔁 自动采集：只补跑失败的路线", "✅ 自动采集：补跑后全部走完",
+          "🩹 OK-WW 补丁（18 条）", "🥚 开始刷声骸", "✅ 无音区结算截图：不发了", "⚠️ MaaEnd 中途失败过，重试后成功"):
+    check(f"只记日志：{t}", route_of(t, alert=t.startswith("⚠️")), "log")
+n, log = build()
+check("只记日志的返回空（调用方不再重推）", n.send("🔄 中继已更新", "正文"), [])
+check("一个通道都没碰", log, [])
+
+print("\n[还会推的：报警进群，其余进 Server酱]")
+for t in ("❌ OK-WW 失败", "⚠️ 这一轮没干完", "早班 没有运行", "🔌 AUTO-MAS 启动不起来", "⚠️ 中继自更新没成功",
+          "🛑 没能停干净，需要你动手", "⚠️ 自动采集：补跑仍有路线没走通", "🚩 自动采集：有路线连续两天补跑失败，是复发性问题"):
+    check(f"进群：{t}", route_of(t, alert=True), "group")
+for t in ("🆕 预更新", "🆕 游戏更新", "🔁 更新后重跑", "🥚 刷声骸收工", "⏸ MaaEnd 进不了游戏，稍后补跑", "🌙 今晚不关机",
+          "📱 配置没改成", "✗ set_stage: 找不到", "🔓 终末地日常已开回", "🗓️ 新的一周", "⚠️ OK-WW 补丁有 1 条没贴上（共 18 条）",
+          "🔌 推送通道故障：企业微信"):
+    check(f"Server酱：{t}", route_of(t), "info")
+check("预更新没能确认：不是游戏的报警，降到 Server酱", route_of("⚠️ 预更新没能确认（1 项）", alert=True), "info")
+check("日报永远进群", route_of("📋 09-14 · 全绿 ✅", daily=True), "group")
+
+print("\n[docs/NOTIFICATIONS.md 的表和代码一致]")
+import re  # noqa: E402
+from pathlib import Path as _P  # noqa: E402
+_doc = (_P(__file__).resolve().parents[2] / "docs" / "NOTIFICATIONS.md").read_text(encoding="utf-8")
+_rows = re.findall(r"^\| (.+?) \| (group|info|log) \| ", _doc, flags=re.M)
+check("表里至少 25 行", len(_rows) >= 25, True)
+_probe = {"📋 日报 / 🔎 临时查看 / （补发）": ("📋 09-14 · 全绿", True, False),
+          "❌ <script> 失败": ("❌ OK-WW 失败", False, True),
+          "<队列> 没有运行 / 机器没开机": ("早班 没有运行", False, True),
+          "⏸ <script> 进不了游戏，稍后补跑": ("⏸ MaaEnd 进不了游戏，稍后补跑", False, False),
+          "⚠️ <script> 中途失败过，重试后成功": ("⚠️ MaaEnd 中途失败过，重试后成功", False, True),
+          "📱 配置没改成 / ✗ …": ("✗ set_stage: 没有这个字段", False, False),
+          "⏭️ 跳过模式 / 🛑 已停一切 / 📱 手机指令暂缓 / 📱 配置已修改 / ✅ …": ("✅ 刷取关卡：TO-5 → 1-7", False, False),
+          "🩹 OK-WW 补丁（N 条）": ("🩹 OK-WW 补丁（18 条）", False, False),
+          "⚠️ OK-WW 补丁有 N 条没贴上": ("⚠️ OK-WW 补丁有 1 条没贴上（共 18 条）", False, False),
+          "⚠️ 预更新没能确认 / ⚠️ 游戏更新没能确认": ("⚠️ 预更新没能确认（1 项）", False, True)}
+for cell, want in _rows:
+    if cell in _probe:
+        title, daily, alert = _probe[cell]
+    else:
+        title, daily, alert = cell.split(" / ")[0], False, want == "group"
+    check(f"表：{cell} → {want}", route_of(title, alert=alert, daily=daily), want)
 
 print("\n[默认就是日常，不是报警]")
 n, log = build()

@@ -350,7 +350,7 @@ check("三个通道都算配好了", n.channels, ["企业微信", "企业微信�
 check("日报算送达", n.send("📋 日报", "正文", daily=True), [])
 check("群机器人收到了日报", len(posted("webhook")), 1)
 check("Server酱 没收到日报", posted("sctapi.ftqq.com"), [])
-check("普通通知算送达", n.send("🔄 中继已更新", "正文"), [])
+check("普通通知算送达", n.send("🆕 游戏更新", "正文"), [])
 check("Server酱 收到了普通通知", len(posted("sctapi.ftqq.com")), 1)
 check("群机器人没多收", len(posted("webhook")), 1)
 check("自建应用从头到尾没被碰", posted("message/send"), [])

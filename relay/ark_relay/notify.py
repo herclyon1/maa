@@ -364,12 +364,46 @@ def _hint(name: str, err: str) -> str:
 #   企业微信自建应用   (the private chat) never on its own - only text the user
 #                    dictates by hand (push.py --private)
 #
-# 「三个不同的通知各司其职，不要混在一起，而且根本目的是不要去打扰我」. Earlier that
-# day everything went to the group; before that, alerts fanned out to all three.
+# Earlier that day everything went to the group; before that, alerts fanned out
+# to all three.
 # The group falls back to Server酱 when the robot refuses (an alarm must reach
 # him); info that Server酱 refuses is returned as undelivered, never escalated.
 _GROUP_ORDER = ("企业微信机器人", "Server酱")
 _INFO_ORDER = ("Server酱",)
+
+# What the daily report or the phone page already says is not pushed again -
+# it is logged and counts as delivered. The full title→route table, with the
+# reason for every line, is docs/NOTIFICATIONS.md; test_notify_routing.py pins it.
+# The user, 2026-09-14: the core rule is not to disturb him - push nothing that
+# is already in the daily report or on the phone page.
+_LOG_ONLY_PREFIXES = (
+    "🔄 中继已更新",            # every deploy; the phone page shows the version
+    "🗓️ 周常",                  # weekly gate closed/reopened; the phone page shows it
+    "⏭️ 跳过模式",              # acknowledgement of a phone order
+    "🛑 已停一切",              # acknowledgement of the phone's estop
+    "📱 手机指令暂缓",           # acknowledgement of a phone order
+    "📱 配置已修改",             # acknowledgement of a phone order
+    "🗂️ 证据包已送出机器",       # bookkeeping behind a failure the alarm already reported
+    "🔁 自动采集：只补跑失败的路线",  # the retry's outcome lands in the daily report
+    "✅ 自动采集：补跑后全部走完",
+    "🩹 OK-WW 补丁",            # all patches bound - the healthy case; ⚠️ variant still goes out
+    "🥚 开始刷声骸",            # acknowledgement of a phone order; 收工 still goes out
+    "✅ ",                      # any successful phone-order acknowledgement (the page shows it)
+)
+_LOG_ONLY_CONTAINS = ("中途失败过，重试后成功",)   # the daily report carries the retry
+# Maintenance that did not confirm is information, not an alarm about the games.
+_NOT_ALARM_PREFIXES = ("⚠️ 预更新没能确认", "⚠️ 游戏更新没能确认")
+
+
+def route_of(title: str, *, alert: bool = False, daily: bool = False) -> str:
+    """'group' | 'info' | 'log' for a title. Pure, so the doc table can be checked against it."""
+    if daily:
+        return "group"
+    if title.startswith(_LOG_ONLY_PREFIXES) or any(k in title for k in _LOG_ONLY_CONTAINS):
+        return "log"
+    if alert and not title.startswith(_NOT_ALARM_PREFIXES):
+        return "group"
+    return "info"
 _ALERT_ORDER = _GROUP_ORDER        # kept for the outage announcement path
 _ROUTINE_ORDER = _INFO_ORDER
 
@@ -514,8 +548,12 @@ class Notifier:
         has to act on) go to the group robot; everything else is information
         and goes to Server酱 (see the orders above).
         """
+        route = route_of(title, alert=alert, daily=daily)
+        if route == "log":
+            log.info("不推送（日报或手机页已有）：%s ｜ %s", title, body.replace("\n", " ")[:200])
+            return []
         delivered, failed = self._fan_out(
-            title, body, order=_GROUP_ORDER if (alert or daily) else _INFO_ORDER, stop_on_first=True)
+            title, body, order=_GROUP_ORDER if route == "group" else _INFO_ORDER, stop_on_first=True)
         if not delivered:
             # `or [...]`：一个通道都没配的时候 `failed` 是空的，返回空列表就等于
             # 告诉调用方「送到了」——正是「假的绿」。send_group 早就这么兜了，

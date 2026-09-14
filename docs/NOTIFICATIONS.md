@@ -146,7 +146,7 @@ Delivery rule: **one channel delivering counts as delivered.** See
 | Channel | Carries | Code |
 |---|---|---|
 | WeCom group robot | the daily report (and its 补发 / 临时查看) and real alarms someone has to act on | `send(..., daily=True)` / `send(..., alert=True)` |
-| Server酱 | every other notification that means something (中继已更新, 预更新, 周常, 自愈, 补跑…) | `send(...)` |
+| Server酱 | every other notification that means something | `send(...)` |
 | WeCom self-built app (private chat) | nothing on its own - only text the operator dictated (`push.py --private`) | never in an automatic order |
 
 The operator, 2026-09-14: 「群里面的机器人通知，只允许出现正常的日报、以及日报中的
@@ -154,9 +154,47 @@ The operator, 2026-09-14: 「群里面的机器人通知，只允许出现正常
 允许让你去发某些内容」「三个不同的通知各司其职，不要混在一起，而且根本目的是不要去
 打扰我」. The group falls back to Server酱 when the robot refuses (an alarm must
 arrive); information Server酱 refuses is returned as undelivered and never
-escalated into the group or the private chat. What is already in the daily
-report is not pushed separately (the narrowed-retry note of `collect_watch`
-is log-only for that reason). `relay/tests/test_notify_routing.py` pins it.
+escalated into the group or the private chat.
+
+### Every title and where it goes (`notify.route_of`; `test_notify_routing.py` checks this table against the code)
+
+What the daily report or the phone page already says is **not pushed at all**
+(route `log`): it is written to relay.log and counts as delivered. Expected
+volume on a normal day: one daily report in the group, zero to two Server酱
+messages, zero alarms.
+
+| Title | Route | Why |
+|---|---|---|
+| 📋 日报 / 🔎 临时查看 / （补发） | group | the one message of the day |
+| ❌ <script> 失败 | group | a run failed and stayed failed |
+| ⚠️ 这一轮没干完 | group | queue ended with items undone |
+| <队列> 没有运行 / 机器没开机 | group | the machine or a queue did not run |
+| 🔌 AUTO-MAS 启动不起来 | group | nothing can run until a person looks |
+| ⚠️ 中继自更新没成功 | group | the relay is stuck on old code |
+| ⚠️ 中继暂时不能在脚本跑完时马上处理结果 | group | results would be delayed |
+| 🛑 没能停干净，需要你动手 | group | estop failed |
+| ⚠️ 自动采集：补跑仍有路线没走通 | group | the day's gathering stayed incomplete |
+| 🚩 自动采集：有路线连续两天补跑失败，是复发性问题 | group | needs a person (upstream issue) |
+| 🆕 预更新 / 🆕 游戏更新 / 🔁 更新后重跑 | info | a game or script changed version (rare) |
+| ⚠️ 预更新没能确认 / ⚠️ 游戏更新没能确认 | info | maintenance did not confirm; not a game failure |
+| ⏸ <script> 进不了游戏，稍后补跑 | info | server maintenance day |
+| 🥚 刷声骸收工 | info | the farm he ordered has ended |
+| 🌙 今晚不关机 | info | the machine will stay on and why |
+| 📱 配置没改成 / ✗ … | info | his phone order failed |
+| 🔓 终末地日常已开回 / 🧹 清掉了死条目 / 🧩 换写设置格式 | info | config maintenance (rare) |
+| ⚠️ OK-WW 补丁有 N 条没贴上 | info | a patch no longer binds |
+| 🗓️ 新的一周 | info | Monday summary of the three weekly gates |
+| 🧷 上游改了导出日志的代码 | info | evidence bundling needs re-checking (rare) |
+| 🔌 推送通道故障 | info | a channel is dead (once per fault) |
+| 🔄 中继已更新 | log | every deploy; the phone page shows the version |
+| 🗓️ 周常 | log | the phone page shows the weekly state |
+| ⏭️ 跳过模式 / 🛑 已停一切 / 📱 手机指令暂缓 / 📱 配置已修改 / ✅ … | log | acknowledgements of his own phone orders; the page shows them |
+| 🗂️ 证据包已送出机器 | log | bookkeeping behind a failure already alarmed |
+| 🔁 自动采集：只补跑失败的路线 / ✅ 补跑后全部走完 | log | the daily report carries the outcome |
+| ⚠️ <script> 中途失败过，重试后成功 | log | the daily report carries the retry |
+| 🩹 OK-WW 补丁（N 条） | log | the healthy case |
+| 🥚 开始刷声骸 | log | acknowledgement of his order |
+| 🔁 自动采集：这一轮重跑只走没走通的路线 | (not sent) | log line only, in the daily report |
 
 `scripts/mac/push.py` on the Mac follows the same rule and the same order, with
 `--all` to override.
