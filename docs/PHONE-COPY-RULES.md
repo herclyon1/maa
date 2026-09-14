@@ -78,8 +78,8 @@ The page copies iOS Settings and nothing else:
 
 | Rule | What it means in `web/` |
 |---|---|
-| **One page per game** | Tabs 状态 / 方舟 / 终末地 / 鸣潮 / 周常 / 手机 (`layoutTabs`); one tab visible at a time; the last tab is remembered. Nothing is ever added outside a tab |
-| **One row shape** | `.row` = name on the left (hint in small grey under it), control on the right, on the same line. Only a row of icons/pills or a long text field may stack |
+| **One page per game** | Tabs 状态 / 方舟 / 终末地 / 鸣潮 / 周常 / 手机 (`layoutTabs`) in a floating glass tab bar at the bottom (iOS 26/27 Liquid Glass: translucent capsule, blur, specular edge); one tab visible at a time; the last tab is remembered. Nothing is ever added outside a tab |
+| **One row shape** | iOS Settings grouped list: small grey header above a white inset card (22px radius), `.row` = name on the left (hint in small grey under it), control on the right, hairline separator inset to the text. Only a row of icons/pills or a long text field may stack. Palette and metrics are Apple's (`:root` tokens in index.html) - no element carries its own colour |
 | **A setting is a control, never a button** | on/off → `.sw` toggle (config booleans and relay switches alike, `RELAY_SWITCHES`); a choice → select or pills; a number → number field. Buttons are only for actions (刷新, 现在跑一趟, 停止, 开始刷) and live in `.acts` |
 | **Every control answers immediately** | a relay toggle flips at once, the row shows 「已寄出 … 等回执」, and the receipt clears it when the machine reports the new state - the same receipt flow as config edits. A control whose state only changes on the next snapshot is a bug (the 09-14 「点一下」 button was pressed four times) |
 | **No new control style** | before adding anything, find the existing row/control that fits; if none fits, change the shared style, not one row |
