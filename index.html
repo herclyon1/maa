@@ -9,10 +9,10 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="遥控">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260915022533">
+<link rel="manifest" href="manifest.webmanifest?v=20260915023925">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915022533">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915022533">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915023925">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915023925">
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
      上面跑的」). System colours from Apple's palette: grouped background, white
@@ -104,23 +104,43 @@
   h2 small{color:var(--dim);font-weight:400;font-size:0.7647em}
   /* Group footer: the explanation under a card, 13pt secondary (UITableView footer). */
   .foot{margin:0;padding:6px 20px 24px;color:var(--dim);font-size:0.7647em;line-height:1.0588em}
-  /* Large title → compact bar on scroll (Settings, Health): a glass bar over the top,
-     opacity follows the title leaving the screen; the label is 17 semibold. */
+  /* Large title → compact bar on scroll (Settings, Health). Driven by scroll
+     position, not a switch: the bar's glass appears as soon as content slides
+     under it, and the small title fades in exactly as the large one crosses it
+     (--bar for the glass, --title for the label; app.js sets both). */
   .topbar{position:fixed;top:0;left:0;right:0;z-index:5;height:calc(env(safe-area-inset-top) + 44px);
           padding-top:env(safe-area-inset-top);display:flex;align-items:center;justify-content:center;
-          font-size:1em;font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s;
-          background:color-mix(in srgb, var(--bg) 72%, transparent);backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%)}
-  .topbar::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:var(--line);transform:scaleY(.34);transform-origin:bottom}
-  .topbar.on{opacity:1}
-  /* Pull to refresh: the system's indicator - a small spinner that grows as you pull. */
-  .ptr{position:fixed;top:calc(env(safe-area-inset-top) + 8px);left:0;right:0;display:flex;justify-content:center;pointer-events:none;z-index:4;
-       opacity:0;transform:scale(.4);transition:opacity .15s,transform .15s}
+          font-size:1em;font-weight:600;pointer-events:none;
+          background:color-mix(in srgb, var(--bg) calc(var(--bar, 0) * 78%), transparent);
+          backdrop-filter:blur(calc(var(--bar, 0) * 22px)) saturate(calc(1 + var(--bar, 0) * .8));
+          -webkit-backdrop-filter:blur(calc(var(--bar, 0) * 22px)) saturate(calc(1 + var(--bar, 0) * .8))}
+  .topbar::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:var(--line);transform:scaleY(.34);transform-origin:bottom;opacity:var(--bar, 0)}
+  .topbar span{opacity:var(--title, 0);transform:translateY(calc((1 - var(--title, 0)) * 6px))}
+  header h1{opacity:calc(1 - var(--title, 0) * .6)}
+  /* Pull to refresh: UIActivityIndicatorView - eight bars fading in turn. It grows
+     with the pull and spins once released. */
+  .ptr{position:fixed;top:calc(env(safe-area-inset-top) + 10px);left:0;right:0;display:flex;justify-content:center;pointer-events:none;z-index:4;
+       opacity:0;transform:scale(.3);transition:opacity .15s,transform .2s cubic-bezier(.2,.8,.2,1)}
   .ptr.arm{opacity:1;transform:scale(1)}
-  .spin{width:20px;height:20px;border-radius:50%;border:2.5px solid rgba(60,60,67,.18);border-top-color:var(--dim);animation:none}
-  .ptr.go .spin{animation:spin .8s linear infinite}
+  .ptr.go{opacity:1;transform:scale(1)}
+  .ai{position:relative;width:20px;height:20px;display:inline-block}
+  .ai i{position:absolute;left:9px;top:0;width:2px;height:6px;border-radius:1px;background:var(--dim);transform-origin:1px 10px;opacity:.25}
+  .ai i:nth-child(1){transform:rotate(0deg)}   .ai i:nth-child(2){transform:rotate(45deg)}
+  .ai i:nth-child(3){transform:rotate(90deg)}  .ai i:nth-child(4){transform:rotate(135deg)}
+  .ai i:nth-child(5){transform:rotate(180deg)} .ai i:nth-child(6){transform:rotate(225deg)}
+  .ai i:nth-child(7){transform:rotate(270deg)} .ai i:nth-child(8){transform:rotate(315deg)}
+  .ai.on i{animation:aifade .8s linear infinite}
+  .ai.on i:nth-child(2){animation-delay:-.7s} .ai.on i:nth-child(3){animation-delay:-.6s}
+  .ai.on i:nth-child(4){animation-delay:-.5s} .ai.on i:nth-child(5){animation-delay:-.4s}
+  .ai.on i:nth-child(6){animation-delay:-.3s} .ai.on i:nth-child(7){animation-delay:-.2s}
+  .ai.on i:nth-child(8){animation-delay:-.1s}
+  @keyframes aifade{0%{opacity:1}100%{opacity:.25}}
   @keyframes spin{to{transform:rotate(360deg)}}
-  /* The refresh tile's symbol turns while the machine is being asked. */
-  .tile.busy .tico .sf{animation:spin 1s linear infinite}
+  /* The refresh tile shows the activity indicator in place of its symbol while the machine is being asked. */
+  .tile .tico .ai{display:none}
+  .tile.busy .tico .sf{display:none}
+  .tile.busy .tico .ai{display:inline-block}
+  .tile.busy .tico .ai i{background:#fff}
   /* Notice cards come and go with the system's short fade+rise. */
   .group.notice{animation:rise .28s cubic-bezier(.2,.8,.2,1)}
   @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
@@ -186,6 +206,7 @@
   /* One device pixel, like UITableView's hairline (1/scale pt): a 1px box scaled to a third. */
   .row::after{content:"";position:absolute;left:20px;right:20px;bottom:0;height:1px;background:var(--line);transform:scaleY(.34);transform-origin:bottom}
   .row:last-child::after,.group > :last-child.row::after{display:none}
+  .row:has(> .sw):active,.row:has(select):active{background:color-mix(in srgb, var(--ink) 6%, var(--card))}
   .row > label{flex:1 1 0;min-width:40%;font-size:1em;line-height:1.2941em}
   .row > :not(label){flex:0 0 auto;max-width:48%}
   .row:has(.pills),.row:has(.picks),.row:has(.pillbox),.row:has(input[type=text]:not(.short)),
@@ -211,20 +232,20 @@
          -webkit-appearance:none;appearance:none;padding:0 20px 0 0;border-radius:0;
          background:transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='18' viewBox='0 0 12 18'%3E%3Cpath d='M2 7l4-4 4 4M2 11l4 4 4-4' fill='none' stroke='%238e8e93' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right center}
   input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
+  /* The toggle: 63×28 track, 38×24 pill knob (measured in Settings › 动态效果 on the
+     simulator). Motion like UISwitch: the knob slides with a slight spring, the
+     track cross-fades, and while the finger is down the knob stretches wider. */
   .sw{position:relative;width:63px;height:28px;flex:none}
-  .sw input{opacity:0;width:100%;height:100%;margin:0}
-  /* Safari 17.4+ draws <input type=checkbox switch> as the system toggle itself
-     (the real control, not this CSS copy). app.js adds .native-switch to <html>
-     when the browser has it; the drawn track is then hidden. */
-  .native-switch .sw{width:auto;height:auto;display:flex}
-  /* WebKit's switch is 71×31; the Settings toggle measures 63×28 - scale it. */
-  .native-switch .sw input{opacity:1;width:auto;height:auto;margin:-3px 0;accent-color:var(--ok);zoom:.887}
-  .native-switch .sw span{display:none}
-  .sw span{position:absolute;inset:0;background:rgba(60,60,67,.3);border-radius:99px;transition:.2s;pointer-events:none}
-  .sw span::after{content:"";position:absolute;width:38px;height:24px;left:2px;top:2px;
-                  background:#fff;border-radius:99px;transition:.2s;box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16)}
+  .sw input{opacity:0;width:100%;height:100%;margin:0;position:absolute;inset:0;cursor:pointer}
+  .sw span{position:absolute;inset:0;background:rgba(60,60,67,.3);border-radius:99px;pointer-events:none;
+           transition:background-color .25s cubic-bezier(.4,0,.2,1)}
+  .sw span::after{content:"";position:absolute;width:38px;height:24px;left:2px;top:2px;background:#fff;border-radius:99px;
+                  box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16);
+                  transition:transform .3s cubic-bezier(.34,1.35,.64,1),width .18s cubic-bezier(.4,0,.2,1)}
   .sw input:checked + span{background:var(--ok)}
-  .sw input:checked + span::after{transform:translateX(22px)}
+  .sw input:checked + span::after{transform:translateX(21px)}
+  .sw input:active + span::after{width:44px}
+  .sw input:active:checked + span::after{transform:translateX(15px)}
   .changed{background:color-mix(in srgb, var(--accent) 8%, var(--card))}
   .posted{background:color-mix(in srgb, var(--ok) 8%, var(--card))}
   .row .sent{flex:1 0 100%;max-width:none;display:block;font-size:0.7647em;color:var(--ok);margin-top:2px;line-height:1.4;text-align:left}
@@ -299,7 +320,7 @@
 <!-- The compact bar a large title collapses into (UINavigationBar): glass, the
      title small and centred; shown once the large title has scrolled away. -->
 <div class="topbar" id="topbar" aria-hidden="true"><span>游戏机遥控</span></div>
-<div class="ptr" id="ptr" aria-hidden="true"><i class="spin"></i></div>
+<div class="ptr" id="ptr" aria-hidden="true"><span class="ai" id="ptrai"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></div>
 <header>
   <h1>游戏机遥控</h1>
   <div class="sub"><i class="dot" id="dot"></i><span id="status">正在读取…</span></div>
@@ -325,6 +346,6 @@
 </dialog>
 
 <div class="toast" id="toast"></div>
-<script src="app.js?v=20260915022533"></script>
+<script src="app.js?v=20260915023925"></script>
 </body>
 </html>
