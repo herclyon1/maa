@@ -457,7 +457,7 @@ function numTile(icon, colour, big, unit, label, sub, err) {
     <span class="lab">${label}</span>${sub ? `<span class="sub">${sub}</span>` : ""}</div>`;
 }
 function numTiles(snap) {
-  const r = (snap && snap["资源"]) || null, t = (snap && snap["今天"]) || null;
+  const r = (window.Stamina && Stamina.data) || null, t = (snap && snap["今天"]) || null;
   if (!r && !t) return "";
   const ak = (r || {})["明日方舟"] || {}, ef = (r || {})["终末地"] || {}, ww = (r || {})["鸣潮"] || {};
   let h = "";
@@ -468,11 +468,12 @@ function numTiles(snap) {
     h += numTile("moon.fill", "#30b0c7", ww["波片"], ww["上限"] != null ? `/${ww["上限"]}` : "", "鸣潮 波片",
       ww["错误"] ? "" : `备用 ${ww["备用"] ?? "–"} · 周本 ${ww["周本"] ?? "–"}/${ww["周本上限"] ?? "–"}`, ww["错误"]);
   }
-  return `<section><div class="group nums">${h}</div>${r && r["取自"] ? `<div class="foot">体力数字是 ${r["取自"]} 读的；下拉刷新会重新读</div>` : ""}</section>`;
+  return `<section><div class="group nums">${h}</div>${r && r["取自"] ? `<div class="foot">体力数字是 ${r["取自"]} 这台手机直接问游戏拿的；下拉刷新会重新问</div>` : ""}</section>`;
 }
 
 function render() {
   liveVals = {};
+  if (window.Stamina && Stamina.fromSnapshot(snap)) Stamina.refresh(true).then(() => render()).catch(() => {});
   let c = (snap && snap.config) || {};
   const relay = (snap && snap.relay) || {};
   let html = "";
@@ -669,6 +670,12 @@ function render() {
     <div class="acts"><button id="mklink">复制免输入链接</button></div>
     <p class="foot">把这条链接存成书签或加到主屏幕，以后打开就直接是控制台，
       再也不用填信箱和 PIN。链接里带着这两样，别转发给别人</p>
+  </section>
+  <section><h2>游戏账号</h2>
+    <div class="row"><label>已配置<span class="hint">体力数字由这台手机直接问森空岛和库街区，密钥只存在这台手机里</span></label>
+      <span class="ro short">${(window.Stamina && Stamina.status()) || "没有"}</span></div>
+    <div class="acts"><button id="tokpaste">粘贴密钥串</button>${(window.Stamina && Stamina.status()) ? `<button class="danger" id="tokclear">清除密钥</button>` : ""}</div>
+    <p class="foot">森空岛的登录会话由机器交过来，不用管；库街区的要你粘贴：把电脑上 ~/.config/ark/.env 里 KUROBBS_TOKEN 和 KUROBBS_DID 那两行复制过来</p>
   </section>`;
 
   $("#app").innerHTML = html;
@@ -875,6 +882,15 @@ function wire() {
     updateBar();
   };
 
+  const tp = $("#tokpaste");
+  if (tp) tp.onclick = async () => {
+    const s = prompt("把 KUROBBS_TOKEN=… 和 KUROBBS_DID=… 两行粘贴到这里：");
+    if (!s) return;
+    try { Stamina.fromPaste(s); toast("密钥已存到这台手机"); await Stamina.refresh(true); render(); }
+    catch (e) { toast("没存：" + e.message, 5000); }
+  };
+  const tc = $("#tokclear");
+  if (tc) tc.onclick = () => { if (confirm("清除这台手机里的游戏密钥？体力数字会消失。")) { Stamina.clear(); render(); } };
   const mk = $("#mklink");
   if (mk) mk.onclick = async () => {
     const url = myLink();
@@ -1132,7 +1148,9 @@ async function ping(minAt) {
   }
   setStatus("正在问机器…", "");
   const rt = $("#refresh"); if (rt) rt.classList.add("busy");
-  try { return await _ping(minAt); } finally { const r2 = $("#refresh"); if (r2) r2.classList.remove("busy"); }
+  // 体力数字：和问机器同时问游戏（一分钟内重复的动作复用上次的）；回来就重画磁贴
+  const stam = window.Stamina ? Stamina.refresh(false).then(() => render()).catch(() => {}) : null;
+  try { return await _ping(minAt); } finally { if (stam) await stam; const r2 = $("#refresh"); if (r2) r2.classList.remove("busy"); }
 }
 async function _ping(minAt) {
   const floor = (typeof minAt === "number" ? minAt : null) ?? 0;
@@ -1374,6 +1392,7 @@ document.addEventListener("visibilitychange", async () => {
    用户 2026-09-04：「把信箱和 pin 这个设计删了就行」——要删的是**每次去填**，
    这样就一次都不用填了。 */
 function fromLink() {
+  if (window.Stamina) Stamina.fromLink();       // #t=… 游戏密钥串，同一条链接里可以一起带
   const m = /[#&]k=([A-Za-z0-9_-]+)/.exec(location.hash || "");
   if (!m) return false;
   try {
