@@ -1,32 +1,43 @@
 # The phone page against Apple's Human Interface Guidelines
 
-Source: https://developer.apple.com/design/human-interface-guidelines, the live
-site, read 2026-09-14 through its JSON endpoints (lists-and-tables, toggles,
-tab-bars, segmented-controls, materials, layout, typography, color, feedback,
-settings, designing-for-ios, motion) - the edition that describes Liquid Glass,
-i.e. iOS 26 and later. Metrics that the HIG does not spell out (17pt body, 34pt
-large title, 51×31 switch, 16pt margins, 44pt hit target) are the system's own
-values, unchanged since iOS 7 and still what iOS 26 draws. Each rule below is the HIG's wording condensed,
+Two sources, both from Apple, both read 2026-09-14:
+
+1. **The HIG** - https://developer.apple.com/design/human-interface-guidelines,
+   the live site, read through its JSON endpoints (lists-and-tables, toggles,
+   tab-bars, segmented-controls, materials, layout, typography, color, feedback,
+   settings, designing-for-ios, motion) - the edition that describes Liquid
+   Glass, i.e. iOS 26 and later. It gives the rules, mostly not the numbers.
+2. **The iOS and iPadOS 27 UI kit** (Apple's Figma design kit, the user's copy,
+   file key in `~/.config/ark/push.env` as `FIGMA_IOS_KIT`), read through the
+   Figma REST API (`/v1/files/<key>/nodes?ids=<node>`). It gives the numbers.
+   The node ids in the table are the components the value was read from:
+   Row `550:50430`, Section Title `50:56535`, Grouped Table Footer `35:55757`,
+   Separator `5469:7924`, Toggles `5433:19059`, Tab Bar `3:70967`,
+   Tab Bar Button `5735:65307`, Row-Button `550:49677`, Text styles `5418:17464`.
+
+A rendering check runs in the iOS 26.5 simulator (Xcode 26.6, iPhone 17 Pro)
+next to the Settings app; `scripts/mac/sf-symbols-export.swift` pulls the tab
+symbols from the system font. Each rule below is the source's wording condensed,
 followed by what `web/index.html` / `web/app.js` does about it. A change to the
 page that breaks a line here is a regression.
 
 | HIG page | Rule | On the page |
 |---|---|---|
-| Lists and tables | iOS grouped style: headers, footers and extra space separate groups | `section` = grey 13pt header above a white inset card (`.group`, 22pt radius); explanatory text is grey footer text, not a box |
+| Lists and tables; kit Section Title `50:56535`, Footer `35:55757`, Row `550:50430` | iOS grouped style: headers, footers and extra space separate groups. Kit: header 17pt semibold secondary label, 9pt below it; footer 13/18 secondary label, padding 8/16/6; row 52pt, 16pt side padding, title 17/22, subtitle 15/20 | `h2` 17px/600 `--dim` padding-bottom 9; `.foot` 13px/18px padding 8px 16px 6px; `.row` min-height 52, padding 12px 16px, label 17/22, hint 15/20; white inset card `.group` (26px radius, measured in Settings) |
 | Lists and tables | Keep item text succinct; avoid over-large rows | one setting per row, hint under the name in 13pt; long option sets fold behind 「已选 N/M ›」 (progressive disclosure) |
-| Toggles | A toggle chooses between two opposing values; make the states obvious, not by colour alone | every on/off setting (config and relay) is the same 51×31 switch, knob position + green; nothing on/off is a button |
+| Toggles; kit `5433:19059` | A toggle chooses between two opposing values; make the states obvious, not by colour alone. Kit (iOS 26): track 64×28 radius 100, on #34c759, off `rgba(60,60,67,.3)`, knob a 38×24 white pill | every on/off setting (config and relay) is the same `.sw` 64×28 switch with a 38×24 pill knob; knob position + green; nothing on/off is a button |
 | Tab bars | Navigation only, not actions; keep tabs visible; single-word labels; use the number of tabs the app needs but 「it's generally easier to navigate among fewer tabs」; avoid overflow (when the width runs out iOS turns the trailing tabs into a More tab) | five tabs 状态 · 方舟 · 终末地 · 鸣潮 · 手机, always visible, floating at the bottom. There is no hard cap of five for tab bars (that number is the HIG's guidance for *segmented controls* on iPhone); with more games than fit, the plan is a 游戏 tab holding a list with detail pages (which then also gets the back button and gesture) |
 | Materials (Liquid Glass) | Controls and navigation float above content in Liquid Glass; do not use it in the content layer; use it sparingly | only the tab bar, the save bar and the toast are glass (translucent + blur + specular edge); cards are solid standard material |
 | Layout | Order by importance, align, group related items, differentiate controls from content | 16pt margins, name left / control right on one baseline, hairline separators inset to the text, min 44pt row height |
-| Typography | Large Title 34, Body 17, Subheadline 15, Footnote 13; system font | `h1` 34/700, row names 17, values 17, hints and headers 13, `-apple-system` first |
-| Color | Use system colours; support Dark Mode | Apple's palette as `:root` tokens (blue #007AFF, green #34C759, red #FF3B30, grey #8E8E93, grouped background #F2F2F7 / black); dark values under `prefers-color-scheme` |
+| Typography; kit text styles `5418:17464` | Large Title 34/41, Body 17/22, Subheadline 15/20, Footnote 13/18, Caption 2 11/13; system font | `h1` 34/700, row names 17/22, values 17, hints 15/20, footers and receipts 13/18, tab labels 10/12 (kit tab button), `-apple-system` first |
+| Color; kit Colors `5707:28659`, Row-Button `550:49677` | Use system colours; support Dark Mode. Kit: tint #0088ff, destructive #ff383c, disabled #aeaeb2, secondary label `rgba(60,60,67,.6)`, separator `rgba(60,60,67,.29)`, green #34c759 | `:root` tokens `--accent:#0088ff`, `--bad:#ff383c`, `--dim:rgba(60,60,67,.6)`, `--line:rgba(60,60,67,.29)`, `--ok:#34c759`, grouped background #f2f2f7 / black; dark values under `prefers-color-scheme` |
 | Feedback | Integrate status feedback near the item; confirm significant actions; alerts only for critical, actionable information | every order shows 「已寄出 … 等回执」 under its own row and clears on the machine's receipt; a toast confirms sends; `confirm()` only before spending sanity/波片 or stopping everything |
 | Settings | Minimise settings; respect systemwide settings, no redundant versions | the 外观 group (light/dark override, accent colour) was removed 2026-09-14; the page follows the system appearance |
 | Designing for iOS | Limit onscreen controls; reachable controls in the middle/bottom | one page per tab; the tab bar and save bar at the bottom |
 
-| Tab bars | Consider SF Symbols for tab icons; include labels | Apple's own SF Symbols (gauge.with.dots.needle.67percent, shield, mountain.2, waveform, iphone) rendered from the Mac's system font by `scripts/mac/sf-symbols-export.swift` and used as CSS masks (`TAB_ICONS`), labels under them |
+| Tab bars; kit Tab Bar `3:70967`, Tab Bar Button `5735:65307` | Consider SF Symbols for tab icons; include labels. Kit: glass capsule 62pt high, buttons 72×54 with padding 8/6/7, a 28pt symbol line, label 10pt semibold; selected = capsule #ededed (light) / #121212 (dark) with tint; unselected #1a1a1a / #f5f5f5 | `nav.tabs .seg` 62px capsule with 4px inset, buttons min-width 72 height 54 padding 6px 8px 7px, `.ico` 28×28, label 10px/600, `.glide` capsule `--tabsel`, `--tab` for unselected; 状态/手机 use Apple's SF Symbols (gauge.with.dots.needle.67percent, iphone) exported from the system font by `scripts/mac/sf-symbols-export.swift` as CSS masks (`TAB_ICONS`); the three game tabs use the projects' own GitHub icons (`TAB_IMAGES`, 26×26 in the same 28×28 box) |
 | Motion | Add motion purposefully; brief and precise; avoid motion on frequent interactions; make it optional | the selection capsule slides in the tab bar (0.28s); tab content switches instantly (a cross-fade read as 「闪一下」 and was removed); switches and pressed rows use the system-like 0.2s; everything is off under `prefers-reduced-motion` |
-| Buttons | Full-width text rows in a group; destructive in red | actions are stacked full-width rows with inset hairlines (no side-by-side grid - its middle divider never lined up); 停止 is red text |
+| Buttons; kit Row-Button `550:49677` | Full-width text rows in a group; destructive in red. Kit: 52pt row, 17pt regular, text left-aligned, tint / #ff383c destructive / #aeaeb2 disabled | `.acts button` 52px, 17/22, `text-align:left`, `--accent`; `.danger` = `--bad`; disabled = #aeaeb2; stacked full-width rows with inset hairlines (no side-by-side grid - its middle divider never lined up); the 复制免输入链接 row is one of these, not a pill beside a label |
 
 Not done (and why): the swipe-back gesture belongs to a navigation stack
 (pushed detail views); this page has tabs, not a stack, and the HIG tab bar has

@@ -145,25 +145,32 @@ Delivery rule: **one channel delivering counts as delivered.** See
 
 | Channel | Carries | Code |
 |---|---|---|
-| WeCom group robot | the daily report (and its 补发 / 临时查看) and real alarms someone has to act on | `send(..., daily=True)` / `send(..., alert=True)` |
-| Server酱 | every other notification that means something | `send(...)` |
+| WeCom group robot | real alarms someone has to act on | `send(..., alert=True)` |
+| Server酱 | the daily report (and its 补发 / 临时查看) and every other notification that means something | `send(..., daily=True)` / `send(...)` |
 | WeCom self-built app (private chat) | nothing on its own - only text the operator dictated (`push.py --private`) | never in an automatic order |
 
 The operator, 2026-09-14: 「群里面的机器人通知，只允许出现正常的日报、以及日报中的
 真实报错报警通知」「server酱里允许一切有意义的通知」「私聊的通道只允许是我本人亲自口述
 允许让你去发某些内容」「三个不同的通知各司其职，不要混在一起，而且根本目的是不要去
 打扰我」. The group falls back to Server酱 when the robot refuses (an alarm must
-arrive); information Server酱 refuses is returned as undelivered and never
-escalated into the group or the private chat.
+arrive); the daily report falls back to the group (in 2048-byte pieces) when
+Server酱 refuses; other information Server酱 refuses is returned as undelivered
+and never escalated into the group or the private chat.
+
+The daily report moved from the group robot to Server酱 the same night (the
+operator: 「企业群机器人的文字上限有，日报改成server酱推送」): a group text
+message is capped at 2048 bytes, so the report arrived as three or four
+「(1/4)」 pieces; Server酱 renders it as one Markdown message.
 
 ### Guarantee (2026-09-14)
 
 The user, after being pushed to more than ten times in one day: 「根本目的是不要去打扰我」
 「在你整顿好之前，我是不会开的」. What is promised, and what enforces it:
 
-1. **The group robot carries the daily report and real alarms, nothing else.** A
-   title reaches the group only through `daily=True` or `alert=True`, and
-   `route_of` demotes the maintenance titles that are not game alarms.
+1. **The group robot carries real alarms, nothing else.** A title reaches the
+   group only through `alert=True` (or as the daily report's fallback when
+   Server酱 refuses), and `route_of` demotes the maintenance titles that are
+   not game alarms. The daily report itself goes to Server酱 (`daily=True`).
 2. **Nothing already in the daily report or on the phone page is pushed.** Such
    titles are on the `log` list in `notify.py`; adding a push means adding a
    row to the table above with a reason, and the test fails otherwise.
@@ -182,12 +189,12 @@ and a test, not an explanation.
 
 What the daily report or the phone page already says is **not pushed at all**
 (route `log`): it is written to relay.log and counts as delivered. Expected
-volume on a normal day: one daily report in the group, zero to two Server酱
-messages, zero alarms.
+volume on a normal day: one daily report and zero to two other messages on
+Server酱, zero alarms in the group.
 
 | Title | Route | Why |
 |---|---|---|
-| 📋 日报 / 🔎 临时查看 / （补发） | group | the one message of the day |
+| 📋 日报 / 🔎 临时查看 / （补发） | daily | the one message of the day; Server酱, the group robot only when Server酱 refuses |
 | ❌ <script> 失败 | group | a run failed and stayed failed |
 | ⚠️ 这一轮没干完 | group | queue ended with items undone |
 | <队列> 没有运行 / 机器没开机 | group | the machine or a queue did not run |

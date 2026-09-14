@@ -358,18 +358,25 @@ def _hint(name: str, err: str) -> str:
 
 # Three channels, three jobs (the user, 2026-09-14 evening):
 #
-#   企业微信群机器人  the daily report and the real alarms only - nothing else, no
-#                    「中继已更新」, no progress notes, no test noise
-#   Server酱          every other notification that means something
+#   企业微信群机器人  the real alarms only - nothing else, no 「中继已更新」, no
+#                    progress notes, no test noise
+#   Server酱          the daily report, and every other notification that means
+#                    something
 #   企业微信自建应用   (the private chat) never on its own - only text the user
 #                    dictates by hand (push.py --private)
 #
 # Earlier that day everything went to the group; before that, alerts fanned out
-# to all three.
+# to all three. The daily report moved from the group to Server酱 the same night:
+# the group robot caps a text message at 2048 bytes, so the report arrived as
+# three or four 「(1/4)」 pieces (his words: 「企业群机器人的文字上限有，日报改成
+# server酱推送」); Server酱 renders the whole report as one Markdown message.
 # The group falls back to Server酱 when the robot refuses (an alarm must reach
-# him); info that Server酱 refuses is returned as undelivered, never escalated.
+# him); the daily falls back to the group (split) when Server酱 refuses; info
+# that Server酱 refuses is returned as undelivered, never escalated.
 _GROUP_ORDER = ("企业微信机器人", "Server酱")
+_DAILY_ORDER = ("Server酱", "企业微信机器人")
 _INFO_ORDER = ("Server酱",)
+_ORDERS = {"group": _GROUP_ORDER, "daily": _DAILY_ORDER, "info": _INFO_ORDER}
 
 # What the daily report or the phone page already says is not pushed again -
 # it is logged and counts as delivered. The full title→route table, with the
@@ -396,9 +403,9 @@ _NOT_ALARM_PREFIXES = ("⚠️ 预更新没能确认", "⚠️ 游戏更新没�
 
 
 def route_of(title: str, *, alert: bool = False, daily: bool = False) -> str:
-    """'group' | 'info' | 'log' for a title. Pure, so the doc table can be checked against it."""
+    """'group' | 'daily' | 'info' | 'log' for a title. Pure, so the doc table can be checked against it."""
     if daily:
-        return "group"
+        return "daily"
     if title.startswith(_LOG_ONLY_PREFIXES) or any(k in title for k in _LOG_ONLY_CONTAINS):
         return "log"
     if alert and not title.startswith(_NOT_ALARM_PREFIXES):
@@ -544,16 +551,15 @@ class Notifier:
         An empty list means the caller may consider the message delivered and
         stop holding it. A non-empty list means every channel refused it.
 
-        `daily=True` (the day's report) and `alert=True` (a real alarm someone
-        has to act on) go to the group robot; everything else is information
-        and goes to Server酱 (see the orders above).
+        `alert=True` (a real alarm someone has to act on) goes to the group
+        robot; `daily=True` (the day's report) and everything else go to
+        Server酱 (see the orders above).
         """
         route = route_of(title, alert=alert, daily=daily)
         if route == "log":
             log.info("不推送（日报或手机页已有）：%s ｜ %s", title, body.replace("\n", " ")[:200])
             return []
-        delivered, failed = self._fan_out(
-            title, body, order=_GROUP_ORDER if route == "group" else _INFO_ORDER, stop_on_first=True)
+        delivered, failed = self._fan_out(title, body, order=_ORDERS[route], stop_on_first=True)
         if not delivered:
             # `or [...]`：一个通道都没配的时候 `failed` 是空的，返回空列表就等于
             # 告诉调用方「送到了」——正是「假的绿」。send_group 早就这么兜了，

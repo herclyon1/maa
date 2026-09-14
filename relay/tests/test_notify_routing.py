@@ -51,10 +51,10 @@ def build(broken=()):
     return n, log
 
 
-print("[三个通道各司其职：日报和真报警进群，其余走 Server酱，私聊永远不自动发]")
+print("[三个通道各司其职：真报警进群，日报和其余走 Server酱，私聊永远不自动发]")
 n, log = build()
 check("日报发出去了", n.send("📋 日报", "正文", daily=True), [])
-check("日报只进群机器人", [c for c, _ in log], ["企业微信机器人"])
+check("日报只走 Server酱（群机器人 2048 字节就截断成好几条）", [c for c, _ in log], ["Server酱"])
 n, log = build()
 check("报警发出去了", n.send("⚠️ 出错了", "正文", alert=True), [])
 check("报警只进群机器人", [c for c, _ in log], ["企业微信机器人"])
@@ -62,7 +62,13 @@ n, log = build()
 check("其余通知发出去了", n.send("🆕 游戏更新", "正文"), [])
 check("其余通知只走 Server酱", [c for c, _ in log], ["Server酱"])
 
-print("\n[群机器人挂了：日报/报警回退到 Server酱，绝不落到私聊]")
+print("\n[Server酱 挂了：日报回退到群机器人（分条也比没有强），绝不落到私聊]")
+n, log = build(broken=("Server酱",))
+n._announcing = True
+check("日报仍算送达", n.send("📋 日报", "正文", daily=True), [])
+check("先试 Server酱，回退到群机器人", [c for c, t in log if t == "📋 日报"], ["Server酱", "企业微信机器人"])
+
+print("\n[群机器人挂了：报警回退到 Server酱，绝不落到私聊]")
 n, log = build(broken=("企业微信机器人",))
 n._announcing = True
 check("仍算送达", n.send("⚠️ 出错了", "正文", alert=True), [])
@@ -94,13 +100,13 @@ for t in ("🆕 预更新", "🆕 游戏更新", "🔁 更新后重跑", "🥚 �
           "🔌 推送通道故障：企业微信"):
     check(f"Server酱：{t}", route_of(t), "info")
 check("预更新没能确认：不是游戏的报警，降到 Server酱", route_of("⚠️ 预更新没能确认（1 项）", alert=True), "info")
-check("日报永远进群", route_of("📋 09-14 · 全绿 ✅", daily=True), "group")
+check("日报走 Server酱", route_of("📋 09-14 · 全绿 ✅", daily=True), "daily")
 
 print("\n[docs/NOTIFICATIONS.md 的表和代码一致]")
 import re  # noqa: E402
 from pathlib import Path as _P  # noqa: E402
 _doc = (_P(__file__).resolve().parents[2] / "docs" / "NOTIFICATIONS.md").read_text(encoding="utf-8")
-_rows = re.findall(r"^\| (.+?) \| (group|info|log) \| ", _doc, flags=re.M)
+_rows = re.findall(r"^\| (.+?) \| (group|daily|info|log) \| ", _doc, flags=re.M)
 check("表里至少 25 行", len(_rows) >= 25, True)
 _probe = {"📋 日报 / 🔎 临时查看 / （补发）": ("📋 09-14 · 全绿", True, False),
           "❌ <script> 失败": ("❌ OK-WW 失败", False, True),

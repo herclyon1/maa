@@ -1,5 +1,16 @@
 # Check these when the machine is next up
 
+## 2026-09-15 08:45 boot - the daily report now goes to Server酱 (pushed 09-14 late night, lands by self-update)
+
+The machine shut down at ~21:52 on 09-14 before this was written, so it arrives
+through the boot self-update. Check in relay.log: 「代码已更新」 lists
+ark_relay/notify.py; the evening report (~21:50) must show
+`ark.notify` delivering 「📋 …」 to Server酱 and **nothing** to 企业微信机器人.
+Also from 09-14 night: the machine's `versions.code` label stayed at the
+21:57-Tokyo manifest (a CDN door served the older manifest at 21:21 Beijing);
+file content was current. If the label still lags after this boot, that is a
+stale-CDN symptom, not a missing update - compare hashes, not the label.
+
 ## 周本领奖 hook - proven unattended 2026-09-14 17:48-17:52
 
 `okww-task.sh 2` with 波片 36 + backup 26: 「本周剩余可收取次数：2/3」 → fight →
