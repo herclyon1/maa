@@ -332,18 +332,22 @@ function fmt(v) {
 }
 
 function setupScreen() {
+  /* Same shape as every other card: two rows with a text field, the action as a
+     blue text row, the explanation as the group footer. iOS capitalises the first
+     letter of a text field by default, which silently breaks a case-sensitive
+     topic (seen on the simulator 2026-09-14) - so autocapitalize/autocorrect off. */
   $("#app").innerHTML = `
     <section><h2>第一次使用</h2>
-      <div class="setup">
-        <p style="color:var(--dim);font-size:14px;margin:0 0 10px">
-          填一次就好，之后不再问。这两样只存在这台手机里。</p>
-        <label>信箱名<input id="s-topic" type="text" placeholder="ark-…"></label>
-        <label style="display:block;margin-top:12px">PIN<input id="s-pin" type="text" inputmode="numeric" placeholder="4 位数字"></label>
-      </div>
-      <div class="acts"><button class="primary wide" id="s-go">开始使用</button></div>
+      <div class="row"><label>信箱名</label>
+        <input id="s-topic" type="text" placeholder="ark-…" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="off"></div>
+      <div class="row"><label>PIN</label>
+        <input id="s-pin" type="text" inputmode="numeric" placeholder="4 位数字" autocomplete="off"></div>
+      <div class="acts"><button class="wide" id="s-go">开始使用</button></div>
+      <div class="foot"><p>填一次就好，之后不再问。这两样只存在这台手机里。</p></div>
     </section>`;
+  layoutTabs();
   $("#s-go").onclick = () => {
-    const topic = $("#s-topic").value.trim(), pin = $("#s-pin").value.trim();
+    const topic = $("#s-topic").value.trim().toLowerCase(), pin = $("#s-pin").value.trim();
     if (!topic || !pin) return toast("两样都要填");
     cfg = { topic, pin };
     localStorage.setItem(LS, JSON.stringify(cfg));
@@ -616,8 +620,9 @@ function layoutTabs() {
     if (!sec.querySelector(":scope > .group")) {
       const g = document.createElement("div");
       g.className = "group";
-      for (const child of [...sec.children]) if (child.tagName !== "H2") g.appendChild(child);
-      sec.appendChild(g);
+      for (const child of [...sec.children]) if (child.tagName !== "H2" && !child.classList.contains("foot")) g.appendChild(child);
+      const firstFoot = sec.querySelector(":scope > .foot");
+      if (firstFoot) sec.insertBefore(g, firstFoot); else sec.appendChild(g);
     }
     // A header with nothing under it is not a group (a game whose config has no
     // rows this time); Settings never shows an empty card.
