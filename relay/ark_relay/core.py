@@ -578,6 +578,26 @@ def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ..
     return did, cost, out, left, notes
 
 
+def _collapse_retries(entries: list[dict], kinds: dict) -> list[tuple[dict, list[dict]]]:
+    """Consecutive records of one script that all ended the same harmless way become one row.
+
+    AUTO-MAS retries a failed phase up to three times; on 2026-09-14 the Monday
+    annihilation check ran 09:00, 09:03 and 09:05 at 17/25 sanity and the report
+    listed three identical 🟡 rows (the user: 「非常不美观」). The row keeps the first
+    record's data and spans to the last attempt's finish.
+    """
+    out: list[tuple[dict, list[dict]]] = []
+    for e in entries:
+        kind = kinds.get(e["run_id"], "")
+        if out and kind == "nosanity":
+            prev, group = out[-1]
+            if prev["script"] == e["script"] and kinds.get(prev["run_id"], "") == kind:
+                group.append(e)
+                continue
+        out.append((e, [e]))
+    return out
+
+
 def _skipped_gathering_only(e: dict, raw: dict) -> bool:
     """A clean record whose only content is the gathering task skipped by weekday."""
     if not e.get("ok") or e.get("incomplete") or not raw.get("maaend_collect_skipped"):
@@ -699,9 +719,9 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
     title = f"📋 {day[5:]} · {_daily_head(failed, undone, retried, kinds)}"
 
     lines: list[str] = []
-    for e in entries:
+    for e, attempts in _collapse_retries(entries, kinds):
         started = datetime.fromisoformat(e["started"])
-        finished = datetime.fromisoformat(e["finished"])
+        finished = datetime.fromisoformat(attempts[-1]["finished"])
         raw = e.get("raw") or {}
         kind = kinds.get(e["run_id"], "")
         if _skipped_gathering_only(e, raw):
@@ -712,8 +732,9 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
         icon = ("⚠️" if e["ok"] and e.get("incomplete") else "✅" if e["ok"]
                 else _KIND_ICON.get(kind) or ("↻" if e["run_id"] in retried else "❌"))
         tag = "（剿灭检查）" if raw.get("annihilation") else ""
+        tries = f"　连试 {len(attempts)} 次" if len(attempts) > 1 else ""
         lines.append(icon + f" {e['script']}{tag}　"
-                     + _span(started, finished, e.get('duration_known', True)))
+                     + _span(started, finished, e.get('duration_known', True)) + tries)
         # For a run that did not go through, and for the one-minute annihilation
         # check: a single note row, not five empty slots.
         if kind == "soft":

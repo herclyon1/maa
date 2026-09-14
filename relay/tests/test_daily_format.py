@@ -126,6 +126,22 @@ walked = ent("2026-09-14/endfield/MaaEnd-06-02-49", "MaaEnd", 10, 2, 30, True,
 t3, b3 = core.format_daily("2026-09-14", [walked])
 check("真走了路线的那条照常列", "自动采集 17/17 条走通" in b3, True)
 
+print("\n[剿灭理智不够连试三次：一行（2026-09-14 真实账本）]")
+a1 = ent("2026-09-14/arknights/MAA-05-00-01", "MAA", 9, 0, 2, False, failed_tasks=["MAA 部分任务执行失败"],
+         raw={"annihilation": True, "maa_sanity_short": {"have": 17, "cost": 25}})
+a2 = ent("2026-09-14/arknights/MAA-05-02-33", "MAA", 9, 3, 1, False, failed_tasks=["MAA 部分任务执行失败"],
+         raw={"annihilation": True, "maa_sanity_short": {"have": 17, "cost": 25}})
+a3 = ent("2026-09-14/arknights/MAA-05-04-50", "MAA", 9, 5, 1, False, failed_tasks=["MAA 部分任务执行失败"],
+         raw={"annihilation": True, "maa_sanity_short": {"have": 17, "cost": 25}})
+daily = ent("2026-09-14/arknights/MAA-05-07-00", "MAA", 9, 7, 11, True, raw={"tasks_done": ["基建换班"]})
+t4, b4 = core.format_daily("2026-09-14", [a1, a2, a3, daily])
+check("标题全绿带说明", "全绿 ✅（有一关理智不够没打）" in t4, True)
+check("三次合成一行", b4.count("剿灭检查"), 1)
+check("写明连试 3 次", "连试 3 次" in b4, True)
+check("时间跨到最后一次", "09:00→09:06" in b4, True)
+check("备注写理智数", "理智 17 不够这关要的 25" in b4, True)
+check("日常那趟单独一行", b4.count("MAA　"), 1)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
 
