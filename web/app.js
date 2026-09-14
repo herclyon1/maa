@@ -408,14 +408,11 @@ function echoFarmBlock(relay) {
       <div class="acts"><button class="wide" id="echofarmstop">提前收工（关掉脚本和游戏）</button></div>`;
   }
   const opts = BOSSES.map((b) => `<option value="${b[0]}">${b[0]}. ${b[1]}</option>`).join("");
-  return `<div class="row"><label>刷 4C 声骸
-      <span class="hint">盯着一个强敌反复打，捡它掉的 4 花声骸。按时间停，不按次数。
-      名字后面的号是游戏里「讨伐强敌」列表从上往下数的位置。
-      刷的期间不领奖励，一片结晶波片都不花，等级自动压到最低档（等级不影响声骸掉落，只影响打不打得过）。
-      要从大世界开始：人还站在 boss 场里的话传送这步会失败</span></label>
+  return `<div class="row"><label>刷 4C 声骸 · 打哪个
+      <span class="hint">序号＝「讨伐强敌」列表从上往下数。刷的期间不花波片、不领周本奖励</span></label>
       <select id="efboss">${opts}</select></div>
     <div class="row"><label>刷到几点（机器时间）
-      <span class="hint">填 08:30 这种。已经过了就算明天的这个点</span></label>
+      <span class="hint">填 08:30 这种，已过就算明天。到点自动收工、配置还原</span></label>
       <input type="text" id="efuntil" value="08:30" inputmode="numeric"></div>
     <div class="acts"><button class="wide" id="echofarm">开始刷</button></div>`;
 }
@@ -462,17 +459,14 @@ function render() {
       <button class="wide" id="refresh">刷新（顺便看开没开机）</button>
     </div>
     ${qs.length ? `<div class="row"><label>看哪一趟班
-        <span class="hint">下面两个按钮作用在这趟班上，配置也只显示这趟班要跑的游戏。
-        ${thisShift && thisShift.length ? "这趟跑：" + thisShift.join("、") : ""}</span></label>
+        <span class="hint">「现在跑一趟」「跳过」作用在这趟班上；只显示它要跑的游戏${thisShift && thisShift.length ? "：" + thisShift.join("、") : ""}</span></label>
       <select id="queue">${qopts}</select></div>` : ""}
     ${runLine()}
     ${echoFarmBlock(relay)}
-    ${relay["调试模式"] ? `<div class="warn">🔧 调试模式开着，到 ${relay["调试模式"]}——这期间跑完不关机。
-      <button id="debugoff">取消调试模式</button></div>` : ""}
+    ${RELAY_SWITCHES.filter((x) => x.tab === "状态").map((x) => relayRow(x, relay)).join("")}
     <div class="acts">
       <button id="runnow">让它现在跑一趟</button>
       <button id="skiptoday">跳过它下一趟</button>
-      <button class="wide" id="noshut">${relay["下次别关机"] ? "✕ 取消「下次跑完不关机」" : "下次跑完不关机"}</button>
       <button class="wide danger" id="estop">🛑 停止一切脚本和游戏</button>
     </div>
     ${snap && snap.plan ? `<pre>${snap.plan.replace(/</g,"&lt;")}</pre>` : ""}
@@ -573,13 +567,7 @@ function render() {
       }
       html += `<div class="row" data-row="${id}"><label>${label}${hint}</label>${ctl}</div>`;
     }
-    if (g.game === "OK-WW") {
-      /* 中继自己的开关，不在母本里：无音区打完那两张结算截图发不发。 */
-      const on = !!relay["无音区截图"];
-      html += `<div class="row"><label>无音区结算截图
-          <span class="hint">开着：日报后面带上无音区打完的两张结算图。关着：不发</span></label>
-        <button id="tacetshots" class="${on ? "on" : ""}">${on ? "开着 · 点一下关掉" : "关着 · 点一下打开"}</button></div>`;
-    }
+    html += RELAY_SWITCHES.filter((x) => x.tab === g.game).map((x) => relayRow(x, relay)).join("");
     html += `</section>`;
   }
 
@@ -632,7 +620,40 @@ function render() {
   </section>`;
 
   $("#app").innerHTML = html;
+  layoutTabs();
   wire();
+}
+
+/* 分页：按卡片标题归到「状态 / 方舟 / 终末地 / 鸣潮 / 周常 / 手机」，一次只显示
+   一页；上次看的那页记住。所有卡片都照常渲染，只是藏起来——待保存的改动和回执
+   在别的页上也照常记着。用户 2026-09-14：「太长了……我要找某一个功能去修改，
+   我要滑到最底下或者滑到某个中间段」。 */
+const TABS = [["状态", /^机器状态|^第一次使用/], ["方舟", /^明日方舟/], ["终末地", /^终末地/],
+              ["鸣潮", /^鸣潮/], ["周常", /^周常/], ["手机", /^这台手机|^外观/]];
+let curTab = (() => { try { return localStorage.getItem("ark-remote-tab") || "状态"; } catch { return "状态"; } })();
+
+function layoutTabs() {
+  const secs = [...document.querySelectorAll("#app > section")];
+  const present = new Set();
+  for (const sec of secs) {
+    const title = ((sec.querySelector("h2") || {}).textContent || "").trim();
+    const hit = TABS.find(([, re]) => re.test(title));
+    sec.dataset.tab = hit ? hit[0] : "状态";
+    present.add(sec.dataset.tab);
+  }
+  if (!present.has(curTab)) curTab = "状态";
+  for (const sec of secs) sec.hidden = sec.dataset.tab !== curTab;
+  const nav = $("#tabs");
+  nav.hidden = present.size < 2;
+  nav.innerHTML = TABS.filter(([t]) => present.has(t)).map(([t]) =>
+    `<button type="button" class="${t === curTab ? "on" : ""}" data-tab="${t}">${t}</button>`).join("");
+  for (const b of nav.querySelectorAll("button")) b.onclick = () => {
+    curTab = b.dataset.tab;
+    try { localStorage.setItem("ark-remote-tab", curTab); } catch {}
+    for (const sec of document.querySelectorAll("#app > section")) sec.hidden = sec.dataset.tab !== curTab;
+    for (const x of nav.querySelectorAll("button")) x.classList.toggle("on", x.dataset.tab === curTab);
+    window.scrollTo({ top: 0 });
+  };
 }
 
 function wire() {
@@ -693,23 +714,23 @@ function wire() {
     if (!confirm("现在收工？会关掉脚本和游戏，配置还原成你原来那份。")) return;
     oneShot({ action: "echo_farm_stop" }, "已收工，脚本和游戏都关了，配置还原");
   };
-  // 调试模式：中继早就认「取消」这条指令，页面一直没有按钮发它。
-  const dbg = $("#debugoff");
-  if (dbg) dbg.onclick = () => {
-    if (!confirm("取消调试模式？取消后这一趟跑完会照常关机。")) return;
-    oneShot({ action:"debug_mode", off:true, confirmed:true }, "已取消调试模式，跑完照常关机");
+  // 中继开关：点了立刻寄出，行下面挂「已寄出，等机器回执」，机器上报对上了就消掉。
+  for (const el of document.querySelectorAll("[data-relay]")) el.onchange = async () => {
+    const sw = RELAY_SWITCHES.find((x) => x.id === el.dataset.relay);
+    if (!sw) return;
+    const to = el.checked;
+    const body = to ? sw.on : sw.off;
+    try {
+      await send(body);
+      pending[sw.id] = { label: sw.label, src: "relay", body, to, sentAt: now() };
+      savePending();
+      applyPending();
+      toast(`「${sw.label}」已${to ? "打开" : "关掉"}，等机器回执`, 3000);
+    } catch (e) {
+      el.checked = !to;
+      toast("发不出去：" + why(e), 6000);
+    }
   };
-  // 已经设过就变成「取消」。只能开不能关是半个功能——2026-08-31 实测发现的。
-  // 这里**不能**用渲染函数里的 `relay`：绑定发生在另一个函数里，
-  // 那个名字在这个作用域不存在，点一下就 ReferenceError，按钮彻底失灵。
-  // 2026-08-31 我就是这么把它写坏的，实测才发现。走模块级的 snap。
-  $("#noshut").onclick = () => (((snap && snap.relay) || {})["下次别关机"]
-    ? oneShot({ action:"skip_shutdown", off:true }, "已取消，下次跑完照常关机")
-    : oneShot({ action:"skip_shutdown" },
-        "下一次本该关机时会跳过（只跳这一次，再下一趟照常关）"));
-  if ($("#tacetshots")) $("#tacetshots").onclick = () => (((snap && snap.relay) || {})["无音区截图"]
-    ? oneShot({ action:"tacet_shots", on:false }, "不发了")
-    : oneShot({ action:"tacet_shots", on:true }, "以后日报后面会带上无音区结算截图"));
   // 说明必须准：这条跳的是**机器执行它那一天**。机器关着时你现在按，
   // 它要等下次开机才执行，跳掉的就是那一天，不是今天。
   $("#estop").onclick = () => {
@@ -844,7 +865,7 @@ function applyPending() {
     const row = document.querySelector(`[data-row="${CSS.escape(key)}"]`);
     if (!row) continue;
     if (!(key in edits)) {
-      const el = row.querySelector(`[data-id="${CSS.escape(key)}"]`);
+      const el = row.querySelector(`[data-id="${CSS.escape(key)}"]`) || row.querySelector(`[data-relay="${CSS.escape(key)}"]`);
       if (el) { if (el.type === "checkbox") el.checked = !!p.to; else el.value = String(p.to); }
       for (const b of row.querySelectorAll(".pick"))
         b.classList.toggle("on", String(b.dataset.v) === String(p.to));
@@ -864,7 +885,7 @@ function applyPending() {
       tag.className = "sent";
       const old = (now() - p.sentAt) > 10 * 3600;
       tag.textContent = `📮 已寄出 ${hhmm(p.sentAt)}${p.resentAt ? `（${hhmm(p.resentAt)} 又发了一次）` : ""}` +
-        `，等机器开机生效，还没回执` +
+        `，${snap && (now() - snap.at) < FRESH_MS / 1000 ? "机器开着，几秒内回执" : "等机器开机生效，还没回执"}` +
         (old ? "。寄出超过 10 小时：信箱只保管 12 小时，机器再开机时这页若开着会自动重发" : "");
     }
     row.appendChild(tag);
@@ -906,7 +927,8 @@ function reconcilePending() {
 async function resend(key) {
   const p = pending[key];
   if (!p) return;
-  const body = p.src === "master"
+  const body = p.src === "relay" ? p.body
+    : p.src === "master"
     ? { action:"set_master", confirmed:true, game:p.owner, path:p.path, value:p.to }
     : { action:"set_config", confirmed:true, script:p.owner, path:p.path, value:p.to };
   try { await send(body); p.resentAt = now(); delete p.mismatchAt; savePending(); render();
@@ -958,6 +980,31 @@ function updateBar() {
 }
 
 /* ---------- 动作 ---------- */
+/* 中继自己的开关（不在任何配置文件里）。全部画成和配置项一样的一行一个开关，
+   点了先按你点的显示，寄出后在行下面写「已寄出，等机器回执」，机器上报的状态
+   对上了就消掉——和改配置的那套回执一模一样，不再是「点一下」的按钮。 */
+const RELAY_SWITCHES = [
+  { id: "relay|skip_shutdown", key: "下次别关机", tab: "状态", label: "下次跑完不关机",
+    hint: "只跳过下一次关机，再下一趟照常关",
+    on: { action: "skip_shutdown" }, off: { action: "skip_shutdown", off: true } },
+  { id: "relay|debug_mode", key: "调试模式", tab: "状态", label: "调试模式",
+    hint: "开着的 90 分钟里跑完不关机，到点自动关掉",
+    on: { action: "debug_mode", minutes: 90, confirmed: true }, off: { action: "debug_mode", off: true, confirmed: true },
+    hintOn: (v) => `开着，到 ${v}——这期间跑完不关机` },
+  { id: "relay|tacet_shots", key: "无音区截图", tab: "OK-WW", label: "无音区结算截图",
+    hint: "开着：日报后面带上无音区打完的两张结算图",
+    on: { action: "tacet_shots", on: true }, off: { action: "tacet_shots", on: false } },
+];
+
+function relayRow(sw, relay) {
+  const v = relay[sw.key];
+  const on = !!v;
+  liveVals[sw.id] = on;
+  const hint = on && sw.hintOn ? sw.hintOn(v) : sw.hint;
+  return `<div class="row" data-row="${sw.id}"><label>${sw.label}<span class="hint">${hint}</span></label>
+    <span class="sw"><input type="checkbox" data-relay="${sw.id}" ${on ? "checked" : ""}><span></span></span></div>`;
+}
+
 async function oneShot(body, okText) {
   try { await send(body); toast(okText + "（机器开着就是马上，关着就是下次开机）"); }
   catch (e) { toast("发不出去：" + e.message); }
@@ -1061,6 +1108,7 @@ function save_cache() {
    那个框存在的全部意义就是让人看清改了什么，显示 UUID 等于没有。
    取名顺序和渲染下拉时完全一致：机器发来的选项表 → VALUE_ZH → 原样。 */
 function valLabel(e, v) {
+  if (e.src === "relay") return v ? "开" : "关";
   const live = CHOICES[e.path] || (e.src === "master"
     ? ((((snap && snap.master) || {})[e.owner] || {}).options || {})[e.path]
     : (((snap && snap.options) || {})[e.owner] || {})[e.path]);
