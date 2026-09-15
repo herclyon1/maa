@@ -558,8 +558,11 @@ function render() {
       <div class="dsub"><i class="dot" id="dot2"></i><span id="status2">${$("#status") ? $("#status").textContent : "正在读取…"}</span></div></div>
     <span class="dside" id="side2"></span>
   </div></section>`;
-  /* 提示卡（健康摘要的样式）：只在有事时出现。 */
-  if (busy.length) html += notice("现在在跑", busy.join("、"), "这时改设置会被推迟到跑完再生效");
+  /* 提示卡（健康摘要的样式）：只在有事时出现。「现在在跑」只在机器真的在线时说——
+     机器关了以后快照里还留着最后一趟的名字，09-15 10:58 页面一边写「关机中」一边写
+     「现在在跑 MaaEnd」。 */
+  const alive = !!(lastHb && (Date.now() - lastHb < hbWindowMs()));
+  if (busy.length && alive) html += notice("现在在跑", busy.join("、"), "这时改设置会被推迟到跑完再生效");
   if (ef["到"]) html += notice("刷声骸", `正在刷「${ef["名字"] || "?"}」`,
     `刷到 ${String(ef["到"]).slice(11)} 为止${ef["从"] ? "，" + String(ef["从"]).slice(11) + " 开始" : ""}`,
     `<button type="button" class="capsule" id="echofarmuntil">改收工时刻</button><button type="button" class="capsule red" id="echofarmstop">提前收工</button>`);
@@ -1334,9 +1337,12 @@ function why(err) {
   return m || "原因不明";
 }
 
+let wasAlive = null;
 function updateLive() {
   if (!cfg) return;
   const alive = lastHb && (Date.now() - lastHb < hbWindowMs());
+  if (wasAlive !== null && !!alive !== wasAlive && snap) render();   // the 「现在在跑」 card follows the verdict
+  wasAlive = !!alive;
   if (alive) {
     setStatus(`开机中 · ${hbEvery > 60 ? `每 ${Math.round(hbEvery / 60)} 分钟报一次` : "实时"}`
               + (snap ? `（配置是 ${ago(snap.at)}的）` : ""), "on");
