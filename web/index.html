@@ -9,10 +9,10 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="遥控">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260915094327">
+<link rel="manifest" href="manifest.webmanifest?v=20260915101526">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915094327">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915094327">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915101526">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915101526">
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
      上面跑的」). System colours from Apple's palette: grouped background, white
@@ -290,15 +290,21 @@
   button[disabled]{opacity:.45}
   .acts button[disabled]{opacity:1;color:#aeaeb2}
   .acts button.danger{color:var(--bad);background:var(--card)}
-  .savebar{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 72px);z-index:6;
-           padding:10px 12px;border-radius:22px;
-           background:color-mix(in srgb, var(--card) 48%, transparent);backdrop-filter:blur(22px) saturate(180%);
-           -webkit-backdrop-filter:blur(22px) saturate(180%);
-           box-shadow:0 8px 28px rgba(0,0,0,.16),inset 0 0 0 .5px rgba(255,255,255,.55);
-           display:flex;gap:10px;align-items:center;transform:translateY(300%);opacity:0;pointer-events:none;transition:.2s}
-  .savebar.show{transform:none;opacity:1;pointer-events:auto}
-  .savebar .n{flex:1;color:var(--dim);font-size:0.7647em}
-  .savebar button{padding:10px 16px;border-radius:999px}
+  /* Pending edits: the nav bar takes over, the way an edit sheet does (Contacts,
+     Reminders) - 「放弃」 as a glass capsule on the left, 「完成」 as the tinted
+     capsule on the right, the count as the title. Kit Toolbar - Top - iPhone
+     `1:54472`: 44pt controls, 16 from the edges; text capsules from Button -
+     Liquid Glass - Text `5473:21667` (17 semibold). To be checked in the
+     simulator against 通讯录 › 新建联系人 when it is free (2026-09-15). */
+  .topbar .navbtn{position:absolute;top:env(safe-area-inset-top);height:44px;padding:0 16px;border:0;border-radius:999px;
+                  font:inherit;font-size:1em;line-height:44px;font-weight:600;display:none;pointer-events:auto;box-shadow:none;cursor:pointer}
+  .topbar.editing .navbtn{display:block}
+  .topbar.editing{pointer-events:auto;--bar:1 !important;--title:1 !important}
+  .topbar #discard{left:16px;color:var(--accent);background:color-mix(in srgb, var(--card) 55%, transparent);
+                   backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);
+                   box-shadow:inset 0 0 0 .5px rgba(255,255,255,.55),0 4px 16px rgba(0,0,0,.12)}
+  .topbar #save{right:16px;color:#fff;background:var(--accent);box-shadow:0 4px 16px color-mix(in srgb, var(--accent) 35%, transparent)}
+  .topbar .navbtn:active{opacity:.7}
   pre{margin:0;padding:11px 16px;white-space:pre-wrap;font-size:0.8824em;line-height:1.4;color:var(--dim);font-family:inherit}
   dialog{border:0;background:var(--card);color:var(--ink);border-radius:26px;padding:0;width:min(92vw,460px)}
   dialog h2{padding:16px 16px 8px;font-size:1em;font-weight:600;color:var(--ink)}
@@ -337,7 +343,7 @@
 <body>
 <!-- The compact bar a large title collapses into (UINavigationBar): glass, the
      title small and centred; shown once the large title has scrolled away. -->
-<div class="topbar" id="topbar" aria-hidden="true"><span>游戏机遥控</span></div>
+<div class="topbar" id="topbar"><button type="button" class="navbtn" id="discard">放弃</button><span>游戏机遥控</span><button type="button" class="navbtn" id="save">完成</button></div>
 <div class="ptr" id="ptr" aria-hidden="true"><span class="ai" id="ptrai"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></div>
 <header>
   <h1>游戏机遥控</h1>
@@ -348,11 +354,6 @@
 <div id="pendbar" hidden></div>
 <main id="app"></main>
 
-<div class="savebar" id="savebar">
-  <span class="n" id="savenote"></span>
-  <button id="discard">放弃</button>
-  <button class="primary" id="save">保存修改</button>
-</div>
 
 <dialog id="confirm">
   <h2>确认这次修改</h2>
@@ -365,8 +366,8 @@
 
 <div class="toast" id="toast"></div>
 <script src="stamina.js?v=20260915035717"></script>
-<script src="app.js?v=20260915094327"></script>
+<script src="app.js?v=20260915101526"></script>
 <script>/* 验收脚本只在地址带 ?accept 时加载（docs/HIG-CHECKLIST.md 的验收程序）。 */
-if (new URLSearchParams(location.search).has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260915094327"; document.body.appendChild(s); }</script>
+if (new URLSearchParams(location.search).has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260915101526"; document.body.appendChild(s); }</script>
 </body>
 </html>
