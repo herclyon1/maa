@@ -9,10 +9,10 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="遥控">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260915102716">
+<link rel="manifest" href="manifest.webmanifest?v=20260915103711">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915102716">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915102716">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915103711">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915103711">
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
      上面跑的」). System colours from Apple's palette: grouped background, white
@@ -241,7 +241,37 @@
   select{width:auto;max-width:100%;height:22px;line-height:1.2941em;text-align:right;color:var(--dim);
          -webkit-appearance:none;appearance:none;padding:0 20px 0 0;border-radius:0;
          background:transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='18' viewBox='0 0 12 18'%3E%3Cpath d='M2 7l4-4 4 4M2 11l4 4 4-4' fill='none' stroke='%238e8e93' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right center}
-  input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
+  /* Focus ring only for keyboard focus; a tap must not draw the blue box (his Android
+     screenshot 2026-09-15 10:32). */
+  input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  input:focus:not(:focus-visible),select:focus:not(:focus-visible){outline:none}
+  /* The picker: the native <select> stays for keyboards and screen readers but is
+     hidden once the page is up; what you tap is a button showing the value and the
+     chevrons, and it opens a menu - the iOS 26/27 pull-down menu, measured on the
+     simulator's own context menu (Safari long-press, 2026-09-15 09:20): 248 wide,
+     rows 42 high, 17pt regular, label 50 from the left edge (the leading 22pt symbol
+     slot holds the checkmark of the chosen row), 5 above and below, corner 26, glass. */
+  main select.native{display:none}
+  .pick{display:inline-flex;align-items:center;gap:0;max-width:100%;height:22px;padding:0 20px 0 0;border:0;border-radius:0;
+        background:transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='18' viewBox='0 0 12 18'%3E%3Cpath d='M2 7l4-4 4 4M2 11l4 4 4-4' fill='none' stroke='%238e8e93' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right center;
+        color:var(--dim);font:inherit;font-size:1em;line-height:1.2941em;text-align:right;box-shadow:none;cursor:pointer;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pick:active{opacity:.6}
+  .menu-scrim{position:fixed;inset:0;z-index:7;background:transparent}
+  .menu{position:fixed;z-index:8;width:248px;padding:5px 0;border-radius:26px;
+        background:color-mix(in srgb, var(--card) 74%, transparent);
+        backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);
+        box-shadow:0 12px 40px rgba(0,0,0,.18),inset 0 0 0 .5px rgba(255,255,255,.6);
+        transform-origin:top right;animation:menu-in .22s cubic-bezier(.2,.8,.2,1)}
+  .menu.up{transform-origin:bottom right}
+  .menu button{display:flex;align-items:center;gap:0;width:100%;height:42px;padding:0 16px;margin:0;border:0;border-radius:0;
+               background:transparent;box-shadow:none;color:var(--ink);font:inherit;font-size:1em;line-height:1.2941em;text-align:left;cursor:pointer}
+  .menu button .ck{flex:none;width:22px;height:22px;margin-right:12px;background:var(--ink);opacity:0;
+                   -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;-webkit-mask-size:contain;mask-size:contain}
+  .menu button.on .ck{opacity:1}
+  .menu button:active{background:color-mix(in srgb, var(--ink) 8%, transparent)}
+  @keyframes menu-in{from{opacity:0;transform:scale(.55)}to{opacity:1;transform:none}}
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .menu{box-shadow:0 12px 40px rgba(0,0,0,.5),inset 0 0 0 .5px rgba(255,255,255,.14)} }
   /* The toggle: 63×28 track, 38×24 pill knob (measured in Settings › 动态效果 on the
      simulator). Motion measured frame by frame on the simulator's own recording
      (Settings › 动态效果 › 首选非闪动光标, 2026-09-15 04:58, 120 samples/s): the
@@ -369,8 +399,8 @@
 
 <div class="toast" id="toast"></div>
 <script src="stamina.js?v=20260915035717"></script>
-<script src="app.js?v=20260915102716"></script>
+<script src="app.js?v=20260915103711"></script>
 <script>/* 验收脚本只在地址带 ?accept 时加载（docs/HIG-CHECKLIST.md 的验收程序）。 */
-if (new URLSearchParams(location.search).has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260915102716"; document.body.appendChild(s); }</script>
+if (new URLSearchParams(location.search).has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260915103711"; document.body.appendChild(s); }</script>
 </body>
 </html>
