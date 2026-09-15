@@ -1455,6 +1455,49 @@ function myLink() {
 }
 
 /* 原生行为三件：大标题滚动收进顶栏、下拉刷新、「几分钟前」自己走。 */
+/* Every <select> in the page gets a button in its place that opens a menu (the
+   iOS pull-down menu; numbers in index.html). The select itself stays in the DOM,
+   hidden: choosing from the menu sets its value and fires `change`, so every handler
+   wired to the select keeps working; on a re-render the buttons are built again. */
+function dressSelects() {
+  for (const sel of document.querySelectorAll("main select:not(.native)")) {
+    sel.classList.add("native");
+    const btn = document.createElement("button");
+    btn.type = "button"; btn.className = "pick";
+    const label = () => { const o = sel.options[sel.selectedIndex]; btn.textContent = o ? o.textContent : ""; };
+    label();
+    sel.addEventListener("change", label);
+    btn.onclick = (ev) => { ev.stopPropagation(); openMenu(btn, sel); };
+    sel.insertAdjacentElement("afterend", btn);
+  }
+}
+function openMenu(anchor, sel) {
+  closeMenu();
+  const scrim = document.createElement("div"); scrim.className = "menu-scrim";
+  const menu = document.createElement("div"); menu.className = "menu"; menu.setAttribute("role", "menu");
+  for (const o of sel.options) {
+    const b = document.createElement("button"); b.type = "button"; b.setAttribute("role", "menuitemradio");
+    if (o.selected) b.classList.add("on");
+    b.innerHTML = `<i class="ck" style="-webkit-mask-image:url(${SYM["checkmark"]});mask-image:url(${SYM["checkmark"]})"></i>${o.textContent.replace(/</g, "&lt;")}`;
+    b.onclick = () => { if (sel.value !== o.value) { sel.value = o.value; sel.dispatchEvent(new Event("change", { bubbles: true })); } closeMenu(); };
+    menu.appendChild(b);
+  }
+  scrim.onclick = closeMenu;
+  document.body.append(scrim, menu);
+  /* Below the value, right edge on the value's right edge; above it when there is no room. */
+  const r = anchor.getBoundingClientRect(), mh = menu.offsetHeight, gap = 6;
+  const right = Math.max(8, innerWidth - r.right);
+  menu.style.right = right + "px";
+  if (r.bottom + gap + mh <= innerHeight - 8) menu.style.top = (r.bottom + gap) + "px";
+  else { menu.classList.add("up"); menu.style.bottom = Math.max(8, innerHeight - r.top + gap) + "px"; }
+  addEventListener("keydown", escMenu);
+}
+function escMenu(e) { if (e.key === "Escape") closeMenu(); }
+function closeMenu() {
+  for (const el of document.querySelectorAll(".menu, .menu-scrim")) el.remove();
+  removeEventListener("keydown", escMenu);
+}
+
 function installNative() {
   // 开关的动效只在被人摸过之后才播（.live），页面重画时不会每个开关都弹一下
   document.addEventListener("pointerdown", (e) => { const sw = e.target.closest && e.target.closest(".sw"); if (sw) sw.classList.add("live"); }, { passive: true });
@@ -1603,7 +1646,7 @@ $("#go").onclick = async () => {
    已寄出的回执要等下一次上报才出现——机器关着时就是永远不出现（2026-09-14）。 */
 {
   const _renderRaw = render;
-  render = (...a) => { _renderRaw(...a); reconcilePending(); applyEdits(); };
+  render = (...a) => { _renderRaw(...a); reconcilePending(); applyEdits(); dressSelects(); };
 }
 
 applyTheme();
