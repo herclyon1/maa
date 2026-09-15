@@ -1106,10 +1106,11 @@ function applyEdits() {
   updateBar();
 }
 
+/* Pending edits turn the nav bar into an edit bar: 放弃 / 待保存 N 项 / 完成. */
 function updateBar() {
-  const n = Object.keys(edits).length;
-  $("#savebar").classList.toggle("show", n > 0);
-  $("#savenote").textContent = n ? `${n} 项待保存` : "";
+  const n = Object.keys(edits).length, bar = $("#topbar");
+  bar.classList.toggle("editing", n > 0);
+  bar.querySelector("span").textContent = n ? `待保存 ${n} 项` : "游戏机遥控";
 }
 
 /* ---------- 动作 ---------- */
