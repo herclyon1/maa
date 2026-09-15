@@ -1463,7 +1463,7 @@ function dressSelects() {
   for (const sel of document.querySelectorAll("main select:not(.native)")) {
     sel.classList.add("native");
     const btn = document.createElement("button");
-    btn.type = "button"; btn.className = "pick";
+    btn.type = "button"; btn.className = "menubtn";
     const label = () => { const o = sel.options[sel.selectedIndex]; btn.textContent = o ? o.textContent : ""; };
     label();
     sel.addEventListener("change", label);
