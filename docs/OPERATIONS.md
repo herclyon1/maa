@@ -1190,8 +1190,11 @@ nothing can ever be uploaded from the machine.
   saying so; see [NOTIFICATIONS.md](NOTIFICATIONS.md).
   Note the manifest only covers `relay/ark_relay/*.py`, `run.py` and
   `service.py`. Anything else - `scripts/windows/ark-do.ps1`, for instance -
-  has to be scp'd by hand, and so does any brand-new relay file, because
-  selfupdate deliberately refuses to create files that do not already exist.
+  has to be scp'd by hand. A brand-new relay file is created by selfupdate
+  since 2026-09-15 as long as it is plain source (`.py/.md/.txt/.json`, path
+  confined to the relay tree) - the earlier refusal stalled every update after
+  a module split (banners.py 09-08, resources.py 09-15) until a manual deploy;
+  a new file with any other suffix still abandons the round.
 - **Config**: `queue/config.json`, applied once per strictly-newer integer
   `version`. See `queue/README.md` for the command format.
 

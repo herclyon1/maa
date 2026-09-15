@@ -459,6 +459,22 @@ def _is_downgrade(remote_ver: int, local_ver: int) -> bool:
     return bool(local_ver and remote_ver < local_ver)
 
 
+# A manifest entry this machine does not have yet is created when it is plain
+# relay source (the suffixes below); anything else is refused. A relay that can
+# overwrite any existing .py already runs whatever the manifest says, so a new
+# .py inside its own tree (paths are confined by _safe_target) opens no wider
+# door; what it buys is that a module split (banners.py -> five files on
+# 2026-09-08, resources.py on 2026-09-15) lands by itself instead of stalling
+# every update until someone deploys by hand. The user's call, 2026-09-15,
+# after resources.py stalled the morning update: relax it, a manual deploy for
+# every new module is too much.
+_NEW_FILE_SUFFIXES = (".py", ".md", ".txt", ".json")
+
+
+def _may_create(rel: str) -> bool:
+    return rel.endswith(_NEW_FILE_SUFFIXES)
+
+
 def _wanted_files(root: Path, files: dict) -> list[str]:
     """Work out which files this round intends to change - before any download.
 
@@ -471,7 +487,13 @@ def _wanted_files(root: Path, files: dict) -> list[str]:
     wanted: list[str] = []
     for rel, want in sorted(files.items()):
         target = _safe_target(root, rel)
-        if target is not None and target.exists() and _sha1(target.read_bytes()) != want:
+        if target is None:
+            continue
+        if not target.exists():
+            if _may_create(rel):
+                wanted.append(rel)
+            continue
+        if _sha1(target.read_bytes()) != want:
             wanted.append(rel)
     return wanted
 
@@ -509,23 +531,22 @@ def _stage_files(root: Path, base: str, files: dict, deadline: float | None,
         if target is None:
             log.warning("manifest 里的路径越界，已忽略: %s", rel)
             continue
-        if not target.exists():
-            # New files are a bigger step than updating one, and a relay that can
-            # create arbitrary files is a wider door than this needs. But skipping
-            # one and applying the rest is the worst of both: a module split lands
-            # its edited importer without the modules it imports, the version gets
-            # stamped as up to date, the process restarts into ModuleNotFoundError
-            # and never recovers on its own. So the whole round is abandoned - the
-            # same answer as a file that cannot be fetched - and the operator is
-            # told, because only a manual deploy can move this forward.
-            log.warning("清单里有本机没有的新文件 %s，整轮更新放弃"
-                        "（新文件只能由一次人工部署送上来）", rel)
-            _record_failure(root, f"{rel}：清单里的新文件，自更新不会创建文件。"
+        if not target.exists() and not _may_create(rel):
+            # Not plain source: refused, and the whole round with it. Skipping one
+            # file and applying the rest would be the worst of both - a module
+            # split would land its edited importer without the modules it
+            # imports, the version would be stamped as up to date, and the
+            # process would restart into ModuleNotFoundError and never recover.
+            log.warning("清单里有本机没有的新文件 %s，不是源码文件，整轮更新放弃"
+                        "（这种文件只能由一次人工部署送上来）", rel)
+            _record_failure(root, f"{rel}：清单里的新文件不是源码文件，自更新不创建它。"
                             "在电脑上跑一次部署脚本就能补上",
                             remote_ver, local_ver, wanted)
             return None
-        if _sha1(target.read_bytes()) == want:
+        if target.exists() and _sha1(target.read_bytes()) == want:
             continue
+        if not target.exists():
+            log.info("清单里的新文件 %s 本机没有，这轮一起创建", rel)
         data = _get_with_retry(base + rel, expect_sha=want, deadline=deadline)
         if data is None:
             log.warning("%s 所有门都拿不到正确内容，本次更新整体放弃（已下 %d 个"
@@ -550,6 +571,9 @@ def _write_staged(root: Path, staged: list[tuple[str, Path, bytes]],
     updated: list[str] = []
     for rel, target, data in staged:
         try:
+            # A new module may sit in a new package directory; the path itself
+            # was confined to root by _safe_target when it was staged.
+            target.parent.mkdir(parents=True, exist_ok=True)
             _atomic_write(target, data)
         except OSError:
             # Everything has already been verified by this point, so failing to

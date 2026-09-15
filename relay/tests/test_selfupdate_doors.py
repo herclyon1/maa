@@ -277,13 +277,23 @@ use(Net({h: {"manifest.json": manifest(20260908090000,
 check("正常那个还是更新了", su.check(root, BASE), ["a.py"])
 check("root 外面什么都没写出来", outside.exists(), False)
 
-print("\n[清单里的新文件不许自己创建：中继能凭网上一份清单造文件，门就开得太大了]")
+print("\n[清单里的新源码文件跟着一轮一起创建：2026-09-15 起，模块拆分不再卡住整个更新]")
 root = workdir({"a.py": body}, code_version=20260821110000)
 use(Net({h: {"manifest.json": manifest(20260908090000,
-                                       {"a.py": sha, "brand_new.py": sha}),
-             "brand_new.py": body} for h in (FASTLY, CDN, GCORE, RAW)}))
-check("不当成更新", su.check(root, BASE), [])
-check("没有造出新文件", (root / "brand_new.py").exists(), False)
+                                       {"a.py": sha, "brand_new.py": sha, "pkg/deep.py": sha}),
+             "brand_new.py": body, "pkg/deep.py": body} for h in (FASTLY, CDN, GCORE, RAW)}))
+check("新文件算进这一轮", su.check(root, BASE), ["brand_new.py", "pkg/deep.py"])
+check("新文件造出来了，内容对哈希", (root / "brand_new.py").read_bytes(), body)
+check("新目录也建了", (root / "pkg" / "deep.py").read_bytes(), body)
+
+print("\n[不是源码的新文件还是不许造：门只开给 .py/.md/.txt/.json]")
+root = workdir({"a.py": old}, code_version=20260821110000)
+use(Net({h: {"manifest.json": manifest(20260908090000,
+                                       {"a.py": sha, "tool.exe": sha}),
+             "a.py": body, "tool.exe": body} for h in (FASTLY, CDN, GCORE, RAW)}))
+check("整轮放弃", su.check(root, BASE), [])
+check("a.py 也没动", (root / "a.py").read_bytes(), old)
+check("没有造出 exe", (root / "tool.exe").exists(), False)
 
 print("\n[_wanted_files：这一轮打算改哪些——失败报告要靠它说人话]")
 root = workdir({"same.py": body, "diff.py": old})
@@ -291,29 +301,33 @@ check("哈希一样的不算",
       su._wanted_files(root, {"same.py": sha}), [])
 check("哈希不一样的才算",
       su._wanted_files(root, {"diff.py": sha, "same.py": sha}), ["diff.py"])
-check("本机没有的文件不算（它根本不会被创建）",
-      su._wanted_files(root, {"nope.py": sha}), [])
+check("本机没有的源码文件算（这一轮会创建它）",
+      su._wanted_files(root, {"nope.py": sha}), ["nope.py"])
+check("本机没有的非源码文件不算（它不会被创建）",
+      su._wanted_files(root, {"nope.exe": sha}), [])
 
-# ---- A manifest file this machine does not have: abandon the round ----
+# ---- A manifest file this machine does not have ----
 # 2026-09-08: banners.py was split into five files and pushed to main. The old
 # behaviour was to write the edited banners.py, skip the four new modules it
 # imports, stamp the version as up to date, and restart the process - which then
 # died on ModuleNotFoundError, and because the version was already stamped it
-# would never try again. Half an update is far more dangerous than none.
+# would never try again. Half an update is far more dangerous than none - so a
+# new source file is staged with the rest (all or nothing), and a new file that
+# is not source still abandons the round.
 import ark_relay.selfupdate as SU                                  # noqa: E402
 from _tmp import tmpdir                                            # noqa: E402
 
 _root = tmpdir()
 (_root / "state").mkdir()          # 失败记录写在 state/ 下，机器上一直有这个目录
 (_root / "old.py").write_bytes(b"x = 1\n")
-_files = {"old.py": SU._sha1(b"x = 2\n"), "brand_new.py": SU._sha1(b"y = 1\n")}
+_files = {"old.py": SU._sha1(b"x = 2\n"), "a_tool.exe": SU._sha1(b"y = 1\n")}   # sorts before old.py: refused before any download
 _got = SU._stage_files(_root, "https://example.invalid/", _files, None, 7, 6, ["old.py"])
-check("有新文件时整轮放弃", _got, None)
+check("有非源码新文件时整轮放弃", _got, None)
 check("一个字节都没落盘", (_root / "old.py").read_bytes(), b"x = 1\n")
-check("新文件也没被创建", (_root / "brand_new.py").exists(), False)
+check("那个文件也没被创建", (_root / "a_tool.exe").exists(), False)
 _fail = (SU.take_failure(_root) or {}).get("reason", "")
 check("留了话说清要人工部署", "部署脚本" in _fail, True)
-check("话里点名了是哪个文件", "brand_new.py" in _fail, True)
+check("话里点名了是哪个文件", "a_tool.exe" in _fail, True)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
