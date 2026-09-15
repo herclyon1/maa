@@ -433,21 +433,48 @@ function notice(caption, title, body, buttons = "") {
     <div class="ntitle">${title}</div>${body ? `<div class="nbody">${body}</div>` : ""}
     ${buttons ? `<div class="nacts">${buttons}</div>` : ""}</div></section>`;
 }
-/* 明日安排原来是一段 <pre>；现在拆成设置式的行：时刻一行、每个游戏一行、说明进脚注。 */
-function planRows(text) {
+/* 排班：明日安排原来是一段 <pre>；现在每个时刻一行（带「今天跑/今天跳过」的开关，
+   开关走和别的中继开关一样的待保存→确认→回执），每个游戏一行，说明进脚注。
+   时刻行对应哪趟班：看这一段里的游戏和队列的脚本名对得上（2026-09-15）。 */
+const OWNER_OF = { "明日方舟": "MAA", "终末地": "MaaEnd", "鸣潮": "OK-WW" };
+let QUEUE_SWITCHES = [];
+function beijingToday() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" });
+}
+function planRows(text, qs = [], relay = {}) {
+  QUEUE_SWITCHES = [];
   if (!text) return "";
   const lines = text.split("\n").map((l) => l.replace(/</g, "&lt;"));
-  let rows = "", cur = null, foot = [];
-  const flush = () => { if (cur) { rows += `<div class="row"><label>${cur.t}${cur.h.length ? `<span class="hint">${cur.h.join("，")}</span>` : ""}</label></div>`; cur = null; } };
+  const blocks = []; let cur = null, game = null; const foot = [];
   for (const raw of lines) {
     const l = raw.trim();
     if (!l || l.startsWith("📅")) continue;
-    if (l.startsWith("🕘")) { flush(); const m = l.replace("🕘", "").trim().split(/\s+东京\s+/); cur = { t: m[0], h: m[1] ? ["东京 " + m[1]] : [] }; continue; }
-    if (l.startsWith("▸")) { flush(); cur = { t: l.replace("▸", "").trim(), h: [] }; continue; }
-    if (cur) cur.h.push(l); else foot.push(l);
+    if (l.startsWith("🕘")) { const m = l.replace("🕘", "").trim().split(/\s+东京\s+/); cur = { t: m[0], tokyo: m[1] || "", games: [] }; blocks.push(cur); game = null; continue; }
+    if (l.startsWith("▸")) { game = { name: l.replace("▸", "").trim(), h: [] }; if (cur) cur.games.push(game); continue; }
+    if (game) game.h.push(l); else if (!cur) foot.push(l);
   }
-  flush();
-  return `<section><h2>明日安排</h2>${rows}${foot.length ? `<div class="foot">${foot.map((x) => `<p>${x}</p>`).join("")}</div>` : ""}</section>`;
+  const skipped = String(relay["今天跳过"] || "");
+  let rows = "";
+  for (const b of blocks) {
+    const owners = b.games.map((g) => OWNER_OF[g.name]).filter(Boolean).sort().join("|");
+    const q = qs.find((x) => (x["脚本"] || []).slice().sort().join("|") === owners);
+    if (q) {
+      const sw = { id: `relay|queue:${q["名"]}`, label: `${q["名"]} · ${b.t}`,
+                   on: { action: "unskip_today", queue: q["名"] },
+                   off: { action: "skip_today", queue: q["名"], day: beijingToday() } };
+      QUEUE_SWITCHES.push(sw);
+      const on = skipped !== q["名"];
+      liveVals[sw.id] = on;
+      const hint = [b.tokyo ? "东京 " + b.tokyo : "", on ? "今天照常" : "今天跳过，明天照常"].filter(Boolean).join(" · ");
+      rows += `<div class="row" data-row="${sw.id}"><label>${sw.label}<span class="hint">${hint}</span></label>
+        <span class="sw"><input type="checkbox" data-relay="${sw.id}" ${on ? "checked" : ""}><span></span></span></div>`;
+    } else {
+      rows += `<div class="row"><label>${b.t}${b.tokyo ? `<span class="hint">东京 ${b.tokyo}</span>` : ""}</label></div>`;
+    }
+    for (const g of b.games) rows += `<div class="row"><label>${g.name}${g.h.length ? `<span class="hint">${g.h.join("，")}</span>` : ""}</label></div>`;
+  }
+  foot.push("时刻行的开关：关掉 = 这趟今天不跑，明天照常；再打开就恢复");
+  return `<section><h2>明日安排</h2>${rows}<div class="foot">${foot.map((x) => `<p>${x}</p>`).join("")}</div></section>`;
 }
 
 /* The games' own stamina icons (his 09-15 order): 明日方舟 理智 and 终末地 理智 from the
@@ -539,7 +566,6 @@ function render() {
   /* 动作磁贴（查找 / 家庭的磁贴，提醒事项的几何）。 */
   html += `<section><div class="group tiles">
     ${tile("runnow", "play.fill", "var(--accent)", "现在跑一趟", curQueue ? `${curQueue}${nextAt ? " · 下一趟 " + nextAt : ""}` : "")}
-    ${tile("skiptoday", "forward.end.fill", "#ff9500", "跳过下一趟", curQueue || "")}
     ${tile("refresh", "arrow.clockwise", "#8e8e93", "刷新", snap ? ago(snap.at) : "还没有数据")}
     ${tile("estop", "stop.fill", "var(--bad)", "停止一切", "脚本和游戏", "danger")}
   </div></section>`;
@@ -555,7 +581,7 @@ function render() {
         <input type="text" class="short" id="efnew" value="${String(ef["到"]).slice(11)}" inputmode="numeric"></div>` : echoFarmBlock(relay)}
     ${RELAY_SWITCHES.filter((x) => x.tab === "状态").map((x) => relayRow(x, relay)).join("")}
   </section>${cfgNote}`;
-  html += planRows(snap && snap.plan);
+  html += planRows(snap && snap.plan, qs, relay);
   /* The machine's answer to each order, newest first. Used to be a push per
      order; the answer belongs where the button was pressed (2026-09-14). */
   const rc = Array.isArray(relay["最近指令"]) ? relay["最近指令"].slice().reverse() : [];
@@ -856,7 +882,7 @@ function wire() {
      再确认才寄出（2026-09-15，用户：「改动配置直接就应用了，完全没有二次确认」——
      09-14 晚把它们改成一拨就发是错的）。寄出后行下面挂「已寄出，等机器回执」。 */
   for (const el of document.querySelectorAll("[data-relay]")) el.onchange = () => {
-    const sw = RELAY_SWITCHES.find((x) => x.id === el.dataset.relay);
+    const sw = RELAY_SWITCHES.find((x) => x.id === el.dataset.relay) || QUEUE_SWITCHES.find((x) => x.id === el.dataset.relay);
     if (!sw) return;
     const to = el.checked, from = !!liveVals[sw.id];
     const row = el.closest(".row");
@@ -864,16 +890,10 @@ function wire() {
     else { edits[sw.id] = { src: "relay", label: sw.label, from, to, body: to ? sw.on : sw.off }; if (row) row.classList.add("changed"); }
     updateBar();
   };
-  // 说明必须准：这条跳的是**机器执行它那一天**。机器关着时你现在按，
-  // 它要等下次开机才执行，跳掉的就是那一天，不是今天。
   $("#estop").onclick = () => {
     if (!confirm("立刻停掉所有脚本和游戏？正在跑的这趟会作废。")) return;
     oneShot({ action:"estop", confirmed:true }, "已下令停止一切，机器上几秒内生效");
   };
-  $("#skiptoday").onclick = () => oneShot(
-    { action:"skip_today", queue:theQueue() },
-    `「${theQueue()}」下一趟不跑了。机器开着＝跳今天这趟；` +
-    "机器关着＝这条等到下次开机才生效，跳的是那一天。只跳一次，之后自动恢复");
 
   /* 周本那四项走同一个保存栏。原来它自己有一个「保存周本设置」按钮，
      和下面的「保存修改」两套并存——用户 2026-09-04 问「何意味」。
