@@ -9,10 +9,10 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="遥控">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260915084436">
+<link rel="manifest" href="manifest.webmanifest?v=20260915090242">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915084436">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915084436">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915090242">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915090242">
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
      上面跑的」). System colours from Apple's palette: grouped background, white
@@ -77,6 +77,9 @@
                   height:54px;padding:6px 8px 7px;min-width:72px;border-radius:999px;font-size:10px;line-height:12px;font-weight:600;
                   background:transparent;box-shadow:none;color:var(--tab);white-space:nowrap;transition:color .2s}
   nav.tabs button .ico{display:flex;align-items:center;justify-content:center;width:28px;height:28px;flex:none}
+  nav.tabs button .tabimg{display:block;width:26px;height:26px;border-radius:7px;object-fit:cover;
+                          opacity:.7;filter:saturate(.6);transition:opacity .2s,filter .2s}
+  nav.tabs button.on .tabimg{opacity:1;filter:none}
   nav.tabs button .sf{display:block;width:26px;height:26px;background:currentColor;
                       -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;
                       -webkit-mask-size:contain;mask-size:contain}
@@ -361,6 +364,6 @@
 
 <div class="toast" id="toast"></div>
 <script src="stamina.js?v=20260915035717"></script>
-<script src="app.js?v=20260915084436"></script>
+<script src="app.js?v=20260915090242"></script>
 </body>
 </html>
