@@ -250,6 +250,6 @@
     return [t.sk ? "森空岛" : "", t.kuro ? "库街区" : ""].filter(Boolean).join("、");
   }
 
-  Object.assign(Stamina, { refresh, fromLink, fromPaste, fromSnapshot, loadTokens, clear, status, endfieldFromDungeon, md5 });
+  Object.assign(Stamina, { refresh, fromLink, fromPaste, fromSnapshot, loadTokens, clear, status, endfieldFromDungeon, arknightsLive, md5 });
   window.Stamina = Stamina;
 })();
