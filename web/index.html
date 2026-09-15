@@ -9,10 +9,10 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="遥控">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260915104404">
+<link rel="manifest" href="manifest.webmanifest?v=20260915105600">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915104404">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915104404">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915105600">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915105600">
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
      上面跑的」). System colours from Apple's palette: grouped background, white
@@ -323,20 +323,23 @@
   button[disabled]{opacity:.45}
   .acts button[disabled]{opacity:1;color:#aeaeb2}
   .acts button.danger{color:var(--bad);background:var(--card)}
-  /* Pending edits: the nav bar takes over, the way an edit sheet does (Contacts,
-     Reminders) - 「放弃」 as a glass capsule on the left, 「完成」 as the tinted
-     capsule on the right, the count as the title. Kit Toolbar - Top - iPhone
-     `1:54472`: 44pt controls, 16 from the edges; text capsules from Button -
-     Liquid Glass - Text `5473:21667` (17 semibold). To be checked in the
-     simulator against 通讯录 › 新建联系人 when it is free (2026-09-15). */
-  .topbar .navbtn{position:absolute;top:env(safe-area-inset-top);height:44px;padding:0 16px;border:0;border-radius:999px;
-                  font:inherit;font-size:1em;line-height:44px;font-weight:600;display:none;pointer-events:auto;box-shadow:none;cursor:pointer}
-  .topbar.editing .navbtn{display:block}
+  /* Pending edits: the nav bar takes over the way an edit sheet does. Measured on
+     the simulator, 通讯录 › 新建联系人 and 设置 sub-pages (2026-09-15 10:54): the bar's
+     controls are 44pt round glass buttons 20 from the screen edge, vertically centred
+     in the 44 bar under the safe area, with a symbol inside - ✕ to discard on the
+     left, ✓ to finish on the right (tinted when it can be pressed); the title sits
+     centred at 17 semibold. */
+  .topbar .navbtn{position:absolute;top:env(safe-area-inset-top);width:44px;height:44px;padding:0;border:0;border-radius:50%;
+                  display:none;align-items:center;justify-content:center;pointer-events:auto;box-shadow:none;cursor:pointer;
+                  background:color-mix(in srgb, var(--card) 55%, transparent);color:var(--ink);
+                  backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);
+                  box-shadow:inset 0 0 0 .5px rgba(255,255,255,.55),0 4px 16px rgba(0,0,0,.12)}
+  .topbar .navbtn .sf{width:20px;height:20px;background:currentColor}
+  .topbar.editing .navbtn{display:flex}
   .topbar.editing{pointer-events:auto;--bar:1 !important;--title:1 !important}
-  .topbar #discard{left:16px;color:var(--accent);background:color-mix(in srgb, var(--card) 55%, transparent);
-                   backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);
-                   box-shadow:inset 0 0 0 .5px rgba(255,255,255,.55),0 4px 16px rgba(0,0,0,.12)}
-  .topbar #save{right:16px;color:#fff;background:var(--accent);box-shadow:0 4px 16px color-mix(in srgb, var(--accent) 35%, transparent)}
+  .topbar #discard{left:20px}
+  .topbar #save{right:20px;color:#fff;background:var(--accent);backdrop-filter:none;-webkit-backdrop-filter:none;
+                box-shadow:0 4px 16px color-mix(in srgb, var(--accent) 35%, transparent)}
   .topbar .navbtn:active{opacity:.7}
   pre{margin:0;padding:11px 16px;white-space:pre-wrap;font-size:0.8824em;line-height:1.4;color:var(--dim);font-family:inherit}
   dialog{border:0;background:var(--card);color:var(--ink);border-radius:26px;padding:0;width:min(92vw,460px)}
@@ -376,7 +379,7 @@
 <body>
 <!-- The compact bar a large title collapses into (UINavigationBar): glass, the
      title small and centred; shown once the large title has scrolled away. -->
-<div class="topbar" id="topbar"><button type="button" class="navbtn" id="discard">放弃</button><span>游戏机遥控</span><button type="button" class="navbtn" id="save">完成</button></div>
+<div class="topbar" id="topbar"><button type="button" class="navbtn" id="discard" aria-label="放弃"></button><span>游戏机遥控</span><button type="button" class="navbtn" id="save" aria-label="完成"></button></div>
 <div class="ptr" id="ptr" aria-hidden="true"><span class="ai" id="ptrai"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></div>
 <header>
   <h1>游戏机遥控</h1>
@@ -399,8 +402,8 @@
 
 <div class="toast" id="toast"></div>
 <script src="stamina.js?v=20260915035717"></script>
-<script src="app.js?v=20260915104404"></script>
+<script src="app.js?v=20260915105600"></script>
 <script>/* 验收脚本只在地址带 ?accept 时加载（docs/HIG-CHECKLIST.md 的验收程序）。 */
-if (new URLSearchParams(location.search).has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260915104404"; document.body.appendChild(s); }</script>
+if (new URLSearchParams(location.search).has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260915105600"; document.body.appendChild(s); }</script>
 </body>
 </html>

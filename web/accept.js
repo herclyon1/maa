@@ -123,9 +123,10 @@
     check("停止一切标题 = 红", badC, cs(lab.querySelector(".ttitle")).color, same(cs(lab.querySelector(".ttitle")).color, badC));
     check("选中的标签 = tint", tintC, cs(lab.querySelector("nav.tabs button.on")).color, same(cs(lab.querySelector("nav.tabs button.on")).color, tintC));
     lab.querySelector("#_d").id = "discard"; lab.querySelector("#_s").id = "save";
-    check("编辑栏「完成」= tint 底白字", tintC, cs(lab.querySelector("#save")).backgroundColor, same(cs(lab.querySelector("#save")).backgroundColor, tintC) && same(cs(lab.querySelector("#save")).color, "#ffffff"));
-    check("编辑栏「放弃」= tint 字", tintC, cs(lab.querySelector("#discard")).color, same(cs(lab.querySelector("#discard")).color, tintC));
-    num("编辑栏按钮高 44", 44, lab.querySelector("#save").getBoundingClientRect().height);
+    check("编辑栏 ✓ = tint 底白符号", tintC, cs(lab.querySelector("#save")).backgroundColor, same(cs(lab.querySelector("#save")).backgroundColor, tintC) && same(cs(lab.querySelector("#save")).color, "#ffffff"));
+    num("编辑栏圆钮 44", 44, lab.querySelector("#save").getBoundingClientRect().height); num("编辑栏圆钮宽 44", 44, lab.querySelector("#save").getBoundingClientRect().width);
+    num("编辑栏圆钮距边 20", 20, px(cs(lab.querySelector("#discard")).left));
+    check("编辑栏圆钮是圆的", "50%", cs(lab.querySelector("#save")).borderRadius, cs(lab.querySelector("#save")).borderRadius === "50%" || px(cs(lab.querySelector("#save")).borderRadius) >= 22);
     lab.remove();
     const meta = document.querySelector('meta[name="theme-color"]');
     check("theme-color 存在", "是", meta ? "是" : "缺", !!meta);
