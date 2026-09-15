@@ -143,7 +143,7 @@
       if (!sk.uid) throw new Error("密钥串里没有明日方舟的 uid");
       const d = await skGet(sk, ts, `/api/v1/game/player/info?uid=${encodeURIComponent(sk.uid)}`);
       const ap = ((d.status || {}).ap) || {};
-      out["明日方舟"] = { "理智": ap.current, "上限": ap.max, "回满": stampFrom(ap.completeRecoveryTime) };
+      out["明日方舟"] = arknightsLive(ap, Math.floor(Date.now() / 1000) + ts.skew);
     } catch (e) { out["明日方舟"] = { "错误": e.message }; }
     try {
       if (!sk.efRole) throw new Error("密钥串里没有终末地的角色");
@@ -153,9 +153,24 @@
     } catch (e) { out["终末地"] = { "错误": e.message }; }
     return out;
   }
+  /* 真实样本（2026-09-15 08:5x，森空岛 player/info）：
+       ap = {current: 2, max: 210, lastApAddTime: 1789392987, completeRecoveryTime: 1789467867}
+     current 是 lastApAddTime 那一刻的数（游戏最后一次同步），之后森空岛不再动它——
+     09-15 早上页面显示了一上午的 2/210 就是这么来的。现在的值要自己推：每 6 分钟 1 点，
+     封顶 max。第三方工具（skland-daily 之类）也是这么算的。 */
+  function arknightsLive(ap, nowSec) {
+    const cur = Number(ap.current), top = Number(ap.max), last = Number(ap.lastApAddTime);
+    if (!Number.isFinite(cur) || !Number.isFinite(top)) return { "错误": "森空岛没给理智" };
+    let live = cur;
+    if (Number.isFinite(last) && last > 0 && nowSec > last) live = Math.min(top, cur + Math.floor((nowSec - last) / 360));
+    const o = { "理智": live, "上限": top };
+    if (live < top && ap.completeRecoveryTime) o["回满"] = stampFrom(ap.completeRecoveryTime);
+    return o;
+  }
   /* 真实样本（2026-09-15 03:45，森空岛 card/detail）：
        dungeon = {"curStamina": "179", "maxTs": "1789490362", "maxStamina": "360"}
-     值是字符串。先按这三个名字取；名字变了再按含义认（带 stamina/ap/sanity 的数字，
+     值是字符串。curStamina 是活的（09-15 早上 216→219→221 跟着走），maxTs 反推每
+     7.2 分钟回 1 点，所以直接用。先按这三个名字取；名字变了再按含义认（带 stamina/ap/sanity 的数字，
      带 max 的是上限），都认不出就把看到的名字列出来。 */
   function endfieldFromDungeon(dg) {
     const keys = Object.keys(dg || {});
@@ -195,10 +210,18 @@
         roleId = String(w.roleId); serverId = w.serverId || "";
         saveTokens({ ...Stamina.tokens, kuro: { ...k, roleId, serverId } });
       }
-      const bat = (await kuroPost("/aki/roleBox/requestToken", { token: k.token, did: k.did, "b-at": "" }, { serverId, roleId })).accessToken;
-      const d = await kuroPost("/aki/roleBox/akiBox/baseData", { did: k.did, "b-at": bat }, { gameId: 3, serverId, roleId });
-      return { "波片": d.energy, "上限": d.maxEnergy, "备用": d.storeEnergy, "备用上限": d.storeEnergyLimit,
-               "周本": d.weeklyInstCount, "周本上限": d.weeklyInstCountLimit, "活跃": d.liveness, "活跃上限": d.livenessMaxCount };
+      /* akiBox/baseData 的 energy 是游戏上次同步时的数，几个小时不动（09-15 早上一直 91）；
+         小组件接口 widget/game3/refresh 给的是现在的数，带回满时刻。真实样本：
+           energyData = {name:"结晶波片", cur:141, total:240, refreshTimeStamp:1789465776}
+           storeEnergyData = {cur:3, total:480}  weeklyData = {name:"战歌重奏", cur:1, total:3}
+           livenessData = {cur:0, total:100} */
+      const w = await kuroPost("/gamer/widget/game3/refresh", { token: k.token, did: k.did }, { gameId: 3, serverId, roleId, type: 1, sizeType: 1 });
+      const e = w.energyData || {}, st = w.storeEnergyData || {}, wk = w.weeklyData || {}, lv = w.livenessData || {};
+      if (e.cur === undefined) throw new Error("库街区没给波片：" + Object.keys(w).slice(0, 6).join("、"));
+      const o = { "波片": e.cur, "上限": e.total, "备用": st.cur, "备用上限": st.total,
+                  "周本": wk.cur, "周本上限": wk.total, "活跃": lv.cur, "活跃上限": lv.total };
+      if (e.refreshTimeStamp > 0 && e.cur < e.total) o["回满"] = stampFrom(e.refreshTimeStamp);
+      return o;
     } catch (e) { return { "错误": e.message }; }
   }
 
