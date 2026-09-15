@@ -21,6 +21,7 @@ v = sys.argv[1]
 p = pathlib.Path("web/index.html")
 s = p.read_text(encoding="utf-8")
 s = re.sub(r'<script src="app\.js[^"]*"></script>', f'<script src="app.js?v={v}"></script>', s)
+s = re.sub(r'accept\.js\?v=[^"]*', f'accept.js?v={v}', s)   # the ?accept-only acceptance script
 s = re.sub(r'href="manifest\.webmanifest[^"]*"', f'href="manifest.webmanifest?v={v}"', s)
 # 图标：<link rel="...icon..." href="xxx.png?v=...">，连 manifest 里的一起盖
 s = re.sub(r'href="(apple-touch-icon|icon-\d+)\.png[^"]*"', rf'href="\1.png?v={v}"', s)

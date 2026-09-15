@@ -28,6 +28,21 @@ Two sources, both from Apple, both read 2026-09-14:
    them, large title ink at the 20 margin. WebKit's own `switch` control renders
    71×31, so it is scaled by .887 to the Settings size.
 
+## Acceptance (2026-09-15, after ~/Money/transit's accept.js)
+
+`scripts/mac/phone-accept.py` opens the published page in the simulator's Safari with
+`?accept=1&quiet=1`; `web/accept.js` (loaded only then) measures the DOM against the
+numbers in this file - root 17, margin 20, corner 26, row 53.33, hairline 0.34, toggle
+63×28 / 38×24 inset 18, header 17/600 28-6, footer 13 6-24, tiles 80 / 80.33 radius 16
+gap 8, device card 72, tab bar 62 with 54×72 buttons, top bar 44 + safe area, large
+title 34/700 - and stores the result in localStorage; the script reads it out of
+Safari's database in the device directory (nothing leaves the Mac), runs light and
+dark, exits 1 on any item off. 46/46 on 2026-09-15 09:45 both ways. **A change that
+fails it is a regression: fix the CSS, or - with a new measurement - this table first,
+then `accept.js`.** The other session's version (`~/Money/transit/ui/accept.js`,
+`DESIGN-HIG.md`) POSTs to a local server instead; the two should merge into one shared
+kit (proposed to that session 2026-09-15 09:38).
+
 A rendering check runs in the iOS 27.0 simulator (Xcode 27.0, iPhone 18 Pro Max)
 next to the Settings app; `scripts/mac/sf-symbols-export.swift` pulls the tab
 symbols from the system font. Each rule below is the source's wording condensed,
