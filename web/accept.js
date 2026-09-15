@@ -126,6 +126,16 @@
     num("按住：圆钮放大成 58 宽", 1.526, hm ? parseFloat(hm[1]) : NaN, 0.02); num("按住：圆钮放大成 38 高", 1.583, hm ? parseFloat(hm[2]) : NaN, 0.02);
     check("按住：圆钮变半透明玻璃", "非纯白", cs(held.querySelector("span"), "::after").backgroundImage.slice(0, 15), /gradient/.test(cs(held.querySelector("span"), "::after").backgroundImage));
     held.classList.remove("hold");
+    /* A tap through the page's own pointer handling, followed by the click the
+       browser fires anyway: the switch must flip exactly once and `change` fire
+       once (12:0x: it flipped twice and stayed put). */
+    const tapSw = lab.querySelectorAll(".sw")[1], tapIn = tapSw.querySelector("input"); let changes = 0;
+    tapIn.addEventListener("change", () => changes++);
+    const was = tapIn.checked;
+    const pe = (type, target) => target.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, clientX: 10, clientY: 10, isPrimary: true }));
+    pe("pointerdown", tapIn); pe("pointerup", tapSw); tapIn.click();
+    check("轻点一下：开关翻转一次", !was, tapIn.checked, tapIn.checked === !was);
+    check("轻点一下：change 只发一次", 1, changes, changes === 1);
     check("停止一切标题 = 红", badC, cs(lab.querySelector(".ttitle")).color, same(cs(lab.querySelector(".ttitle")).color, badC));
     check("选中的标签 = tint", tintC, cs(lab.querySelector("nav.tabs button.on")).color, same(cs(lab.querySelector("nav.tabs button.on")).color, tintC));
     lab.querySelector("#_d").id = "discard"; lab.querySelector("#_s").id = "save";

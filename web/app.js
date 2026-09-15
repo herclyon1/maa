@@ -1516,6 +1516,12 @@ function installNative() {
     const sw = e.target.closest && e.target.closest(".sw"); if (!sw) return;
     const input = sw.querySelector("input"); if (!input || input.disabled) return;
     e.preventDefault();
+    /* The browser still fires its own click after pointerup, and a click on a
+       checkbox toggles it - so a plain tap toggled twice (mine, then the
+       browser's) and ended where it started. 2026-09-15 12:0x on his Android:
+       「单击没办法开关了，只能长按拖动」. The click that follows this press is
+       swallowed; keyboard activation (no pointer press first) still works. */
+    sw.dataset.pe = "1";
     const startOn = input.checked, x0 = e.clientX; let dx = 0;
     sw.classList.add("live", "hold");
     sw.style.setProperty("--kx", (startOn ? 21 : 0) + "px");
@@ -1533,6 +1539,10 @@ function installNative() {
     sw.addEventListener("pointercancel", up, { once: true });
     try { sw.setPointerCapture(e.pointerId); } catch {}
   });
+  document.addEventListener("click", (e) => {
+    const sw = e.target.closest && e.target.closest(".sw");
+    if (sw && sw.dataset.pe) { e.preventDefault(); delete sw.dataset.pe; }
+  }, true);
   const bar = $("#topbar"), h1 = document.querySelector("header h1");
   if (bar && h1) {
     const root = document.documentElement;
