@@ -1126,11 +1126,12 @@ function applyEdits() {
   updateBar();
 }
 
-/* Pending edits turn the nav bar into an edit bar: 放弃 / 待保存 N 项 / 完成. */
+/* Pending edits turn the nav bar into an edit bar: ✕ 放弃 / 待保存 N 项 / ✓ 完成. */
 function updateBar() {
   const n = Object.keys(edits).length, bar = $("#topbar");
   bar.classList.toggle("editing", n > 0);
   bar.querySelector("span").textContent = n ? `待保存 ${n} 项` : "游戏机遥控";
+  if (!$("#save").firstChild) { $("#save").innerHTML = sf("checkmark"); $("#discard").innerHTML = sf("xmark"); }
 }
 
 /* ---------- 动作 ---------- */
