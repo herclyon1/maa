@@ -101,6 +101,32 @@
     }
     const h1 = document.querySelector("header h1");
     if (h1) { num("大标题字号", 34, px(cs(h1).fontSize), 0.1); check("大标题字重 700", 700, cs(h1).fontWeight, String(cs(h1).fontWeight) === "700"); }
+    /* State colours, probed on synthetic controls so they are checked whatever the
+       data happens to show: a switch on/off, the danger tile title, the selected
+       tab, the edit bar's two capsules. 2026-09-15 the green track rule vanished
+       and nobody noticed until the phone showed grey everywhere. */
+    const lab = document.createElement("div"); lab.style.cssText = "position:fixed;left:-9999px;top:0";
+    lab.innerHTML = `<label class="sw"><input type="checkbox" checked><span></span></label><label class="sw"><input type="checkbox"><span></span></label>` +
+      `<button class="tile danger"><span class="ttitle">x</span></button><nav class="tabs"><div class="seg"><button class="on">x</button></div></nav>` +
+      `<div class="topbar editing"><button class="navbtn" id="_d">x</button><button class="navbtn" id="_s">x</button></div>`;
+    document.body.appendChild(lab);
+    const rgb = (c) => { const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/.exec(c || ""); return m ? m.slice(1, 4).map(Number) : null; };
+    const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+    const same = (c, h, tol = 3) => { const a = rgb(c), b = hex(h); return !!a && a.every((v, i) => Math.abs(v - b[i]) <= tol); };
+    const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+    const okC = dark ? "#30d158" : "#34c759", tintC = dark ? "#0a84ff" : "#0088ff", badC = dark ? "#ff453a" : "#ff383c";
+    const [on, off] = lab.querySelectorAll(".sw span");
+    check("开关开 = 系统绿", okC, cs(on).backgroundColor, same(cs(on).backgroundColor, okC));
+    check("开关关 = 灰", "rgba(60,60,67,.3)", cs(off).backgroundColor, /60,\s*60,\s*67/.test(cs(off).backgroundColor));
+    const kx = /matrix\([^)]*,\s*([-\d.]+),\s*[-\d.]+\)$/.exec(cs(on, "::after").transform);
+    num("开关开：圆钮位移 21", 21, kx ? parseFloat(kx[1]) : NaN);
+    check("停止一切标题 = 红", badC, cs(lab.querySelector(".ttitle")).color, same(cs(lab.querySelector(".ttitle")).color, badC));
+    check("选中的标签 = tint", tintC, cs(lab.querySelector("nav.tabs button.on")).color, same(cs(lab.querySelector("nav.tabs button.on")).color, tintC));
+    lab.querySelector("#_d").id = "discard"; lab.querySelector("#_s").id = "save";
+    check("编辑栏「完成」= tint 底白字", tintC, cs(lab.querySelector("#save")).backgroundColor, same(cs(lab.querySelector("#save")).backgroundColor, tintC) && same(cs(lab.querySelector("#save")).color, "#ffffff"));
+    check("编辑栏「放弃」= tint 字", tintC, cs(lab.querySelector("#discard")).color, same(cs(lab.querySelector("#discard")).color, tintC));
+    num("编辑栏按钮高 44", 44, lab.querySelector("#save").getBoundingClientRect().height);
+    lab.remove();
     const meta = document.querySelector('meta[name="theme-color"]');
     check("theme-color 存在", "是", meta ? "是" : "缺", !!meta);
 
