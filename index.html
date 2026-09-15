@@ -9,10 +9,10 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="遥控">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260915110043">
+<link rel="manifest" href="manifest.webmanifest?v=20260915111255">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915110043">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915110043">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915111255">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915111255">
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
      上面跑的」). System colours from Apple's palette: grouped background, white
@@ -286,17 +286,38 @@
   /* On = system green. This line went missing in the 08:04 transform-only rewrite
      and every switch showed grey for two hours; accept.js now probes it. */
   .sw input:checked + span{background:var(--ok)}
-  /* The knob moves with transform only (translate + scaleX) so the whole flip stays
-     on the compositor - animating `width` re-laid the row every frame and stuttered. */
-  .sw span::after{content:"";position:absolute;width:38px;height:24px;left:2px;top:2px;background:#fff;border-radius:99px;
-                  box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16);transform-origin:left center;will-change:transform}
+  /* The knob moves with transform only (translate + scale) so the whole flip stays
+     on the compositor - animating `width` re-laid the row every frame and stuttered.
+     Pressed = the Liquid Glass lens. Read off the kit's Toggle - Switch, State=Pressed
+     (Figma web UI, 2026-09-15 11:2x, no API): the knob grows from 38×24 to 58×38 and
+     overhangs the 28pt track by 5 above and below; its "Glass Effect" layer is 60×40,
+     white at 9 % over the track, a 0.5 inner stroke #cccccc, three inner shadows (the
+     first: y 40, blur 10, spread −40, #282828 - a dark rim along the bottom), a
+     "Specular Light" layer on top and a "Shadow" layer beneath. CSS has no refraction,
+     so the lens is: translucent white with a top highlight, the rim as inset shadows,
+     backdrop blur + saturate, over the coloured track. */
+  .sw span::after{content:"";position:absolute;width:38px;height:24px;left:2px;top:2px;border-radius:99px;
+                  background:#fff;
+                  box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16);
+                  transform-origin:center;will-change:transform,background,box-shadow;
+                  transition:background .12s,box-shadow .12s}
   .sw input:checked + span::after{transform:translateX(21px)}
+  /* Finger down: the lens. 58/38 = 1.526, 38/24 = 1.583. */
+  .sw input:active + span::after{
+    transform:scale(1.526,1.583);transition:transform .12s cubic-bezier(.2,.8,.2,1),background .12s,box-shadow .12s;
+    background:linear-gradient(180deg, rgba(255,255,255,.62) 0%, rgba(255,255,255,.28) 45%, rgba(255,255,255,.12) 100%);
+    box-shadow:inset 0 0 0 .5px rgba(204,204,204,.95),
+               inset 0 -1.5px 3px rgba(40,40,40,.28),
+               inset 0 1px 1px rgba(255,255,255,.9),
+               0 4px 10px rgba(0,0,0,.18);
+    backdrop-filter:blur(1.5px) saturate(1.5);-webkit-backdrop-filter:blur(1.5px) saturate(1.5)}
+  .sw input:active:checked + span::after{transform:translateX(21px) scale(1.526,1.583)}
+  /* Release: the lens lands on the far side (~0.1 s) and relaxes back to the pill
+     (~0.2 s) while the track cross-fades - timings from the simulator recording. */
   .sw.live input:checked + span::after{animation:knob-on .34s cubic-bezier(.2,.8,.2,1) both}
   .sw.live input:not(:checked) + span::after{animation:knob-off .34s cubic-bezier(.2,.8,.2,1) both}
-  @keyframes knob-on{0%{transform:translateX(0) scaleX(1)}30%{transform:translateX(13px) scaleX(1.21)}100%{transform:translateX(21px) scaleX(1)}}
-  @keyframes knob-off{0%{transform:translateX(21px) scaleX(1)}30%{transform:translateX(0) scaleX(1.21)}100%{transform:translateX(0) scaleX(1)}}
-  .sw input:active + span::after{transform:scaleX(1.16);transition:transform .12s}
-  .sw input:active:checked + span::after{transform:translateX(15px) scaleX(1.16)}
+  @keyframes knob-on{0%{transform:translateX(0) scale(1.526,1.583)}30%{transform:translateX(15px) scale(1.55,1.35)}100%{transform:translateX(21px) scale(1)}}
+  @keyframes knob-off{0%{transform:translateX(21px) scale(1.526,1.583)}30%{transform:translateX(6px) scale(1.55,1.35)}100%{transform:translateX(0) scale(1)}}
   .changed{background:color-mix(in srgb, var(--accent) 8%, var(--card))}
   .posted{background:color-mix(in srgb, var(--ok) 8%, var(--card))}
   .row .sent{flex:1 0 100%;max-width:none;display:block;font-size:0.7647em;color:var(--ok);margin-top:2px;line-height:1.4;text-align:left}
@@ -402,8 +423,8 @@
 
 <div class="toast" id="toast"></div>
 <script src="stamina.js?v=20260915035717"></script>
-<script src="app.js?v=20260915110043"></script>
+<script src="app.js?v=20260915111255"></script>
 <script>/* 验收脚本只在地址带 ?accept 时加载（docs/HIG-CHECKLIST.md 的验收程序）。 */
-if (new URLSearchParams(location.search).has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260915110043"; document.body.appendChild(s); }</script>
+if (new URLSearchParams(location.search).has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260915111255"; document.body.appendChild(s); }</script>
 </body>
 </html>
