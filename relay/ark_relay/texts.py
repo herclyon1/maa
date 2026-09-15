@@ -211,6 +211,7 @@ _ACTION_ZH = {
     "toggle_task": "开关某个任务",
     "run_now": "现在就跑一趟",
     "skip_today": "今天这趟跳过",
+    "unskip_today": "取消今天的跳过",
     "debug_mode": "调试模式",
     "set_config": "改设置",
     "set_master": "改设置",

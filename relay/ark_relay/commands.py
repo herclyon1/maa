@@ -38,8 +38,8 @@ log = logging.getLogger("ark.commands")
 # ---------- gate ① : the whitelist ----------
 
 # Actions that only change what happens next, and undo themselves.
-REVERSIBLE = {"skip_today", "debug_mode", "skip_shutdown", "weekly_boss", "echo_farm_stop",
-              "echo_farm_until", "tacet_shots"}
+REVERSIBLE = {"skip_today", "unskip_today", "debug_mode", "skip_shutdown", "weekly_boss",
+              "echo_farm_stop", "echo_farm_until", "tacet_shots"}
 
 # Actions that write to a config file on disk.
 MUTATING = {"set_stage", "set_medicine", "toggle_task", "set_wait_time",
@@ -639,6 +639,13 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
         if action == "skip_today":
             return _skip_today(str(cmd.get("queue") or names.MORNING),
                                str(cmd.get("day") or "").strip())
+        if action == "unskip_today":
+            # The phone's skip switch turned back on: drop the flag, or re-enable
+            # the queue if the skip already engaged.
+            from .modes import unskip  # noqa: PLC0415
+            return unskip(Path(os.environ.get("ARK_STATE_DIR", "./ark-state")),
+                          os.environ.get("ARK_AUTOMAS_DIR"),
+                          str(cmd.get("queue") or names.MORNING))
         if action == "debug_mode":
             from .modes import set_debug  # noqa: PLC0415
             state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))

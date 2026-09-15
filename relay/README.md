@@ -92,6 +92,7 @@ JSON patch.
 |---|---|---|
 | `run_now` | - | **会真的开跑一趟**：调 `/api/dispatch/start` 派发那条队列。手动派发的唯一正门是 `scripts/mac/run-one.sh`（内含忙闲闸门），不要裸调 dispatch |
 | `skip_today` | yes | no - disables that queue for the day and restores it afterwards. Takes `"day":"YYYY-MM-DD"`; the inbox is only read at boot, so a stale one is refused rather than skipping the wrong day |
+| `unskip_today` | yes | no - cancels today's `skip_today` for that queue: drops the flag, or re-enables the queue at once if the skip already engaged (the phone's queue switch turned back on, 2026-09-15) |
 | `debug_mode` | yes, self-expiring | no - `days:N` or `off:true`; while active: no shutdown, no missed-run alarms |
 | `set_stage` | no, writes config | **yes** |
 | `set_medicine` | no, writes config | **yes** |

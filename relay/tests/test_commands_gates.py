@@ -114,7 +114,7 @@ minimal = {
     "set_stage": {"value": ""}, "set_medicine": {"value": None},
     "set_wait_time": {"value": None}, "toggle_task": {"name": "x"},
     "set_config": {}, "set_master": {}, "run_now": {},
-    "skip_today": {}, "debug_mode": {"off": True}, "weekly_boss": {},
+    "skip_today": {}, "unskip_today": {}, "debug_mode": {"off": True}, "weekly_boss": {},
     "echo_farm": {"boss": 1, "until": "08:30"}, "echo_farm_stop": {},
     "echo_farm_until": {"until": "21:00"},
     "skip_shutdown": {"off": True},

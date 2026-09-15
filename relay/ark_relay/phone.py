@@ -619,6 +619,9 @@ def state_payload(cfg, state_dir: Path) -> dict:
                                   "从": r.get("started")} if r else {})(
                 __import__("ark_relay.echofarm", fromlist=["x"]).current(state_dir)),
             "下次别关机": modes.skip_armed(state_dir),
+            # Which queue sits out today ("" = none): the page shows it as the
+            # queue row's switch (2026-09-15).
+            "今天跳过": modes.skipped_today(state_dir) or "",
             "无音区截图": modes.tacet_shots_on(state_dir),
             "最近指令": modes.receipts(state_dir),
             "周本": wb,

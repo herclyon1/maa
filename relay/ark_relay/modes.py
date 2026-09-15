@@ -313,6 +313,53 @@ def _maybe_engage(state_dir: Path, automas_dir: Path | None,
     return [*out, f"今天（{day}）跳过队列「{queue}」：已临时停用，过后自动恢复"]
 
 
+def skipped_today(state_dir: Path, now: datetime | None = None) -> str | None:
+    """The queue sitting out today - a flag not yet engaged, or an engaged marker.
+
+    Read by the phone snapshot so the page can show the skip as a switch that
+    reflects the machine (2026-09-15); None when nothing is skipped today.
+    """
+    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    day = now.strftime("%Y-%m-%d")
+    store = _store(Path(state_dir))
+    flag = store.get("queues", f"skip_day:{day}")
+    if flag:
+        return names.canonical(str(flag).strip() or names.MORNING)
+    info = _restore_marker(Path(state_dir))
+    if info and str(info.get("day")) == day:
+        return names.canonical(str(info.get("queue") or names.MORNING))
+    return None
+
+
+def unskip(state_dir: Path, automas_dir: Path | None, queue: str,
+           now: datetime | None = None) -> tuple[bool, str]:
+    """Cancel today's skip for `queue`: drop the flag if it has not engaged, or
+    re-enable the queue right away if it has (the restore that the marker would
+    have done after the occasion, done now). The switch on the phone page
+    turns back on through this (2026-09-15)."""
+    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    day = now.strftime("%Y-%m-%d")
+    state_dir = Path(state_dir)
+    store = _store(state_dir)
+    queue = names.canonical(queue)
+    flag = store.get("queues", f"skip_day:{day}")
+    if flag and names.canonical(str(flag).strip() or names.MORNING) == queue:
+        store.pop("queues", f"skip_day:{day}")
+        return True, f"今天（{day}）不再跳过队列「{queue}」"
+    info = _restore_marker(state_dir)
+    if info and str(info.get("day")) == day \
+            and names.canonical(str(info.get("queue") or names.MORNING)) == queue:
+        if not automas_dir:
+            return False, f"取消跳过「{queue}」失败：没有 AUTO-MAS 目录"
+        from . import queues  # noqa: PLC0415
+        ok, detail = queues.apply(Path(automas_dir), queue, enabled=True)
+        if not ok:
+            return False, f"取消跳过「{queue}」失败：{detail}"
+        store.pop("queues", "skip_restore")
+        return True, f"队列「{queue}」今天的跳过已取消，定时已恢复"
+    return False, f"队列「{queue}」今天本来就没有跳过"
+
+
 def _maybe_restore(state_dir: Path, automas_dir: Path | None,
                    now: datetime) -> list[str]:
     info = _restore_marker(state_dir)

@@ -13,6 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay import modes
+from ark_relay import queues as _q
 from ark_relay.statestore import StateStore
 from ark_relay.config import SERVER_TZ
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -55,3 +56,31 @@ check("2026-08-20 是日期", modes._is_day("2026-08-20"), True)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
+
+print("\n[2026-09-15] skipped_today / unskip：手机页的队列开关要能读到、也能关回去")
+S2 = tmpdir() / "state"; S2.mkdir(parents=True)
+DAY = NOW.strftime("%Y-%m-%d")
+check("没跳过时是 None", modes.skipped_today(S2, NOW), None)
+StateStore(S2).set("queues", f"skip_day:{DAY}", "早班")
+check("标记写下就读得到", modes.skipped_today(S2, NOW), "早班")
+ok, msg = modes.unskip(S2, None, "晚班", NOW)
+check("取消别的队列不算", ok, False)
+ok, msg = modes.unskip(S2, None, "早班", NOW)
+check("标记阶段取消：成功", ok, True)
+check("标记没了", modes.skipped_today(S2, NOW), None)
+# engaged stage: marker present, queue disabled in AUTO-MAS - the restore goes through queues.apply
+calls = []
+_real_apply = _q.apply
+_q.apply = lambda d, q, enabled: (calls.append((q, enabled)) or (True, "ok"))
+try:
+    StateStore(S2).set("queues", "skip_restore", {"queue": "早班", "day": DAY, "last_time": "09:00"})
+    check("已生效阶段也读得到", modes.skipped_today(S2, NOW), "早班")
+    ok, msg = modes.unskip(S2, Path("/tmp/automas"), "早班", NOW)
+    check("已生效阶段取消：成功", ok, True)
+    check("立刻把队列重新启用", calls, [("早班", True)])
+    check("恢复标记清掉了", modes.skipped_today(S2, NOW), None)
+    ok, msg = modes.unskip(S2, Path("/tmp/automas"), "早班", NOW)
+    check("再取消一次：如实说本来就没跳过", ok, False)
+finally:
+    _q.apply = _real_apply
+
