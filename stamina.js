@@ -215,12 +215,24 @@
            energyData = {name:"结晶波片", cur:141, total:240, refreshTimeStamp:1789465776}
            storeEnergyData = {cur:3, total:480}  weeklyData = {name:"战歌重奏", cur:1, total:3}
            livenessData = {cur:0, total:100} */
-      const w = await kuroPost("/gamer/widget/game3/refresh", { token: k.token, did: k.did }, { gameId: 3, serverId, roleId, type: 1, sizeType: 1 });
+      /* getData is the widget's cached copy (cheap, never rate-limited); refresh makes
+         库街区 pull the game again and answers 「操作频繁，请稍后再试」 when asked more
+         than a few times in a row - which is what every open of the page did on
+         2026-09-15 morning. So: read the cache; only if it is older than ten minutes
+         ask for a refresh, and keep the cache when that is refused. */
+      const args = { gameId: 3, serverId, roleId, type: 1, sizeType: 1 }, hdr = { token: k.token, did: k.did };
+      let w = await kuroPost("/gamer/widget/game3/getData", hdr, args);
+      const age = w.serverTime ? Date.now() / 1000 - Number(w.serverTime) : Infinity;
+      if (age > 600) { try { w = await kuroPost("/gamer/widget/game3/refresh", hdr, args); } catch { /* rate-limited: the cache will do */ } }
       const e = w.energyData || {}, st = w.storeEnergyData || {}, wk = w.weeklyData || {}, lv = w.livenessData || {};
       if (e.cur === undefined) throw new Error("库街区没给波片：" + Object.keys(w).slice(0, 6).join("、"));
-      const o = { "波片": e.cur, "上限": e.total, "备用": st.cur, "备用上限": st.total,
+      /* The live count follows from the full-time stamp (1 波片 per 6 min), so a cached
+         copy still shows the right number now. */
+      const now = Date.now() / 1000, full = Number(e.refreshTimeStamp) || 0, total = Number(e.total);
+      const live = full > now ? Math.max(Number(e.cur), total - Math.ceil((full - now) / 360)) : (full > 0 ? total : Number(e.cur));
+      const o = { "波片": Math.min(total, live), "上限": total, "备用": st.cur, "备用上限": st.total,
                   "周本": wk.cur, "周本上限": wk.total, "活跃": lv.cur, "活跃上限": lv.total };
-      if (e.refreshTimeStamp > 0 && e.cur < e.total) o["回满"] = stampFrom(e.refreshTimeStamp);
+      if (full > now && live < total) o["回满"] = stampFrom(full);
       return o;
     } catch (e) { return { "错误": e.message }; }
   }
