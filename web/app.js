@@ -1507,7 +1507,32 @@ function closeMenu() {
 
 function installNative() {
   // 开关的动效只在被人摸过之后才播（.live），页面重画时不会每个开关都弹一下
-  document.addEventListener("pointerdown", (e) => { const sw = e.target.closest && e.target.closest(".sw"); if (sw) sw.classList.add("live"); }, { passive: true });
+  /* The switch behaves like UISwitch: finger down shows the glass lens (.hold), the
+     knob follows a drag, release snaps - past the middle after a drag, or to the
+     other side for a tap. Long holds must not fall into Safari's own long-press
+     handling (the 2026-09-15 11:20 recording: a 0.9 s hold flipped nothing), so
+     the pointer is captured and the click is synthesised. */
+  document.addEventListener("pointerdown", (e) => {
+    const sw = e.target.closest && e.target.closest(".sw"); if (!sw) return;
+    const input = sw.querySelector("input"); if (!input || input.disabled) return;
+    e.preventDefault();
+    const startOn = input.checked, x0 = e.clientX; let dx = 0;
+    sw.classList.add("live", "hold");
+    sw.style.setProperty("--kx", (startOn ? 21 : 0) + "px");
+    const move = (ev) => { dx = ev.clientX - x0; sw.style.setProperty("--kx", Math.max(0, Math.min(21, (startOn ? 21 : 0) + dx)) + "px"); };
+    const up = () => {
+      sw.removeEventListener("pointermove", move);
+      const dragged = Math.abs(dx) > 6;
+      const on = dragged ? ((startOn ? 21 : 0) + dx) > 10.5 : !startOn;
+      if (dragged) sw.classList.remove("live");           // no fly-in: the knob is already there
+      sw.classList.remove("hold"); sw.style.removeProperty("--kx");
+      if (on !== input.checked) { input.checked = on; input.dispatchEvent(new Event("change", { bubbles: true })); }
+    };
+    sw.addEventListener("pointermove", move);
+    sw.addEventListener("pointerup", up, { once: true });
+    sw.addEventListener("pointercancel", up, { once: true });
+    try { sw.setPointerCapture(e.pointerId); } catch {}
+  });
   const bar = $("#topbar"), h1 = document.querySelector("header h1");
   if (bar && h1) {
     const root = document.documentElement;
