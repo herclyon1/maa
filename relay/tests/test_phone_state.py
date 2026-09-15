@@ -356,6 +356,9 @@ net = FakeNet()
 net.queue.append(FakeResp(lines))
 check("同一批消息第二次取：一条都不再执行（否则同一条指令跑两趟）",
       with_net(net, lambda: mb2.fetch()), [])
+check("记住的只有指令的 id，状态和坏消息不占名额（2026-09-15 名额被 watch 和状态挤满，旧指令重放）",
+      sorted(mb2._seen), ["m1", "m5"])
+check("名额够一个早上的 watch 续租（8 分钟一条）用两周", phone.SEEN_KEEP >= 2000, True)
 
 net = FakeNet()
 net.queue.append(FakeResp(lines))

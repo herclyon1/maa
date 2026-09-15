@@ -49,9 +49,15 @@ NTFY = "https://ntfy.sh"
 # How long a command may wait in the mailbox. The machine boots twice a day, with
 # a maximum gap of about 11.5 hours.
 MAX_AGE = 24 * 3600
-# How many handled message ids to remember. At a few commands a day, 200 lasts
-# several months.
-SEEN_KEEP = 200
+# How many handled command ids to remember. Only commands count - the relay's
+# own state pushes and heartbeats share the topic but never need remembering.
+# 2026-09-15: the page renews its watch every 8 minutes and every state push is
+# two messages, so the old 200 (sized for "a few commands a day", and counting
+# every message) rolled over within a morning; at the 09:01 restart six
+# commands from the previous evening came back out of the mailbox and were only
+# stopped by the "scripts are running" gate. 2000 ids is a couple of weeks of
+# watch renewals, and commands older than MAX_AGE are refused anyway.
+SEEN_KEEP = 2000
 _UA = "ark-relay"
 
 
@@ -388,8 +394,8 @@ class Mailbox:
             msg = unpack(self.pin, str(env.get("message") or ""))
             if msg and msg.get("kind") == "cmd":
                 out.append(msg["body"])
-            if mid:
-                fresh.append(mid)
+                if mid:
+                    fresh.append(mid)      # commands only - see SEEN_KEEP
         if fresh:
             self._seen = [*self._seen, *fresh]
             self._save_seen()

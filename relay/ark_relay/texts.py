@@ -216,6 +216,11 @@ _ACTION_ZH = {
     "set_master": "改设置",
     "weekly_boss": "改打第几个周本",
     "skip_shutdown": "下次跑完不关机",
+    "echo_farm": "开始刷声骸",
+    "echo_farm_until": "改刷声骸的收工时刻",
+    "echo_farm_stop": "刷声骸提前收工",
+    "tacet_shots": "无音区结算截图",
+    "estop": "停止一切",
 }
 
 
