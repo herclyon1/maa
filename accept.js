@@ -51,14 +51,16 @@
       const rr = sw.closest(".row");
       if (rr) num("开关距卡片右边", 18, rr.getBoundingClientRect().right - r.right);
     }
-    const h2 = document.querySelector("section h2");
+    /* A header right after a footer gets 4 (the footer's 24 is the gap); measure a plain one. */
+    const h2 = [...document.querySelectorAll("section h2")].find((h) => { const prev = h.parentElement.previousElementSibling; return !(prev && prev.lastElementChild && prev.lastElementChild.classList.contains("foot")); });
     if (h2) {
       const c = cs(h2);
       num("段头字号", 17, px(c.fontSize), 0.05); check("段头字重 600", 600, c.fontWeight, String(c.fontWeight) === "600");
       num("段头上边距", 28, px(c.paddingTop)); num("段头下边距", 6, px(c.paddingBottom));
       num("段头文字内缩", 20, px(c.paddingLeft));
     }
-    const foot = document.querySelector("section .foot");
+    /* The footer under the number tiles sits 8 below them (tiles have no card edge); measure a plain one. */
+    const foot = [...document.querySelectorAll("section .foot")].find((f) => !(f.previousElementSibling && f.previousElementSibling.classList.contains("nums")));
     if (foot) {
       const c = cs(foot);
       num("段尾字号", 13, px(c.fontSize), 0.05); num("段尾上边距", 6, px(c.paddingTop)); num("段尾下边距", 24, px(c.paddingBottom));
