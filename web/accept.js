@@ -116,7 +116,8 @@
       document.body.appendChild(box);
     }
   }
-  /* The page renders after its first snapshot; measure once the status blocks exist or after 3 s. */
+  /* The page renders after its first snapshot and the number tiles after the game
+     APIs answer: measure once the tiles exist (or after 8 s). */
   let tries = 0;
-  const t = setInterval(() => { tries++; if (document.querySelector(".tile") || document.querySelector(".row") || tries > 30) { clearInterval(t); run(); } }, 100);
+  const t = setInterval(() => { tries++; if (document.querySelector(".num") || tries > 80) { clearInterval(t); run(); } }, 100);
 })();
