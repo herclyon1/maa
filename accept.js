@@ -120,6 +120,12 @@
     check("开关关 = 灰", "rgba(60,60,67,.3)", cs(off).backgroundColor, /60,\s*60,\s*67/.test(cs(off).backgroundColor));
     const kx = /matrix\([^)]*,\s*([-\d.]+),\s*[-\d.]+\)$/.exec(cs(on, "::after").transform);
     num("开关开：圆钮位移 21", 21, kx ? parseFloat(kx[1]) : NaN);
+    /* Finger down: the kit's Pressed knob is 58×38 (scale 1.526 × 1.583 of 38×24). */
+    const held = lab.querySelectorAll(".sw")[1]; held.classList.add("hold");
+    const hm = /matrix\(([-\d.]+),\s*[-\d.]+,\s*[-\d.]+,\s*([-\d.]+)/.exec(cs(held.querySelector("span"), "::after").transform);
+    num("按住：圆钮放大成 58 宽", 1.526, hm ? parseFloat(hm[1]) : NaN, 0.02); num("按住：圆钮放大成 38 高", 1.583, hm ? parseFloat(hm[2]) : NaN, 0.02);
+    check("按住：圆钮变半透明玻璃", "非纯白", cs(held.querySelector("span"), "::after").backgroundImage.slice(0, 15), /gradient/.test(cs(held.querySelector("span"), "::after").backgroundImage));
+    held.classList.remove("hold");
     check("停止一切标题 = 红", badC, cs(lab.querySelector(".ttitle")).color, same(cs(lab.querySelector(".ttitle")).color, badC));
     check("选中的标签 = tint", tintC, cs(lab.querySelector("nav.tabs button.on")).color, same(cs(lab.querySelector("nav.tabs button.on")).color, tintC));
     lab.querySelector("#_d").id = "discard"; lab.querySelector("#_s").id = "save";
