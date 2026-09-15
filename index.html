@@ -9,10 +9,10 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="遥控">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260915090422">
+<link rel="manifest" href="manifest.webmanifest?v=20260915092254">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915090422">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915090422">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260915092254">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260915092254">
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
      上面跑的」). System colours from Apple's palette: grouped background, white
@@ -158,6 +158,7 @@
        display:flex;flex-direction:column;justify-content:space-between}
   .nico{width:32px;height:32px;border-radius:50%;background:var(--c);display:flex;align-items:center;justify-content:center}
   .nico .sf{width:18px;height:18px;background:#fff}
+  .nico .rico{width:24px;height:24px;object-fit:contain;display:block}
   .num .big{position:absolute;top:10px;right:14px;font-size:1.4118em;line-height:1.1667em;font-weight:700;letter-spacing:-.02em;color:var(--ink)}
   .num .big small{font-size:.58em;font-weight:600;color:var(--dim)}
   .num .lab{margin-top:6px;font-size:0.8824em;line-height:1.1765em;font-weight:600;color:var(--dim)}
@@ -364,6 +365,6 @@
 
 <div class="toast" id="toast"></div>
 <script src="stamina.js?v=20260915035717"></script>
-<script src="app.js?v=20260915090422"></script>
+<script src="app.js?v=20260915092254"></script>
 </body>
 </html>
