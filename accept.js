@@ -121,7 +121,7 @@
     const kx = /matrix\([^)]*,\s*([-\d.]+),\s*[-\d.]+\)$/.exec(cs(on, "::after").transform);
     num("开关开：圆钮位移 21", 21, kx ? parseFloat(kx[1]) : NaN);
     /* Finger down: the kit's Pressed knob is 58×38 (scale 1.526 × 1.583 of 38×24). */
-    const held = lab.querySelectorAll(".sw")[1]; held.classList.add("hold");
+    const held = lab.querySelectorAll(".sw")[1]; held.classList.add("live", "hold");   // as app.js sets them: no transition in the way
     const hm = /matrix\(([-\d.]+),\s*[-\d.]+,\s*[-\d.]+,\s*([-\d.]+)/.exec(cs(held.querySelector("span"), "::after").transform);
     num("按住：圆钮放大成 58 宽", 1.526, hm ? parseFloat(hm[1]) : NaN, 0.02); num("按住：圆钮放大成 38 高", 1.583, hm ? parseFloat(hm[2]) : NaN, 0.02);
     check("按住：圆钮变半透明玻璃", "非纯白", cs(held.querySelector("span"), "::after").backgroundImage.slice(0, 15), /gradient/.test(cs(held.querySelector("span"), "::after").backgroundImage));
