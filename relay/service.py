@@ -85,14 +85,7 @@ INSTALLER_HINTS = (b"auto-mas-setup", b"unins")
 
 def _automas_shell_running() -> bool:
     """True if the Electron shell is up, whatever the backend is doing."""
-    try:
-        out = subprocess.run(
-            ["tasklist", "/FI", "IMAGENAME eq AUTO-MAS.exe", "/NH"],
-            capture_output=True, timeout=25,
-        ).stdout
-    except (OSError, subprocess.SubprocessError):
-        return True   # cannot tell -> assume it is there, i.e. do not kill
-    return b"AUTO-MAS.exe" in out
+    return boot_stages.shell_running()
 
 
 def _installer_running() -> bool:
@@ -105,6 +98,33 @@ def _installer_running() -> bool:
     return any(h in out for h in INSTALLER_HINTS)
 
 
+def _python_processes() -> "list[tuple[int, str]] | None":
+    """(pid, command line) of every python.exe, or None when the query itself failed.
+
+    Through WMI's COM interface, not `wmic.exe`: the command-line tool is gone
+    from Windows 11 25H2 (this machine, build 26200), and from 2026-08-28 to
+    2026-09-17 both callers below took its FileNotFoundError as "cannot tell",
+    which one of them read as "alive". The keeper was blind for three weeks:
+    it never revived a missing backend and never raised its alarm, and on
+    2026-09-17 evening that is why nothing tried again after the boot-time
+    revival failed. The WMI service itself is fine - the process-start
+    subscription below uses it - so the same door is used here.
+    """
+    try:
+        import pythoncom  # noqa: PLC0415
+        import win32com.client  # noqa: PLC0415
+        pythoncom.CoInitialize()
+        try:
+            wmi = win32com.client.GetObject("winmgmts:\\\\.\\root\\cimv2")
+            rows = wmi.ExecQuery(
+                "SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name='python.exe'")
+            return [(int(r.ProcessId), str(r.CommandLine or "")) for r in rows]
+        finally:
+            pythoncom.CoUninitialize()
+    except Exception:  # noqa: BLE001 - the callers decide what "unknown" means
+        return None
+
+
 def _automas_running() -> bool:
     """True if AUTO-MAS's Python backend is up.
 
@@ -112,18 +132,16 @@ def _automas_running() -> bool:
     perfectly happily with a dead backend, which is precisely the state the
     machine was found in - the UI looked fine and nothing was scheduling runs.
 
-    tasklist prints in the console's ANSI codepage (GBK here), so the output is
-    never decoded; a UnicodeDecodeError in the watchdog would be the watchdog
-    killing itself.
+    When the process list cannot be read at all, the API answers instead: an
+    answering API is a live backend by definition, and a silent one is not
+    assumed alive any more (that assumption is what blinded the keeper, see
+    _python_processes).
     """
-    try:
-        out = subprocess.run(
-            ["wmic", "process", "where", "name='python.exe'", "get", "commandline"],
-            capture_output=True, timeout=25,
-        ).stdout
-    except (OSError, subprocess.SubprocessError):
-        return True  # cannot tell -> assume alive rather than launch a duplicate
-    return b"main.py" in out
+    procs = _python_processes()
+    if procs is None:
+        from ark_relay import commands  # noqa: PLC0415
+        return commands.mas_up()
+    return any("main.py" in cmd for _, cmd in procs)
 
 
 def _automas_handle():
@@ -134,21 +152,12 @@ def _automas_handle():
     so a backend that dies at 09:05 is revived at 09:05 rather than at 09:07 -
     and in between, the relay is not doing anything at all.
     """
-    try:
-        out = subprocess.run(
-            ["wmic", "process", "where", "name='python.exe'",
-             "get", "processid,commandline"],
-            capture_output=True, timeout=25,
-        ).stdout
-    except (OSError, subprocess.SubprocessError):
-        return None
-    for raw in out.splitlines():
-        if b"main.py" not in raw:
+    for pid, cmd in (_python_processes() or []):
+        if "main.py" not in cmd:
             continue
-        pid = raw.split()[-1]
         try:
-            return win32api.OpenProcess(win32con.SYNCHRONIZE, False, int(pid))
-        except (ValueError, Exception):  # noqa: BLE001
+            return win32api.OpenProcess(win32con.SYNCHRONIZE, False, pid)
+        except Exception:  # noqa: BLE001
             return None
     return None
 

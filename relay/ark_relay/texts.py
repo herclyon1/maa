@@ -248,6 +248,11 @@ def automas_down_body(tries: int) -> str:
     return f"已连续 {tries} 次启动 AUTO-MAS，都没起来，需要人工看一眼。中继会继续试，间隔每次翻倍。"
 
 
+def automas_boot_down_body() -> str:
+    return ("开机后 AUTO-MAS 没起来，中继拉了一次也没起来。它不起来，接下来这一班就不会跑。"
+            "中继会每 3 分钟再拉一次，连拉 3 次还不行会再报一次。")
+
+
 def preupdate_unconfirmed_tail() -> str:
     return "\n\n这不是「无需更新」——是这一轮没能确认有没有更新。在确认之前，机器跑的还是原来的版本。"
 
@@ -287,7 +292,7 @@ def samples() -> list[str]:
         patches(3), unconfirmed("预更新", 2), failed("MaaEnd"), self_healed("OK-WW"),
         cant_enter("MaaEnd"), missing(not_run("早班")), missing(not_run_in("OK-WW", "早班")),
         self_healed_body(3), failed_body_head(3), phone_deferred_body("跳过它下一趟"),
-        rerun_body(["OK-WW"]), watch_lost_body(), automas_down_body(4),
+        rerun_body(["OK-WW"]), watch_lost_body(), automas_down_body(4), automas_boot_down_body(),
         preupdate_unconfirmed_tail(), cant_enter_body("MaaEnd", 3, True, ""),
         missed_queue_body(30), missed_item_body(["MAA"], "OK-WW", 75),
     ]

@@ -48,6 +48,22 @@ def _maaend_dir(cfg):
     return plan.script_dir(cfg.automas_dir, "MaaEnd")
 
 
+def shell_running() -> bool:
+    """True if the Electron shell (AUTO-MAS.exe) is up, whatever the backend is doing.
+
+    Lives here rather than in service.py because ensure_automas needs it and the
+    import between the two modules runs one way only. service.py re-exports it.
+    """
+    try:
+        out = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq AUTO-MAS.exe", "/NH"],
+            capture_output=True, timeout=25,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return True   # cannot tell -> assume it is there, i.e. do not kill
+    return b"AUTO-MAS.exe" in out
+
+
 def _revive_automas() -> None:
     """Restart AUTO-MAS through its scheduled task, which owns session 1.
 
@@ -60,9 +76,19 @@ def _revive_automas() -> None:
     The task also still counts as running while that shell is alive, and
     `schtasks /run` on an already-running task returns 0x41301 and starts
     nothing. `/end` clears that before `/run` can take.
+
+    Since v5.5.0-beta.6 (2026-09-17) the shell does its start-up through a
+    separate `auto-mas-runtime.exe` ("Runtime managed" mode: sync the backend
+    repo, prepare the managed Python, sync the locked dependencies, then
+    supervise the backend). That process survives `taskkill AUTO-MAS.exe` and
+    keeps holding the environment lock; the shell started next then fails its
+    own bootstrap with MUTATION_IN_PROGRESS and parks on the initialisation page
+    「等待用户处理」 - no backend, no queue, until a person clicks. That is what
+    took out the 21:30 queue on 2026-09-17. So the runtime goes too.
     """
     for cmd in (
         ["taskkill", "/IM", "AUTO-MAS.exe", "/F"],
+        ["taskkill", "/IM", "auto-mas-runtime.exe", "/F"],
         ["schtasks", "/end", "/tn", AUTOMAS_TASK],
     ):
         try:
@@ -77,25 +103,58 @@ def _revive_automas() -> None:
         pass  # next check will try again
 
 
-def ensure_automas(timeout: float = 45) -> bool:
+# How long an AUTO-MAS shell that is already up gets to open its API before it
+# is killed and restarted. The logon task starts the shell seconds after the
+# relay service starts, and since v5.5.0-beta.6 the shell first runs a
+# bootstrap (repo sync, managed Python, locked dependencies) before the backend
+# even starts: 20-25 s measured on 2026-09-17 with the mirrors answering, and
+# longer the first time after an update or on a slow mirror (0.12 MB/s that
+# evening). On 2026-09-17 21:20 the relay checked 11 s after the shell started,
+# found no API, killed the shell mid-bootstrap, and the evening queue never ran.
+SHELL_STARTUP_GRACE = 150
+
+
+def _wait_for_api(deadline: float) -> "float | None":
+    """Poll the API until `deadline` (monotonic). Returns seconds waited on success, None on timeout."""
+    from ark_relay import commands  # noqa: PLC0415
+    t0 = time.monotonic()
+    while time.monotonic() < deadline:
+        time.sleep(3)
+        if commands.mas_up():
+            return time.monotonic() - t0
+    return None
+
+
+def ensure_automas(timeout: float = 120, grace: float = SHELL_STARTUP_GRACE) -> bool:
     """Start AUTO-MAS if its API is not answering, then wait for it to come up.
 
     The user, 2026-09-03: 「MAS 不在的时候你要拉起他，
     不希望见到任何理由开机时检测不到配置，而且要快。」
+
+    Order matters: a shell that is already up is given `grace` seconds to open
+    its API on its own before anything is killed - killing it earlier is what
+    lost the 2026-09-17 evening queue (see _revive_automas). Only a shell that
+    is absent, or one that has used up its grace, is force-restarted, and the
+    restart itself gets `timeout` seconds.
     """
     import logging  # noqa: PLC0415
     from ark_relay import commands  # noqa: PLC0415
     log = logging.getLogger("ark.service")
     if commands.mas_up():
         return True
+    if shell_running():
+        log.info("AUTO-MAS 窗口已在、接口还没开，先等它自己起来（最多 %.0f 秒）", grace)
+        waited = _wait_for_api(time.monotonic() + grace)
+        if waited is not None:
+            log.info("AUTO-MAS 自己起来了（等了 %.0f 秒）", waited)
+            return True
+        log.warning("AUTO-MAS 等了 %.0f 秒接口还是不通，杀掉重拉", grace)
     log.warning("AUTO-MAS 接口不在，拉起它")
     _revive_automas()
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        time.sleep(3)
-        if commands.mas_up():
-            log.info("AUTO-MAS 已拉起（%.0f 秒）", timeout - (deadline - time.monotonic()))
-            return True
+    waited = _wait_for_api(time.monotonic() + timeout)
+    if waited is not None:
+        log.info("AUTO-MAS 已拉起（%.0f 秒）", waited)
+        return True
     log.error("AUTO-MAS 拉起后 %.0f 秒内接口仍不通", timeout)
     return False
 
@@ -496,7 +555,11 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
     hb = Heartbeat(box.topic, cfg.state_dir)
     run_phone_cmd = _make_phone_cmd(engine, notifier, log, hb, push_state, cfg.state_dir)
 
-    ensure_automas()
+    if not ensure_automas():
+        # Say it now, to the group: with no backend the next queue will not run,
+        # and the keeper's own alarm only fires after its third failed revival
+        # (2026-09-17: 45 s of silence in the log, then nothing until 21:55).
+        notifier.send(texts.AUTOMAS_DOWN, texts.automas_boot_down_body(), alert=True)
     push_state("开机")
     if box.enabled:
         for body in box.fetch():

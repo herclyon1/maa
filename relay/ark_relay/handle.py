@@ -79,6 +79,13 @@ _MAA_LOG_TAIL = 16 * 1024 * 1024
 
 
 
+# What AUTO-MAS writes as the entire history log of a record it created only to
+# close a retry round (real text, 2026-09-17 history/2026-09-17/endfield/MaaEnd-06-32-49.log,
+# the whole file):
+MAAEND_NOTHING_TO_RUN_LOG = "MaaEnd 没有可执行任务，请检查任务配置, 无日志记录"
+MAAEND_NOTHING_TO_RUN = "没有可执行任务"
+
+
 def _maaend_app_log(maaend_dir: "str | Path | None",
                     started: datetime) -> str:
     """The app log MaaEnd wrote **itself** for this round.
@@ -402,6 +409,16 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
                     "MAA")
             return outcome.summarize(outcome.maa_checks(maa_log), "MAA")
         if rec.script == "MaaEnd":
+            # AUTO-MAS closes a retry round with one more record whose whole log
+            # is MAAEND_NOTHING_TO_RUN_LOG - bookkeeping, not a run: no MaaEnd
+            # process, no app log. Judging it as a run is how 2026-09-17 10:43
+            # got a false ROUND_INCOMPLETE (the completion-marker check) pushed
+            # to the group two seconds after the real run's log had that very
+            # line: the record starts 2 s after the log's last write, so the
+            # mtime cut in _maaend_app_log excluded that log.
+            if MAAEND_NOTHING_TO_RUN in text:
+                log.info("%s 是 AUTO-MAS 的收尾记录（没有可执行任务），不是一趟运行，不核对", rec.run_id)
+                return None
             shots = _maaend_new_shots(eng.cfg.maaend_dir, rec.started)
             # Read AUTO-MAS's history log together with MaaEnd's own app log:
             # the wrap-up marker only exists in the latter and task start/finish
