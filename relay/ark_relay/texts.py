@@ -85,6 +85,7 @@ CONFIG_CHANGED = "📱 配置已修改"
 CONFIG_FAILED = "📱 配置没改成"
 SELFUPDATE_FAILED = "⚠️ 中继自更新没成功"
 WATCH_LOST = "⚠️ 中继暂时不能在脚本跑完时马上处理结果"
+RELAY_ERROR = "🩺 中继自己报错了"
 AUTOMAS_DOWN = "🔌 AUTO-MAS 启动不起来"
 ROUND_INCOMPLETE = "⚠️ 这一轮没干完"
 MAAEND_REENABLED = "🔓 终末地日常已开回"
@@ -238,6 +239,29 @@ def rerun_body(reran: list[str]) -> str:
     return "、".join(reran) + " 已单独开跑"
 
 
+# Logger name -> what that part of the relay is called in a notification.
+_RELAY_PARTS = {
+    "ark.service": "主程序", "ark.engine": "核心", "ark.handle": "记账与告警", "ark.report": "日报",
+    "ark.shutdown": "关机判定", "ark.missed": "漏跑核对", "ark.preupdate": "预更新", "ark.gameupdate": "游戏更新",
+    "ark.selfupdate": "自更新", "ark.phone": "手机通道", "ark.evidence": "证据外送", "ark.collect_watch": "采集看守",
+    "ark.collect_retry": "采集补跑", "ark.inbox": "待办信箱", "ark.snapshot": "状态快照", "ark.notify": "推送",
+}
+
+
+def relay_error_body(where: str, what: str, at: str = "") -> str:
+    """`where` is the logger name, `what` the first line of the ERROR record.
+
+    The record's own words are quoted only when they read as plain language;
+    a line full of class names or English is left in relay.log and said so -
+    「翻不出就明说」 (the user, 2026-09-13), never a bare 「出错」.
+    """
+    part = _RELAY_PARTS.get(where, "一个不常见的部分")
+    when = f"（{at}）" if at else ""
+    said = f"它说：{what}" if what and not plain(what) else "原话有术语没翻译，留在中继日志里"
+    return (f"这次开机中继第一次报错{when}，出在「{part}」。{said}\n"
+            "同一次开机只报这一条，后面的都在中继日志里。这不代表脚本没跑，是中继自己有一处出了错，需要人看一眼。")
+
+
 def watch_lost_body() -> str:
     return ("脚本跑完的结果暂时要等到下一次定时检查才处理（最长一小时），不再是一跑完就处理。"
             "中继会自己反复尝试恢复，恢复了就不用管；\n"
@@ -281,7 +305,9 @@ def samples() -> list[str]:
         PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, SKIP_MODE, ESTOP,
         ESTOP_FAILED, NO_SHUTDOWN, MAAEND_PRUNED, ECHO_FARM, ECHO_FARM_DONE,
         PHONE_DEFERRED, CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
-        AUTOMAS_DOWN, ROUND_INCOMPLETE, MAAEND_REENABLED, MAAEND_MIGRATED, TACET_DROPS,
+        AUTOMAS_DOWN, ROUND_INCOMPLETE, MAAEND_REENABLED, MAAEND_MIGRATED, TACET_DROPS, RELAY_ERROR,
+        relay_error_body("ark.service", "ConnectionRefusedError: [WinError 10061]", "21:21"),
+        relay_error_body("ark.report", "日报没发出去", "10:47"),
         COLLECT_RETRY_START, COLLECT_RETRY_OK, COLLECT_RETRY_FAILED, COLLECT_RECURRENT, COLLECT_NARROWED,
         collect_narrowed_body(["路线15：红矛叶"]),
         EVIDENCE_SAVED, EVIDENCE_SOURCE_CHANGED,

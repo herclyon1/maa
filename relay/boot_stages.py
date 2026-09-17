@@ -224,6 +224,9 @@ def _stage_bootstrap():
 
     notifier = Notifier(cfg)
     engine = Engine(cfg, LocalSource(cfg), State(cfg.state_dir), notifier)
+    # From here on the first ERROR any module logs reaches the group (see errwatch).
+    from ark_relay import errwatch  # noqa: PLC0415
+    errwatch.install(notifier, lambda: bool(getattr(engine, "_shutdown_issued", False)))
     engine.bootstrap()
     log.info("服务模式启动，监视 %s（变更即处理，兜底 %d 秒）",
              cfg.history_dir, cfg.poll_seconds)
