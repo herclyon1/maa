@@ -167,6 +167,18 @@ check("预更新除 AUTO-MAS 下载超时外没有别的未确认项",
 check("AUTO-MAS 预更新有明确结论（装了 / 无需更新 / 干净放弃）",
       any(("留到下次开机再装" in l or "无需更新" in l or "已更新" in l)
           and "AUTO-MAS" in l for l in recent))
+# 2026-09-17: one ERROR line at 21:21 (AUTO-MAS not up after the boot revival)
+# sat unread all evening while the 21:30 queue never ran. Every ERROR the relay
+# writes is a fault by definition - list them, do not let them hide.
+errors = [l for l in recent if " ERROR " in l[:40]]
+check("今天 relay.log 没有 ERROR 行", not errors,
+      "；".join(x.rstrip()[:90] for x in errors[:5]) or "无")
+# Since v5.5.0-beta.6 AUTO-MAS needs 20-25 s of bootstrap before its API opens;
+# the relay now waits for it. A boot where it still had to be killed and
+# relaunched, or never came up, is worth a look even when the queue ran.
+revive = [l for l in recent if "秒内接口仍不通" in l or "杀掉重拉" in l]
+check("今天每次开机 AUTO-MAS 都自己起来了（没等到要杀重拉）", not revive,
+      "；".join(x.rstrip()[:90] for x in revive[:3]) or "无")
 
 print("\n=== 7. 会让机器整夜不关的一次性开关 ===")
 # 09-03 and 09-04 the machine stayed on all night because 「这次别关机」 was
