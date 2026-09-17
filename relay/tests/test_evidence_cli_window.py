@@ -50,6 +50,12 @@ with tempfile.TemporaryDirectory() as td:
     except SystemExit as exc:
         missing = str(exc)
     check("账本里没有的 run_id 明说", "没有 nope" in missing)
+    stub = {"run_id": f"{day}/endfield/MaaEnd-S", "script": "MaaEnd", "started": (now - timedelta(hours=1)).isoformat(),
+            "finished": (now - timedelta(hours=1)).isoformat(), "duration_known": False, "ok": True, "user": "u"}
+    with ledger.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(stub) + "\n")
+    rid, (t0, t1) = cli.evidence_window(cfg, "MaaEnd")
+    check("结束时间不可信的记录：窗封在开始 + 3 小时，不拉到现在", rid.endswith("MaaEnd-S") and abs((t1 - t0) - (cli.UNKNOWN_END_SECONDS + 2 * evidence.WINDOW_SLACK)) < 1)
 
     print("\n[--hours N：最近 N 小时到现在]")
     rid, (t0, t1) = cli.evidence_window(cfg, "MaaEnd", hours=2)

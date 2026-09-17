@@ -180,13 +180,17 @@ def _ledger_runs(cfg: Config, script: str, days: int = 3) -> list[dict]:
     return out
 
 
+# The longest a round with retries has taken on this machine is under three hours.
+UNKNOWN_END_SECONDS = 3 * 3600
+
+
 def evidence_window(cfg: Config, script: str, run_id: str = "", hours: float = 0.0,
                     since: str = "") -> tuple[str, tuple[float, float]]:
     """(run_id, window) for a hand-made bundle. A window is never optional:
     `--hours N` = the last N hours, `--since` = from that moment until now,
     `--run-id` = that run's own window, nothing = the latest run of the script.
     """
-    from datetime import datetime  # noqa: PLC0415
+    from datetime import datetime, timedelta  # noqa: PLC0415
 
     from . import evidence  # noqa: PLC0415
     from .config import SERVER_TZ  # noqa: PLC0415
@@ -208,6 +212,10 @@ def evidence_window(cfg: Config, script: str, run_id: str = "", hours: float = 0
     e = runs[0]
     started = datetime.fromisoformat(e["started"])
     finished = datetime.fromisoformat(e["finished"]) if e.get("finished") and e.get("duration_known", True) else None
+    if finished is None:
+        # A record whose end is not trustworthy (AUTO-MAS's wrap-up stubs) must not
+        # open the window up to "now" hours later; no round runs longer than this.
+        finished = started + timedelta(seconds=UNKNOWN_END_SECONDS)
     return e["run_id"], evidence.run_window(started, finished)
 
 
