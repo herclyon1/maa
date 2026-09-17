@@ -981,3 +981,57 @@ the overrides log 「nightmare nest: 只刷 […]（设置来自母本）」, an
 count denominator clicked. Health check and `okww_effective` now judge the last
 run's log as well as the master. Verified live 09-13 12:45: 「只刷 ['落渊南丘']（设置来自母本）」
 then 「指定点位都已打满，跳过」.
+
+## The relay killed a starting AUTO-MAS at boot, then went blind: the 21:30 queue never ran (2026-09-17, fixed same night)
+
+The user's summary: 「游戏脚本今天早上报了一次错，我没时间去管，结果今天晚上还出错了，
+这次晚上更严重，是压根没有运行。」 Two separate faults, both in the relay.
+
+**Morning, 10:43 - a false alarm.** AUTO-MAS closes a MaaEnd retry round with one
+more history record whose entire log is `MaaEnd 没有可执行任务，请检查任务配置, 无日志记录`
+(69 bytes). `_verify_outcome` judged it like a run: `_maaend_app_log` keeps only
+app logs modified at or after the record's start, the real run's log had its
+last write two seconds *before* that stub's start, so the completion marker
+was "missing" and 「⚠️ 这一轮没干完 · 日志里没有『自动执行任务完成』」 went to the
+group. The game work (route 11 re-run, all routes done) had finished at 10:32:47.
+Fix: `handle.MAAEND_NOTHING_TO_RUN` - a record whose log is that stub is not
+checked.
+
+**Evening, 21:20 - the real loss.** First evening boot after the morning's
+pre-update had installed AUTO-MAS v5.5.0-beta.6. That version starts through
+`auto-mas-runtime.exe` ("Runtime managed" mode): sync the backend repo, prepare
+a managed Python, sync the locked dependencies, *then* start the backend -
+20-25 s with the mirrors answering. Timeline from relay.log / frontend.log:
+
+| 北京 | |
+|---|---|
+| 21:20:28 | logon task starts AUTO-MAS.exe; bootstrap begins |
+| 21:20:39 | `ensure_automas()` finds no API 11 s in and runs `_revive_automas()`: `taskkill /IM AUTO-MAS.exe`, `schtasks /run` |
+| 21:20:44 | new shell starts; the bootstrap child `auto-mas-runtime.exe` (pid 19116) of the killed shell is still alive and holds the environment lock |
+| 21:20:45 | new shell: `MUTATION_IN_PROGRESS 已有运行中的环境变更操作` → 「Runtime 初始化失败，等待用户处理」- parked on the init page, no backend |
+| 21:21:28 | `AUTO-MAS 拉起后 45 秒内接口仍不通` - one ERROR line, no alarm |
+| 21:22-22:38 | the keeper never retried: `_automas_running()` ran `wmic`, which Windows 11 25H2 (build 26200) no longer ships; the FileNotFoundError was read as "cannot tell → assume alive". relay.log shows its last 「已挂上 AUTO-MAS 进程句柄」 on 08-28 12:19 - blind for three weeks, masked by the boot-time `ensure_automas` succeeding every other day |
+| 21:30 | queue not run; 21:55 「🔌 晚班 该跑没跑」 (correct) |
+| 22:38 | a phone `refresh` called `ensure_automas()` again; the relaunch took 15 s |
+
+Why it had never bitten before: with beta.5 the API was usually open before the
+relay looked, and when it was not, the kill-and-relaunch left no lock behind.
+`docs/OKWW-NEST-MODES.md` had already recorded that `wmic` was gone; the code
+that depended on it was never grepped.
+
+Fixes (e2e15df, deployed 22:57):
+* `boot_stages.ensure_automas`: a shell that is already up gets `SHELL_STARTUP_GRACE`
+  (150 s) to open its API before anything is killed; only then kill, relaunch and
+  wait another 120 s. Log lines: 「窗口已在、接口还没开，先等它自己起来」 / 「自己起来了（等了 N 秒）」.
+* `boot_stages._revive_automas`: also `taskkill /IM auto-mas-runtime.exe`.
+* Boot revival failure pushes `AUTOMAS_DOWN` to the group at once (`texts.automas_boot_down_body`).
+* `service._python_processes`: WMI through COM (`Win32_Process`) instead of `wmic`;
+  when the query itself fails, `commands.mas_up()` decides - never "assume alive".
+* `scripts/mac/lib/healthcheck.py` (78644f6): lists the day's ERROR lines and any
+  boot where AUTO-MAS had to be killed and relaunched.
+
+Verified: `relay/tests/test_automas_boot_revival.py`; relay.log 23:00:21 「已挂上 AUTO-MAS
+进程句柄」 (first since 08-28); the drill `~/Money/styl-work/drill_boot.py` at 23:34
+(kill shell + runtime → keeper revives within 1 s → bootstrap clean → `ensure_automas`
+waits 4 s and returns). The missed MAA run was made up by hand at 23:15-23:31
+(ledger `MAA-19-14-38`). Real-boot confirmation is the 09-18 08:45 boot log.
