@@ -86,6 +86,7 @@ CONFIG_FAILED = "📱 配置没改成"
 SELFUPDATE_FAILED = "⚠️ 中继自更新没成功"
 WATCH_LOST = "⚠️ 中继暂时不能在脚本跑完时马上处理结果"
 RELAY_ERROR = "🩺 中继自己报错了"
+SELFCHECK_FAILED = "🩺 开机自检没过"
 AUTOMAS_DOWN = "🔌 AUTO-MAS 启动不起来"
 ROUND_INCOMPLETE = "⚠️ 这一轮没干完"
 MAAEND_REENABLED = "🔓 终末地日常已开回"
@@ -248,6 +249,18 @@ _RELAY_PARTS = {
 }
 
 
+def relay_part(where: str) -> str:
+    """The plain name of the part of the relay a logger name stands for."""
+    return _RELAY_PARTS.get(where, "一个不常见的部分")
+
+
+def selfcheck_failed_body(total: int, bad: list) -> str:
+    """`bad` is [(name, detail)] of the checks that did not hold."""
+    lines = "\n".join(f"· {n}" + (f"：{d}" if d else "") for n, d in bad)
+    return (f"开机自检 {total} 项里有 {len(bad)} 项不成立：\n{lines}\n"
+            "这些不成立的后果：这一班跑不了，或者跑了中继也看不见。请人看一眼。")
+
+
 def relay_error_body(where: str, what: str, at: str = "") -> str:
     """`where` is the logger name, `what` the first line of the ERROR record.
 
@@ -255,7 +268,7 @@ def relay_error_body(where: str, what: str, at: str = "") -> str:
     a line full of class names or English is left in relay.log and said so -
     「翻不出就明说」 (the user, 2026-09-13), never a bare 「出错」.
     """
-    part = _RELAY_PARTS.get(where, "一个不常见的部分")
+    part = relay_part(where)
     when = f"（{at}）" if at else ""
     said = f"它说：{what}" if what and not plain(what) else "原话有术语没翻译，留在中继日志里"
     return (f"这次开机中继第一次报错{when}，出在「{part}」。{said}\n"
@@ -308,6 +321,7 @@ def samples() -> list[str]:
         AUTOMAS_DOWN, ROUND_INCOMPLETE, MAAEND_REENABLED, MAAEND_MIGRATED, TACET_DROPS, RELAY_ERROR,
         relay_error_body("ark.service", "ConnectionRefusedError: [WinError 10061]", "21:21"),
         relay_error_body("ark.report", "日报没发出去", "10:47"),
+        SELFCHECK_FAILED, selfcheck_failed_body(11, [("读得到每个程序是怎么启动的（系统自带的那条路）", "读不到"), ("调度程序的开机任务计划还在", "退出码 1")]),
         COLLECT_RETRY_START, COLLECT_RETRY_OK, COLLECT_RETRY_FAILED, COLLECT_RECURRENT, COLLECT_NARROWED,
         collect_narrowed_body(["路线15：红矛叶"]),
         EVIDENCE_SAVED, EVIDENCE_SOURCE_CHANGED,

@@ -99,30 +99,9 @@ def _installer_running() -> bool:
 
 
 def _python_processes() -> "list[tuple[int, str]] | None":
-    """(pid, command line) of every python.exe, or None when the query itself failed.
-
-    Through WMI's COM interface, not `wmic.exe`: the command-line tool is gone
-    from Windows 11 25H2 (this machine, build 26200), and from 2026-08-28 to
-    2026-09-17 both callers below took its FileNotFoundError as "cannot tell",
-    which one of them read as "alive". The keeper was blind for three weeks:
-    it never revived a missing backend and never raised its alarm, and on
-    2026-09-17 evening that is why nothing tried again after the boot-time
-    revival failed. The WMI service itself is fine - the process-start
-    subscription below uses it - so the same door is used here.
-    """
-    try:
-        import pythoncom  # noqa: PLC0415
-        import win32com.client  # noqa: PLC0415
-        pythoncom.CoInitialize()
-        try:
-            wmi = win32com.client.GetObject("winmgmts:\\\\.\\root\\cimv2")
-            rows = wmi.ExecQuery(
-                "SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name='python.exe'")
-            return [(int(r.ProcessId), str(r.CommandLine or "")) for r in rows]
-        finally:
-            pythoncom.CoUninitialize()
-    except Exception:  # noqa: BLE001 - the callers decide what "unknown" means
-        return None
+    """(pid, command line) of every python.exe, or None when the query itself failed. See procs.py."""
+    from ark_relay import procs  # noqa: PLC0415
+    return procs.python_processes()
 
 
 def _automas_running() -> bool:
@@ -383,6 +362,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         boot_stages._stage_announce_update(notifier, log)
         boot_stages._stage_evidence_sources(cfg, notifier, log)
         inbox, collect, deferred = boot_stages._stage_inbox_and_phone(self, cfg, engine, notifier, log)
+        boot_stages._stage_selfcheck(cfg, notifier, log)
         boot_stages._stage_preupdate(cfg, notifier, log)
         boot_stages._stage_reenable_maaend(cfg, notifier, log)
         boot_stages._stage_collect_watch(cfg, notifier, log)

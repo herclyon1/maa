@@ -202,6 +202,7 @@ Server酱, zero alarms in the group.
 | ⚠️ 中继自更新没成功 | group | the relay is stuck on old code |
 | ⚠️ 中继暂时不能在脚本跑完时马上处理结果 | group | results would be delayed |
 | 🩺 中继自己报错了 | group | the relay's first ERROR of a boot; one per boot, the rest stay in relay.log (2026-09-17: one unread ERROR line, evening queue lost) |
+| 🩺 开机自检没过 | group | a boot-time assumption (process table, AUTO-MAS API, its logon task, writable dirs, a channel) does not hold; the shift may not run |
 | 🛑 没能停干净，需要你动手 | group | estop failed |
 | ⚠️ 自动采集：补跑仍有路线没走通 | group | the day's gathering stayed incomplete |
 | 🚩 自动采集：有路线连续两天补跑失败，是复发性问题 | group | needs a person (upstream issue) |

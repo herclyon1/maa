@@ -50,6 +50,8 @@ above.
 | `collect_retry.py` | 自动采集只补跑失败的路线（上游 #5660 不做）；连续两天仍败＝复发，请人工提 issue |
 | `collect_watch.py` | 盯 MaaEnd 的 maafw.log：路线一失败就把母本收窄成只剩失败的，AUTO-MAS 的重跑只走这几条；重跑一开始就改回 |
 | `errwatch.py` | 中继自己第一条 ERROR 报群，一次开机只报一条；关机令发出后的不报（09-17 一条没人看的 ERROR 丢了晚班） |
+| `selfcheck.py` | 开机自检：进程表、系统 WMI、调度程序接口/后端/任务计划、排期、目录可写、通知通道逐项验，不成立当场群报；同时给日报「中继体检」两行 |
+| `procs.py` | 用系统 WMI 读 python.exe 的进程号和命令行（wmic 在 25H2 已删） |
 | `evidence.py` | 按三家上游导出按钮的规则打证据包、钉住其源码、传到云端（gofile） |
 | `maintenance.py` | 三个游戏官方停服维护公告的机器可读来源 |
 | `skland.py` | 森空岛客户端，拿终末地的角色练度 |

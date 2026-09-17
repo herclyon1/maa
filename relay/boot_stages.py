@@ -683,6 +683,12 @@ def _preupdate_okww(cfg, notifier, log, problems) -> None:
                       "\n".join(f"· {n}" for n in patch_notes))
 
 
+def _stage_selfcheck(cfg, notifier, log) -> None:
+    """Verify every assumption the relay stands on, once, and tell the group about any that fails (selfcheck.py)."""
+    from ark_relay import selfcheck  # noqa: PLC0415
+    selfcheck.report(cfg, notifier, log)
+
+
 def _stage_preupdate(cfg, notifier, log) -> None:
     """Do the updates for all four programs inside the boot window (once a day)."""
     # MaaEnd only checks for updates at startup, and when it finds one it

@@ -221,6 +221,11 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     # 不就没人看了吗？」 - so they live here, once, at the end.
     changes = changes_of_day(eng.cfg.state_dir, day)
     tail2 = f"\n\n今天中继改了什么\n{changes}" if changes else ""
+    # The sign-off check's two relay items, done by the machine (the user,
+    # 2026-09-18: a check that needs a person to run it is no check).
+    from . import selfcheck  # noqa: PLC0415
+    if health := selfcheck.daily_section(day):
+        tail2 = f"\n\n{health}" + tail2
     # The post-queue per-route retry used to push 「补跑开始 / 补跑后全部走完」;
     # its outcome belongs here (2026-09-14).
     if retry := retry_line(eng.cfg.state_dir, day, getattr(eng.cfg, "maaend_dir", None)):
