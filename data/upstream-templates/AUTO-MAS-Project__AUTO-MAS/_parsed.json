@@ -1,0 +1,257 @@
+{
+ "01-cn-bug-script.yaml": {
+  "kind": "yml",
+  "title": "",
+  "labels": [
+   "bug"
+  ],
+  "fields": [
+   [
+    "在提问之前...",
+    true
+   ],
+   [
+    "涉及的脚本类型",
+    true
+   ],
+   [
+    "AUTO-MAS 版本",
+    true
+   ],
+   [
+    "被托管脚本的版本",
+    true
+   ],
+   [
+    "问题描述",
+    true
+   ],
+   [
+    "复现步骤",
+    true
+   ],
+   [
+    "日志确认",
+    true
+   ],
+   [
+    "运行环境",
+    false
+   ],
+   [
+    "截图或录屏",
+    false
+   ],
+   [
+    "还有别的吗？",
+    false
+   ]
+  ],
+  "route": "issue",
+  "notes": [
+   "表单模板：必须走网页表单提交（命令行提不上标签，勾选框要真实点击）"
+  ]
+ },
+ "02-cn-bug-maafw.yaml": {
+  "kind": "yml",
+  "title": "",
+  "labels": [
+   "bug",
+   "专项: MaaFW"
+  ],
+  "fields": [
+   [
+    "在提问之前...",
+    true
+   ],
+   [
+    "AUTO-MAS 版本",
+    true
+   ],
+   [
+    "MaaFW 项目名与版本",
+    true
+   ],
+   [
+    "控制链路",
+    true
+   ],
+   [
+    "问题描述",
+    true
+   ],
+   [
+    "复现步骤",
+    true
+   ],
+   [
+    "日志确认",
+    true
+   ],
+   [
+    "项目的 interface.json",
+    false
+   ],
+   [
+    "运行环境",
+    false
+   ],
+   [
+    "截图或录屏",
+    false
+   ]
+  ],
+  "route": "issue",
+  "notes": [
+   "表单模板：必须走网页表单提交（命令行提不上标签，勾选框要真实点击）"
+  ]
+ },
+ "03-cn-bug-general.yaml": {
+  "kind": "yml",
+  "title": "",
+  "labels": [
+   "bug"
+  ],
+  "fields": [
+   [
+    "在提问之前...",
+    true
+   ],
+   [
+    "出问题的位置",
+    true
+   ],
+   [
+    "AUTO-MAS 版本",
+    true
+   ],
+   [
+    "问题描述",
+    true
+   ],
+   [
+    "复现步骤",
+    true
+   ],
+   [
+    "日志确认",
+    true
+   ],
+   [
+    "运行环境",
+    false
+   ],
+   [
+    "截图或录屏",
+    false
+   ]
+  ],
+  "route": "issue",
+  "notes": [
+   "表单模板：必须走网页表单提交（命令行提不上标签，勾选框要真实点击）"
+  ]
+ },
+ "04-cn-feature-request.yaml": {
+  "kind": "yml",
+  "title": "",
+  "labels": [
+   "enhancement"
+  ],
+  "fields": [
+   [
+    "在提问之前...",
+    true
+   ],
+   [
+    "需求描述",
+    true
+   ],
+   [
+    "想解决什么问题",
+    true
+   ],
+   [
+    "你设想的方案",
+    false
+   ],
+   [
+    "补充",
+    false
+   ]
+  ],
+  "route": "issue",
+  "notes": [
+   "表单模板：必须走网页表单提交（命令行提不上标签，勾选框要真实点击）"
+  ]
+ },
+ "05-cn-ai-report.yaml": {
+  "kind": "yml",
+  "title": "",
+  "labels": [
+   "AI",
+   "bug"
+  ],
+  "fields": [
+   [
+    "提交所用的 AI 工具或模型",
+    true
+   ],
+   [
+    "问题描述",
+    true
+   ],
+   [
+    "证据",
+    true
+   ],
+   [
+    "确认",
+    true
+   ]
+  ],
+  "route": "issue",
+  "notes": [
+   "表单模板：必须走网页表单提交（命令行提不上标签，勾选框要真实点击）"
+  ]
+ },
+ "06-cn-others.yaml": {
+  "kind": "yml",
+  "title": "",
+  "labels": [
+   "question"
+  ],
+  "fields": [
+   [
+    "说说你遇到的问题？",
+    false
+   ]
+  ],
+  "route": "issue",
+  "notes": [
+   "表单模板：必须走网页表单提交（命令行提不上标签，勾选框要真实点击）"
+  ]
+ },
+ "07-en-blank.yaml": {
+  "kind": "yml",
+  "title": "",
+  "labels": [],
+  "fields": [
+   [
+    "Description",
+    true
+   ],
+   [
+    "AUTO-MAS version",
+    true
+   ],
+   [
+    "Logs",
+    true
+   ]
+  ],
+  "route": "issue",
+  "notes": [
+   "表单模板：必须走网页表单提交（命令行提不上标签，勾选框要真实点击）"
+  ]
+ }
+}
