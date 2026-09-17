@@ -1035,3 +1035,35 @@ Verified: `relay/tests/test_automas_boot_revival.py`; relay.log 23:00:21 「已�
 (kill shell + runtime → keeper revives within 1 s → bootstrap clean → `ensure_automas`
 waits 4 s and returns). The missed MAA run was made up by hand at 23:15-23:31
 (ledger `MAA-19-14-38`). Real-boot confirmation is the 09-18 08:45 boot log.
+
+## MXU's 「结束进程」 turned off in the MaaEnd master (2026-09-18) - AUTO-MAS beta.6 closes the game itself, and after a kill its close step fails
+
+Since AUTO-MAS v5.5.0-beta.6 the managed Win32 launch appends MaaEnd's
+`CloseGamePC` (「关闭游戏（PC）」) to the end of every run's task list
+(`app/task/MaaEnd/AutoProxy.py` 1487-1494, `_place_managed_task(..., first=False)`,
+enabled when no later stage follows) and leaves the user's own
+`__MXU_KILLPROC__` (「结束进程」, kills Endfield.exe) in front of it. On 2026-09-17
+both 自动采集 rounds ended 结束进程 → 关闭游戏（PC）: the game was dead 50 ms
+before the close step started, MaaFW logged 21 × `GetWindowRect failed, error
+code: 1400`, the step failed, and AUTO-MAS's `check_log` (1874-1875, no
+`task_name in task_dict` guard for 「任务失败」) raised `KeyError:
+'❌关闭游戏（PC）'` → 「任务执行情况解析失败」 → a whole extra retry round, then a
+69-byte 「没有可执行任务」 wrap-up record (which in turn tripped the relay's
+false 「这一轮没干完」, fixed the same day). Upstream: AUTO-MAS#848 covers the
+KeyError (filed by their Sentry from this machine's event); the ordering is
+described in `~/Money/styl-work/issue-draft-automas-close-game.md`, unfiled.
+
+What was changed (user's decision, 2026-09-18 01:53): in the master
+`data/59da8762-…/Default/ConfigFile/mxu-MaaEnd.json`, `__MXU_KILLPROC__.enabled`
+true → false, through the relay's own `set_master` command (receipt in relay.log
+「📱 手机指令 set_master：__MXU_KILLPROC__：True → False」); backup beside it,
+`mxu-MaaEnd.json.bak-killproc-20260918-015326`. `Game.CloseOnFinish` is true and
+`Run.TaskTransitionMethod` is NoAction, so the game now stays open between
+stages and `CloseGamePC` closes it once at the end.
+
+When to turn it back on: if AUTO-MAS stops appending `CloseGamePC` (or moves it
+ahead of the user's tasks), or if `CloseGamePC` proves unreliable on its own -
+the first MaaEnd run after this change is 2026-09-18 09:00; the check is: no
+「结束进程」 line, 「任务完成: ❌关闭游戏（PC）」, no Endfield.exe afterwards, one
+round, no wrap-up stub. Turn back with
+`order-now.sh '{"action":"set_master","game":"MaaEnd","path":"__MXU_KILLPROC__/@enabled","value":true,"confirmed":true}'`.
