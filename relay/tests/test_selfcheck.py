@@ -72,6 +72,10 @@ with tempfile.TemporaryDirectory() as td:
     check("正文是人话", n.sent and texts.plain(n.sent[0][1]), [])
     check("走群", route_of(texts.SELFCHECK_FAILED, alert=True), "group")
 
+print("\n[进程表读取：没有系统 WMI 的机器上返回「读不到」，不假装活着]")
+from ark_relay import procs
+check("这台没有 pywin32 的 Mac 上返回 None", procs.python_processes(), None)
+
 print("\n[日报两行：从当天 relay.log 来]")
 log = """09-17 08:45:28 WARNING ark.service  AUTO-MAS 接口不在，拉起它
 09-17 08:46:46 INFO    ark.service  AUTO-MAS 已拉起（24 秒）
