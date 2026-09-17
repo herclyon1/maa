@@ -267,6 +267,10 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         self.stop_event = win32event.CreateEvent(None, 1, 0, None)
 
     def SvcStop(self):  # noqa: N802 - name required by the framework
+        # pywin32 routes SERVICE_CONTROL_SHUTDOWN here as well (SvcShutdown ->
+        # SvcStop), so this is also where a Windows shutdown first shows up.
+        from ark_relay import errwatch  # noqa: PLC0415
+        errwatch.mark_stopping()
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         win32event.SetEvent(self.stop_event)
         # The phone channel's long-lived connection has to be cut deliberately,

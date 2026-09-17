@@ -73,6 +73,38 @@ _wait(n2, 1, 0.4)
 check("关机中的 ERROR 不报", n2.sent, [])
 logging.getLogger(errwatch.ARK).removeHandler(h2)
 
+print("\n[手动 shutdown /s：中继自己没下过关机令，但服务收到了停止/关机控制 → 不报]")
+# The real record, 2026-09-18 02:20 (the machine was being switched off by hand;
+# the group got 「🩺 中继自己报错了（主程序）」 for it).
+REAL = "进程启动事件监听中断，改用 120 秒活性检查，5 秒后重订阅"
+n4 = _Notifier()
+h4 = errwatch.install(n4, lambda: False)          # relay's own flag not set - it did not issue the shutdown
+errwatch.mark_stopping()                          # what SvcStop now does (Windows routes SERVICE_CONTROL_SHUTDOWN there)
+lg.error(REAL)
+_wait(n4, 1, 0.4)
+check("服务已收到停止/关机控制 → 不报", n4.sent, [])
+logging.getLogger(errwatch.ARK).removeHandler(h4)
+errwatch._stopping.clear()
+
+print("\n[Windows 自己说正在关机（GetSystemMetrics）→ 不报]")
+n5 = _Notifier()
+h5 = errwatch.install(n5, lambda: False)
+orig_ssd = errwatch.system_shutting_down
+errwatch.system_shutting_down = lambda: True
+lg.error(REAL)
+_wait(n5, 1, 0.4)
+check("系统关机中 → 不报", n5.sent, [])
+errwatch.system_shutting_down = orig_ssd
+logging.getLogger(errwatch.ARK).removeHandler(h5)
+
+print("\n[平时同一条 ERROR 照报（不是关机就是真掉了）]")
+n6 = _Notifier()
+h6 = errwatch.install(n6, lambda: False)
+lg.error(REAL)
+_wait(n6, 1)
+check("不在关机就报", len(n6.sent), 1)
+logging.getLogger(errwatch.ARK).removeHandler(h6)
+
 print("\n[探测函数自己坏了也不拦报警]")
 n3 = _Notifier()
 h3 = errwatch.install(n3, lambda: 1 / 0)

@@ -7,9 +7,16 @@ its own; a fault nobody is told about is the one that costs a whole shift.
 
 One per boot, not one per error: an ERROR that repeats every tick would turn the
 group into noise, and the group is for real alarms only (the 0914 guarantee).
-Suppressed once the shutdown command has gone out - the process-watch thread
-logs an ERROR when Windows tears its WMI subscription down at shutdown
-(2026-09-17 10:48:40), which is the machine going away, not a fault.
+Suppressed while the machine is going down - the process-watch thread logs an
+ERROR when Windows tears its WMI subscription down at shutdown (2026-09-17
+10:48:40), which is the machine going away, not a fault. "Going down" is any
+of: the relay issued the power-off itself (`engine._shutdown_issued`), the
+service was told to stop (`mark_stopping()` from SvcStop, which pywin32 also
+calls for SERVICE_CONTROL_SHUTDOWN), or Windows says the session is shutting
+down (`GetSystemMetrics(SM_SHUTTINGDOWN)`). The last two were missing on
+2026-09-18 02:20: a hand-issued `shutdown /s` set no relay flag, the same WMI
+line came, and the group got a 「🩺 中继自己报错了」 for a machine that was
+simply being switched off.
 
 The push runs on its own thread: a logging call must never block on the
 network, and a push that itself logs an ERROR must not come back in here
@@ -29,6 +36,35 @@ log = logging.getLogger("ark.errwatch")
 ARK = log.name.rsplit(".", 1)[0]
 
 
+# GetSystemMetrics index: nonzero while the current session is shutting down.
+SM_SHUTTINGDOWN = 0x2000
+_stopping = threading.Event()
+
+
+def mark_stopping() -> None:
+    """The service has been told to stop (a stop, or Windows shutting down): from here on an ERROR is not a fault."""
+    _stopping.set()
+
+
+def system_shutting_down() -> bool:
+    """True while Windows reports the session is going down; False where that cannot be asked (a Mac, a test)."""
+    try:
+        import win32api  # noqa: PLC0415
+        return bool(win32api.GetSystemMetrics(SM_SHUTTINGDOWN))
+    except Exception:  # noqa: BLE001 - not on Windows, or the call itself failed
+        return False
+
+
+def going_down(extra=lambda: False) -> bool:
+    """Any of the three signs that the machine is on its way down."""
+    if _stopping.is_set() or system_shutting_down():
+        return True
+    try:
+        return bool(extra())
+    except Exception:  # noqa: BLE001 - a broken probe must not stop the alarm
+        return False
+
+
 class FirstErrorAlert(logging.Handler):
     """Attach to the "ark" logger; the first record at ERROR or above is pushed as an alarm."""
 
@@ -45,11 +81,8 @@ class FirstErrorAlert(logging.Handler):
         with self._lock:
             if self._sent:
                 return
-            try:
-                if self._shutting_down():
-                    return
-            except Exception:  # noqa: BLE001 - a broken probe must not stop the alarm
-                pass
+            if going_down(self._shutting_down):
+                return
             self._sent = True
         try:
             what = record.getMessage().splitlines()[0][:160]
