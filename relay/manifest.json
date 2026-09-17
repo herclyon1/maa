@@ -1,7 +1,7 @@
 {
- "version": 20260917175024,
+ "version": 20260917182907,
  "files": {
-  "RELEASE-NOTES.md": "9a3f6cb04f0e3339351e1495edc06f6ff160ca27",
+  "RELEASE-NOTES.md": "947ec6330b37c57d9919e1c9594bb95630f204ec",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
   "ark_relay/__main__.py": "4a49f57cce7b3ee89b318f3414c73c37ab385e05",
   "ark_relay/annihilation.py": "5ec4c927c131d2aefc58aebbdda591c37fb672e4",
@@ -19,7 +19,7 @@
   "ark_relay/echofarm.py": "2c36f3ebaeaab34b7b3f4741d8d94e6b2c469c7e",
   "ark_relay/efstatus.py": "f39f98d710f8c37d48c188118eca4e40ff26b849",
   "ark_relay/engine.py": "3c643e5e85e0c5b519b46d06491485a66237d260",
-  "ark_relay/errwatch.py": "25064ef7796149571b1b892eb4ba82bd493cf9d9",
+  "ark_relay/errwatch.py": "8f2bb5356427b8685ca768df9accb0438b54ba52",
   "ark_relay/evidence.py": "55eb4731d8c148f689c4954584bef0bd32b54960",
   "ark_relay/gameupdate.py": "dc9cbff0a971a4badbe39e7d226c3bfc1a5e95af",
   "ark_relay/gameupdate_games.py": "4732dfec443083f62ee6be13db460ab41a49ac6f",
@@ -90,6 +90,6 @@
   "ark_relay/wuwa_tacet.py": "919a879226eee64140007501f8a64563a6a878f7",
   "boot_stages.py": "9422546354ea789258b78b69e432491ef2968f8a",
   "run.py": "0db6cde8fb8119323d991ec512d1b2b43e869b93",
-  "service.py": "03c859cdad9b8050837a6bff01a26aa15f51e0f0"
+  "service.py": "72a7bcb00db08dc13e8063a59f28265ca7ffb92a"
  }
 }
