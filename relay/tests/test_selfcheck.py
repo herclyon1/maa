@@ -73,7 +73,7 @@ with tempfile.TemporaryDirectory() as td:
     check("走群", route_of(texts.SELFCHECK_FAILED, alert=True), "group")
 
 print("\n[进程表读取：没有系统 WMI 的机器上返回「读不到」，不假装活着]")
-from ark_relay import procs
+from ark_relay import procs  # noqa: E402
 check("这台没有 pywin32 的 Mac 上返回 None", procs.python_processes(), None)
 
 print("\n[日报两行：从当天 relay.log 来]")
