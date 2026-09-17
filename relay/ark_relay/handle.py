@@ -565,7 +565,11 @@ def _ship_evidence(eng, rec: RunRecord) -> None:
                 f = Path(eng.cfg.history_dir) / (rec.run_id + suffix)
                 if f.is_file():
                     extra.append(f)
-        res = evidence.save_and_upload(eng.cfg, rec.script, rec.run_id, extra)
+        # One run's window, widened a little on both ends (evidence.WINDOW_SLACK):
+        # without it the MaaEnd export is every log the machine ever kept.
+        t0 = rec.started.timestamp() - evidence.WINDOW_SLACK
+        t1 = (rec.finished.timestamp() if rec.duration_known else time.time()) + evidence.WINDOW_SLACK
+        res = evidence.save_and_upload(eng.cfg, rec.script, rec.run_id, extra, window=(t0, t1))
         if res.get("page"):
             log.info("🗂️ %s 证据包已上传（%d 个文件）→ %s", rec.run_id, len(res["uploaded"]), res["page"])
             rec.raw["evidence_page"] = res["page"]     # the failure alarm and the daily row carry it

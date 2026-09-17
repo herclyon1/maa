@@ -175,6 +175,39 @@ rs = (FXP / "file_ops.rs").read_text(encoding="utf-8")
 seg = ev.region_text(rs, "file_ops.rs", ("export_logs_blocking",))
 check("Rust 按花括号截到函数结尾", seg.startswith("fn export_logs_blocking(") and seg.rstrip().endswith("}") and "pub async fn export_logs" not in seg)
 
+print("\n[一趟的时间窗：只带这一趟的日志，截图去重、封顶；不给窗就是 MXU 全量]")
+wt = tmpdir() / "win"
+(wt / "debug" / "on_error").mkdir(parents=True); (wt / "debug" / "cpp-algo").mkdir(); (wt / "config").mkdir()
+T = 1_800_000_000
+def _mk(rel, size, mtime, content=None):
+    p = wt / rel
+    p.write_bytes(content if content is not None else os.urandom(size))
+    os.utime(p, (mtime, mtime)); return p
+_mk("config/mxu-MaaEnd.json", 100, T - 86400 * 30)                  # config: always in
+_mk("debug/2026-09-10-1.log", 1000, T - 86400 * 7)                    # a week old: out
+_mk("debug/maafw.bak.old.log", 1000, T - 3600 * 3)                    # 3 h before the run: out
+_mk("debug/2026-09-17-6.log", 1000, T + 60)                           # this run: in
+_mk("debug/maafw.log", 1000, T + 200)                                 # this run: in
+_mk("debug/cpp-algo/maafw.bak.run.log", 1000, T + 100)                # this run: in
+_mk("debug/cpp-algo/maafw.bak.yesterday.log", 1000, T - 86400)        # out
+same_bytes = os.urandom(500)
+_mk("debug/on_error/a.png", 0, T + 10, same_bytes)                          # this run
+_mk("debug/on_error/b.png", 0, T + 20, same_bytes)                          # identical bytes: dropped
+for k in range(15):
+    _mk(f"debug/on_error/c{k:02d}.png", 300, T + 30 + k)              # 15 distinct: capped
+_mk("debug/on_error/old.png", 300, T - 86400 * 5)                     # out
+win = (T - ev.WINDOW_SLACK, T + 240 + ev.WINDOW_SLACK)
+got = [n for _, n in ev.maaend_entries(wt, win, ev.MAAEND_MAX_IMAGES)]
+check("日志只有这一趟的三个 + 配置", [n for n in got if not n.startswith("on_error/")],
+      ["2026-09-17-6.log", "maafw.log", "config/mxu-MaaEnd.json", "cpp-algo/maafw.bak.run.log"])
+imgs = [n for n in got if n.startswith("on_error/")]
+check("截图封顶 12 张、最新在前", (len(imgs), imgs[0]), (ev.MAAEND_MAX_IMAGES, "on_error/c14.png"))
+check("内容相同的只留一张（a 与 b 二选一）、老的不带", ("on_error/b.png" in imgs) + ("on_error/a.png" in imgs) <= 1 and "on_error/old.png" not in imgs)
+full = [n for _, n in ev.maaend_entries(wt)]
+check("不给窗＝全量（MXU 原样）", (len(full), "2026-09-10-1.log" in full, "on_error/old.png" in full), (7 + 18, True, True))
+parts = ev.bundle_maaend(wt, tmpdir() / "wout", "v1", window=win)
+check("按窗打的包只有一卷", len(parts), 1)
+
 print("\n[上传：索引里记下每一趟，失败也记]")
 class FakeUp:
     def __init__(self): self.n = 0
@@ -195,18 +228,22 @@ idx = (Cfg.state_dir / "evidence" / "index.jsonl").read_text(encoding="utf-8").s
 check("索引写了一行", len(idx), 1)
 check("没配置的脚本不出包", ev.bundle_for("OK-WW", Cfg, tmpdir() / "o"), [])
 
-print("\n[送出去的三条路：COS 配了就走 COS，否则企业微信，最后才 gofile]")
+print("\n[送出去只有一条路：COS（2026-09-18 起，付费的那个桶）；没配就明说、不走别的]")
 class C0:
     state_dir = tmpdir(); cos_secret_id = ""; cos_secret_key = ""; cos_bucket = ""; cos_region = ""
     wecom_corpid = ""; wecom_secret = ""; wecom_agentid = ""; wecom_touser = "@all"
-check("什么都没配 → gofile", type(ev.pick_uploader(C0, "x")).__name__, "Gofile")
+    wecom_bot_url = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=x"
+    maaend_dir = None; maa_dir = maa; okww_dir = None; history_dir = None
+check("什么都没配 → 没有上传路", ev.pick_uploader(C0, "x"), None)
 class C1(C0):
     wecom_corpid = "ww1"; wecom_secret = "s"; wecom_agentid = "1000002"
-check("有企业微信 → 企业微信文件", type(ev.pick_uploader(C1, "x")).__name__, "WeComFiles")
+check("只有企业微信 → 也不走（备用路已关）", ev.uploaders(C1, "x"), [])
+res0 = ev.save_and_upload(C1, "MAA", "2026-09-11/arknights/MAA-17-31-00")
+check("没配 COS 的话包照打、索引里写明没配 COS", (bool(res0["archive"]), res0["uploaded"], any("没有配置 COS" in e for e in res0["errors"])), (True, [], True))
 class C2(C1):
     cos_secret_id = "AKID"; cos_secret_key = "SK"; cos_bucket = "ark-evidence-1250000000"; cos_region = "ap-shanghai"
 up = ev.pick_uploader(C2, "2026-09-12/endfield/MaaEnd-10-05-40")
-check("四项 COS 设置齐了 → COS", type(up).__name__, "Cos")
+check("四项 COS 设置齐了 → COS，而且只有它", (type(up).__name__, len(ev.uploaders(C2, "x"))), ("Cos", 1))
 check("对象放在 run_id 目录下", up.object_key(Path("a.zip")), "2026-09-12_endfield_MaaEnd-10-05-40/a.zip")
 auth = up.authorization("PUT", "2026-09-12_endfield_MaaEnd-10-05-40/a.zip", now=1_757_700_000)
 check("签名串按腾讯云的格式", auth.startswith("q-sign-algorithm=sha1&q-ak=AKID&q-sign-time=1757699940;1757703540&q-key-time=1757699940;1757703540&q-header-list=host&q-url-param-list=&q-signature="), True)
@@ -331,7 +368,8 @@ check("第二条路接手，那一个文件传上了", (len(res3["uploaded"]), r
 check("被拒记在错误里但不算传输失败", any("60020" in e for e in res3["errors"]) and len(res3["errors"]) == 1, True)
 class C3(C1):
     wecom_bot_url = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=KEY123"
-check("四条路按优先级排：企业微信应用、群机器人、gofile", [type(u).__name__ for u in ev.uploaders(C3)], ["WeComFiles", "WeComBotFiles", "Gofile"])
+check("备用路全关：配了企业微信应用和群机器人也不排进去", [type(u).__name__ for u in ev.uploaders(C3)], [])
+check("备用路的代码还在（手动用）", all(hasattr(ev, k) for k in ("WeComFiles", "WeComBotFiles", "Gofile")))
 check("群机器人从网址里取 key", ev.WeComBotFiles(C3.wecom_bot_url).key, "KEY123")
 posts = []
 def fake_post(url, data, ctype, timeout):

@@ -19,18 +19,22 @@ and compares hashes, so a change upstream produces a notice the same morning
 instead of a bundle that quietly stopped matching (the user's requirement of
 2026-09-12: a source change 一定要能发现).
 
-Where it goes (`pick_uploader`, first that is configured):
+Where it goes: Tencent Cloud COS (`Cos`) only - a bucket of his, signed
+PUT/GET with the XML API, nothing to install, scriptable retrieval from the
+Mac (`scripts/mac/evidence.sh pull`). The user pays for it (2026-09-18:
+「上传只走 COS」), so the fallbacks that used to follow it are switched off in
+`uploaders()` and kept as code: the WeCom app (`WeComFiles`, 20 MB cap, three-day
+window), the WeCom group robot (`WeComBotFiles`) and gofile.io (`Gofile`, a guest
+folder only a person can download from).
 
-1. Tencent Cloud COS (`Cos`) - a bucket of his, signed PUT/GET with the XML
-   API, nothing to install. Scriptable retrieval from the Mac
-   (`scripts/mac/evidence.sh pull`). Needs COS_* in .env; nobody but the
-   account owner can create that (the user, 2026-09-12: 「gofile换成能脚本取的cos」).
-2. The WeCom app (`WeComFiles`) - the same credentials the relay already pushes
-   with. The run's one archive goes to him as a file message (he opens it in
-   WeCom) when it is under WeCom's 20 MB cap; `evidence.sh pull` fetches it back
-   by media id within WeCom's three-day window. Off-machine, no new account.
-3. gofile.io (`Gofile`) - last resort: a guest folder only a person can download
-   from through the web page (its API refuses guest listing; measured 2026-09-12).
+What goes in (2026-09-18): MXU's export takes every log the debug folder has
+ever kept - on this machine 130 logs, 2.7 GB, 221 MB compressed - and the
+upload of that failed four times on 2026-09-17. So a run's bundle keeps MXU's
+layout and volume rules but selects only the files of that run's time window
+(`window=`), plus the config, plus at most MAAEND_MAX_IMAGES error screenshots
+with identical ones dropped. Measured on the 2026-09-17 tree: 221 MB → about
+20 MB. The full export is still what `python -m ark_relay evidence` (no window)
+produces, for a hand-made upstream report.
 
 The local copy under `state/evidence/` stays for thirty days.
 """
@@ -182,6 +186,24 @@ def check_sources(fetch=None, timeout: int = 30) -> tuple[list[str], list[str]]:
 # `<project>-logs-<version>-<YYYYmmdd-HHMMSS>-partNN.zip`.
 MAAEND_MAX_VOLUME = 24_500_000
 _IMAGE_EXT = (".png", ".jpg", ".jpeg")
+# How many error screenshots one run's bundle carries at most (newest first,
+# duplicates dropped). A 1280x720 PNG from MaaEnd is about 1 MB and cannot be
+# recompressed here (no image library on the machine; the relay has no
+# dependencies), so the count is the lever. Twelve covers every retry of a
+# morning; the 2026-09-17 tree had 52.
+MAAEND_MAX_IMAGES = 12
+# A run's window is widened by this on both ends: MaaEnd's last lines land after
+# AUTO-MAS has recorded the run, and the framework log rotates a little before.
+WINDOW_SLACK = 300
+
+
+def _in_window(p: Path, window: "tuple[float, float] | None") -> bool:
+    if window is None:
+        return True
+    try:
+        return window[0] <= p.stat().st_mtime <= window[1]
+    except OSError:
+        return False
 
 
 def _walk_sorted(dir_: Path, prefix: str) -> list[tuple[Path, str]]:
@@ -196,25 +218,53 @@ def _walk_sorted(dir_: Path, prefix: str) -> list[tuple[Path, str]]:
     return out
 
 
-def maaend_entries(maaend_dir: Path) -> list[tuple[Path, str]]:
-    """The export's file list in MXU's order. Public so a test can check it against a real tree."""
+def _dedup(paths: list[Path]) -> list[Path]:
+    """Drop images whose bytes were already seen (retries save the same screen again)."""
+    seen: set[str] = set()
+    out = []
+    for p in paths:
+        try:
+            h = hashlib.sha1(p.read_bytes()).hexdigest()
+        except OSError:
+            continue
+        if h in seen:
+            continue
+        seen.add(h)
+        out.append(p)
+    return out
+
+
+def maaend_entries(maaend_dir: Path, window: "tuple[float, float] | None" = None,
+                   max_images: "int | None" = None) -> list[tuple[Path, str]]:
+    """The export's file list in MXU's order. Public so a test can check it against a real tree.
+
+    With `window=(t0, t1)` (epoch seconds) only files modified inside it are
+    taken - the config always - and the screenshots are capped at
+    `max_images` after dropping duplicates. Without a window this is MXU's
+    export, file for file.
+    """
     debug = maaend_dir / "debug"
     if not debug.is_dir():
         return []
     regular: list[tuple[Path, str]] = []
     for p in sorted(debug.glob("*"), key=lambda q: q.name):
-        if p.is_file() and p.suffix.lower() in (".log", ".dmp"):
+        if p.is_file() and p.suffix.lower() in (".log", ".dmp") and _in_window(p, window):
             regular.append((p, p.name))
     regular += _walk_sorted(maaend_dir / "config", "config")
     for sub in sorted(q for q in debug.iterdir() if q.is_dir()):
         regular += [(p, n) for p, n in _walk_sorted(sub, sub.name)
-                    if p.suffix.lower() in (".log", ".json", ".dmp")]
+                    if p.suffix.lower() in (".log", ".json", ".dmp") and _in_window(p, window)]
     images: list[tuple[Path, str]] = []
     for name in ("on_error", "vision"):
         d = debug / name
         if d.is_dir():
-            files = [p for p in d.rglob("*") if p.is_file() and p.suffix.lower() in _IMAGE_EXT]
+            files = [p for p in d.rglob("*")
+                     if p.is_file() and p.suffix.lower() in _IMAGE_EXT and _in_window(p, window)]
             files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            if window is not None:
+                files = _dedup(files)
+            if max_images is not None:
+                files = files[:max(0, max_images - len(images))]
             images += [(p, f"{name}/{p.relative_to(d).as_posix()}") for p in files]
     return regular + images
 
@@ -277,8 +327,9 @@ def _volumes(entries: list[tuple[Path, str]], max_bytes: int) -> list[list[tuple
     return vols
 
 
-def bundle_maaend(maaend_dir: Path, out_dir: Path, version: str, stamp: datetime | None = None) -> list[Path]:
-    entries = maaend_entries(maaend_dir)
+def bundle_maaend(maaend_dir: Path, out_dir: Path, version: str, stamp: datetime | None = None,
+                  window: "tuple[float, float] | None" = None) -> list[Path]:
+    entries = maaend_entries(maaend_dir, window, MAAEND_MAX_IMAGES if window else None)
     if not entries:
         return []
     stamp = stamp or datetime.now()
@@ -604,36 +655,42 @@ class WeComBotFiles:
 
 
 def pick_uploader(cfg, run_id: str = ""):
-    """The first store in `uploaders(cfg)`; kept for callers that want one."""
-    return uploaders(cfg, run_id)[0]
+    """The first store in `uploaders(cfg)`, or None when COS is not configured."""
+    ups = uploaders(cfg, run_id)
+    return ups[0] if ups else None
 
 
 def uploaders(cfg, run_id: str = "") -> list:
-    """Every configured store, best first: COS, the WeCom app, the WeCom group
-    robot, gofile. `save_and_upload` walks down the list when one refuses."""
+    """The configured stores, best first. Since 2026-09-18 that is COS alone:
+    the user pays for the bucket and wants nothing else tried (「上传只走 COS」).
+    An empty list means "COS not configured", and save_and_upload says so."""
     out: list = []
     if all(getattr(cfg, k, "") for k in ("cos_secret_id", "cos_secret_key", "cos_bucket", "cos_region")):
         out.append(Cos(cfg.cos_secret_id, cfg.cos_secret_key, cfg.cos_bucket, cfg.cos_region,
                        prefix=run_id.replace("/", "_")))
-    if getattr(cfg, "wecom_corpid", "") and getattr(cfg, "wecom_secret", "") and getattr(cfg, "wecom_agentid", ""):
-        out.append(WeComFiles(cfg))
-    if getattr(cfg, "wecom_bot_url", ""):
-        out.append(WeComBotFiles(cfg.wecom_bot_url))
-    out.append(Gofile(Path(cfg.state_dir)))
+    # The fallbacks, switched off on 2026-09-18 at the user's request (only the
+    # paid COS bucket is to be used); the classes stay for a hand-run upload.
+    # if getattr(cfg, "wecom_corpid", "") and getattr(cfg, "wecom_secret", "") and getattr(cfg, "wecom_agentid", ""):
+    #     out.append(WeComFiles(cfg))
+    # if getattr(cfg, "wecom_bot_url", ""):
+    #     out.append(WeComBotFiles(cfg.wecom_bot_url))
+    # out.append(Gofile(Path(cfg.state_dir)))
     return out
 
 
 # ------------------------------------------------------------------ driver
 
-def bundle_for(script: str, cfg, out_dir: Path) -> list[Path]:
-    """The right export for a script, from the directories the relay already knows."""
+def bundle_for(script: str, cfg, out_dir: Path, window: "tuple[float, float] | None" = None) -> list[Path]:
+    """The right export for a script, from the directories the relay already knows.
+
+    `window` narrows the MaaEnd export to one run (see the module docstring)."""
     if script == "MaaEnd" and cfg.maaend_dir:
         version = "unknown"
         try:
             version = json.loads((Path(cfg.maaend_dir) / "interface.json").read_text(encoding="utf-8")).get("version", version)
         except (OSError, ValueError):
             pass
-        return bundle_maaend(Path(cfg.maaend_dir), out_dir, version)
+        return bundle_maaend(Path(cfg.maaend_dir), out_dir, version, window=window)
     if script == "MAA" and cfg.maa_dir:
         return bundle_maa(Path(cfg.maa_dir), out_dir)
     if script == "OK-WW" and cfg.okww_dir:
@@ -641,14 +698,15 @@ def bundle_for(script: str, cfg, out_dir: Path) -> list[Path]:
     return []
 
 
-def save_and_upload(cfg, script: str, run_id: str, extra: list[Path] = (), *, uploader=None) -> dict:
+def save_and_upload(cfg, script: str, run_id: str, extra: list[Path] = (), *, uploader=None,
+                    window: "tuple[float, float] | None" = None) -> dict:
     """Build the bundle into state/evidence/<run_id>/bundle, upload it, append to the index. Never raises."""
     state_dir = Path(cfg.state_dir)
     dst = state_dir / "evidence" / run_id.replace("/", "_") / "bundle"
     result: dict = {"script": script, "run_id": run_id, "when": datetime.now().isoformat(timespec="seconds"),
                     "files": [], "uploaded": [], "errors": []}
     try:
-        paths = bundle_for(script, cfg, dst)
+        paths = bundle_for(script, cfg, dst, window)
         for p in extra:
             try:
                 shutil.copy2(p, dst / p.name)
@@ -671,6 +729,8 @@ def save_and_upload(cfg, script: str, run_id: str, extra: list[Path] = (), *, up
             result["errors"].append(f"pack: {exc}")
     result["archive"] = one[0].name if one else ""
     stores = [uploader] if uploader else uploaders(cfg, run_id)
+    if one and not stores:
+        result["errors"].append("没有配置 COS（.env 里缺 COS_SECRET_ID / COS_SECRET_KEY / COS_BUCKET / COS_REGION），证据包只留在机器上")
     dead: set[int] = set()          # stores that refused permanently this round
     for p in one:
         ok = False
