@@ -49,6 +49,7 @@ above.
 | `outcome.py` | 跑完核对「到底干成了什么」，没干成必须出声 |
 | `collect_retry.py` | 自动采集只补跑失败的路线（上游 #5660 不做）；连续两天仍败＝复发，请人工提 issue |
 | `collect_watch.py` | 盯 MaaEnd 的 maafw.log：路线一失败就把母本收窄成只剩失败的，AUTO-MAS 的重跑只走这几条；重跑一开始就改回 |
+| `errwatch.py` | 中继自己第一条 ERROR 报群，一次开机只报一条；关机令发出后的不报（09-17 一条没人看的 ERROR 丢了晚班） |
 | `evidence.py` | 按三家上游导出按钮的规则打证据包、钉住其源码、传到云端（gofile） |
 | `maintenance.py` | 三个游戏官方停服维护公告的机器可读来源 |
 | `skland.py` | 森空岛客户端，拿终末地的角色练度 |
