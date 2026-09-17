@@ -1,7 +1,7 @@
 {
- "version": 20260915012703,
+ "version": 20260917145705,
  "files": {
-  "RELEASE-NOTES.md": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+  "RELEASE-NOTES.md": "484e0817ef1df75a79bc5b6884ce549b234834f0",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
   "ark_relay/__main__.py": "7aa20ecc12c6c0e5eb22f379fa4a6052ac94d5d5",
   "ark_relay/annihilation.py": "5ec4c927c131d2aefc58aebbdda591c37fb672e4",
@@ -23,7 +23,7 @@
   "ark_relay/gameupdate.py": "dc9cbff0a971a4badbe39e7d226c3bfc1a5e95af",
   "ark_relay/gameupdate_games.py": "4732dfec443083f62ee6be13db460ab41a49ac6f",
   "ark_relay/garden.py": "f42fd3451ad45d2bebcccdbfac291d3739996e10",
-  "ark_relay/handle.py": "6c13167b6caa7a7bc68afea6d405ef0ab62e8375",
+  "ark_relay/handle.py": "606f9bce7f6cdece0fdf714e2613f007ff568fbd",
   "ark_relay/inbox.py": "6e336d82b6b3b70b54e8e7e5fe2cbfc13a7f9d80",
   "ark_relay/maaend.py": "bc2786fbf18cde76803fed97fdb331409841b7c7",
   "ark_relay/maintenance.py": "6a7b68c5309c8a82932358ab5539a5d80236ed5c",
@@ -78,15 +78,15 @@
   "ark_relay/snapshot.py": "962daf199538fa958482aeb27c27ead851c8c1e1",
   "ark_relay/statestore.py": "b4492e37e3fc5d6f182b3e020baa1fec35a42722",
   "ark_relay/summary.py": "c1433aff96cc5c2c859b1074ee72c677398cf890",
-  "ark_relay/texts.py": "d8757e8d6fb65b7f5053e76bc55bdda5fad0914c",
+  "ark_relay/texts.py": "de98035ea7dfe736c6cae34c540af7a859d43f6e",
   "ark_relay/transport.py": "e66d85408e0080b66a4f8593e88510aad71568f5",
   "ark_relay/watch.py": "e84efcb9a25676fd8a3ba16de645b056b03f2cdb",
   "ark_relay/weeklyboss.py": "fd1240b01d76ec6dc086fe04695fabc4bea902f2",
   "ark_relay/wuwa_boss.py": "6c93e8e3d82b1bef731f67da4a955cb0dcb0a798",
   "ark_relay/wuwa_forgery.py": "b77d8a2194ebca4c4a1425c39ae4c50380af4443",
   "ark_relay/wuwa_tacet.py": "919a879226eee64140007501f8a64563a6a878f7",
-  "boot_stages.py": "fc8d9b99bb21d3549eb1e5ca4db2e73f233c2e48",
+  "boot_stages.py": "c14b7122436823b15e1b44591fb1c05fef7c31df",
   "run.py": "0db6cde8fb8119323d991ec512d1b2b43e869b93",
-  "service.py": "d20131b97eee060cdc6334603a6c606fe604fb47"
+  "service.py": "20033160f0ad4435241a232a6d1159fc75afea7b"
  }
 }
