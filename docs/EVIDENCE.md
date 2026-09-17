@@ -11,9 +11,18 @@ would produce, uploads it, and puts the download page in the notification:
 
 | script | what upstream asks for | how it is built |
 |---|---|---|
-| MaaEnd | 🗄️ export: `MaaEnd-logs-<version>-<stamp>-partNNN.zip` | mirror of MXU `file_ops.rs::export_logs_blocking` (file order, subfolders, 24.5 MB volumes by compressed size, part-number width) |
-| MAA | 设置 → 问题反馈 → 生成日志压缩包: `report_<stamp>_partNN.zip` | mirror of `IssueReportUserControlModel.GenerateSupportPayload` (config + resource `_custom` + cache + debug root in part01, debug subfolders ≤3 days old in 20 MB parts) |
-| OK-WW | Export Logs: `<gui_title>-log.zip` | mirror of ok-script `StartTab.export_logs` (`screenshots/` + `logs/`) |
+| MaaEnd | 🗄️ export: `MaaEnd-logs-<version>-<stamp>-partNNN.zip` | mirror of MXU `file_ops.rs::export_logs_blocking` (file order, subfolders, 24.5 MB volumes by compressed size, part-number width), **selection cut to the time window** |
+| MAA | 设置 → 问题反馈 → 生成日志压缩包: `report_<stamp>_partNN.zip` | mirror of `IssueReportUserControlModel.GenerateSupportPayload` (config + resource `_custom` + cache + debug root in part01, debug subfolders **in the window** in 20 MB parts) |
+| OK-WW | Export Logs: `<gui_title>-log.zip` | mirror of ok-script `StartTab.export_logs` (`screenshots/` + `logs/` **in the window**) |
+
+**Every bundle is cut by a time window - there is no full export** (the user,
+2026-09-18: 「证据包永远按时间窗取」). The relay's automatic bundle for a failed run
+uses that run's start and end widened by `evidence.WINDOW_SLACK` (5 minutes each
+side). Inside the window MaaEnd's error screenshots are de-duplicated by content and
+capped at `evidence.MAAEND_MAX_IMAGES` (12). Why: MXU's own export takes every log
+the debug folder ever kept - on 2026-09-17 that was 130 logs / 2.7 GB, 221 MB
+compressed, and the upload failed four times; the same failed run cut to its window
+is 11 MB.
 
 None of the three exports is callable from outside its UI (Tauri command,
 WPF button, Qt button), so the mirror is the only headless route. The three
@@ -22,10 +31,10 @@ source files are pinned in `evidence.PINS` (commit + sha256); every boot
 「上游改了导出日志的代码」 when a hash moved. Re-verify the mirror, then renew
 the pin.
 
-Storage: gofile.io guest folder (free, reachable from the machine; GitHub,
-R2, pixeldrain, 0x0.st are not - measured 2026-09-12). Guest files last ten
-days after the last download. Local copies under `state/evidence/<run>/bundle`
-are pruned after 30 days.
+Storage: Tencent Cloud COS only (2026-09-18, the user pays for the bucket:
+「上传只走 COS」); the gofile / WeCom fallbacks below are switched off in
+`evidence.uploaders` and kept as code. Local copies under
+`state/evidence/<run>/bundle` are pruned after 30 days.
 
 Reading from the Mac: `scripts/mac/evidence.sh list` (mirrors the machine's
 index when it is on, otherwise shows the last mirror) and
@@ -33,11 +42,16 @@ index when it is on, otherwise shows the last mirror) and
 refuses guest listing/downloads without a token its web page generates in
 obfuscated JS (measured 2026-09-12: `error-notPremium`, and direct links serve
 the HTML shell), so fetching a file is a browser action - open the page, click
-the file; with the Chrome tool that is scriptable too. Manual build for one
-run on the machine: `python -m ark_relay evidence --script MaaEnd --run-id <run_id>`
-(run via winrun with cwd `C:\ProgramData\ark-relay`). A paid-but-trivial S3
-bucket (腾讯云 COS / 阿里云 OSS, ≈1 元/月) would make this scriptable; the
-uploader is one class (`Gofile`) to swap.
+the file; with the Chrome tool that is scriptable too. Manual build on the
+machine (run via winrun with cwd `C:\ProgramData\ark-relay`), always with a window:
+
+    python -m ark_relay evidence --script MaaEnd                 # the latest MaaEnd run in the ledger, its own window
+    python -m ark_relay evidence --script MaaEnd --run-id 2026-09-17/endfield/MaaEnd-06-28-53
+    python -m ark_relay evidence --script MaaEnd --hours 2       # everything of the last two hours
+    python -m ark_relay evidence --script OK-WW --since 2026-09-17T10:20
+
+Measured 2026-09-18 on the machine: `--hours 2` after a MAA make-up run, see the
+number in the commit that introduced the window.
 
 ## Per-route retry (`relay/ark_relay/collect_retry.py`)
 
@@ -92,7 +106,8 @@ First run 28 min, retries 4 and 3 min.
 
 ## Where bundles go (2026-09-12 evening) - `evidence.pick_uploader`
 
-The user: 「gofile换成能脚本取的cos」. Three stores, the first configured one wins:
+The user: 「gofile换成能脚本取的cos」, and on 2026-09-18 「上传只走 COS」 - stores 2-4
+below are no longer tried (commented out in `uploaders()`, classes kept):
 
 1. **Tencent Cloud COS** (`Cos`): signed PUT of each file to
    `https://<bucket>.cos.<region>.myqcloud.com/<run_id>/<name>` using the XML API

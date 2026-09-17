@@ -44,10 +44,14 @@ for e in official:
     p = root / rel
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("wb") as f:
-        f.truncate(e["size"])          # sparse: same size, no disk cost
+        if name in img_rank:
+            f.write(name.encode())     # images must differ in content: identical ones are dropped on purpose
+        else:
+            f.truncate(e["size"])      # sparse: same size, no disk cost
     mt = 1_800_000_000 - img_rank[name] if name in img_rank else e["mtime"]
     os.utime(p, (mt, mt))
-entries = ev.maaend_entries(root)
+ALL = (0.0, 4_000_000_000.0)          # a window covering every fixture mtime
+entries = ev.maaend_entries(root, ALL, max_images=None)
 check("文件数一样", len(entries), len(official))
 check("顺序完全一样", [n for _, n in entries], [e["name"] for e in official])
 check("三位数编号（条目 ≥100）", 3 if len(entries) >= 100 else 2, 3)
@@ -81,11 +85,11 @@ small = tmpdir() / "mx"
 (small / "debug" / "maafw.log").write_bytes(b"log\n" * 1000)
 (small / "config" / "mxu-MaaEnd.json").write_text("{}", encoding="utf-8")
 (small / "debug" / "on_error" / "a.png").write_bytes(b"\x89PNG" + b"\0" * 100)
-out = ev.bundle_maaend(small, tmpdir() / "mxout", "v2.28.0-rc.1", _dt(2026, 9, 11, 12, 23, 50))
+out = ev.bundle_maaend(small, tmpdir() / "mxout", "v2.28.0-rc.1", ALL, _dt(2026, 9, 11, 12, 23, 50))
 check("一卷，两位编号", [p.name for p in out], ["MaaEnd-logs-v2.28.0-rc.1-20260911-122350-part01.zip"])
 with zipfile.ZipFile(out[0]) as z:
     check("三个文件都在，顺序对", z.namelist(), ["maafw.log", "config/mxu-MaaEnd.json", "on_error/a.png"])
-check("空目录不出包", ev.bundle_maaend(tmpdir() / "nothing", tmpdir() / "o2", "v"), [])
+check("空目录不出包", ev.bundle_maaend(tmpdir() / "nothing", tmpdir() / "o2", "v", ALL), [])
 
 print("\n[30 天前的本地证据目录会被清掉]")
 st = tmpdir() / "st"
@@ -102,7 +106,7 @@ for rel in ("config/gui.json", "resource/version.json", "resource/foo_custom.jso
     p = maa / rel
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_bytes(b"x" * 10)
-out = ev.bundle_maa(maa, tmpdir() / "out")
+out = ev.bundle_maa(maa, tmpdir() / "out", ALL)
 names = [p.name for p in out]
 check("有 part01 和 part02", [n.endswith("_part01.zip") for n in names] == [True, False] and len(out) == 2)
 with zipfile.ZipFile(out[0]) as z:
@@ -119,11 +123,14 @@ for rel in ("logs/ok-script.log", "screenshots/a.png", "src/task/x.py"):
     p = ww / rel
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_bytes(b"y")
-out = ev.bundle_okww(ww, tmpdir() / "out2")
+out = ev.bundle_okww(ww, tmpdir() / "out2", ALL)
 check("一个包，名字对", [p.name for p in out], ["ok-ww-log.zip"])
 with zipfile.ZipFile(out[0]) as z:
     check("只有那两个目录", sorted(z.namelist()), ["logs/ok-script.log", "screenshots/a.png"])
-check("空目录不出包", ev.bundle_okww(tmpdir() / "empty", tmpdir() / "out3"), [])
+check("空目录不出包", ev.bundle_okww(tmpdir() / "empty", tmpdir() / "out3", ALL), [])
+old_shot = ww / "screenshots" / "old.png"; old_shot.write_bytes(b"z"); os.utime(old_shot, (1_600_000_000, 1_600_000_000))
+with zipfile.ZipFile(ev.bundle_okww(ww, tmpdir() / "out4", (1_700_000_000, 4_000_000_000))[0]) as z:
+    check("OK-WW 也按时间窗：窗外的截图不带", "screenshots/old.png" not in z.namelist())
 
 print("\n[上游源码钉住了：一变就报]")
 pinned = {p.path: p for p in ev.PINS}
@@ -203,9 +210,14 @@ check("日志只有这一趟的三个 + 配置", [n for n in got if not n.starts
 imgs = [n for n in got if n.startswith("on_error/")]
 check("截图封顶 12 张、最新在前", (len(imgs), imgs[0]), (ev.MAAEND_MAX_IMAGES, "on_error/c14.png"))
 check("内容相同的只留一张（a 与 b 二选一）、老的不带", ("on_error/b.png" in imgs) + ("on_error/a.png" in imgs) <= 1 and "on_error/old.png" not in imgs)
-full = [n for _, n in ev.maaend_entries(wt)]
-check("不给窗＝全量（MXU 原样）", (len(full), "2026-09-10-1.log" in full, "on_error/old.png" in full), (7 + 18, True, True))
-parts = ev.bundle_maaend(wt, tmpdir() / "wout", "v1", window=win)
+try:
+    ev.maaend_entries(wt, None); no_window = "accepted"
+except (ValueError, TypeError) as exc:
+    no_window = type(exc).__name__
+check("不给时间窗就拒绝（没有全量导出这条路了）", no_window in ("ValueError", "TypeError"))
+full = [n for _, n in ev.maaend_entries(wt, (0.0, 4_000_000_000.0), max_images=None)]
+check("窗覆盖全部时才等于 MXU 全量（去重后少一张）", (len(full), "2026-09-10-1.log" in full, "on_error/old.png" in full), (7 + 17, True, True))
+parts = ev.bundle_maaend(wt, tmpdir() / "wout", "v1", win)
 check("按窗打的包只有一卷", len(parts), 1)
 
 print("\n[上传：索引里记下每一趟，失败也记]")
@@ -217,7 +229,7 @@ class FakeUp:
 ev.time.sleep = lambda s: None                     # no waiting between the retries in a test
 class Cfg:
     state_dir = tmpdir() / "state"; maaend_dir = None; maa_dir = maa; okww_dir = None; history_dir = None
-res = ev.save_and_upload(Cfg, "MAA", "2026-09-11/arknights/MAA-17-30-00", uploader=FakeUp())
+res = ev.save_and_upload(Cfg, "MAA", "2026-09-11/arknights/MAA-17-30-00", window=ALL, uploader=FakeUp())
 check("两个分卷进一个压缩包，传的只有这一个文件", (len(res["files"]), len(res["uploaded"]), res["archive"]),
       (2, 1, "MAA-2026-09-11_arknights_MAA-17-30-00.zip"))
 import zipfile as _zf  # noqa: E402
@@ -226,7 +238,7 @@ check("压缩包里就是上游格式的那几个文件，原样不动", sorted(
 check("有下载页", res.get("page"), "https://gofile.io/d/x")
 idx = (Cfg.state_dir / "evidence" / "index.jsonl").read_text(encoding="utf-8").strip().splitlines()
 check("索引写了一行", len(idx), 1)
-check("没配置的脚本不出包", ev.bundle_for("OK-WW", Cfg, tmpdir() / "o"), [])
+check("没配置的脚本不出包", ev.bundle_for("OK-WW", Cfg, tmpdir() / "o", ALL), [])
 
 print("\n[送出去只有一条路：COS（2026-09-18 起，付费的那个桶）；没配就明说、不走别的]")
 class C0:
@@ -238,7 +250,7 @@ check("什么都没配 → 没有上传路", ev.pick_uploader(C0, "x"), None)
 class C1(C0):
     wecom_corpid = "ww1"; wecom_secret = "s"; wecom_agentid = "1000002"
 check("只有企业微信 → 也不走（备用路已关）", ev.uploaders(C1, "x"), [])
-res0 = ev.save_and_upload(C1, "MAA", "2026-09-11/arknights/MAA-17-31-00")
+res0 = ev.save_and_upload(C1, "MAA", "2026-09-11/arknights/MAA-17-31-00", window=ALL)
 check("没配 COS 的话包照打、索引里写明没配 COS", (bool(res0["archive"]), res0["uploaded"], any("没有配置 COS" in e for e in res0["errors"])), (True, [], True))
 class C2(C1):
     cos_secret_id = "AKID"; cos_secret_key = "SK"; cos_bucket = "ark-evidence-1250000000"; cos_region = "ap-shanghai"
@@ -360,7 +372,7 @@ ev.uploaders = lambda cfg, run_id="": [Refuse(), Flaky()]
 try:
     class Cfg3:
         state_dir = tmpdir() / "state"; maaend_dir = None; maa_dir = maa; okww_dir = None; history_dir = None
-    res3 = ev.save_and_upload(Cfg3, "MAA", "2026-09-11/arknights/MAA-17-30-00")
+    res3 = ev.save_and_upload(Cfg3, "MAA", "2026-09-11/arknights/MAA-17-30-00", window=ALL)
 finally:
     ev.uploaders = orig_uploaders
 check("被拒的那条路只碰一次", Refuse.n, 1)

@@ -29,12 +29,17 @@ folder only a person can download from).
 
 What goes in (2026-09-18): MXU's export takes every log the debug folder has
 ever kept - on this machine 130 logs, 2.7 GB, 221 MB compressed - and the
-upload of that failed four times on 2026-09-17. So a run's bundle keeps MXU's
-layout and volume rules but selects only the files of that run's time window
-(`window=`), plus the config, plus at most MAAEND_MAX_IMAGES error screenshots
-with identical ones dropped. Measured on the 2026-09-17 tree: 221 MB → about
-20 MB. The full export is still what `python -m ark_relay evidence` (no window)
-produces, for a hand-made upstream report.
+upload of that failed four times on 2026-09-17. So a bundle keeps each
+upstream's layout and volume rules but always selects by a time window
+(`window=(t0, t1)`, epoch seconds): the run itself widened by WINDOW_SLACK
+when the relay reports a failure, or what the operator asks for on the command
+line (`python -m ark_relay evidence --hours 2` / `--since` / `--run-id`; with
+nothing given, the latest run in the ledger). There is no full export any more
+(the user, 2026-09-18: 「证据包永远按时间窗取」). MaaEnd: logs and dumps in
+the window, the config always, at most MAAEND_MAX_IMAGES error screenshots
+with identical ones dropped. MAA: the debug subfolders in the window instead
+of upstream's fixed three days. OK-WW: screenshots and logs in the window.
+Measured on the 2026-09-17 tree for one failed run: 221 MB → 11 MB.
 
 The local copy under `state/evidence/` stays for thirty days.
 """
@@ -234,15 +239,17 @@ def _dedup(paths: list[Path]) -> list[Path]:
     return out
 
 
-def maaend_entries(maaend_dir: Path, window: "tuple[float, float] | None" = None,
-                   max_images: "int | None" = None) -> list[tuple[Path, str]]:
-    """The export's file list in MXU's order. Public so a test can check it against a real tree.
+def maaend_entries(maaend_dir: Path, window: "tuple[float, float]",
+                   max_images: "int | None" = MAAEND_MAX_IMAGES) -> list[tuple[Path, str]]:
+    """The export's file list in MXU's order, limited to `window` (epoch seconds).
 
-    With `window=(t0, t1)` (epoch seconds) only files modified inside it are
-    taken - the config always - and the screenshots are capped at
-    `max_images` after dropping duplicates. Without a window this is MXU's
-    export, file for file.
+    Only files modified inside the window are taken - the config always - and
+    the screenshots are capped at `max_images` after dropping duplicates. The
+    order and the volume rules are MXU's; the selection is ours. A test checks
+    the order against a real export with a window covering the whole tree.
     """
+    if window is None:
+        raise ValueError("evidence bundle needs a time window")
     debug = maaend_dir / "debug"
     if not debug.is_dir():
         return []
@@ -261,8 +268,7 @@ def maaend_entries(maaend_dir: Path, window: "tuple[float, float] | None" = None
             files = [p for p in d.rglob("*")
                      if p.is_file() and p.suffix.lower() in _IMAGE_EXT and _in_window(p, window)]
             files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-            if window is not None:
-                files = _dedup(files)
+            files = _dedup(files)
             if max_images is not None:
                 files = files[:max(0, max_images - len(images))]
             images += [(p, f"{name}/{p.relative_to(d).as_posix()}") for p in files]
@@ -327,9 +333,9 @@ def _volumes(entries: list[tuple[Path, str]], max_bytes: int) -> list[list[tuple
     return vols
 
 
-def bundle_maaend(maaend_dir: Path, out_dir: Path, version: str, stamp: datetime | None = None,
-                  window: "tuple[float, float] | None" = None) -> list[Path]:
-    entries = maaend_entries(maaend_dir, window, MAAEND_MAX_IMAGES if window else None)
+def bundle_maaend(maaend_dir: Path, out_dir: Path, version: str, window: "tuple[float, float]",
+                  stamp: datetime | None = None) -> list[Path]:
+    entries = maaend_entries(maaend_dir, window)
     if not entries:
         return []
     stamp = stamp or datetime.now()
@@ -353,7 +359,10 @@ def bundle_maaend(maaend_dir: Path, out_dir: Path, version: str, stamp: datetime
 MAA_PART = 20 * 1024 * 1024
 
 
-def bundle_maa(maa_dir: Path, out_dir: Path, stamp: datetime | None = None) -> list[Path]:
+def bundle_maa(maa_dir: Path, out_dir: Path, window: "tuple[float, float]",
+               stamp: datetime | None = None) -> list[Path]:
+    if window is None:
+        raise ValueError("evidence bundle needs a time window")
     stamp = stamp or datetime.now()
     base = f"report_{stamp.strftime('%m-%d_%H-%M-%S')}"
     debug, config, resource, cache = (maa_dir / n for n in ("debug", "config", "resource", "cache"))
@@ -364,9 +373,10 @@ def bundle_maa(maa_dir: Path, out_dir: Path, stamp: datetime | None = None) -> l
     if debug.is_dir():
         part01 += [(p, f"debug/{p.name}") for p in sorted(debug.iterdir())
                    if p.is_file() and not p.name.lower().startswith("report")]
-    cutoff = time.time() - 3 * 86400
+    # Upstream takes the debug subfolders of the last three days; the window
+    # takes their place (see the module docstring).
     sub = [(p, n) for p, n in _walk_sorted(debug, "debug")
-           if p.parent != debug and p.stat().st_mtime >= cutoff and not p.name.lower().startswith("report")]
+           if p.parent != debug and _in_window(p, window) and not p.name.lower().startswith("report")]
     out_dir.mkdir(parents=True, exist_ok=True)
     paths = []
     if part01:
@@ -389,7 +399,10 @@ def bundle_maa(maa_dir: Path, out_dir: Path, stamp: datetime | None = None) -> l
 # <working>/logs, paths relative to the working dir, one zip named
 # `<gui_title>-log.zip`.
 
-def bundle_okww(working_dir: Path, out_dir: Path, gui_title: str = "ok-ww") -> list[Path]:
+def bundle_okww(working_dir: Path, out_dir: Path, window: "tuple[float, float]",
+                gui_title: str = "ok-ww") -> list[Path]:
+    if window is None:
+        raise ValueError("evidence bundle needs a time window")
     out_dir.mkdir(parents=True, exist_ok=True)
     zp = out_dir / f"{gui_title}-log.zip"
     n = 0
@@ -399,7 +412,7 @@ def bundle_okww(working_dir: Path, out_dir: Path, gui_title: str = "ok-ww") -> l
             if not d.is_dir():
                 continue
             for p in sorted(d.rglob("*")):
-                if p.is_file():
+                if p.is_file() and _in_window(p, window):
                     zf.write(p, p.relative_to(working_dir).as_posix())
                     n += 1
     if n == 0:
@@ -680,27 +693,36 @@ def uploaders(cfg, run_id: str = "") -> list:
 
 # ------------------------------------------------------------------ driver
 
-def bundle_for(script: str, cfg, out_dir: Path, window: "tuple[float, float] | None" = None) -> list[Path]:
-    """The right export for a script, from the directories the relay already knows.
-
-    `window` narrows the MaaEnd export to one run (see the module docstring)."""
+def bundle_for(script: str, cfg, out_dir: Path, window: "tuple[float, float]") -> list[Path]:
+    """The right export for a script, from the directories the relay already knows, limited to `window`."""
+    if window is None:
+        raise ValueError("evidence bundle needs a time window")
     if script == "MaaEnd" and cfg.maaend_dir:
         version = "unknown"
         try:
             version = json.loads((Path(cfg.maaend_dir) / "interface.json").read_text(encoding="utf-8")).get("version", version)
         except (OSError, ValueError):
             pass
-        return bundle_maaend(Path(cfg.maaend_dir), out_dir, version, window=window)
+        return bundle_maaend(Path(cfg.maaend_dir), out_dir, version, window)
     if script == "MAA" and cfg.maa_dir:
-        return bundle_maa(Path(cfg.maa_dir), out_dir)
+        return bundle_maa(Path(cfg.maa_dir), out_dir, window)
     if script == "OK-WW" and cfg.okww_dir:
-        return bundle_okww(Path(cfg.okww_dir) / "data" / "apps" / "ok-ww" / "working", out_dir)
+        return bundle_okww(Path(cfg.okww_dir) / "data" / "apps" / "ok-ww" / "working", out_dir, window)
     return []
 
 
-def save_and_upload(cfg, script: str, run_id: str, extra: list[Path] = (), *, uploader=None,
-                    window: "tuple[float, float] | None" = None) -> dict:
-    """Build the bundle into state/evidence/<run_id>/bundle, upload it, append to the index. Never raises."""
+def run_window(started: datetime, finished: "datetime | None") -> tuple[float, float]:
+    """One run's window: its start and end widened by WINDOW_SLACK; an unknown end means now."""
+    t0 = started.timestamp() - WINDOW_SLACK
+    t1 = (finished.timestamp() if finished else time.time()) + WINDOW_SLACK
+    return t0, t1
+
+
+def save_and_upload(cfg, script: str, run_id: str, extra: list[Path] = (), *,
+                    window: "tuple[float, float]", uploader=None) -> dict:
+    """Build the bundle into state/evidence/<run_id>/bundle, upload it, append to the index. Never raises past the bundle step."""
+    if window is None:
+        raise ValueError("evidence bundle needs a time window")
     state_dir = Path(cfg.state_dir)
     dst = state_dir / "evidence" / run_id.replace("/", "_") / "bundle"
     result: dict = {"script": script, "run_id": run_id, "when": datetime.now().isoformat(timespec="seconds"),

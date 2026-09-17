@@ -165,15 +165,70 @@ def cmd_collect_retry(cfg: Config, day: str = "") -> int:
     return 0
 
 
-def cmd_evidence(cfg: Config, script: str, run_id: str) -> int:
-    """Build and upload the upstream-format evidence bundle for one run."""
+def _ledger_runs(cfg: Config, script: str, days: int = 3) -> list[dict]:
+    """The last `days` days of ledger entries for `script`, newest first."""
+    from datetime import datetime, timedelta  # noqa: PLC0415
+
+    from .config import SERVER_TZ  # noqa: PLC0415
+    st = State(cfg.state_dir)
+    now = datetime.now(tz=SERVER_TZ)
+    out: list[dict] = []
+    for d in range(days):
+        day = (now - timedelta(days=d)).strftime("%Y-%m-%d")
+        out += [e for e in st.read_ledger(day) if e.get("script") == script]
+    out.sort(key=lambda e: e.get("started", ""), reverse=True)
+    return out
+
+
+def evidence_window(cfg: Config, script: str, run_id: str = "", hours: float = 0.0,
+                    since: str = "") -> tuple[str, tuple[float, float]]:
+    """(run_id, window) for a hand-made bundle. A window is never optional:
+    `--hours N` = the last N hours, `--since` = from that moment until now,
+    `--run-id` = that run's own window, nothing = the latest run of the script.
+    """
+    from datetime import datetime  # noqa: PLC0415
+
     from . import evidence  # noqa: PLC0415
+    from .config import SERVER_TZ  # noqa: PLC0415
+    now = datetime.now(tz=SERVER_TZ)
+    if hours and hours > 0:
+        return run_id or f"manual/{script}-{now:%Y%m%d-%H%M%S}", (now.timestamp() - hours * 3600, now.timestamp())
+    if since:
+        t0 = datetime.fromisoformat(since)
+        if t0.tzinfo is None:
+            t0 = t0.replace(tzinfo=SERVER_TZ)
+        return run_id or f"manual/{script}-{now:%Y%m%d-%H%M%S}", (t0.timestamp(), now.timestamp())
+    runs = _ledger_runs(cfg, script)
+    if run_id:
+        runs = [e for e in runs if e.get("run_id") == run_id]
+        if not runs:
+            raise SystemExit(f"账本最近三天里没有 {run_id}；给 --hours 或 --since 也行")
+    if not runs:
+        raise SystemExit(f"账本最近三天里没有 {script} 的运行；给 --hours N 或 --since 时间")
+    e = runs[0]
+    started = datetime.fromisoformat(e["started"])
+    finished = datetime.fromisoformat(e["finished"]) if e.get("finished") and e.get("duration_known", True) else None
+    return e["run_id"], evidence.run_window(started, finished)
+
+
+def cmd_evidence(cfg: Config, script: str, run_id: str, hours: float = 0.0, since: str = "") -> int:
+    """Build and upload the upstream-format evidence bundle for one time window."""
+    from . import evidence  # noqa: PLC0415
+    run_id, window = evidence_window(cfg, script, run_id, hours, since)
     extra = []
-    if cfg.history_dir:
+    if cfg.history_dir and not run_id.startswith("manual/"):
         extra = [f for f in (Path(cfg.history_dir) / (run_id + s) for s in (".log", ".json")) if f.is_file()]
-    res = evidence.save_and_upload(cfg, script, run_id, extra)
+    res = evidence.save_and_upload(cfg, script, run_id, extra, window=window)
+    res["window"] = [datetime_str(window[0]), datetime_str(window[1])]
     print(json.dumps(res, ensure_ascii=False, indent=1))
     return 0 if res.get("uploaded") else 1
+
+
+def datetime_str(ts: float) -> str:
+    from datetime import datetime  # noqa: PLC0415
+
+    from .config import SERVER_TZ  # noqa: PLC0415
+    return datetime.fromtimestamp(ts, tz=SERVER_TZ).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def cmd_banners(cfg: Config) -> int:
@@ -327,7 +382,9 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="ark_relay", description="MAA 通知中继")
     p.add_argument("command", choices=["local", "check", "test", "report", "collect-retry", "evidence", "banners"])
     p.add_argument("--script", default="MaaEnd", help="evidence 模式：MAA / MaaEnd / OK-WW")
-    p.add_argument("--run-id", default="", help="evidence 模式：账本里的 run_id")
+    p.add_argument("--run-id", default="", help="evidence 模式：账本里的 run_id（默认取该脚本最近一趟）")
+    p.add_argument("--hours", type=float, default=0.0, help="evidence 模式：只带最近 N 小时的文件")
+    p.add_argument("--since", default="", help="evidence 模式：只带这个时刻之后的文件，如 2026-09-17T10:20")
     p.add_argument("--day", default="", help="collect-retry 模式：看哪一天的账本（默认今天）")
     p.add_argument("--env", type=Path, default=Path(".env"), help="配置文件（默认 ./.env）")
     p.add_argument("--again", action="store_true",
@@ -350,7 +407,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "collect-retry":
         return cmd_collect_retry(cfg, args.day)
     if args.command == "evidence":
-        return cmd_evidence(cfg, args.script, args.run_id)
+        return cmd_evidence(cfg, args.script, args.run_id, args.hours, args.since)
     if args.command == "banners":
         return cmd_banners(cfg)
     return cmd_local(cfg)

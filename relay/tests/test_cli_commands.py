@@ -28,8 +28,13 @@ print("[evidence 命令：没配置的脚本什么也传不了，退出码 1，�
 class Cfg:
     state_dir = tmpdir() / "state"; maaend_dir = None; maa_dir = None; okww_dir = None; history_dir = None
 Cfg.state_dir.mkdir(parents=True)
-rc = cli.cmd_evidence(Cfg, "MaaEnd", "2026-09-11/endfield/MaaEnd-06-17-17")
+rc = cli.cmd_evidence(Cfg, "MaaEnd", "", hours=2)     # a window is mandatory: the last two hours
 check("没东西可传就是 1", rc, 1)
+try:
+    cli.cmd_evidence(Cfg, "MaaEnd", "2026-09-11/endfield/MaaEnd-06-17-17"); no_run = "accepted"
+except SystemExit as exc:
+    no_run = str(exc)
+check("账本里没有那趟就拒绝，不悄悄全量", "--hours" in no_run)
 check("索引仍然写了一行", (Cfg.state_dir / "evidence" / "index.jsonl").exists())
 
 print("\n[collect-retry 命令：走的是 maybe_run，没有失败路线就说没有]")
