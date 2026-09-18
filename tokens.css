@@ -1,0 +1,422 @@
+/* iOS 27 component tokens for the phone remote page (v4) — same numbers as spec-table.md, one variable each.
+ * Device: iPhone 18 Pro Max simulator, 440×956 pt @3x, zh-Hans. 1 CSS px = 1 pt.
+ * Source tags on every line:
+ *   probe    = tools/uiprobe/uiprobe-<screen>.json (UIKit values read inside a self-signed app; dark = -dark file)
+ *   AX-<n>   = remote-ref/<n>-ax.json (system-app accessibility frames)
+ *   NUMBERS n = ~/Claude/hig-kit/NUMBERS.md line n
+ *   pixel <n> = darkest pixel inside the AX frame on remote-ref/<n>-*.png
+ *   !!! SAMPLED !!! (采样替代) = no original value; fitted/sampled — see the block at the end, keep it marked red in the UI notes
+ */
+:root {
+  /* ---- type ---- */
+  /* probe font.name .SFUI-*; Chinese falls back to PingFang SC via the system cascade */
+  --ios-font: -apple-system, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+  /* probe: Value row .SFUI-Regular 17, lineHeight 20.29, label frame 20.33 */
+  --ios-body-size: 17px;
+  --ios-body-lh: 20.33px;
+  /* probe: subtitle .SFUI-Regular 15, lineHeight 17.90; AX-33d subtitle frame h 18 */
+  --ios-sub-size: 15px;
+  --ios-sub-lh: 18px;
+  /* probe: footer .SFUI-Regular 13, lineHeight 15.51, frame 15.67 */
+  --ios-footnote-size: 13px;
+  --ios-footnote-lh: 15.67px;
+  /* probe: nav title / section header / alert title .SFUI-Semibold 17 (weight .3) */
+  --ios-headline-weight: 600;
+  /* probe: alert button .SFUI-Medium 17 (weight .23) */
+  --ios-medium-weight: 500;
+  /* probe: tab bar label .SFUI-Semibold 10 (selected) / .SFUI-Medium 10 */
+  --ios-tab-label-size: 10px;
+  /* probe: segmented label .SFUI-MediumG3 13 (selected) / .SFUI-RegularG3 13 */
+  --ios-segment-label-size: 13px;
+  /* probe: picker wheel .SFUI-Regular 21, selected row 23.5 */
+  --ios-wheel-size: 21px;
+  --ios-wheel-selected-size: 23.5px;
+
+  /* ---- colours, light (probe uiprobe-colors.json unless noted) ---- */
+  --ios-label: rgb(0 0 0);
+  --ios-secondary-label: rgb(60 60 67 / .6);
+  --ios-tertiary-label: rgb(60 60 67 / .298);
+  --ios-quaternary-label: rgb(60 60 67 / .176);
+  /* probe systemBlue = default tintColor */
+  --ios-tint: rgb(0 136 255);
+  /* probe link — Settings' blue action rows use this one (pixel 33d (40,364.5) = (0,122,255)) */
+  --ios-link: rgb(0 122 255);
+  --ios-red: rgb(255 56 60);
+  --ios-green: rgb(52 199 89);
+  --ios-gray: rgb(142 142 147);
+  /* probe UITableView.backgroundColor = systemGroupedBackground */
+  --ios-grouped-bg: rgb(242 242 247);
+  /* probe cell backgroundConfiguration.backgroundColor (tableCellGroupedBackgroundColor) */
+  --ios-card-bg: rgb(255 255 255);
+  /* probe systemBackground (sheet content) */
+  --ios-bg: rgb(255 255 255);
+  /* probe _UITableViewCellSeparatorView.backgroundColor = separator; pixel 45 three rows (232,232,232) = white × .88 + (60,60,67) × .12 */
+  --ios-separator: rgb(60 60 67 / .12);
+  /* probe alert button fill = tertiarySystemFill */
+  --ios-tertiary-fill: rgb(118 118 128 / .12);
+  /* probe UISwitch base view (off track) */
+  --ios-switch-off: rgb(60 60 67 / .298);
+  /* probe UISwitch fill view when on = systemGreen */
+  --ios-switch-on: rgb(52 199 89);
+  /* probe UISwitch knob view */
+  --ios-switch-knob: rgb(255 255 255);
+  /* probe UIActivityIndicatorView.color = secondaryLabel */
+  --ios-spinner: rgb(60 60 67 / .6);
+  /* probe UIDimmingView behind a sheet */
+  --ios-dimming: rgb(0 0 0 / .2);
+  /* probe scroll indicator */
+  --ios-scrollbar: rgb(0 0 0 / .35);
+  /* pixel 34 (64,468): empty-state caption = systemGray */
+  --ios-empty-text: rgb(142 142 147);
+  /* pixel 33d (40,283): Settings' own two-line-row subtitle (not a semantic colour the probe lists) */
+  --ios-settings-subtitle: rgb(128 128 128);
+
+  /* ---- layout ---- */
+  /* AX-45 NavigationBar y 62 */
+  --ios-status-h: 62px;
+  /* AX-45 NavigationBar h 54; Kit NUMBERS 58 */
+  --ios-nav-h: 54px;
+  /* AX-45 title text top = bar top + 11.67, frame 20.67 */
+  --ios-nav-title-top: 11.67px;
+  /* AX-45 BackButton 44×44 at x 20 */
+  --ios-nav-button: 44px;
+  --ios-nav-side: 20px;
+  /* AX-32b modal sheet nav: round buttons 36×36 at x 24 / 380, bar at y 82 */
+  --ios-modal-button: 36px;
+  --ios-modal-nav-top: 82px;
+  /* AX-45 card x 20 w 400; NUMBERS 35 */
+  --ios-card-inset: 20px;
+  --ios-card-w: 400px;
+  /* probe backgroundConfiguration.cornerRadius = 26 (List Header); Kit 91 */
+  --ios-card-radius: 26px;
+  /* AX-45 footer bottom 164 → next card 181.67 */
+  --ios-group-gap: 17.67px;
+  /* probe section header container 45.33 (label at +18.67); AX-35 Settings header 38 */
+  --ios-header-h: 45.33px;
+  --ios-header-text-top: 18.67px;
+  --ios-settings-header-h: 38px;
+  /* probe footer container 30.33 (text at +7.67), two lines 46.33 */
+  --ios-footer-h: 30.33px;
+  --ios-footer-text-top: 7.67px;
+  --ios-footer-2line-h: 46.33px;
+  /* probe _UISystemBackgroundView 53.33; AX-45; NUMBERS 38 */
+  --ios-row-h: 53.33px;
+  /* probe label x 40 = card 20 + 20; AX-45 */
+  --ios-row-text-x: 20px;
+  /* probe label top = row + 16.33 (AX reads 16.5) */
+  --ios-row-text-top: 16.33px;
+  /* AX-33d Settings two-line row 62: title +9, subtitle +32.33; icon 28×28 at +17, text x 83 (AX-35) */
+  --ios-row2-h: 62px;
+  --ios-row2-title-top: 9px;
+  --ios-row2-sub-top: 32.33px;
+  --ios-row2-icon: 28px;
+  --ios-row2-icon-x: 20px;
+  --ios-row2-text-x: 63px;
+  /* probe UIKit subtitleCell (for comparison): 69.33, title +15.67, subtitle +36 */
+  --ios-row2-uikit-h: 69.33px;
+  /* probe/AX-45 chevron 10.33×14 at x 389.67 = card right − 20 − 10.33; top = row + 19.33 */
+  --ios-chevron-w: 10.33px;
+  --ios-chevron-h: 14px;
+  --ios-chevron-inset: 20px;
+  --ios-chevron-top: 19.33px;
+  /* AX-45 value text right edge 381.67 = chevron left − 8 */
+  --ios-value-gap: 8px;
+  /* probe/AX-45 checkmark 19×17.33 at x 378.5 = card right − 22.5 − 19; top = row + 17.67 */
+  --ios-check-w: 19px;
+  --ios-check-h: 17.33px;
+  --ios-check-inset: 22.5px;
+  --ios-check-top: 17.67px;
+  /* AX-45 / probe / NUMBERS 46: switch 63×28; Settings inset 18 (x 339), UIKit accessoryView inset 20 */
+  --ios-switch-w: 63px;
+  --ios-switch-h: 28px;
+  --ios-switch-radius: 14px;
+  --ios-switch-inset: 18px;
+  /* probe knob container 37×24 at +2, on-state x +24 */
+  --ios-switch-knob-w: 37px;
+  --ios-switch-knob-h: 24px;
+  --ios-switch-knob-pad: 2px;
+  /* probe UIActivityIndicatorView 20×20 at x 380 = card right − 40 − 20 */
+  --ios-spinner-size: 20px;
+  --ios-spinner-inset: 40px;
+  /* probe UIStepper 94×32 */
+  --ios-stepper-w: 94px;
+  --ios-stepper-h: 32px;
+  /* probe _UITableViewCellSeparatorView h 1.0; pixel 45 = 3 px */
+  --ios-separator-h: 1px;
+  /* probe separator x 40 → 400: starts at the text line, right inset 20; icon rows start at text x 83 (AX-35) */
+  --ios-separator-inset-l: 20px;
+  --ios-separator-inset-r: 20px;
+  /* AX-46 centred red action row; AX-33d left-aligned blue action row at x 40 */
+
+  /* ---- alert (probe uiprobe-alert.json; AX-48d identical; Kit 89) ---- */
+  --ios-alert-w: 320px;
+  --ios-alert-radius: 34px;
+  --ios-alert-pad-x: 30px;
+  --ios-alert-title-top: 22px;
+  --ios-alert-msg-gap: 7.33px;
+  --ios-alert-button-h: 48px;
+  --ios-alert-button-radius: 24px;
+  --ios-alert-button-inset: 16px;
+  --ios-alert-button-gap: 8px;
+  /* probe _UIAlertControllerGradientView 2 pt, alpha .056 */
+  --ios-alert-divider-h: 2px;
+  --ios-alert-divider-alpha: .056;
+  /* AX-52b / 51b / 53b bottom action sheet: 240 wide, button 208×48 */
+  --ios-actionsheet-w: 240px;
+  --ios-actionsheet-button-w: 208px;
+  --ios-actionsheet-button-h: 48px;
+
+  /* ---- medium sheet (probe uiprobe-sheet.json) ---- */
+  --ios-sheet-side-inset: 8px;
+  --ios-sheet-bottom-inset: 8px;
+  --ios-sheet-medium-h: 496.92px;
+  /* Kit 82 grabber 60×4 at y 5 (probe read 57.82×3.85 mid-animation) */
+  --ios-grabber-w: 60px;
+  --ios-grabber-h: 4px;
+  --ios-grabber-top: 5px;
+  /* probe UIScreen._displayCornerRadius */
+  --ios-display-radius: 62px;
+
+  /* ---- picker wheel (probe uiprobe-pickers.json; AX-32b/33c) ---- */
+  --ios-picker-w: 320px;
+  --ios-picker-h: 216px;
+  --ios-picker-row-h: 32px;
+  /* AX-32b hour wheel 59 wide at x 163, minute 50 at x 227 (Settings: picker in card (20,207,400,217)) */
+  --ios-wheel-hour-w: 59px;
+  --ios-wheel-minute-w: 50px;
+
+  /* ---- segmented / progress / tab bar / scrollbar ---- */
+  /* probe UISegmentedControl h 32 r 16, lens h 28 r 14 (inset 2); AX-34 Settings width 360 at x 40 */
+  --ios-segment-h: 32px;
+  --ios-segment-radius: 16px;
+  --ios-segment-lens-h: 28px;
+  --ios-segment-lens-radius: 14px;
+  --ios-segment-lens-pad: 2px;
+  /* probe UIProgressView 400×4 (track/fill colours not read) */
+  --ios-progress-h: 4px;
+  /* probe UITabBar 83 at y 873; lens 94×54 r 27; labels at y 912; AX-13 same */
+  --ios-tabbar-h: 83px;
+  --ios-tab-lens-w: 94px;
+  --ios-tab-lens-h: 54px;
+  --ios-tab-lens-radius: 27px;
+  /* probe scroll indicator 3 wide r 1.5, inset 3 */
+  --ios-scrollbar-w: 3px;
+  --ios-scrollbar-inset: 3px;
+
+  /* ---- empty state ---- */
+  /* AX-34 caption Regular 17 centred, width 312 at x 64 */
+  --ios-empty-caption-w: 312px;
+  /* AX-55b icon 60, title frame 26.67 (22 pt), description 18.33, button 146.67×34.67 */
+  --ios-empty-icon: 60px;
+  --ios-empty-title-size: 22px;
+  --ios-empty-button-h: 34.67px;
+
+  /* ---- more semantic colours (probe uiprobe-colors.json, added 09-18 for the old-page audit) ---- */
+  /* probe systemOrange — NOT the old page's #ff9500: iOS 27 gives (255,141,40) light / (255,146,48) dark */
+  --ios-orange: rgb(255 141 40);
+  --ios-yellow: rgb(255 204 0);
+  --ios-system-fill: rgb(120 120 128 / .2);
+  --ios-secondary-fill: rgb(120 120 128 / .16);
+  --ios-quaternary-fill: rgb(116 116 128 / .08);
+  --ios-gray2: rgb(174 174 178);
+  --ios-gray3: rgb(199 199 204);
+  --ios-gray4: rgb(209 209 214);
+  --ios-gray5: rgb(229 229 234);
+  --ios-gray6: rgb(242 242 247);
+  /* probe tertiarySystemGroupedBackground (input wells inside a card) */
+  --ios-tertiary-grouped-bg: rgb(242 242 247);
+  /* probe UITabBar labels: selected = tint (systemBlue), unselected = label */
+  --ios-tab-label-selected: rgb(0 136 255);
+  --ios-tab-label: rgb(0 0 0);
+  /* probe uiprobe-colors.json textStyles: UIFont.preferredFont(forTextStyle:) at the default (Large) content size */
+  --ios-large-title-size: 34px;  --ios-large-title-lh: 40.57px;   /* .SFUI-Regular 34 (the bar's large title is bold; weight from NUMBERS 56) */
+  --ios-title1-size: 28px;       --ios-title1-lh: 33.41px;
+  --ios-title2-size: 22px;       --ios-title2-lh: 26.25px;
+  --ios-title3-size: 20px;       --ios-title3-lh: 23.87px;
+  --ios-headline-size: 17px;     --ios-headline-lh: 20.29px;      /* .SFUI-Semibold 17 */
+  --ios-callout-size: 16px;      --ios-callout-lh: 19.09px;
+  --ios-subheadline-size: 15px;  --ios-subheadline-lh: 17.90px;
+  --ios-caption1-size: 12px;     --ios-caption1-lh: 14.32px;
+  --ios-caption2-size: 11px;     --ios-caption2-lh: 13.13px;
+
+  /* ---- layout rows the old page needs (NUMBERS.md / Kit lines) ---- */
+  /* NUMBERS 45: large title to first card 13 (Settings top level 09-15) */
+  --ios-large-title-to-card: 13px;
+  /* NUMBERS 44: cards apart with no text between = 35 (Settings 09-15) */
+  --ios-card-gap-no-text: 35px;
+  /* NUMBERS 37/39: icon rows 52.33 (kit 52 + hairline); 28-pt icon at 18 inside the card, text at 60 */
+  --ios-icon-row-h: 52.33px;
+  --ios-icon-row-icon: 28px;
+  --ios-icon-row-icon-x: 18px;
+  --ios-icon-row-text-x: 60px;
+  /* NUMBERS 94: trailing SF symbol slot 22 wide (Regular 17 symbol) */
+  --ios-symbol-slot: 22px;
+  /* Kit NUMBERS 96 — iPhone menu: 250 wide, padding 10, items 210×42 at x 16, checkmark Semibold 15 at x 10, symbol slot x 30 (28 wide),
+   * label Regular 17 at x 68, title+subtitle item 60, section title 29, separator 21 (1 px #e6e6e6 at 8 inset) */
+  --ios-menu-w: 250px;
+  --ios-menu-pad: 10px;
+  --ios-menu-item-h: 42px;
+  --ios-menu-item-w: 210px;
+  --ios-menu-item-x: 16px;
+  --ios-menu-check-x: 10px;
+  --ios-menu-check-size: 15px;
+  --ios-menu-symbol-x: 30px;
+  --ios-menu-symbol-w: 28px;
+  --ios-menu-label-x: 68px;
+  --ios-menu-item2-h: 60px;
+  --ios-menu-section-h: 29px;
+  --ios-menu-separator-h: 21px;
+  --ios-menu-separator-line: rgb(230 230 230);
+  --ios-menu-separator-inset: 8px;
+  /* Kit 89: menu/alert glass = white 70 % + #bfbfbf 10 % + blur 30 — SAMPLED, see the end block; tab-item minimum width: no source → not set */
+
+  /* ---- motion (spec-extract.md ⑤: swizzled CAAnimation parameters + per-frame presentation traces, 60 Hz simulator) ----
+   * CSS cannot run a spring, so each curve is sampled into linear() over its settle duration (tools/uiprobe/motion_tokens.py) */
+  /* critical ω21 (probe trace; recording ω20–20.5) */
+  --ios-motion-switch-knob-duration: 0.35s;
+  --ios-motion-switch-knob-easing: linear(0.000, 0.038, 0.126, 0.234, 0.346, 0.453, 0.548, 0.632, 0.702, 0.761, 0.810, 0.850, 0.881, 0.907, 0.927, 0.943, 0.956, 0.966, 0.974, 0.980, 0.984, 0.988, 0.991, 0.993, 1.000);
+
+  /* segmented/tab-bar lens, ω17.5 ζ0.9 (probe trace, private) */
+  --ios-motion-lens-duration: 0.52s;
+  --ios-motion-lens-easing: linear(0.000, 0.057, 0.183, 0.331, 0.475, 0.601, 0.706, 0.790, 0.853, 0.901, 0.935, 0.959, 0.975, 0.986, 0.993, 0.997, 1.000, 1.001, 1.001, 1.002, 1.001, 1.001, 1.001, 1.001, 1.000);
+
+  /* CASpringAnimation k522.4 c45.71 m1 → ω22.86 ζ1 (logged; trace ω23) */
+  --ios-motion-alert-duration: 0.40s;
+  --ios-motion-alert-easing: linear(0.000, 0.057, 0.178, 0.317, 0.450, 0.568, 0.666, 0.745, 0.808, 0.856, 0.893, 0.921, 0.942, 0.958, 0.969, 0.978, 0.984, 0.988, 0.992, 0.994, 0.996, 0.997, 0.998, 0.998, 1.000);
+
+  /* CASpringAnimation m3 k1000 c500 → renders as ω18.26 ζ1 (trace ω18.5); detent release k333.3 c36.51 m1 = same ω */
+  --ios-motion-sheet-duration: 0.50s;
+  --ios-motion-sheet-easing: linear(0.000, 0.056, 0.177, 0.316, 0.449, 0.567, 0.665, 0.745, 0.807, 0.856, 0.893, 0.921, 0.942, 0.958, 0.969, 0.978, 0.984, 0.988, 0.992, 0.994, 0.996, 0.997, 0.998, 0.998, 1.000);
+
+  /* push: critical ω22 v0 4 (trace; UIKit 0.35 s transition) */
+  --ios-motion-nav-push-duration: 0.35s;
+  --ios-motion-nav-push-easing: linear(0.000, 0.084, 0.197, 0.317, 0.432, 0.535, 0.624, 0.700, 0.762, 0.813, 0.853, 0.886, 0.912, 0.932, 0.948, 0.960, 0.969, 0.977, 0.982, 0.987, 0.990, 0.992, 0.994, 0.996, 1.000);
+
+  /* pop: critical ω21.5 v0 8 (trace) */
+  --ios-motion-nav-pop-duration: 0.35s;
+  --ios-motion-nav-pop-easing: linear(0.000, 0.125, 0.256, 0.379, 0.490, 0.586, 0.668, 0.735, 0.790, 0.835, 0.871, 0.899, 0.922, 0.940, 0.953, 0.964, 0.972, 0.979, 0.984, 0.988, 0.991, 0.993, 0.995, 0.996, 1.000);
+  /* probe: switch track cross-fade = two opacity CABasicAnimations 0.200 s, timing "default" */
+  --ios-motion-switch-track-duration: 0.2s;
+  --ios-motion-switch-track-easing: cubic-bezier(0.25, 0.1, 0.25, 1);
+  /* probe: segmented label weight cross-fade (contents) 0.200 s default; pressed segment dims to opacity .2 in 0.47 s, back in 0.2 s */
+  --ios-motion-segment-label-duration: 0.2s;
+  --ios-motion-segment-press-opacity: .2;
+  --ios-motion-segment-press-duration: 0.47s;
+  --ios-motion-segment-release-duration: 0.2s;
+  /* probe: alert button fill on press/release: opacity 0.100 s ease-in-out */
+  --ios-motion-alert-button-duration: 0.1s;
+  /* probe: UIButton plain/filled/glass release: CATransition / backgroundColor 0.250 s ease-in-out; press-down is instant (no animation) */
+  --ios-motion-button-release-duration: 0.25s;
+  --ios-motion-ease-in-out: cubic-bezier(0.42, 0, 0.58, 1);
+  /* probe: UITableViewCell highlight is instant on touch-down; deselect fade backgroundColor 0.500 s ease-in-out */
+  --ios-motion-row-release-duration: 0.5s;
+  /* probe: UINavigationController transitionCoordinator 0.35 s; outgoing page parallax 30 % of width (440 → −132) */
+  --ios-motion-nav-duration: 0.35s;
+  --ios-motion-nav-parallax: 30%;
+  /* probe: scroll indicator fade 0.5 s ease-in-out; UIActivityIndicatorView period 0.8 s */
+  --ios-motion-scrollbar-fade: 0.5s;
+  --ios-motion-spinner-period: 0.8s;
+  /* probe: sheet release-to-detent = CASpringAnimation k 333.3 c 36.51 m 1 (ω 18.26/s, ζ 1, perceptual 0.344 s) with the gesture's initial velocity —
+   * for JS springs: stiffness 333.3, damping 36.51, mass 1 */
+  --ios-motion-sheet-stiffness: 333.3;
+  --ios-motion-sheet-damping: 36.51;
+  --ios-motion-alert-stiffness: 522.4;
+  --ios-motion-alert-damping: 45.71;
+
+  /* ---- added 09-18 pm for the status page (界面会话 questions) ---- */
+  /* probe UISwitch: knob container 37 wide at pad 2 inside the 63 track → travel 63 − 37 − 2×2 = 22 (probe on-state x +24 = 2 + 22) */
+  --ios-switch-travel: 22px;
+  /* probe UITabBar: capsule platter 274×62 at y 873 → 21 above the screen bottom (956); buttons/lens 94×54 at inset 4; label 10 at capsule top + 39;
+   * symbol image views 27–31 pt (SF symbol point sizes 19.7–22.7); the 83 of --ios-tabbar-h is the UITabBar frame incl. the home-indicator area */
+  --ios-tab-capsule-h: 62px;
+  --ios-tab-capsule-bottom: 21px;
+  --ios-tab-button-w: 94px;
+  --ios-tab-button-h: 54px;
+  --ios-tab-button-pad: 4px;
+  --ios-tab-label-top: 39px;
+  --ios-tab-symbol-box: 28px;
+  /* NUMBERS 49 (maa 09-15): compact value box in a row — tertiary fill, radius 8, padding 6/11 */
+  --ios-value-box-radius: 8px;
+  --ios-value-box-pad-y: 6px;
+  --ios-value-box-pad-x: 11px;
+  /* AX-57 Reminders home smart-list tiles: 196×80.33, columns x 20 / 224 (gap 8), row pitch 88.33; contents by pixel (57-reminders-home-tiles.png):
+   * icon glyph 26.67×24.67 at (16.67,13.67), number glyph 15.67×20.33 at right inset 12 / top 15.67, label glyph 15 tall at (13,55) — SAMPLED fonts */
+  --ios-tile-w: 196px;
+  --ios-tile-h: 80.33px;
+  --ios-tile-gap: 8px;
+  --ios-tile-icon-x: 16.67px;
+  --ios-tile-icon-y: 13.67px;
+  --ios-tile-number-inset: 12px;
+  --ios-tile-number-top: 15.67px;
+  --ios-tile-label-x: 13px;
+  --ios-tile-label-bottom: 10.33px;
+  /* AX-58 Messages conversation list UnreadIndicatorImageView (7.33, 240.33, 11, 11): status dot 11 pt, x 7.33 from the screen edge,
+   * vertically centred on the row; colour by pixel (0,136,255) = tint */
+  --ios-status-dot: 11px;
+  --ios-status-dot-x: 7.33px;
+
+  /* ======== !!! SAMPLED (采样替代) — no original value yet, mark red wherever used ======== */
+  /* !!! SAMPLED !!! Reminders tile corner ≈ 15.5–16 (continuous-curve fit on 57-reminders-home-tiles.png, rmse 0.27 px); tile number ≈ 28 pt bold and label ≈ 17 pt are inferred from glyph heights (20.33 / 15) */
+  --ios-tile-radius-SAMPLED: 16px;
+  /* !!! SAMPLED !!! sheet corner: continuous-corner curve fit on tools/uiprobe/probe-sheet.png, rmse 0.8 px (NUMBERS 60 old measurement 38 agrees; Kit's 34 does not) */
+  --ios-sheet-radius-SAMPLED: 38px;
+  /* !!! SAMPLED !!! alert background material: Kit 89 "white 70 % + #bfbfbf 10 % + blur 30"; probe cannot read _UIAlertBackground */
+  --ios-alert-material-SAMPLED: rgb(255 255 255 / .7);
+  --ios-alert-blur-SAMPLED: 30px;
+  /* !!! SAMPLED !!! lens MOTION (segmented / tab-bar selection slide, switch knob): private _UILiquidLensView (CAMatchMove, no duration);
+   * --ios-motion-lens-* and --ios-motion-switch-knob-* above are fits of the probe's own per-frame traces (rmse ≤ 0.006), not read parameters */
+  /* !!! SAMPLED !!! glass lenses (segmented knob, tab bar lens, nav platter): private _UILiquidLensView, nothing read;
+   * Kit 85 says only "glass knob", NUMBERS 64 "selected white + 20 blur shadow" — no numeric recipe, so no variable is set on purpose */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* probe uiprobe-colors.json dark column, and the -dark dumps for the custom views */
+    --ios-label: rgb(255 255 255);
+    --ios-secondary-label: rgb(235 235 245 / .6);
+    --ios-tertiary-label: rgb(235 235 245 / .298);
+    --ios-quaternary-label: rgb(235 235 245 / .157);
+    --ios-tint: rgb(0 145 255);
+    --ios-link: rgb(9 132 255);
+    --ios-red: rgb(255 66 69);
+    --ios-green: rgb(48 209 88);
+    --ios-gray: rgb(142 142 147);
+    --ios-grouped-bg: rgb(0 0 0);
+    /* probe secondarySystemGroupedBackground dark; list-dark cell backgroundConfiguration */
+    --ios-card-bg: rgb(28 28 30);
+    --ios-bg: rgb(0 0 0);
+    /* probe list-dark separator view / separatorColor */
+    --ios-separator: rgb(84 84 88 / .5);
+    /* probe alert-dark button fill */
+    --ios-tertiary-fill: rgb(118 118 128 / .24);
+    /* probe list-dark UISwitch base / fill */
+    --ios-switch-off: rgb(235 235 245 / .298);
+    --ios-switch-on: rgb(48 209 88);
+    --ios-switch-knob: rgb(255 255 255);
+    /* probe list-dark spinner colour = secondaryLabel dark */
+    --ios-spinner: rgb(235 235 245 / .6);
+    /* probe list-dark scroll indicator */
+    --ios-scrollbar: rgb(255 255 255 / .5);
+    /* dimming not re-read in dark (sheet dump is light only); keep light value */
+    --ios-dimming: rgb(0 0 0 / .2);
+    /* probe dark column: orange/yellow/fills/grays/tertiary grouped bg/tab labels */
+    --ios-orange: rgb(255 146 48);
+    --ios-yellow: rgb(255 214 0);
+    --ios-system-fill: rgb(120 120 128 / .36);
+    --ios-secondary-fill: rgb(120 120 128 / .32);
+    --ios-quaternary-fill: rgb(118 118 128 / .18);
+    --ios-gray2: rgb(99 99 102);
+    --ios-gray3: rgb(72 72 74);
+    --ios-gray4: rgb(58 58 60);
+    --ios-gray5: rgb(44 44 46);
+    --ios-gray6: rgb(28 28 30);
+    --ios-tertiary-grouped-bg: rgb(44 44 46);
+    --ios-tab-label-selected: rgb(0 145 255);
+    --ios-tab-label: rgb(255 255 255);
+    /* --ios-menu-separator-line: Kit gives the light value only — not set */
+    /* probe systemGray is the same in both modes */
+    --ios-empty-text: rgb(142 142 147);
+    /* --ios-settings-subtitle: no dark pixel sample yet (Settings not captured in dark) — not set on purpose */
+    /* --ios-*-material-SAMPLED: no dark recipe in the Kit either — not set on purpose */
+  }
+}
