@@ -50,7 +50,16 @@
   .lens .clone,.lens .labels{position:absolute;left:0;top:0;width:400px;pointer-events:none}
   .lens .clone .scene{border-radius:0}
   .lens .clone .flat,.scene.lifted > .segctl .flat{display:none}   /* lifted: the flat resting platter IS the lens, so neither the copy nor the scene shows it */
-  .lens .clone .segctl span{visibility:hidden}                   /* the filtered copy carries the track, not the labels */
+  .lens .clone .segctl span{visibility:hidden}                   /* the track copy without labels; the labels of the backdrop come through .punch */
+  /* the backdrop under the lens contains the segment content too (老网页 on A9 表 3: the ring outside the portal shows it through +9/36); the
+     DestOut punches the original labels out only inside the portal rectangle (196×28 × the lens scale) — .punch = a labels-only copy in
+     the backdrop layer with the portal cut out (evenodd), displaced by the backdrop filter like the track */
+  .lens .punch{position:absolute;left:0;top:0;width:220px;height:44px;overflow:hidden}
+  .lens .punch .plabels{position:absolute;left:0;top:0;width:400px;pointer-events:none}
+  .lens .punch .scene{background:transparent}
+  .lens .punch .scene > *:not(.segctl){visibility:hidden}
+  .lens .punch .segctl{background:transparent}
+  .lens .punch .segctl .flat{display:none}
   .lens .labels .scene{background:transparent}
   .lens .labels .scene > *:not(.segctl){visibility:hidden}       /* only the segment labels, on a transparent layer */
   .lens .labels .segctl{background:transparent}
@@ -89,9 +98,13 @@
   if (q.get("bg") === "0") lens.classList.add("nobg"); if (q.get("lab") === "0") lens.classList.add("nolab");
   lens.style.width = LW + "px"; lens.style.height = LH + "px"; lens.style.borderRadius = Math.min(22, LH / 2) + "px";
   const bgLayer = document.createElement("div"); bgLayer.className = "layer bg"; const clone = document.createElement("div"); clone.className = "clone"; bgLayer.appendChild(clone);
+  const punch = document.createElement("div"); punch.className = "punch"; const plabels = document.createElement("div"); plabels.className = "plabels"; punch.appendChild(plabels); bgLayer.appendChild(punch);
   const labLayer = document.createElement("div"); labLayer.className = "layer lab"; const labels = document.createElement("div"); labels.className = "labels"; labLayer.appendChild(labels);
   const M = 0;                                                   /* no extension: the map's samples stay inside the box */
-  for (const l of [bgLayer, labLayer]) { l.style.width = LW + "px"; l.style.height = LH + "px"; }
+  for (const l of [bgLayer, labLayer, punch]) { l.style.width = LW + "px"; l.style.height = LH + "px"; }
+  /* the DestOut punch-out: the portal rectangle 196×28 scaled with the lens (seg-lens-refraction.md §1c(d)), centred */
+  const PW = 196 * LW / 220, PH = 28 * LH / 44, PL = (LW - PW) / 2, PT = (LH - PH) / 2;
+  punch.style.clipPath = `polygon(evenodd, 0 0, ${LW}px 0, ${LW}px ${LH}px, 0 ${LH}px, 0 0, ${PL}px ${PT}px, ${PL + PW}px ${PT}px, ${PL + PW}px ${PT + PH}px, ${PL}px ${PT + PH}px, ${PL}px ${PT}px)`;
   labLayer.style.borderRadius = Math.min(22, LH / 2) + "px";
   if (LW !== 220) { if (!lens.classList.contains("nobg")) bgLayer.style.filter = `url(#seg-lens-f-bg-${LW})`; if (!lens.classList.contains("nolab")) labLayer.style.filter = `url(#seg-lens-f-lab-${LW})`; }
   const AM = 16;                                                 /* the wrapper's extension beyond the lens (lens-field.json aberration.wrapper) */
@@ -102,7 +115,7 @@
   if (AB === "flip" || AB === "ir") { lens.classList.add("ab-" + AB); if (LW !== 220) stack.style.filter = `url(#seg-lens-f-ab${AB === "ir" ? "-ir" : ""}-${LW})`; }
   scene.classList.add("lifted");
   const copy = () => { const c = scene.cloneNode(true); c.querySelector(".lens").remove(); c.id = ""; return c; };
-  const sync = () => { clone.innerHTML = ""; clone.appendChild(copy()); labels.innerHTML = ""; labels.appendChild(copy()); base.innerHTML = ""; base.appendChild(copy()); };
+  const sync = () => { clone.innerHTML = ""; clone.appendChild(copy()); labels.innerHTML = ""; labels.appendChild(copy()); base.innerHTML = ""; base.appendChild(copy()); plabels.innerHTML = ""; plabels.appendChild(copy()); };
   sync();
   /* lens position inside the scene (pt); starts over the selected segment: segctl at (20, 16 + 20.33 + 8) → segment centre */
   const seg = scene.querySelector(".segctl"), r0 = seg.getBoundingClientRect(), s0 = scene.getBoundingClientRect();
@@ -110,7 +123,7 @@
   if (q.get("lensx")) X = parseFloat(q.get("lensx")) - s0.left - LW / 2;             // ?lensx=<page x of the lens centre>, e.g. 220 = the divider
   /* the clone is placed so that the scene point under the lens centre stays under the lens centre; with zoom z the clone's own
      coordinates are scaled about its top-left, so its offset is (centre − z·(lens position + centre)) / z in zoomed units */
-  const place = () => { lens.style.left = X + "px"; lens.style.top = Y + "px"; for (const l of [clone, labels]) { l.style.left = (M - X) + "px"; l.style.top = (M - Y) + "px"; } base.style.left = (AM - X) + "px"; base.style.top = (AM - Y) + "px"; };
+  const place = () => { lens.style.left = X + "px"; lens.style.top = Y + "px"; for (const l of [clone, labels, plabels]) { l.style.left = (M - X) + "px"; l.style.top = (M - Y) + "px"; } base.style.left = (AM - X) + "px"; base.style.top = (AM - Y) + "px"; };
   place();
   /* drag: pointer events, no threshold; the frame interval is measured while a finger is down or the auto drag runs */
   let dragging = null, times = [];

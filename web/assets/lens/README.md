@@ -468,7 +468,18 @@ segment then works as: lift keys → (drag: edge springs) → release keys or dr
 over it as two layers — the filtered copy of what lies under it (`#seg-lens-f-bg-<w>`) and the filtered label copy
 (`#seg-lens-f-lab-<w>`) — draggable (pointer events, frame stats), 自动拖 2 s, gratings ↔ / ↕ (period 8 like the native
 measurement). Query: `?native=1` (control at x 20…420 like the probe), `?lensx=<page x of the lens centre>` (220 = the divider),
-`?w=<width>` (a drag-stretch set: lens box w × the set's height, its filters), `?bg=0` / `?lab=0` (that layer unfiltered).
+`?w=<width>` (a drag-stretch set: lens box w × the set's height, its filters), `?bg=0` / `?lab=0` (that layer unfiltered),
+`?ab=ir|flip|0` (the fringe chain), `?pattern=bars` (hard bars under the lens for the per-channel edge check).
+The backdrop layer's copy holds the segment content too (track + both labels: the old page session's reading of A9 表 3, the
+acceptance session's order 2026-09-19 06:xx): `.clone` = the card and track, `.punch` = a labels-only copy with the portal
+rectangle (196×28 × the lens scale, centred) cut out — the DestOut punch-out of the original labels applies inside the portal only —
+so the glyph parts outside the portal are displaced by the backdrop map (+9/36, outward sampling), the label layer on top shows
+the portal copy. Checked against `seg-lens-drag-mid.md` §0c at the divider (WebKit, `dragmid-4x-{light,dark}-native-bgpunch*.png`):
+left 「早」 ink +12 % light / +20 % dark, height 11.17 → 9.83 (native: ink −37 %, compressed / torn); right 「班」 height
+11.5 → 11.17, ink −8 % (native 11.33 → 15.0, +37 %). The backdrop path compresses the glyph parts at the ends where the native
+stretches the right one ×1.32 — the label path without the portal cut (`--label-portal 0`, the old page's later ruling from the
+portal readings; scratch row 3 of the light image) gives 「早」 +6 %, 「班」 11.5 → 13.83 (+20 %) / ink +16 %, closer in kind.
+Which path the native shows there is for the acceptance session to settle from the data session's bars edge tracking at |s| 95–109.
 The map files are referenced by bare name (the page sits next to them); `index.html` references them as `assets/lens/…`.
 
 ## 7 Regenerate
