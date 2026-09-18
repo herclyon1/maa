@@ -139,7 +139,47 @@
         num("状态点与第一行文字居中", 0, (dot.getBoundingClientRect().top + dot.getBoundingClientRect().height / 2) - (n2.getBoundingClientRect().top + n2.getBoundingClientRect().height / 2), 0.5); }
       /* site-wide: value rows keep the title on one line and ellipsise the value (Settings AX-41 / AX-46: every title and value single-line) */
       { const lab = document.querySelector("#app .row > label"); if (lab) check("值行标题不换行、尾部省略（全站）", "nowrap ellipsis", `${cs(lab).whiteSpace} ${cs(lab).textOverflow}`, cs(lab).whiteSpace === "nowrap" && cs(lab).textOverflow === "ellipsis"); }
+      /* 2026-09-19 (ui2): setStatus splits 「<state> · <detail>」 — the state joins the title, the detail is the second line; no 「 · 」 = all detail.
+         The copy has no parentheses and no 「…是…的」 (PHONE-COPY-RULES): 「实时 · 配置 1 分钟前」. A re-render must keep the dot's state colour. */
+      if (typeof setStatus === "function" && document.querySelector("#status") && n2 && s2) {
+        const was = document.querySelector("#status").textContent, wasDot = (document.querySelector("#dot") || {}).className || "";
+        const title = () => (document.querySelector(".devcard .dname") || {}).textContent || "", detail = () => (document.querySelector("#status2") || {}).textContent || "";
+        setStatus("开机中 · 实时 · 配置 1 分钟前", "on");
+        check("状态拆行：「开机中 · 实时 · 配置 1 分钟前」→ 标题「游戏机 · 开机中」+ 第二行「实时 · 配置 1 分钟前」", "游戏机 · 开机中 | 实时 · 配置 1 分钟前", `${title().replace("（演示）", "")} | ${detail()}`,
+              title().replace("（演示）", "") === "游戏机 · 开机中" && detail() === "实时 · 配置 1 分钟前" && (document.querySelector("#dot2") || {}).classList?.contains("on"));
+        setStatus("正在读取…", "");
+        check("状态拆行：没有「 · 」的整句进第二行，标题只剩「游戏机」", "游戏机 | 正在读取…", `${title().replace("（演示）", "")} | ${detail()}`, title().replace("（演示）", "") === "游戏机" && detail() === "正在读取…");
+        if (typeof render === "function" && typeof snap !== "undefined" && snap) {
+          setStatus("开机中 · 实时", "on"); render();
+          const d3 = document.querySelector("#dot2");
+          check("重画后状态卡保持状态：点仍绿、标题仍带「开机中」、第二行仍在", "on · 游戏机 · 开机中 · 实时", `${d3 && d3.classList.contains("on") ? "on" : "grey"} · ${title().replace("（演示）", "")} · ${detail()}`,
+                !!d3 && d3.classList.contains("on") && title().replace("（演示）", "") === "游戏机 · 开机中" && detail() === "实时");
+        }
+        setStatus(was, /\bon\b/.test(wasDot) ? "on" : /\boff\b/.test(wasDot) ? "off" : "");
+      }
     }
+    /* Site-wide (2026-09-19, ui2): a synthetic row with an over-long name + a long hint + an over-long read-only value, a navigation row
+       with an over-long value, and an over-long section header: the name, the values and the header stay one 20.33 line with a tail
+       ellipsis; the hint under the name still wraps (a paragraph, AX-33d subtitle rows); the value keeps its own width — a long hint
+       must not squeeze it (the 手机 tab's 「已配置 / 没有」 row showed 「没..」 when the label's basis was auto). */
+    { const wl = document.createElement("div"); wl.style.cssText = "position:fixed;left:20px;top:0;width:400px;visibility:hidden;z-index:-1";
+      wl.innerHTML = `<div class="group"><div class="row"><label>${"名字很长".repeat(10)}<span class="hint">${"副题要换行".repeat(9)}</span></label><span class="ro">${"值也很长".repeat(10)}</span></div>` +
+                     `<div class="row"><label>已配置<span class="hint">${"副题要换行".repeat(9)}</span></label><span class="ro">没有</span></div>` +
+                     `<div class="row nav"><label>名</label><span class="val">${"选项".repeat(40)}</span><i class="sf chev"></i></div></div><section><h2>${"段头很长".repeat(12)}</h2></section>`;
+      document.body.appendChild(wl);
+      const lab0 = wl.querySelector(".row > label"), ro = wl.querySelector(".ro"), val = wl.querySelector(".val"), hh = wl.querySelector("h2"), hint = lab0.querySelector(".hint");
+      const rg = document.createRange(); rg.selectNodeContents(lab0.firstChild); const nameLines = new Set([...rg.getClientRects()].map((r) => Math.round(r.top))).size;
+      const nameH = lab0.getBoundingClientRect().height - hint.getBoundingClientRect().height - px(cs(hint).marginTop);
+      check("值行标题一行 20.33（nowrap + 尾部省略；长名字）", "nowrap ellipsis 1 行 20.33", `${cs(lab0).whiteSpace} ${cs(lab0).textOverflow} ${nameLines} 行 ${Math.round(nameH * 100) / 100}`, cs(lab0).whiteSpace === "nowrap" && cs(lab0).textOverflow === "ellipsis" && nameLines === 1 && near(nameH, 20.33, 0.6));
+      check("值行标题下的副题照常换行（white-space normal，多行）", "normal ≥ 2 行", `${cs(hint).whiteSpace} ${Math.round(hint.getBoundingClientRect().height / 18)} 行`, cs(hint).whiteSpace === "normal" && hint.getBoundingClientRect().height >= 36);
+      check("只读值一行、尾部省略（.ro）", "nowrap ellipsis 20.33", `${cs(ro).whiteSpace} ${cs(ro).textOverflow} ${Math.round(ro.getBoundingClientRect().height * 100) / 100}`, cs(ro).whiteSpace === "nowrap" && cs(ro).textOverflow === "ellipsis" && near(ro.getBoundingClientRect().height, 20.33, 0.6));
+      check("导航值一行、尾部省略（.nav .val）", "nowrap ellipsis 20.33", `${cs(val).whiteSpace} ${cs(val).textOverflow} ${Math.round(val.getBoundingClientRect().height * 100) / 100}`, cs(val).whiteSpace === "nowrap" && cs(val).textOverflow === "ellipsis" && near(val.getBoundingClientRect().height, 20.33, 0.6));
+      { const lr = lab0.getBoundingClientRect(), rr = ro.getBoundingClientRect(), side = rr.left >= lr.right && rr.top < lr.bottom && rr.bottom > lr.top;
+        check("名字和值并排同一行（值行不折成两行）", "并排", side ? "并排" : `值在 y+${Math.round(rr.top - lr.bottom)}`, side); }
+      { const ro2 = wl.querySelectorAll(".ro")[1], probeW = (() => { const i = document.createElement("span"); i.className = "ro"; i.style.cssText = "position:absolute;visibility:hidden;white-space:nowrap"; i.textContent = "没有"; wl.querySelector(".row").appendChild(i); const w = i.getBoundingClientRect().width; i.remove(); return w; })();
+        num("短值不被长副题挤瘦（「没有」保持自然宽，label flex-basis 0）", probeW, ro2.getBoundingClientRect().width, 0.6); }
+      check("段头一行、尾部省略", "nowrap ellipsis 20.33", `${cs(hh).whiteSpace} ${cs(hh).textOverflow} ${Math.round((hh.getBoundingClientRect().height - px(cs(hh).paddingTop) - px(cs(hh).paddingBottom)) * 100) / 100}`, cs(hh).whiteSpace === "nowrap" && cs(hh).textOverflow === "ellipsis" && near(hh.getBoundingClientRect().height - px(cs(hh).paddingTop) - px(cs(hh).paddingBottom), 20.33, 0.6));
+      wl.remove(); }
     /* Segmented control (状态 tab, 早班/晚班; 34 屏幕时间) */
     const segc = document.querySelector(".segctl");
     if (segc) {

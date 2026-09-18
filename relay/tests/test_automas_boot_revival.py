@@ -64,6 +64,10 @@ def _tick(seconds):
 
 
 _tick(3)
+# The win32 stubs above answer every call with a truthy object, which would make
+# errwatch.system_shutting_down() read "going down"; the stop signal is driven
+# explicitly by the cases below.
+boot_stages._stop_requested = lambda: False
 revived = []
 boot_stages._revive_automas = lambda: revived.append(clock["t"])
 
@@ -95,6 +99,23 @@ boot_stages.shell_running = lambda: False
 commands.mas_up = _api(20)
 check("拉起后接口开了返回 True", boot_stages.ensure_automas(timeout=120, grace=150), True)
 check("立刻杀/拉起，没有先等宽限期", revived == [0.0])
+
+print("\n[等待中收到停止信号：立刻返回，不杀不拉，不发「AUTO-MAS 没起来」]")
+# 2026-09-18 23:10: the self-update restarted the service inside this 150 s wait;
+# SvcStop waited 15 s and the hard guard force-exited the process.
+clock["t"] = 0; revived.clear()
+boot_stages.shell_running = lambda: True
+commands.mas_up = _api(10**9)
+boot_stages._stop_requested = lambda: clock["t"] >= 9
+check("停止一到就返回 False", boot_stages.ensure_automas(timeout=120, grace=150), False)
+check("在停止后一次轮询内退出（不到 15 秒）", clock["t"] < 15, True)
+check("没有杀过 AUTO-MAS", revived, [])
+clock["t"] = 0; revived.clear()
+boot_stages.shell_running = lambda: False
+boot_stages._stop_requested = lambda: True
+check("窗口不在但正在停止：也不拉", boot_stages.ensure_automas(timeout=120, grace=150), False)
+check("确实没拉", revived, [])
+boot_stages._stop_requested = lambda: False
 
 print("\n[接口本来就通：什么都不做]")
 clock["t"] = 0; revived.clear()

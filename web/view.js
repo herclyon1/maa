@@ -69,7 +69,7 @@ function setStatus(text, state) {
   $("#status").textContent = text;
   $("#dot").className = "dot" + (state ? " " + state : "");
   /* The status card on the 状态 tab (the header's copy is hidden): the first 「 · 」 splits the line — the head joins the name
-     (「游戏机 · 开机中」), the rest is the second line (「实时 · 配置是 1 分钟前的」); a line without 「 · 」 goes whole into the second line. */
+     (「游戏机 · 开机中」), the rest is the second line (「实时 · 配置 1 分钟前」); a line without 「 · 」 goes whole into the second line. */
   const s2 = $("#status2"), d2 = $("#dot2"), n2 = $("#dname2"), side = $("#side2");
   const i = text.indexOf(" · "), head = i > 0 ? text.slice(0, i) : "", rest = i > 0 ? text.slice(i + 3) : text;
   if (n2) n2.textContent = `游戏机${DEMO ? "（演示）" : ""}${head ? " · " + head : ""}`;
@@ -318,7 +318,7 @@ function render() {
   const ef = relay["刷声骸"] || {};
   /* 设备卡（查找的结构）：名字 + 一行状态；右边一个词。状态文字由 setStatus 同步。 */
   /* 设备行（46 Apple 账户页的值行：名字左、状态右灰字）。id 不变：setStatus 写 #status2/#dot2/#side2。 */
-  /* 状态卡：两行行——点 + 「游戏机 · 开机中」 / 「实时 · 配置是 1 分钟前的」（index.html .devcard 写了来源）；文字由 setStatus 拆分同步。 */
+  /* 状态卡：两行行——点 + 「游戏机 · 开机中」 / 「实时 · 配置 1 分钟前」（index.html .devcard 写了来源）；文字由 setStatus 拆分同步。 */
   { const st = $("#status") ? $("#status").textContent : "正在读取…", dotCls = $("#dot") ? $("#dot").className : "dot";
     const i = st.indexOf(" · "), head = i > 0 ? st.slice(0, i) : "", rest = i > 0 ? st.slice(i + 3) : st;
     html += `<section><div class="group devcard"><i class="${dotCls}" id="dot2"></i>
@@ -1311,7 +1311,7 @@ async function boot() {
   cfg = JSON.parse(raw);
   try { snap = JSON.parse(localStorage.getItem(LS + "-snap") || "null"); } catch { snap = null; }
   render();
-  setStatus(snap ? `状态是 ${ago(snap.at)}的` : "正在读取…", "");
+  setStatus(snap ? `状态 ${ago(snap.at)}` : "正在读取…", "");
   // 打开页面这一下也问一次游戏（有密钥才问）
   if (window.Stamina && Stamina.loadTokens()) Stamina.refresh(false).then(() => render()).catch(() => {});
   // 先挂流再问：心跳判定、「我在看」、最新配置并行——打开即知开关机
@@ -1328,7 +1328,7 @@ async function boot() {
     // 读不到信箱不等于机器关了，多半是这一端没网。红色的「关机中」是断言，
     // 这里没有资格下这个断言；而且 5 秒后 updateLive 还会把它换成「关机中」。
     netOk = false;
-    setStatus("读不到信箱（" + why(e) + "）· 先看看你这边有没有网", "");
+    setStatus("读不到信箱 · " + why(e) + "，先看看你这边有没有网", "");
   }
 }
 

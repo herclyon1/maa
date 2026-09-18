@@ -43,33 +43,6 @@ wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change"
       17 + grey usage bar (proportional, min 10) + grey value 13 + chevron, row 52, card r 26; index.md row 61 / 61-ax.json /
       inject-com.apple.Preferences-61.json) to `~/Money/styl-work/remote-mock/v4/inventory-plan.md` §4 and compare it with 59 before deciding —
       the 人份 as a bar length shows the scarcest at a glance.
-- [x] **Filed as [AUTO-MAS#573](https://github.com/AUTO-MAS-Project/AUTO-MAS/issues/573)** (using their
-      "AI 提交的 Bug" template, and saying we will send a PR since they are short-handed). Background:
-      MaaEnd v2.28.0-beta.1 changed SellProduct's display name to 「🛒据点交易」 (the task name itself did
-      not change - `name` in `tasks/OutpostTrading.json` is still SellProduct, but the language-pack key
-      became task.OutpostTrading.label). AUTO-MAS's `load_maaend_task_i18n` cannot find it and falls back
-      to the English name SellProduct, so the log line 「任务完成: 🛒据点交易」 never matches. All 17 tasks
-      of the run finished and it still recorded 「部分任务执行失败: SellProduct」, then burned two more
-      retries per RunTimesLimit. The relay side now judges by MaaEnd's own log instead (every 「任务开始」
-      has a 「任务完成」 and there is no 「任务失败」 = done). Follow `docs/UPSTREAM-ISSUE-RULES.md` before
-      filing.
-- [x] **Filed as [AUTO-MAS#575](https://github.com/AUTO-MAS-Project/AUTO-MAS/issues/575)** (I first filed
-      #574 from the command line without labels, closed it, and refiled through the form as #575): the
-      success criterion only accepts OK-WW's last line 「Window closed」; the suggestion is to also accept
-      Daily Task Completed. Nothing filed against OK-WW for now (a single one-off, not enough evidence).
-      Background: (on the 09-06 09:36 run, the process disappeared during the handler stopping phase
-      after writing Daily Task Completed). AUTO-MAS uses that line to judge success; without it, it
-      records 「在完成任务前退出」 and retries. The relay now accepts OK-WW's own 「Daily Task Completed」.
-      Whether to file with ok-ww depends on whether it happens every time (the second run wrote it
-      normally).
-- [ ] **The 09-04 Arknights major client update (06:00-12:00) is the first live run of the "maintenance
-      day procedure"**: the 08:45 boot should drop MAA from the morning shift and record that; after the
-      queue finishes, poll the official version number every 10 minutes, and when the new version lands,
-      download the APK, install it into LDPlayer, and launch the game to warm it up; run MAA afterwards
-      once it is past 12:00; add it back to the morning shift. **Watch the logs**, and fix anything that
-      goes wrong that same day.
-- [ ] Weekly boss name: the status page has 「千傀重楼」 typed in by hand (09-02 screenshot); patch v2 will
-      OCR the name and update it automatically at the next weekly boss.
 
 - [ ] **MaaEnd support for Endfield 1.5.3 「雪凇幽梦」** (rerun 2026-09-02 16:29: 赠送干员礼物 /
       装备制造 / 转交委托 / 环境监测 all four failed, AUTO-MAS retried twice with the same result;

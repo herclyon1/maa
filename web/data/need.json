@@ -1,12 +1,12 @@
 {
- "built": "2026-09-19 00:13 JST",
+ "built": "2026-09-19 00:47 JST",
  "games": [
   {
    "game": "终末地",
    "gameId": "endfield",
    "caliber": "最新六星 提弗洛斯（2026-09-02 上线）：1→90 全突破、四技能 12、专武 寒夜幽影 1→90；不含天赋",
-   "footnote": "人份 = 库存 ÷ 提弗洛斯满练所需（1→90 全突破、四技能 12、专武寒夜幽影 1→90，不含天赋；2026-09-02 上线的最新六星）",
-   "source": "最新六星与其专武按森空岛百科的「上线时间」「类型」「主要获取方式」定；用量按森空岛养成计算器 rules 逐项求和；名字和图标取自 material-list。方法见 docs/SKLAND-API.md §8",
+   "footnote": "人份 = 库存 ÷ 提弗洛斯满练所需（1→90 全突破、四技能 12、专武 寒夜幽影 1→90，不含天赋；2026-09-02 上线的最新六星）",
+   "source": "最新六星与其专武按森空岛百科的「上线时间」「类型」「主要获取方式」定；用量优先森空岛养成计算器 rules，计算器未收录时读百科词条里的养成材料卡片，两者都没有时读客户端预览表；名字和图标取自 material-list。方法见 docs/SKLAND-API.md §8",
    "sections": [
     "通用",
     "高阶素材",
@@ -22,9 +22,11 @@
      "name": "提弗洛斯",
      "rarity": 6,
      "releasedAt": "2026-09-02",
+     "status": "已实装",
      "wikiItemId": "2116",
      "obtain": "干员寻访·特许寻访",
-     "chosenBy": "百科上线时间最新的已实装六星",
+     "dotType": "label_type_up",
+     "chosenBy": "百科上线时间最新的六星（含未实装）",
      "weapon": {
       "id": "4e7f3757fd7c98a1262bf4bca8fd9d83",
       "name": "寒夜幽影",
@@ -32,10 +34,16 @@
       "kind": "施术单元",
       "obtain": "武库交易所·限时特卖",
       "wikiItemId": "2118",
-      "reason": "百科：与 提弗洛斯 同日（2026-09-02）上线、同为施术单元、主要获取方式「武库交易所·限时特卖」的唯一一把六星武器"
+      "status": "已收录",
+      "reason": "百科：与 提弗洛斯 同日（2026-09-02）上线、同为施术单元、主要获取方式「武库交易所·限时特卖」的唯一一把"
+     },
+     "sources": {
+      "need": "森空岛养成计算器 rules",
+      "weapon": "森空岛养成计算器 rules",
+      "levels": "森空岛养成计算器 rules"
      },
      "caliber": "最新六星 提弗洛斯（2026-09-02 上线）：1→90 全突破、四技能 12、专武 寒夜幽影 1→90；不含天赋",
-     "footnote": "人份 = 库存 ÷ 提弗洛斯满练所需（1→90 全突破、四技能 12、专武寒夜幽影 1→90，不含天赋；2026-09-02 上线的最新六星）",
+     "footnote": "人份 = 库存 ÷ 提弗洛斯满练所需（1→90 全突破、四技能 12、专武 寒夜幽影 1→90，不含天赋；2026-09-02 上线的最新六星）",
      "rows": [
       {
        "id": "6c706ccb16e18a281de7e30fc03df51b",
@@ -43,7 +51,7 @@
        "rarity": 4,
        "icon": "https://bbs.hycdn.cn/image/2026/07/13/5c003996409b98bb55e988f05ac73f98.png",
        "need": 472,
-       "group": "通用",
+       "group": "提弗洛斯",
        "section": "通用",
        "stage": "技能提升 A",
        "note": null
@@ -54,7 +62,7 @@
        "rarity": 3,
        "icon": "https://bbs.hycdn.cn/image/2026/07/13/863df26b49c97ccaf39313ecaf321d2f.png",
        "need": 328,
-       "group": "通用",
+       "group": "提弗洛斯",
        "section": "通用",
        "stage": "技能提升 B",
        "note": null
@@ -65,7 +73,7 @@
        "rarity": 4,
        "icon": "https://bbs.hycdn.cn/image/2026/07/13/f144d05f381c0542b4c23972bab80fe5.png",
        "need": 60,
-       "group": "通用",
+       "group": "提弗洛斯",
        "section": "通用",
        "stage": "干员进阶 A",
        "note": null
@@ -76,7 +84,7 @@
        "rarity": 4,
        "icon": "https://bbs.hycdn.cn/image/2026/07/13/7c062ead7c202c47de9c18455e8e1028.png",
        "need": 50,
-       "group": "通用",
+       "group": "专武 寒夜幽影",
        "section": "通用",
        "stage": "武器进阶 A",
        "note": null
@@ -87,7 +95,7 @@
        "rarity": 3,
        "icon": "https://bbs.hycdn.cn/image/2026/07/13/a8357981bd10a4d5745387cc1f67bc8c.png",
        "need": 33,
-       "group": "通用",
+       "group": "提弗洛斯",
        "section": "通用",
        "stage": "干员进阶 B",
        "note": null
@@ -98,7 +106,7 @@
        "rarity": 5,
        "icon": "https://bbs.hycdn.cn/image/2026/07/13/a1fb4b72a7cbd3bfc2d0dc727bd9b722.png",
        "need": 24,
-       "group": "通用",
+       "group": "提弗洛斯",
        "section": "通用",
        "stage": "通行证 / 黄票商店 / 活动（不耗理智）",
        "note": null
@@ -109,7 +117,7 @@
        "rarity": 3,
        "icon": "https://bbs.hycdn.cn/image/2026/07/13/3eaa763cf2ffae2a765641c9397c21a4.png",
        "need": 23,
-       "group": "通用",
+       "group": "专武 寒夜幽影",
        "section": "通用",
        "stage": "武器进阶 B",
        "note": null
@@ -120,7 +128,7 @@
        "rarity": 5,
        "icon": "https://bbs.hycdn.cn/image/2026/07/13/dd9d6800496e31d5d89b33f4c353ea83.png",
        "need": 132,
-       "group": "提弗洛斯",
+       "group": "提弗洛斯 + 专武 寒夜幽影",
        "section": "高阶素材",
        "stage": "高阶培养Ⅳ",
        "note": "干员 116 + 专武 16"
@@ -197,7 +205,7 @@
        "rarity": 4,
        "icon": "https://bbs.hycdn.cn/image/2026/07/13/c1910c7eda13567db542e6e837c4cf24.png",
        "need": 16,
-       "group": "通用",
+       "group": "提弗洛斯",
        "section": "采集",
        "stage": "采集 / 帝江号仓库（不耗理智）",
        "note": null
@@ -208,7 +216,7 @@
        "rarity": 4,
        "icon": "https://bbs.hycdn.cn/image/2026/07/13/97fa76ec0aa2181ae93935ba6b8a86bd.png",
        "need": 16,
-       "group": "通用",
+       "group": "提弗洛斯",
        "section": "采集",
        "stage": "采集 / 帝江号仓库（不耗理智）",
        "note": null
@@ -219,7 +227,7 @@
        "rarity": 4,
        "icon": "https://bbs.hycdn.cn/image/2026/07/13/a13a35259d949b87aa9387eda92f47ab.png",
        "need": 12,
-       "group": "通用",
+       "group": "提弗洛斯",
        "section": "采集",
        "stage": "采集 / 帝江号仓库（不耗理智）",
        "note": null
@@ -252,7 +260,7 @@
        "rarity": 4,
        "icon": "https://bbs.hycdn.cn/image/2026/07/13/3a69e39d6f175c115809e1d1cf70727c.png",
        "need": 5,
-       "group": "通用",
+       "group": "提弗洛斯",
        "section": "采集",
        "stage": "采集 / 帝江号仓库（不耗理智）",
        "note": null
@@ -263,7 +271,7 @@
        "rarity": 4,
        "icon": "https://bbs.hycdn.cn/image/2026/07/13/a5cd2792b509446b37484d983530bdc2.png",
        "need": 5,
-       "group": "通用",
+       "group": "专武 寒夜幽影",
        "section": "采集",
        "stage": "采集 / 帝江号仓库（不耗理智）",
        "note": null
@@ -274,7 +282,7 @@
        "rarity": 4,
        "icon": "https://bbs.hycdn.cn/image/2026/07/13/57362e95091014e14c61548d6742a08e.png",
        "need": 5,
-       "group": "通用",
+       "group": "提弗洛斯",
        "section": "采集",
        "stage": "采集 / 帝江号仓库（不耗理智）",
        "note": null
@@ -285,7 +293,7 @@
        "rarity": 4,
        "icon": "https://bbs.hycdn.cn/image/2026/07/13/f1df67306c6416558b84275715139b51.png",
        "need": 5,
-       "group": "通用",
+       "group": "专武 寒夜幽影",
        "section": "采集",
        "stage": "采集 / 帝江号仓库（不耗理智）",
        "note": null
@@ -296,7 +304,7 @@
        "rarity": 4,
        "icon": "https://bbs.hycdn.cn/image/2026/07/13/a3485d2dfae37ed92b6536c94052080b.png",
        "need": 3,
-       "group": "通用",
+       "group": "提弗洛斯",
        "section": "采集",
        "stage": "采集 / 帝江号仓库（不耗理智）",
        "note": null
@@ -307,7 +315,7 @@
        "rarity": 4,
        "icon": "https://bbs.hycdn.cn/image/2026/07/13/a588dbb4486f3325d69e88dfd38ee467.png",
        "need": 3,
-       "group": "通用",
+       "group": "专武 寒夜幽影",
        "section": "采集",
        "stage": "采集 / 帝江号仓库（不耗理智）",
        "note": null
@@ -384,7 +392,7 @@
        "rarity": null,
        "icon": "",
        "need": 2524080,
-       "group": "通用",
+       "group": "专武 寒夜幽影",
        "section": "经验与货币",
        "stage": "武器经验",
        "virtual": true,
@@ -396,7 +404,7 @@
        "rarity": null,
        "icon": "",
        "need": 1792290,
-       "group": "通用",
+       "group": "提弗洛斯",
        "section": "经验与货币",
        "stage": "干员经验",
        "virtual": true,
@@ -408,10 +416,10 @@
        "rarity": 4,
        "icon": "https://bbs.hycdn.cn/image/2026/07/13/526029c14b860774882c13d55128762b.png",
        "need": 1693510,
-       "group": "通用",
+       "group": "提弗洛斯 + 专武 寒夜幽影",
        "section": "经验与货币",
        "stage": "钱币收集",
-       "note": "干员 1,226,420 + 武器 467,090"
+       "note": "干员 1,226,420 + 专武 467,090"
       },
       {
        "id": "6c065bd9caf640adaaebb91865da06f3",
@@ -527,7 +535,7 @@
      "rarity": 4,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/5c003996409b98bb55e988f05ac73f98.png",
      "need": 472,
-     "group": "通用",
+     "group": "提弗洛斯",
      "section": "通用",
      "stage": "技能提升 A",
      "note": null
@@ -538,7 +546,7 @@
      "rarity": 3,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/863df26b49c97ccaf39313ecaf321d2f.png",
      "need": 328,
-     "group": "通用",
+     "group": "提弗洛斯",
      "section": "通用",
      "stage": "技能提升 B",
      "note": null
@@ -549,7 +557,7 @@
      "rarity": 4,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/f144d05f381c0542b4c23972bab80fe5.png",
      "need": 60,
-     "group": "通用",
+     "group": "提弗洛斯",
      "section": "通用",
      "stage": "干员进阶 A",
      "note": null
@@ -560,7 +568,7 @@
      "rarity": 4,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/7c062ead7c202c47de9c18455e8e1028.png",
      "need": 50,
-     "group": "通用",
+     "group": "专武 寒夜幽影",
      "section": "通用",
      "stage": "武器进阶 A",
      "note": null
@@ -571,7 +579,7 @@
      "rarity": 3,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/a8357981bd10a4d5745387cc1f67bc8c.png",
      "need": 33,
-     "group": "通用",
+     "group": "提弗洛斯",
      "section": "通用",
      "stage": "干员进阶 B",
      "note": null
@@ -582,7 +590,7 @@
      "rarity": 5,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/a1fb4b72a7cbd3bfc2d0dc727bd9b722.png",
      "need": 24,
-     "group": "通用",
+     "group": "提弗洛斯",
      "section": "通用",
      "stage": "通行证 / 黄票商店 / 活动（不耗理智）",
      "note": null
@@ -593,7 +601,7 @@
      "rarity": 3,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/3eaa763cf2ffae2a765641c9397c21a4.png",
      "need": 23,
-     "group": "通用",
+     "group": "专武 寒夜幽影",
      "section": "通用",
      "stage": "武器进阶 B",
      "note": null
@@ -604,7 +612,7 @@
      "rarity": 5,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/dd9d6800496e31d5d89b33f4c353ea83.png",
      "need": 132,
-     "group": "提弗洛斯",
+     "group": "提弗洛斯 + 专武 寒夜幽影",
      "section": "高阶素材",
      "stage": "高阶培养Ⅳ",
      "note": "干员 116 + 专武 16"
@@ -681,7 +689,7 @@
      "rarity": 4,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/c1910c7eda13567db542e6e837c4cf24.png",
      "need": 16,
-     "group": "通用",
+     "group": "提弗洛斯",
      "section": "采集",
      "stage": "采集 / 帝江号仓库（不耗理智）",
      "note": null
@@ -692,7 +700,7 @@
      "rarity": 4,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/97fa76ec0aa2181ae93935ba6b8a86bd.png",
      "need": 16,
-     "group": "通用",
+     "group": "提弗洛斯",
      "section": "采集",
      "stage": "采集 / 帝江号仓库（不耗理智）",
      "note": null
@@ -703,7 +711,7 @@
      "rarity": 4,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/a13a35259d949b87aa9387eda92f47ab.png",
      "need": 12,
-     "group": "通用",
+     "group": "提弗洛斯",
      "section": "采集",
      "stage": "采集 / 帝江号仓库（不耗理智）",
      "note": null
@@ -736,7 +744,7 @@
      "rarity": 4,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/3a69e39d6f175c115809e1d1cf70727c.png",
      "need": 5,
-     "group": "通用",
+     "group": "提弗洛斯",
      "section": "采集",
      "stage": "采集 / 帝江号仓库（不耗理智）",
      "note": null
@@ -747,7 +755,7 @@
      "rarity": 4,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/a5cd2792b509446b37484d983530bdc2.png",
      "need": 5,
-     "group": "通用",
+     "group": "专武 寒夜幽影",
      "section": "采集",
      "stage": "采集 / 帝江号仓库（不耗理智）",
      "note": null
@@ -758,7 +766,7 @@
      "rarity": 4,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/57362e95091014e14c61548d6742a08e.png",
      "need": 5,
-     "group": "通用",
+     "group": "提弗洛斯",
      "section": "采集",
      "stage": "采集 / 帝江号仓库（不耗理智）",
      "note": null
@@ -769,7 +777,7 @@
      "rarity": 4,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/f1df67306c6416558b84275715139b51.png",
      "need": 5,
-     "group": "通用",
+     "group": "专武 寒夜幽影",
      "section": "采集",
      "stage": "采集 / 帝江号仓库（不耗理智）",
      "note": null
@@ -780,7 +788,7 @@
      "rarity": 4,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/a3485d2dfae37ed92b6536c94052080b.png",
      "need": 3,
-     "group": "通用",
+     "group": "提弗洛斯",
      "section": "采集",
      "stage": "采集 / 帝江号仓库（不耗理智）",
      "note": null
@@ -791,7 +799,7 @@
      "rarity": 4,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/a588dbb4486f3325d69e88dfd38ee467.png",
      "need": 3,
-     "group": "通用",
+     "group": "专武 寒夜幽影",
      "section": "采集",
      "stage": "采集 / 帝江号仓库（不耗理智）",
      "note": null
@@ -868,7 +876,7 @@
      "rarity": null,
      "icon": "",
      "need": 2524080,
-     "group": "通用",
+     "group": "专武 寒夜幽影",
      "section": "经验与货币",
      "stage": "武器经验",
      "virtual": true,
@@ -880,7 +888,7 @@
      "rarity": null,
      "icon": "",
      "need": 1792290,
-     "group": "通用",
+     "group": "提弗洛斯",
      "section": "经验与货币",
      "stage": "干员经验",
      "virtual": true,
@@ -892,10 +900,10 @@
      "rarity": 4,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/526029c14b860774882c13d55128762b.png",
      "need": 1693510,
-     "group": "通用",
+     "group": "提弗洛斯 + 专武 寒夜幽影",
      "section": "经验与货币",
      "stage": "钱币收集",
-     "note": "干员 1,226,420 + 武器 467,090"
+     "note": "干员 1,226,420 + 专武 467,090"
     },
     {
      "id": "6c065bd9caf640adaaebb91865da06f3",
@@ -1005,28 +1013,16 @@
    "coverage": {
     "operator": "提弗洛斯",
     "releasedAt": "2026-09-02",
+    "status": "已实装",
     "weapon": "寒夜幽影",
+    "weaponStatus": "已收录",
     "asOf": "2026-09-18",
-    "universalCheckedOn": [
-     "伊冯",
-     "余烬",
-     "别礼",
-     "卡缪",
-     "庄方宜",
-     "弭弗",
-     "提弗洛斯",
-     "梨诺",
-     "汤汤",
-     "洁尔佩塔",
-     "洛茜",
-     "管理员",
-     "艾尔黛拉",
-     "莱万汀",
-     "诀",
-     "骏卫",
-     "黎风"
-    ],
-    "releasedSixStars": [
+    "sources": {
+     "need": "森空岛养成计算器 rules",
+     "weapon": "森空岛养成计算器 rules",
+     "levels": "森空岛养成计算器 rules"
+    },
+    "candidates": [
      "提弗洛斯 2026-09-02",
      "梨诺 2026-08-09",
      "诀 2026-07-16",
@@ -1043,8 +1039,7 @@
      "骏卫 2026-01-22",
      "莱万汀 2026-01-22",
      "艾尔黛拉 2026-01-22"
-    ],
-    "upcoming": []
+    ]
    }
   }
  ]

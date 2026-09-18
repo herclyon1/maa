@@ -114,11 +114,26 @@ def _revive_automas() -> None:
 SHELL_STARTUP_GRACE = 150
 
 
+def _stop_requested() -> bool:
+    """The service has been told to stop (SvcStop, or Windows going down).
+
+    Checked inside every wait here: on 2026-09-18 23:10 the self-update
+    restarted the service while ensure_automas() was in its 150 s
+    「先等它自己起来」 sleep, SvcStop waited 15 s and the hard guard had to
+    force-exit the process. A wait that cannot hear the stop is a hang.
+    """
+    from ark_relay import errwatch  # noqa: PLC0415
+    return errwatch.going_down()
+
+
 def _wait_for_api(deadline: float) -> "float | None":
-    """Poll the API until `deadline` (monotonic). Returns seconds waited on success, None on timeout."""
+    """Poll the API until `deadline` (monotonic). Returns seconds waited on success,
+    None on timeout - or at once, still None, when the service is stopping."""
     from ark_relay import commands  # noqa: PLC0415
     t0 = time.monotonic()
     while time.monotonic() < deadline:
+        if _stop_requested():
+            return None
         time.sleep(3)
         if commands.mas_up():
             return time.monotonic() - t0
@@ -148,13 +163,25 @@ def ensure_automas(timeout: float = 120, grace: float = SHELL_STARTUP_GRACE) -> 
         if waited is not None:
             log.info("AUTO-MAS 自己起来了（等了 %.0f 秒）", waited)
             return True
+        if _stop_requested():
+            # A stop (the self-update restart, a shutdown) arrived mid-wait: leave
+            # the shell alone - killing a healthy, still-bootstrapping AUTO-MAS is
+            # the 2026-09-17 incident - and let the next process pick it up.
+            log.info("服务正在停止，不再等 AUTO-MAS，也不动它")
+            return False
         log.warning("AUTO-MAS 等了 %.0f 秒接口还是不通，杀掉重拉", grace)
+    if _stop_requested():
+        log.info("服务正在停止，不拉 AUTO-MAS")
+        return False
     log.warning("AUTO-MAS 接口不在，拉起它")
     _revive_automas()
     waited = _wait_for_api(time.monotonic() + timeout)
     if waited is not None:
         log.info("AUTO-MAS 已拉起（%.0f 秒）", waited)
         return True
+    if _stop_requested():
+        log.info("服务正在停止，不再等 AUTO-MAS 起来")
+        return False
     log.error("AUTO-MAS 拉起后 %.0f 秒内接口仍不通", timeout)
     return False
 
@@ -558,10 +585,12 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
     hb = Heartbeat(box.topic, cfg.state_dir)
     run_phone_cmd = _make_phone_cmd(engine, notifier, log, hb, push_state, cfg.state_dir)
 
-    if not ensure_automas():
+    if not ensure_automas() and not _stop_requested():
         # Say it now, to the group: with no backend the next queue will not run,
         # and the keeper's own alarm only fires after its third failed revival
         # (2026-09-17: 45 s of silence in the log, then nothing until 21:55).
+        # Not when the service is stopping: that False means "did not wait",
+        # not "down", and the restarted process checks again.
         notifier.send(texts.AUTOMAS_DOWN, texts.automas_boot_down_body(), alert=True)
     push_state("开机")
     if box.enabled:
