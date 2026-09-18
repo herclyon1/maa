@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<title>透镜折射测试</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="透镜">
+<style>
+  /* Minimal test page for the lifted segmented-control lens (220×44) with the displacement filter of lens-filter.svg.
+     Metrics of the row: tokens.css (segmented control 32 r16, lens 28 r14 pad 2, label 13; lifted lens 220×44 = 196×28 + 12/8 each side). */
+  :root{--bg:rgb(242 242 247);--card:#fff;--ink:#000;--dim:rgb(60 60 67 / .6);--track:rgb(118 118 128 / .12);--tint:rgb(0 136 255)}
+  @media (prefers-color-scheme: dark){:root{--bg:#000;--card:rgb(28 28 30);--ink:#fff;--dim:rgb(235 235 245 / .6);--track:rgb(118 118 128 / .24);--tint:rgb(0 145 255)}}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font:17px/20.33px -apple-system,"SF Pro Text","PingFang SC",sans-serif;-webkit-text-size-adjust:100%;overscroll-behavior:none}
+  body{padding:calc(env(safe-area-inset-top) + 20px) 20px 20px}
+  h1{font-size:34px;line-height:40.57px;font-weight:700;margin:0 0 12px}
+  .scene{position:relative;width:400px;background:var(--card);border-radius:26px;padding:16px 20px;box-sizing:border-box;user-select:none;-webkit-user-select:none}
+  .scene.grating{background:repeating-linear-gradient(90deg,rgb(51 51 51) 0 1px,rgb(204 204 204) 4px 5px,rgb(51 51 51) 8px)}   /* period 8 pt like the native measurement (pattern gx 8) */
+  .scene.gratingy{background:repeating-linear-gradient(0deg,rgb(51 51 51) 0 1px,rgb(204 204 204) 4px 5px,rgb(51 51 51) 8px)}
+  .scene p{margin:0 0 8px}
+  .segctl{position:relative;display:flex;height:32px;padding:2px;border-radius:16px;background:var(--track);box-sizing:border-box;margin:8px 0}
+  .segctl .flat{position:absolute;top:2px;left:2px;width:calc(50% - 2px);height:28px;border-radius:14px;background:var(--card)}   /* the resting selected segment: flat _controlForegroundColor platter */
+  .segctl span{position:relative;z-index:1;flex:1 1 0;height:28px;line-height:28px;text-align:center;font-size:13px}
+  .segctl span.on{font-weight:500}
+  /* the lens: a 220×44 window over a clone of the scene; the clone is shifted by −(lens position) so the window shows what lies under it */
+  .lens{position:absolute;z-index:2;width:220px;height:44px;border-radius:22px;overflow:hidden;touch-action:none;cursor:grab;   /* above the labels (they carry z-index 1) */
+        box-shadow:inset 0 0 0 1px rgb(255 255 255 / .126), 0 0 0 1px rgb(0 0 0 / .23)}   /* rim: 1 pt bright line inside (+16/255 on 128 grey) + 1 pt dark line outside (−30/255) ← lens-refraction.md §3 rim.json; no highlight ring */
+  /* variants: seg = #seg-lens-warp (band + dispersion) on the lens box + CSS scale(1.22) on the content (recommended);
+     full = #seg-lens-warp-full (the map carries the magnification too); scale = CSS scale only; none */
+  .lens.f-seg{filter:url(#seg-lens-warp)} .lens.f-seg .clone,.lens.f-scale .clone{zoom:1.22}   /* zoom, not transform: a transformed child under an SVG filter paints channel-split fragments on glyph edges in Chrome */
+  .lens.f-full{filter:url(#seg-lens-warp-full)}
+  .lens .clone{position:absolute;left:0;top:0;width:400px;pointer-events:none}
+  .lens .clone .scene{border-radius:0}
+  .lens .clone .flat,.scene.lifted > .segctl .flat{display:none}   /* lifted: the flat resting platter IS the lens, so neither the clone nor the scene shows it */
+  .bar{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
+  button{font:inherit;font-size:15px;line-height:18px;padding:6px 12px;border:0;border-radius:15px;background:rgb(0 136 255 / .18);color:var(--tint)}
+  button.on{background:var(--tint);color:#fff}
+  #stats{font-size:13px;line-height:15.67px;color:var(--dim);white-space:pre-wrap;font-variant-numeric:tabular-nums}
+  #stats b{color:var(--ink)}
+</style>
+</head>
+<body>
+{{FILTER}}
+<h1>透镜折射</h1>
+<div class="scene" id="scene">
+  <p>状态是 3 分钟前的 · 早班 09:00 东京 10:00</p>
+  <div class="segctl"><i class="flat"></i><span class="on">早班</span><span>晚班</span></div>
+  <p>明日方舟 理智 1-7（固定），理智药 0 瓶 · 终末地 基质刷取 双倍</p>
+</div>
+<div class="bar">
+  <button data-f="f-seg" class="on">边带贴图 + CSS 放大 1.22</button><button data-f="f-full">全场贴图</button><button data-f="f-scale">只放大 1.22</button><button data-f="">无</button>
+  <button id="auto">自动拖 2 s</button><button id="grat">光栅 ↔</button><button id="graty">光栅 ↕</button>
+</div>
+<div id="stats">拖动透镜或点「自动拖 2 s」。帧间隔在这里显示。</div>
+<script>
+(function () {
+  const scene = document.getElementById("scene"), stats = document.getElementById("stats");
+  const lens = document.createElement("div"); lens.className = "lens f-seg";
+  const clone = document.createElement("div"); clone.className = "clone"; lens.appendChild(clone); scene.appendChild(lens);
+  scene.classList.add("lifted");
+  const sync = () => { clone.innerHTML = ""; const c = scene.cloneNode(true); c.querySelector(".lens").remove(); c.id = ""; clone.appendChild(c); };
+  sync();
+  /* lens position inside the scene (pt); starts over the selected segment: segctl at (20, 16 + 20.33 + 8) → segment centre */
+  const seg = scene.querySelector(".segctl"), r0 = seg.getBoundingClientRect(), s0 = scene.getBoundingClientRect();
+  let X = r0.left - s0.left + 2 + (r0.width - 4) / 4 - 110, Y = r0.top - s0.top + 16 - 22;
+  /* the clone is placed so that the scene point under the lens centre stays under the lens centre; with zoom z the clone's own
+     coordinates are scaled about its top-left, so its offset is (centre − z·(lens position + centre)) / z in zoomed units */
+  const place = () => { const z = parseFloat(getComputedStyle(clone).zoom) || 1;
+    lens.style.left = X + "px"; lens.style.top = Y + "px"; clone.style.left = (110 - z * (X + 110)) / z + "px"; clone.style.top = (22 - z * (Y + 22)) / z + "px"; };
+  place();
+  /* drag: pointer events, no threshold; the frame interval is measured while a finger is down or the auto drag runs */
+  let dragging = null, times = [];
+  const tick = (t) => { times.push(t); if (dragging || auto.running) requestAnimationFrame(tick); else report("拖动"); };
+  const report = (what) => {
+    if (times.length < 3) return;
+    const d = []; for (let i = 1; i < times.length; i++) d.push(times[i] - times[i - 1]);
+    const mean = d.reduce((a, b) => a + b, 0) / d.length, max = Math.max(...d), slow = d.filter((x) => x > 20).length;
+    stats.innerHTML = `${what} ${times.length} 帧 · 帧间隔 平均 <b>${mean.toFixed(1)} ms</b>（${(1000 / mean).toFixed(0)} fps）· 最大 <b>${max.toFixed(1)} ms</b> · >20 ms 的帧 <b>${slow}</b> 个 · 滤镜 ${[...lens.classList].filter((c) => c.startsWith("f-")).join("") || "无"} · ${innerWidth}×${innerHeight} ${matchMedia("(display-mode: standalone)").matches ? "standalone" : "浏览器"}`;
+    times = [];
+  };
+  lens.addEventListener("pointerdown", (e) => { dragging = { id: e.pointerId, x: e.clientX - X, y: e.clientY - Y }; lens.setPointerCapture(e.pointerId); times = []; requestAnimationFrame(tick); e.preventDefault(); });
+  lens.addEventListener("pointermove", (e) => { if (!dragging || e.pointerId !== dragging.id) return; X = e.clientX - dragging.x; Y = e.clientY - dragging.y; place(); });
+  const up = (e) => { if (dragging && e.pointerId === dragging.id) dragging = null; };
+  lens.addEventListener("pointerup", up); lens.addEventListener("pointercancel", up);
+  /* auto drag: 2 s back and forth across the row (a 60 Hz check without a finger) */
+  const auto = document.getElementById("auto"); auto.running = false;
+  auto.onclick = () => { if (auto.running) return; auto.running = true; times = []; const x0 = X, t0 = performance.now();
+    const step = (t) => { const p = (t - t0) / 2000; X = x0 + Math.sin(p * Math.PI * 2) * 60; place(); if (p < 1) requestAnimationFrame(step); else { auto.running = false; X = x0; place(); report("自动拖"); } };
+    requestAnimationFrame(tick); requestAnimationFrame(step); };
+  for (const b of document.querySelectorAll("[data-f]")) b.onclick = () => { for (const x of document.querySelectorAll("[data-f]")) x.classList.toggle("on", x === b); lens.className = "lens " + b.dataset.f; place(); };
+  document.getElementById("grat").onclick = () => { scene.classList.remove("gratingy"); scene.classList.toggle("grating"); sync(); };
+  document.getElementById("graty").onclick = () => { scene.classList.remove("grating"); scene.classList.toggle("gratingy"); sync(); };
+})();
+</script>
+</body>
+</html>

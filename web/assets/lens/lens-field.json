@@ -1,0 +1,126 @@
+{
+ "lens_pt": [
+  220.0,
+  44.0
+ ],
+ "capsule_radius_pt": 22.0,
+ "magnification": 1.22,
+ "k": 0.180327868852459,
+ "maps": {
+  "seg-map-{r,g,b}.png": {
+   "field": "residual (band + dispersion)",
+   "scale": 32.0,
+   "px_per_pt": 2,
+   "size_px": [
+    440,
+    88
+   ]
+  },
+  "lens-map-{r,g,b}.png": {
+   "field": "full (−0.18·p + band)",
+   "scale": 64.0,
+   "px_per_pt": 3,
+   "size_px": [
+    660,
+    132
+   ]
+  }
+ },
+ "encoding": "byte = 128 + round(u·255/scale) (zero = 128 exactly; browser decodes scale·(byte/255 − .5) = u + scale/510); x→R, y→G; B 128; u = content position − screen position (pt, +x right, +y down)",
+ "edge_excess_pt_by_d": {
+  "R": [
+   -4.5,
+   -4.568,
+   -4.635,
+   -4.695,
+   -4.744,
+   -4.773,
+   -4.773,
+   -4.729,
+   -4.623,
+   -4.431,
+   -4.127,
+   -3.713,
+   -3.236,
+   -2.772,
+   -2.357,
+   -1.98,
+   -1.618,
+   -1.257,
+   -0.918,
+   -0.637,
+   -0.428,
+   -0.283,
+   -0.188,
+   -0.13,
+   -0.1,
+   0.0
+  ],
+  "G": [
+   -4.31,
+   -4.395,
+   -4.481,
+   -4.566,
+   -4.645,
+   -4.709,
+   -4.748,
+   -4.737,
+   -4.645,
+   -4.415,
+   -3.958,
+   -3.232,
+   -2.497,
+   -1.952,
+   -1.546,
+   -1.222,
+   -0.954,
+   -0.726,
+   -0.534,
+   -0.372,
+   -0.239,
+   -0.135,
+   -0.059,
+   -0.007,
+   0.0,
+   0.0
+  ],
+  "B": [
+   -4.2,
+   -4.267,
+   -4.335,
+   -4.396,
+   -4.436,
+   -4.435,
+   -4.35,
+   -4.123,
+   -3.751,
+   -3.32,
+   -2.828,
+   -2.351,
+   -1.977,
+   -1.667,
+   -1.381,
+   -1.114,
+   -0.868,
+   -0.648,
+   -0.453,
+   -0.284,
+   -0.141,
+   -0.027,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ]
+ },
+ "band_width_pt": {
+  "x": 22.0,
+  "y": 11.0,
+  "blend": "W = W_X·|n_x| + W_Y·|n_y|"
+ },
+ "sources": [
+  "remote-ref/lens-refraction.md §0 §2 §3 §4.2",
+  "remote-ref/tools/lens/phase-lift-gx-{light,dark}.json rows ±20 (R/G/B, right side, centre offset removed)",
+  "remote-ref/tools/lens/phase-lift-gy-{light,dark}.json columns ±25 (band width 11 pt vertical)"
+ ]
+}
