@@ -28,6 +28,54 @@ Two sources, both from Apple, both read 2026-09-14:
    them, large title ink at the 20 margin. WebKit's own `switch` control renders
    71×31, so it is scaled by .887 to the Settings size.
 
+## Acceptance numbers (2026-09-18: the page's values are `web/tokens.css`)
+
+Since the 状态 tab rebuild (branch `ui`, step 2) every size and colour on the page is a
+`--ios-*` variable from `web/tokens.css` (a copy of `~/Money/styl-work/remote-ref/tokens.css`,
+written by the data session). Each variable's source is the comment line above it in that
+file: **UIProbe** = the iOS 27.0 simulator's own UIKit read in-process (`UIProbe`,
+spec-extract.md ④/⑤), **AX-n** = the accessibility frame dump of reference screen n
+(`remote-ref/<n>-ax.json`), **NUMBERS n** = line n of the iOS 27 UI kit's number table,
+**SAMPLED** = no original value, pixel-fit (marked red wherever used). `web/accept.js`
+checks the rendered DOM against the numbers below (hard-coded there on purpose: if it read
+tokens.css a wrong token would pass); colours are compared as parsed rgb/rgba, not strings.
+The 2026-09-15 table further down is kept as history; where the two disagree, this one wins.
+
+| Item | Value (light / dark) | Variable | Source |
+|---|---|---|---|
+| root font, body | 17 / line 20.33 | `--ios-body-size` `--ios-body-lh` | UIProbe preferredFont Body |
+| subheadline, footnote, caption 2 | 15/18 · 13/15.67 · 11/13.13 | `--ios-sub-*` `--ios-footnote-*` `--ios-caption2-*` | UIProbe (老清单 caption 11/13.33 was wrong) |
+| large title | 34 / 40.57, bold | `--ios-large-title-*` | UIProbe; weight NUMBERS 56 |
+| tint / link / red / green | (0,136,255)·(0,145,255) / (0,122,255)·(9,132,255) / (255,56,60)·(255,66,69) / (52,199,89)·(48,209,88) | `--ios-tint` `--ios-link` `--ios-red` `--ios-green` | UIProbe colour table (老清单 #0a84ff / #ff453a were iOS 26 values) |
+| orange | (255,141,40) / (255,146,48) | `--ios-orange` | UIProbe (not #ff9500) |
+| grouped bg / card / label / secondary label | (242,242,247)·(0,0,0) / white·(28,28,30) / black·white / (60,60,67,.6)·(235,235,245,.6) | `--ios-grouped-bg` `--ios-card-bg` `--ios-label` `--ios-secondary-label` | UIProbe |
+| separator | 1.0 pt, (60,60,67,.12) / (84,84,88,.5), inset 20 / 20 | `--ios-separator-h` `--ios-separator` `--ios-separator-inset-*` | UIProbe (1.0, **not** 1/3 px as the old list said) |
+| card | inset 20, radius 26, groups 17.67 apart | `--ios-card-inset` `--ios-card-radius` `--ios-group-gap` | AX-45 / UIProbe |
+| row | 53.33 high, text x 20 | `--ios-row-h` `--ios-row-text-x` | UIProbe (not 52) |
+| header | container 45.33, text top 18.67 → padding 18.67 / 6.33; 17 semibold secondary | `--ios-header-h` `--ios-header-text-top` | AX-45 |
+| footer | container 30.33, text top 7.67 → padding 7.67 / 24.66 (+ group gap); 13/15.67 | `--ios-footer-h` `--ios-footer-text-top` | AX-45 |
+| switch | 63×28 r14, inset 18, knob 37×24 pad 2, travel 22 | `--ios-switch-*` `--ios-switch-travel` (derived) | UIProbe (knob 37, not 38; inset 18) |
+| switch motion | knob 0.35 s critical spring ω21 (`linear()`), no stretch; track cross-fade 0.2 s default curve | `--ios-motion-switch-knob-*` `--ios-motion-switch-track-*` | UIProbe CAAnimation trace (the recorded 0.34 s stretch keyframes are gone) |
+| segmented control | 32 r16, lens 28 r14 pad 2, label 13 (selected Medium 500); lens 0.52 s ω17.5 ζ0.9; press dims to .2 in 0.47 s, back 0.2 s | `--ios-segment-*` `--ios-motion-lens-*` `--ios-motion-segment-*` | UIProbe / reference 34 |
+| alert | 320 r34, pad-x 30, title top 22 (17 semibold), message gap 7.33 (15 secondary), buttons 48 r24 inset 16 gap 8; appear scale 1.2→1 + fade 0.40 s (ω22.86), dismiss fade only; dimming (0,0,0,.2) | `--ios-alert-*` `--ios-motion-alert-*` `--ios-dimming` | UIProbe; background material **SAMPLED** (`--ios-alert-material-SAMPLED`, Kit 89) |
+| pull-down menu | 250 wide, pad 10, item 42 at x 16 | `--ios-menu-*` | NUMBERS 96 (corner 26 still 待 tokens) |
+| buttons / rows press | press instant; release 0.25 s (button) / 0.5 s (row) ease-in-out | `--ios-motion-button-release-duration` `--ios-motion-row-release-duration` `--ios-motion-ease-in-out` | UIProbe |
+| spinner | 0.8 s period | `--ios-motion-spinner-period` | UIProbe |
+| tab bar | lens 54 r27, label 10 semibold, tint when selected; lens slide 0.52 s | `--ios-tab-lens-*` `--ios-tab-label-size` `--ios-motion-lens-*` | UIProbe; capsule 62, button ≥72, symbol 28 are Kit values, 待 tokens; glass material 无来源 |
+| edit bar buttons | 44 round at 20 from the edge | `--ios-nav-button` `--ios-nav-side` | AX-45 |
+| still without a token (kept at the old value, flagged in the CSS) | action tiles 80 / 16 / 8 / icon 28; number tiles 80.33 / big 24 / icon 32; top bar 44 (AX-45 says 54 = `--ios-nav-h`, not switched yet); first header under the large title 10; tab-bar capsule 62 / ≥72 / 28; menu corner 26 and its 0.22 s appear; toast; `.notice` rise 0.28 s; the press fill 8 %; blur/saturate/shadow of every glass surface | — | 待 tokens / 无来源 |
+
+Dynamic Type: the sizes are the probe's px at the default text size, so the page no longer
+scales with Settings › 显示与亮度 › 文字大小 (the old `-apple-system-body` em scheme did).
+Root font-size is set to 17 explicitly.
+
+Running it: the ui worktree's page with `?accept=1&quiet=1` on the iOS 27.0 simulator
+(`scripts/mac/phone-accept.py`); 91/91 light and dark in headless Chrome on 2026-09-18
+(desktop Chromium has no safe area, so the top-bar line there measures 44 without it).
+The split commit 407376d alone (before step 2) measures identically to `main` with the
+2026-09-15 accept.js: 61 rows, same 55 pass in Chromium (the 6 failures are Chromium's
+16 px `-apple-system-body`), light and dark.
+
 ## Acceptance (2026-09-15, after ~/Money/transit's accept.js)
 
 `scripts/mac/phone-accept.py` opens the published page in the simulator's Safari with

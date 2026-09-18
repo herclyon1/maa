@@ -27,6 +27,26 @@ function applyTheme() {
 
 
 /* ---------- 界面 ---------- */
+/* 确认弹窗（UIAlertController 的形，数字见 index.html dialog 段）：标题 / 说明 / 取消 + 主钮。resolve(true) = 按了主钮。 */
+function ask(title, msg, okLabel = "好", danger = false) {
+  const d = $("#alert");
+  if (!d || !d.showModal) return Promise.resolve(confirm(`${title}\n${msg}`));
+  $("#alert-t").textContent = title; $("#alert-m").textContent = msg;
+  const ok = $("#alert-ok"); ok.textContent = okLabel; ok.className = danger ? "danger" : "primary";
+  return new Promise((res) => {
+    const done = (v) => {
+      ok.onclick = null; $("#alert-cancel").onclick = null;
+      /* 消失只淡出（--ios-motion-alert-*），淡完再 close()；resolve 不等动效 */
+      d.classList.add("closing");
+      const ms = parseFloat(getComputedStyle(d).getPropertyValue("--ios-motion-alert-duration")) * 1000 || 0;
+      setTimeout(() => { d.classList.remove("closing"); d.close(); }, ms);
+      res(v);
+    };
+    ok.onclick = () => done(true); $("#alert-cancel").onclick = () => done(false);
+    d.oncancel = (e) => { e.preventDefault(); done(false); };
+    d.showModal();
+  });
+}
 function toast(t, ms = 2600) {
   const el = $("#toast"); el.textContent = t; el.classList.add("show");
   clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove("show"), ms);
@@ -161,9 +181,12 @@ let QUEUE_SWITCHES = [];
 function beijingToday() {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" });
 }
-function planRows(text, qs = [], relay = {}) {
+function planRows(text, qs = [], relay = {}, curQueue = "", thisShift = null) {
   QUEUE_SWITCHES = [];
-  if (!text) return "";
+  const OWNER_NAME = { MAA: "明日方舟", MaaEnd: "终末地", "OK-WW": "鸣潮" };
+  const fallback = `<section><h2>这一趟</h2>` +
+    `<div class="row"><label>${curQueue || "班次"}<span class="hint">${(thisShift || []).map((o) => OWNER_NAME[o] || o).join(" → ") || "机器还没上报排班"}</span></label></div></section>`;
+  if (!text) return { thisShift: fallback, tomorrow: "" };
   const lines = text.split("\n").map((l) => l.replace(/</g, "&lt;"));
   const blocks = []; let cur = null, game = null; const foot = [];
   for (const raw of lines) {
@@ -174,10 +197,11 @@ function planRows(text, qs = [], relay = {}) {
     if (game) game.h.push(l); else if (!cur) foot.push(l);
   }
   const skipped = String(relay["今天跳过"] || "");
-  let rows = "";
+  let rows = "", mine = "";
   for (const b of blocks) {
     const owners = b.games.map((g) => OWNER_OF[g.name]).filter(Boolean).sort().join("|");
     const q = qs.find((x) => (x["脚本"] || []).slice().sort().join("|") === owners);
+    let part = "";
     if (q) {
       const sw = { id: `relay|queue:${q["名"]}`, label: `${q["名"]} · ${b.t}`,
                    on: { action: "unskip_today", queue: q["名"] },
@@ -186,15 +210,20 @@ function planRows(text, qs = [], relay = {}) {
       const on = skipped !== q["名"];
       liveVals[sw.id] = on;
       const hint = [b.tokyo ? "东京 " + b.tokyo : "", on ? "今天照常" : "今天跳过，明天照常"].filter(Boolean).join(" · ");
-      rows += `<div class="row" data-row="${sw.id}"><label>${sw.label}<span class="hint">${hint}</span></label>
+      part += `<div class="row" data-row="${sw.id}"><label>${sw.label}<span class="hint">${hint}</span></label>
         <span class="sw"><input type="checkbox" data-relay="${sw.id}" ${on ? "checked" : ""}><span></span></span></div>`;
     } else {
-      rows += `<div class="row"><label>${b.t}${b.tokyo ? `<span class="hint">东京 ${b.tokyo}</span>` : ""}</label></div>`;
+      part += `<div class="row"><label>${b.t}${b.tokyo ? `<span class="hint">东京 ${b.tokyo}</span>` : ""}</label></div>`;
     }
-    for (const g of b.games) rows += `<div class="row"><label>${g.name}${g.h.length ? `<span class="hint">${g.h.join("，")}</span>` : ""}</label></div>`;
+    for (const g of b.games) part += `<div class="row"><label>${g.name}${g.h.length ? `<span class="hint">${g.h.join("，")}</span>` : ""}</label></div>`;
+    if (q && q["名"] === curQueue) mine += part; else rows += part;
   }
   foot.push("时刻行的开关：关掉 = 这趟今天不跑，明天照常；再打开就恢复");
-  return `<section><h2>明日安排</h2>${rows}<div class="foot">${foot.map((x) => `<p>${x}</p>`).join("")}</div></section>`;
+  const thisShiftHtml = mine
+    ? `<section><h2>这一趟</h2>${mine}<div class="foot"><p>${foot[foot.length - 1]}</p></div></section>`
+    : fallback;
+  const tomorrow = rows ? `<section><h2>明日安排</h2>${rows}<div class="foot">${foot.map((x) => `<p>${x}</p>`).join("")}</div></section>` : "";
+  return { thisShift: thisShiftHtml, tomorrow };
 }
 
 /* The games' own stamina icons (his 09-15 order): 明日方舟 理智 and 终末地 理智 from the
@@ -272,8 +301,8 @@ function render() {
   const nextAt = (() => { const m = /🕘\s*(\d\d:\d\d)/.exec((snap && snap.plan) || ""); return m ? m[1] : ""; })();
   const ef = relay["刷声骸"] || {};
   /* 设备卡（查找的结构）：名字 + 一行状态；右边一个词。状态文字由 setStatus 同步。 */
+  /* 设备行（46 Apple 账户页的值行：名字左、状态右灰字）。id 不变：setStatus 写 #status2/#dot2/#side2。 */
   html += `<section><div class="group devcard">
-    <span class="dico">${sf("desktopcomputer")}</span>
     <div class="dtext"><div class="dname">游戏机</div>
       <div class="dsub"><i class="dot" id="dot2"></i><span id="status2">${$("#status") ? $("#status").textContent : "正在读取…"}</span></div></div>
     <span class="dside" id="side2"></span>
@@ -292,19 +321,33 @@ function render() {
     ${tile("refresh", "arrow.clockwise", "#8e8e93", "刷新", snap ? ago(snap.at) : "还没有数据")}
     ${tile("estop", "stop.fill", "var(--bad)", "停止一切", "脚本和游戏", "danger")}
   </div></section>`;
-  /* 数字磁贴（提醒事项的 2×2 磁贴）：三个游戏的体力和今天跑了几趟，快照里有才显示。 */
-  html += numTiles(snap);
-  /* 配置行（设置的行）。 */
-  html += `<section><h2>机器状态</h2>
-    ${qs.length ? `<div class="row"><label>看哪一趟班
-        <span class="hint">「现在跑一趟」「跳过下一趟」作用在这趟班上；只显示它要跑的游戏${thisShift && thisShift.length ? "：" + thisShift.join("、") : ""}</span></label>
-      <select id="queue">${qopts}</select></div>` : ""}
+  /* 停止一切之后：一行「已停止 · 下一趟 HH:MM 照常」，脚注放机器的回执原文（没回执就写等着）。6 小时后不再提。 */
+  const estopAt = Number(localStorage.getItem("ark-remote-estop") || 0);
+  if (estopAt && now() - estopAt < 6 * 3600) {
+    const rcs = Array.isArray(relay["最近指令"]) ? relay["最近指令"] : [];
+    const rc = rcs.slice().reverse().find((r) => /停|estop/i.test(String(r.text || "")) || (r.at && r.at >= hhmm(estopAt)));
+    html += `<section><div class="group estopnote"><div class="row"><label>已停止 · 下一趟${nextAt ? " " + nextAt : ""} 照常
+      <span class="hint">${rc ? `回执 ${rc.at}：${String(rc.text || "").replace(/</g, "&lt;")}` : "等机器回执：停干净没有以回执为准"}</span></label></div></div></section>`;
+  }
+  /* 班次分段控件（34 屏幕时间「每周 / 每天」）：选早班还是晚班。原生 <select id="queue"> 留着不显示——wire() 的 onchange 还挂在它上面。 */
+  if (qs.length) html += `<div class="segctl" id="queueseg" role="tablist" style="--n:${qs.length};--i:${Math.max(0, qs.findIndex((q) => q["名"] === curQueue))}"><i class="lens"></i>${qs.map((q) =>
+      `<button type="button" role="tab" aria-selected="${q["名"] === curQueue}" class="${q["名"] === curQueue ? "on" : ""}" data-q="${q["名"]}">${q["名"]}${q["定时"] === false ? "（未启用定时）" : ""}</button>`).join("")}</div>
+    <select id="queue" class="native" hidden>${qopts}</select>`;
+  /* 这一趟：选中班次要跑的游戏和要点、今天跳过开关；明日安排另起一节。 */
+  const plan = planRows(snap && snap.plan, qs, relay, curQueue, thisShift);
+  html += plan.thisShift;
+  /* 刷 4C 声骸（限时任务）；机器的两个一次性开关。 */
+  html += `<section><h2>刷 4C 声骸</h2>
     ${ef["到"] ? `<div class="row"><label>改成刷到几点
         <span class="hint">提前或延后都行，填 21:00 这种。已经过了的时刻＝立刻收工</span></label>
         <input type="text" class="short" id="efnew" value="${String(ef["到"]).slice(11)}" inputmode="numeric"></div>` : echoFarmBlock(relay)}
+  </section>`;
+  html += `<section><h2>机器</h2>
     ${RELAY_SWITCHES.filter((x) => x.tab === "状态").map((x) => relayRow(x, relay)).join("")}
   </section>${cfgNote}`;
-  html += planRows(snap && snap.plan, qs, relay);
+  /* 体力（老页的方块磁贴，不做环）。 */
+  html += numTiles(snap);
+  html += plan.tomorrow;
   /* The machine's answer to each order, newest first. Used to be a push per
      order; the answer belongs where the button was pressed (2026-09-14). */
   const rc = Array.isArray(relay["最近指令"]) ? relay["最近指令"].slice().reverse() : [];
@@ -550,6 +593,16 @@ function wire() {
   $("#refresh").onclick = () => ping();
   const theQueue = () => curQueue || "早班";
   const qsel = $("#queue");
+  for (const b of document.querySelectorAll("#queueseg button")) b.onclick = () => {
+    if (!qsel || qsel.value === b.dataset.q) return;
+    /* 透镜先滑过去（0.52 s，--ios-motion-lens-*），滑完再重画页面；重画时 --i 已是新值，不会再跳一次 */
+    const seg = b.closest(".segctl"); const bs = [...seg.querySelectorAll("button")];
+    seg.style.setProperty("--i", String(bs.indexOf(b)));
+    for (const x of bs) { x.classList.toggle("on", x === b); x.setAttribute("aria-selected", String(x === b)); }
+    qsel.value = b.dataset.q;
+    const ms = parseFloat(getComputedStyle(seg).getPropertyValue("--ios-motion-lens-duration")) * 1000 || 0;
+    setTimeout(() => qsel.dispatchEvent(new Event("change")), ms);
+  };
   if (qsel) qsel.onchange = () => {
     curQueue = qsel.value;
     try { localStorage.setItem("ark-remote-cfg-queue", curQueue); } catch {}
@@ -564,13 +617,13 @@ function wire() {
   // 红按钮反倒有确认框，两边的防护装反了。后端把 run_now 归进「要人确认」，
   // 页面不该替人把 confirmed:true 填好。另外正在跑的时候派一趟等于让 AUTO-MAS
   // 和手动派发打架（09-01 上午三个游戏同时在线就是这么来的），先拦下。
-  $("#runnow").onclick = () => {
+  $("#runnow").onclick = async () => {
     const busy = ((snap && snap.run) || {})["在跑的"] || [];
     if (busy.length) {
       toast(`现在正在跑 ${busy.join("、")}，跑完再派。硬要派会和它打架。`, 5000);
       return;
     }
-    if (!confirm(`让「${theQueue()}」现在多跑一趟？这会真的花掉理智／波片。`)) return;
+    if (!(await ask("现在跑一趟？", `让「${theQueue()}」现在多跑一趟。会真的花掉理智／波片；机器关着就变成下次开机跑。`, "跑一趟"))) return;
     oneShot(
       { action:"run_now", confirmed:true, queue:theQueue() },
       `已让「${theQueue()}」现在开跑。机器关着时这条会等到下次开机才执行，` +
@@ -613,9 +666,11 @@ function wire() {
     else { edits[sw.id] = { src: "relay", label: sw.label, from, to, body: to ? sw.on : sw.off }; if (row) row.classList.add("changed"); }
     updateBar();
   };
-  $("#estop").onclick = () => {
-    if (!confirm("立刻停掉所有脚本和游戏？正在跑的这趟会作废。")) return;
-    oneShot({ action:"estop", confirmed:true }, "已下令停止一切，机器上几秒内生效");
+  $("#estop").onclick = async () => {
+    if (!(await ask("停止一切？", "停掉现在在跑的：队列、脚本和游戏。不动排班、不动任何设置，下一趟照常。回执会告诉你停干净没有。", "停止", true))) return;
+    try { localStorage.setItem("ark-remote-estop", String(now())); } catch {}
+    await oneShot({ action:"estop", confirmed:true }, "已下令停止一切，机器上几秒内生效");
+    render();
   };
 
   /* 周本那四项走同一个保存栏。原来它自己有一个「保存周本设置」按钮，
@@ -758,6 +813,14 @@ function applyEdits() {
     for (const b of box.querySelectorAll(".pill")) b.classList.toggle("on", on.has(b.dataset.v));
     const row = document.querySelector(`[data-row="${CSS.escape(key)}"]`);
     if (row) row.classList.add("changed");
+  }
+  /* 三态第一态：改了还没保存的行，控件下一行小字「待保存」。 */
+  for (const key of Object.keys(edits)) {
+    const row = document.querySelector(`[data-row="${CSS.escape(key)}"]`);
+    if (!row) continue;
+    row.classList.add("changed");
+    row.querySelectorAll(".cap.edit").forEach((x) => x.remove());
+    const tag = document.createElement("div"); tag.className = "cap edit"; tag.textContent = "待保存"; row.appendChild(tag);
   }
   updateBar();
 }
@@ -909,12 +972,13 @@ function installNative() {
     sw.dataset.pe = "1";
     const startOn = input.checked, x0 = e.clientX; let dx = 0;
     sw.classList.add("live", "hold");
-    sw.style.setProperty("--kx", (startOn ? 21 : 0) + "px");
-    const move = (ev) => { dx = ev.clientX - x0; sw.style.setProperty("--kx", Math.max(0, Math.min(21, (startOn ? 21 : 0) + dx)) + "px"); };
+    const T = 22;   // knob travel 63 − 37 − 2×2 (probe: track 63×28, knob 37×24, pad 2) = --ios-switch-travel
+    sw.style.setProperty("--kx", (startOn ? T : 0) + "px");
+    const move = (ev) => { dx = ev.clientX - x0; sw.style.setProperty("--kx", Math.max(0, Math.min(T, (startOn ? T : 0) + dx)) + "px"); };
     const up = () => {
       sw.removeEventListener("pointermove", move);
       const dragged = Math.abs(dx) > 6;
-      const on = dragged ? ((startOn ? 21 : 0) + dx) > 10.5 : !startOn;
+      const on = dragged ? ((startOn ? T : 0) + dx) > T / 2 : !startOn;
       if (dragged) sw.classList.remove("live");           // no fly-in: the knob is already there
       sw.classList.remove("hold"); sw.style.removeProperty("--kx");
       if (on !== input.checked) { input.checked = on; input.dispatchEvent(new Event("change", { bubbles: true })); }

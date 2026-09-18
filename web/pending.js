@@ -11,6 +11,12 @@ const PENDING_KEY = "ark-remote-pending";
 let pending = {};    // id -> {label, src, owner, path, from, to, sentAt, resentAt?, mismatchAt?}
 try { pending = JSON.parse(localStorage.getItem(PENDING_KEY) || "{}") || {}; } catch { pending = {}; }
 function savePending() { try { localStorage.setItem(PENDING_KEY, JSON.stringify(pending)); } catch {} }
+/* 三态的第三态：机器回执对上了，记下「已应用 HH:MM」在控件下面再挂一天（2026-09-18，用户要三态文案都在）。
+   以前对上就直接删掉 pending，行下什么都不剩，看不出这项是刚生效的还是一直如此。 */
+const ACKED_KEY = "ark-remote-acked";
+let acked = {};      // id -> {at, label}
+try { acked = JSON.parse(localStorage.getItem(ACKED_KEY) || "{}") || {}; } catch { acked = {}; }
+function saveAcked() { try { localStorage.setItem(ACKED_KEY, JSON.stringify(acked)); } catch {} }
 let liveVals = {};   // 最近一次 render 时每个字段在机器上的值：id -> value
 const sameVal = (a, b) => Array.isArray(a) || Array.isArray(b)
   ? JSON.stringify([].concat(a ?? []).map(String).sort()) === JSON.stringify([].concat(b ?? []).map(String).sort())
@@ -35,20 +41,29 @@ function applyPending() {
       }
     }
     row.querySelectorAll(".sent").forEach((x) => x.remove());
+    /* 控件下的一行小字（信息 App「已送达」的位置和字号）：已寄出 · 机器开机后生效 / 没生效 · 再发一次 */
     const tag = document.createElement("div");
     if (p.mismatchAt) {
       tag.className = "sent bad";
-      tag.innerHTML = `${sf("xmark.circle.fill", "bad inl")}机器 ${hhmm(p.mismatchAt)} 上报的还是「${valLabel(p, liveVals[key])}」，` +
-        `这项没生效 <button type="button" class="again" data-again="${key}">再发一次</button>`;
+      tag.innerHTML = `没生效 · 机器 ${hhmm(p.mismatchAt)} 报的还是「${valLabel(p, liveVals[key])}」<button type="button" class="again" data-again="${key}">再发一次</button>`;
     } else {
       tag.className = "sent";
       const old = (now() - p.sentAt) > 10 * 3600;
-      tag.textContent = `📮 已寄出 ${hhmm(p.sentAt)}${p.resentAt ? `（${hhmm(p.resentAt)} 又发了一次）` : ""}` +
-        `，${snap && (now() - snap.at) < FRESH_MS / 1000 ? "机器开着，几秒内回执" : "等机器开机生效，还没回执"}` +
-        (old ? "。寄出超过 10 小时：信箱只保管 12 小时，机器再开机时这页若开着会自动重发" : "");
+      tag.textContent = `已寄出 ${hhmm(p.resentAt || p.sentAt)} · ${snap && (now() - snap.at) < FRESH_MS / 1000 ? "几秒内回执" : "机器开机后生效"}` +
+        (old ? " · 超过 10 小时，机器开机时会自动重发" : "");
     }
     row.appendChild(tag);
     row.classList.add("posted");
+  }
+  /* 已应用 HH:MM：对上回执的项，挂一天；再改这项就撤掉。 */
+  for (const [key, a] of Object.entries(acked)) {
+    if (key in pending || key in edits || now() - a.at > 24 * 3600) { if (now() - a.at > 24 * 3600) { delete acked[key]; saveAcked(); } continue; }
+    const row = document.querySelector(`[data-row="${CSS.escape(key)}"]`);
+    if (!row) continue;
+    row.querySelectorAll(".sent").forEach((x) => x.remove());
+    const tag = document.createElement("div");
+    tag.className = "sent ok"; tag.textContent = `已应用 ${hhmm(a.at)}`;
+    row.appendChild(tag);
   }
   const n = Object.keys(pending).length;
   const bar = $("#pendbar");
@@ -58,7 +73,7 @@ function applyPending() {
       const bad = Object.values(pending).filter((p) => p.mismatchAt).length;
       bar.innerHTML = (bad
         ? `${sf("xmark.circle.fill", "bad inl")}${bad} 项改动机器没接受（见红字）` + (n - bad ? `，另 ${n - bad} 项还在等回执` : "")
-        : `📮 ${n} 项改动已寄出，机器开机后生效；生效了这条会自己消失`) +
+        : `${n} 项改动已寄出 · 机器开机后生效`) +
         ` <button type="button" id="pendclear">不等了，清掉</button>`;
       $("#pendclear").onclick = () => { pending = {}; savePending(); render(); };
     }
@@ -75,6 +90,7 @@ function reconcilePending() {
     if (!(key in liveVals)) continue;          // 这一份状态里没带这个字段，等下一份
     if (sameVal(liveVals[key], p.to)) {
       delete pending[key]; changed = true;
+      acked[key] = { at: snap.at, label: p.label }; saveAcked();
       toast(`「${p.label}」已生效：${valLabel(p, p.to)}`, 5000);
     } else if (p.mismatchAt !== snap.at) {
       p.mismatchAt = snap.at; changed = true;
