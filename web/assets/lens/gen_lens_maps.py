@@ -128,6 +128,25 @@ def capsule_edge_distance(x, y, hw, hh):
         cx = c if x > 0 else -c; dx, dy = x - cx, y; r = math.hypot(dx, dy); d = hh - r; n = (-dx / r, -dy / r) if r > 1e-9 else (0.0, 1.0)
     return d, n
 
+def portal_field_at(F, x, y, chan, hw, hh, pw, ph, gain, band, stretch):
+    """label layer on the PORTAL geometry (second round, acceptance 2026-09-19): the label portal is a pw×ph capsule centred in the
+    hw×hh lens (196×28 in 220×44: inset 12 / 8). Its band is the backdrop field's band mapped by 'the same SDF shape': a point d inside
+    the portal boundary reads the backdrop field d / band inside the backdrop boundary at the corresponding boundary point (same x on
+    the straight edges, same angle on the end circles), minus the backdrop's uniform interior part (0.22·y), × gain. Outside the portal
+    the field is continued from its boundary (clamp-to-edge); inside beyond the band it is ~0 (the measured label centre is not
+    distorted, seg-lens-refraction.md §2.3)."""
+    d, n = capsule_edge_distance(x, y, pw / 2, ph / 2)
+    if d < 0: x, y = x + n[0] * (-d + 0.25), y + n[1] * (-d + 0.25); d = 0.25
+    # corresponding backdrop boundary point
+    cp, cb = pw / 2 - ph / 2, hw / 2 - hh / 2
+    if abs(x) <= cp: bx, by = x, (hh / 2 if y > 0 else -hh / 2)
+    else:
+        sx_ = 1 if x > 0 else -1; ang = math.atan2(y, x - sx_ * cp); bx, by = sx_ * cb + hh / 2 * math.cos(ang), hh / 2 * math.sin(ang)
+    qx, qy = bx + n[0] * (d / band), by + n[1] * (d / band)          # d/band inside the backdrop boundary, same inward direction
+    ux, uy = field_at(F, qx, qy, chan, hw, hh, stretch)
+    uy -= 0.2180 * qy                                                # the backdrop's uniform vertical compression is not part of the band
+    return ux * gain, uy * gain
+
 def field_at(F, x, y, chan, hw, hh, stretch, gain=1.0, band=1.0):
     """(u_x, u_y) in pt at lens-relative (x, y) for the target capsule hw×hh.
     Outside the capsule the field is continued from the nearest boundary point (clamp-to-edge): the lens clips those pixels, and
@@ -177,13 +196,14 @@ def write_png(path, w, h, rows):
     def chunk(t, d): return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
     open(path, "wb").write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
 
-def render(path, F, chan, wpt, hpt, px, scale, stretch, gain, band=1.0):
+def render(path, F, chan, wpt, hpt, px, scale, stretch, gain, band=1.0, portal=None):
     w, h = int(round(wpt * px)), int(round(hpt * px)); rows = []; peak = 0.0
     for j in range(h):
         y = (j + 0.5) / px - hpt / 2; row = bytearray()
         for i in range(w):
             x = (i + 0.5) / px - wpt / 2
-            ux, uy = field_at(F, x, y, chan, wpt / 2, hpt / 2, stretch, gain, band); peak = max(peak, abs(ux), abs(uy))
+            ux, uy = portal_field_at(F, x, y, chan, wpt, hpt, portal[0], portal[1], gain, band, stretch) if portal else field_at(F, x, y, chan, wpt / 2, hpt / 2, stretch, gain, band)
+            peak = max(peak, abs(ux), abs(uy))
             row += bytes((encode(ux, scale), encode(uy, scale), 128, 255))
         rows.append(row)
     write_png(path, w, h, rows); return w, h, peak
@@ -208,7 +228,7 @@ def main():
     ap.add_argument("--size", default="220x44"); ap.add_argument("--scale", type=float, default=32.0); ap.add_argument("--px", type=int, default=2)
     ap.add_argument("--stretch", action="store_true", help="the field was measured on another lens size: map it by normalised coordinates")
     ap.add_argument("--dark", help="<gx.json>,<gy.json> the same field measured in dark mode (compared, maps use --field)")
-    ap.add_argument("--label-from-bg", help="<gain>,<band>: derive the label layer's maps from the backdrop field — amplitude × gain, edge band compressed × band (native ContentLensing −8.8/−17.5 = 0.503, SDF height 7.04/11.2 = 0.629)")
+    ap.add_argument("--label-from-bg", help="<gain>,<band>[,<portal WxH>]: derive the label layer's maps from the backdrop field — amplitude × gain, edge band compressed × band (native ContentLensing −8.8/−17.5 = 0.503, SDF height 7.04/11.2 = 0.629); with a portal size the band sits on the portal capsule centred in the lens (196x28: inset 12 / 8) and the backdrop's uniform interior part is removed")
     ap.add_argument("--out", default=HERE)
     a = ap.parse_args(); W, H = (float(v) for v in a.size.lower().split("x"))
     F = build_field(*a.field.split(","))
@@ -218,9 +238,10 @@ def main():
     # label layer: DERIVED, not measured — the same SDF shape with the native ContentLensing amount / height ratios (README §1b)
     lmaps = {}; lpeak = 0.0
     if a.label_from_bg:
-        gain, band = (float(v) for v in a.label_from_bg.split(","))
+        parts = a.label_from_bg.split(","); gain, band = float(parts[0]), float(parts[1])
+        portal = tuple(float(v) for v in parts[2].lower().split("x")) if len(parts) > 2 else None
         for c in "RGB":
-            p = os.path.join(a.out, f"seg-map-label-{c.lower()}.png"); _, _, pk = render(p, F, c, W, H, a.px, a.scale, a.stretch, gain, band); lmaps[c] = p; lpeak = max(lpeak, pk)
+            p = os.path.join(a.out, f"seg-map-label-{c.lower()}.png"); _, _, pk = render(p, F, c, W, H, a.px, a.scale, a.stretch, gain, band, portal); lmaps[c] = p; lpeak = max(lpeak, pk)
     # jump statistics: adjacent-pixel steps ≥ 1.5 pt in the top / bottom 20 px rows (the acceptance count), after clamp-to-edge
     def jumps(path):
         w_, h_, rows_ = png_rows(path); n = 0
@@ -244,6 +265,7 @@ def main():
                                    "note": "row 0 holds a constant ±0.5 pt level step across the centre (seg-lens-refraction.md §0: M 1.00); the x scale is 1.00 within the noise"}},
             "label_copy": "measured: not displaced at the centre (seg-lens-refraction.md §2.3); the derived #seg-lens-warp-label bends it only near the ends (README §1b)",
             "label_layer": ({"derived_not_measured": True, "from": "backdrop field", "gain": float(a.label_from_bg.split(",")[0]), "band": float(a.label_from_bg.split(",")[1]),
+                             "portal_pt": (a.label_from_bg.split(",")[2] if len(a.label_from_bg.split(",")) > 2 else None), "interior": "backdrop uniform part removed (label centre measured undistorted, §2.3)" if len(a.label_from_bg.split(",")) > 2 else "backdrop interior × gain",
                              "source": "seg-lens-drag-mid.md §0 标签场逐点剖面: ContentLensing shares the ClearGlass SDF shape, amount −8.8 vs −17.5, SDF height 7.04 vs 11.2 (原值); the field itself is not measured",
                              "peak_pt": round(lpeak, 2)} if a.label_from_bg else None),
             "edge": "clamp-to-edge outside the capsule (the field continues from the nearest boundary point; the lens clips those pixels)",
@@ -270,7 +292,7 @@ def main():
        Animate: the scale attribute 0 → {a.scale:g} with the lift curve of seg-keys.css (seg-lens-refraction.md §4.1: all lens quantities share it). -->
 """
     svg = head + filter_rgb("seg-lens-warp", maps, a.scale, f"composite field: {F['gx']['file']} + {F['gy']['file']}")
-    if lmaps: svg += "\n" + filter_rgb("seg-lens-warp-label", lmaps, a.scale, f"LABEL LAYER, DERIVED (not measured): the backdrop field × {a.label_from_bg.split(',')[0]} amplitude, edge band × {a.label_from_bg.split(',')[1]} (ContentLensing −8.8 / 7.04 vs ClearGlass −17.5 / 11.2, seg-lens-drag-mid.md §0); apply to the label copy only")
+    if lmaps: svg += "\n" + filter_rgb("seg-lens-warp-label", lmaps, a.scale, f"LABEL LAYER, DERIVED (not measured): the backdrop field's band × {a.label_from_bg.split(',')[0]} amplitude, band × {a.label_from_bg.split(',')[1]}" + (f", on the {a.label_from_bg.split(',')[2]} label portal centred in the lens" if len(a.label_from_bg.split(',')) > 2 else "") + " (ContentLensing −8.8 / 7.04 vs ClearGlass −17.5 / 11.2, seg-lens-drag-mid.md §0); apply to the label copy only")
     svg += "\n</svg>\n"
     open(os.path.join(a.out, "lens-filter.svg"), "w").write(svg)
     tpl = os.path.join(HERE, "lens-test.template.html")

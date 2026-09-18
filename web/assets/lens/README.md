@@ -37,7 +37,7 @@ layer above the filtered copy. Layer amounts for reference: ClearGlass −17.5 /
 
 ## 1b Label layer — DERIVED, not measured (2026-09-19, one round per the acceptance session)
 
-`--label-from-bg 0.503,0.629` writes `seg-map-label-{r,g,b}.png` and `#seg-lens-warp-label`: the backdrop field with its amplitude ×
+`--label-from-bg 0.503,0.629,196x28` writes `seg-map-label-{r,g,b}.png` and `#seg-lens-warp-label`: the backdrop field with its amplitude ×
 0.503 and its edge band compressed towards the boundary × 0.629 — the native ContentLensingView shares the ClearGlass SDF shape and
 differs only in amount (−8.8 vs −17.5) and SDF height (7.04 vs 11.2), both 原值 (`seg-lens-drag-mid.md` §0 标签场逐点剖面); the label
 field itself could not be measured (no grating under a label). Apply it to the label copy only. `lens-field.json` → `label_layer`.
@@ -63,6 +63,27 @@ the lens clips those pixels, and the drop made every boundary pixel a ≥ 1.5 pt
 rows of r / g / b before; the acceptance count read 133 / 108 / 97). After: 0 steps in all six maps (`lens-field.json` →
 `jumps_ge_1.5pt_top_bottom_20px`); the native's long edges show 0.3 pt of dispersion and no stray points (§0d). verify_lens_maps.py
 unchanged: gx mean 0.04 pt, gy 0.07 pt, 100 % ≤ 0.3 (the check samples inside the capsule only).
+
+### 1b, round 2 — the band on the portal geometry (2026-09-19)
+
+`--label-from-bg 0.503,0.629,196x28,196x28`: the label portal is a 196×28 capsule centred in the 220×44 lens (inset 12 / 8,
+`seg-lens-refraction.md` §2.3); a point d inside the portal boundary reads the backdrop field d / 0.629 inside the backdrop boundary
+at the corresponding boundary point (same x on the straight edges, same angle on the end circles), the backdrop's uniform interior
+part (0.218·y) removed so the portal's centre stays undistorted (§2.3), × 0.503; outside the portal clamp-to-edge. Still DERIVED.
+Same check (headless Chrome, `?native=1&lensx=220&label=warp`):
+
+| item | native (§0c) | round 1 (lens-shaped band) light / dark | round 2 (portal band) light / dark |
+|---|---|---|---|
+| 左「早」ink | −37 % | +11 % / −5 % | +15 % / −1 % |
+| 右「班」height | 11.33 → 15.0 (+37 %) | 11.67 → 12.0 / 12.0 → 12.0 | 11.67 → 12.0 / 12.0 → 12.0 |
+| colour fringe right / left end | 7.7 / 1.7 pt (dark 8.0 / 1.3) | 0 / 0 | 0 / 0 (dark 3.3 / 0 on the glyph rows) |
+
+Not reached either: the derived band peaks at ±2.0 pt (0.503 × the backdrop's ±3.4 → ±1.7, plus the dispersion offsets) over
+the portal's last ~7.5 pt, which moves a 12-pt glyph by a fraction of a pixel row; the native tears 「早」 apart and stretches 「班」
+by a third, i.e. its portal displacement at the edge is an order of magnitude larger than the backdrop band scaled by the amount
+ratio — the amount ratio does not carry over to the visible displacement (the SDF height changes the gradient, not only the
+band width). Shots: `remote-mock/v4/lens/dragmid/web-dragmid-r2-{light,dark}-{full,zoom}.png`. The data session is measuring the
+portal field directly (A3); when it lands, `gen_lens_maps.py --field` on that pair replaces the derivation.
 
 ## 2 Resampling (no analytic model)
 
@@ -137,7 +158,7 @@ native captures. Safari standalone shots + frame numbers: data session.
 
 ```
 R=~/Money/styl-work/remote-ref/tools/touch
-cd web/assets/lens && python3 gen_lens_maps.py --field $R/seg-phase-gx-light.json,$R/seg-phase-gy-light.json --dark $R/seg-phase-gx-dark.json,$R/seg-phase-gy-dark.json --label-from-bg 0.503,0.629
+cd web/assets/lens && python3 gen_lens_maps.py --field $R/seg-phase-gx-light.json,$R/seg-phase-gy-light.json --dark $R/seg-phase-gx-dark.json,$R/seg-phase-gy-dark.json --label-from-bg 0.503,0.629,196x28
 python3 verify_lens_maps.py --field $R/seg-phase-gx-light.json,$R/seg-phase-gy-light.json
 python3 gen_seg_keys.py
 ```

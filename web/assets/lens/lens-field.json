@@ -54,8 +54,10 @@
   "from": "backdrop field",
   "gain": 0.503,
   "band": 0.629,
+  "portal_pt": "196x28",
+  "interior": "backdrop uniform part removed (label centre measured undistorted, §2.3)",
   "source": "seg-lens-drag-mid.md §0 标签场逐点剖面: ContentLensing shares the ClearGlass SDF shape, amount −8.8 vs −17.5, SDF height 7.04 vs 11.2 (原值); the field itself is not measured",
-  "peak_pt": 2.07
+  "peak_pt": 2.04
  },
  "edge": "clamp-to-edge outside the capsule (the field continues from the nearest boundary point; the lens clips those pixels)",
  "jumps_ge_1.5pt_top_bottom_20px": {
