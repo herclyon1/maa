@@ -213,53 +213,48 @@ and WebKit (`dragmid-4x-native-chrome-webkit-244.png`), the rest frame unchanged
 
 <!-- verify:end -->
 
-### 0.5 Colour fringe — glassForeground's 7-tap spectral sampling (test page + `lens-filter.svg` only, not wired into index.html)
+### 0.5 Colour fringe — glassForeground's 7-tap spectral sampling (test page + `lens-filter.svg`; not wired into index.html)
 
-Source: `glass-displacement-formula.md` **§3b second version** (the old page session, on the lens's own keys read in-process by the
-data session, `seg-lens-refraction.md` §1c(a)): #33 glassForeground inputAberrationAmount **+2.3158**, inputAberrationAngle
-**−0.2618 rad (−15°)**, inputAberrationHeight **0**, inputEdgeStart **−8.8**, inputEdgeEnd **0**, inputRefractionAmount 0 / Height 0
-(uv1 = uv), layer opacity 1, normalBlendMode, backdrop marginWidth 100. The first version's "−15 / 20" were `render`'s defaults,
-void. What the shader does (§3b.2, IR `fg_base.named.ll`): `R(θ)g = (g.x cosθ − g.y sinθ, g.x sinθ + g.y cosθ)`; **the aberration
-vector swaps the two lanes** of that and divides each by the source surface's W and H (%79–%82, unlike the refraction vector):
-`Δ = amt_a · ( (W/H)·(R(θ)g).y , (H/W)·(R(θ)g).x )` — so Δ.x follows g.y, which is why the same end has R/B the other way round
-on different rows (the data's §6b(b)); seven taps: k = 1, 2/3, 1/3 at p + kΔ → R += r·k, G += g·(1 − k); k = 0, 1/3, 2/3, 1 at
-p − kΔ → G += g·(1 − k), B += b·k; `out = (R/2, G/3, B/2)·α·cov·ΣA/7·edr`, `α = cov·ΣA/7`, then `×= 1 − saturate((d + 8.8)/8.8)`,
-source-over. Sign check by the old page (§3b.4): R samples at +Δ; y634 right end g (.83, .55) → Δ.x > 0 → R−G < 0 ✓ (−0.32),
-left end → R−G < 0 ✓ (−0.113), y610 left end g (−.77, −.64) → Δ.x < 0 → R−G > 0 ✓ (+0.77); the y610/y634 ratio 2.6 vs 2.4 ✓;
-angle + π ≡ amount negated ✓.
+Source: `glass-displacement-formula.md` §3b second version (the old page session) on the lens's own keys read in-process by the
+data session (`seg-lens-refraction.md` §1c(a) and the 140-key read): #33 glassForeground inputAberrationAmount **+2.3158**,
+inputAberrationAngle **−0.2618 rad (−15°)**, inputAberrationHeight **0**, inputAberrationOffset **24.444**, inputEdgeStart
+**−8.8**, inputEdgeEnd **0**, inputEdgeOpacityStart **1**, inputEdgeOpacityEnd **0**, inputRefractionAmount 0 / Height 0 (uv1 = uv),
+layer opacity 1, normalBlendMode, backdrop marginWidth 100 (source surface W/H = (220 + 200)/(44 + 200) = 1.72). What the shader
+does (§3b.2, IR `fg_base.named.ll`): `R(θ)g = (g.x cosθ − g.y sinθ, g.x sinθ + g.y cosθ)`; **the aberration vector swaps the two
+lanes** of that and divides each by the source surface's W and H (%79–%82, unlike the refraction vector):
+`Δ = amt_a · ( (W/H)·(R(θ)g).y , (H/W)·(R(θ)g).x )` — so Δ.x follows g.y, which is why the same end has R/B the other way round on
+different rows (the data's §6b(b)). Amplitude: `t_a = saturate((−d − 24.444)/height)` is 0 everywhere inside the lens (−d ≤ 22),
+so `amt_a = 2.3158`, a constant; the spatial envelope is the edge factor: `e = saturate((d + 8.8)/8.8)`, `out ×= 1 − mix(1, 0, e) = e`
+— 1 at the edge, 0 at 8.8 pt inside (§3b.5 closed 2026-09-19 06:xx; the check y634 6.4 / 9.6 / 12.8 pt from the end → e .55 /
+.18 / 0 against the measured |R−G| .32 / .145 / .017). Seven taps: k = 1, 2/3, 1/3 at p + kΔ → R += r·k, G += g·(1 − k); k = 0, 1/3,
+2/3, 1 at p − kΔ → G += g·(1 − k), B += b·k; `out = (R/2, G/3, B/2)·α·cov·ΣA/7·edr`, `α = cov·ΣA/7`, source-over. The old page's
+sign check (§3b.4): y634 right end g (.83, .55) → Δ.x > 0 → R−G < 0 ✓ (−0.32), left end → R−G < 0 ✓ (−0.113), y610 left end
+g (−.77, −.64) → Δ.x < 0 → R−G > 0 ✓ (+0.77); the y610/y634 ratio 2.6 vs 2.4 ✓; angle + π ≡ amount negated ✓.
 
-Not closed (§3b.5, stated, not guessed): (1) the spatial envelope — with height 0 the read t/height chain gives amt = 0
-everywhere inside, which cannot produce "only within 13 pt of the ends, independent of height"; until the texture-path SDF encoding
-is read, the magnitude is the data session's **measured table by distance from the end** (`ENVELOPE_MEASURED`: 0.4 pt at 6.4,
-0.19 at 9.6, 0.02 at 12.8, 0 beyond 13; held at 0.4 below 6.4 — 测量值, in the code as such); (2) W/H of the foreground's source
-surface (with marginWidth 100, unread): `--ab-wh`, default (220 + 200)/(44 + 200) = 1.72 (候选); (3) edr (SDR → 1).
+In SVG: one map `seg-f-ab-<w>.png` (R/G = Δ·e in pt, the set's S; B = e; 1 px/pt; lens + 16 pt), seven `feDisplacementMap` on it
+(`scale = ±k·S`), per-tap `feColorMatrix` weights and alpha/7, `feComposite arithmetic` sums, `in` with ΣA/7, `in` with the band
+factor e (B), `over`. `#seg-lens-f-ab-<w>` is the formula (test page default `?ab=flip`); `#seg-lens-f-ab-ir-<w>` (1 − e) is the
+record of the first reading of the edge opacities. The chain sits on a wrapper of the lens box extended by 16 pt
+(`overflow:hidden`, own stacking context) over a plain copy of the page (the foreground's backdrop capture reaches 100 pt beyond
+the lens; with the lens box alone the outward taps read transparent).
 
-In SVG: one map `seg-f-ab-<w>.png` (R/G = Δ in pt, the set's S; B = op = saturate((d + 8.8)/8.8); 1 px/pt; lens + 16 pt), seven
-`feDisplacementMap` on it (`scale = ±k·S`), per-tap `feColorMatrix` weights and alpha/7, `feComposite arithmetic` sums, `in` with
-ΣA/7, `in` with the band factor, `over`. Two filters per set: `#seg-lens-f-ab-ir-<w>` = the formula's factor **1 − op** (test page
-default `?ab=ir`), `#seg-lens-f-ab-<w>` = **op** (the switch, `?ab=flip`). The chain sits on a wrapper of the lens box extended by
-16 pt (`overflow:hidden`, own stacking context) over a plain copy of the page (the foreground's backdrop capture reaches 100 pt
-beyond the lens; with the lens box alone the outward taps read transparent).
+**Against the native** (WebKit, dragged to the divider; `fringe-8x-native-webkit.png` rows native / ours; the A1 PNG
+`seg-native-dragmid-light.png`; bars = `?pattern=bars`, per-channel 50 % crossings, `webkit-dragmid-bars-full.png`):
 
-**What it gives against the native** (WebKit, dragged to the divider; `fringe-8x-v2-native-ir-flip.png` rows native / 1 − op /
-op; the A1 PNG `seg-native-dragmid-light.png`; bars = `?pattern=bars`, per-channel 50 % crossings):
+| | native | ours |
+|---|---|---|
+| coloured px (max − min > 40) per 2-pt bin from the end, left / right | 629 383 130 0 0 0 / 714 519 193 0 0 0 | 384 303 197 43 0 0 / 766 555 267 25 0 0 |
+| share of the outer 12 pt; mean saturation | 1.4 %; 69 | 1.3 %; 98 |
+| strongest coloured px, left / right end | (110.33, 625) (214,189,56) yellow-orange / (328.33, 617) (14,72,217) blue | (−109.3, −5.2) (229,143,4) yellow-orange / (109.2, −0.7) (2,83,224) blue |
+| bars y634 right end: R−G / B−G at 6.4 (ours 6.5), 9.6 (9.5), 12.8 (12.5) | −0.32 / +0.59; −0.145 / +0.135; −0.017 / +0.02 | −0.24 / +0.01; −0.06 / +0.01; 0.00 / 0.00 |
+| bars y634 left end 9.2 (ours 9.0), 12.5 (12.0) | −0.113 / +0.099; −0.01 / 0 | −0.14 / +0.07; −0.02 / 0.00 |
+| bars y610 left end 9.5 (ours 9.0), 12.8 (12.5), 16 (15.9) | +0.77 / −1.20; +0.11 / −0.12; +0.05 / −0.04 | +0.12 / −0.68; +0.02 / −0.08; +0.01 / −0.04 |
+| middle 41 edges | 0.000 | ≤ 0.003 |
 
-| | native | formula factor 1 − op | switch op |
-|---|---|---|---|
-| coloured px (max − min > 40) per 2-pt bin from the end, left / right | 629 383 130 0 0 0 / 714 519 193 0 0 0 | 0 0 0 0 0 0 / 0 2 12 0 0 0 | 13 0 0 0 0 0 / 148 127 18 0 0 0 |
-| share of the outer 12 pt; mean saturation | 1.4 %; 69 | 0.0 %; 59 | 0.2 %; 69 |
-| strongest coloured px, left / right end | (110.33, 625) yellow-orange (214,189,56) / (328.33, 617) blue (14,72,217) | — | (−109.8, +2.8) (198,94,79) / (108.7, +4.8) (182,24,0) |
-| bars, y634 right end 6.5 pt: R−G / B−G | −0.32 / +0.59 (6.4) | 0.00 / 0.00 | 0.00 / 0.00 |
-| bars, y634 left end: R−G / B−G | −0.113 / +0.099 (9.2) | 0.00 at 9.0 | −0.41 / +0.02 at 3.0, −0.34 / +0.01 at 5.5, 0.00 at 9.0 |
-| bars, y610 left end 9.5 pt | +0.77 / −1.20 | 0.00 | 0.00 |
-| middle 41 edges | 0.000 | ≤ 0.003 | ≤ 0.003 |
-
-So with §3b v2 as written the fringe is not there: the measured envelope lives within 13 pt of the ends and the formula's factor
-1 − op is 0 within 8.8 pt of the edge, so the two hardly overlap; with op instead, the ends colour up (saturation 69 = the
-native's; left end orange like the native's yellow-orange, right end red where the native is blue) but at a seventh of the
-native's pixel count, and the bars' channel offsets on the data's check rows come out 0 except in the last 5 pt (the envelope is
-0.4 pt at most). The open items are the envelope (§3b.5 (1)) and W/H; nothing here is adjusted. The neighbouring text 8 pt
-from the control is not pulled in (as in the native, `seg-neighbors-light-hold.png`).
+The band's extent and pixel count, and both ends' colours (yellow-orange left, blue right) now sit with the native; the
+saturation is 98 against 69 and the bars offsets have the native's signs at 0.5–0.75 of its size on the checked rows (the
+right end's B−G at 6.4 pt reads 0.01 against 0.59). Left as is; nothing adjusted. Neighbouring text 8 pt from the control is
+not pulled in (native neither, `seg-neighbors-light-hold.png`).
 
 Frame interval, headless Chrome 440×956 @3x, software raster (`scratchpad/frames_chrome.py`, 自动拖 2 s, 120 frames):
 without the chain 16.9–17.1 ms mean (max 50–67, 1 frame > 20 ms), with the chain 16.9 ms (max 33, 2 frames > 20 ms) — 60 Hz in
