@@ -294,28 +294,34 @@ def render_formula(path, w_pt, h_pt, layers, px, scale, margin=0.0, source_rect=
     rows = [bytes(np.stack([R[j], G[j], Bb[j], A[j]], axis=1).reshape(-1)) for j in range(h)]
     write_png(path, w, h, rows); return w, h, peak
 
-def render_aberration(path, w_pt, h_pt, ab, edge, px, scale, oval, margin, sign=1.0, base=None):
-    """glassForeground's spectral sampling span (formula.md §3b): t_a = saturate((−d − offset)/height), amt_a = amount·(1 − sqrt(t_a(2 − t_a))),
-    Δ = amt_a·R(angle)·g (amount −15: Δ points inward). The map covers the lens box plus `margin` pt on every side — the foreground's
-    backdrop capture has marginWidth 100 (A9 #33), so its outward taps read the page beyond the lens, never a clamped edge; an SVG
-    filter cannot extend its source, so the filtered wrapper itself is the lens box extended by the margin (≥ the 15 pt span).
-    R/G = Δ (byte = 128 + Δ·255/scale), B = the edge-band factor op = saturate((d − edge_start)/(edge_end − edge_start)) mixed between
-    the two edge opacities (§3b: out ×= 1 − op; the filter uses B or 1 − B as the band mask — the switch), A 255.
-    ab = (amount, height, offset, angle), edge = (start, end, opacity_start, opacity_end). Shape: the lens capsule with the gradient
-    ovalization of the other stages."""
+ENVELOPE_MEASURED = [(6.4, 0.4), (9.6, 0.19), (12.8, 0.02), (13.0, 0.0)]   # 测量值 (not a principle): |Δ| in pt by distance from the lens END, seg-lens-drag-mid.md §6b(b)
+                                                                          # — the read t/height chain (height 0 → 1/h = +inf) cannot produce this spatial envelope (formula.md §3b.5); held at 0.4 below 6.4 pt
+
+def render_aberration(path, w_pt, h_pt, ab, edge, px, scale, oval, margin, sign=1.0, base=None, wh=None):
+    """glassForeground's spectral sampling span, formula.md §3b second version (the lens's own keys): the aberration vector is NOT along
+    the normal — the IR swaps the two lanes of the rotated gradient and divides each by the source surface's W, H (§3b.3):
+    Δ = amount · ( (W/H)·(R(θ)g).y , (H/W)·(R(θ)g).x ) · envelope, R(θ)g = (g.x cosθ − g.y sinθ, g.x sinθ + g.y cosθ), θ = −15°,
+    amount +2.3158, height 0. The envelope is the data session's measured table by distance from the lens end (ENVELOPE_MEASURED,
+    测量值; §3b.5: the height-0 chain does not yield it). wh = W/H of the foreground's source surface (its backdrop capture with
+    marginWidth 100 — not read; the default assumes 100 pt on every side: (220 + 200)/(44 + 200)). Files: <path> with R/G = Δ (pt,
+    byte = 128 + Δ·255/scale) and B = the edge-band factor op = saturate((d − edge_start)/(edge_end − edge_start)) mixed between the
+    edge opacities — the filter uses 1 − B (§3b.2: out ×= 1 − mix(…), the formula) or B (the switch), A 255. Stretched sets: the
+    model lens scaled like the other stages (base)."""
     w, h = int(round((w_pt + 2 * margin) * px)), int(round((h_pt + 2 * margin) * px))
     xs = (np.arange(w) + 0.5) / px - w_pt / 2 - margin; ys = (np.arange(h) + 0.5) / px - h_pt / 2 - margin
     X, Y = np.meshgrid(xs, ys)
-    sx, sy = (w_pt / base[0], h_pt / base[1]) if base else (1.0, 1.0)          # the model lens scaled by the presentation transform (§1c(d))
+    sx, sy = (w_pt / base[0], h_pt / base[1]) if base else (1.0, 1.0)
     Xm, Ym = X / sx, Y / sy; hw, hh, r = lens_shape(base[0], base[1]) if base else lens_shape(w_pt, h_pt)
     d, nx, ny = capsule_sdf(Xm, Ym, hw, hh, r); gx, gy = ovalized_gradient(Xm, Ym, nx, ny, hw, hh, oval)
     amount, height, offset, angle = ab
-    if angle: c, s_ = math.cos(angle), math.sin(angle); gx, gy = gx * c - gy * s_, gx * s_ + gy * c   # dir = R(angle)·g, formula.md §1 %43
-    # inputAberrationHeight 0 on the lens (seg-lens-refraction.md §1c(a)): inv_height = 0 → t_a = 0 → the span is the full amount everywhere
-    # (the data session's sdfset: height 0 → 40 changes nothing); a positive height gives the §3b falloff
-    t = np.clip((-d - offset) / height, 0, 1) if height > 0 else np.zeros_like(d)
-    amt = amount * (1 - np.sqrt(np.clip(t * (2 - t), 0, 1)))
-    dx, dy = sign * amt * gx * sx, sign * amt * gy * sy           # sign −1 only for the verification of the tap direction (README §0.5)
+    c, s_ = math.cos(angle), math.sin(angle); rx, ry = gx * c - gy * s_, gx * s_ + gy * c        # R(θ)·g, screen y down
+    ratio = wh if wh else (base[0] + 200.0) / (base[1] + 200.0) if base else (w_pt + 200.0) / (h_pt + 200.0)
+    dirx, diry = ratio * ry, rx / ratio                                                             # lanes swapped, × W/H and × H/W (§3b.3)
+    dist_end = hw - np.abs(Xm)                                                                      # distance from the lens end along x (model pt)
+    xs_e = [e[0] for e in ENVELOPE_MEASURED]; ys_e = [e[1] for e in ENVELOPE_MEASURED]
+    env = np.interp(dist_end, xs_e, ys_e, left=ys_e[0], right=0.0)                                  # |Δ| in pt (测量值), 0 beyond 13 pt
+    n = np.hypot(dirx, diry); n = np.where(n == 0, 1.0, n)
+    dx, dy = sign * env * dirx / n * sx, sign * env * diry / n * sy                                  # the measured magnitude along the formula's direction
     e0, e1, o0, o1 = edge; e = np.clip((d - e0) / (e1 - e0), 0, 1); op = o0 + (o1 - o0) * e
     peak = float(max(np.abs(dx).max(), np.abs(dy).max()))
     if peak > scale / 2: raise ValueError(f"aberration span {peak:.2f} pt does not fit scale {scale}")
@@ -336,7 +342,7 @@ def filter_aberration(fid, hrefs, w, h, scale, mode, margin, note, alpha_elem=1.
            f"    <!-- {note}; band mask: {mode}; apply to the wrapper of {w + 2 * margin:g}×{h + 2 * margin:g} pt = the lens {w:g}×{h:g} plus {margin:g} pt on every side -->",
            f'    <feImage href="{hrefs[0]}" preserveAspectRatio="none" result="abmap"/>',
            '    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>' if mode == "flip" else
-           '    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>']
+           '    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>']   # ir = the formula's 1 − op (§3b.2); flip = op, the switch
     for i, (k, sg) in enumerate(taps):
         wr = k / 2 if sg > 0 else 0.0; wg = (1 - k) / 3; wb = k / 2 if sg < 0 else 0.0
         out.append(f'    <feDisplacementMap in="SourceGraphic" in2="abmap" scale="{sg * k * scale:g}" xChannelSelector="R" yChannelSelector="G" result="t{i}"/>')
@@ -534,6 +540,7 @@ def build_parser():
     ap.add_argument("--ab-sign", type=float, default=1.0, help="verification switch for the fringe: +1 = as read (Δ = amt_a·g with amt_a −15 and g outward: the +kΔ taps that feed R sample INWARD); −1 = the opposite direction (R samples outward) — the A1 PNG's hue order (red at the rim) is reproduced by −1, see README §0.5")
     ap.add_argument("--ab-alpha", type=float, default=1.0, help="α_elem of the glassForeground output (§3b out.a = α_elem·cov·ΣA/7): layer #33 opacity 1, compositingFilter normalBlendMode (§1c(a))")
     ap.add_argument("--ab-edr", type=float, default=1.0, help="the edr factor of §3b (out.rgb ×= edr): to be read by the old page; 1 until then")
+    ap.add_argument("--ab-wh", type=float, default=0.0, help="W/H of the glassForeground source surface (its backdrop capture, marginWidth 100 — not read; 0 = (220 + 200)/(44 + 200), a candidate)")
     ap.add_argument("--ab-margin", type=float, default=16.0, help="the fringe wrapper's extension (pt) beyond the lens on every side (≥ the 15 pt span: the foreground's backdrop capture has marginWidth 100, its outward taps read the page beyond the lens)")
     ap.add_argument("--ab-px", type=int, default=1, help="pixels per pt of the fringe maps (the spans are smooth: 1 px/pt keeps the four maps per width small)")
     ap.add_argument("--edge", default="-8.8/0/0/1", help="glassForeground edge band start/end/opacityStart/opacityEnd — the lens's keys inputEdgeStart −8.8 / inputEdgeEnd 0 (§1c(a)), opacity 0 → 1 → the map's B channel")
@@ -670,7 +677,7 @@ def main_formula(a, W, H):
         fab = None; pk_ab = None; fabs = []
         if a.aberration != "off":
             fab = f"seg-f-ab-{w}.png"
-            _, _, pk_ab, fl = render_aberration(os.path.join(a.out, fab), w, h, tuple(float(v) for v in a.aberration.split("/")), tuple(float(v) for v in a.edge.split("/")), a.ab_px, S_set, 0.5, a.ab_margin, a.ab_sign, (W, H))
+            _, _, pk_ab, fl = render_aberration(os.path.join(a.out, fab), w, h, tuple(float(v) for v in a.aberration.split("/")), tuple(float(v) for v in a.edge.split("/")), a.ab_px, S_set, 0.5, a.ab_margin, a.ab_sign, (W, H), a.ab_wh)
             fabs = [os.path.basename(f) for f in fl]
         nb = os.path.getsize(os.path.join(a.out, fbg)) + os.path.getsize(os.path.join(a.out, flab)) + sum(os.path.getsize(os.path.join(a.out, f)) for f in fabs); total_bytes += nb
         sets[w] = {"h": round(h, 2), "scale": [round(w / W, 4), round(h / H, 4)], "S": S_set, "layer_pt": [w + 2 * a.margin, round(h + 2 * a.margin, 2)], "map_px": [mw, mh], "h_source": how, "frames": [[round(f[0], 2), round(f[1], 2), f[2]] for f in src],
@@ -700,7 +707,7 @@ def main_formula(a, W, H):
             body.append(filter_formula(st["filters"][0], prefix + st["bg"], w, st["h"], st["S"], a.margin, f"backdrop, lens {w}×{st['h']:g} = the 220×44 model scaled by ({st['scale'][0]}, {st['scale'][1]}): {a.bg_layers} (sampling order); encoding S {st['S']:g}"))
             body.append(filter_formula(st["filters"][1], prefix + st["lab"], w, st["h"], st["S"], a.margin, f"label copy, lens {w}×{st['h']:g}: {a.label_layers}; encoding S {st['S']:g}"))
             if st.get("ab"):
-                for mode, fid in (("flip", st["filters"][2]), ("ir", st["filters"][3])):
+                for mode, fid in (("flip", st["filters"][2]), ("ir", st["filters"][3])):   # #seg-lens-f-ab-<w> = op (switch), #seg-lens-f-ab-ir-<w> = 1 − op (the formula)
                     body.append(filter_aberration(fid, [prefix + f for f in st["ab_files"]], w, st["h"], st["S"], mode, a.ab_margin, f"colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle {a.aberration}, edge band {a.edge}, tap direction sign {a.ab_sign:g}, α_elem {a.ab_alpha:g}, edr {a.ab_edr:g}, lens {w}×{st['h']:g}; apply to the wrapper of the two displaced layers", a.ab_alpha, a.ab_edr))
         return head + "\n".join(body) + "\n</svg>\n"
     open(os.path.join(a.out, "lens-filter.svg"), "w").write(svg_for(a.href_prefix))
@@ -741,15 +748,16 @@ def main_formula(a, W, H):
             "encoding": {"scale": "per set: sets[w].S — 40 where the scaled stack fits ±20 pt, 48 for the widest stretch sets; the filter element carries data-s", "px_per_pt": a.px, "bytes": "R = 128 + round(u_x·255/S), G = same for u_y, B = shape coverage (255 inside, anti-aliased edge), A 255; u = content − screen (pt, +x right, +y down); the browser decodes S·(byte/255 − .5) = u + S/510",
                          "channels": "one map for all three colour channels (no dispersion)"},
             "sets": sets, "series": {"widths": widths, "step": step, "height_source": "linear between the two nearest recorded drag frames (seg-native-abc-frames.json phase drag; uiprobe-motion-segdragmid-light.json lenstrace); outside the recorded range the nearest frame (flagged clamped)", "shape": "the 220×44 r22 model lens scaled by (w/220, h/44) — seg-lens-refraction.md §1c(d): the flex scale sits on _UILiquidLensView's presentation transform alone, the layers below (SDF elements, portals 196×28, glass group) keep their model bounds; elliptical ends, the portal = scale × 196×28", "total_bytes": total_bytes},
-            "aberration": ({"map": f"seg-f-ab-<w>.png: the lens box plus {a.ab_margin:g} pt on every side at {a.ab_px} px/pt; R/G = Δ = amt_a·g (pt, S 40; inward for amount −15), B = op = saturate((d − edge_start)/(edge_end − edge_start)) between the edge opacities",
+            "aberration": ({"map": f"seg-f-ab-<w>.png: the lens box plus {a.ab_margin:g} pt on every side at {a.ab_px} px/pt; R/G = Δ (pt) = the §3b.3 direction (lanes of R(θ)g swapped, × W/H and × H/W) with the measured magnitude envelope by distance from the end (ENVELOPE_MEASURED, 测量值: 0.4 pt at 6.4, 0.19 at 9.6, 0.02 at 12.8, 0 beyond 13; held at 0.4 below 6.4), B = op = saturate((d − edge_start)/(edge_end − edge_start)) between the edge opacities",
+                            "W_over_H": (a.ab_wh if a.ab_wh else round((W + 200.0) / (H + 200.0), 4)), "W_over_H_source": "not read (formula.md §3b.5 item 2): the foreground's backdrop capture with marginWidth 100 — the default assumes 100 pt on every side of the 220×44 layer (候选)",
                             "wrapper": f"the chain filter sits on a wrapper of the lens box extended by {a.ab_margin:g} pt (overflow hidden), holding a plain copy of the page under the two displaced layers: the foreground's backdrop capture has marginWidth 100 (A9 #33), its outward taps read the page beyond the lens — with the lens box alone they read transparent and a saturated yellow ring appears",
                             "formula": "formula.md §3b glass_foreground_base: t_a = saturate((−d − offset)/height); amt_a = amount·(1 − sqrt(t_a(2 − t_a))); 7 taps k = 1, 2/3, 1/3 at +kΔ (R += r·k, G += g·(1−k)), k = 0, 1/3, 2/3, 1 at −kΔ (G += g·(1−k), B += b·k); out = (R/2, G/3, B/2); edge band out ×= 1 − op",
                             "parameters": {"amount/height/offset/angle": a.aberration, "edge start/end/opacity": a.edge, "tap_direction_sign": a.ab_sign, "alpha_elem": a.ab_alpha, "edr": a.ab_edr,
                                            "source": "seg-lens-refraction.md §1c(a) (A9 sdfdump, in-process): #33 glassForeground inputAberrationAmount 2.3158, inputAberrationAngle −0.2618 (−15°), inputAberrationHeight 0, inputEdgeStart −8.8, inputEdgeEnd 0, inputRefractionAmount 0 / Height 0 (no refraction term), layer opacity 1, normalBlendMode; the old page's '−15 / 20' were the angle in degrees and an unread height",
-                                           "mask": "op = saturate((d + 8.8)/8.8) — the band the data session moved with sdfset (EdgeStart/End −9/−6 → the band widens to 8–10 pt): the map's B; the interior shows no dispersion (middle 41 edges: 0.000), so the visible factor is op itself, not the IR's 1 − op",
+                                           "mask": "the formula (§3b.2 %195–%199): out ×= 1 − mix(0, 1, saturate((d + 8.8)/8.8)) = 1 − op → #seg-lens-f-ab-ir-<w> (the test page's default); op itself (#seg-lens-f-ab-<w>) stays as the switch — the data's sdfset moved the band with EdgeStart/End, and the A1 PNG has its colour in the outer 0…6 pt, where 1 − op is 0 (README §0.5)",
                                            "tap sides (sign +1)": "Δ = amt_a·R(angle)·g with amt_a = +2.3158 (no falloff) and g the outward gradient rotated by −15° → Δ points OUTWARD (rotated); R accumulates the taps at uv + kΔ (outward), B the taps at uv − kΔ (inward) — the data session's sdfset: angle + π ≡ amount negated, pixel-identical (seg-lens-drag-mid.md §6b(d)); sign −1 only for verification"},
                             "shape": "the lens capsule with gradient ovalization 0.5 like the other stages — the foreground's SDF element and ovalization were not read (formula.md §3b: its element comes through a portal from the glass group)",
-                            "mask_switch": "#seg-lens-f-ab-<w> = the outer band (mask = op: 'flip'); #seg-lens-f-ab-ir-<w> = the IR-literal reading (mask = 1 − op: interior shown, the 3-pt edge band hidden). Which one holds waits for the data session's sdfset test (aberration 0 / height 40 / edge −9,−6); the PNG evidence (§3c) has colour only in the outer 0…5 pt",
+                            "mask_switch": "#seg-lens-f-ab-ir-<w> = the formula's 1 − op; #seg-lens-f-ab-<w> = op (the switch); test page ?ab=ir (default) | flip | 0",
                             "applies_to": "the wrapper of the two displaced layers (the foreground samples what lies below it inside the lens); test page ?ab=flip|ir|0"} if a.aberration != "off" else None),
             "filter": {"region": "the element's own box (objectBoundingBox 0/0/100%/100%), the map fills it", "layer": f"the lens box extended by {a.margin:g} pt on every side (layer_pt of each set), overflow hidden, at −{a.margin:g}/−{a.margin:g} inside the lens; the lens capsule clips it", "requirement": "the source must extend past the lens: with the layer equal to the lens box the outward sampling at the edges reads transparent (1-px coloured lines along the long edges)", "not_used": "userSpaceOnUse region + feImage subregion (Chrome only: WebKit renders nothing with them, and its objectBoundingBox region follows an overflowing child)"},
             "verification": verify,

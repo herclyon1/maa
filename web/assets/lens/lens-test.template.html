@@ -98,7 +98,7 @@
   const stack = document.createElement("div"); stack.className = "stack"; stack.style.width = (LW + 2 * AM) + "px"; stack.style.height = (LH + 2 * AM) + "px";
   const base = document.createElement("div"); base.className = "base";
   stack.appendChild(base); stack.appendChild(bgLayer); stack.appendChild(labLayer); lens.appendChild(stack); scene.appendChild(lens);
-  const AB = q.get("ab") || "flip";                              /* colour fringe chain: flip (outer band, default) | ir | 0 */
+  const AB = q.get("ab") || "ir";                                /* colour fringe chain: ir (the formula's 1 − op band factor, default) | flip (op) | 0 */
   if (AB === "flip" || AB === "ir") { lens.classList.add("ab-" + AB); if (LW !== 220) stack.style.filter = `url(#seg-lens-f-ab${AB === "ir" ? "-ir" : ""}-${LW})`; }
   scene.classList.add("lifted");
   const copy = () => { const c = scene.cloneNode(true); c.querySelector(".lens").remove(); c.id = ""; return c; };
