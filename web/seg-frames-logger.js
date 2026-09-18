@@ -3,7 +3,13 @@
 
    Loaded by index.html only with ?accept=1, ?diag=1 or ?segframes=1 (the ui session wires the script tag; nothing here touches
    view.js). Independent of the page's own handlers: it listens to pointer events in the capture phase and reads the DOM each
-   requestAnimationFrame.
+   requestAnimationFrame — AFTER the page's own rAF callbacks of that frame (2026-09-19: the ui session's raf_order.py showed the
+   sampler running before the lens loop every frame, so every earlier web recording carried the lens rect of the previous frame
+   under this frame's counter). The sampler now wraps window.requestAnimationFrame: every callback the page registers is followed
+   by a registration of the sampler for the same frame, so the last sample of a frame is taken after the lens loop has moved the
+   lens; a self-loop keeps the counter and the record running when nothing else animates. A frame's record is the last sample
+   taken in it (committed when the next frame starts); `samples` = how many samples the frame got, `after_others` = whether a
+   foreign callback ran in it before the last sample.
 
    What it records, from the first pointerdown inside `.segctl` until the lens has settled after the pointerup (rect within
    0.5 pt for 300 ms) or 3 s after the up, plus the 40 frames before the down:
@@ -61,7 +67,7 @@
   }
 
   /* ---- pointer timeline (capture phase: seen before the page's own handlers and pointer capture) ---- */
-  let frameNo = 0, ring = [], rec = null, lastNote = "";
+  let frameNo = 0, ring = [], rec = null, lastNote = "", cur = null, lastTs = null;
   const inSeg = (e) => { const s = segctl(); return !!s && (s.contains(e.target) || (rec && rec.pointerId === e.pointerId)); };
   addEventListener("pointerdown", (e) => {
     if (!inSeg(e) || (rec && !rec.done)) return;
@@ -78,34 +84,43 @@
     rec.done = true;
     const td = rec.t_down / 1000, tu = (rec.t_up === null ? rec.t_down : rec.t_up) / 1000;
     const frames = rec.frames.map((f) => ({ file: null, frame: f.frame, pts: round(f.pts, 3), t_since_down: round(f.pts - td, 3), t_since_up: round(f.pts - tu, 3), phase: f.phase,
-      lens: [{ view: "segctl .lens", rect: f.rect, alpha: f.alpha, scale: f.scale }], zoom: f.zoom, warp_scale: f.warp_scale, index: f.index, lift: f.lift, drag: f.drag, spring: f.spring }));
+      lens: [{ view: "segctl .lens", rect: f.rect, alpha: f.alpha, scale: f.scale }], zoom: f.zoom, warp_scale: f.warp_scale, index: f.index, lift: f.lift, drag: f.drag, spring: f.spring, samples: f.samples, after_others: f.after_others }));
     const firstChange = frames.find((f) => f.t_since_down >= 0 && changed(f.lens[0].rect, rec.rest, 0.3));
     const out = { name: rec.name, t_down_pts: round(td, 3), t_up_pts: round(tu, 3), moves_since_down: rec.moves.map((m) => round(m / 1000 - td, 3)),
       control_events: rec.events, first_lens_change_since_down: firstChange ? firstChange.t_since_down : null, frames,
       pointer: rec.pointer.map((p) => ({ ...p, t: round(p.t / 1000 - td, 3) })), counter: { x: 0, y: "env(safe-area-inset-top)", cell: CELL, bits: BITS, gray: true, dpr },
-      viewport: `${innerWidth}×${innerHeight}`, standalone: matchMedia("(display-mode: standalone)").matches, href: location.href, at: new Date().toISOString() };
+      viewport: `${innerWidth}×${innerHeight}`, standalone: matchMedia("(display-mode: standalone)").matches, href: location.href, at: new Date().toISOString(),
+      sampler: "after the page's rAF callbacks (rAF wrapper, last sample of the frame; 2026-09-19)" };
     try { localStorage.setItem(KEY, JSON.stringify(out)); } catch {}
     window.__segFrames = out; dispatchEvent(new CustomEvent("segframes", { detail: out }));
     lastNote = `${frames.length}fr ok`;
   }
-  function tick(now) {
-    frameNo++;
-    const r = reading(now);
-    if (r) {
-      const f = { frame: frameNo, ...r, phase: phaseAt(now) };
-      if (rec && !rec.done) {
-        rec.frames.push(f);
-        const prev = rec.frames[rec.frames.length - 2];
-        if (prev && f.index !== prev.index) rec.events.push({ t_since_down: round(now / 1000 - rec.t_down / 1000, 3), events: "valueChanged", index: f.index });
-        if (rec.t_up !== null) {
-          const still = prev && !changed(f.rect, prev.rect, SETTLE_PT) && f.scale[0] === prev.scale[0] && f.scale[1] === prev.scale[1];
-          rec.settledSince = still ? (rec.settledSince ?? now) : null;
-          if ((rec.settledSince !== null && now - rec.settledSince >= SETTLE_MS && !f.spring) || now - rec.t_up >= MAX_AFTER_UP_MS) finish();
-        }
-      } else { ring.push(f); if (ring.length > BEFORE) ring.shift(); }
-    }
-    paint(frameNo, rec ? (rec.done ? lastNote : phaseAt(now)) : "");
-    requestAnimationFrame(tick);
+  /* commit the previous frame's record (its last sample) */
+  function commit(f) {
+    if (!f) return;
+    const now = f.pts * 1000;
+    if (rec && !rec.done) {
+      rec.frames.push(f);
+      const prev = rec.frames[rec.frames.length - 2];
+      if (prev && f.index !== prev.index) rec.events.push({ t_since_down: round(now / 1000 - rec.t_down / 1000, 3), events: "valueChanged", index: f.index });
+      if (rec.t_up !== null) {
+        const still = prev && !changed(f.rect, prev.rect, SETTLE_PT) && f.scale[0] === prev.scale[0] && f.scale[1] === prev.scale[1];
+        rec.settledSince = still ? (rec.settledSince ?? now) : null;
+        if ((rec.settledSince !== null && now - rec.settledSince >= SETTLE_MS && !f.spring) || now - rec.t_up >= MAX_AFTER_UP_MS) finish();
+      }
+    } else { ring.push(f); if (ring.length > BEFORE) ring.shift(); }
   }
-  requestAnimationFrame(tick);
+  /* one sample; several may run in a frame (the self-loop first, then one after each foreign rAF callback) — the last one wins */
+  let othersThisFrame = 0;
+  function sample(now, afterOther) {
+    if (now !== lastTs) { commit(cur); cur = null; lastTs = now; frameNo++; othersThisFrame = 0; paint(frameNo, rec ? (rec.done ? lastNote : phaseAt(now)) : ""); }
+    if (afterOther) othersThisFrame++;
+    const r = reading(now);
+    if (r) cur = { frame: frameNo, ...r, phase: phaseAt(now), samples: (cur && cur.frame === frameNo ? cur.samples : 0) + 1, after_others: othersThisFrame };
+  }
+  const origRAF = window.requestAnimationFrame.bind(window);
+  const tick = (now) => { sample(now, false); origRAF(tick); };
+  const after = (now) => { sample(now, true); };
+  window.requestAnimationFrame = function (cb) { const id = origRAF(cb); if (cb !== tick && cb !== after) origRAF(after); return id; };
+  origRAF(tick);
 })();
