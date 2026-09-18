@@ -459,17 +459,19 @@
      labels; once lifted the lens is a glass layer ABOVE them, the original labels are punched out under it (DestOutView, liftedContentPunchout)
      and a copy of the labels is drawn inside the glass through a displacement map (liftedContentWarpWrapper › filters displacementMap).
      --lp = the lenstrace progress (lens-refraction §4.1: 0 at 20 ms, 65 % at 103 ms, 95 % at 203 ms, 1 at 370 ms; the same curve back at release),
-     set per frame by attachSegmented. Material tokens --ios-seg-lift-* (web/tokens.css): taken from the same class's lifted layer on the tab bar
-     (lens-refraction §1 / §3: no fill, no blur, untinted content, rim +15 / −34); the segmented control's own lifted material was never read
-     (「未读」) — swap the tokens when the probe reads it. The fallbacks are the rest values. */
-  .segctl.lift .lens{z-index:2;background:transparent;
-    /* 静止填充 _controlForegroundColor（::before，1 − --lp）与抬起填充 --ios-seg-lift-fill（::after，--lp；← 表，待）两层交叉淡 */
-    backdrop-filter:blur(calc(var(--lp, 0) * var(--ios-seg-lift-blur, 0px))) saturate(calc(1 + var(--lp, 0) * (var(--ios-seg-lift-saturate, 1) - 1))) brightness(calc(1 + var(--lp, 0) * (var(--ios-seg-lift-brightness, 1) - 1)));
-    -webkit-backdrop-filter:blur(calc(var(--lp, 0) * var(--ios-seg-lift-blur, 0px))) saturate(calc(1 + var(--lp, 0) * (var(--ios-seg-lift-saturate, 1) - 1))) brightness(calc(1 + var(--lp, 0) * (var(--ios-seg-lift-brightness, 1) - 1)));
-    box-shadow:inset 0 0 0 1px rgb(255 255 255 / calc(var(--lp, 0) * var(--ios-seg-lift-rim-light, 0))),inset 0 0 0 2px rgb(0 0 0 / calc(var(--lp, 0) * var(--ios-seg-lift-rim-dark, 0)))}   /* 边缘 1 pt 亮线 + 紧接 1 pt 暗线（lens-refraction §3：+15 / −34 /255 量于标签栏透镜；分段的值待表） */
+     set per frame by attachSegmented. Material tokens --ios-seg-lift-* (web/tokens.css) = the data session's in-process originals of the held
+     segmented lens (uiprobe-deep/subtree-seg-lift-{light,dark}.json, seg-lift-material.md): fill → opacity 0, blur 0, vibrantColorMatrix
+     0.9118·S(1.29) + 0.1471, shadow (0,7) r3 .06; rim lines sampled. The fallbacks are the rest values. */
+  .segctl.lift .lens{z-index:2;background:transparent;--seg-c:calc(1 - 2 * var(--ios-seg-lift-offset, 0))}
+  /* 静止填充 _controlForegroundColor（::before，1 − --lp）与抬起玻璃（::after，--lp）两层交叉淡。::after 就是玻璃：滤镜链固定为原值，只有 opacity 随 --lp 变
+     （滤镜参数逐帧变会让合成器每帧重算，无头 Chrome 里掉帧到 30%；opacity 变只是合成）。色矩阵 0.9118·S(1.29) + 0.1471（vibrantColorMatrix ← seg-lift-material §2）
+     写成 saturate(1.29) brightness(0.9118 / c) contrast(c)，c = 1 − 2 × 0.1471（contrast(c) = c·x + (1 − c)/2 给出加法项，同 spec-table 弹窗/透镜矩阵的写法）；模糊 0。 */
   .segctl.lift .lens::before,.segctl.lift .lens::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none}
   .segctl.lift .lens::before{background:var(--ios-segment-selected-bg);opacity:calc(1 - var(--lp, 0))}
-  .segctl.lift .lens::after{background:var(--ios-seg-lift-fill, var(--ios-segment-selected-bg));opacity:var(--lp, 0)}
+  .segctl.lift .lens::after{background:var(--ios-seg-lift-fill, var(--ios-segment-selected-bg));opacity:var(--lp, 0);
+    backdrop-filter:blur(var(--ios-seg-lift-blur, 0px)) saturate(var(--ios-seg-lift-saturate, 1)) brightness(calc(var(--ios-seg-lift-brightness, 1) / var(--seg-c))) contrast(var(--seg-c));
+    -webkit-backdrop-filter:blur(var(--ios-seg-lift-blur, 0px)) saturate(var(--ios-seg-lift-saturate, 1)) brightness(calc(var(--ios-seg-lift-brightness, 1) / var(--seg-c))) contrast(var(--seg-c));
+    box-shadow:var(--ios-seg-lift-shadow, none),inset 0 0 0 1px var(--ios-seg-lift-rim-dark, transparent),inset 0 0 0 2px var(--ios-seg-lift-rim-light, transparent)}   /* 阴影 (0,7) r3 .06 ← ClearGlass shadow 层；边界 1 pt 暗线 + 紧贴内侧 1 pt 亮线 ← seg-lift-material 采样（--ios-seg-lift-rim-*） */
   .segctl .warp{position:absolute;z-index:3;left:0;top:0;width:0;height:0;pointer-events:none;display:none;overflow:hidden;clip-path:inset(0 round var(--rr, 14px));filter:url(#seg-lens-warp)}   /* 透镜内的标签复本：裁成透镜形，位移贴图 #seg-lens-warp（界面2号定义；未定义时无位移） */
   .segctl.lift .warp{display:block}
   .segctl .warp .copy{position:absolute;left:0;top:0;display:flex;padding:var(--ios-segment-lens-pad)}

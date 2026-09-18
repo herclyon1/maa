@@ -225,20 +225,28 @@
   /* labels: UISegmentLabel .SFUI-MediumG3 13 (selected) / .SFUI-RegularG3 13, textColor labelColor (light (0,0,0), dark (255,255,255)) — the selected
    * label is plain label colour, not vibrancy (subtree dump: _UILabelLayer textColorDesc = labelColor) */
   --ios-segment-label-color: rgb(0 0 0);
-  /* ---- segmented lens, LIFTED (held / dragged) — 2026-09-19 ----
-   * The rest-state dumps (tools/uiprobe/uiprobe-lensdiff-seg-{light,dark}.json, uiprobe-subtree-seg-*.json) hold no lifted values: at rest the
-   * `_UILiquidLensView` shows only restingBackground (_controlForegroundColor) and the DestOutView at opacity 0; the ClearGlassView's material keys
-   * were never read for the segmented control → 「未读（分段）」. The same class's lifted layer WAS read on the tab bar (remote-ref/lens-refraction.md
-   * §1 / §3, iOS 27.0 probe): the refraction layer (ClearGlassView › CABackdropLayer displacementMap + gaussianBlur inputRadius 0) covers the
-   * resting tint layer opaquely and shows the content beneath UNTINTED and UNBLURRED (flat grey 128 reads 128 inside), with no fill of its own;
-   * the rim is a 1 pt bright line (+15/255) immediately inside a 1 pt dark line (−34/255), no separate highlight ring. Taken over here for the
-   * segmented lens (same _UILiquidLensView); replace with the segmented control's own readings when the probe gets them. */
-  --ios-seg-lift-fill: rgb(255 255 255 / 0);      /* 抬起后无自身填充（lens-refraction §1：折射层覆盖着色层、内容原样透出；§3 平灰 128 → 128）；分段未读，按同类层 */
-  --ios-seg-lift-blur: 0px;                        /* ClearGlassView 折射层 gaussianBlur inputRadius 0 ← lens-refraction §1 层树 */
-  --ios-seg-lift-saturate: 1;                      /* 透镜内「未着色」← lens-refraction §1 / §3 */
-  --ios-seg-lift-brightness: 1;                    /* 同上 */
-  --ios-seg-lift-rim-light: .118;                  /* 边界内 1 pt 亮线 +15/255 ← lens-refraction §3（平灰 128 底）；换成白线 alpha = 15 / (255 − 128) — 采样替代 */
-  --ios-seg-lift-rim-dark: .266;                   /* 紧接 1 pt 暗线 −34/255 ← §3；黑线 alpha = 34 / 128 — 采样替代 */
+  /* ---- segmented LIFTED lens material (pressing the selected segment; also while dragging), ORIGINALS read in-process while held:
+   * tools/uiprobe/uiprobe-deep-seg-lift-{light,dark}.json + uiprobe-subtree-seg-lift-*.json (seg_lift_dump.sh, 2026-09-19); doc seg-lift-material.md.
+   * Geometry: 196×28 r14 → 220×44 r22 (DestOut punchout r22), fill layer (_controlForegroundColor) opacity 1 → 0 while lifted.
+   * Inside the lens (top → bottom): ClearGlass CABackdropLayer displacementMap −17.5 (SDF height 11.2, curvature 1) + gaussianBlur 0;
+   * a black shadow (0,7) opacity .06 radius 3; _GlassGroup: glassBackground{blur off (radius 0, blurOpacity 0), faceColorMatrix white 1 / black 0,
+   * inner refraction −6.6 / 4.4, outer 0, refractionOpacity 0, KeyFill amount .5 spread π/2 colourBias −.3, ringShadow .1, shadow amount 11 offset (0,7)
+   * opacity .001 radius 8}; ContentLensingView displacementMap −8.8 (SDF height 7.04) over 196×28 portals of the segment content = the label copy
+   * warped inside the lens; CASDFKeyFillHighlightEffect curvature .75 key/fill .5 spread 1.396 white, diffuse .15/8/.65; vibrantColorMatrix
+   * = 0.9118·S(1.29) + 0.1471 (same matrix as the alert pane). Light and dark read IDENTICAL filter values; only the fill colour differs. */
+  --ios-seg-lift-fill: rgb(255 255 255 / 0);          /* ORIGINAL: the white resting fill fades to opacity 0 while lifted (subtree: UIView bg white, opacity 0) */
+  --ios-seg-lift-blur: 0px;                            /* ORIGINAL: gaussianBlur inputRadius 0; glassBackground inputBlurRadius 0 and all blurOpacity 0 */
+  --ios-seg-lift-saturate: 1.29;                       /* ORIGINAL: vibrantColorMatrix decomposed as 0.9118·S(1.29) + 0.1471 */
+  --ios-seg-lift-brightness: 0.9118;                   /* ORIGINAL: the ×0.9118 of the same matrix — the +0.1471 additive lift is --ios-seg-lift-offset */
+  --ios-seg-lift-offset: 0.1471;                       /* ORIGINAL: additive term of vibrantColorMatrix (≈ white overlay 14.7 % in plus-lighter) */
+  --ios-seg-lift-shadow: 0 7px 3px rgb(0 0 0 / .06);   /* ORIGINAL: ClearGlass shadow layer offset (0,7) radius 3 opacity .06 */
+  --ios-seg-lift-refraction-amount: -17.5;             /* ORIGINAL: displacementMap inputAmount (tab-bar lens: −14); SDF height 11.2, curvature 1 */
+  --ios-seg-lift-content-refraction: -8.8;             /* ORIGINAL: ContentLensingView displacementMap on the label copy (SDF height 7.04) */
+  /* SAMPLED (渲染器输出采样, seg-lift-light.png row y 624 / col x 60, 3x): edge = 1 pt dark line + 1 pt orange/blue dispersion line inside it;
+   * top/bottom edges additionally a 1 pt bright line. Light: dark line −47/255 over the page (244 → 197), −48 over the track (229 → 181); bright line +3…+5
+   * (244 → 247/249) → alphas below. Dark: bright line +45 over black (0 → 45), dark line −12 over the track (29 → 17). */
+  --ios-seg-lift-rim-light: rgb(255 255 255 / .35);    /* SAMPLED: +5/255 over 244 ≈ white α .45 (top/bottom), +3 ≈ .27 → .35 */
+  --ios-seg-lift-rim-dark: rgb(0 0 0 / .2);            /* SAMPLED: −47/244 = black α .19, −48/229 = .21 */
   /* probe UIProgressView 400×4 (track/fill colours not read) */
   --ios-progress-h: 4px;
   /* probe UITabBar 83 at y 873; lens 94×54 r 27; labels at y 912; AX-13 same */
@@ -679,9 +687,10 @@
     --ios-segment-selected-bg: rgb(235 235 245 / .3);
     --ios-segment-track: rgb(118 118 128 / .24);
     --ios-segment-label-color: rgb(255 255 255);
-    --ios-seg-lift-fill: rgb(235 235 245 / 0);     /* dark: same reading — no fill when lifted (lens-refraction §3: 暗色相同数值); rest is (235,235,245,.3) */
-    --ios-seg-lift-blur: 0px; --ios-seg-lift-saturate: 1; --ios-seg-lift-brightness: 1;
-    --ios-seg-lift-rim-light: .118; --ios-seg-lift-rim-dark: .266;   /* §3: the rim numbers were identical in dark */
+    /* segmented lifted lens, dark: filters identical to light (deep-seg-lift-dark.json); resting fill (235,235,245,.3) → opacity 0 */
+    --ios-seg-lift-fill: rgb(235 235 245 / 0);
+    --ios-seg-lift-rim-light: rgb(255 255 255 / .18);   /* SAMPLED: +45/255 over black */
+    --ios-seg-lift-rim-dark: rgb(0 0 0 / .4);           /* SAMPLED: 29 → 17 over the track = black α .41 */
     --ios-alert-button-offset: 0.11;
     --ios-vibrancy-label: 0.95;
     --ios-vibrancy-secondary: 0.3;

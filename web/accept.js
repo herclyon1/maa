@@ -404,9 +404,9 @@
         if (sec) {
           check("首页回执最多 3 条 + 「查看全部 ›」（AX-13 显示所有健康数据 ›）", "≤3 + 查看全部", `${rows.length} + ${more ? "查看全部 " + more.querySelector(".val").textContent : "-"}`, rows.length <= 3 && (!more || rows.length === 3));
           if (more) {
-            const pg = document.querySelector("#subpage"); more.click(); await sleep(30);
+            const pg = document.querySelector("#subpage"); more.click(); await sleep(80);
             check("推入页打开（.in）、标题「回执」", "in 回执", `${pg.classList.contains("in") ? "in" : "-"} ${pg.querySelector(".ptitle").textContent}`, pg.classList.contains("in") && pg.querySelector(".ptitle").textContent === "回执");
-            { const x30 = pg.getBoundingClientRect().left; check("推入 +30 ms：新页从右边滑入中（440 → 0）", "0 < x < 440", `x ${Math.round(x30)}`, x30 > 0 && x30 < 440); }
+            { const x80 = pg.getBoundingClientRect().left; check("推入 +80 ms：新页从右边滑入中（440 → 0，0.35 s）", "0 < x < 440", `x ${Math.round(x80)}`, x80 > 0 && x80 < 440); }
             await sleep(400);
             const pr = pg.querySelector(".pnav").getBoundingClientRect(), bb = pg.querySelector(".pback").getBoundingClientRect(), sat = satTop();
             num("推入页导航栏 54 在安全区顶（AX-11 / AX-46 (0,62,440,54)）", sat, pr.top); num("推入页导航栏高 54", 54, pr.height);
@@ -467,9 +467,11 @@
         check("分段抬起 +400 ms：--lp 到 1", "1", seg.style.getPropertyValue("--lp"), Math.abs(parseFloat(seg.style.getPropertyValue("--lp")) - 1) < 0.01);
         /* lifted material (tokens --ios-seg-lift-*, taken from the tab-bar lens's lifted layer, lens-refraction §1/§3): no fill, no blur, rim 1 pt +15 / 1 pt −34 */
         { const a = cs(lens0, "::after"), sh = cs(lens0).boxShadow;
-          check("分段抬起满：透镜无自身填充（--ios-seg-lift-fill α 0，标签从下透出）", "rgba(…, 0)", a.backgroundColor, /,\s*0\)$/.test(a.backgroundColor) && parseFloat(a.opacity) > 0.99);
-          check("分段抬起满：无模糊（--ios-seg-lift-blur 0，ClearGlassView gaussianBlur inputRadius 0）", "blur(0px)", (cs(lens0).backdropFilter || cs(lens0).webkitBackdropFilter || "").split(" ")[0], /^blur\(0px\)/.test(cs(lens0).backdropFilter || cs(lens0).webkitBackdropFilter || ""));
-          check("分段抬起满：边缘 1 pt 亮线 + 1 pt 暗线（--ios-seg-lift-rim-light .118 / -dark .266 ← lens-refraction §3）", "inset 1px α.118 + inset 2px α.266", sh.replace(/\s+/g, " ").slice(0, 90), /rgba\(255, 255, 255, 0\.11[0-9]*\).*inset|inset.*rgba\(255, 255, 255, 0\.11/.test(sh) && /rgba\(0, 0, 0, 0\.26[0-9]*\)/.test(sh)); }
+          check("分段抬起满：透镜无自身填充（--ios-seg-lift-fill α 0，标签从下透出），玻璃层 opacity = --lp", "rgba(…, 0) · 1", `${a.backgroundColor} · ${a.opacity}`, /,\s*0\)$/.test(a.backgroundColor) && Math.abs(parseFloat(a.opacity) - parseFloat(seg.style.getPropertyValue("--lp"))) < 0.02);
+          const bfv = (cs(lens0, "::after").backdropFilter || cs(lens0, "::after").webkitBackdropFilter || "").replace(/\s+/g, " ");
+          check("分段抬起满：玻璃层（::after）滤镜链固定 = 无模糊 + 色矩阵 0.9118·S(1.29)+0.1471 → saturate(1.29) brightness(1.2919) contrast(0.7058)（vibrantColorMatrix ← seg-lift-material §2）", "blur(0px) saturate(1.29) brightness(1.29…) contrast(0.7058)", bfv, /^blur\(0px\) saturate\(1\.29\d*\) brightness\(1\.29\d*\) contrast\(0\.705\d*\)$/.test(bfv));
+          const ash = cs(lens0, "::after").boxShadow.replace(/\s+/g, " ");
+          check("分段抬起满：阴影 (0,7) r3 .06 + 边界 1 pt 暗线 α.2 + 内侧 1 pt 亮线 α.35（--ios-seg-lift-shadow / -rim-*，亮）", "0 7px 3px .06 · inset 1px black .2 · inset 2px white .35", ash.slice(0, 120), (dark ? /rgba\(0, 0, 0, 0\.4\) 0px 0px 0px 1px inset/.test(ash) && /rgba\(255, 255, 255, 0\.18\) 0px 0px 0px 2px inset/.test(ash) : /rgba\(0, 0, 0, 0\.2\) 0px 0px 0px 1px inset/.test(ash) && /rgba\(255, 255, 255, 0\.35\) 0px 0px 0px 2px inset/.test(ash)) && /rgba\(0, 0, 0, 0\.06\) 0px 7px 3px/.test(ash)); }
         /* §1 G4/G22: sliding onto the other segment moves the lens, the index does not change until the up */
         pev(seg, "pointermove", at(unsel)); await sleep(30);
         const fracI = parseFloat(seg.style.getPropertyValue("--i"));
