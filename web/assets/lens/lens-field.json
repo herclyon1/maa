@@ -27,6 +27,8 @@
   }
  },
  "encoding": {
+  "engine_fix_pt": 0.0,
+  "engine_fix": "引擎校正 (default off): pt subtracted from every negative displacement before encoding — WebKit's feDisplacementMap applies negative values one filter pixel short (calib/: Mac 2× ½ px, iOS simulator 3× ⅓ px), positive exact; README §0.4",
   "scale": "per set: sets[w].S — 40 where the scaled stack fits ±20 pt, 48 for the widest stretch sets; the filter element carries data-s",
   "px_per_pt": 2,
   "bytes": "R = 128 + round(u_x·255/S), G = same for u_y, B = shape coverage (255 inside, anti-aliased edge), A 255; u = content − screen (pt, +x right, +y down); the browser decodes S·(byte/255 − .5) = u + S/510",

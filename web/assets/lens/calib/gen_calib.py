@@ -28,7 +28,10 @@ def main():
     filt = "".join(f'<filter id="{n}" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB"><feImage href="calib-{n}.png" preserveAspectRatio="none" result="m"/><feDisplacementMap in="SourceGraphic" in2="m" scale="40" xChannelSelector="R" yChannelSelector="G"/></filter>' for n in ids)
     marks = '<div class="mark" style="left:60px;top:0;width:4px;height:44px"></div><div class="mark" style="left:120px;top:20px;width:60px;height:4px"></div><div class="mark" style="left:205px;top:0;width:3px;height:44px"></div>'
     boxes = f'<div class="box" style="top:10px">{marks}</div>' + "".join(f'<div class="box" style="top:{60 + i * 50}px;filter:url(#{n})">{marks}</div>' for i, n in enumerate(ids))
-    open("webkit-displacement.html", "w").write(f'<!doctype html><html><head><meta charset="utf-8"><title>feDisplacementMap calibration</title><style>{css}</style></head><body><svg width="0" height="0" style="position:absolute">{filt}</svg>{boxes}</body></html>')
+    # viewport + standalone metas (the data session's simulator run 2026-09-19: without them iOS lays the page out at 980 px and scales it, and the
+    # step cannot be read at 3×; the standalone window is where the page is accepted)
+    head = '<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="apple-mobile-web-app-capable" content="yes"><title>feDisplacementMap calibration</title>'
+    open("webkit-displacement.html", "w").write(f'<!doctype html><html><head>{head}<style>{css}</style></head><body><svg width="0" height="0" style="position:absolute">{filt}</svg>{boxes}</body></html>')
     open("ids.txt", "w").write("\n".join(ids)); print(len(ids), "maps; page height", 60 + len(ids) * 50 + 50)
 
 if __name__ == "__main__": main()

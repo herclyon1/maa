@@ -323,9 +323,21 @@ label stack samples inward, so the right end's x (negative) and the bottom half'
 sample position is stationary (the eye, the label's last 3 pt) a ½-pt shortfall moves the visible edge by 2 pt — the right
 「班」's lump instead of the native's streaks and its 13.7-pt height, the eye 8 pt wide instead of 5.2, the band's bottom edge
 at 639.8 instead of 643.7, and the §6d gap 2.49 at the left end (the backdrop path's outward x is negative there). Not an
-Apple value, not compensated: the step depends on the engine's filter resolution (½ CSS px here; a 3× device may run the
-filter at ⅓ px, or on the GPU path without the truncation) — to be measured on the phone before anything is baked into the
-maps (`calib/` runs there too).
+Apple value. **On the iOS simulator (iPhone 18 Pro Max, iOS 27.0, 3×, the standalone home-screen window; the data session
+2026-09-19, `tools/touch/calib-sim-3x.{png,txt}`, read with the same crossing method) the same rule with the step = one device
+pixel = ⅓ CSS px:** x −0.25 → 0, −0.5 → 0, −0.75 → −0.33, −1 → −0.67, −1.25 → −1.0, −1.5 → −1.0, −1.75 → −1.33, −2 → −1.67,
+−2.5 → −2.0, −3 → −2.67, −3.75 → −3.33, −4 → −3.67, −5.25 → −4.67, −6 → −5.67, −8 → −7.67, −12 → −11.67; +1 → 1.0, +1.25 → 1.33,
++2.5 → 2.67, +4 / +8 / +12 exact; y −4 → −3.67, −1 → −0.67, +1 / +4 exact; the other axis 0.00 on every map (so a constant map
+decodes to its value: no zero-point offset, no linearRGB decode of the map on that path). Negative values: truncated toward zero
+and one device pixel short; positive: rounded up to the next device pixel. The calibration page now carries the viewport and
+standalone metas (without them iOS lays it out at 980 px and the step cannot be read).
+
+**引擎校正 — the optional correction (`--engine-fix <pt>`, default 0 = off, `lens-field.json` → `encoding.engine_fix_pt`):** every
+negative displacement is pre-extended by the engine's pixel before encoding (0.5 on a 2× filter buffer, 0.333 at 3×), so the
+engine's truncation lands on the intended value (still quantised to its pixel). It is a property of the renderer, not of the
+lens; it is not applied in the delivered maps (the maps' values are the formula's); the fringe maps are not corrected (their
+seven taps read the same map with positive and negative scales). Switching it on is a decision for the acceptance session per
+target engine and device scale.
 
 The top / bottom bands at the ends (the acceptance session's B6 preview, 2026-09-19: "whitish and hard", `bands-native-bgonly-all.png`,
 `topband-zoom.png`; the test page with the backdrop filter alone): the track's displaced edge sits where the native's does (top
