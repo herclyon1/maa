@@ -762,7 +762,13 @@ def main_formula(a, W, H):
        feImage subregions are not used: WebKit renders nothing with them, and it takes an overflowing child into the
        objectBoundingBox region. No dispersion in these maps (the colour
        fringe is glassForeground's aberration term, not yet decompiled): one map feeds all channels. Animate the lift by the scale
-       attribute 0 → {a.scale:g} with the lift curve of seg-keys.css. -->
+       attribute 0 → {a.scale:g} with the lift curve of seg-keys.css.
+       ENGINE FACT (calib/, 2026-09-19): WebKit's feDisplacementMap quantises the displacement to one device pixel (½ CSS px at
+       devicePixelRatio 2 — Mac WebKit; ⅓ at 3 — iOS, standalone window) and applies a NEGATIVE displacement one pixel short
+       (−1 → −0.5 / −0.67, −4 → −3.5 / −3.67), a positive one rounded up to the next pixel; a constant map decodes to its value
+       (no zero-point offset, no linearRGB decode). 引擎校正: load lens-engine-fix.js after this <svg> — it re-encodes every
+       #…-f-bg-/-lab- map's R/G at page load so negative values are longer by exactly one device pixel (k = 1/devicePixelRatio,
+       byte' = byte − k·255/S for byte < 128), blob: copies only, the files untouched; not the fringe chains. README §0.4. -->
 """
         body = []
         for w, st in sets.items():
@@ -777,7 +783,8 @@ def main_formula(a, W, H):
     if os.path.exists(tpl):
         series_js = json.dumps({str(w): st["h"] for w, st in sets.items()})
         page = "lens-test.html" if a.name == "seg" else f"lens-test-{a.name}.html"
-        open(os.path.join(a.out, page), "w", encoding="utf-8").write(open(tpl, encoding="utf-8").read().replace("{{FILTER}}", svg_for("").strip()).replace("{{SERIES}}", series_js))
+        rel = "" if os.path.abspath(a.out) == os.path.abspath(HERE) else os.path.relpath(HERE, os.path.abspath(a.out)) + "/"   # lens-engine-fix.js sits next to the generator
+        open(os.path.join(a.out, page), "w", encoding="utf-8").write(open(tpl, encoding="utf-8").read().replace("{{FILTER}}", svg_for("").strip()).replace("{{SERIES}}", series_js).replace('src="lens-engine-fix.js"', f'src="{rel}lens-engine-fix.js"'))
     # verification (the only place measured fields enter): the formula against the phase files, validate2.py's method
     verify = {}
     chain = None
@@ -816,7 +823,7 @@ def main_formula(a, W, H):
                                        "sampling order": "the outer layer samples first: ContentLensing's image is portal #32 (196×28) showing the ClearGlass layer, whose image is the capsule-clipped segment content (formula.md §2, §1b 表 2) → u = Δ_L(p) + Δ_C(p + Δ_L(p)); the other order (validate_label.py) differs ≤ 0.1 rms inside the portal (verification → *_reversed_order)",
                                        "sampling / source rules": "formula.md §2 + §4b (final structure): clamp_to_edge (the sample position is clamped to the stage's texture box; BackdropView marginWidth 0 → no content beyond its 220×44 frame, the edge column is replicated), clip first then displace (portal #20 clips the segment content to the r22 capsule before ClearGlass; portal #32 (ContentLensing's source) does NOT clip, masksToBounds 0 — the label stack acts on the whole lens), output × the effect shape's coverage (the map's B channel, applied by feComposite)",
                                        "glass_background SDF shape / ovalization": "the filter layer's own bounds + corner radii (监督局 05:0x); its ovalization is not read by the probe — the old page's residual table (rms 0.12–0.16) uses 0.5 on both backdrop layers, kept here"}},
-            "encoding": {"engine_fix_pt": a.engine_fix, "engine_fix": "引擎校正 (default off): pt subtracted from every negative displacement before encoding — WebKit's feDisplacementMap applies negative values one filter pixel short (calib/: Mac 2× ½ px, iOS simulator 3× ⅓ px), positive exact; README §0.4",
+            "encoding": {"engine_fix_pt": a.engine_fix, "engine_fix": "引擎校正: WebKit's feDisplacementMap applies negative values one device pixel short (calib/: Mac 2× ½ px, iOS simulator 3× ⅓ px), positive rounded up; the correction is applied AT PAGE LOAD by lens-engine-fix.js (default on, k = 1/devicePixelRatio: every negative R/G byte −k·255/S, blob: copies, files untouched); --engine-fix <pt> bakes the same into the files for a static build (default 0 = not baked); README §0.4",
                          "scale": "per set: sets[w].S — 40 where the scaled stack fits ±20 pt, 48 for the widest stretch sets; the filter element carries data-s", "px_per_pt": a.px, "bytes": "R = 128 + round(u_x·255/S), G = same for u_y, B = shape coverage (255 inside, anti-aliased edge), A 255; u = content − screen (pt, +x right, +y down); the browser decodes S·(byte/255 − .5) = u + S/510",
                          "channels": "one map for all three colour channels (no dispersion)"},
             "sets": sets, "series": {"widths": widths, "step": step, "height_source": "linear between the two nearest recorded drag frames (seg-native-abc-frames.json phase drag; uiprobe-motion-segdragmid-light.json lenstrace); outside the recorded range the nearest frame (flagged clamped)", "shape": "the 220×44 r22 model lens scaled by (w/220, h/44) — seg-lens-refraction.md §1c(d): the flex scale sits on _UILiquidLensView's presentation transform alone, the layers below (SDF elements, portals 196×28, glass group) keep their model bounds; elliptical ends, the portal = scale × 196×28", "total_bytes": total_bytes},

@@ -98,6 +98,7 @@
 </head>
 <body>
 {{FILTER}}
+<script>if (new URLSearchParams(location.search).get("enginefix") === "0") window.LENS_ENGINE_FIX = false;</script><script src="lens-engine-fix.js"></script>   <!-- 引擎校正, default on; ?enginefix=0 turns it off for the record -->
 <h1>透镜折射</h1>
 <div class="scene" id="scene">
   <div class="tabbar"><span class="on" style="--i:0">状态</span><span style="--i:1">方舟</span><span style="--i:2">手机</span></div>

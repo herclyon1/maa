@@ -26,6 +26,13 @@
   .segctl .flat{position:absolute;top:2px;left:2px;width:calc(50% - 4px);height:28px;border-radius:14px;background:var(--card)}   /* the resting selected segment: flat _controlForegroundColor platter 196×28 inset 2 */
   .segctl span{position:relative;z-index:1;flex:1 1 0;height:28px;line-height:28px;text-align:center;font-size:13px}
   .segctl span.on{font-weight:500}
+  /* ?content=bars8|gx8: the data session's segment-content gratings in place of the labels — 196×28 images inset 2 in each 200-pt
+     segment (setImage(_:forSegmentAt:), `pattern bars|gx 8 2`), read from tools/touch/seg-label-rest-{bars8,gx8}-seg-light.png:
+     bars8 = 4 pt black / 4 pt white from the image's left edge; gx8 = 127.5 + 75.5·cos(2π(x − 23.833)/8) at x = 22 … 218 */
+  .scene.content-bars8 .segctl span,.scene.content-gx8 .segctl span{color:transparent}
+  .scene.content-bars8 .segctl span::before,.scene.content-gx8 .segctl span::before{content:"";position:absolute;left:2px;top:0;width:196px;height:28px}
+  .scene.content-bars8 .segctl span::before{background:repeating-linear-gradient(90deg,#000 0 4px,#fff 4px 8px)}
+  .scene.content-gx8 .segctl span::before{background:url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAABCAIAAAAXRrrYAAAAYElEQVR4nE3NSQ4DMQhEUSMwND68jxuHSURyb/JWX6pFwd57raWqzyUizDznJCJEBIAxRndXVWZGhLub2fc653yu/3gnM3P3iMjMquruMQYAICIRzTmZWUTeU1Vdl6r+AMnqRo7aWVl4AAAAAElFTkSuQmCC") 0 0/8px 28px repeat-x}
   /* the lens: a w×h window (220×44 lifted at rest; ?w=<width> picks a drag-stretch set, height from the series table) over two clones
      of the scene — the filtered copy of what lies under the lens and the filtered label copy — both shifted by −(lens position) */
   .lens{position:absolute;z-index:2;width:220px;height:44px;border-radius:22px;overflow:hidden;touch-action:none;cursor:grab;   /* above the labels (they carry z-index 1) */
@@ -104,7 +111,13 @@
        feImage subregions are not used: WebKit renders nothing with them, and it takes an overflowing child into the
        objectBoundingBox region. No dispersion in these maps (the colour
        fringe is glassForeground's aberration term, not yet decompiled): one map feeds all channels. Animate the lift by the scale
-       attribute 0 → 40 with the lift curve of seg-keys.css. -->
+       attribute 0 → 40 with the lift curve of seg-keys.css.
+       ENGINE FACT (calib/, 2026-09-19): WebKit's feDisplacementMap quantises the displacement to one device pixel (½ CSS px at
+       devicePixelRatio 2 — Mac WebKit; ⅓ at 3 — iOS, standalone window) and applies a NEGATIVE displacement one pixel short
+       (−1 → −0.5 / −0.67, −4 → −3.5 / −3.67), a positive one rounded up to the next pixel; a constant map decodes to its value
+       (no zero-point offset, no linearRGB decode). 引擎校正: load lens-engine-fix.js after this <svg> — it re-encodes every
+       #…-f-bg-/-lab- map's R/G at page load so negative values are longer by exactly one device pixel (k = 1/devicePixelRatio,
+       byte' = byte − k·255/S for byte < 128), blob: copies only, the files untouched; not the fringe chains. README §0.4. -->
   <filter id="tab-lens-f-bg-94" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 94×54 = the 220×44 model scaled by (0.8545, 0.7714): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 94×54 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="tab-f-bg-94.png" preserveAspectRatio="none" result="map"/>
@@ -1306,6 +1319,7 @@
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
 </svg>
+<script>if (new URLSearchParams(location.search).get("enginefix") === "0") window.LENS_ENGINE_FIX = false;</script><script src="../lens-engine-fix.js"></script>   <!-- 引擎校正, default on; ?enginefix=0 turns it off for the record -->
 <h1>透镜折射</h1>
 <div class="scene" id="scene">
   <div class="tabbar"><span class="on" style="--i:0">状态</span><span style="--i:1">方舟</span><span style="--i:2">手机</span></div>
@@ -1323,6 +1337,7 @@
   const q = new URLSearchParams(location.search);
   if (q.get("native") === "1") document.body.classList.add("native");
   if (q.get("pattern") === "bars") document.getElementById("scene").classList.add("bars");
+  if (q.get("content") === "bars8" || q.get("content") === "gx8") document.getElementById("scene").classList.add("content-" + q.get("content"));
   const TAB = q.get("tab") === "1"; if (TAB) document.body.classList.add("tab");
   const SERIES = {"94": 54.0, "96": 56.0, "98": 58.0, "100": 60.0, "102": 62.0, "104": 64.0, "106": 66.0, "108": 68.0, "110": 70.0, "112": 71.27, "114": 72.55, "116": 73.82};                                     /* lens width → height of the sets (lens-field.json; the tab page carries the tab sets) */
   const NAME = TAB ? "tab" : "seg", W0 = TAB ? 110 : 220, H0 = TAB ? 70 : 44;

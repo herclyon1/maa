@@ -17,7 +17,8 @@ compiled from the native per-frame recordings. Nothing here touches `view.js` / 
 | `lens-test.template.html` → `lens-test.html` | the test page (standalone metas; `?w=<width>` picks a set; drag / auto-drag / gratings / frame stats) |
 | `gen_seg_keys.py` → `seg-keys.css` | lift / release / commit / drag keyframes compiled from the native frame data (§5) |
 | `verify_lens_maps.py`, `gen_lens_maps.py` without `--formula` | the earlier measured-resampling mode (§1–§4, record only): resamples the phase files into maps — no longer part of the deliverable |
-| `calib/` | WebKit feDisplacementMap calibration (`gen_calib.py` → maps + `webkit-displacement.html`, `check_calib.py` reads a render): the engine applies negative displacements one filter pixel short (§0.4) |
+| `calib/` | WebKit feDisplacementMap calibration (`gen_calib.py` → maps + `webkit-displacement.html`, `check_calib.py` reads a render): the engine applies negative displacements one device pixel short (§0.4) |
+| `lens-engine-fix.js` | 引擎校正, default on: re-encodes the bg / label maps at page load so negative displacements are one device pixel longer (k = 1/devicePixelRatio), blob: copies only (§0.4); load after the `<svg>` |
 
 ## 0 Formula maps — 反编译原值（公式 + 探针参数） (2026-09-19)
 
@@ -332,12 +333,21 @@ decodes to its value: no zero-point offset, no linearRGB decode of the map on th
 and one device pixel short; positive: rounded up to the next device pixel. The calibration page now carries the viewport and
 standalone metas (without them iOS lays it out at 980 px and the step cannot be read).
 
-**引擎校正 — the optional correction (`--engine-fix <pt>`, default 0 = off, `lens-field.json` → `encoding.engine_fix_pt`):** every
-negative displacement is pre-extended by the engine's pixel before encoding (0.5 on a 2× filter buffer, 0.333 at 3×), so the
-engine's truncation lands on the intended value (still quantised to its pixel). It is a property of the renderer, not of the
-lens; it is not applied in the delivered maps (the maps' values are the formula's); the fringe maps are not corrected (their
-seven taps read the same map with positive and negative scales). Switching it on is a decision for the acceptance session per
-target engine and device scale.
+**引擎校正 — the engine correction, default ON (监督局 2026-09-19 08:4x):** `lens-engine-fix.js`, loaded after the `<svg>` with the
+filters (index.html, lens-test.html), re-encodes at page load every `#…-f-bg-` / `-f-lab-` map's R and G channels so that every
+negative displacement is longer by exactly one device pixel, k = 1 / devicePixelRatio CSS px (2× → ½, 3× → ⅓): byte′ = byte −
+k·255/S for byte < 128, into blob: copies (the map files stay the formula's values; `data-engine-fixed` on the feImage). The
+engine's truncation then lands on the map's value, still quantised to its pixel like the positive side. Not the fringe chains
+(seven taps read one map with positive and negative scales). Off for the record: `?enginefix=0` on the test page, or
+`window.LENS_ENGINE_FIX = false` / `<script data-engine-fix="off">` before the script; `--engine-fix <pt>` bakes the same into the
+files for a static build (default 0). It is a property of the renderer, not of the lens.
+
+With it on (wksnap 2×, k ½; the same rows as above): centre row right end 317.92 · **323.92** · **329.42 · 329.94** — the map's and the
+native's eye and rim fold (324.03 · 329.24 / 329.75); row 642 right 313.42–317.97 (native 311.86–317.44; before 315.4–317.0), left
+121.86–126.42 (native 122.24–127.81); row 606 unchanged (its y is the positive lane — the ≤ 1 pt of the formula there); page bars
+y634 left gaps 0.93 · **3.00** · 3.51 · 3.03 · 3.49 (the 2.49 gone; native 3.52), y610 left stretch gap **7.46** (native 7.66);
+§0c: 左「早班」 ink −25 % (dark −30 %), box unchanged; 右「晚班」 ink +17 % (dark +26 %), 「班」 height 11.67 → **14.16** (dark 13.67;
+native 15.0; before 13.66).
 
 The top / bottom bands at the ends (the acceptance session's B6 preview, 2026-09-19: "whitish and hard", `bands-native-bgonly-all.png`,
 `topband-zoom.png`; the test page with the backdrop filter alone): the track's displaced edge sits where the native's does (top
