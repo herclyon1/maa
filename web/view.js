@@ -1203,8 +1203,8 @@ function press(el, e, handlers) {
    - drag (flex-interaction.md §6, UIKitCore -[UISegmentedControl touchesMoved:] → _updateSelectionToSegment:): every move sets the lens centre
      target to the tracked segment's centre + the finger's accumulated delta since the touch down (locationInView only — no predicted / coalesced
      touches; pressed at the centre this is the finger's x), through ONE spring behaviour ζ .85 / response .2 s created anew per move and continuing
-     from the current value and velocity; the touch is delivered with the next display frame, the behaviour is committed with that frame and starts on
-     the one after (§6: "新目标下一帧起效"; §6 复算 1-frame delay in its frame count rms 1.8 pt, 0 or 2 ≈ 9) — see the tick for how the page stages a move. The on-screen centre = this spring + the flex drift (1 − sX)·W/2 — the slow start and the
+     from the current value and velocity (analytic step); the first displaced frame reaches the screen two frames after the one the move arrived in
+     (§6e.2 chain; §6e.3 the page rule) — see the tick for the frame-by-frame account. The on-screen centre = this spring + the flex drift (1 − sX)·W/2 — the slow start and the
      run past the finger after it stops are that drift, not a latency constant. Beyond the end segments' centres the native applies a rubber band
      12·(1 − 1/(1 + c·x/12)) whose c is unread (0x1c571a4e8 / 0x1c5718380) — here the target is clamped to those centres (等原理). The stretch while dragging (244×38.4, 253×36), the drift and the bounce after the up are UIKitCore's
      _UIFlexInteraction on the lens's presentation transform (flex-interaction.md; FLEX_VARIANT / flexSpec / flexIntegrator / flexTargets below);
@@ -1270,8 +1270,16 @@ function flexTargets(spec, W, H, accel, vel) {
   const sX = Math.max(loX, Math.min(hiX, 1 + (hiX - 1) * m)), sY = Math.max(loY, Math.min(hiY, 1 + (loY - 1) * m));
   return { sX, sY, drift: Math.sign(vel) * (1 - sX) * W / 2 };
 }
-/* damped spring x'' = −ω₀²(x − target) − 2ζω₀x' (ω₀ = 2π / response), semi-implicit Euler in ≤ 4 ms substeps */
-function springStep(s, target, [zeta, response], dt) { const w = 2 * Math.PI / response; let t = dt; while (t > 0) { const h = Math.min(t, .004); s.v += (-w * w * (s.x - target) - 2 * zeta * w * s.v) * h; s.x += s.v * h; t -= h; } }
+/* damped spring x'' = −ω₀²(x − target) − 2ζω₀x' (ω₀ = 2π / response) — the ANALYTIC step over dt from the current (x, v) (flex-interaction.md §6e.3:
+   AnimationKit evaluates the closed-form solution, §4 0x1de3cfb00–0x1de3d4000; the old page's dragsim.py spring_step). A retarget keeps (x, v) and only
+   changes `target` (§6 retarget 语义). ζ < 1: under-damped form; ζ = 1 (the lift / fall springs): critically damped form. Replaces the former 4 ms
+   semi-implicit Euler (its replay on the probe grid read rms 2.58 vs 1.11 analytic, §6e.1). */
+function springStep(s, target, [zeta, response], dt) {
+  if (!(dt > 0)) return; const w = 2 * Math.PI / response, dx = s.x - target, v = s.v;
+  if (zeta < 1) { const wd = w * Math.sqrt(1 - zeta * zeta), B = (v + zeta * w * dx) / wd, e = Math.exp(-zeta * w * dt), c = Math.cos(wd * dt), sn = Math.sin(wd * dt);
+    s.x = target + e * (dx * c + B * sn); s.v = e * (-zeta * w * (dx * c + B * sn) + (-dx * wd * sn + B * wd * c)); }
+  else { const e = Math.exp(-w * dt), B = v + w * dx; s.x = target + e * (dx + B * dt); s.v = e * (B - w * (dx + B * dt)); }
+}
 /* B6: the lifted lens's rim from the decompiled formulas (remote-ref/keyfill-highlight.md §2 / §4 / §5.1 / §5.2; parameters = the probe's set
    values, seg-lens-refraction.md §1c(g)); the drawing is in segLens (SVG ring strokes), the arithmetic is here. Depth e = pt into the capsule. */
 const SEG_RIM = (() => {
@@ -1372,7 +1380,7 @@ function segLens(seg, lens, bs, downClientX) {
   const K_LIFT_DEST = cssKeys("--ios-touch-segment-destout-keys", SEG_LIFT_DESTOUT), K_DEST = cssKeys("--ios-touch-segment-release-destout-keys", SEG_DROP_DESTOUT.filter(([t]) => t >= .198).map(([t, v]) => [t - .198, v]));
   const destEnd = destDelay + K_DEST[K_DEST.length - 1][0];
   const downX = (typeof downClientX === "number" ? downClientX : NaN) - seg.getBoundingClientRect().left;   // the touch-down x in control coordinates (the drag delta's origin, §6 _dragDelta)
-  const st = { t0: performance.now(), prev: performance.now(), rel: null, raf: 0, done: false, dragged: false, cx: null, pending: null, staged: null, rest: idx0, pr: 0,
+  const st = { t0: performance.now(), prev: performance.now(), rel: null, raf: 0, done: false, dragged: false, cx: null, pending: null, rest: idx0, pr: 0,
                sL: { x: 0, v: 0 }, sM: { x: 1, v: 0 }, pos: { x: restCentre(idx0), v: 0 }, geo: null,   // pos = the lens position (one spring; the flex drift rides on top of it in the transform)
                flex: { vi: flexIntegrator(), sx: { x: 1, v: 0 }, sy: { x: 1, v: 0 }, dx: { x: 0, v: 0 }, out: { sx: 1, sy: 1, dx: 0 } } };   // B5: the flex interaction's integrator and its three animatable floats
   const setGeo = (left, top, w, h) => {
@@ -1416,14 +1424,16 @@ function segLens(seg, lens, bs, downClientX) {
       const tl = (now - st.t0) / 1000 - liftDelay;   // time since the lift started (+109 ms)
       if (tl > 0) springStep(st.sL, 1, SEG_SPRING.lift, dt);
       if (st.dragged && st.cx != null) springStep(st.pos, st.cx, SEG_SPRING.model, dt);   // B5-b: the position is ONE spring ζ .85 / .2 s continuing from its value and velocity at every retarget (§6 retarget 语义) — the ζ .6533/.4559 tracking spring belongs to the flex floats, not to the position
-      /* B5-c time base (flex-interaction.md §6): a touch is delivered to the app with the display frame after it happens, the handler's new spring behaviour is
-         committed with that frame's transaction and AnimationKit starts it on the next frame — so the first moved frame is two frames after the frame the
-         touch arrived in. Pointer events reach this page at once (not per frame), so a move is staged at the first tick after it (= delivered and committed)
-         and becomes the spring's target at the second (= the behaviour running); the interval before that is still integrated with the old target.
-         Replay on seg-native-abc-frames.json (dragsim_ours.py, native centre − native flex drift, frames where the native value changed): one stage rms 14.2,
-         this (two) 7.2 with the changed frames within 3 pt, three 10.5. */
-      if (st.staged != null) { st.cx = st.staged; st.staged = null; }
-      if (st.pending != null) { st.staged = st.pending; st.pending = null; }
+      /* B5-c time base (flex-interaction.md §6e.2 / §6e.3, the UIUpdate cycle's order HIDEvents → CADisplayLinks → CATransactionCommit → next vsync):
+         a move delivered at T (between frames) → cycle V_{j+1}: the handler builds the new spring behaviour, AnimationKit evaluates it at t = 0 from the
+         current (x, v) (value unchanged), commit → screen V_{j+2} still the old value → cycle V_{j+2} evaluates t = 16.7 ms → screen V_{j+3} shows the
+         first displacement. Here: the tick R_{j+1} (first rAF after the move) integrates its interval with the old target (= the value at t = 0 of the
+         new behaviour), then adopts the move as the target below; R_{j+2} integrates 16.7 ms toward it; a tick's frame is displayed one vsync later, so
+         the screen shows old / old / first displacement at V_{j+1} / V_{j+2} / V_{j+3} — the probe's sample sequence .5887 = 120, .6054 = 120,
+         .6220 = 122.04 for the move at .5787 (§6e.2). Replayed literally on the probe's display-frame grid (tools/touch/b5c/dragsim_ours2.py): this
+         rule rms 1.11 / max 2.54 over .60–.86 s (= the judge's grid+1, fork_judge.py); adopting one tick later 13.5 / 19.6; Euler instead of the
+         analytic step 2.58 / 3.50. */
+      if (st.pending != null) { st.cx = st.pending; st.pending = null; }
       p = clamp01(st.sL.x); pd = tl <= 0 ? 0 : Math.max(p > 0 ? tabAt(K_LIFT_DEST, tl) : 0, p > 0.5 ? 1 : 0);   // --ios-touch-segment-destout-keys (first 3 frames)
       st.pr = p; moving = true;
     } else {
@@ -1446,7 +1456,7 @@ function segLens(seg, lens, bs, downClientX) {
     frame(p, pd); st.raf = requestAnimationFrame(tick);
   };
   const loop = {
-    drag: (clientX) => {   // a finger move (§6): target = the pressed segment's centre + (finger x − touch-down x), effective two ticks on (see tick); clamped to the outer centres (the native rubber band's c is unread)
+    drag: (clientX) => {   // a finger move (§6): target = the pressed segment's centre + (finger x − touch-down x), adopted at the next tick (see the tick's time-base note); clamped to the outer centres (the native rubber band's c is unread)
       if (st.rel != null || st.done) return;
       const x = clientX - seg.getBoundingClientRect().left, delta = Number.isNaN(downX) ? x - restCentre(idx0) : x - downX;
       st.pending = Math.max(restCentre(0), Math.min(restCentre(n - 1), restCentre(idx0) + delta));
