@@ -1171,6 +1171,8 @@ function segLens(seg, lens, bs) {
   copy.innerHTML = '<div class="cbgwrap"><div class="cbg"></div><div class="ctrack"></div></div>';
   copyl.innerHTML = bs.map((b) => `<span class="cb ${b.className}" style="width:${b.offsetWidth}px">${b.innerHTML}</span>`).join("");
   const segW = seg.clientWidth, segH = seg.clientHeight; for (const c of [copy, copyl]) { c.style.width = segW + "px"; c.style.height = segH + "px"; }
+  const FPAD = 12;   // the displacement filter region beyond the lens box (px): the edge bands pull up to 3.4 pt + the 3.6 pt dispersion (seg-lens-refraction §2)
+  const filt = document.querySelector("filter#seg-lens-warp"), fimgs = filt ? [...filt.querySelectorAll("feImage")] : [];
   const cbs = [...copyl.querySelectorAll(".cb")];
   const S = 32;   // map encoding (界面2号): byte = 128 + round(u · 255 / S), u in pt → feDisplacementMap scale = S × amplitude
   /* geometry: resting lens = the padded interior / n (pad ← --ios-segment-lens-pad, h ← --ios-segment-lens-h), lifted = +12 / +8 per side ← --ios-touch-segment-lift-x/-y */
@@ -1196,7 +1198,11 @@ function segLens(seg, lens, bs) {
     const sr = seg.getBoundingClientRect(), lr = lens.getBoundingClientRect();
     const L = lr.left - sr.left, T = lr.top - sr.top, Wd = lr.width, Hd = lr.height, R = Hd / 2;   // capsule: corner = h/2 (r22 at 44 ← §0; the lift's corner 14 → 22 on the same spring ← §4.4 row 1)
     for (const el of [warp, warpl, plat, rim]) { el.style.left = L + "px"; el.style.top = T + "px"; el.style.width = Wd + "px"; el.style.height = Hd + "px"; el.style.setProperty("--rr", R + "px"); }
-    for (const c of [copy, copyl]) { c.style.left = -L + "px"; c.style.top = -T + "px"; }   // the copies stay aligned with the real control (no magnification: mag-x 1.00, label-mag 1.00)
+    for (const c of [copy, copyl]) { c.style.left = -L + "px"; c.style.top = -T + "px"; }
+    if (filt) {   // filter region = lens box + FPAD (userSpaceOnUse px), the maps pinned to the lens box
+      filt.setAttribute("x", -FPAD); filt.setAttribute("y", -FPAD); filt.setAttribute("width", (Wd + 2 * FPAD).toFixed(2)); filt.setAttribute("height", (Hd + 2 * FPAD).toFixed(2));
+      for (const im of fimgs) { im.setAttribute("width", Wd.toFixed(2)); im.setAttribute("height", Hd.toFixed(2)); }
+    }   // the copies stay aligned with the real control (no magnification: mag-x 1.00, label-mag 1.00)
     seg.style.setProperty("--lp", p.toFixed(4)); seg.style.setProperty("--lpd", pd.toFixed(4));
     for (const el of document.querySelectorAll("#seg-lens-warp feDisplacementMap")) el.setAttribute("scale", (S * p).toFixed(3));   // amplitude on the lift spring (§4.4 row 2: displacementMap 0 → −17.5 in the same call)
     cbs.forEach((c, i) => c.className = "cb " + bs[i].className);
