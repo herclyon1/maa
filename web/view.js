@@ -516,10 +516,79 @@ function render() {
      state is synced (segSync): the lens, the labels, the copies and the running glass fall keep their elements AND their transitions. */
   const oldSeg = $("#queueseg"), probe = document.createElement("template"); probe.innerHTML = html;
   const cand = probe.content.querySelector("#queueseg");
+  const before = flipPending ? flipSnapshot($("#app")) : null; flipPending = false;   // B3: where every block was, before the content changes
+  flipStop();   // a render during a running content transition (a new value change or a data refresh) ends it — 快速连点 未量, wired as "the new change interrupts the old"
   if (oldSeg && cand && segSameQueues(oldSeg, cand)) { const fresh = replaceKeeping($("#app"), html, oldSeg); if (fresh) segSync(oldSeg, fresh); }
   else $("#app").innerHTML = html;
-  layoutTabs();
+  layoutTabs();   // the other tabs' sections are hidden here — the "after" positions are read only after that
+  if (before) flipRun(before, $("#app"));
   wire();
+}
+
+/* B3 — content transition on a value change (remote-ref/seg-value-change-content.md, 设置 › 屏幕使用时间 每周/每天, iOS 27.0 simulator recordings; every
+   number below is a sampled per-frame value from that document — the CAAnimation durations / curves could not be read there, §5):
+   §0/§4: at the frame the value changes the card content is simply the new content (no fade, no slide, numbers do not roll); only rows that
+   appear or disappear animate, UITableView-style — a deleted row fades in place (.72 → .52 → .35 → .21 → .10 → .04 → 0 by +240 ms, drifting up
+   1–4 pt) while the content below slides up by its height (133 pt there) from ~+60 ms over ~300 ms (133 → 111 @75 → 88 @92 → 70 @108 → 54 @128 →
+   42 @142 → 32 @160 → 24 @177 → 14 @210 → 8 @243 → 4 @277 → 2 @308 → 1 @342 → 0 @400); an inserted row waits ~100 ms then fades in over ~300 ms
+   (old-content share a: .66 @0, .69 @40, .65 @90, .56 @140, .39 @190, .24 @240, .10 @290, .03 @340, 0 @390) while the content below slides down at
+   once (−133 @0 → −129 @40 → −72 @74 → −43 @107 → −6 @144 → −4 @175 → −2 @210 → −1 @245 → 0 @310). Everything starts at the value-change frame,
+   together with the lens (§0 "与透镜开始滑动同一帧").
+   Web: blocks = the sections of #app and the rows inside their groups, keyed by the section title, the group index and the row index (index paths,
+   as the native table: a row at the same index path stays and simply shows its new content).
+   Old and new positions are compared (FLIP): a block that moved gets translateY(old − new) → 0 on the up-slide (moved up) or down-slide (moved down)
+   sequence scaled to its own distance ("一行高" there was 133 pt); a row whose key vanished is cloned into a fixed overlay at its old place and fades
+   on the deletion sequence; a row whose key is new fades in on the insertion sequence. Curves are the sampled sequences, linearly interpolated. */
+let flipPending = false, flipState = null;
+const FLIP_DEL_FADE = [[0, .72], [10, .67], [27, .52], [42, .44], [57, .35], [75, .25], [92, .21], [108, .14], [128, .10], [160, .07], [193, .04], [227, .02], [243, 0]];   // §1 template registration, ms from the switch frame
+const FLIP_DEL_DRIFT = [[0, 0], [27, -1], [57, -2], [92, -3], [128, -4], [243, -4]];   // §1 position of the fading row (pt)
+const FLIP_UP = [[0, 0], [75, .165], [92, .338], [108, .474], [128, .594], [142, .684], [160, .759], [177, .820], [210, .895], [243, .940], [277, .970], [308, .985], [342, .992], [400, 1]];   // §0 up-slide: 1 − offset / 133
+const FLIP_DOWN = [[0, 0], [40, .030], [74, .459], [107, .677], [144, .955], [175, .970], [210, .985], [245, .992], [310, 1]];   // §2 down-slide: 1 − |offset| / 133
+const FLIP_INS = [[0, 0], [40, 0], [90, .015], [140, .15], [190, .41], [240, .64], [290, .85], [340, .95], [390, 1]];   // §2 inserted row: 1 − a / .66 (a = the sampled old-content share)
+const FLIP_END = 420;
+function flipKeys(root) {   // key → { el, top, height, kind }
+  const out = new Map();
+  [...root.querySelectorAll(":scope > section")].forEach((sec, si) => {
+    const h2 = sec.querySelector(":scope > h2"), sk = "s:" + (h2 ? h2.textContent.trim() : "#" + si);
+    const r = sec.getBoundingClientRect(); if (r.height > 0) out.set(sk, { el: sec, top: r.top, height: r.height, kind: "section" });
+    [...sec.querySelectorAll(":scope > .group")].forEach((g, gi) => {
+      const rows = [...g.children].filter((c) => c.classList.contains("row") || c.classList.contains("acts"));
+      rows.forEach((row, ri) => {   // rows keyed by index path (section, group, row) like the native table: same index = the row stays and shows its new content in one frame
+        const rr = row.getBoundingClientRect(); if (rr.height > 0) out.set(`${sk}/g${gi}/#${ri}`, { el: row, top: rr.top, left: rr.left, width: rr.width, height: rr.height, kind: "row", sec: sk }); });
+    });
+  });
+  return out;
+}
+function flipSnapshot(root) { const m = flipKeys(root); for (const v of m.values()) if (v.kind === "row") v.clone = v.el.cloneNode(true); return m; }
+function flipStop() {
+  if (!flipState) return;
+  cancelAnimationFrame(flipState.raf);
+  for (const b of flipState.moves) if (b.el.isConnected) b.el.style.transform = "";
+  for (const b of flipState.ins) if (b.el.isConnected) b.el.style.opacity = "";
+  flipState.overlay.remove(); flipState = null;
+}
+function flipRun(before, root) {
+  const after = flipKeys(root), moves = [], ins = [], dels = [];
+  const secD = new Map();
+  for (const [k, n] of after) { const o = before.get(k); if (!o) { if (n.kind === "row") ins.push(n); continue; } const d = o.top - n.top;
+    if (n.kind === "section") { secD.set(k, d); if (Math.abs(d) >= 0.5) moves.push({ el: n.el, d }); }
+    else { const rel = d - (secD.get(n.sec) || 0); if (Math.abs(rel) >= 0.5) moves.push({ el: n.el, d: rel }); } }   // a row moves only by what its section's move does not already carry
+  for (const [k, o] of before) if (!after.has(k) && o.kind === "row") dels.push(o);
+  if (!moves.length && !ins.length && !dels.length) return;
+  const overlay = document.createElement("div"); overlay.className = "flipgone-wrap";
+  for (const d of dels) { const g = document.createElement("div"); g.className = "group flipgone"; g.style.cssText = `left:${d.left}px;top:${d.top}px;width:${d.width}px;height:${d.height}px`; g.appendChild(d.clone); overlay.appendChild(g); d.node = g; }
+  document.body.appendChild(overlay);
+  const t0 = performance.now(); flipState = { raf: 0, moves, ins, overlay };
+  const step = (now) => {
+    if (flipState === null || flipState.overlay !== overlay) return;
+    const t = now - t0;
+    for (const b of moves) { if (!b.el.isConnected) continue; const p = tabAt(b.d > 0 ? FLIP_UP : FLIP_DOWN, t); b.el.style.transform = t >= FLIP_END ? "" : `translateY(${(b.d * (1 - p)).toFixed(2)}px)`; }
+    for (const b of ins) { if (!b.el.isConnected) continue; b.el.style.opacity = t >= FLIP_END ? "" : tabAt(FLIP_INS, t).toFixed(3); }
+    for (const d of dels) { d.node.style.opacity = tabAt(FLIP_DEL_FADE, t).toFixed(3); d.node.style.transform = `translateY(${tabAt(FLIP_DEL_DRIFT, t).toFixed(2)}px)`; }
+    if (t >= FLIP_END) { flipStop(); return; }
+    flipState.raf = requestAnimationFrame(step);
+  };
+  step(t0);   // the first frame at the switch itself (.72, +H)
 }
 
 /* Replace `root`'s content with `html` while keeping `keep` (a descendant of root) attached: at every level of its ancestor chain the siblings are
@@ -710,7 +779,7 @@ function wire() {
     const bs = [...segEl.querySelectorAll("button")];
     attachSegmented(segEl, () => Math.max(0, bs.findIndex((b) => b.dataset.q === qsel.value)), (i, mode = "tap") => {
       const q = bs[i].dataset.q; if (qsel.value === q) return;
-      segCommitAt = performance.now(); segCommitMode = mode;
+      segCommitAt = performance.now(); segCommitMode = mode; flipPending = true;   // B3: this render is a value change → row insert/delete transitions
       qsel.value = q; qsel.dispatchEvent(new Event("change"));   // onchange → render() right now: the content switches in the same tick
     });
   }

@@ -436,14 +436,19 @@
         /* §1 G1–G3: the up commits index + change + content in the same tick (--ios-touch-segment-commit-delay 0) */
         const t0 = performance.now(); pev(seg, "pointerup", at(other)); const dt = performance.now() - t0;
         check("分段 G1 抬手：同一刻改 index + change + 内容切（--ios-touch-segment-commit-delay 0）", want, `${onText()} +${Math.round(dt * 10) / 10} ms renders+${renders - r0}`, onText() === want && thisShift(want) && renders === r0 + 1 && dt < 50);
+        { const gone = document.querySelectorAll(".flipgone"), moved = [...document.querySelectorAll("#app > section")].filter((s) => /translateY\((-?[\d.]+)px\)/.test(s.style.transform) && Math.abs(parseFloat(s.style.transform.match(/translateY\((-?[\d.]+)px\)/)[1])) > 20);
+          check("分段 B3 换值那一帧：卡片内容直接换（renders+1，同一 tick）；删的行原地克隆淡出（起 .72）、下方内容从原位（+行高）起步（seg-value-change-content.md §0/§1，采样）", "clones .72 · sections offset", `${gone.length} clones ${gone.length ? cs(gone[0]).opacity : "-"} · ${moved.length} sections offset ${moved.length ? moved[0].style.transform : "-"}`, gone.length > 0 && Math.abs(parseFloat(cs(gone[0]).opacity) - .72) < .12 && moved.length > 0); }
         const lensNow = q().querySelector(".lens");
         check("分段 G1 抬手：透镜走实测 x 路径 1.209 s（--ios-touch-segment-lens-x-keys）+ 边跑边胀关键帧", "1.209s linear(…) lens-stretch", `${cs(lensNow).transitionDuration.split(",")[0].trim()} ${cs(lensNow).transitionTimingFunction.slice(0, 7)} ${cs(lensNow).animationName}`, /^1\.209s/.test(cs(lensNow).transitionDuration) && /^linear\(/.test(cs(lensNow).transitionTimingFunction) && cs(lensNow).animationName === "lens-stretch");
         await sleep(192); const sc192 = cs(lensNow).scale.split(" ").map(parseFloat);
         num("分段 G1 +192 ms：透镜最宽 ×1.24（--ios-touch-segment-lens-w-keys）", 1.24, sc192[0], 0.06);
+        { const gone = document.querySelectorAll(".flipgone"), moved = [...document.querySelectorAll("#app > section")].filter((s) => /translateY/.test(s.style.transform)), insR = [...document.querySelectorAll("#app .row")].filter((r) => r.style.opacity !== "" && parseFloat(r.style.opacity) < 1);
+          check("分段 B3 +192 ms：删的行淡到 ≤ .10（§1 +193 .04）、下方内容上滑途中（§0 +177 剩 24/133）、插的行淡入途中（§2 +190 a .39）", "clone ≤ .1 · sections still offset · inserted rows partly", `${gone.length ? cs(gone[0]).opacity : "no clone"} · ${moved.length} moving · ${insR.length} fading in ${insR.length ? insR[0].style.opacity : ""}`, gone.length > 0 && parseFloat(cs(gone[0]).opacity) <= 0.12 && moved.length > 0 && insR.length > 0 && parseFloat(insR[0].style.opacity) > 0.2 && parseFloat(insR[0].style.opacity) < 0.7); }
         await sleep(284);
         { const lr = lensNow.getBoundingClientRect(), sr = q().getBoundingClientRect(), lw = lensNow.offsetWidth, toI = parseFloat(q().style.getPropertyValue("--i")), fromI = toI === 1 ? 0 : 1;
           const segW = (sr.width - 4) / bs().length, pos = (lr.left + lr.width / 2 - sr.left - 2 - segW / 2) / segW;   // centre-based in segment units (the lens now moves by `left`, its width breathes)
           num("分段 G1 +476 ms：透镜过冲到行程 1.075（--ios-touch-segment-lens-x-keys）", 1.075, (pos - fromI) / (toI - fromI), 0.04); }
+        check("分段 B3 +476 ms：内容过渡收尾（+400 到位 → 克隆移除、transform / opacity 内联清空）", "clean", `${document.querySelectorAll(".flipgone").length} clones · ${[...document.querySelectorAll("#app > section, #app .row")].filter((e) => e.style.transform || e.style.opacity).length} inline`, !document.querySelectorAll(".flipgone").length && ![...document.querySelectorAll("#app > section, #app .row")].some((e) => e.style.transform || e.style.opacity));
         await sleep(800);
         /* §1 G4/G16: touch-down on the selected segment lifts the lens after ~100 ms (196×28 → 220×44), no event */
         seg = q(); let sel = bs().find((b) => b.classList.contains("on")), unsel = bs().find((b) => !b.classList.contains("on"));

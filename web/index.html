@@ -285,6 +285,10 @@
   .warn .sf.inl{width:15px;height:15px;vertical-align:-3px;margin-right:4px;background:var(--warn)}
   .row .ro.short{color:var(--dim);font-size:var(--ios-body-size);white-space:nowrap}   /* Detail 17 secondary ← 探针（老页 15 是目测） */
   .group{background:var(--card);border-radius:var(--r);overflow:hidden}
+  /* B3: a row that disappears on a value change fades out in place (clone in a fixed overlay; seg-value-change-content.md §1) — square corners: it was inside its card */
+  .flipgone-wrap{position:fixed;inset:0;z-index:5;pointer-events:none}
+  .flipgone{position:absolute;margin:0;border-radius:0;will-change:opacity,transform}
+  .flipgone .row{border-radius:0}
   .group:not(.devcard):not(.notice):not(.tiles):not(.nums) > *:not(.row):not(.acts):not(pre):not(.setup):not(.warn):not(.hint):not(.group-foot){padding:11px 20px}   /* .nums 的磁贴有自己的内距（提醒事项原值），不吃这条 */
   /* Rows: name left, control right, hairline inset to the text like UITableView. */
   .row{position:relative;display:flex;flex-direction:row;flex-wrap:nowrap;align-items:center;gap:6px var(--ios-value-gap);padding:calc((var(--ios-row-h) - var(--ios-body-lh))/2) var(--ios-switch-inset) calc((var(--ios-row-h) - var(--ios-body-lh))/2) var(--ios-row-text-x);min-height:var(--ios-row-h)}   /* 行 53.33、文字 x 20、开关右内缩 18、行框 20.33 ← 探针/AX45；2026-09-19 起不折行：标题长了省略，值不掉到第二行（设置的值行永远一行） */
