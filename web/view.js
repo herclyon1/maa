@@ -1294,11 +1294,7 @@ function segLens(seg, lens, bs) {
   const destDelay = touchMs("--ios-touch-segment-release-destout-delay", 198) / 1000;
   const K_LIFT_DEST = cssKeys("--ios-touch-segment-destout-keys", SEG_LIFT_DESTOUT), K_DEST = cssKeys("--ios-touch-segment-release-destout-keys", SEG_DROP_DESTOUT.filter(([t]) => t >= .198).map(([t, v]) => [t - .198, v]));
   const destEnd = destDelay + K_DEST[K_DEST.length - 1][0];
-  /* the native lens starts following a finger move 35 – 47 ms after the touch (seg-native-abc-frames.json: first move +578 → first lens change +613;
-     seg-lens-drag-mid.md §0: finger moves +654 → lens +701): touch delivery + UIKit's step to the position behavior. Synthetic / DOM pointer events reach
-     this page with no such delay, so each retarget is applied that much later — the measured span's midpoint, 40 ms (both readings listed). */
-  const dragLatency = touchMs("--seg-drag-input-latency", 40);
-  const st = { t0: performance.now(), prev: performance.now(), rel: null, raf: 0, done: false, dragged: false, cx: null, queue: [], rest: idx0, pr: 0,
+  const st = { t0: performance.now(), prev: performance.now(), rel: null, raf: 0, done: false, dragged: false, cx: null, rest: idx0, pr: 0,
                sL: { x: 0, v: 0 }, sM: { x: 1, v: 0 }, pos: { x: restCentre(idx0), v: 0 }, geo: null,   // pos = the lens position (one spring; the flex drift rides on top of it in the transform)
                flex: { vi: flexIntegrator(), sx: { x: 1, v: 0 }, sy: { x: 1, v: 0 }, dx: { x: 0, v: 0 }, out: { sx: 1, sy: 1, dx: 0 } } };   // B5: the flex interaction's integrator and its three animatable floats
   const setGeo = (left, top, w, h) => {
@@ -1339,7 +1335,6 @@ function segLens(seg, lens, bs) {
     if (st.rel == null) {
       const tl = (now - st.t0) / 1000 - liftDelay;   // time since the lift started (+109 ms)
       if (tl > 0) springStep(st.sL, 1, SEG_SPRING.lift, dt);
-      while (st.queue.length && st.queue[0][0] <= now) st.cx = st.queue.shift()[1];   // retargets become effective after the measured latency
       if (st.dragged && st.cx != null) springStep(st.pos, st.cx, SEG_SPRING.model, dt);   // B5-b: the position is ONE spring ζ .85 / .2 s retargeted to the finger on every move (§4.4 差分 row 3: position set to the finger x through this behavior; flex-interaction.md §2 结构) — the ζ .6533/.4559 tracking spring belongs to the flex floats, not to the position
       p = clamp01(st.sL.x); pd = tl <= 0 ? 0 : Math.max(p > 0 ? tabAt(K_LIFT_DEST, tl) : 0, p > 0.5 ? 1 : 0);   // --ios-touch-segment-destout-keys (first 3 frames)
       st.pr = p; moving = true;
@@ -1365,8 +1360,7 @@ function segLens(seg, lens, bs) {
   const loop = {
     drag: (clientX) => {   // a finger move: the model position is set to the finger's x (clamped to the outer segments' centres) — §4.4 row 3
       if (st.rel != null || st.done) return;
-      const x = Math.max(restCentre(0), Math.min(restCentre(n - 1), clientX - seg.getBoundingClientRect().left));
-      st.queue.push([performance.now() + dragLatency, x]);   // takes effect after the native touch → lens latency (see dragLatency)
+      st.cx = Math.max(restCentre(0), Math.min(restCentre(n - 1), clientX - seg.getBoundingClientRect().left));   // retarget at once (no added latency: the native 35–47 ms touch → lens lag must come out of the position algorithm itself — being read by the old page session, seg-lens-refraction.md §4.4)
       if (!st.dragged) st.dragged = true;
     },
     release: (restIdx) => {   // every way out — up, out of bounds, pointercancel — falls the same way, to the rest rect of `restIdx`
