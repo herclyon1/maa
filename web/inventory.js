@@ -11,8 +11,12 @@
 
    * have      - what the account holds now (森空岛 calculate/user-game-data itemCount;
                  a material the account has none of is ABSENT there, so absent = 0)
-   * need      - one operator's full build, from data/need.json (built by
-                 scripts/mac/build-need-tables.py; null when the material is not part of a build)
+   * need      - the build standard's full build, from data/need.json (built by
+                 scripts/mac/build-need-tables.py): 0 when that build does not use the
+                 material, null when it is not a build material at all (exp cards, the box)
+   * standards - data/need.json carries games[].standards[] (today: the newest six-star
+                 with her signature weapon); setStandard(charId) picks one and the choice
+                 stays in this phone's localStorage; standards() lists them for a picker
    * servings  - have ÷ need, one decimal, null when there is no need
    * virtual   - the two exp rows (exp:char / exp:weapon): have = Σ count × exp of the
                  exp materials (rows carrying sumInto), because the game spends exp,
@@ -32,6 +36,7 @@
   const ZONAI_MAT = "/web/v1/game/endfield/calculate/material-list";
   const NEED_URL = "data/need.json";
   const LS_MAT = "ark-remote-matlist";
+  const LS_STD = "ark-remote-need-standard";
   const MIN_GAP_MS = 60 * 1000;
   const MAT_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
   const GAME = "终末地", GAME_ID = "endfield";
@@ -51,6 +56,25 @@
   function needFor(gameId) {
     const n = Inventory.need;
     return n && n.games.find((g) => g.gameId === gameId) || null;
+  }
+  /* The build standards of a game (games[].standards[]), for a picker. */
+  function standards(gameId = GAME_ID) {
+    const g = needFor(gameId);
+    return ((g && g.standards) || []).map((s) => ({ charId: s.charId, name: s.name, rarity: s.rarity, releasedAt: s.releasedAt,
+                                                    weapon: s.weapon && s.weapon.name, caliber: s.caliber }));
+  }
+  function chosenStandard(gameId = GAME_ID) {
+    try { return localStorage.getItem(LS_STD + ":" + gameId) || ""; } catch { return ""; }
+  }
+  /* Pick a standard by charId; "" goes back to the file's default. Rows are recomputed on the next refresh(true). */
+  function setStandard(charId, gameId = GAME_ID) {
+    try { if (charId) localStorage.setItem(LS_STD + ":" + gameId, charId); else localStorage.removeItem(LS_STD + ":" + gameId); } catch {}
+  }
+  /* The standard in force: the chosen one if the file still has it, else the file's default. */
+  function standardFor(g) {
+    const list = (g && g.standards) || [];
+    const want = chosenStandard(g && g.gameId);
+    return list.find((s) => s.charId === want) || list.find((s) => s.charId === g.standard) || list[0] || null;
   }
 
   // ---- material-list cache ----
@@ -120,7 +144,13 @@
   async function endfield(sk) {
     const g = { game: GAME, gameId: GAME_ID, "错误": "", rows: [] };
     const needGame = needFor(GAME_ID);
-    if (needGame) { g.caliber = needGame.caliber; g.source = needGame.source; g.built = Inventory.need.built; }
+    const std = standardFor(needGame);
+    if (needGame) {
+      g.caliber = (std && std.caliber) || needGame.caliber; g.source = needGame.source; g.built = Inventory.need.built;
+      g.standard = std ? { charId: std.charId, name: std.name, rarity: std.rarity, releasedAt: std.releasedAt, weapon: std.weapon && std.weapon.name } : null;
+      g.standards = standards(GAME_ID);
+    }
+    const needRows = std ? { rows: std.rows } : needGame;
     try {
       if (!sk.efRole) throw new Error("密钥串里没有终末地的角色");
       const ts = await Stamina.skRefresh(sk);
@@ -128,9 +158,9 @@
       const counts = ((d.userGameData || {}).itemCount) || {};
       if (!Object.keys(counts).length) throw new Error("森空岛没给终末地的仓库：" + Object.keys(d.userGameData || d).slice(0, 6).join("、"));
       let mat = await materialList(sk, ts);
-      const known = new Set(((needGame && needGame.rows) || []).map((b) => b.id));
+      const known = new Set(((needRows && needRows.rows) || []).map((b) => b.id));
       if (Object.keys(counts).some((id) => !known.has(id) && !mat[id])) mat = await materialList(sk, ts, true);
-      g.rows = rowsFor(needGame, counts, mat);
+      g.rows = rowsFor(needRows, counts, mat);
       g.gameLevel = (d.userGameData || {}).gameLevel;
     } catch (e) { g["错误"] = e.message; }
     return g;
@@ -158,6 +188,6 @@
     return t && t.sk ? "森空岛" : "";
   }
 
-  Object.assign(Inventory, { refresh, loadNeed, needFor, rowsFor, flattenMaterials, servingsOf, status });
+  Object.assign(Inventory, { refresh, loadNeed, needFor, rowsFor, flattenMaterials, servingsOf, status, standards, setStandard, chosenStandard });
   window.Inventory = Inventory;
 })();
