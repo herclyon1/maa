@@ -306,6 +306,34 @@ band — `keyfill-highlight.md` §2, not part of these maps — as the only rema
 the native's signs at 0.5–0.75 of its size on the checked rows (the right end's B−G at 6.4 pt reads 0.01 against 0.59). Left
 as is; nothing adjusted. Neighbouring text 8 pt from the control is not pulled in (native neither, `seg-neighbors-light-hold.png`).
 
+**The composition formula of the old page's 单 b (2026-09-19, formula.md §3b.2 %170–%199 + §3b.6):** screen = e·edr·(R/2, G/3, B/2)
++ (1 − e)·below, e = saturate((d + 8.8)/8.8)·[depth < 24.44] (d = the capsule SDF, negative inside), R/G/B the 7-tap sums, w ≡ 1,
+cov 1, ΣA/7 1, edr_scale 1 — the chain above is this formula term for term (nothing added). Its check against the A1 PNG at
+the native's 3 px/pt (our render box-filtered 6 → 3 px/pt; the outer 12 pt of both ends; the three candidates the old page
+listed for a saturation above the native's, each rendered on its own — none adopted):
+
+| | share of the outer 12 pt | mean / median saturation (max − min, px > 40) | coloured px per 2-pt bin from the edge, left / right |
+|---|---|---|---|
+| native A1 light (dark) | 1.36 % (1.38 %) | 69 / 62 (71 / 63) | 629 383 130 / 714 519 193 |
+| **the formula** (α = e, three taps per side, W/H 1.72) light (dark) | 0.64 % (0.57 %) | 93 / 81 (88 / 77) | 66 39 9 / 135 47 11 |
+| ① e as a mask (band 1) | 0.89 % | 99 / 84 | 73 50 33 16 / 140 57 28 32 |
+| ② one tap for R and B (k = 1 only) | 0.80 % | 113 / 104 | 81 49 12 / 160 62 15 |
+| ③ W/H = 220/44 = 5 | 0.78 % | 102 / 92 | 96 23 4 / 186 51 18 |
+| the chain off | 0 % | — | 0 / 0 |
+
+Every candidate raises the saturation further, so none of the three is the difference. What the numbers say instead: (a) the
+colour order per streak is the native's — right end blue above / yellow below, left end yellow above / blue below, per 2-pt
+row at both ends; (b) with the chain off the ends carry no colour at all, i.e. every coloured pixel comes from the chain, and
+the native has ten times as many of them in the first 2 pt of the rim (629 / 714 against 66 / 135): the native's rim line runs
+round the whole capsule over uniform track and page — the taps there straddle the luminance step of the glass material at the
+rim (glassBackground's inner shadow / ring shadow / face tone, layers 3 of §4b: the foreground's source), which the test page's
+stack does not have (its track continues unchanged across the rim); (c) the pixels we do have are the label fragments' edges
+(black on white) and they read more saturated per pixel than the native's strongest (219 against 163 at the same 3 px/pt) while
+our per-channel offsets on the bars are 0.5–0.75 of the native's — a sharper sampling of a smaller shift, not a larger shift.
+So the two summary numbers (1.4 %, 69) are numbers of the fringe on the material stack; on this test page they cannot be
+reached by the chain and are not. The old page's check point (EdgeStart −8.8 → −17.6 doubles the band, e at 4.4 pt .5 → .75,
+Δ unchanged) holds in the maps by construction (B = e; `--edge=-17.6/0/1/0`).
+
 Frame interval, headless Chrome 440×956 @3x, software raster (`scratchpad/frames_chrome.py`, 自动拖 2 s, 120 frames):
 without the chain 16.9–17.1 ms mean (max 50–67, 1 frame > 20 ms), with the chain 16.9 ms (max 33, 2 frames > 20 ms) — 60 Hz in
 both; the simulator Safari number waits for the data session.
