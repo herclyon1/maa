@@ -108,19 +108,18 @@
     const tile = document.querySelector(".tile");
     if (tile) {
       const r = tile.getBoundingClientRect();
-      num("动作磁贴高 ≥ 80.33（--ios-tile-h，AX-57）", 80.33, Math.min(r.height, 80.33)); num("动作磁贴圆角 16（--ios-tile-radius-SAMPLED 采样替代）", 16, px(cs(tile).borderTopLeftRadius));
+      num("动作磁贴高 ≥ 80.33（--ios-tile-h，AX-57）", 80.33, Math.min(r.height, 80.33)); num("动作磁贴圆角 16（--ios-tile-radius，提醒事项 layer.cornerRadius）", 16, px(cs(tile).borderTopLeftRadius));
       num("磁贴间距 8（--ios-tile-gap）", 8, px(cs(tile.parentElement).columnGap));
-      const ico = tile.querySelector(".tico"); if (ico) num("磁贴图标圆 28（待 tokens）", 28, ico.getBoundingClientRect().width);
-      num("磁贴标题 15（--ios-sub-size）", 15, px(cs(tile.querySelector(".ttitle") || tile).fontSize), 0.05);
+      const ico = tile.querySelector(".tico"); if (ico) { const ir = ico.getBoundingClientRect(); num("磁贴徽章 48（--ios-tile-icon）", 48, ir.width); num("磁贴徽章 x 6（--ios-tile-icon-x）", 6, ir.left - r.left); num("磁贴徽章 y 2（--ios-tile-icon-y）", 2, ir.top - r.top); }
+      const tt = tile.querySelector(".ttitle"); if (tt) { const tr = tt.getBoundingClientRect(); num("磁贴标题 17（--ios-tile-label-size）", 17, px(cs(tt).fontSize), 0.05); num("磁贴标题行框 20.33（--ios-tile-label-lh）", 20.33, px(cs(tt).lineHeight), 0.05); check("磁贴标题字重 600（--ios-tile-label-weight）", 600, cs(tt).fontWeight, String(cs(tt).fontWeight) === "600"); num("磁贴标题 x 12（--ios-tile-label-x）", 12, tr.left - r.left); num("磁贴标题 y 52（--ios-tile-label-top）", 52, tr.top - r.top); check("磁贴字族 ui-rounded 优先（--ios-tile-number-font）", "ui-rounded", cs(tt).fontFamily.slice(0, 10), /^ui-rounded/.test(cs(tt).fontFamily)); }
     }
     const numT = document.querySelector(".num");
     if (numT) {
       const r = numT.getBoundingClientRect();
-      num("数字磁贴高 ≥ 80.33（--ios-tile-h）", 80.33, Math.min(r.height, 80.33)); num("数字磁贴圆角 16（--ios-tile-radius-SAMPLED 采样替代）", 16, px(cs(numT).borderTopLeftRadius));
-      const bigEl = numT.querySelector(".big"); if (bigEl) num("数字磁贴数字右内缩 12（--ios-tile-number-inset）", 12, r.right - bigEl.getBoundingClientRect().right);
-      const ico = numT.querySelector(".nico"); if (ico) num("数字磁贴图标圆 32（待 tokens）", 32, ico.getBoundingClientRect().width);
-      const big = numT.querySelector(".big"); if (big) num("数字磁贴大数字号 24（待 tokens）", 24, px(cs(big).fontSize), 0.1);
-      const lab = numT.querySelector(".lab"); if (lab) num("数字磁贴名字字号 15（--ios-sub-size）", 15, px(cs(lab).fontSize), 0.1);
+      num("数字磁贴高 ≥ 80.33（--ios-tile-h）", 80.33, Math.min(r.height, 80.33)); num("数字磁贴圆角 16（--ios-tile-radius）", 16, px(cs(numT).borderTopLeftRadius));
+      const big = numT.querySelector(".big"); if (big) { const br = big.getBoundingClientRect(); num("数字右内缩 10（--ios-tile-number-inset）", 10, r.right - br.right); num("数字顶 9（--ios-tile-number-top）", 9, br.top - r.top); num("数字字号 28（--ios-tile-number-size）", 28, px(cs(big).fontSize), 0.1); num("数字行框 33.67（--ios-tile-number-lh）", 33.67, px(cs(big).lineHeight), 0.05); check("数字字重 700（--ios-tile-number-weight）", 700, cs(big).fontWeight, String(cs(big).fontWeight) === "700"); }
+      const ico = numT.querySelector(".nico"); if (ico) num("数字磁贴徽章 48（--ios-tile-icon）", 48, ico.getBoundingClientRect().width);
+      const lab = numT.querySelector(".lab"); if (lab) { const lr = lab.getBoundingClientRect(); num("数字磁贴标签 17（--ios-tile-label-size）", 17, px(cs(lab).fontSize), 0.1); num("数字磁贴标签 x 12（--ios-tile-label-x）", 12, lr.left - r.left); num("数字磁贴标签 y 52（--ios-tile-label-top）", 52, lr.top - r.top); }
     }
     /* 2026-09-18: the device card is a Settings value row (46 Apple 账户页), no icon. */
     const dev = document.querySelector(".devcard");
@@ -135,7 +134,8 @@
       num("分段控件高 32（--ios-segment-h）", 32, r.height); num("分段控件圆角 16（--ios-segment-radius）", 16, px(cs(segc).borderTopLeftRadius));
       num("分段控件宽 = 卡片宽", innerWidth - 40, r.width);
       const lens = segc.querySelector(".lens"), b = segc.querySelector("button");
-      if (lens) { num("分段透镜高 28（--ios-segment-lens-h）", 28, lens.getBoundingClientRect().height); num("分段透镜圆角 14（--ios-segment-lens-radius）", 14, px(cs(lens).borderTopLeftRadius)); num("分段透镜内缩 2（--ios-segment-lens-pad）", 2, lens.getBoundingClientRect().top - r.top); }
+      if (lens) { num("分段透镜高 28（--ios-segment-lens-h）", 28, lens.getBoundingClientRect().height); num("分段透镜圆角 14（--ios-segment-lens-radius）", 14, px(cs(lens).borderTopLeftRadius)); num("分段透镜内缩 2（--ios-segment-lens-pad）", 2, lens.getBoundingClientRect().top - r.top);
+        const lbf = cs(lens).backdropFilter || cs(lens).webkitBackdropFilter || ""; check("分段透镜 blur 2（--ios-lens-blur）", "blur(2px)", (/blur\([\d.]+px\)/.exec(lbf) || [])[0], /blur\(2px\)/.test(lbf)); }
       if (b) { num("分段文字 13（--ios-segment-label-size）", 13, px(cs(b).fontSize), 0.05); check("分段选中字重 500（--ios-medium-weight）", 500, cs(segc.querySelector("button.on") || b).fontWeight, String(cs(segc.querySelector("button.on") || b).fontWeight) === "500"); }
     }
     /* The confirm alert (closed, but its computed geometry is there) */
@@ -143,6 +143,13 @@
     if (alert) {
       num("弹窗宽 320（--ios-alert-w）", 320, px(cs(alert).width)); num("弹窗圆角 34（--ios-alert-radius）", 34, px(cs(alert).borderTopLeftRadius));
       const ab = alert.querySelector(".acts button"); if (ab) { num("弹窗按钮高 48（--ios-alert-button-h）", 48, px(cs(ab).height)); num("弹窗按钮圆角 24（--ios-alert-button-radius）", 24, px(cs(ab).borderTopLeftRadius)); }
+      /* materials (deep probe round): glass = blur 5 + saturate 1.2 + white lift .147; dimming .2 / .48 */
+      const bf = (el) => cs(el).backdropFilter || cs(el).webkitBackdropFilter || "";
+      check("弹窗玻璃 blur 5（--ios-glass-blur）", "blur(5px)", (/blur\(([\d.]+)px\)/.exec(bf(alert)) || [])[0], /blur\(5px\)/.test(bf(alert)));
+      check("弹窗玻璃 saturate 1.2（--ios-glass-saturate）", "saturate(1.2)", (/saturate\(([\d.]+)\)/.exec(bf(alert)) || [])[0], /saturate\(1\.2\)/.test(bf(alert)));
+      col("弹窗叠白 .147（--ios-glass-lift）", [255, 255, 255, .147], cs(alert).backgroundColor);
+      col("弹窗遮罩（--ios-dimming）", dark ? [0, 0, 0, .48] : [0, 0, 0, .2], varColor("--ios-dimming", probe));
+      const dbtn = alert.querySelector(".acts button:not(.primary)"); if (dbtn) col("弹窗按钮填色 = 矩阵 e −.12 / +.11（--ios-alert-button-offset）", dark ? [255, 255, 255, .11] : [0, 0, 0, .12], cs(dbtn).backgroundColor);
     }
     /* Tab bar: hidden when the snapshot has a single tab (nav.hidden = present.size < 2);
        measure a synthetic one then, so the run does not depend on the data. */
@@ -172,6 +179,12 @@
         if (lb) { const rg = document.createRange(); rg.selectNodeContents(lb); const lr = rg.getBoundingClientRect(); num("标签文字顶 = 胶囊顶 + 39（--ios-tab-label-top）", 39, lr.top - r.top, 1.5); }
       }
       const ico = seg.querySelector(".ico"); if (ico) num("标签符号框 28（--ios-tab-symbol-box，探针 27–31）", 28, ico.getBoundingClientRect().height);
+      const segbf = cs(seg).backdropFilter || cs(seg).webkitBackdropFilter || "";
+      check("标签栏平台玻璃 blur 5（--ios-glass-blur）", "blur(5px)", (/blur\([\d.]+px\)/.exec(segbf) || [])[0], /blur\(5px\)/.test(segbf));
+      const gl = seg.querySelector(".glide"); if (gl) { const gbf = cs(gl).backdropFilter || cs(gl).webkitBackdropFilter || "";
+        check("标签栏选中透镜 blur 2（--ios-lens-blur）", "blur(2px)", (/blur\([\d.]+px\)/.exec(gbf) || [])[0], /blur\(2px\)/.test(gbf));
+        col("标签栏选中透镜叠黑 = 矩阵 e（--ios-lens-offset）", dark ? [0, 0, 0, .07] : [0, 0, 0, .2], cs(gl).backgroundColor);
+        check("透镜滑动 0.55 s（--ios-motion-lens-duration，dampingRatio .85 / response .4）", "0.55s", cs(gl).transitionDuration.split(",")[0].trim(), /^0\.55s/.test(cs(gl).transitionDuration)); }
     }
     if (fakeNav) fakeNav.remove();
     const top = document.querySelector(".topbar");

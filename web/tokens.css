@@ -5,7 +5,7 @@
  *   AX-<n>   = remote-ref/<n>-ax.json (system-app accessibility frames)
  *   NUMBERS n = ~/Claude/hig-kit/NUMBERS.md line n
  *   pixel <n> = darkest pixel inside the AX frame on remote-ref/<n>-*.png
- *   !!! SAMPLED !!! (采样替代) = no original value; fitted/sampled — see the block at the end, keep it marked red in the UI notes
+ *   (no SAMPLED entries remain after the deep rounds ⑥/⑦ — every value below has a read source)
  */
 :root {
   /* ---- type ---- */
@@ -176,6 +176,12 @@
   --ios-grabber-top: 5px;
   /* probe UIScreen._displayCornerRadius */
   --ios-display-radius: 62px;
+  /* ORIGINAL (deep round): UIDropShadowView._preferredCornerRadii = top 38 / bottom 54 (UIRectCornerRadii topLeft 38, bottomLeft 54, bottomRight 54, topRight 38);
+   * _environmentCornerRadii 62 = the display corner, bottom 54 = 62 − 8 inset (concentric). The curve fit (38) is superseded. */
+  --ios-sheet-radius-top: 38px;
+  --ios-sheet-radius-bottom: 54px;
+  /* ORIGINAL: the sheet's content is laid out 440×515.67 and drawn with transform scale 0.9636 (424/440) — grabber 60×4 at y 6 before the scale */
+  --ios-sheet-content-scale: 0.9636;
 
   /* ---- picker wheel (probe uiprobe-pickers.json; AX-32b/33c) ---- */
   --ios-picker-w: 320px;
@@ -268,17 +274,17 @@
   --ios-menu-separator-h: 21px;
   --ios-menu-separator-line: rgb(230 230 230);
   --ios-menu-separator-inset: 8px;
-  /* Kit 89: menu/alert glass = white 70 % + #bfbfbf 10 % + blur 30 — SAMPLED, see the end block; tab-item minimum width: no source → not set */
+  /* menu material: not measured (the probe has no UIMenu yet) — the alert's glass recipe below is the closest ORIGINAL; tab-item minimum width: no source → not set */
 
   /* ---- motion (spec-extract.md ⑤: swizzled CAAnimation parameters + per-frame presentation traces, 60 Hz simulator) ----
    * CSS cannot run a spring, so each curve is sampled into linear() over its settle duration (tools/uiprobe/motion_tokens.py) */
-  /* critical ω21 (probe trace; recording ω20–20.5) */
+  /* ORIGINAL: UIViewSpringAnimationBehavior dampingRatio 1, response 0.3 (-[UISwitchModernVisualElement _transitionKnobToPressed:on:animated:]) → ω = 2π/0.3 = 20.94; probe trace ω21, recording ω20–20.5 agree */
   --ios-motion-switch-knob-duration: 0.35s;
-  --ios-motion-switch-knob-easing: linear(0.000, 0.038, 0.126, 0.234, 0.346, 0.453, 0.548, 0.632, 0.702, 0.761, 0.810, 0.850, 0.881, 0.907, 0.927, 0.943, 0.956, 0.966, 0.974, 0.980, 0.984, 0.988, 0.991, 0.993, 1.000);
+  --ios-motion-switch-knob-easing: linear(0.000, 0.038, 0.125, 0.233, 0.345, 0.451, 0.547, 0.630, 0.701, 0.760, 0.809, 0.849, 0.881, 0.906, 0.927, 0.943, 0.956, 0.966, 0.973, 0.979, 0.984, 0.988, 0.991, 0.993, 1.000);
 
-  /* segmented/tab-bar lens, ω17.5 ζ0.9 (probe trace, private) */
-  --ios-motion-lens-duration: 0.52s;
-  --ios-motion-lens-easing: linear(0.000, 0.057, 0.183, 0.331, 0.475, 0.601, 0.706, 0.790, 0.853, 0.901, 0.935, 0.959, 0.975, 0.986, 0.993, 0.997, 1.000, 1.001, 1.001, 1.002, 1.001, 1.001, 1.001, 1.001, 1.000);
+  /* ORIGINAL: UIViewSpringAnimationBehavior dampingRatio 0.85, response 0.4 (UISegmentedControl _updateSelectionToSegment / UITabBar setSelectedItem) → ω 15.71, bounce 0.15; trace fit ω17.5 ζ0.9 was the sampled stand-in */
+  --ios-motion-lens-duration: 0.55s;
+  --ios-motion-lens-easing: linear(0.000, 0.053, 0.172, 0.316, 0.460, 0.590, 0.700, 0.788, 0.856, 0.907, 0.943, 0.969, 0.985, 0.996, 1.002, 1.005, 1.006, 1.006, 1.006, 1.005, 1.004, 1.003, 1.002, 1.002, 1.000);
 
   /* CASpringAnimation k522.4 c45.71 m1 → ω22.86 ζ1 (logged; trace ω23) */
   --ios-motion-alert-duration: 0.40s;
@@ -322,6 +328,13 @@
   --ios-motion-sheet-damping: 36.51;
   --ios-motion-alert-stiffness: 522.4;
   --ios-motion-alert-damping: 45.71;
+  /* ORIGINAL (deep round, spec-extract ⑥): UIKit's UIViewSpringAnimationBehavior for the lenses — response = perceptual duration (s), dampingRatio */
+  --ios-motion-switch-knob-response: 0.3;
+  --ios-motion-switch-knob-damping-ratio: 1;
+  --ios-motion-lens-response: 0.4;
+  --ios-motion-lens-damping-ratio: 0.85;
+  /* UITabBar also starts a second behavior (dampingRatio 0.85, response 0.6) on the same tap; which property it drives was not identified */
+  --ios-motion-tab-secondary-response: 0.6;
 
   /* ---- added 09-18 pm for the status page (界面会话 questions) ---- */
   /* probe UISwitch: knob container 37 wide at pad 2 inside the 63 track → travel 63 − 37 − 2×2 = 22 (probe on-state x +24 = 2 + 22) */
@@ -339,34 +352,70 @@
   --ios-value-box-radius: 8px;
   --ios-value-box-pad-y: 6px;
   --ios-value-box-pad-x: 11px;
-  /* AX-57 Reminders home smart-list tiles: 196×80.33, columns x 20 / 224 (gap 8), row pitch 88.33; contents by pixel (57-reminders-home-tiles.png):
-   * icon glyph 26.67×24.67 at (16.67,13.67), number glyph 15.67×20.33 at right inset 12 / top 15.67, label glyph 15 tall at (13,55) — SAMPLED fonts */
+  /* AX-57 Reminders home smart-list tiles: 196×80.33, columns x 20 / 224 (gap 8), row pitch 88.33 (the tile CONTENT values are ORIGINAL, see the Reminders block below) */
   --ios-tile-w: 196px;
   --ios-tile-h: 80.33px;
   --ios-tile-gap: 8px;
-  --ios-tile-icon-x: 16.67px;
-  --ios-tile-icon-y: 13.67px;
-  --ios-tile-number-inset: 12px;
-  --ios-tile-number-top: 15.67px;
-  --ios-tile-label-x: 13px;
-  --ios-tile-label-bottom: 10.33px;
   /* AX-58 Messages conversation list UnreadIndicatorImageView (7.33, 240.33, 11, 11): status dot 11 pt, x 7.33 from the screen edge,
    * vertically centred on the row; colour by pixel (0,136,255) = tint */
   --ios-status-dot: 11px;
   --ios-status-dot-x: 7.33px;
 
-  /* ======== !!! SAMPLED (采样替代) — no original value yet, mark red wherever used ======== */
-  /* !!! SAMPLED !!! Reminders tile corner ≈ 15.5–16 (continuous-curve fit on 57-reminders-home-tiles.png, rmse 0.27 px); tile number ≈ 28 pt bold and label ≈ 17 pt are inferred from glyph heights (20.33 / 15) */
-  --ios-tile-radius-SAMPLED: 16px;
-  /* !!! SAMPLED !!! sheet corner: continuous-corner curve fit on tools/uiprobe/probe-sheet.png, rmse 0.8 px (NUMBERS 60 old measurement 38 agrees; Kit's 34 does not) */
-  --ios-sheet-radius-SAMPLED: 38px;
-  /* !!! SAMPLED !!! alert background material: Kit 89 "white 70 % + #bfbfbf 10 % + blur 30"; probe cannot read _UIAlertBackground */
-  --ios-alert-material-SAMPLED: rgb(255 255 255 / .7);
-  --ios-alert-blur-SAMPLED: 30px;
-  /* !!! SAMPLED !!! lens MOTION (segmented / tab-bar selection slide, switch knob): private _UILiquidLensView (CAMatchMove, no duration);
-   * --ios-motion-lens-* and --ios-motion-switch-knob-* above are fits of the probe's own per-frame traces (rmse ≤ 0.006), not read parameters */
-  /* !!! SAMPLED !!! glass lenses (segmented knob, tab bar lens, nav platter): private _UILiquidLensView, nothing read;
-   * Kit 85 says only "glass knob", NUMBERS 64 "selected white + 20 blur shadow" — no numeric recipe, so no variable is set on purpose */
+  /* ---- materials, ORIGINAL (deep round: CAFilter inputs / SDF effects read off the layers, remote-ref/deep-materials.md) ----
+   * CoreAnimation's glassBackground / gaussianBlur / vibrantColorMatrix have no exact CSS twin; the numbers are the originals, the
+   * backdrop-filter lines are the nearest CSS mapping (blur radius = inputRadius in pt; colour matrix e-column = additive offset) */
+  /* alert / glass button: UISDFBackdropView filter glassBackground inputBlurRadius 5; SDF vibrantColorMatrix ≈ saturate 1.2 + 0.147 (light and dark the same) */
+  --ios-glass-blur: 5px;
+  --ios-glass-saturate: 1.2;
+  --ios-glass-lift: 0.147;
+  /* sheet: glassBackground inputBlurRadius 4, plus a white _UIVisualEffectBackgroundView with vibrantColorMatrix offset +0.48 (light) / +0.12 (dark) */
+  --ios-sheet-blur: 4px;
+  --ios-sheet-white: 0.48;
+  /* sheet grabber: _UIVisualEffectBackdropView gaussianBlur inputRadius 30 + colorMatrix offset −0.228 (light) / +0.275 (dark) — a luma-tracking pill */
+  --ios-grabber-blur: 30px;
+  --ios-grabber-offset: -0.228;
+  /* tab-bar / segmented selection lens: _UITabSelectionView CABackdropLayer gaussianBlur inputRadius 2 + colorMatrix (light: ≈ saturate 1.19, offset −0.2; dark: 1.13/0.96, offset −0.07);
+   * CASDFGlassDisplacementEffect curvature 1; ClearGlass displacementMap inputAmount 0 at rest */
+  --ios-lens-blur: 2px;
+  --ios-lens-offset: -0.2;
+  --ios-lens-saturate: 1.19;
+  /* alert button fill: white _UIVisualEffectBackgroundView + vibrantColorMatrix offset −0.12 (light) / +0.11 (dark) */
+  --ios-alert-button-offset: -0.12;
+  /* vibrancy of text on glass (vibrantColorMatrix e-column): label −1 (=black) / +0.95 dark; secondary −0.4 / +0.3; unselected tab icon: 0.312·gray −0.25 */
+  --ios-vibrancy-label: -1;
+  --ios-vibrancy-secondary: -0.4;
+  /* SDF highlight (CASDFKeyFillHighlightEffect, same on alert / sheet / buttons): curvature 0.75, key/fill amount 0.5, spread 1.534–1.571 rad, colour white,
+   * diffuse height 8, spread 0.65, amount 0.15 — rim lights; no CSS equivalent, listed in deep-materials.md */
+  --ios-glass-highlight-curvature: 0.75;
+  --ios-glass-highlight-amount: 0.5;
+  /* nav bar: NavigationBarTransitionContainer gaussianBlur (radius not set = 0 at rest); menu material NOT measured (no UIMenu in the probe yet) */
+  /* ---- Reminders smart-list tile, ORIGINAL (deep round ⑦: tools/inject/libinjectdump.dylib inserted into com.apple.reminders with
+   * SIMCTL_CHILD_DYLD_INSERT_LIBRARIES; tools/inject/inject-com.apple.reminders-6s.json) ----
+   * RemindersUICore …FillView 196×80.33, layer.cornerRadius 16 continuous, backgroundColor = list colour (今天 systemBlue (0,136,255),
+   * 计划 systemRed (255,56,60), 全部 (0,0,0), 旗标 systemOrange (255,141,40), 紧急 (255,41,104), 完成 (88,103,113)) */
+  --ios-tile-radius: 16px;
+  /* TTRListBadgeView (icon) 48×48 at (6, 2) inside the tile; the 64×64 badge image inside it */
+  --ios-tile-icon: 48px;
+  --ios-tile-icon-x: 6px;
+  --ios-tile-icon-y: 2px;
+  /* number: UILabel .SFUIRounded-Bold 28 (UICTFontTextStyleTitle1, weight .4), frame 33.67 high at y 9, right edge = tile right − 10; white */
+  --ios-tile-number-size: 28px;
+  --ios-tile-number-lh: 33.67px;
+  --ios-tile-number-top: 9px;
+  --ios-tile-number-inset: 10px;
+  --ios-tile-number-font: ui-rounded, -apple-system, "SF Pro Rounded", "PingFang SC", sans-serif;
+  --ios-tile-number-weight: 700;
+  /* label: UILabel .SFUIRounded-Semibold 17 (UICTFontTextStyleHeadline), frame 20.33 high at (12, 52), width 174; white */
+  --ios-tile-label-size: 17px;
+  --ios-tile-label-lh: 20.33px;
+  --ios-tile-label-x: 12px;
+  --ios-tile-label-top: 52px;
+  --ios-tile-label-weight: 600;
+  /* the two Reminders list rows below the tiles (same dump): 建议列表 row 70 high, list row 62 high, icon 32 at x 20 in the card, text x 68,
+   * text .SFUIRounded-Regular 17 (Body), sub .SFUIRounded-Regular 13 (Footnote) secondaryLabel; group header "我的列表" .SFUIRounded-Bold 22 (EmphasizedTitle2) at (20,10) in a 46.33 header */
+  --ios-reminders-list-row-h: 62px;
+  --ios-reminders-header-h: 46.33px;
+  --ios-reminders-header-size: 22px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -397,8 +446,6 @@
     --ios-spinner: rgb(235 235 245 / .6);
     /* probe list-dark scroll indicator */
     --ios-scrollbar: rgb(255 255 255 / .5);
-    /* dimming not re-read in dark (sheet dump is light only); keep light value */
-    --ios-dimming: rgb(0 0 0 / .2);
     /* probe dark column: orange/yellow/fills/grays/tertiary grouped bg/tab labels */
     --ios-orange: rgb(255 146 48);
     --ios-yellow: rgb(255 214 0);
@@ -414,9 +461,17 @@
     --ios-tab-label-selected: rgb(0 145 255);
     --ios-tab-label: rgb(255 255 255);
     /* --ios-menu-separator-line: Kit gives the light value only — not set */
+    /* deep round dark values (uiprobe-deep-*-dark.json) */
+    --ios-dimming: rgb(0 0 0 / .48);
+    --ios-sheet-white: 0.12;
+    --ios-grabber-offset: 0.275;
+    --ios-lens-offset: -0.07;
+    --ios-lens-saturate: 1.13;
+    --ios-alert-button-offset: 0.11;
+    --ios-vibrancy-label: 0.95;
+    --ios-vibrancy-secondary: 0.3;
     /* probe systemGray is the same in both modes */
     --ios-empty-text: rgb(142 142 147);
     /* --ios-settings-subtitle: no dark pixel sample yet (Settings not captured in dark) — not set on purpose */
-    /* --ios-*-material-SAMPLED: no dark recipe in the Kit either — not set on purpose */
   }
 }
