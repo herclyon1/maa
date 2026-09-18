@@ -1200,8 +1200,13 @@ function press(el, e, handlers) {
    - lift: +109 ms after the down (--ios-touch-segment-lift-delay ← §4.1 frames) ONE spring ζ 1 / response .25 s drives bounds 196×28 → 220×44,
      corner 14 → 22, the displacement amount (filter scale 0 → 32), the platter (1 → 0), the highlight — so here q = that spring's progress and every
      lifted quantity is a function of q. The DestOut punch-out's opacity is the §4.1 frame values (--ios-touch-segment-destout-keys).
-   - drag: on every finger move the lens position is set to the finger's x through ONE spring ζ .85 / .2 s (bounds stay 220×44; §4.4 差分 row 3,
-     flex-interaction.md §2 结构). The stretch while dragging (244×38.4, 253×36), the drift and the bounce after the up are UIKitCore's
+   - drag (flex-interaction.md §6, UIKitCore -[UISegmentedControl touchesMoved:] → _updateSelectionToSegment:): every move sets the lens centre
+     target to the tracked segment's centre + the finger's accumulated delta since the touch down (locationInView only — no predicted / coalesced
+     touches; pressed at the centre this is the finger's x), through ONE spring behaviour ζ .85 / response .2 s created anew per move and continuing
+     from the current value and velocity; the touch is delivered with the next display frame, the behaviour is committed with that frame and starts on
+     the one after (§6: "新目标下一帧起效"; §6 复算 1-frame delay in its frame count rms 1.8 pt, 0 or 2 ≈ 9) — see the tick for how the page stages a move. The on-screen centre = this spring + the flex drift (1 − sX)·W/2 — the slow start and the
+     run past the finger after it stops are that drift, not a latency constant. Beyond the end segments' centres the native applies a rubber band
+     12·(1 − 1/(1 + c·x/12)) whose c is unread (0x1c571a4e8 / 0x1c5718380) — here the target is clamped to those centres (等原理). The stretch while dragging (244×38.4, 253×36), the drift and the bounce after the up are UIKitCore's
      _UIFlexInteraction on the lens's presentation transform (flex-interaction.md; FLEX_VARIANT / flexSpec / flexIntegrator / flexTargets below);
      its "tracking" springs ζ .6533 / .4559 (dragging) and ζ .56 / .444 (196×28) are what the probe saw retargeting every frame (§4.4 row 4) — they
      drive scale / drift, not the position.
@@ -1289,7 +1294,7 @@ const SEG_RIM = (() => {
   const grey = (c) => { const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(c || ""); return m ? { r: +m[1], g: +m[2], b: +m[3], a: m[4] == null ? 1 : +m[4] } : null; };
   return { hlRings, angMain, angDiff, kfRings, kfK, NXS, MULT: 1 - .9118, ADD: .1471, COLOR_BIAS: -.3, grey };
 })();
-function segLens(seg, lens, bs) {
+function segLens(seg, lens, bs, downClientX) {
   if (seg.__lensLoop) seg.__lensLoop.stop();   // a new press ends the previous loop (its tail and its inline geometry)
   let warp = seg.querySelector(".warp"), warpl = seg.querySelector(".warpl"), plat = seg.querySelector(".plat"), rimb = seg.querySelector(".rimb"), hls = [...seg.querySelectorAll(".hlk, .hlw")];
   const mk = (cls, inner) => { const d = document.createElement("div"); d.className = cls; d.innerHTML = inner; seg.appendChild(d); return d; };
@@ -1358,7 +1363,8 @@ function segLens(seg, lens, bs) {
   const destDelay = touchMs("--ios-touch-segment-release-destout-delay", 198) / 1000;
   const K_LIFT_DEST = cssKeys("--ios-touch-segment-destout-keys", SEG_LIFT_DESTOUT), K_DEST = cssKeys("--ios-touch-segment-release-destout-keys", SEG_DROP_DESTOUT.filter(([t]) => t >= .198).map(([t, v]) => [t - .198, v]));
   const destEnd = destDelay + K_DEST[K_DEST.length - 1][0];
-  const st = { t0: performance.now(), prev: performance.now(), rel: null, raf: 0, done: false, dragged: false, cx: null, rest: idx0, pr: 0,
+  const downX = (typeof downClientX === "number" ? downClientX : NaN) - seg.getBoundingClientRect().left;   // the touch-down x in control coordinates (the drag delta's origin, §6 _dragDelta)
+  const st = { t0: performance.now(), prev: performance.now(), rel: null, raf: 0, done: false, dragged: false, cx: null, pending: null, staged: null, rest: idx0, pr: 0,
                sL: { x: 0, v: 0 }, sM: { x: 1, v: 0 }, pos: { x: restCentre(idx0), v: 0 }, geo: null,   // pos = the lens position (one spring; the flex drift rides on top of it in the transform)
                flex: { vi: flexIntegrator(), sx: { x: 1, v: 0 }, sy: { x: 1, v: 0 }, dx: { x: 0, v: 0 }, out: { sx: 1, sy: 1, dx: 0 } } };   // B5: the flex interaction's integrator and its three animatable floats
   const setGeo = (left, top, w, h) => {
@@ -1401,7 +1407,15 @@ function segLens(seg, lens, bs) {
     if (st.rel == null) {
       const tl = (now - st.t0) / 1000 - liftDelay;   // time since the lift started (+109 ms)
       if (tl > 0) springStep(st.sL, 1, SEG_SPRING.lift, dt);
-      if (st.dragged && st.cx != null) springStep(st.pos, st.cx, SEG_SPRING.model, dt);   // B5-b: the position is ONE spring ζ .85 / .2 s retargeted to the finger on every move (§4.4 差分 row 3: position set to the finger x through this behavior; flex-interaction.md §2 结构) — the ζ .6533/.4559 tracking spring belongs to the flex floats, not to the position
+      if (st.dragged && st.cx != null) springStep(st.pos, st.cx, SEG_SPRING.model, dt);   // B5-b: the position is ONE spring ζ .85 / .2 s continuing from its value and velocity at every retarget (§6 retarget 语义) — the ζ .6533/.4559 tracking spring belongs to the flex floats, not to the position
+      /* B5-c time base (flex-interaction.md §6): a touch is delivered to the app with the display frame after it happens, the handler's new spring behaviour is
+         committed with that frame's transaction and AnimationKit starts it on the next frame — so the first moved frame is two frames after the frame the
+         touch arrived in. Pointer events reach this page at once (not per frame), so a move is staged at the first tick after it (= delivered and committed)
+         and becomes the spring's target at the second (= the behaviour running); the interval before that is still integrated with the old target.
+         Replay on seg-native-abc-frames.json (dragsim_ours.py, native centre − native flex drift, frames where the native value changed): one stage rms 14.2,
+         this (two) 7.2 with the changed frames within 3 pt, three 10.5. */
+      if (st.staged != null) { st.cx = st.staged; st.staged = null; }
+      if (st.pending != null) { st.staged = st.pending; st.pending = null; }
       p = clamp01(st.sL.x); pd = tl <= 0 ? 0 : Math.max(p > 0 ? tabAt(K_LIFT_DEST, tl) : 0, p > 0.5 ? 1 : 0);   // --ios-touch-segment-destout-keys (first 3 frames)
       st.pr = p; moving = true;
     } else {
@@ -1424,9 +1438,10 @@ function segLens(seg, lens, bs) {
     frame(p, pd); st.raf = requestAnimationFrame(tick);
   };
   const loop = {
-    drag: (clientX) => {   // a finger move: the model position is set to the finger's x (clamped to the outer segments' centres) — §4.4 row 3
+    drag: (clientX) => {   // a finger move (§6): target = the pressed segment's centre + (finger x − touch-down x), effective two ticks on (see tick); clamped to the outer centres (the native rubber band's c is unread)
       if (st.rel != null || st.done) return;
-      st.cx = Math.max(restCentre(0), Math.min(restCentre(n - 1), clientX - seg.getBoundingClientRect().left));   // retarget at once (no added latency: the native 35–47 ms touch → lens lag must come out of the position algorithm itself — being read by the old page session, seg-lens-refraction.md §4.4)
+      const x = clientX - seg.getBoundingClientRect().left, delta = Number.isNaN(downX) ? x - restCentre(idx0) : x - downX;
+      st.pending = Math.max(restCentre(0), Math.min(restCentre(n - 1), restCentre(idx0) + delta));
       if (!st.dragged) st.dragged = true;
     },
     release: (restIdx) => {   // every way out — up, out of bounds, pointercancel — falls the same way, to the rest rect of `restIdx`
@@ -1435,7 +1450,7 @@ function segLens(seg, lens, bs) {
     },
     stop: () => { cancelAnimationFrame(st.raf); if (!st.done) clear(); },
     step: (dtMs) => { if (!st.done) { cancelAnimationFrame(st.raf); tick(dtMs ? st.prev + dtMs : performance.now()); } },   // one frame by hand, optionally on a virtual clock (an offscreen WKWebView runs neither requestAnimationFrame nor timers at speed; the ?seghold hook drives it)
-    get state() { return { dragged: st.dragged, cx: st.cx, pos: st.pos.x, q: st.sL.x, rel: st.rel, done: st.done, flex: st.flex.out, accel: st.flex.vi.acceleration }; },
+    get state() { return { dragged: st.dragged, cx: st.cx, pending: st.pending, pos: st.pos.x, q: st.sL.x, rel: st.rel, done: st.done, flex: st.flex.out, accel: st.flex.vi.acceleration }; },
   };
   loop.cancel = loop.release;
   seg.__lensLoop = loop;
@@ -1467,7 +1482,7 @@ function attachSegmented(seg, getIndex, commit) {
     seg.dataset.pe = "1";
     if (!onSelected) bs[pressed].classList.add("dim");           // G15: only the label dims; no highlight, no lens move, no value
     else {
-      glass = lens ? segLens(seg, lens, bs) : null;                // the loop: glass, copies, geometry — the lift itself starts at +109 ms (G4/G16)
+      glass = lens ? segLens(seg, lens, bs, e.clientX) : null;     // the loop: glass, copies, geometry — the lift itself starts at +109 ms (G4/G16); the down x is the drag delta's origin (B5-c)
       liftTimer = setTimeout(() => { if (lens) lens.classList.add("lift"); seg.classList.add("drag"); }, touchMs("--ios-touch-segment-lift-delay", 109));   // 抬起 +109 ms 起动 ← seg-keys.css --ios-touch-segment-lift-delay（seg-lens-refraction §4.1）
     }
   };
