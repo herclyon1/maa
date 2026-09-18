@@ -1294,6 +1294,7 @@ const SEG_RIM = (() => {
   const grey = (c) => { const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(c || ""); return m ? { r: +m[1], g: +m[2], b: +m[3], a: m[4] == null ? 1 : +m[4] } : null; };
   return { hlRings, angMain, angDiff, kfRings, kfK, NXS, MULT: 1 - .9118, ADD: .1471, COLOR_BIAS: -.3, grey };
 })();
+const SEGX = (new URLSearchParams(location.search).get("segx") || "").split(",");   // ?segx switches (index.html hook; ios-switch-list.md): scale0 holds the displacement scale at 0
 function segLens(seg, lens, bs, downClientX) {
   if (seg.__lensLoop) seg.__lensLoop.stop();   // a new press ends the previous loop (its tail and its inline geometry)
   let warp = seg.querySelector(".warp"), warpl = seg.querySelector(".warpl"), plat = seg.querySelector(".plat"), rimb = seg.querySelector(".rimb"), hls = [...seg.querySelectorAll(".hlk, .hlw")];
@@ -1387,7 +1388,7 @@ function segLens(seg, lens, bs, downClientX) {
     const set = setFor(Math.max(W0 + 2 * LX, Wd));   // the model width (220 lifted; Wd is the model box — the flex transform is separate)
     if (set !== curSet) { curSet = set; disp.style.filter = `url(#seg-lens-f-bg-${set})`; displ.style.filter = `url(#seg-lens-f-lab-${set})`; }
     seg.style.setProperty("--lp", p.toFixed(4)); seg.style.setProperty("--lpd", pd.toFixed(4));
-    for (const id of [`#seg-lens-f-bg-${set}`, `#seg-lens-f-lab-${set}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", (sOf(id) * p).toFixed(3)); }   // both stacks' amounts on the lift spring (§4.4 row 2: ClearGlass 0 → −17.5, ContentLensing 0 → −8.8, BackdropView 0 → 9 in the same call)
+    for (const id of [`#seg-lens-f-bg-${set}`, `#seg-lens-f-lab-${set}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", SEGX.includes("scale0") ? "0" : (sOf(id) * p).toFixed(3)); }   // both stacks' amounts on the lift spring (§4.4 row 2: ClearGlass 0 → −17.5, ContentLensing 0 → −8.8, BackdropView 0 → 9 in the same call)
     cbs.forEach((c, i) => c.className = "cb " + bs[i].className);
     seg.classList.toggle("lift", p > 0 || pd > 0);
   };

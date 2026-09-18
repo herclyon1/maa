@@ -3819,6 +3819,19 @@
 { const q = new URLSearchParams(location.search);
   if (q.has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260919070000"; document.body.appendChild(s); }
   if (q.has("diag") || q.has("segframes")) { const s = document.createElement("script"); s.src = "seg-frames-logger.js"; document.body.appendChild(s); }
+  /* ?segx=a,b,… : layer / map switches for the simulator-standalone experiments (remote-ref/tools/webkit/b6/ios-switch-list.md). Works with or without
+     ?seghold. nowarp | norimb | nohl | nowarpl | noplat hide one lens layer (visibility, so the loop still runs); mapflat swaps every displacement map for
+     a 1×1 constant (128, 128, 255) = zero displacement, full coverage; maponlyr / maponlyg feed feDisplacementMap a copy of the map with G / R forced to
+     .5 (only x / only y displacement); scale0 makes the loop hold the displacement scale at 0 (view.js SEGX). */
+  if (q.has("segx")) { const sw = q.get("segx").split(",");
+    const css = []; if (sw.includes("nowarp")) css.push(".segctl .warp{visibility:hidden}"); if (sw.includes("norimb")) css.push(".segctl .rimb{visibility:hidden}");
+    if (sw.includes("nohl")) css.push(".segctl .hlk,.segctl .hlw{visibility:hidden}"); if (sw.includes("nowarpl")) css.push(".segctl .warpl{visibility:hidden}"); if (sw.includes("noplat")) css.push(".segctl .plat{visibility:hidden}");
+    if (css.length) { const st = document.createElement("style"); st.textContent = css.join("\n"); document.head.appendChild(st); }
+    if (sw.includes("mapflat")) for (const fi of document.querySelectorAll("filter[id^='seg-lens-f-'] feImage")) fi.setAttribute("href", "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mNoaPgPAAODAgA+WCglAAAAAElFTkSuQmCC");
+    const only = sw.includes("maponlyr") ? "r" : sw.includes("maponlyg") ? "g" : "";
+    if (only) for (const f of document.querySelectorAll("filter[id^='seg-lens-f-']")) { const fd = f.querySelector("feDisplacementMap"); if (!fd) continue;
+      const cm = document.createElementNS("http://www.w3.org/2000/svg", "feColorMatrix"); cm.setAttribute("in", "map"); cm.setAttribute("type", "matrix"); cm.setAttribute("result", "mapx");
+      cm.setAttribute("values", only === "r" ? "1 0 0 0 0  0 0 0 0 .5  0 0 1 0 0  0 0 0 1 0" : "0 0 0 0 .5  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"); fd.parentNode.insertBefore(cm, fd); fd.setAttribute("in2", "mapx"); } }
   /* ?seghold=1: the stopped-state gesture of remote-ref/seg-lens-drag-mid.md (down on the selected segment, 5 × 20 pt moves 16 ms apart to the divider,
      hold) run by the page itself once the control exists — for engines a script cannot drive from outside (wksnap offscreen WebKit, simulator Safari) */
   if (q.has("seghold")) { const go = () => { const seg = document.querySelector("#queueseg"); if (!seg) { setTimeout(go, 100); return; }
