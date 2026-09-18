@@ -12,12 +12,12 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="遥控">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260919002833">
+<link rel="manifest" href="manifest.webmanifest?v=20260919011715">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260919002833">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260919002833">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260919011715">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260919011715">
 <!-- 组件数字的正本：--ios-* 变量，每条带来源（探针原值 / AX 帧 / NUMBERS 行 / 取色 / 采样替代）。页面自己的变量只做映射，不再手写数字。 -->
-<link rel="stylesheet" href="tokens.css?v=20260919002833">
+<link rel="stylesheet" href="tokens.css?v=20260919011715">
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
      上面跑的」). System colours from Apple's palette: grouped background, white
@@ -644,14 +644,14 @@
   <div class="pnav"><button type="button" class="navbtn pback" aria-label="返回"></button><span class="ptitle"></span></div>
   <div class="pbody"></div>
 </div>
-<script src="schema.js?v=20260919002833"></script>
-<script src="net.js?v=20260919002833"></script>
-<script src="pending.js?v=20260919002833"></script>
-<script src="live.js?v=20260919002833"></script>
-<script src="stamina.js?v=20260919002833"></script>
-<script src="inventory.js?v=20260919002833"></script>
-<script src="view.js?v=20260919002833"></script>
+<script src="schema.js?v=20260919011715"></script>
+<script src="net.js?v=20260919011715"></script>
+<script src="pending.js?v=20260919011715"></script>
+<script src="live.js?v=20260919011715"></script>
+<script src="stamina.js?v=20260919011715"></script>
+<script src="inventory.js?v=20260919011715"></script>
+<script src="view.js?v=20260919011715"></script>
 <script>/* 验收脚本只在地址带 ?accept 时加载（docs/HIG-CHECKLIST.md 的验收程序）。 */
-if (new URLSearchParams(location.search).has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260919002833"; document.body.appendChild(s); }</script>
+if (new URLSearchParams(location.search).has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260919011715"; document.body.appendChild(s); }</script>
 </body>
 </html>
