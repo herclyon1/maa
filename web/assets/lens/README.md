@@ -17,6 +17,7 @@ compiled from the native per-frame recordings. Nothing here touches `view.js` / 
 | `lens-test.template.html` → `lens-test.html` | the test page (standalone metas; `?w=<width>` picks a set; drag / auto-drag / gratings / frame stats) |
 | `gen_seg_keys.py` → `seg-keys.css` | lift / release / commit / drag keyframes compiled from the native frame data (§5) |
 | `verify_lens_maps.py`, `gen_lens_maps.py` without `--formula` | the earlier measured-resampling mode (§1–§4, record only): resamples the phase files into maps — no longer part of the deliverable |
+| `calib/` | WebKit feDisplacementMap calibration (`gen_calib.py` → maps + `webkit-displacement.html`, `check_calib.py` reads a render): the engine applies negative displacements one filter pixel short (§0.4) |
 
 ## 0 Formula maps — 反编译原值（公式 + 探针参数） (2026-09-19)
 
@@ -261,6 +262,70 @@ traced layer by layer (`?bg=0` / `?lab=0` / `?ab=0` / `?punch=0`, WebKit, curren
   (82.5 pt² brighter than 235 in x 318–331, y 120–146; 0 coloured px), with the label filter off it is gone (22.9 pt² = the plain
   glyph). No tap and no α term: it is 「班」's right part folded into a lump by the label stack's last 3 pt (the light mode's black
   lump, §0c above), white because the dark label is white; the chain only colours its rim. Same open item.
+
+**The label path's last 12 pt against the data's segment-grating field (2026-09-19 08:0x order; `tools/touch/seg-label-dragmid-{bars8,gx8}-seg-light.png`
+@3x, lens held at the divider (lenstrace held_lens (110.43, 602.08, 219.57, 43.85)), the gratings as 196×28 segment images (`pattern bars|gx 8 2`,
+read from the rest frames: bars8 = 4 pt black / 4 pt white from the image's left edge x 22 / 222, gx8 = 127.5 + 75.5·cos(2π(x − 23.833)/8));
+the test page reproduces them (`?content=bars8|gx8`, phase checked on the unlensed segment: bars identical, gx8 within 5/255);
+`ends-{bars8,gx8}-native-vs-webkit.png` = both ends at 12 px/pt, native over ours; `native-grating-ends.png`.**
+
+Edge sequences (bars8, G-channel 50 % crossings, page x; native rows ↔ ours = native − 491.11): "map exact" = the delivered
+`seg-f-lab-220.png` decoded (bilinear, 2 px/pt) and applied to the same bars in numpy (the source capsule-clipped, transparent
+outside the 28-pt image band, the map's B as the mask); "map + WK rule" = the same with WebKit's displacement rounding (below);
+"WebKit" = the render (`?content=bars8&bg=0&ab=0&punch=0`, the label layer alone — identical edges with everything on):
+
+| row | end | native | map exact | map + WK rule | WebKit |
+|---|---|---|---|---|---|
+| 616 (band top + 6) | right | 309.83 · 313.83 · **318.20** · 329.83 | 309.92 · 313.92 · 318.25 | 310 · 314 · 318 | 309.92 · 313.92 · 317.92 · 329.92 |
+| 616 | left | 109.83 · **121.46** · 125.83 · 129.83 | 121.58 · 125.92 · 129.92 | 122 · 126 · 130 | 109.92 · 121.47 · 125.92 · 129.92 |
+| 632 (band bottom − 6) | right | 309.83 · 313.83 · **318.27** · 329.84 | (as 616) | | 309.92 · 313.92 · 317.92 · 329.92 |
+| 632 | left | 109.83 · **121.39** · 125.83 · 129.83 | | | 109.92 · 121.42 · 125.92 · 129.92 |
+| 624 (centre) | right | 317.83 · **324.03** (the eye) · **329.24 · 329.75** (fold) | 317.92 · **323.92** · **329.42 · 329.92** | 318 · **322** | 317.92 · **321.92** |
+| 624 | left | 109.93 · 110.40 (fold) · **115.64** (eye) · 121.83 | 109.92 · 111.5 · 112.67 · 114.0 · 115.33 · 121.92 | 110 … 117 (flicker) · 122 | 109.91 · 111.49 · 112.34 · 113.97 · 115.41 · 121.92 |
+| 606 (lens top + 4, above the band) | right | **311.75 · 317.25** (a bar pulled up out of the band) | 318.08 (the bar's edge, the sample at the band's top row) | 316.5 · 317.0 | — |
+| 606 | left | **122.40 · 127.92** | 121.67 | 122 | 121.98 · 123.38 |
+| 642 (lens bottom − 4) | right | **311.86 · 317.44** | 318.08 | 316.5 · 317.0 | 315.39 · 316.97 |
+| 642 | left | **122.24 · 127.81** | 121.67 | 122 | 121.84 · 124.42 |
+
+Vertical extent of the black bars per column at the right end (top-most / bottom-most black row; the band undisplaced = 610–638):
+native x 304: 608.3 / 639.3; 310: 612.3 / 635.3; 312: 606.0 / 642.0; 314: 604.0 / 643.7; 316: 604.3 / 643.0; 318: 617.7 / 630.0;
+320: 612.7 / 635.0; 324: 610.7 / 637.3; 328: 610.0 / 637.7 — ours (WebKit) 304: 609.7 / 638.0; 310: 609.8 / 637.8; 312: 609.2 /
+638.5; 314: 608.2 / 639.8; 318: 612.8 / 643.5; 320: 610.3 / 636.8; 324: 609.2 / 638.5; 328: 610.2 / 638.0. The map at (312 … 316,
+row 604 … 608) samples at lens y 7.8 … 9.1, i.e. the band's top row (8): the formula stretches the band's first pt over rows
+604–608 (native: black from 604.0 at x 314); a sample 0.1–0.2 pt above the band reads transparent, and the bottom half's
+upward samples are the engine's short ones (below) — hence ours starts at 608–609 and ends at 638–640 where the native runs
+604–644.
+
+What the field says about the two-stage sampling: **it holds.** Six pt inside the band (rows 616 / 632, depth ≥ 9 at the ends)
+the map's edges sit within 0.35 pt of the native's at both ends; on the centre row the map puts the eye at 323.92 and the rim
+fold at 329.42 / 329.92 against the native's 324.03 and 329.24 / 329.75 (≤ 0.2 pt); at the left end the map's stationary
+sample sits at s ≈ 118.0 — a bar boundary — so the map flickers (111.5 … 115.3) where the native's eye is a clean bar
+(110.4–115.64, its s inside 114 … 118): a difference of ≤ 0.3 pt in u over the last 5 pt, the native's u the smaller one; on
+the rows 4 pt from the lens top / bottom the formula's pull lands the sample 0.1–0.4 pt outside the band where the native's
+lands inside — a difference of ≤ 1 pt at depth 1–3.5, both stages half each there (L 1.0–4.8, C 1.7–2.9), not assignable
+to one. The other order (ClearGlass first) adds edges the native does not have (row 616 right 327.3 / 328.4 / 330.5, row 624
+left 108.5 / 110.1 / 110.75 / 114.3) — excluded. Nothing in the maps or the order changes on this field.
+
+**Why the WebKit render is not the map — the engine's displacement rounding (`calib/`, 2026-09-19):** constant, ramp and
+step maps on isolated marks (`calib/gen_calib.py` → `webkit-displacement.html`, read back by `check_calib.py`; the same
+encoding and filter as the lens maps; wksnap, macOS 27.2 WebKit, offscreen WKWebView @3x):
+
+| map u (CSS px) | −0.25 | −0.5 | −0.75 | −1 | −1.25 | −1.5 | −1.75 | −2 | −2.5 | −3 | −3.75 | −4 | −5.25 | −6 | −8 | −12 | +1 | +1.25 | +2.5 | +4 | +8 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| applied, x | 0 | 0 | 0 | −0.5 | −0.5 | −1 | −1 | −1.5 | −2 | −2.5 | −3 | −3.5 | −4.5 | −5.5 | −7.5 | −11.5 | +1 | +1.5 | +2.5 | +4 | +8 |
+| applied, y (−4 / −1 / +1 / +4) | | | | −0.5 | | | | | | | | −3.5 | | | | | +1 | | | +4 | |
+
+The displacement is quantised to the filter's pixel — ½ CSS px in this render — with positive values rounded up to the next
+pixel and **negative values truncated toward zero and one pixel short** (−1 → −0.5, −4 → −3.5, −12 → −11.5; the ramp
+0 → −10 over 20 pt shows its edges 1.1 pt early, the step −4 gives 3.5). Applying that rule to the map in numpy reproduces the
+render's centre row exactly (322 against the render's 321.92; the map's 323.92 and the fold gone). At the lens ends the
+label stack samples inward, so the right end's x (negative) and the bottom half's y (negative) are the short ones; where the
+sample position is stationary (the eye, the label's last 3 pt) a ½-pt shortfall moves the visible edge by 2 pt — the right
+「班」's lump instead of the native's streaks and its 13.7-pt height, the eye 8 pt wide instead of 5.2, the band's bottom edge
+at 639.8 instead of 643.7, and the §6d gap 2.49 at the left end (the backdrop path's outward x is negative there). Not an
+Apple value, not compensated: the step depends on the engine's filter resolution (½ CSS px here; a 3× device may run the
+filter at ⅓ px, or on the GPU path without the truncation) — to be measured on the phone before anything is baked into the
+maps (`calib/` runs there too).
 
 <!-- verify:end -->
 
@@ -637,7 +702,8 @@ over it as two layers — the filtered copy of what lies under it (`#seg-lens-f-
 (`#seg-lens-f-lab-<w>`) — draggable (pointer events, frame stats), 自动拖 2 s, gratings ↔ / ↕ (period 8 like the native
 measurement). Query: `?native=1` (control at x 20…420 like the probe), `?lensx=<page x of the lens centre>` (220 = the divider),
 `?w=<width>` (a drag-stretch set: lens box w × the set's height, its filters), `?bg=0` / `?lab=0` (that layer unfiltered),
-`?ab=ir|flip|0` (the fringe chain), `?pattern=bars` (hard bars under the lens for the per-channel edge check), `?wh=<W/H>`
+`?ab=ir|flip|0` (the fringe chain), `?pattern=bars` (hard bars under the lens for the per-channel edge check),
+`?content=bars8|gx8` (the data session's segment-content gratings in place of the labels, §0.4), `?wh=<W/H>`
 (pins the fringe's W/H; otherwise `whRule()` = the capture-box rule of §0.5 from the lens's screen rect), `?punch=0` (the
 backdrop copy without the segment-content residue, record). Layers, per formula.md §4b: the page (layer 0) keeps its labels
 outside the lens capsule — inside it they are cut (the lens box covers them); the backdrop layer (1) holds `.clone` = the card
