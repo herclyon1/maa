@@ -7,7 +7,7 @@
      { "取自": "HH:MM",
        games: [ { game: "终末地", gameId: "endfield", caliber, footnote, source, built, gameLevel,
                   sections: ["通用", "高阶素材", "采集", "经验与货币"], lagMinutes: 30, lagNote,
-                  standard: {charId, name, rarity, releasedAt, weapon}, standards: [...], "错误": "",
+                  standard: {charId, name, rarity, releasedAt, status, weapon, sources}, standards: [...], "错误": "",
                   rows: [ { id, name, rarity, icon, have, need, servings, section,
                             group, stage, note, virtual, sumInto, exp } ] } ] }
 
@@ -69,7 +69,7 @@
   function standards(gameId = GAME_ID) {
     const g = needFor(gameId);
     return ((g && g.standards) || []).map((s) => ({ charId: s.charId, name: s.name, rarity: s.rarity, releasedAt: s.releasedAt,
-                                                    weapon: s.weapon && s.weapon.name, caliber: s.caliber }));
+                                                    status: s.status, weapon: s.weapon && s.weapon.name, caliber: s.caliber }));
   }
   function chosenStandard(gameId = GAME_ID) {
     try { return localStorage.getItem(LS_STD + ":" + gameId) || ""; } catch { return ""; }
@@ -82,7 +82,8 @@
   function standardFor(g) {
     const list = (g && g.standards) || [];
     const want = chosenStandard(g && g.gameId);
-    return list.find((s) => s.charId === want) || list.find((s) => s.charId === g.standard) || list[0] || null;
+    const key = (s) => s.charId || s.wikiItemId;
+    return list.find((s) => key(s) === want) || list.find((s) => key(s) === g.standard) || list[0] || null;
   }
 
   // ---- material-list cache ----
@@ -158,7 +159,8 @@
       g.caliber = (std && std.caliber) || needGame.caliber; g.footnote = (std && std.footnote) || needGame.footnote || "";
       g.source = needGame.source; g.built = Inventory.need.built;
       g.sections = needGame.sections || []; g.lagMinutes = needGame.lagMinutes == null ? null : needGame.lagMinutes; g.lagNote = needGame.lagNote || "";
-      g.standard = std ? { charId: std.charId, name: std.name, rarity: std.rarity, releasedAt: std.releasedAt, weapon: std.weapon && std.weapon.name } : null;
+      g.standard = std ? { charId: std.charId, name: std.name, rarity: std.rarity, releasedAt: std.releasedAt, status: std.status,
+                           weapon: std.weapon && std.weapon.name, sources: std.sources } : null;
       g.standards = standards(GAME_ID);
     }
     const needRows = std ? { rows: std.rows } : needGame;
