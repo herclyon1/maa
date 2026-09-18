@@ -28,7 +28,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-196" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 196×48.6; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 228×80.6 pt = the lens 196×48.6 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 196×48.6; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 228×80.6 pt = the lens 196×48.6 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-196.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -64,12 +64,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-196" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 196×48.6; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 228×80.6 pt = the lens 196×48.6 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 196×48.6; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 228×80.6 pt = the lens 196×48.6 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-196.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -105,7 +106,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -124,7 +126,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-198" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 198×48.48; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 230×80.48 pt = the lens 198×48.48 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 198×48.48; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 230×80.48 pt = the lens 198×48.48 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-198.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -160,12 +162,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-198" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 198×48.48; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 230×80.48 pt = the lens 198×48.48 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 198×48.48; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 230×80.48 pt = the lens 198×48.48 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-198.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -201,7 +204,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -220,7 +224,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-200" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 200×47.99; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 232×79.99 pt = the lens 200×47.99 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 200×47.99; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 232×79.99 pt = the lens 200×47.99 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-200.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -256,12 +260,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-200" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 200×47.99; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 232×79.99 pt = the lens 200×47.99 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 200×47.99; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 232×79.99 pt = the lens 200×47.99 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-200.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -297,7 +302,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -316,7 +322,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-202" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 202×47.59; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 234×79.59 pt = the lens 202×47.59 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 202×47.59; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 234×79.59 pt = the lens 202×47.59 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-202.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -352,12 +358,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-202" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 202×47.59; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 234×79.59 pt = the lens 202×47.59 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 202×47.59; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 234×79.59 pt = the lens 202×47.59 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-202.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -393,7 +400,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -412,7 +420,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-204" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 204×47.51; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 236×79.51 pt = the lens 204×47.51 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 204×47.51; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 236×79.51 pt = the lens 204×47.51 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-204.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -448,12 +456,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-204" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 204×47.51; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 236×79.51 pt = the lens 204×47.51 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 204×47.51; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 236×79.51 pt = the lens 204×47.51 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-204.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -489,7 +498,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -508,7 +518,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-206" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 206×47.23; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 238×79.23 pt = the lens 206×47.23 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 206×47.23; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 238×79.23 pt = the lens 206×47.23 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-206.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -544,12 +554,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-206" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 206×47.23; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 238×79.23 pt = the lens 206×47.23 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 206×47.23; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 238×79.23 pt = the lens 206×47.23 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-206.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -585,7 +596,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -604,7 +616,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-208" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 208×46.83; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 240×78.83 pt = the lens 208×46.83 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 208×46.83; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 240×78.83 pt = the lens 208×46.83 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-208.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -640,12 +652,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-208" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 208×46.83; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 240×78.83 pt = the lens 208×46.83 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 208×46.83; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 240×78.83 pt = the lens 208×46.83 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-208.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -681,7 +694,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -700,7 +714,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-210" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 210×46.39; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 242×78.39 pt = the lens 210×46.39 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 210×46.39; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 242×78.39 pt = the lens 210×46.39 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-210.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -736,12 +750,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-210" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 210×46.39; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 242×78.39 pt = the lens 210×46.39 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 210×46.39; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 242×78.39 pt = the lens 210×46.39 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-210.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -777,7 +792,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -796,7 +812,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-212" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 212×45.93; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 244×77.93 pt = the lens 212×45.93 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 212×45.93; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 244×77.93 pt = the lens 212×45.93 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-212.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -832,12 +848,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-212" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 212×45.93; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 244×77.93 pt = the lens 212×45.93 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 212×45.93; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 244×77.93 pt = the lens 212×45.93 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-212.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -873,7 +890,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -892,7 +910,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-214" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 214×45.45; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 246×77.45 pt = the lens 214×45.45 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 214×45.45; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 246×77.45 pt = the lens 214×45.45 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-214.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -928,12 +946,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-214" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 214×45.45; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 246×77.45 pt = the lens 214×45.45 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 214×45.45; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 246×77.45 pt = the lens 214×45.45 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-214.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -969,7 +988,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -988,7 +1008,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-216" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 216×44.98; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 248×76.98 pt = the lens 216×44.98 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 216×44.98; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 248×76.98 pt = the lens 216×44.98 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-216.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1024,12 +1044,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-216" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 216×44.98; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 248×76.98 pt = the lens 216×44.98 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 216×44.98; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 248×76.98 pt = the lens 216×44.98 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-216.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1065,7 +1086,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -1084,7 +1106,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-218" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 218×44.49; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 250×76.49 pt = the lens 218×44.49 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 218×44.49; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 250×76.49 pt = the lens 218×44.49 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-218.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1120,12 +1142,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-218" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 218×44.49; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 250×76.49 pt = the lens 218×44.49 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 218×44.49; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 250×76.49 pt = the lens 218×44.49 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-218.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1161,7 +1184,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -1180,7 +1204,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-220" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 220×44; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 252×76 pt = the lens 220×44 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 220×44; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 252×76 pt = the lens 220×44 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-220.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1216,12 +1240,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-220" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 220×44; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 252×76 pt = the lens 220×44 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 220×44; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 252×76 pt = the lens 220×44 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-220.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1257,7 +1282,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -1276,7 +1302,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-222" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 222×43.53; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 254×75.53 pt = the lens 222×43.53 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 222×43.53; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 254×75.53 pt = the lens 222×43.53 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-222.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1312,12 +1338,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-222" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 222×43.53; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 254×75.53 pt = the lens 222×43.53 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 222×43.53; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 254×75.53 pt = the lens 222×43.53 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-222.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1353,7 +1380,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -1372,7 +1400,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-224" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 224×42.96; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 256×74.96 pt = the lens 224×42.96 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 224×42.96; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 256×74.96 pt = the lens 224×42.96 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-224.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1408,12 +1436,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-224" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 224×42.96; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 256×74.96 pt = the lens 224×42.96 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 224×42.96; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 256×74.96 pt = the lens 224×42.96 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-224.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1449,7 +1478,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -1468,7 +1498,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-226" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 226×42.53; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 258×74.53 pt = the lens 226×42.53 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 226×42.53; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 258×74.53 pt = the lens 226×42.53 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-226.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1504,12 +1534,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-226" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 226×42.53; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 258×74.53 pt = the lens 226×42.53 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 226×42.53; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 258×74.53 pt = the lens 226×42.53 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-226.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1545,7 +1576,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -1564,7 +1596,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-228" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 228×41.89; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 260×73.89 pt = the lens 228×41.89 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 228×41.89; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 260×73.89 pt = the lens 228×41.89 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-228.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1600,12 +1632,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-228" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 228×41.89; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 260×73.89 pt = the lens 228×41.89 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 228×41.89; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 260×73.89 pt = the lens 228×41.89 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-228.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1641,7 +1674,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -1660,7 +1694,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-230" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 230×41.58; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 262×73.58 pt = the lens 230×41.58 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 230×41.58; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 262×73.58 pt = the lens 230×41.58 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-230.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1696,12 +1730,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-230" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 230×41.58; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 262×73.58 pt = the lens 230×41.58 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 230×41.58; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 262×73.58 pt = the lens 230×41.58 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-230.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1737,7 +1772,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -1756,7 +1792,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-232" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 232×41.12; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 264×73.12 pt = the lens 232×41.12 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 232×41.12; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 264×73.12 pt = the lens 232×41.12 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-232.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1792,12 +1828,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-232" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 232×41.12; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 264×73.12 pt = the lens 232×41.12 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 232×41.12; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 264×73.12 pt = the lens 232×41.12 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-232.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1833,7 +1870,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -1852,7 +1890,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-234" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 234×40.65; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 266×72.65 pt = the lens 234×40.65 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 234×40.65; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 266×72.65 pt = the lens 234×40.65 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-234.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1888,12 +1926,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-234" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 234×40.65; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 266×72.65 pt = the lens 234×40.65 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 234×40.65; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 266×72.65 pt = the lens 234×40.65 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-234.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1929,7 +1968,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -1948,7 +1988,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-236" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 236×40.18; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 268×72.18 pt = the lens 236×40.18 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 236×40.18; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 268×72.18 pt = the lens 236×40.18 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-236.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -1984,12 +2024,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-236" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 236×40.18; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 268×72.18 pt = the lens 236×40.18 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 236×40.18; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 268×72.18 pt = the lens 236×40.18 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-236.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2025,7 +2066,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -2044,7 +2086,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-238" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 238×39.8; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 270×71.8 pt = the lens 238×39.8 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 238×39.8; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 270×71.8 pt = the lens 238×39.8 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-238.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2080,12 +2122,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-238" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 238×39.8; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 270×71.8 pt = the lens 238×39.8 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 238×39.8; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 270×71.8 pt = the lens 238×39.8 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-238.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2121,7 +2164,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -2140,7 +2184,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-240" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 240×39.3; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 272×71.3 pt = the lens 240×39.3 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 240×39.3; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 272×71.3 pt = the lens 240×39.3 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-240.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2176,12 +2220,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-240" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 240×39.3; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 272×71.3 pt = the lens 240×39.3 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 240×39.3; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 272×71.3 pt = the lens 240×39.3 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-240.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2217,7 +2262,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -2236,7 +2282,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-242" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 242×38.84; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 274×70.84 pt = the lens 242×38.84 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 242×38.84; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 274×70.84 pt = the lens 242×38.84 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-242.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2272,12 +2318,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-242" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 242×38.84; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 274×70.84 pt = the lens 242×38.84 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 242×38.84; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 274×70.84 pt = the lens 242×38.84 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-242.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2313,7 +2360,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -2332,7 +2380,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-244" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 244×38.36; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 276×70.36 pt = the lens 244×38.36 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 244×38.36; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 276×70.36 pt = the lens 244×38.36 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-244.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2368,12 +2416,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-244" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 244×38.36; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 276×70.36 pt = the lens 244×38.36 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 244×38.36; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 276×70.36 pt = the lens 244×38.36 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-244.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2409,7 +2458,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -2428,7 +2478,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-246" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 246×37.92; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 278×69.92 pt = the lens 246×37.92 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 246×37.92; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 278×69.92 pt = the lens 246×37.92 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-246.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2464,12 +2514,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-246" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 246×37.92; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 278×69.92 pt = the lens 246×37.92 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 246×37.92; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 278×69.92 pt = the lens 246×37.92 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-246.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2505,7 +2556,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -2524,7 +2576,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-248" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 248×37.49; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 280×69.49 pt = the lens 248×37.49 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 248×37.49; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 280×69.49 pt = the lens 248×37.49 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-248.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2560,12 +2612,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-248" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 248×37.49; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 280×69.49 pt = the lens 248×37.49 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 248×37.49; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 280×69.49 pt = the lens 248×37.49 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-248.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2601,7 +2654,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -2620,7 +2674,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-250" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 250×37.05; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 282×69.05 pt = the lens 250×37.05 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 250×37.05; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 282×69.05 pt = the lens 250×37.05 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-250.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2656,12 +2710,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-250" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 250×37.05; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 282×69.05 pt = the lens 250×37.05 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 250×37.05; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 282×69.05 pt = the lens 250×37.05 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-250.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2697,7 +2752,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -2716,7 +2772,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-252" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 252×36.56; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 284×68.56 pt = the lens 252×36.56 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 252×36.56; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 284×68.56 pt = the lens 252×36.56 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-252.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2752,12 +2808,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-252" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 252×36.56; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 284×68.56 pt = the lens 252×36.56 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 252×36.56; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 284×68.56 pt = the lens 252×36.56 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-252.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2793,7 +2850,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -2812,7 +2870,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-254" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 254×36.2; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 286×68.2 pt = the lens 254×36.2 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 254×36.2; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 286×68.2 pt = the lens 254×36.2 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-254.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2848,12 +2906,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-254" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 254×36.2; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 286×68.2 pt = the lens 254×36.2 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 254×36.2; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 286×68.2 pt = the lens 254×36.2 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-254.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2889,7 +2948,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
@@ -2908,7 +2968,7 @@
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-ab-256" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 256×36.2; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 288×68.2 pt = the lens 256×36.2 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 256×36.2; apply to the wrapper of the two displaced layers; band mask: flip; apply to the wrapper of 288×68.2 pt = the lens 256×36.2 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-256.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2944,12 +3004,13 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
   <filter id="seg-lens-f-ab-ir-256" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, lens 256×36.2; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 288×68.2 pt = the lens 256×36.2 plus 16 pt on every side -->
+    <!-- colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle -15/20/0/0, edge band -4.5/-3/0/1, tap direction sign 1, α_elem 1, edr 1, lens 256×36.2; apply to the wrapper of the two displaced layers; band mask: ir; apply to the wrapper of 288×68.2 pt = the lens 256×36.2 plus 16 pt on every side -->
     <feImage href="assets/lens/seg-f-ab-256.png" preserveAspectRatio="none" result="abmap"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 -1 0 1" result="mask"/>
     <feDisplacementMap in="SourceGraphic" in2="abmap" scale="40" xChannelSelector="R" yChannelSelector="G" result="t0"/>
@@ -2985,7 +3046,8 @@
     <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
     <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
     <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
-    <feComposite in="s6" in2="sa6" operator="in" result="fgc"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>

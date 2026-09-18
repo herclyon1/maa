@@ -230,6 +230,41 @@ its outward taps read the page beyond the lens; the chain therefore sits on a wr
 alone the outward taps read transparent and a saturated yellow ring appears all round the rim (tried: it does). An earlier
 attempt with clamp_to_edge baked per tap did the same (the layers' output is transparent outside the capsule).
 
+**Direction and sides, item by item** (the acceptance session's ①, 05:5x; `lens-field.json` → `aberration.parameters`):
+
+| item | §3b as read | in the chain |
+|---|---|---|
+| `d` | SDF distance, negative inside (cov = saturate(.5 − d/fwidth) is 1 inside) | `capsule_sdf` of the lens, negative inside |
+| `g` | the SDF gradient = the **outward** unit normal | `ovalized_gradient` of the outward normal (ovalization 0.5) |
+| `amt_a` | aberration_amount × (1 − sqrt(t_a(2 − t_a))), aberration_amount **−15** → amt_a ≤ 0 | −15·(1 − sqrt(t_a(2 − t_a))) |
+| `Δ` | amt_a · (M · R(angle) · g), angle 0 | amt_a · g → points **inward** (a negative amount along the outward normal); the map stores it as is (`--ab-sign 1`) |
+| R taps | c = tex(uv1 + kΔ), k = 1, 2/3, 1/3: R += c.r·k | `feDisplacementMap scale = +k·40` on the Δ map → samples at p + kΔ = **inward** |
+| G taps | the same three: G += c.g·(1 − k); and the four at uv1 − kΔ: G += c.g·(1 − k) | weights (1 − k)/3 on all seven |
+| B taps | c = tex(uv1 − kΔ), k = 0, 1/3, 2/3, 1: B += c.b·k | `scale = −k·40` → samples at p − kΔ = **outward** |
+| uv1 | uv + amt_r·(M·R·g), refraction −150 / 100 / offset −10 | not applied (uv1 = uv): at the band d ∈ [−3, 0] it would be 76–85 pt inward — open with the old page (see §3c e) |
+
+So, as read, the R taps look inward and the B taps outward. What the A1 PNG needs is the opposite: along row y +4 at the right end the
+native runs blue → green → yellow → red from the inside towards the rim (a dark compressed glyph part with the page beyond the rim):
+red on the rim side means R sees the bright side beyond the rim, i.e. R samples **outward**. Verification only
+(`--ab-sign -1` on the 220 set, `fringe-8x-sign-native-asread-negated.png`, rows native / as read / negated / WebKit negated;
+hue runs along the rows at both ends, R red Y yellow G green C cyan B blue M magenta, px runs):
+
+| row | native, left end (rim → inside) | as read | negated | native, right end (inside → rim) | as read | negated |
+|---|---|---|---|---|---|---|
+| y −4 | Y2 C24 | C2 M1 | Y2 C1 | M4 R12 Y8 | M9 C2 | M8 Y3 |
+| y 0 | Y6 R2 M8 | C2 | Y2 | M4 R2 Y23 | R2 M9 B1 | B2 M1 C1 M8 |
+| y +4 | C10 Y4 | C1 | Y1 | B12 G12 Y4 R2 Y2 | R1 M2 C1 | M1 C1 M1 Y2 |
+
+The negated direction puts yellow / red on the rim side at both ends like the native; as read puts cyan / blue there. The maps
+stay as read (sign +1); which of `g`, `M` or the amount carries the sign in `glass_foreground_base` is for the old page session
+to read (or the data session's sdfset with inputAberrationAngle π, which would flip the native's order).
+
+**Compositing** (the acceptance session's ②): §3b `out.rgb = (R/2, G/3, B/2) × α_elem × cov × ΣA/7 × edr`, `out.a = α_elem × cov × ΣA/7`,
+source-over the content. The chain: the colour sum (its alpha clamped to 1) → feColorMatrix × edr on the colour and × α_elem on
+the alpha → `feComposite in` with ΣA/7 (the seven taps' alphas/7 summed) → `in` with the band mask (cov = the lens clip) → `over`
+the source. α_elem (the glassForeground layer's opacity) and edr are 1 until the old page / data session read them
+(`--ab-alpha`, `--ab-edr`); nothing is "painted over" at full strength beyond what those two factors will scale.
+
 Check against the A1 PNG (`tools/touch/seg-native-dragmid-light.png`, 5.92 px/pt; 8× crops of both ends in
 `remote-mock/v4/lens/formula/fringe-8x-native-chrome-webkit-ir.png`, rows native / Chrome / WebKit / ir):
 

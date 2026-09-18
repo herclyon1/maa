@@ -1356,6 +1356,10 @@
   "parameters": {
    "amount/height/offset/angle": "-15/20/0/0",
    "edge start/end/opacity": "-4.5/-3/0/1",
+   "tap_direction_sign": 1.0,
+   "alpha_elem": 1.0,
+   "edr": 1.0,
+   "tap sides as read (sign +1)": "Δ = amt_a·g, amt_a = −15·(…) < 0, g = outward gradient → Δ points INWARD; R accumulates the taps at uv + kΔ (inward), B the taps at uv − kΔ (outward); sign −1 swaps the sides (verification: the A1 hue order, red at the rim, needs R outward)",
    "source": "GlassForegroundFilter::render defaults (formula.md §3b): inputAberrationAmount −15, Height 20, Offset 0, Angle 0; inputEdgeStart −4.5 / End −3, opacity 0 → 1; the lens's glassForeground{} carries no override (A9)"
   },
   "shape": "the lens capsule with gradient ovalization 0.5 like the other stages — the foreground's SDF element and ovalization were not read (formula.md §3b: its element comes through a portal from the glass group)",
