@@ -535,6 +535,8 @@ def build_parser():
     ap.add_argument("--label-layers", default="-8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens", help="label-copy stack in sampling order (the outer layer samples first): ContentLensing −8.8 / 7.04 (its image is the 196×28 portal showing the ClearGlass layer) then ClearGlass −17.5 / 11.2 (its image is the capsule-clipped segment content), both on the lens capsule")
     ap.add_argument("--series", default="196:256:2", help="lens widths lo:hi:step for the drag-stretch sets (each set's height from --frames)")
     ap.add_argument("--frames", help="recorded drag lens frames: seg-native-abc-frames.json,uiprobe-motion-segdragmid-light.json (width → height)")
+    ap.add_argument("--name", default="seg", help="file / id prefix: seg (segmented control) → seg-f-bg-<w>.png, #seg-lens-f-bg-<w>; tab (tab bar) → tab-f-bg-<w>.png, #tab-lens-f-bg-<w>")
+    ap.add_argument("--lift-path", default="", help="WxH of the resting lens for sets narrower than --size: those are the LIFT path (both dimensions grow by the same amount to --size, model bounds change, r = h/2, the SDF heights stay), e.g. 94x54 for the tab bar; sets wider than --size are the stretched model")
     ap.add_argument("--href-prefix", default="assets/lens/", help="path of the map files as index.html sees them (lens-filter.svg); lens-test.html uses bare file names")
     ap.add_argument("--margin", type=float, default=0.0, help="extra pt of map around the lens box (0: the maps are the lens box; samples are clamped to it like the native textures)")
     ap.add_argument("--aberration", default="2.3158/0/24.444/-0.2618", help="glassForeground spectral sampling amount/height/offset/angle — the lens's own keys (seg-lens-refraction.md §1c(a), the 140-key read): inputAberrationAmount 2.3158, Height 0, Offset 24.444 (t_a = 0 inside → the amount is constant), Angle −0.2618 rad; → seg-f-ab-<w>.png; 'off' = none")
@@ -663,28 +665,35 @@ def main_formula(a, W, H):
     pts = drag_frames(a.frames.split(",")) if a.frames else []
     sets = {}; total_bytes = 0
     for w in widths:
-        if w == int(W): h, how, src = H, "rest lens (lifted 220×44, seg-lens-refraction.md §0)", []
+        lift = bool(a.lift_path) and w < W
+        if w == int(W): h, how, src = H, f"the lifted lens ({W:g}×{H:g})", []
+        elif lift:
+            rw, rh = (float(v) for v in a.lift_path.lower().split("x")); h = H - (W - w) * (H - rh) / (W - rw); how, src = f"lift path {rw:g}×{rh:g} → {W:g}×{H:g} (both dimensions on the same curve, model bounds)", []
         elif pts: h, how, src = height_for_width(pts, w)
+        elif a.lift_path: h = H * w / W; how, src = f"stretch beyond {W:g}: the lifted model scaled uniformly (the tab lens's presented 115.7×73.6 = 110×70 × 1.052)", []
         else: h, how, src = H, "no --frames: rest height", []
-        bg = parse_layers(a.bg_layers, W, H, portal); lab = parse_layers(a.label_layers, W, H, portal)   # the model lens (220×44); the set is its scaled image
-        fbg, flab = f"seg-f-bg-{w}.png", f"seg-f-lab-{w}.png"
+        # the model lens: the lifted size (its scaled image for the stretch sets); on the lift path the model bounds themselves change
+        MW, MH = (float(w), float(h)) if lift else (W, H); base_wh = None if lift else (W, H)
+        bg = parse_layers(a.bg_layers, MW, MH, portal); lab = parse_layers(a.label_layers, MW, MH, portal)
+        fbg, flab = f"{a.name}-f-bg-{w}.png", f"{a.name}-f-lab-{w}.png"
         portal_rect = None if a.label_portal in ("0", "") else tuple(float(v) / 2 for v in a.label_portal.lower().split("x"))
         # encoding scale per set: S 40 wherever the scaled stack fits ±20 pt (the 220 set stays byte-identical to cdb33f4 — a change of S moves
         # the quantised end-zone samples by up to 0.09 pt, half a device column on the 1-pt end lines), S 48 only for the widest stretch sets
         S_set = a.scale
-        try: mw, mh, pk_bg = render_formula(os.path.join(a.out, fbg), w, h, bg, a.px, S_set, a.margin, None, (W, H)); _, _, pk_lab = render_formula(os.path.join(a.out, flab), w, h, lab, a.px, S_set, a.margin, portal_rect, (W, H))
+        try: mw, mh, pk_bg = render_formula(os.path.join(a.out, fbg), w, h, bg, a.px, S_set, a.margin, None, base_wh); _, _, pk_lab = render_formula(os.path.join(a.out, flab), w, h, lab, a.px, S_set, a.margin, portal_rect, base_wh)
         except ValueError:
-            S_set = 48.0; mw, mh, pk_bg = render_formula(os.path.join(a.out, fbg), w, h, bg, a.px, S_set, a.margin, None, (W, H)); _, _, pk_lab = render_formula(os.path.join(a.out, flab), w, h, lab, a.px, S_set, a.margin, portal_rect, (W, H))
+            S_set = 48.0; mw, mh, pk_bg = render_formula(os.path.join(a.out, fbg), w, h, bg, a.px, S_set, a.margin, None, base_wh); _, _, pk_lab = render_formula(os.path.join(a.out, flab), w, h, lab, a.px, S_set, a.margin, portal_rect, base_wh)
         fab = None; pk_ab = None; fabs = []
         if a.aberration != "off":
-            fab = f"seg-f-ab-{w}.png"
-            _, _, pk_ab, fl = render_aberration(os.path.join(a.out, fab), w, h, tuple(float(v) for v in a.aberration.split("/")), tuple(float(v) for v in a.edge.split("/")), a.ab_px, S_set, 0.5, a.ab_margin, a.ab_sign, (W, H), a.ab_wh)
+            fab = f"{a.name}-f-ab-{w}.png"
+            _, _, pk_ab, fl = render_aberration(os.path.join(a.out, fab), w, h, tuple(float(v) for v in a.aberration.split("/")), tuple(float(v) for v in a.edge.split("/")), a.ab_px, S_set, 0.5, a.ab_margin, a.ab_sign, base_wh, a.ab_wh)
             fabs = [os.path.basename(f) for f in fl]
         nb = os.path.getsize(os.path.join(a.out, fbg)) + os.path.getsize(os.path.join(a.out, flab)) + sum(os.path.getsize(os.path.join(a.out, f)) for f in fabs); total_bytes += nb
         sets[w] = {"h": round(h, 2), "scale": [round(w / W, 4), round(h / H, 4)], "S": S_set, "layer_pt": [w + 2 * a.margin, round(h + 2 * a.margin, 2)], "map_px": [mw, mh], "h_source": how, "frames": [[round(f[0], 2), round(f[1], 2), f[2]] for f in src],
                    "label_portal_pt": a.label_portal, "ab": fab, "ab_files": fabs, "peak_ab_pt": (round(pk_ab, 2) if pk_ab is not None else None),
                    "bg": fbg, "lab": flab, "peak_bg_pt": round(pk_bg, 2), "peak_lab_pt": round(pk_lab, 2), "bytes": nb,
-                   "filters": [f"seg-lens-f-bg-{w}", f"seg-lens-f-lab-{w}"] + ([f"seg-lens-f-ab-{w}", f"seg-lens-f-ab-ir-{w}"] if fab else [])}
+                   "model": [MW, round(MH, 2)], "lift_path": bool(lift),
+                   "filters": [f"{a.name}-lens-f-bg-{w}", f"{a.name}-lens-f-lab-{w}"] + ([f"{a.name}-lens-f-ab-{w}", f"{a.name}-lens-f-ab-ir-{w}"] if fab else [])}
     # filters: one file per set; hrefs as index.html sees them (lens-filter.svg) and bare names (lens-test.html)
     def svg_for(prefix):
         head = f"""<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -715,7 +724,8 @@ def main_formula(a, W, H):
     tpl = os.path.join(HERE, "lens-test.template.html")
     if os.path.exists(tpl):
         series_js = json.dumps({str(w): st["h"] for w, st in sets.items()})
-        open(os.path.join(a.out, "lens-test.html"), "w", encoding="utf-8").write(open(tpl, encoding="utf-8").read().replace("{{FILTER}}", svg_for("").strip()).replace("{{SERIES}}", series_js))
+        page = "lens-test.html" if a.name == "seg" else f"lens-test-{a.name}.html"
+        open(os.path.join(a.out, page), "w", encoding="utf-8").write(open(tpl, encoding="utf-8").read().replace("{{FILTER}}", svg_for("").strip()).replace("{{SERIES}}", series_js))
     # verification (the only place measured fields enter): the formula against the phase files, validate2.py's method
     verify = {}
     def run(group, spec, floor, glyph, region):

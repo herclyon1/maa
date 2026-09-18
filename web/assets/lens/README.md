@@ -260,6 +260,41 @@ Frame interval, headless Chrome 440×956 @3x, software raster (`scratchpad/frame
 without the chain 16.9–17.1 ms mean (max 50–67, 1 frame > 20 ms), with the chain 16.9 ms (max 33, 2 frames > 20 ms) — 60 Hz in
 both; the simulator Safari number waits for the data session.
 
+### 0.7 The tab bar's selection lens (`tab/`, 2026-09-19) — same generator, the tab lens's own keys
+
+Source: `remote-ref/tab-lens-native.md` + `tools/uiprobe/tab-lens-table.md` (the data session's in-process dump of the floating
+tab bar's `_UILiquidLensView`, Small variant, light = dark): lifted lens **110×70**, cornerRadii **35** (capsule), resting 94×54;
+BackdropView displacementMap **+9** / SDF height **36** (as the segment lens), ClearGlass **−17.5 / 11.2**, ContentLensing **−14 / 11.2**
+on the **94×54** portal, glassBackground inner refraction **−10.5 / 7**, glassForeground aberration **3.6842 / offset 38.889 /
+angle −15° / height 0 / edge −14 … 0 / opacity 1 → 0**, gradientOvalization 0.5 on the two lens-sized elements (every item that
+differs from the segment lens is × 70/44 = 1.591, the ratio of the lens heights — an arithmetic relation between readings, not a
+derivation). `gen_lens_maps.py --formula --name tab --size 110x70 --series 94:116:2 --lift-path 94x54 --label-portal 94x54
+--bg-layers=-10.5/7/0.5/lens,9/36/0.5/lens --label-layers=-14/11.2/0.5/lens,-17.5/11.2/0.5/lens --aberration=3.6842/0/38.889/-0.2618
+--edge=-14/0/1/0 --out tab` → `tab/tab-f-{bg,lab,ab}-<w>.png` (12 sets, 237 KB), `tab/lens-filter.svg`
+(`#tab-lens-f-bg-<w>` …, hrefs `assets/lens/tab/`), `tab/lens-field.json`, `tab/lens-test-tab.html` (`?tab=1`). Sets: w 94 … 108 =
+the lift path (both dimensions grow by the same amount from 94×54 to 110×70, the model bounds change, r = h/2, the SDF heights
+stay), 110 = the lifted model, 112 … 116 = the lifted model scaled uniformly (the presented held lens is 115.7×73.6 = 110×70 ×
+1.052, `lens-refraction.md` §2).
+
+**Check against the tab lens's phase fields** (`tools/lens/phase-lift-{gx,gy}-{light,dark}.json`, lens 115.68×73.61 presented,
+rows ±20 / columns ±25; the same method as §0.4, depth ≥ 3):
+
+| file | lens | rms | max | per row: rms / max @ s | points > 0.3 pt |
+|---|---|---|---|---|---|
+| `phase-lift-gx-light.json` | 115.7×73.6 | **6.32** | 16.34 | -20: 6.28 / 16.18 @ +51; +20: 6.36 / 16.34 @ +51 | 173 |
+| `phase-lift-gy-light.json` | 115.7×73.6 | **4.80** | 14.70 | -25: 4.87 / 14.70 @ +32; +25: 4.74 / 12.83 @ +33 | 106 |
+| `phase-lift-gx-dark.json` | 115.7×73.6 | **6.31** | 16.24 | -20: 6.17 / 16.09 @ +51; +20: 6.44 / 16.24 @ +51 | 190 |
+| `phase-lift-gy-dark.json` | 115.7×73.6 | **4.42** | 9.10 | -25: 4.53 / 9.10 @ +33; +25: 4.29 / 8.06 @ +27 | 107 |
+
+**Not met, by a lot**: the tab lens magnifies its content **1.22 uniformly** at the centre (`lens-refraction.md` §0: u = −0.18·s within
+|s| ≤ 28 horizontally / 20 vertically, then a rising edge zone, max displacement 12–14 pt) — the stack as read gives ≈ 0 at the
+centre (BackdropView +9 / 36 on a 35-pt half-height: t = 35/36 → 1 − P = 0.0004; the glassBackground −10.5 / 7 and the label
+stages are edge bands) and only the bands near the edges. No stage of the read parameters produces a uniform zoom; BackdropView's
+`zoom` reads 0 on all backdrop layers (tab-lens-table.md #27 / #41 / #49). Listed for the old page / data sessions (the Small
+variant's `unliftedDisplacement 50 / unliftedBlurRadius 6`, the `_UITabSelectionView` backdrop at scale .25, or another term the
+dump does not name); nothing adjusted. The WebKit render (`tab-lens-native-vs-webkit.png`, rows none / light / dark / native
+held) shows the edge bands only; the native shows the magnified label and icon inside the lens.
+
 ## 1 Source (measured-resampling mode, record): the native segmented lens's own field (data session, 2026-09-19)
 
 `~/Money/styl-work/remote-ref/seg-lens-refraction.md` §0/§2 and `tools/touch/seg-phase-{gx,gy}-{light,dark}.json` — renderer-output

@@ -57,15 +57,25 @@
   .lens .punch{position:absolute;left:0;top:0;width:220px;height:44px;overflow:hidden}
   .lens .punch .plabels{position:absolute;left:0;top:0;width:400px;pointer-events:none}
   .lens .punch .scene{background:transparent}
-  .lens .punch .scene > *:not(.segctl){visibility:hidden}
+  .lens .punch .scene > *:not(.segctl):not(.tabbar){visibility:hidden}
   .lens .punch .segctl{background:transparent}
   .lens .punch .segctl .flat{display:none}
   .lens .labels .scene{background:transparent}
-  .lens .labels .scene > *:not(.segctl){visibility:hidden}       /* only the segment labels, on a transparent layer */
+  .lens .labels .scene > *:not(.segctl):not(.tabbar){visibility:hidden}   /* only the segment / tab labels, on a transparent layer */
   .lens .labels .segctl{background:transparent}
   .lens .labels .segctl .flat{display:none}
   .lens.nobg .layer.bg,.lens.nolab .layer.lab{filter:none}       /* ?bg=0 / ?lab=0: that layer unfiltered */
   body.native .scene{padding-left:0;padding-right:0}             /* ?native=1: the control spans x 20…420 like the native probe (segment centres 120 / 320) */
+  /* ?tab=1: the floating tab bar's platter (274×62, tab-lens-native.md: platform (83,873,274,62), three items) instead of the segmented
+     control; the selection lens 94×54 at rest, 110×70 r35 lifted (the tab sets #tab-lens-f-*) */
+  body.tab .scene > p{display:none}
+  body.tab .segctl{display:none}
+  .tabbar{display:none;position:relative;width:274px;height:62px;margin:8px auto;border-radius:31px;background:var(--track)}
+  body.tab .tabbar{display:flex}
+  .tabbar span{position:relative;z-index:1;flex:1 1 0;line-height:62px;text-align:center;font-size:10px}
+  .tabbar span.on{font-weight:600}
+  .lens .clone .tabbar span,.lens .punch .tabbar span{visibility:hidden}
+  .lens .labels .tabbar{background:transparent}
   .bar{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
   button{font:inherit;font-size:15px;line-height:18px;padding:6px 12px;border:0;border-radius:15px;background:rgb(0 136 255 / .18);color:var(--tint)}
   button.on{background:var(--tint);color:#fff}
@@ -3130,6 +3140,7 @@
 </svg>
 <h1>透镜折射</h1>
 <div class="scene" id="scene">
+  <div class="tabbar"><span class="on">状态</span><span>方舟</span><span>手机</span></div>
   <p>状态是 3 分钟前的 · 早班 09:00 东京 10:00</p>
   <div class="segctl"><i class="flat"></i><span class="on">早班</span><span>晚班</span></div>
   <p>明日方舟 理智 1-7（固定），理智药 0 瓶 · 终末地 基质刷取 双倍</p>
@@ -3144,35 +3155,37 @@
   const q = new URLSearchParams(location.search);
   if (q.get("native") === "1") document.body.classList.add("native");
   if (q.get("pattern") === "bars") document.getElementById("scene").classList.add("bars");
-  const SERIES = {"196": 48.6, "198": 48.48, "200": 47.99, "202": 47.59, "204": 47.51, "206": 47.23, "208": 46.83, "210": 46.39, "212": 45.93, "214": 45.45, "216": 44.98, "218": 44.49, "220": 44.0, "222": 43.53, "224": 42.96, "226": 42.53, "228": 41.89, "230": 41.58, "232": 41.12, "234": 40.65, "236": 40.18, "238": 39.8, "240": 39.3, "242": 38.84, "244": 38.36, "246": 37.92, "248": 37.49, "250": 37.05, "252": 36.56, "254": 36.2, "256": 36.2};                                     /* lens width → height of the drag-stretch sets (lens-field.json) */
-  const LW = parseInt(q.get("w") || "220", 10), LH = SERIES[String(LW)] || 44;
+  const TAB = q.get("tab") === "1"; if (TAB) document.body.classList.add("tab");
+  const SERIES = {"196": 48.6, "198": 48.48, "200": 47.99, "202": 47.59, "204": 47.51, "206": 47.23, "208": 46.83, "210": 46.39, "212": 45.93, "214": 45.45, "216": 44.98, "218": 44.49, "220": 44.0, "222": 43.53, "224": 42.96, "226": 42.53, "228": 41.89, "230": 41.58, "232": 41.12, "234": 40.65, "236": 40.18, "238": 39.8, "240": 39.3, "242": 38.84, "244": 38.36, "246": 37.92, "248": 37.49, "250": 37.05, "252": 36.56, "254": 36.2, "256": 36.2};                                     /* lens width → height of the sets (lens-field.json; the tab page carries the tab sets) */
+  const NAME = TAB ? "tab" : "seg", W0 = TAB ? 110 : 220, H0 = TAB ? 70 : 44;
+  const LW = parseInt(q.get("w") || String(W0), 10), LH = SERIES[String(LW)] || H0;
   const scene = document.getElementById("scene"), stats = document.getElementById("stats");
   const lens = document.createElement("div"); lens.className = "lens f-seg";
   if (q.get("bg") === "0") lens.classList.add("nobg"); if (q.get("lab") === "0") lens.classList.add("nolab");
-  lens.style.width = LW + "px"; lens.style.height = LH + "px"; lens.style.borderRadius = Math.min(22, LH / 2) + "px";
+  lens.style.width = LW + "px"; lens.style.height = LH + "px"; lens.style.borderRadius = (TAB ? LH / 2 : Math.min(22, LH / 2)) + "px";   /* the tab lens: cornerRadii 35 = h/2 at 110×70 (tab-lens-native.md §0) */
   const bgLayer = document.createElement("div"); bgLayer.className = "layer bg"; const clone = document.createElement("div"); clone.className = "clone"; bgLayer.appendChild(clone);
   const punch = document.createElement("div"); punch.className = "punch"; const plabels = document.createElement("div"); plabels.className = "plabels"; punch.appendChild(plabels); bgLayer.appendChild(punch);
   const labLayer = document.createElement("div"); labLayer.className = "layer lab"; const labels = document.createElement("div"); labels.className = "labels"; labLayer.appendChild(labels);
   const M = 0;                                                   /* no extension: the map's samples stay inside the box */
   for (const l of [bgLayer, labLayer, punch]) { l.style.width = LW + "px"; l.style.height = LH + "px"; }
   /* the DestOut punch-out: the portal rectangle 196×28 scaled with the lens (seg-lens-refraction.md §1c(d)), centred */
-  const PW = 196 * LW / 220, PH = 28 * LH / 44, PL = (LW - PW) / 2, PT = (LH - PH) / 2;
+  const PW = (TAB ? 94 : 196) * LW / W0, PH = (TAB ? 54 : 28) * LH / H0, PL = (LW - PW) / 2, PT = (LH - PH) / 2;
   punch.style.clipPath = `polygon(evenodd, 0 0, ${LW}px 0, ${LW}px ${LH}px, 0 ${LH}px, 0 0, ${PL}px ${PT}px, ${PL + PW}px ${PT}px, ${PL + PW}px ${PT + PH}px, ${PL}px ${PT + PH}px, ${PL}px ${PT}px)`;
-  labLayer.style.borderRadius = Math.min(22, LH / 2) + "px";
-  if (LW !== 220) { if (!lens.classList.contains("nobg")) bgLayer.style.filter = `url(#seg-lens-f-bg-${LW})`; if (!lens.classList.contains("nolab")) labLayer.style.filter = `url(#seg-lens-f-lab-${LW})`; }
+  labLayer.style.borderRadius = (TAB ? LH / 2 : Math.min(22, LH / 2)) + "px";
+  if (LW !== 220 || TAB) { if (!lens.classList.contains("nobg")) bgLayer.style.filter = `url(#${NAME}-lens-f-bg-${LW})`; if (!lens.classList.contains("nolab")) labLayer.style.filter = `url(#${NAME}-lens-f-lab-${LW})`; }
   const AM = 16;                                                 /* the wrapper's extension beyond the lens (lens-field.json aberration.wrapper) */
   const stack = document.createElement("div"); stack.className = "stack"; stack.style.width = (LW + 2 * AM) + "px"; stack.style.height = (LH + 2 * AM) + "px";
   const base = document.createElement("div"); base.className = "base";
   stack.appendChild(base); stack.appendChild(bgLayer); stack.appendChild(labLayer); lens.appendChild(stack); scene.appendChild(lens);
   const AB = q.get("ab") || "flip";                              /* colour fringe chain: flip = the band factor e (the formula with EdgeOpacityStart 1 / End 0, default) | ir (1 − e, record) | 0 */
-  if (AB === "flip" || AB === "ir") { lens.classList.add("ab-" + AB); if (LW !== 220) stack.style.filter = `url(#seg-lens-f-ab${AB === "ir" ? "-ir" : ""}-${LW})`; }
+  if (AB === "flip" || AB === "ir") { lens.classList.add("ab-" + AB); if (LW !== 220 || TAB) stack.style.filter = `url(#${NAME}-lens-f-ab${AB === "ir" ? "-ir" : ""}-${LW})`; }
   scene.classList.add("lifted");
   const copy = () => { const c = scene.cloneNode(true); c.querySelector(".lens").remove(); c.id = ""; return c; };
   const sync = () => { clone.innerHTML = ""; clone.appendChild(copy()); labels.innerHTML = ""; labels.appendChild(copy()); base.innerHTML = ""; base.appendChild(copy()); plabels.innerHTML = ""; plabels.appendChild(copy()); };
   sync();
   /* lens position inside the scene (pt); starts over the selected segment: segctl at (20, 16 + 20.33 + 8) → segment centre */
-  const seg = scene.querySelector(".segctl"), r0 = seg.getBoundingClientRect(), s0 = scene.getBoundingClientRect();
-  let X = r0.left - s0.left + 2 + (r0.width - 4) / 4 - LW / 2, Y = r0.top - s0.top + 16 - LH / 2;
+  const seg = scene.querySelector(TAB ? ".tabbar" : ".segctl"), r0 = seg.getBoundingClientRect(), s0 = scene.getBoundingClientRect();
+  let X = TAB ? r0.left - s0.left + r0.width / 6 - LW / 2 : r0.left - s0.left + 2 + (r0.width - 4) / 4 - LW / 2, Y = TAB ? r0.top - s0.top + 31 - LH / 2 : r0.top - s0.top + 16 - LH / 2;
   if (q.get("lensx")) X = parseFloat(q.get("lensx")) - s0.left - LW / 2;             // ?lensx=<page x of the lens centre>, e.g. 220 = the divider
   /* the clone is placed so that the scene point under the lens centre stays under the lens centre; with zoom z the clone's own
      coordinates are scaled about its top-left, so its offset is (centre − z·(lens position + centre)) / z in zoomed units */
