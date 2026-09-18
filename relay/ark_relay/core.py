@@ -703,10 +703,19 @@ def _daily_head(failed: list, undone: list, retried: dict, kinds: dict) -> str:
     return "全绿 ✅"
 
 
+def _maaend_restart(e: dict) -> bool:
+    """AUTO-MAS's record for a MaaEnd that exited before writing a line - it
+    restarted for its own update (「未捕获到日志」, 2026-09-18). Matched on the
+    text alone: the 09-18 morning entries were booked by the version before the
+    `transitional` flag existed, and requiring the flag put that non-run into
+    the evening report as one of three failures."""
+    return "未捕获到日志" in str((e.get("raw") or {}).get("maaend_result") or "")
+
+
 def _launch_miss(e: dict) -> bool:
     """A record AUTO-MAS wrote for an attempt that never ran (emulator launch miss,
     or MaaEnd restarting for its own update - 「未捕获到日志」, 2026-09-18)."""
-    if e.get("transitional") and "未捕获到日志" in str((e.get("raw") or {}).get("maaend_result") or ""):
+    if _maaend_restart(e):
         return True
     return (not e.get("ok")
             and any("模拟器启动失败" in str(t) for t in (e.get("failed_tasks") or [])))
@@ -756,6 +765,9 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
     # the games, so it gets no row (the user asked what that row even was,
     # 2026-09-14). Matched on the text as well as the flag, so records written
     # before the flag existed read the same way.
+    # A MaaEnd self-update restart is worth one line of information, not a row
+    # and not a failure (the user, 2026-09-18 evening).
+    restarts = sum(1 for e in entries if _maaend_restart(e))
     entries = [e for e in entries if not _launch_miss(e)]
     if not entries:
         return f"📋 {day} 日报", "今天没有任何运行记录。"
@@ -866,6 +878,8 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
                   zip(_LABELS, (did, cost, out, left, notes))]
         lines.append("")
 
+    if restarts:
+        lines += [f"ℹ️ MaaEnd 发版自更新重启 {restarts} 次，未计失败", ""]
     if prose:
         lines += ["———————", prose, ""]
     # Knowing last night was fine is only half of it - the operator also needs
