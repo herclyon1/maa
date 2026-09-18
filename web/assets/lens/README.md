@@ -178,6 +178,18 @@ top edge at x ±98…100 (formula −2.9 pt of vertical pull there, native ≥ �
 0 coloured pixels along the long edges in both engines. Dragged to the divider, the glyphs at the lens ends are folded by the ClearGlass band (mirrored
 fragments) where the native shows them magnified ×2.3 into thin slivers — the open item above.
 
+The ring of dark dots along the capsule ends in the dragged frame (`dragmid-rim-dots-4x-native-formula-labelonly-labeloff.png`,
+rows: native / formula / label filter only / label displacement off): they are on the label layer only (74 dark rim pixels
+outside the glyph rows with the label filter, 0 with it off, the same 74 with the backdrop filter off). Traced through the map
+(`lens-field.json` encoding, the browser's decode): each sits 0.5–0.9 pt inside the edge where the ClearGlass stage pulls
+10–13 pt inward along the ovalized gradient, and 56 of the 74 land on a stroke of 「班」 in the unfiltered label copy (e.g.
+(−107.0, −9.9) → u (+9.8, +4.8) → source (−97.2, −5.1), L = 0/47); B = 255 there, no sample leaves the source. They are the
+formula's rim profile (−17.5 × (1 − P) → 12–17 pt at depth < 1), where the measurement reads 7.7 pt at the edge of the ±10 rows
+(`seg-lens-drag-mid.md` §5): the same pixels pulled 7.7 pt along the same direction land at (±100, −6.5), above the glyph
+(L = 239) — no dots. Nothing in the generator or the wiring removes them without changing the formula's numbers; the native
+shows the same pull as short stroke slivers beside the glyph rows (row 1), not as a ring. Open item with the old page session
+(the −17.5 / 11.2 band at the rim), not adjusted here.
+
 <!-- verify:end -->
 
 ## 1 Source (measured-resampling mode, record): the native segmented lens's own field (data session, 2026-09-19)
