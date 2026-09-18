@@ -9,7 +9,7 @@ compiled from the native per-frame recordings. Nothing here touches `view.js` / 
 | File | What |
 |---|---|
 | `gen_lens_maps.py --formula` | computes the maps from the formulas (§0), writes the filters, the test page, `lens-field.json` (parameters, sources, width → height table, residuals) |
-| `seg-f-bg-<w>.png` | backdrop map for lens width w (196 … 256 step 2; 220 = lifted at rest): what lies under the lens (track / card). The lens box at 2 px/pt, R/G = the clamped sampling offset (byte = 128 + u·255/40), B = the coverage the filter multiplies by, one map for all colour channels |
+| `seg-f-bg-<w>.png` | backdrop map for lens width w (196 … 256 step 2; 220 = lifted at rest): what lies under the lens (track / card). The lens box at 2 px/pt, R/G = the clamped sampling offset (byte = 128 + u·255/48), B = the coverage the filter multiplies by, one map for all colour channels |
 | `seg-f-lab-<w>.png` | label-copy map for width w (the label copy's two displacement stages with the portal's source extent in B, §0.2 / §0.3) |
 | `lens-filter.svg` | `#seg-lens-f-bg-<w>` / `#seg-lens-f-lab-<w>`: feImage (href = the PNG files as `index.html` sees them, `assets/lens/…`) → feDisplacementMap → feComposite with the map's B; `#seg-lens-f-ab-<w>` / `-ab-ir-<w>`: the fringe chain (§0.5, test page only for now); copy the `<svg>` into `index.html` |
 | `seg-f-ab-<w>.png` | the fringe span map (§0.5): lens + 16 pt, 1 px/pt, R/G = Δ, B = the edge-band factor |
@@ -53,31 +53,35 @@ acts on its layer image, clipped first (transparent outside the layer's mask), t
 shape's coverage (the map's B channel). Source extents: ClearGlass's image = the segment content 400×32 inside portal #20
 (220×44, masksToBounds r 22) → transparent outside the capsule; ContentLensing's image = portal #32, 196×28 centred in the lens,
 transparent around it. In the map: B(p) = cov(p) × [p + Δ_L(p) inside the 196×28 portal] × cov(p + Δ_L(p)); the final sample
-position is clamped to the box. The portal size during the drag stretch was not read (rest-state reading, `--label-portal 196x28`
-for every width).
+position is clamped to the box. The portal size during the drag follows the lens's scale (`--label-portal 196x28` in model space, §1c(d)).
 
 Not read by the probe and therefore stated: the glassBackground shader's own SDF ovalization — the old page's residual table
-(rms 0.12–0.16, §0.4) computes both backdrop stages on the same capsule with ovalization 0.5, kept here; the SDF elements'
-cornerRadii during the drag (A9 read the rest state only) — DestOut's cornerRadius stays 22 through the whole drag
-(`uiprobe-motion-segdragmid-light.json` lenstrace), so r = min(22, h/2).
+(rms 0.12–0.16, §0.4) computes both backdrop stages on the same capsule with ovalization 0.5, kept here. (The drag frames'
+DestOut cornerRadius 22 is the model value; on screen it is scaled with the rest, §1c(d).)
 
 ### 0.3 The maps
 
-Encoding as before but S = 40 (the label stack reaches 17.5 pt at the lens edge): byte = 128 + round(u·255/40), x → R, y → G,
+Encoding as before but S = 48 (the label stack reaches 17.5 pt at the lens edge, × 1.16 on the widest stretch set): byte = 128 + round(u·255/48), x → R, y → G,
 u = content − screen (pt, +x right, +y down), zero = byte 128; B = the shape coverage the shader writes (255 inside, anti-aliased
 edge, 0 outside — the lens clip does the same job in the web, feDisplacementMap ignores B); A 255. 2 px/pt. The browser decodes
-S·(byte/255 − .5) = u + S/510 (0.08 pt, every channel alike). No dispersion: the colour fringe is glassForeground's aberration
+S·(byte/255 − .5) = u + S/510 (0.09 pt, every channel alike). No dispersion: the colour fringe is glassForeground's aberration
 term (formula.md §3, `aberrate_texture`), not decompiled yet — one map feeds all three channels, so the filter is a single
 `feDisplacementMap` on `SourceGraphic`. Outside the capsule (the box corners, clipped away by the lens; the shader's coverage is 0 there) B is 0 and R/G hold the clamped
 sample of the formula like everywhere else.
 
-**One set per lens width** (`--series 196:256:2`, 31 widths × 2 maps, 413 KB of PNG in total (+ 31 fringe maps, 602 KB with them), ≤ 1 MB): during the drag the
-lens stretches (253.5×36.2 at the fastest recorded move, 204×47.5 on the overshoot) and the field follows the capsule, so the
-page picks the set of the current width (nearest even width, no interpolation). Each set's height is the native's at that width:
-linear between the two nearest recorded drag frames of `seg-native-abc-frames.json` (phase drag) and
-`uiprobe-motion-segdragmid-light.json` (lenstrace); 196, 254 and 256 lie outside the recorded 197.5 … 253.5 and take the nearest
-frame's height (flagged `clamped` in `lens-field.json`). The lift (196×28 → 220×44) is a different path (both dimensions grow, the
-amounts ramp with the same curve, `seg-keys.css`); the sets are not for it — animate the filter's `scale` 0 → 40 on the 220 set.
+**One set per lens width** (`--series 196:256:2`, 31 widths × 3 maps, 530 KB of PNG in total, ≤ 1 MB): during the drag the
+lens stretches (253.5×36.2 at the fastest recorded move, 204×47.5 on the overshoot); the page picks the set of the current width
+(nearest even width, no interpolation). **What a stretched set is** (`seg-lens-refraction.md` §1c(d), the data session's in-process
+reading of the drag frames): the flex scale sits on `_UILiquidLensView`'s presentation transform alone — every layer below (the
+SDF elements, the five portals, the glass group, DestOut) keeps its model bounds and identity transform and is simply scaled with
+the parent: 221.78×43.42 = (1.0081, 0.9867) × 220×44 with the portal 197.59×27.63, 204.67×47.37 = (0.9303, 1.0767) on the rebound.
+So a set of width w and height h is the 220×44 model (capsule r 22, portal 196×28, all four stages) scaled by (w/220, h/44):
+u(p) = S·u₀(S⁻¹p) — elliptical ends, the portal = scale × 196×28 (217.4×24.4 at 244×38.4), never a capsule of radius h/2. Each set's
+height is the native's at that width: linear between the two nearest recorded drag frames of `seg-native-abc-frames.json` (phase
+drag) and `uiprobe-motion-segdragmid-light.json` (lenstrace); 196, 254 and 256 lie outside the recorded 197.5 … 253.5 and take the
+nearest frame's height (flagged `clamped` in `lens-field.json`). The lift (196×28 → 220×44) is a different path (both dimensions
+grow, the amounts ramp with the same curve, `seg-keys.css`); the sets are not for it — animate the filter's `scale` 0 → 48 on the
+220 set.
 
 **The filter and the layer** (the acceptance session's ③ and the source rules of formula.md §2): `x=0 y=0 width=100%
 height=100%`, feImage (the map, stretched to the element box) → feDisplacementMap on SourceGraphic → feComposite `in` with the
@@ -208,27 +212,28 @@ and WebKit (`dragmid-4x-native-chrome-webkit-244.png`), the rest frame unchanged
 
 ### 0.5 Colour fringe — glassForeground's 7-tap spectral sampling (first half; test page + `lens-filter.svg` only, not wired into index.html)
 
-Source: `glass-displacement-formula.md` §3b (`glass_foreground_base`, IR %102–%199) and §3c (the fringe on the A1 PNG is the
-signature of this chain; the displacement maps carry no per-channel term). Parameters = `GlassForegroundFilter::render` defaults,
-the lens's `glassForeground{}` overrides nothing (A9): inputAberrationAmount **−15**, Height **20**, Offset 0, Angle 0; edge band
-inputEdgeStart **−4.5** / End **−3**, opacity 0 → 1. Per pixel (lens capsule SDF `d`, outward gradient `g` with the ovalization
-0.5 of the other stages — the foreground's own SDF element is not read): `t_a = saturate(−d/20)`, `amt_a = −15·(1 − sqrt(t_a(2 − t_a)))`,
-`Δ = amt_a·g` (inward; 15 pt at the edge, 8.5 at 2 pt, 5.1 at 5 pt, 0 at 20). Seven taps: k = 1, 2/3, 1/3 at +kΔ → R += r·k,
+Source: `glass-displacement-formula.md` §3b (`glass_foreground_base`, IR %102–%199) and §3c; the parameters are the lens's own keys
+read in-process (`seg-lens-refraction.md` §1c(a), A9 `sdfdump`, light = dark): #33 glassForeground **inputAberrationAmount 2.3158,
+inputAberrationAngle −0.2618 rad (−15°), inputAberrationHeight 0, inputEdgeStart −8.8, inputEdgeEnd 0**, inputRefractionAmount 0 /
+Height 0 (no refraction term), layer opacity 1, compositingFilter normalBlendMode, backdrop marginWidth 100. (The old page's
+"−15 / 20" were the angle in degrees and a height the process does not hold.) The data session's switch tests
+(`seg-lens-drag-mid.md` §6b): amount → 0 removes every colour edge (so this is the fringe); height 0 → 40 changes nothing;
+EdgeStart/End −8.8/0 → −9/−6 widens the band to 8–10 pt; angle + π ≡ amount negated, pixel for pixel; amount +15 averages the
+colours away. Per pixel (lens capsule SDF `d`, outward gradient `g` with the ovalization 0.5 of the other stages — the
+foreground's own SDF element is not read): height 0 → inv_height 0 → t_a = 0 → `amt_a = 2.3158` everywhere (no falloff);
+`Δ = amt_a·R(−15°)·g` (`dir = (g·(cos θ, −sin θ), g·(sin θ, cos θ))`, formula.md §1 %43); seven taps: k = 1, 2/3, 1/3 at +kΔ → R += r·k,
 G += g·(1 − k); k = 0, 1/3, 2/3, 1 at −kΔ → G += g·(1 − k), B += b·k; `out = (R/2, G/3, B/2) × ΣA/7 × band`, composited over the
-content.
+content. Band = `op = saturate((d + 8.8)/8.8)` (0 in the interior, 1 at the edge): the interior has no dispersion (§6b(b): the
+41 middle edges 0.000; ≥ 90 % of the coloured pixels within 8 pt of the ends), so the visible factor is op itself; the IR's
+`out ×= 1 − op` reading stays as the `-ab-ir-` switch. Stretched sets: Δ and the band scale with the lens like everything else (§1c(d)).
 
-In SVG (`#seg-lens-f-ab-<w>` / `#seg-lens-f-ab-ir-<w>`): one map `seg-f-ab-<w>.png` (R/G = Δ, S 40; B = the band factor
-`op = saturate((d + 4.5)/1.5)`; 1 px/pt; it covers the lens plus 16 pt on every side), seven `feDisplacementMap` on it with
-`scale = ±k·40`, a `feColorMatrix` per tap for the channel weights and one for the tap's alpha/7, `feComposite arithmetic` sums,
-`feComposite in` with ΣA/7 then with the band mask, `feComposite over` the source. **The band-mask switch**: `-ab-` uses B = op
-(the outer band, d ≥ −3 — what the A1 PNG shows: colour only in the outer 0…5 pt), `-ab-ir-` uses 1 − B (the IR-literal
-`out ×= 1 − op`: the interior shown, the 3-pt edge band hidden — it colours every glyph edge inside the lens, which the PNG does
-not show). Which one holds waits for the data session's sdfset test (aberration 0 / height 40 / edge −9,−6); the test page
-switches with `?ab=flip|ir|0` (flip default). **The wrapper**: the foreground's backdrop capture has marginWidth 100 (A9 #33), so
-its outward taps read the page beyond the lens; the chain therefore sits on a wrapper of the lens box extended by 16 pt
-(`overflow:hidden`, its own stacking context) holding a plain copy of the page under the two displaced layers — with the lens box
-alone the outward taps read transparent and a saturated yellow ring appears all round the rim (tried: it does). An earlier
-attempt with clamp_to_edge baked per tap did the same (the layers' output is transparent outside the capsule).
+In SVG (`#seg-lens-f-ab-<w>` / `#seg-lens-f-ab-ir-<w>`): one map `seg-f-ab-<w>.png` (R/G = Δ, S 48; B = op; 1 px/pt; it covers the
+lens plus 16 pt on every side), seven `feDisplacementMap` on it with `scale = ±k·48`, a `feColorMatrix` per tap for the channel
+weights and one for the tap's alpha/7, `feComposite arithmetic` sums, `feComposite in` with ΣA/7 then with the band mask,
+`feComposite over` the source. **The wrapper**: the foreground's backdrop capture has marginWidth 100, so its outward taps read
+the page beyond the lens; the chain sits on a wrapper of the lens box extended by 16 pt (`overflow:hidden`, its own stacking
+context) holding a plain copy of the page under the two displaced layers — with the lens box alone the outward taps read
+transparent and a ring appears all round the rim (tried with the earlier −15 span: it does).
 
 **Direction and sides, item by item** (the acceptance session's ①, 05:5x; `lens-field.json` → `aberration.parameters`):
 
@@ -236,18 +241,17 @@ attempt with clamp_to_edge baked per tap did the same (the layers' output is tra
 |---|---|---|
 | `d` | SDF distance, negative inside (cov = saturate(.5 − d/fwidth) is 1 inside) | `capsule_sdf` of the lens, negative inside |
 | `g` | the SDF gradient = the **outward** unit normal | `ovalized_gradient` of the outward normal (ovalization 0.5) |
-| `amt_a` | aberration_amount × (1 − sqrt(t_a(2 − t_a))), aberration_amount **−15** → amt_a ≤ 0 | −15·(1 − sqrt(t_a(2 − t_a))) |
-| `Δ` | amt_a · (M · R(angle) · g), angle 0 | amt_a · g → points **inward** (a negative amount along the outward normal); the map stores it as is (`--ab-sign 1`) |
-| R taps | c = tex(uv1 + kΔ), k = 1, 2/3, 1/3: R += c.r·k | `feDisplacementMap scale = +k·40` on the Δ map → samples at p + kΔ = **inward** |
+| `amt_a` | aberration_amount × (1 − sqrt(t_a(2 − t_a))); the lens's amount **+2.3158**, height 0 → t_a 0 → amt_a = 2.3158 everywhere | 2.3158 (no falloff) |
+| `Δ` | amt_a · (M · R(angle) · g), angle **−15°** | amt_a · R(−15°) · g → points **outward** (rotated 15°); the map stores it as is (`--ab-sign 1`) |
+| R taps | c = tex(uv1 + kΔ), k = 1, 2/3, 1/3: R += c.r·k | `feDisplacementMap scale = +k·48` on the Δ map → samples at p + kΔ = **outward** (rotated) |
 | G taps | the same three: G += c.g·(1 − k); and the four at uv1 − kΔ: G += c.g·(1 − k) | weights (1 − k)/3 on all seven |
-| B taps | c = tex(uv1 − kΔ), k = 0, 1/3, 2/3, 1: B += c.b·k | `scale = −k·40` → samples at p − kΔ = **outward** |
-| uv1 | uv + amt_r·(M·R·g), refraction −150 / 100 / offset −10 | not applied (uv1 = uv): at the band d ∈ [−3, 0] it would be 76–85 pt inward — open with the old page (see §3c e) |
+| B taps | c = tex(uv1 − kΔ), k = 0, 1/3, 2/3, 1: B += c.b·k | `scale = −k·48` → samples at p − kΔ = **inward** |
+| uv1 | uv + amt_r·(M·R·g) | the lens's inputRefractionAmount is 0 (§1c(a)): uv1 = uv |
 
-So, as read, the R taps look inward and the B taps outward. What the A1 PNG needs is the opposite: along row y +4 at the right end the
-native runs blue → green → yellow → red from the inside towards the rim (a dark compressed glyph part with the page beyond the rim):
-red on the rim side means R sees the bright side beyond the rim, i.e. R samples **outward**. Verification only
-(`--ab-sign -1` on the 220 set, `fringe-8x-sign-native-asread-negated.png`, rows native / as read / negated / WebKit negated;
-hue runs along the rows at both ends, R red Y yellow G green C cyan B blue M magenta, px runs):
+With the lens's own keys the R taps look outward and the B taps inward (the earlier "−15" default made it the other way round,
+which the A1 hue order had already contradicted: the record of that check, `--ab-sign -1` on the old default,
+`fringe-8x-sign-native-asread-negated.png`, rows native / as read / negated / WebKit negated; hue runs along the rows at both
+ends, R red Y yellow G green C cyan B blue M magenta, px runs):
 
 | row | native, left end (rim → inside) | as read | negated | native, right end (inside → rim) | as read | negated |
 |---|---|---|---|---|---|---|
@@ -255,33 +259,35 @@ hue runs along the rows at both ends, R red Y yellow G green C cyan B blue M mag
 | y 0 | Y6 R2 M8 | C2 | Y2 | M4 R2 Y23 | R2 M9 B1 | B2 M1 C1 M8 |
 | y +4 | C10 Y4 | C1 | Y1 | B12 G12 Y4 R2 Y2 | R1 M2 C1 | M1 C1 M1 Y2 |
 
-The negated direction puts yellow / red on the rim side at both ends like the native; as read puts cyan / blue there. The maps
-stay as read (sign +1); which of `g`, `M` or the amount carries the sign in `glass_foreground_base` is for the old page session
-to read (or the data session's sdfset with inputAberrationAngle π, which would flip the native's order).
+(the negated direction of the old default put yellow / red on the rim side like the native). The sign question is closed by the
+keys: amount +2.3158 and angle −15°, and the data session's sdfset (angle + π ≡ amount negated).
 
 **Compositing** (the acceptance session's ②): §3b `out.rgb = (R/2, G/3, B/2) × α_elem × cov × ΣA/7 × edr`, `out.a = α_elem × cov × ΣA/7`,
 source-over the content. The chain: the colour sum (its alpha clamped to 1) → feColorMatrix × edr on the colour and × α_elem on
 the alpha → `feComposite in` with ΣA/7 (the seven taps' alphas/7 summed) → `in` with the band mask (cov = the lens clip) → `over`
-the source. α_elem (the glassForeground layer's opacity) and edr are 1 until the old page / data session read them
-(`--ab-alpha`, `--ab-edr`); nothing is "painted over" at full strength beyond what those two factors will scale.
+the source. α_elem = 1 (layer #33 opacity 1, normalBlendMode, §1c(a)); edr 1 (`--ab-alpha`, `--ab-edr`).
 
 Check against the A1 PNG (`tools/touch/seg-native-dragmid-light.png`, 5.92 px/pt; 8× crops of both ends in
-`remote-mock/v4/lens/formula/fringe-8x-native-chrome-webkit-ir.png`, rows native / Chrome / WebKit / ir):
+`remote-mock/v4/lens/formula/fringe-8x-native-chrome-webkit.png`, rows native / Chrome / WebKit), with the lens's keys:
 
-| | native A1 | Chrome, flip | WebKit, flip | Chrome, ir |
-|---|---|---|---|---|
-| coloured pixels (max − min > 40) per 2-pt bin from the end edge, left / right | 629 383 130 0 0 0 / 714 519 193 0 0 0 | 1344 338 0 0 0 0 / 1636 448 2 0 0 0 | 5792 508 0 0 0 0 / 6814 1112 10 0 0 0 | 0 0 12 14 67 161 / 0 21 126 121 53 142 |
-| band width | 0 … 6 pt | 0 … 4 pt | 0 … 4 pt | 4 … 12 pt (interior glyph edges) |
-| share of the outer 12 pt | 1.4 % | 7.8 % | 7.3 % | 1.5 % |
-| hue order along row y +4, right end (left → right) | B12 G12 Y4 R2 (blue → green → yellow → red towards the rim) | R1 M2 C1 | M2 R1 M1 C6 M6 C4 | — |
+| | native A1 | Chrome | WebKit |
+|---|---|---|---|
+| coloured pixels (max − min > 40) per 2-pt bin from the end edge, left / right | 629 383 130 0 0 0 / 714 519 193 0 0 0 | 35 0 0 0 0 0 / 198 169 113 5 0 0 | 187 0 0 0 0 0 / 783 559 470 1 0 0 |
+| band width | 0 … 6 pt | right 0 … 6 pt, left 0 … 2 | right 0 … 6 pt, left 0 … 2 |
+| share of the outer 12 pt | 1.4 % | 1.1 % | 1.0 % |
+| mean saturation of the coloured pixels | 69 | 81 | 78 |
+| strongest coloured pixel, left / right end | (110.33, 625) (214,189,56) yellow-orange / (328.33, 617) (14,72,217) blue (§6b(c)) | — | (−109.3, +1.8) (62,216,240) cyan / (109.7, −0.2) (219,97,6) orange |
+| hue runs along row y 0, right end (inside → rim) | M4 R2 Y23 | C2 M1 B6 R6 | C9 B7 C2 B3 R12 |
 
-The band sits where the native's does (0 … 4–6 pt, nothing further in), and the ir reading does not. The colours differ: the native
-fragments run blue → green → yellow → red (a spectrum across a compressed glyph part), ours are magenta / cyan dominated because the
-web's fragments at the rim are the 1–2 pt strips left by the portal cut (§0.4) — thinner than the tap span, so R and B both miss
-them (magenta = G alone) — and because the band replaces the content at full strength: the native fringe is faint (mean saturation
-69 vs 100–115 here), which points at the foreground's α (§3b `out × α × cov`, its SDF coverage) being soft, not read yet. Scene
-note: the test scene has text 8 pt above and below the control, and the outward taps pull it into the rim as coloured smears
-(the probe app has nothing there); index.html has the status line at the same distance.
+The band's extent, its share of the rim and its strength now sit with the native (the earlier −15 / 20 default gave 7–8 % and
+saturation 100–115). Left: the native's yellow-orange at the left rim and blue at the right are swapped in ours (cyan left,
+orange right), and the left end carries much less colour than the native (35–187 vs 629 pixels in the first bin) — the glyph
+parts the native shows there (compressed slivers of 「早」) are cut by the portal in ours (§0.4), so there is little for the taps
+to colour; on row 0 at the right end both have red / yellow on the rim side and differ further in (magenta / red native, cyan /
+blue ours). The swap of the end colours is the direction question of the table above turned the other way by the keys
+(amount +2.3158, R outward); `--ab-sign -1` swaps them back — kept as the verification switch, the maps follow the keys.
+Neighbouring text (`seg-neighbors-light-hold.png`, text 8 pt above and below the control): the native pulls none of it into
+the rim, and with the 2.3 pt span neither do we (`neighbors-native-vs-web.png`; the earlier 15 pt span smeared it in).
 
 Frame interval, headless Chrome 440×956 @3x, software raster (`scratchpad/frames_chrome.py`, 自动拖 2 s, 120 frames):
 without the chain 16.9–17.1 ms mean (max 50–67, 1 frame > 20 ms), with the chain 16.9 ms (max 33, 2 frames > 20 ms) — 60 Hz in
