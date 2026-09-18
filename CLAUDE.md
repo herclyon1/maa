@@ -76,7 +76,7 @@
 | 核实鸣潮配置真的落地了 | `scripts/mac/okww-check.sh` —— 比对 MAS 侧和 OK-WW 实际读到的那份（底下是 `scripts/windows/okww-landed.py`）。「设置看着好好的、实际没生效」查这个 |
 | 给机器下命令行指令 | **机器开着**：`scripts/mac/order-now.sh '{"action":...}'`（走手机页同一条 ntfy 通道，几秒到）；**机器关着**：`scripts/mac/order.sh '{...}'`（写仓库信箱，开机/关机前才读；`--clear` 清空）—— **别手改 `queue/config.json`**：它整份重放，且不清 CDN 指令到不了机器。09-14 用 order.sh 给开着的机器下令，等了半小时没到 |
 | 发布手机页 | `scripts/mac/deploy-web.sh` —— 改了 `web/` 下任何文件之后**必须**跑，不跑手机上还是旧的 |
-| **重算「最新六星满练要多少」表（库存页用）** | `scripts/mac/build-need-tables.py` —— 出新六星时跑一次：按森空岛百科的「上线时间」自己找最新已实装六星和她的专武（同日、同类型、限时特卖），用量从养成计算器 rules 取，写 `web/data/need.json`，然后 `deploy-web.sh`。`--rarity 5` 取最新五星，`--char/--weapon` 指定。数字的坑（90 级 -1 哨兵、名字带换行、没有的材料不在 itemCount 里）见 `docs/SKLAND-API.md` §8 |
+| **重算「最新六星满练要多少」表（库存页用）** | `scripts/mac/build-need-tables.py` —— 百科里出现新六星就跑一次（未实装的也选）：按「上线时间」定人和专武（同日、同类型、限时特卖），用量先取养成计算器 rules，没收录就读百科词条的材料卡片，再没有就读客户端预览表（含天赋，会标出来），写 `web/data/need.json`，然后 `deploy-web.sh`；她上线、计算器收录后再跑一次自动换成 rules。`--rarity 5` 取最新五星，`--char/--weapon` 指定。坑见 `docs/SKLAND-API.md` §8 |
 | **手机页验收（发布后跑）** | `scripts/mac/phone-accept.py` —— 在模拟器 Safari 里量 DOM 对 `docs/HIG-CHECKLIST.md` 的数字，浅色深色各一遍，差一项就退出 1。改 CSS 后不跑=没验证 |
 | **一键截图（刷声骸评分用）** | 按 `¥` 存一张到 `~/Pictures/EchoShots`，Hammerspoon 干的。配置在 `~/.hammerspoon/init.lua`，仓库存档 `scripts/mac/hammerspoon/init.lua`。改了要在菜单栏 Reload Config |
 | **查哪个共鸣者在用哪套声骸** | `scripts/mac/kuro-echoes.py`（`--dump 文件` 存原始数据）—— 读 `~/.config/ark/.env` 的 `KUROBBS_TOKEN` + `KUROBBS_DID`，**必须是手机 App 抓包得到的那一对**，网页 token 进不了数据坞。**只看得到已装备的**，背包里的它不知道。报「登录已过期」多半是 `source` 头和 token 来源不匹配，不是过期 |
