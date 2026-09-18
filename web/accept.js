@@ -214,12 +214,10 @@
     const [on, off] = lab.querySelectorAll(".sw span");
     col("开关开 = 系统绿（--ios-switch-on）", T.green, cs(on).backgroundColor);
     col("开关关 = 灰（--ios-switch-off）", T.swOff, cs(off).backgroundColor);
-    const kx = /matrix\([^)]*,\s*([-\d.]+),\s*[-\d.]+\)$/.exec(cs(on, "::after").transform);
-    num("开关开：圆钮位移 22（--ios-switch-travel = 63 − 37 − 2×2）", 22, kx ? parseFloat(kx[1]) : NaN);
-    /* Finger down: the kit's Pressed knob is 58×38 (scale 1.526 × 1.583 of 38×24). */
-    const held = lab.querySelectorAll(".sw")[1]; held.classList.add("live", "hold");   // as view.js sets them: no transition in the way
-    const hm = /matrix\(([-\d.]+),\s*[-\d.]+,\s*[-\d.]+,\s*([-\d.]+)/.exec(cs(held.querySelector("span"), "::after").transform);
-    num("按住：圆钮放大成 58 宽（Kit Toggle Pressed）", 1.526, hm ? parseFloat(hm[1]) : NaN, 0.02); num("按住：圆钮放大成 38 高（Kit Toggle Pressed）", 1.583, hm ? parseFloat(hm[2]) : NaN, 0.02);
+    num("开关开：圆钮位移 22（--ios-switch-travel = 63 − 37 − 2×2）", 22, px(cs(on, "::after").translate));
+    /* Finger down: the knob settles at 58×38 (spec §3 L*, Kit Toggle Pressed) = scale 1.568 × 1.583 of 37×24. */
+    const held = lab.querySelectorAll(".sw")[1]; held.classList.add("live", "hold");
+    check("按住：旋钮抬起动画 knob-lift（37×24 → 60.5×40 → 58×38，spec §3 L*）", "knob-lift .2s", `${cs(held.querySelector("span"), "::after").animationName} ${cs(held.querySelector("span"), "::after").animationDuration}`, cs(held.querySelector("span"), "::after").animationName === "knob-lift");
     check("按住：圆钮变半透明玻璃", "非纯白", cs(held.querySelector("span"), "::after").backgroundImage.slice(0, 15), /gradient/.test(cs(held.querySelector("span"), "::after").backgroundImage));
     held.classList.remove("hold");
     /* Motion tokens (spec-extract.md ⑤): knob 0.35 s on the probed spring, track 0.2 s. */
@@ -256,34 +254,163 @@
     const meta = document.querySelector('meta[name="theme-color"]');
     check("theme-color 存在", "是", meta ? "是" : "缺", !!meta);
 
-    /* Interaction (2026-09-18, the bug he caught live): the segmented control must select on release with the
-       content switching synchronously, survive ten alternating taps 80 ms apart, and follow a drag across segments. */
+    /* Interaction replays, one item per rule of remote-ref/interaction-spec.md (iOS 27 injected measurements, 2026-09-18).
+       Events are synthetic PointerEvents with coordinates, so they exercise the page's own state machines exactly as a finger would
+       (the browser's tap-vs-scroll disambiguation is not involved: the controls set touch-action: none). */
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const at = (el, fx = .5, fy = .5, dx = 0, dy = 0) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width * fx + dx, y: r.top + r.height * fy + dy }; };
+    const pev = (el, type, p, id = 11) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, clientX: p.x, clientY: p.y, isPrimary: true, button: 0, buttons: type === "pointerup" ? 0 : 1, pointerType: "touch" }));
     async function interactions() {
-      if (!document.querySelector("#queueseg")) return;
-      const bs = () => [...document.querySelectorAll("#queueseg button")];
+      const q = () => document.querySelector("#queueseg"), bs = () => [...document.querySelectorAll("#queueseg button")];
       const onText = () => (document.querySelector("#queueseg button.on") || {}).textContent || "";
-      /* the 「这一趟」 section (not 明日安排, which always lists the other shift) must show the selected shift */
-      const rowHas = (name) => { const sec = [...document.querySelectorAll("#app section")].find((x) => ((x.querySelector("h2") || {}).textContent || "").trim() === "这一趟"); return !!sec && [...sec.querySelectorAll(".row label")].some((l) => l.textContent.includes(name + " · ")); };
-      const start = onText();
-      let target = bs().find((b) => !b.classList.contains("on")); const want = target.textContent;
-      const t0 = performance.now(); target.click(); const dt = performance.now() - t0;
-      check("分段单击：抬手即选中，内容同步切（< 50 ms）", "< 50 ms", `${Math.round(dt * 10) / 10} ms`, onText() === want && rowHas(want) && dt < 50);
-      let last = null;
-      for (let i = 0; i < 10; i++) { const b = bs()[i % 2]; last = b.textContent; b.click(); if (i < 9) await sleep(80); }
-      const immediate = onText() === last && rowHas(last);           // already switched when the last finger lifts
-      let stable = true; for (let i = 0; i < 7; i++) { await sleep(100); if (onText() !== last || !rowHas(last)) stable = false; }   // and nothing flips it back later
-      check("分段快速交替 10 次 × 80 ms：终态 = 最后一次，之后不再变", last, `${onText()}${immediate ? "" : "（抬手时还没切）"}${stable ? "" : "（之后又变了）"}`, immediate && stable);
-      const seg = document.querySelector("#queueseg"), b0 = bs()[0], b1 = bs()[1];
-      if (seg && b0 && b1) {
-        if (onText() === b1.textContent) { b0.click(); await sleep(50); }
-        const s2 = document.querySelector("#queueseg"), r0 = s2.querySelectorAll("button")[0].getBoundingClientRect(), r1 = s2.querySelectorAll("button")[1].getBoundingClientRect();
-        const pe = (type, r) => s2.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 9, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, isPrimary: true, button: 0, pointerType: "touch" }));
-        pe("pointerdown", r0); pe("pointermove", r1); pe("pointerup", r1);
-        const w1 = s2.querySelectorAll("button")[1].textContent;
-        check("分段按住从左段滑到右段抬手 = 选右段", w1, onText(), onText() === w1 && rowHas(w1));
+      const thisShift = (name) => { const sec = [...document.querySelectorAll("#app section")].find((x) => ((x.querySelector("h2") || {}).textContent || "").trim() === "这一趟"); return !!sec && [...sec.querySelectorAll(".row label")].some((l) => l.textContent.includes(name + " · ")); };
+      /* count page renders synchronously (a MutationObserver fires a microtask later than the same-tick assertions need) */
+      let renders = 0; const origRender = window.render; window.render = function () { renders++; return origRender.apply(this, arguments); };
+      if (q()) {
+        const start = onText();
+        /* §1 G15: touch-down on the unselected segment - value, lens and content unchanged; its label dims towards .2 over .43 s */
+        let seg = q(), other = bs().find((b) => !b.classList.contains("on")), want = other.textContent, i0 = seg.style.getPropertyValue("--i");
+        const r0 = renders; pev(seg, "pointerdown", at(other));
+        check("分段 G15 按下未选中段：index / 透镜 / 内容都不动", start, `${onText()} --i=${seg.style.getPropertyValue("--i")} renders+${renders - r0}`, onText() === start && seg.style.getPropertyValue("--i") === i0 && renders === r0 && thisShift(start));
+        check("分段 G15 按下未选中段：标签变暗 .2 / .43 s ease-out（--ios-touch-segment-dim-*）", "opacity→.2 .43s", `${cs(other).opacity}→${other.classList.contains("dim") ? ".2" : "?"} ${cs(other).transitionDuration}`, other.classList.contains("dim") && /0\.43s/.test(cs(other).transitionDuration));
+        /* §1 G3: a 300 ms hold still selects nothing */
+        await sleep(300);
+        check("分段 G3 按住 300 ms 不选中", start, onText(), onText() === start && renders === r0);
+        /* §1 G1–G3: the up commits index + change + content in the same tick (--ios-touch-segment-commit-delay 0) */
+        const t0 = performance.now(); pev(seg, "pointerup", at(other)); const dt = performance.now() - t0;
+        check("分段 G1 抬手：同一刻改 index + change + 内容切（--ios-touch-segment-commit-delay 0）", want, `${onText()} +${Math.round(dt * 10) / 10} ms renders+${renders - r0}`, onText() === want && thisShift(want) && renders === r0 + 1 && dt < 50);
+        const lensNow = q().querySelector(".lens");
+        check("分段 G1 抬手：透镜起弹簧（0.55 s linear(), 边跑边胀 --seg-settle）", "transition + spring", `${cs(lensNow).transitionDuration.split(",")[0].trim()} ${lensNow.classList.contains("spring") ? "spring" : "-"}`, /^0\.55s/.test(cs(lensNow).transitionDuration) && lensNow.classList.contains("spring"));
+        await sleep(50);
+        /* §1 G4/G16: touch-down on the selected segment lifts the lens after ~100 ms (196×28 → 220×44), no event */
+        seg = q(); let sel = bs().find((b) => b.classList.contains("on")), unsel = bs().find((b) => !b.classList.contains("on"));
+        const r1 = renders; pev(seg, "pointerdown", at(sel)); const lens0 = seg.querySelector(".lens");
+        check("分段 G4 按下已选中段：+0 ms 透镜未抬、无事件", "no lift", lens0.classList.contains("lift") ? "lift" : "no lift", !lens0.classList.contains("lift") && renders === r1);
+        await sleep(160);
+        const sc160 = parseFloat(cs(lens0).scale);
+        check("分段 G16 按下已选中段 +160 ms：透镜抬起中（+100 ms 起，.25 s 到 220×44）", "lift, scale > 1", `${lens0.classList.contains("lift") ? "lift" : "-"} ${cs(lens0).scale}`, lens0.classList.contains("lift") && sc160 > 1.0);
+        await sleep(240);
+        check("分段 G16 +400 ms：透镜 220×44 到位（--ios-touch-segment-lift-x 12 / -y 8）", "1.1224 1.5714", cs(lens0).scale, /^1\.12/.test(cs(lens0).scale) && /1\.57/.test(cs(lens0).scale));
+        /* §1 G4/G22: sliding onto the other segment moves the lens, the index does not change until the up */
+        pev(seg, "pointermove", at(unsel)); await sleep(30);
+        const fracI = parseFloat(seg.style.getPropertyValue("--i"));
+        check("分段 G22 按住滑到另一段：透镜跟手、index 不改", `${onText()} lens→${bs().indexOf(unsel)}`, `${onText()} --i=${fracI}`, onText() === sel.textContent && Math.abs(fracI - bs().indexOf(unsel)) < 0.5 && renders === r1);
+        /* §1 G23: slide back and release on the original - no event */
+        pev(seg, "pointermove", at(sel)); pev(seg, "pointerup", at(sel));
+        check("分段 G23 滑回原段抬手：无事件，透镜回位", sel.textContent, `${onText()} renders+${renders - r1}`, onText() === sel.textContent && renders === r1 && q().style.getPropertyValue("--i") === String(bs().indexOf(sel)));
+        /* §1 G4/G21: lift, slide to the other segment, release there - commits at the up */
+        seg = q(); sel = bs().find((b) => b.classList.contains("on")); unsel = bs().find((b) => !b.classList.contains("on"));
+        pev(seg, "pointerdown", at(sel)); await sleep(160); pev(seg, "pointermove", at(unsel)); const r2 = renders; pev(seg, "pointerup", at(unsel));
+        check("分段 G21 抬起后滑到另一段抬手：选中那段", unsel.textContent, onText(), onText() === unsel.textContent && thisShift(unsel.textContent) && renders === r2 + 1);
+        await sleep(50);
+        /* §1 G5: press the unselected one, slide onto the selected one, release - no event */
+        seg = q(); sel = bs().find((b) => b.classList.contains("on")); unsel = bs().find((b) => !b.classList.contains("on"));
+        const r3 = renders; pev(seg, "pointerdown", at(unsel)); pev(seg, "pointermove", at(sel)); pev(seg, "pointerup", at(sel));
+        check("分段 G5 按未选中段滑到已选中段抬手：无事件", sel.textContent, `${onText()} renders+${renders - r3}`, onText() === sel.textContent && renders === r3 && !unsel.classList.contains("dim"));
+        /* §1 G17/G18/G26: release 60 pt below the control still selects, 100 pt below cancels (--ios-touch-inside-slop 70) */
+        seg = q(); sel = bs().find((b) => b.classList.contains("on")); unsel = bs().find((b) => !b.classList.contains("on"));
+        const r4 = renders; pev(seg, "pointerdown", at(unsel)); pev(seg, "pointermove", at(unsel, .5, .5, 0, 100)); pev(seg, "pointerup", at(unsel, .5, .5, 0, 100));
+        check("分段 G18 竖向滑出 100 pt 抬手：取消、无事件、标签回 1", sel.textContent, `${onText()} renders+${renders - r4}`, onText() === sel.textContent && renders === r4 && !unsel.classList.contains("dim"));
+        seg = q(); const r5 = renders; pev(seg, "pointerdown", at(unsel)); pev(seg, "pointermove", at(unsel, .5, .5, 0, 60)); pev(seg, "pointerup", at(unsel, .5, .5, 0, 60));
+        check("分段 G17 竖向滑出 60 pt 抬手：仍选中（余量 70）", unsel.textContent, `${onText()} renders+${renders - r5}`, onText() === unsel.textContent && renders === r5 + 1);
+        await sleep(50);
+        /* pointercancel = cancel */
+        seg = q(); sel = bs().find((b) => b.classList.contains("on")); unsel = bs().find((b) => !b.classList.contains("on"));
+        const r6 = renders; pev(seg, "pointerdown", at(unsel)); pev(seg, "pointercancel", at(unsel));
+        check("分段 pointercancel：不提交、标签回 1", sel.textContent, `${onText()} renders+${renders - r6}`, onText() === sel.textContent && renders === r6 && !unsel.classList.contains("dim"));
+        /* §1 G12/G13: ten alternating taps 30 ms down / 30 ms gap - every up counts, no debounce (--ios-touch-debounce 0) */
+        const r7 = renders; let last = null, everyTick = true;
+        for (let k = 0; k < 10; k++) { const b = bs()[k % 2]; last = b.textContent; const sg = q(); pev(sg, "pointerdown", at(b)); await sleep(30); pev(sg, "pointerup", at(b)); if (onText() !== last) everyTick = false; await sleep(30); }
+        check("分段 G12 快速交替 10 次（30 ms 点 / 30 ms 间隔）：每下都算、终态 = 最后一次", last, `${onText()} renders+${renders - r7}${everyTick ? "" : "（某下抬手时未切）"}`, onText() === last && renders === r7 + 10 && everyTick && thisShift(last));
+        let stable = true; for (let k = 0; k < 6; k++) { await sleep(100); if (onText() !== last) stable = false; }
+        check("分段 G12 快速交替后 600 ms 内不回跳", last, onText(), stable && onText() === last);
+        /* §1 G14: the same segment tapped three times - one event */
+        const sameName = (bs().find((x) => !x.classList.contains("on")) || bs()[0]).textContent;
+        const r8 = renders; for (let k = 0; k < 3; k++) { const b = bs().find((x) => x.textContent === sameName); const sg = q(); pev(sg, "pointerdown", at(b)); pev(sg, "pointerup", at(b)); await sleep(40); }
+        check("分段 G14 同段连点 3 下：只 1 次事件", 1, renders - r8, renders - r8 === 1);
+        const back = bs().find((b) => b.textContent === start); if (back && onText() !== start) { const sg = q(); pev(sg, "pointerdown", at(back)); pev(sg, "pointerup", at(back)); }
       }
-      const back = bs().find((b) => b.textContent === start); if (back && onText() !== start) back.click();
+      /* §2 UITabBar */
+      const nav = document.querySelector("nav.tabs:not([hidden])"), tseg = nav && nav.querySelector(".seg"), tbs = nav ? [...nav.querySelectorAll(".seg button")] : [];
+      if (nav && tbs.length > 1) {
+        const tOn = () => (nav.querySelector(".seg button.on") || {}).dataset.tab, g = nav.querySelector(".glide"), startTab = tOn();
+        const other = tbs.find((b) => !b.classList.contains("on")), cur = tbs.find((b) => b.classList.contains("on"));
+        const shown = () => [...document.querySelectorAll("#app > section:not([hidden])")].map((x) => x.dataset.tab).filter((v, i, a) => a.indexOf(v) === i).join(",");
+        pev(tseg, "pointerdown", at(other));
+        check("标签栏 T1 按下未选中项 +0 ms：不选中、透镜未动", startTab, `${tOn()} lift=${g.classList.contains("lift")}`, tOn() === startTab && !g.classList.contains("lift"));
+        await sleep(60);
+        check("标签栏 T1 +60 ms：透镜还没动（--ios-touch-tab-glide-delay 140）", "no lift", g.classList.contains("lift") ? "lift" : "no lift", !g.classList.contains("lift"));
+        await sleep(140);
+        check("标签栏 T1 +200 ms：透镜抬起中并滑向被按项（+140 ms 起，~350 ms 到）", `left→${other.offsetLeft}, lift`, `left ${g.style.left} ${g.classList.contains("lift") ? "lift" : "-"} ${cs(g).scale}`, g.classList.contains("lift") && g.style.left === other.offsetLeft + "px" && parseFloat(cs(g).scale) > 1.0);
+        await sleep(400);
+        check("标签栏 T5 按住 600 ms：仍不选中，透镜停在目标 119×64（--ios-touch-tab-lift-w 25 / -h 10）", `${startTab} 1.266 1.185`, `${tOn()} ${cs(g).scale}`, tOn() === startTab && /^1\.26/.test(cs(g).scale));
+        const t1 = performance.now(); pev(tseg, "pointerup", at(other)); const d1 = performance.now() - t1;
+        check("标签栏 T1 抬手：+0 ms 选中、内容同步切", other.dataset.tab, `${tOn()} 显示 ${shown()} +${Math.round(d1 * 10) / 10} ms`, tOn() === other.dataset.tab && shown() === other.dataset.tab && d1 < 50);
+        /* T7/T8: release 250 pt above still selects */
+        const nav2 = document.querySelector("nav.tabs"), seg2 = nav2.querySelector(".seg"), b2 = [...seg2.querySelectorAll("button")];
+        const back = b2.find((b) => b.dataset.tab === startTab);
+        pev(seg2, "pointerdown", at(back)); pev(seg2, "pointermove", at(back, .5, .5, 0, -250)); pev(seg2, "pointerup", at(back, .5, .5, 0, -250));
+        check("标签栏 T7 竖向滑出 250 pt 抬手：仍选中被按项（无距离取消）", startTab, (nav2.querySelector(".seg button.on") || {}).dataset.tab, (nav2.querySelector(".seg button.on") || {}).dataset.tab === startTab);
+        /* T3/T9: pressing the selected tab, releasing on it - no event */
+        const nav3 = document.querySelector("nav.tabs"), seg3 = nav3.querySelector(".seg"), on3 = seg3.querySelector("button.on");
+        const before = (nav3.querySelector(".seg button.on") || {}).dataset.tab; pev(seg3, "pointerdown", at(on3)); await sleep(30); pev(seg3, "pointerup", at(on3));
+        check("标签栏 T3 按下已选中项抬手：无事件", before, (nav3.querySelector(".seg button.on") || {}).dataset.tab, (nav3.querySelector(".seg button.on") || {}).dataset.tab === before);
+      }
+      /* §3 UISwitch on a synthetic switch through the page's own pointer handling */
+      const swLab = document.createElement("div"); swLab.style.cssText = "position:fixed;left:20px;top:200px;z-index:99;opacity:0";
+      swLab.innerHTML = `<label class="sw"><input type="checkbox"><span></span></label>`; document.body.appendChild(swLab);
+      const sw = swLab.querySelector(".sw"), inp = sw.querySelector("input"); let flips = 0; inp.addEventListener("change", () => flips++);
+      const kn = () => sw.querySelector("span");
+      pev(sw, "pointerdown", at(sw));
+      check("开关 L200 按下 +0 ms：不翻、旋钮未抬", "off, no lift", `${inp.checked ? "on" : "off"}, ${sw.classList.contains("hold") ? "lift" : "no lift"}`, !inp.checked && !sw.classList.contains("hold"));
+      await sleep(120);
+      check("开关 L200 +120 ms：旋钮还没抬（--ios-touch-switch-lift-delay 195）", "no lift", sw.classList.contains("hold") ? "lift" : "no lift", !sw.classList.contains("hold"));
+      await sleep(120);
+      check("开关 L260 +240 ms：旋钮抬起（.hold）", "lift", sw.classList.contains("hold") ? "lift" : "no lift", sw.classList.contains("hold"));
+      await sleep(220);
+      check("开关 L400 +460 ms：旋钮落定 58×38（scale 1.568 1.583）", "1.568 1.583", cs(kn(), "::after").scale, /^1\.5[67]/.test(cs(kn(), "::after").scale));
+      const t2 = performance.now(); pev(sw, "pointerup", at(sw)); const d2 = performance.now() - t2;
+      check("开关 S1 抬手：立刻翻转一次（--ios-touch-switch-flip-delay 0）", "on ×1", `${inp.checked ? "on" : "off"} ×${flips} +${Math.round(d2 * 10) / 10} ms`, inp.checked && flips === 1 && d2 < 50);
+      /* X: drag −10 (against the direction) and release - still flips */
+      pev(sw, "pointerdown", at(sw)); pev(sw, "pointermove", at(sw, .5, .5, 10, 0)); pev(sw, "pointerup", at(sw, .5, .5, 10, 0));
+      check("开关 X 反方向拖 10 抬手：仍翻转", "off ×2", `${inp.checked ? "on" : "off"} ×${flips}`, !inp.checked && flips === 2);
+      /* N2–N4: drag beyond the far end (+40 > travel 22) and back to +5 - no flip */
+      pev(sw, "pointerdown", at(sw)); pev(sw, "pointermove", at(sw, .5, .5, 40, 0)); pev(sw, "pointermove", at(sw, .5, .5, 5, 0)); pev(sw, "pointerup", at(sw, .5, .5, 5, 0));
+      check("开关 N2 拖过远端外 (+40) 再拖回 (+5) 抬手：不翻转", "off ×2", `${inp.checked ? "on" : "off"} ×${flips}`, !inp.checked && flips === 2);
+      /* X11: dragged beyond the far end and released there - flips */
+      pev(sw, "pointerdown", at(sw)); pev(sw, "pointermove", at(sw, .5, .5, 40, 0)); pev(sw, "pointerup", at(sw, .5, .5, 40, 0));
+      check("开关 X11 拖过远端外直接抬手：翻转", "on ×3", `${inp.checked ? "on" : "off"} ×${flips}`, inp.checked && flips === 3);
+      /* pointercancel: no flip */
+      pev(sw, "pointerdown", at(sw)); pev(sw, "pointercancel", at(sw));
+      check("开关 pointercancel：不翻转", "on ×3", `${inp.checked ? "on" : "off"} ×${flips}`, inp.checked && flips === 3 && !sw.classList.contains("hold"));
+      swLab.remove();
+      /* §4 UIButton on a synthetic tile; alert action on a synthetic open dialog */
+      const bLab = document.createElement("div"); bLab.style.cssText = "position:fixed;left:20px;top:300px;z-index:99;opacity:0";
+      bLab.innerHTML = `<div class="group tiles"><button type="button" class="tile"><span class="ttitle">x</span></button></div>`; document.body.appendChild(bLab);
+      const tile = bLab.querySelector(".tile"); let clicks = 0; tile.addEventListener("click", () => clicks++);
+      const t3 = performance.now(); pev(tile, "pointerdown", at(tile)); const d3 = performance.now() - t3;
+      check("按钮 U1 按下：立刻 highlighted（.pressed，--ios-touch-button-highlight-delay 0）", "pressed", tile.classList.contains("pressed") ? `pressed +${Math.round(d3 * 10) / 10} ms` : "not pressed", tile.classList.contains("pressed"));
+      pev(tile, "pointermove", at(tile, .5, 1, 0, 50));
+      check("按钮 U3 拖出边界 50 pt：仍高亮（余量 70）", "pressed", tile.classList.contains("pressed") ? "pressed" : "not pressed", tile.classList.contains("pressed"));
+      pev(tile, "pointermove", at(tile, .5, 1, 0, 80));
+      check("按钮 U3 拖出边界 80 pt：高亮灭（touchDragExit）", "not pressed", tile.classList.contains("pressed") ? "pressed" : "not pressed", !tile.classList.contains("pressed"));
+      pev(tile, "pointermove", at(tile, .5, 1, 0, 30));
+      check("按钮 U4 拖回：高亮亮（touchDragEnter）", "pressed", tile.classList.contains("pressed") ? "pressed" : "not pressed", tile.classList.contains("pressed"));
+      pev(tile, "pointerup", at(tile, .5, 1, 0, 50)); await sleep(10);
+      check("按钮 U3 在边界外 50 pt 抬手：触发一次（touchUpInside）", 1, clicks, clicks === 1);
+      pev(tile, "pointerdown", at(tile)); pev(tile, "pointermove", at(tile, .5, 1, 0, 100)); pev(tile, "pointerup", at(tile, .5, 1, 0, 100)); await sleep(10);
+      check("按钮 U6 在边界外 100 pt 抬手：不触发（touchUpOutside）", 1, clicks, clicks === 1 && !tile.classList.contains("pressed"));
+      const dlg = document.createElement("dialog"); dlg.style.cssText = "position:fixed;left:20px;top:400px;z-index:99;opacity:0"; dlg.innerHTML = `<div class="acts"><button type="button" id="_a">a</button><button type="button" id="_b">b</button></div>`;
+      document.body.appendChild(dlg); dlg.show(); const ba = dlg.querySelector("#_a"), bb = dlg.querySelector("#_b"); let ca = 0, cb = 0; ba.addEventListener("click", () => ca++); bb.addEventListener("click", () => cb++);
+      pev(ba, "pointerdown", at(ba)); pev(ba, "pointermove", at(bb));
+      check("弹窗按钮 A3 滑到相邻按钮：高亮转移", "b pressed", `${ba.classList.contains("pressed") ? "a" : ""}${bb.classList.contains("pressed") ? "b" : ""} pressed`, !ba.classList.contains("pressed") && bb.classList.contains("pressed"));
+      pev(ba, "pointermove", at(bb, .5, 1, 0, 6));
+      check("弹窗按钮 A4 出边 6 pt：高亮灭（无余量，--ios-touch-alert-slop 0）", "none pressed", `${ba.classList.contains("pressed") ? "a" : ""}${bb.classList.contains("pressed") ? "b" : ""} pressed`, !ba.classList.contains("pressed") && !bb.classList.contains("pressed"));
+      pev(ba, "pointerup", at(bb, .5, 1, 0, 6)); await sleep(10);
+      check("弹窗按钮 A2 出边抬手：不触发", "0 / 0", `${ca} / ${cb}`, ca === 0 && cb === 0);
+      pev(ba, "pointerdown", at(ba)); pev(ba, "pointermove", at(bb)); pev(ba, "pointerup", at(bb)); await sleep(10);
+      check("弹窗按钮 A3/A6 从 a 滑到 b 抬手：触发 b", "0 / 1", `${ca} / ${cb}`, ca === 0 && cb === 1);
+      dlg.close(); dlg.remove(); bLab.remove(); window.render = origRender;
     }
     const finish = () => {
       const fails = rows.filter((r) => !r.ok).length;

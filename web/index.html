@@ -42,6 +42,14 @@
     /* SDF rim light: CASDFKeyFillHighlightEffect key/fill amount 0.5, white → the hairline ring; diffuse height 8 / amount 0.15 → the soft shadow ← 探针 deep（tokens.css 注释，无独立变量） */
     --glass-rim:inset 0 0 0 .5px rgb(255 255 255 / var(--ios-glass-highlight-amount));
     --glass-diffuse:0 8px 16px rgb(0 0 0 / .15);
+    /* interaction-spec.md §1/§2/§3 values that have no --ios-touch-* token yet: the lens follows a drag with a spring lag of ~100–150 ms (G4: finger 320 → lens 61→237 in ~120 ms);
+       the committed lens settles in ~1.2 s while its width goes 196 → 239 → 181 → 196 and height 28 → 38.6 → 27 → 28 (G1/G3); the tab-bar lens lifts 94×54 → 119×64 (T1), the switch knob 37×24 → 60.5×40 then 58×38 (L*) */
+    --seg-follow-lag:.12s;
+    --seg-settle:1.2s;
+    --seg-lift-sx:1.1224; --seg-lift-sy:1.5714;       /* (196 + 2×--ios-touch-segment-lift-x 12) / 196, (28 + 2×--ios-touch-segment-lift-y 8) / 28 */
+    --tab-lift-sx:1.266; --tab-lift-sy:1.185;         /* (94 + --ios-touch-tab-lift-w 25) / 94, (54 + --ios-touch-tab-lift-h 10) / 54 */
+    --knob-lift-sx:1.635; --knob-lift-sy:1.667;       /* --ios-touch-switch-lift-w 60.5 / 37, -h 40 / 24 (peak) */
+    --knob-hold-sx:1.568; --knob-hold-sy:1.583;       /* settled 58 / 37, 38 / 24 (spec L*, Kit Toggle Pressed 58×38) */
     /* alert button fill: white background view + vibrantColorMatrix e −0.12（暗 +0.11） ← 探针 deep */
     --alert-button-fill:rgb(0 0 0 / calc(-1 * var(--ios-alert-button-offset)));
   }
@@ -84,10 +92,14 @@
   nav.tabs .plat{position:absolute;inset:0;border-radius:999px;background:var(--glass-fill);
                  backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter);   /* 平台玻璃 = --ios-glass-blur 5 / -saturate 1.2 / -lift .147 ← 探针 deep（UITabBar 平台 = glass 配方） */
                  box-shadow:var(--glass-diffuse),var(--glass-rim)}   /* 阴影/描边 = SDF diffuse 8 / .15 与 highlight .5 的最近 CSS ← 探针 deep */
-  nav.tabs .seg{position:relative;z-index:2;display:flex;gap:0;min-width:0;max-width:100%;padding:var(--ios-tab-button-pad);height:var(--ios-tab-capsule-h);border-radius:999px;background:transparent}   /* 胶囊 62、内缩 4 ← 探针 UITabBar 平台 274×62（83 是含 home 指示区的整个 frame） */
+  nav.tabs .seg{position:relative;z-index:2;display:flex;gap:0;min-width:0;max-width:100%;padding:var(--ios-tab-button-pad);height:var(--ios-tab-capsule-h);border-radius:999px;background:transparent;
+                touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}   /* 标签栏自己接管触摸：竖向滑出 450 pt 抬手仍选中（spec §2 T7–T16），没有滚动/长按接管 */   /* 胶囊 62、内缩 4 ← 探针 UITabBar 平台 274×62（83 是含 home 指示区的整个 frame） */
   nav.tabs .glide{position:absolute;z-index:1;top:var(--ios-tab-button-pad);bottom:var(--ios-tab-button-pad);left:var(--ios-tab-button-pad);width:0;border-radius:999px;
                   background:transparent;backdrop-filter:var(--lens-filter);-webkit-backdrop-filter:var(--lens-filter);   /* 选中透镜 = _UITabSelectionView gaussianBlur 2 + colorMatrix → --ios-lens-filter（blur 2 · saturate 1.062 · brightness .807 · contrast 1.4；暗 1.379 / .763 / 1.14）← 探针 deep */
-                  transition:left var(--ios-motion-lens-duration) var(--ios-motion-lens-easing),width var(--ios-motion-lens-duration) var(--ios-motion-lens-easing)}   /* UIViewSpringAnimationBehavior dampingRatio .85 / response .4 s（--ios-motion-lens-response/-damping-ratio）← 探针 deep；采成 0.55 s linear() */
+                  scale:1 1;transform-origin:center;
+                  transition:left var(--ios-motion-lens-duration) var(--ios-motion-lens-easing),width var(--ios-motion-lens-duration) var(--ios-motion-lens-easing),scale .4s var(--ios-motion-lens-easing)}   /* UIViewSpringAnimationBehavior dampingRatio .85 / response .4 s（--ios-motion-lens-response/-damping-ratio）← 探针 deep；采成 0.55 s linear()；落回 ~0.4 s（spec §2 T1） */
+  nav.tabs .glide.lift{scale:var(--tab-lift-sx) var(--tab-lift-sy)}   /* 按下 +140 ms 抬起 94×54 → 119×64（--ios-touch-tab-lift-w/-h）← spec §2 T1 */
+  nav.tabs.drag .glide{transition:left var(--seg-follow-lag) ease-out,width var(--seg-follow-lag) ease-out,scale .4s var(--ios-motion-lens-easing)}   /* 按住滑动：透镜跟手（spec §2 T4） */
   nav.tabs button{position:relative;width:var(--ios-tab-button-w);flex:0 1 auto;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;
                   height:var(--ios-tab-button-h);padding:6px 8px 7px;border-radius:var(--ios-tab-lens-radius);font-size:var(--ios-tab-label-size);line-height:12px;font-weight:var(--ios-headline-weight);   /* 按钮 94×54 r27、字 Semibold 10 ← 探针（5 个标签放不下 5×94 时等比缩）；6/8/7 待 tokens，但 4 + 6 + 28 + 1 = 39 = --ios-tab-label-top ← 探针 */
                   background:transparent;box-shadow:none;color:var(--tab);white-space:nowrap;transition:color .2s}
@@ -218,7 +230,7 @@
   .tile{position:relative;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:0;min-height:var(--ios-tile-h);
         padding:var(--ios-tile-label-top) var(--ios-tile-number-inset) calc(var(--ios-tile-h) - var(--ios-tile-label-top) - var(--ios-tile-label-lh)) var(--ios-tile-label-x);   /* 同提醒事项磁贴：标题 at (12,52)，底距 8 */
         border:0;border-radius:var(--ios-tile-radius);background:var(--card);color:var(--ink);text-align:left;font:inherit;box-shadow:none;cursor:pointer}   /* 圆角 16 ← 提醒事项 layer.cornerRadius（原值，不再是采样） */
-  .tile:active{opacity:1;background:color-mix(in srgb, var(--ink) 8%, var(--card));transition:none}   /* 按下填色 8% 无来源 */
+  .tile:active,.tile.pressed{opacity:1;background:color-mix(in srgb, var(--ink) 8%, var(--card));transition:none}   /* 按下填色 8% 无来源；.pressed 由指针状态机管（按下即高亮、出边 70 pt 余量 ← spec §4 U1–U6） */
   .tico{position:absolute;left:var(--ios-tile-icon-x);top:var(--ios-tile-icon-y);width:var(--ios-tile-icon);height:var(--ios-tile-icon);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;flex:none}   /* 徽章 48 at (6,2) ← 提醒事项 */
   .tico .sf{width:var(--ios-symbol-slot);height:var(--ios-symbol-slot);background:#fff}   /* 符号槽 22 ← Kit */
   .ttitle{margin:0;font-family:var(--ios-tile-number-font);font-size:var(--ios-tile-label-size);line-height:var(--ios-tile-label-lh);font-weight:var(--ios-tile-label-weight)}   /* 标题 = 磁贴标签 Rounded Semibold 17/20.33 ← 提醒事项 */
@@ -322,35 +334,43 @@
   .sw span::after{content:"";position:absolute;width:var(--ios-switch-knob-w);height:var(--ios-switch-knob-h);left:var(--ios-switch-knob-pad);top:var(--ios-switch-knob-pad);border-radius:99px;
                   background:var(--ios-switch-knob);   /* 旋钮 37×24 内距 2 ← 探针 */
                   box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16);
-                  transform-origin:center;will-change:transform,background,box-shadow;
-                  transition:transform var(--ios-motion-switch-knob-duration) var(--ios-motion-switch-knob-easing),background .12s,box-shadow .12s}   /* 旋钮 = UIViewSpringAnimationBehavior dampingRatio 1 / response 0.3 s（--ios-motion-switch-knob-response/-damping-ratio ← 探针 deep _transitionKnobToPressed），采成 0.35 s linear()；.12s 透镜起落 无来源 */
-  .sw input:checked + span::after{transform:translateX(var(--ios-switch-travel))}   /* 行程 22 = 63 − 37 − 2×2 ← 探针 */
+                  transform-origin:center;will-change:translate,scale,background,box-shadow;translate:0 0;scale:1 1;
+                  transition:translate var(--ios-motion-switch-knob-duration) var(--ios-motion-switch-knob-easing),scale .12s,background .12s,box-shadow .12s}   /* 旋钮 = UIViewSpringAnimationBehavior dampingRatio 1 / response 0.3 s（--ios-motion-switch-knob-response/-damping-ratio ← 探针 deep _transitionKnobToPressed），采成 0.35 s linear()；.12s 透镜起落 无来源 */
+  .sw input:checked + span::after{translate:var(--ios-switch-travel) 0}   /* 行程 22 = 63 − 37 − 2×2 ← 探针 */
   /* Finger down: the lens. 58/38 = 1.526, 38/24 = 1.583. .hold is set by app.js for
      the whole press and drag (--kx = where the knob is); :active covers the mouse. */
   .sw.hold span::after,.sw input:active + span::after{
-    transform:scale(1.526,1.583);transition:transform .12s cubic-bezier(.2,.8,.2,1),background .12s,box-shadow .12s;
+    scale:var(--knob-hold-sx) var(--knob-hold-sy);animation:knob-lift .2s ease-out;transition:translate .12s cubic-bezier(.2,.8,.2,1),background .12s,box-shadow .12s;   /* 按下 +195 ms 抬起：~110 ms 到 60.5×40，回稳 58×38 ← spec §3 L200/L260/L400 */
     background:linear-gradient(180deg, rgba(255,255,255,.62) 0%, rgba(255,255,255,.28) 45%, rgba(255,255,255,.12) 100%);
     box-shadow:inset 0 0 0 .5px rgba(204,204,204,.95),
                inset 0 -1.5px 3px rgba(40,40,40,.28),
                inset 0 1px 1px rgba(255,255,255,.9),
                0 4px 10px rgba(0,0,0,.18);
     backdrop-filter:blur(1.5px) saturate(1.5);-webkit-backdrop-filter:blur(1.5px) saturate(1.5)}
-  .sw input:active:checked + span::after{transform:translateX(var(--ios-switch-travel)) scale(1.526,1.583)}
-  .sw.hold span::after{transform:translateX(var(--kx, 0px)) scale(1.526,1.583) !important;animation:none !important;transition:background .12s,box-shadow .12s}
+  .sw input:active:checked + span::after{translate:var(--ios-switch-travel) 0}
+  .sw.hold span::after{translate:var(--kx, 0px) 0 !important;transition:translate var(--seg-follow-lag) ease-out,background .12s,box-shadow .12s}   /* 旋钮跟手，可拉过端点 7 pt（spec §3 F1/X11） */
+  @keyframes knob-lift{0%{scale:1 1}55%{scale:var(--knob-lift-sx) var(--knob-lift-sy)}100%{scale:var(--knob-hold-sx) var(--knob-hold-sy)}}
   /* Release: the knob travels 22pt in 0.35 s on the probed critical spring (ω21) and does
      not stretch - the old 「lands then relaxes」 keyframes came from a recording, not a
      source (spec-extract.md ⑤: transform is a single CASpringAnimation). */
   /* 班次分段控件（34 屏幕时间「每周 / 每天」）：400×32 r16、透镜 28 r14 内缩 2、字 MediumG3 13 / RegularG3 13 ← 探针 UISegmentedControl；
      放在卡片位置（x 20 宽 400；34 里是 x 40 宽 360，页顶无卡时的写法），透镜材质 采样替代 → 用白底 + 阴影近似 */
-  .segctl{position:relative;display:flex;height:var(--ios-segment-h);padding:var(--ios-segment-lens-pad);border-radius:var(--ios-segment-radius);background:var(--ios-segment-track);margin:var(--ios-group-gap) 0 0}   /* 轨道 = tertiarySystemFill .12 / 暗 .24 ← 探针 lensdiff（背景图取色） */
+  .segctl{position:relative;display:flex;height:var(--ios-segment-h);padding:var(--ios-segment-lens-pad);border-radius:var(--ios-segment-radius);background:var(--ios-segment-track);margin:var(--ios-group-gap) 0 0;
+          touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}   /* 轨道 = tertiarySystemFill .12 / 暗 .24 ← 探针 lensdiff；控件自己接管触摸（竖向滑出 64 pt 仍选中，spec §1 G17） */
   .segctl .lens{position:absolute;top:var(--ios-segment-lens-pad);left:var(--ios-segment-lens-pad);height:var(--ios-segment-lens-h);width:calc((100% - 2 * var(--ios-segment-lens-pad)) / var(--n, 2));
                 border-radius:var(--ios-segment-selected-radius);background:var(--ios-segment-selected-bg);box-shadow:var(--ios-segment-selected-shadow);backdrop-filter:var(--ios-segment-selected-filter);-webkit-backdrop-filter:var(--ios-segment-selected-filter);   /* 选中段 = _UILiquidLensView 的 restingBackground：_controlForegroundColor 白 / 暗 (235,235,245,.3)，逐角 14，无阴影无滤镜（玻璃只在拖动时出现）← 探针 lensdiff/subtree */
-                transform:translateX(calc(var(--i, 0) * 100%));transition:transform var(--ios-motion-lens-duration) var(--ios-motion-lens-easing)}   /* 透镜 = dampingRatio .85 / response .4 s（--ios-motion-lens-response/-damping-ratio ← 探针 deep _updateSelectionToSegment），采成 0.55 s linear() */
+                translate:calc(var(--i, 0) * 100%) 0;scale:1 1;transform-origin:center;
+                transition:translate var(--ios-motion-lens-duration) var(--ios-motion-lens-easing),scale var(--ios-touch-segment-lift-duration) ease-out}   /* 透镜 = dampingRatio .85 / response .4 s（--ios-motion-lens-response/-damping-ratio ← 探针 deep _updateSelectionToSegment），采成 0.55 s linear()；抬起/落回 .25 s（--ios-touch-segment-lift-duration） */
+  .segctl .lens.lift{scale:var(--seg-lift-sx) var(--seg-lift-sy)}   /* 按住已选中段 +100 ms：196×28 → 220×44（--ios-touch-segment-lift-x/-y）← spec §1 G4/G16 */
+  .segctl.drag .lens{transition:translate var(--seg-follow-lag) ease-out,scale var(--ios-touch-segment-lift-duration) ease-out}   /* 按住滑动：透镜跟手，弹簧滞后 ~120 ms ← spec §1 G4 */
+  .segctl .lens.spring{animation:lens-stretch var(--seg-settle) linear}   /* 换值后透镜边跑边胀：宽 196→239→181→196、高 28→38.6→27→28（前缘过冲 7.5% = --ios-touch-segment-lens-overshoot）← spec §1 G1/G3 */
+  @keyframes lens-stretch{0%{scale:1 1}37%{scale:1.219 1.379}70%{scale:.923 .964}100%{scale:1 1}}
   .segctl button{position:relative;z-index:1;flex:1 1 0;height:var(--ios-segment-lens-h);border:0;border-radius:var(--ios-segment-lens-radius);padding:0;background:transparent;box-shadow:none;
                  font:inherit;font-size:var(--ios-segment-label-size);line-height:var(--ios-segment-lens-h);font-weight:400;color:var(--ios-segment-label-color);   /* 字 RegularG3 / MediumG3 13，labelColor ← 探针 subtree */
-                 transition:font-weight var(--ios-motion-segment-label-duration),opacity var(--ios-motion-segment-release-duration)}   /* 字重交叉淡 0.2 s、松开回 0.2 s ← 探针 */
-  .segctl button.on{font-weight:var(--ios-medium-weight)}
-  .segctl button:active{opacity:var(--ios-motion-segment-press-opacity);transition:opacity var(--ios-motion-segment-press-duration)}   /* 按住淡到 .2、0.47 s ← 探针 */
+                 transition:font-weight var(--ios-motion-segment-label-duration),opacity var(--ios-touch-segment-undim-duration)}   /* 字重交叉淡 0.2 s ← 探针；标签回 1 用 .1 s（--ios-touch-segment-undim-duration）← spec §1 G12 */
+  .segctl button.on{font-weight:var(--ios-medium-weight);animation:seg-in .1s}   /* 新选中段标签 .81 → 1 淡入 100 ms ← spec §1 */
+  @keyframes seg-in{from{opacity:.81}to{opacity:1}}
+  .segctl button.dim{opacity:var(--ios-touch-segment-dim-opacity);transition:opacity var(--ios-touch-segment-dim-duration) ease-out}   /* 按下未选中段：标签 1 → .2，ease-out .43 s（--ios-touch-segment-dim-*）← spec §1 G15；按下不改值 */
   .segctl + section > .group:first-child,.segctl + section > h2{margin-top:0}
   /* 待保存小字：行内右下 11 pt（同 .sent） */
   .row .cap.edit{color:var(--accent)}
@@ -372,7 +392,7 @@
   .acts button{position:relative;font:inherit;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);border:0;border-radius:0;padding:calc((var(--ios-row-h) - var(--ios-body-lh))/2) var(--ios-row-text-x);min-height:var(--ios-row-h);
                color:var(--link);background:var(--card);box-shadow:none;cursor:pointer;text-align:left;   /* 蓝字行 = 设置的 link 色 (0,122,255) ← 探针/px33d；行 53.33 */
                transition:background var(--ios-motion-row-release-duration) var(--ios-motion-ease-in-out)}   /* 行松开 0.5 s ease-in-out ← 探针 UITableViewCell；按下瞬时 */
-  .acts button:active{background:color-mix(in srgb, var(--ink) 8%, var(--card));opacity:1;transition:none}   /* 按下填色 8% 无来源 */
+  .acts button:active,.acts button.pressed{background:color-mix(in srgb, var(--ink) 8%, var(--card));opacity:1;transition:none}   /* 按下填色 8% 无来源；.pressed 由指针状态机管（弹窗按钮无余量、相邻转移 ← spec §4 A2–A6） */
   .acts button::after{content:"";position:absolute;left:var(--ios-separator-inset-l);right:var(--ios-separator-inset-r);bottom:0;height:var(--ios-separator-h);background:var(--line)}
   .group > .acts:last-child button:last-child::after{display:none}
   button{font:inherit;border:0;border-radius:999px;padding:8px 14px;color:var(--accent);

@@ -495,16 +495,20 @@ function render() {
   </section>`;
 
   /* The segmented lens must glide across a re-render: the old control's --i is the start, the new one's is the end. */
-  const oldSeg = $("#queueseg"), segFrom = oldSeg ? parseInt(oldSeg.style.getPropertyValue("--i")) : NaN;
+  /* The lens starts where it visually is right now (mid-flight included: rapid taps change direction, spec §1 G12/G13), then springs to the new segment. */
+  const oldSeg = $("#queueseg"), oldLens = oldSeg && oldSeg.querySelector(".lens");
+  let segFrom = NaN;
+  if (oldLens) { const tr = parseFloat(getComputedStyle(oldLens).translate), w = oldLens.offsetWidth; segFrom = w && !Number.isNaN(tr) ? tr / w : parseFloat(oldSeg.style.getPropertyValue("--i")); }
   $("#app").innerHTML = html;
   layoutTabs();
   wire();
   const seg = $("#queueseg");
   if (seg && !Number.isNaN(segFrom)) {
     const to = seg.style.getPropertyValue("--i"), lens = seg.querySelector(".lens");
-    if (lens && String(segFrom) !== to) {
+    if (lens && Math.abs(segFrom - parseFloat(to)) > 0.001) {
       lens.style.transition = "none"; seg.style.setProperty("--i", String(segFrom)); void lens.offsetWidth;   // paint at the old spot, then transition
       lens.style.transition = ""; seg.style.setProperty("--i", to);
+      lens.classList.add("spring");   // width/height stretch while it travels (spec §1 G1/G3)
     }
   }
 }
@@ -591,7 +595,7 @@ function layoutTabs() {
   };
   glide(false);
   requestAnimationFrame(() => glide(false));
-  for (const b of nav.querySelectorAll("button")) b.onclick = () => {
+  const selectTab = (b) => {
     curTab = b.dataset.tab;
     try { localStorage.setItem("ark-remote-tab", curTab); } catch {}
     for (const sec of document.querySelectorAll("#app > section")) sec.hidden = sec.dataset.tab !== curTab || sec.dataset.empty === "1";
@@ -599,6 +603,7 @@ function layoutTabs() {
     glide(true);
     window.scrollTo({ top: 0 });
   };
+  attachTabBar(nav, selectTab);
 }
 
 function wire() {
@@ -615,22 +620,10 @@ function wire() {
   const segEl = $("#queueseg");
   if (segEl && qsel) {
     const bs = [...segEl.querySelectorAll("button")];
-    const idxAt = (x) => { const r = segEl.getBoundingClientRect(); return Math.max(0, Math.min(bs.length - 1, Math.floor((x - r.left) / (r.width / bs.length)))); };
-    const show = (i) => { segEl.style.setProperty("--i", String(i)); for (const x of bs) { x.classList.toggle("on", x === bs[i]); x.setAttribute("aria-selected", String(x === bs[i])); } };
-    const commit = (i) => { const q = bs[i].dataset.q; if (qsel.value === q) { show(i); return; } qsel.value = q; qsel.dispatchEvent(new Event("change")); };
-    segEl.onpointerdown = (e) => {
-      if (e.button !== 0 && e.pointerType === "mouse") return;
-      e.preventDefault(); try { segEl.setPointerCapture(e.pointerId); } catch {}
-      segEl.dataset.pe = "1";
-      const move = (ev) => show(idxAt(ev.clientX));
-      const up = (ev) => { segEl.removeEventListener("pointermove", move); commit(idxAt(ev.clientX)); };
-      show(idxAt(e.clientX));
-      segEl.addEventListener("pointermove", move);
-      segEl.addEventListener("pointerup", up, { once: true });
-      segEl.addEventListener("pointercancel", up, { once: true });
-    };
-    // The click the browser fires after pointerup is redundant (already committed); keyboard/synthetic clicks still select.
-    for (const b of bs) b.onclick = () => { if (segEl.dataset.pe) { delete segEl.dataset.pe; return; } commit(bs.indexOf(b)); };
+    attachSegmented(segEl, () => Math.max(0, bs.findIndex((b) => b.dataset.q === qsel.value)), (i) => {
+      const q = bs[i].dataset.q; if (qsel.value === q) return;
+      qsel.value = q; qsel.dispatchEvent(new Event("change"));   // onchange → render() right now: the content switches in the same tick
+    });
   }
   if (qsel) qsel.onchange = () => {
     curQueue = qsel.value;
@@ -982,6 +975,106 @@ function closeMenu() {
   removeEventListener("keydown", escMenu);
 }
 
+/* ---------- 触摸交互（remote-ref/interaction-spec.md，iOS 27 注入实测；时长/余量读 tokens.css 的 --ios-touch-*） ---------- */
+const touchMs = (name, fallback) => { const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); if (v.endsWith("ms")) return parseFloat(v); if (v.endsWith("s")) return parseFloat(v) * 1000; const n = parseFloat(v); return Number.isNaN(n) ? fallback : n; };
+const touchPx = (name, fallback) => { const n = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)); return Number.isNaN(n) ? fallback : n; };
+/* One press = one closure; pointerup and pointercancel both end it and remove each other, so a cancelled press never leaves a listener behind. */
+function press(el, e, handlers) {
+  if (e.pointerType === "mouse" && e.button !== 0) return false;
+  e.preventDefault(); try { el.setPointerCapture(e.pointerId); } catch {}
+  const move = (ev) => handlers.move && handlers.move(ev);
+  const end = (ev, cancelled) => { el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", cancel); handlers.end(ev, cancelled); };
+  const up = (ev) => end(ev, false), cancel = (ev) => end(ev, true);
+  el.addEventListener("pointermove", move); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", cancel);
+  return true;
+}
+/* §1 UISegmentedControl: touch-down changes nothing but the pressed label's opacity (unselected) or lifts the lens (selected); a lifted lens follows
+   the finger; the index changes at the up - target = the segment under the finger's x - unless the finger is > 70 pt outside the control
+   (cancel, no event) or back on the selected segment (no event). No debounce: every up counts, same segment twice = one event. */
+function attachSegmented(seg, getIndex, commit) {
+  const bs = [...seg.querySelectorAll("button")], lens = seg.querySelector(".lens"), n = bs.length;
+  const segAt = (x) => { const r = seg.getBoundingClientRect(); return Math.max(0, Math.min(n - 1, Math.floor((x - r.left) / (r.width / n)))); };   // 跨分隔线即换目标（G22/G24/G25）
+  const frac = (x) => { const r = seg.getBoundingClientRect(); return Math.max(0, Math.min(n - 1, (x - r.left) / (r.width / n) - 0.5)); };         // 透镜中心跟手
+  const outside = (x, y) => { const r = seg.getBoundingClientRect(), s = touchPx("--ios-touch-inside-slop", 70); return x < r.left - s || x > r.right + s || y < r.top - s || y > r.bottom + s; };
+  const showLens = (i) => seg.style.setProperty("--i", String(i));
+  seg.onpointerdown = (e) => {
+    const idx = getIndex(), pressed = segAt(e.clientX), onSelected = pressed === idx;
+    let liftTimer = 0;
+    if (lens) lens.classList.remove("spring");   // a new touch ends the previous commit's stretch (G12/G13: no queueing)
+    if (!press(seg, e, {
+      move: (ev) => { if (onSelected && lens && lens.classList.contains("lift")) showLens(frac(ev.clientX)); },   // index never changes while sliding (G4/G22)
+      end: (ev, cancelled) => {
+        clearTimeout(liftTimer);
+        bs[pressed].classList.remove("dim");                        // label back to 1 in .1 s (G12)
+        seg.classList.remove("drag"); if (lens) lens.classList.remove("lift");
+        const target = segAt(ev.clientX);
+        if (cancelled || outside(ev.clientX, ev.clientY) || target === idx) { showLens(idx); return; }   // cancel (> 70 pt out, G17/G18) or back on the selected one (G8/G10/G23): no event
+        commit(target);                                             // the up: index + change + content, same tick (G1–G3)
+      },
+    })) return;
+    seg.dataset.pe = "1";
+    if (!onSelected) bs[pressed].classList.add("dim");           // G15: only the label dims; no highlight, no lens move, no value
+    else liftTimer = setTimeout(() => { if (lens) lens.classList.add("lift"); seg.classList.add("drag"); }, touchMs("--ios-touch-segment-lift-delay", 100));   // G4/G16
+  };
+  // The browser's click after our pointerup is redundant; keyboard / synthetic clicks still select.
+  for (const b of bs) b.onclick = () => { if (seg.dataset.pe) { delete seg.dataset.pe; return; } const i = bs.indexOf(b); if (i !== getIndex()) commit(i); };
+}
+/* §2 UITabBar: pressing an unselected tab starts the lens gliding to it after 140 ms (lifted 119×64), a hold does not select, the up selects
+   the tab under the finger's x (no distance cancel - 450 pt away still selects); pressing the selected tab lifts the lens and a drag moves it,
+   releasing on the original tab is no event. */
+function attachTabBar(nav, select) {
+  const seg = nav.querySelector(".seg"), g = nav.querySelector(".glide"), bs = [...seg.querySelectorAll("button")];
+  if (!seg || !g || !bs.length) return;
+  const itemAt = (x) => { let best = 0, d = Infinity; bs.forEach((b, i) => { const r = b.getBoundingClientRect(); const dd = x < r.left ? r.left - x : x > r.right ? x - r.right : 0; if (dd < d) { d = dd; best = i; } }); return best; };
+  const liftTo = (i) => { g.classList.add("lift"); g.style.left = bs[i].offsetLeft + "px"; g.style.width = bs[i].offsetWidth + "px"; };
+  seg.onpointerdown = (e) => {
+    const cur = bs.findIndex((b) => b.classList.contains("on")), pressed = itemAt(e.clientX);
+    let timer = 0, lifted = false;
+    if (!press(seg, e, {
+      move: (ev) => { if (lifted) { nav.classList.add("drag"); liftTo(itemAt(ev.clientX)); } },   // T4/T9/T11: lens follows, value waits for the up
+      end: (ev, cancelled) => {
+        clearTimeout(timer); g.classList.remove("lift"); nav.classList.remove("drag");
+        const target = cancelled ? cur : itemAt(ev.clientX);
+        if (target === cur) { g.style.left = bs[cur].offsetLeft + "px"; g.style.width = bs[cur].offsetWidth + "px"; return; }   // T3/T9: no event
+        select(bs[target]);                                          // T1/T2: +0–2 ms after the up
+      },
+    })) return;
+    seg.dataset.pe = "1";
+    timer = setTimeout(() => { lifted = true; liftTo(pressed); }, pressed === cur ? 180 : touchMs("--ios-touch-tab-glide-delay", 140));   // T1 (+140 ms glide) / T3 (selected: lift +180 ms)
+  };
+  for (const b of bs) b.onclick = () => { if (seg.dataset.pe) { delete seg.dataset.pe; return; } if (!b.classList.contains("on")) select(b); };
+}
+/* §4 UIButton / alert action: highlighted at touch-down, stays while the finger is within 70 pt of the edge (alert actions: 0 pt, and the
+   highlight moves to the neighbour under the finger), triggers at the up when inside, never on a cancel. The browser's own click is swallowed
+   because we fire our own (so a release 50 pt outside still triggers, as UIKit does). */
+function installPressables() {
+  const SEL = ".tile, .acts button, .capsule, #pendbar button";
+  let synthetic = false;
+  document.addEventListener("pointerdown", (e) => {
+    const el = e.target.closest && e.target.closest(SEL); if (!el || el.disabled) return;
+    const inAlert = !!el.closest("dialog");
+    const slop = inAlert ? touchPx("--ios-touch-alert-slop", 0) : touchPx("--ios-touch-inside-slop", 70);
+    const group = inAlert ? [...el.parentElement.querySelectorAll("button")] : [el];
+    const inside = (b, x, y) => { const r = b.getBoundingClientRect(); return x >= r.left - slop && x <= r.right + slop && y >= r.top - slop && y <= r.bottom + slop; };
+    let cur = el;
+    if (!press(el, e, {
+      move: (ev) => { const hit = group.find((b) => inside(b, ev.clientX, ev.clientY)) || null; if (hit !== cur) { if (cur) cur.classList.remove("pressed"); cur = hit; if (cur) cur.classList.add("pressed"); } },   // U3–U6 / A3–A5
+      end: (ev, cancelled) => {
+        if (cur) cur.classList.remove("pressed");
+        const hit = cancelled ? null : group.find((b) => inside(b, ev.clientX, ev.clientY));
+        setTimeout(() => { delete el.dataset.pe; }, 0);            // the browser's click (if any) arrives before this
+        if (hit) { synthetic = true; try { hit.click(); } finally { synthetic = false; } }   // U1–U5: touchUpInside +0–1 ms
+      },
+    })) return;
+    el.dataset.pe = "1"; el.classList.add("pressed");               // U1/U2: highlighted within a frame
+  });
+  document.addEventListener("click", (e) => {
+    if (synthetic) return;
+    const el = e.target.closest && e.target.closest(SEL);
+    if (el && el.dataset.pe) { e.preventDefault(); e.stopImmediatePropagation(); delete el.dataset.pe; }
+  }, true);
+}
+
 function installNative() {
   // 开关的动效只在被人摸过之后才播（.live），页面重画时不会每个开关都弹一下
   /* The switch behaves like UISwitch: finger down shows the glass lens (.hold), the
@@ -999,24 +1092,34 @@ function installNative() {
        「单击没办法开关了，只能长按拖动」. The click that follows this press is
        swallowed; keyboard activation (no pointer press first) still works. */
     sw.dataset.pe = "1";
-    const startOn = input.checked, x0 = e.clientX; let dx = 0;
-    sw.classList.add("live", "hold");
-    const T = 22;   // knob travel 63 − 37 − 2×2 (probe: track 63×28, knob 37×24, pad 2) = --ios-switch-travel
-    sw.style.setProperty("--kx", (startOn ? T : 0) + "px");
-    const move = (ev) => { dx = ev.clientX - x0; sw.style.setProperty("--kx", Math.max(0, Math.min(T, (startOn ? T : 0) + dx)) + "px"); };
-    const up = () => {
-      sw.removeEventListener("pointermove", move);
-      const dragged = Math.abs(dx) > 6;
-      const on = dragged ? ((startOn ? T : 0) + dx) > T / 2 : !startOn;
-      if (dragged) sw.classList.remove("live");           // no fly-in: the knob is already there
-      sw.classList.remove("hold"); sw.style.removeProperty("--kx");
-      if (on !== input.checked) { input.checked = on; input.dispatchEvent(new Event("change", { bubbles: true })); }
+    /* spec §3 (interaction-spec.md): the knob lifts +195 ms after touch-down (--ios-touch-switch-lift-delay), follows a drag and may
+       stretch 7 pt past either end; the value flips at the up whatever the position or direction - the ONLY no-flip case is the knob
+       dragged beyond the far end (finger displacement > the 22 pt travel) and then back inside. pointercancel = no flip. */
+    const startOn = input.checked, x0 = e.clientX; let dx = 0, maxOut = 0;
+    const T = 22, OVER = 7;   // travel 63 − 37 − 2×2 = --ios-switch-travel; stretch past the ends (spec §3 X11)
+    const home = startOn ? T : 0;
+    sw.style.setProperty("--kx", home + "px");
+    const lift = setTimeout(() => sw.classList.add("live", "hold"), touchMs("--ios-touch-switch-lift-delay", 195));
+    const move = (ev) => {
+      dx = ev.clientX - x0; const toward = startOn ? -dx : dx; maxOut = Math.max(maxOut, toward);
+      sw.style.setProperty("--kx", Math.max(-OVER, Math.min(T + OVER, home + dx)) + "px");
     };
+    const finish = (cancelled) => {
+      clearTimeout(lift); sw.removeEventListener("pointermove", move); sw.removeEventListener("pointerup", up); sw.removeEventListener("pointercancel", cancel);
+      sw.classList.remove("hold"); sw.style.removeProperty("--kx");
+      if (cancelled) return;
+      const final = startOn ? -dx : dx;
+      const noFlip = maxOut > T && final <= T;   // beyond the far end and back (spec §3 N2–N4 / RO); beyond and released there still flips (X11)
+      if (noFlip) return;
+      input.checked = !startOn; input.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    const up = () => finish(false), cancel = () => finish(true);
     sw.addEventListener("pointermove", move);
-    sw.addEventListener("pointerup", up, { once: true });
-    sw.addEventListener("pointercancel", up, { once: true });
+    sw.addEventListener("pointerup", up);
+    sw.addEventListener("pointercancel", cancel);
     try { sw.setPointerCapture(e.pointerId); } catch {}
   });
+  installPressables();
   document.addEventListener("click", (e) => {
     const sw = e.target.closest && e.target.closest(".sw");
     if (sw && sw.dataset.pe) { e.preventDefault(); delete sw.dataset.pe; }
