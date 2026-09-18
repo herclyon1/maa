@@ -168,9 +168,9 @@
   .dtext{flex:1 1 auto;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:var(--ios-value-gap)}
   .dname{font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:400}
   .dsub{display:flex;align-items:center;gap:var(--ios-value-gap);color:var(--dim);font-size:var(--ios-body-size);line-height:var(--ios-body-lh);text-align:right}   /* 右灰值 secondaryLabel ← 探针 */
-  /* 在线/离线点（老页绿点）：在线 --ios-green、离线/未知 tertiaryLabel ← 探针；直径 9 是老页值，
-     iOS 没有对应组件在手（Kit 里只有 Page Control 的 10 点），待 tokens；点到字的距离 = 值行的 --ios-value-gap 8 ← AX */
-  .dsub .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--ios-tertiary-label);flex:none}
+  /* 在线/离线点（老页绿点）：直径 11 = 信息会话列表的未读点 UnreadIndicatorImageView ← AX-58（--ios-status-dot）；
+     在线 --ios-green、离线/未知 tertiaryLabel ← 探针；点到字的距离 = 值行的 --ios-value-gap 8 ← AX */
+  .dsub .dot{display:inline-block;width:var(--ios-status-dot);height:var(--ios-status-dot);border-radius:50%;background:var(--ios-tertiary-label);flex:none}
   .dsub .dot.on{background:var(--ios-green)}
   .dsub .dot.off{background:var(--ios-tertiary-label)}
   .dside{display:none}

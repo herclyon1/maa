@@ -350,6 +350,10 @@
   --ios-tile-number-top: 15.67px;
   --ios-tile-label-x: 13px;
   --ios-tile-label-bottom: 10.33px;
+  /* AX-58 Messages conversation list UnreadIndicatorImageView (7.33, 240.33, 11, 11): status dot 11 pt, x 7.33 from the screen edge,
+   * vertically centred on the row; colour by pixel (0,136,255) = tint */
+  --ios-status-dot: 11px;
+  --ios-status-dot-x: 7.33px;
 
   /* ======== !!! SAMPLED (采样替代) — no original value yet, mark red wherever used ======== */
   /* !!! SAMPLED !!! Reminders tile corner ≈ 15.5–16 (continuous-curve fit on 57-reminders-home-tiles.png, rmse 0.27 px); tile number ≈ 28 pt bold and label ≈ 17 pt are inferred from glyph heights (20.33 / 15) */

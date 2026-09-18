@@ -124,7 +124,10 @@
     }
     /* 2026-09-18: the device card is a Settings value row (46 Apple 账户页), no icon. */
     const dev = document.querySelector(".devcard");
-    if (dev) { num("设备行高 ≥ 53.33（--ios-row-h）", 53.33, Math.min(dev.getBoundingClientRect().height, 53.33)); const s2 = dev.querySelector(".dsub"); if (s2) col("设备行右灰值 secondaryLabel（--ios-secondary-label）", T.dim, cs(s2).color); }
+    if (dev) {
+      num("设备行高 ≥ 53.33（--ios-row-h）", 53.33, Math.min(dev.getBoundingClientRect().height, 53.33)); const s2 = dev.querySelector(".dsub"); if (s2) col("设备行右灰值 secondaryLabel（--ios-secondary-label）", T.dim, cs(s2).color);
+      const dot = dev.querySelector(".dot"); if (dot) { num("设备行状态点 11（--ios-status-dot，AX-58 信息未读点）", 11, dot.getBoundingClientRect().width); num("状态点到字 8（--ios-value-gap）", 8, px(cs(s2).columnGap)); }
+    }
     /* Segmented control (状态 tab, 早班/晚班; 34 屏幕时间) */
     const segc = document.querySelector(".segctl");
     if (segc) {
