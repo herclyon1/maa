@@ -71,8 +71,11 @@ same to build in these rules.
 
 Universal (operator): 协议棱柱组 472, 协议棱柱 328, 协议圆盘组 60, 协议圆盘 33,
 存续的痕迹 24, 纯晶多齿叶 16, 至晶多齿叶 16, 晶化多齿叶 12, 重红柱状菌 5,
-中红柱状菌 5, 轻红柱状菌 3; gold 841,000 (breakthroughs + skills) + 385,419
-(levels); exp 1,792,289.
+中红柱状菌 5, 轻红柱状菌 3; gold 841,000 (breakthroughs + skills) + 385,420
+(levels); exp 1,792,290. (Corrected 2026-09-18 evening: the first cut said 385,419 /
+1,792,289 because `charLevelRules[89]` - level 90 - is a `gold: -1, exp: -1` "no next
+level" sentinel and had been summed in; `scripts/mac/build-need-tables.py` skips it
+and `relay/tests/test_need_table.py` pins the corrected figures.)
 
 Universal (weapon, any rarity - 3★, 5★ and 6★ weapons queried all return the same):
 重型强固模具 50, 强固模具 23, 中黯石 5, 重黯石 5, 轻黯石 3; gold 125,700 + 341,390;
@@ -95,7 +98,9 @@ Variable (operator), which option each five-star takes:
 So a five-star is "5 choose 2 at 116 each + 5 choose 1 at 20" for the high-tier
 materials, plus one leaf of two (84) and one mushroom of two (8). The weapon adds
 16 of one high-tier material (which one depends on the weapon, not its rarity) and
-8 of 武陵石 or 燎石.
+8 of 武陵石, 燎石 or 协议纹石 (the third ore was missing here until 2026-09-18 evening:
+曜夜的首演 / 四二式·肃阵 / 寒夜幽影 take 协议纹石, per `rules?weaponIds=`; it is newer than
+the 2026-06-22 ItemTable dump, so its obtain way is not sourced).
 
 ## C. Merged: need, stage, stock, gap, sanity
 
@@ -138,8 +143,8 @@ can be closed without any sanity by opening boxes.
 | 中黯石 | 5 | 采集/仓库（帝江号两仓） | 待扫 | 235 | 0 | — |
 | 重黯石 | 5 | 采集/仓库（帝江号两仓） | 45 | 168 | 0 | — |
 | 轻黯石 | 3 | 采集/仓库（帝江号两仓） | 待扫 | 304 | 0 | — |
-| 折金票 | 1693509 | 钱币收集 | 7862367 | 3407887 | 0 | 0 |
-| 干员经验 (exp) | 1792289 | 干员经验 A 68000/次 或 B 170000/次 | 25778000 | 21900200 | 0 | 0 |
+| 折金票 | 1693510 | 钱币收集 | 7862367 | 3407887 | 0 | 0 |
+| 干员经验 (exp) | 1792290 | 干员经验 A 68000/次 或 B 170000/次 | 25778000 | 21900200 | 0 | 0 |
 | 武器经验 (exp) | 2524080 | 武器经验 170000/次 | 20094000 | 12377400 | 0 | 0 |
 
 ### C2. Variable groups (one build uses one option per group; the table shows every option)
