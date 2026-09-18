@@ -44,7 +44,15 @@
     if (mode !== "keep") requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => host.remove(), 1500)));   // two painted frames + grace, then gone
     return host;
   }
-  const start = () => { window.ALERT_PREWARM = { mode, host: prewarm(), at: performance.now() }; if (q.has("alertwarm")) setTimeout(measure, parseInt(q.get("alertwarm"), 10) > 1 ? parseInt(q.get("alertwarm"), 10) : 1500); };
+  /* the warm-up waits for the first painted frame and then an idle slot (requestIdleCallback, ≤ 600 ms), so it never competes with the
+     page's own first paint; the measurement timer starts from load regardless */
+  const start = () => {
+    if (q.has("alertwarm")) setTimeout(measure, parseInt(q.get("alertwarm"), 10) > 1 ? parseInt(q.get("alertwarm"), 10) : 1500);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const go = () => { window.ALERT_PREWARM = { mode, host: prewarm(), at: performance.now() }; };
+      if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 600 }); else setTimeout(go, 200);
+    }));
+  };
   if (document.readyState === "loading") addEventListener("DOMContentLoaded", start); else start();
 
   /* ---- measurement ---- */
