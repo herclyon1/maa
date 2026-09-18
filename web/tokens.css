@@ -198,6 +198,23 @@
   --ios-segment-lens-h: 28px;
   --ios-segment-lens-radius: 14px;
   --ios-segment-lens-pad: 2px;
+  /* ORIGINAL (probe `lensdiff`/`subtree`, tools/uiprobe/uiprobe-lensdiff-seg-{light,dark}.json, uiprobe-subtree-seg-{light,dark}.json):
+   * the selected segment is NOT the tab-bar glass. UISegmentedControl gives its _UILiquidLensView a custom resting background
+   * (ivar hasCustomRestingBackground = 1): restingBackground UIView 196×28, backgroundColor = UIDynamicSystemColor
+   * `_controlForegroundColor` → light (255,255,255) α 1, dark (235,235,245) α .3; per-corner `cornerRadii` 14/14/14/14 (layer.cornerRadius reads 0);
+   * no shadow (shadowOpacity 0), no filters (the lens layer only carries the `opacityPair` helper), no blur / colorMatrix / SDF at rest —
+   * the ClearGlassView (displacementMap + inner shadow) is 0×0 until the segment is lifted by a drag. The tab bar lens has no
+   * resting background, so it always shows the backdrop material (--ios-lens-*). */
+  --ios-segment-selected-bg: rgb(255 255 255 / 1);
+  --ios-segment-selected-radius: 14px;
+  --ios-segment-selected-shadow: none;
+  --ios-segment-selected-filter: none;
+  /* track: the two segment background images (_UIResizableImage 26×33, capInsets 16/25/16/0 | 16/0/16/25) sampled in-process at their centre:
+   * light (115,115,123) α 31/255 = .12 → tertiarySystemFill (118,118,128,.12) after premultiplication rounding; dark (117,117,130) α 61/255 = .24 → (118,118,128,.24) */
+  --ios-segment-track: rgb(118 118 128 / .12);
+  /* labels: UISegmentLabel .SFUI-MediumG3 13 (selected) / .SFUI-RegularG3 13, textColor labelColor (light (0,0,0), dark (255,255,255)) — the selected
+   * label is plain label colour, not vibrancy (subtree dump: _UILabelLayer textColorDesc = labelColor) */
+  --ios-segment-label-color: rgb(0 0 0);
   /* probe UIProgressView 400×4 (track/fill colours not read) */
   --ios-progress-h: 4px;
   /* probe UITabBar 83 at y 873; lens 94×54 r 27; labels at y 912; AX-13 same */
@@ -374,11 +391,19 @@
   /* sheet grabber: _UIVisualEffectBackdropView gaussianBlur inputRadius 30 + colorMatrix offset −0.228 (light) / +0.275 (dark) — a luma-tracking pill */
   --ios-grabber-blur: 30px;
   --ios-grabber-offset: -0.228;
-  /* tab-bar / segmented selection lens: _UITabSelectionView CABackdropLayer gaussianBlur inputRadius 2 + colorMatrix (light: ≈ saturate 1.19, offset −0.2; dark: 1.13/0.96, offset −0.07);
+  /* tab-bar selection lens ONLY (the segmented control's selected segment is a flat _controlForegroundColor platter, see --ios-segment-selected-*):
+   * _UITabSelectionView CABackdropLayer gaussianBlur inputRadius 2 + colorMatrix (light: ≈ saturate 1.19, offset −0.2; dark: 1.13/0.96, offset −0.07);
    * CASDFGlassDisplacementEffect curvature 1; ClearGlass displacementMap inputAmount 0 at rest */
   --ios-lens-blur: 2px;
   --ios-lens-offset: -0.2;
-  --ios-lens-saturate: 1.19;
+  /* EXACT decomposition of the read 4×5 matrix (tools/uiprobe/uiprobe-subtree-tab-{light,dark}.json, row-major, 5th column = offset):
+   * every RGB row sums to 1.13 (light) / 0.87 (dark) = a brightness gain, and row ÷ gain is the standard saturate matrix
+   * (Rec.709 weights .213/.715/.072) with s = 1.062 (light) / 1.379 (dark); rebuilt matrix differs ≤ .0004 from the read one.
+   * → backdrop-filter: blur(2px) saturate(1.062) brightness(1.13) + additive offset −0.2 (an overlay with mix-blend-mode: plus-darker of
+   *   rgb(204 204 204) = 1 − .2 gives D + .8 − 1 = D − .2 exactly, WebKit only); the old "saturate 1.19" was a one-number approximation */
+  --ios-lens-saturate: 1.062;
+  --ios-lens-brightness: 1.13;
+  --ios-lens-matrix: 1.1851 -0.0502 -0.005 0 -0.2  -0.0149 1.1499 -0.0051 0 -0.2  -0.0149 -0.05 1.1949 0 -0.2  0 0 0 1 0;
   /* alert button fill: white _UIVisualEffectBackgroundView + vibrantColorMatrix offset −0.12 (light) / +0.11 (dark) */
   --ios-alert-button-offset: -0.12;
   /* vibrancy of text on glass (vibrantColorMatrix e-column): label −1 (=black) / +0.95 dark; secondary −0.4 / +0.3; unselected tab icon: 0.312·gray −0.25 */
@@ -466,7 +491,13 @@
     --ios-sheet-white: 0.12;
     --ios-grabber-offset: 0.275;
     --ios-lens-offset: -0.07;
-    --ios-lens-saturate: 1.13;
+    --ios-lens-saturate: 1.379;
+    --ios-lens-brightness: 0.87;
+    --ios-lens-matrix: 1.1298 -0.2361 -0.0237 0 -0.07  -0.0701 0.964 -0.0238 0 -0.07  -0.0702 -0.236 1.1762 0 -0.07  0 0 0 1 0;
+    /* segmented selected platter: _controlForegroundColor dark (235,235,245) α .3; track tertiarySystemFill dark (118,118,128,.24); label white */
+    --ios-segment-selected-bg: rgb(235 235 245 / .3);
+    --ios-segment-track: rgb(118 118 128 / .24);
+    --ios-segment-label-color: rgb(255 255 255);
     --ios-alert-button-offset: 0.11;
     --ios-vibrancy-label: 0.95;
     --ios-vibrancy-secondary: 0.3;

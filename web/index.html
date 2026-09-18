@@ -36,8 +36,10 @@
     --glass-filter:blur(var(--ios-glass-blur)) saturate(var(--ios-glass-saturate));
     --glass-fill:rgb(255 255 255 / var(--ios-glass-lift));
     /* selection lens (tab bar / segmented): CABackdropLayer gaussianBlur inputRadius 2 + colorMatrix ≈ saturate 1.19, e −0.2（暗 1.13 / −0.07） ← 探针 deep（_UITabSelectionView） */
-    --lens-filter:blur(var(--ios-lens-blur)) saturate(var(--ios-lens-saturate));
-    --lens-fill:rgb(0 0 0 / calc(-1 * var(--ios-lens-offset)));
+    --lens-filter:blur(var(--ios-lens-blur)) saturate(var(--ios-lens-saturate)) brightness(var(--ios-lens-brightness));   /* 读出的 4×5 矩阵精确分解 = brightness × saturate（亮 1.13 × 1.062，暗 0.87 × 1.379）← 探针 subtree */
+    /* 矩阵 e 列（偏移 −.2 / 暗 −.07）：plus-darker 叠纯色 S = 1 + e → D + S − 1 = D + e，逐通道精确（WebKit）；Chrome 没有 plus-darker，兜底叠黑 α = |e|（见 @supports） */
+    --lens-offset-color:rgb(calc((1 + var(--ios-lens-offset)) * 255) calc((1 + var(--ios-lens-offset)) * 255) calc((1 + var(--ios-lens-offset)) * 255));
+    --lens-offset-fallback:rgb(0 0 0 / calc(-1 * var(--ios-lens-offset)));
     /* SDF rim light: CASDFKeyFillHighlightEffect key/fill amount 0.5, white → the hairline ring; diffuse height 8 / amount 0.15 → the soft shadow ← 探针 deep（tokens.css 注释，无独立变量） */
     --glass-rim:inset 0 0 0 .5px rgb(255 255 255 / var(--ios-glass-highlight-amount));
     --glass-diffuse:0 8px 16px rgb(0 0 0 / .15);
@@ -81,8 +83,10 @@
                 backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter);   /* 平台玻璃 = --ios-glass-blur 5 / -saturate 1.2 / -lift .147 ← 探针 deep（UITabBar 平台 = glass 配方） */
                 box-shadow:var(--glass-diffuse),var(--glass-rim)}   /* 阴影/描边 = SDF diffuse 8 / .15 与 highlight .5 的最近 CSS ← 探针 deep */
   nav.tabs .glide{position:absolute;top:var(--ios-tab-button-pad);bottom:var(--ios-tab-button-pad);left:var(--ios-tab-button-pad);width:0;border-radius:999px;
-                  background:var(--lens-fill);backdrop-filter:var(--lens-filter);-webkit-backdrop-filter:var(--lens-filter);   /* 选中透镜 = --ios-lens-blur 2 / -saturate 1.19 / -offset −.2 ← 探针 deep _UITabSelectionView */
+                  background:transparent;backdrop-filter:var(--lens-filter);-webkit-backdrop-filter:var(--lens-filter);   /* 选中透镜 = _UITabSelectionView gaussianBlur 2 + colorMatrix（--ios-lens-blur / -saturate / -brightness / -offset）← 探针 deep */
                   transition:left var(--ios-motion-lens-duration) var(--ios-motion-lens-easing),width var(--ios-motion-lens-duration) var(--ios-motion-lens-easing)}   /* UIViewSpringAnimationBehavior dampingRatio .85 / response .4 s（--ios-motion-lens-response/-damping-ratio）← 探针 deep；采成 0.55 s linear() */
+  nav.tabs .glide::after{content:"";position:absolute;inset:0;border-radius:inherit;background:var(--lens-offset-color);mix-blend-mode:plus-darker}   /* 矩阵偏移 e = --ios-lens-offset，plus-darker 精确 */
+  @supports not (mix-blend-mode: plus-darker){ nav.tabs .glide::after{background:var(--lens-offset-fallback);mix-blend-mode:normal} }   /* Chrome：叠黑 α|e| 近似 */
   nav.tabs button{position:relative;width:var(--ios-tab-button-w);flex:0 1 auto;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;
                   height:var(--ios-tab-button-h);padding:6px 8px 7px;border-radius:var(--ios-tab-lens-radius);font-size:var(--ios-tab-label-size);line-height:12px;font-weight:var(--ios-headline-weight);   /* 按钮 94×54 r27、字 Semibold 10 ← 探针（5 个标签放不下 5×94 时等比缩）；6/8/7 待 tokens，但 4 + 6 + 28 + 1 = 39 = --ios-tab-label-top ← 探针 */
                   background:transparent;box-shadow:none;color:var(--tab);white-space:nowrap;transition:color .2s}
@@ -337,12 +341,12 @@
      source (spec-extract.md ⑤: transform is a single CASpringAnimation). */
   /* 班次分段控件（34 屏幕时间「每周 / 每天」）：400×32 r16、透镜 28 r14 内缩 2、字 MediumG3 13 / RegularG3 13 ← 探针 UISegmentedControl；
      放在卡片位置（x 20 宽 400；34 里是 x 40 宽 360，页顶无卡时的写法），透镜材质 采样替代 → 用白底 + 阴影近似 */
-  .segctl{position:relative;display:flex;height:var(--ios-segment-h);padding:var(--ios-segment-lens-pad);border-radius:var(--ios-segment-radius);background:var(--ios-tertiary-fill);margin:var(--ios-group-gap) 0 0}
+  .segctl{position:relative;display:flex;height:var(--ios-segment-h);padding:var(--ios-segment-lens-pad);border-radius:var(--ios-segment-radius);background:var(--ios-segment-track);margin:var(--ios-group-gap) 0 0}   /* 轨道 = tertiarySystemFill .12 / 暗 .24 ← 探针 lensdiff（背景图取色） */
   .segctl .lens{position:absolute;top:var(--ios-segment-lens-pad);left:var(--ios-segment-lens-pad);height:var(--ios-segment-lens-h);width:calc((100% - 2 * var(--ios-segment-lens-pad)) / var(--n, 2));
-                border-radius:var(--ios-segment-lens-radius);background:var(--card);box-shadow:0 3px 8px rgba(0,0,0,.12),0 3px 1px rgba(0,0,0,.04);   /* 等原值：选中段 = 参照 34 的白平台（--ios-card-bg）+ 老页阴影；标签栏透镜的叠黑矩阵套过来是深灰，验收退回；数据会话正在注入读 --ios-segment-selected-*，到了换 */
+                border-radius:var(--ios-segment-selected-radius);background:var(--ios-segment-selected-bg);box-shadow:var(--ios-segment-selected-shadow);backdrop-filter:var(--ios-segment-selected-filter);-webkit-backdrop-filter:var(--ios-segment-selected-filter);   /* 选中段 = _UILiquidLensView 的 restingBackground：_controlForegroundColor 白 / 暗 (235,235,245,.3)，逐角 14，无阴影无滤镜（玻璃只在拖动时出现）← 探针 lensdiff/subtree */
                 transform:translateX(calc(var(--i, 0) * 100%));transition:transform var(--ios-motion-lens-duration) var(--ios-motion-lens-easing)}   /* 透镜 = dampingRatio .85 / response .4 s（--ios-motion-lens-response/-damping-ratio ← 探针 deep _updateSelectionToSegment），采成 0.55 s linear() */
   .segctl button{position:relative;z-index:1;flex:1 1 0;height:var(--ios-segment-lens-h);border:0;border-radius:var(--ios-segment-lens-radius);padding:0;background:transparent;box-shadow:none;
-                 font:inherit;font-size:var(--ios-segment-label-size);line-height:var(--ios-segment-lens-h);font-weight:400;color:var(--ink);
+                 font:inherit;font-size:var(--ios-segment-label-size);line-height:var(--ios-segment-lens-h);font-weight:400;color:var(--ios-segment-label-color);   /* 字 RegularG3 / MediumG3 13，labelColor ← 探针 subtree */
                  transition:font-weight var(--ios-motion-segment-label-duration),opacity var(--ios-motion-segment-release-duration)}   /* 字重交叉淡 0.2 s、松开回 0.2 s ← 探针 */
   .segctl button.on{font-weight:var(--ios-medium-weight)}
   .segctl button:active{opacity:var(--ios-motion-segment-press-opacity);transition:opacity var(--ios-motion-segment-press-duration)}   /* 按住淡到 .2、0.47 s ← 探针 */

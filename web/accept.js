@@ -132,10 +132,13 @@
     if (segc) {
       const r = segc.getBoundingClientRect();
       num("分段控件高 32（--ios-segment-h）", 32, r.height); num("分段控件圆角 16（--ios-segment-radius）", 16, px(cs(segc).borderTopLeftRadius));
+      col("分段轨道 tertiarySystemFill（--ios-segment-track）", dark ? [118, 118, 128, .24] : [118, 118, 128, .12], cs(segc).backgroundColor);
       num("分段控件宽 = 卡片宽", innerWidth - 40, r.width);
       const lens = segc.querySelector(".lens"), b = segc.querySelector("button");
       if (lens) { num("分段透镜高 28（--ios-segment-lens-h）", 28, lens.getBoundingClientRect().height); num("分段透镜圆角 14（--ios-segment-lens-radius）", 14, px(cs(lens).borderTopLeftRadius)); num("分段透镜内缩 2（--ios-segment-lens-pad）", 2, lens.getBoundingClientRect().top - r.top);
-        col("分段选中段 = 白平台（--ios-card-bg，参照 34；等 --ios-segment-selected-* 原值）", T.card, cs(lens).backgroundColor); }
+        col("分段选中段 = _controlForegroundColor（--ios-segment-selected-bg）", dark ? [235, 235, 245, .3] : [255, 255, 255], cs(lens).backgroundColor);
+        check("分段选中段无阴影（--ios-segment-selected-shadow）", "none", cs(lens).boxShadow, cs(lens).boxShadow === "none");
+        check("分段选中段无滤镜（--ios-segment-selected-filter）", "none", (cs(lens).backdropFilter || cs(lens).webkitBackdropFilter || "none"), /^none$/.test(cs(lens).backdropFilter || cs(lens).webkitBackdropFilter || "none")); }
       if (b) { num("分段文字 13（--ios-segment-label-size）", 13, px(cs(b).fontSize), 0.05); check("分段选中字重 500（--ios-medium-weight）", 500, cs(segc.querySelector("button.on") || b).fontWeight, String(cs(segc.querySelector("button.on") || b).fontWeight) === "500"); }
     }
     /* The confirm alert (closed, but its computed geometry is there) */
@@ -183,7 +186,11 @@
       check("标签栏平台玻璃 blur 5（--ios-glass-blur）", "blur(5px)", (/blur\([\d.]+px\)/.exec(segbf) || [])[0], /blur\(5px\)/.test(segbf));
       const gl = seg.querySelector(".glide"); if (gl) { const gbf = cs(gl).backdropFilter || cs(gl).webkitBackdropFilter || "";
         check("标签栏选中透镜 blur 2（--ios-lens-blur）", "blur(2px)", (/blur\([\d.]+px\)/.exec(gbf) || [])[0], /blur\(2px\)/.test(gbf));
-        col("标签栏选中透镜叠黑 = 矩阵 e（--ios-lens-offset）", dark ? [0, 0, 0, .07] : [0, 0, 0, .2], cs(gl).backgroundColor);
+        check("标签栏透镜 saturate（--ios-lens-saturate，矩阵分解）", dark ? "saturate(1.379)" : "saturate(1.062)", (/saturate\([\d.]+\)/.exec(gbf) || [])[0], new RegExp("saturate\\(" + (dark ? "1\\.379" : "1\\.062") + "\\)").test(gbf));
+        check("标签栏透镜 brightness（--ios-lens-brightness）", dark ? "brightness(0.87)" : "brightness(1.13)", (/brightness\([\d.]+\)/.exec(gbf) || [])[0], new RegExp("brightness\\(" + (dark ? "0\\.87" : "1\\.13") + "\\)").test(gbf));
+        const pd = CSS.supports("mix-blend-mode", "plus-darker"), ga = cs(gl, "::after");
+        if (pd) { col("透镜偏移 e：plus-darker 叠 1+e（--ios-lens-offset）", dark ? [237, 237, 237] : [204, 204, 204], ga.backgroundColor); check("透镜偏移混合 plus-darker", "plus-darker", ga.mixBlendMode, ga.mixBlendMode === "plus-darker"); }
+        else col("透镜偏移 e：Chrome 兜底叠黑 α|e|（--ios-lens-offset）", dark ? [0, 0, 0, .07] : [0, 0, 0, .2], ga.backgroundColor);
         check("透镜滑动 0.55 s（--ios-motion-lens-duration，dampingRatio .85 / response .4）", "0.55s", cs(gl).transitionDuration.split(",")[0].trim(), /^0\.55s/.test(cs(gl).transitionDuration)); }
     }
     if (fakeNav) fakeNav.remove();
