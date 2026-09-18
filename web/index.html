@@ -147,6 +147,7 @@
   /* Number tiles: Reminders' smart-list tiles (2×2, 195.67×80.33 on the Pro Max,
      radius 16, gap 8): symbol top-left, big number top-right, name bottom-left. */
   .group.nums{display:grid;grid-template-columns:1fr 1fr;gap:var(--ios-tile-gap);background:transparent;border-radius:0;overflow:visible}   /* 两列 196 间距 8 ← AX-57 提醒事项磁贴 */
+  .group.nums > .num:last-child:nth-child(odd){grid-column:1 / -1}   /* 奇数张时最后一张占满一行（提醒事项首页奇数张智能列表的排法） */
   section + section > .group.nums:first-child{margin-top:16px}
   .group.nums + .foot{padding-top:8px}
   .num{position:relative;min-height:var(--ios-tile-h);padding:12px 12px 11px;border-radius:var(--ios-tile-radius-SAMPLED);background:var(--card);color:var(--ink);   /* 高 80.33 ← AX-57；圆角 16 采样替代（曲线拟合）；内距 12/12/11 待 tokens（57 的图标是裸字形 at 16.67/13.67，这里是带色圆的老页形，位置没法照搬） */

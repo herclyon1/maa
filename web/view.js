@@ -251,11 +251,12 @@ function whenFull(stamp) {
   return `${name} ${m[3]} 回满`;
 }
 function numTiles(snap) {
-  const r = (window.Stamina && Stamina.data) || null, t = (snap && snap["今天"]) || null;
-  if (!r && !t) return "";
-  const ak = (r || {})["明日方舟"] || {}, ef = (r || {})["终末地"] || {}, ww = (r || {})["鸣潮"] || {};
+  /* 「今天跑了 N 趟」那格 2026-09-18 删了（用户：无意义数据；sitemap 里早没有）。三格体力 2 + 1，
+     最后一格占满一行，照提醒事项首页奇数张智能列表磁贴的排法（AX-57）。「最近一趟」搬到回执组头。 */
+  const r = (window.Stamina && Stamina.data) || null;
+  if (!r) return "";
+  const ak = r["明日方舟"] || {}, ef = r["终末地"] || {}, ww = r["鸣潮"] || {};
   let h = "";
-  if (t) h += numTile("gamecontroller.fill", "var(--ios-gray)", t["跑了"], "趟", "今天跑了", t["失败"] ? `失败 ${t["失败"]} 趟` : (t["最近"] ? `最近一趟 ${t["最近"]}` : "还没跑"));
   if (r) {
     /* The tab bar carries each game's own icon; the tile shows the resource's own icon,
        so the two never repeat. */
@@ -351,7 +352,10 @@ function render() {
   /* The machine's answer to each order, newest first. Used to be a push per
      order; the answer belongs where the button was pressed (2026-09-14). */
   const rc = Array.isArray(relay["最近指令"]) ? relay["最近指令"].slice().reverse() : [];
-  if (rc.length) html += `<section><h2>机器最近的回执</h2>` + rc.map((r) =>
+  /* 组头右边的小字：最近一趟跑的是哪个、今天有没有失败（原来「今天跑了」磁贴里唯一有用的两项）。 */
+  const td = (snap && snap["今天"]) || {};
+  const tdNote = [td["最近"] ? `最近一趟 ${td["最近"]}` : "", td["失败"] ? `失败 ${td["失败"]} 趟` : ""].filter(Boolean).join(" · ");
+  if (rc.length) html += `<section><h2>机器最近的回执${tdNote ? ` <small>${tdNote}</small>` : ""}</h2>` + rc.map((r) =>
     `<div class="row"><label>${sf(r.ok ? "checkmark.circle.fill" : "xmark.circle.fill", r.ok ? "ok inl" : "bad inl")}${(r.text || "").replace(/</g,"&lt;")}</label>
       <span class="ro short">${r.at}</span></div>`).join("") + `</section>`;
 
