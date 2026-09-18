@@ -20,8 +20,8 @@ import pathlib, re, sys
 v = sys.argv[1]
 p = pathlib.Path("web/index.html")
 s = p.read_text(encoding="utf-8")
-# app.js 2026-09-18 拆成 schema/net/pending/live/view（stamina 原本就单独），六个都盖同一个版本号
-s = re.sub(r'<script src="(schema|net|pending|live|stamina|view)\.js[^"]*"></script>', lambda m: f'<script src="{m.group(1)}.js?v={v}"></script>', s)
+# app.js 2026-09-18 拆成 schema/net/pending/live/view（stamina 原本就单独；inventory 是库存页的数据层），七个都盖同一个版本号
+s = re.sub(r'<script src="(schema|net|pending|live|stamina|inventory|view)\.js[^"]*"></script>', lambda m: f'<script src="{m.group(1)}.js?v={v}"></script>', s)
 s = re.sub(r'accept\.js\?v=[^"]*', f'accept.js?v={v}', s)   # the ?accept-only acceptance script
 s = re.sub(r'tokens\.css\?v=[^"]*', f'tokens.css?v={v}', s)   # the component tokens stylesheet
 s = re.sub(r'href="manifest\.webmanifest[^"]*"', f'href="manifest.webmanifest?v={v}"', s)
@@ -46,7 +46,9 @@ rm -rf "$WT"
 git worktree prune
 git worktree add -q "$WT" gh-pages
 find "$WT" -maxdepth 1 ! -name .git ! -path "$WT" -exec rm -rf {} +
-cp web/* "$WT"/
+# -R: web/data/ (the inventory tab's static need table) is a subdirectory; a bare
+# `cp web/*` would drop it whole and the page would get a 404.
+cp -R web/. "$WT"/
 touch "$WT/.nojekyll"
 (cd "$WT" && git add -A && git commit -q -m "发布 $V" && git push -q origin gh-pages)
 git worktree remove --force "$WT"

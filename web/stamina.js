@@ -262,6 +262,8 @@
     return [t.sk ? "森空岛" : "", t.kuro ? "库街区" : ""].filter(Boolean).join("、");
   }
 
-  Object.assign(Stamina, { refresh, fromLink, fromPaste, fromSnapshot, loadTokens, clear, status, endfieldFromDungeon, arknightsLive, md5 });
+  /* skRefresh / skGet 也导出：库存页（inventory.js）用同一套森空岛签名去拿仓库，
+     签名代码只此一份，不在别处再抄一遍。 */
+  Object.assign(Stamina, { refresh, fromLink, fromPaste, fromSnapshot, loadTokens, clear, status, endfieldFromDungeon, arknightsLive, md5, skRefresh, skGet });
   window.Stamina = Stamina;
 })();

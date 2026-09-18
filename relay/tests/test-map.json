@@ -999,5 +999,6 @@
 "config",
 "statestore",
 "weeklyboss"
-]
+],
+"test_need_table.py": []
 }

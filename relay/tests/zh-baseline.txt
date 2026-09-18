@@ -1,6 +1,6 @@
 # Lines of Chinese comment/docstring per file. **This may only shrink.**
 # Why, and what stays Chinese on purpose: scripts/mac/lib/zh_ratchet.py
-# total 2125 lines in 186 files
+# total 2098 lines in 186 files
 # regenerate: python3 scripts/mac/lib/zh_ratchet.py --update
 relay/ark_relay/banners.py 16
 relay/ark_relay/collector.py 5
@@ -18,7 +18,7 @@ relay/ark_relay/handle.py 1
 relay/ark_relay/maintenance.py 3
 relay/ark_relay/mastercfg.py 2
 relay/ark_relay/modes.py 3
-relay/ark_relay/notify.py 6
+relay/ark_relay/notify.py 5
 relay/ark_relay/okww_files/NightmareNestTask.patched.py 57
 relay/ark_relay/okww_files/NightmareNestTask.upstream.py 3
 relay/ark_relay/okww_patch.py 1
@@ -41,7 +41,7 @@ relay/make-manifest.py 4
 relay/tests/_tmp.py 3
 relay/tests/test_alert_dedup.py 4
 relay/tests/test_atomic_write.py 7
-relay/tests/test_banners.py 36
+relay/tests/test_banners.py 32
 relay/tests/test_channel_down.py 1
 relay/tests/test_command_table.py 5
 relay/tests/test_commands_gates.py 18
@@ -77,7 +77,7 @@ relay/tests/test_missed_runs.py 4
 relay/tests/test_module_table.py 2
 relay/tests/test_next_plan_imports.py 6
 relay/tests/test_notify_channels.py 33
-relay/tests/test_notify_routing.py 11
+relay/tests/test_notify_routing.py 10
 relay/tests/test_okww_error_reason.py 7
 relay/tests/test_okww_exit_race.py 3
 relay/tests/test_okww_names_not_numbers.py 11
@@ -136,7 +136,7 @@ scripts/mac/check-docs.py 12
 scripts/mac/cn-route-pf.sh 13
 scripts/mac/config-check.py 25
 scripts/mac/confirm-off.sh 1
-scripts/mac/deploy-relay.sh 115
+scripts/mac/deploy-relay.sh 107
 scripts/mac/deploy-web.sh 13
 scripts/mac/endfield-report.py 9
 scripts/mac/estop.sh 34
@@ -148,7 +148,7 @@ scripts/mac/lib/changed_covered.py 39
 scripts/mac/lib/checkshape.py 7
 scripts/mac/lib/deadcode.py 27
 scripts/mac/lib/effective_config.py 7
-scripts/mac/lib/healthcheck.py 22
+scripts/mac/lib/healthcheck.py 16
 scripts/mac/lib/history-anchors.py 7
 scripts/mac/lib/idmap.py 17
 scripts/mac/lib/loggernames.py 6
@@ -172,7 +172,7 @@ scripts/mac/order.sh 12
 scripts/mac/proxy-monitor.sh 5
 scripts/mac/pull-replay.sh 4
 scripts/mac/purge-cdn.py 27
-scripts/mac/push.py 10
+scripts/mac/push.py 3
 scripts/mac/rename-queues.py 3
 scripts/mac/run-one.sh 4
 scripts/mac/stream-ins.sh 2
