@@ -274,6 +274,8 @@
       const sh = document.querySelector("#picker"), card = sh.querySelector(".card"), nav = sh.querySelector(".pnav"), back = sh.querySelector(".pback"), done = sh.querySelector(".pdone");
       const cr2 = card.getBoundingClientRect(), nr2 = nav.getBoundingClientRect(), br = back.getBoundingClientRect(), dr = done.getBoundingClientRect(), sat = satTop();
       num("勾选页顶 = 安全区顶（standalone 62 = --ios-status-h，AX-38 表 y 62；浏览器里 0）", sat, cr2.top); num("勾选页顶角 38（--ios-sheet-radius-top）", 38, px(cs(card).borderTopLeftRadius));
+      col("勾选页底 = elevated systemGroupedBackground（--ios-grouped-bg-elevated：暗 (28,28,30)，探针 levels）", dark ? [28, 28, 30] : [242, 242, 247], cs(card).backgroundColor);
+      { const pg = sh.querySelector(".plist .group"); if (pg) col("勾选页卡 = elevated secondarySystemGroupedBackground（--ios-card-bg-elevated：暗 (44,44,46)）", dark ? [44, 44, 46] : [255, 255, 255], cs(pg).backgroundColor); }
       num("勾选页导航栏 54 在安全区顶 + 20（AX-38 y 82 = 62 + 20，--ios-modal-nav-top − --ios-status-h）", sat + 20, nr2.top); num("导航栏高 54", 54, nr2.height);
       num("返回圆钮 44 at x 20（AX-38 BackButton）", 44, br.width); num("返回圆钮 x 20", 20, br.left);
       num("完成圆钮 36（--ios-modal-button，AX-38 (380,86,36,36)）", 36, dr.width); num("完成圆钮 x 380", 380, dr.left); num("完成圆钮 y = 安全区顶 + 24（AX-38 y 86）", sat + 24, dr.top);

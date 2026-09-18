@@ -49,6 +49,11 @@
   --ios-grouped-bg: rgb(242 242 247);
   /* probe cell backgroundConfiguration.backgroundColor (tableCellGroupedBackgroundColor) */
   --ios-card-bg: rgb(255 255 255);
+  /* elevated level (sheets / modal cards presented over the app: UIUserInterfaceLevel.elevated): probe `levels` command
+   * (tools/uiprobe/uiprobe-colorlevels.json, iOS 27.0) — light is identical to base; dark lifts one step:
+   * systemGroupedBackground (0,0,0) → (28,28,30), secondarySystemGroupedBackground (28,28,30) → (44,44,46), tertiary (44,44,46) → (58,58,60) */
+  --ios-grouped-bg-elevated: rgb(242 242 247);
+  --ios-card-bg-elevated: rgb(255 255 255);
   /* probe systemBackground (sheet content) */
   --ios-bg: rgb(255 255 255);
   /* probe _UITableViewCellSeparatorView.backgroundColor = separator; pixel 45 three rows (232,232,232) = white × .88 + (60,60,67) × .12 */
@@ -605,6 +610,8 @@
     --ios-grouped-bg: rgb(0 0 0);
     /* probe secondarySystemGroupedBackground dark; list-dark cell backgroundConfiguration */
     --ios-card-bg: rgb(28 28 30);
+    --ios-grouped-bg-elevated: rgb(28 28 30);   /* dark + elevated systemGroupedBackground ← probe levels */
+    --ios-card-bg-elevated: rgb(44 44 46);      /* dark + elevated secondarySystemGroupedBackground ← probe levels */
     --ios-bg: rgb(0 0 0);
     /* probe list-dark separator view / separatorColor */
     --ios-separator: rgb(84 84 88 / .5);

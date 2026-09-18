@@ -1343,6 +1343,11 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 boot();
 
+/* 添加到主屏幕后**第一次**从图标启动，滚动位置停在 −62（visualViewport offsetTop −62，整页下沉 62；杀掉重开为 0）——数据会话 9c22044 ?diag 实拍，
+   每次添加后的首启必现，不是 env() 也不是 padding。发现负滚动就归零。 */
+{ const unsink = () => { if (window.scrollY < 0) window.scrollTo(0, 0); };
+  addEventListener("load", unsink); if (window.visualViewport) window.visualViewport.addEventListener("resize", unsink); setTimeout(unsink, 300); setTimeout(unsink, 1200); }
+
 /* ?diag=1：standalone 里看不到控制台，把几何数写在屏幕底部给截图读（数据会话 862de97 实拍：从主屏图标首次启动时整页下沉，
    要靠 innerHeight / 安全区顶 / body padding / 标题顶 这几个数分辨是 web view 的高度、env() 还是我们的 padding 在变）。 */
 if (new URLSearchParams(location.search).has("diag")) {

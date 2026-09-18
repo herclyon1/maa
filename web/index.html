@@ -287,7 +287,7 @@
   .row.nav:active{background:color-mix(in srgb, var(--ink) 6%, var(--card))}
   /* 勾选页（AX-38）：全屏遮罩 .2 + 从状态栏底（AX-38 y 62 = env(safe-area-inset-top)，standalone black-translucent 下正是 62 = --ios-status-h）起的页，
      顶角 38（--ios-sheet-radius-top），底 = systemGroupedBackground（设置的弹出页是不透明分组底） */
-  .sheet{position:fixed;inset:0;z-index:20;display:none}
+  .sheet{position:fixed;inset:0;z-index:20;display:none;--bg:var(--ios-grouped-bg-elevated);--card:var(--ios-card-bg-elevated)}   /* 弹出页是 elevated 层：暗色底 (28,28,30)、卡 (44,44,46) ← 探针 levels（--ios-*-elevated）；亮色与 base 相同 */
   .sheet[open]{display:block}
   .sheet .dim{position:absolute;inset:0;background:var(--ios-dimming)}
   .sheet .card{position:absolute;left:0;right:0;top:env(safe-area-inset-top, var(--ios-status-h));bottom:0;background:var(--bg);border-radius:var(--ios-sheet-radius-top) var(--ios-sheet-radius-top) 0 0;overflow:hidden;display:flex;flex-direction:column}
