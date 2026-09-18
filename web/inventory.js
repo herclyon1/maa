@@ -5,9 +5,17 @@
    added later without changing the shape:
 
      { "取自": "HH:MM",
-       games: [ { game: "终末地", gameId: "endfield", caliber, source, "错误": "",
-                  rows: [ { id, name, rarity, icon, have, need, servings,
+       games: [ { game: "终末地", gameId: "endfield", caliber, footnote, source, built, gameLevel,
+                  sections: ["通用", "高阶素材", "采集", "经验与货币"], lagMinutes: 30, lagNote,
+                  standard: {charId, name, rarity, releasedAt, weapon}, standards: [...], "错误": "",
+                  rows: [ { id, name, rarity, icon, have, need, servings, section,
                             group, stage, note, virtual, sumInto, exp } ] } ] }
+
+   * section   - which heading the row sits under, in `sections` order; a row with
+                 section null (the exp cards) is folded into 干员经验 / 武器经验 and not shown
+   * footnote  - the one-line caption for 人份 (already worded for the page)
+   * lagNote   - Skland's own statement that its depot copy runs about 30 minutes behind
+                 the game (the official calculator page says so); lagMinutes is the number
 
    * have      - what the account holds now (森空岛 calculate/user-game-data itemCount;
                  a material the account has none of is ABSENT there, so absent = 0)
@@ -119,6 +127,7 @@
       group: base.group == null ? null : base.group, stage: base.stage == null ? null : base.stage,
       note: base.note == null ? null : base.note,
       virtual: !!base.virtual, sumInto: base.sumInto || null, exp: base.exp == null ? null : base.exp,
+      section: base.section == null ? null : base.section,
     };
   }
   /* need rows + live counts -> rows. Exp materials add count × exp into their
@@ -146,7 +155,9 @@
     const needGame = needFor(GAME_ID);
     const std = standardFor(needGame);
     if (needGame) {
-      g.caliber = (std && std.caliber) || needGame.caliber; g.source = needGame.source; g.built = Inventory.need.built;
+      g.caliber = (std && std.caliber) || needGame.caliber; g.footnote = (std && std.footnote) || needGame.footnote || "";
+      g.source = needGame.source; g.built = Inventory.need.built;
+      g.sections = needGame.sections || []; g.lagMinutes = needGame.lagMinutes == null ? null : needGame.lagMinutes; g.lagNote = needGame.lagNote || "";
       g.standard = std ? { charId: std.charId, name: std.name, rarity: std.rarity, releasedAt: std.releasedAt, weapon: std.weapon && std.weapon.name } : null;
       g.standards = standards(GAME_ID);
     }

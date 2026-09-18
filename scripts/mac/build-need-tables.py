@@ -104,6 +104,28 @@ GATHERED = {"纯晶多齿叶", "至晶多齿叶", "晶化多齿叶", "受蚀玉�
             "重红柱状菌", "中红柱状菌", "轻红柱状菌", "星门菌", "血菌", "塔罗斯菌",
             "中黯石", "重黯石", "轻黯石", "武陵石", "燎石", "协议纹石"}
 WEAPON_UNIVERSAL = {"重型强固模具", "强固模具", "中黯石", "重黯石", "轻黯石"}
+# The phone page's sections, in display order. A material family, not a standard,
+# so the headings stay put when the standard changes. Rows without a section (the
+# exp cards folded into the two exp rows) are not shown as rows.
+SECTIONS = ("通用", "高阶素材", "采集", "经验与货币")
+HIGH_TIER = {"D96钢样品四", "超距辉映管", "快子遴捡晶格", "象限拟合液", "三相纳米片", "高阶培养自选箱Ⅰ"}
+LAG_MINUTES = 30
+# The official calculator page's own words (game.skland.com/tools/endfield/cost-calculator,
+# quoted in scripts/mac/lib/snapshot.py on 2026-08-28): 「仓库资源和干员数据等信息的同步，
+# 会有 30 分钟左右的延迟」. Stated by Skland, not measured here.
+LAG_NOTE = "森空岛的仓库数比游戏里晚约 30 分钟（官方养成计算器页面自己写的）"
+
+
+def section_of(name: str, kind: str) -> str | None:
+    if kind != "materials":
+        return None                      # exp cards: folded into 干员经验 / 武器经验
+    if name in HIGH_TIER:
+        return "高阶素材"
+    if name in GATHERED:
+        return "采集"
+    if name == "折金票":
+        return "经验与货币"
+    return "通用"
 
 
 def _retry(fn, tries=4, wait=2):
@@ -380,6 +402,7 @@ def build(src: RulesSource, pulled_at: str, today: str, char_name: str = "", wea
     for mid, m in mat.items():
         nm = m["name"]
         row = {"id": mid, "name": nm, "rarity": m["rarity"], "icon": m["icon"], "need": 0, "group": None,
+               "section": section_of(nm, m["kind"]),
                "stage": STAGE.get(nm) or (GATHER if nm in GATHERED else None), "note": None}
         w = wneed_by_name.get(nm, 0)
         if m["kind"] != "materials":
@@ -401,16 +424,18 @@ def build(src: RulesSource, pulled_at: str, today: str, char_name: str = "", wea
             row["note"] = f"{who} 的满练不用它"
         rows.append(row)
     rows.append({"id": EXP_CHAR, "name": "干员经验", "rarity": None, "icon": "", "need": char_exp, "group": "通用",
-                 "stage": "干员经验", "virtual": True, "note": "五种作战记录 / 认知载体按经验值折算"})
+                 "section": "经验与货币", "stage": "干员经验", "virtual": True, "note": "五种作战记录 / 认知载体按经验值折算"})
     rows.append({"id": EXP_WEAPON, "name": "武器经验", "rarity": None, "icon": "", "need": weap_exp, "group": "通用",
-                 "stage": "武器经验", "virtual": True, "note": "武器检查套组 / 装置 / 单元按经验值折算"})
-    order = {"通用": 0, who: 1, f"专武 {weapon['name']}": 2}
-    rows.sort(key=lambda r: (4 if r["need"] is None else 3 if r["need"] == 0 else order.get(r["group"], 3),
+                 "section": "经验与货币", "stage": "武器经验", "virtual": True, "note": "武器检查套组 / 装置 / 单元按经验值折算"})
+    sec = {name: i for i, name in enumerate(SECTIONS)}
+    rows.sort(key=lambda r: (sec.get(r["section"], len(SECTIONS)), 2 if r["need"] is None else 1 if r["need"] == 0 else 0,
                              -(r["need"] or 0), r["name"]))
 
     label = {"6": "最新六星", "5": "最新五星", "4": "最新四星"}[rarity] if who == newest["name"] and not char_name else "指定干员"
     online = f"（{op['onlineDate']} 上线）" if op.get("onlineDate") else ""
     caliber = f"{label} {who}{online}：1→90 全突破、四技能 12、专武 {weapon['name']} 1→90；不含天赋"
+    footnote = (f"人份 = 库存 ÷ {who}满练所需（1→90 全突破、四技能 12、专武{weapon['name']} 1→90，不含天赋"
+                + (f"；{op['onlineDate']} 上线的{label}" if op.get("onlineDate") and label != "指定干员" else "") + "）")
     standard = {
         "charId": calc_ids[who], "name": who, "rarity": int(rarity), "releasedAt": op.get("onlineDate", ""),
         "wikiItemId": op.get("wikiItemId", ""), "obtain": op.get("obtain", ""),
@@ -418,12 +443,13 @@ def build(src: RulesSource, pulled_at: str, today: str, char_name: str = "", wea
         "weapon": {"id": wid_of[weapon["name"]], "name": weapon["name"], "releasedAt": weapon.get("onlineDate", ""),
                    "kind": weapon.get("kind", ""), "obtain": weapon.get("obtain", ""), "wikiItemId": weapon.get("wikiItemId", ""),
                    "reason": weapon_reason},
-        "caliber": caliber, "rows": rows,
+        "caliber": caliber, "footnote": footnote, "rows": rows,
     }
     return {
         "built": pulled_at,
         "games": [{
-            "game": GAME, "gameId": GAME_ID, "caliber": caliber, "source": SOURCE,
+            "game": GAME, "gameId": GAME_ID, "caliber": caliber, "footnote": footnote, "source": SOURCE,
+            "sections": list(SECTIONS), "lagMinutes": LAG_MINUTES, "lagNote": LAG_NOTE,
             "standard": standard["charId"], "standards": [standard], "rows": rows,
             "coverage": {
                 "operator": who, "releasedAt": op.get("onlineDate", ""), "weapon": weapon["name"],

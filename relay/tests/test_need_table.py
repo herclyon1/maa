@@ -104,6 +104,14 @@ table = bnt.build(src, "fixture", TODAY)
 g, rows = rows_by_name(table)
 check("game 字段", (g["game"], g["gameId"]), ("终末地", "endfield"))
 check("caliber", g["caliber"], "最新六星 提弗洛斯（2026-09-02 上线）：1→90 全突破、四技能 12、专武 寒夜幽影 1→90；不含天赋")
+check("footnote", g["footnote"], "人份 = 库存 ÷ 提弗洛斯满练所需（1→90 全突破、四技能 12、专武寒夜幽影 1→90，不含天赋；2026-09-02 上线的最新六星）")
+check("sections", g["sections"], ["通用", "高阶素材", "采集", "经验与货币"])
+check("延迟那句是官方计算器页面说的", (g["lagMinutes"], "官方" in g["lagNote"]), (30, True))
+check("每行都在某一节里，经验材料不在", {r["section"] for r in g["rows"] if not r.get("sumInto")}, {"通用", "高阶素材", "采集", "经验与货币"})
+check("经验材料无节（折进两条经验行）", {r["section"] for r in g["rows"] if r.get("sumInto")}, {None})
+check("高阶素材一节", [r["name"] for r in g["rows"] if r["section"] == "高阶素材"],
+      ["象限拟合液", "D96钢样品四", "快子遴捡晶格", "三相纳米片", "超距辉映管", "高阶培养自选箱Ⅰ"])
+check("经验与货币一节", [r["name"] for r in g["rows"] if r["section"] == "经验与货币"], ["武器经验", "干员经验", "折金票"])
 check("standards 只有一个，就是她", [(s["charId"], s["name"], s["rarity"], s["releasedAt"]) for s in g["standards"]],
       [("9de117d5969945ecfdbd70dac3a632e6", "提弗洛斯", 6, "2026-09-02")])
 check("默认标准 = 她", g["standard"], "9de117d5969945ecfdbd70dac3a632e6")
@@ -138,8 +146,8 @@ require("每行都有 id / name / rarity / icon / need / group / stage / note",
         all({"id", "name", "rarity", "icon", "need", "group", "stage", "note"} <= set(r) for r in g["rows"]))
 require("名字没有首尾空白", all(r["name"] == r["name"].strip() for r in g["rows"]))
 order = [r["name"] for r in g["rows"]]
-require("排序：通用 → 提弗洛斯 → 专武 → 不用的 → 经验材料/自选箱",
-        order.index("协议棱柱组") < order.index("D96钢样品四") < order.index("协议纹石") < order.index("三相纳米片") < order.index("高级认知载体"),
+require("排序：按节，节内需求大的在前、不用的在后、无需求的最后",
+        order.index("协议棱柱组") < order.index("象限拟合液") < order.index("三相纳米片") < order.index("红矛叶") < order.index("燎石") < order.index("折金票") < order.index("高级认知载体"),
         str(order[:8]))
 
 print("\n[三个坑]")
