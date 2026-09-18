@@ -1267,11 +1267,72 @@ function flexTargets(spec, W, H, accel, vel) {
 }
 /* damped spring x'' = −ω₀²(x − target) − 2ζω₀x' (ω₀ = 2π / response), semi-implicit Euler in ≤ 4 ms substeps */
 function springStep(s, target, [zeta, response], dt) { const w = 2 * Math.PI / response; let t = dt; while (t > 0) { const h = Math.min(t, .004); s.v += (-w * w * (s.x - target) - 2 * zeta * w * s.v) * h; s.x += s.v * h; t -= h; } }
+/* B6: the lifted lens's rim from the decompiled formulas (remote-ref/keyfill-highlight.md §2 / §4 / §5.1 / §5.2; parameters = the probe's set
+   values, seg-lens-refraction.md §1c(g)); the drawing is in segLens (SVG ring strokes), the arithmetic is here. Depth e = pt into the capsule. */
+const SEG_RIM = (() => {
+  const sat = (x) => Math.max(0, Math.min(1, x)), mean = (f, a, b, n = 240) => { let s = 0; for (let i = 0; i < n; i++) s += f(a + (b - a) * (i + .5) / n); return s / n; };
+  /* #36 CASDFKeyFillHighlightEffect (§2): main band h 1 curvature .75 (prof .25 + .75(1 − e)), amount .5 → bias 0; diffuse band 8·h, linear, bias 1/(.15·.5) − 2;
+     spreads 1.3963 (main) / .65·1.3963 (diffuse); ang = sat((n·dir − cos s)/(1 − cos s)) */
+  const HL_COS = Math.cos(1.3963), HD_COS = Math.cos(.65 * 1.3963), HD_BIAS = 1 / (.15 * .5) - 2;
+  const hlMain = (e, ang = 1) => (e >= 0 && e < 1 ? (.25 + .75 * (1 - e)) * ang : 0);
+  const hlDiff = (e, ang = 1) => { if (e < 0 || e >= 8) return 0; const v = (1 - e / 8) * ang; return v / (1 + HD_BIAS * (1 - v)); };
+  const EDGES = [0, 1 / 3, 2 / 3, 1, 2, 3, 4, 5, 6, 7, 8];   // ring edges: 1/3 pt over the first pt, then 1 pt
+  const hlRings = EDGES.slice(0, -1).map((e0, i) => ({ e0, e1: EDGES[i + 1], main: i < 3 ? mean(hlMain, e0, EDGES[i + 1]) : 0, diff: mean(hlDiff, e0, EDGES[i + 1]) }));
+  const angMain = (nx) => sat((Math.sqrt(Math.max(0, 1 - nx * nx)) - HL_COS) / (1 - HL_COS));   // along the arcs n·dir = cos φ = √(1 − n_x²)
+  const dFull = mean(hlDiff, 0, 1), angDiff = (nx) => { const c = sat((Math.sqrt(Math.max(0, 1 - nx * nx)) - HD_COS) / (1 - HD_COS)); return mean((e) => hlDiff(e, c), 0, 1) / dFull; };
+  /* glassBackground built-in KeyFill (§5.1): Amount .5 (x′ = x/(1 + .5(1 − x))), ColorBias −.3, EffectOffset −.6667, Height 1, Angle π/2 → dir (sin θ, −cos θ) = (1, 0),
+     SpreadSDR 2.0944 → S = −.5; band e = −(d + offset) from .667 outside to .333 inside, prof .25 + .75(1 − e) */
+  const KF_S = Math.cos(2.0944), g = (x) => x / (1 + .5 * (1 - x));
+  const kfK = (v, nx) => g(v * sat((nx - KF_S) / (1 - KF_S))) + g(v * sat((-nx - KF_S) / (1 - KF_S)));
+  const kfRings = [[0, 1 / 3], [1 / 3, 2 / 3], [2 / 3, 1]].map(([a, b]) => ({ e0: a - 2 / 3, e1: b - 2 / 3, v: mean((e) => .25 + .75 * (1 - e), a, b) }));   // e0/e1 as depth into the capsule (negative = outside)
+  const NXS = [-1, -.98, -.95, -.9, -.8, -.7, -.6, -.5, -.4, -.3, -.2, -.1, 0];
+  const grey = (c) => { const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(c || ""); return m ? { r: +m[1], g: +m[2], b: +m[3], a: m[4] == null ? 1 : +m[4] } : null; };
+  return { hlRings, angMain, angDiff, kfRings, kfK, NXS, MULT: 1 - .9118, ADD: .1471, COLOR_BIAS: -.3, grey };
+})();
 function segLens(seg, lens, bs) {
   if (seg.__lensLoop) seg.__lensLoop.stop();   // a new press ends the previous loop (its tail and its inline geometry)
-  let warp = seg.querySelector(".warp"), warpl = seg.querySelector(".warpl"), plat = seg.querySelector(".plat"), rim = seg.querySelector(".rim");
+  let warp = seg.querySelector(".warp"), warpl = seg.querySelector(".warpl"), plat = seg.querySelector(".plat"), rimb = seg.querySelector(".rimb"), hlk = seg.querySelector(".hlk"), hlw = seg.querySelector(".hlw");
   const mk = (cls, inner) => { const d = document.createElement("div"); d.className = cls; d.innerHTML = inner; seg.appendChild(d); return d; };
-  if (!warp) warp = mk("warp", '<div class="disp"><div class="copy"></div></div>'); if (!warpl) warpl = mk("warpl", '<div class="displ"><div class="portal"><div class="copy"></div></div></div>'); if (!plat) plat = mk("plat", ""); if (!rim) rim = mk("rim", '<i class="capL"></i><i class="capR"></i>');
+  if (!warp) warp = mk("warp", '<div class="disp"><div class="copy"></div></div>'); if (!warpl) warpl = mk("warpl", '<div class="displ"><div class="portal"><div class="copy"></div></div></div>'); if (!plat) plat = mk("plat", "");
+  /* B6 rim (index.html "B6" block, SEG_RIM): .rimb = inner shadow div + SVG (ring shadow rect.rs, dark line rect.kf ×3 under the page/track mask);
+     .hlk / .hlw = the #36 highlight as SVG ring strokes, black (normal) / white (plus-lighter) */
+  const NS = "http://www.w3.org/2000/svg", svgEl = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+  const uid = seg.id || "seg";
+  const hgrad = (id, fn, colour) => { const gr = svgEl("linearGradient", { id, gradientUnits: "userSpaceOnUse", x1: 0, y1: 0, x2: 1, y2: 0 }); const nx = SEG_RIM.NXS;
+    for (const side of [0, 1]) for (const n of (side ? [...nx].reverse() : nx)) gr.appendChild(svgEl("stop", { offset: 0, "stop-color": colour, "stop-opacity": fn(n).toFixed(4), "data-nx": n, "data-side": side }));
+    return gr; };
+  const ringRect = (cls, e0, e1, extra) => svgEl("rect", Object.assign({ class: cls, "data-e0": e0, "data-e1": e1 }, extra || {}));
+  const buildSvg = (cls) => { const s = svgEl("svg", { class: cls }); const defs = svgEl("defs", {}); s.appendChild(defs); const gg = svgEl("g", { transform: "translate(12 12)" }); s.appendChild(gg); return { s, defs, g: gg }; };
+  if (!rimb) { rimb = mk("rimb", '<div class="ish"></div>'); const { s, defs, g } = buildSvg("rsv");
+    const f = svgEl("filter", { id: "seg-rs-blur", x: "-50%", y: "-50%", width: "200%", height: "200%" }); f.appendChild(svgEl("feGaussianBlur", { stdDeviation: 3 })); defs.appendChild(f);
+    const vg = svgEl("linearGradient", { id: `${uid}-kf-vg`, gradientUnits: "userSpaceOnUse", x1: 0, y1: 0, x2: 0, y2: 1 });
+    for (const [o, cls] of [[0, "pf"], [0, "tk"], [1, "tk"], [1, "pf"]]) vg.appendChild(svgEl("stop", { offset: o, "stop-color": "#fff", "stop-opacity": 1, class: cls }));
+    defs.appendChild(vg);
+    const m = svgEl("mask", { id: `${uid}-kf-vm`, maskUnits: "userSpaceOnUse", x: -12, y: -12, width: 1, height: 1 }); m.appendChild(svgEl("rect", { x: -12, y: -12, width: 1, height: 1, fill: `url(#${uid}-kf-vg)` })); defs.appendChild(m);
+    g.appendChild(ringRect("rs", 0, 4, { "data-dy": 8 }));
+    const kg = svgEl("g", { class: "kfg", mask: `url(#${uid}-kf-vm)` }); g.appendChild(kg);
+    SEG_RIM.kfRings.forEach((r, i) => { defs.appendChild(hgrad(`${uid}-kf-g${i}`, (nx) => SEG_RIM.kfK(r.v, nx) / SEG_RIM.kfK(r.v, -1), "#000")); kg.appendChild(ringRect("kf", r.e0, r.e1, { stroke: `url(#${uid}-kf-g${i})`, "data-v": r.v })); });
+    rimb.appendChild(s); }
+  const mkHl = (cls, colour, mult) => { const { s, defs, g } = buildSvg(cls); defs.appendChild(hgrad(`${uid}-${cls}-m`, SEG_RIM.angMain, colour)); defs.appendChild(hgrad(`${uid}-${cls}-d`, SEG_RIM.angDiff, colour));
+    for (const r of SEG_RIM.hlRings) { if (r.main) g.appendChild(ringRect("hl", r.e0, r.e1, { stroke: `url(#${uid}-${cls}-m)`, "stroke-opacity": (mult * r.main).toFixed(4) })); g.appendChild(ringRect("hl", r.e0, r.e1, { stroke: `url(#${uid}-${cls}-d)`, "stroke-opacity": (mult * r.diff).toFixed(4) })); }
+    seg.appendChild(s); return s; };
+  if (!hlk) hlk = mkHl("hlk", "#000", SEG_RIM.MULT);
+  if (!hlw) hlw = mkHl("hlw", "#fff", SEG_RIM.ADD);
+  /* the dark line's alphas for this theme: black source-over α = .3·k_tip·(3 − 2B) on the track the ends lie on, × (3 − 2B_page)/(3 − 2B_track) on the page rows
+     (B = the mean grey of the actual backdrop: --ios-segment-track composited on --bg) */
+  { const pg = SEG_RIM.grey(getComputedStyle(document.body).backgroundColor) || { r: 242, g: 242, b: 247, a: 1 }, tk = SEG_RIM.grey(getComputedStyle(seg).backgroundColor) || { r: 118, g: 118, b: 128, a: .12 };
+    const Bp = (pg.r + pg.g + pg.b) / 765, Bt = ((tk.r * tk.a + pg.r * (1 - tk.a)) + (tk.g * tk.a + pg.g * (1 - tk.a)) + (tk.b * tk.a + pg.b * (1 - tk.a))) / 765;
+    rimb.querySelectorAll("rect.kf").forEach((r) => r.setAttribute("stroke-opacity", (-SEG_RIM.COLOR_BIAS * SEG_RIM.kfK(+r.dataset.v, -1) * (3 - 2 * Bt)).toFixed(4)));
+    const pf = Math.min(1, (3 - 2 * Bp) / (3 - 2 * Bt)); rimb.querySelectorAll("stop.pf").forEach((st) => st.setAttribute("stop-opacity", pf.toFixed(4))); }
+  let rimKey = "";
+  const rimGeo = (Wd, Hd, T) => {   // SVG geometry in lens-box coordinates (the <g> is translated by the 12 px margin)
+    const key = `${Wd}|${Hd}|${T}`; if (key === rimKey) return; rimKey = key; const R = Hd / 2;
+    for (const s of [rimb.querySelector("svg"), hlk, hlw]) { s.setAttribute("width", Wd + 24); s.setAttribute("height", Hd + 24);
+      for (const r of s.querySelectorAll("rect[data-e0]")) { const e0 = +r.dataset.e0, e1 = +r.dataset.e1, em = (e0 + e1) / 2, dy = +(r.dataset.dy || 0);
+        r.setAttribute("x", em); r.setAttribute("y", em + dy); r.setAttribute("width", Wd - 2 * em); r.setAttribute("height", Hd - 2 * em); r.setAttribute("rx", R - em); r.setAttribute("stroke-width", e1 - e0); }
+      for (const gr of s.querySelectorAll("linearGradient")) { if (gr.getAttribute("x2") === "0") { gr.setAttribute("y1", -T); gr.setAttribute("y2", segH - T); continue; }   // the page / track mask: the track's rows in lens-box coordinates
+        gr.setAttribute("x2", Wd); for (const st of gr.children) { const nx = +st.dataset.nx, o = R * (1 + nx) / Wd; st.setAttribute("offset", (st.dataset.side === "1" ? 1 - o : o).toFixed(5)); } }
+      for (const m of s.querySelectorAll("mask")) { m.setAttribute("width", Wd + 24); m.setAttribute("height", Hd + 24); m.firstElementChild.setAttribute("width", Wd + 24); m.firstElementChild.setAttribute("height", Hd + 24); } } };
   /* copies of what lies under the lens: .warp = page bg + track (opaque; covers the real labels — the DestOut punch-out), .warpl = the labels, undisplaced
      (label-mag 1.00, spans not buttons so the control's own button list stays the real one) */
   const disp = warp.firstElementChild, copy = disp.firstElementChild, displ = warpl.firstElementChild, portal = displ.firstElementChild, copyl = portal.firstElementChild;
@@ -1302,12 +1363,14 @@ function segLens(seg, lens, bs) {
     st.geo = { left, top, w, h };
     const f = st.flex.out, idle = Math.abs(f.sx - 1) < 1.5e-3 && Math.abs(f.sy - 1) < 1.5e-3 && Math.abs(f.dx) < .1;   // at rest the transform is dropped: a transform within 1/700 of identity (< .17 px at the lens edge) still makes the browser resample the filtered layers (blurs the 1 pt lines, shifts the end columns) — CoreAnimation renders its vector layers sharp at any transform
     const tf = idle ? "none" : `translateX(${f.dx.toFixed(3)}px) scale(${f.sx.toFixed(5)}, ${f.sy.toFixed(5)})`;   // the flex presentation transform (§1: on the transform, the model bounds unchanged); every layer of the lens carries it
-    for (const el of [lens, warp, warpl, plat, rim]) { el.style.transform = tf; el.style.transformOrigin = "50% 50%"; }
+    for (const el of [lens, warp, warpl, plat, rimb, hlk, hlw]) { el.style.transform = tf; el.style.transformOrigin = "50% 50%"; }
   };
   const frame = (p, pd) => {   // p = glass / displacement progress, pd = DestOut (copies) opacity
     const g = st.geo || { left: pad + idx0 * PITCH, top: pad, w: W0, h: H0 };   // the model box (the flex transform sits on top of it, so not getBoundingClientRect)
     const L = g.left, T = g.top, Wd = g.w, Hd = g.h, R = Hd / 2;   // capsule: corner = h/2 (r22 at 44 ← §0; the lift's corner 14 → 22 on the same spring ← §4.4 row 1)
-    for (const el of [warp, warpl, plat, rim]) { el.style.left = L + "px"; el.style.top = T + "px"; el.style.width = Wd + "px"; el.style.height = Hd + "px"; el.style.setProperty("--rr", R + "px"); }
+    for (const el of [warp, warpl, plat, rimb]) { el.style.left = L + "px"; el.style.top = T + "px"; el.style.width = Wd + "px"; el.style.height = Hd + "px"; el.style.setProperty("--rr", R + "px"); }
+    for (const el of [hlk, hlw]) { el.style.left = (L - 12) + "px"; el.style.top = (T - 12) + "px"; el.style.width = (Wd + 24) + "px"; el.style.height = (Hd + 24) + "px"; }   // the highlight SVGs' box = lens box + the 12 px margin (WebKit clips an outer <svg> to its box whatever overflow says)
+    rimGeo(Wd, Hd, T);   // B6: the ring strokes follow the model box
     copy.style.left = -L + "px"; copy.style.top = -T + "px";   // the backdrop copy stays aligned with the real control
     const PW = W0, PH = H0, PL = (Wd - PW) / 2, PT = (Hd - PH) / 2;   // the label portal: the resting lens size 196×28, centred in the lens (seg-lift-material §1: portal #32)
     portal.style.left = PL + "px"; portal.style.top = PT + "px"; portal.style.width = PW + "px"; portal.style.height = PH + "px";
@@ -1323,7 +1386,7 @@ function segLens(seg, lens, bs) {
     seg.classList.remove("lift"); seg.style.removeProperty("--lp"); seg.style.removeProperty("--lpd"); copy.innerHTML = ""; copyl.innerHTML = "";
     if (curSet) for (const id of [`#seg-lens-f-bg-${curSet}`, `#seg-lens-f-lab-${curSet}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", String(sOf(id))); }   // the file's rest value; the layers are hidden now
     for (const k of ["transition", "left", "top", "width", "height", "margin", "border-radius", "transform", "transform-origin"]) lens.style.removeProperty(k);   // the CSS rest values are what the loop ended on
-    for (const el of [warp, warpl, plat, rim]) { el.style.removeProperty("transform"); el.style.removeProperty("transform-origin"); }
+    for (const el of [warp, warpl, plat, rimb, hlk, hlw]) { el.style.removeProperty("transform"); el.style.removeProperty("transform-origin"); }
     st.done = true; if (seg.__lensLoop === loop) seg.__lensLoop = null;
   };
   const clamp01 = (x) => Math.max(0, Math.min(1, x));

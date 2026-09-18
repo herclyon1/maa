@@ -56,10 +56,6 @@
     --seg-follow-lag:var(--ios-touch-segment-follow-lag);   /* .12 s ← G4/F1 */
     --seg-commit-delay-tap:66ms;    /* valueChanged after a tap's up ← seg-value-change-content.md §0 (+92/+68/+50/+66, 采样) */
     --seg-commit-delay-drag:25ms;   /* valueChanged after a slide's up ← tokens.css --ios-touch-segment-commit-delay 注（"after a slide +25 ms"，数据会话） */
-    /* lifted segmented lens rim, 1 pt per stop (seg-lens-drag-mid.md §2 / seg-dragmid-measure.json light col_x220: 602 +3.8, 603…610 −6.3…−15.3, 611…619 −13.8…−1.0; 645 +6.3, 644…640 +2.5…+.2) */
-    --seg-rim-top:linear-gradient(180deg, rgb(255 255 255 / .336) 0px 1px, rgb(0 0 0 / .026) 1px 2px, rgb(0 0 0 / .038) 2px 3px, rgb(0 0 0 / .046) 3px 4px, rgb(0 0 0 / .050) 4px 5px, rgb(0 0 0 / .053) 5px 6px, rgb(0 0 0 / .059) 6px 7px, rgb(0 0 0 / .061) 7px 8px, rgb(0 0 0 / .063) 8px 9px, rgb(0 0 0 / .060) 9px 10px, rgb(0 0 0 / .056) 10px 11px, rgb(0 0 0 / .049) 11px 12px, rgb(0 0 0 / .039) 12px 13px, rgb(0 0 0 / .029) 13px 14px, rgb(0 0 0 / .021) 14px 15px, rgb(0 0 0 / .013) 15px 16px, rgb(0 0 0 / .006) 16px 17px, rgb(0 0 0 / .004) 17px 18px, transparent 18px);
-    --seg-rim-glow:linear-gradient(180deg, transparent 0px 1px, rgb(255 255 255 / .039) 1px 2px, rgb(255 255 255 / .024) 2px 3px, rgb(255 255 255 / .015) 3px 4px, rgb(255 255 255 / .009) 4px 5px, rgb(255 255 255 / .005) 5px 6px, rgb(255 255 255 / .004) 6px 7px, transparent 7px);   /* the dark theme's 6-row white glow under the light lines (603…608 +10…+1); +.4 in light */
-    --seg-rim-bot:linear-gradient(0deg, rgb(255 255 255 / .560) 0px 1px, rgb(255 255 255 / .221) 1px 2px, rgb(255 255 255 / .142) 2px 3px, rgb(255 255 255 / .088) 3px 4px, rgb(255 255 255 / .062) 4px 5px, rgb(255 255 255 / .018) 5px 6px, transparent 6px);
     --seg-settle:1.209s;                                        /* the measured lens sequence ends at 1209 ms (--ios-touch-segment-lens-*-keys) */
     /* lens travel after the up = the measured per-frame x path (G1/G3, 60 Hz, fraction of the travel; peak 1.075 at 476 ms) as a linear() easing over the whole 1209 ms */
     --seg-x-easing:linear(0, 0.084 3.47%, 0.257 6.29%, 0.424 9.02%, 0.547 11.75%, 0.632 14.56%, 0.717 17.29%, 0.795 20.02%, 0.866 22.83%, 0.933 25.56%, 0.988 28.29%, 1.028 31.10%, 1.056 33.83%, 1.071 36.56%, 1.075 39.37%, 1.066 44.83%, 1.045 50.37%, 1.02 55.91%, 1.001 61.37%, 0.994 66.91%, 0.995 72.46%, 0.998 78.00%, 1 83.46%, 1 100.00%);
@@ -81,9 +77,6 @@
       /* 暗：说明 = 面板 +0.3 → plus-lighter rgb(77)（Chrome 有 plus-lighter，常量只作双保险：暗面板 ≈ 35 + 76.5 = 111）；停止 = M_red暗 × 按钮底（暗面板 ≈ 35 + 27.9 → .247）= (255,105,108) ← pipeline §1.9 公式代入 */
       --alert-msg-color:rgb(77 77 77); --alert-msg-blend:plus-lighter; --alert-msg-fallback:rgb(111 111 111); --alert-destructive:rgb(255 105 108); }
   }
-  /* dark rim (seg-dragmid-measure.json dark col_x220: 602 45.3 over 0 → white .178; the black bands are invisible on 0 and −1.7 on the track 29 — 611 27.8; 645 45.3; 644…639 10 6 3.7 2.3 1.3 1.0) */
-  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ --seg-rim-top:linear-gradient(180deg, rgb(255 255 255 / .178) 0px 1px, rgb(0 0 0 / .026) 1px 2px, rgb(0 0 0 / .038) 2px 3px, rgb(0 0 0 / .046) 3px 4px, rgb(0 0 0 / .050) 4px 5px, rgb(0 0 0 / .053) 5px 6px, rgb(0 0 0 / .059) 6px 7px, rgb(0 0 0 / .061) 7px 8px, rgb(0 0 0 / .063) 8px 9px, rgb(0 0 0 / .060) 9px 10px, rgb(0 0 0 / .056) 10px 11px, rgb(0 0 0 / .049) 11px 12px, rgb(0 0 0 / .039) 12px 13px, rgb(0 0 0 / .029) 13px 14px, rgb(0 0 0 / .021) 14px 15px, rgb(0 0 0 / .013) 15px 16px, rgb(0 0 0 / .006) 16px 17px, rgb(0 0 0 / .004) 17px 18px, transparent 18px); --seg-rim-bot:linear-gradient(0deg, rgb(255 255 255 / .178) 0px 1px, rgb(255 255 255 / .039) 1px 2px, rgb(255 255 255 / .024) 2px 3px, rgb(255 255 255 / .015) 3px 4px, rgb(255 255 255 / .009) 4px 5px, rgb(255 255 255 / .005) 5px 6px, rgb(255 255 255 / .004) 6px 7px, transparent 7px); } }
-  :root[data-theme="dark"]{ --seg-rim-top:linear-gradient(180deg, rgb(255 255 255 / .178) 0px 1px, rgb(0 0 0 / .026) 1px 2px, rgb(0 0 0 / .038) 2px 3px, rgb(0 0 0 / .046) 3px 4px, rgb(0 0 0 / .050) 4px 5px, rgb(0 0 0 / .053) 5px 6px, rgb(0 0 0 / .059) 6px 7px, rgb(0 0 0 / .061) 7px 8px, rgb(0 0 0 / .063) 8px 9px, rgb(0 0 0 / .060) 9px 10px, rgb(0 0 0 / .056) 10px 11px, rgb(0 0 0 / .049) 11px 12px, rgb(0 0 0 / .039) 12px 13px, rgb(0 0 0 / .029) 13px 14px, rgb(0 0 0 / .021) 14px 15px, rgb(0 0 0 / .013) 15px 16px, rgb(0 0 0 / .006) 16px 17px, rgb(0 0 0 / .004) 17px 18px, transparent 18px); --seg-rim-bot:linear-gradient(0deg, rgb(255 255 255 / .178) 0px 1px, rgb(255 255 255 / .039) 1px 2px, rgb(255 255 255 / .024) 2px 3px, rgb(255 255 255 / .015) 3px 4px, rgb(255 255 255 / .009) 4px 5px, rgb(255 255 255 / .005) 5px 6px, rgb(255 255 255 / .004) 6px 7px, transparent 7px); }
   :root[data-theme="dark"]{ --alert-button-blend:plus-lighter; --alert-msg-color:rgb(77 77 77); --alert-msg-blend:plus-lighter; --alert-msg-fallback:rgb(111 111 111); --alert-destructive:rgb(255 105 108); }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   /* Sizes are the probe's px values at the default text size (tokens.css), so the
@@ -486,8 +479,10 @@
      originals of the held segmented lens (uiprobe-deep/subtree-seg-lift-{light,dark}.json, seg-lift-material.md); what is visible inside the lens is the
      backdrop at its own brightness (seg-lens-refraction §3), so the colour matrix is not applied to the copy. */
   .segctl.lift .lens{z-index:2;background:transparent}
-  /* while lifted the lens element only carries the ClearGlass shadow (outside the box); the platter, the copies and the rim are layers above (z 3–6) */
-  .segctl.lift .lens::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:var(--lp, 0);box-shadow:var(--ios-seg-lift-shadow, none)}   /* 阴影 (0,7) r3 .06 ← ClearGlass shadow 层（原值），随玻璃进度 */
+  /* while lifted the lens element itself draws nothing: the platter, the copies, the shadows / lines are the layers above (z 4–8). The old
+     `box-shadow: 0 7px 3px .06` on it was a drop shadow made from the (0,7) r3 .06 keys — the native #21 is an INNER shadow (invertsShadow,
+     seg-lens-refraction.md §1c(b)); it is drawn in .rimb now (B6 ④) and the lens has no shadow of its own (the soft shadow under the lens is
+     glassBackground's ring shadow, B6 ③). */
   /* Inside the lifted lens (seg-lens-refraction §0/§2/§3, the control's own readings): what shows is the BACKDROP under the lens — page bg + track — at
      its own brightness (平灰 128 → 126: no colour matrix on what you see), bent only near the edges (end zones 24 pt: u to ±3.4, M .84 then 1.2–1.5 in the
      last 4 pt, rainbow R−B up to 3.6 pt; top/bottom 12 pt: u to ±3.4, M .82 → 1.29) and squashed vertically inside (mag-y .82); NO horizontal
@@ -514,10 +509,10 @@
      filter; inside it .portal = 198×28 centred (ours: the segment is 2 pt wider) clipping the label copy; glyphs outside the portal are not
      drawn, the displacement then pulls portal content out to the capsule ends. The real labels under the lens are covered by the opaque
      backdrop copy (.warp) — the DestOut punch-out's effect. The label copy itself does not fade (label-mag 1.00 inside the portal, §2.3). */
-  .segctl .warpl{position:absolute;z-index:6;left:0;top:0;width:0;height:0;pointer-events:none;display:none;overflow:hidden;clip-path:inset(0 round var(--rr, 14px))}
+  .segctl .warpl{position:absolute;z-index:7;left:0;top:0;width:0;height:0;pointer-events:none;display:none;overflow:hidden;clip-path:inset(0 round var(--rr, 14px))}
   .segctl .warpl .displ{position:absolute;inset:0;overflow:hidden;border-radius:var(--rr, 14px)}   /* filter: url(#seg-lens-f-lab-<w>) set per frame; clipped to the capsule BEFORE the filter */
   .segctl .warpl .portal{position:absolute;overflow:hidden}   /* 196×28 centred, square corners (portal #32 cornerRadii 0 ← seg-lens-refraction.md §1b); left/top/size set per frame */
-  .segctl.lift .warp,.segctl.lift .warpl,.segctl.lift .plat,.segctl.lift .rim{display:block}
+  .segctl.lift .warp,.segctl.lift .warpl,.segctl.lift .plat,.segctl.lift .rimb,.segctl.lift .hlk,.segctl.lift .hlw{display:block}
   .segctl .warp .copy,.segctl .warpl .copy{position:absolute;left:0;top:0;display:flex;padding:var(--ios-segment-lens-pad) 0;box-sizing:border-box}
     /* B3 follow-up: the content (and the lens's commit slide, the same render) switch at the native valueChanged time after the up — seg-value-change-content.md §0:
        +92 / +68 / +50 / +66 ms in the four recordings (median 67; 66 taken, one of the samples), the same frame the lens starts to glide; after a
@@ -527,29 +522,59 @@
   .segctl .cbgwrap .ctrack{position:absolute;left:200px;top:200px;right:200px;bottom:200px;border-radius:var(--ios-segment-radius);background:var(--ios-segment-track)}   /* 轨道 r16 tertiarySystemFill ← 探针 */
   .segctl .warpl .copy .cb{position:relative;flex:1 1 0;height:var(--ios-segment-lens-h);line-height:var(--ios-segment-lens-h);text-align:center;font-size:var(--ios-segment-label-size);font-weight:400;color:var(--ios-segment-label-color);white-space:nowrap}   /* 复本文字 = 真标签的字（RegularG3 13 labelColor ← 探针 subtree） */
   .segctl .warpl .copy .cb.on{font-weight:var(--ios-medium-weight)}
-  /* rim = the sampled profile of the held lens stopped between the segments (remote-ref/seg-lens-drag-mid.md §2, tools/touch/seg-dragmid-measure.json
-     col_x220 / row_y616_left, iOS 27.0 simulator PNG; 采样替代 — the SDF highlight/shadow parameters that draw it natively are §1 originals whose
-     renderer we do not have), 1 pt per stop, alphas = the measured grey deltas over the measured backdrop (page 243.7 / track 228.7 light; 0 / 29 dark):
-     · 1 pt dark line just OUTSIDE the capsule all round: top −26.6 (black .109), bottom −29.9 (.123), ends −20 (.087) → box-shadow ring .10 + a
-       1 px downward shadow .026 for the bottom; · first row inside the long edges = 1 pt light line: top +3.8 (white .336 light / 45.3 = .178 dark),
-       bottom +6.3 (.56 light / .178 dark); · below the top light line a dark band over 8 rows (−6.3 … −15.3) running into the squashed track edge
-       and fading over 9 more rows (−13.8 … −1.0); in dark a 6-row white glow (+10 … +1) under both light lines; the bottom has no dark band, a
-       5-row light glow (+2.5 … +.2 light); · the two ends: the outside column −20 (col 110), the boundary column −36 (111, black .159), then a
-       ~10 pt band −10 … −14.6 (black ≈ .06), NO light line — drawn by the cap circles (::before/::after, diameter h + 1 so the ring sits on the
-       boundary column) as an outer ring .02, an inset ring .083 and an inset 11 px band .06 blurred 3 px (the two ring alphas read back from the PNG). The vertical gradients cover the straight
-       middle (100% − 2r); the caps the semicircular ends. */
-  .segctl .rim{position:absolute;z-index:7;left:0;top:0;width:0;height:0;pointer-events:none;display:none;border-radius:var(--rr, 14px);opacity:var(--lp, 0);
-               box-shadow:0 0 0 1px rgb(0 0 0 / .10),0 1px 0 0 rgb(0 0 0 / .026);   /* the outside dark line: 601 → 219.3 (217.1), 646 → 213.6 (213.8), ends col 110 (with the cap ring) */
-               background:var(--seg-rim-top),var(--seg-rim-glow),var(--seg-rim-bot);background-repeat:no-repeat;background-size:calc(100% - 2 * var(--rr, 14px)) 100%;background-position:center}
-  .segctl .rim::before,.segctl .rim::after,.segctl .rim .capL,.segctl .rim .capR{content:"";position:absolute;top:-.5px;width:calc(2 * var(--rr, 14px) + 1px);height:calc(100% + 1px);border-radius:50%;pointer-events:none}
-  .segctl .rim::before,.segctl .rim::after{box-shadow:0 0 0 1px rgb(0 0 0 / .02),inset 0 0 0 1px rgb(0 0 0 / .083)}   /* the ends' lines: col 110 −20, 111 −36 (row_y616_left); ring alphas set from the headless PNG read-back */
-  .segctl .rim::before,.segctl .rim .capL{left:-.5px;clip-path:inset(-3px 50% -3px -3px)}
-  .segctl .rim::after,.segctl .rim .capR{right:-.5px;clip-path:inset(-3px -3px -3px 50%)}
-  /* the ends' ~10 pt dark band (cols 112…121 −10 … −14.6 at row 616): its own cap elements so it can fade — measured on the upper half only; the
-     bottom straight edge has no band (637–644 ≥ page), so the band is taken as full down to the lens's middle and gone by ~82 % of the height
-     (the transition between is 未量 — a placeholder ramp, 等原理: the ring / highlight terms the old page session is decoding). Without the fade the
-     band ended in a vertical cut where the cap element is clipped at the tangent (0a4b942 / 972aed7 4× images). */
-  .segctl .rim .capL,.segctl .rim .capR{box-shadow:inset 0 0 3px 11px rgb(0 0 0 / .06);-webkit-mask-image:linear-gradient(180deg, #000 0, #000 45%, transparent 82%);mask-image:linear-gradient(180deg, #000 0, #000 45%, transparent 82%)}
+  /* ---- B6: the lifted lens's edge lines and shadows, drawn from the decompiled formulas (remote-ref/keyfill-highlight.md §2 / §4 / §5.1 / §5.2;
+     parameters = the probe's set values, seg-lens-refraction.md §1c(g); the arithmetic is SEG_RIM in view.js) — nothing here is a sampled profile
+     any more, and everything follows the capsule, so the lines run round the ends. Layer order = the native one (seg-lift-material.md §1,
+     keyfill-highlight.md §5): .rimb (z 6, UNDER the label copy) = ClearGlass's inner shadow #21 (.ish) + an SVG with glassBackground's ring shadow
+     and built-in KeyFill dark line; .hlk / .hlw (z 8, OVER the label copy) = the #36 KeyFill highlight layer with its vibrantColorMatrix as a black
+     multiply stack (normal) and a white additive stack (mix-blend-mode: plus-lighter — a direct child of .segctl, because a z-indexed wrapper
+     became an isolated group in both engines and the blend then saw no backdrop). The rings are SVG rect strokes: fractional element boxes and
+     sub-px borders are snapped to whole CSS px by Blink, stroke geometry is not. Each layer fades with the glass progress (opacity --lp). */
+  .segctl .rimb,.segctl .hlk,.segctl .hlw{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;display:none;border-radius:var(--rr, 14px)}
+  .segctl .rimb{z-index:6}
+  .segctl .hlk,.segctl .hlw{z-index:8;overflow:visible;opacity:var(--lp, 0)}
+  .segctl .hlw{mix-blend-mode:plus-lighter}
+  .segctl .rimb > *{position:absolute;pointer-events:none;opacity:var(--lp, 0);box-sizing:border-box}
+  /* ④ #21 inner shadow (keyfill-highlight.md §5.2; layer keys seg-lens-refraction.md §1c(b): invertsShadow 1, shadowPathIsBounds 1, r22 capsule,
+     black .06, radius 3, offset (0, 7), masksToBounds 1): a CA inner shadow = the complement of the shape shifted by the offset, Gaussian-blurred,
+     clipped to the shape — CSS `box-shadow: inset` is the same construction (blur = 2σ). Drawn with the three values the probe MEASURED on the
+     raster (§5.2, 测量值): plateau .043, half-value edge lens top + 8, σ 2.8 → offset 8, blur 5.6, black .043 (the keys' .06 / 7 / 3 → how CA
+     turns shadowRadius into σ and rounds the offset is unread). The three ride the lift like the native layer's (§1c(b): offset, opacity and
+     radius on one curve → × --lp). Black on the dark theme's black page = invisible, as measured (§1c(e) dark: 0). */
+  .segctl .rimb .ish{inset:0;border-radius:inherit;box-shadow:inset 0 calc(8px * var(--lp, 0)) calc(5.6px * var(--lp, 0)) 0 rgb(0 0 0 / .043)}
+  /* the SVGs: lens-box coordinates inside a 12 px margin (the ring shadow's blur reaches 3σ = 9 pt out, the dark line .667); width / height attributes = box + 24 */
+  .segctl .rimb svg,.segctl .hlk,.segctl .hlw{overflow:visible}
+  .segctl .rimb svg{left:-12px;top:-12px}   /* the highlight SVGs get their box (lens box + 12 px margin) from the loop: WebKit clips an outer <svg> to its box whatever overflow says */
+  /* ③ glassBackground ring shadow (keyfill-highlight.md §4; keys §1c(g) 实读: RingShadowOffset 8, RingShadowOpacity .1, RingShadowStrokeWidth 4,
+     RingShadowBlurRadius 3, RingShadowMask 0): term = .1 · [N((d + 4)/3) − N(d/3)] with d = the SDF of the capsule shifted 8 pt down = the 4 pt
+     ring inside that shape, blurred along the normal with σ 3, black, source-over, drawn inside AND outside (mask 0). Here: rect.rs = that ring as a
+     4-wide stroke on the capsule shifted 8 and inset 2 (its edges = the shape and the shape eroded by 4) under feGaussianBlur stdDeviation 3,
+     black .1. It gives the soft shadow under the lens (peak −12 at 651–652), the 612–618 band under the top edge and the ends' inner ~12 pt bands
+     at once (§4 table). */
+  .segctl .rimb rect.rs{fill:none;stroke:#000;stroke-opacity:.1;stroke-width:4;filter:url(#seg-rs-blur)}
+  /* ② glassBackground's built-in KeyFill term (keyfill-highlight.md §5.1; keys §1c(g) 实读: KeyFillHighlightAmount .5, ColorBias −.3,
+     EffectOffset −.6667, Height 1, Angle π/2, SpreadSDR 2.0944 (SDR)): the 1 pt band from .667 OUTSIDE to .333 inside the capsule (e = −(d − .667)),
+     profile .25 + .75·(1 − e) (curvature .75), lit along dir = (sin θ, −cos θ) = (1, 0): at the ends one of key / fill has ang 1, on the top / bottom
+     both have (0 + .5)/1.5 = .333; k = key′ + fill′, x′ = x/(1 + .5(1 − x)); colour B·(1 + (−.3)·k·(3 − 2B)). Three 1/3 pt ring strokes (rect.kf,
+     whole device rows at 3×); the colouring's B-dependence is black source-over with stroke-opacity .3·k_tip·(3 − 2B_track) for the track the ends
+     lie on (B_track from the theme's --bg + --ios-segment-track), the angular factor k(x)/k_tip along the arcs as the stroke's gradient
+     (stop-opacity = the §5.1 formula at n_x = −1 … 0), and × (3 − 2B_page)/(3 − 2B_track) above / below the track rows as the group's mask.
+     Known residual (verification, not tuned): with these keys the top / bottom rows come out 7–9 levels lighter than the native 601 / 646
+     (predicted −18.9 / −21.3 vs −26.6 / −29.9); the ends match (col 111 192.9 vs 192.4). Unread and able to explain it: whether the CPU loads the
+     Amount uniform as 1/amount − 2 (the #36 layer's SDFNode::apply does — then k = v·ang and the rows predict −46 / −33 per third-row vs the
+     measured −47 / −33), wants_highlight_bias_correction / highlight_extension (GlassBackgroundUniformsExt +23/+24), the EDR factor of the spread. */
+  .segctl .rimb rect.kf{fill:none}
+  /* ① #36 CASDFKeyFillHighlightEffect layer + vibrantColorMatrix (keyfill-highlight.md §2 / §3, the 22 keys of seg-lens-refraction.md §1b #36):
+     α(e) over the depth e into the capsule = main band (h 1, curvature .75 → .25 + .75(1 − e)) + diffuse tail (h 8, linear, bias 1/(.15·.5) − 2 =
+     11.33 → v/(1 + 11.33(1 − v))), key lights the top (angle 0), fill the bottom (π), spreads cos 1.3963 (main) / cos(.65·1.3963) (diffuse); the
+     matrix uses only the layer's α: out = (1 − α)·B + α·min(1, .9118·B + .1471) = B·(1 − .0882α) + .1471α → .hlk = black ring strokes with
+     stroke-opacity .0882·α(e) (normal), .hlw = white ring strokes with .1471·α(e) under plus-lighter. Rings: 1/3 pt over the first pt, 1 pt to
+     8 pt; per-ring α = the formula's mean over the ring (hard-edged rings, no fwidth antialiasing: the measured dark edge row 45.3 = 1.208 × 37.5
+     is the unattenuated mean 1.209; with a 1/3 pt fwidth it would read 39.6 — the SDF layer's fwidth unit is unread). Angular fall-off along the
+     arcs as the strokes' gradients: main sat((cos φ − .174)/.826) (gone at 80° from the top → no light line at the ends, §0a), diffuse the first
+     ring's ratio (cos .6155: gone at 52°; the deeper rings fall off faster than this — ≤ 2 levels on the arcs). The dark theme needs no separate
+     values: the same map on B = 0 gives .1471·α → 45.3 at the edge row, 10.0 at 603 (§3 table). */
+  .segctl .hlk rect,.segctl .hlw rect{fill:none}
   .segctl + section > .group:first-child,.segctl + section > h2{margin-top:0}
   .segctl[hidden]{display:none}   /* 只在「状态」首页出现（验收 2026-09-18）；layoutTabs 按标签隐藏 */
   /* 待保存小字：行内右下 11 pt（同 .sent） */
@@ -3776,17 +3801,17 @@
 <script src="live.js?v=20260919025855"></script>
 <script src="stamina.js?v=20260919025855"></script>
 <script src="inventory.js?v=20260919025855"></script>
-<script src="view.js?v=20260919025855"></script>
+<script src="view.js?v=20260919070000"></script>
 <script src="alert-prewarm.js?v=20260919025855"></script>   <!-- the alert glass layer built once at load: first open as fast as the second (web/alert-prewarm.js) -->
 <script>/* 验收脚本只在地址带 ?accept 时加载（docs/HIG-CHECKLIST.md 的验收程序）。分段透镜逐帧记录器（界面2号 seg-frames-logger.js）在 ?accept / ?diag / ?segframes 时加载，
    它自己看查询串，其它时候什么都不做。 */
 { const q = new URLSearchParams(location.search);
-  if (q.has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260919025855"; document.body.appendChild(s); }
+  if (q.has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260919070000"; document.body.appendChild(s); }
   if (q.has("diag") || q.has("segframes")) { const s = document.createElement("script"); s.src = "seg-frames-logger.js"; document.body.appendChild(s); }
   /* ?seghold=1: the stopped-state gesture of remote-ref/seg-lens-drag-mid.md (down on the selected segment, 5 × 20 pt moves 16 ms apart to the divider,
      hold) run by the page itself once the control exists — for engines a script cannot drive from outside (wksnap offscreen WebKit, simulator Safari) */
   if (q.has("seghold")) { const go = () => { const seg = document.querySelector("#queueseg"); if (!seg) { setTimeout(go, 100); return; }
-      { const r0 = seg.getBoundingClientRect(); document.body.style.translate = `0 ${(Math.round(r0.top) - r0.top).toFixed(3)}px`; }   // the control's top on a whole pt (the native sits at integer y 608; a fractional top smears every 1 pt line over two rows in the read-back; scrollBy does nothing in an offscreen WKWebView)
+      { const r0 = seg.getBoundingClientRect(), dy = Math.round(r0.top) - r0.top; if (Math.abs(dy) > .001) document.body.style.marginTop = `${dy.toFixed(3)}px`; }   // the control's top on a whole pt (the native sits at integer y 608; a fractional top smears every 1 pt line over two rows in the read-back; scrollBy does nothing in an offscreen WKWebView). A margin, not a translate: a transform on body — even a zero one — makes it a compositing layer and the highlight's plus-lighter blend (B6) then sees no backdrop in either engine
       const on = seg.querySelector("button.on"), sr = seg.getBoundingClientRect(), ro = on.getBoundingClientRect(), y = ro.top + ro.height / 2;
       const pe = (type, x) => seg.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, clientX: x, clientY: y, isPrimary: true, pointerType: "touch", button: 0, buttons: 1 }));
       const x0 = ro.left + ro.width / 2, x1 = sr.left + sr.width / 2, step = (x1 - x0) / 5; pe("pointerdown", x0);
