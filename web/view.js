@@ -509,29 +509,52 @@ function render() {
     <p class="foot">免输入链接会把这里存着的密钥一起带上，换手机开一次那条链接就全有。森空岛的会话由机器交过来；库街区的：打开电脑上 scripts/mac/phone-link.py 打出来的链接，或把 ~/.config/ark/.env 里 KUROBBS_TOKEN 和 KUROBBS_DID 那两行粘贴进来</p>
   </section>`;
 
-  /* The segmented lens must glide across a re-render: the old control's --i is the start, the new one's is the end. */
-  /* The lens starts where it visually is right now (mid-flight included: rapid taps change direction, spec §1 G12/G13), then springs to the new segment. */
-  const oldSeg = $("#queueseg"), oldLens = oldSeg && oldSeg.querySelector(".lens");
-  let segFrom = NaN;
-  const lpOld = oldSeg && oldSeg.classList.contains("lift") ? parseFloat(oldSeg.style.getPropertyValue("--lp")) : NaN;   // glass still up (falling) at this instant
-  if (oldLens) {   // where the lens is right now, in segment units (computed `translate` keeps the percentage, so measure the boxes; the centre is scale-proof)
-    const lr = oldLens.getBoundingClientRect(), sr = oldSeg.getBoundingClientRect(), w = oldLens.offsetWidth, pad = oldLens.offsetLeft;
-    segFrom = w ? (lr.left + lr.width / 2 - sr.left - pad - w / 2) / w : parseFloat(oldSeg.style.getPropertyValue("--i"));
-  }
+  /* The segmented control survives a re-render (patch 02, seg-impl-review.md #2): commit() → render() used to rebuild #app wholesale,
+     which destroyed the pressed label mid-transition (its .2 → 1 recovery never ran: the fresh button appeared at 1 and only played
+     seg-in from .81) and gave the weight cross-fade no start value (the weight snapped). Now the old .segctl node is moved into the
+     new page and only its state is synced (segSync): the lens, the labels, the .warp copy and the running glass fall all keep their
+     elements, so every CSS transition on them finishes exactly as it would on a UISegmentedControl that is never rebuilt. */
+  const oldSeg = $("#queueseg");
   $("#app").innerHTML = html;
+  const newSeg = $("#queueseg");
+  if (oldSeg && newSeg && segSameQueues(oldSeg, newSeg)) { newSeg.replaceWith(oldSeg); segSync(oldSeg, newSeg); }
   layoutTabs();
   wire();
-  const seg = $("#queueseg");
-  if (seg && !Number.isNaN(segFrom)) {
-    const to = seg.style.getPropertyValue("--i"), lens = seg.querySelector(".lens");
-    if (lens && Math.abs(segFrom - parseFloat(to)) > 0.001) {
-      lens.style.transition = "none"; seg.style.setProperty("--i", String(segFrom)); void lens.offsetWidth;   // paint at the old spot
-      lens.classList.add("spring");   // measured x path + width/height stretch (spec §1 G1/G3, --ios-touch-segment-lens-*-keys)
-      lens.style.transition = ""; seg.style.setProperty("--i", to);
-    }
-    if (lens && lpOld > 0) segLens(seg, lens, [...seg.querySelectorAll("button")], lpOld);   // the glass keeps falling on the lenstrace curve while the lens springs to the new segment
+}
+
+/* The two controls describe the same queues (same names, same order, same 未启用定时 tags) — only then is the old node kept. */
+function segSameQueues(a, b) {
+  const key = (seg) => [...seg.querySelectorAll("button")].map((x) => x.dataset.q + "|" + x.textContent).join("\u0001");
+  return key(a) === key(b) && a.style.getPropertyValue("--n") === b.style.getPropertyValue("--n");
+}
+/* Bring the kept control to the freshly rendered state: --i and the selected label (aria/.on) from the new markup.
+   A changed --i on the same lens element is a CSS transition from wherever the lens visually is right now (mid-flight included:
+   rapid taps change direction, spec §1 G12/G13); the pressed label's .dim was already removed by attachSegmented's `end`, so its
+   opacity runs .2 → 1 over --ios-touch-segment-undim-duration on the same element, and .on moving between the same two buttons
+   gives the weight transition its start and end values. The commit stretch (.spring) restarts when the value changed. */
+function segSync(seg, fresh) {
+  const lens = seg.querySelector(".lens"), to = fresh.style.getPropertyValue("--i"), from = seg.style.getPropertyValue("--i");
+  const freshBs = [...fresh.querySelectorAll("button")];
+  [...seg.querySelectorAll("button")].forEach((b, i) => {
+    const on = freshBs[i] && freshBs[i].classList.contains("on");
+    b.classList.toggle("on", !!on); b.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  if (lens && to !== "" && Math.abs(parseFloat(to) - parseFloat(from)) > 0.001) {
+    if (segCommitMode === "tap") {
+      lens.classList.remove("spring"); void lens.offsetWidth;   // restart the stretch keyframes when a previous commit's are still running
+      lens.classList.add("spring");                             // measured x path + width/height stretch (spec §1 G1/G3, --ios-touch-segment-lens-*-keys)
+    } else {
+      lens.classList.remove("spring");   // patch 03 (seg-impl-review.md #3): after a lifted drag the native lens only falls back 220×44 → 196×28 (.25 s, the .lift removal)
+    }                                    // and glides to the target on the plain response .4 / ζ .85 spring (--ios-motion-lens-*) — no tap stretch (interaction-spec §1 G4/G21)
+    seg.style.setProperty("--i", to);
+    segCommitMode = "tap";
+  } else if (lens && lens.classList.contains("spring") && performance.now() - segCommitAt >= SEG_SETTLE_MS) {
+    lens.classList.remove("spring");   // a heartbeat / snapshot render after the lens settled: back to the resting transition (accept: 重画时透镜不动)
   }
 }
+let segCommitAt = -Infinity;   // performance.now() of the last value change through the control
+let segCommitMode = "tap";     // "tap" (pressed an unselected segment / keyboard) or "drag" (lifted the selected one and released elsewhere)
+const SEG_SETTLE_MS = 1209;    // the measured lens sequence ends at 1209 ms (--ios-touch-segment-lens-*-keys / --seg-settle)
 
 /* 分页：按卡片标题归到「状态 / 方舟 / 终末地 / 鸣潮 / 周常 / 手机」，一次只显示
    一页；上次看的那页记住。所有卡片都照常渲染，只是藏起来——待保存的改动和回执
@@ -662,8 +685,9 @@ function wire() {
   const segEl = $("#queueseg");
   if (segEl && qsel) {
     const bs = [...segEl.querySelectorAll("button")];
-    attachSegmented(segEl, () => Math.max(0, bs.findIndex((b) => b.dataset.q === qsel.value)), (i) => {
+    attachSegmented(segEl, () => Math.max(0, bs.findIndex((b) => b.dataset.q === qsel.value)), (i, mode = "tap") => {
       const q = bs[i].dataset.q; if (qsel.value === q) return;
+      segCommitAt = performance.now(); segCommitMode = mode;
       qsel.value = q; qsel.dispatchEvent(new Event("change"));   // onchange → render() right now: the content switches in the same tick
     });
   }
@@ -1073,66 +1097,81 @@ function press(el, e, handlers) {
 /* §1 UISegmentedControl: touch-down changes nothing but the pressed label's opacity (unselected) or lifts the lens (selected); a lifted lens follows
    the finger; the index changes at the up - target = the segment under the finger's x - unless the finger is > 70 pt outside the control
    (cancel, no event) or back on the selected segment (no event). No debounce: every up counts, same segment twice = one event. */
-/* Lens lift progress. lens-refraction.md §0 / §4.1 (iOS 27.0 probe): the lens size, the SDF height and the displacement amount ride ONE curve
-   (amount ≡ −1.25 × height); so here the glass material and the warp amplitude are driven by the lens's own measured size progress — for the
-   segmented control that is the G4/G16 lift (+100 ms, .25 s, 196 × 28 → 220 × 44; interaction-spec §1) — read off the presented height each
-   frame, and at release they fall back over the same .25 s (the lift duration) as the size does. LENS_P (the tab-bar lenstrace curve) stays for
-   the tab bar, whose lift was traced directly. */
+/* Segmented lens, lifted state — the control's own originals (remote-ref/seg-lens-refraction.md, iOS 27.0 probe, 2026-09-19) compiled into
+   web/seg-keys.css by 界面2号 (gen_seg_keys.py from the native per-frame recordings): geometry 196×28 r14 → 220×44 r22 from +109 ms over 250 ms
+   (--ios-touch-segment-lift-*), the displacement amount, the platter fade (1 → 0) and the size share one curve (≤ .012 apart), the DestOut punch-out
+   appears within the first 3 frames (--ios-touch-segment-destout-keys .396 / .98 / 1). Release: geometry back from up + 31 ms in 250 ms
+   (--ios-touch-segment-release-*), the displacement's long tail to up + 581 (-release-warp-keys), the platter back to 1 by + 515 (-release-platter-keys
+   ≈ 1 − warp within .01, so one variable --lp drives both), the DestOut fade from up + 215 (-release-destout-*). Web: the lens CSS transitions carry
+   the geometry; this per-frame loop reads the lens's presented height for the lift progress and runs the release tails from the key lists; it
+   positions the copies (bg + track, labels) and the rim to the lens's presented rect. Tab-bar curves (LENS_P) are kept for the tab bar only. */
 const LENS_P = [[0.020, 0], [0.036, .11], [0.053, .26], [0.070, .41], [0.086, .54], [0.103, .65], [0.120, .74], [0.153, .86], [0.203, .95], [0.253, .98], [0.303, .994], [0.370, 1]];
-const lensP = (t) => { if (t <= LENS_P[0][0]) return 0; for (let i = 1; i < LENS_P.length; i++) if (t <= LENS_P[i][0]) { const [t0, v0] = LENS_P[i - 1], [t1, v1] = LENS_P[i]; return v0 + (v1 - v0) * (t - t0) / (t1 - t0); } return 1; };
-const holeURL = (w, h, r) => `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}' viewBox='0 0 ${w} ${h}'><rect width='${w}' height='${h}' rx='${r}' ry='${r}' fill='black'/></svg>")`;
-/* The lifted segmented lens (index.html .segctl .lens.lift / .warp): a per-frame sync while the finger is down and while the glass falls back —
-   the warp box follows the lens's presented rect (so it rides every transition the lens has: follow-lag, lift scale, the commit stretch),
-   the label copy inside stays aligned with the real labels, the real labels get the punch-out hole, --lp drives glass + warp amplitude. */
+const lensP = (t) => tabAt(LENS_P, t);
+function tabAt(tab, t) { if (t <= tab[0][0]) return tab[0][1]; for (let i = 1; i < tab.length; i++) if (t <= tab[i][0]) { const [t0, v0] = tab[i - 1], [t1, v1] = tab[i]; return v0 + (v1 - v0) * (t - t0) / (t1 - t0); } return tab[tab.length - 1][1]; }
+/* `<ms> <value>, …` key list from a CSS custom property (seg-keys.css / tokens.css convention) → [[s, value], …]; the fallback tables below are the same
+   numbers hand-copied from seg-lens-refraction §4.1 / §4.3 (used only if the stylesheet is missing) */
+function cssKeys(name, fallback) {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); if (!raw) return fallback;
+  const out = raw.split(",").map((k) => k.trim().split(/\s+/).map(Number)).filter((k) => k.length === 2 && k.every(Number.isFinite)).map(([ms, v]) => [ms / 1000, v]);
+  return out.length >= 2 ? out : fallback;
+}
+/* seg-lens-refraction §4.3, t from the up (s): glass remaining = 1 − platter opacity (the displacement amounts follow the same numbers within .01) */
+const SEG_DROP_GLASS = [[0, 1], [.048, .961], [.065, .887], [.081, .797], [.098, .701], [.115, .607], [.131, .519], [.148, .439], [.165, .369], [.181, .308], [.198, .255], [.215, .21], [.231, .173], [.248, .141], [.265, .115], [.281, .093], [.298, .076], [.315, .061], [.331, .049], [.348, .04], [.365, .032], [.381, .026], [.398, .02], [.415, .016], [.431, .013], [.448, .01], [.465, .008], [.481, .007], [.498, .005], [.515, 0]];
+/* §4.3 DestOut opacity after the up (1 until +198 ms, then the fade) */
+const SEG_DROP_DESTOUT = [[0, 1], [.198, 1], [.215, .841], [.231, .69], [.248, .564], [.265, .46], [.281, .374], [.298, .303], [.315, .245], [.331, .197], [.348, .159], [.365, .127], [.381, .102], [.398, .082], [.415, .065], [.431, .052], [.448, .042], [.465, .033], [.481, .026], [.498, .021], [.515, .017], [.531, .013], [.548, .01], [.565, .008], [.581, .007], [.598, 0]];
+/* §4.1 DestOut opacity after the lift starts (+109 ms): .396 / .98 / 1 on the first three frames */
+const SEG_LIFT_DESTOUT = [[0, 0], [.016, .396], [.033, .98], [.05, 1]];
 function segLens(seg, lens, bs, fallFrom) {
-  let warp = seg.querySelector(".warp"), rim = seg.querySelector(".rim");
-  if (!warp) { warp = document.createElement("div"); warp.className = "warp"; warp.innerHTML = '<div class="copy"></div>'; seg.appendChild(warp); }
-  if (!rim) { rim = document.createElement("div"); rim.className = "rim"; seg.appendChild(rim); }
-  const copy = warp.firstElementChild;   // the copy = what lies under the lens: page bg + track (matrixed) below, the labels above; spans, not buttons (the control's own button list stays the real one)
-  copy.innerHTML = '<div class="cbgwrap"><div class="cbg"></div><div class="ctrack"></div></div>' + bs.map((b) => `<span class="cb ${b.className}" style="width:${b.offsetWidth}px">${b.innerHTML}</span>`).join("");
-  const segW = seg.offsetWidth, segH = seg.offsetHeight; copy.style.width = segW + "px"; copy.style.height = segH + "px";
-  const cbs = [...copy.querySelectorAll(".cb")];
-  const S = 32;   // map encoding shared with #seg-lens-warp: byte = 255 × (.5 + u / S), u in pt → feDisplacementMap scale = S × amplitude
-  /* the punch-out image is made ONCE (196 × 28, rx 14 = the DestOut layer's own coordinates); per frame only mask-size / -position move, so no
-     image is decoded per frame; scaled non-uniformly its corners go elliptical exactly like a CALayer cornerRadius under the lens transform */
-  const hole = holeURL(196, 28, 14); for (const b of bs) b.style.setProperty("--hole", hole);
-  const st = { t0: performance.now(), rel: fallFrom != null ? performance.now() : null, raf: 0, pr: fallFrom != null ? fallFrom : 0, done: false };   // fallFrom: continue a release fall on a re-rendered control
-  const H0 = 28, H1 = 28 + 2 * touchPx("--ios-touch-segment-lift-y", 8), FALL_MS = touchMs("--ios-touch-segment-lift-duration", 250);   // 196 × 28 → 220 × 44 ← --ios-touch-segment-lift-x/-y; 落回 .25 s ← --ios-touch-segment-lift-duration
-  const frame = (p) => {
+  let warp = seg.querySelector(".warp"), warpl = seg.querySelector(".warpl"), plat = seg.querySelector(".plat"), rim = seg.querySelector(".rim");
+  const mk = (cls, inner) => { const d = document.createElement("div"); d.className = cls; d.innerHTML = inner; seg.appendChild(d); return d; };
+  if (!warp) warp = mk("warp", '<div class="copy"></div>'); if (!warpl) warpl = mk("warpl", '<div class="copy"></div>'); if (!plat) plat = mk("plat", ""); if (!rim) rim = mk("rim", "");
+  /* copies of what lies under the lens: .warp = page bg + track (opaque; covers the real labels — the DestOut punch-out), .warpl = the labels, undisplaced
+     (label-mag 1.00, spans not buttons so the control's own button list stays the real one) */
+  const copy = warp.firstElementChild, copyl = warpl.firstElementChild;
+  copy.innerHTML = '<div class="cbgwrap"><div class="cbg"></div><div class="ctrack"></div></div>';
+  copyl.innerHTML = bs.map((b) => `<span class="cb ${b.className}" style="width:${b.offsetWidth}px">${b.innerHTML}</span>`).join("");
+  const segW = seg.offsetWidth, segH = seg.offsetHeight; for (const c of [copy, copyl]) { c.style.width = segW + "px"; c.style.height = segH + "px"; }
+  const cbs = [...copyl.querySelectorAll(".cb")];
+  const S = 32;   // map encoding (界面2号): byte = 128 + round(u · 255 / S), u in pt → feDisplacementMap scale = S × amplitude
+  const H0 = parseFloat(getComputedStyle(seg).getPropertyValue("--ios-segment-lens-h")) || 28, H1 = H0 + 2 * touchPx("--ios-touch-segment-lift-y", 8);   // 28 → 44 ← --ios-touch-segment-lift-y
+  const liftDelay = touchMs("--ios-touch-segment-lift-delay", 109);
+  /* the curves, from seg-keys.css (time base: the key list's own start; the release lists start at up + release-delay) */
+  const relDelay = touchMs("--ios-touch-segment-release-delay", 31) / 1000, destDelay = touchMs("--ios-touch-segment-release-destout-delay", 184) / 1000;
+  const K_WARP = cssKeys("--ios-touch-segment-release-warp-keys", SEG_DROP_GLASS.map(([t, v]) => [Math.max(0, t - .031), v]));
+  const K_DEST = cssKeys("--ios-touch-segment-release-destout-keys", SEG_DROP_DESTOUT.filter(([t]) => t >= .215).map(([t, v]) => [t - .215, v]));
+  const K_LIFT_DEST = cssKeys("--ios-touch-segment-destout-keys", SEG_LIFT_DESTOUT);
+  const relEnd = relDelay + Math.max(K_WARP[K_WARP.length - 1][0], destDelay + K_DEST[K_DEST.length - 1][0]) + .02;   // both tails exhausted (+581 ms) → clear
+  const st = { t0: performance.now(), rel: fallFrom != null ? performance.now() : null, raf: 0, pr: fallFrom != null ? fallFrom : 0, done: false };
+  const frame = (p, pd) => {   // p = glass / displacement progress, pd = DestOut (copies) opacity
     const sr = seg.getBoundingClientRect(), lr = lens.getBoundingClientRect();
-    const L = lr.left - sr.left, T = lr.top - sr.top, Wd = lr.width, Hd = lr.height, R = Math.min(Hd / 2, 14 * (Hd / 28));   // 逐角 14 随高度放大（DestOut cornerRadius 14 ← lensdiff）
-    warp.style.left = L + "px"; warp.style.top = T + "px"; warp.style.width = Wd + "px"; warp.style.height = Hd + "px"; warp.style.setProperty("--rr", R + "px");
-    rim.style.left = L + "px"; rim.style.top = T + "px"; rim.style.width = Wd + "px"; rim.style.height = Hd + "px"; rim.style.setProperty("--rr", R + "px");
-    /* interior magnification 1.22 (lens-refraction §0/§2: u = −0.18·s ⇔ M = 1/(1−0.18)) as CSS zoom on the copy, riding the same progress; the copy
-       is placed so the content point under the lens centre stays there: zoom scales the copy's own left/top too, hence (c/z − (L + c)) */
-    const z = 1 + 0.22 * p; copy.style.zoom = z.toFixed(4);
-    copy.style.left = ((Wd / 2) / z - (L + Wd / 2)).toFixed(3) + "px"; copy.style.top = ((Hd / 2) / z - (T + Hd / 2)).toFixed(3) + "px";
-    seg.style.setProperty("--lp", p.toFixed(4));
-    for (const el of document.querySelectorAll("#seg-lens-warp feDisplacementMap")) el.setAttribute("scale", (S * p).toFixed(3));
-    bs.forEach((b) => { const br = b.getBoundingClientRect(); b.style.setProperty("--hx", (lr.left - br.left) + "px"); b.style.setProperty("--hy", (lr.top - br.top) + "px"); b.style.setProperty("--hw", Wd + "px"); b.style.setProperty("--hh", Hd + "px"); });
+    const L = lr.left - sr.left, T = lr.top - sr.top, Wd = lr.width, Hd = lr.height, R = Hd / 2;   // capsule ← r22 at 44 (§0); mid-lift a rounded rect r = h/2 (未量，假设)
+    for (const el of [warp, warpl, plat, rim]) { el.style.left = L + "px"; el.style.top = T + "px"; el.style.width = Wd + "px"; el.style.height = Hd + "px"; el.style.setProperty("--rr", R + "px"); }
+    for (const c of [copy, copyl]) { c.style.left = -L + "px"; c.style.top = -T + "px"; }   // the copies stay aligned with the real control (no magnification: mag-x 1.00, label-mag 1.00)
+    seg.style.setProperty("--lp", p.toFixed(4)); seg.style.setProperty("--lpd", pd.toFixed(4));
+    for (const el of document.querySelectorAll("#seg-lens-warp feDisplacementMap")) el.setAttribute("scale", (S * p).toFixed(3));   // amplitude on the same curve (§4.1: all amounts on one curve; §4.3 the glass tail)
     cbs.forEach((c, i) => c.className = "cb " + bs[i].className);
-    seg.classList.toggle("lift", p > 0);
+    seg.classList.toggle("lift", p > 0 || pd > 0);
   };
   const clear = () => {
-    seg.classList.remove("lift"); seg.style.removeProperty("--lp"); copy.innerHTML = ""; copy.style.zoom = "";
-    for (const b of bs) for (const k of ["--hole", "--hx", "--hy", "--hw", "--hh"]) b.style.removeProperty(k);
+    seg.classList.remove("lift"); seg.style.removeProperty("--lp"); seg.style.removeProperty("--lpd"); copy.innerHTML = ""; copyl.innerHTML = "";
     for (const el of document.querySelectorAll("#seg-lens-warp feDisplacementMap")) el.setAttribute("scale", "0");
     st.done = true;
   };
   const tick = (now) => {
     if (st.done) return;
     if (!seg.isConnected || !lens.isConnected) { clear(); return; }
-    let p;
-    const sizeP = () => Math.max(0, Math.min(1, (lens.getBoundingClientRect().height - H0) / (H1 - H0)));
+    let p, pd;
     if (st.rel != null) {
-      const f = Math.min(1, (now - st.rel) / FALL_MS);
-      /* fall-back = the lens's own fall: read the presented height as during the lift (the .lift class is gone, the scale transition brings it down
-         in --ios-touch-segment-lift-duration), so glass + warp ride the same curve as the size; after a commit the old control is gone
-         (fallFrom): decay from the carried value over the same .25 s (ease-out, the family of the CSS scale transition — 松手回落本身未量) */
-      p = fallFrom != null ? st.pr * (1 - (1 - Math.pow(1 - f, 2))) : Math.min(st.pr, sizeP());
-      if (f >= 1 || p <= 0.001) { clear(); return; }
-    } else { p = sizeP(); st.pr = p; }   // 抬起 / 拖动：进度 = 透镜呈现高度的进度（一条曲线：尺寸 = 高度 = 位移量；seg-lift-material：196×28 → 220×44 r14 → r22 同比）
-    frame(p); st.raf = requestAnimationFrame(tick);
+      const tr = (now - st.rel) / 1000 - relDelay;   // the release lists start at up + 31 ms; before that everything holds
+      p = st.pr * (tr <= 0 ? 1 : tabAt(K_WARP, tr)); pd = tr <= destDelay ? 1 : tabAt(K_DEST, tr - destDelay);   // -release-warp-keys (amount, and platter = 1 − it) / -release-destout-keys
+      if (tr >= relEnd - relDelay) { clear(); return; }
+    } else {
+      const tl = (now - st.t0) / 1000 - liftDelay / 1000;   // time since the lift started (+109 ms)
+      p = Math.max(0, Math.min(1, (lens.getBoundingClientRect().height - H0) / (H1 - H0)));   // glass / amounts ride the geometry's own curve (§4.1: one curve for all)
+      pd = tl <= 0 ? 0 : Math.max(p > 0 ? tabAt(K_LIFT_DEST, tl) : 0, p > 0.5 ? 1 : 0);   // --ios-touch-segment-destout-keys (first 3 frames)
+      st.pr = p;
+    }
+    frame(p, pd); st.raf = requestAnimationFrame(tick);
   };
   st.raf = requestAnimationFrame(tick);
   return { release: () => { if (st.rel == null) st.rel = performance.now(); }, cancel: () => { if (st.rel == null) st.rel = performance.now(); } };   // cancel = the same fall (acceptance: 取消路径不许瞬切)
@@ -1146,28 +1185,26 @@ function attachSegmented(seg, getIndex, commit) {
   seg.onpointerdown = (e) => {
     const idx = getIndex(), pressed = segAt(e.clientX), onSelected = pressed === idx;
     let liftTimer = 0, glass = null;
-    if (lens) lens.classList.remove("spring", "back");   // a new touch ends the previous commit's stretch (G12/G13: no queueing)
+    if (lens) lens.classList.remove("spring", "drop");   // a new touch ends the previous commit's stretch (G12/G13: no queueing)
     if (!press(seg, e, {
       move: (ev) => { if (onSelected && lens && lens.classList.contains("lift")) showLens(frac(ev.clientX)); },   // index never changes while sliding (G4/G22)
       end: (ev, cancelled) => {
         clearTimeout(liftTimer);
+        const lifted = !!(lens && lens.classList.contains("lift"));   // patch 03 (seg-impl-review.md #3): a lifted lens commits by falling + gliding (G4/G21), a tap commits with the stretch sequence (G1/G3)
         bs[pressed].classList.remove("dim");                        // label back to 1 in .1 s (G12)
         seg.classList.remove("drag"); if (lens) lens.classList.remove("lift");
         if (glass) glass.release();                                 // every way out — release, out of bounds, pointercancel — glass + warp fall on the lens's own curve
         const target = segAt(ev.clientX);
-        if (cancelled || outside(ev.clientX, ev.clientY) || target === idx) {   // cancel (> 70 pt out, G17/G18) or back on the selected one (G8/G10/G23): no event
-          /* the lens returns to its segment in the lift duration (.25 s, G4/G21: 「透镜从抬起态落回 196×28 用 ~250 ms」), not the .55 s commit slide */
-          if (lens && lens.classList.contains("lift") === false) { lens.classList.add("back"); lens.addEventListener("transitionend", () => lens.classList.remove("back"), { once: true }); setTimeout(() => lens.classList.remove("back"), 400); }
-          showLens(idx); return;
-        }
-        commit(target);                                             // the up: index + change + content, same tick (G1–G3)
+        if (lifted && lens) { lens.classList.add("drop"); setTimeout(() => lens.classList.remove("drop"), 700); }   // release / cancel: geometry back on the .30 s drop curve (seg-lens-refraction §4.3), for the return home and the glide alike
+        if (cancelled || outside(ev.clientX, ev.clientY) || target === idx) { showLens(idx); return; }   // cancel (> 70 pt out, G17/G18) or back on the selected one (G8/G10/G23): no event
+        commit(target, lifted ? "drag" : "tap");                    // the up: index + change + content, same tick (G1–G3)
       },
     })) return;
     seg.dataset.pe = "1";
     if (!onSelected) bs[pressed].classList.add("dim");           // G15: only the label dims; no highlight, no lens move, no value
     else {
       glass = lens ? segLens(seg, lens, bs) : null;                // glass + warp start on the lenstrace curve (~20 ms) — the lift itself waits its 100 ms (G4/G16)
-      liftTimer = setTimeout(() => { if (lens) lens.classList.add("lift"); seg.classList.add("drag"); }, touchMs("--ios-touch-segment-lift-delay", 100));   // G4/G16
+      liftTimer = setTimeout(() => { if (lens) lens.classList.add("lift"); seg.classList.add("drag"); }, touchMs("--ios-touch-segment-lift-delay", 109));   // 抬起 +109 ms 起动 ← seg-keys.css --ios-touch-segment-lift-delay（seg-lens-refraction §4.1）
     }
   };
   // The browser's click after our pointerup is redundant; keyboard / synthetic clicks still select.

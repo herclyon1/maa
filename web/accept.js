@@ -442,7 +442,7 @@
         num("分段 G1 +192 ms：透镜最宽 ×1.24（--ios-touch-segment-lens-w-keys）", 1.24, sc192[0], 0.06);
         await sleep(284);
         { const lr = lensNow.getBoundingClientRect(), sr = q().getBoundingClientRect(), lw = lensNow.offsetWidth, toI = parseFloat(q().style.getPropertyValue("--i")), fromI = toI === 1 ? 0 : 1;
-          const pos = (lr.left + lr.width / 2 - sr.left - lensNow.offsetLeft - lw / 2) / lw;   // centre-based, scale-proof
+          const segW = (sr.width - 4) / bs().length, pos = (lr.left + lr.width / 2 - sr.left - 2 - segW / 2) / segW;   // centre-based in segment units (the lens now moves by `left`, its width breathes)
           num("分段 G1 +476 ms：透镜过冲到行程 1.075（--ios-touch-segment-lens-x-keys）", 1.075, (pos - fromI) / (toI - fromI), 0.04); }
         await sleep(800);
         /* §1 G4/G16: touch-down on the selected segment lifts the lens after ~100 ms (196×28 → 220×44), no event */
@@ -450,32 +450,33 @@
         const r1 = renders; pev(seg, "pointerdown", at(sel)); const lens0 = seg.querySelector(".lens");
         check("分段 G4 按下已选中段：+0 ms 透镜未抬、无事件", "no lift", lens0.classList.contains("lift") ? "lift" : "no lift", !lens0.classList.contains("lift") && renders === r1);
         await sleep(160);
-        const sc160 = parseFloat(cs(lens0).scale);
-        check("分段 G16 按下已选中段 +160 ms：透镜抬起中（+100 ms 起，.25 s 到 220×44）", "lift, scale > 1", `${lens0.classList.contains("lift") ? "lift" : "-"} ${cs(lens0).scale}`, lens0.classList.contains("lift") && sc160 > 1.0);
+        const h160 = lens0.getBoundingClientRect().height;
+        check("分段 G16 按下已选中段 +160 ms：透镜抬起中（+109 ms 起，--ios-motion-seg-lift-easing .35 s 到 220×44；seg-lens-refraction §4.1）", "lift, 28 < h < 44", `${lens0.classList.contains("lift") ? "lift" : "-"} h ${h160.toFixed(1)}`, lens0.classList.contains("lift") && h160 > 28.5 && h160 < 43.5);
         /* lifted lens = glass ABOVE the labels + punched-out labels + a warped copy inside (uiprobe-lensdiff-seg: ClearGlassView / DestOutView /
            liftedContentWarpWrapper); --lp on the lenstrace curve (lens-refraction §4.1: 86 % at 153 ms) drives glass + warp */
-        { const lp = parseFloat(seg.style.getPropertyValue("--lp")), warp = seg.querySelector(".warp"), cb = warp ? warp.querySelectorAll(".copy .cb").length : 0;
-          check("分段抬起 +160 ms：玻璃/折弯进度 --lp = 透镜尺寸进度（+100 ms 起 .25 s，同一条曲线：尺寸 = 高度 = 位移量）", "0 < lp < 1, = (h−28)/16", `${lp} vs ${((lens0.getBoundingClientRect().height - 28) / 16).toFixed(3)}`, lp > 0 && lp < 1 && Math.abs(lp - (lens0.getBoundingClientRect().height - 28) / 16) < 0.12);
+        { const lp = parseFloat(seg.style.getPropertyValue("--lp")), warp = seg.querySelector(".warp"), warpl = seg.querySelector(".warpl"), cb = warpl ? warpl.querySelectorAll(".copy .cb").length : 0;
+          check("分段抬起 +160 ms：玻璃/位移进度 --lp = 透镜尺寸进度（§4.1：尺寸、圆角、位移量、白平台同一条曲线）", "0 < lp < 1, = (h−28)/16", `${lp} vs ${((lens0.getBoundingClientRect().height - 28) / 16).toFixed(3)}`, lp > 0 && lp < 1 && Math.abs(lp - (lens0.getBoundingClientRect().height - 28) / 16) < 0.12);
           check("分段抬起：透镜层在标签之上（z 2）", "2", cs(lens0).zIndex, cs(lens0).zIndex === "2" && seg.classList.contains("lift"));
-          check("分段抬起：透镜内标签复本（.warp .copy）与真标签同数、裁成透镜形、套位移贴图 #seg-lens-warp（界面2号 ui2 df03b55）", `${bs().length} btn · clip · url(#seg-lens-warp)`, `${cb} btn · ${warp ? cs(warp).clipPath.slice(0, 5) : "-"} · ${warp ? cs(warp).filter.slice(0, 22) : "-"}`, !!warp && cb === bs().length && bs().length === 2 && /inset/.test(cs(warp).clipPath) && /url\("?#seg-lens-warp"?\)/.test(cs(warp).filter) && !!document.querySelector("filter#seg-lens-warp"));
-          { const cp = warp && warp.querySelector(".copy"), z = cp ? parseFloat(cs(cp).zoom) : 0;
-            check("分段抬起：复本 zoom = 1 + .22 × 进度（中心放大 1.22 ← lens-refraction §0），底不透明、轨道 + 页面底过色矩阵", "zoom ≈ 1+.22lp · opaque", `zoom ${z} · bg ${cs(warp).backgroundColor.slice(0, 4)} · ${cp && cp.querySelector(".cbgwrap") ? "cbg+track" : "-"}`, !!cp && Math.abs(z - (1 + 0.22 * lp)) < 0.02 && /^rgb\(/.test(cs(warp).backgroundColor) && !!cp.querySelector(".cbgwrap .ctrack") && /saturate\(1\.29/.test(cs(cp.querySelector(".cbgwrap")).filter));
-            const fd = document.querySelector("#seg-lens-warp feDisplacementMap"); check("分段抬起：位移量 scale = 32 × 进度（贴图编码 S 32）", "≈ 32·lp", fd ? fd.getAttribute("scale") : "-", !!fd && Math.abs(parseFloat(fd.getAttribute("scale")) - 32 * lp) < 0.5); }
+          { const br = px(cs(lens0).borderRadius), hh = lens0.getBoundingClientRect().height; check("分段抬起：几何走 width/height（真胶囊：圆角 = 高/2，14 → 22 与尺寸同曲线；seg-lens-refraction §0 220×44 r22）", "r ≈ h/2", `r ${br.toFixed(1)} h ${hh.toFixed(1)}`, Math.abs(br - hh / 2) < 1.2 && cs(lens0).scale === "1"); }
+          check("分段抬起：底图复本 .warp（页面底 + 轨道，不透明、不套色矩阵）过位移贴图 #seg-lens-warp；标签复本 .warpl 不位移（label-mag 1.00）；都裁成透镜形（seg-lens-refraction §0/§2）", `${bs().length} cb · warp url(#seg-lens-warp) · warpl none`, `${cb} cb · ${warp ? cs(warp).filter.slice(0, 22) : "-"} · ${warpl ? cs(warpl).filter : "-"}`, !!warp && !!warpl && cb === bs().length && bs().length === 2 && /inset/.test(cs(warp).clipPath) && /inset/.test(cs(warpl).clipPath) && /url\("?#seg-lens-warp"?\)/.test(cs(warp).filter) && cs(warpl).filter === "none" && !!document.querySelector("filter#seg-lens-warp") && !document.querySelector("filter#seg-lens-warp-label"));
+          { const cp = warp && warp.querySelector(".copy"), cpl = warpl && warpl.querySelector(".copy"), bgw = cp && cp.querySelector(".cbgwrap");
+            check("分段抬起：复本不放大（mag-x 1.00 / label-mag 1.00，zoom 1）、底不透明、底不过色矩阵（透镜内亮度 = 底）", "zoom 1 · opaque · no filter", `${cp ? cs(cp).zoom : "-"} / ${cpl ? cs(cpl).zoom : "-"} · bg ${cs(warp).backgroundColor.slice(0, 4)} · ${bgw ? cs(bgw).filter : "-"}`, !!cp && !!cpl && cs(cp).zoom === "1" && cs(cpl).zoom === "1" && /^rgb\(/.test(cs(warp).backgroundColor) && !!bgw && cs(bgw).filter === "none" && !!cp.querySelector(".cbgwrap .ctrack"));
+            const fd = document.querySelector("#seg-lens-warp feDisplacementMap"); check("分段抬起：位移量 scale = 32 × 进度（贴图编码 S 32，同一条曲线）", "≈ 32·lp", fd ? fd.getAttribute("scale") : "-", !!fd && Math.abs(parseFloat(fd.getAttribute("scale")) - 32 * lp) < 0.6);
+            const pl = seg.querySelector(".plat"); check("分段抬起：白平台层 .plat 在复本之上，opacity = 1 − lp（restingBackground 1 → 0，§4.1）；复本 opacity = DestOut（前 3 帧到 1，§4.1）", "1−lp · warp 1", `${pl ? cs(pl).opacity : "-"} · ${cs(warp).opacity}`, !!pl && Math.abs(parseFloat(cs(pl).opacity) - (1 - lp)) < 0.03 && parseFloat(cs(warp).opacity) > 0.95); }
           if (warp) { const wr = warp.getBoundingClientRect(), lr = lens0.getBoundingClientRect();
             num("分段抬起：复本框 = 透镜呈现框（左）", lr.left, wr.left, 0.6); num("分段抬起：复本框 = 透镜呈现框（宽）", lr.width, wr.width, 0.6); }
-          check("分段抬起：真标签在透镜处挖洞（mask exclude，DestOutView）", "hole", sel.style.getPropertyValue("--hole") ? "hole" : "no hole", !!sel.style.getPropertyValue("--hole") && /exclude|xor/.test(cs(sel).maskComposite + (cs(sel).webkitMaskComposite || "")));
-          check("分段抬起：填充两层交叉淡（::before 静止 1−lp，::after 抬起 lp；抬起值 --ios-seg-lift-fill 待表）", "1−lp / lp", `${cs(lens0, "::before").opacity} / ${cs(lens0, "::after").opacity}`, Math.abs(parseFloat(cs(lens0, "::before").opacity) - (1 - lp)) < 0.05 && Math.abs(parseFloat(cs(lens0, "::after").opacity) - lp) < 0.05); }
+          check("分段抬起：真标签不挖洞（不透明复本盖住 = DestOut 冲掉的视觉），透镜层只带阴影（::after opacity = lp）", "no mask · lp", `${cs(sel).maskImage} · ${cs(lens0, "::after").opacity}`, cs(sel).maskImage === "none" && Math.abs(parseFloat(cs(lens0, "::after").opacity) - lp) < 0.05); }
         await sleep(240);
-        check("分段 G16 +400 ms：透镜 220×44 到位（--ios-touch-segment-lift-x 12 / -y 8）", "1.1224 1.5714", cs(lens0).scale, /^1\.12/.test(cs(lens0).scale) && /1\.57/.test(cs(lens0).scale));
-        check("分段抬起 +400 ms：--lp 到 1", "1", seg.style.getPropertyValue("--lp"), Math.abs(parseFloat(seg.style.getPropertyValue("--lp")) - 1) < 0.01);
+        { const r4 = lens0.getBoundingClientRect(), segW = (seg.getBoundingClientRect().width - 4) / bs().length;
+          check("分段 G16 +400 ms：透镜到 220×44（段宽 + 24 × 44；几何 +359 ms 到位 ← seg-lens-refraction §4.1；--ios-touch-segment-lift-x 12 / -y 8）", `${(segW + 24).toFixed(1)}×44`, `${r4.width.toFixed(1)}×${r4.height.toFixed(1)}`, Math.abs(r4.width - (segW + 24)) < 0.8 && Math.abs(r4.height - 44) < 0.8); }
+        check("分段抬起 +400 ms：--lp 到 1", "≈ 1", seg.style.getPropertyValue("--lp"), parseFloat(seg.style.getPropertyValue("--lp")) > 0.97);
         /* lifted material (tokens --ios-seg-lift-*, taken from the tab-bar lens's lifted layer, lens-refraction §1/§3): no fill, no blur, rim 1 pt +15 / 1 pt −34 */
         { const a = cs(lens0, "::after"), sh = cs(lens0).boxShadow;
           check("分段抬起满：透镜无自身填充（--ios-seg-lift-fill α 0，标签从下透出），玻璃层 opacity = --lp", "rgba(…, 0) · 1", `${a.backgroundColor} · ${a.opacity}`, /,\s*0\)$/.test(a.backgroundColor) && Math.abs(parseFloat(a.opacity) - parseFloat(seg.style.getPropertyValue("--lp"))) < 0.02);
-          const bfv = (cs(lens0, "::after").backdropFilter || cs(lens0, "::after").webkitBackdropFilter || "").replace(/\s+/g, " ");
-          check("分段抬起满：玻璃层（::after）滤镜链固定 = 无模糊 + 色矩阵 0.9118·S(1.29)+0.1471 → saturate(1.29) contrast(0.756) brightness(1.206)（vibrantColorMatrix ← seg-lift-material §2；先 contrast 后 brightness 才不中途溢出）", "blur(0px) saturate(1.29) contrast(0.756) brightness(1.206)", bfv, /^blur\(0px\) saturate\(1\.29\d*\) contrast\(0\.756\d*\) brightness\(1\.206\d*\)$/.test(bfv));
+          check("分段抬起满：透镜内亮度 = 底（seg-lens-refraction §3 平灰 128 → 126：可见层不套 vibrantColorMatrix、不模糊）", "no filter", (cs(lens0, "::after").backdropFilter || "none") + " · " + cs(warp).filter.slice(0, 22), (cs(lens0, "::after").backdropFilter || "none") === "none" && /url/.test(cs(warp).filter));
           const ash = cs(lens0, "::after").boxShadow.replace(/\s+/g, " "), rimEl = seg.querySelector(".rim"), rsh = rimEl ? cs(rimEl).boxShadow.replace(/\s+/g, " ") : "";
           check("分段抬起满：阴影 (0,7) r3 .06（--ios-seg-lift-shadow，玻璃层）", "0 7px 3px .06", ash.slice(0, 60), /rgba\(0, 0, 0, 0\.06\) 0px 7px 3px/.test(ash));
-          check("分段抬起满：.rim 层在复本之上，边界 1 pt 暗线 + 内侧 1 pt 亮线（--ios-seg-lift-rim-*：亮 .2/.35，暗 .4/.18），opacity = --lp", "inset 1px dark · inset 2px light · z 4", `${rsh.slice(0, 100)} · z ${rimEl ? cs(rimEl).zIndex : "-"}`, !!rimEl && cs(rimEl).zIndex === "4" && (dark ? /rgba\(0, 0, 0, 0\.4\) 0px 0px 0px 1px inset/.test(rsh) && /rgba\(255, 255, 255, 0\.18\) 0px 0px 0px 2px inset/.test(rsh) : /rgba\(0, 0, 0, 0\.2\) 0px 0px 0px 1px inset/.test(rsh) && /rgba\(255, 255, 255, 0\.35\) 0px 0px 0px 2px inset/.test(rsh)) && Math.abs(parseFloat(cs(rimEl).opacity) - 1) < 0.02); }
+          check("分段抬起满：.rim 层在最上（z 6）：两端 1 pt 暗 −41 + 内 1 pt 暗 −21 + 边内 8 pt 暗带；上下边 1 pt 暗 −26 + 内侧 1 pt 亮 +21（渐变，seg-lens-refraction §3 采样换算），opacity = --lp", "inset .32 / .16 / band .06 · gradient · z 6", `${rsh.slice(0, 96)} · ${cs(rimEl).backgroundImage.slice(0, 15)} · z ${rimEl ? cs(rimEl).zIndex : "-"}`, !!rimEl && cs(rimEl).zIndex === "6" && /rgba\(0, 0, 0, 0\.32\) 0px 0px 0px 1px inset/.test(rsh) && /rgba\(0, 0, 0, 0\.16\) 0px 0px 0px 2px inset/.test(rsh) && /rgba\(0, 0, 0, 0\.06\) 0px 0px 8px 2px inset/.test(rsh) && /linear-gradient/.test(cs(rimEl).backgroundImage) && Math.abs(parseFloat(cs(rimEl).opacity) - 1) < 0.03); }
         /* §1 G4/G22: sliding onto the other segment moves the lens, the index does not change until the up */
         pev(seg, "pointermove", at(unsel)); await sleep(30);
         const fracI = parseFloat(seg.style.getPropertyValue("--i"));
@@ -483,14 +484,14 @@
         /* §1 G23: slide back and release on the original - no event */
         pev(seg, "pointermove", at(sel)); pev(seg, "pointerup", at(sel));
         check("分段 G23 滑回原段抬手：无事件，透镜回位", sel.textContent, `${onText()} renders+${renders - r1}`, onText() === sel.textContent && renders === r1 && q().style.getPropertyValue("--i") === String(bs().indexOf(sel)));
-        { const tr = cs(seg.querySelector(".lens")).transitionDuration; check("分段滑回原段抬手：透镜落回用 .25 s（.back，--ios-touch-segment-lift-duration），不是 .55 s 滑行", "0.25s, 0.25s", tr, /^0\.25s, 0\.25s/.test(tr)); }
-        await sleep(120); { const lp = parseFloat(seg.style.getPropertyValue("--lp")); check("分段松手 +120 ms：玻璃/折弯随透镜落回（.25 s，--ios-touch-segment-lift-duration）", "0 < lp < .6", String(lp), lp > 0.02 && lp < 0.6); }
-        await sleep(400); check("分段松手 +520 ms：玻璃退净、复本收起、洞去掉", "rest", `${seg.classList.contains("lift") ? "lift" : "rest"} ${seg.style.getPropertyValue("--lp") || "-"} ${sel.style.getPropertyValue("--hole") ? "hole" : ""}`, !seg.classList.contains("lift") && !sel.style.getPropertyValue("--hole"));
+        { const tr = cs(seg.querySelector(".lens")).transitionDuration; check("分段滑回原段抬手：几何从 +31 ms 起 250 ms 回落（.drop，seg-keys.css --ios-touch-segment-release-delay/-duration；seg-lens-refraction §4.3 +281 ms 回 196×28），不是 .55 s 滑行", "0.25s ×5 · delay 0.031s", `${tr} · ${cs(seg.querySelector(".lens")).transitionDelay.slice(0, 6)}`, /^0\.25s, 0\.25s, 0\.25s, 0\.25s, 0\.25s/.test(tr) && /^0\.031s/.test(cs(seg.querySelector(".lens")).transitionDelay)); }
+        await sleep(120); { const lp = parseFloat(seg.style.getPropertyValue("--lp")); check("分段松手 +120 ms：玻璃/位移沿 §4.3 尾巴退回（+115 ms 剩 .61）", ".5 < lp < .75", String(lp), lp > 0.5 && lp < 0.75); }
+        await sleep(560); check("分段松手 +680 ms：玻璃退净（§4.3 位移 +598 归零、白平台 +515 回 1）、复本收起", "rest", `${seg.classList.contains("lift") ? "lift" : "rest"} ${seg.style.getPropertyValue("--lp") || "-"}`, !seg.classList.contains("lift"));
         /* acceptance requirement 4: pointercancel after a lift → glass + warp fall on the same curve, never a cut */
         { const sg = q(), on = bs().find((b) => b.classList.contains("on")); pev(sg, "pointerdown", at(on)); await sleep(360); const lpUp = parseFloat(sg.style.getPropertyValue("--lp"));
           pev(sg, "pointercancel", at(on)); await sleep(60); const lp60 = parseFloat(sg.style.getPropertyValue("--lp"));
           check("分段 pointercancel：玻璃/折弯沿同曲线退回（+60 ms 仍在途中，不瞬切）", "lift 1 → 0 < lp60 < lpUp", `${lpUp} → ${lp60}`, lpUp > 0.95 && lp60 > 0.05 && lp60 < lpUp);
-          await sleep(500); check("分段 pointercancel +560 ms：退净", "rest", sg.classList.contains("lift") ? "lift" : "rest", !sg.classList.contains("lift")); }
+          await sleep(640); check("分段 pointercancel +700 ms：退净", "rest", sg.classList.contains("lift") ? "lift" : "rest", !sg.classList.contains("lift")); }
         /* §1 G4/G21: lift, slide to the other segment, release there - commits at the up */
         seg = q(); sel = bs().find((b) => b.classList.contains("on")); unsel = bs().find((b) => !b.classList.contains("on"));
         pev(seg, "pointerdown", at(sel)); await sleep(160); pev(seg, "pointermove", at(unsel)); const r2 = renders; pev(seg, "pointerup", at(unsel));

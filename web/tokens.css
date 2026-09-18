@@ -247,6 +247,15 @@
    * (244 → 247/249) → alphas below. Dark: bright line +45 over black (0 → 45), dark line −12 over the track (29 → 17). */
   --ios-seg-lift-rim-light: rgb(255 255 255 / .35);    /* SAMPLED: +5/255 over 244 ≈ white α .45 (top/bottom), +3 ≈ .27 → .35 */
   --ios-seg-lift-rim-dark: rgb(0 0 0 / .2);            /* SAMPLED: −47/244 = black α .19, −48/229 = .21 */
+  --ios-seg-lift-mag-x: 1.00;                          /* SAMPLED: no horizontal magnification inside |s| ≤ 80 (u ≈ ±0.5 pt constant) */
+  --ios-seg-lift-mag-y: 0.82;                          /* SAMPLED: vertical compression, u = +0.22·s inside |s| ≤ 10 */
+  --ios-seg-lift-edge-x: 24px;                         /* SAMPLED: end zones (|s| 84–108): u to ±3.4 pt, M 0.84 → 1.2–1.5 at the last 4 pt, R−B up to 3.6 pt */
+  --ios-seg-lift-edge-y: 12px;                         /* SAMPLED: top/bottom zones: u to ±3.4 pt, M 0.82 → 1.29 */
+  --ios-seg-lift-label-mag: 1.00;                      /* SAMPLED: the label copy inside the lens is not magnified or shifted (ContentLensing only bends near the edges) */
+  --ios-motion-seg-lift-delay: 109ms;                  /* ORIGINAL: touch-down → first presentation change (trace; +125 ms first visible frame) */
+  --ios-motion-seg-lift-duration: .35s;                /* ORIGINAL: geometry reaches 220×44 at +359 ms; filter amounts finish at +459 ms on the same curve */
+  --ios-motion-seg-lift-easing: linear(0, .10 4.6%, .245 9.4%, .397 14.3%, .533 18.9%, .646 23.7%, .737 28.6%, .807 33.1%, .86 38%, .899 42.9%, .928 47.4%, .949 52.3%, .964 57.1%, .975 61.7%, .982 66.6%, .988 71.4%, .991 76%, .994 80.9%, .996 85.7%, .998 95%, 1);   /* ORIGINAL: one progress curve for size, corner, displacement, SDF height, platter fade, shadow, glass keys (350 ms base) */
+  --ios-motion-seg-drop-duration: .30s;                /* ORIGINAL: release in place: geometry back at +281 ms; DestOut fades from +215 ms, platter 0→1 by +515, amounts → 0 by +598 */
   /* probe UIProgressView 400×4 (track/fill colours not read) */
   --ios-progress-h: 4px;
   /* probe UITabBar 83 at y 873; lens 94×54 r 27; labels at y 912; AX-13 same */
