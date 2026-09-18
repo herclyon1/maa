@@ -1,166 +1,212 @@
 #!/usr/bin/env python3
-"""Displacement maps + SVG filter for the lifted segmented-control lens (220×44 pt capsule, @3x).
+"""Displacement maps + SVG filter for the lifted segmented-control lens, resampled from the measured displacement field.
 
-Source of every number: ~/Money/styl-work/remote-ref/lens-refraction.md and the per-pt phase fields in
-~/Money/styl-work/remote-ref/tools/lens/phase-lift-{gx,gy}-{light,dark}.json (renderer-output sampling of the
-native _UILiquidLensView in its lifted state: content displacement u(s) = content position − screen position, pt).
+Field: the data session's phase files for the segmented control (remote-ref/seg-lens-refraction.md §2, lens_phase.py output):
+one file for the x displacement measured on rows, one for the y displacement measured on columns —
+profiles[<row or column offset from the lens centre, pt>][R|G|B] = {s, u, mag, amp}, u = content position − screen position (pt) at
+screen position s, amp = the demodulation amplitude (used as the validity mask). The lifted lens is 220×44 r 22; what is under it
+(track / card) is displaced by this composite field; the label copy inside the lens is NOT displaced (§2.3: width ×1.00–1.01,
+height ×1.00, centre offset 0), so it must sit in an unfiltered layer above the filtered copy.
 
-Model (derived in README.md §2):
-  u(p) = −(1 − 1/M)·p + e_c(d)·n̂(p)        M = 1.22 (interior magnification, phase-lift-* interior: u = −0.18·s)
-  d    = signed distance to the capsule boundary (inside > 0), n̂ = outward unit normal
-  e_c  = P_c(d · 22 / W(n̂)): the measured horizontal edge profile (table P, 1-pt steps, 0 beyond 24 pt) compressed to the
-         band width of the local direction (W_X 22 pt at the ends, W_Y 11 pt at the top/bottom); channel c = R/G/B (dispersion)
-  outside the capsule (d < 0): u = 0 (the lens clips there)
+  python3 gen_lens_maps.py --field <gx.json>,<gy.json> [--size 220x44] [--scale 32] [--px 2] [--dark <gx.json>,<gy.json>] [--out .]
+      → seg-map-{r,g,b}.png, lens-filter.svg (#seg-lens-warp), lens-field.json, lens-test.html (from lens-test.template.html)
 
-Encoding (feDisplacementMap): byte = 128 + round(u·255/S) (zero = byte 128 exactly; the browser's S·(byte/255 − .5) then carries a
-constant +S/510 pt bias, identical in all channels); x → R channel, y → G channel, B = 128, A = 255; u in pt (= CSS px).
-Two map sets: seg-map-* = residual field (band + dispersion only, S 32, 2 px/pt, for #seg-lens-warp — the 1.22 is a CSS scale),
-lens-map-* = full field (S 64, 3 px/pt, for #seg-lens-warp-full). One byte step = S/255 → round trip error ≤ S/510 (verify_lens_maps.py).
+Field model (pure resampling, no analytic fit): each profile is masked where amp < 0.5·median (platter ends) and on the centre
+row within |s| ≤ 20 (the label glyph, §2.1),
+made odd-symmetric in s (u(−s) = −u(s); R / B keep their measured offset from G), gaps filled linearly; u_x(x, y) interpolates
+between the measured rows by y, u_y(x, y) between the measured columns by x (clamped outside the sampled offsets); zero outside the
+capsule. --stretch maps a
+field measured on another lens size by normalised coordinates (placeholder use only).
 
-  python3 gen_lens_maps.py            # writes seg-map-*.png, lens-map-*.png, lens-filter.svg, lens-test.html, lens-field.json, verify-tab-lens-map-g.png
+Encoding (feDisplacementMap): byte = 128 + round(u·255/S); x → R, y → G, B 128, A 255; zero = byte 128 exactly in all channels.
+The browser decodes S·(byte/255 − .5) = u + S/510 (a constant 0.06 pt shared by every channel).
 """
-import json, math, struct, zlib, base64, os
+import argparse, base64, json, math, os, statistics, struct, zlib
 HERE = os.path.dirname(os.path.abspath(__file__))
-M = 1.22                        # interior magnification (lens-refraction.md §0/§2: u = −0.18·s ⇔ 1/1.22)
-K = 1 - 1 / M                   # 0.18033
-SCALE = 64.0                    # feDisplacementMap scale (pt); |u| ≤ 25 pt fits in ±32
-LENS_W, LENS_H = 220.0, 44.0    # lifted segmented lens (--ios-touch-segment-lift-x 12 / -y 8: 196×28 → 220×44), capsule r 22
-PX = 3                          # @3x
-# Edge excess P_c(d) [pt] along the outward normal, d = distance inside the boundary along that normal (README §2.2):
-# mean of phase-lift-gx-{light,dark}.json rows ±20, RIGHT side (the platter's left end has no grating), each profile's centre
-# value (its phase reference, ≈ +0.3 pt) removed; d = 57.84 − s. Negative = the content shown comes from further inside.
-# Horizontal band: onset ≈ 22 pt from the end (P ≈ 0 beyond), plateau −4.4…−4.75 within 8 pt of the boundary.
-P = {
-  "R": [-4.50, -4.568, -4.635, -4.695, -4.744, -4.773, -4.773, -4.729, -4.623, -4.431, -4.127, -3.713, -3.236, -2.772, -2.357, -1.98, -1.618, -1.257, -0.918, -0.637, -0.428, -0.283, -0.188, -0.13, -0.10, 0.0],
-  "G": [-4.31, -4.395, -4.481, -4.566, -4.645, -4.709, -4.748, -4.737, -4.645, -4.415, -3.958, -3.232, -2.497, -1.952, -1.546, -1.222, -0.954, -0.726, -0.534, -0.372, -0.239, -0.135, -0.059, -0.007, 0.0, 0.0],
-  "B": [-4.20, -4.267, -4.335, -4.396, -4.436, -4.435, -4.35, -4.123, -3.751, -3.32, -2.828, -2.351, -1.977, -1.667, -1.381, -1.114, -0.868, -0.648, -0.453, -0.284, -0.141, -0.027, 0.0, 0.0, 0.0, 0.0],
-}
-# Band width by direction: horizontal (normal along x) W_X = 22 pt = the table's own scale; vertical (normal along y) W_Y = 11 pt:
-# the top/bottom columns ±25 of phase-lift-gy-* (valid to d ≈ 7) sit on P(d·22/11) within 0.4 pt (README §2.3), i.e. the same
-# profile compressed 2×. In between (capsule ends) W(n̂) = W_X·|n_x| + W_Y·|n_y|. [渲染器输出采样 + 竖向按 2× 压缩的拟合替代]
-W_X, W_Y = 22.0, 11.0
-def excess(chan, d, nx=1.0, ny=0.0):
-    t = P[chan]
-    if d <= 0: return t[0]
-    dd = d * W_X / (W_X * abs(nx) + W_Y * abs(ny))
-    if dd >= len(t) - 1: return 0.0
-    i = int(math.floor(dd)); f = dd - i
-    return t[i] * (1 - f) + t[i + 1] * f
 
-def capsule_sdf(x, y, hw, hh):
-    """Stadium of half-size hw×hh (r = hh): inside distance (> 0 inside) and outward normal."""
+# ---------- fields ----------
+def load_profiles(path):
+    d = json.load(open(path)); half = float(d["half"]); out = {}
+    for off, chans in d["profiles"].items():
+        out[float(off)] = {c: (p["s"], p["u"], p.get("amp")) for c, p in chans.items()}
+    return {"file": os.path.basename(path), "half": half, "lens": d.get("lens"), "profiles": out}
+
+GLYPH_ROW, GLYPH_HALF = 6.5, 20.0   # the segment label sits on the centre row (|offset| < 6.5 pt = half the 13-pt glyph height) within |s| ≤ 20 pt
+
+def valid(si, ai, med, off):
+    """a phase sample is valid where its demodulation amplitude holds and no label glyph sits under the grating
+    (seg-lens-refraction.md §2.1: the centre row's 「早班」 makes |s| ≤ 13 unreliable; masked to 20 with margin)"""
+    return ai >= 0.5 * med and not (abs(off) < GLYPH_ROW and abs(si) <= GLYPH_HALF)
+
+def clean(s, u, amp, off=0.0):
+    """mask (valid()), make odd-symmetric, fill gaps by linear interpolation; returns a dict s → u on the file's 1-pt grid"""
+    med = statistics.median(amp) if amp else 1.0
+    ok = {si: ui for si, ui, ai in zip(s, u, amp or [med] * len(s)) if valid(si, ai, med, off)}
+    sym = {}
+    for si in set(abs(x) for x in s):
+        v = [ok[x] * sg for x, sg in ((si, 1), (-si, -1)) if x in ok]
+        if v: sym[si] = sum(v) / len(v)
+    grid = sorted(set(abs(x) for x in s)); known = sorted(sym)
+    if not known: return {}
+    def at(si):
+        if si in sym: return sym[si]
+        lo = max([k for k in known if k < si], default=None); hi = min([k for k in known if k > si], default=None)
+        if lo is None: return sym[hi]
+        if hi is None: return sym[lo]
+        return sym[lo] + (sym[hi] - sym[lo]) * (si - lo) / (hi - lo)
+    full = {}
+    for si in grid:
+        v = at(si); full[si] = v; full[-si] = -v
+    return full
+
+def fill(table, grid):
+    """linear gap filling of a {s: v} table over the grid"""
+    known = sorted(table); out = {}
+    if not known: return {}
+    for si in grid:
+        if si in table: out[si] = table[si]; continue
+        lo = max([k for k in known if k < si], default=None); hi = min([k for k in known if k > si], default=None)
+        out[si] = table[hi] if lo is None else table[lo] if hi is None else table[lo] + (table[hi] - table[lo]) * (si - lo) / (hi - lo)
+    return out
+
+def profiles_of(chans, off):
+    """G: masked + odd-symmetric; R / B: G + the measured (c − G) offset kept as is (the dispersion has an even part near the
+    top / bottom rows — a uniform chromatic shift — that odd symmetry would cancel), gaps filled"""
+    s, uG, ampG = chans["G"]
+    base = clean(s, uG, ampG, off); grid = sorted(base); out = {"G": base}
+    for c in chans:
+        if c == "G": continue
+        sc, uc, ampc = chans[c]; medc = statistics.median(ampc) if ampc else 1.0
+        d = {si: (ui - gi) for si, ui, ai, gi in zip(sc, uc, ampc or [medc] * len(sc), uG) if valid(si, ai, medc, off)}
+        d = fill(d, grid); out[c] = {k: base[k] + d.get(k, 0.0) for k in grid}
+    return out
+
+def build_field(gx_path, gy_path):
+    gx, gy = load_profiles(gx_path), load_profiles(gy_path)
+    rows = {}   # signed y offset → chan → {s: u}  (x displacement along x); rows are kept by their signed offset: the chromatic
+    cols = {}   # signed x offset → chan → {s: u}  (y displacement along y)   (R / B) offsets differ top vs bottom
+    for off, chans in gx["profiles"].items():
+        for c, t in profiles_of(chans, off).items(): rows.setdefault(off, {}).setdefault(c, []).append(t)
+    for off, chans in gy["profiles"].items():
+        for c, t in profiles_of(chans, 99.0).items(): cols.setdefault(off, {}).setdefault(c, []).append(t)   # columns never cross the label
+    def merge(groups):
+        out = {}
+        for off, chans in groups.items():
+            out[off] = {}
+            for c, lst in chans.items():
+                keys = set().union(*[set(l) for l in lst]); out[off][c] = {k: statistics.mean([l[k] for l in lst if k in l]) for k in keys}
+        return out
+    return {"gx": gx, "gy": gy, "rows": merge(rows), "cols": merge(cols), "half": (gx["half"], gy["half"])}
+
+def sample1d(table, s):
+    """linear interpolation in a {s: u} table (1-pt grid); 0 beyond its range"""
+    if not table: return 0.0
+    lo, hi = math.floor(s), math.ceil(s)
+    if lo not in table or hi not in table: return 0.0
+    if lo == hi: return table[lo]
+    return table[lo] + (table[hi] - table[lo]) * (s - lo)
+
+def interp_offsets(groups, chan, off, s):
+    """value at the signed offset off by interpolating between the two nearest measured offsets (clamped), each sampled at s"""
+    ks = sorted(groups); c = chan if chan in groups[ks[0]] else "G"
+    if off <= ks[0]: return sample1d(groups[ks[0]][c], s)
+    if off >= ks[-1]: return sample1d(groups[ks[-1]][c], s)
+    lo = max(k for k in ks if k <= off); hi = min(k for k in ks if k >= off)
+    if lo == hi: return sample1d(groups[lo][c], s)
+    a, b = sample1d(groups[lo][c], s), sample1d(groups[hi][c], s)
+    return a + (b - a) * (off - lo) / (hi - lo)
+
+def capsule_inside(x, y, hw, hh):
     c = hw - hh
-    if abs(x) <= c:
-        d = hh - abs(y); n = (0.0, 1.0 if y > 0 else -1.0 if y < 0 else 0.0)
-    else:
-        cx = c if x > 0 else -c; dx, dy = x - cx, y; r = math.hypot(dx, dy)
-        d = hh - r; n = (dx / r, dy / r) if r > 1e-9 else (1.0, 0.0)
-    return d, n
+    return abs(y) <= hh if abs(x) <= c else math.hypot(abs(x) - c, y) <= hh
 
-def rrect_sdf(x, y, hw, hh, r):
-    """Rounded rectangle (circular corners) — the tab-bar lens geometry used for verification against the phase JSON."""
-    qx, qy = abs(x) - (hw - r), abs(y) - (hh - r)
-    if qx > 0 and qy > 0:
-        rr = math.hypot(qx, qy); d = r - rr; n = (qx / rr * (1 if x > 0 else -1), qy / rr * (1 if y > 0 else -1))
-    elif qx > qy:
-        d = hw - abs(x); n = (1.0 if x > 0 else -1.0, 0.0)
-    else:
-        d = hh - abs(y); n = (0.0, 1.0 if y > 0 else -1.0)
-    return d, n
+def field_at(F, x, y, chan, hw, hh, stretch, gain=1.0):
+    """(u_x, u_y) in pt at lens-relative (x, y) for the target capsule hw×hh"""
+    if not capsule_inside(x, y, hw, hh): return 0.0, 0.0
+    kx = F["half"][0] / hw if stretch else 1.0; ky = F["half"][1] / hh if stretch else 1.0
+    ux = interp_offsets(F["rows"], chan, y * ky, x * kx) / kx
+    uy = interp_offsets(F["cols"], chan, x * kx, y * ky) / ky
+    return ux * gain, uy * gain
 
-def rect_sdf(x, y, hw, hh):
-    """Plain rectangle — the verification geometry for the tab-bar lens rows ±20 / columns ±25 (README §2.2: the phase profiles
-    were reduced with the straight-edge distance, and the lifted shape's boundary at |y| = 20 is at ≈ 57.5, not the r35 circle)."""
-    dx, dy = hw - abs(x), hh - abs(y)
-    if dx < dy: return dx, (1.0 if x > 0 else -1.0, 0.0)
-    return dy, (0.0, 1.0 if y > 0 else -1.0)
-
-def field(x, y, chan, sdf, residual=False):
-    """full: u = −K·p + e·n̂ (interior magnification 1.22 + edge band); residual: e·n̂ only (the 1.22 comes from a CSS scale)"""
-    d, (nx, ny) = sdf(x, y)
-    if d < 0: return 0.0, 0.0
-    e = excess(chan, d, nx, ny)
-    return (e * nx, e * ny) if residual else (-K * x + e * nx, -K * y + e * ny)
-
-def encode(u, scale=None):
-    """byte = 128 + round(u·255/S): zero is exactly byte 128 in every channel (a byte = 255·(.5 + u/S) would round 0 to 127 or 128
-    depending on the sign of a 1e-3 residual, and the three channel maps then disagree by one byte at scattered interior pixels —
-    feDisplacementMap point-samples, so a one-byte channel difference paints colour fringes on every glyph edge). The browser decodes
-    S·(byte/255 − .5), i.e. everything carries a constant +S/510 pt (0.06 pt) which is the same for all channels and invisible."""
-    scale = scale or SCALE
+# ---------- maps ----------
+def encode(u, scale):
     v = 128 + int(round(u * 255 / scale))
-    if v < 0 or v > 255: raise ValueError(f"displacement {u} pt does not fit scale {scale}")
+    if v < 0 or v > 255: raise ValueError(f"displacement {u:.2f} pt does not fit scale {scale}")
     return v
 
 def write_png(path, w, h, rows):
     raw = b"".join(b"\x00" + bytes(r) for r in rows)
     def chunk(t, d): return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
-    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
-    open(path, "wb").write(png)
+    open(path, "wb").write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
 
-def render_map(path, wpt, hpt, chan, sdf, px=PX, scale=None, residual=False):
-    w, h = int(round(wpt * px)), int(round(hpt * px)); rows = []
+def render(path, F, chan, wpt, hpt, px, scale, stretch, gain):
+    w, h = int(round(wpt * px)), int(round(hpt * px)); rows = []; peak = 0.0
     for j in range(h):
         y = (j + 0.5) / px - hpt / 2; row = bytearray()
         for i in range(w):
             x = (i + 0.5) / px - wpt / 2
-            ux, uy = field(x, y, chan, sdf, residual)
+            ux, uy = field_at(F, x, y, chan, wpt / 2, hpt / 2, stretch, gain); peak = max(peak, abs(ux), abs(uy))
             row += bytes((encode(ux, scale), encode(uy, scale), 128, 255))
         rows.append(row)
-    write_png(path, w, h, rows); return w, h
+    write_png(path, w, h, rows); return w, h, peak
 
-RES_SCALE, RES_PX = 32.0, 2       # residual maps: |e| ≤ 4.8 pt fits S 32 (界面1号's constant); 2 px/pt → 440×88 (their suggestion)
+# ---------- filter ----------
+ISO = {"R": "1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0", "G": "0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0", "B": "0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0"}
+def data_uri(path): return "data:image/png;base64," + base64.b64encode(open(path, "rb").read()).decode()
 
-def data_uri(name): return "data:image/png;base64," + base64.b64encode(open(os.path.join(HERE, name), "rb").read()).decode()
-
-def filter_svg(fid, maps, scale, note):
-    """maps = {chan: file}; 界面1号's pipeline: isolate a channel of the source → displace with that channel's map → feBlend lighten;
-       region = the element's box (objectBoundingBox 0..100 %), feImage stretched to it (preserveAspectRatio none)"""
-    iso = {"R": "1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0", "G": "0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0", "B": "0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0"}
+def filter_rgb(fid, maps, scale, note):
+    """opaque backdrop: per-channel maps (dispersion), the ui session's pipeline — isolate a channel → displace → feBlend lighten"""
     out = [f'  <filter id="{fid}" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">', f"    <!-- {note} -->"]
+    out += [f'    <feImage href="{data_uri(maps[c])}" preserveAspectRatio="none" result="map{c}"/>' for c in "RGB"]
     for c in "RGB":
-        out.append(f'    <feImage href="{data_uri(maps[c])}" preserveAspectRatio="none" result="map{c}"/>')
-    for c in "RGB":
-        out.append(f'    <feColorMatrix in="SourceGraphic" type="matrix" values="{iso[c]}" result="src{c}"/>')
+        out.append(f'    <feColorMatrix in="SourceGraphic" type="matrix" values="{ISO[c]}" result="src{c}"/>')
         out.append(f'    <feDisplacementMap in="src{c}" in2="map{c}" scale="{scale:g}" xChannelSelector="R" yChannelSelector="G" result="d{c}"/>')
-    out.append('    <feBlend in="dR" in2="dG" mode="lighten" result="dRG"/>')
-    out.append('    <feBlend in="dRG" in2="dB" mode="lighten"/>')
-    out.append("  </filter>")
+    out += ['    <feBlend in="dR" in2="dG" mode="lighten" result="dRG"/>', '    <feBlend in="dRG" in2="dB" mode="lighten"/>', "  </filter>"]
     return "\n".join(out)
 
 def main():
-    def cap(x, y): return capsule_sdf(x, y, LENS_W / 2, LENS_H / 2)
-    full = {c: f"lens-map-{c.lower()}.png" for c in "RGB"}; res = {c: f"seg-map-{c.lower()}.png" for c in "RGB"}
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--field", required=True, help="<gx.json>,<gy.json> the measured composite field")
+    ap.add_argument("--size", default="220x44"); ap.add_argument("--scale", type=float, default=32.0); ap.add_argument("--px", type=int, default=2)
+    ap.add_argument("--stretch", action="store_true", help="the field was measured on another lens size: map it by normalised coordinates")
+    ap.add_argument("--dark", help="<gx.json>,<gy.json> the same field measured in dark mode (compared, maps use --field)")
+    ap.add_argument("--out", default=HERE)
+    a = ap.parse_args(); W, H = (float(v) for v in a.size.lower().split("x"))
+    F = build_field(*a.field.split(","))
+    maps = {}; peak = 0.0
     for c in "RGB":
-        render_map(os.path.join(HERE, full[c]), LENS_W, LENS_H, c, cap)                                              # full field, S 64, 3 px/pt
-        render_map(os.path.join(HERE, res[c]), LENS_W, LENS_H, c, cap, px=RES_PX, scale=RES_SCALE, residual=True)   # band + dispersion only, S 32, 2 px/pt
-    TW, TH = 115.68, 73.61   # the measured tab-bar lens, same model, rect reduction — only for verify_lens_maps.py
-    def tab(x, y): return rect_sdf(x, y, TW / 2, TH / 2)
-    render_map(os.path.join(HERE, "verify-tab-lens-map-g.png"), TW, TH, "G", tab)
-    head = """<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true">
-  <!-- Lifted segmented-control lens (220×44 pt capsule). Generated by gen_lens_maps.py — do not edit by hand; sources in README.md.
-       feDisplacementMap: P'(x,y) = P(x + scale·(R − .5), y + scale·(G − .5)), scale in user units (CSS px = pt). The filter region is the
-       element's own box and the maps are stretched to it, so apply the filter to the lens-shaped element itself (max 220×44).
-       color-interpolation-filters="sRGB" is required: with the default linearRGB the map bytes would be gamma-decoded before use.
-       #seg-lens-warp (RECOMMENDED): edge band + dispersion only (byte = 128 + u·255/32, 440×88); the interior 1.22 magnification is a
-         CSS transform scale(1.22) about the lens centre on the content inside — a real resample, so text stays crisp (feDisplacementMap
-         point-samples and doubles pixel columns when it magnifies). Animate: scale attribute 0 → 32 with the lift progress, and the CSS
-         scale 1 → 1.22 (lens-refraction.md §4.2: the magnification arrives earlier than the band — 1.20 at 100 ms, 1.22 from 150 ms).
-       #seg-lens-warp-full: the whole field in the map (byte = 128 + u·255/64, 660×132) — one mechanism, but magnified text ghosts. -->
+        p = os.path.join(a.out, f"seg-map-{c.lower()}.png"); w, h, pk = render(p, F, c, W, H, a.px, a.scale, a.stretch, 1.0); maps[c] = p; peak = max(peak, pk)
+    sx = (interp_offsets(F["rows"], "G", 0, 40) - interp_offsets(F["rows"], "G", 0, -40)) / 80; sy = (interp_offsets(F["cols"], "G", 50, 10) - interp_offsets(F["cols"], "G", 50, -10)) / 20
+    info = {"size_pt": [W, H], "scale": a.scale, "px_per_pt": a.px, "map_px": [w, h], "stretch": a.stretch,
+            "encoding": "byte = 128 + round(u·255/scale); x→R, y→G; B 128; u = content − screen (pt, +x right, +y down); browser decodes scale·(byte/255 − .5) = u + scale/510",
+            "field": {"gx": F["gx"]["file"], "gy": F["gy"]["file"], "measured_lens": F["gx"]["lens"], "half": F["half"], "rows_y": sorted(F["rows"]), "cols_x": sorted(F["cols"]), "peak_pt": round(peak, 2),
+                      "interior": {"du_x/dx at y 0 (|x| ≤ 40)": round(sx, 4), "x scale": round(1 / (1 + sx), 3), "du_y/dy at x 50 (|y| ≤ 10)": round(sy, 4), "y scale": round(1 / (1 + sy), 3)}},
+            "label_copy": "not displaced (seg-lens-refraction.md §2.3) — keep it in an unfiltered layer above the filtered copy",
+            "sources": ["remote-ref/seg-lens-refraction.md §0 §2 §2.3", "remote-ref/seg-lift-material.md §1", "remote-ref/tools/touch/seg-phase-{gx,gy}-{light,dark}.json (data session, 2026-09-19)"]}
+    print(f"maps {w}×{h} px, S {a.scale:g}, peak |u| {peak:.2f} pt; interior du_x/dx {sx:+.4f} (x scale {1 / (1 + sx):.3f}), du_y/dy {sy:+.4f} (y scale {1 / (1 + sy):.3f})")
+    if a.dark:
+        dk = build_field(*a.dark.split(",")); diffs = []
+        for j in range(0, int(H)):
+            for i in range(0, int(W), 2):
+                x, y = i + 0.5 - W / 2, j + 0.5 - H / 2
+                if not capsule_inside(x, y, W / 2, H / 2): continue
+                l = field_at(F, x, y, "G", W / 2, H / 2, a.stretch); d = field_at(dk, x, y, "G", W / 2, H / 2, a.stretch); diffs.append(max(abs(l[0] - d[0]), abs(l[1] - d[1])))
+        info["dark_vs_light"] = {"gx": dk["gx"]["file"], "gy": dk["gy"]["file"], "mean_abs_diff_pt": round(sum(diffs) / len(diffs), 3), "max_abs_diff_pt": round(max(diffs), 2)}
+        print(f"dark vs light field: mean |Δ| {info['dark_vs_light']['mean_abs_diff_pt']} pt, max {info['dark_vs_light']['max_abs_diff_pt']} pt (one map set serves both)")
+    head = f"""<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true">
+  <!-- Lifted segmented-control lens ({a.size} pt capsule r 22). Generated by gen_lens_maps.py from the measured composite field
+       (README.md; seg-lens-refraction.md §2). feDisplacementMap: P'(x,y) = P(x + scale·(R − .5), y + scale·(G − .5)), scale {a.scale:g} in
+       user units; the region is the element's own box and the maps are stretched to it. color-interpolation-filters="sRGB" is required
+       (default linearRGB would gamma-decode the bytes). The interior scale of the content (1.00 wide / 0.82 tall) is IN the field: no
+       CSS zoom. Apply to the OPAQUE copy of what lies under the lens (track / card); the label copy is not displaced natively — keep it
+       in an unfiltered layer above. Per-channel maps carry the dispersion (R−B up to 3.6 pt at the ends), merged with feBlend lighten.
+       Animate: the scale attribute 0 → {a.scale:g} with the lift curve of seg-keys.css (seg-lens-refraction.md §4.1: all lens quantities share it). -->
 """
-    filt = head + filter_svg("seg-lens-warp", res, RES_SCALE, "residual: band + dispersion, S 32; content inside must carry scale(1.22)") + "\n" + \
-           filter_svg("seg-lens-warp-full", full, SCALE, "full field incl. the 1.22 magnification, S 64") + "\n</svg>\n"
-    open(os.path.join(HERE, "lens-filter.svg"), "w").write(filt)
-    tpl = open(os.path.join(HERE, "lens-test.template.html"), encoding="utf-8").read()
-    open(os.path.join(HERE, "lens-test.html"), "w", encoding="utf-8").write(tpl.replace("{{FILTER}}", filt.strip()))
-    json.dump({"lens_pt": [LENS_W, LENS_H], "capsule_radius_pt": LENS_H / 2, "magnification": M, "k": K,
-               "maps": {"seg-map-{r,g,b}.png": {"field": "residual (band + dispersion)", "scale": RES_SCALE, "px_per_pt": RES_PX, "size_px": [int(LENS_W * RES_PX), int(LENS_H * RES_PX)]},
-                        "lens-map-{r,g,b}.png": {"field": "full (−0.18·p + band)", "scale": SCALE, "px_per_pt": PX, "size_px": [int(LENS_W * PX), int(LENS_H * PX)]}},
-               "encoding": "byte = 128 + round(u·255/scale) (zero = 128 exactly; browser decodes scale·(byte/255 − .5) = u + scale/510); x→R, y→G; B 128; u = content position − screen position (pt, +x right, +y down)",
-               "edge_excess_pt_by_d": P, "band_width_pt": {"x": W_X, "y": W_Y, "blend": "W = W_X·|n_x| + W_Y·|n_y|"},
-               "sources": ["remote-ref/lens-refraction.md §0 §2 §3 §4.2", "remote-ref/tools/lens/phase-lift-gx-{light,dark}.json rows ±20 (R/G/B, right side, centre offset removed)",
-                            "remote-ref/tools/lens/phase-lift-gy-{light,dark}.json columns ±25 (band width 11 pt vertical)"]},
-              open(os.path.join(HERE, "lens-field.json"), "w"), indent=1, ensure_ascii=False)
-    print("maps: residual", int(LENS_W * RES_PX), "×", int(LENS_H * RES_PX), "S", RES_SCALE, "; full", int(LENS_W * PX), "×", int(LENS_H * PX), "S", SCALE, "; filter", os.path.getsize(os.path.join(HERE, "lens-filter.svg")), "bytes")
+    svg = head + filter_rgb("seg-lens-warp", maps, a.scale, f"composite field: {F['gx']['file']} + {F['gy']['file']}") + "\n</svg>\n"
+    open(os.path.join(a.out, "lens-filter.svg"), "w").write(svg)
+    tpl = os.path.join(HERE, "lens-test.template.html")
+    if os.path.exists(tpl): open(os.path.join(a.out, "lens-test.html"), "w", encoding="utf-8").write(open(tpl, encoding="utf-8").read().replace("{{FILTER}}", svg.strip()))
+    json.dump(info, open(os.path.join(a.out, "lens-field.json"), "w"), indent=1, ensure_ascii=False)
+    print("filter", os.path.getsize(os.path.join(a.out, "lens-filter.svg")), "bytes")
 
 if __name__ == "__main__": main()

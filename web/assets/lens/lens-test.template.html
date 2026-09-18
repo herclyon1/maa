@@ -24,13 +24,19 @@
   .segctl .flat{position:absolute;top:2px;left:2px;width:calc(50% - 2px);height:28px;border-radius:14px;background:var(--card)}   /* the resting selected segment: flat _controlForegroundColor platter */
   .segctl span{position:relative;z-index:1;flex:1 1 0;height:28px;line-height:28px;text-align:center;font-size:13px}
   .segctl span.on{font-weight:500}
-  /* the lens: a 220×44 window over a clone of the scene; the clone is shifted by −(lens position) so the window shows what lies under it */
+  /* the lens: a 220×44 window over two clones of the scene (the filtered copy of what lies under the lens + the unfiltered label copy),
+     both shifted by −(lens position) so the window shows what lies under it */
   .lens{position:absolute;z-index:2;width:220px;height:44px;border-radius:22px;overflow:hidden;touch-action:none;cursor:grab;   /* above the labels (they carry z-index 1) */
         box-shadow:inset 0 0 0 1px rgb(255 255 255 / .126), 0 0 0 1px rgb(0 0 0 / .23)}   /* rim: 1 pt bright line inside (+16/255 on 128 grey) + 1 pt dark line outside (−30/255) ← lens-refraction.md §3 rim.json; no highlight ring */
-  /* variants: seg = #seg-lens-warp (band + dispersion) on the lens box + CSS scale(1.22) on the content (recommended);
-     full = #seg-lens-warp-full (the map carries the magnification too); scale = CSS scale only; none */
-  .lens.f-seg{filter:url(#seg-lens-warp)} .lens.f-seg .clone,.lens.f-scale .clone{zoom:1.22}   /* zoom, not transform: a transformed child under an SVG filter paints channel-split fragments on glyph edges in Chrome */
-  .lens.f-full{filter:url(#seg-lens-warp-full)}
+  /* variants: seg = #seg-lens-warp on the copy of what lies under the lens (track / card), the label copy in an unfiltered layer
+     above it (seg-lens-refraction.md §2.3: the native label copy is not displaced); none = the same two layers without the filter */
+  .lens.f-seg .clone{filter:url(#seg-lens-warp)}
+  .lens .clone .segctl span{visibility:hidden}                   /* the filtered copy carries the track, not the labels */
+  .lens .labels{position:absolute;left:0;top:0;width:400px;pointer-events:none}
+  .lens .labels .scene{background:transparent}
+  .lens .labels .scene > *:not(.segctl){visibility:hidden}       /* only the segment labels, on a transparent layer */
+  .lens .labels .segctl{background:transparent}
+  .lens .labels .segctl .flat{display:none}
   .lens .clone{position:absolute;left:0;top:0;width:400px;pointer-events:none}
   .lens .clone .scene{border-radius:0}
   .lens .clone .flat,.scene.lifted > .segctl .flat{display:none}   /* lifted: the flat resting platter IS the lens, so neither the clone nor the scene shows it */
@@ -50,7 +56,7 @@
   <p>明日方舟 理智 1-7（固定），理智药 0 瓶 · 终末地 基质刷取 双倍</p>
 </div>
 <div class="bar">
-  <button data-f="f-seg" class="on">边带贴图 + CSS 放大 1.22</button><button data-f="f-full">全场贴图</button><button data-f="f-scale">只放大 1.22</button><button data-f="">无</button>
+  <button data-f="f-seg" class="on">折射贴图</button><button data-f="">无滤镜</button>
   <button id="auto">自动拖 2 s</button><button id="grat">光栅 ↔</button><button id="graty">光栅 ↕</button>
 </div>
 <div id="stats">拖动透镜或点「自动拖 2 s」。帧间隔在这里显示。</div>
@@ -58,17 +64,18 @@
 (function () {
   const scene = document.getElementById("scene"), stats = document.getElementById("stats");
   const lens = document.createElement("div"); lens.className = "lens f-seg";
-  const clone = document.createElement("div"); clone.className = "clone"; lens.appendChild(clone); scene.appendChild(lens);
+  const clone = document.createElement("div"); clone.className = "clone"; lens.appendChild(clone);
+  const labels = document.createElement("div"); labels.className = "labels"; lens.appendChild(labels); scene.appendChild(lens);
   scene.classList.add("lifted");
-  const sync = () => { clone.innerHTML = ""; const c = scene.cloneNode(true); c.querySelector(".lens").remove(); c.id = ""; clone.appendChild(c); };
+  const copy = () => { const c = scene.cloneNode(true); c.querySelector(".lens").remove(); c.id = ""; return c; };
+  const sync = () => { clone.innerHTML = ""; clone.appendChild(copy()); labels.innerHTML = ""; labels.appendChild(copy()); };
   sync();
   /* lens position inside the scene (pt); starts over the selected segment: segctl at (20, 16 + 20.33 + 8) → segment centre */
   const seg = scene.querySelector(".segctl"), r0 = seg.getBoundingClientRect(), s0 = scene.getBoundingClientRect();
   let X = r0.left - s0.left + 2 + (r0.width - 4) / 4 - 110, Y = r0.top - s0.top + 16 - 22;
   /* the clone is placed so that the scene point under the lens centre stays under the lens centre; with zoom z the clone's own
      coordinates are scaled about its top-left, so its offset is (centre − z·(lens position + centre)) / z in zoomed units */
-  const place = () => { const z = parseFloat(getComputedStyle(clone).zoom) || 1;
-    lens.style.left = X + "px"; lens.style.top = Y + "px"; clone.style.left = (110 - z * (X + 110)) / z + "px"; clone.style.top = (22 - z * (Y + 22)) / z + "px"; };
+  const place = () => { lens.style.left = X + "px"; lens.style.top = Y + "px"; for (const l of [clone, labels]) { l.style.left = -X + "px"; l.style.top = -Y + "px"; } };
   place();
   /* drag: pointer events, no threshold; the frame interval is measured while a finger is down or the auto drag runs */
   let dragging = null, times = [];

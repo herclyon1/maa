@@ -1,108 +1,110 @@
 # Segmented-control lens refraction — displacement maps + SVG filter
 
-The lifted / dragged selection lens of the segmented control (`.segctl .lens`, 196×28 → 220×44 while held,
-`--ios-touch-segment-lift-x/-y`) bends the content under it like the native `_UILiquidLensView`. This folder
-holds the displacement field as PNG maps, the `<filter>` that applies them, the generator, a round-trip /
-fit check and a minimal test page. Nothing here touches `view.js` / `index.html`; the ui session wires it in
-(`.segctl .warp{filter:url(#seg-lens-warp)}`, its message of 2026-09-19).
+The lifted / dragged selection lens of the segmented control (`.segctl .lens`, 196×28 → 220×44 r 22 while held) bends what is
+under it like the native `_UILiquidLensView`. This folder holds the measured displacement field of the native segmented lens
+packed as PNG maps, the `<filter>` that applies them, the generator, a check, a test page, and (`seg-keys.css`, `gen_seg_keys.py`)
+the lens kinematics compiled from the native per-frame recordings. Nothing here touches `view.js` / `index.html`; the ui session
+wires it in (`.segctl .warp{filter:url(#seg-lens-warp)}`).
 
 | File | What |
 |---|---|
-| `gen_lens_maps.py` | the model + generator (writes everything below) |
-| `seg-map-{r,g,b}.png` | **residual** field (edge band + dispersion only), 440×88 (2 px/pt), S 32 → `#seg-lens-warp` |
-| `lens-map-{r,g,b}.png` | **full** field (band + the 1.22 magnification), 660×132 (3 px/pt), S 64 → `#seg-lens-warp-full` |
-| `lens-filter.svg` | the two filters, maps inlined as data URIs (copy the `<svg>` into `index.html` before the scripts) |
-| `lens-field.json` | the numbers behind the maps (tables, widths, encoding, sources) |
-| `verify_lens_maps.py` | decodes the maps and compares them with the model and with the original phase samples |
-| `verify-tab-lens-map-g.png` | the same model on the measured tab-bar lens (only for the check) |
-| `lens-test.template.html` → `lens-test.html` | the test page (`?` nothing; standalone metas; drag / auto-drag / gratings / frame stats) |
+| `gen_lens_maps.py` | resamples a measured field (phase files) into the maps + filter + test page + `lens-field.json` |
+| `seg-map-{r,g,b}.png` | the field, 440×88 (2 px/pt), byte = 128 + u·255/32; one set for light and dark |
+| `lens-filter.svg` | `#seg-lens-warp`, maps inlined as data URIs (copy the `<svg>` into `index.html` before the scripts) |
+| `lens-field.json` | what the maps hold (sources, interior scales, peak, dark-vs-light) |
+| `verify_lens_maps.py` | decodes the maps and compares them with the resampled field and with every original phase sample |
+| `lens-test.template.html` → `lens-test.html` | the test page (standalone metas; drag / auto-drag / gratings / frame stats) |
+| `gen_seg_keys.py` → `seg-keys.css` | lift / release / commit / drag keyframes compiled from the native frame data (§5) |
 
-## 1 Sources (all renderer-output sampling of iOS 27.0's native lens, `~/Money/styl-work/remote-ref/`)
+## 1 Source: the native segmented lens's own field (data session, 2026-09-19)
 
-- `lens-refraction.md` §0/§2: interior displacement `u(s) = −0.18·s` in both axes ⇔ uniform magnification **1.22**
-  (`M = 1 / (1 − 0.18)`); §3: dispersion R vs B 1–2 pt only inside the band, no highlight ring, 1 pt bright / 1 pt dark
-  boundary lines (rim.json: +15…18 / −30 per 255 on a 128 grey); §4.2: the magnification reaches 1.20 at 100 ms and 1.22
-  from 150 ms while the band amount follows the 370 ms lift curve (§4.1).
-- `tools/lens/phase-lift-gx-{light,dark}.json`, rows ±20 pt from the lens centre, channels R/G/B, 1 pt steps: the x
-  displacement across the lifted tab-bar lens (presented 115.68×73.61). Only the RIGHT half (s ≥ 20) is used: the platter's
-  left end has no grating beyond s −46 and the σ 3 pt demodulation window reaches in to −37. Each profile's centre value
-  (its phase reference, ≈ +0.3 pt) is subtracted.
-- `tools/lens/phase-lift-gy-{light,dark}.json`, columns ±25, the y displacement; valid for |s| ≤ 27 (no grating above /
-  below the 62 pt platter; the window reaches 3 pt in) → the vertical band is seen only for d ≥ 10.
-- The horizontal profiles at rows ±20 keep displacing right up to s 57 = the rect edge (u −14 at s 56, row 20): the lifted
-  displacement shape at |y| = 20 reaches the full half-width, so the band is reduced with the straight-edge distance
-  `d = 57.84 − s`, not the DestOut layer's r 35 circle (which would put the boundary at 52.75 on that row).
+`~/Money/styl-work/remote-ref/seg-lens-refraction.md` §0/§2 and `tools/touch/seg-phase-{gx,gy}-{light,dark}.json` — renderer-output
+sampling on the system `UISegmentedControl` (iOS 27.0 simulator, lifted 220×44 r 22): a period-8 grating under the control, the
+lifted frame demodulated against a reference built from the lens's own outside row / column (`lens_phase.py`); `u` = content
+position − screen position (pt) at screen position `s`, per channel R/G/B, `amp` = demodulation amplitude. gx: rows −16 / −8 /
+0 / +8 / +16 pt from the lens centre (x displacement); gy: columns ±30 / ±50 / ±80 (y displacement). Light and dark are the same
+field (mean |Δ| 0.02 pt, max 0.47), one map set serves both.
 
-## 2 Model
+What the field says (unlike the tab-bar lens, which magnifies 1.22): **horizontally no magnification** (|s| ≤ 80: u within ±0.5,
+M 1.00), the ends within 24 pt bend to ±3.4 pt (M 0.84–0.88 then 1.2–1.5 in the outermost 4 pt) with a rainbow band (R−B up to
+3.6 pt); **vertically the content is squeezed to 0.82** (u = +0.22·s inside), the top / bottom 12 pt bend to ±3.4 (M 0.82 → 1.29)
+with a thin colour fringe (0.2–0.3 pt). The label copy inside the lens is **not** displaced (§2.3: width ×1.00–1.01, height ×1.00,
+centre 0) — the ContentLensingView's own displacement only reaches the portal's edges — so the label must sit in an unfiltered
+layer above the filtered copy. Layer amounts for reference: ClearGlass −17.5 / SDF height 11.2, ContentLensing −8.8 / 7.04
+(`seg-lift-material.md` §1); they are inside the measured composite and are not used as numbers here.
 
-`u(p) = −K·p + e_c(d, n̂)·n̂`, `K = 1 − 1/1.22 = 0.180`, p = position from the lens centre (pt, +x right, +y down),
-d = distance inside the capsule boundary along the outward unit normal n̂ (capsule 220×44, r 22), c = channel.
+## 2 Resampling (no analytic model)
 
-- **Interior**: the uniform magnification. In `#seg-lens-warp` it is NOT in the map — the content inside the lens carries
-  `zoom: 1.22` (a real resample); the map only holds the band. In `#seg-lens-warp-full` it is in the map.
-- **Band**: `e_c(d, n̂) = P_c(d · 22 / W(n̂))`, `W(n̂) = 22·|n_x| + 11·|n_y|`. `P_c` is the measured horizontal profile
-  (1 pt bins, `lens-field.json` → `edge_excess_pt_by_d`), G channel: 0 → −4.31, plateau −4.4…−4.75 for d 1–8, ramp to 0 by
-  d ≈ 23. Negative = the content shown comes from further inside; the slope of the ramp (−0.37/pt) is what makes M ≈ 2.2 at
-  d ≈ 10 (the measured peak 2.26). Outside the capsule (d < 0) u = 0.
-- **Band width** 22 pt along x is the table's own scale (onset s ≈ 36 on rows ±20). Along y the onset sits at d ≈ 13
-  (columns ±25: e = 0 for d ≥ 13, −0.15 at 12, −0.4 at 10, −0.65 at 9), which the same profile compressed 2× (W_Y = 11)
-  reproduces within 0.4 pt over the valid range d ≥ 10. The vertical band's inner part (d < 10) and the capsule ends
-  (normal in between, W blended by the normal's components) are **拟合替代** — no valid grating there / never measured.
-- **Dispersion**: `P_R` and `P_B` are the same reduction of the R / B channels: R lags G by up to 0.8 pt at d 12–16 and
-  B leads by up to 1.3 pt at d 2–4 (§3's "1–2 pt at 4–12 pt inside"). The three maps are otherwise identical.
-- **Not modelled**: the 1 pt bright / dark boundary lines (a `box-shadow` on the test page, `inset 0 0 0 1px rgb(255 255 255 /
-  .126)` + `0 0 0 1px rgb(0 0 0 / .23)` from rim.json's +16 / −30 on 128 grey); the time course — the maps are the steady state,
-  scale the filter's `scale` attribute with the §4.1 curve and the `zoom` with §4.2's; the 220×44 lens itself was never
-  measured (§5: "分段控件透镜没单独量") — the field is the tab-bar lens's, in absolute pt.
+Each profile is masked where `amp < 0.5·median` (platter ends) and, on the centre row, within |s| ≤ 20 (the 「早班」 glyph, §2.1);
+G is made odd-symmetric in s (u(−s) = −u(s)); R and B keep their measured offset from G (the chromatic offsets have an even part
+near the top / bottom rows that odd symmetry would cancel); gaps are filled linearly. `u_x(x, y)` interpolates between the measured
+rows by y, `u_y(x, y)` between the measured columns by x, clamped outside the sampled offsets (|y| > 16 uses row ±16, |x| > 80
+column ±80 — the capsule ends beyond the outermost column are the only extrapolated region); zero outside the capsule. A field
+measured on another lens size can be stretched by normalised coordinates (`--stretch`, placeholder use only).
 
 ## 3 Encoding and the filter
 
-`byte = 128 + round(u · 255 / S)`; x → R, y → G, B = 128, A = 255; u in pt = CSS px. Zero is byte 128 exactly in every
-channel (with `255·(.5 + u/S)` a 1e-3 residual rounds to 127 or 128 and the three channel maps disagree by one byte at
-scattered interior pixels — `feDisplacementMap` point-samples, so that paints colour fringes on every glyph edge). The
-browser decodes `S·(byte/255 − .5)` = u + S/510 pt, a constant 0.06 pt shared by all channels, invisible.
+`byte = 128 + round(u · 255 / S)`, S 32; x → R, y → G, B = 128, A = 255; zero is byte 128 exactly in every channel (with
+`255·(.5 + u/S)` a 1e-3 residual rounds to 127 or 128 per channel and the point sampler paints colour fringes on every glyph edge).
+The browser decodes `S·(byte/255 − .5)` = u + S/510, a constant 0.06 pt shared by all channels. `feDisplacementMap`:
+`P'(x,y) = P(x + scale·(R − .5), y + scale·(G − .5))`, scale in user units; the filter region is the element's own box (`x=0 y=0
+width=100% height=100%`) and each `feImage` is stretched to it (`preserveAspectRatio="none"`); `color-interpolation-filters="sRGB"`.
+Per-channel maps carry the dispersion: `feColorMatrix` isolates one channel of the source → `feDisplacementMap` with that channel's
+map → `feBlend lighten` merges the three (the ui session's pipeline). Apply to the OPAQUE copy of what lies under the lens; the
+interior scale (1.00 × 0.82) is in the field — no CSS zoom; the label copy goes in an unfiltered layer above. Animate the `scale`
+attribute 0 → 32 with the lift curve of `seg-keys.css` (§4.1 of seg-lens-refraction.md: every lens quantity shares that curve).
 
-`feDisplacementMap`: `P'(x,y) = P(x + scale·(R − .5), y + scale·(G − .5))`, `scale` in user units. The filter's region is the
-element's own box (`x="0" y="0" width="100%" height="100%"`, objectBoundingBox) and each `feImage` is stretched to it
-(`preserveAspectRatio="none"`), so the map's normalised coordinates follow the lens box as it grows; `scale` keeps the pt
-magnitudes. `color-interpolation-filters="sRGB"` is required (default linearRGB would gamma-decode the map bytes).
-
-Pipeline (the ui session's): `feColorMatrix` isolates one channel of the source → `feDisplacementMap` with that channel's map
-→ `feBlend mode="lighten"` merges the three (each carries zeros in the other channels). Apply to the lens-shaped element with
-an OPAQUE background; keep `zoom: 1.22` (not `transform: scale`) on the content inside — in Chrome a transformed child under an
-SVG filter paints channel-split fragments on glyph edges; `zoom` lays out at the larger size and the filter source is plain.
-Animate: `scale` attribute 0 → 32 with the lift progress, `zoom` 1 → 1.22 with the (earlier) magnification curve.
-
-Sizes: residual maps 3 × ~5 KB PNG (data URIs ≈ 20 KB in the filter), full maps 3 × ~28 KB.
-
-## 4 Check (`python3 verify_lens_maps.py`, 2026-09-19)
+## 4 Check (`python3 verify_lens_maps.py --field <gx>,<gy>`)
 
 ```
-A. lens-map-{r,g,b}.png 660×132 S 64: decoded − model max |Δ| = 0.125 pt   (one byte = 0.251)
-A. seg-map-{r,g,b}.png  440×88  S 32: decoded − model max |Δ| = 0.063 pt   (one byte = 0.125)
-B. model vs phase-lift-* G samples (tab-bar lens 115.68×73.61, centre offset removed):
-   interior (t ≥ 1):                    n=512  mean |Δ| 0.12 pt, ≤ 0.3 pt: 92 %, worst 1.12 (gx-dark row 20, s −9)
-   band, horizontal rows ±20 (t < 1):   n=64   mean |Δ| 0.14 pt, ≤ 0.3 pt: 91 %, worst 0.50 (gx-dark row 20, s 44)
-   band, vertical columns ±25 (d ≥ 10): n=24   mean |Δ| 0.36 pt, ≤ 0.3 pt: 54 %, worst 1.15 (gy-dark col −25, s −26)
+A. seg-map-r.png 440×88 S 32: decoded − resampled field max |Δ| = 0.063 pt (one byte = 0.125) OK
+A. seg-map-g.png 440×88 S 32: decoded − resampled field max |Δ| = 0.063 pt (one byte = 0.125) OK
+A. seg-map-b.png 440×88 S 32: decoded − resampled field max |Δ| = 0.063 pt (one byte = 0.125) OK
+B. decoded map vs the original phase samples (valid samples, all rows / columns / channels):
+   gx (x displacement, rows): n=3042 mean |Δ| 0.04 pt, median 0.03, ≤ 0.3 pt: 100 %, worst 0.73 at offset 16 B s=103 (sample +0.73, map +0.00)
+   gy (y displacement, columns): n=810 mean |Δ| 0.07 pt, median 0.05, ≤ 0.3 pt: 100 %, worst 0.32 at offset 80 R s=-21 (sample -1.31, map -1.63)
 ```
-A is the encoding round trip (≤ 0.3 pt everywhere). B is the fit: the horizontal band is the data itself (by construction), the
-vertical band is the 2× compression assumption, the interior residual is the profiles' own scatter (the four datasets differ
-by ±0.3 pt at the same point). Exit 1 if A exceeds 0.3 pt anywhere or the interior mean exceeds 0.3 pt.
+A = the encoding round trip; B = the decoded map against every valid original sample of every row / column / channel. The gx
+worst point is the boundary pixel at s 103 of row 16 (outside the capsule in the map, on it in the sample).
 
-## 5 Test page
+## 5 Kinematics: `gen_seg_keys.py` → `seg-keys.css`
 
-`lens-test.html` (also copied to `~/Money/styl-work/remote-mock/v4/lens-test.html`): a card with two text lines and the
-「早班 晚班」 control, a 220×44 lens over the selected segment holding a clone of the card. Drag it (pointer events,
-`touch-action: none`), or 「自动拖 2 s」 for a finger-free 60 Hz run; the readout gives the rAF frame interval (mean, max,
-frames > 20 ms), the active filter and the display mode. Buttons switch 边带贴图 + CSS 放大 (`#seg-lens-warp`, recommended) /
-全场贴图 (`#seg-lens-warp-full`) / 只放大 1.22 / 无, and lay a period-8 grating under the card (↔ / ↕) like the native
-measurement (`pattern gx 8`), so the bend can be compared with `tools/lens/lens-lift-{gx,gy}-light.png`. Headless Chrome
-440×956 @3x: the interior pitch under the lens is 29.3 device px for 24 outside (×1.22), the ends and the top / bottom
-bands bend with orange / blue fringes; to be confirmed on the simulator's Safari (standalone) by the data session — Safari
-runs `filter: url()` on the CPU, the frame numbers are what the readout shows there.
+The lens motion is compiled from the native per-frame data instead of hand-tuned curves. Inputs: `seg-lift-frames-light.json`
+(lenstrace of a press on the selected segment: lift + in-place release, seg-lens-refraction.md §4.1 / §4.3), `seg-native-abc-frames.json`
++ `touch-local.uiprobe-abc.json` (drag follow B, drop after the drag C), `seg-native-tap-frames.json` (commit after a tap D).
+Output: `<ms> <value>` key lists (tokens.css convention) + `linear()` easings + `@keyframes` for the size ratios:
 
-## 6 Regenerate
+- lift: starts down + 109 ms, 220×44 at + 359 ms (250 ms); w, h, DestOut r, the displacement amount (= filter `scale`) and the
+  platter fade all sit on one progress curve (w vs h differ ≤ 0.004, amount ≤ 0.012) → `--ios-touch-segment-lift-keys/-easing`
+  (+ `-w-keys`, `-h-keys`, `-warp-keys`, `-platter-keys`, `-destout-keys`)
+- release in place: geometry back from up + 31 to + 281 ms; displacement tail to + 581 ms; platter 0 → 1 by + 515 ms; DestOut fades
+  from + 215 ms → `--ios-touch-segment-release-*`
+- drag follow: a first-order lag τ 88 ms fits the lens centre with rms 10.4 pt, a damped spring ω 22 / ζ 0.95 with 7.1 pt; the lens
+  stretches (w up to 253) because its leading edge follows the finger faster (ω 21 / ζ 0.75, rms 6.4) than its trailing edge (ω 24 /
+  ζ 1.20, rms 10.5, overshoots to w 197.5 at the release) → `--ios-touch-segment-follow-*` (all fits, with the residuals)
+- drop after a drag: x from the release position to the target segment, w/h ratios, settled by up + 754 ms → `--ios-touch-segment-drop-*`
+- commit after a tap: moves up + 120 ms after the release, x overshoot 1.075 at + 569 ms (449 ms after the first move — tokens.css's
+  lens-x-keys has 1.075 at 476 ms on the same time base, mean |Δ| 4.8 pt of the 200-pt travel), w peak ×1.239 at + 285, h ×1.379 at
+  + 219 → `--ios-touch-segment-commit-*`
+
+Self-test: every key list re-evaluated at its source frames reproduces them within 0.05 pt (limit 0.5). A press on the selected
+segment then works as: lift keys → (drag: edge springs) → release keys or drop keys; a tap on the other segment: commit keys.
+
+## 6 Test page
+
+`lens-test.html` (also `~/Money/styl-work/remote-mock/v4/lens-test.html`): a card with two text lines and the 「早班 晚班」 control,
+a 220×44 lens over the selected segment holding the filtered copy of the card (labels hidden) and the unfiltered label copy above.
+Drag it (pointer events, `touch-action: none`) or 「自动拖 2 s」; the readout gives the rAF frame interval (mean, max, frames >
+20 ms), the active filter and the display mode. 「光栅 ↔ / ↕」 lay the period-8 grating under the card like the native measurement,
+to compare with `tools/touch/seg-lift-{gx,gy}-light.png`. Headless Chrome 440×956 @3x: the vertical grating is squeezed to 0.82
+inside with dense bands at the top / bottom, the horizontal grating keeps its pitch with rainbow ends — the same picture as the
+native captures. Safari standalone shots + frame numbers: data session.
+
+## 7 Regenerate
 
 ```
-cd web/assets/lens && python3 gen_lens_maps.py && python3 verify_lens_maps.py
+R=~/Money/styl-work/remote-ref/tools/touch
+cd web/assets/lens && python3 gen_lens_maps.py --field $R/seg-phase-gx-light.json,$R/seg-phase-gy-light.json --dark $R/seg-phase-gx-dark.json,$R/seg-phase-gy-dark.json
+python3 verify_lens_maps.py --field $R/seg-phase-gx-light.json,$R/seg-phase-gy-light.json
+python3 gen_seg_keys.py
 ```
