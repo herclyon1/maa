@@ -68,9 +68,12 @@ function ago(ts) {
 function setStatus(text, state) {
   $("#status").textContent = text;
   $("#dot").className = "dot" + (state ? " " + state : "");
-  // The device card on the 状态 tab shows the same line (the header's copy is hidden).
-  const s2 = $("#status2"), d2 = $("#dot2"), side = $("#side2");
-  if (s2) s2.textContent = text;
+  /* The status card on the 状态 tab (the header's copy is hidden): the first 「 · 」 splits the line — the head joins the name
+     (「游戏机 · 开机中」), the rest is the second line (「实时 · 配置是 1 分钟前的」); a line without 「 · 」 goes whole into the second line. */
+  const s2 = $("#status2"), d2 = $("#dot2"), n2 = $("#dname2"), side = $("#side2");
+  const i = text.indexOf(" · "), head = i > 0 ? text.slice(0, i) : "", rest = i > 0 ? text.slice(i + 3) : text;
+  if (n2) n2.textContent = `游戏机${DEMO ? "（演示）" : ""}${head ? " · " + head : ""}`;
+  if (s2) s2.textContent = rest;
   if (d2) d2.className = "dot" + (state ? " " + state : "");
   if (side) side.textContent = state === "on" ? "在线" : state === "off" ? "关机" : "";
 }
@@ -315,11 +318,12 @@ function render() {
   const ef = relay["刷声骸"] || {};
   /* 设备卡（查找的结构）：名字 + 一行状态；右边一个词。状态文字由 setStatus 同步。 */
   /* 设备行（46 Apple 账户页的值行：名字左、状态右灰字）。id 不变：setStatus 写 #status2/#dot2/#side2。 */
-  html += `<section><div class="group devcard">
-    <div class="dtext"><div class="dname">游戏机${DEMO ? " · 演示数据" : ""}</div>
-      <div class="dsub"><i class="dot" id="dot2"></i><span id="status2">${$("#status") ? $("#status").textContent : "正在读取…"}</span></div></div>
-    <span class="dside" id="side2"></span>
-  </div></section>`;
+  /* 状态卡：两行行——点 + 「游戏机 · 开机中」 / 「实时 · 配置是 1 分钟前的」（index.html .devcard 写了来源）；文字由 setStatus 拆分同步。 */
+  { const st = $("#status") ? $("#status").textContent : "正在读取…", dotCls = $("#dot") ? $("#dot").className : "dot";
+    const i = st.indexOf(" · "), head = i > 0 ? st.slice(0, i) : "", rest = i > 0 ? st.slice(i + 3) : st;
+    html += `<section><div class="group devcard"><i class="${dotCls}" id="dot2"></i>
+      <div class="dtext"><div class="dname" id="dname2">游戏机${DEMO ? "（演示）" : ""}${head ? " · " + head : ""}</div><div class="dsub" id="status2">${rest}</div></div>
+      <span class="dside" id="side2"></span></div></section>`; }
   /* 提示卡（健康摘要的样式）：只在有事时出现。「现在在跑」只在机器真的在线时说——
      机器关了以后快照里还留着最后一趟的名字，09-15 10:58 页面一边写「关机中」一边写
      「现在在跑 MaaEnd」。 */

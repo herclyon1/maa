@@ -225,16 +225,20 @@
   /* ---- 状态页的三种块（docs/PHONE-NATIVE-REFERENCES.md） ---- */
   header .sub{display:none}                       /* the device card carries the status line */
   /* Device card: Find My › Devices › the device's card - icon, name, status line, a word at the right. */
-  .group.devcard{display:flex;align-items:center;gap:var(--ios-value-gap);padding:0 var(--ios-row-text-x);min-height:var(--ios-row-h)}   /* 值行 53.33 ← AX45/AX46；形取 46 Apple 账户页 */
-  .dico{display:none}                                                          /* 46 的设备行没有图标 */
-  .dtext{flex:1 1 auto;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:var(--ios-value-gap)}
-  .dname{font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:400}
-  .dsub{display:flex;align-items:center;gap:var(--ios-value-gap);color:var(--dim);font-size:var(--ios-body-size);line-height:var(--ios-body-lh);text-align:right}   /* 右灰值 secondaryLabel ← 探针 */
+  /* 2026-09-19 排版项：状态卡改成两行行（AX-13 通知卡「彩色符号 + 说明」的形，几何取设置两行行 AX-33d / AX-35：标题 17 顶 +9、副题 15 顶 +32.33、行 62）——
+     第一行 状态点 + 「游戏机 · 开机中」不换行，第二行 「实时 · 配置是 1 分钟前的」secondaryLabel 左对齐、按段落自然换行（13 的说明就是这样换行）。
+     之前是值行（名字左、状态右）：两段都长时挤成两列各两行，iOS 值行从不让标题换行。 */
+  .group.devcard{display:flex;align-items:flex-start;gap:var(--ios-value-gap);padding:var(--ios-row2-title-top) var(--ios-row-text-x) calc(var(--ios-row2-h) - var(--ios-row2-sub-top) - var(--ios-sub-lh)) var(--ios-row-text-x);min-height:var(--ios-row2-h);box-sizing:border-box}   /* 行 62、标题顶 +9、副题顶 +32.33 → 底 11.67 ← --ios-row2-*（AX-35）；点到字 8 ← --ios-value-gap */
+  .dico{display:none}
+  .dtext{flex:1 1 auto;min-width:0;display:block}
+  .dname{font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:400;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 「游戏机 · 开机中」Regular 17 labelColor，不换行、尾部省略 */
+  .dsub{margin-top:calc(var(--ios-row2-sub-top) - var(--ios-row2-title-top) - var(--ios-body-lh));color:var(--dim);font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);text-align:left}   /* 副题 Regular 15/18 secondaryLabel（验收定），顶 = 32.33 ← AX-35 */
+  .devcard > .dot{margin-top:calc((var(--ios-body-lh) - var(--ios-status-dot)) / 2)}   /* 点与第一行文字居中对齐 */
   /* 在线/离线点（老页绿点）：直径 11 = 信息会话列表的未读点 UnreadIndicatorImageView ← AX-58（--ios-status-dot）；
      在线 --ios-green、离线/未知 tertiaryLabel ← 探针；点到字的距离 = 值行的 --ios-value-gap 8 ← AX */
-  .dsub .dot{display:inline-block;width:var(--ios-status-dot);height:var(--ios-status-dot);border-radius:50%;background:var(--ios-tertiary-label);flex:none}
-  .dsub .dot.on{background:var(--ios-green)}
-  .dsub .dot.off{background:var(--ios-tertiary-label)}
+  .devcard .dot{display:inline-block;width:var(--ios-status-dot);height:var(--ios-status-dot);border-radius:50%;background:var(--ios-tertiary-label);flex:none}
+  .devcard .dot.on{background:var(--ios-green)}
+  .devcard .dot.off{background:var(--ios-tertiary-label)}
   .dside{display:none}
   section + section > .group.devcard:first-child{margin-top:0}
   /* Notice card: Health › 摘要 (measured on the simulator: inset 16, caption 13 with a
@@ -275,13 +279,14 @@
   .group{background:var(--card);border-radius:var(--r);overflow:hidden}
   .group:not(.devcard):not(.notice):not(.tiles):not(.nums) > *:not(.row):not(.acts):not(pre):not(.setup):not(.warn):not(.hint):not(.group-foot){padding:11px 20px}   /* .nums 的磁贴有自己的内距（提醒事项原值），不吃这条 */
   /* Rows: name left, control right, hairline inset to the text like UITableView. */
-  .row{position:relative;display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px var(--ios-value-gap);padding:calc((var(--ios-row-h) - var(--ios-body-lh))/2) var(--ios-switch-inset) calc((var(--ios-row-h) - var(--ios-body-lh))/2) var(--ios-row-text-x);min-height:var(--ios-row-h)}   /* 行 53.33、文字 x 20、开关右内缩 18、行框 20.33 ← 探针/AX45 */
+  .row{position:relative;display:flex;flex-direction:row;flex-wrap:nowrap;align-items:center;gap:6px var(--ios-value-gap);padding:calc((var(--ios-row-h) - var(--ios-body-lh))/2) var(--ios-switch-inset) calc((var(--ios-row-h) - var(--ios-body-lh))/2) var(--ios-row-text-x);min-height:var(--ios-row-h)}   /* 行 53.33、文字 x 20、开关右内缩 18、行框 20.33 ← 探针/AX45；2026-09-19 起不折行：标题长了省略，值不掉到第二行（设置的值行永远一行） */
   /* One device pixel, like UITableView's hairline (1/scale pt): a 1px box scaled to a third. */
   .row::after{content:"";position:absolute;left:var(--ios-separator-inset-l);right:var(--ios-separator-inset-r);bottom:0;height:var(--ios-separator-h);background:var(--line)}   /* 分隔线 1.0 pt (60,60,67).12，内缩 20/20 ← 探针 */
   .row:last-child::after,.group > :last-child.row::after{display:none}
   .row:has(> .sw):active,.row:has(select):active{background:color-mix(in srgb, var(--ink) 6%, var(--card))}
-  .row > label{flex:1 1 0;min-width:40%;font-size:var(--ios-body-size);line-height:var(--ios-body-lh)}
-  .row > :not(label){flex:0 0 auto;max-width:48%}
+  .row > label{flex:1 1 auto;min-width:40%;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 2026-09-19：标题一行到底、尾部省略——设置的值行标题从不换行（AX-41 / AX-46 全部单行） */
+  .row > :not(label){flex:0 1 auto;min-width:0;max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 值最多 60 %，先省略值再省略标题（标题保底 40 %） */
+  .row > .sw,.row > input,.row > select,.row > .sf,.row > .chev{overflow:visible;flex-shrink:0}
   .row:has(.pills),.row:has(.picks),.row:has(.pillbox),
   .row:has(pre){flex-direction:column;align-items:stretch;gap:8px}
   .row:has(.pills) > :not(label),.row:has(.picks) > :not(label),.row:has(.pillbox) > :not(label){max-width:none;align-self:flex-end}
@@ -367,7 +372,7 @@
      rows 42 high, 17pt regular, label 50 from the left edge (the leading 22pt symbol
      slot holds the checkmark of the chosen row), 5 above and below, corner 26, glass. */
   main select.native{display:none}
-  .menubtn{display:inline-flex;align-items:center;gap:0;max-width:100%;height:22px;padding:0 20px 0 0;border:0;border-radius:0;
+  .menubtn{display:inline-block;vertical-align:middle;max-width:100%;height:22px;padding:0 20px 0 0;border:0;border-radius:0;   /* inline-block（不是 inline-flex）：值长了才会真的尾部省略，chevron 底图留在右侧 20 里 */
         background:transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='18' viewBox='0 0 12 18'%3E%3Cpath d='M2 7l4-4 4 4M2 11l4 4 4-4' fill='none' stroke='%238e8e93' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right center;
         color:var(--dim);font:inherit;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);text-align:right;box-shadow:none;cursor:pointer;
         white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

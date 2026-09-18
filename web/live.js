@@ -149,7 +149,7 @@ function updateLive() {
   wasAlive = !!alive;
   if (alive) {
     setStatus(`开机中 · ${hbEvery > 60 ? `每 ${Math.round(hbEvery / 60)} 分钟报一次` : "实时"}`
-              + (snap ? `（配置是 ${ago(snap.at)}的）` : ""), "on");
+              + (snap ? ` · 配置是 ${ago(snap.at)}的` : ""), "on");   // 「 · 」分隔：状态卡第二行 = 「实时 · 配置是 1 分钟前的」
   } else if (Date.now() < pendingUntil) {
     setStatus("正在确认是否在线…", "");
   } else if (offline()) {

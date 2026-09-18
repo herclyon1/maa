@@ -128,8 +128,17 @@
     /* 2026-09-18: the device card is a Settings value row (46 Apple 账户页), no icon. */
     const dev = document.querySelector(".devcard");
     if (dev) {
-      num("设备行高 ≥ 53.33（--ios-row-h）", 53.33, Math.min(dev.getBoundingClientRect().height, 53.33)); const s2 = dev.querySelector(".dsub"); if (s2) col("设备行右灰值 secondaryLabel（--ios-secondary-label）", T.dim, cs(s2).color);
-      const dot = dev.querySelector(".dot"); if (dot) { num("设备行状态点 11（--ios-status-dot，AX-58 信息未读点）", 11, dot.getBoundingClientRect().width); num("状态点到字 8（--ios-value-gap）", 8, px(cs(s2).columnGap)); }
+      /* 2026-09-19 layout item: a two-line row (AX-35 geometry) — dot + 「游戏机 · 开机中」 single line, the detail below in secondaryLabel */
+      num("状态卡 = 两行行 62 起（--ios-row2-h，AX-35）", 62, Math.min(dev.getBoundingClientRect().height, 62)); const s2 = dev.querySelector(".dsub"), n2 = dev.querySelector(".dname");
+      if (s2) { col("状态卡第二行 secondaryLabel（--ios-secondary-label）", T.dim, cs(s2).color); num("状态卡第二行 15/18（--ios-sub-size/-lh）", 15, px(cs(s2).fontSize)); check("状态卡第二行左对齐、可换行", "left normal", `${cs(s2).textAlign} ${cs(s2).whiteSpace}`, cs(s2).textAlign === "left" && cs(s2).whiteSpace === "normal"); }
+      if (n2) { check("状态卡第一行不换行、尾部省略", "nowrap ellipsis", `${cs(n2).whiteSpace} ${cs(n2).textOverflow}`, cs(n2).whiteSpace === "nowrap" && cs(n2).textOverflow === "ellipsis");
+        num("状态卡第一行顶 = 卡顶 + 9（--ios-row2-title-top，AX-35）", 9, n2.getBoundingClientRect().top - dev.getBoundingClientRect().top, 0.5);
+        if (s2) num("状态卡第二行顶 = 卡顶 + 32.33（--ios-row2-sub-top，AX-35）", 32.33, s2.getBoundingClientRect().top - dev.getBoundingClientRect().top, 0.5);
+        check("状态卡第一行 = 「游戏机 · <状态>」", "游戏机 · …", n2.textContent, /^游戏机/.test(n2.textContent)); }
+      const dot = dev.querySelector(".dot"); if (dot && n2) { num("状态点 11（--ios-status-dot，AX-58 信息未读点）", 11, dot.getBoundingClientRect().width); num("状态点到字 8（--ios-value-gap）", 8, n2.getBoundingClientRect().left - dot.getBoundingClientRect().right);
+        num("状态点与第一行文字居中", 0, (dot.getBoundingClientRect().top + dot.getBoundingClientRect().height / 2) - (n2.getBoundingClientRect().top + n2.getBoundingClientRect().height / 2), 0.5); }
+      /* site-wide: value rows keep the title on one line and ellipsise the value (Settings AX-41 / AX-46: every title and value single-line) */
+      { const lab = document.querySelector("#app .row > label"); if (lab) check("值行标题不换行、尾部省略（全站）", "nowrap ellipsis", `${cs(lab).whiteSpace} ${cs(lab).textOverflow}`, cs(lab).whiteSpace === "nowrap" && cs(lab).textOverflow === "ellipsis"); }
     }
     /* Segmented control (状态 tab, 早班/晚班; 34 屏幕时间) */
     const segc = document.querySelector(".segctl");
