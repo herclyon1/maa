@@ -20,6 +20,16 @@ field measured on another lens size by normalised coordinates (placeholder use o
 
 Encoding (feDisplacementMap): byte = 128 + round(u·255/S); x → R, y → G, B 128, A 255; zero = byte 128 exactly in all channels.
 The browser decodes S·(byte/255 − .5) = u + S/510 (a constant 0.06 pt shared by every channel).
+
+--formula (2026-09-19, the default deliverable): the maps are COMPUTED from the decompiled QuartzCore shader formulas with the
+probe's original parameters — no measured field goes into a map; the measured fields (seg-phase-*.json) are only compared against
+the result (README §1d, lens-field.json). One map serves all three channels (no dispersion: the colour fringe is a separate
+glassForeground aberration term, not in the displacement maps). A set of maps per lens width (196 … 256 step 2) for the drag stretch.
+
+  python3 gen_lens_maps.py --formula --series 196:256:2 [--frames <drag lens frames json,…>] [--verify-bg <gx.json,gy.json>[;…]]
+      [--verify-label-lift <gx,gy>] [--verify-label-drag <gx,gy,gy-ends>] [--verify-label-mid244 <gx6,gy>] [--out .]
+      → seg-f-bg-<w>.png, seg-f-lab-<w>.png, lens-filter.svg (#seg-lens-f-bg-<w>, #seg-lens-f-lab-<w>; feImage href = files),
+        lens-field.json (parameters + sources + the width → height table + residuals), lens-test.html
 """
 import argparse, base64, json, math, os, statistics, struct, zlib
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -173,6 +183,177 @@ def field_at(F, x, y, chan, hw, hh, stretch, gain=1.0, band=1.0):
     uy = interp_offsets(F["cols"], chan, x * kx, y * ky) / ky
     return ux * gain, uy * gain
 
+# ---------- formula (decompiled): QuartzCore default.metallib, remote-ref/glass-displacement-formula.md ----------
+# Sources of every number below: glass-displacement-formula.md §1 (UberShader::sdf_glass_displacement — the CASDFGlassDisplacementEffect
+# map), §2 (displacement_map_lpf: sampling offset = inputAmount × D, amount in layer pt), §3 (glass_background_base: inner refraction
+# with the same quarter-circle profile; compute_sdf_with_mode: d = shape SDF, gradient ovalization g = normalize(mix(box normal,
+# normalize((x, hw·y/hh)), w))); the layer parameters are the probe's in-process readings, seg-lens-refraction.md §1b (A9):
+# BackdropView displacementMap +9 / SDF height 36 / element = lens bounds, cornerRadii 22, gradientOvalization 0.5 / effectOffset 0 /
+# maskOffset 0 / curvature 1 / angle 0; ClearGlass −17.5 / 11.2 (same element values); ContentLensing −8.8 / 7.04; glassBackground
+# inner refraction −6.6 / height 4.4 (seg-lift-material.md §2, glass-displacement-formula.md §4).
+try:
+    import numpy as np
+    from scipy.ndimage import gaussian_filter1d
+except ImportError:  # the measured-resampling mode does not need numpy / scipy
+    np = gaussian_filter1d = None
+
+def capsule_sdf(x, y, hw, hh, r):
+    """rounded-rectangle SDF (negative inside; r = hh → capsule) and its outward unit normal ('box normal': axis-aligned on the straight
+    sides, radial from the corner centre in the corner zones). compute_sdf_with_mode's supercircle degenerates to this rounded
+    rectangle for r = h/2 (glass-displacement-formula.md §3)."""
+    qx = np.abs(x) - (hw - r); qy = np.abs(y) - (hh - r)
+    ox = np.maximum(qx, 0); oy = np.maximum(qy, 0)
+    d = np.hypot(ox, oy) + np.minimum(np.maximum(qx, qy), 0) - r
+    nx = np.where(qx > 0, ox, 0.0) * np.sign(x); ny = np.where(qy > 0, oy, 0.0) * np.sign(y)
+    inside = (qx <= 0) & (qy <= 0)
+    nx = np.where(inside, np.where(qx > qy, np.sign(x), 0.0), nx); ny = np.where(inside, np.where(qx > qy, 0.0, np.sign(y)), ny)
+    n = np.hypot(nx, ny); n = np.where(n == 0, 1.0, n)
+    return d, nx / n, ny / n
+
+def ovalized_gradient(x, y, nx, ny, hw, hh, w):
+    """compute_sdf_with_mode (formula.md §3): g = normalize(mix(box normal, normalize((x, hw·y/hh)), w)); w = CASDFElementLayer
+    .gradientOvalization (0.5 on the lens elements, A9 表 1 #13 / #19)"""
+    rx = x; ry = hw * y / hh; rn = np.hypot(rx, ry); rn = np.where(rn == 0, 1.0, rn); rx, ry = rx / rn, ry / rn
+    gx = nx + (rx - nx) * w; gy = ny + (ry - ny) * w; gn = np.hypot(gx, gy); gn = np.where(gn == 0, 1.0, gn)
+    return gx / gn, gy / gn
+
+def one_minus_p(t, curvature):
+    """sdf_glass_displacement (formula.md §1): t = saturate(−e/H); P = mix(t < 1 ? 1 − 0.2929 : 1, sqrt(1 − (1 − t)²), curvature);
+    the map carries dir × (1 − P) — 1 at the edge, 0 at depth H (curvature 1: a quarter-circle profile)"""
+    t = np.clip(t, 0, 1); circ = np.sqrt(np.clip(1 - (1 - t) ** 2, 0, 1)); flat = np.where(t < 1, 1 - 0.2929, 1.0)
+    return 1 - (flat + (circ - flat) * curvature)
+
+def layer_disp(x, y, layer):
+    """sampling offset (pt) of one displacement layer at (x, y): amount × R(angle)·g × (1 − P(t)), t = saturate(−(d + effectOffset)/H).
+    layer = {amount, height, shape: (hw, hh, r), oval, curvature, effect_offset, angle}. Outside the shape (d > 0) t = 0 and the
+    shader still writes dir × 1 (its coverage channel, not the vector, removes those pixels) — kept as is: the lens clip does the same."""
+    hw, hh, r = layer["shape"]
+    d, nx, ny = capsule_sdf(x, y, hw, hh, r); gx, gy = ovalized_gradient(x, y, nx, ny, hw, hh, layer["oval"])
+    if layer.get("angle", 0.0):
+        c, s_ = math.cos(layer["angle"]), math.sin(layer["angle"]); gx, gy = gx * c - gy * s_, gx * s_ + gy * c
+    e = d + layer.get("effect_offset", 0.0); t = np.clip(-e / layer["height"], 0, 1)
+    amp = layer["amount"] * one_minus_p(t, layer.get("curvature", 1.0))
+    return amp * gx, amp * gy, d
+
+def compose_layers(x, y, layers):
+    """total sampling offset u(p) of a stack: layers in SAMPLING order (the first entry is the layer on top, which samples first):
+    u = Δ₁(p) + Δ₂(p + Δ₁(p)) + …  (content shown at p lies at p + u)"""
+    px, py = np.array(x, float), np.array(y, float)
+    for L in layers:
+        dx, dy, _ = layer_disp(px, py, L); px = px + dx; py = py + dy
+    return px - np.array(x, float), py - np.array(y, float)
+
+def coverage(d, px_per_pt):
+    """the map's third channel (formula.md §1: mask = saturate(ne / fwidth + 0.5), 0 beyond 5 px outside): anti-aliased shape coverage"""
+    fw = 1.0 / px_per_pt
+    return np.clip(-d / fw + 0.5, 0, 1)
+
+def render_formula(path, w_pt, h_pt, layers, px, scale, margin=0.0):
+    """rasterise the composite field of `layers` (sampling order) on the (w + 2·margin) × (h + 2·margin) pt box with the lens centred,
+    at px pixels per pt: R = u_x, G = u_y (byte = 128 + round(u·255/scale)), B = coverage of the first layer's shape, A 255. The
+    margin is the filtered layer's extension beyond the lens (README §0.3): the map covers that whole layer, no feImage subregion"""
+    w, h = int(round((w_pt + 2 * margin) * px)), int(round((h_pt + 2 * margin) * px))
+    xs = (np.arange(w) + 0.5) / px - w_pt / 2 - margin; ys = (np.arange(h) + 0.5) / px - h_pt / 2 - margin
+    X, Y = np.meshgrid(xs, ys)
+    hw, hh, r = layers[0]["shape"]; d, nx, ny = capsule_sdf(X, Y, hw, hh, r); cov = coverage(d, px)
+    # outside the shape (the margin, which the lens clips away; the shader's coverage channel is 0 there) the field is continued
+    # from the nearest boundary point: the stacked amounts would otherwise exceed the encodable range there, and a constant
+    # continuation keeps the PNGs small and the lens's anti-aliased boundary pixels sampling like the boundary itself
+    out = d > 0; Xe = np.where(out, X - d * nx, X); Ye = np.where(out, Y - d * ny, Y)
+    ux, uy = compose_layers(Xe, Ye, layers)
+    peak = float(max(np.abs(ux).max(), np.abs(uy).max()))
+    if peak > scale / 2: raise ValueError(f"displacement {peak:.2f} pt does not fit scale {scale}")
+    R = np.clip(np.rint(128 + ux * 255 / scale), 0, 255).astype(np.uint8); G = np.clip(np.rint(128 + uy * 255 / scale), 0, 255).astype(np.uint8)
+    B = np.rint(cov * 255).astype(np.uint8); A = np.full_like(R, 255)
+    rows = [bytes(np.stack([R[j], G[j], B[j], A[j]], axis=1).reshape(-1)) for j in range(h)]
+    write_png(path, w, h, rows); return w, h, peak
+
+def lens_shape(w, h, r_max=22.0):
+    """(hw, hh, r): the lens capsule; r = min(22, h/2): DestOut cornerRadius stays 22 through the drag (uiprobe-motion-segdragmid
+    lenstrace), CoreAnimation clamps a radius above h/2"""
+    return (w / 2, h / 2, min(r_max, h / 2))
+
+def drag_frames(paths):
+    """(w, h) of the lifted lens in every recorded DRAG frame: seg-native-abc-frames.json (phase 'drag', _UILiquidLensView#0) and
+    uiprobe-motion-segdragmid-*.json (lenstrace entries between the lift settling at 220×44 and the release)"""
+    pts = []
+    for p in paths:
+        d = json.load(open(p))
+        if "frames" in d:
+            for f in d["frames"]:
+                if f.get("phase") != "drag": continue
+                for l in f["lens"]:
+                    if l["view"].endswith("#0") and l["alpha"] > 0: pts.append((float(l["rect"][2]), float(l["rect"][3]), os.path.basename(p)))
+        elif "entries" in d:
+            ent = [e for e in d["entries"] if e.get("kind") == "lenstrace"]; started = False
+            for e in ent:
+                r = e["lensPres"]
+                if not started and abs(r[2] - 220) < 0.05 and abs(r[3] - 44) < 0.05: started = True; continue
+                if started:
+                    if e.get("destOut.cornerRadius", 22) < 21.99: break          # the release shrinks DestOut's radius: end of the drag
+                    if abs(r[2] - 220) < 0.05 and abs(r[3] - 44) < 0.05: continue
+                    pts.append((float(r[2]), float(r[3]), os.path.basename(p)))
+    return sorted(pts)
+
+def height_for_width(pts, w):
+    """lens height at width w from the recorded drag frames: linear between the nearest recorded frame below and above; outside the
+    recorded range the nearest frame's height (flagged 'clamped' — 采样替代)"""
+    below = [p for p in pts if p[0] <= w]; above = [p for p in pts if p[0] >= w]
+    if not below: return above[0][1], "clamped", [above[0]]
+    if not above: return below[-1][1], "clamped", [below[-1]]
+    a, b = below[-1], above[0]
+    if b[0] == a[0]: return a[1], "frame", [a]
+    return a[1] + (b[1] - a[1]) * (w - a[0]) / (b[0] - a[0]), "between frames", [a, b]
+
+def filter_formula(fid, href, w, h, scale, margin, note):
+    """one feDisplacementMap on SourceGraphic. The filter region is the element's own box (objectBoundingBox 0/0/100%/100%) and the
+    map fills it: the filtered layer must be the lens box EXTENDED by `margin` pt on every side (w+2m × h+2m, overflow hidden, the
+    lens capsule clips it) — that is what the map is rasterised for — so the outward sampling at the edges reads the copy beyond
+    the lens instead of transparent (README §0.3). No userSpaceOnUse region / feImage subregion: WebKit renders nothing with them."""
+    return "\n".join([f'  <filter id="{fid}" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">',
+                      f"    <!-- {note}; apply to the layer of {w + 2 * margin:g}×{h + 2 * margin:g} pt = the lens {w:g}×{h:g} plus {margin:g} pt on every side -->",
+                      f'    <feImage href="{href}" preserveAspectRatio="none" result="map"/>',
+                      f'    <feDisplacementMap in="SourceGraphic" in2="map" scale="{scale:g}" xChannelSelector="R" yChannelSelector="G"/>',
+                      "  </filter>"])
+
+def parse_layers(spec, w, h, portal=None):
+    """'amount/height/oval/shape,…' in sampling order; shape = lens | portal (196×28 r0)"""
+    out = []
+    for part in spec.split(","):
+        amount, height, oval, shape = part.split("/")
+        shp = lens_shape(w, h) if shape == "lens" else (portal[0] / 2, portal[1] / 2, 0.0)
+        out.append({"amount": float(amount), "height": float(height), "oval": float(oval), "shape": shp, "shape_name": shape, "curvature": 1.0, "effect_offset": 0.0, "angle": 0.0})
+    return out
+
+def verify_against(path, layers_for, depth_min=3.0, sigma=3.0, tol=0.3, glyph_rows=False, region=None):
+    """compare the formula's composite field with one measured phase file (lens_phase.py format) the way the old page's validate2.py
+    does: prediction along the profile, centre value removed (the measurement's unwrap pins u(centre) ≈ 0), Gaussian σ 3 pt (the
+    demodulation's own smoothing), points at depth ≥ 3 pt from the lens edge (the phase folds in the last 3 pt); a sample counts
+    where its demodulation amplitude is ≥ AMP_FLOOR × the profile's median. layers_for(w, h) builds the stack for the file's lens.
+    region: optional (hx, hy) — report the residual inside |x| ≤ hx, |y| ≤ hy as well."""
+    d = json.load(open(path)); axis = d["axis"]; lw, lh = float(d["lens"][2]), float(d["lens"][3]); hw, hh, r = lens_shape(lw, lh)
+    layers = layers_for(lw, lh); rows = []; over = []
+    for off, chans in d["profiles"].items():
+        off = float(off); p = chans["G"]; s = np.array(p["s"], float); u = np.array(p["u"], float); amp = np.array(p["amp"], float)
+        x, y = (s, np.full_like(s, off)) if axis == "x" else (np.full_like(s, off), s)
+        ux, uy = compose_layers(x, y, layers); pred = ux if axis == "x" else uy
+        ic = int(np.argmin(np.abs(s))); pred = pred - pred[ic]
+        step = float(s[1] - s[0]) if len(s) > 1 else 1.0; ps = gaussian_filter1d(pred, sigma / step)
+        dd, _, _ = capsule_sdf(x, y, hw, hh, r); depth = -dd
+        m = depth >= depth_min; med = float(np.median(amp)); m &= amp >= AMP_FLOOR[0] * med
+        if glyph_rows and abs(off) < GLYPH_ROW: m &= np.abs(s) > GLYPH_HALF
+        res = ps - u
+        if not m.any(): continue
+        rms = float(np.sqrt(np.mean(res[m] ** 2))); i = int(np.argmax(np.where(m, np.abs(res), -1)))
+        row = {"offset": off, "n": int(m.sum()), "rms": round(rms, 3), "max": round(float(abs(res[i])), 3), "max_at_s": float(s[i])}
+        if region:
+            rm = m & (np.abs(x) <= region[0]) & (np.abs(y) <= region[1])
+            if rm.any(): row["inside_rms"] = round(float(np.sqrt(np.mean(res[rm] ** 2))), 3); row["inside_max"] = round(float(np.abs(res[rm]).max()), 3); row["inside_n"] = int(rm.sum())
+        rows.append(row)
+        for k in np.where(m & (np.abs(res) > tol))[0]: over.append({"offset": off, "s": float(s[k]), "measured": round(float(u[k]), 2), "formula": round(float(ps[k]), 2), "residual": round(float(res[k]), 2)})
+    return {"file": os.path.basename(path), "lens": [lw, lh], "axis": axis, "rows": rows, "over_tol": over,
+            "rms_all": round(float(np.sqrt(np.mean([r["rms"] ** 2 for r in rows]))), 3) if rows else None, "max_all": max((r["max"] for r in rows), default=None)}
+
 # ---------- maps ----------
 def encode(u, scale):
     v = 128 + int(round(u * 255 / scale))
@@ -203,9 +384,25 @@ def png_rows(path):
     return w, h, rows
 
 def write_png(path, w, h, rows):
-    raw = b"".join(b"\x00" + bytes(r) for r in rows)
+    """8-bit RGBA; the smallest of the PNG row filters None / Sub / Up / Paeth (the fields are smooth: Sub or Up halves the size)"""
+    def filt(t):
+        out = b""; prev = bytes(w * 4)
+        for r in rows:
+            r = bytes(r)
+            if t == 0: line = r
+            elif t == 1: line = bytes((r[i] - (r[i - 4] if i >= 4 else 0)) & 255 for i in range(len(r)))
+            elif t == 2: line = bytes((r[i] - prev[i]) & 255 for i in range(len(r)))
+            else:
+                def pred(i):
+                    a_ = r[i - 4] if i >= 4 else 0; b_ = prev[i]; c_ = prev[i - 4] if i >= 4 else 0; p_ = a_ + b_ - c_
+                    pa, pb, pc = abs(p_ - a_), abs(p_ - b_), abs(p_ - c_)
+                    return a_ if pa <= pb and pa <= pc else b_ if pb <= pc else c_
+                line = bytes((r[i] - pred(i)) & 255 for i in range(len(r)))
+            out += bytes((t,)) + line; prev = r
+        return zlib.compress(out, 9)
+    idat = min((filt(t) for t in (0, 1, 2, 4)), key=len)
     def chunk(t, d): return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
-    open(path, "wb").write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
+    open(path, "wb").write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0)) + chunk(b"IDAT", idat) + chunk(b"IEND", b""))
 
 def render(path, F, chan, wpt, hpt, px, scale, stretch, gain, band=1.0, portal=None):
     w, h = int(round(wpt * px)), int(round(hpt * px)); rows = []; peak = 0.0
@@ -233,9 +430,20 @@ def filter_rgb(fid, maps, scale, note):
     out += ['    <feBlend in="dR" in2="dG" mode="lighten" result="dRG"/>', '    <feBlend in="dRG" in2="dB" mode="lighten"/>', "  </filter>"]
     return "\n".join(out)
 
-def main():
+def build_parser():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--field", required=True, help="<gx.json>,<gy.json> the measured composite field")
+    ap.add_argument("--field", help="<gx.json>,<gy.json> the measured composite field (measured-resampling mode; verification input with --formula)")
+    ap.add_argument("--formula", action="store_true", help="compute the maps from the decompiled shader formulas (README §1d); the --verify-* files are only compared against")
+    ap.add_argument("--bg-layers", default="-6.6/4.4/0.5/lens,9/36/0.5/lens", help="backdrop stack in sampling order, amount/height/ovalization/shape: glass_background inner refraction −6.6 / 4.4 (sampled first) then BackdropView +9 / 36, both on the lens capsule, ovalization 0.5")
+    ap.add_argument("--label-layers", default="-17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens", help="label-copy stack in sampling order: ClearGlass −17.5 / 11.2 then ContentLensing −8.8 / 7.04, both on the lens capsule")
+    ap.add_argument("--series", default="196:256:2", help="lens widths lo:hi:step for the drag-stretch sets (each set's height from --frames)")
+    ap.add_argument("--frames", help="recorded drag lens frames: seg-native-abc-frames.json,uiprobe-motion-segdragmid-light.json (width → height)")
+    ap.add_argument("--href-prefix", default="assets/lens/", help="path of the map files as index.html sees them (lens-filter.svg); lens-test.html uses bare file names")
+    ap.add_argument("--margin", type=float, default=10.0, help="the filtered layer's extension (pt) beyond the lens on every side; the maps cover lens + margin: the outward sampling at the edges (up to 9 pt) must read the copy beyond the lens")
+    ap.add_argument("--verify-bg", help="measured backdrop fields to compare: gx.json,gy.json[;gx2.json,gy2.json…]")
+    ap.add_argument("--verify-label-lift", help="measured label-portal fields, lifted at rest: gx.json,gy.json")
+    ap.add_argument("--verify-label-drag", help="measured label-portal fields, dragged to the divider: gx.json,gy.json,gy-ends.json")
+    ap.add_argument("--verify-label-mid244", help="measured label-portal fields at the stretched 244×38.4 frame: gx6.json,gy.json")
     ap.add_argument("--size", default="220x44"); ap.add_argument("--scale", type=float, default=32.0); ap.add_argument("--px", type=int, default=2)
     ap.add_argument("--stretch", action="store_true", help="the field was measured on another lens size: map it by normalised coordinates")
     ap.add_argument("--dark", help="<gx.json>,<gy.json> the same field measured in dark mode (compared, maps use --field)")
@@ -245,8 +453,19 @@ def main():
     ap.add_argument("--label-drag", help="<gx.json>,<gy.json>[,<gy2.json>…] the MEASURED label-portal field, dragged to the divider → seg-map-label-drag-{r,g,b}.png, #seg-lens-warp-label-drag")
     ap.add_argument("--label-from-bg", help="<gain>,<band>[,<portal WxH>]: derive the label layer's maps from the backdrop field — amplitude × gain, edge band compressed × band (native ContentLensing −8.8/−17.5 = 0.503, SDF height 7.04/11.2 = 0.629); with a portal size the band sits on the portal capsule centred in the lens (196x28: inset 12 / 8) and the backdrop's uniform interior part is removed")
     ap.add_argument("--out", default=HERE)
-    a = ap.parse_args(); W, H = (float(v) for v in a.size.lower().split("x"))
+    return ap
+
+def main():
+    ap = build_parser(); a = ap.parse_args(); W, H = (float(v) for v in a.size.lower().split("x"))
     AMP_FLOOR[0] = a.amp_floor
+    if a.formula:
+        if a.scale == 32.0: a.scale = 40.0   # the label stack reaches 17.5 pt at the lens edge (ClearGlass −17.5): S 40 holds ±20 pt at 0.157 pt per byte step
+        return main_formula(a, W, H)
+    if not a.field: ap.error("--field is required without --formula")
+    return main_measured(a, W, H)
+
+def main_measured(a, W, H):
+    """the earlier measured-resampling mode (README §1–§4): maps resampled from the phase files — record / checks only"""
     F = build_field(*a.field.split(","))
     maps = {}; peak = 0.0
     for c in "RGB":
@@ -329,5 +548,96 @@ def main():
     if os.path.exists(tpl): open(os.path.join(a.out, "lens-test.html"), "w", encoding="utf-8").write(open(tpl, encoding="utf-8").read().replace("{{FILTER}}", svg.strip()))
     json.dump(info, open(os.path.join(a.out, "lens-field.json"), "w"), indent=1, ensure_ascii=False)
     print("filter", os.path.getsize(os.path.join(a.out, "lens-filter.svg")), "bytes")
+
+def main_formula(a, W, H):
+    """--formula: maps computed from the decompiled formulas (no measured field in any map); one set per lens width for the drag"""
+    portal = (196.0, 28.0)
+    lo, hi, step = (int(v) for v in a.series.split(":")); widths = list(range(lo, hi + 1, step))
+    if int(W) not in widths: widths.append(int(W)); widths.sort()
+    pts = drag_frames(a.frames.split(",")) if a.frames else []
+    sets = {}; total_bytes = 0
+    for w in widths:
+        if w == int(W): h, how, src = H, "rest lens (lifted 220×44, seg-lens-refraction.md §0)", []
+        elif pts: h, how, src = height_for_width(pts, w)
+        else: h, how, src = H, "no --frames: rest height", []
+        bg = parse_layers(a.bg_layers, w, h, portal); lab = parse_layers(a.label_layers, w, h, portal)
+        fbg, flab = f"seg-f-bg-{w}.png", f"seg-f-lab-{w}.png"
+        mw, mh, pk_bg = render_formula(os.path.join(a.out, fbg), w, h, bg, a.px, a.scale, a.margin)
+        _, _, pk_lab = render_formula(os.path.join(a.out, flab), w, h, lab, a.px, a.scale, a.margin)
+        nb = os.path.getsize(os.path.join(a.out, fbg)) + os.path.getsize(os.path.join(a.out, flab)); total_bytes += nb
+        sets[w] = {"h": round(h, 2), "r": round(lens_shape(w, h)[2], 2), "layer_pt": [w + 2 * a.margin, round(h + 2 * a.margin, 2)], "map_px": [mw, mh], "h_source": how, "frames": [[round(f[0], 2), round(f[1], 2), f[2]] for f in src],
+                   "bg": fbg, "lab": flab, "peak_bg_pt": round(pk_bg, 2), "peak_lab_pt": round(pk_lab, 2), "bytes": nb,
+                   "filters": [f"seg-lens-f-bg-{w}", f"seg-lens-f-lab-{w}"]}
+    # filters: one file per set; hrefs as index.html sees them (lens-filter.svg) and bare names (lens-test.html)
+    def svg_for(prefix):
+        head = f"""<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true">
+  <!-- Lifted segmented-control lens: displacement maps COMPUTED from the decompiled QuartzCore formulas with the probe's original
+       parameters (gen_lens_maps.py --formula; README.md §1d; remote-ref/glass-displacement-formula.md, seg-lens-refraction.md §1b).
+       One set per lens width w (drag stretch, 196 … 256 step 2, height from the recorded drag frames): #seg-lens-f-bg-<w> for the
+       opaque copy of what lies under the lens (track / card), #seg-lens-f-lab-<w> for the label copy; pick the set by the current
+       lens width, no interpolation. feDisplacementMap: P'(x,y) = P(x + scale·(R − .5), y + scale·(G − .5)), scale {a.scale:g} = the
+       encoding scale S (byte = 128 + u·255/S, u in pt); color-interpolation-filters="sRGB" is required. Each map covers the lens
+       box plus {a.margin:g} pt on every side and the filter region is the element's own box: apply the filter to a layer of that
+       extended size (w+{2 * a.margin:g} × h+{2 * a.margin:g}, overflow hidden, placed at −{a.margin:g}/−{a.margin:g} inside the lens which clips it to
+       the capsule). THE SOURCE MUST EXTEND PAST THE LENS — with the layer equal to the lens box the outward sampling at the edges
+       reads transparent and one-pixel coloured lines appear along the long edges (README §0.3). userSpaceOnUse regions and
+       feImage subregions are not used: WebKit renders nothing with them, and it takes an overflowing child into the
+       objectBoundingBox region. No dispersion in these maps (the colour
+       fringe is glassForeground's aberration term, not yet decompiled): one map feeds all channels. Animate the lift by the scale
+       attribute 0 → {a.scale:g} with the lift curve of seg-keys.css. -->
+"""
+        body = []
+        for w, st in sets.items():
+            body.append(filter_formula(st["filters"][0], prefix + st["bg"], w, st["h"], a.scale, a.margin, f"backdrop, lens {w}×{st['h']:g} r {st['r']:g}: {a.bg_layers} (sampling order)"))
+            body.append(filter_formula(st["filters"][1], prefix + st["lab"], w, st["h"], a.scale, a.margin, f"label copy, lens {w}×{st['h']:g}: {a.label_layers}"))
+        return head + "\n".join(body) + "\n</svg>\n"
+    open(os.path.join(a.out, "lens-filter.svg"), "w").write(svg_for(a.href_prefix))
+    tpl = os.path.join(HERE, "lens-test.template.html")
+    if os.path.exists(tpl):
+        series_js = json.dumps({str(w): st["h"] for w, st in sets.items()})
+        open(os.path.join(a.out, "lens-test.html"), "w", encoding="utf-8").write(open(tpl, encoding="utf-8").read().replace("{{FILTER}}", svg_for("").strip()).replace("{{SERIES}}", series_js))
+    # verification (the only place measured fields enter): the formula against the phase files, validate2.py's method
+    verify = {}
+    def run(group, spec, floor, glyph, region):
+        out = []
+        for f in group.split(","):
+            AMP_FLOOR[0] = floor
+            out.append(verify_against(f, lambda w, h: parse_layers(spec, w, h, portal), glyph_rows=glyph, region=region))
+        AMP_FLOOR[0] = a.amp_floor; return out
+    if a.verify_bg:
+        verify["backdrop"] = [r for g in a.verify_bg.split(";") for r in run(g, a.bg_layers, a.amp_floor, True, None)]
+        verify["backdrop_without_glass_background"] = [r for g in a.verify_bg.split(";") for r in run(g, a.bg_layers.split(",", 1)[1], a.amp_floor, True, None)]   # verification only: BackdropView alone
+    lab_alt = ",".join(reversed(a.label_layers.split(",")))
+    for name, files in (("label_lift", a.verify_label_lift), ("label_drag", a.verify_label_drag), ("label_mid244", a.verify_label_mid244)):
+        if not files: continue
+        verify[name] = run(files, a.label_layers, a.label_amp_floor, False, (96.0, 12.0))
+        verify[name + "_reversed_order"] = run(files, lab_alt, a.label_amp_floor, False, (96.0, 12.0))   # verification only: ContentLensing sampled first
+    info = {"mode": "formula", "label": "反编译原值（公式 + 探针参数）",
+            "formula": {"map": "glass-displacement-formula.md §1 sdf_glass_displacement: e = d + effectOffset; t = saturate(−e/H); P = mix(t<1 ? 0.7071 : 1, sqrt(1 − (1−t)²), curvature); D = R(angle)·g·(1 − P); coverage = saturate((−e − maskOffset)/fwidth + .5)",
+                        "filter": "§2 displacement_map: out(p) = src(p + amount·D(p)) × coverage, amount in layer pt (negative = towards the inside of the shape)",
+                        "glass_background": "§3 inner refraction: t = saturate(−d/H); amt = amount·(1 − sqrt(t(2 − t))) = the same profile; sampled before the layers below it",
+                        "sdf": "§3 compute_sdf_with_mode: d = rounded-rectangle SDF (the supercircle degenerates to it at r = h/2); g = normalize(mix(box normal, normalize((x, hw·y/hh)), gradientOvalization))",
+                        "composition": "layers in sampling order, u(p) = Δ₁(p) + Δ₂(p + Δ₁(p)) (content shown at p lies at p + u; validate2.py, glass-displacement-formula.md §5)"},
+            "parameters": {"backdrop": a.bg_layers, "label": a.label_layers, "curvature": 1, "angle": 0, "effectOffset": 0, "maskOffset": 0, "gradientOvalization": 0.5,
+                           "sources": {"amounts / SDF heights": "seg-lens-refraction.md §1b 表 1 (A9 in-process: #12 BackdropView height 36, displacementMap +9; #18 ClearGlass 11.2 / −17.5; #30 ContentLensing 7.04 / −8.8), §0",
+                                       "glass_background inner refraction −6.6 / 4.4": "seg-lift-material.md §2 glassBackground keys; glass-displacement-formula.md §4",
+                                       "gradientOvalization 0.5, cornerRadii 22, effectOffset 0, maskOffset 0, curvature 1, angle 0": "seg-lens-refraction.md §1b 表 1 #13 / #19 (原值)",
+                                       "which layer acts on what": "seg-lens-refraction.md §1b 表 3 (switch test: page content only through BackdropView; the label copy through ClearGlass then ContentLensing); the ContentLensing element taken as the lens capsule (监督局 05:0x after the old page's recomputation: the 196×28 rectangle gives rms 1.37 inside the portal)",
+                                       "glass_background SDF shape / ovalization": "the filter layer's own bounds + corner radii (监督局 05:0x); its ovalization is not read by the probe — the old page's residual table (rms 0.12–0.16) uses 0.5 on both backdrop layers, kept here"}},
+            "encoding": {"scale": a.scale, "px_per_pt": a.px, "bytes": "R = 128 + round(u_x·255/S), G = same for u_y, B = shape coverage (255 inside, anti-aliased edge), A 255; u = content − screen (pt, +x right, +y down); the browser decodes S·(byte/255 − .5) = u + S/510",
+                         "channels": "one map for all three colour channels (no dispersion)"},
+            "sets": sets, "series": {"widths": widths, "step": step, "height_source": "linear between the two nearest recorded drag frames (seg-native-abc-frames.json phase drag; uiprobe-motion-segdragmid-light.json lenstrace); outside the recorded range the nearest frame (flagged clamped)", "r": "min(22, h/2)", "total_bytes": total_bytes},
+            "filter": {"region": "the element's own box (objectBoundingBox 0/0/100%/100%), the map fills it", "layer": f"the lens box extended by {a.margin:g} pt on every side (layer_pt of each set), overflow hidden, at −{a.margin:g}/−{a.margin:g} inside the lens; the lens capsule clips it", "requirement": "the source must extend past the lens: with the layer equal to the lens box the outward sampling at the edges reads transparent (1-px coloured lines along the long edges)", "not_used": "userSpaceOnUse region + feImage subregion (Chrome only: WebKit renders nothing with them, and its objectBoundingBox region follows an overflowing child)"},
+            "verification": verify,
+            "sources": ["remote-ref/glass-displacement-formula.md §1–§5", "remote-ref/seg-lens-refraction.md §0, §1b, §2", "remote-ref/tools/touch/seg-phase-*.json (comparison only)"]}
+    json.dump(info, open(os.path.join(a.out, "lens-field.json"), "w"), indent=1, ensure_ascii=False)
+    print(f"{len(sets)} sets ({widths[0]}…{widths[-1]} step {step}), {total_bytes / 1024:.0f} KB of PNG; filter {os.path.getsize(os.path.join(a.out, 'lens-filter.svg'))} bytes")
+    for w, st in sets.items(): print(f"  w {w}: h {st['h']:g} r {st['r']:g} ({st['h_source']}) peak bg {st['peak_bg_pt']} lab {st['peak_lab_pt']} pt, {st['bytes']} B")
+    for name, res in verify.items():
+        print(f"== {name}")
+        for r in res:
+            print(f"  {r['file']}: rms {r['rms_all']} max {r['max_all']} pt; " + "; ".join(f"{row['offset']:+g}: {row['rms']:.2f}/{row['max']:.2f}@{row['max_at_s']:+g}" + (f" in {row['inside_rms']:.2f}/{row['inside_max']:.2f}" if 'inside_rms' in row else "") for row in r["rows"]))
+            if r["over_tol"]: print(f"    > 0.3 pt: {len(r['over_tol'])} points: " + ", ".join(f"({o['offset']:+g},{o['s']:+g}) m {o['measured']} f {o['formula']}" for o in r["over_tol"][:12]) + (" …" if len(r["over_tol"]) > 12 else ""))
+
 
 if __name__ == "__main__": main()
