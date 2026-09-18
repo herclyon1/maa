@@ -355,7 +355,10 @@ treated, candidates listed for the supervisor):** what the calibration shows is 
 source values at a displaced edge — never a blend: on the row where the displaced track edge runs along the row (page row 637 =
 the band's bottom, lens y 35: the map's samples sit at lens y 37.7–38.1, on the track's bottom edge 38) WebKit and Chrome give
 whole columns of track (238 / 239) or page (255 / 244) — ours 117–124 page, 125–130 track, 131 + page; the ui session's the
-same blocks in Chrome — while the native's same row is a flat 240–241, the blend of track 228 and page 243 that a bilinear
+same blocks in Chrome (its filter region checked = the lens box: the copy appears from x ≈ 116 like the map's boundary; its
+step at x 122 on row 610 is where its samples cross the track's top edge — in the 220 map that row's u_y passes −2 between x 117
+and 118 and sits at −3.0 … −3.3 from 118 on, so a crossing at 122 puts its sampled edge about 1 pt higher relative to the map
+than in the test page (track top = lens y 6); a wiring detail of its page, not the map) — while the native's same row is a flat 240–241, the blend of track 228 and page 243 that a bilinear
 fetch of a sample 0.1–0.3 pt inside the edge gives. The same fact makes the ends' "hard" bands and the §6d notch. The
 correction above fixes the one-pixel shortfall on negative values; the quantisation and the nearest fetch stay. Candidates
 (none implemented; each with what it does, its cost, and whether `calib/` can verify it):
