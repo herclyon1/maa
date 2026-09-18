@@ -20,6 +20,7 @@
   .scene{position:relative;width:400px;background:var(--card);border-radius:26px;padding:16px 20px;box-sizing:border-box;user-select:none;-webkit-user-select:none}
   .scene.grating{background:repeating-linear-gradient(90deg,rgb(51 51 51) 0 1px,rgb(204 204 204) 4px 5px,rgb(51 51 51) 8px)}   /* period 8 pt like the native measurement (pattern gx 8) */
   .scene.gratingy{background:repeating-linear-gradient(0deg,rgb(51 51 51) 0 1px,rgb(204 204 204) 4px 5px,rgb(51 51 51) 8px)}
+  .scene.bars{background:repeating-linear-gradient(90deg,#000 0 4px,#fff 4px 8px)}                                              /* ?pattern=bars: hard black / white bars, period 8 (the data session's `pattern bars 8`) for the per-channel edge check */
   .scene p{margin:0 0 8px}
   .segctl{position:relative;display:flex;height:32px;padding:2px;border-radius:16px;background:var(--track);box-sizing:border-box;margin:8px 0}
   .segctl .flat{position:absolute;top:2px;left:2px;width:calc(50% - 2px);height:28px;border-radius:14px;background:var(--card)}   /* the resting selected segment: flat _controlForegroundColor platter */
@@ -80,6 +81,7 @@
 (function () {
   const q = new URLSearchParams(location.search);
   if (q.get("native") === "1") document.body.classList.add("native");
+  if (q.get("pattern") === "bars") document.getElementById("scene").classList.add("bars");
   const SERIES = {{SERIES}};                                     /* lens width → height of the drag-stretch sets (lens-field.json) */
   const LW = parseInt(q.get("w") || "220", 10), LH = SERIES[String(LW)] || 44;
   const scene = document.getElementById("scene"), stats = document.getElementById("stats");

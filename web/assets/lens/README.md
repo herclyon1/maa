@@ -289,6 +289,26 @@ blue ours). The swap of the end colours is the direction question of the table a
 Neighbouring text (`seg-neighbors-light-hold.png`, text 8 pt above and below the control): the native pulls none of it into
 the rim, and with the 2.3 pt span neither do we (`neighbors-native-vs-web.png`; the earlier 15 pt span smeared it in).
 
+**Per-channel edge check** (the acceptance session's check point, `?pattern=bars` = hard black / white bars of period 8 under the
+lens, WebKit, dragged to the divider; 50 % crossings of each channel along a row, R−G / B−G in pt; the data session's native
+numbers from `seg-lens-drag-mid.md` §6b(b) on the same rows):
+
+| row | middle (|x| < 80), 41 edges | right end, distance from the end | left end |
+|---|---|---|---|
+| y +10 (native y634, 12 pt from the bottom) — native | 0.000 | 6.4: −0.32 / +0.59; 9.6: −0.145 / +0.135; 12.8: −0.017 / +0.02 | 9.2: −0.113 / +0.099 (R outward, B inward); 12.5: −0.01 / 0 |
+| ours (keys as read) | ≤ 0.004 | 6.5: −0.87 / +0.96; 9.5: −0.08 / +0.09; 12.5: −0.01 / +0.02 | 9.0: +0.09 / −0.13 (R inward); 12.0: +0.02 / −0.03; 5.1: −2.33 / −0.63; 3.1: −0.37 / −0.77 |
+| y −14 (native y610, the top band) — native | ≤ 0.044 | — | 9.5: +0.77 / −1.20 (B outward); 12.8: +0.11 / −0.12; 16: +0.05 / −0.04 |
+| ours | ≤ 0.007 | 9.9: −0.31 / +0.58; 13.0: −0.07 / +0.08 | 9.0: +0.29 / −1.44 (B outward); 12.5: +0.09 / −0.09 |
+
+The separation is confined to the ends (nothing beyond 13 pt, the middle 0) and the top band at the left end has the native's
+signs and size; on the y634 row the right end has the native's signs at 2× the size and the left end the opposite sign of R.
+The mirrored rotation (angle +15°, verification only) changes little on these rows (right end 6.5: −0.22 / +0.35; left top 9.0:
++0.10 / −0.77) and leaves the end colours as they are, so the swap of the end colours is the overall sign of the tap sides
+(`uv + kΔ → R` in §3b vs what the renderer does), the item the old page rewrites from the keys; `--ab-sign −1` swaps them
+(≡ angle + π ≡ amount negated, the data session's own equivalence). The `?pattern=bars` page and `scratchpad` edge script are
+the check's tools; the chain is applied to the whole lens content, so bars under the lens exercise the same taps as the
+native's bars in the segment content.
+
 Frame interval, headless Chrome 440×956 @3x, software raster (`scratchpad/frames_chrome.py`, 自动拖 2 s, 120 frames):
 without the chain 16.9–17.1 ms mean (max 50–67, 1 frame > 20 ms), with the chain 16.9 ms (max 33, 2 frames > 20 ms) — 60 Hz in
 both; the simulator Safari number waits for the data session.
