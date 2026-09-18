@@ -257,19 +257,51 @@
     const meta = document.querySelector('meta[name="theme-color"]');
     check("theme-color 存在", "是", meta ? "是" : "缺", !!meta);
 
-    const fails = rows.filter((r) => !r.ok).length;
-    const out = { at: new Date().toISOString(), href: location.href, viewport: `${innerWidth}×${innerHeight}`,
-                  standalone: matchMedia("(display-mode: standalone)").matches,
-                  dark, total: rows.length, fails, rows };
-    try { localStorage.setItem("ark-accept", JSON.stringify(out)); } catch {}
-    document.title = `验收 ${rows.length - fails}/${rows.length}`;
-    if (!q.has("quiet")) {
-      const box = document.createElement("pre");
-      box.style.cssText = "position:fixed;left:8px;top:60px;z-index:99;max-height:70vh;overflow:auto;background:rgba(0,0,0,.82);color:#fff;font:11px/1.35 -apple-system,monospace;padding:8px;border-radius:8px;margin:0;white-space:pre";
-      box.textContent = `${out.viewport}${out.standalone ? " 主屏幕" : " Safari"}${out.dark ? " 深色" : ""}  ${rows.length - fails}/${rows.length}\n` +
-        rows.map((r) => `${r.ok ? "✓" : "✗"} ${r.item}  ${r.got}${r.ok ? "" : "（要 " + r.expect + "）"}`).join("\n");
-      document.body.appendChild(box);
+    /* Interaction (2026-09-18, the bug he caught live): the segmented control must select on release with the
+       content switching synchronously, survive ten alternating taps 80 ms apart, and follow a drag across segments. */
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    async function interactions() {
+      if (!document.querySelector("#queueseg")) return;
+      const bs = () => [...document.querySelectorAll("#queueseg button")];
+      const onText = () => (document.querySelector("#queueseg button.on") || {}).textContent || "";
+      /* the 「这一趟」 section (not 明日安排, which always lists the other shift) must show the selected shift */
+      const rowHas = (name) => { const sec = [...document.querySelectorAll("#app section")].find((x) => ((x.querySelector("h2") || {}).textContent || "").trim() === "这一趟"); return !!sec && [...sec.querySelectorAll(".row label")].some((l) => l.textContent.includes(name + " · ")); };
+      const start = onText();
+      let target = bs().find((b) => !b.classList.contains("on")); const want = target.textContent;
+      const t0 = performance.now(); target.click(); const dt = performance.now() - t0;
+      check("分段单击：抬手即选中，内容同步切（< 50 ms）", "< 50 ms", `${Math.round(dt * 10) / 10} ms`, onText() === want && rowHas(want) && dt < 50);
+      let last = null;
+      for (let i = 0; i < 10; i++) { const b = bs()[i % 2]; last = b.textContent; b.click(); if (i < 9) await sleep(80); }
+      const immediate = onText() === last && rowHas(last);           // already switched when the last finger lifts
+      let stable = true; for (let i = 0; i < 7; i++) { await sleep(100); if (onText() !== last || !rowHas(last)) stable = false; }   // and nothing flips it back later
+      check("分段快速交替 10 次 × 80 ms：终态 = 最后一次，之后不再变", last, `${onText()}${immediate ? "" : "（抬手时还没切）"}${stable ? "" : "（之后又变了）"}`, immediate && stable);
+      const seg = document.querySelector("#queueseg"), b0 = bs()[0], b1 = bs()[1];
+      if (seg && b0 && b1) {
+        if (onText() === b1.textContent) { b0.click(); await sleep(50); }
+        const s2 = document.querySelector("#queueseg"), r0 = s2.querySelectorAll("button")[0].getBoundingClientRect(), r1 = s2.querySelectorAll("button")[1].getBoundingClientRect();
+        const pe = (type, r) => s2.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 9, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, isPrimary: true, button: 0, pointerType: "touch" }));
+        pe("pointerdown", r0); pe("pointermove", r1); pe("pointerup", r1);
+        const w1 = s2.querySelectorAll("button")[1].textContent;
+        check("分段按住从左段滑到右段抬手 = 选右段", w1, onText(), onText() === w1 && rowHas(w1));
+      }
+      const back = bs().find((b) => b.textContent === start); if (back && onText() !== start) back.click();
     }
+    const finish = () => {
+      const fails = rows.filter((r) => !r.ok).length;
+      const out = { at: new Date().toISOString(), href: location.href, viewport: `${innerWidth}×${innerHeight}`,
+                    standalone: matchMedia("(display-mode: standalone)").matches,
+                    dark, total: rows.length, fails, rows };
+      try { localStorage.setItem("ark-accept", JSON.stringify(out)); } catch {}
+      document.title = `验收 ${rows.length - fails}/${rows.length}`;
+      if (!q.has("quiet")) {
+        const box = document.createElement("pre");
+        box.style.cssText = "position:fixed;left:8px;top:60px;z-index:99;max-height:70vh;overflow:auto;background:rgba(0,0,0,.82);color:#fff;font:11px/1.35 -apple-system,monospace;padding:8px;border-radius:8px;margin:0;white-space:pre";
+        box.textContent = `${out.viewport}${out.standalone ? " 主屏幕" : " Safari"}${out.dark ? " 深色" : ""}  ${rows.length - fails}/${rows.length}\n` +
+          rows.map((r) => `${r.ok ? "✓" : "✗"} ${r.item}  ${r.got}${r.ok ? "" : "（要 " + r.expect + "）"}`).join("\n");
+        document.body.appendChild(box);
+      }
+    };
+    interactions().then(finish, (e) => { check("交互测试脚本出错", "", String(e), false); finish(); });
   }
   /* The page renders after its first snapshot and the number tiles after the game
      APIs answer: measure once the tiles exist (or after 8 s). */

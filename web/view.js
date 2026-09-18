@@ -494,9 +494,19 @@ function render() {
     <p class="foot">免输入链接会把这里存着的密钥一起带上，换手机开一次那条链接就全有。森空岛的会话由机器交过来；库街区的：打开电脑上 scripts/mac/phone-link.py 打出来的链接，或把 ~/.config/ark/.env 里 KUROBBS_TOKEN 和 KUROBBS_DID 那两行粘贴进来</p>
   </section>`;
 
+  /* The segmented lens must glide across a re-render: the old control's --i is the start, the new one's is the end. */
+  const oldSeg = $("#queueseg"), segFrom = oldSeg ? parseInt(oldSeg.style.getPropertyValue("--i")) : NaN;
   $("#app").innerHTML = html;
   layoutTabs();
   wire();
+  const seg = $("#queueseg");
+  if (seg && !Number.isNaN(segFrom)) {
+    const to = seg.style.getPropertyValue("--i"), lens = seg.querySelector(".lens");
+    if (lens && String(segFrom) !== to) {
+      lens.style.transition = "none"; seg.style.setProperty("--i", String(segFrom)); void lens.offsetWidth;   // paint at the old spot, then transition
+      lens.style.transition = ""; seg.style.setProperty("--i", to);
+    }
+  }
 }
 
 /* 分页：按卡片标题归到「状态 / 方舟 / 终末地 / 鸣潮 / 周常 / 手机」，一次只显示
@@ -597,16 +607,30 @@ function wire() {
   $("#refresh").onclick = () => ping();
   const theQueue = () => curQueue || "早班";
   const qsel = $("#queue");
-  for (const b of document.querySelectorAll("#queueseg button")) b.onclick = () => {
-    if (!qsel || qsel.value === b.dataset.q) return;
-    /* 透镜先滑过去（0.52 s，--ios-motion-lens-*），滑完再重画页面；重画时 --i 已是新值，不会再跳一次 */
-    const seg = b.closest(".segctl"); const bs = [...seg.querySelectorAll("button")];
-    seg.style.setProperty("--i", String(bs.indexOf(b)));
-    for (const x of bs) { x.classList.toggle("on", x === b); x.setAttribute("aria-selected", String(x === b)); }
-    qsel.value = b.dataset.q;
-    const ms = parseFloat(getComputedStyle(seg).getPropertyValue("--ios-motion-lens-duration")) * 1000 || 0;
-    setTimeout(() => qsel.dispatchEvent(new Event("change")), ms);
-  };
+  /* 分段控件照 UISegmentedControl：抬手那一刻选中同步生效、内容立刻切（不等透镜动画、不等任何异步），
+     透镜靠 CSS 过渡自己滑过去（render() 里接力）；按住可以横着滑，抬手时手指在哪段就选哪段。
+     2026-09-18 用户线上抓到的 bug：原先 click 后 setTimeout(0.55 s) 才派 change，快速交替点时
+     旧 <select> 的定时器带着过期值回来重画，看起来像点击被吞。 */
+  const segEl = $("#queueseg");
+  if (segEl && qsel) {
+    const bs = [...segEl.querySelectorAll("button")];
+    const idxAt = (x) => { const r = segEl.getBoundingClientRect(); return Math.max(0, Math.min(bs.length - 1, Math.floor((x - r.left) / (r.width / bs.length)))); };
+    const show = (i) => { segEl.style.setProperty("--i", String(i)); for (const x of bs) { x.classList.toggle("on", x === bs[i]); x.setAttribute("aria-selected", String(x === bs[i])); } };
+    const commit = (i) => { const q = bs[i].dataset.q; if (qsel.value === q) { show(i); return; } qsel.value = q; qsel.dispatchEvent(new Event("change")); };
+    segEl.onpointerdown = (e) => {
+      if (e.button !== 0 && e.pointerType === "mouse") return;
+      e.preventDefault(); try { segEl.setPointerCapture(e.pointerId); } catch {}
+      segEl.dataset.pe = "1";
+      const move = (ev) => show(idxAt(ev.clientX));
+      const up = (ev) => { segEl.removeEventListener("pointermove", move); commit(idxAt(ev.clientX)); };
+      show(idxAt(e.clientX));
+      segEl.addEventListener("pointermove", move);
+      segEl.addEventListener("pointerup", up, { once: true });
+      segEl.addEventListener("pointercancel", up, { once: true });
+    };
+    // The click the browser fires after pointerup is redundant (already committed); keyboard/synthetic clicks still select.
+    for (const b of bs) b.onclick = () => { if (segEl.dataset.pe) { delete segEl.dataset.pe; return; } commit(bs.indexOf(b)); };
+  }
   if (qsel) qsel.onchange = () => {
     curQueue = qsel.value;
     try { localStorage.setItem("ark-remote-cfg-queue", curQueue); } catch {}
