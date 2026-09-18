@@ -66,6 +66,7 @@ if (matchMedia("(prefers-color-scheme: dark)").matches) { const m = document.que
     /* alert text ← pipeline §1.9: 说明 = 面板 −0.4 → plus-darker rgb(153)（Chrome 常量 236 − 102 = 134）；停止 = M_red × 按钮底，亮色白底实测 (235,42,45) */
     --alert-msg-color:rgb(153 153 153); --alert-msg-blend:plus-darker; --alert-msg-fallback:rgb(134 134 135);
     --alert-destructive:rgb(235 42 45);
+    --chev-left:url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADQAAABICAYAAAC5mNZRAAAAAXNSR0IArs4c6QAAAGxlWElmTU0AKgAAAAgABAEaAAUAAAABAAAAPgEbAAUAAAABAAAARgEoAAMAAAABAAIAAIdpAAQAAAABAAAATgAAAAAAAAEgAAAAAQAAASAAAAABAAKgAgAEAAAAAQAAADSgAwAEAAAAAQAAAEgAAAAAA2ZLFgAAAAlwSFlzAAAsSwAALEsBpT2WqQAAA2tJREFUaAXtmk2IT1EYxsc3IRlJKUSUhSIjoSg0NJFkwYIFJtGULLAgiykxpZSNfCVFamysfDQWNhZKEkWUUojI+P7+9ntq3s3cP/Oe/+L+36v71tOZ/5nnnvM859yP85576+rKKEegHIFyBP7nEegVwNxCNDSBIeAuOA06QeGiP4rbwe9ueM3vRlCoGIjaC6C7Gfv9nv+NKYqjQQi99A8zZqqtCIYGI/Kyw4xMXazGUN9qDqrymKEcdx7MdR7/0cmrCW0YvV4Fdjp5yuaaKHV0OhzOtUQz1+H3c7SdO2UEPd4Anhkxzm34o3JX6uhwJJxbwIR6ypvwdVy40AjfAR4TxtFpVh/OCYJGg3vAhHpK3TB04wgXerrfBx4TxrkCX7f0cDEORQ+ACfWUesjqYRsuJqDoIfCYME4HfC2DwsUkFD0GJtRTnoM/IJwTBE0GT4HHhHHOwlfqEC6moOg5MKGe8gz8PNeP7kGbCvNFoplT8Pu4e8iR2EBfL4FnRoxzHH7vHDW6u5oJUymyCfWUh+BH2LvImJxDzdtEMwcyrQSpmIcO5fmeGTHOviDaMzIWUKPs0YR6yt2ZVoJULELHp0Qzu4Joz8hYQs2XRDPbM60EqViKjq+JZrYE0Z6RoeVMyjXzC/6mTCuBKtrR4rnwxfkJ1gfSXlFKJ7UeQz/granYQrDKz05DWmWPD6a9opyUPbRHtDCxYiuBKlejxXPKGecJfN1IQscx1JlgT/kMvvKjsKGl/gngMWMc5UfTwjpCmJb8R4EJ9pSv4M8AYUOmDgKPGeO8gT8rrKMuYcprTLCnfAff+x6oZt6V33jMGOcD/Pk1U+vseE+iKaUeSkFCRyvqbBY8pVIQpSKhYyfqPGaMo1RkeWhHiNuWaOo7/JXRTSmps1nwlFqha2kVOlpQpyTPY0gc5VDrQOjYgLoUU+JuDO0IcWuBRt87UzK1GYQOXR+6TrymxNsa2hHiVgHd0VJM7YhuagUCvyWaao1uahkCU/f29kY31YRA76aLnaL7o5tqRGDq/nhbdFNKI5RO2Cx4ytnRTSnhS3nHdCS6IenTqHvfAnZUY0i7O3mGPlLSNaV9h55CO7OFieko7elN+uLCuOkSqm8d/vbhxuGimTG9Y/njJNAmpVJ1fc7ZDMooR6AcgXIEyhGoOAJ/ADHdrr++9w/kAAAAAElFTkSuQmCC");   /* chevron.left 17 semibold ← SF Symbols（sf-symbols-export 法） */
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){ --alert-button-blend:plus-lighter;
@@ -278,6 +279,33 @@ if (matchMedia("(prefers-color-scheme: dark)").matches) { const m = document.que
   .row:has(.pills) > :not(label),.row:has(.picks) > :not(label),.row:has(.pillbox) > :not(label){max-width:none;align-self:flex-end}
   .row .hint{display:block;color:var(--ios-settings-subtitle);font-size:var(--ios-sub-size);margin-top:1px;line-height:var(--ios-sub-lh)}   /* 副题 15/18、设置自家副题灰 ← AX33d/px33d */
   .row .ro{color:var(--dim);font-size:var(--ios-body-size);text-align:right}   /* 只读值 = 设置值行：同一行右侧 secondaryLabel（AX-46 值行；不再「标题一行、值另起一行」） */
+  /* 导航值行「值 ›」：值 secondaryLabel、箭头 10.33×14 tertiaryLabel 距右 20、值到箭头 8 ← AX-37 / --ios-chevron-* / --ios-value-gap；整行可点 */
+  .row.nav{cursor:pointer;padding-right:var(--ios-chevron-inset)}
+  .row.nav .val{color:var(--dim);font-size:var(--ios-body-size);line-height:var(--ios-body-lh);text-align:right;flex:0 1 auto;max-width:48%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 值过长时尾部省略，不换行（设置值行的做法） */
+  .row.nav .sf.chev{width:var(--ios-chevron-w);height:var(--ios-chevron-h);background:var(--ios-tertiary-label);flex:none;margin-left:calc(var(--ios-value-gap) - var(--ios-value-gap))}
+  .row.nav:active{background:color-mix(in srgb, var(--ink) 6%, var(--card))}
+  /* 勾选页（AX-38）：全屏遮罩 .2 + 从 y 62（--ios-status-h）起的页，顶角 38（--ios-sheet-radius-top），底 = systemGroupedBackground（设置的弹出页是不透明分组底） */
+  .sheet{position:fixed;inset:0;z-index:20;display:none}
+  .sheet[open]{display:block}
+  .sheet .dim{position:absolute;inset:0;background:var(--ios-dimming)}
+  .sheet .card{position:absolute;left:0;right:0;top:var(--ios-status-h);bottom:0;background:var(--bg);border-radius:var(--ios-sheet-radius-top) var(--ios-sheet-radius-top) 0 0;overflow:hidden;display:flex;flex-direction:column}
+  .sheet .pnav{position:relative;flex:none;height:var(--ios-nav-h);margin-top:calc(var(--ios-modal-nav-top) - var(--ios-status-h));display:flex;align-items:center;justify-content:center;
+               font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight);color:var(--ink)}   /* 导航栏 (0,82,440,54)，标题 Semibold 17 居中 ← AX-38 */
+  .sheet .pnav .navbtn{position:absolute;left:var(--ios-nav-side);top:0;display:flex;width:var(--ios-nav-button);height:var(--ios-nav-button);border-radius:50%;padding:0;border:0;
+                        background:var(--glass-fill);backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter);box-shadow:var(--glass-rim),var(--glass-diffuse);color:var(--ink);align-items:center;justify-content:center}   /* 返回圆钮 (20,82,44,44) ← AX-38，玻璃同编辑栏 */
+  .sheet .pnav .navbtn::before{content:"";width:var(--ios-chevron-w);height:var(--ios-chevron-h);background:currentColor;-webkit-mask:var(--chev-left) center / contain no-repeat;mask:var(--chev-left) center / contain no-repeat}
+  .sheet .pnav .pdone{position:absolute;right:calc(440px - 380px - var(--ios-modal-button));top:4px;width:var(--ios-modal-button);height:var(--ios-modal-button);border-radius:50%;padding:0;border:0;
+                       background:var(--accent);color:#fff;box-shadow:none}   /* 完成圆钮 (380,86,36,36)：右距 24、顶 +4 ← AX-38 / --ios-modal-button；tint 底白 ✓ 同编辑栏 */
+  .sheet .pnav .pdone{display:flex;align-items:center;justify-content:center}
+  .sheet .pnav .pdone .sf{width:16px;height:16px;background:#fff}   /* ✓ 白，36 圆钮里约 16（编辑栏 44 钮用 20，同比例；字形尺寸 AX 没给，待 tokens） */
+  .sheet .plist{flex:1 1 auto;overflow:auto;-webkit-overflow-scrolling:touch;padding:var(--ios-group-gap) var(--ios-card-inset) 40px}   /* 表头空 17.67（AX-38 Other (0,136,440,17.67)）；卡 x 20 宽 400 */
+  .sheet .row.check{cursor:pointer;padding-right:22.5px;gap:var(--ios-value-gap)}   /* ✓ 帧 (378.5, ·, 19, 17.33)：右缘 397.5 = 行右 420 − 22.5 ← AX-38 */
+  .sheet .row.check > label{flex:1 1 0}
+  .sheet .row.check .sf.ck{width:19px;height:17.33px;background:var(--ios-tint);flex:none;visibility:hidden}   /* ✓ 19×17.33 tint ← AX-38 帧；色 = 设置勾选蓝 */
+  .sheet .row.check.on .sf.ck{visibility:visible}
+  .sheet .row.check .pico{width:var(--ios-row2-icon);height:var(--ios-row2-icon);border-radius:6px;flex:none}   /* 行内图标 28 ← AX-46 图标行（--ios-row2-icon） */
+  .sheet .row.check:active{background:color-mix(in srgb, var(--ink) 6%, var(--card))}
+  html.sheet-open{overflow:hidden}
   /* Footers and notes under a group, grey like Settings' explanatory text. */
   .group > p.hint,.group > .hint{margin:0;padding:10px var(--ios-row-text-x);color:var(--dim);font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh)}
   .warn{margin:8px 16px 0;padding:0;background:transparent;color:var(--warn);font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh)}
@@ -441,7 +469,7 @@ if (matchMedia("(prefers-color-scheme: dark)").matches) { const m = document.que
   .topbar .navbtn:active{opacity:.7}
   pre{margin:0;padding:11px 16px;white-space:pre-wrap;font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);color:var(--dim);font-family:inherit}
   dialog{border:0;background:transparent;color:var(--ink);border-radius:var(--ios-alert-radius);padding:0;width:var(--ios-alert-w);max-width:calc(100vw - 32px);overflow:hidden;   /* .pane 比框大 60 pt 让模糊也采框外内容（CABackdropLayer marginWidth 60.2 ← ⑨ / paramdiff）；圆角由 .pane 自己的 clip-path 裁（见下）——dialog 上加 clip-path 会让 Chrome 的 backdrop-filter 只能采到 dialog 内部（clip-path 成了 backdrop root，模糊失效）；Safari 对合成层只按 overflow 矩形裁不裁圆角（数据会话 1eb6a3e 四张直角） */
-         position:fixed;left:0;right:0;margin:0 auto;top:calc(50% + 14px);bottom:auto;translate:0 -50%}   /* 弹窗 320 r34 ← 探针 _UIAlertControllerPhoneTVMacView；位置 = standalone 整屏原生 frame (60, 406, 320, 172) ← ④：水平居中，竖向中心比整屏中心低 14（406 + 86 − 478）；用 translate 不用 transform，让出现动画的 scale 不打架 */
+         position:fixed;left:0;right:0;margin:0 auto;top:calc(50dvh + 14px);bottom:auto;translate:0 -50%}   /* 50dvh 不用 50%：standalone 下顶层 dialog 的包含块量到 1018（956 + 62），50% 会低 30 pt（数据会话 2285c01 量：中心 522 vs 原生 492） */   /* 弹窗 320 r34 ← 探针 _UIAlertControllerPhoneTVMacView；位置 = standalone 整屏原生 frame (60, 406, 320, 172) ← ④：水平居中，竖向中心比整屏中心低 14（406 + 86 − 478）；用 translate 不用 transform，让出现动画的 scale 不打架 */
   /* the glass is a separate layer under the content: blur 20 (= 5 ÷ backdrop scale .25) · saturate 1.94 · brightness 1.071 + white .538 (dark 1.73 / .755 / .135) = 端到端实测 ← ⑨ --ios-alert-glass-*；
      a sibling, not the host, so the buttons' plus-darker can blend with it (a blend inside a backdrop-filter element never sees that element's backdrop in WebKit) */
   dialog > .pane{position:absolute;inset:-60px;z-index:-2;border-radius:0;clip-path:inset(60px round var(--ios-alert-radius));background:var(--alert-fill);   /* 外扩 60 = marginWidth 60.2 ← ⑨；自己用 clip-path 裁回 320×172 r34：采样区仍是外扩后的整块（两端 backdrop-filter 都按元素框采样、再按 clip-path 裁输出） */backdrop-filter:var(--ios-alert-glass-filter);-webkit-backdrop-filter:var(--ios-alert-glass-filter);box-shadow:none;pointer-events:none}   /* 无描边、无阴影 ← alert-pipeline-plan #10（glassBackground inputShadowAmount 0，链上无 shadow 层）；边缘亮线是 SDF 高光，另做 */
@@ -534,6 +562,14 @@ if (matchMedia("(prefers-color-scheme: dark)").matches) { const m = document.que
 </dialog>
 
 <div class="toast" id="toast"></div>
+<!-- 勾选页（多选 38 / 单选 37b）：值行「已选 N/M ›」点开；表 y 62 起、导航 54 在 +20、返回 44 at 20、完成 36 at 380 ← AX-38 -->
+<div class="sheet" id="picker" role="dialog" aria-modal="true">
+  <div class="dim"></div>
+  <div class="card">
+    <div class="pnav"><button type="button" class="navbtn pback" aria-label="返回"></button><span class="ptitle"></span><button type="button" class="pdone" aria-label="完成"></button></div>
+    <div class="plist"></div>
+  </div>
+</div>
 <script src="schema.js?v=20260915113333"></script>
 <script src="net.js?v=20260915113333"></script>
 <script src="pending.js?v=20260915113333"></script>
