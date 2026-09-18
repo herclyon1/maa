@@ -388,6 +388,30 @@
    * backdrop-filter lines are the nearest CSS mapping (blur radius = inputRadius in pt; colour matrix e-column = additive offset) */
   /* alert / glass button: UISDFBackdropView filter glassBackground inputBlurRadius 5; SDF vibrantColorMatrix ≈ saturate 1.2 + 0.147 (light and dark the same) */
   --ios-glass-blur: 5px;
+  /* ---- alert glass, EFFECTIVE values (spec-extract ⑨, 2026-09-18 午后; tools/touch/glass_bands.sh + glass_table.py + glass_validate.py) ----
+   * WHY 5px was wrong: the alert's UISDFBackdropView is a CABackdropLayer with `scale` 0.25 (the backdrop is captured at a quarter of the
+   * point resolution, contentsScale 1) and marginWidth 60.2; glassBackground inputBlurRadius 5 is applied in capture pixels → 5 / 0.25 = 20 pt.
+   * Edge-profile fit through the pane over a white/black step: sigma 16.4–19.5 pt (10–90 % width 50 pt). The tab bar platter has scale 0.5 → 10 pt.
+   * Transfer measured over 10 flat backdrops (light) / 9 (dark), pane colour vs the dimmed backdrop D (dimming .2 light / .48 dark), sRGB units,
+   * residual ≤ 2/255 light, ≤ 4.5/255 dark:  light  out = 0.495·S(1.94)·D + 0.538      dark  out = 0.653·S(1.73)·D + 0.135
+   * (S = standard saturate matrix; the layer's own vibrantColorMatrix 0.912·S(1.29)+.147 is only one of the stacked layers — the CASDFLayer
+   * key/fill lights add the rest — so the measured end-to-end transfer is what CSS must reproduce).
+   * CSS (white overlay α + brightness gain, saturate first): backdrop-filter: blur(20px) saturate(1.94) brightness(1.071); background: rgb(255 255 255 / .538)
+   *   dark: blur(20px) saturate(1.73) brightness(.755); background: rgb(255 255 255 / .135)
+   * caveat: CSS clamps saturate() to [0,1] before the gain, CoreAnimation does not — over a saturated red backdrop the G/B channels come out
+   * 137 instead of the native 117 (light); over greys / the app's own palette the match is ≤ 2/255. Text: labelColor over the pane (≈ 236 over the list). */
+  --ios-alert-glass-blur: 20px;
+  --ios-alert-glass-saturate: 1.94;
+  --ios-alert-glass-brightness: 1.071;
+  --ios-alert-glass-white: .538;
+  --ios-alert-glass-filter: blur(20px) saturate(1.94) brightness(1.071);
+  --ios-alert-backdrop-scale: .25;
+  --ios-alert-dimming: rgb(0 0 0 / .2);
+  /* alert buttons over the pane: measured pane → button = pane − 37/255 (light, slope .958 ≈ 1; dark: pane + 35/255) → mix-blend-mode: plus-darker
+   * with rgb(218 218 218) (dark: plus-lighter rgb(35 35 35)); Chrome fallback rgb(0 0 0 / .16) (dark rgb(255 255 255 / .16)) */
+  --ios-alert-button-offset: -0.145;
+  --ios-alert-button-overlay: rgb(218 218 218);
+  --ios-alert-button-fallback: rgb(0 0 0 / .16);
   --ios-glass-saturate: 1.2;
   --ios-glass-lift: 0.147;
   /* sheet: glassBackground inputBlurRadius 4, plus a white _UIVisualEffectBackgroundView with vibrantColorMatrix offset +0.48 (light) / +0.12 (dark) */
@@ -547,6 +571,19 @@
   --ios-touch-switch-flip-delay: 0ms;
   /* rapid alternation: every tap counts (30 ms taps / 30 ms gaps on the segmented control; 40/80 on the tab bar, switch, button) — no debounce, animations retarget mid-flight */
   --ios-touch-debounce: 0ms;
+  /* segmented lens after a tap commit, per-frame (tools/touch/touch-local.uiprobe-g1.json G1 = G3 to 0.1 pt): time ms from the commit → value.
+   * x as a fraction of the 200 pt travel (peak +7.5 % at 476 ms, dip −0.65 % at 809 ms, still at 1200 ms);
+   * w / h as multiples of the rest size 196 × 28 (w: +23 % at 180 ms, −7.5 % at 490 ms, +0.7 % at 840 ms; h: +37 % at 125 ms, −2.5 % at 280 ms, +13.6 % at 480 ms, −1.4 % at 840 ms) */
+  --ios-touch-segment-lens-x-keys: 0 0, 42 .084, 76 .257, 109 .424, 142 .547, 176 .632, 209 .717, 242 .795, 276 .866, 309 .933, 342 .988, 376 1.028, 409 1.056, 442 1.071, 476 1.075, 542 1.066, 609 1.045, 676 1.02, 742 1.001, 809 .994, 876 .995, 943 .998, 1009 1.0, 1209 1.0;
+  --ios-touch-segment-lens-w-keys: 0 1, 42 1.024, 76 1.069, 109 1.122, 142 1.18, 176 1.221, 192 1.24, 209 1.205, 242 1.167, 276 1.119, 309 1.067, 342 1.018, 376 .978, 409 .948, 442 .932, 492 .925, 542 .933, 609 .954, 676 .977, 742 .997, 809 1.006, 843 1.007, 943 1.0, 1009 .997, 1209 1.0;
+  --ios-touch-segment-lens-h-keys: 0 1, 42 1.111, 76 1.268, 109 1.35, 125 1.371, 142 1.361, 176 1.304, 209 1.139, 242 1.021, 276 .975, 309 .986, 342 1.025, 376 1.068, 409 1.096, 442 1.125, 476 1.136, 542 1.125, 609 1.089, 676 1.046, 742 1.007, 809 .989, 843 .986, 943 1.0, 1009 1.007, 1209 1.0;
+  /* segmented lens follows the finger with a spring lag: 4/6 of a 6 pt step in 130 ms, finger 320 → lens catches up in ~120 ms (G4/F1) */
+  --ios-touch-segment-follow-lag: .12s;
+  /* tab bar: pressing the SELECTED tab lifts the lens 94×54 → 103×63 by +180 ms (first size change ~125 ms), 110×70 while dragging (T3/T4) */
+  --ios-touch-tab-selected-lift-delay: 125ms;
+  --ios-touch-tab-selected-lift-done: 180ms;
+  --ios-touch-tab-drag-lift-w: 110px;
+  --ios-touch-tab-drag-lift-h: 70px;
 
 }
 
@@ -601,6 +638,15 @@
     --ios-lens-saturate: 1.379;
     --ios-lens-brightness: 0.87;
     --ios-lens-filter: blur(2px) saturate(1.379) brightness(0.763) contrast(1.14);
+    /* alert glass dark (spec-extract ⑨): dimming .48, out = 0.653·S(1.73)·D + 0.135 */
+    --ios-alert-glass-saturate: 1.73;
+    --ios-alert-glass-brightness: .755;
+    --ios-alert-glass-white: .135;
+    --ios-alert-glass-filter: blur(20px) saturate(1.73) brightness(.755);
+    --ios-alert-dimming: rgb(0 0 0 / .48);
+    --ios-alert-button-offset: 0.137;
+    --ios-alert-button-overlay: rgb(35 35 35);
+    --ios-alert-button-fallback: rgb(255 255 255 / .16);
     --ios-lens-brightness-css: 0.763;
     --ios-lens-contrast-css: 1.14;
     --ios-lens-matrix: 1.1298 -0.2361 -0.0237 0 -0.07  -0.0701 0.964 -0.0238 0 -0.07  -0.0702 -0.236 1.1762 0 -0.07  0 0 0 1 0;
