@@ -135,7 +135,6 @@
   --ios-switch-knob-w: 37px;
   --ios-switch-knob-h: 24px;
   --ios-switch-knob-pad: 2px;
-  --ios-switch-travel: 22px;   /* derived: 63 − 37 − 2×2 (page copy only; not in remote-ref/tokens.css) */
   /* probe UIActivityIndicatorView 20×20 at x 380 = card right − 40 − 20 */
   --ios-spinner-size: 20px;
   --ios-spinner-inset: 40px;
@@ -324,7 +323,37 @@
   --ios-motion-alert-stiffness: 522.4;
   --ios-motion-alert-damping: 45.71;
 
+  /* ---- added 09-18 pm for the status page (界面会话 questions) ---- */
+  /* probe UISwitch: knob container 37 wide at pad 2 inside the 63 track → travel 63 − 37 − 2×2 = 22 (probe on-state x +24 = 2 + 22) */
+  --ios-switch-travel: 22px;
+  /* probe UITabBar: capsule platter 274×62 at y 873 → 21 above the screen bottom (956); buttons/lens 94×54 at inset 4; label 10 at capsule top + 39;
+   * symbol image views 27–31 pt (SF symbol point sizes 19.7–22.7); the 83 of --ios-tabbar-h is the UITabBar frame incl. the home-indicator area */
+  --ios-tab-capsule-h: 62px;
+  --ios-tab-capsule-bottom: 21px;
+  --ios-tab-button-w: 94px;
+  --ios-tab-button-h: 54px;
+  --ios-tab-button-pad: 4px;
+  --ios-tab-label-top: 39px;
+  --ios-tab-symbol-box: 28px;
+  /* NUMBERS 49 (maa 09-15): compact value box in a row — tertiary fill, radius 8, padding 6/11 */
+  --ios-value-box-radius: 8px;
+  --ios-value-box-pad-y: 6px;
+  --ios-value-box-pad-x: 11px;
+  /* AX-57 Reminders home smart-list tiles: 196×80.33, columns x 20 / 224 (gap 8), row pitch 88.33; contents by pixel (57-reminders-home-tiles.png):
+   * icon glyph 26.67×24.67 at (16.67,13.67), number glyph 15.67×20.33 at right inset 12 / top 15.67, label glyph 15 tall at (13,55) — SAMPLED fonts */
+  --ios-tile-w: 196px;
+  --ios-tile-h: 80.33px;
+  --ios-tile-gap: 8px;
+  --ios-tile-icon-x: 16.67px;
+  --ios-tile-icon-y: 13.67px;
+  --ios-tile-number-inset: 12px;
+  --ios-tile-number-top: 15.67px;
+  --ios-tile-label-x: 13px;
+  --ios-tile-label-bottom: 10.33px;
+
   /* ======== !!! SAMPLED (采样替代) — no original value yet, mark red wherever used ======== */
+  /* !!! SAMPLED !!! Reminders tile corner ≈ 15.5–16 (continuous-curve fit on 57-reminders-home-tiles.png, rmse 0.27 px); tile number ≈ 28 pt bold and label ≈ 17 pt are inferred from glyph heights (20.33 / 15) */
+  --ios-tile-radius-SAMPLED: 16px;
   /* !!! SAMPLED !!! sheet corner: continuous-corner curve fit on tools/uiprobe/probe-sheet.png, rmse 0.8 px (NUMBERS 60 old measurement 38 agrees; Kit's 34 does not) */
   --ios-sheet-radius-SAMPLED: 38px;
   /* !!! SAMPLED !!! alert background material: Kit 89 "white 70 % + #bfbfbf 10 % + blur 30"; probe cannot read _UIAlertBackground */

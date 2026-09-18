@@ -57,21 +57,21 @@
      28pt symbol line and a 10pt semibold label, selected = #ededed capsule + tint,
      unselected label #1a1a1a (light) / #f5f5f5 (dark); 25pt above the home indicator. */
   nav.tabs{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 12px);transform:translateX(-50%);
-           z-index:6;margin:0;padding:0;display:flex;max-width:calc(100% - 24px)}
+           z-index:6;margin:0;padding:0;display:flex;width:max-content;max-width:calc(100% - 24px)}   /* left:50% 会把 shrink-to-fit 宽压到半屏，按钮能缩以后要写死 max-content */
   nav.tabs[hidden]{display:none}
   /* As a Home Screen web app there is no Safari bar: the capsule sits where Health's
      does, 22pt above the screen's bottom edge (measured on the iOS 27 simulator). */
-  @media (display-mode: standalone){ nav.tabs{bottom:22px} }
-  nav.tabs .seg{position:relative;display:flex;gap:0;padding:4px;height:62px;border-radius:999px;   /* 待 tokens：胶囊 62 是 Kit 值；探针 UITabBar 83 含安全区，透镜 --ios-tab-lens-* 见下 */
+  @media (display-mode: standalone){ nav.tabs{bottom:var(--ios-tab-capsule-bottom)} }   /* 胶囊距屏底 21 ← 探针 UITabBar 平台 y 873 / 956 */
+  nav.tabs .seg{position:relative;display:flex;gap:0;min-width:0;max-width:100%;padding:var(--ios-tab-button-pad);height:var(--ios-tab-capsule-h);border-radius:999px;   /* 胶囊 62、内缩 4 ← 探针 UITabBar 平台 274×62（83 是含 home 指示区的整个 frame） */
                 background:color-mix(in srgb, var(--card) 42%, transparent);
                 backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);   /* 材质 无来源（私有玻璃，探针读不到）：blur/saturate/阴影都是老页猜的值，待数据会话解出再换 */
                 box-shadow:0 8px 28px rgba(0,0,0,.16),inset 0 0 0 .5px rgba(255,255,255,.55),inset 0 1px 0 rgba(255,255,255,.7)}
-  nav.tabs .glide{position:absolute;top:4px;bottom:4px;left:4px;width:0;border-radius:999px;background:var(--tabsel);
+  nav.tabs .glide{position:absolute;top:var(--ios-tab-button-pad);bottom:var(--ios-tab-button-pad);left:var(--ios-tab-button-pad);width:0;border-radius:999px;background:var(--tabsel);
                   transition:left var(--ios-motion-lens-duration) var(--ios-motion-lens-easing),width var(--ios-motion-lens-duration) var(--ios-motion-lens-easing)}   /* 透镜 0.52 s ω17.5 ζ0.9 ← 探针轨迹 */
-  nav.tabs button{position:relative;flex:0 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;
-                  height:var(--ios-tab-lens-h);padding:6px 8px 7px;min-width:72px;border-radius:var(--ios-tab-lens-radius);font-size:var(--ios-tab-label-size);line-height:12px;font-weight:var(--ios-headline-weight);   /* 透镜 54 r27、字 Semibold 10 ← 探针；72/6/8/7 待 tokens */
+  nav.tabs button{position:relative;width:var(--ios-tab-button-w);flex:0 1 auto;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;
+                  height:var(--ios-tab-button-h);padding:6px 8px 7px;border-radius:var(--ios-tab-lens-radius);font-size:var(--ios-tab-label-size);line-height:12px;font-weight:var(--ios-headline-weight);   /* 按钮 94×54 r27、字 Semibold 10 ← 探针（5 个标签放不下 5×94 时等比缩）；6/8/7 待 tokens，但 4 + 6 + 28 + 1 = 39 = --ios-tab-label-top ← 探针 */
                   background:transparent;box-shadow:none;color:var(--tab);white-space:nowrap;transition:color .2s}
-  nav.tabs button .ico{display:flex;align-items:center;justify-content:center;width:28px;height:28px;flex:none}
+  nav.tabs button .ico{display:flex;align-items:center;justify-content:center;width:var(--ios-tab-symbol-box);height:var(--ios-tab-symbol-box);flex:none}   /* 符号框 28 ← 探针 27–31 */
   nav.tabs button .tabimg{display:block;width:26px;height:26px;border-radius:7px;object-fit:cover;
                           opacity:.7;filter:saturate(.6);transition:opacity .2s,filter .2s}
   nav.tabs button.on .tabimg{opacity:1;filter:none}
@@ -106,7 +106,7 @@
      position, not a switch: the bar's glass appears as soon as content slides
      under it, and the small title fades in exactly as the large one crosses it
      (--bar for the glass, --title for the label; app.js sets both). */
-  .topbar{position:fixed;top:0;left:0;right:0;z-index:5;height:calc(env(safe-area-inset-top) + 44px);
+  .topbar{position:fixed;top:0;left:0;right:0;z-index:5;height:calc(env(safe-area-inset-top) + var(--ios-nav-h));   /* 栏 54 ← AX-45 NavigationBar (0,62,440,54)；44 只是圆钮 */
           padding-top:env(safe-area-inset-top);display:flex;align-items:center;justify-content:center;
           font-size:var(--ios-body-size);font-weight:var(--ios-headline-weight);pointer-events:none;
           background:color-mix(in srgb, var(--bg) calc(var(--bar, 0) * 55%), transparent);
@@ -146,15 +146,15 @@
   .tile:active{transform:scale(.97)}
   /* Number tiles: Reminders' smart-list tiles (2×2, 195.67×80.33 on the Pro Max,
      radius 16, gap 8): symbol top-left, big number top-right, name bottom-left. */
-  .group.nums{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:transparent;border-radius:0;overflow:visible}
+  .group.nums{display:grid;grid-template-columns:1fr 1fr;gap:var(--ios-tile-gap);background:transparent;border-radius:0;overflow:visible}   /* 两列 196 间距 8 ← AX-57 提醒事项磁贴 */
   section + section > .group.nums:first-child{margin-top:16px}
   .group.nums + .foot{padding-top:8px}
-  .num{position:relative;min-height:80.33px;padding:12px 12px 11px;border-radius:16px;background:var(--card);color:var(--ink);   /* 80.33/16/8：提醒事项磁贴，待 tokens（无探针/AX） */
+  .num{position:relative;min-height:var(--ios-tile-h);padding:12px 12px 11px;border-radius:var(--ios-tile-radius-SAMPLED);background:var(--card);color:var(--ink);   /* 高 80.33 ← AX-57；圆角 16 采样替代（曲线拟合）；内距 12/12/11 待 tokens（57 的图标是裸字形 at 16.67/13.67，这里是带色圆的老页形，位置没法照搬） */
        display:flex;flex-direction:column;justify-content:space-between}
   .nico{width:32px;height:32px;border-radius:50%;background:var(--c);display:flex;align-items:center;justify-content:center}
   .nico .sf{width:18px;height:18px;background:#fff}
   .nico .rico{width:24px;height:24px;object-fit:contain;display:block}
-  .num .big{position:absolute;top:10px;right:14px;font-size:24px;line-height:28px;font-weight:700;letter-spacing:-.02em;color:var(--ink)}   /* 待 tokens：24/28 是老页目测值 */
+  .num .big{position:absolute;top:10px;right:var(--ios-tile-number-inset);font-size:24px;line-height:28px;font-weight:700;letter-spacing:-.02em;color:var(--ink)}   /* 右内缩 12 ← AX-57 像素；字号 24/28 老页目测值 待 tokens（57 字形高反推 ≈28 是采样，没采用） */
   .num .big small{font-size:.58em;font-weight:600;color:var(--dim)}
   .num .lab{margin-top:6px;font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);font-weight:var(--ios-headline-weight);color:var(--dim)}
   .num .sub{font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh);color:var(--dim)}
@@ -166,8 +166,12 @@
   .dico{display:none}                                                          /* 46 的设备行没有图标 */
   .dtext{flex:1 1 auto;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:var(--ios-value-gap)}
   .dname{font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:400}
-  .dsub{display:flex;align-items:center;gap:6px;color:var(--dim);font-size:var(--ios-body-size);line-height:var(--ios-body-lh);text-align:right}   /* 右灰值 secondaryLabel ← 探针 */
-  .dsub .dot{display:none}
+  .dsub{display:flex;align-items:center;gap:var(--ios-value-gap);color:var(--dim);font-size:var(--ios-body-size);line-height:var(--ios-body-lh);text-align:right}   /* 右灰值 secondaryLabel ← 探针 */
+  /* 在线/离线点（老页绿点）：在线 --ios-green、离线/未知 tertiaryLabel ← 探针；直径 9 是老页值，
+     iOS 没有对应组件在手（Kit 里只有 Page Control 的 10 点），待 tokens；点到字的距离 = 值行的 --ios-value-gap 8 ← AX */
+  .dsub .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--ios-tertiary-label);flex:none}
+  .dsub .dot.on{background:var(--ios-green)}
+  .dsub .dot.off{background:var(--ios-tertiary-label)}
   .dside{display:none}
   section + section > .group.devcard:first-child{margin-top:0}
   /* Notice card: Health › 摘要 (measured on the simulator: inset 16, caption 13 with a
@@ -184,11 +188,11 @@
   .capsule.red{color:var(--bad);background:color-mix(in srgb, var(--bad) 16%, transparent)}
   /* Action tiles: two columns, 8 apart, 80 high, radius 16 (Reminders' tiles on the
      simulator); the look of Find My's 「Play Sound / Directions」 tiles. */
-  .group.tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:transparent;border-radius:0;overflow:visible}
+  .group.tiles{display:grid;grid-template-columns:1fr 1fr;gap:var(--ios-tile-gap);background:transparent;border-radius:0;overflow:visible}   /* 间距 8 ← AX-57 */
   section + section > .group.tiles:first-child{margin-top:16px}
   .group.tiles + *{margin-top:16px}
-  .tile{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:0;min-height:80px;padding:12px 14px 11px;
-        border:0;border-radius:16px;background:var(--card);color:var(--ink);text-align:left;font:inherit;box-shadow:none;cursor:pointer}
+  .tile{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:0;min-height:var(--ios-tile-h);padding:12px 14px 11px;   /* 高 80.33 ← AX-57；内距 待 tokens */
+        border:0;border-radius:var(--ios-tile-radius-SAMPLED);   /* 圆角 16 采样替代 */background:var(--card);color:var(--ink);text-align:left;font:inherit;box-shadow:none;cursor:pointer}
   .tile:active{opacity:1;background:color-mix(in srgb, var(--ink) 8%, var(--card));transition:none}   /* 按下填色 8% 无来源 */
   .tico{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;flex:none}
   .tico .sf{width:15px;height:15px;background:#fff}
@@ -229,7 +233,7 @@
      date picker shows in a Settings row. */
   input[type=text],input[type=number],select{
     background:var(--ios-tertiary-fill);border:0;color:var(--ink);
-    border-radius:8px;padding:6px 11px;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);width:96px;text-align:right}   /* 值框 tertiaryFill ← 探针；圆角 8 / 6/11 待 tokens（Kit 「Compact value box」） */
+    border-radius:var(--ios-value-box-radius);padding:var(--ios-value-box-pad-y) var(--ios-value-box-pad-x);font-size:var(--ios-body-size);line-height:var(--ios-body-lh);width:96px;text-align:right}   /* 值框 tertiaryFill ← 探针；圆角 8 / 内距 6/11 ← NUMBERS 49；宽 96 待 tokens */
   input[type=text].short{width:auto;min-width:72px;max-width:120px}
   /* Inline picker in a row: value in the secondary colour with chevron.up.chevron.down,
      no box - a menu-style picker row in iOS 26 Settings. */
@@ -361,7 +365,7 @@
      in the 44 bar under the safe area, with a symbol inside - ✕ to discard on the
      left, ✓ to finish on the right (tinted when it can be pressed); the title sits
      centred at 17 semibold. */
-  .topbar .navbtn{position:absolute;top:env(safe-area-inset-top);width:44px;height:44px;padding:0;border:0;border-radius:50%;
+  .topbar .navbtn{position:absolute;top:calc(env(safe-area-inset-top) + (var(--ios-nav-h) - var(--ios-nav-button)) / 2);width:var(--ios-nav-button);height:var(--ios-nav-button);padding:0;border:0;border-radius:50%;   /* 圆钮 44 在 54 栏里上下各 5 ← AX-45 */
                   display:none;align-items:center;justify-content:center;pointer-events:auto;box-shadow:none;cursor:pointer;
                   background:color-mix(in srgb, var(--card) 55%, transparent);color:var(--ink);
                   backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);
@@ -369,8 +373,8 @@
   .topbar .navbtn .sf{width:20px;height:20px;background:currentColor}
   .topbar.editing .navbtn{display:flex}
   .topbar.editing{pointer-events:auto;--bar:1 !important;--title:1 !important}
-  .topbar #discard{left:20px}
-  .topbar #save{right:20px;color:#fff;background:var(--accent);backdrop-filter:none;-webkit-backdrop-filter:none;
+  .topbar #discard{left:var(--ios-nav-side)}
+  .topbar #save{right:var(--ios-nav-side);color:#fff;background:var(--accent);backdrop-filter:none;-webkit-backdrop-filter:none;
                 box-shadow:0 4px 16px color-mix(in srgb, var(--accent) 35%, transparent)}
   .topbar .navbtn:active{opacity:.7}
   pre{margin:0;padding:11px 16px;white-space:pre-wrap;font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);color:var(--dim);font-family:inherit}

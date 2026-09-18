@@ -84,12 +84,13 @@ async function _ping(minAt) {
     if (pinScan.seen > 0 && pinScan.matched === 0) {
       return setStatus(`信箱里有 ${pinScan.seen} 条消息但 PIN 对不上——检查设置里的 PIN`, "off");
     }
-    return setStatus("关机中 · 还没有过状态", "off");
+    return setStatus(lastBeat() ? `关机 · 最后心跳 ${lastBeat()}` : "关机 · 还没有过心跳", "off");
   }
   const age = Date.now() - best.at * 1000;
   if (age < JUST_MS)  return setStatus("开机中 · 刚刚更新", "on");
   if (age < FRESH_MS) return setStatus(`开机中 · 在忙，状态是 ${ago(best.at)}的`, "on");
-  return setStatus(`关机中（没应答刷新）· 状态是 ${ago(best.at)}的`, "off");
+  sawHb(best.at * 1000);
+  return setStatus(`关机（没应答刷新）· 最后心跳 ${lastBeat()}`, "off");
 }
 
 /* ---------- 启动 ---------- */
@@ -115,6 +116,10 @@ function hbWindowMs() {
 const WATCH_RENEW_MS = 8 * 60 * 1000;
 const CONFIRM_MS = 8 * 1000;
 let lastHb = 0;
+/* 最后一次看到机器活着的时刻（心跳、状态包或 bye），关机文案「关机 · 最后心跳 HH:MM」用；存 localStorage 免得刷新后不知道。 */
+let hbSeen = Number(localStorage.getItem("ark-remote-hb") || 0);
+function sawHb(ms) { if (ms > hbSeen) { hbSeen = ms; try { localStorage.setItem("ark-remote-hb", String(ms)); } catch {} } }
+const lastBeat = () => hbSeen ? new Date(hbSeen).toTimeString().slice(0, 5) : (snap && snap.at ? new Date(snap.at * 1000).toTimeString().slice(0, 5) : "");
 let liveES = null;
 let pendingUntil = 0;
 // 上一次跟外面说话成功了没有。没有它的话，页面分不清「机器关了」和「我这边没网」，
@@ -151,10 +156,10 @@ function updateLive() {
     // 连不上就只说连不上。这台机器可能开着，只是话传不过来。
     setStatus(snap ? `连不上 · 先看看你这边有没有网（最后状态 ${ago(snap.at)}）`
                    : "连不上 · 先看看你这边有没有网", "");
-  } else if (snap) {
-    setStatus(`关机中 · 最后状态 ${ago(snap.at)}`, "off");
+  } else if (lastBeat()) {
+    setStatus(`关机 · 最后心跳 ${lastBeat()}`, "off");   // 验收 2026-09-18 定的离线文案
   } else {
-    setStatus("关机中 · 还没有过状态", "off");
+    setStatus("关机 · 还没有过心跳", "off");
   }
 }
 setInterval(updateLive, 5000);
@@ -188,7 +193,7 @@ async function probeHb() {
         }
       } catch {}
     }
-    lastHb = (bye >= hb) ? 0 : hb;
+    lastHb = (bye >= hb) ? 0 : hb; sawHb(Math.max(hb, bye));
     netOk = true;
   } catch { netOk = false; }
 }
@@ -202,6 +207,7 @@ function startLive() {
         const d = JSON.parse(ev.data);
         if (d.event && d.event !== "message") return;
         if (d.topic === cfg.topic + "-hb") {
+          sawHb(d.time * 1000);
           if (d.message === "bye") { lastHb = 0; pendingUntil = 0; }
           else {
             lastHb = d.time * 1000;
@@ -217,7 +223,7 @@ function startLive() {
         const body = await unwrap(m);
         if (!body) return;
         if (!snap || body.at > snap.at) { snap = body; save_cache(); render(); }
-        lastHb = Math.max(lastHb, d.time * 1000);   // 状态包也是活着的证据
+        lastHb = Math.max(lastHb, d.time * 1000); sawHb(d.time * 1000);   // 状态包也是活着的证据
         resendStale();
         updateLive();
       } catch {}

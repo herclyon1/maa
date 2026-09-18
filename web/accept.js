@@ -108,15 +108,16 @@
     const tile = document.querySelector(".tile");
     if (tile) {
       const r = tile.getBoundingClientRect();
-      num("动作磁贴高 ≥ 80（待 tokens：提醒事项磁贴）", 80, Math.min(r.height, 80)); num("动作磁贴圆角 16（待 tokens）", 16, px(cs(tile).borderTopLeftRadius));
-      num("磁贴间距 8（待 tokens）", 8, px(cs(tile.parentElement).columnGap));
+      num("动作磁贴高 ≥ 80.33（--ios-tile-h，AX-57）", 80.33, Math.min(r.height, 80.33)); num("动作磁贴圆角 16（--ios-tile-radius-SAMPLED 采样替代）", 16, px(cs(tile).borderTopLeftRadius));
+      num("磁贴间距 8（--ios-tile-gap）", 8, px(cs(tile.parentElement).columnGap));
       const ico = tile.querySelector(".tico"); if (ico) num("磁贴图标圆 28（待 tokens）", 28, ico.getBoundingClientRect().width);
       num("磁贴标题 15（--ios-sub-size）", 15, px(cs(tile.querySelector(".ttitle") || tile).fontSize), 0.05);
     }
     const numT = document.querySelector(".num");
     if (numT) {
       const r = numT.getBoundingClientRect();
-      num("数字磁贴高 ≥ 80.33（待 tokens）", 80.33, Math.min(r.height, 80.33)); num("数字磁贴圆角 16（待 tokens）", 16, px(cs(numT).borderTopLeftRadius));
+      num("数字磁贴高 ≥ 80.33（--ios-tile-h）", 80.33, Math.min(r.height, 80.33)); num("数字磁贴圆角 16（--ios-tile-radius-SAMPLED 采样替代）", 16, px(cs(numT).borderTopLeftRadius));
+      const bigEl = numT.querySelector(".big"); if (bigEl) num("数字磁贴数字右内缩 12（--ios-tile-number-inset）", 12, r.right - bigEl.getBoundingClientRect().right);
       const ico = numT.querySelector(".nico"); if (ico) num("数字磁贴图标圆 32（待 tokens）", 32, ico.getBoundingClientRect().width);
       const big = numT.querySelector(".big"); if (big) num("数字磁贴大数字号 24（待 tokens）", 24, px(cs(big).fontSize), 0.1);
       const lab = numT.querySelector(".lab"); if (lab) num("数字磁贴名字字号 15（--ios-sub-size）", 15, px(cs(lab).fontSize), 0.1);
@@ -150,22 +151,31 @@
     }
     if (seg) {
       const r = seg.getBoundingClientRect();
-      num("标签栏胶囊高 62（Kit；探针 UITabBar 83 含安全区，待 tokens）", 62, r.height);
+      num("标签栏胶囊高 62（--ios-tab-capsule-h，探针平台 274×62）", 62, r.height);
+      num("标签栏胶囊内缩 4（--ios-tab-button-pad）", 4, px(cs(seg).paddingLeft));
       if (!fakeNav) {
         const gap = innerHeight - r.bottom;
         const standalone = matchMedia("(display-mode: standalone)").matches;
-        if (standalone) num("标签栏底边距屏底 22（主屏幕 app；待 tokens）", 22, gap);
+        if (standalone) num("标签栏底边距屏底 21（--ios-tab-capsule-bottom）", 21, gap);
         else check("标签栏在 Safari 地址栏之上", "> 0", Math.round(gap), gap > 0);
       }
-      const b = seg.querySelector("button"); if (b) { const w = b.getBoundingClientRect().width; num("标签按钮高 54（--ios-tab-lens-h）", 54, b.getBoundingClientRect().height); check("标签按钮宽 ≥ 72（Kit，待 tokens）", "≥ 72", w, w >= 71.5); num("标签文字 10（--ios-tab-label-size）", 10, px(cs(b).fontSize), 0.05); num("标签按钮圆角 27（--ios-tab-lens-radius）", 27, px(cs(b).borderTopLeftRadius)); }
-      const ico = seg.querySelector(".ico"); if (ico) num("标签符号框 28（Kit，待 tokens）", 28, ico.getBoundingClientRect().height);
+      const bs = seg.querySelectorAll("button"), b = bs[0];
+      if (b) {
+        const w = b.getBoundingClientRect().width, want = Math.min(94, (r.width - 8) / bs.length);
+        num("标签按钮高 54（--ios-tab-button-h）", 54, b.getBoundingClientRect().height);
+        num(`标签按钮宽 ${Math.round(want * 100) / 100}（--ios-tab-button-w 94，${bs.length} 个标签放不下时等比缩）`, want, w);
+        num("标签文字 10（--ios-tab-label-size）", 10, px(cs(b).fontSize), 0.05); num("标签按钮圆角 27（--ios-tab-lens-radius）", 27, px(cs(b).borderTopLeftRadius));
+        const lb = [...b.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim()) || b.querySelector("span:not(.ico)");
+        if (lb) { const rg = document.createRange(); rg.selectNodeContents(lb); const lr = rg.getBoundingClientRect(); num("标签文字顶 = 胶囊顶 + 39（--ios-tab-label-top）", 39, lr.top - r.top, 1.5); }
+      }
+      const ico = seg.querySelector(".ico"); if (ico) num("标签符号框 28（--ios-tab-symbol-box，探针 27–31）", 28, ico.getBoundingClientRect().height);
     }
     if (fakeNav) fakeNav.remove();
     const top = document.querySelector(".topbar");
     if (top) {
       const pr = document.createElement("div"); pr.style.cssText = "position:fixed;top:0;left:0;width:1px;padding-top:env(safe-area-inset-top);visibility:hidden";
       document.body.appendChild(pr); const sat = px(cs(pr).paddingTop); pr.remove();
-      num("顶栏高 = 安全区 + 44（老量法；AX-45 NavigationBar 54 = --ios-nav-h 待换）", 44, top.getBoundingClientRect().height - sat);
+      num("顶栏高 = 安全区 + 54（--ios-nav-h，AX-45 NavigationBar (0,62,440,54)）", 54, top.getBoundingClientRect().height - sat);
     }
     const h1 = document.querySelector("header h1");
     if (h1) { num("大标题字号 34（--ios-large-title-size）", 34, px(cs(h1).fontSize), 0.1); num("大标题行框 40.57（--ios-large-title-lh）", 40.57, px(cs(h1).lineHeight), 0.05); check("大标题字重 700（NUMBERS 56）", 700, cs(h1).fontWeight, String(cs(h1).fontWeight) === "700"); }
@@ -177,7 +187,7 @@
     lab.innerHTML = `<label class="sw"><input type="checkbox" checked><span></span></label><label class="sw"><input type="checkbox"><span></span></label>` +
       `<button class="tile danger"><span class="ttitle">x</span></button><nav class="tabs"><div class="seg"><button class="on">x</button></div></nav>` +
       `<div class="topbar editing"><button class="navbtn" id="_d">x</button><button class="navbtn" id="_s">x</button></div>` +
-      `<div class="group"><div class="row"><label>x</label><span class="sent">已寄出 10:00</span></div><div class="acts"><button>开始刷</button></div></div>`;
+      `<div class="group"><div class="row"><label>x</label><span class="sent">已寄出 10:00</span></div><div class="row"><label>y</label><input type="text" class="short" value="08:30"></div><div class="acts"><button>开始刷</button></div></div>`;
     document.body.appendChild(lab);
     const [on, off] = lab.querySelectorAll(".sw span");
     col("开关开 = 系统绿（--ios-switch-on）", T.green, cs(on).backgroundColor);
@@ -211,10 +221,14 @@
     const cap = lab.querySelector(".sent");
     num("三态小字 11（--ios-caption2-size）", 11, px(cs(cap).fontSize), 0.05); num("三态小字行框 13.13（--ios-caption2-lh）", 13.13, px(cs(cap).lineHeight), 0.05);
     col("三态小字色 secondaryLabel（--ios-secondary-label）", T.dim, cs(cap).color);
+    const vb = lab.querySelector("input.short");
+    num("值框圆角 8（--ios-value-box-radius，NUMBERS 49）", 8, px(cs(vb).borderTopLeftRadius)); num("值框内距上下 6（--ios-value-box-pad-y）", 6, px(cs(vb).paddingTop)); num("值框内距左右 11（--ios-value-box-pad-x）", 11, px(cs(vb).paddingLeft));
+    col("值框底 tertiaryFill（--ios-tertiary-fill）", dark ? [118, 118, 128, .24] : [118, 118, 128, .12], cs(vb).backgroundColor);
     lab.querySelector("#_d").id = "discard"; lab.querySelector("#_s").id = "save";
     check("编辑栏 ✓ = tint 底白符号（--ios-tint）", fmt(T.tint), cs(lab.querySelector("#save")).backgroundColor, same(cs(lab.querySelector("#save")).backgroundColor, T.tint) && same(cs(lab.querySelector("#save")).color, [255, 255, 255]));
     num("编辑栏圆钮 44（--ios-nav-button）", 44, lab.querySelector("#save").getBoundingClientRect().height); num("编辑栏圆钮宽 44（--ios-nav-button）", 44, lab.querySelector("#save").getBoundingClientRect().width);
     num("编辑栏圆钮距边 20（--ios-nav-side）", 20, px(cs(lab.querySelector("#discard")).left));
+    { const tb = lab.querySelector(".topbar"); num("编辑栏圆钮在 54 栏里居中（上下各 5 ← AX-45）", 5, lab.querySelector("#save").getBoundingClientRect().top - tb.getBoundingClientRect().top - px(cs(tb).paddingTop)); }
     check("编辑栏圆钮是圆的", "50%", cs(lab.querySelector("#save")).borderRadius, cs(lab.querySelector("#save")).borderRadius === "50%" || px(cs(lab.querySelector("#save")).borderRadius) >= 22);
     lab.remove(); probe.remove();
     const meta = document.querySelector('meta[name="theme-color"]');

@@ -61,17 +61,23 @@ The 2026-09-15 table further down is kept as history; where the two disagree, th
 | pull-down menu | 250 wide, pad 10, item 42 at x 16 | `--ios-menu-*` | NUMBERS 96 (corner 26 still 待 tokens) |
 | buttons / rows press | press instant; release 0.25 s (button) / 0.5 s (row) ease-in-out | `--ios-motion-button-release-duration` `--ios-motion-row-release-duration` `--ios-motion-ease-in-out` | UIProbe |
 | spinner | 0.8 s period | `--ios-motion-spinner-period` | UIProbe |
-| tab bar | lens 54 r27, label 10 semibold, tint when selected; lens slide 0.52 s | `--ios-tab-lens-*` `--ios-tab-label-size` `--ios-motion-lens-*` | UIProbe; capsule 62, button ≥72, symbol 28 are Kit values, 待 tokens; glass material 无来源 |
-| edit bar buttons | 44 round at 20 from the edge | `--ios-nav-button` `--ios-nav-side` | AX-45 |
-| still without a token (kept at the old value, flagged in the CSS) | action tiles 80 / 16 / 8 / icon 28; number tiles 80.33 / big 24 / icon 32; top bar 44 (AX-45 says 54 = `--ios-nav-h`, not switched yet); first header under the large title 10; tab-bar capsule 62 / ≥72 / 28; menu corner 26 and its 0.22 s appear; toast; `.notice` rise 0.28 s; the press fill 8 %; blur/saturate/shadow of every glass surface | — | 待 tokens / 无来源 |
+| tab bar | capsule 62 with 4 inset, 21 above the screen bottom (standalone); buttons 94×54 r27 (shrink evenly when five do not fit 440), label 10 semibold at capsule top + 39, symbol box 28; tint when selected; lens slide 0.52 s | `--ios-tab-capsule-h/-bottom` `--ios-tab-button-w/-h/-pad` `--ios-tab-label-top` `--ios-tab-symbol-box` `--ios-tab-lens-radius` `--ios-motion-lens-*` | UIProbe UITabBar (platter 274×62 at y 873; 83 is the whole frame); glass material 无来源 |
+| nav bar / edit bar | bar 54 under the safe area; round buttons 44 at 20 from the edge, 5 above and below | `--ios-nav-h` `--ios-nav-button` `--ios-nav-side` | AX-45 NavigationBar (0,62,440,54), BackButton 44×44 at x 20 |
+| tiles (actions and stamina) | 196×80.33 two columns, gap 8; number right inset 12; corner 16 **SAMPLED** | `--ios-tile-w/-h/-gap` `--ios-tile-number-inset` `--ios-tile-radius-SAMPLED` | AX-57 Reminders home smart-list tiles (57-reminders-home-tiles.png); corner is a curve fit |
+| value box (刷到几点) | tertiary fill, radius 8, padding 6/11 | `--ios-value-box-radius/-pad-y/-pad-x` `--ios-tertiary-fill` | NUMBERS 49 |
+| device row status dot | 9 diameter; on `--ios-green`, off/unknown `--ios-tertiary-label`; gap 8 to the text | `--ios-green` `--ios-tertiary-label` `--ios-value-gap` | colours UIProbe; diameter is the old page's value, 待 tokens (no iOS status-dot component in hand) |
+| still without a token (kept at the old value, flagged in the CSS) | tile padding 12/12/11, icon circles 28 / 32, big number 24/28 (AX-57 infers ≈28 from glyph height - sampled, not adopted), tab button padding 6/8/7 (adds up to the probed label top 39), value box width 96, status dot 9; first header under the large title 10 (no source, data session: not set on purpose); menu corner 26 and its 0.22 s appear; toast; `.notice` rise 0.28 s; the press fill 8 %; teal #30b0c7 of the 鸣潮 tile; blur/saturate/shadow of every glass surface | — | 待 tokens / 无来源 |
 
 Dynamic Type: the sizes are the probe's px at the default text size, so the page no longer
 scales with Settings › 显示与亮度 › 文字大小 (the old `-apple-system-body` em scheme did).
 Root font-size is set to 17 explicitly.
 
 Running it: the ui worktree's page with `?accept=1&quiet=1` on the iOS 27.0 simulator
-(`scripts/mac/phone-accept.py`); 91/91 light and dark in headless Chrome on 2026-09-18
-(desktop Chromium has no safe area, so the top-bar line there measures 44 without it).
+(`scripts/mac/phone-accept.py`). In `?accept` mode with no mailbox configured the page
+renders a built-in demo snapshot (`DEMO` in view.js: two shifts, one pending edit, stamina,
+receipts; the device row says 「演示数据」) so every block exists for the probe without
+real credentials; 99/99 light and dark in headless Chrome on 2026-09-18, with and without
+stored credentials (desktop Chromium has no safe area, so the top-bar line there measures 54 without it).
 The split commit 407376d alone (before step 2) measures identically to `main` with the
 2026-09-15 accept.js: 61 rows, same 55 pass in Chromium (the 6 failures are Chromium's
 16 px `-apple-system-body`), light and dark.

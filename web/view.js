@@ -255,13 +255,13 @@ function numTiles(snap) {
   if (!r && !t) return "";
   const ak = (r || {})["明日方舟"] || {}, ef = (r || {})["终末地"] || {}, ww = (r || {})["鸣潮"] || {};
   let h = "";
-  if (t) h += numTile("gamecontroller.fill", "#8e8e93", t["跑了"], "趟", "今天跑了", t["失败"] ? `失败 ${t["失败"]} 趟` : (t["最近"] ? `最近一趟 ${t["最近"]}` : "还没跑"));
+  if (t) h += numTile("gamecontroller.fill", "var(--ios-gray)", t["跑了"], "趟", "今天跑了", t["失败"] ? `失败 ${t["失败"]} 趟` : (t["最近"] ? `最近一趟 ${t["最近"]}` : "还没跑"));
   if (r) {
     /* The tab bar carries each game's own icon; the tile shows the resource's own icon,
        so the two never repeat. */
-    h += numTile("ak", "#0088ff", ak["理智"], ak["上限"] != null ? `/${ak["上限"]}` : "", "明日方舟 理智", whenFull(ak["回满"]) || (ak["理智"] >= ak["上限"] ? "已满" : ""), ak["错误"]);
-    h += numTile("ef", "#ff9500", ef["理智"], ef["上限"] != null ? `/${ef["上限"]}` : "", "终末地 理智", whenFull(ef["回满"]) || (ef["理智"] >= ef["上限"] ? "已满" : ""), ef["错误"]);
-    h += numTile("ww", "#30b0c7", ww["波片"], ww["上限"] != null ? `/${ww["上限"]}` : "", "鸣潮 波片",
+    h += numTile("ak", "var(--ios-tint)", ak["理智"], ak["上限"] != null ? `/${ak["上限"]}` : "", "明日方舟 理智", whenFull(ak["回满"]) || (ak["理智"] >= ak["上限"] ? "已满" : ""), ak["错误"]);
+    h += numTile("ef", "var(--ios-orange)", ef["理智"], ef["上限"] != null ? `/${ef["上限"]}` : "", "终末地 理智", whenFull(ef["回满"]) || (ef["理智"] >= ef["上限"] ? "已满" : ""), ef["错误"]);
+    h += numTile("ww", "#30b0c7" /* 待 tokens：systemTeal 探针色表未列 */, ww["波片"], ww["上限"] != null ? `/${ww["上限"]}` : "", "鸣潮 波片",
       ww["错误"] ? "" : [whenFull(ww["回满"]), `备用 ${ww["备用"] ?? "–"}`, `周本 ${ww["周本"] ?? "–"}/${ww["周本上限"] ?? "–"}`].filter(Boolean).join(" · "), ww["错误"]);
   }
   return `<section><div class="group nums">${h}</div>${r && r["取自"] ? `<div class="foot">${r["取自"]} 读取，下拉刷新会重新读</div>` : ""}</section>`;
@@ -303,7 +303,7 @@ function render() {
   /* 设备卡（查找的结构）：名字 + 一行状态；右边一个词。状态文字由 setStatus 同步。 */
   /* 设备行（46 Apple 账户页的值行：名字左、状态右灰字）。id 不变：setStatus 写 #status2/#dot2/#side2。 */
   html += `<section><div class="group devcard">
-    <div class="dtext"><div class="dname">游戏机</div>
+    <div class="dtext"><div class="dname">游戏机${DEMO ? " · 演示数据" : ""}</div>
       <div class="dsub"><i class="dot" id="dot2"></i><span id="status2">${$("#status") ? $("#status").textContent : "正在读取…"}</span></div></div>
     <span class="dside" id="side2"></span>
   </div></section>`;
@@ -318,9 +318,11 @@ function render() {
   /* 动作磁贴（查找 / 家庭的磁贴，提醒事项的几何）。 */
   html += `<section><div class="group tiles">
     ${tile("runnow", "play.fill", "var(--accent)", "现在跑一趟", curQueue ? `${curQueue}${nextAt ? " · 下一趟 " + nextAt : ""}` : "")}
-    ${tile("refresh", "arrow.clockwise", "#8e8e93", "刷新", snap ? ago(snap.at) : "还没有数据")}
+    ${tile("refresh", "arrow.clockwise", "var(--ios-gray)", "刷新", snap ? ago(snap.at) : "还没有数据")}
     ${tile("estop", "stop.fill", "var(--bad)", "停止一切", "脚本和游戏", "danger")}
   </div></section>`;
+  /* 体力（老页的方块磁贴，不做环）——首屏，三格正下方（验收 2026-09-18）。 */
+  html += numTiles(snap);
   /* 停止一切之后：一行「已停止 · 下一趟 HH:MM 照常」，脚注放机器的回执原文（没回执就写等着）。6 小时后不再提。 */
   const estopAt = Number(localStorage.getItem("ark-remote-estop") || 0);
   if (estopAt && now() - estopAt < 6 * 3600) {
@@ -345,8 +347,6 @@ function render() {
   html += `<section><h2>机器</h2>
     ${RELAY_SWITCHES.filter((x) => x.tab === "状态").map((x) => relayRow(x, relay)).join("")}
   </section>${cfgNote}`;
-  /* 体力（老页的方块磁贴，不做环）。 */
-  html += numTiles(snap);
   html += plan.tomorrow;
   /* The machine's answer to each order, newest first. Used to be a push per
      order; the answer belongs where the button was pressed (2026-09-14). */
@@ -1039,8 +1039,35 @@ function installNative() {
 addEventListener("DOMContentLoaded", installNative);
 
 
+/* ?accept 模式（docs/HIG-CHECKLIST.md 的验收程序）：没有信箱凭据也要把每个块画出来给 accept.js 量，
+   所以用内置的演示快照（两条队列、一条待应用、体力三格、回执），不碰网络，设备行名字写「演示数据」。
+   有真凭据时照常走真数据。 */
+const DEMO = new URLSearchParams(location.search).has("accept") && !localStorage.getItem(LS);
+function demoSnapshot() {
+  const at = now() - 180;
+  return { at, config: { MAA: { "关卡": "1-7", "理智药": 0, "作战开关": true, "活动关优先": true, "活动关序号": 1 } },
+    run: { "服务": true, "在跑的": [] },
+    queues: [{ "名": "早班", "脚本": ["MAA", "MaaEnd", "OK-WW"], "定时": true, "时刻": "09:00" }, { "名": "晚班", "脚本": ["MAA"], "定时": true, "时刻": "21:30" }],
+    relay: { "调试模式": "15:50", "刷声骸": {}, "下次别关机": true, "今天跳过": "", "无音区截图": true,
+             "最近指令": [{ at: "09-18 14:22", action: "set_config", ok: true, text: "理智药 0 → 3 已写入（演示）" }, { at: "09-18 14:31", action: "run_now", ok: true, text: "已开始早班（演示）" }],
+             "周本": {}, "周常": {} },
+    plan: "📅 明日安排\n🕘 09:00　东京 10:00\n▸ 明日方舟\n理智 1-7（固定）\n理智药 0 瓶\n▸ 终末地\n基质刷取 双倍，最多 6 轮\n▸ 鸣潮\n凝素领域 第 4 个\n🕘 21:30　东京 22:30\n▸ 明日方舟\n理智 1-7（固定）",
+    "今天": { "跑了": 2, "失败": 0, "最近": "鸣潮" }, master: {}, options: {} };
+}
+const DEMO_STAMINA = { "明日方舟": { "理智": 128, "上限": 135, "回满": "09-18 15:42" }, "终末地": { "理智": 96, "上限": 240, "回满": "09-19 02:10" },
+                       "鸣潮": { "波片": 172, "上限": 240, "回满": "09-18 18:20", "备用": 480, "周本": 2, "周本上限": 3 }, "取自": "演示数据" };
+
 async function boot() {
   fromLink();
+  if (DEMO) {
+    cfg = { topic: "accept-demo", pin: "0000" };
+    snap = demoSnapshot();
+    if (window.Stamina) { Stamina.data = DEMO_STAMINA; Stamina.at = Date.now(); }
+    pending = { "relay|debug_mode": { label: "调试模式", src: "relay", path: "", from: false, to: true, sentAt: now() - 120 } };
+    lastHb = Date.now(); netOk = true;
+    render(); updateLive();
+    return;
+  }
   const raw = localStorage.getItem(LS);
   if (!raw) return setupScreen();
   cfg = JSON.parse(raw);
