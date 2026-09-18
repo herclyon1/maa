@@ -1198,8 +1198,37 @@ nothing can ever be uploaded from the machine.
 - **Config**: `queue/config.json`, applied once per strictly-newer integer
   `version`. See `queue/README.md` for the command format.
 
-Doors, in the order the code tries them (measured from the machine 2026-08-21,
-8 attempts each):
+**First door since 2026-09-18: the Tencent COS bucket** (the same one evidence
+goes to; `COS_*` in the machine's `.env`). `deploy-relay.sh` ends by running
+`scripts/mac/publish-cos.py`, which PUTs `relay/<version>/manifest.json`,
+`relay/<version>/bundle.zip` (every file, one archive) and last `relay/latest.json`
+(`{"version", "uploaded", "files", "bundle_bytes"}`). At boot the relay GETs
+`latest.json` (a hundred bytes); only when its version beats the local one does
+it GET that version's manifest and bundle, verifying every wanted file against
+the manifest's SHA-1. COS has no cache layer, so "pushed at 02:31, still the old
+manifest on the machine's CDN node at 08:45" (2026-09-18) cannot happen there.
+
+**Why the bucket's 90-day lifecycle rule cannot hurt this path**: the machine
+never asks for anything but the *latest* deploy. `latest.json` is rewritten by
+every deploy, and it points at the version directory written seconds before it.
+An object that is 90 days old is by definition not the latest deploy (a deploy
+that old means nothing was pushed for three months - then `latest.json` and its
+version directory age out together, and a missing object simply falls through
+to GitHub). Old version directories are the only things the rule ever deletes,
+and nothing reads them. So the rule stays as it is; no path needs a 90-day-old
+object.
+
+Anything wrong on COS - missing object, refused key (451 unpaid bill on
+2026-09-13), hash mismatch in the bundle, `latest.json` and manifest
+disagreeing - is a silent fallback to the GitHub doors below, never an abandoned
+round. Files that do have to come from GitHub are fetched
+`selfupdate.PARALLEL_FETCHES` (6) at a time, so a twenty-file update on a day
+when only `raw` answers fits in one raw round-trip instead of twenty; the
+all-or-nothing landing is unchanged. `scripts/mac/publish-cos.py --check` shows
+which version COS would hand the machine.
+
+Doors of the (default-off) GitHub fallback, in the order the code tries them
+after COS (measured from the machine 2026-08-21, 8 attempts each):
 
 | Door | Success | Median |
 |---|---|---|
@@ -1213,8 +1242,74 @@ never serve a stale copy, so it stays as the final fallback. Both fetchers query
 **every** door and take the highest `version` - a lagging mirror used to make a
 config change silently do nothing.
 
-After pushing, run `scripts/mac/purge-cdn.py`: it purges jsDelivr and then waits
-until the machine could actually fetch the new version. Its success test mirrors
+**Files are fetched at the manifest's tag, not at `main` (since 2026-09-18
+evening).** `make-manifest.py` writes `"ref": "relay-<version>"` into the
+manifest and `deploy-relay.sh` pushes a tag of that name on the deploy commit,
+in the same push. `selfupdate._pinned_base` swaps the branch segment of the
+raw URL for that tag before `_alternates` fans it out to the mirrors, so every
+door serves `gh/herclyon1/maa@relay-<version>/relay/<file>`. Why: jsDelivr
+caches a branch for 12 hours and its purge is only promised for semver
+releases (its README). Measured that evening: eight hours after a push and a
+purge, `cdn` and `gcore` still served the previous `RELEASE-NOTES.md` while
+`raw` and `fastly` were reset (WinError 10054) or timed out from the machine;
+three rounds on that one file spent the whole 240 s budget and the round was
+abandoned - the machine ran the old code until a manual deploy. Purged again
+and fetched at once from the Mac, `fastly` and `gcore` still returned the
+previous commit's bytes with `x-cache: MISS`: the stale copy sits behind the
+layer the purge clears. The same file at `@<tag>` came back right on all three
+mirrors 3 s after the tag was pushed. A tag never moves, so "a door answered"
+now equals "a door answered correctly"; the manifest itself still comes from
+`main` and may be up to 12 hours stale on the GitHub path - that only ever
+means "no update this boot", and COS is the first door anyway. **Never move or
+delete a `relay-*` tag**: a machine mid-update fetches from it. A manifest
+without `ref` (anything before 2026-09-18) keeps the branch.
+
+**The GitHub doors are off by default (since the evening of 2026-09-18).**
+When COS cannot be used - `latest.json` unreadable, that version's manifest or
+bundle missing, a wrong hash in the bundle, `latest.json` and the manifest
+disagreeing, COS not configured - the round ends as a recorded failure: the
+next boot pushes `⚠️ 中继自更新没成功` with the reason and tries again, and
+nothing waits on GitHub. Operator decision, on this evidence from the whole of
+the machine's `relay.log` (521 service starts, 2026-08-16 00:27 to 09-18 19:32;
+the jsDelivr doors exist since 08-20/21, so ~455 rounds for them; only
+failures are logged, so a door's successes are "rounds minus failures"):
+
+| Door | Manifest fetch failures | of which reset / timeout | Stale file served | File fetch failures |
+|---|---|---|---|---|
+| `fastly.jsdelivr.net` | 2 | 0 / 1 (+1 DNS) | 8 | 11 (2 reset, 9 timeout) |
+| `cdn.jsdelivr.net` | 14 | 5 / 7 | 11 | 1 |
+| `gcore.jsdelivr.net` | 15 | 5 / 9 | 10 | 1 |
+| `raw.githubusercontent.com` | 206 | 134 / 58 (+14 other) | 1 | 19 |
+
+"Stale file served" counts `给的是旧副本` lines: 29 across the 33 rounds that
+needed a file (29 landed, 4 abandoned: 08-21 ×2, 09-18 19:06). So the mirrors
+fetch reliably but could not be trusted for content until the tag fix, and raw
+- the only always-fresh door - fails 40% of the time from that network. A live
+probe from the machine at 19:36 on 09-18 (4 attempts each, 15 s timeout):
+fastly 4/4 median 0.44 s, cdn 4/4 1.47 s, gcore 4/4 0.43 s, raw 4/4 0.55 s,
+**COS `latest.json` 4/4 0.31 s, COS manifest 4/4 0.30 s**. COS is paid for,
+has no cache layer and answered every time; nothing on GitHub earns a place in
+the boot window next to it.
+
+**To switch the GitHub doors back on**: add `SELFUPDATE_GITHUB_FALLBACK=1` to
+`C:\ProgramData\ark-relay\.env` on the machine and restart the service
+(`Restart-Service ark-relay`, or the next boot). Every door, timeout, budget
+and test of the fallback is kept as it was; with the switch on, a COS that
+cannot be used falls through to the four doors exactly as before, files at
+the manifest's tag. `selfupdate.github_fallback()` is the single point that
+reads the switch. Remove the line and restart to go back to COS only.
+
+**COS "already latest" ends the round.** When `latest.json` is readable and its
+version is not newer than the machine's, no GitHub door is asked: every deploy
+writes COS last, so GitHub cannot be ahead of it, and each GitHub round costs
+20-180 s of the boot window on doors that time out from that network. Only an
+unusable COS (no object, refused key, dead link, manifest/latest disagreeing)
+falls through to GitHub.
+
+After pushing, run `scripts/mac/purge-cdn.py`: it purges jsDelivr (only
+`manifest.json` and the two queue files - the code files are read at the tag and
+need no purge) and then waits until the machine could actually fetch the new
+version. Its success test mirrors
 what selfupdate really does - the newest manifest across **all** doors equals
 the local one, and every file is served correctly by **at least one** door -
 because an earlier version only watched fastly and reported failure during the

@@ -34,12 +34,39 @@ if junk:
                f"（macOS 打包时带上了扩展属性，推送方式要修）")
 mods = sorted(p.relative_to(ROOT).with_suffix("").as_posix().replace("/", ".")
               for p in pys if p.name != "__init__.py" and not p.name.startswith("._"))
-for m in mods:
+# Incremental since 2026-09-18: importing all eighty modules took 20-25 s of a
+# 77-101 s deploy. With `--changed a.py,b.py` only the changed modules and every
+# module that imports them (by a plain text scan of `from .x import` /
+# `import ark_relay.x`) are imported; a module-level error in an unchanged
+# module cannot have been introduced by this deploy. No argument = all, as before.
+changed_arg = next((a for a in sys.argv if a.startswith("--changed=")), "")
+if changed_arg:
+    changed = {c.strip() for c in changed_arg.split("=", 1)[1].split(",") if c.strip()}
+    stems = {pathlib.Path(c).stem for c in changed if c.endswith(".py")}
+    pick: set[str] = set()
+    for m in mods:
+        stem = m.rsplit(".", 1)[-1]
+        if stem in stems:
+            pick.add(m)
+            continue
+        try:
+            txt = (ROOT / (m.replace(".", "/") + ".py")).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            pick.add(m)
+            continue
+        if any(re.search(rf"(from \.+\s*import\s+[^\n]*\b{re.escape(st)}\b|from \.{re.escape(st)}\b|import ark_relay\.{re.escape(st)}\b|from ark_relay import [^\n]*\b{re.escape(st)}\b)", txt) for st in stems):
+            pick.add(m)
+    if any(not c.endswith(".py") or "/" not in c and c.endswith(".py") and pathlib.Path(c).stem in ("service", "boot_stages") for c in changed):
+        pick = set(mods)          # a top-level file (service.py / boot_stages.py) or a non-py file: import everything
+    mods_to_import = sorted(pick) if pick else []
+else:
+    mods_to_import = mods
+for m in mods_to_import:
     try:
         importlib.import_module(m)
     except Exception as e:   # noqa: BLE001 - 冒烟就是要接住所有导入失败
         bad.append(f"import {m} 失败：{type(e).__name__}: {e}")
-print(f"SMOKE 导入 {len(mods)} 个模块，失败 {sum(1 for b in bad if b.startswith('import'))} 个")
+print(f"SMOKE 导入 {len(mods_to_import)} 个模块（共 {len(mods)} 个），失败 {sum(1 for b in bad if b.startswith('import'))} 个")
 
 # 2. The registry that every state write is checked against must still parse,
 #    and the sections it declares must be the ones the store actually has.

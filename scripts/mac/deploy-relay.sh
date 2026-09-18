@@ -79,9 +79,20 @@ trap 'rm -rf "$GATED"' EXIT
 # output was being filtered. It runs on its own, first.
 ( python3 tests/test_manifest_covers_tree.py >"$GATED/manifest.out" 2>&1
   echo $? >"$GATED/manifest.rc"
-  printf '%s\n' tests/test_*.py | grep -v test_manifest_covers_tree.py \
+  # Only the tests that execute a changed module (relay/tests/test-map.json,
+  # rebuilt by every coverage pass), plus every test the map cannot place and
+  # every test file that changed itself; anything the selector cannot decide
+  # falls back to the whole suite. The user's condition (2026-09-18): a
+  # changed file's tests must run - never skip to save seconds.
+  PICK=$(python3 "$HERE/../scripts/mac/lib/changed_covered.py" --tests-for 2>"$GATED/pick.why")
+  if [ -n "$PICK" ]; then
+    printf '%s\n' $PICK | sed 's|^|tests/|'
+  else
+    printf '%s\n' tests/test_*.py
+  fi | grep -v test_manifest_covers_tree.py \
     | xargs -P 8 -I{} bash -c 'run_one_test "$1"' _ {} >"$GATED/tests.out" 2>&1
-  echo $? >"$GATED/tests.rc" ) &
+  echo $? >"$GATED/tests.rc"
+  { [ -n "$PICK" ] && printf '%s\n' $PICK | grep -vc test_manifest_covers_tree.py || ls tests/test_*.py | wc -l; } | tr -d ' ' >"$GATED/tests.n" ) &
 ( python3 -m py_compile ark_relay/*.py service.py boot_stages.py run.py \
       >"$GATED/cov.out" 2>&1 \
     && python3 "$HERE/../scripts/mac/lib/changed_covered.py" >>"$GATED/cov.out" 2>&1
@@ -113,7 +124,7 @@ if [ "$(cat "$GATED/tests.rc" 2>/dev/null || echo 1)" != 0 ]; then
   echo "     部署已取消。先修测试，或者确认这些断言本身该更新。"
   exit 1
 fi
-echo "  $(ls tests/test_*.py | wc -l | tr -d ' ') 个测试全过"
+echo "  $(cat "$GATED/tests.n" 2>/dev/null || ls tests/test_*.py | wc -l | tr -d ' ') 个测试全过（$(cat "$GATED/pick.why" 2>/dev/null || echo 全量)）"
 
 # 「改了什么就得证明什么」——用户 2026-09-06 的死命令：
 # 「没有回放案例的改动不许部署。部署脚本读 git diff 里改了哪些模块，
@@ -181,39 +192,30 @@ sys.exit(1 if bad else 0)
 PY
 
 echo "▶ 3/5 推送 $(wc -w <<<"$FILES") 个文件"
-# 清单里现在有嵌套路径（ark_relay/okww_files/*.py）。scp 不会自己建目录，
-# 目录不在的话那几个文件会静静推不过去，而哈希核对那步才会发现。先建好。
-MKDIRS=""
-for d in $(printf '%s\n' $FILES | xargs -n1 dirname | sort -u | grep -v '^\.$'); do
+# One round trip for all the preparation (2026-09-18: this used to be four -
+# mkdir, check dirs, scp manifest, scp verify script, then the diff - each paying
+# the cross-border handshake and command start-up): the helper files ride in on
+# the same tar stream, and the directory creation, the check and the hash diff
+# run in one remote command.
+DIRS=$(printf '%s\n' $FILES | xargs -n1 dirname | sort -u | grep -v '^\.$' || true)
+MKDIRS=""; CHECK=""
+for d in $DIRS; do
   win="${REMOTE_DIR//\//\\}\\${d//\//\\}"
   MKDIRS="${MKDIRS}${MKDIRS:+ & }if not exist \"$win\" mkdir \"$win\""
+  CHECK="${CHECK}${CHECK:+ & }if not exist \"$win\" (echo MISSING $d)"
 done
-# 一次调用建完所有目录——原来是一个目录一次 ssh，跨境往返白白多花好几秒。
-# 2026-09-06：这一步原来 `>/dev/null 2>&1 || true`，建不成一声不吭，接着 scp 对着
-# 不存在的目录一个个失败（okww_patches 第一次部署就撞上）。现在出错就停，
-# 并且建完回读一遍：目录不在就不往下走。
-if [ -n "$MKDIRS" ]; then
-  if ! out=$(ssh "${SSH_OPTS[@]}" "$USER_AT" "$MKDIRS" 2>&1); then
-    echo "  ✋ 机器上建目录失败：$out" >&2
-    exit 5
-  fi
-  CHECK=""
-  for d in $(printf '%s\n' $FILES | xargs -n1 dirname | sort -u | grep -v '^\.$'); do
-    win="${REMOTE_DIR//\//\\}\\${d//\//\\}"
-    CHECK="${CHECK}${CHECK:+ & }if exist \"$win\" (echo OK $d) else (echo MISSING $d)"
-  done
-  if missing=$(ssh "${SSH_OPTS[@]}" "$USER_AT" "$CHECK" 2>&1 | tr -d '\r' | grep MISSING); then
-    echo "  ✋ 机器上这些目录没建起来：$missing" >&2
-    exit 5
-  fi
+PREP="${MKDIRS:+$MKDIRS & }${CHECK:+$CHECK & }"
+if ! out=$(ssh "${SSH_OPTS[@]}" "$USER_AT" "${PREP}echo PREP-OK" 2>&1 | tr -d '\r'); then
+  echo "  ✋ 机器上建目录失败：$out" >&2
+  exit 5
 fi
-# 只推真正变了的。整份推一遍要一分多钟，而绝大多数部署只动一两个文件。
-# 先把清单和校验脚本送上去，问机器哪些对不上，再按名单推。
-# 安全性没有变化：推完之后那道严格校验（下一段）一个文件都不放过。
-scp -q "${SSH_OPTS[@]}" manifest.json "${USER_AT}:${REMOTE_DIR}/_manifest_check.json"
-scp -q "${SSH_OPTS[@]}" /tmp/ark-verify.py "${USER_AT}:C:/Users/Administrator/ark-verify.py"
-CHANGED=$(ssh "${SSH_OPTS[@]}" "$USER_AT" \
-  "\"$PY\" -X utf8 C:\\Users\\Administrator\\ark-verify.py --list" 2>/dev/null | tr -d '\r')
+if grep -q MISSING <<<"$out"; then
+  echo "  ✋ 机器上这些目录没建起来：$(grep MISSING <<<"$out")" >&2
+  exit 5
+fi
+cp manifest.json /tmp/_manifest_check.json
+CHANGED=$( (cd /tmp && COPYFILE_DISABLE=1 tar --no-mac-metadata -czf - _manifest_check.json ark-verify.py) \
+  | ssh "${SSH_OPTS[@]}" "$USER_AT" "tar xzf - -C ${REMOTE_DIR} && move /Y ${REMOTE_DIR//\//\\}\\ark-verify.py C:\\Users\\Administrator\\ark-verify.py >nul && \"$PY\" -X utf8 C:\\Users\\Administrator\\ark-verify.py --list" 2>/dev/null | tr -d '\r')
 if [ -z "$CHANGED" ]; then
   echo "    机器上的文件和本地一致，无需推送"
 else
@@ -383,8 +385,9 @@ fi
 echo "▶ 5.5/5 冒烟（机器上导入全部模块、读状态表、读启动后的日志）"
 scp -q "${SSH_OPTS[@]}" "$HERE/../scripts/windows/smoke.py" \
   "${USER_AT}:C:/Users/Administrator/ark-smoke.py"
+CHANGED_CSV=$(printf '%s\n' $CHANGED | paste -sd, - 2>/dev/null || true)
 SMOKE=$(ssh "${SSH_OPTS[@]}" "$USER_AT" \
-  "\"$PY\" -X utf8 C:\\Users\\Administrator\\ark-smoke.py" 2>&1 | tr -d '\r')
+  "\"$PY\" -X utf8 C:\\Users\\Administrator\\ark-smoke.py --changed=$CHANGED_CSV" 2>&1 | tr -d '\r')
 ssh "${SSH_OPTS[@]}" "$USER_AT" "del C:\\Users\\Administrator\\ark-smoke.py" >/dev/null 2>&1 || true
 sed 's/^/    /' <<<"$SMOKE"
 if ! grep -q '^SMOKE_OK$' <<<"$SMOKE"; then
@@ -426,8 +429,27 @@ else
     echo "✋ git commit 失败：manifest 没能提交，自更新会一直看到旧清单" >&2
     exit 9
   fi
-  if git -C "$HERE/.." push -q origin HEAD; then
-    echo "▶ manifest 已推上 GitHub，自更新下次开机就能看到"
+  # The manifest names its own tag (`ref`, written by make-manifest.py); the machine
+  # fetches the files at that tag when it falls back to GitHub, because a tag never
+  # moves and so no mirror can serve a stale copy - `@main` on jsDelivr is cached
+  # for 12 hours and its purge is only promised for semver releases (2026-09-18
+  # evening: two mirrors still served the previous RELEASE-NOTES.md eight hours
+  # after the push and the purge, and the update lost the boot window). The tag
+  # goes up in the same push as the commit so the manifest is never visible
+  # without it.
+  REF=$(python3 -c "import json;print(json.load(open('manifest.json')).get('ref',''))")
+  if [ -n "$REF" ] && ! git -C "$HERE/.." tag "$REF" HEAD; then
+    echo "✋ 打标签 $REF 失败：清单说文件在这个标签下，机器会拿不到" >&2
+    exit 9
+  fi
+  if git -C "$HERE/.." push -q origin HEAD ${REF:+"refs/tags/$REF"}; then
+    echo "▶ manifest 已推上 GitHub${REF:+（标签 $REF 一起）}，自更新下次开机就能看到"
+    # Since 2026-09-18 the COS bucket is the only door the machine uses at boot
+    # (the GitHub doors are off unless the machine's .env switches them on, see
+    # docs/OPERATIONS.md). The machine already has this code over ssh, so a failed
+    # publish does not undo the deploy - but it does mean the next self-update
+    # (a version pushed while the machine is off) has nothing to read.
+    python3 "$HERE/../scripts/mac/publish-cos.py" || echo "  ✋ COS 没推上：机器开机自更新只看 COS，请重跑 scripts/mac/publish-cos.py" >&2
     # 顺手清 jsDelivr：不清的话各扇门要到十几小时后才发新清单，自更新在那之前
     # 看到的是旧版本号，什么都不做也什么都不说。机器此刻已经部署好了，所以清缓存
     # 失败只是「自更新这条后路暂时不通」，不该让整个部署判失败。

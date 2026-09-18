@@ -53,6 +53,7 @@ exist - the next session will never read it, so writing it was wasted.
 | [ENDFIELD-GUIDES.md](ENDFIELD-GUIDES.md) | 终末地: external reference sources (look here first when you do not know something) |
 | [ENDFIELD-ITEMS.md](ENDFIELD-ITEMS.md) | 终末地: item ids, Chinese names, what they are for |
 | [ENDFIELD-STOCKPILE.md](ENDFIELD-STOCKPILE.md) | 终末地: how much a full set of upgrade materials costs, and how much to stockpile |
+| [ENDFIELD-SANITY-YIELD.md](ENDFIELD-SANITY-YIELD.md) | 终末地: what each sanity stage yields, what one five-star build needs, stock vs gap (2026-09-18) |
 | [ENDFIELD-ACTIVITIES.md](ENDFIELD-ACTIVITIES.md) | 终末地: the activity centre |
 | [MAAEND-TRIAL-SWORDMANCY.md](MAAEND-TRIAL-SWORDMANCY.md) | 终末地: why 选剑演武 fails |
 | [WUWA-DAILY.md](WUWA-DAILY.md) | 鸣潮: every step of the daily run, from power-on to finish |

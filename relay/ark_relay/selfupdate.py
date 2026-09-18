@@ -23,6 +23,29 @@ process, not a reload.
 Either every changed file lands or none does: a half-applied update leaves a
 mixed-version relay, and the restart above would then boot straight into it.
 
+Since 2026-09-18 the first door is the operator's own Tencent COS bucket (the
+one evidence bundles go to): the deploy script PUTs `relay/latest.json`, the
+manifest and one bundle of every file under `relay/<version>/`, and this
+module GETs them with the same signed request evidence.Cos already makes.
+Why: jsDelivr's caches are per node and refresh independently - on 2026-09-18
+a manifest pushed at 02:31 was still the old one on the machine's node at
+08:45, and the update only landed because a person deployed by hand. COS has
+no cache layer: what was written is what is read. The four GitHub doors stay
+as the fallback (COS answered 451 on 2026-09-13, an unpaid bill), and the
+bucket's own lifecycle rule may delete the prefix one day. Since the evening
+of 2026-09-18 the GitHub doors are **off by default** (GITHUB_FALLBACK_ENV):
+a COS that cannot be used ends the round as a recorded failure, reported at
+the next boot, which tries again. When COS answers and its latest
+deploy is the version already running, that is the end of the round: no
+GitHub door is asked (every deploy writes COS last, so GitHub cannot be ahead).
+
+On the GitHub fallback the manifest still comes from `main` (up to 12 hours
+stale on jsDelivr - a stale manifest only ever means "no update this boot"),
+but the files are fetched at the manifest's own tag, `relay-<version>`, see
+_pinned_base: the evening of 2026-09-18 the old branch fetch lost the boot
+window to two mirrors serving the previous RELEASE-NOTES.md and two doors
+timing out, eight hours after the push and the purge.
+
 Trust boundary, stated plainly: whoever can push to that repo can run code on
 this machine. The repo is the operator's own and the transport is HTTPS, so the
 exposure is the GitHub account itself - the same account that already decides
@@ -34,7 +57,12 @@ import hashlib
 import http.client
 import json
 import logging
+import os
+import re
 import time
+import zipfile
+from concurrent.futures import ThreadPoolExecutor
+from io import BytesIO
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -65,6 +93,129 @@ BUDGET_SECONDS = 240
 # have returned. 45 leaves real headroom, and BUDGET_SECONDS still caps the
 # round, so the cost of a door that is simply down is bounded either way.
 RAW_TIMEOUT = 45
+
+
+# How many files are fetched at once when they have to come one by one from
+# the GitHub doors. Sequential fetching paid raw's 38 s per file; five files
+# filled the whole 240 s budget (2026-09-18 plan). Six in flight keeps a
+# twenty-file update inside one raw round-trip.
+PARALLEL_FETCHES = 6
+# The GitHub doors are off unless the machine's .env says otherwise (operator
+# decision 2026-09-18 evening: the bucket is paid for, and the fallback is what
+# cost the boot window that night). The whole of relay.log, 521 rounds from
+# 08-16 to 09-18, says why nothing there qualifies as a door to rely on:
+# raw.githubusercontent failed the manifest fetch 206 times (reset 134,
+# timeout 58); the three jsDelivr mirrors fetched reliably (fastly 2 failures,
+# cdn 14, gcore 15 of ~455 rounds each) but served a stale copy of a file 29
+# times across the 33 rounds that needed files, and on 09-18 fastly was reset
+# or timed out four times in a row. COS answered 4/4 at 0.3 s from the same
+# machine that evening. When COS cannot be used the round is recorded as failed
+# and reported at the next boot, and the next boot tries again; nothing waits
+# on GitHub. Re-enable by putting SELFUPDATE_GITHUB_FALLBACK=1 in the .env
+# (docs/OPERATIONS.md); every door, timeout and test below is kept intact.
+GITHUB_FALLBACK_ENV = "SELFUPDATE_GITHUB_FALLBACK"
+COS_PREFIX = "relay"
+COS_LATEST = "latest.json"
+COS_BUNDLE = "bundle.zip"
+COS_TIMEOUT = 20
+
+
+def github_fallback() -> bool:
+    """Whether the GitHub doors may be asked at all this round."""
+    return os.environ.get(GITHUB_FALLBACK_ENV, "").strip() == "1"
+
+
+def _cos():
+    """The evidence bucket's client, or None when COS is not configured on this machine."""
+    from . import evidence  # noqa: PLC0415 - avoids importing evidence for machines without COS
+    keys = [os.environ.get(k, "") for k in ("COS_SECRET_ID", "COS_SECRET_KEY", "COS_BUCKET", "COS_REGION")]
+    if not all(keys):
+        return None
+    return evidence.Cos(*keys, prefix=COS_PREFIX)
+
+
+def _cos_get(cos, key: str, timeout: int = COS_TIMEOUT) -> bytes | None:
+    """One signed GET. None for anything that is not a body: a missing object
+    (the lifecycle rule, or a version never uploaded), a refused key, a dead
+    link. The caller falls back; nothing here is worth an alarm."""
+    import urllib.parse  # noqa: PLC0415
+    full = f"{cos.prefix}/{key}"
+    url = f"https://{cos.host}/" + urllib.parse.quote(full, safe="/")
+    req = urllib.request.Request(url, headers={"Authorization": cos.authorization("GET", full),
+                                               "User-Agent": "ark-relay"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read()
+    except urllib.error.HTTPError as exc:
+        log.info("COS 没有 %s（%s）", key, exc.code)
+    except (urllib.error.URLError, OSError, ValueError, http.client.HTTPException) as exc:
+        log.warning("取不到 COS 的 %s: %s", key, exc)
+    return None
+
+
+def _cos_manifest(cos, local_ver: int) -> tuple[dict | None, int] | None:
+    """What COS says about the latest deploy.
+
+    latest.json is a hundred bytes: {"version": N, "uploaded": "<iso>"}. Three
+    answers: None means COS could not be used (no object, refused key, dead
+    link) and the caller goes on to GitHub; (None, N) means COS answered and N
+    is not newer than the local version, so there is nothing to do *anywhere*
+    - every deploy writes COS last, so a GitHub manifest can never be ahead of
+    it, and asking GitHub anyway only spends the boot window on doors that
+    time out from this network (2026-09-18 19:14: 20 s on a reset from raw
+    plus a "manifest older than local" warning for a manifest that was simply
+    the previous one); (manifest, N) means N is newer and the manifest checked
+    out, so the files come from that version's bundle.
+    """
+    data = _cos_get(cos, COS_LATEST)
+    if data is None:
+        return None
+    try:
+        ver = int(json.loads(data).get("version") or 0)
+    except (ValueError, TypeError, AttributeError):
+        log.warning("COS 的 latest.json 不是合法的版本记录")
+        return None
+    if ver <= local_ver:
+        return None, ver
+    data = _cos_get(cos, f"{ver}/{MANIFEST}")
+    if data is None:
+        return None
+    try:
+        m = json.loads(data)
+    except json.JSONDecodeError:
+        log.warning("COS 的 manifest 不是合法 JSON")
+        return None
+    if not isinstance(m, dict) or not isinstance(m.get("files"), dict):
+        return None
+    if _manifest_version(m) != ver:
+        log.warning("COS 的 latest.json 说 v%s，manifest 却是 v%s，不信它", ver, _manifest_version(m))
+        return None
+    return m, ver
+
+
+def _cos_bundle(cos, ver: int, files: dict, wanted: list[str]) -> dict[str, bytes] | None:
+    """Every wanted file out of one bundle.zip on COS, each verified against the
+    manifest. None when the bundle is missing or any wanted file is wrong."""
+    data = _cos_get(cos, f"{ver}/{COS_BUNDLE}", timeout=60)
+    if data is None:
+        return None
+    out: dict[str, bytes] = {}
+    try:
+        with zipfile.ZipFile(BytesIO(data)) as z:
+            names = set(z.namelist())
+            for rel in wanted:
+                if rel not in names:
+                    log.warning("COS 的 bundle 里没有 %s", rel)
+                    return None
+                body = z.read(rel)
+                if _sha1(body) != files[rel]:
+                    log.warning("COS 的 bundle 里 %s 哈希不对", rel)
+                    return None
+                out[rel] = body
+    except (zipfile.BadZipFile, KeyError, OSError) as exc:
+        log.warning("COS 的 bundle 读不了: %s", exc)
+        return None
+    return out
 
 
 def _get_once(url: str, timeout: int = 20) -> bytes | None:
@@ -180,7 +331,7 @@ def _get_with_retry(url: str, attempts: int = 3, timeout: int = 20,
             # update outright, never even trying raw.githubusercontent, whose
             # content is always the freshest.
             if expect_sha and _sha1(data) != expect_sha:
-                log.warning("%s 给的是旧副本（缓存未刷新），换下一扇门", _netloc(u))
+                log.warning("%s 给的内容和清单对不上（缓存里是旧副本），换下一扇门", _netloc(u))
                 continue
             _last_good = _netloc(u)
             return data
@@ -498,9 +649,48 @@ def _wanted_files(root: Path, files: dict) -> list[str]:
     return wanted
 
 
+_REF_OK = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
+_RAW_PREFIX = "https://raw.githubusercontent.com/"
+
+
+def _pinned_base(base: str, manifest: dict) -> str:
+    """The base URL to fetch this manifest's files from: its own git tag, not the branch.
+
+    make-manifest.py writes `ref` (`relay-<version>`) into every manifest and
+    deploy-relay.sh pushes a tag of that name on the same commit. Fetching the
+    files at that tag makes a stale door impossible: a tag never moves, so
+    whatever answers, answers with the right bytes. Fetching them at `main`
+    does not - jsDelivr caches a branch for 12 hours, and its purge is only
+    promised for semver releases. Measured 2026-09-18: eight hours after a
+    push and a purge, cdn and gcore still served the previous RELEASE-NOTES.md
+    while raw and fastly were reset or timed out from the machine's network,
+    and one file ate the whole 240 s budget; re-checked right after another
+    purge, fastly and gcore answered with the previous commit's bytes and
+    `x-cache: MISS` - the copy sits behind the layer the purge clears. The
+    same file at `@<tag>` came back right on every door, within 3 s of the
+    push. (jsDelivr caches a full commit hash as immutable, but a manifest
+    cannot carry the hash of the commit it is part of; a tag named after the
+    version can be pushed with it.)
+
+    A manifest without `ref`, or with one that is not a plain tag name, keeps
+    the branch: that is every manifest before 2026-09-18, and the manifest is
+    data off the network, so the value is never spliced into a URL unchecked.
+    """
+    ref = manifest.get("ref")
+    if not isinstance(ref, str) or not _REF_OK.fullmatch(ref):
+        return base
+    if not base.startswith(_RAW_PREFIX):
+        return base
+    parts = base[len(_RAW_PREFIX):].split("/", 3)
+    if len(parts) < 4:
+        return base
+    owner, repo, _branch, path = parts
+    return f"{_RAW_PREFIX}{owner}/{repo}/{ref}/{path}"
+
+
 def _stage_files(root: Path, base: str, files: dict, deadline: float | None,
                  remote_ver: int, local_ver: int,
-                 wanted: list[str]) -> list[tuple[str, Path, bytes]] | None:
+                 wanted: list[str], cos=None) -> list[tuple[str, Path, bytes]] | None:
     """Download and verify every file that needs changing, write not one byte to disk, return the batch.
 
     If any single file cannot be fetched with the correct content, record the
@@ -509,34 +699,17 @@ def _stage_files(root: Path, base: str, files: dict, deadline: float | None,
     write once" holds at a function boundary: staging and writing live in two
     different functions, which makes it impossible to write code that writes
     while it downloads.
+
+    Order of doors: the COS bundle (one request for everything), then the
+    GitHub doors file by file, PARALLEL_FETCHES at a time.
     """
-    # Download and verify every file that needs changing first, writing none of
-    # them to disk; only once they all pass is anything written, in one go.
-    #
-    # Downloading and writing one at a time will not do: the network dropping
-    # midway (routine on this line) leaves a mixed "new engine.py + old
-    # core.py" version, and service.py restarts as soon as it sees any file
-    # change - so the restart may boot a relay that straddles two versions, or
-    # one that cannot even get through its imports. Half an update is far more
-    # dangerous than no update.
-    # Holds (relative path from the manifest, target on disk, content). The
-    # relative path has to be kept as it is and must not be recovered
-    # afterwards via target.relative_to(root): _safe_target returns a resolved
-    # path while root may not be resolved (on macOS /var is a symlink to
-    # /private/var), so recovering it would raise ValueError - and by then the
-    # files would already be written.
-    staged: list[tuple[str, Path, bytes]] = []
+    plan: list[tuple[str, Path]] = []
     for rel, want in sorted(files.items()):
         target = _safe_target(root, rel)
         if target is None:
             log.warning("manifest 里的路径越界，已忽略: %s", rel)
             continue
         if not target.exists() and not _may_create(rel):
-            # Not plain source: refused, and the whole round with it. Skipping one
-            # file and applying the rest would be the worst of both - a module
-            # split would land its edited importer without the modules it
-            # imports, the version would be stamped as up to date, and the
-            # process would restart into ModuleNotFoundError and never recover.
             log.warning("清单里有本机没有的新文件 %s，不是源码文件，整轮更新放弃"
                         "（这种文件只能由一次人工部署送上来）", rel)
             _record_failure(root, f"{rel}：清单里的新文件不是源码文件，自更新不创建它。"
@@ -547,16 +720,38 @@ def _stage_files(root: Path, base: str, files: dict, deadline: float | None,
             continue
         if not target.exists():
             log.info("清单里的新文件 %s 本机没有，这轮一起创建", rel)
-        data = _get_with_retry(base + rel, expect_sha=want, deadline=deadline)
-        if data is None:
-            log.warning("%s 所有门都拿不到正确内容，本次更新整体放弃（已下 %d 个"
-                        "文件都不落盘，下次启动重来）", rel, len(staged))
-            _record_failure(root, f"{rel}：几条下载线路都没拿到新代码（线路上还是旧内容，"
-                            "或最慢那条来不及走完）",
-                            remote_ver, local_ver, wanted)
-            return None
-        staged.append((rel, target, data))
-    return staged
+        plan.append((rel, target))
+    if not plan:
+        return []
+
+    bodies: dict[str, bytes] = {}
+    if cos is not None and remote_ver:
+        got = _cos_bundle(cos, remote_ver, files, [rel for rel, _ in plan])
+        if got is not None:
+            log.info("从 COS 的 bundle 里取到 %d 个文件", len(got))
+            bodies = got
+
+    missing = [rel for rel, _ in plan if rel not in bodies]
+    if missing and not github_fallback():
+        log.warning("COS 的更新包里拿不到 %d 个文件（例如 %s），备用线路已关，本次不更新",
+                    len(missing), missing[0])
+        _record_failure(root, "腾讯云桶上的更新包拿不到或校验不对（原因见日志），备用线路已关，"
+                        "本次不更新；下次开机会再试", remote_ver, local_ver, wanted)
+        return None
+    if missing:
+        def fetch(rel: str) -> tuple[str, bytes | None]:
+            return rel, _get_with_retry(base + rel, expect_sha=files[rel], deadline=deadline)
+        with ThreadPoolExecutor(max_workers=min(PARALLEL_FETCHES, len(missing))) as pool:
+            for rel, data in pool.map(fetch, missing):
+                if data is None:
+                    log.warning("%s 所有门都拿不到正确内容，本次更新整体放弃（已下 %d 个"
+                                "文件都不落盘，下次启动重来）", rel, len(bodies))
+                    _record_failure(root, f"{rel}：几条下载线路都没拿到新代码（线路上还是旧内容，"
+                                    "或最慢那条来不及走完）",
+                                    remote_ver, local_ver, wanted)
+                    return None
+                bodies[rel] = data
+    return [(rel, target, bodies[rel]) for rel, target in plan]
 
 
 def _write_staged(root: Path, staged: list[tuple[str, Path, bytes]],
@@ -600,13 +795,46 @@ def check(root: Path, base_url: str = "",
     """
     base = (base_url or DEFAULT_BASE).rstrip("/") + "/"
     deadline = time.monotonic() + budget_s if budget_s else None
-    manifest = _best_manifest(base, deadline)
+    local_ver = _applied_version(root)
+    cos = None
+    manifest = None
+    fallback = github_fallback()
+    try:
+        cos = _cos()
+    except Exception:  # a broken COS client must not stop the GitHub path
+        log.warning("COS 客户端建不起来", exc_info=True)
+    if cos is None and not fallback:
+        # No door at all. Said once per round, loudly, because "no update"
+        # looks exactly like "up to date" from outside.
+        log.warning("自更新没有线路：COS 没配置（或建不起来），GitHub 备用线路已关")
+        _record_failure(root, "腾讯云桶没配置好，备用线路又是关着的，这次没法更新",
+                        0, local_ver, [])
+        return []
+    if cos is not None:
+        found = _cos_manifest(cos, local_ver)
+        if found is not None:
+            manifest, cos_ver = found
+            if manifest is None:
+                log.info("COS 上最新一次部署是 v%s，本机 v%s，已是最新，不再问 GitHub",
+                         cos_ver, local_ver)
+                _clear_failure(root)    # up to date means nothing is outstanding
+                return []
+            log.info("COS 上有新版 v%s（本机 v%s）", cos_ver, local_ver)
+    if manifest is None:
+        if not fallback:
+            log.warning("COS 上拿不到最新一次部署，备用线路已关，本次不更新，下次开机再试")
+            _record_failure(root, "腾讯云桶上拿不到这次部署的清单（原因见日志），备用线路已关，"
+                            "本次不更新；下次开机会再试", 0, local_ver, [])
+            return []
+        # The manifest is GitHub's: its bundle is not on COS under that version
+        # (or COS is what just failed), so the files come from GitHub too.
+        cos = None
+        manifest = _best_manifest(base, deadline)
     if manifest is None:
         return []
     files = manifest["files"]
 
     remote_ver = _manifest_version(manifest)
-    local_ver = _applied_version(root)
     if _is_downgrade(remote_ver, local_ver):
         log.warning("拿到的清单更旧（v%s < 本机 v%s，0 表示没有版本号），"
                     "多半是缓存未刷新，本次不更新", remote_ver, local_ver)
@@ -616,7 +844,8 @@ def check(root: Path, base_url: str = "",
     if not wanted:
         _clear_failure(root)        # nothing to do means nothing is outstanding
 
-    staged = _stage_files(root, base, files, deadline, remote_ver, local_ver, wanted)
+    staged = _stage_files(root, _pinned_base(base, manifest), files, deadline,
+                          remote_ver, local_ver, wanted, cos)
     if staged is None:
         return []
 

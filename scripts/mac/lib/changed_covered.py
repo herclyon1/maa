@@ -121,10 +121,14 @@ def executed_modules(want_replay: bool) -> tuple[set[str], set[str]]:
         "out = sys.argv[2]\n"
         "hit = set()\n"
         "funcs = set()\n"
+        "per_test = {}\n"
+        "cur = [None]\n"
         "def tracer(frame, event, arg):\n"
         "    c = frame.f_code\n"
         "    hit.add(c.co_filename)\n"
         "    funcs.add(c.co_filename + '::' + c.co_name)\n"
+        "    if cur[0] is not None:\n"
+        "        per_test.setdefault(cur[0], set()).add(c.co_filename)\n"
         "    return None          # 只要 call 事件，不逐行跟\n"
         "tests = sorted(pathlib.Path('tests').glob('test_*.py'))\n"
         "if only.startswith('shard:'):\n"
@@ -135,13 +139,18 @@ def executed_modules(want_replay: bool) -> tuple[set[str], set[str]]:
         "for t in tests:\n"
         "    if only and t.name != only:\n"
         "        continue\n"
+        "    name = t.name\n"
+        "    per_test[name] = set()\n"
+        "    cur[0] = name\n"
         "    try:\n"
         "        runpy.run_path(str(t), run_name='__main__')\n"
         "    except BaseException:\n"
         "        pass          # 这一趟只为收覆盖，成败由真正的测试闸门去判\n"
+        "cur[0] = None\n"
         "sys.settrace(None)\n"
         "pathlib.Path(out).write_text(\n"
-        "    json.dumps({'files': sorted(hit), 'funcs': sorted(funcs)}), encoding='utf-8')\n")
+        "    json.dumps({'files': sorted(hit), 'funcs': sorted(funcs),\n"
+        "                'per_test': {k: sorted(v) for k, v in per_test.items()}}), encoding='utf-8')\n")
     driver.close()
 
     def _one(args: tuple[str, str]) -> set[str]:
@@ -152,6 +161,9 @@ def executed_modules(want_replay: bool) -> tuple[set[str], set[str]]:
             return set()
         data = json.loads(Path(out).read_text(encoding="utf-8"))
         _FUNCS.update(data["funcs"])
+        for test, files in (data.get("per_test") or {}).items():
+            _PER_TEST[test] = {Path(f).stem for f in files
+                               if "ark_relay" in f or Path(f).name in ("service.py", "boot_stages.py")}
         return {Path(f).stem for f in data["files"]
                 if "ark_relay" in f
                 or Path(f).name in ("service.py", "boot_stages.py")}
@@ -174,6 +186,59 @@ def executed_modules(want_replay: bool) -> tuple[set[str], set[str]]:
 
     return run(), (run("test_replay.py") if want_replay else set())
 
+
+
+# ---------- relevant tests only: the tests that execute a changed module ----------
+#
+# The user, 2026-09-18: running only the relevant tests is allowed on one
+# condition - not a single bug slips through because of it. So: a test that executes a changed
+# module always runs; anything the map cannot place (a test file that is itself
+# new or changed, a change outside ark_relay/service/boot_stages, a stale or
+# missing map, a test that appears in no map entry) makes the gate fall back to
+# **all** tests. The map is refreshed by every full coverage run (deploy step
+# 0's changed_covered pass) and kept in relay/tests/test-map.json.
+_PER_TEST: dict[str, set[str]] = {}
+TEST_MAP = REPO / "relay" / "tests" / "test-map.json"
+
+
+def save_test_map() -> None:
+    if _PER_TEST:
+        TEST_MAP.write_text(json.dumps({k: sorted(v) for k, v in sorted(_PER_TEST.items())}, indent=0),
+                            encoding="utf-8")
+
+
+def tests_for(base: str) -> tuple[list[str], str]:
+    """(test files to run, why). An empty list with a reason means: run everything."""
+    diff = _sh("git", "diff", "--name-only", base, "--").splitlines()
+    status = _sh("git", "status", "--porcelain", "--", "relay/tests").splitlines()
+    touched_tests = {Path(l.split()[-1]).name for l in status if l.strip() and l.split()[-1].endswith(".py")} | \
+                    {Path(l).name for l in diff if l.startswith("relay/tests/") and l.endswith(".py")}
+    touched_tests = {t for t in touched_tests if t.startswith("test_")}
+    outside = [l for l in diff if not (l.startswith("relay/ark_relay/") or l in ("relay/service.py", "relay/boot_stages.py")
+                                        or l.startswith("relay/tests/") or l.startswith("relay/RELEASE-NOTES") or l.endswith("manifest.json")
+                                        or l.startswith("docs/") or l.startswith("scripts/") or l.endswith(".md"))]
+    if outside:
+        return [], f"改动不在中继模块范围内（{outside[0]}…），全量跑"
+    if not TEST_MAP.exists():
+        return [], "没有测试映射表，全量跑"
+    try:
+        table = {k: set(v) for k, v in json.loads(TEST_MAP.read_text(encoding="utf-8")).items()}
+    except (OSError, ValueError):
+        return [], "测试映射表读不了，全量跑"
+    all_tests = sorted(p.name for p in (REPO / "relay" / "tests").glob("test_*.py"))
+    if set(all_tests) - set(table):
+        return [], f"有测试不在映射表里（{sorted(set(all_tests) - set(table))[0]}…），全量跑"
+    changed, _ = changed_modules(base)
+    if not changed and not touched_tests:
+        return [], "没有会改变行为的改动，全量跑（便宜的保险）"
+    # A test that imports nothing from the relay (it scans source text or runs a
+    # subprocess) cannot be mapped, so it always runs.
+    unmapped = {t for t, mods in table.items() if not mods}
+    pick = {t for t, mods in table.items() if mods & changed} | touched_tests | unmapped
+    if not pick:
+        return [], "映射不到任何测试，全量跑"
+    return sorted(pick), (f"改了 {len(changed)} 个模块，映射到 {len(pick)} 个测试"
+                          f"（含 {len(unmapped)} 个不走 import 的测试和 {len(touched_tests)} 个本身有改动的测试文件）")
 
 
 # ---------- 棘轮：不许再新增「没有任何测试碰过」的函数 ----------
@@ -263,8 +328,14 @@ def ratchet_selftest() -> int:
 def main(argv: list[str]) -> int:
     if argv and argv[0] == "--ratchet-selftest":
         return ratchet_selftest()
+    if argv and argv[0] == "--tests-for":
+        picked, why = tests_for(base_ref(argv[1:]))
+        print(why, file=sys.stderr)
+        print("\n".join(picked))
+        return 0
     if argv and argv[0] == "--update-baseline":
         executed_modules(False)
+        save_test_map()
         ran = {x.split("::")[1] for x in _FUNCS}
         BASELINE.write_text(
             "# 「从没被任何测试执行过」的公开函数。这是历史欠账的登记表，**只准变短**。\n"
@@ -285,6 +356,7 @@ def main(argv: list[str]) -> int:
         print(f"改动覆盖：自 {base[:8]} 起没有会改变行为的改动，无需证明")
         return 0
     tested, replayed = executed_modules(bool(changed & JUDGING))
+    save_test_map()
     if not tested:
         print("改动覆盖：一个模块都没跑到——多半是 coverage 没装或驱动跑挂了，"
               "这种情况下不许放行")

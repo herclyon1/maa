@@ -219,6 +219,31 @@ The machine cannot detect on its own that it failed to boot, so that check lives
   Replied accepting that, with two full runs' logs attached; if it happens again I will add a recording.
   The relay's approach of judging by Completed is unaffected (we do not kill the process).
 
+### Upstream issue status (updated 2026-09-18)
+
+* [MaaEnd#5608](https://github.com/MaaEnd/MaaEnd/issues/5608) (their issue, 2026-09-08, open,
+  maintainer zmdyy0318 replied 「zone误判」 on 09-18) - after the second fight the navigation to the
+  energy point fails: YOLO classifies the minimap into the wrong base map and `MapLocator` returns
+  「YOLO is confident but zone validation failed」. **Our comment 2026-09-18 23:04 (UTC+8)**: the mirror
+  case at 藏剑谷 (武陵 read as ValleyIV_Base, 102 rejections in 13 s, 09-17 09:46 and 09-18 09:52),
+  attachments `MaaEnd-logs-v2.29.0-rc.1-20260918-100635-part01.zip`, `-part02.zip` and the on_error
+  screenshot `2026.09.18-09.52.39.241_GotoTriggerPointMove_WLSwordVaultDale.png`. Draft and evidence:
+  `~/Money/styl-work/issue-drafts-0918/`. Same family: #5833 (藏剑谷, 「zone校验失败」).
+* [MaaEnd#5851](https://github.com/MaaEnd/MaaEnd/issues/5851) (**ours**, filed 2026-09-18 23:18 UTC+8
+  through the web form, labels bug) - 基质刷取 at 清波寨: after 「点击确认领取」 the obtain dialog never
+  came, `AutoEssenceConfirmObtain` hit its 20 s reco_timeout, task failed at 10:05:56; the on_error
+  screenshot shows the point's 「领取奖励 / 放弃奖励并重置」 menu back on screen. Once on 09-18 only
+  (09-12 to 09-17 the same point ran to 体力不足). Attachments:
+  `MaaEnd-logs-v2.29.0-rc.1-20260918-100656-part01/02/03.zip`, `maaend-main.png` (MaaEnd v2.29.0-rc.1
+  main window, taken 09-18 23:15 with MaaEnd opened by hand, game not started),
+  `2026.09.18-10.05.55.720_AutoEssenceConfirmObtain.png`. The bot's analysis was still running at
+  filing time. Follow-up: read the replies when asked (no self-scheduled polling); answer with facts
+  and attachments only, per UPSTREAM-ISSUE-RULES.md.
+* Not filed: the 「未捕获到日志」 stub record of 09-18 09:54 (MaaEnd's own incremental update restarting
+  MXU seconds after AUTO-MAS launched it, counted by AUTO-MAS as one of the three daily-stage attempts).
+  Judged low value; the relay side now reports it as one information line (7f49b93). A draft exists in
+  `~/Money/styl-work/issue-drafts-0918/2-automas-stub-record.md` should it ever be worth sending.
+
 ### Upstream issue status (updated 2026-09-11)
 
 * [MaaEnd#5660](https://github.com/MaaEnd/MaaEnd/issues/5660) (2026-09-11) - retry failed

@@ -17,6 +17,18 @@ jsDelivr 的刷新**不是原子的**。清完缓存之后，`relay/*.py` 已经
 文件**至少有一扇门**能给出哈希正确的内容。同时报出每扇门的状态，好知道会
 不会全部落到最慢的 raw 上（那样 240 秒预算可能不够）。
 
+Measured on the evening of 2026-09-18: a purge of `@main` is **not guaranteed to
+take**. Eight hours after the push and the purge, cdn and gcore still handed the
+machine the previous RELEASE-NOTES.md; purged again and fetched at once, fastly and
+gcore still returned the previous commit's bytes with `x-cache: MISS` - the copy
+sits in a layer the purge does not reach. jsDelivr's docs: branches are cached 12
+hours, purge is promised for semver releases only. Since that day the manifest
+carries `ref` (the `relay-<version>` tag) and the machine fetches files at the tag
+(a tag never moves, so any door that answers, answers right). Only manifest.json
+and the two queue files are purged here - they are still read at `@main`, where a
+purge sometimes helps and a failed one only means 12 hours' delay. The per-file
+verification below fetches at the tag too, the same address the machine uses.
+
     python3 scripts/mac/purge-cdn.py
 """
 from __future__ import annotations
@@ -58,12 +70,16 @@ def main() -> int:
         print(f"✗ 读不到本地 manifest（{exc}），先跑 relay/make-manifest.py")
         return 1
 
+    # Only what the machine still reads at `@main`. The files are fetched at the
+    # manifest's tag since 2026-09-18 (see the docstring), so purging them is
+    # pointless; before that it was 90 requests per deploy and did not work anyway.
     paths = ["queue/config.json", "queue/watchdog.json", "relay/manifest.json"]
-    paths += [f"relay/{rel}" for rel in local.get("files", {})]
+    ref = str(local.get("ref") or "main")
+    if ref == "main":
+        paths += [f"relay/{rel}" for rel in local.get("files", {})]
 
-    # Purge in parallel. One request per file, ~1 s each, and there are 80 of them:
-    # serially that was 85 s of the deploy's runtime, longer than the deploy itself.
-    # jsDelivr's purge endpoint takes them independently, so nothing is ordered here.
+    # Purge in parallel. jsDelivr's purge endpoint takes them independently, so
+    # nothing is ordered here.
     print(f"▶ 清缓存：{len(paths)} 个文件")
 
     def _one(rel: str) -> "tuple[str, str]":
@@ -136,7 +152,9 @@ def main() -> int:
                 if seen[name] != want_ver:
                     continue        # 这扇门的清单都是旧的，文件多半也旧
                 try:
-                    got = _get(base + f"relay/{rel}", TIMEOUTS.get(name, 20))
+                    # Same address the machine uses: the manifest's tag, not the branch.
+                    got = _get(base.replace("@main/", f"@{ref}/").replace("/main/", f"/{ref}/")
+                               + f"relay/{rel}", TIMEOUTS.get(name, 20))
                 except Exception:  # noqa: BLE001
                     continue
                 if hashlib.sha1(got).hexdigest() == sha:

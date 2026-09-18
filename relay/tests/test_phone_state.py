@@ -312,14 +312,25 @@ except Exception:  # noqa: BLE001 - any failure to decode is the point
 check("缺一片就解不开，不会解出半份", broke, True)
 check("总数写在每一片上，凑没凑齐一看便知", short[0]["n"] > len(short), True)
 
+# One retry after a network exception (2026-09-18 19:27: the second of two boot
+# pieces hit a read timeout once, and the phone showed a 13-minute-old state until
+# shutdown). No wait in tests.
+mb.RETRY_AFTER = 0
 net = FakeNet()
 net.queue.append(urllib.error.URLError("网断了"))
-check("网断了返回 False，不抛（调用方才能去别的渠道)",
+check("断一次、第二次通了：算发出去了",
+      with_net(net, lambda: mb.publish({"at": 1})), True)
+check("确实发了两次", len(net.sent), 2)
+net = FakeNet()
+net.queue += [TimeoutError("读超时"), urllib.error.URLError("网断了")]
+check("连断两次返回 False，不抛（调用方才能去别的渠道)",
       with_net(net, lambda: mb.publish({"at": 1})), False)
+check("只试两次，不无限重试", len(net.sent), 2)
 net = FakeNet()
 net.queue.append(FakeResp(b"", status=500))
 check("服务器 500 也算没发出去",
       with_net(net, lambda: mb.publish({"at": 1})), False)
+check("服务器答了话就不重复发", len(net.sent), 1)
 
 # ---------------------------------------------------------------- fetch
 

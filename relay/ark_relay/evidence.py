@@ -735,6 +735,8 @@ def save_and_upload(cfg, script: str, run_id: str, extra: list[Path] = (), *,
                 paths.append(dst / p.name)
             except OSError as exc:
                 result["errors"].append(f"copy {p.name}: {exc}")
+        for p in context_files(cfg, window, dst):
+            paths.append(p)
         result["files"] = [p.name for p in paths]
     except Exception as exc:  # evidence must never block bookkeeping
         log.exception("证据包打不出来")
@@ -789,6 +791,75 @@ def save_and_upload(cfg, script: str, run_id: str, extra: list[Path] = (), *,
     with idx.open("a", encoding="utf-8") as f:
         f.write(json.dumps(result, ensure_ascii=False) + "\n")
     return result
+
+
+# ------------------------------------------------- the relay's and AUTO-MAS's own lines
+# The 2026-09-18 offline analysis of three bundles had to explain a 30-byte
+# stub record; what explained it was AUTO-MAS's app.log and the relay's own
+# relay.log for those ten minutes - neither of which was in any bundle (they
+# happened to have been pulled by hand that morning). Every bundle now carries
+# the window's slice of both, so a bundle answers "why" without the machine.
+_CTX_TS = re.compile(r"^(?:\[)?(\d{4})-(\d\d)-(\d\d)[ T](\d\d):(\d\d):(\d\d)"
+                     r"|^(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d)")
+
+
+def _line_ts(line: str, year: int) -> "float | None":
+    m = _CTX_TS.match(line)
+    if not m:
+        return None
+    if m.group(1):
+        y, mo, d, h, mi, sec = (int(x) for x in m.groups()[:6])
+    else:
+        y = year
+        mo, d, h, mi, sec = (int(x) for x in m.groups()[6:])
+    try:
+        return datetime(y, mo, d, h, mi, sec).timestamp()
+    except ValueError:
+        return None
+
+
+def slice_log(src: Path, window: "tuple[float, float]", dst: Path, tail_bytes: int = 50_000_000) -> "Path | None":
+    """Copy the lines of `src` stamped inside `window` into `dst`; continuation
+    lines (tracebacks) follow their stamped line. The relay log stamps MM-DD
+    without a year, AUTO-MAS's app.log stamps the full date. None when nothing
+    fell in the window or the file cannot be read."""
+    try:
+        size = src.stat().st_size
+        with src.open("rb") as fh:
+            if size > tail_bytes:
+                fh.seek(size - tail_bytes)
+            raw = fh.read().decode("utf-8", errors="replace")
+    except OSError:
+        return None
+    year = datetime.fromtimestamp(window[0]).year
+    keep = False
+    out: list[str] = []
+    for line in raw.splitlines():
+        ts = _line_ts(line, year)
+        if ts is not None:
+            keep = window[0] <= ts <= window[1]
+        if keep:
+            out.append(line)
+    if not out:
+        return None
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_text("\n".join(out) + "\n", encoding="utf-8")
+    return dst
+
+
+def context_files(cfg, window: "tuple[float, float]", out_dir: Path) -> list[Path]:
+    """The relay's relay.log and AUTO-MAS's debug/app.log, cut to the window."""
+    import os  # noqa: PLC0415
+    out: list[Path] = []
+    relay_log = os.environ.get("ARK_LOG_FILE", "")
+    if relay_log:
+        if p := slice_log(Path(relay_log), window, out_dir / "relay.log"):
+            out.append(p)
+    automas = getattr(cfg, "automas_dir", None)
+    if automas:
+        if p := slice_log(Path(automas) / "debug" / "app.log", window, out_dir / "automas-app.log"):
+            out.append(p)
+    return out
 
 
 def pack_one(out: Path, paths: list[Path]) -> Path:

@@ -349,17 +349,32 @@ class Mailbox:
             ok = self._post(piece.encode("utf-8"), kind) and ok
         return ok
 
-    def _post(self, data: bytes, kind: str) -> bool:
+    # One retry after a network exception. 2026-09-18 19:27 the boot state was
+    # two pieces and the second one hit a 20 s read timeout - a single miss -
+    # so the phone kept showing the state from thirteen minutes earlier until
+    # the next push (which is the shutdown). A piece that is missing cannot be
+    # reassembled on the phone, so one retry for the piece is worth far more
+    # than it costs (one extra message, only on failure). A 4xx/5xx answer is
+    # not retried: the server did answer, and repeating the same body will
+    # not change its mind.
+    RETRY_AFTER = 2.0
+
+    def _post(self, data: bytes, kind: str, attempts: int = 2) -> bool:
         req = urllib.request.Request(f"{NTFY}/{self.topic}", data=data,
                                      method="POST",
                                      headers={"User-Agent": _UA,
                                               "Title": kind})
-        try:
-            with urllib.request.urlopen(req, timeout=20) as r:
-                return 200 <= r.status < 300
-        except Exception:
-            log.warning("状态没能发到信箱", exc_info=True)
-            return False
+        for i in range(attempts):
+            try:
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    return 200 <= r.status < 300
+            except Exception:
+                if i + 1 < attempts:
+                    log.info("状态这一片没发到信箱，%.0f 秒后再试一次", self.RETRY_AFTER)
+                    time.sleep(self.RETRY_AFTER)
+                    continue
+                log.warning("状态没能发到信箱（试了 %d 次）", attempts, exc_info=True)
+        return False
 
     # ---------- fetching (once per boot) ----------
 
