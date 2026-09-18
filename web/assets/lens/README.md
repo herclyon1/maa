@@ -9,7 +9,7 @@ compiled from the native per-frame recordings. Nothing here touches `view.js` / 
 | File | What |
 |---|---|
 | `gen_lens_maps.py --formula` | computes the maps from the formulas (§0), writes the filters, the test page, `lens-field.json` (parameters, sources, width → height table, residuals) |
-| `seg-f-bg-<w>.png` | backdrop map for lens width w (196 … 256 step 2; 220 = lifted at rest): what lies under the lens (track / card). The lens box at 2 px/pt, R/G = the clamped sampling offset (byte = 128 + u·255/48), B = the coverage the filter multiplies by, one map for all colour channels |
+| `seg-f-bg-<w>.png` | backdrop map for lens width w (196 … 256 step 2; 220 = lifted at rest): what lies under the lens (track / card). The lens box at 2 px/pt, R/G = the clamped sampling offset (byte = 128 + u·255/S, S 40 or 48 per set), B = the coverage the filter multiplies by, one map for all colour channels |
 | `seg-f-lab-<w>.png` | label-copy map for width w (the label copy's two displacement stages with the portal's source extent in B, §0.2 / §0.3) |
 | `lens-filter.svg` | `#seg-lens-f-bg-<w>` / `#seg-lens-f-lab-<w>`: feImage (href = the PNG files as `index.html` sees them, `assets/lens/…`) → feDisplacementMap → feComposite with the map's B; `#seg-lens-f-ab-<w>` / `-ab-ir-<w>`: the fringe chain (§0.5, test page only for now); copy the `<svg>` into `index.html` |
 | `seg-f-ab-<w>.png` | the fringe span map (§0.5): lens + 16 pt, 1 px/pt, R/G = Δ, B = the edge-band factor |
@@ -61,10 +61,13 @@ DestOut cornerRadius 22 is the model value; on screen it is scaled with the rest
 
 ### 0.3 The maps
 
-Encoding as before but S = 48 (the label stack reaches 17.5 pt at the lens edge, × 1.16 on the widest stretch set): byte = 128 + round(u·255/48), x → R, y → G,
+Encoding as before, S per set: 40 wherever the set's stack fits ±20 pt (the 220 set and 19 more — the 220 maps are byte for byte
+those of cdb33f4; changing S re-quantises the end-zone samples by up to 0.09 pt, half a device column on the 1-pt end lines, which
+the ui session saw as 111/112 → 203.9/204.7), 48 for the eleven stretch sets whose scaled label stack exceeds it (w 228, 238 …
+256; `lens-field.json` → `sets[w].S`, and every `<filter>` carries `data-s`): byte = 128 + round(u·255/S), x → R, y → G,
 u = content − screen (pt, +x right, +y down), zero = byte 128; B = the shape coverage the shader writes (255 inside, anti-aliased
 edge, 0 outside — the lens clip does the same job in the web, feDisplacementMap ignores B); A 255. 2 px/pt. The browser decodes
-S·(byte/255 − .5) = u + S/510 (0.09 pt, every channel alike). No dispersion: the colour fringe is glassForeground's aberration
+S·(byte/255 − .5) = u + S/510 (0.08 / 0.09 pt, every channel alike). No dispersion: the colour fringe is glassForeground's aberration
 term (formula.md §3, `aberrate_texture`), not decompiled yet — one map feeds all three channels, so the filter is a single
 `feDisplacementMap` on `SourceGraphic`. Outside the capsule (the box corners, clipped away by the lens; the shader's coverage is 0 there) B is 0 and R/G hold the clamped
 sample of the formula like everywhere else.
@@ -80,8 +83,8 @@ u(p) = S·u₀(S⁻¹p) — elliptical ends, the portal = scale × 196×28 (217.
 height is the native's at that width: linear between the two nearest recorded drag frames of `seg-native-abc-frames.json` (phase
 drag) and `uiprobe-motion-segdragmid-light.json` (lenstrace); 196, 254 and 256 lie outside the recorded 197.5 … 253.5 and take the
 nearest frame's height (flagged `clamped` in `lens-field.json`). The lift (196×28 → 220×44) is a different path (both dimensions
-grow, the amounts ramp with the same curve, `seg-keys.css`); the sets are not for it — animate the filter's `scale` 0 → 48 on the
-220 set.
+grow, the amounts ramp with the same curve, `seg-keys.css`); the sets are not for it — animate the filter's `scale` 0 → S (its
+`data-s`, 40 for the 220 set).
 
 **The filter and the layer** (the acceptance session's ③ and the source rules of formula.md §2): `x=0 y=0 width=100%
 height=100%`, feImage (the map, stretched to the element box) → feDisplacementMap on SourceGraphic → feComposite `in` with the
@@ -227,8 +230,8 @@ content. Band = `op = saturate((d + 8.8)/8.8)` (0 in the interior, 1 at the edge
 41 middle edges 0.000; ≥ 90 % of the coloured pixels within 8 pt of the ends), so the visible factor is op itself; the IR's
 `out ×= 1 − op` reading stays as the `-ab-ir-` switch. Stretched sets: Δ and the band scale with the lens like everything else (§1c(d)).
 
-In SVG (`#seg-lens-f-ab-<w>` / `#seg-lens-f-ab-ir-<w>`): one map `seg-f-ab-<w>.png` (R/G = Δ, S 48; B = op; 1 px/pt; it covers the
-lens plus 16 pt on every side), seven `feDisplacementMap` on it with `scale = ±k·48`, a `feColorMatrix` per tap for the channel
+In SVG (`#seg-lens-f-ab-<w>` / `#seg-lens-f-ab-ir-<w>`): one map `seg-f-ab-<w>.png` (R/G = Δ, the set's S; B = op; 1 px/pt; it covers the
+lens plus 16 pt on every side), seven `feDisplacementMap` on it with `scale = ±k·S`, a `feColorMatrix` per tap for the channel
 weights and one for the tap's alpha/7, `feComposite arithmetic` sums, `feComposite in` with ΣA/7 then with the band mask,
 `feComposite over` the source. **The wrapper**: the foreground's backdrop capture has marginWidth 100, so its outward taps read
 the page beyond the lens; the chain sits on a wrapper of the lens box extended by 16 pt (`overflow:hidden`, its own stacking
@@ -243,9 +246,9 @@ transparent and a ring appears all round the rim (tried with the earlier −15 s
 | `g` | the SDF gradient = the **outward** unit normal | `ovalized_gradient` of the outward normal (ovalization 0.5) |
 | `amt_a` | aberration_amount × (1 − sqrt(t_a(2 − t_a))); the lens's amount **+2.3158**, height 0 → t_a 0 → amt_a = 2.3158 everywhere | 2.3158 (no falloff) |
 | `Δ` | amt_a · (M · R(angle) · g), angle **−15°** | amt_a · R(−15°) · g → points **outward** (rotated 15°); the map stores it as is (`--ab-sign 1`) |
-| R taps | c = tex(uv1 + kΔ), k = 1, 2/3, 1/3: R += c.r·k | `feDisplacementMap scale = +k·48` on the Δ map → samples at p + kΔ = **outward** (rotated) |
+| R taps | c = tex(uv1 + kΔ), k = 1, 2/3, 1/3: R += c.r·k | `feDisplacementMap scale = +k·S` on the Δ map → samples at p + kΔ = **outward** (rotated) |
 | G taps | the same three: G += c.g·(1 − k); and the four at uv1 − kΔ: G += c.g·(1 − k) | weights (1 − k)/3 on all seven |
-| B taps | c = tex(uv1 − kΔ), k = 0, 1/3, 2/3, 1: B += c.b·k | `scale = −k·48` → samples at p − kΔ = **inward** |
+| B taps | c = tex(uv1 − kΔ), k = 0, 1/3, 2/3, 1: B += c.b·k | `scale = −k·S` → samples at p − kΔ = **inward** |
 | uv1 | uv + amt_r·(M·R·g) | the lens's inputRefractionAmount is 0 (§1c(a)): uv1 = uv |
 
 With the lens's own keys the R taps look outward and the B taps inward (the earlier "−15" default made it the other way round,
