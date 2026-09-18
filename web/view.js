@@ -498,7 +498,10 @@ function render() {
   /* The lens starts where it visually is right now (mid-flight included: rapid taps change direction, spec §1 G12/G13), then springs to the new segment. */
   const oldSeg = $("#queueseg"), oldLens = oldSeg && oldSeg.querySelector(".lens");
   let segFrom = NaN;
-  if (oldLens) { const tr = parseFloat(getComputedStyle(oldLens).translate), w = oldLens.offsetWidth; segFrom = w && !Number.isNaN(tr) ? tr / w : parseFloat(oldSeg.style.getPropertyValue("--i")); }
+  if (oldLens) {   // where the lens is right now, in segment units (computed `translate` keeps the percentage, so measure the boxes; the centre is scale-proof)
+    const lr = oldLens.getBoundingClientRect(), sr = oldSeg.getBoundingClientRect(), w = oldLens.offsetWidth, pad = oldLens.offsetLeft;
+    segFrom = w ? (lr.left + lr.width / 2 - sr.left - pad - w / 2) / w : parseFloat(oldSeg.style.getPropertyValue("--i"));
+  }
   $("#app").innerHTML = html;
   layoutTabs();
   wire();
@@ -506,9 +509,9 @@ function render() {
   if (seg && !Number.isNaN(segFrom)) {
     const to = seg.style.getPropertyValue("--i"), lens = seg.querySelector(".lens");
     if (lens && Math.abs(segFrom - parseFloat(to)) > 0.001) {
-      lens.style.transition = "none"; seg.style.setProperty("--i", String(segFrom)); void lens.offsetWidth;   // paint at the old spot, then transition
+      lens.style.transition = "none"; seg.style.setProperty("--i", String(segFrom)); void lens.offsetWidth;   // paint at the old spot
+      lens.classList.add("spring");   // measured x path + width/height stretch (spec §1 G1/G3, --ios-touch-segment-lens-*-keys)
       lens.style.transition = ""; seg.style.setProperty("--i", to);
-      lens.classList.add("spring");   // width/height stretch while it travels (spec §1 G1/G3)
     }
   }
 }
@@ -1026,21 +1029,22 @@ function attachTabBar(nav, select) {
   const seg = nav.querySelector(".seg"), g = nav.querySelector(".glide"), bs = [...seg.querySelectorAll("button")];
   if (!seg || !g || !bs.length) return;
   const itemAt = (x) => { let best = 0, d = Infinity; bs.forEach((b, i) => { const r = b.getBoundingClientRect(); const dd = x < r.left ? r.left - x : x > r.right ? x - r.right : 0; if (dd < d) { d = dd; best = i; } }); return best; };
-  const liftTo = (i) => { g.classList.add("lift"); g.style.left = bs[i].offsetLeft + "px"; g.style.width = bs[i].offsetWidth + "px"; };
+  const liftTo = (i, cls) => { g.classList.add(cls); g.style.left = bs[i].offsetLeft + "px"; g.style.width = bs[i].offsetWidth + "px"; };
   seg.onpointerdown = (e) => {
-    const cur = bs.findIndex((b) => b.classList.contains("on")), pressed = itemAt(e.clientX);
+    const cur = bs.findIndex((b) => b.classList.contains("on")), pressed = itemAt(e.clientX), onSelected = pressed === cur;
     let timer = 0, lifted = false;
     if (!press(seg, e, {
-      move: (ev) => { if (lifted) { nav.classList.add("drag"); liftTo(itemAt(ev.clientX)); } },   // T4/T9/T11: lens follows, value waits for the up
+      move: (ev) => { if (lifted) { nav.classList.add("drag"); liftTo(itemAt(ev.clientX), onSelected ? "lift-sel" : "lift"); } },   // T4/T9/T11: lens follows (110×70 while dragging), value waits for the up
       end: (ev, cancelled) => {
-        clearTimeout(timer); g.classList.remove("lift"); nav.classList.remove("drag");
+        clearTimeout(timer); g.classList.remove("lift", "lift-sel"); nav.classList.remove("drag");
         const target = cancelled ? cur : itemAt(ev.clientX);
         if (target === cur) { g.style.left = bs[cur].offsetLeft + "px"; g.style.width = bs[cur].offsetWidth + "px"; return; }   // T3/T9: no event
         select(bs[target]);                                          // T1/T2: +0–2 ms after the up
       },
     })) return;
     seg.dataset.pe = "1";
-    timer = setTimeout(() => { lifted = true; liftTo(pressed); }, pressed === cur ? 180 : touchMs("--ios-touch-tab-glide-delay", 140));   // T1 (+140 ms glide) / T3 (selected: lift +180 ms)
+    timer = setTimeout(() => { lifted = true; liftTo(pressed, onSelected ? "lift-sel" : "lift"); },
+      onSelected ? touchMs("--ios-touch-tab-selected-lift-delay", 125) : touchMs("--ios-touch-tab-glide-delay", 140));   // T1: +140 ms glide 119×64 / T3: selected lifts +125 ms → 103×63 by +180
   };
   for (const b of bs) b.onclick = () => { if (seg.dataset.pe) { delete seg.dataset.pe; return; } if (!b.classList.contains("on")) select(b); };
 }

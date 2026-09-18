@@ -547,6 +547,19 @@
   --ios-touch-switch-flip-delay: 0ms;
   /* rapid alternation: every tap counts (30 ms taps / 30 ms gaps on the segmented control; 40/80 on the tab bar, switch, button) — no debounce, animations retarget mid-flight */
   --ios-touch-debounce: 0ms;
+  /* segmented lens after a tap commit, per-frame (tools/touch/touch-local.uiprobe-g1.json G1 = G3 to 0.1 pt): time ms from the commit → value.
+   * x as a fraction of the 200 pt travel (peak +7.5 % at 476 ms, dip −0.65 % at 809 ms, still at 1200 ms);
+   * w / h as multiples of the rest size 196 × 28 (w: +23 % at 180 ms, −7.5 % at 490 ms, +0.7 % at 840 ms; h: +37 % at 125 ms, −2.5 % at 280 ms, +13.6 % at 480 ms, −1.4 % at 840 ms) */
+  --ios-touch-segment-lens-x-keys: 0 0, 42 .084, 76 .257, 109 .424, 142 .547, 176 .632, 209 .717, 242 .795, 276 .866, 309 .933, 342 .988, 376 1.028, 409 1.056, 442 1.071, 476 1.075, 542 1.066, 609 1.045, 676 1.02, 742 1.001, 809 .994, 876 .995, 943 .998, 1009 1.0, 1209 1.0;
+  --ios-touch-segment-lens-w-keys: 0 1, 42 1.024, 76 1.069, 109 1.122, 142 1.18, 176 1.221, 192 1.24, 209 1.205, 242 1.167, 276 1.119, 309 1.067, 342 1.018, 376 .978, 409 .948, 442 .932, 492 .925, 542 .933, 609 .954, 676 .977, 742 .997, 809 1.006, 843 1.007, 943 1.0, 1009 .997, 1209 1.0;
+  --ios-touch-segment-lens-h-keys: 0 1, 42 1.111, 76 1.268, 109 1.35, 125 1.371, 142 1.361, 176 1.304, 209 1.139, 242 1.021, 276 .975, 309 .986, 342 1.025, 376 1.068, 409 1.096, 442 1.125, 476 1.136, 542 1.125, 609 1.089, 676 1.046, 742 1.007, 809 .989, 843 .986, 943 1.0, 1009 1.007, 1209 1.0;
+  /* segmented lens follows the finger with a spring lag: 4/6 of a 6 pt step in 130 ms, finger 320 → lens catches up in ~120 ms (G4/F1) */
+  --ios-touch-segment-follow-lag: .12s;
+  /* tab bar: pressing the SELECTED tab lifts the lens 94×54 → 103×63 by +180 ms (first size change ~125 ms), 110×70 while dragging (T3/T4) */
+  --ios-touch-tab-selected-lift-delay: 125ms;
+  --ios-touch-tab-selected-lift-done: 180ms;
+  --ios-touch-tab-drag-lift-w: 110px;
+  --ios-touch-tab-drag-lift-h: 70px;
 
 }
 

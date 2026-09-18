@@ -280,8 +280,14 @@
         const t0 = performance.now(); pev(seg, "pointerup", at(other)); const dt = performance.now() - t0;
         check("分段 G1 抬手：同一刻改 index + change + 内容切（--ios-touch-segment-commit-delay 0）", want, `${onText()} +${Math.round(dt * 10) / 10} ms renders+${renders - r0}`, onText() === want && thisShift(want) && renders === r0 + 1 && dt < 50);
         const lensNow = q().querySelector(".lens");
-        check("分段 G1 抬手：透镜起弹簧（0.55 s linear(), 边跑边胀 --seg-settle）", "transition + spring", `${cs(lensNow).transitionDuration.split(",")[0].trim()} ${lensNow.classList.contains("spring") ? "spring" : "-"}`, /^0\.55s/.test(cs(lensNow).transitionDuration) && lensNow.classList.contains("spring"));
-        await sleep(50);
+        check("分段 G1 抬手：透镜走实测 x 路径 1.209 s（--ios-touch-segment-lens-x-keys）+ 边跑边胀关键帧", "1.209s linear(…) lens-stretch", `${cs(lensNow).transitionDuration.split(",")[0].trim()} ${cs(lensNow).transitionTimingFunction.slice(0, 7)} ${cs(lensNow).animationName}`, /^1\.209s/.test(cs(lensNow).transitionDuration) && /^linear\(/.test(cs(lensNow).transitionTimingFunction) && cs(lensNow).animationName === "lens-stretch");
+        await sleep(192); const sc192 = cs(lensNow).scale.split(" ").map(parseFloat);
+        num("分段 G1 +192 ms：透镜最宽 ×1.24（--ios-touch-segment-lens-w-keys）", 1.24, sc192[0], 0.06);
+        await sleep(284);
+        { const lr = lensNow.getBoundingClientRect(), sr = q().getBoundingClientRect(), lw = lensNow.offsetWidth, toI = parseFloat(q().style.getPropertyValue("--i")), fromI = toI === 1 ? 0 : 1;
+          const pos = (lr.left + lr.width / 2 - sr.left - lensNow.offsetLeft - lw / 2) / lw;   // centre-based, scale-proof
+          num("分段 G1 +476 ms：透镜过冲到行程 1.075（--ios-touch-segment-lens-x-keys）", 1.075, (pos - fromI) / (toI - fromI), 0.04); }
+        await sleep(800);
         /* §1 G4/G16: touch-down on the selected segment lifts the lens after ~100 ms (196×28 → 220×44), no event */
         seg = q(); let sel = bs().find((b) => b.classList.contains("on")), unsel = bs().find((b) => !b.classList.contains("on"));
         const r1 = renders; pev(seg, "pointerdown", at(sel)); const lens0 = seg.querySelector(".lens");
@@ -324,6 +330,9 @@
         check("分段 G12 快速交替 10 次（30 ms 点 / 30 ms 间隔）：每下都算、终态 = 最后一次", last, `${onText()} renders+${renders - r7}${everyTick ? "" : "（某下抬手时未切）"}`, onText() === last && renders === r7 + 10 && everyTick && thisShift(last));
         let stable = true; for (let k = 0; k < 6; k++) { await sleep(100); if (onText() !== last) stable = false; }
         check("分段 G12 快速交替后 600 ms 内不回跳", last, onText(), stable && onText() === last);
+        /* a page re-render (heartbeat / snapshot) while the lens rests on a segment must not move it (the carry-over reads the lens box, not the % translate) */
+        { await sleep(1300); const sg = q(), ln = sg.querySelector(".lens"), lb = ln.getBoundingClientRect().left; window.render(); const ln2 = q().querySelector(".lens"); const lb2 = ln2.getBoundingClientRect().left; await sleep(120); const lb3 = q().querySelector(".lens").getBoundingClientRect().left;
+          check("重画时透镜不动（心跳/快照 render 不会让它跳）", `${Math.round(lb)}`, `${Math.round(lb2)} → ${Math.round(lb3)} ${q().querySelector(".lens").classList.contains("spring") ? "spring!" : ""}`, Math.abs(lb2 - lb) < 1 && Math.abs(lb3 - lb) < 1 && !q().querySelector(".lens").classList.contains("spring")); }
         /* §1 G14: the same segment tapped three times - one event */
         const sameName = (bs().find((x) => !x.classList.contains("on")) || bs()[0]).textContent;
         const r8 = renders; for (let k = 0; k < 3; k++) { const b = bs().find((x) => x.textContent === sameName); const sg = q(); pev(sg, "pointerdown", at(b)); pev(sg, "pointerup", at(b)); await sleep(40); }
@@ -353,8 +362,12 @@
         check("标签栏 T7 竖向滑出 250 pt 抬手：仍选中被按项（无距离取消）", startTab, (nav2.querySelector(".seg button.on") || {}).dataset.tab, (nav2.querySelector(".seg button.on") || {}).dataset.tab === startTab);
         /* T3/T9: pressing the selected tab, releasing on it - no event */
         const nav3 = document.querySelector("nav.tabs"), seg3 = nav3.querySelector(".seg"), on3 = seg3.querySelector("button.on");
-        const before = (nav3.querySelector(".seg button.on") || {}).dataset.tab; pev(seg3, "pointerdown", at(on3)); await sleep(30); pev(seg3, "pointerup", at(on3));
-        check("标签栏 T3 按下已选中项抬手：无事件", before, (nav3.querySelector(".seg button.on") || {}).dataset.tab, (nav3.querySelector(".seg button.on") || {}).dataset.tab === before);
+        const before = (nav3.querySelector(".seg button.on") || {}).dataset.tab, g3 = nav3.querySelector(".glide"); pev(seg3, "pointerdown", at(on3)); await sleep(100);
+        check("标签栏 T3 按下已选中项 +100 ms：透镜还没抬（--ios-touch-tab-selected-lift-delay 125）", "no lift", g3.classList.contains("lift-sel") ? "lift" : "no lift", !g3.classList.contains("lift-sel"));
+        await sleep(120);
+        check("标签栏 T3 +220 ms：透镜抬到 103×63（--ios-touch-tab-selected-lift-done 180）", "1.096 1.167", cs(g3).scale, /^1\.09/.test(cs(g3).scale));
+        pev(seg3, "pointerup", at(on3));
+        check("标签栏 T3 按下已选中项抬手：无事件", before, (nav3.querySelector(".seg button.on") || {}).dataset.tab, (nav3.querySelector(".seg button.on") || {}).dataset.tab === before && !g3.classList.contains("lift-sel"));
       }
       /* §3 UISwitch on a synthetic switch through the page's own pointer handling */
       const swLab = document.createElement("div"); swLab.style.cssText = "position:fixed;left:20px;top:200px;z-index:99;opacity:0";
