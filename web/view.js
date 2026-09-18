@@ -1237,7 +1237,7 @@ function segLens(seg, lens, bs) {
   if (seg.__lensLoop) seg.__lensLoop.stop();   // a new press ends the previous loop (its tail and its inline geometry)
   let warp = seg.querySelector(".warp"), warpl = seg.querySelector(".warpl"), plat = seg.querySelector(".plat"), rim = seg.querySelector(".rim");
   const mk = (cls, inner) => { const d = document.createElement("div"); d.className = cls; d.innerHTML = inner; seg.appendChild(d); return d; };
-  if (!warp) warp = mk("warp", '<div class="disp"><div class="copy"></div></div>'); if (!warpl) warpl = mk("warpl", '<div class="displ"><div class="portal"><div class="copy"></div></div></div>'); if (!plat) plat = mk("plat", ""); if (!rim) rim = mk("rim", "");
+  if (!warp) warp = mk("warp", '<div class="disp"><div class="copy"></div></div>'); if (!warpl) warpl = mk("warpl", '<div class="displ"><div class="portal"><div class="copy"></div></div></div>'); if (!plat) plat = mk("plat", ""); if (!rim) rim = mk("rim", '<i class="capL"></i><i class="capR"></i>');
   /* copies of what lies under the lens: .warp = page bg + track (opaque; covers the real labels — the DestOut punch-out), .warpl = the labels, undisplaced
      (label-mag 1.00, spans not buttons so the control's own button list stays the real one) */
   const disp = warp.firstElementChild, copy = disp.firstElementChild, displ = warpl.firstElementChild, portal = displ.firstElementChild, copyl = portal.firstElementChild;
@@ -1247,15 +1247,14 @@ function segLens(seg, lens, bs) {
 
   const cbs = [...copyl.querySelectorAll(".cb")];
   const S = 40;   // map encoding (界面2号 README §0.3): byte = 128 + round(u · 255 / S), u in pt → feDisplacementMap scale = S × progress
-  /* the formula-map set for the lens's current width (README §0.3: one set per native width 196 … 256 step 2, nearest even, no interpolation;
-     our lens is 2 pt wider than the native at every state — 198 / 222 vs 196 / 220 — so native width = ours − 2). While lifting or falling
-     without a drag the 220 set carries scale 0 → 40 (the lift is a different path from the stretch). */
-  const setFor = (Wd) => st.dragged ? Math.max(196, Math.min(256, 2 * Math.round((Wd - 2) / 2))) : 220;
+  /* the formula-map set for the lens's current width (README §0.3: one set per width 196 … 256 step 2, nearest even, no interpolation). While
+     lifting or falling without a drag the 220 set carries scale 0 → 40 (the lift is a different path from the stretch). */
+  const setFor = (Wd) => st.dragged ? Math.max(196, Math.min(256, 2 * Math.round(Wd / 2))) : 220;
   let curSet = 0;
   /* geometry: resting lens = the padded interior / n (pad ← --ios-segment-lens-pad, h ← --ios-segment-lens-h), lifted = +12 / +8 per side ← --ios-touch-segment-lift-x/-y */
   const cs0 = getComputedStyle(seg), n = bs.length, pad = parseFloat(cs0.getPropertyValue("--ios-segment-lens-pad")) || 2, H0 = parseFloat(cs0.getPropertyValue("--ios-segment-lens-h")) || 28;
-  const LX = touchPx("--ios-touch-segment-lift-x", 12), LY = touchPx("--ios-touch-segment-lift-y", 8), W0 = (segW - 2 * pad) / n, CY = pad + H0 / 2;
-  const restCentre = (i) => pad + i * W0 + W0 / 2, idx0 = Math.max(0, bs.findIndex((b) => b.classList.contains("on")));
+  const LX = touchPx("--ios-touch-segment-lift-x", 12), LY = touchPx("--ios-touch-segment-lift-y", 8), PITCH = segW / n, W0 = PITCH - 2 * pad, CY = pad + H0 / 2;   // segment pitch 200, resting lens 196 (inset 2 ← seg-native-abc-frames.json rest rect 22 610 196×28)
+  const restCentre = (i) => i * PITCH + PITCH / 2, idx0 = Math.max(0, bs.findIndex((b) => b.classList.contains("on")));
   const liftDelay = touchMs("--ios-touch-segment-lift-delay", 109) / 1000, relDelay = touchMs("--ios-touch-segment-release-delay", 31) / 1000;
   const destDelay = touchMs("--ios-touch-segment-release-destout-delay", 198) / 1000;
   const K_LIFT_DEST = cssKeys("--ios-touch-segment-destout-keys", SEG_LIFT_DESTOUT), K_DEST = cssKeys("--ios-touch-segment-release-destout-keys", SEG_DROP_DESTOUT.filter(([t]) => t >= .198).map(([t, v]) => [t - .198, v]));
@@ -1276,7 +1275,7 @@ function segLens(seg, lens, bs) {
     const L = lr.left - sr.left, T = lr.top - sr.top, Wd = lr.width, Hd = lr.height, R = Hd / 2;   // capsule: corner = h/2 (r22 at 44 ← §0; the lift's corner 14 → 22 on the same spring ← §4.4 row 1)
     for (const el of [warp, warpl, plat, rim]) { el.style.left = L + "px"; el.style.top = T + "px"; el.style.width = Wd + "px"; el.style.height = Hd + "px"; el.style.setProperty("--rr", R + "px"); }
     copy.style.left = -L + "px"; copy.style.top = -T + "px";   // the backdrop copy stays aligned with the real control
-    const PW = W0, PH = H0, PL = (Wd - PW) / 2, PT = (Hd - PH) / 2;   // the label portal: the resting lens size (196×28 native, 198×28 here), centred in the lens (seg-lift-material §1: portal #32)
+    const PW = W0, PH = H0, PL = (Wd - PW) / 2, PT = (Hd - PH) / 2;   // the label portal: the resting lens size 196×28, centred in the lens (seg-lift-material §1: portal #32)
     portal.style.left = PL + "px"; portal.style.top = PT + "px"; portal.style.width = PW + "px"; portal.style.height = PH + "px";
     copyl.style.left = (-L - PL) + "px"; copyl.style.top = (-T - PT) + "px";   // the label copy aligned with the real labels through the portal
     const set = setFor(Wd);

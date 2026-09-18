@@ -453,13 +453,13 @@
      source (spec-extract.md ⑤: transform is a single CASpringAnimation). */
   /* 班次分段控件（34 屏幕时间「每周 / 每天」）：400×32 r16、透镜 28 r14 内缩 2、字 MediumG3 13 / RegularG3 13 ← 探针 UISegmentedControl；
      放在卡片位置（x 20 宽 400；34 里是 x 40 宽 360，页顶无卡时的写法），透镜材质 采样替代 → 用白底 + 阴影近似 */
-  .segctl{position:relative;display:flex;height:var(--ios-segment-h);padding:var(--ios-segment-lens-pad);border-radius:var(--ios-segment-radius);background:var(--ios-segment-track);margin:var(--ios-group-gap) 0 0;
+  .segctl{position:relative;display:flex;height:var(--ios-segment-h);padding:var(--ios-segment-lens-pad) 0;border-radius:var(--ios-segment-radius);background:var(--ios-segment-track);margin:var(--ios-group-gap) 0 0;   /* segments at the full pitch (400 / n = 200; labels centred at 120 / 320), the lens inset 2 pt inside its segment (196×28 at 22 / 222 ← seg-native-abc-frames.json rest rects) */
           touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}   /* 轨道 = tertiarySystemFill .12 / 暗 .24 ← 探针 lensdiff；控件自己接管触摸（竖向滑出 64 pt 仍选中，spec §1 G17） */
   /* The selection lens. Position by `left` (a percentage of the control, so the lifted width does not move it), size by width/height: the lift is a
      real 196×28 r14 → 220×44 r22 capsule (seg-lens-refraction §0; +12 / +8 per side ← --ios-touch-segment-lift-x/-y), not a scale — scaling the pill
      drew elliptical ends (界面2号's frame check: a = 15.0 vs the native r 22 circle). Slide = response .4 / ζ .85 spring (--ios-motion-lens-*, 探针 deep). */
-  .segctl .lens{position:absolute;top:var(--ios-segment-lens-pad);left:calc(var(--ios-segment-lens-pad) + var(--i, 0) * (100% - 2 * var(--ios-segment-lens-pad)) / var(--n, 2));
-                height:var(--ios-segment-lens-h);width:calc((100% - 2 * var(--ios-segment-lens-pad)) / var(--n, 2));margin:0;
+  .segctl .lens{position:absolute;top:var(--ios-segment-lens-pad);left:calc(var(--ios-segment-lens-pad) + var(--i, 0) * 100% / var(--n, 2));
+                height:var(--ios-segment-lens-h);width:calc(100% / var(--n, 2) - 2 * var(--ios-segment-lens-pad));margin:0;
                 border-radius:var(--ios-segment-selected-radius);background:var(--ios-segment-selected-bg);box-shadow:var(--ios-segment-selected-shadow);backdrop-filter:var(--ios-segment-selected-filter);-webkit-backdrop-filter:var(--ios-segment-selected-filter);   /* 选中段 = _UILiquidLensView 的 restingBackground：_controlForegroundColor 白 / 暗 (235,235,245,.3)，逐角 14，无阴影无滤镜 ← 探针 lensdiff/subtree */
                 scale:1 1;transform-origin:center;
                 --seg-geo:var(--ios-touch-segment-lift-duration) var(--ios-touch-segment-lift-easing);
@@ -467,7 +467,7 @@
   /* .lift is a marker (z-order, accept): while the finger is down and until the settle, view.js segLens writes the lens's left/top/width/height/
      border-radius inline each frame from the control's own springs (seg-lens-refraction §4.4 originals), with `transition: none` inline. The rule
      below is only the fallback shape (220×44 r22 ← seg-lens-refraction §0) if the loop is not running. */
-  .segctl .lens.lift{width:calc((100% - 2 * var(--ios-segment-lens-pad)) / var(--n, 2) + 2 * var(--ios-touch-segment-lift-x));height:calc(var(--ios-segment-lens-h) + 2 * var(--ios-touch-segment-lift-y));
+  .segctl .lens.lift{width:calc(100% / var(--n, 2) - 2 * var(--ios-segment-lens-pad) + 2 * var(--ios-touch-segment-lift-x));height:calc(var(--ios-segment-lens-h) + 2 * var(--ios-touch-segment-lift-y));
                      margin:calc(-1 * var(--ios-touch-segment-lift-y)) 0 0 calc(-1 * var(--ios-touch-segment-lift-x));border-radius:calc(var(--ios-segment-lens-h) / 2 + var(--ios-touch-segment-lift-y))}
   .segctl .lens.spring{transition:left var(--seg-settle) var(--seg-x-easing),width var(--seg-geo),height var(--seg-geo),margin var(--seg-geo),border-radius var(--seg-geo);animation:lens-stretch var(--seg-settle) linear}   /* 换值后：位移走实测逐帧 x 路径（--ios-touch-segment-lens-x-keys，峰 1.075 @476 ms），边跑边胀走实测 w/h 逐帧（宽峰 1.24 @192 ms、谷 .925 @492；高峰 1.371 @125、第二峰 1.136 @476）← spec §1 G1/G3 */
   @keyframes lens-stretch{0.00%{scale:1.000 1.000} 3.47%{scale:1.024 1.111} 6.29%{scale:1.069 1.268} 9.02%{scale:1.122 1.350} 10.34%{scale:1.150 1.371} 11.75%{scale:1.180 1.361} 14.56%{scale:1.221 1.304} 15.88%{scale:1.240 1.224} 17.29%{scale:1.205 1.139} 20.02%{scale:1.167 1.021} 22.83%{scale:1.119 0.975} 25.56%{scale:1.067 0.986} 28.29%{scale:1.018 1.025} 31.10%{scale:0.978 1.068} 33.83%{scale:0.948 1.096} 36.56%{scale:0.932 1.125} 39.37%{scale:0.927 1.136} 40.69%{scale:0.925 1.133} 44.83%{scale:0.933 1.125} 50.37%{scale:0.954 1.089} 55.91%{scale:0.977 1.046} 61.37%{scale:0.997 1.007} 66.91%{scale:1.006 0.989} 69.73%{scale:1.007 0.986} 78.00%{scale:1.000 1.000} 83.46%{scale:0.997 1.007} 100.00%{scale:1.000 1.000}}
@@ -518,7 +518,7 @@
   .segctl .warpl .displ{position:absolute;inset:0;overflow:hidden;border-radius:var(--rr, 14px)}   /* filter: url(#seg-lens-f-lab-<w>) set per frame; clipped to the capsule BEFORE the filter */
   .segctl .warpl .portal{position:absolute;overflow:hidden;border-radius:var(--ios-segment-lens-radius)}   /* 196×28 (ours 198×28) centred; left/top/size set per frame */
   .segctl.lift .warp,.segctl.lift .warpl,.segctl.lift .plat,.segctl.lift .rim{display:block}
-  .segctl .warp .copy,.segctl .warpl .copy{position:absolute;left:0;top:0;display:flex;padding:var(--ios-segment-lens-pad);box-sizing:border-box}
+  .segctl .warp .copy,.segctl .warpl .copy{position:absolute;left:0;top:0;display:flex;padding:var(--ios-segment-lens-pad) 0;box-sizing:border-box}
     /* B3 follow-up: the content (and the lens's commit slide, the same render) switch at the native valueChanged time after the up — seg-value-change-content.md §0:
        +92 / +68 / +50 / +66 ms in the four recordings (median 67; 66 taken, one of the samples), the same frame the lens starts to glide; after a
        slide the value changes +25 ms after the up (tokens.css --ios-touch-segment-commit-delay comment, data session). The token itself stays 0. */
@@ -541,10 +541,15 @@
   .segctl .rim{position:absolute;z-index:7;left:0;top:0;width:0;height:0;pointer-events:none;display:none;border-radius:var(--rr, 14px);opacity:var(--lp, 0);
                box-shadow:0 0 0 1px rgb(0 0 0 / .10),0 1px 0 0 rgb(0 0 0 / .026);   /* the outside dark line: 601 → 219.3 (217.1), 646 → 213.6 (213.8), ends col 110 (with the cap ring) */
                background:var(--seg-rim-top),var(--seg-rim-glow),var(--seg-rim-bot);background-repeat:no-repeat;background-size:calc(100% - 2 * var(--rr, 14px)) 100%;background-position:center}
-  .segctl .rim::before,.segctl .rim::after{content:"";position:absolute;top:-.5px;width:calc(2 * var(--rr, 14px) + 1px);height:calc(100% + 1px);border-radius:50%;pointer-events:none;
-               box-shadow:0 0 0 1px rgb(0 0 0 / .02),inset 0 0 0 1px rgb(0 0 0 / .083),inset 0 0 3px 11px rgb(0 0 0 / .06)}   /* the ends: col 110 −20, 111 −36, 112…121 −10 … −14.6 (row_y616_left); ring alphas set from the headless PNG read-back (col 110 / 111) */
-  .segctl .rim::before{left:-.5px;clip-path:inset(-3px 50% -3px -3px)}
-  .segctl .rim::after{right:-.5px;clip-path:inset(-3px -3px -3px 50%)}
+  .segctl .rim::before,.segctl .rim::after,.segctl .rim .capL,.segctl .rim .capR{content:"";position:absolute;top:-.5px;width:calc(2 * var(--rr, 14px) + 1px);height:calc(100% + 1px);border-radius:50%;pointer-events:none}
+  .segctl .rim::before,.segctl .rim::after{box-shadow:0 0 0 1px rgb(0 0 0 / .02),inset 0 0 0 1px rgb(0 0 0 / .083)}   /* the ends' lines: col 110 −20, 111 −36 (row_y616_left); ring alphas set from the headless PNG read-back */
+  .segctl .rim::before,.segctl .rim .capL{left:-.5px;clip-path:inset(-3px 50% -3px -3px)}
+  .segctl .rim::after,.segctl .rim .capR{right:-.5px;clip-path:inset(-3px -3px -3px 50%)}
+  /* the ends' ~10 pt dark band (cols 112…121 −10 … −14.6 at row 616): its own cap elements so it can fade — measured on the upper half only; the
+     bottom straight edge has no band (637–644 ≥ page), so the band is taken as full down to the lens's middle and gone by ~82 % of the height
+     (the transition between is 未量 — a placeholder ramp, 等原理: the ring / highlight terms the old page session is decoding). Without the fade the
+     band ended in a vertical cut where the cap element is clipped at the tangent (0a4b942 / 972aed7 4× images). */
+  .segctl .rim .capL,.segctl .rim .capR{box-shadow:inset 0 0 3px 11px rgb(0 0 0 / .06);-webkit-mask-image:linear-gradient(180deg, #000 0, #000 45%, transparent 82%);mask-image:linear-gradient(180deg, #000 0, #000 45%, transparent 82%)}
   .segctl + section > .group:first-child,.segctl + section > h2{margin-top:0}
   .segctl[hidden]{display:none}   /* 只在「状态」首页出现（验收 2026-09-18）；layoutTabs 按标签隐藏 */
   /* 待保存小字：行内右下 11 pt（同 .sent） */
