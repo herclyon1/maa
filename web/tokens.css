@@ -225,6 +225,20 @@
   /* labels: UISegmentLabel .SFUI-MediumG3 13 (selected) / .SFUI-RegularG3 13, textColor labelColor (light (0,0,0), dark (255,255,255)) — the selected
    * label is plain label colour, not vibrancy (subtree dump: _UILabelLayer textColorDesc = labelColor) */
   --ios-segment-label-color: rgb(0 0 0);
+  /* ---- segmented lens, LIFTED (held / dragged) — 2026-09-19 ----
+   * The rest-state dumps (tools/uiprobe/uiprobe-lensdiff-seg-{light,dark}.json, uiprobe-subtree-seg-*.json) hold no lifted values: at rest the
+   * `_UILiquidLensView` shows only restingBackground (_controlForegroundColor) and the DestOutView at opacity 0; the ClearGlassView's material keys
+   * were never read for the segmented control → 「未读（分段）」. The same class's lifted layer WAS read on the tab bar (remote-ref/lens-refraction.md
+   * §1 / §3, iOS 27.0 probe): the refraction layer (ClearGlassView › CABackdropLayer displacementMap + gaussianBlur inputRadius 0) covers the
+   * resting tint layer opaquely and shows the content beneath UNTINTED and UNBLURRED (flat grey 128 reads 128 inside), with no fill of its own;
+   * the rim is a 1 pt bright line (+15/255) immediately inside a 1 pt dark line (−34/255), no separate highlight ring. Taken over here for the
+   * segmented lens (same _UILiquidLensView); replace with the segmented control's own readings when the probe gets them. */
+  --ios-seg-lift-fill: rgb(255 255 255 / 0);      /* 抬起后无自身填充（lens-refraction §1：折射层覆盖着色层、内容原样透出；§3 平灰 128 → 128）；分段未读，按同类层 */
+  --ios-seg-lift-blur: 0px;                        /* ClearGlassView 折射层 gaussianBlur inputRadius 0 ← lens-refraction §1 层树 */
+  --ios-seg-lift-saturate: 1;                      /* 透镜内「未着色」← lens-refraction §1 / §3 */
+  --ios-seg-lift-brightness: 1;                    /* 同上 */
+  --ios-seg-lift-rim-light: .118;                  /* 边界内 1 pt 亮线 +15/255 ← lens-refraction §3（平灰 128 底）；换成白线 alpha = 15 / (255 − 128) — 采样替代 */
+  --ios-seg-lift-rim-dark: .266;                   /* 紧接 1 pt 暗线 −34/255 ← §3；黑线 alpha = 34 / 128 — 采样替代 */
   /* probe UIProgressView 400×4 (track/fill colours not read) */
   --ios-progress-h: 4px;
   /* probe UITabBar 83 at y 873; lens 94×54 r 27; labels at y 912; AX-13 same */
@@ -665,6 +679,9 @@
     --ios-segment-selected-bg: rgb(235 235 245 / .3);
     --ios-segment-track: rgb(118 118 128 / .24);
     --ios-segment-label-color: rgb(255 255 255);
+    --ios-seg-lift-fill: rgb(235 235 245 / 0);     /* dark: same reading — no fill when lifted (lens-refraction §3: 暗色相同数值); rest is (235,235,245,.3) */
+    --ios-seg-lift-blur: 0px; --ios-seg-lift-saturate: 1; --ios-seg-lift-brightness: 1;
+    --ios-seg-lift-rim-light: .118; --ios-seg-lift-rim-dark: .266;   /* §3: the rim numbers were identical in dark */
     --ios-alert-button-offset: 0.11;
     --ios-vibrancy-label: 0.95;
     --ios-vibrancy-secondary: 0.3;

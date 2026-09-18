@@ -465,6 +465,11 @@
         await sleep(240);
         check("分段 G16 +400 ms：透镜 220×44 到位（--ios-touch-segment-lift-x 12 / -y 8）", "1.1224 1.5714", cs(lens0).scale, /^1\.12/.test(cs(lens0).scale) && /1\.57/.test(cs(lens0).scale));
         check("分段抬起 +400 ms：--lp 到 1", "1", seg.style.getPropertyValue("--lp"), Math.abs(parseFloat(seg.style.getPropertyValue("--lp")) - 1) < 0.01);
+        /* lifted material (tokens --ios-seg-lift-*, taken from the tab-bar lens's lifted layer, lens-refraction §1/§3): no fill, no blur, rim 1 pt +15 / 1 pt −34 */
+        { const a = cs(lens0, "::after"), sh = cs(lens0).boxShadow;
+          check("分段抬起满：透镜无自身填充（--ios-seg-lift-fill α 0，标签从下透出）", "rgba(…, 0)", a.backgroundColor, /,\s*0\)$/.test(a.backgroundColor) && parseFloat(a.opacity) > 0.99);
+          check("分段抬起满：无模糊（--ios-seg-lift-blur 0，ClearGlassView gaussianBlur inputRadius 0）", "blur(0px)", (cs(lens0).backdropFilter || cs(lens0).webkitBackdropFilter || "").split(" ")[0], /^blur\(0px\)/.test(cs(lens0).backdropFilter || cs(lens0).webkitBackdropFilter || ""));
+          check("分段抬起满：边缘 1 pt 亮线 + 1 pt 暗线（--ios-seg-lift-rim-light .118 / -dark .266 ← lens-refraction §3）", "inset 1px α.118 + inset 2px α.266", sh.replace(/\s+/g, " ").slice(0, 90), /rgba\(255, 255, 255, 0\.11[0-9]*\).*inset|inset.*rgba\(255, 255, 255, 0\.11/.test(sh) && /rgba\(0, 0, 0, 0\.26[0-9]*\)/.test(sh)); }
         /* §1 G4/G22: sliding onto the other segment moves the lens, the index does not change until the up */
         pev(seg, "pointermove", at(unsel)); await sleep(30);
         const fracI = parseFloat(seg.style.getPropertyValue("--i"));

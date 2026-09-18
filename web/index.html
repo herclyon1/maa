@@ -459,8 +459,9 @@
      labels; once lifted the lens is a glass layer ABOVE them, the original labels are punched out under it (DestOutView, liftedContentPunchout)
      and a copy of the labels is drawn inside the glass through a displacement map (liftedContentWarpWrapper › filters displacementMap).
      --lp = the lenstrace progress (lens-refraction §4.1: 0 at 20 ms, 65 % at 103 ms, 95 % at 203 ms, 1 at 370 ms; the same curve back at release),
-     set per frame by attachSegmented. Material tokens --ios-seg-lift-*: the data session's originals table (pending); the fallbacks are the rest
-     values so nothing is invented here — until the tokens land the lifted lens keeps the flat platter look. */
+     set per frame by attachSegmented. Material tokens --ios-seg-lift-* (web/tokens.css): taken from the same class's lifted layer on the tab bar
+     (lens-refraction §1 / §3: no fill, no blur, untinted content, rim +15 / −34); the segmented control's own lifted material was never read
+     (「未读」) — swap the tokens when the probe reads it. The fallbacks are the rest values. */
   .segctl.lift .lens{z-index:2;background:transparent;
     /* 静止填充 _controlForegroundColor（::before，1 − --lp）与抬起填充 --ios-seg-lift-fill（::after，--lp；← 表，待）两层交叉淡 */
     backdrop-filter:blur(calc(var(--lp, 0) * var(--ios-seg-lift-blur, 0px))) saturate(calc(1 + var(--lp, 0) * (var(--ios-seg-lift-saturate, 1) - 1))) brightness(calc(1 + var(--lp, 0) * (var(--ios-seg-lift-brightness, 1) - 1)));
