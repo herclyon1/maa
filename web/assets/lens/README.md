@@ -349,6 +349,27 @@ y634 left gaps 0.93 · **3.00** · 3.51 · 3.03 · 3.49 (the 2.49 gone; native 3
 §0c: 左「早班」 ink −25 % (dark −30 %), box unchanged; 右「晚班」 ink +17 % (dark +26 %), 「班」 height 11.67 → **14.16** (dark 13.67;
 native 15.0; before 13.66).
 
+**Engine fact 2 — the source fetch is nearest-neighbour at the device pixel, CoreAnimation's is bilinear (2026-09-19; not
+treated, candidates listed for the supervisor):** what the calibration shows is a displacement quantised to whole device pixels
+(the applied values above are all multiples of the pixel; a bilinear fetch would need no quantisation) and the renders show only
+source values at a displaced edge — never a blend: on the row where the displaced track edge runs along the row (page row 637 =
+the band's bottom, lens y 35: the map's samples sit at lens y 37.7–38.1, on the track's bottom edge 38) WebKit and Chrome give
+whole columns of track (238 / 239) or page (255 / 244) — ours 117–124 page, 125–130 track, 131 + page; the ui session's the
+same blocks in Chrome — while the native's same row is a flat 240–241, the blend of track 228 and page 243 that a bilinear
+fetch of a sample 0.1–0.3 pt inside the edge gives. The same fact makes the ends' "hard" bands and the §6d notch. The
+correction above fixes the one-pixel shortfall on negative values; the quantisation and the nearest fetch stay. Candidates
+(none implemented; each with what it does, its cost, and whether `calib/` can verify it):
+
+| candidate | what | cost | calib check |
+|---|---|---|---|
+| A. supersample the displaced layers | `transform: scale(2)` on the filtered layer inside a wrapper scaled ½ (WebKit renders a filter at the layer's device scale, so its buffer gets 2× the pixels; the wrapper's downscale then averages 2×2 buffer pixels ≈ a box filter over the displaced result) | 4× filter pixels per layer per frame (220×44 pt @3× = 1.4 M px → 5.6 M; two layers + the fringe chain); frame time to be measured on the phone | yes — the step should halve (−1 → −0.75 at 2×) and the displaced mark edges show a 2-level ramp; the notch on row 637 becomes 2-level |
+| B. bilinear fetch in a shader | a WebGL (or 2D canvas) copy of the displacement in the decompiled formula's own sampling (`displacement_map_lpf` linear), drawing the lens's source content into a texture | the source is DOM (track, labels): it has to be re-drawn into the canvas per frame (SVG foreignObject serialisation or a programmatic redraw of the track and glyphs) — a second rendering path for the lens content | yes — constant and fractional maps on marks give blended edge values; the ramp edges land where the map says |
+| C. finer maps (6 px/pt instead of 2) | more texels | 9× map bytes | no effect expected: the quantisation is the output buffer's, not the map's (the constant-map calibration is resolution-independent) — a calib run would show the same table |
+| D. soften the source edge (blur the track / glyph copy by a pixel) | hides the blocks by changing the content | forbidden by the rules (涂软 = masking, not a renderer fact) — listed only to say it is not on the table | — |
+
+A is the one that changes the fact without a second rendering path; its frame cost is the question (the test page's 自动拖 2 s
+frame stats on the phone would answer it).
+
 The top / bottom bands at the ends (the acceptance session's B6 preview, 2026-09-19: "whitish and hard", `bands-native-bgonly-all.png`,
 `topband-zoom.png`; the test page with the backdrop filter alone): the track's displaced edge sits where the native's does (top
 band x 300: ours 610.3–610.5 against 610.7–611, x 322: 610.5 against 610.7; bottom band x 300: 637.0 against 637.3) and is as
