@@ -577,6 +577,7 @@ function layoutTabs() {
   }
   if (!present.has(curTab)) curTab = "状态";
   for (const sec of secs) sec.hidden = sec.dataset.tab !== curTab || sec.dataset.empty === "1";
+  for (const el of document.querySelectorAll("#app > .segctl")) el.hidden = curTab !== "状态";   // 班次分段只在「状态」首页（验收 2026-09-18）；其他页照旧用 curQueue
   const nav = $("#tabs");
   nav.hidden = present.size < 2;
   /* platter, lens and buttons are siblings (index.html: a lens nested in the backdrop-filtered platter cannot filter it) */
@@ -602,6 +603,7 @@ function layoutTabs() {
     curTab = b.dataset.tab;
     try { localStorage.setItem("ark-remote-tab", curTab); } catch {}
     for (const sec of document.querySelectorAll("#app > section")) sec.hidden = sec.dataset.tab !== curTab || sec.dataset.empty === "1";
+    for (const el of document.querySelectorAll("#app > .segctl")) el.hidden = curTab !== "状态";
     for (const x of nav.querySelectorAll("button")) x.classList.toggle("on", x.dataset.tab === curTab);
     glide(true);
     window.scrollTo({ top: 0 });

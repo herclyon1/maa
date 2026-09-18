@@ -153,12 +153,22 @@
       check("弹窗玻璃滤镜链 = 端到端实测（--ios-alert-glass-filter：blur 20 · saturate · brightness）", wantPane, pane ? bf(pane).replace(/\s+/g, " ") : "缺", !!pane && bf(pane).replace(/\s+/g, " ") === wantPane);
       col("弹窗叠白（--ios-alert-glass-white .538 / 暗 .135）", dark ? [255, 255, 255, .135] : [255, 255, 255, .538], pane ? cs(pane).backgroundColor : "");
       col("弹窗遮罩（--ios-alert-dimming）", dark ? [0, 0, 0, .48] : [0, 0, 0, .2], varColor("--ios-alert-dimming", probe));
+      check("弹窗玻璃无描边无阴影（pipeline #10）", "none", pane ? cs(pane).boxShadow : "缺", !!pane && cs(pane).boxShadow === "none");
+      check("弹窗位置 = 整屏原生 frame y 406（中心 +14，④）", "calc(50% + 14px)", cs(alert).top, /14px/.test(cs(alert).top) && /-50%/.test(cs(alert).translate));
+      const at2 = alert.querySelector("h2"), am = alert.querySelector(".dlg-b");
+      check("弹窗标题左对齐、labelColor（④ 帧 (30,22,260) / pipeline §1.9）", "left label", `${cs(at2).textAlign} ${cs(at2).color}`, cs(at2).textAlign === "left" && same(cs(at2).color, dark ? [255, 255, 255] : [0, 0, 0]));
+      check("弹窗说明左对齐，底距 20.33（按钮顶 108 − 49.67 − 38，④）", "left 20.33px", `${cs(am).textAlign} ${cs(am).paddingBottom}`, cs(am).textAlign === "left" && near(px(cs(am).paddingBottom), 20.33, 0.05));
+      if (CSS.supports("mix-blend-mode", "plus-darker")) check("弹窗说明字 = 面板 −0.4 / +0.3（pipeline §1.9：plus-darker rgb(153) / plus-lighter rgb(77)）", dark ? "rgb(77) plus-lighter" : "rgb(153) plus-darker", `${cs(am).color} ${cs(am).mixBlendMode}`, same(cs(am).color, dark ? [77, 77, 77] : [153, 153, 153]) && cs(am).mixBlendMode === (dark ? "plus-lighter" : "plus-darker"));
+      else col("弹窗说明字 Chrome 常量（236 − 102 / 暗 35 + 76.5）", dark ? [111, 111, 111] : [134, 134, 135], cs(am).color);
+      const cbtn = alert.querySelector("#alert-cancel"), okb = alert.querySelector("#alert-ok");
+      if (cbtn) col("「取消」字 = labelColor（pipeline §1.9，不是 tint）", dark ? [255, 255, 255] : [0, 0, 0], cs(cbtn).color);
+      if (okb) { okb.classList.add("danger"); col("「停止」字 = M_red × 按钮底（白底亮色实测 (235,42,45)，pipeline §1.9）", dark ? [255, 105, 108] : [235, 42, 45], cs(okb).color); check("「停止」按钮底透明（不再被 .acts button.danger 的白底盖住）", "rgba(0, 0, 0, 0)", cs(okb).backgroundColor, cs(okb).backgroundColor === "rgba(0, 0, 0, 0)"); okb.classList.remove("danger"); okb.classList.add("primary"); }
       check("弹窗面板无字区取样目标 ≈ (236,236,237)±3 亮 / 列表底 — 数据会话模拟器截图取样（accept 量不到像素）", "236±3", "见数据会话取样", true);
       const dbtn = alert.querySelector(".acts button:not(.primary)");
       if (dbtn) {
         const ov = cs(dbtn, "::before"), pd = CSS.supports("mix-blend-mode", "plus-darker");
-        if (pd) { col("弹窗按钮 = 面板 − 37/255：plus-darker 叠 rgb(218)（暗 plus-lighter rgb(35)，--ios-alert-button-overlay）", dark ? [35, 35, 35] : [218, 218, 218], ov.backgroundColor); check("弹窗按钮混合模式", dark ? "plus-lighter" : "plus-darker", ov.mixBlendMode, ov.mixBlendMode === (dark ? "plus-lighter" : "plus-darker")); }
-        else col("弹窗按钮 Chrome 兜底 α .16（--ios-alert-button-fallback）", dark ? [255, 255, 255, .16] : [0, 0, 0, .16], ov.backgroundColor);
+        if (pd) { col("弹窗按钮 = 面板 −30.9/255：plus-darker 叠 rgb(224)（暗 +27.9 plus-lighter rgb(28)，pipeline §1.8）", dark ? [28, 28, 28] : [224, 224, 224], ov.backgroundColor); check("弹窗按钮混合模式", dark ? "plus-lighter" : "plus-darker", ov.mixBlendMode, ov.mixBlendMode === (dark ? "plus-lighter" : "plus-darker")); }
+        else col("弹窗按钮 Chrome 等值常量 α .131 / .127（--ios-alert-button-fallback）", dark ? [255, 255, 255, .127] : [0, 0, 0, .131], ov.backgroundColor);
       }
     }
     /* Tab bar: hidden when the snapshot has a single tab (nav.hidden = present.size < 2);
@@ -362,6 +372,7 @@
         check("标签栏 T5 按住 600 ms：仍不选中，透镜停在目标 119×64（--ios-touch-tab-lift-w 25 / -h 10）", `${startTab} 1.266 1.185`, `${tOn()} ${cs(g).scale}`, tOn() === startTab && /^1\.26/.test(cs(g).scale));
         const t1 = performance.now(); pev(tseg, "pointerup", at(other)); const d1 = performance.now() - t1;
         check("标签栏 T1 抬手：+0 ms 选中、内容同步切", other.dataset.tab, `${tOn()} 显示 ${shown()} +${Math.round(d1 * 10) / 10} ms`, tOn() === other.dataset.tab && shown() === other.dataset.tab && d1 < 50);
+        { const sg = document.querySelector("#queueseg"); check("班次分段只在「状态」页（别的标签页隐藏）", "hidden", sg ? (sg.hidden ? "hidden" : "shown") : "缺", !!sg && sg.hidden && getComputedStyle(sg).display === "none"); }
         /* T7/T8: release 250 pt above still selects */
         const nav2 = document.querySelector("nav.tabs"), seg2 = nav2.querySelector(".seg"), b2 = [...seg2.querySelectorAll("button")];
         const back = b2.find((b) => b.dataset.tab === startTab);

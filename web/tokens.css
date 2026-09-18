@@ -409,9 +409,12 @@
   --ios-alert-dimming: rgb(0 0 0 / .2);
   /* alert buttons over the pane: measured pane → button = pane − 37/255 (light, slope .958 ≈ 1; dark: pane + 35/255) → mix-blend-mode: plus-darker
    * with rgb(218 218 218) (dark: plus-lighter rgb(35 35 35)); Chrome fallback rgb(0 0 0 / .16) (dark rgb(255 255 255 / .16)) */
-  --ios-alert-button-offset: -0.145;
-  --ios-alert-button-overlay: rgb(218 218 218);
-  --ios-alert-button-fallback: rgb(0 0 0 / .16);
+  /* CORRECTED per alert-pipeline-plan.md §1.8 (button_fill.py over the 8 flat backdrops): button = pane − 30.9/255 light (offset −0.121, per channel,
+   * cancel and destructive identical) / + 27.9/255 dark (+0.109) — ⑨'s −37 / rgb(218) had the sampling box over the red label.
+   * plus-darker overlay S = 1 + e → rgb(224); Chrome fallback α = 30.9 / 236 (the pane over this site's light backdrop) */
+  --ios-alert-button-offset: -0.121;
+  --ios-alert-button-overlay: rgb(224 224 224);
+  --ios-alert-button-fallback: rgb(0 0 0 / .131);
   --ios-glass-saturate: 1.2;
   --ios-glass-lift: 0.147;
   /* sheet: glassBackground inputBlurRadius 4, plus a white _UIVisualEffectBackgroundView with vibrantColorMatrix offset +0.48 (light) / +0.12 (dark) */
@@ -644,9 +647,10 @@
     --ios-alert-glass-white: .135;
     --ios-alert-glass-filter: blur(20px) saturate(1.73) brightness(.755);
     --ios-alert-dimming: rgb(0 0 0 / .48);
-    --ios-alert-button-offset: 0.137;
-    --ios-alert-button-overlay: rgb(35 35 35);
-    --ios-alert-button-fallback: rgb(255 255 255 / .16);
+    /* CORRECTED per alert-pipeline-plan.md §1.8: dark button = pane + 27.9/255 → plus-lighter rgb(28); fallback α = 27.9 / (255 − 35) with the dark pane ≈ 35 over black */
+    --ios-alert-button-offset: 0.109;
+    --ios-alert-button-overlay: rgb(28 28 28);
+    --ios-alert-button-fallback: rgb(255 255 255 / .127);
     --ios-lens-brightness-css: 0.763;
     --ios-lens-contrast-css: 1.14;
     --ios-lens-matrix: 1.1298 -0.2361 -0.0237 0 -0.07  -0.0701 0.964 -0.0238 0 -0.07  -0.0702 -0.236 1.1762 0 -0.07  0 0 0 1 0;
