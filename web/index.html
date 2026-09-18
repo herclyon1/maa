@@ -147,7 +147,7 @@
   section + section > .group:first-child{margin-top:35px}                        /* 卡到卡 35：Kit L44，待 tokens */
   section:has(> .foot:last-child) + section > .group:first-child{margin-top:0}   /* the footer's 24 is the gap */
   h2{margin:0;padding:var(--ios-header-text-top) var(--ios-row-text-x) calc(var(--ios-header-h) - var(--ios-header-text-top) - var(--ios-body-lh));font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight);color:var(--dim);   /* 组头容器 45.33、文字 +18.67 ← 探针 */
-     text-transform:none;display:flex;justify-content:space-between;align-items:baseline}
+     text-transform:none;display:flex;justify-content:space-between;align-items:baseline;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* a header is one line (tail ellipsis) */
   section:has(> .foot:last-child) + section > h2{padding-top:4px}
   section:first-child > h2{padding-top:10px}
   h2 small{color:var(--dim);font-weight:400;font-size:var(--ios-footnote-size)}
@@ -247,7 +247,7 @@
   section + section > .group.notice:first-child{margin-top:10px}
   .ncap{position:relative;padding:14px 0 10px;font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh);color:var(--dim)}
   .ncap::after{content:"";position:absolute;left:0;right:0;bottom:0;height:var(--ios-separator-h);background:var(--line)}
-  .ntitle{margin-top:14px;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight)}
+  .ntitle{margin-top:14px;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .nbody{margin-top:4px;font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);color:var(--dim)}
   .nacts{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
   .capsule{font:inherit;font-size:var(--ios-sub-size);font-weight:var(--ios-headline-weight);line-height:var(--ios-sub-lh);height:30px;padding:0 14px;border:0;border-radius:15px;   /* 30：健康胶囊钮，待 tokens */
@@ -264,7 +264,7 @@
   .tile:active,.tile.pressed{opacity:1;background:color-mix(in srgb, var(--ink) 8%, var(--card));transition:none}   /* 按下填色 8% 无来源；.pressed 由指针状态机管（按下即高亮、出边 70 pt 余量 ← spec §4 U1–U6） */
   .tico{position:absolute;left:var(--ios-tile-icon-x);top:var(--ios-tile-icon-y);width:var(--ios-tile-icon);height:var(--ios-tile-icon);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;flex:none}   /* 徽章 48 at (6,2) ← 提醒事项 */
   .tico .sf{width:var(--ios-symbol-slot);height:var(--ios-symbol-slot);background:#fff}   /* 符号槽 22 ← Kit */
-  .ttitle{margin:0;font-family:var(--ios-tile-number-font);font-size:var(--ios-tile-label-size);line-height:var(--ios-tile-label-lh);font-weight:var(--ios-tile-label-weight)}   /* 标题 = 磁贴标签 Rounded Semibold 17/20.33 ← 提醒事项 */
+  .ttitle{margin:0;max-width:100%;font-family:var(--ios-tile-number-font);font-size:var(--ios-tile-label-size);line-height:var(--ios-tile-label-lh);font-weight:var(--ios-tile-label-weight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 标题 = 磁贴标签 Rounded Semibold 17/20.33 ← 提醒事项 */
   .tsub{font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh);color:var(--dim)}
   .tile.danger .ttitle{color:var(--bad)}
   .sf{display:inline-block;width:22px;height:22px;background:currentColor;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
@@ -284,13 +284,13 @@
   .row::after{content:"";position:absolute;left:var(--ios-separator-inset-l);right:var(--ios-separator-inset-r);bottom:0;height:var(--ios-separator-h);background:var(--line)}   /* 分隔线 1.0 pt (60,60,67).12，内缩 20/20 ← 探针 */
   .row:last-child::after,.group > :last-child.row::after{display:none}
   .row:has(> .sw):active,.row:has(select):active{background:color-mix(in srgb, var(--ink) 6%, var(--card))}
-  .row > label{flex:1 1 auto;min-width:40%;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 2026-09-19：标题一行到底、尾部省略——设置的值行标题从不换行（AX-41 / AX-46 全部单行） */
+  .row > label{flex:1 1 0;min-width:40%;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 2026-09-19：标题一行到底、尾部省略——设置的值行标题从不换行（AX-41 / AX-46 全部单行） */
   .row > :not(label){flex:0 1 auto;min-width:0;max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 值最多 60 %，先省略值再省略标题（标题保底 40 %） */
   .row > .sw,.row > input,.row > select,.row > .sf,.row > .chev{overflow:visible;flex-shrink:0}
   .row:has(.pills),.row:has(.picks),.row:has(.pillbox),
   .row:has(pre){flex-direction:column;align-items:stretch;gap:8px}
   .row:has(.pills) > :not(label),.row:has(.picks) > :not(label),.row:has(.pillbox) > :not(label){max-width:none;align-self:flex-end}
-  .row .hint{display:block;color:var(--ios-settings-subtitle);font-size:var(--ios-sub-size);margin-top:1px;line-height:var(--ios-sub-lh)}   /* 副题 15/18、设置自家副题灰 ← AX33d/px33d */
+  .row .hint{display:block;color:var(--ios-settings-subtitle);font-size:var(--ios-sub-size);margin-top:1px;line-height:var(--ios-sub-lh);white-space:normal}   /* the name is nowrap; the hint under it is a paragraph and wraps (AX-33d subtitle rows) */   /* 副题 15/18、设置自家副题灰 ← AX33d/px33d */
   .row .ro{color:var(--dim);font-size:var(--ios-body-size);text-align:right}   /* 只读值 = 设置值行：同一行右侧 secondaryLabel（AX-46 值行；不再「标题一行、值另起一行」） */
   /* 导航值行「值 ›」：值 secondaryLabel、箭头 10.33×14 tertiaryLabel 距右 20、值到箭头 8 ← AX-37 / --ios-chevron-* / --ios-value-gap；整行可点 */
   .row.nav{cursor:pointer;padding-right:var(--ios-chevron-inset)}
