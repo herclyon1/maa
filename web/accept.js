@@ -13,6 +13,10 @@
   const near = (a, b, tol = 0.6) => Math.abs(a - b) <= tol;
   const cs = (el, pseudo) => el ? getComputedStyle(el, pseudo || null) : null;
   const px = (v) => parseFloat(v) || 0;
+  /* top safe-area inset as the page sees it: 62 in the standalone web clip (black-translucent, web view covers the whole 956),
+     0 in a browser viewport — the geometry below is expressed relative to it, the way the page's own CSS is */
+  const satTop = () => { const pr = document.createElement("div"); pr.style.cssText = "position:fixed;top:0;left:0;width:1px;padding-top:env(safe-area-inset-top);visibility:hidden";
+    document.body.appendChild(pr); const v = px(cs(pr).paddingTop); pr.remove(); return v; };
   function check(item, expect, got, ok) {
     rows.push({ item, expect: String(expect), got: got === undefined || got === null ? "缺" : String(typeof got === "number" ? Math.round(got * 100) / 100 : got), ok: !!ok });
   }
@@ -155,7 +159,7 @@
       col("弹窗遮罩（--ios-alert-dimming）", dark ? [0, 0, 0, .48] : [0, 0, 0, .2], varColor("--ios-alert-dimming", probe));
       check("弹窗玻璃无描边无阴影（pipeline #10）", "none", pane ? cs(pane).boxShadow : "缺", !!pane && cs(pane).boxShadow === "none");
       if (pane) { const pr = cs(pane); check("弹窗玻璃层外扩 60 pt 再用 clip-path 裁回 r34（marginWidth 60.2 ← ⑨；Safari 合成层不吃 overflow 圆角）", "top -60px / inset(60px round 34px)", `${pr.top} / ${pr.clipPath}`, /-60px/.test(pr.top) && /inset\(60px round 34px\)/.test(pr.clipPath)); check("dialog 上没有 clip-path（Chrome 会把它当 backdrop root，模糊失效）", "none", cs(alert).clipPath, cs(alert).clipPath === "none"); }
-      { const want = innerHeight / 2 + 14, gotTop = px(cs(alert).top);   // 50dvh + 14：standalone 下 50% 会按 1018 算（数据会话 2285c01）
+      { const want = innerHeight / 2 + 14, gotTop = px(cs(alert).top);   // 50dvh + 14 = 492 只在 web view 盖满 956 时成立（black-translucent；数据会话 fd61e71：default/black 下 web view 只有 894 高，中心 522）
         check("弹窗位置 = 整屏原生 frame（中心 = 屏高/2 + 14 → y 406 于 956，④）", `${Math.round(want * 10) / 10}px & translate -50%`, `${cs(alert).top} ${cs(alert).translate}`, Math.abs(gotTop - want) < 1 && /-50%/.test(cs(alert).translate)); }
       const at2 = alert.querySelector("h2"), am = alert.querySelector(".dlg-b");
       check("弹窗标题左对齐、labelColor（④ 帧 (30,22,260) / pipeline §1.9）", "left label", `${cs(at2).textAlign} ${cs(at2).color}`, cs(at2).textAlign === "left" && same(cs(at2).color, dark ? [255, 255, 255] : [0, 0, 0]));
@@ -214,8 +218,7 @@
     if (fakeNav) fakeNav.remove();
     const top = document.querySelector(".topbar");
     if (top) {
-      const pr = document.createElement("div"); pr.style.cssText = "position:fixed;top:0;left:0;width:1px;padding-top:env(safe-area-inset-top);visibility:hidden";
-      document.body.appendChild(pr); const sat = px(cs(pr).paddingTop); pr.remove();
+      const sat = satTop();
       num("顶栏高 = 安全区 + 54（--ios-nav-h，AX-45 NavigationBar (0,62,440,54)）", 54, top.getBoundingClientRect().height - sat);
     }
     const h1 = document.querySelector("header h1");
@@ -269,13 +272,13 @@
     if (typeof openPicker === "function" && document.querySelector("#picker")) {
       openPicker({ title: "测", multi: true, opts: [[["甲"], "a"], [["乙"], "b"], [["丙"], "c"]], on: new Set(["a"]), icons: false }, () => true);
       const sh = document.querySelector("#picker"), card = sh.querySelector(".card"), nav = sh.querySelector(".pnav"), back = sh.querySelector(".pback"), done = sh.querySelector(".pdone");
-      const cr2 = card.getBoundingClientRect(), nr2 = nav.getBoundingClientRect(), br = back.getBoundingClientRect(), dr = done.getBoundingClientRect();
-      num("勾选页顶 = 状态栏 62（--ios-status-h，AX-38 表 y 62）", 62, cr2.top); num("勾选页顶角 38（--ios-sheet-radius-top）", 38, px(cs(card).borderTopLeftRadius));
-      num("勾选页导航栏 54 在 y 82（--ios-nav-h / --ios-modal-nav-top，AX-38）", 82, nr2.top); num("导航栏高 54", 54, nr2.height);
+      const cr2 = card.getBoundingClientRect(), nr2 = nav.getBoundingClientRect(), br = back.getBoundingClientRect(), dr = done.getBoundingClientRect(), sat = satTop();
+      num("勾选页顶 = 安全区顶（standalone 62 = --ios-status-h，AX-38 表 y 62；浏览器里 0）", sat, cr2.top); num("勾选页顶角 38（--ios-sheet-radius-top）", 38, px(cs(card).borderTopLeftRadius));
+      num("勾选页导航栏 54 在安全区顶 + 20（AX-38 y 82 = 62 + 20，--ios-modal-nav-top − --ios-status-h）", sat + 20, nr2.top); num("导航栏高 54", 54, nr2.height);
       num("返回圆钮 44 at x 20（AX-38 BackButton）", 44, br.width); num("返回圆钮 x 20", 20, br.left);
-      num("完成圆钮 36（--ios-modal-button，AX-38 (380,86,36,36)）", 36, dr.width); num("完成圆钮 x 380", 380, dr.left); num("完成圆钮 y 86", 86, dr.top);
+      num("完成圆钮 36（--ios-modal-button，AX-38 (380,86,36,36)）", 36, dr.width); num("完成圆钮 x 380", 380, dr.left); num("完成圆钮 y = 安全区顶 + 24（AX-38 y 86）", sat + 24, dr.top);
       const rows = [...sh.querySelectorAll(".row.check")], r0 = rows[0].getBoundingClientRect(), ck = rows[0].querySelector(".ck").getBoundingClientRect(), lb = rows[0].querySelector("label").getBoundingClientRect();
-      num("勾选行高 53.33（--ios-row-h，AX-38）", 53.33, r0.height); num("勾选行文字 x 40（AX-38）", 40, lb.left); num("勾选页首行 y 153.67（导航底 136 + 17.67）", 153.67, r0.top, 0.5);
+      num("勾选行高 53.33（--ios-row-h，AX-38）", 53.33, r0.height); num("勾选行文字 x 40（AX-38）", 40, lb.left); num("勾选页首行 = 安全区顶 + 91.67（AX-38 y 153.67 = 导航底 136 + 17.67）", sat + 91.67, r0.top, 0.5);
       num("✓ 19×17.33（AX-38 checkmark 帧）", 19, ck.width, 0.05); num("✓ 右缘距行右 22.5（AX-38：397.5 = 420 − 22.5）", 22.5, r0.right - ck.right, 0.05);
       col("✓ 色 tint（--ios-tint）", T.tint, cs(rows[0].querySelector(".ck")).backgroundColor);
       check("未选行不画 ✓", "hidden", cs(rows[1].querySelector(".ck")).visibility, cs(rows[1].querySelector(".ck")).visibility === "hidden");
