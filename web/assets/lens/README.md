@@ -10,9 +10,9 @@ compiled from the native per-frame recordings. Nothing here touches `view.js` / 
 |---|---|
 | `gen_lens_maps.py --formula` | computes the maps from the formulas (§0), writes the filters, the test page, `lens-field.json` (parameters, sources, width → height table, residuals) |
 | `seg-f-bg-<w>.png` | backdrop map for lens width w (196 … 256 step 2; 220 = lifted at rest): what lies under the lens (track / card). The lens box at 2 px/pt, R/G = the clamped sampling offset (byte = 128 + u·255/S, S 40 or 48 per set), B = the coverage the filter multiplies by, one map for all colour channels |
-| `seg-f-lab-<w>.png` | label-copy map for width w (the label copy's two displacement stages with the portal's source extent in B, §0.2 / §0.3) |
+| `seg-f-lab-<w>.png` | label-copy map for width w (the label copy's two displacement stages on the whole lens — formula.md §4b: portal #32 does not clip; B = the product of the two stages' capsule coverages, §0.2 / §0.3) |
 | `lens-filter.svg` | `#seg-lens-f-bg-<w>` / `#seg-lens-f-lab-<w>`: feImage (href = the PNG files as `index.html` sees them, `assets/lens/…`) → feDisplacementMap → feComposite with the map's B; `#seg-lens-f-ab-<w>` / `-ab-ir-<w>`: the fringe chain (§0.5, test page only for now); copy the `<svg>` into `index.html` |
-| `seg-f-ab-<w>.png` | the fringe span map (§0.5): lens + 16 pt, 1 px/pt, R/G = Δ, B = the edge-band factor |
+| `seg-f-ab-<w>.png` | the fringe span map (§0.5): lens + 16 pt, 1 px/pt, R/G = the ratio-1 vector Δ₁ (its own S, `S_ab` 12), B = the edge-band factor e; the filter's `#…-wh` colour matrix applies W/H per lens position |
 | `lens-field.json` | everything the maps hold: formulas, parameters with sources, per-width heights (and where each comes from), the residual tables |
 | `lens-test.template.html` → `lens-test.html` | the test page (standalone metas; `?w=<width>` picks a set; drag / auto-drag / gratings / frame stats) |
 | `gen_seg_keys.py` → `seg-keys.css` | lift / release / commit / drag keyframes compiled from the native frame data (§5) |
@@ -47,13 +47,20 @@ ClearGlass layer, whose image is the capsule-clipped segment content (§1b 表 2
 inside the portal the two differ by ≤ 0.1 rms (§0.4, `*_reversed_order`), at the ends by 0.3–1.5 pt. Backdrop: glassBackground
 (the glass group's own backdrop capture, on top) samples first, then BackdropView.
 
-Sampling and source rules (formula.md §2, 老网页 05:2x): the `displacement_map_lpf` sampler is clamp_to_edge (a coordinate beyond
-the stage's texture replicates the edge pixel — the map stores the sample position clamped to the lens box); each stage's filter
-acts on its layer image, clipped first (transparent outside the layer's mask), then displaced, then multiplied by the effect
-shape's coverage (the map's B channel). Source extents: ClearGlass's image = the segment content 400×32 inside portal #20
-(220×44, masksToBounds r 22) → transparent outside the capsule; ContentLensing's image = portal #32, 196×28 centred in the lens,
-transparent around it. In the map: B(p) = cov(p) × [p + Δ_L(p) inside the 196×28 portal] × cov(p + Δ_L(p)); the final sample
-position is clamped to the box. The portal size during the drag follows the lens's scale (`--label-portal 196x28` in model space, §1c(d)).
+Sampling and source rules — **formula.md §4b, the final structure (2026-09-19)**: the `displacement_map_lpf` sampler is
+clamp_to_edge (a coordinate beyond the stage's texture replicates the edge pixel — the map stores the sample position clamped
+to the lens box); each stage's filter acts on its layer image, clipped first (transparent outside the layer's mask), then
+displaced, then multiplied by the effect shape's coverage (the map's B channel). Layers, bottom up: **0** the page + track +
+segment content, with the DestOut (#43, r 22 capsule) punching the segment content out INSIDE the capsule only (the strokes
+outside it stay: §6d, all three switches leave them); **1** BackdropView #11 (marginWidth 0) captures the 220×44 frame = page +
+track + what of the segment content is left in the frame's corners, +9 / 36, outward samples beyond the frame replicate the
+edge column (the §6d slivers in the rim band are that replicated column, not content from outside); **2** ClearGlass #17 −17.5 /
+11.2 on portal #20 (220×44, masksToBounds r 22 → the segment content 400×32 clipped to the capsule BEFORE the displacement);
+**3** glassBackground −6.6 / 4.4 on layer 1's output; **4** ContentLensing #29 −8.8 / 7.04 on portal #32 — 196×28 but
+**masksToBounds 0, cornerRadii 0: it does not clip**, its image is the whole 220×44 ClearGlass layer (`--label-portal 0`; the
+A9 read + the native |s| 100–109 still showing 「班」 strips + §6d's −8.8 switch moving the right band 416 → 243); **5**
+glassForeground (§0.5); **7** the `_UILiquidLensView` presentation transform scales all of it (§0.3). In the label map:
+B(p) = cov(p) × cov(p + Δ_L(p)), the final sample position clamped to the box; in the backdrop map B(p) = cov(p) × cov(p + Δ_G(p)).
 
 Not read by the probe and therefore stated: the glassBackground shader's own SDF ovalization — the old page's residual table
 (rms 0.12–0.16, §0.4) computes both backdrop stages on the same capsule with ovalization 0.5, kept here. (The drag frames'
@@ -91,7 +98,10 @@ height=100%`, feImage (the map, stretched to the element box) → feDisplacement
 map's B moved into alpha by feColorMatrix (= `out = src(p + u(p)) × map.B`). The filtered layer is the lens box (w×h) with
 `overflow:hidden` — its bounding box is its border box in every engine — and its own clip: the label layer is clipped to the capsule
 BEFORE the filter (`border-radius` = min(22, h/2): the native portal #20 masks the segment content with r 22, then ClearGlass
-displaces — 先裁再位移), the copy of what lies under the lens keeps the box. No region beyond the box is needed: the map's samples
+displaces — 先裁再位移), the copy of what lies under the lens keeps the box and holds, besides the page and the track, the
+segment content with the lens capsule cut out (`.punch`, `clip-path: path(evenodd …)` = the DestOut of §4b layer 0: the frame
+corners keep the label pixels and the map's clamp replicates that edge column into the rim band; `?punch=0` = without, for the
+record). No region beyond the box is needed: the map's samples
 never leave it (clamp_to_edge baked in), so nothing is transparent-from-outside and the one-pixel coloured lines of the diagnostic
 (05:0x: page y 113.00 a full row of (0,255,255), y 152.33/152.67 (0,255,255)/(0,0,255), from channels straddling the box edge)
 are gone: 0 off-neutral pixels in the lifted rest frame in Chrome and in WebKit (scan of the whole lens area).
@@ -211,6 +221,32 @@ ClearGlass stage pulls 10–13 pt inward, and 56 of 74 landed on a stroke of 「
 capsule clip before ClearGlass, clamp_to_edge) those samples fall outside the portal and are masked: 0 dark rim pixels in Chrome
 and WebKit (`dragmid-4x-native-chrome-webkit-244.png`), the rest frame unchanged.
 
+**§4b final structure against the native (2026-09-19, WebKit 440×956 @3x, `final-4x-{light,dark}.png` rows native / ours, ends
+at 4×; `wk-{mid,rest}-final-{light,dark}.png` full frames).** The test page's labels now sit where the native's do (200-pt
+segments: 早班 ink x 107.67–132.17 / 晚班 308–332.17 against the native 107.67–132 / 308–332; the earlier page had them 1 pt
+nearer the centre and every end number reported before this line was measured on that — superseded). Ink = pixels < 100 (light)
+/ > 200 (dark), counted in the label's resting ink box like `seg-lens-drag-mid.md` §0c; the drag-mid state = `?native=1&lensx=220`:
+
+| §0c item | native | ours light | ours dark |
+|---|---|---|---|
+| 左「早班」 ink under the left end | −37 % (dark −57 %), box unchanged | −28 %, box rows unchanged (13.5 → 25.0) | −32 % |
+| 右「晚班」 ink | +37 % | +37 % | +51 % |
+| 右「班」 height | 11.33 → 15.0 (dark → 12.0) | 11.67 → 13.66 | 11.67 → 13.17 |
+| §6d regions (pt², y 612–636 ↔ page 120.89–144.89), 左外 100–110 / 左带 110–114 / 左内 114–136 / 右内 304–326 / 右带 326–330 / 右外 330–340 | 6.1 / 6.2 / 52.8 / 88.4 / 46.0 / 10.4 (from the A1 frame) | 8.5 / 7.5 / 68.7 / 107.4 / 48.2 / 9.7 (unfiltered: 8.5 / 25.0 / 84.3 / 89.6 / 21.5 / 9.7 — our 6 px/pt raster carries ~15 % more ink than the 3× native) | — |
+| bars (`?pattern=bars`, G 50 % crossings) y634 ↔ 12 pt above the bottom edge, left end | … 107.84 · **111.78 · 112.52** (0.74) · 116.04 · 119.24 · 122.50 · 125.86 · 129.41 · 133.06 · 136.97 (gaps 3.52 3.20 3.26 3.36 3.55 3.65 3.91: compression ×.80–.91, one fold in the last pt) | … 107.92 · **111.95 · 112.88** (0.93) · 115.37 · 118.89 · 121.92 · 125.41 · 128.92 · 132.41 · 136.42 (gaps 2.49 3.52 3.03 3.49 3.51 3.49 4.01: ×.62–.88; the fold pair 0.93) | same maps |
+| bars y634 right end | … 320.43 · 323.61 · **327.09 · 327.75** (0.66) · 331.84 | … 320.41 · 323.41 · **326.85 · 327.95** (1.10) · 331.92 (gaps before: 3.56 3.49 3.51 2.99 3.00 3.44) | |
+| bars y610 ↔ 8 pt below the top edge (the top band: stretch) | left 107.83 · 111.84 · **119.50** (7.66 = one edge gone, ×1.9) · 122.82 · 126.16; right 320.16 · **327.84** (7.68) · 331.83 | left 107.92 · 111.92 · **118.87** (6.95, ×1.74) · 122.40 · 125.86; right 319.94 · **327.92** (7.98) · 331.92 | |
+| rest band on the centre column (x 121) | 9 … 35 (611/637) | 8.7 … 35.0 | 8.7 … 35.0 |
+
+What is met: the left label's ink loss with its box unchanged, the right label's +37 %, the §6d band regions (7.5 / 48.2 against
+6.2 / 46.0), the compression of the last 10 pt, the fold pair within 1 pt of the edge, the top-band stretch (one edge lost) and
+the rest band. What is not: the right 「班」 stretches to 13.7 instead of 15.0 and its end is a compressed lump where the native
+shows horizontal streaks (the last 3 pt of the label path: the ClearGlass band's profile there is not in any measured field —
+the phase method stops at the portal, §0.4 above, and the §6d bars are page content, i.e. the backdrop path); the gap just
+inside the fold reads 2.49 against 3.52 (the same 1–1.5 pt over-pull of the two-stage backdrop at (−8, ±103…105) the tables
+above list, `points > 0.3 pt`). The two label stages in the other order (ClearGlass first) were rendered too: the left label's
+box grows to 16.3 pt tall (fragments pulled along the rim) where the native's is unchanged — the §4b order stays.
+
 <!-- verify:end -->
 
 ### 0.5 Colour fringe — glassForeground's 7-tap spectral sampling (test page + `lens-filter.svg`; not wired into index.html)
@@ -219,7 +255,7 @@ Source: `glass-displacement-formula.md` §3b second version (the old page sessio
 data session (`seg-lens-refraction.md` §1c(a) and the 140-key read): #33 glassForeground inputAberrationAmount **+2.3158**,
 inputAberrationAngle **−0.2618 rad (−15°)**, inputAberrationHeight **0**, inputAberrationOffset **24.444**, inputEdgeStart
 **−8.8**, inputEdgeEnd **0**, inputEdgeOpacityStart **1**, inputEdgeOpacityEnd **0**, inputRefractionAmount 0 / Height 0 (uv1 = uv),
-layer opacity 1, normalBlendMode, backdrop marginWidth 100 (source surface W/H = (220 + 200)/(44 + 200) = 1.72). What the shader
+layer opacity 1, normalBlendMode, backdrop marginWidth 100 (source surface = the capture box, §3b.6 below). What the shader
 does (§3b.2, IR `fg_base.named.ll`): `R(θ)g = (g.x cosθ − g.y sinθ, g.x sinθ + g.y cosθ)`; **the aberration vector swaps the two
 lanes** of that and divides each by the source surface's W and H (%79–%82, unlike the refraction vector):
 `Δ = amt_a · ( (W/H)·(R(θ)g).y , (H/W)·(R(θ)g).x )` — so Δ.x follows g.y, which is why the same end has R/B the other way round on
@@ -231,30 +267,44 @@ so `amt_a = 2.3158`, a constant; the spatial envelope is the edge factor: `e = s
 sign check (§3b.4): y634 right end g (.83, .55) → Δ.x > 0 → R−G < 0 ✓ (−0.32), left end → R−G < 0 ✓ (−0.113), y610 left end
 g (−.77, −.64) → Δ.x < 0 → R−G > 0 ✓ (+0.77); the y610/y634 ratio 2.6 vs 2.4 ✓; angle + π ≡ amount negated ✓.
 
-In SVG: one map `seg-f-ab-<w>.png` (R/G = Δ·e in pt, the set's S; B = e; 1 px/pt; lens + 16 pt), seven `feDisplacementMap` on it
-(`scale = ±k·S`), per-tap `feColorMatrix` weights and alpha/7, `feComposite arithmetic` sums, `in` with ΣA/7, `in` with the band
-factor e (B), `over`. `#seg-lens-f-ab-<w>` is the formula (test page default `?ab=flip`); `#seg-lens-f-ab-ir-<w>` (1 − e) is the
-record of the first reading of the edge opacities. The chain sits on a wrapper of the lens box extended by 16 pt
-(`overflow:hidden`, own stacking context) over a plain copy of the page (the foreground's backdrop capture reaches 100 pt beyond
-the lens; with the lens box alone the outward taps read transparent).
+**W and H** (formula.md §3b.6, the data's A9 read): the foreground's source surface is its backdrop capture = the layer frame +
+marginWidth 100 on every side, clamped to the screen — so W/H changes with the lens's screen position: dragged to the divider
+x 110–330 on the 440-pt screen → 10–430 × (502–746) = 420 × 244 → **1.72**; lifted in place x 10–230 → 0–330 × 244 → **1.35**.
+The map therefore stores the ratio-1 vector Δ₁ = amount · ((R(θ)g).y, (R(θ)g).x) · e, and the filter applies W/H in a
+`feColorMatrix` (`#seg-lens-f-ab-<w>-wh`, `data-wh`): R × W/H + ½(1 − W/H), G × H/W + ½(1 − H/W) — `gen_lens_maps.wh_matrix`; the
+test page sets it every frame from the lens's `getBoundingClientRect()` and the viewport (`whRule()`; `?wh=` pins it; the value
+written into the SVG is the drag-mid 1.72, the state of every check here). Not read: the capture box of a stretched lens
+(presentation transform ≠ 1) — the page applies the same rule to the screen frame. The fringe maps carry their own scale
+(`S_ab` = 4·⌈amount⌉ = 12, `data-s` on the fringe filter: a 0.05-pt step, room for W/H up to 2.6).
+
+**The blend** (§3b.6): screen = e·(R/2, G/3, B/2) + (1 − e)·below — the chain's `in` with the band factor e followed by `over` is
+exactly that (after the `in`, fg's alpha is e; source-over then gives e·fg + (1 − e)·below); e is not a mask.
+
+In SVG: one map `seg-f-ab-<w>.png` (R/G = Δ₁ in pt at `S_ab`; B = e; 1 px/pt; lens + 16 pt), the W/H colour matrix, seven
+`feDisplacementMap` on it (`scale = ±k·S_ab`), per-tap `feColorMatrix` weights and alpha/7, `feComposite arithmetic` sums, `in`
+with ΣA/7, `in` with the band factor e (B), `over`. `#seg-lens-f-ab-<w>` is the formula (test page default `?ab=flip`);
+`#seg-lens-f-ab-ir-<w>` (1 − e) is the record of the first reading of the edge opacities. The chain sits on a wrapper of the
+lens box extended by 16 pt (`overflow:hidden`, own stacking context) over a plain copy of the page (the foreground's backdrop
+capture reaches 100 pt beyond the lens; with the lens box alone the outward taps read transparent).
 
 **Against the native** (WebKit, dragged to the divider; `fringe-8x-native-webkit.png` rows native / ours; the A1 PNG
 `seg-native-dragmid-light.png`; bars = `?pattern=bars`, per-channel 50 % crossings, `webkit-dragmid-bars-full.png`):
 
 | | native | ours |
 |---|---|---|
-| coloured px (max − min > 40) per 2-pt bin from the end, left / right | 629 383 130 0 0 0 / 714 519 193 0 0 0 | 384 303 197 43 0 0 / 766 555 267 25 0 0 |
-| share of the outer 12 pt; mean saturation | 1.4 %; 69 | 1.3 %; 98 |
+| coloured px (max − min > 40) per 2-pt bin from the end, left / right | 629 383 130 0 0 0 / 714 519 193 0 0 0 (dark 614 361 138 / 730 555 215) | 276 162 50 0 0 0 / 544 183 41 6 0 0 (dark 291 161 38 / 528 133 13) — §4b structure, labels at the native x; the earlier 384 303 197 / 766 555 267 was with the labels 1 pt off |
+| share of the outer 12 pt; mean saturation | 1.4 %; 69 (dark 1.4 %; 71) | 0.6 %; 96 (dark 0.6 %; 89). The count is mostly the colour on the label fragments at the ends (a horizontal streak carries more coloured pixels than a lump, §0.4); with W/H pinned to 1 / 1.72 / 2.5 it reads 1.0 / 0.7 / 0.5 % (the ends' aberration is the vertical lane × H/W) |
 | strongest coloured px, left / right end | (110.33, 625) (214,189,56) yellow-orange / (328.33, 617) (14,72,217) blue | (−109.3, −5.2) (229,143,4) yellow-orange / (109.2, −0.7) (2,83,224) blue |
 | bars y634 right end: R−G / B−G at 6.4 (ours 6.5), 9.6 (9.5), 12.8 (12.5) | −0.32 / +0.59; −0.145 / +0.135; −0.017 / +0.02 | −0.24 / +0.01; −0.06 / +0.01; 0.00 / 0.00 |
 | bars y634 left end 9.2 (ours 9.0), 12.5 (12.0) | −0.113 / +0.099; −0.01 / 0 | −0.14 / +0.07; −0.02 / 0.00 |
 | bars y610 left end 9.5 (ours 9.0), 12.8 (12.5), 16 (15.9) | +0.77 / −1.20; +0.11 / −0.12; +0.05 / −0.04 | +0.12 / −0.68; +0.02 / −0.08; +0.01 / −0.04 |
 | middle 41 edges | 0.000 | ≤ 0.003 |
 
-The band's extent and pixel count, and both ends' colours (yellow-orange left, blue right) now sit with the native; the
-saturation is 98 against 69 and the bars offsets have the native's signs at 0.5–0.75 of its size on the checked rows (the
-right end's B−G at 6.4 pt reads 0.01 against 0.59). Left as is; nothing adjusted. Neighbouring text 8 pt from the control is
-not pulled in (native neither, `seg-neighbors-light-hold.png`).
+The band's extent and both ends' colours (yellow-orange left, blue right) sit with the native; the saturation is 96 against 69
+(the blend is the §3b.6 α = e blend already, see above; §3b.6 names the KeyFill layer's vibrantColorMatrix on the 1–2 pt highlight
+band — `keyfill-highlight.md` §2, not part of these maps — as the only remaining term above the fringe) and the bars offsets have
+the native's signs at 0.5–0.75 of its size on the checked rows (the right end's B−G at 6.4 pt reads 0.01 against 0.59). Left
+as is; nothing adjusted. Neighbouring text 8 pt from the control is not pulled in (native neither, `seg-neighbors-light-hold.png`).
 
 Frame interval, headless Chrome 440×956 @3x, software raster (`scratchpad/frames_chrome.py`, 自动拖 2 s, 120 frames):
 without the chain 16.9–17.1 ms mean (max 50–67, 1 frame > 20 ms), with the chain 16.9 ms (max 33, 2 frames > 20 ms) — 60 Hz in
@@ -268,9 +318,10 @@ BackdropView displacementMap **+9** / SDF height **36** (as the segment lens), C
 on the **94×54** portal, glassBackground inner refraction **−10.5 / 7**, glassForeground aberration **3.6842 / offset 38.889 /
 angle −15° / height 0 / edge −14 … 0 / opacity 1 → 0**, gradientOvalization 0.5 on the two lens-sized elements (every item that
 differs from the segment lens is × 70/44 = 1.591, the ratio of the lens heights — an arithmetic relation between readings, not a
-derivation). `gen_lens_maps.py --formula --name tab --size 110x70 --series 94:116:2 --lift-path 94x54 --label-portal 94x54
+derivation). `gen_lens_maps.py --formula --name tab --size 110x70 --series 94:116:2 --lift-path 94x54 --label-portal 0
 --bg-layers=-10.5/7/0.5/lens,9/36/0.5/lens --label-layers=-14/11.2/0.5/lens,-17.5/11.2/0.5/lens --aberration=3.6842/0/38.889/-0.2618
---edge=-14/0/1/0 --out tab` → `tab/tab-f-{bg,lab,ab}-<w>.png` (12 sets, 237 KB), `tab/lens-filter.svg`
+--edge=-14/0/1/0 --href-prefix assets/lens/tab/ --out tab` (`--label-portal 0`: §4b, the ContentLensing portal does not clip —
+same as the segment lens) → `tab/tab-f-{bg,lab,ab}-<w>.png` (12 sets, 228 KB), `tab/lens-filter.svg`
 (`#tab-lens-f-bg-<w>` …, hrefs `assets/lens/tab/`), `tab/lens-field.json`, `tab/lens-test-tab.html` (`?tab=1`). Sets: w 94 … 108 =
 the lift path (both dimensions grow by the same amount from 94×54 to 110×70, the model bounds change, r = h/2, the SDF heights
 stay), 110 = the lifted model, 112 … 116 = the lifted model scaled uniformly (the presented held lens is 115.7×73.6 = 110×70 ×
@@ -286,14 +337,19 @@ rows ±20 / columns ±25; the same method as §0.4, depth ≥ 3):
 | `phase-lift-gx-dark.json` | 115.7×73.6 | **6.31** | 16.24 | -20: 6.17 / 16.09 @ +51; +20: 6.44 / 16.24 @ +51 | 190 |
 | `phase-lift-gy-dark.json` | 115.7×73.6 | **4.42** | 9.10 | -25: 4.53 / 9.10 @ +33; +25: 4.29 / 8.06 @ +27 | 107 |
 
-**Not met, by a lot**: the tab lens magnifies its content **1.22 uniformly** at the centre (`lens-refraction.md` §0: u = −0.18·s within
-|s| ≤ 28 horizontally / 20 vertically, then a rising edge zone, max displacement 12–14 pt) — the stack as read gives ≈ 0 at the
-centre (BackdropView +9 / 36 on a 35-pt half-height: t = 35/36 → 1 − P = 0.0004; the glassBackground −10.5 / 7 and the label
-stages are edge bands) and only the bands near the edges. No stage of the read parameters produces a uniform zoom; BackdropView's
-`zoom` reads 0 on all backdrop layers (tab-lens-table.md #27 / #41 / #49). Listed for the old page / data sessions (the Small
-variant's `unliftedDisplacement 50 / unliftedBlurRadius 6`, the `_UITabSelectionView` backdrop at scale .25, or another term the
-dump does not name); nothing adjusted. The WebKit render (`tab-lens-native-vs-webkit.png`, rows none / light / dark / native
-held) shows the edge bands only; the native shows the magnified label and icon inside the lens.
+**Not met by the maps alone, and now read**: the tab lens magnifies its content **1.22 uniformly** at the centre
+(`lens-refraction.md` §0: u = −0.18·s within |s| ≤ 28 horizontally / 20 vertically, then a rising edge zone, max displacement
+12–14 pt) — the stack as read gives ≈ 0 at the centre (BackdropView +9 / 36 on a 35-pt half-height: t = 35/36 → 1 − P = 0.0004;
+the glassBackground −10.5 / 7 and the label stages are edge bands) and only the bands near the edges. The data session read
+where the 1.22 comes from (`tab-lens-native.md` §3, 2026-09-19): **two transforms, not a displacement** — ① the content copied
+into the lens (the SelectedContentView's three `_UITabButton`s, the source of `liftedContentViewPortal`) carries transform
+scale **1.16** while lifted (1 at rest); ② the whole floating platter `_UITabBarItemPlatterView` presents at scale **1.0516**
+during the lift (the lens goes with it: 110×70 → 115.68×73.61 on screen); 1.16 × 1.0516 = **1.220**. The four displacement
+stages do only the edge bands; in the segment lens's tree both factors are 1, hence its centre 1.00. So the tab page must scale
+the label copy 1.16 about the lens centre and the platter 1.0516 (the presentation transform of §0.3, on the whole stack), then
+apply these maps — the fields above were measured with both transforms in and are not comparable with the maps alone (the tab
+maps' own check waits for that page; not done here, the tab order comes after the segment lens). The WebKit render
+(`tab-lens-native-vs-webkit.png`, rows none / light / dark / native held) shows the edge bands only.
 
 ## 1 Source (measured-resampling mode, record): the native segmented lens's own field (data session, 2026-09-19)
 
@@ -499,18 +555,17 @@ over it as two layers — the filtered copy of what lies under it (`#seg-lens-f-
 (`#seg-lens-f-lab-<w>`) — draggable (pointer events, frame stats), 自动拖 2 s, gratings ↔ / ↕ (period 8 like the native
 measurement). Query: `?native=1` (control at x 20…420 like the probe), `?lensx=<page x of the lens centre>` (220 = the divider),
 `?w=<width>` (a drag-stretch set: lens box w × the set's height, its filters), `?bg=0` / `?lab=0` (that layer unfiltered),
-`?ab=ir|flip|0` (the fringe chain), `?pattern=bars` (hard bars under the lens for the per-channel edge check).
-The backdrop layer's copy holds the segment content too (track + both labels: the old page session's reading of A9 表 3, the
-acceptance session's order 2026-09-19 06:xx): `.clone` = the card and track, `.punch` = a labels-only copy with the portal
-rectangle (196×28 × the lens scale, centred) cut out — the DestOut punch-out of the original labels applies inside the portal only —
-so the glyph parts outside the portal are displaced by the backdrop map (+9/36, outward sampling), the label layer on top shows
-the portal copy. Checked against `seg-lens-drag-mid.md` §0c at the divider (WebKit, `dragmid-4x-{light,dark}-native-bgpunch*.png`):
-left 「早」 ink +12 % light / +20 % dark, height 11.17 → 9.83 (native: ink −37 %, compressed / torn); right 「班」 height
-11.5 → 11.17, ink −8 % (native 11.33 → 15.0, +37 %). The backdrop path compresses the glyph parts at the ends where the native
-stretches the right one ×1.32 — the label path without the portal cut (`--label-portal 0`, the old page's later ruling from the
-portal readings; scratch row 3 of the light image) gives 「早」 +6 %, 「班」 11.5 → 13.83 (+20 %) / ink +16 %, closer in kind.
-Which path the native shows there is for the acceptance session to settle from the data session's bars edge tracking at |s| 95–109.
-The map files are referenced by bare name (the page sits next to them); `index.html` references them as `assets/lens/…`.
+`?ab=ir|flip|0` (the fringe chain), `?pattern=bars` (hard bars under the lens for the per-channel edge check), `?wh=<W/H>`
+(pins the fringe's W/H; otherwise `whRule()` = the capture-box rule of §0.5 from the lens's screen rect), `?punch=0` (the
+backdrop copy without the segment-content residue, record). Layers, per formula.md §4b: the page (layer 0) keeps its labels
+outside the lens capsule — inside it they are cut (the lens box covers them); the backdrop layer (1) holds `.clone` = the card
+and track and `.punch` = the segment content with the lens capsule cut out (`clip-path: path(evenodd …)`, the model capsule
+scaled with the lens), filtered by `#seg-lens-f-bg-<w>`; the label layer (2/4) holds the label copy clipped to the capsule
+before its filter `#seg-lens-f-lab-<w>`; the fringe chain (5) sits on the wrapper of both over a plain copy of the page. The
+control's two segments are 200 pt each (label centres 120 / 320 in `?native=1`, ink boxes at the native's x — §0.4). The
+§0c / §6d / bars checks of this structure are in §0.4 (earlier rounds of this paragraph — the 196×28 portal cut, the labels
+1 pt off — are superseded). The map files are referenced by bare name (the page sits next to them); `index.html` references
+them as `assets/lens/…`.
 
 ## 7 Regenerate
 
@@ -524,5 +579,7 @@ cd web/assets/lens && python3 gen_lens_maps.py --formula --series 196:256:2 \
   --verify-label-mid244 $R/seg-phase-label-mid244-gx6-light.json,$R/seg-phase-label-mid244-gy-light.json
 python3 gen_seg_keys.py
 ```
-(`--bg-layers` / `--label-layers` take `amount/height/ovalization/shape,…` in sampling order if a parameter changes; the
-measured-resampling mode of §1–§4 is `gen_lens_maps.py --field …` + `verify_lens_maps.py`, kept for checks only.)
+(`--bg-layers` / `--label-layers` take `amount/height/ovalization/shape,…` in sampling order if a parameter changes; defaults
+`--label-portal 0` (§4b), `--ab-wh 1.72` (the value written into the fringe filters; the page sets it per frame), `--ab-scale 0`
+= 4·⌈amount⌉; the tab lens command is in §0.7; the measured-resampling mode of §1–§4 is `gen_lens_maps.py --field …` +
+`verify_lens_maps.py`, kept for checks only.)
