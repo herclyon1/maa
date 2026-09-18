@@ -318,24 +318,60 @@ BackdropView displacementMap **+9** / SDF height **36** (as the segment lens), C
 on the **94×54** portal, glassBackground inner refraction **−10.5 / 7**, glassForeground aberration **3.6842 / offset 38.889 /
 angle −15° / height 0 / edge −14 … 0 / opacity 1 → 0**, gradientOvalization 0.5 on the two lens-sized elements (every item that
 differs from the segment lens is × 70/44 = 1.591, the ratio of the lens heights — an arithmetic relation between readings, not a
-derivation). `gen_lens_maps.py --formula --name tab --size 110x70 --series 94:116:2 --lift-path 94x54 --label-portal 0
---bg-layers=-10.5/7/0.5/lens,9/36/0.5/lens --label-layers=-14/11.2/0.5/lens,-17.5/11.2/0.5/lens --aberration=3.6842/0/38.889/-0.2618
---edge=-14/0/1/0 --href-prefix assets/lens/tab/ --out tab` (`--label-portal 0`: §4b, the ContentLensing portal does not clip —
-same as the segment lens) → `tab/tab-f-{bg,lab,ab}-<w>.png` (12 sets, 228 KB), `tab/lens-filter.svg`
-(`#tab-lens-f-bg-<w>` …, hrefs `assets/lens/tab/`), `tab/lens-field.json`, `tab/lens-test-tab.html` (`?tab=1`). Sets: w 94 … 108 =
-the lift path (both dimensions grow by the same amount from 94×54 to 110×70, the model bounds change, r = h/2, the SDF heights
-stay), 110 = the lifted model, 112 … 116 = the lifted model scaled uniformly (the presented held lens is 115.7×73.6 = 110×70 ×
-1.052, `lens-refraction.md` §2).
+derivation). `gen_lens_maps.py --formula --name tab --size 110x70 --series 94:116:2 --lift-path 94x54 --label-portal 0 --corner-radius half
+--label-region 28x20 --bg-layers=-10.5/7/0.5/lens,9/36/0.5/lens --label-layers=-14/11.2/0.5/lens,-17.5/11.2/0.5/lens
+--aberration=3.6842/0/38.889/-0.2618 --edge=-14/0/1/0 --href-prefix assets/lens/tab/ --out tab --verify-chain 1.0516/1.16/134,904/220,904/8
+--verify-label-lift <tools/lens/phase-lift-{gx,gy}-{light,dark}.json>` (`--label-portal 0`: §4b, the ContentLensing portal does not
+clip — same as the segment lens; `--corner-radius half`: r = h/2 = 35 on the lifted lens — **the first issue of these sets (1bb97a6)
+took the segment lens's r 22 through `lens_shape`; wrong, replaced 2026-09-19**) → `tab/tab-f-{bg,lab,ab}-<w>.png` (12 sets,
+300 KB; tracked since this issue — `.gitignore` un-ignores `web/assets/lens/tab/*.png`, the first issue's PNGs never entered the
+repository), `tab/lens-filter.svg` (`#tab-lens-f-bg-<w>` …, hrefs `assets/lens/tab/`), `tab/lens-field.json`,
+`tab/lens-test-tab.html` (`?tab=1`). Sets: w 94 … 108 = the lift path (both dimensions grow by the same amount from 94×54 to
+110×70, the model bounds change, r = h/2, the SDF heights stay), **110 = the lifted model, the set the page uses** (below), 112 … 116
+= the lifted model scaled uniformly, kept for a wiring without transforms (u(p) = S·u₀(S⁻¹p), §0.3; 116 ≈ the presented 115.68 —
+not exact, the transform is).
 
-**Check against the tab lens's phase fields** (`tools/lens/phase-lift-{gx,gy}-{light,dark}.json`, lens 115.68×73.61 presented,
-rows ±20 / columns ±25; the same method as §0.4, depth ≥ 3):
+**Where the 1.22 comes from and how the page is built** (`tab-lens-native.md` §3, `formula.md` §5b — the data's read + the old page's
+recomputation `tools/lens/validate_tab.py`, 2026-09-19): the centre magnification 1.22 measured by the phase method is **two
+transforms, not a shader term** — ① the three `_UITabButton`s of the SelectedContentView (the source of `liftedContentViewPortal`,
+i.e. the copy inside the lens; the measurement's PatternView is another subview of it) carry transform scale **1.16** about their
+own centres while lifted (icon 29.33 → 34.03, TitleWrapper 94 → 109.04; 1 at rest); ② the whole floating platter
+`_UITabBarItemPlatterView` presents at scale **1.0516** about its centre (220, 904) during the lift (model identity; presFrame
+(75.93, 871.40, 288.14, 65.20); the lens inside it (79, 869, 110, 70) → (71.72, 867.19, 115.68, 73.61)); 1.16 × 1.0516 = 1.220.
+The four displacement stages act in the lens's 110×70 model space (BackdropView zoom 0 / scale 1 on every backdrop layer). The
+test page (`?tab=1`) does exactly that: the lens element carries `scale(1.0516)` about the platter centre, the copies inside it
+(page + platter + items, in the lens's model space) the inverse about the same point (so the page stays 1:1 on screen and the
+platter 1.0516 — the BackdropView captures the screen in the platter's model space), the label copy's items `scale(1.16)` about
+their own centres (`body.tab .lens .labels .tabbar span`), the maps of the 110 set on the layers; the three items sit 86 pt apart
+(94×54 buttons at 134 / 220 / 306: the resting lens 94×54 at (87, 877) covers the first), the lens centre at the first button's
+(134 model → 129.56 presented). Not in the page: the items' icons and the selected tint (the copy shows the label text), the
+platter's own material (white with shadow in the native; the test page's `--track`), KeyFill.
 
-| file | lens | rms | max | per row: rms / max @ s | points > 0.3 pt |
-|---|---|---|---|---|---|
-| `phase-lift-gx-light.json` | 115.7×73.6 | **6.32** | 16.34 | -20: 6.28 / 16.18 @ +51; +20: 6.36 / 16.34 @ +51 | 173 |
-| `phase-lift-gy-light.json` | 115.7×73.6 | **4.80** | 14.70 | -25: 4.87 / 14.70 @ +32; +25: 4.74 / 12.83 @ +33 | 106 |
-| `phase-lift-gx-dark.json` | 115.7×73.6 | **6.31** | 16.24 | -20: 6.17 / 16.09 @ +51; +20: 6.44 / 16.24 @ +51 | 190 |
-| `phase-lift-gy-dark.json` | 115.7×73.6 | **4.42** | 9.10 | -25: 4.53 / 9.10 @ +33; +25: 4.29 / 8.06 @ +27 | 107 |
+**Check against the tab lens's phase fields through that chain** (`--verify-chain`: screen offset s from the presented lens centre →
+model s / 1.0516 → the two label stages with the per-stage box clamp → the sample in the platter's model space → the copy scaled
+1.16 about the platter centre → u = content − screen, brought to the measurement by whole grating periods at the centre; the
+method otherwise as §0.4; `tools/lens/phase-lift-{gx,gy}-{light,dark}.json`, rows ±20 / columns ±25; `in` = |x| ≤ 28, |y| ≤ 20):
+
+| file | depth ≥ 3: rms / max | depth ≥ 8: per line rms / max @ s, in = the centre zone | points > 0.3 (depth ≥ 8) |
+|---|---|---|---|
+| `phase-lift-gx-light.json` | 0.49 / 2.27 | −20: **0.45** / 2.27 @ −40 in 0.01 / 0.04; +20: **0.34** / 1.78 @ −41 in 0.07 / 0.19 | 10 |
+| `phase-lift-gy-light.json` | 1.39 / 7.28 | −25: **0.35** / 1.61 @ −28 in 0.04 / 0.09; +25: **0.23** / 1.28 @ −28 in 0.04 / 0.09 | 12 |
+| `phase-lift-gx-dark.json` | 1.18 / 7.52 | −20: **0.11** / 0.77 @ −41 in 0.01 / 0.03; +20: **0.29** / 1.05 @ −41 in 0.29 / 0.80 | 20 |
+| `phase-lift-gy-dark.json` | 1.18 / 5.70 | −25: **0.18** / 0.68 @ +28 in 0.04 / 0.09; +25: **0.18** / 0.98 @ +28 in 0.04 / 0.09 | 10 |
+
+The old page's `validate_tab.py` on the same chain: gx-light 0.44 / 0.34, gy-light 0.35 / 0.23, gx-dark 0.12 / 0.29, gy-dark
+0.18 / 0.19 (depth ≥ 8) — the same numbers. Against the 0.3 line: gx-light −20 (0.45) and gy-light −25 (0.35) sit above it, the
+rest below; the centre zone reads ≤ 0.07 except the dark +20 row (0.29, a measured asymmetry at s −7 … −14 that the light row
+does not have). The points over 0.3 at depth ≥ 8 are the columns' |s| 25–28 (8.8–11.8 pt from the top / bottom edge, the −17.5
+band's outer half) and the rows' |s| ≈ 40. Listed, nothing adjusted. Verification only: the two stages in the other order
+(ClearGlass first) 0.51 / 1.46 / 1.28 / 1.31 (depth ≥ 3) — worse on every file; the maps **without** the two transforms
+4.98 / 3.18 / 4.52 / 2.83 (the earlier "not met" 4.4–6.3 was this, on the r 22 shape).
+
+Held state in WebKit (`tab-lens-native-vs-webkit.png`, rows per theme: native held / ours / ours unfiltered, 160×88 pt about the
+presented lens centre at 6 px/pt): the copy at 1.22 (the label; the native's icon + title), the platter's presented size, the
+band along the lens's top / bottom where the lens (70 tall) reaches 4 pt beyond the platter (62) and the frame's edge column is
+replicated inward — the native shows the page above the platter there, ours the card — and the inner band. Not ours: the rim
+highlight (KeyFill), the tint, the icons.
 
 **Not met by the maps alone, and now read**: the tab lens magnifies its content **1.22 uniformly** at the centre
 (`lens-refraction.md` §0: u = −0.18·s within |s| ≤ 28 horizontally / 20 vertically, then a rising edge zone, max displacement

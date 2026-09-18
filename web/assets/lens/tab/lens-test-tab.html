@@ -72,10 +72,16 @@
   body.tab .segctl{display:none}
   .tabbar{display:none;position:relative;width:274px;height:62px;margin:8px auto;border-radius:31px;background:var(--track)}
   body.tab .tabbar{display:flex}
-  .tabbar span{position:relative;z-index:1;flex:1 1 0;line-height:62px;text-align:center;font-size:10px}
+  .tabbar span{position:absolute;z-index:1;top:0;width:94px;left:calc(4px + var(--i) * 86px);line-height:62px;text-align:center;font-size:10px}   /* three 94×54 _UITabButtons centred 86 pt apart (134 / 220 / 306 in the window: the resting lens 94×54 at (87,877) covers the first, tab-lens-native.md §0) */
   .tabbar span.on{font-weight:600}
-  .lens .clone .tabbar span,.lens .punch .tabbar span{visibility:hidden}
-  .lens .labels .tabbar{background:transparent}
+  .lens .clone .tabbar span{visibility:hidden}                    /* the platter copy without items; the items of the platter come through .punch (capsule cut, DestOut #76) */
+  .lens .punch .tabbar,.lens .labels .tabbar{background:transparent}
+  /* tab-lens-native.md §3 / formula.md §5b: while lifted the whole platter presents at scale 1.0516 (its centre fixed) and the
+     three _UITabButtons of the SelectedContentView — the copy inside the lens — carry transform scale 1.16 about their own
+     centres; the four displacement stages act in the lens's 110×70 model space (the lens element carries the platter's 1.0516,
+     the copies inside it the inverse, so the page stays 1:1 on screen and the platter 1.0516: set in place()) */
+  body.tab .scene.lifted .tabbar{transform:scale(1.0516)}
+  body.tab .lens .labels .tabbar span{transform:scale(1.16)}
   .bar{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
   button{font:inherit;font-size:15px;line-height:18px;padding:6px 12px;border:0;border-radius:15px;background:rgb(0 136 255 / .18);color:var(--tint)}
   button.on{background:var(--tint);color:#fff}
@@ -899,18 +905,18 @@
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
-  <filter id="tab-lens-f-bg-110" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
-    <!-- backdrop, lens 110×70 = the 220×44 model scaled by (1.0, 1.0): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 110×70 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
+  <filter id="tab-lens-f-bg-110" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
+    <!-- backdrop, lens 110×70 = the 220×44 model scaled by (1.0, 1.0): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 48; apply to the 110×70 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="tab-f-bg-110.png" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
-  <filter id="tab-lens-f-lab-110" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
-    <!-- label copy, lens 110×70: -14/11.2/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 110×70 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
+  <filter id="tab-lens-f-lab-110" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
+    <!-- label copy, lens 110×70: -14/11.2/0.5/lens,-17.5/11.2/0.5/lens; encoding S 48; apply to the 110×70 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="tab-f-lab-110.png" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="tab-lens-f-ab-110" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="16" data-wh="1.72">
@@ -999,18 +1005,18 @@
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
-  <filter id="tab-lens-f-bg-112" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
-    <!-- backdrop, lens 112×71.27 = the 220×44 model scaled by (1.0182, 1.0182): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 112×71.27 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
+  <filter id="tab-lens-f-bg-112" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
+    <!-- backdrop, lens 112×71.27 = the 220×44 model scaled by (1.0182, 1.0182): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 48; apply to the 112×71.27 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="tab-f-bg-112.png" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
-  <filter id="tab-lens-f-lab-112" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
-    <!-- label copy, lens 112×71.27: -14/11.2/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 112×71.27 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
+  <filter id="tab-lens-f-lab-112" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
+    <!-- label copy, lens 112×71.27: -14/11.2/0.5/lens,-17.5/11.2/0.5/lens; encoding S 48; apply to the 112×71.27 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="tab-f-lab-112.png" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="tab-lens-f-ab-112" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="16" data-wh="1.72">
@@ -1099,18 +1105,18 @@
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
-  <filter id="tab-lens-f-bg-114" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
-    <!-- backdrop, lens 114×72.55 = the 220×44 model scaled by (1.0364, 1.0364): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 114×72.55 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
+  <filter id="tab-lens-f-bg-114" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
+    <!-- backdrop, lens 114×72.55 = the 220×44 model scaled by (1.0364, 1.0364): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 48; apply to the 114×72.55 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="tab-f-bg-114.png" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
-  <filter id="tab-lens-f-lab-114" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
-    <!-- label copy, lens 114×72.55: -14/11.2/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 114×72.55 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
+  <filter id="tab-lens-f-lab-114" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
+    <!-- label copy, lens 114×72.55: -14/11.2/0.5/lens,-17.5/11.2/0.5/lens; encoding S 48; apply to the 114×72.55 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="tab-f-lab-114.png" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="tab-lens-f-ab-114" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="16" data-wh="1.72">
@@ -1199,18 +1205,18 @@
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
-  <filter id="tab-lens-f-bg-116" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
-    <!-- backdrop, lens 116×73.82 = the 220×44 model scaled by (1.0545, 1.0545): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 116×73.82 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
+  <filter id="tab-lens-f-bg-116" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
+    <!-- backdrop, lens 116×73.82 = the 220×44 model scaled by (1.0545, 1.0545): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 48; apply to the 116×73.82 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="tab-f-bg-116.png" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
-  <filter id="tab-lens-f-lab-116" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
-    <!-- label copy, lens 116×73.82: -14/11.2/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 116×73.82 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
+  <filter id="tab-lens-f-lab-116" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
+    <!-- label copy, lens 116×73.82: -14/11.2/0.5/lens,-17.5/11.2/0.5/lens; encoding S 48; apply to the 116×73.82 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="tab-f-lab-116.png" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="tab-lens-f-ab-116" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="16" data-wh="1.72">
@@ -1302,7 +1308,7 @@
 </svg>
 <h1>透镜折射</h1>
 <div class="scene" id="scene">
-  <div class="tabbar"><span class="on">状态</span><span>方舟</span><span>手机</span></div>
+  <div class="tabbar"><span class="on" style="--i:0">状态</span><span style="--i:1">方舟</span><span style="--i:2">手机</span></div>
   <p>状态是 3 分钟前的 · 早班 09:00 东京 10:00</p>
   <div class="segctl"><i class="flat"></i><span class="on">早班</span><span>晚班</span></div>
   <p>明日方舟 理智 1-7（固定），理智药 0 瓶 · 终末地 基质刷取 双倍</p>
@@ -1348,7 +1354,8 @@
   sync();
   /* lens position inside the scene (pt); starts over the selected segment: segctl at (20, 16 + 20.33 + 8) → segment centre */
   const seg = scene.querySelector(TAB ? ".tabbar" : ".segctl"), r0 = seg.getBoundingClientRect(), s0 = scene.getBoundingClientRect();
-  let X = TAB ? r0.left - s0.left + r0.width / 6 - LW / 2 : r0.left - s0.left + 2 + (r0.width - 4) / 4 - LW / 2, Y = TAB ? r0.top - s0.top + 31 - LH / 2 : r0.top - s0.top + 16 - LH / 2;
+  const PCX0 = r0.left - s0.left + r0.width / 2, PCY0 = r0.top - s0.top + r0.height / 2;   /* platter centre (invariant under its own centred transform) */
+  let X = TAB ? PCX0 - 86 - LW / 2 : r0.left - s0.left + 2 + (r0.width - 4) / 4 - LW / 2, Y = TAB ? PCY0 - LH / 2 : r0.top - s0.top + 16 - LH / 2;   /* tab: the lens centre = the first button's, 86 pt left of the platter centre (134 vs 220), in the platter's model space */
   if (q.get("lensx")) X = parseFloat(q.get("lensx")) - s0.left - LW / 2;             // ?lensx=<page x of the lens centre>, e.g. 220 = the divider
   /* the clone is placed so that the scene point under the lens centre stays under the lens centre; with zoom z the clone's own
      coordinates are scaled about its top-left, so its offset is (centre − z·(lens position + centre)) / z in zoomed units */
@@ -1362,7 +1369,14 @@
   const setWH = () => { const wh = q.get("wh") ? parseFloat(q.get("wh")) : whRule(); if (wh === WH) return; WH = wh;
     const m = document.getElementById(`${NAME}-lens-f-ab${AB === "ir" ? "-ir" : ""}-${LW}-wh`);
     if (m) m.setAttribute("values", `${wh} 0 0 0 ${0.5 * (1 - wh)}  0 ${1 / wh} 0 0 ${0.5 * (1 - 1 / wh)}  0 0 1 0 0  0 0 0 1 0`); };
-  const place = () => { lens.style.left = X + "px"; lens.style.top = Y + "px"; for (const l of [clone, labels, plabels]) { l.style.left = (M - X) + "px"; l.style.top = (M - Y) + "px"; } base.style.left = (AM - X) + "px"; base.style.top = (AM - Y) + "px"; setWH(); };
+  /* the tab platter's presentation transform (tab-lens-native.md §3: _UITabBarItemPlatterView presTransform 1.0516 while lifted): the
+     lens scales with the platter about the platter's centre; the copies inside the lens (page + platter + items, in the lens's model
+     space) take the inverse about the same point, so on screen the page is 1:1, the platter 1.0516 and the label copy 1.16 × 1.0516 */
+  const PS = TAB ? 1.0516 : 1, PCX = PCX0, PCY = PCY0;
+  const place = () => { lens.style.left = X + "px"; lens.style.top = Y + "px"; for (const l of [clone, labels, plabels]) { l.style.left = (M - X) + "px"; l.style.top = (M - Y) + "px"; } base.style.left = (AM - X) + "px"; base.style.top = (AM - Y) + "px";
+    if (TAB) { lens.style.transformOrigin = `${PCX - X}px ${PCY - Y}px`; lens.style.transform = `scale(${PS})`;
+      for (const l of [clone, labels, plabels, base]) { l.style.transformOrigin = `${PCX}px ${PCY}px`; l.style.transform = `scale(${1 / PS})`; } }
+    setWH(); };
   place();
   /* drag: pointer events, no threshold; the frame interval is measured while a finger is down or the auto drag runs */
   let dragging = null, times = [];

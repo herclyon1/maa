@@ -813,18 +813,18 @@
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
-  <filter id="tab-lens-f-bg-110" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
-    <!-- backdrop, lens 110×70 = the 220×44 model scaled by (1.0, 1.0): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 110×70 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
+  <filter id="tab-lens-f-bg-110" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
+    <!-- backdrop, lens 110×70 = the 220×44 model scaled by (1.0, 1.0): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 48; apply to the 110×70 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="assets/lens/tab/tab-f-bg-110.png" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
-  <filter id="tab-lens-f-lab-110" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
-    <!-- label copy, lens 110×70: -14/11.2/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 110×70 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
+  <filter id="tab-lens-f-lab-110" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
+    <!-- label copy, lens 110×70: -14/11.2/0.5/lens,-17.5/11.2/0.5/lens; encoding S 48; apply to the 110×70 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="assets/lens/tab/tab-f-lab-110.png" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="tab-lens-f-ab-110" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="16" data-wh="1.72">
@@ -913,18 +913,18 @@
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
-  <filter id="tab-lens-f-bg-112" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
-    <!-- backdrop, lens 112×71.27 = the 220×44 model scaled by (1.0182, 1.0182): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 112×71.27 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
+  <filter id="tab-lens-f-bg-112" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
+    <!-- backdrop, lens 112×71.27 = the 220×44 model scaled by (1.0182, 1.0182): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 48; apply to the 112×71.27 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="assets/lens/tab/tab-f-bg-112.png" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
-  <filter id="tab-lens-f-lab-112" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
-    <!-- label copy, lens 112×71.27: -14/11.2/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 112×71.27 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
+  <filter id="tab-lens-f-lab-112" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
+    <!-- label copy, lens 112×71.27: -14/11.2/0.5/lens,-17.5/11.2/0.5/lens; encoding S 48; apply to the 112×71.27 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="assets/lens/tab/tab-f-lab-112.png" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="tab-lens-f-ab-112" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="16" data-wh="1.72">
@@ -1013,18 +1013,18 @@
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
-  <filter id="tab-lens-f-bg-114" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
-    <!-- backdrop, lens 114×72.55 = the 220×44 model scaled by (1.0364, 1.0364): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 114×72.55 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
+  <filter id="tab-lens-f-bg-114" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
+    <!-- backdrop, lens 114×72.55 = the 220×44 model scaled by (1.0364, 1.0364): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 48; apply to the 114×72.55 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="assets/lens/tab/tab-f-bg-114.png" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
-  <filter id="tab-lens-f-lab-114" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
-    <!-- label copy, lens 114×72.55: -14/11.2/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 114×72.55 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
+  <filter id="tab-lens-f-lab-114" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
+    <!-- label copy, lens 114×72.55: -14/11.2/0.5/lens,-17.5/11.2/0.5/lens; encoding S 48; apply to the 114×72.55 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="assets/lens/tab/tab-f-lab-114.png" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="tab-lens-f-ab-114" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="16" data-wh="1.72">
@@ -1113,18 +1113,18 @@
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
-  <filter id="tab-lens-f-bg-116" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
-    <!-- backdrop, lens 116×73.82 = the 220×44 model scaled by (1.0545, 1.0545): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 116×73.82 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
+  <filter id="tab-lens-f-bg-116" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
+    <!-- backdrop, lens 116×73.82 = the 220×44 model scaled by (1.0545, 1.0545): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 48; apply to the 116×73.82 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="assets/lens/tab/tab-f-bg-116.png" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
-  <filter id="tab-lens-f-lab-116" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
-    <!-- label copy, lens 116×73.82: -14/11.2/0.5/lens,-17.5/11.2/0.5/lens; encoding S 40; apply to the 116×73.82 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
+  <filter id="tab-lens-f-lab-116" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
+    <!-- label copy, lens 116×73.82: -14/11.2/0.5/lens,-17.5/11.2/0.5/lens; encoding S 48; apply to the 116×73.82 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="assets/lens/tab/tab-f-lab-116.png" preserveAspectRatio="none" result="map"/>
     <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="48" xChannelSelector="R" yChannelSelector="G" result="disp"/>
     <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="tab-lens-f-ab-116" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="16" data-wh="1.72">

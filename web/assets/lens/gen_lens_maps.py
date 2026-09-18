@@ -373,9 +373,13 @@ def filter_aberration(fid, hrefs, w, h, scale, mode, margin, note, alpha_elem=1.
             '    <feComposite in="fg" in2="SourceGraphic" operator="over"/>', "  </filter>"]
     return "\n".join(out)
 
-def lens_shape(w, h, r_max=22.0):
-    """(hw, hh, r): the lens capsule; r = min(22, h/2): DestOut cornerRadius stays 22 through the drag (uiprobe-motion-segdragmid
-    lenstrace), CoreAnimation clamps a radius above h/2"""
+R_MAX = [22.0]   # the lens's corner radius cap: 22 for the segment lens (--corner-radius 22), h/2 for the tab bar's (--corner-radius half)
+
+def lens_shape(w, h, r_max=None):
+    """(hw, hh, r): the lens capsule; segment lens r = min(22, h/2): DestOut cornerRadius stays 22 through the drag
+    (uiprobe-motion-segdragmid lenstrace), CoreAnimation clamps a radius above h/2; tab bar lens r = h/2 (tab-lens-native.md §0:
+    cornerRadii 35 ×4 = 70/2 on every element, DestOut cornerRadius 35)"""
+    r_max = R_MAX[0] if r_max is None else r_max
     return (w / 2, h / 2, min(r_max, h / 2))
 
 def drag_frames(paths):
@@ -433,20 +437,37 @@ def parse_layers(spec, w, h, portal=None):
         out.append({"amount": float(amount), "height": float(height), "oval": float(oval), "shape": shp, "shape_name": shape, "curvature": 1.0, "effect_offset": 0.0, "angle": 0.0})
     return out
 
-def verify_against(path, layers_for, depth_min=3.0, sigma=3.0, tol=0.3, glyph_rows=False, region=None, base=None):
+def verify_against(path, layers_for, depth_min=3.0, sigma=3.0, tol=0.3, glyph_rows=False, region=None, base=None, chain=None):
     """compare the formula's composite field with one measured phase file (lens_phase.py format) the way the old page's validate2.py
     does: prediction along the profile, centre value removed (the measurement's unwrap pins u(centre) ≈ 0), Gaussian σ 3 pt (the
     demodulation's own smoothing), points at depth ≥ 3 pt from the lens edge (the phase folds in the last 3 pt); a sample counts
     where its demodulation amplitude is ≥ AMP_FLOOR × the profile's median. layers_for(w, h) builds the stack for the file's lens.
-    region: optional (hx, hy) — report the residual inside |x| ≤ hx, |y| ≤ hy as well."""
+    region: optional (hx, hy) — report the residual inside |x| ≤ hx, |y| ≤ hy as well.
+    chain (the tab bar's lens, formula.md §5b / tab-lens-native.md §3): {lens_scale, content_scale, model_centre, platter_centre,
+    period} — the screen offset s from the presented lens centre is taken to the lens's model space (s / lens_scale, the platter's
+    presentation transform about platter_centre), the stages sample there with the per-stage box clamp (compose_stages), the sample
+    lands in the copy of the content that is scaled content_scale about platter_centre (the SelectedContentView's subviews' lift
+    transform; the PatternView's centre = platter_centre), and the measured u is read modulo the grating period, so the prediction
+    is brought to the measurement by whole periods at the centre instead of being pinned to 0 there."""
     d = json.load(open(path)); axis = d["axis"]; lw, lh = float(d["lens"][2]), float(d["lens"][3])
     bw, bh = base if base else (lw, lh); sx, sy = lw / bw, lh / bh; hw, hh, r = lens_shape(bw, bh)   # the measured lens = the model scaled
     layers = layers_for(bw, bh); rows = []; over = []
     for off, chans in d["profiles"].items():
         off = float(off); p = chans["G"]; s = np.array(p["s"], float); u = np.array(p["u"], float); amp = np.array(p["amp"], float)
         x, y = (s, np.full_like(s, off)) if axis == "x" else (np.full_like(s, off), s)
-        ux, uy = compose_layers(x / sx, y / sy, layers); ux, uy = ux * sx, uy * sy; pred = ux if axis == "x" else uy
-        ic = int(np.argmin(np.abs(s))); pred = pred - pred[ic]
+        ic = int(np.argmin(np.abs(s)))
+        if chain:
+            ls, cs = chain["lens_scale"], chain["content_scale"]; mc, pc = chain["model_centre"], chain["platter_centre"]; period = chain.get("period", 8.0)
+            mx, my = x / ls, y / ls                                                        # screen → the lens's model space (relative to the lens centre)
+            ux, uy, _ = compose_stages(mx, my, layers, (hw, hh), 1.0)                       # the stages, per-stage box clamp
+            qx, qy = mx + ux + mc[0], my + uy + mc[1]                                       # the sample in the platter's model space
+            cx, cy = pc[0] + (qx - pc[0]) / cs, pc[1] + (qy - pc[1]) / cs                   # the copy's content is scaled cs about the platter centre
+            scx, scy = pc[0] + (mc[0] - pc[0]) * ls + x, pc[1] + (mc[1] - pc[1]) * ls + y   # the screen point (presented lens centre + s)
+            pred = (cx - scx) if axis == "x" else (cy - scy)
+            pred = pred - period * np.round((pred[ic] - u[ic]) / period)                   # whole periods at the centre (the measurement is modulo the period)
+        else:
+            ux, uy = compose_layers(x / sx, y / sy, layers); ux, uy = ux * sx, uy * sy; pred = ux if axis == "x" else uy
+            pred = pred - pred[ic]
         step = float(s[1] - s[0]) if len(s) > 1 else 1.0; ps = gaussian_filter1d(pred, sigma / step)
         dd, _, _ = capsule_sdf(x / sx, y / sy, hw, hh, r); depth = -dd * min(sx, sy)
         m = depth >= depth_min; med = float(np.median(amp)); m &= amp >= AMP_FLOOR[0] * med
@@ -557,6 +578,9 @@ def build_parser():
     ap.add_argument("--ab-edr", type=float, default=1.0, help="the edr factor of §3b (out.rgb ×= edr): to be read by the old page; 1 until then")
     ap.add_argument("--ab-wh", type=float, default=1.72, help="W/H written into the fringe filters' colour matrix (data-wh): the foreground capture box = lens frame + 100 pt each side clamped to the screen, over its height (formula.md §3b.6: 1.72 at the drag-mid position x 110–330, 1.35 lifted in place x 10–230); the page sets it per frame")
     ap.add_argument("--ab-scale", type=float, default=0.0, help="S of the fringe maps (their own data-s; 0 = 4·ceil(amount): room for W/H up to 2·⌈amount⌉/amount)")
+    ap.add_argument("--label-region", default="96x12", help="the 'inside' region reported for the label verifications: |x| ≤ hx, |y| ≤ hy (segment lens: the portal 196×28; tab lens: 28x20, the uniform-zoom zone of lens-refraction.md §0)")
+    ap.add_argument("--corner-radius", default="22", help="the lens capsule's corner radius: 22 (segment lens, clamped to h/2) or 'half' (tab bar lens: h/2 on every element, tab-lens-native.md §0)")
+    ap.add_argument("--verify-chain", default="", help="tab bar lens (formula.md §5b): lens_scale/content_scale/model_centre_x,y/platter_centre_x,y[/period] — the phase files are read through the platter's presentation transform (1.0516 about the platter centre) and the copy's lift scale (1.16 about the platter centre); applied to --verify-label-lift")
     ap.add_argument("--ab-margin", type=float, default=16.0, help="the fringe wrapper's extension (pt) beyond the lens on every side (≥ the 15 pt span: the foreground's backdrop capture has marginWidth 100, its outward taps read the page beyond the lens)")
     ap.add_argument("--ab-px", type=int, default=1, help="pixels per pt of the fringe maps (the spans are smooth: 1 px/pt keeps the four maps per width small)")
     ap.add_argument("--edge", default="-8.8/0/1/0", help="glassForeground edge band start/end/opacityStart/opacityEnd — the lens's keys inputEdgeStart −8.8 / inputEdgeEnd 0, inputEdgeOpacityStart 1 / End 0 (data session, 140-key read) → the factor 1 − mix(start, end, e) = e is the envelope and the map's B channel")
@@ -579,6 +603,7 @@ def build_parser():
 def main():
     ap = build_parser(); a = ap.parse_args(); W, H = (float(v) for v in a.size.lower().split("x"))
     if a.aberration != "off" and not a.ab_scale: a.ab_scale = 4.0 * math.ceil(float(a.aberration.split("/")[0]))   # own S of the fringe maps: seg 12, tab 16
+    R_MAX[0] = float("inf") if a.corner_radius == "half" else float(a.corner_radius)
     a.S_ab = a.ab_scale
     AMP_FLOOR[0] = a.amp_floor
     if a.formula:
@@ -743,20 +768,28 @@ def main_formula(a, W, H):
         open(os.path.join(a.out, page), "w", encoding="utf-8").write(open(tpl, encoding="utf-8").read().replace("{{FILTER}}", svg_for("").strip()).replace("{{SERIES}}", series_js))
     # verification (the only place measured fields enter): the formula against the phase files, validate2.py's method
     verify = {}
-    def run(group, spec, floor, glyph, region):
+    chain = None
+    if a.verify_chain:
+        cp = a.verify_chain.split("/")
+        chain = {"lens_scale": float(cp[0]), "content_scale": float(cp[1]), "model_centre": tuple(float(v) for v in cp[2].split(",")), "platter_centre": tuple(float(v) for v in cp[3].split(",")), "period": float(cp[4]) if len(cp) > 4 else 8.0}
+    def run(group, spec, floor, glyph, region, use_chain=False, depth_min=3.0):
         out = []
         for f in group.split(","):
             AMP_FLOOR[0] = floor
-            out.append(verify_against(f, lambda w, h: parse_layers(spec, w, h, portal), glyph_rows=glyph, region=region, base=(W, H)))
+            out.append(verify_against(f, lambda w, h: parse_layers(spec, w, h, portal), depth_min=depth_min, glyph_rows=glyph, region=region, base=(W, H), chain=chain if use_chain else None))
         AMP_FLOOR[0] = a.amp_floor; return out
+    lreg = tuple(float(v) for v in a.label_region.lower().split("x"))
     if a.verify_bg:
         verify["backdrop"] = [r for g in a.verify_bg.split(";") for r in run(g, a.bg_layers, a.amp_floor, True, None)]
         verify["backdrop_without_glass_background"] = [r for g in a.verify_bg.split(";") for r in run(g, a.bg_layers.split(",", 1)[1], a.amp_floor, True, None)]   # verification only: BackdropView alone
     lab_alt = ",".join(reversed(a.label_layers.split(",")))   # the other sampling order (ClearGlass first, the acceptance session's / validate_label.py's formula)
     for name, files in (("label_lift", a.verify_label_lift), ("label_drag", a.verify_label_drag), ("label_mid244", a.verify_label_mid244)):
         if not files: continue
-        verify[name] = run(files, a.label_layers, a.label_amp_floor, False, (96.0, 12.0))
-        verify[name + "_reversed_order"] = run(files, lab_alt, a.label_amp_floor, False, (96.0, 12.0))   # verification only: ClearGlass sampled first
+        verify[name] = run(files, a.label_layers, a.label_amp_floor, False, lreg, use_chain=bool(chain))
+        verify[name + "_reversed_order"] = run(files, lab_alt, a.label_amp_floor, False, lreg, use_chain=bool(chain))   # verification only: ClearGlass sampled first
+        if chain:   # the old page's validate_tab.py reports depth ≥ 8 as well; and, verification only, the same files without the two transforms (the maps alone)
+            verify[name + "_depth8"] = run(files, a.label_layers, a.label_amp_floor, False, lreg, use_chain=True, depth_min=8.0)
+            verify[name + "_without_transforms"] = run(files, a.label_layers, a.label_amp_floor, False, lreg, use_chain=False)
     info = {"mode": "formula", "label": "反编译原值（公式 + 探针参数）",
             "formula": {"map": "glass-displacement-formula.md §1 sdf_glass_displacement: e = d + effectOffset; t = saturate(−e/H); P = mix(t<1 ? 0.7071 : 1, sqrt(1 − (1−t)²), curvature); D = R(angle)·g·(1 − P); coverage = saturate((−e − maskOffset)/fwidth + .5)",
                         "filter": "§2 displacement_map: out(p) = src(p + amount·D(p)) × coverage, amount in layer pt (negative = towards the inside of the shape)",
