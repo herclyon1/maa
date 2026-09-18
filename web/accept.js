@@ -433,9 +433,11 @@
         /* §1 G3: a 300 ms hold still selects nothing */
         await sleep(300);
         check("分段 G3 按住 300 ms 不选中", start, onText(), onText() === start && renders === r0);
-        /* §1 G1–G3: the up commits index + change + content in the same tick (--ios-touch-segment-commit-delay 0) */
+        /* §1 G1–G3 + B3: the up commits index + change + content together, at the native valueChanged time (+66 ms after a tap's up, seg-value-change-content.md §0) */
         const t0 = performance.now(); pev(seg, "pointerup", at(other)); const dt = performance.now() - t0;
-        check("分段 G1 抬手：同一刻改 index + change + 内容切（--ios-touch-segment-commit-delay 0）", want, `${onText()} +${Math.round(dt * 10) / 10} ms renders+${renders - r0}`, onText() === want && thisShift(want) && renders === r0 + 1 && dt < 50);
+        check("分段 G1 抬手 +0：还没换值（valueChanged 在 +66 ms，--seg-commit-delay-tap ← seg-value-change-content.md §0 四次 +92/+68/+50/+66）", start, `${onText()} renders+${renders - r0}`, onText() === start && renders === r0);
+        await sleep(80);
+        check("分段 G1 抬手 +80 ms：同一帧改 index + change + 内容切（透镜同帧起动）", want, `${onText()} renders+${renders - r0}`, onText() === want && thisShift(want) && renders === r0 + 1);
         { const gone = document.querySelectorAll(".flipgone"), moved = [...document.querySelectorAll("#app > section")].filter((s) => /translateY\((-?[\d.]+)px\)/.test(s.style.transform) && Math.abs(parseFloat(s.style.transform.match(/translateY\((-?[\d.]+)px\)/)[1])) > 20);
           check("分段 B3 换值那一帧：卡片内容直接换（renders+1，同一 tick）；删的行原地克隆淡出（起 .72）、下方内容从原位（+行高）起步（seg-value-change-content.md §0/§1，采样）", "clones .72 · sections offset", `${gone.length} clones ${gone.length ? cs(gone[0]).opacity : "-"} · ${moved.length} sections offset ${moved.length ? moved[0].style.transform : "-"}`, gone.length > 0 && Math.abs(parseFloat(cs(gone[0]).opacity) - .72) < .12 && moved.length > 0); }
         const lensNow = q().querySelector(".lens");
@@ -463,7 +465,7 @@
           check("分段抬起 +160 ms：玻璃/位移进度 --lp = 透镜尺寸进度（§4.1：尺寸、圆角、位移量、白平台同一条曲线）", "0 < lp < 1, = (h−28)/16", `${lp} vs ${((lens0.getBoundingClientRect().height - 28) / 16).toFixed(3)}`, lp > 0 && lp < 1 && Math.abs(lp - (lens0.getBoundingClientRect().height - 28) / 16) < 0.12);
           check("分段抬起：透镜层在标签之上（z 2）", "2", cs(lens0).zIndex, cs(lens0).zIndex === "2" && seg.classList.contains("lift"));
           { const br = px(cs(lens0).borderRadius), hh = lens0.getBoundingClientRect().height; check("分段抬起：几何走 width/height（真胶囊：圆角 = 高/2，14 → 22 与尺寸同曲线；seg-lens-refraction §0 220×44 r22）", "r ≈ h/2", `r ${br.toFixed(1)} h ${hh.toFixed(1)}`, Math.abs(br - hh / 2) < 1.2 && cs(lens0).scale === "1"); }
-          check("分段抬起：底图复本 .warp 过公式贴图 #seg-lens-f-bg-220（抬起走 220 组，滤镜层 = 透镜框、overflow hidden ← ui2 cdb33f4 README §0.3）；标签复本 .warpl 暂不位移；都裁成透镜形", `${bs().length} cb · disp url(#seg-lens-f-bg-220) · warpl none`, `${cb} cb · ${warp ? cs(warp.querySelector(".disp")).filter.slice(0, 26) : "-"} · ${warpl ? cs(warpl).filter : "-"}`, !!warp && !!warpl && cb === bs().length && bs().length === 2 && /inset/.test(cs(warp).clipPath) && /inset/.test(cs(warpl).clipPath) && /url\("?#seg-lens-f-bg-220"?\)/.test(cs(warp.querySelector(".disp")).filter) && cs(warp.querySelector(".disp")).overflow === "hidden" && Math.abs(warp.querySelector(".disp").getBoundingClientRect().width - warp.getBoundingClientRect().width) < 0.5 && cs(warpl).filter === "none" && !!document.querySelector("filter#seg-lens-f-bg-220") && !document.querySelector("filter#seg-lens-warp"));
+          check("分段抬起：底图复本 .warp 过公式贴图 #seg-lens-f-bg-220、标签复本 .warpl 过 #seg-lens-f-lab-220（抬起走 220 组，滤镜层 = 透镜盒 overflow hidden ← ui2 cdb33f4 README §0.3）；标签复本先裁到门户 198×28（透镜内居中，seg-lift-material §1 portal #32）再位移", `${bs().length} cb · disp url(#seg-lens-f-bg-220) · displ url(#seg-lens-f-lab-220) · portal 198×28`, `${cb} cb · ${warp ? cs(warp.querySelector(".disp")).filter.slice(0, 26) : "-"} · ${warpl ? cs(warpl.querySelector(".displ")).filter.slice(0, 27) : "-"} · portal ${warpl ? warpl.querySelector(".portal").getBoundingClientRect().width.toFixed(0) + "×" + warpl.querySelector(".portal").getBoundingClientRect().height.toFixed(0) : "-"}`, !!warp && !!warpl && cb === bs().length && bs().length === 2 && /inset/.test(cs(warp).clipPath) && /inset/.test(cs(warpl).clipPath) && /url\("?#seg-lens-f-bg-220"?\)/.test(cs(warp.querySelector(".disp")).filter) && cs(warp.querySelector(".disp")).overflow === "hidden" && Math.abs(warp.querySelector(".disp").getBoundingClientRect().width - warp.getBoundingClientRect().width) < 0.5 && /url\("?#seg-lens-f-lab-220"?\)/.test(cs(warpl.querySelector(".displ")).filter) && cs(warpl.querySelector(".displ")).overflow === "hidden" && !!warpl.querySelector(".portal") && Math.abs(warpl.querySelector(".portal").getBoundingClientRect().width - (seg.getBoundingClientRect().width - 4) / bs().length) < 0.6 && Math.abs(warpl.querySelector(".portal").getBoundingClientRect().height - 28) < 0.6 && !!document.querySelector("filter#seg-lens-f-bg-220") && !document.querySelector("filter#seg-lens-warp"));
           { const cp = warp && warp.querySelector(".copy"), cpl = warpl && warpl.querySelector(".copy"), bgw = cp && cp.querySelector(".cbgwrap");
             check("分段抬起：复本不放大（mag-x 1.00 / label-mag 1.00，zoom 1）、底不透明、底不过色矩阵（透镜内亮度 = 底）", "zoom 1 · opaque · no filter", `${cp ? cs(cp).zoom : "-"} / ${cpl ? cs(cpl).zoom : "-"} · bg ${cs(cp.querySelector(".cbg")).backgroundColor.slice(0, 4)} · ${bgw ? cs(bgw).filter : "-"}`, !!cp && !!cpl && cs(cp).zoom === "1" && cs(cpl).zoom === "1" && /^rgb\(/.test(cs(cp.querySelector(".cbg")).backgroundColor) && !!bgw && cs(bgw).filter === "none" && !!cp.querySelector(".cbgwrap .ctrack"));
             const fd = document.querySelector("#seg-lens-f-bg-220 feDisplacementMap"); check("分段抬起：位移量 scale = 40 × 进度（公式贴图编码 S 40，同一条曲线）", "≈ 40·lp", fd ? fd.getAttribute("scale") : "-", !!fd && Math.abs(parseFloat(fd.getAttribute("scale")) - 40 * lp) < 0.8);
@@ -505,8 +507,8 @@
           await sleep(640); check("分段 pointercancel +700 ms：退净", "rest", sg.classList.contains("lift") ? "lift" : "rest", !sg.classList.contains("lift")); }
         /* §1 G4/G21: lift, slide to the other segment, release there - commits at the up */
         seg = q(); sel = bs().find((b) => b.classList.contains("on")); unsel = bs().find((b) => !b.classList.contains("on"));
-        pev(seg, "pointerdown", at(sel)); await sleep(400); pev(seg, "pointermove", at(unsel)); await sleep(500); const r2 = renders, parent0 = seg.parentNode, lens21 = seg.querySelector(".lens"); pev(seg, "pointerup", at(unsel));
-        check("分段 G21 抬起后滑到另一段抬手：选中那段", unsel.textContent, onText(), onText() === unsel.textContent && thisShift(unsel.textContent) && renders === r2 + 1);
+        pev(seg, "pointerdown", at(sel)); await sleep(400); pev(seg, "pointermove", at(unsel)); await sleep(500); const r2 = renders, parent0 = seg.parentNode, lens21 = seg.querySelector(".lens"); pev(seg, "pointerup", at(unsel)); const q21 = document.querySelector("#queue").value; await sleep(40);
+        check("分段 G21 抬起后滑到另一段抬手：选中那段（模型在抬手即改，内容 +25 ms 切 ← --seg-commit-delay-drag）", unsel.textContent, `${onText()} model ${q21}`, q21 === unsel.dataset.q && onText() === unsel.textContent && thisShift(unsel.textContent) && renders === r2 + 1);
         check("分段 G21 换值重画：#queueseg 及其父节点原地保留（replaceKeeping，不摘下再插回 → 过渡不被取消；B2-b）", "same node · same parent", `${q() === seg ? "same node" : "new node"} · ${q().parentNode === parent0 ? "same parent" : "new parent"}`, q() === seg && q().parentNode === parent0);
         { const h1 = lens21.getBoundingClientRect().height; await sleep(16); const h2 = lens21.getBoundingClientRect().height;
           check("分段 G21 松手 +1 帧：透镜仍是抬起尺寸、随后逐帧回落（B2-b：不瞬回 28）", "h > 40 at +0, > 36 at +16 ms", `${h1.toFixed(1)} → ${h2.toFixed(1)}`, h1 > 40 && h2 > 36); }
@@ -521,17 +523,18 @@
         seg = q(); sel = bs().find((b) => b.classList.contains("on")); unsel = bs().find((b) => !b.classList.contains("on"));
         const r4 = renders; pev(seg, "pointerdown", at(unsel)); pev(seg, "pointermove", at(unsel, .5, .5, 0, 100)); pev(seg, "pointerup", at(unsel, .5, .5, 0, 100));
         check("分段 G18 竖向滑出 100 pt 抬手：取消、无事件、标签回 1", sel.textContent, `${onText()} renders+${renders - r4}`, onText() === sel.textContent && renders === r4 && !unsel.classList.contains("dim"));
-        seg = q(); const r5 = renders; pev(seg, "pointerdown", at(unsel)); pev(seg, "pointermove", at(unsel, .5, .5, 0, 60)); pev(seg, "pointerup", at(unsel, .5, .5, 0, 60));
-        check("分段 G17 竖向滑出 60 pt 抬手：仍选中（余量 70）", unsel.textContent, `${onText()} renders+${renders - r5}`, onText() === unsel.textContent && renders === r5 + 1);
+        seg = q(); const r5 = renders; pev(seg, "pointerdown", at(unsel)); pev(seg, "pointermove", at(unsel, .5, .5, 0, 60)); pev(seg, "pointerup", at(unsel, .5, .5, 0, 60)); await sleep(80);
+        check("分段 G17 竖向滑出 60 pt 抬手：仍选中（余量 70；内容 +66 ms 切）", unsel.textContent, `${onText()} renders+${renders - r5}`, onText() === unsel.textContent && renders === r5 + 1);
         await sleep(50);
         /* pointercancel = cancel */
         seg = q(); sel = bs().find((b) => b.classList.contains("on")); unsel = bs().find((b) => !b.classList.contains("on"));
         const r6 = renders; pev(seg, "pointerdown", at(unsel)); pev(seg, "pointercancel", at(unsel));
         check("分段 pointercancel：不提交、标签回 1", sel.textContent, `${onText()} renders+${renders - r6}`, onText() === sel.textContent && renders === r6 && !unsel.classList.contains("dim"));
         /* §1 G12/G13: ten alternating taps 30 ms down / 30 ms gap - every up counts, no debounce (--ios-touch-debounce 0) */
-        const r7 = renders; let last = null, everyTick = true;
-        for (let k = 0; k < 10; k++) { const b = bs()[k % 2]; last = b.textContent; const sg = q(); pev(sg, "pointerdown", at(b)); await sleep(30); pev(sg, "pointerup", at(b)); if (onText() !== last) everyTick = false; await sleep(30); }
-        check("分段 G12 快速交替 10 次（30 ms 点 / 30 ms 间隔）：每下都算、终态 = 最后一次", last, `${onText()} renders+${renders - r7}${everyTick ? "" : "（某下抬手时未切）"}`, onText() === last && renders === r7 + 10 && everyTick && thisShift(last));
+        const r7 = renders; let last = null, lastQ = null, everyTick = true;
+        for (let k = 0; k < 10; k++) { const b = bs()[k % 2]; last = b.textContent; lastQ = b.dataset.q; const sg = q(); pev(sg, "pointerdown", at(b)); await sleep(30); pev(sg, "pointerup", at(b)); if (document.querySelector("#queue").value !== lastQ) everyTick = false; await sleep(30); }
+        await sleep(100);
+        check("分段 G12 快速交替 10 次（30 ms 点 / 30 ms 间隔）：每下模型都改（抬手即改）、终态 = 最后一次；内容重画在 valueChanged 时刻，被更新的值追上的那次不再画（快速连点 未量）", last, `${onText()} renders+${renders - r7}${everyTick ? "" : "（某下抬手时模型未改）"}`, onText() === last && renders >= r7 + 1 && renders <= r7 + 10 && everyTick && thisShift(last));
         let stable = true; for (let k = 0; k < 6; k++) { await sleep(100); if (onText() !== last) stable = false; }
         check("分段 G12 快速交替后 600 ms 内不回跳", last, onText(), stable && onText() === last);
         /* a page re-render (heartbeat / snapshot) while the lens rests on a segment must not move it (the carry-over reads the lens box, not the % translate) */

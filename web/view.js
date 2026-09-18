@@ -779,8 +779,12 @@ function wire() {
     const bs = [...segEl.querySelectorAll("button")];
     attachSegmented(segEl, () => Math.max(0, bs.findIndex((b) => b.dataset.q === qsel.value)), (i, mode = "tap") => {
       const q = bs[i].dataset.q; if (qsel.value === q) return;
-      segCommitAt = performance.now(); segCommitMode = mode; flipPending = true;   // B3: this render is a value change → row insert/delete transitions
-      qsel.value = q; qsel.dispatchEvent(new Event("change"));   // onchange → render() right now: the content switches in the same tick
+      qsel.value = q;   // the model changes at the up (the next touch already sees the new index)
+      /* valueChanged — the content switch and the lens's slide, one render — comes +66 ms after a tap's up / +25 ms after a slide's (B3 follow-up:
+         seg-value-change-content.md §0 four recordings +92/+68/+50/+66, the lens starts gliding in that same frame; tokens.css --ios-touch-segment-
+         commit-delay note for the slide). A newer value change before the timer fires simply renders again (快速连点 未量). */
+      const delay = touchMs(mode === "drag" ? "--seg-commit-delay-drag" : "--seg-commit-delay-tap", 0);
+      setTimeout(() => { if (qsel.value !== q) return; segCommitAt = performance.now(); segCommitMode = mode; flipPending = true; qsel.dispatchEvent(new Event("change")); }, delay);
     });
   }
   if (qsel) qsel.onchange = () => {
@@ -1233,10 +1237,10 @@ function segLens(seg, lens, bs) {
   if (seg.__lensLoop) seg.__lensLoop.stop();   // a new press ends the previous loop (its tail and its inline geometry)
   let warp = seg.querySelector(".warp"), warpl = seg.querySelector(".warpl"), plat = seg.querySelector(".plat"), rim = seg.querySelector(".rim");
   const mk = (cls, inner) => { const d = document.createElement("div"); d.className = cls; d.innerHTML = inner; seg.appendChild(d); return d; };
-  if (!warp) warp = mk("warp", '<div class="disp"><div class="copy"></div></div>'); if (!warpl) warpl = mk("warpl", '<div class="copy"></div>'); if (!plat) plat = mk("plat", ""); if (!rim) rim = mk("rim", "");
+  if (!warp) warp = mk("warp", '<div class="disp"><div class="copy"></div></div>'); if (!warpl) warpl = mk("warpl", '<div class="displ"><div class="portal"><div class="copy"></div></div></div>'); if (!plat) plat = mk("plat", ""); if (!rim) rim = mk("rim", "");
   /* copies of what lies under the lens: .warp = page bg + track (opaque; covers the real labels — the DestOut punch-out), .warpl = the labels, undisplaced
      (label-mag 1.00, spans not buttons so the control's own button list stays the real one) */
-  const disp = warp.firstElementChild, copy = disp.firstElementChild, copyl = warpl.firstElementChild;
+  const disp = warp.firstElementChild, copy = disp.firstElementChild, displ = warpl.firstElementChild, portal = displ.firstElementChild, copyl = portal.firstElementChild;
   copy.innerHTML = '<div class="cbgwrap"><div class="cbg"></div><div class="ctrack"></div></div>';
   copyl.innerHTML = bs.map((b) => `<span class="cb ${b.className}" style="width:${b.offsetWidth}px">${b.innerHTML}</span>`).join("");
   const segW = seg.clientWidth, segH = seg.clientHeight; for (const c of [copy, copyl]) { c.style.width = segW + "px"; c.style.height = segH + "px"; }
@@ -1271,17 +1275,20 @@ function segLens(seg, lens, bs) {
     const sr = seg.getBoundingClientRect(), lr = lens.getBoundingClientRect();
     const L = lr.left - sr.left, T = lr.top - sr.top, Wd = lr.width, Hd = lr.height, R = Hd / 2;   // capsule: corner = h/2 (r22 at 44 ← §0; the lift's corner 14 → 22 on the same spring ← §4.4 row 1)
     for (const el of [warp, warpl, plat, rim]) { el.style.left = L + "px"; el.style.top = T + "px"; el.style.width = Wd + "px"; el.style.height = Hd + "px"; el.style.setProperty("--rr", R + "px"); }
-    for (const c of [copy, copyl]) { c.style.left = -L + "px"; c.style.top = -T + "px"; }   // the copies stay aligned with the real control
+    copy.style.left = -L + "px"; copy.style.top = -T + "px";   // the backdrop copy stays aligned with the real control
+    const PW = W0, PH = H0, PL = (Wd - PW) / 2, PT = (Hd - PH) / 2;   // the label portal: the resting lens size (196×28 native, 198×28 here), centred in the lens (seg-lift-material §1: portal #32)
+    portal.style.left = PL + "px"; portal.style.top = PT + "px"; portal.style.width = PW + "px"; portal.style.height = PH + "px";
+    copyl.style.left = (-L - PL) + "px"; copyl.style.top = (-T - PT) + "px";   // the label copy aligned with the real labels through the portal
     const set = setFor(Wd);
-    if (set !== curSet) { curSet = set; disp.style.filter = `url(#seg-lens-f-bg-${set})`; }
+    if (set !== curSet) { curSet = set; disp.style.filter = `url(#seg-lens-f-bg-${set})`; displ.style.filter = `url(#seg-lens-f-lab-${set})`; }
     seg.style.setProperty("--lp", p.toFixed(4)); seg.style.setProperty("--lpd", pd.toFixed(4));
-    const fd = document.querySelector(`#seg-lens-f-bg-${set} feDisplacementMap`); if (fd) fd.setAttribute("scale", (S * p).toFixed(3));   // amplitude on the lift spring (§4.4 row 2: displacementMap 0 → −17.5 / +9 in the same call)
+    for (const id of [`#seg-lens-f-bg-${set}`, `#seg-lens-f-lab-${set}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", (S * p).toFixed(3)); }   // both stacks' amounts on the lift spring (§4.4 row 2: ClearGlass 0 → −17.5, ContentLensing 0 → −8.8, BackdropView 0 → 9 in the same call)
     cbs.forEach((c, i) => c.className = "cb " + bs[i].className);
     seg.classList.toggle("lift", p > 0 || pd > 0);
   };
   const clear = () => {
     seg.classList.remove("lift"); seg.style.removeProperty("--lp"); seg.style.removeProperty("--lpd"); copy.innerHTML = ""; copyl.innerHTML = "";
-    if (curSet) { const fd = document.querySelector(`#seg-lens-f-bg-${curSet} feDisplacementMap`); if (fd) fd.setAttribute("scale", "40"); }   // the file's rest value; the layer is hidden now
+    if (curSet) for (const id of [`#seg-lens-f-bg-${curSet}`, `#seg-lens-f-lab-${curSet}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", "40"); }   // the file's rest value; the layers are hidden now
     for (const k of ["transition", "left", "top", "width", "height", "margin", "border-radius"]) lens.style.removeProperty(k);   // the CSS rest values are what the loop ended on
     st.done = true; if (seg.__lensLoop === loop) seg.__lensLoop = null;
   };
@@ -1356,7 +1363,7 @@ function attachSegmented(seg, getIndex, commit) {
         const target = segAt(ev.clientX), noEvent = cancelled || outside(ev.clientX, ev.clientY) || target === idx;   // cancel (> 70 pt out, G17/G18) or back on the selected one (G8/G10/G23): no event
         if (glass) glass.release(noEvent ? idx : target);           // glass, copies and geometry fall on the lens's own curve, to the rest rect it ends on
         if (noEvent) { showLens(idx); return; }
-        commit(target, lifted ? "drag" : "tap");                    // the up: index + change + content, same tick (G1–G3)
+        commit(target, lifted ? "drag" : "tap");                    // the up: the index changes now (G1–G3); the content and the lens's slide follow at the valueChanged time (wire(): +66 / +25 ms)
       },
     })) return;
     seg.dataset.pe = "1";

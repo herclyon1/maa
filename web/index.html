@@ -54,6 +54,8 @@
     /* interaction-spec.md §1/§2/§3 values that have no --ios-touch-* token yet: the lens follows a drag with a spring lag of ~100–150 ms (G4: finger 320 → lens 61→237 in ~120 ms);
        the committed lens settles in ~1.2 s while its width goes 196 → 239 → 181 → 196 and height 28 → 38.6 → 27 → 28 (G1/G3); the tab-bar lens lifts 94×54 → 119×64 (T1), the switch knob 37×24 → 60.5×40 then 58×38 (L*) */
     --seg-follow-lag:var(--ios-touch-segment-follow-lag);   /* .12 s ← G4/F1 */
+    --seg-commit-delay-tap:66ms;    /* valueChanged after a tap's up ← seg-value-change-content.md §0 (+92/+68/+50/+66, 采样) */
+    --seg-commit-delay-drag:25ms;   /* valueChanged after a slide's up ← tokens.css --ios-touch-segment-commit-delay 注（"after a slide +25 ms"，数据会话） */
     /* lifted segmented lens rim, 1 pt per stop (seg-lens-drag-mid.md §2 / seg-dragmid-measure.json light col_x220: 602 +3.8, 603…610 −6.3…−15.3, 611…619 −13.8…−1.0; 645 +6.3, 644…640 +2.5…+.2) */
     --seg-rim-top:linear-gradient(180deg, rgb(255 255 255 / .336) 0px 1px, rgb(0 0 0 / .026) 1px 2px, rgb(0 0 0 / .038) 2px 3px, rgb(0 0 0 / .046) 3px 4px, rgb(0 0 0 / .050) 4px 5px, rgb(0 0 0 / .053) 5px 6px, rgb(0 0 0 / .059) 6px 7px, rgb(0 0 0 / .061) 7px 8px, rgb(0 0 0 / .063) 8px 9px, rgb(0 0 0 / .060) 9px 10px, rgb(0 0 0 / .056) 10px 11px, rgb(0 0 0 / .049) 11px 12px, rgb(0 0 0 / .039) 12px 13px, rgb(0 0 0 / .029) 13px 14px, rgb(0 0 0 / .021) 14px 15px, rgb(0 0 0 / .013) 15px 16px, rgb(0 0 0 / .006) 16px 17px, rgb(0 0 0 / .004) 17px 18px, transparent 18px);
     --seg-rim-glow:linear-gradient(180deg, transparent 0px 1px, rgb(255 255 255 / .039) 1px 2px, rgb(255 255 255 / .024) 2px 3px, rgb(255 255 255 / .015) 3px 4px, rgb(255 255 255 / .009) 4px 5px, rgb(255 255 255 / .005) 5px 6px, rgb(255 255 255 / .004) 6px 7px, transparent 7px);   /* the dark theme's 6-row white glow under the light lines (603…608 +10…+1); +.4 in light */
@@ -505,9 +507,21 @@
   .segctl .warp{position:absolute;z-index:4;left:0;top:0;width:0;height:0;pointer-events:none;display:none;overflow:hidden;clip-path:inset(0 round var(--rr, 14px));opacity:var(--lpd, 0)}
   .segctl .warp .disp{position:absolute;inset:0;overflow:hidden}   /* filter: url(#seg-lens-f-bg-<w>) set per frame */
   .segctl .plat{position:absolute;z-index:5;left:0;top:0;width:0;height:0;pointer-events:none;display:none;border-radius:var(--rr, 14px);background:var(--ios-segment-selected-bg);opacity:calc(1 - var(--lp, 0))}   /* 白平台 restingBackground：抬起 1 → 0、松手 0 → 1（seg-keys.css -platter-keys ≈ 1 − 位移量，差 ≤ .01） */
-  .segctl .warpl{position:absolute;z-index:6;left:0;top:0;width:0;height:0;pointer-events:none;display:none;overflow:hidden;clip-path:inset(0 round var(--rr, 14px))}   /* 标签复本在平台之上、不位移、不淡（label-mag 1.00） */
+  /* .warpl = the label copy through the formula label maps (#seg-lens-f-lab-<w>: ClearGlass −17.5/11.2 → ContentLensing −8.8/7.04 on the lens
+     capsule, ui2 cdb33f4 README §0.2; the native order — the label passes both — is baked into the map). Native structure (seg-lift-material.md
+     §1 layer tree, glass-displacement-formula.md §2): the segment content is clipped to the 196×28 portal (#32, centred in the lens), that goes
+     through the 220×44 r22 portal (#20, clip first, then displace). Here: .displ = the lens box with border-radius min(22, h/2) (clip) and the
+     filter; inside it .portal = 198×28 centred (ours: the segment is 2 pt wider) clipping the label copy; glyphs outside the portal are not
+     drawn, the displacement then pulls portal content out to the capsule ends. The real labels under the lens are covered by the opaque
+     backdrop copy (.warp) — the DestOut punch-out's effect. The label copy itself does not fade (label-mag 1.00 inside the portal, §2.3). */
+  .segctl .warpl{position:absolute;z-index:6;left:0;top:0;width:0;height:0;pointer-events:none;display:none;overflow:hidden;clip-path:inset(0 round var(--rr, 14px))}
+  .segctl .warpl .displ{position:absolute;inset:0;overflow:hidden;border-radius:var(--rr, 14px)}   /* filter: url(#seg-lens-f-lab-<w>) set per frame; clipped to the capsule BEFORE the filter */
+  .segctl .warpl .portal{position:absolute;overflow:hidden;border-radius:var(--ios-segment-lens-radius)}   /* 196×28 (ours 198×28) centred; left/top/size set per frame */
   .segctl.lift .warp,.segctl.lift .warpl,.segctl.lift .plat,.segctl.lift .rim{display:block}
   .segctl .warp .copy,.segctl .warpl .copy{position:absolute;left:0;top:0;display:flex;padding:var(--ios-segment-lens-pad);box-sizing:border-box}
+    /* B3 follow-up: the content (and the lens's commit slide, the same render) switch at the native valueChanged time after the up — seg-value-change-content.md §0:
+       +92 / +68 / +50 / +66 ms in the four recordings (median 67; 66 taken, one of the samples), the same frame the lens starts to glide; after a
+       slide the value changes +25 ms after the up (tokens.css --ios-touch-segment-commit-delay comment, data session). The token itself stays 0. */
   .segctl .cbgwrap{position:absolute;inset:-200px}
   .segctl .cbgwrap .cbg{position:absolute;inset:0;background:var(--bg)}
   .segctl .cbgwrap .ctrack{position:absolute;left:200px;top:200px;right:200px;bottom:200px;border-radius:var(--ios-segment-radius);background:var(--ios-segment-track)}   /* 轨道 r16 tertiarySystemFill ← 探针 */
