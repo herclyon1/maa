@@ -455,6 +455,29 @@
   .segctl button.on{font-weight:var(--ios-medium-weight);animation:seg-in .1s}   /* 新选中段标签 .81 → 1 淡入 100 ms ← spec §1 */
   @keyframes seg-in{from{opacity:.81}to{opacity:1}}
   .segctl button.dim{opacity:var(--ios-touch-segment-dim-opacity);transition:opacity var(--ios-touch-segment-dim-duration) ease-out}   /* 按下未选中段：标签 1 → .2，ease-out .43 s（--ios-touch-segment-dim-*）← spec §1 G15；按下不改值 */
+  /* Lifted lens = native's ClearGlassView (uiprobe-lensdiff-seg / subtree, iOS 27.0 probe): at rest the white restingBackground sits UNDER the
+     labels; once lifted the lens is a glass layer ABOVE them, the original labels are punched out under it (DestOutView, liftedContentPunchout)
+     and a copy of the labels is drawn inside the glass through a displacement map (liftedContentWarpWrapper › filters displacementMap).
+     --lp = the lenstrace progress (lens-refraction §4.1: 0 at 20 ms, 65 % at 103 ms, 95 % at 203 ms, 1 at 370 ms; the same curve back at release),
+     set per frame by attachSegmented. Material tokens --ios-seg-lift-*: the data session's originals table (pending); the fallbacks are the rest
+     values so nothing is invented here — until the tokens land the lifted lens keeps the flat platter look. */
+  .segctl.lift .lens{z-index:2;background:transparent;
+    /* 静止填充 _controlForegroundColor（::before，1 − --lp）与抬起填充 --ios-seg-lift-fill（::after，--lp；← 表，待）两层交叉淡 */
+    backdrop-filter:blur(calc(var(--lp, 0) * var(--ios-seg-lift-blur, 0px))) saturate(calc(1 + var(--lp, 0) * (var(--ios-seg-lift-saturate, 1) - 1))) brightness(calc(1 + var(--lp, 0) * (var(--ios-seg-lift-brightness, 1) - 1)));
+    -webkit-backdrop-filter:blur(calc(var(--lp, 0) * var(--ios-seg-lift-blur, 0px))) saturate(calc(1 + var(--lp, 0) * (var(--ios-seg-lift-saturate, 1) - 1))) brightness(calc(1 + var(--lp, 0) * (var(--ios-seg-lift-brightness, 1) - 1)));
+    box-shadow:inset 0 0 0 1px rgb(255 255 255 / calc(var(--lp, 0) * var(--ios-seg-lift-rim-light, 0))),inset 0 0 0 2px rgb(0 0 0 / calc(var(--lp, 0) * var(--ios-seg-lift-rim-dark, 0)))}   /* 边缘 1 pt 亮线 + 紧接 1 pt 暗线（lens-refraction §3：+15 / −34 /255 量于标签栏透镜；分段的值待表） */
+  .segctl.lift .lens::before,.segctl.lift .lens::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none}
+  .segctl.lift .lens::before{background:var(--ios-segment-selected-bg);opacity:calc(1 - var(--lp, 0))}
+  .segctl.lift .lens::after{background:var(--ios-seg-lift-fill, var(--ios-segment-selected-bg));opacity:var(--lp, 0)}
+  .segctl .warp{position:absolute;z-index:3;left:0;top:0;width:0;height:0;pointer-events:none;display:none;overflow:hidden;clip-path:inset(0 round var(--rr, 14px));filter:url(#seg-lens-warp)}   /* 透镜内的标签复本：裁成透镜形，位移贴图 #seg-lens-warp（界面2号定义；未定义时无位移） */
+  .segctl.lift .warp{display:block}
+  .segctl .warp .copy{position:absolute;left:0;top:0;display:flex;padding:var(--ios-segment-lens-pad)}
+  .segctl .warp .copy .cb{flex:1 1 0;height:var(--ios-segment-lens-h);line-height:var(--ios-segment-lens-h);text-align:center;font-size:var(--ios-segment-label-size);font-weight:400;color:var(--ios-segment-label-color);white-space:nowrap}   /* 复本文字 = 真标签的字（RegularG3 13 labelColor ← 探针 subtree） */
+  .segctl .warp .copy .cb.on{font-weight:var(--ios-medium-weight)}
+  .segctl.lift > button{-webkit-mask-image:linear-gradient(#000,#000),var(--hole);mask-image:linear-gradient(#000,#000),var(--hole);
+                        -webkit-mask-size:100% 100%,var(--hw) var(--hh);mask-size:100% 100%,var(--hw) var(--hh);
+                        -webkit-mask-position:0 0,var(--hx) var(--hy);mask-position:0 0,var(--hx) var(--hy);
+                        -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-composite:xor;mask-composite:exclude}   /* 原标签在透镜处挖掉 = DestOutView（cornerRadius 14 → 随透镜） */
   .segctl + section > .group:first-child,.segctl + section > h2{margin-top:0}
   .segctl[hidden]{display:none}   /* 只在「状态」首页出现（验收 2026-09-18）；layoutTabs 按标签隐藏 */
   /* 待保存小字：行内右下 11 pt（同 .sent） */

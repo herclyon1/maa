@@ -513,6 +513,7 @@ function render() {
   /* The lens starts where it visually is right now (mid-flight included: rapid taps change direction, spec §1 G12/G13), then springs to the new segment. */
   const oldSeg = $("#queueseg"), oldLens = oldSeg && oldSeg.querySelector(".lens");
   let segFrom = NaN;
+  const lpOld = oldSeg && oldSeg.classList.contains("lift") ? parseFloat(oldSeg.style.getPropertyValue("--lp")) : NaN;   // glass still up (falling) at this instant
   if (oldLens) {   // where the lens is right now, in segment units (computed `translate` keeps the percentage, so measure the boxes; the centre is scale-proof)
     const lr = oldLens.getBoundingClientRect(), sr = oldSeg.getBoundingClientRect(), w = oldLens.offsetWidth, pad = oldLens.offsetLeft;
     segFrom = w ? (lr.left + lr.width / 2 - sr.left - pad - w / 2) / w : parseFloat(oldSeg.style.getPropertyValue("--i"));
@@ -528,6 +529,7 @@ function render() {
       lens.classList.add("spring");   // measured x path + width/height stretch (spec §1 G1/G3, --ios-touch-segment-lens-*-keys)
       lens.style.transition = ""; seg.style.setProperty("--i", to);
     }
+    if (lens && lpOld > 0) segLens(seg, lens, [...seg.querySelectorAll("button")], lpOld);   // the glass keeps falling on the lenstrace curve while the lens springs to the new segment
   }
 }
 
@@ -1071,6 +1073,57 @@ function press(el, e, handlers) {
 /* §1 UISegmentedControl: touch-down changes nothing but the pressed label's opacity (unselected) or lifts the lens (selected); a lifted lens follows
    the finger; the index changes at the up - target = the segment under the finger's x - unless the finger is > 70 pt outside the control
    (cancel, no event) or back on the selected segment (no event). No debounce: every up counts, same segment twice = one event. */
+/* Lens lift progress. lens-refraction.md §0 / §4.1 (iOS 27.0 probe): the lens size, the SDF height and the displacement amount ride ONE curve
+   (amount ≡ −1.25 × height); so here the glass material and the warp amplitude are driven by the lens's own measured size progress — for the
+   segmented control that is the G4/G16 lift (+100 ms, .25 s, 196 × 28 → 220 × 44; interaction-spec §1) — read off the presented height each
+   frame, and at release they fall back over the same .25 s (the lift duration) as the size does. LENS_P (the tab-bar lenstrace curve) stays for
+   the tab bar, whose lift was traced directly. */
+const LENS_P = [[0.020, 0], [0.036, .11], [0.053, .26], [0.070, .41], [0.086, .54], [0.103, .65], [0.120, .74], [0.153, .86], [0.203, .95], [0.253, .98], [0.303, .994], [0.370, 1]];
+const lensP = (t) => { if (t <= LENS_P[0][0]) return 0; for (let i = 1; i < LENS_P.length; i++) if (t <= LENS_P[i][0]) { const [t0, v0] = LENS_P[i - 1], [t1, v1] = LENS_P[i]; return v0 + (v1 - v0) * (t - t0) / (t1 - t0); } return 1; };
+const holeURL = (w, h, r) => `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}' viewBox='0 0 ${w} ${h}'><rect width='${w}' height='${h}' rx='${r}' ry='${r}' fill='black'/></svg>")`;
+/* The lifted segmented lens (index.html .segctl .lens.lift / .warp): a per-frame sync while the finger is down and while the glass falls back —
+   the warp box follows the lens's presented rect (so it rides every transition the lens has: follow-lag, lift scale, the commit stretch),
+   the label copy inside stays aligned with the real labels, the real labels get the punch-out hole, --lp drives glass + warp amplitude. */
+function segLens(seg, lens, bs, fallFrom) {
+  let warp = seg.querySelector(".warp");
+  if (!warp) { warp = document.createElement("div"); warp.className = "warp"; warp.innerHTML = '<div class="copy"></div>'; seg.appendChild(warp); }
+  const copy = warp.firstElementChild; copy.innerHTML = bs.map((b) => `<span class="cb ${b.className}" style="width:${b.offsetWidth}px">${b.innerHTML}</span>`).join("");   // spans, not buttons: the control's own button list must stay the real one
+  copy.style.width = seg.offsetWidth + "px"; copy.style.height = seg.offsetHeight + "px";
+  const cbs = [...copy.querySelectorAll(".cb")];
+  const S = 32;   // map encoding shared with #seg-lens-warp: byte = 255 × (.5 + u / S), u in pt → feDisplacementMap scale = S × amplitude
+  /* the punch-out image is made ONCE (196 × 28, rx 14 = the DestOut layer's own coordinates); per frame only mask-size / -position move, so no
+     image is decoded per frame; scaled non-uniformly its corners go elliptical exactly like a CALayer cornerRadius under the lens transform */
+  const hole = holeURL(196, 28, 14); for (const b of bs) b.style.setProperty("--hole", hole);
+  const st = { t0: performance.now(), rel: fallFrom != null ? performance.now() : null, raf: 0, pr: fallFrom != null ? fallFrom : 0, done: false };   // fallFrom: continue a release fall on a re-rendered control
+  const H0 = 28, H1 = 28 + 2 * touchPx("--ios-touch-segment-lift-y", 8), FALL_MS = touchMs("--ios-touch-segment-lift-duration", 250);   // 196 × 28 → 220 × 44 ← --ios-touch-segment-lift-x/-y; 落回 .25 s ← --ios-touch-segment-lift-duration
+  const frame = (p) => {
+    const sr = seg.getBoundingClientRect(), lr = lens.getBoundingClientRect();
+    const L = lr.left - sr.left, T = lr.top - sr.top, Wd = lr.width, Hd = lr.height, R = Math.min(Hd / 2, 14 * (Hd / 28));   // 逐角 14 随高度放大（DestOut cornerRadius 14 ← lensdiff）
+    warp.style.left = L + "px"; warp.style.top = T + "px"; warp.style.width = Wd + "px"; warp.style.height = Hd + "px"; warp.style.setProperty("--rr", R + "px");
+    copy.style.left = -L + "px"; copy.style.top = -T + "px";
+    seg.style.setProperty("--lp", p.toFixed(4));
+    for (const el of document.querySelectorAll("#seg-lens-warp feDisplacementMap")) el.setAttribute("scale", (S * p).toFixed(3));
+    bs.forEach((b) => { const br = b.getBoundingClientRect(); b.style.setProperty("--hx", (lr.left - br.left) + "px"); b.style.setProperty("--hy", (lr.top - br.top) + "px"); b.style.setProperty("--hw", Wd + "px"); b.style.setProperty("--hh", Hd + "px"); });
+    cbs.forEach((c, i) => c.className = "cb " + bs[i].className);
+    seg.classList.toggle("lift", p > 0);
+  };
+  const clear = () => {
+    seg.classList.remove("lift"); seg.style.removeProperty("--lp"); copy.innerHTML = "";
+    for (const b of bs) for (const k of ["--hole", "--hx", "--hy", "--hw", "--hh"]) b.style.removeProperty(k);
+    for (const el of document.querySelectorAll("#seg-lens-warp feDisplacementMap")) el.setAttribute("scale", "0");
+    st.done = true;
+  };
+  const tick = (now) => {
+    if (st.done) return;
+    if (!seg.isConnected || !lens.isConnected) { clear(); return; }
+    let p;
+    if (st.rel != null) { const f = Math.min(1, (now - st.rel) / FALL_MS); p = st.pr * (1 - (1 - Math.pow(1 - f, 3))); if (f >= 1 || p <= 0.001) { clear(); return; } }   // 落回：与透镜落回同长 .25 s（ease-out 立方，同 CSS 的 scale 过渡曲线族）
+    else { p = Math.max(0, Math.min(1, (lens.getBoundingClientRect().height - H0) / (H1 - H0))); st.pr = p; }   // 抬起 / 拖动：进度 = 透镜呈现高度的进度（一条曲线：尺寸 = 高度 = 位移量）
+    frame(p); st.raf = requestAnimationFrame(tick);
+  };
+  st.raf = requestAnimationFrame(tick);
+  return { release: () => { if (st.rel == null) st.rel = performance.now(); }, cancel: () => { cancelAnimationFrame(st.raf); clear(); } };
+}
 function attachSegmented(seg, getIndex, commit) {
   const bs = [...seg.querySelectorAll("button")], lens = seg.querySelector(".lens"), n = bs.length;
   const segAt = (x) => { const r = seg.getBoundingClientRect(); return Math.max(0, Math.min(n - 1, Math.floor((x - r.left) / (r.width / n)))); };   // 跨分隔线即换目标（G22/G24/G25）
@@ -1079,7 +1132,7 @@ function attachSegmented(seg, getIndex, commit) {
   const showLens = (i) => seg.style.setProperty("--i", String(i));
   seg.onpointerdown = (e) => {
     const idx = getIndex(), pressed = segAt(e.clientX), onSelected = pressed === idx;
-    let liftTimer = 0;
+    let liftTimer = 0, glass = null;
     if (lens) lens.classList.remove("spring");   // a new touch ends the previous commit's stretch (G12/G13: no queueing)
     if (!press(seg, e, {
       move: (ev) => { if (onSelected && lens && lens.classList.contains("lift")) showLens(frac(ev.clientX)); },   // index never changes while sliding (G4/G22)
@@ -1087,6 +1140,7 @@ function attachSegmented(seg, getIndex, commit) {
         clearTimeout(liftTimer);
         bs[pressed].classList.remove("dim");                        // label back to 1 in .1 s (G12)
         seg.classList.remove("drag"); if (lens) lens.classList.remove("lift");
+        if (glass) { if (cancelled) glass.cancel(); else glass.release(); }   // glass + warp fall back on the lenstrace curve; the box keeps riding the lens
         const target = segAt(ev.clientX);
         if (cancelled || outside(ev.clientX, ev.clientY) || target === idx) { showLens(idx); return; }   // cancel (> 70 pt out, G17/G18) or back on the selected one (G8/G10/G23): no event
         commit(target);                                             // the up: index + change + content, same tick (G1–G3)
@@ -1094,7 +1148,10 @@ function attachSegmented(seg, getIndex, commit) {
     })) return;
     seg.dataset.pe = "1";
     if (!onSelected) bs[pressed].classList.add("dim");           // G15: only the label dims; no highlight, no lens move, no value
-    else liftTimer = setTimeout(() => { if (lens) lens.classList.add("lift"); seg.classList.add("drag"); }, touchMs("--ios-touch-segment-lift-delay", 100));   // G4/G16
+    else {
+      glass = lens ? segLens(seg, lens, bs) : null;                // glass + warp start on the lenstrace curve (~20 ms) — the lift itself waits its 100 ms (G4/G16)
+      liftTimer = setTimeout(() => { if (lens) lens.classList.add("lift"); seg.classList.add("drag"); }, touchMs("--ios-touch-segment-lift-delay", 100));   // G4/G16
+    }
   };
   // The browser's click after our pointerup is redundant; keyboard / synthetic clicks still select.
   for (const b of bs) b.onclick = () => { if (seg.dataset.pe) { delete seg.dataset.pe; return; } const i = bs.indexOf(b); if (i !== getIndex()) commit(i); };

@@ -452,8 +452,19 @@
         await sleep(160);
         const sc160 = parseFloat(cs(lens0).scale);
         check("分段 G16 按下已选中段 +160 ms：透镜抬起中（+100 ms 起，.25 s 到 220×44）", "lift, scale > 1", `${lens0.classList.contains("lift") ? "lift" : "-"} ${cs(lens0).scale}`, lens0.classList.contains("lift") && sc160 > 1.0);
+        /* lifted lens = glass ABOVE the labels + punched-out labels + a warped copy inside (uiprobe-lensdiff-seg: ClearGlassView / DestOutView /
+           liftedContentWarpWrapper); --lp on the lenstrace curve (lens-refraction §4.1: 86 % at 153 ms) drives glass + warp */
+        { const lp = parseFloat(seg.style.getPropertyValue("--lp")), warp = seg.querySelector(".warp"), cb = warp ? warp.querySelectorAll(".copy .cb").length : 0;
+          check("分段抬起 +160 ms：玻璃/折弯进度 --lp = 透镜尺寸进度（+100 ms 起 .25 s，同一条曲线：尺寸 = 高度 = 位移量）", "0 < lp < 1, = (h−28)/16", `${lp} vs ${((lens0.getBoundingClientRect().height - 28) / 16).toFixed(3)}`, lp > 0 && lp < 1 && Math.abs(lp - (lens0.getBoundingClientRect().height - 28) / 16) < 0.12);
+          check("分段抬起：透镜层在标签之上（z 2）", "2", cs(lens0).zIndex, cs(lens0).zIndex === "2" && seg.classList.contains("lift"));
+          check("分段抬起：透镜内标签复本（.warp .copy）与真标签同数、裁成透镜形、套位移贴图", `${bs().length} btn · clip · filter`, `${cb} btn · ${warp ? cs(warp).clipPath.slice(0, 5) : "-"} · ${warp ? cs(warp).filter.slice(0, 3) : "-"}`, !!warp && cb === bs().length && bs().length === 2 && /inset/.test(cs(warp).clipPath) && /url/.test(cs(warp).filter));
+          if (warp) { const wr = warp.getBoundingClientRect(), lr = lens0.getBoundingClientRect();
+            num("分段抬起：复本框 = 透镜呈现框（左）", lr.left, wr.left, 0.6); num("分段抬起：复本框 = 透镜呈现框（宽）", lr.width, wr.width, 0.6); }
+          check("分段抬起：真标签在透镜处挖洞（mask exclude，DestOutView）", "hole", sel.style.getPropertyValue("--hole") ? "hole" : "no hole", !!sel.style.getPropertyValue("--hole") && /exclude|xor/.test(cs(sel).maskComposite + (cs(sel).webkitMaskComposite || "")));
+          check("分段抬起：填充两层交叉淡（::before 静止 1−lp，::after 抬起 lp；抬起值 --ios-seg-lift-fill 待表）", "1−lp / lp", `${cs(lens0, "::before").opacity} / ${cs(lens0, "::after").opacity}`, Math.abs(parseFloat(cs(lens0, "::before").opacity) - (1 - lp)) < 0.05 && Math.abs(parseFloat(cs(lens0, "::after").opacity) - lp) < 0.05); }
         await sleep(240);
         check("分段 G16 +400 ms：透镜 220×44 到位（--ios-touch-segment-lift-x 12 / -y 8）", "1.1224 1.5714", cs(lens0).scale, /^1\.12/.test(cs(lens0).scale) && /1\.57/.test(cs(lens0).scale));
+        check("分段抬起 +400 ms：--lp 到 1", "1", seg.style.getPropertyValue("--lp"), Math.abs(parseFloat(seg.style.getPropertyValue("--lp")) - 1) < 0.01);
         /* §1 G4/G22: sliding onto the other segment moves the lens, the index does not change until the up */
         pev(seg, "pointermove", at(unsel)); await sleep(30);
         const fracI = parseFloat(seg.style.getPropertyValue("--i"));
@@ -461,6 +472,8 @@
         /* §1 G23: slide back and release on the original - no event */
         pev(seg, "pointermove", at(sel)); pev(seg, "pointerup", at(sel));
         check("分段 G23 滑回原段抬手：无事件，透镜回位", sel.textContent, `${onText()} renders+${renders - r1}`, onText() === sel.textContent && renders === r1 && q().style.getPropertyValue("--i") === String(bs().indexOf(sel)));
+        await sleep(120); { const lp = parseFloat(seg.style.getPropertyValue("--lp")); check("分段松手 +120 ms：玻璃/折弯随透镜落回（.25 s，--ios-touch-segment-lift-duration）", "0 < lp < .6", String(lp), lp > 0.02 && lp < 0.6); }
+        await sleep(400); check("分段松手 +520 ms：玻璃退净、复本收起、洞去掉", "rest", `${seg.classList.contains("lift") ? "lift" : "rest"} ${seg.style.getPropertyValue("--lp") || "-"} ${sel.style.getPropertyValue("--hole") ? "hole" : ""}`, !seg.classList.contains("lift") && !sel.style.getPropertyValue("--hole"));
         /* §1 G4/G21: lift, slide to the other segment, release there - commits at the up */
         seg = q(); sel = bs().find((b) => b.classList.contains("on")); unsel = bs().find((b) => !b.classList.contains("on"));
         pev(seg, "pointerdown", at(sel)); await sleep(160); pev(seg, "pointermove", at(unsel)); const r2 = renders; pev(seg, "pointerup", at(unsel));
