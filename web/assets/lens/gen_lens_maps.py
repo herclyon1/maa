@@ -120,9 +120,24 @@ def capsule_inside(x, y, hw, hh):
     c = hw - hh
     return abs(y) <= hh if abs(x) <= c else math.hypot(abs(x) - c, y) <= hh
 
-def field_at(F, x, y, chan, hw, hh, stretch, gain=1.0):
-    """(u_x, u_y) in pt at lens-relative (x, y) for the target capsule hw×hh"""
-    if not capsule_inside(x, y, hw, hh): return 0.0, 0.0
+def capsule_edge_distance(x, y, hw, hh):
+    """signed distance inside the capsule boundary (> 0 inside) and the nearest boundary point's inward direction"""
+    c = hw - hh
+    if abs(x) <= c: d = hh - abs(y); n = (0.0, -1.0 if y > 0 else 1.0)
+    else:
+        cx = c if x > 0 else -c; dx, dy = x - cx, y; r = math.hypot(dx, dy); d = hh - r; n = (-dx / r, -dy / r) if r > 1e-9 else (0.0, 1.0)
+    return d, n
+
+def field_at(F, x, y, chan, hw, hh, stretch, gain=1.0, band=1.0):
+    """(u_x, u_y) in pt at lens-relative (x, y) for the target capsule hw×hh.
+    Outside the capsule the field is continued from the nearest boundary point (clamp-to-edge): the lens clips those pixels, and
+    a hard drop to 0 there made every boundary pixel a ≥ 1.5 pt jump that the map sampler bled into the edge.
+    band < 1 compresses the edge band towards the boundary (d → d / band) — used for the label layer's derived field."""
+    d, n = capsule_edge_distance(x, y, hw, hh)
+    if d < 0: x, y = x + n[0] * (-d + 0.5), y + n[1] * (-d + 0.5); d = 0.5
+    if band != 1.0 and d < 24 / band:
+        # a point d inside the boundary reads the backdrop field at d / band inside, along the same inward direction
+        x, y = x + n[0] * (d / band - d), y + n[1] * (d / band - d)
     kx = F["half"][0] / hw if stretch else 1.0; ky = F["half"][1] / hh if stretch else 1.0
     ux = interp_offsets(F["rows"], chan, y * ky, x * kx) / kx
     uy = interp_offsets(F["cols"], chan, x * kx, y * ky) / ky
@@ -134,18 +149,41 @@ def encode(u, scale):
     if v < 0 or v > 255: raise ValueError(f"displacement {u:.2f} pt does not fit scale {scale}")
     return v
 
+def png_rows(path):
+    """minimal PNG reader (8-bit RGBA, any filter type) → (w, h, rows of bytes)"""
+    data = open(path, "rb").read(); pos, idat, w, h = 8, b"", 0, 0
+    while pos < len(data):
+        n, = struct.unpack(">I", data[pos:pos + 4]); t = data[pos + 4:pos + 8]; d = data[pos + 8:pos + 8 + n]; pos += 12 + n
+        if t == b"IHDR": w, h = struct.unpack(">II", d[:8])
+        elif t == b"IDAT": idat += d
+    raw = zlib.decompress(idat); stride = w * 4; rows = []; prev = bytearray(stride)
+    for j in range(h):
+        f = raw[j * (stride + 1)]; line = bytearray(raw[j * (stride + 1) + 1:(j + 1) * (stride + 1)])
+        if f == 1:
+            for i in range(4, stride): line[i] = (line[i] + line[i - 4]) & 255
+        elif f == 2:
+            for i in range(stride): line[i] = (line[i] + prev[i]) & 255
+        elif f == 3:
+            for i in range(stride): line[i] = (line[i] + ((line[i - 4] if i >= 4 else 0) + prev[i]) // 2) & 255
+        elif f == 4:
+            for i in range(stride):
+                a_ = line[i - 4] if i >= 4 else 0; b_ = prev[i]; c_ = prev[i - 4] if i >= 4 else 0; p_ = a_ + b_ - c_; pa, pb, pc = abs(p_ - a_), abs(p_ - b_), abs(p_ - c_)
+                line[i] = (line[i] + (a_ if pa <= pb and pa <= pc else b_ if pb <= pc else c_)) & 255
+        rows.append(line); prev = line
+    return w, h, rows
+
 def write_png(path, w, h, rows):
     raw = b"".join(b"\x00" + bytes(r) for r in rows)
     def chunk(t, d): return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
     open(path, "wb").write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
 
-def render(path, F, chan, wpt, hpt, px, scale, stretch, gain):
+def render(path, F, chan, wpt, hpt, px, scale, stretch, gain, band=1.0):
     w, h = int(round(wpt * px)), int(round(hpt * px)); rows = []; peak = 0.0
     for j in range(h):
         y = (j + 0.5) / px - hpt / 2; row = bytearray()
         for i in range(w):
             x = (i + 0.5) / px - wpt / 2
-            ux, uy = field_at(F, x, y, chan, wpt / 2, hpt / 2, stretch, gain); peak = max(peak, abs(ux), abs(uy))
+            ux, uy = field_at(F, x, y, chan, wpt / 2, hpt / 2, stretch, gain, band); peak = max(peak, abs(ux), abs(uy))
             row += bytes((encode(ux, scale), encode(uy, scale), 128, 255))
         rows.append(row)
     write_png(path, w, h, rows); return w, h, peak
@@ -170,12 +208,31 @@ def main():
     ap.add_argument("--size", default="220x44"); ap.add_argument("--scale", type=float, default=32.0); ap.add_argument("--px", type=int, default=2)
     ap.add_argument("--stretch", action="store_true", help="the field was measured on another lens size: map it by normalised coordinates")
     ap.add_argument("--dark", help="<gx.json>,<gy.json> the same field measured in dark mode (compared, maps use --field)")
+    ap.add_argument("--label-from-bg", help="<gain>,<band>: derive the label layer's maps from the backdrop field — amplitude × gain, edge band compressed × band (native ContentLensing −8.8/−17.5 = 0.503, SDF height 7.04/11.2 = 0.629)")
     ap.add_argument("--out", default=HERE)
     a = ap.parse_args(); W, H = (float(v) for v in a.size.lower().split("x"))
     F = build_field(*a.field.split(","))
     maps = {}; peak = 0.0
     for c in "RGB":
         p = os.path.join(a.out, f"seg-map-{c.lower()}.png"); w, h, pk = render(p, F, c, W, H, a.px, a.scale, a.stretch, 1.0); maps[c] = p; peak = max(peak, pk)
+    # label layer: DERIVED, not measured — the same SDF shape with the native ContentLensing amount / height ratios (README §1b)
+    lmaps = {}; lpeak = 0.0
+    if a.label_from_bg:
+        gain, band = (float(v) for v in a.label_from_bg.split(","))
+        for c in "RGB":
+            p = os.path.join(a.out, f"seg-map-label-{c.lower()}.png"); _, _, pk = render(p, F, c, W, H, a.px, a.scale, a.stretch, gain, band); lmaps[c] = p; lpeak = max(lpeak, pk)
+    # jump statistics: adjacent-pixel steps ≥ 1.5 pt in the top / bottom 20 px rows (the acceptance count), after clamp-to-edge
+    def jumps(path):
+        w_, h_, rows_ = png_rows(path); n = 0
+        for j in range(h_):
+            if not (j < 20 or j >= h_ - 20): continue
+            for i in range(w_):
+                for ii, jj in ((i - 1, j), (i, j - 1)):
+                    if ii < 0 or jj < 0: continue
+                    a_, b_ = rows_[j][i * 4:i * 4 + 2], rows_[jj][ii * 4:ii * 4 + 2]
+                    if max(abs(a_[0] - b_[0]), abs(a_[1] - b_[1])) * a.scale / 255 >= 1.5: n += 1
+        return n
+    jump_counts = {os.path.basename(p): jumps(p) for p in list(maps.values()) + list(lmaps.values())}
     # interior scales from the LOCAL slope away from the centre (row 0 carries a constant ±0.5 pt step at the centre — a level offset between
     # its two halves, not a magnification — so a centre-spanning difference quotient would read 0.987 where the content is at 1.00)
     sx = ((interp_offsets(F["rows"], "G", 0, 70) - interp_offsets(F["rows"], "G", 0, 40)) / 30 + (interp_offsets(F["rows"], "G", 0, -40) - interp_offsets(F["rows"], "G", 0, -70)) / 30) / 2
@@ -185,9 +242,15 @@ def main():
             "field": {"gx": F["gx"]["file"], "gy": F["gy"]["file"], "measured_lens": F["gx"]["lens"], "half": F["half"], "rows_y": sorted(F["rows"]), "cols_x": sorted(F["cols"]), "peak_pt": round(peak, 2),
                       "interior": {"du_x/dx at y 0 (|x| 40–70, local slope)": round(sx, 4), "x scale": round(1 / (1 + sx), 2), "du_y/dy at x 50 (|y| ≤ 10)": round(sy, 4), "y scale": round(1 / (1 + sy), 3),
                                    "note": "row 0 holds a constant ±0.5 pt level step across the centre (seg-lens-refraction.md §0: M 1.00); the x scale is 1.00 within the noise"}},
-            "label_copy": "not displaced (seg-lens-refraction.md §2.3) — keep it in an unfiltered layer above the filtered copy",
+            "label_copy": "measured: not displaced at the centre (seg-lens-refraction.md §2.3); the derived #seg-lens-warp-label bends it only near the ends (README §1b)",
+            "label_layer": ({"derived_not_measured": True, "from": "backdrop field", "gain": float(a.label_from_bg.split(",")[0]), "band": float(a.label_from_bg.split(",")[1]),
+                             "source": "seg-lens-drag-mid.md §0 标签场逐点剖面: ContentLensing shares the ClearGlass SDF shape, amount −8.8 vs −17.5, SDF height 7.04 vs 11.2 (原值); the field itself is not measured",
+                             "peak_pt": round(lpeak, 2)} if a.label_from_bg else None),
+            "edge": "clamp-to-edge outside the capsule (the field continues from the nearest boundary point; the lens clips those pixels)",
+            "jumps_ge_1.5pt_top_bottom_20px": jump_counts,
             "sources": ["remote-ref/seg-lens-refraction.md §0 §2 §2.3", "remote-ref/seg-lift-material.md §1", "remote-ref/tools/touch/seg-phase-{gx,gy}-{light,dark}.json (data session, 2026-09-19)"]}
-    print(f"maps {w}×{h} px, S {a.scale:g}, peak |u| {peak:.2f} pt; interior du_x/dx {sx:+.4f} (x scale {1 / (1 + sx):.2f}), du_y/dy {sy:+.4f} (y scale {1 / (1 + sy):.3f})")
+    print(f"maps {w}×{h} px, S {a.scale:g}, peak |u| {peak:.2f} pt; interior du_x/dx {sx:+.4f} (x scale {1 / (1 + sx):.2f}), du_y/dy {sy:+.4f} (y scale {1 / (1 + sy):.3f}); jumps ≥ 1.5 pt (top/bottom 20 px): {jump_counts}")
+    if lmaps: print(f"label maps (derived): gain × band {a.label_from_bg}, peak |u| {lpeak:.2f} pt")
     if a.dark:
         dk = build_field(*a.dark.split(",")); diffs = []
         for j in range(0, int(H)):
@@ -206,7 +269,9 @@ def main():
        in an unfiltered layer above. Per-channel maps carry the dispersion (R−B up to 3.6 pt at the ends), merged with feBlend lighten.
        Animate: the scale attribute 0 → {a.scale:g} with the lift curve of seg-keys.css (seg-lens-refraction.md §4.1: all lens quantities share it). -->
 """
-    svg = head + filter_rgb("seg-lens-warp", maps, a.scale, f"composite field: {F['gx']['file']} + {F['gy']['file']}") + "\n</svg>\n"
+    svg = head + filter_rgb("seg-lens-warp", maps, a.scale, f"composite field: {F['gx']['file']} + {F['gy']['file']}")
+    if lmaps: svg += "\n" + filter_rgb("seg-lens-warp-label", lmaps, a.scale, f"LABEL LAYER, DERIVED (not measured): the backdrop field × {a.label_from_bg.split(',')[0]} amplitude, edge band × {a.label_from_bg.split(',')[1]} (ContentLensing −8.8 / 7.04 vs ClearGlass −17.5 / 11.2, seg-lens-drag-mid.md §0); apply to the label copy only")
+    svg += "\n</svg>\n"
     open(os.path.join(a.out, "lens-filter.svg"), "w").write(svg)
     tpl = os.path.join(HERE, "lens-test.template.html")
     if os.path.exists(tpl): open(os.path.join(a.out, "lens-test.html"), "w", encoding="utf-8").write(open(tpl, encoding="utf-8").read().replace("{{FILTER}}", svg.strip()))

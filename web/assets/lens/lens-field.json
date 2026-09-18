@@ -48,7 +48,24 @@
    "note": "row 0 holds a constant ±0.5 pt level step across the centre (seg-lens-refraction.md §0: M 1.00); the x scale is 1.00 within the noise"
   }
  },
- "label_copy": "not displaced (seg-lens-refraction.md §2.3) — keep it in an unfiltered layer above the filtered copy",
+ "label_copy": "measured: not displaced at the centre (seg-lens-refraction.md §2.3); the derived #seg-lens-warp-label bends it only near the ends (README §1b)",
+ "label_layer": {
+  "derived_not_measured": true,
+  "from": "backdrop field",
+  "gain": 0.503,
+  "band": 0.629,
+  "source": "seg-lens-drag-mid.md §0 标签场逐点剖面: ContentLensing shares the ClearGlass SDF shape, amount −8.8 vs −17.5, SDF height 7.04 vs 11.2 (原值); the field itself is not measured",
+  "peak_pt": 2.07
+ },
+ "edge": "clamp-to-edge outside the capsule (the field continues from the nearest boundary point; the lens clips those pixels)",
+ "jumps_ge_1.5pt_top_bottom_20px": {
+  "seg-map-r.png": 0,
+  "seg-map-g.png": 0,
+  "seg-map-b.png": 0,
+  "seg-map-label-r.png": 0,
+  "seg-map-label-g.png": 0,
+  "seg-map-label-b.png": 0
+ },
  "sources": [
   "remote-ref/seg-lens-refraction.md §0 §2 §2.3",
   "remote-ref/seg-lift-material.md §1",

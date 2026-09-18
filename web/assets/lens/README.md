@@ -9,7 +9,8 @@ wires it in (`.segctl .warp{filter:url(#seg-lens-warp)}`).
 | File | What |
 |---|---|
 | `gen_lens_maps.py` | resamples a measured field (phase files) into the maps + filter + test page + `lens-field.json` |
-| `seg-map-{r,g,b}.png` | the field, 440×88 (2 px/pt), byte = 128 + u·255/32; one set for light and dark |
+| `seg-map-{r,g,b}.png` | the field, 440×88 (2 px/pt), byte = 128 + u·255/32; one set for light and dark; clamp-to-edge outside the capsule |
+| `seg-map-label-{r,g,b}.png` | DERIVED label-layer field (backdrop × 0.503, band × 0.629), `#seg-lens-warp-label` — see §1b for how far it is from the native |
 | `lens-filter.svg` | `#seg-lens-warp`, maps inlined as data URIs (copy the `<svg>` into `index.html` before the scripts) |
 | `lens-field.json` | what the maps hold (sources, interior scales, peak, dark-vs-light) |
 | `verify_lens_maps.py` | decodes the maps and compares them with the resampled field and with every original phase sample |
@@ -33,6 +34,35 @@ with a thin colour fringe (0.2–0.3 pt). The label copy inside the lens is **no
 centre 0) — the ContentLensingView's own displacement only reaches the portal's edges — so the label must sit in an unfiltered
 layer above the filtered copy. Layer amounts for reference: ClearGlass −17.5 / SDF height 11.2, ContentLensing −8.8 / 7.04
 (`seg-lift-material.md` §1); they are inside the measured composite and are not used as numbers here.
+
+## 1b Label layer — DERIVED, not measured (2026-09-19, one round per the acceptance session)
+
+`--label-from-bg 0.503,0.629` writes `seg-map-label-{r,g,b}.png` and `#seg-lens-warp-label`: the backdrop field with its amplitude ×
+0.503 and its edge band compressed towards the boundary × 0.629 — the native ContentLensingView shares the ClearGlass SDF shape and
+differs only in amount (−8.8 vs −17.5) and SDF height (7.04 vs 11.2), both 原值 (`seg-lens-drag-mid.md` §0 标签场逐点剖面); the label
+field itself could not be measured (no grating under a label). Apply it to the label copy only. `lens-field.json` → `label_layer`.
+
+Check against the native mid-drag state (lens centre x 220 over the divider, `seg-lens-drag-mid.md` §0c), headless Chrome 440×956 @3x,
+`lens-test.html?native=1&lensx=220&label=warp` (control at x 20…420, segment centres 120 / 320 like the probe), ink = pixels darker
+than 110 (light) / lighter than 150 (dark) in the label box, rest = the same page without the filters:
+
+| item | native (§0c) | web light | web dark |
+|---|---|---|---|
+| 左「早」ink under the left end | −37 % (compressed / torn at x 110–119) | +11 % (bolder: the lighten merge thickens anti-aliased edges), no compression | −5 % |
+| 右「班」glyph height | 11.33 → 15.0 pt (+37 %) | 11.67 → 12.0 | 12.0 → 12.0 |
+| colour fringe, right / left end (track row) | 7.7 / 1.7 pt (dark 8.0 / 1.3) | 0 / 0 | 0 / 0 |
+
+The derivation is far too weak: the backdrop band is ±3.4 pt over the last 24 pt, halved that is ±1.7 pt on a 12-pt glyph, and the
+uniform grey track shows no dispersion at all. The native label bending is a different regime — the label portal (196×28) sits 12 pt
+inside the lens ends / 8 pt inside its top and bottom, so its own SDF edge (height 7.04) lies exactly where the labels are when the
+lens straddles the divider, and bends them by ±37 %. Reproducing it needs the label portal's own field (a grating rendered as segment
+content), not a scaled copy of the backdrop's. Shots: `~/Money/styl-work/remote-mock/v4/lens/dragmid/web-dragmid-{light,dark}-{full,zoom}.png`.
+
+Maps, edge: the field is continued outside the capsule from the nearest boundary point (clamp-to-edge) instead of dropping to 0 —
+the lens clips those pixels, and the drop made every boundary pixel a ≥ 1.5 pt step (195 / 200 / 198 steps in the top / bottom 20 px
+rows of r / g / b before; the acceptance count read 133 / 108 / 97). After: 0 steps in all six maps (`lens-field.json` →
+`jumps_ge_1.5pt_top_bottom_20px`); the native's long edges show 0.3 pt of dispersion and no stray points (§0d). verify_lens_maps.py
+unchanged: gx mean 0.04 pt, gy 0.07 pt, 100 % ≤ 0.3 (the check samples inside the capsule only).
 
 ## 2 Resampling (no analytic model)
 
@@ -107,7 +137,7 @@ native captures. Safari standalone shots + frame numbers: data session.
 
 ```
 R=~/Money/styl-work/remote-ref/tools/touch
-cd web/assets/lens && python3 gen_lens_maps.py --field $R/seg-phase-gx-light.json,$R/seg-phase-gy-light.json --dark $R/seg-phase-gx-dark.json,$R/seg-phase-gy-dark.json
+cd web/assets/lens && python3 gen_lens_maps.py --field $R/seg-phase-gx-light.json,$R/seg-phase-gy-light.json --dark $R/seg-phase-gx-dark.json,$R/seg-phase-gy-dark.json --label-from-bg 0.503,0.629
 python3 verify_lens_maps.py --field $R/seg-phase-gx-light.json,$R/seg-phase-gy-light.json
 python3 gen_seg_keys.py
 ```
