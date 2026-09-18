@@ -64,19 +64,21 @@ def main():
     lift_delay, lift_dur = t0 * 1000, (done["t"] - t0) * 1000
     spread = max(abs(pw - ph) for (_, pw), (_, ph) in zip(wk, hk)); dspread = max(abs(interp(lk, t) - v) for t, v in dk)
     report.append(f"lift: starts at down + {lift_delay:.0f} ms (last rest frame), 220×44 at + {done['t'] * 1000:.0f} ms → duration {lift_dur:.0f} ms; w vs h progress differ ≤ {spread:.3f}, displacement/17.5 vs size progress ≤ {dspread:.3f} → one curve")
-    # ---------- in-place release ----------
+    # ---------- in-place release (each quantity on its own clock, all from the up; an animation starts at its LAST unchanged frame,
+    #            key 0 = the value still at rest, like the lift) ----------
     rel = [f for f in fr if f["t"] >= t_up - 0.02]
-    r0 = next(i for i, f in enumerate(rel) if f["lens"][2] < LIFT_W - 0.05) - 1; rt0 = rel[r0]["t"]
-    rk, rdk, rpk, rok = [], [], [], []
-    for f in rel[r0:]:
-        t = (f["t"] - rt0) * 1000
-        if t > 700: break
-        rk.append((t, 1 - (f["lens"][2] - REST_W) / (LIFT_W - REST_W))); rdk.append((t, (-(f["dispClear"] or 0) / 17.5)))
-        rpk.append((t, f["platterOp"] if f["platterOp"] is not None else 1)); rok.append((t, f["destOutOp"] if f["destOutOp"] is not None else 0))
-    geom_done = next(t for t, v in rk if v >= 0.999); warp_done = next(t for t, v in rdk if v <= 0.002); plat_done = next(t for t, v in rpk if v >= 0.999)
-    rk = [(t, v) for t, v in rk if t <= geom_done]; rdk = [(t, v) for t, v in rdk if t <= warp_done]; rpk = [(t, v) for t, v in rpk if t <= plat_done]
-    dest_start = next(t for t, v in rok if v < 0.999); rok = [(t, v) for t, v in rok if t >= dest_start and t <= warp_done]; rok = [(t - dest_start, v) for t, v in rok]
-    report.append(f"release (in place): geometry starts at up + {(rt0 - t_up) * 1000:.0f} ms, back to 196×28 by + {(rt0 - t_up) * 1000 + geom_done:.0f} ms; displacement → 0 by + {(rt0 - t_up) * 1000 + warp_done:.0f} ms; platter 0 → 1 by + {(rt0 - t_up) * 1000 + plat_done:.0f} ms; DestOut fades from + {(rt0 - t_up) * 1000 + dest_start:.0f} ms")
+    def series(getter, changed, done_when):
+        vals = [((f["t"] - t_up) * 1000, getter(f)) for f in rel]
+        i1 = next(i for i, (t, v) in enumerate(vals) if changed(v)); start_i = max(0, i1 - 1); t0_ = vals[start_i][0]
+        keys = [(t - t0_, v) for t, v in vals[start_i:] if t - t0_ <= 800]
+        done = next(t for t, v in keys if done_when(v)); keys = [(t, v) for t, v in keys if t <= done]
+        return t0_, done, keys
+    r_delay, geom_done, rk = series(lambda f: 1 - (f["lens"][2] - REST_W) / (LIFT_W - REST_W), lambda v: v > 0.001, lambda v: v >= 0.999)
+    w_delay, warp_done, rdk = series(lambda f: -(f["dispClear"] or 0) / 17.5, lambda v: v < 0.999, lambda v: v <= 0.002)
+    p_delay, plat_done, rpk = series(lambda f: f["platterOp"] if f["platterOp"] is not None else 1, lambda v: v > 0.001, lambda v: v >= 0.999)
+    d_delay, dest_done, rok = series(lambda f: f["destOutOp"] if f["destOutOp"] is not None else 0, lambda v: v < 0.999, lambda v: v <= 0.006)
+    report.append(f"release (in place, times from the up, each animation starting at its last unchanged frame): geometry starts + {r_delay:.0f} ms, back to 196×28 by + {r_delay + geom_done:.0f} ms; "
+                  f"displacement starts + {w_delay:.0f}, → 0 by + {w_delay + warp_done:.0f} ms; platter starts + {p_delay:.0f}, 0 → 1 by + {p_delay + plat_done:.0f} ms; DestOut starts + {d_delay:.0f} (still 1 there), ≤ .006 by + {d_delay + dest_done:.0f} ms")
     # ---------- drag follow lag (B) ----------
     abc = json.load(open(os.path.join(R, "seg-native-abc-frames.json"))); tl = json.load(open(os.path.join(R, "touch-local.uiprobe-abc.json")))
     touches = [(e["phase"], e["t"] / 1000, [float(v) for v in e["loc"].split(",")]) for e in tl["entries"] if e["kind"] == "touch"]
@@ -127,8 +129,13 @@ def main():
         t = f["t_since_up"] * 1000; r = f["lens"][0]["rect"]
         if t > 1400: break
         ck_x.append((t, (r[0] - x_rel) / (x_end - x_rel) if abs(x_end - x_rel) > 0.5 else 1.0)); ck_w.append((t, r[2] / REST_W)); ck_h.append((t, r[3] / REST_H))
-    settle_c = next((t for t, v in reversed(ck_x) if abs(v - 1) > 0.005), ck_x[-1][0])
-    report.append(f"drop after drag (C): x {x_rel:g} → {x_end:g} (rest x of the target segment), last frame off the final rect at up + {settle_c:.0f} ms, w/h from {rel_c[0]['lens'][0]['rect'][2]}×{rel_c[0]['lens'][0]['rect'][3]} back to 196×28")
+    def settled_at(kx, kw, kh):
+        """the last frame whose rect differs from the final one by more than 0.005 (x progress) / 0.002 (w, h ratio) → + one frame"""
+        off = [t for (t, x), (_, w), (_, h) in zip(kx, kw, kh) if abs(x - 1) > 0.005 or abs(w - kw[-1][1]) > 0.002 or abs(h - kh[-1][1]) > 0.002]
+        last = off[-1] if off else kx[0][0]; nxt = next((t for t, _ in kx if t > last), kx[-1][0]); return nxt
+    settle_c = settled_at(ck_x, ck_w, ck_h)
+    ck_x = [(t, v) for t, v in ck_x if t <= settle_c]; ck_w = [(t, v) for t, v in ck_w if t <= settle_c]; ck_h = [(t, v) for t, v in ck_h if t <= settle_c]
+    report.append(f"drop after drag (C): x {x_rel:g} → {x_end:g} (rest x of the target segment), settled at up + {settle_c:.0f} ms (first frame on the final rect after the last one off it; the recording runs on to + 1313), w/h from {rel_c[0]['lens'][0]['rect'][2]}×{rel_c[0]['lens'][0]['rect'][3]} back to 196×28")
     # ---------- commit after a tap (D) ----------
     tap = json.load(open(os.path.join(R, "seg-native-tap-frames.json"))); rel_d = [f for f in tap["frames"] if f["phase"] == "released" and f["lens"]]
     x0d = rel_d[0]["lens"][0]["rect"][0]; x1d = rel_d[-1]["lens"][0]["rect"][0]; dk_x, dk_w, dk_h = [], [], []
@@ -136,6 +143,8 @@ def main():
         t = f["t_since_up"] * 1000; r = f["lens"][0]["rect"]
         if t > 1400: break
         dk_x.append((t, (r[0] - x0d) / (x1d - x0d))); dk_w.append((t, r[2] / REST_W)); dk_h.append((t, r[3] / REST_H))
+    settle_d = settled_at(dk_x, dk_w, dk_h)
+    dk_x = [(t, v) for t, v in dk_x if t <= settle_d]; dk_w = [(t, v) for t, v in dk_w if t <= settle_d]; dk_h = [(t, v) for t, v in dk_h if t <= settle_d]
     move_start = next(t for t, v in dk_x if v > 0.005); peak = max(dk_x, key=lambda k: k[1]); wpeak = max(dk_w, key=lambda k: k[1]); hpeak = max(dk_h, key=lambda k: k[1])
     report.append(f"commit after tap (D): x {x0d:g} → {x1d:g}, moves from up + {move_start:.0f} ms, x overshoot {peak[1]:.3f} at + {peak[0]:.0f} ms, w peak ×{wpeak[1]:.3f} at + {wpeak[0]:.0f} ms, h peak ×{hpeak[1]:.3f} at + {hpeak[0]:.0f} ms, settled by + {dk_x[-1][0]:.0f} ms")
     # compare with tokens.css --ios-touch-segment-lens-*-keys (they start at the first move, not at the up)
@@ -167,13 +176,14 @@ def main():
          f"  --ios-touch-segment-warp-keys: {keys_str(dk)};   /* displacement amount / 17.5 — same curve as the size */",
          f"  --ios-touch-segment-platter-keys: {keys_str(pk)};   /* the resting white platter's opacity while lifting */",
          f"  --ios-touch-segment-destout-keys: {keys_str(ok)};   /* the DestOut (knock-out of the content under the lens) opacity while lifting */",
-         "  /* release in place (the finger lifts without having changed the value): geometry, displacement, platter and DestOut each on their own clock */",
-         f"  --ios-touch-segment-release-delay: {(rt0 - t_up) * 1000:.0f}ms;", f"  --ios-touch-segment-release-duration: {geom_done:.0f}ms;",
+         "  /* release in place (the finger lifts without having changed the value): geometry, displacement, platter and DestOut each on their own",
+         "     clock; every delay counts from the up to that animation's last unchanged frame (its key 0), like the lift */",
+         f"  --ios-touch-segment-release-delay: {r_delay:.0f}ms;", f"  --ios-touch-segment-release-duration: {geom_done:.0f}ms;",
          f"  --ios-touch-segment-release-keys: {keys_str(rk)};   /* progress 1 → 0 of the lift (w 220 → 196, h 44 → 28, r 22 → 14) written as 0 → 1 */",
          f"  --ios-touch-segment-release-easing: {linear_str(rk)};",
-         f"  --ios-touch-segment-release-warp-duration: {warp_done:.0f}ms;", f"  --ios-touch-segment-release-warp-keys: {keys_str(rdk)};   /* displacement amount / 17.5 → 0 (long tail) */",
-         f"  --ios-touch-segment-release-platter-duration: {plat_done:.0f}ms;", f"  --ios-touch-segment-release-platter-keys: {keys_str(rpk)};",
-         f"  --ios-touch-segment-release-destout-delay: {dest_start:.0f}ms;", f"  --ios-touch-segment-release-destout-keys: {keys_str(rok)};",
+         f"  --ios-touch-segment-release-warp-delay: {w_delay:.0f}ms;", f"  --ios-touch-segment-release-warp-duration: {warp_done:.0f}ms;", f"  --ios-touch-segment-release-warp-keys: {keys_str(rdk)};   /* displacement amount / 17.5 → 0 (long tail) */",
+         f"  --ios-touch-segment-release-platter-delay: {p_delay:.0f}ms;", f"  --ios-touch-segment-release-platter-duration: {plat_done:.0f}ms;", f"  --ios-touch-segment-release-platter-keys: {keys_str(rpk)};",
+         f"  --ios-touch-segment-release-destout-delay: {d_delay:.0f}ms;", f"  --ios-touch-segment-release-destout-duration: {dest_done:.0f}ms;", f"  --ios-touch-segment-release-destout-keys: {keys_str(rok)};   /* 1 until the delay, then the fade */",
          f"  /* drag: the lens centre follows the finger as a damped spring (fit over the B frames, rms {spring[2]:.1f} pt; a first-order lag of {best[0] * 1000:.0f} ms would leave {best[1]:.1f} pt) */",
          f"  --ios-touch-segment-follow-omega: {spring[0]};   /* rad/s */", f"  --ios-touch-segment-follow-zeta: {spring[1]:.2f};", f"  --ios-touch-segment-follow-response: {2 * math.pi / spring[0]:.3f}s;",
          f"  --ios-touch-segment-follow-tau: {best[0] * 1000:.0f}ms;   /* first-order stand-in if the page keeps a transition */",

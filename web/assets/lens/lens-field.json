@@ -41,10 +41,11 @@
   ],
   "peak_pt": 4.08,
   "interior": {
-   "du_x/dx at y 0 (|x| ≤ 40)": 0.0131,
-   "x scale": 0.987,
+   "du_x/dx at y 0 (|x| 40–70, local slope)": 0.0004,
+   "x scale": 1.0,
    "du_y/dy at x 50 (|y| ≤ 10)": 0.218,
-   "y scale": 0.821
+   "y scale": 0.821,
+   "note": "row 0 holds a constant ±0.5 pt level step across the centre (seg-lens-refraction.md §0: M 1.00); the x scale is 1.00 within the noise"
   }
  },
  "label_copy": "not displaced (seg-lens-refraction.md §2.3) — keep it in an unfiltered layer above the filtered copy",

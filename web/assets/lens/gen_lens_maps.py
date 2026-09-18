@@ -176,14 +176,18 @@ def main():
     maps = {}; peak = 0.0
     for c in "RGB":
         p = os.path.join(a.out, f"seg-map-{c.lower()}.png"); w, h, pk = render(p, F, c, W, H, a.px, a.scale, a.stretch, 1.0); maps[c] = p; peak = max(peak, pk)
-    sx = (interp_offsets(F["rows"], "G", 0, 40) - interp_offsets(F["rows"], "G", 0, -40)) / 80; sy = (interp_offsets(F["cols"], "G", 50, 10) - interp_offsets(F["cols"], "G", 50, -10)) / 20
+    # interior scales from the LOCAL slope away from the centre (row 0 carries a constant ±0.5 pt step at the centre — a level offset between
+    # its two halves, not a magnification — so a centre-spanning difference quotient would read 0.987 where the content is at 1.00)
+    sx = ((interp_offsets(F["rows"], "G", 0, 70) - interp_offsets(F["rows"], "G", 0, 40)) / 30 + (interp_offsets(F["rows"], "G", 0, -40) - interp_offsets(F["rows"], "G", 0, -70)) / 30) / 2
+    sy = (interp_offsets(F["cols"], "G", 50, 10) - interp_offsets(F["cols"], "G", 50, -10)) / 20
     info = {"size_pt": [W, H], "scale": a.scale, "px_per_pt": a.px, "map_px": [w, h], "stretch": a.stretch,
             "encoding": "byte = 128 + round(u·255/scale); x→R, y→G; B 128; u = content − screen (pt, +x right, +y down); browser decodes scale·(byte/255 − .5) = u + scale/510",
             "field": {"gx": F["gx"]["file"], "gy": F["gy"]["file"], "measured_lens": F["gx"]["lens"], "half": F["half"], "rows_y": sorted(F["rows"]), "cols_x": sorted(F["cols"]), "peak_pt": round(peak, 2),
-                      "interior": {"du_x/dx at y 0 (|x| ≤ 40)": round(sx, 4), "x scale": round(1 / (1 + sx), 3), "du_y/dy at x 50 (|y| ≤ 10)": round(sy, 4), "y scale": round(1 / (1 + sy), 3)}},
+                      "interior": {"du_x/dx at y 0 (|x| 40–70, local slope)": round(sx, 4), "x scale": round(1 / (1 + sx), 2), "du_y/dy at x 50 (|y| ≤ 10)": round(sy, 4), "y scale": round(1 / (1 + sy), 3),
+                                   "note": "row 0 holds a constant ±0.5 pt level step across the centre (seg-lens-refraction.md §0: M 1.00); the x scale is 1.00 within the noise"}},
             "label_copy": "not displaced (seg-lens-refraction.md §2.3) — keep it in an unfiltered layer above the filtered copy",
             "sources": ["remote-ref/seg-lens-refraction.md §0 §2 §2.3", "remote-ref/seg-lift-material.md §1", "remote-ref/tools/touch/seg-phase-{gx,gy}-{light,dark}.json (data session, 2026-09-19)"]}
-    print(f"maps {w}×{h} px, S {a.scale:g}, peak |u| {peak:.2f} pt; interior du_x/dx {sx:+.4f} (x scale {1 / (1 + sx):.3f}), du_y/dy {sy:+.4f} (y scale {1 / (1 + sy):.3f})")
+    print(f"maps {w}×{h} px, S {a.scale:g}, peak |u| {peak:.2f} pt; interior du_x/dx {sx:+.4f} (x scale {1 / (1 + sx):.2f}), du_y/dy {sy:+.4f} (y scale {1 / (1 + sy):.3f})")
     if a.dark:
         dk = build_field(*a.dark.split(",")); diffs = []
         for j in range(0, int(H)):
