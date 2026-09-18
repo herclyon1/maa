@@ -1101,8 +1101,9 @@ function press(el, e, handlers) {
    web/seg-keys.css by 界面2号 (gen_seg_keys.py from the native per-frame recordings): geometry 196×28 r14 → 220×44 r22 from +109 ms over 250 ms
    (--ios-touch-segment-lift-*), the displacement amount, the platter fade (1 → 0) and the size share one curve (≤ .012 apart), the DestOut punch-out
    appears within the first 3 frames (--ios-touch-segment-destout-keys .396 / .98 / 1). Release: geometry back from up + 31 ms in 250 ms
-   (--ios-touch-segment-release-*), the displacement's long tail to up + 581 (-release-warp-keys), the platter back to 1 by + 515 (-release-platter-keys
-   ≈ 1 − warp within .01, so one variable --lp drives both), the DestOut fade from up + 215 (-release-destout-*). Web: the lens CSS transitions carry
+   (--ios-touch-segment-release-*), the displacement's long tail to up + 581 (-release-warp-delay 31 + -warp-keys), the platter back to 1 by + 515
+   (-release-platter-keys ≈ 1 − warp within .01, so one variable --lp drives both), the DestOut fade from up + 198 (-release-destout-delay + keys: 1, .841 at
+   + 215, …, 0 by + 598). Every delay counts from the up to that animation's last unchanged frame (key 0 = the rest value). Web: the lens CSS transitions carry
    the geometry; this per-frame loop reads the lens's presented height for the lift progress and runs the release tails from the key lists; it
    positions the copies (bg + track, labels) and the rim to the lens's presented rect. Tab-bar curves (LENS_P) are kept for the tab bar only. */
 const LENS_P = [[0.020, 0], [0.036, .11], [0.053, .26], [0.070, .41], [0.086, .54], [0.103, .65], [0.120, .74], [0.153, .86], [0.203, .95], [0.253, .98], [0.303, .994], [0.370, 1]];
@@ -1135,12 +1136,12 @@ function segLens(seg, lens, bs, fallFrom) {
   const S = 32;   // map encoding (界面2号): byte = 128 + round(u · 255 / S), u in pt → feDisplacementMap scale = S × amplitude
   const H0 = parseFloat(getComputedStyle(seg).getPropertyValue("--ios-segment-lens-h")) || 28, H1 = H0 + 2 * touchPx("--ios-touch-segment-lift-y", 8);   // 28 → 44 ← --ios-touch-segment-lift-y
   const liftDelay = touchMs("--ios-touch-segment-lift-delay", 109);
-  /* the curves, from seg-keys.css (time base: the key list's own start; the release lists start at up + release-delay) */
-  const relDelay = touchMs("--ios-touch-segment-release-delay", 31) / 1000, destDelay = touchMs("--ios-touch-segment-release-destout-delay", 184) / 1000;
+  /* the curves, from seg-keys.css: each release animation has its own delay from the up (to its last unchanged frame) and its key list from there */
+  const warpDelay = touchMs("--ios-touch-segment-release-warp-delay", 31) / 1000, destDelay = touchMs("--ios-touch-segment-release-destout-delay", 198) / 1000;
   const K_WARP = cssKeys("--ios-touch-segment-release-warp-keys", SEG_DROP_GLASS.map(([t, v]) => [Math.max(0, t - .031), v]));
-  const K_DEST = cssKeys("--ios-touch-segment-release-destout-keys", SEG_DROP_DESTOUT.filter(([t]) => t >= .215).map(([t, v]) => [t - .215, v]));
+  const K_DEST = cssKeys("--ios-touch-segment-release-destout-keys", SEG_DROP_DESTOUT.filter(([t]) => t >= .198).map(([t, v]) => [t - .198, v]));
   const K_LIFT_DEST = cssKeys("--ios-touch-segment-destout-keys", SEG_LIFT_DESTOUT);
-  const relEnd = relDelay + Math.max(K_WARP[K_WARP.length - 1][0], destDelay + K_DEST[K_DEST.length - 1][0]) + .02;   // both tails exhausted (+581 ms) → clear
+  const relEnd = Math.max(warpDelay + K_WARP[K_WARP.length - 1][0], destDelay + K_DEST[K_DEST.length - 1][0]) + .02;   // both tails exhausted (+598 ms) → clear
   const st = { t0: performance.now(), rel: fallFrom != null ? performance.now() : null, raf: 0, pr: fallFrom != null ? fallFrom : 0, done: false };
   const frame = (p, pd) => {   // p = glass / displacement progress, pd = DestOut (copies) opacity
     const sr = seg.getBoundingClientRect(), lr = lens.getBoundingClientRect();
@@ -1162,9 +1163,9 @@ function segLens(seg, lens, bs, fallFrom) {
     if (!seg.isConnected || !lens.isConnected) { clear(); return; }
     let p, pd;
     if (st.rel != null) {
-      const tr = (now - st.rel) / 1000 - relDelay;   // the release lists start at up + 31 ms; before that everything holds
-      p = st.pr * (tr <= 0 ? 1 : tabAt(K_WARP, tr)); pd = tr <= destDelay ? 1 : tabAt(K_DEST, tr - destDelay);   // -release-warp-keys (amount, and platter = 1 − it) / -release-destout-keys
-      if (tr >= relEnd - relDelay) { clear(); return; }
+      const tr = (now - st.rel) / 1000;   // from the up; each list holds its key-0 value until its own delay
+      p = st.pr * (tr <= warpDelay ? 1 : tabAt(K_WARP, tr - warpDelay)); pd = tr <= destDelay ? 1 : tabAt(K_DEST, tr - destDelay);   // -release-warp-keys (amount, and platter = 1 − it) / -release-destout-keys
+      if (tr >= relEnd) { clear(); return; }
     } else {
       const tl = (now - st.t0) / 1000 - liftDelay / 1000;   // time since the lift started (+109 ms)
       p = Math.max(0, Math.min(1, (lens.getBoundingClientRect().height - H0) / (H1 - H0)));   // glass / amounts ride the geometry's own curve (§4.1: one curve for all)
