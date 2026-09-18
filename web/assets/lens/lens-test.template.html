@@ -20,6 +20,7 @@
   .scene{position:relative;width:400px;background:var(--card);border-radius:26px;padding:16px 20px;box-sizing:border-box;user-select:none;-webkit-user-select:none}
   .scene.grating{background:repeating-linear-gradient(90deg,rgb(51 51 51) 0 1px,rgb(204 204 204) 4px 5px,rgb(51 51 51) 8px)}   /* period 8 pt like the native measurement (pattern gx 8) */
   .scene.gratingy{background:repeating-linear-gradient(0deg,rgb(51 51 51) 0 1px,rgb(204 204 204) 4px 5px,rgb(51 51 51) 8px)}
+  .scene.bars{background:repeating-linear-gradient(90deg,#000 0 4px,#fff 4px 8px)}                                              /* ?pattern=bars: hard black / white bars, period 8 (the data session's `pattern bars 8`) for the per-channel edge check */
   .scene p{margin:0 0 8px}
   .segctl{position:relative;display:flex;height:32px;padding:2px;border-radius:16px;background:var(--track);box-sizing:border-box;margin:8px 0}
   .segctl .flat{position:absolute;top:2px;left:2px;width:calc(50% - 2px);height:28px;border-radius:14px;background:var(--card)}   /* the resting selected segment: flat _controlForegroundColor platter */
@@ -35,6 +36,15 @@
      the segment content with r 22, then ClearGlass displaces: 先裁再位移); the copy of what lies under the lens keeps the box */
   .lens .layer{position:absolute;left:0;top:0;width:220px;height:44px;overflow:hidden}
   .lens .layer.lab{border-radius:22px}
+  /* the colour fringe: glassForeground's 7-tap spectral sampling over what lies below it (the two displaced layers) — the chain
+     filter sits on their wrapper (?ab=flip: outer band; ?ab=ir: IR-literal interior mask; ?ab=0: off) */
+  .lens .stack{position:absolute;left:-16px;top:-16px;width:252px;height:76px;overflow:hidden}   /* the lens box + 16 pt: the chain's outward taps read the page beyond the lens (base copy) */
+  .lens .stack .base{position:absolute;left:0;top:0;width:400px;pointer-events:none;z-index:0}   /* plain copy of the page (track + labels) under the two displaced layers; its own stacking context: the copied labels carry z-index 1 and would otherwise paint above the layers */
+  .lens .stack .base .scene{border-radius:0}
+  .lens .stack .base .flat{display:none}
+  .lens .stack .layer{left:16px;top:16px}
+  .lens.ab-flip .stack{filter:url(#seg-lens-f-ab-220)}
+  .lens.ab-ir .stack{filter:url(#seg-lens-f-ab-ir-220)}
   .lens.f-seg .layer.bg{filter:url(#seg-lens-f-bg-220)}
   .lens.f-seg .layer.lab{filter:url(#seg-lens-f-lab-220)}
   .lens .clone,.lens .labels{position:absolute;left:0;top:0;width:400px;pointer-events:none}
@@ -71,6 +81,7 @@
 (function () {
   const q = new URLSearchParams(location.search);
   if (q.get("native") === "1") document.body.classList.add("native");
+  if (q.get("pattern") === "bars") document.getElementById("scene").classList.add("bars");
   const SERIES = {{SERIES}};                                     /* lens width → height of the drag-stretch sets (lens-field.json) */
   const LW = parseInt(q.get("w") || "220", 10), LH = SERIES[String(LW)] || 44;
   const scene = document.getElementById("scene"), stats = document.getElementById("stats");
@@ -83,10 +94,15 @@
   for (const l of [bgLayer, labLayer]) { l.style.width = LW + "px"; l.style.height = LH + "px"; }
   labLayer.style.borderRadius = Math.min(22, LH / 2) + "px";
   if (LW !== 220) { if (!lens.classList.contains("nobg")) bgLayer.style.filter = `url(#seg-lens-f-bg-${LW})`; if (!lens.classList.contains("nolab")) labLayer.style.filter = `url(#seg-lens-f-lab-${LW})`; }
-  lens.appendChild(bgLayer); lens.appendChild(labLayer); scene.appendChild(lens);
+  const AM = 16;                                                 /* the wrapper's extension beyond the lens (lens-field.json aberration.wrapper) */
+  const stack = document.createElement("div"); stack.className = "stack"; stack.style.width = (LW + 2 * AM) + "px"; stack.style.height = (LH + 2 * AM) + "px";
+  const base = document.createElement("div"); base.className = "base";
+  stack.appendChild(base); stack.appendChild(bgLayer); stack.appendChild(labLayer); lens.appendChild(stack); scene.appendChild(lens);
+  const AB = q.get("ab") || "flip";                              /* colour fringe chain: flip (outer band, default) | ir | 0 */
+  if (AB === "flip" || AB === "ir") { lens.classList.add("ab-" + AB); if (LW !== 220) stack.style.filter = `url(#seg-lens-f-ab${AB === "ir" ? "-ir" : ""}-${LW})`; }
   scene.classList.add("lifted");
   const copy = () => { const c = scene.cloneNode(true); c.querySelector(".lens").remove(); c.id = ""; return c; };
-  const sync = () => { clone.innerHTML = ""; clone.appendChild(copy()); labels.innerHTML = ""; labels.appendChild(copy()); };
+  const sync = () => { clone.innerHTML = ""; clone.appendChild(copy()); labels.innerHTML = ""; labels.appendChild(copy()); base.innerHTML = ""; base.appendChild(copy()); };
   sync();
   /* lens position inside the scene (pt); starts over the selected segment: segctl at (20, 16 + 20.33 + 8) → segment centre */
   const seg = scene.querySelector(".segctl"), r0 = seg.getBoundingClientRect(), s0 = scene.getBoundingClientRect();
@@ -94,7 +110,7 @@
   if (q.get("lensx")) X = parseFloat(q.get("lensx")) - s0.left - LW / 2;             // ?lensx=<page x of the lens centre>, e.g. 220 = the divider
   /* the clone is placed so that the scene point under the lens centre stays under the lens centre; with zoom z the clone's own
      coordinates are scaled about its top-left, so its offset is (centre − z·(lens position + centre)) / z in zoomed units */
-  const place = () => { lens.style.left = X + "px"; lens.style.top = Y + "px"; for (const l of [clone, labels]) { l.style.left = (M - X) + "px"; l.style.top = (M - Y) + "px"; } };
+  const place = () => { lens.style.left = X + "px"; lens.style.top = Y + "px"; for (const l of [clone, labels]) { l.style.left = (M - X) + "px"; l.style.top = (M - Y) + "px"; } base.style.left = (AM - X) + "px"; base.style.top = (AM - Y) + "px"; };
   place();
   /* drag: pointer events, no threshold; the frame interval is measured while a finger is down or the auto drag runs */
   let dragging = null, times = [];
@@ -103,7 +119,8 @@
     if (times.length < 3) return;
     const d = []; for (let i = 1; i < times.length; i++) d.push(times[i] - times[i - 1]);
     const mean = d.reduce((a, b) => a + b, 0) / d.length, max = Math.max(...d), slow = d.filter((x) => x > 20).length;
-    stats.innerHTML = `${what} ${times.length} 帧 · 帧间隔 平均 <b>${mean.toFixed(1)} ms</b>（${(1000 / mean).toFixed(0)} fps）· 最大 <b>${max.toFixed(1)} ms</b> · >20 ms 的帧 <b>${slow}</b> 个 · 滤镜 ${[...lens.classList].filter((c) => c.startsWith("f-")).join("") || "无"} · ${innerWidth}×${innerHeight} ${matchMedia("(display-mode: standalone)").matches ? "standalone" : "浏览器"}`;
+    stats.innerHTML = `${what} ${times.length} 帧 · 帧间隔 平均 <b>${mean.toFixed(1)} ms</b>（${(1000 / mean).toFixed(0)} fps）· 最大 <b>${max.toFixed(1)} ms</b> · >20 ms 的帧 <b>${slow}</b> 个 · 滤镜 ${[...lens.classList].filter((c) => c.startsWith("f-") || c.startsWith("ab-")).join(" ") || "无"} · ${innerWidth}×${innerHeight} ${matchMedia("(display-mode: standalone)").matches ? "standalone" : "浏览器"}`;
+    window.FRAME_STATS = { what, n: times.length, mean, max, slow };
     times = [];
   };
   lens.addEventListener("pointerdown", (e) => { dragging = { id: e.pointerId, x: e.clientX - X, y: e.clientY - Y }; lens.setPointerCapture(e.pointerId); times = []; requestAnimationFrame(tick); e.preventDefault(); });

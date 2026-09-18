@@ -1202,8 +1202,8 @@ function press(el, e, handlers) {
      lifted quantity is a function of q. The DestOut punch-out's opacity is the §4.1 frame values (--ios-touch-segment-destout-keys).
    - drag: on every finger move the MODEL position is set to the finger's x through a spring ζ .85 / .2 s (bounds stay 220×44); the PRESENTATION
      position is a tracking spring ζ .6533 / .4559 s retargeted every frame to the model (§4.4 rows 3–4). The stretch while dragging (244×38.4,
-     253×36) is a presentation effect whose algorithm lives in AnimationKit (老网页 reading it): until then the width/height ratios are replayed
-     from seg-native-abc-frames.json's B frames by time since the first move — WIRING PLACEHOLDER, 等原理, not the mechanism.
+     253×36) and the bounce after the up are UIKitCore's _UIFlexInteraction on the lens's presentation transform (flex-interaction.md; see FLEX_VARIANT
+     / flexSpec / flexIntegrator / flexTargets below) — the model bounds stay 220×44.
    - release: geometry back with the same ζ 1 / .25 spring (bounds, corner, position of the lifted rect), the material half — displacement,
      platter, highlight — with ζ 1 / .4 (§4.4 rows 5–6), both from up + 31 ms (§4.3 frames: first changed frame); the DestOut fade = §4.3 frame
      values (--ios-touch-segment-release-destout-*). The position: model travel ζ .85 / .4 s to the segment the lens ends on (§4.4 换值行程 row),
@@ -1227,10 +1227,43 @@ const SEG_DROP_DESTOUT = [[0, 1], [.198, 1], [.215, .841], [.231, .69], [.248, .
 const SEG_LIFT_DESTOUT = [[0, 0], [.016, .396], [.033, .98], [.05, 1]];
 /* §4.4 springs [原值]: [ζ, response s] */
 const SEG_SPRING = { lift: [1.0, .25], fallMaterial: [1.0, .4], model: [.85, .2], track: [.6533, .4559], travel: [.85, .4], settle: [.56, .444] };
-/* WIRING PLACEHOLDER (等原理 — the stretch algorithm is in AnimationKit): the presented w/220, h/44 of seg-native-abc-frames.json's B frames
-   (lenstrace rects), by time since the first move (s). Replayed as ratios of the lifted size; after the table (the recording's release) the ratios
-   relax to 1 on the ζ 1 / .25 geometry spring. */
-const SEG_STRETCH_TAB = [[0, 1, 1], [.035, 1, 1], [.068, 1, 1], [.085, 1, 1], [.103, 1.0059, .9932], [.136, 1.0264, .9682], [.17, 1.0595, .9295], [.186, 1.0782, .9091], [.203, 1.0968, .8864], [.236, 1.13, .85], [.253, 1.1427, .8341], [.27, 1.1514, .825], [.286, 1.1523, .8227], [.303, 1.1445, .8318], [.32, 1.1268, .8523], [.336, 1.1009, .8818], [.353, 1.0695, .9159], [.371, 1.0355, .9523], [.386, 1.0014, .9909], [.403, .9686, 1.025], [.42, .94, 1.0568], [.436, .9164, 1.0818], [.453, .8977, 1.1045]];
+/* B5 — the lens's stretch while dragging and its bounce after the up: UIKitCore `_UIFlexInteraction` (remote-ref/flex-interaction.md, the old
+   page session's decompilation of the iOS 27.0 simulator UIKitCore; offsets there). Structure (§1): `_UILiquidLensView.flexInteraction`; every
+   frame (UIUpdateLink 0x1c5050900) the lens's OWN presentation-layer centre goes into `_UIVelocityIntegrator addSample:` (config 0x1c504f3d8:
+   5 samples, EMA α 0.3 on position / velocity / acceleration, consecutive-sample differentiation, hysteresis 0.05 s → reset, directionless
+   acceleration = the component along the velocity), then `updateFlex` (0x1c5052ce8) sets scaleX / scaleY / drift targets that
+   `_UIDebouncingAnimatableFloat`s reach on spec.scaleSpring (tracking values while the gesture is on) and a presentation modifier puts them on the
+   transform — the model bounds stay. Spec (§2, `liquidLensWithSize:` 0x1c512710c): d = min(w, h), t = clamp((d − 37) / 33, 0, 1), every field
+   linear between smallLoupe (0x1c5127b94: pts 10, min .9, max 1.1, N 2000, ζ .56 / .444, tracking the same, retargetImpulse .032) and loupe
+   (0x1c5127a48: pts 100, min .75, max 1.15, N 2500, ζ 1.0 / .5, tracking .9 / .5): 220×44 → pts 29.1, [.8682, 1.1106], N 2106, ζ .653 / .456
+   (tracking .632 / .456); 196×28 → smallLoupe. Per frame (§3, 0x1c5052558 / 0x1c505297c): m = a / N; per axis lo = max(min, (D − pts) / D),
+   hi = min(max, (D + pts) / D); sX = clamp(lerp(1, hiX, m), loX, hiX), sY = clamp(lerp(1, loY, m), loY, hiY) (accelerating: X out, Y in);
+   drift = sign(v)·(1 − sX)·W/2; the translation term (threshold 6000) is negligible here; final hard clamp [0.9, 1.1] (0x1c54c53d4). Not read
+   (§4): the retargetImpulse .032 impulse form — the recomputation peaks at 244 where the native reaches 253.5 (标「retargetImpulse 未读」). */
+const FLEX_VARIANT = { smallLoupe: { pts: 10, min: .9, max: 1.1, N: 2000, zeta: .56, resp: .444, tzeta: .56, tresp: .444 }, loupe: { pts: 100, min: .75, max: 1.15, N: 2500, zeta: 1.0, resp: .5, tzeta: .9, tresp: .5 } };
+function flexSpec(W, H) {
+  const t = Math.max(0, Math.min(1, (Math.min(W, H) - 37) / 33)), a = FLEX_VARIANT.smallLoupe, b = FLEX_VARIANT.loupe, L = (x, y) => x + (y - x) * t;
+  return { pts: L(a.pts, b.pts), min: L(a.min, b.min), max: L(a.max, b.max), N: L(a.N, b.N), zeta: L(a.zeta, b.zeta), resp: L(a.resp, b.resp), tzeta: L(a.tzeta, b.tzeta), tresp: L(a.tresp, b.tresp) };
+}
+/* _UIVelocityIntegrator with flex's configuration (1-D: the lens moves along x) */
+function flexIntegrator() {
+  const vi = { pf: null, vf: 0, af: 0, t: null };
+  return { add(p, t) {
+      if (vi.pf === null || t - vi.t > .05) { vi.pf = p; vi.vf = 0; vi.af = 0; vi.t = t; return; }   // first sample / hysteresis 0.05 s → reset
+      const dt = t - vi.t; if (dt <= 0) return;
+      const pf = .3 * p + .7 * vi.pf, v = (pf - vi.pf) / dt, vf = .3 * v + .7 * vi.vf, acc = (vf - vi.vf) / dt;   // EMA α .3 on position, velocity, acceleration; consecutive differentiation
+      vi.af = .3 * acc + .7 * vi.af; vi.pf = pf; vi.vf = vf; vi.t = t;
+    },
+    get velocity() { return vi.vf; },
+    get acceleration() { return Math.sign(vi.vf) * vi.af; },   // prefersDirectionlessAcceleration: the component along the velocity
+  };
+}
+/* one updateFlex: targets from the acceleration (§3) */
+function flexTargets(spec, W, H, accel, vel) {
+  const m = accel / spec.N, loX = Math.max(spec.min, (W - spec.pts) / W), hiX = Math.min(spec.max, (W + spec.pts) / W), loY = Math.max(spec.min, (H - spec.pts) / H), hiY = Math.min(spec.max, (H + spec.pts) / H);
+  const sX = Math.max(loX, Math.min(hiX, 1 + (hiX - 1) * m)), sY = Math.max(loY, Math.min(hiY, 1 + (loY - 1) * m));
+  return { sX, sY, drift: Math.sign(vel) * (1 - sX) * W / 2 };
+}
 /* damped spring x'' = −ω₀²(x − target) − 2ζω₀x' (ω₀ = 2π / response), semi-implicit Euler in ≤ 4 ms substeps */
 function springStep(s, target, [zeta, response], dt) { const w = 2 * Math.PI / response; let t = dt; while (t > 0) { const h = Math.min(t, .004); s.v += (-w * w * (s.x - target) - 2 * zeta * w * s.v) * h; s.x += s.v * h; t -= h; } }
 function segLens(seg, lens, bs) {
@@ -1246,10 +1279,11 @@ function segLens(seg, lens, bs) {
   const segW = seg.clientWidth, segH = seg.clientHeight; for (const c of [copy, copyl]) { c.style.width = segW + "px"; c.style.height = segH + "px"; }
 
   const cbs = [...copyl.querySelectorAll(".cb")];
-  const S = 40;   // map encoding (界面2号 README §0.3): byte = 128 + round(u · 255 / S), u in pt → feDisplacementMap scale = S × progress
-  /* the formula-map set for the lens's current width (README §0.3: one set per width 196 … 256 step 2, nearest even, no interpolation). While
-     lifting or falling without a drag the 220 set carries scale 0 → 40 (the lift is a different path from the stretch). */
-  const setFor = (Wd) => st.dragged ? Math.max(196, Math.min(256, 2 * Math.round(Wd / 2))) : 220;
+  const S = 48;   // map encoding (界面2号 README §0.3, ui2 d3cc467): byte = 128 + round(u · 255 / S), u in pt → feDisplacementMap scale = S × progress
+  /* the formula-map set = the lens's MODEL width (README §0.3, ui2 d3cc467: the drag stretch is the 220×44 model scaled by the lens's presentation
+     transform — the flex scale, B5 — so the model stays 220 while dragging and the 220 set is the one; the lift rides it with scale 0 → 48). The
+     196 … 256 sets remain for a model of another width. */
+  const setFor = (Wm) => Math.max(196, Math.min(256, 2 * Math.round(Wm / 2)));
   let curSet = 0;
   /* geometry: resting lens = the padded interior / n (pad ← --ios-segment-lens-pad, h ← --ios-segment-lens-h), lifted = +12 / +8 per side ← --ios-touch-segment-lift-x/-y */
   const cs0 = getComputedStyle(seg), n = bs.length, pad = parseFloat(cs0.getPropertyValue("--ios-segment-lens-pad")) || 2, H0 = parseFloat(cs0.getPropertyValue("--ios-segment-lens-h")) || 28;
@@ -1259,26 +1293,24 @@ function segLens(seg, lens, bs) {
   const destDelay = touchMs("--ios-touch-segment-release-destout-delay", 198) / 1000;
   const K_LIFT_DEST = cssKeys("--ios-touch-segment-destout-keys", SEG_LIFT_DESTOUT), K_DEST = cssKeys("--ios-touch-segment-release-destout-keys", SEG_DROP_DESTOUT.filter(([t]) => t >= .198).map(([t, v]) => [t - .198, v]));
   const destEnd = destDelay + K_DEST[K_DEST.length - 1][0];
-  /* drop after a drag onto another segment (B2-b): w/220-ish and h ratios of the rest size from seg-keys.css -drop-w/-h-keys (seg-native-abc-frames.json
-     C frames from the up, settle + 771 ms; frame values, mechanism 等原理). The keys start at the recording's release state (1.008 × 1.736 = 197.5 × 48.6);
-     a release from another state lands the difference on the ζ 1 / .25 fall (wiring for the placeholder, zero for the reference gesture). */
-  const K_DW = cssKeys("--ios-touch-segment-drop-w-keys", [[0, 1.008], [.118, .942], [.374, 1.01], [.771, 1]]), K_DH = cssKeys("--ios-touch-segment-drop-h-keys", [[0, 1.736], [.018, 1.775], [.324, 1.004], [.374, .989], [.576, 1.011], [.771, 1]]);
-  const dropEnd = K_DW[K_DW.length - 1][0];
-  const st = { t0: performance.now(), prev: performance.now(), rel: null, raf: 0, done: false, dragged: false, dragT0: null, cx: null, rest: idx0, pr: 0, drop: null,
-               sL: { x: 0, v: 0 }, sM: { x: 1, v: 0 }, model: { x: restCentre(idx0), v: 0 }, pres: { x: restCentre(idx0), v: 0 }, rw: { x: 1, v: 0 }, rh: { x: 1, v: 0 }, geo: null };
+  const st = { t0: performance.now(), prev: performance.now(), rel: null, raf: 0, done: false, dragged: false, cx: null, rest: idx0, pr: 0,
+               sL: { x: 0, v: 0 }, sM: { x: 1, v: 0 }, model: { x: restCentre(idx0), v: 0 }, pres: { x: restCentre(idx0), v: 0 }, geo: null,
+               flex: { vi: flexIntegrator(), sx: { x: 1, v: 0 }, sy: { x: 1, v: 0 }, dx: { x: 0, v: 0 }, out: { sx: 1, sy: 1, dx: 0 } } };   // B5: the flex interaction's integrator and its three animatable floats
   const setGeo = (left, top, w, h) => {
     lens.style.transition = "none"; lens.style.left = left + "px"; lens.style.top = top + "px"; lens.style.width = w + "px"; lens.style.height = h + "px"; lens.style.margin = "0"; lens.style.borderRadius = (h / 2) + "px";
     st.geo = { left, top, w, h };
+    const f = st.flex.out, tf = `translateX(${f.dx.toFixed(3)}px) scale(${f.sx.toFixed(5)}, ${f.sy.toFixed(5)})`;   // the flex presentation transform (§1: on the transform, the model bounds unchanged); every layer of the lens carries it
+    for (const el of [lens, warp, warpl, plat, rim]) { el.style.transform = tf; el.style.transformOrigin = "50% 50%"; }
   };
   const frame = (p, pd) => {   // p = glass / displacement progress, pd = DestOut (copies) opacity
-    const sr = seg.getBoundingClientRect(), lr = lens.getBoundingClientRect();
-    const L = lr.left - sr.left, T = lr.top - sr.top, Wd = lr.width, Hd = lr.height, R = Hd / 2;   // capsule: corner = h/2 (r22 at 44 ← §0; the lift's corner 14 → 22 on the same spring ← §4.4 row 1)
+    const g = st.geo || { left: pad + idx0 * PITCH, top: pad, w: W0, h: H0 };   // the model box (the flex transform sits on top of it, so not getBoundingClientRect)
+    const L = g.left, T = g.top, Wd = g.w, Hd = g.h, R = Hd / 2;   // capsule: corner = h/2 (r22 at 44 ← §0; the lift's corner 14 → 22 on the same spring ← §4.4 row 1)
     for (const el of [warp, warpl, plat, rim]) { el.style.left = L + "px"; el.style.top = T + "px"; el.style.width = Wd + "px"; el.style.height = Hd + "px"; el.style.setProperty("--rr", R + "px"); }
     copy.style.left = -L + "px"; copy.style.top = -T + "px";   // the backdrop copy stays aligned with the real control
     const PW = W0, PH = H0, PL = (Wd - PW) / 2, PT = (Hd - PH) / 2;   // the label portal: the resting lens size 196×28, centred in the lens (seg-lift-material §1: portal #32)
     portal.style.left = PL + "px"; portal.style.top = PT + "px"; portal.style.width = PW + "px"; portal.style.height = PH + "px";
     copyl.style.left = (-L - PL) + "px"; copyl.style.top = (-T - PT) + "px";   // the label copy aligned with the real labels through the portal
-    const set = setFor(Wd);
+    const set = setFor(Math.max(W0 + 2 * LX, Wd));   // the model width (220 lifted; Wd is the model box — the flex transform is separate)
     if (set !== curSet) { curSet = set; disp.style.filter = `url(#seg-lens-f-bg-${set})`; displ.style.filter = `url(#seg-lens-f-lab-${set})`; }
     seg.style.setProperty("--lp", p.toFixed(4)); seg.style.setProperty("--lpd", pd.toFixed(4));
     for (const id of [`#seg-lens-f-bg-${set}`, `#seg-lens-f-lab-${set}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", (S * p).toFixed(3)); }   // both stacks' amounts on the lift spring (§4.4 row 2: ClearGlass 0 → −17.5, ContentLensing 0 → −8.8, BackdropView 0 → 9 in the same call)
@@ -1287,8 +1319,9 @@ function segLens(seg, lens, bs) {
   };
   const clear = () => {
     seg.classList.remove("lift"); seg.style.removeProperty("--lp"); seg.style.removeProperty("--lpd"); copy.innerHTML = ""; copyl.innerHTML = "";
-    if (curSet) for (const id of [`#seg-lens-f-bg-${curSet}`, `#seg-lens-f-lab-${curSet}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", "40"); }   // the file's rest value; the layers are hidden now
-    for (const k of ["transition", "left", "top", "width", "height", "margin", "border-radius"]) lens.style.removeProperty(k);   // the CSS rest values are what the loop ended on
+    if (curSet) for (const id of [`#seg-lens-f-bg-${curSet}`, `#seg-lens-f-lab-${curSet}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", String(S)); }   // the file's rest value; the layers are hidden now
+    for (const k of ["transition", "left", "top", "width", "height", "margin", "border-radius", "transform", "transform-origin"]) lens.style.removeProperty(k);   // the CSS rest values are what the loop ended on
+    for (const el of [warp, warpl, plat, rim]) { el.style.removeProperty("transform"); el.style.removeProperty("transform-origin"); }
     st.done = true; if (seg.__lensLoop === loop) seg.__lensLoop = null;
   };
   const clamp01 = (x) => Math.max(0, Math.min(1, x));
@@ -1308,20 +1341,17 @@ function segLens(seg, lens, bs) {
       if (tr >= relDelay) { springStep(st.sL, 0, SEG_SPRING.lift, dt); springStep(st.sM, 0, SEG_SPRING.fallMaterial, dt); }
       springStep(st.model, restCentre(st.rest), SEG_SPRING.travel, dt); springStep(st.pres, st.model.x, SEG_SPRING.settle, dt);
       p = st.pr * clamp01(st.sM.x); pd = tr <= destDelay ? 1 : tabAt(K_DEST, tr - destDelay);
-      const settled = Math.abs(st.pres.x - restCentre(st.rest)) < .05 && Math.abs(st.pres.v) < 1 && st.sL.x < .001 && st.sM.x < .001;
-      if ((tr >= destEnd && settled && (!st.drop || tr >= dropEnd)) || tr > 3) { clear(); return; }
-      if (st.drop) {   // B2-b: the size bounce of the drop after a drag, from the -drop keys; the position keeps its §4.4 springs
-        const f = 1 - clamp01(st.sL.x), g = st.drop, w = W0 * tabAt(K_DW, tr) + (g.w - W0 * K_DW[0][1]) * (1 - f), h = H0 * tabAt(K_DH, tr) + (g.h - H0 * K_DH[0][1]) * (1 - f);
-        setGeo(st.pres.x - w / 2, CY - h / 2, w, h); frame(p, pd); st.raf = requestAnimationFrame(tick); return;
-      }
+      const fx = st.flex.out, settled = Math.abs(st.pres.x - restCentre(st.rest)) < .05 && Math.abs(st.pres.v) < 1 && st.sL.x < .001 && st.sM.x < .001 && Math.abs(fx.sx - 1) < .001 && Math.abs(fx.sy - 1) < .001;
+      if ((tr >= destEnd && settled) || tr > 3) { clear(); return; }
     }
-    /* stretch placeholder: B-frame ratios by time since the first move, then relaxing to 1 */
-    if (st.dragT0 != null) {
-      const ts = (now - st.dragT0) / 1000, last = SEG_STRETCH_TAB[SEG_STRETCH_TAB.length - 1];
-      if (ts <= last[0]) { st.rw.x = tabAt(SEG_STRETCH_TAB.map(([t, w]) => [t, w]), ts); st.rh.x = tabAt(SEG_STRETCH_TAB.map(([t, , h]) => [t, h]), ts); st.rw.v = st.rh.v = 0; }
-      else { springStep(st.rw, 1, SEG_SPRING.lift, dt); springStep(st.rh, 1, SEG_SPRING.lift, dt); }
-    }
-    const q = clamp01(st.sL.x), w = (W0 + 2 * LX * q) * st.rw.x, h = (H0 + 2 * LY * q) * st.rh.x;
+    /* B5 — the flex interaction, once per frame: the model bounds are the lift's (196×28 → 220×44), the presentation centre = the position spring + the
+       flex drift goes into the integrator, updateFlex sets the targets, the three animatable floats follow on spec.scaleSpring (tracking while the finger is
+       down), the result is the presentation transform */
+    const q = clamp01(st.sL.x), w = W0 + 2 * LX * q, h = H0 + 2 * LY * q, fl = st.flex;
+    fl.vi.add(st.pres.x + fl.out.dx, now / 1000);
+    const spec = flexSpec(w, h), tg = flexTargets(spec, w, h, fl.vi.acceleration, fl.vi.velocity), sp = st.rel == null ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
+    springStep(fl.sx, tg.sX, sp, dt); springStep(fl.sy, tg.sY, sp, dt); springStep(fl.dx, tg.drift, sp, dt);
+    fl.out = { sx: Math.max(.9, Math.min(1.1, fl.sx.x)), sy: Math.max(.9, Math.min(1.1, fl.sy.x)), dx: fl.dx.x };   // updateFlex's final clamp [0.9, 1.1] (0x1c54c53d4)
     setGeo(st.pres.x - w / 2, CY - h / 2, w, h);
     frame(p, pd); st.raf = requestAnimationFrame(tick);
   };
@@ -1329,16 +1359,15 @@ function segLens(seg, lens, bs) {
     drag: (clientX) => {   // a finger move: the model position is set to the finger's x (clamped to the outer segments' centres) — §4.4 row 3
       if (st.rel != null || st.done) return;
       st.cx = Math.max(restCentre(0), Math.min(restCentre(n - 1), clientX - seg.getBoundingClientRect().left));
-      if (!st.dragged) { st.dragged = true; st.dragT0 = performance.now(); }
+      if (!st.dragged) st.dragged = true;
     },
     release: (restIdx) => {   // every way out — up, out of bounds, pointercancel — falls the same way, to the rest rect of `restIdx`
       if (st.rel != null || st.done) return;
       st.rel = performance.now(); st.rest = restIdx;
-      if (st.dragged && restIdx !== idx0 && st.geo) st.drop = { w: st.geo.w, h: st.geo.h };   // a value change after a drag: the C-frame size bounce
     },
     stop: () => { cancelAnimationFrame(st.raf); if (!st.done) clear(); },
     step: (dtMs) => { if (!st.done) { cancelAnimationFrame(st.raf); tick(dtMs ? st.prev + dtMs : performance.now()); } },   // one frame by hand, optionally on a virtual clock (an offscreen WKWebView runs neither requestAnimationFrame nor timers at speed; the ?seghold hook drives it)
-    get state() { return { dragged: st.dragged, cx: st.cx, pres: st.pres.x, model: st.model.x, q: st.sL.x, rel: st.rel, done: st.done }; },
+    get state() { return { dragged: st.dragged, cx: st.cx, pres: st.pres.x, model: st.model.x, q: st.sL.x, rel: st.rel, done: st.done, flex: st.flex.out, accel: st.flex.vi.acceleration }; },
   };
   loop.cancel = loop.release;
   seg.__lensLoop = loop;
