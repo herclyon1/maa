@@ -9,12 +9,12 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="遥控">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260918104850">
+<link rel="manifest" href="manifest.webmanifest?v=20260918123501">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260918104850">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260918104850">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260918123501">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260918123501">
 <!-- 组件数字的正本：--ios-* 变量，每条带来源（探针原值 / AX 帧 / NUMBERS 行 / 取色 / 采样替代）。页面自己的变量只做映射，不再手写数字。 -->
-<link rel="stylesheet" href="tokens.css?v=20260918104850">
+<link rel="stylesheet" href="tokens.css?v=20260918123501">
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
      上面跑的」). System colours from Apple's palette: grouped background, white
@@ -22,18 +22,33 @@
      green switches, blue tint. Dark mode uses the same palette's dark values.
      Everything else on the page reuses these tokens; no element carries its own. */
   /* Page variables = aliases of tokens.css (light and dark both come from there).
-     Left as literals: --tab/--tabsel (tab-bar label and lens: private glass, no probe value). */
+     Materials (deep probe round, remote-ref/deep-materials.md): CoreAnimation's glassBackground /
+     gaussianBlur / vibrantColorMatrix have no exact CSS twin; the nearest mapping used below is
+     backdrop-filter: blur(inputRadius) saturate(matrix diagonal) plus an overlay whose alpha is the
+     matrix's additive e-column (white for +e, black for −e). Every number is a --ios-* token. */
   :root{
     --bg:var(--ios-grouped-bg); --card:var(--ios-card-bg); --line:var(--ios-separator); --ink:var(--ios-label);
     --dim:var(--ios-secondary-label); --field:var(--ios-tertiary-fill); --btn:var(--ios-card-bg); --sh:none;
     --accent:var(--ios-tint); --link:var(--ios-link); --ok:var(--ios-green); --bad:var(--ios-red);
     --warn:var(--ios-orange);             /* systemOrange (255,141,40) / 暗 (255,146,48) ← 探针色表（tokens.css） */
-    --tab:#1a1a1a; --tabsel:#ededed; --seg:var(--ios-tertiary-fill); --r:var(--ios-card-radius);
+    --tab:var(--ios-tab-label); --seg:var(--ios-tertiary-fill); --r:var(--ios-card-radius);
+    /* glass (alert / glass button / platter): glassBackground inputBlurRadius 5 + vibrantColorMatrix ≈ saturate 1.2, e +0.147 ← 探针 deep（UISDFBackdropView / UISDFView） */
+    --glass-filter:blur(var(--ios-glass-blur)) saturate(var(--ios-glass-saturate));
+    --glass-fill:rgb(255 255 255 / var(--ios-glass-lift));
+    /* selection lens (tab bar / segmented): CABackdropLayer gaussianBlur inputRadius 2 + colorMatrix ≈ saturate 1.19, e −0.2（暗 1.13 / −0.07） ← 探针 deep（_UITabSelectionView） */
+    /* 读出的 4×5 矩阵 = 增益·x + e，写进滤镜链本身：contrast(1 − 2e) ∘ brightness(增益 ÷ contrast)（亮 .807 / 1.4，暗 .763 / 1.14），
+       2 万随机色对比误差 ≤ .14/255 ← 探针 subtree + tokens.css --ios-lens-filter。不用叠层：WebKit 把 backdrop-filter 单独合成，::after 的 plus-darker 看不到它（模拟器 Safari 实测画成不透明 204） */
+    --lens-filter:var(--ios-lens-filter);
+    /* SDF rim light: CASDFKeyFillHighlightEffect key/fill amount 0.5, white → the hairline ring; diffuse height 8 / amount 0.15 → the soft shadow ← 探针 deep（tokens.css 注释，无独立变量） */
+    --glass-rim:inset 0 0 0 .5px rgb(255 255 255 / var(--ios-glass-highlight-amount));
+    --glass-diffuse:0 8px 16px rgb(0 0 0 / .15);
+    /* alert button fill: white background view + vibrantColorMatrix e −0.12（暗 +0.11） ← 探针 deep */
+    --alert-button-fill:rgb(0 0 0 / calc(-1 * var(--ios-alert-button-offset)));
   }
   @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]){ --tab:#f5f5f5; --tabsel:#121212; }   /* 待 tokens：标签栏透镜（私有玻璃，探针读不到） */
+    :root:not([data-theme="light"]){ --alert-button-fill:rgb(255 255 255 / var(--ios-alert-button-offset)); }
   }
-  :root[data-theme="dark"]{ --tab:#f5f5f5; --tabsel:#121212; }
+  :root[data-theme="dark"]{ --alert-button-fill:rgb(255 255 255 / var(--ios-alert-button-offset)); }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   /* Sizes are the probe's px values at the default text size (tokens.css), so the
      page no longer follows Settings › 显示与亮度 › 文字大小 (the old `-apple-system-body`
@@ -62,12 +77,17 @@
   /* As a Home Screen web app there is no Safari bar: the capsule sits where Health's
      does, 22pt above the screen's bottom edge (measured on the iOS 27 simulator). */
   @media (display-mode: standalone){ nav.tabs{bottom:var(--ios-tab-capsule-bottom)} }   /* 胶囊距屏底 21 ← 探针 UITabBar 平台 y 873 / 956 */
-  nav.tabs .seg{position:relative;display:flex;gap:0;min-width:0;max-width:100%;padding:var(--ios-tab-button-pad);height:var(--ios-tab-capsule-h);border-radius:999px;   /* 胶囊 62、内缩 4 ← 探针 UITabBar 平台 274×62（83 是含 home 指示区的整个 frame） */
-                background:color-mix(in srgb, var(--card) 42%, transparent);
-                backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);   /* 材质 无来源（私有玻璃，探针读不到）：blur/saturate/阴影都是老页猜的值，待数据会话解出再换 */
-                box-shadow:0 8px 28px rgba(0,0,0,.16),inset 0 0 0 .5px rgba(255,255,255,.55),inset 0 1px 0 rgba(255,255,255,.7)}
-  nav.tabs .glide{position:absolute;top:var(--ios-tab-button-pad);bottom:var(--ios-tab-button-pad);left:var(--ios-tab-button-pad);width:0;border-radius:999px;background:var(--tabsel);
-                  transition:left var(--ios-motion-lens-duration) var(--ios-motion-lens-easing),width var(--ios-motion-lens-duration) var(--ios-motion-lens-easing)}   /* 透镜 0.52 s ω17.5 ζ0.9 ← 探针轨迹 */
+  /* Three layers, siblings on purpose: platter (.plat, glass) → selection lens (.glide) → buttons (.seg). A backdrop-filter element is a
+     backdrop root, so a lens nested inside the platter would only see the platter's own translucent fill (headless Chrome: 251 instead of
+     the matrix's 236; simulator Safari: the overlay variant painted opaque). As a sibling it filters the platter's rendering, as UIKit's
+     _UITabSelectionView sits above the platter. */
+  nav.tabs .plat{position:absolute;inset:0;border-radius:999px;background:var(--glass-fill);
+                 backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter);   /* 平台玻璃 = --ios-glass-blur 5 / -saturate 1.2 / -lift .147 ← 探针 deep（UITabBar 平台 = glass 配方） */
+                 box-shadow:var(--glass-diffuse),var(--glass-rim)}   /* 阴影/描边 = SDF diffuse 8 / .15 与 highlight .5 的最近 CSS ← 探针 deep */
+  nav.tabs .seg{position:relative;z-index:2;display:flex;gap:0;min-width:0;max-width:100%;padding:var(--ios-tab-button-pad);height:var(--ios-tab-capsule-h);border-radius:999px;background:transparent}   /* 胶囊 62、内缩 4 ← 探针 UITabBar 平台 274×62（83 是含 home 指示区的整个 frame） */
+  nav.tabs .glide{position:absolute;z-index:1;top:var(--ios-tab-button-pad);bottom:var(--ios-tab-button-pad);left:var(--ios-tab-button-pad);width:0;border-radius:999px;
+                  background:transparent;backdrop-filter:var(--lens-filter);-webkit-backdrop-filter:var(--lens-filter);   /* 选中透镜 = _UITabSelectionView gaussianBlur 2 + colorMatrix → --ios-lens-filter（blur 2 · saturate 1.062 · brightness .807 · contrast 1.4；暗 1.379 / .763 / 1.14）← 探针 deep */
+                  transition:left var(--ios-motion-lens-duration) var(--ios-motion-lens-easing),width var(--ios-motion-lens-duration) var(--ios-motion-lens-easing)}   /* UIViewSpringAnimationBehavior dampingRatio .85 / response .4 s（--ios-motion-lens-response/-damping-ratio）← 探针 deep；采成 0.55 s linear() */
   nav.tabs button{position:relative;width:var(--ios-tab-button-w);flex:0 1 auto;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;
                   height:var(--ios-tab-button-h);padding:6px 8px 7px;border-radius:var(--ios-tab-lens-radius);font-size:var(--ios-tab-label-size);line-height:12px;font-weight:var(--ios-headline-weight);   /* 按钮 94×54 r27、字 Semibold 10 ← 探针（5 个标签放不下 5×94 时等比缩）；6/8/7 待 tokens，但 4 + 6 + 28 + 1 = 39 = --ios-tab-label-top ← 探针 */
                   background:transparent;box-shadow:none;color:var(--tab);white-space:nowrap;transition:color .2s}
@@ -80,7 +100,6 @@
                       -webkit-mask-size:contain;mask-size:contain}
   nav.tabs button.on{color:var(--accent)}
   nav.tabs button:active .ico{transform:scale(.9);transition:transform .1s}
-  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) nav.tabs .seg{box-shadow:0 8px 28px rgba(0,0,0,.5),inset 0 0 0 .5px rgba(255,255,255,.12)} }
   @media (prefers-reduced-motion: reduce){
     *,*::before,*::after{transition:none !important;animation:none !important}
   }
@@ -109,9 +128,9 @@
   .topbar{position:fixed;top:0;left:0;right:0;z-index:5;height:calc(env(safe-area-inset-top) + var(--ios-nav-h));   /* 栏 54 ← AX-45 NavigationBar (0,62,440,54)；44 只是圆钮 */
           padding-top:env(safe-area-inset-top);display:flex;align-items:center;justify-content:center;
           font-size:var(--ios-body-size);font-weight:var(--ios-headline-weight);pointer-events:none;
-          background:color-mix(in srgb, var(--bg) calc(var(--bar, 0) * 55%), transparent);
-          backdrop-filter:blur(calc(var(--bar, 0) * 22px)) saturate(calc(1 + var(--bar, 0) * .8));
-          -webkit-backdrop-filter:blur(calc(var(--bar, 0) * 22px)) saturate(calc(1 + var(--bar, 0) * .8))}
+          background:rgb(255 255 255 / calc(var(--bar, 0) * var(--ios-glass-lift)));   /* 滚动后 = glass 配方按 --bar 淡入（探针 deep：NavigationBarTransitionContainer 静止时 blur 0；滚动态未测，取 glass 原值为最近） */
+          backdrop-filter:blur(calc(var(--bar, 0) * var(--ios-glass-blur))) saturate(calc(1 + var(--bar, 0) * (var(--ios-glass-saturate) - 1)));
+          -webkit-backdrop-filter:blur(calc(var(--bar, 0) * var(--ios-glass-blur))) saturate(calc(1 + var(--bar, 0) * (var(--ios-glass-saturate) - 1)))}
   .topbar::after{content:"";position:absolute;left:0;right:0;bottom:0;height:var(--ios-separator-h);background:var(--line);opacity:var(--bar, 0)}
   .topbar span{opacity:var(--title, 0);transform:translateY(calc((1 - var(--title, 0)) * 6px))}
   header h1{opacity:calc(1 - var(--big, 0))}
@@ -150,14 +169,18 @@
   .group.nums > .num:last-child:nth-child(odd){grid-column:1 / -1}   /* 奇数张时最后一张占满一行（提醒事项首页奇数张智能列表的排法） */
   section + section > .group.nums:first-child{margin-top:16px}
   .group.nums + .foot{padding-top:8px}
-  .num{position:relative;min-height:var(--ios-tile-h);padding:12px 12px 11px;border-radius:var(--ios-tile-radius-SAMPLED);background:var(--card);color:var(--ink);   /* 高 80.33 ← AX-57；圆角 16 采样替代（曲线拟合）；内距 12/12/11 待 tokens（57 的图标是裸字形 at 16.67/13.67，这里是带色圆的老页形，位置没法照搬） */
-       display:flex;flex-direction:column;justify-content:space-between}
-  .nico{width:32px;height:32px;border-radius:50%;background:var(--c);display:flex;align-items:center;justify-content:center}
-  .nico .sf{width:18px;height:18px;background:#fff}
-  .nico .rico{width:24px;height:24px;object-fit:contain;display:block}
-  .num .big{position:absolute;top:10px;right:var(--ios-tile-number-inset);font-size:24px;line-height:28px;font-weight:700;letter-spacing:-.02em;color:var(--ink)}   /* 右内缩 12 ← AX-57 像素；字号 24/28 老页目测值 待 tokens（57 字形高反推 ≈28 是采样，没采用） */
-  .num .big small{font-size:.58em;font-weight:600;color:var(--dim)}
-  .num .lab{margin-top:6px;font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);font-weight:var(--ios-headline-weight);color:var(--dim)}
+  /* Reminders smart-list tile, ORIGINAL (deep round ⑦, injected dump of com.apple.reminders): 196×80.33 r16 continuous; badge 48 at (6,2);
+     number .SFUIRounded-Bold 28 / 33.67 at y 9, right edge − 10; label .SFUIRounded-Semibold 17 / 20.33 at (12,52). The card stays white with the
+     resource's coloured circle (the 09-15 decision: tab = game, tile = resource); the 回满 footnote is ours - Reminders has no third line, so a tile
+     with one grows past 80.33 (bottom pad 8 = 80.33 − 52 − 20.33 keeps the bare tile at 80.33). */
+  .num{position:relative;min-height:var(--ios-tile-h);padding:var(--ios-tile-label-top) var(--ios-tile-number-inset) calc(var(--ios-tile-h) - var(--ios-tile-label-top) - var(--ios-tile-label-lh)) var(--ios-tile-label-x);
+       border-radius:var(--ios-tile-radius);background:var(--card);color:var(--ink);display:flex;flex-direction:column;justify-content:flex-start}
+  .nico{position:absolute;left:var(--ios-tile-icon-x);top:var(--ios-tile-icon-y);width:var(--ios-tile-icon);height:var(--ios-tile-icon);border-radius:50%;background:var(--c);display:flex;align-items:center;justify-content:center}   /* 徽章 48 at (6,2) ← 提醒事项 TTRListBadgeView */
+  .nico .sf{width:var(--ios-symbol-slot);height:var(--ios-symbol-slot);background:#fff}   /* 符号槽 22 ← Kit */
+  .nico .rico{width:36px;height:36px;object-fit:contain;display:block}   /* 资源图 36 = 老比例 24/32 × 48，待 tokens（徽章里的图 64 是提醒事项自己的位图） */
+  .num .big{position:absolute;top:var(--ios-tile-number-top);right:var(--ios-tile-number-inset);font-family:var(--ios-tile-number-font);font-size:var(--ios-tile-number-size);line-height:var(--ios-tile-number-lh);font-weight:var(--ios-tile-number-weight);letter-spacing:0;color:var(--ink)}   /* 数字 Rounded Bold 28/33.67，顶 9 右缩 10 ← 提醒事项 UILabel */
+  .num .big small{font-size:.58em;font-weight:600;color:var(--dim)}   /* 上限后缀：我们加的，.58em 待 tokens */
+  .num .lab{margin:0;font-family:var(--ios-tile-number-font);font-size:var(--ios-tile-label-size);line-height:var(--ios-tile-label-lh);font-weight:var(--ios-tile-label-weight);color:var(--ink)}   /* 标签 Rounded Semibold 17/20.33 at (12,52) ← 提醒事项 UILabel；原件白字在色底，这里白卡上取 label 色 */
   .num .sub{font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh);color:var(--dim)}
   .num.err .sub{color:var(--bad)}
   /* ---- 状态页的三种块（docs/PHONE-NATIVE-REFERENCES.md） ---- */
@@ -192,12 +215,13 @@
   .group.tiles{display:grid;grid-template-columns:1fr 1fr;gap:var(--ios-tile-gap);background:transparent;border-radius:0;overflow:visible}   /* 间距 8 ← AX-57 */
   section + section > .group.tiles:first-child{margin-top:16px}
   .group.tiles + *{margin-top:16px}
-  .tile{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:0;min-height:var(--ios-tile-h);padding:12px 14px 11px;   /* 高 80.33 ← AX-57；内距 待 tokens */
-        border:0;border-radius:var(--ios-tile-radius-SAMPLED);   /* 圆角 16 采样替代 */background:var(--card);color:var(--ink);text-align:left;font:inherit;box-shadow:none;cursor:pointer}
+  .tile{position:relative;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:0;min-height:var(--ios-tile-h);
+        padding:var(--ios-tile-label-top) var(--ios-tile-number-inset) calc(var(--ios-tile-h) - var(--ios-tile-label-top) - var(--ios-tile-label-lh)) var(--ios-tile-label-x);   /* 同提醒事项磁贴：标题 at (12,52)，底距 8 */
+        border:0;border-radius:var(--ios-tile-radius);background:var(--card);color:var(--ink);text-align:left;font:inherit;box-shadow:none;cursor:pointer}   /* 圆角 16 ← 提醒事项 layer.cornerRadius（原值，不再是采样） */
   .tile:active{opacity:1;background:color-mix(in srgb, var(--ink) 8%, var(--card));transition:none}   /* 按下填色 8% 无来源 */
-  .tico{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;flex:none}
-  .tico .sf{width:15px;height:15px;background:#fff}
-  .ttitle{margin-top:8px;font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);font-weight:var(--ios-headline-weight)}
+  .tico{position:absolute;left:var(--ios-tile-icon-x);top:var(--ios-tile-icon-y);width:var(--ios-tile-icon);height:var(--ios-tile-icon);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;flex:none}   /* 徽章 48 at (6,2) ← 提醒事项 */
+  .tico .sf{width:var(--ios-symbol-slot);height:var(--ios-symbol-slot);background:#fff}   /* 符号槽 22 ← Kit */
+  .ttitle{margin:0;font-family:var(--ios-tile-number-font);font-size:var(--ios-tile-label-size);line-height:var(--ios-tile-label-lh);font-weight:var(--ios-tile-label-weight)}   /* 标题 = 磁贴标签 Rounded Semibold 17/20.33 ← 提醒事项 */
   .tsub{font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh);color:var(--dim)}
   .tile.danger .ttitle{color:var(--bad)}
   .sf{display:inline-block;width:22px;height:22px;background:currentColor;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
@@ -210,7 +234,7 @@
   .warn .sf.inl{width:15px;height:15px;vertical-align:-3px;margin-right:4px;background:var(--warn)}
   .row .ro.short{color:var(--dim);font-size:var(--ios-body-size);white-space:nowrap}   /* Detail 17 secondary ← 探针（老页 15 是目测） */
   .group{background:var(--card);border-radius:var(--r);overflow:hidden}
-  .group:not(.devcard):not(.notice):not(.tiles) > *:not(.row):not(.acts):not(pre):not(.setup):not(.warn):not(.hint):not(.group-foot){padding:11px 20px}
+  .group:not(.devcard):not(.notice):not(.tiles):not(.nums) > *:not(.row):not(.acts):not(pre):not(.setup):not(.warn):not(.hint):not(.group-foot){padding:11px 20px}   /* .nums 的磁贴有自己的内距（提醒事项原值），不吃这条 */
   /* Rows: name left, control right, hairline inset to the text like UITableView. */
   .row{position:relative;display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px var(--ios-value-gap);padding:calc((var(--ios-row-h) - var(--ios-body-lh))/2) var(--ios-switch-inset) calc((var(--ios-row-h) - var(--ios-body-lh))/2) var(--ios-row-text-x);min-height:var(--ios-row-h)}   /* 行 53.33、文字 x 20、开关右内缩 18、行框 20.33 ← 探针/AX45 */
   /* One device pixel, like UITableView's hairline (1/scale pt): a 1px box scaled to a third. */
@@ -259,9 +283,9 @@
   .menubtn:active{opacity:.6}
   .menu-scrim{position:fixed;inset:0;z-index:7;background:transparent}
   .menu{position:fixed;z-index:8;width:var(--ios-menu-w);padding:var(--ios-menu-pad) 0;border-radius:var(--ios-card-radius);   /* 250 宽 / 内边距 10 ← Kit L96（tokens.css --ios-menu-*）；圆角 26 待 tokens；材质 采样替代 */
-        background:color-mix(in srgb, var(--card) 74%, transparent);
-        backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%);
-        box-shadow:0 12px 40px rgba(0,0,0,.18),inset 0 0 0 .5px rgba(255,255,255,.6);
+        background:var(--glass-fill);
+        backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter);   /* 菜单材质未测（探针没有 UIMenu）；tokens.css：弹窗 glass 配方是最近的原值 → --ios-glass-* */
+        box-shadow:var(--glass-diffuse),var(--glass-rim);
         transform-origin:top right;animation:menu-in .22s cubic-bezier(.2,.8,.2,1)}   /* 菜单出现动效 无来源（这轮没测），待 tokens */
   .menu.up{transform-origin:bottom right}
   .menu button{display:flex;align-items:center;gap:0;width:100%;height:var(--ios-menu-item-h);padding:0 var(--ios-menu-item-x);margin:0;border:0;border-radius:0;   /* 项 42 高、x 16 ← Kit L96 */
@@ -271,7 +295,6 @@
   .menu button.on .ck{opacity:1}
   .menu button:active{background:color-mix(in srgb, var(--ink) 8%, transparent)}
   @keyframes menu-in{from{opacity:0;transform:scale(.55)}to{opacity:1;transform:none}}
-  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .menu{box-shadow:0 12px 40px rgba(0,0,0,.5),inset 0 0 0 .5px rgba(255,255,255,.14)} }
   /* The toggle: 63×28 track, 38×24 pill knob (measured in Settings › 动态效果 on the
      simulator). Motion measured frame by frame on the simulator's own recording
      (Settings › 动态效果 › 首选非闪动光标, 2026-09-15 04:58, 120 samples/s): the
@@ -300,7 +323,7 @@
                   background:var(--ios-switch-knob);   /* 旋钮 37×24 内距 2 ← 探针 */
                   box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16);
                   transform-origin:center;will-change:transform,background,box-shadow;
-                  transition:transform var(--ios-motion-switch-knob-duration) var(--ios-motion-switch-knob-easing),background .12s,box-shadow .12s}   /* 旋钮 0.35 s 临界 ω21 ← 探针轨迹；.12s 透镜起落 无来源 */
+                  transition:transform var(--ios-motion-switch-knob-duration) var(--ios-motion-switch-knob-easing),background .12s,box-shadow .12s}   /* 旋钮 = UIViewSpringAnimationBehavior dampingRatio 1 / response 0.3 s（--ios-motion-switch-knob-response/-damping-ratio ← 探针 deep _transitionKnobToPressed），采成 0.35 s linear()；.12s 透镜起落 无来源 */
   .sw input:checked + span::after{transform:translateX(var(--ios-switch-travel))}   /* 行程 22 = 63 − 37 − 2×2 ← 探针 */
   /* Finger down: the lens. 58/38 = 1.526, 38/24 = 1.583. .hold is set by app.js for
      the whole press and drag (--kx = where the knob is); :active covers the mouse. */
@@ -319,12 +342,12 @@
      source (spec-extract.md ⑤: transform is a single CASpringAnimation). */
   /* 班次分段控件（34 屏幕时间「每周 / 每天」）：400×32 r16、透镜 28 r14 内缩 2、字 MediumG3 13 / RegularG3 13 ← 探针 UISegmentedControl；
      放在卡片位置（x 20 宽 400；34 里是 x 40 宽 360，页顶无卡时的写法），透镜材质 采样替代 → 用白底 + 阴影近似 */
-  .segctl{position:relative;display:flex;height:var(--ios-segment-h);padding:var(--ios-segment-lens-pad);border-radius:var(--ios-segment-radius);background:var(--ios-tertiary-fill);margin:var(--ios-group-gap) 0 0}
+  .segctl{position:relative;display:flex;height:var(--ios-segment-h);padding:var(--ios-segment-lens-pad);border-radius:var(--ios-segment-radius);background:var(--ios-segment-track);margin:var(--ios-group-gap) 0 0}   /* 轨道 = tertiarySystemFill .12 / 暗 .24 ← 探针 lensdiff（背景图取色） */
   .segctl .lens{position:absolute;top:var(--ios-segment-lens-pad);left:var(--ios-segment-lens-pad);height:var(--ios-segment-lens-h);width:calc((100% - 2 * var(--ios-segment-lens-pad)) / var(--n, 2));
-                border-radius:var(--ios-segment-lens-radius);background:var(--card);box-shadow:0 3px 8px rgba(0,0,0,.12),0 3px 1px rgba(0,0,0,.04);   /* 透镜阴影 采样替代 */
-                transform:translateX(calc(var(--i, 0) * 100%));transition:transform var(--ios-motion-lens-duration) var(--ios-motion-lens-easing)}   /* 透镜 0.52 s ω17.5 ζ0.9 ← 探针轨迹 */
+                border-radius:var(--ios-segment-selected-radius);background:var(--ios-segment-selected-bg);box-shadow:var(--ios-segment-selected-shadow);backdrop-filter:var(--ios-segment-selected-filter);-webkit-backdrop-filter:var(--ios-segment-selected-filter);   /* 选中段 = _UILiquidLensView 的 restingBackground：_controlForegroundColor 白 / 暗 (235,235,245,.3)，逐角 14，无阴影无滤镜（玻璃只在拖动时出现）← 探针 lensdiff/subtree */
+                transform:translateX(calc(var(--i, 0) * 100%));transition:transform var(--ios-motion-lens-duration) var(--ios-motion-lens-easing)}   /* 透镜 = dampingRatio .85 / response .4 s（--ios-motion-lens-response/-damping-ratio ← 探针 deep _updateSelectionToSegment），采成 0.55 s linear() */
   .segctl button{position:relative;z-index:1;flex:1 1 0;height:var(--ios-segment-lens-h);border:0;border-radius:var(--ios-segment-lens-radius);padding:0;background:transparent;box-shadow:none;
-                 font:inherit;font-size:var(--ios-segment-label-size);line-height:var(--ios-segment-lens-h);font-weight:400;color:var(--ink);
+                 font:inherit;font-size:var(--ios-segment-label-size);line-height:var(--ios-segment-lens-h);font-weight:400;color:var(--ios-segment-label-color);   /* 字 RegularG3 / MediumG3 13，labelColor ← 探针 subtree */
                  transition:font-weight var(--ios-motion-segment-label-duration),opacity var(--ios-motion-segment-release-duration)}   /* 字重交叉淡 0.2 s、松开回 0.2 s ← 探针 */
   .segctl button.on{font-weight:var(--ios-medium-weight)}
   .segctl button:active{opacity:var(--ios-motion-segment-press-opacity);transition:opacity var(--ios-motion-segment-press-duration)}   /* 按住淡到 .2、0.47 s ← 探针 */
@@ -368,9 +391,9 @@
      centred at 17 semibold. */
   .topbar .navbtn{position:absolute;top:calc(env(safe-area-inset-top) + (var(--ios-nav-h) - var(--ios-nav-button)) / 2);width:var(--ios-nav-button);height:var(--ios-nav-button);padding:0;border:0;border-radius:50%;   /* 圆钮 44 在 54 栏里上下各 5 ← AX-45 */
                   display:none;align-items:center;justify-content:center;pointer-events:auto;box-shadow:none;cursor:pointer;
-                  background:color-mix(in srgb, var(--card) 55%, transparent);color:var(--ink);
-                  backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);
-                  box-shadow:inset 0 0 0 .5px rgba(255,255,255,.55),0 4px 16px rgba(0,0,0,.12)}
+                  background:var(--glass-fill);color:var(--ink);
+                  backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter);   /* UIButton.glass()：glassBackground blur 5 + 矩阵 1.12 / +.147 = --ios-glass-* ← 探针 deep */
+                  box-shadow:var(--glass-rim),var(--glass-diffuse)}
   .topbar .navbtn .sf{width:20px;height:20px;background:currentColor}
   .topbar.editing .navbtn{display:flex}
   .topbar.editing{pointer-events:auto;--bar:1 !important;--title:1 !important}
@@ -379,21 +402,21 @@
                 box-shadow:0 4px 16px color-mix(in srgb, var(--accent) 35%, transparent)}
   .topbar .navbtn:active{opacity:.7}
   pre{margin:0;padding:11px 16px;white-space:pre-wrap;font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);color:var(--dim);font-family:inherit}
-  dialog{border:0;background:var(--ios-alert-material-SAMPLED);backdrop-filter:blur(var(--ios-alert-blur-SAMPLED));-webkit-backdrop-filter:blur(var(--ios-alert-blur-SAMPLED));
-         color:var(--ink);border-radius:var(--ios-alert-radius);padding:0;width:var(--ios-alert-w);max-width:calc(100vw - 32px)}   /* 弹窗 320 r34 ← 探针 _UIAlertControllerPhoneTVMacView；底材质 采样替代（标红） */
+  dialog{border:0;background:var(--glass-fill);backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter);box-shadow:var(--glass-rim);
+         color:var(--ink);border-radius:var(--ios-alert-radius);padding:0;width:var(--ios-alert-w);max-width:calc(100vw - 32px)}   /* 弹窗 320 r34 ← 探针 _UIAlertControllerPhoneTVMacView；底材质 = UISDFBackdropView glassBackground blur 5 + 矩阵 ≈ saturate 1.2 / +.147 = --ios-glass-* ← 探针 deep（Kit 89「白 70% + 模糊 30」作废） */
   dialog[open]{animation:alert-in var(--ios-motion-alert-duration) var(--ios-motion-alert-easing)}                                   /* 出现 scale 1.2→1 + 淡入 0.40 s ω22.86 ← 探针 CASpringAnimation k522.4 c45.71 */
   dialog[open].closing{animation:alert-out var(--ios-motion-alert-duration) var(--ios-motion-alert-easing) forwards}                  /* 消失只淡出，同一 spring ← 探针 */
   @keyframes alert-in{from{opacity:0;transform:scale(1.2)}to{opacity:1;transform:none}}
   @keyframes alert-out{to{opacity:0}}
   dialog h2{padding:var(--ios-alert-title-top) var(--ios-alert-pad-x) 0;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight);color:var(--ink);text-align:center;display:block}   /* 标题 Semibold 17，顶 +22，左右 30 ← 探针 */
-  dialog::backdrop{background:var(--ios-dimming)}                            /* 遮罩 (0,0,0).2 ← 探针 UIDimmingView */
+  dialog::backdrop{background:var(--ios-dimming)}                            /* 遮罩 (0,0,0).2 / 暗 .48 ← 探针 UIDimmingView（deep 轮补了暗值） */
   .dlg-b{padding:var(--ios-alert-msg-gap) var(--ios-alert-pad-x) 16px;max-height:52vh;overflow:auto;font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);color:var(--dim);text-align:center}   /* 正文 15 secondaryLabel，标题下 7.33 ← 探针 */
   dialog .acts{border-top:0;display:grid;grid-template-columns:1fr 1fr;gap:var(--ios-alert-button-gap);padding:0 var(--ios-alert-button-inset) var(--ios-alert-button-inset)}
-  dialog .acts button{min-height:var(--ios-alert-button-h);height:var(--ios-alert-button-h);padding:0 12px;border-radius:var(--ios-alert-button-radius);text-align:center;background:var(--ios-tertiary-fill);color:var(--accent);font-weight:var(--ios-medium-weight);
-                      transition:background var(--ios-motion-alert-button-duration) var(--ios-motion-ease-in-out)}   /* 按钮 48 r24、填 tertiaryFill、字 Medium 17；按下/松开填色 0.1 s ease-in-out ← 探针 */
+  dialog .acts button{min-height:var(--ios-alert-button-h);height:var(--ios-alert-button-h);padding:0 12px;border-radius:var(--ios-alert-button-radius);text-align:center;background:var(--alert-button-fill);color:var(--accent);font-weight:var(--ios-medium-weight);
+                      transition:background var(--ios-motion-alert-button-duration) var(--ios-motion-ease-in-out)}   /* 按钮 48 r24、字 Medium 17；填色 = 白底视图 + 振动矩阵 e −.12（暗 +.11）= --ios-alert-button-offset ← 探针 deep；按下/松开 0.1 s ease-in-out ← 探针 */
   dialog .acts button::after{display:none}
   dialog .acts button.primary{background:var(--accent);color:#fff}
-  dialog .acts button.danger{color:var(--bad);background:var(--ios-tertiary-fill)}
+  dialog .acts button.danger{color:var(--bad);background:var(--alert-button-fill)}
   dialog .acts.stack{grid-template-columns:1fr}
   .diff{font-size:var(--ios-sub-size);padding:7px 0;border-bottom:var(--ios-separator-h) solid var(--line);text-align:left;color:var(--ink)}
   .diff:last-child{border-bottom:0}
@@ -401,8 +424,8 @@
   .old{color:var(--dim);text-decoration:line-through}
   .new{color:var(--ok)}
   .toast{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom) + 76px);z-index:9;
-         background:color-mix(in srgb, var(--card) 80%, transparent);backdrop-filter:blur(22px) saturate(180%);
-         border-radius:18px;padding:12px 14px;font-size:var(--ios-sub-size);box-shadow:0 8px 24px rgba(0,0,0,.18),inset 0 0 0 .5px rgba(255,255,255,.55);   /* toast：无苹果对应组件，材质 采样替代，待定 */
+         background:var(--glass-fill);backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter);
+         border-radius:18px;padding:12px 14px;font-size:var(--ios-sub-size);box-shadow:var(--glass-diffuse),var(--glass-rim);   /* toast：无苹果对应组件；材质取 UIButton.glass() 配方 --ios-glass-*（最近原值）；圆角 18 待 tokens */
          opacity:0;transition:.2s;pointer-events:none}   /* toast 动效 无来源，待 tokens */
   .toast.show{opacity:1}
   .setup{padding:16px}
@@ -456,13 +479,13 @@
 </dialog>
 
 <div class="toast" id="toast"></div>
-<script src="schema.js?v=20260918104850"></script>
-<script src="net.js?v=20260918104850"></script>
-<script src="pending.js?v=20260918104850"></script>
-<script src="live.js?v=20260918104850"></script>
-<script src="stamina.js?v=20260918104850"></script>
-<script src="view.js?v=20260918104850"></script>
+<script src="schema.js?v=20260918123501"></script>
+<script src="net.js?v=20260918123501"></script>
+<script src="pending.js?v=20260918123501"></script>
+<script src="live.js?v=20260918123501"></script>
+<script src="stamina.js?v=20260918123501"></script>
+<script src="view.js?v=20260918123501"></script>
 <script>/* 验收脚本只在地址带 ?accept 时加载（docs/HIG-CHECKLIST.md 的验收程序）。 */
-if (new URLSearchParams(location.search).has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260918104850"; document.body.appendChild(s); }</script>
+if (new URLSearchParams(location.search).has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260918123501"; document.body.appendChild(s); }</script>
 </body>
 </html>
