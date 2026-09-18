@@ -135,7 +135,7 @@
       num("分段控件宽 = 卡片宽", innerWidth - 40, r.width);
       const lens = segc.querySelector(".lens"), b = segc.querySelector("button");
       if (lens) { num("分段透镜高 28（--ios-segment-lens-h）", 28, lens.getBoundingClientRect().height); num("分段透镜圆角 14（--ios-segment-lens-radius）", 14, px(cs(lens).borderTopLeftRadius)); num("分段透镜内缩 2（--ios-segment-lens-pad）", 2, lens.getBoundingClientRect().top - r.top);
-        const lbf = cs(lens).backdropFilter || cs(lens).webkitBackdropFilter || ""; check("分段透镜 blur 2（--ios-lens-blur）", "blur(2px)", (/blur\([\d.]+px\)/.exec(lbf) || [])[0], /blur\(2px\)/.test(lbf)); }
+        col("分段选中段 = 白平台（--ios-card-bg，参照 34；等 --ios-segment-selected-* 原值）", T.card, cs(lens).backgroundColor); }
       if (b) { num("分段文字 13（--ios-segment-label-size）", 13, px(cs(b).fontSize), 0.05); check("分段选中字重 500（--ios-medium-weight）", 500, cs(segc.querySelector("button.on") || b).fontWeight, String(cs(segc.querySelector("button.on") || b).fontWeight) === "500"); }
     }
     /* The confirm alert (closed, but its computed geometry is there) */

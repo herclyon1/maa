@@ -339,7 +339,7 @@
      放在卡片位置（x 20 宽 400；34 里是 x 40 宽 360，页顶无卡时的写法），透镜材质 采样替代 → 用白底 + 阴影近似 */
   .segctl{position:relative;display:flex;height:var(--ios-segment-h);padding:var(--ios-segment-lens-pad);border-radius:var(--ios-segment-radius);background:var(--ios-tertiary-fill);margin:var(--ios-group-gap) 0 0}
   .segctl .lens{position:absolute;top:var(--ios-segment-lens-pad);left:var(--ios-segment-lens-pad);height:var(--ios-segment-lens-h);width:calc((100% - 2 * var(--ios-segment-lens-pad)) / var(--n, 2));
-                border-radius:var(--ios-segment-lens-radius);background:var(--lens-fill);backdrop-filter:var(--lens-filter);-webkit-backdrop-filter:var(--lens-filter);box-shadow:var(--glass-rim);   /* 分段透镜 = --ios-lens-*（探针 deep 只读到标签栏 _UITabSelectionView 的矩阵；分段的 _UILiquidLensView 只有 destOut，按验收单用同一配方）+ SDF highlight 描边 */
+                border-radius:var(--ios-segment-lens-radius);background:var(--card);box-shadow:0 3px 8px rgba(0,0,0,.12),0 3px 1px rgba(0,0,0,.04);   /* 等原值：选中段 = 参照 34 的白平台（--ios-card-bg）+ 老页阴影；标签栏透镜的叠黑矩阵套过来是深灰，验收退回；数据会话正在注入读 --ios-segment-selected-*，到了换 */
                 transform:translateX(calc(var(--i, 0) * 100%));transition:transform var(--ios-motion-lens-duration) var(--ios-motion-lens-easing)}   /* 透镜 = dampingRatio .85 / response .4 s（--ios-motion-lens-response/-damping-ratio ← 探针 deep _updateSelectionToSegment），采成 0.55 s linear() */
   .segctl button{position:relative;z-index:1;flex:1 1 0;height:var(--ios-segment-lens-h);border:0;border-radius:var(--ios-segment-lens-radius);padding:0;background:transparent;box-shadow:none;
                  font:inherit;font-size:var(--ios-segment-label-size);line-height:var(--ios-segment-lens-h);font-weight:400;color:var(--ink);
