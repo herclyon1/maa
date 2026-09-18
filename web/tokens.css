@@ -388,6 +388,30 @@
    * backdrop-filter lines are the nearest CSS mapping (blur radius = inputRadius in pt; colour matrix e-column = additive offset) */
   /* alert / glass button: UISDFBackdropView filter glassBackground inputBlurRadius 5; SDF vibrantColorMatrix ≈ saturate 1.2 + 0.147 (light and dark the same) */
   --ios-glass-blur: 5px;
+  /* ---- alert glass, EFFECTIVE values (spec-extract ⑨, 2026-09-18 午后; tools/touch/glass_bands.sh + glass_table.py + glass_validate.py) ----
+   * WHY 5px was wrong: the alert's UISDFBackdropView is a CABackdropLayer with `scale` 0.25 (the backdrop is captured at a quarter of the
+   * point resolution, contentsScale 1) and marginWidth 60.2; glassBackground inputBlurRadius 5 is applied in capture pixels → 5 / 0.25 = 20 pt.
+   * Edge-profile fit through the pane over a white/black step: sigma 16.4–19.5 pt (10–90 % width 50 pt). The tab bar platter has scale 0.5 → 10 pt.
+   * Transfer measured over 10 flat backdrops (light) / 9 (dark), pane colour vs the dimmed backdrop D (dimming .2 light / .48 dark), sRGB units,
+   * residual ≤ 2/255 light, ≤ 4.5/255 dark:  light  out = 0.495·S(1.94)·D + 0.538      dark  out = 0.653·S(1.73)·D + 0.135
+   * (S = standard saturate matrix; the layer's own vibrantColorMatrix 0.912·S(1.29)+.147 is only one of the stacked layers — the CASDFLayer
+   * key/fill lights add the rest — so the measured end-to-end transfer is what CSS must reproduce).
+   * CSS (white overlay α + brightness gain, saturate first): backdrop-filter: blur(20px) saturate(1.94) brightness(1.071); background: rgb(255 255 255 / .538)
+   *   dark: blur(20px) saturate(1.73) brightness(.755); background: rgb(255 255 255 / .135)
+   * caveat: CSS clamps saturate() to [0,1] before the gain, CoreAnimation does not — over a saturated red backdrop the G/B channels come out
+   * 137 instead of the native 117 (light); over greys / the app's own palette the match is ≤ 2/255. Text: labelColor over the pane (≈ 236 over the list). */
+  --ios-alert-glass-blur: 20px;
+  --ios-alert-glass-saturate: 1.94;
+  --ios-alert-glass-brightness: 1.071;
+  --ios-alert-glass-white: .538;
+  --ios-alert-glass-filter: blur(20px) saturate(1.94) brightness(1.071);
+  --ios-alert-backdrop-scale: .25;
+  --ios-alert-dimming: rgb(0 0 0 / .2);
+  /* alert buttons over the pane: measured pane → button = pane − 37/255 (light, slope .958 ≈ 1; dark: pane + 35/255) → mix-blend-mode: plus-darker
+   * with rgb(218 218 218) (dark: plus-lighter rgb(35 35 35)); Chrome fallback rgb(0 0 0 / .16) (dark rgb(255 255 255 / .16)) */
+  --ios-alert-button-offset: -0.145;
+  --ios-alert-button-overlay: rgb(218 218 218);
+  --ios-alert-button-fallback: rgb(0 0 0 / .16);
   --ios-glass-saturate: 1.2;
   --ios-glass-lift: 0.147;
   /* sheet: glassBackground inputBlurRadius 4, plus a white _UIVisualEffectBackgroundView with vibrantColorMatrix offset +0.48 (light) / +0.12 (dark) */
@@ -614,6 +638,15 @@
     --ios-lens-saturate: 1.379;
     --ios-lens-brightness: 0.87;
     --ios-lens-filter: blur(2px) saturate(1.379) brightness(0.763) contrast(1.14);
+    /* alert glass dark (spec-extract ⑨): dimming .48, out = 0.653·S(1.73)·D + 0.135 */
+    --ios-alert-glass-saturate: 1.73;
+    --ios-alert-glass-brightness: .755;
+    --ios-alert-glass-white: .135;
+    --ios-alert-glass-filter: blur(20px) saturate(1.73) brightness(.755);
+    --ios-alert-dimming: rgb(0 0 0 / .48);
+    --ios-alert-button-offset: 0.137;
+    --ios-alert-button-overlay: rgb(35 35 35);
+    --ios-alert-button-fallback: rgb(255 255 255 / .16);
     --ios-lens-brightness-css: 0.763;
     --ios-lens-contrast-css: 1.14;
     --ios-lens-matrix: 1.1298 -0.2361 -0.0237 0 -0.07  -0.0701 0.964 -0.0238 0 -0.07  -0.0702 -0.236 1.1762 0 -0.07  0 0 0 1 0;

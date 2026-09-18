@@ -146,13 +146,20 @@
     if (alert) {
       num("弹窗宽 320（--ios-alert-w）", 320, px(cs(alert).width)); num("弹窗圆角 34（--ios-alert-radius）", 34, px(cs(alert).borderTopLeftRadius));
       const ab = alert.querySelector(".acts button"); if (ab) { num("弹窗按钮高 48（--ios-alert-button-h）", 48, px(cs(ab).height)); num("弹窗按钮圆角 24（--ios-alert-button-radius）", 24, px(cs(ab).borderTopLeftRadius)); }
-      /* materials (deep probe round): glass = blur 5 + saturate 1.2 + white lift .147; dimming .2 / .48 */
+      /* materials (spec-extract ⑨, end-to-end measured): pane = blur 20 (5 ÷ backdrop scale .25) · saturate 1.94 · brightness 1.071 + white .538 (dark 1.73 / .755 / .135) */
       const bf = (el) => cs(el).backdropFilter || cs(el).webkitBackdropFilter || "";
-      check("弹窗玻璃 blur 5（--ios-glass-blur）", "blur(5px)", (/blur\(([\d.]+)px\)/.exec(bf(alert)) || [])[0], /blur\(5px\)/.test(bf(alert)));
-      check("弹窗玻璃 saturate 1.2（--ios-glass-saturate）", "saturate(1.2)", (/saturate\(([\d.]+)\)/.exec(bf(alert)) || [])[0], /saturate\(1\.2\)/.test(bf(alert)));
-      col("弹窗叠白 .147（--ios-glass-lift）", [255, 255, 255, .147], cs(alert).backgroundColor);
-      col("弹窗遮罩（--ios-dimming）", dark ? [0, 0, 0, .48] : [0, 0, 0, .2], varColor("--ios-dimming", probe));
-      const dbtn = alert.querySelector(".acts button:not(.primary)"); if (dbtn) col("弹窗按钮填色 = 矩阵 e −.12 / +.11（--ios-alert-button-offset）", dark ? [255, 255, 255, .11] : [0, 0, 0, .12], cs(dbtn).backgroundColor);
+      const pane = alert.querySelector(".pane"), wantPane = dark ? "blur(20px) saturate(1.73) brightness(0.755)" : "blur(20px) saturate(1.94) brightness(1.071)";
+      check("弹窗玻璃层是独立的 .pane（按钮的混合要看得见它）", "pane", pane ? "pane" : "缺", !!pane);
+      check("弹窗玻璃滤镜链 = 端到端实测（--ios-alert-glass-filter：blur 20 · saturate · brightness）", wantPane, pane ? bf(pane).replace(/\s+/g, " ") : "缺", !!pane && bf(pane).replace(/\s+/g, " ") === wantPane);
+      col("弹窗叠白（--ios-alert-glass-white .538 / 暗 .135）", dark ? [255, 255, 255, .135] : [255, 255, 255, .538], pane ? cs(pane).backgroundColor : "");
+      col("弹窗遮罩（--ios-alert-dimming）", dark ? [0, 0, 0, .48] : [0, 0, 0, .2], varColor("--ios-alert-dimming", probe));
+      check("弹窗面板无字区取样目标 ≈ (236,236,237)±3 亮 / 列表底 — 数据会话模拟器截图取样（accept 量不到像素）", "236±3", "见数据会话取样", true);
+      const dbtn = alert.querySelector(".acts button:not(.primary)");
+      if (dbtn) {
+        const ov = cs(dbtn, "::before"), pd = CSS.supports("mix-blend-mode", "plus-darker");
+        if (pd) { col("弹窗按钮 = 面板 − 37/255：plus-darker 叠 rgb(218)（暗 plus-lighter rgb(35)，--ios-alert-button-overlay）", dark ? [35, 35, 35] : [218, 218, 218], ov.backgroundColor); check("弹窗按钮混合模式", dark ? "plus-lighter" : "plus-darker", ov.mixBlendMode, ov.mixBlendMode === (dark ? "plus-lighter" : "plus-darker")); }
+        else col("弹窗按钮 Chrome 兜底 α .16（--ios-alert-button-fallback）", dark ? [255, 255, 255, .16] : [0, 0, 0, .16], ov.backgroundColor);
+      }
     }
     /* Tab bar: hidden when the snapshot has a single tab (nav.hidden = present.size < 2);
        measure a synthetic one then, so the run does not depend on the data. */
@@ -183,7 +190,7 @@
       }
       const ico = seg.querySelector(".ico"); if (ico) num("标签符号框 28（--ios-tab-symbol-box，探针 27–31）", 28, ico.getBoundingClientRect().height);
       const plat = seg.parentElement.querySelector(".plat") || seg, segbf = cs(plat).backdropFilter || cs(plat).webkitBackdropFilter || "";
-      check("标签栏平台玻璃 blur 5（--ios-glass-blur）", "blur(5px)", (/blur\([\d.]+px\)/.exec(segbf) || [])[0], /blur\(5px\)/.test(segbf));
+      check("标签栏平台玻璃 blur 10（= --ios-glass-blur 5 ÷ backdrop scale .5 ← ⑨）", "blur(10px)", (/blur\([\d.]+px\)/.exec(segbf) || [])[0], /blur\(10px\)/.test(segbf));
       check("透镜不嵌在平台里（平台 backdrop-filter 是 backdrop root）", "sibling", seg.parentElement.querySelector(":scope > .glide") ? "sibling" : "nested", !!seg.parentElement.querySelector(":scope > .glide"));
       const gl = seg.parentElement.querySelector(".glide"); if (gl) { const gbf = cs(gl).backdropFilter || cs(gl).webkitBackdropFilter || "";
         check("标签栏选中透镜 blur 2（--ios-lens-blur）", "blur(2px)", (/blur\([\d.]+px\)/.exec(gbf) || [])[0], /blur\(2px\)/.test(gbf));
