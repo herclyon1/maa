@@ -1173,6 +1173,20 @@
    它自己看查询串，其它时候什么都不做。 */
 { const q = new URLSearchParams(location.search);
   if (q.has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260919025855"; document.body.appendChild(s); }
-  if (q.has("diag") || q.has("segframes")) { const s = document.createElement("script"); s.src = "seg-frames-logger.js"; document.body.appendChild(s); } }</script>
+  if (q.has("diag") || q.has("segframes")) { const s = document.createElement("script"); s.src = "seg-frames-logger.js"; document.body.appendChild(s); }
+  /* ?seghold=1: the stopped-state gesture of remote-ref/seg-lens-drag-mid.md (down on the selected segment, 5 × 20 pt moves 16 ms apart to the divider,
+     hold) run by the page itself once the control exists — for engines a script cannot drive from outside (wksnap offscreen WebKit, simulator Safari) */
+  if (q.has("seghold")) { const go = () => { const seg = document.querySelector("#queueseg"); if (!seg) { setTimeout(go, 100); return; }
+      { const r0 = seg.getBoundingClientRect(); document.body.style.translate = `0 ${(Math.round(r0.top) - r0.top).toFixed(3)}px`; }   // the control's top on a whole pt (the native sits at integer y 608; a fractional top smears every 1 pt line over two rows in the read-back; scrollBy does nothing in an offscreen WKWebView)
+      const on = seg.querySelector("button.on"), sr = seg.getBoundingClientRect(), ro = on.getBoundingClientRect(), y = ro.top + ro.height / 2;
+      const pe = (type, x) => seg.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, clientX: x, clientY: y, isPrimary: true, pointerType: "touch", button: 0, buttons: 1 }));
+      const x0 = ro.left + ro.width / 2, x1 = sr.left + sr.width / 2, step = (x1 - x0) / 5; pe("pointerdown", x0);
+      [1, 2, 3, 4, 5].forEach((k) => setTimeout(() => pe("pointermove", x0 + step * k), 400 + 16 * k));
+      let rafSeen = false; requestAnimationFrame(() => { rafSeen = true; });
+      setTimeout(() => { if (rafSeen) return; const lp = seg.__lensLoop; if (!lp) return; for (let i = 0; i < 240; i++) lp.step(16); }, 700);   // no rAF here (offscreen WKWebView, timers throttled too) → run the lens loop 240 virtual frames (3.84 s) at once: the settled held state
+      let moves = 0; seg.addEventListener("pointermove", () => { moves++; }, true);
+      setTimeout(() => { const l = seg.querySelector(".lens").getBoundingClientRect(); document.title = `seghold ${l.left.toFixed(2)} ${l.top.toFixed(2)} ${l.width.toFixed(2)} ${l.height.toFixed(2)} scroll ${scrollY}`;
+        if (q.get("seghold") === "dbg") { const d = document.createElement("div"); d.style.cssText = "position:fixed;left:0;top:0;z-index:99999;background:#fff;color:#000;font:11px monospace;padding:2px"; d.textContent = `${document.title} moves ${moves} raf ${rafSeen} ${JSON.stringify(seg.__lensLoop ? seg.__lensLoop.state : null)}`; document.body.appendChild(d); } }, 2000); };
+    setTimeout(go, 50); } }</script>
 </body>
 </html>

@@ -1338,6 +1338,8 @@ function segLens(seg, lens, bs) {
       if (st.dragged && restIdx !== idx0 && st.geo) st.drop = { w: st.geo.w, h: st.geo.h };   // a value change after a drag: the C-frame size bounce
     },
     stop: () => { cancelAnimationFrame(st.raf); if (!st.done) clear(); },
+    step: (dtMs) => { if (!st.done) { cancelAnimationFrame(st.raf); tick(dtMs ? st.prev + dtMs : performance.now()); } },   // one frame by hand, optionally on a virtual clock (an offscreen WKWebView runs neither requestAnimationFrame nor timers at speed; the ?seghold hook drives it)
+    get state() { return { dragged: st.dragged, cx: st.cx, pres: st.pres.x, model: st.model.x, q: st.sL.x, rel: st.rel, done: st.done }; },
   };
   loop.cancel = loop.release;
   seg.__lensLoop = loop;
