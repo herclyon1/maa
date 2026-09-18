@@ -108,10 +108,11 @@ What they hold (seg-lens-drag-mid.md §5): lifted — inside the portal u ≡ 0 
 and the top / bottom 6 pt to 0.54; dragged — the last ~10 pt of the ends pulled outward (|s| 86–98: M 1.0 → 1.44, beyond u ±3.9 /
 ±7.7), vertical magnification 1.20–1.29 at the ends, R−B 3.0–3.6 pt (≈ 8 pt colour fringe).
 
-Switching between the two sets (the ui session's implementation; an ASSUMPTION until the formula replaces both fields): the lens
-geometry decides — at the rest width 220 the lifted set, at the stretched drag width (244 … 253, `seg-lens-drag-mid.md` §0 过程) the
-drag set, interpolated by the lens width in between (cross-fade of the two filtered label layers, or one layer whose filter scale
-follows the width); when the old page's formula for the portal field lands, both sets are recomputed from it and this rule goes.
+Switching between the two sets — 接线占位，等原理 (a wiring placeholder until the decompiled shader / SDF principle says how the
+portal field changes with the lens geometry; not a measured or decompiled rule): the lifted set at the rest width 220, the drag set
+at the stretched drag width (244 … 253, `seg-lens-drag-mid.md` §0 过程), a cross-fade of the two filtered label layers by the lens
+width in between. When the principle is decompiled (the old page's shader formula), both fields and this switch are computed from
+it and the placeholder goes.
 
 Check (`verify_lens_maps.py --field … --label-lift … --label-drag …`):
 ```
