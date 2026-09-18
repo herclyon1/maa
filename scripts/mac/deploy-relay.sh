@@ -444,10 +444,12 @@ else
   fi
   if git -C "$HERE/.." push -q origin HEAD ${REF:+"refs/tags/$REF"}; then
     echo "▶ manifest 已推上 GitHub${REF:+（标签 $REF 一起）}，自更新下次开机就能看到"
-    # The first door the machine tries since 2026-09-18 is the COS bucket (no
-    # cache layer, so no "old manifest six hours after the push"). Publishing
-    # there is a courtesy for the next boot; the deploy itself is already done.
-    python3 "$HERE/../scripts/mac/publish-cos.py" || echo "  ⚠️ COS 那扇门没推上（GitHub 那几扇照常可用）" >&2
+    # Since 2026-09-18 the COS bucket is the only door the machine uses at boot
+    # (the GitHub doors are off unless the machine's .env switches them on, see
+    # docs/OPERATIONS.md). The machine already has this code over ssh, so a failed
+    # publish does not undo the deploy - but it does mean the next self-update
+    # (a version pushed while the machine is off) has nothing to read.
+    python3 "$HERE/../scripts/mac/publish-cos.py" || echo "  ✋ COS 没推上：机器开机自更新只看 COS，请重跑 scripts/mac/publish-cos.py" >&2
     # 顺手清 jsDelivr：不清的话各扇门要到十几小时后才发新清单，自更新在那之前
     # 看到的是旧版本号，什么都不做也什么都不说。机器此刻已经部署好了，所以清缓存
     # 失败只是「自更新这条后路暂时不通」，不该让整个部署判失败。

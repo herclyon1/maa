@@ -18,6 +18,7 @@ No network: _get_once and _cos_get are replaced.
 import hashlib
 import io
 import json
+import os
 import sys
 import threading
 import time
@@ -108,6 +109,7 @@ OLD_A, NEW_A, NEW_B = b"a v1\n", b"a v2\n", b"b v2\n"
 FILES_V2 = {"ark_relay/a.py": sha(NEW_A), "ark_relay/b.py": sha(NEW_B)}
 MAN_V2 = json.dumps({"version": 20260918020000, "files": FILES_V2}).encode()
 
+os.environ.pop(su.GITHUB_FALLBACK_ENV, None)      # the default: GitHub doors off
 print("[COS 上是新版：只碰 COS，文件全部来自 bundle，GitHub 一次都不问]")
 net, cos, root = setup(
     {"latest.json": b'{"version": 20260918020000, "uploaded": "2026-09-18T02:00:00+00:00"}',
@@ -138,6 +140,56 @@ check("不更新", updated, [])
 check("GitHub 一扇门都没问", net.tried, [])
 check("磁盘没动", (root / "ark_relay/a.py").read_bytes(), OLD_A)
 check("已是最新 = 没有未完成的事，旧的失败报告清掉", su.take_failure(root), None)
+
+# ---- GitHub doors off by default (operator decision 2026-09-18 evening) ----
+print("\n[默认不开备用线路：COS 的清单拿不到 → 记失败、一扇 GitHub 门都不问、磁盘不动]")
+os.environ.pop(su.GITHUB_FALLBACK_ENV, None)
+net, cos, root = setup(
+    {"latest.json": b'{"version": 20260918020000}'},          # manifest / bundle missing
+    {"fastly.jsdelivr.net": {"manifest.json": MAN_V2, "ark_relay/a.py": NEW_A, "ark_relay/b.py": NEW_B}},
+    {"ark_relay/a.py": OLD_A, "ark_relay/b.py": b"b v1\n"}, 20260917000000)
+updated = su.check(root, "https://raw.githubusercontent.com/herclyon1/maa/main/relay/")
+check("不更新", updated, [])
+check("GitHub 一扇门都没问", net.tried, [])
+check("磁盘没动", (root / "ark_relay/a.py").read_bytes(), OLD_A)
+fail = su.take_failure(root)
+check("失败记下了、开机会报", bool(fail) and "备用线路已关" in fail["reason"], True)
+check("失败记录里本机版本对", fail and fail["local"], 20260917000000)
+
+print("\n[默认不开备用线路：bundle 哈希不对 → 记失败，不去 GitHub 补]")
+net, cos, root = setup(
+    {"latest.json": b'{"version": 20260918020000}', "20260918020000/manifest.json": MAN_V2,
+     "20260918020000/bundle.zip": bundle({"ark_relay/a.py": b"tampered\n", "ark_relay/b.py": NEW_B})},
+    {"fastly.jsdelivr.net": {"ark_relay/a.py": NEW_A, "ark_relay/b.py": NEW_B}},
+    {"ark_relay/a.py": OLD_A, "ark_relay/b.py": b"b v1\n"}, 20260917000000)
+updated = su.check(root, "https://raw.githubusercontent.com/herclyon1/maa/main/relay/")
+check("不更新", updated, [])
+check("GitHub 一扇门都没问", net.tried, [])
+check("b.py 虽然在包里是对的也不落盘（全有或全无）", (root / "ark_relay/b.py").read_bytes(), b"b v1\n")
+fail = su.take_failure(root)
+check("失败记下了，带着本来要更新的文件", fail and sorted(fail["files"]), ["ark_relay/a.py", "ark_relay/b.py"])
+
+print("\n[默认不开备用线路：没配 COS → 一条警告 + 失败记录，不更新]")
+net, cos, root = setup(None,
+    {"fastly.jsdelivr.net": {"manifest.json": MAN_V2, "ark_relay/a.py": NEW_A, "ark_relay/b.py": NEW_B}},
+    {"ark_relay/a.py": OLD_A, "ark_relay/b.py": b"b v1\n"}, 20260917000000)
+check("不更新", su.check(root, "https://raw.githubusercontent.com/herclyon1/maa/main/relay/"), [])
+check("GitHub 一扇门都没问", net.tried, [])
+check("失败记下了", bool(su.take_failure(root)), True)
+
+print("\n[默认不开备用线路：COS 正常时和开着一样——两个文件从 bundle 落地]")
+net, cos, root = setup(
+    {"latest.json": b'{"version": 20260918020000, "uploaded": "2026-09-18T02:00:00+00:00"}',
+     "20260918020000/manifest.json": MAN_V2,
+     "20260918020000/bundle.zip": bundle({"ark_relay/a.py": NEW_A, "ark_relay/b.py": NEW_B})},
+    {}, {"ark_relay/a.py": OLD_A, "ark_relay/b.py": b"b v1\n"}, 20260917000000)
+check("两个文件都更新了", sorted(su.check(root, "https://raw.githubusercontent.com/herclyon1/maa/main/relay/")),
+      ["ark_relay/a.py", "ark_relay/b.py"])
+check("没有失败记录", su.take_failure(root), None)
+
+# ---- the same situations with the switch on: every old expectation still holds ----
+print("\n[开关打开（" + su.GITHUB_FALLBACK_ENV + "=1）：以下全是备用线路的老行为]")
+os.environ[su.GITHUB_FALLBACK_ENV] = "1"
 
 print("\n[COS 的对象被生命周期规则删了（404）：静默退回 GitHub，整轮照常完成]")
 net, cos, root = setup(

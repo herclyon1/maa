@@ -1227,8 +1227,8 @@ when only `raw` answers fits in one raw round-trip instead of twenty; the
 all-or-nothing landing is unchanged. `scripts/mac/publish-cos.py --check` shows
 which version COS would hand the machine.
 
-Doors, in the order the code tries them after COS (measured from the machine
-2026-08-21, 8 attempts each):
+Doors of the (default-off) GitHub fallback, in the order the code tries them
+after COS (measured from the machine 2026-08-21, 8 attempts each):
 
 | Door | Success | Median |
 |---|---|---|
@@ -1263,6 +1263,41 @@ now equals "a door answered correctly"; the manifest itself still comes from
 means "no update this boot", and COS is the first door anyway. **Never move or
 delete a `relay-*` tag**: a machine mid-update fetches from it. A manifest
 without `ref` (anything before 2026-09-18) keeps the branch.
+
+**The GitHub doors are off by default (since the evening of 2026-09-18).**
+When COS cannot be used - `latest.json` unreadable, that version's manifest or
+bundle missing, a wrong hash in the bundle, `latest.json` and the manifest
+disagreeing, COS not configured - the round ends as a recorded failure: the
+next boot pushes `⚠️ 中继自更新没成功` with the reason and tries again, and
+nothing waits on GitHub. Operator decision, on this evidence from the whole of
+the machine's `relay.log` (521 service starts, 2026-08-16 00:27 to 09-18 19:32;
+the jsDelivr doors exist since 08-20/21, so ~455 rounds for them; only
+failures are logged, so a door's successes are "rounds minus failures"):
+
+| Door | Manifest fetch failures | of which reset / timeout | Stale file served | File fetch failures |
+|---|---|---|---|---|
+| `fastly.jsdelivr.net` | 2 | 0 / 1 (+1 DNS) | 8 | 11 (2 reset, 9 timeout) |
+| `cdn.jsdelivr.net` | 14 | 5 / 7 | 11 | 1 |
+| `gcore.jsdelivr.net` | 15 | 5 / 9 | 10 | 1 |
+| `raw.githubusercontent.com` | 206 | 134 / 58 (+14 other) | 1 | 19 |
+
+"Stale file served" counts `给的是旧副本` lines: 29 across the 33 rounds that
+needed a file (29 landed, 4 abandoned: 08-21 ×2, 09-18 19:06). So the mirrors
+fetch reliably but could not be trusted for content until the tag fix, and raw
+- the only always-fresh door - fails 40% of the time from that network. A live
+probe from the machine at 19:36 on 09-18 (4 attempts each, 15 s timeout):
+fastly 4/4 median 0.44 s, cdn 4/4 1.47 s, gcore 4/4 0.43 s, raw 4/4 0.55 s,
+**COS `latest.json` 4/4 0.31 s, COS manifest 4/4 0.30 s**. COS is paid for,
+has no cache layer and answered every time; nothing on GitHub earns a place in
+the boot window next to it.
+
+**To switch the GitHub doors back on**: add `SELFUPDATE_GITHUB_FALLBACK=1` to
+`C:\ProgramData\ark-relay\.env` on the machine and restart the service
+(`Restart-Service ark-relay`, or the next boot). Every door, timeout, budget
+and test of the fallback is kept as it was; with the switch on, a COS that
+cannot be used falls through to the four doors exactly as before, files at
+the manifest's tag. `selfupdate.github_fallback()` is the single point that
+reads the switch. Remove the line and restart to go back to COS only.
 
 **COS "already latest" ends the round.** When `latest.json` is readable and its
 version is not newer than the machine's, no GitHub door is asked: every deploy

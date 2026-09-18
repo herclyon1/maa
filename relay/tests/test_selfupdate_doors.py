@@ -31,6 +31,12 @@ from ark_relay import selfupdate as su
 from ark_relay.statestore import StateStore
 from _tmp import tmpdir
 
+# Everything here is the GitHub fallback, which is off by default since
+# 2026-09-18 (see selfupdate.GITHUB_FALLBACK_ENV); switch it on for this file.
+# The default-off behaviour is pinned in test_selfupdate_cos.py.
+import os
+os.environ[su.GITHUB_FALLBACK_ENV] = "1"
+
 fails = []
 
 

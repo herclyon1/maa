@@ -32,8 +32,10 @@ a manifest pushed at 02:31 was still the old one on the machine's node at
 08:45, and the update only landed because a person deployed by hand. COS has
 no cache layer: what was written is what is read. The four GitHub doors stay
 as the fallback (COS answered 451 on 2026-09-13, an unpaid bill), and the
-bucket's own lifecycle rule may delete the prefix one day - a missing object
-is simply "COS has nothing", never an error. When COS answers and its latest
+bucket's own lifecycle rule may delete the prefix one day. Since the evening
+of 2026-09-18 the GitHub doors are **off by default** (GITHUB_FALLBACK_ENV):
+a COS that cannot be used ends the round as a recorded failure, reported at
+the next boot, which tries again. When COS answers and its latest
 deploy is the version already running, that is the end of the round: no
 GitHub door is asked (every deploy writes COS last, so GitHub cannot be ahead).
 
@@ -98,10 +100,29 @@ RAW_TIMEOUT = 45
 # filled the whole 240 s budget (2026-09-18 plan). Six in flight keeps a
 # twenty-file update inside one raw round-trip.
 PARALLEL_FETCHES = 6
+# The GitHub doors are off unless the machine's .env says otherwise (operator
+# decision 2026-09-18 evening: the bucket is paid for, and the fallback is what
+# cost the boot window that night). The whole of relay.log, 521 rounds from
+# 08-16 to 09-18, says why nothing there qualifies as a door to rely on:
+# raw.githubusercontent failed the manifest fetch 206 times (reset 134,
+# timeout 58); the three jsDelivr mirrors fetched reliably (fastly 2 failures,
+# cdn 14, gcore 15 of ~455 rounds each) but served a stale copy of a file 29
+# times across the 33 rounds that needed files, and on 09-18 fastly was reset
+# or timed out four times in a row. COS answered 4/4 at 0.3 s from the same
+# machine that evening. When COS cannot be used the round is recorded as failed
+# and reported at the next boot, and the next boot tries again; nothing waits
+# on GitHub. Re-enable by putting SELFUPDATE_GITHUB_FALLBACK=1 in the .env
+# (docs/OPERATIONS.md); every door, timeout and test below is kept intact.
+GITHUB_FALLBACK_ENV = "SELFUPDATE_GITHUB_FALLBACK"
 COS_PREFIX = "relay"
 COS_LATEST = "latest.json"
 COS_BUNDLE = "bundle.zip"
 COS_TIMEOUT = 20
+
+
+def github_fallback() -> bool:
+    """Whether the GitHub doors may be asked at all this round."""
+    return os.environ.get(GITHUB_FALLBACK_ENV, "").strip() == "1"
 
 
 def _cos():
@@ -184,11 +205,11 @@ def _cos_bundle(cos, ver: int, files: dict, wanted: list[str]) -> dict[str, byte
             names = set(z.namelist())
             for rel in wanted:
                 if rel not in names:
-                    log.warning("COS 的 bundle 里没有 %s，退回 GitHub", rel)
+                    log.warning("COS 的 bundle 里没有 %s", rel)
                     return None
                 body = z.read(rel)
                 if _sha1(body) != files[rel]:
-                    log.warning("COS 的 bundle 里 %s 哈希不对，退回 GitHub", rel)
+                    log.warning("COS 的 bundle 里 %s 哈希不对", rel)
                     return None
                 out[rel] = body
     except (zipfile.BadZipFile, KeyError, OSError) as exc:
@@ -711,6 +732,12 @@ def _stage_files(root: Path, base: str, files: dict, deadline: float | None,
             bodies = got
 
     missing = [rel for rel, _ in plan if rel not in bodies]
+    if missing and not github_fallback():
+        log.warning("COS 的更新包里拿不到 %d 个文件（例如 %s），备用线路已关，本次不更新",
+                    len(missing), missing[0])
+        _record_failure(root, "腾讯云桶上的更新包拿不到或校验不对（原因见日志），备用线路已关，"
+                        "本次不更新；下次开机会再试", remote_ver, local_ver, wanted)
+        return None
     if missing:
         def fetch(rel: str) -> tuple[str, bytes | None]:
             return rel, _get_with_retry(base + rel, expect_sha=files[rel], deadline=deadline)
@@ -771,10 +798,18 @@ def check(root: Path, base_url: str = "",
     local_ver = _applied_version(root)
     cos = None
     manifest = None
+    fallback = github_fallback()
     try:
         cos = _cos()
     except Exception:  # a broken COS client must not stop the GitHub path
-        log.warning("COS 客户端建不起来，走 GitHub", exc_info=True)
+        log.warning("COS 客户端建不起来", exc_info=True)
+    if cos is None and not fallback:
+        # No door at all. Said once per round, loudly, because "no update"
+        # looks exactly like "up to date" from outside.
+        log.warning("自更新没有线路：COS 没配置（或建不起来），GitHub 备用线路已关")
+        _record_failure(root, "腾讯云桶没配置好，备用线路又是关着的，这次没法更新",
+                        0, local_ver, [])
+        return []
     if cos is not None:
         found = _cos_manifest(cos, local_ver)
         if found is not None:
@@ -786,6 +821,11 @@ def check(root: Path, base_url: str = "",
                 return []
             log.info("COS 上有新版 v%s（本机 v%s）", cos_ver, local_ver)
     if manifest is None:
+        if not fallback:
+            log.warning("COS 上拿不到最新一次部署，备用线路已关，本次不更新，下次开机再试")
+            _record_failure(root, "腾讯云桶上拿不到这次部署的清单（原因见日志），备用线路已关，"
+                            "本次不更新；下次开机会再试", 0, local_ver, [])
+            return []
         # The manifest is GitHub's: its bundle is not on COS under that version
         # (or COS is what just failed), so the files come from GitHub too.
         cos = None
