@@ -14,6 +14,10 @@
    时间戳要用服务器的：先 GET /web/v1/auth/refresh，它回 timestamp 和新 token。 */
 (function () {
   const LS_TOKENS = "ark-remote-tokens";
+  /* Behaviour 2 (2026-09-19): the last good reading is kept on this phone and shown at once on the next open, then replaced in place
+     when the refresh lands — UIKit state restoration: “users … expect your app to be in the same state as when they left it”
+     (Preserving your app’s UI across launches); HIG Loading: “Show something as soon as possible.” */
+  const LS_CACHE = "ark-remote-stamina";
   const ZONAI = "https://zonai.skland.com";
   const KURO = "https://api.kurobbs.com";
   const MIN_GAP_MS = 60 * 1000;
@@ -105,7 +109,10 @@
     saveTokens({ ...cur, sk });
     return true;
   }
-  function clear() { Stamina.tokens = null; Stamina.data = null; try { localStorage.removeItem(LS_TOKENS); } catch {} }
+  function clear() { Stamina.tokens = null; Stamina.data = null; Stamina.cached = false; try { localStorage.removeItem(LS_TOKENS); localStorage.removeItem(LS_CACHE); } catch {} }
+  function loadCache() {
+    try { const c = JSON.parse(localStorage.getItem(LS_CACHE) || "null"); if (c && c.data) { Stamina.data = c.data; Stamina.at = 0; Stamina.cached = true; } } catch {}
+  }
 
   // ---- 森空岛 ----
   async function skRefresh(sk) {
@@ -252,7 +259,8 @@
       ]);
       const d = new Date(); const p = (x) => String(x).padStart(2, "0");
       Stamina.data = { ...sk, "鸣潮": ww, "取自": `${p(d.getHours())}:${p(d.getMinutes())}` };
-      Stamina.at = Date.now();
+      Stamina.at = Date.now(); Stamina.cached = false;
+      try { localStorage.setItem(LS_CACHE, JSON.stringify({ at: Stamina.at, data: Stamina.data })); } catch {}
       return Stamina.data;
     } finally { Stamina.busy = false; }
   }
@@ -264,6 +272,7 @@
 
   /* skRefresh / skGet 也导出：库存页（inventory.js）用同一套森空岛签名去拿仓库，
      签名代码只此一份，不在别处再抄一遍。 */
-  Object.assign(Stamina, { refresh, fromLink, fromPaste, fromSnapshot, loadTokens, clear, status, endfieldFromDungeon, arknightsLive, md5, skRefresh, skGet });
+  Object.assign(Stamina, { refresh, fromLink, fromPaste, fromSnapshot, loadTokens, clear, status, endfieldFromDungeon, arknightsLive, md5, skRefresh, skGet, loadCache });
+  if (loadTokens()) loadCache();   // only a configured phone has a reading worth restoring
   window.Stamina = Stamina;
 })();
