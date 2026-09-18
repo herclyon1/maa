@@ -18,7 +18,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260919011715">
 <!-- 组件数字的正本：--ios-* 变量，每条带来源（探针原值 / AX 帧 / NUMBERS 行 / 取色 / 采样替代）。页面自己的变量只做映射，不再手写数字。 -->
 <link rel="stylesheet" href="tokens.css?v=20260919011715">
-<link rel="stylesheet" href="seg-keys.css?v=20260919011715">   <!-- segmented-lens kinematics compiled from the native frames (界面2号 ui2 5171be9 gen_seg_keys.py; do not edit) -->
+<link rel="stylesheet" href="seg-keys.css?v=20260919011715">   <!-- segmented-lens kinematics compiled from the native frames (界面2号 ui2 90d6876 gen_seg_keys.py; do not edit) -->
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
      上面跑的」). System colours from Apple's palette: grouped background, white
@@ -484,7 +484,7 @@
      lens-filter.svg: the map carries the .82 squash and the bands); .plat = the fading white platter (native restingBackground, opacity 1 → 0; the
      bottom layer of the native lens, so it sits above the displaced backdrop copy and under the labels); .warpl = the label copy, undisplaced, on top
      (the ContentLensing portal, full opacity: copy and real label are the same image at the same place, so the DestOut cross-fade between them shows
-     nothing); .rim = the edge lines. .warp's opacity = the DestOut punch-out's (§4.1 first 3 frames, §4.3 the fade-out from + 215 ms). */
+     nothing); .rim = the edge lines. .warp's opacity = the DestOut punch-out's (§4.1 first 3 frames, §4.3 the fade-out from + 198 ms). */
   .segctl .warp{position:absolute;z-index:3;left:0;top:0;width:0;height:0;pointer-events:none;display:none;overflow:hidden;clip-path:inset(0 round var(--rr, 14px));filter:url(#seg-lens-warp);background:var(--bg);opacity:var(--lpd, 0)}
   .segctl .plat{position:absolute;z-index:4;left:0;top:0;width:0;height:0;pointer-events:none;display:none;border-radius:var(--rr, 14px);background:var(--ios-segment-selected-bg);opacity:calc(1 - var(--lp, 0))}   /* 白平台 restingBackground：抬起 1 → 0、松手 0 → 1（seg-keys.css -platter-keys ≈ 1 − 位移量，差 ≤ .01） */
   .segctl .warpl{position:absolute;z-index:5;left:0;top:0;width:0;height:0;pointer-events:none;display:none;overflow:hidden;clip-path:inset(0 round var(--rr, 14px))}   /* 标签复本在平台之上、不位移、不淡（label-mag 1.00） */
