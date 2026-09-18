@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 把 web/ 发到 GitHub Pages（gh-pages 分支）。
 #
-# 为什么要盖版本号：2026-08-31 手机上连着好几次拿的都是缓存里的旧 app.js，
+# 为什么要盖版本号：2026-08-31 手机上连着好几次拿的都是缓存里的旧 app.js（现已拆成 view.js 等），
 # 我按修好的代码去判断，得出的结论全是错的——排查了半天，真因只是
 # 「页面根本没在跑新代码」。每次发布都给 <script src> 换一个新的 ?v=，
 # 浏览器就没有旧版可拿。
@@ -20,7 +20,8 @@ import pathlib, re, sys
 v = sys.argv[1]
 p = pathlib.Path("web/index.html")
 s = p.read_text(encoding="utf-8")
-s = re.sub(r'<script src="app\.js[^"]*"></script>', f'<script src="app.js?v={v}"></script>', s)
+# app.js 2026-09-18 拆成 schema/net/pending/live/view（stamina 原本就单独），六个都盖同一个版本号
+s = re.sub(r'<script src="(schema|net|pending|live|stamina|view)\.js[^"]*"></script>', lambda m: f'<script src="{m.group(1)}.js?v={v}"></script>', s)
 s = re.sub(r'accept\.js\?v=[^"]*', f'accept.js?v={v}', s)   # the ?accept-only acceptance script
 s = re.sub(r'href="manifest\.webmanifest[^"]*"', f'href="manifest.webmanifest?v={v}"', s)
 # 图标：<link rel="...icon..." href="xxx.png?v=...">，连 manifest 里的一起盖
@@ -71,7 +72,7 @@ for i in range(1, 21):                      # 最多等 100 秒
     except Exception as e:                  # noqa: BLE001
         print(f"  [{i}/20] 取不到：{type(e).__name__}")
     else:
-        if f"app.js?v={v}" in html:
+        if f"view.js?v={v}" in html:
             print(f"✅ 手机页已经在发 v={v}（实测取回来核对过）")
             print("   https://herclyon1.github.io/maa/ 手机上直接刷新即可，不用清缓存。")
             raise SystemExit(0)

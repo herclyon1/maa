@@ -48,7 +48,7 @@ if "陨翼云渊" not in raw3.get("okww_farm", ""):
 
 # 手机页能选到的每一个序号，报告都得叫得出名字。
 # 2026-09-08：手机页 FORGE 有 5 项、报告的表只有 4 条，选第 5 个就写成「凝素领域·#5」。
-js = (pathlib.Path(__file__).resolve().parents[2] / "web" / "app.js").read_text(encoding="utf-8")
+js = (pathlib.Path(__file__).resolve().parents[2] / "web" / "schema.js").read_text(encoding="utf-8")   # TACET/FORGE 在 schema.js（app.js 2026-09-18 拆分）
 for idx, (_, sets) in wuwa_tacet.TACET.items():
     if f'[["{sets[0]}", "{sets[1]}"], {idx}]' not in js:
         fails.append(f"手机页 TACET 里第 {idx} 项和 wuwa_tacet 对不上")

@@ -22,7 +22,7 @@ def check(label, got, want):
         fails.append(label)
 
 
-app = (Path(__file__).resolve().parents[2] / "web" / "app.js").read_text(encoding="utf-8")
+app = (Path(__file__).resolve().parents[2] / "web" / "schema.js").read_text(encoding="utf-8")   # 表在 schema.js（app.js 2026-09-18 拆分）
 m = re.search(r"const BOSSES = \[(.*?)\];", app, re.S)
 check("页面里有这张表", bool(m), True)
 page = [] if not m else [(int(i), n) for i, n in re.findall(r'\[\s*(\d+)\s*,\s*"([^"]+)"\s*\]', m.group(1))]
