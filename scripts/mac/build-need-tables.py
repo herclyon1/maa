@@ -1,58 +1,64 @@
 #!/usr/bin/env python3
-"""Build `web/data/need.json`: what one operator's full build needs, per material.
+"""Build `web/data/need.json`: what the **newest five-star operator's** full build
+needs, per material.
 
-The phone page's 库存 tab shows, per material, 库存 | 单个角色满练所需 | 人份
-(stock / need). The stock is live (the page asks Skland itself, see
-`web/inventory.js`); the need is static and comes from this file, regenerated only
-when a new operator or weapon appears on the account. Nothing here runs on a timer.
+The phone page's 库存 tab shows, per material, 库存 | 单个角色满练所需 | 人份 (stock ÷
+need). Stock is live (the page asks Skland itself, `web/inventory.js`); need is this
+static table. The user's caliber (2026-09-18): the older operators are all built, so
+the need is that of **the newest five-star only** - not an average, not a maximum.
+Nothing here runs on a timer; rerun it when a new five-star appears.
 
-    python3 scripts/mac/build-need-tables.py                     # live pull -> web/data/need.json
-    python3 scripts/mac/build-need-tables.py --save-fixtures DIR # live pull, and keep the raw responses
-    python3 scripts/mac/build-need-tables.py --offline DIR -o F  # rebuild from saved responses, no network
+    python3 scripts/mac/build-need-tables.py                          # live -> web/data/need.json
+    python3 scripts/mac/build-need-tables.py --save-fixtures DIR      # live, and keep the raw responses
+    python3 scripts/mac/build-need-tables.py --offline DIR -o FILE    # rebuild from saved responses
+    python3 scripts/mac/build-need-tables.py --char 赛希               # a named operator instead of the newest
 
-Endfield only for now. The `games[]` layer is where 明日方舟 / 鸣潮 go later; the
-schema does not change when they arrive.
+Endfield only for now. The `games[]` layer is where 明日方舟 / 鸣潮 go later.
 
-## Where the numbers come from (all official, `docs/SKLAND-API.md` §3)
+## Who is "the newest five-star" (official, `docs/SKLAND-API.md` §8)
 
-* `calculate/rules?charIds=<id>`, one operator per call (comma-joined ids return
-  nothing): `breakthroughs[].materials` + `skills[].levels[].materials` up to
-  target level 12, plus `charLevelRules` (gold and exp per level, 1 -> 90).
-* `calculate/rules?weaponIds=<id>`: `weapons[].breakthroughs[].materials` plus
-  `weaponLevelRules`.
-* `calculate/material-list`: the 40 materials (id, name, rarity, icon, exp value).
-* `card/detail`: which operators and weapons the account owns - the rules are asked
-  for every owned operator and every equipped weapon.
+1. `GET /web/v1/wiki/item/catalog?typeMainId=1&onlyOnline=true` - the official wiki's
+   character catalog; the rarity tag is `brief.subTypeList[subTypeId=10000].value`
+   (`10005` = five-star, `10006` = six-star, `10004` = four-star).
+2. `GET /web/v1/wiki/item/info?id=<itemId>` for each five-star - the entry's
+   attribute table carries `上线时间` (e.g. 「2026年9月24日」) and `主要获取方式`.
+   The newest 上线时间 wins; the account's ownership plays no part.
 
-Caliber = the official 完美 template (`docs/SKLAND-API.md` §7): level 90, four
-skills to 12, weapon 1 -> 90, every breakthrough. **Talents are excluded**, the same
-scope as `docs/ENDFIELD-STOCKPILE.md` and `docs/ENDFIELD-SANITY-YIELD.md` §B.
+## Where the numbers come from
 
-## Three things the raw data does that a reader must know
+* Universal part (identical for every operator, checked here across every five-star
+  the calculator knows): `calculate/rules?charIds=<one id>` - `breakthroughs[]` +
+  `skills[].levels[]` up to level 12, plus `charLevelRules` 1 -> 90. Talents excluded
+  (the scope of `docs/ENDFIELD-SANITY-YIELD.md` §B).
+* The operator's own choices (which two high-tier materials at 116, which one at 20,
+  which leaf at 84, which mushroom at 8): from her `rules?charIds=` once the
+  calculator lists her (`search-chars`). **Before release the calculator does not
+  know her** (2026-09-18: 噗切娜 is `label_type_preview`, `search-chars` has 32
+  operators and none is she, and `rules` for her derived id answers `chars: []`).
+  Then `--foresight FILE` supplies the client's own preview table
+  (`ForesightCharGrowthTable.json`, stage 4 = the full build) and `--item-names FILE`
+  maps its item ids to names; the amounts are cross-checked against the universal
+  structure (116 / 116 / 20 / 84 / 8).
+* Weapon: `--weapon NAME` if given; else the first weapon of the foresight entry's
+  `weaponIds` that the calculator knows (`rules?weaponIds=`, id = md5 of the internal
+  code - verified on 12 known ids); else the weapon the account has on her. Universal
+  weapon rows are identical for every weapon (50 / 23 / 5 / 5 / 3); a weapon adds one
+  high-tier material at 16 and one ore at 8.
+* `calculate/material-list` for names, rarity, icon and exp value of all 40 materials.
 
-* `charLevelRules[89]` (level 90) is `gold: "-1", exp: "-1"` - a "no next level"
-  sentinel, not a cost. Summing it blindly gives 385,419 / 1,792,289; the real
-  totals are 385,420 / 1,792,290. `weaponLevelRules` ends in `0 / 0` instead.
-* `material-list` names carried a trailing newline on 2026-08-28 (`"D96钢样品四\\n"`)
-  and did not on 2026-09-18. Always `strip()`.
-* A material the account holds none of is **absent** from `itemCount`, not zero
-  (2026-09-18: 38 of 40 present). The page treats absent as 0.
+## Read-off traps (each pinned by `relay/tests/test_need_table.py`)
 
-## What "need" means per row
-
-* 通用: the count is identical for every owned operator (or every weapon) - the
-  number is exact for any build.
-* Variable groups (high-tier materials, leaves, mushrooms, ores): one build uses one
-  option of the group. `need` is the **largest** count any single operator or weapon
-  uses (e.g. a high-tier material is 116 when it is one of the operator's two mains,
-  20 as the third, 16 on a weapon; `need` = 116) and `note` spells the options out.
-  人份 computed from it is therefore the conservative reading.
+* `charLevelRules[89]` (level 90) is `gold: "-1", exp: "-1"`: a sentinel, not a cost.
+* `material-list` names carried a trailing newline on 2026-08-28. Always `strip()`.
+* A material the account holds none of is absent from `itemCount`, not 0.
 """
 from __future__ import annotations
 
 import argparse
 import gzip
+import hashlib
 import json
+import re
 import sys
 import time
 import urllib.request
@@ -65,19 +71,20 @@ sys.path.insert(0, str(REPO / "relay"))
 ZONAI = "https://zonai.skland.com"
 ENV = Path.home() / ".config/ark/.env"
 OUT_DEFAULT = REPO / "web" / "data" / "need.json"
+FIXTURES = REPO / "relay" / "tests" / "fixtures" / "skland-endfield"
 
-GAME = "终末地"
-GAME_ID = "endfield"
-CALIBER = "一个干员：1→90 级、全部突破、四个技能到 12 级、武器 1→90 级；不含天赋"
-SOURCE = ("森空岛 calculate/rules?charIds= 与 ?weaponIds= 逐个求和，"
-          "material-list 取名字和图标；方法见 docs/ENDFIELD-SANITY-YIELD.md §B")
+GAME, GAME_ID = "终末地", "endfield"
+SOURCE = ("最新五星按森空岛百科的「上线时间」定；用量按森空岛养成计算器 rules 逐项求和"
+          "（计算器还没收录她时，她选哪几种素材按客户端预览表 ForesightCharGrowthTable）；"
+          "名字和图标取自 material-list。方法见 docs/SKLAND-API.md §8")
 MAX_SKILL_LEVEL = 12
 EXP_CHAR, EXP_WEAPON = "exp:char", "exp:weapon"
+FIVE_STAR_TAG = "10005"       # brief.subTypeList[subTypeId=10000].value in the wiki catalog
+_DATE = re.compile(r"(\d{4})年(\d{1,2})月(\d{1,2})日")
 
-# Which sanity stage drops it. Read off MaaEnd's own item -> stage mapping
-# (`SupplyPlanMain.json` `SupplyPlanOverride_*`) and `ItemTable.obtainWayIds`, as
-# tabulated in docs/ENDFIELD-SANITY-YIELD.md §A. A material with no entry gets
-# `stage: null` - unknown is written as unknown, never guessed.
+# Which sanity stage drops it - MaaEnd's item -> stage mapping (`SupplyPlanMain.json`)
+# and `ItemTable.obtainWayIds`, as tabulated in docs/ENDFIELD-SANITY-YIELD.md §A. No
+# entry = `stage: null`; unknown is written as unknown.
 STAGE = {
     "协议棱柱组": "技能提升 A", "协议棱柱": "技能提升 B",
     "协议圆盘组": "干员进阶 A", "协议圆盘": "干员进阶 B",
@@ -90,85 +97,18 @@ STAGE = {
 }
 GATHER = "采集 / 帝江号仓库（不耗理智）"
 # `ItemTable.obtainWayIds` = item_obtain_gather_* for every leaf, mushroom and stone
-# (2026-06-22 dump; 协议纹石 is newer than the dump and stays unknown).
+# (client table of 2026-09-04, rmxlinux/EndfieldData; 协议纹石 = item_plant_spcstone_2_3).
 GATHERED = {"纯晶多齿叶", "至晶多齿叶", "晶化多齿叶", "受蚀玉化叶", "岩天使叶", "红矛叶",
             "重红柱状菌", "中红柱状菌", "轻红柱状菌", "星门菌", "血菌", "塔罗斯菌",
-            "中黯石", "重黯石", "轻黯石", "武陵石", "燎石"}
-HIGH_TIER = {"D96钢样品四", "超距辉映管", "快子遴捡晶格", "象限拟合液", "三相纳米片"}
-
-
-def variable_group(name: str, op_used: list[int], w_used: list[int]) -> str:
-    """Display name of the choice a build makes. High-tier materials: an operator
-    takes two of the five at 116 and one at 20 (诀 takes 三相纳米片 as both, 136),
-    a weapon takes one at 16. Leaves 84 / mushrooms 8 are the operator's choice of
-    three, ores 8 the weapon's. Anything else is just 因人而异."""
-    if name in HIGH_TIER:
-        return "高阶素材（因人而异）"
-    if op_used and not w_used:
-        return {84: "叶（三选一）", 8: "菌（三选一）"}.get(max(op_used), "因人而异")
-    if w_used and not op_used:
-        return {8: "矿石（三选一）"}.get(max(w_used), "因人而异")
-    return "因人而异"
-
-
-class RulesSource:
-    """Where the raw responses come from: Skland live, or a directory of saved ones."""
-
-    def __init__(self, offline: Path | None, save: Path | None, subset: bool = False):
-        self.offline, self.save, self.subset = offline, save, subset
-        self.cred = None
-        if offline is None:
-            from ark_relay import skland  # noqa: PLC0415 - only the live path needs it
-            self.skland = skland
-            tok = next(line.split("=", 1)[1].strip()
-                       for line in ENV.read_text(encoding="utf-8").splitlines()
-                       if line.startswith("SKLAND_TOKEN="))
-            self.cred = _retry(lambda: skland.refresh(skland.login(tok)))
-            self.role = skland.endfield_role(self.cred)
-
-    def get(self, name: str, path: str, query: str = "") -> dict:
-        if self.offline is not None:
-            return json.loads((self.offline / f"{name}.json").read_text(encoding="utf-8"))
-        url = f"{ZONAI}{path}" + (f"?{query}" if query else "")
-
-        def once():
-            req = urllib.request.Request(url, headers=self.skland.sign_headers(self.cred, url))
-            with urllib.request.urlopen(req, timeout=30) as r:
-                raw = r.read()
-            if raw[:2] == b"\x1f\x8b":
-                raw = gzip.decompress(raw)
-            return json.loads(raw.decode("utf-8"))
-
-        d = _retry(once)
-        if d.get("code") not in (0, None):
-            raise RuntimeError(f"{path} → code {d.get('code')} {d.get('message')}")
-        return d["data"]
-
-    def keep(self, name: str, data: dict) -> None:
-        """Save a response for `--offline`. Only what `build()` reads is kept: the
-        card is cut down to id / name / rarity / equipped weapon (the full card is
-        780 KB of talent trees and picture links), and a rules response loses its
-        `talents` and its 90-row level tables - those two tables are identical in
-        every response and are kept once as `level-rules.json`."""
-        if self.save is None:
-            return
-        self.save.mkdir(parents=True, exist_ok=True)
-        if name == "card":
-            data = {"detail": {"chars": [
-                {"id": c["id"],
-                 "charData": {"name": c["charData"]["name"], "rarity": c["charData"]["rarity"]},
-                 "weapon": {"weaponData": {k: v for k, v in ((c.get("weapon") or {}).get("weaponData") or {}).items()
-                                           if k in ("id", "name")}}}
-                for c in data["detail"]["chars"]]}}
-        elif name.startswith("rules-"):
-            lv = self.save / "level-rules.json"
-            if not lv.exists():
-                lv.write_text(json.dumps({k: data[k] for k in ("charLevelRules", "weaponLevelRules")},
-                                         ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-            data = {k: v for k, v in data.items() if k not in ("charLevelRules", "weaponLevelRules")}
-            data["chars"] = [{k: v for k, v in c.items() if k != "talents"} for c in data.get("chars", [])]
-        (self.save / f"{name}.json").write_text(
-            json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+            "中黯石", "重黯石", "轻黯石", "武陵石", "燎石", "协议纹石"}
+UNIVERSAL_LEAVES = {"晶化多齿叶", "纯晶多齿叶", "至晶多齿叶"}
+UNIVERSAL_SHROOMS = {"轻红柱状菌", "中红柱状菌", "重红柱状菌"}
+WEAPON_UNIVERSAL = {"重型强固模具", "强固模具", "中黯石", "重黯石", "轻黯石"}
+# The foresight table's stage-4 lists that hold the operator's own choices.
+FORESIGHT_CHOICE_LISTS = ("skPreMat", "upPre", "skCol", "upCol")
+# Two high-tier materials at 116, one at 20, one leaf at 84, one mushroom at 8: the
+# shape every five-star's rules give (docs/ENDFIELD-SANITY-YIELD.md §B).
+CHOICE_SHAPE = Counter({116: 2, 20: 1, 84: 1, 8: 1})
 
 
 def _retry(fn, tries=4, wait=2):
@@ -184,6 +124,116 @@ def _retry(fn, tries=4, wait=2):
     raise last
 
 
+def calc_id(internal_code: str) -> str:
+    """The calculator's 32-hex id is md5 of the client's internal code
+    (`chr_0006_wolfgd` -> 26e3cc73…, `wpn_sword_0006` -> 熔铸火焰; 12 checked)."""
+    return hashlib.md5(internal_code.encode()).hexdigest()
+
+
+class RulesSource:
+    """Where responses come from: Skland live, or a directory of saved ones."""
+
+    def __init__(self, offline: Path | None, save: Path | None):
+        self.offline, self.save = offline, save
+        self.cred = None
+        if offline is None:
+            from ark_relay import skland  # noqa: PLC0415 - only the live path needs it
+            self.skland = skland
+            tok = next(line.split("=", 1)[1].strip()
+                       for line in ENV.read_text(encoding="utf-8").splitlines()
+                       if line.startswith("SKLAND_TOKEN="))
+            self.cred = _retry(lambda: skland.refresh(skland.login(tok)))
+            self.role = skland.endfield_role(self.cred)
+
+    def get(self, name: str, path: str, query: str = "", trim=None) -> dict:
+        """One response, by fixture name. `trim` cuts it to what `build()` reads
+        before it is saved for `--offline`."""
+        if self.offline is not None:
+            p = self.offline / f"{name}.json"
+            if not p.exists():
+                raise FileNotFoundError(f"fixture missing: {p}")
+            return json.loads(p.read_text(encoding="utf-8"))
+        url = f"{ZONAI}{path}" + (f"?{query}" if query else "")
+
+        def once():
+            req = urllib.request.Request(url, headers=self.skland.sign_headers(self.cred, url))
+            with urllib.request.urlopen(req, timeout=30) as r:
+                raw = r.read()
+            if raw[:2] == b"\x1f\x8b":
+                raw = gzip.decompress(raw)
+            return json.loads(raw.decode("utf-8"))
+
+        d = _retry(once)
+        if d.get("code") not in (0, None):
+            raise RuntimeError(f"{path} → code {d.get('code')} {d.get('message')}")
+        data = d["data"]
+        if self.save is not None:
+            self.save.mkdir(parents=True, exist_ok=True)
+            kept = trim(data) if trim else data
+            (self.save / f"{name}.json").write_text(
+                json.dumps(kept, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        return data
+
+
+# ── trims: what each response is cut down to when saved as a fixture ──────────
+
+def trim_catalog(d: dict) -> dict:
+    chars = next((s for s in d["catalog"][0]["typeSub"] if s["name"] == "干员"), {"items": []})
+    return {"catalog": [{"typeSub": [{"name": "干员", "items": [
+        {"itemId": it["itemId"], "name": it["name"], "publishedAtTs": it.get("publishedAtTs"),
+         "brief": {"dotType": it["brief"].get("dotType"), "subTypeList": it["brief"].get("subTypeList", [])}}
+        for it in chars["items"]]}]}]}
+
+
+def wiki_attrs(item: dict) -> dict:
+    """The label/value attribute table of a wiki entry (上线时间, 主要获取方式, …)."""
+    out = {}
+
+    def walk(o):
+        if isinstance(o, dict):
+            if isinstance(o.get("label"), str) and "value" in o:
+                out[o["label"]] = o["value"]
+            for v in o.values():
+                walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+    walk(item.get("document"))
+    return out
+
+
+def trim_wiki_item(d: dict) -> dict:
+    it = d.get("item") or {}
+    a = wiki_attrs(it)
+    return {"item": {"itemId": it.get("itemId"), "name": it.get("name"), "publishedAtTs": it.get("publishedAtTs"),
+                     "attrs": {k: a[k] for k in ("上线时间", "主要获取方式") if k in a}}}
+
+
+def trim_search_chars(d: dict) -> dict:
+    return {"chars": [{"id": c["id"], "name": c["name"], "rarity": c.get("rarity")} for c in d.get("chars", [])]}
+
+
+def trim_search_weapons(d: dict) -> dict:
+    return {"weapons": [{"id": w["id"], "name": w["name"]} for w in d.get("weapons", [])]}
+
+
+def trim_card(d: dict) -> dict:
+    return {"detail": {"chars": [
+        {"id": c["id"], "charData": {"name": c["charData"]["name"], "rarity": c["charData"]["rarity"]},
+         "weapon": {"weaponData": {k: v for k, v in ((c.get("weapon") or {}).get("weaponData") or {}).items()
+                                   if k in ("id", "name")}}}
+        for c in d["detail"]["chars"]]}}
+
+
+def trim_rules(d: dict) -> dict:
+    """A rules response without `talents`; the two 90-row level tables stay (7 KB)."""
+    out = dict(d)
+    out["chars"] = [{k: v for k, v in c.items() if k != "talents"} for c in d.get("chars", [])]
+    return out
+
+
+# ── the arithmetic ────────────────────────────────────────────────────────────
+
 def material_table(mat: dict) -> dict[str, dict]:
     """id -> {name, rarity, icon, exp, kind} for all 40 materials, names stripped."""
     out = {}
@@ -191,8 +241,7 @@ def material_table(mat: dict) -> dict[str, dict]:
         for mid, m in mat[kind].items():
             out[mid] = {"name": str(m.get("name", "")).strip(),
                         "rarity": int(m["rarity"]["value"]) if m.get("rarity") else None,
-                        "icon": m.get("icon", ""),
-                        "exp": int(m.get("exp") or 0), "kind": kind}
+                        "icon": m.get("icon", ""), "exp": int(m.get("exp") or 0), "kind": kind}
     return out
 
 
@@ -225,111 +274,205 @@ def weapon_need(rule: dict) -> tuple[Counter, int]:
 
 def level_totals(rows: list[dict]) -> tuple[int, int]:
     """Gold and exp for 1 -> 90. Negative entries are the level-90 sentinel, skipped."""
-    gold = sum(int(r["gold"]) for r in rows if int(r["gold"]) >= 0)
-    exp = sum(int(r["exp"]) for r in rows if int(r["exp"]) >= 0)
-    return gold, exp
+    return (sum(int(r["gold"]) for r in rows if int(r["gold"]) >= 0),
+            sum(int(r["exp"]) for r in rows if int(r["exp"]) >= 0))
 
 
-def build(src: RulesSource, pulled_at: str) -> dict:
-    card = src.get("card", "/api/v1/game/endfield/card/detail",
-                   f"roleId={src.role[0]}&serverId={src.role[1]}" if src.cred else "")
-    chars = card["detail"]["chars"]
-    if src.subset:
-        # The fixture set: every five-star plus one six-star (enough to reproduce
-        # docs/ENDFIELD-SANITY-YIELD.md §B and to show six equals five), and the
-        # weapons those operators wear.
-        fives = [c for c in chars if c["charData"]["rarity"]["value"] == "5"]
-        six = [c for c in chars if c["charData"]["rarity"]["value"] == "6"][:1]
-        chars = fives + six
-        card = {"detail": {"chars": chars}}
-    src.keep("card", card)
-    mat_raw = src.get("material-list", "/web/v1/game/endfield/calculate/material-list")
-    src.keep("material-list", mat_raw)
-    mat = material_table(mat_raw)
-    ops = [(c["id"], c["charData"]["name"], int(c["charData"]["rarity"]["value"])) for c in chars]
-    weapons: dict[str, str] = {}
-    for c in chars:
-        wd = (c.get("weapon") or {}).get("weaponData") or {}
-        if wd.get("id"):
-            weapons[wd["id"]] = wd.get("name", "")
+def parse_online_date(s: str) -> str:
+    m = _DATE.search(s or "")
+    return f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}" if m else ""
 
-    per_op: dict[str, tuple[Counter, int]] = {}
-    level_rows = None
-    for cid, name, _ in ops:
-        rule = src.get(f"rules-char-{cid}", "/web/v1/game/endfield/calculate/rules", f"charIds={cid}")
-        src.keep(f"rules-char-{cid}", rule)
-        per_op[name] = char_need(rule)
-        if level_rows is None and "charLevelRules" in rule:
-            level_rows = (rule["charLevelRules"], rule["weaponLevelRules"])
-    per_w: dict[str, tuple[Counter, int]] = {}
-    for wid, wname in weapons.items():
-        rule = src.get(f"rules-weapon-{wid}", "/web/v1/game/endfield/calculate/rules", f"weaponIds={wid}")
-        src.keep(f"rules-weapon-{wid}", rule)
-        per_w[wname] = weapon_need(rule)
-    if level_rows is None and src.offline is not None:
-        lv = json.loads((src.offline / "level-rules.json").read_text(encoding="utf-8"))
-        level_rows = (lv["charLevelRules"], lv["weaponLevelRules"])
-    if not per_op or not per_w or level_rows is None:
-        raise RuntimeError("no operators or weapons on the card; nothing to build from")
 
-    char_gold, char_exp = level_totals(level_rows[0])
-    weap_gold, weap_exp = level_totals(level_rows[1])
-    op_golds = {g for _, g in per_op.values()}
-    w_golds = {g for _, g in per_w.values()}
-    if len(op_golds) != 1 or len(w_golds) != 1:
-        raise RuntimeError(f"breakthrough/skill gold differs between operators or weapons: {op_golds} {w_golds}")
-    op_side = op_golds.pop() + char_gold        # breakthroughs + skills, then levels 1 -> 90
-    w_side = w_golds.pop() + weap_gold
-    gold_total = op_side + w_side
+def newest_five_star(src: RulesSource) -> dict:
+    """{name, wikiItemId, onlineDate, obtain, dotType, candidates} of the five-star
+    with the latest 上线时间 in the official wiki. Ties (the launch roster all say
+    2026-01-22) are broken by the entry's publish time, then by name."""
+    cat = src.get("wiki-catalog", "/web/v1/wiki/item/catalog", "typeMainId=1&onlyOnline=true", trim_catalog)
+    chars = next(s for s in cat["catalog"][0]["typeSub"] if s["name"] == "干员")["items"]
+    fives = [it for it in chars
+             if any(x.get("subTypeId") == "10000" and x.get("value") == FIVE_STAR_TAG
+                    for x in it["brief"].get("subTypeList", []))]
+    if not fives:
+        raise RuntimeError("the wiki catalog lists no five-star operator")
+    rows = []
+    for it in fives:
+        info = src.get(f"wiki-item-{it['itemId']}", "/web/v1/wiki/item/info", f"id={it['itemId']}", trim_wiki_item)
+        item = info.get("item") or {}
+        attrs = item.get("attrs") or wiki_attrs(item)
+        rows.append({"name": it["name"], "wikiItemId": str(it["itemId"]),
+                     "onlineDate": parse_online_date(attrs.get("上线时间", "")),
+                     "onlineText": attrs.get("上线时间", ""), "obtain": attrs.get("主要获取方式", ""),
+                     "dotType": it["brief"].get("dotType") or "",
+                     "publishedAtTs": int(it.get("publishedAtTs") or 0)})
+    rows.sort(key=lambda r: (r["onlineDate"], r["publishedAtTs"], r["name"]), reverse=True)
+    top = dict(rows[0])
+    top["candidates"] = [f"{r['name']} {r['onlineDate'] or '?'}" for r in rows]
+    top["all"] = rows
+    return top
 
+
+def foresight_choices(entry: dict, item_names: dict) -> dict[str, int]:
+    """{material name: count} of the operator's own choices at the full build (the
+    highest stage): high-tier materials for skills (skPreMat) and breakthroughs
+    (upPre), the leaf beyond the three universal 多齿叶 (skCol) and the mushroom
+    beyond the three universal 红柱状菌 (upCol)."""
+    stages = entry["stageMaterials"]
+    st = stages[str(max(int(k) for k in stages))]
+    out: dict[str, int] = {}
+    for key in FORESIGHT_CHOICE_LISTS:
+        for iid, cnt in zip(st.get(key + "Ids", []), st.get(key + "Cnt", [])):
+            nm = item_names.get(iid)
+            if not nm:
+                raise RuntimeError(f"foresight item id without a name: {iid} (add it to the item-names map)")
+            if (key == "skCol" and nm in UNIVERSAL_LEAVES) or (key == "upCol" and nm in UNIVERSAL_SHROOMS):
+                continue
+            out[nm] = out.get(nm, 0) + int(cnt)
+    return out
+
+
+def foresight_entry(fs: dict, who: str, item_names: dict) -> dict:
+    """The entry whose charId names `who`, or the only entry in the file."""
+    for cid, e in fs.items():
+        if item_names.get(cid) == who or (e.get("name") or {}).get("text") == who:
+            return e
+    if len(fs) == 1:
+        return next(iter(fs.values()))
+    raise RuntimeError(f"no foresight entry for {who} among {sorted(fs)}")
+
+
+def build(src: RulesSource, pulled_at: str, char_name: str = "", weapon_name: str = "",
+          foresight: Path | None = None, item_names: Path | None = None) -> dict:
+    mat = material_table(src.get("material-list", "/web/v1/game/endfield/calculate/material-list"))
+    listed = src.get("search-chars", "/web/v1/game/endfield/search-chars", "", trim_search_chars)["chars"]
+    calc_ids = {c["name"]: c["id"] for c in listed}
+    five_ids = {c["name"]: c["id"] for c in listed if str((c.get("rarity") or {}).get("value")) == "5"}
+
+    # 1. who
+    newest = newest_five_star(src)
+    who = char_name or newest["name"]
+    target = dict(next((r for r in newest["all"] if r["name"] == who), {"name": who}))
+    target["candidates"] = newest["candidates"]
+    target["chosenBy"] = "--char" if char_name else "官方百科上线时间最新"
+
+    # 2. the universal part, from every five-star the calculator knows
+    ref_rules = {nm: src.get(f"rules-char-{cid}", "/web/v1/game/endfield/calculate/rules", f"charIds={cid}", trim_rules)
+                 for nm, cid in five_ids.items()}
+    if not ref_rules:
+        raise RuntimeError("search-chars lists no five-star; nothing to take the universal numbers from")
+    needs = {nm: char_need(r) for nm, r in ref_rules.items()}
+    golds = {g for _, g in needs.values()}
+    if len(golds) != 1:
+        raise RuntimeError(f"breakthrough/skill gold differs between five-stars: {golds}")
+    op_gold = golds.pop()
+    all_ids = set().union(*[n.keys() for n, _ in needs.values()])
+    universal = {mid for mid in all_ids if len({n.get(mid, 0) for n, _ in needs.values()}) == 1}
+    uni_counts = {mid: next(iter(needs.values()))[0][mid] for mid in universal}
+    any_rule = next(iter(ref_rules.values()))
+    char_gold, char_exp = level_totals(any_rule["charLevelRules"])
+    weap_gold, weap_exp = level_totals(any_rule["weaponLevelRules"])
+
+    # 3. the operator's own choices
+    own: dict[str, int] = {}
+    weapon_codes: list[str] = []
+    if who in calc_ids:
+        rule = ref_rules.get(who) or src.get(f"rules-char-{calc_ids[who]}", "/web/v1/game/endfield/calculate/rules",
+                                             f"charIds={calc_ids[who]}", trim_rules)
+        need, _ = char_need(rule)
+        own = {mat[mid]["name"]: c for mid, c in need.items() if mid not in universal}
+        target["calculator"] = "已收录"
+    else:
+        if foresight is None or item_names is None:
+            raise RuntimeError(f"{who} is not in the calculator yet (search-chars); pass --foresight and --item-names")
+        fs = json.loads(foresight.read_text(encoding="utf-8"))
+        names = json.loads(item_names.read_text(encoding="utf-8"))
+        entry = foresight_entry(fs, who, names)
+        own = foresight_choices(entry, names)
+        weapon_codes = list(entry.get("weaponIds") or [])
+        target["calculator"] = "未收录"
+        target["foresightCharId"] = entry.get("charId", "")
+    if Counter(own.values()) != CHOICE_SHAPE:
+        raise RuntimeError(f"{who}'s choices do not fit the 116/116/20/84/8 shape: {own}")
+
+    # 4. the weapon
+    weapons_listed = src.get("search-weapons", "/web/v1/game/endfield/search-weapons", "", trim_search_weapons)["weapons"]
+    wname_of = {w["id"]: w["name"] for w in weapons_listed}
+    wid_of = {w["name"]: w["id"] for w in weapons_listed}
+    weapon_id, weapon_reason, pending = "", "", []
+    if weapon_name:
+        weapon_id, weapon_reason = wid_of.get(weapon_name, ""), "--weapon"
+        if not weapon_id:
+            raise RuntimeError(f"weapon {weapon_name} is not in the calculator (search-weapons)")
+    for code in weapon_codes:
+        if weapon_id:
+            break
+        wid = calc_id(code)
+        if wid in wname_of:
+            weapon_id, weapon_name = wid, wname_of[wid]
+            weapon_reason = f"客户端预览表给她推荐的武器里，计算器已收录的第一把（{code}）"
+        else:
+            pending.append(code)
+    if not weapon_id:
+        card = src.get("card", "/api/v1/game/endfield/card/detail",
+                       f"roleId={src.role[0]}&serverId={src.role[1]}" if src.cred else "", trim_card)
+        for c in card["detail"]["chars"]:
+            wd = (c.get("weapon") or {}).get("weaponData") or {}
+            if c["charData"]["name"] == who and wd.get("id"):
+                weapon_id, weapon_name, weapon_reason = wd["id"], wd.get("name", ""), "账号里她当前装备的武器"
+    if not weapon_id:
+        raise RuntimeError(f"no weapon for {who}: pass --weapon")
+    wrule = src.get(f"rules-weapon-{weapon_id}", "/web/v1/game/endfield/calculate/rules", f"weaponIds={weapon_id}")
+    wneed, w_gold = weapon_need(wrule)
+    wneed_by_name = {mat[mid]["name"]: c for mid, c in wneed.items()}
+    gold_total = op_gold + char_gold + w_gold + weap_gold
+
+    # 5. rows: every material, with this build's need (0 when the build does not use it)
     rows = []
     for mid, m in mat.items():
-        op_counts = [n.get(mid, 0) for n, _ in per_op.values()]
-        w_counts = [n.get(mid, 0) for n, _ in per_w.values()]
-        op_set, w_set = sorted(set(op_counts)), sorted(set(w_counts))
-        row = {"id": mid, "name": m["name"], "rarity": m["rarity"], "icon": m["icon"],
-               "need": None, "group": None, "stage": STAGE.get(m["name"]) or (GATHER if m["name"] in GATHERED else None),
-               "note": None}
+        nm = m["name"]
+        row = {"id": mid, "name": nm, "rarity": m["rarity"], "icon": m["icon"], "need": 0, "group": None,
+               "stage": STAGE.get(nm) or (GATHER if nm in GATHERED else None), "note": None}
+        w = wneed_by_name.get(nm, 0)
         if m["kind"] != "materials":
-            row["exp"] = m["exp"]
-            row["sumInto"] = EXP_CHAR if m["kind"] == "charExpMaterials" else EXP_WEAPON
-            row["stage"] = "干员经验" if m["kind"] == "charExpMaterials" else "武器经验"
-        elif m["name"] == "折金票":
-            row.update(need=gold_total, group="通用", note=f"干员 {op_side:,} + 武器 {w_side:,}")
-        elif op_set == [op_counts[0]] and op_counts[0] and not any(w_counts):
-            row.update(need=op_counts[0], group="通用")
-        elif w_set == [w_counts[0]] and w_counts[0] and not any(op_counts):
-            row.update(need=w_counts[0], group="通用")
-        elif any(op_counts) or any(w_counts):
-            op_used = [x for x in op_set if x]
-            w_used = [x for x in w_set if x]
-            top = max(op_used + w_used)
-            parts = []
-            if op_used:
-                parts.append("干员 " + " 或 ".join(str(x) for x in reversed(op_used)))
-            if w_used:
-                parts.append("武器 " + " 或 ".join(str(x) for x in reversed(w_used)))
-            users = sum(1 for x in op_counts if x) + sum(1 for x in w_counts if x)
-            row.update(need=top, group=variable_group(m["name"], op_used, w_used),
-                       note=f"因人而异：{'，'.join(parts)}（{users} 个在用；人份按 {top} 算）")
-        elif m["name"] == "高阶培养自选箱Ⅰ":
-            row["note"] = "开出任意一种高阶素材，不计入人份"
+            row.update(need=None, exp=m["exp"], sumInto=EXP_CHAR if m["kind"] == "charExpMaterials" else EXP_WEAPON,
+                       stage="干员经验" if m["kind"] == "charExpMaterials" else "武器经验")
+        elif nm == "折金票":
+            row.update(need=gold_total, group="通用", note=f"干员 {op_gold + char_gold:,} + 武器 {w_gold + weap_gold:,}")
+        elif mid in universal:
+            row.update(need=uni_counts[mid], group="通用")
+        elif nm in own:
+            row.update(need=own[nm] + w, group=who, note=(f"干员 {own[nm]} + 武器 {w}" if w else None))
+        elif w and nm in WEAPON_UNIVERSAL:
+            row.update(need=w, group="通用")
+        elif w:
+            row.update(need=w, group=f"武器 {weapon_name}")
+        elif nm == "高阶培养自选箱Ⅰ":
+            row.update(need=None, note="开出任意一种高阶素材，不计入人份")
+        else:
+            row["note"] = f"{who} 的满练不用它"
         rows.append(row)
-    rows.append({"id": EXP_CHAR, "name": "干员经验", "rarity": None, "icon": "", "need": char_exp,
-                 "group": "通用", "stage": "干员经验", "virtual": True,
-                 "note": "五种作战记录 / 认知载体按经验值折算"})
-    rows.append({"id": EXP_WEAPON, "name": "武器经验", "rarity": None, "icon": "", "need": weap_exp,
-                 "group": "通用", "stage": "武器经验", "virtual": True,
-                 "note": "武器检查套组 / 装置 / 单元按经验值折算"})
-    # 通用 first (the two exp rows among them), then the variable groups, then the
-    # rows with no need of their own (the exp materials fold into exp:*, the box).
-    rows.sort(key=lambda r: (0 if r["group"] == "通用" else 1 if r["need"] else 2,
+    rows.append({"id": EXP_CHAR, "name": "干员经验", "rarity": None, "icon": "", "need": char_exp, "group": "通用",
+                 "stage": "干员经验", "virtual": True, "note": "五种作战记录 / 认知载体按经验值折算"})
+    rows.append({"id": EXP_WEAPON, "name": "武器经验", "rarity": None, "icon": "", "need": weap_exp, "group": "通用",
+                 "stage": "武器经验", "virtual": True, "note": "武器检查套组 / 装置 / 单元按经验值折算"})
+    order = {"通用": 0, who: 1, f"武器 {weapon_name}": 2}
+    rows.sort(key=lambda r: (4 if r["need"] is None else 3 if r["need"] == 0 else order.get(r["group"], 3),
                              -(r["need"] or 0), r["name"]))
+
+    online = f"（{target['onlineDate']} 上线）" if target.get("onlineDate") else ""
+    label = "最新五星" if who == newest["name"] else "指定干员"
+    caliber = f"{label} {who}{online}：1→90 全突破、四技能 12、武器 {weapon_name} 1→90；不含天赋"
     return {
         "built": pulled_at,
         "games": [{
-            "game": GAME, "gameId": GAME_ID, "caliber": CALIBER, "source": SOURCE,
-            "coverage": {"operators": [n for _, n, _ in ops], "weapons": sorted(weapons.values())},
+            "game": GAME, "gameId": GAME_ID, "caliber": caliber, "source": SOURCE,
+            "coverage": {
+                "operator": who, "wikiItemId": target.get("wikiItemId", ""), "onlineDate": target.get("onlineDate", ""),
+                "obtain": target.get("obtain", ""), "chosenBy": target["chosenBy"],
+                "calculator": target.get("calculator", ""), "foresightCharId": target.get("foresightCharId", ""),
+                "candidates": target["candidates"], "universalCheckedOn": sorted(ref_rules),
+                "weapon": weapon_name, "weaponReason": weapon_reason,
+                "weaponsPending": [f"{c}（计算器未收录）" for c in pending],
+            },
             "rows": rows,
         }],
     }
@@ -338,12 +481,16 @@ def build(src: RulesSource, pulled_at: str) -> dict:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--offline", type=Path, help="directory of saved responses; no network")
-    ap.add_argument("--save-fixtures", type=Path, help="keep the raw responses (trimmed, see RulesSource.keep) in this directory")
-    ap.add_argument("--subset", action="store_true",
-                    help="only the five-stars plus one six-star and their weapons (the test fixture set)")
+    ap.add_argument("--save-fixtures", type=Path, help="keep the (trimmed) responses in this directory")
+    ap.add_argument("--char", default="", help="build for this operator instead of the newest five-star")
+    ap.add_argument("--weapon", default="", help="weapon name (must be in the calculator)")
+    ap.add_argument("--foresight", type=Path, default=FIXTURES / "foresight-chr_0038_purrche.json",
+                    help="client ForesightCharGrowthTable entry, used only when the calculator does not list the operator")
+    ap.add_argument("--item-names", type=Path, default=FIXTURES / "item-names.json",
+                    help="client item id -> name map for --foresight")
     ap.add_argument("-o", "--out", type=Path, default=OUT_DEFAULT)
     a = ap.parse_args(argv)
-    src = RulesSource(a.offline, a.save_fixtures, a.subset)
+    src = RulesSource(a.offline, a.save_fixtures)
     stamp = time.strftime("%Y-%m-%d %H:%M %Z")
     if a.offline is not None:
         meta = a.offline / "pulled-at.txt"
@@ -351,13 +498,12 @@ def main(argv: list[str] | None = None) -> int:
     elif a.save_fixtures is not None:
         a.save_fixtures.mkdir(parents=True, exist_ok=True)
         (a.save_fixtures / "pulled-at.txt").write_text(stamp + "\n", encoding="utf-8")
-    table = build(src, stamp)
+    table = build(src, stamp, a.char, a.weapon, a.foresight, a.item_names)
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text(json.dumps(table, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
-    g = table["games"][0]
-    uni = sum(1 for r in g["rows"] if r["group"] == "通用")
-    print(f"✅ {a.out}: {len(g['rows'])} rows ({uni} 通用), "
-          f"{len(g['coverage']['operators'])} operators, {len(g['coverage']['weapons'])} weapons, built {table['built']}")
+    cov = table["games"][0]["coverage"]
+    print(f"✅ {a.out}: {cov['operator']}（{cov['onlineDate'] or '?'} 上线，计算器{cov['calculator']}），"
+          f"武器 {cov['weapon']}，{len(table['games'][0]['rows'])} rows，built {table['built']}")
     return 0
 
 

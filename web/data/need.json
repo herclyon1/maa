@@ -1,72 +1,46 @@
 {
- "built": "2026-09-18 23:19 JST",
+ "built": "2026-09-18 23:51 JST",
  "games": [
   {
    "game": "终末地",
    "gameId": "endfield",
-   "caliber": "一个干员：1→90 级、全部突破、四个技能到 12 级、武器 1→90 级；不含天赋",
-   "source": "森空岛 calculate/rules?charIds= 与 ?weaponIds= 逐个求和，material-list 取名字和图标；方法见 docs/ENDFIELD-SANITY-YIELD.md §B",
+   "caliber": "最新五星 噗切娜（2026-09-24 上线）：1→90 全突破、四技能 12、武器 遥望 1→90；不含天赋",
+   "source": "最新五星按森空岛百科的「上线时间」定；用量按森空岛养成计算器 rules 逐项求和（计算器还没收录她时，她选哪几种素材按客户端预览表 ForesightCharGrowthTable）；名字和图标取自 material-list。方法见 docs/SKLAND-API.md §8",
    "coverage": {
-    "operators": [
-     "汤汤",
-     "洛茜",
-     "梨诺",
-     "管理员",
-     "诀",
-     "莱万汀",
-     "艾尔黛拉",
-     "卡缪",
-     "伊冯",
-     "弭弗",
-     "提弗洛斯",
-     "洁尔佩塔",
-     "庄方宜",
-     "别礼",
-     "骏卫",
-     "余烬",
-     "佩丽卡",
-     "弧光",
-     "陈千语",
-     "阿列什",
-     "狼卫",
-     "安塔尔",
-     "秋栗",
-     "赛希",
-     "埃特拉",
-     "大潘",
-     "黎风",
-     "昼雪",
-     "萤石",
-     "卡契尔",
-     "艾维文娜"
+    "operator": "噗切娜",
+    "wikiItemId": "2117",
+    "onlineDate": "2026-09-24",
+    "obtain": "馈赠活动·我们的大菲林！来袭！",
+    "chosenBy": "官方百科上线时间最新",
+    "calculator": "未收录",
+    "foresightCharId": "chr_0038_purrche",
+    "candidates": [
+     "噗切娜 2026-09-24",
+     "阿列什 2026-01-22",
+     "赛希 2026-01-22",
+     "大潘 2026-01-22",
+     "艾维文娜 2026-01-22",
+     "弧光 2026-01-22",
+     "狼卫 2026-01-22",
+     "佩丽卡 2026-01-22",
+     "昼雪 2026-01-22",
+     "陈千语 2026-01-22"
     ],
-    "weapons": [
-     "O.B.J.轻芒",
-     "佩科5",
-     "使命必达",
-     "吉米尼12",
-     "同类相食",
-     "向心之引",
-     "四二式·肃阵",
-     "奥佩罗77",
-     "孤舟",
-     "宏愿",
-     "寒夜幽影",
-     "扶摇",
-     "昔日精品",
-     "曜夜的首演",
-     "沧溟星梦",
-     "熔铸火焰",
-     "爆破单元",
-     "狼之绯",
-     "破碎君王",
-     "艺术暴君",
-     "落草",
-     "赤缨",
-     "达尔霍夫7",
-     "迷失荒野",
-     "钢铁余音",
-     "镀红祝福"
+    "universalCheckedOn": [
+     "佩丽卡",
+     "大潘",
+     "弧光",
+     "昼雪",
+     "狼卫",
+     "艾维文娜",
+     "赛希",
+     "阿列什",
+     "陈千语"
+    ],
+    "weapon": "遥望",
+    "weaponReason": "客户端预览表给她推荐的武器里，计算器已收录的第一把（wpn_sword_0026）",
+    "weaponsPending": [
+     "wpn_sword_0023（计算器未收录）"
     ]
    },
    "rows": [
@@ -267,40 +241,10 @@
      "name": "三相纳米片",
      "rarity": 5,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/74df51a10191472c038be280ad01ded0.png",
-     "need": 136,
-     "group": "高阶素材（因人而异）",
+     "need": 116,
+     "group": "噗切娜",
      "stage": "高阶培养Ⅴ",
-     "note": "因人而异：干员 136 或 116 或 20，武器 16（19 个在用；人份按 136 算）"
-    },
-    {
-     "id": "54a1f3361e0ac638513f6dcb200ceea3",
-     "name": "D96钢样品四",
-     "rarity": 5,
-     "icon": "https://bbs.hycdn.cn/image/2026/07/13/3907e5f67d6de1cd475c83b2926e90f2.png",
-     "need": 116,
-     "group": "高阶素材（因人而异）",
-     "stage": "高阶培养Ⅰ",
-     "note": "因人而异：干员 116 或 20，武器 16（24 个在用；人份按 116 算）"
-    },
-    {
-     "id": "e3ab1565fdd1177026c66889e4f1c134",
-     "name": "快子遴捡晶格",
-     "rarity": 5,
-     "icon": "https://bbs.hycdn.cn/image/2026/07/13/8165505e1000f0d66c92c1a2a4e23e0f.png",
-     "need": 116,
-     "group": "高阶素材（因人而异）",
-     "stage": "高阶培养Ⅲ",
-     "note": "因人而异：干员 116 或 20，武器 16（26 个在用；人份按 116 算）"
-    },
-    {
-     "id": "71bdfac38fdc48f793efc455731edbe4",
-     "name": "象限拟合液",
-     "rarity": 5,
-     "icon": "https://bbs.hycdn.cn/image/2026/07/13/dd9d6800496e31d5d89b33f4c353ea83.png",
-     "need": 116,
-     "group": "高阶素材（因人而异）",
-     "stage": "高阶培养Ⅳ",
-     "note": "因人而异：干员 116 或 20，武器 16（26 个在用；人份按 116 算）"
+     "note": null
     },
     {
      "id": "8d9bb3cab3406ec8d78fbd4447d9068e",
@@ -308,19 +252,9 @@
      "rarity": 5,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/ba221d05fe57c2f034dc73757cf1830e.png",
      "need": 116,
-     "group": "高阶素材（因人而异）",
+     "group": "噗切娜",
      "stage": "高阶培养Ⅱ",
-     "note": "因人而异：干员 116 或 20，武器 16（23 个在用；人份按 116 算）"
-    },
-    {
-     "id": "171026642f46f94aa30a72400f4c89b8",
-     "name": "受蚀玉化叶",
-     "rarity": 5,
-     "icon": "https://bbs.hycdn.cn/image/2026/07/13/0b9747a50d39958550408e3f5fc32833.png",
-     "need": 84,
-     "group": "叶（三选一）",
-     "stage": "采集 / 帝江号仓库（不耗理智）",
-     "note": "因人而异：干员 84（16 个在用；人份按 84 算）"
+     "note": null
     },
     {
      "id": "95221e7b790f2bcd85cea4eb91b616d5",
@@ -328,29 +262,19 @@
      "rarity": 5,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/dccd0f1034a4960e3ef1f113bc515fa7.png",
      "need": 84,
-     "group": "叶（三选一）",
+     "group": "噗切娜",
      "stage": "采集 / 帝江号仓库（不耗理智）",
-     "note": "因人而异：干员 84（13 个在用；人份按 84 算）"
+     "note": null
     },
     {
-     "id": "0acb6d25ed7bb134cf58e830918d033f",
-     "name": "红矛叶",
+     "id": "54a1f3361e0ac638513f6dcb200ceea3",
+     "name": "D96钢样品四",
      "rarity": 5,
-     "icon": "https://bbs.hycdn.cn/image/2026/07/16/da276a8c592cabd04b166279c31a0217.png",
-     "need": 84,
-     "group": "叶（三选一）",
-     "stage": "采集 / 帝江号仓库（不耗理智）",
-     "note": "因人而异：干员 84（2 个在用；人份按 84 算）"
-    },
-    {
-     "id": "aa1b82467c60394022a1f5025f823150",
-     "name": "协议纹石",
-     "rarity": 5,
-     "icon": "https://bbs.hycdn.cn/image/2026/07/16/dfb4a92fcc5a5f3de215512838c5e7bb.png",
-     "need": 8,
-     "group": "矿石（三选一）",
-     "stage": null,
-     "note": "因人而异：武器 8（3 个在用；人份按 8 算）"
+     "icon": "https://bbs.hycdn.cn/image/2026/07/13/3907e5f67d6de1cd475c83b2926e90f2.png",
+     "need": 20,
+     "group": "噗切娜",
+     "stage": "高阶培养Ⅰ",
+     "note": null
     },
     {
      "id": "050f8905ff10ce392c42cb89fc0a473b",
@@ -358,49 +282,99 @@
      "rarity": 5,
      "icon": "https://bbs.hycdn.cn/image/2026/07/16/bb9ce0befae20affe1be7af75066b0b6.png",
      "need": 8,
-     "group": "菌（三选一）",
+     "group": "噗切娜",
      "stage": "采集 / 帝江号仓库（不耗理智）",
-     "note": "因人而异：干员 8（3 个在用；人份按 8 算）"
+     "note": null
+    },
+    {
+     "id": "e3ab1565fdd1177026c66889e4f1c134",
+     "name": "快子遴捡晶格",
+     "rarity": 5,
+     "icon": "https://bbs.hycdn.cn/image/2026/07/13/8165505e1000f0d66c92c1a2a4e23e0f.png",
+     "need": 16,
+     "group": "武器 遥望",
+     "stage": "高阶培养Ⅲ",
+     "note": null
+    },
+    {
+     "id": "aa1b82467c60394022a1f5025f823150",
+     "name": "协议纹石",
+     "rarity": 5,
+     "icon": "https://bbs.hycdn.cn/image/2026/07/16/dfb4a92fcc5a5f3de215512838c5e7bb.png",
+     "need": 8,
+     "group": "武器 遥望",
+     "stage": "采集 / 帝江号仓库（不耗理智）",
+     "note": null
+    },
+    {
+     "id": "171026642f46f94aa30a72400f4c89b8",
+     "name": "受蚀玉化叶",
+     "rarity": 5,
+     "icon": "https://bbs.hycdn.cn/image/2026/07/13/0b9747a50d39958550408e3f5fc32833.png",
+     "need": 0,
+     "group": null,
+     "stage": "采集 / 帝江号仓库（不耗理智）",
+     "note": "噗切娜 的满练不用它"
     },
     {
      "id": "27e8631efab074f0a852a5cc81428da6",
      "name": "星门菌",
      "rarity": 5,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/e4b2d7a6847e2096042cf66e094db881.png",
-     "need": 8,
-     "group": "菌（三选一）",
+     "need": 0,
+     "group": null,
      "stage": "采集 / 帝江号仓库（不耗理智）",
-     "note": "因人而异：干员 8（14 个在用；人份按 8 算）"
+     "note": "噗切娜 的满练不用它"
     },
     {
      "id": "83a6b4cb7611a6365d7c37e723bd144b",
      "name": "武陵石",
      "rarity": 5,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/c85b342eab3bfbe3d7ba94e73026620a.png",
-     "need": 8,
-     "group": "矿石（三选一）",
+     "need": 0,
+     "group": null,
      "stage": "采集 / 帝江号仓库（不耗理智）",
-     "note": "因人而异：武器 8（12 个在用；人份按 8 算）"
+     "note": "噗切娜 的满练不用它"
     },
     {
      "id": "fa1df658c39c804ed2fe89717e94e1db",
      "name": "燎石",
      "rarity": 5,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/69f31f66c97b75e476a062cd5cbdad19.png",
-     "need": 8,
-     "group": "矿石（三选一）",
+     "need": 0,
+     "group": null,
      "stage": "采集 / 帝江号仓库（不耗理智）",
-     "note": "因人而异：武器 8（11 个在用；人份按 8 算）"
+     "note": "噗切娜 的满练不用它"
+    },
+    {
+     "id": "0acb6d25ed7bb134cf58e830918d033f",
+     "name": "红矛叶",
+     "rarity": 5,
+     "icon": "https://bbs.hycdn.cn/image/2026/07/16/da276a8c592cabd04b166279c31a0217.png",
+     "need": 0,
+     "group": null,
+     "stage": "采集 / 帝江号仓库（不耗理智）",
+     "note": "噗切娜 的满练不用它"
     },
     {
      "id": "4064453643a8b3a5b6b2e807bd967c3e",
      "name": "血菌",
      "rarity": 5,
      "icon": "https://bbs.hycdn.cn/image/2026/07/13/737915fff6a6d0ee6e68578af08b7de6.png",
-     "need": 8,
-     "group": "菌（三选一）",
+     "need": 0,
+     "group": null,
      "stage": "采集 / 帝江号仓库（不耗理智）",
-     "note": "因人而异：干员 8（14 个在用；人份按 8 算）"
+     "note": "噗切娜 的满练不用它"
+    },
+    {
+     "id": "71bdfac38fdc48f793efc455731edbe4",
+     "name": "象限拟合液",
+     "rarity": 5,
+     "icon": "https://bbs.hycdn.cn/image/2026/07/13/dd9d6800496e31d5d89b33f4c353ea83.png",
+     "need": 0,
+     "group": null,
+     "stage": "高阶培养Ⅳ",
+     "note": "噗切娜 的满练不用它"
     },
     {
      "id": "6c065bd9caf640adaaebb91865da06f3",
