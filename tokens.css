@@ -506,6 +506,48 @@
   /* Shortcuts automation row (inject-com.apple.shortcuts-07.json): icon tile 29 r 7.54, title Semibold 17, subtitle Regular 13 secondaryLabel, group header Display Bold 20 */
   --ios-shortcut-automation-icon-radius: 7.54px;
 
+  /* ---- interaction (remote-ref/interaction-spec.md, tools/touch/ injected recorder + synthetic touches, iOS 27.0 simulator 60 Hz) ----
+   * every control commits on pointer-UP (segmented / tab bar / switch / button / cell); pointer-down only changes visuals */
+  --ios-touch-commit-on: up;
+  /* UIControl "still inside" slop: 55 pt beyond the bounds still touchDragInside, 75 pt → touchDragExit (UIButton, UISegmentedControl cancel) */
+  --ios-touch-inside-slop: 70px;
+  /* UIScrollView pan threshold: 8 pt vertical still a tap, 12 pt starts scrolling and cancels the cell highlight */
+  --ios-touch-scroll-threshold: 10px;
+  /* UIScrollView delaysContentTouches: the cell highlights 152 ms after touch-down when still held; an earlier release shows the highlight for one frame at the up */
+  --ios-touch-highlight-delay: 150ms;
+  --ios-touch-highlight-flash: 16.67ms;
+  /* cell: highlight off + didSelect 1 frame after the up (4–18 ms) */
+  --ios-touch-cell-select-delay: 16.67ms;
+  /* UIButton / alert action: highlight within 1–6 ms of touch-down; alert actions have NO slop (6 pt beyond the edge un-highlights) and transfer the highlight to a neighbour */
+  --ios-touch-button-highlight-delay: 0ms;
+  --ios-touch-alert-slop: 0px;
+  /* segmented: pressed unselected label dims 1 → .2 ease-out over .43 s (0.98 @32 ms, .79 @100, .5 @182, .2 @432); back to 1 in ~.1 s at commit */
+  --ios-touch-segment-dim-opacity: .2;
+  --ios-touch-segment-dim-duration: .43s;
+  --ios-touch-segment-undim-duration: .1s;
+  /* segmented: pressing the SELECTED segment lifts the lens 196×28 → 220×44 (+12 each side, +8 top/bottom) starting 70–120 ms after touch-down, ~250 ms to size; drop back ~250 ms after the up */
+  --ios-touch-segment-lift-delay: 100ms;
+  --ios-touch-segment-lift-x: 12px;
+  --ios-touch-segment-lift-y: 8px;
+  --ios-touch-segment-lift-duration: .25s;
+  /* segmented: index + valueChanged at the up (simulator: +80–100 ms while UIKit builds the lens spring synchronously; after a slide +25 ms) → web: 0 ms; lens spring response .4 ζ .85, 7.5 % overshoot, ~1.2 s settle */
+  --ios-touch-segment-commit-delay: 0ms;
+  --ios-touch-segment-lens-overshoot: .075;
+  /* segmented / tab bar: target segment = the one under the finger x while sliding (divider crossing at ±2 pt); the index never changes mid-drag */
+  --ios-touch-segment-divider-hysteresis: 0px;
+  /* tab bar: pressing an unselected tab starts the lens gliding to it 130–150 ms after touch-down (lift 94×54 → 119×64), ~350 ms to arrive; selection + primaryActionTriggered +0–2 ms after the up; NO distance cancel (450 pt away still selects) */
+  --ios-touch-tab-glide-delay: 140ms;
+  --ios-touch-tab-lift-w: 25px;
+  --ios-touch-tab-lift-h: 10px;
+  --ios-touch-tab-cancel-distance: none;
+  /* switch: knob lifts 190–200 ms after touch-down (37×24 → 60.5×40 in ~110 ms, settles 58×38); value flips at the up (+8–37 ms) regardless of drag distance / direction; the only no-flip case: dragged beyond the far end (> 22 pt travel) and back */
+  --ios-touch-switch-lift-delay: 195ms;
+  --ios-touch-switch-lift-w: 60.5px;
+  --ios-touch-switch-lift-h: 40px;
+  --ios-touch-switch-flip-delay: 0ms;
+  /* rapid alternation: every tap counts (30 ms taps / 30 ms gaps on the segmented control; 40/80 on the tab bar, switch, button) — no debounce, animations retarget mid-flight */
+  --ios-touch-debounce: 0ms;
+
 }
 
 @media (prefers-color-scheme: dark) {
