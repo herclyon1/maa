@@ -23,6 +23,18 @@ process, not a reload.
 Either every changed file lands or none does: a half-applied update leaves a
 mixed-version relay, and the restart above would then boot straight into it.
 
+Since 2026-09-18 the first door is the operator's own Tencent COS bucket (the
+one evidence bundles go to): the deploy script PUTs `relay/latest.json`, the
+manifest and one bundle of every file under `relay/<version>/`, and this
+module GETs them with the same signed request evidence.Cos already makes.
+Why: jsDelivr's caches are per node and refresh independently - on 2026-09-18
+a manifest pushed at 02:31 was still the old one on the machine's node at
+08:45, and the update only landed because a person deployed by hand. COS has
+no cache layer: what was written is what is read. The four GitHub doors stay
+as the fallback (COS answered 451 on 2026-09-13, an unpaid bill), and the
+bucket's own lifecycle rule may delete the prefix one day - a missing object
+is simply "COS has nothing", never an error.
+
 Trust boundary, stated plainly: whoever can push to that repo can run code on
 this machine. The repo is the operator's own and the transport is HTTPS, so the
 exposure is the GitHub account itself - the same account that already decides
@@ -34,7 +46,11 @@ import hashlib
 import http.client
 import json
 import logging
+import os
 import time
+import zipfile
+from concurrent.futures import ThreadPoolExecutor
+from io import BytesIO
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -65,6 +81,104 @@ BUDGET_SECONDS = 240
 # have returned. 45 leaves real headroom, and BUDGET_SECONDS still caps the
 # round, so the cost of a door that is simply down is bounded either way.
 RAW_TIMEOUT = 45
+
+
+# How many files are fetched at once when they have to come one by one from
+# the GitHub doors. Sequential fetching paid raw's 38 s per file; five files
+# filled the whole 240 s budget (2026-09-18 plan). Six in flight keeps a
+# twenty-file update inside one raw round-trip.
+PARALLEL_FETCHES = 6
+COS_PREFIX = "relay"
+COS_LATEST = "latest.json"
+COS_BUNDLE = "bundle.zip"
+COS_TIMEOUT = 20
+
+
+def _cos():
+    """The evidence bucket's client, or None when COS is not configured on this machine."""
+    from . import evidence  # noqa: PLC0415 - avoids importing evidence for machines without COS
+    keys = [os.environ.get(k, "") for k in ("COS_SECRET_ID", "COS_SECRET_KEY", "COS_BUCKET", "COS_REGION")]
+    if not all(keys):
+        return None
+    return evidence.Cos(*keys, prefix=COS_PREFIX)
+
+
+def _cos_get(cos, key: str, timeout: int = COS_TIMEOUT) -> bytes | None:
+    """One signed GET. None for anything that is not a body: a missing object
+    (the lifecycle rule, or a version never uploaded), a refused key, a dead
+    link. The caller falls back; nothing here is worth an alarm."""
+    import urllib.parse  # noqa: PLC0415
+    full = f"{cos.prefix}/{key}"
+    url = f"https://{cos.host}/" + urllib.parse.quote(full, safe="/")
+    req = urllib.request.Request(url, headers={"Authorization": cos.authorization("GET", full),
+                                               "User-Agent": "ark-relay"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read()
+    except urllib.error.HTTPError as exc:
+        log.info("COS 没有 %s（%s）", key, exc.code)
+    except (urllib.error.URLError, OSError, ValueError, http.client.HTTPException) as exc:
+        log.warning("取不到 COS 的 %s: %s", key, exc)
+    return None
+
+
+def _cos_manifest(cos, local_ver: int) -> tuple[dict, int] | None:
+    """(manifest, version) from COS when it is newer than what runs here.
+
+    latest.json is a hundred bytes: {"version": N, "uploaded": "<iso>"}. Only
+    when N beats the local version is the real manifest fetched, so an
+    up-to-date boot costs one tiny request.
+    """
+    data = _cos_get(cos, COS_LATEST)
+    if data is None:
+        return None
+    try:
+        ver = int(json.loads(data).get("version") or 0)
+    except (ValueError, TypeError, AttributeError):
+        log.warning("COS 的 latest.json 不是合法的版本记录")
+        return None
+    if ver <= local_ver:
+        log.debug("COS 上是 v%s，本机 v%s，不用更新", ver, local_ver)
+        return None
+    data = _cos_get(cos, f"{ver}/{MANIFEST}")
+    if data is None:
+        return None
+    try:
+        m = json.loads(data)
+    except json.JSONDecodeError:
+        log.warning("COS 的 manifest 不是合法 JSON")
+        return None
+    if not isinstance(m, dict) or not isinstance(m.get("files"), dict):
+        return None
+    if _manifest_version(m) != ver:
+        log.warning("COS 的 latest.json 说 v%s，manifest 却是 v%s，不信它", ver, _manifest_version(m))
+        return None
+    return m, ver
+
+
+def _cos_bundle(cos, ver: int, files: dict, wanted: list[str]) -> dict[str, bytes] | None:
+    """Every wanted file out of one bundle.zip on COS, each verified against the
+    manifest. None when the bundle is missing or any wanted file is wrong."""
+    data = _cos_get(cos, f"{ver}/{COS_BUNDLE}", timeout=60)
+    if data is None:
+        return None
+    out: dict[str, bytes] = {}
+    try:
+        with zipfile.ZipFile(BytesIO(data)) as z:
+            names = set(z.namelist())
+            for rel in wanted:
+                if rel not in names:
+                    log.warning("COS 的 bundle 里没有 %s，退回 GitHub", rel)
+                    return None
+                body = z.read(rel)
+                if _sha1(body) != files[rel]:
+                    log.warning("COS 的 bundle 里 %s 哈希不对，退回 GitHub", rel)
+                    return None
+                out[rel] = body
+    except (zipfile.BadZipFile, KeyError, OSError) as exc:
+        log.warning("COS 的 bundle 读不了: %s", exc)
+        return None
+    return out
 
 
 def _get_once(url: str, timeout: int = 20) -> bytes | None:
@@ -500,7 +614,7 @@ def _wanted_files(root: Path, files: dict) -> list[str]:
 
 def _stage_files(root: Path, base: str, files: dict, deadline: float | None,
                  remote_ver: int, local_ver: int,
-                 wanted: list[str]) -> list[tuple[str, Path, bytes]] | None:
+                 wanted: list[str], cos=None) -> list[tuple[str, Path, bytes]] | None:
     """Download and verify every file that needs changing, write not one byte to disk, return the batch.
 
     If any single file cannot be fetched with the correct content, record the
@@ -509,34 +623,17 @@ def _stage_files(root: Path, base: str, files: dict, deadline: float | None,
     write once" holds at a function boundary: staging and writing live in two
     different functions, which makes it impossible to write code that writes
     while it downloads.
+
+    Order of doors: the COS bundle (one request for everything), then the
+    GitHub doors file by file, PARALLEL_FETCHES at a time.
     """
-    # Download and verify every file that needs changing first, writing none of
-    # them to disk; only once they all pass is anything written, in one go.
-    #
-    # Downloading and writing one at a time will not do: the network dropping
-    # midway (routine on this line) leaves a mixed "new engine.py + old
-    # core.py" version, and service.py restarts as soon as it sees any file
-    # change - so the restart may boot a relay that straddles two versions, or
-    # one that cannot even get through its imports. Half an update is far more
-    # dangerous than no update.
-    # Holds (relative path from the manifest, target on disk, content). The
-    # relative path has to be kept as it is and must not be recovered
-    # afterwards via target.relative_to(root): _safe_target returns a resolved
-    # path while root may not be resolved (on macOS /var is a symlink to
-    # /private/var), so recovering it would raise ValueError - and by then the
-    # files would already be written.
-    staged: list[tuple[str, Path, bytes]] = []
+    plan: list[tuple[str, Path]] = []
     for rel, want in sorted(files.items()):
         target = _safe_target(root, rel)
         if target is None:
             log.warning("manifest 里的路径越界，已忽略: %s", rel)
             continue
         if not target.exists() and not _may_create(rel):
-            # Not plain source: refused, and the whole round with it. Skipping one
-            # file and applying the rest would be the worst of both - a module
-            # split would land its edited importer without the modules it
-            # imports, the version would be stamped as up to date, and the
-            # process would restart into ModuleNotFoundError and never recover.
             log.warning("清单里有本机没有的新文件 %s，不是源码文件，整轮更新放弃"
                         "（这种文件只能由一次人工部署送上来）", rel)
             _record_failure(root, f"{rel}：清单里的新文件不是源码文件，自更新不创建它。"
@@ -547,16 +644,32 @@ def _stage_files(root: Path, base: str, files: dict, deadline: float | None,
             continue
         if not target.exists():
             log.info("清单里的新文件 %s 本机没有，这轮一起创建", rel)
-        data = _get_with_retry(base + rel, expect_sha=want, deadline=deadline)
-        if data is None:
-            log.warning("%s 所有门都拿不到正确内容，本次更新整体放弃（已下 %d 个"
-                        "文件都不落盘，下次启动重来）", rel, len(staged))
-            _record_failure(root, f"{rel}：几条下载线路都没拿到新代码（线路上还是旧内容，"
-                            "或最慢那条来不及走完）",
-                            remote_ver, local_ver, wanted)
-            return None
-        staged.append((rel, target, data))
-    return staged
+        plan.append((rel, target))
+    if not plan:
+        return []
+
+    bodies: dict[str, bytes] = {}
+    if cos is not None and remote_ver:
+        got = _cos_bundle(cos, remote_ver, files, [rel for rel, _ in plan])
+        if got is not None:
+            log.info("从 COS 的 bundle 里取到 %d 个文件", len(got))
+            bodies = got
+
+    missing = [rel for rel, _ in plan if rel not in bodies]
+    if missing:
+        def fetch(rel: str) -> tuple[str, bytes | None]:
+            return rel, _get_with_retry(base + rel, expect_sha=files[rel], deadline=deadline)
+        with ThreadPoolExecutor(max_workers=min(PARALLEL_FETCHES, len(missing))) as pool:
+            for rel, data in pool.map(fetch, missing):
+                if data is None:
+                    log.warning("%s 所有门都拿不到正确内容，本次更新整体放弃（已下 %d 个"
+                                "文件都不落盘，下次启动重来）", rel, len(bodies))
+                    _record_failure(root, f"{rel}：几条下载线路都没拿到新代码（线路上还是旧内容，"
+                                    "或最慢那条来不及走完）",
+                                    remote_ver, local_ver, wanted)
+                    return None
+                bodies[rel] = data
+    return [(rel, target, bodies[rel]) for rel, target in plan]
 
 
 def _write_staged(root: Path, staged: list[tuple[str, Path, bytes]],
@@ -600,13 +713,27 @@ def check(root: Path, base_url: str = "",
     """
     base = (base_url or DEFAULT_BASE).rstrip("/") + "/"
     deadline = time.monotonic() + budget_s if budget_s else None
-    manifest = _best_manifest(base, deadline)
+    local_ver = _applied_version(root)
+    cos = None
+    manifest = None
+    try:
+        cos = _cos()
+    except Exception:  # a broken COS client must not stop the GitHub path
+        log.warning("COS 客户端建不起来，走 GitHub", exc_info=True)
+    if cos is not None:
+        if found := _cos_manifest(cos, local_ver):
+            manifest, _ = found
+            log.info("COS 上有新版 v%s（本机 v%s）", _manifest_version(manifest), local_ver)
+    if manifest is None:
+        # The manifest is GitHub's: its bundle is not on COS under that version
+        # (or COS is what just failed), so the files come from GitHub too.
+        cos = None
+        manifest = _best_manifest(base, deadline)
     if manifest is None:
         return []
     files = manifest["files"]
 
     remote_ver = _manifest_version(manifest)
-    local_ver = _applied_version(root)
     if _is_downgrade(remote_ver, local_ver):
         log.warning("拿到的清单更旧（v%s < 本机 v%s，0 表示没有版本号），"
                     "多半是缓存未刷新，本次不更新", remote_ver, local_ver)
@@ -616,7 +743,7 @@ def check(root: Path, base_url: str = "",
     if not wanted:
         _clear_failure(root)        # nothing to do means nothing is outstanding
 
-    staged = _stage_files(root, base, files, deadline, remote_ver, local_ver, wanted)
+    staged = _stage_files(root, base, files, deadline, remote_ver, local_ver, wanted, cos)
     if staged is None:
         return []
 

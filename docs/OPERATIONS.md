@@ -1198,8 +1198,37 @@ nothing can ever be uploaded from the machine.
 - **Config**: `queue/config.json`, applied once per strictly-newer integer
   `version`. See `queue/README.md` for the command format.
 
-Doors, in the order the code tries them (measured from the machine 2026-08-21,
-8 attempts each):
+**First door since 2026-09-18: the Tencent COS bucket** (the same one evidence
+goes to; `COS_*` in the machine's `.env`). `deploy-relay.sh` ends by running
+`scripts/mac/publish-cos.py`, which PUTs `relay/<version>/manifest.json`,
+`relay/<version>/bundle.zip` (every file, one archive) and last `relay/latest.json`
+(`{"version", "uploaded", "files", "bundle_bytes"}`). At boot the relay GETs
+`latest.json` (a hundred bytes); only when its version beats the local one does
+it GET that version's manifest and bundle, verifying every wanted file against
+the manifest's SHA-1. COS has no cache layer, so "pushed at 02:31, still the old
+manifest on the machine's CDN node at 08:45" (2026-09-18) cannot happen there.
+
+**Why the bucket's 90-day lifecycle rule cannot hurt this path**: the machine
+never asks for anything but the *latest* deploy. `latest.json` is rewritten by
+every deploy, and it points at the version directory written seconds before it.
+An object that is 90 days old is by definition not the latest deploy (a deploy
+that old means nothing was pushed for three months - then `latest.json` and its
+version directory age out together, and a missing object simply falls through
+to GitHub). Old version directories are the only things the rule ever deletes,
+and nothing reads them. So the rule stays as it is; no path needs a 90-day-old
+object.
+
+Anything wrong on COS - missing object, refused key (451 unpaid bill on
+2026-09-13), hash mismatch in the bundle, `latest.json` and manifest
+disagreeing - is a silent fallback to the GitHub doors below, never an abandoned
+round. Files that do have to come from GitHub are fetched
+`selfupdate.PARALLEL_FETCHES` (6) at a time, so a twenty-file update on a day
+when only `raw` answers fits in one raw round-trip instead of twenty; the
+all-or-nothing landing is unchanged. `scripts/mac/publish-cos.py --check` shows
+which version COS would hand the machine.
+
+Doors, in the order the code tries them after COS (measured from the machine
+2026-08-21, 8 attempts each):
 
 | Door | Success | Median |
 |---|---|---|

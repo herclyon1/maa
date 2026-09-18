@@ -92,7 +92,8 @@
 | 单跑 OK-WW 的某个任务 | `scripts/mac/okww-task.sh --list` 核对下标，再 `okww-task.sh <下标>` |
 | 取游戏机上的文件 | `scripts/mac/winrun.sh --get '<远端路径>'` |
 | 紧急停止一切 | `scripts/mac/estop.sh`（恢复 `--restore`） |
-| 部署中继 | `scripts/mac/deploy-relay.sh`（先写 `relay/RELEASE-NOTES.md`） |
+| 部署中继 | `scripts/mac/deploy-relay.sh`（先写 `relay/RELEASE-NOTES.md`）—— 本地闸门只跑改动映射到的测试（映射不到的一律全跑），冒烟只导入改动模块及其引用者；末尾自动 `publish-cos.py` 把清单+单包推到 COS，机器开机自更新先问 COS |
+| 看 COS 上机器会拿到哪一版 | `scripts/mac/publish-cos.py --check` |
 | HTML 转图 | `scripts/mac/html2png.sh` |
 | 调 AUTO-MAS 接口 | `scripts/mac/mas-api.py`（全部 POST） |
 | **看 OK-WW 真正生效的配置** | `scripts/mac/winrun.sh --py scripts/mac/lib/okww_effective.py` —— OK-WW 自己目录那份跑前会被 AUTO-MAS 整个换掉，**不作数** |

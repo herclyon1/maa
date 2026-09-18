@@ -1,5 +1,5 @@
 {
- "version": 20260918022744,
+ "version": 20260918025641,
  "files": {
   "RELEASE-NOTES.md": "f553ebd1f5f4ab265c419a12795d3c7ab5fc3c32",
   "ark_relay/__init__.py": "dfebacfa6250478867bdc657a1b8ba4032f44afc",
@@ -75,7 +75,7 @@
   "ark_relay/sanity_plan.py": "4907067b8ac5ab5ae11af74ab6d28831de794f6e",
   "ark_relay/scoreboard.py": "2e8004a670dc82d346fac844b6c753c5eb42f0a0",
   "ark_relay/selfcheck.py": "39af9026e04afaede2eb6b77d366ebbf18bdff58",
-  "ark_relay/selfupdate.py": "5f0f88d561c7347e53c970245d10a610f8a96c3a",
+  "ark_relay/selfupdate.py": "a3f0a4914f30a5b6cac40f066cbe5ef3de86ad4f",
   "ark_relay/shutdown.py": "bca27a610cbbf3b69b0652e2e21982d9ebf7cc76",
   "ark_relay/skland.py": "7b7d7edd61201acab54c89b3ae618edeb1eeab33",
   "ark_relay/snapshot.py": "962daf199538fa958482aeb27c27ead851c8c1e1",

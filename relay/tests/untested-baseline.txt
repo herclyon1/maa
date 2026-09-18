@@ -7,7 +7,6 @@ __main__.cmd_local
 __main__.cmd_report
 __main__.cmd_test
 banners.collect
-banners.version_ends
 commands.mas_up
 desktop.kill
 gameupdate.maaend_reenable_if_updated
@@ -19,7 +18,6 @@ phone.Heartbeat.bye
 phone.Heartbeat.loop
 skland.bindings
 skland.endfield_card
-skland.endfield_role
 skland.get_did
 skland.login
 skland.refresh

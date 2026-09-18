@@ -1,0 +1,1016 @@
+{
+"test_alert_dedup.py": [
+"__init__",
+"banners",
+"collector",
+"collector_maa",
+"collector_maaend",
+"collector_okww",
+"config",
+"core",
+"efstatus",
+"engine",
+"handle",
+"missed",
+"modes",
+"names",
+"notify",
+"outcome",
+"plan",
+"report",
+"scoreboard",
+"shutdown",
+"statestore",
+"summary",
+"texts",
+"transport",
+"wuwa_forgery",
+"wuwa_tacet"
+],
+"test_atomic_write.py": [],
+"test_automas_boot_revival.py": [
+"__init__",
+"boot_stages",
+"collector",
+"collector_maa",
+"collector_maaend",
+"collector_okww",
+"commands",
+"config",
+"core",
+"efstatus",
+"handle",
+"names",
+"notify",
+"outcome",
+"scoreboard",
+"service",
+"statestore",
+"summary",
+"texts",
+"wuwa_forgery",
+"wuwa_tacet"
+],
+"test_banners.py": [
+"__init__",
+"banners",
+"config"
+],
+"test_boss_table_matches.py": [
+"__init__",
+"wuwa_boss"
+],
+"test_channel_down.py": [
+"__init__",
+"config",
+"notify",
+"statestore"
+],
+"test_claim_no_claim_gate.py": [
+"__init__",
+"bosstip",
+"claim",
+"config",
+"core",
+"count",
+"domain",
+"echofarm",
+"farmerr",
+"letpass",
+"nest",
+"nofarm",
+"nowave",
+"okww_patch",
+"retrycap",
+"revive",
+"reward",
+"shot",
+"shot2",
+"stamina",
+"starve",
+"tacetshot",
+"teamshot"
+],
+"test_cli_commands.py": [
+"__init__",
+"__main__",
+"banners",
+"collect_retry",
+"collector",
+"collector_maa",
+"collector_maaend",
+"collector_okww",
+"config",
+"core",
+"efstatus",
+"engine",
+"evidence",
+"handle",
+"missed",
+"modes",
+"names",
+"notify",
+"outcome",
+"plan",
+"report",
+"scoreboard",
+"shutdown",
+"statestore",
+"summary",
+"texts",
+"transport",
+"watch",
+"wuwa_forgery",
+"wuwa_tacet"
+],
+"test_collect_retry.py": [
+"collect_retry",
+"config",
+"mastercfg"
+],
+"test_collect_watch.py": [
+"__init__",
+"collect_retry",
+"collect_watch",
+"config",
+"mastercfg",
+"watch"
+],
+"test_command_table.py": [],
+"test_commands_gates.py": [
+"annihilation",
+"commands",
+"config",
+"echofarm",
+"mastercfg",
+"modes",
+"names",
+"plan",
+"statestore",
+"weeklyboss",
+"wuwa_boss"
+],
+"test_config_writers.py": [
+"config",
+"desktop",
+"gameupdate",
+"gameupdate_games",
+"maaend",
+"mastercfg"
+],
+"test_daily_format.py": [
+"collector",
+"collector_maa",
+"collector_maaend",
+"collector_okww",
+"core",
+"scoreboard",
+"texts",
+"wuwa_forgery",
+"wuwa_tacet"
+],
+"test_daily_partial_failure.py": [
+"core",
+"scoreboard",
+"statestore",
+"texts"
+],
+"test_debug_window.py": [
+"config",
+"modes",
+"statestore"
+],
+"test_dispatch_guard_self.py": [],
+"test_drops.py": [
+"collector",
+"collector_maa",
+"collector_maaend",
+"collector_okww",
+"wuwa_forgery",
+"wuwa_tacet"
+],
+"test_echo_farm.py": [
+"annihilation",
+"config",
+"echofarm",
+"preupdate_common",
+"preupdate_maaend",
+"preupdate_okww",
+"statestore",
+"weeklyboss"
+],
+"test_engine_pending.py": [
+"__init__",
+"annihilation",
+"bosstip",
+"claim",
+"collector",
+"collector_maa",
+"collector_maaend",
+"collector_okww",
+"config",
+"core",
+"count",
+"desktop",
+"domain",
+"echofarm",
+"efstatus",
+"engine",
+"farmerr",
+"gameupdate",
+"gameupdate_games",
+"garden",
+"handle",
+"letpass",
+"missed",
+"modes",
+"nest",
+"nofarm",
+"notify",
+"nowave",
+"okww_patch",
+"outcome",
+"plan",
+"report",
+"retrycap",
+"revive",
+"reward",
+"scoreboard",
+"shot",
+"shot2",
+"shutdown",
+"stamina",
+"starve",
+"statestore",
+"summary",
+"tacetshot",
+"teamshot",
+"texts",
+"transport",
+"weeklyboss",
+"wuwa_forgery",
+"wuwa_tacet"
+],
+"test_episodes.py": [
+"collector",
+"collector_maa",
+"collector_maaend",
+"collector_okww",
+"core",
+"efstatus",
+"scoreboard",
+"statestore",
+"texts",
+"wuwa_forgery",
+"wuwa_tacet"
+],
+"test_estop_verifies.py": [
+"commands",
+"names"
+],
+"test_event_expiry.py": [
+"plan"
+],
+"test_evidence.py": [
+"evidence"
+],
+"test_evidence_archive.py": [],
+"test_evidence_cli_window.py": [
+"__main__",
+"banners",
+"core",
+"efstatus",
+"engine",
+"evidence",
+"handle",
+"missed",
+"modes",
+"names",
+"notify",
+"outcome",
+"plan",
+"report",
+"scoreboard",
+"shutdown",
+"statestore",
+"summary",
+"texts",
+"transport"
+],
+"test_failure_alert.py": [
+"config",
+"core",
+"statestore",
+"texts"
+],
+"test_farm_launcher.py": [
+"echofarm"
+],
+"test_first_error_alert.py": [
+"errwatch",
+"notify",
+"texts"
+],
+"test_gameupdate.py": [
+"banners",
+"commands",
+"config",
+"desktop",
+"efstatus",
+"gameupdate",
+"gameupdate_games",
+"maintenance",
+"plan",
+"preupdate_common",
+"preupdate_maaend",
+"preupdate_okww",
+"statestore"
+],
+"test_garden_gate.py": [
+"annihilation",
+"config",
+"garden",
+"statestore"
+],
+"test_garden_unified.py": [
+"annihilation",
+"config",
+"garden",
+"statestore"
+],
+"test_heartbeat.py": [
+"phone"
+],
+"test_inbox_poll.py": [
+"commands",
+"config",
+"inbox",
+"maaend",
+"queues",
+"sanity_plan",
+"statestore"
+],
+"test_ledger_bad_times.py": [
+"core",
+"statestore"
+],
+"test_ledger_guard.py": [
+"core",
+"statestore"
+],
+"test_ledger_incomplete.py": [
+"config",
+"core",
+"statestore"
+],
+"test_llm_breaker.py": [
+"summary"
+],
+"test_log_rotation_offset.py": [
+"preupdate_common",
+"preupdate_maa",
+"preupdate_maaend"
+],
+"test_loop_parts.py": [
+"boot_stages",
+"service",
+"texts"
+],
+"test_maa_checks.py": [
+"handle",
+"outcome"
+],
+"test_maa_first_boot.py": [
+"preupdate_common",
+"preupdate_maa",
+"preupdate_maaend"
+],
+"test_maa_window_overlap.py": [
+"outcome"
+],
+"test_maaend_app_log.py": [
+"handle",
+"outcome"
+],
+"test_maaend_apply.py": [
+"config",
+"maaend"
+],
+"test_maaend_defs_228.py": [
+"config",
+"mastercfg"
+],
+"test_maaend_dir_resolve.py": [
+"banners",
+"collector",
+"collector_maa",
+"collector_maaend",
+"collector_okww",
+"config",
+"efstatus",
+"engine",
+"handle",
+"missed",
+"modes",
+"names",
+"notify",
+"outcome",
+"plan",
+"report",
+"shutdown",
+"summary",
+"transport",
+"wuwa_forgery",
+"wuwa_tacet"
+],
+"test_maaend_false_green.py": [
+"outcome"
+],
+"test_maaend_migrate_options.py": [
+"config",
+"mastercfg"
+],
+"test_maaend_name_mismatch.py": [
+"collector",
+"collector_maaend"
+],
+"test_maaend_phone_page_beta5.py": [
+"config",
+"mastercfg"
+],
+"test_maaend_sanity.py": [
+"collector",
+"collector_maaend",
+"core"
+],
+"test_maaend_stub_record.py": [
+"collector",
+"collector_maaend",
+"core",
+"evidence",
+"handle",
+"outcome",
+"summary"
+],
+"test_maintenance.py": [
+"banners",
+"maintenance",
+"plan"
+],
+"test_manifest_covers_tree.py": [],
+"test_mas_address.py": [
+"config"
+],
+"test_mastercfg.py": [
+"config",
+"mastercfg",
+"plan"
+],
+"test_missed_runs.py": [
+"annihilation",
+"config",
+"core",
+"engine",
+"garden",
+"missed",
+"modes",
+"notify",
+"plan",
+"shutdown",
+"statestore",
+"texts",
+"weeklyboss"
+],
+"test_module_table.py": [],
+"test_nest_patch_visible.py": [
+"nest",
+"okww_overlay",
+"plan",
+"texts"
+],
+"test_nest_restore.py": [
+"__init__",
+"core",
+"nest"
+],
+"test_nest_strings_pinned.py": [
+"outcome"
+],
+"test_next_deadline.py": [
+"annihilation",
+"config",
+"core",
+"echofarm",
+"engine",
+"garden",
+"plan",
+"report",
+"statestore",
+"weeklyboss"
+],
+"test_next_plan_imports.py": [
+"plan"
+],
+"test_nofarm_visible.py": [
+"__init__",
+"config",
+"core",
+"nofarm",
+"plan"
+],
+"test_notify_channels.py": [
+"config",
+"notify",
+"plan",
+"statestore"
+],
+"test_notify_routing.py": [
+"config",
+"notify",
+"statestore"
+],
+"test_okww_error_reason.py": [
+"collector",
+"collector_okww"
+],
+"test_okww_exit_race.py": [
+"collector",
+"collector_okww"
+],
+"test_okww_names_not_numbers.py": [
+"collector_okww",
+"wuwa_forgery",
+"wuwa_tacet"
+],
+"test_okww_overlay.py": [
+"config",
+"okww_overlay",
+"outcome"
+],
+"test_okww_overlay_copies.py": [
+"okww_overlay"
+],
+"test_okww_patch.py": [
+"bosstip",
+"claim",
+"core",
+"count",
+"domain",
+"farmerr",
+"letpass",
+"nest",
+"nowave",
+"okww_patch",
+"retrycap",
+"revive",
+"reward",
+"shot",
+"shot2",
+"stamina",
+"starve",
+"tacetshot",
+"teamshot"
+],
+"test_okww_patch_on_update.py": [
+"__init__",
+"bosstip",
+"claim",
+"config",
+"core",
+"count",
+"domain",
+"farmerr",
+"letpass",
+"nest",
+"nofarm",
+"nowave",
+"okww_patch",
+"preupdate",
+"preupdate_automas",
+"preupdate_okww",
+"retrycap",
+"revive",
+"reward",
+"shot",
+"shot2",
+"stamina",
+"starve",
+"statestore",
+"tacetshot",
+"teamshot"
+],
+"test_okww_patch_refresh.py": [
+"__init__",
+"bosstip",
+"claim",
+"core",
+"count",
+"domain",
+"farmerr",
+"letpass",
+"nest",
+"nofarm",
+"nowave",
+"okww_patch",
+"retrycap",
+"revive",
+"reward",
+"shot",
+"shot2",
+"stamina",
+"starve",
+"tacetshot",
+"teamshot"
+],
+"test_okww_quiesce_order.py": [
+"preupdate_common",
+"preupdate_maaend",
+"preupdate_okww"
+],
+"test_okww_report.py": [
+"collector",
+"collector_okww",
+"wuwa_forgery"
+],
+"test_okww_stamina_end.py": [
+"collector_okww",
+"wuwa_forgery"
+],
+"test_okww_structured.py": [
+"collector_okww",
+"wuwa_tacet"
+],
+"test_okww_weekly_boss_step.py": [
+"collector_okww"
+],
+"test_outcome.py": [
+"outcome"
+],
+"test_patch_body.py": [
+"claim",
+"core"
+],
+"test_patch_inventory.py": [
+"okww_patch"
+],
+"test_patch_stacking.py": [
+"core"
+],
+"test_payload_roundtrip.py": [
+"collector",
+"config",
+"transport"
+],
+"test_phone.py": [
+"phone"
+],
+"test_phone_cmd_gate.py": [
+"boot_stages",
+"commands",
+"modes",
+"texts"
+],
+"test_phone_gzip.py": [
+"phone"
+],
+"test_phone_receipts.py": [
+"modes"
+],
+"test_phone_state.py": [
+"annihilation",
+"commands",
+"config",
+"core",
+"echofarm",
+"garden",
+"mastercfg",
+"modes",
+"phone",
+"plan",
+"resources",
+"skland",
+"snapshot",
+"statestore",
+"weeklyboss"
+],
+"test_preupdate.py": [
+"plan",
+"preupdate",
+"preupdate_automas",
+"preupdate_common",
+"preupdate_maa",
+"preupdate_maaend"
+],
+"test_preupdate_826.py": [
+"preupdate",
+"preupdate_automas",
+"preupdate_common",
+"preupdate_maa"
+],
+"test_preupdate_maa.py": [
+"config",
+"preupdate",
+"preupdate_automas",
+"preupdate_common",
+"preupdate_maa",
+"preupdate_maaend",
+"preupdate_okww"
+],
+"test_preupdate_maaend.py": [
+"config",
+"preupdate",
+"preupdate_automas",
+"preupdate_common",
+"preupdate_maa",
+"preupdate_maaend"
+],
+"test_preupdate_maaend_oldver.py": [
+"config",
+"preupdate_common",
+"preupdate_maaend",
+"statestore"
+],
+"test_preupdate_mas_force.py": [
+"preupdate_automas",
+"preupdate_common",
+"preupdate_maaend"
+],
+"test_preupdate_okww.py": [
+"config",
+"preupdate",
+"preupdate_automas",
+"preupdate_common",
+"preupdate_maa",
+"preupdate_maaend",
+"preupdate_okww"
+],
+"test_preupdate_once.py": [
+"config",
+"preupdate",
+"statestore"
+],
+"test_preupdate_problems.py": [
+"preupdate_automas",
+"preupdate_common",
+"preupdate_maa",
+"preupdate_okww"
+],
+"test_preupdate_session.py": [],
+"test_preupdate_span.py": [
+"preupdate_maa",
+"preupdate_maaend"
+],
+"test_procnames.py": [],
+"test_queue_apply_runnow.py": [
+"commands",
+"config",
+"names",
+"queues"
+],
+"test_queue_names.py": [
+"commands",
+"config",
+"names",
+"statestore"
+],
+"test_record_names.py": [
+"collector",
+"collector_maa"
+],
+"test_release_notes.py": [],
+"test_replay.py": [
+"collector",
+"collector_maa",
+"collector_maaend",
+"collector_okww",
+"wuwa_tacet"
+],
+"test_report_due.py": [
+"collect_retry",
+"collector",
+"config",
+"core",
+"modes",
+"report",
+"scoreboard",
+"selfcheck",
+"statestore"
+],
+"test_resources.py": [
+"resources",
+"skland"
+],
+"test_revive_gates.py": [
+"boot_stages",
+"service"
+],
+"test_sanity_plan_master.py": [
+"config",
+"sanity_plan"
+],
+"test_sanity_span.py": [
+"collector_maaend",
+"report"
+],
+"test_scan_skips_seen.py": [
+"collector",
+"collector_maa"
+],
+"test_scoreboard.py": [
+"config",
+"core",
+"scoreboard",
+"statestore"
+],
+"test_scripts_running_asks_automas.py": [
+"banners",
+"engine",
+"missed",
+"modes",
+"report",
+"shutdown",
+"transport"
+],
+"test_self_attrs.py": [],
+"test_selfcheck.py": [
+"commands",
+"names",
+"notify",
+"plan",
+"procs",
+"selfcheck",
+"texts"
+],
+"test_selfupdate_cos.py": [
+"config",
+"selfupdate",
+"statestore"
+],
+"test_selfupdate_doors.py": [
+"config",
+"evidence",
+"selfupdate",
+"statestore"
+],
+"test_shutdown.py": [
+"annihilation",
+"collect_retry",
+"commands",
+"config",
+"core",
+"echofarm",
+"engine",
+"garden",
+"mastercfg",
+"modes",
+"notify",
+"plan",
+"report",
+"shutdown",
+"statestore",
+"weeklyboss"
+],
+"test_shutdown_notice.py": [],
+"test_shutdown_waits_for_farm.py": [
+"config",
+"echofarm",
+"statestore"
+],
+"test_silent_green_guards.py": [
+"handle",
+"outcome"
+],
+"test_skip_flag_collision.py": [
+"config",
+"modes",
+"queues",
+"statestore"
+],
+"test_skland_sign.py": [
+"skland"
+],
+"test_stamina_v2_migration.py": [
+"__init__",
+"bosstip",
+"claim",
+"core",
+"count",
+"domain",
+"farmerr",
+"letpass",
+"nest",
+"nofarm",
+"nowave",
+"okww_patch",
+"retrycap",
+"revive",
+"reward",
+"shot",
+"shot2",
+"stamina",
+"starve",
+"tacetshot",
+"teamshot"
+],
+"test_state_pending.py": [
+"collector",
+"config",
+"core",
+"statestore",
+"transport"
+],
+"test_statestore.py": [
+"config",
+"core",
+"statestore"
+],
+"test_stop_event_manual_reset.py": [],
+"test_tacet_shots.py": [
+"config",
+"modes",
+"notify",
+"report",
+"weeklyboss",
+"wuwa_tacet"
+],
+"test_test_windows.py": [
+"core"
+],
+"test_texts_gate.py": [
+"texts"
+],
+"test_tick_isolation.py": [
+"annihilation",
+"banners",
+"bosstip",
+"claim",
+"config",
+"core",
+"count",
+"domain",
+"echofarm",
+"engine",
+"farmerr",
+"gameupdate",
+"gameupdate_games",
+"garden",
+"handle",
+"letpass",
+"missed",
+"modes",
+"nofarm",
+"notify",
+"nowave",
+"okww_patch",
+"plan",
+"report",
+"retrycap",
+"revive",
+"reward",
+"shot",
+"shot2",
+"shutdown",
+"stamina",
+"starve",
+"statestore",
+"tacetshot",
+"teamshot",
+"weeklyboss"
+],
+"test_transitional.py": [
+"collector",
+"transport"
+],
+"test_undefined_names.py": [],
+"test_update_announce.py": [
+"config",
+"selfupdate",
+"statestore"
+],
+"test_update_announce_dedup.py": [
+"config",
+"statestore"
+],
+"test_wait_network.py": [
+"service"
+],
+"test_weeklyboss_count.py": [
+"annihilation",
+"config",
+"statestore",
+"weeklyboss"
+],
+"test_weeklyboss_cycle.py": [
+"annihilation",
+"config",
+"statestore",
+"weeklyboss"
+],
+"test_weeklyboss_reopen.py": [
+"annihilation",
+"boot_stages",
+"config",
+"statestore",
+"weeklyboss"
+]
+}
