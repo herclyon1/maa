@@ -247,6 +247,21 @@ inside the fold reads 2.49 against 3.52 (the same 1–1.5 pt over-pull of the tw
 above list, `points > 0.3 pt`). The two label stages in the other order (ClearGlass first) were rendered too: the left label's
 box grows to 16.3 pt tall (fragments pulled along the rim) where the native's is unchanged — the §4b order stays.
 
+Two marks from the acceptance session's side-by-side of 16a9311 (`accept-gates/2026-09-19-cmp-16a9311-{light,dark}-ends.png`),
+traced layer by layer (`?bg=0` / `?lab=0` / `?ab=0` / `?punch=0`, WebKit, current labels; `ghost-variants.png`, `dark-right-zoom.png`):
+* the faint light-grey 「‹‹」 above the left end's fold strip (rows 128–129, x 110.5–114.8): it goes away with `?punch=0` or
+  `?bg=0` and stays with `?ab=0` / `?lab=0` — it is **the backdrop path on the segment content's residue**: the 0.3-pt sliver of
+  「早」 that the capsule punch leaves inside the 220×44 frame at x 110–110.33 (rows 128–136), replicated into the rim band by
+  the map's clamp (the sliver's column is the frame's edge column), bent per row by the map's vertical component and faint
+  because that column is the glyph's anti-aliased edge. That is §4b layer 1 / §6d: 「边带里多出来的是 BackdropView 底图路径把透镜外
+  细条拉进来的复本」, ≈ 55 % of the native's band ink (BackdropView off: right band 416 → 185). Not removed: removing it means
+  removing the residue or the clamp, both read. Its look differs from the native's slivers (thin, full-ink, horizontal) — the
+  residue's first column and the band profile at the last 3 pt, the same open item as the 「班」 lump.
+* the over-bright white patch at the dark right end: the label layer's own output — with the fringe chain off it is still there
+  (82.5 pt² brighter than 235 in x 318–331, y 120–146; 0 coloured px), with the label filter off it is gone (22.9 pt² = the plain
+  glyph). No tap and no α term: it is 「班」's right part folded into a lump by the label stack's last 3 pt (the light mode's black
+  lump, §0c above), white because the dark label is white; the chain only colours its rim. Same open item.
+
 <!-- verify:end -->
 
 ### 0.5 Colour fringe — glassForeground's 7-tap spectral sampling (test page + `lens-filter.svg`; not wired into index.html)
