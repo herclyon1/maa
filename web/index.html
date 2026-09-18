@@ -215,6 +215,13 @@
   .num .lab{margin:0;font-family:var(--ios-tile-number-font);font-size:var(--ios-tile-label-size);line-height:var(--ios-tile-label-lh);font-weight:var(--ios-tile-label-weight);color:var(--ink)}   /* 标签 Rounded Semibold 17/20.33 at (12,52) ← 提醒事项 UILabel；原件白字在色底，这里白卡上取 label 色 */
   .num .sub{font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh);color:var(--dim)}
   .num.err .sub{color:var(--bad)}
+  /* Behaviour 2: before the first reading there is no number yet — the tile is drawn anyway with a placeholder block where the number
+     and the footnote go (HIG Loading: “consider showing placeholder text, graphics, or animations as content loads, replacing these
+     elements as content becomes available”). Block heights = the lines they stand in for (--ios-tile-number-lh / --ios-footnote-lh);
+     fill = quaternarySystemFill (probe uiprobe-colors.json, --ios-quaternary-fill) — the fill choice is ours, the colour is the system's. */
+  .num .ph{display:inline-block;border-radius:6px;background:var(--ios-quaternary-fill);vertical-align:middle}
+  .num .big .ph{width:2.2em;height:var(--ios-tile-number-lh)}
+  .num .sub .ph{width:7em;height:var(--ios-footnote-lh)}
   /* ---- 状态页的三种块（docs/PHONE-NATIVE-REFERENCES.md） ---- */
   header .sub{display:none}                       /* the device card carries the status line */
   /* Device card: Find My › Devices › the device's card - icon, name, status line, a word at the right. */
@@ -291,15 +298,16 @@
   .sheet[open]{display:block}
   .sheet .dim{position:absolute;inset:0;background:var(--ios-dimming)}
   .sheet .card{position:absolute;left:0;right:0;top:env(safe-area-inset-top, var(--ios-status-h));bottom:0;background:var(--bg);border-radius:var(--ios-sheet-radius-top) var(--ios-sheet-radius-top) 0 0;overflow:hidden;display:flex;flex-direction:column}
-  .sheet .pnav{position:relative;flex:none;height:var(--ios-nav-h);margin-top:calc(var(--ios-modal-nav-top) - var(--ios-status-h));display:flex;align-items:center;justify-content:center;
+  .sheet .pnav{margin-top:calc(var(--ios-modal-nav-top) - var(--ios-status-h))}   /* 弹出页的导航栏在 y 82 = 卡顶 62 + 20 ← AX-38 */
+  .pnav{position:relative;flex:none;height:var(--ios-nav-h);display:flex;align-items:center;justify-content:center;
                font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight);color:var(--ink)}   /* 导航栏 (0,82,440,54)，标题 Semibold 17 居中 ← AX-38 */
-  .sheet .pnav .navbtn{position:absolute;left:var(--ios-nav-side);top:0;display:flex;width:var(--ios-nav-button);height:var(--ios-nav-button);border-radius:50%;padding:0;border:0;
+  .pnav .navbtn{position:absolute;left:var(--ios-nav-side);top:0;display:flex;width:var(--ios-nav-button);height:var(--ios-nav-button);border-radius:50%;padding:0;border:0;
                         background:var(--glass-fill);backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter);box-shadow:var(--glass-rim),var(--glass-diffuse);color:var(--ink);align-items:center;justify-content:center}   /* 返回圆钮 (20,82,44,44) ← AX-38，玻璃同编辑栏 */
-  .sheet .pnav .navbtn::before{content:"";width:var(--ios-chevron-w);height:var(--ios-chevron-h);background:currentColor;-webkit-mask:var(--chev-left) center / contain no-repeat;mask:var(--chev-left) center / contain no-repeat}
-  .sheet .pnav .pdone{position:absolute;right:calc(440px - 380px - var(--ios-modal-button));top:4px;width:var(--ios-modal-button);height:var(--ios-modal-button);border-radius:50%;padding:0;border:0;
+  .pnav .navbtn::before{content:"";width:var(--ios-chevron-w);height:var(--ios-chevron-h);background:currentColor;-webkit-mask:var(--chev-left) center / contain no-repeat;mask:var(--chev-left) center / contain no-repeat}
+  .pnav .pdone{position:absolute;right:calc(440px - 380px - var(--ios-modal-button));top:4px;width:var(--ios-modal-button);height:var(--ios-modal-button);border-radius:50%;padding:0;border:0;
                        background:var(--accent);color:#fff;box-shadow:none}   /* 完成圆钮 (380,86,36,36)：右距 24、顶 +4 ← AX-38 / --ios-modal-button；tint 底白 ✓ 同编辑栏 */
-  .sheet .pnav .pdone{display:flex;align-items:center;justify-content:center}
-  .sheet .pnav .pdone .sf{width:16px;height:16px;background:#fff}   /* ✓ 白，36 圆钮里约 16（编辑栏 44 钮用 20，同比例；字形尺寸 AX 没给，待 tokens） */
+  .pnav .pdone{display:flex;align-items:center;justify-content:center}
+  .pnav .pdone .sf{width:16px;height:16px;background:#fff}   /* ✓ 白，36 圆钮里约 16（编辑栏 44 钮用 20，同比例；字形尺寸 AX 没给，待 tokens） */
   .sheet .plist{flex:1 1 auto;overflow:auto;-webkit-overflow-scrolling:touch;padding:var(--ios-group-gap) var(--ios-card-inset) 40px}   /* 表头空 17.67（AX-38 Other (0,136,440,17.67)）；卡 x 20 宽 400 */
   .sheet .row.check{cursor:pointer;padding-right:22.5px;gap:var(--ios-value-gap)}   /* ✓ 帧 (378.5, ·, 19, 17.33)：右缘 397.5 = 行右 420 − 22.5 ← AX-38 */
   .sheet .row.check > label{flex:1 1 0}
@@ -308,6 +316,30 @@
   .sheet .row.check .pico{width:var(--ios-row2-icon);height:var(--ios-row2-icon);border-radius:6px;flex:none}   /* 行内图标 28 ← AX-46 图标行（--ios-row2-icon） */
   .sheet .row.check:active{background:color-mix(in srgb, var(--ink) 6%, var(--card))}
   html.sheet-open{overflow:hidden}
+  /* Behaviour 5: the sheet's present / dismiss = UISheetPresentationController large detent (remote-ref/pagesheet-motion.md, iOS 27.0 probe,
+     CAAnimation hook + per-frame presentation): UIDropShadowView.position 956 → 62 (894 pt) and UIDimmingView 0 → black .2 on ONE spring
+     m 3 / k 1000 / c 500, drawn as critical ω ≈ 18.5 (0.1 s 60 %, 0.2 s 90 %, 0.28 s 97 %); dismiss = the same spring back. Tokens:
+     --ios-motion-sheet-duration / -easing (the data session: use that pair). The card's own height is the 894 travel, so translateY(100%). */
+  .sheet .card{transform:translateY(100%);transition:transform var(--ios-motion-sheet-duration) var(--ios-motion-sheet-easing)}
+  .sheet .dim{opacity:0;transition:opacity var(--ios-motion-sheet-duration) var(--ios-motion-sheet-easing)}
+  .sheet.in .card{transform:none}
+  .sheet.in .dim{opacity:1}
+  /* Behaviour 4 (and the 库存 subpage later): a pushed page = UINavigationController push. Nav bar 54 at y 62 (AX-11 / AX-46 NavigationBar
+     (0,62,440,54)), back 44 at x 20 (BackButton (20,62,44,44)), inline title Semibold 17 (AX-46 StaticText y 73.67), content from 116 with
+     the 17.67 group gap (AX-33d spacer (0,116,440,17.67)); the tab bar stays (AX-11: TabBar (0,873,440,83) on the pushed page). Motion:
+     0.35 s, new page 440 → 0, the old page slides 30 % (→ −132) and stays there (spec-table push / pop, tokens --ios-motion-nav-*). Below
+     the tab bar (z 6) and above the top bar (z 5, earlier in the DOM). */
+  .page{position:fixed;inset:0;z-index:5;background:var(--bg);color:var(--ink);overflow:auto;-webkit-overflow-scrolling:touch;
+        padding:calc(env(safe-area-inset-top) + var(--ios-nav-h)) 0 calc(env(safe-area-inset-bottom) + 120px);
+        transform:translateX(100%);transition:transform var(--ios-motion-nav-push-duration) var(--ios-motion-nav-push-easing)}
+  .page[hidden]{display:none}
+  .page.in{transform:none}
+  .page.out{transition-timing-function:var(--ios-motion-nav-pop-easing)}
+  .page > .pnav{position:fixed;top:env(safe-area-inset-top);left:0;right:0;z-index:1;background:var(--bg)}   /* 推入页导航栏 (0,62,440,54) ← AX-11 / AX-46 */
+  .page > .pbody{padding:var(--ios-group-gap) var(--ios-card-inset) 0}   /* 首卡顶 = 116 + 17.67 ← AX-33d / AX-46 */
+  .page > .pbody > section > h2:first-child{padding-top:calc(var(--ios-header-text-top) - var(--ios-group-gap))}
+  body.pushed > header, body.pushed > main{translate:calc(-1 * var(--ios-motion-nav-parallax)) 0;transition:translate var(--ios-motion-nav-push-duration) var(--ios-motion-nav-push-easing)}   /* 旧页视差 30 % → −132 ← spec-table push */
+  body > header, body > main{transition:translate var(--ios-motion-nav-pop-duration) var(--ios-motion-nav-pop-easing)}
   /* Footers and notes under a group, grey like Settings' explanatory text. */
   .group > p.hint,.group > .hint{margin:0;padding:10px var(--ios-row-text-x);color:var(--dim);font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh)}
   .warn{margin:8px 16px 0;padding:0;background:transparent;color:var(--warn);font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh)}
@@ -485,7 +517,14 @@
   dialog::backdrop{background:var(--ios-alert-dimming)}                      /* 遮罩 (0,0,0).2 / 暗 .48 ← 探针 UIDimmingView / ⑨ */
   .dlg-b{padding:var(--ios-alert-msg-gap) var(--ios-alert-pad-x) 20.33px;max-height:52vh;overflow:auto;font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);text-align:left;color:var(--alert-msg-fallback)}   /* 正文 15，帧 (30, 49.67, 260, 38) 左起，标题下 7.33 ← 探针 ④；底距 20.33 = 按钮顶 108 − 49.67 − 38 ← ④ */
   #alert-m{color:var(--alert-msg-color);mix-blend-mode:var(--alert-msg-blend)}   /* 纯文字说明 = 面板 −0.4（亮）/ +0.3（暗）← pipeline §1.9：plus-darker 叠 rgb(153) = D + .6 − 1 = D − .4；暗 plus-lighter rgb(77) = D + .3。只对纯文字块混合——确认框的改动清单带自己的颜色，不混合 */
-  @supports not (mix-blend-mode: plus-darker){ #alert-m{color:var(--alert-msg-fallback);mix-blend-mode:normal} }   /* Chrome：常量 = 236 − 102 ← ⑨ 面板 236 与 pipeline §1.9 实测 −102 */
+  @supports not (mix-blend-mode: plus-darker){ #alert-m{color:var(--alert-msg-fallback);mix-blend-mode:normal} }
+  /* Behaviour 1 (2026-09-19, the user's Android): the alert seemed to come late. Measured in headless Chrome at 4× CPU throttle
+     (scratch sh/alert_delay.py): the dialog is open ≤ 7 ms after the up and frames keep their 16.7 ms cadence with or without the glass —
+     the main thread is not it. What remains is the GPU: during the 0.4 s appear the scaled dialog makes the 1320 × 876 px (3x) blur(20)
+     of the 60-pt-oversized pane re-render every frame. WebKit (iOS, the acceptance line) keeps the exact pane from frame 1; Chrome
+     (no plus-darker = Android) runs the pane flat — the same white .538 fill, no blur — while the appear animation plays and switches to
+     the blurred pane at animationend (alert-web-plan: the GPU path during animation, the exact layer once still). */
+  @supports not (mix-blend-mode: plus-darker){ dialog[open]:not(.settled) > .pane{backdrop-filter:none;-webkit-backdrop-filter:none} }   /* Chrome：常量 = 236 − 102 ← ⑨ 面板 236 与 pipeline §1.9 实测 −102 */
   dialog .acts{border-top:0;display:grid;grid-template-columns:1fr 1fr;gap:var(--ios-alert-button-gap);padding:0 var(--ios-alert-button-inset) var(--ios-alert-button-inset)}
   dialog .acts button{min-height:var(--ios-alert-button-h);height:var(--ios-alert-button-h);padding:0 12px;border-radius:var(--ios-alert-button-radius);text-align:center;background:transparent;color:var(--ios-label);font-weight:var(--ios-medium-weight);overflow:hidden;   /* 「取消」字 = labelColor 纯黑/纯白（矩阵 e −1 / +.95）← pipeline §1.9，不是 tint */
                       transition:background var(--ios-motion-alert-button-duration) var(--ios-motion-ease-in-out)}   /* 按钮 48 r24、字 Medium 17 ← 探针；按下/松开 0.1 s ease-in-out ← 探针 */
@@ -571,6 +610,11 @@
     <div class="pnav"><button type="button" class="navbtn pback" aria-label="返回"></button><span class="ptitle"></span><button type="button" class="pdone" aria-label="完成"></button></div>
     <div class="plist"></div>
   </div>
+</div>
+<!-- 推入页（UINavigationController push）：回执全表、以后的库存页；导航栏 54 at 62、返回 44 at 20 ← AX-11 / AX-46 -->
+<div class="page" id="subpage" hidden role="region">
+  <div class="pnav"><button type="button" class="navbtn pback" aria-label="返回"></button><span class="ptitle"></span></div>
+  <div class="pbody"></div>
 </div>
 <script src="schema.js?v=20260918230956"></script>
 <script src="net.js?v=20260918230956"></script>

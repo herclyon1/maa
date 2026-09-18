@@ -31,6 +31,7 @@ function applyTheme() {
 function ask(title, msg, okLabel = "好", danger = false) {
   const d = $("#alert");
   if (!d || !d.showModal) return Promise.resolve(confirm(`${title}\n${msg}`));
+  if (d.open) return Promise.resolve(false);   // one alert at a time (UIAlertController presents one); a second ask while it is open is dropped — 2026-09-19 数据实拍的双层弹窗
   $("#alert-t").textContent = title; $("#alert-m").textContent = msg;
   const ok = $("#alert-ok"); ok.textContent = okLabel; ok.className = danger ? "danger" : "primary";
   return new Promise((res) => {
@@ -44,7 +45,11 @@ function ask(title, msg, okLabel = "好", danger = false) {
     };
     ok.onclick = () => done(true); $("#alert-cancel").onclick = () => done(false);
     d.oncancel = (e) => { e.preventDefault(); done(false); };
-    d.showModal();
+    /* Behaviour 1: `.settled` marks the end of the appear animation (index.html: Chrome runs the glass flat until then). The two frame stamps
+       after showModal go to the ?diag=1 line, so the first-frame delay can be read off a phone. */
+    d.classList.remove("settled"); d.addEventListener("animationend", () => d.classList.add("settled"), { once: true });
+    const t0 = performance.now(); d.showModal();
+    requestAnimationFrame((f1) => requestAnimationFrame((f2) => { window.ALERT_T = { open: t0, f1, f2 }; }));
   });
 }
 function toast(t, ms = 2600) {
@@ -254,7 +259,14 @@ function numTiles(snap) {
   /* 「今天跑了 N 趟」那格 2026-09-18 删了（用户：无意义数据；sitemap 里早没有）。三格体力 2 + 1，
      最后一格占满一行，照提醒事项首页奇数张智能列表磁贴的排法（AX-57）。「最近一趟」搬到回执组头。 */
   const r = (window.Stamina && Stamina.data) || null;
-  if (!r) return "";
+  /* Behaviour 2: no reading yet but the phone is configured → the three tiles are drawn with placeholders (icon and name are known), and
+     replaced in place when the first reading lands; with a cached reading (state restoration) the real numbers show at once. */
+  if (!r) {
+    if (!(window.Stamina && Stamina.loadTokens())) return "";
+    const ph = (icon, colour, label) => `<div class="num" style="--c:${colour}"><span class="nico">${RES[icon] ? `<img class="rico" src="${RES[icon]}" alt="">` : sf(icon)}</span>
+      <span class="big"><i class="ph"></i></span><span class="lab">${label}</span><span class="sub"><i class="ph"></i></span></div>`;
+    return `<section><div class="group nums">${ph("ak", "var(--ios-tint)", "明日方舟 理智")}${ph("ef", "var(--ios-orange)", "终末地 理智")}${ph("ww", "#30b0c7", "鸣潮 波片")}</div><div class="foot">正在读取…</div></section>`;
+  }
   const ak = r["明日方舟"] || {}, ef = r["终末地"] || {}, ww = r["鸣潮"] || {};
   let h = "";
   if (r) {
@@ -355,9 +367,19 @@ function render() {
   /* 组头右边的小字：最近一趟跑的是哪个、今天有没有失败（原来「今天跑了」磁贴里唯一有用的两项）。 */
   const td = (snap && snap["今天"]) || {};
   const tdNote = [td["最近"] ? `最近一趟 ${td["最近"]}` : "", td["失败"] ? `失败 ${td["失败"]} 趟` : ""].filter(Boolean).join(" · ");
-  if (rc.length) html += `<section><h2>机器最近的回执${tdNote ? ` <small>${tdNote}</small>` : ""}</h2>` + rc.map((r) =>
-    `<div class="row"><label>${sf(r.ok ? "checkmark.circle.fill" : "xmark.circle.fill", r.ok ? "ok inl" : "bad inl")}${(r.text || "").replace(/</g,"&lt;")}</label>
-      <span class="ro short">${r.at}</span></div>`).join("") + `</section>`;
+  /* Behaviour 4 (2026-09-19): the home page shows the newest 3 and a 「查看全部 ›」 row (Health › 摘要's 「显示所有健康数据 ›」 row, AX-13
+     (20,577.67,400,52) with the chevron at 387.67; row form = the page's .row.nav per AX-46) that pushes the full list grouped by day
+     (Health › 显示所有数据: one group per day, AX-11 / AX-12). The relay itself keeps at most 12 (modes.RECEIPTS_KEEP). */
+  const rcRow = (r) => `<div class="row"><label>${sf(r.ok ? "checkmark.circle.fill" : "xmark.circle.fill", r.ok ? "ok inl" : "bad inl")}${(r.text || "").replace(/</g,"&lt;")}</label>
+      <span class="ro short">${r.at}</span></div>`;
+  if (rc.length) html += `<section><h2>机器最近的回执${tdNote ? ` <small>${tdNote}</small>` : ""}</h2>` + rc.slice(0, 3).map(rcRow).join("")
+    + (rc.length > 3 ? `<div class="row nav" data-page="receipts"><label>查看全部</label><span class="val">${rc.length} 条</span>${sf("chevron.right", "chev")}</div>` : "") + `</section>`;
+  receiptsPage = () => {
+    const days = [];
+    for (const r of rc) { const d = String(r.at || "").slice(0, 5); const g = days.find((x) => x.d === d) || (days.push({ d, rows: [] }), days[days.length - 1]); g.rows.push(r); }
+    const dayName = (d) => { const m = /^(\d\d)-(\d\d)$/.exec(d); return m ? `${+m[1]}月${+m[2]}日` : d; };   // 回执只带 月-日（modes.add_receipt "%m-%d %H:%M"）；日期写法照 AX-11「2026年9月17日」去掉年
+    return days.map((g) => `<section><h2>${dayName(g.d)}</h2><div class="group">${g.rows.map((r) => rcRow({ ...r, at: String(r.at || "").slice(6) })).join("")}</div></section>`).join("");   // the card is written here: layoutTabs only wraps #app sections
+  };
 
   for (const g of SCHEMA) {
     if (!inShift(g.owner)) continue;
@@ -589,18 +611,38 @@ function layoutTabs() {
   glide(false);
   requestAnimationFrame(() => glide(false));
   const selectTab = (b) => {
+    /* Behaviour 3: each tab keeps its own scroll position — UITabBarController keeps every tab's view controller alive, HIG Tab bars:
+       “preserving the current navigation state within each section”; Health measured: switch away and back = 0 px difference
+       (remote-ref/tabscroll/README.md §1). Tapping the selected tab scrolls to the top instead (attachTabBar → springToTop). */
+    tabScroll[curTab] = window.scrollY;
     curTab = b.dataset.tab;
     try { localStorage.setItem("ark-remote-tab", curTab); } catch {}
     for (const sec of document.querySelectorAll("#app > section")) sec.hidden = sec.dataset.tab !== curTab || sec.dataset.empty === "1";
     for (const el of document.querySelectorAll("#app > .segctl")) el.hidden = curTab !== "状态";
     for (const x of nav.querySelectorAll("button")) x.classList.toggle("on", x.dataset.tab === curTab);
     glide(true);
-    window.scrollTo({ top: 0 });
+    window.scrollTo(0, tabScroll[curTab] || 0);
   };
   attachTabBar(nav, selectTab);
 }
 
+let receiptsPage = null;   // Behaviour 4: builder for the pushed receipts page (set by render)
+/* A pushed page (UINavigationController push): title in the nav bar, back button pops. index.html .page for the geometry / motion sources. */
+function openPage(title, html) {
+  const pg = $("#subpage"); if (!pg) return;
+  pg.querySelector(".ptitle").textContent = title; pg.querySelector(".pbody").innerHTML = html;
+  pg.classList.remove("out"); pg.hidden = false; pg.scrollTop = 0; void pg.offsetWidth;
+  pg.classList.add("in"); document.body.classList.add("pushed");
+  const back = () => {
+    pg.classList.add("out"); pg.classList.remove("in"); document.body.classList.remove("pushed");
+    const ms = parseFloat(getComputedStyle(pg).getPropertyValue("--ios-motion-nav-pop-duration")) * 1000 || 350;
+    setTimeout(() => { if (!pg.classList.contains("in")) { pg.hidden = true; pg.classList.remove("out"); } }, ms);
+  };
+  pg.querySelector(".pback").onclick = back;
+  return back;
+}
 function wire() {
+  for (const el of document.querySelectorAll('.row.nav[data-page="receipts"]')) el.onclick = () => { if (receiptsPage) openPage("回执", receiptsPage()); };
   // 必须包一层：`onclick = ping` 会把**鼠标事件对象**当成 minAt 传进去，
   // 于是 `s.at >= floor` 变成「数字 >= 事件对象」，永远为假——
   // 机器明明开着也判成关机。2026-08-31 我加 minAt 参数时就这么弄坏过一次。
@@ -828,12 +870,19 @@ function openPicker(spec, commit) {
     };
   };
   draw();
-  const close = () => { sh.removeAttribute("open"); document.documentElement.classList.remove("sheet-open"); };
+  /* Behaviour 5: present / dismiss ride the sheet spring (index.html .sheet .card / .dim transitions ← pagesheet-motion.md); the
+     element stays open until the dismiss has travelled (--ios-motion-sheet-duration). */
+  const close = () => {
+    sh.classList.remove("in"); document.documentElement.classList.remove("sheet-open");
+    const ms = parseFloat(getComputedStyle(sh).getPropertyValue("--ios-motion-sheet-duration")) * 1000 || 500;
+    setTimeout(() => { if (!sh.classList.contains("in")) sh.removeAttribute("open"); }, ms);
+  };
   sh.querySelector(".pback").onclick = close;
   const done = sh.querySelector(".pdone"); if (!done.firstChild) done.innerHTML = sf("checkmark");
   done.onclick = () => { if (commit(on) !== false) close(); };
   sh.setAttribute("open", ""); document.documentElement.classList.add("sheet-open");
   list.scrollTop = 0;
+  void sh.offsetWidth; sh.classList.add("in");   // start from the bottom (translateY(100%)), then travel up on the spring
 }
 
 function locateGlobal(id) {
@@ -1049,6 +1098,16 @@ function attachSegmented(seg, getIndex, commit) {
 /* §2 UITabBar: pressing an unselected tab starts the lens gliding to it after 140 ms (lifted 119×64), a hold does not select, the up selects
    the tab under the finger's x (no distance cancel - 450 pt away still selects); pressing the selected tab lifts the lens and a drag moves it,
    releasing on the original tab is no event. */
+const tabScroll = {};   // Behaviour 3: scroll offset per tab
+/* Behaviour 3: scroll-to-top on tapping the selected tab — UIScrollView's system curve, measured on Health (remote-ref/tabscroll/README.md §2,
+   采样, 逐帧): critical spring ω ≈ 12 /s (0.2 s 71 %, 0.33 s 92 %, 0.5 s 98 %, ~0.7 s stop). Not scrollTo({behavior:"smooth"}) — that is the
+   browser's own curve. */
+function springToTop() {
+  const y0 = window.scrollY; if (!(y0 > 0.5)) return;
+  const w = 12, t0 = performance.now();
+  const f = (now) => { const t = (now - t0) / 1000, y = y0 * (1 + w * t) * Math.exp(-w * t); if (y < 0.5) { window.scrollTo(0, 0); return; } window.scrollTo(0, y); requestAnimationFrame(f); };
+  requestAnimationFrame(f);
+}
 function attachTabBar(nav, select) {
   const seg = nav.querySelector(".seg"), g = nav.querySelector(".glide"), bs = [...seg.querySelectorAll("button")];
   if (!seg || !g || !bs.length) return;
@@ -1056,13 +1115,17 @@ function attachTabBar(nav, select) {
   const liftTo = (i, cls) => { g.classList.add(cls); g.style.left = bs[i].offsetLeft + "px"; g.style.width = bs[i].offsetWidth + "px"; };
   seg.onpointerdown = (e) => {
     const cur = bs.findIndex((b) => b.classList.contains("on")), pressed = itemAt(e.clientX), onSelected = pressed === cur;
-    let timer = 0, lifted = false;
+    let timer = 0, lifted = false, movedAway = false;
     if (!press(seg, e, {
-      move: (ev) => { if (lifted) { nav.classList.add("drag"); liftTo(itemAt(ev.clientX), onSelected ? "lift-sel" : "lift"); } },   // T4/T9/T11: lens follows (110×70 while dragging), value waits for the up
+      move: (ev) => { if (itemAt(ev.clientX) !== cur) movedAway = true; if (lifted) { nav.classList.add("drag"); liftTo(itemAt(ev.clientX), onSelected ? "lift-sel" : "lift"); } },   // T4/T9/T11: lens follows (110×70 while dragging), value waits for the up
       end: (ev, cancelled) => {
         clearTimeout(timer); g.classList.remove("lift", "lift-sel"); nav.classList.remove("drag");
         const target = cancelled ? cur : itemAt(ev.clientX);
-        if (target === cur) { g.style.left = bs[cur].offsetLeft + "px"; g.style.width = bs[cur].offsetWidth + "px"; return; }   // T3/T9: no event
+        if (target === cur) {
+          g.style.left = bs[cur].offsetLeft + "px"; g.style.width = bs[cur].offsetWidth + "px";
+          if (onSelected && !cancelled && !movedAway) springToTop();   // Behaviour 3: a tap on the selected tab scrolls its page to the top (Health, tabscroll §2); still no selection event (T3)
+          return;                                                    // T3/T9: no selection event
+        }
         select(bs[target]);                                          // T1/T2: +0–2 ms after the up
       },
     })) return;
@@ -1213,7 +1276,8 @@ function demoSnapshot() {
     run: { "服务": true, "在跑的": [] },
     queues: [{ "名": "早班", "脚本": ["MAA", "MaaEnd", "OK-WW"], "定时": true, "时刻": "09:00" }, { "名": "晚班", "脚本": ["MAA"], "定时": true, "时刻": "21:30" }],
     relay: { "调试模式": "15:50", "刷声骸": {}, "下次别关机": true, "今天跳过": "", "无音区截图": true,
-             "最近指令": [{ at: "09-18 14:22", action: "set_config", ok: true, text: "理智药 0 → 3 已写入（演示）" }, { at: "09-18 14:31", action: "run_now", ok: true, text: "已开始早班（演示）" }],
+             "最近指令": [{ at: "09-17 21:35", action: "set_config", ok: true, text: "关卡 1-7 → 活动关 已写入（演示）" }, { at: "09-17 21:40", action: "run_now", ok: false, text: "晚班没开始：机器在忙（演示）" },
+                        { at: "09-18 09:02", action: "run_now", ok: true, text: "已开始早班（演示）" }, { at: "09-18 14:22", action: "set_config", ok: true, text: "理智药 0 → 3 已写入（演示）" }, { at: "09-18 14:31", action: "run_now", ok: true, text: "已开始早班（演示）" }],
              "周本": {}, "周常": {} },
     plan: "📅 明日安排\n🕘 09:00　东京 10:00\n▸ 明日方舟\n理智 1-7（固定）\n理智药 0 瓶\n▸ 终末地\n基质刷取 双倍，最多 6 轮\n▸ 鸣潮\n凝素领域 第 4 个\n🕘 21:30　东京 22:30\n▸ 明日方舟\n理智 1-7（固定）",
     "今天": { "跑了": 2, "失败": 0, "最近": "鸣潮" }, master: DEMO_MASTER, options: {} };
@@ -1358,7 +1422,8 @@ if (new URLSearchParams(location.search).has("diag")) {
     document.body.appendChild(pr); const sat = getComputedStyle(pr).paddingTop; pr.remove();
     const h1 = document.querySelector("header h1"), vv = window.visualViewport;
     d.textContent = `ih ${innerHeight} · vv ${vv ? Math.round(vv.height) + "@" + Math.round(vv.offsetTop) : "-"} · sat ${sat} · body ${getComputedStyle(document.body).paddingTop}`
-      + ` · h1 ${h1 ? Math.round(h1.getBoundingClientRect().top) : "-"} · sy ${Math.round(scrollY)} · sa ${matchMedia("(display-mode: standalone)").matches ? 1 : 0} · ${new Date().toTimeString().slice(0, 8)}`;
+      + ` · h1 ${h1 ? Math.round(h1.getBoundingClientRect().top) : "-"} · sy ${Math.round(scrollY)} · sa ${matchMedia("(display-mode: standalone)").matches ? 1 : 0} · ${new Date().toTimeString().slice(0, 8)}`
+      + (window.ALERT_T ? ` · alert f1 +${Math.round(ALERT_T.f1 - ALERT_T.open)} f2 +${Math.round(ALERT_T.f2 - ALERT_T.open)} ms` : "");
   };
   document.body.appendChild(d); upd();
   addEventListener("resize", upd); addEventListener("scroll", upd, { passive: true }); setInterval(upd, 1000);
