@@ -429,8 +429,21 @@ else
     echo "✋ git commit 失败：manifest 没能提交，自更新会一直看到旧清单" >&2
     exit 9
   fi
-  if git -C "$HERE/.." push -q origin HEAD; then
-    echo "▶ manifest 已推上 GitHub，自更新下次开机就能看到"
+  # The manifest names its own tag (`ref`, written by make-manifest.py); the machine
+  # fetches the files at that tag when it falls back to GitHub, because a tag never
+  # moves and so no mirror can serve a stale copy - `@main` on jsDelivr is cached
+  # for 12 hours and its purge is only promised for semver releases (2026-09-18
+  # evening: two mirrors still served the previous RELEASE-NOTES.md eight hours
+  # after the push and the purge, and the update lost the boot window). The tag
+  # goes up in the same push as the commit so the manifest is never visible
+  # without it.
+  REF=$(python3 -c "import json;print(json.load(open('manifest.json')).get('ref',''))")
+  if [ -n "$REF" ] && ! git -C "$HERE/.." tag "$REF" HEAD; then
+    echo "✋ 打标签 $REF 失败：清单说文件在这个标签下，机器会拿不到" >&2
+    exit 9
+  fi
+  if git -C "$HERE/.." push -q origin HEAD ${REF:+"refs/tags/$REF"}; then
+    echo "▶ manifest 已推上 GitHub${REF:+（标签 $REF 一起）}，自更新下次开机就能看到"
     # The first door the machine tries since 2026-09-18 is the COS bucket (no
     # cache layer, so no "old manifest six hours after the push"). Publishing
     # there is a courtesy for the next boot; the deploy itself is already done.

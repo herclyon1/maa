@@ -1242,8 +1242,39 @@ never serve a stale copy, so it stays as the final fallback. Both fetchers query
 **every** door and take the highest `version` - a lagging mirror used to make a
 config change silently do nothing.
 
-After pushing, run `scripts/mac/purge-cdn.py`: it purges jsDelivr and then waits
-until the machine could actually fetch the new version. Its success test mirrors
+**Files are fetched at the manifest's tag, not at `main` (since 2026-09-18
+evening).** `make-manifest.py` writes `"ref": "relay-<version>"` into the
+manifest and `deploy-relay.sh` pushes a tag of that name on the deploy commit,
+in the same push. `selfupdate._pinned_base` swaps the branch segment of the
+raw URL for that tag before `_alternates` fans it out to the mirrors, so every
+door serves `gh/herclyon1/maa@relay-<version>/relay/<file>`. Why: jsDelivr
+caches a branch for 12 hours and its purge is only promised for semver
+releases (its README). Measured that evening: eight hours after a push and a
+purge, `cdn` and `gcore` still served the previous `RELEASE-NOTES.md` while
+`raw` and `fastly` were reset (WinError 10054) or timed out from the machine;
+three rounds on that one file spent the whole 240 s budget and the round was
+abandoned - the machine ran the old code until a manual deploy. Purged again
+and fetched at once from the Mac, `fastly` and `gcore` still returned the
+previous commit's bytes with `x-cache: MISS`: the stale copy sits behind the
+layer the purge clears. The same file at `@<tag>` came back right on all three
+mirrors 3 s after the tag was pushed. A tag never moves, so "a door answered"
+now equals "a door answered correctly"; the manifest itself still comes from
+`main` and may be up to 12 hours stale on the GitHub path - that only ever
+means "no update this boot", and COS is the first door anyway. **Never move or
+delete a `relay-*` tag**: a machine mid-update fetches from it. A manifest
+without `ref` (anything before 2026-09-18) keeps the branch.
+
+**COS "already latest" ends the round.** When `latest.json` is readable and its
+version is not newer than the machine's, no GitHub door is asked: every deploy
+writes COS last, so GitHub cannot be ahead of it, and each GitHub round costs
+20-180 s of the boot window on doors that time out from that network. Only an
+unusable COS (no object, refused key, dead link, manifest/latest disagreeing)
+falls through to GitHub.
+
+After pushing, run `scripts/mac/purge-cdn.py`: it purges jsDelivr (only
+`manifest.json` and the two queue files - the code files are read at the tag and
+need no purge) and then waits until the machine could actually fetch the new
+version. Its success test mirrors
 what selfupdate really does - the newest manifest across **all** doors equals
 the local one, and every file is served correctly by **at least one** door -
 because an earlier version only watched fastly and reported failure during the

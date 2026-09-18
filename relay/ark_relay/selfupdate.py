@@ -33,7 +33,16 @@ a manifest pushed at 02:31 was still the old one on the machine's node at
 no cache layer: what was written is what is read. The four GitHub doors stay
 as the fallback (COS answered 451 on 2026-09-13, an unpaid bill), and the
 bucket's own lifecycle rule may delete the prefix one day - a missing object
-is simply "COS has nothing", never an error.
+is simply "COS has nothing", never an error. When COS answers and its latest
+deploy is the version already running, that is the end of the round: no
+GitHub door is asked (every deploy writes COS last, so GitHub cannot be ahead).
+
+On the GitHub fallback the manifest still comes from `main` (up to 12 hours
+stale on jsDelivr - a stale manifest only ever means "no update this boot"),
+but the files are fetched at the manifest's own tag, `relay-<version>`, see
+_pinned_base: the evening of 2026-09-18 the old branch fetch lost the boot
+window to two mirrors serving the previous RELEASE-NOTES.md and two doors
+timing out, eight hours after the push and the purge.
 
 Trust boundary, stated plainly: whoever can push to that repo can run code on
 this machine. The repo is the operator's own and the transport is HTTPS, so the
@@ -47,6 +56,7 @@ import http.client
 import json
 import logging
 import os
+import re
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
@@ -122,12 +132,19 @@ def _cos_get(cos, key: str, timeout: int = COS_TIMEOUT) -> bytes | None:
     return None
 
 
-def _cos_manifest(cos, local_ver: int) -> tuple[dict, int] | None:
-    """(manifest, version) from COS when it is newer than what runs here.
+def _cos_manifest(cos, local_ver: int) -> tuple[dict | None, int] | None:
+    """What COS says about the latest deploy.
 
-    latest.json is a hundred bytes: {"version": N, "uploaded": "<iso>"}. Only
-    when N beats the local version is the real manifest fetched, so an
-    up-to-date boot costs one tiny request.
+    latest.json is a hundred bytes: {"version": N, "uploaded": "<iso>"}. Three
+    answers: None means COS could not be used (no object, refused key, dead
+    link) and the caller goes on to GitHub; (None, N) means COS answered and N
+    is not newer than the local version, so there is nothing to do *anywhere*
+    - every deploy writes COS last, so a GitHub manifest can never be ahead of
+    it, and asking GitHub anyway only spends the boot window on doors that
+    time out from this network (2026-09-18 19:14: 20 s on a reset from raw
+    plus a "manifest older than local" warning for a manifest that was simply
+    the previous one); (manifest, N) means N is newer and the manifest checked
+    out, so the files come from that version's bundle.
     """
     data = _cos_get(cos, COS_LATEST)
     if data is None:
@@ -138,8 +155,7 @@ def _cos_manifest(cos, local_ver: int) -> tuple[dict, int] | None:
         log.warning("COS 的 latest.json 不是合法的版本记录")
         return None
     if ver <= local_ver:
-        log.debug("COS 上是 v%s，本机 v%s，不用更新", ver, local_ver)
-        return None
+        return None, ver
     data = _cos_get(cos, f"{ver}/{MANIFEST}")
     if data is None:
         return None
@@ -294,7 +310,7 @@ def _get_with_retry(url: str, attempts: int = 3, timeout: int = 20,
             # update outright, never even trying raw.githubusercontent, whose
             # content is always the freshest.
             if expect_sha and _sha1(data) != expect_sha:
-                log.warning("%s 给的是旧副本（缓存未刷新），换下一扇门", _netloc(u))
+                log.warning("%s 给的内容和清单对不上（缓存里是旧副本），换下一扇门", _netloc(u))
                 continue
             _last_good = _netloc(u)
             return data
@@ -612,6 +628,45 @@ def _wanted_files(root: Path, files: dict) -> list[str]:
     return wanted
 
 
+_REF_OK = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
+_RAW_PREFIX = "https://raw.githubusercontent.com/"
+
+
+def _pinned_base(base: str, manifest: dict) -> str:
+    """The base URL to fetch this manifest's files from: its own git tag, not the branch.
+
+    make-manifest.py writes `ref` (`relay-<version>`) into every manifest and
+    deploy-relay.sh pushes a tag of that name on the same commit. Fetching the
+    files at that tag makes a stale door impossible: a tag never moves, so
+    whatever answers, answers with the right bytes. Fetching them at `main`
+    does not - jsDelivr caches a branch for 12 hours, and its purge is only
+    promised for semver releases. Measured 2026-09-18: eight hours after a
+    push and a purge, cdn and gcore still served the previous RELEASE-NOTES.md
+    while raw and fastly were reset or timed out from the machine's network,
+    and one file ate the whole 240 s budget; re-checked right after another
+    purge, fastly and gcore answered with the previous commit's bytes and
+    `x-cache: MISS` - the copy sits behind the layer the purge clears. The
+    same file at `@<tag>` came back right on every door, within 3 s of the
+    push. (jsDelivr caches a full commit hash as immutable, but a manifest
+    cannot carry the hash of the commit it is part of; a tag named after the
+    version can be pushed with it.)
+
+    A manifest without `ref`, or with one that is not a plain tag name, keeps
+    the branch: that is every manifest before 2026-09-18, and the manifest is
+    data off the network, so the value is never spliced into a URL unchecked.
+    """
+    ref = manifest.get("ref")
+    if not isinstance(ref, str) or not _REF_OK.fullmatch(ref):
+        return base
+    if not base.startswith(_RAW_PREFIX):
+        return base
+    parts = base[len(_RAW_PREFIX):].split("/", 3)
+    if len(parts) < 4:
+        return base
+    owner, repo, _branch, path = parts
+    return f"{_RAW_PREFIX}{owner}/{repo}/{ref}/{path}"
+
+
 def _stage_files(root: Path, base: str, files: dict, deadline: float | None,
                  remote_ver: int, local_ver: int,
                  wanted: list[str], cos=None) -> list[tuple[str, Path, bytes]] | None:
@@ -721,9 +776,15 @@ def check(root: Path, base_url: str = "",
     except Exception:  # a broken COS client must not stop the GitHub path
         log.warning("COS 客户端建不起来，走 GitHub", exc_info=True)
     if cos is not None:
-        if found := _cos_manifest(cos, local_ver):
-            manifest, _ = found
-            log.info("COS 上有新版 v%s（本机 v%s）", _manifest_version(manifest), local_ver)
+        found = _cos_manifest(cos, local_ver)
+        if found is not None:
+            manifest, cos_ver = found
+            if manifest is None:
+                log.info("COS 上最新一次部署是 v%s，本机 v%s，已是最新，不再问 GitHub",
+                         cos_ver, local_ver)
+                _clear_failure(root)    # up to date means nothing is outstanding
+                return []
+            log.info("COS 上有新版 v%s（本机 v%s）", cos_ver, local_ver)
     if manifest is None:
         # The manifest is GitHub's: its bundle is not on COS under that version
         # (or COS is what just failed), so the files come from GitHub too.
@@ -743,7 +804,8 @@ def check(root: Path, base_url: str = "",
     if not wanted:
         _clear_failure(root)        # nothing to do means nothing is outstanding
 
-    staged = _stage_files(root, base, files, deadline, remote_ver, local_ver, wanted, cos)
+    staged = _stage_files(root, _pinned_base(base, manifest), files, deadline,
+                          remote_ver, local_ver, wanted, cos)
     if staged is None:
         return []
 

@@ -118,6 +118,24 @@ check("raw 但路径不成形（没有 owner/repo/branch/path）",
       su._alternates("https://raw.githubusercontent.com/herclyon1/maa"),
       ["https://raw.githubusercontent.com/herclyon1/maa"])
 
+print("\n[_pinned_base：文件按清单自己的标签取，不按分支——标签不会动，哪扇门答都是对的字节]")
+# Evening of 2026-09-18: eight hours after the push and the purge, cdn and gcore still
+# served the previous RELEASE-NOTES.md, raw and fastly were reset or timed out, one
+# file ate the whole 240 s budget, the round was abandoned, the machine ran old code.
+check("有 ref 就换成标签", su._pinned_base(BASE, {"ref": "relay-20260918111328"}),
+      "https://raw.githubusercontent.com/herclyon1/maa/relay-20260918111328/relay/")
+check("四扇门都跟着标签走",
+      [u.split("/relay/")[0].rsplit("/", 1)[-1] for u in
+       su._alternates(su._pinned_base(BASE, {"ref": "relay-20260918111328"}) + "a.py")],
+      ["maa@relay-20260918111328", "maa@relay-20260918111328", "maa@relay-20260918111328",
+       "relay-20260918111328"])
+check("没有 ref（09-18 之前的清单）照旧走分支", su._pinned_base(BASE, {}), BASE)
+check("ref 不是纯标签名（清单是网上来的）就不拼进地址",
+      su._pinned_base(BASE, {"ref": "../../evil"}), BASE)
+check("ref 不是字符串也不拼", su._pinned_base(BASE, {"ref": 20260918}), BASE)
+check("不是 raw 的地址不动", su._pinned_base("https://example.com/relay/", {"ref": "relay-1"}),
+      "https://example.com/relay/")
+
 print("\n[_netloc：取主机名，取不到就原样返回，任何输入都不许抛异常]")
 check("普通地址", su._netloc("https://fastly.jsdelivr.net/gh/a/b@c/d.py"), FASTLY)
 check("raw", su._netloc(BASE + "a.py"), RAW)
@@ -220,6 +238,28 @@ check("版本号记下了",
       StateStore(root / "state").get("versions", "code"), "20260908090000")
 note = su.take_announcement(root)
 check("留了播报记号", note and note["files"], ["a.py"])
+
+print("\n[清单带 ref：清单从分支取，文件从标签取；分支上的旧副本碰不到这一轮]")
+# The branch doors still hold last version's a.py (cdn/gcore on the evening of
+# 2026-09-18); only the tag has the right one.
+class RefNet(Net):
+    def get(self, url, timeout=20):
+        host = su._netloc(url)
+        at_tag = "relay-20260918111328/" in url
+        rel = url.split("/relay/", 1)[-1]
+        self.tried.append((host, rel, "tag" if at_tag else "main"))
+        if rel == "manifest.json":
+            return manifest_ref if not at_tag else None
+        return self.doors.get(host, {}).get(("tag" if at_tag else "main", rel))
+manifest_ref = json.dumps({"version": 20260918111328, "ref": "relay-20260918111328",
+                           "files": {"a.py": sha}}).encode("utf-8")
+root = workdir({"a.py": old}, code_version=20260821110000)
+net = use(RefNet({h: {("main", "a.py"): b"stale copy\n", ("tag", "a.py"): body}
+                  for h in (FASTLY, CDN, GCORE, RAW)}))
+check("更新了 a.py", su.check(root, BASE), ["a.py"])
+check("落盘的是标签下的内容", (root / "a.py").read_bytes(), body)
+check("文件只在标签下取过", [t for t in net.tried if t[1] == "a.py"], [(FASTLY, "a.py", "tag")])
+check("清单只在分支上取", {t[2] for t in net.tried if t[1] == "manifest.json"}, {"main"})
 
 print("\n[内容和清单对不上：一个字节都不许落盘，而且必须留下失败的原因]")
 root = workdir({"a.py": old}, code_version=20260821110000)

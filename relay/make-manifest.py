@@ -44,7 +44,14 @@ files = sorted(
 # machine has applied: a CDN can hold a whole stale snapshot (old manifest plus
 # matching old files), which is internally consistent and would silently roll
 # the machine back without this gate.
-manifest = {"version": int(datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")),
+version = int(datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S"))
+# `ref` names the git tag deploy-relay.sh pushes on the commit that carries this
+# manifest. The machine fetches the files at that tag when it has to use the
+# GitHub doors: a tag never moves, so a mirror cannot hand back last week's copy
+# of a file - which is exactly what cdn and gcore did on the evening of
+# 2026-09-18, eight hours after the push and the purge, at `@main`.
+manifest = {"version": version,
+            "ref": f"relay-{version}",
             "files": {
     f: hashlib.sha1((HERE / f).read_bytes()).hexdigest()
     for f in files}}

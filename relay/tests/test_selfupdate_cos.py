@@ -122,14 +122,22 @@ check("COS 请求顺序：latest → manifest → bundle", cos.got, ["latest.jso
 check("GitHub 一扇门都没问", net.tried, [])
 check("版本号记下了", StateStore(root / "state").get("versions", "code"), "20260918020000")
 
-print("\n[COS 上不比本机新：只读一次 latest.json，然后照旧问 GitHub 的清单]")
+print("\n[COS 上不比本机新：只读一次 latest.json，到此为止——GitHub 一扇门都不问]")
+# 2026-09-18 19:14, right after a deploy: COS said "this very version", yet the old
+# logic went on to GitHub, waited 20 s on a reset from raw, then warned "manifest
+# older than local, cache probably stale" about a manifest that was simply the
+# previous one. Every deploy writes COS last, so GitHub can never be ahead of it.
 net, cos, root = setup(
     {"latest.json": b'{"version": 20260917000000}'},
     {"fastly.jsdelivr.net": {"manifest.json": MAN_V2, "ark_relay/a.py": NEW_A, "ark_relay/b.py": NEW_B}},
     {"ark_relay/a.py": OLD_A, "ark_relay/b.py": b"b v1\n"}, 20260917000000)
+su._record_failure(root, "上次的失败", 1, 1, [])
 updated = su.check(root, "https://raw.githubusercontent.com/herclyon1/maa/main/relay/")
 check("COS 只碰了 latest.json", cos.got, ["latest.json"])
-check("GitHub 把更新做完了", sorted(updated), ["ark_relay/a.py", "ark_relay/b.py"])
+check("不更新", updated, [])
+check("GitHub 一扇门都没问", net.tried, [])
+check("磁盘没动", (root / "ark_relay/a.py").read_bytes(), OLD_A)
+check("已是最新 = 没有未完成的事，旧的失败报告清掉", su.take_failure(root), None)
 
 print("\n[COS 的对象被生命周期规则删了（404）：静默退回 GitHub，整轮照常完成]")
 net, cos, root = setup(

@@ -1067,3 +1067,45 @@ the first MaaEnd run after this change is 2026-09-18 09:00; the check is: no
 「结束进程」 line, 「任务完成: ❌关闭游戏（PC）」, no Endfield.exe afterwards, one
 round, no wrap-up stub. Turn back with
 `order-now.sh '{"action":"set_master","game":"MaaEnd","path":"__MXU_KILLPROC__/@enabled","value":true,"confirmed":true}'`.
+
+## Self-update lost the boot window to jsDelivr serving last version's file eight hours after the purge (2026-09-18 evening, fixed same night)
+
+**What happened.** The machine came up at 19:00 (Beijing) on
+v20260918005050 with the pure-GitHub update logic; the COS-first version
+(2d035ee, v20260918025641) had been pushed at 10:56 and purged. The relay log:
+`cdn` manifest reset (`WinError 10054`), `raw` manifest reset, manifest taken
+from `fastly`/`gcore` (v20260918025641, correct); then `RELEASE-NOTES.md` -
+the first file in the plan - `fastly` reset, `cdn` "stale copy", `gcore`
+"stale copy", `raw` read timeout, `fastly` read timeout, `cdn`/`gcore` stale
+again, `raw` TLS handshake timeout, `fastly` read timeout, budget exhausted
+at 19:06:19. Three rounds on one file, 240 s, six files never attempted, the
+round abandoned as designed. The machine reported it and kept running the old
+code; a manual `deploy-relay.sh` at 19:14 put v20260918111328 on it.
+
+**Why the mirrors were stale.** Not a purge that was skipped: it ran at 10:57
+with 93 files "finished". Measured from the Mac at 19:22 and again right after
+a fresh purge at 19:19 UTC+8: `fastly` and `gcore` returned the previous
+commit's `manifest.json` / `RELEASE-NOTES.md` with `x-cache: MISS` and
+`age: 51` - the old copy lives behind the edge that the purge clears, and a
+fetch after the purge re-populates the edge from it. jsDelivr's own README:
+branches are cached 12 hours; purge is promised for semver releases. `raw`
+and `fastly` were reset or timed out from the machine's network, so the two
+doors that answered were the two that were stale. The 240 s budget and
+`RAW_TIMEOUT` were not the problem: with both fresh doors dark, no timeout
+setting gets the file.
+
+**Fix.** Files are fetched at a tag named after the manifest's version
+(`relay-<version>`, written as `ref` by `make-manifest.py`, pushed by
+`deploy-relay.sh` in the same push as the commit). A tag never moves, so a
+mirror cannot serve a stale copy of it; measured, `@relay-20260918111328`
+returned the right bytes on all three mirrors 3 s after the push. The manifest
+still comes from `main` on the GitHub path (12 h stale at worst = "no update
+this boot"); COS is the first door and now ends the round when it says the
+machine is current, instead of going on to ask GitHub and warning about a
+manifest that was merely the previous one. `purge-cdn.py` purges only what is
+still read at `main`.
+
+**Rule.** A branch URL on a CDN is a cache key, not an address for "the
+latest". Anything that must be right the first time is fetched at an
+immutable ref (a tag, or a full commit hash), and the manifest that names the
+ref is the only thing read from the branch.
