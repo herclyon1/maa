@@ -1085,10 +1085,12 @@ const holeURL = (w, h, r) => `url("data:image/svg+xml;utf8,<svg xmlns='http://ww
    the warp box follows the lens's presented rect (so it rides every transition the lens has: follow-lag, lift scale, the commit stretch),
    the label copy inside stays aligned with the real labels, the real labels get the punch-out hole, --lp drives glass + warp amplitude. */
 function segLens(seg, lens, bs, fallFrom) {
-  let warp = seg.querySelector(".warp");
+  let warp = seg.querySelector(".warp"), rim = seg.querySelector(".rim");
   if (!warp) { warp = document.createElement("div"); warp.className = "warp"; warp.innerHTML = '<div class="copy"></div>'; seg.appendChild(warp); }
-  const copy = warp.firstElementChild; copy.innerHTML = bs.map((b) => `<span class="cb ${b.className}" style="width:${b.offsetWidth}px">${b.innerHTML}</span>`).join("");   // spans, not buttons: the control's own button list must stay the real one
-  copy.style.width = seg.offsetWidth + "px"; copy.style.height = seg.offsetHeight + "px";
+  if (!rim) { rim = document.createElement("div"); rim.className = "rim"; seg.appendChild(rim); }
+  const copy = warp.firstElementChild;   // the copy = what lies under the lens: page bg + track (matrixed) below, the labels above; spans, not buttons (the control's own button list stays the real one)
+  copy.innerHTML = '<div class="cbgwrap"><div class="cbg"></div><div class="ctrack"></div></div>' + bs.map((b) => `<span class="cb ${b.className}" style="width:${b.offsetWidth}px">${b.innerHTML}</span>`).join("");
+  const segW = seg.offsetWidth, segH = seg.offsetHeight; copy.style.width = segW + "px"; copy.style.height = segH + "px";
   const cbs = [...copy.querySelectorAll(".cb")];
   const S = 32;   // map encoding shared with #seg-lens-warp: byte = 255 × (.5 + u / S), u in pt → feDisplacementMap scale = S × amplitude
   /* the punch-out image is made ONCE (196 × 28, rx 14 = the DestOut layer's own coordinates); per frame only mask-size / -position move, so no
@@ -1100,7 +1102,11 @@ function segLens(seg, lens, bs, fallFrom) {
     const sr = seg.getBoundingClientRect(), lr = lens.getBoundingClientRect();
     const L = lr.left - sr.left, T = lr.top - sr.top, Wd = lr.width, Hd = lr.height, R = Math.min(Hd / 2, 14 * (Hd / 28));   // 逐角 14 随高度放大（DestOut cornerRadius 14 ← lensdiff）
     warp.style.left = L + "px"; warp.style.top = T + "px"; warp.style.width = Wd + "px"; warp.style.height = Hd + "px"; warp.style.setProperty("--rr", R + "px");
-    copy.style.left = -L + "px"; copy.style.top = -T + "px";
+    rim.style.left = L + "px"; rim.style.top = T + "px"; rim.style.width = Wd + "px"; rim.style.height = Hd + "px"; rim.style.setProperty("--rr", R + "px");
+    /* interior magnification 1.22 (lens-refraction §0/§2: u = −0.18·s ⇔ M = 1/(1−0.18)) as CSS zoom on the copy, riding the same progress; the copy
+       is placed so the content point under the lens centre stays there: zoom scales the copy's own left/top too, hence (c/z − (L + c)) */
+    const z = 1 + 0.22 * p; copy.style.zoom = z.toFixed(4);
+    copy.style.left = ((Wd / 2) / z - (L + Wd / 2)).toFixed(3) + "px"; copy.style.top = ((Hd / 2) / z - (T + Hd / 2)).toFixed(3) + "px";
     seg.style.setProperty("--lp", p.toFixed(4));
     for (const el of document.querySelectorAll("#seg-lens-warp feDisplacementMap")) el.setAttribute("scale", (S * p).toFixed(3));
     bs.forEach((b) => { const br = b.getBoundingClientRect(); b.style.setProperty("--hx", (lr.left - br.left) + "px"); b.style.setProperty("--hy", (lr.top - br.top) + "px"); b.style.setProperty("--hw", Wd + "px"); b.style.setProperty("--hh", Hd + "px"); });
@@ -1108,7 +1114,7 @@ function segLens(seg, lens, bs, fallFrom) {
     seg.classList.toggle("lift", p > 0);
   };
   const clear = () => {
-    seg.classList.remove("lift"); seg.style.removeProperty("--lp"); copy.innerHTML = "";
+    seg.classList.remove("lift"); seg.style.removeProperty("--lp"); copy.innerHTML = ""; copy.style.zoom = "";
     for (const b of bs) for (const k of ["--hole", "--hx", "--hy", "--hw", "--hh"]) b.style.removeProperty(k);
     for (const el of document.querySelectorAll("#seg-lens-warp feDisplacementMap")) el.setAttribute("scale", "0");
     st.done = true;
@@ -1117,12 +1123,19 @@ function segLens(seg, lens, bs, fallFrom) {
     if (st.done) return;
     if (!seg.isConnected || !lens.isConnected) { clear(); return; }
     let p;
-    if (st.rel != null) { const f = Math.min(1, (now - st.rel) / FALL_MS); p = st.pr * (1 - (1 - Math.pow(1 - f, 3))); if (f >= 1 || p <= 0.001) { clear(); return; } }   // 落回：与透镜落回同长 .25 s（ease-out 立方，同 CSS 的 scale 过渡曲线族）
-    else { p = Math.max(0, Math.min(1, (lens.getBoundingClientRect().height - H0) / (H1 - H0))); st.pr = p; }   // 抬起 / 拖动：进度 = 透镜呈现高度的进度（一条曲线：尺寸 = 高度 = 位移量）
+    const sizeP = () => Math.max(0, Math.min(1, (lens.getBoundingClientRect().height - H0) / (H1 - H0)));
+    if (st.rel != null) {
+      const f = Math.min(1, (now - st.rel) / FALL_MS);
+      /* fall-back = the lens's own fall: read the presented height as during the lift (the .lift class is gone, the scale transition brings it down
+         in --ios-touch-segment-lift-duration), so glass + warp ride the same curve as the size; after a commit the old control is gone
+         (fallFrom): decay from the carried value over the same .25 s (ease-out, the family of the CSS scale transition — 松手回落本身未量) */
+      p = fallFrom != null ? st.pr * (1 - (1 - Math.pow(1 - f, 2))) : Math.min(st.pr, sizeP());
+      if (f >= 1 || p <= 0.001) { clear(); return; }
+    } else { p = sizeP(); st.pr = p; }   // 抬起 / 拖动：进度 = 透镜呈现高度的进度（一条曲线：尺寸 = 高度 = 位移量；seg-lift-material：196×28 → 220×44 r14 → r22 同比）
     frame(p); st.raf = requestAnimationFrame(tick);
   };
   st.raf = requestAnimationFrame(tick);
-  return { release: () => { if (st.rel == null) st.rel = performance.now(); }, cancel: () => { cancelAnimationFrame(st.raf); clear(); } };
+  return { release: () => { if (st.rel == null) st.rel = performance.now(); }, cancel: () => { if (st.rel == null) st.rel = performance.now(); } };   // cancel = the same fall (acceptance: 取消路径不许瞬切)
 }
 function attachSegmented(seg, getIndex, commit) {
   const bs = [...seg.querySelectorAll("button")], lens = seg.querySelector(".lens"), n = bs.length;
@@ -1133,16 +1146,20 @@ function attachSegmented(seg, getIndex, commit) {
   seg.onpointerdown = (e) => {
     const idx = getIndex(), pressed = segAt(e.clientX), onSelected = pressed === idx;
     let liftTimer = 0, glass = null;
-    if (lens) lens.classList.remove("spring");   // a new touch ends the previous commit's stretch (G12/G13: no queueing)
+    if (lens) lens.classList.remove("spring", "back");   // a new touch ends the previous commit's stretch (G12/G13: no queueing)
     if (!press(seg, e, {
       move: (ev) => { if (onSelected && lens && lens.classList.contains("lift")) showLens(frac(ev.clientX)); },   // index never changes while sliding (G4/G22)
       end: (ev, cancelled) => {
         clearTimeout(liftTimer);
         bs[pressed].classList.remove("dim");                        // label back to 1 in .1 s (G12)
         seg.classList.remove("drag"); if (lens) lens.classList.remove("lift");
-        if (glass) { if (cancelled) glass.cancel(); else glass.release(); }   // glass + warp fall back on the lenstrace curve; the box keeps riding the lens
+        if (glass) glass.release();                                 // every way out — release, out of bounds, pointercancel — glass + warp fall on the lens's own curve
         const target = segAt(ev.clientX);
-        if (cancelled || outside(ev.clientX, ev.clientY) || target === idx) { showLens(idx); return; }   // cancel (> 70 pt out, G17/G18) or back on the selected one (G8/G10/G23): no event
+        if (cancelled || outside(ev.clientX, ev.clientY) || target === idx) {   // cancel (> 70 pt out, G17/G18) or back on the selected one (G8/G10/G23): no event
+          /* the lens returns to its segment in the lift duration (.25 s, G4/G21: 「透镜从抬起态落回 196×28 用 ~250 ms」), not the .55 s commit slide */
+          if (lens && lens.classList.contains("lift") === false) { lens.classList.add("back"); lens.addEventListener("transitionend", () => lens.classList.remove("back"), { once: true }); setTimeout(() => lens.classList.remove("back"), 400); }
+          showLens(idx); return;
+        }
         commit(target);                                             // the up: index + change + content, same tick (G1–G3)
       },
     })) return;
