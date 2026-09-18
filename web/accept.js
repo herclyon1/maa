@@ -125,12 +125,71 @@
       const ico = numT.querySelector(".nico"); if (ico) num("数字磁贴徽章 48（--ios-tile-icon）", 48, ico.getBoundingClientRect().width);
       const lab = numT.querySelector(".lab"); if (lab) { const lr = lab.getBoundingClientRect(); num("数字磁贴标签 17（--ios-tile-label-size）", 17, px(cs(lab).fontSize), 0.1); num("数字磁贴标签 x 12（--ios-tile-label-x）", 12, lr.left - r.left); num("数字磁贴标签 y 52（--ios-tile-label-top）", 52, lr.top - r.top); }
     }
-    /* 2026-09-18: the device card is a Settings value row (46 Apple 账户页), no icon. */
+    /* 2026-09-19: the device card is the Health 摘要 pinned card header (AX-13, 13-health-summary-pinned.png), ONE column:
+       dot + 「游戏机 · <state>」 on the card header's 15 Semibold / 19.33 line, the rest of the status as a 13 secondaryLabel
+       paragraph under it (the grey date's style), content inset 16, title→text 6. The 09-18 two-column value row wrapped both sides. */
     const dev = document.querySelector(".devcard");
     if (dev) {
-      num("设备行高 ≥ 53.33（--ios-row-h）", 53.33, Math.min(dev.getBoundingClientRect().height, 53.33)); const s2 = dev.querySelector(".dsub"); if (s2) col("设备行右灰值 secondaryLabel（--ios-secondary-label）", T.dim, cs(s2).color);
-      const dot = dev.querySelector(".dot"); if (dot) { num("设备行状态点 11（--ios-status-dot，AX-58 信息未读点）", 11, dot.getBoundingClientRect().width); num("状态点到字 8（--ios-value-gap）", 8, px(cs(s2).columnGap)); }
+      const dr = dev.getBoundingClientRect(), head = dev.querySelector(".dhead"), name = dev.querySelector(".dname"), sub = dev.querySelector(".dsub"), dot = dev.querySelector(".dot");
+      const hr = head ? head.getBoundingClientRect() : null;
+      check("设备卡是一列：标题行 .dhead + 说明 .dsub，没有右侧值", "dhead+dsub", `${head ? "dhead" : "缺"}+${sub ? "dsub" : "缺"}${dev.querySelector(".dtext, .dside") ? "+老两列" : ""}`, !!head && !!sub && !dev.querySelector(".dtext, .dside"));
+      num("设备卡内距 16（--ios-health-card-inset：AX-13 卡 x 20 → 标题层 x 36）", 16, px(cs(dev).paddingLeft));
+      if (hr) { num("设备卡标题距卡顶 16（AX-13 卡顶 425.67 → 标题 441.67）", 16, hr.top - dr.top); num("设备卡标题距卡左 16（AX-13）", 16, hr.left - dr.left); }
+      if (name) {
+        num("设备卡标题 15（--ios-health-label-size：AX-13 步数 .SFUI-Semibold 15）", 15, px(cs(name).fontSize), 0.05);
+        check("设备卡标题字重 600（--ios-health-label-weight）", 600, cs(name).fontWeight, String(cs(name).fontWeight) === "600");
+        num("设备卡标题行框 19.33（--ios-health-label-lh：AX-13 标题层 (36,441.67,49,19.33)）", 19.33, px(cs(name).lineHeight), 0.05);
+        col("设备卡标题 labelColor（健康按类型着色，遥控页没有类型色：状态色在点上）", dark ? [255, 255, 255] : [0, 0, 0], cs(name).color);
+        check("设备卡标题单行（nowrap + 尾部省略，高 = 一个行框）", "nowrap ellipsis 19.33", `${cs(name).whiteSpace} ${cs(name).textOverflow} ${Math.round(name.getBoundingClientRect().height * 100) / 100}`,
+              cs(name).whiteSpace === "nowrap" && cs(name).textOverflow === "ellipsis" && near(name.getBoundingClientRect().height, 19.33, 0.6));
+      }
+      if (sub && hr) {
+        const sr = sub.getBoundingClientRect();
+        num("设备卡第二行 13（--ios-health-date-size：AX-13 昨天 .PingFangUITextSC-Regular 13）", 13, px(cs(sub).fontSize), 0.05);
+        num("设备卡第二行行框 15.67（--ios-health-date-lh：AX-13 昨天帧 (359.67,445,26,15.67)）", 15.67, px(cs(sub).lineHeight), 0.05);
+        col("设备卡第二行 secondaryLabel（--ios-secondary-label：AX-13 昨天 (60,60,67,.6)）", T.dim, cs(sub).color);
+        num("设备卡标题→第二行 6（--ios-health-text-gap：AX-13 建议卡标题底 734.33 → 说明顶 740.33）", 6, sr.top - hr.bottom, 0.1);
+        check("设备卡第二行在标题正下方、左对齐同一 x、段落可换行", "同 x · 在下 · left · normal", `x${Math.round((sr.left - hr.left) * 10) / 10} ${sr.top >= hr.bottom ? "在下" : "并排"} ${cs(sub).textAlign} ${cs(sub).whiteSpace}`,
+              Math.abs(sr.left - hr.left) < 0.5 && sr.top >= hr.bottom && cs(sub).textAlign === "left" && cs(sub).whiteSpace === "normal");
+        num("设备卡第二行到卡底 16（AX-13 值底 541.67 → 卡底 557.67）", 16, dr.bottom - sr.bottom);
+      }
+      if (dot && hr) { num("设备行状态点 11（--ios-status-dot，AX-58 信息未读点）", 11, dot.getBoundingClientRect().width); num("状态点到字 8（--ios-value-gap）", 8, px(cs(head).columnGap));
+        num("状态点在标题行框里垂直居中", 0, (dot.getBoundingClientRect().top + dot.getBoundingClientRect().bottom) / 2 - (hr.top + hr.bottom) / 2, 0.5); }
+      /* setStatus splits 「<state> · <detail>」: the state joins the title, the detail is the paragraph; no 「 · 」 = all detail. */
+      if (typeof setStatus === "function" && document.querySelector("#status")) {
+        const was = document.querySelector("#status").textContent, wasDot = (document.querySelector("#dot") || {}).className;
+        setStatus("开机中 · 实时 · 配置 1 分钟前", "on");
+        check("状态拆行：「开机中 · 实时 · 配置 1 分钟前」→ 标题「游戏机 · 开机中」+ 说明「实时 · 配置 1 分钟前」", "游戏机 · 开机中 | 实时 · 配置 1 分钟前", `${name ? name.textContent.replace(" · 演示数据", "") : "缺"} | ${sub ? sub.textContent : "缺"}`,
+              !!name && !!sub && name.textContent.replace(" · 演示数据", "") === "游戏机 · 开机中" && sub.textContent === "实时 · 配置 1 分钟前" && dot && dot.classList.contains("on"));
+        setStatus("正在读取…", "");
+        check("状态拆行：没有「 · 」的整句进说明行，标题只剩「游戏机」", "游戏机 | 正在读取…", `${name ? name.textContent.replace(" · 演示数据", "") : "缺"} | ${sub ? sub.textContent : "缺"}`,
+              !!name && !!sub && name.textContent.replace(" · 演示数据", "") === "游戏机" && sub.textContent === "正在读取…");
+        if (typeof render === "function" && typeof snap !== "undefined" && snap) {   // a re-render must keep the dot's state colour (it used to come back grey until the next 5 s tick)
+          setStatus("开机中 · 实时", "on"); render();
+          const d3 = document.querySelector("#dot2"), n3 = document.querySelector(".devcard .dname"), s3 = document.querySelector("#status2");
+          check("重画后设备卡保持状态：点仍绿、标题仍带「开机中」、说明仍在", "on · 游戏机 · 开机中 · 实时", `${d3 && d3.classList.contains("on") ? "on" : "grey"} · ${n3 ? n3.textContent.replace(" · 演示数据", "") : "缺"} · ${s3 ? s3.textContent : "缺"}`,
+                !!d3 && d3.classList.contains("on") && !!n3 && n3.textContent.replace(" · 演示数据", "") === "游戏机 · 开机中" && !!s3 && s3.textContent === "实时");
+        }
+        setStatus(was, /\bon\b/.test(wasDot || "") ? "on" : /\boff\b/.test(wasDot || "") ? "off" : "");
+      }
     }
+    /* Site-wide (2026-09-19): value rows never wrap and titles are one line — a synthetic row with an over-long name, an over-long
+       read-only value and an over-long navigation value; each stays one 20.33 line with a tail ellipsis. */
+    { const wl = document.createElement("div"); wl.style.cssText = "position:fixed;left:20px;top:0;width:400px;visibility:hidden;z-index:-1";
+      wl.innerHTML = `<div class="group"><div class="row"><label>${"名字很长".repeat(10)}<span class="hint">副题一行</span></label><span class="ro">${"值也很长".repeat(10)}</span></div>` +
+                     `<div class="row nav"><label>名</label><span class="val">${"选项".repeat(40)}</span><i class="sf chev"></i></div></div><section><h2>${"段头很长".repeat(12)}</h2></section>`;
+      document.body.appendChild(wl);
+      const lab0 = wl.querySelector(".row > label"), ro = wl.querySelector(".ro"), val = wl.querySelector(".val"), hh = wl.querySelector("h2");
+      const rg = document.createRange(); rg.selectNodeContents(lab0.firstChild); const nameLines = new Set([...rg.getClientRects()].map((r) => Math.round(r.top))).size;   // fragments on one line (the ellipsis splits the run) count once
+      const nameH = lab0.getBoundingClientRect().height - lab0.querySelector(".hint").getBoundingClientRect().height - px(cs(lab0.querySelector(".hint")).marginTop);
+      check("值行标题不换行（nowrap + 尾部省略，名字一行 20.33）", "nowrap ellipsis 1 行 20.33", `${cs(lab0).whiteSpace} ${cs(lab0).textOverflow} ${nameLines} 行 ${Math.round(nameH * 100) / 100}`, cs(lab0).whiteSpace === "nowrap" && cs(lab0).textOverflow === "ellipsis" && nameLines === 1 && near(nameH, 20.33, 0.6));
+      check("值行标题下的副题照常换行", "normal", cs(lab0.querySelector(".hint")).whiteSpace, cs(lab0.querySelector(".hint")).whiteSpace === "normal");
+      check("只读值一行、尾部省略（.ro）", "nowrap ellipsis 20.33", `${cs(ro).whiteSpace} ${cs(ro).textOverflow} ${Math.round(ro.getBoundingClientRect().height * 100) / 100}`, cs(ro).whiteSpace === "nowrap" && cs(ro).textOverflow === "ellipsis" && near(ro.getBoundingClientRect().height, 20.33, 0.6));
+      check("导航值一行、尾部省略（.nav .val）", "nowrap ellipsis 20.33", `${cs(val).whiteSpace} ${cs(val).textOverflow} ${Math.round(val.getBoundingClientRect().height * 100) / 100}`, cs(val).whiteSpace === "nowrap" && cs(val).textOverflow === "ellipsis" && near(val.getBoundingClientRect().height, 20.33, 0.6));
+      { const lr = lab0.getBoundingClientRect(), rr = ro.getBoundingClientRect(), side = rr.left >= lr.right && rr.top < lr.bottom && rr.bottom > lr.top;
+        check("名字和值并排同一行（值行不折成两行）", "并排", side ? "并排" : `值在 y+${Math.round(rr.top - lr.bottom)}`, side); }
+      check("段头一行、尾部省略", "nowrap ellipsis 20.33", `${cs(hh).whiteSpace} ${cs(hh).textOverflow} ${Math.round(hh.getBoundingClientRect().height * 100) / 100}`, cs(hh).whiteSpace === "nowrap" && cs(hh).textOverflow === "ellipsis" && near(hh.getBoundingClientRect().height - px(cs(hh).paddingTop) - px(cs(hh).paddingBottom), 20.33, 0.6));
+      wl.remove(); }
     /* Segmented control (状态 tab, 早班/晚班; 34 屏幕时间) */
     const segc = document.querySelector(".segctl");
     if (segc) {

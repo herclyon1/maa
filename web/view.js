@@ -60,14 +60,21 @@ function ago(ts) {
   return `${Math.floor(s/86400)} 天前`;
 }
 
+/* A status line is 「<state> · <detail>」: the state word (开机中 / 关机 / 连不上 …) joins the device name on the
+   card's title line, the rest is the grey paragraph under it. A line without 「 · 」 is all detail (正在读取…, 还没设置信箱…),
+   so the title never grows past one line. */
+function splitStatus(text) {
+  const i = text.indexOf(" · ");
+  return i < 0 ? { head: "", detail: text } : { head: text.slice(0, i), detail: text.slice(i + 3) };
+}
 function setStatus(text, state) {
   $("#status").textContent = text;
   $("#dot").className = "dot" + (state ? " " + state : "");
   // The device card on the 状态 tab shows the same line (the header's copy is hidden).
-  const s2 = $("#status2"), d2 = $("#dot2"), side = $("#side2");
-  if (s2) s2.textContent = text;
+  const s2 = $("#status2"), h2 = $("#state2"), d2 = $("#dot2"), st = splitStatus(text);
+  if (s2) s2.textContent = st.detail;
+  if (h2) h2.textContent = st.head ? " · " + st.head : "";
   if (d2) d2.className = "dot" + (state ? " " + state : "");
-  if (side) side.textContent = state === "on" ? "在线" : state === "off" ? "关机" : "";
 }
 
 function fmt(v) {
@@ -301,13 +308,13 @@ function render() {
   const busy = run["在跑的"] || [];
   const nextAt = (() => { const m = /🕘\s*(\d\d:\d\d)/.exec((snap && snap.plan) || ""); return m ? m[1] : ""; })();
   const ef = relay["刷声骸"] || {};
-  /* 设备卡（查找的结构）：名字 + 一行状态；右边一个词。状态文字由 setStatus 同步。 */
-  /* 设备行（46 Apple 账户页的值行：名字左、状态右灰字）。id 不变：setStatus 写 #status2/#dot2/#side2。 */
-  html += `<section><div class="group devcard">
-    <div class="dtext"><div class="dname">游戏机${DEMO ? " · 演示数据" : ""}</div>
-      <div class="dsub"><i class="dot" id="dot2"></i><span id="status2">${$("#status") ? $("#status").textContent : "正在读取…"}</span></div></div>
-    <span class="dside" id="side2"></span>
-  </div></section>`;
+  /* Device card (Health › 摘要 pinned card header, AX-13): line 1 = dot + 「游戏机 · <state>」, line 2 = the rest of the
+     status as a grey paragraph. setStatus keeps #state2 / #status2 / #dot2 in step with the header's hidden copy. */
+  { const st = splitStatus($("#status") ? $("#status").textContent : "正在读取…");   // the dot copies the header's state class too, or every render() greys it until the next updateLive tick
+    html += `<section><div class="group devcard">
+    <div class="dhead"><i class="${$("#dot") ? $("#dot").className : "dot"}" id="dot2"></i><span class="dname">游戏机${DEMO ? " · 演示数据" : ""}<span id="state2">${st.head ? " · " + st.head : ""}</span></span></div>
+    <div class="dsub" id="status2">${st.detail}</div>
+  </div></section>`; }
   /* 提示卡（健康摘要的样式）：只在有事时出现。「现在在跑」只在机器真的在线时说——
      机器关了以后快照里还留着最后一趟的名字，09-15 10:58 页面一边写「关机中」一边写
      「现在在跑 MaaEnd」。 */
@@ -1243,7 +1250,7 @@ async function boot() {
   cfg = JSON.parse(raw);
   try { snap = JSON.parse(localStorage.getItem(LS + "-snap") || "null"); } catch { snap = null; }
   render();
-  setStatus(snap ? `状态是 ${ago(snap.at)}的` : "正在读取…", "");
+  setStatus(snap ? `状态 ${ago(snap.at)}` : "正在读取…", "");
   // 打开页面这一下也问一次游戏（有密钥才问）
   if (window.Stamina && Stamina.loadTokens()) Stamina.refresh(false).then(() => render()).catch(() => {});
   // 先挂流再问：心跳判定、「我在看」、最新配置并行——打开即知开关机
@@ -1260,7 +1267,7 @@ async function boot() {
     // 读不到信箱不等于机器关了，多半是这一端没网。红色的「关机中」是断言，
     // 这里没有资格下这个断言；而且 5 秒后 updateLive 还会把它换成「关机中」。
     netOk = false;
-    setStatus("读不到信箱（" + why(e) + "）· 先看看你这边有没有网", "");
+    setStatus("读不到信箱 · " + why(e) + "，先看看你这边有没有网", "");
   }
 }
 

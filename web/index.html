@@ -147,7 +147,7 @@
   section + section > .group:first-child{margin-top:35px}                        /* 卡到卡 35：Kit L44，待 tokens */
   section:has(> .foot:last-child) + section > .group:first-child{margin-top:0}   /* the footer's 24 is the gap */
   h2{margin:0;padding:var(--ios-header-text-top) var(--ios-row-text-x) calc(var(--ios-header-h) - var(--ios-header-text-top) - var(--ios-body-lh));font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight);color:var(--dim);   /* 组头容器 45.33、文字 +18.67 ← 探针 */
-     text-transform:none;display:flex;justify-content:space-between;align-items:baseline}
+     text-transform:none;display:flex;justify-content:space-between;align-items:baseline;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* a header is one line (tail ellipsis) */
   section:has(> .foot:last-child) + section > h2{padding-top:4px}
   section:first-child > h2{padding-top:10px}
   h2 small{color:var(--dim);font-weight:400;font-size:var(--ios-footnote-size)}
@@ -217,18 +217,23 @@
   .num.err .sub{color:var(--bad)}
   /* ---- 状态页的三种块（docs/PHONE-NATIVE-REFERENCES.md） ---- */
   header .sub{display:none}                       /* the device card carries the status line */
-  /* Device card: Find My › Devices › the device's card - icon, name, status line, a word at the right. */
-  .group.devcard{display:flex;align-items:center;gap:var(--ios-value-gap);padding:0 var(--ios-row-text-x);min-height:var(--ios-row-h)}   /* 值行 53.33 ← AX45/AX46；形取 46 Apple 账户页 */
-  .dico{display:none}                                                          /* 46 的设备行没有图标 */
-  .dtext{flex:1 1 auto;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:var(--ios-value-gap)}
-  .dname{font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:400}
-  .dsub{display:flex;align-items:center;gap:var(--ios-value-gap);color:var(--dim);font-size:var(--ios-body-size);line-height:var(--ios-body-lh);text-align:right}   /* 右灰值 secondaryLabel ← 探针 */
-  /* 在线/离线点（老页绿点）：直径 11 = 信息会话列表的未读点 UnreadIndicatorImageView ← AX-58（--ios-status-dot）；
-     在线 --ios-green、离线/未知 tertiaryLabel ← 探针；点到字的距离 = 值行的 --ios-value-gap 8 ← AX */
-  .dsub .dot{display:inline-block;width:var(--ios-status-dot);height:var(--ios-status-dot);border-radius:50%;background:var(--ios-tertiary-label);flex:none}
-  .dsub .dot.on{background:var(--ios-green)}
-  .dsub .dot.off{background:var(--ios-tertiary-label)}
-  .dside{display:none}
+  /* Device card = Health › 摘要 pinned card header (AX-13, remote-ref/13-health-summary-pinned.png), one column:
+     line 1 = status dot + 「游戏机 · 开机中」 in the card header's 15 Semibold / 19.33 line box (--ios-health-label-*),
+     line 2 = the grey date's style (13 Regular secondaryLabel, 15.67 line box: --ios-health-date-*) as a left-aligned
+     paragraph that wraps; content inset 16 (--ios-health-card-inset), title→text 6 (--ios-health-text-gap).
+     Health tints the title with the data type's colour; the device has no type colour, so the title is labelColor and
+     the dot carries the state. The old two-column value row (name left, status right) wrapped both sides. */
+  .group.devcard{padding:var(--ios-health-card-inset)}
+  .dico{display:none}
+  .dhead{display:flex;align-items:center;gap:var(--ios-value-gap);min-width:0}
+  .dname{flex:0 1 auto;min-width:0;font-size:var(--ios-health-label-size);line-height:var(--ios-health-label-lh);font-weight:var(--ios-health-label-weight);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dsub{margin-top:var(--ios-health-text-gap);color:var(--dim);font-size:var(--ios-health-date-size);line-height:var(--ios-health-date-lh);text-align:left;overflow-wrap:anywhere}
+  .dsub:empty{display:none}
+  /* Status dot 11 = Messages' unread dot UnreadIndicatorImageView (AX-58, --ios-status-dot), centred on the title line;
+     on --ios-green, off/unknown tertiaryLabel (probe); dot→text = --ios-value-gap 8 (AX value rows) */
+  .dhead .dot{display:inline-block;width:var(--ios-status-dot);height:var(--ios-status-dot);border-radius:50%;background:var(--ios-tertiary-label);flex:none}
+  .dhead .dot.on{background:var(--ios-green)}
+  .dhead .dot.off{background:var(--ios-tertiary-label)}
   section + section > .group.devcard:first-child{margin-top:0}
   /* Notice card: Health › 摘要 (measured on the simulator: inset 16, caption 13 with a
      hairline under it, title 17 semibold, body 15 secondary, capsule button 30 high). */
@@ -236,7 +241,7 @@
   section + section > .group.notice:first-child{margin-top:10px}
   .ncap{position:relative;padding:14px 0 10px;font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh);color:var(--dim)}
   .ncap::after{content:"";position:absolute;left:0;right:0;bottom:0;height:var(--ios-separator-h);background:var(--line)}
-  .ntitle{margin-top:14px;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight)}
+  .ntitle{margin-top:14px;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .nbody{margin-top:4px;font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);color:var(--dim)}
   .nacts{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
   .capsule{font:inherit;font-size:var(--ios-sub-size);font-weight:var(--ios-headline-weight);line-height:var(--ios-sub-lh);height:30px;padding:0 14px;border:0;border-radius:15px;   /* 30：健康胶囊钮，待 tokens */
@@ -253,7 +258,7 @@
   .tile:active,.tile.pressed{opacity:1;background:color-mix(in srgb, var(--ink) 8%, var(--card));transition:none}   /* 按下填色 8% 无来源；.pressed 由指针状态机管（按下即高亮、出边 70 pt 余量 ← spec §4 U1–U6） */
   .tico{position:absolute;left:var(--ios-tile-icon-x);top:var(--ios-tile-icon-y);width:var(--ios-tile-icon);height:var(--ios-tile-icon);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;flex:none}   /* 徽章 48 at (6,2) ← 提醒事项 */
   .tico .sf{width:var(--ios-symbol-slot);height:var(--ios-symbol-slot);background:#fff}   /* 符号槽 22 ← Kit */
-  .ttitle{margin:0;font-family:var(--ios-tile-number-font);font-size:var(--ios-tile-label-size);line-height:var(--ios-tile-label-lh);font-weight:var(--ios-tile-label-weight)}   /* 标题 = 磁贴标签 Rounded Semibold 17/20.33 ← 提醒事项 */
+  .ttitle{margin:0;max-width:100%;font-family:var(--ios-tile-number-font);font-size:var(--ios-tile-label-size);line-height:var(--ios-tile-label-lh);font-weight:var(--ios-tile-label-weight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 标题 = 磁贴标签 Rounded Semibold 17/20.33 ← 提醒事项 */
   .tsub{font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh);color:var(--dim)}
   .tile.danger .ttitle{color:var(--bad)}
   .sf{display:inline-block;width:22px;height:22px;background:currentColor;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
@@ -264,7 +269,7 @@
   .sf.ok{background:#34c759}
   .sf.bad{background:var(--bad)}
   .warn .sf.inl{width:15px;height:15px;vertical-align:-3px;margin-right:4px;background:var(--warn)}
-  .row .ro.short{color:var(--dim);font-size:var(--ios-body-size);white-space:nowrap}   /* Detail 17 secondary ← 探针（老页 15 是目测） */
+  .row .ro.short{color:var(--dim);font-size:var(--ios-body-size);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* Detail 17 secondary ← 探针（老页 15 是目测） */
   .group{background:var(--card);border-radius:var(--r);overflow:hidden}
   .group:not(.devcard):not(.notice):not(.tiles):not(.nums) > *:not(.row):not(.acts):not(pre):not(.setup):not(.warn):not(.hint):not(.group-foot){padding:11px 20px}   /* .nums 的磁贴有自己的内距（提醒事项原值），不吃这条 */
   /* Rows: name left, control right, hairline inset to the text like UITableView. */
@@ -273,13 +278,13 @@
   .row::after{content:"";position:absolute;left:var(--ios-separator-inset-l);right:var(--ios-separator-inset-r);bottom:0;height:var(--ios-separator-h);background:var(--line)}   /* 分隔线 1.0 pt (60,60,67).12，内缩 20/20 ← 探针 */
   .row:last-child::after,.group > :last-child.row::after{display:none}
   .row:has(> .sw):active,.row:has(select):active{background:color-mix(in srgb, var(--ink) 6%, var(--card))}
-  .row > label{flex:1 1 0;min-width:40%;font-size:var(--ios-body-size);line-height:var(--ios-body-lh)}
+  .row > label{flex:1 1 0;min-width:40%;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* the name never wraps (tail ellipsis); .hint below is a block and wraps */
   .row > :not(label){flex:0 0 auto;max-width:48%}
   .row:has(.pills),.row:has(.picks),.row:has(.pillbox),
   .row:has(pre){flex-direction:column;align-items:stretch;gap:8px}
   .row:has(.pills) > :not(label),.row:has(.picks) > :not(label),.row:has(.pillbox) > :not(label){max-width:none;align-self:flex-end}
-  .row .hint{display:block;color:var(--ios-settings-subtitle);font-size:var(--ios-sub-size);margin-top:1px;line-height:var(--ios-sub-lh)}   /* 副题 15/18、设置自家副题灰 ← AX33d/px33d */
-  .row .ro{color:var(--dim);font-size:var(--ios-body-size);text-align:right}   /* 只读值 = 设置值行：同一行右侧 secondaryLabel（AX-46 值行；不再「标题一行、值另起一行」） */
+  .row .hint{display:block;color:var(--ios-settings-subtitle);font-size:var(--ios-sub-size);margin-top:1px;line-height:var(--ios-sub-lh);white-space:normal}   /* 副题 15/18、设置自家副题灰 ← AX33d/px33d */
+  .row .ro{color:var(--dim);font-size:var(--ios-body-size);line-height:var(--ios-body-lh);text-align:right;flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 只读值 = 设置值行：同一行右侧 secondaryLabel（AX-46 值行；不再「标题一行、值另起一行」） */
   /* 导航值行「值 ›」：值 secondaryLabel、箭头 10.33×14 tertiaryLabel 距右 20、值到箭头 8 ← AX-37 / --ios-chevron-* / --ios-value-gap；整行可点 */
   .row.nav{cursor:pointer;padding-right:var(--ios-chevron-inset)}
   .row.nav .val{color:var(--dim);font-size:var(--ios-body-size);line-height:var(--ios-body-lh);text-align:right;flex:0 1 auto;max-width:48%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 值过长时尾部省略，不换行（设置值行的做法） */

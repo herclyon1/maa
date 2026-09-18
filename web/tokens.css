@@ -514,6 +514,14 @@
   --ios-health-row-h: 53px;
   --ios-health-card-inset: 16px;
   --ios-health-button-radius: 14px;
+  /* AX-13 pinned card (步数) used as the device card: header title layer (36, 441.67, 49, 19.33) → 15 Semibold in a 19.33 line box, content x = card + 16,
+   * top 16 (441.67 − 425.67), bottom 16 (557.67 − 541.67); grey date 昨天 (359.67, 445, 26, 15.67) = .PingFangUITextSC-Regular 13 secondaryLabel (inject 13 texts);
+   * title → text gap 6 = AX-13 suggested-action cards (SetUpFitness title bottom 734.33 → description 740.33; StateOfMind 917 → 923) */
+  --ios-health-label-weight: 600;
+  --ios-health-label-lh: 19.33px;
+  --ios-health-date-size: 13px;
+  --ios-health-date-lh: 15.67px;
+  --ios-health-text-gap: 6px;
   /* Shortcuts library tile (inject-com.apple.shortcuts-42a.json): 195×112 r 25 continuous, background Display P3 (.941 .514 .396) (grey tile P3 .502 .537 .576),
    * a radial SwiftUI.GradientLayer on top: start (.5, 0) → end (−.218, −1.25), colours extended sRGB (255,157,125) / (256,141,109) / (257,124,92) at 0 / .5 / 1;
    * a shadow layer 156×89.6 inset (19.5, 22.4) r 5.5 with shadowRadius 15, offset 0, opacity 1, colour = tile colour α .35; icon 29×31 at (15.33, 12.67) opacity .88;

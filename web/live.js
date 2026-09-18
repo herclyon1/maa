@@ -63,7 +63,7 @@ async function _ping(minAt) {
         snap = best; save_cache(); render();
         const a = Date.now() - best.at * 1000;
         return setStatus(a < JUST_MS ? "开机中 · 刚刚更新"
-                                     : `开机中 · 在忙，状态是 ${ago(best.at)}的`, "on");
+                                     : `开机中 · 在忙 · 状态 ${ago(best.at)}`, "on");
       }
       if (!resent && Date.now() - t0 > 4000) {
         resent = true;
@@ -88,9 +88,9 @@ async function _ping(minAt) {
   }
   const age = Date.now() - best.at * 1000;
   if (age < JUST_MS)  return setStatus("开机中 · 刚刚更新", "on");
-  if (age < FRESH_MS) return setStatus(`开机中 · 在忙，状态是 ${ago(best.at)}的`, "on");
+  if (age < FRESH_MS) return setStatus(`开机中 · 在忙 · 状态 ${ago(best.at)}`, "on");
   sawHb(best.at * 1000);
-  return setStatus(`关机（没应答刷新）· 最后心跳 ${lastBeat()}`, "off");
+  return setStatus(`关机 · 没应答刷新 · 最后心跳 ${lastBeat()}`, "off");
 }
 
 /* ---------- 启动 ---------- */
@@ -149,12 +149,12 @@ function updateLive() {
   wasAlive = !!alive;
   if (alive) {
     setStatus(`开机中 · ${hbEvery > 60 ? `每 ${Math.round(hbEvery / 60)} 分钟报一次` : "实时"}`
-              + (snap ? `（配置是 ${ago(snap.at)}的）` : ""), "on");
+              + (snap ? ` · 配置 ${ago(snap.at)}` : ""), "on");
   } else if (Date.now() < pendingUntil) {
     setStatus("正在确认是否在线…", "");
   } else if (offline()) {
     // 连不上就只说连不上。这台机器可能开着，只是话传不过来。
-    setStatus(snap ? `连不上 · 先看看你这边有没有网（最后状态 ${ago(snap.at)}）`
+    setStatus(snap ? `连不上 · 先看看你这边有没有网 · 最后状态 ${ago(snap.at)}`
                    : "连不上 · 先看看你这边有没有网", "");
   } else if (lastBeat()) {
     setStatus(`关机 · 最后心跳 ${lastBeat()}`, "off");   // 验收 2026-09-18 定的离线文案
