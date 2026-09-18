@@ -128,9 +128,58 @@
     /* 2026-09-18: the device card is a Settings value row (46 Apple 账户页), no icon. */
     const dev = document.querySelector(".devcard");
     if (dev) {
-      num("设备行高 ≥ 53.33（--ios-row-h）", 53.33, Math.min(dev.getBoundingClientRect().height, 53.33)); const s2 = dev.querySelector(".dsub"); if (s2) col("设备行右灰值 secondaryLabel（--ios-secondary-label）", T.dim, cs(s2).color);
-      const dot = dev.querySelector(".dot"); if (dot) { num("设备行状态点 11（--ios-status-dot，AX-58 信息未读点）", 11, dot.getBoundingClientRect().width); num("状态点到字 8（--ios-value-gap）", 8, px(cs(s2).columnGap)); }
+      /* 2026-09-19 layout item: a two-line row (AX-35 geometry) — dot + 「游戏机 · 开机中」 single line, the detail below in secondaryLabel */
+      num("状态卡 = 两行行 62 起（--ios-row2-h，AX-35）", 62, Math.min(dev.getBoundingClientRect().height, 62)); const s2 = dev.querySelector(".dsub"), n2 = dev.querySelector(".dname");
+      if (s2) { col("状态卡第二行 secondaryLabel（--ios-secondary-label）", T.dim, cs(s2).color); num("状态卡第二行 15/18（--ios-sub-size/-lh）", 15, px(cs(s2).fontSize)); check("状态卡第二行左对齐、可换行", "left normal", `${cs(s2).textAlign} ${cs(s2).whiteSpace}`, cs(s2).textAlign === "left" && cs(s2).whiteSpace === "normal"); }
+      if (n2) { check("状态卡第一行不换行、尾部省略", "nowrap ellipsis", `${cs(n2).whiteSpace} ${cs(n2).textOverflow}`, cs(n2).whiteSpace === "nowrap" && cs(n2).textOverflow === "ellipsis");
+        num("状态卡第一行顶 = 卡顶 + 9（--ios-row2-title-top，AX-35）", 9, n2.getBoundingClientRect().top - dev.getBoundingClientRect().top, 0.5);
+        if (s2) num("状态卡第二行顶 = 卡顶 + 32.33（--ios-row2-sub-top，AX-35）", 32.33, s2.getBoundingClientRect().top - dev.getBoundingClientRect().top, 0.5);
+        check("状态卡第一行 = 「游戏机 · <状态>」", "游戏机 · …", n2.textContent, /^游戏机/.test(n2.textContent)); }
+      const dot = dev.querySelector(".dot"); if (dot && n2) { num("状态点 11（--ios-status-dot，AX-58 信息未读点）", 11, dot.getBoundingClientRect().width); num("状态点到字 8（--ios-value-gap）", 8, n2.getBoundingClientRect().left - dot.getBoundingClientRect().right);
+        num("状态点与第一行文字居中", 0, (dot.getBoundingClientRect().top + dot.getBoundingClientRect().height / 2) - (n2.getBoundingClientRect().top + n2.getBoundingClientRect().height / 2), 0.5); }
+      /* site-wide: value rows keep the title on one line and ellipsise the value (Settings AX-41 / AX-46: every title and value single-line) */
+      { const lab = document.querySelector("#app .row > label"); if (lab) check("值行标题不换行、尾部省略（全站）", "nowrap ellipsis", `${cs(lab).whiteSpace} ${cs(lab).textOverflow}`, cs(lab).whiteSpace === "nowrap" && cs(lab).textOverflow === "ellipsis"); }
+      /* 2026-09-19 (ui2): setStatus splits 「<state> · <detail>」 — the state joins the title, the detail is the second line; no 「 · 」 = all detail.
+         The copy has no parentheses and no 「…是…的」 (PHONE-COPY-RULES): 「实时 · 配置 1 分钟前」. A re-render must keep the dot's state colour. */
+      if (typeof setStatus === "function" && document.querySelector("#status") && n2 && s2) {
+        const was = document.querySelector("#status").textContent, wasDot = (document.querySelector("#dot") || {}).className || "";
+        const title = () => (document.querySelector(".devcard .dname") || {}).textContent || "", detail = () => (document.querySelector("#status2") || {}).textContent || "";
+        setStatus("开机中 · 实时 · 配置 1 分钟前", "on");
+        check("状态拆行：「开机中 · 实时 · 配置 1 分钟前」→ 标题「游戏机 · 开机中」+ 第二行「实时 · 配置 1 分钟前」", "游戏机 · 开机中 | 实时 · 配置 1 分钟前", `${title().replace("（演示）", "")} | ${detail()}`,
+              title().replace("（演示）", "") === "游戏机 · 开机中" && detail() === "实时 · 配置 1 分钟前" && (document.querySelector("#dot2") || {}).classList?.contains("on"));
+        setStatus("正在读取…", "");
+        check("状态拆行：没有「 · 」的整句进第二行，标题只剩「游戏机」", "游戏机 | 正在读取…", `${title().replace("（演示）", "")} | ${detail()}`, title().replace("（演示）", "") === "游戏机" && detail() === "正在读取…");
+        if (typeof render === "function" && typeof snap !== "undefined" && snap) {
+          setStatus("开机中 · 实时", "on"); render();
+          const d3 = document.querySelector("#dot2");
+          check("重画后状态卡保持状态：点仍绿、标题仍带「开机中」、第二行仍在", "on · 游戏机 · 开机中 · 实时", `${d3 && d3.classList.contains("on") ? "on" : "grey"} · ${title().replace("（演示）", "")} · ${detail()}`,
+                !!d3 && d3.classList.contains("on") && title().replace("（演示）", "") === "游戏机 · 开机中" && detail() === "实时");
+        }
+        setStatus(was, /\bon\b/.test(wasDot) ? "on" : /\boff\b/.test(wasDot) ? "off" : "");
+      }
     }
+    /* Site-wide (2026-09-19, ui2): a synthetic row with an over-long name + a long hint + an over-long read-only value, a navigation row
+       with an over-long value, and an over-long section header: the name, the values and the header stay one 20.33 line with a tail
+       ellipsis; the hint under the name still wraps (a paragraph, AX-33d subtitle rows); the value keeps its own width — a long hint
+       must not squeeze it (the 手机 tab's 「已配置 / 没有」 row showed 「没..」 when the label's basis was auto). */
+    { const wl = document.createElement("div"); wl.style.cssText = "position:fixed;left:20px;top:0;width:400px;visibility:hidden;z-index:-1";
+      wl.innerHTML = `<div class="group"><div class="row"><label>${"名字很长".repeat(10)}<span class="hint">${"副题要换行".repeat(9)}</span></label><span class="ro">${"值也很长".repeat(10)}</span></div>` +
+                     `<div class="row"><label>已配置<span class="hint">${"副题要换行".repeat(9)}</span></label><span class="ro">没有</span></div>` +
+                     `<div class="row nav"><label>名</label><span class="val">${"选项".repeat(40)}</span><i class="sf chev"></i></div></div><section><h2>${"段头很长".repeat(12)}</h2></section>`;
+      document.body.appendChild(wl);
+      const lab0 = wl.querySelector(".row > label"), ro = wl.querySelector(".ro"), val = wl.querySelector(".val"), hh = wl.querySelector("h2"), hint = lab0.querySelector(".hint");
+      const rg = document.createRange(); rg.selectNodeContents(lab0.firstChild); const nameLines = new Set([...rg.getClientRects()].map((r) => Math.round(r.top))).size;
+      const nameH = lab0.getBoundingClientRect().height - hint.getBoundingClientRect().height - px(cs(hint).marginTop);
+      check("值行标题一行 20.33（nowrap + 尾部省略；长名字）", "nowrap ellipsis 1 行 20.33", `${cs(lab0).whiteSpace} ${cs(lab0).textOverflow} ${nameLines} 行 ${Math.round(nameH * 100) / 100}`, cs(lab0).whiteSpace === "nowrap" && cs(lab0).textOverflow === "ellipsis" && nameLines === 1 && near(nameH, 20.33, 0.6));
+      check("值行标题下的副题照常换行（white-space normal，多行）", "normal ≥ 2 行", `${cs(hint).whiteSpace} ${Math.round(hint.getBoundingClientRect().height / 18)} 行`, cs(hint).whiteSpace === "normal" && hint.getBoundingClientRect().height >= 36);
+      check("只读值一行、尾部省略（.ro）", "nowrap ellipsis 20.33", `${cs(ro).whiteSpace} ${cs(ro).textOverflow} ${Math.round(ro.getBoundingClientRect().height * 100) / 100}`, cs(ro).whiteSpace === "nowrap" && cs(ro).textOverflow === "ellipsis" && near(ro.getBoundingClientRect().height, 20.33, 0.6));
+      check("导航值一行、尾部省略（.nav .val）", "nowrap ellipsis 20.33", `${cs(val).whiteSpace} ${cs(val).textOverflow} ${Math.round(val.getBoundingClientRect().height * 100) / 100}`, cs(val).whiteSpace === "nowrap" && cs(val).textOverflow === "ellipsis" && near(val.getBoundingClientRect().height, 20.33, 0.6));
+      { const lr = lab0.getBoundingClientRect(), rr = ro.getBoundingClientRect(), side = rr.left >= lr.right && rr.top < lr.bottom && rr.bottom > lr.top;
+        check("名字和值并排同一行（值行不折成两行）", "并排", side ? "并排" : `值在 y+${Math.round(rr.top - lr.bottom)}`, side); }
+      { const ro2 = wl.querySelectorAll(".ro")[1], probeW = (() => { const i = document.createElement("span"); i.className = "ro"; i.style.cssText = "position:absolute;visibility:hidden;white-space:nowrap"; i.textContent = "没有"; wl.querySelector(".row").appendChild(i); const w = i.getBoundingClientRect().width; i.remove(); return w; })();
+        num("短值不被长副题挤瘦（「没有」保持自然宽，label flex-basis 0）", probeW, ro2.getBoundingClientRect().width, 0.6); }
+      check("段头一行、尾部省略", "nowrap ellipsis 20.33", `${cs(hh).whiteSpace} ${cs(hh).textOverflow} ${Math.round((hh.getBoundingClientRect().height - px(cs(hh).paddingTop) - px(cs(hh).paddingBottom)) * 100) / 100}`, cs(hh).whiteSpace === "nowrap" && cs(hh).textOverflow === "ellipsis" && near(hh.getBoundingClientRect().height - px(cs(hh).paddingTop) - px(cs(hh).paddingBottom), 20.33, 0.6));
+      wl.remove(); }
     /* Segmented control (状态 tab, 早班/晚班; 34 屏幕时间) */
     const segc = document.querySelector(".segctl");
     if (segc) {
@@ -272,6 +321,14 @@
     if (typeof openPicker === "function" && document.querySelector("#picker")) {
       openPicker({ title: "测", multi: true, opts: [[["甲"], "a"], [["乙"], "b"], [["丙"], "c"]], on: new Set(["a"]), icons: false }, () => true);
       const sh = document.querySelector("#picker"), card = sh.querySelector(".card"), nav = sh.querySelector(".pnav"), back = sh.querySelector(".pback"), done = sh.querySelector(".pdone");
+      /* Behaviour 5: present = card from the screen bottom (translateY(100 %) = 894) to y 62 and dimming 0 → .2 on the sheet spring
+         (pagesheet-motion.md: m 3 / k 1000 / c 500 → critical ω 18.5; tokens --ios-motion-sheet-duration 0.5 s / -easing) */
+      { const tr = cs(card).transform, m = /matrix\(1, 0, 0, 1, 0, ([\d.]+)\)/.exec(tr) || /translateY\(([\d.]+)px\)/.exec(tr);
+        check("勾选页出现：从屏底起（t=0 位移 = 卡高 894 = 956 − 62）", "≈ 894", tr, !!m && Math.abs(parseFloat(m[1]) - card.getBoundingClientRect().height) < 2);
+        check("勾选页出现时长 0.5 s（--ios-motion-sheet-duration，pagesheet-motion.md 弹簧 m3/k1000/c500）", "0.5s", cs(card).transitionDuration, cs(card).transitionDuration === "0.5s");
+        check("勾选页出现曲线 = 弹簧 linear()（--ios-motion-sheet-easing）", "linear(…)", cs(card).transitionTimingFunction.slice(0, 12), /^linear\(/.test(cs(card).transitionTimingFunction));
+        const dim = sh.querySelector(".dim"); check("勾选页遮罩同一条曲线淡入（0 → .2）", "0.5s linear", `${cs(dim).transitionDuration} ${cs(dim).transitionTimingFunction.slice(0, 6)}`, cs(dim).transitionDuration === "0.5s" && /^linear/.test(cs(dim).transitionTimingFunction));
+        card.style.transition = "none"; dim.style.transition = "none"; }   // snap to the settled state for the geometry below
       const cr2 = card.getBoundingClientRect(), nr2 = nav.getBoundingClientRect(), br = back.getBoundingClientRect(), dr = done.getBoundingClientRect(), sat = satTop();
       num("勾选页顶 = 安全区顶（standalone 62 = --ios-status-h，AX-38 表 y 62；浏览器里 0）", sat, cr2.top); num("勾选页顶角 38（--ios-sheet-radius-top）", 38, px(cs(card).borderTopLeftRadius));
       col("勾选页底 = elevated systemGroupedBackground（--ios-grouped-bg-elevated：暗 (28,28,30)，探针 levels）", dark ? [28, 28, 30] : [242, 242, 247], cs(card).backgroundColor);
@@ -285,7 +342,8 @@
       col("✓ 色 tint（--ios-tint）", T.tint, cs(rows[0].querySelector(".ck")).backgroundColor);
       check("未选行不画 ✓", "hidden", cs(rows[1].querySelector(".ck")).visibility, cs(rows[1].querySelector(".ck")).visibility === "hidden");
       rows[1].click(); check("点行切 ✓（多选）", "2 on", `${sh.querySelectorAll(".row.check.on").length} on`, sh.querySelectorAll(".row.check.on").length === 2);
-      back.click(); check("返回关闭勾选页", "closed", sh.hasAttribute("open") ? "open" : "closed", !sh.hasAttribute("open"));
+      back.click(); check("返回关闭勾选页（.in 去掉，走同一条弹簧回屏底，0.5 s 后隐藏）", "closing", sh.classList.contains("in") ? "open" : "closing", !sh.classList.contains("in"));
+      card.style.transition = ""; sh.querySelector(".dim").style.transition = "";
     }
     const vb = lab.querySelector("input.short");
     num("值框圆角 8（--ios-value-box-radius，NUMBERS 49）", 8, px(cs(vb).borderTopLeftRadius)); num("值框内距上下 6（--ios-value-box-pad-y）", 6, px(cs(vb).paddingTop)); num("值框内距左右 11（--ios-value-box-pad-x）", 11, px(cs(vb).paddingLeft));
@@ -307,6 +365,59 @@
     const at = (el, fx = .5, fy = .5, dx = 0, dy = 0) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width * fx + dx, y: r.top + r.height * fy + dy }; };
     const pev = (el, type, p, id = 11) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, clientX: p.x, clientY: p.y, isPrimary: true, button: 0, buttons: type === "pointerup" ? 0 : 1, pointerType: "touch" }));
     async function interactions() {
+      /* Behaviour 5: the sheet element is hidden once the dismiss has travelled */
+      { const sh = document.querySelector("#picker"); if (sh) { await sleep(600); check("勾选页关闭 0.5 s 后隐藏（open 去掉）", "hidden", sh.hasAttribute("open") ? "open" : "hidden", !sh.hasAttribute("open") && getComputedStyle(sh).display === "none"); } }
+      /* Behaviour 1: one alert at a time; Chrome runs the pane flat until the appear animation ends (.settled), WebKit keeps it from frame 1 */
+      if (typeof ask === "function" && document.querySelector("#alert")) {
+        const d = document.querySelector("#alert"), pane = d.querySelector(".pane"), bf = (el) => getComputedStyle(el).backdropFilter || getComputedStyle(el).webkitBackdropFilter || "";
+        const p1 = ask("测", "一", "好"); const p2 = ask("测二", "二", "好");
+        const second = await Promise.race([p2.then((v) => `resolved ${v}`), sleep(50).then(() => "pending")]);
+        check("弹窗重入保护：开着时再 ask 立即回 false，不叠第二层", "resolved false · 1 open", `${second} · ${document.querySelectorAll("dialog[open]").length} open`, second === "resolved false" && document.querySelectorAll("dialog[open]").length === 1);
+        const chrome = !CSS.supports("mix-blend-mode", "plus-darker");
+        check(chrome ? "弹窗出现动画期间玻璃层先走平底（Chrome 路：无 backdrop-filter）" : "弹窗出现动画期间玻璃层就是精确层（WebKit 路）", chrome ? "none" : "blur", bf(pane), chrome ? bf(pane) === "none" : /blur/.test(bf(pane)));
+        await sleep(520);
+        check("弹窗出现动画结束 → .settled，玻璃层到位（--ios-alert-glass-filter）", "settled + blur", `${d.classList.contains("settled") ? "settled" : "-"} + ${bf(pane).slice(0, 10)}`, d.classList.contains("settled") && /blur/.test(bf(pane)));
+        check("弹窗首帧时间戳记录（?diag：alert f1/f2）", "f1 ≤ 40 ms", window.ALERT_T ? `f1 +${Math.round(ALERT_T.f1 - ALERT_T.open)} f2 +${Math.round(ALERT_T.f2 - ALERT_T.open)} ms` : "缺", !!window.ALERT_T && ALERT_T.f1 - ALERT_T.open <= 40);
+        document.querySelector("#alert-cancel").click(); await sleep(450); await p1;
+        check("弹窗取消后关闭", "closed", d.open ? "open" : "closed", !d.open);
+      }
+      /* Behaviour 2: placeholders before the first reading; the cached reading restores at once */
+      if (window.Stamina && typeof numTiles === "function") {
+        const had = localStorage.getItem("ark-remote-tokens"), hadCache = localStorage.getItem("ark-remote-stamina"), d0 = Stamina.data, at0 = Stamina.at;
+        try {
+          localStorage.setItem("ark-remote-tokens", JSON.stringify({ sk: { cred: "x", token: "y" } })); Stamina.tokens = null; Stamina.data = null;
+          const h = numTiles(null), tmp = document.createElement("div"); tmp.innerHTML = h;
+          check("体力：没读到前画三格占位（图标 + 名字 + 数字/脚注灰块，HIG Loading）", "3 tiles · 6 ph", `${tmp.querySelectorAll(".num").length} tiles · ${tmp.querySelectorAll(".ph").length} ph`, tmp.querySelectorAll(".num").length === 3 && tmp.querySelectorAll(".ph").length === 6);
+          localStorage.setItem("ark-remote-stamina", JSON.stringify({ at: 1, data: { "明日方舟": { "理智": 77, "上限": 135 }, "终末地": { "理智": 12, "上限": 240 }, "鸣潮": { "波片": 200, "上限": 240 }, "取自": "08:15" } }));
+          Stamina.loadCache(); const h2 = numTiles(null); tmp.innerHTML = h2;
+          check("体力：上次读数立刻显示（状态恢复），脚注写读取时刻", "77 · 08:15 读取", `${(tmp.querySelector(".num .big") || {}).textContent} · ${(tmp.querySelector(".foot") || {}).textContent}`, /^77/.test((tmp.querySelector(".num .big") || {}).textContent || "") && /08:15/.test((tmp.querySelector(".foot") || {}).textContent || ""));
+          check("体力：缓存读数不占一分钟复用（at = 0，后台刷新马上跑）", "cached at 0", `cached=${Stamina.cached} at=${Stamina.at}`, Stamina.cached === true && Stamina.at === 0);
+        } finally {
+          if (had == null) localStorage.removeItem("ark-remote-tokens"); else localStorage.setItem("ark-remote-tokens", had);
+          if (hadCache == null) localStorage.removeItem("ark-remote-stamina"); else localStorage.setItem("ark-remote-stamina", hadCache);
+          Stamina.tokens = null; Stamina.data = d0; Stamina.at = at0; Stamina.cached = false;
+        }
+      }
+      /* Behaviour 4: the home keeps the newest 3 receipts + 「查看全部 ›」; the pushed page groups by day */
+      { const secs = [...document.querySelectorAll("#app > section")].filter((s) => /机器最近的回执/.test((s.querySelector("h2") || {}).textContent || ""));
+        const sec = secs[0], rows = sec ? sec.querySelectorAll(".row:not(.nav)") : [], more = sec && sec.querySelector('.row.nav[data-page="receipts"]');
+        if (sec) {
+          check("首页回执最多 3 条 + 「查看全部 ›」（AX-13 显示所有健康数据 ›）", "≤3 + 查看全部", `${rows.length} + ${more ? "查看全部 " + more.querySelector(".val").textContent : "-"}`, rows.length <= 3 && (!more || rows.length === 3));
+          if (more) {
+            const pg = document.querySelector("#subpage"); more.click(); await sleep(30);
+            check("推入页打开（.in）、标题「回执」", "in 回执", `${pg.classList.contains("in") ? "in" : "-"} ${pg.querySelector(".ptitle").textContent}`, pg.classList.contains("in") && pg.querySelector(".ptitle").textContent === "回执");
+            { const x30 = pg.getBoundingClientRect().left; check("推入 +30 ms：新页从右边滑入中（440 → 0）", "0 < x < 440", `x ${Math.round(x30)}`, x30 > 0 && x30 < 440); }
+            await sleep(400);
+            const pr = pg.querySelector(".pnav").getBoundingClientRect(), bb = pg.querySelector(".pback").getBoundingClientRect(), sat = satTop();
+            num("推入页导航栏 54 在安全区顶（AX-11 / AX-46 (0,62,440,54)）", sat, pr.top); num("推入页导航栏高 54", 54, pr.height);
+            num("推入页返回钮 44 at x 20（AX-11 BackButton (20,62,44,44)）", 44, bb.width); num("推入页返回钮 x 20", 20, bb.left);
+            check("推入页按日分组（Health 显示所有数据 AX-11：一天一组）", "≥1 组 h2 月日", `${pg.querySelectorAll(".pbody h2").length} 组 ${(pg.querySelector(".pbody h2") || {}).textContent}`, pg.querySelectorAll(".pbody h2").length >= 1 && /\d+月\d+日/.test((pg.querySelector(".pbody h2") || {}).textContent || ""));
+            check("推入 0.35 s（--ios-motion-nav-push-duration）、旧页视差 30 %", "0.35s pushed", `${getComputedStyle(pg).transitionDuration} ${document.body.classList.contains("pushed") ? "pushed" : "-"}`, getComputedStyle(pg).transitionDuration === "0.35s" && document.body.classList.contains("pushed"));
+            pg.querySelector(".pback").click(); await sleep(450);
+            check("推入页返回：弹出后隐藏、旧页回位", "hidden", `${pg.hidden ? "hidden" : "shown"} ${document.body.classList.contains("pushed") ? "pushed" : "back"}`, pg.hidden && !document.body.classList.contains("pushed"));
+          }
+        }
+      }
       const q = () => document.querySelector("#queueseg"), bs = () => [...document.querySelectorAll("#queueseg button")];
       const onText = () => (document.querySelector("#queueseg button.on") || {}).textContent || "";
       const thisShift = (name) => { const sec = [...document.querySelectorAll("#app section")].find((x) => ((x.querySelector("h2") || {}).textContent || "").trim() === "这一趟"); return !!sec && [...sec.querySelectorAll(".row label")].some((l) => l.textContent.includes(name + " · ")); };
@@ -401,6 +512,16 @@
         check("标签栏 T5 按住 600 ms：仍不选中，透镜停在目标 119×64（--ios-touch-tab-lift-w 25 / -h 10）", `${startTab} 1.266 1.185`, `${tOn()} ${cs(g).scale}`, tOn() === startTab && /^1\.26/.test(cs(g).scale));
         const t1 = performance.now(); pev(tseg, "pointerup", at(other)); const d1 = performance.now() - t1;
         check("标签栏 T1 抬手：+0 ms 选中、内容同步切", other.dataset.tab, `${tOn()} 显示 ${shown()} +${Math.round(d1 * 10) / 10} ms`, tOn() === other.dataset.tab && shown() === other.dataset.tab && d1 < 50);
+        /* Behaviour 3: scroll offsets are kept per tab (Health: 0 px difference after switching away and back, tabscroll/README §1) */
+        { const nv = document.querySelector("nav.tabs"), sg = nv.querySelector(".seg"), bb = [...sg.querySelectorAll("button")], startB = bb.find((b) => b.dataset.tab === startTab), otherB = bb.find((b) => b.dataset.tab === other.dataset.tab);
+          window.scrollTo(0, 150); const y1 = window.scrollY;
+          pev(sg, "pointerdown", at(startB)); pev(sg, "pointerup", at(startB)); await sleep(30); const yStart = window.scrollY;
+          pev(sg, "pointerdown", at(otherB)); pev(sg, "pointerup", at(otherB)); await sleep(30);
+          check("切标签保留各自滚动位置（切走 → 切回差 0，Health 实测）", `${y1} → ${y1}`, `${y1} → ${yStart} → ${window.scrollY}`, y1 > 0 && yStart === 0 && Math.abs(window.scrollY - y1) < 1);
+          /* tap on the selected tab: to the top on the ω 12 spring (tabscroll/README §2: 0.2 s 71 %, 0.33 s 92 %, 0.5 s 98 %) */
+          const y2 = window.scrollY; pev(sg, "pointerdown", at(otherB)); pev(sg, "pointerup", at(otherB)); await sleep(200); const y200 = window.scrollY; await sleep(300); const y500 = window.scrollY; await sleep(300);
+          check("点已选中标签回顶：ω 12 弹簧（0.2 s ≈ 69–71 %，0.5 s ≈ 98 %，0.8 s 到 0）", "≈31 % · ≈2 % · 0", `${Math.round(y200 / y2 * 100)} % · ${Math.round(y500 / y2 * 100)} % · ${window.scrollY}`, y2 > 0 && Math.abs(y200 / y2 - 0.31) < 0.08 && y500 / y2 < 0.05 && window.scrollY === 0);
+          window.scrollTo(0, 0); }
         { const sg = document.querySelector("#queueseg"); check("班次分段只在「状态」页（别的标签页隐藏）", "hidden", sg ? (sg.hidden ? "hidden" : "shown") : "缺", !!sg && sg.hidden && getComputedStyle(sg).display === "none"); }
         /* T7/T8: release 250 pt above still selects */
         const nav2 = document.querySelector("nav.tabs"), seg2 = nav2.querySelector(".seg"), b2 = [...seg2.querySelectorAll("button")];

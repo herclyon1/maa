@@ -163,9 +163,9 @@ const SCHEMA = [
        别再写成上一版那种和标题对不上的话（无音区那条写着「选凝素领域才有用」）。
        用户 2026-09-04：「给我标数字，我怎么知道 1234 是什么东西呢？」
        ——序号对应哪个套装要拿游戏里的 F2 列表核对，见 docs/BACKLOG.md。 */
-    { path:"DailyTask.json/Which Forgery Challenge to Farm", type:"select",
+    { path:"DailyTask.json/Which Forgery Challenge to Farm", type:"select", label:"凝素领域打哪个",
       choices: FORGE, hint:"按想要的武器材料挑。只在上面选「凝素领域」时才有用" },
-    { path:"DailyTask.json/Which Tacet Suppression to Farm", type:"icons",
+    { path:"DailyTask.json/Which Tacet Suppression to Farm", type:"icons", label:"无音区打哪个",
       choices: TACET, hint:"按想要的声骸套装挑。只在上面选「无音区」时才有用" },
     { path:"NightmareNestTask.json/Only Farm These Nests", type:"text",
       label:"残象聚落点位", ro:true,

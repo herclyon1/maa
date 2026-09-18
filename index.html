@@ -12,12 +12,12 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="遥控">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260919002833">
+<link rel="manifest" href="manifest.webmanifest?v=20260919011715">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260919002833">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260919002833">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260919011715">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260919011715">
 <!-- 组件数字的正本：--ios-* 变量，每条带来源（探针原值 / AX 帧 / NUMBERS 行 / 取色 / 采样替代）。页面自己的变量只做映射，不再手写数字。 -->
-<link rel="stylesheet" href="tokens.css?v=20260919002833">
+<link rel="stylesheet" href="tokens.css?v=20260919011715">
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
      上面跑的」). System colours from Apple's palette: grouped background, white
@@ -147,7 +147,7 @@
   section + section > .group:first-child{margin-top:35px}                        /* 卡到卡 35：Kit L44，待 tokens */
   section:has(> .foot:last-child) + section > .group:first-child{margin-top:0}   /* the footer's 24 is the gap */
   h2{margin:0;padding:var(--ios-header-text-top) var(--ios-row-text-x) calc(var(--ios-header-h) - var(--ios-header-text-top) - var(--ios-body-lh));font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight);color:var(--dim);   /* 组头容器 45.33、文字 +18.67 ← 探针 */
-     text-transform:none;display:flex;justify-content:space-between;align-items:baseline}
+     text-transform:none;display:flex;justify-content:space-between;align-items:baseline;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* a header is one line (tail ellipsis) */
   section:has(> .foot:last-child) + section > h2{padding-top:4px}
   section:first-child > h2{padding-top:10px}
   h2 small{color:var(--dim);font-weight:400;font-size:var(--ios-footnote-size)}
@@ -215,19 +215,30 @@
   .num .lab{margin:0;font-family:var(--ios-tile-number-font);font-size:var(--ios-tile-label-size);line-height:var(--ios-tile-label-lh);font-weight:var(--ios-tile-label-weight);color:var(--ink)}   /* 标签 Rounded Semibold 17/20.33 at (12,52) ← 提醒事项 UILabel；原件白字在色底，这里白卡上取 label 色 */
   .num .sub{font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh);color:var(--dim)}
   .num.err .sub{color:var(--bad)}
+  /* Behaviour 2: before the first reading there is no number yet — the tile is drawn anyway with a placeholder block where the number
+     and the footnote go (HIG Loading: “consider showing placeholder text, graphics, or animations as content loads, replacing these
+     elements as content becomes available”). Block heights = the lines they stand in for (--ios-tile-number-lh / --ios-footnote-lh);
+     fill = quaternarySystemFill (probe uiprobe-colors.json, --ios-quaternary-fill) — the fill choice is ours, the colour is the system's. */
+  .num .ph{display:inline-block;border-radius:6px;background:var(--ios-quaternary-fill);vertical-align:middle}
+  .num .big .ph{width:2.2em;height:var(--ios-tile-number-lh)}
+  .num .sub .ph{width:7em;height:var(--ios-footnote-lh)}
   /* ---- 状态页的三种块（docs/PHONE-NATIVE-REFERENCES.md） ---- */
   header .sub{display:none}                       /* the device card carries the status line */
   /* Device card: Find My › Devices › the device's card - icon, name, status line, a word at the right. */
-  .group.devcard{display:flex;align-items:center;gap:var(--ios-value-gap);padding:0 var(--ios-row-text-x);min-height:var(--ios-row-h)}   /* 值行 53.33 ← AX45/AX46；形取 46 Apple 账户页 */
-  .dico{display:none}                                                          /* 46 的设备行没有图标 */
-  .dtext{flex:1 1 auto;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:var(--ios-value-gap)}
-  .dname{font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:400}
-  .dsub{display:flex;align-items:center;gap:var(--ios-value-gap);color:var(--dim);font-size:var(--ios-body-size);line-height:var(--ios-body-lh);text-align:right}   /* 右灰值 secondaryLabel ← 探针 */
+  /* 2026-09-19 排版项：状态卡改成两行行（AX-13 通知卡「彩色符号 + 说明」的形，几何取设置两行行 AX-33d / AX-35：标题 17 顶 +9、副题 15 顶 +32.33、行 62）——
+     第一行 状态点 + 「游戏机 · 开机中」不换行，第二行 「实时 · 配置是 1 分钟前的」secondaryLabel 左对齐、按段落自然换行（13 的说明就是这样换行）。
+     之前是值行（名字左、状态右）：两段都长时挤成两列各两行，iOS 值行从不让标题换行。 */
+  .group.devcard{display:flex;align-items:flex-start;gap:var(--ios-value-gap);padding:var(--ios-row2-title-top) var(--ios-row-text-x) calc(var(--ios-row2-h) - var(--ios-row2-sub-top) - var(--ios-sub-lh)) var(--ios-row-text-x);min-height:var(--ios-row2-h);box-sizing:border-box}   /* 行 62、标题顶 +9、副题顶 +32.33 → 底 11.67 ← --ios-row2-*（AX-35）；点到字 8 ← --ios-value-gap */
+  .dico{display:none}
+  .dtext{flex:1 1 auto;min-width:0;display:block}
+  .dname{font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:400;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 「游戏机 · 开机中」Regular 17 labelColor，不换行、尾部省略 */
+  .dsub{margin-top:calc(var(--ios-row2-sub-top) - var(--ios-row2-title-top) - var(--ios-body-lh));color:var(--dim);font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);text-align:left}   /* 副题 Regular 15/18 secondaryLabel（验收定），顶 = 32.33 ← AX-35 */
+  .devcard > .dot{margin-top:calc((var(--ios-body-lh) - var(--ios-status-dot)) / 2)}   /* 点与第一行文字居中对齐 */
   /* 在线/离线点（老页绿点）：直径 11 = 信息会话列表的未读点 UnreadIndicatorImageView ← AX-58（--ios-status-dot）；
      在线 --ios-green、离线/未知 tertiaryLabel ← 探针；点到字的距离 = 值行的 --ios-value-gap 8 ← AX */
-  .dsub .dot{display:inline-block;width:var(--ios-status-dot);height:var(--ios-status-dot);border-radius:50%;background:var(--ios-tertiary-label);flex:none}
-  .dsub .dot.on{background:var(--ios-green)}
-  .dsub .dot.off{background:var(--ios-tertiary-label)}
+  .devcard .dot{display:inline-block;width:var(--ios-status-dot);height:var(--ios-status-dot);border-radius:50%;background:var(--ios-tertiary-label);flex:none}
+  .devcard .dot.on{background:var(--ios-green)}
+  .devcard .dot.off{background:var(--ios-tertiary-label)}
   .dside{display:none}
   section + section > .group.devcard:first-child{margin-top:0}
   /* Notice card: Health › 摘要 (measured on the simulator: inset 16, caption 13 with a
@@ -236,7 +247,7 @@
   section + section > .group.notice:first-child{margin-top:10px}
   .ncap{position:relative;padding:14px 0 10px;font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh);color:var(--dim)}
   .ncap::after{content:"";position:absolute;left:0;right:0;bottom:0;height:var(--ios-separator-h);background:var(--line)}
-  .ntitle{margin-top:14px;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight)}
+  .ntitle{margin-top:14px;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .nbody{margin-top:4px;font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);color:var(--dim)}
   .nacts{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
   .capsule{font:inherit;font-size:var(--ios-sub-size);font-weight:var(--ios-headline-weight);line-height:var(--ios-sub-lh);height:30px;padding:0 14px;border:0;border-radius:15px;   /* 30：健康胶囊钮，待 tokens */
@@ -253,7 +264,7 @@
   .tile:active,.tile.pressed{opacity:1;background:color-mix(in srgb, var(--ink) 8%, var(--card));transition:none}   /* 按下填色 8% 无来源；.pressed 由指针状态机管（按下即高亮、出边 70 pt 余量 ← spec §4 U1–U6） */
   .tico{position:absolute;left:var(--ios-tile-icon-x);top:var(--ios-tile-icon-y);width:var(--ios-tile-icon);height:var(--ios-tile-icon);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;flex:none}   /* 徽章 48 at (6,2) ← 提醒事项 */
   .tico .sf{width:var(--ios-symbol-slot);height:var(--ios-symbol-slot);background:#fff}   /* 符号槽 22 ← Kit */
-  .ttitle{margin:0;font-family:var(--ios-tile-number-font);font-size:var(--ios-tile-label-size);line-height:var(--ios-tile-label-lh);font-weight:var(--ios-tile-label-weight)}   /* 标题 = 磁贴标签 Rounded Semibold 17/20.33 ← 提醒事项 */
+  .ttitle{margin:0;max-width:100%;font-family:var(--ios-tile-number-font);font-size:var(--ios-tile-label-size);line-height:var(--ios-tile-label-lh);font-weight:var(--ios-tile-label-weight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 标题 = 磁贴标签 Rounded Semibold 17/20.33 ← 提醒事项 */
   .tsub{font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh);color:var(--dim)}
   .tile.danger .ttitle{color:var(--bad)}
   .sf{display:inline-block;width:22px;height:22px;background:currentColor;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
@@ -268,17 +279,18 @@
   .group{background:var(--card);border-radius:var(--r);overflow:hidden}
   .group:not(.devcard):not(.notice):not(.tiles):not(.nums) > *:not(.row):not(.acts):not(pre):not(.setup):not(.warn):not(.hint):not(.group-foot){padding:11px 20px}   /* .nums 的磁贴有自己的内距（提醒事项原值），不吃这条 */
   /* Rows: name left, control right, hairline inset to the text like UITableView. */
-  .row{position:relative;display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px var(--ios-value-gap);padding:calc((var(--ios-row-h) - var(--ios-body-lh))/2) var(--ios-switch-inset) calc((var(--ios-row-h) - var(--ios-body-lh))/2) var(--ios-row-text-x);min-height:var(--ios-row-h)}   /* 行 53.33、文字 x 20、开关右内缩 18、行框 20.33 ← 探针/AX45 */
+  .row{position:relative;display:flex;flex-direction:row;flex-wrap:nowrap;align-items:center;gap:6px var(--ios-value-gap);padding:calc((var(--ios-row-h) - var(--ios-body-lh))/2) var(--ios-switch-inset) calc((var(--ios-row-h) - var(--ios-body-lh))/2) var(--ios-row-text-x);min-height:var(--ios-row-h)}   /* 行 53.33、文字 x 20、开关右内缩 18、行框 20.33 ← 探针/AX45；2026-09-19 起不折行：标题长了省略，值不掉到第二行（设置的值行永远一行） */
   /* One device pixel, like UITableView's hairline (1/scale pt): a 1px box scaled to a third. */
   .row::after{content:"";position:absolute;left:var(--ios-separator-inset-l);right:var(--ios-separator-inset-r);bottom:0;height:var(--ios-separator-h);background:var(--line)}   /* 分隔线 1.0 pt (60,60,67).12，内缩 20/20 ← 探针 */
   .row:last-child::after,.group > :last-child.row::after{display:none}
   .row:has(> .sw):active,.row:has(select):active{background:color-mix(in srgb, var(--ink) 6%, var(--card))}
-  .row > label{flex:1 1 0;min-width:40%;font-size:var(--ios-body-size);line-height:var(--ios-body-lh)}
-  .row > :not(label){flex:0 0 auto;max-width:48%}
+  .row > label{flex:1 1 0;min-width:40%;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 2026-09-19：标题一行到底、尾部省略——设置的值行标题从不换行（AX-41 / AX-46 全部单行） */
+  .row > :not(label){flex:0 1 auto;min-width:0;max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 值最多 60 %，先省略值再省略标题（标题保底 40 %） */
+  .row > .sw,.row > input,.row > select,.row > .sf,.row > .chev{overflow:visible;flex-shrink:0}
   .row:has(.pills),.row:has(.picks),.row:has(.pillbox),
   .row:has(pre){flex-direction:column;align-items:stretch;gap:8px}
   .row:has(.pills) > :not(label),.row:has(.picks) > :not(label),.row:has(.pillbox) > :not(label){max-width:none;align-self:flex-end}
-  .row .hint{display:block;color:var(--ios-settings-subtitle);font-size:var(--ios-sub-size);margin-top:1px;line-height:var(--ios-sub-lh)}   /* 副题 15/18、设置自家副题灰 ← AX33d/px33d */
+  .row .hint{display:block;color:var(--ios-settings-subtitle);font-size:var(--ios-sub-size);margin-top:1px;line-height:var(--ios-sub-lh);white-space:normal}   /* the name is nowrap; the hint under it is a paragraph and wraps (AX-33d subtitle rows) */   /* 副题 15/18、设置自家副题灰 ← AX33d/px33d */
   .row .ro{color:var(--dim);font-size:var(--ios-body-size);text-align:right}   /* 只读值 = 设置值行：同一行右侧 secondaryLabel（AX-46 值行；不再「标题一行、值另起一行」） */
   /* 导航值行「值 ›」：值 secondaryLabel、箭头 10.33×14 tertiaryLabel 距右 20、值到箭头 8 ← AX-37 / --ios-chevron-* / --ios-value-gap；整行可点 */
   .row.nav{cursor:pointer;padding-right:var(--ios-chevron-inset)}
@@ -291,15 +303,16 @@
   .sheet[open]{display:block}
   .sheet .dim{position:absolute;inset:0;background:var(--ios-dimming)}
   .sheet .card{position:absolute;left:0;right:0;top:env(safe-area-inset-top, var(--ios-status-h));bottom:0;background:var(--bg);border-radius:var(--ios-sheet-radius-top) var(--ios-sheet-radius-top) 0 0;overflow:hidden;display:flex;flex-direction:column}
-  .sheet .pnav{position:relative;flex:none;height:var(--ios-nav-h);margin-top:calc(var(--ios-modal-nav-top) - var(--ios-status-h));display:flex;align-items:center;justify-content:center;
+  .sheet .pnav{margin-top:calc(var(--ios-modal-nav-top) - var(--ios-status-h))}   /* 弹出页的导航栏在 y 82 = 卡顶 62 + 20 ← AX-38 */
+  .pnav{position:relative;flex:none;height:var(--ios-nav-h);display:flex;align-items:center;justify-content:center;
                font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight);color:var(--ink)}   /* 导航栏 (0,82,440,54)，标题 Semibold 17 居中 ← AX-38 */
-  .sheet .pnav .navbtn{position:absolute;left:var(--ios-nav-side);top:0;display:flex;width:var(--ios-nav-button);height:var(--ios-nav-button);border-radius:50%;padding:0;border:0;
+  .pnav .navbtn{position:absolute;left:var(--ios-nav-side);top:0;display:flex;width:var(--ios-nav-button);height:var(--ios-nav-button);border-radius:50%;padding:0;border:0;
                         background:var(--glass-fill);backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter);box-shadow:var(--glass-rim),var(--glass-diffuse);color:var(--ink);align-items:center;justify-content:center}   /* 返回圆钮 (20,82,44,44) ← AX-38，玻璃同编辑栏 */
-  .sheet .pnav .navbtn::before{content:"";width:var(--ios-chevron-w);height:var(--ios-chevron-h);background:currentColor;-webkit-mask:var(--chev-left) center / contain no-repeat;mask:var(--chev-left) center / contain no-repeat}
-  .sheet .pnav .pdone{position:absolute;right:calc(440px - 380px - var(--ios-modal-button));top:4px;width:var(--ios-modal-button);height:var(--ios-modal-button);border-radius:50%;padding:0;border:0;
+  .pnav .navbtn::before{content:"";width:var(--ios-chevron-w);height:var(--ios-chevron-h);background:currentColor;-webkit-mask:var(--chev-left) center / contain no-repeat;mask:var(--chev-left) center / contain no-repeat}
+  .pnav .pdone{position:absolute;right:calc(440px - 380px - var(--ios-modal-button));top:4px;width:var(--ios-modal-button);height:var(--ios-modal-button);border-radius:50%;padding:0;border:0;
                        background:var(--accent);color:#fff;box-shadow:none}   /* 完成圆钮 (380,86,36,36)：右距 24、顶 +4 ← AX-38 / --ios-modal-button；tint 底白 ✓ 同编辑栏 */
-  .sheet .pnav .pdone{display:flex;align-items:center;justify-content:center}
-  .sheet .pnav .pdone .sf{width:16px;height:16px;background:#fff}   /* ✓ 白，36 圆钮里约 16（编辑栏 44 钮用 20，同比例；字形尺寸 AX 没给，待 tokens） */
+  .pnav .pdone{display:flex;align-items:center;justify-content:center}
+  .pnav .pdone .sf{width:16px;height:16px;background:#fff}   /* ✓ 白，36 圆钮里约 16（编辑栏 44 钮用 20，同比例；字形尺寸 AX 没给，待 tokens） */
   .sheet .plist{flex:1 1 auto;overflow:auto;-webkit-overflow-scrolling:touch;padding:var(--ios-group-gap) var(--ios-card-inset) 40px}   /* 表头空 17.67（AX-38 Other (0,136,440,17.67)）；卡 x 20 宽 400 */
   .sheet .row.check{cursor:pointer;padding-right:22.5px;gap:var(--ios-value-gap)}   /* ✓ 帧 (378.5, ·, 19, 17.33)：右缘 397.5 = 行右 420 − 22.5 ← AX-38 */
   .sheet .row.check > label{flex:1 1 0}
@@ -308,6 +321,30 @@
   .sheet .row.check .pico{width:var(--ios-row2-icon);height:var(--ios-row2-icon);border-radius:6px;flex:none}   /* 行内图标 28 ← AX-46 图标行（--ios-row2-icon） */
   .sheet .row.check:active{background:color-mix(in srgb, var(--ink) 6%, var(--card))}
   html.sheet-open{overflow:hidden}
+  /* Behaviour 5: the sheet's present / dismiss = UISheetPresentationController large detent (remote-ref/pagesheet-motion.md, iOS 27.0 probe,
+     CAAnimation hook + per-frame presentation): UIDropShadowView.position 956 → 62 (894 pt) and UIDimmingView 0 → black .2 on ONE spring
+     m 3 / k 1000 / c 500, drawn as critical ω ≈ 18.5 (0.1 s 60 %, 0.2 s 90 %, 0.28 s 97 %); dismiss = the same spring back. Tokens:
+     --ios-motion-sheet-duration / -easing (the data session: use that pair). The card's own height is the 894 travel, so translateY(100%). */
+  .sheet .card{transform:translateY(100%);transition:transform var(--ios-motion-sheet-duration) var(--ios-motion-sheet-easing)}
+  .sheet .dim{opacity:0;transition:opacity var(--ios-motion-sheet-duration) var(--ios-motion-sheet-easing)}
+  .sheet.in .card{transform:none}
+  .sheet.in .dim{opacity:1}
+  /* Behaviour 4 (and the 库存 subpage later): a pushed page = UINavigationController push. Nav bar 54 at y 62 (AX-11 / AX-46 NavigationBar
+     (0,62,440,54)), back 44 at x 20 (BackButton (20,62,44,44)), inline title Semibold 17 (AX-46 StaticText y 73.67), content from 116 with
+     the 17.67 group gap (AX-33d spacer (0,116,440,17.67)); the tab bar stays (AX-11: TabBar (0,873,440,83) on the pushed page). Motion:
+     0.35 s, new page 440 → 0, the old page slides 30 % (→ −132) and stays there (spec-table push / pop, tokens --ios-motion-nav-*). Below
+     the tab bar (z 6) and above the top bar (z 5, earlier in the DOM). */
+  .page{position:fixed;inset:0;z-index:5;background:var(--bg);color:var(--ink);overflow:auto;-webkit-overflow-scrolling:touch;
+        padding:calc(env(safe-area-inset-top) + var(--ios-nav-h)) 0 calc(env(safe-area-inset-bottom) + 120px);
+        transform:translateX(100%);transition:transform var(--ios-motion-nav-push-duration) var(--ios-motion-nav-push-easing)}
+  .page[hidden]{display:none}
+  .page.in{transform:none}
+  .page.out{transition-timing-function:var(--ios-motion-nav-pop-easing)}
+  .page > .pnav{position:fixed;top:env(safe-area-inset-top);left:0;right:0;z-index:1;background:var(--bg)}   /* 推入页导航栏 (0,62,440,54) ← AX-11 / AX-46 */
+  .page > .pbody{padding:var(--ios-group-gap) var(--ios-card-inset) 0}   /* 首卡顶 = 116 + 17.67 ← AX-33d / AX-46 */
+  .page > .pbody > section > h2:first-child{padding-top:calc(var(--ios-header-text-top) - var(--ios-group-gap))}
+  body.pushed > header, body.pushed > main{translate:calc(-1 * var(--ios-motion-nav-parallax)) 0;transition:translate var(--ios-motion-nav-push-duration) var(--ios-motion-nav-push-easing)}   /* 旧页视差 30 % → −132 ← spec-table push */
+  body > header, body > main{transition:translate var(--ios-motion-nav-pop-duration) var(--ios-motion-nav-pop-easing)}
   /* Footers and notes under a group, grey like Settings' explanatory text. */
   .group > p.hint,.group > .hint{margin:0;padding:10px var(--ios-row-text-x);color:var(--dim);font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh)}
   .warn{margin:8px 16px 0;padding:0;background:transparent;color:var(--warn);font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh)}
@@ -335,7 +372,7 @@
      rows 42 high, 17pt regular, label 50 from the left edge (the leading 22pt symbol
      slot holds the checkmark of the chosen row), 5 above and below, corner 26, glass. */
   main select.native{display:none}
-  .menubtn{display:inline-flex;align-items:center;gap:0;max-width:100%;height:22px;padding:0 20px 0 0;border:0;border-radius:0;
+  .menubtn{display:inline-block;vertical-align:middle;max-width:100%;height:22px;padding:0 20px 0 0;border:0;border-radius:0;   /* inline-block（不是 inline-flex）：值长了才会真的尾部省略，chevron 底图留在右侧 20 里 */
         background:transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='18' viewBox='0 0 12 18'%3E%3Cpath d='M2 7l4-4 4 4M2 11l4 4 4-4' fill='none' stroke='%238e8e93' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right center;
         color:var(--dim);font:inherit;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);text-align:right;box-shadow:none;cursor:pointer;
         white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -485,7 +522,14 @@
   dialog::backdrop{background:var(--ios-alert-dimming)}                      /* 遮罩 (0,0,0).2 / 暗 .48 ← 探针 UIDimmingView / ⑨ */
   .dlg-b{padding:var(--ios-alert-msg-gap) var(--ios-alert-pad-x) 20.33px;max-height:52vh;overflow:auto;font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);text-align:left;color:var(--alert-msg-fallback)}   /* 正文 15，帧 (30, 49.67, 260, 38) 左起，标题下 7.33 ← 探针 ④；底距 20.33 = 按钮顶 108 − 49.67 − 38 ← ④ */
   #alert-m{color:var(--alert-msg-color);mix-blend-mode:var(--alert-msg-blend)}   /* 纯文字说明 = 面板 −0.4（亮）/ +0.3（暗）← pipeline §1.9：plus-darker 叠 rgb(153) = D + .6 − 1 = D − .4；暗 plus-lighter rgb(77) = D + .3。只对纯文字块混合——确认框的改动清单带自己的颜色，不混合 */
-  @supports not (mix-blend-mode: plus-darker){ #alert-m{color:var(--alert-msg-fallback);mix-blend-mode:normal} }   /* Chrome：常量 = 236 − 102 ← ⑨ 面板 236 与 pipeline §1.9 实测 −102 */
+  @supports not (mix-blend-mode: plus-darker){ #alert-m{color:var(--alert-msg-fallback);mix-blend-mode:normal} }
+  /* Behaviour 1 (2026-09-19, the user's Android): the alert seemed to come late. Measured in headless Chrome at 4× CPU throttle
+     (scratch sh/alert_delay.py): the dialog is open ≤ 7 ms after the up and frames keep their 16.7 ms cadence with or without the glass —
+     the main thread is not it. What remains is the GPU: during the 0.4 s appear the scaled dialog makes the 1320 × 876 px (3x) blur(20)
+     of the 60-pt-oversized pane re-render every frame. WebKit (iOS, the acceptance line) keeps the exact pane from frame 1; Chrome
+     (no plus-darker = Android) runs the pane flat — the same white .538 fill, no blur — while the appear animation plays and switches to
+     the blurred pane at animationend (alert-web-plan: the GPU path during animation, the exact layer once still). */
+  @supports not (mix-blend-mode: plus-darker){ dialog[open]:not(.settled) > .pane{backdrop-filter:none;-webkit-backdrop-filter:none} }   /* Chrome：常量 = 236 − 102 ← ⑨ 面板 236 与 pipeline §1.9 实测 −102 */
   dialog .acts{border-top:0;display:grid;grid-template-columns:1fr 1fr;gap:var(--ios-alert-button-gap);padding:0 var(--ios-alert-button-inset) var(--ios-alert-button-inset)}
   dialog .acts button{min-height:var(--ios-alert-button-h);height:var(--ios-alert-button-h);padding:0 12px;border-radius:var(--ios-alert-button-radius);text-align:center;background:transparent;color:var(--ios-label);font-weight:var(--ios-medium-weight);overflow:hidden;   /* 「取消」字 = labelColor 纯黑/纯白（矩阵 e −1 / +.95）← pipeline §1.9，不是 tint */
                       transition:background var(--ios-motion-alert-button-duration) var(--ios-motion-ease-in-out)}   /* 按钮 48 r24、字 Medium 17 ← 探针；按下/松开 0.1 s ease-in-out ← 探针 */
@@ -572,14 +616,19 @@
     <div class="plist"></div>
   </div>
 </div>
-<script src="schema.js?v=20260919002833"></script>
-<script src="net.js?v=20260919002833"></script>
-<script src="pending.js?v=20260919002833"></script>
-<script src="live.js?v=20260919002833"></script>
-<script src="stamina.js?v=20260919002833"></script>
-<script src="inventory.js?v=20260919002833"></script>
-<script src="view.js?v=20260919002833"></script>
+<!-- 推入页（UINavigationController push）：回执全表、以后的库存页；导航栏 54 at 62、返回 44 at 20 ← AX-11 / AX-46 -->
+<div class="page" id="subpage" hidden role="region">
+  <div class="pnav"><button type="button" class="navbtn pback" aria-label="返回"></button><span class="ptitle"></span></div>
+  <div class="pbody"></div>
+</div>
+<script src="schema.js?v=20260919011715"></script>
+<script src="net.js?v=20260919011715"></script>
+<script src="pending.js?v=20260919011715"></script>
+<script src="live.js?v=20260919011715"></script>
+<script src="stamina.js?v=20260919011715"></script>
+<script src="inventory.js?v=20260919011715"></script>
+<script src="view.js?v=20260919011715"></script>
 <script>/* 验收脚本只在地址带 ?accept 时加载（docs/HIG-CHECKLIST.md 的验收程序）。 */
-if (new URLSearchParams(location.search).has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260919002833"; document.body.appendChild(s); }</script>
+if (new URLSearchParams(location.search).has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260919011715"; document.body.appendChild(s); }</script>
 </body>
 </html>
