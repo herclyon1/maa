@@ -468,6 +468,14 @@
       check("弹窗按钮 A2 出边抬手：不触发", "0 / 0", `${ca} / ${cb}`, ca === 0 && cb === 0);
       pev(ba, "pointerdown", at(ba)); pev(ba, "pointermove", at(bb)); pev(ba, "pointerup", at(bb)); await sleep(10);
       check("弹窗按钮 A3/A6 从 a 滑到 b 抬手：触发 b", "0 / 1", `${ca} / ${cb}`, ca === 0 && cb === 1);
+      /* ghost click (data session 862de97): the action closes the dialog on the up, then the browser's own click lands on
+         whatever is under the finger - a tile below opened a second dialog. The tile sits under button a; a's handler closes
+         the dialog; the browser's click is replayed as a plain click on the element now at that point. */
+      { const p = at(ba); ba.addEventListener("click", () => dlg.close(), { once: true }); const c0 = clicks;
+        pev(ba, "pointerdown", p); pev(ba, "pointerup", p);                                    // the action closes the dialog on the up
+        tile.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, clientX: p.x, clientY: p.y }));   // = the browser's click, now landing on the tile under the finger
+        await sleep(10);
+        check("弹窗按钮抬手关掉弹窗后，浏览器补的 click 不穿到底下的磁贴", `tile ${c0}, closed`, `tile ${clicks}, ${dlg.open ? "open" : "closed"}`, clicks === c0 && !dlg.open); }
       dlg.close(); dlg.remove(); bLab.remove(); window.render = origRender;
     }
     const finish = () => {

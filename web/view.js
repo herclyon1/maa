@@ -1077,7 +1077,7 @@ function attachTabBar(nav, select) {
    because we fire our own (so a release 50 pt outside still triggers, as UIKit does). */
 function installPressables() {
   const SEL = ".tile, .acts button, .capsule, #pendbar button";
-  let synthetic = false;
+  let synthetic = false, ghost = false;
   document.addEventListener("pointerdown", (e) => {
     const el = e.target.closest && e.target.closest(SEL); if (!el || el.disabled) return;
     const inAlert = !!el.closest("dialog");
@@ -1090,7 +1090,8 @@ function installPressables() {
       end: (ev, cancelled) => {
         if (cur) cur.classList.remove("pressed");
         const hit = cancelled ? null : group.find((b) => inside(b, ev.clientX, ev.clientY));
-        setTimeout(() => { delete el.dataset.pe; }, 0);            // the browser's click (if any) arrives before this
+        ghost = true;                                                 // the browser's own click for this up is next; wherever it lands, it is not a second tap
+        setTimeout(() => { delete el.dataset.pe; ghost = false; }, 0);   // the browser's click (if any) arrives before this
         if (hit) { synthetic = true; try { hit.click(); } finally { synthetic = false; } }   // U1–U5: touchUpInside +0–1 ms
       },
     })) return;
@@ -1098,6 +1099,9 @@ function installPressables() {
   });
   document.addEventListener("click", (e) => {
     if (synthetic) return;
+    /* 2026-09-18 数据会话 862de97 实拍：点弹窗「取消」后紧接着弹出「现在跑一趟?」——我们在 pointerup 就关了弹窗，浏览器随后补的 click
+       落到弹窗底下的磁贴上，开出第二个弹窗。这一下 click 不管落在谁身上都吞掉。 */
+    if (ghost) { ghost = false; e.preventDefault(); e.stopImmediatePropagation(); return; }
     const el = e.target.closest && e.target.closest(SEL);
     if (el && el.dataset.pe) { e.preventDefault(); e.stopImmediatePropagation(); delete el.dataset.pe; }
   }, true);
@@ -1338,3 +1342,19 @@ applyTheme();
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 boot();
+
+/* ?diag=1：standalone 里看不到控制台，把几何数写在屏幕底部给截图读（数据会话 862de97 实拍：从主屏图标首次启动时整页下沉，
+   要靠 innerHeight / 安全区顶 / body padding / 标题顶 这几个数分辨是 web view 的高度、env() 还是我们的 padding 在变）。 */
+if (new URLSearchParams(location.search).has("diag")) {
+  const d = document.createElement("div");
+  d.style.cssText = "position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 130px);text-align:center;font:12px/16px ui-monospace,monospace;color:var(--dim);pointer-events:none;z-index:99;white-space:pre-wrap";
+  const upd = () => {
+    const pr = document.createElement("div"); pr.style.cssText = "position:fixed;top:0;left:0;width:1px;padding-top:env(safe-area-inset-top);visibility:hidden";
+    document.body.appendChild(pr); const sat = getComputedStyle(pr).paddingTop; pr.remove();
+    const h1 = document.querySelector("header h1"), vv = window.visualViewport;
+    d.textContent = `ih ${innerHeight} · vv ${vv ? Math.round(vv.height) + "@" + Math.round(vv.offsetTop) : "-"} · sat ${sat} · body ${getComputedStyle(document.body).paddingTop}`
+      + ` · h1 ${h1 ? Math.round(h1.getBoundingClientRect().top) : "-"} · sy ${Math.round(scrollY)} · sa ${matchMedia("(display-mode: standalone)").matches ? 1 : 0} · ${new Date().toTimeString().slice(0, 8)}`;
+  };
+  document.body.appendChild(d); upd();
+  addEventListener("resize", upd); addEventListener("scroll", upd, { passive: true }); setInterval(upd, 1000);
+}
