@@ -572,7 +572,8 @@ function layoutTabs() {
   for (const sec of secs) sec.hidden = sec.dataset.tab !== curTab || sec.dataset.empty === "1";
   const nav = $("#tabs");
   nav.hidden = present.size < 2;
-  nav.innerHTML = `<div class="seg"><i class="glide"></i>` + TABS.filter(([t]) => present.has(t)).map(([t]) =>
+  /* platter, lens and buttons are siblings (index.html: a lens nested in the backdrop-filtered platter cannot filter it) */
+  nav.innerHTML = `<div class="plat"></div><i class="glide"></i><div class="seg">` + TABS.filter(([t]) => present.has(t)).map(([t]) =>
     `<button type="button" class="${t === curTab ? "on" : ""}" data-tab="${t}" aria-label="${t}">` +
     `<span class="ico">` + (TAB_IMAGES[t] ? `<img class="tabimg" src="${TAB_IMAGES[t]}" alt="">`
                    : `<i class="sf" style="-webkit-mask-image:url(${TAB_ICONS[t]});mask-image:url(${TAB_ICONS[t]})" aria-hidden="true"></i>`) + `</span>` +

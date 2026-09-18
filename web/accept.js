@@ -159,7 +159,7 @@
     let seg = document.querySelector("nav.tabs:not([hidden]) .seg"), fakeNav = null;
     if (!seg) {
       fakeNav = document.createElement("nav"); fakeNav.className = "tabs"; fakeNav.style.visibility = "hidden";
-      fakeNav.innerHTML = `<div class="seg"><i class="glide"></i><button type="button" class="on"><span class="ico"><i class="sf"></i></span>状态</button><button type="button"><span class="ico"><i class="sf"></i></span>手机</button></div>`;
+      fakeNav.innerHTML = `<div class="plat"></div><i class="glide"></i><div class="seg"><button type="button" class="on"><span class="ico"><i class="sf"></i></span>状态</button><button type="button"><span class="ico"><i class="sf"></i></span>手机</button></div>`;
       document.body.appendChild(fakeNav); seg = fakeNav.querySelector(".seg");
     }
     if (seg) {
@@ -182,15 +182,14 @@
         if (lb) { const rg = document.createRange(); rg.selectNodeContents(lb); const lr = rg.getBoundingClientRect(); num("标签文字顶 = 胶囊顶 + 39（--ios-tab-label-top）", 39, lr.top - r.top, 1.5); }
       }
       const ico = seg.querySelector(".ico"); if (ico) num("标签符号框 28（--ios-tab-symbol-box，探针 27–31）", 28, ico.getBoundingClientRect().height);
-      const segbf = cs(seg).backdropFilter || cs(seg).webkitBackdropFilter || "";
+      const plat = seg.parentElement.querySelector(".plat") || seg, segbf = cs(plat).backdropFilter || cs(plat).webkitBackdropFilter || "";
       check("标签栏平台玻璃 blur 5（--ios-glass-blur）", "blur(5px)", (/blur\([\d.]+px\)/.exec(segbf) || [])[0], /blur\(5px\)/.test(segbf));
-      const gl = seg.querySelector(".glide"); if (gl) { const gbf = cs(gl).backdropFilter || cs(gl).webkitBackdropFilter || "";
+      check("透镜不嵌在平台里（平台 backdrop-filter 是 backdrop root）", "sibling", seg.parentElement.querySelector(":scope > .glide") ? "sibling" : "nested", !!seg.parentElement.querySelector(":scope > .glide"));
+      const gl = seg.parentElement.querySelector(".glide"); if (gl) { const gbf = cs(gl).backdropFilter || cs(gl).webkitBackdropFilter || "";
         check("标签栏选中透镜 blur 2（--ios-lens-blur）", "blur(2px)", (/blur\([\d.]+px\)/.exec(gbf) || [])[0], /blur\(2px\)/.test(gbf));
-        check("标签栏透镜 saturate（--ios-lens-saturate，矩阵分解）", dark ? "saturate(1.379)" : "saturate(1.062)", (/saturate\([\d.]+\)/.exec(gbf) || [])[0], new RegExp("saturate\\(" + (dark ? "1\\.379" : "1\\.062") + "\\)").test(gbf));
-        check("标签栏透镜 brightness（--ios-lens-brightness）", dark ? "brightness(0.87)" : "brightness(1.13)", (/brightness\([\d.]+\)/.exec(gbf) || [])[0], new RegExp("brightness\\(" + (dark ? "0\\.87" : "1\\.13") + "\\)").test(gbf));
-        const pd = CSS.supports("mix-blend-mode", "plus-darker"), ga = cs(gl, "::after");
-        if (pd) { col("透镜偏移 e：plus-darker 叠 1+e（--ios-lens-offset）", dark ? [237, 237, 237] : [204, 204, 204], ga.backgroundColor); check("透镜偏移混合 plus-darker", "plus-darker", ga.mixBlendMode, ga.mixBlendMode === "plus-darker"); }
-        else col("透镜偏移 e：Chrome 兜底叠黑 α|e|（--ios-lens-offset）", dark ? [0, 0, 0, .07] : [0, 0, 0, .2], ga.backgroundColor);
+        const wantF = dark ? "blur(2px) saturate(1.379) brightness(0.763) contrast(1.14)" : "blur(2px) saturate(1.062) brightness(0.807) contrast(1.4)";
+        check("标签栏透镜滤镜链 = 矩阵（--ios-lens-filter：blur · saturate · brightness · contrast）", wantF, gbf.replace(/\s+/g, " "), gbf.replace(/\s+/g, " ") === wantF);
+        check("标签栏透镜无叠层（::after 不参与）", "none", cs(gl, "::after").content, cs(gl, "::after").content === "none");
         check("透镜滑动 0.55 s（--ios-motion-lens-duration，dampingRatio .85 / response .4）", "0.55s", cs(gl).transitionDuration.split(",")[0].trim(), /^0\.55s/.test(cs(gl).transitionDuration)); }
     }
     if (fakeNav) fakeNav.remove();

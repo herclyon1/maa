@@ -36,10 +36,9 @@
     --glass-filter:blur(var(--ios-glass-blur)) saturate(var(--ios-glass-saturate));
     --glass-fill:rgb(255 255 255 / var(--ios-glass-lift));
     /* selection lens (tab bar / segmented): CABackdropLayer gaussianBlur inputRadius 2 + colorMatrix ≈ saturate 1.19, e −0.2（暗 1.13 / −0.07） ← 探针 deep（_UITabSelectionView） */
-    --lens-filter:blur(var(--ios-lens-blur)) saturate(var(--ios-lens-saturate)) brightness(var(--ios-lens-brightness));   /* 读出的 4×5 矩阵精确分解 = brightness × saturate（亮 1.13 × 1.062，暗 0.87 × 1.379）← 探针 subtree */
-    /* 矩阵 e 列（偏移 −.2 / 暗 −.07）：plus-darker 叠纯色 S = 1 + e → D + S − 1 = D + e，逐通道精确（WebKit）；Chrome 没有 plus-darker，兜底叠黑 α = |e|（见 @supports） */
-    --lens-offset-color:rgb(calc((1 + var(--ios-lens-offset)) * 255) calc((1 + var(--ios-lens-offset)) * 255) calc((1 + var(--ios-lens-offset)) * 255));
-    --lens-offset-fallback:rgb(0 0 0 / calc(-1 * var(--ios-lens-offset)));
+    /* 读出的 4×5 矩阵 = 增益·x + e，写进滤镜链本身：contrast(1 − 2e) ∘ brightness(增益 ÷ contrast)（亮 .807 / 1.4，暗 .763 / 1.14），
+       2 万随机色对比误差 ≤ .14/255 ← 探针 subtree + tokens.css --ios-lens-filter。不用叠层：WebKit 把 backdrop-filter 单独合成，::after 的 plus-darker 看不到它（模拟器 Safari 实测画成不透明 204） */
+    --lens-filter:var(--ios-lens-filter);
     /* SDF rim light: CASDFKeyFillHighlightEffect key/fill amount 0.5, white → the hairline ring; diffuse height 8 / amount 0.15 → the soft shadow ← 探针 deep（tokens.css 注释，无独立变量） */
     --glass-rim:inset 0 0 0 .5px rgb(255 255 255 / var(--ios-glass-highlight-amount));
     --glass-diffuse:0 8px 16px rgb(0 0 0 / .15);
@@ -78,15 +77,17 @@
   /* As a Home Screen web app there is no Safari bar: the capsule sits where Health's
      does, 22pt above the screen's bottom edge (measured on the iOS 27 simulator). */
   @media (display-mode: standalone){ nav.tabs{bottom:var(--ios-tab-capsule-bottom)} }   /* 胶囊距屏底 21 ← 探针 UITabBar 平台 y 873 / 956 */
-  nav.tabs .seg{position:relative;display:flex;gap:0;min-width:0;max-width:100%;padding:var(--ios-tab-button-pad);height:var(--ios-tab-capsule-h);border-radius:999px;   /* 胶囊 62、内缩 4 ← 探针 UITabBar 平台 274×62（83 是含 home 指示区的整个 frame） */
-                background:var(--glass-fill);
-                backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter);   /* 平台玻璃 = --ios-glass-blur 5 / -saturate 1.2 / -lift .147 ← 探针 deep（UITabBar 平台 = glass 配方） */
-                box-shadow:var(--glass-diffuse),var(--glass-rim)}   /* 阴影/描边 = SDF diffuse 8 / .15 与 highlight .5 的最近 CSS ← 探针 deep */
-  nav.tabs .glide{position:absolute;top:var(--ios-tab-button-pad);bottom:var(--ios-tab-button-pad);left:var(--ios-tab-button-pad);width:0;border-radius:999px;
-                  background:transparent;backdrop-filter:var(--lens-filter);-webkit-backdrop-filter:var(--lens-filter);   /* 选中透镜 = _UITabSelectionView gaussianBlur 2 + colorMatrix（--ios-lens-blur / -saturate / -brightness / -offset）← 探针 deep */
+  /* Three layers, siblings on purpose: platter (.plat, glass) → selection lens (.glide) → buttons (.seg). A backdrop-filter element is a
+     backdrop root, so a lens nested inside the platter would only see the platter's own translucent fill (headless Chrome: 251 instead of
+     the matrix's 236; simulator Safari: the overlay variant painted opaque). As a sibling it filters the platter's rendering, as UIKit's
+     _UITabSelectionView sits above the platter. */
+  nav.tabs .plat{position:absolute;inset:0;border-radius:999px;background:var(--glass-fill);
+                 backdrop-filter:var(--glass-filter);-webkit-backdrop-filter:var(--glass-filter);   /* 平台玻璃 = --ios-glass-blur 5 / -saturate 1.2 / -lift .147 ← 探针 deep（UITabBar 平台 = glass 配方） */
+                 box-shadow:var(--glass-diffuse),var(--glass-rim)}   /* 阴影/描边 = SDF diffuse 8 / .15 与 highlight .5 的最近 CSS ← 探针 deep */
+  nav.tabs .seg{position:relative;z-index:2;display:flex;gap:0;min-width:0;max-width:100%;padding:var(--ios-tab-button-pad);height:var(--ios-tab-capsule-h);border-radius:999px;background:transparent}   /* 胶囊 62、内缩 4 ← 探针 UITabBar 平台 274×62（83 是含 home 指示区的整个 frame） */
+  nav.tabs .glide{position:absolute;z-index:1;top:var(--ios-tab-button-pad);bottom:var(--ios-tab-button-pad);left:var(--ios-tab-button-pad);width:0;border-radius:999px;
+                  background:transparent;backdrop-filter:var(--lens-filter);-webkit-backdrop-filter:var(--lens-filter);   /* 选中透镜 = _UITabSelectionView gaussianBlur 2 + colorMatrix → --ios-lens-filter（blur 2 · saturate 1.062 · brightness .807 · contrast 1.4；暗 1.379 / .763 / 1.14）← 探针 deep */
                   transition:left var(--ios-motion-lens-duration) var(--ios-motion-lens-easing),width var(--ios-motion-lens-duration) var(--ios-motion-lens-easing)}   /* UIViewSpringAnimationBehavior dampingRatio .85 / response .4 s（--ios-motion-lens-response/-damping-ratio）← 探针 deep；采成 0.55 s linear() */
-  nav.tabs .glide::after{content:"";position:absolute;inset:0;border-radius:inherit;background:var(--lens-offset-color);mix-blend-mode:plus-darker}   /* 矩阵偏移 e = --ios-lens-offset，plus-darker 精确 */
-  @supports not (mix-blend-mode: plus-darker){ nav.tabs .glide::after{background:var(--lens-offset-fallback);mix-blend-mode:normal} }   /* Chrome：叠黑 α|e| 近似 */
   nav.tabs button{position:relative;width:var(--ios-tab-button-w);flex:0 1 auto;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;
                   height:var(--ios-tab-button-h);padding:6px 8px 7px;border-radius:var(--ios-tab-lens-radius);font-size:var(--ios-tab-label-size);line-height:12px;font-weight:var(--ios-headline-weight);   /* 按钮 94×54 r27、字 Semibold 10 ← 探针（5 个标签放不下 5×94 时等比缩）；6/8/7 待 tokens，但 4 + 6 + 28 + 1 = 39 = --ios-tab-label-top ← 探针 */
                   background:transparent;box-shadow:none;color:var(--tab);white-space:nowrap;transition:color .2s}

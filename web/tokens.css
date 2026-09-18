@@ -39,7 +39,8 @@
   --ios-quaternary-label: rgb(60 60 67 / .176);
   /* probe systemBlue = default tintColor */
   --ios-tint: rgb(0 136 255);
-  /* probe link — Settings' blue action rows use this one (pixel 33d (40,364.5) = (0,122,255)) */
+  /* probe link — Settings' blue action rows use this one: ORIGINAL ⑧ SwiftUI Text NSColor = linkColor (0,122,255) in tools/inject/inject-com.apple.Preferences-33d/32b/37b/38c.json
+   * (pixel 33d (40,364.5) = (0,122,255) agreed); the nav-bar 编辑 button and Screen Time's 改进通信安全 row are systemBlue (0,136,255) instead */
   --ios-link: rgb(0 122 255);
   --ios-red: rgb(255 56 60);
   --ios-green: rgb(52 199 89);
@@ -66,10 +67,14 @@
   --ios-dimming: rgb(0 0 0 / .2);
   /* probe scroll indicator */
   --ios-scrollbar: rgb(0 0 0 / .35);
-  /* pixel 34 (64,468): empty-state caption = systemGray */
+  /* ORIGINAL ⑧: UILabel .SFUI-Regular 17 textColor systemGrayColor (tools/inject/inject-com.apple.Preferences-34.json); pixel 34 (64,468) agreed */
   --ios-empty-text: rgb(142 142 147);
-  /* pixel 33d (40,283): Settings' own two-line-row subtitle (not a semantic colour the probe lists) */
+  /* ORIGINAL ⑧: UITableViewLabel .SFUI-Regular 15 textColor UIExtendedGrayColorSpace 0.5 — a hard-coded 50 % grey, not a semantic colour
+   * (tools/inject/inject-com.apple.Preferences-33d.json, -35b); pixel 33d (40,283) agreed. Language & Region's subtitles use secondaryLabel instead */
   --ios-settings-subtitle: rgb(128 128 128);
+  /* ORIGINAL ⑧: disabled / already-installed rows keep labelColor text and put the SwiftUI CGDrawingLayer at opacity .5
+   * (inject-com.apple.Preferences-46.json 信任的设备列表不可用, -38c installed keyboards); pixel 46 (127,127,127) = black × .5 */
+  --ios-disabled-opacity: .5;
 
   /* ---- layout ---- */
   /* AX-45 NavigationBar y 62 */
@@ -374,7 +379,7 @@
   --ios-tile-h: 80.33px;
   --ios-tile-gap: 8px;
   /* AX-58 Messages conversation list UnreadIndicatorImageView (7.33, 240.33, 11, 11): status dot 11 pt, x 7.33 from the screen edge,
-   * vertically centred on the row; colour by pixel (0,136,255) = tint */
+   * vertically centred on the row; colour by pixel (0,136,255) = tint (⑧: not reproduced — no unread conversation in the simulator; inject-com.apple.MobileSMS-58.json has no dot) */
   --ios-status-dot: 11px;
   --ios-status-dot-x: 7.33px;
 
@@ -403,6 +408,14 @@
    *   rgb(204 204 204) = 1 − .2 gives D + .8 − 1 = D − .2 exactly, WebKit only); the old "saturate 1.19" was a one-number approximation */
   --ios-lens-saturate: 1.062;
   --ios-lens-brightness: 1.13;
+  /* VERIFIED in simulator Safari (tools/accept-ui5.txt + screenshot sampling): a ::after overlay with mix-blend-mode: plus-darker on top of a
+   * backdrop-filter element renders as OPAQUE rgb(204 204 204) — WebKit composites the backdrop-filter layer separately, the blend never sees it.
+   * Exact replacement inside the filter chain itself (no overlay, Chrome too): gain·x + e == contrast(c) ∘ brightness(b) with c = 1 − 2e, b = gain / c
+   * (brightness first so nothing clamps before the offset; the final clamp equals CA's). Light: c 1.4, b .807; dark: c 1.14, b .763.
+   * 20 000 random colours vs the read matrix: max 0.05 / 0.14 of 1/255 (light / dark). */
+  --ios-lens-filter: blur(2px) saturate(1.062) brightness(0.807) contrast(1.4);
+  --ios-lens-brightness-css: 0.807;
+  --ios-lens-contrast-css: 1.4;
   --ios-lens-matrix: 1.1851 -0.0502 -0.005 0 -0.2  -0.0149 1.1499 -0.0051 0 -0.2  -0.0149 -0.05 1.1949 0 -0.2  0 0 0 1 0;
   /* alert button fill: white _UIVisualEffectBackgroundView + vibrantColorMatrix offset −0.12 (light) / +0.11 (dark) */
   --ios-alert-button-offset: -0.12;
@@ -441,6 +454,58 @@
   --ios-reminders-list-row-h: 62px;
   --ios-reminders-header-h: 46.33px;
   --ios-reminders-header-size: 22px;
+  /* ---- ⑧ injected originals of the other system apps (tools/inject/, SwiftUI text via CoreText interposing) ----
+   * Messages delivered status: CKTranscriptLegibilityLabel › UILabel .SFUI-Semibold 11 (frame 13.33), secondaryLabel, right aligned, right edge = balloon right − 20
+   * (CKUIBehavior statusItemInsetFromBalloonEdge), top = balloon bottom − 0.8; header lines (iMessage 信息 / 今天 12:14) .SFUI-Medium 11 same colour
+   * (inject-com.apple.MobileSMS-43b.json + `inject.sh call … CKUIBehavior +sharedBehaviors.rightStatusTranscriptTextAttributes`) */
+  --ios-delivered-size: 11px;
+  --ios-delivered-lh: 13.33px;
+  --ios-delivered-weight: 600;
+  --ios-delivered-color: rgb(60 60 67 / .6);
+  --ios-delivered-inset: 20px;
+  --ios-balloon-text-size: 17px;
+  /* Reminders list (inject-com.apple.reminders-44.json): circle UIImageView 26×26 (symbol 19.67) at x 20; unchecked contentsMultiplyColor tertiaryLabel,
+   * checked = the list colour; 1项完成 .SFUIRounded-Regular 17 secondaryLabel; 清除 UIButton .SFUI-Regular 17 systemBlue r 10.17; list title Rounded Bold 33 in the list colour */
+  --ios-reminders-circle: 26px;
+  --ios-reminders-circle-symbol: 19.67px;
+  --ios-reminders-circle-x: 20px;
+  --ios-reminders-circle-unchecked: rgb(60 60 67 / .298);
+  --ios-reminders-title-size: 33px;
+  /* Health (inject-com.apple.Health-13.json / -12): cards ChromeHostView r 26 continuous on secondarySystemGroupedBackground; pinned value .SFUIRounded-Semibold 28;
+   * category label .SFUI-Semibold 15 in Display P3 (255,91,36) (= extended sRGB 1.084 .287 −.090), the bar is the same fill; 昨天 13 secondaryLabel;
+   * data rows 53 high in a card inset 16 (408 wide), value 17 labelColor at x 32, date 17 secondaryLabel; 打开健康设置 UIButton r 14 .SFUI-Medium 17 tint */
+  --ios-health-card-radius: 26px;
+  --ios-health-value-size: 28px;
+  --ios-health-value-weight: 600;
+  --ios-health-label-size: 15px;
+  --ios-health-activity: color(display-p3 1 0.357 0.141);
+  --ios-health-row-h: 53px;
+  --ios-health-card-inset: 16px;
+  --ios-health-button-radius: 14px;
+  /* Shortcuts library tile (inject-com.apple.shortcuts-42a.json): 195×112 r 25 continuous, background Display P3 (.941 .514 .396) (grey tile P3 .502 .537 .576),
+   * a radial SwiftUI.GradientLayer on top: start (.5, 0) → end (−.218, −1.25), colours extended sRGB (255,157,125) / (256,141,109) / (257,124,92) at 0 / .5 / 1;
+   * a shadow layer 156×89.6 inset (19.5, 22.4) r 5.5 with shadowRadius 15, offset 0, opacity 1, colour = tile colour α .35; icon 29×31 at (15.33, 12.67) opacity .88;
+   * play button: circle 29 white α .07 plus-lighter + white triangle 10.4×12.2 at (10.3, 8.5); title .PingFang Semibold 17 white at (16, 77).
+   * Running (inject-com.apple.shortcuts-42run.json): circle background white α .08 plus-lighter, ring stroke white 2.5 round caps (arc grows), stop square white r 2.9 pulsing 9.5–10.6 / α .83–.95 */
+  --ios-shortcut-tile-w: 195px;
+  --ios-shortcut-tile-h: 112px;
+  --ios-shortcut-tile-radius: 25px;
+  --ios-shortcut-tile-bg: color(display-p3 0.941 0.514 0.396);
+  --ios-shortcut-tile-bg-grey: color(display-p3 0.502 0.537 0.576);
+  --ios-shortcut-tile-gradient: radial-gradient(at 50% 0%, rgb(255 157 125) 0%, rgb(255 141 109) 50%, rgb(255 124 92) 100%);
+  --ios-shortcut-tile-shadow-blur: 15px;
+  --ios-shortcut-tile-shadow-alpha: .35;
+  --ios-shortcut-icon-opacity: .88;
+  --ios-shortcut-play-bg: rgb(255 255 255 / .07);
+  --ios-shortcut-play-size: 29px;
+  --ios-shortcut-title-size: 17px;
+  --ios-shortcut-run-bg: rgb(255 255 255 / .08);
+  --ios-shortcut-run-ring: 2.5px;
+  --ios-shortcut-run-stop: 10.6px;
+  --ios-shortcut-run-stop-radius: 2.9px;
+  /* Shortcuts automation row (inject-com.apple.shortcuts-07.json): icon tile 29 r 7.54, title Semibold 17, subtitle Regular 13 secondaryLabel, group header Display Bold 20 */
+  --ios-shortcut-automation-icon-radius: 7.54px;
+
 }
 
 @media (prefers-color-scheme: dark) {
@@ -493,6 +558,9 @@
     --ios-lens-offset: -0.07;
     --ios-lens-saturate: 1.379;
     --ios-lens-brightness: 0.87;
+    --ios-lens-filter: blur(2px) saturate(1.379) brightness(0.763) contrast(1.14);
+    --ios-lens-brightness-css: 0.763;
+    --ios-lens-contrast-css: 1.14;
     --ios-lens-matrix: 1.1298 -0.2361 -0.0237 0 -0.07  -0.0701 0.964 -0.0238 0 -0.07  -0.0702 -0.236 1.1762 0 -0.07  0 0 0 1 0;
     /* segmented selected platter: _controlForegroundColor dark (235,235,245) α .3; track tertiarySystemFill dark (118,118,128,.24); label white */
     --ios-segment-selected-bg: rgb(235 235 245 / .3);
