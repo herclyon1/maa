@@ -1333,6 +1333,13 @@ function segLens(seg, lens, bs, downClientX) {
     const Bp = (pg.r + pg.g + pg.b) / 765, Bt = ((tk.r * tk.a + pg.r * (1 - tk.a)) + (tk.g * tk.a + pg.g * (1 - tk.a)) + (tk.b * tk.a + pg.b * (1 - tk.a))) / 765;
     rimb.querySelectorAll("rect.kf").forEach((r) => r.setAttribute("stroke-opacity", (-SEG_RIM.COLOR_BIAS * SEG_RIM.kfK(+r.dataset.v, -1) * (3 - 2 * Bt)).toFixed(4)));
     const pf = Math.min(1, (3 - 2 * Bp) / (3 - 2 * Bt)); rimb.querySelectorAll("stop.pf").forEach((st) => st.setAttribute("stop-opacity", pf.toFixed(4))); }
+  /* ?segx=wide1 (ios-switch-list.md, experiment only): every run of 1/3-pt ring strokes (the dark line's three, the highlight's first three) becomes ONE
+     whole-pt stroke with the mean stroke-opacity and the middle ring's gradient — to see whether the 3× raster's antialiasing of three 1/3-pt strokes is
+     what the simulator shows as a weaker / merged line. Not a drawing of the formula (the .875 / .625 / .375 profile is flattened). */
+  if (SEGX.includes("wide1")) for (const s of [rimb.querySelector("svg"), ...hls]) { const thin = [...s.querySelectorAll("rect[data-e0]")].filter((r) => +r.dataset.e1 - +r.dataset.e0 < .5);
+    const groups = new Map(); for (const r of thin) { const k = r.parentElement.getAttribute("class") || r.getAttribute("class"); (groups.get(k) || groups.set(k, []).get(k)).push(r); }
+    for (const rs of groups.values()) { rs.sort((a, b) => +a.dataset.e0 - +b.dataset.e0); const mid = rs[Math.floor(rs.length / 2)], mean = rs.reduce((t, r) => t + parseFloat(r.getAttribute("stroke-opacity") || 1), 0) / rs.length;
+      mid.dataset.e0 = rs[0].dataset.e0; mid.dataset.e1 = rs[rs.length - 1].dataset.e1; mid.setAttribute("stroke-opacity", mean.toFixed(4)); for (const r of rs) if (r !== mid) r.remove(); } }
   let rimKey = "";
   const rimGeo = (Wd, Hd, T) => {   // SVG geometry in lens-box coordinates (the <g> is translated by the 12 px margin)
     const key = `${Wd}|${Hd}|${T}`; if (key === rimKey) return; rimKey = key; const R = Hd / 2;

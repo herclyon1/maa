@@ -3822,10 +3822,14 @@
   /* ?segx=a,b,… : layer / map switches for the simulator-standalone experiments (remote-ref/tools/webkit/b6/ios-switch-list.md). Works with or without
      ?seghold. nowarp | norimb | nohl | nowarpl | noplat hide one lens layer (visibility, so the loop still runs); mapflat swaps every displacement map for
      a 1×1 constant (128, 128, 255) = zero displacement, full coverage; maponlyr / maponlyg feed feDisplacementMap a copy of the map with G / R forced to
-     .5 (only x / only y displacement); scale0 makes the loop hold the displacement scale at 0 (view.js SEGX). */
+     .5 (only x / only y displacement); scale0 makes the loop hold the displacement scale at 0 (view.js SEGX). Round 2: nohlk / nohlw hide one of the two
+     highlight stacks, noish / nors / nokf hide one of .rimb's three items, wide1 (view.js) merges every 1/3-pt ring stroke into one whole-pt stroke with the
+     mean alpha — an antialiasing experiment for the 3× raster, not a drawing. */
   if (q.has("segx")) { const sw = q.get("segx").split(",");
     const css = []; if (sw.includes("nowarp")) css.push(".segctl .warp{visibility:hidden}"); if (sw.includes("norimb")) css.push(".segctl .rimb{visibility:hidden}");
-    if (sw.includes("nohl")) css.push(".segctl .hlk,.segctl .hlw{visibility:hidden}"); if (sw.includes("nowarpl")) css.push(".segctl .warpl{visibility:hidden}"); if (sw.includes("noplat")) css.push(".segctl .plat{visibility:hidden}");
+    if (sw.includes("nohl")) css.push(".segctl .hlk,.segctl .hlw{visibility:hidden}"); if (sw.includes("nohlk")) css.push(".segctl .hlk{visibility:hidden}"); if (sw.includes("nohlw")) css.push(".segctl .hlw{visibility:hidden}");
+    if (sw.includes("nowarpl")) css.push(".segctl .warpl{visibility:hidden}"); if (sw.includes("noplat")) css.push(".segctl .plat{visibility:hidden}");
+    if (sw.includes("noish")) css.push(".segctl .rimb .ish{visibility:hidden}"); if (sw.includes("nors")) css.push(".segctl .rimb rect.rs{visibility:hidden}"); if (sw.includes("nokf")) css.push(".segctl .rimb .kfg{visibility:hidden}");
     if (css.length) { const st = document.createElement("style"); st.textContent = css.join("\n"); document.head.appendChild(st); }
     if (sw.includes("mapflat")) for (const fi of document.querySelectorAll("filter[id^='seg-lens-f-'] feImage")) fi.setAttribute("href", "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mNoaPgPAAODAgA+WCglAAAAAElFTkSuQmCC");
     const only = sw.includes("maponlyr") ? "r" : sw.includes("maponlyg") ? "g" : "";
