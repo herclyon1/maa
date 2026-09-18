@@ -32,16 +32,21 @@ def load_profiles(path):
     return {"file": os.path.basename(path), "half": half, "lens": d.get("lens"), "profiles": out}
 
 GLYPH_ROW, GLYPH_HALF = 6.5, 20.0   # the segment label sits on the centre row (|offset| < 6.5 pt = half the 13-pt glyph height) within |s| ≤ 20 pt
+AMP_FLOOR = [0.5]                    # a sample is valid where amp ≥ AMP_FLOOR × the profile's median amp (--amp-floor; the label-portal
+                                     # gratings fade to 0.25–0.5 of the median in the last 6 pt of the portal, where the field is largest)
 
 def valid(si, ai, med, off):
     """a phase sample is valid where its demodulation amplitude holds and no label glyph sits under the grating
     (seg-lens-refraction.md §2.1: the centre row's 「早班」 makes |s| ≤ 13 unreliable; masked to 20 with margin)"""
-    return ai >= 0.5 * med and not (abs(off) < GLYPH_ROW and abs(si) <= GLYPH_HALF)
+    return ai >= AMP_FLOOR[0] * med and not (abs(off) < GLYPH_ROW and abs(si) <= GLYPH_HALF)
+
+SYMMETRIC = [True]                   # odd symmetry u(−s) = −u(s) (the backdrop field: noise suppression); off for the measured label fields
 
 def clean(s, u, amp, off=0.0):
-    """mask (valid()), make odd-symmetric, fill gaps by linear interpolation; returns a dict s → u on the file's 1-pt grid"""
+    """mask (valid()), optionally make odd-symmetric, fill gaps by linear interpolation; returns a dict s → u on the file's 1-pt grid"""
     med = statistics.median(amp) if amp else 1.0
     ok = {si: ui for si, ui, ai in zip(s, u, amp or [med] * len(s)) if valid(si, ai, med, off)}
+    if not SYMMETRIC[0]: return fill(ok, sorted(set(s)))
     sym = {}
     for si in set(abs(x) for x in s):
         v = [ok[x] * sg for x, sg in ((si, 1), (-si, -1)) if x in ok]
@@ -77,18 +82,24 @@ def profiles_of(chans, off):
     for c in chans:
         if c == "G": continue
         sc, uc, ampc = chans[c]; medc = statistics.median(ampc) if ampc else 1.0
-        d = {si: (ui - gi) for si, ui, ai, gi in zip(sc, uc, ampc or [medc] * len(sc), uG) if valid(si, ai, medc, off)}
+        # offset against the cleaned G (not the raw G sample, which may itself be masked noise there): a valid R / B sample is then
+        # reproduced exactly by base + offset
+        d = {si: (ui - base[si]) for si, ui, ai in zip(sc, uc, ampc or [medc] * len(sc)) if valid(si, ai, medc, off) and si in base}
         d = fill(d, grid); out[c] = {k: base[k] + d.get(k, 0.0) for k in grid}
     return out
 
-def build_field(gx_path, gy_path):
+def build_field(gx_path, gy_path, *more_gy, glyph_rows=True):
+    """gx = the x displacement on rows, gy (one or more files) = the y displacement on columns; extra gy files add columns (the
+    drag-mid label field has its lens ends in a separate file). glyph_rows=False: no label glyph mask (the label-portal gratings)."""
     gx, gy = load_profiles(gx_path), load_profiles(gy_path)
     rows = {}   # signed y offset → chan → {s: u}  (x displacement along x); rows are kept by their signed offset: the chromatic
     cols = {}   # signed x offset → chan → {s: u}  (y displacement along y)   (R / B) offsets differ top vs bottom
     for off, chans in gx["profiles"].items():
-        for c, t in profiles_of(chans, off).items(): rows.setdefault(off, {}).setdefault(c, []).append(t)
-    for off, chans in gy["profiles"].items():
-        for c, t in profiles_of(chans, 99.0).items(): cols.setdefault(off, {}).setdefault(c, []).append(t)   # columns never cross the label
+        for c, t in profiles_of(chans, off if glyph_rows else 99.0).items(): rows.setdefault(off, {}).setdefault(c, []).append(t)
+    for gpath in (gy_path,) + more_gy:
+        g = gy if gpath == gy_path else load_profiles(gpath)
+        for off, chans in g["profiles"].items():
+            for c, t in profiles_of(chans, 99.0).items(): cols.setdefault(off, {}).setdefault(c, []).append(t)   # columns never cross the label
     def merge(groups):
         out = {}
         for off, chans in groups.items():
@@ -96,7 +107,7 @@ def build_field(gx_path, gy_path):
             for c, lst in chans.items():
                 keys = set().union(*[set(l) for l in lst]); out[off][c] = {k: statistics.mean([l[k] for l in lst if k in l]) for k in keys}
         return out
-    return {"gx": gx, "gy": gy, "rows": merge(rows), "cols": merge(cols), "half": (gx["half"], gy["half"])}
+    return {"gx": gx, "gy": gy, "rows": merge(rows), "cols": merge(cols), "half": (gx["half"], gy["half"]), "files": [os.path.basename(f) for f in (gx_path, gy_path) + more_gy]}
 
 def sample1d(table, s):
     """linear interpolation in a {s: u} table (1-pt grid); 0 beyond its range"""
@@ -228,9 +239,14 @@ def main():
     ap.add_argument("--size", default="220x44"); ap.add_argument("--scale", type=float, default=32.0); ap.add_argument("--px", type=int, default=2)
     ap.add_argument("--stretch", action="store_true", help="the field was measured on another lens size: map it by normalised coordinates")
     ap.add_argument("--dark", help="<gx.json>,<gy.json> the same field measured in dark mode (compared, maps use --field)")
+    ap.add_argument("--amp-floor", type=float, default=0.5, help="validity: amp ≥ this × median (backdrop field)")
+    ap.add_argument("--label-amp-floor", type=float, default=0.25, help="validity floor for the label-portal fields (their gratings fade at the portal edges)")
+    ap.add_argument("--label-lift", help="<gx.json>,<gy.json>[,<gy2.json>…] the MEASURED label-portal field, lifted state → seg-map-label-lift-{r,g,b}.png, #seg-lens-warp-label-lift")
+    ap.add_argument("--label-drag", help="<gx.json>,<gy.json>[,<gy2.json>…] the MEASURED label-portal field, dragged to the divider → seg-map-label-drag-{r,g,b}.png, #seg-lens-warp-label-drag")
     ap.add_argument("--label-from-bg", help="<gain>,<band>[,<portal WxH>]: derive the label layer's maps from the backdrop field — amplitude × gain, edge band compressed × band (native ContentLensing −8.8/−17.5 = 0.503, SDF height 7.04/11.2 = 0.629); with a portal size the band sits on the portal capsule centred in the lens (196x28: inset 12 / 8) and the backdrop's uniform interior part is removed")
     ap.add_argument("--out", default=HERE)
     a = ap.parse_args(); W, H = (float(v) for v in a.size.lower().split("x"))
+    AMP_FLOOR[0] = a.amp_floor
     F = build_field(*a.field.split(","))
     maps = {}; peak = 0.0
     for c in "RGB":
@@ -242,6 +258,14 @@ def main():
         portal = tuple(float(v) for v in parts[2].lower().split("x")) if len(parts) > 2 else None
         for c in "RGB":
             p = os.path.join(a.out, f"seg-map-label-{c.lower()}.png"); _, _, pk = render(p, F, c, W, H, a.px, a.scale, a.stretch, gain, band, portal); lmaps[c] = p; lpeak = max(lpeak, pk)
+    # measured label-portal fields (data session A3, seg-lens-drag-mid.md §5): resampled exactly like the backdrop, no derivation
+    LF = {}
+    for name, spec in (("lift", a.label_lift), ("drag", a.label_drag)):
+        if not spec: continue
+        AMP_FLOOR[0] = a.label_amp_floor; SYMMETRIC[0] = False; Fl = build_field(*spec.split(","), glyph_rows=False); AMP_FLOOR[0] = a.amp_floor; SYMMETRIC[0] = True; LF[name] = Fl; lm = {}; lp = 0.0
+        for c in "RGB":
+            p = os.path.join(a.out, f"seg-map-label-{name}-{c.lower()}.png"); _, _, pk = render(p, Fl, c, W, H, a.px, a.scale, a.stretch, 1.0); lm[c] = p; lp = max(lp, pk)
+        lmaps_measured = globals().setdefault("_LM", {}); lmaps_measured[name] = (lm, lp, Fl)
     # jump statistics: adjacent-pixel steps ≥ 1.5 pt in the top / bottom 20 px rows (the acceptance count), after clamp-to-edge
     def jumps(path):
         w_, h_, rows_ = png_rows(path); n = 0
@@ -253,7 +277,8 @@ def main():
                     a_, b_ = rows_[j][i * 4:i * 4 + 2], rows_[jj][ii * 4:ii * 4 + 2]
                     if max(abs(a_[0] - b_[0]), abs(a_[1] - b_[1])) * a.scale / 255 >= 1.5: n += 1
         return n
-    jump_counts = {os.path.basename(p): jumps(p) for p in list(maps.values()) + list(lmaps.values())}
+    LM = globals().get("_LM", {})
+    jump_counts = {os.path.basename(p): jumps(p) for p in list(maps.values()) + list(lmaps.values()) + [p for lm, _, _ in LM.values() for p in lm.values()]}
     # interior scales from the LOCAL slope away from the centre (row 0 carries a constant ±0.5 pt step at the centre — a level offset between
     # its two halves, not a magnification — so a centre-spanning difference quotient would read 0.987 where the content is at 1.00)
     sx = ((interp_offsets(F["rows"], "G", 0, 70) - interp_offsets(F["rows"], "G", 0, 40)) / 30 + (interp_offsets(F["rows"], "G", 0, -40) - interp_offsets(F["rows"], "G", 0, -70)) / 30) / 2
@@ -268,11 +293,14 @@ def main():
                              "portal_pt": (a.label_from_bg.split(",")[2] if len(a.label_from_bg.split(",")) > 2 else None), "interior": "backdrop uniform part removed (label centre measured undistorted, §2.3)" if len(a.label_from_bg.split(",")) > 2 else "backdrop interior × gain",
                              "source": "seg-lens-drag-mid.md §0 标签场逐点剖面: ContentLensing shares the ClearGlass SDF shape, amount −8.8 vs −17.5, SDF height 7.04 vs 11.2 (原值); the field itself is not measured",
                              "peak_pt": round(lpeak, 2)} if a.label_from_bg else None),
+            "label_measured": {name: {"sampled_substitute": "采样替代（直量）", "files": Fl["files"], "amp_floor": a.label_amp_floor, "symmetrised": False, "measured_lens": Fl["gx"]["lens"], "rows_y": sorted(Fl["rows"]), "cols_x": sorted(Fl["cols"]), "peak_pt": round(lp, 2),
+                                      "filter": f"#seg-lens-warp-label-{name}", "maps": f"seg-map-label-{name}-{{r,g,b}}.png", "source": "remote-ref/seg-lens-drag-mid.md §5 (data session A3)"} for name, (lm, lp, Fl) in LM.items()},
             "edge": "clamp-to-edge outside the capsule (the field continues from the nearest boundary point; the lens clips those pixels)",
             "jumps_ge_1.5pt_top_bottom_20px": jump_counts,
             "sources": ["remote-ref/seg-lens-refraction.md §0 §2 §2.3", "remote-ref/seg-lift-material.md §1", "remote-ref/tools/touch/seg-phase-{gx,gy}-{light,dark}.json (data session, 2026-09-19)"]}
     print(f"maps {w}×{h} px, S {a.scale:g}, peak |u| {peak:.2f} pt; interior du_x/dx {sx:+.4f} (x scale {1 / (1 + sx):.2f}), du_y/dy {sy:+.4f} (y scale {1 / (1 + sy):.3f}); jumps ≥ 1.5 pt (top/bottom 20 px): {jump_counts}")
     if lmaps: print(f"label maps (derived): gain × band {a.label_from_bg}, peak |u| {lpeak:.2f} pt")
+    for name, (lm, lp, Fl) in LM.items(): print(f"label maps (measured, {name}): {', '.join(Fl['files'])}; rows {sorted(Fl['rows'])}, cols {sorted(Fl['cols'])}; peak |u| {lp:.2f} pt")
     if a.dark:
         dk = build_field(*a.dark.split(",")); diffs = []
         for j in range(0, int(H)):
@@ -293,6 +321,8 @@ def main():
 """
     svg = head + filter_rgb("seg-lens-warp", maps, a.scale, f"composite field: {F['gx']['file']} + {F['gy']['file']}")
     if lmaps: svg += "\n" + filter_rgb("seg-lens-warp-label", lmaps, a.scale, f"LABEL LAYER, DERIVED (not measured): the backdrop field's band × {a.label_from_bg.split(',')[0]} amplitude, band × {a.label_from_bg.split(',')[1]}" + (f", on the {a.label_from_bg.split(',')[2]} label portal centred in the lens" if len(a.label_from_bg.split(',')) > 2 else "") + " (ContentLensing −8.8 / 7.04 vs ClearGlass −17.5 / 11.2, seg-lens-drag-mid.md §0); apply to the label copy only")
+    for name, (lm, lp, Fl) in LM.items():
+        svg += "\n" + filter_rgb(f"seg-lens-warp-label-{name}", lm, a.scale, f"LABEL LAYER, MEASURED ({name} state, 采样替代): {' + '.join(Fl['files'])} (data session A3, seg-lens-drag-mid.md §5); apply to the label copy only")
     svg += "\n</svg>\n"
     open(os.path.join(a.out, "lens-filter.svg"), "w").write(svg)
     tpl = os.path.join(HERE, "lens-test.template.html")

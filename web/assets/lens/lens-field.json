@@ -39,7 +39,7 @@
    50.0,
    80.0
   ],
-  "peak_pt": 4.08,
+  "peak_pt": 4.29,
   "interior": {
    "du_x/dx at y 0 (|x| 40–70, local slope)": 0.0004,
    "x scale": 1.0,
@@ -49,24 +49,97 @@
   }
  },
  "label_copy": "measured: not displaced at the centre (seg-lens-refraction.md §2.3); the derived #seg-lens-warp-label bends it only near the ends (README §1b)",
- "label_layer": {
-  "derived_not_measured": true,
-  "from": "backdrop field",
-  "gain": 0.503,
-  "band": 0.629,
-  "portal_pt": "196x28",
-  "interior": "backdrop uniform part removed (label centre measured undistorted, §2.3)",
-  "source": "seg-lens-drag-mid.md §0 标签场逐点剖面: ContentLensing shares the ClearGlass SDF shape, amount −8.8 vs −17.5, SDF height 7.04 vs 11.2 (原值); the field itself is not measured",
-  "peak_pt": 2.04
+ "label_layer": null,
+ "label_measured": {
+  "lift": {
+   "sampled_substitute": "采样替代（直量）",
+   "files": [
+    "seg-phase-label-gx-light.json",
+    "seg-phase-label-gy-light.json"
+   ],
+   "amp_floor": 0.25,
+   "symmetrised": false,
+   "measured_lens": [
+    10.0,
+    602.0,
+    220.0,
+    44.0
+   ],
+   "rows_y": [
+    -10.0,
+    -5.0,
+    0.0,
+    5.0,
+    10.0
+   ],
+   "cols_x": [
+    -90.0,
+    -60.0,
+    -30.0,
+    0.0,
+    30.0,
+    60.0,
+    90.0
+   ],
+   "peak_pt": 9.12,
+   "filter": "#seg-lens-warp-label-lift",
+   "maps": "seg-map-label-lift-{r,g,b}.png",
+   "source": "remote-ref/seg-lens-drag-mid.md §5 (data session A3)"
+  },
+  "drag": {
+   "sampled_substitute": "采样替代（直量）",
+   "files": [
+    "seg-phase-label-dragmid-gx-light.json",
+    "seg-phase-label-dragmid-gy-light.json",
+    "seg-phase-label-dragmid-gy-ends-light.json"
+   ],
+   "amp_floor": 0.25,
+   "symmetrised": false,
+   "measured_lens": [
+    110.0,
+    602.0,
+    220.0,
+    44.0
+   ],
+   "rows_y": [
+    -10.0,
+    -5.0,
+    0.0,
+    5.0,
+    10.0
+   ],
+   "cols_x": [
+    -104.0,
+    -100.0,
+    -96.0,
+    -90.0,
+    -60.0,
+    -30.0,
+    0.0,
+    30.0,
+    60.0,
+    90.0,
+    96.0,
+    100.0,
+    104.0
+   ],
+   "peak_pt": 9.05,
+   "filter": "#seg-lens-warp-label-drag",
+   "maps": "seg-map-label-drag-{r,g,b}.png",
+   "source": "remote-ref/seg-lens-drag-mid.md §5 (data session A3)"
+  }
  },
  "edge": "clamp-to-edge outside the capsule (the field continues from the nearest boundary point; the lens clips those pixels)",
  "jumps_ge_1.5pt_top_bottom_20px": {
   "seg-map-r.png": 0,
   "seg-map-g.png": 0,
   "seg-map-b.png": 0,
-  "seg-map-label-r.png": 0,
-  "seg-map-label-g.png": 0,
-  "seg-map-label-b.png": 0
+  "seg-map-label-lift-r.png": 0,
+  "seg-map-label-lift-g.png": 0,
+  "seg-map-label-lift-b.png": 68,
+  "seg-map-label-drag-r.png": 0,
+  "seg-map-label-drag-g.png": 0,
+  "seg-map-label-drag-b.png": 140
  },
  "sources": [
   "remote-ref/seg-lens-refraction.md §0 §2 §2.3",

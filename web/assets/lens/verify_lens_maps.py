@@ -37,30 +37,42 @@ def read_png(path):
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("--field", required=True); ap.add_argument("--maps", default=HERE); ap.add_argument("--size", default="220x44")
     ap.add_argument("--scale", type=float, default=32.0); ap.add_argument("--px", type=int, default=2)
+    ap.add_argument("--label-lift"); ap.add_argument("--label-drag"); ap.add_argument("--amp-floor", type=float, default=0.5); ap.add_argument("--label-amp-floor", type=float, default=0.25)
     a = ap.parse_args(); W, H = (float(v) for v in a.size.lower().split("x")); hw, hh = W / 2, H / 2
-    F = G.build_field(*a.field.split(",")); fails = 0
+    fails = 0
+    for prefix, spec, glyph in (("seg-map", a.field, True), ("seg-map-label-lift", a.label_lift, False), ("seg-map-label-drag", a.label_drag, False)):
+        if not spec: continue
+        G.AMP_FLOOR[0] = a.amp_floor if glyph else a.label_amp_floor; G.SYMMETRIC[0] = glyph
+        print(f"### {prefix} ← {', '.join(x.split('/')[-1] for x in spec.split(','))} (amp floor {G.AMP_FLOOR[0]})")
+        fails += check_set(G.build_field(*spec.split(","), glyph_rows=glyph), prefix, glyph, a, W, H, hw, hh)
+    sys.exit(1 if fails else 0)
+
+def check_set(F, prefix, glyph, a, W, H, hw, hh):
+    fails = 0
     maps = {}
     for c in "RGB":
-        w, h, rows = read_png(os.path.join(a.maps, f"seg-map-{c.lower()}.png")); maps[c] = (w, h, rows); worst = 0.0
+        w, h, rows = read_png(os.path.join(a.maps, f"{prefix}-{c.lower()}.png")); maps[c] = (w, h, rows); worst = 0.0
         for j in range(h):
             y = (j + 0.5) / a.px - hh
             for i in range(w):
                 x = (i + 0.5) / a.px - hw
                 ux, uy = G.field_at(F, x, y, c, hw, hh, False); p = rows[j][i * 4:i * 4 + 4]
                 worst = max(worst, abs((p[0] - 128) / 255 * a.scale - ux), abs((p[1] - 128) / 255 * a.scale - uy))
-        print(f"A. seg-map-{c.lower()}.png {w}×{h} S {a.scale:g}: decoded − resampled field max |Δ| = {worst:.3f} pt (one byte = {a.scale / 255:.3f})", "OK" if worst <= 0.3 else "FAIL")
+        print(f"A. {prefix}-{c.lower()}.png {w}×{h} S {a.scale:g}: decoded − resampled field max |Δ| = {worst:.3f} pt (one byte = {a.scale / 255:.3f})", "OK" if worst <= 0.3 else "FAIL")
         fails += worst > 0.3
     # B: decoded map vs the raw samples
     def decoded(c, x, y, comp):
         w, h, rows = maps[c]; i = min(w - 1, max(0, int((x + hw) * a.px))); j = min(h - 1, max(0, int((y + hh) * a.px)))
         p = rows[j][i * 4:i * 4 + 4]; return (p[comp] - 128) / 255 * a.scale
     diffs = {"gx (x displacement, rows)": [], "gy (y displacement, columns)": []}
-    for key, prof, comp, axis in (("gx (x displacement, rows)", F["gx"], 0, "x"), ("gy (y displacement, columns)", F["gy"], 1, "y")):
+    gys = [F["gy"]] + [G.load_profiles(os.path.join(os.path.dirname(a.field.split(",")[0]), f)) for f in F["files"][2:]]
+    for key, profs, comp, axis in (("gx (x displacement, rows)", [F["gx"]], 0, "x"), ("gy (y displacement, columns)", gys, 1, "y")):
+      for prof in profs:
         for off, chans in prof["profiles"].items():
             for c, (s, u, amp) in chans.items():
                 med = statistics.median(amp) if amp else 1.0
                 for si, ui, ai in zip(s, u, amp or [med] * len(s)):
-                    if not G.valid(si, ai, med, off if axis == "x" else 99.0): continue
+                    if not G.valid(si, ai, med, (off if axis == "x" else 99.0) if glyph else 99.0): continue
                     x, y = (si, off) if axis == "x" else (off, si)
                     if not G.capsule_inside(x, y, hw, hh): continue
                     diffs[key].append((abs(decoded(c, x, y, comp) - ui), off, c, si, ui, decoded(c, x, y, comp)))
@@ -70,6 +82,6 @@ def main():
         d = sorted(x[0] for x in v); worst = max(v, key=lambda t: t[0]); mean = sum(d) / len(d)
         print(f"   {key}: n={len(v)} mean |Δ| {mean:.2f} pt, median {d[len(d) // 2]:.2f}, ≤ 0.3 pt: {100 * sum(1 for x in d if x <= 0.3) / len(d):.0f} %, worst {worst[0]:.2f} at offset {worst[1]:g} {worst[2]} s={worst[3]:g} (sample {worst[4]:+.2f}, map {worst[5]:+.2f})")
         if mean > 0.3: fails += 1
-    sys.exit(1 if fails else 0)
+    return fails
 
 if __name__ == "__main__": main()

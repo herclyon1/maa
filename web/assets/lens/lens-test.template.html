@@ -30,18 +30,22 @@
         box-shadow:inset 0 0 0 1px rgb(255 255 255 / .126), 0 0 0 1px rgb(0 0 0 / .23)}   /* rim: 1 pt bright line inside (+16/255 on 128 grey) + 1 pt dark line outside (−30/255) ← lens-refraction.md §3 rim.json; no highlight ring */
   /* variants: seg = #seg-lens-warp on the copy of what lies under the lens (track / card), the label copy in an unfiltered layer
      above it (seg-lens-refraction.md §2.3: the native label copy is not displaced); none = the same two layers without the filter */
-  .lens.f-seg .clone{filter:url(#seg-lens-warp)}
+  /* each layer is a 220×44 box (= the filter region: the maps are stretched to the element's own box) holding a 400-wide copy of the
+     card shifted by −(lens position); the filter sits on the box, never on the copy */
+  .lens .layer{position:absolute;left:0;top:0;width:220px;height:44px;overflow:hidden}
+  .lens.f-seg .layer.bg{filter:url(#seg-lens-warp)}
+  .lens .clone,.lens .labels{position:absolute;left:0;top:0;width:400px;pointer-events:none}
+  .lens .clone .scene{border-radius:0}
+  .lens .clone .flat,.scene.lifted > .segctl .flat{display:none}   /* lifted: the flat resting platter IS the lens, so neither the copy nor the scene shows it */
   .lens .clone .segctl span{visibility:hidden}                   /* the filtered copy carries the track, not the labels */
-  .lens .labels{position:absolute;left:0;top:0;width:400px;pointer-events:none}
   .lens .labels .scene{background:transparent}
   .lens .labels .scene > *:not(.segctl){visibility:hidden}       /* only the segment labels, on a transparent layer */
   .lens .labels .segctl{background:transparent}
   .lens .labels .segctl .flat{display:none}
-  .lens.l-warp .labels{filter:url(#seg-lens-warp-label)}     /* ?label=warp: the derived label-layer field on the label copy */
-  body.native .scene{padding-left:0;padding-right:0}          /* ?native=1: the control spans x 20…420 like the native probe (segment centres 120 / 320) */
-  .lens .clone{position:absolute;left:0;top:0;width:400px;pointer-events:none}
-  .lens .clone .scene{border-radius:0}
-  .lens .clone .flat,.scene.lifted > .segctl .flat{display:none}   /* lifted: the flat resting platter IS the lens, so neither the clone nor the scene shows it */
+  .lens.l-warp .layer.lab{filter:url(#seg-lens-warp-label)}      /* ?label=warp: the derived label-layer field (superseded) */
+  .lens.l-lift .layer.lab{filter:url(#seg-lens-warp-label-lift)} /* ?label=lift / drag: the MEASURED label-portal fields (lifted / dragged to the divider) */
+  .lens.l-drag .layer.lab{filter:url(#seg-lens-warp-label-drag)}
+  body.native .scene{padding-left:0;padding-right:0}             /* ?native=1: the control spans x 20…420 like the native probe (segment centres 120 / 320) */
   .bar{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
   button{font:inherit;font-size:15px;line-height:18px;padding:6px 12px;border:0;border-radius:15px;background:rgb(0 136 255 / .18);color:var(--tint)}
   button.on{background:var(--tint);color:#fff}
@@ -68,8 +72,9 @@
   if (q.get("native") === "1") document.body.classList.add("native");
   const scene = document.getElementById("scene"), stats = document.getElementById("stats");
   const lens = document.createElement("div"); lens.className = "lens f-seg";
-  const clone = document.createElement("div"); clone.className = "clone"; lens.appendChild(clone);
-  const labels = document.createElement("div"); labels.className = "labels"; lens.appendChild(labels); scene.appendChild(lens);
+  const bgLayer = document.createElement("div"); bgLayer.className = "layer bg"; const clone = document.createElement("div"); clone.className = "clone"; bgLayer.appendChild(clone);
+  const labLayer = document.createElement("div"); labLayer.className = "layer lab"; const labels = document.createElement("div"); labels.className = "labels"; labLayer.appendChild(labels);
+  lens.appendChild(bgLayer); lens.appendChild(labLayer); scene.appendChild(lens);
   scene.classList.add("lifted");
   const copy = () => { const c = scene.cloneNode(true); c.querySelector(".lens").remove(); c.id = ""; return c; };
   const sync = () => { clone.innerHTML = ""; clone.appendChild(copy()); labels.innerHTML = ""; labels.appendChild(copy()); };
@@ -78,7 +83,7 @@
   const seg = scene.querySelector(".segctl"), r0 = seg.getBoundingClientRect(), s0 = scene.getBoundingClientRect();
   let X = r0.left - s0.left + 2 + (r0.width - 4) / 4 - 110, Y = r0.top - s0.top + 16 - 22;
   if (q.get("lensx")) X = parseFloat(q.get("lensx")) - s0.left - 110;                 // ?lensx=<page x of the lens centre>, e.g. 220 = the divider
-  if (q.get("label") === "warp") lens.classList.add("l-warp");
+  if (["warp", "lift", "drag"].includes(q.get("label"))) lens.classList.add("l-" + q.get("label"));
   /* the clone is placed so that the scene point under the lens centre stays under the lens centre; with zoom z the clone's own
      coordinates are scaled about its top-left, so its offset is (centre − z·(lens position + centre)) / z in zoomed units */
   const place = () => { lens.style.left = X + "px"; lens.style.top = Y + "px"; for (const l of [clone, labels]) { l.style.left = -X + "px"; l.style.top = -Y + "px"; } };

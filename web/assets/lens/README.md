@@ -10,7 +10,8 @@ wires it in (`.segctl .warp{filter:url(#seg-lens-warp)}`).
 |---|---|
 | `gen_lens_maps.py` | resamples a measured field (phase files) into the maps + filter + test page + `lens-field.json` |
 | `seg-map-{r,g,b}.png` | the field, 440×88 (2 px/pt), byte = 128 + u·255/32; one set for light and dark; clamp-to-edge outside the capsule |
-| `seg-map-label-{r,g,b}.png` | DERIVED label-layer field (backdrop × 0.503, band × 0.629), `#seg-lens-warp-label` — see §1b for how far it is from the native |
+| `seg-map-label-lift-{r,g,b}.png`, `seg-map-label-drag-{r,g,b}.png` | the MEASURED label-portal fields (lifted / dragged to the divider), `#seg-lens-warp-label-lift` / `-drag` — §1c (采样替代) |
+| (`seg-map-label-{r,g,b}.png`, `#seg-lens-warp-label`) | the superseded derivation of §1b — removed from the tree, on record in commit 3eb1b5a |
 | `lens-filter.svg` | `#seg-lens-warp`, maps inlined as data URIs (copy the `<svg>` into `index.html` before the scripts) |
 | `lens-field.json` | what the maps hold (sources, interior scales, peak, dark-vs-light) |
 | `verify_lens_maps.py` | decodes the maps and compares them with the resampled field and with every original phase sample |
@@ -85,6 +86,75 @@ ratio — the amount ratio does not carry over to the visible displacement (the 
 band width). Shots: `remote-mock/v4/lens/dragmid/web-dragmid-r2-{light,dark}-{full,zoom}.png`. The data session is measuring the
 portal field directly (A3); when it lands, `gen_lens_maps.py --field` on that pair replaces the derivation.
 
+## 1c Label layer — MEASURED portal fields (data session A3, 2026-09-19) — 采样替代（直量）
+
+The derivations of §1b are superseded (kept as records). The label copy inside the lens is now displaced by the label portal's own
+fields, measured by the data session with a grating rendered as segment content (`seg-lens-drag-mid.md` §5), resampled exactly like
+the backdrop (masking, gap filling, interpolation between the measured rows / columns, clamp-to-edge; no symmetrisation, no scaling):
+
+| set | files (`remote-ref/tools/touch/`) | rows y / columns x (pt from the lens centre) | maps | filter |
+|---|---|---|---|---|
+| lifted, at rest position | `seg-phase-label-gx-light.json` + `seg-phase-label-gy-light.json` | rows −10 … +10 (step 5); columns 0, ±30, ±60, ±90 | `seg-map-label-lift-{r,g,b}.png` | `#seg-lens-warp-label-lift` |
+| dragged to the divider (lens centre x 220) | `seg-phase-label-dragmid-gx-light.json` + `-gy-light.json` + `-gy-ends-light.json` | rows −10 … +10; columns 0, ±30, ±60, ±90 and the ends ±96, ±100, ±104 | `seg-map-label-drag-{r,g,b}.png` | `#seg-lens-warp-label-drag` |
+
+Coordinate system: both sets are in the lens box (220×44 r 22, the same box the backdrop maps use; the portal 196×28 sits centred in
+it, the field outside the portal is the measured value there, clamp-to-edge outside the lens). Apply the filter to the 220×44 label
+layer (the label copy inside it, shifted by −(lens position)) — the filter region is the element's own box, so it must be the lens
+box, not the 400-wide copy. Encoding as the backdrop (byte = 128 + u·255/32). The validity floor for these gratings is 0.25 × the
+median amplitude (they fade to 0.25–0.5 in the last 6 pt of the portal, where the field is largest; `--label-amp-floor`). Dark
+fields are the same as light (the data session measured light only; the backdrop's dark/light agreement is 0.02 pt).
+
+What they hold (seg-lens-drag-mid.md §5): lifted — inside the portal u ≡ 0 (M 1.000), the last 6 pt of the ends compressed to 0.58
+and the top / bottom 6 pt to 0.54; dragged — the last ~10 pt of the ends pulled outward (|s| 86–98: M 1.0 → 1.44, beyond u ±3.9 /
+±7.7), vertical magnification 1.20–1.29 at the ends, R−B 3.0–3.6 pt (≈ 8 pt colour fringe).
+
+Switching between the two sets (the ui session's implementation; an ASSUMPTION until the formula replaces both fields): the lens
+geometry decides — at the rest width 220 the lifted set, at the stretched drag width (244 … 253, `seg-lens-drag-mid.md` §0 过程) the
+drag set, interpolated by the lens width in between (cross-fade of the two filtered label layers, or one layer whose filter scale
+follows the width); when the old page's formula for the portal field lands, both sets are recomputed from it and this rule goes.
+
+Check (`verify_lens_maps.py --field … --label-lift … --label-drag …`):
+```
+### seg-map ← seg-phase-gx-light.json, seg-phase-gy-light.json (amp floor 0.5)
+A. seg-map-r.png 440×88 S 32: decoded − resampled field max |Δ| = 0.063 pt (one byte = 0.125) OK
+A. seg-map-g.png 440×88 S 32: decoded − resampled field max |Δ| = 0.063 pt (one byte = 0.125) OK
+A. seg-map-b.png 440×88 S 32: decoded − resampled field max |Δ| = 0.063 pt (one byte = 0.125) OK
+B. decoded map vs the original phase samples (valid samples, all rows / columns / channels):
+   gx (x displacement, rows): n=3042 mean |Δ| 0.04 pt, median 0.03, ≤ 0.3 pt: 100 %, worst 0.30 at offset 0 G s=110 (sample +0.70, map +1.00)
+   gy (y displacement, columns): n=810 mean |Δ| 0.07 pt, median 0.06, ≤ 0.3 pt: 100 %, worst 0.27 at offset 80 G s=-21 (sample -1.36, map -1.63)
+### seg-map-label-lift ← seg-phase-label-gx-light.json, seg-phase-label-gy-light.json (amp floor 0.25)
+A. seg-map-label-lift-r.png 440×88 S 32: decoded − resampled field max |Δ| = 0.063 pt (one byte = 0.125) OK
+A. seg-map-label-lift-g.png 440×88 S 32: decoded − resampled field max |Δ| = 0.063 pt (one byte = 0.125) OK
+A. seg-map-label-lift-b.png 440×88 S 32: decoded − resampled field max |Δ| = 0.063 pt (one byte = 0.125) OK
+B. decoded map vs the original phase samples (valid samples, all rows / columns / channels):
+   gx (x displacement, rows): n=3048 mean |Δ| 0.01 pt, median 0.00, ≤ 0.3 pt: 100 %, worst 0.35 at offset 10 B s=-101 (sample -5.74, map -5.40)
+   gy (y displacement, columns): n=821 mean |Δ| 0.09 pt, median 0.02, ≤ 0.3 pt: 91 %, worst 0.72 at offset 60 B s=-14 (sample -3.98, map -3.26)
+### seg-map-label-drag ← seg-phase-label-dragmid-gx-light.json, seg-phase-label-dragmid-gy-light.json, seg-phase-label-dragmid-gy-ends-light.json (amp floor 0.25)
+A. seg-map-label-drag-r.png 440×88 S 32: decoded − resampled field max |Δ| = 0.063 pt (one byte = 0.125) OK
+A. seg-map-label-drag-g.png 440×88 S 32: decoded − resampled field max |Δ| = 0.063 pt (one byte = 0.125) OK
+A. seg-map-label-drag-b.png 440×88 S 32: decoded − resampled field max |Δ| = 0.063 pt (one byte = 0.125) OK
+B. decoded map vs the original phase samples (valid samples, all rows / columns / channels):
+   gx (x displacement, rows): n=3129 mean |Δ| 0.01 pt, median 0.00, ≤ 0.3 pt: 99 %, worst 0.61 at offset -10 R s=-107 (sample +6.76, map +6.15)
+   gy (y displacement, columns): n=1464 mean |Δ| 0.10 pt, median 0.05, ≤ 0.3 pt: 91 %, worst 2.35 at offset 100 B s=-17 (sample -7.37, map -5.02)
+```
+The worst points sit on the portal edge where adjacent samples differ by 7 pt (the map pixel centre falls between them) — every
+mean is ≤ 0.10 pt, 88–100 % of the samples are within 0.3 pt.
+
+Mid-drag check vs `seg-lens-drag-mid.md` §0c (`lens-test.html?native=1&lensx=220&label=drag`, headless Chrome 440×956 @3x, both
+filters on their 220×44 layers; ink = pixels darker than 110 light / lighter than 150 dark in the glyph box rows 116–150):
+
+| item | native (§0c) | web light | web dark |
+|---|---|---|---|
+| 左「早」ink | −37 % (compressed / torn at x 110–119) | +41 % (smeared outward over the same 10 pt, stretched to 15.7 pt tall) | +1 % (height 11.33 → 14.0) |
+| 右「班」height | 11.33 → 15.0 (+32 %) | 11.67 → 15.33 (+31 %) | 12.0 → 14.33 (+19 %) |
+| colour fringe right / left end | 7.7 / 1.7 pt (dark 8.0 / 1.3) | 0.67 / 2.0 pt | 7.67 / 7.67 pt |
+
+The right label's stretch now matches; the left glyph is displaced by the right amount but the web smears it (point-sampled
+displacement of anti-aliased strokes plus the lighten merge thickening edges) where the native compresses it — an ink count cannot
+separate the two, the zoom `web-dragmid-measured-ends-4x.png` shows it; the fringes read 2 / 0.7 pt on the light page (the native's
+8 pt band is measured on the grating, ours on black glyphs) and 7.7 / 7.7 on the dark page. Shots:
+`remote-mock/v4/lens/dragmid/web-dragmid-measured-{light,dark}-{full,zoom}.png`, `-ends-4x.png`.
+
 ## 2 Resampling (no analytic model)
 
 Each profile is masked where `amp < 0.5·median` (platter ends) and, on the centre row, within |s| ≤ 20 (the 「早班」 glyph, §2.1);
@@ -158,7 +228,9 @@ native captures. Safari standalone shots + frame numbers: data session.
 
 ```
 R=~/Money/styl-work/remote-ref/tools/touch
-cd web/assets/lens && python3 gen_lens_maps.py --field $R/seg-phase-gx-light.json,$R/seg-phase-gy-light.json --dark $R/seg-phase-gx-dark.json,$R/seg-phase-gy-dark.json --label-from-bg 0.503,0.629,196x28
-python3 verify_lens_maps.py --field $R/seg-phase-gx-light.json,$R/seg-phase-gy-light.json
+cd web/assets/lens && python3 gen_lens_maps.py --field $R/seg-phase-gx-light.json,$R/seg-phase-gy-light.json --dark $R/seg-phase-gx-dark.json,$R/seg-phase-gy-dark.json \
+  --label-lift $R/seg-phase-label-gx-light.json,$R/seg-phase-label-gy-light.json \
+  --label-drag $R/seg-phase-label-dragmid-gx-light.json,$R/seg-phase-label-dragmid-gy-light.json,$R/seg-phase-label-dragmid-gy-ends-light.json
+python3 verify_lens_maps.py --field $R/seg-phase-gx-light.json,$R/seg-phase-gy-light.json --label-lift … --label-drag …   # same file lists
 python3 gen_seg_keys.py
 ```
