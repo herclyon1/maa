@@ -89,3 +89,19 @@ that adds a second way to do the same thing, or a control outside a tab, or a bu
 where a toggle belongs, is a regression and gets reverted, not argued about.
 
 The rule-by-rule check against Apple's guidelines is `HIG-CHECKLIST.md`; change that file together with the page.
+
+---
+
+## Acceptance runs on the simulator, not on the Mac (2026-09-19)
+
+Supervisor ruling, 2026-09-19 08:3x, after commit c3b2b00 matched the native lens in the
+macOS offscreen WebKit snapshot (`wksnap`) and then, on the iOS simulator, sampled the whole
+backdrop inside the lens from about 16 pt above and dropped the ring-shadow / inner-shadow
+band at the capsule ends. iOS WebKit and macOS WebKit are different renderers.
+
+| Rule | What it means |
+|---|---|
+| **The simulator is the only judge** | Every commit that is a candidate for `main` gets the data session's static check on the iOS simulator, as the home-screen standalone web app, at 3x, same coordinates as the native capture. Release is decided on those numbers only. |
+| **`wksnap` is a pre-check** | The macOS offscreen WebKit snapshot is run before a commit is handed over, to catch what is obviously wrong. A commit that passes `wksnap` has passed nothing yet. |
+| **iOS/macOS differences are settled on the simulator** | When the two renderers disagree, the cause is found with switch experiments on the simulator (one URL switch per layer or per hypothesis, one 3x screenshot and one number table each). Nothing about the cause is inferred from `wksnap`, and a hypothesis stays in the experiment list until a simulator measurement confirms it. |
+| **Instruments are fixed, numbers are not** | A recorder or comparison script that is found to be biased is fixed and rerun; results are never corrected by shifting frames or columns in a table. |
