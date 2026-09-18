@@ -7,6 +7,8 @@
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
+<script>/* standalone 暗色：原生暗色状态栏区是黑的；default 会画一条浅色（数据会话 51b874b 暗色截图）。iOS 读的是文档里的这个 meta，页面一进来按配色切成 black（亮色仍 default：浅底黑字）。 */
+if (matchMedia("(prefers-color-scheme: dark)").matches) { const m = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]'); if (m) m.content = "black"; }</script>
 <meta name="apple-mobile-web-app-title" content="遥控">
 <title>游戏机遥控</title>
 <link rel="manifest" href="manifest.webmanifest?v=20260918135248">
@@ -59,13 +61,18 @@
     --tab-lift-sx:1.266; --tab-lift-sy:1.185;         /* (94 + --ios-touch-tab-lift-w 25) / 94, (54 + --ios-touch-tab-lift-h 10) / 54 */
     --knob-lift-sx:1.635; --knob-lift-sy:1.667;       /* --ios-touch-switch-lift-w 60.5 / 37, -h 40 / 24 (peak) */
     --knob-hold-sx:1.568; --knob-hold-sy:1.583;       /* settled 58 / 37, 38 / 24 (spec L*, Kit Toggle Pressed 58×38) */
-    /* alert button = pane − 37/255 (light) / pane + 35/255 (dark) ← ⑨: plus-darker rgb(218) / plus-lighter rgb(35); Chrome fallback α .16 */
+    /* alert button = pane − 30.9/255 (light) / pane + 27.9/255 (dark) ← alert-pipeline-plan §1.8: plus-darker rgb(224) / plus-lighter rgb(28); Chrome fallback α .131 / .127 */
     --alert-button-blend:plus-darker;
+    /* alert text ← pipeline §1.9: 说明 = 面板 −0.4 → plus-darker rgb(153)（Chrome 常量 236 − 102 = 134）；停止 = M_red × 按钮底，亮色白底实测 (235,42,45) */
+    --alert-msg-color:rgb(153 153 153); --alert-msg-blend:plus-darker; --alert-msg-fallback:rgb(134 134 135);
+    --alert-destructive:rgb(235 42 45);
   }
   @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]){ --alert-button-blend:plus-lighter; }
+    :root:not([data-theme="light"]){ --alert-button-blend:plus-lighter;
+      /* 暗：说明 = 面板 +0.3 → plus-lighter rgb(77)（Chrome 有 plus-lighter，常量只作双保险：暗面板 ≈ 35 + 76.5 = 111）；停止 = M_red暗 × 按钮底（暗面板 ≈ 35 + 27.9 → .247）= (255,105,108) ← pipeline §1.9 公式代入 */
+      --alert-msg-color:rgb(77 77 77); --alert-msg-blend:plus-lighter; --alert-msg-fallback:rgb(111 111 111); --alert-destructive:rgb(255 105 108); }
   }
-  :root[data-theme="dark"]{ --alert-button-blend:plus-lighter; }
+  :root[data-theme="dark"]{ --alert-button-blend:plus-lighter; --alert-msg-color:rgb(77 77 77); --alert-msg-blend:plus-lighter; --alert-msg-fallback:rgb(111 111 111); --alert-destructive:rgb(255 105 108); }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   /* Sizes are the probe's px values at the default text size (tokens.css), so the
      page no longer follows Settings › 显示与亮度 › 文字大小 (the old `-apple-system-body`
@@ -266,17 +273,16 @@
   .row:has(> .sw):active,.row:has(select):active{background:color-mix(in srgb, var(--ink) 6%, var(--card))}
   .row > label{flex:1 1 0;min-width:40%;font-size:var(--ios-body-size);line-height:var(--ios-body-lh)}
   .row > :not(label){flex:0 0 auto;max-width:48%}
-  .row:has(.pills),.row:has(.picks),.row:has(.pillbox),.row:has(input[type=text]:not(.short)),
-  .row:has(pre),.row:has(.ro:not(.short)){flex-direction:column;align-items:stretch;gap:8px}
-  .row:has(.pills) > :not(label),.row:has(.picks) > :not(label),.row:has(.pillbox) > :not(label),
-  .row:has(input[type=text]:not(.short)) > :not(label),.row:has(.ro:not(.short)) > :not(label){max-width:none;align-self:flex-end}
+  .row:has(.pills),.row:has(.picks),.row:has(.pillbox),
+  .row:has(pre){flex-direction:column;align-items:stretch;gap:8px}
+  .row:has(.pills) > :not(label),.row:has(.picks) > :not(label),.row:has(.pillbox) > :not(label){max-width:none;align-self:flex-end}
   .row .hint{display:block;color:var(--ios-settings-subtitle);font-size:var(--ios-sub-size);margin-top:1px;line-height:var(--ios-sub-lh)}   /* 副题 15/18、设置自家副题灰 ← AX33d/px33d */
-  .row .ro{color:var(--dim);font-size:var(--ios-body-size);text-align:right}
+  .row .ro{color:var(--dim);font-size:var(--ios-body-size);text-align:right}   /* 只读值 = 设置值行：同一行右侧 secondaryLabel（AX-46 值行；不再「标题一行、值另起一行」） */
   /* Footers and notes under a group, grey like Settings' explanatory text. */
   .group > p.hint,.group > .hint{margin:0;padding:10px var(--ios-row-text-x);color:var(--dim);font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh)}
   .warn{margin:8px 16px 0;padding:0;background:transparent;color:var(--warn);font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh)}
   /* Controls. */
-  .row input[type=text]:not(.short){width:100%;max-width:100%;text-align:left;padding:10px 12px;font-size:var(--ios-body-size)}
+  .row input[type=text]:not(.short){width:auto;min-width:96px;max-width:48%;text-align:right}   /* 行内文本 = 数字同款紧凑值框，右对齐同一行 ← NUMBERS 49；老页的整行灰条不是 iOS 的形 */
   /* Number / short text: the compact value box (tertiary fill, radius 8) a compact
      date picker shows in a Settings row. */
   input[type=text],input[type=number],select{
@@ -383,6 +389,7 @@
   @keyframes seg-in{from{opacity:.81}to{opacity:1}}
   .segctl button.dim{opacity:var(--ios-touch-segment-dim-opacity);transition:opacity var(--ios-touch-segment-dim-duration) ease-out}   /* 按下未选中段：标签 1 → .2，ease-out .43 s（--ios-touch-segment-dim-*）← spec §1 G15；按下不改值 */
   .segctl + section > .group:first-child,.segctl + section > h2{margin-top:0}
+  .segctl[hidden]{display:none}   /* 只在「状态」首页出现（验收 2026-09-18）；layoutTabs 按标签隐藏 */
   /* 待保存小字：行内右下 11 pt（同 .sent） */
   .row .cap.edit{color:var(--accent)}
   /* 停止一切之后：回执卡 = 值行「已停止 · 下一趟 21:30 照常」+ 回执原文脚注 */
@@ -433,29 +440,36 @@
                 box-shadow:0 4px 16px color-mix(in srgb, var(--accent) 35%, transparent)}
   .topbar .navbtn:active{opacity:.7}
   pre{margin:0;padding:11px 16px;white-space:pre-wrap;font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);color:var(--dim);font-family:inherit}
-  dialog{border:0;background:transparent;color:var(--ink);border-radius:var(--ios-alert-radius);padding:0;width:var(--ios-alert-w);max-width:calc(100vw - 32px);overflow:visible}   /* 弹窗 320 r34 ← 探针 _UIAlertControllerPhoneTVMacView */
+  dialog{border:0;background:transparent;color:var(--ink);border-radius:var(--ios-alert-radius);padding:0;width:var(--ios-alert-w);max-width:calc(100vw - 32px);overflow:hidden;   /* .pane 比框大 60 pt 让模糊也采框外内容（CABackdropLayer marginWidth 60.2 ← ⑨ / paramdiff）；圆角由 .pane 自己的 clip-path 裁（见下）——dialog 上加 clip-path 会让 Chrome 的 backdrop-filter 只能采到 dialog 内部（clip-path 成了 backdrop root，模糊失效）；Safari 对合成层只按 overflow 矩形裁不裁圆角（数据会话 1eb6a3e 四张直角） */
+         position:fixed;left:0;right:0;margin:0 auto;top:calc(50% + 14px);bottom:auto;translate:0 -50%}   /* 弹窗 320 r34 ← 探针 _UIAlertControllerPhoneTVMacView；位置 = standalone 整屏原生 frame (60, 406, 320, 172) ← ④：水平居中，竖向中心比整屏中心低 14（406 + 86 − 478）；用 translate 不用 transform，让出现动画的 scale 不打架 */
   /* the glass is a separate layer under the content: blur 20 (= 5 ÷ backdrop scale .25) · saturate 1.94 · brightness 1.071 + white .538 (dark 1.73 / .755 / .135) = 端到端实测 ← ⑨ --ios-alert-glass-*；
      a sibling, not the host, so the buttons' plus-darker can blend with it (a blend inside a backdrop-filter element never sees that element's backdrop in WebKit) */
-  dialog > .pane{position:absolute;inset:0;z-index:-2;border-radius:inherit;background:var(--alert-fill);backdrop-filter:var(--ios-alert-glass-filter);-webkit-backdrop-filter:var(--ios-alert-glass-filter);box-shadow:var(--glass-rim);pointer-events:none}
+  dialog > .pane{position:absolute;inset:-60px;z-index:-2;border-radius:0;clip-path:inset(60px round var(--ios-alert-radius));background:var(--alert-fill);   /* 外扩 60 = marginWidth 60.2 ← ⑨；自己用 clip-path 裁回 320×172 r34：采样区仍是外扩后的整块（两端 backdrop-filter 都按元素框采样、再按 clip-path 裁输出） */backdrop-filter:var(--ios-alert-glass-filter);-webkit-backdrop-filter:var(--ios-alert-glass-filter);box-shadow:none;pointer-events:none}   /* 无描边、无阴影 ← alert-pipeline-plan #10（glassBackground inputShadowAmount 0，链上无 shadow 层）；边缘亮线是 SDF 高光，另做 */
   /* paint order inside the dialog's stacking context: pane (z −2) → button overlays (z −1, blend with the pane) → text; the buttons must NOT be stacking contexts (no z-index / isolation) or the blend would be isolated */
   dialog > :not(.pane){position:relative}
   dialog[open]{animation:alert-in var(--ios-motion-alert-duration) var(--ios-motion-alert-easing)}                                   /* 出现 scale 1.2→1 + 淡入 0.40 s ω22.86 ← 探针 CASpringAnimation k522.4 c45.71 */
   dialog[open].closing{animation:alert-out var(--ios-motion-alert-duration) var(--ios-motion-alert-easing) forwards}                  /* 消失只淡出，同一 spring ← 探针 */
   @keyframes alert-in{from{opacity:0;transform:scale(1.2)}to{opacity:1;transform:none}}
   @keyframes alert-out{to{opacity:0}}
-  dialog h2{padding:var(--ios-alert-title-top) var(--ios-alert-pad-x) 0;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight);color:var(--ink);text-align:center;display:block}   /* 标题 Semibold 17，顶 +22，左右 30 ← 探针 */
+  dialog h2{padding:var(--ios-alert-title-top) var(--ios-alert-pad-x) 0;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight);color:var(--ios-label);text-align:left;display:block}   /* 标题 Semibold 17，帧 (30, 22, 260, 20.33) 左起 ← 探针 ④ / AX-48d（标题框 x 90 = 60 + 30，宽 260）；色 = 矩阵 e −1 钳成纯黑（暗 +.95 ≈ 白）= labelColor ← pipeline §1.9 */
   dialog::backdrop{background:var(--ios-alert-dimming)}                      /* 遮罩 (0,0,0).2 / 暗 .48 ← 探针 UIDimmingView / ⑨ */
-  .dlg-b{padding:var(--ios-alert-msg-gap) var(--ios-alert-pad-x) 16px;max-height:52vh;overflow:auto;font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);color:var(--dim);text-align:center}   /* 正文 15 secondaryLabel，标题下 7.33 ← 探针 */
+  .dlg-b{padding:var(--ios-alert-msg-gap) var(--ios-alert-pad-x) 20.33px;max-height:52vh;overflow:auto;font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);text-align:left;color:var(--alert-msg-fallback)}   /* 正文 15，帧 (30, 49.67, 260, 38) 左起，标题下 7.33 ← 探针 ④；底距 20.33 = 按钮顶 108 − 49.67 − 38 ← ④ */
+  #alert-m{color:var(--alert-msg-color);mix-blend-mode:var(--alert-msg-blend)}   /* 纯文字说明 = 面板 −0.4（亮）/ +0.3（暗）← pipeline §1.9：plus-darker 叠 rgb(153) = D + .6 − 1 = D − .4；暗 plus-lighter rgb(77) = D + .3。只对纯文字块混合——确认框的改动清单带自己的颜色，不混合 */
+  @supports not (mix-blend-mode: plus-darker){ #alert-m{color:var(--alert-msg-fallback);mix-blend-mode:normal} }   /* Chrome：常量 = 236 − 102 ← ⑨ 面板 236 与 pipeline §1.9 实测 −102 */
   dialog .acts{border-top:0;display:grid;grid-template-columns:1fr 1fr;gap:var(--ios-alert-button-gap);padding:0 var(--ios-alert-button-inset) var(--ios-alert-button-inset)}
-  dialog .acts button{min-height:var(--ios-alert-button-h);height:var(--ios-alert-button-h);padding:0 12px;border-radius:var(--ios-alert-button-radius);text-align:center;background:transparent;color:var(--accent);font-weight:var(--ios-medium-weight);overflow:hidden;
+  dialog .acts button{min-height:var(--ios-alert-button-h);height:var(--ios-alert-button-h);padding:0 12px;border-radius:var(--ios-alert-button-radius);text-align:center;background:transparent;color:var(--ios-label);font-weight:var(--ios-medium-weight);overflow:hidden;   /* 「取消」字 = labelColor 纯黑/纯白（矩阵 e −1 / +.95）← pipeline §1.9，不是 tint */
                       transition:background var(--ios-motion-alert-button-duration) var(--ios-motion-ease-in-out)}   /* 按钮 48 r24、字 Medium 17 ← 探针；按下/松开 0.1 s ease-in-out ← 探针 */
-  /* button fill = pane − 37/255 ← ⑨: an overlay under the label that blends with the pane; the label itself stays labelColor / tint */
-  dialog .acts button::before{content:"";position:absolute;inset:0;border-radius:inherit;background:var(--ios-alert-button-overlay);mix-blend-mode:var(--alert-button-blend);z-index:-1}
-  @supports not (mix-blend-mode: plus-darker){ dialog .acts button::before{background:var(--ios-alert-button-fallback);mix-blend-mode:normal} }   /* Chrome：α .16 */
-  dialog .acts button.primary::before{display:none}
+  /* button fill = pane − 30.9/255 (−0.121; dark + 27.9 = +0.109) ← alert-pipeline-plan §1.8: an overlay under the label that blends with the pane; the label itself stays labelColor */
+  dialog .acts button::before{content:"";position:absolute;inset:0;border-radius:inherit;background:var(--ios-alert-button-overlay);mix-blend-mode:var(--alert-button-blend);z-index:-1;
+                              transition:opacity var(--ios-motion-alert-button-duration) var(--ios-motion-ease-in-out)}   /* 按下：底层 opacity 1 → .4，.1 s easeInOut ← ⑤ _UIAlertControllerFilledBackground / paramdiff 51b874b */
+  dialog .acts button:active,dialog .acts button.pressed{background:transparent}
+  dialog .acts button:focus-visible,dialog .acts button:focus{outline:none}   /* showModal 自动聚焦第一个钮，Safari 画蓝色焦点环；原生弹窗没有（数据会话 51b874b 截图） */
+  dialog .acts button:active::before,dialog .acts button.pressed::before{opacity:.4}
+  @supports not (mix-blend-mode: plus-darker){ dialog .acts button::before{background:var(--ios-alert-button-fallback);mix-blend-mode:normal} }   /* Chrome：等值常量 α .131（30.9 / 236）/ 暗 .127 ← pipeline §1.8 + ⑨ 面板值 */
+
   dialog .acts button::after{display:none}
-  dialog .acts button.primary{background:var(--accent);color:#fff}
-  dialog .acts button.danger{color:var(--bad)}
+  dialog .acts button.primary{color:var(--ios-tint)}   /* 默认动作 = 同一块底 + systemBlue 字（UIAlertController 没有填色钮；48d 移除小组件弹窗两钮同底；systemBlue ← ⑧ tintColor） */
+  dialog .acts button.danger{color:var(--alert-destructive);background:transparent}   /* 「停止」字 = M_red × 按钮底，白底亮色实测 (235,42,45) ← pipeline §1.9；background 必须重申透明——`.acts button.danger{background:var(--card)}`（416 行，行式列表的红字行）特异性更高，之前把这颗按钮盖成纯白（数据会话 cb162d6 取样 (255,255,255)） */
   dialog .acts.stack{grid-template-columns:1fr}
   .diff{font-size:var(--ios-sub-size);padding:7px 0;border-bottom:var(--ios-separator-h) solid var(--line);text-align:left;color:var(--ink)}
   .diff:last-child{border-bottom:0}
