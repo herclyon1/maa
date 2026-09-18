@@ -537,10 +537,11 @@
   .segctl .rimb > *{position:absolute;pointer-events:none;opacity:var(--lp, 0);box-sizing:border-box}
   /* ④ #21 inner shadow (keyfill-highlight.md §5.2; layer keys seg-lens-refraction.md §1c(b): invertsShadow 1, shadowPathIsBounds 1, r22 capsule,
      black .06, radius 3, offset (0, 7), masksToBounds 1): a CA inner shadow = the complement of the shape shifted by the offset, Gaussian-blurred,
-     clipped to the shape — CSS `box-shadow: inset` is the same construction (blur = 2σ). Drawn with the three values the probe MEASURED on the
-     raster (§5.2, 测量值): plateau .043, half-value edge lens top + 8, σ 2.8 → offset 8, blur 5.6, black .043 (the keys' .06 / 7 / 3 → how CA
-     turns shadowRadius into σ and rounds the offset is unread). The three ride the lift like the native layer's (§1c(b): offset, opacity and
-     radius on one curve → × --lp). Black on the dark theme's black page = invisible, as measured (§1c(e) dark: 0). */
+     clipped to the shape — CSS `box-shadow: inset` is the same construction (blur = 2σ). 采样替代 (predict-seg-hold.md §0 item 4): the three
+     values are the probe's raster readings, not the keys — plateau .043, half-value edge lens top + 8, σ 2.8 → offset 8, blur 5.6, black .043;
+     the keys read .06 / (0, 7) / radius 3 and CA's rasterisation of them (radius → σ, offset rounding, whether opacity is multiplied again) is
+     with the old page session's decompile — replaced by the read conversion the moment it lands. The three ride the lift like the native layer's
+     (§1c(b): offset, opacity and radius on one curve → × --lp). Black on the dark theme's black page = invisible, as measured (§1c(e) dark: 0). */
   .segctl .rimb .ish{inset:0;border-radius:inherit;box-shadow:inset 0 calc(8px * var(--lp, 0)) calc(5.6px * var(--lp, 0)) 0 rgb(0 0 0 / .043)}
   /* the SVGs: lens-box coordinates inside a 12 px margin (the ring shadow's blur reaches 3σ = 9 pt out, the dark line .667); width / height attributes = box + 24 */
   .segctl .rimb svg,.segctl .hlk,.segctl .hlw{overflow:visible}
@@ -560,9 +561,11 @@
      lie on (B_track from the theme's --bg + --ios-segment-track), the angular factor k(x)/k_tip along the arcs as the stroke's gradient
      (stop-opacity = the §5.1 formula at n_x = −1 … 0), and × (3 − 2B_page)/(3 − 2B_track) above / below the track rows as the group's mask.
      Known residual (verification, not tuned): with these keys the top / bottom rows come out 7–9 levels lighter than the native 601 / 646
-     (predicted −18.9 / −21.3 vs −26.6 / −29.9); the ends match (col 111 192.9 vs 192.4). Unread and able to explain it: whether the CPU loads the
-     Amount uniform as 1/amount − 2 (the #36 layer's SDFNode::apply does — then k = v·ang and the rows predict −46 / −33 per third-row vs the
-     measured −47 / −33), wants_highlight_bias_correction / highlight_extension (GlassBackgroundUniformsExt +23/+24), the EDR factor of the spread. */
+     (predicted −18.9 / −21.3 vs −26.6 / −29.9); the ends match (col 111 192.9 vs 192.4). Read (predict-seg-hold.md §0 3c, keyfill-highlight.md
+     §5.1): dir = (sin θ, −cos θ) = (1, 0) (render 0x1c3993f44 / 0x1c39940ec / 0x1c399471c), the Ext block extension 1 / bias-correction 1 /
+     stroke 0 / luma-complement 0, EDR f = 0. The two things still unread that could carry the difference: (a) whether the CPU loads the Amount
+     uniform as 1/amount − 2 (the #36 layer's SDFNode::apply does — then k = v·ang and the rows predict −46 / −33 per third-row vs the measured
+     −47 / −33; old page session), (b) the SpreadSDR cos term S (read −.5; the data session's two sdfset trials separate it). */
   .segctl .rimb rect.kf{fill:none}
   /* ① #36 CASDFKeyFillHighlightEffect layer + vibrantColorMatrix (keyfill-highlight.md §2 / §3, the 22 keys of seg-lens-refraction.md §1b #36):
      α(e) over the depth e into the capsule = main band (h 1, curvature .75 → .25 + .75(1 − e)) + diffuse tail (h 8, linear, bias 1/(.15·.5) − 2 =
@@ -572,8 +575,13 @@
      through the matrix (predict-seg-hold.md §0 item 6: main band, diffuse key, diffuse fill; summed-α would give 35 on the dark edge row, three
      passes 44.0, measured 45.3), so there are two pairs in paint order: .hlk.m, .hlw.m (main band), .hlk.d, .hlw.d (diffuse; key and fill never
      overlap, one pair carries both). Rings: 1/3 pt over the first pt, 1 pt to
-     8 pt; per-ring α = the formula's mean over the ring (hard-edged rings, no fwidth antialiasing: the measured dark edge row 45.3 = 1.208 × 37.5
-     is the unattenuated mean 1.209; with a 1/3 pt fwidth it would read 39.6 — the SDF layer's fwidth unit is unread). Angular fall-off along the
+     8 pt; per-ring α = the formula's mean over the ring — hard-edged rings: the shader's fwidth antialiasing term (aa = saturate(e/fw + .5) at
+     both band edges) is not drawn because the unit of fw on this layer (device px at which contentsScale) is unread; the difference of the three
+     passes to the measured dark edge row (44.3 vs 45.3) stays recorded as unread, not patched. Engine fact: the white plus-lighter stack clamps
+     the SUM at 255 where the native clamps V(b) = min(255, .9118·b + 37.5) before the α mix — the two agree for backdrops ≤ .9354·255 (238.5)
+     and differ only on brighter ones, i.e. the page rows under the bottom light line (642–645): +1.1 / +1.6 / +1.1 / +2.7 over predict-seg-hold
+     §1; the exact form would be one backdrop-filter: contrast(.756) brightness(1.206) (= V with its clamp) per ring under opacity α — 13
+     backdrop filters, not done (监督局 2026-09-19). Angular fall-off along the
      arcs as the strokes' gradients: main sat((cos φ − .174)/.826) (gone at 80° from the top → no light line at the ends, §0a), diffuse the first
      ring's ratio (cos .6155: gone at 52°; the deeper rings fall off faster than this — ≤ 2 levels on the arcs). The dark theme needs no separate
      values: the same map on B = 0 gives .1471·α → 45.3 at the edge row, 10.0 at 603 (§3 table). */
