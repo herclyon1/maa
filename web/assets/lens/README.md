@@ -378,7 +378,10 @@ not exact, the transform is).
 recomputation `tools/lens/validate_tab.py`, 2026-09-19): the centre magnification 1.22 measured by the phase method is **two
 transforms, not a shader term** — ① the three `_UITabButton`s of the SelectedContentView (the source of `liftedContentViewPortal`,
 i.e. the copy inside the lens; the measurement's PatternView is another subview of it) carry transform scale **1.16** about their
-own centres while lifted (icon 29.33 → 34.03, TitleWrapper 94 → 109.04; 1 at rest); ② the whole floating platter
+own centres while lifted (icon 29.33 → 34.03, TitleWrapper 94 → 109.04; 1 at rest; the data's supplementary read
+`tools/uiprobe/uiprobe-sdf-tabpat-{rest,lift}-light.json`: the measurement's PatternView, a direct subview of the
+SelectedContentView as well, reads transform (1.16, 1.16) about its own centre (220, 904) while lifted and 1 at rest —
+UIKit sets the 1.16 on each direct subview; the SelectedContentView itself stays at 1); ② the whole floating platter
 `_UITabBarItemPlatterView` presents at scale **1.0516** about its centre (220, 904) during the lift (model identity; presFrame
 (75.93, 871.40, 288.14, 65.20); the lens inside it (79, 869, 110, 70) → (71.72, 867.19, 115.68, 73.61)); 1.16 × 1.0516 = 1.220.
 The four displacement stages act in the lens's 110×70 model space (BackdropView zoom 0 / scale 1 on every backdrop layer). The
