@@ -29,11 +29,12 @@
      of the scene — the filtered copy of what lies under the lens and the filtered label copy — both shifted by −(lens position) */
   .lens{position:absolute;z-index:2;width:220px;height:44px;border-radius:22px;overflow:hidden;touch-action:none;cursor:grab;   /* above the labels (they carry z-index 1) */
         box-shadow:inset 0 0 0 1px rgb(255 255 255 / .126), 0 0 0 1px rgb(0 0 0 / .23)}   /* rim: 1 pt bright line inside (+16/255 on 128 grey) + 1 pt dark line outside (−30/255) ← lens-refraction.md §3 rim.json; no highlight ring */
-  /* each layer is the lens box EXTENDED by 10 pt on every side (the maps cover that; lens-field.json layer_pt), overflow hidden so its
-     bounding box is its border box in every engine, holding a 400-wide copy of the card shifted by −(lens position) + 10. The .lens
-     capsule clips the result. The source must extend past the lens: a layer equal to the lens box feeds transparent to the outward
-     sampling at the edges → 1-px coloured lines (README §0.3) */
-  .lens .layer{position:absolute;left:-10px;top:-10px;width:240px;height:64px;overflow:hidden}
+  /* each layer is the lens box (overflow hidden: its bounding box is its border box in every engine) holding a 400-wide copy of the
+     card shifted by −(lens position). The map's samples never leave the box (clamp_to_edge is baked into the map, formula.md §2),
+     the map's B channel masks the output. The label layer is clipped to the capsule BEFORE the filter (the native portal #20 clips
+     the segment content with r 22, then ClearGlass displaces: 先裁再位移); the copy of what lies under the lens keeps the box */
+  .lens .layer{position:absolute;left:0;top:0;width:220px;height:44px;overflow:hidden}
+  .lens .layer.lab{border-radius:22px}
   .lens.f-seg .layer.bg{filter:url(#seg-lens-f-bg-220)}
   .lens.f-seg .layer.lab{filter:url(#seg-lens-f-lab-220)}
   .lens .clone,.lens .labels{position:absolute;left:0;top:0;width:400px;pointer-events:none}
@@ -78,8 +79,9 @@
   lens.style.width = LW + "px"; lens.style.height = LH + "px"; lens.style.borderRadius = Math.min(22, LH / 2) + "px";
   const bgLayer = document.createElement("div"); bgLayer.className = "layer bg"; const clone = document.createElement("div"); clone.className = "clone"; bgLayer.appendChild(clone);
   const labLayer = document.createElement("div"); labLayer.className = "layer lab"; const labels = document.createElement("div"); labels.className = "labels"; labLayer.appendChild(labels);
-  const M = 10;                                                  /* the layers' extension beyond the lens (lens-field.json filter.layer) */
-  for (const l of [bgLayer, labLayer]) { l.style.width = (LW + 2 * M) + "px"; l.style.height = (LH + 2 * M) + "px"; }
+  const M = 0;                                                   /* no extension: the map's samples stay inside the box */
+  for (const l of [bgLayer, labLayer]) { l.style.width = LW + "px"; l.style.height = LH + "px"; }
+  labLayer.style.borderRadius = Math.min(22, LH / 2) + "px";
   if (LW !== 220) { if (!lens.classList.contains("nobg")) bgLayer.style.filter = `url(#seg-lens-f-bg-${LW})`; if (!lens.classList.contains("nolab")) labLayer.style.filter = `url(#seg-lens-f-lab-${LW})`; }
   lens.appendChild(bgLayer); lens.appendChild(labLayer); scene.appendChild(lens);
   scene.classList.add("lifted");

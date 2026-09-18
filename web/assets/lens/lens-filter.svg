@@ -5,8 +5,8 @@
        opaque copy of what lies under the lens (track / card), #seg-lens-f-lab-<w> for the label copy; pick the set by the current
        lens width, no interpolation. feDisplacementMap: P'(x,y) = P(x + scale·(R − .5), y + scale·(G − .5)), scale 40 = the
        encoding scale S (byte = 128 + u·255/S, u in pt); color-interpolation-filters="sRGB" is required. Each map covers the lens
-       box plus 10 pt on every side and the filter region is the element's own box: apply the filter to a layer of that
-       extended size (w+20 × h+20, overflow hidden, placed at −10/−10 inside the lens which clips it to
+       box plus 0 pt on every side and the filter region is the element's own box: apply the filter to a layer of that
+       extended size (w+0 × h+0, overflow hidden, placed at −0/−0 inside the lens which clips it to
        the capsule). THE SOURCE MUST EXTEND PAST THE LENS — with the layer equal to the lens box the outward sampling at the edges
        reads transparent and one-pixel coloured lines appear along the long edges (README §0.3). userSpaceOnUse regions and
        feImage subregions are not used: WebKit renders nothing with them, and it takes an overflowing child into the
@@ -14,313 +14,437 @@
        fringe is glassForeground's aberration term, not yet decompiled): one map feeds all channels. Animate the lift by the scale
        attribute 0 → 40 with the lift curve of seg-keys.css. -->
   <filter id="seg-lens-f-bg-196" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 196×48.6 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 216×68.6 pt = the lens 196×48.6 plus 10 pt on every side -->
+    <!-- backdrop, lens 196×48.6 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 196×48.6 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-196.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-196" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 196×48.6: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 216×68.6 pt = the lens 196×48.6 plus 10 pt on every side -->
+    <!-- label copy, lens 196×48.6: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 196×48.6 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-196.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-198" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 198×48.48 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 218×68.48 pt = the lens 198×48.48 plus 10 pt on every side -->
+    <!-- backdrop, lens 198×48.48 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 198×48.48 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-198.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-198" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 198×48.48: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 218×68.48 pt = the lens 198×48.48 plus 10 pt on every side -->
+    <!-- label copy, lens 198×48.48: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 198×48.48 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-198.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-200" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 200×47.99 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 220×67.99 pt = the lens 200×47.99 plus 10 pt on every side -->
+    <!-- backdrop, lens 200×47.99 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 200×47.99 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-200.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-200" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 200×47.99: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 220×67.99 pt = the lens 200×47.99 plus 10 pt on every side -->
+    <!-- label copy, lens 200×47.99: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 200×47.99 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-200.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-202" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 202×47.59 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 222×67.59 pt = the lens 202×47.59 plus 10 pt on every side -->
+    <!-- backdrop, lens 202×47.59 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 202×47.59 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-202.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-202" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 202×47.59: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 222×67.59 pt = the lens 202×47.59 plus 10 pt on every side -->
+    <!-- label copy, lens 202×47.59: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 202×47.59 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-202.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-204" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 204×47.51 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 224×67.51 pt = the lens 204×47.51 plus 10 pt on every side -->
+    <!-- backdrop, lens 204×47.51 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 204×47.51 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-204.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-204" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 204×47.51: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 224×67.51 pt = the lens 204×47.51 plus 10 pt on every side -->
+    <!-- label copy, lens 204×47.51: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 204×47.51 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-204.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-206" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 206×47.23 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 226×67.23 pt = the lens 206×47.23 plus 10 pt on every side -->
+    <!-- backdrop, lens 206×47.23 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 206×47.23 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-206.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-206" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 206×47.23: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 226×67.23 pt = the lens 206×47.23 plus 10 pt on every side -->
+    <!-- label copy, lens 206×47.23: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 206×47.23 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-206.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-208" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 208×46.83 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 228×66.83 pt = the lens 208×46.83 plus 10 pt on every side -->
+    <!-- backdrop, lens 208×46.83 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 208×46.83 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-208.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-208" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 208×46.83: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 228×66.83 pt = the lens 208×46.83 plus 10 pt on every side -->
+    <!-- label copy, lens 208×46.83: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 208×46.83 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-208.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-210" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 210×46.39 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 230×66.39 pt = the lens 210×46.39 plus 10 pt on every side -->
+    <!-- backdrop, lens 210×46.39 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 210×46.39 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-210.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-210" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 210×46.39: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 230×66.39 pt = the lens 210×46.39 plus 10 pt on every side -->
+    <!-- label copy, lens 210×46.39: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 210×46.39 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-210.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-212" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 212×45.93 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 232×65.93 pt = the lens 212×45.93 plus 10 pt on every side -->
+    <!-- backdrop, lens 212×45.93 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 212×45.93 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-212.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-212" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 212×45.93: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 232×65.93 pt = the lens 212×45.93 plus 10 pt on every side -->
+    <!-- label copy, lens 212×45.93: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 212×45.93 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-212.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-214" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 214×45.45 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 234×65.45 pt = the lens 214×45.45 plus 10 pt on every side -->
+    <!-- backdrop, lens 214×45.45 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 214×45.45 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-214.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-214" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 214×45.45: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 234×65.45 pt = the lens 214×45.45 plus 10 pt on every side -->
+    <!-- label copy, lens 214×45.45: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 214×45.45 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-214.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-216" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 216×44.98 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 236×64.98 pt = the lens 216×44.98 plus 10 pt on every side -->
+    <!-- backdrop, lens 216×44.98 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 216×44.98 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-216.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-216" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 216×44.98: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 236×64.98 pt = the lens 216×44.98 plus 10 pt on every side -->
+    <!-- label copy, lens 216×44.98: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 216×44.98 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-216.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-218" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 218×44.49 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 238×64.49 pt = the lens 218×44.49 plus 10 pt on every side -->
+    <!-- backdrop, lens 218×44.49 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 218×44.49 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-218.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-218" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 218×44.49: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 238×64.49 pt = the lens 218×44.49 plus 10 pt on every side -->
+    <!-- label copy, lens 218×44.49: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 218×44.49 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-218.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-220" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 220×44 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 240×64 pt = the lens 220×44 plus 10 pt on every side -->
+    <!-- backdrop, lens 220×44 r 22: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 220×44 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-220.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-220" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 220×44: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 240×64 pt = the lens 220×44 plus 10 pt on every side -->
+    <!-- label copy, lens 220×44: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 220×44 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-220.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-222" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 222×43.53 r 21.76: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 242×63.53 pt = the lens 222×43.53 plus 10 pt on every side -->
+    <!-- backdrop, lens 222×43.53 r 21.76: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 222×43.53 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-222.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-222" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 222×43.53: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 242×63.53 pt = the lens 222×43.53 plus 10 pt on every side -->
+    <!-- label copy, lens 222×43.53: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 222×43.53 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-222.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-224" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 224×42.96 r 21.48: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 244×62.96 pt = the lens 224×42.96 plus 10 pt on every side -->
+    <!-- backdrop, lens 224×42.96 r 21.48: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 224×42.96 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-224.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-224" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 224×42.96: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 244×62.96 pt = the lens 224×42.96 plus 10 pt on every side -->
+    <!-- label copy, lens 224×42.96: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 224×42.96 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-224.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-226" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 226×42.53 r 21.27: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 246×62.53 pt = the lens 226×42.53 plus 10 pt on every side -->
+    <!-- backdrop, lens 226×42.53 r 21.27: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 226×42.53 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-226.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-226" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 226×42.53: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 246×62.53 pt = the lens 226×42.53 plus 10 pt on every side -->
+    <!-- label copy, lens 226×42.53: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 226×42.53 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-226.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-228" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 228×41.89 r 20.94: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 248×61.89 pt = the lens 228×41.89 plus 10 pt on every side -->
+    <!-- backdrop, lens 228×41.89 r 20.94: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 228×41.89 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-228.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-228" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 228×41.89: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 248×61.89 pt = the lens 228×41.89 plus 10 pt on every side -->
+    <!-- label copy, lens 228×41.89: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 228×41.89 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-228.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-230" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 230×41.58 r 20.79: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 250×61.58 pt = the lens 230×41.58 plus 10 pt on every side -->
+    <!-- backdrop, lens 230×41.58 r 20.79: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 230×41.58 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-230.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-230" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 230×41.58: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 250×61.58 pt = the lens 230×41.58 plus 10 pt on every side -->
+    <!-- label copy, lens 230×41.58: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 230×41.58 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-230.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-232" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 232×41.12 r 20.56: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 252×61.12 pt = the lens 232×41.12 plus 10 pt on every side -->
+    <!-- backdrop, lens 232×41.12 r 20.56: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 232×41.12 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-232.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-232" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 232×41.12: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 252×61.12 pt = the lens 232×41.12 plus 10 pt on every side -->
+    <!-- label copy, lens 232×41.12: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 232×41.12 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-232.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-234" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 234×40.65 r 20.33: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 254×60.65 pt = the lens 234×40.65 plus 10 pt on every side -->
+    <!-- backdrop, lens 234×40.65 r 20.33: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 234×40.65 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-234.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-234" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 234×40.65: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 254×60.65 pt = the lens 234×40.65 plus 10 pt on every side -->
+    <!-- label copy, lens 234×40.65: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 234×40.65 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-234.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-236" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 236×40.18 r 20.09: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 256×60.18 pt = the lens 236×40.18 plus 10 pt on every side -->
+    <!-- backdrop, lens 236×40.18 r 20.09: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 236×40.18 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-236.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-236" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 236×40.18: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 256×60.18 pt = the lens 236×40.18 plus 10 pt on every side -->
+    <!-- label copy, lens 236×40.18: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 236×40.18 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-236.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-238" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 238×39.8 r 19.9: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 258×59.8 pt = the lens 238×39.8 plus 10 pt on every side -->
+    <!-- backdrop, lens 238×39.8 r 19.9: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 238×39.8 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-238.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-238" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 238×39.8: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 258×59.8 pt = the lens 238×39.8 plus 10 pt on every side -->
+    <!-- label copy, lens 238×39.8: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 238×39.8 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-238.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-240" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 240×39.3 r 19.65: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 260×59.3 pt = the lens 240×39.3 plus 10 pt on every side -->
+    <!-- backdrop, lens 240×39.3 r 19.65: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 240×39.3 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-240.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-240" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 240×39.3: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 260×59.3 pt = the lens 240×39.3 plus 10 pt on every side -->
+    <!-- label copy, lens 240×39.3: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 240×39.3 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-240.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-242" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 242×38.84 r 19.42: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 262×58.84 pt = the lens 242×38.84 plus 10 pt on every side -->
+    <!-- backdrop, lens 242×38.84 r 19.42: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 242×38.84 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-242.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-242" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 242×38.84: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 262×58.84 pt = the lens 242×38.84 plus 10 pt on every side -->
+    <!-- label copy, lens 242×38.84: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 242×38.84 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-242.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-244" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 244×38.36 r 19.18: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 264×58.36 pt = the lens 244×38.36 plus 10 pt on every side -->
+    <!-- backdrop, lens 244×38.36 r 19.18: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 244×38.36 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-244.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-244" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 244×38.36: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 264×58.36 pt = the lens 244×38.36 plus 10 pt on every side -->
+    <!-- label copy, lens 244×38.36: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 244×38.36 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-244.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-246" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 246×37.92 r 18.96: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 266×57.92 pt = the lens 246×37.92 plus 10 pt on every side -->
+    <!-- backdrop, lens 246×37.92 r 18.96: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 246×37.92 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-246.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-246" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 246×37.92: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 266×57.92 pt = the lens 246×37.92 plus 10 pt on every side -->
+    <!-- label copy, lens 246×37.92: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 246×37.92 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-246.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-248" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 248×37.49 r 18.74: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 268×57.49 pt = the lens 248×37.49 plus 10 pt on every side -->
+    <!-- backdrop, lens 248×37.49 r 18.74: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 248×37.49 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-248.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-248" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 248×37.49: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 268×57.49 pt = the lens 248×37.49 plus 10 pt on every side -->
+    <!-- label copy, lens 248×37.49: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 248×37.49 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-248.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-250" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 250×37.05 r 18.52: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 270×57.05 pt = the lens 250×37.05 plus 10 pt on every side -->
+    <!-- backdrop, lens 250×37.05 r 18.52: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 250×37.05 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-250.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-250" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 250×37.05: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 270×57.05 pt = the lens 250×37.05 plus 10 pt on every side -->
+    <!-- label copy, lens 250×37.05: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 250×37.05 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-250.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-252" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 252×36.56 r 18.28: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 272×56.56 pt = the lens 252×36.56 plus 10 pt on every side -->
+    <!-- backdrop, lens 252×36.56 r 18.28: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 252×36.56 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-252.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-252" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 252×36.56: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 272×56.56 pt = the lens 252×36.56 plus 10 pt on every side -->
+    <!-- label copy, lens 252×36.56: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 252×36.56 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-252.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-254" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 254×36.2 r 18.1: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 274×56.2 pt = the lens 254×36.2 plus 10 pt on every side -->
+    <!-- backdrop, lens 254×36.2 r 18.1: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 254×36.2 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-254.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-254" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 254×36.2: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 274×56.2 pt = the lens 254×36.2 plus 10 pt on every side -->
+    <!-- label copy, lens 254×36.2: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 254×36.2 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-254.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-bg-256" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- backdrop, lens 256×36.2 r 18.1: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the layer of 276×56.2 pt = the lens 256×36.2 plus 10 pt on every side -->
+    <!-- backdrop, lens 256×36.2 r 18.1: -6.6/4.4/0.5/lens,9/36/0.5/lens (sampling order); apply to the 256×36.2 pt lens layer -->
     <feImage href="assets/lens/seg-f-bg-256.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
   <filter id="seg-lens-f-lab-256" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-    <!-- label copy, lens 256×36.2: -17.5/11.2/0.5/lens,-8.8/7.04/0.5/lens; apply to the layer of 276×56.2 pt = the lens 256×36.2 plus 10 pt on every side -->
+    <!-- label copy, lens 256×36.2: -8.8/7.04/0.5/lens,-17.5/11.2/0.5/lens; apply to the 256×36.2 pt lens layer -->
     <feImage href="assets/lens/seg-f-lab-256.png" preserveAspectRatio="none" result="map"/>
-    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G"/>
+    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="40" xChannelSelector="R" yChannelSelector="G" result="disp"/>
+    <feComposite in="disp" in2="mask" operator="in"/>
   </filter>
 </svg>
