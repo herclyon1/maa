@@ -327,6 +327,16 @@ Apple value, not compensated: the step depends on the engine's filter resolution
 filter at ⅓ px, or on the GPU path without the truncation) — to be measured on the phone before anything is baked into the
 maps (`calib/` runs there too).
 
+The top / bottom bands at the ends (the acceptance session's B6 preview, 2026-09-19: "whitish and hard", `bands-native-bgonly-all.png`,
+`topband-zoom.png`; the test page with the backdrop filter alone): the track's displaced edge sits where the native's does (top
+band x 300: ours 610.3–610.5 against 610.7–611, x 322: 610.5 against 610.7; bottom band x 300: 637.0 against 637.3) and is as
+hard (the native's 228 → 219 → 214 over 0.67 pt, ours 255 → 242 → 238 over 0.5 pt; the bottom edge one step in both). What
+differs is the 5 pt between the rim and that edge: the native carries the glass tone there (light: 240 under the rim falling
+to 228 at the track, the page being 243; dark: 0–3 against the page's 28, so the folded track edge (26) sits on black), ours
+the page colour (255 / 28) with the track (238 / 50) straight on it. That is the glassBackground face / ring shadow / inner
+shadow and KeyFill (§4b layer 3, `keyfill-highlight.md`) above the displacement, and the test page's dark palette — not the
+backdrop map (no B step, no ledge at the ends).
+
 <!-- verify:end -->
 
 ### 0.5 Colour fringe — glassForeground's 7-tap spectral sampling (test page + `lens-filter.svg`; not wired into index.html)
