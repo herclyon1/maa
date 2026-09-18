@@ -188,13 +188,23 @@ averages, no roster maximum. `--rarity 5` takes the newest five-star instead, `-
   2026-01-10 ~ 01-12); the account's `ownTs` is when *this* account got someone.
 
 *Numbers*: `rules?charIds=<her id>` (breakthroughs + skills to 12, talents excluded, §B
-of ENDFIELD-SANITY-YIELD.md) and `rules?weaponIds=<the weapon's id>`; the universal rows
-are re-verified on every build across every six-star `search-chars` lists (17 on
-2026-09-18), and whatever differs is written under her name. 提弗洛斯 + 寒夜幽影:
-象限拟合液 116 + 16, D96钢样品四 116, 快子遴捡晶格 20, 红矛叶 84, 塔罗斯菌 8, 协议纹石 8, on top
-of the universal set. The calculator's 32-hex ids are `md5(<internal code>)`
-(`chr_0006_wolfgd` -> `26e3cc73…`, `wpn_funnel_0019` -> `4e7f3757…`), which is how a
-client-side code can be turned into a calculator query.
+of ENDFIELD-SANITY-YIELD.md) and `rules?weaponIds=<the weapon's id>` - **hers only**; no
+other operator's rules are pulled, compared or kept (the user, 2026-09-19: 老角色的东西一律
+不看). Each row's `group` says where the count comes from: 提弗洛斯, 专武 寒夜幽影, or both
+(象限拟合液 116 + 16, 折金票). 提弗洛斯 + 寒夜幽影 on 2026-09-18: 协议棱柱组 472, 协议棱柱 328,
+协议圆盘组 60, 协议圆盘 33, 存续的痕迹 24, 多齿叶 16/16/12, 红柱状菌 5/5/3, D96钢样品四 116,
+象限拟合液 132, 快子遴捡晶格 20, 红矛叶 84, 塔罗斯菌 8; 重型强固模具 50, 强固模具 23, 黯石 5/5/3,
+协议纹石 8; 折金票 1,693,510, 干员经验 1,792,290, 武器经验 2,524,080. The calculator's 32-hex ids
+are `md5(<internal code>)` (`chr_0006_wolfgd` -> `26e3cc73…`, `wpn_funnel_0019` ->
+`4e7f3757…`), which is how a client-side code can be turned into a calculator query.
+
+*For the page*: every row carries `section` (通用 / 高阶素材 / 采集 / 经验与货币, the order in
+`games[].sections`; the eight exp cards have none and fold into 干员经验 / 武器经验),
+`games[].footnote` is the 人份 caption, and `games[].lagMinutes` / `lagNote` quote the
+official calculator page's own line 「仓库资源和干员数据等信息的同步，会有 30 分钟左右的延迟」.
+`web/data/inventory-demo.json` is the live object's exact shape with invented counts.
+Fixtures for the test are eight files: her rules, the weapon's, the two catalogs'
+listings, the wiki catalog and its entries (one merged file), material-list.
 
 Read-off traps, each pinned by `relay/tests/test_need_table.py`:
 
