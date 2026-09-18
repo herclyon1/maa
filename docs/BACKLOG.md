@@ -10,6 +10,39 @@ wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change"
 `NEXT-BOOT.md` keeps only "the first thing to do at the next boot".
 
 ## Todo
+- [ ] **Phone page, alert first open ≈ 776 ms (acceptance measured on Mac Chromium, v=20260919002833, `?demo=1`, real click, rAF after pointerup):**
+      showModal is called within 0.3 ms, the first frame comes 776 ms later on the FIRST open after a load (28 ms on the second); with
+      `dialog > .pane`'s backdrop-filter removed the first open paints in 3 ms. Cause: the blur layer's first creation (top layer + backdrop
+      root + a full-page raster), not the per-frame blur. The user sees exactly that: a very transparent panel first, the blur arriving later
+      (Android Chrome and Mac Chrome alike) — so 556aaab's 「flat pane during the appear animation, blur at animationend」 (index.html
+      `dialog[open]:not(.settled) > .pane`) must be REMOVED: it is that same 「clear first, blurred later」. Fix to build: create the blur layer
+      at page load — the pane living outside the dialog (position: fixed at its final rect, backdrop-filter always on, hidden in a way that
+      keeps Chrome's compositor layer alive: try opacity .01 / clip to 1 px, not visibility: hidden), or a silent showModal + close after load
+      (then check the layer is not reclaimed). Verify each variant the acceptance way, in a real Chromium (headless does not show this
+      compositor behaviour): reload → real click → ms from pointerup to the first frame, AND the first frame already blurred (capture it);
+      target ≤ 2 frames; Android and desktop Chrome each once; numbers into the commit message.
+- [ ] **Phone page, tab-bar lens while held / dragged (user's simulator photo 2026-09-19, `?accept=1`):** ours slides as an opaque flat white
+      capsule — labels under it neither show through nor bend; native lifts a glass lens with the labels refracted through it. Do: (1) the
+      lifted / dragging lens material from the probe originals (remote-ref/tools/uiprobe/uiprobe-lensdiff-seg-{light,dark}.json + subtree:
+      _UILiquidLensView after the lift — glassBackground keys, opacity, colour matrix); rest state stays flat white (correct); the lens must sit
+      under the labels, labels visible through it. (2) Refraction from remote-ref/lens-refraction.md as ONE SVG displacement map
+      (`filter: url()` on the label layer — the acceptance dropped the cheap magnify tier and the switch): centre ×1.22, 12-pt edge compression,
+      colour fringes, the lenstrace curve (~20 ms after touch-down, 370 ms to 115.7 × 73.6, r 27 → 35). (3) Fill remote-ref/seg-state-table.md
+      (data session) row by row 已做 / 未做 / 做不了 and match the data session's native-vs-web frame strips (hold, drag, release) by eye before
+      pushing. A partial implementation (two tiers, ?lens= switch, hole mask + portal copy, ?lift=<ms> freeze, ?pattern=gx grating) is in the
+      shared git stash tagged `ui-lens-trial-wip-20260919` (a12f9dd9) — reuse the map generator and the freeze / pattern hooks, drop the tier
+      machinery.
+- [ ] **Phone page, standalone status-bar strip under a sheet / alert:** com.apple.webapp lays a readability gradient over the top ~100 pt of
+      a black-translucent web app (≈ grey 238 at ~50 % fading out; black in dark), so our .2 dimming reads 218 at y 0–62 where native AX-38 is a
+      flat 194 (data session, shots-556aaab README, verified with an empty test page). Only fix: deepen our own dimming over the top ~100 pt
+      (black α ≈ .38 fading to .2 — sampling substitute). Whether to do it is the acceptance's call.
+- [ ] **Phone page, the shift segment switched itself to 晚班 after a relaunch** (data session, shots-556aaab dark-7: `ark-remote-cfg-queue`
+      became 晚班 without a touch), and with 晚班 = MAA only the tab bar drops to 状态 / 方舟 / 手机. Find what writes the queue key on load; and
+      decide whether the tab set should follow the shift at all.
+- [ ] **Inventory page (界面2号 / ui2 branch owns it now):** add reference 61 (设置 › 屏幕时间 › 查看所有 App 与网站活动 「最常使用」: icon 29 + name
+      17 + grey usage bar (proportional, min 10) + grey value 13 + chevron, row 52, card r 26; index.md row 61 / 61-ax.json /
+      inject-com.apple.Preferences-61.json) to `~/Money/styl-work/remote-mock/v4/inventory-plan.md` §4 and compare it with 59 before deciding —
+      the 人份 as a bar length shows the scarcest at a glance.
 - [x] **Filed as [AUTO-MAS#573](https://github.com/AUTO-MAS-Project/AUTO-MAS/issues/573)** (using their
       "AI 提交的 Bug" template, and saying we will send a PR since they are short-handed). Background:
       MaaEnd v2.28.0-beta.1 changed SellProduct's display name to 「🛒据点交易」 (the task name itself did
