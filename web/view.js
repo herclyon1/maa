@@ -464,7 +464,7 @@ function render() {
   const wb = weekly["周本"] || relay["周本"] || {};
   const wg = weekly["周常乐园"] || {};
   const an = weekly["剿灭"] || {};
-  const doneTag = (d, done, todo) => `<span class="ro">${d ? done : todo}</span>`;
+  const doneTag = (d, done, todo) => `<span class="ro short">${d ? done : todo}</span>`;   // 值行：值在同一行右侧（AX-46）
   if (inShift("MAA")) html += `<section><h2>明日方舟 · 周常</h2>
     <div class="row"><label>剿灭
       <span class="hint">打满本周剿灭后自动停掉，下周一 04:00 自动恢复</span></label>
@@ -1203,6 +1203,7 @@ async function boot() {
     if (window.Stamina) { Stamina.data = DEMO_STAMINA; Stamina.at = Date.now(); }
     pending = { "relay|debug_mode": { label: "调试模式", src: "relay", path: "", from: false, to: true, sentAt: now() - 120 } };
     lastHb = Date.now(); netOk = true;
+    setInterval(() => { lastHb = Date.now(); }, 1000);   // 演示数据里机器永远在线，截图不会随真实时间变成「关机 · 最后心跳」
     render(); updateLive();
     return;
   }
