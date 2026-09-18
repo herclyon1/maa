@@ -10,6 +10,12 @@ wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change"
 `NEXT-BOOT.md` keeps only "the first thing to do at the next boot".
 
 ## Todo
+
+- [ ] **Boot-stage wait for AUTO-MAS must yield to a stop request** (seen 2026-09-18 23:10:24):
+      the self-update restarted the service while `ensure_automas()` was inside its 150 s
+      「先等它自己起来」 sleep, so SvcStop waited 15 s and the hard guard force-exited the process
+      (「停止 15 秒后进程仍未退出，硬保险强制退出」). Make that wait poll the service stop event
+      (or a `stopping` flag) so a restart during boot exits cleanly; add a test with a fake clock.
 - [x] **Filed as [AUTO-MAS#573](https://github.com/AUTO-MAS-Project/AUTO-MAS/issues/573)** (using their
       "AI 提交的 Bug" template, and saying we will send a PR since they are short-handed). Background:
       MaaEnd v2.28.0-beta.1 changed SellProduct's display name to 「🛒据点交易」 (the task name itself did
