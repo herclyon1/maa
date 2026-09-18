@@ -1233,17 +1233,21 @@ function segLens(seg, lens, bs) {
   if (seg.__lensLoop) seg.__lensLoop.stop();   // a new press ends the previous loop (its tail and its inline geometry)
   let warp = seg.querySelector(".warp"), warpl = seg.querySelector(".warpl"), plat = seg.querySelector(".plat"), rim = seg.querySelector(".rim");
   const mk = (cls, inner) => { const d = document.createElement("div"); d.className = cls; d.innerHTML = inner; seg.appendChild(d); return d; };
-  if (!warp) warp = mk("warp", '<div class="copy"></div>'); if (!warpl) warpl = mk("warpl", '<div class="copy"></div>'); if (!plat) plat = mk("plat", ""); if (!rim) rim = mk("rim", "");
+  if (!warp) warp = mk("warp", '<div class="disp"><div class="copy"></div></div>'); if (!warpl) warpl = mk("warpl", '<div class="copy"></div>'); if (!plat) plat = mk("plat", ""); if (!rim) rim = mk("rim", "");
   /* copies of what lies under the lens: .warp = page bg + track (opaque; covers the real labels — the DestOut punch-out), .warpl = the labels, undisplaced
      (label-mag 1.00, spans not buttons so the control's own button list stays the real one) */
-  const copy = warp.firstElementChild, copyl = warpl.firstElementChild;
+  const disp = warp.firstElementChild, copy = disp.firstElementChild, copyl = warpl.firstElementChild;
   copy.innerHTML = '<div class="cbgwrap"><div class="cbg"></div><div class="ctrack"></div></div>';
   copyl.innerHTML = bs.map((b) => `<span class="cb ${b.className}" style="width:${b.offsetWidth}px">${b.innerHTML}</span>`).join("");
   const segW = seg.clientWidth, segH = seg.clientHeight; for (const c of [copy, copyl]) { c.style.width = segW + "px"; c.style.height = segH + "px"; }
-  const FPAD = 12;   // the displacement filter region beyond the lens box (px): the edge bands pull up to 3.4 pt + the 3.6 pt dispersion (seg-lens-refraction §2)
-  const filt = document.querySelector("filter#seg-lens-warp"), fimgs = filt ? [...filt.querySelectorAll("feImage")] : [];
+
   const cbs = [...copyl.querySelectorAll(".cb")];
-  const S = 32;   // map encoding (界面2号): byte = 128 + round(u · 255 / S), u in pt → feDisplacementMap scale = S × amplitude
+  const S = 40;   // map encoding (界面2号 README §0.3): byte = 128 + round(u · 255 / S), u in pt → feDisplacementMap scale = S × progress
+  /* the formula-map set for the lens's current width (README §0.3: one set per native width 196 … 256 step 2, nearest even, no interpolation;
+     our lens is 2 pt wider than the native at every state — 198 / 222 vs 196 / 220 — so native width = ours − 2). While lifting or falling
+     without a drag the 220 set carries scale 0 → 40 (the lift is a different path from the stretch). */
+  const setFor = (Wd) => st.dragged ? Math.max(196, Math.min(256, 2 * Math.round((Wd - 2) / 2))) : 220;
+  let curSet = 0;
   /* geometry: resting lens = the padded interior / n (pad ← --ios-segment-lens-pad, h ← --ios-segment-lens-h), lifted = +12 / +8 per side ← --ios-touch-segment-lift-x/-y */
   const cs0 = getComputedStyle(seg), n = bs.length, pad = parseFloat(cs0.getPropertyValue("--ios-segment-lens-pad")) || 2, H0 = parseFloat(cs0.getPropertyValue("--ios-segment-lens-h")) || 28;
   const LX = touchPx("--ios-touch-segment-lift-x", 12), LY = touchPx("--ios-touch-segment-lift-y", 8), W0 = (segW - 2 * pad) / n, CY = pad + H0 / 2;
@@ -1267,19 +1271,17 @@ function segLens(seg, lens, bs) {
     const sr = seg.getBoundingClientRect(), lr = lens.getBoundingClientRect();
     const L = lr.left - sr.left, T = lr.top - sr.top, Wd = lr.width, Hd = lr.height, R = Hd / 2;   // capsule: corner = h/2 (r22 at 44 ← §0; the lift's corner 14 → 22 on the same spring ← §4.4 row 1)
     for (const el of [warp, warpl, plat, rim]) { el.style.left = L + "px"; el.style.top = T + "px"; el.style.width = Wd + "px"; el.style.height = Hd + "px"; el.style.setProperty("--rr", R + "px"); }
-    for (const c of [copy, copyl]) { c.style.left = -L + "px"; c.style.top = -T + "px"; }
-    if (filt) {   // filter region = lens box + FPAD (userSpaceOnUse px), the maps pinned to the lens box
-      filt.setAttribute("x", -FPAD); filt.setAttribute("y", -FPAD); filt.setAttribute("width", (Wd + 2 * FPAD).toFixed(2)); filt.setAttribute("height", (Hd + 2 * FPAD).toFixed(2));
-      for (const im of fimgs) { im.setAttribute("width", Wd.toFixed(2)); im.setAttribute("height", Hd.toFixed(2)); }
-    }   // the copies stay aligned with the real control (no magnification: mag-x 1.00, label-mag 1.00)
+    for (const c of [copy, copyl]) { c.style.left = -L + "px"; c.style.top = -T + "px"; }   // the copies stay aligned with the real control
+    const set = setFor(Wd);
+    if (set !== curSet) { curSet = set; disp.style.filter = `url(#seg-lens-f-bg-${set})`; }
     seg.style.setProperty("--lp", p.toFixed(4)); seg.style.setProperty("--lpd", pd.toFixed(4));
-    for (const el of document.querySelectorAll("#seg-lens-warp feDisplacementMap")) el.setAttribute("scale", (S * p).toFixed(3));   // amplitude on the lift spring (§4.4 row 2: displacementMap 0 → −17.5 in the same call)
+    const fd = document.querySelector(`#seg-lens-f-bg-${set} feDisplacementMap`); if (fd) fd.setAttribute("scale", (S * p).toFixed(3));   // amplitude on the lift spring (§4.4 row 2: displacementMap 0 → −17.5 / +9 in the same call)
     cbs.forEach((c, i) => c.className = "cb " + bs[i].className);
     seg.classList.toggle("lift", p > 0 || pd > 0);
   };
   const clear = () => {
     seg.classList.remove("lift"); seg.style.removeProperty("--lp"); seg.style.removeProperty("--lpd"); copy.innerHTML = ""; copyl.innerHTML = "";
-    for (const el of document.querySelectorAll("#seg-lens-warp feDisplacementMap")) el.setAttribute("scale", "0");
+    if (curSet) { const fd = document.querySelector(`#seg-lens-f-bg-${curSet} feDisplacementMap`); if (fd) fd.setAttribute("scale", "40"); }   // the file's rest value; the layer is hidden now
     for (const k of ["transition", "left", "top", "width", "height", "margin", "border-radius"]) lens.style.removeProperty(k);   // the CSS rest values are what the loop ended on
     st.done = true; if (seg.__lensLoop === loop) seg.__lensLoop = null;
   };
