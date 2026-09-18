@@ -509,19 +509,42 @@ function render() {
     <p class="foot">免输入链接会把这里存着的密钥一起带上，换手机开一次那条链接就全有。森空岛的会话由机器交过来；库街区的：打开电脑上 scripts/mac/phone-link.py 打出来的链接，或把 ~/.config/ark/.env 里 KUROBBS_TOKEN 和 KUROBBS_DID 那两行粘贴进来</p>
   </section>`;
 
-  /* The segmented control survives a re-render (patch 02, seg-impl-review.md #2): commit() → render() used to rebuild #app wholesale,
-     which destroyed the pressed label mid-transition (its .2 → 1 recovery never ran: the fresh button appeared at 1 and only played
-     seg-in from .81) and gave the weight cross-fade no start value (the weight snapped). Now the old .segctl node is moved into the
-     new page and only its state is synced (segSync): the lens, the labels, the .warp copy and the running glass fall all keep their
-     elements, so every CSS transition on them finishes exactly as it would on a UISegmentedControl that is never rebuilt. */
-  const oldSeg = $("#queueseg");
-  $("#app").innerHTML = html;
-  const newSeg = $("#queueseg");
-  if (oldSeg && newSeg && segSameQueues(oldSeg, newSeg)) { newSeg.replaceWith(oldSeg); segSync(oldSeg, newSeg); }
+  /* The segmented control survives a re-render (patch 02, seg-impl-review.md #2; B2-b): commit() → render() used to rebuild #app wholesale,
+     which destroyed the pressed label mid-transition and gave the weight cross-fade no start value. Moving the old node into the new tree
+     (replaceWith) was not enough: a detached-and-reinserted element loses its running CSS transitions (the drag-release snapped to 198×28 at
+     up + 1 ms, 4317ecd). Now the old #queueseg is never detached — replaceKeeping swaps everything around its ancestor chain — and only its
+     state is synced (segSync): the lens, the labels, the copies and the running glass fall keep their elements AND their transitions. */
+  const oldSeg = $("#queueseg"), probe = document.createElement("template"); probe.innerHTML = html;
+  const cand = probe.content.querySelector("#queueseg");
+  if (oldSeg && cand && segSameQueues(oldSeg, cand)) { const fresh = replaceKeeping($("#app"), html, oldSeg); if (fresh) segSync(oldSeg, fresh); }
+  else $("#app").innerHTML = html;
   layoutTabs();
   wire();
 }
 
+/* Replace `root`'s content with `html` while keeping `keep` (a descendant of root) attached: at every level of its ancestor chain the siblings are
+   swapped for the new markup's and the ancestor's attributes are refreshed from its counterpart (same child-index path), but neither the ancestors
+   nor `keep` are ever removed — so the CSS transitions / animations running inside `keep` go on (CSS Transitions §3: a transition on an element
+   that leaves the document is cancelled; Chrome does so even for a same-task re-insertion). Returns the (detached) new counterpart of `keep` for
+   state sync, or null after a plain innerHTML swap when the structure around it changed. */
+function replaceKeeping(root, html, keep) {
+  const tpl = document.createElement("template"); tpl.innerHTML = html;
+  const fresh = keep.id ? tpl.content.querySelector("#" + keep.id) : null;
+  const pathOf = (node, top) => { const p = []; for (let n = node; n && n !== top; n = n.parentNode) p.unshift(n); return p; };
+  const oldPath = pathOf(keep, root), newPath = fresh ? pathOf(fresh, tpl.content) : [];
+  if (!fresh || oldPath.length !== newPath.length || !oldPath.length || oldPath[0].parentNode !== root) { root.innerHTML = html; return null; }
+  let oc = root, nc = tpl.content;
+  for (let i = 0; i < oldPath.length; i++) {
+    const oa = oldPath[i], na = newPath[i];
+    for (const k of [...oc.childNodes]) if (k !== oa) k.remove();
+    const kids = [...nc.childNodes], at = kids.indexOf(na);
+    for (let j = 0; j < at; j++) oc.insertBefore(kids[j], oa);
+    for (let j = at + 1; j < kids.length; j++) oc.appendChild(kids[j]);
+    if (oa !== keep) { for (const a of [...oa.attributes]) if (!na.hasAttribute(a.name)) oa.removeAttribute(a.name); for (const a of na.attributes) oa.setAttribute(a.name, a.value); }
+    oc = oa; nc = na;
+  }
+  return fresh;
+}
 /* The two controls describe the same queues (same names, same order, same 未启用定时 tags) — only then is the old node kept. */
 function segSameQueues(a, b) {
   const key = (seg) => [...seg.querySelectorAll("button")].map((x) => x.dataset.q + "|" + x.textContent).join("\u0001");
@@ -1158,7 +1181,12 @@ function segLens(seg, lens, bs) {
   const destDelay = touchMs("--ios-touch-segment-release-destout-delay", 198) / 1000;
   const K_LIFT_DEST = cssKeys("--ios-touch-segment-destout-keys", SEG_LIFT_DESTOUT), K_DEST = cssKeys("--ios-touch-segment-release-destout-keys", SEG_DROP_DESTOUT.filter(([t]) => t >= .198).map(([t, v]) => [t - .198, v]));
   const destEnd = destDelay + K_DEST[K_DEST.length - 1][0];
-  const st = { t0: performance.now(), prev: performance.now(), rel: null, raf: 0, done: false, dragged: false, dragT0: null, cx: null, rest: idx0, pr: 0,
+  /* drop after a drag onto another segment (B2-b): w/220-ish and h ratios of the rest size from seg-keys.css -drop-w/-h-keys (seg-native-abc-frames.json
+     C frames from the up, settle + 771 ms; frame values, mechanism 等原理). The keys start at the recording's release state (1.008 × 1.736 = 197.5 × 48.6);
+     a release from another state lands the difference on the ζ 1 / .25 fall (wiring for the placeholder, zero for the reference gesture). */
+  const K_DW = cssKeys("--ios-touch-segment-drop-w-keys", [[0, 1.008], [.118, .942], [.374, 1.01], [.771, 1]]), K_DH = cssKeys("--ios-touch-segment-drop-h-keys", [[0, 1.736], [.018, 1.775], [.324, 1.004], [.374, .989], [.576, 1.011], [.771, 1]]);
+  const dropEnd = K_DW[K_DW.length - 1][0];
+  const st = { t0: performance.now(), prev: performance.now(), rel: null, raf: 0, done: false, dragged: false, dragT0: null, cx: null, rest: idx0, pr: 0, drop: null,
                sL: { x: 0, v: 0 }, sM: { x: 1, v: 0 }, model: { x: restCentre(idx0), v: 0 }, pres: { x: restCentre(idx0), v: 0 }, rw: { x: 1, v: 0 }, rh: { x: 1, v: 0 }, geo: null };
   const setGeo = (left, top, w, h) => {
     lens.style.transition = "none"; lens.style.left = left + "px"; lens.style.top = top + "px"; lens.style.width = w + "px"; lens.style.height = h + "px"; lens.style.margin = "0"; lens.style.borderRadius = (h / 2) + "px";
@@ -1198,7 +1226,11 @@ function segLens(seg, lens, bs) {
       springStep(st.model, restCentre(st.rest), SEG_SPRING.travel, dt); springStep(st.pres, st.model.x, SEG_SPRING.settle, dt);
       p = st.pr * clamp01(st.sM.x); pd = tr <= destDelay ? 1 : tabAt(K_DEST, tr - destDelay);
       const settled = Math.abs(st.pres.x - restCentre(st.rest)) < .05 && Math.abs(st.pres.v) < 1 && st.sL.x < .001 && st.sM.x < .001;
-      if ((tr >= destEnd && settled) || tr > 3) { clear(); return; }
+      if ((tr >= destEnd && settled && (!st.drop || tr >= dropEnd)) || tr > 3) { clear(); return; }
+      if (st.drop) {   // B2-b: the size bounce of the drop after a drag, from the -drop keys; the position keeps its §4.4 springs
+        const f = 1 - clamp01(st.sL.x), g = st.drop, w = W0 * tabAt(K_DW, tr) + (g.w - W0 * K_DW[0][1]) * (1 - f), h = H0 * tabAt(K_DH, tr) + (g.h - H0 * K_DH[0][1]) * (1 - f);
+        setGeo(st.pres.x - w / 2, CY - h / 2, w, h); frame(p, pd); st.raf = requestAnimationFrame(tick); return;
+      }
     }
     /* stretch placeholder: B-frame ratios by time since the first move, then relaxing to 1 */
     if (st.dragT0 != null) {
@@ -1219,6 +1251,7 @@ function segLens(seg, lens, bs) {
     release: (restIdx) => {   // every way out — up, out of bounds, pointercancel — falls the same way, to the rest rect of `restIdx`
       if (st.rel != null || st.done) return;
       st.rel = performance.now(); st.rest = restIdx;
+      if (st.dragged && restIdx !== idx0 && st.geo) st.drop = { w: st.geo.w, h: st.geo.h };   // a value change after a drag: the C-frame size bounce
     },
     stop: () => { cancelAnimationFrame(st.raf); if (!st.done) clear(); },
   };

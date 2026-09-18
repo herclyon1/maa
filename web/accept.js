@@ -498,8 +498,13 @@
           await sleep(640); check("分段 pointercancel +700 ms：退净", "rest", sg.classList.contains("lift") ? "lift" : "rest", !sg.classList.contains("lift")); }
         /* §1 G4/G21: lift, slide to the other segment, release there - commits at the up */
         seg = q(); sel = bs().find((b) => b.classList.contains("on")); unsel = bs().find((b) => !b.classList.contains("on"));
-        pev(seg, "pointerdown", at(sel)); await sleep(160); pev(seg, "pointermove", at(unsel)); const r2 = renders; pev(seg, "pointerup", at(unsel));
+        pev(seg, "pointerdown", at(sel)); await sleep(400); pev(seg, "pointermove", at(unsel)); await sleep(500); const r2 = renders, parent0 = seg.parentNode, lens21 = seg.querySelector(".lens"); pev(seg, "pointerup", at(unsel));
         check("分段 G21 抬起后滑到另一段抬手：选中那段", unsel.textContent, onText(), onText() === unsel.textContent && thisShift(unsel.textContent) && renders === r2 + 1);
+        check("分段 G21 换值重画：#queueseg 及其父节点原地保留（replaceKeeping，不摘下再插回 → 过渡不被取消；B2-b）", "same node · same parent", `${q() === seg ? "same node" : "new node"} · ${q().parentNode === parent0 ? "same parent" : "new parent"}`, q() === seg && q().parentNode === parent0);
+        { const h1 = lens21.getBoundingClientRect().height; await sleep(16); const h2 = lens21.getBoundingClientRect().height;
+          check("分段 G21 松手 +1 帧：透镜仍是抬起尺寸、随后逐帧回落（B2-b：不瞬回 28）", "h > 40 at +0, > 36 at +16 ms", `${h1.toFixed(1)} → ${h2.toFixed(1)}`, h1 > 40 && h2 > 36); }
+        await sleep(200); { const lr = lens21.getBoundingClientRect(); check("分段 G21 松手 +216 ms：宽高沿 -drop-w/-h-keys 回落途中（C 段：+204 ms 1.136 × 28 = 31.8）", "28 < h < 40", lr.height.toFixed(1), lr.height > 28 && lr.height < 40); }
+        await sleep(600); { const lr = lens21.getBoundingClientRect(), sr = seg.getBoundingClientRect(); check("分段 G21 松手 +816 ms：落定 198×28 于目标段（-drop keys +771 落定；位置 ζ.85/.4 → ζ.56/.444）", `198×28 at ${(sr.left + 2 + bs().indexOf(unsel) * (sr.width - 4) / bs().length).toFixed(1)}`, `${lr.width.toFixed(1)}×${lr.height.toFixed(1)} at ${lr.left.toFixed(1)}`, Math.abs(lr.height - 28) < 0.6 && Math.abs(lr.width - (sr.width - 4) / bs().length) < 0.8 && Math.abs(lr.left - (sr.left + 2 + bs().indexOf(unsel) * (sr.width - 4) / bs().length)) < 1.5); }
         await sleep(50);
         /* §1 G5: press the unselected one, slide onto the selected one, release - no event */
         seg = q(); sel = bs().find((b) => b.classList.contains("on")); unsel = bs().find((b) => !b.classList.contains("on"));
