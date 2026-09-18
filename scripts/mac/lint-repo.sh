@@ -127,7 +127,7 @@ echo "▶ 8/21 手机页文案不许有私人措辞"
 # 文案再写一遍必然过期：2026-09-04 写着「路线 3 和 13 已取消勾选」，
 # 用户把 16 条全勾上之后那句话当场变成假的。
 bad_words='上游|中继|母本|账本|脚本|issue|PR |用户|我们|原话|实录|那阵|那次|先关着|已修好|等上游|beta\.|rc\.|v[0-9]+\.[0-9]+|20[0-9]{2}-[0-9]{2}-[0-9]{2}|已取消勾选|已勾选|已关掉|已开回|目前是|现在是|当前设置'
-if hits=$(grep -nE '^\s*(hint|label):' web/app.js | grep -E "$bad_words"); then
+if hits=$(grep -nE '^\s*(hint|label):' web/schema.js web/view.js | grep -E "$bad_words"); then
   note "手机页文案有内部措辞或会过期的信息，按 docs/PHONE-COPY-RULES.md 重写"
   printf '%s\n' "$hits" | sed 's/^/    /' | head -10
 else
