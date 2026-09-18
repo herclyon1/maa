@@ -568,7 +568,10 @@
      α(e) over the depth e into the capsule = main band (h 1, curvature .75 → .25 + .75(1 − e)) + diffuse tail (h 8, linear, bias 1/(.15·.5) − 2 =
      11.33 → v/(1 + 11.33(1 − v))), key lights the top (angle 0), fill the bottom (π), spreads cos 1.3963 (main) / cos(.65·1.3963) (diffuse); the
      matrix uses only the layer's α: out = (1 − α)·B + α·min(1, .9118·B + .1471) = B·(1 − .0882α) + .1471α → .hlk = black ring strokes with
-     stroke-opacity .0882·α(e) (normal), .hlw = white ring strokes with .1471·α(e) under plus-lighter. Rings: 1/3 pt over the first pt, 1 pt to
+     stroke-opacity .0882·α(e) (normal), .hlw = white ring strokes with .1471·α(e) under plus-lighter. The layer is THREE emits, each source-over
+     through the matrix (predict-seg-hold.md §0 item 6: main band, diffuse key, diffuse fill; summed-α would give 35 on the dark edge row, three
+     passes 44.0, measured 45.3), so there are two pairs in paint order: .hlk.m, .hlw.m (main band), .hlk.d, .hlw.d (diffuse; key and fill never
+     overlap, one pair carries both). Rings: 1/3 pt over the first pt, 1 pt to
      8 pt; per-ring α = the formula's mean over the ring (hard-edged rings, no fwidth antialiasing: the measured dark edge row 45.3 = 1.208 × 37.5
      is the unattenuated mean 1.209; with a 1/3 pt fwidth it would read 39.6 — the SDF layer's fwidth unit is unread). Angular fall-off along the
      arcs as the strokes' gradients: main sat((cos φ − .174)/.826) (gone at 80° from the top → no light line at the ends, §0a), diffuse the first

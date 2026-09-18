@@ -1291,7 +1291,7 @@ const SEG_RIM = (() => {
 })();
 function segLens(seg, lens, bs) {
   if (seg.__lensLoop) seg.__lensLoop.stop();   // a new press ends the previous loop (its tail and its inline geometry)
-  let warp = seg.querySelector(".warp"), warpl = seg.querySelector(".warpl"), plat = seg.querySelector(".plat"), rimb = seg.querySelector(".rimb"), hlk = seg.querySelector(".hlk"), hlw = seg.querySelector(".hlw");
+  let warp = seg.querySelector(".warp"), warpl = seg.querySelector(".warpl"), plat = seg.querySelector(".plat"), rimb = seg.querySelector(".rimb"), hls = [...seg.querySelectorAll(".hlk, .hlw")];
   const mk = (cls, inner) => { const d = document.createElement("div"); d.className = cls; d.innerHTML = inner; seg.appendChild(d); return d; };
   if (!warp) warp = mk("warp", '<div class="disp"><div class="copy"></div></div>'); if (!warpl) warpl = mk("warpl", '<div class="displ"><div class="portal"><div class="copy"></div></div></div>'); if (!plat) plat = mk("plat", "");
   /* B6 rim (index.html "B6" block, SEG_RIM): .rimb = inner shadow div + SVG (ring shadow rect.rs, dark line rect.kf ×3 under the page/track mask);
@@ -1313,11 +1313,14 @@ function segLens(seg, lens, bs) {
     const kg = svgEl("g", { class: "kfg", mask: `url(#${uid}-kf-vm)` }); g.appendChild(kg);
     SEG_RIM.kfRings.forEach((r, i) => { defs.appendChild(hgrad(`${uid}-kf-g${i}`, (nx) => SEG_RIM.kfK(r.v, nx) / SEG_RIM.kfK(r.v, -1), "#000")); kg.appendChild(ringRect("kf", r.e0, r.e1, { stroke: `url(#${uid}-kf-g${i})`, "data-v": r.v })); });
     rimb.appendChild(s); }
-  const mkHl = (cls, colour, mult) => { const { s, defs, g } = buildSvg(cls); defs.appendChild(hgrad(`${uid}-${cls}-m`, SEG_RIM.angMain, colour)); defs.appendChild(hgrad(`${uid}-${cls}-d`, SEG_RIM.angDiff, colour));
-    for (const r of SEG_RIM.hlRings) { if (r.main) g.appendChild(ringRect("hl", r.e0, r.e1, { stroke: `url(#${uid}-${cls}-m)`, "stroke-opacity": (mult * r.main).toFixed(4) })); g.appendChild(ringRect("hl", r.e0, r.e1, { stroke: `url(#${uid}-${cls}-d)`, "stroke-opacity": (mult * r.diff).toFixed(4) })); }
+  /* the #36 layer is THREE emits, each source-over through the vibrant matrix (predict-seg-hold.md §0 item 6, keyfill-highlight.md §2 07:12): out ← (1 − α_i)·out + α_i·V(out)
+     for the main band, then the diffuse key band, then the diffuse fill band — not one pass with the summed α (dark edge row: summed 35, three passes 44.0, measured 45.3).
+     Each pass = a black multiply stack (1 − .0882α_i) followed by a white plus-lighter stack (+.1471α_i), so the pass order is the element order:
+     black-main, white-main, black-diffuse, white-diffuse. The two diffuse bands never overlap (key lights within 52° of the top, fill of the bottom), so one diffuse pair carries both. */
+  const mkHl = (cls, band, colour, mult) => { const { s, defs, g } = buildSvg(cls); s.classList.add(band); const gid = `${uid}-${cls}-${band}`; defs.appendChild(hgrad(gid, band === "m" ? SEG_RIM.angMain : SEG_RIM.angDiff, colour));
+    for (const r of SEG_RIM.hlRings) { const a = band === "m" ? r.main : r.diff; if (a) g.appendChild(ringRect("hl", r.e0, r.e1, { stroke: `url(#${gid})`, "stroke-opacity": (mult * a).toFixed(4) })); }
     seg.appendChild(s); return s; };
-  if (!hlk) hlk = mkHl("hlk", "#000", SEG_RIM.MULT);
-  if (!hlw) hlw = mkHl("hlw", "#fff", SEG_RIM.ADD);
+  if (hls.length !== 4) { for (const e of hls) e.remove(); hls = [mkHl("hlk", "m", "#000", SEG_RIM.MULT), mkHl("hlw", "m", "#fff", SEG_RIM.ADD), mkHl("hlk", "d", "#000", SEG_RIM.MULT), mkHl("hlw", "d", "#fff", SEG_RIM.ADD)]; }
   /* the dark line's alphas for this theme: black source-over α = .3·k_tip·(3 − 2B) on the track the ends lie on, × (3 − 2B_page)/(3 − 2B_track) on the page rows
      (B = the mean grey of the actual backdrop: --ios-segment-track composited on --bg) */
   { const pg = SEG_RIM.grey(getComputedStyle(document.body).backgroundColor) || { r: 242, g: 242, b: 247, a: 1 }, tk = SEG_RIM.grey(getComputedStyle(seg).backgroundColor) || { r: 118, g: 118, b: 128, a: .12 };
@@ -1327,7 +1330,7 @@ function segLens(seg, lens, bs) {
   let rimKey = "";
   const rimGeo = (Wd, Hd, T) => {   // SVG geometry in lens-box coordinates (the <g> is translated by the 12 px margin)
     const key = `${Wd}|${Hd}|${T}`; if (key === rimKey) return; rimKey = key; const R = Hd / 2;
-    for (const s of [rimb.querySelector("svg"), hlk, hlw]) { s.setAttribute("width", Wd + 24); s.setAttribute("height", Hd + 24);
+    for (const s of [rimb.querySelector("svg"), ...hls]) { s.setAttribute("width", Wd + 24); s.setAttribute("height", Hd + 24);
       for (const r of s.querySelectorAll("rect[data-e0]")) { const e0 = +r.dataset.e0, e1 = +r.dataset.e1, em = (e0 + e1) / 2, dy = +(r.dataset.dy || 0);
         r.setAttribute("x", em); r.setAttribute("y", em + dy); r.setAttribute("width", Wd - 2 * em); r.setAttribute("height", Hd - 2 * em); r.setAttribute("rx", R - em); r.setAttribute("stroke-width", e1 - e0); }
       for (const gr of s.querySelectorAll("linearGradient")) { if (gr.getAttribute("x2") === "0") { gr.setAttribute("y1", -T); gr.setAttribute("y2", segH - T); continue; }   // the page / track mask: the track's rows in lens-box coordinates
@@ -1363,13 +1366,13 @@ function segLens(seg, lens, bs) {
     st.geo = { left, top, w, h };
     const f = st.flex.out, idle = Math.abs(f.sx - 1) < 1.5e-3 && Math.abs(f.sy - 1) < 1.5e-3 && Math.abs(f.dx) < .1;   // at rest the transform is dropped: a transform within 1/700 of identity (< .17 px at the lens edge) still makes the browser resample the filtered layers (blurs the 1 pt lines, shifts the end columns) — CoreAnimation renders its vector layers sharp at any transform
     const tf = idle ? "none" : `translateX(${f.dx.toFixed(3)}px) scale(${f.sx.toFixed(5)}, ${f.sy.toFixed(5)})`;   // the flex presentation transform (§1: on the transform, the model bounds unchanged); every layer of the lens carries it
-    for (const el of [lens, warp, warpl, plat, rimb, hlk, hlw]) { el.style.transform = tf; el.style.transformOrigin = "50% 50%"; }
+    for (const el of [lens, warp, warpl, plat, rimb, ...hls]) { el.style.transform = tf; el.style.transformOrigin = "50% 50%"; }
   };
   const frame = (p, pd) => {   // p = glass / displacement progress, pd = DestOut (copies) opacity
     const g = st.geo || { left: pad + idx0 * PITCH, top: pad, w: W0, h: H0 };   // the model box (the flex transform sits on top of it, so not getBoundingClientRect)
     const L = g.left, T = g.top, Wd = g.w, Hd = g.h, R = Hd / 2;   // capsule: corner = h/2 (r22 at 44 ← §0; the lift's corner 14 → 22 on the same spring ← §4.4 row 1)
     for (const el of [warp, warpl, plat, rimb]) { el.style.left = L + "px"; el.style.top = T + "px"; el.style.width = Wd + "px"; el.style.height = Hd + "px"; el.style.setProperty("--rr", R + "px"); }
-    for (const el of [hlk, hlw]) { el.style.left = (L - 12) + "px"; el.style.top = (T - 12) + "px"; el.style.width = (Wd + 24) + "px"; el.style.height = (Hd + 24) + "px"; }   // the highlight SVGs' box = lens box + the 12 px margin (WebKit clips an outer <svg> to its box whatever overflow says)
+    for (const el of hls) { el.style.left = (L - 12) + "px"; el.style.top = (T - 12) + "px"; el.style.width = (Wd + 24) + "px"; el.style.height = (Hd + 24) + "px"; }   // the highlight SVGs' box = lens box + the 12 px margin (WebKit clips an outer <svg> to its box whatever overflow says)
     rimGeo(Wd, Hd, T);   // B6: the ring strokes follow the model box
     copy.style.left = -L + "px"; copy.style.top = -T + "px";   // the backdrop copy stays aligned with the real control
     const PW = W0, PH = H0, PL = (Wd - PW) / 2, PT = (Hd - PH) / 2;   // the label portal: the resting lens size 196×28, centred in the lens (seg-lift-material §1: portal #32)
@@ -1386,7 +1389,7 @@ function segLens(seg, lens, bs) {
     seg.classList.remove("lift"); seg.style.removeProperty("--lp"); seg.style.removeProperty("--lpd"); copy.innerHTML = ""; copyl.innerHTML = "";
     if (curSet) for (const id of [`#seg-lens-f-bg-${curSet}`, `#seg-lens-f-lab-${curSet}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", String(sOf(id))); }   // the file's rest value; the layers are hidden now
     for (const k of ["transition", "left", "top", "width", "height", "margin", "border-radius", "transform", "transform-origin"]) lens.style.removeProperty(k);   // the CSS rest values are what the loop ended on
-    for (const el of [warp, warpl, plat, rimb, hlk, hlw]) { el.style.removeProperty("transform"); el.style.removeProperty("transform-origin"); }
+    for (const el of [warp, warpl, plat, rimb, ...hls]) { el.style.removeProperty("transform"); el.style.removeProperty("transform-origin"); }
     st.done = true; if (seg.__lensLoop === loop) seg.__lensLoop = null;
   };
   const clamp01 = (x) => Math.max(0, Math.min(1, x));
