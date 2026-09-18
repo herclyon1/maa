@@ -1,0 +1,63 @@
+{
+ "size_pt": [
+  220.0,
+  44.0
+ ],
+ "scale": 32.0,
+ "px_per_pt": 2,
+ "map_px": [
+  440,
+  88
+ ],
+ "stretch": false,
+ "encoding": "byte = 128 + round(u·255/scale); x→R, y→G; B 128; u = content − screen (pt, +x right, +y down); browser decodes scale·(byte/255 − .5) = u + scale/510",
+ "field": {
+  "gx": "seg-phase-gx-light.json",
+  "gy": "seg-phase-gy-light.json",
+  "measured_lens": [
+   10.0,
+   602.0,
+   220.0,
+   44.0
+  ],
+  "half": [
+   110.0,
+   22.0
+  ],
+  "rows_y": [
+   -16.0,
+   -8.0,
+   0.0,
+   8.0,
+   16.0
+  ],
+  "cols_x": [
+   -80.0,
+   -50.0,
+   -30.0,
+   30.0,
+   50.0,
+   80.0
+  ],
+  "peak_pt": 4.08,
+  "interior": {
+   "du_x/dx at y 0 (|x| 40–70, local slope)": 0.0004,
+   "x scale": 1.0,
+   "du_y/dy at x 50 (|y| ≤ 10)": 0.218,
+   "y scale": 0.821,
+   "note": "row 0 holds a constant ±0.5 pt level step across the centre (seg-lens-refraction.md §0: M 1.00); the x scale is 1.00 within the noise"
+  }
+ },
+ "label_copy": "not displaced (seg-lens-refraction.md §2.3) — keep it in an unfiltered layer above the filtered copy",
+ "sources": [
+  "remote-ref/seg-lens-refraction.md §0 §2 §2.3",
+  "remote-ref/seg-lift-material.md §1",
+  "remote-ref/tools/touch/seg-phase-{gx,gy}-{light,dark}.json (data session, 2026-09-19)"
+ ],
+ "dark_vs_light": {
+  "gx": "seg-phase-gx-dark.json",
+  "gy": "seg-phase-gy-dark.json",
+  "mean_abs_diff_pt": 0.021,
+  "max_abs_diff_pt": 0.47
+ }
+}

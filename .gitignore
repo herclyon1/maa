@@ -3,6 +3,9 @@
 # 手机页的图标是发布产物，必须入库：gh-pages 是 cp web/* 过去的，
 # 库里没有就等于线上缺文件（apple-touch-icon 404，主屏图标变成截图）。
 !web/*.png
+# the segmented-lens displacement maps are generated products the filter embeds as data URIs; the PNGs stay in the
+# repository so verify_lens_maps.py can decode them against the measured field (web/assets/lens/README.md)
+!web/assets/lens/*.png
 *.log
 # 测试语料必须入库：回放测试和几个格式测试读的就是这些 .log。
 # 2026-09-08 发现它们被 *.log 挡在库外——新克隆里 10 条回放全判失败、
