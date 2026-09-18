@@ -94,9 +94,26 @@ try:
     st4.append_ledger(rec(run_id="boom"))
 finally:
     scoreboard.record = orig
-day = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
+# append_ledger files a record under the day of `started` (core.py), and rec()
+# starts five minutes before now - so between 00:00 and 00:05 server time the
+# file is yesterday's. Reading "today's" file here made this test fail on
+# 2026-09-19 00:04 (and would every night); read the same day the code wrote.
+boom = rec(run_id="boom")
+day = boom.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
 lines = [json.loads(x) for x in (d4 / f"ledger-{day}.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
 check("账本照样写进去了", [x["run_id"] for x in lines], ["boom"])
+
+print("\n[跨午夜：00:03 跑完、23:58 开始的一趟，记在开始那天的账本里]")
+d5 = tmpdir()
+st5 = State(d5)
+st5.store.set("versions", "code", "v10")
+t_end = datetime(2026, 9, 19, 0, 3, tzinfo=SERVER_TZ)
+late = RunRecord(run_id="late", script="OK-WW", user="wuwa", started=t_end - timedelta(minutes=5),
+                 finished=t_end, ok=True, failed_tasks=[], duration_known=True, transitional=False, raw={})
+st5.append_ledger(late)
+check("落在 09-18 的账本", (d5 / "ledger-2026-09-18.jsonl").exists(), True)
+check("09-19 的账本不存在", (d5 / "ledger-2026-09-19.jsonl").exists(), False)
+check("记分牌照样数了这一趟", st5.store.get("versions", "scoreboard")["v10"]["runs"], 1)
 
 print("\n[照算照记进日志，但不再印进日报（用户 2026-09-14）]")
 src = (Path(__file__).resolve().parents[1] / "ark_relay" / "report.py").read_text(encoding="utf-8")
