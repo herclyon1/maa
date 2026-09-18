@@ -674,14 +674,21 @@ def _mark_alerted(eng, day: str, key: str) -> None:
     eng.state.store.set("marks", f"alerted:{day}", cur)
 
 
+def _attempts(eng, rec: RunRecord, day: str) -> int:
+    """How many times this script really ran today: stubs AUTO-MAS wrote for an
+    attempt that never ran (transitional, e.g. 「未捕获到日志」) are not attempts."""
+    return sum(1 for e in eng.state.read_ledger(day)
+               if e["script"] == rec.script and e["user"] == rec.user
+               and not e.get("transitional"))
+
+
 def _flush_pending(eng) -> None:
     if not (eng._pending or eng._recovered) or eng._scripts_running():
         return
 
     for rec in list(eng._recovered.values()):
         day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
-        attempts = sum(1 for e in eng.state.read_ledger(day)
-                       if e["script"] == rec.script and e["user"] == rec.user)
+        attempts = _attempts(eng, rec, day)
         # Wuthering Waves client update -> restart -> successful re-run: an
         # episode, not a fault. On the morning shift of 2026-09-02 this pushed a
         # ⚠️「本次自愈，问题未解决」 that the user named as a false alarm.
@@ -713,8 +720,7 @@ def _flush_pending(eng) -> None:
 
     for rec in list(eng._pending.values()):
         day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
-        attempts = sum(1 for e in eng.state.read_ledger(day)
-                       if e["script"] == rec.script and e["user"] == rec.user)
+        attempts = _attempts(eng, rec, day)
         # Endfield never entered the game at all (server maintenance / client
         # update pending): not a fault anyone has to act on. Send one explanation
         # that day and raise no alert. The user, 2026-09-02: 「检测到

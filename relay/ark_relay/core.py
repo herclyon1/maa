@@ -704,6 +704,10 @@ def _daily_head(failed: list, undone: list, retried: dict, kinds: dict) -> str:
 
 
 def _launch_miss(e: dict) -> bool:
+    """A record AUTO-MAS wrote for an attempt that never ran (emulator launch miss,
+    or MaaEnd restarting for its own update - 「未捕获到日志」, 2026-09-18)."""
+    if e.get("transitional") and "未捕获到日志" in str((e.get("raw") or {}).get("maaend_result") or ""):
+        return True
     return (not e.get("ok")
             and any("模拟器启动失败" in str(t) for t in (e.get("failed_tasks") or [])))
 

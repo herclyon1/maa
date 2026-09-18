@@ -92,6 +92,12 @@ _TRANSITIONAL = (
     # 「模拟器启动失败, 无日志记录」 and the next attempt starts one second later
     # (2026-09-14 10:51:56 → 10:51:57). The report printed it as ❌ MaaEnd 时长未知.
     "模拟器启动失败",
+    # AUTO-MAS launched MaaEnd while MaaEnd was installing its own update and
+    # restarting (2026-09-18 09:54:35: 「自动安装更新：条件满足」 at 09:54:31, the
+    # relaunch at 09:54:44 ran the real retry). The attempt's record is a 30-byte
+    # stub and its result is 「未捕获到日志」. It is not a run: no retry is
+    # judged on it, and it must not count as an attempt in 「尝试 N 次」.
+    "未捕获到日志",
 )
 
 
