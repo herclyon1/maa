@@ -332,7 +332,7 @@ def filter_aberration(fid, hrefs, w, h, scale, mode, margin, note, alpha_elem=1.
     with scale ±k·S, its channels weighted by feColorMatrix, summed by feComposite arithmetic; the taps' alphas / 7 are summed the
     same way for ΣA/7. Band mask = B of the map: mode 'flip' = op (the outer band), mode 'ir' = 1 − op (the IR-literal interior)."""
     taps = [(1.0, 1), (2 / 3, 1), (1 / 3, 1), (0.0, -1), (1 / 3, -1), (2 / 3, -1), (1.0, -1)]
-    out = [f'  <filter id="{fid}" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">',
+    out = [f'  <filter id="{fid}" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="{scale:g}">',
            f"    <!-- {note}; band mask: {mode}; apply to the wrapper of {w + 2 * margin:g}×{h + 2 * margin:g} pt = the lens {w:g}×{h:g} plus {margin:g} pt on every side -->",
            f'    <feImage href="{hrefs[0]}" preserveAspectRatio="none" result="abmap"/>',
            '    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>' if mode == "flip" else
@@ -397,8 +397,8 @@ def filter_formula(fid, href, w, h, scale, margin, note):
     lens box (w×h) with its own clip (capsule for the label copy — the native clips first, then displaces; the box for the copy of
     what lies under the lens) and overflow hidden: the map's samples never leave the box (clamp_to_edge baked into the map), so no
     region beyond the box is needed. Default filter region and units only: WebKit renders nothing with userSpaceOnUse regions."""
-    return "\n".join([f'  <filter id="{fid}" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">',
-                      f"    <!-- {note}; apply to the {w:g}×{h:g} pt lens layer -->",
+    return "\n".join([f'  <filter id="{fid}" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="{scale:g}">',
+                      f"    <!-- {note}; apply to the {w:g}×{h:g} pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->",
                       f'    <feImage href="{href}" preserveAspectRatio="none" result="map"/>',
                       '    <feColorMatrix in="map" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>',
                       f'    <feDisplacementMap in="SourceGraphic" in2="map" scale="{scale:g}" xChannelSelector="R" yChannelSelector="G" result="disp"/>',
@@ -557,7 +557,7 @@ def main():
     ap = build_parser(); a = ap.parse_args(); W, H = (float(v) for v in a.size.lower().split("x"))
     AMP_FLOOR[0] = a.amp_floor
     if a.formula:
-        if a.scale == 32.0: a.scale = 48.0   # the label stack reaches 17.5 pt at the lens edge (ClearGlass −17.5), × 1.16 on the widest stretch set: S 48 holds ±24 pt at 0.188 pt per byte step
+        if a.scale == 32.0: a.scale = 40.0   # the label stack reaches 17.5 pt at the lens edge (ClearGlass −17.5): S 40 holds ±20 pt at 0.157 pt per byte step; a set whose scaled stack exceeds that gets S 48 (main_formula)
         return main_formula(a, W, H)
     if not a.field: ap.error("--field is required without --formula")
     return main_measured(a, W, H)
@@ -661,15 +661,19 @@ def main_formula(a, W, H):
         bg = parse_layers(a.bg_layers, W, H, portal); lab = parse_layers(a.label_layers, W, H, portal)   # the model lens (220×44); the set is its scaled image
         fbg, flab = f"seg-f-bg-{w}.png", f"seg-f-lab-{w}.png"
         portal_rect = None if a.label_portal in ("0", "") else tuple(float(v) / 2 for v in a.label_portal.lower().split("x"))
-        mw, mh, pk_bg = render_formula(os.path.join(a.out, fbg), w, h, bg, a.px, a.scale, a.margin, None, (W, H))
-        _, _, pk_lab = render_formula(os.path.join(a.out, flab), w, h, lab, a.px, a.scale, a.margin, portal_rect, (W, H))
+        # encoding scale per set: S 40 wherever the scaled stack fits ±20 pt (the 220 set stays byte-identical to cdb33f4 — a change of S moves
+        # the quantised end-zone samples by up to 0.09 pt, half a device column on the 1-pt end lines), S 48 only for the widest stretch sets
+        S_set = a.scale
+        try: mw, mh, pk_bg = render_formula(os.path.join(a.out, fbg), w, h, bg, a.px, S_set, a.margin, None, (W, H)); _, _, pk_lab = render_formula(os.path.join(a.out, flab), w, h, lab, a.px, S_set, a.margin, portal_rect, (W, H))
+        except ValueError:
+            S_set = 48.0; mw, mh, pk_bg = render_formula(os.path.join(a.out, fbg), w, h, bg, a.px, S_set, a.margin, None, (W, H)); _, _, pk_lab = render_formula(os.path.join(a.out, flab), w, h, lab, a.px, S_set, a.margin, portal_rect, (W, H))
         fab = None; pk_ab = None; fabs = []
         if a.aberration != "off":
             fab = f"seg-f-ab-{w}.png"
-            _, _, pk_ab, fl = render_aberration(os.path.join(a.out, fab), w, h, tuple(float(v) for v in a.aberration.split("/")), tuple(float(v) for v in a.edge.split("/")), a.ab_px, a.scale, 0.5, a.ab_margin, a.ab_sign, (W, H))
+            _, _, pk_ab, fl = render_aberration(os.path.join(a.out, fab), w, h, tuple(float(v) for v in a.aberration.split("/")), tuple(float(v) for v in a.edge.split("/")), a.ab_px, S_set, 0.5, a.ab_margin, a.ab_sign, (W, H))
             fabs = [os.path.basename(f) for f in fl]
         nb = os.path.getsize(os.path.join(a.out, fbg)) + os.path.getsize(os.path.join(a.out, flab)) + sum(os.path.getsize(os.path.join(a.out, f)) for f in fabs); total_bytes += nb
-        sets[w] = {"h": round(h, 2), "scale": [round(w / W, 4), round(h / H, 4)], "layer_pt": [w + 2 * a.margin, round(h + 2 * a.margin, 2)], "map_px": [mw, mh], "h_source": how, "frames": [[round(f[0], 2), round(f[1], 2), f[2]] for f in src],
+        sets[w] = {"h": round(h, 2), "scale": [round(w / W, 4), round(h / H, 4)], "S": S_set, "layer_pt": [w + 2 * a.margin, round(h + 2 * a.margin, 2)], "map_px": [mw, mh], "h_source": how, "frames": [[round(f[0], 2), round(f[1], 2), f[2]] for f in src],
                    "label_portal_pt": a.label_portal, "ab": fab, "ab_files": fabs, "peak_ab_pt": (round(pk_ab, 2) if pk_ab is not None else None),
                    "bg": fbg, "lab": flab, "peak_bg_pt": round(pk_bg, 2), "peak_lab_pt": round(pk_lab, 2), "bytes": nb,
                    "filters": [f"seg-lens-f-bg-{w}", f"seg-lens-f-lab-{w}"] + ([f"seg-lens-f-ab-{w}", f"seg-lens-f-ab-ir-{w}"] if fab else [])}
@@ -693,11 +697,11 @@ def main_formula(a, W, H):
 """
         body = []
         for w, st in sets.items():
-            body.append(filter_formula(st["filters"][0], prefix + st["bg"], w, st["h"], a.scale, a.margin, f"backdrop, lens {w}×{st['h']:g} = the 220×44 model scaled by ({st['scale'][0]}, {st['scale'][1]}): {a.bg_layers} (sampling order)"))
-            body.append(filter_formula(st["filters"][1], prefix + st["lab"], w, st["h"], a.scale, a.margin, f"label copy, lens {w}×{st['h']:g}: {a.label_layers}"))
+            body.append(filter_formula(st["filters"][0], prefix + st["bg"], w, st["h"], st["S"], a.margin, f"backdrop, lens {w}×{st['h']:g} = the 220×44 model scaled by ({st['scale'][0]}, {st['scale'][1]}): {a.bg_layers} (sampling order); encoding S {st['S']:g}"))
+            body.append(filter_formula(st["filters"][1], prefix + st["lab"], w, st["h"], st["S"], a.margin, f"label copy, lens {w}×{st['h']:g}: {a.label_layers}; encoding S {st['S']:g}"))
             if st.get("ab"):
                 for mode, fid in (("flip", st["filters"][2]), ("ir", st["filters"][3])):
-                    body.append(filter_aberration(fid, [prefix + f for f in st["ab_files"]], w, st["h"], a.scale, mode, a.ab_margin, f"colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle {a.aberration}, edge band {a.edge}, tap direction sign {a.ab_sign:g}, α_elem {a.ab_alpha:g}, edr {a.ab_edr:g}, lens {w}×{st['h']:g}; apply to the wrapper of the two displaced layers", a.ab_alpha, a.ab_edr))
+                    body.append(filter_aberration(fid, [prefix + f for f in st["ab_files"]], w, st["h"], st["S"], mode, a.ab_margin, f"colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle {a.aberration}, edge band {a.edge}, tap direction sign {a.ab_sign:g}, α_elem {a.ab_alpha:g}, edr {a.ab_edr:g}, lens {w}×{st['h']:g}; apply to the wrapper of the two displaced layers", a.ab_alpha, a.ab_edr))
         return head + "\n".join(body) + "\n</svg>\n"
     open(os.path.join(a.out, "lens-filter.svg"), "w").write(svg_for(a.href_prefix))
     tpl = os.path.join(HERE, "lens-test.template.html")
@@ -734,7 +738,7 @@ def main_formula(a, W, H):
                                        "sampling order": "the outer layer samples first: ContentLensing's image is portal #32 (196×28) showing the ClearGlass layer, whose image is the capsule-clipped segment content (formula.md §2, §1b 表 2) → u = Δ_L(p) + Δ_C(p + Δ_L(p)); the other order (validate_label.py) differs ≤ 0.1 rms inside the portal (verification → *_reversed_order)",
                                        "sampling / source rules": "formula.md §2: clamp_to_edge (the sample position is clamped to the stage's texture box), clip first then displace (the label copy is capsule-clipped before ClearGlass; ContentLensing's source content is the 196×28 portal, transparent around it), output × the effect shape's coverage (the map's B channel, applied by feComposite)",
                                        "glass_background SDF shape / ovalization": "the filter layer's own bounds + corner radii (监督局 05:0x); its ovalization is not read by the probe — the old page's residual table (rms 0.12–0.16) uses 0.5 on both backdrop layers, kept here"}},
-            "encoding": {"scale": a.scale, "px_per_pt": a.px, "bytes": "R = 128 + round(u_x·255/S), G = same for u_y, B = shape coverage (255 inside, anti-aliased edge), A 255; u = content − screen (pt, +x right, +y down); the browser decodes S·(byte/255 − .5) = u + S/510",
+            "encoding": {"scale": "per set: sets[w].S — 40 where the scaled stack fits ±20 pt, 48 for the widest stretch sets; the filter element carries data-s", "px_per_pt": a.px, "bytes": "R = 128 + round(u_x·255/S), G = same for u_y, B = shape coverage (255 inside, anti-aliased edge), A 255; u = content − screen (pt, +x right, +y down); the browser decodes S·(byte/255 − .5) = u + S/510",
                          "channels": "one map for all three colour channels (no dispersion)"},
             "sets": sets, "series": {"widths": widths, "step": step, "height_source": "linear between the two nearest recorded drag frames (seg-native-abc-frames.json phase drag; uiprobe-motion-segdragmid-light.json lenstrace); outside the recorded range the nearest frame (flagged clamped)", "shape": "the 220×44 r22 model lens scaled by (w/220, h/44) — seg-lens-refraction.md §1c(d): the flex scale sits on _UILiquidLensView's presentation transform alone, the layers below (SDF elements, portals 196×28, glass group) keep their model bounds; elliptical ends, the portal = scale × 196×28", "total_bytes": total_bytes},
             "aberration": ({"map": f"seg-f-ab-<w>.png: the lens box plus {a.ab_margin:g} pt on every side at {a.ab_px} px/pt; R/G = Δ = amt_a·g (pt, S 40; inward for amount −15), B = op = saturate((d − edge_start)/(edge_end − edge_start)) between the edge opacities",
@@ -752,7 +756,7 @@ def main_formula(a, W, H):
             "sources": ["remote-ref/glass-displacement-formula.md §1–§5", "remote-ref/seg-lens-refraction.md §0, §1b, §2", "remote-ref/tools/touch/seg-phase-*.json (comparison only)"]}
     json.dump(info, open(os.path.join(a.out, "lens-field.json"), "w"), indent=1, ensure_ascii=False)
     print(f"{len(sets)} sets ({widths[0]}…{widths[-1]} step {step}), {total_bytes / 1024:.0f} KB of PNG; filter {os.path.getsize(os.path.join(a.out, 'lens-filter.svg'))} bytes")
-    for w, st in sets.items(): print(f"  w {w}: h {st['h']:g} scale {st['scale']} ({st['h_source']}) peak bg {st['peak_bg_pt']} lab {st['peak_lab_pt']} pt, {st['bytes']} B")
+    for w, st in sets.items(): print(f"  w {w}: h {st['h']:g} scale {st['scale']} S {st['S']:g} ({st['h_source']}) peak bg {st['peak_bg_pt']} lab {st['peak_lab_pt']} pt, {st['bytes']} B")
     for name, res in verify.items():
         print(f"== {name}")
         for r in res:

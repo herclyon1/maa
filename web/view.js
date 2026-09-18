@@ -1200,14 +1200,15 @@ function press(el, e, handlers) {
    - lift: +109 ms after the down (--ios-touch-segment-lift-delay ← §4.1 frames) ONE spring ζ 1 / response .25 s drives bounds 196×28 → 220×44,
      corner 14 → 22, the displacement amount (filter scale 0 → 32), the platter (1 → 0), the highlight — so here q = that spring's progress and every
      lifted quantity is a function of q. The DestOut punch-out's opacity is the §4.1 frame values (--ios-touch-segment-destout-keys).
-   - drag: on every finger move the MODEL position is set to the finger's x through a spring ζ .85 / .2 s (bounds stay 220×44); the PRESENTATION
-     position is a tracking spring ζ .6533 / .4559 s retargeted every frame to the model (§4.4 rows 3–4). The stretch while dragging (244×38.4,
-     253×36) and the bounce after the up are UIKitCore's _UIFlexInteraction on the lens's presentation transform (flex-interaction.md; see FLEX_VARIANT
-     / flexSpec / flexIntegrator / flexTargets below) — the model bounds stay 220×44.
+   - drag: on every finger move the lens position is set to the finger's x through ONE spring ζ .85 / .2 s (bounds stay 220×44; §4.4 差分 row 3,
+     flex-interaction.md §2 结构). The stretch while dragging (244×38.4, 253×36), the drift and the bounce after the up are UIKitCore's
+     _UIFlexInteraction on the lens's presentation transform (flex-interaction.md; FLEX_VARIANT / flexSpec / flexIntegrator / flexTargets below);
+     its "tracking" springs ζ .6533 / .4559 (dragging) and ζ .56 / .444 (196×28) are what the probe saw retargeting every frame (§4.4 row 4) — they
+     drive scale / drift, not the position.
    - release: geometry back with the same ζ 1 / .25 spring (bounds, corner, position of the lifted rect), the material half — displacement,
      platter, highlight — with ζ 1 / .4 (§4.4 rows 5–6), both from up + 31 ms (§4.3 frames: first changed frame); the DestOut fade = §4.3 frame
-     values (--ios-touch-segment-release-destout-*). The position: model travel ζ .85 / .4 s to the segment the lens ends on (§4.4 换值行程 row),
-     presentation tracking ζ .56 / .444 s retargeted per frame (§4.4: the +6.8 % overshoot and the 1.2 s settle).
+     values (--ios-touch-segment-release-destout-*). The position: one spring ζ .85 / .4 s to the segment the lens ends on (§4.4 换值行程 row);
+     the flex floats keep running (smallLoupe ζ .56 / .444 once the lens is 196×28).
    While the loop runs the lens carries `transition: none` inline (so the resting lens's CSS transitions — the tap commit's slide on --i — do not react
    to the per-frame values); at the end the inline values equal the CSS rest values and are removed. The copies (bg + track through the displacement
    map, labels), the platter and the rim are positioned to the lens's presented rect each frame. Tab-bar curves (LENS_P) stay for the tab bar. */
@@ -1226,7 +1227,7 @@ const SEG_DROP_DESTOUT = [[0, 1], [.198, 1], [.215, .841], [.231, .69], [.248, .
 /* §4.1 DestOut opacity after the lift starts (+109 ms): .396 / .98 / 1 on the first three frames */
 const SEG_LIFT_DESTOUT = [[0, 0], [.016, .396], [.033, .98], [.05, 1]];
 /* §4.4 springs [原值]: [ζ, response s] */
-const SEG_SPRING = { lift: [1.0, .25], fallMaterial: [1.0, .4], model: [.85, .2], track: [.6533, .4559], travel: [.85, .4], settle: [.56, .444] };
+const SEG_SPRING = { lift: [1.0, .25], fallMaterial: [1.0, .4], model: [.85, .2], travel: [.85, .4] };   // position springs; the .6533/.4559 and .56/.444 tracking springs of §4.4 are the flex interaction's (FLEX_VARIANT)
 /* B5 — the lens's stretch while dragging and its bounce after the up: UIKitCore `_UIFlexInteraction` (remote-ref/flex-interaction.md, the old
    page session's decompilation of the iOS 27.0 simulator UIKitCore; offsets there). Structure (§1): `_UILiquidLensView.flexInteraction`; every
    frame (UIUpdateLink 0x1c5050900) the lens's OWN presentation-layer centre goes into `_UIVelocityIntegrator addSample:` (config 0x1c504f3d8:
@@ -1279,9 +1280,9 @@ function segLens(seg, lens, bs) {
   const segW = seg.clientWidth, segH = seg.clientHeight; for (const c of [copy, copyl]) { c.style.width = segW + "px"; c.style.height = segH + "px"; }
 
   const cbs = [...copyl.querySelectorAll(".cb")];
-  const S = 48;   // map encoding (界面2号 README §0.3, ui2 d3cc467): byte = 128 + round(u · 255 / S), u in pt → feDisplacementMap scale = S × progress
+  const sOf = (id) => { const f = document.querySelector(id); return f ? parseFloat(f.getAttribute("data-s")) || 40 : 40; };   // map encoding per set (ui2 c4efe4b, README §0.3): byte = 128 + round(u · 255 / S), S = the filter's data-s (40; 48 on the eleven widest stretch sets) → feDisplacementMap scale = S × progress
   /* the formula-map set = the lens's MODEL width (README §0.3, ui2 d3cc467: the drag stretch is the 220×44 model scaled by the lens's presentation
-     transform — the flex scale, B5 — so the model stays 220 while dragging and the 220 set is the one; the lift rides it with scale 0 → 48). The
+     transform — the flex scale, B5 — so the model stays 220 while dragging and the 220 set is the one; the lift rides it with scale 0 → S). The
      196 … 256 sets remain for a model of another width. */
   const setFor = (Wm) => Math.max(196, Math.min(256, 2 * Math.round(Wm / 2)));
   let curSet = 0;
@@ -1293,13 +1294,18 @@ function segLens(seg, lens, bs) {
   const destDelay = touchMs("--ios-touch-segment-release-destout-delay", 198) / 1000;
   const K_LIFT_DEST = cssKeys("--ios-touch-segment-destout-keys", SEG_LIFT_DESTOUT), K_DEST = cssKeys("--ios-touch-segment-release-destout-keys", SEG_DROP_DESTOUT.filter(([t]) => t >= .198).map(([t, v]) => [t - .198, v]));
   const destEnd = destDelay + K_DEST[K_DEST.length - 1][0];
-  const st = { t0: performance.now(), prev: performance.now(), rel: null, raf: 0, done: false, dragged: false, cx: null, rest: idx0, pr: 0,
-               sL: { x: 0, v: 0 }, sM: { x: 1, v: 0 }, model: { x: restCentre(idx0), v: 0 }, pres: { x: restCentre(idx0), v: 0 }, geo: null,
+  /* the native lens starts following a finger move 35 – 47 ms after the touch (seg-native-abc-frames.json: first move +578 → first lens change +613;
+     seg-lens-drag-mid.md §0: finger moves +654 → lens +701): touch delivery + UIKit's step to the position behavior. Synthetic / DOM pointer events reach
+     this page with no such delay, so each retarget is applied that much later — the measured span's midpoint, 40 ms (both readings listed). */
+  const dragLatency = touchMs("--seg-drag-input-latency", 40);
+  const st = { t0: performance.now(), prev: performance.now(), rel: null, raf: 0, done: false, dragged: false, cx: null, queue: [], rest: idx0, pr: 0,
+               sL: { x: 0, v: 0 }, sM: { x: 1, v: 0 }, pos: { x: restCentre(idx0), v: 0 }, geo: null,   // pos = the lens position (one spring; the flex drift rides on top of it in the transform)
                flex: { vi: flexIntegrator(), sx: { x: 1, v: 0 }, sy: { x: 1, v: 0 }, dx: { x: 0, v: 0 }, out: { sx: 1, sy: 1, dx: 0 } } };   // B5: the flex interaction's integrator and its three animatable floats
   const setGeo = (left, top, w, h) => {
     lens.style.transition = "none"; lens.style.left = left + "px"; lens.style.top = top + "px"; lens.style.width = w + "px"; lens.style.height = h + "px"; lens.style.margin = "0"; lens.style.borderRadius = (h / 2) + "px";
     st.geo = { left, top, w, h };
-    const f = st.flex.out, tf = `translateX(${f.dx.toFixed(3)}px) scale(${f.sx.toFixed(5)}, ${f.sy.toFixed(5)})`;   // the flex presentation transform (§1: on the transform, the model bounds unchanged); every layer of the lens carries it
+    const f = st.flex.out, idle = Math.abs(f.sx - 1) < 1.5e-3 && Math.abs(f.sy - 1) < 1.5e-3 && Math.abs(f.dx) < .1;   // at rest the transform is dropped: a transform within 1/700 of identity (< .17 px at the lens edge) still makes the browser resample the filtered layers (blurs the 1 pt lines, shifts the end columns) — CoreAnimation renders its vector layers sharp at any transform
+    const tf = idle ? "none" : `translateX(${f.dx.toFixed(3)}px) scale(${f.sx.toFixed(5)}, ${f.sy.toFixed(5)})`;   // the flex presentation transform (§1: on the transform, the model bounds unchanged); every layer of the lens carries it
     for (const el of [lens, warp, warpl, plat, rim]) { el.style.transform = tf; el.style.transformOrigin = "50% 50%"; }
   };
   const frame = (p, pd) => {   // p = glass / displacement progress, pd = DestOut (copies) opacity
@@ -1313,13 +1319,13 @@ function segLens(seg, lens, bs) {
     const set = setFor(Math.max(W0 + 2 * LX, Wd));   // the model width (220 lifted; Wd is the model box — the flex transform is separate)
     if (set !== curSet) { curSet = set; disp.style.filter = `url(#seg-lens-f-bg-${set})`; displ.style.filter = `url(#seg-lens-f-lab-${set})`; }
     seg.style.setProperty("--lp", p.toFixed(4)); seg.style.setProperty("--lpd", pd.toFixed(4));
-    for (const id of [`#seg-lens-f-bg-${set}`, `#seg-lens-f-lab-${set}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", (S * p).toFixed(3)); }   // both stacks' amounts on the lift spring (§4.4 row 2: ClearGlass 0 → −17.5, ContentLensing 0 → −8.8, BackdropView 0 → 9 in the same call)
+    for (const id of [`#seg-lens-f-bg-${set}`, `#seg-lens-f-lab-${set}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", (sOf(id) * p).toFixed(3)); }   // both stacks' amounts on the lift spring (§4.4 row 2: ClearGlass 0 → −17.5, ContentLensing 0 → −8.8, BackdropView 0 → 9 in the same call)
     cbs.forEach((c, i) => c.className = "cb " + bs[i].className);
     seg.classList.toggle("lift", p > 0 || pd > 0);
   };
   const clear = () => {
     seg.classList.remove("lift"); seg.style.removeProperty("--lp"); seg.style.removeProperty("--lpd"); copy.innerHTML = ""; copyl.innerHTML = "";
-    if (curSet) for (const id of [`#seg-lens-f-bg-${curSet}`, `#seg-lens-f-lab-${curSet}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", String(S)); }   // the file's rest value; the layers are hidden now
+    if (curSet) for (const id of [`#seg-lens-f-bg-${curSet}`, `#seg-lens-f-lab-${curSet}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", String(sOf(id))); }   // the file's rest value; the layers are hidden now
     for (const k of ["transition", "left", "top", "width", "height", "margin", "border-radius", "transform", "transform-origin"]) lens.style.removeProperty(k);   // the CSS rest values are what the loop ended on
     for (const el of [warp, warpl, plat, rim]) { el.style.removeProperty("transform"); el.style.removeProperty("transform-origin"); }
     st.done = true; if (seg.__lensLoop === loop) seg.__lensLoop = null;
@@ -1333,32 +1339,34 @@ function segLens(seg, lens, bs) {
     if (st.rel == null) {
       const tl = (now - st.t0) / 1000 - liftDelay;   // time since the lift started (+109 ms)
       if (tl > 0) springStep(st.sL, 1, SEG_SPRING.lift, dt);
-      if (st.dragged) { springStep(st.model, st.cx, SEG_SPRING.model, dt); springStep(st.pres, st.model.x, SEG_SPRING.track, dt); }
+      while (st.queue.length && st.queue[0][0] <= now) st.cx = st.queue.shift()[1];   // retargets become effective after the measured latency
+      if (st.dragged && st.cx != null) springStep(st.pos, st.cx, SEG_SPRING.model, dt);   // B5-b: the position is ONE spring ζ .85 / .2 s retargeted to the finger on every move (§4.4 差分 row 3: position set to the finger x through this behavior; flex-interaction.md §2 结构) — the ζ .6533/.4559 tracking spring belongs to the flex floats, not to the position
       p = clamp01(st.sL.x); pd = tl <= 0 ? 0 : Math.max(p > 0 ? tabAt(K_LIFT_DEST, tl) : 0, p > 0.5 ? 1 : 0);   // --ios-touch-segment-destout-keys (first 3 frames)
       st.pr = p; moving = true;
     } else {
       const tr = (now - st.rel) / 1000;
       if (tr >= relDelay) { springStep(st.sL, 0, SEG_SPRING.lift, dt); springStep(st.sM, 0, SEG_SPRING.fallMaterial, dt); }
-      springStep(st.model, restCentre(st.rest), SEG_SPRING.travel, dt); springStep(st.pres, st.model.x, SEG_SPRING.settle, dt);
+      springStep(st.pos, restCentre(st.rest), SEG_SPRING.travel, dt);   // after the up: one spring ζ .85 / .4 s to the segment the lens ends on (§4.4 换值行程 row); the ζ .56/.444 "settle" spring is the flex's smallLoupe scale/drift spring once the lens is 196×28 (flexSpec)
       p = st.pr * clamp01(st.sM.x); pd = tr <= destDelay ? 1 : tabAt(K_DEST, tr - destDelay);
-      const fx = st.flex.out, settled = Math.abs(st.pres.x - restCentre(st.rest)) < .05 && Math.abs(st.pres.v) < 1 && st.sL.x < .001 && st.sM.x < .001 && Math.abs(fx.sx - 1) < .001 && Math.abs(fx.sy - 1) < .001;
+      const fx = st.flex.out, settled = Math.abs(st.pos.x - restCentre(st.rest)) < .05 && Math.abs(st.pos.v) < 1 && st.sL.x < .001 && st.sM.x < .001 && Math.abs(fx.sx - 1) < .001 && Math.abs(fx.sy - 1) < .001 && Math.abs(fx.dx) < .05;
       if ((tr >= destEnd && settled) || tr > 3) { clear(); return; }
     }
     /* B5 — the flex interaction, once per frame: the model bounds are the lift's (196×28 → 220×44), the presentation centre = the position spring + the
        flex drift goes into the integrator, updateFlex sets the targets, the three animatable floats follow on spec.scaleSpring (tracking while the finger is
        down), the result is the presentation transform */
     const q = clamp01(st.sL.x), w = W0 + 2 * LX * q, h = H0 + 2 * LY * q, fl = st.flex;
-    fl.vi.add(st.pres.x + fl.out.dx, now / 1000);
+    fl.vi.add(st.pos.x + fl.out.dx, now / 1000);   // the presentation centre = position + flex drift (the update link reads the presentation layer, §1)
     const spec = flexSpec(w, h), tg = flexTargets(spec, w, h, fl.vi.acceleration, fl.vi.velocity), sp = st.rel == null ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
     springStep(fl.sx, tg.sX, sp, dt); springStep(fl.sy, tg.sY, sp, dt); springStep(fl.dx, tg.drift, sp, dt);
     fl.out = { sx: Math.max(.9, Math.min(1.1, fl.sx.x)), sy: Math.max(.9, Math.min(1.1, fl.sy.x)), dx: fl.dx.x };   // updateFlex's final clamp [0.9, 1.1] (0x1c54c53d4)
-    setGeo(st.pres.x - w / 2, CY - h / 2, w, h);
+    setGeo(st.pos.x - w / 2, CY - h / 2, w, h);
     frame(p, pd); st.raf = requestAnimationFrame(tick);
   };
   const loop = {
     drag: (clientX) => {   // a finger move: the model position is set to the finger's x (clamped to the outer segments' centres) — §4.4 row 3
       if (st.rel != null || st.done) return;
-      st.cx = Math.max(restCentre(0), Math.min(restCentre(n - 1), clientX - seg.getBoundingClientRect().left));
+      const x = Math.max(restCentre(0), Math.min(restCentre(n - 1), clientX - seg.getBoundingClientRect().left));
+      st.queue.push([performance.now() + dragLatency, x]);   // takes effect after the native touch → lens latency (see dragLatency)
       if (!st.dragged) st.dragged = true;
     },
     release: (restIdx) => {   // every way out — up, out of bounds, pointercancel — falls the same way, to the rest rect of `restIdx`
@@ -1367,7 +1375,7 @@ function segLens(seg, lens, bs) {
     },
     stop: () => { cancelAnimationFrame(st.raf); if (!st.done) clear(); },
     step: (dtMs) => { if (!st.done) { cancelAnimationFrame(st.raf); tick(dtMs ? st.prev + dtMs : performance.now()); } },   // one frame by hand, optionally on a virtual clock (an offscreen WKWebView runs neither requestAnimationFrame nor timers at speed; the ?seghold hook drives it)
-    get state() { return { dragged: st.dragged, cx: st.cx, pres: st.pres.x, model: st.model.x, q: st.sL.x, rel: st.rel, done: st.done, flex: st.flex.out, accel: st.flex.vi.acceleration }; },
+    get state() { return { dragged: st.dragged, cx: st.cx, pos: st.pos.x, q: st.sL.x, rel: st.rel, done: st.done, flex: st.flex.out, accel: st.flex.vi.acceleration }; },
   };
   loop.cancel = loop.release;
   seg.__lensLoop = loop;
