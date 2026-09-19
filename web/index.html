@@ -686,7 +686,7 @@
                 box-shadow:0 4px 16px color-mix(in srgb, var(--accent) 35%, transparent)}
   .topbar .navbtn:active{opacity:.7}
   pre{margin:0;padding:11px 16px;white-space:pre-wrap;font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);color:var(--dim);font-family:inherit}
-  dialog{border:0;background:transparent;color:var(--ink);border-radius:var(--ios-alert-radius);padding:0;width:var(--ios-alert-w);max-width:calc(100vw - 32px);overflow:hidden;   /* .pane 比框大 60 pt 让模糊也采框外内容（CABackdropLayer marginWidth 60.2 ← ⑨ / paramdiff）；圆角由 .pane 自己的 clip-path 裁（见下）——dialog 上加 clip-path 会让 Chrome 的 backdrop-filter 只能采到 dialog 内部（clip-path 成了 backdrop root，模糊失效）；Safari 对合成层只按 overflow 矩形裁不裁圆角（数据会话 1eb6a3e 四张直角） */
+  dialog{border:0;background:transparent;color:var(--ink);border-radius:var(--ios-alert-radius);padding:0;width:var(--ios-alert-w);max-width:calc(100vw - 32px);overflow:clip;   /* clip, not hidden: hidden made the dialog a scroll container (the .pane's −60 inset = 60 px of scrollable overflow) and showModal()'s focus scrolled the title out of the box at the top of the page (验收 09-19 18:0x); clip cannot scroll */   /* .pane 比框大 60 pt 让模糊也采框外内容（CABackdropLayer marginWidth 60.2 ← ⑨ / paramdiff）；圆角由 .pane 自己的 clip-path 裁（见下）——dialog 上加 clip-path 会让 Chrome 的 backdrop-filter 只能采到 dialog 内部（clip-path 成了 backdrop root，模糊失效）；Safari 对合成层只按 overflow 矩形裁不裁圆角（数据会话 1eb6a3e 四张直角） */
          position:fixed;left:0;right:0;margin:0 auto;top:calc(50dvh + 14px);bottom:auto;translate:0 -50%}   /* 50dvh + 14 = 原生中心 492 的前提是 web view 盖满整屏 956（status-bar-style = black-translucent）；default / black 下 web view 从 y 62 起只有 894 高，dvh 按 894 算，中心落在 522（数据会话 2285c01、fd61e71 量），所以 meta 改成了 black-translucent */   /* 弹窗 320 r34 ← 探针 _UIAlertControllerPhoneTVMacView；位置 = standalone 整屏原生 frame (60, 406, 320, 172) ← ④：水平居中，竖向中心比整屏中心低 14（406 + 86 − 478）；用 translate 不用 transform，让出现动画的 scale 不打架 */
   /* the glass is a separate layer under the content: blur 20 (= 5 ÷ backdrop scale .25) · saturate 1.94 · brightness 1.071 + white .538 (dark 1.73 / .755 / .135) = 端到端实测 ← ⑨ --ios-alert-glass-*；
      a sibling, not the host, so the buttons' plus-darker can blend with it (a blend inside a backdrop-filter element never sees that element's backdrop in WebKit) */
@@ -3936,14 +3936,17 @@
   <div class="pnav"><button type="button" class="navbtn pback" aria-label="返回"></button><span class="ptitle"></span></div>
   <div class="pbody"></div>
 </div>
-<script src="schema.js?v=20260919180233"></script>
-<script src="net.js?v=20260919180233"></script>
-<script src="pending.js?v=20260919180233"></script>
-<script src="live.js?v=20260919180233"></script>
-<script src="stamina.js?v=20260919180233"></script>
-<script src="inventory.js?v=20260919180233"></script>
-<script src="view.js?v=20260919180233"></script>
-<script src="alert-prewarm.js?v=20260919180233"></script>   <!-- the alert glass layer built once at load: first open as fast as the second (web/alert-prewarm.js) -->
+<script src="schema.js?v=20260919095527"></script>
+<script src="net.js?v=20260919095527"></script>
+<script src="pending.js?v=20260919095527"></script>
+<script src="live.js?v=20260919095527"></script>
+<script src="stamina.js?v=20260919095527"></script>
+<script src="inventory.js?v=20260919095527"></script>
+<script>/* view.js: ?viewdelay=<ms> loads it that much later (the slow-network start: live.js's timers must not touch view.js's bindings before it runs — accept row) */
+{ const q = new URLSearchParams(location.search), ms = parseInt(q.get("viewdelay") || "0", 10);
+  if (ms > 0) setTimeout(() => { const s = document.createElement("script"); s.src = "view.js?v=20260919095527"; document.head.appendChild(s); }, ms);
+  else document.write('<script src="view.js?v=20260919095527"><\/script>'); }</script>
+<script src="alert-prewarm.js?v=20260919095527"></script>   <!-- the alert glass layer built once at load: first open as fast as the second (web/alert-prewarm.js) -->
 <script src="controls.js?v=20260919180233"></script>   <!-- row press (B14) / switch (B13) state machines; after view.js (it takes .acts button over from installPressables) -->
 <script>/* 验收脚本只在地址带 ?accept 时加载（docs/HIG-CHECKLIST.md 的验收程序）。分段透镜逐帧记录器（界面2号 seg-frames-logger.js）在 ?accept / ?diag / ?segframes 时加载，
    它自己看查询串，其它时候什么都不做。 */
