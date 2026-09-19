@@ -738,24 +738,38 @@
       pev(row, "pointerup", at(row, 1, .5, 16, 0)); await sleep(40);
       check("列表行 C11 出边抬手：不选中", 3, rsel, rsel === 3);
       /* the action row (.acts button) is the same cell */
-      /* the 「开始刷」 path: the row's click runs a synchronous confirm() — here a 100 ms busy wait; a rAF loop logs the class at every
-         frame (a rAF tick sees what that frame paints): both a highlight frame and a fade frame must have been logged before the block */
+      /* the 「开始刷」 path: the row's click opens the page's alert (ask(), the way view.js's action rows now do instead of the browser's blocking
+         confirm dialog); a rAF loop logs the row's class at every frame (a rAF tick sees what that frame paints): a highlight frame and a fade
+         frame must have been logged before the alert opened, and the fade must keep running under the open alert (native: deselectRow's .5 s
+         fade runs while the alert presents) */
       const frames = []; let logging = true; const logFrame = (ts) => { frames.push([ts, act.className]); if (logging) requestAnimationFrame(logFrame); }; requestAnimationFrame(logFrame);
-      let blockedAt = 0; act.addEventListener("click", () => { blockedAt = performance.now(); const t0 = performance.now(); while (performance.now() - t0 < 100) {} });
+      let blockedAt = 0, askP = null; act.addEventListener("click", () => { blockedAt = performance.now(); askP = ask("开始刷？", "验收：弹窗打开后淡回仍在走", "开始刷"); });
       const framesBefore = () => { const fr = frames.filter((f) => f[0] < blockedAt); return { hl: fr.some((f) => /\bhl\b/.test(f[1]) && !/hl-out/.test(f[1])), out: fr.some((f) => /hl-out/.test(f[1])) }; };
-      pev(act, "pointerdown", at(act)); await sleep(100); pev(act, "pointerup", at(act)); await sleep(450);
-      { const b = framesBefore(); check("蓝字行 短点 100 ms + click 里同步阻塞 100 ms（= confirm）：阻塞前已有高亮帧与淡出帧上屏（数据真机核 ②）", "hl 帧, hl-out 帧, 触发 1", `${b.hl ? "hl 帧" : "无 hl 帧"}, ${b.out ? "hl-out 帧" : "无 hl-out 帧"}, 触发 ${asel}`, b.hl && b.out && asel === 1 && blockedAt > 0); }
+      pev(act, "pointerdown", at(act)); await sleep(100); pev(act, "pointerup", at(act)); await sleep(60);
+      const alertEl = document.querySelector("#alert"), r60 = rgb(bgOf(act));
+      await sleep(150); const r210 = rgb(bgOf(act)), openAt60 = !!(alertEl && alertEl.open);   // the click (and the alert) comes ~2 frames after the +150 ms highlight of a 100 ms tap
+      await sleep(400);
+      { const b = framesBefore(); check("蓝字行 短点 100 ms，click 开页面弹窗（ask）：弹窗前已有高亮帧与淡出帧上屏（数据真机核 ②）", "hl 帧, hl-out 帧, 弹窗开（up +210）, 触发 1", `${b.hl ? "hl 帧" : "无 hl 帧"}, ${b.out ? "hl-out 帧" : "无 hl-out 帧"}, ${openAt60 ? "弹窗开" : "弹窗未开"}, 触发 ${asel}`, b.hl && b.out && openAt60 && asel === 1);
+        const moving = !!(r60 && r210) && (dark ? r210[0] < r60[0] - 3 : r210[0] > r60[0] + 3), rest = same(bgOf(act), T.card);
+        check("蓝字行 弹窗打开后淡回仍在走（up +60 → +210 ms 底色继续向静止色走，+610 到静止）", "走, 到静止", `${moving ? "走" : "停"}（R ${r60 ? Math.round(r60[0]) : "?"} → ${r210 ? Math.round(r210[0]) : "?"}）, ${rest ? "到静止" : "未到"}`, moving && rest); }
+      if (alertEl && alertEl.open) { document.querySelector("#alert-cancel").click(); await sleep(450); }
+      if (askP) await askP;
       frames.length = 0; blockedAt = 0;
       pev(act, "pointerdown", at(act)); await sleep(200);
       col("蓝字行 按下 +200 ms：底色 = 高亮色（同 cell）", HL, bgOf(act));
       pev(act, "pointerup", at(act)); await sleep(80);
-      { const b = framesBefore(); check("蓝字行 长按抬手 +80 ms：淡出首帧已上屏后才触发（阻塞 100 ms），触发 2 次", "hl-out 帧在前, 2", `${b.out ? "hl-out 帧在前" : "无"}, ${asel}`, b.out && asel === 2); }
+      { const b = framesBefore(); check("蓝字行 长按抬手 +80 ms：淡出首帧已上屏后才触发（弹窗），触发 2 次", "hl-out 帧在前, 2", `${b.out ? "hl-out 帧在前" : "无"}, ${asel}`, b.out && asel === 2); }
       logging = false;
+      if (alertEl && alertEl.open) { document.querySelector("#alert-cancel").click(); await sleep(450); }
+      if (askP) await askP;
       await sleep(620);
       pev(act, "pointerdown", at(act)); await sleep(200); pev(act, "pointermove", at(act, 1, .5, 16, 0)); await sleep(30);
       col("蓝字行 出卡片边 16 pt +30 ms：瞬灭到静止色（数据真机核 ①：不走基础 .5 s transition）", T.card, bgOf(act));
       pev(act, "pointerup", at(act, 1, .5, 16, 0)); await sleep(60);
       check("蓝字行 出边抬手：不触发", 2, asel, asel === 2);
+      /* the page's own action rows must not block the main thread: no synchronous confirm() left in view.js except ask()'s no-dialog fallback */
+      try { const src = await (await fetch("view.js?v=" + Date.now())).text(); const n = (src.match(/\bconfirm\(/g) || []).length;
+        check("行动作不再同步 confirm()（view.js 里只剩 ask() 的无 dialog 兜底那一处）", 1, n, n === 1); } catch (e) { check("行动作不再同步 confirm()", 1, "读不到 view.js", false); }
       rLab.remove();
     }
     const finish = () => {
