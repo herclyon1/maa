@@ -22,7 +22,8 @@
     return x >= cx - hw - SLOP && x <= cx + hw + SLOP && y >= cy - hh - SLOP && y <= cy + hh + SLOP; };
   const apply = (el, st) => { el.style.transform = st.s.x === 1 && st.phase === "release" && Math.abs(st.s.v) < 0.01 ? "" : `scale(${st.s.x})`; };
   const tick = (el) => (now) => { const st = live.get(el); if (!st) return;
-    const dt = Math.min(0.04, Math.max(0, (now - st.prev) / 1000)); st.prev = now;
+    if (now <= st.prev) { st.raf = requestAnimationFrame(tick(el)); return; }   // a frame stamped before the spring's start (Chrome: rAF's `now` is the frame's start, which can precede the call): nothing to integrate yet
+    const dt = Math.min(0.04, (now - st.prev) / 1000); st.prev = now;
     Motion.spring(st.s, st.target, st.phase === "hold" ? TRACK : RELEASE, dt); apply(el, st);
     if (st.phase === "release" && Math.abs(st.s.x - 1) < 0.001 && Math.abs(st.s.v) < 0.01) { el.style.transform = ""; live.delete(el); return; }
     st.raf = requestAnimationFrame(tick(el)); };

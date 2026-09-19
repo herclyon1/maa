@@ -26,7 +26,8 @@
   const settled = (goal) => Object.keys(goal).every((k) => Math.abs(cur.s[k].x - goal[k]) < 0.05 && Math.abs(cur.s[k].v) < 1);
   const strip = () => { if (!cur) return; cancelAnimationFrame(cur.raf); cur.panel.remove(); cur.scrim.remove(); removeEventListener("keydown", onKey); cur = null; };
   const tick = (now) => { if (!cur) return;
-    const dt = Math.min(0.04, Math.max(0, (now - cur.prev) / 1000)); cur.prev = now;
+    if (now <= cur.prev) { cur.raf = requestAnimationFrame(tick); return; }   // a frame stamped before the spring's start (Chrome: rAF's `now` is the frame's start, which can precede the call): nothing to integrate yet, the time base stays
+    const dt = Math.min(0.04, (now - cur.prev) / 1000); cur.prev = now;
     const goal = cur.phase === "in" ? cur.goalIn : cur.goalOut, spec = cur.phase === "in" ? (cur.reduced ? REDUCE : APPEAR) : (cur.reduced ? REDUCE : DISMISS);
     for (const k of Object.keys(goal)) Motion.spring(cur.s[k], goal[k], spec, dt);
     apply();
