@@ -1335,7 +1335,7 @@ function segLens(seg, lens, bs, downClientX) {
     defs.appendChild(vg);
     const m = svgEl("mask", { id: `${uid}-kf-vm`, maskUnits: "userSpaceOnUse", x: -12, y: -12, width: 1, height: 1 }); m.appendChild(svgEl("rect", { x: -12, y: -12, width: 1, height: 1, fill: `url(#${uid}-kf-vg)` })); defs.appendChild(m);
     g.appendChild(ringRect("rs", 0, 4, { "data-dy": 8 }));
-    const kg = svgEl("g", { class: "kfg", mask: `url(#${uid}-kf-vm)` }); g.appendChild(kg);
+    const kg = svgEl("g", { class: "kfg" }); if (!SEGX.includes("nokfmask")) kg.setAttribute("mask", `url(#${uid}-kf-vm)`); g.appendChild(kg);   // ?segx=nokfmask (experiment): the three rings without the SVG mask (the page factor is then not applied)
     SEG_RIM.kfRings.forEach((r, i) => { defs.appendChild(hgrad(`${uid}-kf-g${i}`, (nx) => SEG_RIM.kfK(r.v, nx) / SEG_RIM.kfK(r.v, -1), "#000")); kg.appendChild(ringRect("kf", r.e0, r.e1, { stroke: `url(#${uid}-kf-g${i})`, "data-v": r.v })); });
     rimb.appendChild(s); }
   /* the #36 layer is THREE emits, each source-over through the vibrant matrix (predict-seg-hold.md §0 item 6, keyfill-highlight.md §2 07:12): out ← (1 − α_i)·out + α_i·V(out)
@@ -1345,7 +1345,16 @@ function segLens(seg, lens, bs, downClientX) {
   const mkHl = (cls, band, colour, mult) => { const { s, defs, g } = buildSvg(cls); s.classList.add(band); const gid = `${uid}-${cls}-${band}`; defs.appendChild(hgrad(gid, band === "m" ? SEG_RIM.angMain : SEG_RIM.angDiff, colour));
     for (const r of SEG_RIM.hlRings) { const a = band === "m" ? r.main : r.diff; if (a) g.appendChild(ringRect("hl", r.e0, r.e1, { stroke: `url(#${gid})`, "stroke-opacity": (mult * a).toFixed(4) })); }
     seg.appendChild(s); return s; };
-  if (hls.length !== 4) { for (const e of hls) e.remove(); hls = [mkHl("hlk", "m", "#000", SEG_RIM.MULT), mkHl("hlw", "m", "#fff", SEG_RIM.ADD), mkHl("hlk", "d", "#000", SEG_RIM.MULT), mkHl("hlw", "d", "#fff", SEG_RIM.ADD)]; }
+  /* ?segx=hlcss (experiment, ios-switch-list.md): the same four passes as CSS inset box-shadow ring stacks on plain divs (each shadow covers the rings
+     inside it, so the per-ring alphas are solved for the cumulative source-over) with the angular factor as a mask-image gradient — no SVG. */
+  const HLCSS = SEGX.includes("hlcss");
+  const mkHlCss = (cls, band, colour, mult) => { const el = mk(cls, ""); el.classList.add(band, "css"); const rings = SEG_RIM.hlRings.filter((r) => (band === "m" ? r.main : r.diff) > 0), eff = rings.map((r) => mult * (band === "m" ? r.main : r.diff));
+    const a = []; for (let j = eff.length - 1; j >= 0; j--) { const inner = j + 1 < eff.length ? eff[j + 1] : 0; a[j] = 1 - (1 - eff[j]) / (1 - inner); }
+    el.style.boxShadow = rings.map((r, j) => `inset 0 0 0 ${(r.e1).toFixed(4)}px rgb(${colour} / ${a[j].toFixed(4)})`).join(", ");
+    const fn = band === "m" ? SEG_RIM.angMain : SEG_RIM.angDiff, L = SEG_RIM.NXS.map((nx) => `rgb(0 0 0 / ${fn(nx).toFixed(4)}) calc(var(--rr, 14px) * ${(1 + nx).toFixed(2)})`), R = [...SEG_RIM.NXS].reverse().map((nx) => `rgb(0 0 0 / ${fn(nx).toFixed(4)}) calc(100% - var(--rr, 14px) * ${(1 + nx).toFixed(2)})`);
+    const g = `linear-gradient(90deg, ${L.join(", ")}, ${R.join(", ")})`; el.style.webkitMaskImage = g; el.style.maskImage = g; return el; };
+  if (hls.length !== 4) { for (const e of hls) e.remove(); hls = HLCSS ? [mkHlCss("hlk", "m", "0 0 0", SEG_RIM.MULT), mkHlCss("hlw", "m", "255 255 255", SEG_RIM.ADD), mkHlCss("hlk", "d", "0 0 0", SEG_RIM.MULT), mkHlCss("hlw", "d", "255 255 255", SEG_RIM.ADD)]
+    : [mkHl("hlk", "m", "#000", SEG_RIM.MULT), mkHl("hlw", "m", "#fff", SEG_RIM.ADD), mkHl("hlk", "d", "#000", SEG_RIM.MULT), mkHl("hlw", "d", "#fff", SEG_RIM.ADD)]; }
   /* the dark line's alphas for this theme: black source-over α = .3·k_tip·(3 − 2B) on the track the ends lie on, × (3 − 2B_page)/(3 − 2B_track) on the page rows
      (B = the mean grey of the actual backdrop: --ios-segment-track composited on --bg) */
   { const pg = SEG_RIM.grey(getComputedStyle(document.body).backgroundColor) || { r: 242, g: 242, b: 247, a: 1 }, tk = SEG_RIM.grey(getComputedStyle(seg).backgroundColor) || { r: 118, g: 118, b: 128, a: .12 };
@@ -1367,7 +1376,7 @@ function segLens(seg, lens, bs, downClientX) {
   let rimKey = "";
   const rimGeo = (Wd, Hd, T) => {   // SVG geometry in lens-box coordinates (the <g> is translated by the 12 px margin)
     const key = `${Wd}|${Hd}|${T}`; if (key === rimKey) return; rimKey = key; const R = Hd / 2;
-    for (const s of [rimb.querySelector("svg"), rimo.querySelector("svg"), ...hls]) { s.setAttribute("width", Wd + 24); s.setAttribute("height", Hd + 24);
+    for (const s of [rimb.querySelector("svg"), rimo.querySelector("svg"), ...(HLCSS ? [] : hls)]) { s.setAttribute("width", Wd + 24); s.setAttribute("height", Hd + 24);
       for (const r of s.querySelectorAll("rect[data-e0]")) { const e0 = +r.dataset.e0, e1 = +r.dataset.e1, em = (e0 + e1) / 2, dy = +(r.dataset.dy || 0);
         r.setAttribute("x", em); r.setAttribute("y", em + dy); r.setAttribute("width", Wd - 2 * em); r.setAttribute("height", Hd - 2 * em); r.setAttribute("rx", R - em); r.setAttribute("stroke-width", e1 - e0); }
       for (const gr of s.querySelectorAll("linearGradient")) { if (gr.getAttribute("x2") === "0") { gr.setAttribute("y1", -T); gr.setAttribute("y2", segH - T); continue; }   // the page / track mask: the track's rows in lens-box coordinates
@@ -1430,7 +1439,7 @@ function segLens(seg, lens, bs, downClientX) {
     for (const el of [warp, warpl, plat, rimb]) { el.style.left = AM + "px"; el.style.top = AM + "px"; el.style.width = Wd + "px"; el.style.height = Hd + "px"; el.style.setProperty("--rr", R + "px"); }
     stack.style.setProperty("--rr", R + "px"); rimo.style.left = L + "px"; rimo.style.top = T + "px"; rimo.style.width = Wd + "px"; rimo.style.height = Hd + "px"; rimo.style.setProperty("--rr", R + "px");
     if (rimoKey !== `${Wd}|${Hd}`) { rimoKey = `${Wd}|${Hd}`; rimo.style.clipPath = `path(evenodd, "M-14 -14H${Wd + 14}V${Hd + 14}H-14Z M${R} 0H${Wd - R}A${R} ${R} 0 0 1 ${Wd - R} ${Hd}H${R}A${R} ${R} 0 0 1 ${R} 0Z")`; }   // the outside of the capsule (the ring shadow reaches 11 pt out)
-    for (const el of hls) { el.style.left = (L - 12) + "px"; el.style.top = (T - 12) + "px"; el.style.width = (Wd + 24) + "px"; el.style.height = (Hd + 24) + "px"; }   // the highlight SVGs' box = lens box + the 12 px margin (WebKit clips an outer <svg> to its box whatever overflow says)
+    for (const el of hls) { if (HLCSS) { el.style.left = L + "px"; el.style.top = T + "px"; el.style.width = Wd + "px"; el.style.height = Hd + "px"; el.style.setProperty("--rr", R + "px"); } else { el.style.left = (L - 12) + "px"; el.style.top = (T - 12) + "px"; el.style.width = (Wd + 24) + "px"; el.style.height = (Hd + 24) + "px"; } }   // the highlight SVGs' box = lens box + the 12 px margin (WebKit clips an outer <svg> to its box whatever overflow says)
     rimGeo(Wd, Hd, T);   // B6: the ring strokes follow the model box
     copy.style.left = -L + "px"; copy.style.top = -T + "px";   // the backdrop copy stays aligned with the real control
     copyp.style.left = -L + "px"; copyp.style.top = -T + "px"; copyl.style.left = -L + "px"; copyl.style.top = -T + "px";   // the label copies aligned with the real labels (B4-c': no 196×28 portal offset)

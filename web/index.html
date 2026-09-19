@@ -3918,7 +3918,9 @@
      a 1×1 constant (128, 128, 255) = zero displacement, full coverage; maponlyr / maponlyg feed feDisplacementMap a copy of the map with G / R forced to
      .5 (only x / only y displacement); scale0 makes the loop hold the displacement scale at 0 (view.js SEGX). Round 2: nohlk / nohlw hide one of the two
      highlight stacks, noish / nors / nokf hide one of .rimb's three items, wide1 (view.js) merges every 1/3-pt ring stroke into one whole-pt stroke with the
-     mean alpha — an antialiasing experiment for the 3× raster, not a drawing. noab (or data-dispersion="0" on the control) leaves the layer-5 colour-fringe chain off. */
+     mean alpha — an antialiasing experiment for the 3× raster, not a drawing. noab (or data-dispersion="0" on the control) leaves the layer-5 colour-fringe chain off. Round 3 (监督局 09-19 点头, experiments only — same
+     formulas and numbers, another drawing): nokfmask = the dark line's three rings without the SVG <mask> (the page factor is then not applied);
+     hlcss = the highlight's four passes as CSS inset box-shadow ring stacks + mask-image gradients on plain divs instead of SVG strokes. */
   if (q.has("segx")) { const sw = q.get("segx").split(",");
     const css = []; if (sw.includes("nowarp")) css.push(".segctl .warp{visibility:hidden}"); if (sw.includes("norimb")) css.push(".segctl .rimb{visibility:hidden}");
     if (sw.includes("nohl")) css.push(".segctl .hlk,.segctl .hlw{visibility:hidden}"); if (sw.includes("nohlk")) css.push(".segctl .hlk{visibility:hidden}"); if (sw.includes("nohlw")) css.push(".segctl .hlw{visibility:hidden}");
