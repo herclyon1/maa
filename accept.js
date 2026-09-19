@@ -694,9 +694,10 @@
       check("列表行 C3 高亮中上一行的分隔线也 opacity 0（数据真机核 ④）", "0", cs(row0, "::after").opacity, cs(row0, "::after").opacity === "0");
       await sleep(220);
       const tUp = performance.now(); pev(row, "pointerup", at(row));
+      await sleep(45);                                                                   // the device's own click comes 40–60 ms after the up
       row.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));   // = the browser's own click for this touch: swallowed
-      check("列表行 抬手同步：浏览器自己的 click 被吞（选中由页面在下一帧发）", "0", rsel, rsel === 0);
-      await sleep(60);
+      check("列表行 抬手 +45 ms 浏览器自己的 click 被吞（data-rc；选中由页面在淡出首帧后发，此时已 1 次）", "1", rsel, rsel === 1);
+      await sleep(15);
       check("列表行 C3 抬手 +60 ms：选中 1 次（淡出首帧之后一帧）、淡出中（.hl-out）", "1, fading", `${rsel}, ${row.classList.contains("hl-out") ? "fading" : "not fading"}`, rsel === 1 && row.classList.contains("hl-out"));
       { const t = cs(row).transitionDuration, e = cs(row).transitionTimingFunction, pr = cs(row).transitionProperty;
         check("列表行 淡出 = background-color .5 s cubic-bezier(.42,0,.58,1)（--ios-motion-row-release-duration / --ios-motion-ease-in-out）", "background-color 0.5s cubic-bezier(0.42, 0, 0.58, 1)", `${pr} ${t} ${e}`, pr === "background-color" && t === "0.5s" && e === "cubic-bezier(0.42, 0, 0.58, 1)"); }
@@ -737,15 +738,24 @@
       pev(row, "pointerup", at(row, 1, .5, 16, 0)); await sleep(40);
       check("列表行 C11 出边抬手：不选中", 3, rsel, rsel === 3);
       /* the action row (.acts button) is the same cell */
+      /* the 「开始刷」 path: the row's click runs a synchronous confirm() — here a 100 ms busy wait; a rAF loop logs the class at every
+         frame (a rAF tick sees what that frame paints): both a highlight frame and a fade frame must have been logged before the block */
+      const frames = []; let logging = true; const logFrame = (ts) => { frames.push([ts, act.className]); if (logging) requestAnimationFrame(logFrame); }; requestAnimationFrame(logFrame);
+      let blockedAt = 0; act.addEventListener("click", () => { blockedAt = performance.now(); const t0 = performance.now(); while (performance.now() - t0 < 100) {} });
+      const framesBefore = () => { const fr = frames.filter((f) => f[0] < blockedAt); return { hl: fr.some((f) => /\bhl\b/.test(f[1]) && !/hl-out/.test(f[1])), out: fr.some((f) => /hl-out/.test(f[1])) }; };
+      pev(act, "pointerdown", at(act)); await sleep(100); pev(act, "pointerup", at(act)); await sleep(450);
+      { const b = framesBefore(); check("蓝字行 短点 100 ms + click 里同步阻塞 100 ms（= confirm）：阻塞前已有高亮帧与淡出帧上屏（数据真机核 ②）", "hl 帧, hl-out 帧, 触发 1", `${b.hl ? "hl 帧" : "无 hl 帧"}, ${b.out ? "hl-out 帧" : "无 hl-out 帧"}, 触发 ${asel}`, b.hl && b.out && asel === 1 && blockedAt > 0); }
+      frames.length = 0; blockedAt = 0;
       pev(act, "pointerdown", at(act)); await sleep(200);
       col("蓝字行 按下 +200 ms：底色 = 高亮色（同 cell）", HL, bgOf(act));
-      pev(act, "pointerup", at(act)); await sleep(60);
-      check("蓝字行 抬手 +60 ms：触发 1 次、淡出中", "1, fading", `${asel}, ${act.classList.contains("hl-out") ? "fading" : "not fading"}`, asel === 1 && act.classList.contains("hl-out"));
+      pev(act, "pointerup", at(act)); await sleep(80);
+      { const b = framesBefore(); check("蓝字行 长按抬手 +80 ms：淡出首帧已上屏后才触发（阻塞 100 ms），触发 2 次", "hl-out 帧在前, 2", `${b.out ? "hl-out 帧在前" : "无"}, ${asel}`, b.out && asel === 2); }
+      logging = false;
       await sleep(620);
       pev(act, "pointerdown", at(act)); await sleep(200); pev(act, "pointermove", at(act, 1, .5, 16, 0)); await sleep(30);
       col("蓝字行 出卡片边 16 pt +30 ms：瞬灭到静止色（数据真机核 ①：不走基础 .5 s transition）", T.card, bgOf(act));
       pev(act, "pointerup", at(act, 1, .5, 16, 0)); await sleep(60);
-      check("蓝字行 出边抬手：不触发", 1, asel, asel === 1);
+      check("蓝字行 出边抬手：不触发", 2, asel, asel === 2);
       rLab.remove();
     }
     const finish = () => {

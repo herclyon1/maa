@@ -23,14 +23,14 @@
                      (0x1c3f1c170) returns NO for every idiom but Vision (6) — old page session, iOS 27.0 UIKitCore
        a fast swipe (20 pt within 40 ms) is cancelled before the 150 ms fire, so it never highlights (C9)
      Horizontal movement inside the card (8 / 15 / 100 pt) keeps the press and still selects (C7 C10) — a browser would not deliver its own
-     click after such a drag, so the click is ours (fired at the up) and the browser's own click for the same touch is swallowed, the way
-     view.js installPressables does it for UIButtons. The alert's action buttons keep installPressables (dialog .acts button). */
+     click after such a drag, so the click is ours (fired after the frames) and the browser's own click for the same touch is swallowed
+     (data-rc on the row until it comes), the way view.js installPressables does it for UIButtons (data-pe). The alert's action buttons keep installPressables (dialog .acts button). */
   const ROW_SEL = ".row.nav, .sheet .row.check, .acts button";
   const ROW_MS = () => touchMs("--ios-touch-highlight-delay", 150);
   const ROW_FADE_MS = () => touchMs("--ios-motion-row-release-duration", 500);
   const ROW_SCROLL_PT = () => touchPx("--ios-touch-scroll-threshold", 10);
   const ROW_EDGE_PT = 15;   // state-tables/cell.md C11: 15 pt past the card's edge = cancel (no token: the probe's own step, not a UIKit constant read)
-  let ghost = false, synthetic = false;   // the browser's own click after our up / the click we fire
+  let synthetic = false;   // the click we fire; the browser's own click for the touch is swallowed by the row's data-rc mark (below)
   function fadeOut(el) {   // .hl → .hl-out in one style change, so the transition runs highlight → resting
     el.classList.add("hl-out"); el.classList.remove("hl");
     let done = false;
@@ -46,12 +46,12 @@
     const x0 = e.clientX, y0 = e.clientY, T = ROW_SCROLL_PT();
     let lit = false, over = false, released = false, timer = 0;
     const select = () => { synthetic = true; try { el.click(); } finally { synthetic = false; } };
-    /* each step AFTER A PAINT: rAF callbacks run before the frame's paint and a setTimeout(0) registered inside one runs after it —
-       "rAF then setTimeout 0" = the next painted frame. The highlight paints, then the fade's start paints, then the selection runs:
-       an action that blocks the main thread (confirm()) or replaces the content (openPage) can no longer swallow either frame
-       (数据 fd0731b device check: two rAFs alone still blocked before a paint) */
-    const afterPaint = (fn) => requestAnimationFrame(() => setTimeout(fn, 0));
-    const release = () => requestAnimationFrame(() => { fadeOut(el); setTimeout(select, 0); });
+    /* each step AFTER A PAINT: a rAF callback runs before its frame's paint, so a callback nested in a second rAF runs only after
+       the first frame was painted ("rAF → rAF" = one guaranteed frame; a setTimeout(0) after a rAF is not guaranteed to wait for the
+       paint on the device — 验收 / 数据 3ecf176 check). The highlight paints, then the fade's start paints, then the selection runs: an
+       action that blocks the main thread (confirm()) or replaces the content (openPage) cannot swallow either frame */
+    const afterPaint = (fn) => requestAnimationFrame(() => requestAnimationFrame(fn));
+    const release = () => { fadeOut(el); afterPaint(select); };   // the fade starts now (painted next frame), the selection after that paint
     const light = () => {   // +150 ms: the highlight, instant; if the finger is already up, one painted frame of it, then the release
       timer = 0; if (over && !released) return; lit = true; el.classList.add("hl"); if (released) afterPaint(release);
     };
@@ -65,7 +65,9 @@
         if (cancelled) { cancel(); return; }
         if (over) return;
         over = true; released = true; delete el.dataset.rp;
-        ghost = true; setTimeout(() => { ghost = false; }, 0);   // the browser's click for this touch (if it comes) arrives before this
+        /* the browser's own click for this touch: on the device it comes 40–60 ms after the up (数据 fd0731b/3ecf176: confirm() at up +42…57
+           ms), long after a setTimeout(0) — so the row carries data-rc until that click is swallowed, or 700 ms */
+        el.dataset.rc = "1"; setTimeout(() => { delete el.dataset.rc; }, 700);
         if (lit) release();             // a short tap: the pending 150 ms timer lights the row, then light() runs the same release
       },
     })) return;
@@ -74,6 +76,7 @@
   });
   document.addEventListener("click", (e) => {
     if (synthetic) return;
-    if (ghost && e.target.closest && e.target.closest(ROW_SEL)) { ghost = false; e.preventDefault(); e.stopImmediatePropagation(); }
+    const el = e.target.closest && e.target.closest(ROW_SEL);
+    if (el && el.dataset.rc) { delete el.dataset.rc; e.preventDefault(); e.stopImmediatePropagation(); }   // the browser's click for a press we handled
   }, true);
 })();
