@@ -1310,10 +1310,19 @@ const SEG_RIM = (() => {
   return { hlRings, angMain, angDiff, kfRings, kfK, NXS, MULT: 1 - .9118, ADD: .1471, COLOR_BIAS: -.3, grey };
 })();
 const SEGX = (new URLSearchParams(location.search).get("segx") || "").split(",");
-/* instrumentation (仪器, no behaviour): the current lens loop's per-tick internals for the frame logger (window.__segDiag()), and the seg: performance
-   measures (window.__segPerf()) — the lift build, first tick, the commit and the render stages. */
+/* instrumentation (仪器, no behaviour): the lens loop publishes its per-tick internals as window.__segLens — a flat object of numbers and strings,
+   rewritten at the end of every tick, read as is by 2号's frame recorder (seg-frames-logger.js `state`; a field named t or ending in _t is a
+   performance.now() ms the recorder converts to s since the down). The agreed names: t (the tick's performance.now()), x (the position spring, pt),
+   v (pt/s), target (the target this tick integrated toward), dt (the step, s), pointer_t (performance.now() of the last move the loop consumed),
+   retarget_t (the tick at which the spring's target last changed), phase (lift | hold | drag | release | done); the rest: target_next (the target the
+   next tick will use — a move is adopted after the step, see the tick's time-base note), adopted (1 when this tick adopted a move), pointer_ev_t (that
+   move's event timeStamp), pointer_x (its finger x in control coordinates), pointer_target (the target it set), pointer_n (moves consumed since the
+   previous tick), raf_t (the tick's rAF timestamp), tick (count), tick_ms (the tick's own duration), drift / sx / sy (the flex floats), x_screen
+   (x + drift = the presented centre), accel / vel (the flex integrator), p (lift progress), set (displacement-map set), rel_t (the release time).
+   window.__segDiag() returns the same object; window.__segPerf() lists the seg: performance measures (lift build, first tick, commit, render stages). */
 let segActiveLoop = null;
-window.__segDiag = () => (segActiveLoop && !segActiveLoop.state.done ? segActiveLoop.diag : null);
+window.__segLens = null;
+window.__segDiag = () => window.__segLens;
 window.__segPerf = () => performance.getEntriesByType("measure").filter((e) => e.name.startsWith("seg:")).map((e) => ({ name: e.name, start: Math.round(e.startTime * 100) / 100, dur: Math.round(e.duration * 100) / 100 }));
 const segMeasure = (name, from) => { try { performance.measure(name, { start: from, end: performance.now() }); } catch (e) { /* older engines */ } };   // ?segx switches (index.html hook; ios-switch-list.md): scale0 holds the displacement scale at 0
 function segLens(seg, lens, bs, downClientX) {
@@ -1430,7 +1439,7 @@ function segLens(seg, lens, bs, downClientX) {
   const K_LIFT_DEST = cssKeys("--ios-touch-segment-destout-keys", SEG_LIFT_DESTOUT), K_DEST = cssKeys("--ios-touch-segment-release-destout-keys", SEG_DROP_DESTOUT.filter(([t]) => t >= .198).map(([t, v]) => [t - .198, v]));
   const destEnd = destDelay + K_DEST[K_DEST.length - 1][0];
   const downX = (typeof downClientX === "number" ? downClientX : NaN) - seg.getBoundingClientRect().left;   // the touch-down x in control coordinates (the drag delta's origin, §6 _dragDelta)
-  const st = { t0: performance.now(), prev: performance.now(), rel: null, raf: 0, done: false, dragged: false, cx: null, pending: null, rest: idx0, pr: 0, evLog: [], diag: null, ticks: 0,
+  const st = { t0: performance.now(), prev: performance.now(), rel: null, raf: 0, done: false, dragged: false, cx: null, pending: null, rest: idx0, pr: 0, ticks: 0, ev: { t: null, evt: null, x: null, target: null, n: 0 }, retargetT: null,
                sL: { x: 0, v: 0 }, sM: { x: 1, v: 0 }, pos: { x: restCentre(idx0), v: 0 }, geo: null,   // pos = the lens position (one spring; the flex drift rides on top of it in the transform)
                flex: { vi: flexIntegrator(), sx: { x: 1, v: 0 }, sy: { x: 1, v: 0 }, dx: { x: 0, v: 0 }, out: { sx: 1, sy: 1, dx: 0 } } };   // B5: the flex interaction's integrator and its three animatable floats
   const setGeo = (left, top, w, h) => {
@@ -1468,6 +1477,7 @@ function segLens(seg, lens, bs, downClientX) {
     for (const el of [stack, warp, warpl, plat, rimb, rimo, ...hls]) { el.style.removeProperty("transform"); el.style.removeProperty("transform-origin"); }
     if (curSet) { const f = document.querySelector(`#seg-lens-f-ab-${curSet}`); if (f) { const S = parseFloat(f.getAttribute("data-s")) || 12, taps = f.querySelectorAll("feDisplacementMap"), n = taps.length; taps.forEach((t, i) => t.setAttribute("scale", (S * (1 - 2 * i / (n - 1))).toFixed(3))); } }   // the file's rest values
     st.done = true; if (seg.__lensLoop === loop) seg.__lensLoop = null;
+    if (st.__lens && window.__segLens === st.__lens) window.__segLens = st.__lens = { ...st.__lens, phase: "done" };   // 仪器: the last state stays readable, marked done
   };
   const clamp01 = (x) => Math.max(0, Math.min(1, x));
   const tick = (now) => {
@@ -1510,12 +1520,15 @@ function segLens(seg, lens, bs, downClientX) {
     fl.out = { sx: Math.max(.9, Math.min(1.1, fl.sx.x)), sy: Math.max(.9, Math.min(1.1, fl.sy.x)), dx: fl.dx.x };   // updateFlex's final clamp [0.9, 1.1] (0x1c54c53d4)
     setGeo(st.pos.x - w / 2, CY - h / 2, w, h);
     frame(p, pd);
-    /* 仪器: what this tick used and produced (read by the frame logger through window.__segDiag) */
-    st.ticks++;
-    st.diag = { tick: st.ticks, raf: Math.round(now * 100) / 100, perf: Math.round(tickStart * 100) / 100, dt_ms: Math.round(dt * 100000) / 100, tick_ms: Math.round((performance.now() - tickStart) * 100) / 100,
-      target_used: cxBefore, target_next: st.cx, adopted: pendingBefore != null && st.cx === pendingBefore, x: Math.round(st.pos.x * 1000) / 1000, v: Math.round(st.pos.v * 10) / 10,
-      drift: Math.round(fl.out.dx * 1000) / 1000, sx: Math.round(fl.out.sx * 10000) / 10000, sy: Math.round(fl.out.sy * 10000) / 10000, accel: Math.round(fl.vi.acceleration), vel: Math.round(fl.vi.velocity),
-      p: Math.round(p * 10000) / 10000, set: curSet, rel: st.rel == null ? null : Math.round((now - st.rel) * 10) / 10, events: st.evLog.splice(0) };
+    /* 仪器: what this tick used and produced — window.__segLens for the frame recorder (names: see the note at segActiveLoop) */
+    st.ticks++; const adopted = pendingBefore != null && st.cx === pendingBefore; if (adopted && st.cx !== cxBefore) st.retargetT = tickStart;
+    const r3 = (q) => Math.round(q * 1000) / 1000, r2 = (q) => Math.round(q * 100) / 100;
+    window.__segLens = st.__lens = { t: r2(tickStart), raf_t: r2(now), tick: st.ticks, dt: Math.round(dt * 100000) / 100000, tick_ms: r2(performance.now() - tickStart),
+      x: r3(st.pos.x), v: Math.round(st.pos.v * 10) / 10, target: cxBefore == null ? null : r3(cxBefore), target_next: st.cx == null ? null : r3(st.cx), adopted: adopted ? 1 : 0, retarget_t: st.retargetT == null ? null : r2(st.retargetT),
+      pointer_t: st.ev.t == null ? null : r2(st.ev.t), pointer_ev_t: st.ev.evt == null ? null : r2(st.ev.evt), pointer_x: st.ev.x == null ? null : r2(st.ev.x), pointer_target: st.ev.target == null ? null : r2(st.ev.target), pointer_n: st.ev.n,
+      drift: r3(fl.out.dx), x_screen: r3(st.pos.x + fl.out.dx), sx: Math.round(fl.out.sx * 10000) / 10000, sy: Math.round(fl.out.sy * 10000) / 10000, accel: Math.round(fl.vi.acceleration), vel: Math.round(fl.vi.velocity),
+      p: Math.round(p * 10000) / 10000, set: curSet || 0, rel_t: st.rel == null ? null : r2(st.rel), phase: st.rel != null ? "release" : st.dragged ? "drag" : p < 1 ? "lift" : "hold" };
+    st.ev.n = 0;   // moves consumed since the previous tick (the last move's fields stay until the next move)
     if (st.ticks === 1) segMeasure("seg:first-tick", tickStart);
     st.raf = requestAnimationFrame(tick);
   };
@@ -1526,7 +1539,7 @@ function segLens(seg, lens, bs, downClientX) {
       const x = clientX - seg.getBoundingClientRect().left, delta = Number.isNaN(downX) ? x - restCentre(idx0) : x - downX, c = restCentre(idx0), raw = c + delta;
       const rubber = (o) => 12 * (1 - 1 / (1 + .55 * o / 12));   // (1 − 1/(c·o/d + 1))·d with c .55, d 12
       st.pending = n === 1 ? c : (idx0 === 0 && raw < c) ? c - rubber(c - raw) : (idx0 === n - 1 && raw > c) ? c + rubber(raw - c) : raw;
-      st.evLog.push({ ts: evTs == null ? null : Math.round(evTs * 100) / 100, now: Math.round(evNow * 100) / 100, x: Math.round(x * 100) / 100, target: Math.round(st.pending * 100) / 100 });   // 仪器
+      st.ev = { t: evNow, evt: evTs == null ? null : evTs, x, target: st.pending, n: st.ev.n + 1 };   // 仪器: the move the loop consumed (window.__segLens pointer_*)
       if (!st.dragged) st.dragged = true;
     },
     release: (restIdx) => {   // every way out — up, out of bounds, pointercancel — falls the same way, to the rest rect of `restIdx`
@@ -1536,7 +1549,7 @@ function segLens(seg, lens, bs, downClientX) {
     stop: () => { cancelAnimationFrame(st.raf); if (!st.done) clear(); },
     step: (dtMs) => { if (!st.done) { cancelAnimationFrame(st.raf); tick(dtMs ? st.prev + dtMs : performance.now()); } },   // one frame by hand, optionally on a virtual clock (an offscreen WKWebView runs neither requestAnimationFrame nor timers at speed; the ?seghold hook drives it)
     get state() { return { dragged: st.dragged, cx: st.cx, pending: st.pending, pos: st.pos.x, q: st.sL.x, rel: st.rel, done: st.done, flex: st.flex.out, accel: st.flex.vi.acceleration }; },
-    get diag() { return st.diag; },
+    get diag() { return st.__lens || null; },
   };
   loop.cancel = loop.release;
   seg.__lensLoop = loop; segActiveLoop = loop;
