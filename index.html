@@ -12,12 +12,12 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="遥控">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260919123746">
+<link rel="manifest" href="manifest.webmanifest?v=20260919135243">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260919123746">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260919123746">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260919135243">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260919135243">
 <!-- 组件数字的正本：--ios-* 变量，每条带来源（探针原值 / AX 帧 / NUMBERS 行 / 取色 / 采样替代）。页面自己的变量只做映射，不再手写数字。 -->
-<link rel="stylesheet" href="tokens.css?v=20260919123746">
+<link rel="stylesheet" href="tokens.css?v=20260919135243">
 <link rel="stylesheet" href="seg-keys.css?v=20260919011715">   <!-- segmented-lens kinematics compiled from the native frames (界面2号 ui2 90d6876 gen_seg_keys.py; do not edit) -->
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
@@ -445,7 +445,11 @@
      not stretch - the old 「lands then relaxes」 keyframes came from a recording, not a
      source (spec-extract.md ⑤: transform is a single CASpringAnimation). */
   /* 班次分段控件（34 屏幕时间「每周 / 每天」）：400×32 r16、透镜 28 r14 内缩 2、字 MediumG3 13 / RegularG3 13 ← 探针 UISegmentedControl；
-     放在卡片位置（x 20 宽 400；34 里是 x 40 宽 360，页顶无卡时的写法），透镜材质 采样替代 → 用白底 + 阴影近似 */
+     放在卡片位置（x 20 宽 400；34 里是 x 40 宽 360，页顶无卡时的写法）。静止平台材质 = 原值（menu-card-material.md §2，老网页反编译 -[UISegmentedControl
+     _updateSelectionIndicator] 0x1c4137230 → 建透镜 0x1c4135050–0x1c4135120）：restingBackground = UIView，backgroundColor = _controlForegroundColor（0x1c4135064；
+     数据 getter 亮 (255,255,255,1) / 暗 (235,235,245,.30) = --ios-segment-selected-bg）；普通合成——kCAFilterPlusL（0x1c41350b0）只在 _segmentedControlFlags
+     位 37 useSpringBoardVibrancy 置位的分支（0x1c4135084–0x1c413508c）才设，普通 app 未置（老网页 §2 更正 13:2x；数据探针 sdfdump ④：compositingFilter 无）
+     → 页面 source-over，不加 blend；圆角随透镜 14；restingShadowProperties / restingBorderColor 分段控件不设 → 无阴影无边 */
   .segctl{position:relative;display:flex;height:var(--ios-segment-h);padding:var(--ios-segment-lens-pad) 0;border-radius:var(--ios-segment-radius);background:var(--ios-segment-track);margin:var(--ios-group-gap) 0 0;   /* segments at the full pitch (400 / n = 200; labels centred at 120 / 320), the lens inset 2 pt inside its segment (196×28 at 22 / 222 ← seg-native-abc-frames.json rest rects) */
           touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}   /* 轨道 = tertiarySystemFill .12 / 暗 .24 ← 探针 lensdiff；控件自己接管触摸（竖向滑出 64 pt 仍选中，spec §1 G17） */
   /* The selection lens. Position by `left` (a percentage of the control, so the lifted width does not move it), size by width/height: the lift is a
@@ -3921,18 +3925,18 @@
   <div class="pnav"><button type="button" class="navbtn pback" aria-label="返回"></button><span class="ptitle"></span></div>
   <div class="pbody"></div>
 </div>
-<script src="schema.js?v=20260919123746"></script>
-<script src="net.js?v=20260919123746"></script>
-<script src="pending.js?v=20260919123746"></script>
-<script src="live.js?v=20260919123746"></script>
-<script src="stamina.js?v=20260919123746"></script>
-<script src="inventory.js?v=20260919123746"></script>
-<script src="view.js?v=20260919123746"></script>
-<script src="alert-prewarm.js?v=20260919123746"></script>   <!-- the alert glass layer built once at load: first open as fast as the second (web/alert-prewarm.js) -->
+<script src="schema.js?v=20260919135243"></script>
+<script src="net.js?v=20260919135243"></script>
+<script src="pending.js?v=20260919135243"></script>
+<script src="live.js?v=20260919135243"></script>
+<script src="stamina.js?v=20260919135243"></script>
+<script src="inventory.js?v=20260919135243"></script>
+<script src="view.js?v=20260919135243"></script>
+<script src="alert-prewarm.js?v=20260919135243"></script>   <!-- the alert glass layer built once at load: first open as fast as the second (web/alert-prewarm.js) -->
 <script>/* 验收脚本只在地址带 ?accept 时加载（docs/HIG-CHECKLIST.md 的验收程序）。分段透镜逐帧记录器（界面2号 seg-frames-logger.js）在 ?accept / ?diag / ?segframes 时加载，
    它自己看查询串，其它时候什么都不做。 */
 { const q = new URLSearchParams(location.search);
-  if (q.has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260919123746"; document.body.appendChild(s); }
+  if (q.has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260919135243"; document.body.appendChild(s); }
   if (q.has("diag") || q.has("segframes")) { const s = document.createElement("script"); s.src = "seg-frames-logger.js"; document.body.appendChild(s); }
   /* ?segx=a,b,… : layer / map switches for the simulator-standalone experiments (remote-ref/tools/webkit/b6/ios-switch-list.md). Works with or without
      ?seghold. nowarp | norimb | nohl | nowarpl | noplat hide one lens layer (visibility, so the loop still runs); mapflat swaps every displacement map for
@@ -3942,12 +3946,29 @@
      mean alpha — an antialiasing experiment for the 3× raster, not a drawing. noab (or data-dispersion="0" on the control) leaves the layer-5 colour-fringe chain off. Round 3 (监督局 09-19 点头, experiments only — same
      formulas and numbers, another drawing): nokfmask = the dark line's three rings without the SVG <mask> (the page factor is then not applied);
      hlcss = the highlight's four passes as CSS inset box-shadow ring stacks + mask-image gradients on plain divs instead of SVG strokes. */
-  if (q.has("segx")) { const sw = q.get("segx").split(",");
+  /* 仪器 (监督局 09-19): the engine-correction blob swap (lens-engine-fix.js, 2号) seen from outside — it starts its work at DOMContentLoaded and fires
+     "lens-engine-fix" when every map has been swapped; the measure seg:enginefix spans the two, window.__segEngineFix says how many feImage hrefs
+     were swapped and with which k. A swap changes a filter's input, so a frame inside this span re-renders the lens filters. */
+  { let t0 = 0; addEventListener("DOMContentLoaded", () => { t0 = performance.now(); performance.mark("seg:enginefix-start"); });
+    addEventListener("lens-engine-fix", () => { try { performance.measure("seg:enginefix", { start: t0, end: performance.now() }); } catch (e) {}
+      window.__segEngineFix = { maps: document.querySelectorAll("feImage[data-engine-fixed]").length, k: window.LENS_ENGINE_FIX_K, ms: Math.round((performance.now() - t0) * 10) / 10 }; }); }
+  /* ?segx1=<key> (首张玻璃帧开关清单, 验收 09-19 13:0x): one layer / filter of the first lifted frame per key, same set as ?segx (view.js SEGX merges both):
+     nowarp (§4b L1 BackdropView copy .warp) · nobgmap (its displacement filter #seg-lens-f-bg only, view.js frame()) · nopunch (§4b L0 DestOut: the label
+     copy with the capsule cut, .warp .punch) · nowarpl (§4b L2+L4 label copy .warpl) · nolabmap (its filter #seg-lens-f-lab only) · noplat (restingBackground
+     .plat) · nobase (.stack .base plain page copy) · nostackclip (.stack clip-path) · noish (§4b L3 #21 inner shadow filter σ3) · nors (L3 ring shadow blur) ·
+     nokf (L3 KeyFill dark line rings) · nokfmask (its SVG mask) · norimo (the outside clone .rimo) · nohl (§4b L6 #36 highlight, all four SVGs) · nohlk / nohlw
+     (black / white stacks) · nohlm / nohld (main / diffuse pairs) · hlclip0 (their capsule clip) · nolensbg (keep the white .lens under the glass) · scale0
+     (displacement scale held at 0) · mapflat (1×1 constant maps) — structural: nokeep (layers display:none from the down to the lift, the pre-286c4d2
+     behaviour) · gpu (will-change: transform on .stack/.rimo/.hlk/.hlw/.warp/.warpl) · plus ?prewarm=0 / ?bake=1 (2号 lens-map-dpr.js) / ?enginefix=0. */
+  if (q.has("segx") || q.has("segx1")) { const sw = ((q.get("segx") || "") + "," + (q.get("segx1") || "")).split(",").filter(Boolean);
     const css = []; if (sw.includes("nowarp")) css.push(".segctl .warp{visibility:hidden}"); if (sw.includes("norimb")) css.push(".segctl .rimb{visibility:hidden}");
     if (sw.includes("hlclip0")) css.push(".segctl .hlk,.segctl .hlw{clip-path:none}");   // B6-c §3 before / after switch
     if (sw.includes("nohl")) css.push(".segctl .hlk,.segctl .hlw{visibility:hidden}"); if (sw.includes("nohlk")) css.push(".segctl .hlk{visibility:hidden}"); if (sw.includes("nohlw")) css.push(".segctl .hlw{visibility:hidden}");
     if (sw.includes("nowarpl")) css.push(".segctl .warpl{visibility:hidden}"); if (sw.includes("noplat")) css.push(".segctl .plat{visibility:hidden}");
     if (sw.includes("noish")) css.push(".segctl .rimb .ish{visibility:hidden}"); if (sw.includes("nors")) css.push(".segctl .rimb rect.rs{visibility:hidden}"); if (sw.includes("nokf")) css.push(".segctl .rimb .kfg{visibility:hidden}");
+    if (sw.includes("nopunch")) css.push(".segctl .warp .punch{display:none}"); if (sw.includes("nobase")) css.push(".segctl .stack .base{visibility:hidden}"); if (sw.includes("nostackclip")) css.push(".segctl .stack{clip-path:none}");
+    if (sw.includes("norimo")) css.push(".segctl .rimo{visibility:hidden}"); if (sw.includes("nohlm")) css.push(".segctl .hlk.m,.segctl .hlw.m{visibility:hidden}"); if (sw.includes("nohld")) css.push(".segctl .hlk.d,.segctl .hlw.d{visibility:hidden}");
+    if (sw.includes("nolensbg")) css.push(".segctl.lift .lens{background:var(--ios-segment-selected-bg)}"); if (sw.includes("gpu")) css.push(".segctl .stack,.segctl .rimo,.segctl .hlk,.segctl .hlw,.segctl .warp,.segctl .warpl{will-change:transform}");
     if (css.length) { const st = document.createElement("style"); st.textContent = css.join("\n"); document.head.appendChild(st); }
     if (sw.includes("mapflat")) for (const fi of document.querySelectorAll("filter[id^='seg-lens-f-'] feImage")) fi.setAttribute("href", "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mNoaPgPAAODAgA+WCglAAAAAElFTkSuQmCC");
     const only = sw.includes("maponlyr") ? "r" : sw.includes("maponlyg") ? "g" : "";
