@@ -1,1 +1,23 @@
-/* topbar.css — placeholder shell (night batch); the owner fills it; overrides use higher specificity, old rules stay. */
+/* topbar.css — the navigation bar's scroll look driven by topbar.js (BOARD.md #4; remote-ref/nav-bar-scroll-formula.md §2.4/§2.5/§2.7/§3).
+   Higher specificity than index.html's .topbar / header h1 rules; the old --bar / --big / --title rules stay (view.js's onScroll is
+   guarded off, so they only see the values topbar.js sets). No pocket material here (BOARD A5): only titles, edge line, stretch. */
+/* Rest geometry (§10 probe: _restingHeights [54, 106], large-title view 52 under the 54 small-bar zone, label bottom-aligned in it;
+   nav-large-light-rest.png: the native large title sits below the back-button zone). index.html put the h1 inside the 54 zone
+   (header padding 14 → h1 bottom ≈ safe + 54.6), so the collapse range there is ~0 and the switch cannot happen; the header is moved
+   down so the h1's bottom sits on the 106 line: padding-top 14 + 52. Everything below shifts by 52 (a large-title page's own geometry;
+   the AX first-card 133.67 belongs to small-bar pages). The label's baseline inset inside the 52 zone is unread (box bottom-aligned). */
+html body header { padding-top: calc(14px + 52px); }
+html body header h1 {                                   /* large title: alpha 1 while it slides under the bar (clipped there, §4 item 1), then the 0.2 s switch (2.5) */
+  opacity: var(--tb-large, 1);
+  transition: opacity .2s linear;                       /* 2.5: _largeTitleTransitionProgress crosses 0.05 → 0.2 s (curve unread; linear) */
+  clip-path: inset(var(--tb-clip, 0px) 0 0 0);          /* clipsToBounds at the bar's bottom edge */
+  transform: scale(var(--tb-stretch, 1));               /* 2.7: pull-down stretch ≤ 1.1 (anchor unread: leading baseline) */
+  transform-origin: 0 100%;
+}
+html body .topbar span {                                /* small title: binary at progress < 0.05, 0.2 s cross-fade, no translation (§6 item 8) */
+  opacity: var(--tb-small, 0);
+  transform: none;
+  transition: opacity .2s linear;
+}
+html body .topbar::after { opacity: var(--tb-edge, 0); transition: none; }   /* §3: hidden at the top (shouldHideAtTop), shown once scrolled; fade unread */
+html body .topbar.editing span { opacity: 1; }          /* the edit bar's title (unchanged from index.html: --title:1 !important) */

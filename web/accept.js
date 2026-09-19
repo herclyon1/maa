@@ -12,7 +12,12 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
 (function () {
   const q = new URLSearchParams(location.search);
   if (!q.has("accept")) return;
-  for (const c of ["motion","nav","nav-edge","sheet","menu","topbar","refresh","glassbtn","switch"]) { const s = document.createElement("script"); s.src = "accept-" + c + ".js"; document.head.appendChild(s); }
+  /* the per-control files are appended dynamically; headless Chrome occasionally drops one of those fetches (night 00:3x: accept-sheet.js never
+     requested in one run → 17 rows silently missing). Each load is tracked; a file that has not loaded when the checks start is re-appended, and
+     a file still missing gets a ✗ row so the total never drops silently. */
+  window.ACCEPT.files = ["motion","nav","nav-edge","sheet","menu","topbar","refresh","glassbtn","switch","tabbar"]; window.ACCEPT.loaded = new Set();
+  window.ACCEPT.load = (c) => new Promise((res) => { const s = document.createElement("script"); s.src = "accept-" + c + ".js?r=" + Math.random().toString(36).slice(2, 7); s.onload = () => { window.ACCEPT.loaded.add(c); res(true); }; s.onerror = () => res(false); document.head.appendChild(s); setTimeout(() => res(false), 4000); });
+  for (const c of window.ACCEPT.files) window.ACCEPT.load(c);
   const rows = [];
   const near = (a, b, tol = 0.6) => Math.abs(a - b) <= tol;
   const cs = (el, pseudo) => el ? getComputedStyle(el, pseudo || null) : null;
@@ -866,7 +871,10 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
         document.body.appendChild(box);
       }
     };
-    const extra = async () => { for (const fn of (window.ACCEPT ? window.ACCEPT.fns : [])) { try { await fn({ check, num, col, sleep: (ms) => new Promise((r) => setTimeout(r, ms)) }); } catch (e) { check("控件检查文件出错 " + (fn.name || ""), "", String(e), false); } } };
+    const extra = async () => {
+      if (window.ACCEPT) { for (const c of window.ACCEPT.files) { if (!window.ACCEPT.loaded.has(c)) await window.ACCEPT.load(c); if (!window.ACCEPT.loaded.has(c)) await window.ACCEPT.load(c);
+          check(`accept-${c}.js 已加载（动态脚本，丢了会重取两次）`, "已加载", window.ACCEPT.loaded.has(c) ? "已加载" : "缺", window.ACCEPT.loaded.has(c)); } }
+      for (const fn of (window.ACCEPT ? window.ACCEPT.fns : [])) { try { await fn({ check, num, col, sleep: (ms) => new Promise((r) => setTimeout(r, ms)) }); } catch (e) { check("控件检查文件出错 " + (fn.name || ""), "", String(e), false); } } };
     interactions().then(extra, (e) => { check("交互测试脚本出错", "", String(e), false); }).then(finish, (e) => { check("控件检查出错", "", String(e), false); finish(); });
   }
   /* The page renders after its first snapshot and the number tiles after the game

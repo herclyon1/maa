@@ -772,6 +772,7 @@ function layoutTabs() {
 let receiptsPage = null;   // Behaviour 4: builder for the pushed receipts page (set by render)
 /* A pushed page (UINavigationController push): title in the nav bar, back button pops. index.html .page for the geometry / motion sources. */
 function openPage(title, html) {
+  if (window.Nav) return Nav.open(title, html);   // BOARD #2: nav.js drives the push / pop (nav-native-formula.md); the rest of this function is the old path
   const pg = $("#subpage"); if (!pg) return;
   pg.querySelector(".ptitle").textContent = title; pg.querySelector(".pbody").innerHTML = html;
   pg.classList.remove("out"); pg.hidden = false; pg.scrollTop = 0; void pg.offsetWidth;
@@ -1936,6 +1937,7 @@ function installNative() {
        other, not a cross-fade. --big drives the large title, --title the small. */
     const clamp = (v) => Math.max(0, Math.min(1, v));
     const onScroll = () => {
+      if (window.Topbar) return;   // BOARD #4: topbar.js owns the bar's scroll behaviour (--tb-*); this entry yields (one-line guard, A7)
       const y = window.scrollY;
       const top = h1.offsetTop, hgt = h1.offsetHeight || 41;
       root.style.setProperty("--bar", String(clamp(y / 12)));

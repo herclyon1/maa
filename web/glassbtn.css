@@ -1,1 +1,3 @@
-/* glassbtn.css — placeholder shell (night batch); the owner fills it; overrides use higher specificity, old rules stay. */
+/* glassbtn.css — the round glass buttons' press (BOARD.md #5; web/glassbtn.js drives `transform: scale()` per frame). Overrides only what the
+   press needs; the buttons' glass (material) rules in index.html stay untouched (BOARD A5). */
+.pnav .navbtn.navbtn, .topbar .navbtn.navbtn { transform-origin: 50% 50%; transition-property: opacity, background-color, box-shadow; }   /* no transition on transform: the scale is a spring, one value per frame */
