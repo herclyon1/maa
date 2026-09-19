@@ -484,6 +484,28 @@ def _make_collect(inbox, engine, notifier, log, deferred_inbox):
     return collect
 
 
+# Phone commands that only mean something while the machine is running. A
+# backlog of them is read once at boot (Mailbox.fetch, the last 24 h); a red
+# button pressed at 17:5x on a machine that had been off since 14:47
+# (2026-09-19) would otherwise fire at the 21:20 boot: stop every AUTO-MAS
+# task, taskkill every game, push 「已停一切」 - all against nothing, minutes
+# before the 21:30 queue. Nothing was running when it was pressed and nothing
+# is running at boot; the press is stale by definition.
+LIVE_ONLY_ACTIONS = ("estop",)
+
+
+def boot_backlog(cmds: list[dict], log) -> list[dict]:
+    """The boot-time mailbox backlog with the live-only presses dropped, each one logged."""
+    out: list[dict] = []
+    for body in cmds:
+        action = str((body or {}).get("action") or "")
+        if action in LIVE_ONLY_ACTIONS:
+            log.warning("信箱里有一条关机期间按的「%s」，开机不执行（当时和现在都没有在跑的东西）", action)
+            continue
+        out.append(body)
+    return out
+
+
 def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
     """Build the callback for what happens after a button is pressed on the phone.
 
@@ -594,7 +616,7 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
         notifier.send(texts.AUTOMAS_DOWN, texts.automas_boot_down_body(), alert=True)
     push_state("开机")
     if box.enabled:
-        for body in box.fetch():
+        for body in boot_backlog(box.fetch(), log):
             run_phone_cmd(body)
         threading.Thread(
             target=lambda: box.listen(
