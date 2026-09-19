@@ -6,3 +6,12 @@
 #ptr.ptr { opacity: 0; transform: none; transition: none; }
 #ptr.ptr .ai { transform-origin: 50% 50%; will-change: transform, opacity; }
 #ptr.ptr .ai i { transition: none; animation: none; }
+
+/* BOARD R5 — the arms' geometry from the probe (refresh-native-formula.md §10, R13): the replicator is a 100×100 box centred on the 60 pt control
+   (control y = safe-area top + the 54 pt bar, centre +30); 8 arms every 45°; each arm (the seed layer) 3.667 × 10 pt, corner 1.833 (a full round end),
+   inner end 5 pt from the centre, outer end 15 pt; colour = secondaryLabel at α .6 (the seed layer's backgroundColor — tokens.css --ios-spinner already
+   carries that α, so refresh.js's per-arm opacity is the reveal factor alone). The 30 × 30 box below = the arms' extent (radius 15); the old
+   .ai / .ai i rules of index.html (the 20 pt activity indicator) stay and are overridden by specificity. */
+#ptr.ptr { top: calc(env(safe-area-inset-top) + var(--ios-nav-h) + 30px - 15px); }
+#ptr.ptr .ai { width: 30px; height: 30px; }
+#ptr.ptr .ai i { left: calc(15px - 1.8335px); top: 0; width: 3.667px; height: 10px; border-radius: 1.833px; transform-origin: 1.8335px 15px; background: var(--ios-spinner); }

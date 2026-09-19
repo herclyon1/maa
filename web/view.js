@@ -1819,7 +1819,7 @@ function attachSegmented(seg, getIndex, commit) {
         commit(target, lifted ? "drag" : "tap");                    // the up: the index changes now (G1–G3); a tap's content switches in this task (wire(): SEG_VC_NOW), a slide's at +25 ms; the lens's slide is the loop's (SEG_TAP_T.travel)
       },
     })) return;
-    seg.dataset.pe = "1";
+    if (window.Motion) Motion.swallowNextClick(seg); else seg.dataset.pe = "1";   // the browser's click after our pointerup is redundant: Motion swallows it for 700 ms (motion.js, A7) — the old data-pe flag had no expiry, so a press without a following click (a cancelled touch, a synthetic pev) left the NEXT real tap swallowed
     if (!onSelected) { bs[pressed].classList.add("dim");           // G15: only the label dims; no highlight, no lens move, no value
       if (lens) { const tBuild = performance.now(); performance.mark("seg:down"); glass = segLens(seg, lens, bs, NaN, { deferred: true }); segMeasure("seg:build", tBuild);
         if (seg.__gl && seg.__gl.gs.futureOn !== pressed) { const tU = performance.now(); seg.__gl.gs.futureOn = pressed;
@@ -1868,7 +1868,7 @@ function attachTabBar(nav, select) {
         select(bs[target]);                                          // T1/T2: +0–2 ms after the up
       },
     })) return;
-    seg.dataset.pe = "1";
+    if (window.Motion) Motion.swallowNextClick(seg); else seg.dataset.pe = "1";   // same as the segmented control: an expiring swallow (motion.js) instead of the sticky data-pe
     timer = setTimeout(() => { lifted = true; liftTo(pressed, onSelected ? "lift-sel" : "lift"); },
       onSelected ? touchMs("--ios-touch-tab-selected-lift-delay", 125) : touchMs("--ios-touch-tab-glide-delay", 140));   // T1: +140 ms glide 119×64 / T3: selected lifts +125 ms → 103×63 by +180
   };
