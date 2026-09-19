@@ -412,6 +412,14 @@ class Desktop:
             log.warning("桌面读屏失败：%s", "；".join(map(str, data.get("log") or [])))
         return Screen(lines, Path(data.get("shot") or ""))
 
+    def screenshot(self, timeout: float = 45) -> "Path | None":
+        """One picture of the real desktop, no OCR; None when it could not be taken.
+        Used for evidence: a log that stops mid-run says nothing about what the
+        game was showing (OK-WW, 2026-09-19 09:34-11:35)."""
+        data = self.run([{"act": "shot"}], timeout=timeout)
+        shot = Path(data.get("shot") or "")
+        return shot if data.get("ok") and shot.is_file() else None
+
     def click_text(self, text: str, focus: str | None = None) -> bool:
         data = self.run([{"act": "click_text", "text": text}], focus=focus)
         return bool(data.get("ok")) and bool(data.get("clicked"))
