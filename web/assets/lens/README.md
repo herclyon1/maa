@@ -1102,6 +1102,26 @@ maps (the label stages' end behaviour), not of the shader; for the old page / da
 harness's lens (`?state=mid`) is the same box as lens-test.html?native=1&lensx=220. A 1-pt asymmetry is not in the geometry the shader is
 given; candidates the data session can separate on the same frame: which line "端线列" reads (the dark line, the light line at 329.83 …, or
 the label's edge), and the canvas's own placement on the phone (the harness's canvas top is fractional, 94.891; x is 94 — whole).
+**Warm-up (14:5x; 监督局: the wired page's first glass frame stalled 46–55 ms on a tap / a light drag, 0 on the second gesture — `seg-webgl-78284dd.md`):**
+`lens-webgl.js` now draws one lifted frame through both passes when `ready` resolves and after every `setBackdrop` (into the FBO and the
+canvas, finished, the canvas cleared in the same task — the cleared buffer is what gets presented, which also allocates the layer's display
+surface), `L.stats.warmMs`; `?glwarm=0` / `{ warm: false }` off. The page's own earlier prewarm (a lift-1 setState) did not cover the first
+one or two gestures after a reopen (the data session) — the textures a gesture's `setBackdrop` uploads are the remaining first-use cost,
+now warmed right after each upload. For the data session to re-read on the same gestures.
+
+**The platter fade's start (监督局: the page's fade begins 13–17 ms later than the native's):** seg-lens-refraction.md §4.4 — the lift GEOMETRY
+spring (bounds 196×28 → 220×44, position, DestOut cornerRadius, BackdropView 0 → 9) is called at +110 ms after the down (tap: +171), the
+MATERIAL spring (the white platter UIView#5 opacity 1 → 0, DestOut opacity 0 → 1, the highlight, ClearGlass 0 → −17.5, ContentLensing
+0 → −8.8) at +121 ms (tap: +181), both ζ 1 / .25 s: the platter's fade starts 11 ms AFTER the growth. The `platter.alpha` the page hands
+draw() should be 1 − p_material with p_material on that second spring (+121), not the geometry's; the page's model is view.js's.
+
+**The right end's line (the data session on 78284dd, row 616, 3 px/pt):** the box is right (both ends' zero lines = native); the dark line
+at the right end is 3× deeper (211 → 83 vs 213 → 168) and 10 px wide (vs 4), spreading inward from x 324.7 — hence the 1-pt centroid shift.
+In the harness (`lens-webgl-test.html?state=mid&dpr=3`, 3 px/pt, the row 8 pt above the centre = 616's) the two ends are identical: left
+231 / 180 / 185 / 205 (x 110.67 …), right 215 / 185 / 180 / 231 — min 180 both, 2 px wide; the right end's deep wide feature is where the
+page's stretched 「班」 reaches the rim rows (the harness's centre row shows the glyph's ink at x 330–332 too). To be compared on the same
+row between the harness and the page (the page's labels / lens box are the page's inputs).
+
 ### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
 
 Sources: `remote-ref/sheet-native.md` (the data session's 10th order: A9 `sheetivars` / `corners` / `subtree` / motion, iOS 27.0 3×) and
