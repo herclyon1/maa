@@ -1610,8 +1610,13 @@ function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }:
     get diag() { return st.__lens || null; },
   };
   loop.cancel = loop.release;
-  if (prewarm) {   // A 起手预建: the layers exist now and stay painted at rest, invisibly (.prewarm: display, opacity .01, the filters at scale 0), so their compositing layers and filter pipeline are alive when the first press comes (the press removes .prewarm and lifts them)
-    frame(0, 0); seg.classList.add("prewarm"); seg.__prewarmed = performance.now(); st.done = true;
+  if (prewarm) {   // A 起手预建: the layers exist now and stay painted invisibly (.prewarm: display, opacity .01), so their compositing layers and filter pipeline are alive when the first press comes (the press removes .prewarm and lifts them)
+    /* 预建 2 (数据 36916a9: the first glass frame still stalled 30–72 ms after a rest-state prewarm — at scale 0 the displacement is skipped): two frames in
+       the LIFTED state — the model box 220×44 at the rest position, progress 1 (displacement scale S on both maps, the label filter, the inner-shadow and
+       ring-shadow blurs evaluated for real, the maps decoded) — then back to rest; the white .lens is never touched (frame()'s .lift class is removed at once) */
+    st.geo = { left: pad + idx0 * PITCH - LX, top: pad - LY, w: W0 + 2 * LX, h: H0 + 2 * LY }; frame(1, 1); seg.classList.remove("lift");
+    seg.classList.add("prewarm"); seg.__prewarmed = performance.now(); st.done = true;
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (!seg.isConnected || !seg.classList.contains("prewarm")) return; st.geo = null; frame(0, 0); seg.classList.remove("lift"); }));
     return loop;
   }
   seg.__lensLoop = loop; segActiveLoop = loop;
