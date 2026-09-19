@@ -622,7 +622,7 @@
   --ios-touch-switch-flip-distance: 25px;        /* pan: |translation| > 25 toward the other state flips at once and zeroes the translation (0x1c414bba4) */
   --ios-touch-switch-rubber-limit: 12px;         /* past an end: ±12·(1 − 1/(1 + .55·o/12)) (0x1c414e998–0x1c414e9ec: fmov 12 / −12, [0x1c5718380] .55) */
   --ios-touch-switch-rubber-slope: .55;
-  --ios-touch-switch-hang: .22s;                 /* lensHangTime: the un-lift waits for max(up, lift + .22 s) (seg-lens-refraction.md §4.4; the switch's spec variant unread) */
+  --ios-touch-switch-hang: .22s;                 /* lensHangTime .22 (small and large alike, 0x1c5128794): the un-lift waits for max(up, lift + .22 s) */
   --ios-switch-knob-lift-w: 58px;                /* _knobBoundsPressed: 0x1c414f4ec–0x1c414f510: 58 × 38.333 lifted (37 × 24 resting) */
   --ios-switch-knob-lift-h: 38.33px;
   --ios-switch-well-border: 2px;                 /* _wellBorderWidthPressed:on: 0x1c414f8d4 */
@@ -631,8 +631,16 @@
   --ios-motion-switch-well-shrink-duration: .365s;
   --ios-motion-switch-well-shrink-delay: .025s;
   --ios-motion-switch-well-color-duration: .18s; /* _switchTrackColorAnimationWithFromValue:toValue: 0x1c414fd98 (borderColor), kCAMediaTimingFunctionDefault = --ios-motion-switch-track-easing */
-  --ios-motion-switch-lift-response: .25;        /* PLACEHOLDER = the segmented lens's lift ζ 1 / .25 and fall ζ 1 / .4 (seg-lens-refraction.md §4.4); the switch lens's own spec variant is unread (dispatch-B13-switch.md §5.1) */
-  --ios-motion-switch-unlift-response: .4;
+  /* the switch knob's lens spec = _UILiquidLensViewSpec.small (switch-native-formula.md §9, read 2026-09-19 15:xx): -[_UILiquidLensView spec]
+   * 0x1c54cae0c picks small for style 0 / large for 1; only UISegmentedControl calls setStyle:1 (0x1c41350d4, 0x1c4134de8), the switch's
+   * _invalidateKnob 0x1c414d5e0 never sets it. Small = the _UILiquidLensViewVariantSpec defaults (setDefaultValues 0x1c5128608, init
+   * 0x1c5128734): liftSpring ζ .625 / response .27 (retargetImpulse .032), unLiftSpring ζ .7 / response .5 (.016), lensHangTime .22,
+   * liftedDisplacement 9, unliftedDisplacement 50, unliftedBlurRadius 6, inner shadow r 3 / opacity .06 / offset y 7, contentWrapper −17.5.
+   * (Large — the segmented lens — overrides both springs to ζ 1 / .25 and the unlifted displacement / blur to 0: 0x1c512890c.) */
+  --ios-motion-switch-lift-damping: .625;
+  --ios-motion-switch-lift-response: .27;
+  --ios-motion-switch-unlift-damping: .7;
+  --ios-motion-switch-unlift-response: .5;
   /* rapid alternation: every tap counts (30 ms taps / 30 ms gaps on the segmented control; 40/80 on the tab bar, switch, button) — no debounce, animations retarget mid-flight */
   --ios-touch-debounce: 0ms;
   /* segmented lens after a tap commit, per-frame (tools/touch/touch-local.uiprobe-g1.json G1 = G3 to 0.1 pt): time ms from the commit → value.

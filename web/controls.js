@@ -76,13 +76,20 @@
      (canApplyPendingOnValueForGesture:, 0x1c414c900–0x1c414c938); pressed = 0 → the knob returns to base(on), the lens un-lifts at
      max(up, lift + lensHangTime .22 s) (seg-lens-refraction.md §4.4 timer), valueChanged after the commit if the value differs from the
      initial one. cancelled: nothing more flips. Reduce motion: no lift, no rubber band (0x1c414f4e0, 0x1c414e998).
-     Springs: critical (ζ 1) x'' = −ω²(x − target) − 2ωx', ω = 2π / response, stepped analytically per frame (flex-interaction.md §6). */
+     Springs: x'' = −ω²(x − target) − 2ζωx', ω = 2π / response, stepped analytically per frame (flex-interaction.md §6): the knob's position
+     ζ 1 / .3; the lens's lift ζ .625 / .27 and un-lift ζ .7 / .5 = _UILiquidLensViewSpec.small (switch-native-formula.md §9; tokens). */
   const SW_BASE = [20.5, 42.5];   // knob centre x off / on (_knobPositionAdjusted:… 0x1c414e88c–0x1c414e8a8); translate = centre − 20.5
   const swNum = (name, fallback) => { const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)); return Number.isNaN(v) ? fallback : v; };
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
   const rubber = (o, limit, slope) => limit * (1 - 1 / (1 + slope * o / limit));
-  /* one analytic step of a critically damped spring from the current value / velocity (A = x − target, B = v + ωA) */
-  const spring = (s, dt) => { const A = s.x - s.target, B = s.v + s.w * A, e = Math.exp(-s.w * dt); s.x = s.target + (A + B * dt) * e; s.v = (B - s.w * (A + B * dt)) * e; };
+  /* one analytic step of a damped spring x'' = −ω²(x − target) − 2ζωx' from the current value / velocity; ζ = 1: (A + Bt)e^{−ωt} with
+     A = x − target, B = v + ωA; ζ < 1: e^{−ζωt}(A cos ω_d t + B sin ω_d t), ω_d = ω√(1 − ζ²), B = (v + ζωA)/ω_d (flex-interaction.md §6) */
+  const spring = (s, dt) => {
+    const z = s.z == null ? 1 : s.z, w = s.w, A = s.x - s.target;
+    if (z >= 1) { const B = s.v + w * A, e = Math.exp(-w * dt); s.x = s.target + (A + B * dt) * e; s.v = (B - w * (A + B * dt)) * e; return; }
+    const wd = w * Math.sqrt(1 - z * z), B = (s.v + z * w * A) / wd, e = Math.exp(-z * w * dt), c = Math.cos(wd * dt), sn = Math.sin(wd * dt);
+    s.x = s.target + e * (A * c + B * sn); s.v = e * ((-z * w * A + wd * B) * c + (-z * w * B - wd * A) * sn);
+  };
   const swWrite = (sw, st) => {
     const sx = 1 + st.lift.x * (st.liftSX - 1), sy = 1 + st.lift.x * (st.liftSY - 1);
     sw.style.setProperty("--kx", (st.pos.x - SW_BASE[0]).toFixed(3) + "px");
@@ -115,7 +122,8 @@
                 rbLimit: touchPx("--ios-touch-switch-rubber-limit", 12), rbSlope: swNum("--ios-touch-switch-rubber-slope", .55),
                 hang: touchMs("--ios-touch-switch-hang", 220), liftW: touchPx("--ios-switch-knob-lift-w", 58), liftH: touchPx("--ios-switch-knob-lift-h", 38.33),
                 knobW: touchPx("--ios-switch-knob-w", 37), knobH: touchPx("--ios-switch-knob-h", 24),
-                posResp: swNum("--ios-motion-switch-knob-response", .3), liftResp: swNum("--ios-motion-switch-lift-response", .25), unliftResp: swNum("--ios-motion-switch-unlift-response", .4) };
+                posResp: swNum("--ios-motion-switch-knob-response", .3), liftResp: swNum("--ios-motion-switch-lift-response", .27), liftZeta: swNum("--ios-motion-switch-lift-damping", .625),
+                unliftResp: swNum("--ios-motion-switch-unlift-response", .5), unliftZeta: swNum("--ios-motion-switch-unlift-damping", .7) };
     const initialOn = input.checked;
     let st = sw._sw;
     if (!st) st = sw._sw = { pos: { x: SW_BASE[initialOn ? 1 : 0], v: 0, target: SW_BASE[initialOn ? 1 : 0], w: 0 }, lift: { x: 0, v: 0, target: 0, w: 0 }, raf: 0, last: 0, hangT: 0, pressT: 0, held: false };
@@ -140,7 +148,7 @@
         st.held = false; t = 0; sw.classList.remove("pressed"); retarget();
         if (st.lift.target === 1) {
           const wait = Math.max(0, liftAt + T.hang - performance.now());
-          st.hangT = setTimeout(() => { st.lift.target = 0; st.lift.w = 2 * Math.PI / T.unliftResp; swRun(sw, st); }, wait);
+          st.hangT = setTimeout(() => { st.lift.target = 0; st.lift.w = 2 * Math.PI / T.unliftResp; st.lift.z = T.unliftZeta; swRun(sw, st); }, wait);   // spec.unLiftSpring ζ .7 / .5
         }
         if (on !== initialOn) input.dispatchEvent(new Event("change", { bubbles: true }));
       },
@@ -151,7 +159,7 @@
     swWrite(sw, st); sw.classList.add("drive");
     st.pressT = setTimeout(() => {   // longPress began at +.01 s: pressed
       sw.classList.add("pressed");
-      if (!reduceMotion.matches) { liftAt = performance.now(); st.lift.target = 1; st.lift.w = 2 * Math.PI / T.liftResp; }
+      if (!reduceMotion.matches) { liftAt = performance.now(); st.lift.target = 1; st.lift.w = 2 * Math.PI / T.liftResp; st.lift.z = T.liftZeta; }   // spec.liftSpring (small variant: ζ .625 / .27 — overshoots 8 %: 58 → 59.7 at +173 ms)
       retarget();
     }, T.press);
   });
