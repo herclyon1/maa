@@ -60,17 +60,13 @@
    "ab_files": [
     "tab-f-ab-82.png"
    ],
-   "abl_files": [
-    "tab-f-ab-82.png"
-   ],
-   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-82.png",
    "lab": "tab-f-lab-82.png",
    "peak_bg_pt": 7.77,
    "peak_lab_pt": 13.86,
-   "bytes": 20104,
+   "bytes": 19931,
    "model": [
     82.0,
     54.0
@@ -105,17 +101,13 @@
    "ab_files": [
     "tab-f-ab-84.png"
    ],
-   "abl_files": [
-    "tab-f-ab-84.png"
-   ],
-   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-84.png",
    "lab": "tab-f-lab-84.png",
    "peak_bg_pt": 7.78,
    "peak_lab_pt": 14.33,
-   "bytes": 20917,
+   "bytes": 20749,
    "model": [
     84.0,
     56.0
@@ -150,17 +142,13 @@
    "ab_files": [
     "tab-f-ab-86.png"
    ],
-   "abl_files": [
-    "tab-f-ab-86.png"
-   ],
-   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-86.png",
    "lab": "tab-f-lab-86.png",
    "peak_bg_pt": 7.75,
    "peak_lab_pt": 14.9,
-   "bytes": 21738,
+   "bytes": 21543,
    "model": [
     86.0,
     58.0
@@ -195,17 +183,13 @@
    "ab_files": [
     "tab-f-ab-88.png"
    ],
-   "abl_files": [
-    "tab-f-ab-88.png"
-   ],
-   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-88.png",
    "lab": "tab-f-lab-88.png",
    "peak_bg_pt": 7.76,
    "peak_lab_pt": 15.54,
-   "bytes": 22713,
+   "bytes": 22577,
    "model": [
     88.0,
     60.0
@@ -240,17 +224,13 @@
    "ab_files": [
     "tab-f-ab-90.png"
    ],
-   "abl_files": [
-    "tab-f-ab-90.png"
-   ],
-   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-90.png",
    "lab": "tab-f-lab-90.png",
    "peak_bg_pt": 7.77,
    "peak_lab_pt": 16.28,
-   "bytes": 23528,
+   "bytes": 23394,
    "model": [
     90.0,
     62.0
@@ -285,17 +265,13 @@
    "ab_files": [
     "tab-f-ab-92.png"
    ],
-   "abl_files": [
-    "tab-f-ab-92.png"
-   ],
-   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-92.png",
    "lab": "tab-f-lab-92.png",
    "peak_bg_pt": 7.77,
    "peak_lab_pt": 17.16,
-   "bytes": 24470,
+   "bytes": 24253,
    "model": [
     92.0,
     64.0
@@ -330,17 +306,13 @@
    "ab_files": [
     "tab-f-ab-94.png"
    ],
-   "abl_files": [
-    "tab-f-ab-94.png"
-   ],
-   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-94.png",
    "lab": "tab-f-lab-94.png",
    "peak_bg_pt": 7.78,
    "peak_lab_pt": 18.27,
-   "bytes": 25182,
+   "bytes": 25024,
    "model": [
     94.0,
     66.0
@@ -375,17 +347,13 @@
    "ab_files": [
     "tab-f-ab-96.png"
    ],
-   "abl_files": [
-    "tab-f-ab-96.png"
-   ],
-   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-96.png",
    "lab": "tab-f-lab-96.png",
    "peak_bg_pt": 7.79,
    "peak_lab_pt": 19.85,
-   "bytes": 26458,
+   "bytes": 26237,
    "model": [
     96.0,
     68.0
@@ -420,17 +388,13 @@
    "ab_files": [
     "tab-f-ab-98.png"
    ],
-   "abl_files": [
-    "tab-f-ab-98.png"
-   ],
-   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-98.png",
    "lab": "tab-f-lab-98.png",
    "peak_bg_pt": 7.79,
    "peak_lab_pt": 22.61,
-   "bytes": 25915,
+   "bytes": 25780,
    "model": [
     98.0,
     70.0
@@ -459,7 +423,7 @@
   "step": 2,
   "height_source": "linear between the two nearest recorded drag frames (seg-native-abc-frames.json phase drag; uiprobe-motion-segdragmid-light.json lenstrace); outside the recorded range the nearest frame (flagged clamped)",
   "shape": "the 220×44 r22 model lens scaled by (w/220, h/44) — seg-lens-refraction.md §1c(d): the flex scale sits on _UILiquidLensView's presentation transform alone, the layers below (SDF elements, portals 196×28, glass group) keep their model bounds; elliptical ends, the portal = scale × 196×28",
-  "total_bytes": 211025
+  "total_bytes": 209488
  },
  "aberration": {
   "map": "tab-f-ab-<w>.png: the lens box plus 16 pt on every side at 1 px/pt; R/G = the ratio-1 vector Δ₁ (pt) = amount · ((R(θ)g).y, (R(θ)g).x) · e(d) (§3b.3 direction with the lanes swapped; e = the edge factor, 1 at the edge → 0 at |EdgeStart| pt), B = e = the filter's band factor; own scale sets[w].S_ab (data-s on the fringe filter)",
