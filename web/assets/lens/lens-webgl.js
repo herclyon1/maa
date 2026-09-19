@@ -187,9 +187,9 @@ void main(){
     const nearest = (w) => { let best = widths[0], dd = Infinity; for (const x of widths) { const d = Math.abs(x - w); if (d < dd) { dd = d; best = x; } } return best; };
     const ISH_PX = 3;
     const loadSet = (w) => { if (sets[w]) return sets[w].ready; const s = opts.sets[w]; const st = sets[w] = { S: s.S || 40, Sab: s.Sab || 12, h: s.h, bg: null, lab: null, ab: null, ish: null, ready: null };
-      st.ready = Promise.all([loadImg(s.bg), loadImg(s.lab), loadImg(s.ab)]).then(([a, b, c]) => { const tm = performance.now(); st.bg = tex(a); st.lab = tex(b); st.ab = tex(c); gl.finish(); stats.prewarm["mapsMs_" + w] = performance.now() - tm; if (!st.h) st.h = a.height / (a.width / w);   /* the bg map covers the lens box: h = its height at the map's px/pt */
+      st.ready = Promise.all([loadImg(s.bg), loadImg(s.lab), loadImg(s.ab)]).then(([a, b, c]) => { const tm = performance.now(); st.bg = tex(a); st.lab = tex(b); st.ab = tex(c); stats.prewarm["mapsMs_" + w] = performance.now() - tm; if (!st.h) st.h = a.height / (a.width / w);   /* the bg map covers the lens box: h = its height at the map's px/pt */
         st.ish = fbo(Math.round(w * ISH_PX), Math.round(st.h * ISH_PX)); gl.bindFramebuffer(gl.FRAMEBUFFER, st.ish.f); gl.viewport(0, 0, st.ish.w, st.ish.h); useProg(PISH);
-        const ti = performance.now(); gl.uniform4f(U(PISH, "u_lens"), 0, 0, w, st.h); gl.uniform4f(U(PISH, "u_quad"), 0, 0, w, st.h); gl.uniform2f(U(PISH, "u_origin"), 0, 0); gl.uniform2f(U(PISH, "u_view"), w, st.h); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); gl.finish(); gl.bindFramebuffer(gl.FRAMEBUFFER, null); stats.prewarm["ishMs_" + w] = performance.now() - ti; st.loaded = true; });
+        const ti = performance.now(); gl.uniform4f(U(PISH, "u_lens"), 0, 0, w, st.h); gl.uniform4f(U(PISH, "u_quad"), 0, 0, w, st.h); gl.uniform2f(U(PISH, "u_origin"), 0, 0); gl.uniform2f(U(PISH, "u_view"), w, st.h); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); if (w === (preload[0] || 220)) gl.finish(); gl.bindFramebuffer(gl.FRAMEBUFFER, null); stats.prewarm["ishMs_" + w] = performance.now() - ti; st.loaded = true; });
       return st.ready; };
     const loadedNearest = (w) => { const cands = widths.filter((x) => sets[x] && sets[x].loaded); if (!cands.length) return null; let best = cands[0], dd = Infinity; for (const x of cands) { const d = Math.abs(x - w); if (d < dd) { dd = d; best = x; } } return best; };
     const preload = opts.preload || [widths.includes(220) ? 220 : widths[0]]; for (const w of preload) loadSet(w);
@@ -200,25 +200,29 @@ void main(){
       const t0 = performance.now(); const p = s.lift == null ? 1 : Math.max(0, Math.min(1, s.lift)), pd = s.pd == null ? 1 : Math.max(0, Math.min(1, s.pd));
       if (s.canvasOrigin) canvasOrigin = s.canvasOrigin;
       if (p <= 0) { clear(); last = s; return; }
-      const want = nearest(s.w); if (!sets[want]) loadSet(want);
+      const base = preload[0] || 220;
+      const want = s.w <= base ? base : nearest(s.w);   /* the lift (196×28 → 220×44) rides the 220 set stretched over the growing box (README §0.3, the SVG page's rule); only the drag stretch (> 220) has its own sets */
+      if (!sets[want]) loadSet(want);
       const wsel = (sets[want] && sets[want].loaded) ? want : loadedNearest(s.w); if (wsel == null) { clear(); return; }   /* until the set's maps arrive: the nearest loaded */
       const st = sets[wsel]; const lw = s.w, lh = s.h, lx = s.cx - lw / 2, ly = s.cy - lh / 2;
       /* the wrapper snapped to the device pixel grid: pass 1's pixels then coincide with the canvas's, and pass 2's bilinear read of A lands on texel
          centres (no resampling blur of the copies; the fields still sample the textures at their fractional positions) */
       const wx = Math.floor((lx - AM) * DPR) / DPR, wy = Math.floor((ly - AM) * DPR) / DPR, ww = Math.ceil((lx + lw + AM) * DPR) / DPR - wx, wh_ = Math.ceil((ly + lh + AM) * DPR) / DPR - wy;
       const aw = Math.round(ww * DPR), ah = Math.round(wh_ * DPR); if (!A || A.w < aw || A.h < ah) { const t = performance.now(); A = fbo(Math.max(aw, canvas.width), Math.max(ah, canvas.height)); stats.prewarm.fboMs = performance.now() - t; }   /* once, at the canvas size */
-      gl.bindFramebuffer(gl.FRAMEBUFFER, A.f); gl.viewport(0, 0, aw, ah); useProg(P1);
+      const TR = opts.trace || TRACE; const tr = TR ? { t0: performance.now() } : null; const mark = (k) => { if (!tr) return; gl.finish(); tr[k] = +(performance.now() - tr.t0).toFixed(2); };
+      gl.bindFramebuffer(gl.FRAMEBUFFER, A.f); gl.viewport(0, 0, aw, ah); useProg(P1); mark("bindFbo_useP1");
       gl.uniform4f(U(P1, "u_quad"), wx, wy, ww, wh_); gl.uniform2f(U(P1, "u_origin"), wx, wy); gl.uniform2f(U(P1, "u_view"), ww, wh_);
       gl.uniform4f(U(P1, "u_page"), region.x, region.y, region.w, region.h); gl.uniform4f(U(P1, "u_lens"), lx, ly, lw, lh); gl.uniform1f(U(P1, "u_S"), st.S); gl.uniform1f(U(P1, "u_p"), p);
       gl.uniform1f(U(P1, "u_srcclip"), opts.srcClip === false ? 0 : 1); gl.uniform1f(U(P1, "u_pd"), pd);
       const pl_ = s.platter || { rgba: [0, 0, 0, 0], alpha: 0 }; gl.uniform4f(U(P1, "u_platter"), (pl_.rgba[0] || 0) / 255, (pl_.rgba[1] || 0) / 255, (pl_.rgba[2] || 0) / 255, (pl_.rgba[3] == null ? 1 : pl_.rgba[3]) * (pl_.alpha == null ? 1 : pl_.alpha));
-      bind(P1, "t_page", 0, tPage); bind(P1, "t_lab", 1, tLab); bind(P1, "m_bg", 2, st.bg); bind(P1, "m_lab", 3, st.lab); bind(P1, "t_ish", 4, st.ish.t);
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      bind(P1, "t_page", 0, tPage); bind(P1, "t_lab", 1, tLab); bind(P1, "m_bg", 2, st.bg); bind(P1, "m_lab", 3, st.lab); bind(P1, "t_ish", 4, st.ish.t); mark("uniforms_binds1");
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); mark("pass1");
       if (s._split) { gl.finish(); stats._p1 = performance.now() - t0; }
-      clear(); useProg(P2);
+      clear(); useProg(P2); mark("clear_useP2");
       gl.uniform4f(U(P2, "u_quad"), wx, wy, ww, wh_); gl.uniform2f(U(P2, "u_origin"), canvasOrigin.x, canvasOrigin.y); gl.uniform2f(U(P2, "u_view"), W, H);
       gl.uniform4f(U(P2, "u_lens"), lx, ly, lw, lh); gl.uniform4f(U(P2, "u_wrap"), wx, wy, ww, wh_); gl.uniform1f(U(P2, "u_Sab"), st.Sab); gl.uniform1f(U(P2, "u_wh"), s.wh || 1.72); gl.uniform1f(U(P2, "u_p"), p);
-      gl.uniform4f(U(P2, "u_page"), region.x, region.y, region.w, region.h); gl.uniform1f(U(P2, "u_pd"), pd); gl.uniform1f(U(P2, "u_dbg"), opts.debugPass1 ? 1 : 0); gl.uniform2f(U(P2, "u_ascale"), aw / A.w, ah / A.h); bind(P2, "t_a", 0, A.t); bind(P2, "m_ab", 1, st.ab); bind(P2, "t_page", 2, tPage); bind(P2, "t_lab", 3, tLab); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      gl.uniform4f(U(P2, "u_page"), region.x, region.y, region.w, region.h); gl.uniform1f(U(P2, "u_pd"), pd); gl.uniform1f(U(P2, "u_dbg"), opts.debugPass1 ? 1 : 0); gl.uniform2f(U(P2, "u_ascale"), aw / A.w, ah / A.h); bind(P2, "t_a", 0, A.t); bind(P2, "m_ab", 1, st.ab); bind(P2, "t_page", 2, tPage); bind(P2, "t_lab", 3, tLab); mark("uniforms_binds2"); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); mark("pass2");
+      if (tr) { tr.set = wsel; tr.total = +(performance.now() - tr.t0).toFixed(2); stats.trace = tr; (stats.traces = stats.traces || []).push(tr); if (stats.traces.length > 60) stats.traces.shift(); }
       if (opts.finish || s._split) gl.finish();
       if (s._split) stats._p2 = performance.now() - t0 - stats._p1;
       stats.gpuMs = performance.now() - t0; stats.frames++; stats.set = wsel; last = s;
@@ -227,6 +231,7 @@ void main(){
        preloaded set is up, one lifted frame is drawn through both passes into the FBO and the canvas (cleared again in the same task — never presented),
        then gl.finish(); again after every setBackdrop (the new textures' first use). ?glwarm=0 / opts.warm === false skips it. */
     const WARM = opts.warm !== false && new URLSearchParams(location.search).get("glwarm") !== "0";
+    const TRACE = new URLSearchParams(location.search).get("gltrace") === "1";   /* per-step gl.finish timing of every frame into stats.trace / stats.traces (last 60) — an instrument, slows the frame */
     /* prewarm = one full lifted frame (the preloaded set, lift 1, pd 1, the current backdrop textures) through pass 1 (FBO) and pass 2 (the canvas), gl.finish after
        each, the canvas cleared and finished (the cleared buffer is what the compositor presents: the layer's display surface gets allocated too); the per-step
        ms land in stats.prewarm (compileMs at create, mapsMs per set upload, ishMs, fboMs at the first draw, pass1Ms, pass2Ms, clearMs, totalMs) */
@@ -236,7 +241,11 @@ void main(){
       if (prev && prev.lift > 0) setState(prev);   /* a real frame drawn before the warm-up (the harness draws as soon as the set is up) is put back */
       return stats.prewarm; };
     const warm = prewarm;
-    const ready = Promise.all(preload.map((w) => sets[w] && sets[w].ready)).then(() => { warm(); return true; });
+    /* the other sets (the drag stretch's 222 … 256) are loaded one per idle slot after the first prewarm, so no gesture frame pays a set's upload + inner-shadow pass
+       (each ~1–2 ms on the Mac, more on the phone; the lift itself never needs them — it rides the 220 set); opts.preloadAll: false leaves them to first use */
+    const idle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 2000 }) : setTimeout(fn, 50));
+    const preloadRest = () => { if (opts.preloadAll === false) return; const rest = widths.filter((w) => !sets[w]); if (!rest.length) return; idle(() => { loadSet(rest[0]).then(() => preloadRest()); }); };
+    const ready = Promise.all(preload.map((w) => sets[w] && sets[w].ready)).then(() => { warm(); preloadRest(); return true; });
     const setBackdrop = (b) => { if (b.region) region = b.region; if (b.ink) opts.ink = b.ink; opts.backdrop = (x, which, info) => { if (which === "page" && b.page) b.page(x, info); if (which === "labels" && b.labels) b.labels(x, info); };
       if (b.sync !== false && !stats.frames) { redrawNow(); if (sets[preload[0]] && sets[preload[0]].loaded) warm(); } else redrawBackdrop(b); };   /* before any frame (idle setup): now; later: deferred, then warmed */
     const redrawAndWarm = (o) => redrawBackdrop(o);

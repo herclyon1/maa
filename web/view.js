@@ -1394,7 +1394,8 @@ try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () =
    next tick will use — a move is adopted after the step, see the tick's time-base note), adopted (1 when this tick adopted a move), pointer_ev_t (that
    move's event timeStamp), pointer_x (its finger x in control coordinates), pointer_target (the target it set), pointer_n (moves consumed since the
    previous tick), raf_t (the tick's rAF timestamp), tick (count), tick_ms (the tick's own duration), drift / sx / sy (the flex floats), x_screen
-   (x + drift = the presented centre), accel / vel (the flex integrator), p (lift progress), set (displacement-map set), rel_t (the release time).
+   (x + drift = the presented centre), accel / vel (the flex integrator), p (lift progress), set (displacement-map set), rel_t (the release time),
+   gl_trace (WebGL, ?gltrace=1 only: the package's per-step gl.finish timing of this frame's draw, lens-webgl.js e1e5633 stats.trace, as a JSON string — ms since the draw began).
    window.__segDiag() returns the same object; window.__segPerf() lists the seg: performance measures (lift build, first tick, commit, render stages). */
 let segActiveLoop = null;
 window.__segLens = null;
@@ -1652,7 +1653,8 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
       x: r3(st.pos.x), v: Math.round(st.pos.v * 10) / 10, target: cxBefore == null ? null : r3(cxBefore), target_next: st.cx == null ? null : r3(st.cx), adopted: adopted ? 1 : 0, retarget_t: st.retargetT == null ? null : r2(st.retargetT),
       pointer_t: st.ev.t == null ? null : r2(st.ev.t), pointer_ev_t: st.ev.evt == null ? null : r2(st.ev.evt), pointer_x: st.ev.x == null ? null : r2(st.ev.x), pointer_target: st.ev.target == null ? null : r2(st.ev.target), pointer_n: st.ev.n,
       drift: r3(fl.out.dx), x_screen: r3(st.pos.x + fl.out.dx), sx: Math.round(fl.out.sx * 10000) / 10000, sy: Math.round(fl.out.sy * 10000) / 10000, accel: Math.round(fl.vi.acceleration), vel: Math.round(fl.vi.velocity),
-      p: Math.round(p * 10000) / 10000, set: curSet || 0, rel_t: st.rel == null ? null : r2(st.rel), phase: st.tap ? "tap" : st.rel != null ? "release" : st.dragged ? "drag" : p < 1 ? "lift" : "hold" };
+      p: Math.round(p * 10000) / 10000, set: curSet || 0, rel_t: st.rel == null ? null : r2(st.rel), phase: st.tap ? "tap" : st.rel != null ? "release" : st.dragged ? "drag" : p < 1 ? "lift" : "hold",
+      gl_trace: GL && glo.lens.stats.trace ? JSON.stringify(glo.lens.stats.trace) : null };   // ?gltrace=1 (lens-webgl.js e1e5633): this frame's per-step gl.finish ms (bindFbo_useP1 / uniforms_binds1 / pass1 / clear_useP2 / uniforms_binds2 / pass2, set, total) as a JSON string — the recorder copies numbers and strings only; null otherwise
     st.ev.n = 0;   // moves consumed since the previous tick (the last move's fields stay until the next move)
     if (st.ticks === 1) segMeasure("seg:first-tick", tickStart);
     st.raf = requestAnimationFrame(tick);

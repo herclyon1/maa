@@ -1181,6 +1181,18 @@ its own transition; `{ sync: true }` draws at once (the harness; a setup call be
 kept and re-used (`willReadFrequently`), the textures re-uploaded in place, the loop skips the pixels the labels did not touch
 (`stats.prewarm.backdropDrawMs / AlphaMs / UploadMs`). The device's re-read of the tap path is the check (the data session).
 
+**The tap path's remaining stalled frame (ee169d2 on the device: up + 82 / 83 → 38 / 60 ms, the next frame fine; 监督局 15:3x):** what the
+package still did on a gesture frame and not before it — the lens starts a lift at 196 × 28 and grows to 220 × 44, and `setState` asked for
+the nearest SET of the current width: 196, 198, … — none loaded (only 220 is preloaded), so each width's three maps were fetched, decoded,
+uploaded and its inner-shadow pass (361 taps) rendered — with a gl.finish for the timing — in the microtask of the load's arrival, i.e. on
+whichever gesture frame the images landed (one to three frames into the lift: up + 82 fits). The drag path (a press on the selected segment)
+draws at 220 from its first frame and never asks for another set. Fixed (this commit): (1) any width ≤ the preloaded set's uses that set,
+stretched over the box — the lift rides the 220 set with the scale ramp, README §0.3's rule, the SVG page's behaviour; only the drag stretch
+(> 220) has its own sets; (2) those sets are loaded one per idle slot after the first prewarm (`preloadAll: false` leaves them to first
+use); (3) no gl.finish on a load's arrival except the preloaded set's. Instrument for the device: `?gltrace=1` (or `{ trace: true }`) puts a
+gl.finish after every step of every frame — bind FBO + program 1, uniforms + binds, pass 1, clear + program 2, uniforms + binds, pass 2 — into
+`L.stats.trace` (`stats.traces` keeps the last 60); the page can copy `L.stats.trace` into `window.__segLens` so seg-frames-logger.js records
+it per frame (the data session has no JS entry on the device otherwise). On the Mac every step reads 0 ms (the 1-ms clock).
 ### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
 
 Sources: `remote-ref/sheet-native.md` (the data session's 10th order: A9 `sheetivars` / `corners` / `subtree` / motion, iOS 27.0 3×) and
