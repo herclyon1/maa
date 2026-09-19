@@ -602,7 +602,7 @@
   --ios-capsule-pressed-text-alpha: 75%;      /* held label: the tint at α .75 (R14 tinted / plain / filled rows; R62 PNG (56,162,255) = systemBlue .75 over the held fill) */
   --ios-capsule-rest-alpha-dark: 25%;         /* tinted dark fill at rest: α .25 (R14) */
   --ios-capsule-pressed-alpha-dark: 17.5%;    /* held dark: α .175 (R14) */
-  --ios-capsule-pressed-text-dark: rgb(25.5 156.06 255);   /* held dark label: (.1, .612, 1) α 1 (R14 tinted dark row; the tint (0, .569, 1) lightened — a systemBlue-specific value, the red variant's is unread) */
+  --ios-capsule-pressed-text-white-mix: 10%;   /* held dark label = AddingWhite10: c ← .9·c + .1 (R86, -[_UIButtonConfiguration updatedConfigurationForState:] 0x1c484d128 → transformer 16 __colorByAddingWhite 0x1c424b568, constant 0x1c5717f68 = .1; probe: (0, .569, 1) → (.1, .612, 1) ✓) — a transformer of the configuration, so any tint (the red variant too) */
   --ios-touch-capsule-press-delay: var(--ios-touch-highlight-delay);   /* 150 ms = UIScrollView delaysContentTouches (R62: the card stack is a UICollectionView); the first changed frame is the next one (cell-native.md row 12: probe +174…175); the R14″ / R14‴ recordings' +172 / +155 are the same delay seen at 60 Hz */
   /* segmented: pressed unselected label dims 1 → .2 ease-out over .43 s (0.98 @32 ms, .79 @100, .5 @182, .2 @432); back to 1 in ~.1 s at commit */
   --ios-touch-segment-dim-opacity: .2;

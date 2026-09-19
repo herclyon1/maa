@@ -7,7 +7,7 @@
       at α .18 (dark .25), at +90 ms still resting (150 ms delaysContentTouches), at +150 ms + 2 frames the held colours — fill α .1176 (dark .175),
       label α .75 (dark (.1, .612, 1)) — transform none, opacity 1; the release returns over .25 s ease-in-out (mid-way strictly between, rest at
       +300 ms); a 60 ms tap never shows the colour (R62 ①); the :active dim rule is overridden in the sheet;
-   ③ the red capsule: the same tinted alphas on --bad; in dark its held label stays the tint (the lightened held colour is systemBlue-specific, unread).
+   ③ the red capsule: the same tinted transformers on --bad — light α .75, dark .9·c + .1 (R86: chosen by configuration, not by colour).
    Every expected colour is produced by the page itself (a probe element with the same color-mix), never typed in. Real-device items (A23): the press
    onset on the phone against 150 ms + a frame; whether the held colour holds through the action on the phone (R62 ②: natively the page switches). */
 (function () {
@@ -61,11 +61,12 @@
     try {
       await frame();
       const restA = tok(dark ? "--ios-capsule-rest-alpha-dark" : "--ios-capsule-rest-alpha"), heldA = tok(dark ? "--ios-capsule-pressed-alpha-dark" : "--ios-capsule-pressed-alpha"), textA = tok("--ios-capsule-pressed-text-alpha");
-      const wantRestBg = mixOf("var(--accent)", restA), wantHeldBg = mixOf("var(--accent)", heldA), wantHeldFg = dark ? colorOf("var(--ios-capsule-pressed-text-dark)") : mixOf("var(--accent)", textA);
-      const wantRedRest = mixOf("var(--bad)", restA), wantRedHeld = mixOf("var(--bad)", heldA), wantRedFg = dark ? getComputedStyle(capRed).color : mixOf("var(--bad)", textA);
+      const whiteMix = tok("--ios-capsule-pressed-text-white-mix"), addWhite = (tint) => colorOf(`color-mix(in srgb, ${tint} calc(100% - ${whiteMix}), white ${whiteMix})`);   // R6″: AddingWhite10 = .9·c + .1
+      const wantRestBg = mixOf("var(--accent)", restA), wantHeldBg = mixOf("var(--accent)", heldA), wantHeldFg = dark ? addWhite("var(--accent)") : mixOf("var(--accent)", textA);
+      const wantRedRest = mixOf("var(--bad)", restA), wantRedHeld = mixOf("var(--bad)", heldA), wantRedFg = dark ? addWhite("var(--bad)") : mixOf("var(--bad)", textA);
       const delayTok = tok("--ios-touch-capsule-press-delay");
       const c0 = getComputedStyle(cap), restBg = c0.backgroundColor, restFg = c0.color, r0 = getComputedStyle(capRed), redBg = r0.backgroundColor, redFg = r0.color;
-      check(`胶囊钮 ② 令牌（tokens.css「capsule button」块，R6′）：静止 α ${dark ? ".25" : ".18"}、按下 α ${dark ? ".175" : ".1176"}、字 ${dark ? "(.1,.612,1)" : "α .75"}、延迟 = --ios-touch-highlight-delay 150ms（UIScrollView delaysContentTouches，R62）`, `${dark ? "25% · 17.5%" : "18% · 11.76%"} · 150ms`, `${restA} · ${heldA} · ${delayTok}`, restA === (dark ? "25%" : "18%") && heldA === (dark ? "17.5%" : "11.76%") && delayTok === "150ms");
+      check(`胶囊钮 ② 令牌（tokens.css「capsule button」块，R6′ / R6″）：静止 α ${dark ? ".25" : ".18"}、按下 α ${dark ? ".175" : ".1176"}、字 ${dark ? "AddingWhite10 = .9·c + .1（R86 变换器 16）" : "α .75（变换器 14）"}、延迟 = --ios-touch-highlight-delay 150ms（UIScrollView delaysContentTouches，R62）`, `${dark ? "25% · 17.5%" : "18% · 11.76%"} · 10% · 150ms`, `${restA} · ${heldA} · ${whiteMix} · ${delayTok}`, restA === (dark ? "25%" : "18%") && heldA === (dark ? "17.5%" : "11.76%") && whiteMix === "10%" && delayTok === "150ms");
       check(`胶囊钮 ② 静止色按 tinted 表：底 = accent α ${dark ? ".25" : ".18"}（原 index.html 18 % / 红 16 % 被盖）、字 = accent；红变体底 = --bad 同 α`, `${wantRestBg} · ${wantRedRest}`, `${restBg} · ${redBg}`, sameColor(restBg, wantRestBg) && sameColor(redBg, wantRedRest));
       const t0 = performance.now(); cap.classList.add("pressed"); capRed.classList.add("pressed");
       await sleep(90); await frame();
@@ -73,9 +74,9 @@
       check("胶囊钮 ② 按下 +90 ms 仍是静止色（150 ms 延迟内，UIScrollView delaysContentTouches；cell-native.md 行 12 探针首变帧 +174…175）", `${restBg} · ${restFg}`, `${early.bg} · ${early.fg} @ ${early.t.toFixed(0)} ms`, sameColor(early.bg, restBg) && sameColor(early.fg, restFg) && early.t < 150);
       await sleep(Math.max(0, 150 + 40 - (performance.now() - t0))); await frame(); await frame();
       const cLate = getComputedStyle(cap), late = { bg: cLate.backgroundColor, fg: cLate.color, tf: cLate.transform, op: cLate.opacity, t: performance.now() - t0 };
-      check(`胶囊钮 ② 按下 +150 ms 后跳到 tinted 表的按下色（${dark ? "暗：底 α .25 → .175、字 (0,.569,1) → (.1,.612,1)" : "亮：底 α .18 → .1176、字 α → .75"}，R14 探针 / R62 PNG 逐值同），不缩放、不变暗`, `${wantHeldBg} · ${wantHeldFg} · none · 1`, `${late.bg} · ${late.fg} · ${late.tf} · ${late.op} @ ${late.t.toFixed(0)} ms`, sameColor(late.bg, wantHeldBg) && sameColor(late.fg, wantHeldFg) && late.tf === "none" && late.op === "1");
+      check(`胶囊钮 ② 按下 +150 ms 后跳到 tinted 表的按下色（${dark ? "暗：底 α .25 → .175、字 .9·c + .1（R86 AddingWhite10；探针 (0,.569,1) → (.1,.612,1) ✓）" : "亮：底 α .18 → .1176、字 α → .75"}，R14 探针 / R62 PNG 逐值同），不缩放、不变暗`, `${wantHeldBg} · ${wantHeldFg} · none · 1`, `${late.bg} · ${late.fg} · ${late.tf} · ${late.op} @ ${late.t.toFixed(0)} ms`, sameColor(late.bg, wantHeldBg) && sameColor(late.fg, wantHeldFg) && late.tf === "none" && late.op === "1");
       const cRed = getComputedStyle(capRed);
-      check(`胶囊钮 ③ 红变体同一 tinted 配置常量套在自己的 tint 上：底 --bad α ${dark ? ".175" : ".1176"}、字 ${dark ? "不变（暗色按下字色是 systemBlue 专值，红的未读）" : "--bad α .75"}`, `${wantRedHeld} · ${wantRedFg}`, `${cRed.backgroundColor} · ${cRed.color}`, sameColor(cRed.backgroundColor, wantRedHeld) && sameColor(cRed.color, wantRedFg));
+      check(`胶囊钮 ③ 红变体同一 tinted 配置变换器套在自己的 tint 上：底 --bad α ${dark ? ".175" : ".1176"}、字 ${dark ? "--bad 往白混 10 %（R86：变换器按配置选，与颜色无关）" : "--bad α .75"}`, `${wantRedHeld} · ${wantRedFg}`, `${cRed.backgroundColor} · ${cRed.color}`, sameColor(cRed.backgroundColor, wantRedHeld) && sameColor(cRed.color, wantRedFg));
       /* the release: the action fires at the up; the colours return over .25 s ease-in-out (R14 timing: the same _UISystemBackgroundView, 15 frames) */
       const tR = performance.now(); cap.classList.remove("pressed"); capRed.classList.remove("pressed");
       await sleep(110); await frame();
