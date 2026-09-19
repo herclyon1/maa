@@ -18,6 +18,7 @@ compiled from the native per-frame recordings. Nothing here touches `view.js` / 
 | `gen_seg_keys.py` → `seg-keys.css` | lift / release / commit / drag keyframes compiled from the native frame data (§5) |
 | `verify_lens_maps.py`, `gen_lens_maps.py` without `--formula` | the earlier measured-resampling mode (§1–§4, record only): resamples the phase files into maps — no longer part of the deliverable |
 | `calib/` | WebKit feDisplacementMap calibration (`gen_calib.py` → maps + `webkit-displacement.html`, `check_calib.py` reads a render): the engine applies negative displacements one device pixel short (§0.4) |
+| `tools/air_sampler.py` | lists the functions of a Metal library (`.metallib`) and decodes every constexpr sampler state they carry (bit layout read with the Metal compiler, §0.8.14) |
 | `tools/fringe_check.py` | the A1 8× three-item check (coloured share of the outer 12 pt, saturation mean / median, the ends' colour order) on any screenshot of the held lens (§0.5) |
 | `lens-supersample.js` | 引擎校正 2, default on (`?ss=0` off): wraps every filtered lens layer in a composited ½ wrapper and lays it out 2× (the filter runs on a 2× raster), folds SS into the filters' `data-s` / scale / region (§0.4); one `<script>` line before view.js and lens-engine-fix.js |
 | `lens-engine-fix.js` | 引擎校正, default on: re-encodes the bg / label maps at page load so negative displacements are one device pixel longer (k = 1/devicePixelRatio), blob: copies only (§0.4); load after the `<svg>` |
@@ -1330,6 +1331,28 @@ as a safety net — it re-prepares nothing, the page prepares again at idle); af
 Harness: `prepareLabels("bold", …)` → 1 seg:gl-prepare; `useLabels` → 0 redraw measures, 0 frames; a frame with the bold variant differs from
 the live one (7 648 px @2x); after `redrawNow` the variant is gone and the render equals the live one (0 diff). The accept row (accept.js 分段
 section) exercises the API on the page's instance; the page-path row (a tap's down frame with no seg:gl-redraw-task) goes in with the wiring.
+
+### 0.8.14 R37 — the fringe's "source" item read: CA's sampler for the label copy, mips, and the map's quantisation (2026-09-20 04:xx; BOARD round 2)
+
+The question (formula.md §3b.8): the band's label ink is grey on the native (darkest G 36–44 in the ±1 pt box), black on the web (9), the chain's gain is
+the same on both (.48), so the saturation difference (69 vs 85) is in the SOURCE the seven taps read. Three reads, in `remote-ref/glass-displacement-formula.md`
+§3b.9 with the addresses: **①** `displacement_map_lpf` samples both its textures through one constexpr sampler, `0x7bff0000082a49` = clamp_to_edge,
+`filter::linear`, `mip_filter::nearest`, implicit-LOD `sample()` — decoded by compiling one probe sampler per field with the same Metal compiler version
+that built QuartzCore's library (32023.921; the bit layout is in `tools/air_sampler.py`, which also lists every function of a `.metallib` and decodes
+its samplers: the ten sampler states of `default.metallib` are in its output). **②** intermediate surfaces are allocated without mip levels unless a
+surface flag is set (`MetalContext::create_surface_with_properties` +0xb9c / +0xc6c); which filter inputs get the flag is unread — bounded: mips act
+only where the sampling is minified (the ends' compression zone s ∈ [6, 11.2]); the platform (magnified ×55) reads level 0 either way, so the band's
+grey is not a mip. **③** the web's 8-bit 2 px/pt label map is not the term either: the field evaluated per pixel in float in FS1 (`lstage` / `gOval`
+— formula §1 + §2 composed like `gen_lens_maps.py compose_stages`, coverage fw ⅓ pt, the ⅙ pt clamp, the amounts riding the lift) gives, on the Mac
+harness at 3 px/pt with §3b.8's judge (`scratchpad/r37_sat.py`): share 1.52 → 1.52 %, saturation 89.8 → 89.1, darkest G 7.6 → 7.5, gain .48 → .48.
+
+Wired: the float field is the default (`opts.labMode` / `?gllab=map` returns to the map; `stats.labMode`, `stats.labelStages`, `stats.rmax`); the
+capsule radius is a uniform (`opts.rmax`: the segment lens 22 clamped to h/2, the tab lens h/2 — before this the tab overlay's outline terms (ring,
+dark line, KeyFill, DestOut punch, source clip) used r 22 on a 70-pt capsule: fixed); `tab-lens.js` passes the tab family's stages −14 / 11.2 →
+−17.5 / 11.2 and each set's model box (lift path = the set, stretch = 110×70). What is left for the source item: the device says rest 905 / 905 and
+lift 941 / 925 agree, only drag-mid differs (586 / 760, seg-webgl-fb7bbdc.md §3) — the same end-zone term as R38 (`label-end-tear-closed-vs-map.md`
+§0 item 4); next reads listed in §3b.9 (the mip flag's origin; L2 / L4 alone on the probe; the nested evaluation in `CA::Render`). The Mac harness's
+own label bitmap is 13 % heavier than the native crop's (WebKit macOS rasterisation) — a Mac-only difference, not the phone's.
 
 ### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
 

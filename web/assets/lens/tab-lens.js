@@ -148,7 +148,8 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
       const svgTxt = await (await fetch(FAMILY + "lens-filter.svg")).text(); const svg = document.importNode(new DOMParser().parseFromString(svgTxt, "text/html").querySelector("svg"), true);
       svg.setAttribute("data-tab-lens-gl", FAMILY); svg.setAttribute("aria-hidden", "true"); svg.style.cssText = "position:absolute;width:0;height:0"; document.body.appendChild(svg);   // the maps' hrefs and data-s for setsFromFilters; no engine fix (the GPU samples the plain maps)
       const field = await (await fetch(FAMILY + "lens-field.json")).json(); glHeights = {}; for (const [w, v] of Object.entries(field.sets || {})) glHeights[w] = v.h;
-      glSets = LensWebGL.setsFromFilters("tab", glHeights); return Object.keys(glSets).length > 0; } catch (e) { console.warn("tab-lens gl: family", e); return false; } })(); return glReady; };
+      glSets = LensWebGL.setsFromFilters("tab", glHeights); for (const w of Object.keys(glSets)) glSets[w].model = +w <= 110 ? [+w, glSets[w].h || +w - 40] : [110, 70];   // R37: the set's model box for the in-shader label field — the lift path's model bounds are the set itself (94×54 → 110×70), the stretch sets are the 110×70 model scaled (tab/lens-field.json sets.model)
+      return Object.keys(glSets).length > 0; } catch (e) { console.warn("tab-lens gl: family", e); return false; } })(); return glReady; };
   const maskCache = new Map();
   const loadImage = (src) => new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
   const cssUrl = (v) => { const m = /url\("?([^")]+)"?\)/.exec(v || ""); return m ? m[1] : null; };
@@ -162,6 +163,7 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
     const widths = Object.keys(glSets).map(Number), top = Math.max(...widths);
     const ink = () => { const b = nav.querySelector(".seg button:not(.on) span:last-child") || nav.querySelector(".seg button span:last-child"); const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/.exec(b ? getComputedStyle(b).color : ""); return m ? [+m[1], +m[2], +m[3]] : [0, 0, 0]; };
     const opts = { sets: glSets, preload: [top], dpr: window.devicePixelRatio || 1, width: navW + 2 * GLM, height: navH + 2 * GLM, margin: 16, ink: ink(), warm: true, labelsDirect: true,   // icons of any colour + labels: drawn with their own alpha (no single-ink recovery)
+      rmax: 1e6, labelStages: [-14, 11.2, -17.5, 11.2],   // the tab lens is a capsule r = h/2 (tab-lens-native.md §0: cornerRadii 35 = 70/2 on every element; R37 fix: the outline terms used the segment lens's r 22); its label stack ContentLensing −14 / 11.2 then ClearGlass −17.5 / 11.2 (tab-lens-native.md §3, tab/lens-field.json parameters.label)
       backdrop: (x, which) => { const nb = nav.getBoundingClientRect(), plat = nav.querySelector(".plat"), pr = plat ? plat.getBoundingClientRect() : nb;
         if (which === "page") {   // the page colour everywhere (the page's content under the bar is 不可表达 here), then the platter's fill over it as the capsule it is (验收: (b) flat fill; the blurred page in the platter is not drawn)
           x.fillStyle = getComputedStyle(document.body).backgroundColor || "#fff"; x.fillRect(0, 0, navW + 2 * GLM, navH + 2 * GLM);
