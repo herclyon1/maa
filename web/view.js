@@ -509,19 +509,114 @@ function render() {
     <p class="foot">免输入链接会把这里存着的密钥一起带上，换手机开一次那条链接就全有。森空岛的会话由机器交过来；库街区的：打开电脑上 scripts/mac/phone-link.py 打出来的链接，或把 ~/.config/ark/.env 里 KUROBBS_TOKEN 和 KUROBBS_DID 那两行粘贴进来</p>
   </section>`;
 
-  /* The segmented control survives a re-render (patch 02, seg-impl-review.md #2): commit() → render() used to rebuild #app wholesale,
-     which destroyed the pressed label mid-transition (its .2 → 1 recovery never ran: the fresh button appeared at 1 and only played
-     seg-in from .81) and gave the weight cross-fade no start value (the weight snapped). Now the old .segctl node is moved into the
-     new page and only its state is synced (segSync): the lens, the labels, the .warp copy and the running glass fall all keep their
-     elements, so every CSS transition on them finishes exactly as it would on a UISegmentedControl that is never rebuilt. */
-  const oldSeg = $("#queueseg");
-  $("#app").innerHTML = html;
-  const newSeg = $("#queueseg");
-  if (oldSeg && newSeg && segSameQueues(oldSeg, newSeg)) { newSeg.replaceWith(oldSeg); segSync(oldSeg, newSeg); }
-  layoutTabs();
-  wire();
+  /* The segmented control survives a re-render (patch 02, seg-impl-review.md #2; B2-b): commit() → render() used to rebuild #app wholesale,
+     which destroyed the pressed label mid-transition and gave the weight cross-fade no start value. Moving the old node into the new tree
+     (replaceWith) was not enough: a detached-and-reinserted element loses its running CSS transitions (the drag-release snapped to 198×28 at
+     up + 1 ms, 4317ecd). Now the old #queueseg is never detached — replaceKeeping swaps everything around its ancestor chain — and only its
+     state is synced (segSync): the lens, the labels, the copies and the running glass fall keep their elements AND their transitions. */
+  const oldSeg = $("#queueseg"), probe = document.createElement("template"); probe.innerHTML = html;
+  const cand = probe.content.querySelector("#queueseg");
+  const tR = performance.now(), before = flipPending ? flipSnapshot($("#app")) : null; flipPending = false;   // B3: where every block was, before the content changes
+  if (before) segMeasure("seg:render:snapshot", tR);
+  flipStop();   // a render during a running content transition (a new value change or a data refresh) ends it — 快速连点 未量, wired as "the new change interrupts the old"
+  const tD = performance.now();
+  if (oldSeg && cand && segSameQueues(oldSeg, cand)) { const fresh = replaceKeeping($("#app"), html, oldSeg); if (fresh) segSync(oldSeg, fresh); }
+  else $("#app").innerHTML = html;
+  if (before) segMeasure("seg:render:dom", tD);
+  const tL = performance.now(); layoutTabs(); if (before) segMeasure("seg:render:layoutTabs", tL);   // the other tabs' sections are hidden here — the "after" positions are read only after that
+  const tF = performance.now(); if (before) { flipRun(before, $("#app")); segMeasure("seg:render:flip", tF); }
+  const tW = performance.now(); wire(); if (before) { segMeasure("seg:render:wire", tW); segMeasure("seg:render:total", tR); }
 }
 
+/* B3 — content transition on a value change (remote-ref/seg-value-change-content.md, 设置 › 屏幕使用时间 每周/每天, iOS 27.0 simulator recordings; every
+   number below is a sampled per-frame value from that document — the CAAnimation durations / curves could not be read there, §5):
+   §0/§4: at the frame the value changes the card content is simply the new content (no fade, no slide, numbers do not roll); only rows that
+   appear or disappear animate, UITableView-style — a deleted row fades in place (.72 → .52 → .35 → .21 → .10 → .04 → 0 by +240 ms, drifting up
+   1–4 pt) while the content below slides up by its height (133 pt there) from ~+60 ms over ~300 ms (133 → 111 @75 → 88 @92 → 70 @108 → 54 @128 →
+   42 @142 → 32 @160 → 24 @177 → 14 @210 → 8 @243 → 4 @277 → 2 @308 → 1 @342 → 0 @400); an inserted row waits ~100 ms then fades in over ~300 ms
+   (old-content share a: .66 @0, .69 @40, .65 @90, .56 @140, .39 @190, .24 @240, .10 @290, .03 @340, 0 @390) while the content below slides down at
+   once (−133 @0 → −129 @40 → −72 @74 → −43 @107 → −6 @144 → −4 @175 → −2 @210 → −1 @245 → 0 @310). Everything starts at the value-change frame,
+   together with the lens (§0 "与透镜开始滑动同一帧").
+   Web: blocks = the sections of #app and the rows inside their groups, keyed by the section title, the group index and the row index (index paths,
+   as the native table: a row at the same index path stays and simply shows its new content).
+   Old and new positions are compared (FLIP): a block that moved gets translateY(old − new) → 0 on the up-slide (moved up) or down-slide (moved down)
+   sequence scaled to its own distance ("一行高" there was 133 pt); a row whose key vanished is cloned into a fixed overlay at its old place and fades
+   on the deletion sequence; a row whose key is new fades in on the insertion sequence. Curves are the sampled sequences, linearly interpolated. */
+let flipPending = false, flipState = null;
+const FLIP_DEL_FADE = [[0, .72], [10, .67], [27, .52], [42, .44], [57, .35], [75, .25], [92, .21], [108, .14], [128, .10], [160, .07], [193, .04], [227, .02], [243, 0]];   // §1 template registration, ms from the switch frame
+const FLIP_DEL_DRIFT = [[0, 0], [27, -1], [57, -2], [92, -3], [128, -4], [243, -4]];   // §1 position of the fading row (pt)
+const FLIP_UP = [[0, 0], [75, .165], [92, .338], [108, .474], [128, .594], [142, .684], [160, .759], [177, .820], [210, .895], [243, .940], [277, .970], [308, .985], [342, .992], [400, 1]];   // §0 up-slide: 1 − offset / 133
+const FLIP_DOWN = [[0, 0], [40, .030], [74, .459], [107, .677], [144, .955], [175, .970], [210, .985], [245, .992], [310, 1]];   // §2 down-slide: 1 − |offset| / 133
+const FLIP_INS = [[0, 0], [40, 0], [90, .015], [140, .15], [190, .41], [240, .64], [290, .85], [340, .95], [390, 1]];   // §2 inserted row: 1 − a / .66 (a = the sampled old-content share)
+const FLIP_END = 420;
+function flipKeys(root) {   // key → { el, top, height, kind }
+  const out = new Map();
+  [...root.querySelectorAll(":scope > section")].forEach((sec, si) => {
+    const h2 = sec.querySelector(":scope > h2"), sk = "s:" + (h2 ? h2.textContent.trim() : "#" + si);
+    const r = sec.getBoundingClientRect(); if (r.height > 0) out.set(sk, { el: sec, top: r.top, height: r.height, kind: "section" });
+    [...sec.querySelectorAll(":scope > .group")].forEach((g, gi) => {
+      const rows = [...g.children].filter((c) => c.classList.contains("row") || c.classList.contains("acts"));
+      rows.forEach((row, ri) => {   // rows keyed by index path (section, group, row) like the native table: same index = the row stays and shows its new content in one frame
+        const rr = row.getBoundingClientRect(); if (rr.height > 0) out.set(`${sk}/g${gi}/#${ri}`, { el: row, top: rr.top, left: rr.left, width: rr.width, height: rr.height, kind: "row", sec: sk }); });
+    });
+  });
+  return out;
+}
+function flipSnapshot(root) { const m = flipKeys(root); for (const v of m.values()) if (v.kind === "row") v.clone = v.el.cloneNode(true); return m; }
+function flipStop() {
+  if (!flipState) return;
+  cancelAnimationFrame(flipState.raf);
+  for (const b of flipState.moves) if (b.el.isConnected) b.el.style.transform = "";
+  for (const b of flipState.ins) if (b.el.isConnected) b.el.style.opacity = "";
+  flipState.overlay.remove(); flipState = null;
+}
+function flipRun(before, root) {
+  const after = flipKeys(root), moves = [], ins = [], dels = [];
+  const secD = new Map();
+  for (const [k, n] of after) { const o = before.get(k); if (!o) { if (n.kind === "row") ins.push(n); continue; } const d = o.top - n.top;
+    if (n.kind === "section") { secD.set(k, d); if (Math.abs(d) >= 0.5) moves.push({ el: n.el, d }); }
+    else { const rel = d - (secD.get(n.sec) || 0); if (Math.abs(rel) >= 0.5) moves.push({ el: n.el, d: rel }); } }   // a row moves only by what its section's move does not already carry
+  for (const [k, o] of before) if (!after.has(k) && o.kind === "row") dels.push(o);
+  if (!moves.length && !ins.length && !dels.length) return;
+  const overlay = document.createElement("div"); overlay.className = "flipgone-wrap";
+  for (const d of dels) { const g = document.createElement("div"); g.className = "group flipgone"; g.style.cssText = `left:${d.left}px;top:${d.top}px;width:${d.width}px;height:${d.height}px`; g.appendChild(d.clone); overlay.appendChild(g); d.node = g; }
+  document.body.appendChild(overlay);
+  const t0 = performance.now(); flipState = { raf: 0, moves, ins, overlay };
+  const step = (now) => {
+    if (flipState === null || flipState.overlay !== overlay) return;
+    const t = now - t0;
+    for (const b of moves) { if (!b.el.isConnected) continue; const p = tabAt(b.d > 0 ? FLIP_UP : FLIP_DOWN, t); b.el.style.transform = t >= FLIP_END ? "" : `translateY(${(b.d * (1 - p)).toFixed(2)}px)`; }
+    for (const b of ins) { if (!b.el.isConnected) continue; b.el.style.opacity = t >= FLIP_END ? "" : tabAt(FLIP_INS, t).toFixed(3); }
+    for (const d of dels) { d.node.style.opacity = tabAt(FLIP_DEL_FADE, t).toFixed(3); d.node.style.transform = `translateY(${tabAt(FLIP_DEL_DRIFT, t).toFixed(2)}px)`; }
+    if (t >= FLIP_END) { flipStop(); return; }
+    flipState.raf = requestAnimationFrame(step);
+  };
+  step(t0);   // the first frame at the switch itself (.72, +H)
+}
+
+/* Replace `root`'s content with `html` while keeping `keep` (a descendant of root) attached: at every level of its ancestor chain the siblings are
+   swapped for the new markup's and the ancestor's attributes are refreshed from its counterpart (same child-index path), but neither the ancestors
+   nor `keep` are ever removed — so the CSS transitions / animations running inside `keep` go on (CSS Transitions §3: a transition on an element
+   that leaves the document is cancelled; Chrome does so even for a same-task re-insertion). Returns the (detached) new counterpart of `keep` for
+   state sync, or null after a plain innerHTML swap when the structure around it changed. */
+function replaceKeeping(root, html, keep) {
+  const tpl = document.createElement("template"); tpl.innerHTML = html;
+  const fresh = keep.id ? tpl.content.querySelector("#" + keep.id) : null;
+  const pathOf = (node, top) => { const p = []; for (let n = node; n && n !== top; n = n.parentNode) p.unshift(n); return p; };
+  const oldPath = pathOf(keep, root), newPath = fresh ? pathOf(fresh, tpl.content) : [];
+  if (!fresh || oldPath.length !== newPath.length || !oldPath.length || oldPath[0].parentNode !== root) { root.innerHTML = html; return null; }
+  let oc = root, nc = tpl.content;
+  for (let i = 0; i < oldPath.length; i++) {
+    const oa = oldPath[i], na = newPath[i];
+    for (const k of [...oc.childNodes]) if (k !== oa) k.remove();
+    const kids = [...nc.childNodes], at = kids.indexOf(na);
+    for (let j = 0; j < at; j++) oc.insertBefore(kids[j], oa);
+    for (let j = at + 1; j < kids.length; j++) oc.appendChild(kids[j]);
+    if (oa !== keep) { for (const a of [...oa.attributes]) if (!na.hasAttribute(a.name)) oa.removeAttribute(a.name); for (const a of na.attributes) oa.setAttribute(a.name, a.value); }
+    oc = oa; nc = na;
+  }
+  return fresh;
+}
 /* The two controls describe the same queues (same names, same order, same 未启用定时 tags) — only then is the old node kept. */
 function segSameQueues(a, b) {
   const key = (seg) => [...seg.querySelectorAll("button")].map((x) => x.dataset.q + "|" + x.textContent).join("\u0001");
@@ -687,8 +782,12 @@ function wire() {
     const bs = [...segEl.querySelectorAll("button")];
     attachSegmented(segEl, () => Math.max(0, bs.findIndex((b) => b.dataset.q === qsel.value)), (i, mode = "tap") => {
       const q = bs[i].dataset.q; if (qsel.value === q) return;
-      segCommitAt = performance.now(); segCommitMode = mode;
-      qsel.value = q; qsel.dispatchEvent(new Event("change"));   // onchange → render() right now: the content switches in the same tick
+      qsel.value = q;   // the model changes at the up (the next touch already sees the new index)
+      /* valueChanged — the content switch and the lens's slide, one render — comes +66 ms after a tap's up / +25 ms after a slide's (B3 follow-up:
+         seg-value-change-content.md §0 four recordings +92/+68/+50/+66, the lens starts gliding in that same frame; tokens.css --ios-touch-segment-
+         commit-delay note for the slide). A newer value change before the timer fires simply renders again (快速连点 未量). */
+      const delay = touchMs(mode === "drag" ? "--seg-commit-delay-drag" : "--seg-commit-delay-tap", 0);
+      setTimeout(() => { if (qsel.value !== q) return; segCommitAt = performance.now(); segCommitMode = mode; flipPending = true; performance.mark("seg:commit"); qsel.dispatchEvent(new Event("change")); segMeasure("seg:commit-render", segCommitAt); }, delay);
     });
   }
   if (qsel) qsel.onchange = () => {
@@ -1097,114 +1196,380 @@ function press(el, e, handlers) {
 /* §1 UISegmentedControl: touch-down changes nothing but the pressed label's opacity (unselected) or lifts the lens (selected); a lifted lens follows
    the finger; the index changes at the up - target = the segment under the finger's x - unless the finger is > 70 pt outside the control
    (cancel, no event) or back on the selected segment (no event). No debounce: every up counts, same segment twice = one event. */
-/* Segmented lens, lifted state — the control's own originals (remote-ref/seg-lens-refraction.md, iOS 27.0 probe, 2026-09-19) compiled into
-   web/seg-keys.css by 界面2号 (gen_seg_keys.py from the native per-frame recordings): geometry 196×28 r14 → 220×44 r22 from +109 ms over 250 ms
-   (--ios-touch-segment-lift-*), the displacement amount, the platter fade (1 → 0) and the size share one curve (≤ .012 apart), the DestOut punch-out
-   appears within the first 3 frames (--ios-touch-segment-destout-keys .396 / .98 / 1). Release: geometry back from up + 31 ms in 250 ms
-   (--ios-touch-segment-release-*), the displacement's long tail to up + 581 (-release-warp-delay 31 + -warp-keys), the platter back to 1 by + 515
-   (-release-platter-keys ≈ 1 − warp within .01, so one variable --lp drives both), the DestOut fade from up + 198 (-release-destout-delay + keys: 1, .841 at
-   + 215, …, 0 by + 598). Every delay counts from the up to that animation's last unchanged frame (key 0 = the rest value). Web: the lens CSS transitions carry
-   the geometry; this per-frame loop reads the lens's presented height for the lift progress and runs the release tails from the key lists; it
-   positions the copies (bg + track, labels) and the rim to the lens's presented rect. Tab-bar curves (LENS_P) are kept for the tab bar only. */
+/* Segmented lens — geometry, glass and follow in one per-frame loop (segLens): view.js owns the lens's inline left/top/width/height/border-radius
+   from the lift to the settle. Every spring below is an ORIGINAL read off the control's UIViewSpringAnimationBehavior(Settings) objects
+   (remote-ref/seg-lens-refraction.md §4.4, iOS 27.0 probe with model-value differencing, dumps tools/touch/seg-native-springs-{abc,tap}-motion.json);
+   ω₀ = 2π / response, x'' = −ω₀²(x − target) − 2ζω₀x' (§4.4 换算 row). Structure = §4.4's attribution column (differential evidence):
+   - lift: +109 ms after the down (--ios-touch-segment-lift-delay ← §4.1 frames) ONE spring ζ 1 / response .25 s drives bounds 196×28 → 220×44,
+     corner 14 → 22, the displacement amount (filter scale 0 → 32), the platter (1 → 0), the highlight — so here q = that spring's progress and every
+     lifted quantity is a function of q. The DestOut punch-out's opacity is the §4.1 frame values (--ios-touch-segment-destout-keys).
+   - drag (flex-interaction.md §6, UIKitCore -[UISegmentedControl touchesMoved:] → _updateSelectionToSegment:): every move sets the lens centre
+     target to the tracked segment's centre + the finger's accumulated delta since the touch down (locationInView only — no predicted / coalesced
+     touches; pressed at the centre this is the finger's x), through ONE spring behaviour ζ .85 / response .2 s created anew per move and continuing
+     from the current value and velocity (analytic step); the first displaced frame reaches the screen two frames after the one the move arrived in
+     (§6e.2 chain; §6e.3 the page rule) — see the tick for the frame-by-frame account. The on-screen centre = this spring + the flex drift (1 − sX)·W/2 — the slow start and the
+     run past the finger after it stops are that drift, not a latency constant. Beyond an END segment's own centre the excess is rubber-banded
+     (§6, 0x1c41358bc–0x1c4135978, by segmentPosition 0 left / 1 middle / 2 right / 3 alone): raw = c_tracked + Σdelta; middle → raw; alone → the
+     centre (no follow); left end: o = max(0, c − raw) → target = c − 12·(1 − 1/(1 + .55·o/12)); right end: o = max(0, raw − c) → c + the same
+     (c .55 = [0x1c5718380], the left end's [0x1c571a4e8] = −.55 cancels the sign; d = 12 immediate — UIScrollView's rubber band, asymptote 12 pt,
+     initial slope .55: 24 pt past the end centre → 6.29, 120 → 10.2). Inward of its own centre the end segment follows raw (the abc recording: the
+     tracked left segment carried the lens to 320). The stretch while dragging (244×38.4, 253×36), the drift and the bounce after the up are UIKitCore's
+     _UIFlexInteraction on the lens's presentation transform (flex-interaction.md; FLEX_VARIANT / flexSpec / flexIntegrator / flexTargets below);
+     its "tracking" springs ζ .6533 / .4559 (dragging) and ζ .56 / .444 (196×28) are what the probe saw retargeting every frame (§4.4 row 4) — they
+     drive scale / drift, not the position.
+   - release: geometry back with the same ζ 1 / .25 spring (bounds, corner, position of the lifted rect), the material half — displacement,
+     platter, highlight — with ζ 1 / .4 (§4.4 rows 5–6), both from up + 31 ms (§4.3 frames: first changed frame); the DestOut fade = §4.3 frame
+     values (--ios-touch-segment-release-destout-*). The position: one spring ζ .85 / .4 s to the segment the lens ends on (§4.4 换值行程 row);
+     the flex floats keep running (smallLoupe ζ .56 / .444 once the lens is 196×28).
+   While the loop runs the lens carries `transition: none` inline (so the resting lens's CSS transitions — the tap commit's slide on --i — do not react
+   to the per-frame values); at the end the inline values equal the CSS rest values and are removed. The copies (bg + track through the displacement
+   map, labels), the platter and the rim are positioned to the lens's presented rect each frame. Tab-bar curves (LENS_P) stay for the tab bar. */
 const LENS_P = [[0.020, 0], [0.036, .11], [0.053, .26], [0.070, .41], [0.086, .54], [0.103, .65], [0.120, .74], [0.153, .86], [0.203, .95], [0.253, .98], [0.303, .994], [0.370, 1]];
 const lensP = (t) => tabAt(LENS_P, t);
 function tabAt(tab, t) { if (t <= tab[0][0]) return tab[0][1]; for (let i = 1; i < tab.length; i++) if (t <= tab[i][0]) { const [t0, v0] = tab[i - 1], [t1, v1] = tab[i]; return v0 + (v1 - v0) * (t - t0) / (t1 - t0); } return tab[tab.length - 1][1]; }
 /* `<ms> <value>, …` key list from a CSS custom property (seg-keys.css / tokens.css convention) → [[s, value], …]; the fallback tables below are the same
-   numbers hand-copied from seg-lens-refraction §4.1 / §4.3 (used only if the stylesheet is missing) */
+   numbers hand-copied from seg-keys.css / seg-lens-refraction §4.1 / §4.3 (used only if the stylesheet is missing) */
 function cssKeys(name, fallback) {
   const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); if (!raw) return fallback;
   const out = raw.split(",").map((k) => k.trim().split(/\s+/).map(Number)).filter((k) => k.length === 2 && k.every(Number.isFinite)).map(([ms, v]) => [ms / 1000, v]);
   return out.length >= 2 ? out : fallback;
 }
-/* seg-lens-refraction §4.3, t from the up (s): glass remaining = 1 − platter opacity (the displacement amounts follow the same numbers within .01) */
-const SEG_DROP_GLASS = [[0, 1], [.048, .961], [.065, .887], [.081, .797], [.098, .701], [.115, .607], [.131, .519], [.148, .439], [.165, .369], [.181, .308], [.198, .255], [.215, .21], [.231, .173], [.248, .141], [.265, .115], [.281, .093], [.298, .076], [.315, .061], [.331, .049], [.348, .04], [.365, .032], [.381, .026], [.398, .02], [.415, .016], [.431, .013], [.448, .01], [.465, .008], [.481, .007], [.498, .005], [.515, 0]];
 /* §4.3 DestOut opacity after the up (1 until +198 ms, then the fade) */
 const SEG_DROP_DESTOUT = [[0, 1], [.198, 1], [.215, .841], [.231, .69], [.248, .564], [.265, .46], [.281, .374], [.298, .303], [.315, .245], [.331, .197], [.348, .159], [.365, .127], [.381, .102], [.398, .082], [.415, .065], [.431, .052], [.448, .042], [.465, .033], [.481, .026], [.498, .021], [.515, .017], [.531, .013], [.548, .01], [.565, .008], [.581, .007], [.598, 0]];
 /* §4.1 DestOut opacity after the lift starts (+109 ms): .396 / .98 / 1 on the first three frames */
 const SEG_LIFT_DESTOUT = [[0, 0], [.016, .396], [.033, .98], [.05, 1]];
-function segLens(seg, lens, bs, fallFrom) {
-  let warp = seg.querySelector(".warp"), warpl = seg.querySelector(".warpl"), plat = seg.querySelector(".plat"), rim = seg.querySelector(".rim");
+/* §4.4 springs [原值]: [ζ, response s] */
+const SEG_SPRING = { lift: [1.0, .25], fallMaterial: [1.0, .4], model: [.85, .2], travel: [.85, .4] };   // position springs; the .6533/.4559 and .56/.444 tracking springs of §4.4 are the flex interaction's (FLEX_VARIANT)
+/* B5 — the lens's stretch while dragging and its bounce after the up: UIKitCore `_UIFlexInteraction` (remote-ref/flex-interaction.md, the old
+   page session's decompilation of the iOS 27.0 simulator UIKitCore; offsets there). Structure (§1): `_UILiquidLensView.flexInteraction`; every
+   frame (UIUpdateLink 0x1c5050900) the lens's OWN presentation-layer centre goes into `_UIVelocityIntegrator addSample:` (config 0x1c504f3d8:
+   5 samples, EMA α 0.3 on position / velocity / acceleration, consecutive-sample differentiation, hysteresis 0.05 s → reset, directionless
+   acceleration = the component along the velocity), then `updateFlex` (0x1c5052ce8) sets scaleX / scaleY / drift targets that
+   `_UIDebouncingAnimatableFloat`s reach on spec.scaleSpring (tracking values while the gesture is on) and a presentation modifier puts them on the
+   transform — the model bounds stay. Spec (§2, `liquidLensWithSize:` 0x1c512710c): d = min(w, h), t = clamp((d − 37) / 33, 0, 1), every field
+   linear between smallLoupe (0x1c5127b94: pts 10, min .9, max 1.1, N 2000, ζ .56 / .444, tracking the same, retargetImpulse .032) and loupe
+   (0x1c5127a48: pts 100, min .75, max 1.15, N 2500, ζ 1.0 / .5, tracking .9 / .5): 220×44 → pts 29.1, [.8682, 1.1106], N 2106, ζ .653 / .456
+   (tracking .632 / .456); 196×28 → smallLoupe. Per frame (§3, 0x1c5052558 / 0x1c505297c): m = a / N; per axis lo = max(min, (D − pts) / D),
+   hi = min(max, (D + pts) / D); sX = clamp(lerp(1, hiX, m), loX, hiX), sY = clamp(lerp(1, loY, m), loY, hiY) (accelerating: X out, Y in);
+   drift = sign(v)·(1 − sX)·W/2; the translation term (threshold 6000) is negligible here; final hard clamp [0.9, 1.1] (0x1c54c53d4). Not read
+   (§4): the retargetImpulse .032 impulse form — the recomputation peaks at 244 where the native reaches 253.5 (标「retargetImpulse 未读」). */
+const FLEX_VARIANT = { smallLoupe: { pts: 10, min: .9, max: 1.1, N: 2000, zeta: .56, resp: .444, tzeta: .56, tresp: .444 }, loupe: { pts: 100, min: .75, max: 1.15, N: 2500, zeta: 1.0, resp: .5, tzeta: .9, tresp: .5 } };
+function flexSpec(W, H) {
+  const t = Math.max(0, Math.min(1, (Math.min(W, H) - 37) / 33)), a = FLEX_VARIANT.smallLoupe, b = FLEX_VARIANT.loupe, L = (x, y) => x + (y - x) * t;
+  return { pts: L(a.pts, b.pts), min: L(a.min, b.min), max: L(a.max, b.max), N: L(a.N, b.N), zeta: L(a.zeta, b.zeta), resp: L(a.resp, b.resp), tzeta: L(a.tzeta, b.tzeta), tresp: L(a.tresp, b.tresp) };
+}
+/* _UIVelocityIntegrator with flex's configuration (1-D: the lens moves along x) */
+function flexIntegrator() {
+  const vi = { pf: null, vf: 0, af: 0, t: null };
+  return { add(p, t) {
+      if (vi.pf === null || t - vi.t > .05) { vi.pf = p; vi.vf = 0; vi.af = 0; vi.t = t; return; }   // first sample / hysteresis 0.05 s → reset
+      const dt = t - vi.t; if (dt <= 0) return;
+      const pf = .3 * p + .7 * vi.pf, v = (pf - vi.pf) / dt, vf = .3 * v + .7 * vi.vf, acc = (vf - vi.vf) / dt;   // EMA α .3 on position, velocity, acceleration; consecutive differentiation
+      vi.af = .3 * acc + .7 * vi.af; vi.pf = pf; vi.vf = vf; vi.t = t;
+    },
+    get velocity() { return vi.vf; },
+    get acceleration() { return Math.sign(vi.vf) * vi.af; },   // prefersDirectionlessAcceleration: the component along the velocity
+  };
+}
+/* one updateFlex: targets from the acceleration (§3) */
+function flexTargets(spec, W, H, accel, vel) {
+  const m = accel / spec.N, loX = Math.max(spec.min, (W - spec.pts) / W), hiX = Math.min(spec.max, (W + spec.pts) / W), loY = Math.max(spec.min, (H - spec.pts) / H), hiY = Math.min(spec.max, (H + spec.pts) / H);
+  const sX = Math.max(loX, Math.min(hiX, 1 + (hiX - 1) * m)), sY = Math.max(loY, Math.min(hiY, 1 + (loY - 1) * m));
+  return { sX, sY, drift: Math.sign(vel) * (1 - sX) * W / 2 };
+}
+/* damped spring x'' = −ω₀²(x − target) − 2ζω₀x' (ω₀ = 2π / response) — the ANALYTIC step over dt from the current (x, v) (flex-interaction.md §6e.3:
+   AnimationKit evaluates the closed-form solution, §4 0x1de3cfb00–0x1de3d4000; the old page's dragsim.py spring_step). A retarget keeps (x, v) and only
+   changes `target` (§6 retarget 语义). ζ < 1: under-damped form; ζ = 1 (the lift / fall springs): critically damped form. Replaces the former 4 ms
+   semi-implicit Euler (its replay on the probe grid read rms 2.58 vs 1.11 analytic, §6e.1). */
+function springStep(s, target, [zeta, response], dt) {
+  if (!(dt > 0)) return; const w = 2 * Math.PI / response, dx = s.x - target, v = s.v;
+  if (zeta < 1) { const wd = w * Math.sqrt(1 - zeta * zeta), B = (v + zeta * w * dx) / wd, e = Math.exp(-zeta * w * dt), c = Math.cos(wd * dt), sn = Math.sin(wd * dt);
+    s.x = target + e * (dx * c + B * sn); s.v = e * (-zeta * w * (dx * c + B * sn) + (-dx * wd * sn + B * wd * c)); }
+  else { const e = Math.exp(-w * dt), B = v + w * dx; s.x = target + e * (dx + B * dt); s.v = e * (B - w * (dx + B * dt)); }
+}
+/* B6: the lifted lens's rim from the decompiled formulas (remote-ref/keyfill-highlight.md §2 / §4 / §5.1 / §5.2; parameters = the probe's set
+   values, seg-lens-refraction.md §1c(g)); the drawing is in segLens (SVG ring strokes), the arithmetic is here. Depth e = pt into the capsule. */
+const SEG_RIM = (() => {
+  const sat = (x) => Math.max(0, Math.min(1, x)), mean = (f, a, b, n = 240) => { let s = 0; for (let i = 0; i < n; i++) s += f(a + (b - a) * (i + .5) / n); return s / n; };
+  /* #36 CASDFKeyFillHighlightEffect (§2): main band h 1 curvature .75 (prof .25 + .75(1 − e)), amount .5 → bias 0; diffuse band 8·h, linear, bias 1/(.15·.5) − 2;
+     spreads 1.3963 (main) / .65·1.3963 (diffuse); ang = sat((n·dir − cos s)/(1 − cos s)) */
+  const HL_COS = Math.cos(1.3963), HD_COS = Math.cos(.65 * 1.3963), HD_BIAS = 1 / (.15 * .5) - 2;
+  const hlMain = (e, ang = 1) => (e >= 0 && e < 1 ? (.25 + .75 * (1 - e)) * ang : 0);
+  const hlDiff = (e, ang = 1) => { if (e < 0 || e >= 8) return 0; const v = (1 - e / 8) * ang; return v / (1 + HD_BIAS * (1 - v)); };
+  const EDGES = [0, 1 / 3, 2 / 3, 1, 2, 3, 4, 5, 6, 7, 8];   // ring edges: 1/3 pt over the first pt, then 1 pt
+  const hlRings = EDGES.slice(0, -1).map((e0, i) => ({ e0, e1: EDGES[i + 1], main: i < 3 ? mean(hlMain, e0, EDGES[i + 1]) : 0, diff: mean(hlDiff, e0, EDGES[i + 1]) }));
+  const angMain = (nx) => sat((Math.sqrt(Math.max(0, 1 - nx * nx)) - HL_COS) / (1 - HL_COS));   // along the arcs n·dir = cos φ = √(1 − n_x²)
+  const dFull = mean(hlDiff, 0, 1), angDiff = (nx) => { const c = sat((Math.sqrt(Math.max(0, 1 - nx * nx)) - HD_COS) / (1 - HD_COS)); return mean((e) => hlDiff(e, c), 0, 1) / dFull; };
+  /* glassBackground built-in KeyFill (§5.1): Amount .5 (x′ = x/(1 + .5(1 − x))), ColorBias −.3, EffectOffset −.6667, Height 1, Angle π/2 → dir (sin θ, −cos θ) = (1, 0),
+     SpreadSDR 2.0944 → S = −.5; band e = −(d + offset) from .667 outside to .333 inside, prof .25 + .75(1 − e) */
+  const KF_S = Math.cos(2.0944), g = (x) => x / (1 + .5 * (1 - x));
+  const kfK = (v, nx) => g(v * sat((nx - KF_S) / (1 - KF_S))) + g(v * sat((-nx - KF_S) / (1 - KF_S)));
+  const kfRings = [[0, 1 / 3], [1 / 3, 2 / 3], [2 / 3, 1]].map(([a, b]) => ({ e0: a - 2 / 3, e1: b - 2 / 3, v: mean((e) => .25 + .75 * (1 - e), a, b) }));   // e0/e1 as depth into the capsule (negative = outside)
+  const NXS = [-1, -.98, -.95, -.9, -.8, -.7, -.6, -.5, -.4, -.3, -.2, -.1, 0];
+  const grey = (c) => { const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(c || ""); return m ? { r: +m[1], g: +m[2], b: +m[3], a: m[4] == null ? 1 : +m[4] } : null; };
+  return { hlRings, angMain, angDiff, kfRings, kfK, NXS, MULT: 1 - .9118, ADD: .1471, COLOR_BIAS: -.3, grey };
+})();
+const SEGX = (new URLSearchParams(location.search).get("segx") || "").split(",");
+/* instrumentation (仪器, no behaviour): the current lens loop's per-tick internals for the frame logger (window.__segDiag()), and the seg: performance
+   measures (window.__segPerf()) — the lift build, first tick, the commit and the render stages. */
+let segActiveLoop = null;
+window.__segDiag = () => (segActiveLoop && !segActiveLoop.state.done ? segActiveLoop.diag : null);
+window.__segPerf = () => performance.getEntriesByType("measure").filter((e) => e.name.startsWith("seg:")).map((e) => ({ name: e.name, start: Math.round(e.startTime * 100) / 100, dur: Math.round(e.duration * 100) / 100 }));
+const segMeasure = (name, from) => { try { performance.measure(name, { start: from, end: performance.now() }); } catch (e) { /* older engines */ } };   // ?segx switches (index.html hook; ios-switch-list.md): scale0 holds the displacement scale at 0
+function segLens(seg, lens, bs, downClientX) {
+  if (seg.__lensLoop) seg.__lensLoop.stop();   // a new press ends the previous loop (its tail and its inline geometry)
+  let warp = seg.querySelector(".warp"), warpl = seg.querySelector(".warpl"), plat = seg.querySelector(".plat"), rimb = seg.querySelector(".rimb"), hls = [...seg.querySelectorAll(".hlk, .hlw")];
   const mk = (cls, inner) => { const d = document.createElement("div"); d.className = cls; d.innerHTML = inner; seg.appendChild(d); return d; };
-  if (!warp) warp = mk("warp", '<div class="copy"></div>'); if (!warpl) warpl = mk("warpl", '<div class="copy"></div>'); if (!plat) plat = mk("plat", ""); if (!rim) rim = mk("rim", "");
-  /* copies of what lies under the lens: .warp = page bg + track (opaque; covers the real labels — the DestOut punch-out), .warpl = the labels, undisplaced
-     (label-mag 1.00, spans not buttons so the control's own button list stays the real one) */
-  const copy = warp.firstElementChild, copyl = warpl.firstElementChild;
+  if (!warp) warp = mk("warp", '<div class="disp"><div class="copy"></div><div class="punch"><div class="copy"></div></div></div>'); else if (!warp.querySelector(".punch")) warp.firstElementChild.innerHTML = '<div class="copy"></div><div class="punch"><div class="copy"></div></div>';
+  if (!warpl) warpl = mk("warpl", '<div class="displ"><div class="copy"></div></div>'); else if (warpl.querySelector(".portal")) warpl.firstElementChild.innerHTML = '<div class="copy"></div>';   // B4-c': portal #32 does not clip
+  if (!plat) plat = mk("plat", "");
+  /* B4-c' layer 5: .stack = lens box + 16 pt wrapper carrying the colour-fringe chain; .base = the plain copy of the page under the displaced layers */
+  let stack = seg.querySelector(".stack"), base = stack && stack.querySelector(".base");
+  if (!stack) { stack = mk("stack", '<div class="base"><div class="copy"><div class="cbgwrap"><div class="cbg"></div><div class="ctrack"></div></div></div></div>'); base = stack.firstElementChild; }
+  const AM = 16;   // the wrapper's extension beyond the lens (lens-field.json aberration.wrapper; the chain's outward taps read the page there)
+  const DISPERSION = seg.dataset.dispersion !== "0" && !SEGX.includes("noab");
+  /* B6 rim (index.html "B6" block, SEG_RIM): .rimb = inner shadow div + SVG (ring shadow rect.rs, dark line rect.kf ×3 under the page/track mask);
+     .hlk / .hlw = the #36 highlight as SVG ring strokes, black (normal) / white (plus-lighter) */
+  const NS = "http://www.w3.org/2000/svg", svgEl = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+  const uid = seg.id || "seg";
+  const hgrad = (id, fn, colour) => { const gr = svgEl("linearGradient", { id, gradientUnits: "userSpaceOnUse", x1: 0, y1: 0, x2: 1, y2: 0 }); const nx = SEG_RIM.NXS;
+    for (const side of [0, 1]) for (const n of (side ? [...nx].reverse() : nx)) gr.appendChild(svgEl("stop", { offset: 0, "stop-color": colour, "stop-opacity": fn(n).toFixed(4), "data-nx": n, "data-side": side }));
+    return gr; };
+  const ringRect = (cls, e0, e1, extra) => svgEl("rect", Object.assign({ class: cls, "data-e0": e0, "data-e1": e1 }, extra || {}));
+  const buildSvg = (cls) => { const s = svgEl("svg", { class: cls }); const defs = svgEl("defs", {}); s.appendChild(defs); const gg = svgEl("g", { transform: "translate(12 12)" }); s.appendChild(gg); return { s, defs, g: gg }; };
+  if (!rimb) { rimb = mk("rimb", '<div class="ish"></div>'); const { s, defs, g } = buildSvg("rsv");
+    const f = svgEl("filter", { id: "seg-rs-blur", x: "-50%", y: "-50%", width: "200%", height: "200%" }); f.appendChild(svgEl("feGaussianBlur", { stdDeviation: 3 })); defs.appendChild(f);
+    const vg = svgEl("linearGradient", { id: `${uid}-kf-vg`, gradientUnits: "userSpaceOnUse", x1: 0, y1: 0, x2: 0, y2: 1 });
+    for (const [o, cls] of [[0, "pf"], [0, "tk"], [1, "tk"], [1, "pf"]]) vg.appendChild(svgEl("stop", { offset: o, "stop-color": "#fff", "stop-opacity": 1, class: cls }));
+    defs.appendChild(vg);
+    const m = svgEl("mask", { id: `${uid}-kf-vm`, maskUnits: "userSpaceOnUse", x: -12, y: -12, width: 1, height: 1 }); m.appendChild(svgEl("rect", { x: -12, y: -12, width: 1, height: 1, fill: `url(#${uid}-kf-vg)` })); defs.appendChild(m);
+    g.appendChild(ringRect("rs", 0, 4, { "data-dy": 8 }));
+    const kg = svgEl("g", { class: "kfg" }); if (!SEGX.includes("nokfmask")) kg.setAttribute("mask", `url(#${uid}-kf-vm)`); g.appendChild(kg);   // ?segx=nokfmask (experiment): the three rings without the SVG mask (the page factor is then not applied)
+    SEG_RIM.kfRings.forEach((r, i) => { defs.appendChild(hgrad(`${uid}-kf-g${i}`, (nx) => SEG_RIM.kfK(r.v, nx) / SEG_RIM.kfK(r.v, -1), "#000")); kg.appendChild(ringRect("kf", r.e0, r.e1, { stroke: `url(#${uid}-kf-g${i})`, "data-v": r.v })); });
+    rimb.appendChild(s); }
+  /* the #36 layer is THREE emits, each source-over through the vibrant matrix (predict-seg-hold.md §0 item 6, keyfill-highlight.md §2 07:12): out ← (1 − α_i)·out + α_i·V(out)
+     for the main band, then the diffuse key band, then the diffuse fill band — not one pass with the summed α (dark edge row: summed 35, three passes 44.0, measured 45.3).
+     Each pass = a black multiply stack (1 − .0882α_i) followed by a white plus-lighter stack (+.1471α_i), so the pass order is the element order:
+     black-main, white-main, black-diffuse, white-diffuse. The two diffuse bands never overlap (key lights within 52° of the top, fill of the bottom), so one diffuse pair carries both. */
+  const mkHl = (cls, band, colour, mult) => { const { s, defs, g } = buildSvg(cls); s.classList.add(band); const gid = `${uid}-${cls}-${band}`; defs.appendChild(hgrad(gid, band === "m" ? SEG_RIM.angMain : SEG_RIM.angDiff, colour));
+    for (const r of SEG_RIM.hlRings) { const a = band === "m" ? r.main : r.diff; if (a) g.appendChild(ringRect("hl", r.e0, r.e1, { stroke: `url(#${gid})`, "stroke-opacity": (mult * a).toFixed(4) })); }
+    seg.appendChild(s); return s; };
+  /* ?segx=hlcss (experiment, ios-switch-list.md): the same four passes as CSS inset box-shadow ring stacks on plain divs (each shadow covers the rings
+     inside it, so the per-ring alphas are solved for the cumulative source-over) with the angular factor as a mask-image gradient — no SVG. */
+  const HLCSS = SEGX.includes("hlcss");
+  const mkHlCss = (cls, band, colour, mult) => { const el = mk(cls, ""); el.classList.add(band, "css"); const rings = SEG_RIM.hlRings.filter((r) => (band === "m" ? r.main : r.diff) > 0), eff = rings.map((r) => mult * (band === "m" ? r.main : r.diff));
+    const a = []; for (let j = eff.length - 1; j >= 0; j--) { const inner = j + 1 < eff.length ? eff[j + 1] : 0; a[j] = 1 - (1 - eff[j]) / (1 - inner); }
+    el.style.boxShadow = rings.map((r, j) => `inset 0 0 0 ${(r.e1).toFixed(4)}px rgb(${colour} / ${a[j].toFixed(4)})`).join(", ");
+    const fn = band === "m" ? SEG_RIM.angMain : SEG_RIM.angDiff, L = SEG_RIM.NXS.map((nx) => `rgb(0 0 0 / ${fn(nx).toFixed(4)}) calc(var(--rr, 14px) * ${(1 + nx).toFixed(2)})`), R = [...SEG_RIM.NXS].reverse().map((nx) => `rgb(0 0 0 / ${fn(nx).toFixed(4)}) calc(100% - var(--rr, 14px) * ${(1 + nx).toFixed(2)})`);
+    const g = `linear-gradient(90deg, ${L.join(", ")}, ${R.join(", ")})`; el.style.webkitMaskImage = g; el.style.maskImage = g; return el; };
+  if (hls.length !== 4) { for (const e of hls) e.remove(); hls = HLCSS ? [mkHlCss("hlk", "m", "0 0 0", SEG_RIM.MULT), mkHlCss("hlw", "m", "255 255 255", SEG_RIM.ADD), mkHlCss("hlk", "d", "0 0 0", SEG_RIM.MULT), mkHlCss("hlw", "d", "255 255 255", SEG_RIM.ADD)]
+    : [mkHl("hlk", "m", "#000", SEG_RIM.MULT), mkHl("hlw", "m", "#fff", SEG_RIM.ADD), mkHl("hlk", "d", "#000", SEG_RIM.MULT), mkHl("hlw", "d", "#fff", SEG_RIM.ADD)]; }
+  /* the dark line's alphas for this theme: black source-over α = .3·k_tip·(3 − 2B) on the track the ends lie on, × (3 − 2B_page)/(3 − 2B_track) on the page rows
+     (B = the mean grey of the actual backdrop: --ios-segment-track composited on --bg) */
+  { const pg = SEG_RIM.grey(getComputedStyle(document.body).backgroundColor) || { r: 242, g: 242, b: 247, a: 1 }, tk = SEG_RIM.grey(getComputedStyle(seg).backgroundColor) || { r: 118, g: 118, b: 128, a: .12 };
+    const Bp = (pg.r + pg.g + pg.b) / 765, Bt = ((tk.r * tk.a + pg.r * (1 - tk.a)) + (tk.g * tk.a + pg.g * (1 - tk.a)) + (tk.b * tk.a + pg.b * (1 - tk.a))) / 765;
+    seg.querySelectorAll(".rimb rect.kf, .rimo rect.kf").forEach((r) => r.setAttribute("stroke-opacity", (-SEG_RIM.COLOR_BIAS * SEG_RIM.kfK(+r.dataset.v, -1) * (3 - 2 * Bt)).toFixed(4)));
+    const pf = Math.min(1, (3 - 2 * Bp) / (3 - 2 * Bt)); rimb.querySelectorAll("stop.pf").forEach((st) => st.setAttribute("stop-opacity", pf.toFixed(4))); }
+  /* ?segx=wide1 (ios-switch-list.md, experiment only): every run of 1/3-pt ring strokes (the dark line's three, the highlight's first three) becomes ONE
+     whole-pt stroke with the mean stroke-opacity and the middle ring's gradient — to see whether the 3× raster's antialiasing of three 1/3-pt strokes is
+     what the simulator shows as a weaker / merged line. Not a drawing of the formula (the .875 / .625 / .375 profile is flattened). */
+  if (SEGX.includes("wide1")) for (const s of [rimb.querySelector("svg"), ...hls]) { const thin = [...s.querySelectorAll("rect[data-e0]")].filter((r) => +r.dataset.e1 - +r.dataset.e0 < .5);
+    const groups = new Map(); for (const r of thin) { const k = r.parentElement.getAttribute("class") || r.getAttribute("class"); (groups.get(k) || groups.set(k, []).get(k)).push(r); }
+    for (const rs of groups.values()) { rs.sort((a, b) => +a.dataset.e0 - +b.dataset.e0); const mid = rs[Math.floor(rs.length / 2)], mean = rs.reduce((t, r) => t + parseFloat(r.getAttribute("stroke-opacity") || 1), 0) / rs.length;
+      mid.dataset.e0 = rs[0].dataset.e0; mid.dataset.e1 = rs[rs.length - 1].dataset.e1; mid.setAttribute("stroke-opacity", mean.toFixed(4)); for (const r of rs) if (r !== mid) r.remove(); } }
+  /* .rimo: the outside-the-capsule half of .rimb (see index.html): a clone above the wrapper, clipped to the outside; its rects reference the first
+     (rimb's) gradients / mask by id, which the loop updates */
+  let rimo = seg.querySelector(".rimo");
+  if (!rimo) { rimo = rimb.cloneNode(true); rimo.className = "rimo"; seg.appendChild(rimo); } else if (!rimo.querySelector("rect.rs")) { rimo.innerHTML = rimb.innerHTML; }
+  let rimoKey = "";
+  let rimKey = "";
+  const rimGeo = (Wd, Hd, T) => {   // SVG geometry in lens-box coordinates (the <g> is translated by the 12 px margin)
+    const key = `${Wd}|${Hd}|${T}`; if (key === rimKey) return; rimKey = key; const R = Hd / 2;
+    for (const s of [rimb.querySelector("svg"), rimo.querySelector("svg"), ...(HLCSS ? [] : hls)]) { s.setAttribute("width", Wd + 24); s.setAttribute("height", Hd + 24);
+      for (const r of s.querySelectorAll("rect[data-e0]")) { const e0 = +r.dataset.e0, e1 = +r.dataset.e1, em = (e0 + e1) / 2, dy = +(r.dataset.dy || 0);
+        r.setAttribute("x", em); r.setAttribute("y", em + dy); r.setAttribute("width", Wd - 2 * em); r.setAttribute("height", Hd - 2 * em); r.setAttribute("rx", R - em); r.setAttribute("stroke-width", e1 - e0); }
+      for (const gr of s.querySelectorAll("linearGradient")) { if (gr.getAttribute("x2") === "0") { gr.setAttribute("y1", -T); gr.setAttribute("y2", segH - T); continue; }   // the page / track mask: the track's rows in lens-box coordinates
+        gr.setAttribute("x2", Wd); for (const st of gr.children) { const nx = +st.dataset.nx, o = R * (1 + nx) / Wd; st.setAttribute("offset", (st.dataset.side === "1" ? 1 - o : o).toFixed(5)); } }
+      for (const m of s.querySelectorAll("mask")) { m.setAttribute("width", Wd + 24); m.setAttribute("height", Hd + 24); m.firstElementChild.setAttribute("width", Wd + 24); m.firstElementChild.setAttribute("height", Hd + 24); } } };
+  /* copies of what lies under the lens (glass-displacement-formula.md §4b): .warp = the BackdropView capture = page bg + track (opaque, covers the
+     real labels inside the lens box) + .punch = the labels with the lens capsule cut out (DestOut #43 removes the segment content inside the capsule
+     only; the box corners outside it keep their label pixels, which the backdrop map's clamp_to_edge replicates into the rim band — §6d); .warpl = the
+     labels through portal #20 (the box, clipped to the capsule before the filter), no 196×28 clip (portal #32 masksToBounds 0). Spans, not buttons,
+     so the control's own button list stays the real one. */
+  const disp = warp.firstElementChild, copy = disp.firstElementChild, punch = disp.lastElementChild, copyp = punch.firstElementChild, displ = warpl.firstElementChild, copyl = displ.firstElementChild, copyb = base.firstElementChild;
   copy.innerHTML = '<div class="cbgwrap"><div class="cbg"></div><div class="ctrack"></div></div>';
-  copyl.innerHTML = bs.map((b) => `<span class="cb ${b.className}" style="width:${b.offsetWidth}px">${b.innerHTML}</span>`).join("");
-  const segW = seg.offsetWidth, segH = seg.offsetHeight; for (const c of [copy, copyl]) { c.style.width = segW + "px"; c.style.height = segH + "px"; }
-  const cbs = [...copyl.querySelectorAll(".cb")];
-  const S = 32;   // map encoding (界面2号): byte = 128 + round(u · 255 / S), u in pt → feDisplacementMap scale = S × amplitude
-  const H0 = parseFloat(getComputedStyle(seg).getPropertyValue("--ios-segment-lens-h")) || 28, H1 = H0 + 2 * touchPx("--ios-touch-segment-lift-y", 8);   // 28 → 44 ← --ios-touch-segment-lift-y
-  const liftDelay = touchMs("--ios-touch-segment-lift-delay", 109);
-  /* the curves, from seg-keys.css: each release animation has its own delay from the up (to its last unchanged frame) and its key list from there */
-  const warpDelay = touchMs("--ios-touch-segment-release-warp-delay", 31) / 1000, destDelay = touchMs("--ios-touch-segment-release-destout-delay", 198) / 1000;
-  const K_WARP = cssKeys("--ios-touch-segment-release-warp-keys", SEG_DROP_GLASS.map(([t, v]) => [Math.max(0, t - .031), v]));
-  const K_DEST = cssKeys("--ios-touch-segment-release-destout-keys", SEG_DROP_DESTOUT.filter(([t]) => t >= .198).map(([t, v]) => [t - .198, v]));
-  const K_LIFT_DEST = cssKeys("--ios-touch-segment-destout-keys", SEG_LIFT_DESTOUT);
-  const relEnd = Math.max(warpDelay + K_WARP[K_WARP.length - 1][0], destDelay + K_DEST[K_DEST.length - 1][0]) + .02;   // both tails exhausted (+598 ms) → clear
-  const st = { t0: performance.now(), rel: fallFrom != null ? performance.now() : null, raf: 0, pr: fallFrom != null ? fallFrom : 0, done: false };
+  const labelsHTML = bs.map((b) => `<span class="cb ${b.className}" style="width:${b.offsetWidth}px">${b.innerHTML}</span>`).join("");
+  copyl.innerHTML = labelsHTML; copyp.innerHTML = labelsHTML; copyb.innerHTML = '<div class="cbgwrap"><div class="cbg"></div><div class="ctrack"></div></div>' + labelsHTML;
+  const segW = seg.clientWidth, segH = seg.clientHeight; for (const c of [copy, copyl, copyp, copyb]) { c.style.width = segW + "px"; c.style.height = segH + "px"; }
+  for (const el of [warp, plat, rimb, warpl]) if (el.parentElement !== stack) stack.appendChild(el);   // the displaced layers live inside the wrapper (DOM order = z order 4 / 5 / 6 / 7 inside it)
+
+  const cbs = [...copyl.querySelectorAll(".cb"), ...copyp.querySelectorAll(".cb"), ...copyb.querySelectorAll(".cb")];
+  const sOf = (id) => { const f = document.querySelector(id); return f ? parseFloat(f.getAttribute("data-s")) || 40 : 40; };   // map encoding per set (ui2 c4efe4b, README §0.3): byte = 128 + round(u · 255 / S), S = the filter's data-s (40; 48 on the eleven widest stretch sets) → feDisplacementMap scale = S × progress
+  /* the formula-map set = the lens's MODEL width (README §0.3, ui2 d3cc467: the drag stretch is the 220×44 model scaled by the lens's presentation
+     transform — the flex scale, B5 — so the model stays 220 while dragging and the 220 set is the one; the lift rides it with scale 0 → S). The
+     196 … 256 sets remain for a model of another width. */
+  const setFor = (Wm) => Math.max(196, Math.min(256, 2 * Math.round(Wm / 2)));
+  let curSet = 0, punchKey = "", abKey = "";
+  /* layer 5 per frame: the W/H colour matrix from the lens's SCREEN rect (§3b.6 capture box = frame + 100 pt each side clamped to the viewport;
+     1.72 dragged to the divider on the 440 screen, 1.35 lifted in place) and the seven taps' scales = ±S_ab·k × lift progress */
+  const abFrame = (set, p) => {
+    const f = document.querySelector(`#seg-lens-f-ab-${set}`); if (!f) return;
+    const r = lens.getBoundingClientRect(), sw = innerWidth, sh = innerHeight;
+    const wh = (Math.min(r.right + 100, sw) - Math.max(r.left - 100, 0)) / (Math.min(r.bottom + 100, sh) - Math.max(r.top - 100, 0));
+    const key = `${set}|${wh.toFixed(4)}|${p.toFixed(3)}`; if (key === abKey) return; abKey = key;
+    const m = f.querySelector(`#seg-lens-f-ab-${set}-wh`); if (m) m.setAttribute("values", `${wh.toFixed(4)} 0 0 0 ${(0.5 * (1 - wh)).toFixed(4)}  0 ${(1 / wh).toFixed(4)} 0 0 ${(0.5 * (1 - 1 / wh)).toFixed(4)}  0 0 1 0 0  0 0 0 1 0`);
+    const S = parseFloat(f.getAttribute("data-s")) || 12, taps = f.querySelectorAll("feDisplacementMap"), n = taps.length;   // 7 taps k = 1, 2/3, 1/3, 0, −1/3, −2/3, −1 (README §0.5)
+    taps.forEach((t, i) => t.setAttribute("scale", (S * p * (1 - 2 * i / (n - 1))).toFixed(3)));
+  };
+  /* geometry: resting lens = the padded interior / n (pad ← --ios-segment-lens-pad, h ← --ios-segment-lens-h), lifted = +12 / +8 per side ← --ios-touch-segment-lift-x/-y */
+  const cs0 = getComputedStyle(seg), n = bs.length, pad = parseFloat(cs0.getPropertyValue("--ios-segment-lens-pad")) || 2, H0 = parseFloat(cs0.getPropertyValue("--ios-segment-lens-h")) || 28;
+  const LX = touchPx("--ios-touch-segment-lift-x", 12), LY = touchPx("--ios-touch-segment-lift-y", 8), PITCH = segW / n, W0 = PITCH - 2 * pad, CY = pad + H0 / 2;   // segment pitch 200, resting lens 196 (inset 2 ← seg-native-abc-frames.json rest rect 22 610 196×28)
+  const restCentre = (i) => i * PITCH + PITCH / 2, idx0 = Math.max(0, bs.findIndex((b) => b.classList.contains("on")));
+  const liftDelay = touchMs("--ios-touch-segment-lift-delay", 109) / 1000, relDelay = touchMs("--ios-touch-segment-release-delay", 31) / 1000;
+  const destDelay = touchMs("--ios-touch-segment-release-destout-delay", 198) / 1000;
+  const K_LIFT_DEST = cssKeys("--ios-touch-segment-destout-keys", SEG_LIFT_DESTOUT), K_DEST = cssKeys("--ios-touch-segment-release-destout-keys", SEG_DROP_DESTOUT.filter(([t]) => t >= .198).map(([t, v]) => [t - .198, v]));
+  const destEnd = destDelay + K_DEST[K_DEST.length - 1][0];
+  const downX = (typeof downClientX === "number" ? downClientX : NaN) - seg.getBoundingClientRect().left;   // the touch-down x in control coordinates (the drag delta's origin, §6 _dragDelta)
+  const st = { t0: performance.now(), prev: performance.now(), rel: null, raf: 0, done: false, dragged: false, cx: null, pending: null, rest: idx0, pr: 0, evLog: [], diag: null, ticks: 0,
+               sL: { x: 0, v: 0 }, sM: { x: 1, v: 0 }, pos: { x: restCentre(idx0), v: 0 }, geo: null,   // pos = the lens position (one spring; the flex drift rides on top of it in the transform)
+               flex: { vi: flexIntegrator(), sx: { x: 1, v: 0 }, sy: { x: 1, v: 0 }, dx: { x: 0, v: 0 }, out: { sx: 1, sy: 1, dx: 0 } } };   // B5: the flex interaction's integrator and its three animatable floats
+  const setGeo = (left, top, w, h) => {
+    lens.style.transition = "none"; lens.style.left = left + "px"; lens.style.top = top + "px"; lens.style.width = w + "px"; lens.style.height = h + "px"; lens.style.margin = "0"; lens.style.borderRadius = (h / 2) + "px";
+    st.geo = { left, top, w, h };
+    const f = st.flex.out, idle = Math.abs(f.sx - 1) < 1.5e-3 && Math.abs(f.sy - 1) < 1.5e-3 && Math.abs(f.dx) < .1;   // at rest the transform is dropped: a transform within 1/700 of identity (< .17 px at the lens edge) still makes the browser resample the filtered layers (blurs the 1 pt lines, shifts the end columns) — CoreAnimation renders its vector layers sharp at any transform
+    const tf = idle ? "none" : `translateX(${f.dx.toFixed(3)}px) scale(${f.sx.toFixed(5)}, ${f.sy.toFixed(5)})`;   // the flex presentation transform (§1: on the transform, the model bounds unchanged); every layer of the lens carries it
+    for (const el of [lens, stack, rimo, ...hls]) { el.style.transform = tf; el.style.transformOrigin = "50% 50%"; }   // the wrapper carries the transform for the four layers inside it (its centre = the lens centre)
+  };
   const frame = (p, pd) => {   // p = glass / displacement progress, pd = DestOut (copies) opacity
-    const sr = seg.getBoundingClientRect(), lr = lens.getBoundingClientRect();
-    const L = lr.left - sr.left, T = lr.top - sr.top, Wd = lr.width, Hd = lr.height, R = Hd / 2;   // capsule ← r22 at 44 (§0); mid-lift a rounded rect r = h/2 (未量，假设)
-    for (const el of [warp, warpl, plat, rim]) { el.style.left = L + "px"; el.style.top = T + "px"; el.style.width = Wd + "px"; el.style.height = Hd + "px"; el.style.setProperty("--rr", R + "px"); }
-    for (const c of [copy, copyl]) { c.style.left = -L + "px"; c.style.top = -T + "px"; }   // the copies stay aligned with the real control (no magnification: mag-x 1.00, label-mag 1.00)
+    const g = st.geo || { left: pad + idx0 * PITCH, top: pad, w: W0, h: H0 };   // the model box (the flex transform sits on top of it, so not getBoundingClientRect)
+    const L = g.left, T = g.top, Wd = g.w, Hd = g.h, R = Hd / 2;   // capsule: corner = h/2 (r22 at 44 ← §0; the lift's corner 14 → 22 on the same spring ← §4.4 row 1)
+    stack.style.left = (L - AM) + "px"; stack.style.top = (T - AM) + "px"; stack.style.width = (Wd + 2 * AM) + "px"; stack.style.height = (Hd + 2 * AM) + "px";
+    copyb.style.left = (AM - L) + "px"; copyb.style.top = (AM - T) + "px";   // the plain copy aligned with the real control
+    for (const el of [warp, warpl, plat, rimb]) { el.style.left = AM + "px"; el.style.top = AM + "px"; el.style.width = Wd + "px"; el.style.height = Hd + "px"; el.style.setProperty("--rr", R + "px"); }
+    stack.style.setProperty("--rr", R + "px"); rimo.style.left = L + "px"; rimo.style.top = T + "px"; rimo.style.width = Wd + "px"; rimo.style.height = Hd + "px"; rimo.style.setProperty("--rr", R + "px");
+    if (rimoKey !== `${Wd}|${Hd}`) { rimoKey = `${Wd}|${Hd}`; rimo.style.clipPath = `path(evenodd, "M-14 -14H${Wd + 14}V${Hd + 14}H-14Z M${R} 0H${Wd - R}A${R} ${R} 0 0 1 ${Wd - R} ${Hd}H${R}A${R} ${R} 0 0 1 ${R} 0Z")`; }   // the outside of the capsule (the ring shadow reaches 11 pt out)
+    for (const el of hls) { if (HLCSS) { el.style.left = L + "px"; el.style.top = T + "px"; el.style.width = Wd + "px"; el.style.height = Hd + "px"; el.style.setProperty("--rr", R + "px"); } else { el.style.left = (L - 12) + "px"; el.style.top = (T - 12) + "px"; el.style.width = (Wd + 24) + "px"; el.style.height = (Hd + 24) + "px"; } }   // the highlight SVGs' box = lens box + the 12 px margin (WebKit clips an outer <svg> to its box whatever overflow says)
+    rimGeo(Wd, Hd, T);   // B6: the ring strokes follow the model box
+    copy.style.left = -L + "px"; copy.style.top = -T + "px";   // the backdrop copy stays aligned with the real control
+    copyp.style.left = -L + "px"; copyp.style.top = -T + "px"; copyl.style.left = -L + "px"; copyl.style.top = -T + "px";   // the label copies aligned with the real labels (B4-c': no 196×28 portal offset)
+    if (punchKey !== `${Wd}|${Hd}`) { punchKey = `${Wd}|${Hd}`; punch.style.clipPath = `path(evenodd, "M0 0H${Wd}V${Hd}H0Z M${R} 0H${Wd - R}A${R} ${R} 0 0 1 ${Wd - R} ${Hd}H${R}A${R} ${R} 0 0 1 ${R} 0Z")`; }   // DestOut = the lens capsule (r = h/2 on the lift path; the drag stretch is the flex transform on top)
+    const set = setFor(Math.max(W0 + 2 * LX, Wd));   // the model width (220 lifted; Wd is the model box — the flex transform is separate)
+    if (set !== curSet) { curSet = set; disp.style.filter = `url(#seg-lens-f-bg-${set})`; displ.style.filter = `url(#seg-lens-f-lab-${set})`; stack.style.filter = DISPERSION && document.querySelector(`#seg-lens-f-ab-${set}`) ? `url(#seg-lens-f-ab-${set})` : "none"; }
+    if (DISPERSION) abFrame(set, p);
     seg.style.setProperty("--lp", p.toFixed(4)); seg.style.setProperty("--lpd", pd.toFixed(4));
-    for (const el of document.querySelectorAll("#seg-lens-warp feDisplacementMap")) el.setAttribute("scale", (S * p).toFixed(3));   // amplitude on the same curve (§4.1: all amounts on one curve; §4.3 the glass tail)
-    cbs.forEach((c, i) => c.className = "cb " + bs[i].className);
+    for (const id of [`#seg-lens-f-bg-${set}`, `#seg-lens-f-lab-${set}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", SEGX.includes("scale0") ? "0" : (sOf(id) * p).toFixed(3)); }   // both stacks' amounts on the lift spring (§4.4 row 2: ClearGlass 0 → −17.5, ContentLensing 0 → −8.8, BackdropView 0 → 9 in the same call)
+    cbs.forEach((c, i) => c.className = "cb " + bs[i % bs.length].className);
     seg.classList.toggle("lift", p > 0 || pd > 0);
   };
   const clear = () => {
     seg.classList.remove("lift"); seg.style.removeProperty("--lp"); seg.style.removeProperty("--lpd"); copy.innerHTML = ""; copyl.innerHTML = "";
-    for (const el of document.querySelectorAll("#seg-lens-warp feDisplacementMap")) el.setAttribute("scale", "0");
-    st.done = true;
+    if (curSet) for (const id of [`#seg-lens-f-bg-${curSet}`, `#seg-lens-f-lab-${curSet}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", String(sOf(id))); }   // the file's rest value; the layers are hidden now
+    for (const k of ["transition", "left", "top", "width", "height", "margin", "border-radius", "transform", "transform-origin"]) lens.style.removeProperty(k);   // the CSS rest values are what the loop ended on
+    for (const el of [stack, warp, warpl, plat, rimb, rimo, ...hls]) { el.style.removeProperty("transform"); el.style.removeProperty("transform-origin"); }
+    if (curSet) { const f = document.querySelector(`#seg-lens-f-ab-${curSet}`); if (f) { const S = parseFloat(f.getAttribute("data-s")) || 12, taps = f.querySelectorAll("feDisplacementMap"), n = taps.length; taps.forEach((t, i) => t.setAttribute("scale", (S * (1 - 2 * i / (n - 1))).toFixed(3))); } }   // the file's rest values
+    st.done = true; if (seg.__lensLoop === loop) seg.__lensLoop = null;
   };
+  const clamp01 = (x) => Math.max(0, Math.min(1, x));
   const tick = (now) => {
     if (st.done) return;
     if (!seg.isConnected || !lens.isConnected) { clear(); return; }
-    let p, pd;
-    if (st.rel != null) {
-      const tr = (now - st.rel) / 1000;   // from the up; each list holds its key-0 value until its own delay
-      p = st.pr * (tr <= warpDelay ? 1 : tabAt(K_WARP, tr - warpDelay)); pd = tr <= destDelay ? 1 : tabAt(K_DEST, tr - destDelay);   // -release-warp-keys (amount, and platter = 1 − it) / -release-destout-keys
-      if (tr >= relEnd) { clear(); return; }
+    const tickStart = performance.now(), cxBefore = st.cx, pendingBefore = st.pending;
+    const dt = Math.min(.04, Math.max(0, (now - st.prev) / 1000)); st.prev = now;
+    let p, pd, moving = false;
+    if (st.rel == null) {
+      const tl = (now - st.t0) / 1000 - liftDelay;   // time since the lift started (+109 ms)
+      if (tl > 0) springStep(st.sL, 1, SEG_SPRING.lift, dt);
+      if (st.dragged && st.cx != null) springStep(st.pos, st.cx, SEG_SPRING.model, dt);   // B5-b: the position is ONE spring ζ .85 / .2 s continuing from its value and velocity at every retarget (§6 retarget 语义) — the ζ .6533/.4559 tracking spring belongs to the flex floats, not to the position
+      /* B5-c time base (flex-interaction.md §6e.2 / §6e.3, the UIUpdate cycle's order HIDEvents → CADisplayLinks → CATransactionCommit → next vsync):
+         a move delivered at T (between frames) → cycle V_{j+1}: the handler builds the new spring behaviour, AnimationKit evaluates it at t = 0 from the
+         current (x, v) (value unchanged), commit → screen V_{j+2} still the old value → cycle V_{j+2} evaluates t = 16.7 ms → screen V_{j+3} shows the
+         first displacement. Here: the tick R_{j+1} (first rAF after the move) integrates its interval with the old target (= the value at t = 0 of the
+         new behaviour), then adopts the move as the target below; R_{j+2} integrates 16.7 ms toward it; a tick's frame is displayed one vsync later, so
+         the screen shows old / old / first displacement at V_{j+1} / V_{j+2} / V_{j+3} — the probe's sample sequence .5887 = 120, .6054 = 120,
+         .6220 = 122.04 for the move at .5787 (§6e.2). Replayed literally on the probe's display-frame grid (tools/touch/b5c/dragsim_ours2.py): this
+         rule rms 1.11 / max 2.54 over .60–.86 s (= the judge's grid+1, fork_judge.py); adopting one tick later 13.5 / 19.6; Euler instead of the
+         analytic step 2.58 / 3.50. */
+      if (st.pending != null) { st.cx = st.pending; st.pending = null; }
+      p = clamp01(st.sL.x); pd = tl <= 0 ? 0 : Math.max(p > 0 ? tabAt(K_LIFT_DEST, tl) : 0, p > 0.5 ? 1 : 0);   // --ios-touch-segment-destout-keys (first 3 frames)
+      st.pr = p; moving = true;
     } else {
-      const tl = (now - st.t0) / 1000 - liftDelay / 1000;   // time since the lift started (+109 ms)
-      p = Math.max(0, Math.min(1, (lens.getBoundingClientRect().height - H0) / (H1 - H0)));   // glass / amounts ride the geometry's own curve (§4.1: one curve for all)
-      pd = tl <= 0 ? 0 : Math.max(p > 0 ? tabAt(K_LIFT_DEST, tl) : 0, p > 0.5 ? 1 : 0);   // --ios-touch-segment-destout-keys (first 3 frames)
-      st.pr = p;
+      const tr = (now - st.rel) / 1000;
+      if (tr >= relDelay) { springStep(st.sL, 0, SEG_SPRING.lift, dt); springStep(st.sM, 0, SEG_SPRING.fallMaterial, dt); }
+      springStep(st.pos, restCentre(st.rest), SEG_SPRING.travel, dt);   // after the up: one spring ζ .85 / .4 s to the segment the lens ends on (§4.4 换值行程 row); the ζ .56/.444 "settle" spring is the flex's smallLoupe scale/drift spring once the lens is 196×28 (flexSpec)
+      p = st.pr * clamp01(st.sM.x); pd = tr <= destDelay ? 1 : tabAt(K_DEST, tr - destDelay);
+      const fx = st.flex.out, settled = Math.abs(st.pos.x - restCentre(st.rest)) < .05 && Math.abs(st.pos.v) < 1 && st.sL.x < .001 && st.sM.x < .001 && Math.abs(fx.sx - 1) < .001 && Math.abs(fx.sy - 1) < .001 && Math.abs(fx.dx) < .05;
+      if ((tr >= destEnd && settled) || tr > 3) { clear(); return; }
     }
-    frame(p, pd); st.raf = requestAnimationFrame(tick);
+    /* B5 — the flex interaction, once per frame: the model bounds are the lift's (196×28 → 220×44), the presentation centre = the position spring + the
+       flex drift goes into the integrator, updateFlex sets the targets, the three animatable floats follow on spec.scaleSpring (tracking while the finger is
+       down), the result is the presentation transform */
+    const q = clamp01(st.sL.x), w = W0 + 2 * LX * q, h = H0 + 2 * LY * q, fl = st.flex;
+    fl.vi.add(st.pos.x + fl.out.dx, now / 1000);   // the presentation centre = position + flex drift (the update link reads the presentation layer, §1)
+    const spec = flexSpec(w, h), tg = flexTargets(spec, w, h, fl.vi.acceleration, fl.vi.velocity), sp = st.rel == null ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
+    springStep(fl.sx, tg.sX, sp, dt); springStep(fl.sy, tg.sY, sp, dt); springStep(fl.dx, tg.drift, sp, dt);
+    fl.out = { sx: Math.max(.9, Math.min(1.1, fl.sx.x)), sy: Math.max(.9, Math.min(1.1, fl.sy.x)), dx: fl.dx.x };   // updateFlex's final clamp [0.9, 1.1] (0x1c54c53d4)
+    setGeo(st.pos.x - w / 2, CY - h / 2, w, h);
+    frame(p, pd);
+    /* 仪器: what this tick used and produced (read by the frame logger through window.__segDiag) */
+    st.ticks++;
+    st.diag = { tick: st.ticks, raf: Math.round(now * 100) / 100, perf: Math.round(tickStart * 100) / 100, dt_ms: Math.round(dt * 100000) / 100, tick_ms: Math.round((performance.now() - tickStart) * 100) / 100,
+      target_used: cxBefore, target_next: st.cx, adopted: pendingBefore != null && st.cx === pendingBefore, x: Math.round(st.pos.x * 1000) / 1000, v: Math.round(st.pos.v * 10) / 10,
+      drift: Math.round(fl.out.dx * 1000) / 1000, sx: Math.round(fl.out.sx * 10000) / 10000, sy: Math.round(fl.out.sy * 10000) / 10000, accel: Math.round(fl.vi.acceleration), vel: Math.round(fl.vi.velocity),
+      p: Math.round(p * 10000) / 10000, set: curSet, rel: st.rel == null ? null : Math.round((now - st.rel) * 10) / 10, events: st.evLog.splice(0) };
+    if (st.ticks === 1) segMeasure("seg:first-tick", tickStart);
+    st.raf = requestAnimationFrame(tick);
   };
+  const loop = {
+    drag: (clientX, evTs) => {   // a finger move (§6): target = the pressed segment's centre + (finger x − touch-down x), adopted at the next tick (see the tick's time-base note); past an end segment's own centre the excess is rubber-banded (§6 0x1c41358bc–0x1c4135978, see the header)
+      if (st.rel != null || st.done) return;
+      const evNow = performance.now();
+      const x = clientX - seg.getBoundingClientRect().left, delta = Number.isNaN(downX) ? x - restCentre(idx0) : x - downX, c = restCentre(idx0), raw = c + delta;
+      const rubber = (o) => 12 * (1 - 1 / (1 + .55 * o / 12));   // (1 − 1/(c·o/d + 1))·d with c .55, d 12
+      st.pending = n === 1 ? c : (idx0 === 0 && raw < c) ? c - rubber(c - raw) : (idx0 === n - 1 && raw > c) ? c + rubber(raw - c) : raw;
+      st.evLog.push({ ts: evTs == null ? null : Math.round(evTs * 100) / 100, now: Math.round(evNow * 100) / 100, x: Math.round(x * 100) / 100, target: Math.round(st.pending * 100) / 100 });   // 仪器
+      if (!st.dragged) st.dragged = true;
+    },
+    release: (restIdx) => {   // every way out — up, out of bounds, pointercancel — falls the same way, to the rest rect of `restIdx`
+      if (st.rel != null || st.done) return;
+      st.rel = performance.now(); st.rest = restIdx;
+    },
+    stop: () => { cancelAnimationFrame(st.raf); if (!st.done) clear(); },
+    step: (dtMs) => { if (!st.done) { cancelAnimationFrame(st.raf); tick(dtMs ? st.prev + dtMs : performance.now()); } },   // one frame by hand, optionally on a virtual clock (an offscreen WKWebView runs neither requestAnimationFrame nor timers at speed; the ?seghold hook drives it)
+    get state() { return { dragged: st.dragged, cx: st.cx, pending: st.pending, pos: st.pos.x, q: st.sL.x, rel: st.rel, done: st.done, flex: st.flex.out, accel: st.flex.vi.acceleration }; },
+    get diag() { return st.diag; },
+  };
+  loop.cancel = loop.release;
+  seg.__lensLoop = loop; segActiveLoop = loop;
   st.raf = requestAnimationFrame(tick);
-  return { release: () => { if (st.rel == null) st.rel = performance.now(); }, cancel: () => { if (st.rel == null) st.rel = performance.now(); } };   // cancel = the same fall (acceptance: 取消路径不许瞬切)
+  return loop;
 }
 function attachSegmented(seg, getIndex, commit) {
   const bs = [...seg.querySelectorAll("button")], lens = seg.querySelector(".lens"), n = bs.length;
   const segAt = (x) => { const r = seg.getBoundingClientRect(); return Math.max(0, Math.min(n - 1, Math.floor((x - r.left) / (r.width / n)))); };   // 跨分隔线即换目标（G22/G24/G25）
-  const frac = (x) => { const r = seg.getBoundingClientRect(); return Math.max(0, Math.min(n - 1, (x - r.left) / (r.width / n) - 0.5)); };         // 透镜中心跟手
   const outside = (x, y) => { const r = seg.getBoundingClientRect(), s = touchPx("--ios-touch-inside-slop", 70); return x < r.left - s || x > r.right + s || y < r.top - s || y > r.bottom + s; };
   const showLens = (i) => seg.style.setProperty("--i", String(i));
   seg.onpointerdown = (e) => {
     const idx = getIndex(), pressed = segAt(e.clientX), onSelected = pressed === idx;
     let liftTimer = 0, glass = null;
-    if (lens) lens.classList.remove("spring", "drop");   // a new touch ends the previous commit's stretch (G12/G13: no queueing)
+    if (lens) lens.classList.remove("spring");   // a new touch ends the previous commit's stretch (G12/G13: no queueing)
     if (!press(seg, e, {
-      move: (ev) => { if (onSelected && lens && lens.classList.contains("lift")) showLens(frac(ev.clientX)); },   // index never changes while sliding (G4/G22)
+      move: (ev) => { if (onSelected && glass && lens && lens.classList.contains("lift")) glass.drag(ev.clientX, ev.timeStamp); },   // the lifted lens follows the finger (edge springs); the index never changes while sliding (G4/G22)
       end: (ev, cancelled) => {
         clearTimeout(liftTimer);
         const lifted = !!(lens && lens.classList.contains("lift"));   // patch 03 (seg-impl-review.md #3): a lifted lens commits by falling + gliding (G4/G21), a tap commits with the stretch sequence (G1/G3)
         bs[pressed].classList.remove("dim");                        // label back to 1 in .1 s (G12)
         seg.classList.remove("drag"); if (lens) lens.classList.remove("lift");
-        if (glass) glass.release();                                 // every way out — release, out of bounds, pointercancel — glass + warp fall on the lens's own curve
-        const target = segAt(ev.clientX);
-        if (lifted && lens) { lens.classList.add("drop"); setTimeout(() => lens.classList.remove("drop"), 700); }   // release / cancel: geometry back on the .30 s drop curve (seg-lens-refraction §4.3), for the return home and the glide alike
-        if (cancelled || outside(ev.clientX, ev.clientY) || target === idx) { showLens(idx); return; }   // cancel (> 70 pt out, G17/G18) or back on the selected one (G8/G10/G23): no event
-        commit(target, lifted ? "drag" : "tap");                    // the up: index + change + content, same tick (G1–G3)
+        const target = segAt(ev.clientX), noEvent = cancelled || outside(ev.clientX, ev.clientY) || target === idx;   // cancel (> 70 pt out, G17/G18) or back on the selected one (G8/G10/G23): no event
+        if (glass) glass.release(noEvent ? idx : target);           // glass, copies and geometry fall on the lens's own curve, to the rest rect it ends on
+        if (noEvent) { showLens(idx); return; }
+        commit(target, lifted ? "drag" : "tap");                    // the up: the index changes now (G1–G3); the content and the lens's slide follow at the valueChanged time (wire(): +66 / +25 ms)
       },
     })) return;
     seg.dataset.pe = "1";
     if (!onSelected) bs[pressed].classList.add("dim");           // G15: only the label dims; no highlight, no lens move, no value
     else {
-      glass = lens ? segLens(seg, lens, bs) : null;                // glass + warp start on the lenstrace curve (~20 ms) — the lift itself waits its 100 ms (G4/G16)
+      const tBuild = performance.now(); performance.mark("seg:down");
+      glass = lens ? segLens(seg, lens, bs, e.clientX) : null; segMeasure("seg:build", tBuild);   // 仪器: DOM / SVG construction of the lens layers     // the loop: glass, copies, geometry — the lift itself starts at +109 ms (G4/G16); the down x is the drag delta's origin (B5-c)
       liftTimer = setTimeout(() => { if (lens) lens.classList.add("lift"); seg.classList.add("drag"); }, touchMs("--ios-touch-segment-lift-delay", 109));   // 抬起 +109 ms 起动 ← seg-keys.css --ios-touch-segment-lift-delay（seg-lens-refraction §4.1）
     }
   };

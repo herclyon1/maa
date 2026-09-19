@@ -89,3 +89,23 @@ that adds a second way to do the same thing, or a control outside a tab, or a bu
 where a toggle belongs, is a regression and gets reverted, not argued about.
 
 The rule-by-rule check against Apple's guidelines is `HIG-CHECKLIST.md`; change that file together with the page.
+
+---
+
+## Acceptance runs on the simulator, not on the Mac (2026-09-19)
+
+Supervisor ruling, 2026-09-19 08:3x. The trigger was a measurement mistake, recorded here as it
+happened: a static check of commit c3b2b00 on the simulator was run against a stale home-screen
+clip (an older port, served from the service-worker cache; the server log for the new port showed
+no request), and its numbers were read as an iOS-vs-macOS renderer difference for half an hour.
+The rerun on the right clip matched the macOS snapshot on geometry and area and differed only in
+line strengths. The rule below still stands: only the simulator decides, and every capture must
+prove which commit it measured.
+
+| Rule | What it means |
+|---|---|
+| **The simulator is the only judge** | Every commit that is a candidate for `main` gets the data session's static check on the iOS simulator, as the home-screen standalone web app, at 3x, same coordinates as the native capture. Release is decided on those numbers only. |
+| **`wksnap` is a pre-check** | The macOS offscreen WebKit snapshot is run before a commit is handed over, to catch what is obviously wrong. A commit that passes `wksnap` has passed nothing yet. |
+| **iOS/macOS differences are settled on the simulator** | When the two renderers disagree, the cause is found with switch experiments on the simulator (one URL switch per layer or per hypothesis, one 3x screenshot and one number table each). Nothing about the cause is inferred from `wksnap`, and a hypothesis stays in the experiment list until a simulator measurement confirms it. |
+| **A capture proves its commit** | Before recording, the server log must show the new clip requesting the commit's files (`tokens.css` / `seg-keys.css` with the new version); a capture without that line is not a check. |
+| **Instruments are fixed, numbers are not** | A recorder or comparison script that is found to be biased is fixed and rerun; results are never corrected by shifting frames or columns in a table. |
