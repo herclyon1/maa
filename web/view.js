@@ -1887,6 +1887,7 @@ function installNative() {
      handling (the 2026-09-15 11:20 recording: a 0.9 s hold flipped nothing), so
      the pointer is captured and the click is synthesised. */
   document.addEventListener("pointerdown", (e) => {
+    if (window.Switch) return;   // BOARD #13: switch.js owns the switch (A7 guard)
     const sw = e.target.closest && e.target.closest(".sw"); if (!sw) return;
     const input = sw.querySelector("input"); if (!input || input.disabled) return;
     e.preventDefault();

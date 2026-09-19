@@ -294,6 +294,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
       `<div class="group"><div class="row"><label>x</label><span class="sent">已寄出 10:00</span></div><div class="row"><label>y</label><input type="text" class="short" value="08:30"></div><div class="acts"><button>开始刷</button></div></div>`;
     document.body.appendChild(lab);
     const [on, off] = lab.querySelectorAll(".sw span");
+    if (!window.Switch) {   // BOARD #13: with switch.js the track is the well (accept-switch.js checks it); these rows describe the old track
     col("开关开 = 系统绿（--ios-switch-on）", T.green, cs(on).backgroundColor);
     col("开关关 = 灰（--ios-switch-off）", T.swOff, cs(off).backgroundColor);
     num("开关开：圆钮位移 22（--ios-switch-travel = 63 − 37 − 2×2）", 22, px(cs(on, "::after").translate));
@@ -307,6 +308,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
     check("开关圆钮动效 0.35 s（--ios-motion-switch-knob-duration）", "0.35s", kt.transitionDuration.split(",")[0].trim(), /^0\.35s/.test(kt.transitionDuration));
     check("开关圆钮曲线 linear()（--ios-motion-switch-knob-easing）", "linear(…)", kt.transitionTimingFunction.slice(0, 12), /^linear\(/.test(kt.transitionTimingFunction));
     check("开关轨道交叉淡 0.2 s（--ios-motion-switch-track-duration）", "0.2s", cs(on).transitionDuration, /^0\.2s/.test(cs(on).transitionDuration));
+    }
     /* A tap through the page's own pointer handling, followed by the click the
        browser fires anyway: the switch must flip exactly once and `change` fire
        once (12:0x: it flipped twice and stayed put). */
@@ -689,7 +691,8 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
         pev(seg3, "pointerup", at(on3));
         check("标签栏 T3 按下已选中项抬手：无事件", before, (nav3.querySelector(".seg button.on") || {}).dataset.tab, (nav3.querySelector(".seg button.on") || {}).dataset.tab === before && !g3.classList.contains("lift-sel"));
       }
-      /* §3 UISwitch on a synthetic switch through the page's own pointer handling */
+      /* §3 UISwitch on a synthetic switch through the page's own pointer handling (the old handler; with switch.js — BOARD #13 — accept-switch.js runs the B13 rows instead) */
+      if (!window.Switch) {
       const swLab = document.createElement("div"); swLab.style.cssText = "position:fixed;left:20px;top:200px;z-index:99;opacity:0";
       swLab.innerHTML = `<label class="sw"><input type="checkbox"><span></span></label>`; document.body.appendChild(swLab);
       const sw = swLab.querySelector(".sw"), inp = sw.querySelector("input"); let flips = 0; inp.addEventListener("change", () => flips++);
@@ -717,6 +720,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
       pev(sw, "pointerdown", at(sw)); pev(sw, "pointercancel", at(sw));
       check("开关 pointercancel：不翻转", "on ×3", `${inp.checked ? "on" : "off"} ×${flips}`, inp.checked && flips === 3 && !sw.classList.contains("hold"));
       swLab.remove();
+      }
       /* §4 UIButton on a synthetic tile; alert action on a synthetic open dialog */
       const bLab = document.createElement("div"); bLab.style.cssText = "position:fixed;left:20px;top:300px;z-index:99;opacity:0";
       bLab.innerHTML = `<div class="group tiles"><button type="button" class="tile"><span class="ttitle">x</span></button></div>`; document.body.appendChild(bLab);
