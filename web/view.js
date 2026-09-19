@@ -635,8 +635,10 @@ function segSync(seg, fresh) {
     b.classList.toggle("on", !!on); b.setAttribute("aria-selected", on ? "true" : "false");
   });
   if (lens && to !== "" && Math.abs(parseFloat(to) - parseFloat(from)) > 0.001) {
-    if (segCommitMode === "tap") {
-      lens.classList.remove("spring"); void lens.offsetWidth;   // restart the stretch keyframes when a previous commit's are still running
+    if (segCommitMode === "tap" && seg.__lensLoop && !seg.__lensLoop.state.done) {
+      lens.classList.remove("spring");   // 点按外观: the segLens tap chain (SEG_TAP_T) drives the lens — glass lift in place, glass slide on the value-change spring, fall; no CSS keyframe slide
+    } else if (segCommitMode === "tap") {
+      lens.classList.remove("spring"); void lens.offsetWidth;   // restart the stretch keyframes when a previous commit's are still running (keyboard / click path without the loop)
       lens.classList.add("spring");                             // measured x path + width/height stretch (spec §1 G1/G3, --ios-touch-segment-lens-*-keys)
     } else {
       lens.classList.remove("spring");   // patch 03 (seg-impl-review.md #3): after a lifted drag the native lens only falls back 220×44 → 196×28 (.25 s, the .lift removal)
@@ -1239,7 +1241,12 @@ const SEG_DROP_DESTOUT = [[0, 1], [.198, 1], [.215, .841], [.231, .69], [.248, .
 /* §4.1 DestOut opacity after the lift starts (+109 ms): .396 / .98 / 1 on the first three frames */
 const SEG_LIFT_DESTOUT = [[0, 0], [.016, .396], [.033, .98], [.05, 1]];
 /* §4.4 springs [原值]: [ζ, response s] */
-const SEG_SPRING = { lift: [1.0, .25], fallMaterial: [1.0, .4], model: [.85, .2], travel: [.85, .4] };   // position springs; the .6533/.4559 and .56/.444 tracking springs of §4.4 are the flex interaction's (FLEX_VARIANT)
+const SEG_SPRING = { lift: [1.0, .25], fallMaterial: [1.0, .4], model: [.85, .2], travel: [.85, .4] };
+/* 点按 (tap on an unselected segment) schedule, s after the up [原值 seg-lens-refraction.md §4.4, the hooked tap run: calls at +171 / +181 / +187 /
+   +532 / +539 from the down, the synthetic up at +89 (touch-local.uiprobe-springs-tap.json)]: lift geometry ζ1/.25 in place, lift material
+   ζ1/.25, the value-change travel ζ .85/.4 (one retarget to the target centre), fall geometry ζ1/.25, fall material ζ1/.4. The unhooked frames
+   (seg-native-tap-frames.json: up +62, valueChanged +148 = up +86, first displaced frame +183) put geometry + travel in the same frame. */
+const SEG_TAP_T = { geo: .082, mat: .092, travel: .098, fallGeo: .443, fallMat: .450 };   // position springs; the .6533/.4559 and .56/.444 tracking springs of §4.4 are the flex interaction's (FLEX_VARIANT)
 /* B5 — the lens's stretch while dragging and its bounce after the up: UIKitCore `_UIFlexInteraction` (remote-ref/flex-interaction.md, the old
    page session's decompilation of the iOS 27.0 simulator UIKitCore; offsets there). Structure (§1): `_UILiquidLensView.flexInteraction`; every
    frame (UIUpdateLink 0x1c5050900) the lens's OWN presentation-layer centre goes into `_UIVelocityIntegrator addSample:` (config 0x1c504f3d8:
@@ -1337,7 +1344,7 @@ window.__segLens = null;
 window.__segDiag = () => window.__segLens;
 window.__segPerf = () => performance.getEntriesByType("measure").filter((e) => e.name.startsWith("seg:")).map((e) => ({ name: e.name, start: Math.round(e.startTime * 100) / 100, dur: Math.round(e.duration * 100) / 100 }));
 const segMeasure = (name, from) => { try { performance.measure(name, { start: from, end: performance.now() }); } catch (e) { /* older engines */ } };   // ?segx switches (index.html hook; ios-switch-list.md): scale0 holds the displacement scale at 0
-function segLens(seg, lens, bs, downClientX) {
+function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }: the 点按 schedule (SEG_TAP_T) instead of the press / drag / release chain
   if (seg.__lensLoop) seg.__lensLoop.stop();   // a new press ends the previous loop (its tail and its inline geometry)
   let warp = seg.querySelector(".warp"), warpl = seg.querySelector(".warpl"), plat = seg.querySelector(".plat"), rimb = seg.querySelector(".rimb"), hls = [...seg.querySelectorAll(".hlk, .hlw")];
   const mk = (cls, inner) => { const d = document.createElement("div"); d.className = cls; d.innerHTML = inner; seg.appendChild(d); return d; };
@@ -1451,7 +1458,8 @@ function segLens(seg, lens, bs, downClientX) {
   const K_LIFT_DEST = cssKeys("--ios-touch-segment-destout-keys", SEG_LIFT_DESTOUT), K_DEST = cssKeys("--ios-touch-segment-release-destout-keys", SEG_DROP_DESTOUT.filter(([t]) => t >= .198).map(([t, v]) => [t - .198, v]));
   const destEnd = destDelay + K_DEST[K_DEST.length - 1][0];
   const downX = (typeof downClientX === "number" ? downClientX : NaN) - seg.getBoundingClientRect().left;   // the touch-down x in control coordinates (the drag delta's origin, §6 _dragDelta)
-  const st = { t0: performance.now(), prev: performance.now(), rel: null, raf: 0, done: false, dragged: false, cx: null, pending: null, rest: idx0, pr: 0, ticks: 0, ev: { t: null, evt: null, x: null, target: null, n: 0 }, retargetT: null,
+  const st = { t0: tap ? tap.upAt : performance.now(), prev: performance.now(), rel: tap ? tap.upAt : null, raf: 0, done: false, dragged: false, cx: null, pending: null, rest: tap ? tap.target : idx0, pr: 0, ticks: 0, ev: { t: null, evt: null, x: null, target: null, n: 0 }, retargetT: null,
+               tap: tap || null, sMt: { x: 0, v: 0 },   // 点按: the material spring of the tap schedule (geometry rides sL)
                sL: { x: 0, v: 0 }, sM: { x: 1, v: 0 }, pos: { x: restCentre(idx0), v: 0 }, geo: null,   // pos = the lens position (one spring; the flex drift rides on top of it in the transform)
                flex: { vi: flexIntegrator(), sx: { x: 1, v: 0 }, sy: { x: 1, v: 0 }, dx: { x: 0, v: 0 }, out: { sx: 1, sy: 1, dx: 0 } } };   // B5: the flex interaction's integrator and its three animatable floats
   const setGeo = (left, top, w, h) => {
@@ -1498,7 +1506,18 @@ function segLens(seg, lens, bs, downClientX) {
     const tickStart = performance.now(), cxBefore = st.cx, pendingBefore = st.pending;
     const dt = Math.min(.04, Math.max(0, (now - st.prev) / 1000)); st.prev = now;
     let p, pd, moving = false;
-    if (st.rel == null) {
+    if (st.tap) {
+      /* 点按 (SEG_TAP_T, s after the up): geometry lifts in place on the lift spring, material follows 10 ms later, the position springs to the target
+         on the value-change spring; at +443 / +450 both fall (geometry ζ1/.25, material ζ1/.4); DestOut rides the material (§4.4: 0 → 1 with the
+         lift material, 1 → 0 with the fall material) */
+      const tu = (now - st.t0) / 1000, T = SEG_TAP_T;
+      if (tu >= T.geo) springStep(st.sL, tu >= T.fallGeo ? 0 : 1, SEG_SPRING.lift, dt);
+      if (tu >= T.mat) springStep(st.sMt, tu >= T.fallMat ? 0 : 1, tu >= T.fallMat ? SEG_SPRING.fallMaterial : SEG_SPRING.lift, dt);
+      if (tu >= T.travel) springStep(st.pos, restCentre(st.rest), SEG_SPRING.travel, dt);
+      p = clamp01(st.sMt.x); pd = p; st.pr = p;
+      const fx = st.flex.out, settled = tu > T.fallMat + .1 && st.sL.x < .001 && st.sMt.x < .001 && Math.abs(st.pos.x - restCentre(st.rest)) < .05 && Math.abs(st.pos.v) < 1 && Math.abs(fx.sx - 1) < .001 && Math.abs(fx.sy - 1) < .001 && Math.abs(fx.dx) < .05;
+      if (settled || tu > 3) { clear(); return; }
+    } else if (st.rel == null) {
       const tl = (now - st.t0) / 1000 - liftDelay;   // time since the lift started (+109 ms)
       if (tl > 0) springStep(st.sL, 1, SEG_SPRING.lift, dt);
       if (st.dragged && st.cx != null) springStep(st.pos, st.cx, SEG_SPRING.model, dt);   // B5-b: the position is ONE spring ζ .85 / .2 s continuing from its value and velocity at every retarget (§6 retarget 语义) — the ζ .6533/.4559 tracking spring belongs to the flex floats, not to the position
@@ -1539,7 +1558,7 @@ function segLens(seg, lens, bs, downClientX) {
       x: r3(st.pos.x), v: Math.round(st.pos.v * 10) / 10, target: cxBefore == null ? null : r3(cxBefore), target_next: st.cx == null ? null : r3(st.cx), adopted: adopted ? 1 : 0, retarget_t: st.retargetT == null ? null : r2(st.retargetT),
       pointer_t: st.ev.t == null ? null : r2(st.ev.t), pointer_ev_t: st.ev.evt == null ? null : r2(st.ev.evt), pointer_x: st.ev.x == null ? null : r2(st.ev.x), pointer_target: st.ev.target == null ? null : r2(st.ev.target), pointer_n: st.ev.n,
       drift: r3(fl.out.dx), x_screen: r3(st.pos.x + fl.out.dx), sx: Math.round(fl.out.sx * 10000) / 10000, sy: Math.round(fl.out.sy * 10000) / 10000, accel: Math.round(fl.vi.acceleration), vel: Math.round(fl.vi.velocity),
-      p: Math.round(p * 10000) / 10000, set: curSet || 0, rel_t: st.rel == null ? null : r2(st.rel), phase: st.rel != null ? "release" : st.dragged ? "drag" : p < 1 ? "lift" : "hold" };
+      p: Math.round(p * 10000) / 10000, set: curSet || 0, rel_t: st.rel == null ? null : r2(st.rel), phase: st.tap ? "tap" : st.rel != null ? "release" : st.dragged ? "drag" : p < 1 ? "lift" : "hold" };
     st.ev.n = 0;   // moves consumed since the previous tick (the last move's fields stay until the next move)
     if (st.ticks === 1) segMeasure("seg:first-tick", tickStart);
     st.raf = requestAnimationFrame(tick);
@@ -1559,6 +1578,7 @@ function segLens(seg, lens, bs, downClientX) {
       st.rel = performance.now(); st.rest = restIdx;
     },
     stop: () => { cancelAnimationFrame(st.raf); if (!st.done) clear(); },
+    freeze: () => { cancelAnimationFrame(st.raf); },   // ?segtap=<ms> (index.html hook): hold the current frame for a snapshot
     step: (dtMs) => { if (!st.done) { cancelAnimationFrame(st.raf); tick(dtMs ? st.prev + dtMs : performance.now()); } },   // one frame by hand, optionally on a virtual clock (an offscreen WKWebView runs neither requestAnimationFrame nor timers at speed; the ?seghold hook drives it)
     get state() { return { dragged: st.dragged, cx: st.cx, pending: st.pending, pos: st.pos.x, q: st.sL.x, rel: st.rel, done: st.done, flex: st.flex.out, accel: st.flex.vi.acceleration }; },
     get diag() { return st.__lens || null; },
@@ -1587,6 +1607,9 @@ function attachSegmented(seg, getIndex, commit) {
         const target = segAt(ev.clientX), noEvent = cancelled || outside(ev.clientX, ev.clientY) || target === idx;   // cancel (> 70 pt out, G17/G18) or back on the selected one (G8/G10/G23): no event
         if (glass) glass.release(noEvent ? idx : target);           // glass, copies and geometry fall on the lens's own curve, to the rest rect it ends on
         if (noEvent) { showLens(idx); return; }
+        if (!lifted && !onSelected && lens) {   // 点按外观: the tap runs the lift chain from the up (SEG_TAP_T) — glass in place, glass slide, solid again on settling; the loop owns the lens, segSync skips the old CSS slide
+          const tBuild = performance.now(); performance.mark("seg:down");
+          segLens(seg, lens, bs, NaN, { target, upAt: ev.timeStamp > 0 && ev.timeStamp <= tBuild ? ev.timeStamp : tBuild }); segMeasure("seg:build", tBuild); }
         commit(target, lifted ? "drag" : "tap");                    // the up: the index changes now (G1–G3); the content and the lens's slide follow at the valueChanged time (wire(): +66 / +25 ms)
       },
     })) return;

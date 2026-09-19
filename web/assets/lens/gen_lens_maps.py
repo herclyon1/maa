@@ -797,7 +797,7 @@ def main_formula(a, W, H):
         series_js = json.dumps({str(w): st["h"] for w, st in sets.items()})
         page = "lens-test.html" if a.name == "seg" else f"lens-test-{a.name}.html"
         rel = "" if os.path.abspath(a.out) == os.path.abspath(HERE) else os.path.relpath(HERE, os.path.abspath(a.out)) + "/"   # lens-engine-fix.js sits next to the generator
-        open(os.path.join(a.out, page), "w", encoding="utf-8").write(open(tpl, encoding="utf-8").read().replace("{{FILTER}}", svg_for("").strip()).replace("{{SERIES}}", series_js).replace('src="lens-engine-fix.js"', f'src="{rel}lens-engine-fix.js"'))
+        open(os.path.join(a.out, page), "w", encoding="utf-8").write(open(tpl, encoding="utf-8").read().replace("{{FILTER}}", svg_for("").strip()).replace("{{SERIES}}", series_js).replace('src="lens-engine-fix.js"', f'src="{rel}lens-engine-fix.js"').replace('src="lens-supersample.js"', f'src="{rel}lens-supersample.js"'))
     # verification (the only place measured fields enter): the formula against the phase files, validate2.py's method
     verify = {}
     chain = None

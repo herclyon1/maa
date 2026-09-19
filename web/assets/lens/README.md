@@ -19,6 +19,7 @@ compiled from the native per-frame recordings. Nothing here touches `view.js` / 
 | `verify_lens_maps.py`, `gen_lens_maps.py` without `--formula` | the earlier measured-resampling mode (§1–§4, record only): resamples the phase files into maps — no longer part of the deliverable |
 | `calib/` | WebKit feDisplacementMap calibration (`gen_calib.py` → maps + `webkit-displacement.html`, `check_calib.py` reads a render): the engine applies negative displacements one device pixel short (§0.4) |
 | `tools/fringe_check.py` | the A1 8× three-item check (coloured share of the outer 12 pt, saturation mean / median, the ends' colour order) on any screenshot of the held lens (§0.5) |
+| `lens-supersample.js` | 引擎校正 2, default on (`?ss=0` off): wraps every filtered lens layer in a composited ½ wrapper and lays it out 2× (the filter runs on a 2× raster), folds SS into the filters' `data-s` / scale / region (§0.4); one `<script>` line before view.js and lens-engine-fix.js |
 | `lens-engine-fix.js` | 引擎校正, default on: re-encodes the bg / label maps at page load so negative displacements are one device pixel longer (k = 1/devicePixelRatio), blob: copies only (§0.4); load after the `<svg>` |
 
 ## 0 Formula maps — 反编译原值（公式 + 探针参数） (2026-09-19)
@@ -422,7 +423,22 @@ formula / WebKit ss off / WebKit ss on):
 | fringe (tools/fringe_check.py): share / saturation, light | 1.36 % / 69 | 1.15 % / 82.7 | **1.38 %** / 85.0 |
 | dark | 1.38 % / 71 | 1.02 % / 79.0 | 1.20 % / 77.9 |
 
-**Wiring recipe for index.html (the ui session; three steps, copy as is; `SS = 2`, the switch `?ss=0` → `SS = 1` skips all three):**
+**Wiring for index.html = one line (2026-09-19, `lens-supersample.js`; 监督局's order): right after the `<svg>` with the lens filters and
+BEFORE `view.js` and `lens-engine-fix.js`:**
+```html
+<script src="assets/lens/lens-supersample.js"></script>   <!-- 引擎校正 2, default on; ?ss=0 off -->
+```
+The script does the three steps below by itself, also for layers created later (a MutationObserver): it wraps every filtered lens
+layer it knows (`.segctl .warp .disp`, `.segctl .warpl .displ`, the tab equivalents, the test page's `.layer.bg/.lab`; other
+selectors via `data-targets` on the script tag) in a composited ½ wrapper inside the layer's own container, lays the layer out at
+200 % with its former children inside a 2×-scaled `.ss2`, doubles the layer's border-radius (`calc(var(--rr) × 2)`), and on every
+`#seg-lens-f-bg-* / -lab-*` (and tab) filter sets the region to 50 %, keeps the file's S in `data-s0` and writes `data-s = S × 2` —
+so `view.js`'s `sOf(id)` writes `scale = data-s × progress` unchanged, and `lens-engine-fix.js` takes `data-s` as the layer-px scale
+when `data-s0` is present. `window.LENS_SS` = 2 (1 when off), `window.LENS_SS_DONE`, `window.LENS_SS_APPLY()` for pages that build
+layers after load. The test page runs on the same script (`lens-test.template.html`: `.slot` + `.layer` = the container + filtered
+element pattern of `.warp` + `.disp`); its numbers are the table above (identical to the inline implementation of a0fed29).
+
+The three steps it performs (for reference; nothing to copy by hand any more; `SS = 2`, `?ss=0` → `SS = 1` skips all three):
 
 1. Structure — for each displaced layer (the backdrop copy `.warp`-equivalent and the label copy), replace
    `<div class="layer">…copies…</div>` by

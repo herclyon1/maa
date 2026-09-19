@@ -3894,6 +3894,8 @@
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
 </svg>
+<script>window.LENS_SS = new URLSearchParams(location.search).get("ss") === "1" ? 2 : 1;</script>   <!-- 引擎校正 2 / 候选 A 默认关（监督局 09-19 11:1x）：?ss=1 才开 2× -->
+<script src="assets/lens/lens-supersample.js"></script>   <!-- 引擎校正 2 / 候选 A（2号 ui2 7c26d3b，README §0.4）：开时把 .warp .disp / .warpl .displ 包成 .ssw scale3d(½) + 2× 滤镜层 + .ss2，滤镜 data-s ×2、区域 50 %（data-s0 = 文件 S）；必须在 lens-engine-fix.js 之前（它读 window.LENS_SS / data-s0） -->
 <script src="assets/lens/lens-engine-fix.js"></script>   <!-- 引擎校正（2号 ui2 bed84e4，web/assets/lens/README.md §0.4）：按 devicePixelRatio 把每张 -f-bg- / -f-lab- 贴图的负位移加长一个设备像素（2× ½、3× ⅓）写成 blob 副本换进 feImage（data-engine-fixed 可查），贴图文件与彩边链不动；关法 window.LENS_ENGINE_FIX = false -->
 <!-- 推入页（UINavigationController push）：回执全表、以后的库存页；导航栏 54 at 62、返回 44 at 20 ← AX-11 / AX-46 -->
 <div class="page" id="subpage" hidden role="region">
@@ -3940,6 +3942,19 @@
       cm.setAttribute("values", only === "r" ? "1 0 0 0 0  0 0 0 0 .5  0 0 1 0 0  0 0 0 1 0" : "0 0 0 0 .5  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"); fd.parentNode.insertBefore(cm, fd); fd.setAttribute("in2", "mapx"); } }
   /* ?seghold=1: the stopped-state gesture of remote-ref/seg-lens-drag-mid.md (down on the selected segment, 5 × 20 pt moves 16 ms apart to the divider,
      hold) run by the page itself once the control exists — for engines a script cannot drive from outside (wksnap offscreen WebKit, simulator Safari) */
+  /* ?segtap=<ms>: the tap gesture run by the page itself — pointerdown on the unselected segment's centre, pointerup 62 ms later (seg-native-tap-frames.json
+     up − down .062) — and the lens frozen at <ms> after the up (250 = glass sliding, 600 = fallen back to the solid platter): with rAF the loop is frozen by
+     a timer, without it (wksnap offscreen WebKit) the loop is stepped <ms>/16 virtual frames; the title carries the lens rect and the loop phase */
+  if (q.has("segtap")) { const ms = Math.max(0, parseInt(q.get("segtap"), 10) || 0); const go = () => { const seg = document.querySelector("#queueseg"); if (!seg) { setTimeout(go, 100); return; }
+      { const r0 = seg.getBoundingClientRect(), dy = Math.round(r0.top) - r0.top; if (Math.abs(dy) > .001) document.body.style.marginTop = `${dy.toFixed(3)}px`; }
+      const off = [...seg.querySelectorAll("button")].find((b) => !b.classList.contains("on")), ro = off.getBoundingClientRect(), x = ro.left + ro.width / 2, y = ro.top + ro.height / 2;
+      const pe = (type, buttons) => seg.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, clientX: x, clientY: y, isPrimary: true, pointerType: "touch", button: 0, buttons }));
+      let rafSeen = false; requestAnimationFrame(() => { rafSeen = true; });
+      pe("pointerdown", 1); setTimeout(() => pe("pointerup", 0), 62);
+      const done = () => { const l = seg.querySelector(".lens").getBoundingClientRect(), lp = seg.__lensLoop; document.title = `segtap ${ms} ${l.left.toFixed(2)} ${l.top.toFixed(2)} ${l.width.toFixed(2)} ${l.height.toFixed(2)} ${lp ? (lp.diag ? lp.diag.phase : "loop") : "no-loop"} lp ${seg.style.getPropertyValue("--lp") || "0"}`; };
+      setTimeout(() => { if (!rafSeen) return; const lp = seg.__lensLoop; if (lp) lp.freeze(); done(); }, 62 + ms);   // live engine: freeze the frame at up + ms
+      setTimeout(() => { if (rafSeen) return; const lp = seg.__lensLoop; if (lp) for (let i = 0; i < Math.ceil(ms / 16); i++) lp.step(16); done(); }, 700); };   // no rAF (offscreen WKWebView): virtual frames
+    setTimeout(go, 50); }
   if (q.has("seghold")) { const go = () => { const seg = document.querySelector("#queueseg"); if (!seg) { setTimeout(go, 100); return; }
       { const r0 = seg.getBoundingClientRect(), dy = Math.round(r0.top) - r0.top; if (Math.abs(dy) > .001) document.body.style.marginTop = `${dy.toFixed(3)}px`; }   // the control's top on a whole pt (the native sits at integer y 608; a fractional top smears every 1 pt line over two rows in the read-back; scrollBy does nothing in an offscreen WKWebView). A margin, not a translate: a transform on body — even a zero one — makes it a compositing layer and the highlight's plus-lighter blend (B6) then sees no backdrop in either engine
       const on = seg.querySelector("button.on"), sr = seg.getBoundingClientRect(), ro = on.getBoundingClientRect(), y = ro.top + ro.height / 2;
