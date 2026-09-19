@@ -1766,48 +1766,11 @@ function installPressables() {
 
 function installNative() {
   // 开关的动效只在被人摸过之后才播（.live），页面重画时不会每个开关都弹一下
-  /* The switch behaves like UISwitch: finger down shows the glass lens (.hold), the
-     knob follows a drag, release snaps - past the middle after a drag, or to the
-     other side for a tap. Long holds must not fall into Safari's own long-press
-     handling (the 2026-09-15 11:20 recording: a 0.9 s hold flipped nothing), so
+  /* The switch behaves like UISwitch: finger down lifts the lens, the knob follows a drag, the value flips at the up or 25 pt into a drag.
+     Long holds must not fall into Safari's own long-press handling (the 2026-09-15 11:20 recording: a 0.9 s hold flipped nothing), so
      the pointer is captured and the click is synthesised. */
-  document.addEventListener("pointerdown", (e) => {
-    const sw = e.target.closest && e.target.closest(".sw"); if (!sw) return;
-    const input = sw.querySelector("input"); if (!input || input.disabled) return;
-    e.preventDefault();
-    /* The browser still fires its own click after pointerup, and a click on a
-       checkbox toggles it - so a plain tap toggled twice (mine, then the
-       browser's) and ended where it started. 2026-09-15 12:0x on his Android:
-       「单击没办法开关了，只能长按拖动」. The click that follows this press is
-       swallowed; keyboard activation (no pointer press first) still works. */
-    sw.dataset.pe = "1";
-    /* spec §3 (interaction-spec.md): the knob lifts +195 ms after touch-down (--ios-touch-switch-lift-delay), follows a drag and may
-       stretch 7 pt past either end; the value flips at the up whatever the position or direction - the ONLY no-flip case is the knob
-       dragged beyond the far end (finger displacement > the 22 pt travel) and then back inside. pointercancel = no flip. */
-    const startOn = input.checked, x0 = e.clientX; let dx = 0, maxOut = 0;
-    const T = 22, OVER = 7;   // travel 63 − 37 − 2×2 = --ios-switch-travel; stretch past the ends (spec §3 X11)
-    const home = startOn ? T : 0;
-    sw.style.setProperty("--kx", home + "px");
-    const lift = setTimeout(() => sw.classList.add("live", "hold"), touchMs("--ios-touch-switch-lift-delay", 195));
-    const move = (ev) => {
-      dx = ev.clientX - x0; const toward = startOn ? -dx : dx; maxOut = Math.max(maxOut, toward);
-      sw.style.setProperty("--kx", Math.max(-OVER, Math.min(T + OVER, home + dx)) + "px");
-    };
-    const finish = (cancelled) => {
-      clearTimeout(lift); sw.removeEventListener("pointermove", move); sw.removeEventListener("pointerup", up); sw.removeEventListener("pointercancel", cancel);
-      sw.classList.remove("hold"); sw.style.removeProperty("--kx");
-      if (cancelled) return;
-      const final = startOn ? -dx : dx;
-      const noFlip = maxOut > T && final <= T;   // beyond the far end and back (spec §3 N2–N4 / RO); beyond and released there still flips (X11)
-      if (noFlip) return;
-      input.checked = !startOn; input.dispatchEvent(new Event("change", { bubbles: true }));
-    };
-    const up = () => finish(false), cancel = () => finish(true);
-    sw.addEventListener("pointermove", move);
-    sw.addEventListener("pointerup", up);
-    sw.addEventListener("pointercancel", cancel);
-    try { sw.setPointerCapture(e.pointerId); } catch {}
-  });
+  /* the switch's pointer state machine moved to controls.js (B13: UISwitch Solarium — .01 s press, ζ 1 / .3 knob spring, 25 pt flip,
+     rubber band, lens hang); the click swallow below (dataset.pe) stays because controls.js sets it the same way */
   installPressables();
   document.addEventListener("click", (e) => {
     const sw = e.target.closest && e.target.closest(".sw");

@@ -64,8 +64,7 @@
     --tab-drag-lift-sx:1.170; --tab-drag-lift-sy:1.296; /* dragging: 110×70 (--ios-touch-tab-drag-lift-w/-h) */
     --seg-lift-sx:1.1224; --seg-lift-sy:1.5714;       /* (196 + 2×--ios-touch-segment-lift-x 12) / 196, (28 + 2×--ios-touch-segment-lift-y 8) / 28 */
     --tab-lift-sx:1.266; --tab-lift-sy:1.185;         /* (94 + --ios-touch-tab-lift-w 25) / 94, (54 + --ios-touch-tab-lift-h 10) / 54 */
-    --knob-lift-sx:1.635; --knob-lift-sy:1.667;       /* --ios-touch-switch-lift-w 60.5 / 37, -h 40 / 24 (peak) */
-    --knob-hold-sx:1.568; --knob-hold-sy:1.583;       /* settled 58 / 37, 38 / 24 (spec L*, Kit Toggle Pressed 58×38) */
+    /* the switch knob's lifted scale: controls.js computes 58/37 × 38.33/24 from --ios-switch-knob-lift-w/-h (B13; the 60.5×40 recording peak retired) */
     /* alert button = pane − 30.9/255 (light) / pane + 27.9/255 (dark) ← alert-pipeline-plan §1.8: plus-darker rgb(224) / plus-lighter rgb(28); Chrome fallback α .131 / .127 */
     --alert-button-blend:plus-darker;
     /* alert text ← pipeline §1.9: 说明 = 面板 −0.4 → plus-darker rgb(153)（Chrome 常量 236 − 102 = 134）；停止 = M_red × 按钮底，亮色白底实测 (235,42,45) */
@@ -408,40 +407,15 @@
      touch (.live, set in app.js), so a page load does not replay them. */
   .sw{position:relative;width:var(--ios-switch-w);height:var(--ios-switch-h);flex:none;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}   /* 63×28 ← 探针/AX45 */
   .sw input{opacity:0;width:100%;height:100%;margin:0;position:absolute;inset:0;cursor:pointer}
-  .sw span{position:absolute;inset:0;background:var(--ios-switch-off);border-radius:var(--ios-switch-radius);pointer-events:none;   /* 关态轨道 (60,60,67).298、圆角 14 ← 探针 */
-           transition:background-color var(--ios-motion-switch-track-duration) var(--ios-motion-switch-track-easing)}   /* 轨道交叉淡 0.2 s default ← 探针 */
-  /* On = system green. This line went missing in the 08:04 transform-only rewrite
-     and every switch showed grey for two hours; accept.js now probes it. */
-  .sw input:checked + span{background:var(--ios-switch-on)}
-  /* The knob moves with transform only (translate + scale) so the whole flip stays
-     on the compositor - animating `width` re-laid the row every frame and stuttered.
-     Pressed = the Liquid Glass lens. Read off the kit's Toggle - Switch, State=Pressed
-     (Figma web UI, 2026-09-15 11:2x, no API): the knob grows from 38×24 to 58×38 and
-     overhangs the 28pt track by 5 above and below; its "Glass Effect" layer is 60×40,
-     white at 9 % over the track, a 0.5 inner stroke #cccccc, three inner shadows (the
-     first: y 40, blur 10, spread −40, #282828 - a dark rim along the bottom), a
-     "Specular Light" layer on top and a "Shadow" layer beneath. CSS has no refraction,
-     so the lens is: translucent white with a top highlight, the rim as inset shadows,
-     backdrop blur + saturate, over the coloured track. */
+  /* B13 (controls.css / controls.js): the track is the Solarium "well" — a tertiaryLabel-grey view whose CALayer border (2 → 15.5, tint / onTint)
+     is the on / pressed state; the knob (the lens) is 37×24 → 58×38.33 lifted, its position a ζ 1 / .3 spring and its rubber band ±12 (.55)
+     past the ends (remote-ref/switch-native-formula.md §0, dispatch-B13-switch.md). The rest rules for a switch nobody has touched stay here: */
   .sw span::after{content:"";position:absolute;width:var(--ios-switch-knob-w);height:var(--ios-switch-knob-h);left:var(--ios-switch-knob-pad);top:var(--ios-switch-knob-pad);border-radius:99px;
                   background:var(--ios-switch-knob);   /* 旋钮 37×24 内距 2 ← 探针 */
                   box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16);
                   transform-origin:center;will-change:translate,scale,background,box-shadow;translate:0 0;scale:1 1;
-                  transition:translate var(--ios-motion-switch-knob-duration) var(--ios-motion-switch-knob-easing),scale .12s,background .12s,box-shadow .12s}   /* 旋钮 = UIViewSpringAnimationBehavior dampingRatio 1 / response 0.3 s（--ios-motion-switch-knob-response/-damping-ratio ← 探针 deep _transitionKnobToPressed），采成 0.35 s linear()；.12s 透镜起落 无来源 */
+                  transition:translate var(--ios-motion-switch-knob-duration) var(--ios-motion-switch-knob-easing)}   /* rest: a programmatic change rides the sampled ζ 1 / .3 spring (--ios-motion-switch-knob-*); a touch is driven per frame by controls.js (B13) */
   .sw input:checked + span::after{translate:var(--ios-switch-travel) 0}   /* 行程 22 = 63 − 37 − 2×2 ← 探针 */
-  /* Finger down: the lens. 58/38 = 1.526, 38/24 = 1.583. .hold is set by app.js for
-     the whole press and drag (--kx = where the knob is); :active covers the mouse. */
-  .sw.hold span::after,.sw input:active + span::after{
-    scale:var(--knob-hold-sx) var(--knob-hold-sy);animation:knob-lift .2s ease-out;transition:translate .12s cubic-bezier(.2,.8,.2,1),background .12s,box-shadow .12s;   /* 按下 +195 ms 抬起：~110 ms 到 60.5×40，回稳 58×38 ← spec §3 L200/L260/L400 */
-    background:linear-gradient(180deg, rgba(255,255,255,.62) 0%, rgba(255,255,255,.28) 45%, rgba(255,255,255,.12) 100%);
-    box-shadow:inset 0 0 0 .5px rgba(204,204,204,.95),
-               inset 0 -1.5px 3px rgba(40,40,40,.28),
-               inset 0 1px 1px rgba(255,255,255,.9),
-               0 4px 10px rgba(0,0,0,.18);
-    backdrop-filter:blur(1.5px) saturate(1.5);-webkit-backdrop-filter:blur(1.5px) saturate(1.5)}
-  .sw input:active:checked + span::after{translate:var(--ios-switch-travel) 0}
-  .sw.hold span::after{translate:var(--kx, 0px) 0 !important;transition:translate var(--seg-follow-lag) ease-out,background .12s,box-shadow .12s}   /* 旋钮跟手，可拉过端点 7 pt（spec §3 F1/X11） */
-  @keyframes knob-lift{0%{scale:1 1}55%{scale:var(--knob-lift-sx) var(--knob-lift-sy)}100%{scale:var(--knob-hold-sx) var(--knob-hold-sy)}}
   /* Release: the knob travels 22pt in 0.35 s on the probed critical spring (ω21) and does
      not stretch - the old 「lands then relaxes」 keyframes came from a recording, not a
      source (spec-extract.md ⑤: transform is a single CASpringAnimation). */

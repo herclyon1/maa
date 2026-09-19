@@ -16,3 +16,39 @@
 /* the fill's resting colour is the card colour — cell-native.md §0: white / (28,28,30) = tokens --ios-card-bg — so the release fade is
    colour → colour like the native fill (a transparent row would fade through alpha). .acts button already rests on var(--card). */
 .row.nav, .sheet .row.check { background-color: var(--card); }
+
+/* ---- B13 UISwitch (Solarium UISwitchModernVisualElement; remote-ref/switch-native-formula.md §0–§4, dispatch-B13-switch.md; tokens.css
+   "B13 UISwitch" block for the addresses) ----
+   Layer tree (the old page session's reading of _invalidateWell 0x1c414d128 / _orderSubviews 0x1c414d930 / _switchToStaticMode: 0x1c414d030),
+   bottom → top: the WELL view = `span` (63×28, r 14, backgroundColor tertiaryLabel = --ios-switch-off) whose CALayer border is the state —
+   width (pressed ‖ on) ? 15.5 : 2, colour on ? onTint : tint (= the background's own colour) — then the container (onTint background only
+   while on and static: green over the closed green ring, no visible difference, so not drawn) holding the gradient image (content unread, not
+   drawn) and the knob = `span::after`, the lens (37×24; lifted 58×38.33). CSS transitions carry the well (CABasicAnimations with fixed
+   durations); controls.js drives the knob per frame (--kx translate, --lift = the lens lift progress q → scale + material) while .drive is on. */
+/* the well's border is drawn as an inset box-shadow whose spread is a registered custom property (--wb): a CSS `border` on the span would
+   move the absolutely positioned knob (its containing block is the padding box) and WebKit snaps border widths to device pixels (15.5 → 15.33),
+   while the spread animates exactly and separately from the colour (`color` → currentColor), like the two CABasicAnimations. */
+@property --wb { syntax: "<length>"; inherits: false; initial-value: 2px; }
+.sw span { position: absolute; inset: 0; border-radius: var(--ios-switch-radius); pointer-events: none;
+  background: var(--ios-switch-off);                                        /* well backgroundColor = _effectiveTintColor → tertiaryLabelColor (0x1c41504bc) */
+  --wb: var(--ios-switch-well-border); color: var(--ios-switch-off);        /* _wellBorderWidthPressed:NO on:NO = 2; _wellColorOn:NO = _effectiveTintColor */
+  box-shadow: inset 0 0 0 var(--wb) currentColor;                            /* the CALayer border: over the background, inside the bounds, inner radius max(0, 14 − w) */
+  transition: --wb var(--ios-motion-switch-well-shrink-duration) var(--ios-motion-switch-track-easing) var(--ios-motion-switch-well-shrink-delay),
+              color var(--ios-motion-switch-well-color-duration) var(--ios-motion-switch-track-easing); }   /* → 2: .365 s after .025; colour .18 s */
+.sw.pressed span, .sw input:checked + span { --wb: var(--ios-switch-well-border-pressed);                       /* pressed ‖ on → 15.5 (fills the r 14 capsule) */
+  transition: --wb var(--ios-motion-switch-well-grow-duration) var(--ios-motion-switch-track-easing),
+              color var(--ios-motion-switch-well-color-duration) var(--ios-motion-switch-track-easing); }   /* → 15.5: .39 s */
+.sw input:checked + span { color: var(--ios-switch-on); }                    /* _wellColorOn:YES = _effectiveOnTintColor (systemGreen) */
+/* the knob while controls.js drives it (.drive: from the touch-down until both springs settle): position = --kx (spring ζ 1 / .3 to the
+   base + translation + rubber band), size = the lift progress q (--lift) on one spring (ζ 1 / .25 up, ζ 1 / .4 down — placeholders for the
+   lens spec variant, tokens); the lens material follows q the way the segmented lens's does (seg-lens-refraction.md §4.4: the resting
+   white platter 1 → 0 with q, the glass with q) — the glass look itself is the page's earlier placeholder (keys unread, dispatch-B13 §5.4). */
+.sw.drive span::after { translate: var(--kx, 0px) 0; scale: var(--ksx, 1) var(--ksy, 1); transition: none;
+  background: linear-gradient(rgb(255 255 255 / calc(1 - var(--lift, 0))), rgb(255 255 255 / calc(1 - var(--lift, 0)))),
+              linear-gradient(180deg, rgba(255,255,255,.62) 0%, rgba(255,255,255,.28) 45%, rgba(255,255,255,.12) 100%);
+  box-shadow: inset 0 0 0 .5px rgb(204 204 204 / calc(.95 * var(--lift, 0))),
+              inset 0 -1.5px 3px rgb(40 40 40 / calc(.28 * var(--lift, 0))),
+              inset 0 1px 1px rgb(255 255 255 / calc(.9 * var(--lift, 0))),
+              0 3px 8px rgba(0,0,0,.15), 0 1px 1px rgba(0,0,0,.16);
+  backdrop-filter: blur(calc(1.5px * var(--lift, 0))) saturate(calc(1 + .5 * var(--lift, 0)));
+  -webkit-backdrop-filter: blur(calc(1.5px * var(--lift, 0))) saturate(calc(1 + .5 * var(--lift, 0))); }

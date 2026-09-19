@@ -284,19 +284,28 @@
       `<div class="group"><div class="row"><label>x</label><span class="sent">已寄出 10:00</span></div><div class="row"><label>y</label><input type="text" class="short" value="08:30"></div><div class="acts"><button>开始刷</button></div></div>`;
     document.body.appendChild(lab);
     const [on, off] = lab.querySelectorAll(".sw span");
-    col("开关开 = 系统绿（--ios-switch-on）", T.green, cs(on).backgroundColor);
-    col("开关关 = 灰（--ios-switch-off）", T.swOff, cs(off).backgroundColor);
+    /* B13: the track is the Solarium well — a tertiaryLabel-grey view whose CALayer border is the state (switch-native-formula.md §0;
+       _invalidateWell 0x1c414d128): width 15.5 (on ‖ pressed) / 2, colour onTint / tint */
+    col("开关开：井环色 = systemGreen（--ios-switch-on；_wellColorOn:YES）", T.green, cs(on).color);
+    num("开关开：井环宽 15.5（--ios-switch-well-border-pressed；--wb inset 阴影）", 15.5, px(cs(on).getPropertyValue("--wb")), 0.05);
+    col("开关关：井底色 = tertiaryLabel 灰（--ios-switch-off；_effectiveTintColor 0x1c41504bc）", T.swOff, cs(off).backgroundColor);
+    num("开关关：井环宽 2（--ios-switch-well-border）", 2, px(cs(off).getPropertyValue("--wb")), 0.05);
+    col("开关关：井环色 = 同一灰（_wellColorOn:NO = tint）", T.swOff, cs(off).color);
+    check("开关：井环 = inset 阴影 spread（画在底色之上，同 CALayer border）", "inset", cs(off).boxShadow.slice(0, 30), /inset/.test(cs(off).boxShadow));
     num("开关开：圆钮位移 22（--ios-switch-travel = 63 − 37 − 2×2）", 22, px(cs(on, "::after").translate));
-    /* Finger down: the knob settles at 58×38 (spec §3 L*, Kit Toggle Pressed) = scale 1.568 × 1.583 of 37×24. */
-    const held = lab.querySelectorAll(".sw")[1]; held.classList.add("live", "hold");
-    check("按住：旋钮抬起动画 knob-lift（37×24 → 60.5×40 → 58×38，spec §3 L*）", "knob-lift .2s", `${cs(held.querySelector("span"), "::after").animationName} ${cs(held.querySelector("span"), "::after").animationDuration}`, cs(held.querySelector("span"), "::after").animationName === "knob-lift");
-    check("按住：圆钮变半透明玻璃", "非纯白", cs(held.querySelector("span"), "::after").backgroundImage.slice(0, 15), /gradient/.test(cs(held.querySelector("span"), "::after").backgroundImage));
-    held.classList.remove("hold");
-    /* Motion tokens (spec-extract.md ⑤): knob 0.35 s on the probed spring, track 0.2 s. */
+    /* the lens lifted: 58 × 38.33 (_knobBoundsPressed: 0x1c414f4ec) = scale 1.5676 × 1.5971 of 37 × 24, the material with the lift progress */
+    const held = lab.querySelectorAll(".sw")[1]; held.classList.add("drive"); held.style.setProperty("--lift", "1"); held.style.setProperty("--ksx", String(58 / 37)); held.style.setProperty("--ksy", String(38.33 / 24));
+    { const sc = cs(held.querySelector("span"), "::after").scale.split(" ").map(Number); check("按住（lift 1）：旋钮 58×38.33（--ios-switch-knob-lift-w/-h：scale 1.5676 1.5971）", "1.5676 1.5971", cs(held.querySelector("span"), "::after").scale, Math.abs(sc[0] - 58 / 37) < .001 && Math.abs(sc[1] - 38.33 / 24) < .001); }
+    check("按住：圆钮变半透明玻璃（白平台随 lift 退去）", "非纯白", cs(held.querySelector("span"), "::after").backgroundImage.slice(0, 15), /gradient/.test(cs(held.querySelector("span"), "::after").backgroundImage) && !/rgb\(255, 255, 255\)/.test(cs(held.querySelector("span"), "::after").backgroundImage.split("),")[0]));
+    held.classList.remove("drive"); held.style.removeProperty("--lift"); held.style.removeProperty("--ksx"); held.style.removeProperty("--ksy");
+    /* Motion tokens: the resting knob's programmatic change rides the sampled ζ 1 / .3 spring (0.35 s linear()); the well's CABasicAnimations
+       (_switchTrackAnimationWithFromValue:… 0x1c414fc04, colour 0x1c414fd98): width .39 s to on / .365 s + .025 to off, colour .18 s, default curve */
     const kt = cs(on, "::after");
     check("开关圆钮动效 0.35 s（--ios-motion-switch-knob-duration）", "0.35s", kt.transitionDuration.split(",")[0].trim(), /^0\.35s/.test(kt.transitionDuration));
     check("开关圆钮曲线 linear()（--ios-motion-switch-knob-easing）", "linear(…)", kt.transitionTimingFunction.slice(0, 12), /^linear\(/.test(kt.transitionTimingFunction));
-    check("开关轨道交叉淡 0.2 s（--ios-motion-switch-track-duration）", "0.2s", cs(on).transitionDuration, /^0\.2s/.test(cs(on).transitionDuration));
+    check("开关开：井环宽 .39 s / 色 .18 s（--ios-motion-switch-well-grow-duration / -color-duration）", "--wb 0.39s, color 0.18s", `${cs(on).transitionProperty} ${cs(on).transitionDuration}`, cs(on).transitionProperty === "--wb, color" && cs(on).transitionDuration === "0.39s, 0.18s");
+    check("开关关：井环宽 .365 s 延 .025 s / 色 .18 s（--ios-motion-switch-well-shrink-*）", "0.365s, 0.18s / 0.025s, 0s", `${cs(off).transitionDuration} / ${cs(off).transitionDelay}`, cs(off).transitionDuration === "0.365s, 0.18s" && cs(off).transitionDelay === "0.025s, 0s");
+    check("开关井曲线 = kCAMediaTimingFunctionDefault (.25,.1,.25,1)（--ios-motion-switch-track-easing）", "cubic-bezier(0.25, 0.1, 0.25, 1)", cs(on).transitionTimingFunction.split(",").slice(0, 4).join(",").trim(), /^cubic-bezier\(0\.25, 0\.1, 0\.25, 1\)/.test(cs(on).transitionTimingFunction));
     /* A tap through the page's own pointer handling, followed by the click the
        browser fires anyway: the switch must flip exactly once and `change` fire
        once (12:0x: it flipped twice and stayed put). */
@@ -599,33 +608,80 @@
         pev(seg3, "pointerup", at(on3));
         check("标签栏 T3 按下已选中项抬手：无事件", before, (nav3.querySelector(".seg button.on") || {}).dataset.tab, (nav3.querySelector(".seg button.on") || {}).dataset.tab === before && !g3.classList.contains("lift-sel"));
       }
-      /* §3 UISwitch on a synthetic switch through the page's own pointer handling */
+      /* §3 → B13 UISwitch (switch-native-formula.md §2–§4, dispatch-B13-switch.md §4) on a synthetic switch through controls.js.
+         Springs: knob position ζ 1 / .3 (ω 20.94: .1 s 62 %, .2 s 92 %); lift ζ 1 / .25 from +10 ms; un-lift ζ 1 / .4 at max(up, +10 + 220 ms). */
       const swLab = document.createElement("div"); swLab.style.cssText = "position:fixed;left:20px;top:200px;z-index:99;opacity:0";
       swLab.innerHTML = `<label class="sw"><input type="checkbox"><span></span></label>`; document.body.appendChild(swLab);
       const sw = swLab.querySelector(".sw"), inp = sw.querySelector("input"); let flips = 0; inp.addEventListener("change", () => flips++);
-      const kn = () => sw.querySelector("span");
-      pev(sw, "pointerdown", at(sw));
-      check("开关 L200 按下 +0 ms：不翻、旋钮未抬", "off, no lift", `${inp.checked ? "on" : "off"}, ${sw.classList.contains("hold") ? "lift" : "no lift"}`, !inp.checked && !sw.classList.contains("hold"));
+      const kn = () => sw.querySelector("span"), lift = () => parseFloat(sw.style.getPropertyValue("--lift")) || 0, kx = () => parseFloat(sw.style.getPropertyValue("--kx")) || 0;
+      const crit = (resp, t) => { const w = 2 * Math.PI / resp, u = w * t; return 1 - (1 + u) * Math.exp(-u); };   // critical spring progress
+      const wb = () => px(cs(kn()).getPropertyValue("--wb"));
+      const tDown = performance.now(); pev(sw, "pointerdown", at(sw));
+      check("开关 L200 按下 +0 ms：不翻、未 pressed、未抬", "off, rest", `${inp.checked ? "on" : "off"}, ${sw.classList.contains("pressed") ? "pressed" : "rest"}`, !inp.checked && !sw.classList.contains("pressed"));
+      await sleep(40);
+      check("开关 按下 +40 ms：pressed（.01 s longPress，--ios-touch-switch-press-delay；老页 195 ms 抬起已退）", "pressed", sw.classList.contains("pressed") ? "pressed" : "rest", sw.classList.contains("pressed"));
+      await sleep(80);
+      { const el = (performance.now() - tDown - 10) / 1000, l = lift(), want = crit(.25, el), w = wb();
+        check(`开关 按下 +${Math.round(el * 1000 + 10)} ms：抬起中，lift 进度 ≈ ${Math.round(want * 100)} %（ζ 1 / .25 自 +10 ms；--ios-motion-switch-lift-response）`, `${Math.round(want * 100)} % ± 8`, `${Math.round(l * 100)} %`, Math.abs(l - want) <= .08);
+        check("开关 按下 +120 ms：井环 2 → 15.5 在途（.39 s，--ios-motion-switch-well-grow-duration）", "2 < wb < 15.5", Math.round(w * 100) / 100, w > 2.5 && w < 15); }
       await sleep(120);
-      check("开关 L200 +120 ms：旋钮还没抬（--ios-touch-switch-lift-delay 195）", "no lift", sw.classList.contains("hold") ? "lift" : "no lift", !sw.classList.contains("hold"));
-      await sleep(120);
-      check("开关 L260 +240 ms：旋钮抬起（.hold）", "lift", sw.classList.contains("hold") ? "lift" : "no lift", sw.classList.contains("hold"));
+      check("开关 按下 +240 ms：lift ≥ 95 %", "≥ 95 %", `${Math.round(lift() * 100)} %`, lift() >= .95);
       await sleep(220);
-      check("开关 L400 +460 ms：旋钮落定 58×38（scale 1.568 1.583）", "1.568 1.583", cs(kn(), "::after").scale, /^1\.5[67]/.test(cs(kn(), "::after").scale));
+      { const sc = cs(kn(), "::after").scale.split(" ").map(Number); check("开关 按下 +460 ms：旋钮落定 58×38.33（scale 1.5676 1.5971）", "1.5676 1.5971", cs(kn(), "::after").scale, Math.abs(sc[0] - 58 / 37) < .002 && Math.abs(sc[1] - 38.33 / 24) < .002); }
+      num("开关 按下 +460 ms：井环到 15.5（.39 s 完）", 15.5, wb(), 0.05);
       const t2 = performance.now(); pev(sw, "pointerup", at(sw)); const d2 = performance.now() - t2;
-      check("开关 S1 抬手：立刻翻转一次（--ios-touch-switch-flip-delay 0）", "on ×1", `${inp.checked ? "on" : "off"} ×${flips} +${Math.round(d2 * 10) / 10} ms`, inp.checked && flips === 1 && d2 < 50);
-      /* X: drag −10 (against the direction) and release - still flips */
-      pev(sw, "pointerdown", at(sw)); pev(sw, "pointermove", at(sw, .5, .5, 10, 0)); pev(sw, "pointerup", at(sw, .5, .5, 10, 0));
-      check("开关 X 反方向拖 10 抬手：仍翻转", "off ×2", `${inp.checked ? "on" : "off"} ×${flips}`, !inp.checked && flips === 2);
-      /* N2–N4: drag beyond the far end (+40 > travel 22) and back to +5 - no flip */
+      check("开关 S1 抬手：立刻翻转一次（pending 点按预置；--ios-touch-switch-flip-delay 0）", "on ×1", `${inp.checked ? "on" : "off"} ×${flips} +${Math.round(d2 * 10) / 10} ms`, inp.checked && flips === 1 && d2 < 50);
+      await sleep(100);
+      { const el = (performance.now() - t2) / 1000, k = kx(), want = 22 * crit(.3, el); check(`开关 抬手 +${Math.round(el * 1000)} ms：旋钮行程 ${Math.round(want / 22 * 100)} %（ζ 1 / .3：.1 s 62 % = 13.6 pt）`, `${Math.round(want * 10) / 10} ± 1.2`, Math.round(k * 10) / 10, Math.abs(k - want) <= 1.2);
+        const l = lift(), wantL = 1 - crit(.4, el); check(`开关 抬手 +${Math.round(el * 1000)} ms：缩回中（抬手晚于按下 +.22 s → 立即；ζ 1 / .4）lift ≈ ${Math.round(wantL * 100)} %`, `${Math.round(wantL * 100)} % ± 15（rAF 帧粒度）`, `${Math.round(l * 100)} %`, Math.abs(l - wantL) <= .15); }
+      await sleep(100);
+      { const el = (performance.now() - t2) / 1000, k = kx(), want = 22 * crit(.3, el); check(`开关 抬手 +${Math.round(el * 1000)} ms：旋钮行程 ${Math.round(want / 22 * 100)} %（.2 s 92 % = 20.2 pt）`, `${Math.round(want * 10) / 10} ± 1`, Math.round(k * 10) / 10, Math.abs(k - want) <= 1); }
+      await sleep(400);
+      check("开关 抬手 +600 ms：落定 22、驱动结束（.drive 去掉，静止规则接管）", "22, rest", `${Math.round(kx() * 100) / 100}, ${sw.classList.contains("drive") ? "drive" : "rest"}`, Math.abs(kx() - 22) < .05 && !sw.classList.contains("drive") && Math.abs(px(cs(kn(), "::after").translate) - 22) < .05);
+      /* a 100 ms tap: the lens stays lifted until +230 ms (lensHangTime .22 from the lift at +10), then un-lifts */
+      pev(sw, "pointerdown", at(sw)); await sleep(100); pev(sw, "pointerup", at(sw));
+      check("开关 短点 100 ms 抬手：翻转（off ×2）", "off ×2", `${inp.checked ? "on" : "off"} ×${flips}`, !inp.checked && flips === 2);
+      await sleep(100);
+      check("开关 短点 按下 +200 ms：旋钮仍抬着（hang .22 s 未到）lift ≥ 90 %", "≥ 90 %", `${Math.round(lift() * 100)} %`, lift() >= .9);
+      await sleep(130);
+      check("开关 短点 按下 +330 ms：已在缩回（+230 起 ζ 1 / .4）lift < 85 %", "< 85 %", `${Math.round(lift() * 100)} %`, lift() < .85);
+      await sleep(400);
+      /* X: drag −10 (against the direction) and release - still flips (the tap's pending value) */
+      pev(sw, "pointerdown", at(sw)); pev(sw, "pointermove", at(sw, .5, .5, -10, 0)); pev(sw, "pointerup", at(sw, .5, .5, -10, 0));
+      check("开关 X 反方向拖 10 抬手：仍翻转", "on ×3", `${inp.checked ? "on" : "off"} ×${flips}`, inp.checked && flips === 3);
+      await sleep(400);
+      /* drag +30 from off in 1 pt steps: the flip at the 26th pt zeroes the translation; the knob's target = 42.5 + rb(4) */
+      inp.checked = false;
+      pev(sw, "pointerdown", at(sw)); await sleep(30);
+      let flippedAt = 0; for (let d = 1; d <= 30; d++) { pev(sw, "pointermove", at(sw, .5, .5, d, 0)); if (!flippedAt && inp.checked) flippedAt = d; }
+      check("开关 拖 +30（关 → 开）：过 25 即翻开（--ios-touch-switch-flip-distance）", "26", flippedAt, flippedAt === 26);
+      await sleep(300);
+      { const want = 22 + 12 * (1 - 1 / (1 + .55 * 4 / 12)); check("开关 拖 +30 停住：旋钮 = 42.5 + rb(4)（翻转清零后余 4：橡皮筋 12 / .55）", `${Math.round(want * 100) / 100} ± .3`, Math.round(kx() * 100) / 100, Math.abs(kx() - want) <= .3); }
+      pev(sw, "pointerup", at(sw, .5, .5, 30, 0));
+      check("开关 拖 +30 抬手：显示态已翻，不再翻（on，事件 ×4）", "on ×4", `${inp.checked ? "on" : "off"} ×${flips}`, inp.checked && flips === 4);
+      await sleep(400);
+      /* +47 in 1 pt steps from off: flip at 26, then 21 more past the end → 42.5 + rb(21); release: back to 42.5, no second flip */
+      inp.checked = false;
+      pev(sw, "pointerdown", at(sw)); await sleep(30);
+      for (let d = 1; d <= 47; d++) pev(sw, "pointermove", at(sw, .5, .5, d, 0));
+      await sleep(300);
+      { const want = 22 + 12 * (1 - 1 / (1 + .55 * 21 / 12)); check("开关 拖到 +47 停住：旋钮 = 42.5 + rb(21)（超出端点的橡皮筋）", `${Math.round(want * 100) / 100} ± .3`, Math.round(kx() * 100) / 100, Math.abs(kx() - want) <= .3); }
+      pev(sw, "pointerup", at(sw, .5, .5, 47, 0)); await sleep(300);
+      check("开关 +47 抬手：回 42.5（位移 22）、仍 on（×5）", "22, on ×5", `${Math.round(kx() * 100) / 100}, ${inp.checked ? "on" : "off"} ×${flips}`, Math.abs(kx() - 22) < .3 && inp.checked && flips === 5);
+      await sleep(200);
+      /* N2–N4: beyond the far end (+40 > 25: flip) and back (−35 < −25: flip back) - no net flip, no event */
+      inp.checked = false;
       pev(sw, "pointerdown", at(sw)); pev(sw, "pointermove", at(sw, .5, .5, 40, 0)); pev(sw, "pointermove", at(sw, .5, .5, 5, 0)); pev(sw, "pointerup", at(sw, .5, .5, 5, 0));
-      check("开关 N2 拖过远端外 (+40) 再拖回 (+5) 抬手：不翻转", "off ×2", `${inp.checked ? "on" : "off"} ×${flips}`, !inp.checked && flips === 2);
+      check("开关 N2 拖过远端外 (+40) 再拖回 (+5) 抬手：翻两次抵消，不翻转、无事件", "off ×5", `${inp.checked ? "on" : "off"} ×${flips}`, !inp.checked && flips === 5);
+      await sleep(400);
       /* X11: dragged beyond the far end and released there - flips */
       pev(sw, "pointerdown", at(sw)); pev(sw, "pointermove", at(sw, .5, .5, 40, 0)); pev(sw, "pointerup", at(sw, .5, .5, 40, 0));
-      check("开关 X11 拖过远端外直接抬手：翻转", "on ×3", `${inp.checked ? "on" : "off"} ×${flips}`, inp.checked && flips === 3);
-      /* pointercancel: no flip */
+      check("开关 X11 拖过远端外直接抬手：翻转", "on ×6", `${inp.checked ? "on" : "off"} ×${flips}`, inp.checked && flips === 6);
+      await sleep(400);
+      /* pointercancel: no flip, nothing pressed */
       pev(sw, "pointerdown", at(sw)); pev(sw, "pointercancel", at(sw));
-      check("开关 pointercancel：不翻转", "on ×3", `${inp.checked ? "on" : "off"} ×${flips}`, inp.checked && flips === 3 && !sw.classList.contains("hold"));
+      check("开关 pointercancel：不翻转、不 pressed", "on ×6, rest", `${inp.checked ? "on" : "off"} ×${flips}, ${sw.classList.contains("pressed") ? "pressed" : "rest"}`, inp.checked && flips === 6 && !sw.classList.contains("pressed"));
+      await sleep(200);
       swLab.remove();
       /* §4 UIButton on a synthetic tile; alert action on a synthetic open dialog */
       const bLab = document.createElement("div"); bLab.style.cssText = "position:fixed;left:20px;top:300px;z-index:99;opacity:0";
@@ -697,7 +753,7 @@
       check("列表行 C1 短点 100 ms 抬手时：还没高亮", "rest", lit(row) ? "highlight" : "rest", !lit(row));
       await sleep(90);
       check("列表行 C1 按下 +190 ms：高亮已亮过并在淡出（.hl-out）、选中 1 次", "fading, 2", `${row.classList.contains("hl-out") ? "fading" : row.classList.contains("hl") ? "lit" : "rest"}, ${rsel}`, row.classList.contains("hl-out") && rsel === 2);
-      await sleep(620);
+      await sleep(520);
       /* C6: vertical 12 pt after the highlight — off at once, the up selects nothing */
       pev(row, "pointerdown", at(row)); await sleep(200); pev(row, "pointermove", at(row, .5, .5, 0, 12));
       check("列表行 C6 竖滑 12 pt：高亮瞬时灭（touchesCancelled → animated:NO）", "rest, no fade", `${lit(row) ? "highlight" : "rest"}, ${row.classList.contains("hl-out") ? "fade" : "no fade"}`, !lit(row) && !row.classList.contains("hl-out"));
@@ -712,7 +768,7 @@
       check("列表行 C10 横滑 100 pt（行内）：仍高亮", "highlight", lit(row) ? "highlight" : "rest", lit(row));
       pev(row, "pointerup", at(row, .5, .5, 100, 0)); await sleep(40);
       check("列表行 C10 横滑 100 pt 抬手：选中", 3, rsel, rsel === 3);
-      await sleep(620);
+      await sleep(520);
       pev(row, "pointerdown", at(row)); await sleep(200); pev(row, "pointermove", at(row, 1, .5, 16, 0));
       check("列表行 C11 出卡片边 16 pt：高亮灭", "rest", lit(row) ? "highlight" : "rest", !lit(row));
       pev(row, "pointerup", at(row, 1, .5, 16, 0)); await sleep(40);
@@ -722,7 +778,7 @@
       col("蓝字行 按下 +200 ms：底色 = 高亮色（同 cell）", HL, bgOf(act));
       pev(act, "pointerup", at(act)); await sleep(40);
       check("蓝字行 抬手 +40 ms：触发 1 次、淡出中", "1, fading", `${asel}, ${act.classList.contains("hl-out") ? "fading" : "not fading"}`, asel === 1 && act.classList.contains("hl-out"));
-      await sleep(620);
+      await sleep(520);
       rLab.remove();
     }
     const finish = () => {
