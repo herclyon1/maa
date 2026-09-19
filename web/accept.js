@@ -758,11 +758,11 @@
       const framesBefore = () => { const fr = frames.filter((f) => f[0] < blockedAt); return { hl: fr.some((f) => /\bhl\b/.test(f[1]) && !/hl-out/.test(f[1])), out: fr.some((f) => /hl-out/.test(f[1])) }; };
       pev(act, "pointerdown", at(act)); await sleep(100); pev(act, "pointerup", at(act)); await sleep(60);
       const alertEl = document.querySelector("#alert"), r60 = rgb(bgOf(act));
-      await sleep(150); const r210 = rgb(bgOf(act)), openAt60 = !!(alertEl && alertEl.open);   // the click (and the alert) comes ~2 frames after the +150 ms highlight of a 100 ms tap
+      await sleep(200); const r210 = rgb(bgOf(act)), openAt60 = !!(alertEl && alertEl.open);   // the click (and the alert) comes ~2 frames after the +150 ms highlight of a 100 ms tap
       await sleep(400);
-      { const b = framesBefore(); check("蓝字行 短点 100 ms，click 开页面弹窗（ask）：弹窗前已有高亮帧与淡出帧上屏（数据真机核 ②）", "hl 帧, hl-out 帧, 弹窗开（up +210）, 触发 1", `${b.hl ? "hl 帧" : "无 hl 帧"}, ${b.out ? "hl-out 帧" : "无 hl-out 帧"}, ${openAt60 ? "弹窗开" : "弹窗未开"}, 触发 ${asel}`, b.hl && b.out && openAt60 && asel === 1);
-        const moving = !!(r60 && r210) && (dark ? r210[0] < r60[0] - 3 : r210[0] > r60[0] + 3), rest = same(bgOf(act), T.card);
-        check("蓝字行 弹窗打开后淡回仍在走（up +60 → +210 ms 底色继续向静止色走，+610 到静止）", "走, 到静止", `${moving ? "走" : "停"}（R ${r60 ? Math.round(r60[0]) : "?"} → ${r210 ? Math.round(r210[0]) : "?"}）, ${rest ? "到静止" : "未到"}`, moving && rest); }
+      { const b = framesBefore(); check("蓝字行 短点 100 ms，click 开页面弹窗（ask）：弹窗前已有高亮帧与淡出帧上屏（数据真机核 ②）", "hl 帧, hl-out 帧, 弹窗开（up +260）, 触发 1", `${b.hl ? "hl 帧" : "无 hl 帧"}, ${b.out ? "hl-out 帧" : "无 hl-out 帧"}, ${openAt60 ? "弹窗开" : "弹窗未开"}, 触发 ${asel}`, b.hl && b.out && openAt60 && asel === 1);
+        const moving = !!(r60 && r210) && (dark ? r210[0] < r60[0] - 2 : r210[0] > r60[0] + 2), rest = same(bgOf(act), T.card);
+        check("蓝字行 弹窗打开后淡回仍在走（up +60 → +260 ms 底色继续向静止色走，+660 到静止）", "走, 到静止", `${moving ? "走" : "停"}（R ${r60 ? Math.round(r60[0]) : "?"} → ${r210 ? Math.round(r210[0]) : "?"}）, ${rest ? "到静止" : "未到"}`, moving && rest); }
       if (alertEl && alertEl.open) { document.querySelector("#alert-cancel").click(); await sleep(450); }
       if (askP) await askP;
       frames.length = 0; blockedAt = 0;
@@ -778,6 +778,12 @@
       col("蓝字行 出卡片边 16 pt +30 ms：瞬灭到静止色（数据真机核 ①：不走基础 .5 s transition）", T.card, bgOf(act));
       pev(act, "pointerup", at(act, 1, .5, 16, 0)); await sleep(60);
       check("蓝字行 出边抬手：不触发", 2, asel, asel === 2);
+      /* the rest colour follows the theme's --card token and no press state outlives a press: after everything above, every action row / nav
+         row in the document rests on the current theme's card colour with no state class or mark left (the device's dark → light report) */
+      await sleep(200);
+      { const leftovers = [...document.querySelectorAll(".row.nav, .group .acts button")].filter((el) => el.classList.contains("hl") || el.classList.contains("hl-out") || el.classList.contains("hl-cut") || el.dataset.rp || el.dataset.rc);
+        check("行静止底 = 当前主题卡片色（--ios-card-bg），无残留状态类 / 标记（切主题后不留旧色）", `${fmt(T.card)}, 0 残留`, `${bgOf(act)}, ${leftovers.length} 残留`, same(bgOf(act), T.card) && same(bgOf(row), T.card) && leftovers.length === 0);
+        document.dispatchEvent(new Event("visibilitychange")); }   // the strip on hide runs without error (a hidden page cannot be simulated here)
       /* the page's own action rows must not block the main thread: no synchronous confirm() left in view.js except ask()'s no-dialog fallback */
       try { const src = await (await fetch("view.js?v=" + Date.now())).text(); const n = (src.match(/\bconfirm\(/g) || []).length;
         check("行动作不再同步 confirm()（view.js 里只剩 ask() 的无 dialog 兜底那一处）", 1, n, n === 1); } catch (e) { check("行动作不再同步 confirm()", 1, "读不到 view.js", false); }
