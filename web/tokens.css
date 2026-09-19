@@ -626,6 +626,14 @@
   /* quick tap on the selected segment (native, probe recording 2026-09-20 00:24–00:42, remote-ref/tools/touch/seg-native-quicktap.md quick90c):
      the lens lifts in place after the up and starts falling at the peak frame, +242 ms after the down (peak 217–218.5×42–43 @ +241…+257, back at 196×28 by +474…+497) */
   --ios-touch-segment-quicktap-fall: 242ms;
+  /* 【录像采样替代】Health tip-card capsule button press (BOARD R6 / R14″ / R14‴): a SwiftUI Button whose style symbols are stripped
+     (state-tables/button.md R14′ ②, not decompilable), so these are the data session's simulator recordings (60 Hz, 3 px/pt):
+     first changed frame +172 ms after the down (light; +155 ms in the dark recording), fill / text hop to the pressed colours, no scale, no dimming */
+  --ios-touch-capsule-press-delay: 172ms;
+  --ios-capsule-pressed-bg: rgb(220 240 255);        /* light fill (201,233,255) → (220,240,255) — 录像采样替代 */
+  --ios-capsule-pressed-fg: rgb(0 150 230);          /* light text (0,121,190) → (0,150,230) — 录像采样替代 */
+  --ios-capsule-pressed-bg-dark: rgb(10 49 71);      /* dark fill (0,58,86) → (10,49,71) — 录像采样替代 */
+  --ios-capsule-pressed-fg-dark: rgb(0 170 255);     /* dark text (0,159,255) → (0,170,255) — 录像采样替代 */
   /* lensHangTime 0.22 s (spec ivar +0x40, seg-lens-refraction.md §4.5) is not a page token: the fall is built at down +220…226 in all 10 recordings
      and the first frame after it is the +242 above, which is what the page uses (R27 / R9②′ in seg-native-quicktap.md) */
   /* tab bar: pressing the SELECTED tab lifts the lens 94×54 → 103×63 by +180 ms (first size change ~125 ms), 110×70 while dragging (T3/T4) */
