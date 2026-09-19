@@ -1281,6 +1281,10 @@ const SEG_TAP_T = { geo: .082, mat: .092, travel: .098, fallGeo: .082 + .22, fal
    standalone) read the web centre +33 (light) / +55 (dark) pt ahead of the native during the drag and +12.8 / +24.3 after the finger stopped — far
    beyond this replay; the cause is not named here — the per-tick state window.__segLens and the seg: measures exist for the re-recording. */
 const FLEX_VARIANT = { smallLoupe: { pts: 10, min: .9, max: 1.1, N: 2000, zeta: .56, resp: .444, tzeta: .56, tresp: .444 }, loupe: { pts: 100, min: .75, max: 1.15, N: 2500, zeta: 1.0, resp: .5, tzeta: .9, tresp: .5 } };
+/* retargetImpulse: none. 老网页 (13:3x) read liquidLensWithSize: (0x1c5126e6c) to the end — the lens spec is the smallLoupe → loupe interpolation by t for
+   pts / min / max / N / ζ / response and the two tracking values (flexSpec below); the two impulse fields are NOT interpolated and take the Loupe
+   default 0 (the probe getter's .032 is the SmallLoupe class default, not the lens's spec). So no Δv at a retarget; flex §7.1b's formula is recorded
+   only. (Replayed for the record on the page's own C1 run with .032: peak 243.3, not 253.5, and a faster fall — b5c/dragsim_web.py imp=0.032.) */
 function flexSpec(W, H) {
   const t = Math.max(0, Math.min(1, (Math.min(W, H) - 37) / 33)), a = FLEX_VARIANT.smallLoupe, b = FLEX_VARIANT.loupe, L = (x, y) => x + (y - x) * t;
   return { pts: L(a.pts, b.pts), min: L(a.min, b.min), max: L(a.max, b.max), N: L(a.N, b.N), zeta: L(a.zeta, b.zeta), resp: L(a.resp, b.resp), tzeta: L(a.tzeta, b.tzeta), tresp: L(a.tresp, b.tresp) };
@@ -1337,7 +1341,7 @@ const SEG_RIM = (() => {
   const grey = (c) => { const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(c || ""); return m ? { r: +m[1], g: +m[2], b: +m[3], a: m[4] == null ? 1 : +m[4] } : null; };
   return { hlRings, angMain, angDiff, kfRings, kfK, NXS, MULT: 1 - .9118, ADD: .1471, COLOR_BIAS: -.3, grey };
 })();
-const SEGX = (new URLSearchParams(location.search).get("segx") || "").split(",");
+const SEGX = ((new URLSearchParams(location.search).get("segx") || "") + "," + (new URLSearchParams(location.search).get("segx1") || "")).split(",").filter(Boolean);   // ?segx=a,b / ?segx1=<key> (first-glass-frame list): one switch set
 const SEG_DISP_ON = new URLSearchParams(location.search).get("disp") === "1";
 const SEG_VC_SPLIT = new URLSearchParams(location.search).get("vcsplit") !== "0";
 const SEG_LPQ = new URLSearchParams(location.search).get("lpq") !== "0";   // lpq: per-frame filter / opacity writes quantised to the 8-bit raster (1/255; displacement scale .1) and written only on change — the springs are untouched (?lpq=0 off)
@@ -1358,10 +1362,11 @@ window.__segLens = null;
 window.__segDiag = () => window.__segLens;
 window.__segPerf = () => performance.getEntriesByType("measure").filter((e) => e.name.startsWith("seg:")).map((e) => ({ name: e.name, start: Math.round(e.startTime * 100) / 100, dur: Math.round(e.duration * 100) / 100 }));
 const segMeasure = (name, from) => { try { performance.measure(name, { start: from, end: performance.now() }); } catch (e) { /* older engines */ } };   // ?segx switches (index.html hook; ios-switch-list.md): scale0 holds the displacement scale at 0
-function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }: the 点按 schedule (SEG_TAP_T) instead of the press / drag / release chain; tap = { prewarm: true }: build + one invisible paint, no loop (A 起手预建); tap = { deferred: true }: build now, arm later with loop.beginTap(target, upAt) (the tap's work done at the down)
+function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the pointerdown's event timeStamp (the press path's time base: the lift delay counts from the touch)   // tap = { target, upAt }: the 点按 schedule (SEG_TAP_T) instead of the press / drag / release chain; tap = { prewarm: true }: build + one invisible paint, no loop (A 起手预建); tap = { deferred: true }: build now, arm later with loop.beginTap(target, upAt) (the tap's work done at the down)
   const prewarm = !!(tap && tap.prewarm), deferred = !!(tap && tap.deferred); if (prewarm || deferred) tap = null;
   if (seg.__lensLoop && !prewarm) seg.__lensLoop.stop();   // a new press ends the previous loop (its tail and its inline geometry)
-  // (.prewarm stays until the lift frame — frame() removes it as it sets .lift, so the layers never pass through display:none; liftgap_check.py)
+  if (!prewarm && SEGX.includes("nokeep")) seg.classList.remove("prewarm");   // ?segx1=nokeep: the old behaviour (layers display:none from the down to the lift) for the first-frame A/B
+  // (otherwise .prewarm stays until the lift frame — frame() removes it as it sets .lift, so the layers never pass through display:none; liftgap_check.py)
   let warp = seg.querySelector(".warp"), warpl = seg.querySelector(".warpl"), plat = seg.querySelector(".plat"), rimb = seg.querySelector(".rimb"), hls = [...seg.querySelectorAll(".hlk, .hlw")];
   const mk = (cls, inner) => { const d = document.createElement("div"); d.className = cls; d.innerHTML = inner; seg.appendChild(d); return d; };
   if (!warp) warp = mk("warp", '<div class="disp"><div class="copy"></div><div class="punch"><div class="copy"></div></div></div>'); else if (!warp.querySelector(".punch")) warp.firstElementChild.innerHTML = '<div class="copy"></div><div class="punch"><div class="copy"></div></div>';
@@ -1483,7 +1488,7 @@ function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }:
   const K_LIFT_DEST = cssKeys("--ios-touch-segment-destout-keys", SEG_LIFT_DESTOUT), K_DEST = cssKeys("--ios-touch-segment-release-destout-keys", SEG_DROP_DESTOUT.filter(([t]) => t >= .198).map(([t, v]) => [t - .198, v]));
   const destEnd = destDelay + K_DEST[K_DEST.length - 1][0];
   const downX = (typeof downClientX === "number" ? downClientX : NaN) - seg.getBoundingClientRect().left;   // the touch-down x in control coordinates (the drag delta's origin, §6 _dragDelta)
-  const st = { t0: tap ? tap.upAt : performance.now(), prev: performance.now(), rel: tap ? tap.upAt : null, raf: 0, done: false, dragged: false, cx: null, pending: null, rest: tap ? tap.target : idx0, pr: 0, ticks: 0, ev: { t: null, evt: null, x: null, target: null, n: 0 }, retargetT: null,
+  const st = { t0: tap ? tap.upAt : (downAt > 0 && downAt <= performance.now() ? downAt : performance.now()), prev: performance.now(), rel: tap ? tap.upAt : null, raf: 0, done: false, dragged: false, cx: null, pending: null, rest: tap ? tap.target : idx0, pr: 0, ticks: 0, ev: { t: null, evt: null, x: null, target: null, n: 0 }, retargetT: null,
                tap: tap || null, sMt: { x: 0, v: 0 },   // 点按: the material spring of the tap schedule (geometry rides sL)
                sL: { x: 0, v: 0 }, sM: { x: 1, v: 0 }, pos: { x: restCentre(idx0), v: 0 }, geo: null,   // pos = the lens position (one spring; the flex drift rides on top of it in the transform)
                flex: { vi: flexIntegrator(), sx: { x: 1, v: 0 }, sy: { x: 1, v: 0 }, dx: { x: 0, v: 0 }, out: { sx: 1, sy: 1, dx: 0 } } };   // B5: the flex interaction's integrator and its three animatable floats
@@ -1508,7 +1513,7 @@ function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }:
     copyp.style.left = -L + "px"; copyp.style.top = -T + "px"; copyl.style.left = -L + "px"; copyl.style.top = -T + "px";   // the label copies aligned with the real labels (B4-c': no 196×28 portal offset)
     if (punchKey !== `${Wd}|${Hd}`) { punchKey = `${Wd}|${Hd}`; punch.style.clipPath = `path(evenodd, "M0 0H${Wd}V${Hd}H0Z M${R} 0H${Wd - R}A${R} ${R} 0 0 1 ${Wd - R} ${Hd}H${R}A${R} ${R} 0 0 1 ${R} 0Z")`; }   // DestOut = the lens capsule (r = h/2 on the lift path; the drag stretch is the flex transform on top)
     const set = setFor(Math.max(W0 + 2 * LX, Wd));   // the model width (220 lifted; Wd is the model box — the flex transform is separate)
-    if (set !== curSet) { curSet = set; disp.style.filter = `url(#seg-lens-f-bg-${set})`; displ.style.filter = `url(#seg-lens-f-lab-${set})`; stack.style.filter = DISPERSION && document.querySelector(`#seg-lens-f-ab-${set}`) ? `url(#seg-lens-f-ab-${set})` : "none"; }
+    if (set !== curSet) { curSet = set; disp.style.filter = SEGX.includes("nobgmap") ? "none" : `url(#seg-lens-f-bg-${set})`; displ.style.filter = SEGX.includes("nolabmap") ? "none" : `url(#seg-lens-f-lab-${set})`; /* ?segx1=nobgmap / nolabmap: the copy without its displacement filter */ stack.style.filter = DISPERSION && document.querySelector(`#seg-lens-f-ab-${set}`) ? `url(#seg-lens-f-ab-${set})` : "none"; }
     if (DISPERSION) abFrame(set, p);
     { const pq = lpq(p); if (ishKey !== pq.toFixed(4)) { ishKey = pq.toFixed(4); const f = document.querySelector("#seg-lens-f-ish"); if (f) { const off = f.querySelector("feOffset"), bl = f.querySelector("feGaussianBlur"), fa = f.querySelector("feFuncA");   // B6-c §4: #21's offset / radius / opacity on the lift curve (seg-lens-refraction §1c(b)); lpq: written on 1/255 steps only
         if (off) off.setAttribute("dy", (7 * pq).toFixed(3)); if (bl) bl.setAttribute("stdDeviation", (3 * pq).toFixed(3)); if (fa) fa.setAttribute("slope", (.06 * pq).toFixed(4)); } } }
@@ -1519,7 +1524,7 @@ function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }:
   };
   const clear = () => {
     seg.classList.remove("lift"); seg.style.removeProperty("--lp"); seg.style.removeProperty("--lpd");
-    if (SEG_PREWARM_ON) seg.classList.add("prewarm"); else { copy.innerHTML = ""; copyl.innerHTML = ""; }   // the layers stay displayed at .01 between gestures (copies kept), so the next lift's first frame finds them composited
+    if (SEG_PREWARM_ON && !SEGX.includes("nokeep")) seg.classList.add("prewarm"); else { copy.innerHTML = ""; copyl.innerHTML = ""; }   // the layers stay displayed at .01 between gestures (copies kept), so the next lift's first frame finds them composited
     if (curSet) for (const id of [`#seg-lens-f-bg-${curSet}`, `#seg-lens-f-lab-${curSet}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", String(sOf(id))); }   // the file's rest value; the layers are hidden now
     for (const k of ["transition", "left", "top", "width", "height", "margin", "border-radius", "transform", "transform-origin"]) lens.style.removeProperty(k);   // the CSS rest values are what the loop ended on
     for (const el of [stack, warp, warpl, plat, rimb, rimo, ...hls]) { el.style.removeProperty("transform"); el.style.removeProperty("transform-origin"); }
@@ -1533,12 +1538,13 @@ function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }:
     if (!seg.isConnected || !lens.isConnected) { clear(); return; }
     const tickStart = performance.now(), cxBefore = st.cx, pendingBefore = st.pending;
     const dt = Math.min(.04, Math.max(0, (now - st.prev) / 1000)); st.prev = now;
-    let p, pd, moving = false;
+    let p, pd, moving = false, liftedModel = false;   // liftedModel: the MODEL bounds are 220×44 (setLifted:YES … actuallySetLifted:NO) — the flex spec and W/H follow the model, as a step (§7.4)
     if (st.tap) {
       /* 点按 (SEG_TAP_T, s after the up): geometry lifts in place on the lift spring, material follows 10 ms later, the position springs to the target
          on the value-change spring; at +443 / +450 both fall (geometry ζ1/.25, material ζ1/.4); DestOut rides the material (§4.4: 0 → 1 with the
          lift material, 1 → 0 with the fall material) */
       const tu = (now - st.t0) / 1000, T = SEG_TAP_T;
+      liftedModel = tu >= T.geo && tu < T.fallGeo;
       if (tu >= T.geo) springStep(st.sL, tu >= T.fallGeo ? 0 : 1, SEG_SPRING.lift, dt);
       if (tu >= T.mat) springStep(st.sMt, tu >= T.fallMat ? 0 : 1, tu >= T.fallMat ? SEG_SPRING.fallMaterial : SEG_SPRING.lift, dt);
       if (tu >= T.travel) springStep(st.pos, restCentre(st.rest), SEG_SPRING.travel, dt);
@@ -1547,6 +1553,7 @@ function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }:
       if (settled || tu > 3) { clear(); return; }
     } else if (st.rel == null) {
       const tl = (now - st.t0) / 1000 - liftDelay;   // time since the lift started (+109 ms)
+      liftedModel = tl > 0;
       if (tl > 0) springStep(st.sL, 1, SEG_SPRING.lift, dt);
       if (st.dragged && st.cx != null) springStep(st.pos, st.cx, SEG_SPRING.model, dt);   // B5-b: the position is ONE spring ζ .85 / .2 s continuing from its value and velocity at every retarget (§6 retarget 语义) — the ζ .6533/.4559 tracking spring belongs to the flex floats, not to the position
       /* B5-c time base (flex-interaction.md §6e.2 / §6e.3, the UIUpdate cycle's order HIDEvents → CADisplayLinks → CATransactionCommit → next vsync):
@@ -1563,6 +1570,7 @@ function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }:
       st.pr = p; moving = true;
     } else {
       const tr = (now - st.rel) / 1000;
+      liftedModel = st.pr > 0 && tr < relDelay;   // the fall animation (model bounds → 196×28) is created at release + relDelay
       if (tr >= relDelay) { springStep(st.sL, 0, SEG_SPRING.lift, dt); springStep(st.sM, 0, SEG_SPRING.fallMaterial, dt); }
       springStep(st.pos, restCentre(st.rest), SEG_SPRING.travel, dt);   // after the up: one spring ζ .85 / .4 s to the segment the lens ends on (§4.4 换值行程 row); the ζ .56/.444 "settle" spring is the flex's smallLoupe scale/drift spring once the lens is 196×28 (flexSpec)
       p = st.pr * clamp01(st.sM.x); pd = tr <= destDelay ? 1 : tabAt(K_DEST, tr - destDelay);
@@ -1574,7 +1582,10 @@ function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }:
        down), the result is the presentation transform */
     const q = clamp01(st.sL.x), w = W0 + 2 * LX * q, h = H0 + 2 * LY * q, fl = st.flex;
     fl.vi.add(st.pos.x + fl.out.dx, now / 1000);   // the presentation centre = position + flex drift (the update link reads the presentation layer, §1)
-    const spec = flexSpec(w, h), tg = flexTargets(spec, w, h, fl.vi.acceleration, fl.vi.velocity), sp = st.rel == null ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
+    /* §7.4 (老网页 13:2x): preferredVariant 4 = liquidLensWithSize:(_UILiquidLensView.bounds) recomputed per frame from the MODEL bounds — a step 196×28 ↔ 220×44 at
+       setLifted:YES / actuallySetLifted:NO, not the presented size; the same W / H feed the targets' per-axis range and the drift (§3: W, H = view.bounds) */
+    const Wm = liftedModel ? W0 + 2 * LX : W0, Hm = liftedModel ? H0 + 2 * LY : H0;
+    const spec = flexSpec(Wm, Hm), tg = flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity), sp = st.rel == null ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
     springStep(fl.sx, tg.sX, sp, dt); springStep(fl.sy, tg.sY, sp, dt); springStep(fl.dx, tg.drift, sp, dt);
     fl.out = { sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x };   // B5-d: the presented values are the spring floats, unclamped (the [0.9, 1.1] clamp is on the targets in flexTargets; §6f.4)
     setGeo(st.pos.x - w / 2, CY - h / 2, w, h);
@@ -1671,7 +1682,7 @@ function attachSegmented(seg, getIndex, commit) {
       if (lens) { const tBuild = performance.now(); performance.mark("seg:down"); glass = segLens(seg, lens, bs, NaN, { deferred: true }); segMeasure("seg:build", tBuild); } }   // the tap's build work at the down (copies, labels, SVG state); the up only arms the schedule
     else {
       const tBuild = performance.now(); performance.mark("seg:down");
-      glass = lens ? segLens(seg, lens, bs, e.clientX) : null; segMeasure("seg:build", tBuild);   // 仪器: DOM / SVG construction of the lens layers     // the loop: glass, copies, geometry — the lift itself starts at +109 ms (G4/G16); the down x is the drag delta's origin (B5-c)
+      glass = lens ? segLens(seg, lens, bs, e.clientX, null, e.timeStamp) : null; segMeasure("seg:build", tBuild);   // 仪器: DOM / SVG construction of the lens layers     // the loop: glass, copies, geometry — the lift itself starts at +109 ms (G4/G16); the down x is the drag delta's origin (B5-c)
       liftTimer = setTimeout(() => { if (lens) lens.classList.add("lift"); seg.classList.add("drag"); }, touchMs("--ios-touch-segment-lift-delay", 109));   // 抬起 +109 ms 起动 ← seg-keys.css --ios-touch-segment-lift-delay（seg-lens-refraction §4.1）
     }
   };
