@@ -631,7 +631,7 @@ function segSync(seg, fresh) {
   const lens = seg.querySelector(".lens"), to = fresh.style.getPropertyValue("--i"), from = seg.style.getPropertyValue("--i");
   if (seg.__gl) { const onIdx = [...fresh.querySelectorAll("button")].findIndex((b) => b.classList.contains("on")), gs = seg.__gl.gs;
     if (gs.futureOn != null && gs.futureOn === onIdx) gs.futureOn = null;   // the textures were drawn for this selection at the down — no upload in the lift's frame
-    else { gs.futureOn = null; requestAnimationFrame(() => { try { seg.__gl.lens.redrawBackdrop(); } catch (e) {} }); } }   // WebGL: the labels' weight / the selection changed under the lens (README §0.8.7 step 4)
+    else { gs.futureOn = null; requestAnimationFrame(() => segGlRedraw(seg)); } }   // WebGL: the labels' weight / the selection changed under the lens (README §0.8.7 step 4)
   const freshBs = [...fresh.querySelectorAll("button")];
   [...seg.querySelectorAll("button")].forEach((b, i) => {
     const on = freshBs[i] && freshBs[i].classList.contains("on");
@@ -1367,6 +1367,21 @@ const segGlAvailable = () => { if (segGlOk == null) { try { segGlOk = SEG_GL_WAN
 const segRgb = (css) => { const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/.exec(css || ""); return m ? [+m[1], +m[2], +m[3]] : [0, 0, 0]; };
 const segRgba = (css) => { const m = /rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:\s*[\/,]\s*([\d.]+%?))?/.exec(css || ""); if (!m) return [255, 255, 255, 1]; let a = m[4] == null ? 1 : parseFloat(m[4]); if (m[4] && m[4].endsWith("%")) a /= 100; return [+m[1], +m[2], +m[3], a]; };   // "rgb(235 235 245 / .3)" / "rgba(235, 235, 245, 0.3)"
 /* the GL lens of a control: the canvas + the LensWebGL instance + the backdrop drawing (page colour + track; the labels at the buttons' DOM centres) */
+/* segGlRedraw: the page's backdrop redraws (the value flip, a cancelled press, a theme change) go through the package's deferred redrawBackdrop
+   (lens-webgl.js a334bed: draw + upload in the next task, then its warm-up frame). That warm-up leaves the package's `last` state = its own lifted
+   frame, and the next warm-up "puts the previous frame back" after clearing (prewarm(): prev = last … setState(prev)) — so from the second re-render
+   on a lifted capsule of the preloaded set's width sat at the canvas's left on a RESTING control (验收 09-19 17:5x, the one-queue page: 400 wide, the
+   capsule ≈ 256; two segments hide it under the platter; sh/ghost_check.py). Here every page-side redraw is followed, in the task after the package's,
+   by an explicit rest state — canvas cleared, `last` = lift 0 — unless a gesture loop is running (its ticks own the canvas). */
+function segGlRedraw(seg) {
+  const glo = seg.__gl; if (!glo) return;
+  try { glo.lens.redrawBackdrop(); } catch (e) {}
+  setTimeout(() => { if (!seg.isConnected || seg.__gl !== glo) return; if (seg.__lensLoop && !seg.__lensLoop.state.done) return; try { glo.lens.setState({ cx: 0, cy: 0, w: glo.w, h: glo.h, lift: 0 }); } catch (e) {} }, 0);
+}
+/* the page shown again (the appearance switch on the phone happens with the web app in the background, the theme change is delivered on the way back):
+   every resting GL control is put to its rest state — canvas cleared, `last` = lift 0 — so nothing drawn while hidden can stay on screen (验收 09-19 18:0x:
+   the ghost capsule after dark → light on the one-queue page) */
+try { document.addEventListener("visibilitychange", () => { if (document.visibilityState !== "visible") return; for (const s of document.querySelectorAll(".segctl")) { const glo = s.__gl; if (!glo || (s.__lensLoop && !s.__lensLoop.state.done)) continue; try { glo.lens.setState({ cx: 0, cy: 0, w: glo.w, h: glo.h, lift: 0 }); } catch (e) {} } }); } catch (e) {}
 function segGlCreate(seg, lens, bs, setW) {
   const cur = seg.__gl; if (cur && cur.w === seg.clientWidth && cur.h === seg.clientHeight && cur.setW === setW) return cur;
   if (cur) { try { cur.lens.destroy(); } catch (e) {} cur.canvas.remove(); seg.__gl = null; }
@@ -1385,7 +1400,7 @@ function segGlCreate(seg, lens, bs, setW) {
   let glLens; try { glLens = LensWebGL.create(canvas, opts); } catch (e) { console.warn("LensWebGL", e); canvas.remove(); segGlOk = false; return null; }
   return (seg.__gl = { canvas, lens: glLens, opts, w: segW, h: segH, setW, gs, platter: segRgba(getComputedStyle(seg).getPropertyValue("--ios-segment-selected-bg")) });   // the platter colour token (light (255,255,255,1) / dark (235,235,245,.3), tokens.css)
 }
-try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { for (const s of document.querySelectorAll(".segctl")) if (s.__gl) { const b = s.querySelector("button"); if (b) s.__gl.opts.ink = segRgb(getComputedStyle(b).color); s.__gl.platter = segRgba(getComputedStyle(s).getPropertyValue("--ios-segment-selected-bg")); try { s.__gl.lens.redrawBackdrop(); } catch (e) {} } }); } catch (e) {}   // theme change: the backdrop's colours and the ink   // 换值重画不阻塞: the commit frame switches the selection only, the content render runs in the next frame (?vcsplit=0 = one frame, the old path)   // layer-5 colour fringe (7-tap chain on .stack, per-frame W/H matrix + tap scales): default off, ?disp=1 on (监督局 09-19 12:0x, phone fps bisect)
+try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { for (const s of document.querySelectorAll(".segctl")) if (s.__gl) { const b = s.querySelector("button"); if (b) s.__gl.opts.ink = segRgb(getComputedStyle(b).color); s.__gl.platter = segRgba(getComputedStyle(s).getPropertyValue("--ios-segment-selected-bg")); segGlRedraw(s); } }); } catch (e) {}   // theme change: the backdrop's colours and the ink   // 换值重画不阻塞: the commit frame switches the selection only, the content render runs in the next frame (?vcsplit=0 = one frame, the old path)   // layer-5 colour fringe (7-tap chain on .stack, per-frame W/H matrix + tap scales): default off, ?disp=1 on (监督局 09-19 12:0x, phone fps bisect)
 /* instrumentation (仪器, no behaviour): the lens loop publishes its per-tick internals as window.__segLens — a flat object of numbers and strings,
    rewritten at the end of every tick, read as is by 2号's frame recorder (seg-frames-logger.js `state`; a field named t or ending in _t is a
    performance.now() ms the recorder converts to s since the down). The agreed names: t (the tick's performance.now()), x (the position spring, pt),
@@ -1729,7 +1744,7 @@ function attachSegmented(seg, getIndex, commit) {
         const target = segAt(ev.clientX), noEvent = cancelled || outside(ev.clientX, ev.clientY) || target === idx;   // cancel (> 70 pt out, G17/G18) or back on the selected one (G8/G10/G23): no event
         if (glass && !glass.beginTap) glass.release(noEvent ? idx : target);   // glass, copies and geometry fall on the lens's own curve, to the rest rect it ends on
         if (noEvent) { if (glass && glass.beginTap) glass.stop(); showLens(idx);
-          if (seg.__gl && seg.__gl.gs.futureOn != null) { seg.__gl.gs.futureOn = null; requestAnimationFrame(() => { try { seg.__gl.lens.redrawBackdrop(); } catch (e) {} }); }   // the speculative labels texture undone (nothing was lifted)
+          if (seg.__gl && seg.__gl.gs.futureOn != null) { seg.__gl.gs.futureOn = null; requestAnimationFrame(() => segGlRedraw(seg)); }   // the speculative labels texture undone (nothing was lifted)
           return; }
         if (!lifted && !onSelected && lens) {   // 点按外观: the tap runs the lift chain from the up (SEG_TAP_T) — glass in place, glass slide, solid again on settling; the loop owns the lens, segSync skips the old CSS slide
           const tUp = performance.now(), upAt = ev.timeStamp > 0 && ev.timeStamp <= tUp ? ev.timeStamp : tUp; performance.mark("seg:tap-up");
@@ -1741,7 +1756,7 @@ function attachSegmented(seg, getIndex, commit) {
     seg.dataset.pe = "1";
     if (!onSelected) { bs[pressed].classList.add("dim");           // G15: only the label dims; no highlight, no lens move, no value
       if (lens) { const tBuild = performance.now(); performance.mark("seg:down"); glass = segLens(seg, lens, bs, NaN, { deferred: true }); segMeasure("seg:build", tBuild);
-        if (seg.__gl && seg.__gl.gs.futureOn !== pressed) { const tU = performance.now(); seg.__gl.gs.futureOn = pressed; try { seg.__gl.lens.redrawBackdrop(); } catch (e) {} segMeasure("seg:gl-upload", tU); } } }   // WebGL: the backdrop textures for the tap's outcome uploaded now (and prewarmed by the package), not at the value flip   // the tap's build work at the down (copies, labels, SVG state); the up only arms the schedule
+        if (seg.__gl && seg.__gl.gs.futureOn !== pressed) { const tU = performance.now(); seg.__gl.gs.futureOn = pressed; segGlRedraw(seg); segMeasure("seg:gl-upload", tU); } } }   // WebGL: the backdrop textures for the tap's outcome uploaded now (and prewarmed by the package), not at the value flip   // the tap's build work at the down (copies, labels, SVG state); the up only arms the schedule
     else {
       const tBuild = performance.now(); performance.mark("seg:down");
       glass = lens ? segLens(seg, lens, bs, e.clientX, null, e.timeStamp) : null; segMeasure("seg:build", tBuild);   // 仪器: DOM / SVG construction of the lens layers     // the loop: glass, copies, geometry — the lift itself starts at +109 ms (G4/G16); the down x is the drag delta's origin (B5-c)

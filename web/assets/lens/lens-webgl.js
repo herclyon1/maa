@@ -193,13 +193,13 @@ void main(){
       return st.ready; };
     const loadedNearest = (w) => { const cands = widths.filter((x) => sets[x] && sets[x].loaded); if (!cands.length) return null; let best = cands[0], dd = Infinity; for (const x of cands) { const d = Math.abs(x - w); if (d < dd) { dd = d; best = x; } } return best; };
     const preload = opts.preload || [widths.includes(220) ? 220 : widths[0]]; for (const w of preload) loadSet(w);
-    let A = null, last = null;
+    let A = null, last = null, lastAt = 0;
     const clear = () => { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, canvas.width, canvas.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); };
     let canvasOrigin = { x: 0, y: 0 };   /* the canvas's page position (the ui form moves the canvas with the lens) */
     const setState = (s) => {
       const t0 = performance.now(); const p = s.lift == null ? 1 : Math.max(0, Math.min(1, s.lift)), pd = s.pd == null ? 1 : Math.max(0, Math.min(1, s.pd));
       if (s.canvasOrigin) canvasOrigin = s.canvasOrigin;
-      if (p <= 0) { clear(); last = s; return; }
+      if (p < 0.005) { clear(); last = s; lastAt = performance.now(); return; }   /* the drop's spring tail (view.js stops at p ≈ .002): nothing is drawn — an opaque copy of the DOM left here at a tiny p is invisible until the page under it changes (a theme switch), then it is the ghost */
       const base = preload[0] || 220;
       const want = s.w <= base ? base : nearest(s.w);   /* the lift (196×28 → 220×44) rides the 220 set stretched over the growing box (README §0.3, the SVG page's rule); only the drag stretch (> 220) has its own sets */
       if (!sets[want]) loadSet(want);
@@ -225,7 +225,7 @@ void main(){
       if (tr) { tr.set = wsel; tr.total = +(performance.now() - tr.t0).toFixed(2); stats.trace = tr; (stats.traces = stats.traces || []).push(tr); if (stats.traces.length > 60) stats.traces.shift(); }
       if (opts.finish || s._split) gl.finish();
       if (s._split) stats._p2 = performance.now() - t0 - stats._p1;
-      stats.gpuMs = performance.now() - t0; stats.frames++; stats.set = wsel; last = s;
+      stats.gpuMs = performance.now() - t0; stats.frames++; stats.set = wsel; if (!s._prewarm) { last = s; lastAt = performance.now(); }   /* a warm-up frame is not a state to come back to */
     };
     /* warm-up (监督局 14:4x: the page's first glass frame stalled 46–55 ms — the shader pipelines and the textures were first used on that frame): after the
        preloaded set is up, one lifted frame is drawn through both passes into the FBO and the canvas (cleared again in the same task — never presented),
@@ -236,9 +236,11 @@ void main(){
        each, the canvas cleared and finished (the cleared buffer is what the compositor presents: the layer's display surface gets allocated too); the per-step
        ms land in stats.prewarm (compileMs at create, mapsMs per set upload, ishMs, fboMs at the first draw, pass1Ms, pass2Ms, clearMs, totalMs) */
     const prewarm = () => { if (!WARM) return null; const w0 = loadedNearest(preload[0] || 220); if (w0 == null) return null; const st = sets[w0]; const T = performance.now(); const prev = last;
-      const t1 = performance.now(); setState({ cx: AM + w0 / 2, cy: AM + st.h / 2, w: w0, h: st.h, lift: 1, pd: 1, wh: 1.72, canvasOrigin: { x: 0, y: 0 }, _split: true }); stats.prewarm.pass1Ms = stats._p1; stats.prewarm.pass2Ms = stats._p2;
+      const t1 = performance.now(); setState({ cx: AM + w0 / 2, cy: AM + st.h / 2, w: w0, h: st.h, lift: 1, pd: 1, wh: 1.72, canvasOrigin: { x: 0, y: 0 }, _split: true, _prewarm: true }); stats.prewarm.pass1Ms = stats._p1; stats.prewarm.pass2Ms = stats._p2;
       const t3 = performance.now(); clear(); gl.finish(); stats.prewarm.clearMs = performance.now() - t3; stats.prewarm.totalMs = performance.now() - T; stats.prewarm.at = performance.now(); stats.warmMs = stats.prewarm.totalMs;
-      if (prev && prev.lift > 0) setState(prev);   /* a real frame drawn before the warm-up (the harness draws as soon as the set is up) is put back */
+      /* after a warm-up: a lifted frame the page drew within the last 100 ms (a live gesture) is put back so the lens does not blink for a frame; anything older is
+         not — it would carry the inputs of its moment (a20df11's second ghost: the platter colour of the previous theme, restored after a theme switch) */
+      if (prev && !prev._prewarm && prev.lift >= 0.005 && performance.now() - lastAt < 100) setState(prev); else clear();
       return stats.prewarm; };
     const warm = prewarm;
     /* the other sets (the drag stretch's 222 … 256) are loaded one per idle slot after the first prewarm, so no gesture frame pays a set's upload + inner-shadow pass

@@ -1193,6 +1193,11 @@ use); (3) no gl.finish on a load's arrival except the preloaded set's. Instrumen
 gl.finish after every step of every frame — bind FBO + program 1, uniforms + binds, pass 1, clear + program 2, uniforms + binds, pass 2 — into
 `L.stats.trace` (`stats.traces` keeps the last 60); the page can copy `L.stats.trace` into `window.__segLens` so seg-frames-logger.js records
 it per frame (the data session has no JS entry on the device otherwise). On the Mac every step reads 0 ms (the 1-ms clock).
+**The ghost lens after a re-render (验收 17:xx: a lifted capsule at the left half, over the resting platter, gone on reload):** the package's
+bug. A warm-up frame is drawn with setState, which stored it as `last`; the NEXT warm-up (a re-render's deferred redrawBackdrop → warm)
+captured that stored warm-up state as "the frame to put back" and re-drew it after its clear — the lifted capsule at the canvas's top-left
+(16 … 236 × 16 … 60 pt: the warm-up's own geometry), left on screen. Reproduced in the harness (rest → redrawBackdrop → prewarm: 51 834 opaque
+pixels), fixed: a warm-up frame never becomes `last`, and after a warm-up the canvas is either restored to a REAL lifted frame or cleared.
 ### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
 
 Sources: `remote-ref/sheet-native.md` (the data session's 10th order: A9 `sheetivars` / `corners` / `subtree` / motion, iOS 27.0 3×) and
