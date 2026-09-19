@@ -1355,6 +1355,7 @@ const SEG_GLM = 24;   // the canvas reaches 24 pt above and below the control (t
 let segGlOk = null;
 const segGlAvailable = () => { if (segGlOk == null) { try { segGlOk = SEG_GL_WANT && !!window.LensWebGL && !!document.createElement("canvas").getContext("webgl2"); } catch (e) { segGlOk = false; } } return segGlOk; };
 const segRgb = (css) => { const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/.exec(css || ""); return m ? [+m[1], +m[2], +m[3]] : [0, 0, 0]; };
+const segRgba = (css) => { const m = /rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:\s*[\/,]\s*([\d.]+%?))?/.exec(css || ""); if (!m) return [255, 255, 255, 1]; let a = m[4] == null ? 1 : parseFloat(m[4]); if (m[4] && m[4].endsWith("%")) a /= 100; return [+m[1], +m[2], +m[3], a]; };   // "rgb(235 235 245 / .3)" / "rgba(235, 235, 245, 0.3)"
 /* the GL lens of a control: the canvas + the LensWebGL instance + the backdrop drawing (page colour + track; the labels at the buttons' DOM centres) */
 function segGlCreate(seg, lens, bs, setW) {
   const cur = seg.__gl; if (cur && cur.w === seg.clientWidth && cur.h === seg.clientHeight && cur.setW === setW) return cur;
@@ -1369,9 +1370,9 @@ function segGlCreate(seg, lens, bs, setW) {
       else { const sr = seg.getBoundingClientRect(); x.textAlign = "center"; x.textBaseline = "middle";
         for (const b of bs) { const r = b.getBoundingClientRect(), c = getComputedStyle(b); x.font = c.font; x.fillStyle = c.color; x.fillText(b.textContent, r.left - sr.left + r.width / 2, SEG_GLM + r.top - sr.top + r.height / 2); } } } };
   let glLens; try { glLens = LensWebGL.create(canvas, opts); } catch (e) { console.warn("LensWebGL", e); canvas.remove(); segGlOk = false; return null; }
-  return (seg.__gl = { canvas, lens: glLens, opts, w: segW, h: segH, setW });
+  return (seg.__gl = { canvas, lens: glLens, opts, w: segW, h: segH, setW, platter: segRgba(getComputedStyle(seg).getPropertyValue("--ios-segment-selected-bg")) });   // the platter colour token (light (255,255,255,1) / dark (235,235,245,.3), tokens.css)
 }
-try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { for (const s of document.querySelectorAll(".segctl")) if (s.__gl) { const b = s.querySelector("button"); if (b) s.__gl.opts.ink = segRgb(getComputedStyle(b).color); try { s.__gl.lens.redrawBackdrop(); } catch (e) {} } }); } catch (e) {}   // theme change: the backdrop's colours and the ink   // 换值重画不阻塞: the commit frame switches the selection only, the content render runs in the next frame (?vcsplit=0 = one frame, the old path)   // layer-5 colour fringe (7-tap chain on .stack, per-frame W/H matrix + tap scales): default off, ?disp=1 on (监督局 09-19 12:0x, phone fps bisect)
+try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { for (const s of document.querySelectorAll(".segctl")) if (s.__gl) { const b = s.querySelector("button"); if (b) s.__gl.opts.ink = segRgb(getComputedStyle(b).color); s.__gl.platter = segRgba(getComputedStyle(s).getPropertyValue("--ios-segment-selected-bg")); try { s.__gl.lens.redrawBackdrop(); } catch (e) {} } }); } catch (e) {}   // theme change: the backdrop's colours and the ink   // 换值重画不阻塞: the commit frame switches the selection only, the content render runs in the next frame (?vcsplit=0 = one frame, the old path)   // layer-5 colour fringe (7-tap chain on .stack, per-frame W/H matrix + tap scales): default off, ?disp=1 on (监督局 09-19 12:0x, phone fps bisect)
 /* instrumentation (仪器, no behaviour): the lens loop publishes its per-tick internals as window.__segLens — a flat object of numbers and strings,
    rewritten at the end of every tick, read as is by 2号's frame recorder (seg-frames-logger.js `state`; a field named t or ending in _t is a
    performance.now() ms the recorder converts to s since the down). The agreed names: t (the tick's performance.now()), x (the position spring, pt),
@@ -1535,7 +1536,7 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
     const L = g.left, T = g.top, Wd = g.w, Hd = g.h, R = Hd / 2;   // capsule: corner = h/2 (r22 at 44 ← §0; the lift's corner 14 → 22 on the same spring ← §4.4 row 1)
     if (GL) {   // WebGL: one setState per tick — uniforms only (README §0.8.7 step 3); wh = the §3b.6 capture-box rule from the lens's screen rect
       const r = lens.getBoundingClientRect(), sw = innerWidth, sh = innerHeight, wh = (Math.min(r.right + 100, sw) - Math.max(r.left - 100, 0)) / (Math.min(r.bottom + 100, sh) - Math.max(r.top - 100, 0));
-      glo.lens.setState({ cx: L + Wd / 2, cy: SEG_GLM + T + Hd / 2, w: Wd, h: Hd, lift: SEGX.includes("scale0") ? 0 : p, wh });
+      glo.lens.setState({ cx: L + Wd / 2, cy: SEG_GLM + T + Hd / 2, w: Wd, h: Hd, lift: SEGX.includes("scale0") ? 0 : p, pd, wh, platter: { rgba: glo.platter, alpha: 1 - p } });   // pd = DestOut α; platter = restingBackground (_controlForegroundColor) fading 1 − p inside the capsule, above the displaced backdrop, below lines / labels (§4b; 2号 dc2af2a uniform)
       { const a = lpq(p).toFixed(4), b = lpq(pd).toFixed(4); if (lpKey !== a) { lpKey = a; seg.style.setProperty("--lp", a); } if (lpdKey !== b) { lpdKey = b; seg.style.setProperty("--lpd", b); } }
       if (p > 0 || pd > 0) { seg.classList.add("lift"); seg.classList.remove("prewarm"); } else seg.classList.remove("lift");
       return; }

@@ -65,7 +65,7 @@ if (!lens) { stats.textContent = "no WebGL2"; return; }
 await lens.sets[220].ready; drawBase(); }
 const whRule = () => { const l = lensX, t = lensY, r = l + LW, b = t + LH; return (Math.min(r + 100, 440) - Math.max(l - 100, 0)) / (Math.min(b + 100, 956) - Math.max(t - 100, 0)); };   /* §3b.6: capture box = frame + marginWidth 100 clamped to the screen */
 let frameN = 0, times = [], gpuTimes = [], lastRaf = null, t0 = performance.now();
-const draw = () => { if (UI) { canvas.style.left = (lensX - 16) + "px"; canvas.style.top = (lensY - 16) + "px"; lens.draw({ lensX, lensY, w: LW, h: LH, p: state === "rest" ? 0 : 1, pd: 1, wh: whRule() }); }
+const draw = () => { if (UI) { canvas.style.left = (lensX - 16) + "px"; canvas.style.top = (lensY - 16) + "px"; lens.draw({ lensX, lensY, w: LW, h: LH, p: state === "rest" ? 0 : 1, pd: 1, wh: whRule(), platter: { rgba: theme === "dark" ? [28, 28, 30, 1] : [255, 255, 255, 1], alpha: 0 } }); }   /* held: the platter has faded (1 − p = 0) */
   else lens.setState({ cx: lensX + LW / 2, cy: lensY + LH / 2, w: LW, h: LH, lift: state === "rest" ? 0 : 1, wh: whRule() }); gpuTimes.push(lens.stats.gpuMs); frameN++; };
 const report = (what) => { const m = (a) => a.reduce((s, x) => s + x, 0) / Math.max(1, a.length), mx = (a) => a.reduce((s, x) => Math.max(s, x), 0);
   stats.innerHTML = `${what} ${times.length} 帧 · rAF 间隔 平均 <b>${m(times).toFixed(1)} ms</b> 最大 <b>${mx(times).toFixed(1)}</b> · setState 到 gl.finish 平均 <b>${m(gpuTimes).toFixed(2)} ms</b> 最大 <b>${mx(gpuTimes).toFixed(1)}</b> · ${state} ${theme} · 透镜 x ${lensX.toFixed(1)} · W/H ${whRule().toFixed(2)} · ${DPR}×`; };

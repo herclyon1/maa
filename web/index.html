@@ -542,12 +542,12 @@
   .segctl.lift .warp,.segctl.lift .warpl,.segctl.lift .plat,.segctl.lift .rimb,.segctl.lift .hlk,.segctl.lift .hlw{display:block}
   /* WebGL lens (view.js segGlCreate, 2号 lens-webgl.js README §0.8.7): the overlay canvas = the control's width, 24 pt above and below it (the lifted lens is
      6 pt outside the control, the wrapper 16 more); it paints the capsule and, outside it, only the ring shadow and the dark line's row — the DOM shows through.
-     Under .gl the SVG stack stays built but hidden; the resting platter is the DOM .lens (the canvas is cleared at rest), and while lifted the .lens itself
-     carries the platter's 1 − lp fade above the canvas (the shader has no platter layer yet — §4b puts restingBackground above the displaced backdrop and
-     below the rim lines; here it sits above both until the package takes a platter uniform). */
+     Under .gl the SVG stack stays built but hidden; the resting platter is the DOM .lens (the canvas is cleared at rest); while lifted the platter's
+     1 − lp fade is the shader's own layer (dc2af2a: setState platter {rgba, alpha} — above the displaced backdrop, below the lines and labels, §4b) and
+     the .lens is transparent as in the SVG path (.segctl.lift .lens). */
   .segctl canvas.glens{position:absolute;left:0;top:-24px;width:100%;height:calc(100% + 48px);pointer-events:none;z-index:9;display:block}
   .segctl.gl .stack,.segctl.gl .rimo,.segctl.gl .hlk,.segctl.gl .hlw{display:none !important}
-  .segctl.gl.lift .lens{background:var(--ios-segment-selected-bg);opacity:calc(1 - var(--lp, 0));z-index:10}
+
   /* A 起手预建 (view.js segPrewarm / segLens prewarm): the layers painted once at load, at rest geometry and opacity .01 (a fully transparent layer may not be
      rasterised), the white .lens untouched — the engine builds the filter pipeline and the compositing layers before the first touch */
   .segctl.prewarm .stack,.segctl.prewarm .rimo,.segctl.prewarm .hlk,.segctl.prewarm .hlw,.segctl.prewarm .warp,.segctl.prewarm .warpl,.segctl.prewarm .plat,.segctl.prewarm .rimb{display:block}
