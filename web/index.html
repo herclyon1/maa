@@ -559,19 +559,21 @@
      sub-px borders are snapped to whole CSS px by Blink, stroke geometry is not. Each layer fades with the glass progress (opacity --lp). */
   .segctl .rimb,.segctl .hlk,.segctl .hlw{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;display:none;border-radius:var(--rr, 14px)}
   .segctl .rimb{z-index:6}
-  .segctl .hlk,.segctl .hlw{z-index:8;overflow:visible;opacity:var(--lp, 0)}
+  .segctl .hlk,.segctl .hlw{z-index:8;overflow:visible;opacity:var(--lp, 0);clip-path:inset(12px round var(--rr, 14px))}   /* B6-c §3: the stacks clipped to the capsule (the SVG box = lens box + 12 px): the native has nothing outside it (row 602 x 108–123 = page); ?segx=hlclip0 lifts the clip */
   .segctl .hlw{mix-blend-mode:plus-lighter}
   .segctl .rimb > *,.segctl .rimo > *{position:absolute;pointer-events:none;opacity:var(--lp, 0);box-sizing:border-box}
   /* ④ #21 inner shadow (keyfill-highlight.md §5.2; layer keys seg-lens-refraction.md §1c(b): invertsShadow 1, shadowPathIsBounds 1, r22 capsule,
      black .06, radius 3, offset (0, 7), masksToBounds 1). Readings (predict-seg-hold.md §0d, QuartzCore decompile by the old page session): the
      blur kernel is a true Gaussian with σ = shadowRadius in pt (3), the offset is applied as a float (no rounding), α = color.a × shadowOpacity ×
-     layer opacity with no other factor; invertsShadow = the shape's complement blurred, translated by the offset, clipped by the shape — CSS
-     `box-shadow: inset` is the same construction with blur = 2σ = 6 px. Position: the #21 frame's top edge lies 1 pt inside the lens (603) and
-     603 + 7 = the measured half-value edge 610, so on this element (the lens box, top 602) the offset is 8. Amplitude: the reading .06 is drawn;
-     the raster reads .043 — the difference is unresolved (the data session is reading #21's opacity / compositingFilter / the parent's opacity /
-     allowsGroupOpacity for a factor; changed the moment it lands). The three ride the lift like the native layer's (§1c(b): offset, opacity and
-     radius on one curve → × --lp). Black on the dark theme's black page = invisible, as measured (§1c(e) dark: 0). */
-  .segctl .rimb .ish,.segctl .rimo .ish{inset:0;border-radius:inherit;box-shadow:inset 0 calc(8px * var(--lp, 0)) calc(6px * var(--lp, 0)) 0 rgb(0 0 0 / .06)}
+     layer opacity with no other factor. B6-c §4 (keyfill §5.2c, QuartzCore emit_shadow_path 0x1c3ad0d3c, the inverted branch): α(p) = op · M(p) ·
+     blur_σ(M − M↓offset)(p) — the shape MINUS its own copy moved down by the offset, blurred, clipped back to the shape; NOT the complement blurred
+     (CSS box-shadow: inset gives .057 on the top rows where the raster reads .033 / .039). The plateau .045 = .06 × .758 (the 7-pt band eaten 24 % by
+     the σ-3 kernel) — the measured .043 is not a factor. Drawn by #seg-lens-f-ish (2号 lens-filter.svg) on a black capsule = the lens box, offset 7;
+     WebKit 3 px/pt column x 220 rows 602–613: .034 .038 .044 .046 .044 .038 .033 .025 .016 .008 .003 0 vs the closed form .033 .039 .044 .045 .044
+     .039 .033 .026 .019 .012 .007 .004 (602–609 within .001). The three ride the lift on one curve (§1c(b)): dy 7·lp, σ 3·lp, slope .06·lp set per
+     frame. Unresolved: the ends (row 616, x 111 …) — the closed form gives .029 peak where §5.2 read +3.8 … +1.9 (≈ .016 → .008); for the data session.
+     Black on the dark theme's black page = invisible, as measured (§1c(e) dark: 0). */
+  .segctl .rimb .ish,.segctl .rimo .ish{inset:0;border-radius:inherit;background:#000;filter:url(#seg-lens-f-ish);opacity:1}   /* B6-c §4: the band construction op·M·blur_σ3(M − M↓7) as #seg-lens-f-ish on a black capsule = the lens box (top 602, offset 7 inside the filter); the lift ramp is on the filter's dy / σ / slope (view.js), not on the opacity */
   /* the SVGs: lens-box coordinates inside a 12 px margin (the ring shadow's blur reaches 3σ = 9 pt out, the dark line .667); width / height attributes = box + 24 */
   .segctl .rimb svg,.segctl .rimo svg,.segctl .hlk,.segctl .hlw{overflow:visible}
   .segctl .rimb svg,.segctl .rimo svg{left:-12px;top:-12px}   /* the highlight SVGs get their box (lens box + 12 px margin) from the loop: WebKit clips an outer <svg> to its box whatever overflow says */
@@ -585,16 +587,14 @@
   /* ② glassBackground's built-in KeyFill term (keyfill-highlight.md §5.1; keys §1c(g) 实读: KeyFillHighlightAmount .5, ColorBias −.3,
      EffectOffset −.6667, Height 1, Angle π/2, SpreadSDR 2.0944 (SDR)): the 1 pt band from .667 OUTSIDE to .333 inside the capsule (e = −(d − .667)),
      profile .25 + .75·(1 − e) (curvature .75), lit along dir = (sin θ, −cos θ) = (1, 0): at the ends one of key / fill has ang 1, on the top / bottom
-     both have (0 + .5)/1.5 = .333; k = key′ + fill′, x′ = x/(1 + .5(1 − x)); colour B·(1 + (−.3)·k·(3 − 2B)). Three 1/3 pt ring strokes (rect.kf,
+     both have (0 + .5)/1.5 = .333; k = key′ + fill′, x′ = x (the uniform amount is loaded as 1/.5 − 2 = 0, keyfill §5.1 B6-3; B6-c §1); colour B·(1 + (−.3)·k·(3 − 2B)). Three 1/3 pt ring strokes (rect.kf,
      whole device rows at 3×); the colouring's B-dependence is black source-over with stroke-opacity .3·k_tip·(3 − 2B_track) for the track the ends
      lie on (B_track from the theme's --bg + --ios-segment-track), the angular factor k(x)/k_tip along the arcs as the stroke's gradient
      (stop-opacity = the §5.1 formula at n_x = −1 … 0), and × (3 − 2B_page)/(3 − 2B_track) above / below the track rows as the group's mask.
-     Known residual (verification, not tuned): with these keys the top / bottom rows come out 7–9 levels lighter than the native 601 / 646
-     (predicted −18.9 / −21.3 vs −26.6 / −29.9); the ends match (col 111 192.9 vs 192.4). Read (predict-seg-hold.md §0 3c, keyfill-highlight.md
-     §5.1): dir = (sin θ, −cos θ) = (1, 0) (render 0x1c3993f44 / 0x1c39940ec / 0x1c399471c), the Ext block extension 1 / bias-correction 1 /
-     stroke 0 / luma-complement 0, EDR f = 0. The two things still unread that could carry the difference: (a) whether the CPU loads the Amount
-     uniform as 1/amount − 2 (the #36 layer's SDFNode::apply does — then k = v·ang and the rows predict −46 / −33 per third-row vs the measured
-     −47 / −33; old page session), (b) the SpreadSDR cos term S (read −.5; the data session's two sdfset trials separate it). */
+     Read (predict-seg-hold.md §0 3c, keyfill-highlight.md §5.1): dir = (sin θ, −cos θ) = (1, 0) (render 0x1c3993f44 / 0x1c39940ec / 0x1c399471c),
+     the Ext block extension 1 / bias-correction 1 / stroke 0 / luma-complement 0, EDR f = 0, S = cos 2.0944 = −.5. With the uniform amount 0 (B6-c §1)
+     the tip value kfK(v, −1) = v (.875 / .625 / .375) and the top / bottom value 2v/3 — predict §6.1: row 601 px rows 197 / 211 / 224 (mean −26.5;
+     native −26.6), row 646 −26.5 − 3.3 (ring-shadow tail) = −29.8 (native −29.9), y616 x110 + x111 −53.1 (native −53). */
   .segctl .rimb rect.kf,.segctl .rimo rect.kf{fill:none}
   /* ① #36 CASDFKeyFillHighlightEffect layer + vibrantColorMatrix (keyfill-highlight.md §2 / §3, the 22 keys of seg-lens-refraction.md §1b #36):
      α(e) over the depth e into the capsule = main band (h 1, curvature .75 → .25 + .75(1 − e)) + diffuse tail (h 8, linear, bias 1/(.15·.5) − 2 =
@@ -604,15 +604,20 @@
      through the matrix (predict-seg-hold.md §0 item 6: main band, diffuse key, diffuse fill; summed-α would give 35 on the dark edge row, three
      passes 44.0, measured 45.3), so there are two pairs in paint order: .hlk.m, .hlw.m (main band), .hlk.d, .hlw.d (diffuse; key and fill never
      overlap, one pair carries both). Rings: 1/3 pt over the first pt, 1 pt to
-     8 pt; per-ring α = the formula's mean over the ring — hard-edged rings: the shader's fwidth antialiasing term (aa = saturate(e/fw + .5) at
-     both band edges) is not drawn because the unit of fw on this layer (device px at which contentsScale) is unread; the difference of the three
-     passes to the measured dark edge row (44.3 vs 45.3) stays recorded as unread, not patched. Engine fact: the white plus-lighter stack clamps
+     8 pt; per-ring α = the formula's mean over the ring. B6-c §2 (keyfill §2 B6-2): the shader's antialiasing aa = saturate(e/fw + .5) · saturate((h − e)/fw
+     + .5) has fw = fwidth(e) = (|n_x| + |n_y|)/contentsScale pt per fragment (⅓ pt on the straight edges at 3×, .471 on the 45° arc), sampled at pixel
+     centres — on the straight edges the ramp ends exactly at the neighbouring pixel centres, i.e. identical to these hard ⅓-pt rings read at their
+     centres (244 / 197 / 211 / 224 / 244); on the arcs it equals the rasteriser's coverage AA of the strokes (a ramp (|n_x| + |n_y|) px wide along
+     the normal) — so no extra ring; the rings must be rasterised at the device scale (default shape-rendering). Residual: the shader's inner tail for
+     e ∈ (1, 1 + fw/2) ≈ 7/255 vs coverage AA ≈ 9/255 one pixel inside the arc — recorded; the difference of the three passes to the measured dark edge
+     row (44.3 vs 45.3) stays recorded as unread, not patched. Engine fact: the white plus-lighter stack clamps
      the SUM at 255 where the native clamps V(b) = min(255, .9118·b + 37.5) before the α mix — the two agree for backdrops ≤ .9354·255 (238.5)
      and differ only on brighter ones, i.e. the page rows under the bottom light line (642–645): +1.1 / +1.6 / +1.1 / +2.7 over predict-seg-hold
      §1; the exact form would be one backdrop-filter: contrast(.756) brightness(1.206) (= V with its clamp) per ring under opacity α — 13
-     backdrop filters, not done (监督局 2026-09-19). Angular fall-off along the
-     arcs as the strokes' gradients: main sat((cos φ − .174)/.826) (gone at 80° from the top → no light line at the ends, §0a), diffuse the first
-     ring's ratio (cos .6155: gone at 52°; the deeper rings fall off faster than this — ≤ 2 levels on the arcs). The dark theme needs no separate
+     backdrop filters, not done (监督局 2026-09-19). B6-c §4b: the main band is drawn on the two straight runs only (predict-seg-hold.md §6.1 rows 5–6 —
+     the native arc rows 603–605 at x_arc + .5 carry no lightening, the corner outside the capsule is page; keyfill §0a item 2 withdrawn): two <line>
+     per ring, x ∈ [R, W − R], plain colour; the diffuse tail stays a full ring under the first ring's angular ratio (cos .6155: gone at 52°; the
+     deeper rings fall off faster than this — ≤ 2 levels on the arcs). The dark theme needs no separate
      values: the same map on B = 0 gives .1471·α → 45.3 at the edge row, 10.0 at 603 (§3 table). */
   .segctl .hlk rect,.segctl .hlw rect{fill:none}
   .segctl + section > .group:first-child,.segctl + section > h2{margin-top:0}
@@ -3897,6 +3902,16 @@
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
+  <filter id="seg-lens-f-ish" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB" data-op="0.06" data-offset="7" data-sigma="3">
+    <!-- #21 inner shadow, keyfill-highlight.md §5.2c: op · M · blur_σ(M − M↓off), op 0.06 / offset (0, 7) / σ = shadowRadius 3 pt; M = the element's own alpha (the capsule) — 2号 ui2 cbdd6f3 lens-filter.svg; view.js frame() rides dy / stdDeviation / slope on the lift progress -->
+    <feOffset in="SourceAlpha" dx="0" dy="7" result="moff"/>
+    <feComposite in="SourceAlpha" in2="moff" operator="out" result="band"/>
+    <feGaussianBlur in="band" stdDeviation="3" result="blur"/>
+    <feComposite in="blur" in2="SourceAlpha" operator="in" result="clip"/>
+    <feComponentTransfer in="clip" result="alpha"><feFuncA type="linear" slope="0.06" intercept="0"/></feComponentTransfer>
+    <feFlood flood-color="#000" flood-opacity="1" result="black"/>
+    <feComposite in="black" in2="alpha" operator="in"/>
+  </filter>
 </svg>
 <script>window.LENS_SS = new URLSearchParams(location.search).get("ss") === "1" ? 2 : 1; window.LENS_ENGINE_FIX = new URLSearchParams(location.search).get("enginefix") === "1";</script>   <!-- 引擎校正（62 张 feImage 换 blob）默认关，?enginefix=1 才开（监督局 09-19 12:0x，真机 20–25 fps 二分中）；色散层同样默认关，?disp=1 才开（view.js SEG_DISP_ON） -->   <!-- 引擎校正 2 / 候选 A 默认关（监督局 09-19 11:1x）：?ss=1 才开 2× -->
 <script src="assets/lens/lens-supersample.js"></script>   <!-- 引擎校正 2 / 候选 A（2号 ui2 7c26d3b，README §0.4）：开时把 .warp .disp / .warpl .displ 包成 .ssw scale3d(½) + 2× 滤镜层 + .ss2，滤镜 data-s ×2、区域 50 %（data-s0 = 文件 S）；必须在 lens-engine-fix.js 之前（它读 window.LENS_SS / data-s0） -->
@@ -3929,6 +3944,7 @@
      hlcss = the highlight's four passes as CSS inset box-shadow ring stacks + mask-image gradients on plain divs instead of SVG strokes. */
   if (q.has("segx")) { const sw = q.get("segx").split(",");
     const css = []; if (sw.includes("nowarp")) css.push(".segctl .warp{visibility:hidden}"); if (sw.includes("norimb")) css.push(".segctl .rimb{visibility:hidden}");
+    if (sw.includes("hlclip0")) css.push(".segctl .hlk,.segctl .hlw{clip-path:none}");   // B6-c §3 before / after switch
     if (sw.includes("nohl")) css.push(".segctl .hlk,.segctl .hlw{visibility:hidden}"); if (sw.includes("nohlk")) css.push(".segctl .hlk{visibility:hidden}"); if (sw.includes("nohlw")) css.push(".segctl .hlw{visibility:hidden}");
     if (sw.includes("nowarpl")) css.push(".segctl .warpl{visibility:hidden}"); if (sw.includes("noplat")) css.push(".segctl .plat{visibility:hidden}");
     if (sw.includes("noish")) css.push(".segctl .rimb .ish{visibility:hidden}"); if (sw.includes("nors")) css.push(".segctl .rimb rect.rs{visibility:hidden}"); if (sw.includes("nokf")) css.push(".segctl .rimb .kfg{visibility:hidden}");

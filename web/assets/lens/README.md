@@ -761,6 +761,43 @@ fringe filter's scale: the aberration amount does not appear in the motion trace
 off). Nothing here is a fitted value: every number above is a read key or the read curve; what is not read (the drag rule, the wobble,
 the stretch beyond 116) is marked so.
 
+#### 0.8.1 The page's own set family: `tab5/` (2026-09-19, ui2; the wiring itself not yet committed — stopped at the 10:55 order)
+
+The page shows five tabs (状态 / 方舟 / 终末地 / 鸣潮 / 手机); on the 440-pt screen `nav.tabs` is 416 wide (`max-width: calc(100% − 24px)`)
+and each button 81.59×54 (read in WebKit: `getBoundingClientRect` of the five buttons: x 16 / 97.59 / 179.19 / 260.78 / 342.38, w 81.59;
+`.glide` 82 = `offsetWidth`). The native probe's family (`tab/`, 94×54 → 110×70) is the three-button layout; the lift rule read there is
++16 pt on both axes on one spring (94 → 110, 54 → 70; tab-lens-motion.md §4), the SDF heights stay — so the page needs the family on
+its own resting size, on the 2-pt set grid: **`tab5/` = 82×54 → 98×70** (9 sets, w 82 … 98 step 2, h = w − 28, r = h/2, the
+lifted set 98 S 48, the path S 40, S_ab 16; the lens model at progress p = (82 + 16p) × (54 + 16p), set = nearest even w; the
+0.41-pt difference 82 vs 81.59 is the grid, the box is the set's size). Same recipe as §0.7, only the sizes differ:
+`gen_lens_maps.py --formula --name tab --size 98x70 --series 82:98:2 --lift-path 82x54 --label-portal 0 --corner-radius half
+--label-region 28x20 --bg-layers=-10.5/7/0.5/lens,9/36/0.5/lens --label-layers=-14/11.2/0.5/lens,-17.5/11.2/0.5/lens
+--aberration=3.6842/0/38.889/-0.2618 --edge=-14/0/1/0 --href-prefix assets/lens/tab5/ --out tab5` → `tab5/tab-f-{bg,lab,ab}-<w>.png`
+(205 KB), `tab5/lens-filter.svg` (the same ids `#tab-lens-f-{bg,lab,ab}-<w>` — one family per page; the page includes `tab5/`, the
+test page `tab/`), `tab5/lens-field.json`. No verification block: there is no measured five-button field (the phase files are the
+three-button probe); whether the native lifts a narrower button by the same +16 is UNREAD (marked, not assumed elsewhere).
+Peaks: bg 7.8 pt on every set, lab 13.9 (82) → 22.6 (98) pt.
+
+Engine note for the wiring (from `calib/webkit-region-under-scale.html`, only read at ½): the filtered layers must NOT sit under the
+platter's 1.0516 transform — the fact is read at scale ½ only, so the wiring lays the lens stack out in screen coordinates (the model
+box × 1.0516 about the platter centre, the filter `scale` attribute × 1.0516 — u_screen(p) = 1.0516·u_model(p / 1.0516), the map
+stretched over the presented box), the real `nav.tabs` carries `translateX(-50%) scale(1.0516)`; the page copy inside the lens stays
+1:1. `backdrop-filter` inside a software-filtered element does not blur (wksnap `bftest`: the fill renders, the blur does not), so the
+platter copy inside the lens is a clone of the page under the bar with `filter: var(--glass-filter)` + `var(--glass-fill)` in the
+platter capsule.
+
+### 0.8.2 B6-c — the segment lens's edge lines, the asset + the patch text (2026-09-19 11:5x; `B6C-PATCH.md`)
+
+`lens-filter.svg` → `#seg-lens-f-ish` (generated: `gen_lens_maps.py` `filter_inner_shadow`, also `#tab-lens-f-ish` in the tab families
+when they are regenerated): the ClearGlass inner shadow #21 as QuartzCore rasterises it — keyfill-highlight.md §5.2c: α = op · M · blur_σ(M −
+M↓off), op .06 / offset 7 / σ = shadowRadius 3 — as feOffset → feComposite out → feGaussianBlur → feComposite in → α × .06, on a black capsule
+of the lens box. WebKit column x 220 rows 602–613 vs the closed form: within .001 on 602–609, the tail one 8-bit level low (table in
+`B6C-PATCH.md` §4); the old CSS inset box-shadow reads .057 on the top rows (the complement construction, ruled out by §5.2c). The other three
+items of the order (k without compression — amount uniform 1/.5 − 2 = 0, keyfill §5.1 B6-3; the fwidth AA — per-fragment, ⅓ pt at 3×, equal
+to the hard rings at pixel centres on the straight edges and to coverage AA on the arcs, keyfill §2 B6-2; the white stack clipped to the
+capsule; the #36 main band on the straight runs only, predict §6.1 rows 5–6) are view.js / index.html numbers of the ui session: written as line + old → new + source in `B6C-PATCH.md` §1–§3, §4b. The regeneration
+also restored `lens-field.json`'s `verification` block (it had been emptied by a run without `--verify-*`; §7's command).
+
 ### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
 
 Sources: `remote-ref/sheet-native.md` (the data session's 10th order: A9 `sheetivars` / `corners` / `subtree` / motion, iOS 27.0 3×) and

@@ -1246,7 +1246,12 @@ const SEG_SPRING = { lift: [1.0, .25], fallMaterial: [1.0, .4], model: [.85, .2]
    +532 / +539 from the down, the synthetic up at +89 (touch-local.uiprobe-springs-tap.json)]: lift geometry ζ1/.25 in place, lift material
    ζ1/.25, the value-change travel ζ .85/.4 (one retarget to the target centre), fall geometry ζ1/.25, fall material ζ1/.4. The unhooked frames
    (seg-native-tap-frames.json: up +62, valueChanged +148 = up +86, first displaced frame +183) put geometry + travel in the same frame. */
-const SEG_TAP_T = { geo: .082, mat: .092, travel: .098, fallGeo: .443, fallMat: .450 };   // position springs; the .6533/.4559 and .56/.444 tracking springs of §4.4 are the flex interaction's (FLEX_VARIANT)
+const SEG_TAP_T = { geo: .082, mat: .092, travel: .098, fallGeo: .082 + .22, fallMat: .082 + .22 };
+/* the fall (老网页 09-19, seg-lens-refraction.md §4.4 end, 0x1c54c798c / 0x1c54c7a64–0x1c54c7bd4): `_UILiquidLensView setLifted:NO` arms an NSTimer of
+   lensHangTime .22 s × dragCoefficient MINUS the time since setLifted:YES (liftTime, ivar +0x230); ≤ 0 → immediate. The tap's touchesEnded sets the
+   value + lifts, then un-highlights → elapsed ≈ 0 → the full .22 s from the lift start; actuallySetLifted:NO then builds both fall animations
+   (geometry ζ1/.25, material ζ1/.4) in one call. First fallen frame ≈ up + .24 … .27 (the unhooked frames read +.29); the hooked dump's +.443 was the
+   slowed process. */   // position springs; the .6533/.4559 and .56/.444 tracking springs of §4.4 are the flex interaction's (FLEX_VARIANT)
 /* B5 — the lens's stretch while dragging and its bounce after the up: UIKitCore `_UIFlexInteraction` (remote-ref/flex-interaction.md, the old
    page session's decompilation of the iOS 27.0 simulator UIKitCore; offsets there). Structure (§1): `_UILiquidLensView.flexInteraction`; every
    frame (UIUpdateLink 0x1c5050900) the lens's OWN presentation-layer centre goes into `_UIVelocityIntegrator addSample:` (config 0x1c504f3d8:
@@ -1319,9 +1324,9 @@ const SEG_RIM = (() => {
   const hlRings = EDGES.slice(0, -1).map((e0, i) => ({ e0, e1: EDGES[i + 1], main: i < 3 ? mean(hlMain, e0, EDGES[i + 1]) : 0, diff: mean(hlDiff, e0, EDGES[i + 1]) }));
   const angMain = (nx) => sat((Math.sqrt(Math.max(0, 1 - nx * nx)) - HL_COS) / (1 - HL_COS));   // along the arcs n·dir = cos φ = √(1 − n_x²)
   const dFull = mean(hlDiff, 0, 1), angDiff = (nx) => { const c = sat((Math.sqrt(Math.max(0, 1 - nx * nx)) - HD_COS) / (1 - HD_COS)); return mean((e) => hlDiff(e, c), 0, 1) / dFull; };
-  /* glassBackground built-in KeyFill (§5.1): Amount .5 (x′ = x/(1 + .5(1 − x))), ColorBias −.3, EffectOffset −.6667, Height 1, Angle π/2 → dir (sin θ, −cos θ) = (1, 0),
+  /* glassBackground built-in KeyFill (§5.1): Amount .5 → uniform 1/.5 − 2 = 0 (x′ = x; B6-c §1), ColorBias −.3, EffectOffset −.6667, Height 1, Angle π/2 → dir (sin θ, −cos θ) = (1, 0),
      SpreadSDR 2.0944 → S = −.5; band e = −(d + offset) from .667 outside to .333 inside, prof .25 + .75(1 − e) */
-  const KF_S = Math.cos(2.0944), g = (x) => x / (1 + .5 * (1 - x));
+  const KF_S = Math.cos(2.0944), KF_AMOUNT = 1 / .5 - 2, g = (x) => x / (1 + KF_AMOUNT * (1 - x));   // B6-c §1: the CPU loads the Amount uniform as 1/amount − 2 (render 0x1c399425c–0x1c3994264 → +280; keyfill §5.1 B6-3) = 0 for the lens's .5 → x′ = x, no compression
   const kfK = (v, nx) => g(v * sat((nx - KF_S) / (1 - KF_S))) + g(v * sat((-nx - KF_S) / (1 - KF_S)));
   const kfRings = [[0, 1 / 3], [1 / 3, 2 / 3], [2 / 3, 1]].map(([a, b]) => ({ e0: a - 2 / 3, e1: b - 2 / 3, v: mean((e) => .25 + .75 * (1 - e), a, b) }));   // e0/e1 as depth into the capsule (negative = outside)
   const NXS = [-1, -.98, -.95, -.9, -.8, -.7, -.6, -.5, -.4, -.3, -.2, -.1, 0];
@@ -1382,8 +1387,14 @@ function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }:
      for the main band, then the diffuse key band, then the diffuse fill band — not one pass with the summed α (dark edge row: summed 35, three passes 44.0, measured 45.3).
      Each pass = a black multiply stack (1 − .0882α_i) followed by a white plus-lighter stack (+.1471α_i), so the pass order is the element order:
      black-main, white-main, black-diffuse, white-diffuse. The two diffuse bands never overlap (key lights within 52° of the top, fill of the bottom), so one diffuse pair carries both. */
-  const mkHl = (cls, band, colour, mult) => { const { s, defs, g } = buildSvg(cls); s.classList.add(band); const gid = `${uid}-${cls}-${band}`; defs.appendChild(hgrad(gid, band === "m" ? SEG_RIM.angMain : SEG_RIM.angDiff, colour));
-    for (const r of SEG_RIM.hlRings) { const a = band === "m" ? r.main : r.diff; if (a) g.appendChild(ringRect("hl", r.e0, r.e1, { stroke: `url(#${gid})`, "stroke-opacity": (mult * a).toFixed(4) })); }
+  /* B6-c §4b (predict-seg-hold.md §6.1 rows 5–6): the MAIN band runs only along the two straight edges, |x − W/2| ≤ W/2 − R (the native arc rows 603–605 at
+     x_arc + .5 carry no lightening; keyfill §0a item 2 withdrawn) — two <line> per ring (top / bottom), plain colour (n·dir = 1 there), no gradient;
+     the diffuse tail stays a full ring under the first ring's angular ratio. Unresolved (recorded): the shader's angular term would give .65 of the
+     band at 45° on the arc where the reading says 0 — the #36 layer's shape / clip (cornerRadii 0×4), for the data session. */
+  const mkHl = (cls, band, colour, mult) => { const { s, defs, g } = buildSvg(cls); s.classList.add(band); const gid = `${uid}-${cls}-${band}`; if (band !== "m") defs.appendChild(hgrad(gid, SEG_RIM.angDiff, colour));
+    for (const r of SEG_RIM.hlRings) { const a = band === "m" ? r.main : r.diff; if (!a) continue;
+      if (band === "m") for (const run of ["top", "bot"]) g.appendChild(svgEl("line", { class: "hl", "data-e0": r.e0, "data-e1": r.e1, "data-run": run, stroke: colour, "stroke-opacity": (mult * a).toFixed(4), "stroke-linecap": "butt" }));
+      else g.appendChild(ringRect("hl", r.e0, r.e1, { stroke: `url(#${gid})`, "stroke-opacity": (mult * a).toFixed(4) })); }
     seg.appendChild(s); return s; };
   /* ?segx=hlcss (experiment, ios-switch-list.md): the same four passes as CSS inset box-shadow ring stacks on plain divs (each shadow covers the rings
      inside it, so the per-ring alphas are solved for the cumulative source-over) with the angular factor as a mask-image gradient — no SVG. */
@@ -1419,6 +1430,8 @@ function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }:
     for (const s of [rimb.querySelector("svg"), rimo.querySelector("svg"), ...(HLCSS ? [] : hls)]) { s.setAttribute("width", Wd + 24); s.setAttribute("height", Hd + 24);
       for (const r of s.querySelectorAll("rect[data-e0]")) { const e0 = +r.dataset.e0, e1 = +r.dataset.e1, em = (e0 + e1) / 2, dy = +(r.dataset.dy || 0);
         r.setAttribute("x", em); r.setAttribute("y", em + dy); r.setAttribute("width", Wd - 2 * em); r.setAttribute("height", Hd - 2 * em); r.setAttribute("rx", R - em); r.setAttribute("stroke-width", e1 - e0); }
+      for (const l of s.querySelectorAll("line[data-e0]")) { const e0 = +l.dataset.e0, e1 = +l.dataset.e1, em = (e0 + e1) / 2, y = l.dataset.run === "top" ? em : Hd - em;   // B6-c §4b: the main band's straight runs x ∈ [R, W − R]
+        l.setAttribute("x1", R); l.setAttribute("x2", Wd - R); l.setAttribute("y1", y); l.setAttribute("y2", y); l.setAttribute("stroke-width", e1 - e0); }
       for (const gr of s.querySelectorAll("linearGradient")) { if (gr.getAttribute("x2") === "0") { gr.setAttribute("y1", -T); gr.setAttribute("y2", segH - T); continue; }   // the page / track mask: the track's rows in lens-box coordinates
         gr.setAttribute("x2", Wd); for (const st of gr.children) { const nx = +st.dataset.nx, o = R * (1 + nx) / Wd; st.setAttribute("offset", (st.dataset.side === "1" ? 1 - o : o).toFixed(5)); } }
       for (const m of s.querySelectorAll("mask")) { m.setAttribute("width", Wd + 24); m.setAttribute("height", Hd + 24); m.firstElementChild.setAttribute("width", Wd + 24); m.firstElementChild.setAttribute("height", Hd + 24); } } };
@@ -1440,7 +1453,7 @@ function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }:
      transform — the flex scale, B5 — so the model stays 220 while dragging and the 220 set is the one; the lift rides it with scale 0 → S). The
      196 … 256 sets remain for a model of another width. */
   const setFor = (Wm) => Math.max(196, Math.min(256, 2 * Math.round(Wm / 2)));
-  let curSet = 0, punchKey = "", abKey = "";
+  let curSet = 0, punchKey = "", abKey = "", ishKey = "";
   /* layer 5 per frame: the W/H colour matrix from the lens's SCREEN rect (§3b.6 capture box = frame + 100 pt each side clamped to the viewport;
      1.72 dragged to the divider on the 440 screen, 1.35 lifted in place) and the seven taps' scales = ±S_ab·k × lift progress */
   const abFrame = (set, p) => {
@@ -1480,7 +1493,7 @@ function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }:
     for (const el of [warp, warpl, plat, rimb]) { el.style.left = AM + "px"; el.style.top = AM + "px"; el.style.width = Wd + "px"; el.style.height = Hd + "px"; el.style.setProperty("--rr", R + "px"); }
     stack.style.setProperty("--rr", R + "px"); rimo.style.left = L + "px"; rimo.style.top = T + "px"; rimo.style.width = Wd + "px"; rimo.style.height = Hd + "px"; rimo.style.setProperty("--rr", R + "px");
     if (rimoKey !== `${Wd}|${Hd}`) { rimoKey = `${Wd}|${Hd}`; rimo.style.clipPath = `path(evenodd, "M-14 -14H${Wd + 14}V${Hd + 14}H-14Z M${R} 0H${Wd - R}A${R} ${R} 0 0 1 ${Wd - R} ${Hd}H${R}A${R} ${R} 0 0 1 ${R} 0Z")`; }   // the outside of the capsule (the ring shadow reaches 11 pt out)
-    for (const el of hls) { if (HLCSS) { el.style.left = L + "px"; el.style.top = T + "px"; el.style.width = Wd + "px"; el.style.height = Hd + "px"; el.style.setProperty("--rr", R + "px"); } else { el.style.left = (L - 12) + "px"; el.style.top = (T - 12) + "px"; el.style.width = (Wd + 24) + "px"; el.style.height = (Hd + 24) + "px"; } }   // the highlight SVGs' box = lens box + the 12 px margin (WebKit clips an outer <svg> to its box whatever overflow says)
+    for (const el of hls) { if (HLCSS) { el.style.left = L + "px"; el.style.top = T + "px"; el.style.width = Wd + "px"; el.style.height = Hd + "px"; el.style.setProperty("--rr", R + "px"); } else { el.style.left = (L - 12) + "px"; el.style.top = (T - 12) + "px"; el.style.width = (Wd + 24) + "px"; el.style.height = (Hd + 24) + "px"; el.style.setProperty("--rr", R + "px"); } }   // --rr: the capsule clip of the highlight stacks (B6-c §3)   // the highlight SVGs' box = lens box + the 12 px margin (WebKit clips an outer <svg> to its box whatever overflow says)
     rimGeo(Wd, Hd, T);   // B6: the ring strokes follow the model box
     copy.style.left = -L + "px"; copy.style.top = -T + "px";   // the backdrop copy stays aligned with the real control
     copyp.style.left = -L + "px"; copyp.style.top = -T + "px"; copyl.style.left = -L + "px"; copyl.style.top = -T + "px";   // the label copies aligned with the real labels (B4-c': no 196×28 portal offset)
@@ -1488,6 +1501,8 @@ function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }:
     const set = setFor(Math.max(W0 + 2 * LX, Wd));   // the model width (220 lifted; Wd is the model box — the flex transform is separate)
     if (set !== curSet) { curSet = set; disp.style.filter = `url(#seg-lens-f-bg-${set})`; displ.style.filter = `url(#seg-lens-f-lab-${set})`; stack.style.filter = DISPERSION && document.querySelector(`#seg-lens-f-ab-${set}`) ? `url(#seg-lens-f-ab-${set})` : "none"; }
     if (DISPERSION) abFrame(set, p);
+    if (ishKey !== p.toFixed(4)) { ishKey = p.toFixed(4); const f = document.querySelector("#seg-lens-f-ish"); if (f) { const off = f.querySelector("feOffset"), bl = f.querySelector("feGaussianBlur"), fa = f.querySelector("feFuncA");   // B6-c §4: #21's offset / radius / opacity on the lift curve (seg-lens-refraction §1c(b))
+        if (off) off.setAttribute("dy", (7 * p).toFixed(3)); if (bl) bl.setAttribute("stdDeviation", (3 * p).toFixed(3)); if (fa) fa.setAttribute("slope", (.06 * p).toFixed(4)); } }
     seg.style.setProperty("--lp", p.toFixed(4)); seg.style.setProperty("--lpd", pd.toFixed(4));
     for (const id of [`#seg-lens-f-bg-${set}`, `#seg-lens-f-lab-${set}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", SEGX.includes("scale0") ? "0" : (sOf(id) * p).toFixed(3)); }   // both stacks' amounts on the lift spring (§4.4 row 2: ClearGlass 0 → −17.5, ContentLensing 0 → −8.8, BackdropView 0 → 9 in the same call)
     cbs.forEach((c, i) => c.className = "cb " + bs[i % bs.length].className);
