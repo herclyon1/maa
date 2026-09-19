@@ -563,7 +563,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
            package drew each frame (stats.last) sampled for 420 ms, then released */
         { const seg7 = q(), g7 = seg7 && seg7.__gl; if (g7 && g7.lens.stats) { const selB = [...seg7.querySelectorAll("button")].find((b) => b.classList.contains("on")); const t7 = performance.now(); pev(seg7, "pointerdown", at(selB)); const r7 = [];
           await new Promise((res) => { const tick = () => { const L = g7.lens.stats.last; if (L && L.t > t7 && !(r7.length && r7[r7.length - 1].t === L.t)) r7.push({ lift: L.lift, a: L.platterAlpha, t: L.t }); if (performance.now() - t7 < 420) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick); });
-          pev(seg7, "pointerup", at(selB)); await sleep(900);
+          pev(seg7, "pointerup", at(selB)); await sleep(900); delete seg7.dataset.pe;   // the browser's click would have consumed the press flag; a synthetic press leaves it, and it would eat the next real click
           const lifted = r7.filter((x) => x.lift > 0 && x.lift < 1), first = r7.find((x) => x.lift > 0), dev = lifted.map((x) => Math.abs(x.a - (1 - x.lift))), mx = dev.length ? Math.max(...dev) : NaN;
           check(`分段 R7 平台淡出：与抬起同帧起、每帧 alpha = 1 − lift（${lifted.length} 帧，最大差 ${Number.isFinite(mx) ? mx.toFixed(4) : "-"}；R15 表 .8688@p.131 / .7186@.281 / .5694@.431）`, "首抬帧 alpha < 1 · |Δ| ≤ .001 · ≥ 5 帧", first ? `首抬帧 lift ${first.lift.toFixed(3)} alpha ${first.a.toFixed(4)} · ${lifted.length} 帧` : "无抬起帧", !!first && first.a < 1 && lifted.length >= 5 && mx <= 0.001); } }
         await sleep(50);
@@ -703,9 +703,13 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
           pev(sg, "pointerdown", at(startB)); pev(sg, "pointerup", at(startB)); await sleep(30); const yStart = window.scrollY;
           pev(sg, "pointerdown", at(otherB)); pev(sg, "pointerup", at(otherB)); await sleep(30);
           check("切标签保留各自滚动位置（切走 → 切回差 0，Health 实测）", `${y1} → ${y1}`, `${y1} → ${yStart} → ${window.scrollY}`, y1 > 0 && yStart === 0 && Math.abs(window.scrollY - y1) < 1);
-          /* tap on the selected tab: to the top on the ω 12 spring (tabscroll/README §2: 0.2 s 71 %, 0.33 s 92 %, 0.5 s 98 %) */
-          const y2 = window.scrollY; pev(sg, "pointerdown", at(otherB)); pev(sg, "pointerup", at(otherB)); await sleep(200); const y200 = window.scrollY; await sleep(300); const y500 = window.scrollY; await sleep(300);
-          check("点已选中标签回顶：ω 12 弹簧（0.2 s ≈ 69–71 %，0.5 s ≈ 98 %，0.8 s 到 0）", "≈31 % · ≈2 % · 0", `${Math.round(y200 / y2 * 100)} % · ${Math.round(y500 / y2 * 100)} % · ${window.scrollY}`, y2 > 0 && Math.abs(y200 / y2 - 0.31) < 0.08 && y500 / y2 < 0.05 && window.scrollY === 0);
+          /* tap on the selected tab: to the top on the system scroll-to-top (tabscroll/README §2b, R17: progress = S(1.6 · bezier(0,.2,1,1)(t / 1.6)), S = ζ 1 / response .6);
+             sampled every frame against the driver's own clock (window.ScrollTop.state.t0, A15), rms ≤ 1 pt; 0 by 1.6 s */
+          const y2 = window.scrollY; pev(sg, "pointerdown", at(otherB)); pev(sg, "pointerup", at(otherB));
+          const stS = []; { const tEnd = performance.now() + 1700; while (performance.now() < tEnd) { await new Promise(requestAnimationFrame); const s = window.ScrollTop && window.ScrollTop.state; if (s) stS.push({ t: (performance.now() - s.t0) / 1000, y: window.scrollY, y0: s.y0 }); } }
+          const F = window.ScrollTop && window.ScrollTop.formula, rmsTop = F && stS.length ? Math.sqrt(stS.reduce((acc, s) => acc + Math.pow(s.y - s.y0 * (1 - F.progress(s.t)), 2), 0) / stS.length) : NaN;
+          const p2 = F ? Math.round(F.progress(0.2) * 1000) / 10 : NaN;
+          check("点已选中标签回顶：系统回顶式（§2b：贝塞尔 (0,.2,1,1) 再临界弹簧 ζ1/.6，D 1.6 s；.2 s 应 85.8 %）逐帧对闭式 rms ≤ 1 pt，1.6 s 内到 0", `rms ≤ 1 · progress(.2) 85.8 · end 0`, `${stS.length} frames · rms ${isNaN(rmsTop) ? "-" : rmsTop.toFixed(2)} · progress(.2) ${p2} · end ${window.scrollY}`, y2 > 0 && stS.length > 20 && rmsTop <= 1 && Math.abs(p2 - 85.8) < 0.2 && window.scrollY === 0);
           window.scrollTo(0, 0); }
         { const sg = document.querySelector("#queueseg"); check("班次分段只在「状态」页（别的标签页隐藏）", "hidden", sg ? (sg.hidden ? "hidden" : "shown") : "缺", !!sg && sg.hidden && getComputedStyle(sg).display === "none"); }
         /* T7/T8: release 250 pt above still selects */

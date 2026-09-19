@@ -859,6 +859,19 @@ cost on the device (the data session's 36916a9 reads the fringe chain and the su
 is the switch here). Engine fact for the geometry: the glide's `offsetLeft` reads its CSS transition mid-flight, so the script reads the
 inline `style.left / width` (the target view.js wrote).
 
+**R2 (2026-09-20 03:2x, BOARD round 2, 验收's (b)): the material through `lens-webgl.js`, geometry mode.** `tab-lens.js` puts a canvas over the bar
+(nav's box + 24 pt on every side: the lifted 98 × 70 over the 62 bar and the fringe wrapper 16) and drives `LensWebGL` with the tab5 family:
+`setsFromFilters("tab", heights)` from tab5/lens-filter.svg (data-s 40, 48 for the 98 set, fringe 16) and tab5/lens-field.json (heights 54 … 70);
+the lift rides the 98 set stretched over the growing box (as the segment lens rides its 220 set, §0.3), `pd = lift` (DestOut on the lift
+spring, tab-lens-motion §4), `wh` from the capture-box rule per frame, the geometry driver's p / x / W / H fed to setState each frame, lift 0 at
+rest (the canvas cleared). The backdrop: the page colour everywhere and the platter's fill (`.plat`'s background-color) as its capsule — the page
+under the bar cannot be drawn into a canvas (标不可表达: the blurred page in the platter, the page content the lens would show above the bar);
+the items are drawn with their own alpha (`labelsDirect`, a package option added for this: tinted mask icons, tab images, the labels in their
+computed font / colour) — no single-ink alpha recovery. Not drawn: the items' 1.16 scale of the SelectedContentView copy (the package has no
+label scale: 待做), `_UITabSelectionView`'s own α 1 → 0 (the glide stays the geometry driver's). `?tlens-gl=0` leaves the canvas out.
+Offscreen: nine sets loaded, a press on the selected item draws 26 frames on set 98 (34 482 opaque px @2×), cleared at the settle;
+`accept-tabbar.js` R2 rows (sets, keys, canvas box, frames / set / pd during a lift, lift 0 at rest, no JS error); headless Chrome 545 / 545.
+
 ### 0.8.4 Frame cost of the fringe chain — the lean chain `#…-f-abl-<w>` and the baked 引擎校正 maps (2026-09-19 12:5x, ui2)
 
 Order (监督局 12:2x, after the data session's 36916a9: on the phone the dispersion layer alone makes a drag frame 37–38 ms (19 ms of it),
