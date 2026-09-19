@@ -7,9 +7,12 @@
    the menu's (§4.1). menu-card-material.md §1.2 — width 250 (defaultMenuWidth), corner 32 (menuCornerRadius), section insets 10 / 10, item 42
    (the item rules stay index.html's `.menu button`). The panel's placement (below the value, 6 pt gap, ≥ 8 pt from the edges, above when
    there is no room) is the page's existing rule (view.js openMenu), kept.
-   Unread, left out (menu-motion-formula.md §6): the intermediate shape (growing .25 / shrinking .9) and the .03 s second-step delay that belongs
-   to it — the four springs run straight to the target from the frame of the call; the content's cross-blur / contentScale on the menu path —
-   the items sit in the panel from the first frame, clipped by it.
+   Read since (menu-motion-formula.md §7b, R18b): the panel's items have NO per-item delay (the list view has no stagger path; the cells' state
+   update does not touch alpha / transform) — the items sit in the panel from the first frame, as here; the "intermediate shape" is a geometry
+   interpolation (MagicMorphLayer is a CALayer: frame / corner / transform per destination), not an SDF blend, so it would be a second target on
+   the rect springs with the .03 s second step — but how that intermediate rect is computed (jWidthRatio 0 / jHeightRatio .8 / maxJHeight 200)
+   is not read, so the four springs still run straight to the target (待读, R18a's live parameters); the refraction lens on the morphing shape
+   (lensingSDFLayer) is 不可表达 here; the content's cross-blur / contentScale on the menu path is unread (§6, R18a).
    Springs come from web/motion.js only (BOARD A7, #1). Without Motion this file defines nothing and view.js's old openMenu stays in charge
    (its first line is `if (window.Menu) return Menu.open(anchor, sel);`). */
 (function () {

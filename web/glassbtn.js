@@ -28,6 +28,16 @@
      36.75 at +73 ms; on the tracking spring ζ .625 / .262 the value .0573 of the way is reached 15.3 ms after the start, so the start is at
      +57.7 ms (the exact begin time is a read for the anims command: 待读). */
   const ICON_ALPHA_HELD = 0.2, LIFT_START = 58;
+  /* The glow (glass-button-press-formula.md §7 item 3 / §7b, R11a + R11b) — read, NOT built: 不可表达. The held button gets _UIFlexInteractionGlowContainerView
+     (60 × 60, clipsToBounds, allowsGroupBlending 0) with BigGlow (a white view filling it, filter vibrantColorMatrix backdropAware, black .05 / white 1.05 /
+     saturation 1.2) and LittleGlow (90 × 90 centred on the button; the glow IS its CA shadow: pill corner, shadowPathIsBounds, offset 0, opacity 1,
+     shadowRadius = width × .5, colour white of luminance dodge = .4 light / .75 dark, plus a backdrop-aware vibrantColorMatrix (vcm black 0 / white 1 /
+     saturation 1.5, plusL .5)); motion: opacity 0 → 1 on ζ 1 / .1 from +33 ms after the down, at the up opacity 1 → 0 and scale 1 → 4 on ζ 1 / .5 from
+     +15 ms. Both layers are backdrop-aware vibrant matrices — the "white" is a modulation of what is under it; CSS has no backdrop-aware colour
+     matrix and blur / brightness substitutes are not allowed (BOARD A20), so nothing is drawn; the numbers are kept here (GlassBtn.glow). */
+  const GLOW = { container: { size: "the held button's box (60 × 60)", clips: true, allowsGroupBlending: 0 }, bigGlow: { fill: "white", vibrant: { black: 0.05, white: 1.05, saturation: 1.2, backdropAware: 1 } },
+    littleGlow: { size: 90, shadowRadius: 45, shadowOffset: [0, 0], shadowOpacity: 1, corner: "pill", luminance: { light: 0.4, dark: 0.75 }, vibrant: { black: 0, white: 1, saturation: 1.5, plusL: 0.5, backdropAware: 1 } },
+    motion: { appear: { at: 33, opacity: [0, 1], spring: [1, 0.1] }, release: { at: 15, opacity: [1, 0], scale: [1, 4], spring: [1, 0.5] } }, built: false, why: "不可表达: backdrop-aware vibrantColorMatrix" };
   const apply = (el, st) => { const x = st.s.x, w0 = st.w0, h0 = st.h0, done = x === 1 && st.phase === "release" && Math.abs(st.s.v) < 0.01;
     if (done) { for (const k of ["width", "height", "margin-left", "margin-top", "--gb-scale", "--gb-icon-alpha"]) el.style.removeProperty(k); return; }
     el.style.width = (w0 * x) + "px"; el.style.height = (h0 * x) + "px"; el.style.marginLeft = (-(w0 * x - w0) / 2) + "px"; el.style.marginTop = (-(h0 * x - h0) / 2) + "px";
@@ -63,5 +73,5 @@
   document.addEventListener("pointerdown", (e) => { if (e.pointerType === "mouse" && e.button !== 0) return; const el = e.target.closest && e.target.closest(SEL); if (!el || el.disabled) return; down(el, e); });
   /* hidden strips the press (BOARD A6 template): no scale left on a button, no click fired for a touch the page never saw end */
   document.addEventListener("visibilitychange", () => { if (!document.hidden) return; for (const [el, st] of live) { if (st.raf) cancelAnimationFrame(st.raf); if (st.timer) clearTimeout(st.timer); if (st.detach) st.detach(); if (st.phase === "hold") Motion.swallowNextClick(el); st.s.x = 1; st.s.v = 0; st.phase = "release"; apply(el, st); } live.clear(); });
-  window.GlassBtn = { L, state: (el) => { const st = live.get(el); return st ? { phase: st.phase, target: st.target, x: st.s.x, v: st.s.v, t0: st.t0, downAt: st.downAt, started: !st.timer, inside: st.in, w0: st.w0 } : null }, SLOP, TRACK: [...TRACK], RELEASE: [...RELEASE], LIFT_START, ICON_ALPHA_HELD };
+  window.GlassBtn = { L, state: (el) => { const st = live.get(el); return st ? { phase: st.phase, target: st.target, x: st.s.x, v: st.s.v, t0: st.t0, downAt: st.downAt, started: !st.timer, inside: st.in, w0: st.w0 } : null }, SLOP, TRACK: [...TRACK], RELEASE: [...RELEASE], LIFT_START, ICON_ALPHA_HELD, glow: GLOW };
 })();

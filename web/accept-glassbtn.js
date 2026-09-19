@@ -44,6 +44,7 @@
     num("按住：盒中心不动（margin 抵消）", cx, (() => { const q = btn.getBoundingClientRect(); return q.left + q.width / 2; })(), 0.5);
     num("按住：图标 alpha = .2（§7 item 4）", 0.2, parseFloat(getComputedStyle(btn, "::before").opacity), 0.01);
     num("按住：图标 scale × 1.3636（§7 item 4 wrapper 36 → 49.09）", L, (() => { const m = /matrix\(([^)]+)\)/.exec(getComputedStyle(btn, "::before").transform); return m ? parseFloat(m[1].split(",")[0]) : 1; })(), 0.005);
+    check("玻璃钮 光晕（§7b）：读数已记、不可表达（backdrop-aware vibrantColorMatrix），不画", "GlassBtn.glow.built false + why", GlassBtn.glow ? `${GlassBtn.glow.built} · ${GlassBtn.glow.why} · little ${GlassBtn.glow.littleGlow.size}/${GlassBtn.glow.littleGlow.shadowRadius} · dodge ${GlassBtn.glow.littleGlow.luminance.light}/${GlassBtn.glow.littleGlow.luminance.dark}` : "-", !!GlassBtn.glow && GlassBtn.glow.built === false && GlassBtn.glow.littleGlow.shadowRadius === 45);
     /* ③ release curve — released OUTSIDE the 70 pt margin so nothing fires and the page stays (a firing release pops the page 350 ms later and hides the
        button mid-curve); the release spring is the same either way */
     ev(btn, "pointermove", cx + 120, cy); await raf();   // 120 = 22 (half the 44) + 70 + 28: outside the margin around the BOUNDS (the scaled rect would reach 100.6)
