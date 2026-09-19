@@ -104,6 +104,7 @@
   nav.tabs{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 12px);transform:translateX(-50%);
            z-index:6;margin:0;padding:0;display:flex;width:max-content;max-width:calc(100% - 24px)}   /* left:50% 会把 shrink-to-fit 宽压到半屏，按钮能缩以后要写死 max-content */
   nav.tabs[hidden]{display:none}
+  html.kbd nav.tabs{display:none}   /* keyboard up (view.js: visual viewport > 120 px shorter than the window): the native tab bar is covered by the keyboard; iOS would float a fixed capsule above it (数据 181053 ⑤1) */
   /* As a Home Screen web app there is no Safari bar: the capsule sits where Health's
      does, 22pt above the screen's bottom edge (measured on the iOS 27 simulator). */
   @media (display-mode: standalone){ nav.tabs{bottom:var(--ios-tab-capsule-bottom)} }   /* 胶囊距屏底 21 ← 探针 UITabBar 平台 y 873 / 956 */
