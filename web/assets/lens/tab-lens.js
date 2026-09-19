@@ -247,7 +247,7 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
     if (rebuilt || !st || st.nav !== nav || st.glide !== nav.querySelector(".glide")) { if (loop) loop.stop(); st = attach(nav); if (!st) return; }
     if (!glideChanged) return;
     const g = st.glide, lifted = g.classList.contains("lift") || g.classList.contains("lift-sel"), cur = centreOf(g);
-    if (loop) { loop.retarget(); st.X = cur; return; }                            // a retarget while running: the item under the finger moved / the selection landed
+    if (loop) { loop.retarget(); return; }                                        // a retarget while running: the item under the finger moved / the selection landed — setTargets reads view.js's box itself; while dragging the finger rule wins (#7b: `st.X = cur` here overwrote it on every move)
     if (lifted) { st.lastX = st.X; start(st); }                                   // the lift begins from the resting centre the glide had before this mutation
     st.X = cur;
   };
