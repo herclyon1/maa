@@ -50,6 +50,22 @@
       const tE = performance.now(); done(); await sleep(60);
       const st4 = R.state; let opAt = null; await sleep(300); const opEnd = parseFloat(ai.style.opacity || "1"); await sleep(120);
       check("下拉刷新 ⑤ 结束：状态 4（.3 s ease-in-out 淡出 + 再转 3.1316 rad）→ 状态 0，指示器回 0°、透明度回默认", "4 → 0 · rotation 0", `after 60 ms state ${st4} · after 360 ms opacity ${isNaN(opEnd) ? "(default)" : opEnd} · now state ${R.state} · rotation ${R.rotation}`, st4 === 4 && R.state === 0 && R.rotation === 0);
+      /* R5 — the arms' geometry (refresh-native-formula.md §10, probe): 8 arms, each 3.667 × 10 with corner 1.833, inner end 5 pt from the centre (outer 15),
+         every 45°; the box centred at safe-area top + 54 + 30; colour token --ios-spinner (secondaryLabel α .6) */
+      { const box = ai.getBoundingClientRect(), cx = box.left + box.width / 2, cy = box.top + box.height / 2, a0 = arms[0], c0 = getComputedStyle(a0);
+        const rot = (el) => { const m = /matrix\(([-\d.e]+), ([-\d.e]+)/.exec(getComputedStyle(el).transform || ""); return m ? Math.round(Math.atan2(parseFloat(m[2]), parseFloat(m[1])) * 180 / Math.PI) : 0; };
+        const angles = arms.map(rot).map((d) => (d + 360) % 360).sort((x, y) => x - y), want = [0, 45, 90, 135, 180, 225, 270, 315];
+        R.__drive({ pull: 1, v: 0, down: true }); await new Promise(requestAnimationFrame);   // state 1 so the indicator is on
+        const r0 = a0.getBoundingClientRect();   // arm 0 is the unrotated one (rotate(0)): its bottom = the inner end
+        const inner = cy - r0.bottom, outer = cy - r0.top;
+        const sat = (() => { const pr = document.createElement("div"); pr.style.cssText = "position:fixed;top:0;left:0;width:1px;padding-top:env(safe-area-inset-top);visibility:hidden"; document.body.appendChild(pr); const v = parseFloat(getComputedStyle(pr).paddingTop) || 0; pr.remove(); return v; })();
+        const navH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ios-nav-h")) || 54;
+        const tok = getComputedStyle(document.documentElement).getPropertyValue("--ios-spinner").trim();
+        const probe = document.createElement("i"); probe.style.cssText = "position:fixed;left:-9999px;background:" + tok; document.body.appendChild(probe); const tokRgb = getComputedStyle(probe).backgroundColor; probe.remove();
+        check("下拉刷新 R5 臂几何（§10 探针）：每根 3.667 × 10、圆角 1.833、8 根每 45°", "3.667×10 r1.833 · 0/45/…/315", `${c0.width}×${c0.height} r${c0.borderTopLeftRadius} · ${angles.join("/")}`, Math.abs(parseFloat(c0.width) - 3.667) < 0.02 && Math.abs(parseFloat(c0.height) - 10) < 0.02 && Math.abs(parseFloat(c0.borderTopLeftRadius) - 1.833) < 0.02 && angles.length === 8 && angles.every((d, i) => Math.abs(d - want[i]) <= 1));
+        check("下拉刷新 R5 臂到中心：内端 5 pt、外端 15 pt（环半径 5、臂长 10）", "inner 5 · outer 15", `inner ${inner.toFixed(2)} · outer ${outer.toFixed(2)}`, Math.abs(inner - 5) < 0.15 && Math.abs(outer - 15) < 0.15);
+        check("下拉刷新 R5 位置与色：指示器中心 = 安全区顶 + 栏 54 + 30（控件 60 高的中心）、臂色 = --ios-spinner（secondaryLabel α .6）", `cy ${Math.round(sat + navH + 30)} · ${tokRgb}`, `cy ${cy.toFixed(1)} · ${c0.backgroundColor}`, Math.abs(cy - (sat + navH + 30)) < 0.6 && c0.backgroundColor === tokRgb);
+        R.__drive({ down: false }); await new Promise(requestAnimationFrame); }
     } finally { R.onRefresh = null; R.reset(); }
   });
 })();
