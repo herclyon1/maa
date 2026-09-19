@@ -969,14 +969,23 @@ the capture box lens ± 100 clamped to the screen, screen = e·edr·(R/2, G/3, B
 through V(b) = min(1, .9118·b + .1471); the AA ±fw/2 by fwidth). Lift progress p scales the amounts, the shadow / line / highlight α (p = 0
 at rest → nothing drawn). Drag: the lens follows the pointer directly (no spring — a rendering prototype); 「自动拖 2 s」 as lens-test.
 
-Checks (wksnap 3 px/pt, drag-mid, `tools/fringe_check.py`; pictures `remote-mock/v4/lens/webgl/webgl-states.png`, `webgl-{rest,lift,mid}-{light,dark}-3x.png`):
+Checks (`tools/fringe_check.py`; the page rendered at the phone's raster — `?dpr=3` and a wksnap at scale 1.5 = 3 px/pt, measured as is
+(`--lens 110,110.89,220,44 --scale 3 --measure 0`); a 2× canvas upscaled in a 6-px/pt snapshot reads 1.31 % / 74 — the resampling blurs the
+fringe, so those earlier numbers were the instrument's, not the page's); pictures `remote-mock/v4/lens/webgl/webgl-states.png`,
+`webgl-{rest,lift,mid}-{light,dark}-3x.png`):
 
 | | share of the outer 12 pt | saturation mean / median | ends' colour order |
 |---|---|---|---|
 | native (light / dark) | 1.36 % / 1.38 % | 69 / 62 · 71 / 63 | right blue above yellow, left yellow above blue (dark reversed) |
-| SVG chain, ss on (README §0.5) | 1.38 % | 85 / — | same |
-| **WebGL light** | **1.33 %** | **76.0 / 68.0** | right blue above yellow (centroids .3 / 3.3), left yellow above blue (1.3 / −5.0) ✓ |
-| **WebGL dark** | **1.25 %** | **76.3 / 64.0** | right yellow above blue (5.9 / −3.1), left blue above yellow (−5.0 / 1.7) ✓ (reversed) |
+| SVG chain, ss + engine fix, 3 px/pt (lens-test.html?native=1&lensx=220) | 1.37 % | 82.9 / 76 | same |
+| **WebGL light, 3 px/pt** | **1.79 %** | **92.4 / 87** | right blue above yellow, left yellow above blue ✓ |
+| **WebGL dark, 3 px/pt** | **1.69 %** | **88.2 / 84** | reversed ✓ |
+
+The exact chain (bilinear, no engine quantisation) disperses MORE than the SVG one (whose negative lanes run one device pixel short) and both
+more than the native: the order and the band's extent are right, the strength is not — formula.md §3b.8's open item (the source's contrast).
+One read-able candidate for the data session: the capture scale of the glassForeground backdrop layer #33 (`CABackdropLayer.scale`; the
+resting selection view's is .25 — a capture below 1× minifies the source before the taps, which lowers the saturation exactly the way the
+upscaled snapshot did here). Not tuned.
 
 Frame time (a visible WKWebView on the Mac, the page's 2-s auto drag; `?dpr=` sets the pixel count):
 
@@ -994,6 +1003,50 @@ Not in the prototype (listed, not hidden): the lens's own motion (the springs, t
 the scene's paragraphs above and below the control (lens-test.html has them; the native probe's content differs anyway); the label
 texture is canvas text (the same font and size; its vertical placement is `textBaseline: middle` at the DOM's line centre — to be read
 against lens-test's glyph rows at the same coordinates); the DestOut / lift ramps of the SVG page's first frames (§4.1) — p is 0 or 1 here.
+
+### 0.8.7 `lens-webgl.js` — the WebGL lens as a package, and the wiring for the page (2026-09-19 14:3x; 监督局 13:4x)
+
+`web/assets/lens/lens-webgl.js` (the shaders of §0.8.6 verbatim; `lens-webgl-test.html` is now its harness). API:
+```
+<script src="assets/lens/lens-webgl.js"></script>
+const lens = LensWebGL.create(canvas, { sets, backdrop, ink, dpr, margin: 16, preload: [220] });   // once
+lens.setState({ cx, cy, w, h, lift, wh });    // every tick — uniforms only; cx, cy = the lens centre in CANVAS pt, w × h = the model size (the nearest
+                                              // set of `sets`), lift = the glass progress 0 … 1 (0 → the canvas is cleared), wh = W/H (view.js's abFrame rule)
+lens.redrawBackdrop();                        // when what lies under the lens changed (a render, a value flip)
+lens.stats.gpuMs / .frames / .set ; lens.destroy()
+sets = LensWebGL.setsFromFilters("seg")       // { "<w>": { bg, lab, ab, S, Sab, h } } read off the page's inline <svg> (the plain files behind
+                                              // lens-engine-fix.js's blob: copies: data-href-orig; h from the map's height when not given)
+backdrop(ctx2d, which, { width, height })     // the page draws, in canvas pt: "page" = what lies under the lens WITHOUT the segment labels
+                                              // (the card / page colour, the track), "labels" = the labels over it; ink = the label colour [r, g, b]
+```
+The canvas is an overlay of the control's region (position absolute in `.segctl`, pointer-events none, sized like the wrapper's reach: the
+control's box + 16 pt above and below; its CSS size in pt = the `width` / `height` options, the backing = × devicePixelRatio). It paints only
+the capsule and, outside it, the ring shadow (black α) and the dark line's row (the page copy darkened); everything else is transparent —
+the live DOM shows through, so the copies only have to match the DOM inside the capsule and on that one row.
+
+Two things measured while packaging (both in the file's comments): an FBO's row 0 is the viewport's bottom — pass 2 reads pass 1 and the
+inner-shadow texture with a flipped t (the prototype's first pictures had the labels upside down: 验收's first check); and macOS WebKit
+smooths canvas text only on a canvas attached to the document (detached: the same 13 px glyph's ink box 108.5–131.33 instead of the
+DOM's 107.67–132), so the scratch canvases are attached off-screen while drawn, and the labels' alpha is recovered from the opaque
+page + labels render (P = Pg·(1 − a) + ink·a). Check at 6 px/pt (`?dpr=6`, wksnap scale 3 = no resampling): the undisplaced right label's
+ink box = lens-test.html's DOM text exactly (308–332 × 127.5–139, 4394 px both); the left label inside the lifted lens 107.67–132 ×
+127.5–139.17 (DOM 127.5–139.0; 4283 vs 4355 px) — the label row is closed to ⅙ pt. The wrapper is snapped to the device grid so pass 2's
+bilinear read of pass 1 lands on texel centres.
+
+Wiring for the page (界面1号's segment block; `?gl=0` keeps the SVG stack):
+1. include `assets/lens/lens-webgl.js` after the inline `<svg>` (and after lens-engine-fix.js, whose `data-href-orig` it reads);
+2. in segLens(): when `webgl2` is available and `?gl` is not `0`, create `<canvas class="glens">` in `.segctl` (absolute, left 0, top −16 pt,
+   width = the control's width, height = control height + 32, pointer-events none, z-index above `.stack`) and `LensWebGL.create(canvas,
+   { sets: LensWebGL.setsFromFilters("seg"), ink: the label colour, backdrop: (x, which) => { "page": fill the page colour, the card if the
+   control sits on one, the track capsule with `--ios-segment-track` over `--bg` (the resting flat platter only while p = 0); "labels": the
+   segment labels at their DOM positions (13 px, the selected one at its weight) } });
+3. in frame(p, pd): `lens.setState({ cx: L + Wd / 2, cy: 16 + T + Hd / 2, w: Wm, h: Hm, lift: p, wh })` in place of the .stack / .warp / .warpl /
+   .rimb / .hlk / .hlw updates (those elements stay hidden under `?gl` on); the DestOut opacity pd is the copy's — lift p covers it here
+   (the copies are opaque inside the capsule from the first frame; the §4.1 three-frame ramp is not in the shader);
+4. on a render that changes the control (a value flip, a theme change): `lens.redrawBackdrop()`;
+5. the frame logger: `window.__segLens` as before (view.js writes it); the canvas's own timing in `lens.stats.gpuMs`.
+What the page must still provide: the springs / drag / flex (view.js's loop unchanged), the labels' colour per theme, and the backdrop drawing
+(the DOM cannot be sampled; the card / track / label geometry is the page's).
 
 ### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
 

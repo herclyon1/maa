@@ -3,7 +3,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>lens-webgl-test — the lifted segment lens in one fragment-shader chain (prototype)</title>
-<!-- README §0.8.6 (2026-09-19, 验收 / 监督局 13:1x): the SVG software filters cannot carry the full-fidelity fringe at frame rate on the phone
+<!-- README §0.8.6 / §0.8.7 (2026-09-19, 验收 / 监督局 13:1x; the chain now lives in lens-webgl.js — this page is its harness): the SVG software filters cannot carry the full-fidelity fringe at frame rate on the phone
      (dispersion alone 19 ms per frame, data session 36916a9; band-only computation impossible in WebKit, §0.8.4–0.8.5). This page renders the
      SAME chain on the GPU: two fragment-shader passes over the lens's wrapper box, every constant from the decompiled documents (its source
      in the shader comment next to it), nothing fitted. The backdrop is drawn by the page into two textures (the page + track, and the labels
@@ -19,208 +19,63 @@
   :root{--bg:rgb(242 242 247);--card:#fff;--ink:#000;--dim:rgb(60 60 67 / .6);--track:rgb(118 118 128 / .12)}
   html.dark{--bg:#000;--card:rgb(28 28 30);--ink:#fff;--dim:rgb(235 235 245 / .6);--track:rgb(118 118 128 / .24)}
   html,body{margin:0;background:var(--bg);color:var(--ink);font:13px/16px -apple-system,"SF Pro Text","PingFang SC",sans-serif;-webkit-text-size-adjust:100%;overscroll-behavior:none}
-  #gl{display:block;width:440px;height:956px;touch-action:none;cursor:grab}
+  #wrap{position:relative;width:440px;height:956px}
+  #base,#gl{position:absolute;left:0;top:0;width:440px;height:956px;display:block}
+  #gl{touch-action:none;cursor:grab}   /* the WebGL overlay: transparent except the lens and its shadows / lines (lens-webgl.js) */
   #bar{position:fixed;left:0;right:0;bottom:0;padding:8px 12px calc(env(safe-area-inset-bottom) + 8px);background:rgb(128 128 128 / .12);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);font-variant-numeric:tabular-nums;white-space:pre-wrap;line-height:17px}
   #bar button{font:inherit;margin:0 6px 4px 0;padding:3px 9px;border-radius:9px;border:0;background:rgb(0 122 255 / .15);color:inherit}
   #bar b{font-weight:600}
 </style></head><body>
-<canvas id="gl" width="440" height="956"></canvas>
+<div id="wrap"><canvas id="base"></canvas><canvas id="gl"></canvas></div>
 <div id="bar"><button data-state="rest">静止</button><button data-state="lift">抬起</button><button data-state="mid">拖中停住</button><button id="theme">亮/暗</button><button id="auto">自动拖 2 s</button><span id="stats">…</span></div>
+<script src="lens-webgl.js"></script>
 <script>
 (async () => {
 const q = new URLSearchParams(location.search);
-const canvas = document.getElementById("gl"), stats = document.getElementById("stats");
+const base = document.getElementById("base"), canvas = document.getElementById("gl"), stats = document.getElementById("stats");
 const DPR = parseFloat(q.get("dpr")) || window.devicePixelRatio || 1;   /* ?dpr=3: render at the phone's pixel count on the Mac (the timing instrument) */
-canvas.width = 440 * DPR; canvas.height = 956 * DPR;
 let theme = q.get("theme") === "dark" || (!q.get("theme") && matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
 let state = q.get("state") || "mid";
 /* ---- geometry read from lens-test.html?native=1 (WebKit, 2026-09-19): page coordinates in pt ---- */
-const G = { scene: [20, 72.563, 400, 148.984], sceneR: 26, seg: [20, 116.891, 400, 32], segR: 16, segPad: 2, labelY: 132.891, labelXs: [120, 320], labels: ["早班", "晚班"], flat: [22, 118.891, 196, 28], flatR: 14 };
-const LW = 220, LH = 44, R = 22;                 // the lifted lens 220×44 r 22 (seg-lens-refraction.md §1b; the 220 set: the model stays 220 while dragging, README §0.3)
-const AM = 16;                                    // the fringe wrapper margin (lens-field.json aberration.wrapper): pass 1 renders lens ± 16
+const G = { scene: [20, 72.563, 400, 148.984], sceneR: 26, seg: [20, 116.891, 400, 32], segR: 16, labelY: 132.891, labelXs: [120, 320], labels: ["早班", "晚班"], flat: [22, 118.891, 196, 28], flatR: 14 };
+const LW = 220, LH = 44;                          // the lifted lens 220×44 r 22 (seg-lens-refraction.md §1b; the 220 set — the model stays 220 while dragging, README §0.3)
 const LENS_X0 = { lift: 10, mid: 110 };           // lift: over the selected segment (segment centre 120 − 110); mid: x 110–330 = the judge position (lensx 220)
-let lensX = LENS_X0[state] ?? 110, lensY = G.seg[1] + G.seg[3] / 2 - LH / 2;   // the lens is vertically centred on the control (116.891 + 16 − 22 = 110.891)
+let lensX = LENS_X0[state] ?? 110; const lensY = G.seg[1] + G.seg[3] / 2 - LH / 2;   // vertically centred on the control: 116.891 + 16 − 22 = 110.891
 const colours = () => theme === "dark" ? { bg: "rgb(0,0,0)", card: "rgb(28,28,30)", ink: "rgb(255,255,255)", track: "rgba(118,118,128,0.24)" } : { bg: "rgb(242,242,247)", card: "rgb(255,255,255)", ink: "rgb(0,0,0)", track: "rgba(118,118,128,0.12)" };
-
-/* ---- the backdrop textures: the page (bg + card + track [+ the resting flat platter]) and the labels alone ---- */
-const cvs = (draw) => { const c = document.createElement("canvas"); c.width = 440 * DPR; c.height = 956 * DPR; const x = c.getContext("2d"); x.scale(DPR, DPR); draw(x); return c; };
-const rrect = (x, r, w, h, rad) => { x.beginPath(); x.roundRect(r, w, h, rad ? rad : 0); };
+/* the scene (drawn identically into the visible base canvas and into the lens's backdrop textures) */
 const drawPage = (x) => { const c = colours(); x.fillStyle = c.bg; x.fillRect(0, 0, 440, 956);
   x.fillStyle = c.card; x.beginPath(); x.roundRect(G.scene[0], G.scene[1], G.scene[2], G.scene[3], G.sceneR); x.fill();
   x.fillStyle = c.track; x.beginPath(); x.roundRect(G.seg[0], G.seg[1], G.seg[2], G.seg[3], G.segR); x.fill();
-  if (state === "rest") { x.fillStyle = c.card; x.beginPath(); x.roundRect(G.flat[0], G.flat[1], G.flat[2], G.flat[3], G.flatR); x.fill(); } };   // the resting selected segment: the flat _controlForegroundColor platter 196×28 inset 2 (lens-test.html .flat); gone while lifted
+  if (state === "rest") { x.fillStyle = c.card; x.beginPath(); x.roundRect(G.flat[0], G.flat[1], G.flat[2], G.flat[3], G.flatR); x.fill(); } };   // the resting selected segment: the flat _controlForegroundColor platter 196×28 inset 2 (lens-test .flat); gone while lifted
 const drawLabels = (x) => { const c = colours(); x.textAlign = "center"; x.textBaseline = "middle"; x.fillStyle = c.ink;
-  G.labels.forEach((t, i) => { x.font = `${i === 0 ? "500 " : ""}13px -apple-system, "SF Pro Text", "PingFang SC", sans-serif`; x.fillText(t, G.labelXs[i], G.labelY); }); };   // 早班 selected: weight 500 (lens-test .segctl span.on)
-
-/* ---- WebGL ---- */
-const gl = canvas.getContext("webgl2", { antialias: false, premultipliedAlpha: false, alpha: false, preserveDrawingBuffer: true });
-if (!gl) { stats.textContent = "no WebGL2"; return; }
-const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) + "\n" + src.split("\n").map((l, i) => (i + 1) + ": " + l).join("\n")); return s; };
-const prog = (vs, fs) => { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)); return p; };
-const VS = `#version 300 es
-in vec2 a; out vec2 v; uniform vec4 u_quad; /* x, y, w, h of the quad in page pt */ uniform vec2 u_origin; /* the render target's origin in page pt */ uniform vec2 u_view; /* the target's size in pt */
-void main(){ v = u_quad.xy + a * u_quad.zw; vec2 c = (v - u_origin) / u_view * 2.0 - 1.0; gl_Position = vec4(c.x, -c.y, 0.0, 1.0); }`;
-/* shared GLSL: the capsule SDF (formula.md §1: rounded rectangle, r 22 clamped to h/2), the normal CDF for the ring shadow (§4: Φ(x) = N),
-   the map decode (README §0.3: byte = 128 + u·255/S → u = (v − 128/255)·S) */
-const COMMON = `
-precision highp float;
-float sdf(vec2 p, vec2 half_, float r){ vec2 q = abs(p) - (half_ - vec2(r)); return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r; }
-vec2 nrm(vec2 p, vec2 half_, float r){ vec2 q = abs(p) - (half_ - vec2(r)); vec2 g = (max(q.x, q.y) > 0.0) ? max(q, 0.0) : ((q.x > q.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0)); return normalize(g) * sign(p + vec2(1e-6)); }
-float erf_(float x){ float s = sign(x); x = abs(x); float t = 1.0 / (1.0 + 0.3275911 * x); float y = 1.0 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * exp(-x * x); return s * y; }
-float N(float x){ return 0.5 * (1.0 + erf_(x / 1.41421356)); }
-float sat(float x){ return clamp(x, 0.0, 1.0); }
-vec2 decode(vec2 rg, float S){ return (rg - 128.0 / 255.0) * S; }
-`;
-/* pass 1 — layers 1 … 4 of formula.md §4b for every pixel of the wrapper (lens ± 16): the backdrop copy through the bg map (BackdropView +9/36
-   after glassBackground −6.6/4.4, samples clamped in the map), the DestOut punch (the labels only outside the capsule at the SOURCE position),
-   glassBackground's ring shadow (keyfill §4) and built-in KeyFill dark line (keyfill §5.1), the label copy through the lab map (ContentLensing
-   −8.8/7.04 then ClearGlass −17.5/11.2, portal #20 capsule clip at the destination), the inner shadow #21 (keyfill §5.2c, precomputed) */
-const FS1 = `#version 300 es
-${COMMON}
-in vec2 v; out vec4 o;
-uniform sampler2D t_page, t_lab, m_bg, m_lab, t_ish;
-uniform vec2 u_page; /* page size pt */ uniform vec4 u_lens; /* x y w h */ uniform float u_S; /* the maps' encoding S (data-s 40) */ uniform float u_dpr; uniform float u_p; /* lift progress: the amounts × p */
-vec4 page(vec2 p){ return texture(t_page, p / u_page); }
-vec4 lab(vec2 p){ return texture(t_lab, p / u_page); }
-vec4 over(vec4 s, vec4 d){ return s + d * (1.0 - s.a); }
-void main(){
-  vec2 C = u_lens.xy + u_lens.zw * 0.5, half_ = u_lens.zw * 0.5; float r = min(22.0, half_.y);
-  vec2 pl = v - C; float d = sdf(pl, half_, r); vec2 n = nrm(pl, half_, r);
-  float fwd = max(fwidth(d), 1e-4);
-  float M = sat(0.5 - d / fwd);                                   /* the capsule coverage, 1 device px AA (formula.md §4b.1 D) */
-  vec4 under = over(lab(v), page(v));                             /* the scene as it is (outside the lens: page + labels) */
-  /* layer 1: the backdrop copy — the bg map over the lens box; cov = B */
-  vec2 uv = (v - u_lens.xy) / u_lens.zw; bool inBox = uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0;
-  vec4 mb = inBox ? texture(m_bg, uv) : vec4(128.0 / 255.0, 128.0 / 255.0, 0.0, 1.0);
-  vec2 ub = decode(mb.rg, u_S) * u_p; float covb = mb.b;
-  vec2 qb = v + ub; float dq = sdf(qb - C, half_, r); float Mq = sat(0.5 - dq / max(fwidth(dq), 1e-4));
-  vec4 bgc = over(lab(qb) * (1.0 - Mq), page(qb));               /* DestOut #43: the segment content is removed INSIDE the capsule only; the box corners keep it (§4b) */
-  /* glassBackground ring shadow (keyfill §4, keys offset 8 / opacity .1 / stroke 4 / blur 3 / mask 0): black α = .1·[N((d_r + 4)/3) − N(d_r/3)], d_r = the SDF of the capsule shifted 8 pt down, drawn inside and outside */
-  float dr = sdf(pl - vec2(0.0, 8.0), half_, r); float ring = sat(N((dr + 4.0) / 3.0) - N(dr / 3.0)) * 0.1 * u_p;
-  vec4 col = mix(under, bgc, covb);                              /* inside the capsule the copy, outside the scene */
-  col.rgb *= (1.0 - ring);                                       /* black source-over on the layer and beyond it (mask 0) */
-  /* glassBackground built-in KeyFill = the outer 1 pt dark line (keyfill §5.1, keys .5 / ColorBias −.3 / EffectOffset −.6667 / Height 1 / Angle π/2 → dir (1, 0) / SpreadSDR 2.0944 → S = −.5;
-     amount uniform 1/.5 − 2 = 0 (B6-3); prof = mix(1, 1 − e, .75) on e = −(d + offset) ∈ [0, 1]; aa = sat(e/fw + .5)·sat((h − e)/fw + .5), fw = fwidth (§2 B6-2); k = v·ang_key + v·ang_fill; rgb' = rgb·(1 + colorBias·k·(3 − 2·rgb)); α' = α + (1 − α)·k (extension 1) → on screen rgb') */
-  { float off = -0.6667, h = 1.0; float e = -(d + off); float fw = max(fwidth(e), 1e-4);
-    if (d + off < fw * 0.5 && e < h + fw * 0.5) {
-      float prof = mix((1.0 - e / h) != 0.0 ? 1.0 : 0.0, 1.0 - sat(e / h), 0.75);
-      float aa = sat((d + off + h) / fw + 0.5) * sat(e / fw + 0.5);
-      float vv = prof * aa; float S_ = -0.5; vec2 dir = vec2(1.0, 0.0);
-      float ang_k = sat((dot(n, dir) - S_) / (1.0 - S_)), ang_f = sat((dot(-n, dir) - S_) / (1.0 - S_));
-      float k = (vv * ang_k + vv * ang_f) * u_p;                   /* amount uniform 0: no compression */
-      col.rgb = col.rgb * (1.0 + (-0.3) * k * (3.0 - 2.0 * col.rgb)); } }
-  /* layers 2 + 4: the label copy through the lab map, capsule-clipped at the destination (ClearGlass masksToBounds r22, §4b) */
-  vec4 ml = inBox ? texture(m_lab, uv) : vec4(128.0 / 255.0, 128.0 / 255.0, 0.0, 1.0);
-  vec2 ul = decode(ml.rg, u_S) * u_p; vec4 lc = lab(v + ul) * M;
-  col = over(lc, col);
-  /* inner shadow #21 (keyfill §5.2c): α = .06·M·blur_σ3(M − M↓7), precomputed over the lens box (t_ish, R) */
-  float ish = inBox ? texture(t_ish, uv).r : 0.0; col.rgb *= (1.0 - ish * u_p);
-  o = vec4(col.rgb, 1.0);
-}`;
-/* the inner shadow, once per lens size: α(p) = op · M(p) · Σ G_σ(k) · [M(p + k)·(1 − M(p + k − (0, off)))], σ = shadowRadius 3, off 7, op .06 — keyfill §5.2c (the band the shape leaves
-   when its copy moves down by the offset, blurred, clipped back to the shape); the sum on a 1-pt grid over ±9 pt (3σ) */
-const FS_ISH = `#version 300 es
-${COMMON}
-in vec2 v; out vec4 o; uniform vec4 u_lens;
-float Mh(vec2 p, vec2 half_, float r){ return sdf(p, half_, r) <= 0.0 ? 1.0 : 0.0; }
-void main(){ vec2 C = u_lens.xy + u_lens.zw * 0.5, half_ = u_lens.zw * 0.5; float r = min(22.0, half_.y); vec2 p = v - C;
-  float sig = 3.0, off = 7.0, op = 0.06; float acc = 0.0, wsum = 0.0;
-  for (int i = -9; i <= 9; i++) for (int j = -9; j <= 9; j++) { vec2 k = vec2(float(i), float(j)); float w = exp(-dot(k, k) / (2.0 * sig * sig)); wsum += w;
-    vec2 q = p + k; acc += w * Mh(q, half_, r) * (1.0 - Mh(q - vec2(0.0, off), half_, r)); }
-  float d = sdf(p, half_, r); float M = sat(0.5 - d / max(fwidth(d), 1e-4));
-  o = vec4(op * M * acc / wsum, 0.0, 0.0, 1.0); }`;
-/* pass 2 — layer 5 (glassForeground, formula.md §3b): the 7-tap dispersion over pass 1, then layer 6 (#36 KeyFill highlight through vibrantColorMatrix, keyfill §2) */
-const FS2 = `#version 300 es
-${COMMON}
-in vec2 v; out vec4 o;
-uniform sampler2D t_a, m_ab, t_page, t_lab; uniform vec2 u_page; uniform vec4 u_lens; uniform vec4 u_wrap; /* the wrapper box x y w h */
-uniform float u_Sab; /* the fringe map's S (12) */ uniform float u_wh; /* W/H of the capture box (§3b.6) */ uniform float u_p;
-vec4 A(vec2 p){ return texture(t_a, (p - u_wrap.xy) / u_wrap.zw); }
-vec3 V(vec3 b){ return min(vec3(1.0), 0.9118 * b + 0.1471); }   /* vibrantColorMatrix on the layer's α: out = (1 − α)·B + α·V(B), V = .9118·b + .1471 clamped (keyfill §2) */
-float band(float e, float h, float cosS, float bias, float curv, vec2 n, vec2 dir, float fw){
-  float t = sat(e / h); float prof = mix(t < 1.0 ? 1.0 : 0.0, 1.0 - t, curv);
-  float aa = sat(e / fw + 0.5) * sat((h - e) / fw + 0.5);
-  float ang = sat((dot(n, dir) - cosS) / (1.0 - cosS));
-  float vv = (e < -5.0) ? 0.0 : prof * aa * ang;
-  return vv / (1.0 + bias * (1.0 - vv)); }
-void main(){
-  vec2 C = u_lens.xy + u_lens.zw * 0.5, half_ = u_lens.zw * 0.5; float r = min(22.0, half_.y);
-  vec2 pl = v - C; float d = sdf(pl, half_, r); vec2 n = nrm(pl, half_, r); float fw = max(fwidth(d), 1e-4);
-  vec4 below = A(v);
-  /* §3b.7: screen = e·edr·(R/2, G/3, B/2) + (1 − e)·below; Δ from the fringe map (ratio-1 vector × e, B = e, A = cov), lanes × W/H and ÷ W/H (§3b.3); taps k = 1, ⅔, ⅓ at +kΔ (R weight k, G 1 − k), k = 0, ⅓, ⅔, 1 at −kΔ (G 1 − k, B k); amount 2.3158 / angle −15° / offset 24.444 / height 0 / edge −8.8…0 / opacities 1 → 0 are in the map (gen_lens_maps.py render_aberration) */
-  vec2 wuv = (v - u_wrap.xy) / u_wrap.zw; vec4 ma = texture(m_ab, wuv);
-  vec2 D = decode(ma.rg, u_Sab) * vec2(u_wh, 1.0 / u_wh) * u_p; float e = ma.b * ma.a * u_p; float edr = 1.0;
-  vec3 sum = vec3(0.0);
-  float ks[7] = float[7](1.0, 2.0 / 3.0, 1.0 / 3.0, 0.0, 1.0 / 3.0, 2.0 / 3.0, 1.0); float sg[7] = float[7](1.0, 1.0, 1.0, -1.0, -1.0, -1.0, -1.0);
-  for (int i = 0; i < 7; i++) { vec3 s = A(v + sg[i] * ks[i] * D).rgb; float wr = sg[i] > 0.0 ? ks[i] / 2.0 : 0.0, wg = (1.0 - ks[i]) / 3.0, wb = sg[i] < 0.0 ? ks[i] / 2.0 : 0.0; sum += vec3(wr * s.r, wg * s.g, wb * s.b); }
-  vec3 col = e * edr * sum + (1.0 - e) * below.rgb;
-  /* layer 6: #36 CASDFKeyFillHighlightEffect, three emits each source-over through the vibrant matrix (predict-seg-hold.md §0 item 6, keyfill §2): main band h 1, spread 1.3963 (cos .174), amount .5 → bias 0, curvature .75; diffuse: h 8·1, spread .65·1.3963 (cos .615), bias 1/(.15·.5) − 2 = 11.33, linear; key lights the top (angle 0 → dir (0, −1)), fill the bottom */
-  float eh = -d; vec2 dirK = vec2(0.0, -1.0), dirF = vec2(0.0, 1.0);
-  float a1 = (band(eh, 1.0, cos(1.3963), 0.0, 0.75, n, dirK, fw) + band(eh, 1.0, cos(1.3963), 0.0, 0.75, n, dirF, fw)) * u_p;
-  float a2 = band(eh, 8.0, cos(0.65 * 1.3963), 11.3333, 1.0, n, dirK, fw) * u_p;
-  float a3 = band(eh, 8.0, cos(0.65 * 1.3963), 11.3333, 1.0, n, dirF, fw) * u_p;
-  col = mix(col, V(col), sat(a1)); col = mix(col, V(col), sat(a2)); col = mix(col, V(col), sat(a3));
-  o = vec4(col, 1.0);
-}`;
-const FS_BLIT = `#version 300 es
-precision highp float; in vec2 v; out vec4 o; uniform sampler2D t_page, t_lab; uniform vec2 u_page;
-void main(){ vec4 p = texture(t_page, v / u_page), l = texture(t_lab, v / u_page); o = vec4(l.rgb + p.rgb * (1.0 - l.a), 1.0); }`;
-const P1 = prog(VS, FS1), PISH = prog(VS, FS_ISH), P2 = prog(VS, FS2), PB = prog(VS, FS_BLIT);
-const quad = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, quad); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
-const useProg = (p) => { gl.useProgram(p); const a = gl.getAttribLocation(p, "a"); gl.enableVertexAttribArray(a); gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0); };
-const U = (p, name) => gl.getUniformLocation(p, name);
-const tex = (src, premul) => { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !!premul); gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); return t; };
-const fbo = (w, h) => { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); gl.bindFramebuffer(gl.FRAMEBUFFER, null); return { t, f, w, h }; };
-const loadImg = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
-const [imBg, imLab, imAb] = await Promise.all(["seg-f-bg-220.png", "seg-f-lab-220.png", "seg-f-ab-220.png"].map(loadImg));
-const mBg = tex(imBg), mLab = tex(imLab), mAb = tex(imAb);
-const S_BG = 40, S_AB = 12;                      /* data-s of #seg-lens-f-bg-220 / -lab-220 and #seg-lens-f-ab-220 (lens-filter.svg) */
-let tPage = null, tLab = null;
-const rebuildBackdrop = () => { if (tPage) { gl.deleteTexture(tPage); gl.deleteTexture(tLab); } tPage = tex(cvs(drawPage), true); tLab = tex(cvs(drawLabels), true); };
-rebuildBackdrop();
-/* the inner shadow texture over the lens box (once per size) */
-const ISH_PX = 3; const ish = fbo(LW * ISH_PX, LH * ISH_PX);
-const renderIsh = () => { gl.bindFramebuffer(gl.FRAMEBUFFER, ish.f); gl.viewport(0, 0, ish.w, ish.h); useProg(PISH);
-  gl.uniform4f(U(PISH, "u_lens"), 0, 0, LW, LH); gl.uniform4f(U(PISH, "u_quad"), 0, 0, LW, LH); gl.uniform2f(U(PISH, "u_origin"), 0, 0); gl.uniform2f(U(PISH, "u_view"), LW, LH); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); gl.bindFramebuffer(gl.FRAMEBUFFER, null); };
-renderIsh();
-const wrapW = LW + 2 * AM, wrapH = LH + 2 * AM; const A = fbo(Math.round(wrapW * DPR), Math.round(wrapH * DPR));
-const bind = (p, name, unit, t) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t); gl.uniform1i(U(p, name), unit); };
-const whRule = () => { const l = lensX, t = lensY, r = l + LW, b = t + LH, sw = 440, sh = 956; return (Math.min(r + 100, sw) - Math.max(l - 100, 0)) / (Math.min(b + 100, sh) - Math.max(t - 100, 0)); };   /* §3b.6: the capture box = frame + marginWidth 100 clamped to the screen */
+  G.labels.forEach((t, i) => { x.font = `${i === 0 ? "500 " : ""}13px -apple-system, "SF Pro Text", "PingFang SC", sans-serif`; x.fillText(t, G.labelXs[i], G.labelY); }); };   // 早班 selected: weight 500
+const drawBase = () => { base.width = 440 * DPR; base.height = 956 * DPR; const x = base.getContext("2d"); const c = lens && lens.backdropCanvas(); if (c) x.drawImage(c, 0, 0); else { x.scale(DPR, DPR); drawPage(x); drawLabels(x); } };   /* the visible base = the package's own page + labels canvas (the same pixels the copies sample) */
+let lens = null; drawBase();
+const inkOf = () => theme === "dark" ? [255, 255, 255] : [0, 0, 0];
+lens = LensWebGL.create(canvas, { width: 440, height: 956, dpr: DPR, preserve: true, finish: true, debugPass1: q.get("glpass") === "1", get ink() { return inkOf(); },
+  sets: { 220: { bg: "seg-f-bg-220.png", lab: "seg-f-lab-220.png", ab: "seg-f-ab-220.png", S: 40, Sab: 12, h: 44 } },   /* data-s of #seg-lens-f-bg-220 / -lab-220 and #seg-lens-f-ab-220 (lens-filter.svg) */
+  backdrop: (x, which) => { if (which === "page") drawPage(x); else drawLabels(x); } });
+if (!lens) { stats.textContent = "no WebGL2"; return; }
+await lens.sets[220].ready; drawBase();
+const whRule = () => { const l = lensX, t = lensY, r = l + LW, b = t + LH; return (Math.min(r + 100, 440) - Math.max(l - 100, 0)) / (Math.min(b + 100, 956) - Math.max(t - 100, 0)); };   /* §3b.6: capture box = frame + marginWidth 100 clamped to the screen */
 let frameN = 0, times = [], gpuTimes = [], lastRaf = null, t0 = performance.now();
-const draw = () => {
-  const start = performance.now(); const p = state === "rest" ? 0 : 1;
-  const wx = lensX - AM, wy = lensY - AM;
-  /* pass 1 → A over the wrapper */
-  gl.bindFramebuffer(gl.FRAMEBUFFER, A.f); gl.viewport(0, 0, A.w, A.h); useProg(P1);
-  gl.uniform4f(U(P1, "u_quad"), wx, wy, wrapW, wrapH); gl.uniform2f(U(P1, "u_origin"), wx, wy); gl.uniform2f(U(P1, "u_view"), wrapW, wrapH);   /* v = page pt; the target = the wrapper */
-  gl.uniform2f(U(P1, "u_page"), 440, 956); gl.uniform4f(U(P1, "u_lens"), lensX, lensY, LW, LH); gl.uniform1f(U(P1, "u_S"), S_BG); gl.uniform1f(U(P1, "u_dpr"), DPR); gl.uniform1f(U(P1, "u_p"), p);
-  bind(P1, "t_page", 0, tPage); bind(P1, "t_lab", 1, tLab); bind(P1, "m_bg", 2, mBg); bind(P1, "m_lab", 3, mLab); bind(P1, "t_ish", 4, ish.t);
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-  /* pass 2 → the canvas: the page, then the wrapper quad */
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, canvas.width, canvas.height);
-  useProg(PB); gl.uniform4f(U(PB, "u_quad"), 0, 0, 440, 956); gl.uniform2f(U(PB, "u_origin"), 0, 0); gl.uniform2f(U(PB, "u_view"), 440, 956); gl.uniform2f(U(PB, "u_page"), 440, 956); bind(PB, "t_page", 0, tPage); bind(PB, "t_lab", 1, tLab); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-  if (p > 0) { useProg(P2); gl.uniform4f(U(P2, "u_quad"), wx, wy, wrapW, wrapH); gl.uniform2f(U(P2, "u_origin"), 0, 0); gl.uniform2f(U(P2, "u_view"), 440, 956); gl.uniform2f(U(P2, "u_page"), 440, 956);
-    gl.uniform4f(U(P2, "u_lens"), lensX, lensY, LW, LH); gl.uniform4f(U(P2, "u_wrap"), wx, wy, wrapW, wrapH); gl.uniform1f(U(P2, "u_Sab"), S_AB); gl.uniform1f(U(P2, "u_wh"), whRule()); gl.uniform1f(U(P2, "u_p"), p);
-    bind(P2, "t_a", 0, A.t); bind(P2, "m_ab", 1, mAb); bind(P2, "t_page", 2, tPage); bind(P2, "t_lab", 3, tLab); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); }
-  gl.finish(); gpuTimes.push(performance.now() - start); frameN++;
-};
+const draw = () => { lens.setState({ cx: lensX + LW / 2, cy: lensY + LH / 2, w: LW, h: LH, lift: state === "rest" ? 0 : 1, wh: whRule() }); gpuTimes.push(lens.stats.gpuMs); frameN++; };
 const report = (what) => { const m = (a) => a.reduce((s, x) => s + x, 0) / Math.max(1, a.length), mx = (a) => a.reduce((s, x) => Math.max(s, x), 0);
-  stats.innerHTML = `${what} ${times.length} 帧 · rAF 间隔 平均 <b>${m(times).toFixed(1)} ms</b> 最大 <b>${mx(times).toFixed(1)}</b> · 绘制到 gl.finish 平均 <b>${m(gpuTimes).toFixed(1)} ms</b> 最大 <b>${mx(gpuTimes).toFixed(1)}</b> · ${state} ${theme} · 透镜 x ${lensX.toFixed(1)} · W/H ${whRule().toFixed(2)} · ${DPR}×`; };
+  stats.innerHTML = `${what} ${times.length} 帧 · rAF 间隔 平均 <b>${m(times).toFixed(1)} ms</b> 最大 <b>${mx(times).toFixed(1)}</b> · setState 到 gl.finish 平均 <b>${m(gpuTimes).toFixed(2)} ms</b> 最大 <b>${mx(gpuTimes).toFixed(1)}</b> · ${state} ${theme} · 透镜 x ${lensX.toFixed(1)} · W/H ${whRule().toFixed(2)} · ${DPR}×`; };
 const tick = (now) => { if (lastRaf != null) times.push(now - lastRaf); lastRaf = now; draw(); window.__segLens = { t: (now - t0) / 1000, x: lensX + LW / 2, v: 0, target: lensX + LW / 2, dt: times.length ? times[times.length - 1] / 1000 : 0, phase: state, set: 220, lift: state === "rest" ? 0 : 1, w: LW, h: LH, frame: frameN, gpu_ms: gpuTimes[gpuTimes.length - 1] }; };
 let dragging = false, auto = false, rafOn = false;
-const loop = (now) => { if (!(dragging || auto)) { rafOn = false; report(dragging ? "拖动" : "自动拖"); return; } tick(now); requestAnimationFrame(loop); };
+const loop = (now) => { if (!(dragging || auto)) { rafOn = false; report(auto ? "自动拖" : "拖动"); return; } tick(now); requestAnimationFrame(loop); };
 const startLoop = () => { if (rafOn) return; rafOn = true; times = []; gpuTimes = []; lastRaf = null; requestAnimationFrame(loop); };
 canvas.addEventListener("pointerdown", (e) => { if (state === "rest") return; dragging = true; canvas.setPointerCapture(e.pointerId); startLoop(); });
 canvas.addEventListener("pointermove", (e) => { if (!dragging) return; const r = canvas.getBoundingClientRect(); lensX = Math.max(0, Math.min(440 - LW, e.clientX - r.left - LW / 2)); });
 for (const t of ["pointerup", "pointercancel"]) canvas.addEventListener(t, () => { dragging = false; });
 document.getElementById("auto").onclick = () => { if (auto) return; auto = true; const x0 = lensX, s0 = performance.now(); startLoop();
-  const step = (now) => { const pp = (now - s0) / 2000; lensX = Math.max(0, Math.min(440 - LW, x0 + Math.sin(pp * Math.PI * 2) * 60)); if (pp < 1) requestAnimationFrame(step); else { auto = false; lensX = x0; draw(); } }; requestAnimationFrame(step); };
-for (const b of document.querySelectorAll("#bar button[data-state]")) b.onclick = () => { state = b.dataset.state; lensX = LENS_X0[state] ?? lensX; rebuildBackdrop(); draw(); report("静态"); };
-document.getElementById("theme").onclick = () => { theme = theme === "dark" ? "light" : "dark"; document.documentElement.classList.toggle("dark", theme === "dark"); rebuildBackdrop(); draw(); report("静态"); };
+  const step = (now) => { const pp = (now - s0) / 2000; lensX = Math.max(0, Math.min(440 - LW, x0 + Math.sin(pp * Math.PI * 2) * 60)); if (pp < 1) requestAnimationFrame(step); else { auto = false; lensX = x0; draw(); report("自动拖"); } }; requestAnimationFrame(step); };
+const restate = () => { lens.redrawBackdrop(); drawBase(); draw(); report("静态"); };
+for (const b of document.querySelectorAll("#bar button[data-state]")) b.onclick = () => { state = b.dataset.state; lensX = LENS_X0[state] ?? lensX; restate(); };
+document.getElementById("theme").onclick = () => { theme = theme === "dark" ? "light" : "dark"; document.documentElement.classList.toggle("dark", theme === "dark"); restate(); };
 document.documentElement.classList.toggle("dark", theme === "dark");
-draw(); tick(performance.now()); report("静态"); window.__lensWebGL = { draw, get lensX() { return lensX; }, set lensX(v) { lensX = v; }, get state() { return state; } };
+draw(); tick(performance.now()); report("静态"); window.__lensWebGL = { lens, draw, get lensX() { return lensX; }, set lensX(v) { lensX = v; }, get state() { return state; } };
 })().catch((e) => { document.getElementById("stats").textContent = "error: " + e.message; console.error(e); });
 </script>
 </body></html>

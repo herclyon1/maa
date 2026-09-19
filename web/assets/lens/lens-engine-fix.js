@@ -31,7 +31,7 @@
     for (let i = 0; i < d.length; i += 4) { if (d[i] < 128) d[i] = Math.max(0, Math.round(d[i] - step)); if (d[i + 1] < 128) d[i + 1] = Math.max(0, Math.round(d[i + 1] - step)); }
     ctx.putImageData(im, 0, 0);
     const url = URL.createObjectURL(await new Promise((r) => cv.toBlob(r, "image/png")));
-    fe.setAttribute("href", url); fe.dataset.engineFixed = String(k);
+    fe.dataset.hrefOrig = href; fe.setAttribute("href", url); fe.dataset.engineFixed = String(k);   /* data-href-orig: the file (lens-webgl.js samples the plain map) */
   };
   const run = () => Promise.all([...document.querySelectorAll("filter[data-s] feImage")].map((fe) => fix(fe).catch((e) => console.warn("lens-engine-fix", fe, e))))
     .then(() => { window.LENS_ENGINE_FIX_DONE = true; dispatchEvent(new CustomEvent("lens-engine-fix")); });
