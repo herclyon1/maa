@@ -599,6 +599,12 @@
           fi.blur(); await sleep(120); const dB = !document.documentElement.classList.contains("kbd") && getComputedStyle(nav0).display !== "none"; scrollTo(0, sy0);
           check("聚焦本身不动胶囊（只认视口变矮，监督局 19:3x）：文本框聚焦 360 ms 后胶囊仍在，失焦后仍在", "focus shown · blur shown", `hasFocus ${hasF} · focus ${dF ? "shown" : "hidden!"} · blur ${dB ? "shown" : "hidden!"}`, dF && dB);
           check("键盘露出 300 px 时聚焦的字段滚进可见区中央（visualViewport resize 后下一帧 scrollBy 到可见区中心；190821 首次聚焦字段留在键盘下）", "field inside 0…300", `top ${Math.round(r0)} → ${Math.round(r1.top)}…${Math.round(r1.bottom)} · scrolled ${did}`, hasF ? (did === true && inside) : true); } }
+      /* 数据 live 190821: field focused + keyboard up → tap a segment (blur): the capsule must come back even while the viewport still reads short (no text field
+         focused → not a keyboard) — html.kbd must not stay */
+      { const fi2 = document.querySelector("input[data-time]"), nv2 = document.querySelector("nav.tabs");
+        if (fi2 && nv2) { fi2.focus({ preventScroll: true }); const h1 = window.__tabKbd(innerHeight - 300, true), d1 = getComputedStyle(nv2).display;
+          fi2.blur(); await sleep(20); const h2 = window.__tabKbd(innerHeight - 300, true), d2 = getComputedStyle(nv2).display; window.__tabKbd(null);
+          check("键盘在、胶囊藏，点别处失焦（键盘收）：视口还没回高也立刻放回胶囊（无文本框聚焦 ≠ 键盘；live 190821 胶囊不再出现）", "focused+short hidden → blurred+short shown", `${document.hasFocus() ? "" : "(no focus emulation) "}${h1} ${d1} → ${h2} ${d2}`, document.hasFocus() ? (h1 === true && d1 === "none" && h2 === false && d2 !== "none") : (h2 === false && d2 !== "none")); } }
       /* 监督局 19:3x: a segment tap must not flash — the buttons carry no tap highlight and no pointer focus ring (unchanged since 181053), and a render must not
          rebuild the tab bar's nodes (the platter's backdrop-filter layer / glide / buttons stay the same elements) */
       { const sb = document.querySelector("#queueseg button"), nv = document.querySelector("nav.tabs"), plat0 = nv && nv.querySelector(".plat"), gl0 = nv && nv.querySelector(".glide"), b0 = nv && nv.querySelector(".seg > button");
