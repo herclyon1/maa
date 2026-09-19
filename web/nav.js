@@ -18,8 +18,12 @@
    nil), its alpha runs the keyframe [0, .6] → 0 (0x1c3cf7db4–0x1c3cf7e10). The new back button: body alpha 1, its content alpha keyframe
    [.5, 1] 0 → 1 (prepare 0x1c3cf629c–0x1c3cf62e4; 0x1c3cf7de8–0x1c3cf7e20); the chevron image starts at scale .7 ([0x1c57184d0]) and
    (+7, +5) pt from its final frame with alpha 0 and pops out in the keyframe [.9, 1] (0x1c3cf61b8–0x1c3cf6288, 0x1c3cf7ed8–0x1c3cf7f5c).
-   The pop (_UINavigationBarTransitionContextPop _animateScaleTransition 0x1c3cfa864) is the same function in mode 5 — drawn here as the same
-   functions of p run backwards; its own keyframe times are unread (§5g 未读 ②) and its chevron keyframes too (only "偏 5" read) — 待读.
+   The pop (§5g′, _UINavigationBarTransitionContextPop _animateScaleTransition 0x1c3cfa864, R69′): scale / centre / the back content's offset are
+   the push reversed (mode 5, 0x1c3cfa918–0x1c3cfa928; back content 0 → (d.x − adj, d.y) 0x1c3cfa89c–0x1c3cfa8c4), but the alpha keyframes are
+   the pop's own, in its progress u = 1 − p: the old back button's content → 0 over [0, .6] (kf1 block_2 0x1c3cfabc0 / 0x1c3cfac14), the root
+   large title held at 0 over [0, .5] (kf2 block_3 0x1c3cfac34) then → 1 over [.5, 1] (kf3 block_4 0x1c3cfac44); the chevron shrinks out over
+   [0, .1] to scale .7 / (+7, +5) / alpha 0 (block_6 0x1c3cface4) — the push's [.9, 1] pop-out read backwards in p. The back button's body fades
+   with the bar's items (§0 f_out) as before.
    On this page the large title is page content that parallaxes with the root (−.3 W·p); natively it is the bar's and does not, so the h1's own
    translate compensates the parallax and its centre moves exactly −d·p on screen. Segment interpolation inside a keyframe is drawn linear
    (§5g 未读 ①: the keyframe state's use of curve bit 5 is unread — 待读).
@@ -37,7 +41,7 @@
   const u2 = (p) => Math.max(0, Math.min(1, (p - (SEG.mid - SEG.overlap / 2)) / (1 - (SEG.mid - SEG.overlap / 2)))); // second [.425, 1]
   const st = { p: 0, v: 0, target: 0, raf: 0, last: 0, dir: 0, pg: null, dim: null, titleStart: 0, backDx: 0, backDy: 0, h1: null, trace: [] };
   const clamp01 = (x) => Math.max(0, Math.min(1, x));
-  const KF = { h1Out: [0, .6], backIn: [.5, 1], chev: [.9, 1] };   // §5g keyframes (start, end) in p: large title alpha → 0; back content alpha → 1; chevron pop-out
+  const KF = { h1Out: [0, .6], backIn: [.5, 1], chev: [.9, 1], popBackOut: [0, .6], popH1In: [.5, 1] };   // §5g push keyframes (start, end) in p: large title alpha → 0; back content alpha → 1; chevron pop-out. §5g′ pop keyframes in u = 1 − p: old back content → 0; large title → 1 (held 0 before .5); the chevron's [0, .1] shrink-out = chev read backwards
   const CHEV0 = { scale: .7, dx: 7, dy: 5 };                     // the chevron's prepared start: MakeScale(.7) [0x1c57184d0], final frame + (+7, +5) pt (flags bit 1 → −7: RTL, not this page)
   const seg = ([a, b], p) => clamp01((p - a) / (b - a));
   const W = () => window.innerWidth;
@@ -55,7 +59,7 @@
     pg.style.setProperty("--nav-back-dy", (st.backDy * (1 - p)).toFixed(2) + "px");
     /* R47′ — the large title (mode 2, §5g): scale 1 → (w_chev / w_h1, h_chev / h_h1) about the text's centre, centre −d·p on screen (the header's
        parallax compensated), alpha keyframe [0, .6] → 0; the same functions of p on the pop (mirror, 待读 ②) */
-    const h = st.h1, kOut = 1 - seg(KF.h1Out, p);
+    const u = 1 - p, h = st.h1, kOut = st.dir > 0 ? 1 - seg(KF.h1Out, p) : seg(KF.popH1In, u);   // the large title's alpha: push [0, .6] → 0 in p; pop held 0 then [.5, 1] → 1 in u (R69′)
     if (h) {
       const sx = 1 + (h.sx - 1) * p, sy = 1 + (h.sy - 1) * p, dx = -st.backDx * p - parallax() * p, dy = -st.backDy * p;
       root.style.setProperty("--nav-h1-ox", h.ox.toFixed(2) + "px"); root.style.setProperty("--nav-h1-oy", h.oy.toFixed(2) + "px");
@@ -65,7 +69,7 @@
     }
     /* the back button on a push: body alpha 1 (prepare), content alpha keyframe [.5, 1], the chevron image alpha / scale / offset keyframe [.9, 1] from
        .7× and (+7, +5); on a pop the body fades with the bar's items (§0 f_out) and the content shows (pop keyframes unread) */
-    const kIn = st.dir > 0 ? seg(KF.backIn, p) : 1, kc = st.dir > 0 ? seg(KF.chev, p) : 1;
+    const kIn = st.dir > 0 ? seg(KF.backIn, p) : 1 - seg(KF.popBackOut, u), kc = seg(KF.chev, p);   // back content alpha: push [.5, 1] → 1 in p, pop [0, .6] → 0 in u; the chevron keyframe in p both ways (pop = the first 10 % shrink-out)
     pg.style.setProperty("--nav-back-a", st.dir > 0 ? "1" : a.toFixed(4));
     pg.style.setProperty("--nav-chev-a", (kIn * kc).toFixed(4));
     pg.style.setProperty("--nav-chev-s", (CHEV0.scale + (1 - CHEV0.scale) * kc).toFixed(4));
