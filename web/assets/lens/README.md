@@ -1171,6 +1171,16 @@ over in the dark theme (white glyphs on a dark track) the recovered alpha collap
 the 「早」's left strokes are the thinnest. Package side (this commit): the ink is detected from the renders themselves (the colour of the
 pixel the labels changed most); a given `ink` is used only when it is within 48 levels of the detected one (`L.stats.ink` tells which). For
 界面1号 to confirm on the page: the value of `ink` passed in the dark theme at that frame.
+**The tap path's first glass frame (d02487f on the device: the drag's first frame is fine after the prewarm, +113 / +118 vs native +116 / +119;
+a tap's — commit → render → the first lens frame — still 47 / 50 ms):** what sits on that frame and not on the drag's is the value flip's
+`redrawBackdrop` (the labels' weight changes): draw the two 2D canvases, read them back, the alpha recovery loop, two texture uploads —
+on the Mac 19 ms for the control's row at 3× (draw 3, the loop 13, upload 2), more on the phone. Now: `redrawBackdrop()` and a later
+`setBackdrop()` DEFER the work to the next task (setTimeout 0) and draw the frames until then with the previous textures, then prewarm
+again — the native crossfades the label's weight / contents over 0.2 s (seg-lens-refraction §4.4), so one frame with the old label is inside
+its own transition; `{ sync: true }` draws at once (the harness; a setup call before any frame is sync by itself). The scratch canvases are
+kept and re-used (`willReadFrequently`), the textures re-uploaded in place, the loop skips the pixels the labels did not touch
+(`stats.prewarm.backdropDrawMs / AlphaMs / UploadMs`). The device's re-read of the tap path is the check (the data session).
+
 ### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
 
 Sources: `remote-ref/sheet-native.md` (the data session's 10th order: A9 `sheetivars` / `corners` / `subtree` / motion, iOS 27.0 3×) and
