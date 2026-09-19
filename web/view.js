@@ -629,7 +629,9 @@ function segSameQueues(a, b) {
    gives the weight transition its start and end values. The commit stretch (.spring) restarts when the value changed. */
 function segSync(seg, fresh) {
   const lens = seg.querySelector(".lens"), to = fresh.style.getPropertyValue("--i"), from = seg.style.getPropertyValue("--i");
-  if (seg.__gl) requestAnimationFrame(() => { try { seg.__gl.lens.redrawBackdrop(); } catch (e) {} });   // WebGL: the labels' weight / the selection changed under the lens (README §0.8.7 step 4)
+  if (seg.__gl) { const onIdx = [...fresh.querySelectorAll("button")].findIndex((b) => b.classList.contains("on")), gs = seg.__gl.gs;
+    if (gs.futureOn != null && gs.futureOn === onIdx) gs.futureOn = null;   // the textures were drawn for this selection at the down — no upload in the lift's frame
+    else { gs.futureOn = null; requestAnimationFrame(() => { try { seg.__gl.lens.redrawBackdrop(); } catch (e) {} }); } }   // WebGL: the labels' weight / the selection changed under the lens (README §0.8.7 step 4)
   const freshBs = [...fresh.querySelectorAll("button")];
   [...seg.querySelectorAll("button")].forEach((b, i) => {
     const on = freshBs[i] && freshBs[i].classList.contains("on");
@@ -1362,15 +1364,18 @@ function segGlCreate(seg, lens, bs, setW) {
   if (cur) { try { cur.lens.destroy(); } catch (e) {} cur.canvas.remove(); seg.__gl = null; }
   let canvas = seg.querySelector("canvas.glens"); if (!canvas) { canvas = document.createElement("canvas"); canvas.className = "glens"; seg.appendChild(canvas); }
   const segW = seg.clientWidth, segH = seg.clientHeight;
-  const sets = LensWebGL.setsFromFilters("seg"); if (!sets[setW]) return null;   // the one set the SVG path rides (the model width; the lift and the drag stay on it, README §0.3)
+  const sets = LensWebGL.setsFromFilters("seg"); if (!sets[setW]) return null;
+  const onB = bs.find((b) => b.classList.contains("on")) || bs[0], offB = bs.find((b) => !b.classList.contains("on")) || bs[0];
+  const gs = { futureOn: null, fontOn: getComputedStyle(onB).font, fontOff: getComputedStyle(offB).font };   // futureOn: the selection the labels texture is drawn for while a tap is in flight (set at the down, cleared at the commit / cancel)   // the one set the SVG path rides (the model width; the lift and the drag stay on it, README §0.3)
   const opts = { sets: { [setW]: sets[setW] }, preload: [setW], dpr: window.devicePixelRatio || 1, width: segW, height: segH + 2 * SEG_GLM, margin: 16, ink: segRgb(getComputedStyle(bs[0]).color),
     backdrop: (x, which) => {   // canvas pt; the canvas origin = the control's left, 24 pt above its top
       if (which === "page") { x.fillStyle = getComputedStyle(document.body).backgroundColor || "#fff"; x.fillRect(0, 0, segW, segH + 2 * SEG_GLM);
         const cs = getComputedStyle(seg); x.fillStyle = cs.backgroundColor; x.beginPath(); x.roundRect(0, SEG_GLM, segW, segH, parseFloat(cs.borderTopLeftRadius) || 16); x.fill(); }   // the track over the page colour; no platter (the DOM's shows at rest)
       else { const sr = seg.getBoundingClientRect(); x.textAlign = "center"; x.textBaseline = "middle";
-        for (const b of bs) { const r = b.getBoundingClientRect(), c = getComputedStyle(b); x.font = c.font; x.fillStyle = c.color; x.fillText(b.textContent, r.left - sr.left + r.width / 2, SEG_GLM + r.top - sr.top + r.height / 2); } } } };
+        bs.forEach((b, i) => { const r = b.getBoundingClientRect(), c = getComputedStyle(b), on = gs.futureOn != null ? i === gs.futureOn : b.classList.contains("on");
+          x.font = on ? gs.fontOn : gs.fontOff; x.fillStyle = c.color; x.fillText(b.textContent, r.left - sr.left + r.width / 2, SEG_GLM + r.top - sr.top + r.height / 2); }); } } };
   let glLens; try { glLens = LensWebGL.create(canvas, opts); } catch (e) { console.warn("LensWebGL", e); canvas.remove(); segGlOk = false; return null; }
-  return (seg.__gl = { canvas, lens: glLens, opts, w: segW, h: segH, setW, platter: segRgba(getComputedStyle(seg).getPropertyValue("--ios-segment-selected-bg")) });   // the platter colour token (light (255,255,255,1) / dark (235,235,245,.3), tokens.css)
+  return (seg.__gl = { canvas, lens: glLens, opts, w: segW, h: segH, setW, gs, platter: segRgba(getComputedStyle(seg).getPropertyValue("--ios-segment-selected-bg")) });   // the platter colour token (light (255,255,255,1) / dark (235,235,245,.3), tokens.css)
 }
 try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { for (const s of document.querySelectorAll(".segctl")) if (s.__gl) { const b = s.querySelector("button"); if (b) s.__gl.opts.ink = segRgb(getComputedStyle(b).color); s.__gl.platter = segRgba(getComputedStyle(s).getPropertyValue("--ios-segment-selected-bg")); try { s.__gl.lens.redrawBackdrop(); } catch (e) {} } }); } catch (e) {}   // theme change: the backdrop's colours and the ink   // 换值重画不阻塞: the commit frame switches the selection only, the content render runs in the next frame (?vcsplit=0 = one frame, the old path)   // layer-5 colour fringe (7-tap chain on .stack, per-frame W/H matrix + tap scales): default off, ?disp=1 on (监督局 09-19 12:0x, phone fps bisect)
 /* instrumentation (仪器, no behaviour): the lens loop publishes its per-tick internals as window.__segLens — a flat object of numbers and strings,
@@ -1713,7 +1718,9 @@ function attachSegmented(seg, getIndex, commit) {
         seg.classList.remove("drag"); if (lens) lens.classList.remove("lift");
         const target = segAt(ev.clientX), noEvent = cancelled || outside(ev.clientX, ev.clientY) || target === idx;   // cancel (> 70 pt out, G17/G18) or back on the selected one (G8/G10/G23): no event
         if (glass && !glass.beginTap) glass.release(noEvent ? idx : target);   // glass, copies and geometry fall on the lens's own curve, to the rest rect it ends on
-        if (noEvent) { if (glass && glass.beginTap) glass.stop(); showLens(idx); return; }
+        if (noEvent) { if (glass && glass.beginTap) glass.stop(); showLens(idx);
+          if (seg.__gl && seg.__gl.gs.futureOn != null) { seg.__gl.gs.futureOn = null; requestAnimationFrame(() => { try { seg.__gl.lens.redrawBackdrop(); } catch (e) {} }); }   // the speculative labels texture undone (nothing was lifted)
+          return; }
         if (!lifted && !onSelected && lens) {   // 点按外观: the tap runs the lift chain from the up (SEG_TAP_T) — glass in place, glass slide, solid again on settling; the loop owns the lens, segSync skips the old CSS slide
           const tUp = performance.now(), upAt = ev.timeStamp > 0 && ev.timeStamp <= tUp ? ev.timeStamp : tUp; performance.mark("seg:tap-up");
           if (glass && glass.beginTap) glass.beginTap(target, upAt); else segLens(seg, lens, bs, NaN, { target, upAt });   // the loop was built at the down (deferred); arm it — or build now if the down had none
@@ -1723,7 +1730,8 @@ function attachSegmented(seg, getIndex, commit) {
     })) return;
     seg.dataset.pe = "1";
     if (!onSelected) { bs[pressed].classList.add("dim");           // G15: only the label dims; no highlight, no lens move, no value
-      if (lens) { const tBuild = performance.now(); performance.mark("seg:down"); glass = segLens(seg, lens, bs, NaN, { deferred: true }); segMeasure("seg:build", tBuild); } }   // the tap's build work at the down (copies, labels, SVG state); the up only arms the schedule
+      if (lens) { const tBuild = performance.now(); performance.mark("seg:down"); glass = segLens(seg, lens, bs, NaN, { deferred: true }); segMeasure("seg:build", tBuild);
+        if (seg.__gl && seg.__gl.gs.futureOn !== pressed) { const tU = performance.now(); seg.__gl.gs.futureOn = pressed; try { seg.__gl.lens.redrawBackdrop(); } catch (e) {} segMeasure("seg:gl-upload", tU); } } }   // WebGL: the backdrop textures for the tap's outcome uploaded now (and prewarmed by the package), not at the value flip   // the tap's build work at the down (copies, labels, SVG state); the up only arms the schedule
     else {
       const tBuild = performance.now(); performance.mark("seg:down");
       glass = lens ? segLens(seg, lens, bs, e.clientX, null, e.timeStamp) : null; segMeasure("seg:build", tBuild);   // 仪器: DOM / SVG construction of the lens layers     // the loop: glass, copies, geometry — the lift itself starts at +109 ms (G4/G16); the down x is the drag delta's origin (B5-c)
