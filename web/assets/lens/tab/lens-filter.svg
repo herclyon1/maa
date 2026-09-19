@@ -18,7 +18,14 @@
        (−1 → −0.5 / −0.67, −4 → −3.5 / −3.67), a positive one rounded up to the next pixel; a constant map decodes to its value
        (no zero-point offset, no linearRGB decode). 引擎校正: load lens-engine-fix.js after this <svg> — it re-encodes every
        #…-f-bg-/-lab- map's R/G at page load so negative values are longer by exactly one device pixel (k = 1/devicePixelRatio,
-       byte' = byte − k·255/S for byte < 128), blob: copies only, the files untouched; not the fringe chains. README §0.4. -->
+       byte' = byte − k·255/S for byte < 128), blob: copies only, the files untouched; not the fringe chains. README §0.4.
+       引擎校正 2 (supersampled displacement layers, default on in lens-test, ?ss=0 off): lay each filtered layer out at SS× its
+       size (SS 2) with its copy scaled SS× inside, in a composited wrapper scaled 1/SS (scale3d + will-change: transform) —
+       WebKit then runs the software filter on an SS×-size raster and CA downsamples it, halving the displacement quantum and
+       the negative-lane shortfall; set the feDisplacementMap scale to data-s × SS (the map's pt are SS layer px) and the filter
+       region to 100/SS % (WebKit resolves the region of a layer under a scaled ancestor in unscaled units — calib/
+       webkit-region-under-scale.html); lens-engine-fix.js reads window.LENS_SS for its k. Frame cost 4× the filter pixels
+       per layer — measured on the phone before it goes into index.html (README §0.4). -->
   <filter id="tab-lens-f-bg-94" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 94×54 = the 220×44 model scaled by (0.8545, 0.7714): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 94×54 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="assets/lens/tab/tab-f-bg-94.png" preserveAspectRatio="none" result="map"/>

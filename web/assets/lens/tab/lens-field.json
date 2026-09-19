@@ -27,6 +27,9 @@
   }
  },
  "encoding": {
+  "device_px": 3.0,
+  "coverage_aa": "cov = saturate(.5 − d/fw), fw = 1 device px = 1/device_px pt (formula.md §4b.1 D)",
+  "clamp": "the sample position is clamped to the last texel centre of the stage's texture (½ device px inside the box) then clamp_to_edge (formula.md §4b.1 A)",
   "engine_fix_pt": 0.0,
   "engine_fix": "引擎校正: WebKit's feDisplacementMap applies negative values one device pixel short (calib/: Mac 2× ½ px, iOS simulator 3× ⅓ px), positive rounded up; the correction is applied AT PAGE LOAD by lens-engine-fix.js (default on, k = 1/devicePixelRatio: every negative R/G byte −k·255/S, blob: copies, files untouched); --engine-fix <pt> bakes the same into the files for a static build (default 0 = not baked); README §0.4",
   "scale": "per set: sets[w].S — 40 where the scaled stack fits ±20 pt, 48 for the widest stretch sets; the filter element carries data-s",

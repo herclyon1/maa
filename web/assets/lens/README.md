@@ -393,6 +393,41 @@ correction above fixes the one-pixel shortfall on negative values; the quantisat
 A is the one that changes the fact without a second rendering path; its frame cost is the question (the test page's 自动拖 2 s
 frame stats on the phone would answer it).
 
+**引擎校正 2 — candidate A done (2026-09-19, 监督局 09:2x; default ON in the test page, `?ss=0` off; not yet in index.html — the data
+session measures the frame time on the phone first):** each filtered layer is laid out at SS = 2 × its size with its copy scaled 2×
+inside (`.ss2`), in a composited wrapper scaled ½ (`.ssw`: `scale3d(.5,.5,1)`, `will-change: transform`); WebKit then rasterises the
+layer at 2× and runs the software filter on that raster, CA downsamples the composited wrapper with bilinear sampling. Two engine
+facts found on the way, both measured with `calib/`: (1) the filter of a layer under a scaled ancestor has its objectBoundingBox
+region resolved in UNSCALED units — `width="100%"` stretched the map over twice the layer (`calib/webkit-region-under-scale.html`:
+the 25 %-step map's step landed at 220 instead of 165; with `50%` it lands right) — so the page sets the region to 100/SS % and the
+feDisplacementMap `scale` to data-s × SS (the map's pt are SS layer px); the filter definitions in `lens-filter.svg` stay as
+generated; (2) in this composited path WebKit's buffer is at the device scale (wksnap @3: the constant-map shortfall reads ⅙ pt
+with SS 2 — 4 → 3.83 — where the plain page read ½; on a 3× phone the quantum becomes ⅙ pt). `lens-engine-fix.js` takes SS from
+`window.LENS_SS` (k per layer pixel). The maps and the formulas are untouched. `ss-4x-{light,dark}.png` (rows native / the exact
+formula / WebKit ss off / WebKit ss on):
+
+| | native | ss off (bed84e4) | **ss on** |
+|---|---|---|---|
+| bars8 row 606 (lens top + 4) right / left | 311.75–317.25 / 122.40–127.92 | — / 121.97–123.42 | **312.42–318.41 / 121.67–127.41** |
+| row 642 (lens bottom − 4) | 311.86–317.44 / 122.24–127.81 | 313.42–317.97 / 121.86–126.42 | **312.42–318.18 / 121.67–127.42** |
+| row 616 right | 309.83 · 313.83 · 318.20 · 329.83 | 317.92 | 309.92 · 313.92 · **318.42** · 329.92 |
+| row 624 (centre) right: the eye and the rim fold | 324.03; 329.24 / 329.75 | 323.92; 329.42 / 329.94 | 324.17 (then the ¼-pt flicker of the knife-edge); 329.42 / 329.94 |
+| row 624 left: the eye | 110.40 … 115.64 | 111.5 … 115.4 flicker | 110.42 … 115.92 |
+| 右「班」 height (light / dark) | 15.0 / 12.0 | 14.16 / 13.50 | **14.83 / 14.00** |
+| 右「班」 shape | horizontal streaks with fringes | a lump | **streaks with fringes** |
+| 左「早班」 ink (light / dark) | −37 % / −57 % | −25 % / −30 % | −19 % / −34 % |
+| page bars y634 left gaps (fold pair, then) | 0.74 · 3.52 · 3.20 · 3.26 · 3.36 · 3.55 · 3.65 | 0.93 · 3.00 · 3.51 · 3.03 · 3.49 | 0.37 · 4.05 · 3.02 · 3.29 · 3.23 · 3.51 |
+| page bars y610 left stretch gap | 7.66 | 7.46 | 7.53 |
+| rest band, centre column | 9 … 35 | 8.7 … 35.0 | 9.2 … 35.0 |
+| fringe (tools/fringe_check.py): share / saturation, light | 1.36 % / 69 | 1.15 % / 82.7 | **1.38 %** / 85.0 |
+| dark | 1.38 % / 71 | 1.02 % / 79.0 | 1.20 % / 77.9 |
+
+The rows 4 pt from the lens top / bottom, the streaks and the fringe share come to the native with it; what stays is the knife-edge
+flicker in the eye (the platform straddles a bar boundary; the native's bilinear fetch blends it), the 0.17 pt short in the height
+and the saturation. Cost: 4× the filter pixels per layer (two layers; the fringe chain on the wrapper untouched) — the data
+session's standalone recording, on / off, decides whether it is on in index.html (`lens-test.html?native=1&lensx=220&ss=1` vs
+`&ss=0`, 自动拖 2 s → `window.FRAME_STATS`).
+
 The top / bottom bands at the ends (the acceptance session's B6 preview, 2026-09-19: "whitish and hard", `bands-native-bgonly-all.png`,
 `topband-zoom.png`; the test page with the backdrop filter alone): the track's displaced edge sits where the native's does (top
 band x 300: ours 610.3–610.5 against 610.7–611, x 322: 610.5 against 610.7; bottom band x 300: 637.0 against 637.3) and is as
