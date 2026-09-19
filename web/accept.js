@@ -6,9 +6,13 @@
    2026-09-18：期望值改成 web/tokens.css 的原值（每项后面写变量名；出处在 tokens.css
    该变量上一行的注释：UIProbe 探针 / AX json / Kit NUMBERS）。期望值故意写死在这里，
    不从 tokens.css 读——两边同源的话 tokens 写错也会「通过」。颜色比对解析 rgb，不比字串。 */
+/* night batch (BOARD.md A6): per-control acceptance files register through ACCEPT.add(fn); accept.js loads them in index.html hook order and runs
+   each fn(ctx) after its own rows, ctx = { check, num, col, sleep }. A file that is still a shell registers nothing. */
+window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
 (function () {
   const q = new URLSearchParams(location.search);
   if (!q.has("accept")) return;
+  for (const c of ["motion","nav","nav-edge","sheet","menu","topbar","refresh","glassbtn","switch"]) { const s = document.createElement("script"); s.src = "accept-" + c + ".js"; document.head.appendChild(s); }
   const rows = [];
   const near = (a, b, tol = 0.6) => Math.abs(a - b) <= tol;
   const cs = (el, pseudo) => el ? getComputedStyle(el, pseudo || null) : null;
@@ -852,7 +856,8 @@
         document.body.appendChild(box);
       }
     };
-    interactions().then(finish, (e) => { check("交互测试脚本出错", "", String(e), false); finish(); });
+    const extra = async () => { for (const fn of (window.ACCEPT ? window.ACCEPT.fns : [])) { try { await fn({ check, num, col, sleep: (ms) => new Promise((r) => setTimeout(r, ms)) }); } catch (e) { check("控件检查文件出错 " + (fn.name || ""), "", String(e), false); } } };
+    interactions().then(extra, (e) => { check("交互测试脚本出错", "", String(e), false); }).then(finish, (e) => { check("控件检查出错", "", String(e), false); finish(); });
   }
   /* The page renders after its first snapshot and the number tiles after the game
      APIs answer: measure once the tiles exist (or after 8 s) — never before view.js's top-level bindings exist (window.__viewReady, set at the

@@ -21,7 +21,15 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260919202020">
 <!-- 组件数字的正本：--ios-* 变量，每条带来源（探针原值 / AX 帧 / NUMBERS 行 / 取色 / 采样替代）。页面自己的变量只做映射，不再手写数字。 -->
 <link rel="stylesheet" href="tokens.css?v=20260919202020">
-<link rel="stylesheet" href="controls.css?v=20260919202020">   <!-- press states of rows / switch (B14 / B13): remote-ref/dispatch-B14-cell.md, dispatch-B13-switch.md -->
+<link rel="stylesheet" href="controls.css?v=20260919202020">
+<link rel="stylesheet" href="motion.css?v=0">
+<link rel="stylesheet" href="nav.css?v=0">
+<link rel="stylesheet" href="sheet.css?v=0">
+<link rel="stylesheet" href="menu.css?v=0">
+<link rel="stylesheet" href="topbar.css?v=0">
+<link rel="stylesheet" href="refresh.css?v=0">
+<link rel="stylesheet" href="glassbtn.css?v=0">
+<link rel="stylesheet" href="switch.css?v=0">   <!-- night batch shells (BOARD.md A7): one css per control -->   <!-- press states of rows / switch (B14 / B13): remote-ref/dispatch-B14-cell.md, dispatch-B13-switch.md -->
 <link rel="stylesheet" href="seg-keys.css?v=20260919011715">   <!-- segmented-lens kinematics compiled from the native frames (界面2号 ui2 90d6876 gen_seg_keys.py; do not edit) -->
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
@@ -3964,6 +3972,15 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   else document.write('<script src="view.js?v=20260919202020"><\/script>'); }</script>
 <script src="alert-prewarm.js?v=20260919202020"></script>   <!-- the alert glass layer built once at load: first open as fast as the second (web/alert-prewarm.js) -->
 <script src="controls.js?v=20260919202020"></script>   <!-- row press (B14) / switch (B13) state machines; after view.js (it takes .acts button over from installPressables) -->
+<script src="motion.js?v=0"></script>
+<script src="nav.js?v=0"></script>
+<script src="nav-edge.js?v=0"></script>
+<script src="sheet.js?v=0"></script>
+<script src="menu.js?v=0"></script>
+<script src="topbar.js?v=0"></script>
+<script src="refresh.js?v=0"></script>
+<script src="glassbtn.js?v=0"></script>
+<script src="switch.js?v=0"></script>   <!-- night batch shells (BOARD.md A7): one js per control, after controls.js -->
 <script>/* 验收脚本只在地址带 ?accept 时加载（docs/HIG-CHECKLIST.md 的验收程序）。分段透镜逐帧记录器（界面2号 seg-frames-logger.js）在 ?accept / ?diag / ?segframes 时加载，
    它自己看查询串，其它时候什么都不做。 */
 { const q = new URLSearchParams(location.search);
