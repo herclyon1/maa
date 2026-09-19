@@ -24,6 +24,15 @@ ACCEPT.add(async function sheet({ check, num, sleep }) {
   { const el = S.state.elapsed, y = ty(); check(`松手（v 0，p′ 262 更近 large）：回 62，ζ 1 / .3441，+${Math.round(el * 1000)} ms 剩 ${Math.round((1 - crit(el)) * 100)} % 行程（按弹簧自己走过的时间）`, `${Math.round(200 * (1 - crit(el)))} ± 2`, Math.round(y), near3((d) => 200 * (1 - crit(el - d)), y, 2)); }
   await sleep(600);
   check("回弹落定：translate 0、.in、驱动类去掉", "0 in rest", `${Math.round(ty())} ${sh.classList.contains("in") ? "in" : "-"} ${sh.classList.contains("sheet-live") ? "live" : "rest"}`, Math.abs(ty()) < .5 && sh.classList.contains("in") && !sh.classList.contains("sheet-live"));
+  /* #11: the dimming and the corner along the travel — opacity = percentDisplayed at three positions (linear for the single detent),
+     the corner 38 at all of them (§7b: static through the motion; its in-motion formula is unread) */
+  { const pts = [100, 400, 800]; const got = [];
+    t = performance.now(); S.begin(220, 90, bar, t); S.move(220, 100, t + 16, null);
+    for (const d of pts) { S.move(220, 90 + d, t + 16 + d, null); got.push([parseFloat(getComputedStyle(dimEl).opacity), getComputedStyle(card).borderTopLeftRadius]); }
+    const wantDim = pts.map((d) => (956 - (62 + d)) / 894);
+    check("行程 100 / 400 / 800：遮罩 opacity = percentDisplayed（.894 / .553 / .105）× 令牌 .2 或 .48 在 .dim 自身色里", wantDim.map((v) => v.toFixed(3)).join(" / "), got.map((g) => g[0].toFixed(3)).join(" / "), got.every((g, i) => Math.abs(g[0] - wantDim[i]) < .01));
+    check("行程 100 / 400 / 800：顶角恒 38（§7b 圆角静态）", "38px ×3", got.map((g) => g[1]).join(" / "), got.every((g) => g[1] === "38px"));
+    S.end(true); await sleep(700); }
   /* rubber band above the top: u 100 → d = 200(1 − 1/(1 + .55·100/200)) = 43.14 */
   t = performance.now(); S.begin(220, 200, bar, t); S.move(220, 190, t + 16, null); S.move(220, 100, t + 200, null);
   num("上拉 100 pt：橡皮筋 d = E(1 − 1/(1 + .55u/E))，E 200 → 43.14（translateY −43.14）", -43.14, ty(), .3);
