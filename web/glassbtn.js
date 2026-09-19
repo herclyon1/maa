@@ -14,9 +14,16 @@
      +19 unchanged, +36 42.37, +69 40.92, +103 37.3, +136 33.36, +169 30.88, +203 29.25, +236 28.78 (trough × .899), +353 30.1, +386 31.13, +453 32.89,
      +653 31.76, ≈ +800 32. The icon: alpha 1 → .2 with no transition (the first frame after the down, +19.3 ms, is already .2), and on the up ONE
      CABasicAnimation opacity .2 → 1, duration .47 s, timingFunction default (.25, .1, .25, 1), beginTime = up + 11.7 ms (read twice: 12.7 / 11.7).
-   The tables are followed by linear interpolation between adjacent probe frames (the value between two frames is not read). A release before the
-   lift has finished, or a press during a release, has no probe recording: the same table is run scaled to the distance still to travel (from the
-   current value to the table's end) — marked 待读 here and in the accept.
+   The tables are followed by linear interpolation between adjacent probe frames (the value between two frames is not read).
+   §7d (R81, 数据 probe: 60 / 120 ms taps and a re-press mid-fall): ① a tap whose up comes before the first grown frame (+69.3) never lifts — the
+   geometry stays 32 and only the icon drops to .2 for a frame and fades back (fade begin up + 21.5); ② a release mid-lift: the lift keeps rising ≈ 30 ms
+   (one to two frames) after the up (120 ms tap: 41.51 = × 1.297 at up + 30), then falls on the release table's own timeline from that value — the
+   trough comes at the same up + 230…236 and its depth follows the start (× .917 from 41.5, × .899 from 43.6) — drawn here as the release table scaled
+   to the value at the reversal (k chosen for continuity at up + 30); ③ a re-press mid-fall: the icon returns to .2 within a frame (the fade withdrawn),
+   the geometry keeps falling until the lift table's start (the probe: trough down₂ + 38, first grown frame down₂ + 71 = the from-rest +69.3) and then
+   re-lifts from the current value on the lift table's timeline — peak × 1.385 at down₂ + 204 from 34.14 = exactly the table scaled to the remaining
+   excursion (34.14/32 + .39·(1.3636 − 1.067)/.3636 = 1.385), settling at 43.6; ④ the fade's begin was read 21.5 / 25.3 / 17.6 / 11.3 ms after the up
+   (§7c: 12.7 / 11.7) — the first read, 11.7, is kept (the spread is noted, not averaged).
    Unread, left out: the flex stretch while dragging (§2 "按住拖动", flex-interaction.md §3 ultraSmall) — the scale stays at L while held; the state-3
    material key and the glow layers (§6.1 / §6.4; the numbers are kept in GlassBtn.glow, not drawn: backdrop-aware vibrantColorMatrix). Without Motion
    (motion.js: click / swallowNextClick) nothing is installed.
@@ -29,7 +36,7 @@
   /* §7c frames as [ms, scale = width / 32]; the held value is L itself (43.6 / 32 = 1.3625 read, = the §2 formula's 1.3636 within the trace's precision) */
   const LIFT_T = [[52.6, 1], [69.3, 34.48 / W_TRACE], [102.6, 39.36 / W_TRACE], [136, 42.6 / W_TRACE], [169, 44.05 / W_TRACE], [202.6, 44.48 / W_TRACE], [236, 44.26 / W_TRACE], [336, 43.61 / W_TRACE], [353, 60 / 44]];
   const REL_T = [[0, 60 / 44], [19, 60 / 44], [36, 42.37 / W_TRACE], [69, 40.92 / W_TRACE], [103, 37.3 / W_TRACE], [136, 33.36 / W_TRACE], [169, 30.88 / W_TRACE], [203, 29.25 / W_TRACE], [236, 28.78 / W_TRACE], [353, 30.1 / W_TRACE], [386, 31.13 / W_TRACE], [453, 32.89 / W_TRACE], [653, 31.76 / W_TRACE], [800, 1]];
-  const LIFT_START = LIFT_T[0][0], ICON_ALPHA_HELD = 0.2, ICON_BACK = { delay: 11.7, duration: 470, curve: "cubic-bezier(0.25, 0.1, 0.25, 1)" };
+  const LIFT_START = LIFT_T[0][0], LIFT_FIRST = LIFT_T[1][0], REVERSE_MS = 30, ICON_ALPHA_HELD = 0.2, ICON_BACK = { delay: 11.7, duration: 470, curve: "cubic-bezier(0.25, 0.1, 0.25, 1)" };   // LIFT_FIRST: the first grown frame (an up before it: no lift, §7d ①); REVERSE_MS: the lift runs on ≈ 30 ms past the up (§7d ②)
   const interp = (T, t) => { if (t <= T[0][0]) return T[0][1]; for (let i = 1; i < T.length; i++) { if (t <= T[i][0]) { const [t0, v0] = T[i - 1], [t1, v1] = T[i]; return v0 + (v1 - v0) * (t - t0) / (t1 - t0); } } return T[T.length - 1][1]; };
   const L_END = 60 / 44;   // the tables' held / start value (a 44 button): other sizes scale the tables' excursion by (L − 1) / (L_END − 1)
   const liftAt = (t, from = 1, L = L_END) => from + (interp(LIFT_T, t) - 1) * (L - from) / (L_END - 1);   // from 1 the table itself; from a mid-release value the same shape over what is left (待读)
@@ -61,21 +68,36 @@
   const iconAt = (t) => t <= ICON_BACK.delay ? ICON_ALPHA_HELD : ICON_ALPHA_HELD + (1 - ICON_ALPHA_HELD) * ICON_CURVE((t - ICON_BACK.delay) / ICON_BACK.duration);   // t ms from the up
   const iconHeld = (el) => { el.style.setProperty("--gb-icon-alpha", String(ICON_ALPHA_HELD)); };
   const iconSet = (el, a) => { const st = live.get(el); if (st) st.icon = Math.min(1, a); if (a >= 1) el.style.removeProperty("--gb-icon-alpha"); else el.style.setProperty("--gb-icon-alpha", a.toFixed(4)); };
+  /* the geometry of a frame (§7c tables, §7d transitions):
+       hold     — from the down: until the lift table's start a re-press keeps the previous fall (st.prevRel: the release it interrupted, on its own up clock),
+                  then liftAt from the value at that moment (st.from is set on the first lifting frame)
+       release  — from the up: a lift still in progress runs on for REVERSE_MS, then the release table scaled by k (continuity at the reversal); a
+                  settled hold (x at L) takes the table as is from the up (k 1) */
+  const relValue = (rel, tUp) => 1 + (interp(REL_T, tUp) - 1) * rel.k;
   const tick = (el) => (now) => { const st = live.get(el); if (!st) return;
     const t = now - st.t0; st.tLast = t;   // the table's own time: from the down (hold) or from the up (release); a frame stamped before the origin reads the table's first value
-    if (st.phase === "hold") { st.x = liftAt(t, st.from, st.L); box(el, st, st.x); st.raf = requestAnimationFrame(tick(el)); return; }
-    st.x = releaseAt(t, st.from); box(el, st, st.x); iconSet(el, iconAt(t));
+    if (st.phase === "hold") {
+      if (st.prevRel && t < LIFT_START) { st.x = relValue(st.prevRel, now - st.prevRel.upAt); box(el, st, st.x); st.raf = requestAnimationFrame(tick(el)); return; }   // §7d ③: the fall goes on until the lift table's start
+      if (st.prevRel) { st.liftFrom = st.x; st.prevRel = null; }   // the re-lift starts from the value the fall reached (the table scaled to what is left)
+      st.x = liftAt(t, st.liftFrom, st.L); box(el, st, st.x); st.raf = requestAnimationFrame(tick(el)); return; }
+    /* release */
+    if (st.rising && t < REVERSE_MS) { st.x = liftAt(now - st.downAt, st.liftFrom, st.L); box(el, st, st.x); iconSet(el, iconAt(t)); st.raf = requestAnimationFrame(tick(el)); return; }   // §7d ②: the lift runs on ≈ 30 ms past the up
+    if (st.rising) { const T = interp(REL_T, t); st.k = Math.abs(T - 1) > 1e-6 ? (st.x - 1) / (T - 1) : (st.x - 1) / (st.L - 1); st.rising = false; }   // k: the release table scaled to meet the value at the reversal (from 43.6 this is 1)
+    if (st.k === 0) { st.x = 1; clear(el); } else { st.x = relValue(st, t); box(el, st, st.x); }   // k 0 (§7d ①: never lifted): the geometry keeps its resting box, only the icon runs
+    iconSet(el, iconAt(t));
     if (t >= REL_T[REL_T.length - 1][0]) { st.x = 1; clear(el); iconSet(el, 1); live.delete(el); return; }
     st.raf = requestAnimationFrame(tick(el)); };
   const run = (el, st) => { if (st.raf) cancelAnimationFrame(st.raf); st.raf = requestAnimationFrame(tick(el)); };
   const down = (el, e) => {
     const prev = live.get(el), now = performance.now();
     if (prev && prev.raf) cancelAnimationFrame(prev.raf);
-    const st = { phase: "hold", x: prev ? prev.x : 1, from: prev ? prev.x : 1, L: L(el), w0: prev ? prev.w0 : el.offsetWidth, h0: prev ? prev.h0 : el.offsetHeight, t0: now, downAt: now, raf: 0, pointerId: e.pointerId, in: true, fx: e.clientX, fy: e.clientY, timer: 0 };   // x: the scale; fx / fy: the finger
-    live.set(el, st); iconHeld(el);
-    /* the lift's first frame is LIFT_T[0] (+52.6 still resting, +69.3 the first grown frame): the loop starts at the table's first knot; a press that continues a
-       running release starts at once from its value */
-    if (prev) { st.t0 = now - LIFT_START; run(el, st); } else st.timer = setTimeout(() => { st.timer = 0; if (live.get(el) === st && st.phase === "hold") run(el, st); }, LIFT_START);
+    const w0 = prev ? prev.w0 : el.offsetWidth, h0 = prev ? prev.h0 : el.offsetHeight, m0 = Math.min(w0, h0);   // the RESTING box (a re-press finds the box scaled: L from the rect would be wrong)
+    const st = { phase: "hold", x: prev ? prev.x : 1, from: prev ? prev.x : 1, liftFrom: prev ? prev.x : 1, L: m0 > 0 ? (m0 + LIFT_PT) / m0 : 1, w0, h0, t0: now, downAt: now, raf: 0, pointerId: e.pointerId, in: true, fx: e.clientX, fy: e.clientY, timer: 0,
+      prevRel: prev && prev.phase === "release" ? { upAt: prev.upAt, k: prev.k == null ? (prev.from - 1) / (L_END - 1) : prev.k } : null };   // x: the scale; fx / fy: the finger; prevRel: the fall this press interrupts (§7d ③: it goes on until the lift table's start)
+    live.set(el, st); iconHeld(el);   // the icon: .2 within a frame, a running fade withdrawn (§7d ③)
+    /* the lift's first frame is LIFT_T[0] (+52.6 still resting, +69.3 the first grown frame): the loop starts at the table's first knot; a re-press mid-fall keeps
+       the fall running until then (the loop runs from now) */
+    if (prev) run(el, st); else st.timer = setTimeout(() => { st.timer = 0; if (live.get(el) === st && st.phase === "hold") run(el, st); }, LIFT_START);
     const move = (ev) => { if (ev.pointerId !== st.pointerId) return; st.fx = ev.clientX; st.fy = ev.clientY; st.in = inside(el, ev.clientX, ev.clientY); };
     const detach = () => { el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", cancel); };
     st.detach = detach;
@@ -83,9 +105,13 @@
       detach();
       const hit = !cancelled && inside(el, ev.clientX, ev.clientY);
       if (st.timer) { clearTimeout(st.timer); st.timer = 0; }   // released before the lift began: nothing lifted, nothing to bring back
-      const xUp = st.raf ? st.x : 1;   // no loop yet (released before +52.6): nothing lifted
-      st.phase = "release"; st.t0 = performance.now(); st.upAt = st.t0; st.from = xUp;
-      run(el, st);   // the release loop: the box along REL_T (nothing to move when xUp is 1) and the icon's alpha along iconAt, to +800
+      const tHeld = performance.now() - st.downAt;
+      const noLift = !st.raf || (tHeld < LIFT_FIRST && !st.prevRel);   // §7d ①: an up before the first grown frame (+69.3) never lifts — the geometry stays at rest
+      if (noLift) { st.x = 1; clear(el); }
+      const settled = Math.abs(st.x - st.L) < .002 && tHeld > LIFT_T[LIFT_T.length - 1][0];
+      st.phase = "release"; st.t0 = performance.now(); st.upAt = st.t0; st.from = st.x; st.k = noLift ? 0 : (settled ? 1 : null); st.rising = !noLift && !settled;   // rising: the lift runs on REVERSE_MS, then k by continuity (§7d ②)
+      if (st.prevRel) st.prevRel = null;
+      run(el, st);   // the release loop: the box along REL_T (nothing to move when k is 0) and the icon's alpha along iconAt, to +800
       Motion.swallowNextClick(el);   // the browser's click for this touch (the button holds the capture, so it comes wherever the finger lifted)
       if (hit) Motion.click(el); };
     const up = (ev) => end(ev, false), cancel = (ev) => end(ev, true);
@@ -95,5 +121,5 @@
   document.addEventListener("pointerdown", (e) => { if (e.pointerType === "mouse" && e.button !== 0) return; const el = e.target.closest && e.target.closest(SEL); if (!el || el.disabled) return; down(el, e); });
   /* hidden strips the press (BOARD A6 template): no scale left on a button, no click fired for a touch the page never saw end */
   document.addEventListener("visibilitychange", () => { if (!document.hidden) return; for (const [el, st] of live) { if (st.raf) cancelAnimationFrame(st.raf); if (st.timer) clearTimeout(st.timer); if (st.detach) st.detach(); if (st.phase === "hold") Motion.swallowNextClick(el); clear(el); iconSet(el, 1); live.delete(el); } });
-  window.GlassBtn = { L, state: (el) => { const st = live.get(el); return st ? { phase: st.phase, x: st.x, from: st.from, t0: st.t0, downAt: st.downAt, upAt: st.upAt, started: !st.timer, inside: st.in, w0: st.w0, icon: st.icon == null ? (st.phase === "hold" ? ICON_ALPHA_HELD : 1) : st.icon, tLast: st.tLast } : null }, SLOP, LIFT_START, ICON_ALPHA_HELD, ICON_BACK, iconAt, LIFT_T: LIFT_T.map((k) => [...k]), REL_T: REL_T.map((k) => [...k]), liftAt, releaseAt, glow: GLOW };
+  window.GlassBtn = { L, state: (el) => { const st = live.get(el); return st ? { phase: st.phase, x: st.x, from: st.from, k: st.k, rising: !!st.rising, resuming: !!st.prevRel, t0: st.t0, downAt: st.downAt, upAt: st.upAt, started: !st.timer, inside: st.in, w0: st.w0, icon: st.icon == null ? (st.phase === "hold" ? ICON_ALPHA_HELD : 1) : st.icon, tLast: st.tLast } : null }, SLOP, LIFT_START, LIFT_FIRST, REVERSE_MS, ICON_ALPHA_HELD, ICON_BACK, iconAt, LIFT_T: LIFT_T.map((k) => [...k]), REL_T: REL_T.map((k) => [...k]), liftAt, releaseAt, glow: GLOW };
 })();

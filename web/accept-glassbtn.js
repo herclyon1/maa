@@ -80,6 +80,37 @@
     check("hidden 时按下态剥掉（盒清）", "无", b2.style.width || "无", !b2.style.width);
     delete document.hidden; if (hiddenDesc) Object.defineProperty(Document.prototype, "hidden", hiddenDesc);
     ev(b2, "pointerup", x2, y2, 9); await sleep(300);
+    /* ---- R71″ (§7d, R81 probe): partial presses. All releases 120 pt away (outside the 70 pt margin) so the page stays. */
+    const b3 = pg.querySelector(".navbtn.pback"); const r3 = b3.getBoundingClientRect(), x3 = r3.left + r3.width / 2, y3 = r3.top + r3.height / 2, far3 = x3 + 120;
+    const wOf = () => b3.getBoundingClientRect().width, op3 = () => parseFloat(getComputedStyle(b3, "::before").opacity);
+    const sampleW = (ms) => new Promise((resolve) => { const out = []; let first = null; const tick = (now) => { if (first === null) first = now; out.push({ t: now, w: wOf(), a: op3(), s: GlassBtn.state(b3) }); if (now - first < ms) requestAnimationFrame(tick); else resolve(out); }; requestAnimationFrame(tick); });
+    /* ① a 60 ms tap: no lift at all (the first grown frame +69.3 lies after the up), the icon .2 for a frame then the fade */
+    { const tD = performance.now(); ev(b3, "pointerdown", x3, y3, 11); await sleep(20); await raf(); const a20 = op3();
+      await sleep(Math.max(0, 60 - (performance.now() - tD))); ev(b3, "pointerup", far3, y3, 11); const tU = performance.now();
+      const smp = await sampleW(520); const maxW = Math.max(...smp.map((s) => s.w)), aEnd = op3();   // 520 > 11.7 + 470: the fade is over
+      check("玻璃钮 R71″ ① 60 ms 点按（抬手在首个长大帧 +69.3 之前）：几何全程 44 不抬；图标按下一帧 .2，抬手后 .47 s default 淡回 1", "44 all frames · .2 · 1", `max ${maxW.toFixed(2)} (${smp.length} frames) · ${a20} · ${aEnd}`, Math.abs(maxW - 44) < .01 && Math.abs(a20 - .2) < .001 && aEnd === 1 && !b3.style.width); await sleep(200); }
+    /* ② a 120 ms tap: the lift runs on ≈ 30 ms past the up (the value at up + 30 ≥ the value at the up), then falls on the release table's timeline from that value — the trough at
+       up + 225…250 ms, its depth by the start (k), the switch continuous */
+    { const tD = performance.now(); ev(b3, "pointerdown", x3, y3, 12);
+      const smpA = await sampleW(Math.max(0, 118 - (performance.now() - tD)));
+      ev(b3, "pointerup", far3, y3, 12); const tU = performance.now(); const wUp = wOf();
+      const smpB = await sampleW(700);
+      const at30 = smpB.find((s) => s.t - tU >= 30) || smpB[0], tr = smpB.reduce((m, s) => (s.w < m.w ? s : m), smpB[0]), st12 = smpB[smpB.length - 1].s, kUsed = (smpB.find((s) => s.s && s.s.k != null) || {}).s;
+      const jumps = smpB.slice(1).map((s, i) => Math.abs(s.w - smpB[i].w)), maxJump = Math.max(...jumps);
+      check("玻璃钮 R71″ ② 120 ms 点按：抬手时已抬起中（宽 > 44），抬手后 ≈ 30 ms 仍在长（up + 30 的宽 ≥ 抬手时的宽），然后回落", "wUp > 44 · w(up+30) ≥ wUp", `wUp ${wUp.toFixed(2)} · w(up+${(at30.t - tU).toFixed(0)}) ${at30.w.toFixed(2)}`, wUp > 44.5 && at30.w >= wUp - .05);
+      check(`玻璃钮 R71″ ② 回落谷时刻不变（up + 225…250，探针 120 ms 点按 +230），谷深随起点缩（k = ${kUsed ? kUsed.k.toFixed(3) : "?"}：探针从 41.5 起 ×.917）；切换连续（相邻帧宽差 ≤ 3.5 px = 回落表最陡段 2.5 px/帧 × k）`, "trough 225…250 · < 44 · max jump ≤ 3.5", `trough ${tr.w.toFixed(2)} (×${(tr.w / 44).toFixed(3)}) @ up+${(tr.t - tU).toFixed(0)} · max jump ${maxJump.toFixed(2)}`, tr.t - tU > 220 && tr.t - tU < 255 && tr.w < 44 && maxJump <= 3.5);
+      await sleep(200); check("玻璃钮 R71″ ② +800 后复位（盒清、44）", "无 · 44", `${b3.style.width || "无"} · ${wOf().toFixed(1)}`, !b3.style.width && Math.abs(wOf() - 44) < .01); }
+    /* ③ hold 700 → release → re-press 120 ms into the fall: the icon back to .2 within a frame, the geometry keeps falling until the lift table's start (down₂ + 52.6), then
+       re-lifts from that value on the lift timeline (the probe: peak × 1.385 @ down₂ + 204 from 34.14 = the table scaled to what is left), settles at L */
+    { ev(b3, "pointerdown", x3, y3, 13); await sleep(700); ev(b3, "pointerup", far3, y3, 13); await sleep(120);
+      const wBefore = wOf(), aBefore = op3(); const tD2 = performance.now(); ev(b3, "pointerdown", x3, y3, 14); await raf(); await raf();
+      const a2 = op3(), sRe = GlassBtn.state(b3);
+      check("玻璃钮 R71″ ③ 回落中再按：图标一帧内瞬回 .2（淡入撤掉），几何先继续落（resuming）", ".2 · resuming · falling", `${aBefore.toFixed(3)} → ${a2} · ${sRe && sRe.resuming ? "resuming" : "-"} · ${wBefore.toFixed(2)} → ${wOf().toFixed(2)}`, Math.abs(a2 - .2) < .001 && !!sRe && sRe.resuming && wOf() <= wBefore + .05);
+      const smp = await sampleW(650); const minS = smp.reduce((m, s) => (s.w < m.w ? s : m), smp[0]), pk = smp.reduce((m, s) => (s.w > m.w ? s : m), smp[0]);
+      const from = minS.w / 44, wantPeak = from + (1.390 - 1) * (60 / 44 - from) / (60 / 44 - 1);
+      check(`玻璃钮 R71″ ③ 再按后：谷在 down₂ + 40…70（落到抬起表起点 52.6 后转向；探针 +38 / 首长大帧 +71），再从谷值按抬起表时间线长起，峰 ≈ from + .39·(L − from)/(L − 1) = ${wantPeak.toFixed(3)}（探针 ×1.385 @ +204）在 down₂ + 185…225`, "trough 40…70 · peak match ± .01 · peak 185…225", `trough ×${from.toFixed(3)} @ +${(minS.t - tD2).toFixed(0)} · peak ×${(pk.w / 44).toFixed(3)} @ +${(pk.t - tD2).toFixed(0)}`, minS.t - tD2 > 35 && minS.t - tD2 < 75 && Math.abs(pk.w / 44 - wantPeak) < .01 && pk.t - tD2 > 185 && pk.t - tD2 < 225);
+      num("玻璃钮 R71″ ③ 再按 +650 ms：到位 L（盒 60）", 60 / 44, wOf() / 44, .005);
+      ev(b3, "pointerup", far3, y3, 14); await sleep(900); check("玻璃钮 R71″ ③ 松手后复位", "无 · 44", `${b3.style.width || "无"} · ${wOf().toFixed(1)}`, !b3.style.width && Math.abs(wOf() - 44) < .01); }
     b2.click(); await sleep(450);
   });
 })();
