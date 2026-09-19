@@ -22,7 +22,7 @@
   const fIn = bez(.75, .1, .75, .1), fOut = bez(.25, .9, .25, .9);
   const u1 = (p) => Math.max(0, Math.min(1, p / (SEG.mid + SEG.overlap / 2)));                                     // first segment [0, .575]
   const u2 = (p) => Math.max(0, Math.min(1, (p - (SEG.mid - SEG.overlap / 2)) / (1 - (SEG.mid - SEG.overlap / 2)))); // second [.425, 1]
-  const st = { p: 0, v: 0, target: 0, raf: 0, last: 0, dir: 0, pg: null, dim: null, titleStart: 0 };
+  const st = { p: 0, v: 0, target: 0, raf: 0, last: 0, dir: 0, pg: null, dim: null, titleStart: 0, backDx: 0, backDy: 0 };
   const W = () => window.innerWidth;
   const parallax = () => -(W() - Math.round(.7 * W()));   // −132 at 440
   const write = () => {
@@ -34,6 +34,8 @@
     const a = st.dir > 0 ? fIn(u2(p)) : 1 - fOut(u1(1 - p));   // pop runs p 1 → 0 in the same variable: the old page's items fade out with f_out
     pg.style.setProperty("--nav-in", a.toFixed(4));
     pg.style.setProperty("--nav-title", (st.titleStart * (1 - p)).toFixed(2) + "px");
+    pg.style.setProperty("--nav-back-dx", (st.backDx * (1 - p)).toFixed(2) + "px");   // the back chevron starts at the root's large-title label centre (§5d: d = label.center − content origin, 2-D) and rides p home; pop runs it back
+    pg.style.setProperty("--nav-back-dy", (st.backDy * (1 - p)).toFixed(2) + "px");
   };
   const settled = () => Math.abs(st.p - st.target) < .001 && Math.abs(st.v) < .01;
   const tick = (now) => {
@@ -51,7 +53,7 @@
     const pg = st.pg;
     pg.classList.remove("nav-live"); document.body.classList.remove("nav-live");
     pg.style.transition = "none"; Motion.afterPaint(() => pg.style.removeProperty("transition"));   // index.html's .35 s transition must not replay the last step
-    for (const k of ["--nav-x", "--nav-edge", "--nav-in", "--nav-title"]) pg.style.removeProperty(k);
+    for (const k of ["--nav-x", "--nav-edge", "--nav-in", "--nav-title", "--nav-back-dx", "--nav-back-dy"]) pg.style.removeProperty(k);
     document.body.style.removeProperty("--nav-from"); st.dim.style.setProperty("--nav-dim", "0");
     if (st.target === 1) { pg.classList.add("in"); document.body.classList.add("pushed"); }               // rest = index.html's own classes
     else { pg.classList.remove("in", "out"); document.body.classList.remove("pushed"); pg.hidden = true; }
@@ -66,6 +68,14 @@
       const title = pg.querySelector(".ptitle"), bar = pg.querySelector(".pnav");
       if (title && bar) { const tr = title.getBoundingClientRect(), br = bar.getBoundingClientRect(), side = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ios-nav-side")) || 20;
         st.titleStart = (br.right - side) - tr.left; }    // the title area's right end (the bar minus the side inset — this page's own geometry) → its place
+      /* R21e′ (nav-native-formula.md §5d, _prepareScaleTransition 0x1c3cf606c): the new back button's content starts offset by d = the root's
+         large-title label centre − the content's origin (the chevron has no text label → the content frame's top-left, 0x1c3d0083c), both axes;
+         adj = 0 (no back label). Measured in page-local coordinates: the page rests at x 0, so the chevron's resting origin = its offset inside the page. */
+      const back = pg.querySelector(".pback"), h1 = document.querySelector("body > header h1");
+      st.backDx = st.backDy = 0;
+      if (back && h1 && h1.firstChild) { const rg = document.createRange(); rg.selectNodeContents(h1); const hr = rg.getBoundingClientRect(), pr = pg.getBoundingClientRect(), bb = back.getBoundingClientRect(), cs = getComputedStyle(back, "::before");
+        const cw = parseFloat(cs.width) || 0, ch = parseFloat(cs.height) || 0, ox = (bb.left - pr.left) + (bb.width - cw) / 2, oy = (bb.top - pr.top) + (bb.height - ch) / 2;   // the chevron's resting origin inside the page
+        if (hr.width > 0) { st.backDx = (hr.left + hr.width / 2) - ox; st.backDy = (hr.top + hr.height / 2) - oy; } }
       pg.classList.add("nav-live"); document.body.classList.add("nav-live"); write();
     }
     run();
