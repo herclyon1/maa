@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>lens-webgl-test — the lifted segment lens in one fragment-shader chain (prototype)</title>
+<!-- README §0.8.6 / §0.8.7 (2026-09-19, 验收 / 监督局 13:1x; the chain now lives in lens-webgl.js — this page is its harness): the SVG software filters cannot carry the full-fidelity fringe at frame rate on the phone
+     (dispersion alone 19 ms per frame, data session 36916a9; band-only computation impossible in WebKit, §0.8.4–0.8.5). This page renders the
+     SAME chain on the GPU: two fragment-shader passes over the lens's wrapper box, every constant from the decompiled documents (its source
+     in the shader comment next to it), nothing fitted. The backdrop is drawn by the page into two textures (the page + track, and the labels
+     alone) with lens-test.html's geometry (scene card (20, 72.56, 400, 148.98) r 26, control (20, 116.89, 400, 32) r 16, labels 13 px system
+     font centred at x 120 / 320, y 132.89 — read from lens-test.html?native=1 in WebKit) so wksnap / the data session compare at the same
+     coordinates. States: ?state=rest | lift (220×44 over the selected segment) | mid (220×44 at x 220, the drag-mid judge position);
+     ?theme=light | dark; drag the lens with the pointer; 「自动拖 2 s」 like lens-test. Frame time (rAF interval, and CPU→GPU time to
+     gl.finish) is printed below the canvas; window.__segLens carries the agreed fields for seg-frames-logger.js.
+     Displacement fields: the existing maps seg-f-bg-220.png / seg-f-lab-220.png (formula maps, README §0/§1d; B = coverage) and the fringe
+     map seg-f-ab-220.png (Δ at ratio 1 × the envelope e, B = e, A = coverage) sampled BILINEARLY (CA samples bilinearly; the SVG engine's
+     nearest-fetch + one-pixel quantisation — README §0.4 engine facts — does not exist here; no engine correction). -->
+<style>
+  :root{--bg:rgb(242 242 247);--card:#fff;--ink:#000;--dim:rgb(60 60 67 / .6);--track:rgb(118 118 128 / .12)}
+  html.dark{--bg:#000;--card:rgb(28 28 30);--ink:#fff;--dim:rgb(235 235 245 / .6);--track:rgb(118 118 128 / .24)}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font:13px/16px -apple-system,"SF Pro Text","PingFang SC",sans-serif;-webkit-text-size-adjust:100%;overscroll-behavior:none}
+  #wrap{position:relative;width:440px;height:956px}
+  #base,#gl{position:absolute;left:0;top:0;width:440px;height:956px;display:block}
+  #gl{touch-action:none;cursor:grab}   /* the WebGL overlay: transparent except the lens and its shadows / lines (lens-webgl.js) */
+  #bar{position:fixed;left:0;right:0;bottom:0;padding:8px 12px calc(env(safe-area-inset-bottom) + 8px);background:rgb(128 128 128 / .12);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);font-variant-numeric:tabular-nums;white-space:pre-wrap;line-height:17px}
+  #bar button{font:inherit;margin:0 6px 4px 0;padding:3px 9px;border-radius:9px;border:0;background:rgb(0 122 255 / .15);color:inherit}
+  #bar b{font-weight:600}
+</style></head><body>
+<div id="wrap"><canvas id="base"></canvas><canvas id="gl"></canvas></div>
+<div id="bar"><button data-state="rest">静止</button><button data-state="lift">抬起</button><button data-state="mid">拖中停住</button><button id="theme">亮/暗</button><button id="auto">自动拖 2 s</button><span id="stats">…</span></div>
+<script src="lens-webgl.js"></script>
+<script>
+(async () => {
+const q = new URLSearchParams(location.search);
+const base = document.getElementById("base"), canvas = document.getElementById("gl"), stats = document.getElementById("stats");
+const DPR = parseFloat(q.get("dpr")) || window.devicePixelRatio || 1;   /* ?dpr=3: render at the phone's pixel count on the Mac (the timing instrument) */
+let theme = q.get("theme") === "dark" || (!q.get("theme") && matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+let state = q.get("state") || "mid";
+/* ---- geometry read from lens-test.html?native=1 (WebKit, 2026-09-19): page coordinates in pt ---- */
+const G = { scene: [20, 72.563, 400, 148.984], sceneR: 26, seg: [20, 116.891, 400, 32], segR: 16, labelY: 132.891, labelXs: [120, 320], labels: ["早班", "晚班"], flat: [22, 118.891, 196, 28], flatR: 14 };
+const LW = 220, LH = 44;                          // the lifted lens 220×44 r 22 (seg-lens-refraction.md §1b; the 220 set — the model stays 220 while dragging, README §0.3)
+const LENS_X0 = { lift: 10, mid: 110 };           // lift: over the selected segment (segment centre 120 − 110); mid: x 110–330 = the judge position (lensx 220)
+let lensX = LENS_X0[state] ?? 110; const lensY = G.seg[1] + G.seg[3] / 2 - LH / 2;   // vertically centred on the control: 116.891 + 16 − 22 = 110.891
+const colours = () => theme === "dark" ? { bg: "rgb(0,0,0)", card: "rgb(28,28,30)", ink: "rgb(255,255,255)", track: "rgba(118,118,128,0.24)" } : { bg: "rgb(242,242,247)", card: "rgb(255,255,255)", ink: "rgb(0,0,0)", track: "rgba(118,118,128,0.12)" };
+/* the scene (drawn identically into the visible base canvas and into the lens's backdrop textures) */
+const drawPage = (x) => { const c = colours(); x.fillStyle = c.bg; x.fillRect(0, 0, 440, 956);
+  x.fillStyle = c.card; x.beginPath(); x.roundRect(G.scene[0], G.scene[1], G.scene[2], G.scene[3], G.sceneR); x.fill();
+  x.fillStyle = c.track; x.beginPath(); x.roundRect(G.seg[0], G.seg[1], G.seg[2], G.seg[3], G.segR); x.fill();
+  if (state === "rest") { x.fillStyle = c.card; x.beginPath(); x.roundRect(G.flat[0], G.flat[1], G.flat[2], G.flat[3], G.flatR); x.fill(); } };   // the resting selected segment: the flat _controlForegroundColor platter 196×28 inset 2 (lens-test .flat); gone while lifted
+const drawLabels = (x) => { const c = colours(); x.textAlign = "center"; x.textBaseline = "middle"; x.fillStyle = c.ink;
+  G.labels.forEach((t, i) => { x.font = `${i === 0 ? "500 " : ""}13px -apple-system, "SF Pro Text", "PingFang SC", sans-serif`; x.fillText(t, G.labelXs[i], G.labelY); }); };   // 早班 selected: weight 500
+const drawBase = () => { base.width = 440 * DPR; base.height = 956 * DPR; const x = base.getContext("2d"); const c = lens && lens.backdropCanvas(); if (c) { x.scale(DPR, DPR); drawPage(x); x.setTransform(1, 0, 0, 1, 0, 0); const r = lens.region; x.drawImage(c, Math.round(r.x * DPR), Math.round(r.y * DPR)); } else { x.scale(DPR, DPR); drawPage(x); drawLabels(x); } };   /* the visible base = the package's own page + labels canvas (the same pixels the copies sample) */
+let lens = null; drawBase();
+const inkOf = () => theme === "dark" ? [255, 255, 255] : [0, 0, 0];
+const UI = q.get("ui") === "1";   /* ?ui=1: the ui session's form — the canvas is the wrapper (lens ± 16), moved by the page; create({canvas, assets, set, dpr}) / setBackdrop / draw */
+if (UI) { canvas.style.cssText = `position:absolute;left:${lensX - 16}px;top:${lensY - 16}px;width:${LW + 32}px;height:${LH + 32}px;touch-action:none;cursor:grab`; canvas.width = (LW + 32) * DPR; canvas.height = (LH + 32) * DPR;
+  lens = LensWebGL.create({ canvas, assets: "", set: 220, dpr: DPR, preserve: true, finish: true, width: LW + 32, height: LH + 32 });
+  if (!lens) { stats.textContent = "no WebGL2"; return; }
+  await lens.ready; lens.setBackdrop({ region: { x: 0, y: 60, w: 440, h: 130 }, ink: inkOf(), page: (x) => drawPage(x), labels: (x) => drawLabels(x) }); drawBase(); }
+else {
+lens = LensWebGL.create(canvas, { width: 440, height: 956, dpr: DPR, preserve: true, finish: true, debugPass1: q.get("glpass") === "1", get ink() { return inkOf(); },
+  sets: { 220: { bg: "seg-f-bg-220.png", lab: "seg-f-lab-220.png", ab: "seg-f-ab-220.png", S: 40, Sab: 12, h: 44 } },   /* data-s of #seg-lens-f-bg-220 / -lab-220 and #seg-lens-f-ab-220 (lens-filter.svg) */
+  backdrop: (x, which) => { if (which === "page") drawPage(x); else drawLabels(x); } });
+if (!lens) { stats.textContent = "no WebGL2"; return; }
+await lens.sets[220].ready; drawBase(); }
+const whRule = () => { const l = lensX, t = lensY, r = l + LW, b = t + LH; return (Math.min(r + 100, 440) - Math.max(l - 100, 0)) / (Math.min(b + 100, 956) - Math.max(t - 100, 0)); };   /* §3b.6: capture box = frame + marginWidth 100 clamped to the screen */
+let frameN = 0, times = [], gpuTimes = [], lastRaf = null, t0 = performance.now();
+const draw = () => { if (UI) { canvas.style.left = (lensX - 16) + "px"; canvas.style.top = (lensY - 16) + "px"; lens.draw({ lensX, lensY, w: LW, h: LH, p: state === "rest" ? 0 : 1, pd: 1, wh: whRule(), platter: { rgba: theme === "dark" ? [28, 28, 30, 1] : [255, 255, 255, 1], alpha: 0 } }); }   /* held: the platter has faded (1 − p = 0) */
+  else lens.setState({ cx: lensX + LW / 2, cy: lensY + LH / 2, w: LW, h: LH, lift: state === "rest" ? 0 : 1, wh: whRule() }); gpuTimes.push(lens.stats.gpuMs); frameN++; };
+const report = (what) => { const m = (a) => a.reduce((s, x) => s + x, 0) / Math.max(1, a.length), mx = (a) => a.reduce((s, x) => Math.max(s, x), 0);
+  stats.innerHTML = `${what} ${times.length} 帧 · rAF 间隔 平均 <b>${m(times).toFixed(1)} ms</b> 最大 <b>${mx(times).toFixed(1)}</b> · setState 到 gl.finish 平均 <b>${m(gpuTimes).toFixed(2)} ms</b> 最大 <b>${mx(gpuTimes).toFixed(1)}</b> · ${state} ${theme} · 透镜 x ${lensX.toFixed(1)} · W/H ${whRule().toFixed(2)} · ${DPR}×`; };
+const tick = (now) => { if (lastRaf != null) times.push(now - lastRaf); lastRaf = now; draw(); window.__segLens = { t: (now - t0) / 1000, x: lensX + LW / 2, v: 0, target: lensX + LW / 2, dt: times.length ? times[times.length - 1] / 1000 : 0, phase: state, set: 220, lift: state === "rest" ? 0 : 1, w: LW, h: LH, frame: frameN, gpu_ms: gpuTimes[gpuTimes.length - 1] }; };
+let dragging = false, auto = false, rafOn = false;
+const loop = (now) => { if (!(dragging || auto)) { rafOn = false; report(auto ? "自动拖" : "拖动"); return; } tick(now); requestAnimationFrame(loop); };
+const startLoop = () => { if (rafOn) return; rafOn = true; times = []; gpuTimes = []; lastRaf = null; requestAnimationFrame(loop); };
+const inputEl = document.getElementById("wrap");
+inputEl.addEventListener("pointerdown", (e) => { if (state === "rest") return; dragging = true; inputEl.setPointerCapture(e.pointerId); startLoop(); });
+inputEl.addEventListener("pointermove", (e) => { if (!dragging) return; const r = base.getBoundingClientRect(); lensX = Math.max(0, Math.min(440 - LW, e.clientX - r.left - LW / 2)); });
+for (const t of ["pointerup", "pointercancel"]) inputEl.addEventListener(t, () => { dragging = false; });
+document.getElementById("auto").onclick = () => { if (auto) return; auto = true; const x0 = lensX, s0 = performance.now(); startLoop();
+  const step = (now) => { const pp = (now - s0) / 2000; lensX = Math.max(0, Math.min(440 - LW, x0 + Math.sin(pp * Math.PI * 2) * 60)); if (pp < 1) requestAnimationFrame(step); else { auto = false; lensX = x0; draw(); report("自动拖"); } }; requestAnimationFrame(step); };
+const restate = () => { if (UI) lens.setBackdrop({ region: { x: 0, y: 60, w: 440, h: 130 }, ink: inkOf(), page: (x) => drawPage(x), labels: (x) => drawLabels(x) }); else lens.redrawBackdrop(); drawBase(); draw(); report("静态"); };
+for (const b of document.querySelectorAll("#bar button[data-state]")) b.onclick = () => { state = b.dataset.state; lensX = LENS_X0[state] ?? lensX; restate(); };
+document.getElementById("theme").onclick = () => { theme = theme === "dark" ? "light" : "dark"; document.documentElement.classList.toggle("dark", theme === "dark"); restate(); };
+document.documentElement.classList.toggle("dark", theme === "dark");
+draw(); tick(performance.now()); report("静态"); window.__lensWebGL = { lens, draw, get lensX() { return lensX; }, set lensX(v) { lensX = v; }, get state() { return state; } };
+})().catch((e) => { document.getElementById("stats").textContent = "error: " + e.message; console.error(e); });
+</script>
+</body></html>
