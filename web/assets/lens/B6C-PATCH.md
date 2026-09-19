@@ -93,6 +93,26 @@ reading (the top-edge run is; the ends were read as level differences on row 616
 
 `?segx=noish` keeps working (it hides `.ish`).
 
+## 4b `主带只画直边` — the #36 main band on the straight runs only (predict §6.1 rows 5–6; 验收 11:5x)
+
+Native (the judge's reading of `seg-native-dragmid-light-full.png`): on the arc rows 603–605 at x_arc + .5 there is NO lightening (229–237,
+below the interior's 240); rows 608–612 show only the R channel (+4 … +15 with G −2 … −9 = the dispersion's R lane, not KeyFill); the
+corner outside the capsule (row 602 x 108–123) is the page. So the main band (α .93, e ∈ [0, 1]) runs only along the two straight edges,
+602–603 and 645–646, |x − 220| ≤ 88 (= x ∈ [R, W − R] in lens-box coordinates); on the arcs only the diffuse tail (+4 … +8 two pt further in,
+α .265 → V) and the dark line remain. `keyfill-highlight.md` §0a's second item ("the thin light line along the arcs") is withdrawn by that
+reading. Recorded, not resolved: the shader's angular term (§2, ang = sat((n·dir − .174)/.826)) would give .65 of the band at 45° on the arc —
+the reading says 0; the difference is the #36 layer's shape / clip (cornerRadii 0×4, seg §1b), for the data session.
+
+| file:line | old | new | source |
+|---|---|---|---|
+| view.js:1354–1356 `mkHl(cls, band, colour, mult)`, band `"m"` | for each ring with `r.main`: `ringRect("hl", r.e0, r.e1, { stroke: url(#gid), "stroke-opacity": mult·a })` — a full rounded-rect ring under the angular gradient | two `<line class="hl" data-e0 data-e1 data-run="top"/"bot">` per ring, `stroke: colour` (no gradient — ang = 1 on the straight runs: n·dir = 1), `stroke-opacity: mult·a`, `stroke-linecap: butt`; the `hgrad` for `"m"` is no longer referenced | predict §6.1 rows 5–6 |
+| view.js:1389–1390 `rimGeo` | rects only | also `for (const l of s.querySelectorAll("line[data-e0]")) { const e0 = +l.dataset.e0, e1 = +l.dataset.e1, em = (e0 + e1) / 2, y = l.dataset.run === "top" ? em : Hd − em; l.setAttribute("x1", R); l.setAttribute("x2", Wd − R); l.setAttribute("y1", y); l.setAttribute("y2", y); l.setAttribute("stroke-width", e1 − e0); }` (R = Hd/2: the runs end where the arcs start, x ∈ [R, W − R] = |x − 220| ≤ 88 on the 220×44 lens) | same |
+| view.js:1376–1379 `?segx=wide1` | merges `rect[data-e0]` runs | also `line[data-e0]` (or leave the experiment to rects — it is an experiment) | — |
+| index.html:596–612 (comment ①) | "Angular fall-off along the arcs as the strokes' gradients: main sat((cos φ − .174)/.826) (gone at 80° from the top → no light line at the ends, §0a)" | "main band: the two straight runs only (predict §6.1 rows 5–6 — the native arc rows 603–605 carry no lightening; §0a item 2 withdrawn); diffuse: full rings with the first ring's angular ratio" | predict §6.1 |
+
+Expected after: arc rows 603–605 at x_arc + .5 = the backdrop's own value (no V lift; native 229–237); x_arc + 1.5 rows 603–605 +4 … +8
+two pt in (the diffuse tail); the straight-run rows 602 / 645 unchanged (V of the displaced backdrop: 247.5 / 250.0 native).
+
 ## 5 Not in this patch (unchanged, still right)
 ring shadow `rect.rs` (§4: offset 8 / opacity .1 / stroke 4 / σ 3 / mask 0 — its −3.3 tail on row 646 is in the judge's −29.8); the #36 rings
 (`hlRings`, three emits); the vibrant matrix stacks; the B5-d drift (`scaleSpring`) — the ui session's own item.

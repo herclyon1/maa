@@ -795,7 +795,7 @@ of the lens box. WebKit column x 220 rows 602–613 vs the closed form: within .
 `B6C-PATCH.md` §4); the old CSS inset box-shadow reads .057 on the top rows (the complement construction, ruled out by §5.2c). The other three
 items of the order (k without compression — amount uniform 1/.5 − 2 = 0, keyfill §5.1 B6-3; the fwidth AA — per-fragment, ⅓ pt at 3×, equal
 to the hard rings at pixel centres on the straight edges and to coverage AA on the arcs, keyfill §2 B6-2; the white stack clipped to the
-capsule) are view.js / index.html numbers of the ui session: written as line + old → new + source in `B6C-PATCH.md` §1–§3. The regeneration
+capsule; the #36 main band on the straight runs only, predict §6.1 rows 5–6) are view.js / index.html numbers of the ui session: written as line + old → new + source in `B6C-PATCH.md` §1–§3, §4b. The regeneration
 also restored `lens-field.json`'s `verification` block (it had been emptied by a run without `--verify-*`; §7's command).
 
 ### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
