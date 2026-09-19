@@ -516,13 +516,16 @@ function render() {
      state is synced (segSync): the lens, the labels, the copies and the running glass fall keep their elements AND their transitions. */
   const oldSeg = $("#queueseg"), probe = document.createElement("template"); probe.innerHTML = html;
   const cand = probe.content.querySelector("#queueseg");
-  const before = flipPending ? flipSnapshot($("#app")) : null; flipPending = false;   // B3: where every block was, before the content changes
+  const tR = performance.now(), before = flipPending ? flipSnapshot($("#app")) : null; flipPending = false;   // B3: where every block was, before the content changes
+  if (before) segMeasure("seg:render:snapshot", tR);
   flipStop();   // a render during a running content transition (a new value change or a data refresh) ends it — 快速连点 未量, wired as "the new change interrupts the old"
+  const tD = performance.now();
   if (oldSeg && cand && segSameQueues(oldSeg, cand)) { const fresh = replaceKeeping($("#app"), html, oldSeg); if (fresh) segSync(oldSeg, fresh); }
   else $("#app").innerHTML = html;
-  layoutTabs();   // the other tabs' sections are hidden here — the "after" positions are read only after that
-  if (before) flipRun(before, $("#app"));
-  wire();
+  if (before) segMeasure("seg:render:dom", tD);
+  const tL = performance.now(); layoutTabs(); if (before) segMeasure("seg:render:layoutTabs", tL);   // the other tabs' sections are hidden here — the "after" positions are read only after that
+  const tF = performance.now(); if (before) { flipRun(before, $("#app")); segMeasure("seg:render:flip", tF); }
+  const tW = performance.now(); wire(); if (before) { segMeasure("seg:render:wire", tW); segMeasure("seg:render:total", tR); }
 }
 
 /* B3 — content transition on a value change (remote-ref/seg-value-change-content.md, 设置 › 屏幕使用时间 每周/每天, iOS 27.0 simulator recordings; every
@@ -784,7 +787,7 @@ function wire() {
          seg-value-change-content.md §0 four recordings +92/+68/+50/+66, the lens starts gliding in that same frame; tokens.css --ios-touch-segment-
          commit-delay note for the slide). A newer value change before the timer fires simply renders again (快速连点 未量). */
       const delay = touchMs(mode === "drag" ? "--seg-commit-delay-drag" : "--seg-commit-delay-tap", 0);
-      setTimeout(() => { if (qsel.value !== q) return; segCommitAt = performance.now(); segCommitMode = mode; flipPending = true; qsel.dispatchEvent(new Event("change")); }, delay);
+      setTimeout(() => { if (qsel.value !== q) return; segCommitAt = performance.now(); segCommitMode = mode; flipPending = true; performance.mark("seg:commit"); qsel.dispatchEvent(new Event("change")); segMeasure("seg:commit-render", segCommitAt); }, delay);
     });
   }
   if (qsel) qsel.onchange = () => {
@@ -1306,7 +1309,13 @@ const SEG_RIM = (() => {
   const grey = (c) => { const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(c || ""); return m ? { r: +m[1], g: +m[2], b: +m[3], a: m[4] == null ? 1 : +m[4] } : null; };
   return { hlRings, angMain, angDiff, kfRings, kfK, NXS, MULT: 1 - .9118, ADD: .1471, COLOR_BIAS: -.3, grey };
 })();
-const SEGX = (new URLSearchParams(location.search).get("segx") || "").split(",");   // ?segx switches (index.html hook; ios-switch-list.md): scale0 holds the displacement scale at 0
+const SEGX = (new URLSearchParams(location.search).get("segx") || "").split(",");
+/* instrumentation (仪器, no behaviour): the current lens loop's per-tick internals for the frame logger (window.__segDiag()), and the seg: performance
+   measures (window.__segPerf()) — the lift build, first tick, the commit and the render stages. */
+let segActiveLoop = null;
+window.__segDiag = () => (segActiveLoop && !segActiveLoop.state.done ? segActiveLoop.diag : null);
+window.__segPerf = () => performance.getEntriesByType("measure").filter((e) => e.name.startsWith("seg:")).map((e) => ({ name: e.name, start: Math.round(e.startTime * 100) / 100, dur: Math.round(e.duration * 100) / 100 }));
+const segMeasure = (name, from) => { try { performance.measure(name, { start: from, end: performance.now() }); } catch (e) { /* older engines */ } };   // ?segx switches (index.html hook; ios-switch-list.md): scale0 holds the displacement scale at 0
 function segLens(seg, lens, bs, downClientX) {
   if (seg.__lensLoop) seg.__lensLoop.stop();   // a new press ends the previous loop (its tail and its inline geometry)
   let warp = seg.querySelector(".warp"), warpl = seg.querySelector(".warpl"), plat = seg.querySelector(".plat"), rimb = seg.querySelector(".rimb"), hls = [...seg.querySelectorAll(".hlk, .hlw")];
@@ -1421,7 +1430,7 @@ function segLens(seg, lens, bs, downClientX) {
   const K_LIFT_DEST = cssKeys("--ios-touch-segment-destout-keys", SEG_LIFT_DESTOUT), K_DEST = cssKeys("--ios-touch-segment-release-destout-keys", SEG_DROP_DESTOUT.filter(([t]) => t >= .198).map(([t, v]) => [t - .198, v]));
   const destEnd = destDelay + K_DEST[K_DEST.length - 1][0];
   const downX = (typeof downClientX === "number" ? downClientX : NaN) - seg.getBoundingClientRect().left;   // the touch-down x in control coordinates (the drag delta's origin, §6 _dragDelta)
-  const st = { t0: performance.now(), prev: performance.now(), rel: null, raf: 0, done: false, dragged: false, cx: null, pending: null, rest: idx0, pr: 0,
+  const st = { t0: performance.now(), prev: performance.now(), rel: null, raf: 0, done: false, dragged: false, cx: null, pending: null, rest: idx0, pr: 0, evLog: [], diag: null, ticks: 0,
                sL: { x: 0, v: 0 }, sM: { x: 1, v: 0 }, pos: { x: restCentre(idx0), v: 0 }, geo: null,   // pos = the lens position (one spring; the flex drift rides on top of it in the transform)
                flex: { vi: flexIntegrator(), sx: { x: 1, v: 0 }, sy: { x: 1, v: 0 }, dx: { x: 0, v: 0 }, out: { sx: 1, sy: 1, dx: 0 } } };   // B5: the flex interaction's integrator and its three animatable floats
   const setGeo = (left, top, w, h) => {
@@ -1464,6 +1473,7 @@ function segLens(seg, lens, bs, downClientX) {
   const tick = (now) => {
     if (st.done) return;
     if (!seg.isConnected || !lens.isConnected) { clear(); return; }
+    const tickStart = performance.now(), cxBefore = st.cx, pendingBefore = st.pending;
     const dt = Math.min(.04, Math.max(0, (now - st.prev) / 1000)); st.prev = now;
     let p, pd, moving = false;
     if (st.rel == null) {
@@ -1499,14 +1509,24 @@ function segLens(seg, lens, bs, downClientX) {
     springStep(fl.sx, tg.sX, sp, dt); springStep(fl.sy, tg.sY, sp, dt); springStep(fl.dx, tg.drift, sp, dt);
     fl.out = { sx: Math.max(.9, Math.min(1.1, fl.sx.x)), sy: Math.max(.9, Math.min(1.1, fl.sy.x)), dx: fl.dx.x };   // updateFlex's final clamp [0.9, 1.1] (0x1c54c53d4)
     setGeo(st.pos.x - w / 2, CY - h / 2, w, h);
-    frame(p, pd); st.raf = requestAnimationFrame(tick);
+    frame(p, pd);
+    /* 仪器: what this tick used and produced (read by the frame logger through window.__segDiag) */
+    st.ticks++;
+    st.diag = { tick: st.ticks, raf: Math.round(now * 100) / 100, perf: Math.round(tickStart * 100) / 100, dt_ms: Math.round(dt * 100000) / 100, tick_ms: Math.round((performance.now() - tickStart) * 100) / 100,
+      target_used: cxBefore, target_next: st.cx, adopted: pendingBefore != null && st.cx === pendingBefore, x: Math.round(st.pos.x * 1000) / 1000, v: Math.round(st.pos.v * 10) / 10,
+      drift: Math.round(fl.out.dx * 1000) / 1000, sx: Math.round(fl.out.sx * 10000) / 10000, sy: Math.round(fl.out.sy * 10000) / 10000, accel: Math.round(fl.vi.acceleration), vel: Math.round(fl.vi.velocity),
+      p: Math.round(p * 10000) / 10000, set: curSet, rel: st.rel == null ? null : Math.round((now - st.rel) * 10) / 10, events: st.evLog.splice(0) };
+    if (st.ticks === 1) segMeasure("seg:first-tick", tickStart);
+    st.raf = requestAnimationFrame(tick);
   };
   const loop = {
-    drag: (clientX) => {   // a finger move (§6): target = the pressed segment's centre + (finger x − touch-down x), adopted at the next tick (see the tick's time-base note); past an end segment's own centre the excess is rubber-banded (§6 0x1c41358bc–0x1c4135978, see the header)
+    drag: (clientX, evTs) => {   // a finger move (§6): target = the pressed segment's centre + (finger x − touch-down x), adopted at the next tick (see the tick's time-base note); past an end segment's own centre the excess is rubber-banded (§6 0x1c41358bc–0x1c4135978, see the header)
       if (st.rel != null || st.done) return;
+      const evNow = performance.now();
       const x = clientX - seg.getBoundingClientRect().left, delta = Number.isNaN(downX) ? x - restCentre(idx0) : x - downX, c = restCentre(idx0), raw = c + delta;
       const rubber = (o) => 12 * (1 - 1 / (1 + .55 * o / 12));   // (1 − 1/(c·o/d + 1))·d with c .55, d 12
       st.pending = n === 1 ? c : (idx0 === 0 && raw < c) ? c - rubber(c - raw) : (idx0 === n - 1 && raw > c) ? c + rubber(raw - c) : raw;
+      st.evLog.push({ ts: evTs == null ? null : Math.round(evTs * 100) / 100, now: Math.round(evNow * 100) / 100, x: Math.round(x * 100) / 100, target: Math.round(st.pending * 100) / 100 });   // 仪器
       if (!st.dragged) st.dragged = true;
     },
     release: (restIdx) => {   // every way out — up, out of bounds, pointercancel — falls the same way, to the rest rect of `restIdx`
@@ -1516,9 +1536,10 @@ function segLens(seg, lens, bs, downClientX) {
     stop: () => { cancelAnimationFrame(st.raf); if (!st.done) clear(); },
     step: (dtMs) => { if (!st.done) { cancelAnimationFrame(st.raf); tick(dtMs ? st.prev + dtMs : performance.now()); } },   // one frame by hand, optionally on a virtual clock (an offscreen WKWebView runs neither requestAnimationFrame nor timers at speed; the ?seghold hook drives it)
     get state() { return { dragged: st.dragged, cx: st.cx, pending: st.pending, pos: st.pos.x, q: st.sL.x, rel: st.rel, done: st.done, flex: st.flex.out, accel: st.flex.vi.acceleration }; },
+    get diag() { return st.diag; },
   };
   loop.cancel = loop.release;
-  seg.__lensLoop = loop;
+  seg.__lensLoop = loop; segActiveLoop = loop;
   st.raf = requestAnimationFrame(tick);
   return loop;
 }
@@ -1532,7 +1553,7 @@ function attachSegmented(seg, getIndex, commit) {
     let liftTimer = 0, glass = null;
     if (lens) lens.classList.remove("spring");   // a new touch ends the previous commit's stretch (G12/G13: no queueing)
     if (!press(seg, e, {
-      move: (ev) => { if (onSelected && glass && lens && lens.classList.contains("lift")) glass.drag(ev.clientX); },   // the lifted lens follows the finger (edge springs); the index never changes while sliding (G4/G22)
+      move: (ev) => { if (onSelected && glass && lens && lens.classList.contains("lift")) glass.drag(ev.clientX, ev.timeStamp); },   // the lifted lens follows the finger (edge springs); the index never changes while sliding (G4/G22)
       end: (ev, cancelled) => {
         clearTimeout(liftTimer);
         const lifted = !!(lens && lens.classList.contains("lift"));   // patch 03 (seg-impl-review.md #3): a lifted lens commits by falling + gliding (G4/G21), a tap commits with the stretch sequence (G1/G3)
@@ -1547,7 +1568,8 @@ function attachSegmented(seg, getIndex, commit) {
     seg.dataset.pe = "1";
     if (!onSelected) bs[pressed].classList.add("dim");           // G15: only the label dims; no highlight, no lens move, no value
     else {
-      glass = lens ? segLens(seg, lens, bs, e.clientX) : null;     // the loop: glass, copies, geometry — the lift itself starts at +109 ms (G4/G16); the down x is the drag delta's origin (B5-c)
+      const tBuild = performance.now(); performance.mark("seg:down");
+      glass = lens ? segLens(seg, lens, bs, e.clientX) : null; segMeasure("seg:build", tBuild);   // 仪器: DOM / SVG construction of the lens layers     // the loop: glass, copies, geometry — the lift itself starts at +109 ms (G4/G16); the down x is the drag delta's origin (B5-c)
       liftTimer = setTimeout(() => { if (lens) lens.classList.add("lift"); seg.classList.add("drag"); }, touchMs("--ios-touch-segment-lift-delay", 109));   // 抬起 +109 ms 起动 ← seg-keys.css --ios-touch-segment-lift-delay（seg-lens-refraction §4.1）
     }
   };

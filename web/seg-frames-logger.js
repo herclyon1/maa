@@ -63,7 +63,8 @@
     const bs = [...seg.querySelectorAll("button")];
     return { pts: now / 1000, rect: [round(r.left), round(r.top), round(r.width), round(r.height)], alpha: num(cs.opacity, 1), scale: [round(sc[0], 4), round(sc[1], 4)],
              zoom: copy ? round(num(getComputedStyle(copy).zoom, 1), 4) : null, warp_scale: fd ? num(fd.getAttribute("scale"), 0) : null,
-             index: bs.findIndex((b) => b.classList.contains("on")), lift: lens.classList.contains("lift"), drag: !!seg && seg.classList.contains("drag"), spring: lens.classList.contains("spring") };
+             index: bs.findIndex((b) => b.classList.contains("on")), lift: lens.classList.contains("lift"), drag: !!seg && seg.classList.contains("drag"), spring: lens.classList.contains("spring"),
+             diag: (window.__segDiag && window.__segDiag()) || null };   // 仪器 (ui 09-19): the lens loop's spring internals of the tick this sample follows
   }
 
   /* ---- pointer timeline (capture phase: seen before the page's own handlers and pointer capture) ---- */
@@ -84,13 +85,14 @@
     rec.done = true;
     const td = rec.t_down / 1000, tu = (rec.t_up === null ? rec.t_down : rec.t_up) / 1000;
     const frames = rec.frames.map((f) => ({ file: null, frame: f.frame, pts: round(f.pts, 3), t_since_down: round(f.pts - td, 3), t_since_up: round(f.pts - tu, 3), phase: f.phase,
-      lens: [{ view: "segctl .lens", rect: f.rect, alpha: f.alpha, scale: f.scale }], zoom: f.zoom, warp_scale: f.warp_scale, index: f.index, lift: f.lift, drag: f.drag, spring: f.spring, samples: f.samples, after_others: f.after_others }));
+      lens: [{ view: "segctl .lens", rect: f.rect, alpha: f.alpha, scale: f.scale }], zoom: f.zoom, warp_scale: f.warp_scale, index: f.index, lift: f.lift, drag: f.drag, spring: f.spring, samples: f.samples, after_others: f.after_others, diag: f.diag || null }));
     const firstChange = frames.find((f) => f.t_since_down >= 0 && changed(f.lens[0].rect, rec.rest, 0.3));
     const out = { name: rec.name, t_down_pts: round(td, 3), t_up_pts: round(tu, 3), moves_since_down: rec.moves.map((m) => round(m / 1000 - td, 3)),
       control_events: rec.events, first_lens_change_since_down: firstChange ? firstChange.t_since_down : null, frames,
       pointer: rec.pointer.map((p) => ({ ...p, t: round(p.t / 1000 - td, 3) })), counter: { x: 0, y: "env(safe-area-inset-top)", cell: CELL, bits: BITS, gray: true, dpr },
       viewport: `${innerWidth}×${innerHeight}`, standalone: matchMedia("(display-mode: standalone)").matches, href: location.href, at: new Date().toISOString(),
-      sampler: "after the page's rAF callbacks (rAF wrapper, last sample of the frame; 2026-09-19)" };
+      sampler: "after the page's rAF callbacks (rAF wrapper, last sample of the frame; 2026-09-19)",
+      perf: (window.__segPerf && window.__segPerf().map((m) => ({ ...m, start_since_down: round(m.start / 1000 - td, 3) }))) || null };   // 仪器: seg:build / first-tick / commit-render / render:* measures
     try { localStorage.setItem(KEY, JSON.stringify(out)); } catch {}
     window.__segFrames = out; dispatchEvent(new CustomEvent("segframes", { detail: out }));
     lastNote = `${frames.length}fr ok`;
