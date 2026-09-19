@@ -12,13 +12,13 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="遥控">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260919170828">
+<link rel="manifest" href="manifest.webmanifest?v=20260919172415">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260919170828">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260919170828">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260919172415">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260919172415">
 <!-- 组件数字的正本：--ios-* 变量，每条带来源（探针原值 / AX 帧 / NUMBERS 行 / 取色 / 采样替代）。页面自己的变量只做映射，不再手写数字。 -->
-<link rel="stylesheet" href="tokens.css?v=20260919170828">
-<link rel="stylesheet" href="controls.css?v=20260919170828">   <!-- press states of rows / switch (B14 / B13): remote-ref/dispatch-B14-cell.md, dispatch-B13-switch.md -->
+<link rel="stylesheet" href="tokens.css?v=20260919172415">
+<link rel="stylesheet" href="controls.css?v=20260919172415">   <!-- press states of rows / switch (B14 / B13): remote-ref/dispatch-B14-cell.md, dispatch-B13-switch.md -->
 <link rel="stylesheet" href="seg-keys.css?v=20260919011715">   <!-- segmented-lens kinematics compiled from the native frames (界面2号 ui2 90d6876 gen_seg_keys.py; do not edit) -->
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
@@ -55,7 +55,8 @@
     /* interaction-spec.md §1/§2/§3 values that have no --ios-touch-* token yet: the lens follows a drag with a spring lag of ~100–150 ms (G4: finger 320 → lens 61→237 in ~120 ms);
        the committed lens settles in ~1.2 s while its width goes 196 → 239 → 181 → 196 and height 28 → 38.6 → 27 → 28 (G1/G3); the tab-bar lens lifts 94×54 → 119×64 (T1), the switch knob 37×24 → 60.5×40 then 58×38 (L*) */
     --seg-follow-lag:var(--ios-touch-segment-follow-lag);   /* .12 s ← G4/F1 */
-    --seg-commit-delay-tap:66ms;    /* valueChanged after a tap's up ← seg-value-change-content.md §0 (+92/+68/+50/+66, 采样) */
+    --seg-commit-delay-tap:66ms;    /* valueChanged after a tap's up ← seg-value-change-content.md §0 (+92/+68/+50/+66, 采样); used by the ?vcnow=0 path only — by default a tap's
+                                       content switches in the up's own task (view.js SEG_VC_NOW, 监督局 09-19 15:5x: on the phone the timer put the switch at +136…143 vs the native's +50…92) */
     --seg-commit-delay-drag:25ms;   /* valueChanged after a slide's up ← tokens.css --ios-touch-segment-commit-delay 注（"after a slide +25 ms"，数据会话） */
     --seg-settle:1.209s;                                        /* the measured lens sequence ends at 1209 ms (--ios-touch-segment-lens-*-keys) */
     /* lens travel after the up = the measured per-frame x path (G1/G3, 60 Hz, fraction of the travel; peak 1.075 at 476 ms) as a linear() easing over the whole 1209 ms */
@@ -3935,19 +3936,19 @@
   <div class="pnav"><button type="button" class="navbtn pback" aria-label="返回"></button><span class="ptitle"></span></div>
   <div class="pbody"></div>
 </div>
-<script src="schema.js?v=20260919170828"></script>
-<script src="net.js?v=20260919170828"></script>
-<script src="pending.js?v=20260919170828"></script>
-<script src="live.js?v=20260919170828"></script>
-<script src="stamina.js?v=20260919170828"></script>
-<script src="inventory.js?v=20260919170828"></script>
-<script src="view.js?v=20260919170828"></script>
-<script src="alert-prewarm.js?v=20260919170828"></script>   <!-- the alert glass layer built once at load: first open as fast as the second (web/alert-prewarm.js) -->
-<script src="controls.js?v=20260919170828"></script>   <!-- row press (B14) / switch (B13) state machines; after view.js (it takes .acts button over from installPressables) -->
+<script src="schema.js?v=20260919172415"></script>
+<script src="net.js?v=20260919172415"></script>
+<script src="pending.js?v=20260919172415"></script>
+<script src="live.js?v=20260919172415"></script>
+<script src="stamina.js?v=20260919172415"></script>
+<script src="inventory.js?v=20260919172415"></script>
+<script src="view.js?v=20260919172415"></script>
+<script src="alert-prewarm.js?v=20260919172415"></script>   <!-- the alert glass layer built once at load: first open as fast as the second (web/alert-prewarm.js) -->
+<script src="controls.js?v=20260919172415"></script>   <!-- row press (B14) / switch (B13) state machines; after view.js (it takes .acts button over from installPressables) -->
 <script>/* 验收脚本只在地址带 ?accept 时加载（docs/HIG-CHECKLIST.md 的验收程序）。分段透镜逐帧记录器（界面2号 seg-frames-logger.js）在 ?accept / ?diag / ?segframes 时加载，
    它自己看查询串，其它时候什么都不做。 */
 { const q = new URLSearchParams(location.search);
-  if (q.has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260919170828"; document.body.appendChild(s); }
+  if (q.has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260919172415"; document.body.appendChild(s); }
   if (q.has("diag") || q.has("segframes")) { const s = document.createElement("script"); s.src = "seg-frames-logger.js"; document.body.appendChild(s); }
   /* ?segx=a,b,… : layer / map switches for the simulator-standalone experiments (remote-ref/tools/webkit/b6/ios-switch-list.md). Works with or without
      ?seghold. nowarp | norimb | nohl | nowarpl | noplat hide one lens layer (visibility, so the loop still runs); mapflat swaps every displacement map for

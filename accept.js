@@ -434,13 +434,15 @@
         /* §1 G3: a 300 ms hold still selects nothing */
         await sleep(300);
         check("分段 G3 按住 300 ms 不选中", start, onText(), onText() === start && renders === r0);
-        /* §1 G1–G3 + B3: the up commits index + change + content together, at the native valueChanged time (+66 ms after a tap's up, seg-value-change-content.md §0) */
+        /* §1 G1–G3 + B3: the up commits index + change + content together, in the up's own task (view.js SEG_VC_NOW, 换值即抬手 — 监督局 09-19 15:5x; the native's
+           switch shows at up +50…92 in its recordings, seg-value-change-content.md §0, the page's with the +66 ms timer at +136…143 on the phone, data 78284dd) */
         const t0 = performance.now(); pev(seg, "pointerup", at(other)); const dt = performance.now() - t0;
-        check("分段 G1 抬手 +0：还没换值（valueChanged 在 +66 ms，--seg-commit-delay-tap ← seg-value-change-content.md §0 四次 +92/+68/+50/+66）", start, `${onText()} renders+${renders - r0}`, onText() === start && renders === r0);
+        check("分段 G1 抬手 +0：换值即抬手——选中态（标签 .on）与内容同一任务一帧替换（view.js SEG_VC_NOW；原 +66 计时器 + vcsplit 在真机落到抬手 +136…143，原生 +50…92 ← seg-value-change-content.md §0 / 数据 78284dd；?vcnow=0 回计时器）", `${want} renders+1`, `${onText()} renders+${renders - r0}`, onText() === want && renders === r0 + 1);
         await sleep(100);
-        check("分段 G1 抬手 +100 ms：+66 换值那帧切选中态（标签 .on），内容重画在其后一帧（vcsplit；?vcsplit=0 同帧）；透镜由点按链自抬手起动", want, `${onText()} renders+${renders - r0}`, onText() === want && thisShift(want) && renders === r0 + 1);
+        check("分段 G1 抬手 +100 ms：选中态与内容保持已换（只重画一次）；透镜由点按链自抬手起动", want, `${onText()} renders+${renders - r0}`, onText() === want && thisShift(want) && renders === r0 + 1);
         { const gone = document.querySelectorAll(".flipgone"), moved = [...document.querySelectorAll("#app > section")].filter((s) => /translateY\((-?[\d.]+)px\)/.test(s.style.transform) && Math.abs(parseFloat(s.style.transform.match(/translateY\((-?[\d.]+)px\)/)[1])) > 20);
-          check("分段 B3 换值后 +100 ms：卡片内容已换（renders+1）；删的行原地克隆在淡出途中（起 .72，+193 到 .04；vcsplit 重画落在 +66…+83，此刻读 .35–.84）、下方内容仍从原位（+行高）上滑（seg-value-change-content.md §0/§1，采样）", "clone .35–.84 · sections offset", `${gone.length} clones ${gone.length ? cs(gone[0]).opacity : "-"} · ${moved.length} sections offset ${moved.length ? moved[0].style.transform : "-"}`, gone.length > 0 && parseFloat(cs(gone[0]).opacity) > .35 && parseFloat(cs(gone[0]).opacity) <= .84 && moved.length > 0); }
+          const elF = performance.now() - t0, wantF = tabAt(FLIP_DEL_FADE, elF);   // the switch is at the up itself now: the clone's opacity read against view.js's §1 table at the actual elapsed time
+          check("分段 B3 换值后 +100 ms：卡片内容已换（renders+1）；删的行原地克隆在淡出途中（起 .72，+193 到 .04，切换即抬手：按实际时刻查 FLIP_DEL_FADE ± .1）、下方内容仍从原位（+行高）上滑（seg-value-change-content.md §0/§1，采样）", `clone ${wantF.toFixed(2)} ± .1 @ ${elF.toFixed(0)} ms · sections offset`, `${gone.length} clones ${gone.length ? cs(gone[0]).opacity : "-"} · ${moved.length} sections offset ${moved.length ? moved[0].style.transform : "-"}`, gone.length > 0 && Math.abs(parseFloat(cs(gone[0]).opacity) - wantF) <= .1 && moved.length > 0); }
         const lensNow = q().querySelector(".lens");
         { const lp0 = q().__lensLoop; check("分段 G1 抬手：点按走 segLens 点按链（seg-lens-refraction §4.4：up +82 抬起几何 ζ1/.25 原位、+92 材质、+98 换值行程 ζ.85/.4、+443/+450 落回；view.js SEG_TAP_T），不再走 CSS 关键帧滑行", "loop phase tap · no lens-stretch", `${lp0 ? (lp0.state.done ? "done" : (lp0.diag ? lp0.diag.phase : "no tick")) : "no loop"} · ${cs(lensNow).animationName}`, !!lp0 && !lp0.state.done && !!lp0.diag && lp0.diag.phase === "tap" && cs(lensNow).animationName !== "lens-stretch"); }
         await sleep(192);
@@ -449,7 +451,8 @@
           let nc = NT[NT.length - 1][1], nw = NT[NT.length - 1][2]; for (let i = 1; i < NT.length; i++) if (el <= NT[i][0]) { const a = NT[i - 1], b = NT[i], u = Math.max(0, (el - a[0]) / (b[0] - a[0])); nc = a[1] + (b[1] - a[1]) * u; nw = a[2] + (b[2] - a[2]) * u; break; }
           check("分段 G1 抬手 +272 ms：玻璃滑行中（--lp ≥ .8）、拉长（原生 seg-native-tap-frames.json 同时刻插值：中心 / 宽，控件坐标；容 ± 12；计时器实际时刻一并报）", `lp ≥ .8 · w ${nw.toFixed(1)} ± 12 · centre ${nc.toFixed(1)} ± 12 @ ${el.toFixed(3)}`, `lp ${lp.toFixed(3)} · w ${lr.width.toFixed(1)} · centre ${c.toFixed(1)}`, lp >= .8 && Math.abs(lr.width - nw) <= 12 && Math.abs(c - nc) <= 12); }
         { const gone = document.querySelectorAll(".flipgone"), moved = [...document.querySelectorAll("#app > section")].filter((s) => /translateY/.test(s.style.transform)), insR = [...document.querySelectorAll("#app .row")].filter((r) => r.style.opacity !== "" && parseFloat(r.style.opacity) < 1);
-          check("分段 B3 +192 ms：删的行淡到 ≤ .10（§1 +193 .04）、下方内容上滑途中（§0 +177 剩 24/133）、插的行淡入途中（§2 +190 a .39）", "clone ≤ .1 · sections still offset · inserted rows partly", `${gone.length ? cs(gone[0]).opacity : "no clone"} · ${moved.length} moving · ${insR.length} fading in ${insR.length ? insR[0].style.opacity : ""}`, gone.length > 0 && parseFloat(cs(gone[0]).opacity) <= 0.12 && moved.length > 0 && insR.length > 0 && parseFloat(insR[0].style.opacity) > 0.2 && parseFloat(insR[0].style.opacity) < 0.7); }
+          const elI = performance.now() - t0, wantI = tabAt(FLIP_INS, elI);   // the inserted rows against view.js's §2 table at the actual elapsed time (the switch is at the up)
+          check("分段 B3 抬手 +292 ms：删的行淡到 ≤ .10（§1 +193 .04）、下方内容上滑途中（§0 +177 剩 24/133，+400 到位）、插的行淡入途中（§2 表按实际时刻查 FLIP_INS ± .15）", `clone ≤ .12 · sections still offset · inserted ${wantI.toFixed(2)} ± .15 @ ${elI.toFixed(0)} ms`, `${gone.length ? cs(gone[0]).opacity : "no clone"} · ${moved.length} moving · ${insR.length} fading in ${insR.length ? insR[0].style.opacity : ""}`, gone.length > 0 && parseFloat(cs(gone[0]).opacity) <= 0.12 && moved.length > 0 && (insR.length > 0 ? Math.abs(parseFloat(insR[0].style.opacity) - wantI) <= .15 : wantI >= .95)); }
         await sleep(284);
         { const lr = lensNow.getBoundingClientRect(), sr = q().getBoundingClientRect(), lw = lensNow.offsetWidth, toI = parseFloat(q().style.getPropertyValue("--i")), fromI = toI === 1 ? 0 : 1;
           const segW = (sr.width / bs().length - 4), pos = (lr.left + lr.width / 2 - sr.left - 2 - segW / 2) / segW;   // centre-based in segment units (the lens now moves by `left`, its width breathes)
@@ -706,10 +709,11 @@
       /* C1: a 100 ms tap — no highlight at the up; one frame of highlight at +150 and the fade from there; selected once */
       pev(row, "pointerdown", at(row)); await sleep(100); pev(row, "pointerup", at(row));
       check("列表行 C1 短点 100 ms 抬手时：还没高亮", "rest", lit(row) ? "highlight" : "rest", !lit(row));
-      seq.length = 0; await sleep(130);
+      seq.length = 0; await sleep(170);
       { const names = seq.map((e) => e[1]), iH = names.findIndex((n) => /\bhl\b/.test(n) && !/hl-out/.test(n)), iF = names.findIndex((n) => /hl-out/.test(n)), iC = names.indexOf("click");
-        check("列表行 C1 短点：高亮帧 → 淡出帧 → 选中，三者依次（数据真机核 ②：confirm()/推页不得吞掉高亮帧）", "hl < hl-out < click", `${iH} < ${iF} < ${iC}`, iH >= 0 && iF > iH && iC > iF); }
-      check("列表行 C1 按下 +230 ms：高亮已亮过并在淡出（.hl-out）、选中 1 次", "fading, 2", `${row.classList.contains("hl-out") ? "fading" : row.classList.contains("hl") ? "lit" : "rest"}, ${rsel}`, row.classList.contains("hl-out") && rsel === 2);
+        const gapHF = iH >= 0 && iF > iH ? seq[iF][0] - seq[iH][0] : -1, gapFC = iF >= 0 && iC > iF ? seq[iC][0] - seq[iF][0] : -1;
+        check("列表行 C1 短点：高亮帧 → 淡出帧 → 选中，三者依次、各隔一次上屏（rAF + setTimeout 0；数据真机核 ②：confirm()/推页不得吞掉高亮帧）", "hl < hl-out < click", `${iH} < ${iF} < ${iC}, 间隔 ${Math.round(gapHF)} / ${Math.round(gapFC)} ms`, iH >= 0 && iF > iH && iC > iF); }   // the gaps are JS timestamps (the paint sits between rAF and the timeout; headless Chrome renders in < 1 ms): reported, not judged
+      check("列表行 C1 按下 +270 ms：高亮已亮过并在淡出（.hl-out）、选中 1 次", "fading, 2", `${row.classList.contains("hl-out") ? "fading" : row.classList.contains("hl") ? "lit" : "rest"}, ${rsel}`, row.classList.contains("hl-out") && rsel === 2);
       await sleep(620);
       /* C6: vertical 12 pt after the highlight — off at once, the up selects nothing */
       pev(row, "pointerdown", at(row)); await sleep(200); pev(row, "pointermove", at(row, .5, .5, 0, 12));
