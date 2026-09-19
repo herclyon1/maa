@@ -27,6 +27,9 @@
   }
  },
  "encoding": {
+  "device_px": 3.0,
+  "coverage_aa": "cov = saturate(.5 − d/fw), fw = 1 device px = 1/device_px pt (formula.md §4b.1 D)",
+  "clamp": "the sample position is clamped to the last texel centre of the stage's texture (½ device px inside the box) then clamp_to_edge (formula.md §4b.1 A)",
   "engine_fix_pt": 0.0,
   "engine_fix": "引擎校正: WebKit's feDisplacementMap applies negative values one device pixel short (calib/: Mac 2× ½ px, iOS simulator 3× ⅓ px), positive rounded up; the correction is applied AT PAGE LOAD by lens-engine-fix.js (default on, k = 1/devicePixelRatio: every negative R/G byte −k·255/S, blob: copies, files untouched); --engine-fix <pt> bakes the same into the files for a static build (default 0 = not baked); README §0.4",
   "scale": "per set: sets[w].S — 40 where the scaled stack fits ±20 pt, 48 for the widest stretch sets; the filter element carries data-s",
@@ -69,7 +72,7 @@
    "lab": "seg-f-lab-196.png",
    "peak_bg_pt": 5.0,
    "peak_lab_pt": 18.41,
-   "bytes": 19988,
+   "bytes": 19514,
    "model": [
     220.0,
     44.0
@@ -121,7 +124,7 @@
    "lab": "seg-f-lab-198.png",
    "peak_bg_pt": 5.0,
    "peak_lab_pt": 18.59,
-   "bytes": 19920,
+   "bytes": 19465,
    "model": [
     220.0,
     44.0
@@ -173,7 +176,7 @@
    "lab": "seg-f-lab-200.png",
    "peak_bg_pt": 4.92,
    "peak_lab_pt": 18.29,
-   "bytes": 19902,
+   "bytes": 19440,
    "model": [
     220.0,
     44.0
@@ -225,7 +228,7 @@
    "lab": "seg-f-lab-202.png",
    "peak_bg_pt": 4.85,
    "peak_lab_pt": 18.05,
-   "bytes": 19722,
+   "bytes": 19277,
    "model": [
     220.0,
     44.0
@@ -277,7 +280,7 @@
    "lab": "seg-f-lab-204.png",
    "peak_bg_pt": 4.84,
    "peak_lab_pt": 18.04,
-   "bytes": 19987,
+   "bytes": 19557,
    "model": [
     220.0,
     44.0
@@ -327,9 +330,9 @@
    "S_ab": 12.0,
    "bg": "seg-f-bg-206.png",
    "lab": "seg-f-lab-206.png",
-   "peak_bg_pt": 4.92,
+   "peak_bg_pt": 4.8,
    "peak_lab_pt": 17.94,
-   "bytes": 19856,
+   "bytes": 19359,
    "model": [
     220.0,
     44.0
@@ -381,7 +384,7 @@
    "lab": "seg-f-lab-208.png",
    "peak_bg_pt": 4.81,
    "peak_lab_pt": 18.91,
-   "bytes": 19983,
+   "bytes": 19603,
    "model": [
     220.0,
     44.0
@@ -431,9 +434,9 @@
    "S_ab": 12.0,
    "bg": "seg-f-bg-210.png",
    "lab": "seg-f-lab-210.png",
-   "peak_bg_pt": 4.75,
+   "peak_bg_pt": 4.72,
    "peak_lab_pt": 18.7,
-   "bytes": 19748,
+   "bytes": 19391,
    "model": [
     220.0,
     44.0
@@ -483,9 +486,9 @@
    "S_ab": 12.0,
    "bg": "seg-f-bg-212.png",
    "lab": "seg-f-lab-212.png",
-   "peak_bg_pt": 4.75,
+   "peak_bg_pt": 4.64,
    "peak_lab_pt": 18.71,
-   "bytes": 19730,
+   "bytes": 19315,
    "model": [
     220.0,
     44.0
@@ -535,9 +538,9 @@
    "S_ab": 12.0,
    "bg": "seg-f-bg-214.png",
    "lab": "seg-f-lab-214.png",
-   "peak_bg_pt": 4.75,
+   "peak_bg_pt": 4.58,
    "peak_lab_pt": 18.38,
-   "bytes": 19768,
+   "bytes": 19324,
    "model": [
     220.0,
     44.0
@@ -587,9 +590,9 @@
    "S_ab": 12.0,
    "bg": "seg-f-bg-216.png",
    "lab": "seg-f-lab-216.png",
-   "peak_bg_pt": 4.69,
+   "peak_bg_pt": 4.58,
    "peak_lab_pt": 18.25,
-   "bytes": 19481,
+   "bytes": 19045,
    "model": [
     220.0,
     44.0
@@ -639,9 +642,9 @@
    "S_ab": 12.0,
    "bg": "seg-f-bg-218.png",
    "lab": "seg-f-lab-218.png",
-   "peak_bg_pt": 4.62,
+   "peak_bg_pt": 4.58,
    "peak_lab_pt": 18.21,
-   "bytes": 19267,
+   "bytes": 18872,
    "model": [
     220.0,
     44.0
@@ -680,9 +683,9 @@
    "S_ab": 12.0,
    "bg": "seg-f-bg-220.png",
    "lab": "seg-f-lab-220.png",
-   "peak_bg_pt": 4.67,
+   "peak_bg_pt": 4.58,
    "peak_lab_pt": 18.32,
-   "bytes": 18844,
+   "bytes": 18527,
    "model": [
     220.0,
     44.0
@@ -732,9 +735,9 @@
    "S_ab": 12.0,
    "bg": "seg-f-bg-222.png",
    "lab": "seg-f-lab-222.png",
-   "peak_bg_pt": 4.72,
+   "peak_bg_pt": 4.61,
    "peak_lab_pt": 18.49,
-   "bytes": 19126,
+   "bytes": 18705,
    "model": [
     220.0,
     44.0
@@ -784,9 +787,9 @@
    "S_ab": 12.0,
    "bg": "seg-f-bg-224.png",
    "lab": "seg-f-lab-224.png",
-   "peak_bg_pt": 4.75,
+   "peak_bg_pt": 4.67,
    "peak_lab_pt": 19.1,
-   "bytes": 19040,
+   "bytes": 18674,
    "model": [
     220.0,
     44.0
@@ -836,9 +839,9 @@
    "S_ab": 12.0,
    "bg": "seg-f-bg-226.png",
    "lab": "seg-f-lab-226.png",
-   "peak_bg_pt": 4.75,
+   "peak_bg_pt": 4.72,
    "peak_lab_pt": 18.81,
-   "bytes": 18931,
+   "bytes": 18618,
    "model": [
     220.0,
     44.0
@@ -890,7 +893,7 @@
    "lab": "seg-f-lab-228.png",
    "peak_bg_pt": 4.77,
    "peak_lab_pt": 20.11,
-   "bytes": 18143,
+   "bytes": 17779,
    "model": [
     220.0,
     44.0
@@ -942,7 +945,7 @@
    "lab": "seg-f-lab-230.png",
    "peak_bg_pt": 4.82,
    "peak_lab_pt": 19.13,
-   "bytes": 18940,
+   "bytes": 18454,
    "model": [
     220.0,
     44.0
@@ -994,7 +997,7 @@
    "lab": "seg-f-lab-232.png",
    "peak_bg_pt": 4.87,
    "peak_lab_pt": 19.29,
-   "bytes": 18681,
+   "bytes": 18135,
    "model": [
     220.0,
     44.0
@@ -1046,7 +1049,7 @@
    "lab": "seg-f-lab-234.png",
    "peak_bg_pt": 4.93,
    "peak_lab_pt": 19.44,
-   "bytes": 18644,
+   "bytes": 18100,
    "model": [
     220.0,
     44.0
@@ -1098,7 +1101,7 @@
    "lab": "seg-f-lab-236.png",
    "peak_bg_pt": 4.98,
    "peak_lab_pt": 19.6,
-   "bytes": 18502,
+   "bytes": 18003,
    "model": [
     220.0,
     44.0
@@ -1150,7 +1153,7 @@
    "lab": "seg-f-lab-238.png",
    "peak_bg_pt": 5.03,
    "peak_lab_pt": 20.96,
-   "bytes": 17741,
+   "bytes": 17311,
    "model": [
     220.0,
     44.0
@@ -1200,9 +1203,9 @@
    "S_ab": 12.0,
    "bg": "seg-f-bg-240.png",
    "lab": "seg-f-lab-240.png",
-   "peak_bg_pt": 5.08,
+   "peak_bg_pt": 5.07,
    "peak_lab_pt": 21.13,
-   "bytes": 17598,
+   "bytes": 17194,
    "model": [
     220.0,
     44.0
@@ -1252,9 +1255,9 @@
    "S_ab": 12.0,
    "bg": "seg-f-bg-242.png",
    "lab": "seg-f-lab-242.png",
-   "peak_bg_pt": 5.13,
+   "peak_bg_pt": 5.07,
    "peak_lab_pt": 21.33,
-   "bytes": 17471,
+   "bytes": 16969,
    "model": [
     220.0,
     44.0
@@ -1304,9 +1307,9 @@
    "S_ab": 12.0,
    "bg": "seg-f-bg-244.png",
    "lab": "seg-f-lab-244.png",
-   "peak_bg_pt": 5.18,
+   "peak_bg_pt": 5.08,
    "peak_lab_pt": 21.52,
-   "bytes": 17348,
+   "bytes": 16915,
    "model": [
     220.0,
     44.0
@@ -1356,9 +1359,9 @@
    "S_ab": 12.0,
    "bg": "seg-f-bg-246.png",
    "lab": "seg-f-lab-246.png",
-   "peak_bg_pt": 5.24,
+   "peak_bg_pt": 5.13,
    "peak_lab_pt": 21.73,
-   "bytes": 17151,
+   "bytes": 16767,
    "model": [
     220.0,
     44.0
@@ -1408,9 +1411,9 @@
    "S_ab": 12.0,
    "bg": "seg-f-bg-248.png",
    "lab": "seg-f-lab-248.png",
-   "peak_bg_pt": 5.25,
+   "peak_bg_pt": 5.18,
    "peak_lab_pt": 20.69,
-   "bytes": 16978,
+   "bytes": 16625,
    "model": [
     220.0,
     44.0
@@ -1460,9 +1463,9 @@
    "S_ab": 12.0,
    "bg": "seg-f-bg-250.png",
    "lab": "seg-f-lab-250.png",
-   "peak_bg_pt": 5.25,
+   "peak_bg_pt": 5.23,
    "peak_lab_pt": 20.68,
-   "bytes": 16867,
+   "bytes": 16405,
    "model": [
     220.0,
     44.0
@@ -1514,7 +1517,7 @@
    "lab": "seg-f-lab-252.png",
    "peak_bg_pt": 5.28,
    "peak_lab_pt": 20.82,
-   "bytes": 16647,
+   "bytes": 16289,
    "model": [
     220.0,
     44.0
@@ -1561,7 +1564,7 @@
    "lab": "seg-f-lab-254.png",
    "peak_bg_pt": 5.34,
    "peak_lab_pt": 20.98,
-   "bytes": 16563,
+   "bytes": 16254,
    "model": [
     220.0,
     44.0
@@ -1608,7 +1611,7 @@
    "lab": "seg-f-lab-256.png",
    "peak_bg_pt": 5.39,
    "peak_lab_pt": 21.16,
-   "bytes": 16901,
+   "bytes": 16538,
    "model": [
     220.0,
     44.0
@@ -1659,7 +1662,7 @@
   "step": 2,
   "height_source": "linear between the two nearest recorded drag frames (seg-native-abc-frames.json phase drag; uiprobe-motion-segdragmid-light.json lenstrace); outside the recorded range the nearest frame (flagged clamped)",
   "shape": "the 220×44 r22 model lens scaled by (w/220, h/44) — seg-lens-refraction.md §1c(d): the flex scale sits on _UILiquidLensView's presentation transform alone, the layers below (SDF elements, portals 196×28, glass group) keep their model bounds; elliptical ends, the portal = scale × 196×28",
-  "total_bytes": 577468
+  "total_bytes": 564424
  },
  "aberration": {
   "map": "seg-f-ab-<w>.png: the lens box plus 16 pt on every side at 1 px/pt; R/G = the ratio-1 vector Δ₁ (pt) = amount · ((R(θ)g).y, (R(θ)g).x) · e(d) (§3b.3 direction with the lanes swapped; e = the edge factor, 1 at the edge → 0 at |EdgeStart| pt), B = e = the filter's band factor; own scale sets[w].S_ab (data-s on the fringe filter)",

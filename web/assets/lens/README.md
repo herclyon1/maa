@@ -350,6 +350,25 @@ y634 left gaps 0.93 · **3.00** · 3.51 · 3.03 · 3.49 (the 2.49 gone; native 3
 §0c: 左「早班」 ink −25 % (dark −30 %), box unchanged; 右「晚班」 ink +17 % (dark +26 %), 「班」 height 11.67 → **14.16** (dark 13.67;
 native 15.0; before 13.66).
 
+**formula.md §4b.1 (the old page's closed form for the label copy at the ends, 2026-09-19) against these maps:** the composition
+`compose_stages` IS §4b.1 D — q = p − 8.8·Dc(s/7.04)·g, r = q − 17.5·Dc(s₂/11.2)·g₂, pixel = label(r)·cov(p)·cov_L2(q), the same
+ovalized g (mix of the capsule normal and normalize((p.x, 5·p.y)), ½), the same Dc = 1 − √(2t − t²); along the end's normal it
+returns §4b.1 C's table to the last digit (s 0 / .5 / 1 / 2 / 2.64 / 4 / 5 / 6 / 7.04 / 8 / 9 / 10 / 11.2 → r 9.21 / 8.01 / 7.92 /
+7.95 / 7.97 / 7.93 / 7.93 / 8.02 / 8.29 / 8.73 / 9.34 / 10.10 / 11.2; r_min 7.92 at the fold q* 5.16). Two read details of §4b.1 A / D
+were not in the generator and are now (`--device-px 3`): the coverage's anti-alias width = one device pixel (⅓ pt; it was one map
+texel, ½ pt) and the sampler's clamp = the last texel centre (½ device px inside the box, then clamp_to_edge). The 31 + 12 sets
+regenerated: the 220 label map's R / G bytes are unchanged (the clamp's ⅙ pt is below a byte), its B changes on 256 boundary
+pixels (the narrower ramp); the backdrop map's boundary bytes by ≤ 1 (the clamp). The phase residuals are unchanged.
+
+What §4b.1's platform means for the checks (`4b1-4x-{light,dark}.png`, rows: native / the maps rendered EXACTLY in numpy — the
+formula at 6 px/pt with a bilinear fetch of the label raster, no engine / WebKit with the engine correction; `numpy-label-*.png`):
+the exact render gives 右「班」 height **15.33** (light) / **15.00** (dark) against the native's 15.0 and the native's horizontal streaks
+(the source column at depth 7.92–8.0 replicated over s .5–6: the glyph's horizontal strokes become streaks); WebKit gives 14.16 /
+13.50 and a lump — the platform is 0.1 pt wide, so the engine's ½-px quantisation of the fetch (fact 1) lands one source column
+over, on 「班」's vertical stroke. 左「早班」 ink −30 % in the exact render (native −37 %; WebKit −25 %); 右「晚班」's thresholded ink
+(< 100 at 6 px/pt) reads −10 % in the exact render (blended streaks) where the native's +37 % is counted at 3 px/pt on
+hard pixels — the ink count is not comparable across rasters, the height and the morphology are.
+
 **Engine fact 2 — the source fetch is nearest-neighbour at the device pixel, CoreAnimation's is bilinear (2026-09-19; not
 treated, candidates listed for the supervisor):** what the calibration shows is a displacement quantised to whole device pixels
 (the applied values above are all multiples of the pixel; a bilinear fetch would need no quantisation) and the renders show only

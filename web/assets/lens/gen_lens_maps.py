@@ -264,12 +264,14 @@ def compose_stages(x, y, layers, box, px_per_pt, source_rect=None):
         dx, dy, _ = layer_disp(px_, py_, L); px_ = px_ + dx; py_ = py_ + dy
         if i == 0 and source_rect is not None:                       # the first stage's source content sits in a smaller rectangle (the portal)
             B = B * rect_coverage(px_, py_, source_rect[0], source_rect[1], px_per_pt)
-        px_ = np.clip(px_, -hw, hw); py_ = np.clip(py_, -hh, hh)      # clamp_to_edge of this stage's source texture
+        half = 0.5 / DEVICE_PX[0]                                        # §4b.1 A: uv′ = min(clamp, ·), clamp = the last valid texel's centre (½ device px inside the box), then clamp_to_edge
+        px_ = np.clip(px_, -hw + half, hw - half); py_ = np.clip(py_, -hh + half, hh - half)
     return px_ - np.array(x, float), py_ - np.array(y, float), B
 
 def coverage(d, px_per_pt):
-    """the map's third channel (formula.md §1: mask = saturate(ne / fwidth + 0.5), 0 beyond 5 px outside): anti-aliased shape coverage"""
-    fw = 1.0 / px_per_pt
+    """the map's third channel (formula.md §1 / §4b.1 D: cov = saturate(0.5 − d/fw), fw = one device pixel of the native rendering
+    (DEVICE_PX, 3× → ⅓ pt); px_per_pt (the map's own resolution) is not the AA width"""
+    fw = 1.0 / DEVICE_PX[0]
     return np.clip(-d / fw + 0.5, 0, 1)
 
 def render_formula(path, w_pt, h_pt, layers, px, scale, margin=0.0, source_rect=None, base=None):
@@ -375,6 +377,8 @@ def filter_aberration(fid, hrefs, w, h, scale, mode, margin, note, alpha_elem=1.
     return "\n".join(out)
 
 R_MAX = [22.0]   # the lens's corner radius cap: 22 for the segment lens (--corner-radius 22), h/2 for the tab bar's (--corner-radius half)
+DEVICE_PX = [3.0]   # device pixels per pt of the native rendering (3× phone): the coverage's 1-px anti-alias width (formula.md §4b.1 D:
+                    # cov = saturate(.5 − d/fw), fw = 1 px) and the sampler's clamp to the LAST TEXEL CENTRE (§4b.1 A: clamp = (size − .5)/texsize)
 ENGINE_FIX = [0.0]   # --engine-fix: 引擎校正, default 0 = off. WebKit's feDisplacementMap applies a NEGATIVE displacement one filter pixel short
                      # (calib/, 2026-09-19: Mac WebKit 2× buffer ½ CSS px: −1 → −0.5, −4 → −3.5; iOS simulator 3×: ⅓ px: −1 → −0.67, −4 → −3.67;
                      # positive values exact / rounded up). A value here (pt) is subtracted from every negative u before encoding so the
@@ -590,6 +594,7 @@ def build_parser():
     ap.add_argument("--ab-scale", type=float, default=0.0, help="S of the fringe maps (their own data-s; 0 = 4·ceil(amount): room for W/H up to 2·⌈amount⌉/amount)")
     ap.add_argument("--label-region", default="96x12", help="the 'inside' region reported for the label verifications: |x| ≤ hx, |y| ≤ hy (segment lens: the portal 196×28; tab lens: 28x20, the uniform-zoom zone of lens-refraction.md §0)")
     ap.add_argument("--engine-fix", type=float, default=0.0, help="引擎校正 (default 0 = off): pt subtracted from every NEGATIVE displacement before encoding, = the engine's filter pixel that WebKit's feDisplacementMap drops on negative values (calib/: 0.5 on a 2× buffer, 0.333 at 3×); README §0.4")
+    ap.add_argument("--device-px", type=float, default=3.0, help="device pixels per pt of the native rendering: the coverage's 1-px AA width and the sampler's clamp to the last texel centre (formula.md §4b.1 A / D); 3 = the phone")
     ap.add_argument("--corner-radius", default="22", help="the lens capsule's corner radius: 22 (segment lens, clamped to h/2) or 'half' (tab bar lens: h/2 on every element, tab-lens-native.md §0)")
     ap.add_argument("--verify-chain", default="", help="tab bar lens (formula.md §5b): lens_scale/content_scale/model_centre_x,y/platter_centre_x,y[/period] — the phase files are read through the platter's presentation transform (1.0516 about the platter centre) and the copy's lift scale (1.16 about the platter centre); applied to --verify-label-lift")
     ap.add_argument("--ab-margin", type=float, default=16.0, help="the fringe wrapper's extension (pt) beyond the lens on every side (≥ the 15 pt span: the foreground's backdrop capture has marginWidth 100, its outward taps read the page beyond the lens)")
@@ -615,6 +620,7 @@ def main():
     ap = build_parser(); a = ap.parse_args(); W, H = (float(v) for v in a.size.lower().split("x"))
     if a.aberration != "off" and not a.ab_scale: a.ab_scale = 4.0 * math.ceil(float(a.aberration.split("/")[0]))   # own S of the fringe maps: seg 12, tab 16
     R_MAX[0] = float("inf") if a.corner_radius == "half" else float(a.corner_radius)
+    DEVICE_PX[0] = a.device_px
     ENGINE_FIX[0] = a.engine_fix
     a.S_ab = a.ab_scale
     AMP_FLOOR[0] = a.amp_floor
@@ -823,7 +829,8 @@ def main_formula(a, W, H):
                                        "sampling order": "the outer layer samples first: ContentLensing's image is portal #32 (196×28) showing the ClearGlass layer, whose image is the capsule-clipped segment content (formula.md §2, §1b 表 2) → u = Δ_L(p) + Δ_C(p + Δ_L(p)); the other order (validate_label.py) differs ≤ 0.1 rms inside the portal (verification → *_reversed_order)",
                                        "sampling / source rules": "formula.md §2 + §4b (final structure): clamp_to_edge (the sample position is clamped to the stage's texture box; BackdropView marginWidth 0 → no content beyond its 220×44 frame, the edge column is replicated), clip first then displace (portal #20 clips the segment content to the r22 capsule before ClearGlass; portal #32 (ContentLensing's source) does NOT clip, masksToBounds 0 — the label stack acts on the whole lens), output × the effect shape's coverage (the map's B channel, applied by feComposite)",
                                        "glass_background SDF shape / ovalization": "the filter layer's own bounds + corner radii (监督局 05:0x); its ovalization is not read by the probe — the old page's residual table (rms 0.12–0.16) uses 0.5 on both backdrop layers, kept here"}},
-            "encoding": {"engine_fix_pt": a.engine_fix, "engine_fix": "引擎校正: WebKit's feDisplacementMap applies negative values one device pixel short (calib/: Mac 2× ½ px, iOS simulator 3× ⅓ px), positive rounded up; the correction is applied AT PAGE LOAD by lens-engine-fix.js (default on, k = 1/devicePixelRatio: every negative R/G byte −k·255/S, blob: copies, files untouched); --engine-fix <pt> bakes the same into the files for a static build (default 0 = not baked); README §0.4",
+            "encoding": {"device_px": a.device_px, "coverage_aa": "cov = saturate(.5 − d/fw), fw = 1 device px = 1/device_px pt (formula.md §4b.1 D)", "clamp": "the sample position is clamped to the last texel centre of the stage's texture (½ device px inside the box) then clamp_to_edge (formula.md §4b.1 A)",
+                         "engine_fix_pt": a.engine_fix, "engine_fix": "引擎校正: WebKit's feDisplacementMap applies negative values one device pixel short (calib/: Mac 2× ½ px, iOS simulator 3× ⅓ px), positive rounded up; the correction is applied AT PAGE LOAD by lens-engine-fix.js (default on, k = 1/devicePixelRatio: every negative R/G byte −k·255/S, blob: copies, files untouched); --engine-fix <pt> bakes the same into the files for a static build (default 0 = not baked); README §0.4",
                          "scale": "per set: sets[w].S — 40 where the scaled stack fits ±20 pt, 48 for the widest stretch sets; the filter element carries data-s", "px_per_pt": a.px, "bytes": "R = 128 + round(u_x·255/S), G = same for u_y, B = shape coverage (255 inside, anti-aliased edge), A 255; u = content − screen (pt, +x right, +y down); the browser decodes S·(byte/255 − .5) = u + S/510",
                          "channels": "one map for all three colour channels (no dispersion)"},
             "sets": sets, "series": {"widths": widths, "step": step, "height_source": "linear between the two nearest recorded drag frames (seg-native-abc-frames.json phase drag; uiprobe-motion-segdragmid-light.json lenstrace); outside the recorded range the nearest frame (flagged clamped)", "shape": "the 220×44 r22 model lens scaled by (w/220, h/44) — seg-lens-refraction.md §1c(d): the flex scale sits on _UILiquidLensView's presentation transform alone, the layers below (SDF elements, portals 196×28, glass group) keep their model bounds; elliptical ends, the portal = scale × 196×28", "total_bytes": total_bytes},

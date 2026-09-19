@@ -28,7 +28,7 @@
  },
  "encoding": {
   "engine_fix_pt": 0.0,
-  "engine_fix": "引擎校正 (default off): pt subtracted from every negative displacement before encoding — WebKit's feDisplacementMap applies negative values one filter pixel short (calib/: Mac 2× ½ px, iOS simulator 3× ⅓ px), positive exact; README §0.4",
+  "engine_fix": "引擎校正: WebKit's feDisplacementMap applies negative values one device pixel short (calib/: Mac 2× ½ px, iOS simulator 3× ⅓ px), positive rounded up; the correction is applied AT PAGE LOAD by lens-engine-fix.js (default on, k = 1/devicePixelRatio: every negative R/G byte −k·255/S, blob: copies, files untouched); --engine-fix <pt> bakes the same into the files for a static build (default 0 = not baked); README §0.4",
   "scale": "per set: sets[w].S — 40 where the scaled stack fits ±20 pt, 48 for the widest stretch sets; the filter element carries data-s",
   "px_per_pt": 2,
   "bytes": "R = 128 + round(u_x·255/S), G = same for u_y, B = shape coverage (255 inside, anti-aliased edge), A 255; u = content − screen (pt, +x right, +y down); the browser decodes S·(byte/255 − .5) = u + S/510",
@@ -63,7 +63,7 @@
    "lab": "tab-f-lab-94.png",
    "peak_bg_pt": 7.77,
    "peak_lab_pt": 13.86,
-   "bytes": 21245,
+   "bytes": 20712,
    "model": [
     94.0,
     54.0
@@ -104,7 +104,7 @@
    "lab": "tab-f-lab-96.png",
    "peak_bg_pt": 7.78,
    "peak_lab_pt": 14.37,
-   "bytes": 22106,
+   "bytes": 21742,
    "model": [
     96.0,
     56.0
@@ -145,7 +145,7 @@
    "lab": "tab-f-lab-98.png",
    "peak_bg_pt": 7.75,
    "peak_lab_pt": 14.94,
-   "bytes": 22978,
+   "bytes": 22431,
    "model": [
     98.0,
     58.0
@@ -186,7 +186,7 @@
    "lab": "tab-f-lab-100.png",
    "peak_bg_pt": 7.76,
    "peak_lab_pt": 15.59,
-   "bytes": 23855,
+   "bytes": 23353,
    "model": [
     100.0,
     60.0
@@ -227,7 +227,7 @@
    "lab": "tab-f-lab-102.png",
    "peak_bg_pt": 7.76,
    "peak_lab_pt": 16.33,
-   "bytes": 24816,
+   "bytes": 24157,
    "model": [
     102.0,
     62.0
@@ -268,7 +268,7 @@
    "lab": "tab-f-lab-104.png",
    "peak_bg_pt": 7.77,
    "peak_lab_pt": 17.22,
-   "bytes": 25448,
+   "bytes": 24847,
    "model": [
     104.0,
     64.0
@@ -309,7 +309,7 @@
    "lab": "tab-f-lab-106.png",
    "peak_bg_pt": 7.78,
    "peak_lab_pt": 18.33,
-   "bytes": 26333,
+   "bytes": 25625,
    "model": [
     106.0,
     66.0
@@ -350,7 +350,7 @@
    "lab": "tab-f-lab-108.png",
    "peak_bg_pt": 7.78,
    "peak_lab_pt": 19.92,
-   "bytes": 27057,
+   "bytes": 26560,
    "model": [
     108.0,
     68.0
@@ -391,7 +391,7 @@
    "lab": "tab-f-lab-110.png",
    "peak_bg_pt": 7.79,
    "peak_lab_pt": 22.7,
-   "bytes": 26910,
+   "bytes": 26331,
    "model": [
     110.0,
     70.0
@@ -432,7 +432,7 @@
    "lab": "tab-f-lab-112.png",
    "peak_bg_pt": 7.93,
    "peak_lab_pt": 23.11,
-   "bytes": 28000,
+   "bytes": 27328,
    "model": [
     110.0,
     70.0
@@ -473,7 +473,7 @@
    "lab": "tab-f-lab-114.png",
    "peak_bg_pt": 8.07,
    "peak_lab_pt": 23.54,
-   "bytes": 28518,
+   "bytes": 27688,
    "model": [
     110.0,
     70.0
@@ -514,7 +514,7 @@
    "lab": "tab-f-lab-116.png",
    "peak_bg_pt": 8.22,
    "peak_lab_pt": 23.93,
-   "bytes": 29689,
+   "bytes": 28922,
    "model": [
     110.0,
     70.0
@@ -546,7 +546,7 @@
   "step": 2,
   "height_source": "linear between the two nearest recorded drag frames (seg-native-abc-frames.json phase drag; uiprobe-motion-segdragmid-light.json lenstrace); outside the recorded range the nearest frame (flagged clamped)",
   "shape": "the 220×44 r22 model lens scaled by (w/220, h/44) — seg-lens-refraction.md §1c(d): the flex scale sits on _UILiquidLensView's presentation transform alone, the layers below (SDF elements, portals 196×28, glass group) keep their model bounds; elliptical ends, the portal = scale × 196×28",
-  "total_bytes": 306955
+  "total_bytes": 299696
  },
  "aberration": {
   "map": "tab-f-ab-<w>.png: the lens box plus 16 pt on every side at 1 px/pt; R/G = the ratio-1 vector Δ₁ (pt) = amount · ((R(θ)g).y, (R(θ)g).x) · e(d) (§3b.3 direction with the lanes swapped; e = the edge factor, 1 at the edge → 0 at |EdgeStart| pt), B = e = the filter's band factor; own scale sets[w].S_ab (data-s on the fringe filter)",
