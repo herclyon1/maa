@@ -642,8 +642,8 @@ function segSync(seg, fresh) {
     else { gs.futureOn = null; requestAnimationFrame(() => segGlRedraw(seg)); } }   // WebGL: the labels' weight / the selection changed under the lens (README §0.8.7 step 4)
   const freshBs = [...fresh.querySelectorAll("button")];
   [...seg.querySelectorAll("button")].forEach((b, i) => {
-    const on = freshBs[i] && freshBs[i].classList.contains("on");
-    b.classList.toggle("on", !!on); b.setAttribute("aria-selected", on ? "true" : "false");
+    const on = !!(freshBs[i] && freshBs[i].classList.contains("on"));
+    if (b.classList.contains("on") !== on) segLabelXfade(b, on); else b.setAttribute("aria-selected", on ? "true" : "false");   // R20c: a changed label cross-dissolves .2 s
   });
   if (lens && to !== "" && Math.abs(parseFloat(to) - parseFloat(from)) > 0.001) {
     if (segCommitMode === "tap" && seg.__lensLoop && !seg.__lensLoop.state.done) {
@@ -823,7 +823,7 @@ function wire() {
          timer + vcsplit path). A slide's up: +25 ms (--seg-commit-delay-drag, tokens.css --ios-touch-segment-commit-delay note). A newer value change
          before a timer fires simply renders again (快速连点 未量). */
       const begin = () => { segCommitAt = performance.now(); segCommitMode = mode; flipPending = true; performance.mark("seg:commit"); };
-      const select = () => { bs.forEach((b, k) => { b.classList.toggle("on", k === i); b.setAttribute("aria-selected", k === i ? "true" : "false"); }); segMeasure("seg:commit-select", segCommitAt); };   // the selection state (labels .on / aria; the lens is the loop's)
+      const select = () => { bs.forEach((b, k) => { if (b.classList.contains("on") !== (k === i)) segLabelXfade(b, k === i); }); segMeasure("seg:commit-select", segCommitAt); };   // the selection state (labels .on / aria; the lens is the loop's); R20c: each changed label cross-dissolves .2 s
       const content = () => { const tR = performance.now(); performance.mark("seg:commit-render-start"); qsel.dispatchEvent(new Event("change")); segMeasure("seg:commit-render", tR); };   // the content render (segSync keeps the control)
       if (SEG_VC_NOW && mode !== "drag") { begin(); select(); content(); return; }   // 换值即抬手: selection + content now, one frame — the frames until the lift (up +82) carry the render, not the lift's
       const delay = touchMs(mode === "drag" ? "--seg-commit-delay-drag" : "--seg-commit-delay-tap", 0);
@@ -1453,7 +1453,7 @@ function segGlCreate(seg, lens, bs, setW) {
   /* the labels layer with segment `onIdx` drawn as the selected one (R31: the same drawing serves the live texture and the per-segment prepared variants) */
   const drawLabels = (x, onIdx) => { const sr = seg.getBoundingClientRect(); x.textAlign = "center"; x.textBaseline = "middle";
     bs.forEach((b, i) => { const r = b.getBoundingClientRect(), c = getComputedStyle(b);
-      x.font = i === onIdx ? gs.fontOn : gs.fontOff; x.fillStyle = c.color; x.fillText(b.textContent, r.left - sr.left + r.width / 2, SEG_GLM + r.top - sr.top + r.height / 2); }); };
+      x.font = i === onIdx ? gs.fontOn : gs.fontOff; x.fillStyle = b.dataset.xfadeColor || c.color; x.fillText(b.textContent, r.left - sr.left + r.width / 2, SEG_GLM + r.top - sr.top + r.height / 2); }); };   // R20c: during a label crossfade the real colour is transparent — the saved one is drawn
   let glLens; try { glLens = LensWebGL.create(canvas, opts); } catch (e) { console.warn("LensWebGL", e); canvas.remove(); segGlOk = false; return null; }
   return (seg.__gl = { canvas, lens: glLens, opts, w: segW, h: segH, setW, gs, drawLabels, platter: segRgba(getComputedStyle(seg).getPropertyValue("--ios-segment-selected-bg")) });   // the platter colour token (light (255,255,255,1) / dark (235,235,245,.3), tokens.css)
 }
@@ -1473,6 +1473,32 @@ let segActiveLoop = null;
 window.__segLens = null;
 window.__segDiag = () => window.__segLens;
 window.__segPerf = () => performance.getEntriesByType("measure").filter((e) => e.name.startsWith("seg:")).map((e) => ({ name: e.name, start: Math.round(e.startTime * 100) / 100, dur: Math.round(e.duration * 100) / 100 }));
+/* R20c — the label's weight / colour change on a value flip is a bitmap cross-dissolve over 0.2 s on cubic-bezier(.25, .1, .25, 1) (seg-value-change-content.md
+   §5a: animateWithDuration:0.2 options:0x50005 around the old / new segments' _setSelected:, UISegmentLabel animates the layer "contents"; §5b: curve field
+   5 = kCAMediaTimingFunctionDefault). Two ghosts over the button — the OLD rendering (regular ↔ medium, old colour) fading out, the NEW one fading in — while
+   the real text is transparent; at the end the ghosts go and the real text (already the new style) shows. beginFromCurrentState: a flip during a fade starts
+   from the ghosts' current opacities (read back from computed style). The GL labels drawing reads data-xfade-color instead of the transparent colour. */
+const SEG_XFADE = { ms: 200, curve: "cubic-bezier(.25,.1,.25,1)" };
+function segLabelXfade(b, on) {
+  const seg = b.parentElement; if (!seg || b.classList.contains("on") === on) return;
+  const c0 = getComputedStyle(b), oldFont = c0.font, oldColor = b.dataset.xfadeColor || c0.color;
+  let ghosts = b.__xfade; let startOld = 1, startNew = 0;
+  if (ghosts) { startOld = parseFloat(getComputedStyle(ghosts.newG).opacity); startNew = parseFloat(getComputedStyle(ghosts.oldG).opacity); clearTimeout(ghosts.timer); ghosts.wrap.remove(); b.__xfade = null; }   // beginFromCurrentState: the previous fade's current values swap roles
+  b.classList.toggle("on", on); b.setAttribute("aria-selected", on ? "true" : "false");
+  const c1 = getComputedStyle(b), newFont = c1.font, newColor = b.dataset.xfadeColor || c1.color;
+  const r = b.getBoundingClientRect(), sr = seg.getBoundingClientRect();
+  /* the ghosts sit in a wrapper that mirrors the button's own opacity (a pressed label is dimmed to .2 and returns to 1 on the button's transition, G12) */
+  const wrap = document.createElement("span"); wrap.className = "segxw"; wrap.style.cssText = `position:absolute;left:${r.left - sr.left}px;top:${r.top - sr.top}px;width:${r.width}px;height:${r.height}px;pointer-events:none;z-index:3;opacity:${c0.opacity};transition:opacity ${c0.transitionDuration} ${c0.transitionTimingFunction}`; seg.appendChild(wrap);
+  const mk = (font, color, op) => { const g = document.createElement("span"); g.className = "segx"; g.textContent = b.textContent;
+    g.style.cssText = `position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:${font};color:${color};opacity:${op};transition:opacity ${SEG_XFADE.ms}ms ${SEG_XFADE.curve};white-space:nowrap`;
+    wrap.appendChild(g); return g; };
+  const oldG = mk(oldFont, oldColor, startOld), newG = mk(newFont, newColor, startNew);
+  b.dataset.xfadeColor = newColor; b.style.color = "transparent"; b.style.animation = "none";   // the real text hidden under the ghosts; index.html's seg-in .1 s (a sampled fade) does not run
+  void oldG.offsetWidth;
+  oldG.style.opacity = "0"; newG.style.opacity = "1"; wrap.style.opacity = "1";
+  const timer = setTimeout(() => { if (b.__xfade && b.__xfade.timer === timer) { wrap.remove(); b.style.color = ""; b.style.animation = ""; delete b.dataset.xfadeColor; b.__xfade = null; } }, SEG_XFADE.ms + 20);
+  b.__xfade = { oldG, newG, wrap, timer };
+}
 const segMeasure = (name, from) => { try { performance.measure(name, { start: from, end: performance.now() }); } catch (e) { /* older engines */ } };   // ?segx switches (index.html hook; ios-switch-list.md): scale0 holds the displacement scale at 0
 function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the pointerdown's event timeStamp (the press path's time base: the lift delay counts from the touch)   // tap = { target, upAt }: the 点按 schedule (SEG_TAP_T) instead of the press / drag / release chain; tap = { prewarm: true }: build + one invisible paint, no loop (A 起手预建); tap = { deferred: true }: build now, arm later with loop.beginTap(target, upAt) (the tap's work done at the down)
   const prewarm = !!(tap && tap.prewarm), deferred = !!(tap && tap.deferred); if (prewarm || deferred) tap = null;
