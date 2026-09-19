@@ -83,6 +83,15 @@ window.ACCEPT && ACCEPT.add(async (ctx) => {
       window.scrollTo(0, 40); await sleep(700); num("口袋 滚后 alpha 1（同边线的 .517 s 淡入）", 1, parseFloat(getComputedStyle(el).opacity), 0.001);
       const copy = el.querySelector(".topbar-pocket-copy"), mr = document.getElementById("app").getBoundingClientRect(), tm = /matrix\(([^)]+)\)/.exec(getComputedStyle(copy).transform), ty = tm ? parseFloat(tm[1].split(",")[5]) : NaN;
       num("口袋 内容复本贴着页面像素（translateY = 页 top）", mr.top, ty, 1.5);
-      check("口袋 遮罩：1 × 384 竖向遮罩的像素值未读（imgdump）→ 先全幅模糊，记录不判", "记录", "记录", true);
+      /* R3′ (R46, nav-bar-scroll-formula §3.4a): the variable blur's 1 × 384 mask column (R: rows 0–204 255, 205–383 down to 63) as the blurred copy's mask-image —
+         184 stops from row 200, each stop's alpha = R/255 at the row's centre; rows 204 / 300 / 383 checked against the table (255 / 100 / 63); the replay fill is
+         the pocket's own background (unmasked, under the blur layer) */
+      { const M = P.mask; const mi = getComputedStyle(copy).webkitMaskImage || getComputedStyle(copy).maskImage || ""; const stops = (mi.match(/rgba?\(0, 0, 0(?:, [0-9.]+)?\) [0-9.]+%/g) || []).length;   // an alpha-1 stop serialises as rgb(0, 0, 0)
+        const at = (row) => { const m = new RegExp(`rgba?\\(0, 0, 0(?:, ([0-9.]+))?\\) ${((row + 0.5) / 384 * 100).toFixed(3).replace(/\.?0+$/, "")}%`).exec(mi); return m ? (m[1] == null ? 1 : parseFloat(m[1])) : NaN; };
+        const v204 = at(204), v300 = at(300), v383 = at(383); const tab = (row) => M.values[row - M.row0] / 255;
+        check("口袋 遮罩（R3′ / R46 §3.4a）：复本 mask-image = 184 档纵向渐变（行 200 起），行 204 / 300 / 383 = 表值 255 / 148 / 63 (÷255)", `184 + 1 · ${tab(204).toFixed(3)} / ${tab(300).toFixed(3)} / ${tab(383).toFixed(3)}`, `${stops} · ${v204.toFixed(3)} / ${v300.toFixed(3)} / ${v383.toFixed(3)}`, stops === 185 && Math.abs(v204 - tab(204)) < 0.002 && Math.abs(v300 - tab(300)) < 0.002 && Math.abs(v383 - tab(383)) < 0.002 && M.values[4] === 255 && M.values[100] === 148 && M.values[183] === 63);
+        const bg = getComputedStyle(el).backgroundColor, rpk = k.replay; const bm = /rgba?\(([\d.]+), ([\d.]+), ([\d.]+)(?:, ([\d.]+))?\)/.exec(bg);
+        check("口袋 Replay 平罩在遮罩之下（口袋自身背景 = replay 键，不受遮罩）", `rgba(${rpk.join(",")})`, bg, !!bm && +bm[1] === rpk[0] && +bm[2] === rpk[1] && +bm[3] === rpk[2] && Math.abs((bm[4] == null ? 1 : +bm[4]) - rpk[3]) < 0.01);
+        check("口袋 遮罩：原生按行缩放模糊半径（variableBlur + inputFade 1）——CSS 只能按行缩放模糊层 alpha：不可表达（逐行半径），记录", "记录", "记录", true); }
       window.scrollTo(0, y1); await sleep(60); } }
 });

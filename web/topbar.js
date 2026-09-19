@@ -84,11 +84,17 @@
      the flat replay flood composited over the content first (it lies under the blur backdrop, so the backdrop samples it), then the blur
      (feGaussianBlur σ = 2 ÷ .5 = 4 pt: the radius is in samples of the half-resolution capture, the same reading as alert-pipeline-plan §1.3),
      BlurFill as in menu-card-material §7.2 (bf at σ 16 ÷ .5 = 32 pt — 近似 mip, as the read says), the colour matrix, then a hairline element.
-     Not built: the variable blur's mask (the 1 × 384 column's values are not in the dump — 待读, an imgdump read; until then the blur is uniform
-     over the pocket, which the read says it is NOT: the mask fades it); sdrNormalize (a no-op on 8-bit values); the status-bar replay layer
-     (elsewhere, unread); backdrop-filter cannot take an SVG filter, hence the clone. */
+     The variable blur's mask: R3′ below (R46 read the 1 × 384 column; wired as the copy's mask-image). Not built: sdrNormalize (a no-op on 8-bit
+     values); the status-bar replay layer (elsewhere, unread); backdrop-filter cannot take an SVG filter, hence the clone. */
   const POCKET = { light: { replay: [255, 255, 255, 0.5], blur: 2, scale: 0.5, bf: 16, darken: 0.4, lighten: 0.6, normal: 0.25, matrix: [1.1969, -0.1789, -0.018, 0, 0.03, -0.0531, 1.0712, -0.0181, 0, 0.03, -0.0532, -0.1787, 1.232, 0, 0.03], hairline: [0, 0, 0, 0.1] },
     dark: { replay: [0, 0, 0, 0.6], darken: 0.6, lighten: 0.4, normal: 0, hairline: [255, 255, 255, 0.1] } };
+  /* R3′ — the variable blur's inputMaskImage (R46, nav-bar-scroll-formula.md §3.4a; tools/uiprobe/uiprobe-r46-pocket-mask.json): a 1 × 384 column, only R varies —
+     rows 0 … 204 = 255, then rows 205 … 383 fall monotonically to 63 (.247); POCKET_MASK holds rows 200 … 383 (184 values, 0-based), the rows before are 255. Wired as
+     a mask-image gradient on the blurred copy (the reader's wiring note in §3.4a): stop i at the centre of row i, alpha R/255; the column is stretched over the
+     layer's height (a filter mask image covers the layer's bounds; whether the pocket stretches it by a 120-pt rule instead is §6 item 3, 待读). What CSS cannot
+     express: the native mask scales the blur RADIUS per row (variableBlur) with inputFade 1 — here it scales the blurred layer's alpha (不可表达: per-row radius). */
+  const POCKET_MASK = [255, 255, 255, 255, 255, 254, 254, 254, 254, 254, 254, 254, 254, 254, 253, 253, 253, 253, 252, 252, 252, 251, 251, 251, 250, 250, 249, 249, 248, 247, 247, 246, 245, 245, 244, 243, 243, 242, 241, 240, 239, 238, 237, 236, 235, 234, 233, 232, 231, 230, 229, 228, 227, 225, 224, 223, 222, 220, 219, 218, 216, 215, 213, 212, 210, 209, 207, 206, 204, 203, 201, 199, 198, 196, 194, 193, 191, 189, 188, 186, 184, 182, 181, 179, 177, 175, 173, 172, 170, 168, 166, 164, 162, 160, 159, 157, 155, 153, 151, 149, 148, 146, 144, 142, 140, 138, 137, 135, 133, 131, 130, 128, 126, 124, 123, 121, 119, 118, 116, 115, 113, 111, 110, 108, 107, 105, 104, 103, 101, 100, 98, 97, 96, 94, 93, 92, 91, 90, 88, 87, 86, 85, 84, 83, 82, 81, 80, 79, 78, 77, 77, 76, 75, 74, 73, 73, 72, 71, 71, 70, 70, 69, 69, 68, 68, 67, 67, 66, 66, 66, 65, 65, 65, 64, 64, 64, 64, 64, 64, 63, 63, 63, 63, 63]; const POCKET_MASK_ROW0 = 200, POCKET_MASK_ROWS = 384;
+  const pocketMask = () => { const stops = [`rgba(0,0,0,1) 0%`]; for (let i = 0; i < POCKET_MASK.length; i++) { const row = POCKET_MASK_ROW0 + i; stops.push(`rgba(0,0,0,${(POCKET_MASK[i] / 255).toFixed(4)}) ${((row + 0.5) / POCKET_MASK_ROWS * 100).toFixed(3)}%`); } return `linear-gradient(to bottom, ${stops.join(", ")})`; };
   const pocketTheme = () => (matchMedia("(prefers-color-scheme: dark)").matches && root.dataset.theme !== "light") || root.dataset.theme === "dark" ? "dark" : "light";
   const pocketKeys = (th) => ({ ...POCKET.light, ...(th === "dark" ? POCKET.dark : {}) });
   const NS = "http://www.w3.org/2000/svg";
@@ -105,12 +111,13 @@
   const pocketBuild = () => { if (!pocket.main) return; const th = pocketTheme(); const k = pocketFilter(th);
     if (!pocket.el) { pocket.el = document.createElement("div"); pocket.el.className = "topbar-pocket"; pocket.el.setAttribute("aria-hidden", "true"); pocket.hair = document.createElement("i"); pocket.hair.className = "topbar-pocket-hair"; document.body.appendChild(pocket.el); }
     if (pocket.copy) pocket.copy.remove(); const copy = pocket.main.cloneNode(true); copy.removeAttribute("id"); copy.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); copy.querySelectorAll("canvas, script, .menu, .menu-scrim, nav.tabs").forEach((e) => e.remove()); copy.className = "topbar-pocket-copy"; copy.inert = true;
-    const mr = pocket.main.getBoundingClientRect(); copy.style.cssText = `position:absolute;left:${mr.left}px;top:0;width:${mr.width}px;pointer-events:none;filter:url(#topbar-pocket-f)`; pocket.el.appendChild(copy); pocket.el.appendChild(pocket.hair); pocket.copy = copy; pocket.theme = th; pocket.top0 = mr.top + window.scrollY;
+    const mr = pocket.main.getBoundingClientRect(); const mk = pocketMask(); copy.style.cssText = `position:absolute;left:${mr.left}px;top:0;width:${mr.width}px;pointer-events:none;filter:url(#topbar-pocket-f)`; copy.style.webkitMaskImage = mk; copy.style.maskImage = mk;   /* R3′: the mask is on the copy (the blur layer), the replay flood stays unmasked under it (the pocket's own background below) */
+    const rp = k.replay; pocket.el.style.background = `rgba(${rp[0]},${rp[1]},${rp[2]},${rp[3]})`;   /* the Replay layer: a flat fill over the content, under the blur layer (§6b), not masked */ pocket.el.appendChild(copy); pocket.el.appendChild(pocket.hair); pocket.copy = copy; pocket.theme = th; pocket.top0 = mr.top + window.scrollY;
     const h = k.hairline; pocket.hair.style.background = `rgba(${h[0]},${h[1]},${h[2]},${h[3]})`; pocketPlace(); };
   const pocketPlace = () => { if (!pocket.copy) return; pocket.copy.style.transform = `translateY(${(pocket.top0 - window.scrollY).toFixed(2)}px)`; };
   const pocketObs = new MutationObserver(() => { clearTimeout(pocket.t); pocket.t = setTimeout(pocketBuild, 60); });
   if (pocket.main) { pocketBuild(); pocketObs.observe(pocket.main, { childList: true, subtree: true, characterData: true }); addEventListener("scroll", pocketPlace, { passive: true }); try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", pocketBuild); } catch (e) {} }
-  window.TopbarPocket = { keys: pocketKeys, theme: pocketTheme, rebuild: pocketBuild, get el() { return pocket.el; } };
+  window.TopbarPocket = { keys: pocketKeys, theme: pocketTheme, rebuild: pocketBuild, get el() { return pocket.el; }, mask: { rows: POCKET_MASK_ROWS, row0: POCKET_MASK_ROW0, values: POCKET_MASK.slice(), css: pocketMask } };
   if ("onscrollend" in window) addEventListener("scrollend", () => { if (!dragging) settle(); });
   addEventListener("touchstart", () => { dragging = true; if (snapping) { cancelAnimationFrame(snapRaf); snapping = false; } }, { passive: true });
   addEventListener("touchend", () => { dragging = false; lastTouchEnd = performance.now(); }, { passive: true }); addEventListener("touchcancel", () => { dragging = false; lastTouchEnd = performance.now(); }, { passive: true });
