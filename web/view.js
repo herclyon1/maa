@@ -1329,6 +1329,7 @@ const SEG_RIM = (() => {
   return { hlRings, angMain, angDiff, kfRings, kfK, NXS, MULT: 1 - .9118, ADD: .1471, COLOR_BIAS: -.3, grey };
 })();
 const SEGX = (new URLSearchParams(location.search).get("segx") || "").split(",");
+const SEG_DISP_ON = new URLSearchParams(location.search).get("disp") === "1";   // layer-5 colour fringe (7-tap chain on .stack, per-frame W/H matrix + tap scales): default off, ?disp=1 on (监督局 09-19 12:0x, phone fps bisect)
 /* instrumentation (仪器, no behaviour): the lens loop publishes its per-tick internals as window.__segLens — a flat object of numbers and strings,
    rewritten at the end of every tick, read as is by 2号's frame recorder (seg-frames-logger.js `state`; a field named t or ending in _t is a
    performance.now() ms the recorder converts to s since the down). The agreed names: t (the tick's performance.now()), x (the position spring, pt),
@@ -1357,7 +1358,7 @@ function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }:
   let stack = seg.querySelector(".stack"), base = stack && stack.querySelector(".base");
   if (!stack) { stack = mk("stack", '<div class="base"><div class="copy"><div class="cbgwrap"><div class="cbg"></div><div class="ctrack"></div></div></div></div>'); base = stack.firstElementChild; }
   const AM = 16;   // the wrapper's extension beyond the lens (lens-field.json aberration.wrapper; the chain's outward taps read the page there)
-  const DISPERSION = seg.dataset.dispersion !== "0" && !SEGX.includes("noab");
+  const DISPERSION = SEG_DISP_ON && seg.dataset.dispersion !== "0" && !SEGX.includes("noab");   // 监督局 09-19 12:0x: the fringe chain is OFF by default (?disp=1 on) while the phone's 20–25 fps rendering is bisected
   /* B6 rim (index.html "B6" block, SEG_RIM): .rimb = inner shadow div + SVG (ring shadow rect.rs, dark line rect.kf ×3 under the page/track mask);
      .hlk / .hlw = the #36 highlight as SVG ring strokes, black (normal) / white (plus-lighter) */
   const NS = "http://www.w3.org/2000/svg", svgEl = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
