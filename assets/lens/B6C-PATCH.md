@@ -81,10 +81,8 @@ Apply it to a black capsule of the lens box. WebKit check (wksnap 3 px/pt, page 
 
 602–609 within .001; the tail 610–613 reads one 8-bit level low (the blur's 8-bit α × .06 = 15 levels; the native raster is 8-bit too, its
 tail reads .005 at 613). Bottom rows 640–648: 0 (as native: "下缘 624 以下 < .004"). Left end, row 616, x 111…121: .012 .025 .029 .025 .025
-.020 .016 .012 .008 .004 .000 — the data session's direct read of the ends (12:5x, `tools/touch/ish_ends.py`, seg-sdfexp9 on / hidden pairs,
-three backdrops): row 616 left x 114–116 / right x 324–326 peak α **.025** (3–6 pt inside the edge, gone 10 pt in), row 606 plateau .045
-(x 122 … 321), row 626 ends ≤ .01; the parent chain's opacities all 1, only #21 has a shadow. The filter's end peak .029 at x 113 vs .025:
-within .004, as on the top-edge rows — the closed form holds at the ends too (§5.2's "+3.8 … +1.9" was the coarser earlier read).
+.020 .016 .012 .008 .004 .000 — §5.2 reads "+3.8 … +1.9" (≈ .016 → .008) there: the closed form's end profile is NOT confirmed by that
+reading (the top-edge run is; the ends were read as level differences on row 616 only) — for the data session to read the ends' column.
 
 | file:line | old | new | source |
 |---|---|---|---|
