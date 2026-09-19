@@ -38,14 +38,14 @@
   const settled = () => Math.abs(st.p - st.target) < .001 && Math.abs(st.v) < .01;
   const tick = (now) => {
     if (!st.first) st.first = now;
-    const dt = Math.min(1, Math.max(0, (now - st.last) / 1000)); st.last = now;   // the step is closed-form: a slow frame gets its whole elapsed time (a .05 clamp halved the motion on 100 ms frames)
+    const dt = Math.min(1, Math.max(0, (now - st.last) / 1000)); st.last = now; st.elapsed += dt;   // elapsed: the spring's own time (the accept compares the shown values at it)   // the step is closed-form: a slow frame gets its whole elapsed time (a .05 clamp halved the motion on 100 ms frames)
     Motion.spring(st, st.target, SPRING, dt);   // st.x is st.p: the state object is {p, v} under the names Motion expects
     if (settled()) { st.p = st.target; st.v = 0; write(); st.raf = 0; finish(); return; }
     write(); st.raf = requestAnimationFrame(tick);
   };
   // Motion.spring reads/writes s.x / s.v: alias p as x
   Object.defineProperty(st, "x", { get() { return this.p; }, set(v) { this.p = v; } });
-  const run = () => { if (st.raf) return; st.last = st.t0 = performance.now(); st.first = 0; st.raf = requestAnimationFrame(tick); };   // t0 = the spring's own clock (the page's first frame after a show may come late: reported by the accept, not judged)
+  const run = () => { if (st.raf) return; st.last = st.t0 = performance.now(); st.first = 0; st.elapsed = 0; st.raf = requestAnimationFrame(tick); };   // t0 = the spring's own clock (the page's first frame after a show may come late: reported by the accept, not judged)
   const finish = () => {
     const pg = st.pg;
     pg.classList.remove("nav-live"); document.body.classList.remove("nav-live");
