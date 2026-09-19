@@ -12,13 +12,13 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="遥控">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260919135243">
+<link rel="manifest" href="manifest.webmanifest?v=20260919144638">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260919135243">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260919135243">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260919144638">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260919144638">
 <!-- 组件数字的正本：--ios-* 变量，每条带来源（探针原值 / AX 帧 / NUMBERS 行 / 取色 / 采样替代）。页面自己的变量只做映射，不再手写数字。 -->
-<link rel="stylesheet" href="tokens.css?v=20260919135243">
-<link rel="stylesheet" href="controls.css?v=20260919135243">   <!-- press states of rows / switch (B14 / B13): remote-ref/dispatch-B14-cell.md, dispatch-B13-switch.md -->
+<link rel="stylesheet" href="tokens.css?v=20260919144638">
+<link rel="stylesheet" href="controls.css?v=20260919144638">   <!-- press states of rows / switch (B14 / B13): remote-ref/dispatch-B14-cell.md, dispatch-B13-switch.md -->
 <link rel="stylesheet" href="seg-keys.css?v=20260919011715">   <!-- segmented-lens kinematics compiled from the native frames (界面2号 ui2 90d6876 gen_seg_keys.py; do not edit) -->
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
@@ -3900,19 +3900,19 @@
   <div class="pnav"><button type="button" class="navbtn pback" aria-label="返回"></button><span class="ptitle"></span></div>
   <div class="pbody"></div>
 </div>
-<script src="schema.js?v=20260919135243"></script>
-<script src="net.js?v=20260919135243"></script>
-<script src="pending.js?v=20260919135243"></script>
-<script src="live.js?v=20260919135243"></script>
-<script src="stamina.js?v=20260919135243"></script>
-<script src="inventory.js?v=20260919135243"></script>
-<script src="view.js?v=20260919135243"></script>
-<script src="controls.js?v=20260919135243"></script>   <!-- row press (B14) / switch (B13) state machines; after view.js (it takes .acts button over from installPressables) -->
-<script src="alert-prewarm.js?v=20260919135243"></script>   <!-- the alert glass layer built once at load: first open as fast as the second (web/alert-prewarm.js) -->
+<script src="schema.js?v=20260919144638"></script>
+<script src="net.js?v=20260919144638"></script>
+<script src="pending.js?v=20260919144638"></script>
+<script src="live.js?v=20260919144638"></script>
+<script src="stamina.js?v=20260919144638"></script>
+<script src="inventory.js?v=20260919144638"></script>
+<script src="view.js?v=20260919144638"></script>
+<script src="controls.js?v=20260919144638"></script>   <!-- row press (B14) / switch (B13) state machines; after view.js (it takes .acts button over from installPressables) -->
+<script src="alert-prewarm.js?v=20260919144638"></script>   <!-- the alert glass layer built once at load: first open as fast as the second (web/alert-prewarm.js) -->
 <script>/* 验收脚本只在地址带 ?accept 时加载（docs/HIG-CHECKLIST.md 的验收程序）。分段透镜逐帧记录器（界面2号 seg-frames-logger.js）在 ?accept / ?diag / ?segframes 时加载，
    它自己看查询串，其它时候什么都不做。 */
 { const q = new URLSearchParams(location.search);
-  if (q.has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260919135243"; document.body.appendChild(s); }
+  if (q.has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260919144638"; document.body.appendChild(s); }
   if (q.has("diag") || q.has("segframes")) { const s = document.createElement("script"); s.src = "seg-frames-logger.js"; document.body.appendChild(s); }
   /* ?segx=a,b,… : layer / map switches for the simulator-standalone experiments (remote-ref/tools/webkit/b6/ios-switch-list.md). Works with or without
      ?seghold. nowarp | norimb | nohl | nowarpl | noplat hide one lens layer (visibility, so the loop still runs); mapflat swaps every displacement map for
