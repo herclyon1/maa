@@ -96,6 +96,29 @@ ACCEPT.add(async function sw({ check, num, col, sleep }) {
   pev(sw, "pointerdown", at(sw)); pev(sw, "pointermove", at(sw, .5, .5, 40, 0)); pev(sw, "pointerup", at(sw, .5, .5, 40, 0));
   check("开关 X11 拖过远端外直接抬手：翻转", "on ×6", `${inp.checked ? "on" : "off"} ×${flips}`, inp.checked && flips === 6);
   await sleep(400);
+  /* R70′ — the knob's flex while lifted (switch-native-formula.md §12 / §12a): active from pressed (+10 ms) to the un-lift, driven by the knob's own
+     presented motion; a fast drag like the probe's (4 × 5.5 pt every 16 ms) stretches X and squashes Y (sX·sY ≈ 1) with a positive drift, then the
+     reverse stretch while decelerating; the presented scale = lift × flex per frame; after the un-lift the floats return to 1 and the flex is off */
+  if (window.Switch && Switch.flexOf) {
+    inp.checked = true; pev(sw, "pointerdown", at(sw)); await sleep(60);
+    const f0 = Switch.flexOf(sw);
+    const want = typeof flexSpec === "function" ? flexSpec(58, 38.33) : null;
+    check("开关 R70′ pressed 后 flex 激活（setLifted:YES → 激活模式 3），spec = liquidLensWithSize:(58 × 38.33) 的 smallLoupe → loupe 插值（t .0403，flex-interaction.md §7.4 = view.js flexSpec）：ζ .5777 / .4463、pts 13.63、.9 / 1.1、N 2020（§9 的 N 9697 经 R70″ 帧回放不合，§12b）", want ? `active · ${want.zeta.toFixed(4)}/${want.resp.toFixed(4)} · ${want.pts.toFixed(2)} · ${want.min}/${want.max} · ${want.N.toFixed(0)}` : "flexSpec", f0 ? `${f0.active ? "active" : "off"} · ${f0.spec.zeta.toFixed(4)}/${f0.spec.resp.toFixed(4)} · ${f0.spec.pts.toFixed(2)} · ${f0.spec.min}/${f0.spec.max} · ${f0.spec.N.toFixed(0)}` : "no flex", !!f0 && !!want && f0.active && Math.abs(f0.spec.zeta - want.zeta) < 1e-9 && Math.abs(f0.spec.resp - want.resp) < 1e-9 && Math.abs(f0.spec.N - want.N) < 1e-6 && Math.abs(f0.spec.N - 2020.15) < .5 && Math.abs(f0.spec.zeta - .5777) < .001);
+    await sleep(200);   // lifted and still: no motion → identity
+    { const f = Switch.flexOf(sw); check("开关 R70′ 抬起后静止：无运动 → sX = sY = 1、drift 0（源是旋钮自己的呈现运动，不是手指）", "1 · 1 · 0", f ? `${f.out.sx.toFixed(4)} · ${f.out.sy.toFixed(4)} · ${f.out.dx.toFixed(3)}` : "-", !!f && Math.abs(f.out.sx - 1) < .001 && Math.abs(f.out.sy - 1) < .001 && Math.abs(f.out.dx) < .01); }
+    for (let i = 1; i <= 4; i++) { pev(sw, "pointermove", at(sw, .5, .5, -5.5 * i, 0)); await sleep(16); }   // the probe's fast drag: 22 pt in 4 steps / 64 ms (on → off direction)
+    const fr = []; await new Promise((res) => { let first = null; const tick = (now) => { if (first === null) first = now; const f = Switch.flexOf(sw), sc = cs(kn(), "::after").scale.split(" ").map(Number), l = lift(); fr.push({ t: now - first, f: f ? { ...f, trace: undefined } : null, sc, l, kdx: parseFloat(sw.style.getPropertyValue("--kdx")) || 0 }); if (now - first < 450) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick); });
+    const withF = fr.filter((s) => s.f), peak = withF.reduce((m, s) => Math.max(m, s.f.out.sx), 1), dip = withF.reduce((m, s) => Math.min(m, s.f.out.sy), 1), maxDx = withF.reduce((m, s) => Math.max(m, s.f.out.dx), 0);
+    check("开关 R70′ 快拖中：X 伸 Y 缩（§3：加速沿 x），面积近守恒（§12a：1.028 × .9709 ≈ .998），drift 沿运动方向", "peak sX > 1.002 · dip sY < .998 · |sX·sY − 1| < .01 · drift ≠ 0", `peak ${peak.toFixed(4)} · dip ${dip.toFixed(4)} · area ${withF.every((s) => Math.abs(s.f.out.sx * s.f.out.sy - 1) < .01) ? "ok" : "OFF"} · max drift ${maxDx.toFixed(3)}`, withF.length > 10 && peak > 1.002 && dip < .998 && withF.every((s) => Math.abs(s.f.out.sx * s.f.out.sy - 1) < .01) && Math.abs(maxDx) > .01);
+    const scOK = withF.every((s) => Math.abs(s.sc[0] - (1 + s.l * (58 / 37 - 1)) * s.f.out.sx) < .01 && Math.abs(s.sc[1] - (1 + s.l * (38.33 / 24 - 1)) * s.f.out.sy) < .01 && Math.abs(s.kdx - s.f.out.sx * s.f.out.dx) < .01);
+    check("开关 R70′ 呈现 = 抬起缩放 × flex（--ksx / --ksy），平移 += sX·drift（--kdx）——逐帧对驱动器本帧值", "every frame", scOK ? "every frame" : "OFF", withF.length > 10 && scOK);
+    { const tr = Switch.flexOf(sw).trace, stepRef = (x, v, target, [z, r], dt) => { const w = 2 * Math.PI / r, dx = x - target; if (z < 1) { const wd = w * Math.sqrt(1 - z * z), B = (v + z * w * dx) / wd, e = Math.exp(-z * w * dt); return target + e * (dx * Math.cos(wd * dt) + B * Math.sin(wd * dt)); } const e = Math.exp(-w * dt), B = v + w * dx; return target + e * (dx + B * dt); };
+      let maxErr = 0, n = 0; for (let i = 1; i < tr.length; i++) { const a0 = tr[i - 1], b0 = tr[i]; if (!(b0.dt > 0)) continue; const sp = [f0.spec.zeta, f0.spec.resp]; maxErr = Math.max(maxErr, Math.abs(stepRef(a0.sx, a0.vsx, b0.tSx, sp, b0.dt) - b0.sx), Math.abs(stepRef(a0.sy, a0.vsy, b0.tSy, sp, b0.dt) - b0.sy), Math.abs(stepRef(a0.dx, a0.vdx, b0.tDx, sp, b0.dt) - b0.dx)); n++; }
+      check(`开关 R70′ 三个 flex 浮点逐帧 = spec 弹簧（ζ .5777 / .4463）解析一步（自上一帧值 / 速度向本帧目标；${n} 帧，最大差）`, "≤ 1e-6", maxErr.toExponential(2), n > 10 && maxErr <= 1e-6); }
+    pev(sw, "pointercancel", at(sw, .5, .5, -22, 0)); await sleep(700);   // a cancel ends the press without a flip (the rows below count flips)
+    { const f = Switch.flexOf(sw); check("开关 R70′ 抬手 → hang 后放下 → flex 关（激活模式回 1），浮点回 1 / 0，驱动结束", "off · 1 · 1 · 0 · rest", f ? `${f.active ? "active" : "off"} · ${f.out.sx.toFixed(4)} · ${f.out.sy.toFixed(4)} · ${f.out.dx.toFixed(3)} · ${sw.classList.contains("drive") ? "drive" : "rest"}` : "-", !!f && !f.active && Math.abs(f.out.sx - 1) < .002 && Math.abs(f.out.sy - 1) < .002 && Math.abs(f.out.dx) < .05 && !sw.classList.contains("drive")); }
+    await sleep(100);
+  }
   /* pointercancel: no flip, nothing pressed */
   pev(sw, "pointerdown", at(sw)); pev(sw, "pointercancel", at(sw));
   check("开关 pointercancel：不翻转、不 pressed", "on ×6, rest", `${inp.checked ? "on" : "off"} ×${flips}, ${sw.classList.contains("pressed") ? "pressed" : "rest"}`, inp.checked && flips === 6 && !sw.classList.contains("pressed"));
