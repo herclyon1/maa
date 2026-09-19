@@ -3,8 +3,12 @@
    settings; the old page session's decompile). Read values only; the unread parts are named and left out.
    recognition: the screen's left edge, region W × .10 (IsLargeFormatPhone; .09 otherwise — the MG flag of this phone is unread, .10 used:
      44 pt at W 440), hysteresis 15 pt before it begins, angle window 155° (2.7053 rad) about the edge normal
-     (_UIScreenEdgePanRecognizerEdgeSettings 0x1c43969d4); the recognizer engine itself (featureDidChangeState:, dwell / decay .5 s,
-     maximumSwipeDuration .25 s) is unread — 待读; content_backswipe (anywhere on the page) is a feature flag of unknown state — not done
+     (_UIScreenEdgePanRecognizerEdgeSettings 0x1c43969d4); the recognizer engine is read (nav-native-formula.md §5c / §5e / §5i): the
+     decision is taken at the first sample beyond 15 pt from the touch-down (atan2 vs the edge normal, remainderl, |Δθ| < 77.5°), the
+     translation counts from the touch-down minus the pan's 10 pt hysteresis (below), and the "edge-angle-window decay" test
+     (_incorporateIncrementalSampleAtLocation: 0x1c4398650–0x1c43986b0) compares a register that is zeroed at 0x1c43984e8 and never
+     written again against max(20, 15·tan(77.5°)·(1 − t/.5)) — it can never fail in iOS 27.0, so there is no dwell / drift rule to
+     mirror (BOARD R67); content_backswipe (anywhere on the page) is a feature flag of unknown state — not done
    percent: base + Δx / W (coef +1; base = the running pop's percent when interrupting one) (handleNavigationTransition: 0x1c4c3b788);
      fluid rubber band beyond [0, 1]: > 1 → 1 + .5(1 − 1/(1 + .55(q − 1)/.5)); < 0 → −.5(1 − 1/(1 + .55(−q)/.5)) (0x1c4c3b88c, c .55)
    drive: the percent is the target of the tracking spring ζ .85 / .08 in nav.js (setFractionComplete:)

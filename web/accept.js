@@ -15,7 +15,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
   /* the per-control files are appended dynamically; headless Chrome occasionally drops one of those fetches (night 00:3x: accept-sheet.js never
      requested in one run → 17 rows silently missing). Each load is tracked; a file that has not loaded when the checks start is re-appended, and
      a file still missing gets a ✗ row so the total never drops silently. */
-  window.ACCEPT.files = ["motion","nav","nav-edge","sheet","menu","topbar","refresh","glassbtn","alert","switch","tabbar"]; window.ACCEPT.loaded = new Set();
+  window.ACCEPT.files = ["motion","nav","nav-edge","sheet","menu","topbar","refresh","glassbtn","alert","switch","tabbar","tile"]; window.ACCEPT.loaded = new Set();
   window.ACCEPT.load = (c) => new Promise((res) => { const s = document.createElement("script"); s.src = "accept-" + c + ".js?r=" + Math.random().toString(36).slice(2, 7); s.onload = () => { window.ACCEPT.loaded.add(c); res(true); }; s.onerror = () => res(false); document.head.appendChild(s); setTimeout(() => res(false), 4000); });
   for (const c of window.ACCEPT.files) window.ACCEPT.load(c);
   const rows = [];

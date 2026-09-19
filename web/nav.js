@@ -10,6 +10,19 @@
         f_out = cubic-bezier(.25,.9,.25,.9) over [0, .575]).
    Interrupt (pop while pushing): the spring continues from its current value / velocity toward the new target (retargetImpulse .02 of
    the settings is NOT applied: how AnimationKit adds it to the velocity is unread — 待读). Interactive back = #12 (nav-edge.js).
+   R47′ (nav-native-formula.md §5g, _animateScaleTransition 0x1c3cf7b74 / _animateLargeTitleView 0x1c3cf85b8, the scale style of a large-title
+   push): the root's large title (body > header h1) is not faded away as content — its label scales about its own centre to the new back button's
+   content bounds (the chevron: no back label → the imageView is the reference, __applyStretchTransformForTitleViewAndBackButtonLayout mode 2:
+   MakeScale(w_ref / w_large, h_ref / h_large), 0x1c3d00b40–0x1c3d00b84) while its centre moves −d·p toward the reference (d = §5d's
+   _titleTransitionDistance, the same d as the chevron's R21e′ start offset; 0x1c3cf866c / 0x1c3cf8858) and, the texts differing (h1 string vs
+   nil), its alpha runs the keyframe [0, .6] → 0 (0x1c3cf7db4–0x1c3cf7e10). The new back button: body alpha 1, its content alpha keyframe
+   [.5, 1] 0 → 1 (prepare 0x1c3cf629c–0x1c3cf62e4; 0x1c3cf7de8–0x1c3cf7e20); the chevron image starts at scale .7 ([0x1c57184d0]) and
+   (+7, +5) pt from its final frame with alpha 0 and pops out in the keyframe [.9, 1] (0x1c3cf61b8–0x1c3cf6288, 0x1c3cf7ed8–0x1c3cf7f5c).
+   The pop (_UINavigationBarTransitionContextPop _animateScaleTransition 0x1c3cfa864) is the same function in mode 5 — drawn here as the same
+   functions of p run backwards; its own keyframe times are unread (§5g 未读 ②) and its chevron keyframes too (only "偏 5" read) — 待读.
+   On this page the large title is page content that parallaxes with the root (−.3 W·p); natively it is the bar's and does not, so the h1's own
+   translate compensates the parallax and its centre moves exactly −d·p on screen. Segment interpolation inside a keyframe is drawn linear
+   (§5g 未读 ①: the keyframe state's use of curve bit 5 is unread — 待读).
    Hook: view.js openPage's first line `if (window.Nav) return Nav.open(title, html);` (A7). */
 (() => {
   "use strict";
@@ -22,7 +35,11 @@
   const fIn = bez(.75, .1, .75, .1), fOut = bez(.25, .9, .25, .9);
   const u1 = (p) => Math.max(0, Math.min(1, p / (SEG.mid + SEG.overlap / 2)));                                     // first segment [0, .575]
   const u2 = (p) => Math.max(0, Math.min(1, (p - (SEG.mid - SEG.overlap / 2)) / (1 - (SEG.mid - SEG.overlap / 2)))); // second [.425, 1]
-  const st = { p: 0, v: 0, target: 0, raf: 0, last: 0, dir: 0, pg: null, dim: null, titleStart: 0, backDx: 0, backDy: 0 };
+  const st = { p: 0, v: 0, target: 0, raf: 0, last: 0, dir: 0, pg: null, dim: null, titleStart: 0, backDx: 0, backDy: 0, h1: null, trace: [] };
+  const clamp01 = (x) => Math.max(0, Math.min(1, x));
+  const KF = { h1Out: [0, .6], backIn: [.5, 1], chev: [.9, 1] };   // §5g keyframes (start, end) in p: large title alpha → 0; back content alpha → 1; chevron pop-out
+  const CHEV0 = { scale: .7, dx: 7, dy: 5 };                     // the chevron's prepared start: MakeScale(.7) [0x1c57184d0], final frame + (+7, +5) pt (flags bit 1 → −7: RTL, not this page)
+  const seg = ([a, b], p) => clamp01((p - a) / (b - a));
   const W = () => window.innerWidth;
   const parallax = () => -(W() - Math.round(.7 * W()));   // −132 at 440
   const write = () => {
@@ -36,6 +53,24 @@
     pg.style.setProperty("--nav-title", (st.titleStart * (1 - p)).toFixed(2) + "px");
     pg.style.setProperty("--nav-back-dx", (st.backDx * (1 - p)).toFixed(2) + "px");   // the back chevron starts at the root's large-title label centre (§5d: d = label.center − content origin, 2-D) and rides p home; pop runs it back
     pg.style.setProperty("--nav-back-dy", (st.backDy * (1 - p)).toFixed(2) + "px");
+    /* R47′ — the large title (mode 2, §5g): scale 1 → (w_chev / w_h1, h_chev / h_h1) about the text's centre, centre −d·p on screen (the header's
+       parallax compensated), alpha keyframe [0, .6] → 0; the same functions of p on the pop (mirror, 待读 ②) */
+    const h = st.h1, kOut = 1 - seg(KF.h1Out, p);
+    if (h) {
+      const sx = 1 + (h.sx - 1) * p, sy = 1 + (h.sy - 1) * p, dx = -st.backDx * p - parallax() * p, dy = -st.backDy * p;
+      root.style.setProperty("--nav-h1-ox", h.ox.toFixed(2) + "px"); root.style.setProperty("--nav-h1-oy", h.oy.toFixed(2) + "px");
+      root.style.setProperty("--nav-h1-sx", sx.toFixed(5)); root.style.setProperty("--nav-h1-sy", sy.toFixed(5));
+      root.style.setProperty("--nav-h1-dx", dx.toFixed(2) + "px"); root.style.setProperty("--nav-h1-dy", dy.toFixed(2) + "px");
+      root.style.setProperty("--nav-h1-a", kOut.toFixed(4));
+    }
+    /* the back button on a push: body alpha 1 (prepare), content alpha keyframe [.5, 1], the chevron image alpha / scale / offset keyframe [.9, 1] from
+       .7× and (+7, +5); on a pop the body fades with the bar's items (§0 f_out) and the content shows (pop keyframes unread) */
+    const kIn = st.dir > 0 ? seg(KF.backIn, p) : 1, kc = st.dir > 0 ? seg(KF.chev, p) : 1;
+    pg.style.setProperty("--nav-back-a", st.dir > 0 ? "1" : a.toFixed(4));
+    pg.style.setProperty("--nav-chev-a", (kIn * kc).toFixed(4));
+    pg.style.setProperty("--nav-chev-s", (CHEV0.scale + (1 - CHEV0.scale) * kc).toFixed(4));
+    pg.style.setProperty("--nav-chev-kx", (CHEV0.dx * (1 - kc)).toFixed(2) + "px"); pg.style.setProperty("--nav-chev-ky", (CHEV0.dy * (1 - kc)).toFixed(2) + "px");
+    if (st.trace.length < 400) st.trace.push({ p, el: st.elapsed || 0, dir: st.dir, h1: h ? { sx: 1 + (h.sx - 1) * p, sy: 1 + (h.sy - 1) * p, dx: -st.backDx * p - parallax() * p, dy: -st.backDy * p, a: kOut } : null, back: { a: st.dir > 0 ? 1 : a, ca: kIn * kc, cs: CHEV0.scale + (1 - CHEV0.scale) * kc, kx: CHEV0.dx * (1 - kc), ky: CHEV0.dy * (1 - kc) } });
   };
   const settled = () => Math.abs(st.p - st.target) < .001 && Math.abs(st.v) < .01;
   const tick = (now) => {
@@ -53,8 +88,9 @@
     const pg = st.pg;
     pg.classList.remove("nav-live"); document.body.classList.remove("nav-live");
     pg.style.transition = "none"; Motion.afterPaint(() => pg.style.removeProperty("transition"));   // index.html's .35 s transition must not replay the last step
-    for (const k of ["--nav-x", "--nav-edge", "--nav-in", "--nav-title", "--nav-back-dx", "--nav-back-dy"]) pg.style.removeProperty(k);
-    document.body.style.removeProperty("--nav-from"); st.dim.style.setProperty("--nav-dim", "0");
+    for (const k of ["--nav-x", "--nav-edge", "--nav-in", "--nav-title", "--nav-back-dx", "--nav-back-dy", "--nav-back-a", "--nav-chev-a", "--nav-chev-s", "--nav-chev-kx", "--nav-chev-ky"]) pg.style.removeProperty(k);
+    for (const k of ["--nav-from", "--nav-h1-ox", "--nav-h1-oy", "--nav-h1-sx", "--nav-h1-sy", "--nav-h1-dx", "--nav-h1-dy", "--nav-h1-a"]) document.body.style.removeProperty(k);
+    st.dim.style.setProperty("--nav-dim", "0");
     if (st.target === 1) { pg.classList.add("in"); document.body.classList.add("pushed"); }               // rest = index.html's own classes
     else { pg.classList.remove("in", "out"); document.body.classList.remove("pushed"); pg.hidden = true; }
   };
@@ -71,11 +107,16 @@
       /* R21e′ (nav-native-formula.md §5d, _prepareScaleTransition 0x1c3cf606c): the new back button's content starts offset by d = the root's
          large-title label centre − the content's origin (the chevron has no text label → the content frame's top-left, 0x1c3d0083c), both axes;
          adj = 0 (no back label). Measured in page-local coordinates: the page rests at x 0, so the chevron's resting origin = its offset inside the page. */
-      const back = pg.querySelector(".pback"), h1 = document.querySelector("body > header h1");
-      st.backDx = st.backDy = 0;
+      const back = pg.querySelector(".pback"), h1 = document.querySelector("body > header h1"), header = document.querySelector("body > header");
+      st.backDx = st.backDy = 0; st.h1 = null; st.trace = [];
       if (back && h1 && h1.firstChild) { const rg = document.createRange(); rg.selectNodeContents(h1); const hr = rg.getBoundingClientRect(), pr = pg.getBoundingClientRect(), bb = back.getBoundingClientRect(), cs = getComputedStyle(back, "::before");
+        const shift = header ? (parseFloat(getComputedStyle(header).translate) || 0) : 0;   // a pop from rest measures the header at its parallaxed −.3 W (body.pushed): d is the RESTING label centre − the chevron origin
         const cw = parseFloat(cs.width) || 0, ch = parseFloat(cs.height) || 0, ox = (bb.left - pr.left) + (bb.width - cw) / 2, oy = (bb.top - pr.top) + (bb.height - ch) / 2;   // the chevron's resting origin inside the page
-        if (hr.width > 0) { st.backDx = (hr.left + hr.width / 2) - ox; st.backDy = (hr.top + hr.height / 2) - oy; } }
+        if (hr.width > 0) { st.backDx = (hr.left - shift + hr.width / 2) - ox; st.backDy = (hr.top + hr.height / 2) - oy;
+          /* R47′: the large title's scale reference (mode 2) = the chevron's bounds over the text's bounds; the scale is about the TEXT's centre, set
+             as the h1 box's transform-origin (the h1 is a left-aligned block wider than its text) */
+          const hb = h1.getBoundingClientRect();
+          if (cw > 0 && ch > 0 && hr.height > 0) st.h1 = { sx: cw / hr.width, sy: ch / hr.height, ox: (hr.left - hb.left) + hr.width / 2, oy: (hr.top - hb.top) + hr.height / 2, w: hr.width, h: hr.height, cw, ch }; } }
       pg.classList.add("nav-live"); document.body.classList.add("nav-live"); write();
     }
     run();
@@ -107,5 +148,5 @@
       st.tracking = false; st.spring = RELEASE; st.v = -vProgress; st.target = finish ? 0 : 1; st.last = performance.now(); run();
     },
   };
-  window.Nav = { open, back: () => { if (st.pg) start(-1); }, state: st, fIn, fOut, u1, u2, SPRING, TRACK, RELEASE, interactive };
+  window.Nav = { open, back: () => { if (st.pg) start(-1); }, state: st, fIn, fOut, u1, u2, SPRING, TRACK, RELEASE, interactive, KF, CHEV0, seg, parallax };
 })();
