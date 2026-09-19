@@ -27,9 +27,18 @@
    choice). The flex stretch (loupe sX / sY, drift tx = sX(1 − sX)·55) is read but not drawn (per-axis map scaling needed).
    Not drawn yet (material, the ui session's tokens): the KeyFill highlight, the ring shadow, the dark line, the little glow (α 0 → .2).
    Instrument: window.__tabLens = the per-frame state (t s since the start, p, x, v, target, set, s, phase). */
+/* GEOMETRY MODE (BOARD.md #7a, 2026-09-20 — the default tonight; ?tlens=material restores the layered lens above): no material at all — the page's own
+   .glide (the selection view, index.html's rules for its glass stay) is driven per frame: size (w0 + 16p) × (54 + 16p) about the item's centre
+   (tab-lens-motion.md §0 / §4: 94×54 → 110×70 read as +16 on both axes; r = h/2 through the capsule's border-radius), lift ζ 1 / .25, drop ζ 1 / .4,
+   position ζ .85 / .4 to a pressed item, the drag by §6.6 (ζ .85 / .2, the finger rule, hard clamp) and ζ .9 / .4 to the item under the finger after
+   the up — all through Motion.spring (motion.js #1). The lift's delays are the page's own timers (+140 ms on another item, +125 ms on the selected,
+   interaction spec §2 T1 / T3 via tokens.css --ios-touch-tab-*-delay): the spring starts at the class the page sets. The style below (injected) takes the
+   glide's CSS scale rules and transitions out of the way while the driver owns the box. Unread: the ±1.6 pt wobble after the drop, the flex stretch of
+   the loupe while dragging (sX / sY), the spec's 119×64 / 103×63 vs the read 110×70. */
 (function () {
   const q = new URLSearchParams(location.search);
   if (q.get("tlens") === "0") return;
+  const MODE = q.get("tlens") === "material" ? "material" : "geometry";
   const me = document.currentScript;
   const FAMILY = (me && me.dataset.family) || "assets/lens/tab5/";
   const FRINGE = q.get("tlens-ab") !== "0";
@@ -112,7 +121,52 @@
     const st = { nav, glide, seg, main, X: centreOf(glide), lastX: centreOf(glide) };
     return st;
   };
+  /* ---- geometry mode ---- */
+  /* the driver's output goes to custom properties on nav (not the glide: the glide's inline left / width stay view.js's and are the TARGET the
+     observer reads; a per-frame write on the glide itself would come back through the observer as a new target). While .tl-on is set the box
+     rules below take the glide over — `!important` because the values they replace are inline (view.js's left / width) */
+  const GEO_CSS = `nav.tabs.tlens .glide.lift,nav.tabs.tlens .glide.lift-sel,nav.tabs.tlens.drag .glide.lift-sel{scale:1 1}
+nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;left:var(--tl-left) !important;width:var(--tl-w) !important;top:var(--tl-top) !important;height:var(--tl-h) !important;bottom:auto !important}`;
+  /* only while the driver runs (.tl-on): a plain tap on another tab (no lift — the up came before +140 ms) keeps the page's own CSS slide
+     (index.html: left / width on --ios-motion-lens-duration / -easing, the probe's ζ .85 / .4 as an easing); the read says the lens lifts while it
+     slides on such a tap (tab-lens-motion.md §0 "换页滑动"), but when it drops after landing is not read — unread, not driven tonight */
+  const injectGeoStyle = () => { if (document.getElementById("tab-lens-geo-style")) return; const s = document.createElement("style"); s.id = "tab-lens-geo-style"; s.textContent = GEO_CSS; document.head.appendChild(s); };
+  const spring = (st, target, sp, dt) => (window.Motion && Motion.spring ? Motion.spring(st, target, [sp.z, 2 * Math.PI / sp.w], dt) : step(st, target, sp, dt));
+  const startGeo = (st) => {
+    if (loop) { loop.stop(); }
+    const nav = st.nav, glide = st.glide;
+    if (!nav.offsetWidth) return;                                            // html.kbd: the bar is display:none, its geometry 0 — nothing to drive
+    const w0 = parseFloat(glide.style.width) || glide.offsetWidth || 82, h0 = glide.offsetHeight || 54, pad = glide.offsetTop;   // the resting box = the item's (view.js's inline left / width; top = the bar's pad)
+    const P = { x: 0, v: 0 }, XS = { x: st.lastX, v: 0 };
+    let pTarget = 1, running = true, last = clockNow(), t0 = last, phase = "lift", frameN = 0, posSpring = SP_POS;
+    const segBox = st.seg.getBoundingClientRect(), navBox = nav.getBoundingClientRect(), track = { min: segBox.left - navBox.left + (parseFloat(getComputedStyle(st.seg).paddingLeft) || 0), max: segBox.right - navBox.left - (parseFloat(getComputedStyle(st.seg).paddingRight) || 0) };
+    const setTargets = () => { const lifted = glide.classList.contains("lift") || glide.classList.contains("lift-sel"), dragging = lifted && nav.classList.contains("drag") && finger.down && finger.x != null;
+      pTarget = lifted ? 1 : 0;
+      if (dragging) { const left = Math.max(track.min, Math.min(track.max - w0, finger.x - finger.a * w0)); st.X = left + w0 / 2; posSpring = SP_DRAG; phase = "drag"; }
+      else { st.X = centreOf(glide); posSpring = lifted ? SP_POS : SP_RELEASE; phase = lifted ? (Math.abs(st.X - XS.x) > .5 ? "move" : "lift") : "drop"; } };
+    setTargets();
+    const frame = (now) => { try { frame0(now); } catch (e) { window.__tabLensErr = String(e && e.stack || e); console.error("tab-lens frame", e); stop(); } };
+    const frame0 = (now) => {
+      if (!running) return;
+      if (now <= last) { tick(frame); return; }                             // a frame stamped before the start (Chrome: rAF's `now` = the frame's start, which can precede the call that started the loop): nothing to integrate yet
+      const dt = Math.min(1, (now - last) / 1000); last = now; frameN++;
+      spring(P, pTarget, pTarget > .5 ? SP_LIFT : SP_DROP, dt); spring(XS, st.X, posSpring, dt);
+      const p = Math.max(0, Math.min(1, P.x)), x = XS.x, W = w0 + LIFT * p, H = h0 + LIFT * p;
+      /* the glide's box: the centre x from the position spring, the vertical centre = the resting centre (pad + h0 / 2) */
+      nav.style.setProperty("--tl-left", (x - W / 2) + "px"); nav.style.setProperty("--tl-w", W + "px"); nav.style.setProperty("--tl-top", (pad + h0 / 2 - H / 2) + "px"); nav.style.setProperty("--tl-h", H + "px");
+      if (!nav.classList.contains("tl-on")) nav.classList.add("tl-on");
+      window.__tabLens = { t: (now - t0) / 1000, t0, tf: last, p, v: P.v, x, xv: XS.v, target: st.X, set: 0, s: 1, phase, w: W, h: H, frame: frameN, mode: "geometry" };   // tf = this frame's timestamp: a retarget after it (the up) integrates from here
+      if (pTarget === 0 && p < .002 && Math.abs(P.v) < .02 && Math.abs(XS.x - st.X) < .05 && Math.abs(XS.v) < 1) { stop(); return; }
+      tick(frame);
+    };
+    const stop = () => { running = false;
+      nav.classList.remove("tl-on"); for (const k of ["--tl-left", "--tl-w", "--tl-top", "--tl-h"]) nav.style.removeProperty(k);   // rest: the glide shows view.js's own box again (its inline left / width = the selected item)
+      if (loop && loop.stop === stop) loop = null; window.__tabLens = null; };
+    loop = { stop, retarget: setTargets, st };
+    tick(frame);
+  };
   const start = (st) => {
+    if (MODE === "geometry") return startGeo(st);
     if (loop) { loop.stop(); }
     const nav = st.nav, glide = st.glide, main = st.main;
     const pr = nav.getBoundingClientRect(), mr = main.getBoundingClientRect(), PC = { x: pr.width / 2, y: pr.height / 2 };
@@ -193,13 +247,14 @@
     if (rebuilt || !st || st.nav !== nav || st.glide !== nav.querySelector(".glide")) { if (loop) loop.stop(); st = attach(nav); if (!st) return; }
     if (!glideChanged) return;
     const g = st.glide, lifted = g.classList.contains("lift") || g.classList.contains("lift-sel"), cur = centreOf(g);
-    if (loop) { loop.retarget(); st.X = cur; return; }                            // a retarget while running: the item under the finger moved / the selection landed
+    if (loop) { loop.retarget(); return; }                                        // a retarget while running: the item under the finger moved / the selection landed — setTargets reads view.js's box itself; while dragging the finger rule wins (#7b: `st.X = cur` here overwrote it on every move)
     if (lifted) { st.lastX = st.X; start(st); }                                   // the lift begins from the resting centre the glide had before this mutation
     st.X = cur;
   };
   const mo = new MutationObserver((muts) => { try { onMut(muts); } catch (e) { window.__tabLensErr = String(e && e.stack || e); console.error("tab-lens", e); } });
+  document.addEventListener("visibilitychange", () => { if (document.hidden && loop) loop.stop(); });   // hidden strips the state (BOARD A6 template): the glide shows view.js's box
   const init = async () => {
-    await loadFilters();
+    if (MODE === "geometry") { injectGeoStyle(); ready = true; } else await loadFilters();
     const nav = document.getElementById("tabs"); if (!nav) return;
     st = attach(nav);
     mo.observe(nav, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "style"] });   // nav itself is static; view.js rewrites its children on every render

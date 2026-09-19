@@ -294,6 +294,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
       `<div class="group"><div class="row"><label>x</label><span class="sent">已寄出 10:00</span></div><div class="row"><label>y</label><input type="text" class="short" value="08:30"></div><div class="acts"><button>开始刷</button></div></div>`;
     document.body.appendChild(lab);
     const [on, off] = lab.querySelectorAll(".sw span");
+    if (!window.Switch) {   // BOARD #13: with switch.js the track is the well (accept-switch.js checks it); these rows describe the old track
     col("开关开 = 系统绿（--ios-switch-on）", T.green, cs(on).backgroundColor);
     col("开关关 = 灰（--ios-switch-off）", T.swOff, cs(off).backgroundColor);
     num("开关开：圆钮位移 22（--ios-switch-travel = 63 − 37 − 2×2）", 22, px(cs(on, "::after").translate));
@@ -307,6 +308,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
     check("开关圆钮动效 0.35 s（--ios-motion-switch-knob-duration）", "0.35s", kt.transitionDuration.split(",")[0].trim(), /^0\.35s/.test(kt.transitionDuration));
     check("开关圆钮曲线 linear()（--ios-motion-switch-knob-easing）", "linear(…)", kt.transitionTimingFunction.slice(0, 12), /^linear\(/.test(kt.transitionTimingFunction));
     check("开关轨道交叉淡 0.2 s（--ios-motion-switch-track-duration）", "0.2s", cs(on).transitionDuration, /^0\.2s/.test(cs(on).transitionDuration));
+    }
     /* A tap through the page's own pointer handling, followed by the click the
        browser fires anyway: the switch must flip exactly once and `change` fire
        once (12:0x: it flipped twice and stayed put). */
@@ -672,9 +674,11 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
         await sleep(60);
         check("标签栏 T1 +60 ms：透镜还没动（--ios-touch-tab-glide-delay 140）", "no lift", g.classList.contains("lift") ? "lift" : "no lift", !g.classList.contains("lift"));
         await sleep(140);
-        check("标签栏 T1 +200 ms：透镜抬起中并滑向被按项（+140 ms 起，~350 ms 到）", `left→${other.offsetLeft}, lift`, `left ${g.style.left} ${g.classList.contains("lift") ? "lift" : "-"} ${cs(g).scale}`, g.classList.contains("lift") && g.style.left === other.offsetLeft + "px" && parseFloat(cs(g).scale) > 1.0);
+        { const gr = g.getBoundingClientRect();   // #7a (tab-lens.js geometry mode): the lift is the box itself, w0 × 54 → (w0 + 16) × 70 on ζ 1 / .25 from +140 ms (tab-lens-motion.md §0 / §4), view.js's inline left = the pressed item is the target
+          check("标签栏 T1 +200 ms：透镜抬起中并滑向被按项（+140 ms 起 ζ1/.25 抬到 +16、位置 ζ.85/.4）", `left→${other.offsetLeft}, lift, 54 < h < 70`, `left ${g.style.left} ${g.classList.contains("lift") ? "lift" : "-"} h ${gr.height.toFixed(1)}`, g.classList.contains("lift") && g.style.left === other.offsetLeft + "px" && gr.height > 54 && gr.height < 70); }
         await sleep(400);
-        check("标签栏 T5 按住 600 ms：仍不选中，透镜停在目标 119×64（--ios-touch-tab-lift-w 25 / -h 10）", `${startTab} 1.266 1.185`, `${tOn()} ${cs(g).scale}`, tOn() === startTab && /^1\.26/.test(cs(g).scale));
+        { const gr = g.getBoundingClientRect();
+          check("标签栏 T5 按住 600 ms：仍不选中，透镜停在 (w0 + 16) × 70（tab-lens-motion §0/§4 读数 94×54 → 110×70 = +16 两轴）", `${startTab} ${other.offsetWidth + 16}×70`, `${tOn()} ${gr.width.toFixed(1)}×${gr.height.toFixed(1)}`, tOn() === startTab && Math.abs(gr.width - (other.offsetWidth + 16)) <= 0.5 && Math.abs(gr.height - 70) <= 0.5); }
         const t1 = performance.now(); pev(tseg, "pointerup", at(other)); const d1 = performance.now() - t1;
         check("标签栏 T1 抬手：+0 ms 选中、内容同步切", other.dataset.tab, `${tOn()} 显示 ${shown()} +${Math.round(d1 * 10) / 10} ms`, tOn() === other.dataset.tab && shown() === other.dataset.tab && d1 < 50);
         /* Behaviour 3: scroll offsets are kept per tab (Health: 0 px difference after switching away and back, tabscroll/README §1) */
@@ -698,11 +702,13 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
         const before = (nav3.querySelector(".seg button.on") || {}).dataset.tab, g3 = nav3.querySelector(".glide"); pev(seg3, "pointerdown", at(on3)); await sleep(100);
         check("标签栏 T3 按下已选中项 +100 ms：透镜还没抬（--ios-touch-tab-selected-lift-delay 125）", "no lift", g3.classList.contains("lift-sel") ? "lift" : "no lift", !g3.classList.contains("lift-sel"));
         await sleep(120);
-        check("标签栏 T3 +220 ms：透镜抬到 103×63（--ios-touch-tab-selected-lift-done 180）", "1.096 1.167", cs(g3).scale, /^1\.09/.test(cs(g3).scale));
+        { const gr = g3.getBoundingClientRect();   // #7a: the selected item's press lifts the same box (+16 on both axes, tab-lens-motion §0 "抬起（按住已选中项）"), from +125 ms on ζ 1 / .25
+          check("标签栏 T3 +220 ms：透镜抬起中（+125 ms 起 ζ1/.25 抬到 (w0 + 16) × 70，读数；规范 103×63 待读）", "lift-sel, 54 < h ≤ 70", `${g3.classList.contains("lift-sel") ? "lift-sel" : "-"} h ${gr.height.toFixed(1)}`, g3.classList.contains("lift-sel") && gr.height > 54 && gr.height <= 70.5); }
         pev(seg3, "pointerup", at(on3));
         check("标签栏 T3 按下已选中项抬手：无事件", before, (nav3.querySelector(".seg button.on") || {}).dataset.tab, (nav3.querySelector(".seg button.on") || {}).dataset.tab === before && !g3.classList.contains("lift-sel"));
       }
-      /* §3 UISwitch on a synthetic switch through the page's own pointer handling */
+      /* §3 UISwitch on a synthetic switch through the page's own pointer handling (the old handler; with switch.js — BOARD #13 — accept-switch.js runs the B13 rows instead) */
+      if (!window.Switch) {
       const swLab = document.createElement("div"); swLab.style.cssText = "position:fixed;left:20px;top:200px;z-index:99;opacity:0";
       swLab.innerHTML = `<label class="sw"><input type="checkbox"><span></span></label>`; document.body.appendChild(swLab);
       const sw = swLab.querySelector(".sw"), inp = sw.querySelector("input"); let flips = 0; inp.addEventListener("change", () => flips++);
@@ -730,6 +736,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
       pev(sw, "pointerdown", at(sw)); pev(sw, "pointercancel", at(sw));
       check("开关 pointercancel：不翻转", "on ×3", `${inp.checked ? "on" : "off"} ×${flips}`, inp.checked && flips === 3 && !sw.classList.contains("hold"));
       swLab.remove();
+      }
       /* §4 UIButton on a synthetic tile; alert action on a synthetic open dialog */
       const bLab = document.createElement("div"); bLab.style.cssText = "position:fixed;left:20px;top:300px;z-index:99;opacity:0";
       bLab.innerHTML = `<div class="group tiles"><button type="button" class="tile"><span class="ttitle">x</span></button></div>`; document.body.appendChild(bLab);

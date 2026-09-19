@@ -11,6 +11,7 @@ ACCEPT.add(async function sheet({ check, num, sleep }) {
   const crit = (t) => { const u = 2 * Math.PI / S.RESPONSE * t; return 1 - (1 + u) * Math.exp(-u); };
   const near3 = (want, got, tol) => Math.abs(want(0) - got) <= tol;   // el = the last tick's own time
   const open = async () => { openPicker({ title: "验收", opts: [[["甲"], "a"], [["乙"], "b"]], on: ["a"] }, () => {}); await sleep(650); };
+  const settled = async (cap = 1500) => { const t0 = performance.now(); while (sh.classList.contains("sheet-live") && performance.now() - t0 < cap) await sleep(30); };   // the settle is wall-clock: wait for it instead of a fixed sleep (slow frames under load)
   await open();
   check("勾选页打开（index.html 自己的弹簧路径不变）", "in, open", `${sh.classList.contains("in") ? "in" : "-"}, ${sh.hasAttribute("open") ? "open" : "-"}`, sh.classList.contains("in") && sh.hasAttribute("open"));
   /* 1:1 follow on the bar, the dimming rides percentDisplayed */
@@ -58,12 +59,16 @@ ACCEPT.add(async function sheet({ check, num, sleep }) {
   const list = sh.querySelector(".plist"); list.scrollTop = 0;
   t = performance.now(); S.begin(220, 400, list, t); S.move(220, 420, t + 16, null); S.move(220, 500, t + 100, null);
   check("列表在顶、向下拖：交给 sheet（跟手）", "跟手 100", Math.round(ty()), Math.abs(ty() - 100) < .5);
-  S.end(true); await sleep(700);
-  /* wiring: a real touch sequence on the bar */
+  S.end(true); await settled();
+  /* wiring: a real touch sequence on the bar. Synthetic TouchEvents carry their creation time as timeStamp, so two moves dispatched in
+     one task are ≤ 1 ms apart (v_i = 0 by the ≤ 1 ms rule) — unless the thread hiccups between them (GC, load): 50 pt over a few ms is a
+     downward fling ≥ 1000 pt/s by the same rule the real finger obeys, and the sheet dismisses (night 16d1238 dark, 1 of 2 runs: "- rest").
+     Two still samples 50 ms apart before the touchend make the release velocity 0 (velocityInView = .2·0 + .8·0) whatever the timing. */
   const touch = (type, x, y) => { const T = new Touch({ identifier: 1, target: bar, clientX: x, clientY: y }); bar.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true, touches: type === "touchend" ? [] : [T], targetTouches: type === "touchend" ? [] : [T], changedTouches: [T] })); };
   touch("touchstart", 220, 90); touch("touchmove", 220, 100); touch("touchmove", 220, 150);
   check("真实 touch 事件接线：栏上下拖 60 pt → 驱动中 translateY 60", "live 60", `${sh.classList.contains("sheet-live") ? "live" : "rest"} ${Math.round(ty())}`, sh.classList.contains("sheet-live") && Math.abs(ty() - 60) < .5);
-  touch("touchend", 220, 150); await sleep(700);
-  check("touchend 后回落定", "in rest", `${sh.classList.contains("in") ? "in" : "-"} ${sh.classList.contains("sheet-live") ? "live" : "rest"}`, sh.classList.contains("in") && !sh.classList.contains("sheet-live"));
+  await sleep(50); touch("touchmove", 220, 150); await sleep(50); touch("touchmove", 220, 150);
+  touch("touchend", 220, 150); await settled();
+  check("touchend 后回落定（两个静止样本 → v 0 → p′ 122 更近 large → 回 62）", "in rest", `${sh.classList.contains("in") ? "in" : "-"} ${sh.classList.contains("sheet-live") ? "live" : "rest"}`, sh.classList.contains("in") && !sh.classList.contains("sheet-live"));
   sh.querySelector(".pback").click(); await sleep(600);
 });
