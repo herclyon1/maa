@@ -1728,7 +1728,10 @@ function segPrewarm(seg, bs, lens) {
   const go = () => { if (!seg.isConnected || seg.querySelector(".warp") || (seg.__lensLoop && !seg.__lensLoop.state.done)) return; const t = performance.now(); performance.mark("seg:prewarm"); segLens(seg, lens, bs, NaN, { prewarm: true }); segMeasure("seg:prewarm-build", t); };
   const idle = () => { if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 600 }); else setTimeout(go, 200); };
   const after = () => requestAnimationFrame(() => requestAnimationFrame(idle));
-  if (window.LENS_ENGINE_FIX_DONE || window.LENS_ENGINE_FIX === false) after(); else addEventListener("lens-engine-fix", after, { once: true });
+  /* the WebGL lens does not use the SVG maps the engine fix re-encodes (a fetch + decode per map, long on the phone): with GL available the build runs at the
+     first idle slot after load instead of waiting for that event — 2号 18:4x: the first gesture after load still paid seg:build 30 ms (the layers + the GL
+     instance built at the down), the second 0 ms */
+  if (segGlAvailable() || window.LENS_ENGINE_FIX_DONE || window.LENS_ENGINE_FIX === false) after(); else addEventListener("lens-engine-fix", after, { once: true });
 }
 function attachSegmented(seg, getIndex, commit) {
   const bs = [...seg.querySelectorAll("button")], lens = seg.querySelector(".lens"), n = bs.length;
@@ -2091,11 +2094,13 @@ boot();
    the keyboard. Here: while the visual viewport is > 120 px shorter than the window (keyboard up) html.kbd hides the capsule; on every visualViewport
    resize / scroll and after a focus leaves a field the state is re-applied — the capsule comes back through display:none → block, i.e. freshly placed at
    the bottom. window.__tabKbd(h) runs the same code with a pretended visual-viewport height (accept). */
-{ const vv = window.visualViewport;
-  const apply = (h) => { const vh = h != null ? h : (vv ? vv.height : innerHeight), kbd = innerHeight - vh > 120; document.documentElement.classList.toggle("kbd", kbd); return kbd; };
+{ const vv = window.visualViewport; let kbdFocus = false;   // kbdFocus: a keyboard-summoning field has the focus (监督局 18:4x: hide on focus too, not only on the viewport shrinking)
+  const kbInput = (el) => !!el && ((el.tagName === "INPUT" && !/^(checkbox|radio|range|button|submit|reset|file|color|hidden)$/i.test(el.type)) || el.tagName === "TEXTAREA" || el.isContentEditable === true);   // a <select> opens a menu, not the keyboard
+  const apply = (h) => { const vh = h != null ? h : (vv ? vv.height : innerHeight), kbd = (h == null && kbdFocus) || innerHeight - vh > 120; document.documentElement.classList.toggle("kbd", kbd); return kbd; };
   window.__tabKbd = (h) => apply(h);
   if (vv) { vv.addEventListener("resize", () => apply()); vv.addEventListener("scroll", () => apply()); }
-  addEventListener("focusout", () => setTimeout(() => apply(), 60)); addEventListener("focusin", () => setTimeout(() => apply(), 300)); }
+  addEventListener("focusin", (e) => { if (kbInput(e.target)) { kbdFocus = true; apply(); } });
+  addEventListener("focusout", (e) => { if (kbInput(e.target)) { kbdFocus = false; setTimeout(() => apply(), 60); } }); }
 
 /* 添加到主屏幕后**第一次**从图标启动，滚动位置停在 −62（visualViewport offsetTop −62，整页下沉 62；杀掉重开为 0）——数据会话 9c22044 ?diag 实拍，
    每次添加后的首启必现，不是 env() 也不是 padding。发现负滚动就归零。 */

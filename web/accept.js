@@ -591,7 +591,10 @@
       /* 数据终核 181053 ⑤1/3: with the keyboard up (visual viewport > 120 px shorter) the tab capsule is hidden (html.kbd), and comes back when it closes */
       { const nav0 = document.querySelector("nav.tabs"), on = window.__tabKbd && window.__tabKbd(innerHeight - 300), hid = nav0 ? getComputedStyle(nav0).display : "-";
         const off = window.__tabKbd && window.__tabKbd(null), shown = nav0 ? getComputedStyle(nav0).display : "-", nb = nav0 ? nav0.getBoundingClientRect() : null;
-        check("键盘弹出（视口矮 300）时底部标签胶囊藏起（html.kbd → display none），收起后回到屏底（原生 tab bar 被键盘盖住，不浮到键盘上）", "kbd hidden → shown at bottom", `kbd ${on} ${hid} → ${off} ${shown} bottom gap ${nb ? Math.round(innerHeight - nb.bottom) : "-"}`, on === true && hid === "none" && off === false && shown !== "none" && !!nb && innerHeight - nb.bottom >= 0 && innerHeight - nb.bottom < 120); }
+        check("键盘弹出（视口矮 300）时底部标签胶囊藏起（html.kbd → display none），收起后回到屏底（原生 tab bar 被键盘盖住，不浮到键盘上）", "kbd hidden → shown at bottom", `kbd ${on} ${hid} → ${off} ${shown} bottom gap ${nb ? Math.round(innerHeight - nb.bottom) : "-"}`, on === true && hid === "none" && off === false && shown !== "none" && !!nb && innerHeight - nb.bottom >= 0 && innerHeight - nb.bottom < 120);
+        const fi = document.querySelector("input[data-time]") || document.querySelector('#app input[type="text"]');
+        if (fi && nav0) { const sy0 = scrollY; fi.focus({ preventScroll: true }); const hasF = document.hasFocus(); const dF = document.documentElement.classList.contains("kbd") && getComputedStyle(nav0).display === "none"; fi.blur(); await sleep(120); const dB = !document.documentElement.classList.contains("kbd") && getComputedStyle(nav0).display !== "none"; scrollTo(0, sy0);
+          check("文本框聚焦即藏胶囊（不等视口变矮），失焦 60 ms 后复原（无头 Chrome 需 focus emulation，否则 focusin 不发）", "focus hidden · blur shown", `hasFocus ${hasF} · focus ${dF ? "hidden" : "shown!"} · blur ${dB ? "shown" : "hidden!"}`, hasF ? (dF && dB) : dB); } }
       /* 数据终核 181053 ⑤2: the 刷到几点 input takes HH:MM only — 08:930 rolls back to the last valid value, nothing enters the pending edits */
       { const ti = document.querySelector("input[data-time]");
         if (ti) { const before = ti.value, n0 = Object.keys(edits).length; ti.value = "08:930"; ti.dispatchEvent(new Event("change", { bubbles: true })); const back = ti.value;
