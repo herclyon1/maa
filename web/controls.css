@@ -1,0 +1,18 @@
+/* controls.css — press states of the list rows (B14) and the switch (B13), driven by controls.js.
+   Numbers are the probe / decompile originals recorded in remote-ref (each rule names its source); nothing here is sampled or guessed. */
+
+/* ---- B14 list-row press (UITableViewCell selection; remote-ref/cell-native.md §0, dispatch-B14-cell.md) ----
+   .hl  = highlighted: the row fill switches instantly (no CAAnimation) to --ios-cell-highlight and the separator goes to opacity 0.
+   .hl-out = the release fade: fill highlight → resting over --ios-motion-row-release-duration (.5 s) with --ios-motion-ease-in-out
+   (cubic-bezier(.42,0,.58,1)) — the exact UIView easeInOut of deselectRow(animated:). The separator comes back at once (unmeasured whether it fades).
+   The action rows are `.group .acts button` so the rule outranks index.html's `.acts button.danger` / `[disabled]` backgrounds. */
+.row.nav.hl, .sheet .row.check.hl, .group .acts button.hl { background-color: var(--ios-cell-highlight); transition: none; }
+.row.nav.hl::after, .sheet .row.check.hl::after, .group .acts button.hl::after { opacity: 0; }
+.row.nav.hl-out, .sheet .row.check.hl-out, .group .acts button.hl-out {
+  transition: background-color var(--ios-motion-row-release-duration) var(--ios-motion-ease-in-out);
+}
+/* a held row is not text: no selection / callout on the 150 ms+ hold (page mechanism, not a measured value) */
+.row.nav, .sheet .row.check, .group .acts button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* the fill's resting colour is the card colour — cell-native.md §0: white / (28,28,30) = tokens --ios-card-bg — so the release fade is
+   colour → colour like the native fill (a transparent row would fade through alpha). .acts button already rests on var(--card). */
+.row.nav, .sheet .row.check { background-color: var(--card); }

@@ -1001,7 +1001,7 @@ function openPicker(spec, commit) {
       const k = r.dataset.v;
       if (spec.multi) { if (on.has(k)) on.delete(k); else on.add(k); }
       else { on.clear(); on.add(k); }
-      draw();
+      for (const r2 of list.querySelectorAll(".row.check")) r2.classList.toggle("on", on.has(r2.dataset.v));   // in place: the tapped row keeps its B14 release fade (controls.js)
     };
   };
   draw();
@@ -1733,7 +1733,7 @@ function attachTabBar(nav, select) {
    highlight moves to the neighbour under the finger), triggers at the up when inside, never on a cancel. The browser's own click is swallowed
    because we fire our own (so a release 50 pt outside still triggers, as UIKit does). */
 function installPressables() {
-  const SEL = ".tile, .acts button, .capsule, #pendbar button";
+  const SEL = ".tile, dialog .acts button, .capsule, #pendbar button";   // the action ROWS (.group .acts button) are cells: controls.js B14 (150 ms highlight, 10 pt scroll / 15 pt edge cancel, no 70 pt slop)
   let synthetic = false, ghost = false;
   document.addEventListener("pointerdown", (e) => {
     const el = e.target.closest && e.target.closest(SEL); if (!el || el.disabled) return;
