@@ -26,9 +26,11 @@
   const settled = (goal) => Object.keys(goal).every((k) => Math.abs(cur.s[k].x - goal[k]) < 0.05 && Math.abs(cur.s[k].v) < 1);
   const strip = () => { if (!cur) return; cancelAnimationFrame(cur.raf); cur.panel.remove(); cur.scrim.remove(); removeEventListener("keydown", onKey); cur = null; };
   const tick = (now) => { if (!cur) return;
-    const dt = Math.min(0.04, Math.max(0, (now - cur.prev) / 1000)); cur.prev = now;
+    if (now <= cur.prev) { cur.raf = requestAnimationFrame(tick); return; }   // a frame stamped before the spring's start (Chrome: rAF's `now` is the frame's start, which can precede the call): nothing to integrate yet, the time base stays
+    const dt = Math.min(1, (now - cur.prev) / 1000); cur.prev = now;   // time-based like a CA spring: a stalled frame lands where the clock says (the analytic step is exact for any dt); no 40 ms clamp — that clamp made the panel fall behind its own closed form after every long frame (验收 00:2x: rms 7 pt under load), only a > 1 s stall is cut
     const goal = cur.phase === "in" ? cur.goalIn : cur.goalOut, spec = cur.phase === "in" ? (cur.reduced ? REDUCE : APPEAR) : (cur.reduced ? REDUCE : DISMISS);
     for (const k of Object.keys(goal)) Motion.spring(cur.s[k], goal[k], spec, dt);
+    cur.t = (now - cur.t0) / 1000; cur.frame = (cur.frame || 0) + 1;   // the driver's own clock: every frame's x is the closed form at this t (the analytic step is exact)
     apply();
     if (settled(goal)) { if (cur.phase === "out") { strip(); return; } cur.raf = 0; return; }   // "in" settled: the panel rests, the loop stops
     cur.raf = requestAnimationFrame(tick); };
@@ -62,10 +64,11 @@
     const back = anchorRect(cur.anchor);   // the button's frame now (the page may have scrolled)
     cur.phase = "out"; cur.from = { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x }; cur.to = back;
     cur.goalOut = cur.reduced ? { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, r: R, a: 0 } : { left: back.left, top: back.top, width: back.width, height: back.height, r: cornerOf(cur.anchor), a: 1 };
-    cur.scrim.style.pointerEvents = "none"; run(); cur.t0 = cur.prev;
+    cur.scrim.style.pointerEvents = "none"; run(); cur.t0 = cur.prev; cur.t = 0; cur.frame = 0;
   }
   /* hidden strips the state at once (BOARD A6 template): nothing animates while the page is away and a half-open menu must not come back */
   const onHidden = (force) => { if (force || document.hidden) strip(); };
   document.addEventListener("visibilitychange", () => onHidden(false));
-  window.Menu = { open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0 } : null };
+  window.Menu = { open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0, t: cur.t || 0, frame: cur.frame || 0,
+    x: { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x } } : null };
 })();
