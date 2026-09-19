@@ -2,6 +2,9 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
+<script>/* 诊断记录 (手机 tab switch, localStorage ark-diag = 1): the page starts on the ?diag path — the URL is rewritten before any other script reads it, so the
+   frame recorder (seg-frames-logger.js, query-gated) and the diag line load exactly as with ?diag typed (a home-screen window has no address bar). */
+try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|accept)(=|&|$)/.test(location.search)) history.replaceState(null, "", location.pathname + (location.search ? location.search + "&" : "?") + "diag=1" + location.hash); } catch (e) {}</script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f2f2f7">
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000">
@@ -12,13 +15,13 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="遥控">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260919201521">
+<link rel="manifest" href="manifest.webmanifest?v=20260919181053">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260919201521">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260919201521">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260919181053">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260919181053">
 <!-- 组件数字的正本：--ios-* 变量，每条带来源（探针原值 / AX 帧 / NUMBERS 行 / 取色 / 采样替代）。页面自己的变量只做映射，不再手写数字。 -->
-<link rel="stylesheet" href="tokens.css?v=20260919201521">
-<link rel="stylesheet" href="controls.css?v=20260919201521">   <!-- press states of rows / switch (B14 / B13): remote-ref/dispatch-B14-cell.md, dispatch-B13-switch.md -->
+<link rel="stylesheet" href="tokens.css?v=20260919181053">
+<link rel="stylesheet" href="controls.css?v=20260919181053">   <!-- press states of rows / switch (B14 / B13): remote-ref/dispatch-B14-cell.md, dispatch-B13-switch.md -->
 <link rel="stylesheet" href="seg-keys.css?v=20260919011715">   <!-- segmented-lens kinematics compiled from the native frames (界面2号 ui2 90d6876 gen_seg_keys.py; do not edit) -->
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
@@ -730,6 +733,13 @@
   .diff b{font-weight:var(--ios-headline-weight)}
   .old{color:var(--dim);text-decoration:line-through}
   .new{color:var(--ok)}
+  .diagsheet{position:fixed;inset:0;z-index:200;background:var(--ios-alert-dimming);display:flex;align-items:flex-end;justify-content:center}
+  .diagsheet[hidden]{display:none}
+  .diagsheet .dsbox{width:100%;max-width:520px;margin:0 8px calc(env(safe-area-inset-bottom) + 8px);padding:16px 16px 8px;border-radius:var(--ios-alert-radius);background:var(--card);color:var(--ink)}
+  .diagsheet h2{margin:0 0 6px;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight)}
+  .diagsheet .dsmsg{margin:0 0 10px;color:var(--dim);font-size:var(--ios-footnote-size, 13px);line-height:1.4;word-break:break-all}
+  .diagsheet .acts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  .diagsheet .acts button[hidden]{display:none}
   .toast{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom) + 76px);z-index:9;
          background:var(--alert-fill);backdrop-filter:var(--ios-alert-glass-filter);-webkit-backdrop-filter:var(--ios-alert-glass-filter);
          border-radius:18px;padding:12px 14px;font-size:var(--ios-sub-size);box-shadow:var(--glass-diffuse),var(--glass-rim);   /* toast：无苹果对应组件；材质取弹窗端到端配方 --ios-alert-glass-*（最近实测原值）；圆角 18 待 tokens */
@@ -788,6 +798,11 @@
 </dialog>
 
 <div class="toast" id="toast"></div>
+<!-- 诊断记录 sheet (view.js showDiagSheet): shown when seg-frames-logger.js has written a record — copy / share the JSON so the phone's record reaches us -->
+<div class="diagsheet" id="diagsheet" hidden role="dialog" aria-modal="true" aria-labelledby="diagsheet-t">
+  <div class="dsbox"><h2 id="diagsheet-t">诊断记录已生成</h2><p class="dsmsg" id="diagsheet-m"></p>
+    <div class="acts"><button type="button" class="primary" id="diagsheet-copy">复制</button><button type="button" id="diagsheet-share">分享</button><button type="button" id="diagsheet-close">关闭</button></div></div>
+</div>
 <!-- 勾选页（多选 38 / 单选 37b）：值行「已选 N/M ›」点开；表 y 62 起、导航 54 在 +20、返回 44 at 20、完成 36 at 380 ← AX-38 -->
 <div class="sheet" id="picker" role="dialog" aria-modal="true">
   <div class="dim"></div>
@@ -3937,22 +3952,22 @@
   <div class="pnav"><button type="button" class="navbtn pback" aria-label="返回"></button><span class="ptitle"></span></div>
   <div class="pbody"></div>
 </div>
-<script src="schema.js?v=20260919201521"></script>
-<script src="net.js?v=20260919201521"></script>
-<script src="pending.js?v=20260919201521"></script>
-<script src="live.js?v=20260919201521"></script>
-<script src="stamina.js?v=20260919201521"></script>
-<script src="inventory.js?v=20260919201521"></script>
+<script src="schema.js?v=20260919181053"></script>
+<script src="net.js?v=20260919181053"></script>
+<script src="pending.js?v=20260919181053"></script>
+<script src="live.js?v=20260919181053"></script>
+<script src="stamina.js?v=20260919181053"></script>
+<script src="inventory.js?v=20260919181053"></script>
 <script>/* view.js: ?viewdelay=<ms> loads it that much later (the slow-network start: live.js's timers must not touch view.js's bindings before it runs — accept row) */
 { const q = new URLSearchParams(location.search), ms = parseInt(q.get("viewdelay") || "0", 10);
-  if (ms > 0) setTimeout(() => { const s = document.createElement("script"); s.src = "view.js?v=20260919201521"; document.head.appendChild(s); }, ms);
-  else document.write('<script src="view.js?v=20260919201521"><\/script>'); }</script>
-<script src="alert-prewarm.js?v=20260919201521"></script>   <!-- the alert glass layer built once at load: first open as fast as the second (web/alert-prewarm.js) -->
-<script src="controls.js?v=20260919201521"></script>   <!-- row press (B14) / switch (B13) state machines; after view.js (it takes .acts button over from installPressables) -->
+  if (ms > 0) setTimeout(() => { const s = document.createElement("script"); s.src = "view.js?v=20260919181053"; document.head.appendChild(s); }, ms);
+  else document.write('<script src="view.js?v=20260919181053"><\/script>'); }</script>
+<script src="alert-prewarm.js?v=20260919181053"></script>   <!-- the alert glass layer built once at load: first open as fast as the second (web/alert-prewarm.js) -->
+<script src="controls.js?v=20260919181053"></script>   <!-- row press (B14) / switch (B13) state machines; after view.js (it takes .acts button over from installPressables) -->
 <script>/* 验收脚本只在地址带 ?accept 时加载（docs/HIG-CHECKLIST.md 的验收程序）。分段透镜逐帧记录器（界面2号 seg-frames-logger.js）在 ?accept / ?diag / ?segframes 时加载，
    它自己看查询串，其它时候什么都不做。 */
 { const q = new URLSearchParams(location.search);
-  if (q.has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260919201521"; document.body.appendChild(s); }
+  if (q.has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260919181053"; document.body.appendChild(s); }
   if (q.has("diag") || q.has("segframes")) { const s = document.createElement("script"); s.src = "seg-frames-logger.js"; document.body.appendChild(s); }
   /* ?segx=a,b,… : layer / map switches for the simulator-standalone experiments (remote-ref/tools/webkit/b6/ios-switch-list.md). Works with or without
      ?seghold. nowarp | norimb | nohl | nowarpl | noplat hide one lens layer (visibility, so the loop still runs); mapflat swaps every displacement map for
