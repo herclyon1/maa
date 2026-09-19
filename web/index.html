@@ -540,6 +540,14 @@
   .segctl .warpl{position:absolute;z-index:7;left:0;top:0;width:0;height:0;pointer-events:none;display:none;overflow:hidden;clip-path:inset(0 round var(--rr, 14px))}
   .segctl .warpl .displ{position:absolute;inset:0;overflow:hidden;border-radius:var(--rr, 14px)}   /* filter: url(#seg-lens-f-lab-<w>) set per frame; clipped to the capsule BEFORE the filter */
   .segctl.lift .warp,.segctl.lift .warpl,.segctl.lift .plat,.segctl.lift .rimb,.segctl.lift .hlk,.segctl.lift .hlw{display:block}
+  /* WebGL lens (view.js segGlCreate, 2号 lens-webgl.js README §0.8.7): the overlay canvas = the control's width, 24 pt above and below it (the lifted lens is
+     6 pt outside the control, the wrapper 16 more); it paints the capsule and, outside it, only the ring shadow and the dark line's row — the DOM shows through.
+     Under .gl the SVG stack stays built but hidden; the resting platter is the DOM .lens (the canvas is cleared at rest), and while lifted the .lens itself
+     carries the platter's 1 − lp fade above the canvas (the shader has no platter layer yet — §4b puts restingBackground above the displaced backdrop and
+     below the rim lines; here it sits above both until the package takes a platter uniform). */
+  .segctl canvas.glens{position:absolute;left:0;top:-24px;width:100%;height:calc(100% + 48px);pointer-events:none;z-index:9;display:block}
+  .segctl.gl .stack,.segctl.gl .rimo,.segctl.gl .hlk,.segctl.gl .hlw{display:none !important}
+  .segctl.gl.lift .lens{background:var(--ios-segment-selected-bg);opacity:calc(1 - var(--lp, 0));z-index:10}
   /* A 起手预建 (view.js segPrewarm / segLens prewarm): the layers painted once at load, at rest geometry and opacity .01 (a fully transparent layer may not be
      rasterised), the white .lens untouched — the engine builds the filter pipeline and the compositing layers before the first touch */
   .segctl.prewarm .stack,.segctl.prewarm .rimo,.segctl.prewarm .hlk,.segctl.prewarm .hlw,.segctl.prewarm .warp,.segctl.prewarm .warpl,.segctl.prewarm .plat,.segctl.prewarm .rimb{display:block}
@@ -3919,6 +3927,7 @@
 </svg>
 <script>window.LENS_SS = new URLSearchParams(location.search).get("ss") === "1" ? 2 : 1; window.LENS_ENGINE_FIX = new URLSearchParams(location.search).get("enginefix") !== "0";</script>   <!-- 引擎校正（62 张 feImage 换 blob）默认开，?enginefix=0 关——数据 36916a9 开关归因：它对帧速无影响（76ccab4 / 998689c nofix 都慢），修右「班」折叠；拖慢主因 = 色散层（单开 37–38 ms/帧），超采样单开 27–30 ms → 两者仍默认关（?disp=1 / ?ss=1 开；监督局 09-19 12:3x） -->   <!-- 引擎校正 2 / 候选 A 默认关（监督局 09-19 11:1x）：?ss=1 才开 2× -->
 <script src="assets/lens/lens-supersample.js"></script>   <!-- 引擎校正 2 / 候选 A（2号 ui2 7c26d3b，README §0.4）：开时把 .warp .disp / .warpl .displ 包成 .ssw scale3d(½) + 2× 滤镜层 + .ss2，滤镜 data-s ×2、区域 50 %（data-s0 = 文件 S）；必须在 lens-engine-fix.js 之前（它读 window.LENS_SS / data-s0） -->
+<script src="assets/lens/lens-webgl.js"></script>   <!-- WebGL 透镜（2号 ui2 fb7bbdc，README §0.8.7）：同一套贴图与反编译常量的两遍片元着色器；view.js segLens 有 webgl2 且非 ?gl=0 时在 .segctl 建 canvas.glens 每 tick setState，SVG 栈隐藏；?gl=0 回 SVG 栈 -->
 <script src="assets/lens/lens-engine-fix.js"></script>   <!-- 引擎校正（2号 ui2 bed84e4，web/assets/lens/README.md §0.4）：按 devicePixelRatio 把每张 -f-bg- / -f-lab- 贴图的负位移加长一个设备像素（2× ½、3× ⅓）写成 blob 副本换进 feImage（data-engine-fixed 可查），贴图文件与彩边链不动；关法 window.LENS_ENGINE_FIX = false -->
 <!-- 推入页（UINavigationController push）：回执全表、以后的库存页；导航栏 54 at 62、返回 44 at 20 ← AX-11 / AX-46 -->
 <div class="page" id="subpage" hidden role="region">

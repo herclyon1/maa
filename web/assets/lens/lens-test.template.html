@@ -140,16 +140,33 @@
   punch.style.clipPath = `path(evenodd, "M0 0H${LW}V${LH}H0Z M${RX} 0H${LW - RX}A${RX} ${RY} 0 0 1 ${LW - RX} ${LH}H${RX}A${RX} ${RY} 0 0 1 ${RX} 0Z")`;
   labLayer.style.borderRadius = (TAB ? LH / 2 : Math.min(22, LH / 2)) + "px"; labLayer.style.setProperty("--rr", (TAB ? LH / 2 : Math.min(22, LH / 2)) + "px");
   if (LW !== 220 || TAB) { if (!lens.classList.contains("nobg")) bgLayer.style.filter = `url(#${NAME}-lens-f-bg-${LW})`; if (!lens.classList.contains("nolab")) labLayer.style.filter = `url(#${NAME}-lens-f-lab-${LW})`; }
-  const AM = 16;                                                 /* the wrapper's extension beyond the lens (lens-field.json aberration.wrapper) */
+  const AB = q.get("ab") || "flip";                              /* colour fringe chain: flip = the band factor e (the formula with EdgeOpacityStart 1 / End 0, default) | ir (1 − e, record) | lean (the same output with 6 passes and an 8-pt wrapper, README §0.8.4) | 0 */
+  const ablMargin = (() => { const f = document.getElementById(`${NAME}-lens-f-abl-${LW}`); return f ? parseFloat(f.getAttribute("data-margin")) || 8 : 8; })();
+  const AM = AB === "lean" ? ablMargin : 16;                     /* the wrapper's extension beyond the lens (lens-field.json aberration.wrapper; the lean chain's own margin) */
   const stack = document.createElement("div"); stack.className = "stack"; stack.style.width = (LW + 2 * AM) + "px"; stack.style.height = (LH + 2 * AM) + "px";
+  if (AM !== 16) { stack.style.left = -AM + "px"; stack.style.top = -AM + "px"; for (const sl of [bgW, labW]) { sl.style.left = AM + "px"; sl.style.top = AM + "px"; } }
   const base = document.createElement("div"); base.className = "base";
   stack.appendChild(base); stack.appendChild(bgW); stack.appendChild(labW); lens.appendChild(stack); scene.appendChild(lens);
   if (window.LENS_SS_APPLY) window.LENS_SS_APPLY();            /* 引擎校正 2 (lens-supersample.js): wraps the two layers just built and folds SS into the filters' data-s / scale / region */
-  const AB = q.get("ab") || "flip";                              /* colour fringe chain: flip = the band factor e (the formula with EdgeOpacityStart 1 / End 0, default) | ir (1 − e, record) | 0 */
   if (AB === "flip" || AB === "ir") { lens.classList.add("ab-" + AB); if (LW !== 220 || TAB) stack.style.filter = `url(#${NAME}-lens-f-ab${AB === "ir" ? "-ir" : ""}-${LW})`; }
+  if (AB === "lean") { lens.classList.add("ab-flip"); stack.style.filter = `url(#${NAME}-lens-f-abl-${LW})`; }
+  /* (a) ?ab=ends (README §0.8.5): the chain hangs on two END elements only — each = the wrapper's first / last EB pt (margin 16 + envelope band
+     8.8 + tap reach 4 = 29) × the wrapper height, its own filter region, the same numbers on the map's crop (#…-f-abe-<w>-l / -r); the main
+     stack carries no chain (the envelope is 0 beyond 8.8 pt inside, and on the long edges the taps read horizontally uniform content). Each
+     end holds a clone of the whole stack (the same portal copies, the same clips, the same displaced layers) offset so the lens box coincides;
+     the clones' inline positions are re-synced after every place() (same DOM order). */
+  let ends = null;
+  if (AB === "ends") {
+    const fl = document.getElementById(`${NAME}-lens-f-abe-${LW}-l`), EB = fl && fl.dataset.box ? parseFloat(fl.dataset.box.split("x")[0]) : 60, ER = fl && fl.dataset.reach ? parseFloat(fl.dataset.reach) : 4, EV = EB - ER;   /* the filtered box EB (visible EV + reach ER, clipped after the filter) */
+    lens.classList.add("ab-flip", "ab-ends"); stack.style.filter = "none"; stack.style.clipPath = `inset(0 ${EV}px 0 ${EV}px)`;   /* the main stack draws nothing under the end elements: they composite over the scene like the whole-stack chain did */
+    const mkEnd = (side) => { const e = document.createElement("div"); e.className = "fend " + side; e.style.cssText = `position:absolute;top:${-AM}px;width:${EB}px;height:${LH + 2 * AM}px;overflow:hidden;pointer-events:none`; e.style.left = (side === "l" ? -AM : LW + AM - EB) + "px"; e.style.filter = `url(#${NAME}-lens-f-abe-${LW}-${side})`; e.style.clipPath = side === "l" ? `inset(0 ${ER}px 0 0)` : `inset(0 0 0 ${ER}px)`; return e; };
+    ends = { l: mkEnd("l"), r: mkEnd("r"), EB, EV, ER }; lens.appendChild(ends.l); lens.appendChild(ends.r);
+    ends.fill = () => { for (const side of ["l", "r"]) { const e = ends[side]; e.innerHTML = ""; const c = stack.cloneNode(true); c.style.filter = "none"; c.style.clipPath = "none"; c.style.left = (side === "l" ? 0 : -(LW + 2 * AM - EB)) + "px"; c.style.top = "0"; e.appendChild(c); } };
+    ends.sync = () => { const A = stack.querySelectorAll("*"); for (const side of ["l", "r"]) { const c = ends[side].firstElementChild; if (!c) continue; const B = c.querySelectorAll("*"); if (B.length !== A.length) { ends.fill(); continue; } for (let i = 0; i < A.length; i++) if (B[i].style.cssText !== A[i].style.cssText) B[i].style.cssText = A[i].style.cssText; } };
+  }
   scene.classList.add("lifted");
   const copy = () => { const c = scene.cloneNode(true); c.querySelector(".lens").remove(); c.id = ""; return c; };
-  const sync = () => { clone.innerHTML = ""; clone.appendChild(copy()); labels.innerHTML = ""; labels.appendChild(copy()); base.innerHTML = ""; base.appendChild(copy()); plabels.innerHTML = ""; plabels.appendChild(copy()); };
+  const sync = () => { clone.innerHTML = ""; clone.appendChild(copy()); labels.innerHTML = ""; labels.appendChild(copy()); base.innerHTML = ""; base.appendChild(copy()); plabels.innerHTML = ""; plabels.appendChild(copy()); if (ends) ends.fill(); };
   sync();
   /* lens position inside the scene (pt); starts over the selected segment: segctl at (20, 16 + 20.33 + 8) → segment centre */
   const seg = scene.querySelector(TAB ? ".tabbar" : ".segctl"), r0 = seg.getBoundingClientRect(), s0 = scene.getBoundingClientRect();
@@ -166,8 +183,8 @@
     return (Math.min(r.right + 100, sw) - Math.max(r.left - 100, 0)) / (Math.min(r.bottom + 100, sh) - Math.max(r.top - 100, 0)); };
   let WH = 0;
   const setWH = () => { const wh = q.get("wh") ? parseFloat(q.get("wh")) : whRule(); if (wh === WH) return; WH = wh;
-    const m = document.getElementById(`${NAME}-lens-f-ab${AB === "ir" ? "-ir" : ""}-${LW}-wh`);
-    if (m) m.setAttribute("values", `${wh} 0 0 0 ${0.5 * (1 - wh)}  0 ${1 / wh} 0 0 ${0.5 * (1 - 1 / wh)}  0 0 1 0 0  0 0 0 1 0`); };
+    const ids = AB === "ends" ? [`${NAME}-lens-f-abe-${LW}-l-wh`, `${NAME}-lens-f-abe-${LW}-r-wh`] : [`${NAME}-lens-f-ab${AB === "ir" ? "-ir" : AB === "lean" ? "l" : ""}-${LW}-wh`];
+    for (const id of ids) { const m = document.getElementById(id); if (m) m.setAttribute("values", `${wh} 0 0 0 ${0.5 * (1 - wh)}  0 ${1 / wh} 0 0 ${0.5 * (1 - 1 / wh)}  0 0 1 0 0  0 0 0 1 0`); } };
   /* the tab platter's presentation transform (tab-lens-native.md §3: _UITabBarItemPlatterView presTransform 1.0516 while lifted): the
      lens scales with the platter about the platter's centre; the copies inside the lens (page + platter + items, in the lens's model
      space) take the inverse about the same point, so on screen the page is 1:1, the platter 1.0516 and the label copy 1.16 × 1.0516 */
@@ -175,6 +192,7 @@
   const place = () => { lens.style.left = X + "px"; lens.style.top = Y + "px"; for (const l of [clone, labels, plabels]) { l.style.left = (M - X) + "px"; l.style.top = (M - Y) + "px"; } base.style.left = (AM - X) + "px"; base.style.top = (AM - Y) + "px";
     if (TAB) { lens.style.transformOrigin = `${PCX - X}px ${PCY - Y}px`; lens.style.transform = `scale(${PS})`;
       for (const l of [clone, labels, plabels, base]) { l.style.transformOrigin = `${PCX}px ${PCY}px`; l.style.transform = `scale(${1 / PS})`; } }
+    if (ends) ends.sync();
     setWH(); };
   place();
   /* drag: pointer events, no threshold; the frame interval is measured while a finger is down or the auto drag runs */
@@ -202,6 +220,7 @@
   document.getElementById("graty").onclick = () => { scene.classList.remove("grating"); scene.classList.toggle("gratingy"); sync(); };
 })();
 </script>
+<script src="lens-map-dpr.js"></script>   <!-- 引擎校正 baked into the map files (@2x / @3x, --engine-fix-sets), used when the set has them and SS is 1 (?mapdpr=0 off) — README §0.8.4 -->
 <script src="lens-engine-fix.js"></script>
 </body>
 </html>

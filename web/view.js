@@ -629,6 +629,7 @@ function segSameQueues(a, b) {
    gives the weight transition its start and end values. The commit stretch (.spring) restarts when the value changed. */
 function segSync(seg, fresh) {
   const lens = seg.querySelector(".lens"), to = fresh.style.getPropertyValue("--i"), from = seg.style.getPropertyValue("--i");
+  if (seg.__gl) requestAnimationFrame(() => { try { seg.__gl.lens.redrawBackdrop(); } catch (e) {} });   // WebGL: the labels' weight / the selection changed under the lens (README §0.8.7 step 4)
   const freshBs = [...fresh.querySelectorAll("button")];
   [...seg.querySelectorAll("button")].forEach((b, i) => {
     const on = freshBs[i] && freshBs[i].classList.contains("on");
@@ -1346,7 +1347,31 @@ const SEG_DISP_ON = new URLSearchParams(location.search).get("disp") === "1";
 const SEG_VC_SPLIT = new URLSearchParams(location.search).get("vcsplit") !== "0";
 const SEG_LPQ = new URLSearchParams(location.search).get("lpq") !== "0";   // lpq: per-frame filter / opacity writes quantised to the 8-bit raster (1/255; displacement scale .1) and written only on change — the springs are untouched (?lpq=0 off)
 const lpq = (x) => SEG_LPQ ? Math.round(x * 255) / 255 : x;
-const SEG_PREWARM_ON = new URLSearchParams(location.search).get("prewarm") !== "0";   // 换值重画不阻塞: the commit frame switches the selection only, the content render runs in the next frame (?vcsplit=0 = one frame, the old path)   // layer-5 colour fringe (7-tap chain on .stack, per-frame W/H matrix + tap scales): default off, ?disp=1 on (监督局 09-19 12:0x, phone fps bisect)
+const SEG_PREWARM_ON = new URLSearchParams(location.search).get("prewarm") !== "0";
+/* WebGL lens (2号 lens-webgl.js, README §0.8.7): the lifted lens drawn on an overlay canvas by two fragment-shader passes (the same maps, the constants
+   with their sources in the shaders); ?gl=0 keeps the SVG stack. segGlAvailable() = the switch + the package + a WebGL2 context, decided once. */
+const SEG_GL_WANT = new URLSearchParams(location.search).get("gl") !== "0";
+const SEG_GLM = 24;   // the canvas reaches 24 pt above and below the control (the lifted lens is 6 pt outside it, the wrapper 16 more, the ring shadow 11 below)
+let segGlOk = null;
+const segGlAvailable = () => { if (segGlOk == null) { try { segGlOk = SEG_GL_WANT && !!window.LensWebGL && !!document.createElement("canvas").getContext("webgl2"); } catch (e) { segGlOk = false; } } return segGlOk; };
+const segRgb = (css) => { const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/.exec(css || ""); return m ? [+m[1], +m[2], +m[3]] : [0, 0, 0]; };
+/* the GL lens of a control: the canvas + the LensWebGL instance + the backdrop drawing (page colour + track; the labels at the buttons' DOM centres) */
+function segGlCreate(seg, lens, bs, setW) {
+  const cur = seg.__gl; if (cur && cur.w === seg.clientWidth && cur.h === seg.clientHeight && cur.setW === setW) return cur;
+  if (cur) { try { cur.lens.destroy(); } catch (e) {} cur.canvas.remove(); seg.__gl = null; }
+  let canvas = seg.querySelector("canvas.glens"); if (!canvas) { canvas = document.createElement("canvas"); canvas.className = "glens"; seg.appendChild(canvas); }
+  const segW = seg.clientWidth, segH = seg.clientHeight;
+  const sets = LensWebGL.setsFromFilters("seg"); if (!sets[setW]) return null;   // the one set the SVG path rides (the model width; the lift and the drag stay on it, README §0.3)
+  const opts = { sets: { [setW]: sets[setW] }, preload: [setW], dpr: window.devicePixelRatio || 1, width: segW, height: segH + 2 * SEG_GLM, margin: 16, ink: segRgb(getComputedStyle(bs[0]).color),
+    backdrop: (x, which) => {   // canvas pt; the canvas origin = the control's left, 24 pt above its top
+      if (which === "page") { x.fillStyle = getComputedStyle(document.body).backgroundColor || "#fff"; x.fillRect(0, 0, segW, segH + 2 * SEG_GLM);
+        const cs = getComputedStyle(seg); x.fillStyle = cs.backgroundColor; x.beginPath(); x.roundRect(0, SEG_GLM, segW, segH, parseFloat(cs.borderTopLeftRadius) || 16); x.fill(); }   // the track over the page colour; no platter (the DOM's shows at rest)
+      else { const sr = seg.getBoundingClientRect(); x.textAlign = "center"; x.textBaseline = "middle";
+        for (const b of bs) { const r = b.getBoundingClientRect(), c = getComputedStyle(b); x.font = c.font; x.fillStyle = c.color; x.fillText(b.textContent, r.left - sr.left + r.width / 2, SEG_GLM + r.top - sr.top + r.height / 2); } } } };
+  let glLens; try { glLens = LensWebGL.create(canvas, opts); } catch (e) { console.warn("LensWebGL", e); canvas.remove(); segGlOk = false; return null; }
+  return (seg.__gl = { canvas, lens: glLens, opts, w: segW, h: segH, setW });
+}
+try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { for (const s of document.querySelectorAll(".segctl")) if (s.__gl) { const b = s.querySelector("button"); if (b) s.__gl.opts.ink = segRgb(getComputedStyle(b).color); try { s.__gl.lens.redrawBackdrop(); } catch (e) {} } }); } catch (e) {}   // theme change: the backdrop's colours and the ink   // 换值重画不阻塞: the commit frame switches the selection only, the content render runs in the next frame (?vcsplit=0 = one frame, the old path)   // layer-5 colour fringe (7-tap chain on .stack, per-frame W/H matrix + tap scales): default off, ?disp=1 on (监督局 09-19 12:0x, phone fps bisect)
 /* instrumentation (仪器, no behaviour): the lens loop publishes its per-tick internals as window.__segLens — a flat object of numbers and strings,
    rewritten at the end of every tick, read as is by 2号's frame recorder (seg-frames-logger.js `state`; a field named t or ending in _t is a
    performance.now() ms the recorder converts to s since the down). The agreed names: t (the tick's performance.now()), x (the position spring, pt),
@@ -1376,6 +1401,11 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
   let stack = seg.querySelector(".stack"), base = stack && stack.querySelector(".base");
   if (!stack) { stack = mk("stack", '<div class="base"><div class="copy"><div class="cbgwrap"><div class="cbg"></div><div class="ctrack"></div></div></div></div>'); base = stack.firstElementChild; }
   const AM = 16;   // the wrapper's extension beyond the lens (lens-field.json aberration.wrapper; the chain's outward taps read the page there)
+  /* WebGL path (README §0.8.7): the SVG layers above stay built but hidden (.segctl.gl); the canvas draws the lens from the loop's state each tick */
+  let GL = segGlAvailable(), glo = null;
+  if (GL) { const segW0 = seg.clientWidth, n0 = bs.length, pad0 = parseFloat(getComputedStyle(seg).paddingTop) || 2; const W00 = segW0 / n0 - 2 * pad0;
+    glo = segGlCreate(seg, lens, bs, Math.max(196, Math.min(256, 2 * Math.round((W00 + 2 * touchPx("--ios-touch-segment-lift-x", 12)) / 2)))); if (!glo) GL = false; }
+  seg.classList.toggle("gl", GL);
   const DISPERSION = SEG_DISP_ON && seg.dataset.dispersion !== "0" && !SEGX.includes("noab");   // 监督局 09-19 12:0x: the fringe chain is OFF by default (?disp=1 on) while the phone's 20–25 fps rendering is bisected
   /* B6 rim (index.html "B6" block, SEG_RIM): .rimb = inner shadow div + SVG (ring shadow rect.rs, dark line rect.kf ×3 under the page/track mask);
      .hlk / .hlw = the #36 highlight as SVG ring strokes, black (normal) / white (plus-lighter) */
@@ -1497,11 +1527,18 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
     st.geo = { left, top, w, h };
     const f = st.flex.out, idle = Math.abs(f.sx - 1) < 1.5e-3 && Math.abs(f.sy - 1) < 1.5e-3 && Math.abs(f.dx) < .1;   // at rest the transform is dropped: a transform within 1/700 of identity (< .17 px at the lens edge) still makes the browser resample the filtered layers (blurs the 1 pt lines, shifts the end columns) — CoreAnimation renders its vector layers sharp at any transform
     const tf = idle ? "none" : `translateX(${f.dx.toFixed(3)}px) scale(${f.sx.toFixed(5)}, ${f.sy.toFixed(5)})`;   // the flex presentation transform (§1: on the transform, the model bounds unchanged); every layer of the lens carries it
-    for (const el of [lens, stack, rimo, ...hls]) { el.style.transform = tf; el.style.transformOrigin = "50% 50%"; }   // the wrapper carries the transform for the four layers inside it (its centre = the lens centre)
+    if (GL) { lens.style.transform = tf; lens.style.transformOrigin = "50% 50%"; glo.canvas.style.transform = tf; glo.canvas.style.transformOrigin = `${left + w / 2}px ${SEG_GLM + top + h / 2}px`; }   // the flex transform about the lens centre, on the canvas (control-wide) and the platter
+    else for (const el of [lens, stack, rimo, ...hls]) { el.style.transform = tf; el.style.transformOrigin = "50% 50%"; }   // the wrapper carries the transform for the four layers inside it (its centre = the lens centre)
   };
   const frame = (p, pd) => {   // p = glass / displacement progress, pd = DestOut (copies) opacity
     const g = st.geo || { left: pad + idx0 * PITCH, top: pad, w: W0, h: H0 };   // the model box (the flex transform sits on top of it, so not getBoundingClientRect)
     const L = g.left, T = g.top, Wd = g.w, Hd = g.h, R = Hd / 2;   // capsule: corner = h/2 (r22 at 44 ← §0; the lift's corner 14 → 22 on the same spring ← §4.4 row 1)
+    if (GL) {   // WebGL: one setState per tick — uniforms only (README §0.8.7 step 3); wh = the §3b.6 capture-box rule from the lens's screen rect
+      const r = lens.getBoundingClientRect(), sw = innerWidth, sh = innerHeight, wh = (Math.min(r.right + 100, sw) - Math.max(r.left - 100, 0)) / (Math.min(r.bottom + 100, sh) - Math.max(r.top - 100, 0));
+      glo.lens.setState({ cx: L + Wd / 2, cy: SEG_GLM + T + Hd / 2, w: Wd, h: Hd, lift: SEGX.includes("scale0") ? 0 : p, wh });
+      { const a = lpq(p).toFixed(4), b = lpq(pd).toFixed(4); if (lpKey !== a) { lpKey = a; seg.style.setProperty("--lp", a); } if (lpdKey !== b) { lpdKey = b; seg.style.setProperty("--lpd", b); } }
+      if (p > 0 || pd > 0) { seg.classList.add("lift"); seg.classList.remove("prewarm"); } else seg.classList.remove("lift");
+      return; }
     stack.style.left = (L - AM) + "px"; stack.style.top = (T - AM) + "px"; stack.style.width = (Wd + 2 * AM) + "px"; stack.style.height = (Hd + 2 * AM) + "px";
     copyb.style.left = (AM - L) + "px"; copyb.style.top = (AM - T) + "px";   // the plain copy aligned with the real control
     for (const el of [warp, warpl, plat, rimb]) { el.style.left = AM + "px"; el.style.top = AM + "px"; el.style.width = Wd + "px"; el.style.height = Hd + "px"; el.style.setProperty("--rr", R + "px"); }
@@ -1528,6 +1565,7 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
     if (curSet) for (const id of [`#seg-lens-f-bg-${curSet}`, `#seg-lens-f-lab-${curSet}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", String(sOf(id))); }   // the file's rest value; the layers are hidden now
     for (const k of ["transition", "left", "top", "width", "height", "margin", "border-radius", "transform", "transform-origin"]) lens.style.removeProperty(k);   // the CSS rest values are what the loop ended on
     for (const el of [stack, warp, warpl, plat, rimb, rimo, ...hls]) { el.style.removeProperty("transform"); el.style.removeProperty("transform-origin"); }
+    if (GL) { try { glo.lens.setState({ cx: 0, cy: 0, w: W0, h: H0, lift: 0 }); } catch (e) {} glo.canvas.style.removeProperty("transform"); glo.canvas.style.removeProperty("transform-origin"); }   // the canvas cleared: the DOM platter shows
     if (curSet) { const f = document.querySelector(`#seg-lens-f-ab-${curSet}`); if (f) { const S = parseFloat(f.getAttribute("data-s")) || 12, taps = f.querySelectorAll("feDisplacementMap"), n = taps.length; taps.forEach((t, i) => t.setAttribute("scale", (S * (1 - 2 * i / (n - 1))).toFixed(3))); } }   // the file's rest values
     st.done = true; if (seg.__lensLoop === loop) seg.__lensLoop = null;
     if (st.__lens && window.__segLens === st.__lens) window.__segLens = st.__lens = { ...st.__lens, phase: "done" };   // 仪器: the last state stays readable, marked done
@@ -1627,6 +1665,8 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
     /* 预建 2 (数据 36916a9: the first glass frame still stalled 30–72 ms after a rest-state prewarm — at scale 0 the displacement is skipped): two frames in
        the LIFTED state — the model box 220×44 at the rest position, progress 1 (displacement scale S on both maps, the label filter, the inner-shadow and
        ring-shadow blurs evaluated for real, the maps decoded) — then back to rest; the white .lens is never touched (frame()'s .lift class is removed at once) */
+    if (GL) { const s = glo.lens.sets[glo.setW]; const warm = () => { try { glo.lens.setState({ cx: pad + idx0 * PITCH + W0 / 2, cy: SEG_GLM + pad + H0 / 2, w: W0 + 2 * LX, h: H0 + 2 * LY, lift: 1, wh: 1.35 }); glo.lens.setState({ cx: 0, cy: 0, w: W0, h: H0, lift: 0 }); } catch (e) {} seg.__prewarmed = performance.now(); };
+      if (s && s.ready) s.ready.then(() => requestAnimationFrame(warm)); else requestAnimationFrame(warm); st.done = true; return loop; }   // WebGL prewarm: shaders + maps + one lifted frame (FBO, pipeline), then cleared
     st.geo = { left: pad + idx0 * PITCH - LX, top: pad - LY, w: W0 + 2 * LX, h: H0 + 2 * LY }; frame(1, 1); seg.classList.remove("lift");
     seg.classList.add("prewarm"); seg.__prewarmed = performance.now(); st.done = true;
     requestAnimationFrame(() => requestAnimationFrame(() => { if (!seg.isConnected || !seg.classList.contains("prewarm")) return; st.geo = null; frame(0, 0); seg.classList.remove("lift"); }));

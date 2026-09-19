@@ -1,0 +1,23 @@
+<!doctype html><meta name="viewport" content="width=device-width">
+<!-- ENGINE FACT (2026-09-19, wksnap = system WebKit offscreen 2×, calib/webkit-primitive-subregion.png): a filter PRIMITIVE's own subregion
+     (x / y / width / height on feDisplacementMap) is not usable in WebKit. Three 400×80 stripe boxes, the same displacement (+6 px):
+     A = no subregion: the stripes shift 6 px everywhere (first black x 26 on every row, unshifted 20);
+     B = primitiveUnits="objectBoundingBox", the displacement limited to height .3: the top 30 % renders BLANK (no stripes at all), the
+         rest shows the stripes shifted 3 px (neither the source nor the +6 result);
+     C = a userSpaceOnUse subregion in px: the whole element renders blank.
+     So a chain cannot be restricted to the lens's edge band by subregions — every primitive runs over the whole filter region (README §0.8.4). -->
+<style>
+body{margin:0;background:#fff;width:440px;height:300px;position:relative}
+.box{position:absolute;left:20px;width:400px;height:80px;background:repeating-linear-gradient(90deg,#000 0 6px,#fff 6px 12px)}
+#a{top:10px;filter:url(#full)}
+#b{top:110px;filter:url(#sub)}
+#c{top:210px;filter:url(#sub2)}
+</style>
+<svg width="0" height="0" style="position:absolute">
+<filter id="full" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB"><feFlood flood-color="rgb(255,128,0)" result="m"/><feDisplacementMap in="SourceGraphic" in2="m" scale="12" xChannelSelector="R" yChannelSelector="G" result="d"/><feComposite in="d" in2="SourceGraphic" operator="over"/></filter>
+<!-- primitive subregion in objectBoundingBox fractions: the displacement only in the top 30 % -->
+<filter id="sub" x="0" y="0" width="100%" height="100%" primitiveUnits="objectBoundingBox" color-interpolation-filters="sRGB"><feFlood flood-color="rgb(255,128,0)" result="m"/><feDisplacementMap in="SourceGraphic" in2="m" scale="12" xChannelSelector="R" yChannelSelector="G" x="0" y="0" width="1" height="0.3" result="d"/><feComposite in="d" in2="SourceGraphic" operator="over"/></filter>
+<!-- subregion in userSpaceOnUse (px) -->
+<filter id="sub2" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB"><feFlood flood-color="rgb(255,128,0)" result="m"/><feDisplacementMap in="SourceGraphic" in2="m" scale="12" xChannelSelector="R" yChannelSelector="G" x="0" y="0" width="400" height="24" result="d"/><feComposite in="d" in2="SourceGraphic" operator="over"/></filter>
+</svg>
+<div class="box" id="a"></div><div class="box" id="b"></div><div class="box" id="c"></div>
