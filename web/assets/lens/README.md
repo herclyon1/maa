@@ -1093,8 +1093,16 @@ source clip BEFORE the displacement (portal #20's r22 mask at the SAMPLED positi
 sample that lands outside the capsule now reads transparent. It changes the corners, not the count: mid 「早班」 ink 1110 → 934 at 3 px/pt
 (−16 %, unchanged) — the samples the map sends stay inside the capsule. What is left is the FIELD's own tearing magnitude at the ends
 (README §1b rounds 1–2 and the §4b check: the formula composition puts 「早」's box where the native's is, its ink count does not follow —
-"an ink count cannot separate the two"); the device now says the shader keeps 32 % more ink than native on that glyph. Open item of the
-maps (the label stages' end behaviour), not of the shader; for the old page / data (a grating under the label at the END position, §1b).
+"an ink count cannot separate the two"); the device now says the shader keeps 32 % more ink than native on that glyph. The old page's
+closed-form check (15:2x, `remote-ref/label-end-tear-closed-vs-map.md`, `tools/lens/end_tear.py`): the map = the §4b.1 closed form to
+≤ .10 pt (the quantisation ±.078 + the bilinear ≤ .03; compose_stages vs the scalar form 1.4e-14), the only block being the outermost ⅓ pt
+(closed u(0) 9.21 / B .5, the map 8.00 / 1.0 — the 2-px/pt texel centre at .25 pt misses the edge drop: the generator's sampling, not the
+clamp); the same 「早班」 bitmap through pass 1: closed form 80 % of the resting ink, the map 80 %, the device's WebGL 84 %, the native 65 % —
+the map carries the closed form faithfully, the closed form is 30 % away from the native; and the native's end field (the drag-mid phase
+data) has NO fold at all (u .87 … .38 on the centre line, 7.6 → 1.5 on the ±10 rows, monotone): the nested sampling's tear is not in the
+native, which is weaker and flatter there, so its 35 % is an INTENSITY term (candidates: the seven taps' weights on black text, the
+KeyFill band's V lift, the copy-over-backdrop composite), not a displacement one. Open with the old page / the data session (whether CA
+nests the two displacement maps — SampleMapFilter around 0x1c3991ab8 unread; or the A9 switch: L2 alone / L4 alone at the end).
 
 **③ The right end 1 pt left (the end line's column 327 vs native 328; the left end 111 = native).** The shader's capsule: u_lens = (110,
 110.891, 220, 44) → the SDF's zero line at x = 330.000 (sdf: q = |p| − (88, 0), the right cap centred at x 308, r 22); the dark line's band d ∈
