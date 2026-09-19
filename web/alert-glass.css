@@ -1,0 +1,8 @@
+/* alert-glass.css — the alert panel's glass layer (alert-glass.js, BOARD R57). While the read keys are wired (`dialog#alert.glass-read`, light: the
+   dark theme's keys are unread and keep index.html's sampled --ios-alert-glass-filter), the pane's sampled substitute is off and the layer inside it
+   carries the material: a clone of #app on the page's pixels through #alert-glass-f (three-stage blur, inner / outer refraction, face matrix,
+   the highlight layer's bands through the vibrant matrix). The soft shadow: ShadowOpacity .4 × the black α .3 (menu-card-material §7.3), radius 24,
+   offset (0, 8) — 剖面近似 (Gaussian vs the shader's erf-type profile). */
+dialog#alert.glass-read > .pane { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.12)); }
+dialog#alert.glass-read > .pane > .alert-glass { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+dialog#alert.glass-read > .pane > .alert-glass > .alert-glass-copy { contain: layout paint style; }
