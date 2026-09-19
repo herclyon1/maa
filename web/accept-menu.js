@@ -58,7 +58,7 @@
     num("菜单收回目标 = 值行按钮框（top）", a0.top, st2.to.top, 0.5); num("菜单收回起点 = 静止框（width）", from2.width, st2.from.width, 0.5);
     await sleep(300); check("菜单收回后面板移除", "无", document.querySelector(".menu.morph") ? "还在" : "无", !document.querySelector(".menu.morph"));
     /* ⑤ hidden strips the state */
-    btn.click(); await sleep(50); document.dispatchEvent(new Event("visibilitychange")); Menu.onHidden(true); await sleep(50);
+    btn.click(); await sleep(50); document.dispatchEvent(new Event("visibilitychange", { bubbles: true })); Menu.onHidden(true); await sleep(50);
     check("菜单：页面 hidden 时菜单剥掉", "无", document.querySelector(".menu.morph") ? "还在" : "无", !document.querySelector(".menu.morph"));
   });
 })();
