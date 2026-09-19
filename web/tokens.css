@@ -597,12 +597,14 @@
   /* ---- capsule button (the Health tip card's) = UIButton tinted configuration inside a UICollectionView (state-tables/button.md R62: hook rows
      beginTrackingWithTouch: → setHighlighted: → touchDown / touchUpInside, delaysContentTouches = YES; the recording's colours equal the R14 probe's
      tinted row value for value). Values = the R14 probe table (uiprobe-subtree-r14-tinted-{rest,held}-{light,dark}.json) + the R62 PNGs; BOARD R6′ ---- */
-  --ios-capsule-rest-alpha: 18%;              /* tinted fill at rest: the tint at α .18 (light; R62 PNG (209,234,255) = systemBlue .18 over white) */
-  --ios-capsule-pressed-alpha: 11.76%;        /* held: α .1176 (R62 PNG (225,241,255); the R14 probe reads .117) */
+  --ios-capsule-rest-alpha: 18%;              /* tinted fill at rest: the tint at α .18 — __tintBehaviorAlphaReduction light .18 ([0x1c5718490]; systemYellow .2), button.md R91; R62 PNG (209,234,255) ✓ */
+  --ios-capsule-pressed-alpha: 11.7%;         /* held: rest × .65 ([0x1c5718348], R91 tintBehaviors block_10 → __colorByReducingAlpha) = .117 (R14 probe .117; R62 PNG .1176) */
   --ios-capsule-pressed-text-alpha: 75%;      /* held label: the tint at α .75 (R14 tinted / plain / filled rows; R62 PNG (56,162,255) = systemBlue .75 over the held fill) */
-  --ios-capsule-rest-alpha-dark: 25%;         /* tinted dark fill at rest: α .25 (R14) */
-  --ios-capsule-pressed-alpha-dark: 17.5%;    /* held dark: α .175 (R14) */
-  --ios-capsule-pressed-text-dark: rgb(25.5 156.06 255);   /* held dark label: (.1, .612, 1) α 1 (R14 tinted dark row; the tint (0, .569, 1) lightened — a systemBlue-specific value, the red variant's is unread) */
+  --ios-capsule-rest-alpha-dark: 25%;         /* tinted dark fill at rest: α .25 (R91 dark base; R14 probe) — systemRed / systemPink tints get .2 instead */
+  --ios-capsule-pressed-alpha-dark: 17.5%;    /* held dark: rest × .70 ([0x1c57184d0], R91) = .175 (R14 probe) */
+  --ios-capsule-red-rest-alpha-dark: 20%;     /* the red (systemRed) capsule in dark: __tintBehaviorAlphaReduction's __isSameColor(color, systemRed) → .2 (R91) */
+  --ios-capsule-red-pressed-alpha-dark: 14%;  /* held: .2 × .70 (R91) */
+  --ios-capsule-pressed-text-white-mix: 10%;   /* held dark label = AddingWhite10: c ← .9·c + .1 (R86, -[_UIButtonConfiguration updatedConfigurationForState:] 0x1c484d128 → transformer 16 __colorByAddingWhite 0x1c424b568, constant 0x1c5717f68 = .1; probe: (0, .569, 1) → (.1, .612, 1) ✓) — a transformer of the configuration, so any tint (the red variant too) */
   --ios-touch-capsule-press-delay: var(--ios-touch-highlight-delay);   /* 150 ms = UIScrollView delaysContentTouches (R62: the card stack is a UICollectionView); the first changed frame is the next one (cell-native.md row 12: probe +174…175); the R14″ / R14‴ recordings' +172 / +155 are the same delay seen at 60 Hz */
   /* segmented: pressed unselected label dims 1 → .2 ease-out over .43 s (0.98 @32 ms, .79 @100, .5 @182, .2 @432); back to 1 in ~.1 s at commit */
   --ios-touch-segment-dim-opacity: .2;
@@ -638,12 +640,13 @@
   --ios-touch-segment-lens-h-keys: 0 1, 42 1.111, 76 1.268, 109 1.35, 125 1.371, 142 1.361, 176 1.304, 209 1.139, 242 1.021, 276 .975, 309 .986, 342 1.025, 376 1.068, 409 1.096, 442 1.125, 476 1.136, 542 1.125, 609 1.089, 676 1.046, 742 1.007, 809 .989, 843 .986, 943 1.0, 1009 1.007, 1209 1.0;
   /* segmented lens follows the finger with a spring lag: 4/6 of a 6 pt step in 130 ms, finger 320 → lens catches up in ~120 ms (G4/F1) */
   --ios-touch-segment-follow-lag: .12s;
-  /* quick tap on the selected segment (native, probe recording 2026-09-20 00:24–00:42, remote-ref/tools/touch/seg-native-quicktap.md quick90c):
-     the lens lifts in place after the up and starts falling at the peak frame, +242 ms after the down (peak 217–218.5×42–43 @ +241…+257, back at 196×28 by +474…+497) */
-  --ios-touch-segment-quicktap-fall: 242ms;
+  /* quick tap on the selected segment: the fall spring is CREATED at liftTime + lensHangTime = down + 220 ms (seg-lens-refraction.md §4.5 lensHangTime .22;
+     seg-native-quicktap.md R87: setLifted:YES records liftTime on the down path, setLifted:NO schedules the NSTimer for .22 − (now − liftTime); R88 hooks:
+     the timer fires at liftTime + 220.9…222.1 ms in three runs) — visible on the next frame; the native peak frames at +241…+257 were 220 + delivery +
+     timer lag + frame quantisation, not the anchor (the earlier 242ms here). An up after 220 ms falls at once (R9②″). */
+  --ios-touch-segment-quicktap-fall: 220ms;
   /* the R6 recording tokens (--ios-touch-capsule-press-delay 172ms, --ios-capsule-pressed-*) were withdrawn by R6′: the capsule is a UIButton tinted (button.md R62) — see the "capsule button" block above */
-  /* lensHangTime 0.22 s (spec ivar +0x40, seg-lens-refraction.md §4.5) is not a page token: the fall is built at down +220…226 in all 10 recordings
-     and the first frame after it is the +242 above, which is what the page uses (R27 / R9②′ in seg-native-quicktap.md) */
+  /* (the note that lensHangTime was 'not a page token' is superseded: --ios-touch-segment-quicktap-fall above IS lensHangTime, R9②″) */
   /* tab bar: pressing the SELECTED tab lifts the lens 94×54 → 103×63 by +180 ms (first size change ~125 ms), 110×70 while dragging (T3/T4) */
   --ios-touch-tab-selected-lift-delay: 125ms;
   --ios-touch-tab-selected-lift-done: 180ms;
