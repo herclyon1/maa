@@ -15,20 +15,20 @@
       ((.42,0,.58,1)); by .2 s the inline transforms are gone (the stylesheet's rotate(i·45°) alone);
    ⑨ spun α: in every frame arm i α = clamp((1 − p) + i·.08·p, 0, 1) with p = rot / 179.43 (the same spring), and after the spring settles the table
       0 / .08 / .16 / .24 / .32 / .40 / .48 / .56 — not all-1 any more;
-   ⑩ inset: after the trigger the list's margin-top is still 0 while the finger is down (the browser holds the content under the finger); at the release
-      #app gets .ptr-inset and margin-top 60px;
+   ⑩ inset (R68′): after the trigger the header's margin-top is still 0 while the finger is down (the browser holds the content under the finger); at
+      the release body gets .ptr-inset and body > header margin-top 60px — the large title and the list go down together (§12: the refresh item
+      stacks above the large-title item), the spinner sitting centred in the freed band (safe-area + 54…114);
    ⑪ scroll-back: endRefreshing with the finger up drives the margin from 60 to 0 over .3 s with progress sin²(π/2 · t/.3) — rms ≤ .5 px against that
       formula on the driver's frames — and ends at margin 0 with the class removed.
-   Real-device items for the morning sweep (A23), not judged here: whether the list settles 60 below the title at the release without a visible hop
-   (the browser's bounce-back is its own); the control's place relative to a LARGE title (unread, §0 last row) — here the spinner sits in the gap
-   between the title and the list. */
+   Real-device items for the morning sweep (A23), not judged here: whether the title and list settle 60 lower at the release without a visible hop
+   (the browser's bounce-back is its own). */
 (function () {
   if (!window.ACCEPT) return;
   ACCEPT.add(async function acceptRefresh(ctx) {
     const { check, num, sleep } = ctx;
     const R = window.Refresh;
     if (!R) { check("下拉刷新：Refresh 未装载（refresh.js）", "Refresh", "缺", false); return; }
-    const ptr = document.getElementById("ptr"), ai = document.getElementById("ptrai"), arms = [...ai.querySelectorAll("i")], app = document.getElementById("app");
+    const ptr = document.getElementById("ptr"), ai = document.getElementById("ptrai"), arms = [...ai.querySelectorAll("i")], app = document.querySelector("body > header"), host = document.body;   // R68′: the inset is the header's top margin, the class on body
     const H = window.visualViewport ? window.visualViewport.height : innerHeight, want = 112.5 * Math.max(H, 372) / 568;
     const rotOf = () => { const m = /rotate\(([-\d.]+)deg\)/.exec(ai.style.transform || ""); return m ? parseFloat(m[1]) : 0; };
     let calls = 0, done; R.onRefresh = () => { calls++; return new Promise((r) => { done = r; }); };
@@ -73,7 +73,10 @@
       const mtDown = app ? getComputedStyle(app).marginTop : "-";
       R.__drive({ down: false }); await new Promise(requestAnimationFrame);
       const mtUp = app ? getComputedStyle(app).marginTop : "-";
-      check("下拉刷新 ⑩ 刷新中列表顶部缩进 60（§11 第 4 条控件高 60；网页规则：手指在时不动内容，松手那一刻加上，由浏览器自己的回弹落到新位置）", "down 0px → up 60px · .ptr-inset", `down ${mtDown} → up ${mtUp} · ${app && app.classList.contains("ptr-inset") ? ".ptr-inset" : "no class"}`, mtDown === "0px" && mtUp === "60px" && !!app && app.classList.contains("ptr-inset") && R.insetOn);
+      check("下拉刷新 ⑩ 刷新中大标题连列表整体下推 60（§11 第 4 条控件高 60；§12 刷新项叠在大标题之上；网页规则：手指在时不动内容，松手那一刻加上，由浏览器自己的回弹落到新位置）", "down 0px → up 60px (header margin) · body.ptr-inset", `down ${mtDown} → up ${mtUp} · ${host.classList.contains("ptr-inset") ? "body.ptr-inset" : "no class"}`, mtDown === "0px" && mtUp === "60px" && host.classList.contains("ptr-inset") && R.insetOn);
+      { const hb = document.querySelector("body > header h1").getBoundingClientRect(), box = ai.getBoundingClientRect(), cy = box.top + box.height / 2, sat = (() => { const pr = document.createElement("div"); pr.style.cssText = "position:fixed;top:0;left:0;width:1px;padding-top:env(safe-area-inset-top);visibility:hidden"; document.body.appendChild(pr); const v = parseFloat(getComputedStyle(pr).paddingTop) || 0; pr.remove(); return v; })();
+        const navH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ios-nav-h")) || 54, bandTop = sat + navH, bandBot = bandTop + 60;
+        check("下拉刷新 R68′ 带的位置：旋钮中心 = 栏底 + 30（带 安全区 + 54…114 的正中，§12 centerY 约束），大标题文字盒顶 = 带底 + 3.67（推到带之下；3.67 = topbar.css §10b ① 标签盒距栏区），不再是「标题 / 列表间隙、高 6.6」", `cy ${(bandTop + 30).toFixed(1)} · h1 top ${(bandBot + 3.67).toFixed(1)}`, `cy ${cy.toFixed(1)} · h1 top ${hb.top.toFixed(1)}`, Math.abs(cy - (bandTop + 30)) < 0.6 && Math.abs(hb.top - (bandBot + 3.67)) < 0.6); }
       /* ⑤ end */
       window.scrollTo(0, 0); const syEnd = window.scrollY;   // at the top: the whole 60 scrolls back (scrolled ≥ 60 the content would stay put instead)
       const tE = performance.now(); done(); await sleep(60);
@@ -86,7 +89,7 @@
         const mtEnd = app ? getComputedStyle(app).marginTop : "-";
         num("下拉刷新 ⑪ 结束后缩进 .3 s 滚回：逐帧 margin 对 60 × (1 − sin²(π/2 · t/.3)) 的 rms（px，" + bt.length + " 帧）", 0, rmsB, 0.5);
         check("下拉刷新 ⑪ 滚回中途版面真在动：+60 ms 左右读到的 computed margin-top 在 0 与 60 之间、与该时刻公式值差 ≤ 6 px（一帧的斜率）", "0 < m < 60 · |Δ| ≤ 6", midBack ? `t ${midBack.t.toFixed(3)} m ${midBack.m.toFixed(1)} vs ${exp(midBack.t).toFixed(1)}` : "no sample", !!midBack && midBack.m > 0 && midBack.m < 60 && Math.abs(midBack.m - exp(midBack.t)) <= 6);
-        check("下拉刷新 ⑪ 滚回收尾：margin 0、.ptr-inset 已除、滚回动画结束", "0px · no class · back null", `${mtEnd} · ${app && app.classList.contains("ptr-inset") ? ".ptr-inset" : "no class"} · back ${R.back ? "running" : "null"} · ${bt.length} frames · scrollY at end ${syEnd}`, bt.length >= 8 && mtEnd === "0px" && !!app && !app.classList.contains("ptr-inset") && !R.back && !R.insetOn); }
+        check("下拉刷新 ⑪ 滚回收尾：header margin 0、body.ptr-inset 已除、滚回动画结束", "0px · no class · back null", `${mtEnd} · ${host.classList.contains("ptr-inset") ? "body.ptr-inset" : "no class"} · back ${R.back ? "running" : "null"} · ${bt.length} frames · scrollY at end ${syEnd}`, bt.length >= 8 && mtEnd === "0px" && !host.classList.contains("ptr-inset") && !R.back && !R.insetOn); }
       /* R5 — the arms' geometry (refresh-native-formula.md §10, probe): 8 arms, each 3.667 × 10 with corner 1.833, inner end 5 pt from the centre (outer 15),
          every 45°; the box centred at safe-area top + 54 + 30; colour token --ios-spinner (secondaryLabel α .6) */
       { const box = ai.getBoundingClientRect(), cx = box.left + box.width / 2, cy = box.top + box.height / 2, a0 = arms[0], c0 = getComputedStyle(a0);

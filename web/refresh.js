@@ -35,21 +35,22 @@
    The inset on the web (R5′): UIKit's contentInset changes the rest position without moving the content (the offset is kept, the bounce lands
    at the new rest). A CSS inset moves the content, and while the finger is down the browser holds the content by its own overscroll offset, so
    an inset change under the finger would be a 60 pt hop. Rule here: an inset change is applied when the finger is up, or at the release — the
-   moment the browser's bounce-back starts and lands at the new rest. The inset is the list's (#app margin-top): the large title (header) stays
-   put like the bar's own title in the nav-bar-hosted layout (§0 last row; the control's place relative to a LARGE title is unread there), and
-   the control at safe-area + 54 + 30 (R5, §10 — a small-title probe) sits in the gap between the title and the list.
+   moment the browser's bounce-back starts and lands at the new rest. The inset is the header's top margin (body.ptr-inset > header, R68′):
+   §12 (R68, _UINavigationBarLayout _updateRefreshControlLayoutData 0x1c496da20) — the hosted refresh control is a bar layout item of order 70,
+   stacked ABOVE the large-title item (order 60) and below the 54 pt content bar (order 80); the control is 60 high and centred in its item
+   (height / centerY constraints 0x1c4155e98–0x1c4155ee8) → the band is safe-area + 54…114 with the spinner centre at +84 (R5's placement, =
+   数据 R13's measured (220, 146)), and the large title together with everything under it is pushed down 60 while refreshing.
 
    States (the decompiled machine, §0 "状态机"): 0 idle · 1 revealing · 3 refreshing · 4 going away. (2 is the instantaneous trigger step; 5 / 6 are
    the bounce-back edge cases, not modelled — a finger returning during 4 is treated as a new pull.)
 
    Left out (unread in the source, refresh-native-formula.md §6): the rubber-band mapping of the pull (§6.3 — the finger's distance is used), the
-   concealing mask when the content scrolls over the control (§6.5), the haptic (§6.6), the control's place relative to a large title in the
-   hosted layout (§0 last row).
+   concealing mask when the content scrolls over the control (§6.5), the haptic (§6.6).
    Instruments: window.Refresh.__drive({ pull, v, down }) feeds a pull without touch events; Refresh.trace = the frames of state 3 (t from the
    trigger, rot, p, b, the arms' alphas and arm 7's transform) and Refresh.backTrace = the frames of the scroll-back (t, margin), both on the
    driver's own frame clock (accept-refresh.js, A15). */
 (function () {
-  const ptr = document.getElementById("ptr"), ai = document.getElementById("ptrai"), app = document.getElementById("app");
+  const ptr = document.getElementById("ptr"), ai = document.getElementById("ptrai"), app = document.body;   // app: the inset host (body.ptr-inset > header margin-top, R68′)
   if (!ptr || !ai) return;
   const arms = [...ai.querySelectorAll("i")];
   const H_CTL = 60, ROT_SPUN = 3.1316, TICK_MS = 125, TICK_DEG = 45, GOAWAY_MS = 300, GOAWAY_SCALE = 0.001, SPIN_CAP_S = 4, K_PER_V = 48.333, K_MIN = 5, K_MAX = 150;
@@ -86,7 +87,7 @@
     const s = (1 + (BLOOM_SCALE - 1) * b).toFixed(4), dy = (BLOOM_DY * b - ARM_CENTRE).toFixed(3);
     arms.forEach((a, i) => { a.style.transform = `rotate(${i * TICK_DEG}deg) translateY(${dy}px) scale(${s}) translateY(${ARM_CENTRE}px)`; });
   };
-  /* the inset (#app margin-top) — applied / removed only with the finger up (see the header) */
+  /* the inset (body.ptr-inset > header margin-top: the large title and the list go down together, §12) — applied / removed only with the finger up (see the header) */
   const insetApply = () => { if (insetOn || !app) return; insetOn = true; back = null; app.classList.add("ptr-inset"); app.style.setProperty("--ptr-inset", H_CTL + "px"); };
   const insetClear = () => { if (!app) return; app.classList.remove("ptr-inset"); app.style.removeProperty("--ptr-inset"); back = null; };
   const insetRemove = (animated, now) => {
