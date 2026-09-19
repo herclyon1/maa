@@ -21,12 +21,13 @@
   const bar = document.getElementById("topbar"), h1 = document.querySelector("header h1");
   if (!bar || !h1) return;
   const B = 14, THRESH = 0.05, FADE_S = 0.2, STRETCH_MAX = 1.1, STRETCH_K = 0.66;
+  const ZONE_BELOW = 7.67;   // §10b ①: the large-title label box sits 3.67 under the bar zone and 7.67 above the zone's bottom (probe, 34 pt bold label 40.67 tall)
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   let p = 52, restBottom = 0, barBottom = 0, dragging = false, snapping = false, snapRaf = 0, lastTouchEnd = -1e9;
   const api = { snap: true };   // snap: the 2.8 release retarget (accept-topbar.js turns it off while it scrolls programmatically)
   const measure = () => {   // at rest (scrollY 0): the collapse range p and where the bar's bottom edge is
     const y = window.scrollY, hr = h1.getBoundingClientRect(), br = bar.getBoundingClientRect();
-    barBottom = br.bottom; restBottom = hr.bottom + y; p = Math.max(1, restBottom - barBottom);
+    barBottom = br.bottom; restBottom = hr.bottom + y; p = Math.max(1, restBottom + ZONE_BELOW - barBottom);   // p = the title zone (label box + 7.67) = 52 in the native geometry (§10 / §10b)
   };
   /* §2.4/§2.5 progress → the two titles' alpha (binary, transitions in CSS) */
   const progressOf = (s) => { const c = p - s; return c >= p - B ? 1 : (c <= 0 ? 0 : (c - B) / (p - B)); };
@@ -34,13 +35,13 @@
   const stretchOf = (over) => clamp(1 + over / (devicePixelRatio * screen.height * STRETCH_K), 1, STRETCH_MAX);   // 2.7 (over = pull-down pt)
   const apply = () => {
     const y = window.scrollY; if (y === 0) measure();   // at rest the geometry is re-read (layout may have changed since load: fonts, data, header content)
-    const s = clamp(y, 0, p), inline = progressOf(s) < THRESH ? 1 : 0;
+    const s = clamp(y, 0, p), inline = s >= p - 0.5 ? 1 : 0;   // §10b ④ (probe): the switch when the zone is fully under the bar (s ≈ 52), not at §2.5's 0.95·(p − b) = 36 — R17 / 老网页 to reconcile; progressOf() kept for the record
     const clip = Math.max(0, barBottom - (restBottom - y - h1.offsetHeight));   // how much of the large title is under the bar (px from its top)
     const st = root.style;
     st.setProperty("--tb-s", s.toFixed(2)); st.setProperty("--tb-small", String(inline)); st.setProperty("--tb-large", String(1 - inline));
     st.setProperty("--tb-clip", Math.min(clip, h1.offsetHeight + 2).toFixed(2) + "px");
-    st.setProperty("--tb-edge", y > 0.5 ? "1" : "0"); st.setProperty("--bar", y > 0.5 ? "1" : "0");   // the old glass/line hook follows the edge (binary; its fade is unread)
-    st.setProperty("--tb-stretch", stretchOf(Math.max(0, -y)).toFixed(4));
+    st.setProperty("--tb-edge", y > 0.5 ? "1" : "0"); st.setProperty("--bar", y > 0.5 ? "1" : "0");   // the edge line: 0/1 here, its 0.517 s fade-in curve is in topbar.css (§10b ②)
+    st.setProperty("--tb-stretch", "1");   // §10b ③ (probe): the large title does not scale when pulled past the top — it only translates with the content; stretchOf() (2.7) kept for the record
   };
   /* 2.8 release snap: only when the scroll settled inside the collapse range and no finger is down */
   const settle = () => {
@@ -64,5 +65,5 @@
   addEventListener("resize", () => { measure(); apply(); });
   addEventListener("load", () => { measure(); apply(); });   // the stylesheets are all in effect by then (a late topbar.css would leave p from index.html's geometry)
   measure(); apply();
-  Object.assign(api, { measure, apply, progressOf, snapTarget, stretchOf, B, THRESH, FADE_S }); Object.defineProperty(api, "p", { get: () => p }); window.Topbar = api;
+  Object.assign(api, { measure, apply, progressOf, snapTarget, stretchOf, B, THRESH, FADE_S, ZONE_BELOW }); Object.defineProperty(api, "p", { get: () => p }); window.Topbar = api;
 })();
