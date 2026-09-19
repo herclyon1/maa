@@ -2105,8 +2105,12 @@ boot();
    the bottom. window.__tabKbd(h) runs the same code with a pretended visual-viewport height (accept). */
 { const vv = window.visualViewport;   // 监督局 19:3x: the state comes from the visual viewport ONLY — no focus-driven hiding (a focused segment / tab button must never touch the capsule)
   const kbInput = (el) => !!el && ((el.tagName === "INPUT" && !/^(checkbox|radio|range|button|submit|reset|file|color|hidden)$/i.test(el.type)) || el.tagName === "TEXTAREA" || el.isContentEditable === true);   // a <select> opens a menu, not the keyboard
-  const apply = (h) => { const vh = h != null ? h : (vv ? vv.height : innerHeight), kbd = innerHeight - vh > 120; document.documentElement.classList.toggle("kbd", kbd); return kbd; };
-  window.__tabKbd = (h) => apply(h);
+  /* kbd = the viewport is > 120 px shorter than the window AND a text field has the focus — the keyboard cannot be up without one, so a blur alone brings
+     the capsule back (数据 live 190821: field focused → tap a segment → keyboard slid down with the blur but html.kbd stayed: the 60 ms re-check ran mid-slide
+     with the viewport still short and no later visualViewport resize event arrived). Re-checked on visualViewport resize / scroll, window resize / scroll,
+     every pointerdown, and 0 / 60 / 300 / 600 / 1000 ms after a text field's blur. */
+  const apply = (h, strict) => { const vh = h != null ? h : (vv ? vv.height : innerHeight), kbd = innerHeight - vh > 120 && (h == null || strict ? kbInput(document.activeElement) : true); document.documentElement.classList.toggle("kbd", kbd); return kbd; };
+  window.__tabKbd = (h, strict) => apply(h, strict);
   /* the focused field must end up inside the visible (keyboard-free) part of the viewport. WebKit reveals it itself on focus; on the phone the first
      focus of the time field after load stayed under the keyboard (数据 190821 vs 181053, +1.5 s still hidden; the second focus was revealed). What this
      block does at focus time is one class toggle on <html> (the fixed capsule → display:none) — no preventDefault, no blur, no scrollTop / scroll writes,
@@ -2120,7 +2124,8 @@ boot();
     if (r.bottom > top + vh - 8 || r.top < top + 8) { scrollBy({ top: (r.top + r.height / 2) - (top + vh / 2), behavior: "smooth" }); return true; } return false; };
   window.__kbdReveal = (h) => reveal(h);
   if (vv) { vv.addEventListener("resize", () => { apply(); requestAnimationFrame(() => reveal()); }); vv.addEventListener("scroll", () => apply()); }
-  addEventListener("focusout", (e) => { if (kbInput(e.target)) setTimeout(() => apply(), 60); }); }   // a text field losing focus: re-read the viewport (the keyboard's resize event normally does it); focusin does nothing
+  addEventListener("resize", () => apply()); document.addEventListener("pointerdown", () => apply(), { capture: true, passive: true });
+  addEventListener("focusout", (e) => { if (kbInput(e.target)) for (const ms of [0, 60, 300, 600, 1000]) setTimeout(() => apply(), ms); }); }   // a text field losing focus: the keyboard is going — re-check through its slide; focusin does nothing
 
 /* 添加到主屏幕后**第一次**从图标启动，滚动位置停在 −62（visualViewport offsetTop −62，整页下沉 62；杀掉重开为 0）——数据会话 9c22044 ?diag 实拍，
    每次添加后的首启必现，不是 env() 也不是 padding。发现负滚动就归零。 */
