@@ -18,6 +18,7 @@ compiled from the native per-frame recordings. Nothing here touches `view.js` / 
 | `gen_seg_keys.py` → `seg-keys.css` | lift / release / commit / drag keyframes compiled from the native frame data (§5) |
 | `verify_lens_maps.py`, `gen_lens_maps.py` without `--formula` | the earlier measured-resampling mode (§1–§4, record only): resamples the phase files into maps — no longer part of the deliverable |
 | `calib/` | WebKit feDisplacementMap calibration (`gen_calib.py` → maps + `webkit-displacement.html`, `check_calib.py` reads a render): the engine applies negative displacements one device pixel short (§0.4) |
+| `tools/fringe_check.py` | the A1 8× three-item check (coloured share of the outer 12 pt, saturation mean / median, the ends' colour order) on any screenshot of the held lens (§0.5) |
 | `lens-engine-fix.js` | 引擎校正, default on: re-encodes the bg / label maps at page load so negative displacements are one device pixel longer (k = 1/devicePixelRatio), blob: copies only (§0.4); load after the `<svg>` |
 
 ## 0 Formula maps — 反编译原值（公式 + 探针参数） (2026-09-19)
@@ -349,6 +350,25 @@ y634 left gaps 0.93 · **3.00** · 3.51 · 3.03 · 3.49 (the 2.49 gone; native 3
 §0c: 左「早班」 ink −25 % (dark −30 %), box unchanged; 右「晚班」 ink +17 % (dark +26 %), 「班」 height 11.67 → **14.16** (dark 13.67;
 native 15.0; before 13.66).
 
+**formula.md §4b.1 (the old page's closed form for the label copy at the ends, 2026-09-19) against these maps:** the composition
+`compose_stages` IS §4b.1 D — q = p − 8.8·Dc(s/7.04)·g, r = q − 17.5·Dc(s₂/11.2)·g₂, pixel = label(r)·cov(p)·cov_L2(q), the same
+ovalized g (mix of the capsule normal and normalize((p.x, 5·p.y)), ½), the same Dc = 1 − √(2t − t²); along the end's normal it
+returns §4b.1 C's table to the last digit (s 0 / .5 / 1 / 2 / 2.64 / 4 / 5 / 6 / 7.04 / 8 / 9 / 10 / 11.2 → r 9.21 / 8.01 / 7.92 /
+7.95 / 7.97 / 7.93 / 7.93 / 8.02 / 8.29 / 8.73 / 9.34 / 10.10 / 11.2; r_min 7.92 at the fold q* 5.16). Two read details of §4b.1 A / D
+were not in the generator and are now (`--device-px 3`): the coverage's anti-alias width = one device pixel (⅓ pt; it was one map
+texel, ½ pt) and the sampler's clamp = the last texel centre (½ device px inside the box, then clamp_to_edge). The 31 + 12 sets
+regenerated: the 220 label map's R / G bytes are unchanged (the clamp's ⅙ pt is below a byte), its B changes on 256 boundary
+pixels (the narrower ramp); the backdrop map's boundary bytes by ≤ 1 (the clamp). The phase residuals are unchanged.
+
+What §4b.1's platform means for the checks (`4b1-4x-{light,dark}.png`, rows: native / the maps rendered EXACTLY in numpy — the
+formula at 6 px/pt with a bilinear fetch of the label raster, no engine / WebKit with the engine correction; `numpy-label-*.png`):
+the exact render gives 右「班」 height **15.33** (light) / **15.00** (dark) against the native's 15.0 and the native's horizontal streaks
+(the source column at depth 7.92–8.0 replicated over s .5–6: the glyph's horizontal strokes become streaks); WebKit gives 14.16 /
+13.50 and a lump — the platform is 0.1 pt wide, so the engine's ½-px quantisation of the fetch (fact 1) lands one source column
+over, on 「班」's vertical stroke. 左「早班」 ink −30 % in the exact render (native −37 %; WebKit −25 %); 右「晚班」's thresholded ink
+(< 100 at 6 px/pt) reads −10 % in the exact render (blended streaks) where the native's +37 % is counted at 3 px/pt on
+hard pixels — the ink count is not comparable across rasters, the height and the morphology are.
+
 **Engine fact 2 — the source fetch is nearest-neighbour at the device pixel, CoreAnimation's is bilinear (2026-09-19; not
 treated, candidates listed for the supervisor):** what the calibration shows is a displacement quantised to whole device pixels
 (the applied values above are all multiples of the pixel; a bilinear fetch would need no quantisation) and the renders show only
@@ -457,6 +477,24 @@ listed for a saturation above the native's, each rendered on its own — none ad
 | ③ W/H = 220/44 = 5 | 0.78 % | 102 / 92 | 96 23 4 / 186 51 18 |
 | the chain off | 0 % | — | 0 / 0 |
 
+**The check tool (B4-c' / C1, 2026-09-19): `tools/fringe_check.py <png> [--layout auto|wksnap|seghold|native-crop] [--lens x,y,w,h]
+[--scale px/pt] [--theme light|dark] [--json]`** — the three items above on any screenshot of the held lens (a wksnap 440×956 @6
+render of the test page, a standalone 3× device screenshot of `index.html?seghold` (lens 110, 731.67, 220, 44 — the C1 tables'
+track top 737.67), or the native crops), measured at the native's 3 px/pt (a 6 px/pt render is box-filtered first); the colour
+order per 2-pt row with a centroid test whose expectation flips with the theme (dark = white labels: right yellow-above-blue,
+left blue-above-yellow — as the native dark crop reads). Expected values from the native crops and the current test page
+(engine correction on, wksnap 2×):
+
+| image | share of the outer 12 pt | saturation mean / median | right end order | left end order |
+|---|---|---|---|---|
+| native `seg-native-dragmid-light.png` | **1.36 %** (2-pt bins L 629 383 130 / R 714 519 193) | **68.9 / 62** | blue above yellow (centroids −1.4 / +3.0) | yellow above blue (−2.5 / +0.2) |
+| native `seg-native-dragmid-dark.png` | **1.38 %** (614 361 138 / 730 555 215) | **70.7 / 63** | yellow above blue (−2.2 / +0.9) | blue above yellow (−2.4 / +0.7) |
+| test page light, `wk-mid-fix-light.png` | 1.15 % (130 64 7 / 204 111 36) | 82.7 / 73 | OK (−1.7 / +5.2) | OK (−0.2 / +0.8) |
+| test page dark, `wk-mid-fix-dark.png` | 1.02 % (128 53 4 / 192 88 24) | 79.0 / 70 | OK (−1.7 / +5.4) | OK (−0.6 / +0.9) |
+
+(Before the engine correction the test page read 0.64 % / 93 — the rounding shortfall shrank the streaks; the table of candidates
+below was taken then.)
+
 Every candidate raises the saturation further, so none of the three is the difference. What the numbers say instead: (a) the
 colour order per streak is the native's — right end blue above / yellow below, left end yellow above / blue below, per 2-pt
 row at both ends; (b) with the chain off the ends carry no colour at all, i.e. every coloured pixel comes from the chain, and
@@ -553,6 +591,76 @@ the label copy 1.16 about the lens centre and the platter 1.0516 (the presentati
 apply these maps — the fields above were measured with both transforms in and are not comparable with the maps alone (the tab
 maps' own check waits for that page; not done here, the tab order comes after the segment lens). The WebKit render
 (`tab-lens-native-vs-webkit.png`, rows none / light / dark / native held) shows the edge bands only.
+
+### 0.8 Tab bar lens — wiring package for GOAL 3 (2026-09-19; not wired here; one page for the ui session)
+
+Sources: `remote-ref/tab-lens-native.md` §0 / §3 (the data session's A9 dump: layers, keys, transforms), `tools/uiprobe/tab-lens-table.md`
+(the 82-layer table), `remote-ref/tab-lens-motion.md` §0 / §4 (the old page session's per-frame curves), `formula.md` §4b (the layer
+structure, the same for the tab lens — "标签栏透镜同结构"), §5b (the two transforms in the copy chain), this README §0.7 (the sets, the
+chain check). Model geometry in the platter's own coordinates (the probe's window coordinates: platter (83, 873, 274, 62), centre
+(220, 904); the three `_UITabButton`s 94×54 at centres 134 / 220 / 306, i.e. 86 pt apart; the resting lens 94×54 r27 at (87, 877) = on
+the first button, centre (134, 904); the lifted lens 110×70 r35 at (79, 869), the same centre).
+
+**1. The sets** (`tab/tab-f-{bg,lab,ab}-<w>.png`, `tab/lens-filter.svg` → `#tab-lens-f-bg-<w>`, `#tab-lens-f-lab-<w>`, `#tab-lens-f-ab-<w>`
+(the fringe; `-ab-ir-` = record), hrefs `assets/lens/tab/…`; copy the `<svg>` into index.html like the segment one and load
+`assets/lens/lens-engine-fix.js` after it):
+
+| w | h | r | what | S (`data-s` of bg / lab) | S_ab (fringe) |
+|---|---|---|---|---|---|
+| 94 … 108 step 2 | 54 … 68 (= w − 40) | h/2 | the lift path: the model bounds grow from 94×54 to 110×70 by the same amount on both axes, the SDF heights stay (36 / 11.2 / 7) | 40 | 16 |
+| 110 | 70 | 35 | the lifted model — **the set the lifted / held lens uses** (the platter's 1.0516 is a transform, below) | 48 | 16 |
+| 112 … 116 | 71.27 … 73.82 | h/2 | the lifted model scaled uniformly, for a wiring without the platter transform only (116 ≈ 115.68 presented, not exact) | 48 | 16 |
+
+Pick the set by the lens's model width (even; nearest), no interpolation; the filter's `scale` attribute = the set's `data-s` × the
+lift progress p (native: the displacement amounts +9 / −17.5 / −14 ramp on the same spring as the size; the bg map is linear in
+the amounts, the label map (two stages composed) nearly so — ≤ the map quantisation for p ≥ 0.5; at p 0 the filters are off).
+
+**2. The two transforms** (tab-lens-native.md §3; the verification chain of §0.7 = validate_tab.py): while lifted the platter
+`_UITabBarItemPlatterView` presents at scale **1.0516** about its centre (220, 904) (model identity; presFrame (75.93, 871.40,
+288.14, 65.20); the lens inside → (71.72, 867.19, 115.68, 73.61)); each direct subview of the SelectedContentView (the three
+buttons; the copy the portal shows) carries transform scale **1.16** about its own centre (icon 29.33 → 34.03, TitleWrapper
+94 → 109.04). 1.16 × 1.0516 = 1.22 at the centre. In the page: the lens element (110×70, position in the platter's model space)
+carries `transform: scale(var(--tplatter-scale))` with `transform-origin` at the platter centre (in its own coordinates: platter
+centre − lens position); the copies inside it (the page + the platter + its items, in the lens's model space) carry the inverse
+`scale(calc(1 / var(--tplatter-scale)))` about the same point, so on screen the page stays 1:1 and the platter 1.0516 (the
+BackdropView captures the screen in the platter's model space); the label copy's items carry `scale(var(--titem-scale))` about
+their own centres; the platter itself `scale(var(--tplatter-scale))` about its centre. The filters act in the lens's model space
+(the 110 set). Test page: `tab/lens-test-tab.html?tab=1` does exactly this (`PS`, the copies' inverse, `.labels .tabbar span`).
+
+**3. The layers** (formula.md §4b mapped onto the tab lens with its own keys; tab-lens-native.md §0):
+
+| # | layer | what the page does | keys (原值) |
+|---|---|---|---|
+| 0 | the platter + its normal items | the page; **DestOut #76** (110×70 r35 at the lens frame, opacity 0 → 1 on lift) punches the normal items INSIDE the capsule only — the copy in the backdrop layer keeps the platter + the items with the capsule cut out (`.punch`, `clip-path: path(evenodd …)`, the capsule scaled with the lens) | DestOut cornerRadius 35 |
+| rest | `_UITabSelectionView` #30 | the resting selection platter under the items: a backdrop (scale .25) with gaussianBlur 2 (normalizeEdges 1) + colorMatrix (diag 1.185 / 1.150 / 1.195, row bias −.050 / −.005, offset −0.2), 94×54 r27, **opacity 1 → 0 on lift** — material tokens (界面1号 / 材质); it fades as the lens lifts | tab-lens-table.md #30 |
+| 1 | BackdropView #27 (marginWidth 0) | `#tab-lens-f-bg-<w>` on the copy of what lies under the lens (page + platter + punched items): stages −10.5 / 7 (glassBackground inner refraction, sampled first) → +9 / 36 (SDF capsule r35, ovalization .5); the layer = the lens box, overflow hidden, samples clamped in the map | displacementMap +9, SDF height 36, curvature 1 |
+| 2 + 4 | ClearGlass #34 (−17.5 / 11.2 on portal #36 → SelectedContentView, hidesSourceLayer 1, masksToBounds r35) and ContentLensing #46 (−14 / 11.2 on the 94×54 portal, does not clip) | `#tab-lens-f-lab-<w>` on the label copy (the SelectedContentView copy: the items at 1.16, capsule-clipped BEFORE the filter by the layer's border-radius); u = Δ_L(p) + Δ_C(p + Δ_L(p)) | −14 / 11.2 → −17.5 / 11.2 |
+| 3 | glassBackground #41 (marginWidth .667) | the material on top of layer 1: KeyFill .5, ring shadow offset 8 / opacity .1 / stroke 4 / blur 3, ShadowAmount 17.5, BlurDistance0 −10, FaceColorMatrix white 1 / black 0, BleedDarkenBlend light 1 / dark 0 — material tokens; only the −10.5 / 7 refraction is in the map | seg-lift-material.md §2 keys × the tab's three differences |
+| 5 | glassForeground #49 (marginWidth 100) | `#tab-lens-f-ab-<w>` on the wrapper of both layers over a plain page copy (16 pt beyond the lens); W/H per frame from the capture box (lens screen frame + 100 each side, clamped to the screen) into `#tab-lens-f-ab-<w>-wh` (`wh_matrix`); blend α = e | aberration 3.6842 / offset 38.889 / angle −0.2618 / edge −14 … 0 / opacity 1 → 0 |
+| 6 | KeyFill UISDFView #52 + vibrantColorMatrix | the highlight (keyfill-highlight.md §2; curvature .75, the 22 params as the segment lens) — material | |
+| 7 | inner shadow #37 | invertsShadow 1, .06 / r3 / (0, 7), r35 — material | |
+| glow | `_UIFlexInteractionGlowContainerView` (platter-sized, white, opacity .845, vibrant matrix) + `_UIFlexInteractionLittleGlowView` (93×93 circle at (87.5, 857.5), white shadow r 46.5, opacity **0 → .2 on lift**) | the platter's lift glow — the segment lens does not have it | tab-lens-native.md §0 |
+| pres | `_UILiquidLensView` presentation transform | not used by the tab (the platter carries the 1.0516; the flex stretch during a page change is the lens's own size, sets 112 … 116 or the transform) | |
+
+**4. Motion** (tab-lens-motion.md §0 / §4 — the read curves; the drag rule is unverified):
+
+| state | curve | drives |
+|---|---|---|
+| lift (press the selected item) | one spring **ζ 1 / response 0.25 s** (ω 25.13) for everything, start = the animation's start (the SDF height's frame) + ≤ 5 ms | size 94×54 → 110×70 (r 27 → 35, the set by w), the filters' scale 0 → S (Backdrop +9 h36, ClearGlass −17.5 h11.2, ContentLensing −14 h11.2), `_UITabSelectionView` α 1 → 0, DestOut α 0 → 1, `--titem-scale` 1 → 1.16, `--tplatter-scale` 1 → 1.0516, little glow α 0 → .2 |
+| drop (release) | the same quantities back, **ζ 1 / 0.4 s** (ω 15.71), no delay; the ±1.6 pt wobble 0.25 s after settling is unread — not done | |
+| page change (tap another item) | position **ζ .85 / 0.4 s** from the old item centre to the new (86 pt) + the lift spring at the same time + the flex stretch (loupe: width up to 1.15 × 110 = 126.5, peak 126.2 at +0.15 s; height rebound 79.5 at +0.5 s → 73.6 at +0.9 s) | the sets 112 … 116 cover the stretch only up to 116; beyond it the 110 set under a transform (§0.3's rule) until the data session records the drag / stretch frames |
+| drag (hold and move) | flex-interaction.md §6 (target = finger, ζ .85 / .2, effective the next tick, + drift (1 − sX)·W/2; loupe min .75 / max 1.15) — **unverified for the tab** | |
+
+**5. Per-frame variables** (one place, the lift progress p from the spring; the page sets them, the CSS reads them):
+`--tlens-w` / `--tlens-h` (the model size: 94 + 16p × 54 + 16p; the set = the nearest even w), `--tlens-r` (h/2), `--tlens-x` / `--tlens-y`
+(the lens's model position in the platter: 79 + 86·(item index) − 8·… i.e. centre (134 + 86·i, 904) − size/2), `--tplatter-scale`
+(1 → 1.0516), `--titem-scale` (1 → 1.16), `--tlens-scale-bg` / `--tlens-scale-lab` (the feDisplacementMap `scale` attribute = the
+set's data-s × p; set on the elements, not CSS), `--tsel-alpha` (1 → 0), `--tdestout-alpha` (0 → 1), `--tglow-alpha` (0 → .2),
+`--tab-ab-wh` (the fringe W/H: capture box (lens screen frame ± 100, clamped to the screen) width / height → the `#…-wh`
+matrix values; 1.72-class numbers for the segment, ≈ 1.08 for a lens at the bottom of the 956 screen), `--tlens-ab-scale` (the
+fringe filter's scale: the aberration amount does not appear in the motion trace — not ramped in the read data; at p 0 the layer is
+off). Nothing here is a fitted value: every number above is a read key or the read curve; what is not read (the drag rule, the wobble,
+the stretch beyond 116) is marked so.
 
 ## 1 Source (measured-resampling mode, record): the native segmented lens's own field (data session, 2026-09-19)
 
