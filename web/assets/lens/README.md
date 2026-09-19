@@ -786,6 +786,18 @@ stretched over the presented box), the real `nav.tabs` carries `translateX(-50%)
 platter copy inside the lens is a clone of the page under the bar with `filter: var(--glass-filter)` + `var(--glass-fill)` in the
 platter capsule.
 
+### 0.8.2 B6-c — the segment lens's edge lines, the asset + the patch text (2026-09-19 11:5x; `B6C-PATCH.md`)
+
+`lens-filter.svg` → `#seg-lens-f-ish` (generated: `gen_lens_maps.py` `filter_inner_shadow`, also `#tab-lens-f-ish` in the tab families
+when they are regenerated): the ClearGlass inner shadow #21 as QuartzCore rasterises it — keyfill-highlight.md §5.2c: α = op · M · blur_σ(M −
+M↓off), op .06 / offset 7 / σ = shadowRadius 3 — as feOffset → feComposite out → feGaussianBlur → feComposite in → α × .06, on a black capsule
+of the lens box. WebKit column x 220 rows 602–613 vs the closed form: within .001 on 602–609, the tail one 8-bit level low (table in
+`B6C-PATCH.md` §4); the old CSS inset box-shadow reads .057 on the top rows (the complement construction, ruled out by §5.2c). The other three
+items of the order (k without compression — amount uniform 1/.5 − 2 = 0, keyfill §5.1 B6-3; the fwidth AA — per-fragment, ⅓ pt at 3×, equal
+to the hard rings at pixel centres on the straight edges and to coverage AA on the arcs, keyfill §2 B6-2; the white stack clipped to the
+capsule) are view.js / index.html numbers of the ui session: written as line + old → new + source in `B6C-PATCH.md` §1–§3. The regeneration
+also restored `lens-field.json`'s `verification` block (it had been emptied by a run without `--verify-*`; §7's command).
+
 ### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
 
 Sources: `remote-ref/sheet-native.md` (the data session's 10th order: A9 `sheetivars` / `corners` / `subtree` / motion, iOS 27.0 3×) and
