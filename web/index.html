@@ -3948,12 +3948,23 @@
   { let t0 = 0; addEventListener("DOMContentLoaded", () => { t0 = performance.now(); performance.mark("seg:enginefix-start"); });
     addEventListener("lens-engine-fix", () => { try { performance.measure("seg:enginefix", { start: t0, end: performance.now() }); } catch (e) {}
       window.__segEngineFix = { maps: document.querySelectorAll("feImage[data-engine-fixed]").length, k: window.LENS_ENGINE_FIX_K, ms: Math.round((performance.now() - t0) * 10) / 10 }; }); }
-  if (q.has("segx")) { const sw = q.get("segx").split(",");
+  /* ?segx1=<key> (首张玻璃帧开关清单, 验收 09-19 13:0x): one layer / filter of the first lifted frame per key, same set as ?segx (view.js SEGX merges both):
+     nowarp (§4b L1 BackdropView copy .warp) · nobgmap (its displacement filter #seg-lens-f-bg only, view.js frame()) · nopunch (§4b L0 DestOut: the label
+     copy with the capsule cut, .warp .punch) · nowarpl (§4b L2+L4 label copy .warpl) · nolabmap (its filter #seg-lens-f-lab only) · noplat (restingBackground
+     .plat) · nobase (.stack .base plain page copy) · nostackclip (.stack clip-path) · noish (§4b L3 #21 inner shadow filter σ3) · nors (L3 ring shadow blur) ·
+     nokf (L3 KeyFill dark line rings) · nokfmask (its SVG mask) · norimo (the outside clone .rimo) · nohl (§4b L6 #36 highlight, all four SVGs) · nohlk / nohlw
+     (black / white stacks) · nohlm / nohld (main / diffuse pairs) · hlclip0 (their capsule clip) · nolensbg (keep the white .lens under the glass) · scale0
+     (displacement scale held at 0) · mapflat (1×1 constant maps) — structural: nokeep (layers display:none from the down to the lift, the pre-286c4d2
+     behaviour) · gpu (will-change: transform on .stack/.rimo/.hlk/.hlw/.warp/.warpl) · plus ?prewarm=0 / ?bake=1 (2号 lens-map-dpr.js) / ?enginefix=0. */
+  if (q.has("segx") || q.has("segx1")) { const sw = ((q.get("segx") || "") + "," + (q.get("segx1") || "")).split(",").filter(Boolean);
     const css = []; if (sw.includes("nowarp")) css.push(".segctl .warp{visibility:hidden}"); if (sw.includes("norimb")) css.push(".segctl .rimb{visibility:hidden}");
     if (sw.includes("hlclip0")) css.push(".segctl .hlk,.segctl .hlw{clip-path:none}");   // B6-c §3 before / after switch
     if (sw.includes("nohl")) css.push(".segctl .hlk,.segctl .hlw{visibility:hidden}"); if (sw.includes("nohlk")) css.push(".segctl .hlk{visibility:hidden}"); if (sw.includes("nohlw")) css.push(".segctl .hlw{visibility:hidden}");
     if (sw.includes("nowarpl")) css.push(".segctl .warpl{visibility:hidden}"); if (sw.includes("noplat")) css.push(".segctl .plat{visibility:hidden}");
     if (sw.includes("noish")) css.push(".segctl .rimb .ish{visibility:hidden}"); if (sw.includes("nors")) css.push(".segctl .rimb rect.rs{visibility:hidden}"); if (sw.includes("nokf")) css.push(".segctl .rimb .kfg{visibility:hidden}");
+    if (sw.includes("nopunch")) css.push(".segctl .warp .punch{display:none}"); if (sw.includes("nobase")) css.push(".segctl .stack .base{visibility:hidden}"); if (sw.includes("nostackclip")) css.push(".segctl .stack{clip-path:none}");
+    if (sw.includes("norimo")) css.push(".segctl .rimo{visibility:hidden}"); if (sw.includes("nohlm")) css.push(".segctl .hlk.m,.segctl .hlw.m{visibility:hidden}"); if (sw.includes("nohld")) css.push(".segctl .hlk.d,.segctl .hlw.d{visibility:hidden}");
+    if (sw.includes("nolensbg")) css.push(".segctl.lift .lens{background:var(--ios-segment-selected-bg)}"); if (sw.includes("gpu")) css.push(".segctl .stack,.segctl .rimo,.segctl .hlk,.segctl .hlw,.segctl .warp,.segctl .warpl{will-change:transform}");
     if (css.length) { const st = document.createElement("style"); st.textContent = css.join("\n"); document.head.appendChild(st); }
     if (sw.includes("mapflat")) for (const fi of document.querySelectorAll("filter[id^='seg-lens-f-'] feImage")) fi.setAttribute("href", "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mNoaPgPAAODAgA+WCglAAAAAElFTkSuQmCC");
     const only = sw.includes("maponlyr") ? "r" : sw.includes("maponlyg") ? "g" : "";
