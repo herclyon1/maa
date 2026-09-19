@@ -193,13 +193,13 @@ void main(){
       return st.ready; };
     const loadedNearest = (w) => { const cands = widths.filter((x) => sets[x] && sets[x].loaded); if (!cands.length) return null; let best = cands[0], dd = Infinity; for (const x of cands) { const d = Math.abs(x - w); if (d < dd) { dd = d; best = x; } } return best; };
     const preload = opts.preload || [widths.includes(220) ? 220 : widths[0]]; for (const w of preload) loadSet(w);
-    let A = null, last = null;
+    let A = null, B = null, drawn = false;   /* A: pass 1's target; B: a warm-up's pass-2 target (canvas-sized, never presented); drawn: the page has drawn or cleared the canvas itself */
     const clear = () => { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, canvas.width, canvas.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); };
     let canvasOrigin = { x: 0, y: 0 };   /* the canvas's page position (the ui form moves the canvas with the lens) */
     const setState = (s) => {
       const t0 = performance.now(); const p = s.lift == null ? 1 : Math.max(0, Math.min(1, s.lift)), pd = s.pd == null ? 1 : Math.max(0, Math.min(1, s.pd));
       if (s.canvasOrigin) canvasOrigin = s.canvasOrigin;
-      if (p <= 0) { clear(); last = s; return; }
+      if (p < 0.005) { clear(); drawn = true; return; }   /* rest, including the drop's spring tail (view.js settles at sL.x < .001 and then sends lift 0): nothing is drawn — an opaque copy of the backdrop left here at a tiny p looks like the DOM until the page under it changes (a theme switch), then it is a ghost */
       const base = preload[0] || 220;
       const want = s.w <= base ? base : nearest(s.w);   /* the lift (196×28 → 220×44) rides the 220 set stretched over the growing box (README §0.3, the SVG page's rule); only the drag stretch (> 220) has its own sets */
       if (!sets[want]) loadSet(want);
@@ -218,27 +218,31 @@ void main(){
       bind(P1, "t_page", 0, tPage); bind(P1, "t_lab", 1, tLab); bind(P1, "m_bg", 2, st.bg); bind(P1, "m_lab", 3, st.lab); bind(P1, "t_ish", 4, st.ish.t); mark("uniforms_binds1");
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); mark("pass1");
       if (s._split) { gl.finish(); stats._p1 = performance.now() - t0; }
-      clear(); useProg(P2); mark("clear_useP2");
+      if (s._prewarm) { if (!B || B.w !== canvas.width || B.h !== canvas.height) B = fbo(canvas.width, canvas.height); gl.bindFramebuffer(gl.FRAMEBUFFER, B.f); gl.viewport(0, 0, canvas.width, canvas.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); }   /* a warm-up's pass 2 lands in B, never on the canvas */
+      else clear();
+      useProg(P2); mark("clear_useP2");
       gl.uniform4f(U(P2, "u_quad"), wx, wy, ww, wh_); gl.uniform2f(U(P2, "u_origin"), canvasOrigin.x, canvasOrigin.y); gl.uniform2f(U(P2, "u_view"), W, H);
       gl.uniform4f(U(P2, "u_lens"), lx, ly, lw, lh); gl.uniform4f(U(P2, "u_wrap"), wx, wy, ww, wh_); gl.uniform1f(U(P2, "u_Sab"), st.Sab); gl.uniform1f(U(P2, "u_wh"), s.wh || 1.72); gl.uniform1f(U(P2, "u_p"), p);
       gl.uniform4f(U(P2, "u_page"), region.x, region.y, region.w, region.h); gl.uniform1f(U(P2, "u_pd"), pd); gl.uniform1f(U(P2, "u_dbg"), opts.debugPass1 ? 1 : 0); gl.uniform2f(U(P2, "u_ascale"), aw / A.w, ah / A.h); bind(P2, "t_a", 0, A.t); bind(P2, "m_ab", 1, st.ab); bind(P2, "t_page", 2, tPage); bind(P2, "t_lab", 3, tLab); mark("uniforms_binds2"); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); mark("pass2");
       if (tr) { tr.set = wsel; tr.total = +(performance.now() - tr.t0).toFixed(2); stats.trace = tr; (stats.traces = stats.traces || []).push(tr); if (stats.traces.length > 60) stats.traces.shift(); }
       if (opts.finish || s._split) gl.finish();
       if (s._split) stats._p2 = performance.now() - t0 - stats._p1;
-      stats.gpuMs = performance.now() - t0; stats.frames++; stats.set = wsel; if (!s._prewarm) last = s;   /* a warm-up frame is not a state to come back to */
+      stats.gpuMs = performance.now() - t0; stats.frames++; stats.set = wsel; if (!s._prewarm) drawn = true;
     };
     /* warm-up (监督局 14:4x: the page's first glass frame stalled 46–55 ms — the shader pipelines and the textures were first used on that frame): after the
-       preloaded set is up, one lifted frame is drawn through both passes into the FBO and the canvas (cleared again in the same task — never presented),
-       then gl.finish(); again after every setBackdrop (the new textures' first use). ?glwarm=0 / opts.warm === false skips it. */
+       preloaded set is up, one lifted frame is drawn through both passes — pass 1 into A, pass 2 into B (a canvas-sized FBO): the canvas is never drawn by a
+       warm-up, so no warm-up frame can be presented or left behind — then gl.finish(); again after every setBackdrop / redrawBackdrop (the new textures'
+       first use). ?glwarm=0 / opts.warm === false skips it. */
     const WARM = opts.warm !== false && new URLSearchParams(location.search).get("glwarm") !== "0";
     const TRACE = new URLSearchParams(location.search).get("gltrace") === "1";   /* per-step gl.finish timing of every frame into stats.trace / stats.traces (last 60) — an instrument, slows the frame */
-    /* prewarm = one full lifted frame (the preloaded set, lift 1, pd 1, the current backdrop textures) through pass 1 (FBO) and pass 2 (the canvas), gl.finish after
-       each, the canvas cleared and finished (the cleared buffer is what the compositor presents: the layer's display surface gets allocated too); the per-step
+    /* prewarm = one full lifted frame (the preloaded set, lift 1, pd 1, the current backdrop textures) through pass 1 (FBO A) and pass 2 (FBO B), gl.finish after
+       each; the canvas is cleared only on an instance's first warm-up (the cleared buffer is what the compositor presents: the layer's display surface gets allocated); the per-step
        ms land in stats.prewarm (compileMs at create, mapsMs per set upload, ishMs, fboMs at the first draw, pass1Ms, pass2Ms, clearMs, totalMs) */
-    const prewarm = () => { if (!WARM) return null; const w0 = loadedNearest(preload[0] || 220); if (w0 == null) return null; const st = sets[w0]; const T = performance.now(); const prev = last;
+    const prewarm = () => { if (!WARM) return null; const w0 = loadedNearest(preload[0] || 220); if (w0 == null) return null; const st = sets[w0]; const T = performance.now();
       const t1 = performance.now(); setState({ cx: AM + w0 / 2, cy: AM + st.h / 2, w: w0, h: st.h, lift: 1, pd: 1, wh: 1.72, canvasOrigin: { x: 0, y: 0 }, _split: true, _prewarm: true }); stats.prewarm.pass1Ms = stats._p1; stats.prewarm.pass2Ms = stats._p2;
-      const t3 = performance.now(); clear(); gl.finish(); stats.prewarm.clearMs = performance.now() - t3; stats.prewarm.totalMs = performance.now() - T; stats.prewarm.at = performance.now(); stats.warmMs = stats.prewarm.totalMs;
-      if (prev && prev.lift > 0 && !prev._prewarm) setState(prev); else clear();   /* a real lifted frame drawn before the warm-up is put back; otherwise the canvas stays transparent (a20df11 ghost: a warm-up frame taken for the last state came back on the next warm-up) */
+      /* the canvas is not touched by a warm-up (its pass 2 went into B): whatever the page last drew or cleared stays; the one exception is the first warm-up of
+         an instance the page has not drawn yet — a clear then, so the canvas's display surface is allocated before the first gesture */
+      const t3 = performance.now(); if (!drawn) clear(); gl.finish(); stats.prewarm.clearMs = performance.now() - t3; stats.prewarm.totalMs = performance.now() - T; stats.prewarm.at = performance.now(); stats.warmMs = stats.prewarm.totalMs;
       return stats.prewarm; };
     const warm = prewarm;
     /* the other sets (the drag stretch's 222 … 256) are loaded one per idle slot after the first prewarm, so no gesture frame pays a set's upload + inner-shadow pass

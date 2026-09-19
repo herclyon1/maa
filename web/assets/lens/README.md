@@ -1198,6 +1198,21 @@ bug. A warm-up frame is drawn with setState, which stored it as `last`; the NEXT
 captured that stored warm-up state as "the frame to put back" and re-drew it after its clear — the lifted capsule at the canvas's top-left
 (16 … 236 × 16 … 60 pt: the warm-up's own geometry), left on screen. Reproduced in the harness (rest → redrawBackdrop → prewarm: 51 834 opaque
 pixels), fixed: a warm-up frame never becomes `last`, and after a warm-up the canvas is either restored to a REAL lifted frame or cleared.
+
+**The same ghost after a theme switch (验收 17:5x, the 17:48 build with the fix above: the switch open / off re-render is clean; light → dark
+clean; dark → light leaves the same capsule):** the theme handler (view.js `matchMedia("(prefers-color-scheme: dark)")` → `redrawBackdrop()`,
+not setBackdrop) goes through the same deferred redraw + warm-up. The Mac WKWebView does NOT reproduce it — the deployed package in the deployed
+page (`?demo=1`, one segment, a press-and-release, then the appearance switched dark → light with the window shown and with it hidden, `wktheme`)
+reads 0 opaque pixels after every step and the snapshot shows the clean control — so the phone-side mechanism is not pinned down here. What
+the package could still do to put a warm-up frame on screen is now removed structurally: a warm-up never draws the canvas at all. Its pass 2
+goes into FBO B (canvas-sized, allocated on the first warm-up), the canvas keeps whatever the page last drew or cleared (a live gesture's
+frame is not blinked; a rest canvas stays transparent), and only an instance's first warm-up clears the canvas (the display surface's
+allocation). The restore-the-last-frame logic is gone with it (no `last` state at all). One more guard on the page's side of the contract:
+`setState` with lift < .005 clears (view.js's loop settles at `sL.x < .001` and sends lift 0; the frames of the tail just above it are an
+opaque copy of the backdrop that looks like the DOM until the page under it changes — a theme switch — and would then read as a ghost).
+Harness: `js-ghost.js` / `js-ghost2.js` (rest → redraw → warm, lifted → redraw → warm, a gesture ending at lift .0017 → setBackdrop dark /
+light, dark → light at rest) all 0 opaque pixels except the real lifted frame, which the deferred redraw leaves intact (51 824 px before
+and after); the mid render (light / dark, @3x) is identical to the previous commit (max diff 0).
 ### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
 
 Sources: `remote-ref/sheet-native.md` (the data session's 10th order: A9 `sheetivars` / `corners` / `subtree` / motion, iOS 27.0 3×) and
