@@ -1205,8 +1205,12 @@ function press(el, e, handlers) {
      touches; pressed at the centre this is the finger's x), through ONE spring behaviour ζ .85 / response .2 s created anew per move and continuing
      from the current value and velocity (analytic step); the first displaced frame reaches the screen two frames after the one the move arrived in
      (§6e.2 chain; §6e.3 the page rule) — see the tick for the frame-by-frame account. The on-screen centre = this spring + the flex drift (1 − sX)·W/2 — the slow start and the
-     run past the finger after it stops are that drift, not a latency constant. Beyond the end segments' centres the native applies a rubber band
-     12·(1 − 1/(1 + c·x/12)) whose c is unread (0x1c571a4e8 / 0x1c5718380) — here the target is clamped to those centres (等原理). The stretch while dragging (244×38.4, 253×36), the drift and the bounce after the up are UIKitCore's
+     run past the finger after it stops are that drift, not a latency constant. Beyond an END segment's own centre the excess is rubber-banded
+     (§6, 0x1c41358bc–0x1c4135978, by segmentPosition 0 left / 1 middle / 2 right / 3 alone): raw = c_tracked + Σdelta; middle → raw; alone → the
+     centre (no follow); left end: o = max(0, c − raw) → target = c − 12·(1 − 1/(1 + .55·o/12)); right end: o = max(0, raw − c) → c + the same
+     (c .55 = [0x1c5718380], the left end's [0x1c571a4e8] = −.55 cancels the sign; d = 12 immediate — UIScrollView's rubber band, asymptote 12 pt,
+     initial slope .55: 24 pt past the end centre → 6.29, 120 → 10.2). Inward of its own centre the end segment follows raw (the abc recording: the
+     tracked left segment carried the lens to 320). The stretch while dragging (244×38.4, 253×36), the drift and the bounce after the up are UIKitCore's
      _UIFlexInteraction on the lens's presentation transform (flex-interaction.md; FLEX_VARIANT / flexSpec / flexIntegrator / flexTargets below);
      its "tracking" springs ζ .6533 / .4559 (dragging) and ζ .56 / .444 (196×28) are what the probe saw retargeting every frame (§4.4 row 4) — they
      drive scale / drift, not the position.
@@ -1489,10 +1493,11 @@ function segLens(seg, lens, bs, downClientX) {
     frame(p, pd); st.raf = requestAnimationFrame(tick);
   };
   const loop = {
-    drag: (clientX) => {   // a finger move (§6): target = the pressed segment's centre + (finger x − touch-down x), adopted at the next tick (see the tick's time-base note); clamped to the outer centres (the native rubber band's c is unread)
+    drag: (clientX) => {   // a finger move (§6): target = the pressed segment's centre + (finger x − touch-down x), adopted at the next tick (see the tick's time-base note); past an end segment's own centre the excess is rubber-banded (§6 0x1c41358bc–0x1c4135978, see the header)
       if (st.rel != null || st.done) return;
-      const x = clientX - seg.getBoundingClientRect().left, delta = Number.isNaN(downX) ? x - restCentre(idx0) : x - downX;
-      st.pending = Math.max(restCentre(0), Math.min(restCentre(n - 1), restCentre(idx0) + delta));
+      const x = clientX - seg.getBoundingClientRect().left, delta = Number.isNaN(downX) ? x - restCentre(idx0) : x - downX, c = restCentre(idx0), raw = c + delta;
+      const rubber = (o) => 12 * (1 - 1 / (1 + .55 * o / 12));   // (1 − 1/(c·o/d + 1))·d with c .55, d 12
+      st.pending = n === 1 ? c : (idx0 === 0 && raw < c) ? c - rubber(c - raw) : (idx0 === n - 1 && raw > c) ? c + rubber(raw - c) : raw;
       if (!st.dragged) st.dragged = true;
     },
     release: (restIdx) => {   // every way out — up, out of bounds, pointercancel — falls the same way, to the rest rect of `restIdx`

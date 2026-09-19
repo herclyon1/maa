@@ -559,13 +559,15 @@
   .segctl .hlw{mix-blend-mode:plus-lighter}
   .segctl .rimb > *,.segctl .rimo > *{position:absolute;pointer-events:none;opacity:var(--lp, 0);box-sizing:border-box}
   /* ④ #21 inner shadow (keyfill-highlight.md §5.2; layer keys seg-lens-refraction.md §1c(b): invertsShadow 1, shadowPathIsBounds 1, r22 capsule,
-     black .06, radius 3, offset (0, 7), masksToBounds 1): a CA inner shadow = the complement of the shape shifted by the offset, Gaussian-blurred,
-     clipped to the shape — CSS `box-shadow: inset` is the same construction (blur = 2σ). 采样替代 (predict-seg-hold.md §0 item 4): the three
-     values are the probe's raster readings, not the keys — plateau .043, half-value edge lens top + 8, σ 2.8 → offset 8, blur 5.6, black .043;
-     the keys read .06 / (0, 7) / radius 3 and CA's rasterisation of them (radius → σ, offset rounding, whether opacity is multiplied again) is
-     with the old page session's decompile — replaced by the read conversion the moment it lands. The three ride the lift like the native layer's
-     (§1c(b): offset, opacity and radius on one curve → × --lp). Black on the dark theme's black page = invisible, as measured (§1c(e) dark: 0). */
-  .segctl .rimb .ish,.segctl .rimo .ish{inset:0;border-radius:inherit;box-shadow:inset 0 calc(8px * var(--lp, 0)) calc(5.6px * var(--lp, 0)) 0 rgb(0 0 0 / .043)}
+     black .06, radius 3, offset (0, 7), masksToBounds 1). Readings (predict-seg-hold.md §0d, QuartzCore decompile by the old page session): the
+     blur kernel is a true Gaussian with σ = shadowRadius in pt (3), the offset is applied as a float (no rounding), α = color.a × shadowOpacity ×
+     layer opacity with no other factor; invertsShadow = the shape's complement blurred, translated by the offset, clipped by the shape — CSS
+     `box-shadow: inset` is the same construction with blur = 2σ = 6 px. Position: the #21 frame's top edge lies 1 pt inside the lens (603) and
+     603 + 7 = the measured half-value edge 610, so on this element (the lens box, top 602) the offset is 8. Amplitude: the reading .06 is drawn;
+     the raster reads .043 — the difference is unresolved (the data session is reading #21's opacity / compositingFilter / the parent's opacity /
+     allowsGroupOpacity for a factor; changed the moment it lands). The three ride the lift like the native layer's (§1c(b): offset, opacity and
+     radius on one curve → × --lp). Black on the dark theme's black page = invisible, as measured (§1c(e) dark: 0). */
+  .segctl .rimb .ish,.segctl .rimo .ish{inset:0;border-radius:inherit;box-shadow:inset 0 calc(8px * var(--lp, 0)) calc(6px * var(--lp, 0)) 0 rgb(0 0 0 / .06)}
   /* the SVGs: lens-box coordinates inside a 12 px margin (the ring shadow's blur reaches 3σ = 9 pt out, the dark line .667); width / height attributes = box + 24 */
   .segctl .rimb svg,.segctl .rimo svg,.segctl .hlk,.segctl .hlw{overflow:visible}
   .segctl .rimb svg,.segctl .rimo svg{left:-12px;top:-12px}   /* the highlight SVGs get their box (lens box + 12 px margin) from the loop: WebKit clips an outer <svg> to its box whatever overflow says */
