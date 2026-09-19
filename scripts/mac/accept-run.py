@@ -13,7 +13,9 @@ Order of events (监督局 2026-09-19 18:3x: no more "no result / first-run retr
      first run of this runner: headless Chrome never requested pending.js?v=… — server log — and render() threw
      "reconcilePending is not defined"; the second run was clean. A lost script fetch is detected here, not retried by hand).
 Any JS exception seen on the way is printed; exit 1 when a step does not complete."""
-import socket, os, base64, json, struct, sys, subprocess, time, urllib.request, tempfile, shutil, random
+import socket, os, base64, json, struct, sys, subprocess, time, urllib.request, tempfile, shutil, random, signal
+# SIGTERM (the `timeout` wrapper) must run the finally below, or the Chrome profile in $TMPDIR leaks (271 of them, 8.8 GB, 2026-09-20 08:4x)
+signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(SystemExit(143)))
 CH = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 class WS:
     def __init__(s, url):
