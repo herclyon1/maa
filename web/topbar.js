@@ -107,8 +107,10 @@
      Here: the trilinear level mix per row is exact — three pre-blurred copies (levels 1–3) and the source (level 0), weighted per row by the tent
      weights w_k(y) = max(0, 1 − |L(y) − k|) from a 1 × 384 weights image (R = w0, G = w1, B = w2, w3 = 1 − R − G − B) stretched over the pocket
      (feImage in the copy's coordinates, moved with the scroll); each level's kernel is a Gaussian of the level's measured std (VB_STD, base px:
-     the 13-tap chain's phase-averaged impulse response, tools/vb_kernel.py) — 剖面近似: the chain's kernel is not Gaussian; the ±L/4-texel taps
-     (≤ .6 base px) are left out. The BlurFill blur = one Gaussian of the level mix's std at L_fill (the fill is the same pyramid). */
+     the 13-tap chain's phase-averaged impulse response, tools/vb_kernel.py) — 剖面近似, quantified (R3‴, tools/vb_gauss_dev.py): the exact kernel is
+     flatter-topped; on a black/white edge the two blurs differ by ≤ .0053 (1.4/255, RMS .0007), on a 1-px line ≤ .0039 — under one 8-bit level. The exact
+     kernel per frame would be feConvolveMatrix 19×19 + 37×37 + (73×73 split) ≈ 4700 MAC/px ≈ 2.1 G MAC per scroll frame at 3× (SVG has no downsampling;
+     WebGL cannot read the page) — not built. The ±L/4-texel taps (≤ .6 base px) are left out. The BlurFill blur = one Gaussian of the level mix's std at L_fill (the fill is the same pyramid). */
   const VB = { radius: 2, scale: 0.5, fill: 16, k: 1.6, std: [0, 2.147, 4.694, 9.581, 19.263, 38.579, 77.023], mask: POCKET_MASK, maskRow0: POCKET_MASK_ROW0, maskRows: POCKET_MASK_ROWS };
   const vbLevel = (r) => Math.max(0, r >= 2 ? Math.log2(r) : Math.log2(1 + r / 2));
   const vbMixStd = (L) => { const k = Math.min(Math.floor(L), VB.std.length - 2), f = L - k; return Math.sqrt((1 - f) * VB.std[k] ** 2 + f * VB.std[k + 1] ** 2); };   // the std of a two-level mix
