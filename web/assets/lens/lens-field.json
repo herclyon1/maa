@@ -66,6 +66,10 @@
    "ab_files": [
     "seg-f-ab-196.png"
    ],
+   "abl_files": [
+    "seg-f-ab-196.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.56,
    "S_ab": 12.0,
    "bg": "seg-f-bg-196.png",
@@ -118,6 +122,10 @@
    "ab_files": [
     "seg-f-ab-198.png"
    ],
+   "abl_files": [
+    "seg-f-ab-198.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.55,
    "S_ab": 12.0,
    "bg": "seg-f-bg-198.png",
@@ -170,6 +178,10 @@
    "ab_files": [
     "seg-f-ab-200.png"
    ],
+   "abl_files": [
+    "seg-f-ab-200.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.53,
    "S_ab": 12.0,
    "bg": "seg-f-bg-200.png",
@@ -222,6 +234,10 @@
    "ab_files": [
     "seg-f-ab-202.png"
    ],
+   "abl_files": [
+    "seg-f-ab-202.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.5,
    "S_ab": 12.0,
    "bg": "seg-f-bg-202.png",
@@ -274,6 +290,10 @@
    "ab_files": [
     "seg-f-ab-204.png"
    ],
+   "abl_files": [
+    "seg-f-ab-204.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.5,
    "S_ab": 12.0,
    "bg": "seg-f-bg-204.png",
@@ -326,6 +346,10 @@
    "ab_files": [
     "seg-f-ab-206.png"
    ],
+   "abl_files": [
+    "seg-f-ab-206.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.49,
    "S_ab": 12.0,
    "bg": "seg-f-bg-206.png",
@@ -378,6 +402,10 @@
    "ab_files": [
     "seg-f-ab-208.png"
    ],
+   "abl_files": [
+    "seg-f-ab-208.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.46,
    "S_ab": 12.0,
    "bg": "seg-f-bg-208.png",
@@ -430,6 +458,10 @@
    "ab_files": [
     "seg-f-ab-210.png"
    ],
+   "abl_files": [
+    "seg-f-ab-210.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.44,
    "S_ab": 12.0,
    "bg": "seg-f-bg-210.png",
@@ -482,6 +514,10 @@
    "ab_files": [
     "seg-f-ab-212.png"
    ],
+   "abl_files": [
+    "seg-f-ab-212.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.42,
    "S_ab": 12.0,
    "bg": "seg-f-bg-212.png",
@@ -534,6 +570,10 @@
    "ab_files": [
     "seg-f-ab-214.png"
    ],
+   "abl_files": [
+    "seg-f-ab-214.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.39,
    "S_ab": 12.0,
    "bg": "seg-f-bg-214.png",
@@ -586,6 +626,10 @@
    "ab_files": [
     "seg-f-ab-216.png"
    ],
+   "abl_files": [
+    "seg-f-ab-216.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.37,
    "S_ab": 12.0,
    "bg": "seg-f-bg-216.png",
@@ -638,6 +682,10 @@
    "ab_files": [
     "seg-f-ab-218.png"
    ],
+   "abl_files": [
+    "seg-f-ab-218.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.34,
    "S_ab": 12.0,
    "bg": "seg-f-bg-218.png",
@@ -679,6 +727,10 @@
    "ab_files": [
     "seg-f-ab-220.png"
    ],
+   "abl_files": [
+    "seg-f-ab-220.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.32,
    "S_ab": 12.0,
    "bg": "seg-f-bg-220.png",
@@ -731,6 +783,10 @@
    "ab_files": [
     "seg-f-ab-222.png"
    ],
+   "abl_files": [
+    "seg-f-ab-222.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.34,
    "S_ab": 12.0,
    "bg": "seg-f-bg-222.png",
@@ -783,6 +839,10 @@
    "ab_files": [
     "seg-f-ab-224.png"
    ],
+   "abl_files": [
+    "seg-f-ab-224.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.36,
    "S_ab": 12.0,
    "bg": "seg-f-bg-224.png",
@@ -835,6 +895,10 @@
    "ab_files": [
     "seg-f-ab-226.png"
    ],
+   "abl_files": [
+    "seg-f-ab-226.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.38,
    "S_ab": 12.0,
    "bg": "seg-f-bg-226.png",
@@ -887,6 +951,10 @@
    "ab_files": [
     "seg-f-ab-228.png"
    ],
+   "abl_files": [
+    "seg-f-ab-228.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.4,
    "S_ab": 12.0,
    "bg": "seg-f-bg-228.png",
@@ -939,6 +1007,10 @@
    "ab_files": [
     "seg-f-ab-230.png"
    ],
+   "abl_files": [
+    "seg-f-ab-230.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.42,
    "S_ab": 12.0,
    "bg": "seg-f-bg-230.png",
@@ -991,6 +1063,10 @@
    "ab_files": [
     "seg-f-ab-232.png"
    ],
+   "abl_files": [
+    "seg-f-ab-232.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.44,
    "S_ab": 12.0,
    "bg": "seg-f-bg-232.png",
@@ -1043,6 +1119,10 @@
    "ab_files": [
     "seg-f-ab-234.png"
    ],
+   "abl_files": [
+    "seg-f-ab-234.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.46,
    "S_ab": 12.0,
    "bg": "seg-f-bg-234.png",
@@ -1095,6 +1175,10 @@
    "ab_files": [
     "seg-f-ab-236.png"
    ],
+   "abl_files": [
+    "seg-f-ab-236.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.48,
    "S_ab": 12.0,
    "bg": "seg-f-bg-236.png",
@@ -1147,6 +1231,10 @@
    "ab_files": [
     "seg-f-ab-238.png"
    ],
+   "abl_files": [
+    "seg-f-ab-238.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.51,
    "S_ab": 12.0,
    "bg": "seg-f-bg-238.png",
@@ -1199,6 +1287,10 @@
    "ab_files": [
     "seg-f-ab-240.png"
    ],
+   "abl_files": [
+    "seg-f-ab-240.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.53,
    "S_ab": 12.0,
    "bg": "seg-f-bg-240.png",
@@ -1251,6 +1343,10 @@
    "ab_files": [
     "seg-f-ab-242.png"
    ],
+   "abl_files": [
+    "seg-f-ab-242.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.55,
    "S_ab": 12.0,
    "bg": "seg-f-bg-242.png",
@@ -1303,6 +1399,10 @@
    "ab_files": [
     "seg-f-ab-244.png"
    ],
+   "abl_files": [
+    "seg-f-ab-244.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.57,
    "S_ab": 12.0,
    "bg": "seg-f-bg-244.png",
@@ -1355,6 +1455,10 @@
    "ab_files": [
     "seg-f-ab-246.png"
    ],
+   "abl_files": [
+    "seg-f-ab-246.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.59,
    "S_ab": 12.0,
    "bg": "seg-f-bg-246.png",
@@ -1407,6 +1511,10 @@
    "ab_files": [
     "seg-f-ab-248.png"
    ],
+   "abl_files": [
+    "seg-f-ab-248.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.61,
    "S_ab": 12.0,
    "bg": "seg-f-bg-248.png",
@@ -1459,6 +1567,10 @@
    "ab_files": [
     "seg-f-ab-250.png"
    ],
+   "abl_files": [
+    "seg-f-ab-250.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.63,
    "S_ab": 12.0,
    "bg": "seg-f-bg-250.png",
@@ -1511,6 +1623,10 @@
    "ab_files": [
     "seg-f-ab-252.png"
    ],
+   "abl_files": [
+    "seg-f-ab-252.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.65,
    "S_ab": 12.0,
    "bg": "seg-f-bg-252.png",
@@ -1558,6 +1674,10 @@
    "ab_files": [
     "seg-f-ab-254.png"
    ],
+   "abl_files": [
+    "seg-f-ab-254.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.67,
    "S_ab": 12.0,
    "bg": "seg-f-bg-254.png",
@@ -1605,6 +1725,10 @@
    "ab_files": [
     "seg-f-ab-256.png"
    ],
+   "abl_files": [
+    "seg-f-ab-256.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 2.69,
    "S_ab": 12.0,
    "bg": "seg-f-bg-256.png",

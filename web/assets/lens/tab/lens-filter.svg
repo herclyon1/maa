@@ -132,6 +132,51 @@
     <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
     <feComposite in="fg" in2="srcc" operator="over"/>
   </filter>
+  <filter id="tab-lens-f-abl-94" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="16" data-wh="1.72" data-lean="1" data-margin="16">
+    <!-- colour fringe, the same formula as #tab-lens-f-ab-94; LEAN chain (same output: 6 displacement passes, the k = 0 tap is the source; margin 16 pt — README §0.8.4); apply to the wrapper of 126×86 pt = the lens 94×54 plus 16 pt on every side (AM = 16) -->
+    <feImage href="assets/lens/tab/tab-f-ab-94.png" preserveAspectRatio="none" result="abmap"/>
+    <feColorMatrix in="abmap" id="tab-lens-f-abl-94-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cov"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="16" xChannelSelector="R" yChannelSelector="G" result="t0"/>
+    <feColorMatrix in="t0" type="matrix" values="0.5 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w0"/>
+    <feColorMatrix in="t0" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a0"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="10.6667" xChannelSelector="R" yChannelSelector="G" result="t1"/>
+    <feColorMatrix in="t1" type="matrix" values="0.333333 0 0 0 0  0 0.111111 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w1"/>
+    <feColorMatrix in="t1" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a1"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="5.33333" xChannelSelector="R" yChannelSelector="G" result="t2"/>
+    <feColorMatrix in="t2" type="matrix" values="0.166667 0 0 0 0  0 0.222222 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w2"/>
+    <feColorMatrix in="t2" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a2"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0.333333 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w3"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a3"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-5.33333" xChannelSelector="R" yChannelSelector="G" result="t4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0.222222 0 0 0  0 0 0.166667 0 0  0 0 0 1 0" result="w4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a4"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-10.6667" xChannelSelector="R" yChannelSelector="G" result="t5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0.111111 0 0 0  0 0 0.333333 0 0  0 0 0 1 0" result="w5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a5"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-16" xChannelSelector="R" yChannelSelector="G" result="t6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0.5 0 0  0 0 0 1 0" result="w6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a6"/>
+    <feComposite in="w0" in2="w1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s1"/>
+    <feComposite in="a0" in2="a1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa1"/>
+    <feComposite in="s1" in2="w2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s2"/>
+    <feComposite in="sa1" in2="a2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa2"/>
+    <feComposite in="s2" in2="w3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s3"/>
+    <feComposite in="sa2" in2="a3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa3"/>
+    <feComposite in="s3" in2="w4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s4"/>
+    <feComposite in="sa3" in2="a4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa4"/>
+    <feComposite in="s4" in2="w5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s5"/>
+    <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
+    <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
+    <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
+    <feComposite in="fgc" in2="mask" operator="in" result="fgb"/>
+    <feComposite in="fgb" in2="cov" operator="in" result="fg"/>
+    <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
+    <feComposite in="fg" in2="srcc" operator="over"/>
+  </filter>
   <filter id="tab-lens-f-bg-96" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 96×56 = the 220×44 model scaled by (0.8727, 0.8): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 96×56 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="assets/lens/tab/tab-f-bg-96.png" preserveAspectRatio="none" result="map"/>
@@ -234,6 +279,51 @@
     <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fgb"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cov"/>
+    <feComposite in="fgb" in2="cov" operator="in" result="fg"/>
+    <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
+    <feComposite in="fg" in2="srcc" operator="over"/>
+  </filter>
+  <filter id="tab-lens-f-abl-96" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="16" data-wh="1.72" data-lean="1" data-margin="16">
+    <!-- colour fringe, the same formula as #tab-lens-f-ab-96; LEAN chain (same output: 6 displacement passes, the k = 0 tap is the source; margin 16 pt — README §0.8.4); apply to the wrapper of 128×88 pt = the lens 96×56 plus 16 pt on every side (AM = 16) -->
+    <feImage href="assets/lens/tab/tab-f-ab-96.png" preserveAspectRatio="none" result="abmap"/>
+    <feColorMatrix in="abmap" id="tab-lens-f-abl-96-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cov"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="16" xChannelSelector="R" yChannelSelector="G" result="t0"/>
+    <feColorMatrix in="t0" type="matrix" values="0.5 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w0"/>
+    <feColorMatrix in="t0" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a0"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="10.6667" xChannelSelector="R" yChannelSelector="G" result="t1"/>
+    <feColorMatrix in="t1" type="matrix" values="0.333333 0 0 0 0  0 0.111111 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w1"/>
+    <feColorMatrix in="t1" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a1"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="5.33333" xChannelSelector="R" yChannelSelector="G" result="t2"/>
+    <feColorMatrix in="t2" type="matrix" values="0.166667 0 0 0 0  0 0.222222 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w2"/>
+    <feColorMatrix in="t2" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a2"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0.333333 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w3"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a3"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-5.33333" xChannelSelector="R" yChannelSelector="G" result="t4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0.222222 0 0 0  0 0 0.166667 0 0  0 0 0 1 0" result="w4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a4"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-10.6667" xChannelSelector="R" yChannelSelector="G" result="t5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0.111111 0 0 0  0 0 0.333333 0 0  0 0 0 1 0" result="w5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a5"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-16" xChannelSelector="R" yChannelSelector="G" result="t6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0.5 0 0  0 0 0 1 0" result="w6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a6"/>
+    <feComposite in="w0" in2="w1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s1"/>
+    <feComposite in="a0" in2="a1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa1"/>
+    <feComposite in="s1" in2="w2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s2"/>
+    <feComposite in="sa1" in2="a2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa2"/>
+    <feComposite in="s2" in2="w3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s3"/>
+    <feComposite in="sa2" in2="a3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa3"/>
+    <feComposite in="s3" in2="w4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s4"/>
+    <feComposite in="sa3" in2="a4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa4"/>
+    <feComposite in="s4" in2="w5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s5"/>
+    <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
+    <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
+    <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
+    <feComposite in="fgc" in2="mask" operator="in" result="fgb"/>
     <feComposite in="fgb" in2="cov" operator="in" result="fg"/>
     <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
     <feComposite in="fg" in2="srcc" operator="over"/>
@@ -344,6 +434,51 @@
     <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
     <feComposite in="fg" in2="srcc" operator="over"/>
   </filter>
+  <filter id="tab-lens-f-abl-98" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="16" data-wh="1.72" data-lean="1" data-margin="16">
+    <!-- colour fringe, the same formula as #tab-lens-f-ab-98; LEAN chain (same output: 6 displacement passes, the k = 0 tap is the source; margin 16 pt — README §0.8.4); apply to the wrapper of 130×90 pt = the lens 98×58 plus 16 pt on every side (AM = 16) -->
+    <feImage href="assets/lens/tab/tab-f-ab-98.png" preserveAspectRatio="none" result="abmap"/>
+    <feColorMatrix in="abmap" id="tab-lens-f-abl-98-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cov"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="16" xChannelSelector="R" yChannelSelector="G" result="t0"/>
+    <feColorMatrix in="t0" type="matrix" values="0.5 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w0"/>
+    <feColorMatrix in="t0" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a0"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="10.6667" xChannelSelector="R" yChannelSelector="G" result="t1"/>
+    <feColorMatrix in="t1" type="matrix" values="0.333333 0 0 0 0  0 0.111111 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w1"/>
+    <feColorMatrix in="t1" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a1"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="5.33333" xChannelSelector="R" yChannelSelector="G" result="t2"/>
+    <feColorMatrix in="t2" type="matrix" values="0.166667 0 0 0 0  0 0.222222 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w2"/>
+    <feColorMatrix in="t2" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a2"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0.333333 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w3"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a3"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-5.33333" xChannelSelector="R" yChannelSelector="G" result="t4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0.222222 0 0 0  0 0 0.166667 0 0  0 0 0 1 0" result="w4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a4"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-10.6667" xChannelSelector="R" yChannelSelector="G" result="t5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0.111111 0 0 0  0 0 0.333333 0 0  0 0 0 1 0" result="w5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a5"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-16" xChannelSelector="R" yChannelSelector="G" result="t6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0.5 0 0  0 0 0 1 0" result="w6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a6"/>
+    <feComposite in="w0" in2="w1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s1"/>
+    <feComposite in="a0" in2="a1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa1"/>
+    <feComposite in="s1" in2="w2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s2"/>
+    <feComposite in="sa1" in2="a2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa2"/>
+    <feComposite in="s2" in2="w3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s3"/>
+    <feComposite in="sa2" in2="a3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa3"/>
+    <feComposite in="s3" in2="w4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s4"/>
+    <feComposite in="sa3" in2="a4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa4"/>
+    <feComposite in="s4" in2="w5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s5"/>
+    <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
+    <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
+    <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
+    <feComposite in="fgc" in2="mask" operator="in" result="fgb"/>
+    <feComposite in="fgb" in2="cov" operator="in" result="fg"/>
+    <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
+    <feComposite in="fg" in2="srcc" operator="over"/>
+  </filter>
   <filter id="tab-lens-f-bg-100" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 100×60 = the 220×44 model scaled by (0.9091, 0.8571): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 100×60 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="assets/lens/tab/tab-f-bg-100.png" preserveAspectRatio="none" result="map"/>
@@ -446,6 +581,51 @@
     <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fgb"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cov"/>
+    <feComposite in="fgb" in2="cov" operator="in" result="fg"/>
+    <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
+    <feComposite in="fg" in2="srcc" operator="over"/>
+  </filter>
+  <filter id="tab-lens-f-abl-100" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="16" data-wh="1.72" data-lean="1" data-margin="16">
+    <!-- colour fringe, the same formula as #tab-lens-f-ab-100; LEAN chain (same output: 6 displacement passes, the k = 0 tap is the source; margin 16 pt — README §0.8.4); apply to the wrapper of 132×92 pt = the lens 100×60 plus 16 pt on every side (AM = 16) -->
+    <feImage href="assets/lens/tab/tab-f-ab-100.png" preserveAspectRatio="none" result="abmap"/>
+    <feColorMatrix in="abmap" id="tab-lens-f-abl-100-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cov"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="16" xChannelSelector="R" yChannelSelector="G" result="t0"/>
+    <feColorMatrix in="t0" type="matrix" values="0.5 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w0"/>
+    <feColorMatrix in="t0" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a0"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="10.6667" xChannelSelector="R" yChannelSelector="G" result="t1"/>
+    <feColorMatrix in="t1" type="matrix" values="0.333333 0 0 0 0  0 0.111111 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w1"/>
+    <feColorMatrix in="t1" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a1"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="5.33333" xChannelSelector="R" yChannelSelector="G" result="t2"/>
+    <feColorMatrix in="t2" type="matrix" values="0.166667 0 0 0 0  0 0.222222 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w2"/>
+    <feColorMatrix in="t2" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a2"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0.333333 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w3"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a3"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-5.33333" xChannelSelector="R" yChannelSelector="G" result="t4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0.222222 0 0 0  0 0 0.166667 0 0  0 0 0 1 0" result="w4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a4"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-10.6667" xChannelSelector="R" yChannelSelector="G" result="t5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0.111111 0 0 0  0 0 0.333333 0 0  0 0 0 1 0" result="w5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a5"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-16" xChannelSelector="R" yChannelSelector="G" result="t6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0.5 0 0  0 0 0 1 0" result="w6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a6"/>
+    <feComposite in="w0" in2="w1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s1"/>
+    <feComposite in="a0" in2="a1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa1"/>
+    <feComposite in="s1" in2="w2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s2"/>
+    <feComposite in="sa1" in2="a2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa2"/>
+    <feComposite in="s2" in2="w3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s3"/>
+    <feComposite in="sa2" in2="a3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa3"/>
+    <feComposite in="s3" in2="w4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s4"/>
+    <feComposite in="sa3" in2="a4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa4"/>
+    <feComposite in="s4" in2="w5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s5"/>
+    <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
+    <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
+    <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
+    <feComposite in="fgc" in2="mask" operator="in" result="fgb"/>
     <feComposite in="fgb" in2="cov" operator="in" result="fg"/>
     <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
     <feComposite in="fg" in2="srcc" operator="over"/>
@@ -556,6 +736,51 @@
     <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
     <feComposite in="fg" in2="srcc" operator="over"/>
   </filter>
+  <filter id="tab-lens-f-abl-102" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="16" data-wh="1.72" data-lean="1" data-margin="16">
+    <!-- colour fringe, the same formula as #tab-lens-f-ab-102; LEAN chain (same output: 6 displacement passes, the k = 0 tap is the source; margin 16 pt — README §0.8.4); apply to the wrapper of 134×94 pt = the lens 102×62 plus 16 pt on every side (AM = 16) -->
+    <feImage href="assets/lens/tab/tab-f-ab-102.png" preserveAspectRatio="none" result="abmap"/>
+    <feColorMatrix in="abmap" id="tab-lens-f-abl-102-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cov"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="16" xChannelSelector="R" yChannelSelector="G" result="t0"/>
+    <feColorMatrix in="t0" type="matrix" values="0.5 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w0"/>
+    <feColorMatrix in="t0" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a0"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="10.6667" xChannelSelector="R" yChannelSelector="G" result="t1"/>
+    <feColorMatrix in="t1" type="matrix" values="0.333333 0 0 0 0  0 0.111111 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w1"/>
+    <feColorMatrix in="t1" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a1"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="5.33333" xChannelSelector="R" yChannelSelector="G" result="t2"/>
+    <feColorMatrix in="t2" type="matrix" values="0.166667 0 0 0 0  0 0.222222 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w2"/>
+    <feColorMatrix in="t2" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a2"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0.333333 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w3"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a3"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-5.33333" xChannelSelector="R" yChannelSelector="G" result="t4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0.222222 0 0 0  0 0 0.166667 0 0  0 0 0 1 0" result="w4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a4"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-10.6667" xChannelSelector="R" yChannelSelector="G" result="t5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0.111111 0 0 0  0 0 0.333333 0 0  0 0 0 1 0" result="w5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a5"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-16" xChannelSelector="R" yChannelSelector="G" result="t6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0.5 0 0  0 0 0 1 0" result="w6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a6"/>
+    <feComposite in="w0" in2="w1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s1"/>
+    <feComposite in="a0" in2="a1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa1"/>
+    <feComposite in="s1" in2="w2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s2"/>
+    <feComposite in="sa1" in2="a2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa2"/>
+    <feComposite in="s2" in2="w3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s3"/>
+    <feComposite in="sa2" in2="a3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa3"/>
+    <feComposite in="s3" in2="w4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s4"/>
+    <feComposite in="sa3" in2="a4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa4"/>
+    <feComposite in="s4" in2="w5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s5"/>
+    <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
+    <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
+    <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
+    <feComposite in="fgc" in2="mask" operator="in" result="fgb"/>
+    <feComposite in="fgb" in2="cov" operator="in" result="fg"/>
+    <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
+    <feComposite in="fg" in2="srcc" operator="over"/>
+  </filter>
   <filter id="tab-lens-f-bg-104" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 104×64 = the 220×44 model scaled by (0.9455, 0.9143): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 104×64 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="assets/lens/tab/tab-f-bg-104.png" preserveAspectRatio="none" result="map"/>
@@ -658,6 +883,51 @@
     <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fgb"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cov"/>
+    <feComposite in="fgb" in2="cov" operator="in" result="fg"/>
+    <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
+    <feComposite in="fg" in2="srcc" operator="over"/>
+  </filter>
+  <filter id="tab-lens-f-abl-104" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="16" data-wh="1.72" data-lean="1" data-margin="16">
+    <!-- colour fringe, the same formula as #tab-lens-f-ab-104; LEAN chain (same output: 6 displacement passes, the k = 0 tap is the source; margin 16 pt — README §0.8.4); apply to the wrapper of 136×96 pt = the lens 104×64 plus 16 pt on every side (AM = 16) -->
+    <feImage href="assets/lens/tab/tab-f-ab-104.png" preserveAspectRatio="none" result="abmap"/>
+    <feColorMatrix in="abmap" id="tab-lens-f-abl-104-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cov"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="16" xChannelSelector="R" yChannelSelector="G" result="t0"/>
+    <feColorMatrix in="t0" type="matrix" values="0.5 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w0"/>
+    <feColorMatrix in="t0" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a0"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="10.6667" xChannelSelector="R" yChannelSelector="G" result="t1"/>
+    <feColorMatrix in="t1" type="matrix" values="0.333333 0 0 0 0  0 0.111111 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w1"/>
+    <feColorMatrix in="t1" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a1"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="5.33333" xChannelSelector="R" yChannelSelector="G" result="t2"/>
+    <feColorMatrix in="t2" type="matrix" values="0.166667 0 0 0 0  0 0.222222 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w2"/>
+    <feColorMatrix in="t2" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a2"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0.333333 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w3"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a3"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-5.33333" xChannelSelector="R" yChannelSelector="G" result="t4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0.222222 0 0 0  0 0 0.166667 0 0  0 0 0 1 0" result="w4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a4"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-10.6667" xChannelSelector="R" yChannelSelector="G" result="t5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0.111111 0 0 0  0 0 0.333333 0 0  0 0 0 1 0" result="w5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a5"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-16" xChannelSelector="R" yChannelSelector="G" result="t6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0.5 0 0  0 0 0 1 0" result="w6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a6"/>
+    <feComposite in="w0" in2="w1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s1"/>
+    <feComposite in="a0" in2="a1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa1"/>
+    <feComposite in="s1" in2="w2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s2"/>
+    <feComposite in="sa1" in2="a2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa2"/>
+    <feComposite in="s2" in2="w3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s3"/>
+    <feComposite in="sa2" in2="a3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa3"/>
+    <feComposite in="s3" in2="w4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s4"/>
+    <feComposite in="sa3" in2="a4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa4"/>
+    <feComposite in="s4" in2="w5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s5"/>
+    <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
+    <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
+    <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
+    <feComposite in="fgc" in2="mask" operator="in" result="fgb"/>
     <feComposite in="fgb" in2="cov" operator="in" result="fg"/>
     <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
     <feComposite in="fg" in2="srcc" operator="over"/>
@@ -768,6 +1038,51 @@
     <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
     <feComposite in="fg" in2="srcc" operator="over"/>
   </filter>
+  <filter id="tab-lens-f-abl-106" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="16" data-wh="1.72" data-lean="1" data-margin="16">
+    <!-- colour fringe, the same formula as #tab-lens-f-ab-106; LEAN chain (same output: 6 displacement passes, the k = 0 tap is the source; margin 16 pt — README §0.8.4); apply to the wrapper of 138×98 pt = the lens 106×66 plus 16 pt on every side (AM = 16) -->
+    <feImage href="assets/lens/tab/tab-f-ab-106.png" preserveAspectRatio="none" result="abmap"/>
+    <feColorMatrix in="abmap" id="tab-lens-f-abl-106-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cov"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="16" xChannelSelector="R" yChannelSelector="G" result="t0"/>
+    <feColorMatrix in="t0" type="matrix" values="0.5 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w0"/>
+    <feColorMatrix in="t0" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a0"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="10.6667" xChannelSelector="R" yChannelSelector="G" result="t1"/>
+    <feColorMatrix in="t1" type="matrix" values="0.333333 0 0 0 0  0 0.111111 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w1"/>
+    <feColorMatrix in="t1" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a1"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="5.33333" xChannelSelector="R" yChannelSelector="G" result="t2"/>
+    <feColorMatrix in="t2" type="matrix" values="0.166667 0 0 0 0  0 0.222222 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w2"/>
+    <feColorMatrix in="t2" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a2"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0.333333 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w3"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a3"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-5.33333" xChannelSelector="R" yChannelSelector="G" result="t4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0.222222 0 0 0  0 0 0.166667 0 0  0 0 0 1 0" result="w4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a4"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-10.6667" xChannelSelector="R" yChannelSelector="G" result="t5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0.111111 0 0 0  0 0 0.333333 0 0  0 0 0 1 0" result="w5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a5"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-16" xChannelSelector="R" yChannelSelector="G" result="t6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0.5 0 0  0 0 0 1 0" result="w6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a6"/>
+    <feComposite in="w0" in2="w1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s1"/>
+    <feComposite in="a0" in2="a1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa1"/>
+    <feComposite in="s1" in2="w2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s2"/>
+    <feComposite in="sa1" in2="a2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa2"/>
+    <feComposite in="s2" in2="w3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s3"/>
+    <feComposite in="sa2" in2="a3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa3"/>
+    <feComposite in="s3" in2="w4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s4"/>
+    <feComposite in="sa3" in2="a4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa4"/>
+    <feComposite in="s4" in2="w5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s5"/>
+    <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
+    <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
+    <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
+    <feComposite in="fgc" in2="mask" operator="in" result="fgb"/>
+    <feComposite in="fgb" in2="cov" operator="in" result="fg"/>
+    <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
+    <feComposite in="fg" in2="srcc" operator="over"/>
+  </filter>
   <filter id="tab-lens-f-bg-108" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="40">
     <!-- backdrop, lens 108×68 = the 220×44 model scaled by (0.9818, 0.9714): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 40; apply to the 108×68 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="assets/lens/tab/tab-f-bg-108.png" preserveAspectRatio="none" result="map"/>
@@ -870,6 +1185,51 @@
     <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fgb"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cov"/>
+    <feComposite in="fgb" in2="cov" operator="in" result="fg"/>
+    <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
+    <feComposite in="fg" in2="srcc" operator="over"/>
+  </filter>
+  <filter id="tab-lens-f-abl-108" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="16" data-wh="1.72" data-lean="1" data-margin="16">
+    <!-- colour fringe, the same formula as #tab-lens-f-ab-108; LEAN chain (same output: 6 displacement passes, the k = 0 tap is the source; margin 16 pt — README §0.8.4); apply to the wrapper of 140×100 pt = the lens 108×68 plus 16 pt on every side (AM = 16) -->
+    <feImage href="assets/lens/tab/tab-f-ab-108.png" preserveAspectRatio="none" result="abmap"/>
+    <feColorMatrix in="abmap" id="tab-lens-f-abl-108-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cov"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="16" xChannelSelector="R" yChannelSelector="G" result="t0"/>
+    <feColorMatrix in="t0" type="matrix" values="0.5 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w0"/>
+    <feColorMatrix in="t0" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a0"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="10.6667" xChannelSelector="R" yChannelSelector="G" result="t1"/>
+    <feColorMatrix in="t1" type="matrix" values="0.333333 0 0 0 0  0 0.111111 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w1"/>
+    <feColorMatrix in="t1" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a1"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="5.33333" xChannelSelector="R" yChannelSelector="G" result="t2"/>
+    <feColorMatrix in="t2" type="matrix" values="0.166667 0 0 0 0  0 0.222222 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w2"/>
+    <feColorMatrix in="t2" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a2"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0.333333 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w3"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a3"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-5.33333" xChannelSelector="R" yChannelSelector="G" result="t4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0.222222 0 0 0  0 0 0.166667 0 0  0 0 0 1 0" result="w4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a4"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-10.6667" xChannelSelector="R" yChannelSelector="G" result="t5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0.111111 0 0 0  0 0 0.333333 0 0  0 0 0 1 0" result="w5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a5"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-16" xChannelSelector="R" yChannelSelector="G" result="t6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0.5 0 0  0 0 0 1 0" result="w6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a6"/>
+    <feComposite in="w0" in2="w1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s1"/>
+    <feComposite in="a0" in2="a1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa1"/>
+    <feComposite in="s1" in2="w2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s2"/>
+    <feComposite in="sa1" in2="a2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa2"/>
+    <feComposite in="s2" in2="w3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s3"/>
+    <feComposite in="sa2" in2="a3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa3"/>
+    <feComposite in="s3" in2="w4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s4"/>
+    <feComposite in="sa3" in2="a4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa4"/>
+    <feComposite in="s4" in2="w5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s5"/>
+    <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
+    <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
+    <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
+    <feComposite in="fgc" in2="mask" operator="in" result="fgb"/>
     <feComposite in="fgb" in2="cov" operator="in" result="fg"/>
     <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
     <feComposite in="fg" in2="srcc" operator="over"/>
@@ -980,6 +1340,51 @@
     <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
     <feComposite in="fg" in2="srcc" operator="over"/>
   </filter>
+  <filter id="tab-lens-f-abl-110" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="16" data-wh="1.72" data-lean="1" data-margin="16">
+    <!-- colour fringe, the same formula as #tab-lens-f-ab-110; LEAN chain (same output: 6 displacement passes, the k = 0 tap is the source; margin 16 pt — README §0.8.4); apply to the wrapper of 142×102 pt = the lens 110×70 plus 16 pt on every side (AM = 16) -->
+    <feImage href="assets/lens/tab/tab-f-ab-110.png" preserveAspectRatio="none" result="abmap"/>
+    <feColorMatrix in="abmap" id="tab-lens-f-abl-110-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cov"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="16" xChannelSelector="R" yChannelSelector="G" result="t0"/>
+    <feColorMatrix in="t0" type="matrix" values="0.5 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w0"/>
+    <feColorMatrix in="t0" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a0"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="10.6667" xChannelSelector="R" yChannelSelector="G" result="t1"/>
+    <feColorMatrix in="t1" type="matrix" values="0.333333 0 0 0 0  0 0.111111 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w1"/>
+    <feColorMatrix in="t1" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a1"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="5.33333" xChannelSelector="R" yChannelSelector="G" result="t2"/>
+    <feColorMatrix in="t2" type="matrix" values="0.166667 0 0 0 0  0 0.222222 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w2"/>
+    <feColorMatrix in="t2" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a2"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0.333333 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w3"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a3"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-5.33333" xChannelSelector="R" yChannelSelector="G" result="t4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0.222222 0 0 0  0 0 0.166667 0 0  0 0 0 1 0" result="w4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a4"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-10.6667" xChannelSelector="R" yChannelSelector="G" result="t5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0.111111 0 0 0  0 0 0.333333 0 0  0 0 0 1 0" result="w5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a5"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-16" xChannelSelector="R" yChannelSelector="G" result="t6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0.5 0 0  0 0 0 1 0" result="w6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a6"/>
+    <feComposite in="w0" in2="w1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s1"/>
+    <feComposite in="a0" in2="a1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa1"/>
+    <feComposite in="s1" in2="w2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s2"/>
+    <feComposite in="sa1" in2="a2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa2"/>
+    <feComposite in="s2" in2="w3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s3"/>
+    <feComposite in="sa2" in2="a3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa3"/>
+    <feComposite in="s3" in2="w4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s4"/>
+    <feComposite in="sa3" in2="a4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa4"/>
+    <feComposite in="s4" in2="w5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s5"/>
+    <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
+    <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
+    <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
+    <feComposite in="fgc" in2="mask" operator="in" result="fgb"/>
+    <feComposite in="fgb" in2="cov" operator="in" result="fg"/>
+    <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
+    <feComposite in="fg" in2="srcc" operator="over"/>
+  </filter>
   <filter id="tab-lens-f-bg-112" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- backdrop, lens 112×71.27 = the 220×44 model scaled by (1.0182, 1.0182): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 48; apply to the 112×71.27 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="assets/lens/tab/tab-f-bg-112.png" preserveAspectRatio="none" result="map"/>
@@ -1082,6 +1487,51 @@
     <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fgb"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cov"/>
+    <feComposite in="fgb" in2="cov" operator="in" result="fg"/>
+    <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
+    <feComposite in="fg" in2="srcc" operator="over"/>
+  </filter>
+  <filter id="tab-lens-f-abl-112" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="16" data-wh="1.72" data-lean="1" data-margin="16">
+    <!-- colour fringe, the same formula as #tab-lens-f-ab-112; LEAN chain (same output: 6 displacement passes, the k = 0 tap is the source; margin 16 pt — README §0.8.4); apply to the wrapper of 144×103.27 pt = the lens 112×71.27 plus 16 pt on every side (AM = 16) -->
+    <feImage href="assets/lens/tab/tab-f-ab-112.png" preserveAspectRatio="none" result="abmap"/>
+    <feColorMatrix in="abmap" id="tab-lens-f-abl-112-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cov"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="16" xChannelSelector="R" yChannelSelector="G" result="t0"/>
+    <feColorMatrix in="t0" type="matrix" values="0.5 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w0"/>
+    <feColorMatrix in="t0" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a0"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="10.6667" xChannelSelector="R" yChannelSelector="G" result="t1"/>
+    <feColorMatrix in="t1" type="matrix" values="0.333333 0 0 0 0  0 0.111111 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w1"/>
+    <feColorMatrix in="t1" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a1"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="5.33333" xChannelSelector="R" yChannelSelector="G" result="t2"/>
+    <feColorMatrix in="t2" type="matrix" values="0.166667 0 0 0 0  0 0.222222 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w2"/>
+    <feColorMatrix in="t2" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a2"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0.333333 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w3"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a3"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-5.33333" xChannelSelector="R" yChannelSelector="G" result="t4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0.222222 0 0 0  0 0 0.166667 0 0  0 0 0 1 0" result="w4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a4"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-10.6667" xChannelSelector="R" yChannelSelector="G" result="t5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0.111111 0 0 0  0 0 0.333333 0 0  0 0 0 1 0" result="w5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a5"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-16" xChannelSelector="R" yChannelSelector="G" result="t6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0.5 0 0  0 0 0 1 0" result="w6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a6"/>
+    <feComposite in="w0" in2="w1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s1"/>
+    <feComposite in="a0" in2="a1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa1"/>
+    <feComposite in="s1" in2="w2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s2"/>
+    <feComposite in="sa1" in2="a2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa2"/>
+    <feComposite in="s2" in2="w3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s3"/>
+    <feComposite in="sa2" in2="a3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa3"/>
+    <feComposite in="s3" in2="w4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s4"/>
+    <feComposite in="sa3" in2="a4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa4"/>
+    <feComposite in="s4" in2="w5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s5"/>
+    <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
+    <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
+    <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
+    <feComposite in="fgc" in2="mask" operator="in" result="fgb"/>
     <feComposite in="fgb" in2="cov" operator="in" result="fg"/>
     <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
     <feComposite in="fg" in2="srcc" operator="over"/>
@@ -1192,6 +1642,51 @@
     <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
     <feComposite in="fg" in2="srcc" operator="over"/>
   </filter>
+  <filter id="tab-lens-f-abl-114" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="16" data-wh="1.72" data-lean="1" data-margin="16">
+    <!-- colour fringe, the same formula as #tab-lens-f-ab-114; LEAN chain (same output: 6 displacement passes, the k = 0 tap is the source; margin 16 pt — README §0.8.4); apply to the wrapper of 146×104.55 pt = the lens 114×72.55 plus 16 pt on every side (AM = 16) -->
+    <feImage href="assets/lens/tab/tab-f-ab-114.png" preserveAspectRatio="none" result="abmap"/>
+    <feColorMatrix in="abmap" id="tab-lens-f-abl-114-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cov"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="16" xChannelSelector="R" yChannelSelector="G" result="t0"/>
+    <feColorMatrix in="t0" type="matrix" values="0.5 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w0"/>
+    <feColorMatrix in="t0" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a0"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="10.6667" xChannelSelector="R" yChannelSelector="G" result="t1"/>
+    <feColorMatrix in="t1" type="matrix" values="0.333333 0 0 0 0  0 0.111111 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w1"/>
+    <feColorMatrix in="t1" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a1"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="5.33333" xChannelSelector="R" yChannelSelector="G" result="t2"/>
+    <feColorMatrix in="t2" type="matrix" values="0.166667 0 0 0 0  0 0.222222 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w2"/>
+    <feColorMatrix in="t2" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a2"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0.333333 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w3"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a3"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-5.33333" xChannelSelector="R" yChannelSelector="G" result="t4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0.222222 0 0 0  0 0 0.166667 0 0  0 0 0 1 0" result="w4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a4"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-10.6667" xChannelSelector="R" yChannelSelector="G" result="t5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0.111111 0 0 0  0 0 0.333333 0 0  0 0 0 1 0" result="w5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a5"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-16" xChannelSelector="R" yChannelSelector="G" result="t6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0.5 0 0  0 0 0 1 0" result="w6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a6"/>
+    <feComposite in="w0" in2="w1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s1"/>
+    <feComposite in="a0" in2="a1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa1"/>
+    <feComposite in="s1" in2="w2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s2"/>
+    <feComposite in="sa1" in2="a2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa2"/>
+    <feComposite in="s2" in2="w3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s3"/>
+    <feComposite in="sa2" in2="a3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa3"/>
+    <feComposite in="s3" in2="w4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s4"/>
+    <feComposite in="sa3" in2="a4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa4"/>
+    <feComposite in="s4" in2="w5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s5"/>
+    <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
+    <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
+    <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
+    <feComposite in="fgc" in2="mask" operator="in" result="fgb"/>
+    <feComposite in="fgb" in2="cov" operator="in" result="fg"/>
+    <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
+    <feComposite in="fg" in2="srcc" operator="over"/>
+  </filter>
   <filter id="tab-lens-f-bg-116" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="48">
     <!-- backdrop, lens 116×73.82 = the 220×44 model scaled by (1.0545, 1.0545): -10.5/7/0.5/lens,9/36/0.5/lens (sampling order); encoding S 48; apply to the 116×73.82 pt lens layer; data-s = the encoding scale S of this set (feDisplacementMap scale = S × lift progress) -->
     <feImage href="assets/lens/tab/tab-f-bg-116.png" preserveAspectRatio="none" result="map"/>
@@ -1294,6 +1789,51 @@
     <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
     <feComposite in="fgc" in2="mask" operator="in" result="fgb"/>
     <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cov"/>
+    <feComposite in="fgb" in2="cov" operator="in" result="fg"/>
+    <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
+    <feComposite in="fg" in2="srcc" operator="over"/>
+  </filter>
+  <filter id="tab-lens-f-abl-116" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="16" data-wh="1.72" data-lean="1" data-margin="16">
+    <!-- colour fringe, the same formula as #tab-lens-f-ab-116; LEAN chain (same output: 6 displacement passes, the k = 0 tap is the source; margin 16 pt — README §0.8.4); apply to the wrapper of 148×105.82 pt = the lens 116×73.82 plus 16 pt on every side (AM = 16) -->
+    <feImage href="assets/lens/tab/tab-f-ab-116.png" preserveAspectRatio="none" result="abmap"/>
+    <feColorMatrix in="abmap" id="tab-lens-f-abl-116-wh" type="matrix" values="1.72 0 0 0 -0.36  0 0.581395 0 0 0.209302  0 0 1 0 0  0 0 0 1 0" result="abwh"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>
+    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cov"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="16" xChannelSelector="R" yChannelSelector="G" result="t0"/>
+    <feColorMatrix in="t0" type="matrix" values="0.5 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w0"/>
+    <feColorMatrix in="t0" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a0"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="10.6667" xChannelSelector="R" yChannelSelector="G" result="t1"/>
+    <feColorMatrix in="t1" type="matrix" values="0.333333 0 0 0 0  0 0.111111 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w1"/>
+    <feColorMatrix in="t1" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a1"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="5.33333" xChannelSelector="R" yChannelSelector="G" result="t2"/>
+    <feColorMatrix in="t2" type="matrix" values="0.166667 0 0 0 0  0 0.222222 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w2"/>
+    <feColorMatrix in="t2" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a2"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0.333333 0 0 0  0 0 0 0 0  0 0 0 1 0" result="w3"/>
+    <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a3"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-5.33333" xChannelSelector="R" yChannelSelector="G" result="t4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0.222222 0 0 0  0 0 0.166667 0 0  0 0 0 1 0" result="w4"/>
+    <feColorMatrix in="t4" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a4"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-10.6667" xChannelSelector="R" yChannelSelector="G" result="t5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0.111111 0 0 0  0 0 0.333333 0 0  0 0 0 1 0" result="w5"/>
+    <feColorMatrix in="t5" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a5"/>
+    <feDisplacementMap in="SourceGraphic" in2="abwh" scale="-16" xChannelSelector="R" yChannelSelector="G" result="t6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0.5 0 0  0 0 0 1 0" result="w6"/>
+    <feColorMatrix in="t6" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.142857 0" result="a6"/>
+    <feComposite in="w0" in2="w1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s1"/>
+    <feComposite in="a0" in2="a1" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa1"/>
+    <feComposite in="s1" in2="w2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s2"/>
+    <feComposite in="sa1" in2="a2" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa2"/>
+    <feComposite in="s2" in2="w3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s3"/>
+    <feComposite in="sa2" in2="a3" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa3"/>
+    <feComposite in="s3" in2="w4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s4"/>
+    <feComposite in="sa3" in2="a4" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa4"/>
+    <feComposite in="s4" in2="w5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s5"/>
+    <feComposite in="sa4" in2="a5" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa5"/>
+    <feComposite in="s5" in2="w6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="s6"/>
+    <feComposite in="sa5" in2="a6" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="sa6"/>
+    <feColorMatrix in="s6" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0" result="fge"/>
+    <feComposite in="fge" in2="sa6" operator="in" result="fgc"/>
+    <feComposite in="fgc" in2="mask" operator="in" result="fgb"/>
     <feComposite in="fgb" in2="cov" operator="in" result="fg"/>
     <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>
     <feComposite in="fg" in2="srcc" operator="over"/>

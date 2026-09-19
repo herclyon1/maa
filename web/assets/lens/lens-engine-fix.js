@@ -20,9 +20,9 @@
   const ss = window.LENS_SS || 1;                                 /* 引擎校正 2: the layer is laid out ss× larger (README §0.4), so a map pt is ss layer px and the encoding scale in layer px is data-s × ss */
   window.LENS_ENGINE_FIX_K = k / ss;                              /* the shortfall in pt */
   const fix = async (fe) => {
-    const filter = fe.closest("filter"); if (!filter || /-ab-/.test(filter.id)) return;
+    const filter = fe.closest("filter"); if (!filter || /-f-ab/.test(filter.id)) return;   /* not the fringe chains: -f-ab-, -f-ab-ir-, -f-abl- */
     const S = parseFloat(filter.dataset.s); const href = fe.getAttribute("href") || fe.getAttributeNS("http://www.w3.org/1999/xlink", "href");
-    if (!(S > 0) || !href || href.startsWith("blob:")) return;
+    if (!(S > 0) || !href || href.startsWith("blob:") || fe.dataset.engineBaked) return;   /* data-engine-baked: lens-map-dpr.js already points at a file with the correction baked in */
     const ssHere = filter.dataset.s0 ? 1 : ss;                    /* lens-supersample.js already folded SS into data-s (data-s0 = the file's S) */
     const blob = await (await fetch(href)).blob(); const bmp = await createImageBitmap(blob);
     const cv = document.createElement("canvas"); cv.width = bmp.width; cv.height = bmp.height;

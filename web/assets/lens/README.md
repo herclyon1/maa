@@ -852,6 +852,48 @@ cost on the device (the data session's 36916a9 reads the fringe chain and the su
 is the switch here). Engine fact for the geometry: the glide's `offsetLeft` reads its CSS transition mid-flight, so the script reads the
 inline `style.left / width` (the target view.js wrote).
 
+### 0.8.4 Frame cost of the fringe chain — the lean chain `#…-f-abl-<w>` and the baked 引擎校正 maps (2026-09-19 12:5x, ui2)
+
+Order (监督局 12:2x, after the data session's 36916a9: on the phone the dispersion layer alone makes a drag frame 37–38 ms (19 ms of it),
+the supersampling 27–30, both off 18.9; the page's JS is 0–2 ms per tick — the cost is the filter rendering): compute the chain only over
+the edge band, no visual constant changed, target ≤ 20 ms; as a switch.
+
+**Engine fact first** (`calib/webkit-primitive-subregion.html` + `.png`): WebKit does not honour a filter primitive's own subregion —
+with `primitiveUnits="objectBoundingBox"` the subregion renders blank and the rest of the element half-displaced, with a userSpaceOnUse
+subregion the whole element renders blank. Every primitive of a chain runs over the whole filter region; a band cannot be carved out by
+regions. Duplicating the lens content into four band-strip elements would re-render the displaced layers four times (their filter region
+is their own box, not the strip) — no gain. Reading the chain at half resolution (a half-scale duplicate of the stack) is not the same
+output (the fringe colours sample a coarser image) — not done under the 红线. What CAN be cut without changing a single output byte:
+
+`#seg-lens-f-abl-<w>` (and `#tab-lens-f-abl-<w>`, generated next to the `-ab-` chains, same maps): the k = 0 tap is the source itself
+(SourceGraphic instead of a scale-0 feDisplacementMap — 7 → 6 displacement passes, the expensive primitive); everything else is the
+old chain (the two colour matrices per tap and the ΣA/7 alpha chain stay: folding α/7 into the colour matrices costs ±3 levels of 8-bit
+premultiplied precision — measured on a flat colour; dropping the alpha chain changes the ends where a tap reads a transparent pixel —
+both tried and rejected). Check (wksnap 3 px/pt, `lens-test.html?native=1&lensx=220` vs `&ab=lean`, light and dark): **0 pixels differ**
+(max |Δ| 0 over the whole image). A smaller wrapper (`--abl-margin 8`, the taps reach ≤ peak × W/H = 2.3 × 1.72 = 4 pt) was tried too:
+≤ 15 levels of difference on the ends (0.1 % of the lens pixels, light) and on the bottom rim row (dark) — not identical, so the lean
+chain keeps the 16-pt wrapper and the `-ab-` map (no extra files; `--abl-margin` documents the trial).
+Expected on the phone: one of seven displacement passes fewer — about 1/7 of the chain's 19 ms; NOT ≤ 20 ms in total. The honest number
+is the data session's to measure (`?segx=abl` below); the fringe at full fidelity costs six full-region displacement passes in this engine.
+The supersampling: its displaced layers cover the whole lens (the bg field is 36 pt deep, the label field the whole portal) — nothing to
+band there either.
+
+Switch (the ui session's segment code, one token): where view.js sets `stack.style.filter = url(#seg-lens-f-ab-${set})`, use `-abl-` when
+`SEGX.includes("abl")` (?segx=abl), and read the W/H matrix `#seg-lens-f-ab{l}-${set}-wh` accordingly; AM stays 16. The test page: `?ab=lean`.
+The engine-fix script now skips every `-f-ab` chain (`-ab-`, `-ab-ir-`, `-abl-`; it used to match `-abl-` as a lens map and re-encode
+its fringe map — the first lean run differed by that).
+
+**Baked 引擎校正 (备一手, 验收 12:2x)**: `gen_lens_maps.py --engine-fix-sets 2,3` writes every bg / lab map twice more, `<map>@2x.png`
+(k = ½ pt) and `<map>@3x.png` (k = ⅓ pt) with the correction applied BEFORE encoding (`engine_fix(u)`, the same rule lens-engine-fix.js
+applies to the bytes at run time), 124 files, 1.0 MB, and marks the filters `data-baked="2,3"`. `lens-map-dpr.js` (one line BEFORE
+lens-engine-fix.js: `<script src="assets/lens/lens-map-dpr.js"></script>`) points each such filter's feImage at the file for
+devicePixelRatio × LENS_SS (2 → @2x, 3 → @3x; a ratio without a file keeps the run-time fix) and marks it `data-engine-baked`, which
+lens-engine-fix.js honours (no blob: URL is made). Check (wksnap 2×, `?ss=0` baked vs `?ss=0&mapdpr=0` run-time): the two differ on 0.3 %
+of the lens pixels by one byte step of the map (the correction is rounded once instead of twice: ≤ .16 pt at S 40), i.e. single pixels on
+high-contrast edges; the fringe check is unchanged. If the data session's bisection confirms the blob: images as the cost, this replaces
+lens-engine-fix.js on the page; if not, the files stay unused. `?mapdpr=0` turns it off. tab-lens.js calls `LENS_MAP_DPR_APPLY()` for its
+late filters (the tab families carry no baked sets yet — `data-baked` absent → nothing happens).
+
 ### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
 
 Sources: `remote-ref/sheet-native.md` (the data session's 10th order: A9 `sheetivars` / `corners` / `subtree` / motion, iOS 27.0 3×) and

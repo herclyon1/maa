@@ -62,6 +62,7 @@
       for (const f of svg.querySelectorAll('filter[id^="tab-lens-f-bg-"]')) sets.push(parseInt(f.id.slice("tab-lens-f-bg-".length), 10));
       sets.sort((a, b) => a - b);
       if (window.LENS_SS_APPLY) window.LENS_SS_APPLY();
+      if (window.LENS_MAP_DPR_APPLY) window.LENS_MAP_DPR_APPLY();
       if (window.LENS_ENGINE_FIX_APPLY) await window.LENS_ENGINE_FIX_APPLY();
       ready = true;
     } catch (e) { console.warn("tab-lens: filters", e); }

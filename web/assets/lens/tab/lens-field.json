@@ -60,6 +60,10 @@
    "ab_files": [
     "tab-f-ab-94.png"
    ],
+   "abl_files": [
+    "tab-f-ab-94.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-94.png",
@@ -101,6 +105,10 @@
    "ab_files": [
     "tab-f-ab-96.png"
    ],
+   "abl_files": [
+    "tab-f-ab-96.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-96.png",
@@ -142,6 +150,10 @@
    "ab_files": [
     "tab-f-ab-98.png"
    ],
+   "abl_files": [
+    "tab-f-ab-98.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-98.png",
@@ -183,6 +195,10 @@
    "ab_files": [
     "tab-f-ab-100.png"
    ],
+   "abl_files": [
+    "tab-f-ab-100.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-100.png",
@@ -224,6 +240,10 @@
    "ab_files": [
     "tab-f-ab-102.png"
    ],
+   "abl_files": [
+    "tab-f-ab-102.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-102.png",
@@ -265,6 +285,10 @@
    "ab_files": [
     "tab-f-ab-104.png"
    ],
+   "abl_files": [
+    "tab-f-ab-104.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-104.png",
@@ -306,6 +330,10 @@
    "ab_files": [
     "tab-f-ab-106.png"
    ],
+   "abl_files": [
+    "tab-f-ab-106.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-106.png",
@@ -347,6 +375,10 @@
    "ab_files": [
     "tab-f-ab-108.png"
    ],
+   "abl_files": [
+    "tab-f-ab-108.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-108.png",
@@ -388,6 +420,10 @@
    "ab_files": [
     "tab-f-ab-110.png"
    ],
+   "abl_files": [
+    "tab-f-ab-110.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-110.png",
@@ -429,6 +465,10 @@
    "ab_files": [
     "tab-f-ab-112.png"
    ],
+   "abl_files": [
+    "tab-f-ab-112.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 3.75,
    "S_ab": 16.0,
    "bg": "tab-f-bg-112.png",
@@ -470,6 +510,10 @@
    "ab_files": [
     "tab-f-ab-114.png"
    ],
+   "abl_files": [
+    "tab-f-ab-114.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 3.82,
    "S_ab": 16.0,
    "bg": "tab-f-bg-114.png",
@@ -511,6 +555,10 @@
    "ab_files": [
     "tab-f-ab-116.png"
    ],
+   "abl_files": [
+    "tab-f-ab-116.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 3.89,
    "S_ab": 16.0,
    "bg": "tab-f-bg-116.png",

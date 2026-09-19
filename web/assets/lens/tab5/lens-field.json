@@ -60,6 +60,10 @@
    "ab_files": [
     "tab-f-ab-82.png"
    ],
+   "abl_files": [
+    "tab-f-ab-82.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-82.png",
@@ -101,6 +105,10 @@
    "ab_files": [
     "tab-f-ab-84.png"
    ],
+   "abl_files": [
+    "tab-f-ab-84.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-84.png",
@@ -142,6 +150,10 @@
    "ab_files": [
     "tab-f-ab-86.png"
    ],
+   "abl_files": [
+    "tab-f-ab-86.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-86.png",
@@ -183,6 +195,10 @@
    "ab_files": [
     "tab-f-ab-88.png"
    ],
+   "abl_files": [
+    "tab-f-ab-88.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-88.png",
@@ -224,6 +240,10 @@
    "ab_files": [
     "tab-f-ab-90.png"
    ],
+   "abl_files": [
+    "tab-f-ab-90.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-90.png",
@@ -265,6 +285,10 @@
    "ab_files": [
     "tab-f-ab-92.png"
    ],
+   "abl_files": [
+    "tab-f-ab-92.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-92.png",
@@ -306,6 +330,10 @@
    "ab_files": [
     "tab-f-ab-94.png"
    ],
+   "abl_files": [
+    "tab-f-ab-94.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-94.png",
@@ -347,6 +375,10 @@
    "ab_files": [
     "tab-f-ab-96.png"
    ],
+   "abl_files": [
+    "tab-f-ab-96.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-96.png",
@@ -388,6 +420,10 @@
    "ab_files": [
     "tab-f-ab-98.png"
    ],
+   "abl_files": [
+    "tab-f-ab-98.png"
+   ],
+   "abl_margin": 16.0,
    "peak_ab_pt": 3.68,
    "S_ab": 16.0,
    "bg": "tab-f-bg-98.png",
