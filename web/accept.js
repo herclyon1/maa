@@ -436,8 +436,8 @@
         /* §1 G1–G3 + B3: the up commits index + change + content together, at the native valueChanged time (+66 ms after a tap's up, seg-value-change-content.md §0) */
         const t0 = performance.now(); pev(seg, "pointerup", at(other)); const dt = performance.now() - t0;
         check("分段 G1 抬手 +0：还没换值（valueChanged 在 +66 ms，--seg-commit-delay-tap ← seg-value-change-content.md §0 四次 +92/+68/+50/+66）", start, `${onText()} renders+${renders - r0}`, onText() === start && renders === r0);
-        await sleep(80);
-        check("分段 G1 抬手 +80 ms：同一帧改 index + change + 内容切（透镜同帧起动）", want, `${onText()} renders+${renders - r0}`, onText() === want && thisShift(want) && renders === r0 + 1);
+        await sleep(100);
+        check("分段 G1 抬手 +100 ms：+66 换值那帧切选中态（标签 .on），内容重画在其后一帧（vcsplit；?vcsplit=0 同帧）；透镜由点按链自抬手起动", want, `${onText()} renders+${renders - r0}`, onText() === want && thisShift(want) && renders === r0 + 1);
         { const gone = document.querySelectorAll(".flipgone"), moved = [...document.querySelectorAll("#app > section")].filter((s) => /translateY\((-?[\d.]+)px\)/.test(s.style.transform) && Math.abs(parseFloat(s.style.transform.match(/translateY\((-?[\d.]+)px\)/)[1])) > 20);
           check("分段 B3 换值那一帧：卡片内容直接换（renders+1，同一 tick）；删的行原地克隆淡出（起 .72）、下方内容从原位（+行高）起步（seg-value-change-content.md §0/§1，采样）", "clones .72 · sections offset", `${gone.length} clones ${gone.length ? cs(gone[0]).opacity : "-"} · ${moved.length} sections offset ${moved.length ? moved[0].style.transform : "-"}`, gone.length > 0 && Math.abs(parseFloat(cs(gone[0]).opacity) - .72) < .12 && moved.length > 0); }
         const lensNow = q().querySelector(".lens");
@@ -518,8 +518,8 @@
           await sleep(640); check("分段 pointercancel +700 ms：退净", "rest", sg.classList.contains("lift") ? "lift" : "rest", !sg.classList.contains("lift")); }
         /* §1 G4/G21: lift, slide to the other segment, release there - commits at the up */
         seg = q(); sel = bs().find((b) => b.classList.contains("on")); unsel = bs().find((b) => !b.classList.contains("on"));
-        pev(seg, "pointerdown", at(sel)); await sleep(400); pev(seg, "pointermove", at(unsel)); await sleep(500); const r2 = renders, parent0 = seg.parentNode, lens21 = seg.querySelector(".lens"); pev(seg, "pointerup", at(unsel)); const q21 = document.querySelector("#queue").value; await sleep(40);
-        check("分段 G21 抬起后滑到另一段抬手：选中那段（模型在抬手即改，内容 +25 ms 切 ← --seg-commit-delay-drag）", unsel.textContent, `${onText()} model ${q21}`, q21 === unsel.dataset.q && onText() === unsel.textContent && thisShift(unsel.textContent) && renders === r2 + 1);
+        pev(seg, "pointerdown", at(sel)); await sleep(400); pev(seg, "pointermove", at(unsel)); await sleep(500); const r2 = renders, parent0 = seg.parentNode, lens21 = seg.querySelector(".lens"); pev(seg, "pointerup", at(unsel)); const q21 = document.querySelector("#queue").value; await sleep(60);
+        check("分段 G21 抬起后滑到另一段抬手：选中那段（模型在抬手即改，内容 +25 ms 切 ← --seg-commit-delay-drag；vcsplit 重画在其后一帧，+60 ms 看）", unsel.textContent, `${onText()} model ${q21}`, q21 === unsel.dataset.q && onText() === unsel.textContent && thisShift(unsel.textContent) && renders === r2 + 1);
         check("分段 G21 换值重画：#queueseg 及其父节点原地保留（replaceKeeping，不摘下再插回 → 过渡不被取消；B2-b）", "same node · same parent", `${q() === seg ? "same node" : "new node"} · ${q().parentNode === parent0 ? "same parent" : "new parent"}`, q() === seg && q().parentNode === parent0);
         { const h1 = lens21.getBoundingClientRect().height; await sleep(16); const h2 = lens21.getBoundingClientRect().height;
           check("分段 G21 松手 +1 帧：透镜仍是抬起尺寸、随后逐帧回落（B2-b：不瞬回 28）", "h > 40 at +0, > 36 at +16 ms", `${h1.toFixed(1)} → ${h2.toFixed(1)}`, h1 > 40 && h2 > 36); }
@@ -534,8 +534,8 @@
         seg = q(); sel = bs().find((b) => b.classList.contains("on")); unsel = bs().find((b) => !b.classList.contains("on"));
         const r4 = renders; pev(seg, "pointerdown", at(unsel)); pev(seg, "pointermove", at(unsel, .5, .5, 0, 100)); pev(seg, "pointerup", at(unsel, .5, .5, 0, 100));
         check("分段 G18 竖向滑出 100 pt 抬手：取消、无事件、标签回 1", sel.textContent, `${onText()} renders+${renders - r4}`, onText() === sel.textContent && renders === r4 && !unsel.classList.contains("dim"));
-        seg = q(); const r5 = renders; pev(seg, "pointerdown", at(unsel)); pev(seg, "pointermove", at(unsel, .5, .5, 0, 60)); pev(seg, "pointerup", at(unsel, .5, .5, 0, 60)); await sleep(80);
-        check("分段 G17 竖向滑出 60 pt 抬手：仍选中（余量 70；内容 +66 ms 切）", unsel.textContent, `${onText()} renders+${renders - r5}`, onText() === unsel.textContent && renders === r5 + 1);
+        seg = q(); const r5 = renders; pev(seg, "pointerdown", at(unsel)); pev(seg, "pointermove", at(unsel, .5, .5, 0, 60)); pev(seg, "pointerup", at(unsel, .5, .5, 0, 60)); await sleep(100);
+        check("分段 G17 竖向滑出 60 pt 抬手：仍选中（余量 70；内容 +66 ms 切，vcsplit 重画在其后一帧，+100 ms 看）", unsel.textContent, `${onText()} renders+${renders - r5}`, onText() === unsel.textContent && renders === r5 + 1);
         await sleep(50);
         /* pointercancel = cancel */
         seg = q(); sel = bs().find((b) => b.classList.contains("on")); unsel = bs().find((b) => !b.classList.contains("on"));
