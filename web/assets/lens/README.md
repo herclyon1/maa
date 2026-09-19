@@ -1093,8 +1093,16 @@ source clip BEFORE the displacement (portal #20's r22 mask at the SAMPLED positi
 sample that lands outside the capsule now reads transparent. It changes the corners, not the count: mid 「早班」 ink 1110 → 934 at 3 px/pt
 (−16 %, unchanged) — the samples the map sends stay inside the capsule. What is left is the FIELD's own tearing magnitude at the ends
 (README §1b rounds 1–2 and the §4b check: the formula composition puts 「早」's box where the native's is, its ink count does not follow —
-"an ink count cannot separate the two"); the device now says the shader keeps 32 % more ink than native on that glyph. Open item of the
-maps (the label stages' end behaviour), not of the shader; for the old page / data (a grating under the label at the END position, §1b).
+"an ink count cannot separate the two"); the device now says the shader keeps 32 % more ink than native on that glyph. The old page's
+closed-form check (15:2x, `remote-ref/label-end-tear-closed-vs-map.md`, `tools/lens/end_tear.py`): the map = the §4b.1 closed form to
+≤ .10 pt (the quantisation ±.078 + the bilinear ≤ .03; compose_stages vs the scalar form 1.4e-14), the only block being the outermost ⅓ pt
+(closed u(0) 9.21 / B .5, the map 8.00 / 1.0 — the 2-px/pt texel centre at .25 pt misses the edge drop: the generator's sampling, not the
+clamp); the same 「早班」 bitmap through pass 1: closed form 80 % of the resting ink, the map 80 %, the device's WebGL 84 %, the native 65 % —
+the map carries the closed form faithfully, the closed form is 30 % away from the native; and the native's end field (the drag-mid phase
+data) has NO fold at all (u .87 … .38 on the centre line, 7.6 → 1.5 on the ±10 rows, monotone): the nested sampling's tear is not in the
+native, which is weaker and flatter there, so its 35 % is an INTENSITY term (candidates: the seven taps' weights on black text, the
+KeyFill band's V lift, the copy-over-backdrop composite), not a displacement one. Open with the old page / the data session (whether CA
+nests the two displacement maps — SampleMapFilter around 0x1c3991ab8 unread; or the A9 switch: L2 alone / L4 alone at the end).
 
 **③ The right end 1 pt left (the end line's column 327 vs native 328; the left end 111 = native).** The shader's capsule: u_lens = (110,
 110.891, 220, 44) → the SDF's zero line at x = 330.000 (sdf: q = |p| − (88, 0), the right cap centred at x 308, r 22); the dark line's band d ∈
@@ -1163,6 +1171,16 @@ over in the dark theme (white glyphs on a dark track) the recovered alpha collap
 the 「早」's left strokes are the thinnest. Package side (this commit): the ink is detected from the renders themselves (the colour of the
 pixel the labels changed most); a given `ink` is used only when it is within 48 levels of the detected one (`L.stats.ink` tells which). For
 界面1号 to confirm on the page: the value of `ink` passed in the dark theme at that frame.
+**The tap path's first glass frame (d02487f on the device: the drag's first frame is fine after the prewarm, +113 / +118 vs native +116 / +119;
+a tap's — commit → render → the first lens frame — still 47 / 50 ms):** what sits on that frame and not on the drag's is the value flip's
+`redrawBackdrop` (the labels' weight changes): draw the two 2D canvases, read them back, the alpha recovery loop, two texture uploads —
+on the Mac 19 ms for the control's row at 3× (draw 3, the loop 13, upload 2), more on the phone. Now: `redrawBackdrop()` and a later
+`setBackdrop()` DEFER the work to the next task (setTimeout 0) and draw the frames until then with the previous textures, then prewarm
+again — the native crossfades the label's weight / contents over 0.2 s (seg-lens-refraction §4.4), so one frame with the old label is inside
+its own transition; `{ sync: true }` draws at once (the harness; a setup call before any frame is sync by itself). The scratch canvases are
+kept and re-used (`willReadFrequently`), the textures re-uploaded in place, the loop skips the pixels the labels did not touch
+(`stats.prewarm.backdropDrawMs / AlphaMs / UploadMs`). The device's re-read of the tap path is the check (the data session).
+
 ### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
 
 Sources: `remote-ref/sheet-native.md` (the data session's 10th order: A9 `sheetivars` / `corners` / `subtree` / motion, iOS 27.0 3×) and

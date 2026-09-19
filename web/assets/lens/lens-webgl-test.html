@@ -56,7 +56,7 @@ const UI = q.get("ui") === "1";   /* ?ui=1: the ui session's form — the canvas
 if (UI) { canvas.style.cssText = `position:absolute;left:${lensX - 16}px;top:${lensY - 16}px;width:${LW + 32}px;height:${LH + 32}px;touch-action:none;cursor:grab`; canvas.width = (LW + 32) * DPR; canvas.height = (LH + 32) * DPR;
   lens = LensWebGL.create({ canvas, assets: "", set: 220, dpr: DPR, preserve: true, finish: true, width: LW + 32, height: LH + 32, srcClip: q.get("srcclip") !== "0" });
   if (!lens) { stats.textContent = "no WebGL2"; return; }
-  await lens.ready; lens.setBackdrop({ region: { x: 0, y: 60, w: 440, h: 130 }, ink: inkOf(), page: (x) => drawPage(x), labels: (x) => drawLabels(x) }); drawBase(); }
+  await lens.ready; lens.setBackdrop({ region: { x: 0, y: 60, w: 440, h: 130 }, ink: inkOf(), page: (x) => drawPage(x), labels: (x) => drawLabels(x), sync: true }); drawBase(); }
 else {
 lens = LensWebGL.create(canvas, { width: 440, height: 956, dpr: DPR, preserve: true, finish: true, debugPass1: q.get("glpass") === "1", srcClip: q.get("srcclip") !== "0", get ink() { return inkOf(); },
   sets: { 220: { bg: "seg-f-bg-220.png", lab: "seg-f-lab-220.png", ab: "seg-f-ab-220.png", S: 40, Sab: 12, h: 44 } },   /* data-s of #seg-lens-f-bg-220 / -lab-220 and #seg-lens-f-ab-220 (lens-filter.svg) */
@@ -79,7 +79,7 @@ inputEl.addEventListener("pointermove", (e) => { if (!dragging) return; const r 
 for (const t of ["pointerup", "pointercancel"]) inputEl.addEventListener(t, () => { dragging = false; });
 document.getElementById("auto").onclick = () => { if (auto) return; auto = true; const x0 = lensX, s0 = performance.now(); startLoop();
   const step = (now) => { const pp = (now - s0) / 2000; lensX = Math.max(0, Math.min(440 - LW, x0 + Math.sin(pp * Math.PI * 2) * 60)); if (pp < 1) requestAnimationFrame(step); else { auto = false; lensX = x0; draw(); report("自动拖"); } }; requestAnimationFrame(step); };
-const restate = () => { if (UI) lens.setBackdrop({ region: { x: 0, y: 60, w: 440, h: 130 }, ink: inkOf(), page: (x) => drawPage(x), labels: (x) => drawLabels(x) }); else lens.redrawBackdrop(); drawBase(); draw(); report("静态"); };
+const restate = () => { if (UI) lens.setBackdrop({ region: { x: 0, y: 60, w: 440, h: 130 }, ink: inkOf(), page: (x) => drawPage(x), labels: (x) => drawLabels(x), sync: true }); else lens.redrawBackdrop({ sync: true }); drawBase(); draw(); report("静态"); };
 for (const b of document.querySelectorAll("#bar button[data-state]")) b.onclick = () => { state = b.dataset.state; lensX = LENS_X0[state] ?? lensX; restate(); };
 document.getElementById("theme").onclick = () => { theme = theme === "dark" ? "light" : "dark"; document.documentElement.classList.toggle("dark", theme === "dark"); restate(); };
 document.documentElement.classList.toggle("dark", theme === "dark");
