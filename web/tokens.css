@@ -621,6 +621,9 @@
   --ios-touch-segment-lens-h-keys: 0 1, 42 1.111, 76 1.268, 109 1.35, 125 1.371, 142 1.361, 176 1.304, 209 1.139, 242 1.021, 276 .975, 309 .986, 342 1.025, 376 1.068, 409 1.096, 442 1.125, 476 1.136, 542 1.125, 609 1.089, 676 1.046, 742 1.007, 809 .989, 843 .986, 943 1.0, 1009 1.007, 1209 1.0;
   /* segmented lens follows the finger with a spring lag: 4/6 of a 6 pt step in 130 ms, finger 320 → lens catches up in ~120 ms (G4/F1) */
   --ios-touch-segment-follow-lag: .12s;
+  /* quick tap on the selected segment (native, probe recording 2026-09-20 00:24–00:42, remote-ref/tools/touch/seg-native-quicktap.md quick90c):
+     the lens lifts in place after the up and starts falling at the peak frame, +242 ms after the down (peak 217–218.5×42–43 @ +241…+257, back at 196×28 by +474…+497) */
+  --ios-touch-segment-quicktap-fall: 242ms;
   /* tab bar: pressing the SELECTED tab lifts the lens 94×54 → 103×63 by +180 ms (first size change ~125 ms), 110×70 while dragging (T3/T4) */
   --ios-touch-tab-selected-lift-delay: 125ms;
   --ios-touch-tab-selected-lift-done: 180ms;
