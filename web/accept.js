@@ -46,6 +46,7 @@
     };
     const probe = document.createElement("i"); probe.style.cssText = "position:fixed;left:-9999px;top:0"; document.body.appendChild(probe);
 
+    check("view.js 就绪后才量（window.__viewReady，accept.js 等它 ≤ 60 s）", "true", String(window.__viewReady), window.__viewReady === true);
     const root = px(cs(document.documentElement).fontSize);
     num("根字号 17（--ios-body-size）", 17, root, 0.01);
     num("正文行框 20.33（--ios-body-lh）", 20.33, px(cs(document.body).lineHeight), 0.05);
@@ -824,7 +825,11 @@
     interactions().then(finish, (e) => { check("交互测试脚本出错", "", String(e), false); finish(); });
   }
   /* The page renders after its first snapshot and the number tiles after the game
-     APIs answer: measure once the tiles exist (or after 8 s). */
+     APIs answer: measure once the tiles exist (or after 8 s) — never before view.js's top-level bindings exist (window.__viewReady, set at the
+     end of view.js; the inline loader can deliver it late) and never while a runner holds the start (window.__acceptHold: scripts/mac/accept-run.py
+     sets it before any page script and clears it once its snapshot / stamina data is injected). 60 s hard cap so a stuck page still reports. */
   let tries = 0;
-  const t = setInterval(() => { tries++; if (document.querySelector(".num") || tries > 80) { clearInterval(t); run(); } }, 100);
+  const t = setInterval(() => { tries++;
+    const ready = window.__viewReady === true && !window.__acceptHold;
+    if ((ready && (document.querySelector(".num") || tries > 80)) || tries > 600) { clearInterval(t); run(); } }, 100);
 })();
