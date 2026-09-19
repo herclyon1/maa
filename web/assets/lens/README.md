@@ -1023,17 +1023,21 @@ L.setBackdrop({ region: { x, y, w, h }, ink: [r, g, b], page: (ctx) => {…}, la
      //   alone (the real buttons' font / weight / colour / position); region = the page rectangle the two textures hold (the control's row
      //   ± the lens's reach, e.g. the control's box ± 64 pt); ink = the labels' colour (the alpha recovery, below). Call it again when the
      //   value, the theme, the labels or the size change.
-const gpuMs = L.draw({ lensX, lensY, w, h, p, pd, wh });
+const gpuMs = L.draw({ lensX, lensY, w, h, p, pd, wh, platter: { rgba: [r, g, b, a], alpha } });
      // every frame, uniforms only: lensX / lensY = the lens box's page top-left (the canvas sits at lensX − 16, lensY − 16), w × h = the
      //   model box (the nearest set; the canvas backing is resized when w / h change), p = the material progress (the displacement amounts,
      //   the lines, the highlight, the shadows — 0 draws nothing), pd = the DestOut α (the capsule's alpha over the real content: §4.1 /
-     //   §4.3's ramps — 1 while held), wh = W/H of the capture box (§3b.6, the page's abFrame rule). Returns the CPU→gl.finish ms
-     //   (opts.finish: true) — L.stats.gpuMs / .frames / .set.
+     //   §4.3's ramps — 1 while held), wh = W/H of the capture box (§3b.6, the page's abFrame rule), platter = the resting platter
+     //   (restingBackground #5, _controlForegroundColor) as { rgba, alpha: 1 − p } — drawn inside the capsule above the displaced backdrop
+     //   and below the lines / labels (界面1号 ⑥; not in the backdrop texture). Returns the CPU→gl.finish ms (opts.finish: true) — L.stats.
 ```
+Outside the capsule the canvas paints α only (界面1号 ⑤): the ring shadow (black α) and the dark line's row as a black α equal to the
+darkening those two terms apply to the colour under them (read from the copy at that pixel) — the live DOM and its labels are the
+"outside" of the DestOut punch, nothing of the copy is drawn there, no AA edge is composited twice.
 The flex stretch stays the page's (a CSS transform on the canvas, as on .stack). `window.__segLens` stays the page's loop's. The canvas paints
-only the capsule (opaque × pd) and, outside it, the ring shadow (black α) and the dark line's row (the page copy darkened) — the rest is
-transparent, the live DOM shows through; the copies have to match the DOM inside the capsule and on that one row only. Position the canvas
-on whole pt (the page already puts the control's top on a whole pt): a fractional layer position resamples the canvas by up to a pixel.
+only the capsule (opaque × pd) and, outside it, black α — the rest is transparent, the live DOM shows through; the copies have to match
+the DOM inside the capsule only. Position the canvas on whole pt (the page already puts the control's top on a whole pt): a fractional
+layer position resamples the canvas by up to a pixel.
 
 Engine facts met while packaging (in the file's comments): an FBO's row 0 is the viewport's bottom — pass 2 reads pass 1 and the inner-
 shadow texture with a flipped t (the prototype's first pictures had the labels upside down: 验收's first check); macOS WebKit smooths canvas
