@@ -1,1 +1,1 @@
-/* accept-glassbtn.js — acceptance checks for glassbtn (night batch). Register with ACCEPT.add(async (ctx) => { /* ctx.check(item, expect, got, ok) */ }). */
+/* accept-glassbtn.js: acceptance checks for glassbtn (night batch). Register with ACCEPT.add(async (ctx) => ...) and use ctx.check(item, expect, got, ok). Still a shell. */
