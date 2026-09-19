@@ -39,7 +39,8 @@
    recording can be aligned with the JS frames: seg_web_frames.py reads the cells off each video frame. */
 (function () {
   const q = new URLSearchParams(location.search);
-  if (!(q.has("accept") || q.has("diag") || q.has("segframes"))) return;
+  let lsDiag = false; try { lsDiag = localStorage.getItem("ark-diag") === "1"; } catch {}   // the phone's own switch (the ui session's diag sheet sets it; no query string needed)
+  if (!(q.has("accept") || q.has("diag") || q.has("segframes") || lsDiag)) return;
   const KEY = "ark-segframes", BEFORE = 40, SETTLE_PT = 0.5, SETTLE_MS = 300, MAX_AFTER_UP_MS = 3000, BITS = 10, CELL = 6;
   const name = q.get("segframes") && q.get("segframes") !== "1" ? q.get("segframes") : "web";
 
@@ -68,25 +69,53 @@
     return [1, 1];
   };
   const round = (v, d = 2) => Math.round(v * 10 ** d) / 10 ** d;
+  /* WHERE THE TWO FLASHES COME FROM (2026-09-19 20:0x, the user's phone on 194602: the segment flashes at the end of a tap, the bottom capsule
+     flashes downward): per frame, next to the lens loop's state, the three things that can blank a platter or move the capsule —
+       gl: the GL lens of the visible control — lift (the control carries .lift: the DOM platter is transparent then), lens_bg (the DOM platter's
+           computed background-color), frames (the package's stats.frames so far), tick ("drew" = stats.frames grew this frame; "clear" = the page
+           asked for lift ≤ 0 this frame (setState wrapped, recording only); "none" = neither), lift_req (the lift the page last asked for);
+       tab: the bottom nav.tabs — rect top / height, computed display / opacity / transform, plat_same (its .plat is the same node as last frame:
+           false = the bar was rebuilt), glide rect left / width / top, glide_lift (.glide.lift), kbd (html.kbd: the keyboard rule hides the bar);
+       vp: visualViewport height / offsetTop / scale, innerHeight, the active element (tag#id) — the keyboard / viewport candidates.
+     Events (window resize, visualViewport resize / scroll, window scroll) go to `vp_events` with the viewport numbers at that moment. */
+  let lastPlat = null, glWrapped = null, glReq = null;
+  const wrapGl = (seg) => { const g = seg && seg.__gl; if (!g || !g.lens || glWrapped === g.lens) return g; const L = g.lens, orig = L.setState;
+    L.setState = function (st) { glReq = { lift: st && st.lift, t: performance.now() }; return orig.call(this, st); }; glWrapped = L; return g; };
+  let lastFrames = null;
+  const glReading = (seg, lens) => { const g = wrapGl(seg); if (!g) return { lift: seg.classList.contains("lift"), lens_bg: lens ? getComputedStyle(lens).backgroundColor : null, gl: false };
+    const fr = g.lens.stats.frames, drew = lastFrames !== null && fr > lastFrames; lastFrames = fr;
+    const req = glReq && performance.now() - glReq.t < 40 ? glReq : null;   // a request older than this frame is not this frame's
+    return { gl: true, lift: seg.classList.contains("lift"), lens_bg: lens ? getComputedStyle(lens).backgroundColor : null, frames: fr, tick: ((drew ? "drew" : "") + (req && !(req.lift > 0) ? (drew ? "+clear" : "clear") : "")) || "none", lift_req: req ? round(req.lift, 4) : null }; };
+  const tabReading = () => { const nav = document.querySelector("nav.tabs"); if (!nav) return null; const r = nav.getBoundingClientRect(), cs = getComputedStyle(nav), plat = nav.querySelector(".plat"), glide = nav.querySelector(".glide"), gr = glide && glide.getBoundingClientRect();
+    const same = plat === lastPlat; lastPlat = plat;
+    return { top: round(r.top), h: round(r.height), display: cs.display, opacity: num(cs.opacity, 1), transform: cs.transform === "none" ? "none" : cs.transform.slice(0, 60), plat_same: same, glide: gr ? [round(gr.left), round(gr.width), round(gr.top)] : null, glide_lift: !!(glide && glide.classList.contains("lift")), kbd: document.documentElement.classList.contains("kbd") }; };
+  const vpReading = () => { const vv = window.visualViewport; const ae = document.activeElement; return { vvh: vv ? round(vv.height) : null, vvt: vv ? round(vv.offsetTop) : null, vvs: vv ? round(vv.scale, 3) : null, ih: innerHeight, ae: ae ? ae.tagName.toLowerCase() + (ae.id ? "#" + ae.id : "") : null }; };
+  const vpEvents = []; const vpEvent = (type) => () => { if (vpEvents.length < 400) vpEvents.push({ type, t: performance.now(), ...vpReading() }); };
+  addEventListener("resize", vpEvent("resize")); addEventListener("scroll", vpEvent("scroll"), { passive: true });
+  if (window.visualViewport) { visualViewport.addEventListener("resize", vpEvent("vv-resize")); visualViewport.addEventListener("scroll", vpEvent("vv-scroll")); }
   function reading(now) {
     const seg = segctl(); const lens = seg && seg.querySelector(".lens");
-    if (!lens) return null;
-    const r = lens.getBoundingClientRect(), cs = getComputedStyle(lens), sc = scaleOf(cs);
-    const warp = seg.querySelector(".warp"), copy = warp && (warp.querySelector(".copy") || warp);
+    const tab = tabReading();
+    if (!lens && !tab) return null;
+    /* no segmented control on this tab (the bottom capsule's flash is recorded from any tab): the tab bar's .glide stands in as the tracked rect */
+    const el = lens || document.querySelector("nav.tabs .glide") || document.querySelector("nav.tabs");
+    const r = el.getBoundingClientRect(), cs = getComputedStyle(el), sc = scaleOf(cs);
+    const warp = seg && seg.querySelector(".warp"), copy = warp && (warp.querySelector(".copy") || warp);
     const fd = document.querySelector("#seg-lens-warp feDisplacementMap");
-    const bs = [...seg.querySelectorAll("button")];
+    const bs = seg ? [...seg.querySelectorAll("button")] : [];
     const st = window.__segLens && typeof window.__segLens === "object" ? Object.fromEntries(Object.entries(window.__segLens).filter(([k, v]) => typeof v === "number" || typeof v === "string").map(([k, v]) => [k, typeof v === "number" ? round(v, 4) : v])) : null;
     const marks = [];
     try { for (const e of performance.getEntriesByType("mark").concat(performance.getEntriesByType("measure"))) { if (e.name.startsWith("seg:") && e.startTime > lastSampleT && e.startTime <= now) marks.push({ name: e.name, start: e.startTime, dur: round(e.duration, 3) }); } } catch {}
     return { pts: now / 1000, rect: [round(r.left), round(r.top), round(r.width), round(r.height)], alpha: num(cs.opacity, 1), scale: [round(sc[0], 4), round(sc[1], 4)],
              zoom: copy ? round(num(getComputedStyle(copy).zoom, 1), 4) : null, warp_scale: fd ? num(fd.getAttribute("scale"), 0) : null,
-             index: bs.findIndex((b) => b.classList.contains("on")), lift: lens.classList.contains("lift"), drag: !!seg && seg.classList.contains("drag"), spring: lens.classList.contains("spring"),
-             state: st, marks, last_pointer_t: rec && rec.pointer.length ? rec.pointer[rec.pointer.length - 1].t : null };
+             index: bs.findIndex((b) => b.classList.contains("on")), lift: el.classList.contains("lift"), drag: !!seg && seg.classList.contains("drag"), spring: el.classList.contains("spring"),
+             state: st, marks, last_pointer_t: rec && rec.pointer.length ? rec.pointer[rec.pointer.length - 1].t : null,
+             gl: seg ? glReading(seg, lens) : null, tab, vp: vpReading(), tracked: lens ? "segctl .lens" : "nav.tabs .glide" };
   }
 
   /* ---- pointer timeline (capture phase: seen before the page's own handlers and pointer capture) ---- */
   let frameNo = 0, ring = [], rec = null, lastNote = "", cur = null, lastTs = null, lastSampleT = -1;
-  const inSeg = (e) => { const s = segctl(); return !!s && (s.contains(e.target) || (rec && rec.pointerId === e.pointerId)); };
+  const inSeg = (e) => { const s = segctl(), nav = document.querySelector("nav.tabs"); return (!!s && s.contains(e.target)) || (!!nav && nav.contains(e.target)) || (!!rec && rec.pointerId === e.pointerId); };
   /* WHERE THE FIRST GESTURE'S TIME GOES (2026-09-19 18:4x, the data session's seg-final-181053.md ①: the first lens gesture after load had
      ~190 ms of main-thread silence before its lift, the second none): three readings, none of them changing the page:
        `lag` on each pointer entry = performance.now() − event.timeStamp at this capture listener (ms): how long the event waited for the main
@@ -103,7 +132,9 @@
   const lagOf = (e) => (e.timeStamp > 0 && e.timeStamp <= performance.now() ? round(performance.now() - e.timeStamp, 1) : null);
   addEventListener("pointerdown", (e) => {
     if (!inSeg(e) || (rec && !rec.done)) return;
-    rec = { name, pointerId: e.pointerId, t_down: performance.now(), t_up: null, moves: [], events: [], frames: ring.map((f) => ({ ...f, phase: "before" })), pointer: [{ type: "down", t: performance.now(), x: e.clientX, y: e.clientY, lag: lagOf(e) }], done: false, rest: null, settledSince: null };
+    const nav = document.querySelector("nav.tabs"), inTab = !!nav && nav.contains(e.target);
+    const sc = segctl(), glMode = sc ? (sc.__gl ? "webgl" : (sc.classList.contains("gl") ? "webgl (no instance yet)" : "svg fallback")) : "no segmented control on this tab";
+    rec = { name: inTab ? name + "-tab" : name, gl_mode: glMode, pointerId: e.pointerId, t_down: performance.now(), t_up: null, moves: [], events: [], frames: ring.map((f) => ({ ...f, phase: "before" })), pointer: [{ type: "down", t: performance.now(), x: e.clientX, y: e.clientY, lag: lagOf(e) }], done: false, rest: null, settledSince: null };
     const first = reading(performance.now()); rec.rest = first ? first.rect.slice() : null; rec.index0 = first ? first.index : -1;
   }, true);
   addEventListener("pointermove", (e) => { if (rec && !rec.done && e.pointerId === rec.pointerId) { rec.moves.push(performance.now()); rec.pointer.push({ type: "move", t: performance.now(), x: e.clientX, y: e.clientY, lag: lagOf(e) }); } }, true);
@@ -118,10 +149,11 @@
     const st = rec.frames.map((f) => f.sample_t ?? f.pts), gaps = st.slice(1).map((v, i) => v - st[i]).filter((g) => g > 0).sort((a, b) => a - b);
     const interval = gaps.length ? gaps[Math.floor(gaps.length / 2)] : 1 / 60;                       // the run's median rAF interval (s)
     const frames = rec.frames.map((f) => { const s = f.sample_t ?? f.pts, p = s + interval; return { file: null, frame: f.frame, pts: round(p, 3), sample_t: round(s, 3), next_t: f.next_t === null || f.next_t === undefined ? null : round(f.next_t, 3), t_since_down: round(p - td, 3), t_since_up: round(p - tu, 3), phase: phaseAt(p * 1000),   // the phase by the presentation time, like the native trace
-      lens: [{ view: "segctl .lens", rect: f.rect, alpha: f.alpha, scale: f.scale }], zoom: f.zoom, warp_scale: f.warp_scale, index: f.index, lift: f.lift, drag: f.drag, spring: f.spring, samples: f.samples, after_others: f.after_others,
+      lens: [{ view: f.tracked || "segctl .lens", rect: f.rect, alpha: f.alpha, scale: f.scale }], zoom: f.zoom, warp_scale: f.warp_scale, index: f.index, lift: f.lift, drag: f.drag, spring: f.spring, samples: f.samples, after_others: f.after_others,
       state: f.state ? Object.fromEntries(Object.entries(f.state).map(([k, v]) => [k, typeof v === "number" && (k === "t" || k.endsWith("_t")) ? round(v / 1000 - td, 3) : v])) : null,
       last_pointer_t: f.last_pointer_t === null || f.last_pointer_t === undefined ? null : round(f.last_pointer_t / 1000 - td, 3),
-      marks: (f.marks || []).map((m) => ({ name: m.name, start: round(m.start / 1000 - td, 3), dur: round(m.dur / 1000, 3) })) }; });
+      marks: (f.marks || []).map((m) => ({ name: m.name, start: round(m.start / 1000 - td, 3), dur: round(m.dur / 1000, 3) })),
+      gl: f.gl || null, tab: f.tab || null, vp: f.vp || null, tracked: f.tracked || null }; });
     const firstChange = frames.find((f) => f.t_since_down >= 0 && changed(f.lens[0].rect, rec.rest, 0.3));
     const out = { name: rec.name, t_down_pts: round(td, 3), t_up_pts: round(tu, 3), moves_since_down: rec.moves.map((m) => round(m / 1000 - td, 3)),
       control_events: rec.events, first_lens_change_since_down: firstChange ? firstChange.t_since_down : null, frames,
@@ -130,7 +162,11 @@
       sampler: "after the page's rAF callbacks (rAF wrapper, last sample of the frame; 2026-09-19)", frame_interval: round(interval, 4),
       time_semantics: "pts = presentation time = the sampling frame's rAF timestamp (sample_t) + frame_interval (the next vsync); t_since_down / t_since_up from pts",
       state_source: window.__segLens ? "window.__segLens (the page's lens loop)" : "window.__segLens not present",
-      longtask_supported: longtaskSupported, pointer_lag: "lag = performance.now() − event.timeStamp at the capture listener (ms): the event's wait for the main thread" };
+      longtask_supported: longtaskSupported, pointer_lag: "lag = performance.now() − event.timeStamp at the capture listener (ms): the event's wait for the main thread",
+      vp_events: vpEvents.filter((e) => e.t >= rec.t_down - 1000 && e.t <= (rec.t_up === null ? rec.t_down : rec.t_up) + MAX_AFTER_UP_MS).map((e) => ({ ...e, t: round(e.t / 1000 - td, 3) })),
+      gl_mode: rec.gl_mode, gl_query: new URLSearchParams(location.search).get("gl"),
+      ua: navigator.userAgent, page_version: (() => { const t = document.querySelector('script[src^="view.js"]'); const m = t && /v=([0-9]+)/.exec(t.getAttribute("src")); return m ? m[1] : null; })(),
+      trigger: q.has("accept") ? "?accept" : q.has("diag") ? "?diag" : q.has("segframes") ? "?segframes" : "localStorage ark-diag" };
     try { localStorage.setItem(KEY, JSON.stringify(out)); } catch {}
     window.__segFrames = out; dispatchEvent(new CustomEvent("segframes", { detail: out }));
     lastNote = `${frames.length}fr ok`;
