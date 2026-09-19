@@ -66,6 +66,6 @@
   }
   /* hidden strips the state at once (BOARD A6 template): nothing animates while the page is away and a half-open menu must not come back */
   const onHidden = (force) => { if (force || document.hidden) strip(); };
-  addEventListener("visibilitychange", () => onHidden(false));
+  document.addEventListener("visibilitychange", () => onHidden(false));
   window.Menu = { open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0 } : null };
 })();
