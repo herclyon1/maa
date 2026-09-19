@@ -449,6 +449,22 @@ formula / WebKit ss off / WebKit ss on):
    Nothing else changes: the map files, `lens-filter.svg`, the fringe chain on the wrapper of both layers (still the plain lens box +
    16 pt), the punch / clip rules. The test page's implementation is the reference (`lens-test.template.html`: `SS`, `.ssw`, `.ss2`).
 
+**Does A remove the ends' hard bands (engine fact 2)?** — the backdrop layer alone (`?lab=0&ab=0`), the band's bottom-edge row 637
+and top-edge row 610 at the left end, x 114 … 133 per pt, and the vertical profile through the displaced track top at x 320
+(rows 606 → 614 by ⅓ pt); native from `seg-native-dragmid-{light,dark}-full.png`:
+
+| | light: row 637 x 114–133 | dark: row 637 | light: x 320 rows 606 → 614 (⅓ pt) |
+|---|---|---|---|
+| native | 190 220 220 227 233 237 239 ×13 240 ×4 (one level after the rim) | 24 32 21 14 9 6 4 4 5 6 ×6 5 5 4 4 4 | 240 237 233 229 230 … 228 228 225 216 214 … (the step over ≈ 1 pt, 3 samples) |
+| ss off | 212 238 240 247 252 ×6 251 **244 243 ×5 244** 251 252 ×2 (the 6-column block of track between page) | 44 49 46 36 31 ×6 **42 ×6** 31 ×3 (the block) | 255 … 255 **242** 238 … (one ⅓-pt sample between) |
+| ss on | 212 237 238 247 252 ×4 251 **247 ×11** (a single blended level, the block gone) | 44 49 49 37 31 ×4 33 **37 ×11** (gone) | 255 … 255 **254** 238 … (one ⅓-pt sample between) |
+
+So A turns the row-parallel block (the displaced track edge riding along the row, decided per column) into the flat blended level the
+native shows there (247 = the mean of page 252 and track 243, as the native's 239 is of 243 and 228 + its material tone) — the notch
+and the hard horizontal blocks at the ends are gone. The vertical transition across the displaced edge stays one ⅓-pt sample wide
+(the 2×2 average gives at most one intermediate row) where the native's spreads over ≈ 1 pt (bilinear); the tone between the rim
+and the band (material, §0.4 above) is not A's business.
+
 The rows 4 pt from the lens top / bottom, the streaks and the fringe share come to the native with it; what stays is the knife-edge
 flicker in the eye (the platform straddles a bar boundary; the native's bilinear fetch blends it), the 0.17 pt short in the height
 and the saturation. Cost: 4× the filter pixels per layer (two layers; the fringe chain on the wrapper untouched) — the data
