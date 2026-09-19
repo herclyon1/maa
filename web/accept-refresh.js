@@ -9,19 +9,31 @@
       read is base + n·45;
    ⑤ end: endRefreshing → state 4, the indicator's opacity reaches 0 within 0.3 s, then state 0 and rotation 0;
    ⑥ a release before f reached 1 (pull = maxSnap / 2, finger up) → state 0 and the refresh callback not called;
-   ⑦ real-device template (the applicable ones): the old view.js path is off (its #ptr reference is null under the guard) so a pull cannot arm twice. */
+   ⑦ real-device template (the applicable ones): the old view.js path is off (its #ptr reference is null under the guard) so a pull cannot arm twice;
+   R5′ / R39 (§11, §11a), all read off Refresh.trace / Refresh.backTrace = the driver's own frames (A15):
+   ⑧ bloom: from the trigger each arm's transform carries scale 1 + .2b and 2b pt outward with b = t/.05 linear, then 1 − easeInOut((t − .05)/.15)
+      ((.42,0,.58,1)); by .2 s the inline transforms are gone (the stylesheet's rotate(i·45°) alone);
+   ⑨ spun α: in every frame arm i α = clamp((1 − p) + i·.08·p, 0, 1) with p = rot / 179.43 (the same spring), and after the spring settles the table
+      0 / .08 / .16 / .24 / .32 / .40 / .48 / .56 — not all-1 any more;
+   ⑩ inset: after the trigger the list's margin-top is still 0 while the finger is down (the browser holds the content under the finger); at the release
+      #app gets .ptr-inset and margin-top 60px;
+   ⑪ scroll-back: endRefreshing with the finger up drives the margin from 60 to 0 over .3 s with progress sin²(π/2 · t/.3) — rms ≤ .5 px against that
+      formula on the driver's frames — and ends at margin 0 with the class removed.
+   Real-device items for the morning sweep (A23), not judged here: whether the list settles 60 below the title at the release without a visible hop
+   (the browser's bounce-back is its own); the control's place relative to a LARGE title (unread, §0 last row) — here the spinner sits in the gap
+   between the title and the list. */
 (function () {
   if (!window.ACCEPT) return;
   ACCEPT.add(async function acceptRefresh(ctx) {
     const { check, num, sleep } = ctx;
     const R = window.Refresh;
     if (!R) { check("下拉刷新：Refresh 未装载（refresh.js）", "Refresh", "缺", false); return; }
-    const ptr = document.getElementById("ptr"), ai = document.getElementById("ptrai"), arms = [...ai.querySelectorAll("i")];
+    const ptr = document.getElementById("ptr"), ai = document.getElementById("ptrai"), arms = [...ai.querySelectorAll("i")], app = document.getElementById("app");
     const H = window.visualViewport ? window.visualViewport.height : innerHeight, want = 112.5 * Math.max(H, 372) / 568;
     const rotOf = () => { const m = /rotate\(([-\d.]+)deg\)/.exec(ai.style.transform || ""); return m ? parseFloat(m[1]) : 0; };
     let calls = 0, done; R.onRefresh = () => { calls++; return new Promise((r) => { done = r; }); };
     try {
-      R.reset();
+      R.reset(); window.scrollTo(0, 0);   // the pull model needs the page at the top (an earlier row may have left it scrolled)
       /* ① */
       num("下拉刷新 ① 阈值 maxSnap = 112.5 × max(H, 372) / 568（refresh-native-formula.md §2；H = 可视视口高 " + Math.round(H) + "，不是旧页的 72）", want, R.maxSnap(), 0.01);
       check("下拉刷新 ① 旧路径已让位（view.js 的 #ptr 引用为 null，不会再 72 pt 就 arm）", "no .arm", ptr.classList.contains("arm") ? "arm!" : "no .arm", !ptr.classList.contains("arm"));
@@ -46,10 +58,35 @@
       await sleep(400); const rA = rotOf(); await sleep(250); const rB = rotOf();
       const stepOK = Math.abs(((rB - rA) - 90)) <= 45 + 0.01, gridOK = Math.abs(((rA - target) / 45) - Math.round((rA - target) / 45)) < 0.02 && Math.abs(((rB - target) / 45) - Math.round((rB - target) / 45)) < 0.02;
       check("下拉刷新 ④ 刷新中每 125 ms 跳 45°（离散、1 s 一圈）：250 ms 内前后两读差 90 ± 45°，且都落在 179.43 + n·45 的格上", "Δ 90 ± 45 · on grid", `${rA.toFixed(1)} → ${rB.toFixed(1)} (Δ ${(rB - rA).toFixed(1)})`, stepOK && gridOK);
+      /* ⑧ bloom, ⑨ spun α (refresh-native-formula.md §11 item 3 / §11a) — read off the driver's frames */
+      { const tr = R.trace.slice(), ease = R.easeInOut, bExp = (t) => t < 0.05 ? t / 0.05 : t < 0.2 ? 1 - ease((t - 0.05) / 0.15) : 0;
+        const inBloom = tr.filter((s) => s.t > 0.004 && s.t < 0.19), afterBloom = tr.filter((s) => s.t >= 0.22);
+        const xfOK = inBloom.every((s) => { const m = /translateY\((-?[\d.]+)px\) scale\(([\d.]+)\) translateY\(10px\)/.exec(s.xf); if (!m) return false; const b = bExp(s.t); return /^rotate\(315deg\)/.test(s.xf) && Math.abs(parseFloat(m[2]) - (1 + 0.2 * b)) < 0.003 && Math.abs(parseFloat(m[1]) - (-2 * b - 10)) < 0.03; });
+        const peak = inBloom.reduce((m, s) => Math.max(m, s.b), 0);
+        check("下拉刷新 ⑧ 触发瞬间的 bloom（§11a：_bloom .05 s linear → 种子 scale 1.2 + 外移 2；completion _unbloom .15 s easeInOut 回 identity）：0…190 ms 每帧臂 7 的 transform = rotate(315°) · 外移 2b · scale(1 + .2b)，b 按 t/.05 再 1 − easeInOut((t − .05)/.15)；≥ 220 ms 内联 transform 已清", `${inBloom.length}+ frames on formula · peak b > .5 · cleared`, `${inBloom.length} frames ${xfOK ? "on formula" : "OFF"} · peak b ${peak.toFixed(2)} · after .22 s: ${afterBloom.length ? (afterBloom.every((s) => s.xf === "") ? "cleared" : "still inline") : "no frame"}`, inBloom.length >= 4 && xfOK && peak > 0.5 && afterBloom.length > 0 && afterBloom.every((s) => s.xf === ""));
+        const aOK = tr.every((s) => { const p = Math.max(0, Math.min(1, s.rot / target)); return s.a.every((v, i) => Math.abs(v - Math.max(0, Math.min(1, (1 - p) + i * 0.08 * p))) < 0.003); });
+        const first = tr[0], mid = tr.find((s) => s.p > 0.3 && s.p < 0.9);
+        check("下拉刷新 ⑨ 转起时臂 α 随同一根弹簧从全亮走到「已转」表（_setSpunAppearance：instanceColor α 1 → 0、instanceAlphaOffset 0 → .08）：每帧 α_i = clamp((1 − p) + i·.08·p)，p = rot / 179.43", "every frame on formula · frame 0 ≈ all 1", `${tr.length} frames ${aOK ? "on formula" : "OFF"} · frame 0 p ${first ? first.p.toFixed(3) : "-"} α ${first ? first.a.map((v) => v.toFixed(2)).join("/") : "-"}${mid ? ` · mid p ${mid.p.toFixed(2)} α ${mid.a.map((v) => v.toFixed(2)).join("/")}` : ""}`, tr.length > 10 && aOK && !!first && first.a.every((v) => v > 0.9));
+        const rest = arms.map((x) => parseFloat(x.style.opacity)), tbl = arms.map((_, i) => i * 0.08);
+        check("下拉刷新 ⑨ 弹簧到位后 8 臂 α = i × .08 = 0 / .08 / .16 / .24 / .32 / .40 / .48 / .56（尾巴淡出的转轮，最亮 .56），随 tick 整体跳转", tbl.map((v) => v.toFixed(2)).join("/"), rest.map((v) => v.toFixed(2)).join("/"), !R.spin && rest.every((v, i) => Math.abs(v - tbl[i]) < 0.002)); }
+      /* ⑩ inset: nothing under the finger, 60 at the release */
+      const mtDown = app ? getComputedStyle(app).marginTop : "-";
+      R.__drive({ down: false }); await new Promise(requestAnimationFrame);
+      const mtUp = app ? getComputedStyle(app).marginTop : "-";
+      check("下拉刷新 ⑩ 刷新中列表顶部缩进 60（§11 第 4 条控件高 60；网页规则：手指在时不动内容，松手那一刻加上，由浏览器自己的回弹落到新位置）", "down 0px → up 60px · .ptr-inset", `down ${mtDown} → up ${mtUp} · ${app && app.classList.contains("ptr-inset") ? ".ptr-inset" : "no class"}`, mtDown === "0px" && mtUp === "60px" && !!app && app.classList.contains("ptr-inset") && R.insetOn);
       /* ⑤ end */
+      window.scrollTo(0, 0); const syEnd = window.scrollY;   // at the top: the whole 60 scrolls back (scrolled ≥ 60 the content would stay put instead)
       const tE = performance.now(); done(); await sleep(60);
-      const st4 = R.state; let opAt = null; await sleep(300); const opEnd = parseFloat(ai.style.opacity || "1"); await sleep(120);
-      check("下拉刷新 ⑤ 结束：状态 4（.3 s ease-in-out 淡出 + 再转 3.1316 rad）→ 状态 0，指示器回 0°、透明度回默认", "4 → 0 · rotation 0", `after 60 ms state ${st4} · after 360 ms opacity ${isNaN(opEnd) ? "(default)" : opEnd} · now state ${R.state} · rotation ${R.rotation}`, st4 === 4 && R.state === 0 && R.rotation === 0);
+      const st4 = R.state, midBack = R.back && app ? { t: (performance.now() - R.back.t0) / 1000, m: parseFloat(getComputedStyle(app).marginTop) } : null;   // ⑪: a layout sample mid-way
+      let opAt = null; await sleep(300); const opEnd = parseFloat(ai.style.opacity || "1"); await sleep(120);
+      check("下拉刷新 ⑤ 结束：状态 4（.3 s ease-in-out (.42,0,.58,1) 淡出 + 再转 3.1316 rad + 缩到 .001，§11a）→ 状态 0，指示器回 0°、透明度回默认", "4 → 0 · rotation 0", `after 60 ms state ${st4} · after 360 ms opacity ${isNaN(opEnd) ? "(default)" : opEnd} · now state ${R.state} · rotation ${R.rotation}`, st4 === 4 && R.state === 0 && R.rotation === 0);
+      /* ⑪ the scroll-back (§11 item 1: _setAbsoluteContentOffset:animated: → curve 0, .3 s, progress sin²(π/2 · f)) on the driver's frames */
+      { const bt = R.backTrace.slice(), exp = (t) => 60 * (1 - Math.pow(Math.sin(Math.PI / 2 * Math.min(1, t / 0.3)), 2));
+        const rmsB = Math.sqrt(bt.reduce((s, r) => s + Math.pow(r.m - exp(r.t), 2), 0) / Math.max(1, bt.length));
+        const mtEnd = app ? getComputedStyle(app).marginTop : "-";
+        num("下拉刷新 ⑪ 结束后缩进 .3 s 滚回：逐帧 margin 对 60 × (1 − sin²(π/2 · t/.3)) 的 rms（px，" + bt.length + " 帧）", 0, rmsB, 0.5);
+        check("下拉刷新 ⑪ 滚回中途版面真在动：+60 ms 左右读到的 computed margin-top 在 0 与 60 之间、与该时刻公式值差 ≤ 6 px（一帧的斜率）", "0 < m < 60 · |Δ| ≤ 6", midBack ? `t ${midBack.t.toFixed(3)} m ${midBack.m.toFixed(1)} vs ${exp(midBack.t).toFixed(1)}` : "no sample", !!midBack && midBack.m > 0 && midBack.m < 60 && Math.abs(midBack.m - exp(midBack.t)) <= 6);
+        check("下拉刷新 ⑪ 滚回收尾：margin 0、.ptr-inset 已除、滚回动画结束", "0px · no class · back null", `${mtEnd} · ${app && app.classList.contains("ptr-inset") ? ".ptr-inset" : "no class"} · back ${R.back ? "running" : "null"} · ${bt.length} frames · scrollY at end ${syEnd}`, bt.length >= 8 && mtEnd === "0px" && !!app && !app.classList.contains("ptr-inset") && !R.back && !R.insetOn); }
       /* R5 — the arms' geometry (refresh-native-formula.md §10, probe): 8 arms, each 3.667 × 10 with corner 1.833, inner end 5 pt from the centre (outer 15),
          every 45°; the box centred at safe-area top + 54 + 30; colour token --ios-spinner (secondaryLabel α .6) */
       { const box = ai.getBoundingClientRect(), cx = box.left + box.width / 2, cy = box.top + box.height / 2, a0 = arms[0], c0 = getComputedStyle(a0);
