@@ -21,5 +21,7 @@ body.nav-live.nav-live > header, body.nav-live.nav-live > main { transition: non
    second key segment [.425, 1]; the title's frame slides from the title area's right end to its place (linear in p) */
 .page.nav-live.nav-live > .pnav > .pback, .page.nav-live.nav-live > .pnav > .ptitle { opacity: var(--nav-in, 1); transition: none; }
 .page.nav-live.nav-live > .pnav > .ptitle { translate: var(--nav-title, 0px) 0; }
+/* R21e′: the back chevron (the button's content, not its glass) rides from the root's large-title label centre to its place (§5d) */
+.page.nav-live.nav-live > .pnav > .pback::before { translate: var(--nav-back-dx, 0px) var(--nav-back-dy, 0px); transition: none; }
 /* the pushed page pans vertically on its own; a sideways drag from the left edge reaches nav-edge.js (BOARD #12) */
 .page.page { touch-action: pan-y; }
