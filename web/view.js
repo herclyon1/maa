@@ -1196,6 +1196,7 @@ function dressSelects() {
   }
 }
 function openMenu(anchor, sel) {
+  if (window.Menu) return Menu.open(anchor, sel);   // night batch #3 (BOARD A7 guard): web/menu.js takes the menu over when motion.js is there
   closeMenu();
   const scrim = document.createElement("div"); scrim.className = "menu-scrim";
   const menu = document.createElement("div"); menu.className = "menu"; menu.setAttribute("role", "menu");

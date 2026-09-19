@@ -7,6 +7,7 @@
 # repository so verify_lens_maps.py can decode them against the measured field (web/assets/lens/README.md)
 !web/assets/lens/*.png
 !web/assets/lens/tab/*.png
+!web/assets/lens/tab5/*.png
 !web/assets/lens/calib/*.png
 *.log
 # 测试语料必须入库：回放测试和几个格式测试读的就是这些 .log。
