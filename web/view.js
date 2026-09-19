@@ -2098,8 +2098,20 @@ boot();
   const kbInput = (el) => !!el && ((el.tagName === "INPUT" && !/^(checkbox|radio|range|button|submit|reset|file|color|hidden)$/i.test(el.type)) || el.tagName === "TEXTAREA" || el.isContentEditable === true);   // a <select> opens a menu, not the keyboard
   const apply = (h) => { const vh = h != null ? h : (vv ? vv.height : innerHeight), kbd = (h == null && kbdFocus) || innerHeight - vh > 120; document.documentElement.classList.toggle("kbd", kbd); return kbd; };
   window.__tabKbd = (h) => apply(h);
-  if (vv) { vv.addEventListener("resize", () => apply()); vv.addEventListener("scroll", () => apply()); }
-  addEventListener("focusin", (e) => { if (kbInput(e.target)) { kbdFocus = true; apply(); } });
+  /* the focused field must end up inside the visible (keyboard-free) part of the viewport. WebKit reveals it itself on focus; on the phone the first
+     focus of the time field after load stayed under the keyboard (数据 190821 vs 181053, +1.5 s still hidden; the second focus was revealed). What this
+     block does at focus time is one class toggle on <html> (the fixed capsule → display:none) — no preventDefault, no blur, no scrollTop / scroll writes,
+     no html height or overflow change; the visualViewport handlers only toggle that class (the older unsink() writes scrollTo(0, 0) only for scrollY < 0).
+     验收 19:2x (git show 5d71467): the one timing change between the two builds is that toggle — 181053 ran it 300 ms after focusin, 5d71467 synchronously
+     in the focusin dispatch, i.e. before WebKit's reveal. Back to the 300 ms delay (the visualViewport resize hides the capsule as the keyboard comes up
+     anyway), and after every visualViewport resize the next frame checks the active field against the visible range [offsetTop, offsetTop + height] and
+     scrolls the window so the field's centre lands at that range's centre when it is outside (scrollIntoView would centre in the LAYOUT viewport, under
+     the keyboard; 监督局 09-19 19:2x). */
+  const reveal = (h) => { const el = document.activeElement; if (!kbInput(el)) return false; const top = vv ? vv.offsetTop : 0, vh = h != null ? h : (vv ? vv.height : innerHeight), r = el.getBoundingClientRect();
+    if (r.bottom > top + vh - 8 || r.top < top + 8) { scrollBy({ top: (r.top + r.height / 2) - (top + vh / 2), behavior: "smooth" }); return true; } return false; };
+  window.__kbdReveal = (h) => reveal(h);
+  if (vv) { vv.addEventListener("resize", () => { apply(); requestAnimationFrame(() => reveal()); }); vv.addEventListener("scroll", () => apply()); }
+  addEventListener("focusin", (e) => { if (kbInput(e.target)) { kbdFocus = true; setTimeout(() => apply(), 300); } });
   addEventListener("focusout", (e) => { if (kbInput(e.target)) { kbdFocus = false; setTimeout(() => apply(), 60); } }); }
 
 /* 添加到主屏幕后**第一次**从图标启动，滚动位置停在 −62（visualViewport offsetTop −62，整页下沉 62；杀掉重开为 0）——数据会话 9c22044 ?diag 实拍，
