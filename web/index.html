@@ -536,6 +536,10 @@
   .segctl .warpl{position:absolute;z-index:7;left:0;top:0;width:0;height:0;pointer-events:none;display:none;overflow:hidden;clip-path:inset(0 round var(--rr, 14px))}
   .segctl .warpl .displ{position:absolute;inset:0;overflow:hidden;border-radius:var(--rr, 14px)}   /* filter: url(#seg-lens-f-lab-<w>) set per frame; clipped to the capsule BEFORE the filter */
   .segctl.lift .warp,.segctl.lift .warpl,.segctl.lift .plat,.segctl.lift .rimb,.segctl.lift .hlk,.segctl.lift .hlw{display:block}
+  /* A 起手预建 (view.js segPrewarm / segLens prewarm): the layers painted once at load, at rest geometry and opacity .01 (a fully transparent layer may not be
+     rasterised), the white .lens untouched — the engine builds the filter pipeline and the compositing layers before the first touch */
+  .segctl.prewarm .stack,.segctl.prewarm .rimo,.segctl.prewarm .hlk,.segctl.prewarm .hlw,.segctl.prewarm .warp,.segctl.prewarm .warpl,.segctl.prewarm .plat,.segctl.prewarm .rimb{display:block}
+  .segctl.prewarm .stack,.segctl.prewarm .rimo,.segctl.prewarm .hlk,.segctl.prewarm .hlw,.segctl.prewarm .warp{opacity:.01}
   .segctl .warp .copy,.segctl .warpl .copy,.segctl .warp .punch .copy{position:absolute;left:0;top:0;display:flex;padding:var(--ios-segment-lens-pad) 0;box-sizing:border-box}
     /* B3 follow-up: the content (and the lens's commit slide, the same render) switch at the native valueChanged time after the up — seg-value-change-content.md §0:
        +92 / +68 / +50 / +66 ms in the four recordings (median 67; 66 taken, one of the samples), the same frame the lens starts to glide; after a
@@ -3894,7 +3898,7 @@
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
 </svg>
-<script>window.LENS_SS = new URLSearchParams(location.search).get("ss") === "1" ? 2 : 1;</script>   <!-- 引擎校正 2 / 候选 A 默认关（监督局 09-19 11:1x）：?ss=1 才开 2× -->
+<script>window.LENS_SS = new URLSearchParams(location.search).get("ss") === "1" ? 2 : 1; window.LENS_ENGINE_FIX = new URLSearchParams(location.search).get("enginefix") === "1";</script>   <!-- 引擎校正（62 张 feImage 换 blob）默认关，?enginefix=1 才开（监督局 09-19 12:0x，真机 20–25 fps 二分中）；色散层同样默认关，?disp=1 才开（view.js SEG_DISP_ON） -->   <!-- 引擎校正 2 / 候选 A 默认关（监督局 09-19 11:1x）：?ss=1 才开 2× -->
 <script src="assets/lens/lens-supersample.js"></script>   <!-- 引擎校正 2 / 候选 A（2号 ui2 7c26d3b，README §0.4）：开时把 .warp .disp / .warpl .displ 包成 .ssw scale3d(½) + 2× 滤镜层 + .ss2，滤镜 data-s ×2、区域 50 %（data-s0 = 文件 S）；必须在 lens-engine-fix.js 之前（它读 window.LENS_SS / data-s0） -->
 <script src="assets/lens/lens-engine-fix.js"></script>   <!-- 引擎校正（2号 ui2 bed84e4，web/assets/lens/README.md §0.4）：按 devicePixelRatio 把每张 -f-bg- / -f-lab- 贴图的负位移加长一个设备像素（2× ½、3× ⅓）写成 blob 副本换进 feImage（data-engine-fixed 可查），贴图文件与彩边链不动；关法 window.LENS_ENGINE_FIX = false -->
 <!-- 推入页（UINavigationController push）：回执全表、以后的库存页；导航栏 54 at 62、返回 44 at 20 ← AX-11 / AX-46 -->
