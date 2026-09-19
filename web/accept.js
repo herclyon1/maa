@@ -534,8 +534,8 @@
         seg = q(); sel = bs().find((b) => b.classList.contains("on")); unsel = bs().find((b) => !b.classList.contains("on"));
         const r4 = renders; pev(seg, "pointerdown", at(unsel)); pev(seg, "pointermove", at(unsel, .5, .5, 0, 100)); pev(seg, "pointerup", at(unsel, .5, .5, 0, 100));
         check("分段 G18 竖向滑出 100 pt 抬手：取消、无事件、标签回 1", sel.textContent, `${onText()} renders+${renders - r4}`, onText() === sel.textContent && renders === r4 && !unsel.classList.contains("dim"));
-        seg = q(); const r5 = renders; pev(seg, "pointerdown", at(unsel)); pev(seg, "pointermove", at(unsel, .5, .5, 0, 60)); pev(seg, "pointerup", at(unsel, .5, .5, 0, 60)); await sleep(80);
-        check("分段 G17 竖向滑出 60 pt 抬手：仍选中（余量 70；内容 +66 ms 切）", unsel.textContent, `${onText()} renders+${renders - r5}`, onText() === unsel.textContent && renders === r5 + 1);
+        seg = q(); const r5 = renders; pev(seg, "pointerdown", at(unsel)); pev(seg, "pointermove", at(unsel, .5, .5, 0, 60)); pev(seg, "pointerup", at(unsel, .5, .5, 0, 60)); await sleep(100);
+        check("分段 G17 竖向滑出 60 pt 抬手：仍选中（余量 70；内容 +66 ms 切，vcsplit 重画在其后一帧，+100 ms 看）", unsel.textContent, `${onText()} renders+${renders - r5}`, onText() === unsel.textContent && renders === r5 + 1);
         await sleep(50);
         /* pointercancel = cancel */
         seg = q(); sel = bs().find((b) => b.classList.contains("on")); unsel = bs().find((b) => !b.classList.contains("on"));
