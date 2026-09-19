@@ -35,5 +35,6 @@
   };
   const run = () => Promise.all([...document.querySelectorAll("filter[data-s] feImage")].map((fe) => fix(fe).catch((e) => console.warn("lens-engine-fix", fe, e))))
     .then(() => { window.LENS_ENGINE_FIX_DONE = true; dispatchEvent(new CustomEvent("lens-engine-fix")); });
+  window.LENS_ENGINE_FIX_APPLY = run;                            /* for filters added later (tab-lens.js loads its family's <svg> by fetch): re-run; blob: hrefs are skipped */
   if (document.readyState === "loading") addEventListener("DOMContentLoaded", run); else run();
 })();

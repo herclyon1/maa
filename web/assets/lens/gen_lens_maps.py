@@ -332,7 +332,11 @@ def render_aberration(path, w_pt, h_pt, ab, edge, px, scale, oval, margin, sign=
     if peak > scale / 2: raise ValueError(f"aberration span {peak:.2f} pt does not fit scale {scale}")
     if peak > margin: raise ValueError(f"aberration span {peak:.2f} pt exceeds the margin {margin}")
     R = np.clip(np.rint(128 + dx * 255 / scale), 0, 255).astype(np.uint8); G = np.clip(np.rint(128 + dy * 255 / scale), 0, 255).astype(np.uint8)
-    B = np.rint(np.clip(op, 0, 1) * 255).astype(np.uint8); A = np.full_like(R, 255)
+    B = np.rint(np.clip(op, 0, 1) * 255).astype(np.uint8)
+    # A = the lens's coverage (formula.md §3b: out.a = α_elem · cov · ΣA/7 — the foreground's output exists only inside the capsule; the
+    # wrapper reaches `margin` pt beyond it so the taps can READ the page there, but nothing is drawn there). Read in the screen frame
+    # of the (possibly stretched) set: d of the model × the stretch of the axis the point lies on is within a device pixel of the true one.
+    A = np.rint(coverage(d * np.where(np.abs(nx) > np.abs(ny), sx, sy), px) * 255).astype(np.uint8)
     write_png(path, w, h, [bytes(np.stack([R[j], G[j], B[j], A[j]], axis=1).reshape(-1)) for j in range(h)]); return w, h, peak, [path]
 
 def wh_matrix(wh):
@@ -396,8 +400,11 @@ def filter_aberration(fid, hrefs, w, h, scale, mode, margin, note, alpha_elem=1.
     # The colour sum (alpha clamped to 1) × edr on its colour and × α_elem on its alpha (feColorMatrix, unpremultiplied), then `in`
     # with ΣA/7 and with the band mask (cov = the lens clip), then `over`. α_elem and edr are 1 until the old page reads them.
     out += [f'    <feColorMatrix in="{prev}" type="matrix" values="{edr:g} 0 0 0 0  0 {edr:g} 0 0 0  0 0 {edr:g} 0 0  0 0 0 {alpha_elem:g} 0" result="fge"/>',
-            f'    <feComposite in="fge" in2="{preva}" operator="in" result="fgc"/>', '    <feComposite in="fgc" in2="mask" operator="in" result="fg"/>',
-            '    <feComposite in="fg" in2="SourceGraphic" operator="over"/>', "  </filter>"]
+            f'    <feComposite in="fge" in2="{preva}" operator="in" result="fgc"/>', '    <feComposite in="fgc" in2="mask" operator="in" result="fgb"/>',
+            '    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cov"/>',   # A = the lens coverage: §3b out.a = α_elem·cov·ΣA/7 — nothing outside the capsule (the wrapper's margin is read, not drawn)
+            '    <feComposite in="fgb" in2="cov" operator="in" result="fg"/>',
+            '    <feComposite in="SourceGraphic" in2="cov" operator="in" result="srcc"/>',   # the wrapper's own output is the capsule too: its margin copy is READ by the taps, never shown (the real page shows there)
+            '    <feComposite in="fg" in2="srcc" operator="over"/>', "  </filter>"]
     return "\n".join(out)
 
 R_MAX = [22.0]   # the lens's corner radius cap: 22 for the segment lens (--corner-radius 22), h/2 for the tab bar's (--corner-radius half)

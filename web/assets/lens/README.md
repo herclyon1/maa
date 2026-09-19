@@ -798,6 +798,60 @@ to the hard rings at pixel centres on the straight edges and to coverage AA on t
 capsule; the #36 main band on the straight runs only, predict §6.1 rows 5–6) are view.js / index.html numbers of the ui session: written as line + old → new + source in `B6C-PATCH.md` §1–§3, §4b. The regeneration
 also restored `lens-field.json`'s `verification` block (it had been emptied by a run without `--verify-*`; §7's command).
 
+### 0.8.3 Tab bar lens — WIRED (2026-09-19 12:xx, ui2; `web/assets/lens/tab-lens.js`, index.html's tab-bar block, the `tab5/` family)
+
+One line in index.html after view.js: `<script src="assets/lens/tab-lens.js"></script>` (`?tlens=0` off → the page's previous glide-scale lift;
+`?tlens-ab=0` without the colour fringe; `?tlens-clock=timer|manual` = the offscreen-WebKit instruments below). Nothing in view.js changes:
+the script watches the states attachTabBar already writes on the bar (`.glide` gets `lift-sel` +125 ms on the selected item / `lift` +140 ms
+on another, its inline left / width = the item under the finger, `nav` gets `drag`, the classes go at the up, `button.on` moves at a
+selection) with a MutationObserver on `#tabs` and draws. The filters come from `tab5/lens-filter.svg`, fetched and inserted at load (the
+HTML parser — the file's comments carry `--`), then `LENS_SS_APPLY()` / `LENS_ENGINE_FIX_APPLY()` (new hook in lens-engine-fix.js) run over them.
+
+Structure (formula.md §4b with the tab's keys, §0.8 table 3; one fixed element `.tabbar-lens` in screen coordinates — the platter's 1.0516 is
+folded into the layout and the filter `scale`, not an ancestor transform of the filtered layers (the region fact is read at ½ only)):
+`.stack` (lens box + 16 pt; `#tab-lens-f-ab-<w>` on it, W/H per frame from the capture box lens ± 100 clamped to the screen) holding
+`.base` (a plain copy: the page = a clone of `<main>` without ids, the platter = a clone-blurred page under `--glass-fill` + `--glass-rim` in
+the capsule scaled with the real one, the items = a `<nav class="tabs">` shell with the `.seg` clone so index.html's own rules dress the
+copies; a backdrop-filter inside a software-filtered layer does not blur, README §0.8.1) → `.warp > .disp` (`#tab-lens-f-bg-<w>`; the same
+copy, the items outside the capsule + inside at 1 − p = DestOut #76) → `.ish` (`#tab-lens-f-ish`, α × p) → `.warpl > .displ`
+(`#tab-lens-f-lab-<w>`; the items at 1 → 1.16 about their own centres, border-radius-clipped before the filter). The real `.plat` / `.seg` /
+`.glide` scale 1 → 1.0516 about the platter centre (`--tplatter-scale`), the real `.glide` fades 1 → 0 (`--tsel-alpha`); its old scale lifts are off
+under `nav.tabs.tlens`. Model box at progress p = (w0 + 16p) × (54 + 16p), w0 = the item's width (82 here), set = nearest even width of the
+family, presented = model × s about the platter centre, s = 1 + .0516p; feDisplacementMap scale = data-s × p × s (the map's model pt →
+presented pt; u_screen(q) = s·u_model(q/s)), the fringe taps ±S_ab·k × p × s.
+
+Two generator changes made for it (both families and the segment regenerated; R/G/B of every map unchanged, the fringe maps' A channel new):
+* the fringe map's **A = the lens coverage** and the chain's output is `in` it — formula.md §3b out.a = α_elem · cov · ΣA/7: the foreground draws
+  nothing outside the capsule; before, the band factor e (B, = 1 outside) let the taps repaint the whole 16-pt margin with displaced pixels —
+  invisible on the segment's flat track, a smeared rectangle over the page here;
+* the chain's SourceGraphic is also `in` the coverage: the wrapper's margin copy is READ by the outward taps and never shown (the real page
+  shows there — no patch around the lens where the copy differs from the live platter). The segment's inline copy in index.html (the ui
+  session's) still has the old chain; `lens-filter.svg` here is the new one (`tools/fringe_check.py` on lens-test.html?native=1&lensx=220
+  after: share 1.35 %, saturation 81.6 / 75, right end blue above yellow, left yellow above blue — the same as before the change).
+* the page clones are clipped (`overflow: hidden` wrappers): WebKit takes an overflowing child into a filter's objectBoundingBox region.
+
+Motion (tab-lens-motion.md §0 / §4 read curves; analytic damped-spring steps, time-based): lift ζ 1 / .25 s on every quantity; drop ζ 1 / .4 s;
+press another item while held = position ζ .85 / .4 s + the lift at the same time; the drag retargets the same position spring. Offscreen check
+(`?tlens-clock=manual`, `window.__tabLensStep(16.667)` per frame, the states set on the glide by the test script; scratchpad `js-curves.js`):
+
+| curve | t (s) | page | formula | box (presented) |
+|---|---|---|---|---|
+| lift ζ 1 / .25 (p) | .017 / .05 / .1 / .2 / .3 / .5 | .0667 / .3577 / .7154 / .9605 / .9955 / 1.0000 | .0669 / .3577 / .7154 / .9605 / .9955 / 1.0000 | 83.35×55.26 → 96.90×67.86 → 103.06×73.61 (= 98×70 × 1.0516; native height 73.61) |
+| drop ζ 1 / .4 (p from 1) | .017 / .117 / .217 / .317 / .417 / .517 | .9712 / .4532 / .1465 / .0413 / .0108 / .0027 | same to 4 places | 102.43×73.02 → 82.06×54.05 |
+| page change ζ .85 / .4 (x 45 → 127) + lift | .017 / .083 / .15 / .217 / .283 / .35 / .55 | 47.42 / 78.54 / 106.52 / 120.85 / 126.15 / 127.44 / 127.09 | 47.42 / 78.50 / 106.51 / 120.85 / 126.15 / 127.44 / 127.09 | p .0667 / .6189 / .8900 / .9722 / .9934 / .9985 / 1 |
+
+Pictures (`remote-mock/v4/lens/tab/`): `tab-held-native-vs-web.png` (native 3-button held vs the page held, light / dark; the page in wksnap
+has no backdrop blur on the real platter — the device does), `web-{held,drop,move,held2}-{light,dark}-crop.png`.
+
+Not done (next, in this order): the material — KeyFill highlight #52, ring shadow, dark line, the little glow α 0 → .2 (the tab's keys =
+seg-lift-material.md §2 × the three differences, the ui session's tokens); the drag rule read by the old page (tab-lens-motion.md §6.6: position
+ζ .85 / .2 with target = finger x − a·W + W/2, hard clamp to the track, release ζ .9 / .4 to the item under the finger; the loupe flex sX / sY on
+the lifted box with drift tx = sX(1 − sX)·55 — needs per-axis map scaling, the `-wh`-style colour matrix); the wobble after the drop (unread);
+a quick tap's lens (unread — the glide slides as before); the `_UITabSelectionView` copy inside the capture during the ramp (omitted); frame
+cost on the device (the data session's 36916a9 reads the fringe chain and the supersampling as the heavy parts on the segment — `?tlens-ab=0`
+is the switch here). Engine fact for the geometry: the glide's `offsetLeft` reads its CSS transition mid-flight, so the script reads the
+inline `style.left / width` (the target view.js wrote).
+
 ### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
 
 Sources: `remote-ref/sheet-native.md` (the data session's 10th order: A9 `sheetivars` / `corners` / `subtree` / motion, iOS 27.0 3×) and
