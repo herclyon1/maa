@@ -443,6 +443,7 @@
   --ios-alert-glass-saturate: 1.94;
   --ios-alert-glass-brightness: 1.071;
   --ios-alert-glass-white: .538;
+  /* 采样替代（BOARD R34, 2026-09-20）: this filter chain is a sampled stand-in, not a decoded value — the alert glass keys are in alert-native-formula.md §1.3–1.6; replace when wired (A20) */
   --ios-alert-glass-filter: blur(20px) saturate(1.94) brightness(1.071);
   --ios-alert-backdrop-scale: .25;
   --ios-alert-dimming: rgb(0 0 0 / .2);
