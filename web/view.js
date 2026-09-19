@@ -1922,7 +1922,8 @@ function springToTop() {
   const t0 = performance.now(); const st = { t0, y0 }; window.ScrollTop.state = st;
   const f = (now) => { if (window.ScrollTop.state !== st) return; const t = (now - t0) / 1000;
     if (t >= SCROLL_TOP.D) { window.scrollTo(0, 0); window.ScrollTop.state = null; return; }
-    window.scrollTo(0, y0 * (1 - SCROLL_TOP.progress(t))); requestAnimationFrame(f); };
+    const y = y0 * (1 - SCROLL_TOP.progress(t)); st.last = { t, y };   // the driver's own frame value (accept A15: compared before the browser's integer scroll rounding)
+    window.scrollTo(0, y); requestAnimationFrame(f); };
   requestAnimationFrame(f);
 }
 /* R0③ driver (tab-lens-motion.md §7, R24): two critical springs started on the same frame — s3: ζ 1 / .3 (positions, the bar's width, the added items' fade-in),

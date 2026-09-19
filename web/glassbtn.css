@@ -3,5 +3,5 @@
 .pnav .navbtn.navbtn, .topbar .navbtn.navbtn { transform-origin: 50% 50%; transition-property: opacity, background-color, box-shadow; }   /* no transition on transform: the scale is a spring, one value per frame */
 /* R4 (glass-button-press-formula.md §7): the box itself grows 44 → 60 (glassbtn.js sets width / height / margins per frame), the glyph scales × the same
    factor about its centre and fades to .2 (--gb-scale / --gb-icon-alpha set per frame) */
-.pnav .navbtn.navbtn::before, .topbar .navbtn.navbtn::before { transform: scale(var(--gb-scale, 1)); opacity: var(--gb-icon-alpha, 1); transform-origin: 50% 50%; }
+.pnav .navbtn.navbtn::before, .topbar .navbtn.navbtn::before { transform: scale(var(--gb-scale, 1)); opacity: var(--gb-icon-alpha, 1); transform-origin: 50% 50%; transition: none; }   /* R71′ (§7c): the icon's alpha is written per frame by glassbtn.js — .2 at once on the down, back to 1 on the release along the read CABasicAnimation (.47 s cubic-bezier(.25,.1,.25,1) from up + 11.7 ms); no CSS transition (a class-toggled one did not start in Chrome) */
 .pnav .navbtn.navbtn, .topbar .navbtn.navbtn { box-sizing: border-box; }

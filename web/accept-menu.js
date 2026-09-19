@@ -6,7 +6,9 @@
       (Menu.state().x / .t) and the panel's getBoundingClientRect() — and two checks: the spring value is x(t) = target + (start − target)·
       e^(−ζωt)(cos ωd t + ζω/ωd · sin ωd t), ω = 2π/.3, on the driver's own clock (rms ≤ .01 pt: the analytic step is exact), and the DOM shows
       the spring value (rect − x, rms ≤ 1 pt = twice the rounding of a rect read at 1 px).
-   ② dismiss: the same four properties follow ζ .9 / .3 (§0 "消失（缩小）弹簧") from the resting rect back to the anchor's rect, same two checks.
+   ② dismiss: the same four properties follow ζ .8 / .3 — the same liquidMorph spec as the appear (menu-motion-formula.md §8b ①, R19″: liquidMorphShrink
+      ζ .9 has no reader in AnimationKit) — from the resting rect back to the anchor's rect, same two checks; one step, no intermediate shape, no .03 s
+      second step (§8b ③: useIntermediateShape 0 everywhere) — Menu.morph says so and the springs' sole target is the destination rect.
    ③ no dimming: the scrim's background alpha is 0 (§0 "压暗": _hasVisibleBackground NO).
    ④ geometry at rest: width 250, corner 32 (menu-card-material.md §1.2: defaultMenuWidth, menuCornerRadius).
    ⑤ real-device template (BOARD A6, the applicable ones): hidden → the menu is gone (state stripped); the panel's resting background equals the
@@ -122,8 +124,9 @@
     /* ② dismiss (the scrim tap = cancel = the reverse morph) */
     const from2 = rect(panel); scrim.click(); await new Promise((r) => requestAnimationFrame(r));
     const st2 = Menu.state(); const close = await sample(panel, 900);
-    const fout = fit(close, st2.from, st2.to, 0.9, 0.3);
-    for (const k of ["left", "top", "width", "height"]) { num(`菜单收回 ${k}：弹簧值对 ζ.9/r.3 闭式 rms（pt，${close.length} 帧）`, 0, fout[k].model, 0.01); num(`菜单收回 ${k}：面板矩形 = 弹簧值 rms（pt）`, 0, fout[k].dom, 1); }
+    const fout = fit(close, st2.from, st2.to, 0.8, 0.3);
+    check("菜单变形一步走（R19″ / §8b ③）：无中间形、无 .03 s 第二步；收回弹簧 = liquidMorph ζ.8/.3（liquidMorphShrink 无消费者）；RM ζ1/.15；crossBlur 自动规则只记不接", "oneStep · intermediate 0 · dismiss .8/.3 · reduce 1/.15 · crossBlur unwired", Menu.morph ? `${Menu.morph.oneStep ? "oneStep" : "steps"} · intermediate ${Menu.morph.useIntermediateShape} · dismiss ${Menu.springs.dismiss.join("/")} · reduce ${Menu.springs.reduce.join("/")} · crossBlur ${Menu.morph.crossBlur.wired ? "wired" : "unwired"}` : "no Menu.morph", !!Menu.morph && Menu.morph.oneStep && Menu.morph.useIntermediateShape === 0 && Menu.springs.dismiss[0] === 0.8 && Menu.springs.dismiss[1] === 0.3 && Menu.springs.reduce[0] === 1 && Menu.springs.reduce[1] === 0.15 && !Menu.morph.crossBlur.wired);
+    for (const k of ["left", "top", "width", "height"]) { num(`菜单收回 ${k}：弹簧值对 ζ.8/r.3 闭式 rms（pt，${close.length} 帧；§8b ① liquidMorph 两向同一根）`, 0, fout[k].model, 0.01); num(`菜单收回 ${k}：面板矩形 = 弹簧值 rms（pt）`, 0, fout[k].dom, 1); }
     num("菜单收回目标 = 值行按钮框（top）", a0.top, st2.to.top, 0.5); num("菜单收回起点 = 静止框（width）", from2.width, st2.from.width, 0.5);
     await sleep(300); check("菜单收回后面板移除", "无", document.querySelector(".menu.morph") ? "还在" : "无", !document.querySelector(".menu.morph"));
     /* R32 — reduce motion (menu-motion-formula.md §0 "减少动态效果": liquidMorphReduceMotion ζ 1 / response .15, a cross-fade): the geometry is at the
