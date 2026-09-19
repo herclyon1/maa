@@ -566,6 +566,16 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
         check("分段 G12 快速交替 10 次（30 ms 点 / 30 ms 间隔）：每下模型都改（抬手即改）、终态 = 最后一次；内容重画在 valueChanged 时刻，被更新的值追上的那次不再画（快速连点 未量）", last, `${onText()} renders+${renders - r7}${everyTick ? "" : "（某下抬手时模型未改）"}`, onText() === last && renders >= r7 + 1 && renders <= r7 + 10 && everyTick && thisShift(last));
         let stable = true; for (let k = 0; k < 6; k++) { await sleep(100); if (onText() !== last) stable = false; }
         check("分段 G12 快速交替后 600 ms 内不回跳", last, onText(), stable && onText() === last);
+        /* BOARD #9①: a quick tap on the SELECTED segment (up at 60 ms, before the 109 ms lift) — the lens never lifted, so no frame may carry .lift, the resting
+           platter (.lens background) must stay opaque, the GL package must draw nothing (stats.frames unchanged) and __segLens.p must read 0 */
+        await sleep(1300);   // the previous gesture's loop (G14's taps) has ended: the control is at rest with its opaque platter
+        { const sg = q(), selB = bs().find((b) => b.classList.contains("on")), lensQ = sg.querySelector(".lens"), gl = sg.__gl, f0 = gl ? gl.lens.stats.frames : null, r9 = renders;
+          const bg0 = cs(lensQ).backgroundColor, alphaOf = (c) => { const m = rgb(c); return m ? m[3] : 1; };
+          pev(sg, "pointerdown", at(selB)); await sleep(60); pev(sg, "pointerup", at(selB));
+          let liftFrames = 0, transFrames = 0, pMax = 0, n = 0; const tEnd = performance.now() + 500;
+          while (performance.now() < tEnd) { await new Promise(requestAnimationFrame); n++; if (sg.classList.contains("lift")) liftFrames++; if (cs(lensQ).backgroundColor !== bg0) transFrames++; const L = window.__segLens; if (L && typeof L.p === "number" && L.p > pMax) pMax = L.p; }
+          const f1 = gl ? gl.lens.stats.frames : null;
+          check("分段 #9① 快速点已选中段（60 ms 抬手，抬起 109 ms 未到）：没抬过就不走落回——500 ms 内无一帧带 .lift、.lens 背景每帧 = 静止值（亮 白 / 暗 令牌 rgba(235,235,245,.3)，不变透明）、GL 包一帧不画（stats.frames 不变）、__segLens.p 为 0、不换值", `0 lift frames · 0 changed · frames = · p 0 · renders =`, `${n} frames sampled · lift ${liftFrames} · bg changed ${transFrames} (rest ${bg0}) · gl frames ${f0} → ${f1} · pMax ${pMax} · renders+${renders - r9}`, n > 10 && alphaOf(bg0) > 0 && liftFrames === 0 && transFrames === 0 && (f0 === null || f1 === f0) && pMax === 0 && renders === r9); }
         /* a page re-render (heartbeat / snapshot) while the lens rests on a segment must not move it (the carry-over reads the lens box, not the % translate) */
         { await sleep(1300); const sg = q(), ln = sg.querySelector(".lens"), lb = ln.getBoundingClientRect().left; window.render(); const ln2 = q().querySelector(".lens"); const lb2 = ln2.getBoundingClientRect().left; await sleep(120); const lb3 = q().querySelector(".lens").getBoundingClientRect().left;
           check("重画时透镜不动（心跳/快照 render 不会让它跳）", `${Math.round(lb)}`, `${Math.round(lb2)} → ${Math.round(lb3)} ${q().querySelector(".lens").classList.contains("spring") ? "spring!" : ""}`, Math.abs(lb2 - lb) < 1 && Math.abs(lb3 - lb) < 1 && !q().querySelector(".lens").classList.contains("spring")); }
