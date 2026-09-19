@@ -90,7 +90,8 @@ void main(){ vec2 C = u_lens.xy + u_lens.zw * 0.5, half_ = u_lens.zw * 0.5; floa
 ${COMMON}
 in vec2 v; out vec4 o;
 uniform sampler2D t_a, m_ab, t_page, t_lab; uniform vec4 u_page; uniform vec4 u_lens; uniform vec4 u_wrap; uniform float u_Sab; uniform float u_wh; uniform float u_p; uniform float u_pd; uniform float u_dbg;
-vec4 A(vec2 p){ vec2 t = (p - u_wrap.xy) / u_wrap.zw; return texture(t_a, vec2(t.x, 1.0 - t.y)); }   /* an FBO's row 0 is the viewport's bottom: page-down y → flipped t */
+uniform vec2 u_ascale; /* the wrapper's share of the (larger, once-allocated) FBO */
+vec4 A(vec2 p){ vec2 t = (p - u_wrap.xy) / u_wrap.zw; return texture(t_a, vec2(t.x * u_ascale.x, (1.0 - t.y) * u_ascale.y)); }   /* an FBO's row 0 is the viewport's bottom: page-down y → flipped t */
 vec4 over(vec4 s, vec4 d){ return s + d * (1.0 - s.a); }
 vec3 V(vec3 b){ return min(vec3(1.0), 0.9118 * b + 0.1471); }   /* vibrantColorMatrix on the layer's α (keyfill §2) */
 float band(float e, float h, float cosS, float bias, float curv, vec2 n, vec2 dir, float fw){
@@ -130,11 +131,15 @@ void main(){
     let W = opts.width || canvas.clientWidth || parseFloat(canvas.style.width) || canvas.width, H = opts.height || canvas.clientHeight || parseFloat(canvas.style.height) || canvas.height;   /* the canvas in pt */
     canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
     if (uiForm && !opts.sets) { const w0 = opts.set || 220, base = opts.assets != null ? opts.assets : "assets/lens/", fromSvg = setsFromFilters("seg"); opts.sets = Object.keys(fromSvg).length ? fromSvg : { [w0]: { bg: `${base}seg-f-bg-${w0}.png`, lab: `${base}seg-f-lab-${w0}.png`, ab: `${base}seg-f-ab-${w0}.png`, S: 40, Sab: 12 } }; opts.preload = [w0]; }
+    if (uiForm) {   /* the backing store is allocated ONCE at the largest wrapper the sets can need (a per-frame canvas.width change reallocates the buffer — the lift's bounds change every frame); the page sets the element's left/top only, its CSS size is fixed here */
+      const ws = Object.keys(opts.sets).map(Number); const maxW = (opts.maxSize && opts.maxSize[0]) || Math.max(...ws) + 2 * AM, maxH = (opts.maxSize && opts.maxSize[1]) || 48 + 2 * AM;   /* 48: the tallest stretch set's height (256 → 48.5, lens-field.json) */
+      W = maxW; H = maxH; canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR); canvas.style.width = W + "px"; canvas.style.height = H + "px"; }
     if (!opts.backdrop) opts.backdrop = () => {};   /* set later by setBackdrop */
     let region = opts.region || { x: 0, y: 0, w: W, h: H };   /* the page rectangle the backdrop textures hold, page pt */
     const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
     const prog = (vs, fs) => { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)); return p; };
-    const P1 = prog(VS, FS1), PISH = prog(VS, FS_ISH), P2 = prog(VS, FS2);
+    const stats = { gpuMs: 0, frames: 0, set: 0, prewarm: {} };
+    const tC0 = performance.now(); const P1 = prog(VS, FS1), PISH = prog(VS, FS_ISH), P2 = prog(VS, FS2); stats.prewarm.compileMs = performance.now() - tC0;   /* shader compile + link (the drivers may still defer the pipeline until the first draw: the warm draw below) */
     const quad = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, quad); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
     const useProg = (p) => { gl.useProgram(p); const a = gl.getAttribLocation(p, "a"); gl.enableVertexAttribArray(a); gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0); };
     const U = (p, name) => gl.getUniformLocation(p, name);
@@ -159,20 +164,20 @@ void main(){
         al = Math.max(0, Math.min(1, al)); o[i] = ink[0] * al; o[i + 1] = ink[1] * al; o[i + 2] = ink[2] * al; o[i + 3] = al * 255; }   /* premultiplied ink·a, a */
       const c = document.createElement("canvas"); c.width = w; c.height = h; c.getContext("2d").putImageData(out, 0, 0); return c; };
     let composite = null;   /* the page + labels canvas of the last redraw (lens.backdropCanvas(): the test page paints its visible base from it, so base and copy are the same pixels) */
-    const redrawBackdrop = () => { if (tPage) { gl.deleteTexture(tPage); gl.deleteTexture(tLab); } const cPg = draw2d("page"), cP = draw2d("labels"); tPage = tex(cPg, true); tLab = tex(labelsAlpha(cPg, cP), true); composite = cP; scratch.innerHTML = ""; };
+    const redrawBackdrop = () => { const tb = performance.now(); if (tPage) { gl.deleteTexture(tPage); gl.deleteTexture(tLab); } const cPg = draw2d("page"), cP = draw2d("labels"); tPage = tex(cPg, true); tLab = tex(labelsAlpha(cPg, cP), true); composite = cP; scratch.innerHTML = ""; if (stats) stats.prewarm.backdropMs = performance.now() - tb; };
     redrawBackdrop();
     /* the sets: maps per width, textures loaded on first use; the inner shadow per set */
     const sets = {}; const widths = Object.keys(opts.sets).map(Number).sort((a, b) => a - b);
     const nearest = (w) => { let best = widths[0], dd = Infinity; for (const x of widths) { const d = Math.abs(x - w); if (d < dd) { dd = d; best = x; } } return best; };
     const ISH_PX = 3;
     const loadSet = (w) => { if (sets[w]) return sets[w].ready; const s = opts.sets[w]; const st = sets[w] = { S: s.S || 40, Sab: s.Sab || 12, h: s.h, bg: null, lab: null, ab: null, ish: null, ready: null };
-      st.ready = Promise.all([loadImg(s.bg), loadImg(s.lab), loadImg(s.ab)]).then(([a, b, c]) => { st.bg = tex(a); st.lab = tex(b); st.ab = tex(c); if (!st.h) st.h = a.height / (a.width / w);   /* the bg map covers the lens box: h = its height at the map's px/pt */
+      st.ready = Promise.all([loadImg(s.bg), loadImg(s.lab), loadImg(s.ab)]).then(([a, b, c]) => { const tm = performance.now(); st.bg = tex(a); st.lab = tex(b); st.ab = tex(c); gl.finish(); stats.prewarm["mapsMs_" + w] = performance.now() - tm; if (!st.h) st.h = a.height / (a.width / w);   /* the bg map covers the lens box: h = its height at the map's px/pt */
         st.ish = fbo(Math.round(w * ISH_PX), Math.round(st.h * ISH_PX)); gl.bindFramebuffer(gl.FRAMEBUFFER, st.ish.f); gl.viewport(0, 0, st.ish.w, st.ish.h); useProg(PISH);
-        gl.uniform4f(U(PISH, "u_lens"), 0, 0, w, st.h); gl.uniform4f(U(PISH, "u_quad"), 0, 0, w, st.h); gl.uniform2f(U(PISH, "u_origin"), 0, 0); gl.uniform2f(U(PISH, "u_view"), w, st.h); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); gl.bindFramebuffer(gl.FRAMEBUFFER, null); st.loaded = true; });
+        const ti = performance.now(); gl.uniform4f(U(PISH, "u_lens"), 0, 0, w, st.h); gl.uniform4f(U(PISH, "u_quad"), 0, 0, w, st.h); gl.uniform2f(U(PISH, "u_origin"), 0, 0); gl.uniform2f(U(PISH, "u_view"), w, st.h); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); gl.finish(); gl.bindFramebuffer(gl.FRAMEBUFFER, null); stats.prewarm["ishMs_" + w] = performance.now() - ti; st.loaded = true; });
       return st.ready; };
     const loadedNearest = (w) => { const cands = widths.filter((x) => sets[x] && sets[x].loaded); if (!cands.length) return null; let best = cands[0], dd = Infinity; for (const x of cands) { const d = Math.abs(x - w); if (d < dd) { dd = d; best = x; } } return best; };
     const preload = opts.preload || [widths.includes(220) ? 220 : widths[0]]; for (const w of preload) loadSet(w);
-    let A = null, last = null, stats = { gpuMs: 0, frames: 0, set: 0 };
+    let A = null, last = null;
     const clear = () => { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, canvas.width, canvas.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); };
     let canvasOrigin = { x: 0, y: 0 };   /* the canvas's page position (the ui form moves the canvas with the lens) */
     const setState = (s) => {
@@ -185,33 +190,42 @@ void main(){
       /* the wrapper snapped to the device pixel grid: pass 1's pixels then coincide with the canvas's, and pass 2's bilinear read of A lands on texel
          centres (no resampling blur of the copies; the fields still sample the textures at their fractional positions) */
       const wx = Math.floor((lx - AM) * DPR) / DPR, wy = Math.floor((ly - AM) * DPR) / DPR, ww = Math.ceil((lx + lw + AM) * DPR) / DPR - wx, wh_ = Math.ceil((ly + lh + AM) * DPR) / DPR - wy;
-      const aw = Math.round(ww * DPR), ah = Math.round(wh_ * DPR); if (!A || A.w !== aw || A.h !== ah) { A = fbo(aw, ah); }
-      gl.bindFramebuffer(gl.FRAMEBUFFER, A.f); gl.viewport(0, 0, A.w, A.h); useProg(P1);
+      const aw = Math.round(ww * DPR), ah = Math.round(wh_ * DPR); if (!A || A.w < aw || A.h < ah) { const t = performance.now(); A = fbo(Math.max(aw, canvas.width), Math.max(ah, canvas.height)); stats.prewarm.fboMs = performance.now() - t; }   /* once, at the canvas size */
+      gl.bindFramebuffer(gl.FRAMEBUFFER, A.f); gl.viewport(0, 0, aw, ah); useProg(P1);
       gl.uniform4f(U(P1, "u_quad"), wx, wy, ww, wh_); gl.uniform2f(U(P1, "u_origin"), wx, wy); gl.uniform2f(U(P1, "u_view"), ww, wh_);
       gl.uniform4f(U(P1, "u_page"), region.x, region.y, region.w, region.h); gl.uniform4f(U(P1, "u_lens"), lx, ly, lw, lh); gl.uniform1f(U(P1, "u_S"), st.S); gl.uniform1f(U(P1, "u_p"), p);
       const pl_ = s.platter || { rgba: [0, 0, 0, 0], alpha: 0 }; gl.uniform4f(U(P1, "u_platter"), (pl_.rgba[0] || 0) / 255, (pl_.rgba[1] || 0) / 255, (pl_.rgba[2] || 0) / 255, (pl_.rgba[3] == null ? 1 : pl_.rgba[3]) * (pl_.alpha == null ? 1 : pl_.alpha));
       bind(P1, "t_page", 0, tPage); bind(P1, "t_lab", 1, tLab); bind(P1, "m_bg", 2, st.bg); bind(P1, "m_lab", 3, st.lab); bind(P1, "t_ish", 4, st.ish.t);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      if (s._split) { gl.finish(); stats._p1 = performance.now() - t0; }
       clear(); useProg(P2);
       gl.uniform4f(U(P2, "u_quad"), wx, wy, ww, wh_); gl.uniform2f(U(P2, "u_origin"), canvasOrigin.x, canvasOrigin.y); gl.uniform2f(U(P2, "u_view"), W, H);
       gl.uniform4f(U(P2, "u_lens"), lx, ly, lw, lh); gl.uniform4f(U(P2, "u_wrap"), wx, wy, ww, wh_); gl.uniform1f(U(P2, "u_Sab"), st.Sab); gl.uniform1f(U(P2, "u_wh"), s.wh || 1.72); gl.uniform1f(U(P2, "u_p"), p);
-      gl.uniform4f(U(P2, "u_page"), region.x, region.y, region.w, region.h); gl.uniform1f(U(P2, "u_pd"), pd); gl.uniform1f(U(P2, "u_dbg"), opts.debugPass1 ? 1 : 0); bind(P2, "t_a", 0, A.t); bind(P2, "m_ab", 1, st.ab); bind(P2, "t_page", 2, tPage); bind(P2, "t_lab", 3, tLab); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-      if (opts.finish) gl.finish();
+      gl.uniform4f(U(P2, "u_page"), region.x, region.y, region.w, region.h); gl.uniform1f(U(P2, "u_pd"), pd); gl.uniform1f(U(P2, "u_dbg"), opts.debugPass1 ? 1 : 0); gl.uniform2f(U(P2, "u_ascale"), aw / A.w, ah / A.h); bind(P2, "t_a", 0, A.t); bind(P2, "m_ab", 1, st.ab); bind(P2, "t_page", 2, tPage); bind(P2, "t_lab", 3, tLab); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      if (opts.finish || s._split) gl.finish();
+      if (s._split) stats._p2 = performance.now() - t0 - stats._p1;
       stats.gpuMs = performance.now() - t0; stats.frames++; stats.set = wsel; last = s;
     };
     /* warm-up (监督局 14:4x: the page's first glass frame stalled 46–55 ms — the shader pipelines and the textures were first used on that frame): after the
        preloaded set is up, one lifted frame is drawn through both passes into the FBO and the canvas (cleared again in the same task — never presented),
        then gl.finish(); again after every setBackdrop (the new textures' first use). ?glwarm=0 / opts.warm === false skips it. */
     const WARM = opts.warm !== false && new URLSearchParams(location.search).get("glwarm") !== "0";
-    const warm = () => { if (!WARM) return; const w0 = loadedNearest(preload[0] || 220); if (w0 == null) return; const st = sets[w0]; const t0 = performance.now();
-      setState({ cx: W / 2, cy: H / 2, w: w0, h: st.h, lift: 1, pd: 1, wh: 1.72 }); gl.finish(); clear(); stats.warmMs = performance.now() - t0; };
+    /* prewarm = one full lifted frame (the preloaded set, lift 1, pd 1, the current backdrop textures) through pass 1 (FBO) and pass 2 (the canvas), gl.finish after
+       each, the canvas cleared and finished (the cleared buffer is what the compositor presents: the layer's display surface gets allocated too); the per-step
+       ms land in stats.prewarm (compileMs at create, mapsMs per set upload, ishMs, fboMs at the first draw, pass1Ms, pass2Ms, clearMs, totalMs) */
+    const prewarm = () => { if (!WARM) return null; const w0 = loadedNearest(preload[0] || 220); if (w0 == null) return null; const st = sets[w0]; const T = performance.now(); const prev = last;
+      const t1 = performance.now(); setState({ cx: AM + w0 / 2, cy: AM + st.h / 2, w: w0, h: st.h, lift: 1, pd: 1, wh: 1.72, canvasOrigin: { x: 0, y: 0 }, _split: true }); stats.prewarm.pass1Ms = stats._p1; stats.prewarm.pass2Ms = stats._p2;
+      const t3 = performance.now(); clear(); gl.finish(); stats.prewarm.clearMs = performance.now() - t3; stats.prewarm.totalMs = performance.now() - T; stats.prewarm.at = performance.now(); stats.warmMs = stats.prewarm.totalMs;
+      if (prev && prev.lift > 0) setState(prev);   /* a real frame drawn before the warm-up (the harness draws as soon as the set is up) is put back */
+      return stats.prewarm; };
+    const warm = prewarm;
     const ready = Promise.all(preload.map((w) => sets[w] && sets[w].ready)).then(() => { warm(); return true; });
     const setBackdrop = (b) => { if (b.region) region = b.region; if (b.ink) opts.ink = b.ink; opts.backdrop = (x, which, info) => { if (which === "page" && b.page) b.page(x, info); if (which === "labels" && b.labels) b.labels(x, info); }; redrawBackdrop(); if (sets[preload[0]] && sets[preload[0]].loaded) warm(); };
-    const draw = (d) => {   /* the ui form: the canvas is the wrapper at (lensX − AM, lensY − AM), (w + 2AM) × (h + 2AM) pt — resized here when the size changes */
-      const cw = d.w + 2 * AM, ch = d.h + 2 * AM; if (cw !== W || ch !== H) { W = cw; H = ch; canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR); }
+    const redrawAndWarm = () => { redrawBackdrop(); if (sets[preload[0]] && sets[preload[0]].loaded) warm(); };
+    const draw = (d) => {   /* the ui form: the canvas sits at (lensX − AM, lensY − AM); its size is fixed (the largest wrapper), the frame draws the wrapper into its top-left */
       setState({ cx: d.lensX + d.w / 2, cy: d.lensY + d.h / 2, w: d.w, h: d.h, lift: d.p, pd: d.pd, wh: d.wh, platter: d.platter, canvasOrigin: { x: d.lensX - AM, y: d.lensY - AM } });
       return stats.gpuMs; };
-    return { gl, canvas, ready, setState, draw, setBackdrop, redrawBackdrop, backdropCanvas: () => composite, stats, sets, loadSet, get region() { return region; }, destroy: () => { gl.getExtension("WEBGL_lose_context")?.loseContext(); } };
+    return { gl, canvas, ready, setState, draw, setBackdrop, redrawBackdrop: redrawAndWarm, prewarm, backdropCanvas: () => composite, stats, sets, loadSet, get region() { return region; }, destroy: () => { gl.getExtension("WEBGL_lose_context")?.loseContext(); } };
   };
   /* the sets from the page's inline <svg>: #<prefix>-lens-f-bg-<w> (href, data-s), -lab-, -ab- (data-s) — the same files the SVG filters use; h from the map's pixel height / 2 is not known here: pass heights (view.js's series table) or let the page's set table carry them */
   const setsFromFilters = (prefix, heights) => { const out = {}; for (const f of document.querySelectorAll(`filter[id^="${prefix}-lens-f-bg-"]`)) { const w = parseInt(f.id.slice(`${prefix}-lens-f-bg-`.length), 10); if (!(w > 0)) continue;

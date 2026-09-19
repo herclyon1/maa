@@ -1122,6 +1122,29 @@ In the harness (`lens-webgl-test.html?state=mid&dpr=3`, 3 px/pt, the row 8 pt ab
 page's stretched 「班」 reaches the rim rows (the harness's centre row shows the glyph's ink at x 330–332 too). To be compared on the same
 row between the harness and the page (the page's labels / lens box are the page's inputs).
 
+### 0.8.9 GL prewarm — what is moved off the first glass frame (2026-09-19 15:0x; 验收 / 监督局: the wired page's first glass frame stalled 46–55 ms)
+
+What a WebGL lens pays the first time, and where `lens-webgl.js` now pays it instead (each step timed with gl.finish into `L.stats.prewarm`;
+the numbers = the Mac at 3× (`?dpr=3`), a warm shader cache unless noted):
+
+| step | when it used to hit | now | ms (Mac 3×) |
+|---|---|---|---|
+| shader compile + link (3 programs) | create() (idle) — but the driver may defer the pipeline to the first draw | create(), then the prewarm draw finishes the pipelines | `compileMs` 8–21 (350 on a cold cache) |
+| the set's three maps → textures, the inner-shadow FBO (361-tap pass) | the set's load, on `ready` | same, finished (`mapsMs_<w>`, `ishMs_<w>`) | 1 / 0 |
+| the backdrop textures (page, labels; the alpha recovery loop) | `setBackdrop()` / `redrawBackdrop()` — a gesture's first frame if the page calls it there | same call, then a prewarm frame right after it (`backdropMs`) | 13 (the control's row region) / 56 (a whole-page region) |
+| the pass-1 FBO allocation | the first draw | the prewarm's first draw, ONCE at the canvas size (`fboMs`; a smaller wrapper draws into its top-left, `u_ascale`) | 0 |
+| the canvas backing store | every frame the wrapper's size changed (`canvas.width =` reallocates: the lift's bounds change every frame) | allocated ONCE at the largest wrapper the sets can need (ui form: max width + 32 × 80; the CSS size is set by the package, the page moves the element only) | — |
+| the first pass-1 / pass-2 draw (pipeline warm-up, texture first use) | the first glass frame | the prewarm draw: one lifted frame (the preloaded set, lift 1, pd 1, the current backdrop) through both passes, gl.finish after each (`pass1Ms`, `pass2Ms`) | 0–3 / 0–17 |
+| the layer's display surface | the first presented frame | the prewarm ends with clear() + finish: the cleared buffer is presented (`clearMs`) | 0 |
+
+`L.prewarm()` runs it on demand; it also runs by itself when `ready` resolves and after every `setBackdrop()` / `redrawBackdrop()` (a theme /
+value / size change re-uploads the backdrop textures, so the frame after it is warmed too); a real frame drawn before a warm-up is put back
+after it. `?glwarm=0` / `{ warm: false }` off. The page: create + setBackdrop at idle, keep the canvas (never destroy / recreate it), call
+`L.redrawBackdrop()` (or setBackdrop) when the value / theme / labels change — nothing else. Nothing in the chain changed.
+The data session's read of the wired page before this (78284dd): the page's own lift-1 prewarm did not cover the first one or two gestures
+after a reopen — consistent with the backdrop upload and the per-frame backing reallocation being the remaining first-frame costs, both
+moved here; to be re-read on the same gestures (tap up + 83 / + 129 frames, the drag's lift).
+
 ### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
 
 Sources: `remote-ref/sheet-native.md` (the data session's 10th order: A9 `sheetivars` / `corners` / `subtree` / motion, iOS 27.0 3×) and
