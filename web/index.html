@@ -445,7 +445,10 @@
      not stretch - the old 「lands then relaxes」 keyframes came from a recording, not a
      source (spec-extract.md ⑤: transform is a single CASpringAnimation). */
   /* 班次分段控件（34 屏幕时间「每周 / 每天」）：400×32 r16、透镜 28 r14 内缩 2、字 MediumG3 13 / RegularG3 13 ← 探针 UISegmentedControl；
-     放在卡片位置（x 20 宽 400；34 里是 x 40 宽 360，页顶无卡时的写法），透镜材质 采样替代 → 用白底 + 阴影近似 */
+     放在卡片位置（x 20 宽 400；34 里是 x 40 宽 360，页顶无卡时的写法）。静止平台材质 = 原值（menu-card-material.md §2，老网页反编译 -[UISegmentedControl
+     _updateSelectionIndicator] 0x1c4137230 → 建透镜 0x1c4135050–0x1c4135120）：restingBackground = UIView，backgroundColor = _controlForegroundColor（0x1c4135064；
+     数据 getter 亮 (255,255,255,1) / 暗 (235,235,245,.30) = --ios-segment-selected-bg），layer.compositingFilter = kCAFilterPlusL（0x1c41350b0）→ 页面
+     mix-blend-mode: plus-lighter（合成对象 = 平台下面的一切，不加 isolation）；圆角随透镜 14；restingShadowProperties / restingBorderColor 分段控件不设 → 无阴影无边 */
   .segctl{position:relative;display:flex;height:var(--ios-segment-h);padding:var(--ios-segment-lens-pad) 0;border-radius:var(--ios-segment-radius);background:var(--ios-segment-track);margin:var(--ios-group-gap) 0 0;   /* segments at the full pitch (400 / n = 200; labels centred at 120 / 320), the lens inset 2 pt inside its segment (196×28 at 22 / 222 ← seg-native-abc-frames.json rest rects) */
           touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}   /* 轨道 = tertiarySystemFill .12 / 暗 .24 ← 探针 lensdiff；控件自己接管触摸（竖向滑出 64 pt 仍选中，spec §1 G17） */
   /* The selection lens. Position by `left` (a percentage of the control, so the lifted width does not move it), size by width/height: the lift is a
@@ -453,7 +456,7 @@
      drew elliptical ends (界面2号's frame check: a = 15.0 vs the native r 22 circle). Slide = response .4 / ζ .85 spring (--ios-motion-lens-*, 探针 deep). */
   .segctl .lens{position:absolute;top:var(--ios-segment-lens-pad);left:calc(var(--ios-segment-lens-pad) + var(--i, 0) * 100% / var(--n, 2));
                 height:var(--ios-segment-lens-h);width:calc(100% / var(--n, 2) - 2 * var(--ios-segment-lens-pad));margin:0;
-                border-radius:var(--ios-segment-selected-radius);background:var(--ios-segment-selected-bg);box-shadow:var(--ios-segment-selected-shadow);backdrop-filter:var(--ios-segment-selected-filter);-webkit-backdrop-filter:var(--ios-segment-selected-filter);   /* 选中段 = _UILiquidLensView 的 restingBackground：_controlForegroundColor 白 / 暗 (235,235,245,.3)，逐角 14，无阴影无滤镜 ← 探针 lensdiff/subtree */
+                border-radius:var(--ios-segment-selected-radius);background:var(--ios-segment-selected-bg);box-shadow:var(--ios-segment-selected-shadow);backdrop-filter:var(--ios-segment-selected-filter);-webkit-backdrop-filter:var(--ios-segment-selected-filter);mix-blend-mode:plus-lighter;   /* 选中段 = _UILiquidLensView 的 restingBackground：_controlForegroundColor 白 / 暗 (235,235,245,.3)，逐角 14，无阴影无滤镜 ← 探针 lensdiff/subtree */
                 scale:1 1;transform-origin:center;
                 --seg-geo:var(--ios-touch-segment-lift-duration) var(--ios-touch-segment-lift-easing);
                 transition:left var(--ios-motion-lens-duration) var(--ios-motion-lens-easing),width var(--seg-geo),height var(--seg-geo),margin var(--seg-geo),border-radius var(--seg-geo),scale var(--ios-touch-segment-lift-duration) ease-out}   /* 抬起：尺寸、圆角同一条 --ios-touch-segment-lift-easing（250 ms，+109 ms 起，几何 +359 ms 到位）← seg-keys.css（原生逐帧编译；seg-lens-refraction §4.1） */

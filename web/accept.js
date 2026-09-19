@@ -191,6 +191,7 @@
       if (lens) { num("分段透镜高 28（--ios-segment-lens-h）", 28, lens.getBoundingClientRect().height); num("分段透镜圆角 14（--ios-segment-lens-radius）", 14, px(cs(lens).borderTopLeftRadius)); num("分段透镜内缩 2（--ios-segment-lens-pad）", 2, lens.getBoundingClientRect().top - r.top);
         col("分段选中段 = _controlForegroundColor（--ios-segment-selected-bg）", dark ? [235, 235, 245, .3] : [255, 255, 255], cs(lens).backgroundColor);
         check("分段选中段无阴影（--ios-segment-selected-shadow）", "none", cs(lens).boxShadow, cs(lens).boxShadow === "none");
+        check("分段静止平台合成 = kCAFilterPlusL（menu-card-material.md §2：restingBackground.layer.compositingFilter，0x1c41350b0）→ mix-blend-mode plus-lighter，不加 isolation", "plus-lighter · no isolation", `${cs(lens).mixBlendMode} · ${cs(segc).isolation}`, cs(lens).mixBlendMode === "plus-lighter" && cs(segc).isolation === "auto");
         check("分段选中段无滤镜（--ios-segment-selected-filter）", "none", (cs(lens).backdropFilter || cs(lens).webkitBackdropFilter || "none"), /^none$/.test(cs(lens).backdropFilter || cs(lens).webkitBackdropFilter || "none")); }
       if (b) { num("分段文字 13（--ios-segment-label-size）", 13, px(cs(b).fontSize), 0.05); check("分段选中字重 500（--ios-medium-weight）", 500, cs(segc.querySelector("button.on") || b).fontWeight, String(cs(segc.querySelector("button.on") || b).fontWeight) === "500"); }
     }
