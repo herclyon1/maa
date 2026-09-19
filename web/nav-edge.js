@@ -48,7 +48,7 @@
     if (!g.began) {
       const pdt = t - g.lastT; if (pdt > 0) { g.pan.prev = g.pan.newest; g.pan.newest = { v: pdt <= .001 ? 0 : (e.clientX - g.lastX) / pdt, dt: pdt }; }   // the pan's samples run from the touch-down
       g.lastX = e.clientX; g.lastT = t;
-      if (Math.hypot(dx, dy) < HYST) return;                                                  // hysteresis 15 pt
+      if (Math.hypot(dx, dy) <= HYST) return;                                                 // hysteresis 15 pt: decided at the first sample strictly beyond it (_UIScreenEdgePanRecognizer 0x1c4398568: dist > hysteresis)
       const ang = Math.atan2(Math.abs(dy), dx);                                              // angle from the edge normal (+x)
       if (dx <= 0 || ang > ANGLE / 2) { g.dead = true; return; }                            // outside the 155° window: not an edge pan
       if (!Nav.interactive.begin()) { g.dead = true; return; }
