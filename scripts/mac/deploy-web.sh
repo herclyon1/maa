@@ -21,7 +21,8 @@ v = sys.argv[1]
 p = pathlib.Path("web/index.html")
 s = p.read_text(encoding="utf-8")
 # app.js 2026-09-18 拆成 schema/net/pending/live/view（stamina 原本就单独；inventory 是库存页的数据层），七个都盖同一个版本号
-s = re.sub(r'<script src="(schema|net|pending|live|stamina|inventory|view|alert-prewarm|seg-frames-logger)\.js[^"]*"></script>', lambda m: f'<script src="{m.group(1)}.js?v={v}"></script>', s)
+s = re.sub(r'<script src="(schema|net|pending|live|stamina|inventory|view|controls|alert-prewarm|seg-frames-logger)\.js[^"]*"></script>', lambda m: f'<script src="{m.group(1)}.js?v={v}"></script>', s)   # controls.js: the row / switch press state machines (B14 / B13)
+s = re.sub(r'controls\.css\?v=[^"]*', f'controls.css?v={v}', s)   # their stylesheet
 s = re.sub(r'accept\.js\?v=[^"]*', f'accept.js?v={v}', s)   # the ?accept-only acceptance script
 s = re.sub(r'tokens\.css\?v=[^"]*', f'tokens.css?v={v}', s)   # the component tokens stylesheet
 s = re.sub(r'href="manifest\.webmanifest[^"]*"', f'href="manifest.webmanifest?v={v}"', s)

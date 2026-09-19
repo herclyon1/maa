@@ -671,6 +671,68 @@
         await sleep(10);
         check("弹窗按钮抬手关掉弹窗后，浏览器补的 click 不穿到底下的磁贴", `tile ${c0}, closed`, `tile ${clicks}, ${dlg.open ? "open" : "closed"}`, clicks === c0 && !dlg.open); }
       dlg.close(); dlg.remove(); bLab.remove(); window.render = origRender;
+      /* §5 B14 UITableViewCell press (remote-ref/cell-native.md §0 probe originals, state-tables/cell.md C*) on a synthetic .row.nav and an
+         action row inside a .group, through controls.js. Colours: --ios-cell-highlight light (209,209,214) / dark (58,58,60); the fade
+         .5 s cubic-bezier(.42,0,.58,1) checked against the curve at the sampled instant (the same easeInOut UIView used). */
+      const rLab = document.createElement("div"); rLab.style.cssText = "position:fixed;left:20px;top:500px;width:400px;z-index:99;opacity:0";
+      rLab.innerHTML = `<div class="group"><div class="row nav"><label>行</label><span class="val">值</span><i class="sf chev"></i></div><div class="acts"><button type="button">蓝字行</button></div></div>`;
+      document.body.appendChild(rLab);
+      const row = rLab.querySelector(".row.nav"), act = rLab.querySelector(".acts button"); let rsel = 0, asel = 0;
+      row.addEventListener("click", () => rsel++); act.addEventListener("click", () => asel++);
+      const HL = dark ? [58, 58, 60] : [209, 209, 214], bgOf = (el) => cs(el).backgroundColor, lit = (el) => same(bgOf(el), HL);
+      const bez = (x) => { let lo = 0, hi = 1; for (let i = 0; i < 40; i++) { const t = (lo + hi) / 2, cx = 3 * .42 * t * (1 - t) * (1 - t) + 3 * .58 * t * t * (1 - t) + t * t * t; if (cx < x) lo = t; else hi = t; } const t = (lo + hi) / 2; return 3 * 0 * t * (1 - t) * (1 - t) + 3 * 1 * t * t * (1 - t) + t * t * t; };   // cubic-bezier(.42,0,.58,1)
+      /* C3: hold 400 ms — nothing until +150, then the instant highlight; the fade from the up */
+      pev(row, "pointerdown", at(row)); await sleep(100);
+      check("列表行 C3 按下 +100 ms：无变化（延迟 150，--ios-touch-highlight-delay）", "rest", lit(row) ? "highlight" : "rest", !lit(row));
+      await sleep(80);
+      col("列表行 C3 按下 +180 ms：底色 = 高亮色（--ios-cell-highlight，cell-native.md §0）", HL, bgOf(row));
+      check("列表行 C3 高亮中分隔线 opacity 0", "0", cs(row, "::after").opacity, cs(row, "::after").opacity === "0");
+      await sleep(220);
+      const tUp = performance.now(); pev(row, "pointerup", at(row));
+      row.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));   // = the browser's own click for this touch: swallowed
+      check("列表行 抬手同步：浏览器自己的 click 被吞（选中由页面在下一帧发）", "0", rsel, rsel === 0);
+      await sleep(40);
+      check("列表行 C3 抬手 +40 ms：选中 1 次、淡出中（.hl-out）", "1, fading", `${rsel}, ${row.classList.contains("hl-out") ? "fading" : "not fading"}`, rsel === 1 && row.classList.contains("hl-out"));
+      { const t = cs(row).transitionDuration, e = cs(row).transitionTimingFunction, pr = cs(row).transitionProperty;
+        check("列表行 淡出 = background-color .5 s cubic-bezier(.42,0,.58,1)（--ios-motion-row-release-duration / --ios-motion-ease-in-out）", "background-color 0.5s cubic-bezier(0.42, 0, 0.58, 1)", `${pr} ${t} ${e}`, pr === "background-color" && t === "0.5s" && e === "cubic-bezier(0.42, 0, 0.58, 1)"); }
+      await sleep(200);
+      { const el = performance.now() - tUp - 16, c = rgb(bgOf(row)), want = T.card[0] + (HL[0] - T.card[0]) * (1 - bez(Math.max(0, Math.min(1, el / 500))));   // the fade starts one frame after the up
+        check(`列表行 抬手 +${Math.round(el)} ms：R 在曲线上（±8；原生 +235 ms 亮 227 / 暗 46）`, Math.round(want), c ? Math.round(c[0]) : "缺", !!c && Math.abs(c[0] - want) <= 8); }
+      await sleep(420);
+      col("列表行 抬手 +660 ms：回到静止色 = 卡片色（--ios-card-bg）", T.card, bgOf(row));
+      check("列表行 淡完后类名清空", "clean", row.className, !row.classList.contains("hl") && !row.classList.contains("hl-out"));
+      /* C1: a 100 ms tap — no highlight at the up; one frame of highlight at +150 and the fade from there; selected once */
+      pev(row, "pointerdown", at(row)); await sleep(100); pev(row, "pointerup", at(row));
+      check("列表行 C1 短点 100 ms 抬手时：还没高亮", "rest", lit(row) ? "highlight" : "rest", !lit(row));
+      await sleep(90);
+      check("列表行 C1 按下 +190 ms：高亮已亮过并在淡出（.hl-out）、选中 1 次", "fading, 2", `${row.classList.contains("hl-out") ? "fading" : row.classList.contains("hl") ? "lit" : "rest"}, ${rsel}`, row.classList.contains("hl-out") && rsel === 2);
+      await sleep(620);
+      /* C6: vertical 12 pt after the highlight — off at once, the up selects nothing */
+      pev(row, "pointerdown", at(row)); await sleep(200); pev(row, "pointermove", at(row, .5, .5, 0, 12));
+      check("列表行 C6 竖滑 12 pt：高亮瞬时灭（touchesCancelled → animated:NO）", "rest, no fade", `${lit(row) ? "highlight" : "rest"}, ${row.classList.contains("hl-out") ? "fade" : "no fade"}`, !lit(row) && !row.classList.contains("hl-out"));
+      pev(row, "pointerup", at(row, .5, .5, 0, 12)); await sleep(40);
+      check("列表行 C6 竖滑后抬手：不选中", 2, rsel, rsel === 2);
+      /* C9: a fast swipe never highlights */
+      pev(row, "pointerdown", at(row)); pev(row, "pointermove", at(row, .5, .5, 0, 20)); await sleep(200);
+      check("列表行 C9 快滑 20 pt：不高亮", "rest", lit(row) ? "highlight" : "rest", !lit(row));
+      pev(row, "pointerup", at(row, .5, .5, 0, 20)); await sleep(40);
+      /* C7/C10: 100 pt sideways inside the card keeps the press and selects; C11: 16 pt past the card's edge cancels */
+      pev(row, "pointerdown", at(row)); await sleep(200); pev(row, "pointermove", at(row, .5, .5, 100, 0));
+      check("列表行 C10 横滑 100 pt（行内）：仍高亮", "highlight", lit(row) ? "highlight" : "rest", lit(row));
+      pev(row, "pointerup", at(row, .5, .5, 100, 0)); await sleep(40);
+      check("列表行 C10 横滑 100 pt 抬手：选中", 3, rsel, rsel === 3);
+      await sleep(620);
+      pev(row, "pointerdown", at(row)); await sleep(200); pev(row, "pointermove", at(row, 1, .5, 16, 0));
+      check("列表行 C11 出卡片边 16 pt：高亮灭", "rest", lit(row) ? "highlight" : "rest", !lit(row));
+      pev(row, "pointerup", at(row, 1, .5, 16, 0)); await sleep(40);
+      check("列表行 C11 出边抬手：不选中", 3, rsel, rsel === 3);
+      /* the action row (.acts button) is the same cell */
+      pev(act, "pointerdown", at(act)); await sleep(200);
+      col("蓝字行 按下 +200 ms：底色 = 高亮色（同 cell）", HL, bgOf(act));
+      pev(act, "pointerup", at(act)); await sleep(40);
+      check("蓝字行 抬手 +40 ms：触发 1 次、淡出中", "1, fading", `${asel}, ${act.classList.contains("hl-out") ? "fading" : "not fading"}`, asel === 1 && act.classList.contains("hl-out"));
+      await sleep(620);
+      rLab.remove();
     }
     const finish = () => {
       const fails = rows.filter((r) => !r.ok).length;

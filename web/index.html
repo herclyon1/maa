@@ -18,6 +18,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260919095527">
 <!-- 组件数字的正本：--ios-* 变量，每条带来源（探针原值 / AX 帧 / NUMBERS 行 / 取色 / 采样替代）。页面自己的变量只做映射，不再手写数字。 -->
 <link rel="stylesheet" href="tokens.css?v=20260919095527">
+<link rel="stylesheet" href="controls.css?v=20260919135243">   <!-- press states of rows / switch (B14 / B13): remote-ref/dispatch-B14-cell.md, dispatch-B13-switch.md -->
 <link rel="stylesheet" href="seg-keys.css?v=20260919011715">   <!-- segmented-lens kinematics compiled from the native frames (界面2号 ui2 90d6876 gen_seg_keys.py; do not edit) -->
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
@@ -290,7 +291,7 @@
   /* One device pixel, like UITableView's hairline (1/scale pt): a 1px box scaled to a third. */
   .row::after{content:"";position:absolute;left:var(--ios-separator-inset-l);right:var(--ios-separator-inset-r);bottom:0;height:var(--ios-separator-h);background:var(--line)}   /* 分隔线 1.0 pt (60,60,67).12，内缩 20/20 ← 探针 */
   .row:last-child::after,.group > :last-child.row::after{display:none}
-  .row:has(> .sw):active,.row:has(select):active{background:color-mix(in srgb, var(--ink) 6%, var(--card))}
+  /* switch / select rows are not selectable cells: no highlight (state-tables/cell.md; B14 controls.css) */
   .row > label{flex:1 1 0;min-width:40%;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 2026-09-19：标题一行到底、尾部省略——设置的值行标题从不换行（AX-41 / AX-46 全部单行） */
   .row > :not(label){flex:0 1 auto;min-width:0;max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 值最多 60 %，先省略值再省略标题（标题保底 40 %） */
   .row > .sw,.row > input,.row > select,.row > .sf,.row > .chev{overflow:visible;flex-shrink:0}
@@ -303,7 +304,7 @@
   .row.nav{cursor:pointer;padding-right:var(--ios-chevron-inset)}
   .row.nav .val{color:var(--dim);font-size:var(--ios-body-size);line-height:var(--ios-body-lh);text-align:right;flex:0 1 auto;max-width:48%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 值过长时尾部省略，不换行（设置值行的做法） */
   .row.nav .sf.chev{width:var(--ios-chevron-w);height:var(--ios-chevron-h);background:var(--ios-tertiary-label);flex:none;margin-left:calc(var(--ios-value-gap) - var(--ios-value-gap))}
-  .row.nav:active{background:color-mix(in srgb, var(--ink) 6%, var(--card))}
+  /* .row.nav press state: controls.js / controls.css (B14: cell-native.md §0 colours, 150 ms delay, .5 s release fade) */
   /* 勾选页（AX-38）：全屏遮罩 .2 + 从状态栏底（AX-38 y 62 = env(safe-area-inset-top)，standalone black-translucent 下正是 62 = --ios-status-h）起的页，
      顶角 38（--ios-sheet-radius-top），底 = systemGroupedBackground（设置的弹出页是不透明分组底） */
   .sheet{position:fixed;inset:0;z-index:20;display:none;--bg:var(--ios-grouped-bg-elevated);--card:var(--ios-card-bg-elevated)}   /* 弹出页是 elevated 层：暗色底 (28,28,30)、卡 (44,44,46) ← 探针 levels（--ios-*-elevated）；亮色与 base 相同 */
@@ -326,7 +327,7 @@
   .sheet .row.check .sf.ck{width:19px;height:17.33px;background:var(--ios-tint);flex:none;visibility:hidden}   /* ✓ 19×17.33 tint ← AX-38 帧；色 = 设置勾选蓝 */
   .sheet .row.check.on .sf.ck{visibility:visible}
   .sheet .row.check .pico{width:var(--ios-row2-icon);height:var(--ios-row2-icon);border-radius:6px;flex:none}   /* 行内图标 28 ← AX-46 图标行（--ios-row2-icon） */
-  .sheet .row.check:active{background:color-mix(in srgb, var(--ink) 6%, var(--card))}
+  /* .sheet .row.check press state: controls.js / controls.css (B14) */
   html.sheet-open{overflow:hidden}
   /* Behaviour 5: the sheet's present / dismiss = UISheetPresentationController large detent (remote-ref/pagesheet-motion.md, iOS 27.0 probe,
      CAAnimation hook + per-frame presentation): UIDropShadowView.position 956 → 62 (894 pt) and UIDimmingView 0 → black .2 on ONE spring
@@ -654,7 +655,7 @@
   .acts button{position:relative;font:inherit;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);border:0;border-radius:0;padding:calc((var(--ios-row-h) - var(--ios-body-lh))/2) var(--ios-row-text-x);min-height:var(--ios-row-h);
                color:var(--link);background:var(--card);box-shadow:none;cursor:pointer;text-align:left;   /* 蓝字行 = 设置的 link 色 (0,122,255) ← 探针/px33d；行 53.33 */
                transition:background var(--ios-motion-row-release-duration) var(--ios-motion-ease-in-out)}   /* 行松开 0.5 s ease-in-out ← 探针 UITableViewCell；按下瞬时 */
-  .acts button:active,.acts button.pressed{background:color-mix(in srgb, var(--ink) 8%, var(--card));opacity:1;transition:none}   /* 按下填色 8% 无来源；.pressed 由指针状态机管（弹窗按钮无余量、相邻转移 ← spec §4 A2–A6） */
+  .acts button:active,.acts button.pressed{opacity:1}   /* press fill: controls.js .hl / .hl-out (B14, cell-native.md §0); the alert's own buttons keep their overlay (dialog rules below) */
   .acts button::after{content:"";position:absolute;left:var(--ios-separator-inset-l);right:var(--ios-separator-inset-r);bottom:0;height:var(--ios-separator-h);background:var(--line)}
   .group > .acts:last-child button:last-child::after{display:none}
   button{font:inherit;border:0;border-radius:999px;padding:8px 14px;color:var(--accent);
@@ -3942,6 +3943,7 @@
 <script src="inventory.js?v=20260919095527"></script>
 <script src="view.js?v=20260919095527"></script>
 <script src="alert-prewarm.js?v=20260919095527"></script>   <!-- the alert glass layer built once at load: first open as fast as the second (web/alert-prewarm.js) -->
+<script src="controls.js?v=20260919135243"></script>   <!-- row press (B14) / switch (B13) state machines; after view.js (it takes .acts button over from installPressables) -->
 <script>/* 验收脚本只在地址带 ?accept 时加载（docs/HIG-CHECKLIST.md 的验收程序）。分段透镜逐帧记录器（界面2号 seg-frames-logger.js）在 ?accept / ?diag / ?segframes 时加载，
    它自己看查询串，其它时候什么都不做。 */
 { const q = new URLSearchParams(location.search);
