@@ -60,14 +60,48 @@
   const BUILT = { BlurRadius: "feGaussianBlur σ = 5 × 4 pt (the 1/4-resolution capture, alert-pipeline-plan §1.3)", FaceColorMatrixFillColor: "flood mixed at the fill's alpha after the blur (alert-native-formula §1 face row: 再 mix 填充色)",
     RingShadowOpacity: "SVG band ring σ 5, multiplied (keyfill-highlight §4)", RingShadowOffset: "the band's shape shifted (0, 8)", RingShadowStrokeWidth: "band width 4 inside the shifted edge", RingShadowBlurRadius: "feGaussianBlur σ 5", RingShadowMask: "clipped to the panel (mask 1)",
     Clamp: "no-op on 8-bit values (never above 1)", ShadowAmount: "0 → the no-displacement branch (alert-native-formula §1); no shadow drawn" };
-  const UNBUILT = { "BlurDistance*/BlurOpacity*": "不可表达 in one feGaussianBlur (the rim's 1 pt reduction)", "FaceColorMatrixWhite/Black/Saturation": "待读: the luma weights of set_ycc_composite", "FaceColorMatrixMaxLuma*": "待读: formula", "BlurFill*": "待读: formula",
-    "InnerRefraction*/OuterRefraction*/RefractionOpacity/RefractionDistance*": "待做: a displacement map for the r32 rounded rect (generator makes capsules)", "KeyFillHighlight*": "待做: the in-shader highlight block with these keys", "Bleed*": "待做: the SDF-distance bleed (alert-pipeline-plan §1.3 variant e)", "Shadow* (opacity .4/.6, radius 24)": "待读: whether a soft shadow remains with amount 0" };
+  Object.assign(BUILT, { "FaceColorMatrixWhite/Black/Saturation": "feColorMatrix = YCC⁻¹·D·YCC (Rec.709, menu-card-material §7.1)", FaceColorMatrixMaxLumaSDR: "the pre-compression k = sat(1 − Y·(1 − MaxLumaSDR)), c′ = c·k + .3(1 − k)(c·k − Y·k) (§7.1)", "BlurFillBlurRadius/Darken/Lighten/Normal": "bf = σ 8 × 4 blur (近似 mip 3), darken / lighten blends + arithmetic mixes (§7.2)", "ShadowOpacity/Radius/Offset/ColorMatrixFillColor": "drop-shadow 0 8 24 rgba(0,0,0,.3 × opacity) on the panel (§7.3; 剖面近似)" });
+  const UNBUILT = { "BlurDistance*/BlurOpacity*": "不可表达 in one feGaussianBlur (the rim's 1 pt reduction)", "FaceColorMatrixMaxLuma (EDR)": "SDR screen: MaxLumaSDR used (k_EDR 0, §7.1)",
+    "InnerRefraction*/OuterRefraction*/RefractionOpacity/RefractionDistance*": "待做: a displacement map for the r32 rounded rect (generator makes capsules)", "KeyFillHighlight*": "待做: the in-shader highlight block with these keys", "Bleed*": "待做: the SDF-distance bleed (alert-pipeline-plan §1.3 variant e)", "ShadowColorMatrixWhite/Black/Saturation": "待读: how the four shadow colour keys enter set_ycc_composite (§7.3)" };
   const glassTheme = () => (matchMedia("(prefers-color-scheme: dark)").matches && document.documentElement.dataset.theme !== "light") || document.documentElement.dataset.theme === "dark" ? "dark" : "light";
   const glassKeys = (theme) => ({ ...GLASS_KEYS.light, ...(theme === "dark" ? GLASS_KEYS.dark : {}) });
   const NS = "http://www.w3.org/2000/svg";
+  /* R1′ (menu-card-material.md §7, R35 — the glassBackground shader's IR): the three terms that were 待读, now built in the SVG chain, in the shader's order
+     blur → BlurFill → MaxLuma → face matrix → fill mix:
+       BlurFill (§7.2): bf = the backdrop at mip log2(r) (r = BlurFillBlurRadius 8 → mip 3; here feGaussianBlur σ = 8 × 4 pt on the same 1/4-resolution
+         reading as the main blur — the mip's two-point average is 近似 mip, as the read says); out = darken·min(c, bf) + lighten·max(c, bf) +
+         (1 − darken − lighten)·c; final = mix(out, bf, normal) — min / max = feBlend darken / lighten, the mixes = feComposite arithmetic (exact);
+       MaxLuma (§7.1, before the face matrix): complement = 1 − MaxLumaSDR (SDR screen, k_EDR 0): light .06 / dark .65; Y = .2126 R + .7152 G + .0722 B;
+         k = saturate(1 − Y·complement); c′ = mix(Y·k, c·k, 1 + .3(1 − k)) = c·k + .3(1 − k)·(c·k − Y·k) — the products through feComposite arithmetic
+         k1 (i1·i2), the signed difference as its positive and negative parts (SVG clamps intermediates at 0), then c·k + P − N;
+       face matrix (§7.1): M = YCC⁻¹ · D · YCC with Rec.709 YCC (Y = .2126/.7152/.0722; Cb = −.1146/−.3854/.5 + .5; Cr = .5/−.4542/−.0458 + .5), D:
+         Y′ = (White − Black)·Y + Black, Cb′ / Cr′ = sat·(·) + (.5 − .5 sat), YCC⁻¹ (R = Y + 1.5748 Cr − .7874; G = Y − .18732 Cb − .46812 Cr + .32772;
+         B = Y + 1.8556 Cb − .9278) — one feColorMatrix computed here from those constants (exact); then the fill mix (a flood at the fill's alpha);
+       the soft shadow (§7.3): ShadowAmount 0 only skips the displacement — the shadow is drawn: black α .3 × ShadowOpacity (.4 light / .6 dark), radius 24,
+         offset (0, 8), the panel's shape — CSS drop-shadow on the panel (the Gaussian profile vs the shader's erf-type one: 剖面近似, as the read says). */
+  const mul = (A, B) => A.map((row) => B[0].map((_, j) => row.reduce((acc, v, i) => acc + v * B[i][j], 0)));   // 4×4 affine (3×3 + offset column as homogeneous)
+  const faceMatrix = (k) => { const W = k.FaceColorMatrixWhite, Bk = k.FaceColorMatrixBlack, sat = k.FaceColorMatrixSaturation;
+    const YCC = [[.2126, .7152, .0722, 0], [-.1146, -.3854, .5, .5], [.5, -.4542, -.0458, .5], [0, 0, 0, 1]];
+    const D = [[W - Bk, 0, 0, Bk], [0, sat, 0, .5 - .5 * sat], [0, 0, sat, .5 - .5 * sat], [0, 0, 0, 1]];
+    const INV = [[1, 0, 1.5748, -.7874], [1, -.18732, -.46812, .32772], [1, 1.8556, 0, -.9278], [0, 0, 0, 1]];
+    const M = mul(mul(INV, D), YCC); const r = (v) => (+v.toFixed(5)).toString();
+    return [0, 1, 2].map((i) => `${r(M[i][0])} ${r(M[i][1])} ${r(M[i][2])} 0 ${r(M[i][3])}`).join(" ") + " 0 0 0 1 0"; };
   const ensureFilter = (theme) => { const k = glassKeys(theme); let svg = document.getElementById("menu-glass-svg"); if (!svg) { svg = document.createElementNS(NS, "svg"); svg.id = "menu-glass-svg"; svg.setAttribute("width", "0"); svg.setAttribute("height", "0"); svg.style.cssText = "position:absolute;width:0;height:0"; document.body.appendChild(svg); }
-    const fill = k.FaceColorMatrixFillColor; const flood = fill[3] > 0 ? `<feFlood flood-color="rgb(${fill[0] * 255},${fill[1] * 255},${fill[2] * 255})" flood-opacity="${fill[3]}" result="fill"/><feComposite in="fill" in2="blur" operator="over"/>` : "";
-    svg.innerHTML = `<filter id="menu-glass-f" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB" data-theme="${theme}" data-blur-radius="${k.BlurRadius}" data-sigma="${k.BlurRadius * 4}"><feGaussianBlur in="SourceGraphic" stdDeviation="${k.BlurRadius * 4}" result="blur"/>${flood}</filter>`
+    const fill = k.FaceColorMatrixFillColor, comp = 1 - k.FaceColorMatrixMaxLumaSDR, d = k.BlurFillDarkenOpacity, l = k.BlurFillLightenOpacity, n = k.BlurFillNormalOpacity, luma = ".2126 .7152 .0722";
+    const flood = fill[3] > 0 ? `<feFlood flood-color="rgb(${fill[0] * 255},${fill[1] * 255},${fill[2] * 255})" flood-opacity="${fill[3]}" result="fill"/><feComposite in="fill" in2="face" operator="over" result="out"/>` : `<feComposite in="face" in2="face" operator="over" result="out"/>`;
+    const blurFill = `<feGaussianBlur in="SourceGraphic" stdDeviation="${k.BlurFillBlurRadius * 4}" result="bf"/>`
+      + `<feBlend in="blur" in2="bf" mode="darken" result="mn"/><feBlend in="blur" in2="bf" mode="lighten" result="mx"/>`
+      + `<feComposite in="mn" in2="mx" operator="arithmetic" k2="${d}" k3="${l}" result="dl"/><feComposite in="dl" in2="blur" operator="arithmetic" k2="1" k3="${1 - d - l}" result="bfo"/>`
+      + `<feComposite in="bfo" in2="bf" operator="arithmetic" k2="${1 - n}" k3="${n}" result="c"/>`;
+    const maxLuma = comp > 0 && comp < 1 ? `<feColorMatrix in="c" type="matrix" values="${luma} 0 0 ${luma} 0 0 ${luma} 0 0 0 0 0 1 0" result="Y"/>`
+      + `<feComponentTransfer in="Y" result="k"><feFuncR type="linear" slope="${-comp}" intercept="1"/><feFuncG type="linear" slope="${-comp}" intercept="1"/><feFuncB type="linear" slope="${-comp}" intercept="1"/></feComponentTransfer>`
+      + `<feComposite in="c" in2="k" operator="arithmetic" k1="1" result="ck"/><feComposite in="Y" in2="k" operator="arithmetic" k1="1" result="Yk"/>`
+      + `<feComponentTransfer in="k" result="ik"><feFuncR type="linear" slope="-1" intercept="1"/><feFuncG type="linear" slope="-1" intercept="1"/><feFuncB type="linear" slope="-1" intercept="1"/></feComponentTransfer>`
+      + `<feComposite in="ck" in2="Yk" operator="arithmetic" k2="1" k3="-1" result="dp"/><feComposite in="Yk" in2="ck" operator="arithmetic" k2="1" k3="-1" result="dn"/>`
+      + `<feComposite in="dp" in2="ik" operator="arithmetic" k1=".3" result="P"/><feComposite in="dn" in2="ik" operator="arithmetic" k1=".3" result="N"/>`
+      + `<feComposite in="ck" in2="P" operator="arithmetic" k2="1" k3="1" result="cp"/><feComposite in="cp" in2="N" operator="arithmetic" k2="1" k3="-1" result="ml"/>` : `<feComposite in="c" in2="c" operator="over" result="ml"/>`;
+    svg.innerHTML = `<filter id="menu-glass-f" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB" data-theme="${theme}" data-blur-radius="${k.BlurRadius}" data-sigma="${k.BlurRadius * 4}" data-bf-sigma="${k.BlurFillBlurRadius * 4}" data-maxluma-complement="${comp}" data-face="${faceMatrix(k)}">`
+      + `<feGaussianBlur in="SourceGraphic" stdDeviation="${k.BlurRadius * 4}" result="blur"/>${blurFill}${maxLuma}<feColorMatrix in="ml" type="matrix" values="${faceMatrix(k)}" result="face"/>${flood}</filter>`
       + `<filter id="menu-glass-ring" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="${k.RingShadowBlurRadius}"/></filter>`; return k; };
   /* the ring band: the rounded rect (the panel's box) shifted RingShadowOffset down, the band = the shape minus the same shape inset by the stroke width (evenodd) */
   const ringPath = (w, h, r, off, sw) => { const rr = (x, y, ww, hh, rad) => { const q = Math.max(0, Math.min(rad, ww / 2, hh / 2)); return `M${x + q} ${y}H${x + ww - q}A${q} ${q} 0 0 1 ${x + ww} ${y + q}V${y + hh - q}A${q} ${q} 0 0 1 ${x + ww - q} ${y + hh}H${x + q}A${q} ${q} 0 0 1 ${x} ${y + hh - q}V${y + q}A${q} ${q} 0 0 1 ${x + q} ${y}Z`; };

@@ -24,3 +24,12 @@ html body .topbar::after {                              /* §10b ②: the edge (
   transition: opacity .517s linear(0, 0.008, 0.166, 0.275, 0.383, 0.484, 0.574, 0.652, 0.718, 0.773, 0.818, 0.856, 0.886, 0.91, 0.929, 0.945, 0.957, 0.966, 0.974, 0.98, 0.984, 0.988, 0.991, 0.993, 0.994, 0.996, 0.997, 0.998, 0.998, 0.999, 1);
 }
 html body .topbar.editing span { opacity: 1; }          /* the edit bar's title (unchanged from index.html: --title:1 !important) */
+/* R3 — the scroll pocket (topbar.js; nav-pocket-sdfdump-2026-09-19.md §1 / §2, nav-bar-scroll-formula.md §3.3 / §3.4 / §6b): a fixed layer over the
+   content and under the bar, height = the status bar + the collapsed bar 54 (the dump's 440 × 116 = 62 + 54), alpha 0 at rest at the top and 1 once
+   scrolled (shouldHideAtTop, the same --tb-edge the edge line follows), clipped; the content copy inside it carries the material filter, the ⅓ pt
+   hairline sits at its bottom (black α .1 light / white α .1 dark, set by topbar.js from the keys) */
+.topbar-pocket { position: fixed; left: 0; right: 0; top: 0; height: calc(env(safe-area-inset-top) + var(--ios-nav-h)); overflow: hidden; z-index: 4; pointer-events: none;
+  opacity: var(--tb-edge, 0); transition: opacity .517s linear(0, 0.008, 0.166, 0.275, 0.383, 0.484, 0.574, 0.652, 0.718, 0.773, 0.818, 0.856, 0.886, 0.91, 0.929, 0.945, 0.957, 0.966, 0.974, 0.98, 0.984, 0.988, 0.991, 0.993, 0.995, 0.996, 0.997, 0.998, 0.999, 0.999, 1); }   /* the same fade the edge line has (§10b ②: ScrollEdgeEffectView's alpha over the probe's 31 frames) */
+.topbar-pocket-copy { contain: layout paint style; }
+.topbar-pocket-hair { position: absolute; left: 0; right: 0; bottom: 0; height: 0.3333px; }
+html body .topbar::after { opacity: 0; }   /* the bar's own line (--line, index.html) gives way to the pocket's hairline (the dump has the line in the pocket, not on the bar) */
