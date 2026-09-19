@@ -639,19 +639,20 @@ function segSameQueues(a, b) {
    custom background): no sliding selection state — the down neither lifts nor follows (_tapSegmentAtPoint:touchDown: 0x1c4138b90 skips it), the value
    changes at the up for the segment under the finger (R59″: a release on another segment after a hold is a tap, not a cancel), and the indicator does
    not slide (_setSelectedSegmentIndex:notify:animate: 0x1c4132eac skips the relayout; UISegment _updateSelectionIndicator 0x1c4128a90 puts it on the
-   new segment). What the new indicator does there is the R59″ lenstrace (probe, Reduce Motion on, 60 Hz): opacity .025 → 1 and scale .883 → 1 about
-   the segment's centre over 12 frames = 190 ms from the value change (down+116 … +306) — written below as those frames; the old indicator's fade-out
-   over the same frames was not tabled (only "同期淡出") and is not drawn (one lens element) — 待读. The label crossfade (R20c) and the content switch
-   stay. window.__forceRM is the instrument (the media query cannot be toggled from the page; accept.js 分段段). */
+   new segment). What the new indicator does there (R79, 数据's anims read with Reduce Motion on, page-inventory.md §12b ①): the new segment's
+   selection view carries two CABasicAnimations — transform scale .88 → 1 and opacity 0 → 1 — duration 0.2 s, timingFunction default (.25, .1, .25, 1),
+   fillMode both, beginning at valueChanged (up + 44 / 51 ms); the old segment's selection view is already gone from the tree at the next read (no
+   animation on it: withdrawn at once). The R59″ 12-frame lenstrace was those animations sampled (≈ 190 ms) and is replaced by them (R59′a″). The
+   label crossfade (R20c) and the content switch stay. window.__forceRM is the instrument (the media query cannot be toggled from the page;
+   accept.js 分段段). */
 const RM = () => (window.__forceRM != null ? !!window.__forceRM : matchMedia("(prefers-reduced-motion: reduce)").matches);
-const SEG_RM_FRAMES = [[0, .025, .883], [23, .136, .896], [40, .313, .918], [56, .497, .940], [73, .644, .957], [90, .757, .971], [106, .840, .981], [123, .944, .993], [140, .973, .997], [156, .991, .999], [173, .999, 1], [190, 1, 1]];   // [ms from the value change, opacity, scale] — R59″ segtap frames down+116 … +306 (page-inventory.md §12b)
-const SEG_RM_MS = 190;
+const SEG_RM = { ms: 200, curve: "cubic-bezier(.25, .1, .25, 1)", scale0: .88, alpha0: 0 };   // R79: two CABasicAnimations, 0.2 s default, scale .88 → 1, opacity 0 → 1 (page-inventory.md §12b ①)
 function segRmStyle() {
   if (document.getElementById("seg-rm")) return;
   const st = document.createElement("style"); st.id = "seg-rm";
   st.textContent = `@media (prefers-reduced-motion: reduce) { .segctl .lens { transition: none !important; } }
-.segctl .lens.rm-in { transition: none !important; animation: seg-rm-in ${SEG_RM_MS}ms linear; }
-@keyframes seg-rm-in { ${SEG_RM_FRAMES.map(([t, o, s]) => `${(t / SEG_RM_MS * 100).toFixed(2)}% { opacity: ${o}; scale: ${s} ${s}; }`).join(" ")} }`;
+.segctl .lens.rm-in { transition: none !important; animation: seg-rm-in ${SEG_RM.ms}ms ${SEG_RM.curve}; }
+@keyframes seg-rm-in { from { opacity: ${SEG_RM.alpha0}; scale: ${SEG_RM.scale0} ${SEG_RM.scale0}; } to { opacity: 1; scale: 1 1; } }`;
   document.head.appendChild(st);
 }
 function segSync(seg, fresh) {
