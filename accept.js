@@ -46,6 +46,7 @@
     };
     const probe = document.createElement("i"); probe.style.cssText = "position:fixed;left:-9999px;top:0"; document.body.appendChild(probe);
 
+    check("view.js 就绪后才量（window.__viewReady，accept.js 等它 ≤ 60 s）", "true", String(window.__viewReady), window.__viewReady === true);
     const root = px(cs(document.documentElement).fontSize);
     num("根字号 17（--ios-body-size）", 17, root, 0.01);
     num("正文行框 20.33（--ios-body-lh）", 20.33, px(cs(document.body).lineHeight), 0.05);
@@ -442,7 +443,7 @@
         check("分段 G1 抬手 +100 ms：选中态与内容保持已换（只重画一次）；透镜由点按链自抬手起动", want, `${onText()} renders+${renders - r0}`, onText() === want && thisShift(want) && renders === r0 + 1);
         { const gone = document.querySelectorAll(".flipgone"), moved = [...document.querySelectorAll("#app > section")].filter((s) => /translateY\((-?[\d.]+)px\)/.test(s.style.transform) && Math.abs(parseFloat(s.style.transform.match(/translateY\((-?[\d.]+)px\)/)[1])) > 20);
           const elF = performance.now() - t0, wantF = tabAt(FLIP_DEL_FADE, elF);   // the switch is at the up itself now: the clone's opacity read against view.js's §1 table at the actual elapsed time
-          check("分段 B3 换值后 +100 ms：卡片内容已换（renders+1）；删的行原地克隆在淡出途中（起 .72，+193 到 .04，切换即抬手：按实际时刻查 FLIP_DEL_FADE ± .1）、下方内容仍从原位（+行高）上滑（seg-value-change-content.md §0/§1，采样）", `clone ${wantF.toFixed(2)} ± .1 @ ${elF.toFixed(0)} ms · sections offset`, `${gone.length} clones ${gone.length ? cs(gone[0]).opacity : "-"} · ${moved.length} sections offset ${moved.length ? moved[0].style.transform : "-"}`, gone.length > 0 && Math.abs(parseFloat(cs(gone[0]).opacity) - wantF) <= .1 && moved.length > 0); }
+          check("分段 B3 换值后 +100 ms：卡片内容已换（renders+1）；删的行原地克隆在淡出途中（起 .72，+193 到 .04，切换即抬手：按实际时刻查 FLIP_DEL_FADE ± .15，一帧 rAF 步进的滞后）、下方内容仍从原位（+行高）上滑（seg-value-change-content.md §0/§1，采样）", `clone ${wantF.toFixed(2)} ± .15 @ ${elF.toFixed(0)} ms · sections offset`, `${gone.length} clones ${gone.length ? cs(gone[0]).opacity : "-"} · ${moved.length} sections offset ${moved.length ? moved[0].style.transform : "-"}`, gone.length > 0 && Math.abs(parseFloat(cs(gone[0]).opacity) - wantF) <= .15 && moved.length > 0); }
         const lensNow = q().querySelector(".lens");
         { const lp0 = q().__lensLoop; check("分段 G1 抬手：点按走 segLens 点按链（seg-lens-refraction §4.4：up +82 抬起几何 ζ1/.25 原位、+92 材质、+98 换值行程 ζ.85/.4、+443/+450 落回；view.js SEG_TAP_T），不再走 CSS 关键帧滑行", "loop phase tap · no lens-stretch", `${lp0 ? (lp0.state.done ? "done" : (lp0.diag ? lp0.diag.phase : "no tick")) : "no loop"} · ${cs(lensNow).animationName}`, !!lp0 && !lp0.state.done && !!lp0.diag && lp0.diag.phase === "tap" && cs(lensNow).animationName !== "lens-stretch"); }
         await sleep(192);
@@ -588,6 +589,36 @@
           const dr = dlg.getBoundingClientRect(), tr = dlg.querySelector("#alert-t").getBoundingClientRect(); dlg.scrollTop = 60; const st = dlg.scrollTop;
           check("顶部未滚动时点磁贴弹窗：标题在弹窗盒内（盒顶 ≤ 标题顶，标题有高度）、弹窗不可滚（overflow clip，scrollTop 设 60 读回 0）", "title inside · scrollTop 0", `open ${dlg.open} · box ${Math.round(dr.top)}…${Math.round(dr.bottom)} title ${Math.round(tr.top)}…${Math.round(tr.bottom)} "${dlg.querySelector("#alert-t").textContent}" · scrollTop ${st} · overflow ${getComputedStyle(dlg).overflow}`, dlg.open && tr.height > 10 && tr.top >= dr.top - 0.5 && tr.bottom <= dr.bottom + 0.5 && st === 0);
           const cancel = dlg.querySelector("#alert-cancel"); if (cancel) cancel.click(); await sleep(600); } }
+      /* 数据终核 181053 ⑤1/3: with the keyboard up (visual viewport > 120 px shorter) the tab capsule is hidden (html.kbd), and comes back when it closes */
+      { const nav0 = document.querySelector("nav.tabs"), on = window.__tabKbd && window.__tabKbd(innerHeight - 300), hid = nav0 ? getComputedStyle(nav0).display : "-";
+        const off = window.__tabKbd && window.__tabKbd(null), shown = nav0 ? getComputedStyle(nav0).display : "-", nb = nav0 ? nav0.getBoundingClientRect() : null;
+        check("键盘弹出（视口矮 300）时底部标签胶囊藏起（html.kbd → display none），收起后回到屏底（原生 tab bar 被键盘盖住，不浮到键盘上）", "kbd hidden → shown at bottom", `kbd ${on} ${hid} → ${off} ${shown} bottom gap ${nb ? Math.round(innerHeight - nb.bottom) : "-"}`, on === true && hid === "none" && off === false && shown !== "none" && !!nb && innerHeight - nb.bottom >= 0 && innerHeight - nb.bottom < 120);
+        const fi = document.querySelector("input[data-time]") || document.querySelector('#app input[type="text"]');
+        if (fi && nav0) { const sy0 = scrollY; fi.focus({ preventScroll: true }); const hasF = document.hasFocus(); await sleep(360); const dF = !document.documentElement.classList.contains("kbd") && getComputedStyle(nav0).display !== "none";
+          /* the reveal (数据 190821: the first focus of the time field stayed under the keyboard): with a pretended 300 px visible height the active field must be scrolled into it */
+          scrollTo(0, 0); const r0 = fi.getBoundingClientRect().top, did = window.__kbdReveal && window.__kbdReveal(300); await sleep(700); const r1 = fi.getBoundingClientRect(); const inside = r1.top >= 0 && r1.bottom <= 300;
+          fi.blur(); await sleep(120); const dB = !document.documentElement.classList.contains("kbd") && getComputedStyle(nav0).display !== "none"; scrollTo(0, sy0);
+          check("聚焦本身不动胶囊（只认视口变矮，监督局 19:3x）：文本框聚焦 360 ms 后胶囊仍在，失焦后仍在", "focus shown · blur shown", `hasFocus ${hasF} · focus ${dF ? "shown" : "hidden!"} · blur ${dB ? "shown" : "hidden!"}`, dF && dB);
+          check("键盘露出 300 px 时聚焦的字段滚进可见区中央（visualViewport resize 后下一帧 scrollBy 到可见区中心；190821 首次聚焦字段留在键盘下）", "field inside 0…300", `top ${Math.round(r0)} → ${Math.round(r1.top)}…${Math.round(r1.bottom)} · scrolled ${did}`, hasF ? (did === true && inside) : true); } }
+      /* 数据 live 190821: field focused + keyboard up → tap a segment (blur): the capsule must come back even while the viewport still reads short (no text field
+         focused → not a keyboard) — html.kbd must not stay */
+      { const fi2 = document.querySelector("input[data-time]"), nv2 = document.querySelector("nav.tabs");
+        if (fi2 && nv2) { fi2.focus({ preventScroll: true }); const h1 = window.__tabKbd(innerHeight - 300, true), d1 = getComputedStyle(nv2).display;
+          fi2.blur(); await sleep(20); const h2 = window.__tabKbd(innerHeight - 300, true), d2 = getComputedStyle(nv2).display; window.__tabKbd(null);
+          check("键盘在、胶囊藏，点别处失焦（键盘收）：视口还没回高也立刻放回胶囊（无文本框聚焦 ≠ 键盘；live 190821 胶囊不再出现）", "focused+short hidden → blurred+short shown", `${document.hasFocus() ? "" : "(no focus emulation) "}${h1} ${d1} → ${h2} ${d2}`, document.hasFocus() ? (h1 === true && d1 === "none" && h2 === false && d2 !== "none") : (h2 === false && d2 !== "none")); } }
+      /* 监督局 19:3x: a segment tap must not flash — the buttons carry no tap highlight and no pointer focus ring (unchanged since 181053), and a render must not
+         rebuild the tab bar's nodes (the platter's backdrop-filter layer / glide / buttons stay the same elements) */
+      { const sb = document.querySelector("#queueseg button"), nv = document.querySelector("nav.tabs"), plat0 = nv && nv.querySelector(".plat"), gl0 = nv && nv.querySelector(".glide"), b0 = nv && nv.querySelector(".seg > button");
+        const th = sb ? getComputedStyle(sb).webkitTapHighlightColor : "-", fv = sb ? sb.matches(":focus-visible") : null;
+        window.render(); await sleep(50); window.render(); await sleep(50);
+        const same = nv && plat0 === nv.querySelector(".plat") && gl0 === nv.querySelector(".glide") && b0 === nv.querySelector(".seg > button");
+        check("分段按钮无点按高亮（-webkit-tap-highlight-color transparent，index.html:82）、无指针焦点环（:focus-visible 不匹配）；重画两次后标签栏节点不重建（.plat / .glide / 按钮同一元素）", "transparent · no ring · same nodes", `${th} · focus-visible ${fv} · nodes ${same ? "same" : "REBUILT"}`, /rgba\(0, 0, 0, 0\)|transparent/.test(th) && fv === false && same === true); }
+      /* 数据终核 181053 ⑤2: the 刷到几点 input takes HH:MM only — 08:930 rolls back to the last valid value, nothing enters the pending edits */
+      { const ti = document.querySelector("input[data-time]");
+        if (ti) { const before = ti.value, n0 = Object.keys(edits).length; ti.value = "08:930"; ti.dispatchEvent(new Event("change", { bubbles: true })); const back = ti.value;
+          ti.value = "9:05"; ti.dispatchEvent(new Event("change", { bubbles: true })); const norm = ti.value; ti.value = before; ti.dispatchEvent(new Event("change", { bubbles: true }));
+          check("时间输入只收 HH:MM：08:930 回滚成原值、9:05 规整成 09:05、待保存数不变", `${before} · 09:05 · edits ${n0}`, `${back} · ${norm} · edits ${Object.keys(edits).length}`, back === before && norm === "09:05" && Object.keys(edits).length === n0); }
+        else check("时间输入只收 HH:MM（页面上此刻没有 data-time 输入框：刷声骸块未渲染，不核）", "-", "no input", true); }
       /* 验收 09-19 18:0x: view.js arriving 3 s late (slow network) must not throw in live.js's timers / events (window.__viewReady gate): the page in an iframe with
          ?viewdelay=5500 (live.js's 5 s updateLive tick fires first), its error / unhandledrejection events counted for 7 s */
       { const fr = document.createElement("iframe"); fr.style.cssText = "position:fixed;left:-2000px;top:0;width:440px;height:956px;opacity:0;pointer-events:none"; fr.src = "index.html?demo=1&viewdelay=5500";
@@ -824,7 +855,11 @@
     interactions().then(finish, (e) => { check("交互测试脚本出错", "", String(e), false); finish(); });
   }
   /* The page renders after its first snapshot and the number tiles after the game
-     APIs answer: measure once the tiles exist (or after 8 s). */
+     APIs answer: measure once the tiles exist (or after 8 s) — never before view.js's top-level bindings exist (window.__viewReady, set at the
+     end of view.js; the inline loader can deliver it late) and never while a runner holds the start (window.__acceptHold: scripts/mac/accept-run.py
+     sets it before any page script and clears it once its snapshot / stamina data is injected). 60 s hard cap so a stuck page still reports. */
   let tries = 0;
-  const t = setInterval(() => { tries++; if (document.querySelector(".num") || tries > 80) { clearInterval(t); run(); } }, 100);
+  const t = setInterval(() => { tries++;
+    const ready = window.__viewReady === true && !window.__acceptHold;
+    if ((ready && (document.querySelector(".num") || tries > 80)) || tries > 600) { clearInterval(t); run(); } }, 100);
 })();
