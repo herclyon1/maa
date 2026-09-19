@@ -1675,9 +1675,13 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
       liftedModel = st.pr > 0 && tr < relDelay;   // the fall animation (model bounds → 196×28) is created at release + relDelay
       if (tr >= relDelay) { springStep(st.sL, 0, SEG_SPRING.lift, dt); springStep(st.sM, 0, SEG_SPRING.fallMaterial, dt); }
       springStep(st.pos, restCentre(st.rest), SEG_SPRING.travel, dt);   // after the up: one spring ζ .85 / .4 s to the segment the lens ends on (§4.4 换值行程 row); the ζ .56/.444 "settle" spring is the flex's smallLoupe scale/drift spring once the lens is 196×28 (flexSpec)
-      p = st.pr * clamp01(st.sM.x); pd = tr <= destDelay ? 1 : tabAt(K_DEST, tr - destDelay);
+      /* BOARD #9①: a lens that never lifted (the up before the 109 ms lift delay: st.pr = 0) has nothing to fall or un-punch — no DestOut ramp, no .lift
+         (frame(0, pd > 0) used to add .lift, and .segctl.lift .lens{background:transparent} blanked the resting platter for destEnd ≈ .4 s while the GL
+         package draws nothing at p = 0: the "flash" of a quick tap on the selected segment). The position spring still returns if a pre-lift slide moved it. */
+      const lifted = st.pr > 0;
+      p = lifted ? st.pr * clamp01(st.sM.x) : 0; pd = !lifted ? 0 : tr <= destDelay ? 1 : tabAt(K_DEST, tr - destDelay);
       const fx = st.flex.out, settled = Math.abs(st.pos.x - restCentre(st.rest)) < .05 && Math.abs(st.pos.v) < 1 && st.sL.x < .001 && st.sM.x < .001 && Math.abs(fx.sx - 1) < .001 && Math.abs(fx.sy - 1) < .001 && Math.abs(fx.dx) < .05;
-      if ((tr >= destEnd && settled) || tr > 3) { clear(); return; }
+      if ((!lifted && settled) || (tr >= destEnd && settled) || tr > 3) { clear(); return; }
     }
     /* B5 — the flex interaction, once per frame: the model bounds are the lift's (196×28 → 220×44), the presentation centre = the position spring + the
        flex drift goes into the integrator, updateFlex sets the targets, the three animatable floats follow on spec.scaleSpring (tracking while the finger is
