@@ -831,26 +831,29 @@ function wire() {
   // 刷 4C 声骸：选一个 boss、选刷到几点，中继到点自己收工并还原配置。
   // 用户 2026-09-09：「刷的时候不要按次数，而是时间来，比如说刷到北京时间八点半这种。」
   const ef = $("#echofarm");
-  if (ef) ef.onclick = () => {
+  /* the four confirmations below ride the page's alert (ask → dialog#alert, UIAlertController's form) instead of the browser's blocking
+     confirm dialog: that one freezes the main thread, so the row's release fade (B14) never showed and the dialog covered the first frame
+     (数据 c6c35aa ①); the click already runs after the highlight and the fade's first frame were painted (controls.js), the alert appears there */
+  if (ef) ef.onclick = async () => {
     const boss = Number(($("#efboss") || {}).value || 0);
     const until = (($("#efuntil") || {}).value || "").trim();
     const nm = (BOSSES.find((b) => b[0] === boss) || [])[1] || `第 ${boss} 个`;
     if (!boss || !/^\d{1,2}:\d{2}$/.test(until)) {
       toast("先选 boss，再填结束时刻（08:30 这种）", 4000); return;
     }
-    if (!confirm(`刷「${nm}」到机器时间 ${until} 为止？期间脚本会一直在打，别的任务不跑。`)) return;
+    if (!(await ask("开始刷？", `刷「${nm}」到机器时间 ${until} 为止？期间脚本会一直在打，别的任务不跑。`, "开始刷"))) return;
     oneShot({ action: "echo_farm", confirmed: true, boss, until, name: nm },
             `已让它刷「${nm}」到 ${until}。到点中继会自己收工并把配置还原`);
   };
   const efu = $("#echofarmuntil");
-  if (efu) efu.onclick = () => {
+  if (efu) efu.onclick = async () => {
     const v = ($("#efnew").value || "").trim();
-    if (!confirm(`把收工时刻改成 ${v}（机器时间）？`)) return;
+    if (!(await ask("改收工时刻？", `把收工时刻改成 ${v}（机器时间）？`, "改"))) return;
     oneShot({ action: "echo_farm_until", until: v }, "收工时刻已改");
   };
   const efs = $("#echofarmstop");
-  if (efs) efs.onclick = () => {
-    if (!confirm("现在收工？会关掉脚本和游戏，配置还原成你原来那份。")) return;
+  if (efs) efs.onclick = async () => {
+    if (!(await ask("现在收工？", "会关掉脚本和游戏，配置还原成你原来那份。", "收工", true))) return;
     oneShot({ action: "echo_farm_stop" }, "已收工，脚本和游戏都关了，配置还原");
   };
   /* 中继开关和改配置走同一条路：拨了先进「待保存」，点「保存修改」看一遍改了什么、
@@ -907,7 +910,7 @@ function wire() {
     catch (e) { toast("没存：" + e.message, 5000); }
   };
   const tc = $("#tokclear");
-  if (tc) tc.onclick = () => { if (confirm("清除这台手机里的游戏密钥？体力数字会消失。")) { Stamina.clear(); render(); } };
+  if (tc) tc.onclick = async () => { if (await ask("清除密钥？", "清除这台手机里的游戏密钥？体力数字会消失。", "清除", true)) { Stamina.clear(); render(); } };
   const mk = $("#mklink");
   if (mk) mk.onclick = async () => {
     const url = myLink();
