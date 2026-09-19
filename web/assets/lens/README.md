@@ -1130,6 +1130,19 @@ In the harness (`lens-webgl-test.html?state=mid&dpr=3`, 3 px/pt, the row 8 pt ab
 page's stretched 「班」 reaches the rim rows (the harness's centre row shows the glyph's ink at x 330–332 too). To be compared on the same
 row between the harness and the page (the page's labels / lens box are the page's inputs).
 
+**R8 (2026-09-20 02:4x, BOARD round 2 — the right end's 1 pt, cause hunt):** the device's row 616 (seg-dragmid-compare-d02487f.md, 3 px/pt,
+light): native 325:214 326:212 327:205 **328:179** 329:209 330:228 (a 1-px dip, 2 px wide); the page 324:202 325:165 326:100 **327:83** 328:139
+329:201 330:228 (min 83, 6 px = 2 pt wide, from 324.7 inward; dark: native a 27 → 45 bump at 327–328, the page 34 / 59 / 120 / **150** / 89
+at 324–328). The same row in the harness (`?state=mid&dpr=3`, the composited snapshot at 3 px/pt, the same box and labels): right 328.33: 205
+· **328.67: 183** · 329.0: 196, left 111.0: 183 — one column, symmetric, the native right end's shape. Four label variants (as is, both regular,
+the right label weight 600, no labels) give the identical row (the row is 2.3 pt above the label ink on both device and harness, so the label
+copy is not in it); the maps, the shader and the box are the same files on both. So the cause is not the maps, not the labels, not the
+geometry: it is only on the device, at the right end only — an engine / GPU difference in rendering the pass-2 rim terms there. Not
+reproducible on the Mac, so not fixed; three A/B switches for the device instead (数据, the same row 616 on each): `?glab=nodark2` (the outside
+dark line of pass 2 off — in the harness the whole rim dip is that term: 227 / 236 without it), `?glab=noring2` (the outside ring off),
+`?glab=nofringe` (the dispersion taps off). Whichever switch flattens the page's 324–329 feature names the term; the default render is
+byte-identical to before (0 diff at 3×). 待读 until then.
+
 ### 0.8.9 GL prewarm — what is moved off the first glass frame (2026-09-19 15:0x; 验收 / 监督局: the wired page's first glass frame stalled 46–55 ms)
 
 What a WebGL lens pays the first time, and where `lens-webgl.js` now pays it instead (each step timed with gl.finish into `L.stats.prewarm`;
