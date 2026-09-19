@@ -32,7 +32,7 @@
        the rounding of a rect read at 1 px); ② the driver's value is the closed form on its own clock (x − x(t), ≤ .01 pt: the analytic step is exact) */
     const sample = (panel, ms) => new Promise((resolve) => { const out = []; let first = null;
       const tick = (now) => { if (first === null) first = now; if (!panel.isConnected) { resolve(out); return; }   // removed on settle (the dismiss): the frame's read would be zeros
-        const st = Menu.state(); if (st) out.push({ t: st.t, r: rect(panel), x: { ...st.x } }); if (now - first < ms) requestAnimationFrame(tick); else resolve(out); };
+        const st = Menu.state(); if (st) out.push({ t: st.t, r: rect(panel), x: { ...st.x }, op: parseFloat(cs(panel).opacity) }); if (now - first < ms) requestAnimationFrame(tick); else resolve(out); };
       requestAnimationFrame(tick); });
     const fit = (samples, from, to, zeta, resp) => { const res = {}; for (const k of ["left", "top", "width", "height"]) {
       res[k] = { dom: rms(samples.map((s) => s.r[k] - s.x[k])), model: rms(samples.map((s) => s.x[k] - closed(from[k], to[k], zeta, resp, s.t))) }; } return res; };
@@ -61,6 +61,20 @@
     for (const k of ["left", "top", "width", "height"]) { num(`菜单收回 ${k}：弹簧值对 ζ.9/r.3 闭式 rms（pt，${close.length} 帧）`, 0, fout[k].model, 0.01); num(`菜单收回 ${k}：面板矩形 = 弹簧值 rms（pt）`, 0, fout[k].dom, 1); }
     num("菜单收回目标 = 值行按钮框（top）", a0.top, st2.to.top, 0.5); num("菜单收回起点 = 静止框（width）", from2.width, st2.from.width, 0.5);
     await sleep(300); check("菜单收回后面板移除", "无", document.querySelector(".menu.morph") ? "还在" : "无", !document.querySelector(".menu.morph"));
+    /* R32 — reduce motion (menu-motion-formula.md §0 "减少动态效果": liquidMorphReduceMotion ζ 1 / response .15, a cross-fade): the geometry is at the
+       resting rect from the first frame, the opacity follows ζ 1 / .15 from 0 to 1 on the driver's clock; the dismiss fades to 0 the same way, geometry
+       unchanged. Forced through Menu.open's hook (the runner cannot set prefers-reduced-motion) */
+    { Menu.open(btn, sel, { reduced: true }); await new Promise((r) => requestAnimationFrame(r)); const pr = document.querySelector(".menu.morph"), sr = Menu.state();
+      const critical = (start, target, resp, t) => { const w = 2 * Math.PI / resp; return target + (start - target) * (1 + w * t) * Math.exp(-w * t); };
+      const smp = await sample(pr, 500);
+      const geo = rms(smp.flatMap((s) => ["left", "top", "width", "height"].map((k) => s.r[k] - sr.to[k])));
+      num("菜单减少动态效果：几何从首帧起 = 静止框（rms，pt）", 0, geo, 1);
+      num(`菜单减少动态效果：opacity 对 ζ1/.15 闭式 0 → 1 rms（${smp.length} 帧，驱动时钟）`, 0, rms(smp.map((s) => s.x.a - critical(0, 1, 0.15, s.t))), 0.01);
+      num("菜单减少动态效果：面板计算 opacity = 弹簧值（同帧读，rms）", 0, rms(smp.map((s) => s.op - s.x.a)), 0.02);
+      const before = Menu.state(); document.querySelector(".menu-scrim").click(); await new Promise((r) => requestAnimationFrame(r)); const s2 = Menu.state(); const out2 = await sample(pr, 500);
+      num("菜单减少动态效果 收回：opacity 对 ζ1/.15 闭式 → 0 rms", 0, rms(out2.map((s) => s.x.a - critical(before.x.a, 0, 0.15, s.t))), 0.01);
+      num("菜单减少动态效果 收回：几何不动（rms，pt）", 0, rms(out2.flatMap((s) => ["left", "top", "width", "height"].map((k) => s.r[k] - s2.from[k]))), 1);
+      await sleep(200); check("菜单减少动态效果 收回后面板移除", "无", document.querySelector(".menu.morph") ? "还在" : "无", !document.querySelector(".menu.morph")); }
     /* ⑤ hidden strips the state */
     btn.click(); await sleep(50); document.dispatchEvent(new Event("visibilitychange", { bubbles: true })); Menu.onHidden(true); await sleep(50);
     check("菜单：页面 hidden 时菜单剥掉", "无", document.querySelector(".menu.morph") ? "还在" : "无", !document.querySelector(".menu.morph"));
