@@ -6,3 +6,10 @@
   box-sizing: border-box; will-change: left, top, width, height; }   /* left / top / width / height / border-radius / opacity: inline, per frame (menu.js) */
 .menu.menu.morph.up { transform-origin: 50% 50%; }
 .menu.menu.morph .menu-body { position: absolute; left: 0; top: 0; width: 250px; padding: 10px 0; box-sizing: border-box; }   /* the items keep the resting layout while the panel is still small: the panel clips them */
+/* R1 — the glass layer (menu.js buildGlass; keys menu-glass-sdfdump-2026-09-19.md §2 / §3, formulas alert-native-formula.md §1, keyfill-highlight.md §4):
+   the panel's own background / backdrop-filter / box-shadow were the alert's sampled substitute (--alert-fill, --ios-alert-glass-filter, --glass-*) —
+   off here, the layer below carries the material from the keys */
+.menu.menu.morph { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
+.menu.menu.morph .menu-glass { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; z-index: 0; }   /* clipped to the panel's shape = RingShadowMask 1 */
+.menu.menu.morph .menu-glass-copy { contain: layout paint style; }
+.menu.menu.morph .menu-body { z-index: 1; }

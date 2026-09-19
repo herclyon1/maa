@@ -51,9 +51,30 @@
     /* ③ no dimming */
     const scrim = document.querySelector(".menu-scrim"); const m = /rgba?\([^)]*?,\s*([\d.]+)\)$/.exec(scrim ? cs(scrim).backgroundColor : "");
     check("菜单后无压暗（scrim α = 0）", 0, scrim ? (m ? +m[1] : (cs(scrim).backgroundColor === "transparent" ? 0 : cs(scrim).backgroundColor)) : "无 scrim", !!scrim && (cs(scrim).backgroundColor === "transparent" || (m && +m[1] === 0) || cs(scrim).backgroundColor === "rgba(0, 0, 0, 0)"));
-    /* ⑤ background follows the token */
-    const probe = document.createElement("div"); probe.style.cssText = "position:fixed;visibility:hidden;background:var(--alert-fill)"; document.body.appendChild(probe);
-    check("菜单面板底色 = --alert-fill（本主题）", cs(probe).backgroundColor, cs(panel).backgroundColor, cs(probe).backgroundColor === cs(panel).backgroundColor); probe.remove();
+    /* R1 — the glass layer: keys = menu-glass-sdfdump-2026-09-19.md §2 (the table below is that table's light column + the dark differences), the
+       layer exists, the built terms carry the keys (feGaussianBlur σ = BlurRadius × 4, the fill flood, the ring band .06 / 8 / 4 / σ 5, clipped), the
+       old sampled substitute is off (background transparent, no backdrop-filter, no box-shadow); nothing pixel-wise (BOARD A15) */
+    { const DOC = { light: { BlurRadius: 5, BlurDistance0: -83.5, BlurDistance1: -1, BlurDistance2: 0, BlurDistance3: 0, BlurOpacity0: 0.8, BlurOpacity1: 0.4, BlurOpacity2: 0.5, BlurOpacity3: 1, BlurFillBlurRadius: 8, BlurFillDarkenOpacity: 0, BlurFillLightenOpacity: 0.9, BlurFillNormalOpacity: 0.5,
+        FaceColorMatrixWhite: 1.03, FaceColorMatrixBlack: 0.4, FaceColorMatrixSaturation: 1.2, FaceColorMatrixFillColor: [1, 1, 1, 0.2], FaceColorMatrixMaxLuma: 1, FaceColorMatrixMaxLumaSDR: 0.94, FaceOpacity: 1, Clamp: 1.07, ClampPreserveHue: 0,
+        InnerRefractionAmount: -60, InnerRefractionHeight: 20, OuterRefractionAmount: 41.75, OuterRefractionHeight: 33.4, RefractionOpacity: 0.6, RefractionDistance0: -1, RefractionDistance1: 0,
+        KeyFillHighlightAmount: 0.4, KeyFillHighlightAngle: 1.571, KeyFillHighlightColorBias: -0.3, KeyFillHighlightEffectOffset: -0.5333, KeyFillHighlightHeight: 0.5333, KeyFillHighlightSpread: 1.676, KeyFillHighlightSpreadSDR: 1.85,
+        RingShadowOpacity: 0.06, RingShadowOffset: 8, RingShadowStrokeWidth: 4, RingShadowBlurRadius: 5, RingShadowMask: 1,
+        BleedAmount: 58.45, BleedBlurRadius: 58.45, BleedHeight: 58.45, BleedOpacity: 0.5, BleedColorMatrixBlack: 0.9, BleedColorMatrixSaturation: 1.2, BleedColorMatrixWhite: 1, BleedDarkenBlend: 1, BleedDistance0: 1, BleedDistance1: 0,
+        ShadowAmount: 0, ShadowOpacity: 0.4, ShadowRadius: 24, ShadowOffset: [0, 8], ShadowColorMatrixFillColor: [0, 0, 0, 0.3] },
+      dark: { BlurFillDarkenOpacity: 0.9, BlurFillLightenOpacity: 0, FaceColorMatrixWhite: 1.125, FaceColorMatrixBlack: 0.125, FaceColorMatrixSaturation: 1.3, FaceColorMatrixFillColor: [0, 0, 0, 0], FaceColorMatrixMaxLuma: 0.35, FaceColorMatrixMaxLumaSDR: 0.35, Clamp: 1.308, KeyFillHighlightSpread: 1.309, KeyFillHighlightSpreadSDR: 1.309, BleedOpacity: 0.8, BleedColorMatrixBlack: 0.125, BleedColorMatrixSaturation: 1, BleedColorMatrixWhite: 0.5, BleedDarkenBlend: 0, ShadowOpacity: 0.6 } };
+      const theme = Menu.glass ? Menu.glass.theme() : "light"; const want = { ...DOC.light, ...(theme === "dark" ? DOC.dark : {}) }; const got = Menu.glass ? Menu.glass.keys(theme) : {};
+      const bad = Object.keys(want).filter((k) => JSON.stringify(want[k]) !== JSON.stringify(got[k]));
+      check(`菜单玻璃键表 = sdfdump §2（${theme}，${Object.keys(want).length} 键）`, "全同", bad.length ? "差：" + bad.join(",") : "全同", bad.length === 0);
+      const layer = panel.querySelector(".menu-glass"), copy = panel.querySelector(".menu-glass-copy"), f = document.getElementById("menu-glass-f"), blur = f && f.querySelector("feGaussianBlur"), flood = f && f.querySelector("feFlood"), ringP = panel.querySelector(".menu-glass-ring path"), fr = document.getElementById("menu-glass-ring");
+      check("菜单玻璃层存在（#app 复本 + 环影），在项之下", "layer+copy+ring", `${layer ? "layer" : "-"}+${copy ? "copy" : "-"}+${ringP ? "ring" : "-"}`, !!layer && !!copy && !!ringP && layer === panel.firstElementChild);
+      num("菜单玻璃 模糊 σ = BlurRadius 5 × 4 pt（1/4 分辨率采样，alert-pipeline-plan §1.3）", 20, blur ? parseFloat(blur.getAttribute("stdDeviation")) : NaN, 0.01);
+      if (want.FaceColorMatrixFillColor[3] > 0) { check("菜单玻璃 填充混合 = FaceColorMatrixFillColor（白 α .2）", "rgb(255,255,255) .2", flood ? `${flood.getAttribute("flood-color")} ${flood.getAttribute("flood-opacity")}` : "无", !!flood && flood.getAttribute("flood-opacity") === "0.2" && /255,\s*255,\s*255/.test(flood.getAttribute("flood-color"))); }
+      else check("菜单玻璃 填充混合：暗色 fill α 0 → 无 flood", "无", flood ? "有" : "无", !flood);
+      check("菜单玻璃 环影带：α .06、偏移 8、带宽 4、σ 5、裁到面板（mask 1）", ".06 · 8 · 4 · σ5 · clip", ringP ? `${ringP.getAttribute("fill-opacity")} · ${/M\S+ (\S+)/.exec(ringP.getAttribute("d") || "")?.[1]} · ${fr ? fr.querySelector("feGaussianBlur").getAttribute("stdDeviation") : "-"} · ${layer ? cs(layer).overflow : "-"}` : "无", !!ringP && ringP.getAttribute("fill-opacity") === "0.06" && /^M\S+ 8H/.test(ringP.getAttribute("d") || "") && !!fr && fr.querySelector("feGaussianBlur").getAttribute("stdDeviation") === "5" && !!layer && cs(layer).overflow === "hidden" && cs(ringP.parentElement).mixBlendMode === "multiply");
+      check("菜单面板旧底（采样替代）关：background transparent、无 backdrop-filter、无 box-shadow", "transparent · none · none", `${cs(panel).backgroundColor} · ${cs(panel).backdropFilter || cs(panel).webkitBackdropFilter} · ${cs(panel).boxShadow}`, cs(panel).backgroundColor === "rgba(0, 0, 0, 0)" && (cs(panel).backdropFilter || cs(panel).webkitBackdropFilter) === "none" && cs(panel).boxShadow === "none");
+      const mr = document.getElementById("app").getBoundingClientRect(), pr2 = panel.getBoundingClientRect(), tm = /matrix\(([^)]+)\)/.exec(cs(copy).transform), tx = tm ? tm[1].split(",").map(parseFloat) : null;
+      check("菜单玻璃 复本对齐页面（translate = 页 − 面板）", `${(mr.left - pr2.left).toFixed(1)}, ${(mr.top - pr2.top).toFixed(1)}`, tx ? `${tx[4].toFixed(1)}, ${tx[5].toFixed(1)}` : "-", !!tx && Math.abs(tx[4] - (mr.left - pr2.left)) <= 1 && Math.abs(tx[5] - (mr.top - pr2.top)) <= 1);
+      check("菜单玻璃 未接项已列（Menu.glass.unbuilt）", "≥ 6 项", Menu.glass ? Object.keys(Menu.glass.unbuilt).length + " 项" : "-", !!Menu.glass && Object.keys(Menu.glass.unbuilt).length >= 6); }
     /* ② dismiss (the scrim tap = cancel = the reverse morph) */
     const from2 = rect(panel); scrim.click(); await new Promise((r) => requestAnimationFrame(r));
     const st2 = Menu.state(); const close = await sample(panel, 900);
