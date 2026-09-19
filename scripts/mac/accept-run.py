@@ -87,7 +87,8 @@ try:
         return False
     MISSING = ('(() => { const ok = new Set(performance.getEntriesByType("resource").filter(e => (e.responseStatus === 0 || e.responseStatus === 200 || e.responseStatus === 304) && (e.transferSize > 0 || e.encodedBodySize > 0 || e.decodedBodySize > 0)).map(e => e.name)); '
                'const js = [...document.scripts].filter(s => s.src && !/accept[^/]*\\.js/.test(s.src) && !ok.has(s.src)).map(s => s.src.split("/").pop()); '
-               'const css = [...document.querySelectorAll("link[rel=stylesheet]")].filter(l => { try { const sh = [...document.styleSheets].find(x => x.href === l.href); return !sh || sh.cssRules.length === 0; } catch (e) { return false; } }).map(l => l.href.split("/").pop()); '
+               'const size = (h) => { const e = performance.getEntriesByType("resource").find(x => x.name === h); return e ? Math.max(e.decodedBodySize || 0, e.encodedBodySize || 0) : 0; }; '
+               'const css = [...document.querySelectorAll("link[rel=stylesheet]")].filter(l => { try { const sh = [...document.styleSheets].find(x => x.href === l.href); return !sh || (sh.cssRules.length === 0 && size(l.href) > 300); } catch (e) { return false; } }).map(l => l.href.split("/").pop()); '
                'return js.concat(css); })()')   # a script counts as arrived only with a body (a refused / reset connection leaves an empty entry and it silently never runs); a stylesheet counts only when it is in document.styleSheets with rules (数据: topbar.css once never applied); accept*.js are appended lazily and may still be loading
     ws.send('Page.navigate', {'url': url + ('&' if '?' in url else '?') + 'accept=1&quiet=1'})
     for attempt in (1, 2):
