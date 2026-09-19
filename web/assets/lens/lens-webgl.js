@@ -36,6 +36,7 @@ vec2 nrm(vec2 p, vec2 half_, float r){ vec2 q = abs(p) - (half_ - vec2(r)); vec2
 float erf_(float x){ float s = sign(x); x = abs(x); float t = 1.0 / (1.0 + 0.3275911 * x); float y = 1.0 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * exp(-x * x); return s * y; }
 float N(float x){ return 0.5 * (1.0 + erf_(x / 1.41421356)); }
 float sat(float x){ return clamp(x, 0.0, 1.0); }
+uniform float u_rmax;   /* the capsule's corner radius cap: the segment lens 22 (DestOut cornerRadius stays 22 through the drag), the tab lens h/2 (tab-lens-native.md §0: cornerRadii 35 = 70/2 on every element) — opts.rmax */
 vec2 decode(vec2 rg, float S){ return (rg - 128.0 / 255.0) * S; }
 /* glassBackground ring shadow (keyfill §4; keys offset 8 / opacity .1 / stroke 4 / blur 3 / mask 0): black α = .1·[N((d_r + 4)/3) − N(d_r/3)], d_r = the SDF of the capsule shifted 8 pt down; drawn inside and outside */
 float ringTerm(vec2 pl, vec2 half_, float r){ float dr = sdf(pl - vec2(0.0, 8.0), half_, r); return sat(N((dr + 4.0) / 3.0) - N(dr / 3.0)) * 0.1; }
@@ -51,11 +52,17 @@ float darkLineK(float d, vec2 n){ float off = -0.6667, h = 1.0; float e = -(d + 
 ${COMMON}
 in vec2 v; out vec4 o;
 uniform sampler2D t_page, t_lab, m_bg, m_lab, t_ish; uniform vec4 u_page; /* the backdrop region x y w h, page pt */ uniform vec4 u_lens; uniform float u_S; uniform float u_p; uniform float u_pd; uniform vec4 u_platter; uniform float u_srcclip;
+uniform float u_labmode; uniform vec2 u_model; uniform vec4 u_lst;   /* R37: 1 = the label field in float (below); u_model = the set's model box (pt); u_lst = the label stages in sampling order (amount, height)×2 */
+/* compute_sdf_with_mode's gradient ovalization (formula §3; gen_lens_maps.py ovalized_gradient): g = normalize(mix(box normal, normalize((x, hw·y/hh)), .5)) — gradientOvalization .5 (seg-lens-refraction.md §1b 表 1 #13 / #19) */
+vec2 gOval(vec2 pm, vec2 hm, float rr){ vec2 nb = nrm(pm, hm, rr); vec2 rv = vec2(pm.x, hm.x * pm.y / hm.y); float rn = length(rv); rv = rn > 0.0 ? rv / rn : rv; vec2 g = mix(nb, rv, 0.5); float gn = length(g); return gn > 0.0 ? g / gn : g; }
+/* one displacement stage at the model point pm (formula §1: t = saturate(−d/H), 1 − P = 1 − sqrt(1 − (1 − t)²) (curvature 1, effectOffset 0, angle 0); §2: offset = amount × that × g; the coverage
+   saturate(−d/fw + .5), fw = ⅓ pt, the map's B) → (offset.xy, cov) */
+vec3 lstage(vec2 pm, vec2 hm, float rr, float amount, float height){ float d = sdf(pm, hm, rr); float t = sat(-d / height); float amp = amount * (1.0 - sqrt(sat(1.0 - (1.0 - t) * (1.0 - t)))); return vec3(amp * gOval(pm, hm, rr), sat(-d * 3.0 + 0.5)); }
 vec4 page(vec2 p){ return texture(t_page, (p - u_page.xy) / u_page.zw); }
 vec4 lab(vec2 p){ return texture(t_lab, (p - u_page.xy) / u_page.zw); }
 vec4 over(vec4 s, vec4 d){ return s + d * (1.0 - s.a); }
 void main(){
-  vec2 C = u_lens.xy + u_lens.zw * 0.5, half_ = u_lens.zw * 0.5; float r = min(22.0, half_.y);   /* the segment lens: r 22 clamped to h/2 (DestOut cornerRadius stays 22 through the drag) */
+  vec2 C = u_lens.xy + u_lens.zw * 0.5, half_ = u_lens.zw * 0.5; float r = min(u_rmax, half_.y);   /* the segment lens: r 22 clamped to h/2 (DestOut cornerRadius stays 22 through the drag) */
   vec2 pl = v - C; float d = sdf(pl, half_, r); vec2 n = nrm(pl, half_, r); float fwd = max(fwidth(d), 1e-4);
   float M = sat(0.5 - d / fwd);
   vec4 under = over(lab(v), page(v));
@@ -72,8 +79,18 @@ void main(){
   /* layers 2 + 4: the label copy — the portal #20 clips the segment content to the capsule BEFORE the displacement (masksToBounds 1, cornerRadii 22, seg-lens-refraction.md §1b
      table 2; the SVG page's .displ border-radius before its filter: 先裁再位移), so a sample that lands outside the capsule reads transparent (the tearing at the ends); the map's B =
      the two stages' own masks (compose_stages); the destination is not clipped again (portal #32 masksToBounds 0, §4b) */
-  vec2 ul = decode(ml.rg, u_S) * u_p; vec2 ql = v + ul; float dl = sdf(ql - C, half_, r); float Ml = sat(0.5 - dl / max(fwidth(dl), 1e-4));
-  vec4 lc = lab(ql) * (u_srcclip > 0.5 ? Ml : 1.0) * ml.b; col = over(lc, col);   /* u_srcclip: the #20 clip at the sampled position (1, the read chain); 0 = the destination clip only (before d3a6dce), an instrument */
+  vec2 ul; float Bl;
+  if (u_labmode > 0.5) {   /* R37: the two stages evaluated here in float at every pixel instead of the 8-bit 2 px/pt map (formula §1 sdf_glass_displacement + §2 displacement_map_lpf, composed as
+                              gen_lens_maps.py compose_stages: model point pm = pl / S with S = the presented box ÷ the model box (u(p) = S·u₀(S⁻¹p), seg-lens-refraction.md §1c(d)); stage i: cov at its own
+                              pixel (fw = ⅓ pt, the native 3× device pixel), then pm += amount·(1 − P)·g_oval, then the clamp to the last texel centre (½ device px = ⅙ pt, §4b.1 A); the amounts ride the
+                              lift (the material spring animates the amount keys, seg-lens-refraction.md §4.4); B = the coverages' product = the map's B) */
+    vec2 hm = u_model * 0.5; float rm = min(u_rmax, hm.y); vec2 Sc = u_lens.zw / u_model; vec2 pm = pl / Sc; vec2 lim = hm - vec2(1.0 / 6.0); float B = 1.0;
+    vec3 s1 = lstage(pm, hm, rm, u_lst.x * u_p, u_lst.y); B *= s1.z; pm = clamp(pm + s1.xy, -lim, lim);
+    vec3 s2 = lstage(pm, hm, rm, u_lst.z * u_p, u_lst.w); B *= s2.z; pm = clamp(pm + s2.xy, -lim, lim);
+    ul = pm * Sc - pl; Bl = B;
+  } else { ul = decode(ml.rg, u_S) * u_p; Bl = ml.b; }
+  vec2 ql = v + ul; float dl = sdf(ql - C, half_, r); float Ml = sat(0.5 - dl / max(fwidth(dl), 1e-4));
+  vec4 lc = lab(ql) * (u_srcclip > 0.5 ? Ml : 1.0) * Bl; col = over(lc, col);   /* u_srcclip: the #20 clip at the sampled position (1, the read chain); 0 = the destination clip only (before d3a6dce), an instrument */
   float ish = inBox ? texture(t_ish, vec2(uv.x, 1.0 - uv.y)).r : 0.0; col.rgb *= (1.0 - ish * u_p);   /* inner shadow #21 (keyfill §5.2c); t_ish is an FBO (row 0 = bottom) */
   o = vec4(col.rgb, 1.0);
 }`;
@@ -81,7 +98,7 @@ void main(){
 ${COMMON}
 in vec2 v; out vec4 o; uniform vec4 u_lens;
 float Mh(vec2 p, vec2 half_, float r){ return sdf(p, half_, r) <= 0.0 ? 1.0 : 0.0; }
-void main(){ vec2 C = u_lens.xy + u_lens.zw * 0.5, half_ = u_lens.zw * 0.5; float r = min(22.0, half_.y); vec2 p = v - C;
+void main(){ vec2 C = u_lens.xy + u_lens.zw * 0.5, half_ = u_lens.zw * 0.5; float r = min(u_rmax, half_.y); vec2 p = v - C;
   float sig = 3.0, off = 7.0, op = 0.06; float acc = 0.0, wsum = 0.0;   /* keyfill §5.2c: op · M · blur_σ(M − M↓off), σ = shadowRadius 3, offset (0, 7), shadowOpacity .06 */
   for (int i = -9; i <= 9; i++) for (int j = -9; j <= 9; j++) { vec2 k = vec2(float(i), float(j)); float w = exp(-dot(k, k) / (2.0 * sig * sig)); wsum += w; vec2 q = p + k; acc += w * Mh(q, half_, r) * (1.0 - Mh(q - vec2(0.0, off), half_, r)); }
   float d = sdf(p, half_, r); float M = sat(0.5 - d / max(fwidth(d), 1e-4));
@@ -98,7 +115,7 @@ float band(float e, float h, float cosS, float bias, float curv, vec2 n, vec2 di
   float t = sat(e / h); float prof = mix(t < 1.0 ? 1.0 : 0.0, 1.0 - t, curv); float aa = sat(e / fw + 0.5) * sat((h - e) / fw + 0.5);
   float ang = sat((dot(n, dir) - cosS) / (1.0 - cosS)); float vv = (e < -5.0) ? 0.0 : prof * aa * ang; return vv / (1.0 + bias * (1.0 - vv)); }
 void main(){
-  vec2 C = u_lens.xy + u_lens.zw * 0.5, half_ = u_lens.zw * 0.5; float r = min(22.0, half_.y);
+  vec2 C = u_lens.xy + u_lens.zw * 0.5, half_ = u_lens.zw * 0.5; float r = min(u_rmax, half_.y);
   vec2 pl = v - C; float d = sdf(pl, half_, r); vec2 n = nrm(pl, half_, r); float fw = max(fwidth(d), 1e-4); float M = sat(0.5 - d / fw);
   vec4 below = A(v);
   vec2 wuv = (v - u_wrap.xy) / u_wrap.zw; vec4 ma = texture(m_ab, wuv);
@@ -138,7 +155,7 @@ void main(){
     let region = opts.region || { x: 0, y: 0, w: W, h: H };   /* the page rectangle the backdrop textures hold, page pt */
     const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
     const prog = (vs, fs) => { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)); return p; };
-    const stats = { gpuMs: 0, frames: 0, set: 0, prewarm: {} };
+    const stats = { gpuMs: 0, frames: 0, set: 0, prewarm: {} };   /* + labMode / rmax / labelStages (R37) once the constants below are known */
     const tC0 = performance.now(); const P1 = prog(VS, FS1), PISH = prog(VS, FS_ISH), P2 = prog(VS, FS2); stats.prewarm.compileMs = performance.now() - tC0;   /* shader compile + link (the drivers may still defer the pipeline until the first draw: the warm draw below) */
     const quad = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, quad); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
     const useProg = (p) => { gl.useProgram(p); const a = gl.getAttribLocation(p, "a"); gl.enableVertexAttribArray(a); gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0); };
@@ -207,7 +224,7 @@ void main(){
     const loadSet = (w) => { if (sets[w]) return sets[w].ready; const s = opts.sets[w]; const st = sets[w] = { S: s.S || 40, Sab: s.Sab || 12, h: s.h, bg: null, lab: null, ab: null, ish: null, ready: null };
       st.ready = Promise.all([loadImg(s.bg), loadImg(s.lab), loadImg(s.ab)]).then(([a, b, c]) => { const tm = performance.now(); st.bg = tex(a); st.lab = tex(b); st.ab = tex(c); stats.prewarm["mapsMs_" + w] = performance.now() - tm; if (!st.h) st.h = a.height / (a.width / w);   /* the bg map covers the lens box: h = its height at the map's px/pt */
         st.ish = fbo(Math.round(w * ISH_PX), Math.round(st.h * ISH_PX)); gl.bindFramebuffer(gl.FRAMEBUFFER, st.ish.f); gl.viewport(0, 0, st.ish.w, st.ish.h); useProg(PISH);
-        const ti = performance.now(); gl.uniform4f(U(PISH, "u_lens"), 0, 0, w, st.h); gl.uniform4f(U(PISH, "u_quad"), 0, 0, w, st.h); gl.uniform2f(U(PISH, "u_origin"), 0, 0); gl.uniform2f(U(PISH, "u_view"), w, st.h); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); if (w === (preload[0] || 220)) gl.finish(); gl.bindFramebuffer(gl.FRAMEBUFFER, null); stats.prewarm["ishMs_" + w] = performance.now() - ti; st.loaded = true; });
+        const ti = performance.now(); gl.uniform1f(U(PISH, "u_rmax"), RMAX); gl.uniform4f(U(PISH, "u_lens"), 0, 0, w, st.h); gl.uniform4f(U(PISH, "u_quad"), 0, 0, w, st.h); gl.uniform2f(U(PISH, "u_origin"), 0, 0); gl.uniform2f(U(PISH, "u_view"), w, st.h); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); if (w === (preload[0] || 220)) gl.finish(); gl.bindFramebuffer(gl.FRAMEBUFFER, null); stats.prewarm["ishMs_" + w] = performance.now() - ti; st.loaded = true; });
       return st.ready; };
     const loadedNearest = (w) => { const cands = widths.filter((x) => sets[x] && sets[x].loaded); if (!cands.length) return null; let best = cands[0], dd = Infinity; for (const x of cands) { const d = Math.abs(x - w); if (d < dd) { dd = d; best = x; } } return best; };
     const preload = opts.preload || [widths.includes(220) ? 220 : widths[0]]; for (const w of preload) loadSet(w);
@@ -232,6 +249,7 @@ void main(){
       gl.uniform4f(U(P1, "u_quad"), wx, wy, ww, wh_); gl.uniform2f(U(P1, "u_origin"), wx, wy); gl.uniform2f(U(P1, "u_view"), ww, wh_);
       gl.uniform4f(U(P1, "u_page"), region.x, region.y, region.w, region.h); gl.uniform4f(U(P1, "u_lens"), lx, ly, lw, lh); gl.uniform1f(U(P1, "u_S"), st.S); gl.uniform1f(U(P1, "u_p"), p);
       gl.uniform1f(U(P1, "u_srcclip"), opts.srcClip === false ? 0 : 1); gl.uniform1f(U(P1, "u_pd"), pd);
+      gl.uniform1f(U(P1, "u_rmax"), RMAX); gl.uniform1f(U(P1, "u_labmode"), LABMODE); const mdl = st.model || opts.model || [220, 44]; gl.uniform2f(U(P1, "u_model"), mdl[0], mdl[1]); gl.uniform4f(U(P1, "u_lst"), LST[0], LST[1], LST[2], LST[3]);
       const pl_ = s.platter || { rgba: [0, 0, 0, 0], alpha: 0 }; gl.uniform4f(U(P1, "u_platter"), (pl_.rgba[0] || 0) / 255, (pl_.rgba[1] || 0) / 255, (pl_.rgba[2] || 0) / 255, (pl_.rgba[3] == null ? 1 : pl_.rgba[3]) * (pl_.alpha == null ? 1 : pl_.alpha));
       bind(P1, "t_page", 0, tPage); bind(P1, "t_lab", 1, tLab); bind(P1, "m_bg", 2, st.bg); bind(P1, "m_lab", 3, st.lab); bind(P1, "t_ish", 4, st.ish.t); mark("uniforms_binds1");
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); mark("pass1");
@@ -240,7 +258,7 @@ void main(){
       else clear();
       useProg(P2); mark("clear_useP2");
       gl.uniform4f(U(P2, "u_quad"), wx, wy, ww, wh_); gl.uniform2f(U(P2, "u_origin"), canvasOrigin.x, canvasOrigin.y); gl.uniform2f(U(P2, "u_view"), W, H);
-      gl.uniform4f(U(P2, "u_lens"), lx, ly, lw, lh); gl.uniform4f(U(P2, "u_wrap"), wx, wy, ww, wh_); gl.uniform1f(U(P2, "u_Sab"), st.Sab); gl.uniform1f(U(P2, "u_wh"), s.wh || 1.72); gl.uniform1f(U(P2, "u_p"), p);
+      gl.uniform1f(U(P2, "u_rmax"), RMAX); gl.uniform4f(U(P2, "u_lens"), lx, ly, lw, lh); gl.uniform4f(U(P2, "u_wrap"), wx, wy, ww, wh_); gl.uniform1f(U(P2, "u_Sab"), st.Sab); gl.uniform1f(U(P2, "u_wh"), s.wh || 1.72); gl.uniform1f(U(P2, "u_p"), p);
       gl.uniform4f(U(P2, "u_page"), region.x, region.y, region.w, region.h); gl.uniform1f(U(P2, "u_pd"), pd); gl.uniform1f(U(P2, "u_dbg"), opts.debugPass1 ? 1 : 0); gl.uniform1f(U(P2, "u_ab"), AB); gl.uniform2f(U(P2, "u_ascale"), aw / A.w, ah / A.h); bind(P2, "t_a", 0, A.t); bind(P2, "m_ab", 1, st.ab); bind(P2, "t_page", 2, tPage); bind(P2, "t_lab", 3, tLab); mark("uniforms_binds2"); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); mark("pass2");
       if (tr) { tr.set = wsel; tr.total = +(performance.now() - tr.t0).toFixed(2); stats.trace = tr; (stats.traces = stats.traces || []).push(tr); if (stats.traces.length > 60) stats.traces.shift(); }
       if (opts.finish || s._split) gl.finish();
@@ -255,6 +273,11 @@ void main(){
     /* R8 device A/B (instrument, default 0 = nothing off): ?glab=nodark2,noring2,nofringe — the outside dark line / the outside ring / the dispersion taps
        of pass 2, to tell on the device which term makes the right end's line 3× deeper and 2 pt wide (README §0.8.8 ③; not reproduced on the Mac) */
     const AB = (() => { const q = (new URLSearchParams(location.search).get("glab") || (opts.ab || "")).split(","); return (q.includes("nodark2") ? 1 : 0) + (q.includes("noring2") ? 2 : 0) + (q.includes("nofringe") ? 4 : 0); })();
+    /* R37 (formula.md §3b.9): the label copy's field per pixel in float — opts.labMode "closed" | "map", ?gllab=closed|map overrides; default "closed" */
+    const LABMODE = (() => { const q = new URLSearchParams(location.search).get("gllab"); const m = q || opts.labMode || "closed"; return m === "map" ? 0 : 1; })();
+    const RMAX = opts.rmax != null ? opts.rmax : 22;   /* the capsule's corner radius cap (seg 22; the tab family passes 1e6 = h/2) */
+    const LST = opts.labelStages || [-8.8, 7.04, -17.5, 11.2];   /* the label stack in sampling order: ContentLensing −8.8 / SDF height 7.04, then ClearGlass −17.5 / 11.2 (seg-lens-refraction.md §1b 表 1 #18 / #30, A9 原值) */
+    stats.labMode = LABMODE ? "closed" : "map"; stats.rmax = RMAX; stats.labelStages = [...LST];
     const TRACE = new URLSearchParams(location.search).get("gltrace") === "1";   /* per-step gl.finish timing of every frame into stats.trace / stats.traces (last 60) — an instrument, slows the frame */
     /* prewarm = one full lifted frame (the preloaded set, lift 1, pd 1, the current backdrop textures) through pass 1 (FBO A) and pass 2 (FBO B), gl.finish after
        each; the canvas is cleared only on an instance's first warm-up (the cleared buffer is what the compositor presents: the layer's display surface gets allocated); the per-step
