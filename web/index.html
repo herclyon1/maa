@@ -3894,6 +3894,7 @@
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
 </svg>
+<script src="assets/lens/lens-engine-fix.js"></script>   <!-- 引擎校正（2号 ui2 bed84e4，web/assets/lens/README.md §0.4）：按 devicePixelRatio 把每张 -f-bg- / -f-lab- 贴图的负位移加长一个设备像素（2× ½、3× ⅓）写成 blob 副本换进 feImage（data-engine-fixed 可查），贴图文件与彩边链不动；关法 window.LENS_ENGINE_FIX = false -->
 <!-- 推入页（UINavigationController push）：回执全表、以后的库存页；导航栏 54 at 62、返回 44 at 20 ← AX-11 / AX-46 -->
 <div class="page" id="subpage" hidden role="region">
   <div class="pnav"><button type="button" class="navbtn pback" aria-label="返回"></button><span class="ptitle"></span></div>
