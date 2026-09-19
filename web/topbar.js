@@ -43,15 +43,27 @@
     st.setProperty("--tb-edge", y > 0.5 ? "1" : "0"); st.setProperty("--bar", y > 0.5 ? "1" : "0");   // the edge line: 0/1 here, its 0.517 s fade-in curve is in topbar.css (§10b ②)
     st.setProperty("--tb-stretch", "1");   // §10b ③ (probe): the large title does not scale when pulled past the top — it only translates with the content; stretchOf() (2.7) kept for the record
   };
+  /* 2.8 release snap curve — 采样替代（探针逐帧原值，nav-bar-scroll-formula.md §10b ④）: the collapsed → expanded snap of the native bar,
+     78 pt in 773 ms with an 11 % overshoot at +339 ms; the samples below are (ms after the finger let go, progress toward the target),
+     read every 33 ms from the probe's presentation frames; between samples linear. The closed form (UIScrollView decelerating to the
+     2.8 retargeted offset) is unread; the collapsing direction was not measured (that drag had velocity, no snap) — same table used.
+     tabscroll/README §2c's formula A (scroll-to-top, critically damped, no overshoot) is a different animation and does NOT fit this. */
+  const SNAP_T = [0, 39, 73, 140, 173, 206, 239, 273, 306, 339, 373, 406, 439, 473, 506, 539, 573, 606, 639, 673, 706, 739, 773];
+  const SNAP_P = [0, .115, .278, .506, .712, .842, .962, 1.056, 1.103, 1.111, 1.107, 1.094, 1.081, 1.064, 1.051, 1.043, 1.030, 1.026, 1.017, 1.013, 1.009, 1.009, 1];
+  const snapProgress = (ms) => {
+    if (ms <= 0) return 0; if (ms >= SNAP_T[SNAP_T.length - 1]) return 1;
+    let i = 1; while (SNAP_T[i] < ms) i++;
+    const a = SNAP_T[i - 1], b = SNAP_T[i]; return SNAP_P[i - 1] + (SNAP_P[i] - SNAP_P[i - 1]) * (ms - a) / (b - a);
+  };
   /* 2.8 release snap: only when the scroll settled inside the collapse range and no finger is down */
   const settle = () => {
     if (dragging || snapping || !api.snap || performance.now() - lastTouchEnd > 1500) return;   // only after a finger just let go (2.8 is a drag-end retarget); programmatic scrolls (tab tap → top spring) are left alone
     const y = window.scrollY; if (!(y > 0.5 && y < p - 0.5)) return;
-    const target = snapTarget(y), w = 12, t0 = performance.now(), y0 = y;   // w: the page's measured UIScrollView top-spring (view.js springToTop, 采样)
+    const target = snapTarget(y), t0 = performance.now(), y0 = y;
     snapping = true;
     const f = (now) => {
-      const t = (now - t0) / 1000, k = (1 + w * t) * Math.exp(-w * t), yy = target + (y0 - target) * k;
-      if (Math.abs(yy - target) < 0.5) { window.scrollTo(0, target); snapping = false; apply(); return; }
+      const yy = target + (y0 - target) * (1 - snapProgress(now - t0));
+      if (now - t0 >= SNAP_T[SNAP_T.length - 1]) { window.scrollTo(0, target); snapping = false; apply(); return; }
       window.scrollTo(0, yy); snapRaf = requestAnimationFrame(f);
     };
     snapRaf = requestAnimationFrame(f);
@@ -105,5 +117,5 @@
   addEventListener("resize", () => { measure(); apply(); });
   addEventListener("load", () => { measure(); apply(); });   // the stylesheets are all in effect by then (a late topbar.css would leave p from index.html's geometry)
   measure(); apply();
-  Object.assign(api, { measure, apply, progressOf, snapTarget, stretchOf, B, THRESH, FADE_S, ZONE_BELOW }); Object.defineProperty(api, "p", { get: () => p }); window.Topbar = api;
+  Object.assign(api, { measure, apply, progressOf, snapTarget, snapProgress, stretchOf, B, THRESH, FADE_S, ZONE_BELOW, SNAP_T, SNAP_P }); Object.defineProperty(api, "p", { get: () => p }); window.Topbar = api;
 })();

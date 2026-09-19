@@ -50,6 +50,10 @@ window.ACCEPT && ACCEPT.add(async (ctx) => {
   /* release snap (2.8): nearest resting point by the midpoint */
   num("松手吸附 s = p/2 − 1 → 0", 0, T.snapTarget(p / 2 - 1), 0.001);
   num("松手吸附 s = p/2 + 1 → p", p, T.snapTarget(p / 2 + 1), 0.001);
+  num("吸附曲线 = 探针 22 采样（§10b ④，采样替代）：+339 ms 进度 1.111（过冲峰）", 1.111, T.snapProgress(339), 0.0005);
+  num("吸附曲线：+140 ms 进度 .506", 0.506, T.snapProgress(140), 0.0005);
+  num("吸附曲线：+773 ms 到位 1", 1, T.snapProgress(773), 0.0001);
+  check("吸附曲线：不是回顶式 A（临界无过冲）——峰 > 1", "> 1", String(Math.max(...T.SNAP_P)), Math.max(...T.SNAP_P) > 1);
   /* pull-down stretch (2.7): clamp(1 + over/(dpr × screenH × .66), 1, 1.1) */
   check("拉过顶不缩放（§10b ③ 探针：大标题只随内容平移）：--tb-stretch 恒 1", "1", root.style.getPropertyValue("--tb-stretch"), root.style.getPropertyValue("--tb-stretch") === "1");
   check("大标题 transform 无缩放", "matrix(1, 0, 0, 1, 0, 0) 或 none", cs(h1).transform, cs(h1).transform === "none" || cs(h1).transform === "matrix(1, 0, 0, 1, 0, 0)");
