@@ -67,7 +67,11 @@ void main(){
   float k = darkLineK(d, n) * u_p; col.rgb = col.rgb * (1.0 + (-0.3) * k * (3.0 - 2.0 * col.rgb));   /* the dark line: rgb' = rgb·(1 + colorBias·k·(3 − 2·rgb)) */
   col.rgb = mix(col.rgb, u_platter.rgb, u_platter.a * covb);    /* the resting platter (restingBackground #5, _controlForegroundColor): above the displaced backdrop, below the lines and the labels, opacity 1 → 0 on the lift (§4b; the SVG page's .plat = 1 − lp) — u_platter = rgb × the page's alpha */
   vec4 ml = inBox ? texture(m_lab, uv) : vec4(128.0 / 255.0, 128.0 / 255.0, 0.0, 1.0);
-  vec2 ul = decode(ml.rg, u_S) * u_p; vec4 lc = lab(v + ul) * M; col = over(lc, col);   /* layers 2 + 4: the label copy, capsule-clipped at the destination (ClearGlass masksToBounds r 22) */
+  /* layers 2 + 4: the label copy — the portal #20 clips the segment content to the capsule BEFORE the displacement (masksToBounds 1, cornerRadii 22, seg-lens-refraction.md §1b
+     table 2; the SVG page's .displ border-radius before its filter: 先裁再位移), so a sample that lands outside the capsule reads transparent (the tearing at the ends); the map's B =
+     the two stages' own masks (compose_stages); the destination is not clipped again (portal #32 masksToBounds 0, §4b) */
+  vec2 ul = decode(ml.rg, u_S) * u_p; vec2 ql = v + ul; float dl = sdf(ql - C, half_, r); float Ml = sat(0.5 - dl / max(fwidth(dl), 1e-4));
+  vec4 lc = lab(ql) * Ml * ml.b; col = over(lc, col);
   float ish = inBox ? texture(t_ish, vec2(uv.x, 1.0 - uv.y)).r : 0.0; col.rgb *= (1.0 - ish * u_p);   /* inner shadow #21 (keyfill §5.2c); t_ish is an FBO (row 0 = bottom) */
   o = vec4(col.rgb, 1.0);
 }`;
