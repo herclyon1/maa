@@ -27,6 +27,7 @@ s = re.sub(r'(motion|nav|sheet|menu|topbar|refresh|glassbtn|switch)\.css\?v=[^"]
 s = re.sub(r'accept\.js\?v=[^"]*', f'accept.js?v={v}', s)
 # view.js is now loaded by an inline loader (?viewdelay), so its stamp lives inside JS strings too — stamp every view.js?v= occurrence
 s = re.sub(r'view\.js\?v=\d+', f'view.js?v={v}', s)   # the ?accept-only acceptance script
+s = re.sub(r'assets/lens/(tab-lens|lens-webgl)\.js\?v=[^"]*', lambda m: f'assets/lens/{m.group(1)}.js?v={v}', s)   # lens package scripts referenced from index.html (night batch #7a)
 s = re.sub(r'tokens\.css\?v=[^"]*', f'tokens.css?v={v}', s)   # the component tokens stylesheet
 s = re.sub(r'href="manifest\.webmanifest[^"]*"', f'href="manifest.webmanifest?v={v}"', s)
 # 图标：<link rel="...icon..." href="xxx.png?v=...">，连 manifest 里的一起盖
