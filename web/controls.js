@@ -12,12 +12,15 @@
        down +150 ms  the fill switches INSTANTLY to the highlight colour (no CAAnimation) and the separator goes to opacity 0 → class .hl
        up            the fade highlight → resting starts on the next frame (+4…17 ms): .5 s cubic-bezier(.42,0,.58,1) → class .hl-out
                      (UIView animateWithDuration:0.5 options:0, curve easeInOut, from deselectRow(animated:)); the selection (our click) fires
-                     on that same frame (didSelect +4…17 ms)
-       short tap     (up before +150 ms) the highlight still shows one frame at +150 (up +16…18) and the fade starts at that moment
+                     one frame after that — once the fade's first frame is on screen — because the page's actions block (confirm()) or
+                     replace the frame (openPage), which the device check (数据 b14-cell-8bf3bcd.md) saw swallowing the highlight
+       short tap     (up before +150 ms) the highlight still shows one frame at +150 (up +16…18) and the fade starts at that moment; the click
+                     follows the same way (highlight frame → fade frame → click), never before the highlight has been on screen
        cancel        scrolling ≥ 12 pt vertically (threshold 10 = --ios-touch-scroll-threshold) or the finger 15 pt outside the card's edge:
-                     the highlight goes off INSTANTLY and the up selects nothing — UITableView touchesCancelled: (0x1c4b31830) / touchesMoved:
-                     (0x1c4b306a8) un-highlight through _highlightRowAtIndexPath:{none} animated:__UIShouldAnimateDefaultCellHighlightAndSelection,
-                     and that function (0x1c3f1c170) returns NO for every idiom but Vision (6) — old page session, iOS 27.0 UIKitCore
+                     the highlight goes off INSTANTLY (.hl-cut kills the base transition of .acts button for that frame) and the up selects
+                     nothing — UITableView touchesCancelled: (0x1c4b31830) / touchesMoved: (0x1c4b306a8) un-highlight through
+                     _highlightRowAtIndexPath:{none} animated:__UIShouldAnimateDefaultCellHighlightAndSelection, and that function
+                     (0x1c3f1c170) returns NO for every idiom but Vision (6) — old page session, iOS 27.0 UIKitCore
        a fast swipe (20 pt within 40 ms) is cancelled before the 150 ms fire, so it never highlights (C9)
      Horizontal movement inside the card (8 / 15 / 100 pt) keeps the press and still selects (C7 C10) — a browser would not deliver its own
      click after such a drag, so the click is ours (fired at the up) and the browser's own click for the same touch is swallowed, the way
@@ -42,8 +45,17 @@
     const card = el.closest(".group, .plist, .card") || el.parentElement, cr = card.getBoundingClientRect();
     const x0 = e.clientX, y0 = e.clientY, T = ROW_SCROLL_PT();
     let lit = false, over = false, released = false, timer = 0;
-    const light = () => { timer = 0; if (over && !released) return; lit = true; el.classList.add("hl"); if (released) requestAnimationFrame(() => fadeOut(el)); };   // +150: instant
-    const cancel = () => { if (over) return; over = true; clearTimeout(timer); timer = 0; if (lit) { lit = false; el.classList.remove("hl"); } delete el.dataset.rp; };   // instant off, no select
+    const select = () => { synthetic = true; try { el.click(); } finally { synthetic = false; } };
+    /* the release sequence from a lit row: frame 1 the fade starts (.hl → .hl-out), frame 2 the selection — so the fade's first frame is
+       painted before an action can block the main thread (confirm()) or replace the content (openPage) */
+    const release = () => requestAnimationFrame(() => { fadeOut(el); requestAnimationFrame(select); });
+    const light = () => {   // +150 ms: the highlight, instant; if the finger is already up, the fade and the selection follow from here
+      timer = 0; if (over && !released) return; lit = true; el.classList.add("hl"); if (released) release();
+    };
+    const cancel = () => {   // instant off (no transition even on .acts button, whose rest rule carries one), no select
+      if (over) return; over = true; clearTimeout(timer); timer = 0; delete el.dataset.rp;
+      if (lit) { lit = false; el.classList.add("hl-cut"); el.classList.remove("hl"); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove("hl-cut"))); }
+    };
     if (!press(el, e, {
       move: (ev) => { if (over) return; if (Math.abs(ev.clientY - y0) > T || ev.clientX < cr.left - ROW_EDGE_PT || ev.clientX > cr.right + ROW_EDGE_PT) cancel(); },
       end: (ev, cancelled) => {
@@ -51,10 +63,7 @@
         if (over) return;
         over = true; released = true; delete el.dataset.rp;
         ghost = true; setTimeout(() => { ghost = false; }, 0);   // the browser's click for this touch (if it comes) arrives before this
-        requestAnimationFrame(() => {   // up + one frame: the fade starts and the row is selected (didSelect +4…17 ms)
-          if (lit) fadeOut(el);         // a short tap: the pending 150 ms timer lights the row and fades it at once (light() above)
-          synthetic = true; try { el.click(); } finally { synthetic = false; }
-        });
+        if (lit) release();             // a short tap: the pending 150 ms timer lights the row, then light() runs the same release
       },
     })) return;
     el.dataset.rp = "1";
@@ -96,6 +105,9 @@
     sw.style.setProperty("--ksx", sx.toFixed(4)); sw.style.setProperty("--ksy", sy.toFixed(4));
     sw.style.setProperty("--lift", Math.max(0, Math.min(1, st.lift.x)).toFixed(4));
   };
+  /* an event between two frames: bring the springs up to the event's instant first, so a retarget starts from the value at that instant
+     and not from the last frame's (the up's knob travel read one frame ahead in the device / headless checks) */
+  const swCatchUp = (st) => { if (!st.raf) return; const now = performance.now(), dt = Math.min(.05, Math.max(0, (now - st.last) / 1000)); spring(st.pos, dt); spring(st.lift, dt); st.last = now; };
   const swRun = (sw, st) => {
     if (st.raf) return;
     st.last = performance.now();
@@ -134,7 +146,7 @@
       if (raw < lo) return lo - (reduceMotion.matches ? 0 : rubber(lo - raw, T.rbLimit, T.rbSlope));
       return raw;
     };
-    const retarget = () => { st.pos.target = target(); swRun(sw, st); };
+    const retarget = () => { swCatchUp(st); st.pos.target = target(); swRun(sw, st); };
     const setOn = (v) => { on = v; input.checked = v; };   // interactiveChangeToDisplayedOn: → setOn:animated: — the well's border colour (.18 s) / width follow :checked in CSS
     if (!press(sw, e, {
       move: (ev) => {
@@ -148,7 +160,7 @@
         st.held = false; t = 0; sw.classList.remove("pressed"); retarget();
         if (st.lift.target === 1) {
           const wait = Math.max(0, liftAt + T.hang - performance.now());
-          st.hangT = setTimeout(() => { st.lift.target = 0; st.lift.w = 2 * Math.PI / T.unliftResp; st.lift.z = T.unliftZeta; swRun(sw, st); }, wait);   // spec.unLiftSpring ζ .7 / .5
+          st.hangT = setTimeout(() => { swCatchUp(st); st.lift.target = 0; st.lift.w = 2 * Math.PI / T.unliftResp; st.lift.z = T.unliftZeta; swRun(sw, st); }, wait);   // spec.unLiftSpring ζ .7 / .5
         }
         if (on !== initialOn) input.dispatchEvent(new Event("change", { bubbles: true }));
       },
@@ -159,7 +171,7 @@
     swWrite(sw, st); sw.classList.add("drive");
     st.pressT = setTimeout(() => {   // longPress began at +.01 s: pressed
       sw.classList.add("pressed");
-      if (!reduceMotion.matches) { liftAt = performance.now(); st.lift.target = 1; st.lift.w = 2 * Math.PI / T.liftResp; st.lift.z = T.liftZeta; }   // spec.liftSpring (small variant: ζ .625 / .27 — overshoots 8 %: 58 → 59.7 at +173 ms)
+      if (!reduceMotion.matches) { swCatchUp(st); liftAt = performance.now(); st.lift.target = 1; st.lift.w = 2 * Math.PI / T.liftResp; st.lift.z = T.liftZeta; }   // spec.liftSpring (small variant: ζ .625 / .27 — overshoots 8 %: 58 → 59.7 at +173 ms)
       retarget();
     }, T.press);
   });

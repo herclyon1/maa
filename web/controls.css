@@ -8,6 +8,11 @@
    The action rows are `.group .acts button` so the rule outranks index.html's `.acts button.danger` / `[disabled]` backgrounds. */
 .row.nav.hl, .sheet .row.check.hl, .group .acts button.hl { background-color: var(--ios-cell-highlight); transition: none; }
 .row.nav.hl::after, .sheet .row.check.hl::after, .group .acts button.hl::after { opacity: 0; }
+/* the separator ABOVE the highlighted row is the previous row's ::after: hidden too (数据 b14-cell-8bf3bcd.md: the native table hides both) */
+.row:has(+ .row.hl)::after, .group .acts button:has(+ button.hl)::after, .row:has(+ .acts > button.hl:first-child)::after { opacity: 0; }
+/* a cancelled press: the highlight goes off with no transition at all (touchesCancelled → animated:NO); .hl-cut lasts one frame so the
+   .acts button's resting transition (index.html) cannot fade it */
+.row.nav.hl-cut, .sheet .row.check.hl-cut, .group .acts button.hl-cut { transition: none; }
 .row.nav.hl-out, .sheet .row.check.hl-out, .group .acts button.hl-out {
   transition: background-color var(--ios-motion-row-release-duration) var(--ios-motion-ease-in-out);
 }
