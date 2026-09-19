@@ -21,9 +21,9 @@ v = sys.argv[1]
 p = pathlib.Path("web/index.html")
 s = p.read_text(encoding="utf-8")
 # app.js 2026-09-18 拆成 schema/net/pending/live/view（stamina 原本就单独；inventory 是库存页的数据层），七个都盖同一个版本号
-s = re.sub(r'<script src="(schema|net|pending|live|stamina|inventory|view|controls|alert-prewarm|seg-frames-logger|motion|nav|nav-edge|sheet|menu|topbar|refresh|glassbtn|switch|accept-[a-z-]+)\.js[^"]*"></script>', lambda m: f'<script src="{m.group(1)}.js?v={v}"></script>', s)   # controls.js: the row / switch press state machines (B14 / B13)
+s = re.sub(r'<script src="(schema|net|pending|live|stamina|inventory|view|controls|alert-prewarm|seg-frames-logger|motion|nav|nav-edge|sheet|menu|topbar|refresh|glassbtn|alert-glass|switch|accept-[a-z-]+)\.js[^"]*"></script>', lambda m: f'<script src="{m.group(1)}.js?v={v}"></script>', s)   # controls.js: the row / switch press state machines (B14 / B13)
 s = re.sub(r'controls\.css\?v=[^"]*', f'controls.css?v={v}', s)   # their stylesheet
-s = re.sub(r'(motion|nav|sheet|menu|topbar|refresh|glassbtn|switch|tile)\.css\?v=[^"]*', lambda m: f'{m.group(1)}.css?v={v}', s)   # night batch control stylesheets
+s = re.sub(r'(motion|nav|sheet|menu|topbar|refresh|glassbtn|alert-glass|switch|tile)\.css\?v=[^"]*', lambda m: f'{m.group(1)}.css?v={v}', s)   # night batch control stylesheets
 s = re.sub(r'accept\.js\?v=[^"]*', f'accept.js?v={v}', s)
 # view.js is now loaded by an inline loader (?viewdelay), so its stamp lives inside JS strings too — stamp every view.js?v= occurrence
 s = re.sub(r'view\.js\?v=\d+', f'view.js?v={v}', s)   # the ?accept-only acceptance script
