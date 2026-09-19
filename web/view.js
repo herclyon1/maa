@@ -789,7 +789,11 @@ function wire() {
          seg-value-change-content.md §0 four recordings +92/+68/+50/+66, the lens starts gliding in that same frame; tokens.css --ios-touch-segment-
          commit-delay note for the slide). A newer value change before the timer fires simply renders again (快速连点 未量). */
       const delay = touchMs(mode === "drag" ? "--seg-commit-delay-drag" : "--seg-commit-delay-tap", 0);
-      setTimeout(() => { if (qsel.value !== q) return; segCommitAt = performance.now(); segCommitMode = mode; flipPending = true; performance.mark("seg:commit"); qsel.dispatchEvent(new Event("change")); segMeasure("seg:commit-render", segCommitAt); }, delay);
+      setTimeout(() => { if (qsel.value !== q) return; segCommitAt = performance.now(); segCommitMode = mode; flipPending = true; performance.mark("seg:commit");
+        if (SEG_VC_SPLIT) {   // 换值重画不阻塞 (监督局 09-19): this frame only the selection state (labels .on / aria; the lens is the loop's), the content render next frame
+          bs.forEach((b, k) => { b.classList.toggle("on", k === i); b.setAttribute("aria-selected", k === i ? "true" : "false"); }); segMeasure("seg:commit-select", segCommitAt);
+          requestAnimationFrame(() => { if (qsel.value !== q) return; const tR = performance.now(); performance.mark("seg:commit-render-start"); qsel.dispatchEvent(new Event("change")); segMeasure("seg:commit-render", tR); });
+        } else { qsel.dispatchEvent(new Event("change")); segMeasure("seg:commit-render", segCommitAt); } }, delay);
     });
   }
   if (qsel) qsel.onchange = () => {
@@ -1334,7 +1338,8 @@ const SEG_RIM = (() => {
   return { hlRings, angMain, angDiff, kfRings, kfK, NXS, MULT: 1 - .9118, ADD: .1471, COLOR_BIAS: -.3, grey };
 })();
 const SEGX = (new URLSearchParams(location.search).get("segx") || "").split(",");
-const SEG_DISP_ON = new URLSearchParams(location.search).get("disp") === "1";   // layer-5 colour fringe (7-tap chain on .stack, per-frame W/H matrix + tap scales): default off, ?disp=1 on (监督局 09-19 12:0x, phone fps bisect)
+const SEG_DISP_ON = new URLSearchParams(location.search).get("disp") === "1";
+const SEG_VC_SPLIT = new URLSearchParams(location.search).get("vcsplit") !== "0";   // 换值重画不阻塞: the commit frame switches the selection only, the content render runs in the next frame (?vcsplit=0 = one frame, the old path)   // layer-5 colour fringe (7-tap chain on .stack, per-frame W/H matrix + tap scales): default off, ?disp=1 on (监督局 09-19 12:0x, phone fps bisect)
 /* instrumentation (仪器, no behaviour): the lens loop publishes its per-tick internals as window.__segLens — a flat object of numbers and strings,
    rewritten at the end of every tick, read as is by 2号's frame recorder (seg-frames-logger.js `state`; a field named t or ending in _t is a
    performance.now() ms the recorder converts to s since the down). The agreed names: t (the tick's performance.now()), x (the position spring, pt),
