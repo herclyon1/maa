@@ -1,1 +1,19 @@
-/* nav.css — placeholder shell (night batch); the owner fills it; overrides use higher specificity, old rules stay. */
+/* nav.css — the pushed page's push / pop drawn by nav.js (BOARD.md #2; remote-ref/nav-native-formula.md §0–§1, iOS 27.0 UIKitCore
+   _UINavigationParallaxTransition). While nav.js drives (.nav-live on the page and on body), the page's CSS transitions in index.html are
+   off and every quantity is a per-frame value of the one progress p (spring ζ 1 / .3, from rest). Rest states keep index.html's classes
+   (.page.in / hidden, body.pushed), so nothing else changes. Selectors carry an extra class to outrank the inline rules of index.html
+   (loaded after this file) without editing them (A7). */
+.page.nav-live.nav-live { transition: none; transform: translateX(var(--nav-x, 0px)); will-change: transform; }
+body.nav-live.nav-live > header, body.nav-live.nav-live > main { transition: none; translate: var(--nav-from, 0px) 0; will-change: translate; }   /* own layers while moving: the old page must not re-raster per frame */
+/* the transition card (Solarium _UIParallaxTransitionCardView 0x1c54ab304 / updateProperties 0x1c54ab854): corners = the container's
+   concentric radii (this phone's screen corner 62, sheet-native.md), shadow black r 12 / opacity .04 / offset (0, −3) — only while moving */
+.page.nav-live.nav-live { border-radius: 62px; box-shadow: 0 -3px 12px rgba(0, 0, 0, .04); }
+/* the dimming view between the two cards: black α .1 whose alpha = p (push) / 1 − p (pop) — _UIParallaxDimmingView 0x1c40fe0dc, [0x1c5717f68] = .1 */
+.nav-dim { position: fixed; inset: 0; z-index: 4; pointer-events: none; background: rgb(0 0 0 / .1); opacity: var(--nav-dim, 0); }
+/* the 9 pt vertical edge shadow outside the top card's left edge, alpha = 1 − p (_UIVerticalEdgeShadowView width 9, formula §0):
+   its 27 px profile is UNREAD (§5.1: CGContextSetShadowWithColor blur → σ in CoreGraphics) — the strip is placed, not painted. 待读：剖面 */
+.page.nav-live.nav-live::before { content: ""; position: absolute; top: 0; bottom: 0; left: -9px; width: 9px; opacity: var(--nav-edge, 0); background: none; }
+/* the nav bar items of the incoming page (formula §0 row 导航栏): back button + title fade in with f_in = cubic-bezier(.75,.1,.75,.1) over the
+   second key segment [.425, 1]; the title's frame slides from the title area's right end to its place (linear in p) */
+.page.nav-live.nav-live > .pnav > .pback, .page.nav-live.nav-live > .pnav > .ptitle { opacity: var(--nav-in, 1); transition: none; }
+.page.nav-live.nav-live > .pnav > .ptitle { translate: var(--nav-title, 0px) 0; }
