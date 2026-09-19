@@ -23,7 +23,16 @@
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
   const rubber = (o, limit, slope) => limit * (1 - 1 / (1 + slope * o / limit));
   /* the spring step is motion.js's (ω = 2π / response, ζ): each state keeps {x, v, target, resp, z} */
-  const spring = (s, dt) => Motion.spring(s, s.target, [s.z == null ? 1 : s.z, s.resp], dt);
+  const spring = (s, dt) => { s.el = (s.el || 0) + dt; return Motion.spring(s, s.target, [s.z == null ? 1 : s.z, s.resp], dt); };   // s.el = the spring's own time since its last retarget (the checks compare at it)
+  /* a retarget while the driver runs: first bring both springs up to this moment with their old targets (the driver's last tick is a frame
+     timestamp, up to a frame before the event — without this the new target got that pre-event time credited: the knob ran ≈ 1 frame
+     ahead of the up, 15.4 pt at +101 ms for 13.8), then the new target starts from now. Every retarget goes through here. */
+  const swSync = (st) => {
+    if (!st.raf) return;
+    const now = performance.now(), dt = Math.min(1, Math.max(0, (now - st.last) / 1000));
+    if (dt > 0) { spring(st.pos, dt); spring(st.lift, dt); st.last = now; }
+  };
+  const swAim = (s, target, resp, z) => { s.target = target; if (resp != null) s.resp = resp; if (z != null) s.z = z; s.el = 0; };
   const swWrite = (sw, st) => {
     const sx = 1 + st.lift.x * (st.liftSX - 1), sy = 1 + st.lift.x * (st.liftSY - 1);
     sw.style.setProperty("--kx", (st.pos.x - SW_BASE[0]).toFixed(3) + "px");
@@ -34,7 +43,7 @@
     if (st.raf) return;
     st.last = performance.now();
     const tick = (now) => {
-      const dt = Math.min(1, Math.max(0, (now - st.last) / 1000)); st.last = now;   // closed-form: a slow frame gets its whole elapsed time
+      const dt = Math.min(1, Math.max(0, (now - st.last) / 1000)); if (now > st.last) st.last = now;   // closed-form: a slow frame gets its whole elapsed time; a frame stamped before the last sync adds nothing and does not move the clock back
       spring(st.pos, dt); spring(st.lift, dt);
       const posDone = Math.abs(st.pos.x - st.pos.target) < .02 && Math.abs(st.pos.v) < .5, liftDone = Math.abs(st.lift.x - st.lift.target) < .004 && Math.abs(st.lift.v) < .04;   // .004 of the lift = .002 of scale (< ⅒ px on the 58-pt knob)
       if (posDone) { st.pos.x = st.pos.target; st.pos.v = 0; }
@@ -68,7 +77,7 @@
       if (raw < lo) return lo - (reduceMotion.matches ? 0 : rubber(lo - raw, T.rbLimit, T.rbSlope));
       return raw;
     };
-    const retarget = () => { st.pos.target = target(); swRun(sw, st); };
+    const retarget = () => { swSync(st); swAim(st.pos, target()); swRun(sw, st); };
     const setOn = (v) => { on = v; input.checked = v; };   // interactiveChangeToDisplayedOn: → setOn:animated: — the well's border colour (.18 s) / width follow :checked in CSS
     if (!press(sw, e, {
       move: (ev) => {
@@ -82,7 +91,7 @@
         st.held = false; t = 0; sw.classList.remove("pressed"); retarget();
         if (st.lift.target === 1) {
           const wait = Math.max(0, liftAt + T.hang - performance.now());
-          st.hangT = setTimeout(() => { st.lift.target = 0; st.lift.resp = T.unliftResp; st.lift.z = T.unliftZeta; swRun(sw, st); }, wait);   // spec.unLiftSpring ζ .7 / .5
+          st.hangT = setTimeout(() => { swSync(st); swAim(st.lift, 0, T.unliftResp, T.unliftZeta); swRun(sw, st); }, wait);   // spec.unLiftSpring ζ .7 / .5
         }
         if (on !== initialOn) input.dispatchEvent(new Event("change", { bubbles: true }));
       },
@@ -93,7 +102,8 @@
     swWrite(sw, st); sw.classList.add("drive");
     st.pressT = setTimeout(() => {   // longPress began at +.01 s: pressed
       sw.classList.add("pressed");
-      if (!reduceMotion.matches) { liftAt = performance.now(); st.lift.target = 1; st.lift.resp = T.liftResp; st.lift.z = T.liftZeta; }   // spec.liftSpring (small variant: ζ .625 / .27 — overshoots 8 %: 58 → 59.7 at +173 ms)
+      swSync(st);
+      if (!reduceMotion.matches) { liftAt = performance.now(); swAim(st.lift, 1, T.liftResp, T.liftZeta); }   // spec.liftSpring (small variant: ζ .625 / .27 — overshoots 8 %: 58 → 59.7 at +173 ms)
       retarget();
     }, T.press);
   });

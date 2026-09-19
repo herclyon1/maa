@@ -29,6 +29,7 @@ ACCEPT.add(async function sw({ check, num, col, sleep }) {
   swLab.innerHTML = `<label class="sw"><input type="checkbox"><span></span></label>`; document.body.appendChild(swLab);
   const sw = swLab.querySelector(".sw"), inp = sw.querySelector("input"); let flips = 0; inp.addEventListener("change", () => flips++);
   const kn = () => sw.querySelector("span"), lift = () => parseFloat(sw.style.getPropertyValue("--lift")) || 0, kx = () => parseFloat(sw.style.getPropertyValue("--kx")) || 0;
+  const posEl = () => (sw._sw && sw._sw.pos.el) || 0;   // the knob spring's own time since its retarget at the up (switch.js swSync / swAim): the check compares at it, not at the wall clock (the last tick is a frame timestamp, the check runs up to a frame later)
   const crit = (resp, t) => { const w = 2 * Math.PI / resp, u = w * t; return 1 - (1 + u) * Math.exp(-u); };   // critical spring progress
   const spr = (z, resp, t) => { const w = 2 * Math.PI / resp; if (z >= 1) return crit(resp, t); const wd = w * Math.sqrt(1 - z * z); return 1 - Math.exp(-z * w * t) * (Math.cos(wd * t) + (z * w / wd) * Math.sin(wd * t)); };   // damped spring progress from rest
   const wb = () => px(cs(kn()).getPropertyValue("--wb"));
@@ -49,10 +50,10 @@ ACCEPT.add(async function sw({ check, num, col, sleep }) {
   const t2 = performance.now(); pev(sw, "pointerup", at(sw)); const d2 = performance.now() - t2;
   check("开关 S1 抬手：立刻翻转一次（pending 点按预置；--ios-touch-switch-flip-delay 0）", "on ×1", `${inp.checked ? "on" : "off"} ×${flips} +${Math.round(d2 * 10) / 10} ms`, inp.checked && flips === 1 && d2 < 50);
   await sleep(100);
-  { const el = (performance.now() - t2) / 1000, k = kx(), want = 22 * crit(.3, el); check(`开关 抬手 +${Math.round(el * 1000)} ms：旋钮行程 ${Math.round(want / 22 * 100)} %（ζ 1 / .3：.1 s 62 % = 13.6 pt）`, `${Math.round(want * 10) / 10} ± 1.2`, Math.round(k * 10) / 10, Math.abs(k - want) <= 1.2);
+  { const el = posEl(), k = kx(), want = 22 * crit(.3, el); check(`开关 抬手 +${Math.round(el * 1000)} ms（弹簧自己的时间）：旋钮行程 ${Math.round(want / 22 * 100)} %（ζ 1 / .3：.1 s 62 % = 13.6 pt）`, `${Math.round(want * 10) / 10} ± 1.2`, Math.round(k * 10) / 10, Math.abs(k - want) <= 1.2);
     const l = lift(), wantL = 1 - spr(.7, .5, el); check(`开关 抬手 +${Math.round(el * 1000)} ms：缩回中（抬手晚于按下 +.22 s → 立即；spec.small unLiftSpring ζ .7 / .5）lift ≈ ${Math.round(wantL * 100)} %`, `${Math.round(wantL * 100)} % ± 15（rAF 帧粒度）`, `${Math.round(l * 100)} %`, Math.abs(l - wantL) <= .15); }
   await sleep(100);
-  { const el = (performance.now() - t2) / 1000, k = kx(), want = 22 * crit(.3, el); check(`开关 抬手 +${Math.round(el * 1000)} ms：旋钮行程 ${Math.round(want / 22 * 100)} %（.2 s 92 % = 20.2 pt）`, `${Math.round(want * 10) / 10} ± 1`, Math.round(k * 10) / 10, Math.abs(k - want) <= 1); }
+  { const el = posEl(), k = kx(), want = 22 * crit(.3, el); check(`开关 抬手 +${Math.round(el * 1000)} ms（弹簧自己的时间）：旋钮行程 ${Math.round(want / 22 * 100)} %（.2 s 92 % = 20.2 pt）`, `${Math.round(want * 10) / 10} ± 1`, Math.round(k * 10) / 10, Math.abs(k - want) <= 1); }
   await sleep(600);
   check("开关 抬手 +800 ms：落定 22、驱动结束（缩回 ζ .7 / .5 到 .4 % 需 .63 s）（.drive 去掉，静止规则接管）", "22, rest", `${Math.round(kx() * 100) / 100}, ${sw.classList.contains("drive") ? "drive" : "rest"}`, Math.abs(kx() - 22) < .05 && !sw.classList.contains("drive") && Math.abs(px(cs(kn(), "::after").translate) - 22) < .05);
   /* a 100 ms tap: the lens stays lifted until +230 ms (lensHangTime .22 from the lift at +10), then un-lifts */
