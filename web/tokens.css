@@ -71,6 +71,11 @@
   --ios-switch-knob: rgb(255 255 255);
   /* probe UIActivityIndicatorView.color = secondaryLabel */
   --ios-spinner: rgb(60 60 67 / .6);
+  /* UIRefreshControl arm (BOARD R61′; refresh-native-formula.md §10 R61, 数据 probe getters uiprobe-getter-r61-light-S-{rep,seed}.json): the drawn
+     colour is the CAReplicatorLayer composite instanceColor × seed backgroundColor, component-wise — secondaryLabel (60,60,67) α 1 × secondaryLabel
+     α .6 = (60²/255, 60²/255, 67²/255) = rgb(14 14 18) at α .6 (× the reveal progress); the probe screenshot's read-back α .434 fits this product,
+     not secondaryLabel .6 (r61_sample.py) */
+  --ios-refresh-arm: rgb(14 14 18 / .6);
   /* probe UIDimmingView behind a sheet */
   --ios-dimming: rgb(0 0 0 / .2);
   /* probe scroll indicator */
@@ -751,6 +756,8 @@
     --ios-switch-knob: rgb(255 255 255);
     /* probe list-dark spinner colour = secondaryLabel dark */
     --ios-spinner: rgb(235 235 245 / .6);
+    /* UIRefreshControl arm, dark (R61: instanceColor (0.9216, 0.9216, 0.9608, 1) × seed (0.9216, 0.9216, 0.9608, .6) = secondaryLabel dark squared: (235²/255, 235²/255, 245²/255)) */
+    --ios-refresh-arm: rgb(217 217 235 / .6);
     /* probe list-dark scroll indicator */
     --ios-scrollbar: rgb(255 255 255 / .5);
     /* probe dark column: orange/yellow/fills/grays/tertiary grouped bg/tab labels */

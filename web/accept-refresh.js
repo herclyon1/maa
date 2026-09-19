@@ -91,7 +91,8 @@
         check("下拉刷新 ⑪ 滚回中途版面真在动：+60 ms 左右读到的 computed margin-top 在 0 与 60 之间、与该时刻公式值差 ≤ 6 px（一帧的斜率）", "0 < m < 60 · |Δ| ≤ 6", midBack ? `t ${midBack.t.toFixed(3)} m ${midBack.m.toFixed(1)} vs ${exp(midBack.t).toFixed(1)}` : "no sample", !!midBack && midBack.m > 0 && midBack.m < 60 && Math.abs(midBack.m - exp(midBack.t)) <= 6);
         check("下拉刷新 ⑪ 滚回收尾：header margin 0、body.ptr-inset 已除、滚回动画结束", "0px · no class · back null", `${mtEnd} · ${host.classList.contains("ptr-inset") ? "body.ptr-inset" : "no class"} · back ${R.back ? "running" : "null"} · ${bt.length} frames · scrollY at end ${syEnd}`, bt.length >= 8 && mtEnd === "0px" && !host.classList.contains("ptr-inset") && !R.back && !R.insetOn); }
       /* R5 — the arms' geometry (refresh-native-formula.md §10, probe): 8 arms, each 3.667 × 10 with corner 1.833, inner end 5 pt from the centre (outer 15),
-         every 45°; the box centred at safe-area top + 54 + 30; colour token --ios-spinner (secondaryLabel α .6) */
+         every 45°; the box centred at safe-area top + 54 + 30; colour token --ios-refresh-arm (R61′: instanceColor × seed = secondaryLabel squared at α .6 —
+         light rgb(14 14 18 / .6), dark rgb(217 217 235 / .6)) */
       { const box = ai.getBoundingClientRect(), cx = box.left + box.width / 2, cy = box.top + box.height / 2, a0 = arms[0], c0 = getComputedStyle(a0);
         const rot = (el) => { const m = /matrix\(([-\d.e]+), ([-\d.e]+)/.exec(getComputedStyle(el).transform || ""); return m ? Math.round(Math.atan2(parseFloat(m[2]), parseFloat(m[1])) * 180 / Math.PI) : 0; };
         const angles = arms.map(rot).map((d) => (d + 360) % 360).sort((x, y) => x - y), want = [0, 45, 90, 135, 180, 225, 270, 315];
@@ -100,11 +101,12 @@
         const inner = cy - r0.bottom, outer = cy - r0.top;
         const sat = (() => { const pr = document.createElement("div"); pr.style.cssText = "position:fixed;top:0;left:0;width:1px;padding-top:env(safe-area-inset-top);visibility:hidden"; document.body.appendChild(pr); const v = parseFloat(getComputedStyle(pr).paddingTop) || 0; pr.remove(); return v; })();
         const navH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ios-nav-h")) || 54;
-        const tok = getComputedStyle(document.documentElement).getPropertyValue("--ios-spinner").trim();
+        const tok = getComputedStyle(document.documentElement).getPropertyValue("--ios-refresh-arm").trim(), darkT = matchMedia("(prefers-color-scheme: dark)").matches && document.documentElement.dataset.theme !== "light" || document.documentElement.dataset.theme === "dark";
+        check("下拉刷新 R61′ 臂色令牌 = 复制层合成色 instanceColor × 种子色（secondaryLabel 分量平方 @ α .6；§10 R61）", darkT ? "rgb(217 217 235 / .6)" : "rgb(14 14 18 / .6)", tok, tok === (darkT ? "rgb(217 217 235 / .6)" : "rgb(14 14 18 / .6)"));
         const probe = document.createElement("i"); probe.style.cssText = "position:fixed;left:-9999px;background:" + tok; document.body.appendChild(probe); const tokRgb = getComputedStyle(probe).backgroundColor; probe.remove();
         check("下拉刷新 R5 臂几何（§10 探针）：每根 3.667 × 10、圆角 1.833、8 根每 45°", "3.667×10 r1.833 · 0/45/…/315", `${c0.width}×${c0.height} r${c0.borderTopLeftRadius} · ${angles.join("/")}`, Math.abs(parseFloat(c0.width) - 3.667) < 0.02 && Math.abs(parseFloat(c0.height) - 10) < 0.02 && Math.abs(parseFloat(c0.borderTopLeftRadius) - 1.833) < 0.02 && angles.length === 8 && angles.every((d, i) => Math.abs(d - want[i]) <= 1));
         check("下拉刷新 R5 臂到中心：内端 5 pt、外端 15 pt（环半径 5、臂长 10）", "inner 5 · outer 15", `inner ${inner.toFixed(2)} · outer ${outer.toFixed(2)}`, Math.abs(inner - 5) < 0.15 && Math.abs(outer - 15) < 0.15);
-        check("下拉刷新 R5 位置与色：指示器中心 = 安全区顶 + 栏 54 + 30（控件 60 高的中心）、臂色 = --ios-spinner（secondaryLabel α .6）", `cy ${Math.round(sat + navH + 30)} · ${tokRgb}`, `cy ${cy.toFixed(1)} · ${c0.backgroundColor}`, Math.abs(cy - (sat + navH + 30)) < 0.6 && c0.backgroundColor === tokRgb);
+        check("下拉刷新 R5 位置与色：指示器中心 = 安全区顶 + 栏 54 + 30（控件 60 高的中心）、臂色 = --ios-refresh-arm（R61′ 合成色）", `cy ${Math.round(sat + navH + 30)} · ${tokRgb}`, `cy ${cy.toFixed(1)} · ${c0.backgroundColor}`, Math.abs(cy - (sat + navH + 30)) < 0.6 && c0.backgroundColor === tokRgb);
         R.__drive({ down: false }); await new Promise(requestAnimationFrame); }
     } finally { R.onRefresh = null; R.reset(); }
   });
