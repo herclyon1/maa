@@ -218,7 +218,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
          the dark theme's keys are unread — the substitute stays there */
       /* the closed pane still carries index.html's sampled substitute (the dark theme's keys are unread; the light theme's open dialog gets the read-keys
          layer from alert-glass.js — R57, accept-alert.js has those rows) */
-      check("弹窗玻璃滤镜链（关着的 pane）= 端到端实测（--ios-alert-glass-filter：blur 20 · saturate · brightness；亮色开着时由 R57 读键层接管）", wantPane, pane ? bf(pane).replace(/\s+/g, " ") : "缺", !!pane && bf(pane).replace(/\s+/g, " ") === wantPane);
+      check("弹窗玻璃滤镜链（关着的 pane）= 端到端实测（--ios-alert-glass-filter：blur 20 · saturate · brightness；开着时由 R57 / R57′ 读键层接管，两主题）", wantPane, pane ? bf(pane).replace(/\s+/g, " ") : "缺", !!pane && bf(pane).replace(/\s+/g, " ") === wantPane);
       col("弹窗叠白（关着的 pane；--ios-alert-glass-white .538 / 暗 .135）", dark ? [255, 255, 255, .135] : [255, 255, 255, .538], pane ? cs(pane).backgroundColor : "");
       col("弹窗遮罩（--ios-alert-dimming）", dark ? [0, 0, 0, .48] : [0, 0, 0, .2], varColor("--ios-alert-dimming", probe));
       check("弹窗玻璃无描边无阴影（pipeline #10）", "none", pane ? cs(pane).boxShadow : "缺", !!pane && cs(pane).boxShadow === "none");
@@ -391,11 +391,11 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
         const second = await Promise.race([p2.then((v) => `resolved ${v}`), sleep(50).then(() => "pending")]);
         check("弹窗重入保护：开着时再 ask 立即回 false，不叠第二层", "resolved false · 1 open", `${second} · ${document.querySelectorAll("dialog[open]").length} open`, second === "resolved false" && document.querySelectorAll("dialog[open]").length === 1);
         const chrome = !CSS.supports("mix-blend-mode", "plus-darker");
-        const glassRead2 = !!window.AlertGlass && !dark;
+        const glassRead2 = !!window.AlertGlass;   // R57′: the read-key layer is built in both themes (the dark keys came with 数据 R74)
         if (glassRead2) check("弹窗出现动画期间读键玻璃层已在（R57：层随弹窗同帧建）", "层", window.AlertGlass.layer ? "层" : "无", !!window.AlertGlass.layer);
         else check(chrome ? "弹窗出现动画期间玻璃层先走平底（Chrome 路：无 backdrop-filter）" : "弹窗出现动画期间玻璃层就是精确层（WebKit 路）", chrome ? "none" : "blur", bf(pane), chrome ? bf(pane) === "none" : /blur/.test(bf(pane)));
         await sleep(520);
-        if (glassRead2) check("弹窗出现动画结束 → .settled，读键玻璃层在（R57）", "settled + 层", `${d.classList.contains("settled") ? "settled" : "-"} + ${window.AlertGlass.layer ? "层" : "无"}`, d.classList.contains("settled") && !!window.AlertGlass.layer);
+        if (glassRead2) check("弹窗出现动画结束 → .settled，读键玻璃层在（R57 / R57′ 两主题）", "settled + 层", `${d.classList.contains("settled") ? "settled" : "-"} + ${window.AlertGlass.layer ? "层" : "无"}`, d.classList.contains("settled") && !!window.AlertGlass.layer);
         else check("弹窗出现动画结束 → .settled，玻璃层到位（--ios-alert-glass-filter）", "settled + blur", `${d.classList.contains("settled") ? "settled" : "-"} + ${bf(pane).slice(0, 10)}`, d.classList.contains("settled") && /blur/.test(bf(pane)));
         check("弹窗首帧时间戳记录（?diag：alert f1/f2）", "f1 ≤ 40 ms", window.ALERT_T ? `f1 +${Math.round(ALERT_T.f1 - ALERT_T.open)} f2 +${Math.round(ALERT_T.f2 - ALERT_T.open)} ms` : "缺", !!window.ALERT_T && ALERT_T.f1 - ALERT_T.open <= 40);
         document.querySelector("#alert-cancel").click(); await sleep(450); await p1;
