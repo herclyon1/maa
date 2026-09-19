@@ -1841,10 +1841,22 @@ const tabScroll = {};   // Behaviour 3: scroll offset per tab
 /* Behaviour 3: scroll-to-top on tapping the selected tab — UIScrollView's system curve, measured on Health (remote-ref/tabscroll/README.md §2,
    采样, 逐帧): critical spring ω ≈ 12 /s (0.2 s 71 %, 0.33 s 92 %, 0.5 s 98 %, ~0.7 s stop). Not scrollTo({behavior:"smooth"}) — that is the
    browser's own curve. */
+/* Scroll to top on a tap of the selected tab = the system scroll-to-top (tabscroll/README.md §2b, R17 decompiled, path A: -[UIScrollView _scrollToTopIfPossible:] →
+   UIScrollViewScrollAnimation with __smoothDecelerationAnimation): progress(t) = S(D · B(t / D)) — B = cubic-bezier(0, .2, 1, 1) applied to the time fraction
+   (UIScrollViewScrollAnimation progressForFraction: → timingFunction _solveForInput:), S = the critically damped spring of dampingRatio 1 / response 0.6
+   (ω = 2π / .6 = 10.472, mass 1, stiffness ω², damping 2ω) evaluated at D·B, D = durationForEpsilon(FLT_MIN → 1e-6 floor, 0.1 s steps) = 1.6 s;
+   offset = original + (target − original) × progress every UIAnimator frame. (Before: an ω 12 critical spring fitted to §2's samples — a sampled fit.) */
+const SCROLL_TOP = { D: 1.6, omega: 2 * Math.PI / 0.6,
+  bezierY: (x) => { let lo = 0, hi = 1; for (let i = 0; i < 40; i++) { const s = (lo + hi) / 2, xs = 3 * s * s - 2 * s * s * s; if (xs < x) lo = s; else hi = s; } const s = (lo + hi) / 2; return 0.6 * s * (1 - s) * (1 - s) + 3 * s * s * (1 - s) + s * s * s; },   // x(s) = 3s² − 2s³ (P1x 0, P2x 1), y(s) = .6s(1−s)² + 3s²(1−s) + s³ (P1y .2, P2y 1)
+  spring: (tau) => 1 - (1 + SCROLL_TOP.omega * tau) * Math.exp(-SCROLL_TOP.omega * tau),
+  progress: (t) => t >= SCROLL_TOP.D ? 1 : t <= 0 ? 0 : SCROLL_TOP.spring(SCROLL_TOP.D * SCROLL_TOP.bezierY(t / SCROLL_TOP.D)) };
+window.ScrollTop = { formula: SCROLL_TOP, state: null };   // state = { t0, y0 } of the running scroll (the driver's own clock, accept A15)
 function springToTop() {
   const y0 = window.scrollY; if (!(y0 > 0.5)) return;
-  const w = 12, t0 = performance.now();
-  const f = (now) => { const t = (now - t0) / 1000, y = y0 * (1 + w * t) * Math.exp(-w * t); if (y < 0.5) { window.scrollTo(0, 0); return; } window.scrollTo(0, y); requestAnimationFrame(f); };
+  const t0 = performance.now(); const st = { t0, y0 }; window.ScrollTop.state = st;
+  const f = (now) => { if (window.ScrollTop.state !== st) return; const t = (now - t0) / 1000;
+    if (t >= SCROLL_TOP.D) { window.scrollTo(0, 0); window.ScrollTop.state = null; return; }
+    window.scrollTo(0, y0 * (1 - SCROLL_TOP.progress(t))); requestAnimationFrame(f); };
   requestAnimationFrame(f);
 }
 function attachTabBar(nav, select) {
