@@ -789,7 +789,11 @@ function wire() {
          seg-value-change-content.md §0 four recordings +92/+68/+50/+66, the lens starts gliding in that same frame; tokens.css --ios-touch-segment-
          commit-delay note for the slide). A newer value change before the timer fires simply renders again (快速连点 未量). */
       const delay = touchMs(mode === "drag" ? "--seg-commit-delay-drag" : "--seg-commit-delay-tap", 0);
-      setTimeout(() => { if (qsel.value !== q) return; segCommitAt = performance.now(); segCommitMode = mode; flipPending = true; performance.mark("seg:commit"); qsel.dispatchEvent(new Event("change")); segMeasure("seg:commit-render", segCommitAt); }, delay);
+      setTimeout(() => { if (qsel.value !== q) return; segCommitAt = performance.now(); segCommitMode = mode; flipPending = true; performance.mark("seg:commit");
+        if (SEG_VC_SPLIT) {   // 换值重画不阻塞 (监督局 09-19): this frame only the selection state (labels .on / aria; the lens is the loop's), the content render next frame
+          bs.forEach((b, k) => { b.classList.toggle("on", k === i); b.setAttribute("aria-selected", k === i ? "true" : "false"); }); segMeasure("seg:commit-select", segCommitAt);
+          requestAnimationFrame(() => { if (qsel.value !== q) return; const tR = performance.now(); performance.mark("seg:commit-render-start"); qsel.dispatchEvent(new Event("change")); segMeasure("seg:commit-render", tR); });
+        } else { qsel.dispatchEvent(new Event("change")); segMeasure("seg:commit-render", segCommitAt); } }, delay);
     });
   }
   if (qsel) qsel.onchange = () => {
@@ -1334,7 +1338,10 @@ const SEG_RIM = (() => {
   return { hlRings, angMain, angDiff, kfRings, kfK, NXS, MULT: 1 - .9118, ADD: .1471, COLOR_BIAS: -.3, grey };
 })();
 const SEGX = (new URLSearchParams(location.search).get("segx") || "").split(",");
-const SEG_DISP_ON = new URLSearchParams(location.search).get("disp") === "1";   // layer-5 colour fringe (7-tap chain on .stack, per-frame W/H matrix + tap scales): default off, ?disp=1 on (监督局 09-19 12:0x, phone fps bisect)
+const SEG_DISP_ON = new URLSearchParams(location.search).get("disp") === "1";
+const SEG_VC_SPLIT = new URLSearchParams(location.search).get("vcsplit") !== "0";
+const SEG_LPQ = new URLSearchParams(location.search).get("lpq") !== "0";   // lpq: per-frame filter / opacity writes quantised to the 8-bit raster (1/255; displacement scale .1) and written only on change — the springs are untouched (?lpq=0 off)
+const lpq = (x) => SEG_LPQ ? Math.round(x * 255) / 255 : x;   // 换值重画不阻塞: the commit frame switches the selection only, the content render runs in the next frame (?vcsplit=0 = one frame, the old path)   // layer-5 colour fringe (7-tap chain on .stack, per-frame W/H matrix + tap scales): default off, ?disp=1 on (监督局 09-19 12:0x, phone fps bisect)
 /* instrumentation (仪器, no behaviour): the lens loop publishes its per-tick internals as window.__segLens — a flat object of numbers and strings,
    rewritten at the end of every tick, read as is by 2号's frame recorder (seg-frames-logger.js `state`; a field named t or ending in _t is a
    performance.now() ms the recorder converts to s since the down). The agreed names: t (the tick's performance.now()), x (the position spring, pt),
@@ -1350,8 +1357,8 @@ window.__segLens = null;
 window.__segDiag = () => window.__segLens;
 window.__segPerf = () => performance.getEntriesByType("measure").filter((e) => e.name.startsWith("seg:")).map((e) => ({ name: e.name, start: Math.round(e.startTime * 100) / 100, dur: Math.round(e.duration * 100) / 100 }));
 const segMeasure = (name, from) => { try { performance.measure(name, { start: from, end: performance.now() }); } catch (e) { /* older engines */ } };   // ?segx switches (index.html hook; ios-switch-list.md): scale0 holds the displacement scale at 0
-function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }: the 点按 schedule (SEG_TAP_T) instead of the press / drag / release chain; tap = { prewarm: true }: build + one invisible paint, no loop (A 起手预建)
-  const prewarm = !!(tap && tap.prewarm); if (prewarm) tap = null;
+function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }: the 点按 schedule (SEG_TAP_T) instead of the press / drag / release chain; tap = { prewarm: true }: build + one invisible paint, no loop (A 起手预建); tap = { deferred: true }: build now, arm later with loop.beginTap(target, upAt) (the tap's work done at the down)
+  const prewarm = !!(tap && tap.prewarm), deferred = !!(tap && tap.deferred); if (prewarm || deferred) tap = null;
   if (seg.__lensLoop && !prewarm) seg.__lensLoop.stop();   // a new press ends the previous loop (its tail and its inline geometry)
   if (!prewarm) seg.classList.remove("prewarm");   // A 起手预建: the pre-painted layers now belong to the gesture
   let warp = seg.querySelector(".warp"), warpl = seg.querySelector(".warpl"), plat = seg.querySelector(".plat"), rimb = seg.querySelector(".rimb"), hls = [...seg.querySelectorAll(".hlk, .hlw")];
@@ -1423,6 +1430,7 @@ function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }:
      (rimb's) gradients / mask by id, which the loop updates */
   let rimo = seg.querySelector(".rimo");
   if (!rimo) { rimo = rimb.cloneNode(true); rimo.className = "rimo"; seg.appendChild(rimo); } else if (!rimo.querySelector("rect.rs")) { rimo.innerHTML = rimb.innerHTML; }
+  { const ri = rimo.querySelector(".ish"); if (ri) ri.remove(); }   // the inner shadow lies inside the capsule, which .rimo's clip removes — no second σ-3 blur per frame
   let rimoKey = "";
   let rimKey = "";
   const rimGeo = (Wd, Hd, T) => {   // SVG geometry in lens-box coordinates (the <g> is translated by the 12 px margin)
@@ -1453,7 +1461,7 @@ function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }:
      transform — the flex scale, B5 — so the model stays 220 while dragging and the 220 set is the one; the lift rides it with scale 0 → S). The
      196 … 256 sets remain for a model of another width. */
   const setFor = (Wm) => Math.max(196, Math.min(256, 2 * Math.round(Wm / 2)));
-  let curSet = 0, punchKey = "", abKey = "", ishKey = "";
+  let curSet = 0, punchKey = "", abKey = "", ishKey = "", lpKey = "", lpdKey = "";
   /* layer 5 per frame: the W/H colour matrix from the lens's SCREEN rect (§3b.6 capture box = frame + 100 pt each side clamped to the viewport;
      1.72 dragged to the divider on the 440 screen, 1.35 lifted in place) and the seven taps' scales = ±S_ab·k × lift progress */
   const abFrame = (set, p) => {
@@ -1501,10 +1509,10 @@ function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }:
     const set = setFor(Math.max(W0 + 2 * LX, Wd));   // the model width (220 lifted; Wd is the model box — the flex transform is separate)
     if (set !== curSet) { curSet = set; disp.style.filter = `url(#seg-lens-f-bg-${set})`; displ.style.filter = `url(#seg-lens-f-lab-${set})`; stack.style.filter = DISPERSION && document.querySelector(`#seg-lens-f-ab-${set}`) ? `url(#seg-lens-f-ab-${set})` : "none"; }
     if (DISPERSION) abFrame(set, p);
-    if (ishKey !== p.toFixed(4)) { ishKey = p.toFixed(4); const f = document.querySelector("#seg-lens-f-ish"); if (f) { const off = f.querySelector("feOffset"), bl = f.querySelector("feGaussianBlur"), fa = f.querySelector("feFuncA");   // B6-c §4: #21's offset / radius / opacity on the lift curve (seg-lens-refraction §1c(b))
-        if (off) off.setAttribute("dy", (7 * p).toFixed(3)); if (bl) bl.setAttribute("stdDeviation", (3 * p).toFixed(3)); if (fa) fa.setAttribute("slope", (.06 * p).toFixed(4)); } }
-    seg.style.setProperty("--lp", p.toFixed(4)); seg.style.setProperty("--lpd", pd.toFixed(4));
-    for (const id of [`#seg-lens-f-bg-${set}`, `#seg-lens-f-lab-${set}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", SEGX.includes("scale0") ? "0" : (sOf(id) * p).toFixed(3)); }   // both stacks' amounts on the lift spring (§4.4 row 2: ClearGlass 0 → −17.5, ContentLensing 0 → −8.8, BackdropView 0 → 9 in the same call)
+    { const pq = lpq(p); if (ishKey !== pq.toFixed(4)) { ishKey = pq.toFixed(4); const f = document.querySelector("#seg-lens-f-ish"); if (f) { const off = f.querySelector("feOffset"), bl = f.querySelector("feGaussianBlur"), fa = f.querySelector("feFuncA");   // B6-c §4: #21's offset / radius / opacity on the lift curve (seg-lens-refraction §1c(b)); lpq: written on 1/255 steps only
+        if (off) off.setAttribute("dy", (7 * pq).toFixed(3)); if (bl) bl.setAttribute("stdDeviation", (3 * pq).toFixed(3)); if (fa) fa.setAttribute("slope", (.06 * pq).toFixed(4)); } } }
+    { const a = lpq(p).toFixed(4), b = lpq(pd).toFixed(4); if (lpKey !== a) { lpKey = a; seg.style.setProperty("--lp", a); } if (lpdKey !== b) { lpdKey = b; seg.style.setProperty("--lpd", b); } }   // lpq: 1/255 steps, written on change
+    for (const id of [`#seg-lens-f-bg-${set}`, `#seg-lens-f-lab-${set}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (!fd) continue; const sc = SEGX.includes("scale0") ? "0" : (SEG_LPQ ? (Math.round(sOf(id) * p * 10) / 10).toFixed(1) : (sOf(id) * p).toFixed(3)); if (fd.getAttribute("scale") !== sc) fd.setAttribute("scale", sc); }   // lpq: .1 steps (.0025 pt), written on change   // both stacks' amounts on the lift spring (§4.4 row 2: ClearGlass 0 → −17.5, ContentLensing 0 → −8.8, BackdropView 0 → 9 in the same call)
     cbs.forEach((c, i) => c.className = "cb " + bs[i % bs.length].className);
     seg.classList.toggle("lift", p > 0 || pd > 0);
   };
@@ -1602,11 +1610,20 @@ function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }:
     get diag() { return st.__lens || null; },
   };
   loop.cancel = loop.release;
-  if (prewarm) {   // A 起手预建: the layers exist now and stay painted at rest, invisibly (.prewarm: display, opacity .01, the filters at scale 0), so their compositing layers and filter pipeline are alive when the first press comes (the press removes .prewarm and lifts them)
-    frame(0, 0); seg.classList.add("prewarm"); seg.__prewarmed = performance.now(); st.done = true;
+  if (prewarm) {   // A 起手预建: the layers exist now and stay painted invisibly (.prewarm: display, opacity .01), so their compositing layers and filter pipeline are alive when the first press comes (the press removes .prewarm and lifts them)
+    /* 预建 2 (数据 36916a9: the first glass frame still stalled 30–72 ms after a rest-state prewarm — at scale 0 the displacement is skipped): two frames in
+       the LIFTED state — the model box 220×44 at the rest position, progress 1 (displacement scale S on both maps, the label filter, the inner-shadow and
+       ring-shadow blurs evaluated for real, the maps decoded) — then back to rest; the white .lens is never touched (frame()'s .lift class is removed at once) */
+    st.geo = { left: pad + idx0 * PITCH - LX, top: pad - LY, w: W0 + 2 * LX, h: H0 + 2 * LY }; frame(1, 1); seg.classList.remove("lift");
+    seg.classList.add("prewarm"); seg.__prewarmed = performance.now(); st.done = true;
+    requestAnimationFrame(() => requestAnimationFrame(() => { if (!seg.isConnected || !seg.classList.contains("prewarm")) return; st.geo = null; frame(0, 0); seg.classList.remove("lift"); }));
     return loop;
   }
   seg.__lensLoop = loop; segActiveLoop = loop;
+  if (deferred) {   // built at the down; the up arms the tap schedule (or stops it): nothing runs or shows until then
+    loop.beginTap = (target, upAt) => { if (st.done || st.tap) return; st.tap = { target, upAt }; st.t0 = upAt; st.rel = upAt; st.rest = target; st.prev = performance.now(); st.raf = requestAnimationFrame(tick); };
+    return loop;
+  }
   st.raf = requestAnimationFrame(tick);
   return loop;
 }
@@ -1638,16 +1655,18 @@ function attachSegmented(seg, getIndex, commit) {
         bs[pressed].classList.remove("dim");                        // label back to 1 in .1 s (G12)
         seg.classList.remove("drag"); if (lens) lens.classList.remove("lift");
         const target = segAt(ev.clientX), noEvent = cancelled || outside(ev.clientX, ev.clientY) || target === idx;   // cancel (> 70 pt out, G17/G18) or back on the selected one (G8/G10/G23): no event
-        if (glass) glass.release(noEvent ? idx : target);           // glass, copies and geometry fall on the lens's own curve, to the rest rect it ends on
-        if (noEvent) { showLens(idx); return; }
+        if (glass && !glass.beginTap) glass.release(noEvent ? idx : target);   // glass, copies and geometry fall on the lens's own curve, to the rest rect it ends on
+        if (noEvent) { if (glass && glass.beginTap) glass.stop(); showLens(idx); return; }
         if (!lifted && !onSelected && lens) {   // 点按外观: the tap runs the lift chain from the up (SEG_TAP_T) — glass in place, glass slide, solid again on settling; the loop owns the lens, segSync skips the old CSS slide
-          const tBuild = performance.now(); performance.mark("seg:down");
-          segLens(seg, lens, bs, NaN, { target, upAt: ev.timeStamp > 0 && ev.timeStamp <= tBuild ? ev.timeStamp : tBuild }); segMeasure("seg:build", tBuild); }
+          const tUp = performance.now(), upAt = ev.timeStamp > 0 && ev.timeStamp <= tUp ? ev.timeStamp : tUp; performance.mark("seg:tap-up");
+          if (glass && glass.beginTap) glass.beginTap(target, upAt); else segLens(seg, lens, bs, NaN, { target, upAt });   // the loop was built at the down (deferred); arm it — or build now if the down had none
+          segMeasure("seg:tap-arm", tUp); }
         commit(target, lifted ? "drag" : "tap");                    // the up: the index changes now (G1–G3); the content and the lens's slide follow at the valueChanged time (wire(): +66 / +25 ms)
       },
     })) return;
     seg.dataset.pe = "1";
-    if (!onSelected) bs[pressed].classList.add("dim");           // G15: only the label dims; no highlight, no lens move, no value
+    if (!onSelected) { bs[pressed].classList.add("dim");           // G15: only the label dims; no highlight, no lens move, no value
+      if (lens) { const tBuild = performance.now(); performance.mark("seg:down"); glass = segLens(seg, lens, bs, NaN, { deferred: true }); segMeasure("seg:build", tBuild); } }   // the tap's build work at the down (copies, labels, SVG state); the up only arms the schedule
     else {
       const tBuild = performance.now(); performance.mark("seg:down");
       glass = lens ? segLens(seg, lens, bs, e.clientX) : null; segMeasure("seg:build", tBuild);   // 仪器: DOM / SVG construction of the lens layers     // the loop: glass, copies, geometry — the lift itself starts at +109 ms (G4/G16); the down x is the drag delta's origin (B5-c)

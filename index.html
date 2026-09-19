@@ -12,12 +12,12 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="遥控">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260919121603">
+<link rel="manifest" href="manifest.webmanifest?v=20260919123746">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260919121603">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260919121603">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260919123746">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260919123746">
 <!-- 组件数字的正本：--ios-* 变量，每条带来源（探针原值 / AX 帧 / NUMBERS 行 / 取色 / 采样替代）。页面自己的变量只做映射，不再手写数字。 -->
-<link rel="stylesheet" href="tokens.css?v=20260919121603">
+<link rel="stylesheet" href="tokens.css?v=20260919123746">
 <link rel="stylesheet" href="seg-keys.css?v=20260919011715">   <!-- segmented-lens kinematics compiled from the native frames (界面2号 ui2 90d6876 gen_seg_keys.py; do not edit) -->
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
@@ -3913,7 +3913,7 @@
     <feComposite in="black" in2="alpha" operator="in"/>
   </filter>
 </svg>
-<script>window.LENS_SS = new URLSearchParams(location.search).get("ss") === "1" ? 2 : 1; window.LENS_ENGINE_FIX = new URLSearchParams(location.search).get("enginefix") === "1";</script>   <!-- 引擎校正（62 张 feImage 换 blob）默认关，?enginefix=1 才开（监督局 09-19 12:0x，真机 20–25 fps 二分中）；色散层同样默认关，?disp=1 才开（view.js SEG_DISP_ON） -->   <!-- 引擎校正 2 / 候选 A 默认关（监督局 09-19 11:1x）：?ss=1 才开 2× -->
+<script>window.LENS_SS = new URLSearchParams(location.search).get("ss") === "1" ? 2 : 1; window.LENS_ENGINE_FIX = new URLSearchParams(location.search).get("enginefix") !== "0";</script>   <!-- 引擎校正（62 张 feImage 换 blob）默认开，?enginefix=0 关——数据 36916a9 开关归因：它对帧速无影响（76ccab4 / 998689c nofix 都慢），修右「班」折叠；拖慢主因 = 色散层（单开 37–38 ms/帧），超采样单开 27–30 ms → 两者仍默认关（?disp=1 / ?ss=1 开；监督局 09-19 12:3x） -->   <!-- 引擎校正 2 / 候选 A 默认关（监督局 09-19 11:1x）：?ss=1 才开 2× -->
 <script src="assets/lens/lens-supersample.js"></script>   <!-- 引擎校正 2 / 候选 A（2号 ui2 7c26d3b，README §0.4）：开时把 .warp .disp / .warpl .displ 包成 .ssw scale3d(½) + 2× 滤镜层 + .ss2，滤镜 data-s ×2、区域 50 %（data-s0 = 文件 S）；必须在 lens-engine-fix.js 之前（它读 window.LENS_SS / data-s0） -->
 <script src="assets/lens/lens-engine-fix.js"></script>   <!-- 引擎校正（2号 ui2 bed84e4，web/assets/lens/README.md §0.4）：按 devicePixelRatio 把每张 -f-bg- / -f-lab- 贴图的负位移加长一个设备像素（2× ½、3× ⅓）写成 blob 副本换进 feImage（data-engine-fixed 可查），贴图文件与彩边链不动；关法 window.LENS_ENGINE_FIX = false -->
 <!-- 推入页（UINavigationController push）：回执全表、以后的库存页；导航栏 54 at 62、返回 44 at 20 ← AX-11 / AX-46 -->
@@ -3921,18 +3921,18 @@
   <div class="pnav"><button type="button" class="navbtn pback" aria-label="返回"></button><span class="ptitle"></span></div>
   <div class="pbody"></div>
 </div>
-<script src="schema.js?v=20260919121603"></script>
-<script src="net.js?v=20260919121603"></script>
-<script src="pending.js?v=20260919121603"></script>
-<script src="live.js?v=20260919121603"></script>
-<script src="stamina.js?v=20260919121603"></script>
-<script src="inventory.js?v=20260919121603"></script>
-<script src="view.js?v=20260919121603"></script>
-<script src="alert-prewarm.js?v=20260919121603"></script>   <!-- the alert glass layer built once at load: first open as fast as the second (web/alert-prewarm.js) -->
+<script src="schema.js?v=20260919123746"></script>
+<script src="net.js?v=20260919123746"></script>
+<script src="pending.js?v=20260919123746"></script>
+<script src="live.js?v=20260919123746"></script>
+<script src="stamina.js?v=20260919123746"></script>
+<script src="inventory.js?v=20260919123746"></script>
+<script src="view.js?v=20260919123746"></script>
+<script src="alert-prewarm.js?v=20260919123746"></script>   <!-- the alert glass layer built once at load: first open as fast as the second (web/alert-prewarm.js) -->
 <script>/* 验收脚本只在地址带 ?accept 时加载（docs/HIG-CHECKLIST.md 的验收程序）。分段透镜逐帧记录器（界面2号 seg-frames-logger.js）在 ?accept / ?diag / ?segframes 时加载，
    它自己看查询串，其它时候什么都不做。 */
 { const q = new URLSearchParams(location.search);
-  if (q.has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260919121603"; document.body.appendChild(s); }
+  if (q.has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260919123746"; document.body.appendChild(s); }
   if (q.has("diag") || q.has("segframes")) { const s = document.createElement("script"); s.src = "seg-frames-logger.js"; document.body.appendChild(s); }
   /* ?segx=a,b,… : layer / map switches for the simulator-standalone experiments (remote-ref/tools/webkit/b6/ios-switch-list.md). Works with or without
      ?seghold. nowarp | norimb | nohl | nowarpl | noplat hide one lens layer (visibility, so the loop still runs); mapflat swaps every displacement map for
