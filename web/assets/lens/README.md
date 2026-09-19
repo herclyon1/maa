@@ -422,6 +422,33 @@ formula / WebKit ss off / WebKit ss on):
 | fringe (tools/fringe_check.py): share / saturation, light | 1.36 % / 69 | 1.15 % / 82.7 | **1.38 %** / 85.0 |
 | dark | 1.38 % / 71 | 1.02 % / 79.0 | 1.20 % / 77.9 |
 
+**Wiring recipe for index.html (the ui session; three steps, copy as is; `SS = 2`, the switch `?ss=0` → `SS = 1` skips all three):**
+
+1. Structure — for each displaced layer (the backdrop copy `.warp`-equivalent and the label copy), replace
+   `<div class="layer">…copies…</div>` by
+   ```html
+   <div class="ssw" style="position:absolute;left:LEFT;top:TOP;width:Wpx;height:Hpx;transform-origin:0 0;transform:scale3d(.5,.5,1);will-change:transform">
+     <div class="layer" style="position:absolute;left:0;top:0;width:calc(W*2)px;height:calc(H*2)px;overflow:hidden;border-radius:calc(R*2)px;filter:url(#seg-lens-f-lab-220)">
+       <div class="ss2" style="position:absolute;left:0;top:0;width:Wpx;height:Hpx;transform-origin:0 0;transform:scale(2)">…the copies, positioned exactly as before…</div>
+     </div>
+   </div>
+   ```
+   (W×H = the lens box, LEFT/TOP = where the layer sat, R = the capsule radius on the label layer only; the wrapper keeps the old
+   position and size, the layer is 2× and untransformed, the copies untouched inside `.ss2`.)
+2. Filter attributes, once per used filter, before the engine-fix script runs:
+   ```js
+   window.LENS_SS = 2;
+   for (const id of ["seg-lens-f-bg-220", "seg-lens-f-lab-220"]) {            // the sets the page uses
+     const f = document.getElementById(id), fe = f.querySelector("feDisplacementMap");
+     if (!fe.dataset.ss) { fe.dataset.ss = "2"; fe.setAttribute("scale", String(parseFloat(fe.getAttribute("scale")) * 2)); f.setAttribute("width", "50%"); f.setAttribute("height", "50%"); }
+   }
+   ```
+   (`scale` = data-s × 2 because a map pt is two layer px; the region 50 % because WebKit resolves it in unscaled units under the
+   scaled ancestor — fact (1) above; when the page animates `scale` 0 → S for the lift, animate to S × 2.)
+3. Load `assets/lens/lens-engine-fix.js` AFTER step 2 (it reads `window.LENS_SS` and uses k = 1/(devicePixelRatio·SS) per map).
+   Nothing else changes: the map files, `lens-filter.svg`, the fringe chain on the wrapper of both layers (still the plain lens box +
+   16 pt), the punch / clip rules. The test page's implementation is the reference (`lens-test.template.html`: `SS`, `.ssw`, `.ss2`).
+
 The rows 4 pt from the lens top / bottom, the streaks and the fringe share come to the native with it; what stays is the knife-edge
 flicker in the eye (the platform straddles a bar boundary; the native's bilinear fetch blends it), the 0.17 pt short in the height
 and the saturation. Cost: 4× the filter pixels per layer (two layers; the fringe chain on the wrapper untouched) — the data
