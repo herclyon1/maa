@@ -569,6 +569,17 @@
         const r8 = renders; for (let k = 0; k < 3; k++) { const b = bs().find((x) => x.textContent === sameName); const sg = q(); pev(sg, "pointerdown", at(b)); pev(sg, "pointerup", at(b)); await sleep(40); }
         check("分段 G14 同段连点 3 下：只 1 次事件", 1, renders - r8, renders - r8 === 1);
         const back = bs().find((b) => b.textContent === start); if (back && onText() !== start) { const sg = q(); pev(sg, "pointerdown", at(back)); pev(sg, "pointerup", at(back)); }
+        /* 验收 09-19 17:5x: a one-queue page (one segment, 400 wide) re-rendered twice showed a lifted capsule (the preloaded set's width, left) on the resting
+           control — the package's warm-up frame put back by the next warm-up (view.js segGlRedraw). Here: one segment, two re-renders 400 ms apart, then
+           the package must have drawn exactly ONE frame per re-render (its warm-up; the put-back would be a second) and the control must be at rest. */
+        if (q().classList.contains("gl") && typeof snap === "object" && snap && Array.isArray(snap.queues) && snap.queues.length > 1) {
+          await sleep(900); const savedQ = snap.queues, savedCur = curQueue; snap.queues = savedQ.slice(0, 1); curQueue = snap.queues[0]["名"]; window.render(); await sleep(1500);
+          const s1 = q(), g1 = s1 && s1.__gl, f0 = g1 ? g1.lens.stats.frames : -1;
+          window.render(); await sleep(400); const f1 = q().__gl ? q().__gl.lens.stats.frames : -1;
+          window.render(); await sleep(400); const f2 = q().__gl ? q().__gl.lens.stats.frames : -1; const s2 = q();
+          check("一段控件重渲染两次：包每次只画预热那一帧（frames +1/+1，不把上一帧「放回」——放回即幽灵胶囊；view.js segGlRedraw），控件静止（无 .lift，一个 canvas）", "+1 / +1 · rest", `${s2.querySelectorAll("button").length} seg · frames ${f0} → ${f1} → ${f2} · ${s2.classList.contains("lift") ? "lift!" : "rest"} · ${s2.querySelectorAll("canvas.glens").length} canvas`, s2.querySelectorAll("button").length === 1 && f1 - f0 === 1 && f2 - f1 === 1 && !s2.classList.contains("lift") && s2.querySelectorAll("canvas.glens").length === 1);
+          snap.queues = savedQ; curQueue = savedCur; window.render(); await sleep(600);
+        }
       }
       /* §2 UITabBar */
       const nav = document.querySelector("nav.tabs:not([hidden])"), tseg = nav && nav.querySelector(".seg"), tbs = nav ? [...nav.querySelectorAll(".seg button")] : [];
