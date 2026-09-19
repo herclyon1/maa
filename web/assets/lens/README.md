@@ -459,6 +459,11 @@ and top-edge row 610 at the left end, x 114 … 133 per pt, and the vertical pro
 | ss off | 212 238 240 247 252 ×6 251 **244 243 ×5 244** 251 252 ×2 (the 6-column block of track between page) | 44 49 46 36 31 ×6 **42 ×6** 31 ×3 (the block) | 255 … 255 **242** 238 … (one ⅓-pt sample between) |
 | ss on | 212 237 238 247 252 ×4 251 **247 ×11** (a single blended level, the block gone) | 44 49 49 37 31 ×4 33 **37 ×11** (gone) | 255 … 255 **254** 238 … (one ⅓-pt sample between) |
 
+Right end, row 637 x 306–325: native 240 ×4 239 239 238 238 239 ×4 240 239 238 234 225 213 213 187 (light) / 4 4 4 5 5 6 6 6 7 6 6 5 4 4 4 8 15 23 33 24 (dark);
+ss off 252 252 251 **243 ×6** 244 251 252 ×6 247 240 238 212 / 31 ×3 **42 ×6** 31 ×7 36 46 49 44 (the block); ss on **247 ×11** 251 252 ×4 247 238 237 212 /
+**37 ×11** 33 31 ×4 37 49 49 44 (a single blended level). Row 610 right: no block on either side (native 223–227 / 3–6, ours 249–255 / 28–35:
+the tone, not the edge).
+
 So A turns the row-parallel block (the displaced track edge riding along the row, decided per column) into the flat blended level the
 native shows there (247 = the mean of page 252 and track 243, as the native's 239 is of 243 and 228 + its material tone) — the notch
 and the hard horizontal blocks at the ends are gone. The vertical transition across the displaced edge stays one ⅓-pt sample wide
