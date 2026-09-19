@@ -9,7 +9,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="透镜">
 <style>
-  /* Minimal test page for the lifted segmented-control lens (220×44) with the displacement filter of lens-filter.svg.
+  /* Minimal test page for the lifted segmented-control lens (220×44, ?w=<width> for a drag-stretch set) with the formula filters of
+     lens-filter.svg (map files seg-f-*.png next to this page; index.html references them as assets/lens/…).
      Metrics of the row: tokens.css (segmented control 32 r16, lens 28 r14 pad 2, label 13; lifted lens 220×44 = 196×28 + 12/8 each side). */
   :root{--bg:rgb(242 242 247);--card:#fff;--ink:#000;--dim:rgb(60 60 67 / .6);--track:rgb(118 118 128 / .12);--tint:rgb(0 136 255)}
   @media (prefers-color-scheme: dark){:root{--bg:#000;--card:rgb(28 28 30);--ink:#fff;--dim:rgb(235 235 245 / .6);--track:rgb(118 118 128 / .24);--tint:rgb(0 145 255)}}
@@ -19,27 +20,85 @@
   .scene{position:relative;width:400px;background:var(--card);border-radius:26px;padding:16px 20px;box-sizing:border-box;user-select:none;-webkit-user-select:none}
   .scene.grating{background:repeating-linear-gradient(90deg,rgb(51 51 51) 0 1px,rgb(204 204 204) 4px 5px,rgb(51 51 51) 8px)}   /* period 8 pt like the native measurement (pattern gx 8) */
   .scene.gratingy{background:repeating-linear-gradient(0deg,rgb(51 51 51) 0 1px,rgb(204 204 204) 4px 5px,rgb(51 51 51) 8px)}
+  .scene.bars{background:repeating-linear-gradient(90deg,#000 0 4px,#fff 4px 8px)}                                              /* ?pattern=bars: hard black / white bars, period 8 (the data session's `pattern bars 8`) for the per-channel edge check */
   .scene p{margin:0 0 8px}
-  .segctl{position:relative;display:flex;height:32px;padding:2px;border-radius:16px;background:var(--track);box-sizing:border-box;margin:8px 0}
-  .segctl .flat{position:absolute;top:2px;left:2px;width:calc(50% - 2px);height:28px;border-radius:14px;background:var(--card)}   /* the resting selected segment: flat _controlForegroundColor platter */
+  .segctl{position:relative;display:flex;height:32px;padding:2px 0;border-radius:16px;background:var(--track);box-sizing:border-box;margin:8px 0}   /* two 200-pt segments: label centres 120 / 320 like the native control at x 20…420 (seg-lens-drag-mid.md §0c: 早班 ink 107.67–132, 晚班 308–332) */
+  .segctl .flat{position:absolute;top:2px;left:2px;width:calc(50% - 4px);height:28px;border-radius:14px;background:var(--card)}   /* the resting selected segment: flat _controlForegroundColor platter 196×28 inset 2 */
   .segctl span{position:relative;z-index:1;flex:1 1 0;height:28px;line-height:28px;text-align:center;font-size:13px}
   .segctl span.on{font-weight:500}
-  /* the lens: a 220×44 window over two clones of the scene (the filtered copy of what lies under the lens + the unfiltered label copy),
-     both shifted by −(lens position) so the window shows what lies under it */
+  /* ?content=bars8|gx8: the data session's segment-content gratings in place of the labels — 196×28 images inset 2 in each 200-pt
+     segment (setImage(_:forSegmentAt:), `pattern bars|gx 8 2`), read from tools/touch/seg-label-rest-{bars8,gx8}-seg-light.png:
+     bars8 = 4 pt black / 4 pt white from the image's left edge; gx8 = 127.5 + 75.5·cos(2π(x − 23.833)/8) at x = 22 … 218 */
+  .scene.content-bars8 .segctl span,.scene.content-gx8 .segctl span{color:transparent}
+  .scene.content-bars8 .segctl span::before,.scene.content-gx8 .segctl span::before{content:"";position:absolute;left:2px;top:0;width:196px;height:28px}
+  .scene.content-bars8 .segctl span::before{background:repeating-linear-gradient(90deg,#000 0 4px,#fff 4px 8px)}
+  .scene.content-gx8 .segctl span::before{background:url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAABCAIAAAAXRrrYAAAAYElEQVR4nE3NSQ4DMQhEUSMwND68jxuHSURyb/JWX6pFwd57raWqzyUizDznJCJEBIAxRndXVWZGhLub2fc653yu/3gnM3P3iMjMquruMQYAICIRzTmZWUTeU1Vdl6r+AMnqRo7aWVl4AAAAAElFTkSuQmCC") 0 0/8px 28px repeat-x}
+  /* the lens: a w×h window (220×44 lifted at rest; ?w=<width> picks a drag-stretch set, height from the series table) over two clones
+     of the scene — the filtered copy of what lies under the lens and the filtered label copy — both shifted by −(lens position) */
   .lens{position:absolute;z-index:2;width:220px;height:44px;border-radius:22px;overflow:hidden;touch-action:none;cursor:grab;   /* above the labels (they carry z-index 1) */
         box-shadow:inset 0 0 0 1px rgb(255 255 255 / .126), 0 0 0 1px rgb(0 0 0 / .23)}   /* rim: 1 pt bright line inside (+16/255 on 128 grey) + 1 pt dark line outside (−30/255) ← lens-refraction.md §3 rim.json; no highlight ring */
-  /* variants: seg = #seg-lens-warp on the copy of what lies under the lens (track / card), the label copy in an unfiltered layer
-     above it (seg-lens-refraction.md §2.3: the native label copy is not displaced); none = the same two layers without the filter */
-  .lens.f-seg .clone{filter:url(#seg-lens-warp)}
-  .lens .clone .segctl span{visibility:hidden}                   /* the filtered copy carries the track, not the labels */
-  .lens .labels{position:absolute;left:0;top:0;width:400px;pointer-events:none}
+  /* each layer is the lens box (overflow hidden: its bounding box is its border box in every engine) holding a 400-wide copy of the
+     card shifted by −(lens position). The map's samples never leave the box (clamp_to_edge is baked into the map, formula.md §2),
+     the map's B channel masks the output. The label layer is clipped to the capsule BEFORE the filter (the native portal #20 clips
+     the segment content with r 22, then ClearGlass displaces: 先裁再位移); the copy of what lies under the lens keeps the box */
+  .lens .layer{position:absolute;left:0;top:0;width:220px;height:44px;overflow:hidden}
+  .lens .layer.lab{border-radius:22px}
+  /* the colour fringe: glassForeground's 7-tap spectral sampling over what lies below it (the two displaced layers) — the chain
+     filter sits on their wrapper (?ab=flip: outer band; ?ab=ir: IR-literal interior mask; ?ab=0: off) */
+  .lens .stack{position:absolute;left:-16px;top:-16px;width:252px;height:76px;overflow:hidden}   /* the lens box + 16 pt: the chain's outward taps read the page beyond the lens (base copy) */
+  .lens .stack .base{position:absolute;left:0;top:0;width:400px;pointer-events:none;z-index:0}   /* plain copy of the page (track + labels) under the two displaced layers; its own stacking context: the copied labels carry z-index 1 and would otherwise paint above the layers */
+  .lens .stack .base .scene{border-radius:0}
+  .lens .stack .base .flat{display:none}
+  .lens .stack .ssw{left:16px;top:16px}                          /* the layers sit 16 pt inside the stack (their wrappers carry the offset; the layer is at 0/0 in its wrapper) */
+  .lens.ab-flip .stack{filter:url(#seg-lens-f-ab-220)}
+  .lens.ab-ir .stack{filter:url(#seg-lens-f-ab-ir-220)}
+  .lens.f-seg .layer.bg{filter:url(#seg-lens-f-bg-220)}
+  .lens.f-seg .layer.lab{filter:url(#seg-lens-f-lab-220)}
+  .lens .clone,.lens .labels{position:absolute;left:0;top:0;width:400px;pointer-events:none}
+  .lens .clone .scene{border-radius:0}
+  .lens .clone .flat,.scene.lifted > .segctl .flat{display:none}   /* lifted: the flat resting platter IS the lens, so neither the copy nor the scene shows it */
+  .lens .clone .segctl span{visibility:hidden}                   /* the track copy without labels; the labels of the backdrop come through .punch */
+  /* .punch = the labels-only copy in the backdrop layer with the lens CAPSULE cut out (evenodd): formula.md §4b layer 0/1 — the DestOut
+     removes the original labels inside the capsule, the frame corners outside it keep them, and the backdrop map's clamp_to_edge
+     replicates that edge column into the rim band */
+  .lens .punch{position:absolute;left:0;top:0;width:220px;height:44px;overflow:hidden}
+  .lens .punch .plabels{position:absolute;left:0;top:0;width:400px;pointer-events:none}
+  .lens .punch .scene{background:transparent}
+  .lens .punch .scene > *:not(.segctl):not(.tabbar){visibility:hidden}
+  .lens .punch .segctl{background:transparent}
+  .lens .punch .segctl .flat{display:none}
   .lens .labels .scene{background:transparent}
-  .lens .labels .scene > *:not(.segctl){visibility:hidden}       /* only the segment labels, on a transparent layer */
+  .lens .labels .scene > *:not(.segctl):not(.tabbar){visibility:hidden}   /* only the segment / tab labels, on a transparent layer */
   .lens .labels .segctl{background:transparent}
   .lens .labels .segctl .flat{display:none}
-  .lens .clone{position:absolute;left:0;top:0;width:400px;pointer-events:none}
-  .lens .clone .scene{border-radius:0}
-  .lens .clone .flat,.scene.lifted > .segctl .flat{display:none}   /* lifted: the flat resting platter IS the lens, so neither the clone nor the scene shows it */
+  .lens.nobg .layer.bg,.lens.nolab .layer.lab{filter:none}       /* ?bg=0 / ?lab=0: that layer unfiltered */
+  /* 引擎校正 2 — supersampled displacement layers (README §0.4 candidate A, default on, ?ss=0 off): the filtered layer is laid out at
+     TWICE its size (its copy scaled 2× inside, .ss2) inside a composited wrapper scaled ½ (scale3d; CA applies that scale to the
+     rasterised layer with bilinear sampling), so WebKit's software filter runs on a buffer with 4× the pixels: its displacement
+     quantum and the negative-lane shortfall halve (calib: −4 → −3.75 at 2×; the fix script's k is per layer pixel) and the ½
+     downscale averages 2×2 buffer pixels. The maps and the filter definitions are unchanged; only the feDisplacementMap scale
+     attribute is doubled on the layers (the map's pt become two layer px). */
+  .ssw{position:absolute;left:0;top:0;transform-origin:0 0}      /* the layer's slot (lens box): transform scale3d(1/SS,1/SS,1) + will-change set inline when SS > 1 — a composited wrapper, so the
+                                                                    filtered layer inside (laid out SS× larger, NOT transformed itself: WebKit resolves a transformed layer's filter region against
+                                                                    its transformed box) is rasterised at SS× and CA downsamples it */
+  .ss2{position:absolute;left:0;top:0;transform-origin:0 0}      /* transform: scale(SS) set inline */
+  body.native .scene{padding-left:0;padding-right:0}             /* ?native=1: the control spans x 20…420 like the native probe (segment centres 120 / 320) */
+  /* ?tab=1: the floating tab bar's platter (274×62, tab-lens-native.md: platform (83,873,274,62), three items) instead of the segmented
+     control; the selection lens 94×54 at rest, 110×70 r35 lifted (the tab sets #tab-lens-f-*) */
+  body.tab .scene > p{display:none}
+  body.tab .segctl{display:none}
+  .tabbar{display:none;position:relative;width:274px;height:62px;margin:8px auto;border-radius:31px;background:var(--track)}
+  body.tab .tabbar{display:flex}
+  .tabbar span{position:absolute;z-index:1;top:0;width:94px;left:calc(4px + var(--i) * 86px);line-height:62px;text-align:center;font-size:10px}   /* three 94×54 _UITabButtons centred 86 pt apart (134 / 220 / 306 in the window: the resting lens 94×54 at (87,877) covers the first, tab-lens-native.md §0) */
+  .tabbar span.on{font-weight:600}
+  .lens .clone .tabbar span{visibility:hidden}                    /* the platter copy without items; the items of the platter come through .punch (capsule cut, DestOut #76) */
+  .lens .punch .tabbar,.lens .labels .tabbar{background:transparent}
+  /* tab-lens-native.md §3 / formula.md §5b: while lifted the whole platter presents at scale 1.0516 (its centre fixed) and the
+     three _UITabButtons of the SelectedContentView — the copy inside the lens — carry transform scale 1.16 about their own
+     centres; the four displacement stages act in the lens's 110×70 model space (the lens element carries the platter's 1.0516,
+     the copies inside it the inverse, so the page stays 1:1 on screen and the platter 1.0516: set in place()) */
+  body.tab .scene.lifted .tabbar{transform:scale(1.0516)}
+  body.tab .lens .labels .tabbar span{transform:scale(1.16)}
   .bar{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
   button{font:inherit;font-size:15px;line-height:18px;padding:6px 12px;border:0;border-radius:15px;background:rgb(0 136 255 / .18);color:var(--tint)}
   button.on{background:var(--tint);color:#fff}
@@ -49,8 +108,10 @@
 </head>
 <body>
 {{FILTER}}
+<script>if (new URLSearchParams(location.search).get("enginefix") === "0") window.LENS_ENGINE_FIX = false;</script>   <!-- 引擎校正, default on; ?enginefix=0 turns it off for the record; the script itself is loaded after the page script (it needs LENS_SS) -->
 <h1>透镜折射</h1>
 <div class="scene" id="scene">
+  <div class="tabbar"><span class="on" style="--i:0">状态</span><span style="--i:1">方舟</span><span style="--i:2">手机</span></div>
   <p>状态是 3 分钟前的 · 早班 09:00 东京 10:00</p>
   <div class="segctl"><i class="flat"></i><span class="on">早班</span><span>晚班</span></div>
   <p>明日方舟 理智 1-7（固定），理智药 0 瓶 · 终末地 基质刷取 双倍</p>
@@ -62,20 +123,77 @@
 <div id="stats">拖动透镜或点「自动拖 2 s」。帧间隔在这里显示。</div>
 <script>
 (function () {
+  const q = new URLSearchParams(location.search);
+  if (q.get("native") === "1") document.body.classList.add("native");
+  if (q.get("pattern") === "bars") document.getElementById("scene").classList.add("bars");
+  if (q.get("content") === "bars8" || q.get("content") === "gx8") document.getElementById("scene").classList.add("content-" + q.get("content"));
+  const TAB = q.get("tab") === "1"; if (TAB) document.body.classList.add("tab");
+  const SERIES = {{SERIES}};                                     /* lens width → height of the sets (lens-field.json; the tab page carries the tab sets) */
+  const NAME = TAB ? "tab" : "seg", W0 = TAB ? 110 : 220, H0 = TAB ? 70 : 44;
+  const LW = parseInt(q.get("w") || String(W0), 10), LH = SERIES[String(LW)] || H0;
   const scene = document.getElementById("scene"), stats = document.getElementById("stats");
   const lens = document.createElement("div"); lens.className = "lens f-seg";
-  const clone = document.createElement("div"); clone.className = "clone"; lens.appendChild(clone);
-  const labels = document.createElement("div"); labels.className = "labels"; lens.appendChild(labels); scene.appendChild(lens);
+  if (q.get("bg") === "0") lens.classList.add("nobg"); if (q.get("lab") === "0") lens.classList.add("nolab");
+  lens.style.width = LW + "px"; lens.style.height = LH + "px"; lens.style.borderRadius = (TAB ? LH / 2 : Math.min(22, LH / 2)) + "px";   /* the tab lens: cornerRadii 35 = h/2 at 110×70 (tab-lens-native.md §0) */
+  const SS = q.get("ss") === "0" ? 1 : 2;                      /* 引擎校正 2: supersampling factor (default 2, ?ss=0 → 1) */
+  window.LENS_SS = SS;
+  const bgLayer = document.createElement("div"); bgLayer.className = "layer bg"; const clone = document.createElement("div"); clone.className = "clone";
+  const punch = document.createElement("div"); punch.className = "punch"; const plabels = document.createElement("div"); plabels.className = "plabels"; punch.appendChild(plabels);
+  const labLayer = document.createElement("div"); labLayer.className = "layer lab"; const labels = document.createElement("div"); labels.className = "labels";
+  /* the copies sit in an inner element scaled by SS (the layer is laid out SS× larger); the wrappers scale the layers back by 1/SS */
+  const bgIn = document.createElement("div"), labIn = document.createElement("div"); bgIn.className = labIn.className = "ss2";
+  bgIn.appendChild(clone); if (q.get("punch") !== "0") bgIn.appendChild(punch);   /* §4b layer 1: the backdrop copy = page + track + what of the segment content remains inside the 220×44 frame after the DestOut punches the CAPSULE (the frame corners keep the label pixels; the map's clamp_to_edge replicates that edge column into the rim band — the data's §6d strips); ?punch=0 = without */
+  labIn.appendChild(labels); bgLayer.appendChild(bgIn); labLayer.appendChild(labIn);
+  const bgW = document.createElement("div"), labW = document.createElement("div"); bgW.className = labW.className = "ssw"; bgW.appendChild(bgLayer); labW.appendChild(labLayer);
+  const M = 0;                                                   /* no extension: the map's samples stay inside the box */
+  for (const l of [bgW, labW, bgIn, labIn, punch]) { l.style.width = LW + "px"; l.style.height = LH + "px"; }
+  for (const l of [bgLayer, labLayer]) { l.style.width = LW * SS + "px"; l.style.height = LH * SS + "px"; }
+  if (SS !== 1) { for (const l of [bgW, labW]) { l.style.transform = `scale3d(${1 / SS},${1 / SS},1)`; l.style.willChange = "transform"; } for (const l of [bgIn, labIn]) { l.style.transform = `scale(${SS})`; } }
+  /* the DestOut punch-out = the lens capsule (the 220×44 r22 / 110×70 r35 model scaled with the lens: elliptical ends rx = r·sx, ry = r·sy) */
+  const R0 = H0 / 2, RX = R0 * LW / W0, RY = R0 * LH / H0;
+  punch.style.clipPath = `path(evenodd, "M0 0H${LW}V${LH}H0Z M${RX} 0H${LW - RX}A${RX} ${RY} 0 0 1 ${LW - RX} ${LH}H${RX}A${RX} ${RY} 0 0 1 ${RX} 0Z")`;
+  labLayer.style.borderRadius = (TAB ? LH / 2 : Math.min(22, LH / 2)) * SS + "px";
+  if (LW !== 220 || TAB) { if (!lens.classList.contains("nobg")) bgLayer.style.filter = `url(#${NAME}-lens-f-bg-${LW})`; if (!lens.classList.contains("nolab")) labLayer.style.filter = `url(#${NAME}-lens-f-lab-${LW})`; }
+  const AM = 16;                                                 /* the wrapper's extension beyond the lens (lens-field.json aberration.wrapper) */
+  const stack = document.createElement("div"); stack.className = "stack"; stack.style.width = (LW + 2 * AM) + "px"; stack.style.height = (LH + 2 * AM) + "px";
+  const base = document.createElement("div"); base.className = "base";
+  stack.appendChild(base); stack.appendChild(bgW); stack.appendChild(labW); lens.appendChild(stack); scene.appendChild(lens);
+  /* the map's pt are SS layer px: double the feDisplacementMap scale of the two filters this page uses (the definitions stay as generated) */
+  /* … and WebKit resolves the filter region (x/y/width/height in objectBoundingBox %) of a layer under a scaled ancestor in UNSCALED units
+     (calib/ss-region25*.html: 100 % covers twice the layer on screen), so the region is set to 100/SS % — measured, WebKit; Chrome untested */
+  if (SS !== 1) for (const id of [`${NAME}-lens-f-bg-${LW}`, `${NAME}-lens-f-lab-${LW}`]) { const f = document.getElementById(id), fe = f && f.querySelector("feDisplacementMap");
+    if (fe && !fe.dataset.ss) { fe.dataset.ss = String(SS); fe.setAttribute("scale", String(parseFloat(fe.getAttribute("scale")) * SS)); f.setAttribute("width", `${100 / SS}%`); f.setAttribute("height", `${100 / SS}%`); } }
+  const AB = q.get("ab") || "flip";                              /* colour fringe chain: flip = the band factor e (the formula with EdgeOpacityStart 1 / End 0, default) | ir (1 − e, record) | 0 */
+  if (AB === "flip" || AB === "ir") { lens.classList.add("ab-" + AB); if (LW !== 220 || TAB) stack.style.filter = `url(#${NAME}-lens-f-ab${AB === "ir" ? "-ir" : ""}-${LW})`; }
   scene.classList.add("lifted");
   const copy = () => { const c = scene.cloneNode(true); c.querySelector(".lens").remove(); c.id = ""; return c; };
-  const sync = () => { clone.innerHTML = ""; clone.appendChild(copy()); labels.innerHTML = ""; labels.appendChild(copy()); };
+  const sync = () => { clone.innerHTML = ""; clone.appendChild(copy()); labels.innerHTML = ""; labels.appendChild(copy()); base.innerHTML = ""; base.appendChild(copy()); plabels.innerHTML = ""; plabels.appendChild(copy()); };
   sync();
   /* lens position inside the scene (pt); starts over the selected segment: segctl at (20, 16 + 20.33 + 8) → segment centre */
-  const seg = scene.querySelector(".segctl"), r0 = seg.getBoundingClientRect(), s0 = scene.getBoundingClientRect();
-  let X = r0.left - s0.left + 2 + (r0.width - 4) / 4 - 110, Y = r0.top - s0.top + 16 - 22;
+  const seg = scene.querySelector(TAB ? ".tabbar" : ".segctl"), r0 = seg.getBoundingClientRect(), s0 = scene.getBoundingClientRect();
+  const PCX0 = r0.left - s0.left + r0.width / 2, PCY0 = r0.top - s0.top + r0.height / 2;   /* platter centre (invariant under its own centred transform) */
+  let X = TAB ? PCX0 - 86 - LW / 2 : r0.left - s0.left + 2 + (r0.width - 4) / 4 - LW / 2, Y = TAB ? PCY0 - LH / 2 : r0.top - s0.top + 16 - LH / 2;   /* tab: the lens centre = the first button's, 86 pt left of the platter centre (134 vs 220), in the platter's model space */
+  if (q.get("lensx")) X = parseFloat(q.get("lensx")) - s0.left - LW / 2;             // ?lensx=<page x of the lens centre>, e.g. 220 = the divider
   /* the clone is placed so that the scene point under the lens centre stays under the lens centre; with zoom z the clone's own
      coordinates are scaled about its top-left, so its offset is (centre − z·(lens position + centre)) / z in zoomed units */
-  const place = () => { lens.style.left = X + "px"; lens.style.top = Y + "px"; for (const l of [clone, labels]) { l.style.left = -X + "px"; l.style.top = -Y + "px"; } };
+  /* colour fringe W/H (formula.md §3b.6): the glassForeground's capture box = the lens frame + marginWidth 100 on every side, clamped to
+     the screen; W/H = its width / height (drag-mid x 110–330 on the 440 screen → 420/244 = 1.72; lifted in place x 10–230 → 330/244 = 1.35).
+     The fringe map holds the ratio-1 vector; the filter's colour matrix #…-wh scales R by W/H and G by H/W (gen_lens_maps wh_matrix).
+     ?wh=<number> pins it. */
+  const whRule = () => { const r = lens.getBoundingClientRect(), sw = innerWidth, sh = innerHeight;
+    return (Math.min(r.right + 100, sw) - Math.max(r.left - 100, 0)) / (Math.min(r.bottom + 100, sh) - Math.max(r.top - 100, 0)); };
+  let WH = 0;
+  const setWH = () => { const wh = q.get("wh") ? parseFloat(q.get("wh")) : whRule(); if (wh === WH) return; WH = wh;
+    const m = document.getElementById(`${NAME}-lens-f-ab${AB === "ir" ? "-ir" : ""}-${LW}-wh`);
+    if (m) m.setAttribute("values", `${wh} 0 0 0 ${0.5 * (1 - wh)}  0 ${1 / wh} 0 0 ${0.5 * (1 - 1 / wh)}  0 0 1 0 0  0 0 0 1 0`); };
+  /* the tab platter's presentation transform (tab-lens-native.md §3: _UITabBarItemPlatterView presTransform 1.0516 while lifted): the
+     lens scales with the platter about the platter's centre; the copies inside the lens (page + platter + items, in the lens's model
+     space) take the inverse about the same point, so on screen the page is 1:1, the platter 1.0516 and the label copy 1.16 × 1.0516 */
+  const PS = TAB ? 1.0516 : 1, PCX = PCX0, PCY = PCY0;
+  const place = () => { lens.style.left = X + "px"; lens.style.top = Y + "px"; for (const l of [clone, labels, plabels]) { l.style.left = (M - X) + "px"; l.style.top = (M - Y) + "px"; } base.style.left = (AM - X) + "px"; base.style.top = (AM - Y) + "px";
+    if (TAB) { lens.style.transformOrigin = `${PCX - X}px ${PCY - Y}px`; lens.style.transform = `scale(${PS})`;
+      for (const l of [clone, labels, plabels, base]) { l.style.transformOrigin = `${PCX}px ${PCY}px`; l.style.transform = `scale(${1 / PS})`; } }
+    setWH(); };
   place();
   /* drag: pointer events, no threshold; the frame interval is measured while a finger is down or the auto drag runs */
   let dragging = null, times = [];
@@ -84,7 +202,8 @@
     if (times.length < 3) return;
     const d = []; for (let i = 1; i < times.length; i++) d.push(times[i] - times[i - 1]);
     const mean = d.reduce((a, b) => a + b, 0) / d.length, max = Math.max(...d), slow = d.filter((x) => x > 20).length;
-    stats.innerHTML = `${what} ${times.length} 帧 · 帧间隔 平均 <b>${mean.toFixed(1)} ms</b>（${(1000 / mean).toFixed(0)} fps）· 最大 <b>${max.toFixed(1)} ms</b> · >20 ms 的帧 <b>${slow}</b> 个 · 滤镜 ${[...lens.classList].filter((c) => c.startsWith("f-")).join("") || "无"} · ${innerWidth}×${innerHeight} ${matchMedia("(display-mode: standalone)").matches ? "standalone" : "浏览器"}`;
+    stats.innerHTML = `${what} ${times.length} 帧 · 帧间隔 平均 <b>${mean.toFixed(1)} ms</b>（${(1000 / mean).toFixed(0)} fps）· 最大 <b>${max.toFixed(1)} ms</b> · >20 ms 的帧 <b>${slow}</b> 个 · 滤镜 ${[...lens.classList].filter((c) => c.startsWith("f-") || c.startsWith("ab-")).join(" ") || "无"} · 彩边 W/H ${WH.toFixed(2)} · ${innerWidth}×${innerHeight} ${matchMedia("(display-mode: standalone)").matches ? "standalone" : "浏览器"}`;
+    window.FRAME_STATS = { what, n: times.length, mean, max, slow, wh: WH };
     times = [];
   };
   lens.addEventListener("pointerdown", (e) => { dragging = { id: e.pointerId, x: e.clientX - X, y: e.clientY - Y }; lens.setPointerCapture(e.pointerId); times = []; requestAnimationFrame(tick); e.preventDefault(); });
@@ -101,5 +220,6 @@
   document.getElementById("graty").onclick = () => { scene.classList.remove("grating"); scene.classList.toggle("gratingy"); sync(); };
 })();
 </script>
+<script src="lens-engine-fix.js"></script>
 </body>
 </html>
