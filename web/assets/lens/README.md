@@ -1208,10 +1208,9 @@ the package could still do to put a warm-up frame on screen is now removed struc
 goes into FBO B (canvas-sized, allocated on the first warm-up), the canvas keeps whatever the page last drew or cleared (a live gesture's
 frame is not blinked; a rest canvas stays transparent), and only an instance's first warm-up clears the canvas (the display surface's
 allocation). The restore-the-last-frame logic is gone with it (no `last` state at all). One more guard on the page's side of the contract:
-`setState` clears only at lift ≤ 0 again (fb84a7e cleared below .005, b313aed below .001; both WRONG — §0.8.12: the page hides its own platter
-while it keeps `.lift`, so the canvas must draw until the page itself sends lift 0; the frames of the tail are an opaque copy of the backdrop
-and the page is responsible for ending them with lift 0, which its loop does at settle). The numbers below were computed for 验收's question
-what a frame at lift .005 / .001 is in pixels; they still hold, they just do not license a package-side bound.
+`setState` with lift < .001 clears — .001 is the page's own settle bound (view.js: `settled` needs `sL.x < .001` and `sM.x < .001`, then the loop
+sends lift 0), so the package adds no bound of its own; the frames of the tail just above it are an opaque copy of the backdrop that looks like the
+DOM until the page under it changes — a theme switch — and would then read as a ghost. (fb84a7e first used .005; 验收 asked what that is in pixels.)
 What a frame at a tiny lift differs from rest by, computed from the inputs (lift 0 → 1 = 196×28 → 220×44 is linear in the page's `w = W0 + 2·LX·q`,
 `h = H0 + 2·LY·q`, LX 12 / LY 8; the shader's displacement = decode(map)·S·p; the shading terms ring .1, dark line, inner shadow .06, highlight
 emits and the fringe envelope are all × p):
@@ -1266,25 +1265,6 @@ labels texture must carry the weight of the segment about to be selected (`futur
 upload one labels texture per possible selection at idle (n segments → n textures, once after the prewarm) and at the down only switch which
 one is bound — no draw, no alpha pass, no upload, no warm-up. Two package calls (prepareLabels(i, draw), useLabels(i)) plus one page-side
 line at the down; not done, not scheduled.
-
-### 0.8.12 The flash at the end of a tap on 190821 (2026-09-19 19:3x; the user's phone; 监督局's forensic order) — the package's rest bound, reverted
-
-**Symptom:** on v=190821 a tap on 「早班」 flashes once at the end; 181053 does not. The two differ, lens-wise, by fb84a7e / b313aed (warm-up
-offscreen, lift < .005 then < .001 clears the canvas) and the page's 5d71467.
-**Evidence (tick by tick):** the deployed tree run whole in an offscreen WKWebView (`?demo=1`), a press-and-release on the unselected segment,
-the page's own loop stepped with `loop.step(16.7)` through the whole tap (lift → fall → rest); per tick: the loop's p, whether the control
-carries `.lift`, the DOM platter's computed background (`.segctl.lift .lens{background:transparent}`, index.html), whether the package drew or
-cleared (`stats.frames`), and the canvas's opaque pixel count (offscreen nothing is presented, so readPixels reads the real buffer).
-190821: ticks 0–4 p = 0, no `.lift`, DOM platter white; tick 5 p = .067, `.lift` on → DOM platter transparent, canvas 31 324 px (the canvas is now
-the platter); ticks 40–52 the fall's tail p .0169 → .0011, drawing; **ticks 53–74 (22 ticks = 367 ms at 60 Hz): p .0008 → 0, `.lift` still on
-(view.js's frame() keeps it while p > 0) so the DOM platter stays transparent, and the package — p < .001 — clears: no platter anywhere, the
-white capsule is gone**; tick 75 the loop settles, the page's clear() removes `.lift`, the DOM platter is back. 181053 (0c84158, p ≤ 0 clears):
-0 such ticks, the last draw is the p = 0 tick, the same frame as the page's clear. 190821 with the one line put back to `p <= 0`: 0 such ticks.
-**Lesson:** rest is the page's call. The page decides when the DOM platter shows (`.lift` off, in its clear()) and tells the package with lift 0;
-the package must draw until then. A package-side "small enough lift" bound, however well it is justified in pixels (§0.8.10), breaks that
-contract. Fixed: `p <= 0` again. The fixed check: `scripts/mac/seg-tap-platter-check.sh` runs the sequence above against web/ and fails on any
-tick where the control has `.lift` and the canvas is clear (the page's platter hidden and the package's gone) — run it before any change to
-the rest / clear logic on either side.
 
 ### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
 
