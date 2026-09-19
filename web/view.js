@@ -1601,12 +1601,16 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
   const LX = touchPx("--ios-touch-segment-lift-x", 12), LY = touchPx("--ios-touch-segment-lift-y", 8), PITCH = segW / n, W0 = PITCH - 2 * pad, CY = pad + H0 / 2;   // segment pitch 200, resting lens 196 (inset 2 ← seg-native-abc-frames.json rest rect 22 610 196×28)
   const restCentre = (i) => i * PITCH + PITCH / 2, idx0 = Math.max(0, bs.findIndex((b) => b.classList.contains("on")));
   const liftDelay = touchMs("--ios-touch-segment-lift-delay", 109) / 1000, relDelay = touchMs("--ios-touch-segment-release-delay", 31) / 1000;
-  /* BOARD #9② — a quick tap on the SELECTED segment (the up before the lens has lifted) still lifts and falls in place (9a re-recording,
-     seg-native-quicktap.md, ten runs: lens centre fixed, selectedSegmentIndex unchanged). Clean run quick90c: first grown frame down +109, peak
-     217.5×42.4 at +242, rest 196×28 by +476. Here the lift runs as always from the 109 ms delay and the release is deferred so the fall spring
-     (release + relDelay) begins at down + SEG_QUICKTAP_FALL_MS = 242 (the peak frame of that run). Unread: whether the fall is anchored to the down
-     (+242) or to the lift start (+133) — both fit the clean run; the simulator's main-thread stalls moved the lift start in the other runs. */
-  const SEG_QUICKTAP_FALL_MS = touchMs("--ios-touch-segment-quicktap-fall", 242);   // tokens.css (night 6835104), source in its comment: seg-native-quicktap.md quick90c peak frame
+  /* BOARD #9② / R9②′ — a quick tap on the SELECTED segment (the up before the lens has lifted) still lifts and falls in place (9a re-recording,
+     seg-native-quicktap.md, twelve runs: lens centre fixed, selectedSegmentIndex unchanged; clean run quick90c: first grown frame down +109, peak
+     217.5×42.4 at +242, rest 196×28 by +476). The lift runs as always from the 109 ms delay; the fall animation is created at down + lensHangTime
+     anchored to the DOWN: down + 242 ms (--ios-touch-segment-quicktap-fall; the value at the native peak frame 217.5×42.4 @+242 equals the ζ 1 / .25
+     lift spring run uninterrupted to +242 — 216.3 — so the fall animation was created at ≈ +242, not at down + lensHangTime .22: with the fall at +220
+     the page peaks at +223 and rests by +440 against the native +242 / +476). R27 (decompiled): the up before the lift only runs setLifted:NO's
+     completion, the lift timer stays; R25: an up after the lift start (+18…+58) gives a peak ≈ lift start + 150 = down + 249…253, the same anchor
+     within a frame. So a same-segment release without a slide is never earlier than down + 242 − relDelay, whether the up came before or after the lift.
+     Unread: which call creates the fall at that moment (the Swift lens-interaction code is unsymbolised). */
+  const SEG_QUICKTAP_FALL_MS = touchMs("--ios-touch-segment-quicktap-fall", 242);   // tokens.css (night 6835104): seg-native-quicktap.md quick90c peak frame = the fall's creation
   const destDelay = touchMs("--ios-touch-segment-release-destout-delay", 198) / 1000;
   const K_LIFT_DEST = cssKeys("--ios-touch-segment-destout-keys", SEG_LIFT_DESTOUT), K_DEST = cssKeys("--ios-touch-segment-release-destout-keys", SEG_DROP_DESTOUT.filter(([t]) => t >= .198).map(([t, v]) => [t - .198, v]));
   const destEnd = destDelay + K_DEST[K_DEST.length - 1][0];
@@ -1755,7 +1759,7 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
     release: (restIdx) => {   // every way out — up, out of bounds, pointercancel — falls the same way, to the rest rect of `restIdx`
       if (st.rel != null || st.done) return;
       st.rest = restIdx;
-      if (!(st.pr > 0) && restIdx === idx0 && !st.dragged) { st.rel = Math.max(performance.now(), st.t0 + SEG_QUICKTAP_FALL_MS - relDelay * 1000); st.quick = true; return; }   // #9②: not lifted yet, same segment, no slide → lift anyway, fall from down + 242
+      if (restIdx === idx0 && !st.dragged) { const earliest = st.t0 + SEG_QUICKTAP_FALL_MS - relDelay * 1000; if (performance.now() < earliest) { st.rel = earliest; st.quick = !(st.pr > 0); return; } }   // #9② / R9②′: a same-segment release without a slide falls no earlier than down + 242 (a not-yet-lifted lens lifts anyway meanwhile)
       st.rel = performance.now();
     },
     stop: () => { cancelAnimationFrame(st.raf); if (!st.done) clear(); },
