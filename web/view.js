@@ -744,9 +744,16 @@ function layoutTabs() {
     b.innerHTML = `<span class="ico">` + (TAB_IMAGES[t] ? `<img class="tabimg" src="${TAB_IMAGES[t]}" alt="">`
                      : `<i class="sf" style="-webkit-mask-image:url(${TAB_ICONS[t]});mask-image:url(${TAB_ICONS[t]})" aria-hidden="true"></i>`) + `</span><span>${t}</span>`; return b; };
   const haveBtns = new Map([...segEl.querySelectorAll(":scope > button")].map((b) => [b.dataset.tab, b]));
-  for (const [t, b] of haveBtns) if (!wantTabs.includes(t)) { b.remove(); haveBtns.delete(t); setChanged = true; }
-  wantTabs.forEach((t, i) => { let b = haveBtns.get(t); if (!b) { b = mkTab(t); haveBtns.set(t, b); setChanged = true; } if (segEl.children[i] !== b) { segEl.insertBefore(b, segEl.children[i] || null); setChanged = true; } });
+  /* R0③ (tab-lens-motion.md §7, R24 — setItems:animated: of the floating bar): the old rects are captured before the tree changes (FLIP) so the kept
+     buttons can travel from their old x on ζ 1 / .3, the removed ones fade at their old place on ζ 1 / .2 and leave when the .3 spring has settled,
+     the added ones sit at their final place and fade in on ζ 1 / .3, the platter's width follows on ζ 1 / .3 — both springs start on the same frame */
+  const animItems = haveBtns.size > 0 && !nav.hidden && document.visibilityState !== "hidden", oldRect = new Map(), navRect0 = nav.getBoundingClientRect();
+  if (animItems) for (const [t, b] of haveBtns) oldRect.set(b, b.getBoundingClientRect());
+  const removed = [], added = [];
+  for (const [t, b] of haveBtns) if (!wantTabs.includes(t)) { if (animItems) removed.push(b); else b.remove(); haveBtns.delete(t); setChanged = true; }
+  wantTabs.forEach((t, i) => { let b = haveBtns.get(t); if (!b) { b = mkTab(t); haveBtns.set(t, b); added.push(b); setChanged = true; } if (segEl.children[i] !== b) { segEl.insertBefore(b, segEl.children[i] || null); setChanged = true; } });
   for (const x of segEl.querySelectorAll(":scope > button")) x.classList.toggle("on", x.dataset.tab === curTab);
+  for (const b of removed) { const r = oldRect.get(b); b.classList.remove("on"); b.style.cssText += `;position:absolute;left:${r.left - navRect0.left}px;top:${r.top - navRect0.top}px;width:${r.width}px;height:${r.height}px;pointer-events:none;margin:0`; nav.appendChild(b); }   // out of the flex flow, at its old place, while it fades
   const glide = (animate) => {
     /* The selection capsule slides to the chosen tab (the Liquid Glass tab bar's
        own motion); brief, and off under Reduce Motion (HIG: Motion). On a
@@ -758,7 +765,8 @@ function layoutTabs() {
     g.style.left = on.offsetLeft + "px"; g.style.width = on.offsetWidth + "px";
     if (!animate) { void g.offsetWidth; g.style.transition = ""; }
   };
-  if (setChanged) { glide(false); requestAnimationFrame(() => glide(false)); nav.dispatchEvent(new CustomEvent("tabs-changed", { detail: { tabs: wantTabs } })); }
+  if (setChanged) { glide(false); requestAnimationFrame(() => glide(false)); nav.dispatchEvent(new CustomEvent("tabs-changed", { detail: { tabs: wantTabs } }));
+    if (animItems && (removed.length || added.length)) tabSetAnimate(nav, plat, glideEl, oldRect, navRect0, removed, added); else for (const b of removed) b.remove(); }
   else { const on = nav.querySelector("button.on"), g = glideEl; if (on && !nav.classList.contains("tl-on") && (g.style.left !== on.offsetLeft + "px" || g.style.width !== on.offsetWidth + "px")) glide(false); }   // an unchanged set: re-place only if the selected button really moved (a label / width change), never mid tab-lens motion
   const selectTab = (b) => {
     /* Behaviour 3: each tab keeps its own scroll position — UITabBarController keeps every tab's view controller alive, HIG Tab bars:
@@ -1593,12 +1601,16 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
   const LX = touchPx("--ios-touch-segment-lift-x", 12), LY = touchPx("--ios-touch-segment-lift-y", 8), PITCH = segW / n, W0 = PITCH - 2 * pad, CY = pad + H0 / 2;   // segment pitch 200, resting lens 196 (inset 2 ← seg-native-abc-frames.json rest rect 22 610 196×28)
   const restCentre = (i) => i * PITCH + PITCH / 2, idx0 = Math.max(0, bs.findIndex((b) => b.classList.contains("on")));
   const liftDelay = touchMs("--ios-touch-segment-lift-delay", 109) / 1000, relDelay = touchMs("--ios-touch-segment-release-delay", 31) / 1000;
-  /* BOARD #9② — a quick tap on the SELECTED segment (the up before the lens has lifted) still lifts and falls in place (9a re-recording,
-     seg-native-quicktap.md, ten runs: lens centre fixed, selectedSegmentIndex unchanged). Clean run quick90c: first grown frame down +109, peak
-     217.5×42.4 at +242, rest 196×28 by +476. Here the lift runs as always from the 109 ms delay and the release is deferred so the fall spring
-     (release + relDelay) begins at down + SEG_QUICKTAP_FALL_MS = 242 (the peak frame of that run). Unread: whether the fall is anchored to the down
-     (+242) or to the lift start (+133) — both fit the clean run; the simulator's main-thread stalls moved the lift start in the other runs. */
-  const SEG_QUICKTAP_FALL_MS = touchMs("--ios-touch-segment-quicktap-fall", 242);   // tokens.css (night 6835104), source in its comment: seg-native-quicktap.md quick90c peak frame
+  /* BOARD #9② / R9②′ — a quick tap on the SELECTED segment (the up before the lens has lifted) still lifts and falls in place (9a re-recording,
+     seg-native-quicktap.md, twelve runs: lens centre fixed, selectedSegmentIndex unchanged; clean run quick90c: first grown frame down +109, peak
+     217.5×42.4 at +242, rest 196×28 by +476). The lift runs as always from the 109 ms delay; the fall animation is created at down + lensHangTime
+     anchored to the DOWN: down + 242 ms (--ios-touch-segment-quicktap-fall; the value at the native peak frame 217.5×42.4 @+242 equals the ζ 1 / .25
+     lift spring run uninterrupted to +242 — 216.3 — so the fall animation was created at ≈ +242, not at down + lensHangTime .22: with the fall at +220
+     the page peaks at +223 and rests by +440 against the native +242 / +476). R27 (decompiled): the up before the lift only runs setLifted:NO's
+     completion, the lift timer stays; R25: an up after the lift start (+18…+58) gives a peak ≈ lift start + 150 = down + 249…253, the same anchor
+     within a frame. So a same-segment release without a slide is never earlier than down + 242 − relDelay, whether the up came before or after the lift.
+     Unread: which call creates the fall at that moment (the Swift lens-interaction code is unsymbolised). */
+  const SEG_QUICKTAP_FALL_MS = touchMs("--ios-touch-segment-quicktap-fall", 242);   // tokens.css (night 6835104): seg-native-quicktap.md quick90c peak frame = the fall's creation
   const destDelay = touchMs("--ios-touch-segment-release-destout-delay", 198) / 1000;
   const K_LIFT_DEST = cssKeys("--ios-touch-segment-destout-keys", SEG_LIFT_DESTOUT), K_DEST = cssKeys("--ios-touch-segment-release-destout-keys", SEG_DROP_DESTOUT.filter(([t]) => t >= .198).map(([t, v]) => [t - .198, v]));
   const destEnd = destDelay + K_DEST[K_DEST.length - 1][0];
@@ -1747,7 +1759,7 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
     release: (restIdx) => {   // every way out — up, out of bounds, pointercancel — falls the same way, to the rest rect of `restIdx`
       if (st.rel != null || st.done) return;
       st.rest = restIdx;
-      if (!(st.pr > 0) && restIdx === idx0 && !st.dragged) { st.rel = Math.max(performance.now(), st.t0 + SEG_QUICKTAP_FALL_MS - relDelay * 1000); st.quick = true; return; }   // #9②: not lifted yet, same segment, no slide → lift anyway, fall from down + 242
+      if (restIdx === idx0 && !st.dragged) { const earliest = st.t0 + SEG_QUICKTAP_FALL_MS - relDelay * 1000; if (performance.now() < earliest) { st.rel = earliest; st.quick = !(st.pr > 0); return; } }   // #9② / R9②′: a same-segment release without a slide falls no earlier than down + 242 (a not-yet-lifted lens lifts anyway meanwhile)
       st.rel = performance.now();
     },
     stop: () => { cancelAnimationFrame(st.raf); if (!st.done) clear(); },
@@ -1858,6 +1870,39 @@ function springToTop() {
     if (t >= SCROLL_TOP.D) { window.scrollTo(0, 0); window.ScrollTop.state = null; return; }
     window.scrollTo(0, y0 * (1 - SCROLL_TOP.progress(t))); requestAnimationFrame(f); };
   requestAnimationFrame(f);
+}
+/* R0③ driver (tab-lens-motion.md §7, R24): two critical springs started on the same frame — s3: ζ 1 / .3 (positions, the bar's width, the added items' fade-in),
+   s2: ζ 1 / .2 (the removed items' fade-out); the kept buttons translateX from their old x (FLIP: old − new viewport left), the platter's inset from the
+   old width to the new (symmetric, pill shape kept), the glide rides the selected button's animated x; the removed buttons leave when s3 has settled.
+   nav.__tabAnim = { t0, s3, s2, items: [{ el, dx }], removed, added, w0, w1 } is the driver's own clock for the acceptance rows (A15). */
+function tabSetAnimate(nav, plat, glideEl, oldRect, navRect0, removed, added) {
+  const kept = [...nav.querySelectorAll(":scope > .seg > button")].filter((b) => oldRect.has(b));
+  const navRect1 = nav.getBoundingClientRect(), w0 = navRect0.width, w1 = navRect1.width;
+  const items = kept.map((el) => ({ el, dx: oldRect.get(el).left - el.getBoundingClientRect().left })).filter((it) => Math.abs(it.dx) > 0.01);
+  const on = nav.querySelector(":scope > .seg > button.on"), onItem = items.find((it) => it.el === on), onLeft = on ? on.offsetLeft : 0, onWidth = on ? on.offsetWidth : 0;
+  if (nav.__tabAnim) { cancelAnimationFrame(nav.__tabAnim.raf); for (const b of nav.__tabAnim.removed) b.remove(); }
+  const A = { t0: performance.now(), prev: performance.now(), s3: { x: 1, v: 0 }, s2: { x: 1, v: 0 }, items, removed, added, w0, w1, raf: 0 };
+  nav.__tabAnim = A;
+  for (const b of added) b.style.opacity = "0";
+  const apply = () => {
+    const s = Math.max(0, A.s3.x), o = Math.max(0, Math.min(1, A.s2.x));
+    for (const it of A.items) it.el.style.transform = s > 0.0005 ? `translateX(${(it.dx * s).toFixed(3)}px)` : "";
+    for (const b of A.added) b.style.opacity = s > 0.0005 ? (1 - s).toFixed(4) : "";
+    for (const b of A.removed) b.style.opacity = o.toFixed(4);
+    const inset = Math.max(0, (w1 - (w1 + (w0 - w1) * s)) / 2); plat.style.left = plat.style.right = inset > 0.01 ? inset.toFixed(3) + "px" : "";
+    if (on) { glideEl.style.transition = "none"; glideEl.style.left = (onLeft + (onItem ? onItem.dx * s : 0)).toFixed(3) + "px"; glideEl.style.width = onWidth + "px"; }
+  };
+  const step = (now) => {
+    if (nav.__tabAnim !== A) return;
+    const dt = Math.min(0.05, Math.max(0, (now - A.prev) / 1000)); A.prev = now; A.tNow = now;   // tNow: the frame time the springs were stepped to (accept A15)
+    const spring = window.Motion ? Motion.spring : springStep;
+    spring(A.s3, 0, [1, 0.3], dt); spring(A.s2, 0, [1, 0.2], dt);
+    apply();
+    const settled = Math.abs(A.s3.x) < 0.0005 && Math.abs(A.s3.v) < 0.005 && Math.abs(A.s2.x) < 0.0005;
+    if (settled || now - A.t0 > 2000) { for (const b of A.removed) b.remove(); for (const it of A.items) it.el.style.transform = ""; for (const b of A.added) b.style.opacity = ""; plat.style.left = plat.style.right = ""; if (on) { glideEl.style.left = on.offsetLeft + "px"; void glideEl.offsetWidth; glideEl.style.transition = ""; } nav.__tabAnim = null; return; }
+    A.raf = requestAnimationFrame(step);
+  };
+  apply(); A.raf = requestAnimationFrame(step);
 }
 function attachTabBar(nav, select) {
   const seg = nav.querySelector(".seg"), g = nav.querySelector(".glide"), bs = [...seg.querySelectorAll("button")];

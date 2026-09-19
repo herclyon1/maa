@@ -614,7 +614,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
           const rmsW0 = rmsAt(1, 0), rmsH0 = rmsAt(2, 0), rmsW = rmsAt(1, -16.7), rmsH = rmsAt(2, -16.7);
           const drift = Math.max(...fr.map((f) => Math.abs(f.c - c0)));
           check("分段 #9① 快速点已选中段（60 ms 抬手）：平台任何一帧不空白——带 .lift 的帧 p 必 > 0（9① 前 DestOut 在 p = 0 也给 .lift），不换值、选中不变", "blank 0 · renders = · on same", `${fr.length} frames · blank ${blank} · renders+${renders - r9} · on ${bs().findIndex((b) => b.classList.contains("on"))}`, fr.length > 20 && blank === 0 && renders === r9 && bs().findIndex((b) => b.classList.contains("on")) === onIdx0);
-          check("分段 #9② 快速点已选中段原地抬落（9a 重录 quick90c）：首个长大帧 +95…+145、峰时刻 +225…+270（原生 +241…+257 ± 一帧采样相位）、+450…+515 回 ≤ 196.5（原生 +474…+497）、中心不动（≤ .5 pt）", "first 95–145 · peak @225–270 · back 450–515 · drift ≤ .5", `first ${first ? first.t.toFixed(0) : "-"} · peak @${peak ? peak.t.toFixed(0) : "-"} · back ${back ? back.t.toFixed(0) : "-"} · drift ${drift.toFixed(2)}`, !!first && first.t >= 95 && first.t <= 145 && !!peak && peak.t >= 225 && peak.t <= 270 && !!back && back.t >= 450 && back.t <= 515 && drift <= 0.5);
+          check("分段 #9② / R9②′ 快速点已选中段原地抬落（落回动画建于 down + 242 ms，抬手先后皆同——R25 后到的抬手峰 = 抬起起点 + 150 ≈ 同锚；quick90c 峰帧 +242）：首个长大帧 +95…+145、峰时刻 +225…+270（原生 +241…+257 ± 一帧采样相位）、+450…+515 回 ≤ 196.5（原生 +474…+497）、中心不动（≤ .5 pt）", "first 95–145 · peak @225–270 · back 450–515 · drift ≤ .5", `first ${first ? first.t.toFixed(0) : "-"} · peak @${peak ? peak.t.toFixed(0) : "-"} · back ${back ? back.t.toFixed(0) : "-"} · drift ${drift.toFixed(2)}`, !!first && first.t >= 95 && first.t <= 145 && !!peak && peak.t >= 225 && peak.t <= 270 && !!back && back.t >= 450 && back.t <= 515 && drift <= 0.5);
           check("分段 #9② 峰与逐帧（记录，不判）：原生 quick90c 峰 217.5×42.4 @242；页面峰 = 抬起 ζ1/.25 自 +109 到 +242 的解析值 216.3×41.5 + 落回起步的速度惯性；差 ≈ 一帧——原生表在 +109 那帧已是 198.2（抬起起点早于 109 或探针按显示时刻记帧），待读；rms 对表 不移 / 原生前移一帧", "记录", `peak ${peak ? peak.w.toFixed(1) + "×" + peak.h.toFixed(1) : "-"} · rms w ${rmsW0.toFixed(2)} h ${rmsH0.toFixed(2)} · shifted −16.7 ms: w ${rmsW.toFixed(2)} h ${rmsH.toFixed(2)}`, true);
           await sleep(500); }
         /* a page re-render (heartbeat / snapshot) while the lens rests on a segment must not move it (the carry-over reads the lens box, not the % translate) */
@@ -661,6 +661,16 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
         if (fi2 && nv2) { fi2.focus({ preventScroll: true }); const a1 = window.__tabKbd(innerHeight - 300, innerHeight - 300), d1 = getComputedStyle(nv2).display;
           const a2 = window.__tabKbd(null), d2 = getComputedStyle(nv2).display; const a3 = window.__tabKbd(innerHeight - 300), d3 = getComputedStyle(nv2).display; const a4 = window.__tabKbd(null), d4 = getComputedStyle(nv2).display; fi2.blur();
           check("键盘只信视口：安卓式 innerHeight 缩 300（H0 基线）→ 藏，回高 → 放回；iOS 式 vv 缩 300 → 藏，回高 → 放回；全程字段保持聚焦（不经失焦收键盘也放回）", "hidden shown hidden shown", `${a1} ${d1} · ${a2} ${d2} · ${a3} ${d3} · ${a4} ${d4}`, a1 === true && d1 === "none" && a2 === false && d2 !== "none" && a3 === true && d3 === "none" && a4 === false && d4 !== "none"); } }
+      /* BOARD R28′ (state-tables/tabbar.md §6, R28 probe): the native floating tab bar does not move, hide or fade while the keyboard shows / hides (317 frames at
+         (0, 873, 440, 83), alpha 1) — the keyboard window simply covers it and slides away in .3833 s. The page hides the capsule while the viewport is short
+         (browsers float fixed elements above the keyboard); the equivalence to check: when the keyboard goes, the capsule is back in the very same rect, the same
+         nodes, without any transition — within one frame */
+      { const nv3 = document.querySelector("nav.tabs");
+        if (nv3) { const r0 = nv3.getBoundingClientRect(), plat0 = nv3.querySelector(":scope > .plat"), gl0 = nv3.querySelector(":scope > .glide");
+          window.__tabKbd(innerHeight - 300); const hidden = getComputedStyle(nv3).display === "none"; window.__tabKbd(null); await new Promise(requestAnimationFrame);
+          const r1 = nv3.getBoundingClientRect(), same = Math.abs(r1.top - r0.top) < 0.01 && Math.abs(r1.left - r0.left) < 0.01 && Math.abs(r1.width - r0.width) < 0.01 && Math.abs(r1.height - r0.height) < 0.01, nodes = plat0 === nv3.querySelector(":scope > .plat") && gl0 === nv3.querySelector(":scope > .glide");
+          const tr = getComputedStyle(nv3).transitionProperty, trOK = !/transform|bottom|top|opacity/.test(tr) || getComputedStyle(nv3).transitionDuration.split(",").every((d) => parseFloat(d) === 0);
+          check("R28′ 键盘收起后胶囊原位原样：视口回高后下一帧 rect 与键盘前逐项相同（±.01）、.plat/.glide 同一节点、nav 无位置/透明度过渡（原生 R28：标签栏全程一帧不动，只是被键盘盖住）", "hidden → same rect · same nodes · no transition", `hidden ${hidden} · same ${same} · nodes ${nodes} · transition ${tr} ${getComputedStyle(nv3).transitionDuration}`, hidden && same && nodes && trOK); } }
       /* 监督局 19:3x: a segment tap must not flash — the buttons carry no tap highlight and no pointer focus ring (unchanged since 181053), and a render must not
          rebuild the tab bar's nodes (the platter's backdrop-filter layer / glide / buttons stay the same elements) */
       { const sb = document.querySelector("#queueseg button"), nv = document.querySelector("nav.tabs"), plat0 = nv && nv.querySelector(".plat"), gl0 = nv && nv.querySelector(".glide"), b0 = nv && nv.querySelector(".seg > button");
@@ -755,11 +765,24 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
             counts.push(bsN); const r = nv.getBoundingClientRect();
             if (nv !== nv0 || nv.querySelector(":scope > .plat") !== plat0 || g !== gl0 || nv.querySelector(":scope > .seg") !== sg0) bad.push("rebuilt");
             if (Math.abs(r.top - top0) > 0.5) bad.push("top " + r.top.toFixed(1)); if (getComputedStyle(nv).display === "none") bad.push("display none"); if (bsN === 0) bad.push("0 buttons");
-            if (on && g && !nv.classList.contains("tl-on") && (Math.abs(parseFloat(g.style.left) - on.offsetLeft) > 1 || Math.abs(parseFloat(g.style.width) - on.offsetWidth) > 1)) bad.push("glide off " + g.style.left + "/" + on.offsetLeft); } };
+            if (on && g && !nv.classList.contains("tl-on")) { const gr = g.getBoundingClientRect(), orr = on.getBoundingClientRect(); if (Math.abs(gr.left - orr.left) > 1 || Math.abs(gr.width - orr.width) > 1) bad.push("glide off " + gr.left.toFixed(1) + "/" + orr.left.toFixed(1)); } } };   // viewport rects: during the R0③ set animation the button is translated and the glide rides it
           const names = snap.queues.map((x) => x["名"]); const other = names.find((nm) => nm !== savedQ) || names[0];
           curQueue = other; window.render(); await sampleFrames(8); curQueue = savedQ; window.render(); await sampleFrames(8); curQueue = other; window.render(); await sampleFrames(8); curQueue = savedQ; window.render(); await sampleFrames(4);
           const uniq = [...new Set(counts)];
           check("R0① 换班次三次（早→晚→早→晚→早，render）逐帧：标签栏 .plat/.glide/.seg 同一元素、nav top 不变、display 不为 none、按钮数在两个值间切换且无一帧 0、glide 每帧贴着选中按钮（≤ 1 pt）", "same nodes · top = · counts {5,3} · glide on", `${bad.length ? bad.slice(0, 4).join(" · ") : "clean"} · counts ${uniq.join("/")} · ${counts.length} frames`, bad.length === 0 && uniq.length === 2 && !uniq.includes(0) && counts.length >= 20);
+          /* R0③ (tab-lens-motion.md §7, R24): on a set change the kept buttons' translateX follows ζ 1 / .3 from their FLIP delta, the removed ones fade on ζ 1 / .2 at their
+             old place and leave when the .3 spring settles, the added ones fade in on ζ 1 / .3; sampled on the driver's own clock (nav.__tabAnim, A15) */
+          { const nv = document.querySelector("nav.tabs"); const closed = (t, resp) => { const w = 2 * Math.PI / resp; return (1 + w * t) * Math.exp(-w * t); };
+            curQueue = other; window.render(); const A = nv.__tabAnim;
+            const smp = []; let removedSeen = 0; const tEnd = performance.now() + 1200;
+            while (performance.now() < tEnd) { await new Promise(requestAnimationFrame); if (nv.__tabAnim === A && A && A.tNow) { const t = (A.tNow - A.t0) / 1000;   // the driver's own frame time (A15)
+              for (const it of A.items) { const m = /translateX\(([-\d.]+)px\)/.exec(it.el.style.transform || ""); smp.push({ kind: "pos", t, got: m ? parseFloat(m[1]) : 0, want: it.dx * closed(t, 0.3) }); }
+              for (const b of A.removed) { if (b.isConnected) { removedSeen++; smp.push({ kind: "out", t, got: parseFloat(b.style.opacity || "1"), want: closed(t, 0.2) }); } }
+              for (const b of A.added) smp.push({ kind: "in", t, got: parseFloat(b.style.opacity || "1"), want: 1 - closed(t, 0.3) }); } }
+            const rmsOf = (k) => { const a = smp.filter((s) => s.kind === k); return a.length ? Math.sqrt(a.reduce((acc, s) => acc + Math.pow(s.got - s.want, 2), 0) / a.length) : 0; };
+            const goneAfter = A ? A.removed.every((b) => !b.isConnected) : true, hadAnim = !!A && (A.items.length + A.removed.length + A.added.length) > 0;
+            check("R0③ 换班次时项增删动画（§7）：保留项位移逐帧对 ζ1/.3 闭式（rms ≤ 1 pt）、删项淡出对 ζ1/.2（rms ≤ .03）、加项淡入对 ζ1/.3（rms ≤ .03）、删项在动画结束后摘掉、驱动器存在", "anim · pos ≤ 1 · out ≤ .03 · in ≤ .03 · removed gone", `anim ${hadAnim} · ${smp.length} samples · pos ${rmsOf("pos").toFixed(2)} · out ${rmsOf("out").toFixed(3)} (${removedSeen} frames) · in ${rmsOf("in").toFixed(3)} · gone ${goneAfter}`, hadAnim && rmsOf("pos") <= 1 && rmsOf("out") <= 0.03 && rmsOf("in") <= 0.03 && goneAfter);
+            curQueue = savedQ; window.render(); await sleep(1300); }
           curTab = savedTab; window.render(); await sleep(100);
         }
       }
