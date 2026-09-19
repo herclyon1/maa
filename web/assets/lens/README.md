@@ -901,6 +901,48 @@ high-contrast edges; the fringe check is unchanged. If the data session's bisect
 lens-engine-fix.js on the page; if not, the files stay unused. `?mapdpr=0` turns it off. tab-lens.js calls `LENS_MAP_DPR_APPLY()` for its
 late filters (the tab families carry no baked sets yet — `data-baked` absent → nothing happens).
 
+### 0.8.5 (a) The fringe chain on two END elements only — built, measured, NOT ≤ 20 ms (2026-09-19 13:5x; 验收 / 监督局 13:0x)
+
+Structure (`lens-test.html?ab=ends`; the generator: `--ab-end 56 --ab-reach 4`, `#seg-lens-f-abe-<w>-l / -r` on the map's end crops
+`seg-f-abe-<w>-{l,r}.png` (60 × 76 px = the wrapper's first / last 60 pt, the same bytes as the full map there), also for the tab families):
+the main `.stack` carries no chain and is clipped `inset(0 56px 0 56px)` (it draws nothing under the ends, so the ends composite over the
+scene exactly as the whole-stack chain did — without that cut-out the capsule's AA row double-composites: +6 … 8 levels along the arc,
+measured); two `.fend` elements at the wrapper's left / right, each 60 × 76 pt (filtered box = the visible 56 + the taps' reach 4, the
+inner 4 clipped after the filter by `clip-path` — a band pixel's taps read up to 4 pt beyond it and the element's box ends there:
+without the reach the last 4 pt showed cyan / yellow tap artefacts at the seam), holding a clone of the whole stack (the same portal
+copies, the same clips, the same displaced layers — re-synced in place() by copying every descendant's inline style in DOM order), the
+LEAN chain on each with its own W/H matrix. 56 = margin 16 + the arc's band (r 22 + envelope 8.8) + the taps' reach 4 = 50.8 with slack:
+with 29 (band + reach only) the corners' band around the arc (up to 30.8 pt in) was cut and the full chain differed up to 149 levels.
+
+Same output? (wksnap 3 px/pt, drag-mid `native=1&lensx=220`, vs the whole-stack chain; light / dark; `?ss=0` — with the supersampling
+on, the ½ wrappers inside a software-filtered element are flattened in software while under no filter CA composites them: the middle
+then differs by ≤ 9 / 13 levels everywhere along the rim rows, an engine artefact that also separates `ab=flip` from `ab=0`):
+
+| region (lens 110–330 × 110.9–154.9) | light max / px > 3 | dark max / px > 3 | what it is |
+|---|---|---|---|
+| the ends (x 94–150, 290–346) | 26 / 7 | 3 / 0 | 7 pixels at the seam's corner |
+| the seam columns 149–151 / 289–291 | 26 / 7 | 13 / 39 | the step between chain and no-chain on the long-edge band rows |
+| the middle (x 151–289) | 1 / 0 (2206 px at 1 level) | 13 / 2481 | **the long-edge dispersion is lost**: the taps' vertical component (θ −15°: ±.35 pt) smears the track's top / bottom edge by up to 13 levels (dark: track 29 on page 0) — the native's "0.3 pt of dispersion along the long edges" (§0d). The premise "带外无差" holds only where the content is uniform across ±4 pt |
+
+So (a) is not the same output: it drops the long-edge smear (≤ 13 levels on one row per edge, dark) and keeps the ends. Covering the
+long edges with two more strip elements (17 pt × the middle width, each again holding the displaced layers) brings the computed area
+back to ~72 % of the whole — no gain.
+
+Frame time (a VISIBLE offscreen-corner WKWebView, `scratchpad/wk/wktime.swift`: rAF runs at the display rate; the page's own 2-s auto
+drag, mean interval; Mac 2× display, body zoom 1.5 = 3 px/pt (the phone's raster) and 3 = 6 px/pt (4× the pixels, above the vsync floor)):
+
+| variant | zoom 1.5 (3 px/pt) mean / max ms | zoom 3 (6 px/pt) mean / max ms |
+|---|---|---|
+| whole-stack chain `ab=flip` | 29.3 / 58 | 170 / 233 |
+| ends only `ab=ends` | 20.2 / 34 | 81.6 / 112 |
+| no chain `ab=0` | 16.7 / 18 (the vsync floor) | 17.0 / 36 |
+| lean chain `ab=lean` | — | 160 / 212 |
+
+Above the floor the ends cost 42 % of the whole chain (65 vs 153 ms at 6 px/pt: the 47 % area plus the duplicated displaced layers).
+Projection for the phone from the data session's 36916a9 (no chain 18.9, whole chain +19): ends ≈ +8 → **≈ 27 ms**, not ≤ 20; the
+lean chain saves another 1/7 of that. Verdict: (a) does not reach the target and is not the same output → the WebGL prototype
+(§0.8.6) is the path; the switch stays in the test page for the record (`?ab=ends`), nothing wired.
+
 ### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
 
 Sources: `remote-ref/sheet-native.md` (the data session's 10th order: A9 `sheetivars` / `corners` / `subtree` / motion, iOS 27.0 3×) and

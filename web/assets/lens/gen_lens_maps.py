@@ -337,7 +337,21 @@ def render_aberration(path, w_pt, h_pt, ab, edge, px, scale, oval, margin, sign=
     # wrapper reaches `margin` pt beyond it so the taps can READ the page there, but nothing is drawn there). Read in the screen frame
     # of the (possibly stretched) set: d of the model × the stretch of the axis the point lies on is within a device pixel of the true one.
     A = np.rint(coverage(d * np.where(np.abs(nx) > np.abs(ny), sx, sy), px) * 255).astype(np.uint8)
-    write_png(path, w, h, [bytes(np.stack([R[j], G[j], B[j], A[j]], axis=1).reshape(-1)) for j in range(h)]); return w, h, peak, [path]
+    rgba = np.stack([R, G, B, A], axis=2); LAST_AB_MAP[0] = (rgba, margin, px)
+    write_png(path, w, h, [bytes(rgba[j].reshape(-1)) for j in range(h)]); return w, h, peak, [path]
+
+LAST_AB_MAP = [None]   # (rgba, margin, px) of the last fringe map rendered — cropped for the end chains (write_ab_end_crops)
+END_BOX = [56.0, 4.0]   # --ab-end / --ab-reach: the end chains' VISIBLE width in pt (the wrapper margin 16 + the arc's band reach 22 + 8.8 + the taps' reach 4 → 51, 56 with slack) and the extra
+                        # reach of the filtered box beyond it (the taps of the last visible column read this far; clipped away after the filter)
+def write_ab_end_crops(out_dir, name, w, h):
+    """the fringe map cropped to the two END elements (README §0.8.5, (a)): the left box = lens x ∈ [−margin, END_BOX − margin], the right
+    box mirrored, both the full wrapper height; the same bytes as the full map at those pixels (1 px/pt: integer boxes) → <name>-f-abe-<w>-{l,r}.png"""
+    rgba, margin, px = LAST_AB_MAP[0]; ew = int(round((END_BOX[0] + END_BOX[1]) * px)); H, W = rgba.shape[:2]
+    files = []
+    for side, x0 in (("l", 0), ("r", W - ew)):
+        crop = rgba[:, x0:x0 + ew]; path = os.path.join(out_dir, f"{name}-f-abe-{w}-{side}.png")
+        write_png(path, ew, H, [bytes(crop[j].reshape(-1)) for j in range(H)]); files.append(os.path.basename(path))
+    return files
 
 def wh_matrix(wh):
     """feColorMatrix values applying the foreground capture box's W/H to the ratio-1 fringe map: R' = wh·(R − ½) + ½ (Δx × W/H),
@@ -368,7 +382,7 @@ def filter_inner_shadow(name, opacity=0.06, offset=7.0, radius=3.0):
   </filter>"""
 
 
-def filter_aberration_lean(fid, hrefs, w, h, scale, margin, note, alpha_elem, edr, wh, taps):
+def filter_aberration_lean(fid, hrefs, w, h, scale, margin, note, alpha_elem, edr, wh, taps, end_box=None):
     """The same chain as filter_aberration (mode flip) with the SAME output and fewer pixels / passes (2026-09-19, 监督局: the dispersion layer
     alone costs 19 ms per frame on the phone — data session 36916a9). Band-only computation is NOT available in WebKit: a filter primitive's
     own subregion (x/y/width/height, primitiveUnits objectBoundingBox or userSpaceOnUse) renders the subregion blank / the element blank
@@ -378,8 +392,10 @@ def filter_aberration_lean(fid, hrefs, w, h, scale, margin, note, alpha_elem, ed
     peak × W/H ≈ 2.3 × 1.72 = 4 pt, README §0.5), so the filter region shrinks from (w + 32) × (h + 32) to (w + 16) × (h + 16) — the page
     lays the wrapper out with AM = the margin of the chain it uses. Kept: the ΣA/7 alpha chain (exactness where a tap reads a transparent
     pixel; folding α/7 into the colour matrices would cost ±3 levels of 8-bit premultiplied precision — measured, not done)."""
-    out = [f'  <filter id="{fid}" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="{scale:g}" data-wh="{wh:g}" data-lean="1" data-margin="{margin:g}">',
-           f"    <!-- {note}; LEAN chain (same output: 6 displacement passes, the k = 0 tap is the source; margin {margin:g} pt — README §0.8.4); apply to the wrapper of {w + 2 * margin:g}×{h + 2 * margin:g} pt = the lens {w:g}×{h:g} plus {margin:g} pt on every side (AM = {margin:g}) -->",
+    box = f' data-box="{end_box[0]:g}x{end_box[1]:g}" data-reach="{end_box[2]:g}"' if end_box else ""
+    out = [f'  <filter id="{fid}" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="{scale:g}" data-wh="{wh:g}" data-lean="1" data-margin="{margin:g}"{box}>',
+           (f"    <!-- {note}; apply to the END element of {end_box[0]:g}×{end_box[1]:g} pt (its own filter region); LEAN chain, README §0.8.5 -->" if end_box else
+            f"    <!-- {note}; LEAN chain (same output: 6 displacement passes, the k = 0 tap is the source; margin {margin:g} pt — README §0.8.4); apply to the wrapper of {w + 2 * margin:g}×{h + 2 * margin:g} pt = the lens {w:g}×{h:g} plus {margin:g} pt on every side (AM = {margin:g}) -->"),
            f'    <feImage href="{hrefs[0]}" preserveAspectRatio="none" result="abmap"/>',
            f'    <feColorMatrix in="abmap" id="{fid}-wh" type="matrix" values="{wh_matrix(wh)}" result="abwh"/>',
            '    <feColorMatrix in="abmap" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="mask"/>',
@@ -402,7 +418,7 @@ def filter_aberration_lean(fid, hrefs, w, h, scale, margin, note, alpha_elem, ed
     return "\n".join(out)
 
 
-def filter_aberration(fid, hrefs, w, h, scale, mode, margin, note, alpha_elem=1.0, edr=1.0, wh=1.72, peak=0.0, lean=False):
+def filter_aberration(fid, hrefs, w, h, scale, mode, margin, note, alpha_elem=1.0, edr=1.0, wh=1.72, peak=0.0, lean=False, end_box=None):
     """glass_foreground_base's 7-tap spectral chain (formula.md §3b) on SourceGraphic = the wrapper of the lens content extended by
     `margin` pt (the two displaced layers over a plain copy of the page, so the outward taps read the page beyond the lens like the
     foreground's backdrop capture): k = 1, 2/3, 1/3 at +kΔ: R += r·k, G += g·(1 − k); k = 0, 1/3, 2/3, 1 at −kΔ: G += g·(1 − k),
@@ -415,7 +431,7 @@ def filter_aberration(fid, hrefs, w, h, scale, mode, margin, note, alpha_elem=1.
     band factor e followed by `over` IS §3b.6's blend screen = e·dispersed + (1 − e)·below (fg's alpha = e after the `in`)."""
     if peak and peak * max(wh, 1 / wh) > scale / 2: raise ValueError(f"fringe span {peak:.2f} × W/H {wh:g} does not fit scale {scale}")
     taps = [(1.0, 1), (2 / 3, 1), (1 / 3, 1), (0.0, -1), (1 / 3, -1), (2 / 3, -1), (1.0, -1)]
-    if lean: return filter_aberration_lean(fid, hrefs, w, h, scale, margin, note, alpha_elem, edr, wh, taps)
+    if lean: return filter_aberration_lean(fid, hrefs, w, h, scale, margin, note, alpha_elem, edr, wh, taps, end_box)
     out = [f'  <filter id="{fid}" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB" data-s="{scale:g}" data-wh="{wh:g}">',
            f"    <!-- {note}; band mask: {mode}; apply to the wrapper of {w + 2 * margin:g}×{h + 2 * margin:g} pt = the lens {w:g}×{h:g} plus {margin:g} pt on every side; W/H = capture box (lens frame + 100 pt each side, clamped to the screen) / its height, set #{fid}-wh per frame: R×wh + ½(1−wh), G×1/wh + ½(1−1/wh) (formula.md §3b.6: 1.72 at x 110–330, 1.35 at x 10–230) -->",
            f'    <feImage href="{hrefs[0]}" preserveAspectRatio="none" result="abmap"/>',
@@ -665,6 +681,8 @@ def build_parser():
     ap.add_argument("--device-px", type=float, default=3.0, help="device pixels per pt of the native rendering: the coverage's 1-px AA width and the sampler's clamp to the last texel centre (formula.md §4b.1 A / D); 3 = the phone")
     ap.add_argument("--corner-radius", default="22", help="the lens capsule's corner radius: 22 (segment lens, clamped to h/2) or 'half' (tab bar lens: h/2 on every element, tab-lens-native.md §0)")
     ap.add_argument("--verify-chain", default="", help="tab bar lens (formula.md §5b): lens_scale/content_scale/model_centre_x,y/platter_centre_x,y[/period] — the phase files are read through the platter's presentation transform (1.0516 about the platter centre) and the copy's lift scale (1.16 about the platter centre); applied to --verify-label-lift")
+    ap.add_argument("--ab-end", type=float, default=56.0, help="(a) the END elements' VISIBLE width in pt for the end-only fringe chains #<name>-lens-f-abe-<w>-{l,r}: wrapper margin 16 + the arc's band reach (r 22 + envelope 8.8) + the taps' reach (peak × max W/H ≈ 4) = 50.8, 56 with slack (integer: the crop is whole map pixels)")
+    ap.add_argument("--ab-reach", type=float, default=4.0, help="the end element's filtered box extends this far beyond its visible width (the last visible column's taps read it); the page clips it after the filter")
     ap.add_argument("--abl-margin", type=float, default=16.0, help="the LEAN fringe chain's wrapper margin (pt); = --ab-margin (default) → the chain reads the -f-ab- map itself, no extra file. A smaller margin (8 was tried: the taps reach ≤ peak × W/H ≈ 4 pt) writes <name>-f-abl-<w>.png at that margin, but WebKit's output then differs from the 16-pt chain by ≤ 15 levels on the ends / the bottom rim row (README §0.8.4) — not identical, so not the default")
     ap.add_argument("--ab-margin", type=float, default=16.0, help="the fringe wrapper's extension (pt) beyond the lens on every side (≥ the 15 pt span: the foreground's backdrop capture has marginWidth 100, its outward taps read the page beyond the lens)")
     ap.add_argument("--ab-px", type=int, default=1, help="pixels per pt of the fringe maps (the spans are smooth: 1 px/pt keeps the four maps per width small)")
@@ -690,7 +708,7 @@ def main():
     if a.aberration != "off" and not a.ab_scale: a.ab_scale = 4.0 * math.ceil(float(a.aberration.split("/")[0]))   # own S of the fringe maps: seg 12, tab 16
     R_MAX[0] = float("inf") if a.corner_radius == "half" else float(a.corner_radius)
     DEVICE_PX[0] = a.device_px
-    ENGINE_FIX[0] = a.engine_fix
+    ENGINE_FIX[0] = a.engine_fix; END_BOX[0] = a.ab_end; END_BOX[1] = a.ab_reach
     a.S_ab = a.ab_scale
     AMP_FLOOR[0] = a.amp_floor
     if a.formula:
@@ -795,12 +813,13 @@ def render_baked_sets(a, w, h, bg, lab, S_set, base_wh, portal_rect, fbg, flab):
 def render_fringe_maps(a, w, h, base_wh):
     """the colour-fringe map of a set (<name>-f-ab-<w>.png) and the lean chain's (the same file when --abl-margin = --ab-margin; its own
     <name>-f-abl-<w>.png otherwise) → (file, peak_pt, [files], [lean files])"""
-    if a.aberration == "off": return None, None, [], []
+    if a.aberration == "off": return None, None, [], [], []
     fab = f"{a.name}-f-ab-{w}.png"; ab = tuple(float(v) for v in a.aberration.split("/")); edge = tuple(float(v) for v in a.edge.split("/"))
     _, _, pk_ab, fl = render_aberration(os.path.join(a.out, fab), w, h, ab, edge, a.ab_px, a.S_ab, 0.5, a.ab_margin, a.ab_sign, base_wh)
     if a.abl_margin == a.ab_margin: fll = list(fl)   # the lean chain reads the -f-ab- map (same margin → same map)
     else: _, _, _, fll = render_aberration(os.path.join(a.out, f"{a.name}-f-abl-{w}.png"), w, h, ab, edge, a.ab_px, a.S_ab, 0.5, a.abl_margin, a.ab_sign, base_wh)
-    return fab, pk_ab, [os.path.basename(f) for f in fl], [os.path.basename(f) for f in fll]
+    fabe = write_ab_end_crops(a.out, a.name, w, h)
+    return fab, pk_ab, [os.path.basename(f) for f in fl], [os.path.basename(f) for f in fll], fabe
 
 def main_formula(a, W, H):
     """--formula: maps computed from the decompiled formulas (no measured field in any map); one set per lens width for the drag"""
@@ -829,10 +848,10 @@ def main_formula(a, W, H):
         except ValueError:
             S_set = 48.0; mw, mh, pk_bg = render_formula(os.path.join(a.out, fbg), w, h, bg, a.px, S_set, a.margin, None, base_wh); _, _, pk_lab = render_formula(os.path.join(a.out, flab), w, h, lab, a.px, S_set, a.margin, portal_rect, base_wh)
         render_baked_sets(a, w, h, bg, lab, S_set, base_wh, portal_rect, fbg, flab)
-        fab, pk_ab, fabs, fabls = render_fringe_maps(a, w, h, base_wh)
+        fab, pk_ab, fabs, fabls, fabes = render_fringe_maps(a, w, h, base_wh)
         nb = os.path.getsize(os.path.join(a.out, fbg)) + os.path.getsize(os.path.join(a.out, flab)) + sum(os.path.getsize(os.path.join(a.out, f)) for f in fabs); total_bytes += nb
         sets[w] = {"h": round(h, 2), "scale": [round(w / W, 4), round(h / H, 4)], "S": S_set, "layer_pt": [w + 2 * a.margin, round(h + 2 * a.margin, 2)], "map_px": [mw, mh], "h_source": how, "frames": [[round(f[0], 2), round(f[1], 2), f[2]] for f in src],
-                   "label_portal_pt": a.label_portal, "ab": fab, "ab_files": fabs, "abl_files": fabls, "abl_margin": a.abl_margin, "peak_ab_pt": (round(pk_ab, 2) if pk_ab is not None else None), "S_ab": a.S_ab,
+                   "label_portal_pt": a.label_portal, "ab": fab, "ab_files": fabs, "abl_files": fabls, "abl_margin": a.abl_margin, "abe_files": fabes, "abe_box_pt": END_BOX[0] + END_BOX[1], "abe_visible_pt": END_BOX[0], "abe_reach_pt": END_BOX[1], "peak_ab_pt": (round(pk_ab, 2) if pk_ab is not None else None), "S_ab": a.S_ab,
                    "bg": fbg, "lab": flab, "peak_bg_pt": round(pk_bg, 2), "peak_lab_pt": round(pk_lab, 2), "bytes": nb,
                    "model": [MW, round(MH, 2)], "lift_path": bool(lift),
                    "filters": [f"{a.name}-lens-f-bg-{w}", f"{a.name}-lens-f-lab-{w}"] + ([f"{a.name}-lens-f-ab-{w}", f"{a.name}-lens-f-ab-ir-{w}"] if fab else [])}
@@ -875,6 +894,8 @@ def main_formula(a, W, H):
                 for mode, fid in (("flip", st["filters"][2]), ("ir", st["filters"][3])):   # #seg-lens-f-ab-<w> = the band factor e (the formula with EdgeOpacityStart 1 / End 0), #seg-lens-f-ab-ir-<w> = 1 − e (record of the first reading)
                     body.append(filter_aberration(fid, [prefix + f for f in st["ab_files"]], w, st["h"], st["S_ab"], mode, a.ab_margin, f"colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle {a.aberration}, edge band {a.edge}, tap direction sign {a.ab_sign:g}, α_elem {a.ab_alpha:g}, edr {a.ab_edr:g}, lens {w}×{st['h']:g}; apply to the wrapper of the two displaced layers", a.ab_alpha, a.ab_edr, a.ab_wh, st["peak_ab_pt"] or 0.0))
                 body.append(filter_aberration(st["filters"][2].replace("-f-ab-", "-f-abl-"), [prefix + f for f in st["abl_files"]], w, st["h"], st["S_ab"], "flip", a.abl_margin, f"colour fringe, the same formula as #{st['filters'][2]}", a.ab_alpha, a.ab_edr, a.ab_wh, st["peak_ab_pt"] or 0.0, lean=True))
+                for side, f in zip(("l", "r"), st["abe_files"]):   # (a): the chain on an END element only — its own box = the wrapper's end crop, the same numbers (README §0.8.5)
+                    body.append(filter_aberration(st["filters"][2].replace("-f-ab-", "-f-abe-") + f"-{side}", [prefix + f], w, st["h"], st["S_ab"], "flip", a.ab_margin, f"colour fringe on the {'left' if side == 'l' else 'right'} END element ({END_BOX[0] + END_BOX[1]:g} × {st['h'] + 2 * a.ab_margin:g} pt = the wrapper's {'first' if side == 'l' else 'last'} {END_BOX[0] + END_BOX[1]:g} pt: margin {a.ab_margin:g} + the arc's band 22 + 8.8 + tap reach, of which the inner {END_BOX[1]:g} pt are clipped after the filter), the same formula as #{st['filters'][2]} on the map's crop", a.ab_alpha, a.ab_edr, a.ab_wh, st["peak_ab_pt"] or 0.0, lean=True, end_box=(END_BOX[0] + END_BOX[1], st["h"] + 2 * a.ab_margin, END_BOX[1])))
         body.append(filter_inner_shadow(a.name))
         return head + "\n".join(body) + "\n</svg>\n"
     open(os.path.join(a.out, "lens-filter.svg"), "w").write(svg_for(a.href_prefix))
