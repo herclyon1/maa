@@ -66,6 +66,22 @@
     check("抬起中 hidden → 驱动停、glide 回 view.js 的框", "无 .tl-on", nav.classList.contains("tl-on") ? "还在" : "无 .tl-on", !nav.classList.contains("tl-on"));
     delete document.hidden; if (hiddenDesc) Object.defineProperty(Document.prototype, "hidden", hiddenDesc);
     ev(selB, "pointerup", sx, sy, 5); await sleep(700);
+    /* ---- R33 (tab-lens-motion.md §3a): a quick tap on another item — the lens lifts (ζ 1 / .25) and slides (ζ .85 / .4) from the tap together, and falls
+       (ζ 1 / .4) from the frame the slide arrives (first within .5 pt of the target), not at the up; the selection changes at the up (view.js) */
+    { const sel0 = bs.find((b) => b.classList.contains("on")), tgt = bs[bs.indexOf(sel0) === 0 ? 1 : 0], tr = tgt.getBoundingClientRect(), tx = tr.left + tr.width / 2, ty = tr.top + tr.height / 2, navL2 = nav.getBoundingClientRect().left;
+      const cxNav2 = () => rect().cx - navL2; const c0 = cxNav2();
+      ev(tgt, "pointerdown", tx, ty, 12); await sleep(40); ev(tgt, "pointerup", tx, ty, 12);
+      let L0 = null; for (let i = 0; i < 30 && !L0; i++) { await new Promise((r) => requestAnimationFrame(r)); L0 = window.__tabLens; }   // the selection's render and the driver's first frame follow the up within a few frames
+      const samples = []; await new Promise((res) => { let first = null; const tick = (now) => { if (first === null) first = now; const L = window.__tabLens; samples.push({ t: now, cx: cxNav2(), h: rect().height, p: L ? L.p : null, ph: L ? L.phase : null, x: L ? L.x : null, target: L ? L.target : null }); if (now - first < 900) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick); });
+      const target = tx - navL2; const tapFrames = samples.filter((s) => s.ph === "tap"), dropIdx = samples.findIndex((s) => s.ph === "drop"), atDrop = dropIdx > 0 ? samples[dropIdx - 1] : null, firstDrop = dropIdx >= 0 ? samples[dropIdx] : null;
+      check("R33 快速点另一项：松手后驱动进 tap 相（抬起 + 滑行同步起步）", "tap · p > 0 · x 在动", L0 ? `${L0.phase} · p ${L0.p.toFixed(3)} · x ${cxNav2().toFixed(1)}→${target.toFixed(1)}` : "无驱动", !!L0 && (L0.phase === "tap" || L0.phase === "drop") && tapFrames.length >= 3);
+      check(`R33 到位那帧起落回（到位 = 位置弹簧首次 |x − 目标| ≤ .5 pt）：drop 首帧 |Δx| ≤ .5、drop 前高仍在抬起（${atDrop ? atDrop.h.toFixed(1) : "-"} > 54）`, "|Δx| ≤ .5 · h > 54", firstDrop && atDrop ? `|Δx| ${Math.abs(firstDrop.x - firstDrop.target).toFixed(2)}（前一帧 ${Math.abs(atDrop.x - atDrop.target).toFixed(2)}）· h ${atDrop.h.toFixed(1)} · ${tapFrames.length} tap 帧` : "无 drop", !!firstDrop && !!atDrop && Math.abs(firstDrop.x - firstDrop.target) <= 0.5 && Math.abs(atDrop.x - atDrop.target) > 0.5 && atDrop.h > 54);
+      const dropS = samples.slice(dropIdx).filter((s) => s.ph === "drop"); const pDrop = dropS.map((s) => s.p);
+      check("R33 落回：高沿 ζ1/.4 单调回到 54（p 单调降）", "单调 · 末 54", `${pDrop.length} 帧 · 末 h ${samples[samples.length - 1].h.toFixed(1)}`, pDrop.length >= 5 && pDrop.every((v, i) => i === 0 || v <= pDrop[i - 1] + 1e-6) && Math.abs(samples[samples.length - 1].h - 54) <= 0.5);
+      const onNow = bs.find((b) => b.classList.contains("on")); check("R33 松手即选中被点项、胶囊落定在其中心", tgt.dataset.tab, `${onNow ? onNow.dataset.tab : "-"} · ${cxNav2().toFixed(1)} vs ${target.toFixed(1)}`, onNow === tgt && Math.abs(cxNav2() - target) <= 1.5);
+      delete seg.dataset.pe; await sleep(200);
+      /* back to the original tab for the flows below (a second quick tap; the same path) */
+      const sr0 = sel0.getBoundingClientRect(); ev(sel0, "pointerdown", sr0.left + sr0.width / 2, sr0.top + sr0.height / 2, 13); await sleep(40); ev(sel0, "pointerup", sr0.left + sr0.width / 2, sr0.top + sr0.height / 2, 13); await sleep(1200); delete seg.dataset.pe; }
     /* ---- R2 (b) the material overlay (tab-lens.js glAttach → lens-webgl.js): the canvas over the bar, the tab5 family's nine sets with the filters' keys
        (data-s 40, 48 for the 98 set, fringe 16; heights 54 … 70 from lens-field.json), the lift riding the 98 set with frames drawn, cleared at rest */
     { const g = window.__tabLensGL && window.__tabLensGL();

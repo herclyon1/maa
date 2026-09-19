@@ -184,9 +184,14 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
     const P = { x: 0, v: 0 }, XS = { x: st.lastX, v: 0 };
     let pTarget = 1, running = true, last = clockNow(), t0 = last, phase = "lift", frameN = 0, posSpring = SP_POS;
     const segBox = st.seg.getBoundingClientRect(), navBox = nav.getBoundingClientRect(), track = { min: segBox.left - navBox.left + (parseFloat(getComputedStyle(st.seg).paddingLeft) || 0), max: segBox.right - navBox.left - (parseFloat(getComputedStyle(st.seg).paddingRight) || 0) };
+    /* R33 (tab-lens-motion.md §3a): a quick tap on another item (the up before the +140 ms lift) — the lens lifts and slides at once (ζ 1 / .25 with
+       ζ .85 / .4) and starts falling (ζ 1 / .4) on the frame the slide arrives, not at the up, not earlier for an early up; the arrival = the position
+       spring first within .5 pt (1 px at 2×) of the target */
+    const tap = !!st.tap; let arrived = false;
     const setTargets = () => { const lifted = glide.classList.contains("lift") || glide.classList.contains("lift-sel"), dragging = lifted && nav.classList.contains("drag") && finger.down && finger.x != null;
-      pTarget = lifted ? 1 : 0;
+      pTarget = lifted || (tap && !arrived) ? 1 : 0;
       if (dragging) { const left = Math.max(track.min, Math.min(track.max - w0, finger.x - finger.a * w0)); st.X = left + w0 / 2; posSpring = SP_DRAG; phase = "drag"; }
+      else if (tap) { st.X = centreOf(glide); posSpring = SP_POS; phase = arrived ? "drop" : "tap"; }
       else { st.X = centreOf(glide); posSpring = lifted ? SP_POS : SP_RELEASE; phase = lifted ? (Math.abs(st.X - XS.x) > .5 ? "move" : "lift") : "drop"; } };
     setTargets();
     const frame = (now) => { try { frame0(now); } catch (e) { window.__tabLensErr = String(e && e.stack || e); console.error("tab-lens frame", e); stop(); } };
@@ -195,6 +200,7 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
       if (now <= last) { tick(frame); return; }                             // a frame stamped before the start (Chrome: rAF's `now` = the frame's start, which can precede the call that started the loop): nothing to integrate yet
       const dt = Math.min(1, (now - last) / 1000); last = now; frameN++;
       spring(P, pTarget, pTarget > .5 ? SP_LIFT : SP_DROP, dt); spring(XS, st.X, posSpring, dt);
+      if (tap && !arrived && Math.abs(XS.x - st.X) <= .5) { arrived = true; st.tapArrivedAt = now; setTargets(); }   // §3a: the fall begins on the arrival frame
       const p = Math.max(0, Math.min(1, P.x)), x = XS.x, W = w0 + LIFT * p, H = h0 + LIFT * p;
       /* the glide's box: the centre x from the position spring, the vertical centre = the resting centre (pad + h0 / 2) */
       nav.style.setProperty("--tl-left", (x - W / 2) + "px"); nav.style.setProperty("--tl-w", W + "px"); nav.style.setProperty("--tl-top", (pad + h0 / 2 - H / 2) + "px"); nav.style.setProperty("--tl-h", H + "px");
@@ -204,7 +210,7 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
       if (pTarget === 0 && p < .002 && Math.abs(P.v) < .02 && Math.abs(XS.x - st.X) < .05 && Math.abs(XS.v) < 1) { stop(); return; }
       tick(frame);
     };
-    const stop = () => { running = false; glRest(st);
+    const stop = () => { running = false; glRest(st); st.tap = false;
       nav.classList.remove("tl-on"); for (const k of ["--tl-left", "--tl-w", "--tl-top", "--tl-h"]) nav.style.removeProperty(k);   // rest: the glide shows view.js's own box again (its inline left / width = the selected item)
       if (loop && loop.stop === stop) loop = null; window.__tabLens = null; };
     loop = { stop, retarget: setTargets, st };
@@ -290,10 +296,12 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
     let rebuilt = false, glideChanged = false;
     for (const m of muts) { if (m.type === "childList" && m.target === nav) rebuilt = true; else if (m.type === "attributes" && m.target !== nav && m.target.classList && m.target.classList.contains("glide") && !(m.attributeName === "style" && loop && m.target.style.transformOrigin && m.oldValue === null)) glideChanged = true; }
     if (rebuilt || !st || st.nav !== nav || st.glide !== nav.querySelector(".glide")) { if (loop) loop.stop(); st = attach(nav); if (!st) return; }
-    if (!glideChanged) return;
+    const onChanged = muts.some((m) => m.type === "attributes" && m.attributeName === "class" && m.target !== nav && m.target.matches && m.target.matches(".seg button"));   // the selection moved in this batch (button.on)
+    if (!glideChanged && !onChanged) return;
     const g = st.glide, lifted = g.classList.contains("lift") || g.classList.contains("lift-sel"), cur = centreOf(g);
     if (loop) { loop.retarget(); return; }                                        // a retarget while running: the item under the finger moved / the selection landed — setTargets reads view.js's box itself; while dragging the finger rule wins (#7b: `st.X = cur` here overwrote it on every move)
     if (lifted) { st.lastX = st.X; start(st); }                                   // the lift begins from the resting centre the glide had before this mutation
+    else if (MODE === "geometry" && onChanged && glideChanged && Math.abs(cur - st.X) > .5) { st.lastX = st.X; st.tap = true; start(st); }   // R33: a quick tap on another item — lift + slide together, the fall on arrival
     st.X = cur;
   };
   const mo = new MutationObserver((muts) => { try { onMut(muts); } catch (e) { window.__tabLensErr = String(e && e.stack || e); console.error("tab-lens", e); } });
