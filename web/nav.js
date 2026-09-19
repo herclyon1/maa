@@ -26,7 +26,7 @@
   const W = () => window.innerWidth;
   const parallax = () => -(W() - Math.round(.7 * W()));   // −132 at 440
   const write = () => {
-    const pg = st.pg, p = Math.max(0, Math.min(1, st.p)), root = document.body;
+    const pg = st.pg, p = st.tracking ? st.p : Math.max(0, Math.min(1, st.p)), root = document.body;   // the interactive drive may rubber-band past [0, 1] (fluid percent)
     pg.style.setProperty("--nav-x", (W() * (1 - p)).toFixed(2) + "px");
     root.style.setProperty("--nav-from", (parallax() * p).toFixed(2) + "px");
     st.dim.style.setProperty("--nav-dim", p.toFixed(4));
@@ -39,7 +39,8 @@
   const tick = (now) => {
     if (!st.first) st.first = now;
     const dt = Math.min(1, Math.max(0, (now - st.last) / 1000)); st.last = now; st.elapsed += dt;   // elapsed: the spring's own time (the accept compares the shown values at it)   // the step is closed-form: a slow frame gets its whole elapsed time (a .05 clamp halved the motion on 100 ms frames)
-    Motion.spring(st, st.target, SPRING, dt);   // st.x is st.p: the state object is {p, v} under the names Motion expects
+    Motion.spring(st, st.target, st.spring || SPRING, dt);   // st.x is st.p: the state object is {p, v} under the names Motion expects
+    if (st.tracking) { write(); st.raf = requestAnimationFrame(tick); return; }   // an interactive drive never settles by itself: the finger owns the target
     if (settled()) { st.p = st.target; st.v = 0; write(); st.raf = 0; finish(); return; }
     write(); st.raf = requestAnimationFrame(tick);
   };
@@ -58,7 +59,7 @@
   const start = (dir) => {
     const pg = st.pg;
     if (!st.dim) { st.dim = document.createElement("div"); st.dim.className = "nav-dim"; document.body.appendChild(st.dim); }
-    st.dir = dir; st.target = dir > 0 ? 1 : 0;
+    st.dir = dir; st.target = dir > 0 ? 1 : 0; st.tracking = false; st.spring = SPRING;
     if (!pg.classList.contains("nav-live")) {            // from rest: p = 0 (hidden) or 1 (shown), no velocity
       st.p = dir > 0 ? 0 : 1; st.v = 0;
       pg.classList.remove("in", "out"); pg.hidden = false; document.body.classList.remove("pushed");
@@ -79,5 +80,22 @@
     pg.querySelector(".pback").onclick = back;
     return back;
   };
-  window.Nav = { open, back: () => { if (st.pg) start(-1); }, state: st, fIn, fOut, u1, u2, SPRING };
+  /* the interactive pop (nav-edge.js, BOARD #12; nav-native-formula.md §0 / §2): while the finger is down the progress value follows the
+     gesture's percent through the interactiveSpring's TRACKING triple ζ .85 / response .08 (0x1c5410ffc–0x1c5411054; setFractionComplete:
+     0x1c54d3ea0 → 0x1c54d4c14); at the release the same animator continues to 1 (finish) or 0 (cancel) on the spring's normal triple
+     ζ .85 / .3 with the handed-over velocity (0x1c40e7c54 → _continueAnimationWithStartingVelocity:). Here p = 1 − percent. */
+  const TRACK = [.85, .08], RELEASE = [.85, .3];
+  const interactive = {
+    begin() {   // pop starts interactively: from the shown page (p 1), or from a running transition's current value (pauseInteractiveTransition)
+      if (!st.pg || st.pg.hidden) return false;
+      if (!st.pg.classList.contains("nav-live")) { st.p = 1; st.v = 0; st.dir = -1; st.pg.classList.remove("in", "out"); document.body.classList.remove("pushed"); st.pg.classList.add("nav-live"); document.body.classList.add("nav-live"); write(); }
+      st.dir = -1; st.tracking = true; st.spring = TRACK; st.target = st.p; run(); return true;
+    },
+    percent() { return 1 - st.p; },
+    set(q) { st.target = 1 - q; },   // q = the gesture's percent (rubber-banded by the caller)
+    end(finish, vProgress) {   // vProgress = the handed-over velocity in progress units / s (percent increasing = p decreasing)
+      st.tracking = false; st.spring = RELEASE; st.v = -vProgress; st.target = finish ? 0 : 1; st.last = performance.now(); run();
+    },
+  };
+  window.Nav = { open, back: () => { if (st.pg) start(-1); }, state: st, fIn, fOut, u1, u2, SPRING, TRACK, RELEASE, interactive };
 })();
