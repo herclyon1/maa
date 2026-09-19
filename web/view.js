@@ -1341,8 +1341,11 @@ function segLens(seg, lens, bs, downClientX) {
   if (seg.__lensLoop) seg.__lensLoop.stop();   // a new press ends the previous loop (its tail and its inline geometry)
   let warp = seg.querySelector(".warp"), warpl = seg.querySelector(".warpl"), plat = seg.querySelector(".plat"), rimb = seg.querySelector(".rimb"), hls = [...seg.querySelectorAll(".hlk, .hlw")];
   const mk = (cls, inner) => { const d = document.createElement("div"); d.className = cls; d.innerHTML = inner; seg.appendChild(d); return d; };
-  if (!warp) warp = mk("warp", '<div class="disp"><div class="copy"></div><div class="punch"><div class="copy"></div></div></div>'); else if (!warp.querySelector(".punch")) warp.firstElementChild.innerHTML = '<div class="copy"></div><div class="punch"><div class="copy"></div></div>';
-  if (!warpl) warpl = mk("warpl", '<div class="displ"><div class="copy"></div></div>'); else if (warpl.querySelector(".portal")) warpl.firstElementChild.innerHTML = '<div class="copy"></div>';   // B4-c': portal #32 does not clip
+  /* 引擎校正 2 (candidate A, ui2 README §0.4 recipe): wrapper .disp / .displ (the box, scaled 1/SS) > filtered layer .dispf / .displf (SS× the box) > .ss2 (the box, scaled SS) > the copies */
+  const SS = window.LENS_SS || 1;
+  const warpInner = '<div class="disp"><div class="dispf"><div class="ss2"><div class="copy"></div><div class="punch"><div class="copy"></div></div></div></div></div>', warplInner = '<div class="displ"><div class="displf"><div class="ss2"><div class="copy"></div></div></div></div>';
+  if (!warp) warp = mk("warp", warpInner); else if (!warp.querySelector(".ss2 .punch")) warp.innerHTML = warpInner;
+  if (!warpl) warpl = mk("warpl", warplInner); else if (!warpl.querySelector(".displf .ss2")) warpl.innerHTML = warplInner;   // B4-c': portal #32 does not clip
   if (!plat) plat = mk("plat", "");
   /* B4-c' layer 5: .stack = lens box + 16 pt wrapper carrying the colour-fringe chain; .base = the plain copy of the page under the displaced layers */
   let stack = seg.querySelector(".stack"), base = stack && stack.querySelector(".base");
@@ -1417,7 +1420,7 @@ function segLens(seg, lens, bs, downClientX) {
      only; the box corners outside it keep their label pixels, which the backdrop map's clamp_to_edge replicates into the rim band — §6d); .warpl = the
      labels through portal #20 (the box, clipped to the capsule before the filter), no 196×28 clip (portal #32 masksToBounds 0). Spans, not buttons,
      so the control's own button list stays the real one. */
-  const disp = warp.firstElementChild, copy = disp.firstElementChild, punch = disp.lastElementChild, copyp = punch.firstElementChild, displ = warpl.firstElementChild, copyl = displ.firstElementChild, copyb = base.firstElementChild;
+  const dispf = warp.querySelector(".dispf"), ss2 = dispf.firstElementChild, copy = ss2.firstElementChild, punch = ss2.lastElementChild, copyp = punch.firstElementChild, displf = warpl.querySelector(".displf"), copyl = displf.querySelector(".copy"), copyb = base.firstElementChild;
   copy.innerHTML = '<div class="cbgwrap"><div class="cbg"></div><div class="ctrack"></div></div>';
   const labelsHTML = bs.map((b) => `<span class="cb ${b.className}" style="width:${b.offsetWidth}px">${b.innerHTML}</span>`).join("");
   copyl.innerHTML = labelsHTML; copyp.innerHTML = labelsHTML; copyb.innerHTML = '<div class="cbgwrap"><div class="cbg"></div><div class="ctrack"></div></div>' + labelsHTML;
@@ -1475,16 +1478,16 @@ function segLens(seg, lens, bs, downClientX) {
     copyp.style.left = -L + "px"; copyp.style.top = -T + "px"; copyl.style.left = -L + "px"; copyl.style.top = -T + "px";   // the label copies aligned with the real labels (B4-c': no 196×28 portal offset)
     if (punchKey !== `${Wd}|${Hd}`) { punchKey = `${Wd}|${Hd}`; punch.style.clipPath = `path(evenodd, "M0 0H${Wd}V${Hd}H0Z M${R} 0H${Wd - R}A${R} ${R} 0 0 1 ${Wd - R} ${Hd}H${R}A${R} ${R} 0 0 1 ${R} 0Z")`; }   // DestOut = the lens capsule (r = h/2 on the lift path; the drag stretch is the flex transform on top)
     const set = setFor(Math.max(W0 + 2 * LX, Wd));   // the model width (220 lifted; Wd is the model box — the flex transform is separate)
-    if (set !== curSet) { curSet = set; disp.style.filter = `url(#seg-lens-f-bg-${set})`; displ.style.filter = `url(#seg-lens-f-lab-${set})`; stack.style.filter = DISPERSION && document.querySelector(`#seg-lens-f-ab-${set}`) ? `url(#seg-lens-f-ab-${set})` : "none"; }
+    if (set !== curSet) { curSet = set; dispf.style.filter = `url(#seg-lens-f-bg-${set})`; displf.style.filter = `url(#seg-lens-f-lab-${set})`; stack.style.filter = DISPERSION && document.querySelector(`#seg-lens-f-ab-${set}`) ? `url(#seg-lens-f-ab-${set})` : "none"; }
     if (DISPERSION) abFrame(set, p);
     seg.style.setProperty("--lp", p.toFixed(4)); seg.style.setProperty("--lpd", pd.toFixed(4));
-    for (const id of [`#seg-lens-f-bg-${set}`, `#seg-lens-f-lab-${set}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", SEGX.includes("scale0") ? "0" : (sOf(id) * p).toFixed(3)); }   // both stacks' amounts on the lift spring (§4.4 row 2: ClearGlass 0 → −17.5, ContentLensing 0 → −8.8, BackdropView 0 → 9 in the same call)
+    for (const id of [`#seg-lens-f-bg-${set}`, `#seg-lens-f-lab-${set}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", SEGX.includes("scale0") ? "0" : (sOf(id) * SS * p).toFixed(3)); }   // × SS: a map pt is SS layer px (引擎校正 2); both stacks' amounts on the lift spring (§4.4 row 2: ClearGlass 0 → −17.5, ContentLensing 0 → −8.8, BackdropView 0 → 9 in the same call)
     cbs.forEach((c, i) => c.className = "cb " + bs[i % bs.length].className);
     seg.classList.toggle("lift", p > 0 || pd > 0);
   };
   const clear = () => {
     seg.classList.remove("lift"); seg.style.removeProperty("--lp"); seg.style.removeProperty("--lpd"); copy.innerHTML = ""; copyl.innerHTML = "";
-    if (curSet) for (const id of [`#seg-lens-f-bg-${curSet}`, `#seg-lens-f-lab-${curSet}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", String(sOf(id))); }   // the file's rest value; the layers are hidden now
+    if (curSet) for (const id of [`#seg-lens-f-bg-${curSet}`, `#seg-lens-f-lab-${curSet}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", String(sOf(id) * SS)); }   // the file's rest value × SS; the layers are hidden now
     for (const k of ["transition", "left", "top", "width", "height", "margin", "border-radius", "transform", "transform-origin"]) lens.style.removeProperty(k);   // the CSS rest values are what the loop ended on
     for (const el of [stack, warp, warpl, plat, rimb, rimo, ...hls]) { el.style.removeProperty("transform"); el.style.removeProperty("transform-origin"); }
     if (curSet) { const f = document.querySelector(`#seg-lens-f-ab-${curSet}`); if (f) { const S = parseFloat(f.getAttribute("data-s")) || 12, taps = f.querySelectorAll("feDisplacementMap"), n = taps.length; taps.forEach((t, i) => t.setAttribute("scale", (S * (1 - 2 * i / (n - 1))).toFixed(3))); } }   // the file's rest values

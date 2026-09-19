@@ -523,7 +523,12 @@
   .segctl .stack .base .copy .cb.on{font-weight:var(--ios-medium-weight)}
   .segctl.lift .stack{display:block}
   .segctl .warp{position:absolute;z-index:4;left:0;top:0;width:0;height:0;pointer-events:none;display:none;overflow:hidden;clip-path:inset(0 round var(--rr, 14px));opacity:var(--lpd, 0)}
-  .segctl .warp .disp{position:absolute;inset:0;overflow:hidden}   /* filter: url(#seg-lens-f-bg-<w>) set per frame */
+  /* 引擎校正 2 (candidate A, README §0.4 recipe step 1): .disp / .displ = the wrapper (the lens box, composited, scaled 1/SS; NO overflow clip — it
+     would cut the SS× child before the transform), .dispf / .displf = the FILTERED layer at SS× the box (overflow hidden; the label layer carries the
+     capsule radius × SS: clipped before the filter), .ss2 = the box scaled SS× holding the copies exactly as before. --ss is set on <html> (2; ?ss=0 → 1). */
+  .segctl .warp .disp{position:absolute;inset:0;transform-origin:0 0;transform:scale3d(calc(1 / var(--ss, 1)), calc(1 / var(--ss, 1)), 1);will-change:transform}
+  .segctl .warp .disp .dispf{position:absolute;left:0;top:0;width:calc(100% * var(--ss, 1));height:calc(100% * var(--ss, 1));overflow:hidden}   /* filter: url(#seg-lens-f-bg-<w>) set per frame */
+  .segctl .warp .disp .ss2,.segctl .warpl .displ .ss2{position:absolute;left:0;top:0;width:calc(100% / var(--ss, 1));height:calc(100% / var(--ss, 1));transform-origin:0 0;transform:scale(var(--ss, 1))}
   .segctl .warp .punch{position:absolute;left:0;top:0;width:100%;height:100%;overflow:hidden}   /* the segment content copy with the capsule cut out (clip-path evenodd set per frame): §4b layer 0/1, ui2 README §0.3 .punch */
   .segctl .plat{position:absolute;z-index:5;left:0;top:0;width:0;height:0;pointer-events:none;display:none;border-radius:var(--rr, 14px);background:var(--ios-segment-selected-bg);opacity:calc(1 - var(--lp, 0))}   /* 白平台 restingBackground：抬起 1 → 0、松手 0 → 1（seg-keys.css -platter-keys ≈ 1 − 位移量，差 ≤ .01） */
   /* .warpl = the label copy through the formula label maps (#seg-lens-f-lab-<w>: ContentLensing −8.8/7.04 sampled first, then ClearGlass
@@ -534,7 +539,8 @@
      shifted by −(lens position); no 196×28 clip (the old .portal is gone). The real labels under the lens are covered by the opaque backdrop copy
      (.warp) inside the capsule (= DestOut) and re-appear in its frame corners through .punch. The label copy does not fade (label-mag 1.00, §2.3). */
   .segctl .warpl{position:absolute;z-index:7;left:0;top:0;width:0;height:0;pointer-events:none;display:none;overflow:hidden;clip-path:inset(0 round var(--rr, 14px))}
-  .segctl .warpl .displ{position:absolute;inset:0;overflow:hidden;border-radius:var(--rr, 14px)}   /* filter: url(#seg-lens-f-lab-<w>) set per frame; clipped to the capsule BEFORE the filter */
+  .segctl .warpl .displ{position:absolute;inset:0;transform-origin:0 0;transform:scale3d(calc(1 / var(--ss, 1)), calc(1 / var(--ss, 1)), 1);will-change:transform}
+  .segctl .warpl .displ .displf{position:absolute;left:0;top:0;width:calc(100% * var(--ss, 1));height:calc(100% * var(--ss, 1));overflow:hidden;border-radius:calc(var(--rr, 14px) * var(--ss, 1))}   /* filter: url(#seg-lens-f-lab-<w>) set per frame; clipped to the capsule BEFORE the filter */
   .segctl.lift .warp,.segctl.lift .warpl,.segctl.lift .plat,.segctl.lift .rimb,.segctl.lift .hlk,.segctl.lift .hlw{display:block}
   .segctl .warp .copy,.segctl .warpl .copy,.segctl .warp .punch .copy{position:absolute;left:0;top:0;display:flex;padding:var(--ios-segment-lens-pad) 0;box-sizing:border-box}
     /* B3 follow-up: the content (and the lens's commit slide, the same render) switch at the native valueChanged time after the up — seg-value-change-content.md §0:
@@ -3894,6 +3900,16 @@
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
 </svg>
+<script>/* 引擎校正 2 — candidate A (2号 ui2 README §0.4 "Wiring recipe", 监督局 09-19 B 项): the displaced layers are rasterised at SS = 2 × their size
+   (structure in the .segctl .warp / .warpl CSS and view.js segLens) so WebKit's software filter works on a 2× raster and CA downsamples it — the
+   displacement quantum and the negative-lane shortfall halve (README §0.4: ⅙ pt at 3×). Here, once: window.LENS_SS (read by lens-engine-fix.js
+   below: k = 1/(devicePixelRatio·SS)), the --ss custom property for the CSS, and on every -f-bg- / -f-lab- filter the feDisplacementMap scale × SS
+   (a map pt is SS layer px) and the region 100/SS % (WebKit resolves a filtered layer's region under a scaled ancestor in unscaled units —
+   README §0.4 fact 1, calib/webkit-region-under-scale.html). ?ss=0 → SS 1: the same structure at identity scale, the attributes untouched. */
+{ const SS = new URLSearchParams(location.search).get("ss") === "0" ? 1 : 2; window.LENS_SS = SS; document.documentElement.style.setProperty("--ss", String(SS));
+  if (SS !== 1) for (const f of document.querySelectorAll("filter[data-s]")) { if (/-ab-/.test(f.id)) continue; const fe = f.querySelector("feDisplacementMap"); if (!fe || fe.dataset.ss) continue;
+    fe.dataset.ss = String(SS); fe.setAttribute("scale", String(parseFloat(fe.getAttribute("scale")) * SS)); f.setAttribute("width", (100 / SS) + "%"); f.setAttribute("height", (100 / SS) + "%"); } }
+</script>
 <script src="assets/lens/lens-engine-fix.js"></script>   <!-- 引擎校正（2号 ui2 bed84e4，web/assets/lens/README.md §0.4）：按 devicePixelRatio 把每张 -f-bg- / -f-lab- 贴图的负位移加长一个设备像素（2× ½、3× ⅓）写成 blob 副本换进 feImage（data-engine-fixed 可查），贴图文件与彩边链不动；关法 window.LENS_ENGINE_FIX = false -->
 <!-- 推入页（UINavigationController push）：回执全表、以后的库存页；导航栏 54 at 62、返回 44 at 20 ← AX-11 / AX-46 -->
 <div class="page" id="subpage" hidden role="region">
