@@ -624,6 +624,81 @@
   --ios-touch-tab-drag-lift-w: 110px;
   --ios-touch-tab-drag-lift-h: 70px;
 
+
+  /* ---- page sheet = #picker (UISheetPresentationController .pageSheet, detents [.large()], UINavigationController + Done), B7 visual package
+   * 2026-09-19 (界面2号; NOT wired — the #picker styles still read the older --ios-sheet-* / --ios-motion-sheet-* above). Every line's source:
+   * sheet-native.md = remote-ref/sheet-native.md (the data session's 10th order: A9 sheetivars / corners / subtree / motion, iOS 27.0 3×),
+   * formula = remote-ref/sheet-native-formula.md (the old page session's UIKitCore decompilation, §0–§9; §7b = the #picker rules). ---- */
+  /* sheet-native.md §0 几何: UIDropShadowView (0, 62, 440, 894) — top = SheetLayoutInfo._containerSafeAreaInsets.top 62, to the screen bottom; the only detent is large (894 = 956 − 62; maximumDetentValue's formula UNREAD, formula §4) */
+  --ios-pagesheet-top: 62px;
+  --ios-pagesheet-h: 894px;
+  /* sheet-native.md §0 圆角: _preferredCornerRadii {topLeft 38, bottomLeft ∞, bottomRight ∞, topRight 38} + _environmentCornerRadii 62 ×4 → UIDropShadowView / _UIDropShadowClippingView
+   * cornerRadii top 38, bottom 62 (the display corner), cornerCurve continuous, no mask layer; the top-left contour against a circle R 38: mean 0.34 pt (R 55: 4.7, R 62: 7.3).
+   * formula §0/§3: 38 = minimumEdgeAttachedCornerRadii (38, 20, 20, 38) TL/BL/BR/TR (metrics 0x1c48bf7c8), base cornerRadius 10; the corner-radius animation (_hostedCornerRadii) UNREAD */
+  --ios-pagesheet-radius-top: 38px;
+  --ios-pagesheet-radius-bottom: 62px;
+  --ios-pagesheet-radius-edge-min: 38px;
+  /* sheet-native.md §0 底色: UIDropShadowView.backgroundColor = systemBackground — light (255,255,255), dark (28,28,30) (elevated, _colorsByThemeKey 258); the probe VC's content on top is systemGroupedBackground (242,242,247) / (28,28,30) */
+  --ios-pagesheet-bg: rgb(255 255 255);
+  /* sheet-native.md §0/§4 材质层: UIDropShadowView shadowRadius 2 / shadowOpacity 0; _UIRoundedRectShadowView (the 400×400@3x nine-slice, cap 199.67, vibrantColorMatrix) alpha 0 → a page sheet draws NO shadow; formula §0 metrics shadow opacity .5 / radius 2 apply to stacked sheets only */
+  --ios-pagesheet-shadow-opacity: 0;
+  --ios-pagesheet-shadow-radius: 2px;
+  /* sheet-native.md §0/§2.2 遮罩: UIDimmingView (1320×2868, covers everything) black α .2 (light) / .48 (dark) = +[UIColor _dimmingViewColor] (formula §2, block 0x1c43d4570);
+   * while dragging α = .2 (or .48) × (1 − offset / 894) — nine release points to 5 digits; percentDisplayed's general formula UNREAD (single detent = linear) */
+  --ios-pagesheet-dim: rgb(0 0 0 / .2);
+  --ios-pagesheet-dim-alpha: 0.2;
+  --ios-pagesheet-dim-travel: 894px;
+  /* sheet-native.md §0 把手: __hasGrabber 0 (prefersGrabberVisible defaults NO with a Done button: this page draws NONE; the subtree has no _UIGrabber);
+   * for a sheet that has one: 60 × 4 capsule (Solarium; formula §6 _intrinsicSizeWithinSize: 0x1c4154da0, else 36 × 5), __grabberSpacing 6 (read, unused here);
+   * its colour = luma-tracking two-level (formula §6) — values UNREAD (the medium sheet's read --ios-grabber-* above stay as they are) */
+  --ios-pagesheet-grabber: none;
+  --ios-pagesheet-grabber-w: 60px;
+  --ios-pagesheet-grabber-h: 4px;
+  --ios-pagesheet-grabber-spacing: 6px;
+  /* formula §0 detents: medium = maximumDetentValue × (container height > 568 ? 0.56 : 0.63) (block __UISheetDetentBlockMedium 0x1c4bbec80, 568 = 0x1c57193a8); this page has large only */
+  --ios-pagesheet-medium-ratio: 0.56;
+  --ios-pagesheet-medium-ratio-compact: 0.63;
+  /* formula §0 metrics: topOffset 10 (regular) / 8 (vertically compact), minimumSidePadding 25, tuck 23 / 8, capsuleSheetInset 28, mediumSheetInset 8 — where they act on a large sheet UNREAD (the top is the safe area 62) */
+  --ios-pagesheet-top-offset: 10px;
+  --ios-pagesheet-side-padding-min: 25px;
+  /* sheet-native.md §4 完成钮: UIPlatformGlassInteractionView 44×44 at (376, 82) ▸ _UIButtonBarButton 36×36 at (380, 86) ▸ the check UIImageView 24×22.67 at (386, 93), vibrantColorMatrix diag .3125 + offset .9375 (a white check);
+   * glass 44 round: SDF r 22, systemBlue tint, KeyFill = the segment lens's (keyfill-highlight.md); its glassBackground 26 keys UNREAD (§6). Measured on sheet-native-light-presented.png: the blue disc 375.67–420.33 × 81.67–126.67 (centre 398, 104.2), the title 177–263.33 × 97.67–113.67 */
+  --ios-pagesheet-done-size: 44px;
+  --ios-pagesheet-done-x: 376px;
+  --ios-pagesheet-done-y: 82px;
+  --ios-pagesheet-done-radius: 22px;
+  --ios-pagesheet-done-inner: 36px;
+  --ios-pagesheet-done-glyph-w: 24px;
+  --ios-pagesheet-done-glyph-h: 22.67px;
+  --ios-pagesheet-done-tint: var(--ios-tint);
+  /* sheet-native.md §4 标题: UILabel (175.67, 93.67, 88.33, 20.67) .SFUI-Semibold 17 labelColor; UINavigationBar (0, 82, 440, 54), _UIBarBackground (0, 62, 440, 74) without content */
+  --ios-pagesheet-title-y: 93.67px;
+  --ios-pagesheet-title-h: 20.67px;
+  /* sheet-native.md §0 完成钮按下 / 松开 (deep-done-light uikit changes): press +33 ms: _UIFlexInteractionLittleGlowView.opacity 0 → 1 (+ its sibling UIView 0 → 1), spring ζ 1 / response 0.1;
+   * _setVisuallyHighlighted takes the check's opacity to .2; release +15 ms: glow opacity 1 → 0 and transform 1 → 4 (ζ 1 / response 0.5); +35 ms: the check .2 → 1, animateWithDuration 0.47
+   * (options 327684 = curveEaseInOut | beginFromCurrentState | allowUserInteraction); +41 ms the dismiss animator */
+  --ios-pagesheet-done-glow-press-response: 0.1;
+  --ios-pagesheet-done-glow-release-response: 0.5;
+  --ios-pagesheet-done-glow-release-scale: 4;
+  --ios-pagesheet-done-check-pressed-alpha: 0.2;
+  --ios-pagesheet-done-check-restore-duration: 0.47s;
+  /* sheet-native.md §0/§1.1 + formula §0/§1 出现 & 收起: ONE spring ζ 1 / response 0.3441442 s (ω₀ = √(1000/3) = 18.257 rad/s — the CA animation m 3 / k 1000 / c 500 with allowsOverdamping false runs critically damped):
+   * x(t) = 894·(1 + ω₀t)·e^(−ω₀t); the dimming α on the same spring; the nominal 0.4 s (UITransitionView table [8]) does not enter the curve; platform latency present → move +18…56 ms not replicated */
+  --ios-pagesheet-spring-response: 0.3441442s;
+  --ios-pagesheet-spring-omega: 18.257;
+  --ios-pagesheet-spring-damping-ratio: 1;
+  /* sheet-native.md §2.3 + formula §0 松手 (only if a drag is added): |v| ≥ 1000 pt/s → dismiss with ζ 0.8 (block 0x1c3c78c98, constant 0x1c5717fe8; the scan (990, 1024] covers it);
+   * else the projection p + 0.099·v (deceleration 0.99 → r/(1−r)/1000; scan (0.0961, 0.1034)) against 447 = 894/2 (scan (445, 450]); the pan's first move eats 10 pt (UIPanGestureRecognizer hysteresis), then 1:1;
+   * the velocity estimator UNREAD (outputs ≈ .87–.95 of the last 4 steps' nominal speed) */
+  --ios-pagesheet-fling-threshold: 1000;
+  --ios-pagesheet-fling-damping-ratio: 0.8;
+  --ios-pagesheet-projection: 0.099;
+  --ios-pagesheet-release-boundary: 447px;
+  --ios-pagesheet-pan-hysteresis: 10px;
+  /* formula §5/§8 橡皮筋 (over the top detent): d = E·(1 − 1/(1 + 0.55·u/E)), c = 0.55 (touch; __UIScrollViewRubberBandCoefficient), E = _rubberBandExtentBeyondMaximumOffset UNREAD (not measured either) */
+  --ios-pagesheet-rubber-c: 0.55;
+  /* UNREAD, listed (formula §8/§9): E above; the medium detent's maximumDetentValue formula; the velocity estimator; the grabber's colour and distance rule; the corner-radius animation
+   * (_hostedCornerRadii / _dismissCornerRadius); the scale-down of the view behind (perspectiveRatio .5, depth ≤ 2, shadow .5 / r2 — values unread; this page does not scale the page behind) */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -707,4 +782,8 @@
     --ios-empty-text: rgb(142 142 147);
     /* --ios-settings-subtitle: no dark pixel sample yet (Settings not captured in dark) — not set on purpose */
   }
+    /* page sheet (B7), dark: sheet-native.md §0 — systemBackground (28,28,30) elevated; dimming black .48; the probe content (28,28,30) */
+    --ios-pagesheet-bg: rgb(28 28 30);
+    --ios-pagesheet-dim: rgb(0 0 0 / .48);
+    --ios-pagesheet-dim-alpha: 0.48;
 }

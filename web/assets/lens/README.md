@@ -697,6 +697,38 @@ fringe filter's scale: the aberration amount does not appear in the motion trace
 off). Nothing here is a fitted value: every number above is a read key or the read curve; what is not read (the drag rule, the wobble,
 the stretch beyond 116) is marked so.
 
+### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
+
+Sources: `remote-ref/sheet-native.md` (the data session's 10th order: A9 `sheetivars` / `corners` / `subtree` / motion, iOS 27.0 3×) and
+`remote-ref/sheet-native-formula.md` (the old page session's UIKitCore decompilation §0–§9; §7b = the `#picker` rules). Delivered:
+* `web/tokens.css` → the `--ios-pagesheet-*` block (light + dark), one line per value with its source: geometry (top 62, height 894),
+  corners (top 38 = `minimumEdgeAttachedCornerRadii` TL/TR, bottom 62 = the display corner via `_environmentCornerRadii`, the curve
+  continuous), background (systemBackground 255 / (28,28,30) elevated), the shadow layer (`_UIRoundedRectShadowView` alpha 0, shadowOpacity
+  0 / radius 2), the dimming (black .2 / .48 = `_dimmingViewColor`; α × (1 − offset/894) while dragging), the grabber (60×4 capsule,
+  spacing 6; NOT drawn: `__hasGrabber 0`), the medium ratio (.56 / .63 — large only here), the metrics (topOffset 10 / 8, side padding 25),
+  the Done button (44 disc at (376, 82), inner 36, the check 24×22.67 at (386, 93), systemBlue tint, SDF r 22, KeyFill as the segment lens;
+  press glow ζ 1 / r .1, release glow ×4 ζ 1 / r .5, the check α .2 → 1 in 0.47 s), the title (93.67 / 20.67, Semibold 17), the
+  appear / dismiss spring (ζ 1 / response 0.3441442 s, ω₀ 18.257), the release rule (1000 pt/s → ζ .8; projection 0.099 s; boundary
+  447; pan hysteresis 10) — and the UNREAD list (E, the medium formula, the velocity estimator, the grabber colour / distance rule, the
+  corner animation, the scale-down behind).
+* `web/assets/sheet/sheet-test.html` — the sheet as static geometry (dimming + sheet + title + Done disc with an approximated check
+  glyph) from those tokens, standalone metas, the page behind = the probe's Modals page colour so the dimmed rows compare 1:1;
+  `web/assets/sheet/geom_check.py <native> <web> [--dark] [--out png]` reads both frames at the same coordinates.
+
+Against `tools/touch/sheet-native-{light,dark}-presented.png` (3×) — wksnap 440×956 @6 (`sheet-cmp-{light,dark}.png`, native above ours):
+
+| item | native light / dark | ours light / dark |
+|---|---|---|
+| sheet top row (x 220) | 62.0 / 62.0 | 62.0 / 62.0 |
+| dimmed rows 0–56 at x 220 | (194,194,198) / (0,0,0) | (194,194,198) / (0,0,0) — exact |
+| top-left corner contour vs a circle R 38, mean |Δ| rows 62–100 | 0.49 (the continuous curve: row 62.17 x 39.33 vs the circle's 34.3, 63.17 30.0 vs 28.7, 64.17 25.67 vs 25.3, ≤ 0.3 from row 65) | 0.06 (a circular corner: rows 62.17 / 63.17 / 64.17 at 34.33 / 28.67 / 25.33) — **the continuous curve's first 2 rows differ by 5 / 1.3 pt; CSS has no continuous corner and its formula is unread** |
+| the Done disc's box | 375.67–420.33 × 81.67–126.67 (AA) / 376–420 × 82–126 | 376–420 × 82–126 |
+| the check's ink box | — / 389–407 × 95.33–113.33 | — / 389.17–406.83 × 96.5–112.5 (the shape approximated) |
+| the title's box | 177–263.33 × 97.67–113.67 | 177.17–263.83 × 97.83 (dark 98.0)–113.67 |
+
+Not in the page (and not claimed): the Done disc's glass material (the 26 glassBackground keys unread; a flat systemBlue disc here), the
+nav bar's material, the content of the sheet, the motion (the tokens carry the springs; nothing animates here), the continuous corner curve.
+
 ## 1 Source (measured-resampling mode, record): the native segmented lens's own field (data session, 2026-09-19)
 
 `~/Money/styl-work/remote-ref/seg-lens-refraction.md` §0/§2 and `tools/touch/seg-phase-{gx,gy}-{light,dark}.json` — renderer-output
