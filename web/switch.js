@@ -15,7 +15,9 @@
      0x1c414bba4), after which 25 the other way flips back. ended: the tap's pending value applies only if no pan flip took it over
      (canApplyPendingOnValueForGesture:, 0x1c414c900–0x1c414c938); pressed = 0 → the knob returns to base(on), the lens un-lifts at
      max(up, lift + lensHangTime .22 s) (seg-lens-refraction.md §4.4 timer), valueChanged after the commit if the value differs from the
-     initial one. cancelled: nothing more flips. Reduce motion: no lift, no rubber band (0x1c414f4e0, 0x1c414e998).
+     initial one. cancelled: nothing more flips. Reduce motion (the switch itself asks _AXSReduceMotionEnabled, the lens does not): the lens is
+     never lifted (_transitionKnobToPressed:on:animated: 0x1c414e6c4 → setLifted:NO 0x1c414e760), the pressed knob stays 37 × 24
+     (_knobBoundsPressed: 0x1c414f4ec–0x1c414f510) and the rubber band is skipped (_knobPositionAdjusted:… 0x1c414e910, 0x1c414e934 / 0x1c414e9b0).
      Springs: x'' = −ω²(x − target) − 2ζωx', ω = 2π / response, stepped analytically per frame (flex-interaction.md §6): the knob's position
      ζ 1 / .3; the lens's lift ζ .625 / .27 and un-lift ζ .7 / .5 = _UILiquidLensViewSpec.small (switch-native-formula.md §9; tokens). */
   const SW_BASE = [20.5, 42.5];   // knob centre x off / on (_knobPositionAdjusted:… 0x1c414e88c–0x1c414e8a8); translate = centre − 20.5
