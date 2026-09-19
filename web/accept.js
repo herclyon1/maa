@@ -648,6 +648,24 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
         const sameName = (bs().find((x) => !x.classList.contains("on")) || bs()[0]).textContent;
         const r8 = renders; for (let k = 0; k < 3; k++) { const b = bs().find((x) => x.textContent === sameName); const sg = q(); pev(sg, "pointerdown", at(b)); pev(sg, "pointerup", at(b)); await sleep(40); }
         check("分段 G14 同段连点 3 下：只 1 次事件", 1, renders - r8, renders - r8 === 1);
+        /* R59′a — prefers-reduced-motion (page-inventory.md §12b ① decompiled, R59″ probe with Reduce Motion on), forced through window.__forceRM (the media
+           query cannot be toggled from the page): a held selected segment neither lifts nor follows, a release on another segment selects it (tap-at-release),
+           the indicator is placed on the new segment without a slide and appears there on the probe's 12 frames (opacity .025 → 1, scale .883 → 1, 190 ms) */
+        { window.__forceRM = true;
+          try {
+            const sg0 = q(), sel0 = bs().find((b) => b.classList.contains("on")), un0 = bs().find((b) => !b.classList.contains("on")), ln0 = sg0.querySelector(".lens"), i0 = bs().indexOf(sel0);
+            pev(sg0, "pointerdown", at(sel0)); await sleep(200); const lifted = !!(ln0 && (ln0.classList.contains("lift") || sg0.classList.contains("drag"))); pev(sg0, "pointermove", at(un0)); await sleep(60); const iHold = sg0.style.getPropertyValue("--i");
+            const rA = renders; pev(sg0, "pointerup", at(un0)); await sleep(40);
+            check("分段 R59′a 减少动态效果：按住选中段 200 ms 不抬起、拖到别段透镜不跟手（_disableSlidingControl 0x1c41342e0），抬手在别段 = 点按选中该段（R59″：tap-at-release，不是取消）", "no lift · --i unchanged · 1 event · switched", `${lifted ? "lifted" : "no lift"} · --i ${iHold} · events ${renders - rA} · ${onText()}`, !lifted && iHold === String(i0) && renders - rA === 1 && onText() === un0.textContent);
+            const ln1 = q().querySelector(".lens"), c1 = ln1 ? getComputedStyle(ln1) : null, onIdx = bs().indexOf(q().querySelector("button.on"));
+            check("分段 R59′a 换段：透镜不滑、直接落在新段并在原位淡入 + 缩放（.rm-in → @keyframes seg-rm-in：R59″ lenstrace 12 帧 .025/.883 → 1/1，190 ms；旧指示器淡出未画 待读）", "rm-in · seg-rm-in · --i = new · opacity < 1", ln1 ? `${ln1.classList.contains("rm-in") ? "rm-in" : "no class"} · ${c1.animationName} · --i ${q().style.getPropertyValue("--i")} (on ${onIdx}) · opacity ${c1.opacity} · transition ${c1.transitionProperty}` : "no lens", !!ln1 && ln1.classList.contains("rm-in") && c1.animationName === "seg-rm-in" && q().style.getPropertyValue("--i") === String(onIdx) && parseFloat(c1.opacity) < 1 && c1.transitionProperty === "none");
+            await sleep(260); const ln2 = q().querySelector(".lens"), c2 = ln2 ? getComputedStyle(ln2) : null;
+            check("分段 R59′a 190 ms 后：透镜 opacity 1、scale 1、rm-in 已除（animationend）", "1 · 1 · no class", ln2 ? `${c2.opacity} · ${c2.scale} · ${ln2.classList.contains("rm-in") ? "rm-in" : "no class"}` : "no lens", !!ln2 && c2.opacity === "1" && (c2.scale === "none" || c2.scale === "1") && !ln2.classList.contains("rm-in"));
+            const un2 = bs().find((b) => !b.classList.contains("on")), loop0 = q().__lensLoop, rB = renders; pev(q(), "pointerdown", at(un2)); await sleep(30); const dim2 = un2.classList.contains("dim"); pev(q(), "pointerup", at(un2)); await sleep(40);
+            check("分段 R59′a 点按未选段：标签照常压暗（G15，RM 无此分支读数）、不建透镜环、值直接换（1 次事件）", "dim · no new loop · 1 event · switched", `${dim2 ? "dim" : "no dim"} · ${q().__lensLoop === loop0 ? "no new loop" : "loop built"} · events ${renders - rB} · ${onText()}`, dim2 && q().__lensLoop === loop0 && renders - rB === 1 && onText() === un2.textContent);
+            await sleep(260);
+          } finally { window.__forceRM = null; }
+          const back0 = bs().find((b) => b.textContent === start); if (back0 && onText() !== start) { const sg = q(); pev(sg, "pointerdown", at(back0)); pev(sg, "pointerup", at(back0)); await sleep(700); } }
         const back = bs().find((b) => b.textContent === start); if (back && onText() !== start) { const sg = q(); pev(sg, "pointerdown", at(back)); pev(sg, "pointerup", at(back)); }
         /* 验收 09-19 17:5x: a one-queue page (one segment, 400 wide) re-rendered twice showed a lifted capsule (the preloaded set's width, left) on the resting
            control — the package's warm-up frame put back by the next warm-up (view.js segGlRedraw). Here: one segment, two re-renders 400 ms apart, then

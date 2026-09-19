@@ -71,6 +71,11 @@
   --ios-switch-knob: rgb(255 255 255);
   /* probe UIActivityIndicatorView.color = secondaryLabel */
   --ios-spinner: rgb(60 60 67 / .6);
+  /* UIRefreshControl arm (BOARD R61′; refresh-native-formula.md §10 R61, 数据 probe getters uiprobe-getter-r61-light-S-{rep,seed}.json): the drawn
+     colour is the CAReplicatorLayer composite instanceColor × seed backgroundColor, component-wise — secondaryLabel (60,60,67) α 1 × secondaryLabel
+     α .6 = (60²/255, 60²/255, 67²/255) = rgb(14 14 18) at α .6 (× the reveal progress); the probe screenshot's read-back α .434 fits this product,
+     not secondaryLabel .6 (r61_sample.py) */
+  --ios-refresh-arm: rgb(14 14 18 / .6);
   /* probe UIDimmingView behind a sheet */
   --ios-dimming: rgb(0 0 0 / .2);
   /* probe scroll indicator */
@@ -589,6 +594,16 @@
   /* UIButton / alert action: highlight within 1–6 ms of touch-down; alert actions have NO slop (6 pt beyond the edge un-highlights) and transfer the highlight to a neighbour */
   --ios-touch-button-highlight-delay: 0ms;
   --ios-touch-alert-slop: 0px;
+  /* ---- capsule button (the Health tip card's) = UIButton tinted configuration inside a UICollectionView (state-tables/button.md R62: hook rows
+     beginTrackingWithTouch: → setHighlighted: → touchDown / touchUpInside, delaysContentTouches = YES; the recording's colours equal the R14 probe's
+     tinted row value for value). Values = the R14 probe table (uiprobe-subtree-r14-tinted-{rest,held}-{light,dark}.json) + the R62 PNGs; BOARD R6′ ---- */
+  --ios-capsule-rest-alpha: 18%;              /* tinted fill at rest: the tint at α .18 (light; R62 PNG (209,234,255) = systemBlue .18 over white) */
+  --ios-capsule-pressed-alpha: 11.76%;        /* held: α .1176 (R62 PNG (225,241,255); the R14 probe reads .117) */
+  --ios-capsule-pressed-text-alpha: 75%;      /* held label: the tint at α .75 (R14 tinted / plain / filled rows; R62 PNG (56,162,255) = systemBlue .75 over the held fill) */
+  --ios-capsule-rest-alpha-dark: 25%;         /* tinted dark fill at rest: α .25 (R14) */
+  --ios-capsule-pressed-alpha-dark: 17.5%;    /* held dark: α .175 (R14) */
+  --ios-capsule-pressed-text-dark: rgb(25.5 156.06 255);   /* held dark label: (.1, .612, 1) α 1 (R14 tinted dark row; the tint (0, .569, 1) lightened — a systemBlue-specific value, the red variant's is unread) */
+  --ios-touch-capsule-press-delay: var(--ios-touch-highlight-delay);   /* 150 ms = UIScrollView delaysContentTouches (R62: the card stack is a UICollectionView); the first changed frame is the next one (cell-native.md row 12: probe +174…175); the R14″ / R14‴ recordings' +172 / +155 are the same delay seen at 60 Hz */
   /* segmented: pressed unselected label dims 1 → .2 ease-out over .43 s (0.98 @32 ms, .79 @100, .5 @182, .2 @432); back to 1 in ~.1 s at commit */
   --ios-touch-segment-dim-opacity: .2;
   --ios-touch-segment-dim-duration: .43s;
@@ -626,14 +641,7 @@
   /* quick tap on the selected segment (native, probe recording 2026-09-20 00:24–00:42, remote-ref/tools/touch/seg-native-quicktap.md quick90c):
      the lens lifts in place after the up and starts falling at the peak frame, +242 ms after the down (peak 217–218.5×42–43 @ +241…+257, back at 196×28 by +474…+497) */
   --ios-touch-segment-quicktap-fall: 242ms;
-  /* 【录像采样替代】Health tip-card capsule button press (BOARD R6 / R14″ / R14‴): a SwiftUI Button whose style symbols are stripped
-     (state-tables/button.md R14′ ②, not decompilable), so these are the data session's simulator recordings (60 Hz, 3 px/pt):
-     first changed frame +172 ms after the down (light; +155 ms in the dark recording), fill / text hop to the pressed colours, no scale, no dimming */
-  --ios-touch-capsule-press-delay: 172ms;
-  --ios-capsule-pressed-bg: rgb(220 240 255);        /* light fill (201,233,255) → (220,240,255) — 录像采样替代 */
-  --ios-capsule-pressed-fg: rgb(0 150 230);          /* light text (0,121,190) → (0,150,230) — 录像采样替代 */
-  --ios-capsule-pressed-bg-dark: rgb(10 49 71);      /* dark fill (0,58,86) → (10,49,71) — 录像采样替代 */
-  --ios-capsule-pressed-fg-dark: rgb(0 170 255);     /* dark text (0,159,255) → (0,170,255) — 录像采样替代 */
+  /* the R6 recording tokens (--ios-touch-capsule-press-delay 172ms, --ios-capsule-pressed-*) were withdrawn by R6′: the capsule is a UIButton tinted (button.md R62) — see the "capsule button" block above */
   /* lensHangTime 0.22 s (spec ivar +0x40, seg-lens-refraction.md §4.5) is not a page token: the fall is built at down +220…226 in all 10 recordings
      and the first frame after it is the +242 above, which is what the page uses (R27 / R9②′ in seg-native-quicktap.md) */
   /* tab bar: pressing the SELECTED tab lifts the lens 94×54 → 103×63 by +180 ms (first size change ~125 ms), 110×70 while dragging (T3/T4) */
@@ -748,6 +756,8 @@
     --ios-switch-knob: rgb(255 255 255);
     /* probe list-dark spinner colour = secondaryLabel dark */
     --ios-spinner: rgb(235 235 245 / .6);
+    /* UIRefreshControl arm, dark (R61: instanceColor (0.9216, 0.9216, 0.9608, 1) × seed (0.9216, 0.9216, 0.9608, .6) = secondaryLabel dark squared: (235²/255, 235²/255, 245²/255)) */
+    --ios-refresh-arm: rgb(217 217 235 / .6);
     /* probe list-dark scroll indicator */
     --ios-scrollbar: rgb(255 255 255 / .5);
     /* probe dark column: orange/yellow/fills/grays/tertiary grouped bg/tab labels */

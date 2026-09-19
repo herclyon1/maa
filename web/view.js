@@ -635,6 +635,25 @@ function segSameQueues(a, b) {
    rapid taps change direction, spec §1 G12/G13); the pressed label's .dim was already removed by attachSegmented's `end`, so its
    opacity runs .2 → 1 over --ios-touch-segment-undim-duration on the same element, and .on moving between the same two buttons
    gives the weight transition its start and end values. The commit stretch (.spring) restarts when the value changed. */
+/* R59′a — Reduce Motion (page-inventory.md §12b ①, -[UISegmentedControl _disableSlidingControl] 0x1c41342e0 = isMomentary ‖ _AXSReduceMotionEnabled ‖
+   custom background): no sliding selection state — the down neither lifts nor follows (_tapSegmentAtPoint:touchDown: 0x1c4138b90 skips it), the value
+   changes at the up for the segment under the finger (R59″: a release on another segment after a hold is a tap, not a cancel), and the indicator does
+   not slide (_setSelectedSegmentIndex:notify:animate: 0x1c4132eac skips the relayout; UISegment _updateSelectionIndicator 0x1c4128a90 puts it on the
+   new segment). What the new indicator does there is the R59″ lenstrace (probe, Reduce Motion on, 60 Hz): opacity .025 → 1 and scale .883 → 1 about
+   the segment's centre over 12 frames = 190 ms from the value change (down+116 … +306) — written below as those frames; the old indicator's fade-out
+   over the same frames was not tabled (only "同期淡出") and is not drawn (one lens element) — 待读. The label crossfade (R20c) and the content switch
+   stay. window.__forceRM is the instrument (the media query cannot be toggled from the page; accept.js 分段段). */
+const RM = () => (window.__forceRM != null ? !!window.__forceRM : matchMedia("(prefers-reduced-motion: reduce)").matches);
+const SEG_RM_FRAMES = [[0, .025, .883], [23, .136, .896], [40, .313, .918], [56, .497, .940], [73, .644, .957], [90, .757, .971], [106, .840, .981], [123, .944, .993], [140, .973, .997], [156, .991, .999], [173, .999, 1], [190, 1, 1]];   // [ms from the value change, opacity, scale] — R59″ segtap frames down+116 … +306 (page-inventory.md §12b)
+const SEG_RM_MS = 190;
+function segRmStyle() {
+  if (document.getElementById("seg-rm")) return;
+  const st = document.createElement("style"); st.id = "seg-rm";
+  st.textContent = `@media (prefers-reduced-motion: reduce) { .segctl .lens { transition: none !important; } }
+.segctl .lens.rm-in { transition: none !important; animation: seg-rm-in ${SEG_RM_MS}ms linear; }
+@keyframes seg-rm-in { ${SEG_RM_FRAMES.map(([t, o, s]) => `${(t / SEG_RM_MS * 100).toFixed(2)}% { opacity: ${o}; scale: ${s} ${s}; }`).join(" ")} }`;
+  document.head.appendChild(st);
+}
 function segSync(seg, fresh) {
   const lens = seg.querySelector(".lens"), to = fresh.style.getPropertyValue("--i"), from = seg.style.getPropertyValue("--i");
   if (seg.__gl) { const onIdx = [...fresh.querySelectorAll("button")].findIndex((b) => b.classList.contains("on")), gs = seg.__gl.gs;
@@ -646,7 +665,9 @@ function segSync(seg, fresh) {
     if (b.classList.contains("on") !== on) segLabelXfade(b, on); else b.setAttribute("aria-selected", on ? "true" : "false");   // R20c: a changed label cross-dissolves .2 s
   });
   if (lens && to !== "" && Math.abs(parseFloat(to) - parseFloat(from)) > 0.001) {
-    if (segCommitMode === "tap" && seg.__lensLoop && !seg.__lensLoop.state.done) {
+    if (RM()) {   // R59′a: no slide — the indicator is placed on the new segment and appears there on the R59″ frames (.rm-in, cleared at animationend)
+      segRmStyle(); lens.classList.remove("spring", "lift"); seg.classList.remove("drag"); lens.classList.remove("rm-in"); void lens.offsetWidth; lens.classList.add("rm-in"); lens.__rmT0 = performance.now();
+    } else if (segCommitMode === "tap" && seg.__lensLoop && !seg.__lensLoop.state.done) {
       lens.classList.remove("spring");   // 点按外观: the segLens tap chain (SEG_TAP_T) drives the lens — glass lift in place, glass slide on the value-change spring, fall; no CSS keyframe slide
     } else if (segCommitMode === "tap") {
       lens.classList.remove("spring"); void lens.offsetWidth;   // restart the stretch keyframes when a previous commit's are still running (keyboard / click path without the loop)
@@ -1834,14 +1855,20 @@ function attachSegmented(seg, getIndex, commit) {
   const segAt = (x) => { const r = seg.getBoundingClientRect(); return Math.max(0, Math.min(n - 1, Math.floor((x - r.left) / (r.width / n)))); };   // 跨分隔线即换目标（G22/G24/G25）
   const outside = (x, y) => { const r = seg.getBoundingClientRect(), s = touchPx("--ios-touch-inside-slop", 70); return x < r.left - s || x > r.right + s || y < r.top - s || y > r.bottom + s; };
   const showLens = (i) => seg.style.setProperty("--i", String(i));
+  if (lens) { segRmStyle(); lens.addEventListener("animationend", (ev) => { if (ev.animationName === "seg-rm-in") lens.classList.remove("rm-in"); }); }   // R59′a
   seg.onpointerdown = (e) => {
-    const idx = getIndex(), pressed = segAt(e.clientX), onSelected = pressed === idx;
+    const idx = getIndex(), pressed = segAt(e.clientX), onSelected = pressed === idx, rm = RM();
     let liftTimer = 0, glass = null;
     if (lens) lens.classList.remove("spring");   // a new touch ends the previous commit's stretch (G12/G13: no queueing)
     if (!press(seg, e, {
-      move: (ev) => { if (onSelected && glass && lens && lens.classList.contains("lift")) glass.drag(ev.clientX, ev.timeStamp); },   // the lifted lens follows the finger (edge springs); the index never changes while sliding (G4/G22)
+      move: (ev) => { if (!rm && onSelected && glass && lens && lens.classList.contains("lift")) glass.drag(ev.clientX, ev.timeStamp); },   // the lifted lens follows the finger (edge springs); the index never changes while sliding (G4/G22)
       end: (ev, cancelled) => {
         clearTimeout(liftTimer);
+        if (rm) {   // R59′a: Reduce Motion — no lens loop was built; the up selects the segment under the finger (tap-at-release), the same no-event rules
+          bs[pressed].classList.remove("dim");
+          const target = segAt(ev.clientX), noEvent = cancelled || outside(ev.clientX, ev.clientY) || target === idx;
+          if (!noEvent) commit(target, "tap");
+          return; }
         const lifted = !!(lens && lens.classList.contains("lift"));   // patch 03 (seg-impl-review.md #3): a lifted lens commits by falling + gliding (G4/G21), a tap commits with the stretch sequence (G1/G3)
         bs[pressed].classList.remove("dim");                        // label back to 1 in .1 s (G12)
         seg.classList.remove("drag"); if (lens) lens.classList.remove("lift");
@@ -1857,6 +1884,7 @@ function attachSegmented(seg, getIndex, commit) {
         commit(target, lifted ? "drag" : "tap");                    // the up: the index changes now (G1–G3); a tap's content switches in this task (wire(): SEG_VC_NOW), a slide's at +25 ms; the lens's slide is the loop's (SEG_TAP_T.travel)
       },
     })) return;
+    if (rm) { if (!onSelected) bs[pressed].classList.add("dim"); if (window.Motion) Motion.swallowNextClick(seg); else seg.dataset.pe = "1"; return; }   // R59′a: Reduce Motion — the label dims (G15, no RM branch read for it), no lens build, no lift timer
     if (window.Motion) Motion.swallowNextClick(seg); else seg.dataset.pe = "1";   // the browser's click after our pointerup is redundant: Motion swallows it for 700 ms (motion.js, A7) — the old data-pe flag had no expiry, so a press without a following click (a cancelled touch, a synthetic pev) left the NEXT real tap swallowed
     if (!onSelected) { bs[pressed].classList.add("dim");           // G15: only the label dims; no highlight, no lens move, no value
       if (lens) { const tBuild = performance.now(); performance.mark("seg:down"); glass = segLens(seg, lens, bs, NaN, { deferred: true }); segMeasure("seg:build", tBuild);
