@@ -58,7 +58,8 @@ def free_port():
     # (EOF, "view.js not ready", 0/0 results). Ask the kernel for a free port instead.
     with socket.socket() as sk: sk.bind(('127.0.0.1', 0)); return sk.getsockname()[1]
 port = free_port(); prof = tempfile.mkdtemp()
-p = subprocess.Popen([CH, '--headless=new', '--hide-scrollbars', f'--remote-debugging-port={port}', f'--user-data-dir={prof}', '--window-size=440,956', 'about:blank'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+chrome_log = open(os.path.join(prof, 'chrome.log'), 'wb')   # Chrome's own stderr: a renderer crash shows here (printed on failure)
+p = subprocess.Popen([CH, '--headless=new', '--hide-scrollbars', f'--remote-debugging-port={port}', f'--user-data-dir={prof}', '--window-size=440,956', 'about:blank'], stdout=subprocess.DEVNULL, stderr=chrome_log)
 try:
     page = None
     for i in range(100):
@@ -117,6 +118,12 @@ try:
     print(f"{url} {'dark' if dark else 'light'}  {out['total'] - out['fails']}/{out['total']}")
     for row in out['rows']:
         print(('✓' if row['ok'] else '✗'), row['item'], '|', row['got'], '' if row['ok'] else '（要 ' + row['expect'] + '）')
+except Exception as e:
+    try:
+        chrome_log.flush(); tail = open(os.path.join(prof, 'chrome.log'), 'rb').read()[-3000:].decode('utf-8', 'replace')
+        print('runner failed:', repr(e)); print('chrome stderr tail:', tail)
+    except Exception: pass
+    raise
 finally:
     p.terminate()
     try: p.wait(timeout=5)
