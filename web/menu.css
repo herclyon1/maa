@@ -9,7 +9,9 @@
 /* R1 — the glass layer (menu.js buildGlass; keys menu-glass-sdfdump-2026-09-19.md §2 / §3, formulas alert-native-formula.md §1, keyfill-highlight.md §4):
    the panel's own background / backdrop-filter / box-shadow were the alert's sampled substitute (--alert-fill, --ios-alert-glass-filter, --glass-*) —
    off here, the layer below carries the material from the keys */
-.menu.menu.morph { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
+.menu.menu.morph { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.12)); }   /* R1′ §7.3: the glassBackground's soft shadow — black α .3 × ShadowOpacity .4 (light) / .6 (dark), radius 24, offset (0, 8); the Gaussian vs the shader's erf-type profile: 剖面近似 */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .menu.menu.morph { filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.18)); } }
+:root[data-theme="dark"] .menu.menu.morph { filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.18)); }
 .menu.menu.morph .menu-glass { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; z-index: 0; }   /* clipped to the panel's shape = RingShadowMask 1 */
 .menu.menu.morph .menu-glass-copy { contain: layout paint style; }
 .menu.menu.morph .menu-body { z-index: 1; }
