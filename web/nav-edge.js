@@ -78,5 +78,5 @@
   const onUp = (e) => { if (g && e.pointerId === g.id) finishGesture(false); };
   const onCancel = (e) => { if (g && e.pointerId === g.id) finishGesture(true); };
   pg.addEventListener("pointerdown", onDown);
-  window.NavEdge = { REGION, HYST, ANGLE, DECEL_T, THR_PT, FLICK, BOOST, rubber, last: null };
+  window.NavEdge = { REGION, HYST, ANGLE, DECEL_T, THR_PT, FLICK, BOOST, rubber, last: null, live: () => g ? { q: g.q, base: g.base, x0: g.x0, began: g.began, dead: g.dead } : null };   // live: the running gesture's numbers (the accept reads them mid-drag)
 })();
