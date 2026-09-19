@@ -18,6 +18,7 @@ compiled from the native per-frame recordings. Nothing here touches `view.js` / 
 | `gen_seg_keys.py` → `seg-keys.css` | lift / release / commit / drag keyframes compiled from the native frame data (§5) |
 | `verify_lens_maps.py`, `gen_lens_maps.py` without `--formula` | the earlier measured-resampling mode (§1–§4, record only): resamples the phase files into maps — no longer part of the deliverable |
 | `calib/` | WebKit feDisplacementMap calibration (`gen_calib.py` → maps + `webkit-displacement.html`, `check_calib.py` reads a render): the engine applies negative displacements one device pixel short (§0.4) |
+| `tools/fringe_check.py` | the A1 8× three-item check (coloured share of the outer 12 pt, saturation mean / median, the ends' colour order) on any screenshot of the held lens (§0.5) |
 | `lens-engine-fix.js` | 引擎校正, default on: re-encodes the bg / label maps at page load so negative displacements are one device pixel longer (k = 1/devicePixelRatio), blob: copies only (§0.4); load after the `<svg>` |
 
 ## 0 Formula maps — 反编译原值（公式 + 探针参数） (2026-09-19)
@@ -456,6 +457,24 @@ listed for a saturation above the native's, each rendered on its own — none ad
 | ② one tap for R and B (k = 1 only) | 0.80 % | 113 / 104 | 81 49 12 / 160 62 15 |
 | ③ W/H = 220/44 = 5 | 0.78 % | 102 / 92 | 96 23 4 / 186 51 18 |
 | the chain off | 0 % | — | 0 / 0 |
+
+**The check tool (B4-c' / C1, 2026-09-19): `tools/fringe_check.py <png> [--layout auto|wksnap|seghold|native-crop] [--lens x,y,w,h]
+[--scale px/pt] [--theme light|dark] [--json]`** — the three items above on any screenshot of the held lens (a wksnap 440×956 @6
+render of the test page, a standalone 3× device screenshot of `index.html?seghold` (lens 110, 731.67, 220, 44 — the C1 tables'
+track top 737.67), or the native crops), measured at the native's 3 px/pt (a 6 px/pt render is box-filtered first); the colour
+order per 2-pt row with a centroid test whose expectation flips with the theme (dark = white labels: right yellow-above-blue,
+left blue-above-yellow — as the native dark crop reads). Expected values from the native crops and the current test page
+(engine correction on, wksnap 2×):
+
+| image | share of the outer 12 pt | saturation mean / median | right end order | left end order |
+|---|---|---|---|---|
+| native `seg-native-dragmid-light.png` | **1.36 %** (2-pt bins L 629 383 130 / R 714 519 193) | **68.9 / 62** | blue above yellow (centroids −1.4 / +3.0) | yellow above blue (−2.5 / +0.2) |
+| native `seg-native-dragmid-dark.png` | **1.38 %** (614 361 138 / 730 555 215) | **70.7 / 63** | yellow above blue (−2.2 / +0.9) | blue above yellow (−2.4 / +0.7) |
+| test page light, `wk-mid-fix-light.png` | 1.15 % (130 64 7 / 204 111 36) | 82.7 / 73 | OK (−1.7 / +5.2) | OK (−0.2 / +0.8) |
+| test page dark, `wk-mid-fix-dark.png` | 1.02 % (128 53 4 / 192 88 24) | 79.0 / 70 | OK (−1.7 / +5.4) | OK (−0.6 / +0.9) |
+
+(Before the engine correction the test page read 0.64 % / 93 — the rounding shortfall shrank the streaks; the table of candidates
+below was taken then.)
 
 Every candidate raises the saturation further, so none of the three is the difference. What the numbers say instead: (a) the
 colour order per streak is the native's — right end blue above / yellow below, left end yellow above / blue below, per 2-pt
