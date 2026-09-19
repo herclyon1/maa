@@ -43,18 +43,17 @@
     st.setProperty("--tb-edge", y > 0.5 ? "1" : "0"); st.setProperty("--bar", y > 0.5 ? "1" : "0");   // the edge line: 0/1 here, its 0.517 s fade-in curve is in topbar.css (§10b ②)
     st.setProperty("--tb-stretch", "1");   // §10b ③ (probe): the large title does not scale when pulled past the top — it only translates with the content; stretchOf() (2.7) kept for the record
   };
-  /* 2.8 release snap curve — 采样替代（探针逐帧原值，nav-bar-scroll-formula.md §10b ④）: the collapsed → expanded snap of the native bar,
-     78 pt in 773 ms with an 11 % overshoot at +339 ms; the samples below are (ms after the finger let go, progress toward the target),
-     read every 33 ms from the probe's presentation frames; between samples linear. The closed form (UIScrollView decelerating to the
-     2.8 retargeted offset) is unread; the collapsing direction was not measured (that drag had velocity, no snap) — same table used.
-     tabscroll/README §2c's formula A (scroll-to-top, critically damped, no overshoot) is a different animation and does NOT fit this. */
-  const SNAP_T = [0, 39, 73, 140, 173, 206, 239, 273, 306, 339, 373, 406, 439, 473, 506, 539, 573, 606, 639, 673, 706, 739, 773];
-  const SNAP_P = [0, .115, .278, .506, .712, .842, .962, 1.056, 1.103, 1.111, 1.107, 1.094, 1.081, 1.064, 1.051, 1.043, 1.030, 1.026, 1.017, 1.013, 1.009, 1.009, 1];
-  const snapProgress = (ms) => {
-    if (ms <= 0) return 0; if (ms >= SNAP_T[SNAP_T.length - 1]) return 1;
-    let i = 1; while (SNAP_T[i] < ms) i++;
-    const a = SNAP_T[i - 1], b = SNAP_T[i]; return SNAP_P[i - 1] + (SNAP_P[i] - SNAP_P[i - 1]) * (ms - a) / (b - a);
-  };
+  /* 2.8 release snap curve — nav-bar-scroll-formula.md §2.8b (decompiled, R45): §2.8 only moves the deceleration TARGET to the detent;
+     the content then follows UIScrollView's standard deceleration to it: x(t) = target − Δ·r^(1000 t), r = 0.998 per ms
+     (_adjustedDecelerationFactor when the velocity change is < .25), time constant ≈ 0.5 s, no overshoot.
+     The probe's 22-sample table with an 11 % overshoot (§10b ④) was the navigation BAR's own height animation (54 → 111.67 → 106,
+     ~1 s) that the large title rides on — not the scroll offset (the offset was already at the detent within 150 ms); kept here only
+     as that record (BAR_T / BAR_P), not used. Its closed form is unread. */
+  const SNAP_R = 0.998;
+  const snapProgress = (ms) => (ms <= 0 ? 0 : 1 - Math.pow(SNAP_R, ms));   // §2.8b: progress = 1 − r^(ms)
+  const SNAP_END_MS = Math.ceil(Math.log(0.5 / 200) / Math.log(SNAP_R));   // ≈ 3 s: 200 pt would be within 0.5 pt of the target
+  const BAR_T = [0, 39, 73, 140, 173, 206, 239, 273, 306, 339, 373, 406, 439, 473, 506, 539, 573, 606, 639, 673, 706, 739, 773];
+  const BAR_P = [0, .115, .278, .506, .712, .842, .962, 1.056, 1.103, 1.111, 1.107, 1.094, 1.081, 1.064, 1.051, 1.043, 1.030, 1.026, 1.017, 1.013, 1.009, 1.009, 1];
   /* 2.8 release snap: only when the scroll settled inside the collapse range and no finger is down */
   const settle = () => {
     if (dragging || snapping || !api.snap || performance.now() - lastTouchEnd > 1500) return;   // only after a finger just let go (2.8 is a drag-end retarget); programmatic scrolls (tab tap → top spring) are left alone
@@ -63,7 +62,7 @@
     snapping = true;
     const f = (now) => {
       const yy = target + (y0 - target) * (1 - snapProgress(now - t0));
-      if (now - t0 >= SNAP_T[SNAP_T.length - 1]) { window.scrollTo(0, target); snapping = false; apply(); return; }
+      if (Math.abs(yy - target) < 0.5 || now - t0 >= SNAP_END_MS) { window.scrollTo(0, target); snapping = false; apply(); return; }   // §2.8b: exponential approach; done within 0.5 pt
       window.scrollTo(0, yy); snapRaf = requestAnimationFrame(f);
     };
     snapRaf = requestAnimationFrame(f);
@@ -77,5 +76,5 @@
   addEventListener("resize", () => { measure(); apply(); });
   addEventListener("load", () => { measure(); apply(); });   // the stylesheets are all in effect by then (a late topbar.css would leave p from index.html's geometry)
   measure(); apply();
-  Object.assign(api, { measure, apply, progressOf, snapTarget, snapProgress, stretchOf, B, THRESH, FADE_S, ZONE_BELOW, SNAP_T, SNAP_P }); Object.defineProperty(api, "p", { get: () => p }); window.Topbar = api;
+  Object.assign(api, { measure, apply, progressOf, snapTarget, snapProgress, stretchOf, B, THRESH, FADE_S, ZONE_BELOW, SNAP_R, BAR_T, BAR_P }); Object.defineProperty(api, "p", { get: () => p }); window.Topbar = api;
 })();
