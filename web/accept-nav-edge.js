@@ -19,10 +19,10 @@ ACCEPT.add(async function navedge({ check, num, sleep }) {
   /* 2) inside the region but under the hysteresis: nothing yet; past it: began, the percent tracks Δx / W through ζ .85 / .08 */
   pev("pointerdown", 20, 400); pev("pointermove", 30, 400);
   check("区内起手、位移 10 < 迟滞 15：未 began", "rest", pg.classList.contains("nav-live") ? "live" : "rest", !pg.classList.contains("nav-live"));
-  pev("pointermove", 40, 400);   // 20 ≥ 15 → began; the translation counts from here
+  pev("pointermove", 40, 400);   // 20 > 15 → began; the translation counts from the touch-down (x 20) minus the pan's 10 pt (§5e)
   check("位移 20 ≥ 15 且在 155° 窗内：began，交互式 pop 开始（驱动中，p 从 1 起）", "live, p 1", `${pg.classList.contains("nav-live") ? "live" : "rest"}, p ${N.state.p.toFixed(2)}`, pg.classList.contains("nav-live") && Math.abs(N.state.p - 1) < .01);
-  await sleep(30); pev("pointermove", 150, 400); await sleep(30); pev("pointermove", 260, 400); await sleep(250);   // q = 220/440 = .5, held: the tracking spring settles onto it
-  { const q = (260 - 40) / W; check("拖到 Δx 220（q .5）停住 +250 ms：进度经 ζ .85/.08 跟到 q（顶页 x = W·q）", `${Math.round(W * q)} ± 3`, Math.round(tx()), Math.abs(tx() - W * q) <= 3 && Math.abs((1 - N.state.p) - q) < .01); }
+  await sleep(30); pev("pointermove", 150, 400); await sleep(30); pev("pointermove", 260, 400); await converged();   // q = (260 − 20 − 10)/440 = .523: the tracking spring settles onto it
+  { const q = (260 - 20 - E.PAN_HYST) / W; check("拖到 x 260（q = (260 − 落指 20 − 10)/W = .523）停住：进度经 ζ .85/.08 跟到 q（顶页 x = W·q）", `${Math.round(W * q)} ± 3`, Math.round(tx()), Math.abs(tx() - W * q) <= 3 && Math.abs((1 - N.state.p) - q) < .01); }
   /* 3) slow release past thr → finish (pop completes) */
   pev("pointermove", 262, 400); await sleep(40); pev("pointermove", 264, 400); await sleep(40); pev("pointerup", 264, 400);
   { const L = E.last; check("慢放 q ≈ .51 > thr .426（proj = q + .35 v̄ + .06 ā）：完成 pop", `finish, proj > ${thr.toFixed(3)}`, `${L && L.finish ? "finish" : "cancel"}, proj ${L ? L.proj.toFixed(3) : "?"} n ${L ? L.n : "?"}`, !!L && L.finish && L.proj > thr); }
@@ -39,8 +39,9 @@ ACCEPT.add(async function navedge({ check, num, sleep }) {
   await settled();
   /* 6) the rubber band past 1: q 1.5 → 1 + .5(1 − 1/(1 + .55·.5/.5)) = 1.177 */
   await open(); pev("pointerdown", 20, 400); pev("pointermove", 40, 400); await sleep(20); pev("pointermove", 300, 400); await sleep(20); pev("pointermove", 500, 400); await sleep(20); pev("pointermove", 40 + W * 1.5, 400); await converged();
-  check("拖过整宽 1.5 W：驱动目标 = 1 − 橡皮筋(1.5)，橡皮筋 1 + .5(1 − 1/(1 + .55·(q − 1)/.5)) = 1.177（q 自 began 处 x 40 起算，基值 0）", (1 - E.rubber(1.5)).toFixed(4), `${N.state.target.toFixed(4)}（q ${E.live() ? E.live().q.toFixed(3) : "?"}，基值 ${E.live() ? E.live().base.toFixed(3) : "?"}，x0 ${E.live() ? E.live().x0 : "?"}）`, Math.abs(N.state.target - (1 - E.rubber(1.5))) < .0005);
-  num("拖过整宽 1.5 W：顶页 x = W × 1.177（跟踪弹簧到位后读）", W * E.rubber(1.5), tx(), 4);
+  const qFull = (40 + W * 1.5 - 20 - E.PAN_HYST) / W;   // translation from the touch-down (x 20) minus the pan's 10 pt (§5e): (40 + 1.5 W − 30) / W
+  check(`拖过整宽（手指 x 40 + 1.5 W）：驱动目标 = 1 − 橡皮筋(q)，q = (x − 落指 20 − 10) / W = ${qFull.toFixed(3)}，橡皮筋 1 + .5(1 − 1/(1 + .55·(q − 1)/.5))（基值 0）`, (1 - E.rubber(qFull)).toFixed(4), `${N.state.target.toFixed(4)}（q ${E.live() ? E.live().q.toFixed(3) : "?"}，基值 ${E.live() ? E.live().base.toFixed(3) : "?"}，x0 ${E.live() ? E.live().x0 : "?"}）`, Math.abs(N.state.target - (1 - E.rubber(qFull))) < .0005);
+  num(`拖过整宽：顶页 x = W × ${E.rubber(qFull).toFixed(4)}（跟踪弹簧到位后读）`, W * E.rubber(qFull), tx(), 4);
   pev("pointerup", 40 + W * 1.5, 400); await settled();
   check("整宽外松手：完成，hidden", "hidden", pg.hidden ? "hidden" : "shown", pg.hidden);
 });
