@@ -30,7 +30,7 @@
   const ROW_FADE_MS = () => touchMs("--ios-motion-row-release-duration", 500);
   const ROW_SCROLL_PT = () => touchPx("--ios-touch-scroll-threshold", 10);
   const ROW_EDGE_PT = 15;   // state-tables/cell.md C11: 15 pt past the card's edge = cancel (no token: the probe's own step, not a UIKit constant read)
-  let synthetic = false;   // the click we fire; the browser's own click for the touch is swallowed by the row's data-rc mark (below)
+  /* the click the page fires, the swallow of the browser's own click (data-rc) and the after-paint scheduling live in motion.js (BOARD #1) */
   function fadeOut(el) {   // .hl → .hl-out in one style change, so the transition runs highlight → resting
     el.classList.add("hl-out"); el.classList.remove("hl");
     let done = false;
@@ -45,19 +45,17 @@
     const card = el.closest(".group, .plist, .card") || el.parentElement, cr = card.getBoundingClientRect();
     const x0 = e.clientX, y0 = e.clientY, T = ROW_SCROLL_PT();
     let lit = false, over = false, released = false, timer = 0;
-    const select = () => { synthetic = true; try { el.click(); } finally { synthetic = false; } };
-    /* each step AFTER A PAINT: a rAF callback runs before its frame's paint, so a callback nested in a second rAF runs only after
-       the first frame was painted ("rAF → rAF" = one guaranteed frame; a setTimeout(0) after a rAF is not guaranteed to wait for the
-       paint on the device — 验收 / 数据 3ecf176 check). The highlight paints, then the fade's start paints, then the selection runs: an
-       action that blocks the main thread (confirm()) or replaces the content (openPage) cannot swallow either frame */
-    const afterPaint = (fn) => requestAnimationFrame(() => requestAnimationFrame(fn));
+    const select = () => Motion.click(el);
+    /* each step AFTER A PAINT (Motion.afterPaint = rAF → rAF): the highlight paints, then the fade's start paints, then the selection runs —
+       an action that blocks the main thread (confirm()) or replaces the content (openPage) cannot swallow either frame */
+    const afterPaint = Motion.afterPaint;
     const release = () => { fadeOut(el); afterPaint(select); };   // the fade starts now (painted next frame), the selection after that paint
     const light = () => {   // +150 ms: the highlight, instant; if the finger is already up, one painted frame of it, then the release
       timer = 0; if (over && !released) return; lit = true; el.classList.add("hl"); if (released) afterPaint(release);
     };
     const cancel = () => {   // instant off (no transition even on .acts button, whose rest rule carries one), no select
       if (over) return; over = true; clearTimeout(timer); timer = 0; delete el.dataset.rp;
-      if (lit) { lit = false; el.classList.add("hl-cut"); el.classList.remove("hl"); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove("hl-cut"))); }
+      if (lit) { lit = false; el.classList.add("hl-cut"); el.classList.remove("hl"); afterPaint(() => el.classList.remove("hl-cut")); }
     };
     if (!press(el, e, {
       move: (ev) => { if (over) return; if (Math.abs(ev.clientY - y0) > T || ev.clientX < cr.left - ROW_EDGE_PT || ev.clientX > cr.right + ROW_EDGE_PT) cancel(); },
@@ -65,20 +63,13 @@
         if (cancelled) { cancel(); return; }
         if (over) return;
         over = true; released = true; delete el.dataset.rp;
-        /* the browser's own click for this touch: on the device it comes 40–60 ms after the up (数据 fd0731b/3ecf176: confirm() at up +42…57
-           ms), long after a setTimeout(0) — so the row carries data-rc until that click is swallowed, or 700 ms */
-        el.dataset.rc = "1"; setTimeout(() => { delete el.dataset.rc; }, 700);
+        Motion.swallowNextClick(el);   // the browser's own click for this touch (Android: 40–60 ms after the up) is swallowed, ours follows after the frames
         if (lit) release();             // a short tap: the pending 150 ms timer lights the row, then light() runs the same release
       },
     })) return;
     el.dataset.rp = "1";
     timer = setTimeout(light, ROW_MS());
   });
-  document.addEventListener("click", (e) => {
-    if (synthetic) return;
-    const el = e.target.closest && e.target.closest(ROW_SEL);
-    if (el && el.dataset.rc) { delete el.dataset.rc; e.preventDefault(); e.stopImmediatePropagation(); }   // the browser's click for a press we handled
-  }, true);
   /* a press the page never sees the end of (the app switched away mid-press, the pointer stream lost) would leave a row lit in its
      press colour for good — and a theme change would then show the old theme's colour on that one row (线上第四版 device report:
      「开始刷」 stayed dark after dark → light). The rest colour is the theme's --card token; every state class is stripped when the page
@@ -87,7 +78,7 @@
     for (const el of document.querySelectorAll(".hl, .hl-out, .hl-cut, [data-rp], [data-rc]")) {
       if (!el.matches(ROW_SEL)) continue;
       el.classList.add("hl-cut"); el.classList.remove("hl", "hl-out"); delete el.dataset.rp; delete el.dataset.rc;
-      requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove("hl-cut")));
+      Motion.afterPaint(() => el.classList.remove("hl-cut"));
     }
   };
   document.addEventListener("visibilitychange", () => { if (document.hidden) stripRows(); });

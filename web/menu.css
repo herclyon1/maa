@@ -1,1 +1,8 @@
-/* menu.css — placeholder shell (night batch); the owner fills it; overrides use higher specificity, old rules stay. */
+/* menu.css — the morphing menu panel (BOARD.md #3; web/menu.js). Overrides index.html's `.menu` with higher specificity; the old rules stay
+   (the panel's background / glass / item rules are still index.html's — the material is not touched tonight, BOARD A5).
+   Geometry from menu-card-material.md §1.2: width 250 (defaultMenuWidth), corner 32 (menuCornerRadius, driven per frame by menu.js from the
+   button's corner), section insets 10 / 10 (the page's --ios-menu-pad = 10 ✓), item 42 (index.html `.menu button`). */
+.menu.menu.morph { position: fixed; width: auto; padding: 0; overflow: hidden; animation: none; transform: none; transform-origin: 50% 50%;
+  box-sizing: border-box; will-change: left, top, width, height; }   /* left / top / width / height / border-radius / opacity: inline, per frame (menu.js) */
+.menu.menu.morph.up { transform-origin: 50% 50%; }
+.menu.menu.morph .menu-body { position: absolute; left: 0; top: 0; width: 250px; padding: 10px 0; box-sizing: border-box; }   /* the items keep the resting layout while the panel is still small: the panel clips them */
