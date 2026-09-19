@@ -1536,7 +1536,10 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
     const L = g.left, T = g.top, Wd = g.w, Hd = g.h, R = Hd / 2;   // capsule: corner = h/2 (r22 at 44 ← §0; the lift's corner 14 → 22 on the same spring ← §4.4 row 1)
     if (GL) {   // WebGL: one setState per tick — uniforms only (README §0.8.7 step 3); wh = the §3b.6 capture-box rule from the lens's screen rect
       const r = lens.getBoundingClientRect(), sw = innerWidth, sh = innerHeight, wh = (Math.min(r.right + 100, sw) - Math.max(r.left - 100, 0)) / (Math.min(r.bottom + 100, sh) - Math.max(r.top - 100, 0));
-      glo.lens.setState({ cx: L + Wd / 2, cy: SEG_GLM + T + Hd / 2, w: Wd, h: Hd, lift: SEGX.includes("scale0") ? 0 : p, pd, wh, platter: { rgba: glo.platter, alpha: 1 - p } });   // pd = DestOut α; platter = restingBackground (_controlForegroundColor) fading 1 − p inside the capsule, above the displaced backdrop, below lines / labels (§4b; 2号 dc2af2a uniform)
+      /* pd = the DestOut α (§4.1 -destout-keys, the first three frames .396 / .98 / 1): in the package (7940efc) it fades the REAL labels out of the backdrop copy
+         at the source position only — the capsule stays opaque and the platter layer is not scaled by it (the a20df11 flash: the earlier package multiplied the
+         whole capsule by pd, so the platter was gone on the first two lifted frames). */
+      glo.lens.setState({ cx: L + Wd / 2, cy: SEG_GLM + T + Hd / 2, w: Wd, h: Hd, lift: SEGX.includes("scale0") ? 0 : p, pd, wh, platter: { rgba: glo.platter, alpha: 1 - p } });   // platter = restingBackground (_controlForegroundColor) fading 1 − p inside the capsule, above the displaced backdrop, below lines / labels (§4b; 2号 dc2af2a uniform)
       { const a = lpq(p).toFixed(4), b = lpq(pd).toFixed(4); if (lpKey !== a) { lpKey = a; seg.style.setProperty("--lp", a); } if (lpdKey !== b) { lpdKey = b; seg.style.setProperty("--lpd", b); } }
       if (p > 0 || pd > 0) { seg.classList.add("lift"); seg.classList.remove("prewarm"); } else seg.classList.remove("lift");
       return; }

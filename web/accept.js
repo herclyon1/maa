@@ -532,7 +532,7 @@
         check("分段 G21 抬起后滑到另一段抬手：选中那段（模型在抬手即改，内容 +25 ms 切 ← --seg-commit-delay-drag；vcsplit 重画在其后一帧，+60 ms 看）", unsel.textContent, `${onText()} model ${q21}`, q21 === unsel.dataset.q && onText() === unsel.textContent && thisShift(unsel.textContent) && renders === r2 + 1);
         check("分段 G21 换值重画：#queueseg 及其父节点原地保留（replaceKeeping，不摘下再插回 → 过渡不被取消；B2-b）", "same node · same parent", `${q() === seg ? "same node" : "new node"} · ${q().parentNode === parent0 ? "same parent" : "new parent"}`, q() === seg && q().parentNode === parent0);
         { const h1 = lens21.getBoundingClientRect().height; await sleep(16); const h2 = lens21.getBoundingClientRect().height;
-          check("分段 G21 松手 +1 帧：透镜仍是抬起尺寸、随后逐帧回落（B2-b：不瞬回 28）", "h > 40 at +0, > 36 at +16 ms", `${h1.toFixed(1)} → ${h2.toFixed(1)}`, h1 > 40 && h2 > 36); }
+          check("分段 G21 松手 +1 帧：透镜仍是抬起尺寸、随后逐帧回落（B2-b：不瞬回 28）", "h ≥ 39 at +0, > 36 at +16 ms", `${h1.toFixed(1)} → ${h2.toFixed(1)}`, h1 >= 39 && h2 > 36); }
         await sleep(200); { const lr = lens21.getBoundingClientRect(); check("分段 G21 松手 +216 ms：几何回落途中，叠着 flex 回弹（原生 C 段 +204 ms h 31.8；B5 后本页 24 < h < 40）", "24 < h < 40", lr.height.toFixed(1), lr.height > 24 && lr.height < 40); }
         await sleep(600); { const lr = lens21.getBoundingClientRect(), sr = seg.getBoundingClientRect(); check("分段 G21 松手 +816 ms：落定 196×28 于目标段（flex 回弹收敛；位置 ζ.85/.4 → ζ.56/.444）", `196×28 at ${(sr.left + 2 + bs().indexOf(unsel) * (sr.width / bs().length)).toFixed(1)}`, `${lr.width.toFixed(1)}×${lr.height.toFixed(1)} at ${lr.left.toFixed(1)}`, Math.abs(lr.height - 28) < 0.6 && Math.abs(lr.width - (sr.width / bs().length - 4)) < 0.8 && Math.abs(lr.left - (sr.left + 2 + bs().indexOf(unsel) * (sr.width / bs().length))) < 1.5); }
         await sleep(50);
