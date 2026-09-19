@@ -778,7 +778,7 @@ function wire() {
   $("#refresh").onclick = () => ping();
   const theQueue = () => curQueue || "早班";
   const qsel = $("#queue");
-  /* 分段控件照 UISegmentedControl：抬手那一刻选中同步生效、内容立刻切（不等透镜动画、不等任何异步），
+  /* 分段控件照 UISegmentedControl：抬手那一刻选中同步生效、内容立刻切（不等透镜动画、不等任何异步；SEG_VC_NOW 换值即抬手），
      透镜靠 CSS 过渡自己滑过去（render() 里接力）；按住可以横着滑，抬手时手指在哪段就选哪段。
      2026-09-18 用户线上抓到的 bug：原先 click 后 setTimeout(0.55 s) 才派 change，快速交替点时
      旧 <select> 的定时器带着过期值回来重画，看起来像点击被吞。 */
@@ -788,15 +788,18 @@ function wire() {
     attachSegmented(segEl, () => Math.max(0, bs.findIndex((b) => b.dataset.q === qsel.value)), (i, mode = "tap") => {
       const q = bs[i].dataset.q; if (qsel.value === q) return;
       qsel.value = q;   // the model changes at the up (the next touch already sees the new index)
-      /* valueChanged — the content switch and the lens's slide, one render — comes +66 ms after a tap's up / +25 ms after a slide's (B3 follow-up:
-         seg-value-change-content.md §0 four recordings +92/+68/+50/+66, the lens starts gliding in that same frame; tokens.css --ios-touch-segment-
-         commit-delay note for the slide). A newer value change before the timer fires simply renders again (快速连点 未量). */
+      /* valueChanged — the content switch (one render) and, in the loop, the lens's slide. A tap: in the up's own task (SEG_VC_NOW, 换值即抬手 — the +66 ms
+         timer of seg-value-change-content.md §0 put the phone's visible switch at up +136…143 against the native's +50…92, data 78284dd; ?vcnow=0 = the
+         timer + vcsplit path). A slide's up: +25 ms (--seg-commit-delay-drag, tokens.css --ios-touch-segment-commit-delay note). A newer value change
+         before a timer fires simply renders again (快速连点 未量). */
+      const begin = () => { segCommitAt = performance.now(); segCommitMode = mode; flipPending = true; performance.mark("seg:commit"); };
+      const select = () => { bs.forEach((b, k) => { b.classList.toggle("on", k === i); b.setAttribute("aria-selected", k === i ? "true" : "false"); }); segMeasure("seg:commit-select", segCommitAt); };   // the selection state (labels .on / aria; the lens is the loop's)
+      const content = () => { const tR = performance.now(); performance.mark("seg:commit-render-start"); qsel.dispatchEvent(new Event("change")); segMeasure("seg:commit-render", tR); };   // the content render (segSync keeps the control)
+      if (SEG_VC_NOW && mode !== "drag") { begin(); select(); content(); return; }   // 换值即抬手: selection + content now, one frame — the frames until the lift (up +82) carry the render, not the lift's
       const delay = touchMs(mode === "drag" ? "--seg-commit-delay-drag" : "--seg-commit-delay-tap", 0);
-      setTimeout(() => { if (qsel.value !== q) return; segCommitAt = performance.now(); segCommitMode = mode; flipPending = true; performance.mark("seg:commit");
-        if (SEG_VC_SPLIT) {   // 换值重画不阻塞 (监督局 09-19): this frame only the selection state (labels .on / aria; the lens is the loop's), the content render next frame
-          bs.forEach((b, k) => { b.classList.toggle("on", k === i); b.setAttribute("aria-selected", k === i ? "true" : "false"); }); segMeasure("seg:commit-select", segCommitAt);
-          requestAnimationFrame(() => { if (qsel.value !== q) return; const tR = performance.now(); performance.mark("seg:commit-render-start"); qsel.dispatchEvent(new Event("change")); segMeasure("seg:commit-render", tR); });
-        } else { qsel.dispatchEvent(new Event("change")); segMeasure("seg:commit-render", segCommitAt); } }, delay);
+      setTimeout(() => { if (qsel.value !== q) return; begin();
+        if (SEG_VC_SPLIT) { select(); requestAnimationFrame(() => { if (qsel.value !== q) return; content(); }); }   // 换值重画不阻塞 (监督局 09-19): this frame the selection only, the content render next frame
+        else { qsel.dispatchEvent(new Event("change")); segMeasure("seg:commit-render", segCommitAt); } }, delay);
     });
   }
   if (qsel) qsel.onchange = () => {
@@ -1347,6 +1350,11 @@ const SEG_RIM = (() => {
 const SEGX = ((new URLSearchParams(location.search).get("segx") || "") + "," + (new URLSearchParams(location.search).get("segx1") || "")).split(",").filter(Boolean);   // ?segx=a,b / ?segx1=<key> (first-glass-frame list): one switch set
 const SEG_DISP_ON = new URLSearchParams(location.search).get("disp") === "1";
 const SEG_VC_SPLIT = new URLSearchParams(location.search).get("vcsplit") !== "0";
+/* 换值即抬手 (监督局 09-19 15:5x, bug fix): a tap's value change — selection + content, one frame — runs in the up's own task. With the +66 ms timer
+   (--seg-commit-delay-tap ← seg-value-change-content.md §0: the native's content switch at up +50…92 in its recordings) and the vcsplit frame, the page's
+   switch showed at up +136…143 on the phone (data: tools/touch/seg-web-valuechange-78284dd-light.md; marks tap-up +0 → commit-select +67 → commit-render
+   +83…87): queued behind the lens's first glass frame (up +82). ?vcnow=0 = the timer path (with vcsplit). The slide's up keeps --seg-commit-delay-drag. */
+const SEG_VC_NOW = new URLSearchParams(location.search).get("vcnow") !== "0";
 const SEG_LPQ = new URLSearchParams(location.search).get("lpq") !== "0";   // lpq: per-frame filter / opacity writes quantised to the 8-bit raster (1/255; displacement scale .1) and written only on change — the springs are untouched (?lpq=0 off)
 const lpq = (x) => SEG_LPQ ? Math.round(x * 255) / 255 : x;
 const SEG_PREWARM_ON = new URLSearchParams(location.search).get("prewarm") !== "0";
@@ -1725,7 +1733,7 @@ function attachSegmented(seg, getIndex, commit) {
           const tUp = performance.now(), upAt = ev.timeStamp > 0 && ev.timeStamp <= tUp ? ev.timeStamp : tUp; performance.mark("seg:tap-up");
           if (glass && glass.beginTap) glass.beginTap(target, upAt); else segLens(seg, lens, bs, NaN, { target, upAt });   // the loop was built at the down (deferred); arm it — or build now if the down had none
           segMeasure("seg:tap-arm", tUp); }
-        commit(target, lifted ? "drag" : "tap");                    // the up: the index changes now (G1–G3); the content and the lens's slide follow at the valueChanged time (wire(): +66 / +25 ms)
+        commit(target, lifted ? "drag" : "tap");                    // the up: the index changes now (G1–G3); a tap's content switches in this task (wire(): SEG_VC_NOW), a slide's at +25 ms; the lens's slide is the loop's (SEG_TAP_T.travel)
       },
     })) return;
     seg.dataset.pe = "1";
