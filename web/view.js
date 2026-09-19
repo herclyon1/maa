@@ -49,7 +49,8 @@ function ask(title, msg, okLabel = "好", danger = false) {
        after showModal go to the ?diag=1 line, so the first-frame delay can be read off a phone. */
     d.classList.remove("settled"); d.addEventListener("animationend", () => d.classList.add("settled"), { once: true });
     const t0 = performance.now(); d.showModal();
-    requestAnimationFrame((f1) => requestAnimationFrame((f2) => { window.ALERT_T = { open: t0, f1, f2 }; }));
+    d.scrollTop = 0;   // 验收 09-19 18:0x: the glass .pane (inset −60) made the dialog scrollable by 60 px and the focus showModal() moves could scroll the title out; overflow:clip in index.html, this is the belt
+    requestAnimationFrame((f1) => requestAnimationFrame((f2) => { window.ALERT_T = { open: t0, f1, f2 }; d.scrollTop = 0; }));
   });
 }
 function toast(t, ms = 2600) {
@@ -2076,6 +2077,7 @@ applyTheme();
 // 跟随系统时，系统切了日夜要立刻跟上
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+window.__viewReady = true;   // every top-level binding above exists now: live.js's timers / events may use cfg, snap, render … (they return until this)
 boot();
 
 /* 添加到主屏幕后**第一次**从图标启动，滚动位置停在 −62（visualViewport offsetTop −62，整页下沉 62；杀掉重开为 0）——数据会话 9c22044 ?diag 实拍，

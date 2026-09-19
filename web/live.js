@@ -125,8 +125,8 @@ let pendingUntil = 0;
 // 上一次跟外面说话成功了没有。没有它的话，页面分不清「机器关了」和「我这边没网」，
 // 于是他在信号差的地方看到的是一句斩钉截铁的「关机中」，据此以为机器没开。
 let netOk = true;
-addEventListener("online", () => { netOk = true; updateLive(); });
-addEventListener("offline", () => { netOk = false; updateLive(); });
+addEventListener("online", () => { netOk = true; if (viewReady()) updateLive(); });
+addEventListener("offline", () => { netOk = false; if (viewReady()) updateLive(); });
 
 function offline() {
   return !navigator.onLine || !netOk;
@@ -142,8 +142,12 @@ function why(err) {
 }
 
 let wasAlive = null;
+/* view.js declares cfg / snap / render / send / setStatus … as top-level bindings and sets window.__viewReady at its end; until then (a slow load: the
+   script tags run in order, but this file's timers and the online / visibility events fire on their own clock) every entry point here returns —
+   2026-09-19 验收: "Uncaught ReferenceError: cfg is not defined" from updateLive in the headless self-check, the page left half booted */
+const viewReady = () => window.__viewReady === true;
 function updateLive() {
-  if (!cfg) return;
+  if (!viewReady() || !cfg) return;
   const alive = lastHb && (Date.now() - lastHb < hbWindowMs());
   if (wasAlive !== null && !!alive !== wasAlive && snap) render();   // the 「现在在跑」 card follows the verdict
   wasAlive = !!alive;
@@ -166,7 +170,7 @@ setInterval(updateLive, 5000);
 
 function askWatch() {
   // 「我在看」：机器收到立刻跳一次。8 秒内没回应就按关机算。
-  if (!cfg || !cfg.topic || !cfg.pin) return;
+  if (!viewReady() || !cfg || !cfg.topic || !cfg.pin) return;
   if (!(lastHb && Date.now() - lastHb < hbWindowMs())) pendingUntil = Date.now() + CONFIRM_MS;
   updateLive();          // 马上显示「正在确认…」，别让旧的「关机中」多挂 5 秒
   send({ action: "watch" }).then(() => { netOk = true; })
@@ -232,7 +236,7 @@ function startLive() {
 }
 
 document.addEventListener("visibilitychange", async () => {
-  if (document.hidden || !cfg) return;
+  if (document.hidden || !viewReady() || !cfg) return;
   startLive();
   await probeHb(); updateLive();
   askWatch();

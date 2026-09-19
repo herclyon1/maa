@@ -581,6 +581,23 @@
           snap.queues = savedQ; curQueue = savedCur; window.render(); await sleep(600);
         }
       }
+      /* 验收 09-19 18:0x: with the page unscrolled, the ask() dialog opened from the 停止一切 tile must show its title (the dialog is overflow:clip — not a scroll
+         container — and ask() resets scrollTop; before: .pane's −60 inset gave 60 px of scrollable overflow and the title scrolled out of the box) */
+      { const tile = document.querySelector("#estop"), dlg = document.querySelector("#alert");
+        if (tile && dlg && !dlg.open) { scrollTo(0, 0); await sleep(100); tile.click(); await sleep(700);
+          const dr = dlg.getBoundingClientRect(), tr = dlg.querySelector("#alert-t").getBoundingClientRect(); dlg.scrollTop = 60; const st = dlg.scrollTop;
+          check("顶部未滚动时点磁贴弹窗：标题在弹窗盒内（盒顶 ≤ 标题顶，标题有高度）、弹窗不可滚（overflow clip，scrollTop 设 60 读回 0）", "title inside · scrollTop 0", `open ${dlg.open} · box ${Math.round(dr.top)}…${Math.round(dr.bottom)} title ${Math.round(tr.top)}…${Math.round(tr.bottom)} "${dlg.querySelector("#alert-t").textContent}" · scrollTop ${st} · overflow ${getComputedStyle(dlg).overflow}`, dlg.open && tr.height > 10 && tr.top >= dr.top - 0.5 && tr.bottom <= dr.bottom + 0.5 && st === 0);
+          const cancel = dlg.querySelector("#alert-cancel"); if (cancel) cancel.click(); await sleep(600); } }
+      /* 验收 09-19 18:0x: view.js arriving 3 s late (slow network) must not throw in live.js's timers / events (window.__viewReady gate): the page in an iframe with
+         ?viewdelay=5500 (live.js's 5 s updateLive tick fires first), its error / unhandledrejection events counted for 7 s */
+      { const fr = document.createElement("iframe"); fr.style.cssText = "position:fixed;left:-2000px;top:0;width:440px;height:956px;opacity:0;pointer-events:none"; fr.src = "index.html?demo=1&viewdelay=5500";
+        const errs = []; document.body.appendChild(fr);
+        await new Promise((r) => { fr.onload = r; setTimeout(r, 3000); });
+        try { fr.contentWindow.addEventListener("error", (e) => errs.push(String(e.message || e.error || e))); fr.contentWindow.addEventListener("unhandledrejection", (e) => errs.push("rejection " + String(e.reason))); } catch (e) { errs.push("no access " + e); }
+        await sleep(7000);
+        let ready = null; try { ready = fr.contentWindow.__viewReady === true; } catch (e) {}
+        check("view.js 延迟 5.5 s 装载（live.js 的 5 s updateLive 定时器先到）：不报错（__viewReady 闸），装载后页面起来", "0 errors · ready", `${errs.length} errors ${errs.slice(0, 2).join(" | ")} · ready ${ready}`, errs.length === 0 && ready === true);
+        fr.remove(); }
       /* §2 UITabBar */
       const nav = document.querySelector("nav.tabs:not([hidden])"), tseg = nav && nav.querySelector(".seg"), tbs = nav ? [...nav.querySelectorAll(".seg button")] : [];
       if (nav && tbs.length > 1) {
