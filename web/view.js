@@ -1281,6 +1281,10 @@ const SEG_TAP_T = { geo: .082, mat: .092, travel: .098, fallGeo: .082 + .22, fal
    standalone) read the web centre +33 (light) / +55 (dark) pt ahead of the native during the drag and +12.8 / +24.3 after the finger stopped — far
    beyond this replay; the cause is not named here — the per-tick state window.__segLens and the seg: measures exist for the re-recording. */
 const FLEX_VARIANT = { smallLoupe: { pts: 10, min: .9, max: 1.1, N: 2000, zeta: .56, resp: .444, tzeta: .56, tresp: .444 }, loupe: { pts: 100, min: .75, max: 1.15, N: 2500, zeta: 1.0, resp: .5, tzeta: .9, tresp: .5 } };
+/* retargetImpulse: none. 老网页 (13:3x) read liquidLensWithSize: (0x1c5126e6c) to the end — the lens spec is the smallLoupe → loupe interpolation by t for
+   pts / min / max / N / ζ / response and the two tracking values (flexSpec below); the two impulse fields are NOT interpolated and take the Loupe
+   default 0 (the probe getter's .032 is the SmallLoupe class default, not the lens's spec). So no Δv at a retarget; flex §7.1b's formula is recorded
+   only. (Replayed for the record on the page's own C1 run with .032: peak 243.3, not 253.5, and a faster fall — b5c/dragsim_web.py imp=0.032.) */
 function flexSpec(W, H) {
   const t = Math.max(0, Math.min(1, (Math.min(W, H) - 37) / 33)), a = FLEX_VARIANT.smallLoupe, b = FLEX_VARIANT.loupe, L = (x, y) => x + (y - x) * t;
   return { pts: L(a.pts, b.pts), min: L(a.min, b.min), max: L(a.max, b.max), N: L(a.N, b.N), zeta: L(a.zeta, b.zeta), resp: L(a.resp, b.resp), tzeta: L(a.tzeta, b.tzeta), tresp: L(a.tresp, b.tresp) };
@@ -1534,12 +1538,13 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
     if (!seg.isConnected || !lens.isConnected) { clear(); return; }
     const tickStart = performance.now(), cxBefore = st.cx, pendingBefore = st.pending;
     const dt = Math.min(.04, Math.max(0, (now - st.prev) / 1000)); st.prev = now;
-    let p, pd, moving = false;
+    let p, pd, moving = false, liftedModel = false;   // liftedModel: the MODEL bounds are 220×44 (setLifted:YES … actuallySetLifted:NO) — the flex spec and W/H follow the model, as a step (§7.4)
     if (st.tap) {
       /* 点按 (SEG_TAP_T, s after the up): geometry lifts in place on the lift spring, material follows 10 ms later, the position springs to the target
          on the value-change spring; at +443 / +450 both fall (geometry ζ1/.25, material ζ1/.4); DestOut rides the material (§4.4: 0 → 1 with the
          lift material, 1 → 0 with the fall material) */
       const tu = (now - st.t0) / 1000, T = SEG_TAP_T;
+      liftedModel = tu >= T.geo && tu < T.fallGeo;
       if (tu >= T.geo) springStep(st.sL, tu >= T.fallGeo ? 0 : 1, SEG_SPRING.lift, dt);
       if (tu >= T.mat) springStep(st.sMt, tu >= T.fallMat ? 0 : 1, tu >= T.fallMat ? SEG_SPRING.fallMaterial : SEG_SPRING.lift, dt);
       if (tu >= T.travel) springStep(st.pos, restCentre(st.rest), SEG_SPRING.travel, dt);
@@ -1548,6 +1553,7 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
       if (settled || tu > 3) { clear(); return; }
     } else if (st.rel == null) {
       const tl = (now - st.t0) / 1000 - liftDelay;   // time since the lift started (+109 ms)
+      liftedModel = tl > 0;
       if (tl > 0) springStep(st.sL, 1, SEG_SPRING.lift, dt);
       if (st.dragged && st.cx != null) springStep(st.pos, st.cx, SEG_SPRING.model, dt);   // B5-b: the position is ONE spring ζ .85 / .2 s continuing from its value and velocity at every retarget (§6 retarget 语义) — the ζ .6533/.4559 tracking spring belongs to the flex floats, not to the position
       /* B5-c time base (flex-interaction.md §6e.2 / §6e.3, the UIUpdate cycle's order HIDEvents → CADisplayLinks → CATransactionCommit → next vsync):
@@ -1564,6 +1570,7 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
       st.pr = p; moving = true;
     } else {
       const tr = (now - st.rel) / 1000;
+      liftedModel = st.pr > 0 && tr < relDelay;   // the fall animation (model bounds → 196×28) is created at release + relDelay
       if (tr >= relDelay) { springStep(st.sL, 0, SEG_SPRING.lift, dt); springStep(st.sM, 0, SEG_SPRING.fallMaterial, dt); }
       springStep(st.pos, restCentre(st.rest), SEG_SPRING.travel, dt);   // after the up: one spring ζ .85 / .4 s to the segment the lens ends on (§4.4 换值行程 row); the ζ .56/.444 "settle" spring is the flex's smallLoupe scale/drift spring once the lens is 196×28 (flexSpec)
       p = st.pr * clamp01(st.sM.x); pd = tr <= destDelay ? 1 : tabAt(K_DEST, tr - destDelay);
@@ -1575,7 +1582,10 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
        down), the result is the presentation transform */
     const q = clamp01(st.sL.x), w = W0 + 2 * LX * q, h = H0 + 2 * LY * q, fl = st.flex;
     fl.vi.add(st.pos.x + fl.out.dx, now / 1000);   // the presentation centre = position + flex drift (the update link reads the presentation layer, §1)
-    const spec = flexSpec(w, h), tg = flexTargets(spec, w, h, fl.vi.acceleration, fl.vi.velocity), sp = st.rel == null ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
+    /* §7.4 (老网页 13:2x): preferredVariant 4 = liquidLensWithSize:(_UILiquidLensView.bounds) recomputed per frame from the MODEL bounds — a step 196×28 ↔ 220×44 at
+       setLifted:YES / actuallySetLifted:NO, not the presented size; the same W / H feed the targets' per-axis range and the drift (§3: W, H = view.bounds) */
+    const Wm = liftedModel ? W0 + 2 * LX : W0, Hm = liftedModel ? H0 + 2 * LY : H0;
+    const spec = flexSpec(Wm, Hm), tg = flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity), sp = st.rel == null ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
     springStep(fl.sx, tg.sX, sp, dt); springStep(fl.sy, tg.sY, sp, dt); springStep(fl.dx, tg.drift, sp, dt);
     fl.out = { sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x };   // B5-d: the presented values are the spring floats, unclamped (the [0.9, 1.1] clamp is on the targets in flexTargets; §6f.4)
     setGeo(st.pos.x - w / 2, CY - h / 2, w, h);
