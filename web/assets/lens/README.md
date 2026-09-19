@@ -983,9 +983,20 @@ fringe, so those earlier numbers were the instrument's, not the page's); picture
 
 The exact chain (bilinear, no engine quantisation) disperses MORE than the SVG one (whose negative lanes run one device pixel short) and both
 more than the native: the order and the band's extent are right, the strength is not — formula.md §3b.8's open item (the source's contrast).
-One read-able candidate for the data session: the capture scale of the glassForeground backdrop layer #33 (`CABackdropLayer.scale`; the
-resting selection view's is .25 — a capture below 1× minifies the source before the taps, which lowers the saturation exactly the way the
-upscaled snapshot did here). Not tuned.
+The candidate "a capture scale below 1 on #33" is CLOSED by the data session's read (uiprobe-sdf-exp9-{light-page,dark-flat}.json, 14:xx):
+#33 glassForeground CABackdropLayer scale 1 / contentsScale 1 / rasterizationScale 1 / zoom 0 / marginWidth 100; #25 glassBackground all 1
+(marginWidth .667); #11 BackdropView all 1 — no capture below 1× in the native lens group (only the nav pocket's blur backdrop is .5). Not tuned.
+
+**Device (the data session, fb7bbdc, 3× standalone, `tools/touch/seg-webgl-fb7bbdc.md`)**: frame rate — mid, light, the 2-s auto drag: 125
+frames, mean **16.4 ms**, max 19, no frame > 20 (the page's own rAF mean 17.0 / max 37, gl.finish 0.07 ms); fringe light **1.63 % / 88.3 / 78.5**,
+dark 1.57 % / 83.1 / 76.0, the ends' order right (native 1.36 / 69 / 62; the Mac 1.79 / 92.4); the judge table: the edge rows 601 / 646 =
+native; the end line's column at the right end 327 vs native 328 (the whole 1 pt left); column x 220 after the backdrop's own offset (the
+test page's canvas track is 10 levels brighter than native light / 22 dark, subtracted): light 602 −5.3 / 645 −11.0 / 646 +5.2, dark 602
+−5.5, 603–610 +4 … +6, 645 −10.5; the right 「班」 height 14.33 vs 15.0 (dark 12.33 vs 12.0); the left 「早」 box = native but ink 751 vs 569
+(dark 477 vs 376); 「早班」 ink rest / lift / mid light 905 / 925 / 760 vs native 905 / 941 / 586, dark 778 / 709 / 484 vs 856 / 773 / 379 — the
+text under the glass keeps more ink than native (native lightens it 35 % in the mid state, the shader 16 %). Open, not tuned: the label
+copy's own lightening (a key on the portal / ContentLensing layer — opacity, a colour matrix — not in the read chain), the 1-pt end shift,
+the edge rows' 5–11 levels.
 
 Frame time (a visible WKWebView on the Mac, the page's 2-s auto drag; `?dpr=` sets the pixel count):
 
