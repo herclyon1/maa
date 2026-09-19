@@ -943,6 +943,58 @@ Projection for the phone from the data session's 36916a9 (no chain 18.9, whole c
 lean chain saves another 1/7 of that. Verdict: (a) does not reach the target and is not the same output → the WebGL prototype
 (§0.8.6) is the path; the switch stays in the test page for the record (`?ab=ends`), nothing wired.
 
+### 0.8.6 WebGL prototype of the whole chain — `lens-webgl-test.html` (2026-09-19 14:0x; 验收 / 监督局 13:1x order)
+
+Why: the SVG software filters cannot carry the full-fidelity fringe at frame rate on the phone (§0.8.4–0.8.5). The same chain in two
+fragment-shader passes on the GPU, every constant from the decompiled documents (its source is in the shader comment next to it), the
+backdrop drawn by the page into textures (not the DOM): `web/assets/lens/lens-webgl-test.html?state=rest|lift|mid&theme=light|dark[&dpr=3]`.
+
+Backdrop textures (canvas 2D at devicePixelRatio): the page bg, the scene card (20, 72.56, 400, 148.98) r 26, the control (20, 116.89, 400, 32)
+r 16 in `--track`, the resting flat platter 196×28 r 14 (rest only) — and, in a second texture, the labels alone (13 px system font, 早班
+weight 500, centred at x 120 / 320, y 132.89) — all read from lens-test.html?native=1 in WebKit, so the lens sits at the same coordinates
+(mid: 110–330 × 110.89–154.89; lift: 10–230). Fields: the existing maps `seg-f-bg-220.png` / `seg-f-lab-220.png` (B = coverage) and
+`seg-f-ab-220.png` (Δ × e, B = e, A = coverage) as textures, sampled bilinearly (CA samples bilinearly — the SVG engine's nearest fetch and
+one-pixel quantisation, README §0.4, do not exist here; no engine correction; the label ends' closure and clamp are in the maps, §4b.1).
+
+Pass 1 (an FBO over the wrapper = lens ± 16 pt): per fragment (page pt) — the backdrop copy through the bg map (BackdropView +9/36 after
+glassBackground −6.6/4.4, samples clamped in the map) with the DestOut punch (the labels only OUTSIDE the capsule at the source position,
+§4b); glassBackground's ring shadow (keyfill §4: black α = .1·[N((d_r + 4)/3) − N(d_r/3)], d_r = the SDF of the capsule shifted 8 down, inside
+and outside) and built-in KeyFill dark line (keyfill §5.1: EffectOffset −.6667, Height 1, dir (1, 0), S = −.5, amount uniform 0, colorBias
+−.3, prof mix(1, 1 − e, .75), aa by fwidth, rgb' = rgb·(1 − .3·k·(3 − 2·rgb))); the label copy through the lab map (ContentLensing −8.8/7.04
+then ClearGlass −17.5/11.2) clipped to the capsule at the destination (portal #20, 1-px AA by fwidth); the inner shadow #21 (keyfill §5.2c:
+.06·M·blur_σ3(M − M↓7), computed once into a texture on a 1-pt grid over ±9 pt). Pass 2 (the canvas): the page, then over the wrapper the
+7-tap dispersion (formula §3b.3 / 3b.7: taps at ±kΔ, k = 1, ⅔, ⅓, 0 with the R / G / B weights, Δ from the map × (W/H, H/W), W/H from
+the capture box lens ± 100 clamped to the screen, screen = e·edr·(R/2, G/3, B/2) + (1 − e)·below, edr 1), then the #36 KeyFill highlight
+(keyfill §2: three emits — main band h 1 / cos .174 / curvature .75, diffuse key and fill h 8 / cos .615 / bias 11.33 — each source-over
+through V(b) = min(1, .9118·b + .1471); the AA ±fw/2 by fwidth). Lift progress p scales the amounts, the shadow / line / highlight α (p = 0
+at rest → nothing drawn). Drag: the lens follows the pointer directly (no spring — a rendering prototype); 「自动拖 2 s」 as lens-test.
+
+Checks (wksnap 3 px/pt, drag-mid, `tools/fringe_check.py`; pictures `remote-mock/v4/lens/webgl/webgl-states.png`, `webgl-{rest,lift,mid}-{light,dark}-3x.png`):
+
+| | share of the outer 12 pt | saturation mean / median | ends' colour order |
+|---|---|---|---|
+| native (light / dark) | 1.36 % / 1.38 % | 69 / 62 · 71 / 63 | right blue above yellow, left yellow above blue (dark reversed) |
+| SVG chain, ss on (README §0.5) | 1.38 % | 85 / — | same |
+| **WebGL light** | **1.33 %** | **76.0 / 68.0** | right blue above yellow (centroids .3 / 3.3), left yellow above blue (1.3 / −5.0) ✓ |
+| **WebGL dark** | **1.25 %** | **76.3 / 64.0** | right yellow above blue (5.9 / −3.1), left blue above yellow (−5.0 / 1.7) ✓ (reversed) |
+
+Frame time (a visible WKWebView on the Mac, the page's 2-s auto drag; `?dpr=` sets the pixel count):
+
+| pixel count | rAF interval mean / max | draw → gl.finish mean / max |
+|---|---|---|
+| 2× (Mac) | 17.0 / 57 ms (the first frame) | 0.1 / 1.0 ms |
+| 3× (the phone's) | 16.8 / 31 | 0.1 / 1.0 |
+| 6× (4× the phone's) | 16.8 / 34 | 0.1 / 1.0 |
+
+vsync-bound at every size; the GPU work is far under the budget (gl.finish returns in ≤ 1 ms). The phone: the data session's standalone
+measurement (rAF interval + fringe_check + predict-seg-hold's judge table). `window.__segLens` carries t / x / v / target / dt / phase / set /
+lift / w / h / frame / gpu_ms for seg-frames-logger.js.
+
+Not in the prototype (listed, not hidden): the lens's own motion (the springs, the flex stretch — view.js's loop would drive lensX / p);
+the scene's paragraphs above and below the control (lens-test.html has them; the native probe's content differs anyway); the label
+texture is canvas text (the same font and size; its vertical placement is `textBaseline: middle` at the DOM's line centre — to be read
+against lens-test's glyph rows at the same coordinates); the DestOut / lift ramps of the SVG page's first frames (§4.1) — p is 0 or 1 here.
+
 ### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
 
 Sources: `remote-ref/sheet-native.md` (the data session's 10th order: A9 `sheetivars` / `corners` / `subtree` / motion, iOS 27.0 3×) and
