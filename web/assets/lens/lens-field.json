@@ -66,13 +66,24 @@
    "ab_files": [
     "seg-f-ab-196.png"
    ],
+   "abl_files": [
+    "seg-f-ab-196.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-196-l.png",
+    "seg-f-abe-196-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.56,
    "S_ab": 12.0,
    "bg": "seg-f-bg-196.png",
    "lab": "seg-f-lab-196.png",
    "peak_bg_pt": 5.0,
    "peak_lab_pt": 18.41,
-   "bytes": 19514,
+   "bytes": 19669,
    "model": [
     220.0,
     44.0
@@ -118,13 +129,24 @@
    "ab_files": [
     "seg-f-ab-198.png"
    ],
+   "abl_files": [
+    "seg-f-ab-198.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-198-l.png",
+    "seg-f-abe-198-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.55,
    "S_ab": 12.0,
    "bg": "seg-f-bg-198.png",
    "lab": "seg-f-lab-198.png",
    "peak_bg_pt": 5.0,
    "peak_lab_pt": 18.59,
-   "bytes": 19465,
+   "bytes": 19622,
    "model": [
     220.0,
     44.0
@@ -170,13 +192,24 @@
    "ab_files": [
     "seg-f-ab-200.png"
    ],
+   "abl_files": [
+    "seg-f-ab-200.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-200-l.png",
+    "seg-f-abe-200-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.53,
    "S_ab": 12.0,
    "bg": "seg-f-bg-200.png",
    "lab": "seg-f-lab-200.png",
    "peak_bg_pt": 4.92,
    "peak_lab_pt": 18.29,
-   "bytes": 19440,
+   "bytes": 19575,
    "model": [
     220.0,
     44.0
@@ -222,13 +255,24 @@
    "ab_files": [
     "seg-f-ab-202.png"
    ],
+   "abl_files": [
+    "seg-f-ab-202.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-202-l.png",
+    "seg-f-abe-202-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.5,
    "S_ab": 12.0,
    "bg": "seg-f-bg-202.png",
    "lab": "seg-f-lab-202.png",
    "peak_bg_pt": 4.85,
    "peak_lab_pt": 18.05,
-   "bytes": 19277,
+   "bytes": 19452,
    "model": [
     220.0,
     44.0
@@ -274,13 +318,24 @@
    "ab_files": [
     "seg-f-ab-204.png"
    ],
+   "abl_files": [
+    "seg-f-ab-204.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-204-l.png",
+    "seg-f-abe-204-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.5,
    "S_ab": 12.0,
    "bg": "seg-f-bg-204.png",
    "lab": "seg-f-lab-204.png",
    "peak_bg_pt": 4.84,
    "peak_lab_pt": 18.04,
-   "bytes": 19557,
+   "bytes": 19680,
    "model": [
     220.0,
     44.0
@@ -326,13 +381,24 @@
    "ab_files": [
     "seg-f-ab-206.png"
    ],
+   "abl_files": [
+    "seg-f-ab-206.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-206-l.png",
+    "seg-f-abe-206-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.49,
    "S_ab": 12.0,
    "bg": "seg-f-bg-206.png",
    "lab": "seg-f-lab-206.png",
    "peak_bg_pt": 4.8,
    "peak_lab_pt": 17.94,
-   "bytes": 19359,
+   "bytes": 19526,
    "model": [
     220.0,
     44.0
@@ -378,13 +444,24 @@
    "ab_files": [
     "seg-f-ab-208.png"
    ],
+   "abl_files": [
+    "seg-f-ab-208.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-208-l.png",
+    "seg-f-abe-208-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.46,
    "S_ab": 12.0,
    "bg": "seg-f-bg-208.png",
    "lab": "seg-f-lab-208.png",
    "peak_bg_pt": 4.81,
    "peak_lab_pt": 18.91,
-   "bytes": 19603,
+   "bytes": 19735,
    "model": [
     220.0,
     44.0
@@ -430,13 +507,24 @@
    "ab_files": [
     "seg-f-ab-210.png"
    ],
+   "abl_files": [
+    "seg-f-ab-210.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-210-l.png",
+    "seg-f-abe-210-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.44,
    "S_ab": 12.0,
    "bg": "seg-f-bg-210.png",
    "lab": "seg-f-lab-210.png",
    "peak_bg_pt": 4.72,
    "peak_lab_pt": 18.7,
-   "bytes": 19391,
+   "bytes": 19553,
    "model": [
     220.0,
     44.0
@@ -482,13 +570,24 @@
    "ab_files": [
     "seg-f-ab-212.png"
    ],
+   "abl_files": [
+    "seg-f-ab-212.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-212-l.png",
+    "seg-f-abe-212-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.42,
    "S_ab": 12.0,
    "bg": "seg-f-bg-212.png",
    "lab": "seg-f-lab-212.png",
    "peak_bg_pt": 4.64,
    "peak_lab_pt": 18.71,
-   "bytes": 19315,
+   "bytes": 19495,
    "model": [
     220.0,
     44.0
@@ -534,13 +633,24 @@
    "ab_files": [
     "seg-f-ab-214.png"
    ],
+   "abl_files": [
+    "seg-f-ab-214.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-214-l.png",
+    "seg-f-abe-214-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.39,
    "S_ab": 12.0,
    "bg": "seg-f-bg-214.png",
    "lab": "seg-f-lab-214.png",
    "peak_bg_pt": 4.58,
    "peak_lab_pt": 18.38,
-   "bytes": 19324,
+   "bytes": 19463,
    "model": [
     220.0,
     44.0
@@ -586,13 +696,24 @@
    "ab_files": [
     "seg-f-ab-216.png"
    ],
+   "abl_files": [
+    "seg-f-ab-216.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-216-l.png",
+    "seg-f-abe-216-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.37,
    "S_ab": 12.0,
    "bg": "seg-f-bg-216.png",
    "lab": "seg-f-lab-216.png",
    "peak_bg_pt": 4.58,
    "peak_lab_pt": 18.25,
-   "bytes": 19045,
+   "bytes": 19215,
    "model": [
     220.0,
     44.0
@@ -638,13 +759,24 @@
    "ab_files": [
     "seg-f-ab-218.png"
    ],
+   "abl_files": [
+    "seg-f-ab-218.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-218-l.png",
+    "seg-f-abe-218-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.34,
    "S_ab": 12.0,
    "bg": "seg-f-bg-218.png",
    "lab": "seg-f-lab-218.png",
    "peak_bg_pt": 4.58,
    "peak_lab_pt": 18.21,
-   "bytes": 18872,
+   "bytes": 19036,
    "model": [
     220.0,
     44.0
@@ -679,13 +811,24 @@
    "ab_files": [
     "seg-f-ab-220.png"
    ],
+   "abl_files": [
+    "seg-f-ab-220.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-220-l.png",
+    "seg-f-abe-220-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.32,
    "S_ab": 12.0,
    "bg": "seg-f-bg-220.png",
    "lab": "seg-f-lab-220.png",
    "peak_bg_pt": 4.58,
    "peak_lab_pt": 18.32,
-   "bytes": 18527,
+   "bytes": 18603,
    "model": [
     220.0,
     44.0
@@ -731,13 +874,24 @@
    "ab_files": [
     "seg-f-ab-222.png"
    ],
+   "abl_files": [
+    "seg-f-ab-222.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-222-l.png",
+    "seg-f-abe-222-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.34,
    "S_ab": 12.0,
    "bg": "seg-f-bg-222.png",
    "lab": "seg-f-lab-222.png",
    "peak_bg_pt": 4.61,
    "peak_lab_pt": 18.49,
-   "bytes": 18705,
+   "bytes": 18830,
    "model": [
     220.0,
     44.0
@@ -783,13 +937,24 @@
    "ab_files": [
     "seg-f-ab-224.png"
    ],
+   "abl_files": [
+    "seg-f-ab-224.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-224-l.png",
+    "seg-f-abe-224-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.36,
    "S_ab": 12.0,
    "bg": "seg-f-bg-224.png",
    "lab": "seg-f-lab-224.png",
    "peak_bg_pt": 4.67,
    "peak_lab_pt": 19.1,
-   "bytes": 18674,
+   "bytes": 18828,
    "model": [
     220.0,
     44.0
@@ -835,13 +1000,24 @@
    "ab_files": [
     "seg-f-ab-226.png"
    ],
+   "abl_files": [
+    "seg-f-ab-226.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-226-l.png",
+    "seg-f-abe-226-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.38,
    "S_ab": 12.0,
    "bg": "seg-f-bg-226.png",
    "lab": "seg-f-lab-226.png",
    "peak_bg_pt": 4.72,
    "peak_lab_pt": 18.81,
-   "bytes": 18618,
+   "bytes": 18735,
    "model": [
     220.0,
     44.0
@@ -887,13 +1063,24 @@
    "ab_files": [
     "seg-f-ab-228.png"
    ],
+   "abl_files": [
+    "seg-f-ab-228.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-228-l.png",
+    "seg-f-abe-228-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.4,
    "S_ab": 12.0,
    "bg": "seg-f-bg-228.png",
    "lab": "seg-f-lab-228.png",
    "peak_bg_pt": 4.77,
    "peak_lab_pt": 20.11,
-   "bytes": 17779,
+   "bytes": 17953,
    "model": [
     220.0,
     44.0
@@ -939,13 +1126,24 @@
    "ab_files": [
     "seg-f-ab-230.png"
    ],
+   "abl_files": [
+    "seg-f-ab-230.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-230-l.png",
+    "seg-f-abe-230-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.42,
    "S_ab": 12.0,
    "bg": "seg-f-bg-230.png",
    "lab": "seg-f-lab-230.png",
    "peak_bg_pt": 4.82,
    "peak_lab_pt": 19.13,
-   "bytes": 18454,
+   "bytes": 18613,
    "model": [
     220.0,
     44.0
@@ -991,13 +1189,24 @@
    "ab_files": [
     "seg-f-ab-232.png"
    ],
+   "abl_files": [
+    "seg-f-ab-232.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-232-l.png",
+    "seg-f-abe-232-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.44,
    "S_ab": 12.0,
    "bg": "seg-f-bg-232.png",
    "lab": "seg-f-lab-232.png",
    "peak_bg_pt": 4.87,
    "peak_lab_pt": 19.29,
-   "bytes": 18135,
+   "bytes": 18260,
    "model": [
     220.0,
     44.0
@@ -1043,13 +1252,24 @@
    "ab_files": [
     "seg-f-ab-234.png"
    ],
+   "abl_files": [
+    "seg-f-ab-234.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-234-l.png",
+    "seg-f-abe-234-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.46,
    "S_ab": 12.0,
    "bg": "seg-f-bg-234.png",
    "lab": "seg-f-lab-234.png",
    "peak_bg_pt": 4.93,
    "peak_lab_pt": 19.44,
-   "bytes": 18100,
+   "bytes": 18258,
    "model": [
     220.0,
     44.0
@@ -1095,13 +1315,24 @@
    "ab_files": [
     "seg-f-ab-236.png"
    ],
+   "abl_files": [
+    "seg-f-ab-236.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-236-l.png",
+    "seg-f-abe-236-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.48,
    "S_ab": 12.0,
    "bg": "seg-f-bg-236.png",
    "lab": "seg-f-lab-236.png",
    "peak_bg_pt": 4.98,
    "peak_lab_pt": 19.6,
-   "bytes": 18003,
+   "bytes": 18120,
    "model": [
     220.0,
     44.0
@@ -1147,13 +1378,24 @@
    "ab_files": [
     "seg-f-ab-238.png"
    ],
+   "abl_files": [
+    "seg-f-ab-238.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-238-l.png",
+    "seg-f-abe-238-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.51,
    "S_ab": 12.0,
    "bg": "seg-f-bg-238.png",
    "lab": "seg-f-lab-238.png",
    "peak_bg_pt": 5.03,
    "peak_lab_pt": 20.96,
-   "bytes": 17311,
+   "bytes": 17478,
    "model": [
     220.0,
     44.0
@@ -1199,13 +1441,24 @@
    "ab_files": [
     "seg-f-ab-240.png"
    ],
+   "abl_files": [
+    "seg-f-ab-240.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-240-l.png",
+    "seg-f-abe-240-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.53,
    "S_ab": 12.0,
    "bg": "seg-f-bg-240.png",
    "lab": "seg-f-lab-240.png",
    "peak_bg_pt": 5.07,
    "peak_lab_pt": 21.13,
-   "bytes": 17194,
+   "bytes": 17309,
    "model": [
     220.0,
     44.0
@@ -1251,13 +1504,24 @@
    "ab_files": [
     "seg-f-ab-242.png"
    ],
+   "abl_files": [
+    "seg-f-ab-242.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-242-l.png",
+    "seg-f-abe-242-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.55,
    "S_ab": 12.0,
    "bg": "seg-f-bg-242.png",
    "lab": "seg-f-lab-242.png",
    "peak_bg_pt": 5.07,
    "peak_lab_pt": 21.33,
-   "bytes": 16969,
+   "bytes": 17098,
    "model": [
     220.0,
     44.0
@@ -1303,13 +1567,24 @@
    "ab_files": [
     "seg-f-ab-244.png"
    ],
+   "abl_files": [
+    "seg-f-ab-244.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-244-l.png",
+    "seg-f-abe-244-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.57,
    "S_ab": 12.0,
    "bg": "seg-f-bg-244.png",
    "lab": "seg-f-lab-244.png",
    "peak_bg_pt": 5.08,
    "peak_lab_pt": 21.52,
-   "bytes": 16915,
+   "bytes": 17063,
    "model": [
     220.0,
     44.0
@@ -1355,13 +1630,24 @@
    "ab_files": [
     "seg-f-ab-246.png"
    ],
+   "abl_files": [
+    "seg-f-ab-246.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-246-l.png",
+    "seg-f-abe-246-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.59,
    "S_ab": 12.0,
    "bg": "seg-f-bg-246.png",
    "lab": "seg-f-lab-246.png",
    "peak_bg_pt": 5.13,
    "peak_lab_pt": 21.73,
-   "bytes": 16767,
+   "bytes": 16899,
    "model": [
     220.0,
     44.0
@@ -1407,13 +1693,24 @@
    "ab_files": [
     "seg-f-ab-248.png"
    ],
+   "abl_files": [
+    "seg-f-ab-248.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-248-l.png",
+    "seg-f-abe-248-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.61,
    "S_ab": 12.0,
    "bg": "seg-f-bg-248.png",
    "lab": "seg-f-lab-248.png",
    "peak_bg_pt": 5.18,
    "peak_lab_pt": 20.69,
-   "bytes": 16625,
+   "bytes": 16792,
    "model": [
     220.0,
     44.0
@@ -1459,13 +1756,24 @@
    "ab_files": [
     "seg-f-ab-250.png"
    ],
+   "abl_files": [
+    "seg-f-ab-250.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-250-l.png",
+    "seg-f-abe-250-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.63,
    "S_ab": 12.0,
    "bg": "seg-f-bg-250.png",
    "lab": "seg-f-lab-250.png",
    "peak_bg_pt": 5.23,
    "peak_lab_pt": 20.68,
-   "bytes": 16405,
+   "bytes": 16535,
    "model": [
     220.0,
     44.0
@@ -1511,13 +1819,24 @@
    "ab_files": [
     "seg-f-ab-252.png"
    ],
+   "abl_files": [
+    "seg-f-ab-252.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-252-l.png",
+    "seg-f-abe-252-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.65,
    "S_ab": 12.0,
    "bg": "seg-f-bg-252.png",
    "lab": "seg-f-lab-252.png",
    "peak_bg_pt": 5.28,
    "peak_lab_pt": 20.82,
-   "bytes": 16289,
+   "bytes": 16438,
    "model": [
     220.0,
     44.0
@@ -1558,13 +1877,24 @@
    "ab_files": [
     "seg-f-ab-254.png"
    ],
+   "abl_files": [
+    "seg-f-ab-254.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-254-l.png",
+    "seg-f-abe-254-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.67,
    "S_ab": 12.0,
    "bg": "seg-f-bg-254.png",
    "lab": "seg-f-lab-254.png",
    "peak_bg_pt": 5.34,
    "peak_lab_pt": 20.98,
-   "bytes": 16254,
+   "bytes": 16339,
    "model": [
     220.0,
     44.0
@@ -1605,13 +1935,24 @@
    "ab_files": [
     "seg-f-ab-256.png"
    ],
+   "abl_files": [
+    "seg-f-ab-256.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "seg-f-abe-256-l.png",
+    "seg-f-abe-256-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
    "peak_ab_pt": 2.69,
    "S_ab": 12.0,
    "bg": "seg-f-bg-256.png",
    "lab": "seg-f-lab-256.png",
    "peak_bg_pt": 5.39,
    "peak_lab_pt": 21.16,
-   "bytes": 16538,
+   "bytes": 16629,
    "model": [
     220.0,
     44.0
@@ -1662,7 +2003,7 @@
   "step": 2,
   "height_source": "linear between the two nearest recorded drag frames (seg-native-abc-frames.json phase drag; uiprobe-motion-segdragmid-light.json lenstrace); outside the recorded range the nearest frame (flagged clamped)",
   "shape": "the 220×44 r22 model lens scaled by (w/220, h/44) — seg-lens-refraction.md §1c(d): the flex scale sits on _UILiquidLensView's presentation transform alone, the layers below (SDF elements, portals 196×28, glass group) keep their model bounds; elliptical ends, the portal = scale × 196×28",
-  "total_bytes": 564424
+  "total_bytes": 568801
  },
  "aberration": {
   "map": "seg-f-ab-<w>.png: the lens box plus 16 pt on every side at 1 px/pt; R/G = the ratio-1 vector Δ₁ (pt) = amount · ((R(θ)g).y, (R(θ)g).x) · e(d) (§3b.3 direction with the lanes swapped; e = the edge factor, 1 at the edge → 0 at |EdgeStart| pt), B = e = the filter's band factor; own scale sets[w].S_ab (data-s on the fringe filter)",
