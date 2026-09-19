@@ -174,8 +174,11 @@ void main(){
     const upload = (t, src, premul) => { gl.bindTexture(gl.TEXTURE_2D, t); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !!premul); gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src); };
     let tPage = null, tLab = null, liveLab = null, composite = null, redrawPending = 0;
     const measure = (name, t0) => { try { performance.measure(name, { start: t0, end: performance.now() }); } catch (e) { /* older engines */ } };   // seg:gl-* rows for the frames recorder
-    const redrawNow = () => { const tb = performance.now(); const { pg, p: cP } = scratchCanvases(); draw2d(pg, "page"); draw2d(cP, "labels"); const t1 = performance.now();
-      const li = labelsAlpha(pg, cP); const t2 = performance.now();
+    /* opts.labelsDirect: the labels callback draws them with their own alpha on a cleared canvas (icons of any colour, several inks) — uploaded as they are;
+       otherwise (the segment control: one ink, the page drawn opaque) the alpha is recovered from the two renders (labelsAlpha) */
+    const drawLabelsDirect = (c) => { const x = c.getContext("2d", { willReadFrequently: true }); x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, c.width, c.height); x.scale(DPR, DPR); x.translate(-region.x, -region.y); opts.backdrop(x, "labels", { width: W, height: H, region }); return c; };
+    const redrawNow = () => { const tb = performance.now(); const { pg, p: cP } = scratchCanvases(); draw2d(pg, "page"); if (opts.labelsDirect) drawLabelsDirect(cP); else draw2d(cP, "labels"); const t1 = performance.now();
+      const li = opts.labelsDirect ? cP : labelsAlpha(pg, cP); const t2 = performance.now();
       if (!tPage) { tPage = tex(pg, true); liveLab = tex(li, true); } else { upload(tPage, pg, true); upload(liveLab, li, true); }
       tLab = liveLab; variants.clear(); stats.labels = "live";   // the page changed under the lens: every prepared variant is stale (the page prepares again at idle)
       composite = cP; stats.prewarm.backdropMs = performance.now() - tb; stats.prewarm.backdropDrawMs = t1 - tb; stats.prewarm.backdropAlphaMs = t2 - t1; stats.prewarm.backdropUploadMs = performance.now() - t2; measure("seg:gl-redraw", tb); };
@@ -214,7 +217,7 @@ void main(){
     const setState = (s) => {
       const t0 = performance.now(); const p = s.lift == null ? 1 : Math.max(0, Math.min(1, s.lift)), pd = s.pd == null ? 1 : Math.max(0, Math.min(1, s.pd));
       if (s.canvasOrigin) canvasOrigin = s.canvasOrigin;
-      if (p <= 0) { clear(); drawn = true; return; }   /* rest is the PAGE's call (lift 0 from its clear()), never the package's: while the page keeps .lift the DOM platter is transparent and the canvas is the only platter — a package-side bound (b313aed's .001 / fb84a7e's .005) cleared the canvas 22 ticks before the page's clear and the white capsule vanished for 367 ms at the end of every tap (190821, README §0.8.12) */
+      if (p <= 0) { clear(); drawn = true; stats.last = { lift: 0, pd, platterAlpha: 0, platterColorAlpha: 0, t: performance.now() }; return; }   /* rest is the PAGE's call (lift 0 from its clear()), never the package's: while the page keeps .lift the DOM platter is transparent and the canvas is the only platter — a package-side bound (b313aed's .001 / fb84a7e's .005) cleared the canvas 22 ticks before the page's clear and the white capsule vanished for 367 ms at the end of every tap (190821, README §0.8.12) */
       const base = preload[0] || 220;
       const want = s.w <= base ? base : nearest(s.w);   /* the lift (196×28 → 220×44) rides the 220 set stretched over the growing box (README §0.3, the SVG page's rule); only the drag stretch (> 220) has its own sets */
       if (!sets[want]) loadSet(want);
