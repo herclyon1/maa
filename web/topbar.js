@@ -88,35 +88,68 @@
   const POCKET = { light: { replay: [255, 255, 255, 0.5], blur: 2, scale: 0.5, bf: 16, darken: 0.4, lighten: 0.6, normal: 0.25, matrix: [1.1969, -0.1789, -0.018, 0, 0.03, -0.0531, 1.0712, -0.0181, 0, 0.03, -0.0532, -0.1787, 1.232, 0, 0.03], hairline: [0, 0, 0, 0.1] },
     dark: { replay: [0, 0, 0, 0.6], darken: 0.6, lighten: 0.4, normal: 0, hairline: [255, 255, 255, 0.1] } };
   /* R3′ — the variable blur's inputMaskImage (R46, nav-bar-scroll-formula.md §3.4a; tools/uiprobe/uiprobe-r46-pocket-mask.json): a 1 × 384 column, only R varies —
-     rows 0 … 204 = 255, then rows 205 … 383 fall monotonically to 63 (.247); POCKET_MASK holds rows 200 … 383 (184 values, 0-based), the rows before are 255. Wired as
-     a mask-image gradient on the blurred copy (the reader's wiring note in §3.4a): stop i at the centre of row i, alpha R/255; the column is stretched over the
-     layer's height (a filter mask image covers the layer's bounds; whether the pocket stretches it by a 120-pt rule instead is §6 item 3, 待读). What CSS cannot
-     express: the native mask scales the blur RADIUS per row (variableBlur) with inputFade 1 — here it scales the blurred layer's alpha (不可表达: per-row radius). */
+     rows 0 … 204 = 255, then rows 205 … 383 fall monotonically to 63 (.247); POCKET_MASK holds rows 200 … 383 (184 values, 0-based), the rows before are 255.
+     R3′ wired it as an alpha mask-image; R3″ (below) reads the shader: the R channel scales the blur LEVEL per row and the fade term is 1 for every row of this
+     mask, so the alpha mask is gone and the column drives the level mix (pocketMask() is kept for the record / TopbarPocket.mask.css). The column is stretched
+     over the layer's height (a filter mask image covers the layer's bounds; whether the pocket stretches it by a 120-pt rule instead is §6 item 3, 待读). */
   const POCKET_MASK = [255, 255, 255, 255, 255, 254, 254, 254, 254, 254, 254, 254, 254, 254, 253, 253, 253, 253, 252, 252, 252, 251, 251, 251, 250, 250, 249, 249, 248, 247, 247, 246, 245, 245, 244, 243, 243, 242, 241, 240, 239, 238, 237, 236, 235, 234, 233, 232, 231, 230, 229, 228, 227, 225, 224, 223, 222, 220, 219, 218, 216, 215, 213, 212, 210, 209, 207, 206, 204, 203, 201, 199, 198, 196, 194, 193, 191, 189, 188, 186, 184, 182, 181, 179, 177, 175, 173, 172, 170, 168, 166, 164, 162, 160, 159, 157, 155, 153, 151, 149, 148, 146, 144, 142, 140, 138, 137, 135, 133, 131, 130, 128, 126, 124, 123, 121, 119, 118, 116, 115, 113, 111, 110, 108, 107, 105, 104, 103, 101, 100, 98, 97, 96, 94, 93, 92, 91, 90, 88, 87, 86, 85, 84, 83, 82, 81, 80, 79, 78, 77, 77, 76, 75, 74, 73, 73, 72, 71, 71, 70, 70, 69, 69, 68, 68, 67, 67, 66, 66, 66, 65, 65, 65, 64, 64, 64, 64, 64, 64, 63, 63, 63, 63, 63]; const POCKET_MASK_ROW0 = 200, POCKET_MASK_ROWS = 384;
   const pocketMask = () => { const stops = [`rgba(0,0,0,1) 0%`]; for (let i = 0; i < POCKET_MASK.length; i++) { const row = POCKET_MASK_ROW0 + i; stops.push(`rgba(0,0,0,${(POCKET_MASK[i] / 255).toFixed(4)}) ${((row + 0.5) / POCKET_MASK_ROWS * 100).toFixed(3)}%`); } return `linear-gradient(to bottom, ${stops.join(", ")})`; };
   const pocketTheme = () => (matchMedia("(prefers-color-scheme: dark)").matches && root.dataset.theme !== "light") || root.dataset.theme === "dark" ? "dark" : "light";
   const pocketKeys = (th) => ({ ...POCKET.light, ...(th === "dark" ? POCKET.dark : {}) });
   const NS = "http://www.w3.org/2000/svg";
+  /* R3″ — the pocket blur as the native computes it (default.metallib `variable_blur_frag_lpf` + `variable_blur_downsample_frag_lpf`, QuartzCore
+     `VariableBlurFilter::render` 0x1c399060c → `Context::variable_blur_surface` 0x1c39060e8; nav-bar-scroll-formula.md §3.4b):
+       r(y)  = 1.6 · inputRadius · (device px/pt · layer scale .5) · mask.R(y)          — max_blur = radius_px × 1.6 (+0x2a0 / 0x1c3bafae0), × the mask's R
+       L(y)  = r ≥ 2 ? log2 r : log2(1 + r/2), ≥ 0                                        — the pyramid level read (trilinear), four taps at ±L·¼ texel
+       out   = the pyramid at level L: levels built by the 13-tap kernel (centre .1055, ±1.96 axis .0902 ×4, ±1.96 diagonal .0771 ×4, ±3.92 axis .0563 ×4,
+               source-level texels, bilinear); BlurFill from the same pyramid at L_fill = log2(1.6 · 16 · px/pt), mask.G = the fill amount (255 → 1);
+       fade  = saturate((r − .02)/.08) with inputFade (0x1c3bb13a0/4: .08, −.02) — 1 for every row here (r ≥ 1.19), so the layer's alpha is NOT masked.
+     Here: the trilinear level mix per row is exact — three pre-blurred copies (levels 1–3) and the source (level 0), weighted per row by the tent
+     weights w_k(y) = max(0, 1 − |L(y) − k|) from a 1 × 384 weights image (R = w0, G = w1, B = w2, w3 = 1 − R − G − B) stretched over the pocket
+     (feImage in the copy's coordinates, moved with the scroll); each level's kernel is a Gaussian of the level's measured std (VB_STD, base px:
+     the 13-tap chain's phase-averaged impulse response, tools/vb_kernel.py) — 剖面近似: the chain's kernel is not Gaussian; the ±L/4-texel taps
+     (≤ .6 base px) are left out. The BlurFill blur = one Gaussian of the level mix's std at L_fill (the fill is the same pyramid). */
+  const VB = { radius: 2, scale: 0.5, fill: 16, k: 1.6, std: [0, 2.147, 4.694, 9.581, 19.263, 38.579, 77.023], mask: POCKET_MASK, maskRow0: POCKET_MASK_ROW0, maskRows: POCKET_MASK_ROWS };
+  const vbLevel = (r) => Math.max(0, r >= 2 ? Math.log2(r) : Math.log2(1 + r / 2));
+  const vbMixStd = (L) => { const k = Math.min(Math.floor(L), VB.std.length - 2), f = L - k; return Math.sqrt((1 - f) * VB.std[k] ** 2 + f * VB.std[k + 1] ** 2); };   // the std of a two-level mix
+  const vbBase = () => (window.devicePixelRatio || 1) * VB.scale;   // base px per pt of the pyramid (the backdrop capture at layer scale .5)
+  const vbMaskR = (row) => row < VB.maskRow0 ? 1 : VB.mask[Math.min(row - VB.maskRow0, VB.mask.length - 1)] / 255;
+  let vbImg = null;
+  const vbWeights = () => { if (vbImg) return vbImg; const c = document.createElement("canvas"); c.width = 1; c.height = VB.maskRows; const x = c.getContext("2d"); const im = x.createImageData(1, VB.maskRows); const base = vbBase();
+    for (let i = 0; i < VB.maskRows; i++) { const L = vbLevel(VB.k * VB.radius * base * vbMaskR(i)); const w = [0, 1, 2].map((k) => Math.max(0, 1 - Math.abs(L - k)));
+      im.data[i * 4] = Math.round(w[0] * 255); im.data[i * 4 + 1] = Math.round(w[1] * 255); im.data[i * 4 + 2] = Math.round(w[2] * 255); im.data[i * 4 + 3] = 255; }
+    x.putImageData(im, 0, 0); vbImg = c.toDataURL("image/png"); return vbImg; };
   const pocketFilter = (th) => { const k = pocketKeys(th); let svg = document.getElementById("topbar-pocket-svg"); if (!svg) { svg = document.createElementNS(NS, "svg"); svg.id = "topbar-pocket-svg"; svg.setAttribute("width", "0"); svg.setAttribute("height", "0"); svg.style.cssText = "position:absolute;width:0;height:0"; document.body.appendChild(svg); }
-    const rp = k.replay, sig = k.blur / k.scale, bfs = k.bf / k.scale;
-    svg.innerHTML = `<filter id="topbar-pocket-f" x="-10%" y="-25%" width="120%" height="150%" color-interpolation-filters="sRGB" data-theme="${th}" data-sigma="${sig}" data-bf-sigma="${bfs}">`
+    const rp = k.replay, base = vbBase(), sig = [1, 2, 3].map((lv) => VB.std[lv] / base), bfs = vbMixStd(vbLevel(VB.k * VB.fill * base)) / base;
+    const sel = (row) => `<feColorMatrix in="wimg" type="matrix" values="${[0, 1, 2].map((c) => (row === c ? "1" : "0")).join(" ")} 0 0  ${[0, 1, 2].map((c) => (row === c ? "1" : "0")).join(" ")} 0 0  ${[0, 1, 2].map((c) => (row === c ? "1" : "0")).join(" ")} 0 0  0 0 0 1 0" result="w${row}"/>`;
+    svg.innerHTML = `<filter id="topbar-pocket-f" filterUnits="userSpaceOnUse" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB" data-theme="${th}" data-sigma="${sig.map((v) => v.toFixed(4)).join(",")}" data-bf-sigma="${bfs.toFixed(4)}" data-base="${base}">`
       + `<feFlood flood-color="rgb(${rp[0]},${rp[1]},${rp[2]})" flood-opacity="${rp[3]}" result="rp"/><feComposite in="rp" in2="SourceGraphic" operator="over" result="src"/>`   // the Replay layer under the blur backdrop
-      + `<feGaussianBlur in="src" stdDeviation="${sig}" result="blur"/><feGaussianBlur in="src" stdDeviation="${bfs}" result="bf"/>`
+      + `<feGaussianBlur in="src" stdDeviation="${sig[0]}" result="b1"/><feGaussianBlur in="src" stdDeviation="${sig[1]}" result="b2"/><feGaussianBlur in="src" stdDeviation="${sig[2]}" result="b3"/>`
+      + `<feImage href="${vbWeights()}" preserveAspectRatio="none" x="0" y="0" width="1" height="1" result="wimg"/>` + sel(0) + sel(1) + sel(2)
+      + `<feColorMatrix in="wimg" type="matrix" values="-1 -1 -1 0 1  -1 -1 -1 0 1  -1 -1 -1 0 1  0 0 0 1 0" result="w3"/>`
+      + `<feBlend in="src" in2="w0" mode="multiply" result="p0"/><feBlend in="b1" in2="w1" mode="multiply" result="p1"/><feBlend in="b2" in2="w2" mode="multiply" result="p2"/><feBlend in="b3" in2="w3" mode="multiply" result="p3"/>`
+      + `<feComposite in="p0" in2="p1" operator="arithmetic" k2="1" k3="1" result="s01"/><feComposite in="s01" in2="p2" operator="arithmetic" k2="1" k3="1" result="s012"/><feComposite in="s012" in2="p3" operator="arithmetic" k2="1" k3="1" result="blur"/>`
+      + `<feGaussianBlur in="src" stdDeviation="${bfs}" result="bf"/>`
       + `<feBlend in="blur" in2="bf" mode="darken" result="mn"/><feBlend in="blur" in2="bf" mode="lighten" result="mx"/>`
       + `<feComposite in="mn" in2="mx" operator="arithmetic" k2="${k.darken}" k3="${k.lighten}" result="dl"/><feComposite in="dl" in2="blur" operator="arithmetic" k2="1" k3="${1 - k.darken - k.lighten}" result="bfo"/>`
       + `<feComposite in="bfo" in2="bf" operator="arithmetic" k2="${1 - k.normal}" k3="${k.normal}" result="c"/>`
       + `<feColorMatrix in="c" type="matrix" values="${k.matrix.join(" ")} 0 0 0 1 0" result="cm"/></filter>`; return k; };
+  /* the filter region and the weights image follow the pocket's box in the copy's own coordinates (the copy is translated by top0 − scrollY after
+     the filter, so the pocket's rows sit at y = scrollY − top0 … + H in the copy): set per scroll */
+  const pocketRegion = () => { const f = document.getElementById("topbar-pocket-f"); if (!f || !pocket.copy || !pocket.el) return; const H = pocket.el.offsetHeight, W = pocket.copy.offsetWidth, y = window.scrollY - pocket.top0, m = Math.ceil(3 * (VB.std[6] / vbBase()));   // margin = 3 σ of the widest blur
+    f.setAttribute("x", String(-m)); f.setAttribute("y", String(y - m)); f.setAttribute("width", String(W + 2 * m)); f.setAttribute("height", String(H + 2 * m));
+    const im = f.querySelector("feImage"); if (im) { im.setAttribute("x", "0"); im.setAttribute("y", String(y)); im.setAttribute("width", String(W)); im.setAttribute("height", String(H)); } };
   const pocket = { el: null, copy: null, hair: null, theme: null, main: document.getElementById("app") };
   const pocketBuild = () => { if (!pocket.main) return; const th = pocketTheme(); const k = pocketFilter(th);
     if (!pocket.el) { pocket.el = document.createElement("div"); pocket.el.className = "topbar-pocket"; pocket.el.setAttribute("aria-hidden", "true"); pocket.hair = document.createElement("i"); pocket.hair.className = "topbar-pocket-hair"; document.body.appendChild(pocket.el); }
     if (pocket.copy) pocket.copy.remove(); const copy = pocket.main.cloneNode(true); copy.removeAttribute("id"); copy.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); copy.querySelectorAll("canvas, script, .menu, .menu-scrim, nav.tabs").forEach((e) => e.remove()); copy.className = "topbar-pocket-copy"; copy.inert = true;
-    const mr = pocket.main.getBoundingClientRect(); const mk = pocketMask(); copy.style.cssText = `position:absolute;left:${mr.left}px;top:0;width:${mr.width}px;pointer-events:none;filter:url(#topbar-pocket-f)`; copy.style.webkitMaskImage = mk; copy.style.maskImage = mk;   /* R3′: the mask is on the copy (the blur layer), the replay flood stays unmasked under it (the pocket's own background below) */
+    const mr = pocket.main.getBoundingClientRect(); copy.style.cssText = `position:absolute;left:${mr.left}px;top:0;width:${mr.width}px;pointer-events:none;filter:url(#topbar-pocket-f)`; /* R3″: no alpha mask — the mask scales the blur level per row inside the filter (fade ≡ 1 for this mask); the replay fill stays under it (the pocket's own background below) */
     const rp = k.replay; pocket.el.style.background = `rgba(${rp[0]},${rp[1]},${rp[2]},${rp[3]})`;   /* the Replay layer: a flat fill over the content, under the blur layer (§6b), not masked */ pocket.el.appendChild(copy); pocket.el.appendChild(pocket.hair); pocket.copy = copy; pocket.theme = th; pocket.top0 = mr.top + window.scrollY;
     const h = k.hairline; pocket.hair.style.background = `rgba(${h[0]},${h[1]},${h[2]},${h[3]})`; pocketPlace(); };
-  const pocketPlace = () => { if (!pocket.copy) return; pocket.copy.style.transform = `translateY(${(pocket.top0 - window.scrollY).toFixed(2)}px)`; };
+  const pocketPlace = () => { if (!pocket.copy) return; pocket.copy.style.transform = `translateY(${(pocket.top0 - window.scrollY).toFixed(2)}px)`; pocketRegion(); };
   const pocketObs = new MutationObserver(() => { clearTimeout(pocket.t); pocket.t = setTimeout(pocketBuild, 60); });
   if (pocket.main) { pocketBuild(); pocketObs.observe(pocket.main, { childList: true, subtree: true, characterData: true }); addEventListener("scroll", pocketPlace, { passive: true }); try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", pocketBuild); } catch (e) {} }
-  window.TopbarPocket = { keys: pocketKeys, theme: pocketTheme, rebuild: pocketBuild, get el() { return pocket.el; }, mask: { rows: POCKET_MASK_ROWS, row0: POCKET_MASK_ROW0, values: POCKET_MASK.slice(), css: pocketMask } };
+  window.TopbarPocket = { keys: pocketKeys, theme: pocketTheme, rebuild: pocketBuild, get el() { return pocket.el; }, get top0() { return pocket.top0; }, mask: { rows: POCKET_MASK_ROWS, row0: POCKET_MASK_ROW0, values: POCKET_MASK.slice(), css: pocketMask }, vb: { ...VB, level: vbLevel, mixStd: vbMixStd, base: vbBase, maskR: vbMaskR, weights: vbWeights, region: pocketRegion } };
   if ("onscrollend" in window) addEventListener("scrollend", () => { if (!dragging) settle(); });
   addEventListener("touchstart", () => { dragging = true; if (snapping) { cancelAnimationFrame(snapRaf); snapping = false; } }, { passive: true });
   addEventListener("touchend", () => { dragging = false; lastTouchEnd = performance.now(); }, { passive: true }); addEventListener("touchcancel", () => { dragging = false; lastTouchEnd = performance.now(); }, { passive: true });
