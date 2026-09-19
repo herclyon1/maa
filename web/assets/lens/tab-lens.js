@@ -42,7 +42,18 @@
    targets), the three floats on the flex spring; presented box = W·sX × H·sY about the centre x + sX·dx (§6.4: the drift is added in the scaled
    coordinates). Active from the first drag frame (the selection gesture's pan) until the floats settle after the up; the press-glide to another item
    is left as the pure lift (the ① trace of tab-lens-motion.md §4 reads the lift sizes alone there). Not read: the retargetImpulse gap (§6.4: the native peak 1.109 vs the chain's 1.085 — no impulse in the loupe spec), the interaction
-   pulse (§3, four parameters unread). Instrument: window.__tabLens.flex = { sx, sy, dx, target, spec, sp, accel, vel, trace }. */
+   pulse (§3, four parameters unread). Instrument: window.__tabLens.flex = { sx, sy, dx, target, spec, sp, accel, vel, trace }.
+   REDUCE MOTION (R59′b; page-inventory.md §12b ② decompiled + R59″ probe records tools/touch/seg-native-r59-motion.json tabhold / tabtap): with
+   Reduce Motion on, _UIFloatingTabBarSelectionContainerView never calls setLifted: (0x1c4974abc–0x1c4974ac8) and the .95 platter scale needs a trait
+   this bar lacks → no lift, no stretch, no platter scale; but _UIContinuousSelectionGestureRecognizer still begins at the down and the selection
+   view slides to the pressed item at once (259 → 87 in the records, from ≈ +21 ms after the down — one commit frame; the hold record's +43 sits
+   behind a 41 ms main-thread stall the touch log marks). The curve: both records are the closed spring ζ .9 / response .2 to 0.11 pt rms (13 frames
+   each) — damping .9 = _animateSelection's no-highlight damping constant (0x1c5718108), response .2 = its highlighted response (0x1c5717e88,
+   tab-lens-motion.md §6 line 100); ζ .85 / .2 (the highlighted pair) misses by 2.2 pt rms / 3.3 max. Which condition pairs them on this path is
+   unread (待读, 老网页). Here (geometry mode): the driver starts at the pointerdown, p stays 0 (rest box, no flex), the position spring is ζ .9 / .2 to
+   the §6.6 finger target (= the pressed item's centre at the down; the finger rule while moving), the loop keeps running while the finger is down
+   (the lens parks on the item — the glide's own CSS box is still the old item until view.js selects at the up), and after the up the usual ζ .9 / .4
+   to view.js's selection. Detected like view.js: window.__forceRM (the acceptance's switch), else prefers-reduced-motion. ?tlens=material unchanged. */
 (function () {
   const q = new URLSearchParams(location.search);
   if (q.get("tlens") === "0") return;
@@ -62,7 +73,9 @@
   const AM = 16;                                                              // the fringe wrapper's margin (lens-field.json aberration.wrapper; ≥ the 15 pt tap span)
   const LIFT = 16, PLATTER = 1.0516, ITEM = 1.16;                             // +16 on both axes (94×54 → 110×70), platter 1.0516, items 1.16 (tab-lens-native.md §3)
   const SP_LIFT = { z: 1, w: 2 * Math.PI / .25 }, SP_DROP = { z: 1, w: 2 * Math.PI / .4 }, SP_POS = { z: .85, w: 2 * Math.PI / .4 };   // tab-lens-motion.md §0 / §4: lift, drop, the jump to a pressed item (the ① trace)
-  const SP_DRAG = { z: .85, w: 2 * Math.PI / .2 }, SP_RELEASE = { z: .9, w: 2 * Math.PI / .4 };   // tab-lens-motion.md §6.6 (UIKitCore _animateSelection, checked on the drag trace rms .55 / max .75 by the old page): the finger-following spring while highlighted, the spring after the up
+  const SP_DRAG = { z: .85, w: 2 * Math.PI / .2 }, SP_RELEASE = { z: .9, w: 2 * Math.PI / .4 };
+  const SP_RM = { z: .9, w: 2 * Math.PI / .2 };                             // R59′b: the Reduce Motion slide (records: rms .11 pt; the pairing of the two read constants 待读)
+  const RM = () => (window.__forceRM != null ? !!window.__forceRM : matchMedia("(prefers-reduced-motion: reduce)").matches);   // tab-lens-motion.md §6.6 (UIKitCore _animateSelection, checked on the drag trace rms .55 / max .75 by the old page): the finger-following spring while highlighted, the spring after the up
   const step = (st, target, sp, dt) => {                                      // analytic damped-spring step from (x, v): ζ ≥ 1 critically damped, else under-damped
     const dx = st.x - target;
     if (sp.z >= 1) { const A = dx, B = st.v + sp.w * dx, e = Math.exp(-sp.w * dt); st.x = target + (A + B * dt) * e; st.v = (B - sp.w * (A + B * dt)) * e; }
@@ -119,10 +132,16 @@
     if (nav.__tlensFinger) return; nav.__tlensFinger = true;
     nav.addEventListener("pointerdown", (e) => { const r = nav.getBoundingClientRect(); const bs = [...nav.querySelectorAll(".seg button")];
       let a = .5; for (const b of bs) { const q = b.getBoundingClientRect(); if (e.clientX >= q.left && e.clientX <= q.right) { a = (e.clientX - q.left) / q.width; break; } }
-      finger.down = true; finger.a = a; finger.x = e.clientX - r.left; if (loop) loop.retarget(); }, true);
+      finger.down = true; finger.a = a; finger.x = e.clientX - r.left; if (loop) loop.retarget();
+      else if (MODE === "geometry" && RM() && st && st.nav === nav && ready) { const tx = rmTarget(st); window.__tabLensRM = { at: performance.now(), target: tx, X: st.X, started: tx != null && Math.abs(tx - st.X) > .5 }; if (tx != null && Math.abs(tx - st.X) > .5) { st.lastX = st.X; start(st); } }
+      else if (RM()) window.__tabLensRM = { at: performance.now(), why: !st ? "no st" : st.nav !== nav ? "other nav" : !ready ? "not ready" : "loop " + (loop ? loop.st === st : "-") }; }, true);   // instrument for the acceptance   // R59′b: the slide begins at the down, no lift
     nav.addEventListener("pointermove", (e) => { if (!finger.down) return; finger.x = e.clientX - nav.getBoundingClientRect().left; if (loop) loop.retarget(); }, true);
     for (const t of ["pointerup", "pointercancel"]) nav.addEventListener(t, () => { finger.down = false; finger.x = null; if (loop) loop.retarget(); }, true);
   };
+  /* R59′b: the Reduce Motion target = the §6.6 finger rule (finger x − a·W + W/2 = the pressed item's centre at the down), hard-clamped to the items' run */
+  const rmTarget = (st) => { if (finger.x == null) return null; const w = parseFloat(st.glide.style.width) || st.glide.offsetWidth; const navBox = st.nav.getBoundingClientRect(), segBox = st.seg.getBoundingClientRect();
+    const min = segBox.left - navBox.left + (parseFloat(getComputedStyle(st.seg).paddingLeft) || 0), max = segBox.right - navBox.left - (parseFloat(getComputedStyle(st.seg).paddingRight) || 0);
+    return Math.max(min, Math.min(max - w, finger.x - finger.a * w)) + w / 2; };
   const attach = (nav) => {
     const glide = nav.querySelector(".glide"), seg = nav.querySelector(".seg"), main = document.getElementById("app");
     if (!glide || !seg || !main) return null;
@@ -187,7 +206,7 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
     try { glo.lens.setState({ cx: x + GLM, cy: pad + h0 / 2 + GLM, w: W, h: H, lift: p, pd: p, wh, platter: { rgba: [0, 0, 0, 0], alpha: 0 } }); } catch (e) { window.__tabLensErr = String(e && e.stack || e); } };
   const glRest = (st) => { if (!glo || glo.nav !== st.nav) return; try { glo.lens.setState({ cx: 0, cy: 0, w: 82, h: 54, lift: 0 }); } catch (e) {} };
   const startGeo = (st) => {
-    if (loop) { loop.stop(); }
+    if (loop) { loop.stop("restart"); }
     const nav = st.nav, glide = st.glide;
     if (!nav.offsetWidth) return;                                            // html.kbd: the bar is display:none, its geometry 0 — nothing to drive
     const w0 = parseFloat(glide.style.width) || glide.offsetWidth || 82, h0 = glide.offsetHeight || 54, pad = glide.offsetTop;   // the resting box = the item's (view.js's inline left / width; top = the bar's pad)
@@ -201,9 +220,10 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
        ζ .85 / .4) and starts falling (ζ 1 / .4) on the frame the slide arrives, not at the up, not earlier for an early up; the arrival = the position
        spring first within .5 pt (1 px at 2×) of the target */
     const tap = !!st.tap; let arrived = false;
-    const setTargets = () => { const lifted = glide.classList.contains("lift") || glide.classList.contains("lift-sel"), dragging = lifted && nav.classList.contains("drag") && finger.down && finger.x != null;
-      pTarget = lifted || (tap && !arrived) ? 1 : 0;
-      if (dragging) { const left = Math.max(track.min, Math.min(track.max - w0, finger.x - finger.a * w0)); st.X = left + w0 / 2; posSpring = SP_DRAG; phase = "drag"; }
+    const setTargets = () => { const lifted = glide.classList.contains("lift") || glide.classList.contains("lift-sel"), dragging = lifted && nav.classList.contains("drag") && finger.down && finger.x != null, rm = RM();
+      st.rm = rm; pTarget = rm ? 0 : lifted || (tap && !arrived) ? 1 : 0;   // R59′b: Reduce Motion never lifts (the box stays w0 × h0, no flex)
+      if (rm && finger.down && finger.x != null) { const left = Math.max(track.min, Math.min(track.max - w0, finger.x - finger.a * w0)); st.X = left + w0 / 2; posSpring = SP_RM; phase = "rm"; }   // R59′b: the slide to the pressed item from the down, the finger rule while moving, ζ .9 / .2
+      else if (dragging) { const left = Math.max(track.min, Math.min(track.max - w0, finger.x - finger.a * w0)); st.X = left + w0 / 2; posSpring = SP_DRAG; phase = "drag"; }
       else if (tap) { st.X = centreOf(glide); posSpring = SP_POS; phase = arrived ? "drop" : "tap"; }
       else { st.X = centreOf(glide); posSpring = lifted ? SP_POS : SP_RELEASE; phase = lifted ? (Math.abs(st.X - XS.x) > .5 ? "move" : "lift") : "drop"; } };
     setTargets();
@@ -234,13 +254,13 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
       nav.style.setProperty("--tl-left", (xc - Wp / 2) + "px"); nav.style.setProperty("--tl-w", Wp + "px"); nav.style.setProperty("--tl-top", (pad + h0 / 2 - Hp / 2) + "px"); nav.style.setProperty("--tl-h", Hp + "px");
       if (!nav.classList.contains("tl-on")) nav.classList.add("tl-on");
       glFrame(st, p, xc, Wp, Hp, pad, h0);
-      window.__tabLens = { t: (now - t0) / 1000, t0, tf: last, p, v: P.v, x, xv: XS.v, target: st.X, set: 0, s: 1, phase, w: W, h: H, wp: Wp, hp: Hp, xc, frame: frameN, mode: "geometry",
+      window.__tabLens = { t: (now - t0) / 1000, t0, tf: last, p, v: P.v, x, xv: XS.v, target: st.X, set: 0, s: 1, phase, w: W, h: H, wp: Wp, hp: Hp, xc, frame: frameN, mode: "geometry", rm: !!st.rm,
         flex: fl ? { sx: fl.out.sx, sy: fl.out.sy, dx: fl.out.dx, target: fl.tg, spec: fl.spec, sp: fl.sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, trace: fl.trace } : null };   // tf = this frame's timestamp: a retarget after it (the up) integrates from here
       const flexRest = !fl || !fl.active;
-      if (pTarget === 0 && p < .002 && Math.abs(P.v) < .02 && Math.abs(XS.x - st.X) < .05 && Math.abs(XS.v) < 1 && flexRest) { stop(); return; }
+      if (pTarget === 0 && p < .002 && Math.abs(P.v) < .02 && Math.abs(XS.x - st.X) < .05 && Math.abs(XS.v) < 1 && flexRest && !(st.rm && finger.down)) { stop(); return; }   // R59′b: parked on the item while the finger is down (view.js's box is still the old item until the up)
       tick(frame);
     };
-    const stop = () => { running = false; glRest(st); st.tap = false;
+    const stop = (why) => { running = false; glRest(st); st.tap = false; window.__tabLensStop = { why: why || "settled", at: performance.now(), phase, x: XS.x, target: st.X };   // instrument: why the driver stopped (the acceptance reads it)
       nav.classList.remove("tl-on"); for (const k of ["--tl-left", "--tl-w", "--tl-top", "--tl-h"]) nav.style.removeProperty(k);   // rest: the glide shows view.js's own box again (its inline left / width = the selected item)
       if (loop && loop.stop === stop) loop = null; window.__tabLens = null; };
     loop = { stop, retarget: setTargets, st };
@@ -325,7 +345,7 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
     const nav = document.getElementById("tabs"); if (!nav || !ready) return;
     let rebuilt = false, glideChanged = false;
     for (const m of muts) { if (m.type === "childList" && m.target === nav) rebuilt = true; else if (m.type === "attributes" && m.target !== nav && m.target.classList && m.target.classList.contains("glide") && !(m.attributeName === "style" && loop && m.target.style.transformOrigin && m.oldValue === null)) glideChanged = true; }
-    if (rebuilt || !st || st.nav !== nav || st.glide !== nav.querySelector(".glide")) { if (loop) loop.stop(); st = attach(nav); if (!st) return; }
+    if (rebuilt || !st || st.nav !== nav || st.glide !== nav.querySelector(".glide")) { if (loop) loop.stop("rebuild"); st = attach(nav); if (!st) return; }
     const onChanged = muts.some((m) => m.type === "attributes" && m.attributeName === "class" && m.target !== nav && m.target.matches && m.target.matches(".seg button"));   // the selection moved in this batch (button.on)
     if (!glideChanged && !onChanged) return;
     const g = st.glide, lifted = g.classList.contains("lift") || g.classList.contains("lift-sel"), cur = centreOf(g);
@@ -335,11 +355,11 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
     st.X = cur;
   };
   const mo = new MutationObserver((muts) => { try { onMut(muts); } catch (e) { window.__tabLensErr = String(e && e.stack || e); console.error("tab-lens", e); } });
-  document.addEventListener("visibilitychange", () => { if (document.hidden && loop) loop.stop(); });   // hidden strips the state (BOARD A6 template): the glide shows view.js's box
+  document.addEventListener("visibilitychange", () => { if (document.hidden && loop) loop.stop("hidden"); });   // hidden strips the state (BOARD A6 template): the glide shows view.js's box
   /* R0② (BOARD round 2): the bar's nodes persist across a tab-set change (view.js layoutTabs reconciles in place, ui 807da64) — the page dispatches
      "tabs-changed" on nav after it placed the glide on the selected item; the driver re-reads the bar from the same nodes (a loop in flight is stopped:
      the items' run changed under it) instead of waiting for new nodes. The childList branch of the observer stays for a real rebuild. */
-  const onTabsChanged = () => { const nav = document.getElementById("tabs"); if (!nav || !ready) return; if (loop) loop.stop(); st = attach(nav); if (st) { st.X = centreOf(st.glide); st.lastX = st.X; } };
+  const onTabsChanged = () => { const nav = document.getElementById("tabs"); if (!nav || !ready) return; if (loop) loop.stop("tabs-changed"); st = attach(nav); if (st) { st.X = centreOf(st.glide); st.lastX = st.X; } };
   const init = async () => {
     if (MODE === "geometry") { injectGeoStyle(); ready = true; } else await loadFilters();
     const nav = document.getElementById("tabs"); if (!nav) return;

@@ -152,25 +152,65 @@
         delete document.hidden; if (hd) Object.defineProperty(Document.prototype, "hidden", hd);
         ev(b3, "pointerup", x3, y3, 7); await sleep(600);
       } }
+    /* ---- R59′b Reduce Motion (page-inventory.md §12b ② decompiled: no setLifted:, no .95 platter scale; R59″ records tabhold / tabtap: the lens still slides
+       259 → 87 from the down, both records = the closed spring ζ .9 / .2 to .11 pt rms — tab-lens.js header): forced through window.__forceRM like view.js's
+       段 rows. Pressing another item: the driver starts at the down (phase rm), the centre follows ζ .9 / .2 to the item's centre, width / height never
+       leave w0 × 54 and p stays 0 (no lift, no flex); while the finger is held the driver stays on and the lens is parked on the item; the up selects it and
+       the driver stops at rest on view.js's box; a drag under RM: no lift, the target = the finger rule. */
+    { window.__forceRM = true; try {
+      const closedRM = (x0, target, t) => { const w = 2 * Math.PI / 0.2, z = 0.9, wd = w * Math.sqrt(1 - z * z), e = Math.exp(-z * w * t); return target + (x0 - target) * e * (Math.cos(wd * t) + (z * w / wd) * Math.sin(wd * t)); };
+      const navL4 = nav.getBoundingClientRect().left, cx4 = () => rect().cx - navL4;
+      const sel4 = bs.find((b) => b.classList.contains("on")), tgt4 = bs[bs.indexOf(sel4) === 0 ? 1 : 0], tr4 = tgt4.getBoundingClientRect(), tx4 = tr4.left + tr4.width / 2, ty4 = tr4.top + tr4.height / 2, w04 = tgt4.offsetWidth, c04 = cx4();
+      const tDown = performance.now(); ev(tgt4, "pointerdown", tx4, ty4, 21); let L4 = null, nf = 0; for (; nf < 4 && !L4; nf++) { await new Promise((r) => requestAnimationFrame(r)); L4 = window.__tabLens; }   // the driver's first integrated frame: a rAF stamped before the start re-ticks (tab-lens.js frame0), so the state appears on the first or second frame
+      check(`R59′b RM 按下另一项：驱动在按下后 ≤ 2 帧起（不等 +140 抬起；起点 +${L4 ? Math.round(L4.t0 - tDown) : "-"} ms）、phase rm、p 0、目标 = 该项中心`, "≤ 2 帧 · rm · p 0 · 目标 = 中心", L4 ? `${nf} 帧 · ${L4.phase} · p ${L4.p.toFixed(3)} · 目标 ${L4.target.toFixed(1)} vs ${(tx4 - navL4).toFixed(1)}` : `无驱动（${JSON.stringify(window.__tabLensRM || null)} stop ${JSON.stringify(window.__tabLensStop || null)} err ${window.__tabLensErr || "-"}）`, !!L4 && nf <= 2 && L4.phase === "rm" && L4.rm === true && L4.p === 0 && Math.abs(L4.target - (tx4 - navL4)) <= 0.5 && L4.t0 - tDown <= 40);
+      const sl = []; await new Promise((res) => { let first = null; const tick = (now) => { if (first === null) first = now; const L = window.__tabLens; sl.push({ t: (now - (L4 ? L4.t0 : tDown)) / 1000, cx: cx4(), w: rect().width, h: rect().height, p: L ? L.p : null, ph: L ? L.phase : null, on: nav.classList.contains("tl-on") }); if (now - first < 450) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick); });
+      num(`R59′b RM 滑动 中心 x 对 ζ.9/.2 闭式 rms（${sl.length} 帧，自驱动起点；R59″ 两条记录对同一闭式 rms .11 pt）`, 0, rms(sl.map((s) => s.cx - closedRM(c04, tx4 - navL4, s.t))), 1);
+      check(`R59′b RM 全程不抬不拉伸：每帧 宽 = ${w04}、高 = ${h0}、p = 0（§12b ②：无 setLifted、无 .95 平台缩放）`, "every frame", sl.every((s) => Math.abs(s.w - w04) <= 0.5 && Math.abs(s.h - h0) <= 0.5 && s.p === 0) ? "every frame" : `OFF（宽 ${Math.max(...sl.map((s) => s.w)).toFixed(1)} 高 ${Math.max(...sl.map((s) => s.h)).toFixed(1)} p ${Math.max(...sl.map((s) => s.p || 0)).toFixed(3)}）`, sl.length > 10 && sl.every((s) => Math.abs(s.w - w04) <= 0.5 && Math.abs(s.h - h0) <= 0.5 && s.p === 0));
+      check("R59′b RM 按住 450 ms：驱动仍在（.tl-on）、透镜停在按下项中心（|Δ| ≤ .5；选择在 touch-down 发生，抬手才换页）", "tl-on · |Δ| ≤ .5", `${nav.classList.contains("tl-on") ? "tl-on" : "off"} · |Δ| ${Math.abs(cx4() - (tx4 - navL4)).toFixed(2)}`, nav.classList.contains("tl-on") && Math.abs(cx4() - (tx4 - navL4)) <= 0.5);
+      /* a drag under RM: the target follows the finger rule, still no lift */
+      ev(tgt4, "pointermove", tx4 + 30, ty4, 21); await new Promise((r) => requestAnimationFrame(r)); const Lm4 = window.__tabLens;
+      check("R59′b RM 拖动：目标 = 手指规则（x − a·W + W/2）、无 lift（高 54、p 0）", "目标 = 手指 + 30 · h 54 · p 0", Lm4 ? `目标 ${Lm4.target.toFixed(1)} vs ${(tx4 + 30 - navL4).toFixed(1)} · h ${rect().height.toFixed(1)} · p ${Lm4.p}` : "无驱动", !!Lm4 && Math.abs(Lm4.target - (tx4 + 30 - navL4)) <= 0.5 && Math.abs(rect().height - h0) <= 0.5 && Lm4.p === 0);
+      ev(tgt4, "pointermove", tx4, ty4, 21); await sleep(300);
+      ev(tgt4, "pointerup", tx4, ty4, 21); await sleep(600); const on4 = bs.find((b) => b.classList.contains("on"));
+      check("R59′b RM 抬手：选中被按项、驱动停（无 .tl-on）、胶囊在其中心", `${tgt4.dataset.tab} · off · 中心`, `${on4 ? on4.dataset.tab : "-"} · ${nav.classList.contains("tl-on") ? "tl-on" : "off"} · |Δ| ${Math.abs(cx4() - (tx4 - navL4)).toFixed(2)}`, on4 === tgt4 && !nav.classList.contains("tl-on") && Math.abs(cx4() - (tx4 - navL4)) <= 1);
+      delete seg.dataset.pe;
+      /* back to the original tab, still under RM (the same path) */
+      const sr4 = sel4.getBoundingClientRect(); ev(sel4, "pointerdown", sr4.left + sr4.width / 2, sr4.top + sr4.height / 2, 22); await sleep(350); ev(sel4, "pointerup", sr4.left + sr4.width / 2, sr4.top + sr4.height / 2, 22); await sleep(700); delete seg.dataset.pe;
+      check("R59′b RM 再按回原项：回到原项、驱动停", `${sel4.dataset.tab} · off`, `${(bs.find((b) => b.classList.contains("on")) || {}).dataset?.tab || "-"} · ${nav.classList.contains("tl-on") ? "tl-on" : "off"}`, bs.find((b) => b.classList.contains("on")) === sel4 && !nav.classList.contains("tl-on"));
+      /* the record itself against the same closed form (tools/touch/seg-native-r59-motion.json, tabhold: frames +75.3 … +275.2 ms after the down; start +42.6 — a 41 ms stall in the touch log — tap: +42.1 … +242.1, start +21.2) */
+      const rec = [[75.3, 209.49], [91.9, 175.24], [108.6, 146.58], [125.3, 125.07], [142.0, 110.08], [158.6, 100.23], [175.3, 94.10], [192.0, 90.48], [208.7, 88.46], [225.2, 87.42], [241.9, 86.94], [258.5, 86.77], [275.2, 87.0]];
+      const recRms = rms(rec.map(([t, x]) => x - closedRM(259, 87, (t - 42.6) / 1000)));
+      num("R59′b 记录核：R59″ tabhold 13 帧（259 → 87）对 ζ.9/.2 闭式 rms（pt；ζ.85/.2 为 2.15）", 0, recRms, 0.2);
+    } finally { window.__forceRM = null; } }
     /* ---- R0② the tab set changes under the bar (the user's bug 2: 切晚班再切早班 the capsule flashed downward — the bar was rebuilt): view.js keeps the
        nodes (R0①) and tells the driver with "tabs-changed"; per frame through 早 → 晚 → 早: nav's top unchanged, never display none, .plat / .glide / .seg
        the same elements, the button count never 0, the glide 54 high and on the selected button (≤ 1 pt), the driver idle (no __tabLens, no .tl-on) */
     { const qseg = document.querySelector("#queueseg"); const qbs = qseg ? [...qseg.querySelectorAll("button")] : [];
       if (qbs.length >= 2) {
-        const plat = nav.querySelector(".plat"), gl0 = nav.querySelector(".glide"), sg0 = nav.querySelector(".seg"), top0 = nav.getBoundingClientRect().top, cur0 = qbs.findIndex((b) => b.classList.contains("on"));
-        const bad = { top: 0, none: 0, node: 0, zero: 0, h: 0, pos: 0, drv: 0 }; let frames = 0, events = 0; const onEv = () => events++; nav.addEventListener("tabs-changed", onEv);
+        const plat = nav.querySelector(".plat"), gl0 = nav.querySelector(".glide"), sg0 = nav.querySelector(".seg"), r00 = nav.getBoundingClientRect(), top0 = r00.top, navH0 = r00.height, cur0 = qbs.findIndex((b) => b.classList.contains("on"));
+        /* A16 (this row went red 6 times on first runs after merges, "nav top 4 frames", never reproduced here in 10+ runs): the nav is position:fixed at
+           bottom = env(safe-area) + 12, so its top can move for two reasons — the page (its height or a transform: the user's bug) or the harness's viewport
+           (a headless emulation / scrollbar / visual-viewport hiccup). Each frame the nav's top is judged against where its own CSS puts it, expTop =
+           clientHeight − bottom − height: a page cause shows as |top − expTop| > .5 or a height change (`top` / `h`, red); a viewport change moves top and
+           expTop together (`vp`, recorded, not red); the first deviating frames are printed with their numbers so a red run says why. */
+        const bad = { top: 0, none: 0, node: 0, zero: 0, h: 0, pos: 0, drv: 0, vp: 0 }; let frames = 0, events = 0; const onEv = () => events++; nav.addEventListener("tabs-changed", onEv); const dev = [];
         const watch = (ms) => new Promise((res) => { let first = null; const tick = (now) => { if (first === null) first = now; frames++;
           const r = nav.getBoundingClientRect(), g = nav.querySelector(".glide"), on = nav.querySelector(".seg button.on"), n = nav.querySelectorAll(".seg button").length;
-          if (Math.abs(r.top - top0) > 0.5) bad.top++; if (getComputedStyle(nav).display === "none") bad.none++;
+          const cs = getComputedStyle(nav), expTop = document.documentElement.clientHeight - (parseFloat(cs.bottom) || 0) - r.height, dTop = r.top - top0, dExp = r.top - expTop;
+          if (Math.abs(dTop) > 0.5) { if (Math.abs(dExp) > 0.5 || Math.abs(r.height - navH0) > 0.5) bad.top++; else bad.vp++;
+            if (dev.length < 6) dev.push({ f: frames, top: +r.top.toFixed(2), d: +dTop.toFixed(2), exp: +expTop.toFixed(2), h: +r.height.toFixed(2), ch: document.documentElement.clientHeight, ih: innerHeight, vv: window.visualViewport ? +visualViewport.height.toFixed(1) : null, sy: +scrollY.toFixed(1), tf: cs.transform, b: cs.bottom, cls: nav.className, kbd: document.documentElement.classList.contains("kbd") }); }
+          if (Math.abs(r.height - navH0) > 0.5) bad.h++;
+          if (getComputedStyle(nav).display === "none") bad.none++;
           if (nav.querySelector(".plat") !== plat || g !== gl0 || nav.querySelector(".seg") !== sg0) bad.node++; if (n === 0) bad.zero++;
-          if (g) { const gr = g.getBoundingClientRect(); if (Math.abs(gr.height - 54) > 0.5) bad.h++; if (on) { const or = on.getBoundingClientRect(); if (Math.abs(gr.left - or.left) > 1 || Math.abs(gr.width - or.width) > 1) bad.pos++; } }
+          if (g) { const gr = g.getBoundingClientRect(); if (Math.abs(gr.height - 54) > 0.5) bad.gh = (bad.gh || 0) + 1; if (on) { const or = on.getBoundingClientRect(); if (Math.abs(gr.left - or.left) > 1 || Math.abs(gr.width - or.width) > 1) bad.pos++; } }
           if (window.__tabLens || nav.classList.contains("tl-on")) bad.drv++;
           if (now - first < ms) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick); });
         const other = qbs[cur0 === 0 ? 1 : 0], back = qbs[cur0];
         delete qseg.dataset.pe; other.click(); await watch(500); delete qseg.dataset.pe; back.click(); await watch(500);   // the press flag of an earlier synthetic press (no browser click consumed it) would eat the click
         nav.removeEventListener("tabs-changed", onEv);
         const tabsNow = [...nav.querySelectorAll(".seg button")].map((b) => b.dataset.tab).join(",");
-        check(`R0② 切班次两次（${frames} 帧）：nav top 不变 / 无 display none / 节点不重建 / 按钮数不为 0 / glide 高 54 / glide 在选中项 / 驱动不起`, "全 0", `${JSON.stringify(bad)} · tabs-changed ×${events} · ${tabsNow}`, Object.values(bad).every((v) => v === 0));
+        const pageBad = Object.entries(bad).filter(([k]) => k !== "vp").every(([, v]) => v === 0);
+        check(`R0② 切班次两次（${frames} 帧）：nav 在自己 CSS 的位置（top = clientHeight − bottom − 高，不变高、无 transform）/ 无 display none / 节点不重建 / 按钮数不为 0 / glide 高 54 / glide 在选中项 / 驱动不起（vp = 视口本身变的帧，只记不判）`, "页面项全 0", `${JSON.stringify(bad)} · tabs-changed ×${events} · ${tabsNow}${dev.length ? " · 偏帧 " + JSON.stringify(dev) : ""}`, pageBad);
         check("R0② 集合变时 nav 派发 tabs-changed（ui 807da64 接口）", "≥ 1", String(events), events >= 1 || tabsNow.split(",").length === 0);
       } else check("R0② 页面无两段可切（demo 应有早班/晚班）", "≥ 2 段", qbs.length + " 段", false); }
     if (typeof window.__tabKbd === "function") { window.__tabKbd(innerHeight - 300); await sleep(50); check("视口矮 300 后 nav.tabs display none（键盘规则）", "none", getComputedStyle(nav).display, getComputedStyle(nav).display === "none");
