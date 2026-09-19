@@ -49,9 +49,12 @@ function ask(title, msg, okLabel = "好", danger = false) {
        after showModal go to the ?diag=1 line, so the first-frame delay can be read off a phone. */
     d.classList.remove("settled"); d.addEventListener("animationend", () => d.classList.add("settled"), { once: true });
     const t0 = performance.now(); d.showModal();
-    requestAnimationFrame((f1) => requestAnimationFrame((f2) => { window.ALERT_T = { open: t0, f1, f2 }; }));
+    d.scrollTop = 0;   // 验收 09-19 18:0x: the glass .pane (inset −60) made the dialog scrollable by 60 px and the focus showModal() moves could scroll the title out; overflow:clip in index.html, this is the belt
+    requestAnimationFrame((f1) => requestAnimationFrame((f2) => { window.ALERT_T = { open: t0, f1, f2 }; d.scrollTop = 0; }));
   });
 }
+/* "8:30" / "08:30" → "08:30"; anything else (08:930, 25:00, 08:75, letters) → null */
+function timeHHMM(s) { const m = /^\s*(\d{1,2}):(\d{2})\s*$/.exec(String(s || "")); if (!m || +m[1] > 23 || +m[2] > 59) return null; return `${m[1].padStart(2, "0")}:${m[2]}`; }
 function toast(t, ms = 2600) {
   const el = $("#toast"); el.textContent = t; el.classList.add("show");
   clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove("show"), ms);
@@ -135,7 +138,7 @@ function echoFarmBlock(relay) {
     return `<div class="hint">🥚 正在刷「${cur["名字"] || "?"}」，刷到 ${String(cur["到"]).slice(11)} 为止（${cur["从"] ? String(cur["从"]).slice(11) + " 开始" : ""}）</div>
       <div class="row"><label>改成刷到几点
         <span class="hint">提前或延后都行，填 21:00 这种。已经过了的时刻＝立刻收工</span></label>
-        <input type="text" class="short" id="efnew" value="${String(cur["到"]).slice(11)}" inputmode="numeric"></div>
+        <input type="text" class="short" id="efnew" value="${String(cur["到"]).slice(11)}" inputmode="numeric" data-time></div>
       <div class="acts"><button class="wide" id="echofarmuntil">改收工时刻</button></div>
       <div class="acts"><button class="wide" id="echofarmstop">提前收工（关掉脚本和游戏）</button></div>`;
   }
@@ -145,7 +148,7 @@ function echoFarmBlock(relay) {
       <select id="efboss">${opts}</select></div>
     <div class="row"><label>刷到几点（机器时间）
       <span class="hint">填 08:30 这种，已过就算明天。到点自动收工、配置还原</span></label>
-      <input type="text" class="short" id="efuntil" value="08:30" inputmode="numeric"></div>
+      <input type="text" class="short" id="efuntil" value="08:30" inputmode="numeric" data-time></div>
     <div class="acts"><button class="wide" id="echofarm">开始刷</button></div>`;
 }
 
@@ -359,7 +362,7 @@ function render() {
   html += `<section><h2>刷 4C 声骸</h2>
     ${ef["到"] ? `<div class="row"><label>改成刷到几点
         <span class="hint">提前或延后都行，填 21:00 这种。已经过了的时刻＝立刻收工</span></label>
-        <input type="text" class="short" id="efnew" value="${String(ef["到"]).slice(11)}" inputmode="numeric"></div>` : echoFarmBlock(relay)}
+        <input type="text" class="short" id="efnew" value="${String(ef["到"]).slice(11)}" inputmode="numeric" data-time></div>` : echoFarmBlock(relay)}
   </section>`;
   html += `<section><h2>机器</h2>
     ${RELAY_SWITCHES.filter((x) => x.tab === "状态").map((x) => relayRow(x, relay)).join("")}
@@ -497,7 +500,12 @@ function render() {
       <input type="number" data-id="wb|OK-WW|第几个周本" id="wb-idx" value="${wb["第几个周本"] || 1}"></div>
   </section>`;
 
+  const pageVer = (() => { const s = [...document.scripts].map((x) => x.src || "").find((x) => /\/view\.js(\?|$)/.test(x)); const m = s && /[?&]v=([^&#]+)/.exec(s); return m ? m[1] : "本地"; })();
+  const diagOn = (() => { try { return localStorage.getItem("ark-diag") === "1"; } catch (e) { return false; } })();
   html += `<section><h2>这台手机</h2>
+    <div class="row"><label>页面版本<span class="hint">view.js 的 ?v= 戳；没有戳就是本地文件</span></label><span class="ro short" id="pagever">${pageVer}</span></div>
+    <div class="row"><label>诊断记录<span class="hint">开着时页面按 ?diag 方式启动：底部一行几何数，分段控件每次操作后弹出记录，可复制 / 分享给我们</span></label>
+      <span class="sw"><input type="checkbox" id="diagsw" ${diagOn ? "checked" : ""}><span></span></span></div>
     <div class="acts"><button id="mklink">复制免输入链接</button></div>
     <p class="foot">把这条链接存成书签或加到主屏幕，以后打开就直接是控制台，
       再也不用填信箱和 PIN。链接里带着这两样，别转发给别人</p>
@@ -720,12 +728,18 @@ function layoutTabs() {
   for (const el of document.querySelectorAll("#app > .segctl")) el.hidden = curTab !== "状态";   // 班次分段只在「状态」首页（验收 2026-09-18）；其他页照旧用 curQueue
   const nav = $("#tabs");
   nav.hidden = present.size < 2;
-  /* platter, lens and buttons are siblings (index.html: a lens nested in the backdrop-filtered platter cannot filter it) */
-  nav.innerHTML = `<div class="plat"></div><i class="glide"></i><div class="seg">` + TABS.filter(([t]) => present.has(t)).map(([t]) =>
-    `<button type="button" class="${t === curTab ? "on" : ""}" data-tab="${t}" aria-label="${t}">` +
-    `<span class="ico">` + (TAB_IMAGES[t] ? `<img class="tabimg" src="${TAB_IMAGES[t]}" alt="">`
-                   : `<i class="sf" style="-webkit-mask-image:url(${TAB_ICONS[t]});mask-image:url(${TAB_ICONS[t]})" aria-hidden="true"></i>`) + `</span>` +
-    `<span>${t}</span></button>`).join("") + `</div>`;
+  /* platter, lens and buttons are siblings (index.html: a lens nested in the backdrop-filtered platter cannot filter it).
+     The nav's DOM is rebuilt only when the SET of tabs changes; otherwise the nodes stay (only .on is toggled and the glide re-placed) — every render
+     used to recreate the platter's backdrop-filter layer, the glide and the buttons, so the value flip's render at a segment tap (c3c1e58, in the
+     tap's own frame) recreated the whole bottom capsule under the finger (监督局 19:3x: "底部标签胶囊往下闪一下" on the phone). */
+  const wantTabs = TABS.filter(([t]) => present.has(t)).map(([t]) => t), haveTabs = [...nav.querySelectorAll(".seg > button")].map((b) => b.dataset.tab);
+  if (wantTabs.join("|") !== haveTabs.join("|") || !nav.querySelector(".plat") || !nav.querySelector(".glide")) {
+    nav.innerHTML = `<div class="plat"></div><i class="glide"></i><div class="seg">` + wantTabs.map((t) =>
+      `<button type="button" class="${t === curTab ? "on" : ""}" data-tab="${t}" aria-label="${t}">` +
+      `<span class="ico">` + (TAB_IMAGES[t] ? `<img class="tabimg" src="${TAB_IMAGES[t]}" alt="">`
+                     : `<i class="sf" style="-webkit-mask-image:url(${TAB_ICONS[t]});mask-image:url(${TAB_ICONS[t]})" aria-hidden="true"></i>`) + `</span>` +
+      `<span>${t}</span></button>`).join("") + `</div>`;
+  } else for (const x of nav.querySelectorAll(".seg > button")) x.classList.toggle("on", x.dataset.tab === curTab);
   const glide = (animate) => {
     /* The selection capsule slides to the chosen tab (the Liquid Glass tab bar's
        own motion); brief, and off under Reduce Motion (HIG: Motion). On a
@@ -845,9 +859,12 @@ function wire() {
     oneShot({ action: "echo_farm", confirmed: true, boss, until, name: nm },
             `已让它刷「${nm}」到 ${until}。到点中继会自己收工并把配置还原`);
   };
+  /* HH:MM inputs (刷到几点 / 改成刷到几点, data-time): anything else rolls back to the last valid value with a toast — 数据 181053 ⑤2: 08:930 was accepted */
+  for (const el of document.querySelectorAll("input[data-time]")) { el.dataset.last = el.value; el.onchange = () => { const t = timeHHMM(el.value); if (t) { el.value = t; el.dataset.last = t; } else { toast("时刻要填 08:30 这种（时:分）", 3000); el.value = el.dataset.last || ""; } }; }
   const efu = $("#echofarmuntil");
   if (efu) efu.onclick = async () => {
-    const v = ($("#efnew").value || "").trim();
+    const v = timeHHMM(($("#efnew") || {}).value || "");   // ui 654d4a8: HH:MM only, else toast; main 563dd33: the page's ask() dialog, not the browser one
+    if (!v) { toast("时刻要填 08:30 这种（时:分）", 3000); return; }
     if (!(await ask("改收工时刻？", `把收工时刻改成 ${v}（机器时间）？`, "改"))) return;
     oneShot({ action: "echo_farm_until", until: v }, "收工时刻已改");
   };
@@ -911,6 +928,15 @@ function wire() {
   };
   const tc = $("#tokclear");
   if (tc) tc.onclick = async () => { if (await ask("清除密钥？", "清除这台手机里的游戏密钥？体力数字会消失。", "清除", true)) { Stamina.clear(); render(); } };
+  /* 诊断记录 switch: on → ark-diag = 1, the URL rewritten to ?diag=1 (the recorder is query-gated) and the recorder injected now; off → both undone. The diag line
+     (bottom geometry numbers) appears from the next start. */
+  const dsw = $("#diagsw");
+  if (dsw) dsw.onchange = () => {
+    try { if (dsw.checked) localStorage.setItem("ark-diag", "1"); else localStorage.removeItem("ark-diag"); } catch (e) {}
+    try { const q = new URLSearchParams(location.search); if (dsw.checked) q.set("diag", "1"); else q.delete("diag"); history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q.toString() : "") + location.hash); } catch (e) {}
+    if (dsw.checked && !document.querySelector('script[src^="seg-frames-logger.js"]')) { const s = document.createElement("script"); s.src = "seg-frames-logger.js"; document.body.appendChild(s); }
+    toast(dsw.checked ? "诊断记录已开：现在去点分段控件，记录生成后会弹出" : "诊断记录已关；下次打开页面不再记录", 4000);
+  };
   const mk = $("#mklink");
   if (mk) mk.onclick = async () => {
     const url = myLink();
@@ -1725,7 +1751,10 @@ function segPrewarm(seg, bs, lens) {
   const go = () => { if (!seg.isConnected || seg.querySelector(".warp") || (seg.__lensLoop && !seg.__lensLoop.state.done)) return; const t = performance.now(); performance.mark("seg:prewarm"); segLens(seg, lens, bs, NaN, { prewarm: true }); segMeasure("seg:prewarm-build", t); };
   const idle = () => { if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 600 }); else setTimeout(go, 200); };
   const after = () => requestAnimationFrame(() => requestAnimationFrame(idle));
-  if (window.LENS_ENGINE_FIX_DONE || window.LENS_ENGINE_FIX === false) after(); else addEventListener("lens-engine-fix", after, { once: true });
+  /* the WebGL lens does not use the SVG maps the engine fix re-encodes (a fetch + decode per map, long on the phone): with GL available the build runs at the
+     first idle slot after load instead of waiting for that event — 2号 18:4x: the first gesture after load still paid seg:build 30 ms (the layers + the GL
+     instance built at the down), the second 0 ms */
+  if (segGlAvailable() || window.LENS_ENGINE_FIX_DONE || window.LENS_ENGINE_FIX === false) after(); else addEventListener("lens-engine-fix", after, { once: true });
 }
 function attachSegmented(seg, getIndex, commit) {
   const bs = [...seg.querySelectorAll("button")], lens = seg.querySelector(".lens"), n = bs.length;
@@ -2079,7 +2108,57 @@ applyTheme();
 // 跟随系统时，系统切了日夜要立刻跟上
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+/* 诊断记录 sheet: the frame recorder (seg-frames-logger.js, 2号) writes a record after each segmented-control gesture and dispatches "segframes" with it —
+   the phone cannot hand us localStorage, so the record is offered for copy / share right there (验收 09-19 20:0x, user's Android phone). */
+function showDiagSheet(rec) {
+  const sh = $("#diagsheet"); if (!sh || !rec) return;
+  let json = ""; try { json = JSON.stringify(rec); } catch (e) { json = String(rec); }
+  const kb = Math.round(json.length / 1024 * 10) / 10, fr = Array.isArray(rec.frames) ? rec.frames.length : "?";
+  $("#diagsheet-m").textContent = `一份 JSON，${kb} KB，${fr} 帧。复制后粘到聊天里，或用分享发出。`;
+  const share = $("#diagsheet-share"); share.hidden = !(navigator.share && (!navigator.canShare || navigator.canShare({ text: "x" })));
+  $("#diagsheet-copy").onclick = async () => { try { await navigator.clipboard.writeText(json); toast("已复制整份记录"); } catch (e) { toast("复制失败：" + (e && e.message ? e.message : e), 4000); } };
+  share.onclick = async () => { try { await navigator.share({ title: "诊断记录", text: json }); } catch (e) { if (!(e && e.name === "AbortError")) toast("分享失败：" + (e && e.message ? e.message : e), 4000); } };
+  $("#diagsheet-close").onclick = () => { sh.hidden = true; };
+  sh.hidden = false;
+}
+addEventListener("segframes", (e) => showDiagSheet(e.detail || window.__segFrames));
+window.__viewReady = true;   // every top-level binding above exists now: live.js's timers / events may use cfg, snap, render … (they return until this)
 boot();
+
+/* the bottom tab capsule and the keyboard (数据终核 181053 ⑤ 1/3): iOS keeps position:fixed elements in the layout viewport — with the keyboard up the
+   visual viewport shrinks and Safari may float the capsule above the keyboard over the content (the dark time input: capsule y≈516), and after the keyboard
+   closes the capsule can stay where the shrunken viewport left it (y≈840 instead of 905) until the next layout. The native tab bar is simply covered by
+   the keyboard. Here: while the visual viewport is > 120 px shorter than the window (keyboard up) html.kbd hides the capsule; on every visualViewport
+   resize / scroll and after a focus leaves a field the state is re-applied — the capsule comes back through display:none → block, i.e. freshly placed at
+   the bottom. window.__tabKbd(h) runs the same code with a pretended visual-viewport height (accept). */
+{ const vv = window.visualViewport; let H0 = innerHeight, W0 = innerWidth, kbdNow = false;
+  const kbInput = (el) => !!el && ((el.tagName === "INPUT" && !/^(checkbox|radio|range|button|submit|reset|file|color|hidden)$/i.test(el.type)) || el.tagName === "TEXTAREA" || el.isContentEditable === true);   // a <select> opens a menu, not the keyboard
+  /* The keyboard state is viewport evidence only, never focus (监督局 09-19 19:4x, 验收 headless + 数据 simulator):
+     · 5d71467 kept a kbdFocus flag cleared only by the field's focusout — when the keyboard goes WITHOUT a blur (iOS: a tap on the segmented control, whose
+       pointerdown is preventDefault-ed, leaves the field focused; Android: the back key) the flag stayed and the capsule never came back (数据 live 190821);
+     · on Android the keyboard shrinks innerHeight itself, so innerHeight − vv.height stays 0 and the capsule was never hidden — it floated over the content.
+     H0 = the largest innerHeight seen at the current width (an orientation change resets it); kbd = (H0 − innerHeight > 120) || (innerHeight − vv.height > 120),
+     recomputed on window resize, visualViewport resize / scroll, every pointerdown and 0 / 60 / 300 / 600 / 1000 ms after a text field's blur (all of them
+     just re-read the viewport); either measure recovering clears it. The frame after kbd turns true the focused field is revealed (below). */
+  const apply = (h, ih) => { if (innerWidth !== W0) { W0 = innerWidth; H0 = innerHeight; } if (ih == null && innerHeight > H0) H0 = innerHeight;
+    const IH = ih != null ? ih : innerHeight, vh = h != null ? h : (vv ? vv.height : innerHeight), kbd = (H0 - IH > 120) || (IH - vh > 120);
+    document.documentElement.classList.toggle("kbd", kbd); if (kbd && !kbdNow) requestAnimationFrame(() => reveal()); kbdNow = kbd; return kbd; };
+  window.__tabKbd = (h, ih) => apply(h, ih);
+  /* the focused field must end up inside the visible (keyboard-free) part of the viewport. WebKit reveals it itself on focus; on the phone the first
+     focus of the time field after load stayed under the keyboard (数据 190821 vs 181053, +1.5 s still hidden; the second focus was revealed). What this
+     block does at focus time is one class toggle on <html> (the fixed capsule → display:none) — no preventDefault, no blur, no scrollTop / scroll writes,
+     no html height or overflow change; the visualViewport handlers only toggle that class (the older unsink() writes scrollTo(0, 0) only for scrollY < 0).
+     验收 19:2x (git show 5d71467): the one timing change between the two builds is that toggle — 181053 ran it 300 ms after focusin, 5d71467 synchronously
+     in the focusin dispatch, i.e. before WebKit's reveal. Back to the 300 ms delay (the visualViewport resize hides the capsule as the keyboard comes up
+     anyway), and after every visualViewport resize the next frame checks the active field against the visible range [offsetTop, offsetTop + height] and
+     scrolls the window so the field's centre lands at that range's centre when it is outside (scrollIntoView would centre in the LAYOUT viewport, under
+     the keyboard; 监督局 09-19 19:2x). */
+  const reveal = (h) => { const el = document.activeElement; if (!kbInput(el)) return false; const top = vv ? vv.offsetTop : 0, vh = h != null ? h : (vv ? vv.height : innerHeight), r = el.getBoundingClientRect();
+    if (r.bottom > top + vh - 8 || r.top < top + 8) { scrollBy({ top: (r.top + r.height / 2) - (top + vh / 2), behavior: "smooth" }); return true; } return false; };
+  window.__kbdReveal = (h) => reveal(h);
+  if (vv) { vv.addEventListener("resize", () => apply()); vv.addEventListener("scroll", () => apply()); }
+  addEventListener("resize", () => apply()); document.addEventListener("pointerdown", () => apply(), { capture: true, passive: true });
+  addEventListener("focusout", (e) => { if (kbInput(e.target)) for (const ms of [0, 60, 300, 600, 1000]) setTimeout(() => apply(), ms); }); }   // a text field losing focus: the keyboard is going — re-check through its slide; focusin does nothing
 
 /* 添加到主屏幕后**第一次**从图标启动，滚动位置停在 −62（visualViewport offsetTop −62，整页下沉 62；杀掉重开为 0）——数据会话 9c22044 ?diag 实拍，
    每次添加后的首启必现，不是 env() 也不是 padding。发现负滚动就归零。 */
