@@ -1229,6 +1229,43 @@ emits and the fringe envelope are all × p):
 Harness: `js-ghost.js` / `js-ghost2.js` (rest → redraw → warm, lifted → redraw → warm, a gesture ending at lift .0017 → setBackdrop dark /
 light, dark → light at rest) all 0 opaque pixels except the real lifted frame, which the deferred redraw leaves intact (51 824 px before
 and after); the mid render (light / dark, @3x) is identical to the previous commit (max diff 0).
+### 0.8.11 The first lens gesture after load (2026-09-19 18:xx; 数据 seg-final-181053.md ①, then the instrumented re-record) — observed once, not reproduced, nothing changed
+
+**The observation (v=181053, the simulator's standalone clip, one-segment demo, a press on the selected segment as the first lens
+gesture after load — the page had been open a while, one dialog opened and cancelled before it):** ~190 ms of main-thread silence around
+the down, the lift's first frame "one step for two". Read from the data session's record (`ark-segframes-abc-fceb5de.json`, times from
+the recorder's capture of the down):
+* −144 ms: the recorder's last normal frame; the frame due at −127 did not come; the down was dispatched at +5 → the main thread was busy
+  from ≤ −127 until the dispatch, ≥ 127 ms, with NO `seg:` mark inside (the prewarm `seg:prewarm-build` — which had run at load + 0.4–0.6 s —,
+  the engine fix `seg:enginefix`, the build `seg:build`, the upload `seg:gl-upload` are all marked; none of them was there). So not the
+  package's warm-up or uploads, not the page's build; the owner is not in the record.
+* +5 … +16: the recorder's own down work (its reading() forces layout) and the other press handlers, 11 ms.
+* +16 … +46: `seg:build` 30 ms (the second gesture of the run: 0 ms) — segLens's construction, page side, first execution.
+* +54 … +71: the first tick 17 ms (second gesture: 1 ms) — the gesture's first GL frame (p = .0012 already draws a full frame in the
+  0c84158 package); the prewarm had run at load + 0.5 s, the gesture came much later.
+* The "two steps in one": view.js counts the 109 ms lift delay from the touch's timeStamp; the touch was dispatched ≥ 127 ms late, so the
+  lift was already due at tick 1 and tick 2 integrated the clamped 40 ms step (p = .28 at +94).
+127 + 11 + 30 + 17 ≈ 190. The Mac does not reproduce any of it (a real mouse press on the deployed page in a WKWebView: `seg:build` 1 ms,
+first tick 5 ms, no gap before the down; `scratchpad/wk/wktheme`, built for this: load, run JS, switch the appearance, hide / show the window,
+press through the window server, snapshot).
+
+**The instrument (ui2 6dbd2f9, `web/seg-frames-logger.js` only):** every pointer entry carries `lag` = performance.now() − event.timeStamp
+at the capture listener (how long the event waited for the main thread); the page's render() / updateLive() are wrapped as
+`seg:page-render` / `seg:page-updateLive` measures; Long Tasks would be re-emitted as `seg:longtask` (WebKit reports
+`longtask_supported: false`). With it the data session re-recorded a cold first gesture (a TAP on an unselected segment this time; host load
+3–4): down `lag` 36 ms (one 46 ms frame's wait), `seg:build` 2 ms, `seg:gl-upload` 0 — no block before the down; the 190 ms did not recur.
+Conclusion (监督局): no evidence, no change; the package and the page stay as they are.
+
+**What the tap record does show, package side, for when it is wanted:** the down frame of a tap is 46 ms with 2 ms of marked work in it.
+The rest is the deferred backdrop redraw (segGlRedraw → redrawBackdrop → the setTimeout-0 task: two 2D canvases, the label alpha recovery, two
+texture uploads, then a warm-up) — it runs in the task after the handler, before the next frame, and `seg:gl-upload` measures only the
+synchronous part. On the Mac that task is backdrop 4–11 ms + warm-up 6–8 ms; the phone's number is not measured (a `seg:gl-redraw` measure
+around the deferred task would give it). It exists only on the tap path (the drag path does not redraw at the down), and only because the
+labels texture must carry the weight of the segment about to be selected (`futureOn`). The way to take it off the down entirely: draw and
+upload one labels texture per possible selection at idle (n segments → n textures, once after the prewarm) and at the down only switch which
+one is bound — no draw, no alpha pass, no upload, no warm-up. Two package calls (prepareLabels(i, draw), useLabels(i)) plus one page-side
+line at the down; not done, not scheduled.
+
 ### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
 
 Sources: `remote-ref/sheet-native.md` (the data session's 10th order: A9 `sheetivars` / `corners` / `subtree` / motion, iOS 27.0 3×) and
