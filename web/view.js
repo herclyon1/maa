@@ -1307,7 +1307,9 @@ function segLens(seg, lens, bs, downClientX) {
   if (seg.__lensLoop) seg.__lensLoop.stop();   // a new press ends the previous loop (its tail and its inline geometry)
   let warp = seg.querySelector(".warp"), warpl = seg.querySelector(".warpl"), plat = seg.querySelector(".plat"), rimb = seg.querySelector(".rimb"), hls = [...seg.querySelectorAll(".hlk, .hlw")];
   const mk = (cls, inner) => { const d = document.createElement("div"); d.className = cls; d.innerHTML = inner; seg.appendChild(d); return d; };
-  if (!warp) warp = mk("warp", '<div class="disp"><div class="copy"></div></div>'); if (!warpl) warpl = mk("warpl", '<div class="displ"><div class="portal"><div class="copy"></div></div></div>'); if (!plat) plat = mk("plat", "");
+  if (!warp) warp = mk("warp", '<div class="disp"><div class="copy"></div><div class="punch"><div class="copy"></div></div></div>'); else if (!warp.querySelector(".punch")) warp.firstElementChild.innerHTML = '<div class="copy"></div><div class="punch"><div class="copy"></div></div>';
+  if (!warpl) warpl = mk("warpl", '<div class="displ"><div class="copy"></div></div>'); else if (warpl.querySelector(".portal")) warpl.firstElementChild.innerHTML = '<div class="copy"></div>';   // B4-c': portal #32 does not clip
+  if (!plat) plat = mk("plat", "");
   /* B6 rim (index.html "B6" block, SEG_RIM): .rimb = inner shadow div + SVG (ring shadow rect.rs, dark line rect.kf ×3 under the page/track mask);
      .hlk / .hlw = the #36 highlight as SVG ring strokes, black (normal) / white (plus-lighter) */
   const NS = "http://www.w3.org/2000/svg", svgEl = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
@@ -1357,20 +1359,24 @@ function segLens(seg, lens, bs, downClientX) {
       for (const gr of s.querySelectorAll("linearGradient")) { if (gr.getAttribute("x2") === "0") { gr.setAttribute("y1", -T); gr.setAttribute("y2", segH - T); continue; }   // the page / track mask: the track's rows in lens-box coordinates
         gr.setAttribute("x2", Wd); for (const st of gr.children) { const nx = +st.dataset.nx, o = R * (1 + nx) / Wd; st.setAttribute("offset", (st.dataset.side === "1" ? 1 - o : o).toFixed(5)); } }
       for (const m of s.querySelectorAll("mask")) { m.setAttribute("width", Wd + 24); m.setAttribute("height", Hd + 24); m.firstElementChild.setAttribute("width", Wd + 24); m.firstElementChild.setAttribute("height", Hd + 24); } } };
-  /* copies of what lies under the lens: .warp = page bg + track (opaque; covers the real labels — the DestOut punch-out), .warpl = the labels, undisplaced
-     (label-mag 1.00, spans not buttons so the control's own button list stays the real one) */
-  const disp = warp.firstElementChild, copy = disp.firstElementChild, displ = warpl.firstElementChild, portal = displ.firstElementChild, copyl = portal.firstElementChild;
+  /* copies of what lies under the lens (glass-displacement-formula.md §4b): .warp = the BackdropView capture = page bg + track (opaque, covers the
+     real labels inside the lens box) + .punch = the labels with the lens capsule cut out (DestOut #43 removes the segment content inside the capsule
+     only; the box corners outside it keep their label pixels, which the backdrop map's clamp_to_edge replicates into the rim band — §6d); .warpl = the
+     labels through portal #20 (the box, clipped to the capsule before the filter), no 196×28 clip (portal #32 masksToBounds 0). Spans, not buttons,
+     so the control's own button list stays the real one. */
+  const disp = warp.firstElementChild, copy = disp.firstElementChild, punch = disp.lastElementChild, copyp = punch.firstElementChild, displ = warpl.firstElementChild, copyl = displ.firstElementChild;
   copy.innerHTML = '<div class="cbgwrap"><div class="cbg"></div><div class="ctrack"></div></div>';
-  copyl.innerHTML = bs.map((b) => `<span class="cb ${b.className}" style="width:${b.offsetWidth}px">${b.innerHTML}</span>`).join("");
-  const segW = seg.clientWidth, segH = seg.clientHeight; for (const c of [copy, copyl]) { c.style.width = segW + "px"; c.style.height = segH + "px"; }
+  const labelsHTML = bs.map((b) => `<span class="cb ${b.className}" style="width:${b.offsetWidth}px">${b.innerHTML}</span>`).join("");
+  copyl.innerHTML = labelsHTML; copyp.innerHTML = labelsHTML;
+  const segW = seg.clientWidth, segH = seg.clientHeight; for (const c of [copy, copyl, copyp]) { c.style.width = segW + "px"; c.style.height = segH + "px"; }
 
-  const cbs = [...copyl.querySelectorAll(".cb")];
+  const cbs = [...copyl.querySelectorAll(".cb"), ...copyp.querySelectorAll(".cb")];
   const sOf = (id) => { const f = document.querySelector(id); return f ? parseFloat(f.getAttribute("data-s")) || 40 : 40; };   // map encoding per set (ui2 c4efe4b, README §0.3): byte = 128 + round(u · 255 / S), S = the filter's data-s (40; 48 on the eleven widest stretch sets) → feDisplacementMap scale = S × progress
   /* the formula-map set = the lens's MODEL width (README §0.3, ui2 d3cc467: the drag stretch is the 220×44 model scaled by the lens's presentation
      transform — the flex scale, B5 — so the model stays 220 while dragging and the 220 set is the one; the lift rides it with scale 0 → S). The
      196 … 256 sets remain for a model of another width. */
   const setFor = (Wm) => Math.max(196, Math.min(256, 2 * Math.round(Wm / 2)));
-  let curSet = 0;
+  let curSet = 0, punchKey = "";
   /* geometry: resting lens = the padded interior / n (pad ← --ios-segment-lens-pad, h ← --ios-segment-lens-h), lifted = +12 / +8 per side ← --ios-touch-segment-lift-x/-y */
   const cs0 = getComputedStyle(seg), n = bs.length, pad = parseFloat(cs0.getPropertyValue("--ios-segment-lens-pad")) || 2, H0 = parseFloat(cs0.getPropertyValue("--ios-segment-lens-h")) || 28;
   const LX = touchPx("--ios-touch-segment-lift-x", 12), LY = touchPx("--ios-touch-segment-lift-y", 8), PITCH = segW / n, W0 = PITCH - 2 * pad, CY = pad + H0 / 2;   // segment pitch 200, resting lens 196 (inset 2 ← seg-native-abc-frames.json rest rect 22 610 196×28)
@@ -1397,14 +1403,13 @@ function segLens(seg, lens, bs, downClientX) {
     for (const el of hls) { el.style.left = (L - 12) + "px"; el.style.top = (T - 12) + "px"; el.style.width = (Wd + 24) + "px"; el.style.height = (Hd + 24) + "px"; }   // the highlight SVGs' box = lens box + the 12 px margin (WebKit clips an outer <svg> to its box whatever overflow says)
     rimGeo(Wd, Hd, T);   // B6: the ring strokes follow the model box
     copy.style.left = -L + "px"; copy.style.top = -T + "px";   // the backdrop copy stays aligned with the real control
-    const PW = W0, PH = H0, PL = (Wd - PW) / 2, PT = (Hd - PH) / 2;   // the label portal: the resting lens size 196×28, centred in the lens (seg-lift-material §1: portal #32)
-    portal.style.left = PL + "px"; portal.style.top = PT + "px"; portal.style.width = PW + "px"; portal.style.height = PH + "px";
-    copyl.style.left = (-L - PL) + "px"; copyl.style.top = (-T - PT) + "px";   // the label copy aligned with the real labels through the portal
+    copyp.style.left = -L + "px"; copyp.style.top = -T + "px"; copyl.style.left = -L + "px"; copyl.style.top = -T + "px";   // the label copies aligned with the real labels (B4-c': no 196×28 portal offset)
+    if (punchKey !== `${Wd}|${Hd}`) { punchKey = `${Wd}|${Hd}`; punch.style.clipPath = `path(evenodd, "M0 0H${Wd}V${Hd}H0Z M${R} 0H${Wd - R}A${R} ${R} 0 0 1 ${Wd - R} ${Hd}H${R}A${R} ${R} 0 0 1 ${R} 0Z")`; }   // DestOut = the lens capsule (r = h/2 on the lift path; the drag stretch is the flex transform on top)
     const set = setFor(Math.max(W0 + 2 * LX, Wd));   // the model width (220 lifted; Wd is the model box — the flex transform is separate)
     if (set !== curSet) { curSet = set; disp.style.filter = `url(#seg-lens-f-bg-${set})`; displ.style.filter = `url(#seg-lens-f-lab-${set})`; }
     seg.style.setProperty("--lp", p.toFixed(4)); seg.style.setProperty("--lpd", pd.toFixed(4));
     for (const id of [`#seg-lens-f-bg-${set}`, `#seg-lens-f-lab-${set}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", SEGX.includes("scale0") ? "0" : (sOf(id) * p).toFixed(3)); }   // both stacks' amounts on the lift spring (§4.4 row 2: ClearGlass 0 → −17.5, ContentLensing 0 → −8.8, BackdropView 0 → 9 in the same call)
-    cbs.forEach((c, i) => c.className = "cb " + bs[i].className);
+    cbs.forEach((c, i) => c.className = "cb " + bs[i % bs.length].className);
     seg.classList.toggle("lift", p > 0 || pd > 0);
   };
   const clear = () => {

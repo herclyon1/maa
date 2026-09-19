@@ -22,11 +22,13 @@
    "gradientOvalization 0.5, cornerRadii 22, effectOffset 0, maskOffset 0, curvature 1, angle 0": "seg-lens-refraction.md §1b 表 1 #13 / #19 (原值)",
    "which layer acts on what": "seg-lens-refraction.md §1b 表 3 (switch test: page content only through BackdropView; the label copy through ClearGlass then ContentLensing); the ContentLensing element taken as the lens capsule (监督局 05:0x after the old page's recomputation: the 196×28 rectangle gives rms 1.37 inside the portal)",
    "sampling order": "the outer layer samples first: ContentLensing's image is portal #32 (196×28) showing the ClearGlass layer, whose image is the capsule-clipped segment content (formula.md §2, §1b 表 2) → u = Δ_L(p) + Δ_C(p + Δ_L(p)); the other order (validate_label.py) differs ≤ 0.1 rms inside the portal (verification → *_reversed_order)",
-   "sampling / source rules": "formula.md §2: clamp_to_edge (the sample position is clamped to the stage's texture box), clip first then displace (the label copy is capsule-clipped before ClearGlass; ContentLensing's source content is the 196×28 portal, transparent around it), output × the effect shape's coverage (the map's B channel, applied by feComposite)",
+   "sampling / source rules": "formula.md §2 + §4b (final structure): clamp_to_edge (the sample position is clamped to the stage's texture box; BackdropView marginWidth 0 → no content beyond its 220×44 frame, the edge column is replicated), clip first then displace (portal #20 clips the segment content to the r22 capsule before ClearGlass; portal #32 (ContentLensing's source) does NOT clip, masksToBounds 0 — the label stack acts on the whole lens), output × the effect shape's coverage (the map's B channel, applied by feComposite)",
    "glass_background SDF shape / ovalization": "the filter layer's own bounds + corner radii (监督局 05:0x); its ovalization is not read by the probe — the old page's residual table (rms 0.12–0.16) uses 0.5 on both backdrop layers, kept here"
   }
  },
  "encoding": {
+  "engine_fix_pt": 0.0,
+  "engine_fix": "引擎校正: WebKit's feDisplacementMap applies negative values one device pixel short (calib/: Mac 2× ½ px, iOS simulator 3× ⅓ px), positive rounded up; the correction is applied AT PAGE LOAD by lens-engine-fix.js (default on, k = 1/devicePixelRatio: every negative R/G byte −k·255/S, blob: copies, files untouched); --engine-fix <pt> bakes the same into the files for a static build (default 0 = not baked); README §0.4",
   "scale": "per set: sets[w].S — 40 where the scaled stack fits ±20 pt, 48 for the widest stretch sets; the filter element carries data-s",
   "px_per_pt": 2,
   "bytes": "R = 128 + round(u_x·255/S), G = same for u_y, B = shape coverage (255 inside, anti-aliased edge), A 255; u = content − screen (pt, +x right, +y down); the browser decodes S·(byte/255 − .5) = u + S/510",
@@ -56,17 +58,23 @@
      "seg-native-abc-frames.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-196.png",
    "ab_files": [
     "seg-f-ab-196.png"
    ],
    "peak_ab_pt": 2.56,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-196.png",
    "lab": "seg-f-lab-196.png",
    "peak_bg_pt": 5.0,
    "peak_lab_pt": 18.41,
-   "bytes": 19652,
+   "bytes": 19988,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-196",
     "seg-lens-f-lab-196",
@@ -102,17 +110,23 @@
      "seg-native-abc-frames.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-198.png",
    "ab_files": [
     "seg-f-ab-198.png"
    ],
    "peak_ab_pt": 2.55,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-198.png",
    "lab": "seg-f-lab-198.png",
    "peak_bg_pt": 5.0,
    "peak_lab_pt": 18.59,
-   "bytes": 19697,
+   "bytes": 19920,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-198",
     "seg-lens-f-lab-198",
@@ -148,17 +162,23 @@
      "seg-native-abc-frames.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-200.png",
    "ab_files": [
     "seg-f-ab-200.png"
    ],
    "peak_ab_pt": 2.53,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-200.png",
    "lab": "seg-f-lab-200.png",
    "peak_bg_pt": 4.92,
    "peak_lab_pt": 18.29,
-   "bytes": 19633,
+   "bytes": 19902,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-200",
     "seg-lens-f-lab-200",
@@ -194,17 +214,23 @@
      "uiprobe-motion-segdragmid-light.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-202.png",
    "ab_files": [
     "seg-f-ab-202.png"
    ],
    "peak_ab_pt": 2.5,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-202.png",
    "lab": "seg-f-lab-202.png",
    "peak_bg_pt": 4.85,
    "peak_lab_pt": 18.05,
-   "bytes": 19483,
+   "bytes": 19722,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-202",
     "seg-lens-f-lab-202",
@@ -240,17 +266,23 @@
      "uiprobe-motion-segdragmid-light.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-204.png",
    "ab_files": [
     "seg-f-ab-204.png"
    ],
    "peak_ab_pt": 2.5,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-204.png",
    "lab": "seg-f-lab-204.png",
    "peak_bg_pt": 4.84,
    "peak_lab_pt": 18.04,
-   "bytes": 19652,
+   "bytes": 19987,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-204",
     "seg-lens-f-lab-204",
@@ -286,17 +318,23 @@
      "uiprobe-motion-segdragmid-light.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-206.png",
    "ab_files": [
     "seg-f-ab-206.png"
    ],
    "peak_ab_pt": 2.49,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-206.png",
    "lab": "seg-f-lab-206.png",
    "peak_bg_pt": 4.92,
    "peak_lab_pt": 17.94,
-   "bytes": 19603,
+   "bytes": 19856,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-206",
     "seg-lens-f-lab-206",
@@ -332,17 +370,23 @@
      "uiprobe-motion-segdragmid-light.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-208.png",
    "ab_files": [
     "seg-f-ab-208.png"
    ],
    "peak_ab_pt": 2.46,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-208.png",
    "lab": "seg-f-lab-208.png",
    "peak_bg_pt": 4.81,
    "peak_lab_pt": 18.91,
-   "bytes": 19752,
+   "bytes": 19983,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-208",
     "seg-lens-f-lab-208",
@@ -378,17 +422,23 @@
      "uiprobe-motion-segdragmid-light.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-210.png",
    "ab_files": [
     "seg-f-ab-210.png"
    ],
    "peak_ab_pt": 2.44,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-210.png",
    "lab": "seg-f-lab-210.png",
    "peak_bg_pt": 4.75,
    "peak_lab_pt": 18.7,
-   "bytes": 19598,
+   "bytes": 19748,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-210",
     "seg-lens-f-lab-210",
@@ -424,17 +474,23 @@
      "uiprobe-motion-segdragmid-light.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-212.png",
    "ab_files": [
     "seg-f-ab-212.png"
    ],
    "peak_ab_pt": 2.42,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-212.png",
    "lab": "seg-f-lab-212.png",
    "peak_bg_pt": 4.75,
    "peak_lab_pt": 18.71,
-   "bytes": 19289,
+   "bytes": 19730,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-212",
     "seg-lens-f-lab-212",
@@ -470,17 +526,23 @@
      "uiprobe-motion-segdragmid-light.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-214.png",
    "ab_files": [
     "seg-f-ab-214.png"
    ],
    "peak_ab_pt": 2.39,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-214.png",
    "lab": "seg-f-lab-214.png",
    "peak_bg_pt": 4.75,
    "peak_lab_pt": 18.38,
-   "bytes": 19471,
+   "bytes": 19768,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-214",
     "seg-lens-f-lab-214",
@@ -516,17 +578,23 @@
      "uiprobe-motion-segdragmid-light.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-216.png",
    "ab_files": [
     "seg-f-ab-216.png"
    ],
    "peak_ab_pt": 2.37,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-216.png",
    "lab": "seg-f-lab-216.png",
    "peak_bg_pt": 4.69,
    "peak_lab_pt": 18.25,
-   "bytes": 19125,
+   "bytes": 19481,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-216",
     "seg-lens-f-lab-216",
@@ -562,17 +630,23 @@
      "uiprobe-motion-segdragmid-light.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-218.png",
    "ab_files": [
     "seg-f-ab-218.png"
    ],
    "peak_ab_pt": 2.34,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-218.png",
    "lab": "seg-f-lab-218.png",
    "peak_bg_pt": 4.62,
    "peak_lab_pt": 18.21,
-   "bytes": 19145,
+   "bytes": 19267,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-218",
     "seg-lens-f-lab-218",
@@ -595,19 +669,25 @@
     440,
     88
    ],
-   "h_source": "rest lens (lifted 220×44, seg-lens-refraction.md §0)",
+   "h_source": "the lifted lens (220×44)",
    "frames": [],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-220.png",
    "ab_files": [
     "seg-f-ab-220.png"
    ],
    "peak_ab_pt": 2.32,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-220.png",
    "lab": "seg-f-lab-220.png",
    "peak_bg_pt": 4.67,
    "peak_lab_pt": 18.32,
-   "bytes": 18835,
+   "bytes": 18844,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-220",
     "seg-lens-f-lab-220",
@@ -643,17 +723,23 @@
      "uiprobe-motion-segdragmid-light.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-222.png",
    "ab_files": [
     "seg-f-ab-222.png"
    ],
    "peak_ab_pt": 2.34,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-222.png",
    "lab": "seg-f-lab-222.png",
    "peak_bg_pt": 4.72,
    "peak_lab_pt": 18.49,
-   "bytes": 18912,
+   "bytes": 19126,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-222",
     "seg-lens-f-lab-222",
@@ -689,17 +775,23 @@
      "uiprobe-motion-segdragmid-light.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-224.png",
    "ab_files": [
     "seg-f-ab-224.png"
    ],
    "peak_ab_pt": 2.36,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-224.png",
    "lab": "seg-f-lab-224.png",
    "peak_bg_pt": 4.75,
    "peak_lab_pt": 19.1,
-   "bytes": 18680,
+   "bytes": 19040,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-224",
     "seg-lens-f-lab-224",
@@ -735,17 +827,23 @@
      "seg-native-abc-frames.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-226.png",
    "ab_files": [
     "seg-f-ab-226.png"
    ],
    "peak_ab_pt": 2.38,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-226.png",
    "lab": "seg-f-lab-226.png",
    "peak_bg_pt": 4.75,
    "peak_lab_pt": 18.81,
-   "bytes": 18575,
+   "bytes": 18931,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-226",
     "seg-lens-f-lab-226",
@@ -781,17 +879,23 @@
      "uiprobe-motion-segdragmid-light.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-228.png",
    "ab_files": [
     "seg-f-ab-228.png"
    ],
    "peak_ab_pt": 2.4,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-228.png",
    "lab": "seg-f-lab-228.png",
    "peak_bg_pt": 4.77,
    "peak_lab_pt": 20.11,
-   "bytes": 17591,
+   "bytes": 18143,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-228",
     "seg-lens-f-lab-228",
@@ -827,17 +931,23 @@
      "uiprobe-motion-segdragmid-light.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-230.png",
    "ab_files": [
     "seg-f-ab-230.png"
    ],
    "peak_ab_pt": 2.42,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-230.png",
    "lab": "seg-f-lab-230.png",
    "peak_bg_pt": 4.82,
    "peak_lab_pt": 19.13,
-   "bytes": 18729,
+   "bytes": 18940,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-230",
     "seg-lens-f-lab-230",
@@ -873,17 +983,23 @@
      "uiprobe-motion-segdragmid-light.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-232.png",
    "ab_files": [
     "seg-f-ab-232.png"
    ],
    "peak_ab_pt": 2.44,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-232.png",
    "lab": "seg-f-lab-232.png",
    "peak_bg_pt": 4.87,
    "peak_lab_pt": 19.29,
-   "bytes": 18391,
+   "bytes": 18681,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-232",
     "seg-lens-f-lab-232",
@@ -919,17 +1035,23 @@
      "seg-native-abc-frames.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-234.png",
    "ab_files": [
     "seg-f-ab-234.png"
    ],
    "peak_ab_pt": 2.46,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-234.png",
    "lab": "seg-f-lab-234.png",
    "peak_bg_pt": 4.93,
    "peak_lab_pt": 19.44,
-   "bytes": 18450,
+   "bytes": 18644,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-234",
     "seg-lens-f-lab-234",
@@ -965,17 +1087,23 @@
      "uiprobe-motion-segdragmid-light.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-236.png",
    "ab_files": [
     "seg-f-ab-236.png"
    ],
    "peak_ab_pt": 2.48,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-236.png",
    "lab": "seg-f-lab-236.png",
    "peak_bg_pt": 4.98,
    "peak_lab_pt": 19.6,
-   "bytes": 18040,
+   "bytes": 18502,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-236",
     "seg-lens-f-lab-236",
@@ -1011,17 +1139,23 @@
      "uiprobe-motion-segdragmid-light.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-238.png",
    "ab_files": [
     "seg-f-ab-238.png"
    ],
    "peak_ab_pt": 2.51,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-238.png",
    "lab": "seg-f-lab-238.png",
    "peak_bg_pt": 5.03,
    "peak_lab_pt": 20.96,
-   "bytes": 17186,
+   "bytes": 17741,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-238",
     "seg-lens-f-lab-238",
@@ -1057,17 +1191,23 @@
      "uiprobe-motion-segdragmid-light.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-240.png",
    "ab_files": [
     "seg-f-ab-240.png"
    ],
    "peak_ab_pt": 2.53,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-240.png",
    "lab": "seg-f-lab-240.png",
    "peak_bg_pt": 5.08,
    "peak_lab_pt": 21.13,
-   "bytes": 16997,
+   "bytes": 17598,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-240",
     "seg-lens-f-lab-240",
@@ -1103,17 +1243,23 @@
      "seg-native-abc-frames.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-242.png",
    "ab_files": [
     "seg-f-ab-242.png"
    ],
    "peak_ab_pt": 2.55,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-242.png",
    "lab": "seg-f-lab-242.png",
    "peak_bg_pt": 5.13,
    "peak_lab_pt": 21.33,
-   "bytes": 16973,
+   "bytes": 17471,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-242",
     "seg-lens-f-lab-242",
@@ -1149,17 +1295,23 @@
      "uiprobe-motion-segdragmid-light.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-244.png",
    "ab_files": [
     "seg-f-ab-244.png"
    ],
    "peak_ab_pt": 2.57,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-244.png",
    "lab": "seg-f-lab-244.png",
    "peak_bg_pt": 5.18,
    "peak_lab_pt": 21.52,
-   "bytes": 16896,
+   "bytes": 17348,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-244",
     "seg-lens-f-lab-244",
@@ -1195,17 +1347,23 @@
      "seg-native-abc-frames.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-246.png",
    "ab_files": [
     "seg-f-ab-246.png"
    ],
    "peak_ab_pt": 2.59,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-246.png",
    "lab": "seg-f-lab-246.png",
    "peak_bg_pt": 5.24,
    "peak_lab_pt": 21.73,
-   "bytes": 16666,
+   "bytes": 17151,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-246",
     "seg-lens-f-lab-246",
@@ -1241,17 +1399,23 @@
      "seg-native-abc-frames.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-248.png",
    "ab_files": [
     "seg-f-ab-248.png"
    ],
    "peak_ab_pt": 2.61,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-248.png",
    "lab": "seg-f-lab-248.png",
    "peak_bg_pt": 5.25,
    "peak_lab_pt": 20.69,
-   "bytes": 16381,
+   "bytes": 16978,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-248",
     "seg-lens-f-lab-248",
@@ -1287,17 +1451,23 @@
      "seg-native-abc-frames.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-250.png",
    "ab_files": [
     "seg-f-ab-250.png"
    ],
    "peak_ab_pt": 2.63,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-250.png",
    "lab": "seg-f-lab-250.png",
    "peak_bg_pt": 5.25,
    "peak_lab_pt": 20.68,
-   "bytes": 16274,
+   "bytes": 16867,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-250",
     "seg-lens-f-lab-250",
@@ -1333,17 +1503,23 @@
      "seg-native-abc-frames.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-252.png",
    "ab_files": [
     "seg-f-ab-252.png"
    ],
    "peak_ab_pt": 2.65,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-252.png",
    "lab": "seg-f-lab-252.png",
    "peak_bg_pt": 5.28,
    "peak_lab_pt": 20.82,
-   "bytes": 16117,
+   "bytes": 16647,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-252",
     "seg-lens-f-lab-252",
@@ -1374,17 +1550,23 @@
      "seg-native-abc-frames.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-254.png",
    "ab_files": [
     "seg-f-ab-254.png"
    ],
    "peak_ab_pt": 2.67,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-254.png",
    "lab": "seg-f-lab-254.png",
    "peak_bg_pt": 5.34,
    "peak_lab_pt": 20.98,
-   "bytes": 15971,
+   "bytes": 16563,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-254",
     "seg-lens-f-lab-254",
@@ -1415,17 +1597,23 @@
      "seg-native-abc-frames.json"
     ]
    ],
-   "label_portal_pt": "196x28",
+   "label_portal_pt": "0",
    "ab": "seg-f-ab-256.png",
    "ab_files": [
     "seg-f-ab-256.png"
    ],
    "peak_ab_pt": 2.69,
+   "S_ab": 12.0,
    "bg": "seg-f-bg-256.png",
    "lab": "seg-f-lab-256.png",
    "peak_bg_pt": 5.39,
    "peak_lab_pt": 21.16,
-   "bytes": 16341,
+   "bytes": 16901,
+   "model": [
+    220.0,
+    44.0
+   ],
+   "lift_path": false,
    "filters": [
     "seg-lens-f-bg-256",
     "seg-lens-f-lab-256",
@@ -1471,24 +1659,30 @@
   "step": 2,
   "height_source": "linear between the two nearest recorded drag frames (seg-native-abc-frames.json phase drag; uiprobe-motion-segdragmid-light.json lenstrace); outside the recorded range the nearest frame (flagged clamped)",
   "shape": "the 220×44 r22 model lens scaled by (w/220, h/44) — seg-lens-refraction.md §1c(d): the flex scale sits on _UILiquidLensView's presentation transform alone, the layers below (SDF elements, portals 196×28, glass group) keep their model bounds; elliptical ends, the portal = scale × 196×28",
-  "total_bytes": 566105
+  "total_bytes": 577468
  },
  "aberration": {
-  "map": "seg-f-ab-<w>.png: the lens box plus 16 pt on every side at 1 px/pt; R/G = Δ = amt_a·g (pt, S 40; inward for amount −15), B = op = saturate((d − edge_start)/(edge_end − edge_start)) between the edge opacities",
+  "map": "seg-f-ab-<w>.png: the lens box plus 16 pt on every side at 1 px/pt; R/G = the ratio-1 vector Δ₁ (pt) = amount · ((R(θ)g).y, (R(θ)g).x) · e(d) (§3b.3 direction with the lanes swapped; e = the edge factor, 1 at the edge → 0 at |EdgeStart| pt), B = e = the filter's band factor; own scale sets[w].S_ab (data-s on the fringe filter)",
+  "W_over_H": {
+   "applied_by": "the fringe filter's feColorMatrix #<fid>-wh (data-wh): R × W/H + ½(1 − W/H), G × H/W + ½(1 − H/W) — Δ = (W/H · Δ₁.x, H/W · Δ₁.y); the page sets it per frame (lens-test: whRule())",
+   "rule": "formula.md §3b.6: W × H = the foreground's capture box = the lens frame + marginWidth 100 (A9 #33) on every side, clamped to the screen — read at two positions of the 220×44 lens on the 440×956 screen: drag-mid x 110–330 → 10–430 = 420 × 244 → 1.72; lifted in place x 10–230 → 0–330 = 330 × 244 → 1.35; the value written into the SVG is the drag-mid 1.72 (the position of every verification frame)",
+   "written": 1.72,
+   "not_read": "the capture box of a STRETCHED lens (presentation transform ≠ 1) was not read; the page applies the same rule to the lens's screen frame"
+  },
   "wrapper": "the chain filter sits on a wrapper of the lens box extended by 16 pt (overflow hidden), holding a plain copy of the page under the two displaced layers: the foreground's backdrop capture has marginWidth 100 (A9 #33), its outward taps read the page beyond the lens — with the lens box alone they read transparent and a saturated yellow ring appears",
   "formula": "formula.md §3b glass_foreground_base: t_a = saturate((−d − offset)/height); amt_a = amount·(1 − sqrt(t_a(2 − t_a))); 7 taps k = 1, 2/3, 1/3 at +kΔ (R += r·k, G += g·(1−k)), k = 0, 1/3, 2/3, 1 at −kΔ (G += g·(1−k), B += b·k); out = (R/2, G/3, B/2); edge band out ×= 1 − op",
   "parameters": {
-   "amount/height/offset/angle": "2.3158/0/0/-0.2618",
-   "edge start/end/opacity": "-8.8/0/0/1",
+   "amount/height/offset/angle": "2.3158/0/24.444/-0.2618",
+   "edge start/end/opacity": "-8.8/0/1/0",
    "tap_direction_sign": 1.0,
    "alpha_elem": 1.0,
    "edr": 1.0,
    "source": "seg-lens-refraction.md §1c(a) (A9 sdfdump, in-process): #33 glassForeground inputAberrationAmount 2.3158, inputAberrationAngle −0.2618 (−15°), inputAberrationHeight 0, inputEdgeStart −8.8, inputEdgeEnd 0, inputRefractionAmount 0 / Height 0 (no refraction term), layer opacity 1, normalBlendMode; the old page's '−15 / 20' were the angle in degrees and an unread height",
-   "mask": "op = saturate((d + 8.8)/8.8) — the band the data session moved with sdfset (EdgeStart/End −9/−6 → the band widens to 8–10 pt): the map's B; the interior shows no dispersion (middle 41 edges: 0.000), so the visible factor is op itself, not the IR's 1 − op",
+   "mask": "the formula (§3b.2 %195–%199) with the lens's keys inputEdgeOpacityStart 1 / End 0: out ×= 1 − mix(1, 0, e) = e = saturate((d + 8.8)/8.8) → #seg-lens-f-ab-<w> (the test page's default); 1 − e (#seg-lens-f-ab-ir-<w>) is the record of the first reading",
    "tap sides (sign +1)": "Δ = amt_a·R(angle)·g with amt_a = +2.3158 (no falloff) and g the outward gradient rotated by −15° → Δ points OUTWARD (rotated); R accumulates the taps at uv + kΔ (outward), B the taps at uv − kΔ (inward) — the data session's sdfset: angle + π ≡ amount negated, pixel-identical (seg-lens-drag-mid.md §6b(d)); sign −1 only for verification"
   },
   "shape": "the lens capsule with gradient ovalization 0.5 like the other stages — the foreground's SDF element and ovalization were not read (formula.md §3b: its element comes through a portal from the glass group)",
-  "mask_switch": "#seg-lens-f-ab-<w> = the outer band (mask = op: 'flip'); #seg-lens-f-ab-ir-<w> = the IR-literal reading (mask = 1 − op: interior shown, the 3-pt edge band hidden). Which one holds waits for the data session's sdfset test (aberration 0 / height 40 / edge −9,−6); the PNG evidence (§3c) has colour only in the outer 0…5 pt",
+  "mask_switch": "#seg-lens-f-ab-<w> = e (the formula, default); #seg-lens-f-ab-ir-<w> = 1 − e (record); test page ?ab=flip (default) | ir | 0",
   "applies_to": "the wrapper of the two displaced layers (the foreground samples what lies below it inside the lens); test page ?ab=flip|ir|0"
  },
  "filter": {
