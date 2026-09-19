@@ -3,6 +3,8 @@
    carries the material: a clone of #app on the page's pixels through #alert-glass-f (three-stage blur, inner / outer refraction, face matrix,
    the highlight layer's bands through the vibrant matrix). The soft shadow: ShadowOpacity .4 × the black α .3 (menu-card-material §7.3), radius 24,
    offset (0, 8) — 剖面近似 (Gaussian vs the shader's erf-type profile). */
-dialog#alert.glass-read > .pane { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.12)); }
+dialog#alert.glass-read > .pane { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.12)); }   /* light: .3 × ShadowOpacity .4 */
+dialog#alert.glass-read.glass-dark > .pane { filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.18)); }   /* dark: .3 × ShadowOpacity .6 (R57′) */
+dialog#alert.glass-read > .pane > .alert-glass > .alert-glass-w3, dialog#alert.glass-read > .pane > .alert-glass > .alert-glass-w3 > .alert-glass-w2 { position: absolute; left: 0; top: 0; width: 100%; pointer-events: none; }
 dialog#alert.glass-read > .pane > .alert-glass { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 dialog#alert.glass-read > .pane > .alert-glass > .alert-glass-copy { contain: layout paint style; }
