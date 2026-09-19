@@ -760,11 +760,24 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
             counts.push(bsN); const r = nv.getBoundingClientRect();
             if (nv !== nv0 || nv.querySelector(":scope > .plat") !== plat0 || g !== gl0 || nv.querySelector(":scope > .seg") !== sg0) bad.push("rebuilt");
             if (Math.abs(r.top - top0) > 0.5) bad.push("top " + r.top.toFixed(1)); if (getComputedStyle(nv).display === "none") bad.push("display none"); if (bsN === 0) bad.push("0 buttons");
-            if (on && g && !nv.classList.contains("tl-on") && (Math.abs(parseFloat(g.style.left) - on.offsetLeft) > 1 || Math.abs(parseFloat(g.style.width) - on.offsetWidth) > 1)) bad.push("glide off " + g.style.left + "/" + on.offsetLeft); } };
+            if (on && g && !nv.classList.contains("tl-on")) { const gr = g.getBoundingClientRect(), orr = on.getBoundingClientRect(); if (Math.abs(gr.left - orr.left) > 1 || Math.abs(gr.width - orr.width) > 1) bad.push("glide off " + gr.left.toFixed(1) + "/" + orr.left.toFixed(1)); } } };   // viewport rects: during the R0③ set animation the button is translated and the glide rides it
           const names = snap.queues.map((x) => x["名"]); const other = names.find((nm) => nm !== savedQ) || names[0];
           curQueue = other; window.render(); await sampleFrames(8); curQueue = savedQ; window.render(); await sampleFrames(8); curQueue = other; window.render(); await sampleFrames(8); curQueue = savedQ; window.render(); await sampleFrames(4);
           const uniq = [...new Set(counts)];
           check("R0① 换班次三次（早→晚→早→晚→早，render）逐帧：标签栏 .plat/.glide/.seg 同一元素、nav top 不变、display 不为 none、按钮数在两个值间切换且无一帧 0、glide 每帧贴着选中按钮（≤ 1 pt）", "same nodes · top = · counts {5,3} · glide on", `${bad.length ? bad.slice(0, 4).join(" · ") : "clean"} · counts ${uniq.join("/")} · ${counts.length} frames`, bad.length === 0 && uniq.length === 2 && !uniq.includes(0) && counts.length >= 20);
+          /* R0③ (tab-lens-motion.md §7, R24): on a set change the kept buttons' translateX follows ζ 1 / .3 from their FLIP delta, the removed ones fade on ζ 1 / .2 at their
+             old place and leave when the .3 spring settles, the added ones fade in on ζ 1 / .3; sampled on the driver's own clock (nav.__tabAnim, A15) */
+          { const nv = document.querySelector("nav.tabs"); const closed = (t, resp) => { const w = 2 * Math.PI / resp; return (1 + w * t) * Math.exp(-w * t); };
+            curQueue = other; window.render(); const A = nv.__tabAnim;
+            const smp = []; let removedSeen = 0; const tEnd = performance.now() + 1200;
+            while (performance.now() < tEnd) { await new Promise(requestAnimationFrame); if (nv.__tabAnim === A && A && A.tNow) { const t = (A.tNow - A.t0) / 1000;   // the driver's own frame time (A15)
+              for (const it of A.items) { const m = /translateX\(([-\d.]+)px\)/.exec(it.el.style.transform || ""); smp.push({ kind: "pos", t, got: m ? parseFloat(m[1]) : 0, want: it.dx * closed(t, 0.3) }); }
+              for (const b of A.removed) { if (b.isConnected) { removedSeen++; smp.push({ kind: "out", t, got: parseFloat(b.style.opacity || "1"), want: closed(t, 0.2) }); } }
+              for (const b of A.added) smp.push({ kind: "in", t, got: parseFloat(b.style.opacity || "1"), want: 1 - closed(t, 0.3) }); } }
+            const rmsOf = (k) => { const a = smp.filter((s) => s.kind === k); return a.length ? Math.sqrt(a.reduce((acc, s) => acc + Math.pow(s.got - s.want, 2), 0) / a.length) : 0; };
+            const goneAfter = A ? A.removed.every((b) => !b.isConnected) : true, hadAnim = !!A && (A.items.length + A.removed.length + A.added.length) > 0;
+            check("R0③ 换班次时项增删动画（§7）：保留项位移逐帧对 ζ1/.3 闭式（rms ≤ 1 pt）、删项淡出对 ζ1/.2（rms ≤ .03）、加项淡入对 ζ1/.3（rms ≤ .03）、删项在动画结束后摘掉、驱动器存在", "anim · pos ≤ 1 · out ≤ .03 · in ≤ .03 · removed gone", `anim ${hadAnim} · ${smp.length} samples · pos ${rmsOf("pos").toFixed(2)} · out ${rmsOf("out").toFixed(3)} (${removedSeen} frames) · in ${rmsOf("in").toFixed(3)} · gone ${goneAfter}`, hadAnim && rmsOf("pos") <= 1 && rmsOf("out") <= 0.03 && rmsOf("in") <= 0.03 && goneAfter);
+            curQueue = savedQ; window.render(); await sleep(1300); }
           curTab = savedTab; window.render(); await sleep(100);
         }
       }
