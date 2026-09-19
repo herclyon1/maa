@@ -2,11 +2,11 @@
    accept.js's page (light and dark runs).
    What is checked, and the numbers it is checked against:
    ① appear: the panel's left / top / width / height each follow the closed-form spring ζ .8 / response .3 s (menu-motion-formula.md §0 table
-      "出现（长大）弹簧", §2) from the anchor button's rect to the resting menu rect — sampled every animation frame from the panel's own
-      getBoundingClientRect(), the deviation from x(t) = target + (start − target)·e^(−ζωt)(cos ωd t + ζω/ωd · sin ωd t), ω = 2π/.3, is
-      an rms in pt per property; pass when rms ≤ 1 pt — 1 pt = twice the rounding of a rect read at 1 px (the only source of deviation when the
-      page integrates the same closed form on the same frame timestamps).
-   ② dismiss: the same four properties follow ζ .9 / .3 (§0 "消失（缩小）弹簧") from the resting rect back to the anchor's rect, same rms bound.
+      "出现（长大）弹簧", §2) from the anchor button's rect to the resting menu rect. Per frame two readings — the driver's spring value and clock
+      (Menu.state().x / .t) and the panel's getBoundingClientRect() — and two checks: the spring value is x(t) = target + (start − target)·
+      e^(−ζωt)(cos ωd t + ζω/ωd · sin ωd t), ω = 2π/.3, on the driver's own clock (rms ≤ .01 pt: the analytic step is exact), and the DOM shows
+      the spring value (rect − x, rms ≤ 1 pt = twice the rounding of a rect read at 1 px).
+   ② dismiss: the same four properties follow ζ .9 / .3 (§0 "消失（缩小）弹簧") from the resting rect back to the anchor's rect, same two checks.
    ③ no dimming: the scrim's background alpha is 0 (§0 "压暗": _hasVisibleBackground NO).
    ④ geometry at rest: width 250, corner 32 (menu-card-material.md §1.2: defaultMenuWidth, menuCornerRadius).
    ⑤ real-device template (BOARD A6, the applicable ones): hidden → the menu is gone (state stripped); the panel's resting background equals the
@@ -26,20 +26,24 @@
     const rect = (el) => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; };
     /* t = the frame's timestamp − the spring's start (Menu.state().t0, the open / close call's performance.now()): the page integrates the same
        closed form step by step on these timestamps, so the sample of frame k must equal x(t_k) exactly (up to the rect's rounding) */
-    const sample = (panel, ms, t0) => new Promise((resolve) => { const out = []; let first = null;
+    /* two readings per frame: the panel's rect (what the DOM shows) and the driver's own state (Menu.state(): x = the spring's value, t = its clock).
+       Two checks come out of them (验收 00:2x: the one-piece check "rect vs closed form on the sampler's timestamps" read 6–7 pt under load — a frame
+       in which the sampler and the driver did not run together, whichever side it was): ① the DOM shows the driver's value (rect − x, ≤ 1 pt = twice
+       the rounding of a rect read at 1 px); ② the driver's value is the closed form on its own clock (x − x(t), ≤ .01 pt: the analytic step is exact) */
+    const sample = (panel, ms) => new Promise((resolve) => { const out = []; let first = null;
       const tick = (now) => { if (first === null) first = now; if (!panel.isConnected) { resolve(out); return; }   // removed on settle (the dismiss): the frame's read would be zeros
-        out.push({ t: (now - t0) / 1000, ...rect(panel) }); if (now - first < ms) requestAnimationFrame(tick); else resolve(out); };
+        const st = Menu.state(); if (st) out.push({ t: st.t, r: rect(panel), x: { ...st.x } }); if (now - first < ms) requestAnimationFrame(tick); else resolve(out); };
       requestAnimationFrame(tick); });
     const fit = (samples, from, to, zeta, resp) => { const res = {}; for (const k of ["left", "top", "width", "height"]) {
-      res[k] = rms(samples.map((s) => s[k] - closed(from[k], to[k], zeta, resp, s.t))); } return res; };
+      res[k] = { dom: rms(samples.map((s) => s.r[k] - s.x[k])), model: rms(samples.map((s) => s.x[k] - closed(from[k], to[k], zeta, resp, s.t))) }; } return res; };
     btn.scrollIntoView({ block: "center" }); await sleep(100);   // the value row on screen, as a finger would find it
     const a0 = rect(btn);
     /* ① appear */
     btn.click(); await new Promise((r) => requestAnimationFrame(r));
     const panel = document.querySelector(".menu.morph"); if (!panel) { check("菜单：点值行后有 .menu.morph 面板", "有", "缺", false); return; }
-    const st = Menu.state(); const open = await sample(panel, 900, st.t0);
+    const st = Menu.state(); const open = await sample(panel, 900);
     const fin = fit(open, st.from, st.to, 0.8, 0.3);
-    for (const k of ["left", "top", "width", "height"]) num(`菜单出现 ${k} 对 ζ.8/r.3 闭式 rms（pt，${open.length} 帧）`, 0, fin[k], 1);
+    for (const k of ["left", "top", "width", "height"]) { num(`菜单出现 ${k}：弹簧值对 ζ.8/r.3 闭式 rms（pt，${open.length} 帧，驱动自己的时钟）`, 0, fin[k].model, 0.01); num(`菜单出现 ${k}：面板矩形 = 弹簧值 rms（pt）`, 0, fin[k].dom, 1); }
     /* ④ rest geometry */
     const rr = rect(panel); num("菜单静止宽（menu-card-material §1.2 defaultMenuWidth）", 250, rr.width, 0.5);
     num("菜单静止圆角（§1.2 menuCornerRadius）", 32, parseFloat(cs(panel).borderTopLeftRadius), 0.5);
@@ -52,9 +56,9 @@
     check("菜单面板底色 = --alert-fill（本主题）", cs(probe).backgroundColor, cs(panel).backgroundColor, cs(probe).backgroundColor === cs(panel).backgroundColor); probe.remove();
     /* ② dismiss (the scrim tap = cancel = the reverse morph) */
     const from2 = rect(panel); scrim.click(); await new Promise((r) => requestAnimationFrame(r));
-    const st2 = Menu.state(); const close = await sample(panel, 900, st2.t0);
+    const st2 = Menu.state(); const close = await sample(panel, 900);
     const fout = fit(close, st2.from, st2.to, 0.9, 0.3);
-    for (const k of ["left", "top", "width", "height"]) num(`菜单收回 ${k} 对 ζ.9/r.3 闭式 rms（pt，${close.length} 帧）`, 0, fout[k], 1);
+    for (const k of ["left", "top", "width", "height"]) { num(`菜单收回 ${k}：弹簧值对 ζ.9/r.3 闭式 rms（pt，${close.length} 帧）`, 0, fout[k].model, 0.01); num(`菜单收回 ${k}：面板矩形 = 弹簧值 rms（pt）`, 0, fout[k].dom, 1); }
     num("菜单收回目标 = 值行按钮框（top）", a0.top, st2.to.top, 0.5); num("菜单收回起点 = 静止框（width）", from2.width, st2.from.width, 0.5);
     await sleep(300); check("菜单收回后面板移除", "无", document.querySelector(".menu.morph") ? "还在" : "无", !document.querySelector(".menu.morph"));
     /* ⑤ hidden strips the state */
