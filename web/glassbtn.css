@@ -1,3 +1,7 @@
 /* glassbtn.css — the round glass buttons' press (BOARD.md #5; web/glassbtn.js drives `transform: scale()` per frame). Overrides only what the
    press needs; the buttons' glass (material) rules in index.html stay untouched (BOARD A5). */
 .pnav .navbtn.navbtn, .topbar .navbtn.navbtn { transform-origin: 50% 50%; transition-property: opacity, background-color, box-shadow; }   /* no transition on transform: the scale is a spring, one value per frame */
+/* R4 (glass-button-press-formula.md §7): the box itself grows 44 → 60 (glassbtn.js sets width / height / margins per frame), the glyph scales × the same
+   factor about its centre and fades to .2 (--gb-scale / --gb-icon-alpha set per frame) */
+.pnav .navbtn.navbtn::before, .topbar .navbtn.navbtn::before { transform: scale(var(--gb-scale, 1)); opacity: var(--gb-icon-alpha, 1); transform-origin: 50% 50%; }
+.pnav .navbtn.navbtn, .topbar .navbtn.navbtn { box-sizing: border-box; }
