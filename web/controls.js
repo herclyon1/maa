@@ -15,7 +15,7 @@
                      one frame after that — once the fade's first frame is on screen — because the page's actions block (confirm()) or
                      replace the frame (openPage), which the device check (数据 b14-cell-8bf3bcd.md) saw swallowing the highlight
        short tap     (up before +150 ms) the highlight still shows one frame at +150 (up +16…18) and the fade starts at that moment; the click
-                     follows the same way (highlight frame → fade frame → click), never before the highlight has been on screen
+                     follows the same way (highlight frame painted → fade frame painted → click), never before the highlight was on screen
        cancel        scrolling ≥ 12 pt vertically (threshold 10 = --ios-touch-scroll-threshold) or the finger 15 pt outside the card's edge:
                      the highlight goes off INSTANTLY (.hl-cut kills the base transition of .acts button for that frame) and the up selects
                      nothing — UITableView touchesCancelled: (0x1c4b31830) / touchesMoved: (0x1c4b306a8) un-highlight through
@@ -46,11 +46,14 @@
     const x0 = e.clientX, y0 = e.clientY, T = ROW_SCROLL_PT();
     let lit = false, over = false, released = false, timer = 0;
     const select = () => { synthetic = true; try { el.click(); } finally { synthetic = false; } };
-    /* the release sequence from a lit row: frame 1 the fade starts (.hl → .hl-out), frame 2 the selection — so the fade's first frame is
-       painted before an action can block the main thread (confirm()) or replace the content (openPage) */
-    const release = () => requestAnimationFrame(() => { fadeOut(el); requestAnimationFrame(select); });
-    const light = () => {   // +150 ms: the highlight, instant; if the finger is already up, the fade and the selection follow from here
-      timer = 0; if (over && !released) return; lit = true; el.classList.add("hl"); if (released) release();
+    /* each step AFTER A PAINT: rAF callbacks run before the frame's paint and a setTimeout(0) registered inside one runs after it —
+       "rAF then setTimeout 0" = the next painted frame. The highlight paints, then the fade's start paints, then the selection runs:
+       an action that blocks the main thread (confirm()) or replaces the content (openPage) can no longer swallow either frame
+       (数据 fd0731b device check: two rAFs alone still blocked before a paint) */
+    const afterPaint = (fn) => requestAnimationFrame(() => setTimeout(fn, 0));
+    const release = () => requestAnimationFrame(() => { fadeOut(el); setTimeout(select, 0); });
+    const light = () => {   // +150 ms: the highlight, instant; if the finger is already up, one painted frame of it, then the release
+      timer = 0; if (over && !released) return; lit = true; el.classList.add("hl"); if (released) afterPaint(release);
     };
     const cancel = () => {   // instant off (no transition even on .acts button, whose rest rule carries one), no select
       if (over) return; over = true; clearTimeout(timer); timer = 0; delete el.dataset.rp;
