@@ -225,7 +225,7 @@ void main(){
       if (tr) { tr.set = wsel; tr.total = +(performance.now() - tr.t0).toFixed(2); stats.trace = tr; (stats.traces = stats.traces || []).push(tr); if (stats.traces.length > 60) stats.traces.shift(); }
       if (opts.finish || s._split) gl.finish();
       if (s._split) stats._p2 = performance.now() - t0 - stats._p1;
-      stats.gpuMs = performance.now() - t0; stats.frames++; stats.set = wsel; last = s;
+      stats.gpuMs = performance.now() - t0; stats.frames++; stats.set = wsel; if (!s._prewarm) last = s;   /* a warm-up frame is not a state to come back to */
     };
     /* warm-up (监督局 14:4x: the page's first glass frame stalled 46–55 ms — the shader pipelines and the textures were first used on that frame): after the
        preloaded set is up, one lifted frame is drawn through both passes into the FBO and the canvas (cleared again in the same task — never presented),
@@ -236,9 +236,9 @@ void main(){
        each, the canvas cleared and finished (the cleared buffer is what the compositor presents: the layer's display surface gets allocated too); the per-step
        ms land in stats.prewarm (compileMs at create, mapsMs per set upload, ishMs, fboMs at the first draw, pass1Ms, pass2Ms, clearMs, totalMs) */
     const prewarm = () => { if (!WARM) return null; const w0 = loadedNearest(preload[0] || 220); if (w0 == null) return null; const st = sets[w0]; const T = performance.now(); const prev = last;
-      const t1 = performance.now(); setState({ cx: AM + w0 / 2, cy: AM + st.h / 2, w: w0, h: st.h, lift: 1, pd: 1, wh: 1.72, canvasOrigin: { x: 0, y: 0 }, _split: true }); stats.prewarm.pass1Ms = stats._p1; stats.prewarm.pass2Ms = stats._p2;
+      const t1 = performance.now(); setState({ cx: AM + w0 / 2, cy: AM + st.h / 2, w: w0, h: st.h, lift: 1, pd: 1, wh: 1.72, canvasOrigin: { x: 0, y: 0 }, _split: true, _prewarm: true }); stats.prewarm.pass1Ms = stats._p1; stats.prewarm.pass2Ms = stats._p2;
       const t3 = performance.now(); clear(); gl.finish(); stats.prewarm.clearMs = performance.now() - t3; stats.prewarm.totalMs = performance.now() - T; stats.prewarm.at = performance.now(); stats.warmMs = stats.prewarm.totalMs;
-      if (prev && prev.lift > 0) setState(prev);   /* a real frame drawn before the warm-up (the harness draws as soon as the set is up) is put back */
+      if (prev && prev.lift > 0 && !prev._prewarm) setState(prev); else clear();   /* a real lifted frame drawn before the warm-up is put back; otherwise the canvas stays transparent (a20df11 ghost: a warm-up frame taken for the last state came back on the next warm-up) */
       return stats.prewarm; };
     const warm = prewarm;
     /* the other sets (the drag stretch's 222 … 256) are loaded one per idle slot after the first prewarm, so no gesture frame pays a set's upload + inner-shadow pass
