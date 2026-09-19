@@ -1,21 +1,27 @@
-/* lens-webgl.js — the lifted segment lens as a WebGL2 overlay (README §0.8.6 the chain, §0.8.7 the wiring). One line to include:
-     <script src="assets/lens/lens-webgl.js"></script>
-   then
-     const lens = LensWebGL.create(canvas, { sets, backdrop, dpr });         // once: the canvas overlays the control's region (position absolute, pointer-events none)
-     lens.setState({ cx, cy, w, h, lift, wh });                               // every tick: uniforms only (cx, cy = the lens centre in CANVAS pt; w × h = the model size → the
-                                                                              //   nearest set; lift = the glass progress 0 … 1; wh = W/H of the capture box, view.js's abFrame rule)
-     lens.redrawBackdrop();                                                   // when what lies under the lens changed (a render, a value flip)
+/* lens-webgl.js — the lifted segment lens as a WebGL2 overlay (README §0.8.6 the chain, §0.8.7 the wiring). The ui session's interface (14:xx):
+     const L = LensWebGL.create({ canvas, assets: "assets/lens/", set: 220, dpr: devicePixelRatio });   // the canvas = the wrapper (lens box ± 16 pt), the
+                                                                                                          //   page positions / sizes it per frame like .stack; alpha on
+     await L.ready;                                                                                       // shaders compiled, the set's three maps uploaded
+     L.setBackdrop({ region: { x, y, w, h }, ink: [r, g, b], page: (ctx) => {…}, labels: (ctx) => {…} });   // 2D callbacks in PAGE pt: what lies under the lens
+                                                                                                          //   without the labels / the labels alone; region = the part of the
+                                                                                                          //   page the textures hold (the control's row ± the lens's reach); again
+                                                                                                          //   when the value / theme / size changes
+     L.draw({ lensX, lensY, w, h, p, pd, wh });                                                           // every frame — uniforms only; lensX/lensY = the lens box's page
+                                                                                                          //   top-left, w × h = the model box (the nearest set), p = the glass
+                                                                                                          //   progress (0 → nothing drawn), pd = the DestOut α (the capsule's
+                                                                                                          //   alpha over the real content), wh = W/H (§3b.6); returns gpu ms
+   (create(canvas, { sets, backdrop, ink, width, height, dpr }) + setState({ cx, cy, w, h, lift, wh }) + redrawBackdrop() — the harness's form — still work.)
    The canvas paints ONLY the capsule (the displaced copies, the label copy, the fringe, the highlight, the inner shadow) and, outside it, the
-   glassBackground ring shadow + KeyFill dark line as a black overlay (they darken the page multiplicatively) — everything else stays
-   transparent, the live DOM shows through. What the taps read beyond the capsule (the wrapper's 16-pt margin) comes from the backdrop
-   textures the page draws (`backdrop(ctx, which)`: "page" = what lies under the lens without the segment labels, "labels" = the labels
-   alone, both in canvas pt; drawn at init and at redrawBackdrop()).
-   sets: { "<w>": { bg, lab, ab, S, Sab, h } } — the map files of a width (the same files the SVG filters reference), S = data-s of the bg / lab
-   filters, Sab = data-s of the fringe filter, h = the set's height; LensWebGL.setsFromFilters("seg") reads them off the inline <svg>.
-   Chain and constants: lens-webgl-test.html's shaders, verbatim (their sources in the comments): pass 1 = the backdrop copy through the bg map
-   with the DestOut punch, the ring shadow (keyfill §4), the built-in KeyFill dark line (keyfill §5.1), the label copy through the lab map
-   clipped to the capsule, the inner shadow (keyfill §5.2c, precomputed per set); pass 2 = the 7-tap dispersion (formula §3b) over pass 1,
-   the #36 highlight through the vibrant matrix (keyfill §2), the outside overlay. Maps sampled bilinearly, no engine correction (§0.8.6). */
+   glassBackground ring shadow (black α) + the KeyFill dark line's row (the page copy darkened) — everything else stays transparent, the live
+   DOM shows through. What the taps read beyond the capsule comes from the backdrop textures the page draws.
+   Sets: the map files of a width (the same files the SVG filters reference), S = data-s of the bg / lab filters (read off the page's inline <svg>
+   when present, else 40), Sab = the fringe filter's (12), h = the set's height (from the map). LensWebGL.setsFromFilters("seg") builds the table.
+   Chain and constants (their sources in the comments): pass 1 = the backdrop copy through the bg map with the DestOut punch, the ring shadow
+   (keyfill §4), the built-in KeyFill dark line (keyfill §5.1), the label copy through the lab map clipped to the capsule, the inner shadow
+   (keyfill §5.2c, precomputed per set); pass 2 = the 7-tap dispersion (formula §3b) over pass 1, the #36 highlight through the vibrant matrix
+   (keyfill §2), the outside overlay. Maps sampled bilinearly, no engine correction (§0.8.6). Engine facts inside: an FBO's row 0 is the
+   viewport's bottom (pass 2 reads pass 1 with a flipped t); macOS WebKit smooths canvas text only on an attached canvas (the scratch canvases
+   are attached off-screen while drawn) and the labels' alpha is recovered from the opaque page / page + labels renders. */
 (function () {
   const VS = `#version 300 es
 in vec2 a; out vec2 v; uniform vec4 u_quad; uniform vec2 u_origin; uniform vec2 u_view;
@@ -41,9 +47,9 @@ float darkLineK(float d, vec2 n){ float off = -0.6667, h = 1.0; float e = -(d + 
   const FS1 = `#version 300 es
 ${COMMON}
 in vec2 v; out vec4 o;
-uniform sampler2D t_page, t_lab, m_bg, m_lab, t_ish; uniform vec2 u_page; uniform vec4 u_lens; uniform float u_S; uniform float u_p;
-vec4 page(vec2 p){ return texture(t_page, p / u_page); }
-vec4 lab(vec2 p){ return texture(t_lab, p / u_page); }
+uniform sampler2D t_page, t_lab, m_bg, m_lab, t_ish; uniform vec4 u_page; /* the backdrop region x y w h, page pt */ uniform vec4 u_lens; uniform float u_S; uniform float u_p;
+vec4 page(vec2 p){ return texture(t_page, (p - u_page.xy) / u_page.zw); }
+vec4 lab(vec2 p){ return texture(t_lab, (p - u_page.xy) / u_page.zw); }
 vec4 over(vec4 s, vec4 d){ return s + d * (1.0 - s.a); }
 void main(){
   vec2 C = u_lens.xy + u_lens.zw * 0.5, half_ = u_lens.zw * 0.5; float r = min(22.0, half_.y);   /* the segment lens: r 22 clamped to h/2 (DestOut cornerRadius stays 22 through the drag) */
@@ -75,7 +81,7 @@ void main(){ vec2 C = u_lens.xy + u_lens.zw * 0.5, half_ = u_lens.zw * 0.5; floa
   const FS2 = `#version 300 es
 ${COMMON}
 in vec2 v; out vec4 o;
-uniform sampler2D t_a, m_ab, t_page, t_lab; uniform vec2 u_page; uniform vec4 u_lens; uniform vec4 u_wrap; uniform float u_Sab; uniform float u_wh; uniform float u_p; uniform float u_dbg;
+uniform sampler2D t_a, m_ab, t_page, t_lab; uniform vec4 u_page; uniform vec4 u_lens; uniform vec4 u_wrap; uniform float u_Sab; uniform float u_wh; uniform float u_p; uniform float u_pd; uniform float u_dbg;
 vec4 A(vec2 p){ vec2 t = (p - u_wrap.xy) / u_wrap.zw; return texture(t_a, vec2(t.x, 1.0 - t.y)); }   /* an FBO's row 0 is the viewport's bottom: page-down y → flipped t */
 vec4 over(vec4 s, vec4 d){ return s + d * (1.0 - s.a); }
 vec3 V(vec3 b){ return min(vec3(1.0), 0.9118 * b + 0.1471); }   /* vibrantColorMatrix on the layer's α (keyfill §2) */
@@ -100,18 +106,23 @@ void main(){
   /* the overlay outside the capsule: the ring shadow darkens whatever is under (black, α = ring — exact for any colour); the dark line's factor depends on the
      colour under it (rgb·(1 + colorBias·k·(3 − 2·rgb)), keyfill §5.1), so on its 1-pt row the overlay paints the page copy itself, darkened, opaque */
   float ring = ringTerm(pl, half_, r) * u_p; float k = darkLineK(d, n) * u_p;
-  vec4 und = over(texture(t_lab, v / u_page), texture(t_page, v / u_page));
+  vec4 und = over(texture(t_lab, (v - u_page.xy) / u_page.zw), texture(t_page, (v - u_page.xy) / u_page.zw));
   vec3 lined = und.rgb * (1.0 + (-0.3) * k * (3.0 - 2.0 * und.rgb)) * (1.0 - ring);
   vec4 outside = (k > 0.0) ? vec4(lined, 1.0) : vec4(0.0, 0.0, 0.0, ring);
-  o = mix(outside, vec4(col, 1.0), M);
+  o = mix(outside, vec4(col, 1.0) * u_pd, M);   /* u_pd = the DestOut α (§4.1 / §4.3 ramps): the capsule's alpha over the real content, 1 when held */
 }`;
   const loadImg = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("lens-webgl: " + src)); i.src = src; });
-  const create = (canvas, opts) => {
+  const create = (canvasOrOpts, opts0) => {
+    const uiForm = !(canvasOrOpts instanceof HTMLCanvasElement); const opts = uiForm ? canvasOrOpts : (opts0 || {}); const canvas = uiForm ? opts.canvas : canvasOrOpts;
     const gl = canvas.getContext("webgl2", { antialias: false, premultipliedAlpha: true, alpha: true, preserveDrawingBuffer: !!opts.preserve });
     if (!gl) return null;
     const DPR = opts.dpr || window.devicePixelRatio || 1, AM = opts.margin || 16;
-    const W = opts.width || canvas.clientWidth || parseFloat(canvas.style.width) || canvas.width, H = opts.height || canvas.clientHeight || parseFloat(canvas.style.height) || canvas.height;   /* the canvas in pt */
+    /* the ui form: the canvas is the wrapper (lens ± 16), moved and sized by the page per frame; its pt size follows draw()'s w / h */
+    let W = opts.width || canvas.clientWidth || parseFloat(canvas.style.width) || canvas.width, H = opts.height || canvas.clientHeight || parseFloat(canvas.style.height) || canvas.height;   /* the canvas in pt */
     canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+    if (uiForm && !opts.sets) { const w0 = opts.set || 220, base = opts.assets != null ? opts.assets : "assets/lens/", fromSvg = setsFromFilters("seg"); opts.sets = Object.keys(fromSvg).length ? fromSvg : { [w0]: { bg: `${base}seg-f-bg-${w0}.png`, lab: `${base}seg-f-lab-${w0}.png`, ab: `${base}seg-f-ab-${w0}.png`, S: 40, Sab: 12 } }; opts.preload = [w0]; }
+    if (!opts.backdrop) opts.backdrop = () => {};   /* set later by setBackdrop */
+    let region = opts.region || { x: 0, y: 0, w: W, h: H };   /* the page rectangle the backdrop textures hold, page pt */
     const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
     const prog = (vs, fs) => { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)); return p; };
     const P1 = prog(VS, FS1), PISH = prog(VS, FS_ISH), P2 = prog(VS, FS2);
@@ -132,7 +143,7 @@ void main(){
     /* the scratch canvases are attached to the document (off-screen) while drawn: macOS WebKit smooths text on an attached canvas like the DOM's text
        and not on a detached one (measured: the same 13 px glyph's ink box 107.67–132 attached / DOM vs 108.5–131.33 detached); iOS renders both alike */
     const scratch = document.createElement("div"); scratch.style.cssText = "position:absolute;left:-100000px;top:0;width:1px;height:1px;overflow:hidden;pointer-events:none"; document.body.appendChild(scratch);
-    const draw2d = (which) => { const c = document.createElement("canvas"); c.width = canvas.width; c.height = canvas.height; c.style.cssText = `width:${W}px;height:${H}px`; scratch.appendChild(c); const x = c.getContext("2d"); x.scale(DPR, DPR); opts.backdrop(x, "page", { width: W, height: H }); if (which === "labels") opts.backdrop(x, "labels", { width: W, height: H }); return c; };
+    const draw2d = (which) => { const c = document.createElement("canvas"); c.width = Math.round(region.w * DPR); c.height = Math.round(region.h * DPR); c.style.cssText = `width:${region.w}px;height:${region.h}px`; scratch.appendChild(c); const x = c.getContext("2d"); x.scale(DPR, DPR); x.translate(-region.x, -region.y); opts.backdrop(x, "page", { width: W, height: H, region }); if (which === "labels") opts.backdrop(x, "labels", { width: W, height: H, region }); return c; };
     const labelsAlpha = (cPg, cP) => { const w = cPg.width, h = cPg.height; const a = cPg.getContext("2d").getImageData(0, 0, w, h).data, b = cP.getContext("2d").getImageData(0, 0, w, h).data; const ink = opts.ink || [0, 0, 0];
       const out = new ImageData(w, h); const o = out.data;
       for (let i = 0; i < a.length; i += 4) { let best = 0, al = 0; for (let c = 0; c < 3; c++) { const den = ink[c] - a[i + c]; if (Math.abs(den) > Math.abs(best)) { best = den; al = (b[i + c] - a[i + c]) / den; } }
@@ -154,8 +165,10 @@ void main(){
     const preload = opts.preload || [widths.includes(220) ? 220 : widths[0]]; for (const w of preload) loadSet(w);
     let A = null, last = null, stats = { gpuMs: 0, frames: 0, set: 0 };
     const clear = () => { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, canvas.width, canvas.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); };
+    let canvasOrigin = { x: 0, y: 0 };   /* the canvas's page position (the ui form moves the canvas with the lens) */
     const setState = (s) => {
-      const t0 = performance.now(); const p = s.lift == null ? 1 : Math.max(0, Math.min(1, s.lift));
+      const t0 = performance.now(); const p = s.lift == null ? 1 : Math.max(0, Math.min(1, s.lift)), pd = s.pd == null ? 1 : Math.max(0, Math.min(1, s.pd));
+      if (s.canvasOrigin) canvasOrigin = s.canvasOrigin;
       if (p <= 0) { clear(); last = s; return; }
       const want = nearest(s.w); if (!sets[want]) loadSet(want);
       const wsel = (sets[want] && sets[want].loaded) ? want : loadedNearest(s.w); if (wsel == null) { clear(); return; }   /* until the set's maps arrive: the nearest loaded */
@@ -166,17 +179,23 @@ void main(){
       const aw = Math.round(ww * DPR), ah = Math.round(wh_ * DPR); if (!A || A.w !== aw || A.h !== ah) { A = fbo(aw, ah); }
       gl.bindFramebuffer(gl.FRAMEBUFFER, A.f); gl.viewport(0, 0, A.w, A.h); useProg(P1);
       gl.uniform4f(U(P1, "u_quad"), wx, wy, ww, wh_); gl.uniform2f(U(P1, "u_origin"), wx, wy); gl.uniform2f(U(P1, "u_view"), ww, wh_);
-      gl.uniform2f(U(P1, "u_page"), W, H); gl.uniform4f(U(P1, "u_lens"), lx, ly, lw, lh); gl.uniform1f(U(P1, "u_S"), st.S); gl.uniform1f(U(P1, "u_p"), p);
+      gl.uniform4f(U(P1, "u_page"), region.x, region.y, region.w, region.h); gl.uniform4f(U(P1, "u_lens"), lx, ly, lw, lh); gl.uniform1f(U(P1, "u_S"), st.S); gl.uniform1f(U(P1, "u_p"), p);
       bind(P1, "t_page", 0, tPage); bind(P1, "t_lab", 1, tLab); bind(P1, "m_bg", 2, st.bg); bind(P1, "m_lab", 3, st.lab); bind(P1, "t_ish", 4, st.ish.t);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       clear(); useProg(P2);
-      gl.uniform4f(U(P2, "u_quad"), wx, wy, ww, wh_); gl.uniform2f(U(P2, "u_origin"), 0, 0); gl.uniform2f(U(P2, "u_view"), W, H);
+      gl.uniform4f(U(P2, "u_quad"), wx, wy, ww, wh_); gl.uniform2f(U(P2, "u_origin"), canvasOrigin.x, canvasOrigin.y); gl.uniform2f(U(P2, "u_view"), W, H);
       gl.uniform4f(U(P2, "u_lens"), lx, ly, lw, lh); gl.uniform4f(U(P2, "u_wrap"), wx, wy, ww, wh_); gl.uniform1f(U(P2, "u_Sab"), st.Sab); gl.uniform1f(U(P2, "u_wh"), s.wh || 1.72); gl.uniform1f(U(P2, "u_p"), p);
-      gl.uniform2f(U(P2, "u_page"), W, H); gl.uniform1f(U(P2, "u_dbg"), opts.debugPass1 ? 1 : 0); bind(P2, "t_a", 0, A.t); bind(P2, "m_ab", 1, st.ab); bind(P2, "t_page", 2, tPage); bind(P2, "t_lab", 3, tLab); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      gl.uniform4f(U(P2, "u_page"), region.x, region.y, region.w, region.h); gl.uniform1f(U(P2, "u_pd"), pd); gl.uniform1f(U(P2, "u_dbg"), opts.debugPass1 ? 1 : 0); bind(P2, "t_a", 0, A.t); bind(P2, "m_ab", 1, st.ab); bind(P2, "t_page", 2, tPage); bind(P2, "t_lab", 3, tLab); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       if (opts.finish) gl.finish();
       stats.gpuMs = performance.now() - t0; stats.frames++; stats.set = wsel; last = s;
     };
-    return { gl, canvas, setState, redrawBackdrop, backdropCanvas: () => composite, stats, sets, loadSet, destroy: () => { gl.getExtension("WEBGL_lose_context")?.loseContext(); } };
+    const ready = Promise.all(preload.map((w) => sets[w] && sets[w].ready)).then(() => true);
+    const setBackdrop = (b) => { if (b.region) region = b.region; if (b.ink) opts.ink = b.ink; opts.backdrop = (x, which, info) => { if (which === "page" && b.page) b.page(x, info); if (which === "labels" && b.labels) b.labels(x, info); }; redrawBackdrop(); };
+    const draw = (d) => {   /* the ui form: the canvas is the wrapper at (lensX − AM, lensY − AM), (w + 2AM) × (h + 2AM) pt — resized here when the size changes */
+      const cw = d.w + 2 * AM, ch = d.h + 2 * AM; if (cw !== W || ch !== H) { W = cw; H = ch; canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR); }
+      setState({ cx: d.lensX + d.w / 2, cy: d.lensY + d.h / 2, w: d.w, h: d.h, lift: d.p, pd: d.pd, wh: d.wh, canvasOrigin: { x: d.lensX - AM, y: d.lensY - AM } });
+      return stats.gpuMs; };
+    return { gl, canvas, ready, setState, draw, setBackdrop, redrawBackdrop, backdropCanvas: () => composite, stats, sets, loadSet, get region() { return region; }, destroy: () => { gl.getExtension("WEBGL_lose_context")?.loseContext(); } };
   };
   /* the sets from the page's inline <svg>: #<prefix>-lens-f-bg-<w> (href, data-s), -lab-, -ab- (data-s) — the same files the SVG filters use; h from the map's pixel height / 2 is not known here: pass heights (view.js's series table) or let the page's set table carry them */
   const setsFromFilters = (prefix, heights) => { const out = {}; for (const f of document.querySelectorAll(`filter[id^="${prefix}-lens-f-bg-"]`)) { const w = parseInt(f.id.slice(`${prefix}-lens-f-bg-`.length), 10); if (!(w > 0)) continue;
