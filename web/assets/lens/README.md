@@ -1208,8 +1208,24 @@ the package could still do to put a warm-up frame on screen is now removed struc
 goes into FBO B (canvas-sized, allocated on the first warm-up), the canvas keeps whatever the page last drew or cleared (a live gesture's
 frame is not blinked; a rest canvas stays transparent), and only an instance's first warm-up clears the canvas (the display surface's
 allocation). The restore-the-last-frame logic is gone with it (no `last` state at all). One more guard on the page's side of the contract:
-`setState` with lift < .005 clears (view.js's loop settles at `sL.x < .001` and sends lift 0; the frames of the tail just above it are an
-opaque copy of the backdrop that looks like the DOM until the page under it changes — a theme switch — and would then read as a ghost).
+`setState` with lift < .001 clears — .001 is the page's own settle bound (view.js: `settled` needs `sL.x < .001` and `sM.x < .001`, then the loop
+sends lift 0), so the package adds no bound of its own; the frames of the tail just above it are an opaque copy of the backdrop that looks like the
+DOM until the page under it changes — a theme switch — and would then read as a ghost. (fb84a7e first used .005; 验收 asked what that is in pixels.)
+What a frame at a tiny lift differs from rest by, computed from the inputs (lift 0 → 1 = 196×28 → 220×44 is linear in the page's `w = W0 + 2·LX·q`,
+`h = H0 + 2·LY·q`, LX 12 / LY 8; the shader's displacement = decode(map)·S·p; the shading terms ring .1, dark line, inner shadow .06, highlight
+emits and the fringe envelope are all × p):
+* box: 24·p × 16·p pt → p = .005: 0.12 × 0.08 pt = 0.36 × 0.24 px @3x (0.18 / 0.12 px per side); p = .001: 0.024 × 0.016 pt = 0.072 × 0.048 px.
+* displacement: the 220 set's maps hold at most |u| = 5.002 pt (bg), 9.401 pt (label), 2.338 pt (fringe) at p = 1 (read from seg-f-bg/lab/ab-220.png
+  bytes, (byte − 128)·S/255 with S = 40 / 40 / 12 from lens-filter.svg data-s) → p = .005: 0.025 / 0.047 / 0.012 pt = 0.075 / 0.141 / 0.035 px @3x
+  (fringe × W/H 1.72 = 0.060 px); p = .001: 0.015 / 0.028 / 0.007 px. All below one device pixel by an order of magnitude: no edge moves a pixel,
+  the bilinear read blends ≤ 14 % of a neighbouring texel at the label map's largest value.
+* shading: each term ≤ its full-lift maximum × p — ring .1·p = .0005 (0.13 of a level), dark line .3·k·c(3 − 2c) ≤ .3375·p = .0017 (0.43 level),
+  inner shadow .06·p = .0003 (0.08 level), the highlight emits and the fringe envelope ≤ 1·p = .005 (1.3 levels at most, on the rim only).
+* measured (renderer output, the harness at 3×, light, the lens box ± 30 pt, against the rest frame): p = .001 → max 1 level of 255 (1 648 px at 1,
+  none at 2); p = .005 → max 1 level (5 902 px at 1); p = .01 → max 2 levels (110 px at 2). One level is below what the 8-bit display shows as a step.
+* time: the fall material spring (ζ 1 / .4 s, springStep's critically damped closed form x = (1 + ωt)e^{−ωt}, ω = 2π/.4) passes .005 at 473 ms and
+  .001 at 588 ms after the fall starts — 115 ms (7 frames at 60 Hz, 14 at 120 Hz) in which the .005 bound showed the DOM where the .001 bound shows
+  the copy; per the numbers above the two are within 1 level of each other.
 Harness: `js-ghost.js` / `js-ghost2.js` (rest → redraw → warm, lifted → redraw → warm, a gesture ending at lift .0017 → setBackdrop dark /
 light, dark → light at rest) all 0 opaque pixels except the real lifted frame, which the deferred redraw leaves intact (51 824 px before
 and after); the mid render (light / dark, @3x) is identical to the previous commit (max diff 0).
