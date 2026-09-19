@@ -3921,6 +3921,12 @@
      mean alpha — an antialiasing experiment for the 3× raster, not a drawing. noab (or data-dispersion="0" on the control) leaves the layer-5 colour-fringe chain off. Round 3 (监督局 09-19 点头, experiments only — same
      formulas and numbers, another drawing): nokfmask = the dark line's three rings without the SVG <mask> (the page factor is then not applied);
      hlcss = the highlight's four passes as CSS inset box-shadow ring stacks + mask-image gradients on plain divs instead of SVG strokes. */
+  /* 仪器 (监督局 09-19): the engine-correction blob swap (lens-engine-fix.js, 2号) seen from outside — it starts its work at DOMContentLoaded and fires
+     "lens-engine-fix" when every map has been swapped; the measure seg:enginefix spans the two, window.__segEngineFix says how many feImage hrefs
+     were swapped and with which k. A swap changes a filter's input, so a frame inside this span re-renders the lens filters. */
+  { let t0 = 0; addEventListener("DOMContentLoaded", () => { t0 = performance.now(); performance.mark("seg:enginefix-start"); });
+    addEventListener("lens-engine-fix", () => { try { performance.measure("seg:enginefix", { start: t0, end: performance.now() }); } catch (e) {}
+      window.__segEngineFix = { maps: document.querySelectorAll("feImage[data-engine-fixed]").length, k: window.LENS_ENGINE_FIX_K, ms: Math.round((performance.now() - t0) * 10) / 10 }; }); }
   if (q.has("segx")) { const sw = q.get("segx").split(",");
     const css = []; if (sw.includes("nowarp")) css.push(".segctl .warp{visibility:hidden}"); if (sw.includes("norimb")) css.push(".segctl .rimb{visibility:hidden}");
     if (sw.includes("nohl")) css.push(".segctl .hlk,.segctl .hlw{visibility:hidden}"); if (sw.includes("nohlk")) css.push(".segctl .hlk{visibility:hidden}"); if (sw.includes("nohlw")) css.push(".segctl .hlw{visibility:hidden}");
