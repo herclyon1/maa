@@ -6,6 +6,12 @@ window.ACCEPT && ACCEPT.add(async (ctx) => {
   const T = window.Topbar, root = document.documentElement, cs = (el, ps) => getComputedStyle(el, ps || null);
   const h1 = document.querySelector("header h1"), small = document.querySelector("#topbar span");
   check("顶栏 topbar.js 接管（window.Topbar 在）", "true", String(!!T), !!T);
+  /* 真机坑 (A6): the stylesheet must be in effect before anything is measured — a lost / late topbar.css?v=0 leaves index.html's rules
+     (translateY 6 px title, no header shift → p ≈ 1); report which sheets are here and the resource timing of topbar.css */
+  const sheet = [...document.styleSheets].find((s) => s.href && /topbar\.css/.test(s.href));
+  let rules = 0; try { rules = sheet ? sheet.cssRules.length : 0; } catch (e) { rules = -1; }
+  const rt = performance.getEntriesByType("resource").find((e) => /topbar\.css/.test(e.name));
+  check("topbar.css 已到并生效（styleSheets 含它，规则 ≥ 4；资源计时）", "≥ 4", `${rules} 规则, ${rt ? Math.round(rt.responseEnd) + " ms, " + rt.transferSize + " B" : "无资源计时"}, 表 ${document.styleSheets.length} 张`, rules >= 4);
   if (!T || !h1 || !small) return;
   const v = (n) => parseFloat(root.style.getPropertyValue(n)) || 0;
   const y0 = window.scrollY;

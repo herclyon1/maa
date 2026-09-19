@@ -33,7 +33,7 @@
   const snapTarget = (s) => (s < p / 2 ? 0 : p);   // 2.8: nearest resting point, midpoint rule (s in the collapse range)
   const stretchOf = (over) => clamp(1 + over / (devicePixelRatio * screen.height * STRETCH_K), 1, STRETCH_MAX);   // 2.7 (over = pull-down pt)
   const apply = () => {
-    const y = window.scrollY;
+    const y = window.scrollY; if (y === 0) measure();   // at rest the geometry is re-read (layout may have changed since load: fonts, data, header content)
     const s = clamp(y, 0, p), inline = progressOf(s) < THRESH ? 1 : 0;
     const clip = Math.max(0, barBottom - (restBottom - y - h1.offsetHeight));   // how much of the large title is under the bar (px from its top)
     const st = root.style;
@@ -62,6 +62,7 @@
   addEventListener("touchstart", () => { dragging = true; if (snapping) { cancelAnimationFrame(snapRaf); snapping = false; } }, { passive: true });
   addEventListener("touchend", () => { dragging = false; lastTouchEnd = performance.now(); }, { passive: true }); addEventListener("touchcancel", () => { dragging = false; lastTouchEnd = performance.now(); }, { passive: true });
   addEventListener("resize", () => { measure(); apply(); });
+  addEventListener("load", () => { measure(); apply(); });   // the stylesheets are all in effect by then (a late topbar.css would leave p from index.html's geometry)
   measure(); apply();
   Object.assign(api, { measure, apply, progressOf, snapTarget, stretchOf, B, THRESH, FADE_S }); Object.defineProperty(api, "p", { get: () => p }); window.Topbar = api;
 })();
