@@ -1341,7 +1341,8 @@ const SEGX = (new URLSearchParams(location.search).get("segx") || "").split(",")
 const SEG_DISP_ON = new URLSearchParams(location.search).get("disp") === "1";
 const SEG_VC_SPLIT = new URLSearchParams(location.search).get("vcsplit") !== "0";
 const SEG_LPQ = new URLSearchParams(location.search).get("lpq") !== "0";   // lpq: per-frame filter / opacity writes quantised to the 8-bit raster (1/255; displacement scale .1) and written only on change — the springs are untouched (?lpq=0 off)
-const lpq = (x) => SEG_LPQ ? Math.round(x * 255) / 255 : x;   // 换值重画不阻塞: the commit frame switches the selection only, the content render runs in the next frame (?vcsplit=0 = one frame, the old path)   // layer-5 colour fringe (7-tap chain on .stack, per-frame W/H matrix + tap scales): default off, ?disp=1 on (监督局 09-19 12:0x, phone fps bisect)
+const lpq = (x) => SEG_LPQ ? Math.round(x * 255) / 255 : x;
+const SEG_PREWARM_ON = new URLSearchParams(location.search).get("prewarm") !== "0";   // 换值重画不阻塞: the commit frame switches the selection only, the content render runs in the next frame (?vcsplit=0 = one frame, the old path)   // layer-5 colour fringe (7-tap chain on .stack, per-frame W/H matrix + tap scales): default off, ?disp=1 on (监督局 09-19 12:0x, phone fps bisect)
 /* instrumentation (仪器, no behaviour): the lens loop publishes its per-tick internals as window.__segLens — a flat object of numbers and strings,
    rewritten at the end of every tick, read as is by 2号's frame recorder (seg-frames-logger.js `state`; a field named t or ending in _t is a
    performance.now() ms the recorder converts to s since the down). The agreed names: t (the tick's performance.now()), x (the position spring, pt),
@@ -1360,7 +1361,7 @@ const segMeasure = (name, from) => { try { performance.measure(name, { start: fr
 function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }: the 点按 schedule (SEG_TAP_T) instead of the press / drag / release chain; tap = { prewarm: true }: build + one invisible paint, no loop (A 起手预建); tap = { deferred: true }: build now, arm later with loop.beginTap(target, upAt) (the tap's work done at the down)
   const prewarm = !!(tap && tap.prewarm), deferred = !!(tap && tap.deferred); if (prewarm || deferred) tap = null;
   if (seg.__lensLoop && !prewarm) seg.__lensLoop.stop();   // a new press ends the previous loop (its tail and its inline geometry)
-  if (!prewarm) seg.classList.remove("prewarm");   // A 起手预建: the pre-painted layers now belong to the gesture
+  // (.prewarm stays until the lift frame — frame() removes it as it sets .lift, so the layers never pass through display:none; liftgap_check.py)
   let warp = seg.querySelector(".warp"), warpl = seg.querySelector(".warpl"), plat = seg.querySelector(".plat"), rimb = seg.querySelector(".rimb"), hls = [...seg.querySelectorAll(".hlk, .hlw")];
   const mk = (cls, inner) => { const d = document.createElement("div"); d.className = cls; d.innerHTML = inner; seg.appendChild(d); return d; };
   if (!warp) warp = mk("warp", '<div class="disp"><div class="copy"></div><div class="punch"><div class="copy"></div></div></div>'); else if (!warp.querySelector(".punch")) warp.firstElementChild.innerHTML = '<div class="copy"></div><div class="punch"><div class="copy"></div></div>';
@@ -1514,10 +1515,11 @@ function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }:
     { const a = lpq(p).toFixed(4), b = lpq(pd).toFixed(4); if (lpKey !== a) { lpKey = a; seg.style.setProperty("--lp", a); } if (lpdKey !== b) { lpdKey = b; seg.style.setProperty("--lpd", b); } }   // lpq: 1/255 steps, written on change
     for (const id of [`#seg-lens-f-bg-${set}`, `#seg-lens-f-lab-${set}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (!fd) continue; const sc = SEGX.includes("scale0") ? "0" : (SEG_LPQ ? (Math.round(sOf(id) * p * 10) / 10).toFixed(1) : (sOf(id) * p).toFixed(3)); if (fd.getAttribute("scale") !== sc) fd.setAttribute("scale", sc); }   // lpq: .1 steps (.0025 pt), written on change   // both stacks' amounts on the lift spring (§4.4 row 2: ClearGlass 0 → −17.5, ContentLensing 0 → −8.8, BackdropView 0 → 9 in the same call)
     cbs.forEach((c, i) => c.className = "cb " + bs[i % bs.length].className);
-    seg.classList.toggle("lift", p > 0 || pd > 0);
+    if (p > 0 || pd > 0) { seg.classList.add("lift"); seg.classList.remove("prewarm"); } else seg.classList.remove("lift");   // .prewarm → .lift in one style update: the layers stay display:block, only their opacity changes (A: keep the compositing layers alive)
   };
   const clear = () => {
-    seg.classList.remove("lift"); seg.style.removeProperty("--lp"); seg.style.removeProperty("--lpd"); copy.innerHTML = ""; copyl.innerHTML = "";
+    seg.classList.remove("lift"); seg.style.removeProperty("--lp"); seg.style.removeProperty("--lpd");
+    if (SEG_PREWARM_ON) seg.classList.add("prewarm"); else { copy.innerHTML = ""; copyl.innerHTML = ""; }   // the layers stay displayed at .01 between gestures (copies kept), so the next lift's first frame finds them composited
     if (curSet) for (const id of [`#seg-lens-f-bg-${curSet}`, `#seg-lens-f-lab-${curSet}`]) { const fd = document.querySelector(`${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", String(sOf(id))); }   // the file's rest value; the layers are hidden now
     for (const k of ["transition", "left", "top", "width", "height", "margin", "border-radius", "transform", "transform-origin"]) lens.style.removeProperty(k);   // the CSS rest values are what the loop ended on
     for (const el of [stack, warp, warpl, plat, rimb, rimo, ...hls]) { el.style.removeProperty("transform"); el.style.removeProperty("transform-origin"); }
