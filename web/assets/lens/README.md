@@ -1286,6 +1286,25 @@ contract. Fixed: `p <= 0` again. The fixed check: `scripts/mac/seg-tap-platter-c
 tick where the control has `.lift` and the canvas is clear (the page's platter hidden and the package's gone) — run it before any change to
 the rest / clear logic on either side.
 
+### 0.8.13 R31 — the tap's down frame without a backdrop redraw: label variants (2026-09-20 02:xx; BOARD.md round 2)
+
+§0.8.11 ③: on the tap path the page redrew the backdrop at the down (futureOn: the labels with the segment about to be selected in the
+selected weight) — two 2D canvases, the alpha recovery, two uploads and a warm-up in the task after the handler; ~40 ms of the down frame on
+the phone. Now the package keeps one labels texture per selection: `prepareLabels(key, labels)` draws the page canvas once more and the labels
+with the caller's callback `(ctx2d, info) → void` (info.region as for setBackdrop), recovers the alpha against the page render, uploads into a
+texture kept under `key` (re-used on the next prepare of the same key) and records `seg:gl-prepare`; `useLabels(key)` binds that texture for the
+following frames — a variable assignment, nothing drawn, nothing uploaded; `hasLabels(key)` tells whether it is there. The live texture of
+`redrawBackdrop` / `redrawNow` stays the default; a redraw drops every variant (the page's content changed) and sets `stats.labels = "live"`;
+`stats.labels` = the bound key otherwise. The deferred redraw task records `seg:gl-redraw-task` (redrawNow + warm-up) and every redrawNow
+`seg:gl-redraw`, so the frames recorder shows where a redraw ran.
+Wiring (view.js, the ui session's line): after the prewarm, at idle, `for (i of segments) lens.prepareLabels(i, (x, info) => drawLabels(x, i))`
+where drawLabels draws the labels with segment i as the selected one (the futureOn drawing); at the down on segment p: `lens.useLabels(p)`
+instead of `segGlRedraw(seg)`; at the commit the selection is p, so the bound texture already matches (the deferred redraw at segSync may stay
+as a safety net — it re-prepares nothing, the page prepares again at idle); after a render / theme change: prepare again at idle.
+Harness: `prepareLabels("bold", …)` → 1 seg:gl-prepare; `useLabels` → 0 redraw measures, 0 frames; a frame with the bold variant differs from
+the live one (7 648 px @2x); after `redrawNow` the variant is gone and the render equals the live one (0 diff). The accept row (accept.js 分段
+section) exercises the API on the page's instance; the page-path row (a tap's down frame with no seg:gl-redraw-task) goes in with the wiring.
+
 ### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
 
 Sources: `remote-ref/sheet-native.md` (the data session's 10th order: A9 `sheetivars` / `corners` / `subtree` / motion, iOS 27.0 3×) and

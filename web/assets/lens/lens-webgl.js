@@ -158,7 +158,7 @@ void main(){
     const scratch = document.createElement("div"); scratch.style.cssText = "position:absolute;left:-100000px;top:0;width:1px;height:1px;overflow:hidden;pointer-events:none"; document.body.appendChild(scratch);
     const sc = { pg: null, p: null, w: 0, h: 0 };
     const scratchCanvases = () => { const w = Math.round(region.w * DPR), h = Math.round(region.h * DPR); if (sc.w !== w || sc.h !== h) { for (const k of ["pg", "p"]) { if (sc[k]) sc[k].remove(); const c = document.createElement("canvas"); c.width = w; c.height = h; c.style.cssText = `width:${region.w}px;height:${region.h}px`; scratch.appendChild(c); sc[k] = c; } sc.w = w; sc.h = h; } return sc; };
-    const draw2d = (c, which) => { const x = c.getContext("2d", { willReadFrequently: true }); x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, c.width, c.height); x.scale(DPR, DPR); x.translate(-region.x, -region.y); opts.backdrop(x, "page", { width: W, height: H, region }); if (which === "labels") opts.backdrop(x, "labels", { width: W, height: H, region }); return c; };
+    const draw2d = (c, which, labelsFn) => { const x = c.getContext("2d", { willReadFrequently: true }); x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, c.width, c.height); x.scale(DPR, DPR); x.translate(-region.x, -region.y); const info = { width: W, height: H, region }; opts.backdrop(x, "page", info); if (which === "labels") (labelsFn || ((xx, ii) => opts.backdrop(xx, "labels", ii)))(x, info); return c; };
     /* the labels' alpha per pixel from the two opaque renders: P = Pg·(1 − a) + ink·a → a = (P − Pg)/(ink − Pg); the ink = the colour of the pixel the labels changed most
        (opts.ink is used only when within 48 levels of it — a wrong ink, the light theme's black in the dark theme, empties thin strokes' alpha) */
     let labImg = null;
@@ -172,15 +172,30 @@ void main(){
         al = al < 0 ? 0 : al > 1 ? 1 : al; o[i] = ink[0] * al; o[i + 1] = ink[1] * al; o[i + 2] = ink[2] * al; o[i + 3] = al * 255; }
       return labImg; };
     const upload = (t, src, premul) => { gl.bindTexture(gl.TEXTURE_2D, t); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, !!premul); gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src); };
-    let tPage = null, tLab = null, composite = null, redrawPending = 0;
+    let tPage = null, tLab = null, liveLab = null, composite = null, redrawPending = 0;
+    const measure = (name, t0) => { try { performance.measure(name, { start: t0, end: performance.now() }); } catch (e) { /* older engines */ } };   // seg:gl-* rows for the frames recorder
     const redrawNow = () => { const tb = performance.now(); const { pg, p: cP } = scratchCanvases(); draw2d(pg, "page"); draw2d(cP, "labels"); const t1 = performance.now();
       const li = labelsAlpha(pg, cP); const t2 = performance.now();
-      if (!tPage) { tPage = tex(pg, true); tLab = tex(li, true); } else { upload(tPage, pg, true); upload(tLab, li, true); }
-      composite = cP; stats.prewarm.backdropMs = performance.now() - tb; stats.prewarm.backdropDrawMs = t1 - tb; stats.prewarm.backdropAlphaMs = t2 - t1; stats.prewarm.backdropUploadMs = performance.now() - t2; };
+      if (!tPage) { tPage = tex(pg, true); liveLab = tex(li, true); } else { upload(tPage, pg, true); upload(liveLab, li, true); }
+      tLab = liveLab; variants.clear(); stats.labels = "live";   // the page changed under the lens: every prepared variant is stale (the page prepares again at idle)
+      composite = cP; stats.prewarm.backdropMs = performance.now() - tb; stats.prewarm.backdropDrawMs = t1 - tb; stats.prewarm.backdropAlphaMs = t2 - t1; stats.prewarm.backdropUploadMs = performance.now() - t2; measure("seg:gl-redraw", tb); };
+    /* label variants (BOARD R31 — the first gesture's down frame on the phone held ~40 ms of backdrop redraw, README §0.8.11 ③): the labels texture for a
+       given selection is prepared at idle — the page drawn once more into the page canvas, the labels with the caller's own callback (the page draws them
+       with that selection's weight), the alpha recovered, uploaded into a texture kept under `key` — and switched at the down with useLabels(key): a
+       variable assignment, no 2D draw, no alpha pass, no upload, no warm-up (the pipeline and the texture object are already resident). The live texture
+       (redrawNow / redrawBackdrop) stays; a redraw drops every variant — the page prepares them again at idle after a render or a theme change.
+       Wiring (view.js, the ui session): at idle after the prewarm, for every segment i: lens.prepareLabels(i, (x, info) => <the labels with i selected>);
+       at the down on segment p: lens.useLabels(p) (instead of the futureOn redraw); at the commit the selection is p, so the bound texture already matches. */
+    const variants = new Map();
+    const prepareLabels = (key, labelsFn) => { const t0 = performance.now(); if (typeof labelsFn !== "function") return false; const { pg, p: cP } = scratchCanvases(); draw2d(pg, "page"); draw2d(cP, "labels", labelsFn);
+      const li = labelsAlpha(pg, cP); let v = variants.get(key); if (!v) { v = { t: tex(li, true) }; variants.set(key, v); } else upload(v.t, li, true);
+      measure("seg:gl-prepare", t0); return true; };
+    const useLabels = (key) => { const v = variants.get(key); if (!v) return false; tLab = v.t; stats.labels = key; return true; };
+    const hasLabels = (key) => variants.has(key);
     /* redrawBackdrop(): by default the work is deferred to the next task (setTimeout 0) so that a value flip's redraw does not land inside the gesture's
        first glass frame (the tap path: commit → render → the first lens frame — the data session read 47–50 ms there); the frames until then draw with
        the previous textures (the native crossfades the label's weight / contents over 0.2 s anyway, seg-lens-refraction §4.4); { sync: true } draws now */
-    const redrawBackdrop = (o) => { if (o && o.sync) { redrawNow(); return; } if (redrawPending) return; redrawPending = setTimeout(() => { redrawPending = 0; redrawNow(); if (typeof warm === "function") warm(); }, 0); };
+    const redrawBackdrop = (o) => { if (o && o.sync) { redrawNow(); return; } if (redrawPending) return; redrawPending = setTimeout(() => { redrawPending = 0; const t0 = performance.now(); redrawNow(); if (typeof warm === "function") warm(); measure("seg:gl-redraw-task", t0); }, 0); };
     redrawNow();
     /* the sets: maps per width, textures loaded on first use; the inner shadow per set */
     const sets = {}; const widths = Object.keys(opts.sets).map(Number).sort((a, b) => a - b);
@@ -256,7 +271,7 @@ void main(){
     const draw = (d) => {   /* the ui form: the canvas sits at (lensX − AM, lensY − AM); its size is fixed (the largest wrapper), the frame draws the wrapper into its top-left */
       setState({ cx: d.lensX + d.w / 2, cy: d.lensY + d.h / 2, w: d.w, h: d.h, lift: d.p, pd: d.pd, wh: d.wh, platter: d.platter, canvasOrigin: { x: d.lensX - AM, y: d.lensY - AM } });
       return stats.gpuMs; };
-    return { gl, canvas, ready, setState, draw, setBackdrop, redrawBackdrop: redrawAndWarm, redrawNow, prewarm, backdropCanvas: () => composite, stats, sets, loadSet, get region() { return region; }, destroy: () => { gl.getExtension("WEBGL_lose_context")?.loseContext(); } };
+    return { gl, canvas, ready, setState, draw, setBackdrop, redrawBackdrop: redrawAndWarm, redrawNow, prewarm, prepareLabels, useLabels, hasLabels, backdropCanvas: () => composite, stats, sets, loadSet, get region() { return region; }, destroy: () => { gl.getExtension("WEBGL_lose_context")?.loseContext(); } };
   };
   /* the sets from the page's inline <svg>: #<prefix>-lens-f-bg-<w> (href, data-s), -lab-, -ab- (data-s) — the same files the SVG filters use; h from the map's pixel height / 2 is not known here: pass heights (view.js's series table) or let the page's set table carry them */
   const setsFromFilters = (prefix, heights) => { const out = {}; for (const f of document.querySelectorAll(`filter[id^="${prefix}-lens-f-bg-"]`)) { const w = parseInt(f.id.slice(`${prefix}-lens-f-bg-`.length), 10); if (!(w > 0)) continue;
