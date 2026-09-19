@@ -315,13 +315,6 @@ function render() {
   }).join("");
   const thisShift = (qs.find((q) => q["名"] === curQueue) || {})["脚本"] || null;
   const inShift = (owner) => !thisShift || !thisShift.length || thisShift.includes(owner);
-  /* The tab bar is app-level navigation (iOS): the set of tabs is the union of the games of ALL shifts and never follows the selected shift. layoutTabs()
-     derives the set from the sections on the page, so a game outside the current shift still gets its section — rows as usual, one footer line 「本班不跑」
-     (data-offshift). Before, a shift change (早班 three games → 晚班 one) changed the set and the whole bottom capsule was rebuilt under the finger
-     (验收 09-19 20:1x, the user's steps: 切到晚班，再点早班 → 标签栏闪). */
-  const allShifts = qs.flatMap((q) => Array.isArray(q["脚本"]) ? q["脚本"] : []);
-  const anyShift = (owner) => !allShifts.length || allShifts.includes(owner);
-  const offShift = (owner) => inShift(owner) ? "" : ' data-offshift="1"';
   const run = (snap && snap.run) || {};
   const busy = run["在跑的"] || [];
   const nextAt = (() => { const m = /🕘\s*(\d\d:\d\d)/.exec((snap && snap.plan) || ""); return m ? m[1] : ""; })();
@@ -396,7 +389,7 @@ function render() {
   };
 
   for (const g of SCHEMA) {
-    if (!anyShift(g.owner)) continue;   // a game of some shift: its section is always on the page (the tab set must not follow the selected shift)
+    if (!inShift(g.owner)) continue;
     const M = ((snap && snap.master) || {})[g.game] || {};
     const cur = g.src === "master" ? (M.values || {}) : (c[g.sec] || {});
     const ro = M.readonly || {};
@@ -407,7 +400,7 @@ function render() {
     if (g.src === "master" && !Object.keys(cur).length && !Object.keys(ro).length) {
       const last = (lastGoodMaster || {})[g.game];
       if (!last || !Object.keys(last.values || {}).length) {
-        html += `<section${offShift(g.owner)}><h2>${g.title}</h2><div class="warn">${sf("exclamationmark.triangle.fill", "inl")}这一段的配置文件读不到（机器上那份母本不在或坏了），这次没法改</div></section>`;
+        html += `<section><h2>${g.title}</h2><div class="warn">${sf("exclamationmark.triangle.fill", "inl")}这一段的配置文件读不到（机器上那份母本不在或坏了），这次没法改</div></section>`;
         continue;
       }
       masterNote = `<div class="warn">${sf("exclamationmark.triangle.fill", "inl")}配置文件这次读不到——下面是上次读到的，改了要等它能读到才生效</div>`;
@@ -423,7 +416,7 @@ function render() {
     if (g.src === "master" && Array.isArray(M.orphans) && M.orphans.length) {
       masterNote += `<div class="warn">${sf("exclamationmark.triangle.fill", "inl")}这一版脚本的定义文件里没有这些任务，配置里却还留着：${M.orphans.join("、")}——这些设置改了不会有效果</div>`;
     }
-    html += `<section${offShift(g.owner)}><h2>${g.title}</h2>${masterNote}`;
+    html += `<section><h2>${g.title}</h2>${masterNote}`;
     if (curM !== cur) Object.assign(cur, curM);
     /* 选择树：OK-WW 自己声明了「选了哪个才出现哪些子项」（sub_configs）。
        选「模拟领域」时不该还摆着「刷第几个无音区」——那是给人看的噪音。 */
@@ -490,12 +483,12 @@ function render() {
   const wg = weekly["周常乐园"] || {};
   const an = weekly["剿灭"] || {};
   const doneTag = (d, done, todo) => `<span class="ro short">${d ? done : todo}</span>`;   // 值行：值在同一行右侧（AX-46）
-  if (anyShift("MAA")) html += `<section${offShift("MAA")}><h2>明日方舟 · 周常</h2>
+  if (inShift("MAA")) html += `<section><h2>明日方舟 · 周常</h2>
     <div class="row"><label>剿灭
       <span class="hint">打满本周剿灭后自动停掉，下周一 04:00 自动恢复</span></label>
       ${doneTag(an["本周已完成"], "本周已打满", "本周还没打满")}</div>
   </section>`;
-  if (anyShift("OK-WW")) html += `<section${offShift("OK-WW")}><h2>鸣潮 · 周常</h2>
+  if (inShift("OK-WW")) html += `<section><h2>鸣潮 · 周常</h2>
     <div class="row"><label>周常乐园
       <span class="hint">不花体力。做完就停到下周一</span></label>
       ${doneTag(wg["本周已完成"], "本周已完成", "本周还没做")}</div>
@@ -730,9 +723,6 @@ function layoutTabs() {
       }
     }
   }
-  for (const sec of secs) if (sec.dataset.offshift === "1") {   // a game not in the selected shift: one footer line, nothing else changes (验收 09-19 20:1x)
-    let foot = sec.querySelector(":scope > .foot"); if (!foot) { foot = document.createElement("div"); foot.className = "foot"; sec.appendChild(foot); }
-    if (!foot.querySelector(".offshift")) { const p = document.createElement("p"); p.className = "offshift"; p.textContent = "本班不跑"; foot.appendChild(p); } }
   if (!present.has(curTab)) curTab = "状态";
   for (const sec of secs) sec.hidden = sec.dataset.tab !== curTab || sec.dataset.empty === "1";
   for (const el of document.querySelectorAll("#app > .segctl")) el.hidden = curTab !== "状态";   // 班次分段只在「状态」首页（验收 2026-09-18）；其他页照旧用 curQueue
