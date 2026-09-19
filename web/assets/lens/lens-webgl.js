@@ -242,7 +242,7 @@ void main(){
       if (tr) { tr.set = wsel; tr.total = +(performance.now() - tr.t0).toFixed(2); stats.trace = tr; (stats.traces = stats.traces || []).push(tr); if (stats.traces.length > 60) stats.traces.shift(); }
       if (opts.finish || s._split) gl.finish();
       if (s._split) stats._p2 = performance.now() - t0 - stats._p1;
-      stats.gpuMs = performance.now() - t0; stats.frames++; stats.set = wsel; if (!s._prewarm) drawn = true;
+      stats.gpuMs = performance.now() - t0; stats.frames++; stats.set = wsel; if (!s._prewarm) { drawn = true; stats.last = { lift: p, pd, platterAlpha: pl_.alpha == null ? 1 : pl_.alpha, platterColorAlpha: pl_.rgba[3] == null ? 1 : pl_.rgba[3], t: performance.now() }; }   /* platterAlpha = the page's fade (1 − p); the token's own alpha (dark (235,235,245,.3)) is separate */   /* stats.last: what the frame drew (R7's row reads the platter's alpha against 1 − lift) */
     };
     /* warm-up (监督局 14:4x: the page's first glass frame stalled 46–55 ms — the shader pipelines and the textures were first used on that frame): after the
        preloaded set is up, one lifted frame is drawn through both passes — pass 1 into A, pass 2 into B (a canvas-sized FBO): the canvas is never drawn by a
