@@ -764,10 +764,11 @@
       /* C1: a 100 ms tap — no highlight at the up; one frame of highlight at +150 and the fade from there; selected once */
       pev(row, "pointerdown", at(row)); await sleep(100); pev(row, "pointerup", at(row));
       check("列表行 C1 短点 100 ms 抬手时：还没高亮", "rest", lit(row) ? "highlight" : "rest", !lit(row));
-      seq.length = 0; await sleep(130);
+      seq.length = 0; await sleep(170);
       { const names = seq.map((e) => e[1]), iH = names.findIndex((n) => /\bhl\b/.test(n) && !/hl-out/.test(n)), iF = names.findIndex((n) => /hl-out/.test(n)), iC = names.indexOf("click");
-        check("列表行 C1 短点：高亮帧 → 淡出帧 → 选中，三者依次（数据真机核 ②：confirm()/推页不得吞掉高亮帧）", "hl < hl-out < click", `${iH} < ${iF} < ${iC}`, iH >= 0 && iF > iH && iC > iF); }
-      check("列表行 C1 按下 +230 ms：高亮已亮过并在淡出（.hl-out）、选中 1 次", "fading, 2", `${row.classList.contains("hl-out") ? "fading" : row.classList.contains("hl") ? "lit" : "rest"}, ${rsel}`, row.classList.contains("hl-out") && rsel === 2);
+        const gapHF = iH >= 0 && iF > iH ? seq[iF][0] - seq[iH][0] : -1, gapFC = iF >= 0 && iC > iF ? seq[iC][0] - seq[iF][0] : -1;
+        check("列表行 C1 短点：高亮帧 → 淡出帧 → 选中，三者依次、各隔一次上屏（rAF + setTimeout 0，间隔 ≥ 8 ms；数据真机核 ②：confirm()/推页不得吞掉高亮帧）", "hl < hl-out < click, 间隔 ≥ 8 ms", `${iH} < ${iF} < ${iC}, ${Math.round(gapHF)} / ${Math.round(gapFC)} ms`, iH >= 0 && iF > iH && iC > iF && gapHF >= 8 && gapFC >= 4); }
+      check("列表行 C1 按下 +270 ms：高亮已亮过并在淡出（.hl-out）、选中 1 次", "fading, 2", `${row.classList.contains("hl-out") ? "fading" : row.classList.contains("hl") ? "lit" : "rest"}, ${rsel}`, row.classList.contains("hl-out") && rsel === 2);
       await sleep(520);
       /* C6: vertical 12 pt after the highlight — off at once, the up selects nothing */
       pev(row, "pointerdown", at(row)); await sleep(200); pev(row, "pointermove", at(row, .5, .5, 0, 12));
