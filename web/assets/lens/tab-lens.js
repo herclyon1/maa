@@ -50,6 +50,7 @@
   const clockNow = () => CLOCK === "manual" ? vnow : performance.now();
   const tick = (fn) => { if (CLOCK === "manual") pendingTick = fn; else if (CLOCK === "timer") setTimeout(() => fn(performance.now()), 16.667); else requestAnimationFrame(fn); };
   window.__tabLensStep = (dt) => { vnow += dt; const f = pendingTick; pendingTick = null; if (f) f(vnow); return !!f; };
+  window.__tabLensGL = () => glo;   // the WebGL overlay (R2), for the acceptance
   const AM = 16;                                                              // the fringe wrapper's margin (lens-field.json aberration.wrapper; ≥ the 15 pt tap span)
   const LIFT = 16, PLATTER = 1.0516, ITEM = 1.16;                             // +16 on both axes (94×54 → 110×70), platter 1.0516, items 1.16 (tab-lens-native.md §3)
   const SP_LIFT = { z: 1, w: 2 * Math.PI / .25 }, SP_DROP = { z: 1, w: 2 * Math.PI / .4 }, SP_POS = { z: .85, w: 2 * Math.PI / .4 };   // tab-lens-motion.md §0 / §4: lift, drop, the jump to a pressed item (the ① trace)
@@ -119,6 +120,7 @@
     if (!glide || !seg || !main) return null;
     nav.classList.add("tlens"); trackFinger(nav);
     const st = { nav, glide, seg, main, X: centreOf(glide), lastX: centreOf(glide) };
+    if (MODE === "geometry" && GL_ON) glAttach(st).then((g) => { if (g && g.nav === nav) { try { g.lens.redrawBackdrop(); } catch (e) {} } });   // the items may have changed (tabs-changed): the textures again, at idle in the package's own way
     return st;
   };
   /* ---- geometry mode ---- */
@@ -132,6 +134,48 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
      slides on such a tap (tab-lens-motion.md §0 "换页滑动"), but when it drops after landing is not read — unread, not driven tonight */
   const injectGeoStyle = () => { if (document.getElementById("tab-lens-geo-style")) return; const s = document.createElement("style"); s.id = "tab-lens-geo-style"; s.textContent = GEO_CSS; document.head.appendChild(s); };
   const spring = (st, target, sp, dt) => (window.Motion && Motion.spring ? Motion.spring(st, target, [sp.z, 2 * Math.PI / sp.w], dt) : step(st, target, sp, dt));
+  /* ---- R2 (b): the material through lens-webgl.js, over the bar (验收's call: a flat platter fill — the page under the bar cannot be drawn into a canvas,
+     标不可表达; the items' copies, the displacement, the KeyFill line, the ring shadow, the dispersion are the package's, from the tab5 family's maps
+     and keys (tab5/lens-filter.svg data-s 40 / 48 (98) / fringe 16; tab5/lens-field.json heights 54 … 70; tab-lens-native.md §0 / §3: Backdrop +9/36,
+     ClearGlass −17.5/11.2, ContentLensing −14/11.2 are the maps' formula, README §0.8.1). The lift rides the 98 set (the lifted size) stretched over the
+     growing box, as the segment lens rides its 220 set (README §0.3). Not drawn: the items' 1.16 scale of the SelectedContentView copy (the package
+     has no label scale: 待做), the blurred page in the platter (不可表达), _UITabSelectionView's own α 1 → 0 (the glide stays the geometry driver's).
+     ?tlens-gl=0 leaves the canvas out (geometry only). */
+  const GLM = 24;                                                            // the canvas extends the bar's box by this on every side (the lifted 98 × 70 over a 62 bar + the fringe wrapper 16)
+  const GL_ON = q.get("tlens-gl") !== "0" && !!window.LensWebGL && (() => { try { return !!document.createElement("canvas").getContext("webgl2"); } catch (e) { return false; } })();
+  let glSets = null, glHeights = null, glo = null, glReady = null;
+  const glLoad = async () => { if (glReady) return glReady; glReady = (async () => { try {
+      const svgTxt = await (await fetch(FAMILY + "lens-filter.svg")).text(); const svg = document.importNode(new DOMParser().parseFromString(svgTxt, "text/html").querySelector("svg"), true);
+      svg.setAttribute("data-tab-lens-gl", FAMILY); svg.setAttribute("aria-hidden", "true"); svg.style.cssText = "position:absolute;width:0;height:0"; document.body.appendChild(svg);   // the maps' hrefs and data-s for setsFromFilters; no engine fix (the GPU samples the plain maps)
+      const field = await (await fetch(FAMILY + "lens-field.json")).json(); glHeights = {}; for (const [w, v] of Object.entries(field.sets || {})) glHeights[w] = v.h;
+      glSets = LensWebGL.setsFromFilters("tab", glHeights); return Object.keys(glSets).length > 0; } catch (e) { console.warn("tab-lens gl: family", e); return false; } })(); return glReady; };
+  const maskCache = new Map();
+  const loadImage = (src) => new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
+  const cssUrl = (v) => { const m = /url\("?([^")]+)"?\)/.exec(v || ""); return m ? m[1] : null; };
+  const tintedIcon = (src, colour, w, h) => { const key = src + "|" + colour + "|" + w + "x" + h; if (maskCache.has(key)) return maskCache.get(key); const img = maskCache.get(src); if (!img) return null;
+    const c = document.createElement("canvas"); const dpr = window.devicePixelRatio || 1; c.width = Math.max(1, Math.round(w * dpr)); c.height = Math.max(1, Math.round(h * dpr)); const x = c.getContext("2d"); x.scale(dpr, dpr); x.drawImage(img, 0, 0, w, h); x.globalCompositeOperation = "source-in"; x.fillStyle = colour; x.fillRect(0, 0, w, h); maskCache.set(key, c); return c; };
+  const glPrefetchIcons = async (nav) => { const jobs = []; for (const el of nav.querySelectorAll(".seg button .sf")) { const src = cssUrl(getComputedStyle(el).webkitMaskImage || getComputedStyle(el).maskImage); if (src && !maskCache.has(src)) jobs.push(loadImage(src).then((i) => { if (i) maskCache.set(src, i); })); }
+    for (const img of nav.querySelectorAll(".seg button img")) if (!img.complete) jobs.push(new Promise((r) => { img.onload = r; img.onerror = r; })); await Promise.all(jobs); };
+  const glAttach = async (st) => { if (!GL_ON) return null; if (!(await glLoad())) return null; const nav = st.nav; if (glo && glo.nav === nav && glo.w === nav.offsetWidth && glo.h === nav.offsetHeight) return glo; if (glo) { try { glo.lens.destroy(); } catch (e) {} glo.canvas.remove(); glo = null; }
+    await glPrefetchIcons(nav); const navW = nav.offsetWidth, navH = nav.offsetHeight; if (!navW) return null;
+    const canvas = document.createElement("canvas"); canvas.className = "tlens-gl"; canvas.style.cssText = `position:absolute;left:${-GLM}px;top:${-GLM}px;width:${navW + 2 * GLM}px;height:${navH + 2 * GLM}px;pointer-events:none;z-index:3`; nav.appendChild(canvas);
+    const widths = Object.keys(glSets).map(Number), top = Math.max(...widths);
+    const ink = () => { const b = nav.querySelector(".seg button:not(.on) span:last-child") || nav.querySelector(".seg button span:last-child"); const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/.exec(b ? getComputedStyle(b).color : ""); return m ? [+m[1], +m[2], +m[3]] : [0, 0, 0]; };
+    const opts = { sets: glSets, preload: [top], dpr: window.devicePixelRatio || 1, width: navW + 2 * GLM, height: navH + 2 * GLM, margin: 16, ink: ink(), warm: true, labelsDirect: true,   // icons of any colour + labels: drawn with their own alpha (no single-ink recovery)
+      backdrop: (x, which) => { const nb = nav.getBoundingClientRect(), plat = nav.querySelector(".plat"), pr = plat ? plat.getBoundingClientRect() : nb;
+        if (which === "page") {   // the page colour everywhere (the page's content under the bar is 不可表达 here), then the platter's fill over it as the capsule it is (验收: (b) flat fill; the blurred page in the platter is not drawn)
+          x.fillStyle = getComputedStyle(document.body).backgroundColor || "#fff"; x.fillRect(0, 0, navW + 2 * GLM, navH + 2 * GLM);
+          const cs = plat ? getComputedStyle(plat) : getComputedStyle(nav); x.fillStyle = cs.backgroundColor; x.beginPath(); x.roundRect(pr.left - nb.left + GLM, pr.top - nb.top + GLM, pr.width, pr.height, Math.min(pr.width, pr.height) / 2); x.fill(); }
+        else { for (const b of nav.querySelectorAll(".seg button")) { const cs = getComputedStyle(b); const icon = b.querySelector(".sf"), img = b.querySelector("img"), lab = b.querySelector("span:last-child");
+            if (icon) { const r = icon.getBoundingClientRect(), src = cssUrl(getComputedStyle(icon).webkitMaskImage || getComputedStyle(icon).maskImage); const t = src && tintedIcon(src, getComputedStyle(icon).backgroundColor, r.width, r.height); if (t) x.drawImage(t, r.left - nb.left + GLM, r.top - nb.top + GLM, r.width, r.height); }
+            if (img && img.complete && img.naturalWidth) { const r = img.getBoundingClientRect(); x.drawImage(img, r.left - nb.left + GLM, r.top - nb.top + GLM, r.width, r.height); }
+            if (lab) { const r = lab.getBoundingClientRect(), lc = getComputedStyle(lab); x.font = lc.font; x.fillStyle = lc.color; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(lab.textContent, r.left - nb.left + r.width / 2 + GLM, r.top - nb.top + r.height / 2 + GLM); } } } } };
+    let lens; try { lens = LensWebGL.create(canvas, opts); } catch (e) { console.warn("tab-lens gl", e); canvas.remove(); return null; } if (!lens) { canvas.remove(); return null; }
+    glo = { nav, canvas, lens, w: navW, h: navH, top }; return glo; };
+  const glFrame = (st, p, x, W, H, pad, h0) => { if (!glo || glo.nav !== st.nav) return; const nb = st.nav.getBoundingClientRect(); const l = nb.left + x - W / 2, t = nb.top + pad + h0 / 2 - H / 2;
+    const wh = (Math.min(l + W + 100, innerWidth) - Math.max(l - 100, 0)) / (Math.min(t + H + 100, innerHeight) - Math.max(t - 100, 0));   // formula §3b.6: the capture box = frame ± 100 clamped to the screen
+    try { glo.lens.setState({ cx: x + GLM, cy: pad + h0 / 2 + GLM, w: W, h: H, lift: p, pd: p, wh, platter: { rgba: [0, 0, 0, 0], alpha: 0 } }); } catch (e) { window.__tabLensErr = String(e && e.stack || e); } };
+  const glRest = (st) => { if (!glo || glo.nav !== st.nav) return; try { glo.lens.setState({ cx: 0, cy: 0, w: 82, h: 54, lift: 0 }); } catch (e) {} };
   const startGeo = (st) => {
     if (loop) { loop.stop(); }
     const nav = st.nav, glide = st.glide;
@@ -155,11 +199,12 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
       /* the glide's box: the centre x from the position spring, the vertical centre = the resting centre (pad + h0 / 2) */
       nav.style.setProperty("--tl-left", (x - W / 2) + "px"); nav.style.setProperty("--tl-w", W + "px"); nav.style.setProperty("--tl-top", (pad + h0 / 2 - H / 2) + "px"); nav.style.setProperty("--tl-h", H + "px");
       if (!nav.classList.contains("tl-on")) nav.classList.add("tl-on");
+      glFrame(st, p, x, W, H, pad, h0);
       window.__tabLens = { t: (now - t0) / 1000, t0, tf: last, p, v: P.v, x, xv: XS.v, target: st.X, set: 0, s: 1, phase, w: W, h: H, frame: frameN, mode: "geometry" };   // tf = this frame's timestamp: a retarget after it (the up) integrates from here
       if (pTarget === 0 && p < .002 && Math.abs(P.v) < .02 && Math.abs(XS.x - st.X) < .05 && Math.abs(XS.v) < 1) { stop(); return; }
       tick(frame);
     };
-    const stop = () => { running = false;
+    const stop = () => { running = false; glRest(st);
       nav.classList.remove("tl-on"); for (const k of ["--tl-left", "--tl-w", "--tl-top", "--tl-h"]) nav.style.removeProperty(k);   // rest: the glide shows view.js's own box again (its inline left / width = the selected item)
       if (loop && loop.stop === stop) loop = null; window.__tabLens = null; };
     loop = { stop, retarget: setTargets, st };
