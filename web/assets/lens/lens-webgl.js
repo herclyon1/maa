@@ -89,7 +89,7 @@ void main(){ vec2 C = u_lens.xy + u_lens.zw * 0.5, half_ = u_lens.zw * 0.5; floa
   const FS2 = `#version 300 es
 ${COMMON}
 in vec2 v; out vec4 o;
-uniform sampler2D t_a, m_ab, t_page, t_lab; uniform vec4 u_page; uniform vec4 u_lens; uniform vec4 u_wrap; uniform float u_Sab; uniform float u_wh; uniform float u_p; uniform float u_pd; uniform float u_dbg;
+uniform sampler2D t_a, m_ab, t_page, t_lab; uniform vec4 u_page; uniform vec4 u_lens; uniform vec4 u_wrap; uniform float u_Sab; uniform float u_wh; uniform float u_p; uniform float u_pd; uniform float u_dbg; uniform float u_ab;   /* u_ab: ?glab= instrument bits (R8 device A/B): 1 = the outside dark line off, 2 = the outside ring off, 4 = the dispersion taps off */
 uniform vec2 u_ascale; /* the wrapper's share of the (larger, once-allocated) FBO */
 vec4 A(vec2 p){ vec2 t = (p - u_wrap.xy) / u_wrap.zw; return texture(t_a, vec2(t.x * u_ascale.x, (1.0 - t.y) * u_ascale.y)); }   /* an FBO's row 0 is the viewport's bottom: page-down y → flipped t */
 vec4 over(vec4 s, vec4 d){ return s + d * (1.0 - s.a); }
@@ -102,7 +102,7 @@ void main(){
   vec2 pl = v - C; float d = sdf(pl, half_, r); vec2 n = nrm(pl, half_, r); float fw = max(fwidth(d), 1e-4); float M = sat(0.5 - d / fw);
   vec4 below = A(v);
   vec2 wuv = (v - u_wrap.xy) / u_wrap.zw; vec4 ma = texture(m_ab, wuv);
-  vec2 D = decode(ma.rg, u_Sab) * vec2(u_wh, 1.0 / u_wh) * u_p; float e = ma.b * ma.a * u_p; float edr = 1.0;   /* formula §3b.3 / 3b.5: Δ × (W/H, H/W), e = the envelope × cov */
+  vec2 D = decode(ma.rg, u_Sab) * vec2(u_wh, 1.0 / u_wh) * u_p * (mod(floor(u_ab / 4.0), 2.0) > 0.5 ? 0.0 : 1.0); float e = ma.b * ma.a * u_p * (mod(floor(u_ab / 4.0), 2.0) > 0.5 ? 0.0 : 1.0); float edr = 1.0;   /* formula §3b.3 / 3b.5: Δ × (W/H, H/W), e = the envelope × cov */
   vec3 sum = vec3(0.0);
   float ks[7] = float[7](1.0, 2.0 / 3.0, 1.0 / 3.0, 0.0, 1.0 / 3.0, 2.0 / 3.0, 1.0); float sg[7] = float[7](1.0, 1.0, 1.0, -1.0, -1.0, -1.0, -1.0);
   for (int i = 0; i < 7; i++) { vec3 s = A(v + sg[i] * ks[i] * D).rgb; float wr = sg[i] > 0.0 ? ks[i] / 2.0 : 0.0, wg = (1.0 - ks[i]) / 3.0, wb = sg[i] < 0.0 ? ks[i] / 2.0 : 0.0; sum += vec3(wr * s.r, wg * s.g, wb * s.b); }
@@ -114,7 +114,7 @@ void main(){
   col = mix(col, V(col), sat(a1)); col = mix(col, V(col), sat(a2)); col = mix(col, V(col), sat(a3));
   /* the overlay outside the capsule: the ring shadow darkens whatever is under (black, α = ring — exact for any colour); the dark line's factor depends on the
      colour under it (rgb·(1 + colorBias·k·(3 − 2·rgb)), keyfill §5.1), so on its 1-pt row the overlay paints the page copy itself, darkened, opaque */
-  float ring = ringTerm(pl, half_, r) * u_p; float k = darkLineK(d, n) * u_p;
+  float ring = ringTerm(pl, half_, r) * u_p * (mod(floor(u_ab / 2.0), 2.0) > 0.5 ? 0.0 : 1.0); float k = darkLineK(d, n) * u_p * (mod(u_ab, 2.0) > 0.5 ? 0.0 : 1.0);
   vec4 und = over(texture(t_lab, (v - u_page.xy) / u_page.zw), texture(t_page, (v - u_page.xy) / u_page.zw));
   vec3 f = (1.0 + (-0.3) * k * (3.0 - 2.0 * und.rgb)) * (1.0 - ring);   /* the darkening the two outside terms apply to the colour under them (keyfill §5.1 / §4), taken from the copy's colour there */
   float aOut = 1.0 - (f.r + f.g + f.b) / 3.0;                            /* painted as black α over the live DOM — nothing of the copy is drawn outside the capsule (界面1号 ⑤) */
@@ -238,7 +238,7 @@ void main(){
       useProg(P2); mark("clear_useP2");
       gl.uniform4f(U(P2, "u_quad"), wx, wy, ww, wh_); gl.uniform2f(U(P2, "u_origin"), canvasOrigin.x, canvasOrigin.y); gl.uniform2f(U(P2, "u_view"), W, H);
       gl.uniform4f(U(P2, "u_lens"), lx, ly, lw, lh); gl.uniform4f(U(P2, "u_wrap"), wx, wy, ww, wh_); gl.uniform1f(U(P2, "u_Sab"), st.Sab); gl.uniform1f(U(P2, "u_wh"), s.wh || 1.72); gl.uniform1f(U(P2, "u_p"), p);
-      gl.uniform4f(U(P2, "u_page"), region.x, region.y, region.w, region.h); gl.uniform1f(U(P2, "u_pd"), pd); gl.uniform1f(U(P2, "u_dbg"), opts.debugPass1 ? 1 : 0); gl.uniform2f(U(P2, "u_ascale"), aw / A.w, ah / A.h); bind(P2, "t_a", 0, A.t); bind(P2, "m_ab", 1, st.ab); bind(P2, "t_page", 2, tPage); bind(P2, "t_lab", 3, tLab); mark("uniforms_binds2"); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); mark("pass2");
+      gl.uniform4f(U(P2, "u_page"), region.x, region.y, region.w, region.h); gl.uniform1f(U(P2, "u_pd"), pd); gl.uniform1f(U(P2, "u_dbg"), opts.debugPass1 ? 1 : 0); gl.uniform1f(U(P2, "u_ab"), AB); gl.uniform2f(U(P2, "u_ascale"), aw / A.w, ah / A.h); bind(P2, "t_a", 0, A.t); bind(P2, "m_ab", 1, st.ab); bind(P2, "t_page", 2, tPage); bind(P2, "t_lab", 3, tLab); mark("uniforms_binds2"); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); mark("pass2");
       if (tr) { tr.set = wsel; tr.total = +(performance.now() - tr.t0).toFixed(2); stats.trace = tr; (stats.traces = stats.traces || []).push(tr); if (stats.traces.length > 60) stats.traces.shift(); }
       if (opts.finish || s._split) gl.finish();
       if (s._split) stats._p2 = performance.now() - t0 - stats._p1;
@@ -249,6 +249,9 @@ void main(){
        warm-up, so no warm-up frame can be presented or left behind — then gl.finish(); again after every setBackdrop / redrawBackdrop (the new textures'
        first use). ?glwarm=0 / opts.warm === false skips it. */
     const WARM = opts.warm !== false && new URLSearchParams(location.search).get("glwarm") !== "0";
+    /* R8 device A/B (instrument, default 0 = nothing off): ?glab=nodark2,noring2,nofringe — the outside dark line / the outside ring / the dispersion taps
+       of pass 2, to tell on the device which term makes the right end's line 3× deeper and 2 pt wide (README §0.8.8 ③; not reproduced on the Mac) */
+    const AB = (() => { const q = (new URLSearchParams(location.search).get("glab") || (opts.ab || "")).split(","); return (q.includes("nodark2") ? 1 : 0) + (q.includes("noring2") ? 2 : 0) + (q.includes("nofringe") ? 4 : 0); })();
     const TRACE = new URLSearchParams(location.search).get("gltrace") === "1";   /* per-step gl.finish timing of every frame into stats.trace / stats.traces (last 60) — an instrument, slows the frame */
     /* prewarm = one full lifted frame (the preloaded set, lift 1, pd 1, the current backdrop textures) through pass 1 (FBO A) and pass 2 (FBO B), gl.finish after
        each; the canvas is cleared only on an instance's first warm-up (the cleared buffer is what the compositor presents: the layer's display surface gets allocated); the per-step
