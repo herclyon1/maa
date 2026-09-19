@@ -7,7 +7,7 @@ Order of events (监督局 2026-09-19 18:3x: no more "no result / first-run retr
   2. the runner waits up to 60 s for document.readyState === "complete" and window.__viewReady === true (set at the end
      of view.js — the inline loader in index.html can deliver view.js late);
   3. the stamina data is injected, render() / updateLive() run, the hold is released;
-  4. the runner waits up to 60 s for accept.js's result (localStorage ark-accept).
+  4. the runner waits up to 180 s for accept.js's result (localStorage ark-accept; the night batch's full run is ~70 s).
   2b. before the hold is released the runner checks that every <script src> of the document appears in the resource-timing
      entries and that no exception was thrown so far; otherwise it reloads the page once and waits again (2026-09-19 18:41,
      first run of this runner: headless Chrome never requested pending.js?v=… — server log — and render() threw
@@ -106,13 +106,13 @@ try:
     if 'exceptionDetails' in res.get('result', {}):
         print('injection threw:', res['result']['exceptionDetails'].get('text', ''), (res['result']['exceptionDetails'].get('exception') or {}).get('description', '')[:200])
     r = None
-    for i in range(300):                       # ≤ 60 s for accept.js's result
+    for i in range(900):                       # ≤ 180 s for accept.js's result (the night batch's full run takes ~70 s; 老网页 00:3x)
         time.sleep(0.2)
         r = ws.send('Runtime.evaluate', {'expression': 'localStorage.getItem("ark-accept")', 'returnByValue': True})['result']['result'].get('value')
         if r: break
     errs = errors()
     if errs: print('JS errors:', errs)
-    if not r: print(f'no result in 60 s after view.js ready (ready at {t_ready:.1f} s)'); sys.exit(1)
+    if not r: print(f'no result in 180 s after view.js ready (ready at {t_ready:.1f} s)'); sys.exit(1)
     print(f'view.js ready at {t_ready:.1f} s, result at {time.time() - t0:.1f} s')
     out = json.loads(r)
     print(f"{url} {'dark' if dark else 'light'}  {out['total'] - out['fails']}/{out['total']}")
