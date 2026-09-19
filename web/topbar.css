@@ -6,7 +6,7 @@
    (header padding 14 → h1 bottom ≈ safe + 54.6), so the collapse range there is ~0 and the switch cannot happen; the header is moved
    down so the h1's bottom sits on the 106 line: padding-top 14 + 52. Everything below shifts by 52 (a large-title page's own geometry;
    the AX first-card 133.67 belongs to small-bar pages). The label's baseline inset inside the 52 zone is unread (box bottom-aligned). */
-html body header { padding-top: calc(14px + 52px); }
+html body header { padding-top: calc(14px + 52px - 8.33px); padding-bottom: 7.67px; }   /* §10b ①: label box top 3.67 under the bar zone (was 12), 7.67 to the zone's bottom */
 html body header h1 {                                   /* large title: alpha 1 while it slides under the bar (clipped there, §4 item 1), then the 0.2 s switch (2.5) */
   opacity: var(--tb-large, 1);
   transition: opacity .2s linear;                       /* 2.5: _largeTitleTransitionProgress crosses 0.05 → 0.2 s (curve unread; linear) */
@@ -19,5 +19,8 @@ html body .topbar span {                                /* small title: binary a
   transform: none;
   transition: opacity .2s linear;
 }
-html body .topbar::after { opacity: var(--tb-edge, 0); transition: none; }   /* §3: hidden at the top (shouldHideAtTop), shown once scrolled; fade unread */
+html body .topbar::after {                              /* §10b ②: the edge (ScrollEdgeEffectView) fades in over 0.517 s along the probe's 31 frames (linear() = those samples, 16.7 ms apart) */
+  opacity: var(--tb-edge, 0);
+  transition: opacity .517s linear(0, 0.008, 0.166, 0.275, 0.383, 0.484, 0.574, 0.652, 0.718, 0.773, 0.818, 0.856, 0.886, 0.91, 0.929, 0.945, 0.957, 0.966, 0.974, 0.98, 0.984, 0.988, 0.991, 0.993, 0.994, 0.996, 0.997, 0.998, 0.998, 0.999, 1);
+}
 html body .topbar.editing span { opacity: 1; }          /* the edit bar's title (unchanged from index.html: --title:1 !important) */
