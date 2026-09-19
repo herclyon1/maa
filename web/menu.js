@@ -1,23 +1,28 @@
 /* menu.js — the value row's pull-down menu: a geometry morph from the button's frame to the panel, in place of the old scale-and-fade
    (BOARD.md #3, night batch: geometry and timing only, no material).
-   Basis (read values): menu-motion-formula.md §0 table / §2 — appear = one spring each for position x / y, width, height, ζ .8 / response .3 s
-   (the liquidMorph spec, ω = 2π/.3); dismiss = the same four with ζ .9 / .3 (liquidMorphShrink); reduce-motion = ζ 1 / .15 cross-fade
-   (liquidMorphReduceMotion); no dimming (_hasVisibleBackground NO, the scrim stays transparent); the source is the trigger button's own frame
+   Basis (read values): menu-motion-formula.md §0 table / §2 / §8b — appear AND dismiss = one spring each for position x / y, width, height (and
+   the corner), ζ .8 / response .3 s: the liquidMorph spec (ω = 2π/.3) is what AnimationKit's LiquidMorphAnimation puts into every MagicMorph
+   Parameters (0x1de4106cc–0x1de410734, §8b ①) — the settings' liquidMorphShrink ζ .9 / .3 has no reader outside MorphAnimationSettings itself, so
+   the dismiss is NOT ζ .9 (R19″ / R72′; the old §0 "消失 ζ .9" row is the unwired default); reduce-motion = liquidMorphReduceMotion ζ 1 / .15
+   cross-fade (0x1de41065c–0x1de4106c4, R32); no dimming (_hasVisibleBackground NO, the scrim stays transparent); the source is the trigger button's own frame
    (morphPreviewFromAttachmentPoint, anchor (.5, .5)) — here the .menubtn's rect; the corner follows the same spring from the button's corner to
    the menu's (§4.1). menu-card-material.md §1.2 — width 250 (defaultMenuWidth), corner 32 (menuCornerRadius), section insets 10 / 10, item 42
    (the item rules stay index.html's `.menu button`). The panel's placement (below the value, 6 pt gap, ≥ 8 pt from the edges, above when
    there is no room) is the page's existing rule (view.js openMenu), kept.
    Read since (menu-motion-formula.md §7b, R18b): the panel's items have NO per-item delay (the list view has no stagger path; the cells' state
-   update does not touch alpha / transform) — the items sit in the panel from the first frame, as here; the "intermediate shape" is a geometry
-   interpolation (MagicMorphLayer is a CALayer: frame / corner / transform per destination), not an SDF blend, so it would be a second target on
-   the rect springs with the .03 s second step — but how that intermediate rect is computed (jWidthRatio 0 / jHeightRatio .8 / maxJHeight 200)
-   is not read, so the four springs still run straight to the target (待读, R18a's live parameters); the refraction lens on the morphing shape
-   (lensingSDFLayer) is 不可表达 here; the content's cross-blur / contentScale on the menu path is unread (§6, R18a).
+   update does not touch alpha / transform) — the items sit in the panel from the first frame, as here. §8b ③ (R72′): the intermediate shape
+   (§7c) and the .03 s second step are NOT walked on iOS 27.0 — Parameters.useIntermediateShape is 0 on all five AnimationKit and four UIKit
+   construction paths, and the milestone builder 0x1de415fd4 / secondStepDelay are read only inside that dead branch — so the morph is the source
+   geometry → the target geometry in ONE step on the six liquidMorph springs, which is what runs here (the springs were already straight; the
+   "待读" is closed). crossBlurWhenMorphing = 2 (auto, §8b ②): off when the content is match-moved, otherwise a Background witness Bool whose
+   property is unread — not wired (noted in Menu.morph.crossBlur); the refraction lens on the morphing shape (lensingSDFLayer) is 不可表达 here;
+   contentScale = 1 (§8b ①).
    Springs come from web/motion.js only (BOARD A7, #1). Without Motion this file defines nothing and view.js's old openMenu stays in charge
    (its first line is `if (window.Menu) return Menu.open(anchor, sel);`). */
 (function () {
   if (!window.Motion || typeof Motion.spring !== "function") return;
-  const APPEAR = [0.8, 0.3], DISMISS = [0.9, 0.3], REDUCE = [1, 0.15];   // [ζ, response s]
+  const APPEAR = [0.8, 0.3], DISMISS = [0.8, 0.3], REDUCE = [1, 0.15];   // [ζ, response s] — appear and dismiss both liquidMorph (§8b ①: liquidMorphShrink unread by the animation); reduce motion liquidMorphReduceMotion
+  const MORPH = { oneStep: true, useIntermediateShape: 0, secondStepDelay: null, contentScale: 1, crossBlur: { params: 2, meaning: "auto: 0 when source and target share a magicMoveIdentifier, else the item Background's witness Bool (property unread)", wired: false } };   // §8b, R19″
   const W = 250, R = 32, GAP = 6, EDGE = 8;
   let cur = null;   // the open menu: { panel, scrim, sel, from, to, s: { left, top, width, height, r, a }, phase: "in" | "out", prev, raf }
   const reduce = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -162,6 +167,6 @@
   /* hidden strips the state at once (BOARD A6 template): nothing animates while the page is away and a half-open menu must not come back */
   const onHidden = (force) => { if (force || document.hidden) strip(); };
   document.addEventListener("visibilitychange", () => onHidden(false));
-  window.Menu = { glass: { keys: glassKeys, built: BUILT, unbuilt: UNBUILT, theme: glassTheme }, open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0, t: cur.t || 0, frame: cur.frame || 0,
+  window.Menu = { glass: { keys: glassKeys, built: BUILT, unbuilt: UNBUILT, theme: glassTheme }, morph: MORPH, springs: { appear: [...APPEAR], dismiss: [...DISMISS], reduce: [...REDUCE] }, open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0, t: cur.t || 0, frame: cur.frame || 0,
     x: { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, a: cur.s.a.x } } : null };
 })();
