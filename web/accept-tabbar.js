@@ -187,20 +187,30 @@
        the same elements, the button count never 0, the glide 54 high and on the selected button (≤ 1 pt), the driver idle (no __tabLens, no .tl-on) */
     { const qseg = document.querySelector("#queueseg"); const qbs = qseg ? [...qseg.querySelectorAll("button")] : [];
       if (qbs.length >= 2) {
-        const plat = nav.querySelector(".plat"), gl0 = nav.querySelector(".glide"), sg0 = nav.querySelector(".seg"), top0 = nav.getBoundingClientRect().top, cur0 = qbs.findIndex((b) => b.classList.contains("on"));
-        const bad = { top: 0, none: 0, node: 0, zero: 0, h: 0, pos: 0, drv: 0 }; let frames = 0, events = 0; const onEv = () => events++; nav.addEventListener("tabs-changed", onEv);
+        const plat = nav.querySelector(".plat"), gl0 = nav.querySelector(".glide"), sg0 = nav.querySelector(".seg"), r00 = nav.getBoundingClientRect(), top0 = r00.top, navH0 = r00.height, cur0 = qbs.findIndex((b) => b.classList.contains("on"));
+        /* A16 (this row went red 6 times on first runs after merges, "nav top 4 frames", never reproduced here in 10+ runs): the nav is position:fixed at
+           bottom = env(safe-area) + 12, so its top can move for two reasons — the page (its height or a transform: the user's bug) or the harness's viewport
+           (a headless emulation / scrollbar / visual-viewport hiccup). Each frame the nav's top is judged against where its own CSS puts it, expTop =
+           clientHeight − bottom − height: a page cause shows as |top − expTop| > .5 or a height change (`top` / `h`, red); a viewport change moves top and
+           expTop together (`vp`, recorded, not red); the first deviating frames are printed with their numbers so a red run says why. */
+        const bad = { top: 0, none: 0, node: 0, zero: 0, h: 0, pos: 0, drv: 0, vp: 0 }; let frames = 0, events = 0; const onEv = () => events++; nav.addEventListener("tabs-changed", onEv); const dev = [];
         const watch = (ms) => new Promise((res) => { let first = null; const tick = (now) => { if (first === null) first = now; frames++;
           const r = nav.getBoundingClientRect(), g = nav.querySelector(".glide"), on = nav.querySelector(".seg button.on"), n = nav.querySelectorAll(".seg button").length;
-          if (Math.abs(r.top - top0) > 0.5) bad.top++; if (getComputedStyle(nav).display === "none") bad.none++;
+          const cs = getComputedStyle(nav), expTop = document.documentElement.clientHeight - (parseFloat(cs.bottom) || 0) - r.height, dTop = r.top - top0, dExp = r.top - expTop;
+          if (Math.abs(dTop) > 0.5) { if (Math.abs(dExp) > 0.5 || Math.abs(r.height - navH0) > 0.5) bad.top++; else bad.vp++;
+            if (dev.length < 6) dev.push({ f: frames, top: +r.top.toFixed(2), d: +dTop.toFixed(2), exp: +expTop.toFixed(2), h: +r.height.toFixed(2), ch: document.documentElement.clientHeight, ih: innerHeight, vv: window.visualViewport ? +visualViewport.height.toFixed(1) : null, sy: +scrollY.toFixed(1), tf: cs.transform, b: cs.bottom, cls: nav.className, kbd: document.documentElement.classList.contains("kbd") }); }
+          if (Math.abs(r.height - navH0) > 0.5) bad.h++;
+          if (getComputedStyle(nav).display === "none") bad.none++;
           if (nav.querySelector(".plat") !== plat || g !== gl0 || nav.querySelector(".seg") !== sg0) bad.node++; if (n === 0) bad.zero++;
-          if (g) { const gr = g.getBoundingClientRect(); if (Math.abs(gr.height - 54) > 0.5) bad.h++; if (on) { const or = on.getBoundingClientRect(); if (Math.abs(gr.left - or.left) > 1 || Math.abs(gr.width - or.width) > 1) bad.pos++; } }
+          if (g) { const gr = g.getBoundingClientRect(); if (Math.abs(gr.height - 54) > 0.5) bad.gh = (bad.gh || 0) + 1; if (on) { const or = on.getBoundingClientRect(); if (Math.abs(gr.left - or.left) > 1 || Math.abs(gr.width - or.width) > 1) bad.pos++; } }
           if (window.__tabLens || nav.classList.contains("tl-on")) bad.drv++;
           if (now - first < ms) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick); });
         const other = qbs[cur0 === 0 ? 1 : 0], back = qbs[cur0];
         delete qseg.dataset.pe; other.click(); await watch(500); delete qseg.dataset.pe; back.click(); await watch(500);   // the press flag of an earlier synthetic press (no browser click consumed it) would eat the click
         nav.removeEventListener("tabs-changed", onEv);
         const tabsNow = [...nav.querySelectorAll(".seg button")].map((b) => b.dataset.tab).join(",");
-        check(`R0② 切班次两次（${frames} 帧）：nav top 不变 / 无 display none / 节点不重建 / 按钮数不为 0 / glide 高 54 / glide 在选中项 / 驱动不起`, "全 0", `${JSON.stringify(bad)} · tabs-changed ×${events} · ${tabsNow}`, Object.values(bad).every((v) => v === 0));
+        const pageBad = Object.entries(bad).filter(([k]) => k !== "vp").every(([, v]) => v === 0);
+        check(`R0② 切班次两次（${frames} 帧）：nav 在自己 CSS 的位置（top = clientHeight − bottom − 高，不变高、无 transform）/ 无 display none / 节点不重建 / 按钮数不为 0 / glide 高 54 / glide 在选中项 / 驱动不起（vp = 视口本身变的帧，只记不判）`, "页面项全 0", `${JSON.stringify(bad)} · tabs-changed ×${events} · ${tabsNow}${dev.length ? " · 偏帧 " + JSON.stringify(dev) : ""}`, pageBad);
         check("R0② 集合变时 nav 派发 tabs-changed（ui 807da64 接口）", "≥ 1", String(events), events >= 1 || tabsNow.split(",").length === 0);
       } else check("R0② 页面无两段可切（demo 应有早班/晚班）", "≥ 2 段", qbs.length + " 段", false); }
     if (typeof window.__tabKbd === "function") { window.__tabKbd(innerHeight - 300); await sleep(50); check("视口矮 300 后 nav.tabs display none（键盘规则）", "none", getComputedStyle(nav).display, getComputedStyle(nav).display === "none");
