@@ -67,4 +67,22 @@ window.ACCEPT && ACCEPT.add(async (ctx) => {
   await go(sw + 1);
   check("旧入口 view.js onScroll 已让位（--big 不再由它驱动：为空或 0）", "空/0", root.style.getPropertyValue("--big") || "空", !(parseFloat(root.style.getPropertyValue("--big")) > 0));
   T.snap = snapWas; window.scrollTo(0, y0); await sleep(60); T.apply();
+  /* R3 (2号) — the scroll pocket: the layer, its keys (nav-pocket-sdfdump §1 / §2, nav-bar-scroll-formula §6b), its alpha with the scroll, the copy on the page's pixels */
+  { const P = window.TopbarPocket, el = P && P.el; if (!el) { check("口袋：层存在（topbar.js R3）", "有", "缺", false); }
+    else { const th = P.theme(), k = P.keys(th), f = document.getElementById("topbar-pocket-f"), rp = f && f.querySelector("feFlood"), bl = f && f.querySelector('feGaussianBlur[result="blur"]'), bf = f && f.querySelector('feGaussianBlur[result="bf"]'), dl = f && f.querySelector('feComposite[result="dl"]'), nm = f && f.querySelector('feComposite[result="c"]'), cm = f && f.querySelector("feColorMatrix");
+      const er = el.getBoundingClientRect(), br = document.querySelector("#topbar").getBoundingClientRect();
+      num("口袋：高 = 状态栏 + 收起栏 54（dump 440 × 116 = 62 + 54；此处 safe-area + 54）", br.bottom, er.bottom, 0.5); num("口袋：从屏顶起", 0, er.top, 0.5);
+      check(`口袋 Replay 平罩 = 白 .5 亮 / 黑 .6 暗（§6b replayLight/DarkModeAlpha；dump opacity .5 / .6）（${th}）`, `${k.replay.slice(0, 3).join(",")} α ${k.replay[3]}`, rp ? `${rp.getAttribute("flood-color")} α ${rp.getAttribute("flood-opacity")}` : "无", !!rp && rp.getAttribute("flood-opacity") === String(k.replay[3]) && rp.getAttribute("flood-color") === `rgb(${k.replay[0]},${k.replay[1]},${k.replay[2]})`);
+      num("口袋 模糊 σ = inputRadius 2 ÷ scale .5 = 4 pt（采样单位换算同 alert-pipeline-plan §1.3）", 4, bl ? parseFloat(bl.getAttribute("stdDeviation")) : NaN, 0.01);
+      num("口袋 BlurFill bf σ = 16 ÷ .5 = 32（近似 mip）", 32, bf ? parseFloat(bf.getAttribute("stdDeviation")) : NaN, 0.01);
+      check(`口袋 BlurFill darken / lighten / normal = ${k.darken} / ${k.lighten} / ${k.normal}（dump §2）`, `${k.darken} · ${k.lighten} · ${k.normal}`, dl && nm ? `${dl.getAttribute("k2")} · ${dl.getAttribute("k3")} · ${nm.getAttribute("k3")}` : "无", !!dl && !!nm && +dl.getAttribute("k2") === k.darken && +dl.getAttribute("k3") === k.lighten && +nm.getAttribute("k3") === k.normal);
+      check("口袋 colorMatrix = dump 的 4 × 5（对角 1.1969 / 1.0712 / 1.232，偏置 .03）", k.matrix.slice(0, 5).join(" "), cm ? cm.getAttribute("values").split(/\s+/).slice(0, 5).join(" ") : "无", !!cm && cm.getAttribute("values").split(/\s+/).slice(0, 15).map(Number).every((v, i) => Math.abs(v - k.matrix[i]) < 1e-6));
+      const hair = el.querySelector(".topbar-pocket-hair"); const hr = hair && hair.getBoundingClientRect();
+      check(`口袋 发丝线 ⅓ pt 在口袋底，${th === "dark" ? "白" : "黑"} α .1`, `bottom = 口袋底 · rgba(…,0.1) · h ⅓`, hair ? `${(er.bottom - hr.bottom).toFixed(2)} · ${getComputedStyle(hair).backgroundColor} · ${hr.height.toFixed(2)}` : "无", !!hair && Math.abs(er.bottom - hr.bottom) < 0.5 && /0\.1\)$/.test(getComputedStyle(hair).backgroundColor) && Math.abs(hr.height - 1 / 3) < 0.2);
+      const y1 = window.scrollY; window.scrollTo(0, 0); await sleep(700); num("口袋 静止（顶部）alpha 0（shouldHideAtTop）", 0, parseFloat(getComputedStyle(el).opacity), 0.001);
+      window.scrollTo(0, 40); await sleep(700); num("口袋 滚后 alpha 1（同边线的 .517 s 淡入）", 1, parseFloat(getComputedStyle(el).opacity), 0.001);
+      const copy = el.querySelector(".topbar-pocket-copy"), mr = document.getElementById("app").getBoundingClientRect(), tm = /matrix\(([^)]+)\)/.exec(getComputedStyle(copy).transform), ty = tm ? parseFloat(tm[1].split(",")[5]) : NaN;
+      num("口袋 内容复本贴着页面像素（translateY = 页 top）", mr.top, ty, 1.5);
+      check("口袋 遮罩：1 × 384 竖向遮罩的像素值未读（imgdump）→ 先全幅模糊，记录不判", "记录", "记录", true);
+      window.scrollTo(0, y1); await sleep(60); } }
 });
