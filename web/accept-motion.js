@@ -14,10 +14,19 @@ ACCEPT.add(async function motion({ check, num, sleep }) {
   num("弹簧 ζ.7/.5（开关缩回）：.1 s 42 %", under(.7, .5, .1) * 100, run([.7, .5], .1, 60) * 100, .3);
   { const one = { x: 0, v: 0 }; M.spring(one, 1, [1, .3], .1); const two = { x: 0, v: 0 }; M.spring(two, 1, [1, .3], .05); M.spring(two, 1, [1, .3], .05);
     num("弹簧步进可拆（一步 .1 s = 两步 .05 s，续值续速）", one.x * 1000, two.x * 1000, .01); }
-  /* afterPaint: at least one full frame between the call and the callback, and a rAF tick in between */
-  { const t0 = performance.now(); let ticks = 0; const stop = performance.now() + 400; const count = (ts) => { ticks++; if (ts < stop) requestAnimationFrame(count); }; requestAnimationFrame(count);
-    const t1 = await new Promise((r) => M.afterPaint(() => r(performance.now())));
-    check("afterPaint：回调在下一帧画完之后（rAF→rAF：≥ 1 帧、≥ 8 ms）", "≥ 8 ms, ≥ 1 rAF", `${Math.round(t1 - t0)} ms, ${ticks} rAF`, t1 - t0 >= 8 && ticks >= 1); }
+  /* afterPaint: the callback runs in a LATER "update the rendering" than the call's own frame. HTML Standard, event loop processing model
+     (html.spec.whatwg.org/multipage/webappapis.html#update-the-rendering, read 2026-09-20): "run the animation frame callbacks" first takes
+     the keys of the callback map ("Let callbackHandles be the result of getting the keys of callbacks"), so a rAF registered inside a rAF
+     callback is not in that frame's list and runs in a later update; within one update that step precedes "update the rendering or user
+     interface of doc" (the paint), so the first frame is painted in between; every callback of one update gets the same timestamp
+     ("passing in the relative high resolution time given frameTimestamp"), frameTimestamp being that update's own "last render opportunity
+     time". Hence the proof of a frame in between is the timestamp: the inner callback's ts is later than the ts of a rAF registered in the
+     same task as the afterPaint call (same update, same ts as afterPaint's outer rAF). No millisecond floor: under load headless Chrome's
+     consecutive updates can be 1 ms apart (night b940684 light: "1 ms, 2 rAF" against the old "≥ 8 ms" — the interval is the display's
+     property, not afterPaint's). */
+  { let tA = 0; requestAnimationFrame((ts) => { tA = ts; });   // registered in the same task, before afterPaint's outer rAF → same update, same ts
+    const tB = await new Promise((r) => M.afterPaint((ts) => r(ts)));
+    check("afterPaint：回调落在比调用帧更晚的一次 update the rendering（内层 rAF 时间戳 > 同任务注册的 rAF 时间戳；不设毫秒下限）", "晚一帧", `${tB > tA ? "晚" : "同"}一帧（Δ ${(tB - tA).toFixed(1)} ms）`, tA > 0 && tB > tA); }
   /* the click swallow: a browser-style click 45 ms after the mark is swallowed; the page's own click passes; the mark clears itself */
   { const el = document.createElement("button"); el.style.cssText = "position:fixed;left:-9999px;top:0"; document.body.appendChild(el); let n = 0; el.addEventListener("click", () => n++);
     M.swallowNextClick(el, 300); await sleep(45); el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
