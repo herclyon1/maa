@@ -253,9 +253,14 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
   };
   const mo = new MutationObserver((muts) => { try { onMut(muts); } catch (e) { window.__tabLensErr = String(e && e.stack || e); console.error("tab-lens", e); } });
   document.addEventListener("visibilitychange", () => { if (document.hidden && loop) loop.stop(); });   // hidden strips the state (BOARD A6 template): the glide shows view.js's box
+  /* R0② (BOARD round 2): the bar's nodes persist across a tab-set change (view.js layoutTabs reconciles in place, ui 807da64) — the page dispatches
+     "tabs-changed" on nav after it placed the glide on the selected item; the driver re-reads the bar from the same nodes (a loop in flight is stopped:
+     the items' run changed under it) instead of waiting for new nodes. The childList branch of the observer stays for a real rebuild. */
+  const onTabsChanged = () => { const nav = document.getElementById("tabs"); if (!nav || !ready) return; if (loop) loop.stop(); st = attach(nav); if (st) { st.X = centreOf(st.glide); st.lastX = st.X; } };
   const init = async () => {
     if (MODE === "geometry") { injectGeoStyle(); ready = true; } else await loadFilters();
     const nav = document.getElementById("tabs"); if (!nav) return;
+    nav.addEventListener("tabs-changed", onTabsChanged);
     st = attach(nav);
     mo.observe(nav, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "style"] });   // nav itself is static; view.js rewrites its children on every render
   };

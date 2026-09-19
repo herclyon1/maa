@@ -106,6 +106,27 @@
         delete document.hidden; if (hd) Object.defineProperty(Document.prototype, "hidden", hd);
         ev(b3, "pointerup", x3, y3, 7); await sleep(600);
       } }
+    /* ---- R0② the tab set changes under the bar (the user's bug 2: 切晚班再切早班 the capsule flashed downward — the bar was rebuilt): view.js keeps the
+       nodes (R0①) and tells the driver with "tabs-changed"; per frame through 早 → 晚 → 早: nav's top unchanged, never display none, .plat / .glide / .seg
+       the same elements, the button count never 0, the glide 54 high and on the selected button (≤ 1 pt), the driver idle (no __tabLens, no .tl-on) */
+    { const qseg = document.querySelector("#queueseg"); const qbs = qseg ? [...qseg.querySelectorAll("button")] : [];
+      if (qbs.length >= 2) {
+        const plat = nav.querySelector(".plat"), gl0 = nav.querySelector(".glide"), sg0 = nav.querySelector(".seg"), top0 = nav.getBoundingClientRect().top, cur0 = qbs.findIndex((b) => b.classList.contains("on"));
+        const bad = { top: 0, none: 0, node: 0, zero: 0, h: 0, pos: 0, drv: 0 }; let frames = 0, events = 0; const onEv = () => events++; nav.addEventListener("tabs-changed", onEv);
+        const watch = (ms) => new Promise((res) => { let first = null; const tick = (now) => { if (first === null) first = now; frames++;
+          const r = nav.getBoundingClientRect(), g = nav.querySelector(".glide"), on = nav.querySelector(".seg button.on"), n = nav.querySelectorAll(".seg button").length;
+          if (Math.abs(r.top - top0) > 0.5) bad.top++; if (getComputedStyle(nav).display === "none") bad.none++;
+          if (nav.querySelector(".plat") !== plat || g !== gl0 || nav.querySelector(".seg") !== sg0) bad.node++; if (n === 0) bad.zero++;
+          if (g) { const gr = g.getBoundingClientRect(); if (Math.abs(gr.height - 54) > 0.5) bad.h++; if (on) { const or = on.getBoundingClientRect(); if (Math.abs(gr.left - or.left) > 1 || Math.abs(gr.width - or.width) > 1) bad.pos++; } }
+          if (window.__tabLens || nav.classList.contains("tl-on")) bad.drv++;
+          if (now - first < ms) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick); });
+        const other = qbs[cur0 === 0 ? 1 : 0], back = qbs[cur0];
+        other.click(); await watch(500); back.click(); await watch(500);
+        nav.removeEventListener("tabs-changed", onEv);
+        const tabsNow = [...nav.querySelectorAll(".seg button")].map((b) => b.dataset.tab).join(",");
+        check(`R0② 切班次两次（${frames} 帧）：nav top 不变 / 无 display none / 节点不重建 / 按钮数不为 0 / glide 高 54 / glide 在选中项 / 驱动不起`, "全 0", `${JSON.stringify(bad)} · tabs-changed ×${events} · ${tabsNow}`, Object.values(bad).every((v) => v === 0));
+        check("R0② 集合变时 nav 派发 tabs-changed（ui 807da64 接口）", "≥ 1", String(events), events >= 1 || tabsNow.split(",").length === 0);
+      } else check("R0② 页面无两段可切（demo 应有早班/晚班）", "≥ 2 段", qbs.length + " 段", false); }
     if (typeof window.__tabKbd === "function") { window.__tabKbd(innerHeight - 300); await sleep(50); check("视口矮 300 后 nav.tabs display none（键盘规则）", "none", getComputedStyle(nav).display, getComputedStyle(nav).display === "none");
       window.__tabKbd(null); await sleep(50); const nb = nav.getBoundingClientRect(); check("复原后 nav.tabs 回到底部（innerHeight − bottom < 120）", "< 120", Math.round(innerHeight - nb.bottom), getComputedStyle(nav).display !== "none" && innerHeight - nb.bottom < 120); }
   });
