@@ -10,6 +10,20 @@
    lens; a self-loop keeps the counter and the record running when nothing else animates. A frame's record is the last sample
    taken in it (committed when the next frame starts); `samples` = how many samples the frame got, `after_others` = whether a
    foreign callback ran in it before the last sample.
+   TIME SEMANTICS (2026-09-19, the acceptance session on d9ebf5f): what the sampler reads in rAF frame N is painted at the end of
+   that frame and reaches the screen at the NEXT vsync, so a frame's `pts` (and t_since_down / t_since_up) is its PRESENTATION
+   time = the sampling frame's rAF timestamp + one frame interval (the median rAF interval of the run, `frame_interval` in the
+   header; `sample_t` keeps the rAF timestamp of the sampling frame and `next_t` the next frame's, for the record). The native
+   trace's times are presentation times, so the two compare like with like; nothing is shifted after the fact.
+   INSTRUMENT FIELDS (2026-09-19, 监督局: why does the drag lead the native by 33–55 pt): every frame also carries
+     `state`  = a copy of window.__segLens as the page's lens loop leaves it (the ui session exposes it; numbers only, copied as is;
+                the agreed names: t = the loop tick's performance.now() (ms), x = the lens centre (pt), v = its velocity (pt/s),
+                target = the spring target (pt), dt = the tick's step (s), pointer_t = performance.now() of the last pointer event
+                the loop consumed (ms), retarget_t = when the target last changed (ms), phase = the loop's own phase string;
+                any field ending in `_t` or named `t` is converted to seconds since the down in the record),
+     `last_pointer_t` = the time of the latest pointer event this recorder saw before the sample (s since the down),
+     `marks` = performance marks / measures whose name starts with "seg:" and whose start falls in (previous sample, this sample]
+                — e.g. seg:lens-create, seg:map-blob, seg:value-repaint — as {name, start (s since down), dur (s)}.
 
    What it records, from the first pointerdown inside `.segctl` until the lens has settled after the pointerup (rect within
    0.5 pt for 300 ms) or 3 s after the up, plus the 40 frames before the down:
@@ -61,14 +75,17 @@
     const warp = seg.querySelector(".warp"), copy = warp && (warp.querySelector(".copy") || warp);
     const fd = document.querySelector("#seg-lens-warp feDisplacementMap");
     const bs = [...seg.querySelectorAll("button")];
+    const st = window.__segLens && typeof window.__segLens === "object" ? Object.fromEntries(Object.entries(window.__segLens).filter(([k, v]) => typeof v === "number" || typeof v === "string").map(([k, v]) => [k, typeof v === "number" ? round(v, 4) : v])) : null;
+    const marks = [];
+    try { for (const e of performance.getEntriesByType("mark").concat(performance.getEntriesByType("measure"))) { if (e.name.startsWith("seg:") && e.startTime > lastSampleT && e.startTime <= now) marks.push({ name: e.name, start: e.startTime, dur: round(e.duration, 3) }); } } catch {}
     return { pts: now / 1000, rect: [round(r.left), round(r.top), round(r.width), round(r.height)], alpha: num(cs.opacity, 1), scale: [round(sc[0], 4), round(sc[1], 4)],
              zoom: copy ? round(num(getComputedStyle(copy).zoom, 1), 4) : null, warp_scale: fd ? num(fd.getAttribute("scale"), 0) : null,
              index: bs.findIndex((b) => b.classList.contains("on")), lift: lens.classList.contains("lift"), drag: !!seg && seg.classList.contains("drag"), spring: lens.classList.contains("spring"),
-             diag: (window.__segDiag && window.__segDiag()) || null };   // 仪器 (ui 09-19): the lens loop's spring internals of the tick this sample follows
+             state: st, marks, last_pointer_t: rec && rec.pointer.length ? rec.pointer[rec.pointer.length - 1].t : null };
   }
 
   /* ---- pointer timeline (capture phase: seen before the page's own handlers and pointer capture) ---- */
-  let frameNo = 0, ring = [], rec = null, lastNote = "", cur = null, lastTs = null;
+  let frameNo = 0, ring = [], rec = null, lastNote = "", cur = null, lastTs = null, lastSampleT = -1;
   const inSeg = (e) => { const s = segctl(); return !!s && (s.contains(e.target) || (rec && rec.pointerId === e.pointerId)); };
   addEventListener("pointerdown", (e) => {
     if (!inSeg(e) || (rec && !rec.done)) return;
@@ -84,22 +101,29 @@
   function finish() {
     rec.done = true;
     const td = rec.t_down / 1000, tu = (rec.t_up === null ? rec.t_down : rec.t_up) / 1000;
-    const frames = rec.frames.map((f) => ({ file: null, frame: f.frame, pts: round(f.pts, 3), t_since_down: round(f.pts - td, 3), t_since_up: round(f.pts - tu, 3), phase: f.phase,
-      lens: [{ view: "segctl .lens", rect: f.rect, alpha: f.alpha, scale: f.scale }], zoom: f.zoom, warp_scale: f.warp_scale, index: f.index, lift: f.lift, drag: f.drag, spring: f.spring, samples: f.samples, after_others: f.after_others, diag: f.diag || null }));
+    const st = rec.frames.map((f) => f.sample_t ?? f.pts), gaps = st.slice(1).map((v, i) => v - st[i]).filter((g) => g > 0).sort((a, b) => a - b);
+    const interval = gaps.length ? gaps[Math.floor(gaps.length / 2)] : 1 / 60;                       // the run's median rAF interval (s)
+    const frames = rec.frames.map((f) => { const s = f.sample_t ?? f.pts, p = s + interval; return { file: null, frame: f.frame, pts: round(p, 3), sample_t: round(s, 3), next_t: f.next_t === null || f.next_t === undefined ? null : round(f.next_t, 3), t_since_down: round(p - td, 3), t_since_up: round(p - tu, 3), phase: phaseAt(p * 1000),   // the phase by the presentation time, like the native trace
+      lens: [{ view: "segctl .lens", rect: f.rect, alpha: f.alpha, scale: f.scale }], zoom: f.zoom, warp_scale: f.warp_scale, index: f.index, lift: f.lift, drag: f.drag, spring: f.spring, samples: f.samples, after_others: f.after_others,
+      state: f.state ? Object.fromEntries(Object.entries(f.state).map(([k, v]) => [k, typeof v === "number" && (k === "t" || k.endsWith("_t")) ? round(v / 1000 - td, 3) : v])) : null,
+      last_pointer_t: f.last_pointer_t === null || f.last_pointer_t === undefined ? null : round(f.last_pointer_t / 1000 - td, 3),
+      marks: (f.marks || []).map((m) => ({ name: m.name, start: round(m.start / 1000 - td, 3), dur: round(m.dur / 1000, 3) })) }; });
     const firstChange = frames.find((f) => f.t_since_down >= 0 && changed(f.lens[0].rect, rec.rest, 0.3));
     const out = { name: rec.name, t_down_pts: round(td, 3), t_up_pts: round(tu, 3), moves_since_down: rec.moves.map((m) => round(m / 1000 - td, 3)),
       control_events: rec.events, first_lens_change_since_down: firstChange ? firstChange.t_since_down : null, frames,
       pointer: rec.pointer.map((p) => ({ ...p, t: round(p.t / 1000 - td, 3) })), counter: { x: 0, y: "env(safe-area-inset-top)", cell: CELL, bits: BITS, gray: true, dpr },
       viewport: `${innerWidth}×${innerHeight}`, standalone: matchMedia("(display-mode: standalone)").matches, href: location.href, at: new Date().toISOString(),
-      sampler: "after the page's rAF callbacks (rAF wrapper, last sample of the frame; 2026-09-19)",
-      perf: (window.__segPerf && window.__segPerf().map((m) => ({ ...m, start_since_down: round(m.start / 1000 - td, 3) }))) || null };   // 仪器: seg:build / first-tick / commit-render / render:* measures
+      sampler: "after the page's rAF callbacks (rAF wrapper, last sample of the frame; 2026-09-19)", frame_interval: round(interval, 4),
+      time_semantics: "pts = presentation time = the sampling frame's rAF timestamp (sample_t) + frame_interval (the next vsync); t_since_down / t_since_up from pts",
+      state_source: window.__segLens ? "window.__segLens (the page's lens loop)" : "window.__segLens not present" };
     try { localStorage.setItem(KEY, JSON.stringify(out)); } catch {}
     window.__segFrames = out; dispatchEvent(new CustomEvent("segframes", { detail: out }));
     lastNote = `${frames.length}fr ok`;
   }
   /* commit the previous frame's record (its last sample) */
-  function commit(f) {
+  function commit(f, nextTs) {
     if (!f) return;
+    f.sample_t = f.pts; f.next_t = nextTs === undefined ? null : nextTs / 1000;   // pts is resolved to the presentation time in finish()
     const now = f.pts * 1000;
     if (rec && !rec.done) {
       rec.frames.push(f);
@@ -115,7 +139,7 @@
   /* one sample; several may run in a frame (the self-loop first, then one after each foreign rAF callback) — the last one wins */
   let othersThisFrame = 0;
   function sample(now, afterOther) {
-    if (now !== lastTs) { commit(cur); cur = null; lastTs = now; frameNo++; othersThisFrame = 0; paint(frameNo, rec ? (rec.done ? lastNote : phaseAt(now)) : ""); }
+    if (now !== lastTs) { commit(cur, now); cur = null; lastSampleT = lastTs === null ? -1 : lastTs; lastTs = now; frameNo++; othersThisFrame = 0; paint(frameNo, rec ? (rec.done ? lastNote : phaseAt(now)) : ""); }
     if (afterOther) othersThisFrame++;
     const r = reading(now);
     if (r) cur = { frame: frameNo, ...r, phase: phaseAt(now), samples: (cur && cur.frame === frameNo ? cur.samples : 0) + 1, after_others: othersThisFrame };
