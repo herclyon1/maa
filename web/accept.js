@@ -723,6 +723,20 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
         pev(seg3, "pointerup", at(on3));
         check("标签栏 T3 按下已选中项抬手：无事件", before, (nav3.querySelector(".seg button.on") || {}).dataset.tab, (nav3.querySelector(".seg button.on") || {}).dataset.tab === before && !g3.classList.contains("lift-sel"));
         await sleep(900);   // the T3 lens has fallen back: the bar is at rest
+        /* BOARD R31 (page side): the labels textures for every segment are prepared at idle and the down on an unselected segment binds one (useLabels) — no
+           backdrop redraw in the down's task (marks: seg:gl-uselabels present, seg:gl-redraw count unchanged across the down) */
+        { const sg = q(), g = sg.__gl;
+          if (g && typeof g.lens.hasLabels === "function") {
+            await sleep(600);   // idle: the variants prepared
+            const n = sg.querySelectorAll("button").length; const prepared = [...Array(n).keys()].every((i) => g.lens.hasLabels(i));
+            const on0 = onText(), off = bs().find((b) => !b.classList.contains("on")), pressedIdx = bs().indexOf(off);
+            const redraws0 = performance.getEntriesByName("seg:gl-redraw").length;
+            pev(sg, "pointerdown", at(off)); const labelsAtDown = g.lens.stats.labels, used = performance.getEntriesByName("seg:gl-uselabels").length > 0; await sleep(40);
+            const redraws1 = performance.getEntriesByName("seg:gl-redraw").length;
+            pev(sg, "pointerup", at(off)); await sleep(1300);
+            check("R31 页面侧：空闲期每段的「将选中」标签纹理已预备（hasLabels 全 true）；按下未选中段只切绑定（stats.labels = 被按段、seg:gl-uselabels 有记录），按下任务内无底图重画（seg:gl-redraw 计数不变）", `prepared · labels ${pressedIdx} · uselabels · redraw +0`, `prepared ${prepared} · labels ${labelsAtDown} · uselabels ${used} · redraw +${redraws1 - redraws0}`, prepared && labelsAtDown === pressedIdx && used && redraws1 === redraws0);
+            const back = bs().find((b) => b.textContent === on0); if (back && onText() !== on0) { pev(q(), "pointerdown", at(back)); pev(q(), "pointerup", at(back)); await sleep(1300); }   // the selection restored for the rows after
+          } else check("R31 页面侧【GL 不可用或包无 prepareLabels：不核】", "-", g ? "no hasLabels" : "no gl", true); }
         /* BOARD R0① (user bug 2): a shift change (早班 5 tabs ↔ 晚班 3 tabs) must not rebuild the tab bar — .plat / .glide / .seg stay the same elements, the nav's
            top and display never change, the button count goes 5 → 3 → 5 with no frame at 0, and the glide sits on the selected button every frame */
         if (typeof snap === "object" && snap && Array.isArray(snap.queues) && snap.queues.length > 1) {
