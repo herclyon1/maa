@@ -87,27 +87,13 @@
   /* ---- pointer timeline (capture phase: seen before the page's own handlers and pointer capture) ---- */
   let frameNo = 0, ring = [], rec = null, lastNote = "", cur = null, lastTs = null, lastSampleT = -1;
   const inSeg = (e) => { const s = segctl(); return !!s && (s.contains(e.target) || (rec && rec.pointerId === e.pointerId)); };
-  /* WHERE THE FIRST GESTURE'S TIME GOES (2026-09-19 18:4x, the data session's seg-final-181053.md ①: the first lens gesture after load had
-     ~190 ms of main-thread silence before its lift, the second none): three readings, none of them changing the page:
-       `lag` on each pointer entry = performance.now() − event.timeStamp at this capture listener (ms): how long the event waited for the main
-                thread before it was dispatched (the OS stamps the touch when it happens; a busy main thread delivers it late);
-       seg:longtask = every Long Task the engine reports (PerformanceObserver "longtask", where supported — `longtask_supported` in the header)
-                re-emitted as a performance measure, so it lands in the frames' `marks` like any other seg: entry;
-       seg:page-render / seg:page-updateLive = the page's own render() / updateLive() wrapped in a measure (they are the page's periodic
-                and re-render tasks; wrapped only if they exist on window). */
-  let longtaskSupported = false;
-  try { longtaskSupported = !!(window.PerformanceObserver && PerformanceObserver.supportedEntryTypes && PerformanceObserver.supportedEntryTypes.includes("longtask"));
-    if (longtaskSupported) new PerformanceObserver((list) => { for (const e of list.getEntries()) { try { performance.measure("seg:longtask", { start: e.startTime, end: e.startTime + e.duration }); } catch {} } }).observe({ entryTypes: ["longtask"] }); } catch {}
-  for (const fn of ["render", "updateLive"]) { const orig = window[fn]; if (typeof orig !== "function") continue;
-    window[fn] = function (...args) { const t = performance.now(); try { return orig.apply(this, args); } finally { try { performance.measure("seg:page-" + fn, { start: t, end: performance.now() }); } catch {} } }; }
-  const lagOf = (e) => (e.timeStamp > 0 && e.timeStamp <= performance.now() ? round(performance.now() - e.timeStamp, 1) : null);
   addEventListener("pointerdown", (e) => {
     if (!inSeg(e) || (rec && !rec.done)) return;
-    rec = { name, pointerId: e.pointerId, t_down: performance.now(), t_up: null, moves: [], events: [], frames: ring.map((f) => ({ ...f, phase: "before" })), pointer: [{ type: "down", t: performance.now(), x: e.clientX, y: e.clientY, lag: lagOf(e) }], done: false, rest: null, settledSince: null };
+    rec = { name, pointerId: e.pointerId, t_down: performance.now(), t_up: null, moves: [], events: [], frames: ring.map((f) => ({ ...f, phase: "before" })), pointer: [{ type: "down", t: performance.now(), x: e.clientX, y: e.clientY }], done: false, rest: null, settledSince: null };
     const first = reading(performance.now()); rec.rest = first ? first.rect.slice() : null; rec.index0 = first ? first.index : -1;
   }, true);
-  addEventListener("pointermove", (e) => { if (rec && !rec.done && e.pointerId === rec.pointerId) { rec.moves.push(performance.now()); rec.pointer.push({ type: "move", t: performance.now(), x: e.clientX, y: e.clientY, lag: lagOf(e) }); } }, true);
-  const up = (e) => { if (rec && !rec.done && e.pointerId === rec.pointerId && rec.t_up === null) { rec.t_up = performance.now(); rec.pointer.push({ type: e.type === "pointercancel" ? "cancel" : "up", t: rec.t_up, x: e.clientX, y: e.clientY, lag: lagOf(e) }); } };
+  addEventListener("pointermove", (e) => { if (rec && !rec.done && e.pointerId === rec.pointerId) { rec.moves.push(performance.now()); rec.pointer.push({ type: "move", t: performance.now(), x: e.clientX, y: e.clientY }); } }, true);
+  const up = (e) => { if (rec && !rec.done && e.pointerId === rec.pointerId && rec.t_up === null) { rec.t_up = performance.now(); rec.pointer.push({ type: e.type === "pointercancel" ? "cancel" : "up", t: rec.t_up, x: e.clientX, y: e.clientY }); } };
   addEventListener("pointerup", up, true); addEventListener("pointercancel", up, true);
 
   const phaseAt = (t) => !rec || t < rec.t_down ? "before" : rec.t_up !== null && t >= rec.t_up ? "released" : rec.moves.length && t >= rec.moves[0] ? "drag" : "hold";
@@ -129,8 +115,7 @@
       viewport: `${innerWidth}×${innerHeight}`, standalone: matchMedia("(display-mode: standalone)").matches, href: location.href, at: new Date().toISOString(),
       sampler: "after the page's rAF callbacks (rAF wrapper, last sample of the frame; 2026-09-19)", frame_interval: round(interval, 4),
       time_semantics: "pts = presentation time = the sampling frame's rAF timestamp (sample_t) + frame_interval (the next vsync); t_since_down / t_since_up from pts",
-      state_source: window.__segLens ? "window.__segLens (the page's lens loop)" : "window.__segLens not present",
-      longtask_supported: longtaskSupported, pointer_lag: "lag = performance.now() − event.timeStamp at the capture listener (ms): the event's wait for the main thread" };
+      state_source: window.__segLens ? "window.__segLens (the page's lens loop)" : "window.__segLens not present" };
     try { localStorage.setItem(KEY, JSON.stringify(out)); } catch {}
     window.__segFrames = out; dispatchEvent(new CustomEvent("segframes", { detail: out }));
     lastNote = `${frames.length}fr ok`;
