@@ -53,7 +53,11 @@ SNAP = {"at": NOW - 180, "config": {"MAA": {"关卡": "1-7", "理智药": 0, "�
 STAMINA = {"明日方舟": {"理智": 128, "上限": 135, "回满": "09-18 15:42"}, "终末地": {"理智": 96, "上限": 240, "回满": "09-19 02:10"},
            "鸣潮": {"波片": 172, "上限": 240, "回满": "09-18 18:20"}, "取自": "14:20"}
 url = sys.argv[1]; dark = 'dark' in sys.argv[2:]; nodata = 'nodata' in sys.argv[2:]
-port = 9900 + random.randint(0, 80); prof = tempfile.mkdtemp()
+def free_port():
+    # several sessions run this runner at once: a fixed / random port can already belong to ANOTHER session's Chrome, and we would then talk to it
+    # (EOF, "view.js not ready", 0/0 results). Ask the kernel for a free port instead.
+    with socket.socket() as sk: sk.bind(('127.0.0.1', 0)); return sk.getsockname()[1]
+port = free_port(); prof = tempfile.mkdtemp()
 p = subprocess.Popen([CH, '--headless=new', '--hide-scrollbars', f'--remote-debugging-port={port}', f'--user-data-dir={prof}', '--window-size=440,956', 'about:blank'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 try:
     page = None
@@ -61,6 +65,7 @@ try:
         try: page = next(t for t in json.load(urllib.request.urlopen(f'http://127.0.0.1:{port}/json')) if t['type'] == 'page'); break
         except Exception: time.sleep(0.2)
     ws = WS(page['webSocketDebuggerUrl'])
+    own = ws.send('Browser.getVersion')['result'].get('userAgent', '')   # sanity: the DevTools endpoint answers → it is a live Chrome on our port
     ws.send('Runtime.enable'); ws.send('Page.enable')
     ws.send('Emulation.setFocusEmulationEnabled', {'enabled': True})   # a headless document is otherwise unfocused: focusin never fires (界面1号 5d71467's capsule row)
     ws.send('Emulation.setDeviceMetricsOverride', {'width': 440, 'height': 956, 'deviceScaleFactor': 3, 'mobile': True})
@@ -80,12 +85,13 @@ try:
             if ready is True: return True
         return False
     MISSING = ('(() => { const got = new Set(performance.getEntriesByType("resource").map(e => e.name)); '
-               'return [...document.scripts].filter(s => s.src && !got.has(s.src)).map(s => s.src.split("/").pop()); })()')
+               'return [...document.scripts].filter(s => s.src && !/accept[^/]*\\.js/.test(s.src) && !got.has(s.src)).map(s => s.src.split("/").pop()); })()')   # accept*.js are appended lazily by the page / by accept.js itself and may still be loading at this point
     ws.send('Page.navigate', {'url': url + ('&' if '?' in url else '?') + 'accept=1&quiet=1'})
     for attempt in (1, 2):
         if not wait_ready():
             print('view.js not ready in 60 s (document.readyState / window.__viewReady)'); print('JS errors:', errors()); sys.exit(1)
         missing = ws.send('Runtime.evaluate', {'expression': MISSING, 'returnByValue': True})['result']['result'].get('value') or []
+        if missing: time.sleep(1.5); missing = ws.send('Runtime.evaluate', {'expression': MISSING, 'returnByValue': True})['result']['result'].get('value') or []   # a script still in flight is not a lost fetch
         early = errors()
         if not missing and not early: break
         if attempt == 2:

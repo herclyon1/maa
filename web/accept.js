@@ -12,7 +12,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
 (function () {
   const q = new URLSearchParams(location.search);
   if (!q.has("accept")) return;
-  for (const c of ["motion","nav","nav-edge","sheet","menu","topbar","refresh","glassbtn","switch"]) { const s = document.createElement("script"); s.src = "accept-" + c + ".js"; document.head.appendChild(s); }
+  for (const c of ["motion","nav","nav-edge","sheet","menu","topbar","refresh","glassbtn","switch","tabbar"]) { const s = document.createElement("script"); s.src = "accept-" + c + ".js"; document.head.appendChild(s); }
   const rows = [];
   const near = (a, b, tol = 0.6) => Math.abs(a - b) <= tol;
   const cs = (el, pseudo) => el ? getComputedStyle(el, pseudo || null) : null;

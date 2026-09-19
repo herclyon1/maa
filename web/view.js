@@ -1937,6 +1937,7 @@ function installNative() {
        other, not a cross-fade. --big drives the large title, --title the small. */
     const clamp = (v) => Math.max(0, Math.min(1, v));
     const onScroll = () => {
+      if (window.Topbar) return;   // BOARD #4: topbar.js owns the bar's scroll behaviour (--tb-*); this entry yields (one-line guard, A7)
       const y = window.scrollY;
       const top = h1.offsetTop, hgt = h1.offsetHeight || 41;
       root.style.setProperty("--bar", String(clamp(y / 12)));
