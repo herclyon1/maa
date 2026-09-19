@@ -8,7 +8,8 @@ ACCEPT.add(async function navedge({ check, num, sleep }) {
   const W = window.innerWidth, thr = Math.min(187.5 / W, .5);
   const pev = (type, x, y, t, id = 5) => pg.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, clientX: x, clientY: y, isPrimary: true, button: 0, buttons: type === "pointerup" ? 0 : 1, pointerType: "touch" }));
   const tx = () => { const m = getComputedStyle(pg).transform; if (!m || m === "none") return 0; const a = m.match(/matrix\(([^)]+)\)/); return a ? parseFloat(a[1].split(",")[4]) : 0; };
-  const open = async () => { N.open("验收", "<p>edge</p>"); await sleep(600); };
+  const settled = async (cap = 1500) => { const t0 = performance.now(); await sleep(30); while (pg.classList.contains("nav-live") && performance.now() - t0 < cap) await sleep(30); };   // the push / pop springs are wall-clock: wait for the drive to end instead of a fixed sleep (A15; under load a 600 ms sleep left the push at p ≈ .7 and the gesture's base percent ≠ 0 → the rubber-band row read W × 1.24 for 1.177, light 1 of 3)
+  const open = async () => { N.open("验收", "<p>edge</p>"); await settled(); };
   num("识别区 = .10 W（IsLargeFormatPhone；.09 待 MG 读数）", W * .10, W * E.REGION, .01);
   num("松手阈值 thr = min(187.5 / W, .5)", Math.min(187.5 / W, .5), thr, .001);
   /* 1) outside the region: nothing */
@@ -24,20 +25,20 @@ ACCEPT.add(async function navedge({ check, num, sleep }) {
   /* 3) slow release past thr → finish (pop completes) */
   pev("pointermove", 262, 400); await sleep(40); pev("pointermove", 264, 400); await sleep(40); pev("pointerup", 264, 400);
   { const L = E.last; check("慢放 q ≈ .51 > thr .426（proj = q + .35 v̄ + .06 ā）：完成 pop", `finish, proj > ${thr.toFixed(3)}`, `${L && L.finish ? "finish" : "cancel"}, proj ${L ? L.proj.toFixed(3) : "?"} n ${L ? L.n : "?"}`, !!L && L.finish && L.proj > thr); }
-  await sleep(700);
+  await settled();
   check("完成后：页 hidden、body.pushed 去掉", "hidden", pg.hidden ? "hidden" : "shown", pg.hidden && !document.body.classList.contains("pushed"));
   /* 4) slow release short of thr → cancel (back to shown) */
   await open(); pev("pointerdown", 20, 400); await sleep(100); pev("pointermove", 40, 400); await sleep(100); pev("pointermove", 60, 400); await sleep(100); pev("pointermove", 80, 400); await sleep(100); pev("pointermove", 100, 400); await sleep(100); pev("pointermove", 104, 400); await sleep(100); pev("pointerup", 104, 400);   // a slow finger: ~200 pt/s
   { const L = E.last; check("慢放 q ≈ .145 < thr：取消，回到显示", "cancel", L && !L.finish ? "cancel" : "finish", !!L && !L.finish); }
-  await sleep(700);
+  await settled();
   check("取消后：.page.in、body.pushed 回来、x 0", "in pushed 0", `${pg.classList.contains("in") ? "in" : "-"} ${document.body.classList.contains("pushed") ? "pushed" : "-"} ${Math.round(tx())}`, pg.classList.contains("in") && document.body.classList.contains("pushed") && Math.abs(tx()) < .5);
   /* 5) a flick: fast samples → v̄ ≥ 1.5 W/s keeps the edge-flick phase → v_out × 4.25, finish */
   pev("pointerdown", 20, 400); await sleep(12); pev("pointermove", 40, 400); await sleep(12); pev("pointermove", 80, 400); await sleep(12); pev("pointermove", 120, 400); await sleep(12); pev("pointermove", 160, 400); await sleep(12); pev("pointerup", 160, 400);   // ~3300 pt/s = 7.5 W/s from the first sample
   { const L = E.last; check("快甩（|v̄| ≥ 1.5 W/s 全程）：完成，传出速度 ×4.25", "finish, flick ×4.25", `${L && L.finish ? "finish" : "cancel"}, ${L && L.flick ? "flick" : "no flick"} v̄ ${L ? L.vBar.toFixed(2) : "?"} W/s`, !!L && L.finish && L.flick && L.vBar >= 1.5); }
-  await sleep(700);
+  await settled();
   /* 6) the rubber band past 1: q 1.5 → 1 + .5(1 − 1/(1 + .55·.5/.5)) = 1.177 */
   await open(); pev("pointerdown", 20, 400); pev("pointermove", 40, 400); await sleep(20); pev("pointermove", 300, 400); await sleep(20); pev("pointermove", 500, 400); await sleep(20); pev("pointermove", 40 + W * 1.5, 400); await sleep(300);
   num("拖过整宽 1.5 W：橡皮筋 1 + .5(1 − 1/(1 + .55·(q − 1)/.5)) = 1.177（顶页 x = W × 1.177）", W * E.rubber(1.5), tx(), 4);
-  pev("pointerup", 40 + W * 1.5, 400); await sleep(800);
+  pev("pointerup", 40 + W * 1.5, 400); await settled();
   check("整宽外松手：完成，hidden", "hidden", pg.hidden ? "hidden" : "shown", pg.hidden);
 });
