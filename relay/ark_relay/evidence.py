@@ -718,8 +718,33 @@ def run_window(started: datetime, finished: "datetime | None") -> tuple[float, f
     return t0, t1
 
 
+def desktop_shot(cfg, out_dir: Path, screenshot=None) -> "Path | None":
+    """A picture of the real desktop, named by the moment it was taken, for an
+    OK-WW failure bundle. OK-WW's own export is its log plus the screenshots it
+    chose to save; on 2026-09-19 the log simply stopped at 09:34 and the export
+    held one file, so what the game showed for the next two hours is unknown.
+    The picture is taken when the record lands, which AUTO-MAS writes at the
+    end of the whole script run - so it may show the state after a retry; the
+    filename says when. None when the desktop cannot be reached (a Mac, a test,
+    no interactive session)."""
+    try:
+        if screenshot is None:
+            from .desktop import Desktop  # noqa: PLC0415 - Windows-only helper
+            screenshot = Desktop(Path(cfg.state_dir)).screenshot
+        shot = screenshot()
+        if not shot:
+            return None
+        out_dir.mkdir(parents=True, exist_ok=True)
+        target = out_dir / f"desktop-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png"
+        shutil.copy2(shot, target)
+        return target
+    except Exception:  # a missing picture must not cost the bundle
+        log.warning("桌面截图没拿到，证据包不带它", exc_info=True)
+        return None
+
+
 def save_and_upload(cfg, script: str, run_id: str, extra: list[Path] = (), *,
-                    window: "tuple[float, float]", uploader=None) -> dict:
+                    window: "tuple[float, float]", uploader=None, screenshot=None) -> dict:
     """Build the bundle into state/evidence/<run_id>/bundle, upload it, append to the index. Never raises past the bundle step."""
     if window is None:
         raise ValueError("evidence bundle needs a time window")
@@ -737,6 +762,9 @@ def save_and_upload(cfg, script: str, run_id: str, extra: list[Path] = (), *,
                 result["errors"].append(f"copy {p.name}: {exc}")
         for p in context_files(cfg, window, dst):
             paths.append(p)
+        if script == "OK-WW":
+            if shot := desktop_shot(cfg, dst, screenshot):
+                paths.append(shot)
         result["files"] = [p.name for p in paths]
     except Exception as exc:  # evidence must never block bookkeeping
         log.exception("证据包打不出来")

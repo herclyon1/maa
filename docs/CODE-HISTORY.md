@@ -795,6 +795,17 @@ the middle of working on it, and hours before the evening queue.
 The round is the group of records that finished close together; two
 hours is comfortably wider than a full queue (MAA then MaaEnd) and
 far narrower than the gap between the morning and evening queues.
+
+2026-09-19: the two-hour slice cut a scheduled queue in half. OK-WW
+hung at 09:34, AUTO-MAS killed it at 11:35 and reran it, MaaEnd ran
+11:42-12:09; "everything started within two hours of the newest
+record" was the 11:35 tail alone, whose first record is not near
+09:00, so the queue read as hand-started and the machine stayed on all
+day. The round is now a chain walked back from the newest record
+(_round_of_newest): a record joins when the next one starts within
+ROUND_GAP_H of its end, or is a retry of it (same script and user,
+the earlier one failed, within RETRY_LINK_H). A hand-started
+afternoon run still stands alone and still reads as manual.
 ```
 
 ## shutdown.py:decide

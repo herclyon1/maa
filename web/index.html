@@ -12,12 +12,13 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="遥控">
 <title>游戏机遥控</title>
-<link rel="manifest" href="manifest.webmanifest?v=20260919095527">
+<link rel="manifest" href="manifest.webmanifest?v=20260919180233">
 <!-- iOS 加到主屏用的是这张 PNG，没有它系统会自己截一张缩略图，很糊。 -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260919095527">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260919095527">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=20260919180233">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260919180233">
 <!-- 组件数字的正本：--ios-* 变量，每条带来源（探针原值 / AX 帧 / NUMBERS 行 / 取色 / 采样替代）。页面自己的变量只做映射，不再手写数字。 -->
-<link rel="stylesheet" href="tokens.css?v=20260919095527">
+<link rel="stylesheet" href="tokens.css?v=20260919180233">
+<link rel="stylesheet" href="controls.css?v=20260919180233">   <!-- press states of rows / switch (B14 / B13): remote-ref/dispatch-B14-cell.md, dispatch-B13-switch.md -->
 <link rel="stylesheet" href="seg-keys.css?v=20260919011715">   <!-- segmented-lens kinematics compiled from the native frames (界面2号 ui2 90d6876 gen_seg_keys.py; do not edit) -->
 <style>
   /* iOS Settings, copied not approximated (the user, 2026-09-14: 「这是真的要在 iOS
@@ -54,7 +55,8 @@
     /* interaction-spec.md §1/§2/§3 values that have no --ios-touch-* token yet: the lens follows a drag with a spring lag of ~100–150 ms (G4: finger 320 → lens 61→237 in ~120 ms);
        the committed lens settles in ~1.2 s while its width goes 196 → 239 → 181 → 196 and height 28 → 38.6 → 27 → 28 (G1/G3); the tab-bar lens lifts 94×54 → 119×64 (T1), the switch knob 37×24 → 60.5×40 then 58×38 (L*) */
     --seg-follow-lag:var(--ios-touch-segment-follow-lag);   /* .12 s ← G4/F1 */
-    --seg-commit-delay-tap:66ms;    /* valueChanged after a tap's up ← seg-value-change-content.md §0 (+92/+68/+50/+66, 采样) */
+    --seg-commit-delay-tap:66ms;    /* valueChanged after a tap's up ← seg-value-change-content.md §0 (+92/+68/+50/+66, 采样); used by the ?vcnow=0 path only — by default a tap's
+                                       content switches in the up's own task (view.js SEG_VC_NOW, 监督局 09-19 15:5x: on the phone the timer put the switch at +136…143 vs the native's +50…92) */
     --seg-commit-delay-drag:25ms;   /* valueChanged after a slide's up ← tokens.css --ios-touch-segment-commit-delay 注（"after a slide +25 ms"，数据会话） */
     --seg-settle:1.209s;                                        /* the measured lens sequence ends at 1209 ms (--ios-touch-segment-lens-*-keys) */
     /* lens travel after the up = the measured per-frame x path (G1/G3, 60 Hz, fraction of the travel; peak 1.075 at 476 ms) as a linear() easing over the whole 1209 ms */
@@ -123,30 +125,6 @@
   nav.tabs .glide.lift-sel{scale:var(--tab-sel-lift-sx) var(--tab-sel-lift-sy);transition-duration:var(--ios-motion-lens-duration),var(--ios-motion-lens-duration),55ms}   /* 按下已选中项 +125 ms 起、+180 ms 到 103×63 ← T3（--ios-touch-tab-selected-lift-*） */
   nav.tabs.drag .glide.lift-sel{scale:var(--tab-drag-lift-sx) var(--tab-drag-lift-sy)}   /* 拖动中 110×70 ← T4（--ios-touch-tab-drag-lift-w/-h） */
   nav.tabs.drag .glide{transition:left var(--seg-follow-lag) ease-out,width var(--seg-follow-lag) ease-out,scale .4s var(--ios-motion-lens-easing)}   /* 按住滑动：透镜跟手（spec §2 T4） */
-  /* ---- Tab-bar lifted lens (界面2号, assets/lens/tab-lens.js; web/assets/lens/README.md §0.8 / §0.8.1 / §0.8.3). The script adds `tlens` to
-     nav.tabs and draws the lifted lens as a fixed element .tabbar-lens outside the bar (its page copies must not sit under nav.tabs's button
-     rules); the bar itself only carries the platter's presentation scale 1 → 1.0516 about its centre (tab-lens-native.md §3: .plat, .seg and
-     .glide all present inside the scaled platter) and the resting selection view's fade (_UITabSelectionView α 1 → 0 on the lift spring,
-     tab-lens-motion.md §0) — the glide's own scale lifts above are off while the script draws (they were the lens before this). */
-  nav.tabs.tlens .plat,nav.tabs.tlens .seg{transform:scale(var(--tplatter-scale, 1));transform-origin:50% 50%}
-  nav.tabs.tlens .glide{transform:scale(var(--tplatter-scale, 1));opacity:var(--tsel-alpha, 1)}   /* transform-origin = the platter centre, set by the script */
-  nav.tabs.tlens .glide.lift,nav.tabs.tlens .glide.lift-sel,nav.tabs.tlens.drag .glide.lift-sel{scale:1 1}
-  .tabbar-lens{position:fixed;left:0;top:0;width:0;height:0;pointer-events:none;z-index:7;display:none;--rr:27px}
-  .tabbar-lens.on{display:block}
-  .tabbar-lens .stack{position:absolute;inset:0}   /* filter: url(#tab-lens-f-ab-<w>) set per frame (layer 5, the colour fringe) */
-  .tabbar-lens .base{position:absolute;inset:0;overflow:hidden}
-  .tabbar-lens .warp,.tabbar-lens .warpl,.tabbar-lens .ish{position:absolute;overflow:hidden}   /* the lens box (left/top/width/height per frame) */
-  .tabbar-lens .warpl,.tabbar-lens .ish{border-radius:var(--rr)}
-  .tabbar-lens .disp,.tabbar-lens .displ{position:absolute;inset:0;overflow:hidden}   /* filter: url(#tab-lens-f-bg-<w>) / url(#tab-lens-f-lab-<w>) per frame */
-  .tabbar-lens .displ{border-radius:var(--rr)}   /* the label copy is capsule-clipped BEFORE its filter (ClearGlass masksToBounds r35) */
-  .tabbar-lens .ish{background:#000;filter:url(#tab-lens-f-ish);opacity:0}   /* inner shadow #37: keys .06 / (0, 7) / r 3 (tab-lens-native.md §0), the filter is keyfill §5.2c's construction */
-  .tabbar-lens .copy{position:absolute;inset:0}
-  .tabbar-lens .pl{border-radius:999px;overflow:hidden;box-shadow:var(--glass-diffuse);transform-origin:50% 50%}   /* the platter copy: the same capsule, fill and rim as .plat, the blur on a page clone */
-  .tabbar-lens .pl .inv{position:absolute;inset:0;transform-origin:50% 50%}   /* the page inside stays 1:1 while the capsule scales (the BackdropView captures the screen) */
-  .tabbar-lens .pl .blurpg{filter:var(--glass-filter);overflow:hidden}
-  .tabbar-lens .pl .fill{position:absolute;inset:0;border-radius:999px;background:var(--glass-fill);box-shadow:var(--glass-rim)}
-  .tabbar-lens nav.tabs{transform-origin:50% 50%}   /* the item shells: the platter's frame, scaled with it; the buttons get their normal dress from the rules above */
-  .tabbar-lens nav.tabs .seg button{transform:scale(var(--titem, 1));transform-origin:50% 50%}   /* the SelectedContentView copy: items 1 → 1.16 about their own centres (label layer only; --titem unset elsewhere) */
   nav.tabs button{position:relative;width:var(--ios-tab-button-w);flex:0 1 auto;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;
                   height:var(--ios-tab-button-h);padding:6px 8px 7px;border-radius:var(--ios-tab-lens-radius);font-size:var(--ios-tab-label-size);line-height:12px;font-weight:var(--ios-headline-weight);   /* 按钮 94×54 r27、字 Semibold 10 ← 探针（5 个标签放不下 5×94 时等比缩）；6/8/7 待 tokens，但 4 + 6 + 28 + 1 = 39 = --ios-tab-label-top ← 探针 */
                   background:transparent;box-shadow:none;color:var(--tab);white-space:nowrap;transition:color .2s}
@@ -314,7 +292,7 @@
   /* One device pixel, like UITableView's hairline (1/scale pt): a 1px box scaled to a third. */
   .row::after{content:"";position:absolute;left:var(--ios-separator-inset-l);right:var(--ios-separator-inset-r);bottom:0;height:var(--ios-separator-h);background:var(--line)}   /* 分隔线 1.0 pt (60,60,67).12，内缩 20/20 ← 探针 */
   .row:last-child::after,.group > :last-child.row::after{display:none}
-  .row:has(> .sw):active,.row:has(select):active{background:color-mix(in srgb, var(--ink) 6%, var(--card))}
+  /* switch / select rows are not selectable cells: no highlight (state-tables/cell.md; B14 controls.css) */
   .row > label{flex:1 1 0;min-width:40%;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 2026-09-19：标题一行到底、尾部省略——设置的值行标题从不换行（AX-41 / AX-46 全部单行） */
   .row > :not(label){flex:0 1 auto;min-width:0;max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 值最多 60 %，先省略值再省略标题（标题保底 40 %） */
   .row > .sw,.row > input,.row > select,.row > .sf,.row > .chev{overflow:visible;flex-shrink:0}
@@ -327,7 +305,7 @@
   .row.nav{cursor:pointer;padding-right:var(--ios-chevron-inset)}
   .row.nav .val{color:var(--dim);font-size:var(--ios-body-size);line-height:var(--ios-body-lh);text-align:right;flex:0 1 auto;max-width:48%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 值过长时尾部省略，不换行（设置值行的做法） */
   .row.nav .sf.chev{width:var(--ios-chevron-w);height:var(--ios-chevron-h);background:var(--ios-tertiary-label);flex:none;margin-left:calc(var(--ios-value-gap) - var(--ios-value-gap))}
-  .row.nav:active{background:color-mix(in srgb, var(--ink) 6%, var(--card))}
+  /* .row.nav press state: controls.js / controls.css (B14: cell-native.md §0 colours, 150 ms delay, .5 s release fade) */
   /* 勾选页（AX-38）：全屏遮罩 .2 + 从状态栏底（AX-38 y 62 = env(safe-area-inset-top)，standalone black-translucent 下正是 62 = --ios-status-h）起的页，
      顶角 38（--ios-sheet-radius-top），底 = systemGroupedBackground（设置的弹出页是不透明分组底） */
   .sheet{position:fixed;inset:0;z-index:20;display:none;--bg:var(--ios-grouped-bg-elevated);--card:var(--ios-card-bg-elevated)}   /* 弹出页是 elevated 层：暗色底 (28,28,30)、卡 (44,44,46) ← 探针 levels（--ios-*-elevated）；亮色与 base 相同 */
@@ -350,7 +328,7 @@
   .sheet .row.check .sf.ck{width:19px;height:17.33px;background:var(--ios-tint);flex:none;visibility:hidden}   /* ✓ 19×17.33 tint ← AX-38 帧；色 = 设置勾选蓝 */
   .sheet .row.check.on .sf.ck{visibility:visible}
   .sheet .row.check .pico{width:var(--ios-row2-icon);height:var(--ios-row2-icon);border-radius:6px;flex:none}   /* 行内图标 28 ← AX-46 图标行（--ios-row2-icon） */
-  .sheet .row.check:active{background:color-mix(in srgb, var(--ink) 6%, var(--card))}
+  /* .sheet .row.check press state: controls.js / controls.css (B14) */
   html.sheet-open{overflow:hidden}
   /* Behaviour 5: the sheet's present / dismiss = UISheetPresentationController large detent (remote-ref/pagesheet-motion.md, iOS 27.0 probe,
      CAAnimation hook + per-frame presentation): UIDropShadowView.position 956 → 62 (894 pt) and UIDimmingView 0 → black .2 on ONE spring
@@ -469,7 +447,11 @@
      not stretch - the old 「lands then relaxes」 keyframes came from a recording, not a
      source (spec-extract.md ⑤: transform is a single CASpringAnimation). */
   /* 班次分段控件（34 屏幕时间「每周 / 每天」）：400×32 r16、透镜 28 r14 内缩 2、字 MediumG3 13 / RegularG3 13 ← 探针 UISegmentedControl；
-     放在卡片位置（x 20 宽 400；34 里是 x 40 宽 360，页顶无卡时的写法），透镜材质 采样替代 → 用白底 + 阴影近似 */
+     放在卡片位置（x 20 宽 400；34 里是 x 40 宽 360，页顶无卡时的写法）。静止平台材质 = 原值（menu-card-material.md §2，老网页反编译 -[UISegmentedControl
+     _updateSelectionIndicator] 0x1c4137230 → 建透镜 0x1c4135050–0x1c4135120）：restingBackground = UIView，backgroundColor = _controlForegroundColor（0x1c4135064；
+     数据 getter 亮 (255,255,255,1) / 暗 (235,235,245,.30) = --ios-segment-selected-bg）；普通合成——kCAFilterPlusL（0x1c41350b0）只在 _segmentedControlFlags
+     位 37 useSpringBoardVibrancy 置位的分支（0x1c4135084–0x1c413508c）才设，普通 app 未置（老网页 §2 更正 13:2x；数据探针 sdfdump ④：compositingFilter 无）
+     → 页面 source-over，不加 blend；圆角随透镜 14；restingShadowProperties / restingBorderColor 分段控件不设 → 无阴影无边 */
   .segctl{position:relative;display:flex;height:var(--ios-segment-h);padding:var(--ios-segment-lens-pad) 0;border-radius:var(--ios-segment-radius);background:var(--ios-segment-track);margin:var(--ios-group-gap) 0 0;   /* segments at the full pitch (400 / n = 200; labels centred at 120 / 320), the lens inset 2 pt inside its segment (196×28 at 22 / 222 ← seg-native-abc-frames.json rest rects) */
           touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}   /* 轨道 = tertiarySystemFill .12 / 暗 .24 ← 探针 lensdiff；控件自己接管触摸（竖向滑出 64 pt 仍选中，spec §1 G17） */
   /* The selection lens. Position by `left` (a percentage of the control, so the lifted width does not move it), size by width/height: the lift is a
@@ -560,6 +542,18 @@
   .segctl .warpl{position:absolute;z-index:7;left:0;top:0;width:0;height:0;pointer-events:none;display:none;overflow:hidden;clip-path:inset(0 round var(--rr, 14px))}
   .segctl .warpl .displ{position:absolute;inset:0;overflow:hidden;border-radius:var(--rr, 14px)}   /* filter: url(#seg-lens-f-lab-<w>) set per frame; clipped to the capsule BEFORE the filter */
   .segctl.lift .warp,.segctl.lift .warpl,.segctl.lift .plat,.segctl.lift .rimb,.segctl.lift .hlk,.segctl.lift .hlw{display:block}
+  /* WebGL lens (view.js segGlCreate, 2号 lens-webgl.js README §0.8.7): the overlay canvas = the control's width, 24 pt above and below it (the lifted lens is
+     6 pt outside the control, the wrapper 16 more); it paints the capsule and, outside it, only the ring shadow and the dark line's row — the DOM shows through.
+     Under .gl the SVG stack stays built but hidden; the resting platter is the DOM .lens (the canvas is cleared at rest); while lifted the platter's
+     1 − lp fade is the shader's own layer (dc2af2a: setState platter {rgba, alpha} — above the displaced backdrop, below the lines and labels, §4b) and
+     the .lens is transparent as in the SVG path (.segctl.lift .lens). */
+  .segctl canvas.glens{position:absolute;left:0;top:-24px;width:100%;height:calc(100% + 48px);pointer-events:none;z-index:9;display:block}
+  .segctl.gl .stack,.segctl.gl .rimo,.segctl.gl .hlk,.segctl.gl .hlw{display:none !important}
+
+  /* A 起手预建 (view.js segPrewarm / segLens prewarm): the layers painted once at load, at rest geometry and opacity .01 (a fully transparent layer may not be
+     rasterised), the white .lens untouched — the engine builds the filter pipeline and the compositing layers before the first touch */
+  .segctl.prewarm .stack,.segctl.prewarm .rimo,.segctl.prewarm .hlk,.segctl.prewarm .hlw,.segctl.prewarm .warp,.segctl.prewarm .warpl,.segctl.prewarm .plat,.segctl.prewarm .rimb{display:block}
+  .segctl.prewarm .stack,.segctl.prewarm .rimo,.segctl.prewarm .hlk,.segctl.prewarm .hlw,.segctl.prewarm .warp{opacity:.01}
   .segctl .warp .copy,.segctl .warpl .copy,.segctl .warp .punch .copy{position:absolute;left:0;top:0;display:flex;padding:var(--ios-segment-lens-pad) 0;box-sizing:border-box}
     /* B3 follow-up: the content (and the lens's commit slide, the same render) switch at the native valueChanged time after the up — seg-value-change-content.md §0:
        +92 / +68 / +50 / +66 ms in the four recordings (median 67; 66 taken, one of the samples), the same frame the lens starts to glide; after a
@@ -579,19 +573,21 @@
      sub-px borders are snapped to whole CSS px by Blink, stroke geometry is not. Each layer fades with the glass progress (opacity --lp). */
   .segctl .rimb,.segctl .hlk,.segctl .hlw{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;display:none;border-radius:var(--rr, 14px)}
   .segctl .rimb{z-index:6}
-  .segctl .hlk,.segctl .hlw{z-index:8;overflow:visible;opacity:var(--lp, 0)}
+  .segctl .hlk,.segctl .hlw{z-index:8;overflow:visible;opacity:var(--lp, 0);clip-path:inset(12px round var(--rr, 14px))}   /* B6-c §3: the stacks clipped to the capsule (the SVG box = lens box + 12 px): the native has nothing outside it (row 602 x 108–123 = page); ?segx=hlclip0 lifts the clip */
   .segctl .hlw{mix-blend-mode:plus-lighter}
   .segctl .rimb > *,.segctl .rimo > *{position:absolute;pointer-events:none;opacity:var(--lp, 0);box-sizing:border-box}
   /* ④ #21 inner shadow (keyfill-highlight.md §5.2; layer keys seg-lens-refraction.md §1c(b): invertsShadow 1, shadowPathIsBounds 1, r22 capsule,
      black .06, radius 3, offset (0, 7), masksToBounds 1). Readings (predict-seg-hold.md §0d, QuartzCore decompile by the old page session): the
      blur kernel is a true Gaussian with σ = shadowRadius in pt (3), the offset is applied as a float (no rounding), α = color.a × shadowOpacity ×
-     layer opacity with no other factor; invertsShadow = the shape's complement blurred, translated by the offset, clipped by the shape — CSS
-     `box-shadow: inset` is the same construction with blur = 2σ = 6 px. Position: the #21 frame's top edge lies 1 pt inside the lens (603) and
-     603 + 7 = the measured half-value edge 610, so on this element (the lens box, top 602) the offset is 8. Amplitude: the reading .06 is drawn;
-     the raster reads .043 — the difference is unresolved (the data session is reading #21's opacity / compositingFilter / the parent's opacity /
-     allowsGroupOpacity for a factor; changed the moment it lands). The three ride the lift like the native layer's (§1c(b): offset, opacity and
-     radius on one curve → × --lp). Black on the dark theme's black page = invisible, as measured (§1c(e) dark: 0). */
-  .segctl .rimb .ish,.segctl .rimo .ish{inset:0;border-radius:inherit;box-shadow:inset 0 calc(8px * var(--lp, 0)) calc(6px * var(--lp, 0)) 0 rgb(0 0 0 / .06)}
+     layer opacity with no other factor. B6-c §4 (keyfill §5.2c, QuartzCore emit_shadow_path 0x1c3ad0d3c, the inverted branch): α(p) = op · M(p) ·
+     blur_σ(M − M↓offset)(p) — the shape MINUS its own copy moved down by the offset, blurred, clipped back to the shape; NOT the complement blurred
+     (CSS box-shadow: inset gives .057 on the top rows where the raster reads .033 / .039). The plateau .045 = .06 × .758 (the 7-pt band eaten 24 % by
+     the σ-3 kernel) — the measured .043 is not a factor. Drawn by #seg-lens-f-ish (2号 lens-filter.svg) on a black capsule = the lens box, offset 7;
+     WebKit 3 px/pt column x 220 rows 602–613: .034 .038 .044 .046 .044 .038 .033 .025 .016 .008 .003 0 vs the closed form .033 .039 .044 .045 .044
+     .039 .033 .026 .019 .012 .007 .004 (602–609 within .001). The three ride the lift on one curve (§1c(b)): dy 7·lp, σ 3·lp, slope .06·lp set per
+     frame. Unresolved: the ends (row 616, x 111 …) — the closed form gives .029 peak where §5.2 read +3.8 … +1.9 (≈ .016 → .008); for the data session.
+     Black on the dark theme's black page = invisible, as measured (§1c(e) dark: 0). */
+  .segctl .rimb .ish,.segctl .rimo .ish{inset:0;border-radius:inherit;background:#000;filter:url(#seg-lens-f-ish);opacity:1}   /* B6-c §4: the band construction op·M·blur_σ3(M − M↓7) as #seg-lens-f-ish on a black capsule = the lens box (top 602, offset 7 inside the filter); the lift ramp is on the filter's dy / σ / slope (view.js), not on the opacity */
   /* the SVGs: lens-box coordinates inside a 12 px margin (the ring shadow's blur reaches 3σ = 9 pt out, the dark line .667); width / height attributes = box + 24 */
   .segctl .rimb svg,.segctl .rimo svg,.segctl .hlk,.segctl .hlw{overflow:visible}
   .segctl .rimb svg,.segctl .rimo svg{left:-12px;top:-12px}   /* the highlight SVGs get their box (lens box + 12 px margin) from the loop: WebKit clips an outer <svg> to its box whatever overflow says */
@@ -605,16 +601,14 @@
   /* ② glassBackground's built-in KeyFill term (keyfill-highlight.md §5.1; keys §1c(g) 实读: KeyFillHighlightAmount .5, ColorBias −.3,
      EffectOffset −.6667, Height 1, Angle π/2, SpreadSDR 2.0944 (SDR)): the 1 pt band from .667 OUTSIDE to .333 inside the capsule (e = −(d − .667)),
      profile .25 + .75·(1 − e) (curvature .75), lit along dir = (sin θ, −cos θ) = (1, 0): at the ends one of key / fill has ang 1, on the top / bottom
-     both have (0 + .5)/1.5 = .333; k = key′ + fill′, x′ = x/(1 + .5(1 − x)); colour B·(1 + (−.3)·k·(3 − 2B)). Three 1/3 pt ring strokes (rect.kf,
+     both have (0 + .5)/1.5 = .333; k = key′ + fill′, x′ = x (the uniform amount is loaded as 1/.5 − 2 = 0, keyfill §5.1 B6-3; B6-c §1); colour B·(1 + (−.3)·k·(3 − 2B)). Three 1/3 pt ring strokes (rect.kf,
      whole device rows at 3×); the colouring's B-dependence is black source-over with stroke-opacity .3·k_tip·(3 − 2B_track) for the track the ends
      lie on (B_track from the theme's --bg + --ios-segment-track), the angular factor k(x)/k_tip along the arcs as the stroke's gradient
      (stop-opacity = the §5.1 formula at n_x = −1 … 0), and × (3 − 2B_page)/(3 − 2B_track) above / below the track rows as the group's mask.
-     Known residual (verification, not tuned): with these keys the top / bottom rows come out 7–9 levels lighter than the native 601 / 646
-     (predicted −18.9 / −21.3 vs −26.6 / −29.9); the ends match (col 111 192.9 vs 192.4). Read (predict-seg-hold.md §0 3c, keyfill-highlight.md
-     §5.1): dir = (sin θ, −cos θ) = (1, 0) (render 0x1c3993f44 / 0x1c39940ec / 0x1c399471c), the Ext block extension 1 / bias-correction 1 /
-     stroke 0 / luma-complement 0, EDR f = 0. The two things still unread that could carry the difference: (a) whether the CPU loads the Amount
-     uniform as 1/amount − 2 (the #36 layer's SDFNode::apply does — then k = v·ang and the rows predict −46 / −33 per third-row vs the measured
-     −47 / −33; old page session), (b) the SpreadSDR cos term S (read −.5; the data session's two sdfset trials separate it). */
+     Read (predict-seg-hold.md §0 3c, keyfill-highlight.md §5.1): dir = (sin θ, −cos θ) = (1, 0) (render 0x1c3993f44 / 0x1c39940ec / 0x1c399471c),
+     the Ext block extension 1 / bias-correction 1 / stroke 0 / luma-complement 0, EDR f = 0, S = cos 2.0944 = −.5. With the uniform amount 0 (B6-c §1)
+     the tip value kfK(v, −1) = v (.875 / .625 / .375) and the top / bottom value 2v/3 — predict §6.1: row 601 px rows 197 / 211 / 224 (mean −26.5;
+     native −26.6), row 646 −26.5 − 3.3 (ring-shadow tail) = −29.8 (native −29.9), y616 x110 + x111 −53.1 (native −53). */
   .segctl .rimb rect.kf,.segctl .rimo rect.kf{fill:none}
   /* ① #36 CASDFKeyFillHighlightEffect layer + vibrantColorMatrix (keyfill-highlight.md §2 / §3, the 22 keys of seg-lens-refraction.md §1b #36):
      α(e) over the depth e into the capsule = main band (h 1, curvature .75 → .25 + .75(1 − e)) + diffuse tail (h 8, linear, bias 1/(.15·.5) − 2 =
@@ -624,15 +618,20 @@
      through the matrix (predict-seg-hold.md §0 item 6: main band, diffuse key, diffuse fill; summed-α would give 35 on the dark edge row, three
      passes 44.0, measured 45.3), so there are two pairs in paint order: .hlk.m, .hlw.m (main band), .hlk.d, .hlw.d (diffuse; key and fill never
      overlap, one pair carries both). Rings: 1/3 pt over the first pt, 1 pt to
-     8 pt; per-ring α = the formula's mean over the ring — hard-edged rings: the shader's fwidth antialiasing term (aa = saturate(e/fw + .5) at
-     both band edges) is not drawn because the unit of fw on this layer (device px at which contentsScale) is unread; the difference of the three
-     passes to the measured dark edge row (44.3 vs 45.3) stays recorded as unread, not patched. Engine fact: the white plus-lighter stack clamps
+     8 pt; per-ring α = the formula's mean over the ring. B6-c §2 (keyfill §2 B6-2): the shader's antialiasing aa = saturate(e/fw + .5) · saturate((h − e)/fw
+     + .5) has fw = fwidth(e) = (|n_x| + |n_y|)/contentsScale pt per fragment (⅓ pt on the straight edges at 3×, .471 on the 45° arc), sampled at pixel
+     centres — on the straight edges the ramp ends exactly at the neighbouring pixel centres, i.e. identical to these hard ⅓-pt rings read at their
+     centres (244 / 197 / 211 / 224 / 244); on the arcs it equals the rasteriser's coverage AA of the strokes (a ramp (|n_x| + |n_y|) px wide along
+     the normal) — so no extra ring; the rings must be rasterised at the device scale (default shape-rendering). Residual: the shader's inner tail for
+     e ∈ (1, 1 + fw/2) ≈ 7/255 vs coverage AA ≈ 9/255 one pixel inside the arc — recorded; the difference of the three passes to the measured dark edge
+     row (44.3 vs 45.3) stays recorded as unread, not patched. Engine fact: the white plus-lighter stack clamps
      the SUM at 255 where the native clamps V(b) = min(255, .9118·b + 37.5) before the α mix — the two agree for backdrops ≤ .9354·255 (238.5)
      and differ only on brighter ones, i.e. the page rows under the bottom light line (642–645): +1.1 / +1.6 / +1.1 / +2.7 over predict-seg-hold
      §1; the exact form would be one backdrop-filter: contrast(.756) brightness(1.206) (= V with its clamp) per ring under opacity α — 13
-     backdrop filters, not done (监督局 2026-09-19). Angular fall-off along the
-     arcs as the strokes' gradients: main sat((cos φ − .174)/.826) (gone at 80° from the top → no light line at the ends, §0a), diffuse the first
-     ring's ratio (cos .6155: gone at 52°; the deeper rings fall off faster than this — ≤ 2 levels on the arcs). The dark theme needs no separate
+     backdrop filters, not done (监督局 2026-09-19). B6-c §4b: the main band is drawn on the two straight runs only (predict-seg-hold.md §6.1 rows 5–6 —
+     the native arc rows 603–605 at x_arc + .5 carry no lightening, the corner outside the capsule is page; keyfill §0a item 2 withdrawn): two <line>
+     per ring, x ∈ [R, W − R], plain colour; the diffuse tail stays a full ring under the first ring's angular ratio (cos .6155: gone at 52°; the
+     deeper rings fall off faster than this — ≤ 2 levels on the arcs). The dark theme needs no separate
      values: the same map on B = 0 gives .1471·α → 45.3 at the edge row, 10.0 at 603 (§3 table). */
   .segctl .hlk rect,.segctl .hlw rect{fill:none}
   .segctl + section > .group:first-child,.segctl + section > h2{margin-top:0}
@@ -657,7 +656,7 @@
   .acts button{position:relative;font:inherit;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);border:0;border-radius:0;padding:calc((var(--ios-row-h) - var(--ios-body-lh))/2) var(--ios-row-text-x);min-height:var(--ios-row-h);
                color:var(--link);background:var(--card);box-shadow:none;cursor:pointer;text-align:left;   /* 蓝字行 = 设置的 link 色 (0,122,255) ← 探针/px33d；行 53.33 */
                transition:background var(--ios-motion-row-release-duration) var(--ios-motion-ease-in-out)}   /* 行松开 0.5 s ease-in-out ← 探针 UITableViewCell；按下瞬时 */
-  .acts button:active,.acts button.pressed{background:color-mix(in srgb, var(--ink) 8%, var(--card));opacity:1;transition:none}   /* 按下填色 8% 无来源；.pressed 由指针状态机管（弹窗按钮无余量、相邻转移 ← spec §4 A2–A6） */
+  .acts button:active,.acts button.pressed{opacity:1}   /* press fill: controls.js .hl / .hl-out (B14, cell-native.md §0); the alert's own buttons keep their overlay (dialog rules below) */
   .acts button::after{content:"";position:absolute;left:var(--ios-separator-inset-l);right:var(--ios-separator-inset-r);bottom:0;height:var(--ios-separator-h);background:var(--line)}
   .group > .acts:last-child button:last-child::after{display:none}
   button{font:inherit;border:0;border-radius:999px;padding:8px 14px;color:var(--accent);
@@ -3917,26 +3916,39 @@
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
+  <filter id="seg-lens-f-ish" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB" data-op="0.06" data-offset="7" data-sigma="3">
+    <!-- #21 inner shadow, keyfill-highlight.md §5.2c: op · M · blur_σ(M − M↓off), op 0.06 / offset (0, 7) / σ = shadowRadius 3 pt; M = the element's own alpha (the capsule) — 2号 ui2 cbdd6f3 lens-filter.svg; view.js frame() rides dy / stdDeviation / slope on the lift progress -->
+    <feOffset in="SourceAlpha" dx="0" dy="7" result="moff"/>
+    <feComposite in="SourceAlpha" in2="moff" operator="out" result="band"/>
+    <feGaussianBlur in="band" stdDeviation="3" result="blur"/>
+    <feComposite in="blur" in2="SourceAlpha" operator="in" result="clip"/>
+    <feComponentTransfer in="clip" result="alpha"><feFuncA type="linear" slope="0.06" intercept="0"/></feComponentTransfer>
+    <feFlood flood-color="#000" flood-opacity="1" result="black"/>
+    <feComposite in="black" in2="alpha" operator="in"/>
+  </filter>
 </svg>
+<script>window.LENS_SS = new URLSearchParams(location.search).get("ss") === "1" ? 2 : 1; window.LENS_ENGINE_FIX = new URLSearchParams(location.search).get("enginefix") !== "0";</script>   <!-- 引擎校正（62 张 feImage 换 blob）默认开，?enginefix=0 关——数据 36916a9 开关归因：它对帧速无影响（76ccab4 / 998689c nofix 都慢），修右「班」折叠；拖慢主因 = 色散层（单开 37–38 ms/帧），超采样单开 27–30 ms → 两者仍默认关（?disp=1 / ?ss=1 开；监督局 09-19 12:3x） -->   <!-- 引擎校正 2 / 候选 A 默认关（监督局 09-19 11:1x）：?ss=1 才开 2× -->
+<script src="assets/lens/lens-supersample.js"></script>   <!-- 引擎校正 2 / 候选 A（2号 ui2 7c26d3b，README §0.4）：开时把 .warp .disp / .warpl .displ 包成 .ssw scale3d(½) + 2× 滤镜层 + .ss2，滤镜 data-s ×2、区域 50 %（data-s0 = 文件 S）；必须在 lens-engine-fix.js 之前（它读 window.LENS_SS / data-s0） -->
+<script src="assets/lens/lens-webgl.js"></script>   <!-- WebGL 透镜（2号 ui2 fb7bbdc，README §0.8.7）：同一套贴图与反编译常量的两遍片元着色器；view.js segLens 有 webgl2 且非 ?gl=0 时在 .segctl 建 canvas.glens 每 tick setState，SVG 栈隐藏；?gl=0 回 SVG 栈 -->
 <script src="assets/lens/lens-engine-fix.js"></script>   <!-- 引擎校正（2号 ui2 bed84e4，web/assets/lens/README.md §0.4）：按 devicePixelRatio 把每张 -f-bg- / -f-lab- 贴图的负位移加长一个设备像素（2× ½、3× ⅓）写成 blob 副本换进 feImage（data-engine-fixed 可查），贴图文件与彩边链不动；关法 window.LENS_ENGINE_FIX = false -->
 <!-- 推入页（UINavigationController push）：回执全表、以后的库存页；导航栏 54 at 62、返回 44 at 20 ← AX-11 / AX-46 -->
 <div class="page" id="subpage" hidden role="region">
   <div class="pnav"><button type="button" class="navbtn pback" aria-label="返回"></button><span class="ptitle"></span></div>
   <div class="pbody"></div>
 </div>
-<script src="schema.js?v=20260919095527"></script>
-<script src="net.js?v=20260919095527"></script>
-<script src="pending.js?v=20260919095527"></script>
-<script src="live.js?v=20260919095527"></script>
-<script src="stamina.js?v=20260919095527"></script>
-<script src="inventory.js?v=20260919095527"></script>
-<script src="view.js?v=20260919095527"></script>
-<script src="assets/lens/tab-lens.js"></script>   <!-- the tab bar's lifted lens (界面2号 ui2; web/assets/lens/README.md §0.8.3): watches .glide's lift classes, draws the lens; ?tlens=0 off -->
-<script src="alert-prewarm.js?v=20260919095527"></script>   <!-- the alert glass layer built once at load: first open as fast as the second (web/alert-prewarm.js) -->
+<script src="schema.js?v=20260919180233"></script>
+<script src="net.js?v=20260919180233"></script>
+<script src="pending.js?v=20260919180233"></script>
+<script src="live.js?v=20260919180233"></script>
+<script src="stamina.js?v=20260919180233"></script>
+<script src="inventory.js?v=20260919180233"></script>
+<script src="view.js?v=20260919180233"></script>
+<script src="alert-prewarm.js?v=20260919180233"></script>   <!-- the alert glass layer built once at load: first open as fast as the second (web/alert-prewarm.js) -->
+<script src="controls.js?v=20260919180233"></script>   <!-- row press (B14) / switch (B13) state machines; after view.js (it takes .acts button over from installPressables) -->
 <script>/* 验收脚本只在地址带 ?accept 时加载（docs/HIG-CHECKLIST.md 的验收程序）。分段透镜逐帧记录器（界面2号 seg-frames-logger.js）在 ?accept / ?diag / ?segframes 时加载，
    它自己看查询串，其它时候什么都不做。 */
 { const q = new URLSearchParams(location.search);
-  if (q.has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260919095527"; document.body.appendChild(s); }
+  if (q.has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260919180233"; document.body.appendChild(s); }
   if (q.has("diag") || q.has("segframes")) { const s = document.createElement("script"); s.src = "seg-frames-logger.js"; document.body.appendChild(s); }
   /* ?segx=a,b,… : layer / map switches for the simulator-standalone experiments (remote-ref/tools/webkit/b6/ios-switch-list.md). Works with or without
      ?seghold. nowarp | norimb | nohl | nowarpl | noplat hide one lens layer (visibility, so the loop still runs); mapflat swaps every displacement map for
@@ -3946,11 +3958,29 @@
      mean alpha — an antialiasing experiment for the 3× raster, not a drawing. noab (or data-dispersion="0" on the control) leaves the layer-5 colour-fringe chain off. Round 3 (监督局 09-19 点头, experiments only — same
      formulas and numbers, another drawing): nokfmask = the dark line's three rings without the SVG <mask> (the page factor is then not applied);
      hlcss = the highlight's four passes as CSS inset box-shadow ring stacks + mask-image gradients on plain divs instead of SVG strokes. */
-  if (q.has("segx")) { const sw = q.get("segx").split(",");
+  /* 仪器 (监督局 09-19): the engine-correction blob swap (lens-engine-fix.js, 2号) seen from outside — it starts its work at DOMContentLoaded and fires
+     "lens-engine-fix" when every map has been swapped; the measure seg:enginefix spans the two, window.__segEngineFix says how many feImage hrefs
+     were swapped and with which k. A swap changes a filter's input, so a frame inside this span re-renders the lens filters. */
+  { let t0 = 0; addEventListener("DOMContentLoaded", () => { t0 = performance.now(); performance.mark("seg:enginefix-start"); });
+    addEventListener("lens-engine-fix", () => { try { performance.measure("seg:enginefix", { start: t0, end: performance.now() }); } catch (e) {}
+      window.__segEngineFix = { maps: document.querySelectorAll("feImage[data-engine-fixed]").length, k: window.LENS_ENGINE_FIX_K, ms: Math.round((performance.now() - t0) * 10) / 10 }; }); }
+  /* ?segx1=<key> (首张玻璃帧开关清单, 验收 09-19 13:0x): one layer / filter of the first lifted frame per key, same set as ?segx (view.js SEGX merges both):
+     nowarp (§4b L1 BackdropView copy .warp) · nobgmap (its displacement filter #seg-lens-f-bg only, view.js frame()) · nopunch (§4b L0 DestOut: the label
+     copy with the capsule cut, .warp .punch) · nowarpl (§4b L2+L4 label copy .warpl) · nolabmap (its filter #seg-lens-f-lab only) · noplat (restingBackground
+     .plat) · nobase (.stack .base plain page copy) · nostackclip (.stack clip-path) · noish (§4b L3 #21 inner shadow filter σ3) · nors (L3 ring shadow blur) ·
+     nokf (L3 KeyFill dark line rings) · nokfmask (its SVG mask) · norimo (the outside clone .rimo) · nohl (§4b L6 #36 highlight, all four SVGs) · nohlk / nohlw
+     (black / white stacks) · nohlm / nohld (main / diffuse pairs) · hlclip0 (their capsule clip) · nolensbg (keep the white .lens under the glass) · scale0
+     (displacement scale held at 0) · mapflat (1×1 constant maps) — structural: nokeep (layers display:none from the down to the lift, the pre-286c4d2
+     behaviour) · gpu (will-change: transform on .stack/.rimo/.hlk/.hlw/.warp/.warpl) · plus ?prewarm=0 / ?bake=1 (2号 lens-map-dpr.js) / ?enginefix=0. */
+  if (q.has("segx") || q.has("segx1")) { const sw = ((q.get("segx") || "") + "," + (q.get("segx1") || "")).split(",").filter(Boolean);
     const css = []; if (sw.includes("nowarp")) css.push(".segctl .warp{visibility:hidden}"); if (sw.includes("norimb")) css.push(".segctl .rimb{visibility:hidden}");
+    if (sw.includes("hlclip0")) css.push(".segctl .hlk,.segctl .hlw{clip-path:none}");   // B6-c §3 before / after switch
     if (sw.includes("nohl")) css.push(".segctl .hlk,.segctl .hlw{visibility:hidden}"); if (sw.includes("nohlk")) css.push(".segctl .hlk{visibility:hidden}"); if (sw.includes("nohlw")) css.push(".segctl .hlw{visibility:hidden}");
     if (sw.includes("nowarpl")) css.push(".segctl .warpl{visibility:hidden}"); if (sw.includes("noplat")) css.push(".segctl .plat{visibility:hidden}");
     if (sw.includes("noish")) css.push(".segctl .rimb .ish{visibility:hidden}"); if (sw.includes("nors")) css.push(".segctl .rimb rect.rs{visibility:hidden}"); if (sw.includes("nokf")) css.push(".segctl .rimb .kfg{visibility:hidden}");
+    if (sw.includes("nopunch")) css.push(".segctl .warp .punch{display:none}"); if (sw.includes("nobase")) css.push(".segctl .stack .base{visibility:hidden}"); if (sw.includes("nostackclip")) css.push(".segctl .stack{clip-path:none}");
+    if (sw.includes("norimo")) css.push(".segctl .rimo{visibility:hidden}"); if (sw.includes("nohlm")) css.push(".segctl .hlk.m,.segctl .hlw.m{visibility:hidden}"); if (sw.includes("nohld")) css.push(".segctl .hlk.d,.segctl .hlw.d{visibility:hidden}");
+    if (sw.includes("nolensbg")) css.push(".segctl.lift .lens{background:var(--ios-segment-selected-bg)}"); if (sw.includes("gpu")) css.push(".segctl .stack,.segctl .rimo,.segctl .hlk,.segctl .hlw,.segctl .warp,.segctl .warpl{will-change:transform}");
     if (css.length) { const st = document.createElement("style"); st.textContent = css.join("\n"); document.head.appendChild(st); }
     if (sw.includes("mapflat")) for (const fi of document.querySelectorAll("filter[id^='seg-lens-f-'] feImage")) fi.setAttribute("href", "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mNoaPgPAAODAgA+WCglAAAAAElFTkSuQmCC");
     const only = sw.includes("maponlyr") ? "r" : sw.includes("maponlyg") ? "g" : "";
@@ -3959,6 +3989,19 @@
       cm.setAttribute("values", only === "r" ? "1 0 0 0 0  0 0 0 0 .5  0 0 1 0 0  0 0 0 1 0" : "0 0 0 0 .5  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"); fd.parentNode.insertBefore(cm, fd); fd.setAttribute("in2", "mapx"); } }
   /* ?seghold=1: the stopped-state gesture of remote-ref/seg-lens-drag-mid.md (down on the selected segment, 5 × 20 pt moves 16 ms apart to the divider,
      hold) run by the page itself once the control exists — for engines a script cannot drive from outside (wksnap offscreen WebKit, simulator Safari) */
+  /* ?segtap=<ms>: the tap gesture run by the page itself — pointerdown on the unselected segment's centre, pointerup 62 ms later (seg-native-tap-frames.json
+     up − down .062) — and the lens frozen at <ms> after the up (250 = glass sliding, 600 = fallen back to the solid platter): with rAF the loop is frozen by
+     a timer, without it (wksnap offscreen WebKit) the loop is stepped <ms>/16 virtual frames; the title carries the lens rect and the loop phase */
+  if (q.has("segtap")) { const ms = Math.max(0, parseInt(q.get("segtap"), 10) || 0); const go = () => { const seg = document.querySelector("#queueseg"); if (!seg) { setTimeout(go, 100); return; }
+      { const r0 = seg.getBoundingClientRect(), dy = Math.round(r0.top) - r0.top; if (Math.abs(dy) > .001) document.body.style.marginTop = `${dy.toFixed(3)}px`; }
+      const off = [...seg.querySelectorAll("button")].find((b) => !b.classList.contains("on")), ro = off.getBoundingClientRect(), x = ro.left + ro.width / 2, y = ro.top + ro.height / 2;
+      const pe = (type, buttons) => seg.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, clientX: x, clientY: y, isPrimary: true, pointerType: "touch", button: 0, buttons }));
+      let rafSeen = false; requestAnimationFrame(() => { rafSeen = true; });
+      pe("pointerdown", 1); setTimeout(() => pe("pointerup", 0), 62);
+      const done = () => { const l = seg.querySelector(".lens").getBoundingClientRect(), lp = seg.__lensLoop; document.title = `segtap ${ms} ${l.left.toFixed(2)} ${l.top.toFixed(2)} ${l.width.toFixed(2)} ${l.height.toFixed(2)} ${lp ? (lp.diag ? lp.diag.phase : "loop") : "no-loop"} lp ${seg.style.getPropertyValue("--lp") || "0"}`; };
+      setTimeout(() => { if (!rafSeen) return; const lp = seg.__lensLoop; if (lp) lp.freeze(); done(); }, 62 + ms);   // live engine: freeze the frame at up + ms
+      setTimeout(() => { if (rafSeen) return; const lp = seg.__lensLoop; if (lp) for (let i = 0; i < Math.ceil(ms / 16); i++) lp.step(16); done(); }, 700); };   // no rAF (offscreen WKWebView): virtual frames
+    setTimeout(go, 50); }
   if (q.has("seghold")) { const go = () => { const seg = document.querySelector("#queueseg"); if (!seg) { setTimeout(go, 100); return; }
       { const r0 = seg.getBoundingClientRect(), dy = Math.round(r0.top) - r0.top; if (Math.abs(dy) > .001) document.body.style.marginTop = `${dy.toFixed(3)}px`; }   // the control's top on a whole pt (the native sits at integer y 608; a fractional top smears every 1 pt line over two rows in the read-back; scrollBy does nothing in an offscreen WKWebView). A margin, not a translate: a transform on body — even a zero one — makes it a compositing layer and the highlight's plus-lighter blend (B6) then sees no backdrop in either engine
       const on = seg.querySelector("button.on"), sr = seg.getBoundingClientRect(), ro = on.getBoundingClientRect(), y = ro.top + ro.height / 2;

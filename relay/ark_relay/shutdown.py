@@ -164,6 +164,49 @@ def _round_is_manual(eng, new_entries: list[dict]) -> bool:
     return True
 
 
+# How far apart two consecutive records may be and still belong to one round:
+# a full queue is MAA then MaaEnd then OK-WW back to back, a hand-started run
+# comes hours after the morning one.
+ROUND_GAP_H = 2
+# AUTO-MAS retries a failed script inside the same queue run, but only after
+# its own timeout has expired on the failed attempt - 2026-09-19 OK-WW hung at
+# 09:34 and was killed and rerun at 11:35. Such a retry belongs to the round
+# of the attempt it repeats, however long the timeout was; the bound only
+# keeps a hand-run repeat the next afternoon from being chained back.
+RETRY_LINK_H = 4
+
+
+def _round_of_newest(entries: list[dict]) -> list[dict]:
+    """The records that make up the round the newest record belongs to.
+
+    Walk back from the newest record: the previous one is part of the same
+    round when this one starts within ROUND_GAP_H of its end, or when this one
+    is a retry of it (same script and user, the previous one failed, within
+    RETRY_LINK_H). The old rule - everything that started within two hours of
+    the newest - cut today's queue in half whenever a retry came late: on
+    2026-09-19 the tail (OK-WW retry 11:35, MaaEnd 11:42-12:09) was judged by
+    its own first record, 11:35 is not 09:00, so the round read as "started by
+    hand" and the machine stayed on all day.
+    """
+    def stamp(e: dict, key: str) -> datetime:
+        return datetime.fromisoformat(e[key]).astimezone(SERVER_TZ)
+    ordered = sorted(entries, key=lambda e: stamp(e, "started"))
+    group = [ordered[-1]]
+    for prev in reversed(ordered[:-1]):
+        cur = group[0]
+        cur_start = stamp(cur, "started")
+        prev_end = stamp(prev, "finished") if prev.get("finished") else stamp(prev, "started")
+        gap = cur_start - prev_end
+        same_script = (prev.get("script") == cur.get("script")
+                       and prev.get("user") == cur.get("user"))
+        retry = same_script and not prev.get("ok") and gap <= timedelta(hours=RETRY_LINK_H)
+        if gap <= timedelta(hours=ROUND_GAP_H) or retry:
+            group.insert(0, prev)
+        else:
+            break
+    return group
+
+
 def _last_round_manual(eng, now: datetime, entries: list[dict]) -> bool:
     """True when the day's most recent round was triggered by hand.
 
@@ -182,8 +225,10 @@ def _last_round_manual(eng, now: datetime, entries: list[dict]) -> bool:
     since = getattr(eng, "_gu_rerun_at", None)
     if since is not None and newest >= since:
         return False
-    group = [e for e, t in zip(entries, starts)
-             if newest - t <= timedelta(hours=2)]
+    try:
+        group = _round_of_newest(entries)
+    except (KeyError, ValueError, TypeError):
+        return False
     return eng._round_is_manual(group)
 
 

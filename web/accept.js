@@ -191,6 +191,7 @@
       if (lens) { num("分段透镜高 28（--ios-segment-lens-h）", 28, lens.getBoundingClientRect().height); num("分段透镜圆角 14（--ios-segment-lens-radius）", 14, px(cs(lens).borderTopLeftRadius)); num("分段透镜内缩 2（--ios-segment-lens-pad）", 2, lens.getBoundingClientRect().top - r.top);
         col("分段选中段 = _controlForegroundColor（--ios-segment-selected-bg）", dark ? [235, 235, 245, .3] : [255, 255, 255], cs(lens).backgroundColor);
         check("分段选中段无阴影（--ios-segment-selected-shadow）", "none", cs(lens).boxShadow, cs(lens).boxShadow === "none");
+        check("分段静止平台普通合成（menu-card-material.md §2 更正：kCAFilterPlusL 只在 useSpringBoardVibrancy 位置位的分支 0x1c4135084–0x1c413508c；探针 sdfdump ④ compositingFilter 无）→ source-over，不加 blend / isolation", "normal · auto", `${cs(lens).mixBlendMode} · ${cs(segc).isolation}`, cs(lens).mixBlendMode === "normal" && cs(segc).isolation === "auto");
         check("分段选中段无滤镜（--ios-segment-selected-filter）", "none", (cs(lens).backdropFilter || cs(lens).webkitBackdropFilter || "none"), /^none$/.test(cs(lens).backdropFilter || cs(lens).webkitBackdropFilter || "none")); }
       if (b) { num("分段文字 13（--ios-segment-label-size）", 13, px(cs(b).fontSize), 0.05); check("分段选中字重 500（--ios-medium-weight）", 500, cs(segc.querySelector("button.on") || b).fontWeight, String(cs(segc.querySelector("button.on") || b).fontWeight) === "500"); }
     }
@@ -433,23 +434,29 @@
         /* §1 G3: a 300 ms hold still selects nothing */
         await sleep(300);
         check("分段 G3 按住 300 ms 不选中", start, onText(), onText() === start && renders === r0);
-        /* §1 G1–G3 + B3: the up commits index + change + content together, at the native valueChanged time (+66 ms after a tap's up, seg-value-change-content.md §0) */
+        /* §1 G1–G3 + B3: the up commits index + change + content together, in the up's own task (view.js SEG_VC_NOW, 换值即抬手 — 监督局 09-19 15:5x; the native's
+           switch shows at up +50…92 in its recordings, seg-value-change-content.md §0, the page's with the +66 ms timer at +136…143 on the phone, data 78284dd) */
         const t0 = performance.now(); pev(seg, "pointerup", at(other)); const dt = performance.now() - t0;
-        check("分段 G1 抬手 +0：还没换值（valueChanged 在 +66 ms，--seg-commit-delay-tap ← seg-value-change-content.md §0 四次 +92/+68/+50/+66）", start, `${onText()} renders+${renders - r0}`, onText() === start && renders === r0);
-        await sleep(80);
-        check("分段 G1 抬手 +80 ms：同一帧改 index + change + 内容切（透镜同帧起动）", want, `${onText()} renders+${renders - r0}`, onText() === want && thisShift(want) && renders === r0 + 1);
+        check("分段 G1 抬手 +0：换值即抬手——选中态（标签 .on）与内容同一任务一帧替换（view.js SEG_VC_NOW；原 +66 计时器 + vcsplit 在真机落到抬手 +136…143，原生 +50…92 ← seg-value-change-content.md §0 / 数据 78284dd；?vcnow=0 回计时器）", `${want} renders+1`, `${onText()} renders+${renders - r0}`, onText() === want && renders === r0 + 1);
+        await sleep(100);
+        check("分段 G1 抬手 +100 ms：选中态与内容保持已换（只重画一次）；透镜由点按链自抬手起动", want, `${onText()} renders+${renders - r0}`, onText() === want && thisShift(want) && renders === r0 + 1);
         { const gone = document.querySelectorAll(".flipgone"), moved = [...document.querySelectorAll("#app > section")].filter((s) => /translateY\((-?[\d.]+)px\)/.test(s.style.transform) && Math.abs(parseFloat(s.style.transform.match(/translateY\((-?[\d.]+)px\)/)[1])) > 20);
-          check("分段 B3 换值那一帧：卡片内容直接换（renders+1，同一 tick）；删的行原地克隆淡出（起 .72）、下方内容从原位（+行高）起步（seg-value-change-content.md §0/§1，采样）", "clones .72 · sections offset", `${gone.length} clones ${gone.length ? cs(gone[0]).opacity : "-"} · ${moved.length} sections offset ${moved.length ? moved[0].style.transform : "-"}`, gone.length > 0 && Math.abs(parseFloat(cs(gone[0]).opacity) - .72) < .12 && moved.length > 0); }
+          const elF = performance.now() - t0, wantF = tabAt(FLIP_DEL_FADE, elF);   // the switch is at the up itself now: the clone's opacity read against view.js's §1 table at the actual elapsed time
+          check("分段 B3 换值后 +100 ms：卡片内容已换（renders+1）；删的行原地克隆在淡出途中（起 .72，+193 到 .04，切换即抬手：按实际时刻查 FLIP_DEL_FADE ± .1）、下方内容仍从原位（+行高）上滑（seg-value-change-content.md §0/§1，采样）", `clone ${wantF.toFixed(2)} ± .1 @ ${elF.toFixed(0)} ms · sections offset`, `${gone.length} clones ${gone.length ? cs(gone[0]).opacity : "-"} · ${moved.length} sections offset ${moved.length ? moved[0].style.transform : "-"}`, gone.length > 0 && Math.abs(parseFloat(cs(gone[0]).opacity) - wantF) <= .1 && moved.length > 0); }
         const lensNow = q().querySelector(".lens");
-        check("分段 G1 抬手：透镜走实测 x 路径 1.209 s（--ios-touch-segment-lens-x-keys）+ 边跑边胀关键帧", "1.209s linear(…) lens-stretch", `${cs(lensNow).transitionDuration.split(",")[0].trim()} ${cs(lensNow).transitionTimingFunction.slice(0, 7)} ${cs(lensNow).animationName}`, /^1\.209s/.test(cs(lensNow).transitionDuration) && /^linear\(/.test(cs(lensNow).transitionTimingFunction) && cs(lensNow).animationName === "lens-stretch");
-        await sleep(192); const sc192 = cs(lensNow).scale.split(" ").map(parseFloat);
-        num("分段 G1 +192 ms：透镜最宽 ×1.24（--ios-touch-segment-lens-w-keys）", 1.24, sc192[0], 0.06);
+        { const lp0 = q().__lensLoop; check("分段 G1 抬手：点按走 segLens 点按链（seg-lens-refraction §4.4：up +82 抬起几何 ζ1/.25 原位、+92 材质、+98 换值行程 ζ.85/.4、+443/+450 落回；view.js SEG_TAP_T），不再走 CSS 关键帧滑行", "loop phase tap · no lens-stretch", `${lp0 ? (lp0.state.done ? "done" : (lp0.diag ? lp0.diag.phase : "no tick")) : "no loop"} · ${cs(lensNow).animationName}`, !!lp0 && !lp0.state.done && !!lp0.diag && lp0.diag.phase === "tap" && cs(lensNow).animationName !== "lens-stretch"); }
+        await sleep(192);
+        { const lr = lensNow.getBoundingClientRect(), sr = q().getBoundingClientRect(), lp = parseFloat(q().style.getPropertyValue("--lp") || "0"), c = lr.left + lr.width / 2 - sr.left, el = (performance.now() - t0) / 1000;
+          const NT = [[.236, 229.65, 230.3], [.253, 240.8, 235.8], [.271, 249.8, 240.8], [.286, 257.15, 242.9], [.303, 263.6, 241.6], [.320, 269.25, 238.3], [.336, 274.6, 233.8], [.353, 279.55, 228.5], [.370, 284.2, 222.8]];   // native seg-native-tap-frames.json: t since up → lens centre (control coords = page − 20), width
+          let nc = NT[NT.length - 1][1], nw = NT[NT.length - 1][2]; for (let i = 1; i < NT.length; i++) if (el <= NT[i][0]) { const a = NT[i - 1], b = NT[i], u = Math.max(0, (el - a[0]) / (b[0] - a[0])); nc = a[1] + (b[1] - a[1]) * u; nw = a[2] + (b[2] - a[2]) * u; break; }
+          check("分段 G1 抬手 +272 ms：玻璃滑行中（--lp ≥ .8）、拉长（原生 seg-native-tap-frames.json 同时刻插值：中心 / 宽，控件坐标；容 ± 12；计时器实际时刻一并报）", `lp ≥ .8 · w ${nw.toFixed(1)} ± 12 · centre ${nc.toFixed(1)} ± 12 @ ${el.toFixed(3)}`, `lp ${lp.toFixed(3)} · w ${lr.width.toFixed(1)} · centre ${c.toFixed(1)}`, lp >= .8 && Math.abs(lr.width - nw) <= 12 && Math.abs(c - nc) <= 12); }
         { const gone = document.querySelectorAll(".flipgone"), moved = [...document.querySelectorAll("#app > section")].filter((s) => /translateY/.test(s.style.transform)), insR = [...document.querySelectorAll("#app .row")].filter((r) => r.style.opacity !== "" && parseFloat(r.style.opacity) < 1);
-          check("分段 B3 +192 ms：删的行淡到 ≤ .10（§1 +193 .04）、下方内容上滑途中（§0 +177 剩 24/133）、插的行淡入途中（§2 +190 a .39）", "clone ≤ .1 · sections still offset · inserted rows partly", `${gone.length ? cs(gone[0]).opacity : "no clone"} · ${moved.length} moving · ${insR.length} fading in ${insR.length ? insR[0].style.opacity : ""}`, gone.length > 0 && parseFloat(cs(gone[0]).opacity) <= 0.12 && moved.length > 0 && insR.length > 0 && parseFloat(insR[0].style.opacity) > 0.2 && parseFloat(insR[0].style.opacity) < 0.7); }
+          const elI = performance.now() - t0, wantI = tabAt(FLIP_INS, elI);   // the inserted rows against view.js's §2 table at the actual elapsed time (the switch is at the up)
+          check("分段 B3 抬手 +292 ms：删的行淡到 ≤ .10（§1 +193 .04）、下方内容上滑途中（§0 +177 剩 24/133，+400 到位）、插的行淡入途中（§2 表按实际时刻查 FLIP_INS ± .15）", `clone ≤ .12 · sections still offset · inserted ${wantI.toFixed(2)} ± .15 @ ${elI.toFixed(0)} ms`, `${gone.length ? cs(gone[0]).opacity : "no clone"} · ${moved.length} moving · ${insR.length} fading in ${insR.length ? insR[0].style.opacity : ""}`, gone.length > 0 && parseFloat(cs(gone[0]).opacity) <= 0.12 && moved.length > 0 && (insR.length > 0 ? Math.abs(parseFloat(insR[0].style.opacity) - wantI) <= .15 : wantI >= .95)); }
         await sleep(284);
         { const lr = lensNow.getBoundingClientRect(), sr = q().getBoundingClientRect(), lw = lensNow.offsetWidth, toI = parseFloat(q().style.getPropertyValue("--i")), fromI = toI === 1 ? 0 : 1;
           const segW = (sr.width / bs().length - 4), pos = (lr.left + lr.width / 2 - sr.left - 2 - segW / 2) / segW;   // centre-based in segment units (the lens now moves by `left`, its width breathes)
-          num("分段 G1 +476 ms：透镜过冲到行程 1.075（--ios-touch-segment-lens-x-keys）", 1.075, (pos - fromI) / (toI - fromI), 0.04); }
+          num("分段 G1 抬手 +556 ms：透镜在目标外过冲途中（原生 seg-native-tap-frames.json up+.553 中心 307.55 → 行程 1.038；换值弹簧 ζ.85/.4 + flex 漂移）", 1.038, (pos - fromI) / (toI - fromI), 0.05); }
         check("分段 B3 +476 ms：内容过渡收尾（+400 到位 → 克隆移除、transform / opacity 内联清空）", "clean", `${document.querySelectorAll(".flipgone").length} clones · ${[...document.querySelectorAll("#app > section, #app .row")].filter((e) => e.style.transform || e.style.opacity).length} inline`, !document.querySelectorAll(".flipgone").length && ![...document.querySelectorAll("#app > section, #app .row")].some((e) => e.style.transform || e.style.opacity));
         await sleep(800);
         /* §1 G4/G16: touch-down on the selected segment lifts the lens after ~100 ms (196×28 → 220×44), no event */
@@ -461,38 +468,47 @@
         check("分段 G16 按下已选中段 +160 ms：透镜抬起中（+109 ms 起，--ios-motion-seg-lift-easing .35 s 到 220×44；seg-lens-refraction §4.1）", "lift, 28 < h < 44", `${lens0.classList.contains("lift") ? "lift" : "-"} h ${h160.toFixed(1)}`, lens0.classList.contains("lift") && h160 > 28.5 && h160 < 43.5);
         /* lifted lens = glass ABOVE the labels + punched-out labels + a warped copy inside (uiprobe-lensdiff-seg: ClearGlassView / DestOutView /
            liftedContentWarpWrapper); --lp on the lenstrace curve (lens-refraction §4.1: 86 % at 153 ms) drives glass + warp */
+        const GLON = seg.classList.contains("gl");   // WebGL lens (view.js segGlCreate, lens-webgl.js): the SVG stack is built but hidden — its checks are recorded, not judged
+        const svgcheck = GLON ? ((name, want) => check(name + "【GL 模式：SVG 栈隐藏，不核】", want, "gl", true)) : check, svgnum = GLON ? ((name, want) => check(name + "【GL 模式：SVG 栈隐藏，不核】", String(want), "gl", true)) : num;
         { const lp = parseFloat(seg.style.getPropertyValue("--lp")), warp = seg.querySelector(".warp"), warpl = seg.querySelector(".warpl"), cb = warpl ? warpl.querySelectorAll(".copy .cb").length : 0;
           check("分段抬起 +160 ms：玻璃/位移进度 --lp = 透镜尺寸进度（§4.1：尺寸、圆角、位移量、白平台同一条曲线）", "0 < lp < 1, = (h−28)/16", `${lp} vs ${((lens0.getBoundingClientRect().height - 28) / 16).toFixed(3)}`, lp > 0 && lp < 1 && Math.abs(lp - (lens0.getBoundingClientRect().height - 28) / 16) < 0.12);
-          check("分段抬起：透镜层在标签之上（z 2）", "2", cs(lens0).zIndex, cs(lens0).zIndex === "2" && seg.classList.contains("lift"));
+          svgcheck("分段抬起：透镜层在标签之上（z 2）", "2", cs(lens0).zIndex, cs(lens0).zIndex === "2" && seg.classList.contains("lift"));
           { const br = px(cs(lens0).borderRadius), hh = lens0.getBoundingClientRect().height; check("分段抬起：几何走 width/height（真胶囊：圆角 = 高/2，14 → 22 与尺寸同曲线；seg-lens-refraction §0 220×44 r22）", "r ≈ h/2", `r ${br.toFixed(1)} h ${hh.toFixed(1)}`, Math.abs(br - hh / 2) < 1.2 && cs(lens0).scale === "1"); }
-          { const punch = warp && warp.querySelector(".disp .punch"), pcp = punch && punch.querySelector(".copy .cb");
-            check("分段抬起：底图复本 .warp 过 #seg-lens-f-bg-220、标签复本 .warpl 过 #seg-lens-f-lab-220（220 组，滤镜层 = 透镜盒 overflow hidden ← ui2 README §0.3）；B4-c' §4b：标签复本 = 整盒先裁胶囊再位移、无 196×28 门户；底图复本带 .punch（标签复本挖掉胶囊 = DestOut，clip-path evenodd）", `${bs().length} cb · disp url(#seg-lens-f-bg-220) · displ url(#seg-lens-f-lab-220) · no .portal · punch evenodd`, `${cb} cb · ${warp ? cs(warp.querySelector(".disp")).filter.slice(0, 26) : "-"} · ${warpl ? cs(warpl.querySelector(".displ")).filter.slice(0, 27) : "-"} · ${warpl && warpl.querySelector(".portal") ? "portal!" : "no .portal"} · ${punch ? (cs(punch).clipPath.startsWith("path(evenodd") ? "punch evenodd" : cs(punch).clipPath.slice(0, 20)) : "no punch"} ${pcp ? "+labels" : ""}`, !!warp && !!warpl && cb === bs().length && bs().length === 2 && /inset/.test(cs(warp).clipPath) && /inset/.test(cs(warpl).clipPath) && /url\("?#seg-lens-f-bg-220"?\)/.test(cs(warp.querySelector(".disp")).filter) && cs(warp.querySelector(".disp")).overflow === "hidden" && Math.abs(warp.querySelector(".disp").getBoundingClientRect().width - warp.getBoundingClientRect().width) < 0.5 && /url\("?#seg-lens-f-lab-220"?\)/.test(cs(warpl.querySelector(".displ")).filter) && !warpl.querySelector(".portal") && Math.abs(px(cs(warpl.querySelector(".displ")).borderRadius) - warpl.getBoundingClientRect().height / 2) < 1.5 && !!punch && cs(punch).clipPath.startsWith("path(evenodd") && !!pcp); }
+          { const punch = warp && warp.querySelector(".disp .punch"), pcp = punch && punch.querySelector(".copy .cb"), SSa = window.LENS_SS || 1;   // 引擎校正 2 (lens-supersample.js): the filtered layer is SS× the box inside a wrapper scaled 1/SS
+            svgcheck("分段抬起：底图复本 .warp 过 #seg-lens-f-bg-220、标签复本 .warpl 过 #seg-lens-f-lab-220（220 组，滤镜层 = 透镜盒 overflow hidden ← ui2 README §0.3）；B4-c' §4b：标签复本 = 整盒先裁胶囊再位移、无 196×28 门户；底图复本带 .punch（标签复本挖掉胶囊 = DestOut，clip-path evenodd）", `${bs().length} cb · disp url(#seg-lens-f-bg-220) · displ url(#seg-lens-f-lab-220) · no .portal · punch evenodd`, `${cb} cb · ${warp ? cs(warp.querySelector(".disp")).filter.slice(0, 26) : "-"} · ${warpl ? cs(warpl.querySelector(".displ")).filter.slice(0, 27) : "-"} · ${warpl && warpl.querySelector(".portal") ? "portal!" : "no .portal"} · ${punch ? (cs(punch).clipPath.startsWith("path(evenodd") ? "punch evenodd" : cs(punch).clipPath.slice(0, 20)) : "no punch"} ${pcp ? "+labels" : ""}`, !!warp && !!warpl && cb === bs().length && bs().length === 2 && /inset/.test(cs(warp).clipPath) && /inset/.test(cs(warpl).clipPath) && /url\("?#seg-lens-f-bg-220"?\)/.test(cs(warp.querySelector(".disp")).filter) && cs(warp.querySelector(".disp")).overflow === "hidden" && Math.abs(warp.querySelector(".disp").getBoundingClientRect().width - warp.getBoundingClientRect().width) < 0.5 && Math.abs(warp.querySelector(".disp").offsetWidth - SSa * warp.getBoundingClientRect().width) < 1 && /url\("?#seg-lens-f-lab-220"?\)/.test(cs(warpl.querySelector(".displ")).filter) && !warpl.querySelector(".portal") && Math.abs(px(cs(warpl.querySelector(".displ")).borderRadius) - SSa * warpl.getBoundingClientRect().height / 2) < 1.5 * SSa && !!punch && cs(punch).clipPath.startsWith("path(evenodd") && !!pcp); }
           { const cp = warp && warp.querySelector(".copy"), cpl = warpl && warpl.querySelector(".copy"), bgw = cp && cp.querySelector(".cbgwrap");
             check("分段抬起：复本不放大（mag-x 1.00 / label-mag 1.00，zoom 1）、底不透明、底不过色矩阵（透镜内亮度 = 底）", "zoom 1 · opaque · no filter", `${cp ? cs(cp).zoom : "-"} / ${cpl ? cs(cpl).zoom : "-"} · bg ${cs(cp.querySelector(".cbg")).backgroundColor.slice(0, 4)} · ${bgw ? cs(bgw).filter : "-"}`, !!cp && !!cpl && cs(cp).zoom === "1" && cs(cpl).zoom === "1" && /^rgb\(/.test(cs(cp.querySelector(".cbg")).backgroundColor) && !!bgw && cs(bgw).filter === "none" && !!cp.querySelector(".cbgwrap .ctrack"));   // cp = the first .copy of .warp (the page + track one)
-            const fd = document.querySelector("#seg-lens-f-bg-220 feDisplacementMap"); check("分段抬起：位移量 scale = S × 进度（S = 该组 filter 的 data-s，220 组 40 ← ui2 c4efe4b，同一条曲线）", "≈ 40·lp", `${fd ? fd.getAttribute("scale") : "-"} (data-s ${document.querySelector("#seg-lens-f-bg-220").getAttribute("data-s")})`, !!fd && document.querySelector("#seg-lens-f-bg-220").getAttribute("data-s") === "40" && Math.abs(parseFloat(fd.getAttribute("scale")) - 40 * lp) < 0.8);
+            const fd = document.querySelector("#seg-lens-f-bg-220 feDisplacementMap"); svgcheck("分段抬起：位移量 scale = S × SS × 进度（S = 该组 filter 的 data-s0 / data-s，220 组 40 ← ui2 c4efe4b；SS = 引擎校正 2 的倍数 window.LENS_SS，lens-supersample.js 把 data-s 写成 S × SS；同一条曲线）", `≈ 40·${window.LENS_SS || 1}·lp`, `${fd ? fd.getAttribute("scale") : "-"} (data-s ${document.querySelector("#seg-lens-f-bg-220").getAttribute("data-s")})`, !!fd && (document.querySelector("#seg-lens-f-bg-220").getAttribute("data-s0") || document.querySelector("#seg-lens-f-bg-220").getAttribute("data-s")) === "40" && Math.abs(parseFloat(fd.getAttribute("scale")) - 40 * (window.LENS_SS || 1) * lp) < 0.8 * (window.LENS_SS || 1));
             const pl = seg.querySelector(".plat"); check("分段抬起：白平台层 .plat 在底复本之上、标签复本之下（z 5 / 7；B6 的 .rimb 在两者之间 z 6），opacity = 1 − lp（restingBackground 1 → 0，seg-keys -platter-keys）；底复本 opacity = DestOut（前 3 帧到 1，-destout-keys）；标签复本不淡", "1−lp · warp 1 · warpl 1 · z 5/7", `${pl ? cs(pl).opacity : "-"} · ${cs(warp).opacity} · ${cs(warpl).opacity} · z ${pl ? cs(pl).zIndex : "-"}/${cs(warpl).zIndex}`, !!pl && Math.abs(parseFloat(cs(pl).opacity) - (1 - lp)) < 0.03 && parseFloat(cs(warp).opacity) > 0.95 && cs(warpl).opacity === "1" && cs(pl).zIndex === "5" && cs(warpl).zIndex === "7"); }
           if (warp) { const wr = warp.getBoundingClientRect(), lr = lens0.getBoundingClientRect();
-            num("分段抬起：复本框 = 透镜呈现框（左）", lr.left, wr.left, 0.6); num("分段抬起：复本框 = 透镜呈现框（宽）", lr.width, wr.width, 0.6); }
+            svgnum("分段抬起：复本框 = 透镜呈现框（左）", lr.left, wr.left, 0.6); svgnum("分段抬起：复本框 = 透镜呈现框（宽）", lr.width, wr.width, 0.6); }
           check("分段抬起：真标签不挖洞（不透明复本盖住 = DestOut 冲掉的视觉），透镜层自身不画阴影（B6：无 ::after、无 box-shadow）", "no mask · none", `${cs(sel).maskImage} · ${cs(lens0, "::after").content} ${cs(lens0).boxShadow}`, cs(sel).maskImage === "none" && cs(lens0, "::after").content === "none" && cs(lens0).boxShadow === "none"); }
         await sleep(240);
         { const r4 = lens0.getBoundingClientRect(), segW = seg.getBoundingClientRect().width / bs().length - 4;
           check("分段 G16 +400 ms：透镜到 220×44（段宽 + 24 × 44；几何 +359 ms 到位 ← seg-lens-refraction §4.1；--ios-touch-segment-lift-x 12 / -y 8）", `${(segW + 24).toFixed(1)}×44`, `${r4.width.toFixed(1)}×${r4.height.toFixed(1)}`, Math.abs(r4.width - (segW + 24)) < 0.8 && Math.abs(r4.height - 44) < 0.8); }
         check("分段抬起 +400 ms：--lp 到 1", "≈ 1", seg.style.getPropertyValue("--lp"), parseFloat(seg.style.getPropertyValue("--lp")) > 0.97);
         /* B6: the lifted lens's lines and shadows from the decompiled formulas (index.html "B6" block, view.js SEG_RIM; keyfill-highlight.md §2 / §4 / §5.1 / §5.2, keys seg-lens-refraction.md §1c(g)) */
-        { check("分段抬起满：透镜内亮度 = 底（seg-lens-refraction §3 平灰 128 → 126：可见层不套 vibrantColorMatrix、不模糊）", "no filter", (cs(lens0).backdropFilter || "none") + " · " + cs(seg.querySelector(".warp .disp")).filter.slice(0, 26), (cs(lens0).backdropFilter || "none") === "none" && /url/.test(cs(seg.querySelector(".warp .disp")).filter));
+        { svgcheck("分段抬起满：透镜内亮度 = 底（seg-lens-refraction §3 平灰 128 → 126：可见层不套 vibrantColorMatrix、不模糊）", "no filter", (cs(lens0).backdropFilter || "none") + " · " + cs(seg.querySelector(".warp .disp")).filter.slice(0, 26), (cs(lens0).backdropFilter || "none") === "none" && /url/.test(cs(seg.querySelector(".warp .disp")).filter));
           const rb = seg.querySelector(".rimb"), hlAll = [...seg.querySelectorAll(".hlk, .hlw")], hk = seg.querySelector(".hlk.m"), hw = seg.querySelector(".hlw.m"), lpNow = parseFloat(seg.style.getPropertyValue("--lp"));
           check("分段抬起满 B6：边线分两层——.rimb（标签复本之下 z 6：内阴影 + ring shadow + 外侧暗线）、.hlk/.hlw（之上 z 8：高光黑栈 / 白 plus-lighter 栈，三次合成的顺序 = 黑主带、白主带、黑漫射、白漫射），随 --lp 淡入", "z 6 / 8 · k.m w.m k.d w.d · plus-lighter · lp", `z ${rb ? cs(rb).zIndex : "-"} / ${hk ? cs(hk).zIndex : "-"} · ${hlAll.map((e) => e.getAttribute("class").replace(/^hl/, "").split(" ").join(".")).join(" ")} · ${hw ? cs(hw).mixBlendMode : "-"} · ${hw ? cs(hw).opacity : "-"}`, !!rb && !!hk && !!hw && cs(rb).zIndex === "6" && hlAll.length === 4 && hlAll.every((e) => cs(e).zIndex === "8") && hlAll.map((e) => e.getAttribute("class")).join("|") === "hlk m|hlw m|hlk d|hlw d" && cs(hw).mixBlendMode === "plus-lighter" && cs(hk).mixBlendMode === "normal" && Math.abs(parseFloat(cs(hw).opacity) - lpNow) < 0.03 && Math.abs(parseFloat(cs(rb.firstElementChild).opacity) - lpNow) < 0.03);
           const ish = rb && rb.querySelector(".ish"), rs = rb && rb.querySelector("rect.rs"), kfs = rb ? [...rb.querySelectorAll("rect.kf")] : [];
-          const ishS = ish ? cs(ish).boxShadow.replace(/\s+/g, " ") : "";
-          { const m = /^rgba\(0, 0, 0, 0\.06\) 0px ([\d.]+)px ([\d.]+)px 0px inset$/.exec(ishS); check("分段抬起满 B6 ④：内阴影 #21 = inset 0 8·lp 6·lp 黑 .06（读数 predict-seg-hold §0d：σ = shadowRadius 3 → blur 6、offset 7 自 #21 框 = 本盒 8、α .06；幅度 .043 差未解）", `rgba(0,0,0,.06) 0 ${(8 * lpNow).toFixed(2)} ${(6 * lpNow).toFixed(2)} inset`, ishS, !!m && Math.abs(parseFloat(m[1]) - 8 * lpNow) < 0.1 && Math.abs(parseFloat(m[2]) - 6 * lpNow) < 0.1); }
-          check("分段抬起满 B6 ③：ring shadow = 胶囊下移 8、内缩 2 的 4 宽描边 黑 .1 + feGaussianBlur 3（keys offset 8 / opacity .1 / stroke 4 / blur 3 / mask 0）", "y 10 · x 2 · rx h/2 − 2 · sw 4 · .1 · blur", rs ? `y ${rs.getAttribute("y")} x ${rs.getAttribute("x")} rx ${parseFloat(rs.getAttribute("rx")).toFixed(2)} · sw ${cs(rs).strokeWidth} · ${cs(rs).strokeOpacity} · ${cs(rs).filter.slice(0, 20)}` : "-", !!rs && rs.getAttribute("y") === "10" && rs.getAttribute("x") === "2" && Math.abs(parseFloat(rs.getAttribute("rx")) - (lens0.getBoundingClientRect().height / 2 - 2)) < 0.15 && cs(rs).strokeWidth === "4px" && cs(rs).strokeOpacity === "0.1" && /url/.test(cs(rs).filter) && rb.querySelector("feGaussianBlur").getAttribute("stdDeviation") === "3");
-          const darkT = matchMedia("(prefers-color-scheme: dark)").matches || document.documentElement.dataset.theme === "dark", expA = darkT ? [0.685, 0.438, 0.238] : [0.298, 0.19, 0.103];
+          { const f = document.querySelector("#seg-lens-f-ish"), off = f && f.querySelector("feOffset"), bl = f && f.querySelector("feGaussianBlur"), fa = f && f.querySelector("feFuncA");
+            check("分段抬起满 B6 ④：内阴影 #21 = op·M·blur_σ3(M − M↓7)（keyfill §5.2c，2号 #seg-lens-f-ish：feOffset 7 → out → blur 3 → in → α × .06，黑胶囊 = 透镜盒；dy / σ / slope 随 --lp）", `filter #seg-lens-f-ish · bg #000 · dy ${(7 * lpNow).toFixed(2)} σ ${(3 * lpNow).toFixed(2)} slope ${(.06 * lpNow).toFixed(3)}`, ish ? `${cs(ish).filter.slice(0, 24)} · ${cs(ish).backgroundColor} · dy ${off ? off.getAttribute("dy") : "-"} σ ${bl ? bl.getAttribute("stdDeviation") : "-"} slope ${fa ? fa.getAttribute("slope") : "-"}` : "no .ish", !!ish && /seg-lens-f-ish/.test(cs(ish).filter) && cs(ish).backgroundColor === "rgb(0, 0, 0)" && !!off && Math.abs(parseFloat(off.getAttribute("dy")) - 7 * lpNow) < 0.1 && Math.abs(parseFloat(bl.getAttribute("stdDeviation")) - 3 * lpNow) < 0.05 && Math.abs(parseFloat(fa.getAttribute("slope")) - .06 * lpNow) < 0.002); }
+          svgcheck("分段抬起满 B6 ③：ring shadow = 胶囊下移 8、内缩 2 的 4 宽描边 黑 .1 + feGaussianBlur 3（keys offset 8 / opacity .1 / stroke 4 / blur 3 / mask 0）", "y 10 · x 2 · rx h/2 − 2 · sw 4 · .1 · blur", rs ? `y ${rs.getAttribute("y")} x ${rs.getAttribute("x")} rx ${parseFloat(rs.getAttribute("rx")).toFixed(2)} · sw ${cs(rs).strokeWidth} · ${cs(rs).strokeOpacity} · ${cs(rs).filter.slice(0, 20)}` : "-", !!rs && rs.getAttribute("y") === "10" && rs.getAttribute("x") === "2" && Math.abs(parseFloat(rs.getAttribute("rx")) - (lens0.getBoundingClientRect().height / 2 - 2)) < 0.15 && cs(rs).strokeWidth === "4px" && cs(rs).strokeOpacity === "0.1" && /url/.test(cs(rs).filter) && rb.querySelector("feGaussianBlur").getAttribute("stdDeviation") === "3");
+          const darkT = matchMedia("(prefers-color-scheme: dark)").matches || document.documentElement.dataset.theme === "dark", expA = darkT ? [0.728, 0.520, 0.312] : [0.317, 0.226, 0.136];   // B6-c §1: k_tip = v (.875 / .625 / .375), × .3 × (3 − 2B_track) (light B ≈ .897 → 1.206; dark ≈ .114 → 2.773)
           const kfa = kfs.map((k) => parseFloat(k.getAttribute("stroke-opacity"))), kfW = kfs.map((k) => parseFloat(k.getAttribute("stroke-width"))), kfY = kfs.map((k) => parseFloat(k.getAttribute("y")));
-          check("分段抬起满 B6 ②：外侧暗线 = 三个 1/3 pt 描边环（中线 y −.5 / −.167 / +.167：胶囊外 .667 → 内 .333），黑 α = .3·k_tip·(3 − 2B_track)（k_tip .8235 / .5263 / .2857；" + (darkT ? "暗 B ≈ 29/255" : "亮 B ≈ 229/255") + "），横向渐变 = k(x)/k_tip、纵向遮罩 = 页面因子", `3 rings · α ≈ ${expA.join("/")} · y −.5/−.167/.167 · gradient + mask`, `${kfs.length} rings · α ${kfa.map((x) => x.toFixed(3)).join("/")} · y ${kfY.map((x) => x.toFixed(3)).join("/")} · w ${kfW.map((x) => x.toFixed(3)).join("/")} · ${kfs.length && /url/.test(kfs[0].getAttribute("stroke")) ? "gradient" : "-"} ${kfs.length && kfs[0].parentElement.getAttribute("mask") ? "mask" : "-"}`,
-            kfs.length === 3 && kfa.every((x, n) => Math.abs(x - expA[n]) < 0.006) && kfY.every((y, n) => Math.abs(y - [-0.5, -1 / 6, 1 / 6][n]) < 0.001) && kfW.every((w) => Math.abs(w - 1 / 3) < 0.001) && kfs.every((k) => /url/.test(k.getAttribute("stroke"))) && !!kfs[0].parentElement.getAttribute("mask"));
-          const hkR = hk ? [...hk.querySelectorAll("rect")] : [], hwR = hw ? [...hw.querySelectorAll("rect")] : [], hdR = [...seg.querySelectorAll(".hlk.d rect")], hdW = [...seg.querySelectorAll(".hlw.d rect")];
-          check("分段抬起满 B6 ①：内侧亮线 + 高光尾 = #36 层公式：黑栈 stroke-opacity .0882·α / 白栈 .1471·α，主带 3 环（首环 α .875）+ 漫射 10 环（首环 .803），弧段用渐变描边", "3+3 · 10+10 · .0772/.1287 · .0708/.1181", `${hkR.length}+${hwR.length} · ${hdR.length}+${hdW.length} · ${hkR.length ? hkR[0].getAttribute("stroke-opacity") : "-"}/${hwR.length ? hwR[0].getAttribute("stroke-opacity") : "-"} · ${hdR.length ? hdR[0].getAttribute("stroke-opacity") : "-"}/${hdW.length ? hdW[0].getAttribute("stroke-opacity") : "-"} · ${hkR.length && /url/.test(hkR[0].getAttribute("stroke")) ? "gradient" : "-"}`,
-            hkR.length === 3 && hwR.length === 3 && hdR.length === 10 && hdW.length === 10 && Math.abs(parseFloat(hkR[0].getAttribute("stroke-opacity")) - 0.0882 * 0.875) < 0.001 && Math.abs(parseFloat(hwR[0].getAttribute("stroke-opacity")) - 0.1471 * 0.875) < 0.001 && Math.abs(parseFloat(hdR[0].getAttribute("stroke-opacity")) - 0.0882 * 0.803) < 0.001 && Math.abs(parseFloat(hdW[0].getAttribute("stroke-opacity")) - 0.1471 * 0.803) < 0.001 && hkR.every((r) => /url/.test(r.getAttribute("stroke"))) && Math.abs(parseFloat(hkR[0].getAttribute("stroke-width")) - 1 / 3) < 0.001);
+          svgcheck("分段抬起满 B6 ②：外侧暗线 = 三个 1/3 pt 描边环（中线 y −.5 / −.167 / +.167：胶囊外 .667 → 内 .333），黑 α = .3·k_tip·(3 − 2B_track)（k_tip = v .875 / .625 / .375，B6-c §1 去压缩；" + (darkT ? "暗 B ≈ 29/255" : "亮 B ≈ 229/255") + "），横向渐变 = k(x)/k_tip、纵向遮罩 = 页面因子", `3 rings · α ≈ ${expA.join("/")} · y −.5/−.167/.167 · gradient + mask`, `${kfs.length} rings · α ${kfa.map((x) => x.toFixed(3)).join("/")} · y ${kfY.map((x) => x.toFixed(3)).join("/")} · w ${kfW.map((x) => x.toFixed(3)).join("/")} · ${kfs.length && /url/.test(kfs[0].getAttribute("stroke")) ? "gradient" : "-"} ${kfs.length && kfs[0].parentElement.getAttribute("mask") ? "mask" : "-"}`,
+            kfs.length === 3 && kfa.every((x, n) => Math.abs(x - expA[n]) < 0.012) && kfY.every((y, n) => Math.abs(y - [-0.5, -1 / 6, 1 / 6][n]) < 0.001) && kfW.every((w) => Math.abs(w - 1 / 3) < 0.001) && kfs.every((k) => /url/.test(k.getAttribute("stroke"))) && !!kfs[0].parentElement.getAttribute("mask"));
+          const hkR = hk ? [...hk.querySelectorAll("line")] : [], hwR = hw ? [...hw.querySelectorAll("line")] : [], hdR = [...seg.querySelectorAll(".hlk.d rect")], hdW = [...seg.querySelectorAll(".hlw.d rect")];
+          svgcheck("分段抬起满 B6 ①：内侧亮线 + 高光尾 = #36 层公式：黑栈 stroke-opacity .0882·α / 白栈 .1471·α，主带 3 环 × 上下两条直线（B6-c §4b：只画直边 x ∈ [R, W−R]，纯色；首环 α .875）+ 漫射 10 环（首环 .803，渐变描边）", "6+6 lines · 10+10 · .0772/.1287 · .0708/.1181 · x1 R x2 W−R", `${hkR.length}+${hwR.length} · ${hdR.length}+${hdW.length} · ${hkR.length ? hkR[0].getAttribute("stroke-opacity") : "-"}/${hwR.length ? hwR[0].getAttribute("stroke-opacity") : "-"} · ${hdR.length ? hdR[0].getAttribute("stroke-opacity") : "-"}/${hdW.length ? hdW[0].getAttribute("stroke-opacity") : "-"} · ${hkR.length ? `x1 ${hkR[0].getAttribute("x1")} x2 ${hkR[0].getAttribute("x2")} ${hkR[0].getAttribute("stroke")}` : "-"}`,
+            hkR.length === 6 && hwR.length === 6 && hdR.length === 10 && hdW.length === 10 && Math.abs(parseFloat(hkR[0].getAttribute("stroke-opacity")) - 0.0882 * 0.875) < 0.001 && Math.abs(parseFloat(hwR[0].getAttribute("stroke-opacity")) - 0.1471 * 0.875) < 0.001 && Math.abs(parseFloat(hdR[0].getAttribute("stroke-opacity")) - 0.0882 * 0.803) < 0.001 && Math.abs(parseFloat(hdW[0].getAttribute("stroke-opacity")) - 0.1471 * 0.803) < 0.001 && hkR.every((l) => l.getAttribute("stroke") === "#000") && hdR.every((r) => /url/.test(r.getAttribute("stroke"))) && Math.abs(parseFloat(hkR[0].getAttribute("stroke-width")) - 1 / 3) < 0.001 && Math.abs(parseFloat(hkR[0].getAttribute("x1")) - lens0.getBoundingClientRect().height / 2) < 0.6 && Math.abs(parseFloat(hkR[0].getAttribute("x2")) - (lens0.getBoundingClientRect().width - lens0.getBoundingClientRect().height / 2)) < 0.6);
+          if (GLON) { const c = seg.querySelector("canvas.glens"), g = seg.__gl, sr = seg.getBoundingClientRect(), cr = c && c.getBoundingClientRect(), lr = lens0.getBoundingClientRect(), fr0 = g ? g.lens.stats.frames : 0, F1 = window.LensWebGL ? LensWebGL.FS1 + LensWebGL.FS2 + LensWebGL.COMMON : "";
+            check("分段 WebGL：canvas.glens 盖住控件 ± 24 pt（宽 = 控件，高 = 控件 + 48；README §0.8.7：包裹 = 透镜 ± 16 + 抬起外扩 6，环影下延 11），指针穿透，z 9", "box = seg ± 24 · pointer-events none · z 9", c ? `dx ${(cr.left - sr.left).toFixed(1)} dy ${(cr.top - sr.top).toFixed(1)} w ${(cr.width - sr.width).toFixed(1)} h ${(cr.height - sr.height).toFixed(1)} · ${cs(c).pointerEvents} · z ${cs(c).zIndex}` : "no canvas", !!c && Math.abs(cr.left - sr.left) < .6 && Math.abs(cr.top - sr.top + 24) < .6 && Math.abs(cr.width - sr.width) < .6 && Math.abs(cr.height - sr.height - 48) < .6 && cs(c).pointerEvents === "none" && cs(c).zIndex === "9");
+            check("分段 WebGL：LensWebGL 实例走 220 组（README §0.3：抬起与拖动都在模型宽的那组），有帧在画（stats.frames 递增、set 220）", "set 220 · frames > 0", g ? `set ${g.lens.stats.set} · frames ${g.lens.stats.frames} · gpu ${g.lens.stats.gpuMs.toFixed(2)} ms` : "no instance", !!g && g.lens.stats.set === 220 && g.lens.stats.frames > 0);
+            check("分段 WebGL：flex 变换加在 canvas 上、原点 = 透镜中心（canvas 坐标 = 透镜盒中心 + 24 pt）", "origin = lens centre", c ? `${c.style.transformOrigin || "-"} vs ${(lr.left - sr.left + lr.width / 2).toFixed(1)}px ${(lr.top - sr.top + 24 + lr.height / 2).toFixed(1)}px` : "-", !!c && (() => { const m = /([\d.]+)px ([\d.]+)px/.exec(c.style.transformOrigin || ""); return !!m && Math.abs(parseFloat(m[1]) - (lr.left - sr.left + lr.width / 2)) < 1.5 && Math.abs(parseFloat(m[2]) - (lr.top - sr.top + 24 + lr.height / 2)) < 1.5; })());
+            check("分段 WebGL：白平台淡出在 shader 里（dc2af2a u_platter：位移底图之上、边线/标签之下，alpha 1 − p，_controlForegroundColor 令牌），.lens 抬起时透明如 SVG 路径", "u_platter · .lens transparent z 2", `${F1 && F1.includes("u_platter") ? "u_platter" : "no u_platter"} · ${cs(lens0).backgroundColor} z ${cs(lens0).zIndex}`, !!F1 && F1.includes("u_platter") && /rgba\(0, 0, 0, 0\)|transparent/.test(cs(lens0).backgroundColor) && cs(lens0).zIndex === "2");
+            check("分段 WebGL：SVG 栈隐藏（.stack / .rimo / .hlk / .hlw display none）", "none ×4", [".stack", ".rimo", ".hlk", ".hlw"].map((q) => { const e = seg.querySelector(q); return e ? cs(e).display : "-"; }).join(" "), [".stack", ".rimo", ".hlk", ".hlw"].every((q) => { const e = seg.querySelector(q); return !e || cs(e).display === "none"; }));
+            check("分段 WebGL：着色器里是反编译常量（暗线 EffectOffset −.6667 / colorBias −.3、vibrant V = min(1, .9118·b + .1471)、环影 8 / 4 / σ3 / .1；色散 Δ 与 aberration 2.3158 在贴图里）", "all present", ["0.6667", "-0.3", "0.9118", "0.1471"].map((k) => (F1.includes(k) ? "✓" : "✗") + k).join(" "), ["0.6667", "-0.3", "0.9118", "0.1471"].every((k) => F1.includes(k))); }
           check("分段抬起满 B6：不再有采样剖面（--seg-rim-* 渐变、半圆帽、11 px 暗带、透镜 box-shadow 实心影）", "gone", `${getComputedStyle(document.documentElement).getPropertyValue("--seg-rim-top") ? "rim-top" : "-"} ${seg.querySelector(".capL") ? "capL" : "-"} ${cs(lens0).boxShadow}`, !getComputedStyle(document.documentElement).getPropertyValue("--seg-rim-top") && !seg.querySelector(".capL") && cs(lens0).boxShadow === "none"); }
         /* §1 G4/G22: sliding onto the other segment moves the lens, the index does not change until the up */
         { const a0 = at(sel), a1 = at(unsel), lensD = seg.querySelector(".lens"); let wMax = 0, hMin = 99;
@@ -515,11 +531,11 @@
           await sleep(640); check("分段 pointercancel +700 ms：退净", "rest", sg.classList.contains("lift") ? "lift" : "rest", !sg.classList.contains("lift")); }
         /* §1 G4/G21: lift, slide to the other segment, release there - commits at the up */
         seg = q(); sel = bs().find((b) => b.classList.contains("on")); unsel = bs().find((b) => !b.classList.contains("on"));
-        pev(seg, "pointerdown", at(sel)); await sleep(400); pev(seg, "pointermove", at(unsel)); await sleep(500); const r2 = renders, parent0 = seg.parentNode, lens21 = seg.querySelector(".lens"); pev(seg, "pointerup", at(unsel)); const q21 = document.querySelector("#queue").value; await sleep(40);
-        check("分段 G21 抬起后滑到另一段抬手：选中那段（模型在抬手即改，内容 +25 ms 切 ← --seg-commit-delay-drag）", unsel.textContent, `${onText()} model ${q21}`, q21 === unsel.dataset.q && onText() === unsel.textContent && thisShift(unsel.textContent) && renders === r2 + 1);
+        pev(seg, "pointerdown", at(sel)); await sleep(400); pev(seg, "pointermove", at(unsel)); await sleep(500); const r2 = renders, parent0 = seg.parentNode, lens21 = seg.querySelector(".lens"); pev(seg, "pointerup", at(unsel)); const q21 = document.querySelector("#queue").value; await sleep(60);
+        check("分段 G21 抬起后滑到另一段抬手：选中那段（模型在抬手即改，内容 +25 ms 切 ← --seg-commit-delay-drag；vcsplit 重画在其后一帧，+60 ms 看）", unsel.textContent, `${onText()} model ${q21}`, q21 === unsel.dataset.q && onText() === unsel.textContent && thisShift(unsel.textContent) && renders === r2 + 1);
         check("分段 G21 换值重画：#queueseg 及其父节点原地保留（replaceKeeping，不摘下再插回 → 过渡不被取消；B2-b）", "same node · same parent", `${q() === seg ? "same node" : "new node"} · ${q().parentNode === parent0 ? "same parent" : "new parent"}`, q() === seg && q().parentNode === parent0);
         { const h1 = lens21.getBoundingClientRect().height; await sleep(16); const h2 = lens21.getBoundingClientRect().height;
-          check("分段 G21 松手 +1 帧：透镜仍是抬起尺寸、随后逐帧回落（B2-b：不瞬回 28）", "h > 40 at +0, > 36 at +16 ms", `${h1.toFixed(1)} → ${h2.toFixed(1)}`, h1 > 40 && h2 > 36); }
+          check("分段 G21 松手 +1 帧：透镜仍是抬起尺寸、随后逐帧回落（B2-b：不瞬回 28）", "h ≥ 39 at +0, > 36 at +16 ms", `${h1.toFixed(1)} → ${h2.toFixed(1)}`, h1 >= 39 && h2 > 36); }
         await sleep(200); { const lr = lens21.getBoundingClientRect(); check("分段 G21 松手 +216 ms：几何回落途中，叠着 flex 回弹（原生 C 段 +204 ms h 31.8；B5 后本页 24 < h < 40）", "24 < h < 40", lr.height.toFixed(1), lr.height > 24 && lr.height < 40); }
         await sleep(600); { const lr = lens21.getBoundingClientRect(), sr = seg.getBoundingClientRect(); check("分段 G21 松手 +816 ms：落定 196×28 于目标段（flex 回弹收敛；位置 ζ.85/.4 → ζ.56/.444）", `196×28 at ${(sr.left + 2 + bs().indexOf(unsel) * (sr.width / bs().length)).toFixed(1)}`, `${lr.width.toFixed(1)}×${lr.height.toFixed(1)} at ${lr.left.toFixed(1)}`, Math.abs(lr.height - 28) < 0.6 && Math.abs(lr.width - (sr.width / bs().length - 4)) < 0.8 && Math.abs(lr.left - (sr.left + 2 + bs().indexOf(unsel) * (sr.width / bs().length))) < 1.5); }
         await sleep(50);
@@ -531,8 +547,8 @@
         seg = q(); sel = bs().find((b) => b.classList.contains("on")); unsel = bs().find((b) => !b.classList.contains("on"));
         const r4 = renders; pev(seg, "pointerdown", at(unsel)); pev(seg, "pointermove", at(unsel, .5, .5, 0, 100)); pev(seg, "pointerup", at(unsel, .5, .5, 0, 100));
         check("分段 G18 竖向滑出 100 pt 抬手：取消、无事件、标签回 1", sel.textContent, `${onText()} renders+${renders - r4}`, onText() === sel.textContent && renders === r4 && !unsel.classList.contains("dim"));
-        seg = q(); const r5 = renders; pev(seg, "pointerdown", at(unsel)); pev(seg, "pointermove", at(unsel, .5, .5, 0, 60)); pev(seg, "pointerup", at(unsel, .5, .5, 0, 60)); await sleep(80);
-        check("分段 G17 竖向滑出 60 pt 抬手：仍选中（余量 70；内容 +66 ms 切）", unsel.textContent, `${onText()} renders+${renders - r5}`, onText() === unsel.textContent && renders === r5 + 1);
+        seg = q(); const r5 = renders; pev(seg, "pointerdown", at(unsel)); pev(seg, "pointermove", at(unsel, .5, .5, 0, 60)); pev(seg, "pointerup", at(unsel, .5, .5, 0, 60)); await sleep(100);
+        check("分段 G17 竖向滑出 60 pt 抬手：仍选中（余量 70；内容 +66 ms 切，vcsplit 重画在其后一帧，+100 ms 看）", unsel.textContent, `${onText()} renders+${renders - r5}`, onText() === unsel.textContent && renders === r5 + 1);
         await sleep(50);
         /* pointercancel = cancel */
         seg = q(); sel = bs().find((b) => b.classList.contains("on")); unsel = bs().find((b) => !b.classList.contains("on"));
@@ -553,6 +569,17 @@
         const r8 = renders; for (let k = 0; k < 3; k++) { const b = bs().find((x) => x.textContent === sameName); const sg = q(); pev(sg, "pointerdown", at(b)); pev(sg, "pointerup", at(b)); await sleep(40); }
         check("分段 G14 同段连点 3 下：只 1 次事件", 1, renders - r8, renders - r8 === 1);
         const back = bs().find((b) => b.textContent === start); if (back && onText() !== start) { const sg = q(); pev(sg, "pointerdown", at(back)); pev(sg, "pointerup", at(back)); }
+        /* 验收 09-19 17:5x: a one-queue page (one segment, 400 wide) re-rendered twice showed a lifted capsule (the preloaded set's width, left) on the resting
+           control — the package's warm-up frame put back by the next warm-up (view.js segGlRedraw). Here: one segment, two re-renders 400 ms apart, then
+           the package must have drawn exactly ONE frame per re-render (its warm-up; the put-back would be a second) and the control must be at rest. */
+        if (q().classList.contains("gl") && typeof snap === "object" && snap && Array.isArray(snap.queues) && snap.queues.length > 1) {
+          await sleep(900); const savedQ = snap.queues, savedCur = curQueue; snap.queues = savedQ.slice(0, 1); curQueue = snap.queues[0]["名"]; window.render(); await sleep(1500);
+          const s1 = q(), g1 = s1 && s1.__gl, f0 = g1 ? g1.lens.stats.frames : -1;
+          window.render(); await sleep(400); const f1 = q().__gl ? q().__gl.lens.stats.frames : -1;
+          window.render(); await sleep(400); const f2 = q().__gl ? q().__gl.lens.stats.frames : -1; const s2 = q();
+          check("一段控件重渲染两次：包每次只画预热那一帧（frames +1/+1，不把上一帧「放回」——放回即幽灵胶囊；view.js segGlRedraw），控件静止（无 .lift，一个 canvas）", "+1 / +1 · rest", `${s2.querySelectorAll("button").length} seg · frames ${f0} → ${f1} → ${f2} · ${s2.classList.contains("lift") ? "lift!" : "rest"} · ${s2.querySelectorAll("canvas.glens").length} canvas`, s2.querySelectorAll("button").length === 1 && f1 - f0 === 1 && f2 - f1 === 1 && !s2.classList.contains("lift") && s2.querySelectorAll("canvas.glens").length === 1);
+          snap.queues = savedQ; curQueue = savedCur; window.render(); await sleep(600);
+        }
       }
       /* §2 UITabBar */
       const nav = document.querySelector("nav.tabs:not([hidden])"), tseg = nav && nav.querySelector(".seg"), tbs = nav ? [...nav.querySelectorAll(".seg button")] : [];
@@ -658,6 +685,109 @@
         await sleep(10);
         check("弹窗按钮抬手关掉弹窗后，浏览器补的 click 不穿到底下的磁贴", `tile ${c0}, closed`, `tile ${clicks}, ${dlg.open ? "open" : "closed"}`, clicks === c0 && !dlg.open); }
       dlg.close(); dlg.remove(); bLab.remove(); window.render = origRender;
+      /* §5 B14 UITableViewCell press (remote-ref/cell-native.md §0 probe originals, state-tables/cell.md C*) on a synthetic .row.nav and an
+         action row inside a .group, through controls.js. Colours: --ios-cell-highlight light (209,209,214) / dark (58,58,60); the fade
+         .5 s cubic-bezier(.42,0,.58,1) checked against the curve at the sampled instant (the same easeInOut UIView used). */
+      const rLab = document.createElement("div"); rLab.style.cssText = "position:fixed;left:20px;top:500px;width:400px;z-index:99;opacity:0";
+      rLab.innerHTML = `<div class="group"><div class="row nav"><label>上一行</label><span class="val">值</span><i class="sf chev"></i></div><div class="row nav"><label>行</label><span class="val">值</span><i class="sf chev"></i></div><div class="acts"><button type="button">蓝字行</button></div></div>`;
+      document.body.appendChild(rLab);
+      const [row0, row] = rLab.querySelectorAll(".row.nav"), act = rLab.querySelector(".acts button"); let rsel = 0, asel = 0;
+      const seq = []; new MutationObserver(() => seq.push([performance.now(), row.className])).observe(row, { attributes: true, attributeFilter: ["class"] });
+      row.addEventListener("click", () => { rsel++; seq.push([performance.now(), "click"]); }); act.addEventListener("click", () => asel++);
+      const HL = dark ? [58, 58, 60] : [209, 209, 214], bgOf = (el) => cs(el).backgroundColor, lit = (el) => same(bgOf(el), HL);
+      const bez = (x) => { let lo = 0, hi = 1; for (let i = 0; i < 40; i++) { const t = (lo + hi) / 2, cx = 3 * .42 * t * (1 - t) * (1 - t) + 3 * .58 * t * t * (1 - t) + t * t * t; if (cx < x) lo = t; else hi = t; } const t = (lo + hi) / 2; return 3 * 0 * t * (1 - t) * (1 - t) + 3 * 1 * t * t * (1 - t) + t * t * t; };   // cubic-bezier(.42,0,.58,1)
+      /* C3: hold 400 ms — nothing until +150, then the instant highlight; the fade from the up */
+      pev(row, "pointerdown", at(row)); await sleep(100);
+      check("列表行 C3 按下 +100 ms：无变化（延迟 150，--ios-touch-highlight-delay）", "rest", lit(row) ? "highlight" : "rest", !lit(row));
+      await sleep(80);
+      col("列表行 C3 按下 +180 ms：底色 = 高亮色（--ios-cell-highlight，cell-native.md §0）", HL, bgOf(row));
+      check("列表行 C3 高亮中分隔线 opacity 0", "0", cs(row, "::after").opacity, cs(row, "::after").opacity === "0");
+      check("列表行 C3 高亮中上一行的分隔线也 opacity 0（数据真机核 ④）", "0", cs(row0, "::after").opacity, cs(row0, "::after").opacity === "0");
+      await sleep(220);
+      const tUp = performance.now(); pev(row, "pointerup", at(row));
+      await sleep(45);                                                                   // the device's own click comes 40–60 ms after the up
+      row.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));   // = the browser's own click for this touch: swallowed
+      check("列表行 抬手 +45 ms 浏览器自己的 click 被吞（data-rc；选中由页面在淡出首帧后发，此时已 1 次）", "1", rsel, rsel === 1);
+      await sleep(15);
+      check("列表行 C3 抬手 +60 ms：选中 1 次（淡出首帧之后一帧）、淡出中（.hl-out）", "1, fading", `${rsel}, ${row.classList.contains("hl-out") ? "fading" : "not fading"}`, rsel === 1 && row.classList.contains("hl-out"));
+      { const t = cs(row).transitionDuration, e = cs(row).transitionTimingFunction, pr = cs(row).transitionProperty;
+        check("列表行 淡出 = background-color .5 s cubic-bezier(.42,0,.58,1)（--ios-motion-row-release-duration / --ios-motion-ease-in-out）", "background-color 0.5s cubic-bezier(0.42, 0, 0.58, 1)", `${pr} ${t} ${e}`, pr === "background-color" && t === "0.5s" && e === "cubic-bezier(0.42, 0, 0.58, 1)"); }
+      await sleep(200);
+      { const el = performance.now() - tUp - 16, c = rgb(bgOf(row)), want = T.card[0] + (HL[0] - T.card[0]) * (1 - bez(Math.max(0, Math.min(1, el / 500))));   // the fade starts one frame after the up
+        check(`列表行 抬手 +${Math.round(el)} ms：R 在曲线上（±8；原生 +235 ms 亮 227 / 暗 46）`, Math.round(want), c ? Math.round(c[0]) : "缺", !!c && Math.abs(c[0] - want) <= 8); }
+      await sleep(420);
+      col("列表行 抬手 +660 ms：回到静止色 = 卡片色（--ios-card-bg）", T.card, bgOf(row));
+      check("列表行 淡完后类名清空", "clean", row.className, !row.classList.contains("hl") && !row.classList.contains("hl-out"));
+      /* C1: a 100 ms tap — no highlight at the up; one frame of highlight at +150 and the fade from there; selected once */
+      pev(row, "pointerdown", at(row)); await sleep(100); pev(row, "pointerup", at(row));
+      check("列表行 C1 短点 100 ms 抬手时：还没高亮", "rest", lit(row) ? "highlight" : "rest", !lit(row));
+      seq.length = 0; await sleep(170);
+      { const names = seq.map((e) => e[1]), iH = names.findIndex((n) => /\bhl\b/.test(n) && !/hl-out/.test(n)), iF = names.findIndex((n) => /hl-out/.test(n)), iC = names.indexOf("click");
+        const gapHF = iH >= 0 && iF > iH ? seq[iF][0] - seq[iH][0] : -1, gapFC = iF >= 0 && iC > iF ? seq[iC][0] - seq[iF][0] : -1;
+        check("列表行 C1 短点：高亮帧 → 淡出帧 → 选中，三者依次、各隔一次上屏（rAF + setTimeout 0；数据真机核 ②：confirm()/推页不得吞掉高亮帧）", "hl < hl-out < click", `${iH} < ${iF} < ${iC}, 间隔 ${Math.round(gapHF)} / ${Math.round(gapFC)} ms`, iH >= 0 && iF > iH && iC > iF); }   // the gaps are JS timestamps (the paint sits between rAF and the timeout; headless Chrome renders in < 1 ms): reported, not judged
+      check("列表行 C1 按下 +270 ms：高亮已亮过并在淡出（.hl-out）、选中 1 次", "fading, 2", `${row.classList.contains("hl-out") ? "fading" : row.classList.contains("hl") ? "lit" : "rest"}, ${rsel}`, row.classList.contains("hl-out") && rsel === 2);
+      await sleep(620);
+      /* C6: vertical 12 pt after the highlight — off at once, the up selects nothing */
+      pev(row, "pointerdown", at(row)); await sleep(200); pev(row, "pointermove", at(row, .5, .5, 0, 12));
+      check("列表行 C6 竖滑 12 pt：高亮瞬时灭（touchesCancelled → animated:NO）", "rest, no fade", `${lit(row) ? "highlight" : "rest"}, ${row.classList.contains("hl-out") ? "fade" : "no fade"}`, !lit(row) && !row.classList.contains("hl-out"));
+      pev(row, "pointerup", at(row, .5, .5, 0, 12)); await sleep(40);
+      check("列表行 C6 竖滑后抬手：不选中", 2, rsel, rsel === 2);
+      /* C9: a fast swipe never highlights */
+      pev(row, "pointerdown", at(row)); pev(row, "pointermove", at(row, .5, .5, 0, 20)); await sleep(200);
+      check("列表行 C9 快滑 20 pt：不高亮", "rest", lit(row) ? "highlight" : "rest", !lit(row));
+      pev(row, "pointerup", at(row, .5, .5, 0, 20)); await sleep(40);
+      /* C7/C10: 100 pt sideways inside the card keeps the press and selects; C11: 16 pt past the card's edge cancels */
+      pev(row, "pointerdown", at(row)); await sleep(200); pev(row, "pointermove", at(row, .5, .5, 100, 0));
+      check("列表行 C10 横滑 100 pt（行内）：仍高亮", "highlight", lit(row) ? "highlight" : "rest", lit(row));
+      pev(row, "pointerup", at(row, .5, .5, 100, 0)); await sleep(60);
+      check("列表行 C10 横滑 100 pt 抬手：选中", 3, rsel, rsel === 3);
+      await sleep(620);
+      pev(row, "pointerdown", at(row)); await sleep(200); pev(row, "pointermove", at(row, 1, .5, 16, 0));
+      check("列表行 C11 出卡片边 16 pt：高亮灭", "rest", lit(row) ? "highlight" : "rest", !lit(row));
+      await sleep(30);
+      col("列表行 C11 出边 +30 ms：底色已是静止色（瞬灭，无淡回）", T.card, bgOf(row));
+      pev(row, "pointerup", at(row, 1, .5, 16, 0)); await sleep(40);
+      check("列表行 C11 出边抬手：不选中", 3, rsel, rsel === 3);
+      /* the action row (.acts button) is the same cell */
+      /* the 「开始刷」 path: the row's click opens the page's alert (ask(), the way view.js's action rows now do instead of the browser's blocking
+         confirm dialog); a rAF loop logs the row's class at every frame (a rAF tick sees what that frame paints): a highlight frame and a fade
+         frame must have been logged before the alert opened, and the fade must keep running under the open alert (native: deselectRow's .5 s
+         fade runs while the alert presents) */
+      const frames = []; let logging = true; const logFrame = (ts) => { frames.push([ts, act.className]); if (logging) requestAnimationFrame(logFrame); }; requestAnimationFrame(logFrame);
+      let blockedAt = 0, askP = null; act.addEventListener("click", () => { blockedAt = performance.now(); askP = ask("开始刷？", "验收：弹窗打开后淡回仍在走", "开始刷"); });
+      const framesBefore = () => { const fr = frames.filter((f) => f[0] < blockedAt); return { hl: fr.some((f) => /\bhl\b/.test(f[1]) && !/hl-out/.test(f[1])), out: fr.some((f) => /hl-out/.test(f[1])) }; };
+      pev(act, "pointerdown", at(act)); await sleep(100); pev(act, "pointerup", at(act)); await sleep(60);
+      const alertEl = document.querySelector("#alert"), r60 = rgb(bgOf(act));
+      await sleep(200); const r210 = rgb(bgOf(act)), openAt60 = !!(alertEl && alertEl.open);   // the click (and the alert) comes ~2 frames after the +150 ms highlight of a 100 ms tap
+      await sleep(400);
+      { const b = framesBefore(); check("蓝字行 短点 100 ms，click 开页面弹窗（ask）：弹窗前已有高亮帧与淡出帧上屏（数据真机核 ②）", "hl 帧, hl-out 帧, 弹窗开（up +260）, 触发 1", `${b.hl ? "hl 帧" : "无 hl 帧"}, ${b.out ? "hl-out 帧" : "无 hl-out 帧"}, ${openAt60 ? "弹窗开" : "弹窗未开"}, 触发 ${asel}`, b.hl && b.out && openAt60 && asel === 1);
+        const moving = !!(r60 && r210) && (dark ? r210[0] < r60[0] - 2 : r210[0] > r60[0] + 2), rest = same(bgOf(act), T.card);
+        check("蓝字行 弹窗打开后淡回仍在走（up +60 → +260 ms 底色继续向静止色走，+660 到静止）", "走, 到静止", `${moving ? "走" : "停"}（R ${r60 ? Math.round(r60[0]) : "?"} → ${r210 ? Math.round(r210[0]) : "?"}）, ${rest ? "到静止" : "未到"}`, moving && rest); }
+      if (alertEl && alertEl.open) { document.querySelector("#alert-cancel").click(); await sleep(450); }
+      if (askP) await askP;
+      frames.length = 0; blockedAt = 0;
+      pev(act, "pointerdown", at(act)); await sleep(200);
+      col("蓝字行 按下 +200 ms：底色 = 高亮色（同 cell）", HL, bgOf(act));
+      pev(act, "pointerup", at(act)); await sleep(80);
+      { const b = framesBefore(); check("蓝字行 长按抬手 +80 ms：淡出首帧已上屏后才触发（弹窗），触发 2 次", "hl-out 帧在前, 2", `${b.out ? "hl-out 帧在前" : "无"}, ${asel}`, b.out && asel === 2); }
+      logging = false;
+      if (alertEl && alertEl.open) { document.querySelector("#alert-cancel").click(); await sleep(450); }
+      if (askP) await askP;
+      await sleep(620);
+      pev(act, "pointerdown", at(act)); await sleep(200); pev(act, "pointermove", at(act, 1, .5, 16, 0)); await sleep(30);
+      col("蓝字行 出卡片边 16 pt +30 ms：瞬灭到静止色（数据真机核 ①：不走基础 .5 s transition）", T.card, bgOf(act));
+      pev(act, "pointerup", at(act, 1, .5, 16, 0)); await sleep(60);
+      check("蓝字行 出边抬手：不触发", 2, asel, asel === 2);
+      /* the rest colour follows the theme's --card token and no press state outlives a press: after everything above, every action row / nav
+         row in the document rests on the current theme's card colour with no state class or mark left (the device's dark → light report) */
+      await sleep(200);
+      { const leftovers = [...document.querySelectorAll(".row.nav, .group .acts button")].filter((el) => el.classList.contains("hl") || el.classList.contains("hl-out") || el.classList.contains("hl-cut") || el.dataset.rp || el.dataset.rc);
+        check("行静止底 = 当前主题卡片色（--ios-card-bg），无残留状态类 / 标记（切主题后不留旧色）", `${fmt(T.card)}, 0 残留`, `${bgOf(act)}, ${leftovers.length} 残留`, same(bgOf(act), T.card) && same(bgOf(row), T.card) && leftovers.length === 0);
+        document.dispatchEvent(new Event("visibilitychange")); }   // the strip on hide runs without error (a hidden page cannot be simulated here)
+      /* the page's own action rows must not block the main thread: no synchronous confirm() left in view.js except ask()'s no-dialog fallback */
+      try { const src = await (await fetch("view.js?v=" + Date.now())).text(); const n = (src.match(/\bconfirm\(/g) || []).length;
+        check("行动作不再同步 confirm()（view.js 里只剩 ask() 的无 dialog 兜底那一处）", 1, n, n === 1); } catch (e) { check("行动作不再同步 confirm()", 1, "读不到 view.js", false); }
+      rLab.remove();
     }
     const finish = () => {
       const fails = rows.filter((r) => !r.ok).length;
