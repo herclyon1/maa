@@ -1344,8 +1344,10 @@ window.__segLens = null;
 window.__segDiag = () => window.__segLens;
 window.__segPerf = () => performance.getEntriesByType("measure").filter((e) => e.name.startsWith("seg:")).map((e) => ({ name: e.name, start: Math.round(e.startTime * 100) / 100, dur: Math.round(e.duration * 100) / 100 }));
 const segMeasure = (name, from) => { try { performance.measure(name, { start: from, end: performance.now() }); } catch (e) { /* older engines */ } };   // ?segx switches (index.html hook; ios-switch-list.md): scale0 holds the displacement scale at 0
-function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }: the 点按 schedule (SEG_TAP_T) instead of the press / drag / release chain
-  if (seg.__lensLoop) seg.__lensLoop.stop();   // a new press ends the previous loop (its tail and its inline geometry)
+function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }: the 点按 schedule (SEG_TAP_T) instead of the press / drag / release chain; tap = { prewarm: true }: build + one invisible paint, no loop (A 起手预建)
+  const prewarm = !!(tap && tap.prewarm); if (prewarm) tap = null;
+  if (seg.__lensLoop && !prewarm) seg.__lensLoop.stop();   // a new press ends the previous loop (its tail and its inline geometry)
+  if (!prewarm) seg.classList.remove("prewarm");   // A 起手预建: the pre-painted layers now belong to the gesture
   let warp = seg.querySelector(".warp"), warpl = seg.querySelector(".warpl"), plat = seg.querySelector(".plat"), rimb = seg.querySelector(".rimb"), hls = [...seg.querySelectorAll(".hlk, .hlw")];
   const mk = (cls, inner) => { const d = document.createElement("div"); d.className = cls; d.innerHTML = inner; seg.appendChild(d); return d; };
   if (!warp) warp = mk("warp", '<div class="disp"><div class="copy"></div><div class="punch"><div class="copy"></div></div></div>'); else if (!warp.querySelector(".punch")) warp.firstElementChild.innerHTML = '<div class="copy"></div><div class="punch"><div class="copy"></div></div>';
@@ -1584,12 +1586,27 @@ function segLens(seg, lens, bs, downClientX, tap) {   // tap = { target, upAt }:
     get diag() { return st.__lens || null; },
   };
   loop.cancel = loop.release;
+  if (prewarm) {   // A 起手预建: the layers exist now and stay painted at rest, invisibly (.prewarm: display, opacity .01, the filters at scale 0), so their compositing layers and filter pipeline are alive when the first press comes (the press removes .prewarm and lifts them)
+    frame(0, 0); seg.classList.add("prewarm"); seg.__prewarmed = performance.now(); st.done = true;
+    return loop;
+  }
   seg.__lensLoop = loop; segActiveLoop = loop;
   st.raf = requestAnimationFrame(tick);
   return loop;
 }
+/* A 起手预建: schedule the build + invisible paint for a control once it exists — after the page's first frames, in an idle slot, and after the engine
+   correction has swapped the maps (so the painted filters are the ones the press will use). ?prewarm=0 leaves it out. */
+function segPrewarm(seg, bs, lens) {
+  if (!lens || seg.__prewarmQueued || new URLSearchParams(location.search).get("prewarm") === "0") return;
+  seg.__prewarmQueued = true;
+  const go = () => { if (!seg.isConnected || seg.querySelector(".warp") || (seg.__lensLoop && !seg.__lensLoop.state.done)) return; const t = performance.now(); performance.mark("seg:prewarm"); segLens(seg, lens, bs, NaN, { prewarm: true }); segMeasure("seg:prewarm-build", t); };
+  const idle = () => { if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 600 }); else setTimeout(go, 200); };
+  const after = () => requestAnimationFrame(() => requestAnimationFrame(idle));
+  if (window.LENS_ENGINE_FIX_DONE || window.LENS_ENGINE_FIX === false) after(); else addEventListener("lens-engine-fix", after, { once: true });
+}
 function attachSegmented(seg, getIndex, commit) {
   const bs = [...seg.querySelectorAll("button")], lens = seg.querySelector(".lens"), n = bs.length;
+  segPrewarm(seg, bs, lens);   // A 起手预建: the lens layers built and painted once before the first touch
   const segAt = (x) => { const r = seg.getBoundingClientRect(); return Math.max(0, Math.min(n - 1, Math.floor((x - r.left) / (r.width / n)))); };   // 跨分隔线即换目标（G22/G24/G25）
   const outside = (x, y) => { const r = seg.getBoundingClientRect(), s = touchPx("--ios-touch-inside-slop", 70); return x < r.left - s || x > r.right + s || y < r.top - s || y > r.bottom + s; };
   const showLens = (i) => seg.style.setProperty("--i", String(i));
