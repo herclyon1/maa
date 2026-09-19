@@ -13,5 +13,5 @@
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .menu.menu.morph { filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.18)); } }
 :root[data-theme="dark"] .menu.menu.morph { filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.18)); }
 .menu.menu.morph .menu-glass { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; z-index: 0; }   /* clipped to the panel's shape = RingShadowMask 1 */
-.menu.menu.morph .menu-glass-copy { contain: layout paint style; }
+.menu.menu.morph .menu-glass-copy { contain: layout paint style; }   /* no will-change: a composited page-sized copy with a url() filter made Chrome re-rasterise the chain every frame of the morph (15 frames / 1.5 s vs 70 without; R63) */
 .menu.menu.morph .menu-body { z-index: 1; }
