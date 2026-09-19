@@ -199,7 +199,7 @@ void main(){
     const setState = (s) => {
       const t0 = performance.now(); const p = s.lift == null ? 1 : Math.max(0, Math.min(1, s.lift)), pd = s.pd == null ? 1 : Math.max(0, Math.min(1, s.pd));
       if (s.canvasOrigin) canvasOrigin = s.canvasOrigin;
-      if (p < 0.001) { clear(); drawn = true; return; }   /* rest = lift below .001, the bound view.js's loop settles on (sL.x / sM.x < .001, then it sends lift 0): nothing is drawn — an opaque copy of the backdrop left here at a tiny p looks like the DOM until the page under it changes (a theme switch), then it is a ghost; README §0.8.10 has the pixel sizes */
+      if (p <= 0) { clear(); drawn = true; return; }   /* rest is the PAGE's call (lift 0 from its clear()), never the package's: while the page keeps .lift the DOM platter is transparent and the canvas is the only platter — a package-side bound (b313aed's .001 / fb84a7e's .005) cleared the canvas 22 ticks before the page's clear and the white capsule vanished for 367 ms at the end of every tap (190821, README §0.8.12) */
       const base = preload[0] || 220;
       const want = s.w <= base ? base : nearest(s.w);   /* the lift (196×28 → 220×44) rides the 220 set stretched over the growing box (README §0.3, the SVG page's rule); only the drag stretch (> 220) has its own sets */
       if (!sets[want]) loadSet(want);
