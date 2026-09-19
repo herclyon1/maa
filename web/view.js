@@ -2100,14 +2100,19 @@ boot();
    the keyboard. Here: while the visual viewport is > 120 px shorter than the window (keyboard up) html.kbd hides the capsule; on every visualViewport
    resize / scroll and after a focus leaves a field the state is re-applied — the capsule comes back through display:none → block, i.e. freshly placed at
    the bottom. window.__tabKbd(h) runs the same code with a pretended visual-viewport height (accept). */
-{ const vv = window.visualViewport;   // 监督局 19:3x: the state comes from the visual viewport ONLY — no focus-driven hiding (a focused segment / tab button must never touch the capsule)
+{ const vv = window.visualViewport; let H0 = innerHeight, W0 = innerWidth, kbdNow = false;
   const kbInput = (el) => !!el && ((el.tagName === "INPUT" && !/^(checkbox|radio|range|button|submit|reset|file|color|hidden)$/i.test(el.type)) || el.tagName === "TEXTAREA" || el.isContentEditable === true);   // a <select> opens a menu, not the keyboard
-  /* kbd = the viewport is > 120 px shorter than the window AND a text field has the focus — the keyboard cannot be up without one, so a blur alone brings
-     the capsule back (数据 live 190821: field focused → tap a segment → keyboard slid down with the blur but html.kbd stayed: the 60 ms re-check ran mid-slide
-     with the viewport still short and no later visualViewport resize event arrived). Re-checked on visualViewport resize / scroll, window resize / scroll,
-     every pointerdown, and 0 / 60 / 300 / 600 / 1000 ms after a text field's blur. */
-  const apply = (h, strict) => { const vh = h != null ? h : (vv ? vv.height : innerHeight), kbd = innerHeight - vh > 120 && (h == null || strict ? kbInput(document.activeElement) : true); document.documentElement.classList.toggle("kbd", kbd); return kbd; };
-  window.__tabKbd = (h, strict) => apply(h, strict);
+  /* The keyboard state is viewport evidence only, never focus (监督局 09-19 19:4x, 验收 headless + 数据 simulator):
+     · 5d71467 kept a kbdFocus flag cleared only by the field's focusout — when the keyboard goes WITHOUT a blur (iOS: a tap on the segmented control, whose
+       pointerdown is preventDefault-ed, leaves the field focused; Android: the back key) the flag stayed and the capsule never came back (数据 live 190821);
+     · on Android the keyboard shrinks innerHeight itself, so innerHeight − vv.height stays 0 and the capsule was never hidden — it floated over the content.
+     H0 = the largest innerHeight seen at the current width (an orientation change resets it); kbd = (H0 − innerHeight > 120) || (innerHeight − vv.height > 120),
+     recomputed on window resize, visualViewport resize / scroll, every pointerdown and 0 / 60 / 300 / 600 / 1000 ms after a text field's blur (all of them
+     just re-read the viewport); either measure recovering clears it. The frame after kbd turns true the focused field is revealed (below). */
+  const apply = (h, ih) => { if (innerWidth !== W0) { W0 = innerWidth; H0 = innerHeight; } if (ih == null && innerHeight > H0) H0 = innerHeight;
+    const IH = ih != null ? ih : innerHeight, vh = h != null ? h : (vv ? vv.height : innerHeight), kbd = (H0 - IH > 120) || (IH - vh > 120);
+    document.documentElement.classList.toggle("kbd", kbd); if (kbd && !kbdNow) requestAnimationFrame(() => reveal()); kbdNow = kbd; return kbd; };
+  window.__tabKbd = (h, ih) => apply(h, ih);
   /* the focused field must end up inside the visible (keyboard-free) part of the viewport. WebKit reveals it itself on focus; on the phone the first
      focus of the time field after load stayed under the keyboard (数据 190821 vs 181053, +1.5 s still hidden; the second focus was revealed). What this
      block does at focus time is one class toggle on <html> (the fixed capsule → display:none) — no preventDefault, no blur, no scrollTop / scroll writes,
@@ -2120,7 +2125,7 @@ boot();
   const reveal = (h) => { const el = document.activeElement; if (!kbInput(el)) return false; const top = vv ? vv.offsetTop : 0, vh = h != null ? h : (vv ? vv.height : innerHeight), r = el.getBoundingClientRect();
     if (r.bottom > top + vh - 8 || r.top < top + 8) { scrollBy({ top: (r.top + r.height / 2) - (top + vh / 2), behavior: "smooth" }); return true; } return false; };
   window.__kbdReveal = (h) => reveal(h);
-  if (vv) { vv.addEventListener("resize", () => { apply(); requestAnimationFrame(() => reveal()); }); vv.addEventListener("scroll", () => apply()); }
+  if (vv) { vv.addEventListener("resize", () => apply()); vv.addEventListener("scroll", () => apply()); }
   addEventListener("resize", () => apply()); document.addEventListener("pointerdown", () => apply(), { capture: true, passive: true });
   addEventListener("focusout", (e) => { if (kbInput(e.target)) for (const ms of [0, 60, 300, 600, 1000]) setTimeout(() => apply(), ms); }); }   // a text field losing focus: the keyboard is going — re-check through its slide; focusin does nothing
 
