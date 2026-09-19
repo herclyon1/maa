@@ -6,10 +6,11 @@
                                                                                                           //   without the labels / the labels alone; region = the part of the
                                                                                                           //   page the textures hold (the control's row ± the lens's reach); again
                                                                                                           //   when the value / theme / size changes
-     L.draw({ lensX, lensY, w, h, p, pd, wh });                                                           // every frame — uniforms only; lensX/lensY = the lens box's page
+     L.draw({ lensX, lensY, w, h, p, pd, wh, platter: { rgba: [r, g, b, a], alpha } });                  // every frame — uniforms only; lensX/lensY = the lens box's page
                                                                                                           //   top-left, w × h = the model box (the nearest set), p = the glass
                                                                                                           //   progress (0 → nothing drawn), pd = the DestOut α (the capsule's
-                                                                                                          //   alpha over the real content), wh = W/H (§3b.6); returns gpu ms
+                                                                                                          //   alpha over the real content), wh = W/H (§3b.6), platter = the resting
+                                                                                                          //   platter's colour (_controlForegroundColor) and its 1 − p; returns gpu ms
    (create(canvas, { sets, backdrop, ink, width, height, dpr }) + setState({ cx, cy, w, h, lift, wh }) + redrawBackdrop() — the harness's form — still work.)
    The canvas paints ONLY the capsule (the displaced copies, the label copy, the fringe, the highlight, the inner shadow) and, outside it, the
    glassBackground ring shadow (black α) + the KeyFill dark line's row (the page copy darkened) — everything else stays transparent, the live
@@ -47,7 +48,7 @@ float darkLineK(float d, vec2 n){ float off = -0.6667, h = 1.0; float e = -(d + 
   const FS1 = `#version 300 es
 ${COMMON}
 in vec2 v; out vec4 o;
-uniform sampler2D t_page, t_lab, m_bg, m_lab, t_ish; uniform vec4 u_page; /* the backdrop region x y w h, page pt */ uniform vec4 u_lens; uniform float u_S; uniform float u_p;
+uniform sampler2D t_page, t_lab, m_bg, m_lab, t_ish; uniform vec4 u_page; /* the backdrop region x y w h, page pt */ uniform vec4 u_lens; uniform float u_S; uniform float u_p; uniform vec4 u_platter;
 vec4 page(vec2 p){ return texture(t_page, (p - u_page.xy) / u_page.zw); }
 vec4 lab(vec2 p){ return texture(t_lab, (p - u_page.xy) / u_page.zw); }
 vec4 over(vec4 s, vec4 d){ return s + d * (1.0 - s.a); }
@@ -64,6 +65,7 @@ void main(){
   vec4 col = mix(under, bgc, covb);
   col.rgb *= (1.0 - ringTerm(pl, half_, r) * u_p);               /* the ring shadow on the layer (inside; the outside part is the overlay of pass 2) */
   float k = darkLineK(d, n) * u_p; col.rgb = col.rgb * (1.0 + (-0.3) * k * (3.0 - 2.0 * col.rgb));   /* the dark line: rgb' = rgb·(1 + colorBias·k·(3 − 2·rgb)) */
+  col.rgb = mix(col.rgb, u_platter.rgb, u_platter.a * covb);    /* the resting platter (restingBackground #5, _controlForegroundColor): above the displaced backdrop, below the lines and the labels, opacity 1 → 0 on the lift (§4b; the SVG page's .plat = 1 − lp) — u_platter = rgb × the page's alpha */
   vec4 ml = inBox ? texture(m_lab, uv) : vec4(128.0 / 255.0, 128.0 / 255.0, 0.0, 1.0);
   vec2 ul = decode(ml.rg, u_S) * u_p; vec4 lc = lab(v + ul) * M; col = over(lc, col);   /* layers 2 + 4: the label copy, capsule-clipped at the destination (ClearGlass masksToBounds r 22) */
   float ish = inBox ? texture(t_ish, vec2(uv.x, 1.0 - uv.y)).r : 0.0; col.rgb *= (1.0 - ish * u_p);   /* inner shadow #21 (keyfill §5.2c); t_ish is an FBO (row 0 = bottom) */
@@ -107,8 +109,9 @@ void main(){
      colour under it (rgb·(1 + colorBias·k·(3 − 2·rgb)), keyfill §5.1), so on its 1-pt row the overlay paints the page copy itself, darkened, opaque */
   float ring = ringTerm(pl, half_, r) * u_p; float k = darkLineK(d, n) * u_p;
   vec4 und = over(texture(t_lab, (v - u_page.xy) / u_page.zw), texture(t_page, (v - u_page.xy) / u_page.zw));
-  vec3 lined = und.rgb * (1.0 + (-0.3) * k * (3.0 - 2.0 * und.rgb)) * (1.0 - ring);
-  vec4 outside = (k > 0.0) ? vec4(lined, 1.0) : vec4(0.0, 0.0, 0.0, ring);
+  vec3 f = (1.0 + (-0.3) * k * (3.0 - 2.0 * und.rgb)) * (1.0 - ring);   /* the darkening the two outside terms apply to the colour under them (keyfill §5.1 / §4), taken from the copy's colour there */
+  float aOut = 1.0 - (f.r + f.g + f.b) / 3.0;                            /* painted as black α over the live DOM — nothing of the copy is drawn outside the capsule (界面1号 ⑤) */
+  vec4 outside = vec4(0.0, 0.0, 0.0, sat(aOut));
   o = mix(outside, vec4(col, 1.0) * u_pd, M);   /* u_pd = the DestOut α (§4.1 / §4.3 ramps): the capsule's alpha over the real content, 1 when held */
 }`;
   const loadImg = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("lens-webgl: " + src)); i.src = src; });
@@ -180,6 +183,7 @@ void main(){
       gl.bindFramebuffer(gl.FRAMEBUFFER, A.f); gl.viewport(0, 0, A.w, A.h); useProg(P1);
       gl.uniform4f(U(P1, "u_quad"), wx, wy, ww, wh_); gl.uniform2f(U(P1, "u_origin"), wx, wy); gl.uniform2f(U(P1, "u_view"), ww, wh_);
       gl.uniform4f(U(P1, "u_page"), region.x, region.y, region.w, region.h); gl.uniform4f(U(P1, "u_lens"), lx, ly, lw, lh); gl.uniform1f(U(P1, "u_S"), st.S); gl.uniform1f(U(P1, "u_p"), p);
+      const pl_ = s.platter || { rgba: [0, 0, 0, 0], alpha: 0 }; gl.uniform4f(U(P1, "u_platter"), (pl_.rgba[0] || 0) / 255, (pl_.rgba[1] || 0) / 255, (pl_.rgba[2] || 0) / 255, (pl_.rgba[3] == null ? 1 : pl_.rgba[3]) * (pl_.alpha == null ? 1 : pl_.alpha));
       bind(P1, "t_page", 0, tPage); bind(P1, "t_lab", 1, tLab); bind(P1, "m_bg", 2, st.bg); bind(P1, "m_lab", 3, st.lab); bind(P1, "t_ish", 4, st.ish.t);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       clear(); useProg(P2);
@@ -193,7 +197,7 @@ void main(){
     const setBackdrop = (b) => { if (b.region) region = b.region; if (b.ink) opts.ink = b.ink; opts.backdrop = (x, which, info) => { if (which === "page" && b.page) b.page(x, info); if (which === "labels" && b.labels) b.labels(x, info); }; redrawBackdrop(); };
     const draw = (d) => {   /* the ui form: the canvas is the wrapper at (lensX − AM, lensY − AM), (w + 2AM) × (h + 2AM) pt — resized here when the size changes */
       const cw = d.w + 2 * AM, ch = d.h + 2 * AM; if (cw !== W || ch !== H) { W = cw; H = ch; canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR); }
-      setState({ cx: d.lensX + d.w / 2, cy: d.lensY + d.h / 2, w: d.w, h: d.h, lift: d.p, pd: d.pd, wh: d.wh, canvasOrigin: { x: d.lensX - AM, y: d.lensY - AM } });
+      setState({ cx: d.lensX + d.w / 2, cy: d.lensY + d.h / 2, w: d.w, h: d.h, lift: d.p, pd: d.pd, wh: d.wh, platter: d.platter, canvasOrigin: { x: d.lensX - AM, y: d.lensY - AM } });
       return stats.gpuMs; };
     return { gl, canvas, ready, setState, draw, setBackdrop, redrawBackdrop, backdropCanvas: () => composite, stats, sets, loadSet, get region() { return region; }, destroy: () => { gl.getExtension("WEBGL_lose_context")?.loseContext(); } };
   };
