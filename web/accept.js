@@ -563,7 +563,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
            package drew each frame (stats.last) sampled for 420 ms, then released */
         { const seg7 = q(), g7 = seg7 && seg7.__gl; if (g7 && g7.lens.stats) { const selB = [...seg7.querySelectorAll("button")].find((b) => b.classList.contains("on")); const t7 = performance.now(); pev(seg7, "pointerdown", at(selB)); const r7 = [];
           await new Promise((res) => { const tick = () => { const L = g7.lens.stats.last; if (L && L.t > t7 && !(r7.length && r7[r7.length - 1].t === L.t)) r7.push({ lift: L.lift, a: L.platterAlpha, t: L.t }); if (performance.now() - t7 < 420) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick); });
-          pev(seg7, "pointerup", at(selB)); await sleep(900);
+          pev(seg7, "pointerup", at(selB)); await sleep(900); delete seg7.dataset.pe;   // the browser's click would have consumed the press flag; a synthetic press leaves it, and it would eat the next real click
           const lifted = r7.filter((x) => x.lift > 0 && x.lift < 1), first = r7.find((x) => x.lift > 0), dev = lifted.map((x) => Math.abs(x.a - (1 - x.lift))), mx = dev.length ? Math.max(...dev) : NaN;
           check(`分段 R7 平台淡出：与抬起同帧起、每帧 alpha = 1 − lift（${lifted.length} 帧，最大差 ${Number.isFinite(mx) ? mx.toFixed(4) : "-"}；R15 表 .8688@p.131 / .7186@.281 / .5694@.431）`, "首抬帧 alpha < 1 · |Δ| ≤ .001 · ≥ 5 帧", first ? `首抬帧 lift ${first.lift.toFixed(3)} alpha ${first.a.toFixed(4)} · ${lifted.length} 帧` : "无抬起帧", !!first && first.a < 1 && lifted.length >= 5 && mx <= 0.001); } }
         await sleep(50);
