@@ -12,6 +12,8 @@
                                                                                                           //   alpha over the real content), wh = W/H (§3b.6), platter = the resting
                                                                                                           //   platter's colour (_controlForegroundColor) and its 1 − p; returns gpu ms
    (create(canvas, { sets, backdrop, ink, width, height, dpr }) + setState({ cx, cy, w, h, lift, wh }) + redrawBackdrop() — the harness's form — still work.)
+   Warm-up: when `ready` resolves (and after each setBackdrop) one lifted frame is drawn through both passes and finished, never presented, so the
+   first real glass frame does not pay the pipelines' and textures' first use (L.stats.warmMs; ?glwarm=0 / { warm: false } off).
    The canvas paints ONLY the capsule (the displaced copies, the label copy, the fringe, the highlight, the inner shadow) and, outside it, the
    glassBackground ring shadow (black α) + the KeyFill dark line's row (the page copy darkened) — everything else stays transparent, the live
    DOM shows through. What the taps read beyond the capsule comes from the backdrop textures the page draws.
@@ -197,8 +199,14 @@ void main(){
       if (opts.finish) gl.finish();
       stats.gpuMs = performance.now() - t0; stats.frames++; stats.set = wsel; last = s;
     };
-    const ready = Promise.all(preload.map((w) => sets[w] && sets[w].ready)).then(() => true);
-    const setBackdrop = (b) => { if (b.region) region = b.region; if (b.ink) opts.ink = b.ink; opts.backdrop = (x, which, info) => { if (which === "page" && b.page) b.page(x, info); if (which === "labels" && b.labels) b.labels(x, info); }; redrawBackdrop(); };
+    /* warm-up (监督局 14:4x: the page's first glass frame stalled 46–55 ms — the shader pipelines and the textures were first used on that frame): after the
+       preloaded set is up, one lifted frame is drawn through both passes into the FBO and the canvas (cleared again in the same task — never presented),
+       then gl.finish(); again after every setBackdrop (the new textures' first use). ?glwarm=0 / opts.warm === false skips it. */
+    const WARM = opts.warm !== false && new URLSearchParams(location.search).get("glwarm") !== "0";
+    const warm = () => { if (!WARM) return; const w0 = loadedNearest(preload[0] || 220); if (w0 == null) return; const st = sets[w0]; const t0 = performance.now();
+      setState({ cx: W / 2, cy: H / 2, w: w0, h: st.h, lift: 1, pd: 1, wh: 1.72 }); gl.finish(); clear(); stats.warmMs = performance.now() - t0; };
+    const ready = Promise.all(preload.map((w) => sets[w] && sets[w].ready)).then(() => { warm(); return true; });
+    const setBackdrop = (b) => { if (b.region) region = b.region; if (b.ink) opts.ink = b.ink; opts.backdrop = (x, which, info) => { if (which === "page" && b.page) b.page(x, info); if (which === "labels" && b.labels) b.labels(x, info); }; redrawBackdrop(); if (sets[preload[0]] && sets[preload[0]].loaded) warm(); };
     const draw = (d) => {   /* the ui form: the canvas is the wrapper at (lensX − AM, lensY − AM), (w + 2AM) × (h + 2AM) pt — resized here when the size changes */
       const cw = d.w + 2 * AM, ch = d.h + 2 * AM; if (cw !== W || ch !== H) { W = cw; H = ch; canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR); }
       setState({ cx: d.lensX + d.w / 2, cy: d.lensY + d.h / 2, w: d.w, h: d.h, lift: d.p, pd: d.pd, wh: d.wh, platter: d.platter, canvasOrigin: { x: d.lensX - AM, y: d.lensY - AM } });
