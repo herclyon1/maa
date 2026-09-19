@@ -1945,7 +1945,7 @@ function installNative() {
     addEventListener("scroll", onScroll, { passive: true });
     onScroll();
   }
-  const ptr = $("#ptr");
+  const ptr = document.querySelector('script[src^="refresh.js"]') ? null : $("#ptr");   // BOARD #8 (A7 one-line guard): refresh.js owns the pull when it is loaded; these handlers then see no #ptr and do nothing
   let y0 = null, pulled = 0, armed = false;
   const THRESH = 72;
   addEventListener("touchstart", (e) => { y0 = (window.scrollY <= 0 && e.touches.length === 1) ? e.touches[0].clientY : null; pulled = 0; armed = false; }, { passive: true });
