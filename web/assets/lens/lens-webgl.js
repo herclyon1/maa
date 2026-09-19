@@ -50,7 +50,7 @@ float darkLineK(float d, vec2 n){ float off = -0.6667, h = 1.0; float e = -(d + 
   const FS1 = `#version 300 es
 ${COMMON}
 in vec2 v; out vec4 o;
-uniform sampler2D t_page, t_lab, m_bg, m_lab, t_ish; uniform vec4 u_page; /* the backdrop region x y w h, page pt */ uniform vec4 u_lens; uniform float u_S; uniform float u_p; uniform vec4 u_platter;
+uniform sampler2D t_page, t_lab, m_bg, m_lab, t_ish; uniform vec4 u_page; /* the backdrop region x y w h, page pt */ uniform vec4 u_lens; uniform float u_S; uniform float u_p; uniform float u_pd; uniform vec4 u_platter; uniform float u_srcclip;
 vec4 page(vec2 p){ return texture(t_page, (p - u_page.xy) / u_page.zw); }
 vec4 lab(vec2 p){ return texture(t_lab, (p - u_page.xy) / u_page.zw); }
 vec4 over(vec4 s, vec4 d){ return s + d * (1.0 - s.a); }
@@ -63,7 +63,7 @@ void main(){
   vec4 mb = inBox ? texture(m_bg, uv) : vec4(128.0 / 255.0, 128.0 / 255.0, 0.0, 1.0);
   vec2 ub = decode(mb.rg, u_S) * u_p; float covb = mb.b;
   vec2 qb = v + ub; float dq = sdf(qb - C, half_, r); float Mq = sat(0.5 - dq / max(fwidth(dq), 1e-4));
-  vec4 bgc = over(lab(qb) * (1.0 - Mq), page(qb));               /* layer 1 + DestOut #43: the labels only outside the capsule at the source (formula §4b) */
+  vec4 bgc = over(lab(qb) * (1.0 - Mq * u_pd), page(qb));        /* layer 1 + DestOut #43: the segment content is removed inside the capsule at the SOURCE with the DestOut α (§4.1 .396 / .98 / 1 on the first three lift frames, then 1; formula §4b) — the punch fades the real labels out of the capture; the lens's own output is never scaled by it */
   vec4 col = mix(under, bgc, covb);
   col.rgb *= (1.0 - ringTerm(pl, half_, r) * u_p);               /* the ring shadow on the layer (inside; the outside part is the overlay of pass 2) */
   float k = darkLineK(d, n) * u_p; col.rgb = col.rgb * (1.0 + (-0.3) * k * (3.0 - 2.0 * col.rgb));   /* the dark line: rgb' = rgb·(1 + colorBias·k·(3 − 2·rgb)) */
@@ -73,7 +73,7 @@ void main(){
      table 2; the SVG page's .displ border-radius before its filter: 先裁再位移), so a sample that lands outside the capsule reads transparent (the tearing at the ends); the map's B =
      the two stages' own masks (compose_stages); the destination is not clipped again (portal #32 masksToBounds 0, §4b) */
   vec2 ul = decode(ml.rg, u_S) * u_p; vec2 ql = v + ul; float dl = sdf(ql - C, half_, r); float Ml = sat(0.5 - dl / max(fwidth(dl), 1e-4));
-  vec4 lc = lab(ql) * Ml * ml.b; col = over(lc, col);
+  vec4 lc = lab(ql) * (u_srcclip > 0.5 ? Ml : 1.0) * ml.b; col = over(lc, col);   /* u_srcclip: the #20 clip at the sampled position (1, the read chain); 0 = the destination clip only (before d3a6dce), an instrument */
   float ish = inBox ? texture(t_ish, vec2(uv.x, 1.0 - uv.y)).r : 0.0; col.rgb *= (1.0 - ish * u_p);   /* inner shadow #21 (keyfill §5.2c); t_ish is an FBO (row 0 = bottom) */
   o = vec4(col.rgb, 1.0);
 }`;
@@ -119,7 +119,7 @@ void main(){
   vec3 f = (1.0 + (-0.3) * k * (3.0 - 2.0 * und.rgb)) * (1.0 - ring);   /* the darkening the two outside terms apply to the colour under them (keyfill §5.1 / §4), taken from the copy's colour there */
   float aOut = 1.0 - (f.r + f.g + f.b) / 3.0;                            /* painted as black α over the live DOM — nothing of the copy is drawn outside the capsule (界面1号 ⑤) */
   vec4 outside = vec4(0.0, 0.0, 0.0, sat(aOut));
-  o = mix(outside, vec4(col, 1.0) * u_pd, M);   /* u_pd = the DestOut α (§4.1 / §4.3 ramps): the capsule's alpha over the real content, 1 when held */
+  o = mix(outside, vec4(col, 1.0), M);   /* inside the capsule the lens's output, opaque (the DestOut α acts on the copy's source in pass 1 — a20df11's first lift frames lost the platter because the whole capsule was × pd here) */
 }`;
   const loadImg = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("lens-webgl: " + src)); i.src = src; });
   const create = (canvasOrOpts, opts0) => {
@@ -158,7 +158,11 @@ void main(){
        and not on a detached one (measured: the same 13 px glyph's ink box 107.67–132 attached / DOM vs 108.5–131.33 detached); iOS renders both alike */
     const scratch = document.createElement("div"); scratch.style.cssText = "position:absolute;left:-100000px;top:0;width:1px;height:1px;overflow:hidden;pointer-events:none"; document.body.appendChild(scratch);
     const draw2d = (which) => { const c = document.createElement("canvas"); c.width = Math.round(region.w * DPR); c.height = Math.round(region.h * DPR); c.style.cssText = `width:${region.w}px;height:${region.h}px`; scratch.appendChild(c); const x = c.getContext("2d"); x.scale(DPR, DPR); x.translate(-region.x, -region.y); opts.backdrop(x, "page", { width: W, height: H, region }); if (which === "labels") opts.backdrop(x, "labels", { width: W, height: H, region }); return c; };
-    const labelsAlpha = (cPg, cP) => { const w = cPg.width, h = cPg.height; const a = cPg.getContext("2d").getImageData(0, 0, w, h).data, b = cP.getContext("2d").getImageData(0, 0, w, h).data; const ink = opts.ink || [0, 0, 0];
+    const labelsAlpha = (cPg, cP) => { const w = cPg.width, h = cPg.height; const a = cPg.getContext("2d").getImageData(0, 0, w, h).data, b = cP.getContext("2d").getImageData(0, 0, w, h).data;
+      /* the ink colour = the colour of the pixel the labels changed most (their most opaque pixel); opts.ink is used only when it is within 48 levels of it (a wrong ink — the
+         light theme's black handed over in the dark theme — empties the recovered alpha wherever the glyph is anti-aliased: thin strokes vanish) */
+      let best = -1, det = [0, 0, 0]; for (let i = 0; i < a.length; i += 4) { const dd = Math.abs(b[i] - a[i]) + Math.abs(b[i + 1] - a[i + 1]) + Math.abs(b[i + 2] - a[i + 2]); if (dd > best) { best = dd; det = [b[i], b[i + 1], b[i + 2]]; } }
+      const given = opts.ink && opts.ink.length === 3 ? opts.ink.map(Number) : null; const ink = (given && Math.abs(given[0] - det[0]) + Math.abs(given[1] - det[1]) + Math.abs(given[2] - det[2]) <= 48) ? given : det; stats.ink = ink;
       const out = new ImageData(w, h); const o = out.data;
       for (let i = 0; i < a.length; i += 4) { let best = 0, al = 0; for (let c = 0; c < 3; c++) { const den = ink[c] - a[i + c]; if (Math.abs(den) > Math.abs(best)) { best = den; al = (b[i + c] - a[i + c]) / den; } }
         al = Math.max(0, Math.min(1, al)); o[i] = ink[0] * al; o[i + 1] = ink[1] * al; o[i + 2] = ink[2] * al; o[i + 3] = al * 255; }   /* premultiplied ink·a, a */
@@ -194,6 +198,7 @@ void main(){
       gl.bindFramebuffer(gl.FRAMEBUFFER, A.f); gl.viewport(0, 0, aw, ah); useProg(P1);
       gl.uniform4f(U(P1, "u_quad"), wx, wy, ww, wh_); gl.uniform2f(U(P1, "u_origin"), wx, wy); gl.uniform2f(U(P1, "u_view"), ww, wh_);
       gl.uniform4f(U(P1, "u_page"), region.x, region.y, region.w, region.h); gl.uniform4f(U(P1, "u_lens"), lx, ly, lw, lh); gl.uniform1f(U(P1, "u_S"), st.S); gl.uniform1f(U(P1, "u_p"), p);
+      gl.uniform1f(U(P1, "u_srcclip"), opts.srcClip === false ? 0 : 1); gl.uniform1f(U(P1, "u_pd"), pd);
       const pl_ = s.platter || { rgba: [0, 0, 0, 0], alpha: 0 }; gl.uniform4f(U(P1, "u_platter"), (pl_.rgba[0] || 0) / 255, (pl_.rgba[1] || 0) / 255, (pl_.rgba[2] || 0) / 255, (pl_.rgba[3] == null ? 1 : pl_.rgba[3]) * (pl_.alpha == null ? 1 : pl_.alpha));
       bind(P1, "t_page", 0, tPage); bind(P1, "t_lab", 1, tLab); bind(P1, "m_bg", 2, st.bg); bind(P1, "m_lab", 3, st.lab); bind(P1, "t_ish", 4, st.ish.t);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);

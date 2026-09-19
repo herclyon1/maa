@@ -1145,6 +1145,24 @@ The data session's read of the wired page before this (78284dd): the page's own 
 after a reopen — consistent with the backdrop upload and the per-frame backing reallocation being the remaining first-frame costs, both
 moved here; to be re-read on the same gestures (tap up + 83 / + 129 frames, the drag's lift).
 
+### 0.8.10 a20df11's two regressions (2026-09-19 15:1x; the site rolled back to the SVG stack) — what they were, package side
+
+**① The white platter missing on the first lift frame, half on the second, right from the third.** Not a lag of the uniform (draw() sets
+u_platter on the frame it is given). The package composited the WHOLE capsule × pd (the DestOut α: §4.1's .396 / .98 / 1 on the first three
+lift frames) — so on frame 1 the lens's output, platter included, was 40 % over the page's DOM, whose own resting platter the lift hides.
+The native's DestOut punch does not scale the lens's output: it removes the real content UNDER the lens progressively, i.e. it fades the real
+labels out of the BackdropView's capture. Fixed (this commit): pass 1's source punch is `labels × (1 − M(q) · pd)` (the labels inside the
+capsule at the source fade with pd), pass 2's capsule is opaque whenever p > 0. The platter and everything else are unaffected by pd now.
+
+**② The dark theme's left 「早」 losing its first 5 pt (box 113.33 / 18.67 vs 78284dd's 109.33 / 22.67; light right).** Not the source clip:
+in the harness (`?state=mid&dpr=3`, 3 px/pt, dark and light) the glyph's box and ink are identical with the #20 clip at the sampled position
+on and off (`?srcclip=0`): light 107.67–120.67 / 321 px, dark 107.67–120.67 / 298 px — the map's samples for that glyph never leave the
+capsule, so the clip has nothing to cut; and nothing in dc2af2a / d3a6dce depends on the theme. What does depend on the theme in the
+package is the labels' alpha recovery, which needs the labels' ink colour: a = (P − Pg)/(ink − Pg) — with the light theme's black handed
+over in the dark theme (white glyphs on a dark track) the recovered alpha collapses wherever a glyph is anti-aliased: thin strokes go first,
+the 「早」's left strokes are the thinnest. Package side (this commit): the ink is detected from the renders themselves (the colour of the
+pixel the labels changed most); a given `ink` is used only when it is within 48 levels of the detected one (`L.stats.ink` tells which). For
+界面1号 to confirm on the page: the value of `ink` passed in the dark theme at that frame.
 ### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
 
 Sources: `remote-ref/sheet-native.md` (the data session's 10th order: A9 `sheetivars` / `corners` / `subtree` / motion, iOS 27.0 3×) and
