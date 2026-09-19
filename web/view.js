@@ -53,6 +53,8 @@ function ask(title, msg, okLabel = "好", danger = false) {
     requestAnimationFrame((f1) => requestAnimationFrame((f2) => { window.ALERT_T = { open: t0, f1, f2 }; d.scrollTop = 0; }));
   });
 }
+/* "8:30" / "08:30" → "08:30"; anything else (08:930, 25:00, 08:75, letters) → null */
+function timeHHMM(s) { const m = /^\s*(\d{1,2}):(\d{2})\s*$/.exec(String(s || "")); if (!m || +m[1] > 23 || +m[2] > 59) return null; return `${m[1].padStart(2, "0")}:${m[2]}`; }
 function toast(t, ms = 2600) {
   const el = $("#toast"); el.textContent = t; el.classList.add("show");
   clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove("show"), ms);
@@ -136,7 +138,7 @@ function echoFarmBlock(relay) {
     return `<div class="hint">🥚 正在刷「${cur["名字"] || "?"}」，刷到 ${String(cur["到"]).slice(11)} 为止（${cur["从"] ? String(cur["从"]).slice(11) + " 开始" : ""}）</div>
       <div class="row"><label>改成刷到几点
         <span class="hint">提前或延后都行，填 21:00 这种。已经过了的时刻＝立刻收工</span></label>
-        <input type="text" class="short" id="efnew" value="${String(cur["到"]).slice(11)}" inputmode="numeric"></div>
+        <input type="text" class="short" id="efnew" value="${String(cur["到"]).slice(11)}" inputmode="numeric" data-time></div>
       <div class="acts"><button class="wide" id="echofarmuntil">改收工时刻</button></div>
       <div class="acts"><button class="wide" id="echofarmstop">提前收工（关掉脚本和游戏）</button></div>`;
   }
@@ -146,7 +148,7 @@ function echoFarmBlock(relay) {
       <select id="efboss">${opts}</select></div>
     <div class="row"><label>刷到几点（机器时间）
       <span class="hint">填 08:30 这种，已过就算明天。到点自动收工、配置还原</span></label>
-      <input type="text" class="short" id="efuntil" value="08:30" inputmode="numeric"></div>
+      <input type="text" class="short" id="efuntil" value="08:30" inputmode="numeric" data-time></div>
     <div class="acts"><button class="wide" id="echofarm">开始刷</button></div>`;
 }
 
@@ -360,7 +362,7 @@ function render() {
   html += `<section><h2>刷 4C 声骸</h2>
     ${ef["到"] ? `<div class="row"><label>改成刷到几点
         <span class="hint">提前或延后都行，填 21:00 这种。已经过了的时刻＝立刻收工</span></label>
-        <input type="text" class="short" id="efnew" value="${String(ef["到"]).slice(11)}" inputmode="numeric"></div>` : echoFarmBlock(relay)}
+        <input type="text" class="short" id="efnew" value="${String(ef["到"]).slice(11)}" inputmode="numeric" data-time></div>` : echoFarmBlock(relay)}
   </section>`;
   html += `<section><h2>机器</h2>
     ${RELAY_SWITCHES.filter((x) => x.tab === "状态").map((x) => relayRow(x, relay)).join("")}
@@ -846,9 +848,12 @@ function wire() {
     oneShot({ action: "echo_farm", confirmed: true, boss, until, name: nm },
             `已让它刷「${nm}」到 ${until}。到点中继会自己收工并把配置还原`);
   };
+  /* HH:MM inputs (刷到几点 / 改成刷到几点, data-time): anything else rolls back to the last valid value with a toast — 数据 181053 ⑤2: 08:930 was accepted */
+  for (const el of document.querySelectorAll("input[data-time]")) { el.dataset.last = el.value; el.onchange = () => { const t = timeHHMM(el.value); if (t) { el.value = t; el.dataset.last = t; } else { toast("时刻要填 08:30 这种（时:分）", 3000); el.value = el.dataset.last || ""; } }; }
   const efu = $("#echofarmuntil");
   if (efu) efu.onclick = async () => {
-    const v = ($("#efnew").value || "").trim();
+    const v = timeHHMM(($("#efnew") || {}).value || "");   // ui 654d4a8: HH:MM only, else toast; main 563dd33: the page's ask() dialog, not the browser one
+    if (!v) { toast("时刻要填 08:30 这种（时:分）", 3000); return; }
     if (!(await ask("改收工时刻？", `把收工时刻改成 ${v}（机器时间）？`, "改"))) return;
     oneShot({ action: "echo_farm_until", until: v }, "收工时刻已改");
   };
@@ -1726,7 +1731,10 @@ function segPrewarm(seg, bs, lens) {
   const go = () => { if (!seg.isConnected || seg.querySelector(".warp") || (seg.__lensLoop && !seg.__lensLoop.state.done)) return; const t = performance.now(); performance.mark("seg:prewarm"); segLens(seg, lens, bs, NaN, { prewarm: true }); segMeasure("seg:prewarm-build", t); };
   const idle = () => { if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 600 }); else setTimeout(go, 200); };
   const after = () => requestAnimationFrame(() => requestAnimationFrame(idle));
-  if (window.LENS_ENGINE_FIX_DONE || window.LENS_ENGINE_FIX === false) after(); else addEventListener("lens-engine-fix", after, { once: true });
+  /* the WebGL lens does not use the SVG maps the engine fix re-encodes (a fetch + decode per map, long on the phone): with GL available the build runs at the
+     first idle slot after load instead of waiting for that event — 2号 18:4x: the first gesture after load still paid seg:build 30 ms (the layers + the GL
+     instance built at the down), the second 0 ms */
+  if (segGlAvailable() || window.LENS_ENGINE_FIX_DONE || window.LENS_ENGINE_FIX === false) after(); else addEventListener("lens-engine-fix", after, { once: true });
 }
 function attachSegmented(seg, getIndex, commit) {
   const bs = [...seg.querySelectorAll("button")], lens = seg.querySelector(".lens"), n = bs.length;
@@ -2082,6 +2090,20 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 window.__viewReady = true;   // every top-level binding above exists now: live.js's timers / events may use cfg, snap, render … (they return until this)
 boot();
+
+/* the bottom tab capsule and the keyboard (数据终核 181053 ⑤ 1/3): iOS keeps position:fixed elements in the layout viewport — with the keyboard up the
+   visual viewport shrinks and Safari may float the capsule above the keyboard over the content (the dark time input: capsule y≈516), and after the keyboard
+   closes the capsule can stay where the shrunken viewport left it (y≈840 instead of 905) until the next layout. The native tab bar is simply covered by
+   the keyboard. Here: while the visual viewport is > 120 px shorter than the window (keyboard up) html.kbd hides the capsule; on every visualViewport
+   resize / scroll and after a focus leaves a field the state is re-applied — the capsule comes back through display:none → block, i.e. freshly placed at
+   the bottom. window.__tabKbd(h) runs the same code with a pretended visual-viewport height (accept). */
+{ const vv = window.visualViewport; let kbdFocus = false;   // kbdFocus: a keyboard-summoning field has the focus (监督局 18:4x: hide on focus too, not only on the viewport shrinking)
+  const kbInput = (el) => !!el && ((el.tagName === "INPUT" && !/^(checkbox|radio|range|button|submit|reset|file|color|hidden)$/i.test(el.type)) || el.tagName === "TEXTAREA" || el.isContentEditable === true);   // a <select> opens a menu, not the keyboard
+  const apply = (h) => { const vh = h != null ? h : (vv ? vv.height : innerHeight), kbd = (h == null && kbdFocus) || innerHeight - vh > 120; document.documentElement.classList.toggle("kbd", kbd); return kbd; };
+  window.__tabKbd = (h) => apply(h);
+  if (vv) { vv.addEventListener("resize", () => apply()); vv.addEventListener("scroll", () => apply()); }
+  addEventListener("focusin", (e) => { if (kbInput(e.target)) { kbdFocus = true; apply(); } });
+  addEventListener("focusout", (e) => { if (kbInput(e.target)) { kbdFocus = false; setTimeout(() => apply(), 60); } }); }
 
 /* 添加到主屏幕后**第一次**从图标启动，滚动位置停在 −62（visualViewport offsetTop −62，整页下沉 62；杀掉重开为 0）——数据会话 9c22044 ?diag 实拍，
    每次添加后的首启必现，不是 env() 也不是 padding。发现负滚动就归零。 */
