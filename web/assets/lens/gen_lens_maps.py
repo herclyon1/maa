@@ -340,6 +340,30 @@ def wh_matrix(wh):
     G' = (G − ½)/wh + ½ (Δy × H/W), B (the band factor) and A untouched — formula.md §3b.3 lanes, §3b.6 the box"""
     return f"{wh:g} 0 0 0 {0.5 * (1 - wh):g}  0 {1 / wh:g} 0 0 {0.5 * (1 - 1 / wh):g}  0 0 1 0 0  0 0 0 1 0"
 
+def filter_inner_shadow(name, opacity=0.06, offset=7.0, radius=3.0):
+    """B6-c (2026-09-19): the ClearGlass inner shadow layer #21 (keys seg-lens-refraction.md §1c(b): invertsShadow 1, shadowPathIsBounds 1, black
+    shadowOpacity .06, shadowRadius 3, shadowOffset (0, 7)) drawn as QuartzCore rasterises it — keyfill-highlight.md §5.2c (emit_shadow_path
+    0x1c3ad0d3c, closed form fixed by the data session's four sdfset variants A / R / O / P): α(p) = op · M(p) · blur_σ(M − M↓offset)(p), M = the
+    capsule mask, σ = shadowRadius in pt (predict-seg-hold.md §0d: gaussian_vimage_8, σ = radius, offset a float, opacity without another factor)
+    — the band the shape leaves when its own copy is moved down by the offset, blurred, clipped back to the shape; NOT the complement blurred
+    (CSS inset box-shadow: that gives .059 on the top row where the raster reads .033). Apply to a black capsule element of the lens box
+    (background #000, border-radius r): the output is the shadow alone (the source's own fill is not emitted). Top edge, straight run:
+    I(y) = op · [Φ((y_top + off − y)/σ) − Φ((y_top − y)/σ)] → rows 602…613 = .033 .039 .044 .045 .044 .039 .033 .026 .019 .012 .007 .004 (§5.2c
+    table, measured ≤ .004 off from 603). The lift: offset, opacity and radius ride the lift curve (§1c(b)) — set dy = off·p, stdDeviation = σ·p,
+    slope = op·p per frame (or opacity × p on the element)."""
+    fid = f"{name}-lens-f-ish"
+    return f"""  <filter id="{fid}" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB" data-op="{opacity:g}" data-offset="{offset:g}" data-sigma="{radius:g}">
+    <!-- #21 inner shadow, keyfill-highlight.md §5.2c: op · M · blur_σ(M − M↓off), op {opacity:g} / offset (0, {offset:g}) / σ = shadowRadius {radius:g} pt; M = the element's own alpha (the capsule) -->
+    <feOffset in="SourceAlpha" dx="0" dy="{offset:g}" result="moff"/>
+    <feComposite in="SourceAlpha" in2="moff" operator="out" result="band"/>
+    <feGaussianBlur in="band" stdDeviation="{radius:g}" result="blur"/>
+    <feComposite in="blur" in2="SourceAlpha" operator="in" result="clip"/>
+    <feComponentTransfer in="clip" result="alpha"><feFuncA type="linear" slope="{opacity:g}" intercept="0"/></feComponentTransfer>
+    <feFlood flood-color="#000" flood-opacity="1" result="black"/>
+    <feComposite in="black" in2="alpha" operator="in"/>
+  </filter>"""
+
+
 def filter_aberration(fid, hrefs, w, h, scale, mode, margin, note, alpha_elem=1.0, edr=1.0, wh=1.72, peak=0.0):
     """glass_foreground_base's 7-tap spectral chain (formula.md §3b) on SourceGraphic = the wrapper of the lens content extended by
     `margin` pt (the two displaced layers over a plain copy of the page, so the outward taps read the page beyond the lens like the
@@ -790,6 +814,7 @@ def main_formula(a, W, H):
             if st.get("ab"):
                 for mode, fid in (("flip", st["filters"][2]), ("ir", st["filters"][3])):   # #seg-lens-f-ab-<w> = the band factor e (the formula with EdgeOpacityStart 1 / End 0), #seg-lens-f-ab-ir-<w> = 1 − e (record of the first reading)
                     body.append(filter_aberration(fid, [prefix + f for f in st["ab_files"]], w, st["h"], st["S_ab"], mode, a.ab_margin, f"colour fringe: glassForeground 7-tap spectral sampling, amount/height/offset/angle {a.aberration}, edge band {a.edge}, tap direction sign {a.ab_sign:g}, α_elem {a.ab_alpha:g}, edr {a.ab_edr:g}, lens {w}×{st['h']:g}; apply to the wrapper of the two displaced layers", a.ab_alpha, a.ab_edr, a.ab_wh, st["peak_ab_pt"] or 0.0))
+        body.append(filter_inner_shadow(a.name))
         return head + "\n".join(body) + "\n</svg>\n"
     open(os.path.join(a.out, "lens-filter.svg"), "w").write(svg_for(a.href_prefix))
     tpl = os.path.join(HERE, "lens-test.template.html")

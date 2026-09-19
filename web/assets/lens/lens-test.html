@@ -3227,6 +3227,16 @@
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
+  <filter id="seg-lens-f-ish" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB" data-op="0.06" data-offset="7" data-sigma="3">
+    <!-- #21 inner shadow, keyfill-highlight.md §5.2c: op · M · blur_σ(M − M↓off), op 0.06 / offset (0, 7) / σ = shadowRadius 3 pt; M = the element's own alpha (the capsule) -->
+    <feOffset in="SourceAlpha" dx="0" dy="7" result="moff"/>
+    <feComposite in="SourceAlpha" in2="moff" operator="out" result="band"/>
+    <feGaussianBlur in="band" stdDeviation="3" result="blur"/>
+    <feComposite in="blur" in2="SourceAlpha" operator="in" result="clip"/>
+    <feComponentTransfer in="clip" result="alpha"><feFuncA type="linear" slope="0.06" intercept="0"/></feComponentTransfer>
+    <feFlood flood-color="#000" flood-opacity="1" result="black"/>
+    <feComposite in="black" in2="alpha" operator="in"/>
+  </filter>
 </svg>
 <script>if (new URLSearchParams(location.search).get("enginefix") === "0") window.LENS_ENGINE_FIX = false;</script>   <!-- 引擎校正, default on; ?enginefix=0 turns it off for the record; the script itself is loaded after the page script -->
 <script src="lens-supersample.js"></script>   <!-- 引擎校正 2, default on; ?ss=0 off -->
