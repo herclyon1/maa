@@ -117,8 +117,18 @@
         const Lt = window.__tabLens; const want1 = fx1 - navL;   // a = .5: target = the finger (nav coordinates)
         num("7b 拖动目标 = 手指 x − a·W + W/2（按在中心 a = .5 → 手指 x，nav 坐标）", want1, Lt ? Lt.target : NaN, 0.5);
         check("7b 拖动中 nav.drag + 驱动 phase drag", "drag", `${nav.classList.contains("drag") ? "drag" : "-"} ${Lt ? Lt.phase : "-"}`, nav.classList.contains("drag") && !!Lt && Lt.phase === "drag");
-        const mv = await sampleX(400, tfm);
-        num(`7b 拖动 中心 x 对 ζ.85/.2 闭式 rms（${mv.length} 帧，自移动前一帧的 x / v 起）`, 0, rms(mv.map((s) => s.cx - underDamped(xm, vm, want1, 0.85, 0.2, s.t))), 1);
+        /* R64: the presented centre now carries the flex drift (sX·dx) — the position spring is judged on the driver's own x, the drift on the rect */
+        const mv = []; await new Promise((resolve) => { let first = null; const tick = (now) => { if (first === null) first = now; const L = window.__tabLens; mv.push({ t: (now - tfm) / 1000, cx: cxNav(), x: L ? L.x : cxNav(), xc: L ? L.xc : cxNav(), fx: L && L.flex ? { ...L.flex, trace: undefined } : null, wp: L ? L.wp : NaN, hp: L ? L.hp : NaN, w: L ? L.w : NaN, h: L ? L.h : NaN, r: rect() }); if (now - first < 400) requestAnimationFrame(tick); else resolve(); }; requestAnimationFrame(tick); });
+        num(`7b 拖动 位置弹簧 x 对 ζ.85/.2 闭式 rms（${mv.length} 帧，自移动前一帧的 x / v 起；驱动器本帧值）`, 0, rms(mv.map((s) => s.x - underDamped(xm, vm, want1, 0.85, 0.2, s.t))), 1);
+        { const withF = mv.filter((s) => s.fx), peak = withF.reduce((m, s) => (s.fx.sx > m ? s.fx.sx : m), 1), dip = withF.reduce((m, s) => (s.fx.sy < m ? s.fx.sy : m), 1), spec0 = withF.length ? withF[0].fx.spec : null;
+          check("R64 拖动中 flex 变体 = loupe（模型 (w0+16)×(h0+16) → d 70 → t 1；flex-interaction.md §2 / tab-lens-motion.md §6.4：pts 100、min .75、max 1.15、N 2500、ζ 1/.5、tracking .9/.5），手指在时走 tracking 弹簧", "pts 100 · .75/1.15 · N 2500 · ζ 1/.5 · tracking .9/.5 · sp .9/.5", spec0 ? `pts ${spec0.pts} · ${spec0.min}/${spec0.max} · N ${spec0.N} · ζ ${spec0.zeta}/${spec0.resp} · tracking ${spec0.tzeta}/${spec0.tresp} · sp ${withF[0].fx.sp.join("/")}` : "no flex", !!spec0 && spec0.pts === 100 && spec0.min === .75 && spec0.max === 1.15 && spec0.N === 2500 && spec0.zeta === 1 && spec0.resp === .5 && spec0.tzeta === .9 && spec0.tresp === .5 && withF[0].fx.sp[0] === .9 && withF[0].fx.sp[1] === .5);
+          check("R64 拖动加速时 X 伸 Y 缩（§3：sX = lerp(1, hi, a/N) 钳 [.9, 1.1] 目标，sY 反向）：拖动段 sX 峰 > 1、sY 谷 < 1，目标不出 [.9, 1.1]", "peak sX > 1.005 · dip sY < .995 · targets in [.9, 1.1]", `peak sX ${peak.toFixed(4)} · dip sY ${dip.toFixed(4)} · targets ${withF.every((s) => s.fx.target.sX >= .9 - 1e-9 && s.fx.target.sX <= 1.1 + 1e-9 && s.fx.target.sY >= .9 - 1e-9 && s.fx.target.sY <= 1.1 + 1e-9) ? "in" : "OUT"}`, withF.length > 10 && peak > 1.005 && dip < .995 && withF.every((s) => s.fx.target.sX >= .9 - 1e-9 && s.fx.target.sX <= 1.1 + 1e-9 && s.fx.target.sY >= .9 - 1e-9 && s.fx.target.sY <= 1.1 + 1e-9));
+          const geoOK = withF.every((s) => Math.abs(s.r.width - s.w * s.fx.sx) < .6 && Math.abs(s.r.height - s.h * s.fx.sy) < .6 && Math.abs((s.cx) - (s.x + s.fx.sx * s.fx.dx)) < .6);
+          check("R64 呈现盒 = W·sX × H·sY，中心 = 位置弹簧 + sX·drift（§6.6 / §6.4 先缩放后平移）——逐帧对驱动器本帧值（± .6 px）", "every frame", geoOK ? "every frame" : "OFF", withF.length > 10 && geoOK);
+          /* the three floats integrate the analytic flex spring toward that frame's targets from the previous frame's state (the driver's own dt) */
+          const tr = window.__tabLens && window.__tabLens.flex ? window.__tabLens.flex.trace : [], stepRef = (x, v, target, [z, r], dt) => { const w = 2 * Math.PI / r, dx = x - target; if (z < 1) { const wd = w * Math.sqrt(1 - z * z), B = (v + z * w * dx) / wd, e = Math.exp(-z * w * dt); return target + e * (dx * Math.cos(wd * dt) + B * Math.sin(wd * dt)); } const e = Math.exp(-w * dt), B = v + w * dx; return target + e * (dx + B * dt); };
+          let maxErr = 0, n = 0; for (let i = 1; i < tr.length; i++) { const a0 = tr[i - 1], b0 = tr[i]; if (!(b0.dt > 0)) continue; maxErr = Math.max(maxErr, Math.abs(stepRef(a0.sx, a0.vsx, b0.tSx, b0.sp, b0.dt) - b0.sx), Math.abs(stepRef(a0.sy, a0.vsy, b0.tSy, b0.sp, b0.dt) - b0.sy), Math.abs(stepRef(a0.dx, a0.vdx, b0.tDx, b0.sp, b0.dt) - b0.dx)); n++; }
+          check(`R64 三个 flex 浮点逐帧 = 解析弹簧一步（自上一帧的值 / 速度，向本帧目标，本帧 dt；${n} 帧，最大差）`, "≤ 1e-6", maxErr.toExponential(2), n > 10 && maxErr <= 1e-6); }
         const segR = seg.getBoundingClientRect(), padR = parseFloat(getComputedStyle(seg).paddingRight) || 0, padL = parseFloat(getComputedStyle(seg).paddingLeft) || 0;
         const far = dir > 0 ? sx2 + 400 : sx2 - 400; ev(selB2, "pointermove", far, sy2, 6); await new Promise((r) => requestAnimationFrame(r)); const Lc = window.__tabLens;
         const clampWant = dir > 0 ? segR.right - navL - padR - w0b / 2 : segR.left - navL + padL + w0b / 2;
@@ -132,6 +142,7 @@
         await sleep(400); const onB = bs.find((b) => b.classList.contains("on"));
         check("7b 松手后选中 = 手指下那项", nbr.dataset.tab || "邻项", onB ? (onB.dataset.tab || "?") : "-", onB === nbr);
         num("7b 落定：胶囊中心 = 该项中心", nx - navL, cxNav(), 1); check("7b 落定后驱动停（无 .tl-on）", "无", nav.classList.contains("tl-on") ? "还在" : "无", !nav.classList.contains("tl-on"));
+        num("R64 落定后 flex 归位：胶囊宽 = 项宽（sX → 1，drift → 0）", w0b, rect().width, 1);
         /* template: hidden mid-drag strips the driver */
         const b3 = bs.find((b) => b.classList.contains("on")); const r3 = b3.getBoundingClientRect(), x3 = r3.left + r3.width / 2, y3 = r3.top + r3.height / 2;
         ev(b3, "pointerdown", x3, y3, 7); await waitClass("lift-sel", 600); ev(b3, "pointermove", x3 + 20, y3, 7); await sleep(100);

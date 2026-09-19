@@ -33,8 +33,16 @@
    position ζ .85 / .4 to a pressed item, the drag by §6.6 (ζ .85 / .2, the finger rule, hard clamp) and ζ .9 / .4 to the item under the finger after
    the up — all through Motion.spring (motion.js #1). The lift's delays are the page's own timers (+140 ms on another item, +125 ms on the selected,
    interaction spec §2 T1 / T3 via tokens.css --ios-touch-tab-*-delay): the spring starts at the class the page sets. The style below (injected) takes the
-   glide's CSS scale rules and transitions out of the way while the driver owns the box. Unread: the ±1.6 pt wobble after the drop, the flex stretch of
-   the loupe while dragging (sX / sY), the spec's 119×64 / 103×63 vs the read 110×70. */
+   glide's CSS scale rules and transitions out of the way while the driver owns the box. Unread: the ±1.6 pt wobble after the drop, the spec's
+   119×64 / 103×63 vs the read 110×70.
+   R64 (界面, flex-interaction.md §1–§3, tab-lens-motion.md §6.4 / §6.6): the flex stretch while the lens moves — view.js's B5 chain (globals
+   flexIntegrator / flexSpec / flexTargets / springStep, the same _UIFlexInteraction reading) fed with this lens's own presented centre every frame;
+   the variant from the MODEL bounds (§7.4: a step at lift / unlift — lifted (w0 + 16) × (h0 + 16) → d = 70 → t = 1 → the loupe row: pts 100, min .75,
+   max 1.15, N 2500, scaleSpring ζ 1 / .5, tracking ζ .9 / .5 while the finger is down); targets sX / sY / drift by §3 (the [0.9, 1.1] hard clamp on the
+   targets), the three floats on the flex spring; presented box = W·sX × H·sY about the centre x + sX·dx (§6.4: the drift is added in the scaled
+   coordinates). Active from the first drag frame (the selection gesture's pan) until the floats settle after the up; the press-glide to another item
+   is left as the pure lift (the ① trace of tab-lens-motion.md §4 reads the lift sizes alone there). Not read: the retargetImpulse gap (§6.4: the native peak 1.109 vs the chain's 1.085 — no impulse in the loupe spec), the interaction
+   pulse (§3, four parameters unread). Instrument: window.__tabLens.flex = { sx, sy, dx, target, spec, sp, accel, vel, trace }. */
 (function () {
   const q = new URLSearchParams(location.search);
   if (q.get("tlens") === "0") return;
@@ -185,6 +193,9 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
     const w0 = parseFloat(glide.style.width) || glide.offsetWidth || 82, h0 = glide.offsetHeight || 54, pad = glide.offsetTop;   // the resting box = the item's (view.js's inline left / width; top = the bar's pad)
     const P = { x: 0, v: 0 }, XS = { x: st.lastX, v: 0 };
     let pTarget = 1, running = true, last = clockNow(), t0 = last, phase = "lift", frameN = 0, posSpring = SP_POS;
+    /* R64: the flex interaction's integrator and three floats (view.js B5 helpers; without them the box is the lift's alone) */
+    const FLEX_OK = typeof flexIntegrator === "function" && typeof flexSpec === "function" && typeof flexTargets === "function" && typeof springStep === "function";
+    const fl = FLEX_OK ? { vi: flexIntegrator(), sx: { x: 1, v: 0 }, sy: { x: 1, v: 0 }, dx: { x: 0, v: 0 }, out: { sx: 1, sy: 1, dx: 0 }, tg: null, spec: null, sp: null, trace: [] } : null;
     const segBox = st.seg.getBoundingClientRect(), navBox = nav.getBoundingClientRect(), track = { min: segBox.left - navBox.left + (parseFloat(getComputedStyle(st.seg).paddingLeft) || 0), max: segBox.right - navBox.left - (parseFloat(getComputedStyle(st.seg).paddingRight) || 0) };
     /* R33 (tab-lens-motion.md §3a): a quick tap on another item (the up before the +140 ms lift) — the lens lifts and slides at once (ζ 1 / .25 with
        ζ .85 / .4) and starts falling (ζ 1 / .4) on the frame the slide arrives, not at the up, not earlier for an early up; the arrival = the position
@@ -204,12 +215,29 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
       spring(P, pTarget, pTarget > .5 ? SP_LIFT : SP_DROP, dt); spring(XS, st.X, posSpring, dt);
       if (tap && !arrived && Math.abs(XS.x - st.X) <= .5) { arrived = true; st.tapArrivedAt = now; setTargets(); }   // §3a: the fall begins on the arrival frame
       const p = Math.max(0, Math.min(1, P.x)), x = XS.x, W = w0 + LIFT * p, H = h0 + LIFT * p;
-      /* the glide's box: the centre x from the position spring, the vertical centre = the resting centre (pad + h0 / 2) */
-      nav.style.setProperty("--tl-left", (x - W / 2) + "px"); nav.style.setProperty("--tl-w", W + "px"); nav.style.setProperty("--tl-top", (pad + h0 / 2 - H / 2) + "px"); nav.style.setProperty("--tl-h", H + "px");
+      /* R64 — the flex, once per frame: the presented centre (position + the drift in the scaled coordinates) into the integrator, the variant from the
+         model bounds (lifted (w0 + 16) × (h0 + 16) while the lift target is up, the resting box otherwise — §7.4), updateFlex's targets, the three floats
+         on the tracking spring while the finger is down, else the scaleSpring */
+      let Wp = W, Hp = H, xc = x;
+      if (fl && phase === "drag") fl.active = true;   // the flex runs from the first drag frame (the selection gesture's pan; the ① press-glide trace shows the pure lift sizes — no stretch there) until the floats have settled after the up
+      if (fl && fl.active && phase !== "drag" && Math.abs(fl.out.sx - 1) < .002 && Math.abs(fl.out.sy - 1) < .002 && Math.abs(fl.out.dx) < .1) { fl.active = false; fl.sx = { x: 1, v: 0 }; fl.sy = { x: 1, v: 0 }; fl.dx = { x: 0, v: 0 }; fl.out = { sx: 1, sy: 1, dx: 0 }; fl.vi = flexIntegrator(); }
+      if (fl && fl.active) {
+        fl.vi.add(x + fl.out.sx * fl.out.dx, now / 1000);
+        const Wm = pTarget > .5 ? w0 + LIFT : w0, Hm = pTarget > .5 ? h0 + LIFT : h0;
+        const spec = flexSpec(Wm, Hm), tg = flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity), sp = finger.down ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
+        springStep(fl.sx, tg.sX, sp, dt); springStep(fl.sy, tg.sY, sp, dt); springStep(fl.dx, tg.drift, sp, dt);
+        fl.out = { sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x }; fl.tg = tg; fl.spec = spec; fl.sp = sp;
+        Wp = W * fl.out.sx; Hp = H * fl.out.sy; xc = x + fl.out.sx * fl.out.dx;   // §6.6 / §6.4: W·sX × H·sY, tx = sX·dx
+        if (fl.trace.length < 600) fl.trace.push({ t: now, dt, sx: fl.out.sx, sy: fl.out.sy, dx: fl.out.dx, vsx: fl.sx.v, vsy: fl.sy.v, vdx: fl.dx.v, tSx: tg.sX, tSy: tg.sY, tDx: tg.drift, sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, Wm, Hm, x, W, H });
+      }
+      /* the glide's box: the centre x from the position spring (+ the flex drift), the vertical centre = the resting centre (pad + h0 / 2) */
+      nav.style.setProperty("--tl-left", (xc - Wp / 2) + "px"); nav.style.setProperty("--tl-w", Wp + "px"); nav.style.setProperty("--tl-top", (pad + h0 / 2 - Hp / 2) + "px"); nav.style.setProperty("--tl-h", Hp + "px");
       if (!nav.classList.contains("tl-on")) nav.classList.add("tl-on");
-      glFrame(st, p, x, W, H, pad, h0);
-      window.__tabLens = { t: (now - t0) / 1000, t0, tf: last, p, v: P.v, x, xv: XS.v, target: st.X, set: 0, s: 1, phase, w: W, h: H, frame: frameN, mode: "geometry" };   // tf = this frame's timestamp: a retarget after it (the up) integrates from here
-      if (pTarget === 0 && p < .002 && Math.abs(P.v) < .02 && Math.abs(XS.x - st.X) < .05 && Math.abs(XS.v) < 1) { stop(); return; }
+      glFrame(st, p, xc, Wp, Hp, pad, h0);
+      window.__tabLens = { t: (now - t0) / 1000, t0, tf: last, p, v: P.v, x, xv: XS.v, target: st.X, set: 0, s: 1, phase, w: W, h: H, wp: Wp, hp: Hp, xc, frame: frameN, mode: "geometry",
+        flex: fl ? { sx: fl.out.sx, sy: fl.out.sy, dx: fl.out.dx, target: fl.tg, spec: fl.spec, sp: fl.sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, trace: fl.trace } : null };   // tf = this frame's timestamp: a retarget after it (the up) integrates from here
+      const flexRest = !fl || !fl.active;
+      if (pTarget === 0 && p < .002 && Math.abs(P.v) < .02 && Math.abs(XS.x - st.X) < .05 && Math.abs(XS.v) < 1 && flexRest) { stop(); return; }
       tick(frame);
     };
     const stop = () => { running = false; glRest(st); st.tap = false;
