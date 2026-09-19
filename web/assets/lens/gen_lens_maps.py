@@ -784,6 +784,24 @@ def main_measured(a, W, H):
     json.dump(info, open(os.path.join(a.out, "lens-field.json"), "w"), indent=1, ensure_ascii=False)
     print("filter", os.path.getsize(os.path.join(a.out, "lens-filter.svg")), "bytes")
 
+def render_baked_sets(a, w, h, bg, lab, S_set, base_wh, portal_rect, fbg, flab):
+    """--engine-fix-sets: the same bg / lab maps (this set's S) with the 引擎校正 baked in — k = 1/dpr pt taken off every negative displacement
+    before encoding — as <map>@<dpr>x.png (lens-map-dpr.js picks the file by devicePixelRatio × SS; README §0.8.4)"""
+    for dpr in [int(v) for v in a.engine_fix_sets.split(",") if v.strip()]:
+        k0 = ENGINE_FIX[0]; ENGINE_FIX[0] = 1.0 / dpr
+        try: render_formula(os.path.join(a.out, fbg.replace(".png", f"@{dpr}x.png")), w, h, bg, a.px, S_set, a.margin, None, base_wh); render_formula(os.path.join(a.out, flab.replace(".png", f"@{dpr}x.png")), w, h, lab, a.px, S_set, a.margin, portal_rect, base_wh)
+        finally: ENGINE_FIX[0] = k0
+
+def render_fringe_maps(a, w, h, base_wh):
+    """the colour-fringe map of a set (<name>-f-ab-<w>.png) and the lean chain's (the same file when --abl-margin = --ab-margin; its own
+    <name>-f-abl-<w>.png otherwise) → (file, peak_pt, [files], [lean files])"""
+    if a.aberration == "off": return None, None, [], []
+    fab = f"{a.name}-f-ab-{w}.png"; ab = tuple(float(v) for v in a.aberration.split("/")); edge = tuple(float(v) for v in a.edge.split("/"))
+    _, _, pk_ab, fl = render_aberration(os.path.join(a.out, fab), w, h, ab, edge, a.ab_px, a.S_ab, 0.5, a.ab_margin, a.ab_sign, base_wh)
+    if a.abl_margin == a.ab_margin: fll = list(fl)   # the lean chain reads the -f-ab- map (same margin → same map)
+    else: _, _, _, fll = render_aberration(os.path.join(a.out, f"{a.name}-f-abl-{w}.png"), w, h, ab, edge, a.ab_px, a.S_ab, 0.5, a.abl_margin, a.ab_sign, base_wh)
+    return fab, pk_ab, [os.path.basename(f) for f in fl], [os.path.basename(f) for f in fll]
+
 def main_formula(a, W, H):
     """--formula: maps computed from the decompiled formulas (no measured field in any map); one set per lens width for the drag"""
     portal = (196.0, 28.0)
@@ -810,18 +828,8 @@ def main_formula(a, W, H):
         try: mw, mh, pk_bg = render_formula(os.path.join(a.out, fbg), w, h, bg, a.px, S_set, a.margin, None, base_wh); _, _, pk_lab = render_formula(os.path.join(a.out, flab), w, h, lab, a.px, S_set, a.margin, portal_rect, base_wh)
         except ValueError:
             S_set = 48.0; mw, mh, pk_bg = render_formula(os.path.join(a.out, fbg), w, h, bg, a.px, S_set, a.margin, None, base_wh); _, _, pk_lab = render_formula(os.path.join(a.out, flab), w, h, lab, a.px, S_set, a.margin, portal_rect, base_wh)
-        for dpr in [int(v) for v in a.engine_fix_sets.split(",") if v.strip()]:   # the baked 引擎校正 variants: the same maps (this set's S) with k = 1/dpr pt taken off every negative displacement before encoding
-            k0 = ENGINE_FIX[0]; ENGINE_FIX[0] = 1.0 / dpr
-            try: render_formula(os.path.join(a.out, fbg.replace(".png", f"@{dpr}x.png")), w, h, bg, a.px, S_set, a.margin, None, base_wh); render_formula(os.path.join(a.out, flab.replace(".png", f"@{dpr}x.png")), w, h, lab, a.px, S_set, a.margin, portal_rect, base_wh)
-            finally: ENGINE_FIX[0] = k0
-        fab = None; pk_ab = None; fabs = []; fabls = []
-        if a.aberration != "off":
-            fab = f"{a.name}-f-ab-{w}.png"
-            _, _, pk_ab, fl = render_aberration(os.path.join(a.out, fab), w, h, tuple(float(v) for v in a.aberration.split("/")), tuple(float(v) for v in a.edge.split("/")), a.ab_px, a.S_ab, 0.5, a.ab_margin, a.ab_sign, base_wh, 1.0)
-            fabl = f"{a.name}-f-abl-{w}.png"
-            if a.abl_margin == a.ab_margin: fll = list(fl)   # the lean chain reads the -f-ab- map (same margin → same map)
-            else: _, _, _, fll = render_aberration(os.path.join(a.out, fabl), w, h, tuple(float(v) for v in a.aberration.split("/")), tuple(float(v) for v in a.edge.split("/")), a.ab_px, a.S_ab, 0.5, a.abl_margin, a.ab_sign, base_wh, 1.0)
-            fabs = [os.path.basename(f) for f in fl]; fabls = [os.path.basename(f) for f in fll]
+        render_baked_sets(a, w, h, bg, lab, S_set, base_wh, portal_rect, fbg, flab)
+        fab, pk_ab, fabs, fabls = render_fringe_maps(a, w, h, base_wh)
         nb = os.path.getsize(os.path.join(a.out, fbg)) + os.path.getsize(os.path.join(a.out, flab)) + sum(os.path.getsize(os.path.join(a.out, f)) for f in fabs); total_bytes += nb
         sets[w] = {"h": round(h, 2), "scale": [round(w / W, 4), round(h / H, 4)], "S": S_set, "layer_pt": [w + 2 * a.margin, round(h + 2 * a.margin, 2)], "map_px": [mw, mh], "h_source": how, "frames": [[round(f[0], 2), round(f[1], 2), f[2]] for f in src],
                    "label_portal_pt": a.label_portal, "ab": fab, "ab_files": fabs, "abl_files": fabls, "abl_margin": a.abl_margin, "peak_ab_pt": (round(pk_ab, 2) if pk_ab is not None else None), "S_ab": a.S_ab,
