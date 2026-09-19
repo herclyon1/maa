@@ -36,7 +36,8 @@ only reason for a single rollback or hot fix). The project's future UI is a nati
 - List-row press (B14): highlight starts +170…187 ms after the down (native +150…167), fade about ⅓ faster than native (`b14-cell-65850cb.md`).
 - Batch check on the exact sha 28fb83c (`seg-batch-28fb83c.md`, host load 3.4–3.9 from system processes: mediaanalysisd, diskimagesiod,
   ANECompilerService): keyboard capsule hides / returns to 905 pt — pass; invalid `08:930` rolls back to `08:30` and stays out of the pending bar —
-  pass, but the toast was not seen in the +0.6 s / +2 s screenshots (video on the live version pending); `09:30` → 「开始刷」 dialog carries the
+  pass (the toast was missed by the +0.6 s / +2 s screenshots; on the live version the video `seg-web-toast-live-190821.mov` shows it ≈ 50 ms after
+  the keyboard's ✓, above the tab capsule, for 3.0 s with a 65 ms fade, and the value rolling back); `09:30` → 「开始刷」 dialog carries the
   value — pass (the send itself cannot be proved without the relay); theme switches (foreground and background) leave no ghost — pass; first lens
   gesture #1: down lag 8 ms, layer build 1 ms (was 30), first tick +8 — pass; #2 (value change) down lag 77 ms and the drag's down lag 98 ms were
   measured under that host load and are not characterised (page vs host); the time field is not scrolled into view on its first focus under the
