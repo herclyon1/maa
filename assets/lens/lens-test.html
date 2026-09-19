@@ -41,7 +41,8 @@
      card shifted by −(lens position). The map's samples never leave the box (clamp_to_edge is baked into the map, formula.md §2),
      the map's B channel masks the output. The label layer is clipped to the capsule BEFORE the filter (the native portal #20 clips
      the segment content with r 22, then ClearGlass displaces: 先裁再位移); the copy of what lies under the lens keeps the box */
-  .lens .layer{position:absolute;left:0;top:0;width:220px;height:44px;overflow:hidden}
+  .lens .slot{position:absolute;left:16px;top:16px}              /* the layer's slot = the lens box, 16 pt inside the stack (index.html: .warp / .warpl) */
+  .lens .layer{position:absolute;inset:0;overflow:hidden}        /* the filtered element fills its slot (index.html: .disp / .displ) */
   .lens .layer.lab{border-radius:22px}
   /* the colour fringe: glassForeground's 7-tap spectral sampling over what lies below it (the two displaced layers) — the chain
      filter sits on their wrapper (?ab=flip: outer band; ?ab=ir: IR-literal interior mask; ?ab=0: off) */
@@ -49,7 +50,7 @@
   .lens .stack .base{position:absolute;left:0;top:0;width:400px;pointer-events:none;z-index:0}   /* plain copy of the page (track + labels) under the two displaced layers; its own stacking context: the copied labels carry z-index 1 and would otherwise paint above the layers */
   .lens .stack .base .scene{border-radius:0}
   .lens .stack .base .flat{display:none}
-  .lens .stack .ssw{left:16px;top:16px}                          /* the layers sit 16 pt inside the stack (their wrappers carry the offset; the layer is at 0/0 in its wrapper) */
+  /* 引擎校正 2 = lens-supersample.js (loaded below; ?ss=0 off): it wraps each .layer in a composited ½ wrapper and lays it out 2×; nothing here */
   .lens.ab-flip .stack{filter:url(#seg-lens-f-ab-220)}
   .lens.ab-ir .stack{filter:url(#seg-lens-f-ab-ir-220)}
   .lens.f-seg .layer.bg{filter:url(#seg-lens-f-bg-220)}
@@ -72,16 +73,7 @@
   .lens .labels .segctl{background:transparent}
   .lens .labels .segctl .flat{display:none}
   .lens.nobg .layer.bg,.lens.nolab .layer.lab{filter:none}       /* ?bg=0 / ?lab=0: that layer unfiltered */
-  /* 引擎校正 2 — supersampled displacement layers (README §0.4 candidate A, default on, ?ss=0 off): the filtered layer is laid out at
-     TWICE its size (its copy scaled 2× inside, .ss2) inside a composited wrapper scaled ½ (scale3d; CA applies that scale to the
-     rasterised layer with bilinear sampling), so WebKit's software filter runs on a buffer with 4× the pixels: its displacement
-     quantum and the negative-lane shortfall halve (calib: −4 → −3.75 at 2×; the fix script's k is per layer pixel) and the ½
-     downscale averages 2×2 buffer pixels. The maps and the filter definitions are unchanged; only the feDisplacementMap scale
-     attribute is doubled on the layers (the map's pt become two layer px). */
-  .ssw{position:absolute;left:0;top:0;transform-origin:0 0}      /* the layer's slot (lens box): transform scale3d(1/SS,1/SS,1) + will-change set inline when SS > 1 — a composited wrapper, so the
-                                                                    filtered layer inside (laid out SS× larger, NOT transformed itself: WebKit resolves a transformed layer's filter region against
-                                                                    its transformed box) is rasterised at SS× and CA downsamples it */
-  .ss2{position:absolute;left:0;top:0;transform-origin:0 0}      /* transform: scale(SS) set inline */
+
   body.native .scene{padding-left:0;padding-right:0}             /* ?native=1: the control spans x 20…420 like the native probe (segment centres 120 / 320) */
   /* ?tab=1: the floating tab bar's platter (274×62, tab-lens-native.md: platform (83,873,274,62), three items) instead of the segmented
      control; the selection lens 94×54 at rest, 110×70 r35 lifted (the tab sets #tab-lens-f-*) */
@@ -3235,8 +3227,19 @@
     <feComposite in="fgc" in2="mask" operator="in" result="fg"/>
     <feComposite in="fg" in2="SourceGraphic" operator="over"/>
   </filter>
+  <filter id="seg-lens-f-ish" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB" data-op="0.06" data-offset="7" data-sigma="3">
+    <!-- #21 inner shadow, keyfill-highlight.md §5.2c: op · M · blur_σ(M − M↓off), op 0.06 / offset (0, 7) / σ = shadowRadius 3 pt; M = the element's own alpha (the capsule) -->
+    <feOffset in="SourceAlpha" dx="0" dy="7" result="moff"/>
+    <feComposite in="SourceAlpha" in2="moff" operator="out" result="band"/>
+    <feGaussianBlur in="band" stdDeviation="3" result="blur"/>
+    <feComposite in="blur" in2="SourceAlpha" operator="in" result="clip"/>
+    <feComponentTransfer in="clip" result="alpha"><feFuncA type="linear" slope="0.06" intercept="0"/></feComponentTransfer>
+    <feFlood flood-color="#000" flood-opacity="1" result="black"/>
+    <feComposite in="black" in2="alpha" operator="in"/>
+  </filter>
 </svg>
-<script>if (new URLSearchParams(location.search).get("enginefix") === "0") window.LENS_ENGINE_FIX = false;</script>   <!-- 引擎校正, default on; ?enginefix=0 turns it off for the record; the script itself is loaded after the page script (it needs LENS_SS) -->
+<script>if (new URLSearchParams(location.search).get("enginefix") === "0") window.LENS_ENGINE_FIX = false;</script>   <!-- 引擎校正, default on; ?enginefix=0 turns it off for the record; the script itself is loaded after the page script -->
+<script src="lens-supersample.js"></script>   <!-- 引擎校正 2, default on; ?ss=0 off -->
 <h1>透镜折射</h1>
 <div class="scene" id="scene">
   <div class="tabbar"><span class="on" style="--i:0">状态</span><span style="--i:1">方舟</span><span style="--i:2">手机</span></div>
@@ -3263,34 +3266,23 @@
   const lens = document.createElement("div"); lens.className = "lens f-seg";
   if (q.get("bg") === "0") lens.classList.add("nobg"); if (q.get("lab") === "0") lens.classList.add("nolab");
   lens.style.width = LW + "px"; lens.style.height = LH + "px"; lens.style.borderRadius = (TAB ? LH / 2 : Math.min(22, LH / 2)) + "px";   /* the tab lens: cornerRadii 35 = h/2 at 110×70 (tab-lens-native.md §0) */
-  const SS = q.get("ss") === "0" ? 1 : 2;                      /* 引擎校正 2: supersampling factor (default 2, ?ss=0 → 1) */
-  window.LENS_SS = SS;
-  const bgLayer = document.createElement("div"); bgLayer.className = "layer bg"; const clone = document.createElement("div"); clone.className = "clone";
+  const bgLayer = document.createElement("div"); bgLayer.className = "layer bg"; const clone = document.createElement("div"); clone.className = "clone"; bgLayer.appendChild(clone);
   const punch = document.createElement("div"); punch.className = "punch"; const plabels = document.createElement("div"); plabels.className = "plabels"; punch.appendChild(plabels);
-  const labLayer = document.createElement("div"); labLayer.className = "layer lab"; const labels = document.createElement("div"); labels.className = "labels";
-  /* the copies sit in an inner element scaled by SS (the layer is laid out SS× larger); the wrappers scale the layers back by 1/SS */
-  const bgIn = document.createElement("div"), labIn = document.createElement("div"); bgIn.className = labIn.className = "ss2";
-  bgIn.appendChild(clone); if (q.get("punch") !== "0") bgIn.appendChild(punch);   /* §4b layer 1: the backdrop copy = page + track + what of the segment content remains inside the 220×44 frame after the DestOut punches the CAPSULE (the frame corners keep the label pixels; the map's clamp_to_edge replicates that edge column into the rim band — the data's §6d strips); ?punch=0 = without */
-  labIn.appendChild(labels); bgLayer.appendChild(bgIn); labLayer.appendChild(labIn);
-  const bgW = document.createElement("div"), labW = document.createElement("div"); bgW.className = labW.className = "ssw"; bgW.appendChild(bgLayer); labW.appendChild(labLayer);
+  if (q.get("punch") !== "0") bgLayer.appendChild(punch);   /* §4b layer 1: the backdrop copy = page + track + what of the segment content remains inside the 220×44 frame after the DestOut punches the CAPSULE (the frame corners keep the label pixels; the map's clamp_to_edge replicates that edge column into the rim band — the data's §6d strips); ?punch=0 = without */
+  const labLayer = document.createElement("div"); labLayer.className = "layer lab"; const labels = document.createElement("div"); labels.className = "labels"; labLayer.appendChild(labels);
+  const bgW = document.createElement("div"), labW = document.createElement("div"); bgW.className = "slot bg"; labW.className = "slot lab"; bgW.appendChild(bgLayer); labW.appendChild(labLayer);
   const M = 0;                                                   /* no extension: the map's samples stay inside the box */
-  for (const l of [bgW, labW, bgIn, labIn, punch]) { l.style.width = LW + "px"; l.style.height = LH + "px"; }
-  for (const l of [bgLayer, labLayer]) { l.style.width = LW * SS + "px"; l.style.height = LH * SS + "px"; }
-  if (SS !== 1) { for (const l of [bgW, labW]) { l.style.transform = `scale3d(${1 / SS},${1 / SS},1)`; l.style.willChange = "transform"; } for (const l of [bgIn, labIn]) { l.style.transform = `scale(${SS})`; } }
+  for (const l of [bgW, labW, punch]) { l.style.width = LW + "px"; l.style.height = LH + "px"; }
   /* the DestOut punch-out = the lens capsule (the 220×44 r22 / 110×70 r35 model scaled with the lens: elliptical ends rx = r·sx, ry = r·sy) */
   const R0 = H0 / 2, RX = R0 * LW / W0, RY = R0 * LH / H0;
   punch.style.clipPath = `path(evenodd, "M0 0H${LW}V${LH}H0Z M${RX} 0H${LW - RX}A${RX} ${RY} 0 0 1 ${LW - RX} ${LH}H${RX}A${RX} ${RY} 0 0 1 ${RX} 0Z")`;
-  labLayer.style.borderRadius = (TAB ? LH / 2 : Math.min(22, LH / 2)) * SS + "px";
+  labLayer.style.borderRadius = (TAB ? LH / 2 : Math.min(22, LH / 2)) + "px"; labLayer.style.setProperty("--rr", (TAB ? LH / 2 : Math.min(22, LH / 2)) + "px");
   if (LW !== 220 || TAB) { if (!lens.classList.contains("nobg")) bgLayer.style.filter = `url(#${NAME}-lens-f-bg-${LW})`; if (!lens.classList.contains("nolab")) labLayer.style.filter = `url(#${NAME}-lens-f-lab-${LW})`; }
   const AM = 16;                                                 /* the wrapper's extension beyond the lens (lens-field.json aberration.wrapper) */
   const stack = document.createElement("div"); stack.className = "stack"; stack.style.width = (LW + 2 * AM) + "px"; stack.style.height = (LH + 2 * AM) + "px";
   const base = document.createElement("div"); base.className = "base";
   stack.appendChild(base); stack.appendChild(bgW); stack.appendChild(labW); lens.appendChild(stack); scene.appendChild(lens);
-  /* the map's pt are SS layer px: double the feDisplacementMap scale of the two filters this page uses (the definitions stay as generated) */
-  /* … and WebKit resolves the filter region (x/y/width/height in objectBoundingBox %) of a layer under a scaled ancestor in UNSCALED units
-     (calib/ss-region25*.html: 100 % covers twice the layer on screen), so the region is set to 100/SS % — measured, WebKit; Chrome untested */
-  if (SS !== 1) for (const id of [`${NAME}-lens-f-bg-${LW}`, `${NAME}-lens-f-lab-${LW}`]) { const f = document.getElementById(id), fe = f && f.querySelector("feDisplacementMap");
-    if (fe && !fe.dataset.ss) { fe.dataset.ss = String(SS); fe.setAttribute("scale", String(parseFloat(fe.getAttribute("scale")) * SS)); f.setAttribute("width", `${100 / SS}%`); f.setAttribute("height", `${100 / SS}%`); } }
+  if (window.LENS_SS_APPLY) window.LENS_SS_APPLY();            /* 引擎校正 2 (lens-supersample.js): wraps the two layers just built and folds SS into the filters' data-s / scale / region */
   const AB = q.get("ab") || "flip";                              /* colour fringe chain: flip = the band factor e (the formula with EdgeOpacityStart 1 / End 0, default) | ir (1 − e, record) | 0 */
   if (AB === "flip" || AB === "ir") { lens.classList.add("ab-" + AB); if (LW !== 220 || TAB) stack.style.filter = `url(#${NAME}-lens-f-ab${AB === "ir" ? "-ir" : ""}-${LW})`; }
   scene.classList.add("lifted");

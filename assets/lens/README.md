@@ -19,6 +19,7 @@ compiled from the native per-frame recordings. Nothing here touches `view.js` / 
 | `verify_lens_maps.py`, `gen_lens_maps.py` without `--formula` | the earlier measured-resampling mode (§1–§4, record only): resamples the phase files into maps — no longer part of the deliverable |
 | `calib/` | WebKit feDisplacementMap calibration (`gen_calib.py` → maps + `webkit-displacement.html`, `check_calib.py` reads a render): the engine applies negative displacements one device pixel short (§0.4) |
 | `tools/fringe_check.py` | the A1 8× three-item check (coloured share of the outer 12 pt, saturation mean / median, the ends' colour order) on any screenshot of the held lens (§0.5) |
+| `lens-supersample.js` | 引擎校正 2, default on (`?ss=0` off): wraps every filtered lens layer in a composited ½ wrapper and lays it out 2× (the filter runs on a 2× raster), folds SS into the filters' `data-s` / scale / region (§0.4); one `<script>` line before view.js and lens-engine-fix.js |
 | `lens-engine-fix.js` | 引擎校正, default on: re-encodes the bg / label maps at page load so negative displacements are one device pixel longer (k = 1/devicePixelRatio), blob: copies only (§0.4); load after the `<svg>` |
 
 ## 0 Formula maps — 反编译原值（公式 + 探针参数） (2026-09-19)
@@ -422,7 +423,22 @@ formula / WebKit ss off / WebKit ss on):
 | fringe (tools/fringe_check.py): share / saturation, light | 1.36 % / 69 | 1.15 % / 82.7 | **1.38 %** / 85.0 |
 | dark | 1.38 % / 71 | 1.02 % / 79.0 | 1.20 % / 77.9 |
 
-**Wiring recipe for index.html (the ui session; three steps, copy as is; `SS = 2`, the switch `?ss=0` → `SS = 1` skips all three):**
+**Wiring for index.html = one line (2026-09-19, `lens-supersample.js`; 监督局's order): right after the `<svg>` with the lens filters and
+BEFORE `view.js` and `lens-engine-fix.js`:**
+```html
+<script src="assets/lens/lens-supersample.js"></script>   <!-- 引擎校正 2, default on; ?ss=0 off -->
+```
+The script does the three steps below by itself, also for layers created later (a MutationObserver): it wraps every filtered lens
+layer it knows (`.segctl .warp .disp`, `.segctl .warpl .displ`, the tab equivalents, the test page's `.layer.bg/.lab`; other
+selectors via `data-targets` on the script tag) in a composited ½ wrapper inside the layer's own container, lays the layer out at
+200 % with its former children inside a 2×-scaled `.ss2`, doubles the layer's border-radius (`calc(var(--rr) × 2)`), and on every
+`#seg-lens-f-bg-* / -lab-*` (and tab) filter sets the region to 50 %, keeps the file's S in `data-s0` and writes `data-s = S × 2` —
+so `view.js`'s `sOf(id)` writes `scale = data-s × progress` unchanged, and `lens-engine-fix.js` takes `data-s` as the layer-px scale
+when `data-s0` is present. `window.LENS_SS` = 2 (1 when off), `window.LENS_SS_DONE`, `window.LENS_SS_APPLY()` for pages that build
+layers after load. The test page runs on the same script (`lens-test.template.html`: `.slot` + `.layer` = the container + filtered
+element pattern of `.warp` + `.disp`); its numbers are the table above (identical to the inline implementation of a0fed29).
+
+The three steps it performs (for reference; nothing to copy by hand any more; `SS = 2`, `?ss=0` → `SS = 1` skips all three):
 
 1. Structure — for each displaced layer (the backdrop copy `.warp`-equivalent and the label copy), replace
    `<div class="layer">…copies…</div>` by
@@ -744,6 +760,43 @@ matrix values; 1.72-class numbers for the segment, ≈ 1.08 for a lens at the bo
 fringe filter's scale: the aberration amount does not appear in the motion trace — not ramped in the read data; at p 0 the layer is
 off). Nothing here is a fitted value: every number above is a read key or the read curve; what is not read (the drag rule, the wobble,
 the stretch beyond 116) is marked so.
+
+#### 0.8.1 The page's own set family: `tab5/` (2026-09-19, ui2; the wiring itself not yet committed — stopped at the 10:55 order)
+
+The page shows five tabs (状态 / 方舟 / 终末地 / 鸣潮 / 手机); on the 440-pt screen `nav.tabs` is 416 wide (`max-width: calc(100% − 24px)`)
+and each button 81.59×54 (read in WebKit: `getBoundingClientRect` of the five buttons: x 16 / 97.59 / 179.19 / 260.78 / 342.38, w 81.59;
+`.glide` 82 = `offsetWidth`). The native probe's family (`tab/`, 94×54 → 110×70) is the three-button layout; the lift rule read there is
++16 pt on both axes on one spring (94 → 110, 54 → 70; tab-lens-motion.md §4), the SDF heights stay — so the page needs the family on
+its own resting size, on the 2-pt set grid: **`tab5/` = 82×54 → 98×70** (9 sets, w 82 … 98 step 2, h = w − 28, r = h/2, the
+lifted set 98 S 48, the path S 40, S_ab 16; the lens model at progress p = (82 + 16p) × (54 + 16p), set = nearest even w; the
+0.41-pt difference 82 vs 81.59 is the grid, the box is the set's size). Same recipe as §0.7, only the sizes differ:
+`gen_lens_maps.py --formula --name tab --size 98x70 --series 82:98:2 --lift-path 82x54 --label-portal 0 --corner-radius half
+--label-region 28x20 --bg-layers=-10.5/7/0.5/lens,9/36/0.5/lens --label-layers=-14/11.2/0.5/lens,-17.5/11.2/0.5/lens
+--aberration=3.6842/0/38.889/-0.2618 --edge=-14/0/1/0 --href-prefix assets/lens/tab5/ --out tab5` → `tab5/tab-f-{bg,lab,ab}-<w>.png`
+(205 KB), `tab5/lens-filter.svg` (the same ids `#tab-lens-f-{bg,lab,ab}-<w>` — one family per page; the page includes `tab5/`, the
+test page `tab/`), `tab5/lens-field.json`. No verification block: there is no measured five-button field (the phase files are the
+three-button probe); whether the native lifts a narrower button by the same +16 is UNREAD (marked, not assumed elsewhere).
+Peaks: bg 7.8 pt on every set, lab 13.9 (82) → 22.6 (98) pt.
+
+Engine note for the wiring (from `calib/webkit-region-under-scale.html`, only read at ½): the filtered layers must NOT sit under the
+platter's 1.0516 transform — the fact is read at scale ½ only, so the wiring lays the lens stack out in screen coordinates (the model
+box × 1.0516 about the platter centre, the filter `scale` attribute × 1.0516 — u_screen(p) = 1.0516·u_model(p / 1.0516), the map
+stretched over the presented box), the real `nav.tabs` carries `translateX(-50%) scale(1.0516)`; the page copy inside the lens stays
+1:1. `backdrop-filter` inside a software-filtered element does not blur (wksnap `bftest`: the fill renders, the blur does not), so the
+platter copy inside the lens is a clone of the page under the bar with `filter: var(--glass-filter)` + `var(--glass-fill)` in the
+platter capsule.
+
+### 0.8.2 B6-c — the segment lens's edge lines, the asset + the patch text (2026-09-19 11:5x; `B6C-PATCH.md`)
+
+`lens-filter.svg` → `#seg-lens-f-ish` (generated: `gen_lens_maps.py` `filter_inner_shadow`, also `#tab-lens-f-ish` in the tab families
+when they are regenerated): the ClearGlass inner shadow #21 as QuartzCore rasterises it — keyfill-highlight.md §5.2c: α = op · M · blur_σ(M −
+M↓off), op .06 / offset 7 / σ = shadowRadius 3 — as feOffset → feComposite out → feGaussianBlur → feComposite in → α × .06, on a black capsule
+of the lens box. WebKit column x 220 rows 602–613 vs the closed form: within .001 on 602–609, the tail one 8-bit level low (table in
+`B6C-PATCH.md` §4); the old CSS inset box-shadow reads .057 on the top rows (the complement construction, ruled out by §5.2c). The other three
+items of the order (k without compression — amount uniform 1/.5 − 2 = 0, keyfill §5.1 B6-3; the fwidth AA — per-fragment, ⅓ pt at 3×, equal
+to the hard rings at pixel centres on the straight edges and to coverage AA on the arcs, keyfill §2 B6-2; the white stack clipped to the
+capsule; the #36 main band on the straight runs only, predict §6.1 rows 5–6) are view.js / index.html numbers of the ui session: written as line + old → new + source in `B6C-PATCH.md` §1–§3, §4b. The regeneration
+also restored `lens-field.json`'s `verification` block (it had been emptied by a run without `--verify-*`; §7's command).
 
 ### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
 

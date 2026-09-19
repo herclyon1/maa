@@ -38,22 +38,268 @@
   "channels": "one map for all three colour channels (no dispersion)"
  },
  "sets": {
-  "94": {
+  "82": {
    "h": 54.0,
    "scale": [
-    0.8545,
+    0.8367,
     0.7714
    ],
    "S": 40.0,
    "layer_pt": [
-    94.0,
+    82.0,
     54.0
    ],
    "map_px": [
-    188,
+    164,
     108
    ],
-   "h_source": "lift path 94×54 → 110×70 (both dimensions on the same curve, model bounds)",
+   "h_source": "lift path 82×54 → 98×70 (both dimensions on the same curve, model bounds)",
+   "frames": [],
+   "label_portal_pt": "0",
+   "ab": "tab-f-ab-82.png",
+   "ab_files": [
+    "tab-f-ab-82.png"
+   ],
+   "peak_ab_pt": 3.68,
+   "S_ab": 16.0,
+   "bg": "tab-f-bg-82.png",
+   "lab": "tab-f-lab-82.png",
+   "peak_bg_pt": 7.77,
+   "peak_lab_pt": 13.86,
+   "bytes": 19931,
+   "model": [
+    82.0,
+    54.0
+   ],
+   "lift_path": true,
+   "filters": [
+    "tab-lens-f-bg-82",
+    "tab-lens-f-lab-82",
+    "tab-lens-f-ab-82",
+    "tab-lens-f-ab-ir-82"
+   ]
+  },
+  "84": {
+   "h": 56.0,
+   "scale": [
+    0.8571,
+    0.8
+   ],
+   "S": 40.0,
+   "layer_pt": [
+    84.0,
+    56.0
+   ],
+   "map_px": [
+    168,
+    112
+   ],
+   "h_source": "lift path 82×54 → 98×70 (both dimensions on the same curve, model bounds)",
+   "frames": [],
+   "label_portal_pt": "0",
+   "ab": "tab-f-ab-84.png",
+   "ab_files": [
+    "tab-f-ab-84.png"
+   ],
+   "peak_ab_pt": 3.68,
+   "S_ab": 16.0,
+   "bg": "tab-f-bg-84.png",
+   "lab": "tab-f-lab-84.png",
+   "peak_bg_pt": 7.78,
+   "peak_lab_pt": 14.33,
+   "bytes": 20749,
+   "model": [
+    84.0,
+    56.0
+   ],
+   "lift_path": true,
+   "filters": [
+    "tab-lens-f-bg-84",
+    "tab-lens-f-lab-84",
+    "tab-lens-f-ab-84",
+    "tab-lens-f-ab-ir-84"
+   ]
+  },
+  "86": {
+   "h": 58.0,
+   "scale": [
+    0.8776,
+    0.8286
+   ],
+   "S": 40.0,
+   "layer_pt": [
+    86.0,
+    58.0
+   ],
+   "map_px": [
+    172,
+    116
+   ],
+   "h_source": "lift path 82×54 → 98×70 (both dimensions on the same curve, model bounds)",
+   "frames": [],
+   "label_portal_pt": "0",
+   "ab": "tab-f-ab-86.png",
+   "ab_files": [
+    "tab-f-ab-86.png"
+   ],
+   "peak_ab_pt": 3.68,
+   "S_ab": 16.0,
+   "bg": "tab-f-bg-86.png",
+   "lab": "tab-f-lab-86.png",
+   "peak_bg_pt": 7.75,
+   "peak_lab_pt": 14.9,
+   "bytes": 21543,
+   "model": [
+    86.0,
+    58.0
+   ],
+   "lift_path": true,
+   "filters": [
+    "tab-lens-f-bg-86",
+    "tab-lens-f-lab-86",
+    "tab-lens-f-ab-86",
+    "tab-lens-f-ab-ir-86"
+   ]
+  },
+  "88": {
+   "h": 60.0,
+   "scale": [
+    0.898,
+    0.8571
+   ],
+   "S": 40.0,
+   "layer_pt": [
+    88.0,
+    60.0
+   ],
+   "map_px": [
+    176,
+    120
+   ],
+   "h_source": "lift path 82×54 → 98×70 (both dimensions on the same curve, model bounds)",
+   "frames": [],
+   "label_portal_pt": "0",
+   "ab": "tab-f-ab-88.png",
+   "ab_files": [
+    "tab-f-ab-88.png"
+   ],
+   "peak_ab_pt": 3.68,
+   "S_ab": 16.0,
+   "bg": "tab-f-bg-88.png",
+   "lab": "tab-f-lab-88.png",
+   "peak_bg_pt": 7.76,
+   "peak_lab_pt": 15.54,
+   "bytes": 22577,
+   "model": [
+    88.0,
+    60.0
+   ],
+   "lift_path": true,
+   "filters": [
+    "tab-lens-f-bg-88",
+    "tab-lens-f-lab-88",
+    "tab-lens-f-ab-88",
+    "tab-lens-f-ab-ir-88"
+   ]
+  },
+  "90": {
+   "h": 62.0,
+   "scale": [
+    0.9184,
+    0.8857
+   ],
+   "S": 40.0,
+   "layer_pt": [
+    90.0,
+    62.0
+   ],
+   "map_px": [
+    180,
+    124
+   ],
+   "h_source": "lift path 82×54 → 98×70 (both dimensions on the same curve, model bounds)",
+   "frames": [],
+   "label_portal_pt": "0",
+   "ab": "tab-f-ab-90.png",
+   "ab_files": [
+    "tab-f-ab-90.png"
+   ],
+   "peak_ab_pt": 3.68,
+   "S_ab": 16.0,
+   "bg": "tab-f-bg-90.png",
+   "lab": "tab-f-lab-90.png",
+   "peak_bg_pt": 7.77,
+   "peak_lab_pt": 16.28,
+   "bytes": 23394,
+   "model": [
+    90.0,
+    62.0
+   ],
+   "lift_path": true,
+   "filters": [
+    "tab-lens-f-bg-90",
+    "tab-lens-f-lab-90",
+    "tab-lens-f-ab-90",
+    "tab-lens-f-ab-ir-90"
+   ]
+  },
+  "92": {
+   "h": 64.0,
+   "scale": [
+    0.9388,
+    0.9143
+   ],
+   "S": 40.0,
+   "layer_pt": [
+    92.0,
+    64.0
+   ],
+   "map_px": [
+    184,
+    128
+   ],
+   "h_source": "lift path 82×54 → 98×70 (both dimensions on the same curve, model bounds)",
+   "frames": [],
+   "label_portal_pt": "0",
+   "ab": "tab-f-ab-92.png",
+   "ab_files": [
+    "tab-f-ab-92.png"
+   ],
+   "peak_ab_pt": 3.68,
+   "S_ab": 16.0,
+   "bg": "tab-f-bg-92.png",
+   "lab": "tab-f-lab-92.png",
+   "peak_bg_pt": 7.77,
+   "peak_lab_pt": 17.16,
+   "bytes": 24253,
+   "model": [
+    92.0,
+    64.0
+   ],
+   "lift_path": true,
+   "filters": [
+    "tab-lens-f-bg-92",
+    "tab-lens-f-lab-92",
+    "tab-lens-f-ab-92",
+    "tab-lens-f-ab-ir-92"
+   ]
+  },
+  "94": {
+   "h": 66.0,
+   "scale": [
+    0.9592,
+    0.9429
+   ],
+   "S": 40.0,
+   "layer_pt": [
+    94.0,
+    66.0
+   ],
+   "map_px": [
+    188,
+    132
+   ],
+   "h_source": "lift path 82×54 → 98×70 (both dimensions on the same curve, model bounds)",
    "frames": [],
    "label_portal_pt": "0",
    "ab": "tab-f-ab-94.png",
@@ -64,12 +310,12 @@
    "S_ab": 16.0,
    "bg": "tab-f-bg-94.png",
    "lab": "tab-f-lab-94.png",
-   "peak_bg_pt": 7.77,
-   "peak_lab_pt": 13.86,
-   "bytes": 20712,
+   "peak_bg_pt": 7.78,
+   "peak_lab_pt": 18.27,
+   "bytes": 25024,
    "model": [
     94.0,
-    54.0
+    66.0
    ],
    "lift_path": true,
    "filters": [
@@ -80,21 +326,21 @@
    ]
   },
   "96": {
-   "h": 56.0,
+   "h": 68.0,
    "scale": [
-    0.8727,
-    0.8
+    0.9796,
+    0.9714
    ],
    "S": 40.0,
    "layer_pt": [
     96.0,
-    56.0
+    68.0
    ],
    "map_px": [
     192,
-    112
+    136
    ],
-   "h_source": "lift path 94×54 → 110×70 (both dimensions on the same curve, model bounds)",
+   "h_source": "lift path 82×54 → 98×70 (both dimensions on the same curve, model bounds)",
    "frames": [],
    "label_portal_pt": "0",
    "ab": "tab-f-ab-96.png",
@@ -105,12 +351,12 @@
    "S_ab": 16.0,
    "bg": "tab-f-bg-96.png",
    "lab": "tab-f-lab-96.png",
-   "peak_bg_pt": 7.78,
-   "peak_lab_pt": 14.37,
-   "bytes": 21742,
+   "peak_bg_pt": 7.79,
+   "peak_lab_pt": 19.85,
+   "bytes": 26237,
    "model": [
     96.0,
-    56.0
+    68.0
    ],
    "lift_path": true,
    "filters": [
@@ -121,21 +367,21 @@
    ]
   },
   "98": {
-   "h": 58.0,
+   "h": 70.0,
    "scale": [
-    0.8909,
-    0.8286
+    1.0,
+    1.0
    ],
-   "S": 40.0,
+   "S": 48.0,
    "layer_pt": [
     98.0,
-    58.0
+    70.0
    ],
    "map_px": [
     196,
-    116
+    140
    ],
-   "h_source": "lift path 94×54 → 110×70 (both dimensions on the same curve, model bounds)",
+   "h_source": "the lifted lens (98×70)",
    "frames": [],
    "label_portal_pt": "0",
    "ab": "tab-f-ab-98.png",
@@ -146,410 +392,38 @@
    "S_ab": 16.0,
    "bg": "tab-f-bg-98.png",
    "lab": "tab-f-lab-98.png",
-   "peak_bg_pt": 7.75,
-   "peak_lab_pt": 14.94,
-   "bytes": 22431,
+   "peak_bg_pt": 7.79,
+   "peak_lab_pt": 22.61,
+   "bytes": 25780,
    "model": [
     98.0,
-    58.0
+    70.0
    ],
-   "lift_path": true,
+   "lift_path": false,
    "filters": [
     "tab-lens-f-bg-98",
     "tab-lens-f-lab-98",
     "tab-lens-f-ab-98",
     "tab-lens-f-ab-ir-98"
    ]
-  },
-  "100": {
-   "h": 60.0,
-   "scale": [
-    0.9091,
-    0.8571
-   ],
-   "S": 40.0,
-   "layer_pt": [
-    100.0,
-    60.0
-   ],
-   "map_px": [
-    200,
-    120
-   ],
-   "h_source": "lift path 94×54 → 110×70 (both dimensions on the same curve, model bounds)",
-   "frames": [],
-   "label_portal_pt": "0",
-   "ab": "tab-f-ab-100.png",
-   "ab_files": [
-    "tab-f-ab-100.png"
-   ],
-   "peak_ab_pt": 3.68,
-   "S_ab": 16.0,
-   "bg": "tab-f-bg-100.png",
-   "lab": "tab-f-lab-100.png",
-   "peak_bg_pt": 7.76,
-   "peak_lab_pt": 15.59,
-   "bytes": 23353,
-   "model": [
-    100.0,
-    60.0
-   ],
-   "lift_path": true,
-   "filters": [
-    "tab-lens-f-bg-100",
-    "tab-lens-f-lab-100",
-    "tab-lens-f-ab-100",
-    "tab-lens-f-ab-ir-100"
-   ]
-  },
-  "102": {
-   "h": 62.0,
-   "scale": [
-    0.9273,
-    0.8857
-   ],
-   "S": 40.0,
-   "layer_pt": [
-    102.0,
-    62.0
-   ],
-   "map_px": [
-    204,
-    124
-   ],
-   "h_source": "lift path 94×54 → 110×70 (both dimensions on the same curve, model bounds)",
-   "frames": [],
-   "label_portal_pt": "0",
-   "ab": "tab-f-ab-102.png",
-   "ab_files": [
-    "tab-f-ab-102.png"
-   ],
-   "peak_ab_pt": 3.68,
-   "S_ab": 16.0,
-   "bg": "tab-f-bg-102.png",
-   "lab": "tab-f-lab-102.png",
-   "peak_bg_pt": 7.76,
-   "peak_lab_pt": 16.33,
-   "bytes": 24157,
-   "model": [
-    102.0,
-    62.0
-   ],
-   "lift_path": true,
-   "filters": [
-    "tab-lens-f-bg-102",
-    "tab-lens-f-lab-102",
-    "tab-lens-f-ab-102",
-    "tab-lens-f-ab-ir-102"
-   ]
-  },
-  "104": {
-   "h": 64.0,
-   "scale": [
-    0.9455,
-    0.9143
-   ],
-   "S": 40.0,
-   "layer_pt": [
-    104.0,
-    64.0
-   ],
-   "map_px": [
-    208,
-    128
-   ],
-   "h_source": "lift path 94×54 → 110×70 (both dimensions on the same curve, model bounds)",
-   "frames": [],
-   "label_portal_pt": "0",
-   "ab": "tab-f-ab-104.png",
-   "ab_files": [
-    "tab-f-ab-104.png"
-   ],
-   "peak_ab_pt": 3.68,
-   "S_ab": 16.0,
-   "bg": "tab-f-bg-104.png",
-   "lab": "tab-f-lab-104.png",
-   "peak_bg_pt": 7.77,
-   "peak_lab_pt": 17.22,
-   "bytes": 24847,
-   "model": [
-    104.0,
-    64.0
-   ],
-   "lift_path": true,
-   "filters": [
-    "tab-lens-f-bg-104",
-    "tab-lens-f-lab-104",
-    "tab-lens-f-ab-104",
-    "tab-lens-f-ab-ir-104"
-   ]
-  },
-  "106": {
-   "h": 66.0,
-   "scale": [
-    0.9636,
-    0.9429
-   ],
-   "S": 40.0,
-   "layer_pt": [
-    106.0,
-    66.0
-   ],
-   "map_px": [
-    212,
-    132
-   ],
-   "h_source": "lift path 94×54 → 110×70 (both dimensions on the same curve, model bounds)",
-   "frames": [],
-   "label_portal_pt": "0",
-   "ab": "tab-f-ab-106.png",
-   "ab_files": [
-    "tab-f-ab-106.png"
-   ],
-   "peak_ab_pt": 3.68,
-   "S_ab": 16.0,
-   "bg": "tab-f-bg-106.png",
-   "lab": "tab-f-lab-106.png",
-   "peak_bg_pt": 7.78,
-   "peak_lab_pt": 18.33,
-   "bytes": 25625,
-   "model": [
-    106.0,
-    66.0
-   ],
-   "lift_path": true,
-   "filters": [
-    "tab-lens-f-bg-106",
-    "tab-lens-f-lab-106",
-    "tab-lens-f-ab-106",
-    "tab-lens-f-ab-ir-106"
-   ]
-  },
-  "108": {
-   "h": 68.0,
-   "scale": [
-    0.9818,
-    0.9714
-   ],
-   "S": 40.0,
-   "layer_pt": [
-    108.0,
-    68.0
-   ],
-   "map_px": [
-    216,
-    136
-   ],
-   "h_source": "lift path 94×54 → 110×70 (both dimensions on the same curve, model bounds)",
-   "frames": [],
-   "label_portal_pt": "0",
-   "ab": "tab-f-ab-108.png",
-   "ab_files": [
-    "tab-f-ab-108.png"
-   ],
-   "peak_ab_pt": 3.68,
-   "S_ab": 16.0,
-   "bg": "tab-f-bg-108.png",
-   "lab": "tab-f-lab-108.png",
-   "peak_bg_pt": 7.78,
-   "peak_lab_pt": 19.92,
-   "bytes": 26560,
-   "model": [
-    108.0,
-    68.0
-   ],
-   "lift_path": true,
-   "filters": [
-    "tab-lens-f-bg-108",
-    "tab-lens-f-lab-108",
-    "tab-lens-f-ab-108",
-    "tab-lens-f-ab-ir-108"
-   ]
-  },
-  "110": {
-   "h": 70.0,
-   "scale": [
-    1.0,
-    1.0
-   ],
-   "S": 48.0,
-   "layer_pt": [
-    110.0,
-    70.0
-   ],
-   "map_px": [
-    220,
-    140
-   ],
-   "h_source": "the lifted lens (110×70)",
-   "frames": [],
-   "label_portal_pt": "0",
-   "ab": "tab-f-ab-110.png",
-   "ab_files": [
-    "tab-f-ab-110.png"
-   ],
-   "peak_ab_pt": 3.68,
-   "S_ab": 16.0,
-   "bg": "tab-f-bg-110.png",
-   "lab": "tab-f-lab-110.png",
-   "peak_bg_pt": 7.79,
-   "peak_lab_pt": 22.7,
-   "bytes": 26331,
-   "model": [
-    110.0,
-    70.0
-   ],
-   "lift_path": false,
-   "filters": [
-    "tab-lens-f-bg-110",
-    "tab-lens-f-lab-110",
-    "tab-lens-f-ab-110",
-    "tab-lens-f-ab-ir-110"
-   ]
-  },
-  "112": {
-   "h": 71.27,
-   "scale": [
-    1.0182,
-    1.0182
-   ],
-   "S": 48.0,
-   "layer_pt": [
-    112.0,
-    71.27
-   ],
-   "map_px": [
-    224,
-    143
-   ],
-   "h_source": "stretch beyond 110: the lifted model scaled uniformly (the tab lens's presented 115.7×73.6 = 110×70 × 1.052)",
-   "frames": [],
-   "label_portal_pt": "0",
-   "ab": "tab-f-ab-112.png",
-   "ab_files": [
-    "tab-f-ab-112.png"
-   ],
-   "peak_ab_pt": 3.75,
-   "S_ab": 16.0,
-   "bg": "tab-f-bg-112.png",
-   "lab": "tab-f-lab-112.png",
-   "peak_bg_pt": 7.93,
-   "peak_lab_pt": 23.11,
-   "bytes": 27328,
-   "model": [
-    110.0,
-    70.0
-   ],
-   "lift_path": false,
-   "filters": [
-    "tab-lens-f-bg-112",
-    "tab-lens-f-lab-112",
-    "tab-lens-f-ab-112",
-    "tab-lens-f-ab-ir-112"
-   ]
-  },
-  "114": {
-   "h": 72.55,
-   "scale": [
-    1.0364,
-    1.0364
-   ],
-   "S": 48.0,
-   "layer_pt": [
-    114.0,
-    72.55
-   ],
-   "map_px": [
-    228,
-    145
-   ],
-   "h_source": "stretch beyond 110: the lifted model scaled uniformly (the tab lens's presented 115.7×73.6 = 110×70 × 1.052)",
-   "frames": [],
-   "label_portal_pt": "0",
-   "ab": "tab-f-ab-114.png",
-   "ab_files": [
-    "tab-f-ab-114.png"
-   ],
-   "peak_ab_pt": 3.82,
-   "S_ab": 16.0,
-   "bg": "tab-f-bg-114.png",
-   "lab": "tab-f-lab-114.png",
-   "peak_bg_pt": 8.07,
-   "peak_lab_pt": 23.54,
-   "bytes": 27688,
-   "model": [
-    110.0,
-    70.0
-   ],
-   "lift_path": false,
-   "filters": [
-    "tab-lens-f-bg-114",
-    "tab-lens-f-lab-114",
-    "tab-lens-f-ab-114",
-    "tab-lens-f-ab-ir-114"
-   ]
-  },
-  "116": {
-   "h": 73.82,
-   "scale": [
-    1.0545,
-    1.0545
-   ],
-   "S": 48.0,
-   "layer_pt": [
-    116.0,
-    73.82
-   ],
-   "map_px": [
-    232,
-    148
-   ],
-   "h_source": "stretch beyond 110: the lifted model scaled uniformly (the tab lens's presented 115.7×73.6 = 110×70 × 1.052)",
-   "frames": [],
-   "label_portal_pt": "0",
-   "ab": "tab-f-ab-116.png",
-   "ab_files": [
-    "tab-f-ab-116.png"
-   ],
-   "peak_ab_pt": 3.89,
-   "S_ab": 16.0,
-   "bg": "tab-f-bg-116.png",
-   "lab": "tab-f-lab-116.png",
-   "peak_bg_pt": 8.22,
-   "peak_lab_pt": 23.93,
-   "bytes": 28922,
-   "model": [
-    110.0,
-    70.0
-   ],
-   "lift_path": false,
-   "filters": [
-    "tab-lens-f-bg-116",
-    "tab-lens-f-lab-116",
-    "tab-lens-f-ab-116",
-    "tab-lens-f-ab-ir-116"
-   ]
   }
  },
  "series": {
   "widths": [
+   82,
+   84,
+   86,
+   88,
+   90,
+   92,
    94,
    96,
-   98,
-   100,
-   102,
-   104,
-   106,
-   108,
-   110,
-   112,
-   114,
-   116
+   98
   ],
   "step": 2,
   "height_source": "linear between the two nearest recorded drag frames (seg-native-abc-frames.json phase drag; uiprobe-motion-segdragmid-light.json lenstrace); outside the recorded range the nearest frame (flagged clamped)",
   "shape": "the 220×44 r22 model lens scaled by (w/220, h/44) — seg-lens-refraction.md §1c(d): the flex scale sits on _UILiquidLensView's presentation transform alone, the layers below (SDF elements, portals 196×28, glass group) keep their model bounds; elliptical ends, the portal = scale × 196×28",
-  "total_bytes": 299696
+  "total_bytes": 209488
  },
  "aberration": {
   "map": "tab-f-ab-<w>.png: the lens box plus 16 pt on every side at 1 px/pt; R/G = the ratio-1 vector Δ₁ (pt) = amount · ((R(θ)g).y, (R(θ)g).x) · e(d) (§3b.3 direction with the lanes swapped; e = the edge factor, 1 at the edge → 0 at |EdgeStart| pt), B = e = the filter's band factor; own scale sets[w].S_ab (data-s on the fringe filter)",

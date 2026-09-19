@@ -23,10 +23,11 @@
     const filter = fe.closest("filter"); if (!filter || /-ab-/.test(filter.id)) return;
     const S = parseFloat(filter.dataset.s); const href = fe.getAttribute("href") || fe.getAttributeNS("http://www.w3.org/1999/xlink", "href");
     if (!(S > 0) || !href || href.startsWith("blob:")) return;
+    const ssHere = filter.dataset.s0 ? 1 : ss;                    /* lens-supersample.js already folded SS into data-s (data-s0 = the file's S) */
     const blob = await (await fetch(href)).blob(); const bmp = await createImageBitmap(blob);
     const cv = document.createElement("canvas"); cv.width = bmp.width; cv.height = bmp.height;
     const ctx = cv.getContext("2d", { willReadFrequently: true }); ctx.drawImage(bmp, 0, 0);
-    const im = ctx.getImageData(0, 0, cv.width, cv.height), d = im.data, step = k * 255 / (S * ss);
+    const im = ctx.getImageData(0, 0, cv.width, cv.height), d = im.data, step = k * 255 / (S * ssHere);
     for (let i = 0; i < d.length; i += 4) { if (d[i] < 128) d[i] = Math.max(0, Math.round(d[i] - step)); if (d[i + 1] < 128) d[i + 1] = Math.max(0, Math.round(d[i + 1] - step)); }
     ctx.putImageData(im, 0, 0);
     const url = URL.createObjectURL(await new Promise((r) => cv.toBlob(r, "image/png")));
