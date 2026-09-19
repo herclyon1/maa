@@ -501,6 +501,27 @@
      filling it; the map's B channel is the shape coverage, feComposite trims the result to the capsule. view.js picks #seg-lens-f-bg-<w> by the
      lens's current width each frame (nearest even 196…256 in native width = ours − 2, no interpolation; the lift and the fall ride the 220 set)
      and drives that filter's scale 0 → 40 (S = 40 encoding) with the glass progress. */
+  /* B4-c' layer 5 (glass-displacement-formula.md §4b, §3b; ui2 README §0.5 / lens-test.html): glassForeground #33's 7-tap spectral sampling
+     (inputAberrationAmount 2.3158, angle −.2618, height 0, offset 24.444, edge −8.8 / 0 with EdgeOpacityStart 1 / End 0 → the band factor e(d),
+     seg-lens-refraction.md §1c(a)/(g)) captures what lies below it — the displaced backdrop (layer 1 + 3) and the label portal (layer 4) — with
+     marginWidth 100 (its outward taps read the page beyond the lens). Here: .stack = the lens box + 16 pt on every side (overflow hidden, the
+     chain filter #seg-lens-f-ab-<w> on it) holding .base (a plain copy of the page: bg + track + labels, undisplaced, so the taps read real
+     page outside the capsule) under .warp / .plat / .rimb / .warpl; the highlight (.hlk / .hlw, layer 6) stays outside and above it. The fringe
+     map holds the ratio-1 vector, the filter's colour matrix #seg-lens-f-ab-<w>-wh carries W/H = the foreground's capture box (lens screen frame
+     + 100 pt each side, clamped to the viewport) / its height — 1.72 at x 110–330, 1.35 lifted in place — set per frame from the lens's screen
+     rect (§3b.6). The taps' scales (±12 / ±8 / ±4 = S_ab 12) ride the lift progress like the displacement amounts (whether the foreground's
+     aberration animates with the lift is unread — flagged). #queueseg[data-dispersion="0"] (or ?segx=noab) leaves the chain off. */
+  .segctl .stack{position:absolute;z-index:4;left:0;top:0;width:0;height:0;pointer-events:none;display:none;overflow:hidden;clip-path:inset(16px round var(--rr, 14px))}   /* the fringe chain's output is confined to the capsule: the native foreground writes × the shape coverage (§3b), the page around the lens carries no fringe; the 16 pt margin exists only for the taps' sampling */
+  /* .rimo = a clone of .rimb ABOVE the wrapper showing only what lies OUTSIDE the capsule (the ring shadow's soft shadow below the lens and its
+     end bands outside, the outer two rings of the dark line) — the wrapper's capsule clip cuts them off inside it; the same drawing split along
+     the boundary (clip-path path evenodd, the box + 14 px margin minus the capsule) */
+  .segctl .rimo{position:absolute;z-index:5;left:0;top:0;width:0;height:0;pointer-events:none;display:none;border-radius:var(--rr, 14px)}
+  .segctl.lift .rimo{display:block}
+  .segctl .stack .base{position:absolute;left:0;top:0;pointer-events:none}
+  .segctl .stack .base .copy{position:absolute;left:0;top:0;display:flex;padding:var(--ios-segment-lens-pad) 0;box-sizing:border-box}
+  .segctl .stack .base .copy .cb{position:relative;flex:1 1 0;height:var(--ios-segment-lens-h);line-height:var(--ios-segment-lens-h);text-align:center;font-size:var(--ios-segment-label-size);font-weight:400;color:var(--ios-segment-label-color);white-space:nowrap}
+  .segctl .stack .base .copy .cb.on{font-weight:var(--ios-medium-weight)}
+  .segctl.lift .stack{display:block}
   .segctl .warp{position:absolute;z-index:4;left:0;top:0;width:0;height:0;pointer-events:none;display:none;overflow:hidden;clip-path:inset(0 round var(--rr, 14px));opacity:var(--lpd, 0)}
   .segctl .warp .disp{position:absolute;inset:0;overflow:hidden}   /* filter: url(#seg-lens-f-bg-<w>) set per frame */
   .segctl .warp .punch{position:absolute;left:0;top:0;width:100%;height:100%;overflow:hidden}   /* the segment content copy with the capsule cut out (clip-path evenodd set per frame): §4b layer 0/1, ui2 README §0.3 .punch */
@@ -536,7 +557,7 @@
   .segctl .rimb{z-index:6}
   .segctl .hlk,.segctl .hlw{z-index:8;overflow:visible;opacity:var(--lp, 0)}
   .segctl .hlw{mix-blend-mode:plus-lighter}
-  .segctl .rimb > *{position:absolute;pointer-events:none;opacity:var(--lp, 0);box-sizing:border-box}
+  .segctl .rimb > *,.segctl .rimo > *{position:absolute;pointer-events:none;opacity:var(--lp, 0);box-sizing:border-box}
   /* ④ #21 inner shadow (keyfill-highlight.md §5.2; layer keys seg-lens-refraction.md §1c(b): invertsShadow 1, shadowPathIsBounds 1, r22 capsule,
      black .06, radius 3, offset (0, 7), masksToBounds 1): a CA inner shadow = the complement of the shape shifted by the offset, Gaussian-blurred,
      clipped to the shape — CSS `box-shadow: inset` is the same construction (blur = 2σ). 采样替代 (predict-seg-hold.md §0 item 4): the three
@@ -544,17 +565,17 @@
      the keys read .06 / (0, 7) / radius 3 and CA's rasterisation of them (radius → σ, offset rounding, whether opacity is multiplied again) is
      with the old page session's decompile — replaced by the read conversion the moment it lands. The three ride the lift like the native layer's
      (§1c(b): offset, opacity and radius on one curve → × --lp). Black on the dark theme's black page = invisible, as measured (§1c(e) dark: 0). */
-  .segctl .rimb .ish{inset:0;border-radius:inherit;box-shadow:inset 0 calc(8px * var(--lp, 0)) calc(5.6px * var(--lp, 0)) 0 rgb(0 0 0 / .043)}
+  .segctl .rimb .ish,.segctl .rimo .ish{inset:0;border-radius:inherit;box-shadow:inset 0 calc(8px * var(--lp, 0)) calc(5.6px * var(--lp, 0)) 0 rgb(0 0 0 / .043)}
   /* the SVGs: lens-box coordinates inside a 12 px margin (the ring shadow's blur reaches 3σ = 9 pt out, the dark line .667); width / height attributes = box + 24 */
-  .segctl .rimb svg,.segctl .hlk,.segctl .hlw{overflow:visible}
-  .segctl .rimb svg{left:-12px;top:-12px}   /* the highlight SVGs get their box (lens box + 12 px margin) from the loop: WebKit clips an outer <svg> to its box whatever overflow says */
+  .segctl .rimb svg,.segctl .rimo svg,.segctl .hlk,.segctl .hlw{overflow:visible}
+  .segctl .rimb svg,.segctl .rimo svg{left:-12px;top:-12px}   /* the highlight SVGs get their box (lens box + 12 px margin) from the loop: WebKit clips an outer <svg> to its box whatever overflow says */
   /* ③ glassBackground ring shadow (keyfill-highlight.md §4; keys §1c(g) 实读: RingShadowOffset 8, RingShadowOpacity .1, RingShadowStrokeWidth 4,
      RingShadowBlurRadius 3, RingShadowMask 0): term = .1 · [N((d + 4)/3) − N(d/3)] with d = the SDF of the capsule shifted 8 pt down = the 4 pt
      ring inside that shape, blurred along the normal with σ 3, black, source-over, drawn inside AND outside (mask 0). Here: rect.rs = that ring as a
      4-wide stroke on the capsule shifted 8 and inset 2 (its edges = the shape and the shape eroded by 4) under feGaussianBlur stdDeviation 3,
      black .1. It gives the soft shadow under the lens (peak −12 at 651–652), the 612–618 band under the top edge and the ends' inner ~12 pt bands
      at once (§4 table). */
-  .segctl .rimb rect.rs{fill:none;stroke:#000;stroke-opacity:.1;stroke-width:4;filter:url(#seg-rs-blur)}
+  .segctl .rimb rect.rs,.segctl .rimo rect.rs{fill:none;stroke:#000;stroke-opacity:.1;stroke-width:4;filter:url(#seg-rs-blur)}
   /* ② glassBackground's built-in KeyFill term (keyfill-highlight.md §5.1; keys §1c(g) 实读: KeyFillHighlightAmount .5, ColorBias −.3,
      EffectOffset −.6667, Height 1, Angle π/2, SpreadSDR 2.0944 (SDR)): the 1 pt band from .667 OUTSIDE to .333 inside the capsule (e = −(d − .667)),
      profile .25 + .75·(1 − e) (curvature .75), lit along dir = (sin θ, −cos θ) = (1, 0): at the ends one of key / fill has ang 1, on the top / bottom
@@ -568,7 +589,7 @@
      stroke 0 / luma-complement 0, EDR f = 0. The two things still unread that could carry the difference: (a) whether the CPU loads the Amount
      uniform as 1/amount − 2 (the #36 layer's SDFNode::apply does — then k = v·ang and the rows predict −46 / −33 per third-row vs the measured
      −47 / −33; old page session), (b) the SpreadSDR cos term S (read −.5; the data session's two sdfset trials separate it). */
-  .segctl .rimb rect.kf{fill:none}
+  .segctl .rimb rect.kf,.segctl .rimo rect.kf{fill:none}
   /* ① #36 CASDFKeyFillHighlightEffect layer + vibrantColorMatrix (keyfill-highlight.md §2 / §3, the 22 keys of seg-lens-refraction.md §1b #36):
      α(e) over the depth e into the capsule = main band (h 1, curvature .75 → .25 + .75(1 − e)) + diffuse tail (h 8, linear, bias 1/(.15·.5) − 2 =
      11.33 → v/(1 + 11.33(1 − v))), key lights the top (angle 0), fill the bottom (π), spreads cos 1.3963 (main) / cos(.65·1.3963) (diffuse); the
@@ -3894,7 +3915,7 @@
      a 1×1 constant (128, 128, 255) = zero displacement, full coverage; maponlyr / maponlyg feed feDisplacementMap a copy of the map with G / R forced to
      .5 (only x / only y displacement); scale0 makes the loop hold the displacement scale at 0 (view.js SEGX). Round 2: nohlk / nohlw hide one of the two
      highlight stacks, noish / nors / nokf hide one of .rimb's three items, wide1 (view.js) merges every 1/3-pt ring stroke into one whole-pt stroke with the
-     mean alpha — an antialiasing experiment for the 3× raster, not a drawing. */
+     mean alpha — an antialiasing experiment for the 3× raster, not a drawing. noab (or data-dispersion="0" on the control) leaves the layer-5 colour-fringe chain off. */
   if (q.has("segx")) { const sw = q.get("segx").split(",");
     const css = []; if (sw.includes("nowarp")) css.push(".segctl .warp{visibility:hidden}"); if (sw.includes("norimb")) css.push(".segctl .rimb{visibility:hidden}");
     if (sw.includes("nohl")) css.push(".segctl .hlk,.segctl .hlw{visibility:hidden}"); if (sw.includes("nohlk")) css.push(".segctl .hlk{visibility:hidden}"); if (sw.includes("nohlw")) css.push(".segctl .hlw{visibility:hidden}");
