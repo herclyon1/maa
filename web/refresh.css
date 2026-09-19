@@ -15,3 +15,10 @@
 #ptr.ptr { top: calc(env(safe-area-inset-top) + var(--ios-nav-h) + 30px - 15px); }
 #ptr.ptr .ai { width: 30px; height: 30px; }
 #ptr.ptr .ai i { left: calc(15px - 1.8335px); top: 0; width: 3.667px; height: 10px; border-radius: 1.833px; transform-origin: 1.8335px 15px; background: var(--ios-spinner); }
+
+/* BOARD R5′ / R39 item 4 — the content inset while refreshing (refresh-native-formula.md §11 item 4: _addInsetHeight: = the control's height 60 →
+   -[UIScrollView _addRefreshInset:], contentInset only). On the web the inset is the list's top margin (#app; the large title stays like the hosted bar's
+   own title, refresh.js header): refresh.js sets --ptr-inset to 60px while refreshing and, at the end with the finger up, drives it to 0 over .3 s
+   with progress sin²(π/2 · f) (§11 item 1); no CSS transition — the value is written every frame on the driver's clock. Overrides main{margin:0 auto}
+   of index.html by specificity (A7: the old line stays); the horizontal auto margins are untouched. */
+#app.ptr-inset { margin-top: var(--ptr-inset, 60px); }
