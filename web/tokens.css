@@ -597,11 +597,13 @@
   /* ---- capsule button (the Health tip card's) = UIButton tinted configuration inside a UICollectionView (state-tables/button.md R62: hook rows
      beginTrackingWithTouch: → setHighlighted: → touchDown / touchUpInside, delaysContentTouches = YES; the recording's colours equal the R14 probe's
      tinted row value for value). Values = the R14 probe table (uiprobe-subtree-r14-tinted-{rest,held}-{light,dark}.json) + the R62 PNGs; BOARD R6′ ---- */
-  --ios-capsule-rest-alpha: 18%;              /* tinted fill at rest: the tint at α .18 (light; R62 PNG (209,234,255) = systemBlue .18 over white) */
-  --ios-capsule-pressed-alpha: 11.76%;        /* held: α .1176 (R62 PNG (225,241,255); the R14 probe reads .117) */
+  --ios-capsule-rest-alpha: 18%;              /* tinted fill at rest: the tint at α .18 — __tintBehaviorAlphaReduction light .18 ([0x1c5718490]; systemYellow .2), button.md R91; R62 PNG (209,234,255) ✓ */
+  --ios-capsule-pressed-alpha: 11.7%;         /* held: rest × .65 ([0x1c5718348], R91 tintBehaviors block_10 → __colorByReducingAlpha) = .117 (R14 probe .117; R62 PNG .1176) */
   --ios-capsule-pressed-text-alpha: 75%;      /* held label: the tint at α .75 (R14 tinted / plain / filled rows; R62 PNG (56,162,255) = systemBlue .75 over the held fill) */
-  --ios-capsule-rest-alpha-dark: 25%;         /* tinted dark fill at rest: α .25 (R14) */
-  --ios-capsule-pressed-alpha-dark: 17.5%;    /* held dark: α .175 (R14) */
+  --ios-capsule-rest-alpha-dark: 25%;         /* tinted dark fill at rest: α .25 (R91 dark base; R14 probe) — systemRed / systemPink tints get .2 instead */
+  --ios-capsule-pressed-alpha-dark: 17.5%;    /* held dark: rest × .70 ([0x1c57184d0], R91) = .175 (R14 probe) */
+  --ios-capsule-red-rest-alpha-dark: 20%;     /* the red (systemRed) capsule in dark: __tintBehaviorAlphaReduction's __isSameColor(color, systemRed) → .2 (R91) */
+  --ios-capsule-red-pressed-alpha-dark: 14%;  /* held: .2 × .70 (R91) */
   --ios-capsule-pressed-text-white-mix: 10%;   /* held dark label = AddingWhite10: c ← .9·c + .1 (R86, -[_UIButtonConfiguration updatedConfigurationForState:] 0x1c484d128 → transformer 16 __colorByAddingWhite 0x1c424b568, constant 0x1c5717f68 = .1; probe: (0, .569, 1) → (.1, .612, 1) ✓) — a transformer of the configuration, so any tint (the red variant too) */
   --ios-touch-capsule-press-delay: var(--ios-touch-highlight-delay);   /* 150 ms = UIScrollView delaysContentTouches (R62: the card stack is a UICollectionView); the first changed frame is the next one (cell-native.md row 12: probe +174…175); the R14″ / R14‴ recordings' +172 / +155 are the same delay seen at 60 Hz */
   /* segmented: pressed unselected label dims 1 → .2 ease-out over .43 s (0.98 @32 ms, .79 @100, .5 @182, .2 @432); back to 1 in ~.1 s at commit */

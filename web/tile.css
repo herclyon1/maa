@@ -11,7 +11,9 @@
    ② .capsule — the Health tip card's capsule button = a UIButton with the tinted configuration inside a UICollectionView (remote-ref/state-tables/button.md
       R62, 数据 hooks in Health.app: beginTrackingWithTouch: → setHighlighted: → touchDown / touchUpInside, delaysContentTouches = YES; R14′ ②'s "SwiftUI,
       not decompilable" is withdrawn there). So its press state is the R14 probe table's tinted row (UIButton(configuration:) on the probe, subtree dumps at
-      rest and held +.8 s, light and dark), the recordings only confirming it value for value: fill = the tint at α .18 → .1176 (light) / .25 → .175 (dark),
+      rest and held +.8 s, light and dark), the recordings only confirming it value for value: fill = the tint at α .18 → .117 (light) / .25 → .175 (dark)
+      — R91 (decompiled, closed): the fill is the tintBehaviors block: rest α = __tintBehaviorAlphaReduction light .18 / dark .25 (systemRed and
+      systemPink .2 in dark, systemYellow .2 in light), held = rest × .65 (light) / × .70 (dark); so the red capsule rests at .2 and holds at .14 in dark —
       label = the tint at α .75 (light) / (.1, .612, 1) (dark); size unchanged, no scale, no dimming. Timing: the highlight lands 150 ms after touch-down
       (UIScrollView delaysContentTouches, painted on the next frame — cell-native.md row 12: +174…175; the recordings' +172 / +155) as a 0 s transition
       with that delay; the un-highlight runs the .25 s ease-in-out of the same _UISystemBackgroundView (R14 timing rows: filled / plain / gray / tinted
@@ -36,11 +38,11 @@ body .capsule.red.pressed { background: color-mix(in srgb, var(--bad) var(--ios-
 body .capsule.pressed { transition: background-color 0s var(--ios-touch-capsule-press-delay, 150ms), color 0s var(--ios-touch-capsule-press-delay, 150ms); }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) body .capsule:not(.red) { background: color-mix(in srgb, var(--accent) var(--ios-capsule-rest-alpha-dark, 25%), transparent); }
-  :root:not([data-theme="light"]) body .capsule.red { background: color-mix(in srgb, var(--bad) var(--ios-capsule-rest-alpha-dark, 25%), transparent); }
+  :root:not([data-theme="light"]) body .capsule.red { background: color-mix(in srgb, var(--bad) var(--ios-capsule-red-rest-alpha-dark, 20%), transparent); }   /* R91: a systemRed tint rests at .2 in dark */
   :root:not([data-theme="light"]) body .capsule.pressed:not(.red) { background: color-mix(in srgb, var(--accent) var(--ios-capsule-pressed-alpha-dark, 17.5%), transparent); color: color-mix(in srgb, var(--accent) calc(100% - var(--ios-capsule-pressed-text-white-mix, 10%)), white var(--ios-capsule-pressed-text-white-mix, 10%)); }   /* R6″: AddingWhite10 = .9·c + .1 */
-  :root:not([data-theme="light"]) body .capsule.red.pressed { background: color-mix(in srgb, var(--bad) var(--ios-capsule-pressed-alpha-dark, 17.5%), transparent); color: color-mix(in srgb, var(--bad) calc(100% - var(--ios-capsule-pressed-text-white-mix, 10%)), white var(--ios-capsule-pressed-text-white-mix, 10%)); }
+  :root:not([data-theme="light"]) body .capsule.red.pressed { background: color-mix(in srgb, var(--bad) var(--ios-capsule-red-pressed-alpha-dark, 14%), transparent); color: color-mix(in srgb, var(--bad) calc(100% - var(--ios-capsule-pressed-text-white-mix, 10%)), white var(--ios-capsule-pressed-text-white-mix, 10%)); }
 }
 :root[data-theme="dark"] body .capsule:not(.red) { background: color-mix(in srgb, var(--accent) var(--ios-capsule-rest-alpha-dark, 25%), transparent); }
-:root[data-theme="dark"] body .capsule.red { background: color-mix(in srgb, var(--bad) var(--ios-capsule-rest-alpha-dark, 25%), transparent); }
+:root[data-theme="dark"] body .capsule.red { background: color-mix(in srgb, var(--bad) var(--ios-capsule-red-rest-alpha-dark, 20%), transparent); }
 :root[data-theme="dark"] body .capsule.pressed:not(.red) { background: color-mix(in srgb, var(--accent) var(--ios-capsule-pressed-alpha-dark, 17.5%), transparent); color: color-mix(in srgb, var(--accent) calc(100% - var(--ios-capsule-pressed-text-white-mix, 10%)), white var(--ios-capsule-pressed-text-white-mix, 10%)); }
-:root[data-theme="dark"] body .capsule.red.pressed { background: color-mix(in srgb, var(--bad) var(--ios-capsule-pressed-alpha-dark, 17.5%), transparent); color: color-mix(in srgb, var(--bad) calc(100% - var(--ios-capsule-pressed-text-white-mix, 10%)), white var(--ios-capsule-pressed-text-white-mix, 10%)); }
+:root[data-theme="dark"] body .capsule.red.pressed { background: color-mix(in srgb, var(--bad) var(--ios-capsule-red-pressed-alpha-dark, 14%), transparent); color: color-mix(in srgb, var(--bad) calc(100% - var(--ios-capsule-pressed-text-white-mix, 10%)), white var(--ios-capsule-pressed-text-white-mix, 10%)); }
