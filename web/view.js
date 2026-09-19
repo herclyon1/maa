@@ -1580,7 +1580,7 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
      217.5×42.4 at +242, rest 196×28 by +476. Here the lift runs as always from the 109 ms delay and the release is deferred so the fall spring
      (release + relDelay) begins at down + SEG_QUICKTAP_FALL_MS = 242 (the peak frame of that run). Unread: whether the fall is anchored to the down
      (+242) or to the lift start (+133) — both fit the clean run; the simulator's main-thread stalls moved the lift start in the other runs. */
-  const SEG_QUICKTAP_FALL_MS = 242;
+  const SEG_QUICKTAP_FALL_MS = touchMs("--ios-touch-segment-quicktap-fall", 242);   // tokens.css (night 6835104), source in its comment: seg-native-quicktap.md quick90c peak frame
   const destDelay = touchMs("--ios-touch-segment-release-destout-delay", 198) / 1000;
   const K_LIFT_DEST = cssKeys("--ios-touch-segment-destout-keys", SEG_LIFT_DESTOUT), K_DEST = cssKeys("--ios-touch-segment-release-destout-keys", SEG_DROP_DESTOUT.filter(([t]) => t >= .198).map(([t, v]) => [t - .198, v]));
   const destEnd = destDelay + K_DEST[K_DEST.length - 1][0];
