@@ -49,6 +49,9 @@
   --ios-grouped-bg: rgb(242 242 247);
   /* probe cell backgroundConfiguration.backgroundColor (tableCellGroupedBackgroundColor) */
   --ios-card-bg: rgb(255 255 255);
+  /* cell highlight (remote-ref/cell-native.md §0, iOS 27.0 probe, deep-hook diff of the cell's _UISystemBackgroundView fill:
+   * light (209,209,214), dark (58,58,60); set instantly 150 ms after touch-down, faded out over .5 s ease-in-out at the up) */
+  --ios-cell-highlight: rgb(209 209 214);
   /* elevated level (sheets / modal cards presented over the app: UIUserInterfaceLevel.elevated): probe `levels` command
    * (tools/uiprobe/uiprobe-colorlevels.json, iOS 27.0) — light is identical to base; dark lifts one step:
    * systemGroupedBackground (0,0,0) → (28,28,30), secondarySystemGroupedBackground (28,28,30) → (44,44,46), tertiary (44,44,46) → (58,58,60) */
@@ -579,7 +582,7 @@
   /* UIScrollView delaysContentTouches: the cell highlights 152 ms after touch-down when still held; an earlier release shows the highlight for one frame at the up */
   --ios-touch-highlight-delay: 150ms;
   --ios-touch-highlight-flash: 16.67ms;
-  /* cell: highlight off + didSelect 1 frame after the up (4–18 ms) */
+  /* cell: highlight off + didSelect 1 frame after the up (4–18 ms); the fade-out is --ios-motion-row-release-duration / -ease-in-out (cell-native.md §0) */
   --ios-touch-cell-select-delay: 16.67ms;
   /* UIButton / alert action: highlight within 1–6 ms of touch-down; alert actions have NO slop (6 pt beyond the edge un-highlights) and transfer the highlight to a neighbour */
   --ios-touch-button-highlight-delay: 0ms;
@@ -716,6 +719,7 @@
     --ios-grouped-bg: rgb(0 0 0);
     /* probe secondarySystemGroupedBackground dark; list-dark cell backgroundConfiguration */
     --ios-card-bg: rgb(28 28 30);
+    --ios-cell-highlight: rgb(58 58 60);   /* cell-native.md §0 dark (base level; the elevated sheet's value is unmeasured, same used) */
     --ios-grouped-bg-elevated: rgb(28 28 30);   /* dark + elevated systemGroupedBackground ← probe levels */
     --ios-card-bg-elevated: rgb(44 44 46);      /* dark + elevated secondarySystemGroupedBackground ← probe levels */
     --ios-bg: rgb(0 0 0);

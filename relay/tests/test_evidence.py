@@ -240,6 +240,30 @@ idx = (Cfg.state_dir / "evidence" / "index.jsonl").read_text(encoding="utf-8").s
 check("索引写了一行", len(idx), 1)
 check("没配置的脚本不出包", ev.bundle_for("OK-WW", Cfg, tmpdir() / "o", ALL), [])
 
+print("\n[OK-WW 的证据包带一张桌面截图（2026-09-19：日志 09:34 就断了，游戏画面无人知道）]")
+okroot = tmpdir()
+okw = okroot / "data" / "apps" / "ok-ww" / "working"
+(okw / "logs").mkdir(parents=True)
+(okw / "logs" / "ok-script.log").write_text("2026-09-19 09:34:40 INFO stuck\n", encoding="utf-8")
+os.utime(okw / "logs" / "ok-script.log", (T + 60, T + 60))
+fake_png = tmpdir() / "shot-abc.png"; fake_png.write_bytes(b"\x89PNG fake")
+class CfgOk:
+    state_dir = tmpdir() / "state"; maaend_dir = None; maa_dir = None; okww_dir = okroot; history_dir = None
+res_ok = ev.save_and_upload(CfgOk, "OK-WW", "2026-09-19/wuwa/OK-WW-05-16-07", window=win, uploader=FakeUp(),
+                            screenshot=lambda: fake_png)
+shots = [n for n in res_ok["files"] if n.startswith("desktop-") and n.endswith(".png")]
+check("包里有一张 desktop-<时刻>.png", len(shots), 1)
+check("日志包也在", any(n.endswith("-log.zip") for n in res_ok["files"]), True)
+res_none = ev.save_and_upload(CfgOk, "OK-WW", "2026-09-19/wuwa/OK-WW-05-16-08", window=win, uploader=FakeUp(),
+                              screenshot=lambda: None)
+check("截不到图就不带、其余照常", ([n for n in res_none["files"] if n.startswith("desktop-")], len(res_none["files"]) >= 1), ([], True))
+res_boom = ev.save_and_upload(CfgOk, "OK-WW", "2026-09-19/wuwa/OK-WW-05-16-09", window=win, uploader=FakeUp(),
+                              screenshot=lambda: (_ for _ in ()).throw(RuntimeError("no desktop")))
+check("截图那步炸了也不影响出包", len(res_boom["files"]) >= 1 and not res_boom["errors"], True)
+res_maa = ev.save_and_upload(Cfg, "MAA", "2026-09-11/arknights/MAA-17-30-01", window=ALL, uploader=FakeUp(),
+                             screenshot=lambda: fake_png)
+check("MAA 的包不截桌面（模拟器画面走 ADB，桌面无意义）", [n for n in res_maa["files"] if n.startswith("desktop-")], [])
+
 print("\n[送出去只有一条路：COS（2026-09-18 起，付费的那个桶）；没配就明说、不走别的]")
 class C0:
     state_dir = tmpdir(); cos_secret_id = ""; cos_secret_key = ""; cos_bucket = ""; cos_region = ""

@@ -1198,6 +1198,94 @@ bug. A warm-up frame is drawn with setState, which stored it as `last`; the NEXT
 captured that stored warm-up state as "the frame to put back" and re-drew it after its clear — the lifted capsule at the canvas's top-left
 (16 … 236 × 16 … 60 pt: the warm-up's own geometry), left on screen. Reproduced in the harness (rest → redrawBackdrop → prewarm: 51 834 opaque
 pixels), fixed: a warm-up frame never becomes `last`, and after a warm-up the canvas is either restored to a REAL lifted frame or cleared.
+
+**The same ghost after a theme switch (验收 17:5x, the 17:48 build with the fix above: the switch open / off re-render is clean; light → dark
+clean; dark → light leaves the same capsule):** the theme handler (view.js `matchMedia("(prefers-color-scheme: dark)")` → `redrawBackdrop()`,
+not setBackdrop) goes through the same deferred redraw + warm-up. The Mac WKWebView does NOT reproduce it — the deployed package in the deployed
+page (`?demo=1`, one segment, a press-and-release, then the appearance switched dark → light with the window shown and with it hidden, `wktheme`)
+reads 0 opaque pixels after every step and the snapshot shows the clean control — so the phone-side mechanism is not pinned down here. What
+the package could still do to put a warm-up frame on screen is now removed structurally: a warm-up never draws the canvas at all. Its pass 2
+goes into FBO B (canvas-sized, allocated on the first warm-up), the canvas keeps whatever the page last drew or cleared (a live gesture's
+frame is not blinked; a rest canvas stays transparent), and only an instance's first warm-up clears the canvas (the display surface's
+allocation). The restore-the-last-frame logic is gone with it (no `last` state at all). One more guard on the page's side of the contract:
+`setState` clears only at lift ≤ 0 again (fb84a7e cleared below .005, b313aed below .001; both WRONG — §0.8.12: the page hides its own platter
+while it keeps `.lift`, so the canvas must draw until the page itself sends lift 0; the frames of the tail are an opaque copy of the backdrop
+and the page is responsible for ending them with lift 0, which its loop does at settle). The numbers below were computed for 验收's question
+what a frame at lift .005 / .001 is in pixels; they still hold, they just do not license a package-side bound.
+What a frame at a tiny lift differs from rest by, computed from the inputs (lift 0 → 1 = 196×28 → 220×44 is linear in the page's `w = W0 + 2·LX·q`,
+`h = H0 + 2·LY·q`, LX 12 / LY 8; the shader's displacement = decode(map)·S·p; the shading terms ring .1, dark line, inner shadow .06, highlight
+emits and the fringe envelope are all × p):
+* box: 24·p × 16·p pt → p = .005: 0.12 × 0.08 pt = 0.36 × 0.24 px @3x (0.18 / 0.12 px per side); p = .001: 0.024 × 0.016 pt = 0.072 × 0.048 px.
+* displacement: the 220 set's maps hold at most |u| = 5.002 pt (bg), 9.401 pt (label), 2.338 pt (fringe) at p = 1 (read from seg-f-bg/lab/ab-220.png
+  bytes, (byte − 128)·S/255 with S = 40 / 40 / 12 from lens-filter.svg data-s) → p = .005: 0.025 / 0.047 / 0.012 pt = 0.075 / 0.141 / 0.035 px @3x
+  (fringe × W/H 1.72 = 0.060 px); p = .001: 0.015 / 0.028 / 0.007 px. All below one device pixel by an order of magnitude: no edge moves a pixel,
+  the bilinear read blends ≤ 14 % of a neighbouring texel at the label map's largest value.
+* shading: each term ≤ its full-lift maximum × p — ring .1·p = .0005 (0.13 of a level), dark line .3·k·c(3 − 2c) ≤ .3375·p = .0017 (0.43 level),
+  inner shadow .06·p = .0003 (0.08 level), the highlight emits and the fringe envelope ≤ 1·p = .005 (1.3 levels at most, on the rim only).
+* measured (renderer output, the harness at 3×, light, the lens box ± 30 pt, against the rest frame): p = .001 → max 1 level of 255 (1 648 px at 1,
+  none at 2); p = .005 → max 1 level (5 902 px at 1); p = .01 → max 2 levels (110 px at 2). One level is below what the 8-bit display shows as a step.
+* time: the fall material spring (ζ 1 / .4 s, springStep's critically damped closed form x = (1 + ωt)e^{−ωt}, ω = 2π/.4) passes .005 at 473 ms and
+  .001 at 588 ms after the fall starts — 115 ms (7 frames at 60 Hz, 14 at 120 Hz) in which the .005 bound showed the DOM where the .001 bound shows
+  the copy; per the numbers above the two are within 1 level of each other.
+Harness: `js-ghost.js` / `js-ghost2.js` (rest → redraw → warm, lifted → redraw → warm, a gesture ending at lift .0017 → setBackdrop dark /
+light, dark → light at rest) all 0 opaque pixels except the real lifted frame, which the deferred redraw leaves intact (51 824 px before
+and after); the mid render (light / dark, @3x) is identical to the previous commit (max diff 0).
+### 0.8.11 The first lens gesture after load (2026-09-19 18:xx; 数据 seg-final-181053.md ①, then the instrumented re-record) — observed once, not reproduced, nothing changed
+
+**The observation (v=181053, the simulator's standalone clip, one-segment demo, a press on the selected segment as the first lens
+gesture after load — the page had been open a while, one dialog opened and cancelled before it):** ~190 ms of main-thread silence around
+the down, the lift's first frame "one step for two". Read from the data session's record (`ark-segframes-abc-fceb5de.json`, times from
+the recorder's capture of the down):
+* −144 ms: the recorder's last normal frame; the frame due at −127 did not come; the down was dispatched at +5 → the main thread was busy
+  from ≤ −127 until the dispatch, ≥ 127 ms, with NO `seg:` mark inside (the prewarm `seg:prewarm-build` — which had run at load + 0.4–0.6 s —,
+  the engine fix `seg:enginefix`, the build `seg:build`, the upload `seg:gl-upload` are all marked; none of them was there). So not the
+  package's warm-up or uploads, not the page's build; the owner is not in the record.
+* +5 … +16: the recorder's own down work (its reading() forces layout) and the other press handlers, 11 ms.
+* +16 … +46: `seg:build` 30 ms (the second gesture of the run: 0 ms) — segLens's construction, page side, first execution.
+* +54 … +71: the first tick 17 ms (second gesture: 1 ms) — the gesture's first GL frame (p = .0012 already draws a full frame in the
+  0c84158 package); the prewarm had run at load + 0.5 s, the gesture came much later.
+* The "two steps in one": view.js counts the 109 ms lift delay from the touch's timeStamp; the touch was dispatched ≥ 127 ms late, so the
+  lift was already due at tick 1 and tick 2 integrated the clamped 40 ms step (p = .28 at +94).
+127 + 11 + 30 + 17 ≈ 190. The Mac does not reproduce any of it (a real mouse press on the deployed page in a WKWebView: `seg:build` 1 ms,
+first tick 5 ms, no gap before the down; `scratchpad/wk/wktheme`, built for this: load, run JS, switch the appearance, hide / show the window,
+press through the window server, snapshot).
+
+**The instrument (ui2 6dbd2f9, `web/seg-frames-logger.js` only):** every pointer entry carries `lag` = performance.now() − event.timeStamp
+at the capture listener (how long the event waited for the main thread); the page's render() / updateLive() are wrapped as
+`seg:page-render` / `seg:page-updateLive` measures; Long Tasks would be re-emitted as `seg:longtask` (WebKit reports
+`longtask_supported: false`). With it the data session re-recorded a cold first gesture (a TAP on an unselected segment this time; host load
+3–4): down `lag` 36 ms (one 46 ms frame's wait), `seg:build` 2 ms, `seg:gl-upload` 0 — no block before the down; the 190 ms did not recur.
+Conclusion (监督局): no evidence, no change; the package and the page stay as they are.
+
+**What the tap record does show, package side, for when it is wanted:** the down frame of a tap is 46 ms with 2 ms of marked work in it.
+The rest is the deferred backdrop redraw (segGlRedraw → redrawBackdrop → the setTimeout-0 task: two 2D canvases, the label alpha recovery, two
+texture uploads, then a warm-up) — it runs in the task after the handler, before the next frame, and `seg:gl-upload` measures only the
+synchronous part. On the Mac that task is backdrop 4–11 ms + warm-up 6–8 ms; the phone's number is not measured (a `seg:gl-redraw` measure
+around the deferred task would give it). It exists only on the tap path (the drag path does not redraw at the down), and only because the
+labels texture must carry the weight of the segment about to be selected (`futureOn`). The way to take it off the down entirely: draw and
+upload one labels texture per possible selection at idle (n segments → n textures, once after the prewarm) and at the down only switch which
+one is bound — no draw, no alpha pass, no upload, no warm-up. Two package calls (prepareLabels(i, draw), useLabels(i)) plus one page-side
+line at the down; not done, not scheduled.
+
+### 0.8.12 The flash at the end of a tap on 190821 (2026-09-19 19:3x; the user's phone; 监督局's forensic order) — the package's rest bound, reverted
+
+**Symptom:** on v=190821 a tap on 「早班」 flashes once at the end; 181053 does not. The two differ, lens-wise, by fb84a7e / b313aed (warm-up
+offscreen, lift < .005 then < .001 clears the canvas) and the page's 5d71467.
+**Evidence (tick by tick):** the deployed tree run whole in an offscreen WKWebView (`?demo=1`), a press-and-release on the unselected segment,
+the page's own loop stepped with `loop.step(16.7)` through the whole tap (lift → fall → rest); per tick: the loop's p, whether the control
+carries `.lift`, the DOM platter's computed background (`.segctl.lift .lens{background:transparent}`, index.html), whether the package drew or
+cleared (`stats.frames`), and the canvas's opaque pixel count (offscreen nothing is presented, so readPixels reads the real buffer).
+190821: ticks 0–4 p = 0, no `.lift`, DOM platter white; tick 5 p = .067, `.lift` on → DOM platter transparent, canvas 31 324 px (the canvas is now
+the platter); ticks 40–52 the fall's tail p .0169 → .0011, drawing; **ticks 53–74 (22 ticks = 367 ms at 60 Hz): p .0008 → 0, `.lift` still on
+(view.js's frame() keeps it while p > 0) so the DOM platter stays transparent, and the package — p < .001 — clears: no platter anywhere, the
+white capsule is gone**; tick 75 the loop settles, the page's clear() removes `.lift`, the DOM platter is back. 181053 (0c84158, p ≤ 0 clears):
+0 such ticks, the last draw is the p = 0 tick, the same frame as the page's clear. 190821 with the one line put back to `p <= 0`: 0 such ticks.
+**Lesson:** rest is the page's call. The page decides when the DOM platter shows (`.lift` off, in its clear()) and tells the package with lift 0;
+the package must draw until then. A package-side "small enough lift" bound, however well it is justified in pixels (§0.8.10), breaks that
+contract. Fixed: `p <= 0` again. The fixed check: `scripts/mac/seg-tap-platter-check.sh` runs the sequence above against web/ and fails on any
+tick where the control has `.lift` and the canvas is clear (the page's platter hidden and the package's gone) — run it before any change to
+the rest / clear logic on either side.
+
 ### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
 
 Sources: `remote-ref/sheet-native.md` (the data session's 10th order: A9 `sheetivars` / `corners` / `subtree` / motion, iOS 27.0 3×) and

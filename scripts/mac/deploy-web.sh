@@ -21,8 +21,13 @@ v = sys.argv[1]
 p = pathlib.Path("web/index.html")
 s = p.read_text(encoding="utf-8")
 # app.js 2026-09-18 拆成 schema/net/pending/live/view（stamina 原本就单独；inventory 是库存页的数据层），七个都盖同一个版本号
-s = re.sub(r'<script src="(schema|net|pending|live|stamina|inventory|view|alert-prewarm|seg-frames-logger)\.js[^"]*"></script>', lambda m: f'<script src="{m.group(1)}.js?v={v}"></script>', s)
-s = re.sub(r'accept\.js\?v=[^"]*', f'accept.js?v={v}', s)   # the ?accept-only acceptance script
+s = re.sub(r'<script src="(schema|net|pending|live|stamina|inventory|view|controls|alert-prewarm|seg-frames-logger|motion|nav|nav-edge|sheet|menu|topbar|refresh|glassbtn|switch|accept-[a-z-]+)\.js[^"]*"></script>', lambda m: f'<script src="{m.group(1)}.js?v={v}"></script>', s)   # controls.js: the row / switch press state machines (B14 / B13)
+s = re.sub(r'controls\.css\?v=[^"]*', f'controls.css?v={v}', s)   # their stylesheet
+s = re.sub(r'(motion|nav|sheet|menu|topbar|refresh|glassbtn|switch)\.css\?v=[^"]*', lambda m: f'{m.group(1)}.css?v={v}', s)   # night batch control stylesheets
+s = re.sub(r'accept\.js\?v=[^"]*', f'accept.js?v={v}', s)
+# view.js is now loaded by an inline loader (?viewdelay), so its stamp lives inside JS strings too — stamp every view.js?v= occurrence
+s = re.sub(r'view\.js\?v=\d+', f'view.js?v={v}', s)   # the ?accept-only acceptance script
+s = re.sub(r'assets/lens/(tab-lens|lens-webgl)\.js\?v=[^"]*', lambda m: f'assets/lens/{m.group(1)}.js?v={v}', s)   # lens package scripts referenced from index.html (night batch #7a)
 s = re.sub(r'tokens\.css\?v=[^"]*', f'tokens.css?v={v}', s)   # the component tokens stylesheet
 s = re.sub(r'href="manifest\.webmanifest[^"]*"', f'href="manifest.webmanifest?v={v}"', s)
 # 图标：<link rel="...icon..." href="xxx.png?v=...">，连 manifest 里的一起盖

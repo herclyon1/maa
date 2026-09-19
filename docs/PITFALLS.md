@@ -1109,3 +1109,12 @@ still read at `main`.
 latest". Anything that must be right the first time is fetched at an
 immutable ref (a tag, or a full commit hash), and the manifest that names the
 ref is the only thing read from the branch.
+
+## The phone page's segmented lens: a package-side "rest" bound blanked the platter for 22 frames at the end of every tap (2026-09-19, v=190821, fixed same evening)
+
+The WebGL lens package (`web/assets/lens/lens-webgl.js`) started clearing its canvas when the page asked for a lift below .001, on the
+argument that such a frame differs from rest by at most one level. But the page hides its own DOM platter while the control carries `.lift`
+and only shows it again in its loop's clear(), which sends lift 0 — so for the 22 ticks (367 ms at 60 Hz) between the package's bound and the
+page's clear neither side drew the white capsule: the flash the user saw on 「早班」. Rest is the page's call; the package draws until lift 0.
+The fixed check is `scripts/mac/seg-tap-platter-check.sh` (an offscreen WKWebView steps the page's own loop through a whole tap and fails on
+any tick with `.lift` on and the canvas clear); the tick-by-tick evidence is in `web/assets/lens/README.md` §0.8.12.

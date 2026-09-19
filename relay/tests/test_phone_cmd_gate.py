@@ -117,6 +117,22 @@ applied = []
 run("set_config", busy=False, applied=applied)
 check("改设置执行了", applied, ["set_config"])
 
+print("\n[开机读信箱积压：关机期间按的红按钮不执行，其余照常]")
+# 2026-09-19 17:5x the red button was pressed on the phone page while the machine
+# had been off since 14:47; the 21:20 boot would have read it back and fired it
+# against nothing, minutes before the 21:30 queue.
+_recorded = []
+class _Log:
+    def warning(self, fmt, *a): _recorded.append(fmt % a)
+    def info(self, fmt, *a): pass
+backlog = [{"action": "estop"}, {"action": "skip_shutdown", "on": True}, {"action": "estop"}, {"action": "refresh"}]
+kept = boot_stages.boot_backlog(backlog, _Log())
+check("红按钮全部丢掉，别的按原顺序留下", [b["action"] for b in kept], ["skip_shutdown", "refresh"])
+check("每丢一条记一行", len(_recorded), 2)
+check("说清是关机期间按的、开机不执行", "关机期间" in _recorded[0] and "开机不执行" in _recorded[0], True)
+check("空积压照样是空的", boot_stages.boot_backlog([], _Log()), [])
+check("红按钮是唯一的 live-only 动作（活着时照旧立刻执行）", boot_stages.LIVE_ONLY_ACTIONS, ("estop",))
+
 print("\n[每一个能按的按钮都有中文名字]")
 missing = [a for a in ("set_stage", "set_medicine", "set_wait_time", "toggle_task",
                        "run_now", "skip_today", "debug_mode", "set_config",

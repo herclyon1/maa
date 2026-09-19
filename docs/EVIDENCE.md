@@ -146,3 +146,17 @@ through the app went out) - the app store is back. The IP still rotates (dial-up
 next 60020 means: run that script again. Verified 21:25: a real failure bundle went to COS as
 one 84 MB archive in 18 s, pulled back with `evidence.sh pull` and unpacked to the 6 files.
 Also: the group robot is store 「wecom-bot」 - human-readable only, no fetch-back API.
+
+## OK-WW bundles carry a desktop screenshot (since 2026-09-19)
+
+OK-WW's own export is its log plus whatever screenshots it chose to save. On
+2026-09-19 the log stopped at 09:34:40 (characters loaded, then nothing) and
+AUTO-MAS killed the run two hours later; the export held one file and nothing
+showed what the game had been displaying. `evidence.save_and_upload` now adds
+`desktop-<YYYYmmdd-HHMMSS>.png` to every OK-WW bundle - one picture of the real
+desktop through `desktop.Desktop.screenshot()` (the interactive-session agent
+that the launcher OCR already uses). Caveat in the filename: the picture is
+taken when the record lands, and AUTO-MAS writes records at the end of the
+whole script run, so after a retry it shows the state after the retry, not the
+failure. A picture that cannot be taken (no interactive session, a Mac, a
+test) is simply absent; the bundle is otherwise unchanged.
