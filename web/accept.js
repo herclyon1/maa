@@ -15,7 +15,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
   /* the per-control files are appended dynamically; headless Chrome occasionally drops one of those fetches (night 00:3x: accept-sheet.js never
      requested in one run → 17 rows silently missing). Each load is tracked; a file that has not loaded when the checks start is re-appended, and
      a file still missing gets a ✗ row so the total never drops silently. */
-  window.ACCEPT.files = ["motion","nav","nav-edge","sheet","menu","topbar","refresh","glassbtn","switch","tabbar"]; window.ACCEPT.loaded = new Set();
+  window.ACCEPT.files = ["motion","nav","nav-edge","sheet","menu","topbar","refresh","glassbtn","switch","tabbar","tile"]; window.ACCEPT.loaded = new Set();
   window.ACCEPT.load = (c) => new Promise((res) => { const s = document.createElement("script"); s.src = "accept-" + c + ".js?r=" + Math.random().toString(36).slice(2, 7); s.onload = () => { window.ACCEPT.loaded.add(c); res(true); }; s.onerror = () => res(false); document.head.appendChild(s); setTimeout(() => res(false), 4000); });
   for (const c of window.ACCEPT.files) window.ACCEPT.load(c);
   const rows = [];
@@ -538,7 +538,15 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
                stages and the capsule radius the shader is given are the read values (seg-lens-refraction.md §1b 表 1 #18 / #30: ContentLensing −8.8 / 7.04 then ClearGlass −17.5 / 11.2;
                r 22); the harness numbers (README §0.8.14) are the Mac's, the device's saturation is the phone's to read */
             if (g && g.lens.stats.labMode) { const st = g.lens.stats; const okS = Array.isArray(st.labelStages) && st.labelStages.join(",") === "-8.8,7.04,-17.5,11.2";
-              check("分段 WebGL R37：标签复本场在着色器里按式逐像素算（closed；?gllab=map 回贴图）、两级键 = 读数、胶囊 r 22", "closed · −8.8/7.04,−17.5/11.2 · r 22", `${st.labMode} · ${(st.labelStages || []).join("/")} · r ${st.rmax}`, st.labMode === "closed" && okS && st.rmax === 22); }
+              check("分段 WebGL R37：标签复本场在着色器里按式逐像素算（closed；?gllab=map 回贴图）、两级键 = 读数、胶囊 r 22", "closed · −8.8/7.04,−17.5/11.2 · r 22", `${st.labMode} · ${(st.labelStages || []).join("/")} · r ${st.rmax}`, st.labMode === "closed" && okS && st.rmax === 22);
+              /* R38a: the element SDF of the label field — QuartzCore's supercircle branch (§7 ② / §7b (a′)) is in the shader behind ?glsdf=super / opts.labelSdf; the
+                 default stays the capsule (待澄清: on the label stages the supercircle takes the end ink 81 → 79 % in the closed form, the native is 68 %) */
+              const fs1 = (window.LensWebGL && LensWebGL.FS1) || "";
+              check("分段 WebGL R38a：超圆 SDF（1.528665·r、clamp sat(2.89158·(1 − hs/r))、poly 五次）在着色器里，默认 circle（?glsdf=super 切）", "circle · sdfSuper 在", `${st.labelSdf} · ${/sdfSuper/.test(fs1) && /1\.528665/.test(fs1) && /2\.89158/.test(fs1) && /0\.268531/.test(fs1) ? "sdfSuper 在" : "缺"}`, st.labelSdf === "circle" && /sdfSuper/.test(fs1) && /1\.528665/.test(fs1) && /2\.89158/.test(fs1) && /0\.268531/.test(fs1));
+              /* R38″ (§5d): the portal composite's three items do nothing to the copy — here the copy term lab(ql)·Ml·B carries no DestOut (u_pd acts on the source labels in the
+                 backdrop copy only) and no opacity factor */
+              const lcLine = (fs1.match(/vec4 lc = [^;]+;/) || [""])[0], bgcLine = (fs1.match(/vec4 bgc = [^;]+;/) || [""])[0];
+              check("分段 WebGL R38″：复本无 DestOut、opacity ×1（lc 项无 u_pd；u_pd 只在底图复本的源标签上）", "lc 无 u_pd · bgc 有 u_pd", `lc ${/u_pd/.test(lcLine) ? "有" : "无"} u_pd · bgc ${/u_pd/.test(bgcLine) ? "有" : "无"} u_pd`, !!lcLine && !/u_pd/.test(lcLine) && /u_pd/.test(bgcLine)); }
             check("分段 WebGL：flex 变换加在 canvas 上、原点 = 透镜中心（canvas 坐标 = 透镜盒中心 + 24 pt）", "origin = lens centre", c ? `${c.style.transformOrigin || "-"} vs ${(lr.left - sr.left + lr.width / 2).toFixed(1)}px ${(lr.top - sr.top + 24 + lr.height / 2).toFixed(1)}px` : "-", !!c && (() => { const m = /([\d.]+)px ([\d.]+)px/.exec(c.style.transformOrigin || ""); return !!m && Math.abs(parseFloat(m[1]) - (lr.left - sr.left + lr.width / 2)) < 1.5 && Math.abs(parseFloat(m[2]) - (lr.top - sr.top + 24 + lr.height / 2)) < 1.5; })());
             check("分段 WebGL：白平台淡出在 shader 里（dc2af2a u_platter：位移底图之上、边线/标签之下，alpha 1 − p，_controlForegroundColor 令牌），.lens 抬起时透明如 SVG 路径", "u_platter · .lens transparent z 2", `${F1 && F1.includes("u_platter") ? "u_platter" : "no u_platter"} · ${cs(lens0).backgroundColor} z ${cs(lens0).zIndex}`, !!F1 && F1.includes("u_platter") && /rgba\(0, 0, 0, 0\)|transparent/.test(cs(lens0).backgroundColor) && cs(lens0).zIndex === "2");
             check("分段 WebGL：SVG 栈隐藏（.stack / .rimo / .hlk / .hlw display none）", "none ×4", [".stack", ".rimo", ".hlk", ".hlw"].map((q) => { const e = seg.querySelector(q); return e ? cs(e).display : "-"; }).join(" "), [".stack", ".rimo", ".hlk", ".hlw"].every((q) => { const e = seg.querySelector(q); return !e || cs(e).display === "none"; }));

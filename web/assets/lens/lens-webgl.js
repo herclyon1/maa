@@ -54,10 +54,27 @@ in vec2 v; out vec4 o;
 uniform sampler2D t_page, t_lab, m_bg, m_lab, t_ish; uniform vec4 u_page; /* the backdrop region x y w h, page pt */ uniform vec4 u_lens; uniform float u_S; uniform float u_p; uniform float u_pd; uniform vec4 u_platter; uniform float u_srcclip;
 uniform float u_labmode; uniform vec2 u_model; uniform vec4 u_lst;   /* R37: 1 = the label field in float (below); u_model = the set's model box (pt); u_lst = the label stages in sampling order (amount, height)×2 */
 /* compute_sdf_with_mode's gradient ovalization (formula §3; gen_lens_maps.py ovalized_gradient): g = normalize(mix(box normal, normalize((x, hw·y/hh)), .5)) — gradientOvalization .5 (seg-lens-refraction.md §1b 表 1 #13 / #19) */
-vec2 gOval(vec2 pm, vec2 hm, float rr){ vec2 nb = nrm(pm, hm, rr); vec2 rv = vec2(pm.x, hm.x * pm.y / hm.y); float rn = length(rv); rv = rn > 0.0 ? rv / rn : rv; vec2 g = mix(nb, rv, 0.5); float gn = length(g); return gn > 0.0 ? g / gn : g; }
+uniform float u_sdfmode;   /* R38a: 0 = the rounded-box / capsule SDF (gen_lens_maps.py capsule_sdf); 1 = QuartzCore's supercircle branch (below) — opts.labelSdf / ?glsdf=super */
+/* R38a — the element SDF as QuartzCore's uber shader computes it for equal corner radii (label-end-tear-closed-vs-map.md §7 ② IR 9455–9548 supercircle_sdf, §7b (a′)
+   emit_sdf_bounds_internal 0x1c3a68628: clamp = sat(2.89158·(1 − hs/r)) per axis → (0, 0) for 220×44 r22, the supercircle branch): R = 1.528665·r; rr = mix(R, r, max(clamp));
+   q = |p| − hs + rr; u = max(0, (|p| − hs + R)/R); ρ = min(u)/max(u); poly(ρ) = (((−.926054ρ + 3.15601)ρ − 3.64122)ρ + 1.26803)ρ + .268531; k = ρ²·sat(|u|)·poly;
+   f_super = |u| + 1 − 1/(1 − k); f_circle = .6541656·|max(0, 1.528665u − .528665)| + .3458344; per axis mix by clamp, axis pick s = sat(.5 − sgn + sgn·ρ);
+   d = R·(f − 1) + min(max(q), 0) (the IR truncates f − 1 to half: ≤ .016 pt, not applied); g = q.x + q.y > 0 ? normalize(max(0, q)) : the axis, sign-restored */
+float scPoly(float rho){ return (((-0.926054 * rho + 3.15601) * rho - 3.64122) * rho + 1.26803) * rho + 0.268531; }
+vec3 sdfSuper(vec2 p, vec2 hs, float r){
+  float R = 1.528665 * abs(r); vec2 cl = clamp(2.89158 * (1.0 - hs / r), 0.0, 1.0); float rr = mix(R, abs(r), max(cl.x, cl.y));
+  vec2 ap = abs(p); vec2 q = ap - hs + rr; vec2 u = max(vec2(0.0), (ap - hs + R) / R); float ul = length(u); float umax = max(u.x, u.y); float rho = umax > 0.0 ? sat(min(u.x, u.y) / umax) : 0.0;
+  float k = rho * rho * sat(ul) * scPoly(rho); float fs = ul + 1.0 - 1.0 / (1.0 - k);
+  vec2 v = max(vec2(0.0), 1.528665 * u - 0.528665); float fc = 0.6541656 * length(v) + 0.3458344;
+  float fx = mix(fs, fc, cl.x), fy = mix(fs, fc, cl.y); float sg = u.y > u.x ? 1.0 : -1.0; float s = sat(0.5 - sg + sg * rho); float f = mix(fx, fy, s);
+  float d = R * (f - 1.0) + min(max(q.x, q.y), 0.0);
+  vec2 g = (q.x + q.y > 0.0) ? normalize(max(vec2(1e-9), q)) : ((q.x > q.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0)); g *= vec2(p.x >= 0.0 ? 1.0 : -1.0, p.y >= 0.0 ? 1.0 : -1.0);
+  return vec3(d, g); }
+vec3 elemSdf(vec2 pm, vec2 hm, float rr){ return u_sdfmode > 0.5 ? sdfSuper(pm, hm, rr) : vec3(sdf(pm, hm, rr), nrm(pm, hm, rr)); }
+vec2 gOval(vec2 pm, vec2 hm, float rr){ vec2 nb = elemSdf(pm, hm, rr).yz; vec2 rv = vec2(pm.x, hm.x * pm.y / hm.y); float rn = length(rv); rv = rn > 0.0 ? rv / rn : rv; vec2 g = mix(nb, rv, 0.5); float gn = length(g); return gn > 0.0 ? g / gn : g; }
 /* one displacement stage at the model point pm (formula §1: t = saturate(−d/H), 1 − P = 1 − sqrt(1 − (1 − t)²) (curvature 1, effectOffset 0, angle 0); §2: offset = amount × that × g; the coverage
    saturate(−d/fw + .5), fw = ⅓ pt, the map's B) → (offset.xy, cov) */
-vec3 lstage(vec2 pm, vec2 hm, float rr, float amount, float height){ float d = sdf(pm, hm, rr); float t = sat(-d / height); float amp = amount * (1.0 - sqrt(sat(1.0 - (1.0 - t) * (1.0 - t)))); return vec3(amp * gOval(pm, hm, rr), sat(-d * 3.0 + 0.5)); }
+vec3 lstage(vec2 pm, vec2 hm, float rr, float amount, float height){ float d = elemSdf(pm, hm, rr).x; float t = sat(-d / height); float amp = amount * (1.0 - sqrt(sat(1.0 - (1.0 - t) * (1.0 - t)))); return vec3(amp * gOval(pm, hm, rr), sat(-d * 3.0 + 0.5)); }
 vec4 page(vec2 p){ return texture(t_page, (p - u_page.xy) / u_page.zw); }
 vec4 lab(vec2 p){ return texture(t_lab, (p - u_page.xy) / u_page.zw); }
 vec4 over(vec4 s, vec4 d){ return s + d * (1.0 - s.a); }
@@ -89,7 +106,7 @@ void main(){
     vec3 s2 = lstage(pm, hm, rm, u_lst.z * u_p, u_lst.w); B *= s2.z; pm = clamp(pm + s2.xy, -lim, lim);
     ul = pm * Sc - pl; Bl = B;
   } else { ul = decode(ml.rg, u_S) * u_p; Bl = ml.b; }
-  vec2 ql = v + ul; float dl = sdf(ql - C, half_, r); float Ml = sat(0.5 - dl / max(fwidth(dl), 1e-4));
+  vec2 ql = v + ul; float dl = (u_sdfmode > 0.5 && u_labmode > 0.5) ? sdfSuper((ql - C) / (u_lens.zw / u_model), u_model * 0.5, min(u_rmax, u_model.y * 0.5)).x : sdf(ql - C, half_, r); float Ml = sat(0.5 - dl / max(fwidth(dl), 1e-4));   /* R38a: the portal's clip in the element's shape (model coords in super mode) */
   vec4 lc = lab(ql) * (u_srcclip > 0.5 ? Ml : 1.0) * Bl; col = over(lc, col);   /* u_srcclip: the #20 clip at the sampled position (1, the read chain); 0 = the destination clip only (before d3a6dce), an instrument */
   float ish = inBox ? texture(t_ish, vec2(uv.x, 1.0 - uv.y)).r : 0.0; col.rgb *= (1.0 - ish * u_p);   /* inner shadow #21 (keyfill §5.2c); t_ish is an FBO (row 0 = bottom) */
   o = vec4(col.rgb, 1.0);
@@ -249,7 +266,7 @@ void main(){
       gl.uniform4f(U(P1, "u_quad"), wx, wy, ww, wh_); gl.uniform2f(U(P1, "u_origin"), wx, wy); gl.uniform2f(U(P1, "u_view"), ww, wh_);
       gl.uniform4f(U(P1, "u_page"), region.x, region.y, region.w, region.h); gl.uniform4f(U(P1, "u_lens"), lx, ly, lw, lh); gl.uniform1f(U(P1, "u_S"), st.S); gl.uniform1f(U(P1, "u_p"), p);
       gl.uniform1f(U(P1, "u_srcclip"), opts.srcClip === false ? 0 : 1); gl.uniform1f(U(P1, "u_pd"), pd);
-      gl.uniform1f(U(P1, "u_rmax"), RMAX); gl.uniform1f(U(P1, "u_labmode"), LABMODE); const mdl = st.model || opts.model || [220, 44]; gl.uniform2f(U(P1, "u_model"), mdl[0], mdl[1]); gl.uniform4f(U(P1, "u_lst"), LST[0], LST[1], LST[2], LST[3]);
+      gl.uniform1f(U(P1, "u_rmax"), RMAX); gl.uniform1f(U(P1, "u_labmode"), LABMODE); gl.uniform1f(U(P1, "u_sdfmode"), SDFMODE); const mdl = st.model || opts.model || [220, 44]; gl.uniform2f(U(P1, "u_model"), mdl[0], mdl[1]); gl.uniform4f(U(P1, "u_lst"), LST[0], LST[1], LST[2], LST[3]);
       const pl_ = s.platter || { rgba: [0, 0, 0, 0], alpha: 0 }; gl.uniform4f(U(P1, "u_platter"), (pl_.rgba[0] || 0) / 255, (pl_.rgba[1] || 0) / 255, (pl_.rgba[2] || 0) / 255, (pl_.rgba[3] == null ? 1 : pl_.rgba[3]) * (pl_.alpha == null ? 1 : pl_.alpha));
       bind(P1, "t_page", 0, tPage); bind(P1, "t_lab", 1, tLab); bind(P1, "m_bg", 2, st.bg); bind(P1, "m_lab", 3, st.lab); bind(P1, "t_ish", 4, st.ish.t); mark("uniforms_binds1");
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); mark("pass1");
@@ -275,9 +292,10 @@ void main(){
     const AB = (() => { const q = (new URLSearchParams(location.search).get("glab") || (opts.ab || "")).split(","); return (q.includes("nodark2") ? 1 : 0) + (q.includes("noring2") ? 2 : 0) + (q.includes("nofringe") ? 4 : 0); })();
     /* R37 (formula.md §3b.9): the label copy's field per pixel in float — opts.labMode "closed" | "map", ?gllab=closed|map overrides; default "closed" */
     const LABMODE = (() => { const q = new URLSearchParams(location.search).get("gllab"); const m = q || opts.labMode || "closed"; return m === "map" ? 0 : 1; })();
+    const SDFMODE = (() => { const q = new URLSearchParams(location.search).get("glsdf"); const m = q || opts.labelSdf || "circle"; return m === "super" ? 1 : 0; })();   /* R38a: the element SDF of the float label field — "super" = QuartzCore's supercircle branch (FS1 sdfSuper), default "circle" (待澄清: the supercircle raises the closed form's end ink 81 → 93 %, the native is 68 %) */
     const RMAX = opts.rmax != null ? opts.rmax : 22;   /* the capsule's corner radius cap (seg 22; the tab family passes 1e6 = h/2) */
     const LST = opts.labelStages || [-8.8, 7.04, -17.5, 11.2];   /* the label stack in sampling order: ContentLensing −8.8 / SDF height 7.04, then ClearGlass −17.5 / 11.2 (seg-lens-refraction.md §1b 表 1 #18 / #30, A9 原值) */
-    stats.labMode = LABMODE ? "closed" : "map"; stats.rmax = RMAX; stats.labelStages = [...LST];
+    stats.labMode = LABMODE ? "closed" : "map"; stats.rmax = RMAX; stats.labelStages = [...LST]; stats.labelSdf = SDFMODE ? "super" : "circle";
     const TRACE = new URLSearchParams(location.search).get("gltrace") === "1";   /* per-step gl.finish timing of every frame into stats.trace / stats.traces (last 60) — an instrument, slows the frame */
     /* prewarm = one full lifted frame (the preloaded set, lift 1, pd 1, the current backdrop textures) through pass 1 (FBO A) and pass 2 (FBO B), gl.finish after
        each; the canvas is cleared only on an instance's first warm-up (the cleared buffer is what the compositor presents: the layer's display surface gets allocated); the per-step
