@@ -85,12 +85,13 @@ try:
             if ready is True: return True
         return False
     MISSING = ('(() => { const got = new Set(performance.getEntriesByType("resource").map(e => e.name)); '
-               'return [...document.scripts].filter(s => s.src && !got.has(s.src)).map(s => s.src.split("/").pop()); })()')
+               'return [...document.scripts].filter(s => s.src && !/accept[^/]*\\.js/.test(s.src) && !got.has(s.src)).map(s => s.src.split("/").pop()); })()')   # accept*.js are appended lazily by the page / by accept.js itself and may still be loading at this point
     ws.send('Page.navigate', {'url': url + ('&' if '?' in url else '?') + 'accept=1&quiet=1'})
     for attempt in (1, 2):
         if not wait_ready():
             print('view.js not ready in 60 s (document.readyState / window.__viewReady)'); print('JS errors:', errors()); sys.exit(1)
         missing = ws.send('Runtime.evaluate', {'expression': MISSING, 'returnByValue': True})['result']['result'].get('value') or []
+        if missing: time.sleep(1.5); missing = ws.send('Runtime.evaluate', {'expression': MISSING, 'returnByValue': True})['result']['result'].get('value') or []   # a script still in flight is not a lost fetch
         early = errors()
         if not missing and not early: break
         if attempt == 2:
