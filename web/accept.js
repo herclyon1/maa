@@ -706,6 +706,23 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
           check("标签栏 T3 +220 ms：透镜抬起中（+125 ms 起 ζ1/.25 抬到 (w0 + 16) × 70，读数；规范 103×63 待读）", "lift-sel, 54 < h ≤ 70", `${g3.classList.contains("lift-sel") ? "lift-sel" : "-"} h ${gr.height.toFixed(1)}`, g3.classList.contains("lift-sel") && gr.height > 54 && gr.height <= 70.5); }
         pev(seg3, "pointerup", at(on3));
         check("标签栏 T3 按下已选中项抬手：无事件", before, (nav3.querySelector(".seg button.on") || {}).dataset.tab, (nav3.querySelector(".seg button.on") || {}).dataset.tab === before && !g3.classList.contains("lift-sel"));
+        await sleep(900);   // the T3 lens has fallen back: the bar is at rest
+        /* BOARD R0① (user bug 2): a shift change (早班 5 tabs ↔ 晚班 3 tabs) must not rebuild the tab bar — .plat / .glide / .seg stay the same elements, the nav's
+           top and display never change, the button count goes 5 → 3 → 5 with no frame at 0, and the glide sits on the selected button every frame */
+        if (typeof snap === "object" && snap && Array.isArray(snap.queues) && snap.queues.length > 1) {
+          const nv0 = document.querySelector("nav.tabs"), plat0 = nv0.querySelector(":scope > .plat"), gl0 = nv0.querySelector(":scope > .glide"), sg0 = nv0.querySelector(":scope > .seg"), top0 = nv0.getBoundingClientRect().top, savedQ = curQueue, savedTab = curTab;
+          const counts = [], bad = [];
+          const sampleFrames = async (n) => { for (let i = 0; i < n; i++) { await new Promise(requestAnimationFrame); const nv = document.querySelector("nav.tabs"), bsN = nv.querySelectorAll(":scope > .seg > button").length, on = nv.querySelector(":scope > .seg > button.on"), g = nv.querySelector(":scope > .glide");
+            counts.push(bsN); const r = nv.getBoundingClientRect();
+            if (nv !== nv0 || nv.querySelector(":scope > .plat") !== plat0 || g !== gl0 || nv.querySelector(":scope > .seg") !== sg0) bad.push("rebuilt");
+            if (Math.abs(r.top - top0) > 0.5) bad.push("top " + r.top.toFixed(1)); if (getComputedStyle(nv).display === "none") bad.push("display none"); if (bsN === 0) bad.push("0 buttons");
+            if (on && g && !nv.classList.contains("tl-on") && (Math.abs(parseFloat(g.style.left) - on.offsetLeft) > 1 || Math.abs(parseFloat(g.style.width) - on.offsetWidth) > 1)) bad.push("glide off " + g.style.left + "/" + on.offsetLeft); } };
+          const names = snap.queues.map((x) => x["名"]); const other = names.find((nm) => nm !== savedQ) || names[0];
+          curQueue = other; window.render(); await sampleFrames(8); curQueue = savedQ; window.render(); await sampleFrames(8); curQueue = other; window.render(); await sampleFrames(8); curQueue = savedQ; window.render(); await sampleFrames(4);
+          const uniq = [...new Set(counts)];
+          check("R0① 换班次三次（早→晚→早→晚→早，render）逐帧：标签栏 .plat/.glide/.seg 同一元素、nav top 不变、display 不为 none、按钮数在两个值间切换且无一帧 0、glide 每帧贴着选中按钮（≤ 1 pt）", "same nodes · top = · counts {5,3} · glide on", `${bad.length ? bad.slice(0, 4).join(" · ") : "clean"} · counts ${uniq.join("/")} · ${counts.length} frames`, bad.length === 0 && uniq.length === 2 && !uniq.includes(0) && counts.length >= 20);
+          curTab = savedTab; window.render(); await sleep(100);
+        }
       }
       /* §3 UISwitch on a synthetic switch through the page's own pointer handling (the old handler; with switch.js — BOARD #13 — accept-switch.js runs the B13 rows instead) */
       if (!window.Switch) {

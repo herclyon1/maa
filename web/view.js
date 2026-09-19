@@ -729,17 +729,24 @@ function layoutTabs() {
   const nav = $("#tabs");
   nav.hidden = present.size < 2;
   /* platter, lens and buttons are siblings (index.html: a lens nested in the backdrop-filtered platter cannot filter it).
-     The nav's DOM is rebuilt only when the SET of tabs changes; otherwise the nodes stay (only .on is toggled and the glide re-placed) — every render
-     used to recreate the platter's backdrop-filter layer, the glide and the buttons, so the value flip's render at a segment tap (c3c1e58, in the
-     tap's own frame) recreated the whole bottom capsule under the finger (监督局 19:3x: "底部标签胶囊往下闪一下" on the phone). */
-  const wantTabs = TABS.filter(([t]) => present.has(t)).map(([t]) => t), haveTabs = [...nav.querySelectorAll(".seg > button")].map((b) => b.dataset.tab);
-  if (wantTabs.join("|") !== haveTabs.join("|") || !nav.querySelector(".plat") || !nav.querySelector(".glide")) {
-    nav.innerHTML = `<div class="plat"></div><i class="glide"></i><div class="seg">` + wantTabs.map((t) =>
-      `<button type="button" class="${t === curTab ? "on" : ""}" data-tab="${t}" aria-label="${t}">` +
-      `<span class="ico">` + (TAB_IMAGES[t] ? `<img class="tabimg" src="${TAB_IMAGES[t]}" alt="">`
-                     : `<i class="sf" style="-webkit-mask-image:url(${TAB_ICONS[t]});mask-image:url(${TAB_ICONS[t]})" aria-hidden="true"></i>`) + `</span>` +
-      `<span>${t}</span></button>`).join("") + `</div>`;
-  } else for (const x of nav.querySelectorAll(".seg > button")) x.classList.toggle("on", x.dataset.tab === curTab);
+     BOARD R0① (user bug 2, 切晚班再切早班 → 底部胶囊往下闪): the nav is reconciled IN PLACE, never rebuilt — .plat (the backdrop-filter layer), .glide
+     and .seg are created once; the buttons are matched by data-tab (missing ones inserted, extra ones removed, order per TABS). Before, a change of the
+     SET of tabs (早班 three games = 5 tabs, 晚班 one = 3) replaced nav.innerHTML, so the platter layer, the glide and the buttons were new nodes under the
+     finger and the glide was placed a frame later (ee86bc5 only kept the nodes when the set was unchanged). The glide's inline left / width are written
+     once when the set changed (or at first build), otherwise only when the selected button actually moved and no tab-lens motion is on (.tl-on); the
+     nav gets a "tabs-changed" event when the set changed (tab-lens.js listens to that, R0②, instead of assuming new nodes). */
+  const wantTabs = TABS.filter(([t]) => present.has(t)).map(([t]) => t);
+  let plat = nav.querySelector(":scope > .plat"), glideEl = nav.querySelector(":scope > .glide"), segEl = nav.querySelector(":scope > .seg"), setChanged = false;
+  if (!plat) { plat = document.createElement("div"); plat.className = "plat"; nav.prepend(plat); setChanged = true; }
+  if (!glideEl) { glideEl = document.createElement("i"); glideEl.className = "glide"; plat.after(glideEl); setChanged = true; }
+  if (!segEl) { segEl = document.createElement("div"); segEl.className = "seg"; nav.appendChild(segEl); setChanged = true; }
+  const mkTab = (t) => { const b = document.createElement("button"); b.type = "button"; b.dataset.tab = t; b.setAttribute("aria-label", t);
+    b.innerHTML = `<span class="ico">` + (TAB_IMAGES[t] ? `<img class="tabimg" src="${TAB_IMAGES[t]}" alt="">`
+                     : `<i class="sf" style="-webkit-mask-image:url(${TAB_ICONS[t]});mask-image:url(${TAB_ICONS[t]})" aria-hidden="true"></i>`) + `</span><span>${t}</span>`; return b; };
+  const haveBtns = new Map([...segEl.querySelectorAll(":scope > button")].map((b) => [b.dataset.tab, b]));
+  for (const [t, b] of haveBtns) if (!wantTabs.includes(t)) { b.remove(); haveBtns.delete(t); setChanged = true; }
+  wantTabs.forEach((t, i) => { let b = haveBtns.get(t); if (!b) { b = mkTab(t); haveBtns.set(t, b); setChanged = true; } if (segEl.children[i] !== b) { segEl.insertBefore(b, segEl.children[i] || null); setChanged = true; } });
+  for (const x of segEl.querySelectorAll(":scope > button")) x.classList.toggle("on", x.dataset.tab === curTab);
   const glide = (animate) => {
     /* The selection capsule slides to the chosen tab (the Liquid Glass tab bar's
        own motion); brief, and off under Reduce Motion (HIG: Motion). On a
@@ -751,8 +758,8 @@ function layoutTabs() {
     g.style.left = on.offsetLeft + "px"; g.style.width = on.offsetWidth + "px";
     if (!animate) { void g.offsetWidth; g.style.transition = ""; }
   };
-  glide(false);
-  requestAnimationFrame(() => glide(false));
+  if (setChanged) { glide(false); requestAnimationFrame(() => glide(false)); nav.dispatchEvent(new CustomEvent("tabs-changed", { detail: { tabs: wantTabs } })); }
+  else { const on = nav.querySelector("button.on"), g = glideEl; if (on && !nav.classList.contains("tl-on") && (g.style.left !== on.offsetLeft + "px" || g.style.width !== on.offsetWidth + "px")) glide(false); }   // an unchanged set: re-place only if the selected button really moved (a label / width change), never mid tab-lens motion
   const selectTab = (b) => {
     /* Behaviour 3: each tab keeps its own scroll position — UITabBarController keeps every tab's view controller alive, HIG Tab bars:
        “preserving the current navigation state within each section”; Health measured: switch away and back = 0 px difference
@@ -766,7 +773,7 @@ function layoutTabs() {
     glide(true);
     window.scrollTo(0, tabScroll[curTab] || 0);
   };
-  attachTabBar(nav, selectTab);
+  if (setChanged || !nav.__tabsAttached) { attachTabBar(nav, selectTab); nav.__tabsAttached = true; }   // R0①: the handlers close over the button list — re-attached only when that list changed
 }
 
 let receiptsPage = null;   // Behaviour 4: builder for the pushed receipts page (set by render)
