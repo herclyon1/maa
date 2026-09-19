@@ -79,4 +79,17 @@
     const el = e.target.closest && e.target.closest(ROW_SEL);
     if (el && el.dataset.rc) { delete el.dataset.rc; e.preventDefault(); e.stopImmediatePropagation(); }   // the browser's click for a press we handled
   }, true);
+  /* a press the page never sees the end of (the app switched away mid-press, the pointer stream lost) would leave a row lit in its
+     press colour for good — and a theme change would then show the old theme's colour on that one row (线上第四版 device report:
+     「开始刷」 stayed dark after dark → light). The rest colour is the theme's --card token; every state class is stripped when the page
+     hides or the theme changes, with no transition on that frame (nothing to animate: the press is over). */
+  const stripRows = () => {
+    for (const el of document.querySelectorAll(".hl, .hl-out, .hl-cut, [data-rp], [data-rc]")) {
+      if (!el.matches(ROW_SEL)) continue;
+      el.classList.add("hl-cut"); el.classList.remove("hl", "hl-out"); delete el.dataset.rp; delete el.dataset.rc;
+      requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove("hl-cut")));
+    }
+  };
+  document.addEventListener("visibilitychange", () => { if (document.hidden) stripRows(); });
+  try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", stripRows); } catch (e) {}
 })();

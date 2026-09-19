@@ -767,6 +767,12 @@
       col("蓝字行 出卡片边 16 pt +30 ms：瞬灭到静止色（数据真机核 ①：不走基础 .5 s transition）", T.card, bgOf(act));
       pev(act, "pointerup", at(act, 1, .5, 16, 0)); await sleep(60);
       check("蓝字行 出边抬手：不触发", 2, asel, asel === 2);
+      /* the rest colour follows the theme's --card token and no press state outlives a press: after everything above, every action row / nav
+         row in the document rests on the current theme's card colour with no state class or mark left (the device's dark → light report) */
+      await sleep(200);
+      { const leftovers = [...document.querySelectorAll(".row.nav, .group .acts button")].filter((el) => el.classList.contains("hl") || el.classList.contains("hl-out") || el.classList.contains("hl-cut") || el.dataset.rp || el.dataset.rc);
+        check("行静止底 = 当前主题卡片色（--ios-card-bg），无残留状态类 / 标记（切主题后不留旧色）", `${fmt(T.card)}, 0 残留`, `${bgOf(act)}, ${leftovers.length} 残留`, same(bgOf(act), T.card) && same(bgOf(row), T.card) && leftovers.length === 0);
+        document.dispatchEvent(new Event("visibilitychange")); }   // the strip on hide runs without error (a hidden page cannot be simulated here)
       /* the page's own action rows must not block the main thread: no synchronous confirm() left in view.js except ask()'s no-dialog fallback */
       try { const src = await (await fetch("view.js?v=" + Date.now())).text(); const n = (src.match(/\bconfirm\(/g) || []).length;
         check("行动作不再同步 confirm()（view.js 里只剩 ask() 的无 dialog 兜底那一处）", 1, n, n === 1); } catch (e) { check("行动作不再同步 confirm()", 1, "读不到 view.js", false); }
