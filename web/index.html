@@ -149,9 +149,8 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
                       -webkit-mask-size:contain;mask-size:contain}
   nav.tabs button.on{color:var(--accent)}
   nav.tabs button:active .ico{transform:scale(.9);transition:transform .1s}
-  @media (prefers-reduced-motion: reduce){
-    *,*::before,*::after{transition:none !important;animation:none !important}
-  }
+  /* No global reduce-motion kill switch: iOS keeps the switch well/colour animations and the navigation parallax under Reduce Motion;
+     only the sites that read the _AXSReduceMotionEnabled stub change behaviour (page-inventory.md §12 / §12a, switch.js R30′). */
   main{padding:4px var(--ios-card-inset);margin:0 auto}                 /* 卡片距边 20 ← AX45；不再写死 640 */
   /* A section = a small grey header above an inset group, footers in grey below.
      Every number below was measured on the iOS 26.5 simulator (iPhone 17 Pro Max,
