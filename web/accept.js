@@ -656,6 +656,16 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
         if (fi2 && nv2) { fi2.focus({ preventScroll: true }); const a1 = window.__tabKbd(innerHeight - 300, innerHeight - 300), d1 = getComputedStyle(nv2).display;
           const a2 = window.__tabKbd(null), d2 = getComputedStyle(nv2).display; const a3 = window.__tabKbd(innerHeight - 300), d3 = getComputedStyle(nv2).display; const a4 = window.__tabKbd(null), d4 = getComputedStyle(nv2).display; fi2.blur();
           check("键盘只信视口：安卓式 innerHeight 缩 300（H0 基线）→ 藏，回高 → 放回；iOS 式 vv 缩 300 → 藏，回高 → 放回；全程字段保持聚焦（不经失焦收键盘也放回）", "hidden shown hidden shown", `${a1} ${d1} · ${a2} ${d2} · ${a3} ${d3} · ${a4} ${d4}`, a1 === true && d1 === "none" && a2 === false && d2 !== "none" && a3 === true && d3 === "none" && a4 === false && d4 !== "none"); } }
+      /* BOARD R28′ (state-tables/tabbar.md §6, R28 probe): the native floating tab bar does not move, hide or fade while the keyboard shows / hides (317 frames at
+         (0, 873, 440, 83), alpha 1) — the keyboard window simply covers it and slides away in .3833 s. The page hides the capsule while the viewport is short
+         (browsers float fixed elements above the keyboard); the equivalence to check: when the keyboard goes, the capsule is back in the very same rect, the same
+         nodes, without any transition — within one frame */
+      { const nv3 = document.querySelector("nav.tabs");
+        if (nv3) { const r0 = nv3.getBoundingClientRect(), plat0 = nv3.querySelector(":scope > .plat"), gl0 = nv3.querySelector(":scope > .glide");
+          window.__tabKbd(innerHeight - 300); const hidden = getComputedStyle(nv3).display === "none"; window.__tabKbd(null); await new Promise(requestAnimationFrame);
+          const r1 = nv3.getBoundingClientRect(), same = Math.abs(r1.top - r0.top) < 0.01 && Math.abs(r1.left - r0.left) < 0.01 && Math.abs(r1.width - r0.width) < 0.01 && Math.abs(r1.height - r0.height) < 0.01, nodes = plat0 === nv3.querySelector(":scope > .plat") && gl0 === nv3.querySelector(":scope > .glide");
+          const tr = getComputedStyle(nv3).transitionProperty, trOK = !/transform|bottom|top|opacity/.test(tr) || getComputedStyle(nv3).transitionDuration.split(",").every((d) => parseFloat(d) === 0);
+          check("R28′ 键盘收起后胶囊原位原样：视口回高后下一帧 rect 与键盘前逐项相同（±.01）、.plat/.glide 同一节点、nav 无位置/透明度过渡（原生 R28：标签栏全程一帧不动，只是被键盘盖住）", "hidden → same rect · same nodes · no transition", `hidden ${hidden} · same ${same} · nodes ${nodes} · transition ${tr} ${getComputedStyle(nv3).transitionDuration}`, hidden && same && nodes && trOK); } }
       /* 监督局 19:3x: a segment tap must not flash — the buttons carry no tap highlight and no pointer focus ring (unchanged since 181053), and a render must not
          rebuild the tab bar's nodes (the platter's backdrop-filter layer / glide / buttons stay the same elements) */
       { const sb = document.querySelector("#queueseg button"), nv = document.querySelector("nav.tabs"), plat0 = nv && nv.querySelector(".plat"), gl0 = nv && nv.querySelector(".glide"), b0 = nv && nv.querySelector(".seg > button");
