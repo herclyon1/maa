@@ -625,6 +625,8 @@
   /* quick tap on the selected segment (native, probe recording 2026-09-20 00:24–00:42, remote-ref/tools/touch/seg-native-quicktap.md quick90c):
      the lens lifts in place after the up and starts falling at the peak frame, +242 ms after the down (peak 217–218.5×42–43 @ +241…+257, back at 196×28 by +474…+497) */
   --ios-touch-segment-quicktap-fall: 242ms;
+  /* lensHangTime — the fall animation of a quick tap is created 0.22 s after the DOWN, whatever the up (spec ivar +0x40, seg-lens-refraction.md §4.5; R27 in seg-native-quicktap.md: the fall was built at down +220…226 in all 10 recordings; the +242 above is the first frame after it) */
+  --ios-touch-segment-lens-hang: 220ms;
   /* tab bar: pressing the SELECTED tab lifts the lens 94×54 → 103×63 by +180 ms (first size change ~125 ms), 110×70 while dragging (T3/T4) */
   --ios-touch-tab-selected-lift-delay: 125ms;
   --ios-touch-tab-selected-lift-done: 180ms;
