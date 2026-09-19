@@ -21,8 +21,10 @@
    _UITabSelectionView α 1 → 0 (= .glide, --tsel-alpha), DestOut 0 → 1, items 1 → 1.16, platter 1 → 1.0516); drop = the same back with
    ζ 1 / .4 s; page change while held (press another item / drag) = position ζ .85 / .4 s from the old centre to the new + the lift at the same
    time (the flex stretch of the loupe is NOT drawn: no read sets beyond the lift for this family; the ±1.6 pt wobble after the drop unread; a
-   quick tap without the +140 ms lift keeps view.js's glide slide — the tap's lens trace is unread). The drag while lifted retargets the same
-   position spring (UIKitCore reads ζ .85 / .2 for the highlighted selection view (§6) — the presented trace fits .4 (§3); .4 kept, recorded).
+   quick tap without the +140 ms lift keeps view.js's glide slide — the tap's lens trace is unread). The drag (nav.drag while lifted) follows the
+   finger by tab-lens-motion.md §6.6: target = finger x − a·W + W/2 (a = the press point's fraction in the item), the left edge hard-clamped to
+   the items' run, spring ζ .85 / .2 retargeted on every move, no rubber band; after the up ζ .9 / .4 to the item under the finger (view.js's
+   choice). The flex stretch (loupe sX / sY, drift tx = sX(1 − sX)·55) is read but not drawn (per-axis map scaling needed).
    Not drawn yet (material, the ui session's tokens): the KeyFill highlight, the ring shadow, the dark line, the little glow (α 0 → .2).
    Instrument: window.__tabLens = the per-frame state (t s since the start, p, x, v, target, set, s, phase). */
 (function () {
@@ -41,7 +43,8 @@
   window.__tabLensStep = (dt) => { vnow += dt; const f = pendingTick; pendingTick = null; if (f) f(vnow); return !!f; };
   const AM = 16;                                                              // the fringe wrapper's margin (lens-field.json aberration.wrapper; ≥ the 15 pt tap span)
   const LIFT = 16, PLATTER = 1.0516, ITEM = 1.16;                             // +16 on both axes (94×54 → 110×70), platter 1.0516, items 1.16 (tab-lens-native.md §3)
-  const SP_LIFT = { z: 1, w: 2 * Math.PI / .25 }, SP_DROP = { z: 1, w: 2 * Math.PI / .4 }, SP_POS = { z: .85, w: 2 * Math.PI / .4 };   // tab-lens-motion.md §0 / §4
+  const SP_LIFT = { z: 1, w: 2 * Math.PI / .25 }, SP_DROP = { z: 1, w: 2 * Math.PI / .4 }, SP_POS = { z: .85, w: 2 * Math.PI / .4 };   // tab-lens-motion.md §0 / §4: lift, drop, the jump to a pressed item (the ① trace)
+  const SP_DRAG = { z: .85, w: 2 * Math.PI / .2 }, SP_RELEASE = { z: .9, w: 2 * Math.PI / .4 };   // tab-lens-motion.md §6.6 (UIKitCore _animateSelection, checked on the drag trace rms .55 / max .75 by the old page): the finger-following spring while highlighted, the spring after the up
   const step = (st, target, sp, dt) => {                                      // analytic damped-spring step from (x, v): ζ ≥ 1 critically damped, else under-damped
     const dx = st.x - target;
     if (sp.z >= 1) { const A = dx, B = st.v + sp.w * dx, e = Math.exp(-sp.w * dt); st.x = target + (A + B * dt) * e; st.v = (B - sp.w * (A + B * dt)) * e; }
@@ -90,10 +93,22 @@
      offsetLeft would read the glide's CSS transition mid-flight, i.e. the old value on the frame the target changes) */
   const centreOf = (g) => { const l = parseFloat(g.style.left), w = parseFloat(g.style.width); return (isNaN(l) ? g.offsetLeft : l) + (isNaN(w) ? g.offsetWidth : w) / 2; };
   let loop = null;
+  /* the finger (tab-lens-motion.md §6.6: while the selection view is highlighted its target is finger x − a·W + W/2, a = where in the item the
+     finger went down (0 … 1), the left edge hard-clamped to the track [track.minX, track.maxX − W] — no rubber band; the landing = the item under
+     the finger): read here from the same pointer events view.js's press() handles, capture phase, nothing consumed */
+  const finger = { x: null, a: .5, down: false };
+  const trackFinger = (nav) => {
+    if (nav.__tlensFinger) return; nav.__tlensFinger = true;
+    nav.addEventListener("pointerdown", (e) => { const r = nav.getBoundingClientRect(); const bs = [...nav.querySelectorAll(".seg button")];
+      let a = .5; for (const b of bs) { const q = b.getBoundingClientRect(); if (e.clientX >= q.left && e.clientX <= q.right) { a = (e.clientX - q.left) / q.width; break; } }
+      finger.down = true; finger.a = a; finger.x = e.clientX - r.left; if (loop) loop.retarget(); }, true);
+    nav.addEventListener("pointermove", (e) => { if (!finger.down) return; finger.x = e.clientX - nav.getBoundingClientRect().left; if (loop) loop.retarget(); }, true);
+    for (const t of ["pointerup", "pointercancel"]) nav.addEventListener(t, () => { finger.down = false; finger.x = null; if (loop) loop.retarget(); }, true);
+  };
   const attach = (nav) => {
     const glide = nav.querySelector(".glide"), seg = nav.querySelector(".seg"), main = document.getElementById("app");
     if (!glide || !seg || !main) return null;
-    nav.classList.add("tlens");
+    nav.classList.add("tlens"); trackFinger(nav);
     const st = { nav, glide, seg, main, X: centreOf(glide), lastX: centreOf(glide) };
     return st;
   };
@@ -118,13 +133,19 @@
     const P = { x: 0, v: 0 }, XS = { x: st.lastX, v: 0 };
     let pTarget = 1, running = true, last = clockNow(), t0 = last, curSet = 0, abKey = "", phase = "lift", frameN = 0;
     const glideOrigin = () => { glide.style.transformOrigin = `${PC.x - glide.offsetLeft}px ${PC.y - glide.offsetTop}px`; };   // the glide scales about the platter centre, like the platter
-    const setTargets = () => { const lifted = glide.classList.contains("lift") || glide.classList.contains("lift-sel"); pTarget = lifted ? 1 : 0; st.X = centreOf(glide); phase = lifted ? (Math.abs(st.X - XS.x) > .5 ? "move" : "lift") : "drop"; glideOrigin(); };
+    let posSpring = SP_POS;
+    const segBox = st.seg.getBoundingClientRect(), navBox = nav.getBoundingClientRect(), track = { min: segBox.left - navBox.left + (parseFloat(getComputedStyle(st.seg).paddingLeft) || 0), max: segBox.right - navBox.left - (parseFloat(getComputedStyle(st.seg).paddingRight) || 0) };   // the items' run in platter coordinates
+    const setTargets = () => { const lifted = glide.classList.contains("lift") || glide.classList.contains("lift-sel"), dragging = lifted && nav.classList.contains("drag") && finger.down && finger.x != null;
+      pTarget = lifted ? 1 : 0;
+      if (dragging) { const left = Math.max(track.min, Math.min(track.max - w0, finger.x - finger.a * w0)); st.X = left + w0 / 2; posSpring = SP_DRAG; phase = "drag"; }   // §6.6: target = the finger, hard clamp, ζ .85 / .2 retargeted on every move
+      else { st.X = centreOf(glide); posSpring = lifted ? SP_POS : SP_RELEASE; phase = lifted ? (Math.abs(st.X - XS.x) > .5 ? "move" : "lift") : "drop"; }   // the jump to a pressed item ζ .85 / .4 (§3); after the up ζ .9 / .4 to the item under the finger (§6.6)
+      glideOrigin(); };
     setTargets();
     const frame = (now) => { try { frame0(now); } catch (e) { window.__tabLensErr = String(e && e.stack || e); console.error("tab-lens frame", e); stop(); } };
     const frame0 = (now) => {
       if (!running) return;
       const dt = Math.min(1, Math.max(0, (now - last) / 1000)); last = now; frameN++;   // time-based like a CA spring (a stalled frame lands where the clock says; only a > 1 s stall is cut)
-      step(P, pTarget, pTarget > .5 ? SP_LIFT : SP_DROP, dt); step(XS, st.X, SP_POS, dt);
+      step(P, pTarget, pTarget > .5 ? SP_LIFT : SP_DROP, dt); step(XS, st.X, posSpring, dt);
       const p = Math.max(0, Math.min(1, P.x)), s = 1 + (PLATTER - 1) * p, x = XS.x;
       const wm = w0 + LIFT * p, hm = h0 + LIFT * p, set = setFor(Math.round(wm));
       const cx = PC.x + s * (x - PC.x), cy = PC.y, W = s * wm, H = s * hm, R = H / 2;

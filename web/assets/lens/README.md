@@ -843,10 +843,17 @@ press another item while held = position ζ .85 / .4 s + the lift at the same ti
 Pictures (`remote-mock/v4/lens/tab/`): `tab-held-native-vs-web.png` (native 3-button held vs the page held, light / dark; the page in wksnap
 has no backdrop blur on the real platter — the device does), `web-{held,drop,move,held2}-{light,dark}-crop.png`.
 
+The drag (13:0x, the old page's read rule tab-lens-motion.md §6.6, UIKitCore `_animateSelection` + the drag lenstrace rms .55 / max .75): while
+`nav.drag` is on and the finger is down, the position target = finger x − a·W + W/2 (a = the press point's fraction inside the item, read from
+the bar's own pointer events in the capture phase — view.js's handlers untouched), the left edge hard-clamped to the items' run, spring
+ζ .85 / .2 retargeted on every move (continuing value and velocity), no rubber band; after the up ζ .9 / .4 to the item under the finger
+(view.js's choice of item). Offscreen check (`js-drag.js`: press at a = .6, ten 6-pt moves, release on item 2): targets 50.76 → 104.76 in
+6-pt steps (= finger − .603 × 82 + 41), x 45 → 104.76 settled at +.5 s, the release → 127.02 (item 2's centre 127). The jump to a pressed
+item without a drag stays ζ .85 / .4 (the ① trace, §3); the two read values differ and both are kept where each was read.
+
 Not done (next, in this order): the material — KeyFill highlight #52, ring shadow, dark line, the little glow α 0 → .2 (the tab's keys =
-seg-lift-material.md §2 × the three differences, the ui session's tokens); the drag rule read by the old page (tab-lens-motion.md §6.6: position
-ζ .85 / .2 with target = finger x − a·W + W/2, hard clamp to the track, release ζ .9 / .4 to the item under the finger; the loupe flex sX / sY on
-the lifted box with drift tx = sX(1 − sX)·55 — needs per-axis map scaling, the `-wh`-style colour matrix); the wobble after the drop (unread);
+seg-lift-material.md §2 × the three differences, the ui session's tokens); the loupe flex sX / sY on the lifted box with drift tx =
+sX(1 − sX)·55 (§6.6, read — needs per-axis map scaling, the `-wh`-style colour matrix); the wobble after the drop (unread);
 a quick tap's lens (unread — the glide slides as before); the `_UITabSelectionView` copy inside the capture during the ramp (omitted); frame
 cost on the device (the data session's 36916a9 reads the fringe chain and the supersampling as the heavy parts on the segment — `?tlens-ab=0`
 is the switch here). Engine fact for the geometry: the glide's `offsetLeft` reads its CSS transition mid-flight, so the script reads the
