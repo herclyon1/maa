@@ -78,7 +78,19 @@
       check("菜单面板旧底（采样替代）关：background transparent、无 backdrop-filter、无 box-shadow", "transparent · none · none", `${cs(panel).backgroundColor} · ${cs(panel).backdropFilter || cs(panel).webkitBackdropFilter} · ${cs(panel).boxShadow}`, cs(panel).backgroundColor === "rgba(0, 0, 0, 0)" && (cs(panel).backdropFilter || cs(panel).webkitBackdropFilter) === "none" && cs(panel).boxShadow === "none");
       const mr = document.getElementById("app").getBoundingClientRect(), pr2 = panel.getBoundingClientRect(), tm = /matrix\(([^)]+)\)/.exec(cs(copy).transform), tx = tm ? tm[1].split(",").map(parseFloat) : null;
       check("菜单玻璃 复本对齐页面（translate = 页 − 面板）", `${(mr.left - pr2.left).toFixed(1)}, ${(mr.top - pr2.top).toFixed(1)}`, tx ? `${tx[4].toFixed(1)}, ${tx[5].toFixed(1)}` : "-", !!tx && Math.abs(tx[4] - (mr.left - pr2.left)) <= 1 && Math.abs(tx[5] - (mr.top - pr2.top)) <= 1);
-      check("菜单玻璃 未接项已列（Menu.glass.unbuilt）", "≥ 6 项", Menu.glass ? Object.keys(Menu.glass.unbuilt).length + " 项" : "-", !!Menu.glass && Object.keys(Menu.glass.unbuilt).length >= 6); }
+      /* R1′ (menu-card-material.md §7): BlurFill, MaxLuma, the face matrix, the soft shadow — the filter's primitives carry the keys */
+      const fm = f && f.querySelector('feColorMatrix[result="face"]'), bfb = f && f.querySelector('feGaussianBlur[result="bf"]'), kc = f && f.querySelector('feComponentTransfer[result="k"] feFuncR');
+      num("菜单玻璃 BlurFill：bf 模糊 σ = BlurFillBlurRadius 8 × 4（近似 mip 3，§7.2）", 32, bfb ? parseFloat(bfb.getAttribute("stdDeviation")) : NaN, 0.01);
+      { const dl = f && f.querySelector('feComposite[result="dl"]'), cmix = f && f.querySelector('feComposite[result="c"]');
+        check("菜单玻璃 BlurFill：darken·min + lighten·max + (1−d−l)·c，再 mix(·, bf, normal)（§7.2）", `${want.BlurFillDarkenOpacity} · ${want.BlurFillLightenOpacity} · normal ${want.BlurFillNormalOpacity}`, dl && cmix ? `${dl.getAttribute("k2")} · ${dl.getAttribute("k3")} · normal ${cmix.getAttribute("k3")}` : "无", !!dl && !!cmix && +dl.getAttribute("k2") === want.BlurFillDarkenOpacity && +dl.getAttribute("k3") === want.BlurFillLightenOpacity && +cmix.getAttribute("k3") === want.BlurFillNormalOpacity); }
+      num("菜单玻璃 MaxLuma 压亮：k = 1 − Y·(1 − MaxLumaSDR)（§7.1）", -(1 - want.FaceColorMatrixMaxLumaSDR), kc ? parseFloat(kc.getAttribute("slope")) : NaN, 1e-6);
+      { const expect = (() => { const W = want.FaceColorMatrixWhite, Bk = want.FaceColorMatrixBlack, sat = want.FaceColorMatrixSaturation; const white = [.2126, .7152, .0722]; const r0 = white.map((w) => (W - Bk) * w); // the Y row through YCC⁻¹ contributes (W−B)·luma to each channel; a full check re-derives the R row: R = Y' + 1.5748 Cr' − .7874
+          const Cr = [.5, -.4542, -.0458]; const R = white.map((w, i) => (W - Bk) * w + 1.5748 * sat * Cr[i]); const Roff = Bk + 1.5748 * (sat * .5 + .5 - .5 * sat) - .7874; return { R, Roff }; })();
+        const got = fm ? fm.getAttribute("values").split(/\s+/).map(parseFloat) : null;
+        check("菜单玻璃 面矩阵 = YCC⁻¹·D·YCC（Rec.709；R 行核：(W−B)·luma + 1.5748·sat·Cr，偏置 B + 1.5748(.5 − .5sat + .5) − .7874）", expect.R.map((v) => v.toFixed(4)).join(" ") + " | " + expect.Roff.toFixed(4), got ? got.slice(0, 3).map((v) => v.toFixed(4)).join(" ") + " | " + got[4].toFixed(4) : "无", !!got && expect.R.every((v, i) => Math.abs(v - got[i]) < 1e-4) && Math.abs(expect.Roff - got[4]) < 1e-4); }
+      { const sh = cs(panel).filter; const m = /drop-shadow\(rgba\(0, 0, 0, ([\d.]+)\) 0px 8px 24px\)/.exec(sh);
+        check("菜单玻璃 软影（§7.3：amount 0 仍画）：黑 α .3 × ShadowOpacity、半径 24、偏移 (0, 8)（剖面近似）", `α ${(0.3 * want.ShadowOpacity).toFixed(2)} · 0 8 24`, sh, !!m && Math.abs(parseFloat(m[1]) - 0.3 * want.ShadowOpacity) < 0.005); }
+      check("菜单玻璃 未接项已列（Menu.glass.unbuilt）", "≥ 5 项", Menu.glass ? Object.keys(Menu.glass.unbuilt).length + " 项" : "-", !!Menu.glass && Object.keys(Menu.glass.unbuilt).length >= 5); }
     /* ② dismiss (the scrim tap = cancel = the reverse morph) */
     const from2 = rect(panel); scrim.click(); await new Promise((r) => requestAnimationFrame(r));
     const st2 = Menu.state(); const close = await sample(panel, 900);
