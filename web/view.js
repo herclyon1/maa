@@ -1575,6 +1575,12 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
   const LX = touchPx("--ios-touch-segment-lift-x", 12), LY = touchPx("--ios-touch-segment-lift-y", 8), PITCH = segW / n, W0 = PITCH - 2 * pad, CY = pad + H0 / 2;   // segment pitch 200, resting lens 196 (inset 2 ← seg-native-abc-frames.json rest rect 22 610 196×28)
   const restCentre = (i) => i * PITCH + PITCH / 2, idx0 = Math.max(0, bs.findIndex((b) => b.classList.contains("on")));
   const liftDelay = touchMs("--ios-touch-segment-lift-delay", 109) / 1000, relDelay = touchMs("--ios-touch-segment-release-delay", 31) / 1000;
+  /* BOARD #9② — a quick tap on the SELECTED segment (the up before the lens has lifted) still lifts and falls in place (9a re-recording,
+     seg-native-quicktap.md, ten runs: lens centre fixed, selectedSegmentIndex unchanged). Clean run quick90c: first grown frame down +109, peak
+     217.5×42.4 at +242, rest 196×28 by +476. Here the lift runs as always from the 109 ms delay and the release is deferred so the fall spring
+     (release + relDelay) begins at down + SEG_QUICKTAP_FALL_MS = 242 (the peak frame of that run). Unread: whether the fall is anchored to the down
+     (+242) or to the lift start (+133) — both fit the clean run; the simulator's main-thread stalls moved the lift start in the other runs. */
+  const SEG_QUICKTAP_FALL_MS = 242;
   const destDelay = touchMs("--ios-touch-segment-release-destout-delay", 198) / 1000;
   const K_LIFT_DEST = cssKeys("--ios-touch-segment-destout-keys", SEG_LIFT_DESTOUT), K_DEST = cssKeys("--ios-touch-segment-release-destout-keys", SEG_DROP_DESTOUT.filter(([t]) => t >= .198).map(([t, v]) => [t - .198, v]));
   const destEnd = destDelay + K_DEST[K_DEST.length - 1][0];
@@ -1653,7 +1659,7 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
       p = clamp01(st.sMt.x); pd = p; st.pr = p;
       const fx = st.flex.out, settled = tu > T.fallMat + .1 && st.sL.x < .001 && st.sMt.x < .001 && Math.abs(st.pos.x - restCentre(st.rest)) < .05 && Math.abs(st.pos.v) < 1 && Math.abs(fx.sx - 1) < .001 && Math.abs(fx.sy - 1) < .001 && Math.abs(fx.dx) < .05;
       if (settled || tu > 3) { clear(); return; }
-    } else if (st.rel == null) {
+    } else if (st.rel == null || now < st.rel) {   // st.rel in the future = a quick tap's deferred release (#9②): the press branch keeps lifting until then
       const tl = (now - st.t0) / 1000 - liftDelay;   // time since the lift started (+109 ms)
       liftedModel = tl > 0;
       if (tl > 0) springStep(st.sL, 1, SEG_SPRING.lift, dt);
@@ -1674,6 +1680,7 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
       const tr = (now - st.rel) / 1000;
       liftedModel = st.pr > 0 && tr < relDelay;   // the fall animation (model bounds → 196×28) is created at release + relDelay
       if (tr >= relDelay) { springStep(st.sL, 0, SEG_SPRING.lift, dt); springStep(st.sM, 0, SEG_SPRING.fallMaterial, dt); }
+      else if (st.pr > 0 && st.sL.x < 1) springStep(st.sL, 1, SEG_SPRING.lift, dt);   // #9②: until the fall animation is created (release + relDelay) the lift animation keeps running — a quick tap's lens is still growing here (native quick90c keeps growing to +242); a held lens is already at 1
       springStep(st.pos, restCentre(st.rest), SEG_SPRING.travel, dt);   // after the up: one spring ζ .85 / .4 s to the segment the lens ends on (§4.4 换值行程 row); the ζ .56/.444 "settle" spring is the flex's smallLoupe scale/drift spring once the lens is 196×28 (flexSpec)
       /* BOARD #9①: a lens that never lifted (the up before the 109 ms lift delay: st.pr = 0) has nothing to fall or un-punch — no DestOut ramp, no .lift
          (frame(0, pd > 0) used to add .lift, and .segctl.lift .lens{background:transparent} blanked the resting platter for destEnd ≈ .4 s while the GL
@@ -1703,7 +1710,7 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
       x: r3(st.pos.x), v: Math.round(st.pos.v * 10) / 10, target: cxBefore == null ? null : r3(cxBefore), target_next: st.cx == null ? null : r3(st.cx), adopted: adopted ? 1 : 0, retarget_t: st.retargetT == null ? null : r2(st.retargetT),
       pointer_t: st.ev.t == null ? null : r2(st.ev.t), pointer_ev_t: st.ev.evt == null ? null : r2(st.ev.evt), pointer_x: st.ev.x == null ? null : r2(st.ev.x), pointer_target: st.ev.target == null ? null : r2(st.ev.target), pointer_n: st.ev.n,
       drift: r3(fl.out.dx), x_screen: r3(st.pos.x + fl.out.dx), sx: Math.round(fl.out.sx * 10000) / 10000, sy: Math.round(fl.out.sy * 10000) / 10000, accel: Math.round(fl.vi.acceleration), vel: Math.round(fl.vi.velocity),
-      p: Math.round(p * 10000) / 10000, set: curSet || 0, rel_t: st.rel == null ? null : r2(st.rel), phase: st.tap ? "tap" : st.rel != null ? "release" : st.dragged ? "drag" : p < 1 ? "lift" : "hold",
+      p: Math.round(p * 10000) / 10000, set: curSet || 0, rel_t: st.rel == null ? null : r2(st.rel), phase: st.tap ? "tap" : st.rel != null && now >= st.rel ? "release" : st.quick ? "quick" : st.dragged ? "drag" : p < 1 ? "lift" : "hold",
       gl_trace: GL && glo.lens.stats.trace ? JSON.stringify(glo.lens.stats.trace) : null };   // ?gltrace=1 (lens-webgl.js e1e5633): this frame's per-step gl.finish ms (bindFbo_useP1 / uniforms_binds1 / pass1 / clear_useP2 / uniforms_binds2 / pass2, set, total) as a JSON string — the recorder copies numbers and strings only; null otherwise
     st.ev.n = 0;   // moves consumed since the previous tick (the last move's fields stay until the next move)
     if (st.ticks === 1) segMeasure("seg:first-tick", tickStart);
@@ -1721,7 +1728,9 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
     },
     release: (restIdx) => {   // every way out — up, out of bounds, pointercancel — falls the same way, to the rest rect of `restIdx`
       if (st.rel != null || st.done) return;
-      st.rel = performance.now(); st.rest = restIdx;
+      st.rest = restIdx;
+      if (!(st.pr > 0) && restIdx === idx0 && !st.dragged) { st.rel = Math.max(performance.now(), st.t0 + SEG_QUICKTAP_FALL_MS - relDelay * 1000); st.quick = true; return; }   // #9②: not lifted yet, same segment, no slide → lift anyway, fall from down + 242
+      st.rel = performance.now();
     },
     stop: () => { cancelAnimationFrame(st.raf); if (!st.done) clear(); },
     freeze: () => { cancelAnimationFrame(st.raf); },   // ?segtap=<ms> (index.html hook): hold the current frame for a snapshot

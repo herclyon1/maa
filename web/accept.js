@@ -571,16 +571,29 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
         check("分段 G12 快速交替 10 次（30 ms 点 / 30 ms 间隔）：每下模型都改（抬手即改）、终态 = 最后一次；内容重画在 valueChanged 时刻，被更新的值追上的那次不再画（快速连点 未量）", last, `${onText()} renders+${renders - r7}${everyTick ? "" : "（某下抬手时模型未改）"}`, onText() === last && renders >= r7 + 1 && renders <= r7 + 10 && everyTick && thisShift(last));
         let stable = true; for (let k = 0; k < 6; k++) { await sleep(100); if (onText() !== last) stable = false; }
         check("分段 G12 快速交替后 600 ms 内不回跳", last, onText(), stable && onText() === last);
-        /* BOARD #9①: a quick tap on the SELECTED segment (up at 60 ms, before the 109 ms lift) — the lens never lifted, so no frame may carry .lift, the resting
-           platter (.lens background) must stay opaque, the GL package must draw nothing (stats.frames unchanged) and __segLens.p must read 0 */
+        /* BOARD #9① + #9②: a quick tap on the SELECTED segment (up at 60 ms, before the 109 ms lift). 9a re-recording (seg-native-quicktap.md, run quick90c):
+           the lens lifts and falls IN PLACE — first grown frame down +109, peak 217.5×42.4 at +242, back to 196×28 by +476; centre fixed; no value change.
+           ① the platter is never blank: a frame with .lift must have p > 0 (the glass is drawn) — before 9① the DestOut ramp gave .lift at p = 0;
+           ② geometry: the lens width / height sampled every frame against the quick90c list interpolated at the frame's time since the down. */
         await sleep(1300);   // the previous gesture's loop (G14's taps) has ended: the control is at rest with its opaque platter
-        { const sg = q(), selB = bs().find((b) => b.classList.contains("on")), lensQ = sg.querySelector(".lens"), gl = sg.__gl, f0 = gl ? gl.lens.stats.frames : null, r9 = renders;
-          const bg0 = cs(lensQ).backgroundColor, alphaOf = (c) => { const m = rgb(c); return m ? m[3] : 1; };
-          pev(sg, "pointerdown", at(selB)); await sleep(60); pev(sg, "pointerup", at(selB));
-          let liftFrames = 0, transFrames = 0, pMax = 0, n = 0; const tEnd = performance.now() + 500;
-          while (performance.now() < tEnd) { await new Promise(requestAnimationFrame); n++; if (sg.classList.contains("lift")) liftFrames++; if (cs(lensQ).backgroundColor !== bg0) transFrames++; const L = window.__segLens; if (L && typeof L.p === "number" && L.p > pMax) pMax = L.p; }
-          const f1 = gl ? gl.lens.stats.frames : null;
-          check("分段 #9① 快速点已选中段（60 ms 抬手，抬起 109 ms 未到）：没抬过就不走落回——500 ms 内无一帧带 .lift、.lens 背景每帧 = 静止值（亮 白 / 暗 令牌 rgba(235,235,245,.3)，不变透明）、GL 包一帧不画（stats.frames 不变）、__segLens.p 为 0、不换值", `0 lift frames · 0 changed · frames = · p 0 · renders =`, `${n} frames sampled · lift ${liftFrames} · bg changed ${transFrames} (rest ${bg0}) · gl frames ${f0} → ${f1} · pMax ${pMax} · renders+${renders - r9}`, n > 10 && alphaOf(bg0) > 0 && liftFrames === 0 && transFrames === 0 && (f0 === null || f1 === f0) && pMax === 0 && renders === r9); }
+        { const sg = q(), selB = bs().find((b) => b.classList.contains("on")), lensQ = sg.querySelector(".lens"), r9 = renders, onIdx0 = bs().findIndex((b) => b.classList.contains("on"));
+          const NAT = [[109, 198.2, 29.5], [126, 201.7, 31.8], [142, 205.3, 34.2], [159, 208.6, 36.4], [176, 211.4, 38.3], [192, 213.6, 39.7], [209, 215.3, 40.9], [227, 216.6, 41.7], [242, 217.5, 42.4], [259, 216.6, 41.8], [276, 213.8, 39.9], [292, 210.5, 37.7], [309, 207.4, 35.6], [326, 204.7, 33.8], [342, 202.5, 32.4], [359, 200.8, 31.2], [376, 199.5, 30.3], [392, 198.5, 29.7], [409, 197.8, 29.2], [426, 197.3, 28.9], [442, 196.9, 28.6], [459, 196.6, 28.4], [476, 196.5, 28.3], [493, 196, 28]];   // seg-native-quicktap.md quick90c (t ms since down, w, h)
+          const natAt = (t, k) => { if (t <= NAT[0][0]) return k === 1 ? 196 : 28; for (let i = 1; i < NAT.length; i++) if (t <= NAT[i][0]) { const a = NAT[i - 1], b = NAT[i], u = (t - a[0]) / (b[0] - a[0]); return a[k] + (b[k] - a[k]) * u; } return k === 1 ? 196 : 28; };
+          const c0 = (() => { const r = lensQ.getBoundingClientRect(); return r.left + r.width / 2; })();
+          const tDown = performance.now(); pev(sg, "pointerdown", at(selB)); await sleep(60); pev(sg, "pointerup", at(selB));
+          const fr = []; let blank = 0; const tEnd = tDown + 620;
+          while (performance.now() < tEnd) { await new Promise(requestAnimationFrame); const r = lensQ.getBoundingClientRect(), L = window.__segLens, p = L && typeof L.p === "number" ? L.p : 0;
+            if (sg.classList.contains("lift") && !(p > 0)) blank++; fr.push({ t: performance.now() - tDown, w: r.width, h: r.height, c: r.left + r.width / 2, p }); }
+          const peak = fr.reduce((m, f) => f.w > m.w ? f : m, fr[0]), first = fr.find((f) => f.w > 196.5), back = fr.find((f) => f.t > (peak ? peak.t : 0) && f.w <= 196.5);
+          /* the probe stamps each lens rect at the frame's targetTimestamp = its display time, one frame after the value was computed; our rAF samples are the
+             values computed for the next display → the native list is read at t + 16.7 ms (the 60 Hz frame) for the frame-wise comparison; both rms are reported */
+          const mid = fr.filter((f) => f.t >= 109 && f.t <= 476), rmsAt = (k, shift) => Math.sqrt(mid.reduce((s, f) => s + Math.pow((k === 1 ? f.w : f.h) - natAt(f.t + shift, k), 2), 0) / Math.max(1, mid.length));
+          const rmsW0 = rmsAt(1, 0), rmsH0 = rmsAt(2, 0), rmsW = rmsAt(1, -16.7), rmsH = rmsAt(2, -16.7);
+          const drift = Math.max(...fr.map((f) => Math.abs(f.c - c0)));
+          check("分段 #9① 快速点已选中段（60 ms 抬手）：平台任何一帧不空白——带 .lift 的帧 p 必 > 0（9① 前 DestOut 在 p = 0 也给 .lift），不换值、选中不变", "blank 0 · renders = · on same", `${fr.length} frames · blank ${blank} · renders+${renders - r9} · on ${bs().findIndex((b) => b.classList.contains("on"))}`, fr.length > 20 && blank === 0 && renders === r9 && bs().findIndex((b) => b.classList.contains("on")) === onIdx0);
+          check("分段 #9② 快速点已选中段原地抬落（9a 重录 quick90c）：首个长大帧 +95…+145、峰时刻 +225…+270（原生 +241…+257 ± 一帧采样相位）、+450…+515 回 ≤ 196.5（原生 +474…+497）、中心不动（≤ .5 pt）", "first 95–145 · peak @225–270 · back 450–515 · drift ≤ .5", `first ${first ? first.t.toFixed(0) : "-"} · peak @${peak ? peak.t.toFixed(0) : "-"} · back ${back ? back.t.toFixed(0) : "-"} · drift ${drift.toFixed(2)}`, !!first && first.t >= 95 && first.t <= 145 && !!peak && peak.t >= 225 && peak.t <= 270 && !!back && back.t >= 450 && back.t <= 515 && drift <= 0.5);
+          check("分段 #9② 峰与逐帧（记录，不判）：原生 quick90c 峰 217.5×42.4 @242；页面峰 = 抬起 ζ1/.25 自 +109 到 +242 的解析值 216.3×41.5 + 落回起步的速度惯性；差 ≈ 一帧——原生表在 +109 那帧已是 198.2（抬起起点早于 109 或探针按显示时刻记帧），待读；rms 对表 不移 / 原生前移一帧", "记录", `peak ${peak ? peak.w.toFixed(1) + "×" + peak.h.toFixed(1) : "-"} · rms w ${rmsW0.toFixed(2)} h ${rmsH0.toFixed(2)} · shifted −16.7 ms: w ${rmsW.toFixed(2)} h ${rmsH.toFixed(2)}`, true);
+          await sleep(500); }
         /* a page re-render (heartbeat / snapshot) while the lens rests on a segment must not move it (the carry-over reads the lens box, not the % translate) */
         { await sleep(1300); const sg = q(), ln = sg.querySelector(".lens"), lb = ln.getBoundingClientRect().left; window.render(); const ln2 = q().querySelector(".lens"); const lb2 = ln2.getBoundingClientRect().left; await sleep(120); const lb3 = q().querySelector(".lens").getBoundingClientRect().left;
           check("重画时透镜不动（心跳/快照 render 不会让它跳）", `${Math.round(lb)}`, `${Math.round(lb2)} → ${Math.round(lb3)} ${q().querySelector(".lens").classList.contains("spring") ? "spring!" : ""}`, Math.abs(lb2 - lb) < 1 && Math.abs(lb3 - lb) < 1 && !q().querySelector(".lens").classList.contains("spring")); }
