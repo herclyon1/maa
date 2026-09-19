@@ -558,6 +558,14 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
           check("分段 G21 松手 +1 帧：透镜仍是抬起尺寸、随后逐帧回落（B2-b：不瞬回 28）", "h ≥ 39 at +0, > 36 at +16 ms", `${h1.toFixed(1)} → ${h2.toFixed(1)}`, h1 >= 39 && h2 > 36); }
         await sleep(200); { const lr = lens21.getBoundingClientRect(); check("分段 G21 松手 +216 ms：几何回落途中，叠着 flex 回弹（原生 C 段 +204 ms h 31.8；B5 后本页 24 < h < 40）", "24 < h < 40", lr.height.toFixed(1), lr.height > 24 && lr.height < 40); }
         await sleep(600); { const lr = lens21.getBoundingClientRect(), sr = seg.getBoundingClientRect(); check("分段 G21 松手 +816 ms：落定 196×28 于目标段（flex 回弹收敛；位置 ζ.85/.4 → ζ.56/.444）", `196×28 at ${(sr.left + 2 + bs().indexOf(unsel) * (sr.width / bs().length)).toFixed(1)}`, `${lr.width.toFixed(1)}×${lr.height.toFixed(1)} at ${lr.left.toFixed(1)}`, Math.abs(lr.height - 28) < 0.6 && Math.abs(lr.width - (sr.width / bs().length - 4)) < 0.8 && Math.abs(lr.left - (sr.left + 2 + bs().indexOf(unsel) * (sr.width / bs().length))) < 1.5); }
+        /* R7 (seg-lift-material.md §5, R15's frames): the white platter fades from the lift's first frame and its opacity = 1 − the lift progress every
+           frame (+287 ms 199.1×30.1 → .8688; +304 202.8×32.5 → .7186; …; the same spring, no lag) — a press on the selected segment here, what the
+           package drew each frame (stats.last) sampled for 420 ms, then released */
+        { const seg7 = q(), g7 = seg7 && seg7.__gl; if (g7 && g7.lens.stats) { const selB = [...seg7.querySelectorAll("button")].find((b) => b.classList.contains("on")); const t7 = performance.now(); pev(seg7, "pointerdown", at(selB)); const r7 = [];
+          await new Promise((res) => { const tick = () => { const L = g7.lens.stats.last; if (L && L.t > t7 && !(r7.length && r7[r7.length - 1].t === L.t)) r7.push({ lift: L.lift, a: L.platterAlpha, t: L.t }); if (performance.now() - t7 < 420) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick); });
+          pev(seg7, "pointerup", at(selB)); await sleep(900);
+          const lifted = r7.filter((x) => x.lift > 0 && x.lift < 1), first = r7.find((x) => x.lift > 0), dev = lifted.map((x) => Math.abs(x.a - (1 - x.lift))), mx = dev.length ? Math.max(...dev) : NaN;
+          check(`分段 R7 平台淡出：与抬起同帧起、每帧 alpha = 1 − lift（${lifted.length} 帧，最大差 ${Number.isFinite(mx) ? mx.toFixed(4) : "-"}；R15 表 .8688@p.131 / .7186@.281 / .5694@.431）`, "首抬帧 alpha < 1 · |Δ| ≤ .001 · ≥ 5 帧", first ? `首抬帧 lift ${first.lift.toFixed(3)} alpha ${first.a.toFixed(4)} · ${lifted.length} 帧` : "无抬起帧", !!first && first.a < 1 && lifted.length >= 5 && mx <= 0.001); } }
         await sleep(50);
         /* §1 G5: press the unselected one, slide onto the selected one, release - no event */
         seg = q(); sel = bs().find((b) => b.classList.contains("on")); unsel = bs().find((b) => !b.classList.contains("on"));
