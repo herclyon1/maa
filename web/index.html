@@ -2,6 +2,9 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
+<script>/* 诊断记录 (手机 tab switch, localStorage ark-diag = 1): the page starts on the ?diag path — the URL is rewritten before any other script reads it, so the
+   frame recorder (seg-frames-logger.js, query-gated) and the diag line load exactly as with ?diag typed (a home-screen window has no address bar). */
+try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|accept)(=|&|$)/.test(location.search)) history.replaceState(null, "", location.pathname + (location.search ? location.search + "&" : "?") + "diag=1" + location.hash); } catch (e) {}</script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f2f2f7">
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000">
@@ -729,6 +732,13 @@
   .diff b{font-weight:var(--ios-headline-weight)}
   .old{color:var(--dim);text-decoration:line-through}
   .new{color:var(--ok)}
+  .diagsheet{position:fixed;inset:0;z-index:200;background:var(--ios-alert-dimming);display:flex;align-items:flex-end;justify-content:center}
+  .diagsheet[hidden]{display:none}
+  .diagsheet .dsbox{width:100%;max-width:520px;margin:0 8px calc(env(safe-area-inset-bottom) + 8px);padding:16px 16px 8px;border-radius:var(--ios-alert-radius);background:var(--card);color:var(--ink)}
+  .diagsheet h2{margin:0 0 6px;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight)}
+  .diagsheet .dsmsg{margin:0 0 10px;color:var(--dim);font-size:var(--ios-footnote-size, 13px);line-height:1.4;word-break:break-all}
+  .diagsheet .acts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  .diagsheet .acts button[hidden]{display:none}
   .toast{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom) + 76px);z-index:9;
          background:var(--alert-fill);backdrop-filter:var(--ios-alert-glass-filter);-webkit-backdrop-filter:var(--ios-alert-glass-filter);
          border-radius:18px;padding:12px 14px;font-size:var(--ios-sub-size);box-shadow:var(--glass-diffuse),var(--glass-rim);   /* toast：无苹果对应组件；材质取弹窗端到端配方 --ios-alert-glass-*（最近实测原值）；圆角 18 待 tokens */
@@ -787,6 +797,11 @@
 </dialog>
 
 <div class="toast" id="toast"></div>
+<!-- 诊断记录 sheet (view.js showDiagSheet): shown when seg-frames-logger.js has written a record — copy / share the JSON so the phone's record reaches us -->
+<div class="diagsheet" id="diagsheet" hidden role="dialog" aria-modal="true" aria-labelledby="diagsheet-t">
+  <div class="dsbox"><h2 id="diagsheet-t">诊断记录已生成</h2><p class="dsmsg" id="diagsheet-m"></p>
+    <div class="acts"><button type="button" class="primary" id="diagsheet-copy">复制</button><button type="button" id="diagsheet-share">分享</button><button type="button" id="diagsheet-close">关闭</button></div></div>
+</div>
 <!-- 勾选页（多选 38 / 单选 37b）：值行「已选 N/M ›」点开；表 y 62 起、导航 54 在 +20、返回 44 at 20、完成 36 at 380 ← AX-38 -->
 <div class="sheet" id="picker" role="dialog" aria-modal="true">
   <div class="dim"></div>

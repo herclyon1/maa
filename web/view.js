@@ -500,7 +500,12 @@ function render() {
       <input type="number" data-id="wb|OK-WW|第几个周本" id="wb-idx" value="${wb["第几个周本"] || 1}"></div>
   </section>`;
 
+  const pageVer = (() => { const s = [...document.scripts].map((x) => x.src || "").find((x) => /\/view\.js(\?|$)/.test(x)); const m = s && /[?&]v=([^&#]+)/.exec(s); return m ? m[1] : "本地"; })();
+  const diagOn = (() => { try { return localStorage.getItem("ark-diag") === "1"; } catch (e) { return false; } })();
   html += `<section><h2>这台手机</h2>
+    <div class="row"><label>页面版本<span class="hint">view.js 的 ?v= 戳；没有戳就是本地文件</span></label><span class="ro short" id="pagever">${pageVer}</span></div>
+    <div class="row"><label>诊断记录<span class="hint">开着时页面按 ?diag 方式启动：底部一行几何数，分段控件每次操作后弹出记录，可复制 / 分享给我们</span></label>
+      <span class="sw"><input type="checkbox" id="diagsw" ${diagOn ? "checked" : ""}><span></span></span></div>
     <div class="acts"><button id="mklink">复制免输入链接</button></div>
     <p class="foot">把这条链接存成书签或加到主屏幕，以后打开就直接是控制台，
       再也不用填信箱和 PIN。链接里带着这两样，别转发给别人</p>
@@ -920,6 +925,15 @@ function wire() {
   };
   const tc = $("#tokclear");
   if (tc) tc.onclick = () => { if (confirm("清除这台手机里的游戏密钥？体力数字会消失。")) { Stamina.clear(); render(); } };
+  /* 诊断记录 switch: on → ark-diag = 1, the URL rewritten to ?diag=1 (the recorder is query-gated) and the recorder injected now; off → both undone. The diag line
+     (bottom geometry numbers) appears from the next start. */
+  const dsw = $("#diagsw");
+  if (dsw) dsw.onchange = () => {
+    try { if (dsw.checked) localStorage.setItem("ark-diag", "1"); else localStorage.removeItem("ark-diag"); } catch (e) {}
+    try { const q = new URLSearchParams(location.search); if (dsw.checked) q.set("diag", "1"); else q.delete("diag"); history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q.toString() : "") + location.hash); } catch (e) {}
+    if (dsw.checked && !document.querySelector('script[src^="seg-frames-logger.js"]')) { const s = document.createElement("script"); s.src = "seg-frames-logger.js"; document.body.appendChild(s); }
+    toast(dsw.checked ? "诊断记录已开：现在去点分段控件，记录生成后会弹出" : "诊断记录已关；下次打开页面不再记录", 4000);
+  };
   const mk = $("#mklink");
   if (mk) mk.onclick = async () => {
     const url = myLink();
@@ -2091,6 +2105,20 @@ applyTheme();
 // 跟随系统时，系统切了日夜要立刻跟上
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+/* 诊断记录 sheet: the frame recorder (seg-frames-logger.js, 2号) writes a record after each segmented-control gesture and dispatches "segframes" with it —
+   the phone cannot hand us localStorage, so the record is offered for copy / share right there (验收 09-19 20:0x, user's Android phone). */
+function showDiagSheet(rec) {
+  const sh = $("#diagsheet"); if (!sh || !rec) return;
+  let json = ""; try { json = JSON.stringify(rec); } catch (e) { json = String(rec); }
+  const kb = Math.round(json.length / 1024 * 10) / 10, fr = Array.isArray(rec.frames) ? rec.frames.length : "?";
+  $("#diagsheet-m").textContent = `一份 JSON，${kb} KB，${fr} 帧。复制后粘到聊天里，或用分享发出。`;
+  const share = $("#diagsheet-share"); share.hidden = !(navigator.share && (!navigator.canShare || navigator.canShare({ text: "x" })));
+  $("#diagsheet-copy").onclick = async () => { try { await navigator.clipboard.writeText(json); toast("已复制整份记录"); } catch (e) { toast("复制失败：" + (e && e.message ? e.message : e), 4000); } };
+  share.onclick = async () => { try { await navigator.share({ title: "诊断记录", text: json }); } catch (e) { if (!(e && e.name === "AbortError")) toast("分享失败：" + (e && e.message ? e.message : e), 4000); } };
+  $("#diagsheet-close").onclick = () => { sh.hidden = true; };
+  sh.hidden = false;
+}
+addEventListener("segframes", (e) => showDiagSheet(e.detail || window.__segFrames));
 window.__viewReady = true;   // every top-level binding above exists now: live.js's timers / events may use cfg, snap, render … (they return until this)
 boot();
 
