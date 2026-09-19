@@ -69,12 +69,30 @@ window.ACCEPT && ACCEPT.add(async (ctx) => {
   T.snap = snapWas; window.scrollTo(0, y0); await sleep(60); T.apply();
   /* R3 (2号) — the scroll pocket: the layer, its keys (nav-pocket-sdfdump §1 / §2, nav-bar-scroll-formula §6b), its alpha with the scroll, the copy on the page's pixels */
   { const P = window.TopbarPocket, el = P && P.el; if (!el) { check("口袋：层存在（topbar.js R3）", "有", "缺", false); }
-    else { const th = P.theme(), k = P.keys(th), f = document.getElementById("topbar-pocket-f"), rp = f && f.querySelector("feFlood"), bl = f && f.querySelector('feGaussianBlur[result="blur"]'), bf = f && f.querySelector('feGaussianBlur[result="bf"]'), dl = f && f.querySelector('feComposite[result="dl"]'), nm = f && f.querySelector('feComposite[result="c"]'), cm = f && f.querySelector("feColorMatrix");
+    else { const th = P.theme(), k = P.keys(th), f = document.getElementById("topbar-pocket-f"), rp = f && f.querySelector("feFlood"), bf = f && f.querySelector('feGaussianBlur[result="bf"]'), dl = f && f.querySelector('feComposite[result="dl"]'), nm = f && f.querySelector('feComposite[result="c"]'), cm = f && f.querySelector('feColorMatrix[result="cm"]');
       const er = el.getBoundingClientRect(), br = document.querySelector("#topbar").getBoundingClientRect();
       num("口袋：高 = 状态栏 + 收起栏 54（dump 440 × 116 = 62 + 54；此处 safe-area + 54）", br.bottom, er.bottom, 0.5); num("口袋：从屏顶起", 0, er.top, 0.5);
       check(`口袋 Replay 平罩 = 白 .5 亮 / 黑 .6 暗（§6b replayLight/DarkModeAlpha；dump opacity .5 / .6）（${th}）`, `${k.replay.slice(0, 3).join(",")} α ${k.replay[3]}`, rp ? `${rp.getAttribute("flood-color")} α ${rp.getAttribute("flood-opacity")}` : "无", !!rp && rp.getAttribute("flood-opacity") === String(k.replay[3]) && rp.getAttribute("flood-color") === `rgb(${k.replay[0]},${k.replay[1]},${k.replay[2]})`);
-      num("口袋 模糊 σ = inputRadius 2 ÷ scale .5 = 4 pt（采样单位换算同 alert-pipeline-plan §1.3）", 4, bl ? parseFloat(bl.getAttribute("stdDeviation")) : NaN, 0.01);
-      num("口袋 BlurFill bf σ = 16 ÷ .5 = 32（近似 mip）", 32, bf ? parseFloat(bf.getAttribute("stdDeviation")) : NaN, 0.01);
+      /* R3″ (nav-bar-scroll-formula §3.4b, the read shaders): the blur is the pyramid level L(y) = log2(1.6·2·base·mask.R(y)) (r ≥ 2; log2(1 + r/2) below), mixed
+         per row from three Gaussian levels (σ_k = the level's std ÷ base, base = dpr × .5 px/pt) + the source, weights from a 1 × 384 image; BlurFill = the
+         level mix's std at L_fill = log2(1.6·16·base) */
+      { const V = P.vb, base = V.base(), b = [1, 2, 3].map((lv) => f && f.querySelector(`feGaussianBlur[result="b${lv}"]`)), sig = b.map((e) => (e ? parseFloat(e.getAttribute("stdDeviation")) : NaN)), want = [1, 2, 3].map((lv) => V.std[lv] / base);
+        check(`口袋 模糊（R3″）：三级金字塔 σ = 各级核 std ÷ base（base = dpr ${window.devicePixelRatio} × .5 = ${base} px/pt；std 2.147 / 4.694 / 9.581）`, want.map((v) => v.toFixed(3)).join(" / "), sig.map((v) => v.toFixed(3)).join(" / "), sig.every((v, i) => Math.abs(v - want[i]) < 0.002));
+        const Lfill = V.level(V.k * V.fill * base), bfw = V.mixStd(Lfill) / base;
+        num(`口袋 BlurFill bf σ = 层级混合 std(L_fill ${Lfill.toFixed(3)}) ÷ base（r = 1.6 × 16 × base）`, bfw, bf ? parseFloat(bf.getAttribute("stdDeviation")) : NaN, 0.01);
+        const im = f && f.querySelector("feImage"), w = f && f.querySelector('feColorMatrix[result="w3"]'), p0 = f && f.querySelector('feBlend[result="p0"]'), sum = f && f.querySelector('feComposite[result="blur"]');
+        const row = (i) => { const L = V.level(V.k * V.radius * base * V.maskR(i)); return [0, 1, 2, 3].map((kk) => Math.max(0, 1 - Math.abs(L - kk))); };
+        const r204 = row(204), r383 = row(383);
+        check("口袋 模糊（R3″）：逐行权重图（feImage 1 × 384 data:png，R/G/B = 级 0/1/2 权，级 3 = 1 − 和）× 四级 multiply 后相加；行 204 = 全强、行 383 = 遮罩 .247", `img · w3 · p0 · sum · 204 [${r204.map((v) => v.toFixed(2)).join(",")}] · 383 [${r383.map((v) => v.toFixed(2)).join(",")}]`, `${im ? "img" : "-"} · ${w ? "w3" : "-"} · ${p0 ? "p0" : "-"} · ${sum ? "sum" : "-"} · L204 ${V.level(V.k * V.radius * base * V.maskR(204)).toFixed(3)} · L383 ${V.level(V.k * V.radius * base * V.maskR(383)).toFixed(3)}`, !!im && !!w && !!p0 && !!sum && (im.getAttribute("href") || "").startsWith("data:image/png") && Math.abs(r204.reduce((a, c) => a + c, 0) - 1) < 1e-6 && Math.abs(r383.reduce((a, c) => a + c, 0) - 1) < 1e-6 && V.maskR(204) === 1 && Math.abs(V.maskR(383) - 63 / 255) < 1e-6);
+        const fr = f && { x: +f.getAttribute("x"), y: +f.getAttribute("y"), w: +f.getAttribute("width"), h: +f.getAttribute("height") }, imy = im ? +im.getAttribute("y") : NaN, imh = im ? +im.getAttribute("height") : NaN;
+        check("口袋 模糊（R3″）：滤镜区与权重图跟着口袋走（复本坐标 y = scrollY − top0，高 = 口袋高）", `img y = scrollY − top0 = ${(window.scrollY - P.top0).toFixed(1)} · h ${el.offsetHeight}`, `img y ${imy} h ${imh} · region ${fr ? `${fr.y}…${fr.y + fr.h}` : "-"}`, !!fr && imh === el.offsetHeight && Math.abs(imy - (window.scrollY - P.top0)) < 0.01 && fr.y <= imy && fr.y + fr.h >= imy + imh);
+        check("口袋 模糊（R3″）：inputFade = 1 的淡出项 saturate((r − .02)/.08) 对本遮罩每行 = 1（最小 r = 1.6·2·base·.247 ≥ .1）→ 不缩 alpha", "≥ .1", `min r ${(V.k * V.radius * base * 63 / 255).toFixed(3)}`, V.k * V.radius * base * 63 / 255 >= 0.1);
+        /* R3⁗ (R50, nav-bar-scroll-formula §6c): the mask is sampled through (T·diag(bounds w, h))⁻¹ — stretched over the layer's full height, row i at
+           y = (i + ½)/384 × H; the weights image here is 384 rows over the pocket's height, so its row centres land there by construction */
+        { const H = el.offsetHeight, y204 = H * 204.5 / 384, y383 = H * 383.5 / 384, wimg = f && f.querySelector("feImage");
+          const ih = wimg ? +wimg.getAttribute("height") : NaN, ph = wimg ? /height=(\d+)/.exec(wimg.getAttribute("href") || "") : null;
+          check("口袋 遮罩（R3⁗ / R50 §6c）：1 × 384 表拉到层全高（uv = (T·diag(w,h))⁻¹·p）——权图高 = 口袋高 H，行 204 / 383 落在 H × 204.5/384 / H × 383.5/384", `img h ${H} · y204 ${y204.toFixed(2)} · y383 ${y383.toFixed(2)} · 384 行`, `img h ${ih} · y204 ${(ih * 204.5 / 384).toFixed(2)} · y383 ${(ih * 383.5 / 384).toFixed(2)} · ${V.maskRows} 行`, ih === H && V.maskRows === 384 && Math.abs(ih * 204.5 / 384 - y204) < 1e-6); }
+        check("口袋 模糊（R3‴）：每级核 = 同 std 高斯代 13 抽头金字塔核，剖面近似——偏差 ≤ 1.4/255（边）/ 1.0/255（线），精确核逐帧 ≈ 2.1 G 乘加不可用（§3.4b、tools/vb_gauss_dev.py）：记录", "记录", "记录", true); }
       check(`口袋 BlurFill darken / lighten / normal = ${k.darken} / ${k.lighten} / ${k.normal}（dump §2）`, `${k.darken} · ${k.lighten} · ${k.normal}`, dl && nm ? `${dl.getAttribute("k2")} · ${dl.getAttribute("k3")} · ${nm.getAttribute("k3")}` : "无", !!dl && !!nm && +dl.getAttribute("k2") === k.darken && +dl.getAttribute("k3") === k.lighten && +nm.getAttribute("k3") === k.normal);
       check("口袋 colorMatrix = dump 的 4 × 5（对角 1.1969 / 1.0712 / 1.232，偏置 .03）", k.matrix.slice(0, 5).join(" "), cm ? cm.getAttribute("values").split(/\s+/).slice(0, 5).join(" ") : "无", !!cm && cm.getAttribute("values").split(/\s+/).slice(0, 15).map(Number).every((v, i) => Math.abs(v - k.matrix[i]) < 1e-6));
       const hair = el.querySelector(".topbar-pocket-hair"); const hr = hair && hair.getBoundingClientRect();
@@ -83,15 +101,8 @@ window.ACCEPT && ACCEPT.add(async (ctx) => {
       window.scrollTo(0, 40); await sleep(700); num("口袋 滚后 alpha 1（同边线的 .517 s 淡入）", 1, parseFloat(getComputedStyle(el).opacity), 0.001);
       const copy = el.querySelector(".topbar-pocket-copy"), mr = document.getElementById("app").getBoundingClientRect(), tm = /matrix\(([^)]+)\)/.exec(getComputedStyle(copy).transform), ty = tm ? parseFloat(tm[1].split(",")[5]) : NaN;
       num("口袋 内容复本贴着页面像素（translateY = 页 top）", mr.top, ty, 1.5);
-      /* R3′ (R46, nav-bar-scroll-formula §3.4a): the variable blur's 1 × 384 mask column (R: rows 0–204 255, 205–383 down to 63) as the blurred copy's mask-image —
-         184 stops from row 200, each stop's alpha = R/255 at the row's centre; rows 204 / 300 / 383 checked against the table (255 / 100 / 63); the replay fill is
-         the pocket's own background (unmasked, under the blur layer) */
-      { const M = P.mask; const mi = getComputedStyle(copy).webkitMaskImage || getComputedStyle(copy).maskImage || ""; const stops = (mi.match(/rgba?\(0, 0, 0(?:, [0-9.]+)?\) [0-9.]+%/g) || []).length;   // an alpha-1 stop serialises as rgb(0, 0, 0)
-        const at = (row) => { const m = new RegExp(`rgba?\\(0, 0, 0(?:, ([0-9.]+))?\\) ${((row + 0.5) / 384 * 100).toFixed(3).replace(/\.?0+$/, "")}%`).exec(mi); return m ? (m[1] == null ? 1 : parseFloat(m[1])) : NaN; };
-        const v204 = at(204), v300 = at(300), v383 = at(383); const tab = (row) => M.values[row - M.row0] / 255;
-        check("口袋 遮罩（R3′ / R46 §3.4a）：复本 mask-image = 184 档纵向渐变（行 200 起），行 204 / 300 / 383 = 表值 255 / 148 / 63 (÷255)", `184 + 1 · ${tab(204).toFixed(3)} / ${tab(300).toFixed(3)} / ${tab(383).toFixed(3)}`, `${stops} · ${v204.toFixed(3)} / ${v300.toFixed(3)} / ${v383.toFixed(3)}`, stops === 185 && Math.abs(v204 - tab(204)) < 0.002 && Math.abs(v300 - tab(300)) < 0.002 && Math.abs(v383 - tab(383)) < 0.002 && M.values[4] === 255 && M.values[100] === 148 && M.values[183] === 63);
-        const bg = getComputedStyle(el).backgroundColor, rpk = k.replay; const bm = /rgba?\(([\d.]+), ([\d.]+), ([\d.]+)(?:, ([\d.]+))?\)/.exec(bg);
-        check("口袋 Replay 平罩在遮罩之下（口袋自身背景 = replay 键，不受遮罩）", `rgba(${rpk.join(",")})`, bg, !!bm && +bm[1] === rpk[0] && +bm[2] === rpk[1] && +bm[3] === rpk[2] && Math.abs((bm[4] == null ? 1 : +bm[4]) - rpk[3]) < 0.01);
-        check("口袋 遮罩：原生按行缩放模糊半径（variableBlur + inputFade 1）——CSS 只能按行缩放模糊层 alpha：不可表达（逐行半径），记录", "记录", "记录", true); }
+      { const bg = getComputedStyle(el).backgroundColor, rpk = k.replay; const bm = /rgba?\(([\d.]+), ([\d.]+), ([\d.]+)(?:, ([\d.]+))?\)/.exec(bg);
+        check("口袋 Replay 平罩在模糊层之下（口袋自身背景 = replay 键；R3′）", `rgba(${rpk.join(",")})`, bg, !!bm && +bm[1] === rpk[0] && +bm[2] === rpk[1] && +bm[3] === rpk[2] && Math.abs((bm[4] == null ? 1 : +bm[4]) - rpk[3]) < 0.01);
+        check("口袋 遮罩：R3′ 的 alpha 遮罩已撤（复本无 mask-image；R3″ 按式改为逐行模糊级）", "无", getComputedStyle(copy).webkitMaskImage || getComputedStyle(copy).maskImage || "none", /^none$/.test(getComputedStyle(copy).webkitMaskImage || getComputedStyle(copy).maskImage || "none")); }
       window.scrollTo(0, y1); await sleep(60); } }
 });
