@@ -1,20 +1,20 @@
 # -*- coding: utf-8 -*-
 """Run web/accept.js in headless Chrome (desktop Chromium: no safe area) with a fake snapshot.
-usage: accept-run.py <url-without-query> [light|dark|both] [nodata] [--only <控件[,控件]>] [--out <prefix>] [--shard N] [--virtual-time] [--timeout S]  → prints the ark-accept rows
+usage: accept-run.py <url-without-query> [light|dark|both] [nodata] [--only <控件[,控件]>] [--out <prefix>] [--shard N] [--no-virtual-time] [--timeout S]  → prints the ark-accept rows
   Hard timeouts (八条④, 验收 15:2x: a --virtual-time run hung 30 minutes holding the machine lock): every CDP send has a 30 s socket timeout, a
   virtual-time step that sees no budget-expired event / no page rAF for 10 s prints "virtual time stalled at step k" and that theme is re-run on
   the wall clock once, and a watchdog ends the whole run at --timeout seconds (default 300): it prints what it was waiting for, kills Chrome and
   exits 1; the finally always releases the lock, Chrome and the profile.
-  S3 (老网页 2026-09-20 13:2x, SPEED2-summary): --virtual-time runs the page on CDP virtual time once it is ready and the hold is released: Chrome
+  S3 (老网页 2026-09-20 13:2x, SPEED2-summary): by default (since 15:3x) the page runs on CDP virtual time once it is ready and the hold is released: Chrome
   is started with --enable-begin-frame-control --disable-frame-rate-limit, the clock is set to 'pause', then stepped 16.667 ms at a time
   (Emulation.setVirtualTimePolicy advance, budget 16.667) and after every step the runner waits for the page's rAF (window.__vtf) before the
   next — one frame per 16.7 ms of page time, so setTimeout / rAF / performance.now / CSS animations all advance together and the accept files'
   sleeps cost no wall time. Measured 2026-09-20 13:16 (light, 703 rows): 52 s wall for 109.5 s of page time (6570 steps) vs 115 s on the
-  wall clock; nav / nav-edge alone 4 s (7.5 s page time). NOT the default yet: 8 rows read differently under virtual time (their inputs mix the
-  real clock into the page's: synthetic PointerEvent timeStamps and CSS transitions armed after a double rAF) — cell C3 抬手 / 淡出 .5 s /
-  蓝字行 长按 (⟨cell⟩ 界面), 玻璃钮 R71″ ② ③ (⟨glassbtn⟩ 界面), tabbar 7b 拖过端点 / 7b R106 松手 rms / R59′b RM 拖动 (⟨tabbar⟩ 2号); once those
-  read the same on both clocks the default flips. --no-virtual-time is accepted (no-op). The row format is unchanged; the ready line says
-  "virtual time: <steps> steps / <frames> frames = <s> s of page time".
+  wall clock; nav / nav-edge alone 4 s (7.5 s page time). The 9 rows that first read differently on the virtual clock (cell / glassbtn / tabbar /
+  nav R69′: PointerEvent timeStamps, transitions armed after a double rAF, a one-frame sampling window) were made clock-agnostic by their
+  authors (night 81a961f / 29640bf / 47fb198); 验收's two full sharded runs then read 572/572 · 281/281 on both clocks (25 s wall) and the
+  default flipped. --no-virtual-time keeps the wall clock (for checking a row that differs); --virtual-time is a no-op. The row format is
+  unchanged; the ready line says "virtual time: <steps> steps / <frames> frames = <s> s of page time".
   S2 (2号 2026-09-20 13:0x, SPEED2-summary): --shard N runs each theme in N browser contexts at once, each loading a share of the accept files /
   sections through the loader's ?only= (TAGS below, packed by the explicit-sleep cost of each tag), and merges the rows back into the one list:
   rows an identical (item, expect) produced by a second shard — the core rows (readiness / loader / errors) and sections tagged with two names —
@@ -96,7 +96,7 @@ def opt(name):
         i = args.index(name); v = args[i + 1] if i + 1 < len(args) else ''; del args[i:i + 2]; return v
     return None
 only = opt('--only'); outp = opt('--out'); shard = int(opt('--shard') or 1); total_timeout = float(opt('--timeout') or 300)
-virtual_time = '--virtual-time' in args   # S3: opt-in until the 8 rows listed in the doc header are clock-agnostic; --no-virtual-time is accepted as a no-op
+virtual_time = '--no-virtual-time' not in args   # S3: the default since 2026-09-20 15:3x (the 9 clock-mixing rows read the same on both clocks; 验收 two full runs 572/572 · 281/281); --virtual-time is accepted as a no-op
 for f in ('--virtual-time', '--no-virtual-time'):
     if f in args: args.remove(f)
 url = sys.argv[1]; nodata = 'nodata' in args
