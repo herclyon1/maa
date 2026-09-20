@@ -9,7 +9,7 @@
 /* night batch (BOARD.md A6): per-control acceptance files register through ACCEPT.add(fn); accept.js loads them in index.html hook order and runs
    each fn(ctx) after its own rows, ctx = { check, num, col, sleep }. A file that is still a shell registers nothing. */
 /* T1 (2026-09-20): ?only=<控件>[,…] runs one control's file and sections only — see the note at ACCEPT.files below. */
-window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
+window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading || null; this.fns.push(fn); } };   // __file: the accept-<控件>.js being loaded (files load one after another) — its rows' tag (S6 / T1)
 (function () {
   const q = new URLSearchParams(location.search);
   if (!q.has("accept")) return;
@@ -31,8 +31,9 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
   { const add0 = window.ACCEPT.add.bind(window.ACCEPT);
     window.ACCEPT.add = (fn) => { const m = /accept-([^./?]+)\.js/.exec((document.currentScript || {}).src || ""); if (!m) return add0(fn);
       const w = async (ctx) => { cur = m[1]; return fn(ctx); }; Object.defineProperty(w, "name", { value: fn.name }); add0(w); }; }
-  window.ACCEPT.load = (c) => new Promise((res) => { const s = document.createElement("script"); s.src = "accept-" + c + ".js?r=" + Math.random().toString(36).slice(2, 7); s.onload = () => { window.ACCEPT.loaded.add(c); res(true); }; s.onerror = () => res(false); document.head.appendChild(s); setTimeout(() => res(false), 4000); });
-  for (const c of window.ACCEPT.files) window.ACCEPT.load(c);
+  window.ACCEPT.load = (c) => new Promise((res) => { window.ACCEPT.loading = c; const done = (v) => { if (window.ACCEPT.loading === c) window.ACCEPT.loading = null; res(v); };
+    const s = document.createElement("script"); s.src = "accept-" + c + ".js?r=" + Math.random().toString(36).slice(2, 7); s.onload = () => { window.ACCEPT.loaded.add(c); done(true); }; s.onerror = () => done(false); document.head.appendChild(s); setTimeout(() => done(false), 4000); });
+  (async () => { for (const c of window.ACCEPT.files) await window.ACCEPT.load(c); })();   // one after another (≈ 50 ms each): ACCEPT.loading names the file whose fn registers
   const rows = [];
   const near = (a, b, tol = 0.6) => Math.abs(a - b) <= tol;
   const cs = (el, pseudo) => el ? getComputedStyle(el, pseudo || null) : null;
@@ -47,9 +48,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
   function check(item, expect, got, ok, opts) {
     if (ONLY && cur !== "core" && !ONLY.has(cur)) return;   // ?only: rows of other sections are not produced (T1)
     const tags = [...(SEC_TAGS[cur] || []), ...((opts && opts.tags) || [])];
-    /* tag = the section / file tag of the row (2号 S2: the runner prints ⟨tag⟩ per row, 验收 S6 attributes red rows by it); tags = layer / theme
-       tags (界面 S1 / S5 per 数据's S4-tags.md) */
-    const row = { item, expect: String(expect), got: got === undefined || got === null ? "缺" : String(typeof got === "number" ? Math.round(got * 100) / 100 : got), ok: !!ok, tag: cur };
+    const row = { item, expect: String(expect), got: got === undefined || got === null ? "缺" : String(typeof got === "number" ? Math.round(got * 100) / 100 : got), ok: !!ok, tag: cur };   // tag: the section (S6 attribution, night); tags: layers (S5)
     if (tags.length) row.tags = tags;
     rows.push(row);
   }
@@ -1012,7 +1011,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
     const extra = async () => {
       if (window.ACCEPT) { for (const c of window.ACCEPT.files) { cur = c; if (!window.ACCEPT.loaded.has(c)) await window.ACCEPT.load(c); if (!window.ACCEPT.loaded.has(c)) await window.ACCEPT.load(c);
           check(`accept-${c}.js 已加载（动态脚本，丢了会重取两次）`, "已加载", window.ACCEPT.loaded.has(c) ? "已加载" : "缺", window.ACCEPT.loaded.has(c)); } }
-      cur = "core"; for (const fn of (window.ACCEPT ? window.ACCEPT.fns : [])) { try { await fn({ check, num, col, sleep: (ms) => new Promise((r) => setTimeout(r, ms)), settle, raf }); } catch (e) { check("控件检查文件出错 " + (fn.name || ""), "", String(e), false); } } };
+      for (const fn of (window.ACCEPT ? window.ACCEPT.fns : [])) { cur = fn.__file || "core"; try { await fn({ check, num, col, sleep: (ms) => new Promise((r) => setTimeout(r, ms)), settle, raf }); } catch (e) { check("控件检查文件出错 " + (fn.name || ""), "", String(e), false); } } cur = "core"; };
     interactions().then(extra, (e) => { cur = "core"; check("交互测试脚本出错", "", String(e), false); }).then(finish, (e) => { cur = "core"; check("控件检查出错", "", String(e), false); finish(); });
   }
   /* The page renders after its first snapshot and the number tiles after the game
