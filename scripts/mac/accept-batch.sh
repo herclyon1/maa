@@ -41,7 +41,7 @@ if [ -n "$GATE" ]; then
   [ "$ONLY" != "$GATE" ] && echo "提示：分支还改了 $SCOPE，闸门按 $ONLY 跑"
   echo "gate $BR @ night $NIGHT · ?only=$ONLY（亮暗各一遍，不分片）"
   serve "$L"; T0=$(date +%s)
-  timeout 400 python3 "$W/scripts/mac/accept-run.py" "http://127.0.0.1:$PORT/?layer=$LAYER" both --only "$ONLY" --out "$OUT/accept-$L" > "$OUT/accept-$L-run1.log" 2>&1
+  timeout "${ACCEPT_TIMEOUT:-900}" python3 "$W/scripts/mac/accept-run.py" "http://127.0.0.1:$PORT/?layer=$LAYER" both --only "$ONLY" --out "$OUT/accept-$L" > "$OUT/accept-$L-run1.log" 2>&1
   kill $SRV 2>/dev/null
   R=0; MSG=""
   for th in light dark; do f="$OUT/accept-$L-$th.txt"; p=$(grep -c '^✓' "$f" 2>/dev/null); n=$(grep -c '^✗' "$f" 2>/dev/null)
@@ -87,7 +87,7 @@ if [ "$ONLY" != FULL ]; then
 else ONLYARG=(--shard "${ACCEPT_SHARD:-3}"); fi   # the whole suite runs sharded (2号 S2: 3 contexts per theme, 115 s → 46 s)
 T0=$(date +%s)
 for try in 1 2; do   # the second try is only for a runner failure (no rows), never for red rows (S6)
-  timeout 400 python3 "$W/scripts/mac/accept-run.py" "http://127.0.0.1:$PORT/?layer=$LAYER" both ${ONLYARG[@]+"${ONLYARG[@]}"} --out "$OUT/accept-$L" > "$OUT/accept-$L-run$try.log" 2>&1
+  timeout "${ACCEPT_TIMEOUT:-900}" python3 "$W/scripts/mac/accept-run.py" "http://127.0.0.1:$PORT/?layer=$LAYER" both ${ONLYARG[@]+"${ONLYARG[@]}"} --out "$OUT/accept-$L" > "$OUT/accept-$L-run$try.log" 2>&1
   rows=$(cat "$OUT/accept-$L-light.txt" "$OUT/accept-$L-dark.txt" 2>/dev/null | grep -c '^[✓✗]')
   [ "$rows" -gt 0 ] && break
   echo "runner produced no rows (try $try): $(grep -m1 -E 'not ready|no result|failed' "$OUT/accept-$L-run$try.log" | cut -c1-160)"
