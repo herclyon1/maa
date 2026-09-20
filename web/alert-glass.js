@@ -28,7 +28,7 @@
     KeyFillHighlightAmount: 0.4, KeyFillHighlightColorBias: -0.3, KeyFillHighlightSpread: 1.6755, KeyFillHighlightSpreadSDR: 1.85, KeyFillHighlightHeight: 0.5333, KeyFillHighlightEffectOffset: -0.5333, KeyFillHighlightAngle: 1.5708,
     RingShadowOpacity: 0.06, RingShadowStrokeWidth: 4, RingShadowOffset: 8, RingShadowBlurRadius: 5, RingShadowMask: 1, ShadowAmount: 0, ShadowOffset: [0, 8], ShadowOpacity: 0.4, ShadowRadius: 24, ShadowColorMatrixFillColor: [0, 0, 0, 0.3],
     BleedAmount: 60.2, BleedHeight: 60.2, BleedBlurRadius: 60.2, BleedOpacity: 0.5, BleedColorMatrixWhite: 1, BleedColorMatrixBlack: 0.9, BleedColorMatrixSaturation: 1.2, BleedDarkenBlend: 1, BleedDistance0: 1, BleedDistance1: 0,
-    SDRGradientDistance0: 0, SDRGradientDistance1: 0, MaxHeadroom: 9999, CaptureScale: 0.25, CaptureMargin: 60.2, Panel: [320, 172], CornerRadius: 34, Dimming: 0.2 };   // Dimming: UIDimmingView black α .2 light / .48 dark (§0; --ios-alert-dimming)
+    SDRGradientDistance0: 0, SDRGradientDistance1: 0, MaxHeadroom: 9999, CaptureScale: 0.25, CaptureMargin: 60.2, Panel: [320, 172], CornerRadius: 34, Dimming: 0.2, GradientOvalization: 0.5 };   // GradientOvalization .5: 数据 R85 materials[62].gradientOvalization (alert-native-formula §4 ⑨: the gradient only, not d)   // Dimming: UIDimmingView black α .2 light / .48 dark (§0; --ios-alert-dimming)
   const DARK = { FaceColorMatrixWhite: 1.125, FaceColorMatrixBlack: 0.125, FaceColorMatrixSaturation: 1.3, FaceColorMatrixFillColor: [0, 0, 0, 0], FaceColorMatrixMaxLuma: 0.35, FaceColorMatrixMaxLumaSDR: 0.35, Clamp: 1.3083,
     KeyFillHighlightSpread: 1.309, KeyFillHighlightSpreadSDR: 1.309, ShadowOpacity: 0.6, BleedColorMatrixWhite: 0.5, BleedColorMatrixBlack: 0.125, BleedColorMatrixSaturation: 1, BleedDarkenBlend: 0, BleedOpacity: 0.8,
     BlurFillLightenOpacity: 0, BlurFillDarkenOpacity: 0.9, Dimming: 0.48 };
@@ -39,7 +39,7 @@
   const VB_STD = [0, 2.147, 4.694, 9.581, 19.263, 38.579, 77.023];   // the pyramid levels' stds in capture px (tools/vb_kernel.py, nav-bar-scroll-formula §3.4b)
   const mixStd = (L) => { const k0 = Math.min(Math.floor(L), VB_STD.length - 2), f = L - k0; return Math.sqrt((1 - f) * VB_STD[k0] ** 2 + f * VB_STD[k0 + 1] ** 2); };
   const UNBUILT = { Clamp: "no-op on 8-bit values (limit ≥ 1)", StrokeAtRest: "the KeyFill stroke (R57″) is placed once the appear animation has settled (.settled), not during the .4 s scale-in (the copy inside a scaling dialog would misalign) — 记录", BlurDistancePrime: "d′ = refraction + d: the blur level is taken at d (待读: which refraction term)",
-    GradientOvalization: "the backdrop shape's ovalization not read → 0", BleedEdge: "近似: the capture box (panel ± 60.2, clamped to the copy) is TILED and blurred σ 100 for its mean — the native sampler's clamp_to_edge replicates the edge column instead; equal on a flat page", BlurFillTexelPair: "近似: the ±.75 mip-3 texel pair is taken on both axes (uv ± off with off = lod·(.25/size) read as a float2, menu-card-material §7c); one-axis or the base-texel reading (±3 pt) would differ only on structured content" };
+BleedEdge: "近似: the capture box (panel ± 60.2, clamped to the copy) is TILED and blurred σ 100 for its mean — the native sampler's clamp_to_edge replicates the edge column instead; equal on a flat page", BlurFillTexelPair: "近似: the ±.75 mip-3 texel pair is taken on both axes (uv ± off with off = lod·(.25/size) read as a float2, menu-card-material §7c); one-axis or the base-texel reading (±3 pt) would differ only on structured content" };
   const theme = () => (matchMedia("(prefers-color-scheme: dark)").matches && document.documentElement.dataset.theme !== "light") || document.documentElement.dataset.theme === "dark" ? "dark" : "light";
   const sat = (x) => Math.max(0, Math.min(1, x));
   /* the continuous-corner rounded rect (label-end-tear §7 ②: supercircle_sdf with clamp = sat(2.89158·(1 − hs/r)) = (0, 0) here → the supercircle branch, R = 1.528665·r) */
@@ -50,6 +50,9 @@
     const k = rho * rho * sat(ul) * poly(rho); const f = ul + 1 - 1 / (1 - k); const d = R * (f - 1) + Math.min(Math.max(qx, qy), 0);
     let gx, gy; if (qx + qy > 0) { gx = Math.max(0, qx); gy = Math.max(0, qy); } else if (qx > qy) { gx = 1; gy = 0; } else { gx = 0; gy = 1; }
     const gn = Math.hypot(gx, gy) || 1; return [d, (gx / gn) * (x >= 0 ? 1 : -1), (gy / gn) * (y >= 0 ? 1 : -1)]; };
+  /* R57⁗ (§4 ⑨, R83 / R85): gradientOvalization o mixes the shape's normal with the inscribed ellipse's radial direction g_oval = normalize((x, (hw/hh)·y)) — g = normalize(mix(g_shape, g_oval, o)), d untouched;
+     it turns the refraction / bleed displacement directions and the KeyFill / highlight n·dir towards the centre along the long edges (x = ±120 on the 320-wide panel: 18°) */
+  const gOval = (x, y, hw, hh, gx, gy, o) => { if (!(o > 0)) return [gx, gy]; const rx = x, ry = (hw / hh) * y, rn = Math.hypot(rx, ry) || 1; const mx = gx + (rx / rn - gx) * o, my = gy + (ry / rn - gy) * o, mn = Math.hypot(mx, my) || 1; return [mx / mn, my / mn]; };
   const Dc = (t) => 1 - Math.sqrt(Math.max(0, 2 * t - t * t));   // 1 − P at curvature 1 (formula §1 / §3: the refraction's (1 − sqrt(t(2 − t))))
   const level = (r) => Math.max(0, r >= 2 ? Math.log2(r) : Math.log2(1 + r / 2));
   const band = (e, h, cosS, bias, curv, ndir, fw) => { const t = sat(e / h); const prof = (t < 1 ? 1 : 0) * (1 - curv) + (1 - t) * curv; const aa = sat(e / fw + 0.5) * sat((h - e) / fw + 0.5);
@@ -62,7 +65,7 @@
     const cw = mk(), cin = mk(), cout = mk(), chl = mk(), chl2 = mk(), cbl = mk(); const iw = cw.getContext("2d").createImageData(w, h), iin = cin.getContext("2d").createImageData(w, h), iout = cout.getContext("2d").createImageData(w, h), ihl = chl.getContext("2d").createImageData(w, h), ihl2 = chl2.getContext("2d").createImageData(w, h), ibl = cbl.getContext("2d").createImageData(w, h);
     const S = 128;   // the maps' displacement scale (pt at byte 255 − 128)
     const cosK = Math.cos(HL.keySpread), cosD = Math.cos(HL.diffuseSpreadScale * HL.keySpread), biasD = 1 / (HL.diffuseAmountScale * HL.keyAmount) - 2, hD = HL.diffuseHeightScale * HL.keyHeight, fw = 1 / 3;
-    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const x = (i + 0.5) / PX - hw, y = (j + 0.5) / PX - hh; const [d, gx, gy] = sdf(x, y, hw, hh, r); const o = (j * w + i) * 4;
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const x = (i + 0.5) / PX - hw, y = (j + 0.5) / PX - hh; const [d, gsx, gsy] = sdf(x, y, hw, hh, r); const [gx, gy] = gOval(x, y, hw, hh, gsx, gsy, KEYS.GradientOvalization); const o = (j * w + i) * 4;   // R57⁗: the ovalized gradient drives the directions below
       /* the blur level weights */
       const s1 = sat((d - KEYS.BlurDistance0) / (KEYS.BlurDistance1 - KEYS.BlurDistance0)), s2 = sat((d - KEYS.BlurDistance1) / (KEYS.BlurDistance2 - KEYS.BlurDistance1));
       const rr = KEYS.BlurRadius * (KEYS.BlurOpacity0 - KEYS.BlurOpacity1 * s1 - KEYS.BlurOpacity2 * s2); const L = d > 0 ? 0 : level(Math.max(0, rr));
@@ -174,7 +177,7 @@
      Opacity, multiplied onto the glass layer inside the pane (its clip-path is the mask). */
   const strokeMap = (W, H, r, k, dpr) => { const E = 3, S = Math.cos(k.KeyFillHighlightSpreadSDR), a = 1 / k.KeyFillHighlightAmount - 2, h = k.KeyFillHighlightHeight, fw = 1 / dpr, dir = [Math.sin(k.KeyFillHighlightAngle), -Math.cos(k.KeyFillHighlightAngle)];
     const w = Math.round((W + 2 * E) * dpr), hh = Math.round((H + 2 * E) * dpr), c = document.createElement("canvas"); c.width = w; c.height = hh; const ctx = c.getContext("2d"), id = ctx.createImageData(w, hh); let kside = 0, ktop = 0;
-    for (let j = 0; j < hh; j++) for (let i = 0; i < w; i++) { const x = (i + .5) / dpr - E - W / 2, y = (j + .5) / dpr - E - H / 2; const [d, gx, gy] = sdf(x, y, W / 2, H / 2, r); const o = (j * w + i) * 4; let kk = 0;
+    for (let j = 0; j < hh; j++) for (let i = 0; i < w; i++) { const x = (i + .5) / dpr - E - W / 2, y = (j + .5) / dpr - E - H / 2; const [d, gsx, gsy] = sdf(x, y, W / 2, H / 2, r); const [gx, gy] = gOval(x, y, W / 2, H / 2, gsx, gsy, k.GradientOvalization); const o = (j * w + i) * 4; let kk = 0;   // R57⁗: n·dir on the ovalized normal
       const cov = sat(0.5 - d / fw);
       if (!(d - h >= fw / 2 || cov >= 1)) { const e = h - d, v = (1 - cov) * sat(e / fw + 0.5), nd = gx * dir[0] + gy * dir[1];
         for (const sgn of [1, -1]) { const ang = sat((sgn * nd - S) / (1 - S)), va = v * ang; kk += va / (1 + a * (1 - va)); } kk = Math.min(1, kk); }
@@ -232,5 +235,5 @@
   /* R57‴ pre-warm: the last opened alert's size (localStorage) has its maps generated at idle after load — a repeat session opens on the full chain in its first frame */
   { const warmUp = () => { try { const sz = localStorage.getItem("ark-alert-size"); if (!sz) return; const [W, H] = sz.split("x").map(Number); if (W > 0 && H > 0 && !imageCache[sz]) { images(W, H); glass.prewarmed = sz; } } catch (e) {} };
     const idle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 3000 }) : setTimeout(fn, 1500)); if (document.readyState === "complete") idle(warmUp); else addEventListener("load", () => idle(warmUp), { once: true }); }
-  window.AlertGlass = { keys: KEYS, keysFor, dark: DARK, highlight: HL, unbuilt: UNBUILT, images, faceMatrix, bleedMatrix, sdf, level, mixStd, theme, rebuild: build, get layer() { return glass.layer; }, get light() { return glass.light; }, get warmedAt() { return glass.warmedAt; }, cached: (W, H) => !!imageCache[W + "x" + H], VB_STD };
+  window.AlertGlass = { keys: KEYS, keysFor, dark: DARK, highlight: HL, unbuilt: UNBUILT, images, faceMatrix, bleedMatrix, sdf, level, mixStd, theme, rebuild: build, get layer() { return glass.layer; }, get light() { return glass.light; }, get warmedAt() { return glass.warmedAt; }, cached: (W, H) => !!imageCache[W + "x" + H], gOval, VB_STD };
 })();
