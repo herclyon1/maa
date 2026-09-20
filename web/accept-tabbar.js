@@ -26,6 +26,7 @@
     const crit = (start, target, resp, t) => { const w = 2 * Math.PI / resp; return target + (start - target) * (1 + w * t) * Math.exp(-w * t); };   // ζ 1
     const under = (start, target, zeta, resp, t) => { const w = 2 * Math.PI / resp, wd = w * Math.sqrt(1 - zeta * zeta), e = Math.exp(-zeta * w * t); return target + (start - target) * e * (Math.cos(wd * t) + (zeta * w / wd) * Math.sin(wd * t)); };
     const rms = (a) => Math.sqrt(a.reduce((s, v) => s + v * v, 0) / Math.max(1, a.length));
+    const devs = (a) => { let max = 0, at = -1; a.forEach((v, i) => { if (Math.abs(v) > max) { max = Math.abs(v); at = i; } }); return { rms: rms(a), max, at }; };   // S5: one row per gesture — the failure text names the largest deviation and its frame
     const rect = () => { const r = g.getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height, cx: r.left + r.width / 2 }; };
     const ev = (el, t, x, y, id = 4) => el.dispatchEvent(new PointerEvent(t, { bubbles: true, cancelable: true, pointerId: id, isPrimary: true, pointerType: "touch", clientX: x, clientY: y, button: 0, buttons: t === "pointerup" ? 0 : 1 }));
     /* S1 (SPEED2, 2号 13:1x): the fixed sleeps after a gesture are waits on the driver's own flags — window.__tabLens.settled (tab-lens.js: both springs at
@@ -50,12 +51,13 @@
     check(`R59′d 按下即抬：驱动器在按下后 ≤ 2 帧起（t0 +${L0 ? Math.round(L0.t0 - tDown) : "-"} ms）、抬起目标 = 按下项、p 在升`, "≤ 2 帧 · lift/move · p > 0", L0 ? `${nf0} 帧 · ${L0.phase} · p ${L0.p.toFixed(3)}` : "无驱动", !!L0 && nf0 <= 2 && L0.t0 - tDown <= 40 && (L0.phase === "lift" || L0.phase === "move"));
     if (!L0) { check("标签栏：按下后驱动在跑（window.__tabLens）", "有", "缺", false); ev(other, "pointerup", ox, oy); return; }
     const lift = await sample(600, L0.t0, settled);
-    num(`抬起 宽 对 ζ1/.25 闭式 rms（${lift.length} 帧；${w0} → ${(w0 + LW).toFixed(1)}，R108 探针 94 → 116.7）`, 0, rms(lift.map((s) => s.width - crit(w0, w0 + LW, 0.25, s.t))), 1);
-    num(`抬起 高 对 ζ1/.25 闭式 rms（${h0} → ${h0 + LH}，探针 54 → 74.0）`, 0, rms(lift.map((s) => s.height - crit(h0, h0 + LH, 0.25, s.t))), 1);
+    { const eW = devs(lift.map((s) => s.width - crit(w0, w0 + LW, 0.25, s.t))), eH = devs(lift.map((s) => s.height - crit(h0, h0 + LH, 0.25, s.t))), eX = devs(lift.map((s) => s.cx - under(r0.cx, ox, 0.85, 0.4, s.t)));
+      const worst = [["宽", eW], ["高", eH], ["中心 x", eX]].sort((a, b) => b[1].max - a[1].max)[0];
+      check(`抬起（一手势一行）：宽 / 高 对 ζ1/.25 闭式（${w0} → ${(w0 + LW).toFixed(1)} / ${h0} → ${h0 + LH}，R108 探针 94 → 116.7 / 54 → 74）、中心 x 对 ζ.85/.4（旧项中心 → 按下项中心）——各 rms ≤ 1 pt（${lift.length} 帧，驱动器的帧时刻）`, "rms 宽 / 高 / x ≤ 1",
+        `rms 宽 ${eW.rms.toFixed(2)} 高 ${eH.rms.toFixed(2)} x ${eX.rms.toFixed(2)} · 最大偏差 ${worst[1].max.toFixed(2)} pt @ 帧 ${worst[1].at}（${worst[0]}，t ${worst[1].at >= 0 ? (lift[worst[1].at].t * 1000).toFixed(0) : "-"} ms）`, eW.rms <= 1 && eH.rms <= 1 && eX.rms <= 1); }
     { const pts = [[47, 1.76], [97, 11.07], [130, 16.14], [180, 20.55], [197, 21.34]]; const at = (ms) => { const t = (ms - 30) / 1000; return LW * (1 - Math.exp(-2 * Math.PI / 0.25 * t) * (1 + 2 * Math.PI / 0.25 * t)); };   // the probe's points vs the same closed form from t0 = +30 (the frame after the down), as increments
       const dmax = Math.max(...pts.map(([ms, dw]) => Math.abs(at(ms) - dw)));
       num(`R59′d 探针五点（+47/+97/+130/+180/+197 宽增 1.76/11.07/16.14/20.55/21.34）对 ζ1/.25 → +22.7 自 +30 的最大差（pt）`, 0, dmax, 1); }
-    num("抬起 中心 x 对 ζ.85/.4 闭式 rms（旧项中心 → 按下项中心）", 0, rms(lift.map((s) => s.cx - under(r0.cx, ox, 0.85, 0.4, s.t))), 1);
     num("抬满后 宽 = w0 + 22.7（R108）", w0 + LW, rect().width, 0.5); num("抬满后 高 = 74（R108 探针 +464 行）", h0 + LH, rect().height, 0.5);
     num("抬满后 圆角 = 高 / 2（胶囊，999px）", (h0 + LH) / 2, Math.min(parseFloat(getComputedStyle(g).borderTopLeftRadius), rect().height / 2), 0.5);
     { const dLift = g.classList.contains("lift") ? 0 : await waitClass("lift", 600); check("view.js 的 .lift 类 = 高亮，自按下即在（R59′e 撤了 +140 定时器；驱动器不等它）", "到", dLift === null ? "没到" : "到", dLift !== null); }
@@ -63,8 +65,9 @@
     /* the drop's time base = the last frame before the up (window.__tabLens.tf): the retarget keeps the loop's clock, the state at that frame is `up` */
     const up = rect(); const Lup = window.__tabLens; ev(other, "pointerup", ox, oy); await new Promise((r) => requestAnimationFrame(r));
     const drop = await sample(700, Lup ? Lup.tf : performance.now(), stopped);
-    num(`落回 宽 对 ζ1/.4 闭式 rms（${drop.filter((s) => s.p !== null).length} 帧）`, 0, rms(drop.filter((s) => s.p !== null).map((s) => s.width - crit(up.width, w0, 0.4, s.t))), 1);
-    num("落回 高 对 ζ1/.4 闭式 rms", 0, rms(drop.filter((s) => s.p !== null).map((s) => s.height - crit(up.height, h0, 0.4, s.t))), 1);
+    { const dr = drop.filter((s) => s.p !== null), eW = devs(dr.map((s) => s.width - crit(up.width, w0, 0.4, s.t))), eH = devs(dr.map((s) => s.height - crit(up.height, h0, 0.4, s.t))), worst = eW.max >= eH.max ? ["宽", eW] : ["高", eH];
+      check(`落回（一手势一行）：宽 / 高 对 ζ1/.4 闭式（松手值 → ${w0} × ${h0}，自松手前一帧起）——各 rms ≤ 1 pt（${dr.length} 帧）`, "rms 宽 / 高 ≤ 1",
+        `rms 宽 ${eW.rms.toFixed(2)} 高 ${eH.rms.toFixed(2)} · 最大偏差 ${worst[1].max.toFixed(2)} pt @ 帧 ${worst[1].at}（${worst[0]}，t ${worst[1].at >= 0 ? (dr[worst[1].at].t * 1000).toFixed(0) : "-"} ms）`, eW.rms <= 1 && eH.rms <= 1); }
     /* ④ rest */
     await until(rest, 200); const onNow = bs.find((b) => b.classList.contains("on")); const rr = rect();
     check("落回后驱动停（nav 无 .tl-on）", "无", nav.classList.contains("tl-on") ? "还在" : "无", !nav.classList.contains("tl-on"));
@@ -144,16 +147,18 @@
         check("7b 拖动中 nav.drag + 驱动 phase drag", "drag", `${nav.classList.contains("drag") ? "drag" : "-"} ${Lt ? Lt.phase : "-"}`, nav.classList.contains("drag") && !!Lt && Lt.phase === "drag");
         /* R64: the presented centre now carries the flex drift (sX·dx) — the position spring is judged on the driver's own x, the drift on the rect */
         const mv = []; await new Promise((resolve) => { let first = null; const tick = (now) => { if (first === null) first = now; const L = window.__tabLens; mv.push({ t: (now - tfm) / 1000, cx: cxNav(), x: L ? L.x : cxNav(), xc: L ? L.xc : cxNav(), fx: L && L.flex ? { ...L.flex, trace: undefined } : null, wp: L ? L.wp : NaN, hp: L ? L.hp : NaN, w: L ? L.w : NaN, h: L ? L.h : NaN, r: rect() }); if (now - first < 400 && !settled()) requestAnimationFrame(tick); else resolve(); }; requestAnimationFrame(tick); });
-        num(`7b 拖动 位置弹簧 x 对 ζ.85/.2 闭式 rms（${mv.length} 帧，自移动前一帧的 x / v 起；驱动器本帧值）`, 0, rms(mv.map((s) => s.x - underDamped(xm, vm, want1, 0.85, 0.2, s.t))), 1);
         { const withF = mv.filter((s) => s.fx), peak = withF.reduce((m, s) => (s.fx.sx > m ? s.fx.sx : m), 1), dip = withF.reduce((m, s) => (s.fx.sy < m ? s.fx.sy : m), 1), spec0 = withF.length ? withF[0].fx.spec : null;
           check("R64 拖动中 flex 变体 = loupe（模型 (w0+16)×(h0+16) → d 70 → t 1；flex-interaction.md §2 / tab-lens-motion.md §6.4：pts 100、min .75、max 1.15、N 2500、ζ 1/.5、tracking .9/.5），手指在时走 tracking 弹簧", "pts 100 · .75/1.15 · N 2500 · ζ 1/.5 · tracking .9/.5 · sp .9/.5", spec0 ? `pts ${spec0.pts} · ${spec0.min}/${spec0.max} · N ${spec0.N} · ζ ${spec0.zeta}/${spec0.resp} · tracking ${spec0.tzeta}/${spec0.tresp} · sp ${withF[0].fx.sp.join("/")}` : "no flex", !!spec0 && spec0.pts === 100 && spec0.min === .75 && spec0.max === 1.15 && spec0.N === 2500 && spec0.zeta === 1 && spec0.resp === .5 && spec0.tzeta === .9 && spec0.tresp === .5 && withF[0].fx.sp[0] === .9 && withF[0].fx.sp[1] === .5);
           check("R64 拖动加速时 X 伸 Y 缩（§3：sX = lerp(1, hi, a/N) 钳 [.9, 1.1] 目标，sY 反向）：拖动段 sX 峰 > 1、sY 谷 < 1，目标不出 [.9, 1.1]", "peak sX > 1.005 · dip sY < .995 · targets in [.9, 1.1]", `peak sX ${peak.toFixed(4)} · dip sY ${dip.toFixed(4)} · targets ${withF.every((s) => s.fx.target.sX >= .9 - 1e-9 && s.fx.target.sX <= 1.1 + 1e-9 && s.fx.target.sY >= .9 - 1e-9 && s.fx.target.sY <= 1.1 + 1e-9) ? "in" : "OUT"}`, withF.length > 10 && peak > 1.005 && dip < .995 && withF.every((s) => s.fx.target.sX >= .9 - 1e-9 && s.fx.target.sX <= 1.1 + 1e-9 && s.fx.target.sY >= .9 - 1e-9 && s.fx.target.sY <= 1.1 + 1e-9));
-          const geoOK = withF.every((s) => Math.abs(s.r.width - s.w * s.fx.sx) < .6 && Math.abs(s.r.height - s.h * s.fx.sy) < .6 && Math.abs((s.cx) - (s.x + s.fx.sx * s.fx.dx)) < .6);
-          check("R64 呈现盒 = W·sX × H·sY，中心 = 位置弹簧 + sX·drift（§6.6 / §6.4 先缩放后平移）——逐帧对驱动器本帧值（± .6 px）", "every frame", geoOK ? "every frame" : "OFF", withF.length > 10 && geoOK);
-          /* the three floats integrate the analytic flex spring toward that frame's targets from the previous frame's state (the driver's own dt) */
+          /* S5 (one row per gesture): the position spring's rms, the presented box vs the driver's frame values (W·sX × H·sY, centre = position + sX·drift: §6.6 / §6.4 scale then translate,
+             ± .6 px every frame) and the three flex floats vs one analytic step from the previous frame's state toward this frame's targets over the driver's own dt (≤ 1e-6) — the failure
+             text names the largest deviation of each and its frame */
+          const eP = devs(mv.map((s) => s.x - underDamped(xm, vm, want1, 0.85, 0.2, s.t)));
+          const eG = devs(withF.map((s) => Math.max(Math.abs(s.r.width - s.w * s.fx.sx), Math.abs(s.r.height - s.h * s.fx.sy), Math.abs(s.cx - (s.x + s.fx.sx * s.fx.dx)))));
           const tr = window.__tabLens && window.__tabLens.flex ? window.__tabLens.flex.trace : [], stepRef = (x, v, target, [z, r], dt) => { const w = 2 * Math.PI / r, dx = x - target; if (z < 1) { const wd = w * Math.sqrt(1 - z * z), B = (v + z * w * dx) / wd, e = Math.exp(-z * w * dt); return target + e * (dx * Math.cos(wd * dt) + B * Math.sin(wd * dt)); } const e = Math.exp(-w * dt), B = v + w * dx; return target + e * (dx + B * dt); };
-          let maxErr = 0, n = 0; for (let i = 1; i < tr.length; i++) { const a0 = tr[i - 1], b0 = tr[i]; if (!(b0.dt > 0)) continue; maxErr = Math.max(maxErr, Math.abs(stepRef(a0.sx, a0.vsx, b0.tSx, b0.sp, b0.dt) - b0.sx), Math.abs(stepRef(a0.sy, a0.vsy, b0.tSy, b0.sp, b0.dt) - b0.sy), Math.abs(stepRef(a0.dx, a0.vdx, b0.tDx, b0.sp, b0.dt) - b0.dx)); n++; }
-          check(`R64 三个 flex 浮点逐帧 = 解析弹簧一步（自上一帧的值 / 速度，向本帧目标，本帧 dt；${n} 帧，最大差）`, "≤ 1e-6", maxErr.toExponential(2), n > 10 && maxErr <= 1e-6); }
+          let maxErr = 0, atErr = -1, n = 0; for (let i = 1; i < tr.length; i++) { const a0 = tr[i - 1], b0 = tr[i]; if (!(b0.dt > 0)) continue; const e = Math.max(Math.abs(stepRef(a0.sx, a0.vsx, b0.tSx, b0.sp, b0.dt) - b0.sx), Math.abs(stepRef(a0.sy, a0.vsy, b0.tSy, b0.sp, b0.dt) - b0.sy), Math.abs(stepRef(a0.dx, a0.vdx, b0.tDx, b0.sp, b0.dt) - b0.dx)); if (e > maxErr) { maxErr = e; atErr = i; } n++; }
+          check(`7b 拖动（一手势一行）：位置弹簧 x 对 ζ.85/.2 闭式 rms ≤ 1 pt（${mv.length} 帧，自移动前一帧的 x / v 起，驱动器本帧值）；呈现盒 = W·sX × H·sY、中心 = 位置 + sX·drift 每帧 ± .6 px（R64，${withF.length} 帧）；三个 flex 浮点每帧 = 解析弹簧一步 ≤ 1e-6（${n} 帧）`, "rms ≤ 1 · 盒 < .6 · flex ≤ 1e-6",
+            `rms x ${eP.rms.toFixed(2)}（最大 ${eP.max.toFixed(2)} pt @ 帧 ${eP.at}）· 盒最大偏差 ${eG.max.toFixed(2)} px @ 帧 ${eG.at} · flex 最大差 ${maxErr.toExponential(2)} @ 帧 ${atErr}`, eP.rms <= 1 && withF.length > 10 && eG.max < .6 && n > 10 && maxErr <= 1e-6); }
         const segR = seg.getBoundingClientRect(), padR = parseFloat(getComputedStyle(seg).paddingRight) || 0, padL = parseFloat(getComputedStyle(seg).paddingLeft) || 0;
         const far = dir > 0 ? sx2 + 400 : sx2 - 400; ev(selB2, "pointermove", far, sy2, 6); await new Promise((r) => requestAnimationFrame(r)); const Lc = window.__tabLens;
         const clampWant = dir > 0 ? segR.right - navL - padR - w0b / 2 : segR.left - navL + padL + w0b / 2;
@@ -177,38 +182,8 @@
         delete document.hidden; if (hd) Object.defineProperty(Document.prototype, "hidden", hd);
         ev(b3, "pointerup", x3, y3, 7); await until(rest, 600);
       } }
-    /* ---- R59′b / R59′b″ Reduce Motion (page-inventory.md §12b ② decompiled: no setLifted:, no .95 platter scale; tab-lens-motion.md §6.9 = 老网页 R105: the bar's
-       tracker _UITabBarVisualProvider_Floating uses ζ .9 / .2 for position and size under Reduce Motion (0x1c50e8690 / 0x1c50e86c4), the target = the finger rule;
-       R94: the selection frame and the lens move as one): forced through window.__forceRM like view.js's 段 rows. Pressing another item: the driver starts at the
-       down (phase rm), the centre follows ζ .9 / .2 to the item's centre, width / height never leave w0 × 54 and p stays 0 (no lift, no flex); while the finger is
-       held the driver stays on and the lens is parked on the item; the up selects it and the driver stops at rest on view.js's box; a drag under RM: no lift, the
-       target = the finger rule. Records vs that spring: the slide-at-down .11 pt rms (start +42.6), the R94 held slide 1.15 with the 2-frame delivery latency (§6.9 ④). */
-    { window.__forceRM = true; try {
-      const closedRM = (x0, target, t) => { const w = 2 * Math.PI / 0.2, z = 0.9, wd = w * Math.sqrt(1 - z * z), e = Math.exp(-z * w * t); return target + (x0 - target) * e * (Math.cos(wd * t) + (z * w / wd) * Math.sin(wd * t)); };
-      const navL4 = nav.getBoundingClientRect().left, cx4 = () => rect().cx - navL4;
-      const sel4 = bs.find((b) => b.classList.contains("on")), tgt4 = bs[bs.indexOf(sel4) === 0 ? 1 : 0], tr4 = tgt4.getBoundingClientRect(), tx4 = tr4.left + tr4.width / 2, ty4 = tr4.top + tr4.height / 2, w04 = tgt4.offsetWidth, c04 = cx4();
-      const tDown = performance.now(); ev(tgt4, "pointerdown", tx4, ty4, 21); let L4 = null, nf = 0; for (; nf < 4 && !L4; nf++) { await new Promise((r) => requestAnimationFrame(r)); L4 = window.__tabLens; }   // the driver's first integrated frame: a rAF stamped before the start re-ticks (tab-lens.js frame0), so the state appears on the first or second frame
-      check(`R59′b RM 按下另一项：驱动在按下后 ≤ 2 帧起（不等 +140 抬起；起点 +${L4 ? Math.round(L4.t0 - tDown) : "-"} ms）、phase rm、p 0、目标 = 该项中心`, "≤ 2 帧 · rm · p 0 · 目标 = 中心", L4 ? `${nf} 帧 · ${L4.phase} · p ${L4.p.toFixed(3)} · 目标 ${L4.target.toFixed(1)} vs ${(tx4 - navL4).toFixed(1)}` : `无驱动（${JSON.stringify(window.__tabLensRM || null)} stop ${JSON.stringify(window.__tabLensStop || null)} err ${window.__tabLensErr || "-"}）`, !!L4 && nf <= 2 && L4.phase === "rm" && L4.rm === true && L4.p === 0 && Math.abs(L4.target - (tx4 - navL4)) <= 0.5 && L4.t0 - tDown <= 40);
-      const sl = []; await new Promise((res) => { let first = null; const tick = (now) => { if (first === null) first = now; const L = window.__tabLens; sl.push({ t: (now - (L4 ? L4.t0 : tDown)) / 1000, cx: cx4(), w: rect().width, h: rect().height, p: L ? L.p : null, ph: L ? L.phase : null, on: nav.classList.contains("tl-on") }); if (now - first < 450) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick); });
-      num(`R59′b″ RM 滑动 中心 x 对 ζ.9/.2 闭式 rms（${sl.length} 帧，自驱动起点；§6.9 ③ RM 分支原值 0x1c50e8690，一根弹簧驱动框与透镜）`, 0, rms(sl.map((s) => s.cx - closedRM(c04, tx4 - navL4, s.t))), 1);
-      check(`R59′b RM 全程不抬不拉伸：每帧 宽 = ${w04}、高 = ${h0}、p = 0（§12b ②：无 setLifted、无 .95 平台缩放）`, "every frame", sl.every((s) => Math.abs(s.w - w04) <= 0.5 && Math.abs(s.h - h0) <= 0.5 && s.p === 0) ? "every frame" : `OFF（宽 ${Math.max(...sl.map((s) => s.w)).toFixed(1)} 高 ${Math.max(...sl.map((s) => s.h)).toFixed(1)} p ${Math.max(...sl.map((s) => s.p || 0)).toFixed(3)}）`, sl.length > 10 && sl.every((s) => Math.abs(s.w - w04) <= 0.5 && Math.abs(s.h - h0) <= 0.5 && s.p === 0));
-      check("R59′b RM 按住 450 ms：驱动仍在（.tl-on）、透镜停在按下项中心（|Δ| ≤ .5；选择在 touch-down 发生，抬手才换页）", "tl-on · |Δ| ≤ .5", `${nav.classList.contains("tl-on") ? "tl-on" : "off"} · |Δ| ${Math.abs(cx4() - (tx4 - navL4)).toFixed(2)}`, nav.classList.contains("tl-on") && Math.abs(cx4() - (tx4 - navL4)) <= 0.5);
-      /* a drag under RM: the target follows the finger rule, still no lift */
-      ev(tgt4, "pointermove", tx4 + 30, ty4, 21); await new Promise((r) => requestAnimationFrame(r)); const Lm4 = window.__tabLens;
-      check("R59′b RM 拖动：目标 = 手指规则（x − a·W + W/2）、无 lift（高 54、p 0）", "目标 = 手指 + 30 · h 54 · p 0", Lm4 ? `目标 ${Lm4.target.toFixed(1)} vs ${(tx4 + 30 - navL4).toFixed(1)} · h ${rect().height.toFixed(1)} · p ${Lm4.p}` : "无驱动", !!Lm4 && Math.abs(Lm4.target - (tx4 + 30 - navL4)) <= 0.5 && Math.abs(rect().height - h0) <= 0.5 && Lm4.p === 0);
-      ev(tgt4, "pointermove", tx4, ty4, 21); await sleep(300);
-      ev(tgt4, "pointerup", tx4, ty4, 21); await sleep(600); const on4 = bs.find((b) => b.classList.contains("on"));
-      check("R59′b RM 抬手：选中被按项、驱动停（无 .tl-on）、胶囊在其中心", `${tgt4.dataset.tab} · off · 中心`, `${on4 ? on4.dataset.tab : "-"} · ${nav.classList.contains("tl-on") ? "tl-on" : "off"} · |Δ| ${Math.abs(cx4() - (tx4 - navL4)).toFixed(2)}`, on4 === tgt4 && !nav.classList.contains("tl-on") && Math.abs(cx4() - (tx4 - navL4)) <= 1);
-      delete seg.dataset.pe;
-      /* back to the original tab, still under RM (the same path) */
-      const sr4 = sel4.getBoundingClientRect(); ev(sel4, "pointerdown", sr4.left + sr4.width / 2, sr4.top + sr4.height / 2, 22); await sleep(350); ev(sel4, "pointerup", sr4.left + sr4.width / 2, sr4.top + sr4.height / 2, 22); await sleep(700); delete seg.dataset.pe;
-      check("R59′b RM 再按回原项：回到原项、驱动停", `${sel4.dataset.tab} · off`, `${(bs.find((b) => b.classList.contains("on")) || {}).dataset?.tab || "-"} · ${nav.classList.contains("tl-on") ? "tl-on" : "off"}`, bs.find((b) => b.classList.contains("on")) === sel4 && !nav.classList.contains("tl-on"));
-      /* the record against the read spring: tools/touch/seg-native-r59-motion.json tabhold, frames +75.3 … +275.2 ms after the down, start +42.6 ms (the touch log marks a 41 ms
-         stall there; the tap record starts +21.2): ζ .9 / .2 leaves .11 pt rms; the R94 held slide: the finger rule + ζ .9 / .2 + a 2-frame delivery latency 1.15 (§6.9 ④) */
-      const rec = [[75.3, 209.49], [91.9, 175.24], [108.6, 146.58], [125.3, 125.07], [142.0, 110.08], [158.6, 100.23], [175.3, 94.10], [192.0, 90.48], [208.7, 88.46], [225.2, 87.42], [241.9, 86.94], [258.5, 86.77], [275.2, 87.0]];
-      const recRms = rms(rec.map(([t, x]) => x - closedRM(259, 87, (t - 42.6) / 1000)));
-      num("R59′b″ 记录核：R59″ tabhold 13 帧（259 → 87）对 ζ.9/.2 闭式（起点 +42.6）rms（pt；R94 按住滑动 + 2 帧送达延迟 1.15，§6.9 ④）", 0, recRms, 0.2);
-    } finally { window.__forceRM = null; } }
+    /* S5 (SPEED2, user rule 减少动态效果不做, 2号 13:2x): the R59′b / R59′b″ Reduce Motion rows (forced through window.__forceRM: the rm phase, ζ .9 / .2 slide, no lift, the held
+       park, the RM drag, the record check) were here — deleted; tab-lens-motion.md §6.7 / §6.9 keep the reading, the driver's RM branch is untouched. */
     /* ---- R59′b‴ / R106 ② the up's commit rules (tab-lens-motion.md §6.9 ② handleSelectionGesture 0x1c50e9078; view.js attachTabBar): an up outside the window inset by 8 only
        clears the highlight (no selection); the already selected item dragged ≥ 4 pt in x is not reselected (no scroll-to-top); otherwise the item under the finger is selected at
        once and the lens's target is its frame (the 7b / R33 rows above show the last) */
