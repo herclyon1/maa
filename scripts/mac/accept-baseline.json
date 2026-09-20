@@ -1,0 +1,12 @@
+{
+ "daily:FULL:dark": {
+  "at": "09-20 14:01",
+  "counts": "alert=45 cell=28 glassbtn=30 menu=58 motion=1 nav=1 nav-edge=1 refresh=21 sheet=1 switch=40 tabbar=16 tile=46 topbar=1",
+  "night": "ebacb76"
+ },
+ "daily:FULL:light": {
+  "at": "09-20 14:01",
+  "counts": "alert=46 cell=28 glassbtn=30 menu=58 motion=11 nav=26 nav-edge=16 refresh=21 segctl=75 sheet=19 switch=40 tabbar=91 tile=46 topbar=58",
+  "night": "ebacb76"
+ }
+}

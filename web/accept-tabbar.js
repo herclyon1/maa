@@ -263,5 +263,5 @@
       } else check("R0② 页面无两段可切（demo 应有早班/晚班）", "≥ 2 段", qbs.length + " 段", false); }
     if (typeof window.__tabKbd === "function") { window.__tabKbd(innerHeight - 300); await until(() => getComputedStyle(nav).display === "none", 50); check("视口矮 300 后 nav.tabs display none（键盘规则）", "none", getComputedStyle(nav).display, getComputedStyle(nav).display === "none");
       window.__tabKbd(null); await until(() => getComputedStyle(nav).display !== "none", 50); const nb = nav.getBoundingClientRect(); check("复原后 nav.tabs 回到底部（innerHeight − bottom < 120）", "< 120", Math.round(innerHeight - nb.bottom), getComputedStyle(nav).display !== "none" && innerHeight - nb.bottom < 120); }
-  });
+  }, { layer: "timing", dark: false });   // S4 file-level tags (数据 S4-tags.md (e), 2号 13:5x): timing = waits on the drivers, so ?layer=daily and release both run it; dark false = geometry and per-frame rows, the same code and numbers in both themes; the lens material keys are accept.js's tabbar section
 })();
