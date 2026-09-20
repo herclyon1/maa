@@ -48,8 +48,13 @@ window.ACCEPT && ACCEPT.add(async (ctx) => {
   check("切换过渡 0.2 s（大标题）", "0.2s", cs(h1).transitionDuration, /^0\.2s/.test(cs(h1).transitionDuration));
   check("小标题无位移（§6 item 8：只 alpha）", "none", cs(small).transform, cs(small).transform === "none");
   /* release snap (2.8): nearest resting point by the midpoint */
-  num("松手吸附 s = p/2 − 1 → 0", 0, T.snapTarget(p / 2 - 1), 0.001);
-  num("松手吸附 s = p/2 + 1 → p", p, T.snapTarget(p / 2 + 1), 0.001);
+  /* A15/A16: judge against the driver's CURRENT p (T.p is re-measured whenever apply() runs at scrollY 0 — the go(0) above — and a
+     first dark run measured 51.89 there vs 52.406 at the start of this check: a font / layout settle, not the snap curve); the drift is
+     reported as its own row so a real page change still shows */
+  const pNow = T.p;
+  num("吸附行读的 p = 检查开头的 p（apply() 在顶部重量；漂移 ≤ 1 pt = 字体 / 版式落定，非曲线）", p, pNow, 1);
+  num("松手吸附 s = p/2 − 1 → 0", 0, T.snapTarget(pNow / 2 - 1), 0.001);
+  num("松手吸附 s = p/2 + 1 → p（驱动器当前 p）", pNow, T.snapTarget(pNow / 2 + 1), 0.001);
   num("吸附曲线 = §2.8b 标准减速 1 − .998^ms：+100 ms 进度 .181", 1 - Math.pow(0.998, 100), T.snapProgress(100), 0.0005);
   num("吸附曲线：+500 ms 进度 .632（τ ≈ .5 s）", 1 - Math.pow(0.998, 500), T.snapProgress(500), 0.0005);
   num("吸附曲线：+2000 ms 进度 .982", 1 - Math.pow(0.998, 2000), T.snapProgress(2000), 0.0005);
