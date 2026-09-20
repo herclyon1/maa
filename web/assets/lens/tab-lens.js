@@ -140,17 +140,17 @@
   /* the finger (tab-lens-motion.md §6.6: while the selection view is highlighted its target is finger x − a·W + W/2, a = where in the item the
      finger went down (0 … 1), the left edge hard-clamped to the track [track.minX, track.maxX − W] — no rubber band; the landing = the item under
      the finger): read here from the same pointer events view.js's press() handles, capture phase, nothing consumed */
-  const finger = { x: null, a: .5, down: false, moved: false, x0: 0 };
+  const finger = { x: null, a: .5, down: false, moved: false, x0: 0 }; window.__tabLensFinger = finger;   // instrument (#15 device record: seg-frames-logger.js tab reading)
   const trackFinger = (nav) => {
     if (nav.__tlensFinger) return; nav.__tlensFinger = true;
     nav.addEventListener("pointerdown", (e) => { const r = nav.getBoundingClientRect(); const bs = [...nav.querySelectorAll(".seg button")];
       let a = .5; for (const b of bs) { const q = b.getBoundingClientRect(); if (e.clientX >= q.left && e.clientX <= q.right) { a = (e.clientX - q.left) / q.width; break; } }
-      finger.down = true; finger.a = a; finger.x = e.clientX - r.left; finger.moved = false; finger.x0 = e.clientX;
+      finger.down = true; finger.a = a; finger.x = e.clientX - r.left; finger.moved = false; finger.x0 = e.clientX; finger.last = { t: e.type, pt: e.pointerType, id: e.pointerId, at: performance.now(), target: e.target && e.target.tagName ? e.target.tagName.toLowerCase() + "." + (e.target.className || "") : null };
       if (st && st.nav === nav) st.pressed = !RM();   // R59′d: the lift belongs to the down itself (no highlight → no lift under Reduce Motion)
       if (loop) loop.retarget();
       else if (MODE === "geometry" && st && st.nav === nav && ready) { const tx = rmTarget(st); window.__tabLensRM = { at: performance.now(), target: tx, X: st.X, started: !RM() || (tx != null && Math.abs(tx - st.X) > .5) }; if (!RM() || (tx != null && Math.abs(tx - st.X) > .5)) { st.lastX = st.X; start(st); } } }, true);   // R59′d: the driver starts on the down (its first tick = the lift's t0); RM: only when there is somewhere to slide   // R59′b: the slide begins at the down, no lift
-    nav.addEventListener("pointermove", (e) => { if (!finger.down) return; finger.x = e.clientX - nav.getBoundingClientRect().left; if (Math.abs(e.clientX - finger.x0) >= 1) finger.moved = true; if (loop) loop.retarget(); }, true);
-    for (const t of ["pointerup", "pointercancel"]) nav.addEventListener(t, () => { finger.down = false; finger.x = null; finger.moved = false; if (st) st.pressed = false; if (loop) loop.retarget(); }, true);
+    nav.addEventListener("pointermove", (e) => { finger.last = { t: e.type, pt: e.pointerType, id: e.pointerId, at: performance.now() }; if (!finger.down) return; finger.x = e.clientX - nav.getBoundingClientRect().left; if (Math.abs(e.clientX - finger.x0) >= 1) finger.moved = true; if (loop) loop.retarget(); }, true);
+    for (const t of ["pointerup", "pointercancel"]) nav.addEventListener(t, (e) => { finger.last = { t: e.type, pt: e.pointerType, id: e.pointerId, at: performance.now() }; finger.down = false; finger.x = null; finger.moved = false; if (st) st.pressed = false; if (loop) loop.retarget(); }, true);
   };
   /* R59′b: the Reduce Motion target = the §6.6 finger rule (finger x − a·W + W/2 = the pressed item's centre at the down), hard-clamped to the items' run */
   const rmTarget = (st) => { if (finger.x == null) return null; const w = parseFloat(st.glide.style.width) || st.glide.offsetWidth; const navBox = st.nav.getBoundingClientRect(), segBox = st.seg.getBoundingClientRect();
