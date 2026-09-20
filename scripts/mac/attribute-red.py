@@ -32,6 +32,10 @@ OWNERS = {  # control: (owner, page files that only this control uses)
     'cell': ('界面', ['web/view.js']),
     'page': ('界面', ['web/view.js', 'web/live.js', 'web/pending.js', 'web/stamina.js', 'web/inventory.js', 'web/net.js', 'web/schema.js']),
     'core': ('验收', ['web/accept.js']),
+    # 界面's split of accept.js (14:1x): the old page-side sections of alert / tabbar / topbar live in accept-<x>-view.js (界面's rows, wired in view.js)
+    'alert-view': ('界面', ['web/view.js']),
+    'tabbar-view': ('界面', ['web/view.js']),
+    'topbar-view': ('界面', ['web/view.js']),
 }
 SHARED = ['web/tokens.css', 'web/view.js', 'web/index.html', 'web/motion.js', 'web/accept.js', 'web/sw.js', 'web/controls.css']
 if sys.argv[1:2] == ['--scope']:   # accept-batch.sh: which controls did the batch touch? (stdin: changed paths) → "FULL" | "a,b" | ""
