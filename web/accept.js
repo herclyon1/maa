@@ -408,11 +408,13 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn, opt) { fn.__opt = opt || {};
     const raf = () => new Promise(requestAnimationFrame);
     const settle = async (pred, maxMs) => { const t0 = performance.now(); await raf(); while (!pred() && performance.now() - t0 < maxMs) await raf(); return performance.now() - t0; };
     const segRest = (maxMs) => settle(() => { const L = window.__segLens; return !L || L.phase === "done"; }, maxMs);
+    const tabRest = (maxMs) => settle(() => { const n = document.querySelector("nav.tabs"); return !n || !n.classList.contains("tl-on"); }, maxMs);   // tab-lens.js drops .tl-on when its driver rests
+    const fadeRest = async (el, maxMs) => { await settle(() => !el.getAnimations || el.getAnimations().length === 0, maxMs); await raf(); };   // the element's CSS transitions have finished (+ one frame)
     const at = (el, fx = .5, fy = .5, dx = 0, dy = 0) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width * fx + dx, y: r.top + r.height * fy + dy }; };
     const pev = (el, type, p, id = 11) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, clientX: p.x, clientY: p.y, isPrimary: true, button: 0, buttons: type === "pointerup" ? 0 : 1, pointerType: "touch" }));
     async function interactions() {
       /* Behaviour 5: the sheet element is hidden once the dismiss has travelled */
-      if (sec("sheet", { layer: "timing" })) { const sh = document.querySelector("#picker"); if (sh) { await sleep(600); check("勾选页关闭 0.5 s 后隐藏（open 去掉）", "hidden", sh.hasAttribute("open") ? "open" : "hidden", !sh.hasAttribute("open") && getComputedStyle(sh).display === "none"); } }
+      if (sec("sheet", { layer: "timing" })) { const sh = document.querySelector("#picker"); if (sh) { await settle(() => !sh.hasAttribute("open"), 600); check("勾选页关闭后隐藏（open 去掉；等它自己关，≤ .6 s）", "hidden", sh.hasAttribute("open") ? "open" : "hidden", !sh.hasAttribute("open") && getComputedStyle(sh).display === "none"); } }
       /* Behaviour 1: one alert at a time; Chrome runs the pane flat until the appear animation ends (.settled), WebKit keeps it from frame 1 */
       if (sec("alert", { layer: "timing", dark: true }) && typeof ask === "function" && document.querySelector("#alert")) {   // appear animation + the read-key glass layer in both themes (R57′)
         const d = document.querySelector("#alert"), pane = d.querySelector(".pane"), bf = (el) => getComputedStyle(el).backdropFilter || getComputedStyle(el).webkitBackdropFilter || "";
@@ -423,11 +425,11 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn, opt) { fn.__opt = opt || {};
         const glassRead2 = !!window.AlertGlass;   // R57′: the read-key layer is built in both themes (the dark keys came with 数据 R74)
         if (glassRead2) check("弹窗出现动画期间读键玻璃层已在（R57：层随弹窗同帧建）", "层", window.AlertGlass.layer ? "层" : "无", !!window.AlertGlass.layer);
         else check(chrome ? "弹窗出现动画期间玻璃层先走平底（Chrome 路：无 backdrop-filter）" : "弹窗出现动画期间玻璃层就是精确层（WebKit 路）", chrome ? "none" : "blur", bf(pane), chrome ? bf(pane) === "none" : /blur/.test(bf(pane)));
-        await sleep(520);
+        await settle(() => d.classList.contains("settled"), 520);   // S1: the appear animation's own end (.settled), ≤ the old 520
         if (glassRead2) check("弹窗出现动画结束 → .settled，读键玻璃层在（R57 / R57′ 两主题）", "settled + 层", `${d.classList.contains("settled") ? "settled" : "-"} + ${window.AlertGlass.layer ? "层" : "无"}`, d.classList.contains("settled") && !!window.AlertGlass.layer);
         else check("弹窗出现动画结束 → .settled，玻璃层到位（--ios-alert-glass-filter）", "settled + blur", `${d.classList.contains("settled") ? "settled" : "-"} + ${bf(pane).slice(0, 10)}`, d.classList.contains("settled") && /blur/.test(bf(pane)));
         check("弹窗首帧时间戳记录（?diag：alert f1/f2）", "f1 ≤ 40 ms", window.ALERT_T ? `f1 +${Math.round(ALERT_T.f1 - ALERT_T.open)} f2 +${Math.round(ALERT_T.f2 - ALERT_T.open)} ms` : "缺", !!window.ALERT_T && ALERT_T.f1 - ALERT_T.open <= 40);
-        document.querySelector("#alert-cancel").click(); await sleep(450); await p1;
+        document.querySelector("#alert-cancel").click(); await settle(() => !d.open, 450); await p1;   // S1: closed = the dialog's own open flag
         check("弹窗取消后关闭", "closed", d.open ? "open" : "closed", !d.open);
       }
       /* Behaviour 2: placeholders before the first reading; the cached reading restores at once */
@@ -456,13 +458,13 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn, opt) { fn.__opt = opt || {};
             const pg = document.querySelector("#subpage"); more.click(); await sleep(80);
             check("推入页打开（.in）、标题「回执」", "in 回执", `${pg.classList.contains("in") ? "in" : "-"} ${pg.querySelector(".ptitle").textContent}`, pg.classList.contains("in") && pg.querySelector(".ptitle").textContent === "回执");
             { const x80 = pg.getBoundingClientRect().left; check("推入 +80 ms：新页从右边滑入中（440 → 0，0.35 s）", "0 < x < 440", `x ${Math.round(x80)}`, x80 > 0 && x80 < 440); }
-            await sleep(400);
+            await settle(() => !pg.classList.contains("nav-live"), 400);   // S1: nav.js's push spring at rest (nav-live off), ≤ the old 400
             const pr = pg.querySelector(".pnav").getBoundingClientRect(), bb = pg.querySelector(".pback").getBoundingClientRect(), sat = satTop();
             num("推入页导航栏 54 在安全区顶（AX-11 / AX-46 (0,62,440,54)）", sat, pr.top); num("推入页导航栏高 54", 54, pr.height);
             num("推入页返回钮 44 at x 20（AX-11 BackButton (20,62,44,44)）", 44, bb.width); num("推入页返回钮 x 20", 20, bb.left);
             check("推入页按日分组（Health 显示所有数据 AX-11：一天一组）", "≥1 组 h2 月日", `${pg.querySelectorAll(".pbody h2").length} 组 ${(pg.querySelector(".pbody h2") || {}).textContent}`, pg.querySelectorAll(".pbody h2").length >= 1 && /\d+月\d+日/.test((pg.querySelector(".pbody h2") || {}).textContent || ""));
             check("推入 0.35 s（--ios-motion-nav-push-duration）、旧页视差 30 %", "0.35s pushed", `${getComputedStyle(pg).transitionDuration} ${document.body.classList.contains("pushed") ? "pushed" : "-"}`, getComputedStyle(pg).transitionDuration === "0.35s" && document.body.classList.contains("pushed"));
-            pg.querySelector(".pback").click(); await sleep(450);
+            pg.querySelector(".pback").click(); await settle(() => pg.hidden && !pg.classList.contains("nav-live"), 450);   // S1: the pop's own end
             check("推入页返回：弹出后隐藏、旧页回位", "hidden", `${pg.hidden ? "hidden" : "shown"} ${document.body.classList.contains("pushed") ? "pushed" : "back"}`, pg.hidden && !document.body.classList.contains("pushed"));
           }
         }
@@ -702,10 +704,10 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn, opt) { fn.__opt = opt || {};
       /* 验收 09-19 18:0x: with the page unscrolled, the ask() dialog opened from the 停止一切 tile must show its title (the dialog is overflow:clip — not a scroll
          container — and ask() resets scrollTop; before: .pane's −60 inset gave 60 px of scrollable overflow and the title scrolled out of the box) */
       if (sec("alert", { layer: "timing" })) { const tile = document.querySelector("#estop"), dlg = document.querySelector("#alert");
-        if (tile && dlg && !dlg.open) { scrollTo(0, 0); await sleep(100); tile.click(); await sleep(700);
+        if (tile && dlg && !dlg.open) { scrollTo(0, 0); await sleep(100); tile.click(); await settle(() => dlg.open && dlg.classList.contains("settled"), 700);   // S1: open and its appear animation over
           const dr = dlg.getBoundingClientRect(), tr = dlg.querySelector("#alert-t").getBoundingClientRect(); dlg.scrollTop = 60; const st = dlg.scrollTop;
           check("顶部未滚动时点磁贴弹窗：标题在弹窗盒内（盒顶 ≤ 标题顶，标题有高度）、弹窗不可滚（overflow clip，scrollTop 设 60 读回 0）", "title inside · scrollTop 0", `open ${dlg.open} · box ${Math.round(dr.top)}…${Math.round(dr.bottom)} title ${Math.round(tr.top)}…${Math.round(tr.bottom)} "${dlg.querySelector("#alert-t").textContent}" · scrollTop ${st} · overflow ${getComputedStyle(dlg).overflow}`, dlg.open && tr.height > 10 && tr.top >= dr.top - 0.5 && tr.bottom <= dr.bottom + 0.5 && st === 0);
-          const cancel = dlg.querySelector("#alert-cancel"); if (cancel) cancel.click(); await sleep(600); } }
+          const cancel = dlg.querySelector("#alert-cancel"); if (cancel) cancel.click(); await settle(() => !dlg.open, 600); } }
       /* 数据终核 181053 ⑤1/3: with the keyboard up (visual viewport > 120 px shorter) the tab capsule is hidden (html.kbd), and comes back when it closes */
       if (sec("tabbar", { layer: "timing" })) { const nav0 = document.querySelector("nav.tabs"), on = window.__tabKbd && window.__tabKbd(innerHeight - 300), hid = nav0 ? getComputedStyle(nav0).display : "-";
         const off = window.__tabKbd && window.__tabKbd(null), shown = nav0 ? getComputedStyle(nav0).display : "-", nb = nav0 ? nav0.getBoundingClientRect() : null;
@@ -803,7 +805,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn, opt) { fn.__opt = opt || {};
           check("标签栏 T3 +220 ms：透镜抬起中（R59′d / R108：按下下一帧起 ζ1/.25 抬向 74，+125 令牌作废）", "lift-sel, 54 < h ≤ 74", `${g3.classList.contains("lift-sel") ? "lift-sel" : "-"} h ${gr.height.toFixed(1)}`, g3.classList.contains("lift-sel") && gr.height > 54 && gr.height <= 74.5); }   // 2号 R59′d
         pev(seg3, "pointerup", at(on3));
         check("标签栏 T3 按下已选中项抬手：无事件", before, (nav3.querySelector(".seg button.on") || {}).dataset.tab, (nav3.querySelector(".seg button.on") || {}).dataset.tab === before && !g3.classList.contains("lift-sel"));
-        await sleep(900);   // the T3 lens has fallen back: the bar is at rest
+        await tabRest(900);   // S1: the T3 lens has fallen back — tab-lens.js's own rest (.tl-on off), ≤ the old 900
         /* R59′c (tab-lens-motion.md §6.9 ② / R106 ②): the reselect of the selected item (here the scroll-to-top) is withheld once the finger has moved ≥ 4 pt in x from the
            initial location, even when the up is still on the same item; a lift outside window.bounds inset by 8 only clears — nothing is selected */
         { const on4 = seg3.querySelector("button.on"), tab4 = on4.dataset.tab; window.scrollTo(0, 150); await sleep(60); const y4 = window.scrollY;
@@ -811,11 +813,11 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn, opt) { fn.__opt = opt || {};
           check("标签栏 R59′c 按住已选中项、横移 6 pt 仍在同一项、抬手：不重选（不回顶）、不选中别项、透镜回位（R106 ②：|adj.x − initial.x| ≥ 4 → shouldReselectHighlightedItemOnLift 0）", `${tab4} · scrollY ${y4} · no ScrollTop`, `${seg3.querySelector("button.on").dataset.tab} · scrollY ${window.scrollY} · ${window.ScrollTop && window.ScrollTop.state ? "ScrollTop running" : "no ScrollTop"}`, seg3.querySelector("button.on").dataset.tab === tab4 && Math.abs(window.scrollY - y4) < 1 && !(window.ScrollTop && window.ScrollTop.state) && !g3.classList.contains("lift-sel"));
           pev(seg3, "pointerdown", at(on4)); pev(seg3, "pointermove", at(on4, .5, .5, 2, 0)); await sleep(30); pev(seg3, "pointerup", at(on4, .5, .5, 2, 0)); await sleep(60);
           check("标签栏 R59′c 按住已选中项、横移 2 pt（< 4）抬手：重选 → 回顶起（对照）", "ScrollTop running", window.ScrollTop && window.ScrollTop.state ? "ScrollTop running" : "no ScrollTop", !!(window.ScrollTop && window.ScrollTop.state));
-          await sleep(1700); window.scrollTo(0, 0);
+          await settle(() => !(window.ScrollTop && window.ScrollTop.state) && !nav3.classList.contains("tl-on"), 1700); window.scrollTo(0, 0);   // S1: the scroll-to-top's own end + the lens at rest
           const other4 = [...seg3.querySelectorAll("button")].find((b) => !b.classList.contains("on")), rO = other4.getBoundingClientRect();
           pev(seg3, "pointerdown", at(other4)); await sleep(30); pev(seg3, "pointermove", { x: rO.left + rO.width / 2, y: 2 }); pev(seg3, "pointerup", { x: rO.left + rO.width / 2, y: 2 }); await sleep(60);
           check("标签栏 R59′c 按住未选中项、抬手在窗口内缩 8 之外（y 2）：只清高亮，不选中", tab4, seg3.querySelector("button.on").dataset.tab, seg3.querySelector("button.on").dataset.tab === tab4 && !nav3.classList.contains("drag"));
-          await sleep(700); }
+          await tabRest(700); }
         /* BOARD R31 (page side): the labels textures for every segment are prepared at idle and the down on an unselected segment binds one (useLabels) — no
            backdrop redraw in the down's task (marks: seg:gl-uselabels present, seg:gl-redraw count unchanged across the down) */
         { const sg = q(), g = sg.__gl;
@@ -826,9 +828,9 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn, opt) { fn.__opt = opt || {};
             const redraws0 = performance.getEntriesByName("seg:gl-redraw").length;
             pev(sg, "pointerdown", at(off)); const labelsAtDown = g.lens.stats.labels, used = performance.getEntriesByName("seg:gl-uselabels").length > 0; await sleep(40);
             const redraws1 = performance.getEntriesByName("seg:gl-redraw").length;
-            pev(sg, "pointerup", at(off)); await sleep(1300);
+            pev(sg, "pointerup", at(off)); await segRest(1300);
             check("R31 页面侧：空闲期每段的「将选中」标签纹理已预备（hasLabels 全 true）；按下未选中段只切绑定（stats.labels = 被按段、seg:gl-uselabels 有记录），按下任务内无底图重画（seg:gl-redraw 计数不变）", `prepared · labels ${pressedIdx} · uselabels · redraw +0`, `prepared ${prepared} · labels ${labelsAtDown} · uselabels ${used} · redraw +${redraws1 - redraws0}`, prepared && labelsAtDown === pressedIdx && used && redraws1 === redraws0);
-            const back = bs().find((b) => b.textContent === on0); if (back && onText() !== on0) { pev(q(), "pointerdown", at(back)); pev(q(), "pointerup", at(back)); await sleep(1300); }   // the selection restored for the rows after
+            const back = bs().find((b) => b.textContent === on0); if (back && onText() !== on0) { pev(q(), "pointerdown", at(back)); pev(q(), "pointerup", at(back)); await segRest(1300); }   // the selection restored for the rows after
           } else check("R31 页面侧【GL 不可用或包无 prepareLabels：不核】", "-", g ? "no hasLabels" : "no gl", true); }
         /* BOARD R0① (user bug 2): a shift change (早班 5 tabs ↔ 晚班 3 tabs) must not rebuild the tab bar — .plat / .glide / .seg stay the same elements, the nav's
            top and display never change, the button count goes 5 → 3 → 5 with no frame at 0, and the glide sits on the selected button every frame */
@@ -939,7 +941,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn, opt) { fn.__opt = opt || {};
         const gapHF = iH >= 0 && iF > iH ? seq[iF][0] - seq[iH][0] : -1, gapFC = iF >= 0 && iC > iF ? seq[iC][0] - seq[iF][0] : -1;
         check("列表行 C1 短点：高亮帧 → 淡出帧 → 选中，三者依次、各隔一次上屏（rAF + setTimeout 0；数据真机核 ②：confirm()/推页不得吞掉高亮帧）", "hl < hl-out < click", `${iH} < ${iF} < ${iC}, 间隔 ${Math.round(gapHF)} / ${Math.round(gapFC)} ms`, iH >= 0 && iF > iH && iC > iF); }   // the gaps are JS timestamps (the paint sits between rAF and the timeout; headless Chrome renders in < 1 ms): reported, not judged
       check("列表行 C1 按下 +270 ms：高亮已亮过并在淡出（.hl-out）、选中 1 次", "fading, 2", `${row.classList.contains("hl-out") ? "fading" : row.classList.contains("hl") ? "lit" : "rest"}, ${rsel}`, row.classList.contains("hl-out") && rsel === 2);
-      await sleep(620);
+      await fadeRest(row, 620);   // S1: the .5 s release fade is a CSS transition — wait for its own end
       /* C6: vertical 12 pt after the highlight — off at once, the up selects nothing */
       pev(row, "pointerdown", at(row)); await sleep(200); pev(row, "pointermove", at(row, .5, .5, 0, 12));
       check("列表行 C6 竖滑 12 pt：高亮瞬时灭（touchesCancelled → animated:NO）", "rest, no fade", `${lit(row) ? "highlight" : "rest"}, ${row.classList.contains("hl-out") ? "fade" : "no fade"}`, !lit(row) && !row.classList.contains("hl-out"));
@@ -954,7 +956,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn, opt) { fn.__opt = opt || {};
       check("列表行 C10 横滑 100 pt（行内）：仍高亮", "highlight", lit(row) ? "highlight" : "rest", lit(row));
       pev(row, "pointerup", at(row, .5, .5, 100, 0)); await sleep(60);
       check("列表行 C10 横滑 100 pt 抬手：选中", 3, rsel, rsel === 3);
-      await sleep(620);
+      await fadeRest(row, 620);
       pev(row, "pointerdown", at(row)); await sleep(200); pev(row, "pointermove", at(row, 1, .5, 16, 0));
       check("列表行 C11 出卡片边 16 pt：高亮灭", "rest", lit(row) ? "highlight" : "rest", !lit(row));
       await sleep(30);
@@ -976,7 +978,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn, opt) { fn.__opt = opt || {};
       { const b = framesBefore(); check("蓝字行 短点 100 ms，click 开页面弹窗（ask）：弹窗前已有高亮帧与淡出帧上屏（数据真机核 ②）", "hl 帧, hl-out 帧, 弹窗开（up +260）, 触发 1", `${b.hl ? "hl 帧" : "无 hl 帧"}, ${b.out ? "hl-out 帧" : "无 hl-out 帧"}, ${openAt60 ? "弹窗开" : "弹窗未开"}, 触发 ${asel}`, b.hl && b.out && openAt60 && asel === 1);
         const moving = !!(r60 && r210) && (dark ? r210[0] < r60[0] - 2 : r210[0] > r60[0] + 2), rest = same(bgOf(act), T.card);
         check("蓝字行 弹窗打开后淡回仍在走（up +60 → +260 ms 底色继续向静止色走，+660 到静止）", "走, 到静止", `${moving ? "走" : "停"}（R ${r60 ? Math.round(r60[0]) : "?"} → ${r210 ? Math.round(r210[0]) : "?"}）, ${rest ? "到静止" : "未到"}`, moving && rest); }
-      if (alertEl && alertEl.open) { document.querySelector("#alert-cancel").click(); await sleep(450); }
+      if (alertEl && alertEl.open) { document.querySelector("#alert-cancel").click(); await settle(() => !alertEl.open, 450); }
       if (askP) await askP;
       frames.length = 0; blockedAt = 0;
       pev(act, "pointerdown", at(act)); await sleep(200);
@@ -984,9 +986,9 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn, opt) { fn.__opt = opt || {};
       pev(act, "pointerup", at(act)); await sleep(80);
       { const b = framesBefore(); check("蓝字行 长按抬手 +80 ms：淡出首帧已上屏后才触发（弹窗），触发 2 次", "hl-out 帧在前, 2", `${b.out ? "hl-out 帧在前" : "无"}, ${asel}`, b.out && asel === 2); }
       logging = false;
-      if (alertEl && alertEl.open) { document.querySelector("#alert-cancel").click(); await sleep(450); }
+      if (alertEl && alertEl.open) { document.querySelector("#alert-cancel").click(); await settle(() => !alertEl.open, 450); }
       if (askP) await askP;
-      await sleep(620);
+      await fadeRest(act, 620);
       pev(act, "pointerdown", at(act)); await sleep(200); pev(act, "pointermove", at(act, 1, .5, 16, 0)); await sleep(30);
       col("蓝字行 出卡片边 16 pt +30 ms：瞬灭到静止色（数据真机核 ①：不走基础 .5 s transition）", T.card, bgOf(act));
       pev(act, "pointerup", at(act, 1, .5, 16, 0)); await sleep(60);
