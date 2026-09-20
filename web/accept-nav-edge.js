@@ -51,4 +51,4 @@ ACCEPT.add(async function navedge({ check, num, sleep }) {
     check(`拖过整宽：顶页 x = W × ${E.rubber(qFull).toFixed(4)}（按驱动器自己：W·(1 − p) 与最后写入的 --nav-x，容 ± 4；等到位时最大帧隔 > 34 ms 只记不判，A15 / A16）`, `${want.toFixed(2)} ± 4`, `p → ${gotP.toFixed(2)} · --nav-x ${gotX.toFixed(2)} · 渲染 transform ${tx().toFixed(2)} · max frame gap ${gapFull.toFixed(0)} ms${stalled ? "（停顿，只记）" : ""}`, stalled || (Math.abs(gotP - want) <= 4 && Math.abs(gotX - want) <= 4)); }
   pev("pointerup", 40 + W * 1.5, 400); await settled();
   check("整宽外松手：完成，hidden", "hidden", pg.hidden ? "hidden" : "shown", pg.hidden);
-});
+}, { layer: "timing", dark: false });
