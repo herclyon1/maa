@@ -182,6 +182,22 @@
       const recRms = rms(rec.map(([t, x]) => x - closedRM(259, 87, (t - 42.6) / 1000)));
       num("R59′b 记录核：R59″ tabhold 13 帧（259 → 87）对 ζ.9/.2 闭式 rms（pt；ζ.85/.2 为 2.15）", 0, recRms, 0.2);
     } finally { window.__forceRM = null; } }
+    /* ---- R96 (页面 bug): the lens canvases must not paint past the viewport — with five tabs nav ± 24 reaches x 452 / y 968, the segment canvas is scaled × ≤ 1.15 by the
+       flex transform while dragging; a mobile browser widens the layout viewport to the content (界面's frame log: innerWidth 440 → 455, the fixed bar 3 px lower = the user's
+       bug ②) or pans sideways. Each canvas now sits in a .lens-clip box = its nominal box clamped to the viewport (LensWebGL.clipCanvas); checked in every state: the
+       clip boxes inside [0, innerWidth] (× [0, innerHeight] for the bar), the canvases' own transformed boxes may exceed (they are clipped), scrollWidth = innerWidth. */
+    { const clips = () => [...document.querySelectorAll(".lens-clip")].map((w) => { const r = w.getBoundingClientRect(); return { who: w.querySelector("canvas") ? w.querySelector("canvas").className : "?", l: r.left, t: r.top, r: r.right, b: r.bottom, y: w.parentElement && w.parentElement.matches("nav.tabs") }; });
+      const inside = (c) => c.l >= -0.5 && c.r <= innerWidth + 0.5 && (!c.y || (c.t >= -0.5 && c.b <= innerHeight + 0.5));
+      const states = []; const rec = (tag) => states.push({ tag, sw: document.documentElement.scrollWidth, iw: innerWidth, clips: clips(), bad: clips().filter((c) => !inside(c)).map((c) => `${c.who} ${Math.round(c.l)}…${Math.round(c.r)}${c.y ? `/${Math.round(c.t)}…${Math.round(c.b)}` : ""}`) });
+      rec("rest");
+      const on9 = bs.find((b) => b.classList.contains("on")), o9 = bs[bs.indexOf(on9) === 0 ? 1 : 0], r9 = o9.getBoundingClientRect(), x9 = r9.left + r9.width / 2, y9 = r9.top + r9.height / 2;
+      ev(o9, "pointerdown", x9, y9, 31); await waitClass("lift", 600); await sleep(300); rec("tab lift"); ev(o9, "pointermove", x9 + 80, y9, 31); await sleep(250); rec("tab drag"); ev(o9, "pointermove", x9, y9, 31); await sleep(200); ev(o9, "pointerup", x9, y9, 31); await sleep(900); delete seg.dataset.pe;
+      const qseg9 = document.querySelector("#queueseg"), qb9 = qseg9 ? [...qseg9.querySelectorAll("button")] : [];
+      if (qb9.length >= 2) { const b9 = qb9.find((b) => b.classList.contains("on")) || qb9[0], rr9 = b9.getBoundingClientRect(), bx = rr9.left + rr9.width / 2, by = rr9.top + rr9.height / 2;
+        ev(b9, "pointerdown", bx, by, 32); await sleep(450); rec("seg lift"); ev(b9, "pointermove", bx + 60, by, 32); await sleep(250); rec("seg drag"); ev(b9, "pointermove", bx, by, 32); await sleep(150); ev(b9, "pointerup", bx, by, 32); await sleep(900); delete qseg9.dataset.pe; }
+      const wraps = [...document.querySelectorAll("#app .lens-clip, nav.tabs .lens-clip")], orphans = wraps.filter((w) => !w.querySelector("canvas")).length, tabWraps = nav.querySelectorAll(":scope > .lens-clip, :scope > canvas.tlens-gl").length;   // the live page only (a glass layer's page copy drops the canvases and, since R96, their wrappers)
+      check(`R96 透镜画布钳进视口：画布都在 .lens-clip 裁框里（标签栏框还裁到 innerHeight；标签栏里恰一张画布、无空裁框）；静止 / 标签抬起 / 标签拖动 / 分段抬起 / 分段拖动 ${states.length} 态裁框都在 [0, ${innerWidth}]，scrollWidth = innerWidth`, "标签栏 1 张 · 空裁框 0 · 全态在内 · scrollWidth = innerWidth", `标签栏 ${tabWraps} 张 · 空裁框 ${orphans}（裁框共 ${wraps.length}） · ${states.every((st) => st.bad.length === 0) ? "全态在内" : "越界 " + states.filter((st) => st.bad.length).map((st) => `${st.tag}: ${st.bad.join(" ")}`).join("; ")} · ${states.map((st) => `${st.tag} sw ${st.sw}`).join(", ")}`,
+        tabWraps === 1 && orphans === 0 && wraps.length >= 2 && states.every((st) => st.bad.length === 0 && st.sw === st.iw)); }
     /* ---- R0② the tab set changes under the bar (the user's bug 2: 切晚班再切早班 the capsule flashed downward — the bar was rebuilt): view.js keeps the
        nodes (R0①) and tells the driver with "tabs-changed"; per frame through 早 → 晚 → 早: nav's top unchanged, never display none, .plat / .glide / .seg
        the same elements, the button count never 0, the glide 54 high and on the selected button (≤ 1 pt), the driver idle (no __tabLens, no .tl-on) */
@@ -215,6 +231,7 @@
         const pageBad = Object.entries(bad).filter(([k]) => k !== "vp").every(([, v]) => v === 0);
         check(`R0② 切班次两次（${frames} 帧）：nav 在自己 CSS 的位置（top = clientHeight − bottom − 高，不变高、无 transform）/ 无 display none / 节点不重建 / 按钮数不为 0 / glide 高 54 / glide 在选中项 / 驱动不起（vp = 视口本身变的帧，只记不判）`, "页面项全 0", `${JSON.stringify(bad)} · tabs-changed ×${events} · ${tabsNow}${dev.length ? " · 偏帧 " + JSON.stringify(dev) : ""}`, pageBad);
         check("R0② 集合变时 nav 派发 tabs-changed（ui 807da64 接口）", "≥ 1", String(events), events >= 1 || tabsNow.split(",").length === 0);
+        { const w9 = document.querySelector("nav.tabs .lens-clip"), r9 = w9 && w9.getBoundingClientRect(); check("R96 切班次后标签栏画布裁框仍在视口内（重建后重钳）", "在内", r9 ? `${Math.round(r9.left)}…${Math.round(r9.right)} / ${Math.round(r9.top)}…${Math.round(r9.bottom)}` : "无裁框", !!r9 && r9.left >= -0.5 && r9.right <= innerWidth + 0.5 && r9.top >= -0.5 && r9.bottom <= innerHeight + 0.5); }
       } else check("R0② 页面无两段可切（demo 应有早班/晚班）", "≥ 2 段", qbs.length + " 段", false); }
     if (typeof window.__tabKbd === "function") { window.__tabKbd(innerHeight - 300); await sleep(50); check("视口矮 300 后 nav.tabs display none（键盘规则）", "none", getComputedStyle(nav).display, getComputedStyle(nav).display === "none");
       window.__tabKbd(null); await sleep(50); const nb = nav.getBoundingClientRect(); check("复原后 nav.tabs 回到底部（innerHeight − bottom < 120）", "< 120", Math.round(innerHeight - nb.bottom), getComputedStyle(nav).display !== "none" && innerHeight - nb.bottom < 120); }

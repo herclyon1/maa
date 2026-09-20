@@ -326,5 +326,20 @@ void main(){
       const bg = href(f.querySelector("feImage")), lab = href(document.querySelector(`#${prefix}-lens-f-lab-${w} feImage`)), fab = document.querySelector(`#${prefix}-lens-f-ab-${w}`), ab = href(fab && fab.querySelector("feImage"));
       if (!bg || !lab || !ab) continue; const S0 = parseFloat(f.dataset.s0 || f.dataset.s) || 40; const Sab = fab ? parseFloat(fab.dataset.s) || 12 : 12;
       out[w] = { bg, lab, ab, S: S0, Sab, h: heights && heights[w] ? heights[w] : null }; } return out; };
-  window.LensWebGL = { create, setsFromFilters, VS, FS1, FS2, FS_ISH, COMMON };
+  /* R96 (页面 bug): a lens canvas paints past the viewport — the tab bar's canvas is nav ± 24 (its right edge 452 on a 440 screen with five tabs, its bottom 968),
+     the segment's canvas is scaled by the flex transform (× 1.1 about the lens centre) — and a mobile browser lets overflowing content widen the layout viewport
+     (界面's frame log: innerWidth 440 → 455 for a few frames, the fixed tab bar 3 px lower = the user's bug ②) or pan the page sideways. clipCanvas wraps the
+     canvas in an overflow-hidden box (.lens-clip) that is the canvas's nominal box clamped to [0, innerWidth] (and to [0, innerHeight] when `y`), and gives the
+     canvas explicit pixel size / offsets inside it, so nothing the lens draws can extend the document; the drawing itself is unchanged (the canvas keeps its
+     size and mapping, the wrapper only clips). Call it again after a layout change (a resize, the bar recentred) — it re-measures the parent. */
+  const clipCanvas = (canvas, ax = {}) => { if (!canvas || !canvas.parentElement) return null; let w = canvas.parentElement; const fresh = !w.classList.contains("lens-clip");
+    if (fresh) { const nom = { l: canvas.offsetLeft, t: canvas.offsetTop, w: canvas.offsetWidth, h: canvas.offsetHeight }, cs = getComputedStyle(canvas); w = document.createElement("div"); w.className = "lens-clip"; w.dataset.nom = JSON.stringify(nom);
+      w.style.cssText = `position:absolute;overflow:hidden;pointer-events:none;z-index:${cs.zIndex === "auto" ? 0 : cs.zIndex}`; canvas.replaceWith(w); w.appendChild(canvas);
+      canvas.style.position = "absolute"; canvas.style.width = nom.w + "px"; canvas.style.height = nom.h + "px"; canvas.style.zIndex = "0"; }
+    const nom = JSON.parse(w.dataset.nom), parent = w.offsetParent || w.parentElement, pr = parent.getBoundingClientRect();
+    const pad = ax.pad || 0;   // room for a transform that grows the canvas (the segment's flex scale): the box before the clamp is the nominal box ± pad in x
+    const L = pr.left + nom.l, T = pr.top + nom.t, R = L + nom.w, B = T + nom.h, cl = Math.max(0, L - pad), cr = Math.min(innerWidth, R + pad), ct = ax.y ? Math.max(0, T) : T, cb = ax.y ? Math.min(innerHeight, B) : B;
+    w.style.left = (cl - pr.left) + "px"; w.style.top = (ct - pr.top) + "px"; w.style.width = Math.max(0, cr - cl) + "px"; w.style.height = Math.max(0, cb - ct) + "px";
+    canvas.style.left = (L - cl) + "px"; canvas.style.top = (T - ct) + "px"; w.dataset.clip = `${Math.round(cl)},${Math.round(ct)},${Math.round(cr)},${Math.round(cb)}`; return w; };
+  window.LensWebGL = { create, setsFromFilters, clipCanvas, VS, FS1, FS2, FS_ISH, COMMON };
 })();

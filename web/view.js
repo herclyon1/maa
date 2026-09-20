@@ -1461,7 +1461,7 @@ function segGlPrepare(seg) {
 try { document.addEventListener("visibilitychange", () => { if (document.visibilityState !== "visible") return; for (const s of document.querySelectorAll(".segctl")) { const glo = s.__gl; if (!glo || (s.__lensLoop && !s.__lensLoop.state.done)) continue; try { glo.lens.setState({ cx: 0, cy: 0, w: glo.w, h: glo.h, lift: 0 }); } catch (e) {} } }); } catch (e) {}
 function segGlCreate(seg, lens, bs, setW) {
   const cur = seg.__gl; if (cur && cur.w === seg.clientWidth && cur.h === seg.clientHeight && cur.setW === setW) return cur;
-  if (cur) { try { cur.lens.destroy(); } catch (e) {} cur.canvas.remove(); seg.__gl = null; }
+  if (cur) { try { cur.lens.destroy(); } catch (e) {} (cur.canvas.parentElement && cur.canvas.parentElement.classList.contains("lens-clip") ? cur.canvas.parentElement : cur.canvas).remove(); seg.__gl = null; }   // R96: the clip wrapper goes with the canvas
   let canvas = seg.querySelector("canvas.glens"); if (!canvas) { canvas = document.createElement("canvas"); canvas.className = "glens"; seg.appendChild(canvas); }
   const segW = seg.clientWidth, segH = seg.clientHeight;
   const sets = LensWebGL.setsFromFilters("seg"); if (!sets[setW]) return null;
@@ -1477,6 +1477,7 @@ function segGlCreate(seg, lens, bs, setW) {
     bs.forEach((b, i) => { const r = b.getBoundingClientRect(), c = getComputedStyle(b);
       x.font = i === onIdx ? gs.fontOn : gs.fontOff; x.fillStyle = b.dataset.xfadeColor || c.color; x.fillText(b.textContent, r.left - sr.left + r.width / 2, SEG_GLM + r.top - sr.top + r.height / 2); }); };   // R20c: during a label crossfade the real colour is transparent — the saved one is drawn
   let glLens; try { glLens = LensWebGL.create(canvas, opts); } catch (e) { console.warn("LensWebGL", e); canvas.remove(); segGlOk = false; return null; }
+  if (LensWebGL.clipCanvas) LensWebGL.clipCanvas(canvas, { pad: 24 });   // R96 (2号): the canvas (scaled up to × 1.15 by the flex transform while dragging: ≤ 24 px past the control) clipped to the viewport's width so it cannot widen the layout viewport
   return (seg.__gl = { canvas, lens: glLens, opts, w: segW, h: segH, setW, gs, drawLabels, platter: segRgba(getComputedStyle(seg).getPropertyValue("--ios-segment-selected-bg")) });   // the platter colour token (light (255,255,255,1) / dark (235,235,245,.3), tokens.css)
 }
 try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { for (const s of document.querySelectorAll(".segctl")) if (s.__gl) { const b = s.querySelector("button"); if (b) s.__gl.opts.ink = segRgb(getComputedStyle(b).color); s.__gl.platter = segRgba(getComputedStyle(s).getPropertyValue("--ios-segment-selected-bg")); segGlRedraw(s); } }); } catch (e) {}   // theme change: the backdrop's colours and the ink   // 换值重画不阻塞: the commit frame switches the selection only, the content render runs in the next frame (?vcsplit=0 = one frame, the old path)   // layer-5 colour fringe (7-tap chain on .stack, per-frame W/H matrix + tap scales): default off, ?disp=1 on (监督局 09-19 12:0x, phone fps bisect)
