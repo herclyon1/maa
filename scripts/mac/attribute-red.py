@@ -93,9 +93,10 @@ def known(item):
             if src == board and 'A16' in line: quoted.update(re.findall(r'「([^」]{6,})」', line))          # BOARD.md: only the A16 rows' quoted items
             elif src == register and line.startswith('| ') and line.count('|') >= 7: quoted.add(line.split('|')[5].strip())   # the register's 行 cell
     return any(q[:10] in item for q in quoted if q)
+SESSION = {'ui': '界面', 'ui2': '2号', 'night-老网页': '老网页', 'data': '数据'}
 def owner_of_shared(f):
     for name, fs in by_ref.items():
-        if f in fs: return name
+        if f in fs: return SESSION.get(name.split('/')[-1], name)
     return '本批某 ref'
 out = []; reg_lines = []
 for fpath in files:
@@ -116,7 +117,9 @@ for fpath in files:
         touched = [f for f in changed if f == path or any(f == o or (o.endswith('/') and f.startswith(o)) for o in own_files)]
         shared = [f for f in changed if f in SHARED and f not in touched]
         already = known(item)
-        if touched: verdict = f'归 {owner}（本批改了 {", ".join(sorted(touched))[:80]}）'
+        if touched:
+            whos = sorted({owner_of_shared(f) for f in touched})   # which merged ref changed it — not always the control's owner (a loader edit by another session)
+            verdict = f'归 {owner}（本批 {", ".join(whos)} 改了 {", ".join(sorted(touched))[:80]}）'
         elif shared: verdict = f'疑 {", ".join(sorted(shared))[:60]}（{owner_of_shared(sorted(shared)[0])} 合入）→ 归改它的人；{ctrl} 自身未动'
         else:
             verdict = '记录不判' + ('（已记）' if already else '（新记入 A16 表）')
