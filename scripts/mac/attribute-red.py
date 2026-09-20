@@ -58,6 +58,10 @@ def git(*a):
     except Exception: return ''
 head = git('rev-parse', '--short', 'HEAD').strip()
 changed = set(git('diff', '--name-only', base, 'HEAD').split()) if base else set()
+if base and not refs:   # --base without --ref: the merges in base..HEAD name the refs ("Merge remote-tracking branch 'origin/ui' into night" → its 2nd parent)
+    for line in git('log', '--merges', '--format=%h %s', f'{base}..HEAD').splitlines():
+        m = re.search(r"'(origin/[^']+)'", line)
+        if m: refs.append([m.group(1), git('rev-parse', '--short', line.split()[0] + '^2').strip()])
 by_ref = {}
 for name, sha in refs:
     by_ref[name] = set(git('diff', '--name-only', base, sha).split()) if base else set()
@@ -117,7 +121,8 @@ for fpath in files:
         touched = [f for f in changed if f == path or any(f == o or (o.endswith('/') and f.startswith(o)) for o in own_files)]
         shared = [f for f in changed if f in SHARED and f not in touched]
         already = known(item)
-        if touched:
+        if already and not touched: verdict = f'已记 A16（抖行；本批改了共享文件 {", ".join(sorted(shared))[:60]}，多半仍是同一抖动）' if shared else '记录不判（已记）'
+        elif touched:
             whos = sorted({owner_of_shared(f) for f in touched})   # which merged ref changed it — not always the control's owner (a loader edit by another session)
             verdict = f'归 {owner}（本批 {", ".join(whos)} 改了 {", ".join(sorted(touched))[:80]}）'
         elif shared: verdict = f'疑 {", ".join(sorted(shared))[:60]}（{owner_of_shared(sorted(shared)[0])} 合入）→ 归改它的人；{ctrl} 自身未动'

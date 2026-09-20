@@ -27,7 +27,11 @@ echo "batch $L: $BASE -> $HEAD · layer $LAYER · scope ${ONLY}"
 [ "$RUN" = 0 ] && { echo "done $L $HEAD (no run)"; exit 0; }
 if [ "$ONLY" = NONE ]; then echo "nothing under web/ changed — no run"; echo "done $L $HEAD $(date '+%H:%M:%S')"; exit 0; fi
 ( exec python3 "$W/scripts/mac/serve.py" "$W/web" "${ACCEPT_PORT:-8931}" >"$OUT/serve-$L.log" 2>&1 ) & SRV=$!; disown $SRV; sleep 2
-ONLYARG=(); if [ "$ONLY" != FULL ]; then ONLYARG=(--only "$ONLY"); else ONLYARG=(--shard "${ACCEPT_SHARD:-3}"); fi   # the whole suite runs sharded (2号 S2: 3 contexts per theme, 115 s → 46 s)
+ONLYARG=()
+if [ "$ONLY" != FULL ]; then
+  N=$(echo "$ONLY" | tr ',' '\n' | grep -c .); ONLYARG=(--only "$ONLY")
+  [ "$N" -ge 2 ] && ONLYARG+=(--shard "$(( N < ${ACCEPT_SHARD:-3} ? N : ${ACCEPT_SHARD:-3} ))")   # several controls: shard them too (a tabbar-sized file alone is ~40 s; 2号 S2: --only and --shard combine)
+else ONLYARG=(--shard "${ACCEPT_SHARD:-3}"); fi   # the whole suite runs sharded (2号 S2: 3 contexts per theme, 115 s → 46 s)
 T0=$(date +%s)
 for try in 1 2; do   # the second try is only for a runner failure (no rows), never for red rows (S6)
   timeout 400 python3 "$W/scripts/mac/accept-run.py" "http://127.0.0.1:${ACCEPT_PORT:-8931}/?layer=$LAYER" both ${ONLYARG[@]+"${ONLYARG[@]}"} --out "$OUT/accept-$L" > "$OUT/accept-$L-run$try.log" 2>&1
