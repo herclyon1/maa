@@ -81,8 +81,11 @@
      fade runs while the alert presents) */
   const frames = []; let logging = true; const logFrame = () => { frames.push([performance.now(), act.className]); if (logging) requestAnimationFrame(logFrame); }; requestAnimationFrame(logFrame);   // 收尾④: the page clock (the rAF timestamp is a second clock under virtual time; blockedAt is performance.now())
   const actSeq = []; new MutationObserver(() => actSeq.push([performance.now(), act.className])).observe(act, { attributes: true, attributeFilter: ["class"] });   // the class sequence itself (page clock): under a stepped clock the fade class can come and go between two rAF frames
-  let blockedAt = 0, askP = null; act.addEventListener("click", () => { blockedAt = performance.now(); askP = ask("开始刷？", "验收：弹窗打开后淡回仍在走", "开始刷"); });
-  const framesBefore = () => { const fr = frames.concat(actSeq).filter((f) => f[0] < blockedAt); return { hl: fr.some((f) => /\bhl\b/.test(f[1]) && !/hl-out/.test(f[1])), out: fr.some((f) => /hl-out/.test(f[1])) }; };
+  let blockedAt = 0, askP = null; act.addEventListener("click", () => { blockedAt = performance.now(); actSeq.push([blockedAt, "click"]); askP = ask("开始刷？", "验收：弹窗打开后淡回仍在走", "开始刷"); });
+  /* 收尾④: judged by ORDER — the class records and the click marker sit in one sequence (the observer's microtasks run before the next task, the click is a task
+     two paints later), so "before the click" is the index, not the timestamp: under the stepped virtual clock several frames share one timestamp */
+  const framesBefore = () => { const fr = frames.filter((f) => f[0] < blockedAt), iC = actSeq.findIndex((e) => e[1] === "click"), seqB = iC < 0 ? actSeq : actSeq.slice(0, iC), all = fr.concat(seqB);
+    return { hl: all.some((f) => /\bhl\b/.test(f[1]) && !/hl-out/.test(f[1])), out: all.some((f) => /hl-out/.test(f[1])) }; };
   pev(act, "pointerdown", at(act)); await sleep(100); pev(act, "pointerup", at(act)); await sleep(60);
   const alertEl = document.querySelector("#alert"), r60 = rgb(bgOf(act));
   await sleep(200); const r210 = rgb(bgOf(act)), openAt60 = !!(alertEl && alertEl.open);   // the click (and the alert) comes ~2 frames after the +150 ms highlight of a 100 ms tap

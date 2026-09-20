@@ -24,7 +24,7 @@
     const raf = () => new Promise((r) => requestAnimationFrame(r));
     const ev = (el, type, x, y, id = 7) => el.dispatchEvent(ctx.stamp(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, isPrimary: true, pointerType: "touch", clientX: x, clientY: y, button: 0, buttons: type === "pointerup" ? 0 : 1 })));   // ctx.stamp: the page clock as timeStamp (两钟同读)
     const sample = (el, ms, t0) => new Promise((resolve) => { const out = []; let first = null;
-      const tick = () => { const now = performance.now(); if (first === null) first = now; out.push({ t: (now - t0) / 1000, x: scaleOf(el) }); if (now - first < ms) requestAnimationFrame(tick); else resolve(out); }; requestAnimationFrame(tick); });   // 收尾④: the page clock inside the frame, not the rAF timestamp (a second clock under virtual time)
+      const tick = () => { const now = performance.now(); if (first === null) first = now; const s0 = GlassBtn.state(el); out.push({ t: (now - t0) / 1000, x: scaleOf(el), tD: s0 ? s0.tLast : null }); if (now - first < ms) requestAnimationFrame(tick); else resolve(out); }; requestAnimationFrame(tick); });   // tD: the driver's own frame time (A15)   // 收尾④: the page clock inside the frame, not the rAF timestamp (a second clock under virtual time)
     const pg = document.querySelector("#subpage");
     /* S1: a push / pop is waited on nav.js's own nav-live class (on while its spring runs; set on the push's first frame) instead of a fixed 450 ms */
     const navSettled = async () => { await settle(() => pg.classList.contains("nav-live"), 100); await settle(() => !pg.classList.contains("nav-live"), 3000); };
@@ -46,7 +46,7 @@
     let st = null; for (let i = 0; i < 20; i++) { st = GlassBtn.state(btn); if (st && st.started) break; await sleep(4); }
     if (!st || !st.started) { check("玻璃钮：按下后起动", "有", "缺", false); return; }
     const hold = await sample(btn, 600, st.downAt);
-    num(`按下 盒对 §7c 探针抬起表（GlassBtn.liftAt，t 自 down；${hold.length} 帧，scale = 宽 ÷ 44）rms`, 0, rms(hold.map((s) => s.x - GlassBtn.liftAt(s.t * 1000))), 0.005);
+    num(`按下 盒对 §7c 探针抬起表（GlassBtn.liftAt(驱动器本帧 t)，t 自 down；${hold.filter((s) => s.tD != null).length} 帧，scale = 宽 ÷ 44）rms`, 0, rms(hold.filter((s) => s.tD != null).map((s) => s.x - GlassBtn.liftAt(s.tD))), 0.005);   // 收尾④: the driver's clock is the rAF timestamp, the sampler's performance.now() — the same frame's own t (A15, as the release row)
     const pk = hold.reduce((m, s) => (s.x > m.x ? s : m), hold[0]);
     check("抬起峰 × 1.390 @ +202.6（44.48 / 32）后回到持住 L（表：+236 1.383、+336 1.3628、≥ +353 1.3636）", "peak 1.38…1.39 near +190…+215 ms", `peak ${pk.x.toFixed(4)} @ +${Math.round(pk.t * 1000)} ms`, pk.x > 1.38 && pk.x < 1.395 && pk.t * 1000 > 185 && pk.t * 1000 < 220);
     num("按住 600 ms 后 scale = L（盒 60 × 60）", L, scaleOf(btn), 0.005);
