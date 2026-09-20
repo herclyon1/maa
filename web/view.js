@@ -1723,24 +1723,31 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
     if (st.done) return;
     if (!seg.isConnected || !lens.isConnected) { clear(); return; }
     const tickStart = performance.now(), cxBefore = st.cx, pendingBefore = st.pending;
-    const dt = Math.min(.04, Math.max(0, (now - st.prev) / 1000)); st.prev = now;
+    const dt = Math.min(1, Math.max(0, (now - st.prev) / 1000)); st.prev = now;   // no .04 clamp: the analytic step is exact for any dt, a stalled frame lands where the clock says (A16 08:5x; nav.js / glassbtn.js dropped theirs before)
     let p, pd, moving = false, liftedModel = false;   // liftedModel: the MODEL bounds are 220×44 (setLifted:YES … actuallySetLifted:NO) — the flex spec and W/H follow the model, as a step (§7.4)
     if (st.tap) {
       /* 点按 (SEG_TAP_T, s after the up): geometry lifts in place on the lift spring, material follows 10 ms later, the position springs to the target
          on the value-change spring; at +443 / +450 both fall (geometry ζ1/.25, material ζ1/.4); DestOut rides the material (§4.4: 0 → 1 with the
          lift material, 1 → 0 with the fall material) */
-      const tu = (now - st.t0) / 1000, T = SEG_TAP_T;
+      const tu = (now - st.t0) / 1000, T = SEG_TAP_T, tuPrev = tu - dt;
       liftedModel = tu >= T.geo && tu < T.fallGeo;
-      if (tu >= T.geo) springStep(st.sL, tu >= T.fallGeo ? 0 : 1, SEG_SPRING.lift, dt);
-      if (tu >= T.mat) springStep(st.sMt, tu >= T.fallMat ? 0 : 1, tu >= T.fallMat ? SEG_SPRING.fallMaterial : SEG_SPRING.lift, dt);
-      if (tu >= T.travel) springStep(st.pos, restCentre(st.rest), SEG_SPRING.travel, dt);
+      /* each spring steps only over the part of this frame inside its phase (a CA animation starts at its beginTime, not at the frame that first sees it): a phase
+         beginning inside the frame gets tu − begin, a fall flipping inside the frame gets the old target up to the flip and the new one after (A16 08:5x) */
+      const phased = (s, begin, fallAt, upTarget, upSpec, downSpec) => {
+        if (tu < begin) return;
+        const from = Math.max(tuPrev, begin);
+        if (fallAt != null && tu >= fallAt) { if (fallAt > from) springStep(s, upTarget, upSpec, fallAt - from); springStep(s, 0, downSpec, tu - Math.max(from, fallAt)); }
+        else springStep(s, upTarget, upSpec, tu - from); };
+      phased(st.sL, T.geo, T.fallGeo, 1, SEG_SPRING.lift, SEG_SPRING.lift);
+      phased(st.sMt, T.mat, T.fallMat, 1, SEG_SPRING.lift, SEG_SPRING.fallMaterial);
+      if (tu >= T.travel) springStep(st.pos, restCentre(st.rest), SEG_SPRING.travel, tu - Math.max(tuPrev, T.travel));
       p = clamp01(st.sMt.x); pd = p; st.pr = p;
       const fx = st.flex.out, settled = tu > T.fallMat + .1 && st.sL.x < .001 && st.sMt.x < .001 && Math.abs(st.pos.x - restCentre(st.rest)) < .05 && Math.abs(st.pos.v) < 1 && Math.abs(fx.sx - 1) < .001 && Math.abs(fx.sy - 1) < .001 && Math.abs(fx.dx) < .05;
       if (settled || tu > 3) { clear(); return; }
     } else if (st.rel == null || now < st.rel) {   // st.rel in the future = a quick tap's deferred release (#9②): the press branch keeps lifting until then
       const tl = (now - st.t0) / 1000 - liftDelay;   // time since the lift started (+109 ms)
       liftedModel = tl > 0;
-      if (tl > 0) springStep(st.sL, 1, SEG_SPRING.lift, dt);
+      if (tl > 0) springStep(st.sL, 1, SEG_SPRING.lift, Math.min(dt, tl));   // the lift starts at +109 exactly, not at the frame that first sees it (A16 08:5x)
       if (st.dragged && st.cx != null) springStep(st.pos, st.cx, SEG_SPRING.model, dt);   // B5-b: the position is ONE spring ζ .85 / .2 s continuing from its value and velocity at every retarget (§6 retarget 语义) — the ζ .6533/.4559 tracking spring belongs to the flex floats, not to the position
       /* B5-c time base (flex-interaction.md §6e.2 / §6e.3, the UIUpdate cycle's order HIDEvents → CADisplayLinks → CATransactionCommit → next vsync):
          a move delivered at T (between frames) → cycle V_{j+1}: the handler builds the new spring behaviour, AnimationKit evaluates it at t = 0 from the
@@ -1783,12 +1790,13 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
     frame(p, pd);
     /* 仪器: what this tick used and produced — window.__segLens for the frame recorder (names: see the note at segActiveLoop) */
     st.ticks++; const adopted = pendingBefore != null && st.cx === pendingBefore; if (adopted && st.cx !== cxBefore) st.retargetT = tickStart;
+    if (st.tap) st.maxDtUp = Math.max(st.maxDtUp || 0, dt);   // the largest frame gap since the tap's up (accept A16: a gap > .05 resets the flex integrator by the read hysteresis — the centre is then not judged)
     const r3 = (q) => Math.round(q * 1000) / 1000, r2 = (q) => Math.round(q * 100) / 100;
     window.__segLens = st.__lens = { t: r2(tickStart), raf_t: r2(now), tick: st.ticks, dt: Math.round(dt * 100000) / 100000, tick_ms: r2(performance.now() - tickStart),
       x: r3(st.pos.x), v: Math.round(st.pos.v * 10) / 10, target: cxBefore == null ? null : r3(cxBefore), target_next: st.cx == null ? null : r3(st.cx), adopted: adopted ? 1 : 0, retarget_t: st.retargetT == null ? null : r2(st.retargetT),
       pointer_t: st.ev.t == null ? null : r2(st.ev.t), pointer_ev_t: st.ev.evt == null ? null : r2(st.ev.evt), pointer_x: st.ev.x == null ? null : r2(st.ev.x), pointer_target: st.ev.target == null ? null : r2(st.ev.target), pointer_n: st.ev.n,
       drift: r3(fl.out.dx), x_screen: r3(st.pos.x + fl.out.dx), sx: Math.round(fl.out.sx * 10000) / 10000, sy: Math.round(fl.out.sy * 10000) / 10000, accel: Math.round(fl.vi.acceleration), vel: Math.round(fl.vi.velocity),
-      p: Math.round(p * 10000) / 10000, set: curSet || 0, rel_t: st.rel == null ? null : r2(st.rel), since_up: st.tap ? Math.round((now - st.tap.upAt) * 10) / 10000 : null, w_screen: r2(w * fl.out.sx), h_screen: r2(h * fl.out.sy), phase: st.tap ? "tap" : st.rel != null && now >= st.rel ? "release" : st.quick ? "quick" : st.dragged ? "drag" : p < 1 ? "lift" : "hold",
+      p: Math.round(p * 10000) / 10000, set: curSet || 0, rel_t: st.rel == null ? null : r2(st.rel), since_up: st.tap ? Math.round((now - st.tap.upAt) * 10) / 10000 : null, max_dt_up: st.tap ? Math.round((st.maxDtUp || 0) * 100000) / 100000 : null, w_screen: r2(w * fl.out.sx), h_screen: r2(h * fl.out.sy), phase: st.tap ? "tap" : st.rel != null && now >= st.rel ? "release" : st.quick ? "quick" : st.dragged ? "drag" : p < 1 ? "lift" : "hold",
       gl_trace: GL && glo.lens.stats.trace ? JSON.stringify(glo.lens.stats.trace) : null };   // ?gltrace=1 (lens-webgl.js e1e5633): this frame's per-step gl.finish ms (bindFbo_useP1 / uniforms_binds1 / pass1 / clear_useP2 / uniforms_binds2 / pass2, set, total) as a JSON string — the recorder copies numbers and strings only; null otherwise
     st.ev.n = 0;   // moves consumed since the previous tick (the last move's fields stay until the next move)
     if (st.ticks === 1) segMeasure("seg:first-tick", tickStart);
