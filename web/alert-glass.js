@@ -38,8 +38,7 @@
     vibrant: [1.1202, -0.1894, -0.019, 0, 0.1471, -0.0563, 0.9871, -0.0191, 0, 0.1471, -0.0563, -0.1893, 1.1574, 0, 0.1471] };
   const VB_STD = [0, 2.147, 4.694, 9.581, 19.263, 38.579, 77.023];   // the pyramid levels' stds in capture px (tools/vb_kernel.py, nav-bar-scroll-formula §3.4b)
   const mixStd = (L) => { const k0 = Math.min(Math.floor(L), VB_STD.length - 2), f = L - k0; return Math.sqrt((1 - f) * VB_STD[k0] ** 2 + f * VB_STD[k0 + 1] ** 2); };
-  const UNBUILT = { Clamp: "no-op on 8-bit values (limit ≥ 1)", KeyFillInShader: "要建: Height .5333 + EffectOffset −.5333 → stroke_mode 1 — keyfill-highlight §2c read (R80); built for the menu in R63′ (menu.js strokeMap / #menu-stroke-f: a layer outside the pane), the same construction is due here",
-    RingShadow: "待做: stroke 4 / offset 8 / blur 5 / mask 1 — the band of keyfill §4 (the menu has it built; not added here yet)", BlurDistancePrime: "d′ = refraction + d: the blur level is taken at d (待读: which refraction term)",
+  const UNBUILT = { Clamp: "no-op on 8-bit values (limit ≥ 1)", StrokeAtRest: "the KeyFill stroke (R57″) is placed once the appear animation has settled (.settled), not during the .4 s scale-in (the copy inside a scaling dialog would misalign) — 记录", BlurDistancePrime: "d′ = refraction + d: the blur level is taken at d (待读: which refraction term)",
     GradientOvalization: "the backdrop shape's ovalization not read → 0", BleedEdge: "近似: the capture box (panel ± 60.2, clamped to the copy) is TILED and blurred σ 100 for its mean — the native sampler's clamp_to_edge replicates the edge column instead; equal on a flat page", BlurFillTexelPair: "近似: the ±.75 mip-3 texel pair is taken on both axes (uv ± off with off = lod·(.25/size) read as a float2, menu-card-material §7c); one-axis or the base-texel reading (±3 pt) would differ only on structured content" };
   const theme = () => (matchMedia("(prefers-color-scheme: dark)").matches && document.documentElement.dataset.theme !== "light") || document.documentElement.dataset.theme === "dark" ? "dark" : "light";
   const sat = (x) => Math.max(0, Math.min(1, x));
@@ -148,7 +147,48 @@
       + `<feColorMatrix in="o1h" type="matrix" values="${HL.vibrant.join(" ")} 0 0 0 1 0" result="vib2"/>` + invert("hl2", "hl2i")
       + `<feBlend in="o1h" in2="hl2i" mode="multiply" result="g0"/><feBlend in="vib2" in2="hl2" mode="multiply" result="g1"/><feComposite in="g0" in2="g1" operator="arithmetic" k2="1" k3="1" result="out"/></filter>`;
     svg.innerHTML = f1 + f2 + f3; return k; };
-  const glass = { layer: null, copy: null, w2: null, w3: null, theme: null };
+  /* ---- R57″: the in-shader KeyFill's STROKE mode and the RingShadow, the menu's construction (menu.js R63′; keyfill-highlight.md §2c / §4; keys = the 70-key truths:
+     KeyFill Amount .4 / Angle 1.5708 / ColorBias −.3 / EffectOffset −.5333 / Height .5333 / SpreadSDR 1.85 light, 1.309 dark; RingShadow StrokeWidth 4 / Offset 8 /
+     BlurRadius 5 / Mask 1 / Opacity .06).
+     Stroke: stroke_mode = (Offset < 0) ∧ |Height + Offset| < .001 = 1 → the band lies OUTSIDE the shape (edge − fw/2 … edge + .5333 pt), k per pixel = Σ_{key, fill}
+     v·ang / (1 + a(1 − v·ang)), v = (1 − cov)·sat(e/fw + .5), e = h − d, ang = sat((±n·dir − S)/(1 − S)), S = cos(SpreadSDR), dir = (1, 0), a = 1/Amount − 2; colour
+     B″ = mix(B, min(face(B), B), k)·(1 + ColorBias·k·(3 − 2B″)) with B = the DIMMED page under the pixel (the capture sits on the UIDimmingView) — the pane clips
+     to the panel (clip-path) and the dialog clipped its overflow, so the stroke is its own layer inside the dialog (dialog#alert.glass-read gets overflow: visible
+     in alert-glass.css): a second copy of #app clipped to the ring by clip-path, through #alert-stroke-f (the k map at devicePixelRatio, the dimming flood, the
+     face + MaxLuma chain, darken, the (3x − 2x²) LUT, a k4-safe subtraction). Placed once the appear animation has settled (.settled), removed at close.
+     Ring shadow (mask 1 → only inside the shape): the shape shifted RingShadowOffset down, the band StrokeWidth wide just inside it, blurred σ BlurRadius, black at
+     Opacity, multiplied onto the glass layer inside the pane (its clip-path is the mask). */
+  const strokeMap = (W, H, r, k, dpr) => { const E = 3, S = Math.cos(k.KeyFillHighlightSpreadSDR), a = 1 / k.KeyFillHighlightAmount - 2, h = k.KeyFillHighlightHeight, fw = 1 / dpr, dir = [Math.sin(k.KeyFillHighlightAngle), -Math.cos(k.KeyFillHighlightAngle)];
+    const w = Math.round((W + 2 * E) * dpr), hh = Math.round((H + 2 * E) * dpr), c = document.createElement("canvas"); c.width = w; c.height = hh; const ctx = c.getContext("2d"), id = ctx.createImageData(w, hh); let kside = 0, ktop = 0;
+    for (let j = 0; j < hh; j++) for (let i = 0; i < w; i++) { const x = (i + .5) / dpr - E - W / 2, y = (j + .5) / dpr - E - H / 2; const [d, gx, gy] = sdf(x, y, W / 2, H / 2, r); const o = (j * w + i) * 4; let kk = 0;
+      const cov = sat(0.5 - d / fw);
+      if (!(d - h >= fw / 2 || cov >= 1)) { const e = h - d, v = (1 - cov) * sat(e / fw + 0.5), nd = gx * dir[0] + gy * dir[1];
+        for (const sgn of [1, -1]) { const ang = sat((sgn * nd - S) / (1 - S)), va = v * ang; kk += va / (1 + a * (1 - va)); } kk = Math.min(1, kk); }
+      id.data[o] = id.data[o + 1] = id.data[o + 2] = Math.round(255 * kk); id.data[o + 3] = 255;
+      if (Math.abs(y) < 0.5 && x < -W / 2 && x > -W / 2 - 1.5 * fw) kside = Math.max(kside, kk); if (Math.abs(x) < 0.5 && y < -H / 2 && y > -H / 2 - 1.5 * fw) ktop = Math.max(ktop, kk); }
+    ctx.putImageData(id, 0, 0); return { href: c.toDataURL("image/png"), E, dpr, kside, ktop }; };
+  const strokeFilter = (th, W, H, r) => { const k = keysFor(th), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)), m = strokeMap(W, H, r, k, dpr), E = m.E, comp = 1 - k.FaceColorMatrixMaxLumaSDR, luma = ".2126 .7152 .0722", bias = -k.KeyFillHighlightColorBias, qmax = 9 / 8;
+    let svg = document.getElementById("alert-stroke-svg"); if (!svg) { svg = document.createElementNS(NS, "svg"); svg.id = "alert-stroke-svg"; svg.setAttribute("width", "0"); svg.setAttribute("height", "0"); svg.style.cssText = "position:absolute;width:0;height:0"; document.body.appendChild(svg); }
+    const mode = k.KeyFillHighlightColorBias < 0 ? "darken" : "lighten";
+    svg.innerHTML = `<filter id="alert-stroke-f" filterUnits="userSpaceOnUse" x="${-E}" y="${-E}" width="${W + 2 * E}" height="${H + 2 * E}" color-interpolation-filters="sRGB" data-theme="${th}" data-e="${E}" data-dpr="${dpr}" data-kside="${m.kside.toFixed(3)}" data-ktop="${m.ktop.toFixed(3)}" data-s="${Math.cos(k.KeyFillHighlightSpreadSDR).toFixed(4)}" data-bias="${bias}" data-dimming="${k.Dimming}">`
+      + `<feFlood flood-color="rgb(0,0,0)" flood-opacity="${k.Dimming}" result="dim"/><feComposite in="dim" in2="SourceGraphic" operator="over" result="src"/>`
+      + `<feImage href="${m.href}" preserveAspectRatio="none" x="${-E}" y="${-E}" width="${W + 2 * E}" height="${H + 2 * E}" result="k0" data-stroke-img="1"/><feFlood flood-color="rgb(0,0,0)" result="blk"/><feComposite in="k0" in2="blk" operator="over" result="kk"/>` + invert("kk", "kki")
+      + maxLumaChain("src", comp, luma) + `<feColorMatrix in="ml" type="matrix" values="${faceMatrix(k)}" result="face"/><feBlend in="src" in2="face" mode="${mode}" result="bmin"/>`
+      + `<feBlend in="src" in2="kki" mode="multiply" result="t1"/><feBlend in="bmin" in2="kk" mode="multiply" result="t2"/><feComposite in="t1" in2="t2" operator="arithmetic" k2="1" k3="1" result="bmix"/>`
+      + tf3("qh", "bmix", lut((x) => (3 * x - 2 * x * x) / qmax)) + `<feBlend in="qh" in2="kk" mode="multiply" result="t"/>` + invert("t", "ti")
+      + `<feComposite in="bmix" in2="ti" operator="arithmetic" k2="1" k3="${(bias * qmax).toFixed(5)}" k4="${(-bias * qmax).toFixed(5)}" result="out"/></filter>`;
+    return { E, dpr, map: m }; };
+  const roundRect = (x, y, w, h, r) => { const q = Math.max(0, Math.min(r, w / 2, h / 2)); return `M${x + q} ${y}H${x + w - q}A${q} ${q} 0 0 1 ${x + w} ${y + q}V${y + h - q}A${q} ${q} 0 0 1 ${x + w - q} ${y + h}H${x + q}A${q} ${q} 0 0 1 ${x} ${y + h - q}V${y + q}A${q} ${q} 0 0 1 ${x + q} ${y}Z`; };
+  const buildStroke = () => { if (!glass.copy || !dlg.open || glass.stroke) return; const main = document.getElementById("app"); if (!main) return; const th = glass.theme, k = keysFor(th), W = dlg.offsetWidth, H = dlg.offsetHeight, r = k.CornerRadius, f = strokeFilter(th, W, H, r), E = f.E, fw = 1 / f.dpr, h = k.KeyFillHighlightHeight;
+    const dr = dlg.getBoundingClientRect(), mr = main.getBoundingClientRect(), pl = dr.left + dr.width / 2 - W / 2, pt = dr.top + dr.height / 2 - H / 2;   // the untransformed panel box (the appear animation scales about the centre; at .settled it is 1)
+    const el = document.createElement("div"); el.className = "alert-stroke"; el.setAttribute("aria-hidden", "true");
+    el.style.cssText = `position:absolute;left:${-E}px;top:${-E}px;width:${W + 2 * E}px;height:${H + 2 * E}px;overflow:hidden;pointer-events:none;z-index:-3;clip-path:path(evenodd, "${roundRect(E - h - fw, E - h - fw, W + 2 * (h + fw), H + 2 * (h + fw), r + h + fw)} ${roundRect(E + fw / 2, E + fw / 2, W - fw, H - fw, Math.max(0, r - fw / 2))}")`;
+    const copy = main.cloneNode(true); copy.removeAttribute("id"); copy.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); copy.querySelectorAll("canvas, .lens-clip, script, .menu, .menu-scrim, .menu-stroke, dialog").forEach((e) => e.remove()); copy.className = "alert-stroke-copy"; copy.inert = true;
+    copy.style.cssText = `position:absolute;left:${mr.left - (pl - E)}px;top:${mr.top - (pt - E)}px;width:${mr.width}px;min-height:${Math.max(mr.height, innerHeight + 200)}px;pointer-events:none;background:${getComputedStyle(document.body).backgroundColor};filter:url(#alert-stroke-f)`;
+    const fx = document.getElementById("alert-stroke-f"), px = pl - mr.left, py = pt - mr.top; fx.setAttribute("x", String(px - E)); fx.setAttribute("y", String(py - E)); const im = fx.querySelector("feImage"); im.setAttribute("x", String(px - E)); im.setAttribute("y", String(py - E));
+    el.appendChild(copy); dlg.insertBefore(el, dlg.firstChild); glass.stroke = el; };
+  const ringPath = (w, h, r, off, sw) => roundRect(0, off, w, h, r) + " " + roundRect(sw, off + sw, w - 2 * sw, h - 2 * sw, Math.max(0, r - sw));   // the shape shifted down `off`, minus the same shape inset by the stroke width (evenodd = the band just inside the shifted outline)
+  const glass = { layer: null, copy: null, w2: null, w3: null, theme: null, stroke: null, ring: null };
   const place = () => { if (!glass.copy || !dlg.open) return; const dr = dlg.getBoundingClientRect(), mr = document.getElementById("app").getBoundingClientRect(); const M = 120, W = dlg.offsetWidth, H = dlg.offsetHeight;
     /* the panel's box in the copy's coordinates (the copy = #app's pixels): the dialog's untransformed box from its rect centre and layout size (the appear animation scales it about the centre); the pane is the dialog box oversized by 60 */
     const pl = dr.left + dr.width / 2 - W / 2, pt = dr.top + dr.height / 2 - H / 2; const px = pl - mr.left, py = pt - mr.top; glass.w3.style.transform = `translate(${mr.left - (pl - 60)}px, ${mr.top - (pt - 60)}px)`;
@@ -160,10 +200,17 @@
     copy.className = "alert-glass-copy"; copy.setAttribute("aria-hidden", "true"); copy.inert = true; const mr = main.getBoundingClientRect(); copy.style.cssText = `position:absolute;left:0;top:0;width:${mr.width}px;min-height:${Math.max(mr.height, innerHeight + 200)}px;pointer-events:none;background:${getComputedStyle(document.body).backgroundColor};filter:url(#alert-glass-f1)`;   // the page colour under #app (body's background; #app paints none): without it the copy's gaps are transparent and the live page shows through the glass
     /* three nested filtered elements (f1 on the copy, f2 / f3 on the wrappers): Blink evaluates a filter graph as a tree, one long chain wedged Chrome (R63) */
     const w2 = document.createElement("div"), w3 = document.createElement("div"); w2.className = "alert-glass-w2"; w3.className = "alert-glass-w3"; w2.style.cssText = "position:absolute;left:0;top:0;width:100%;pointer-events:none;filter:url(#alert-glass-f2)"; w3.style.cssText = "position:absolute;left:0;top:0;width:100%;pointer-events:none;filter:url(#alert-glass-f3)";
-    w2.appendChild(copy); w3.appendChild(w2); layer.appendChild(w3); pane.appendChild(layer); glass.layer = layer; glass.copy = copy; glass.w2 = w2; glass.w3 = w3; glass.theme = th; dlg.classList.add("glass-read"); dlg.classList.toggle("glass-dark", th === "dark"); place(); };
-  const strip = () => { if (glass.layer) glass.layer.remove(); glass.layer = glass.copy = glass.w2 = glass.w3 = null; };
+    w2.appendChild(copy); w3.appendChild(w2); layer.appendChild(w3);
+    /* R57″ ring shadow (keyfill §4, RingShadow keys; mask 1 = the pane's clip-path): the band of the shape shifted 8 down, 4 wide inside it, σ 5, black .06, multiplied */
+    { const k = keysFor(th), W = dlg.offsetWidth, H = dlg.offsetHeight; let rsvg = document.getElementById("alert-ring-svg"); if (!rsvg) { rsvg = document.createElementNS(NS, "svg"); rsvg.id = "alert-ring-svg"; rsvg.setAttribute("width", "0"); rsvg.setAttribute("height", "0"); rsvg.style.cssText = "position:absolute;width:0;height:0"; document.body.appendChild(rsvg); }
+      rsvg.innerHTML = `<filter id="alert-glass-ring" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="${k.RingShadowBlurRadius}"/></filter>`;
+      const ring = document.createElementNS(NS, "svg"); ring.setAttribute("class", "alert-glass-ring"); ring.setAttribute("viewBox", `0 0 ${W} ${H}`); ring.style.cssText = `position:absolute;left:60px;top:60px;width:${W}px;height:${H}px;mix-blend-mode:multiply;pointer-events:none;overflow:visible`;
+      const path = document.createElementNS(NS, "path"); path.setAttribute("fill", "#000"); path.setAttribute("fill-rule", "evenodd"); path.setAttribute("fill-opacity", String(k.RingShadowOpacity)); path.setAttribute("filter", "url(#alert-glass-ring)"); path.setAttribute("d", ringPath(W, H, k.CornerRadius, k.RingShadowOffset, k.RingShadowStrokeWidth)); path.dataset.ring = `${k.RingShadowOffset}/${k.RingShadowStrokeWidth}/${k.RingShadowBlurRadius}/${k.RingShadowOpacity}`; ring.appendChild(path); layer.appendChild(ring); glass.ring = ring; }
+    pane.appendChild(layer); glass.layer = layer; glass.copy = copy; glass.w2 = w2; glass.w3 = w3; glass.theme = th; dlg.classList.add("glass-read"); dlg.classList.toggle("glass-dark", th === "dark"); place(); if (dlg.classList.contains("settled")) buildStroke(); };
+  const strip = () => { if (glass.layer) glass.layer.remove(); if (glass.stroke) glass.stroke.remove(); glass.layer = glass.copy = glass.w2 = glass.w3 = glass.stroke = glass.ring = null; };
   /* the dialog's open state: showModal() has no event — watch the `open` attribute */
   new MutationObserver(() => { if (dlg.open) build(); else strip(); }).observe(dlg, { attributes: true, attributeFilter: ["open"] });
+  new MutationObserver(() => { if (dlg.open && dlg.classList.contains("settled") && glass.copy && !glass.stroke) buildStroke(); }).observe(dlg, { attributes: true, attributeFilter: ["class"] });   // R57″: the stroke once the appear animation has settled (the dialog's scale is 1 then)
   addEventListener("resize", place); addEventListener("scroll", place, { passive: true });
   window.AlertGlass = { keys: KEYS, keysFor, dark: DARK, highlight: HL, unbuilt: UNBUILT, images, faceMatrix, bleedMatrix, sdf, level, mixStd, theme, rebuild: build, get layer() { return glass.layer; }, VB_STD };
 })();
