@@ -48,7 +48,7 @@
     num("抬起 中心 x 对 ζ.85/.4 闭式 rms（旧项中心 → 按下项中心）", 0, rms(lift.map((s) => s.cx - under(r0.cx, ox, 0.85, 0.4, s.t))), 1);
     num("抬满后 宽 = w0 + 22.7（R108）", w0 + LW, rect().width, 0.5); num("抬满后 高 = 74（R108 探针 +464 行）", h0 + LH, rect().height, 0.5);
     num("抬满后 圆角 = 高 / 2（胶囊，999px）", (h0 + LH) / 2, Math.min(parseFloat(getComputedStyle(g).borderTopLeftRadius), rect().height / 2), 0.5);
-    { const dLift = g.classList.contains("lift") ? 0 : await waitClass("lift", 600); check("view.js 的 .lift 类仍在 +140 ms 到（录像口径令牌，界面 R59′c 撤；驱动器已不等它）", "到", dLift === null ? "没到" : "到", dLift !== null); }
+    { const dLift = g.classList.contains("lift") ? 0 : await waitClass("lift", 600); check("view.js 的 .lift 类 = 高亮，自按下即在（R59′e 撤了 +140 定时器；驱动器不等它）", "到", dLift === null ? "没到" : "到", dLift !== null); }
     /* ③ drop */
     /* the drop's time base = the last frame before the up (window.__tabLens.tf): the retarget keeps the loop's clock, the state at that frame is `up` */
     const up = rect(); const Lup = window.__tabLens; ev(other, "pointerup", ox, oy); await new Promise((r) => requestAnimationFrame(r));

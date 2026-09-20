@@ -753,12 +753,12 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
         const other = tbs.find((b) => !b.classList.contains("on")), cur = tbs.find((b) => b.classList.contains("on"));
         const shown = () => [...document.querySelectorAll("#app > section:not([hidden])")].map((x) => x.dataset.tab).filter((v, i, a) => a.indexOf(v) === i).join(",");
         pev(tseg, "pointerdown", at(other));
-        check("标签栏 T1 按下未选中项 +0 ms：不选中、透镜未动", startTab, `${tOn()} lift=${g.classList.contains("lift")}`, tOn() === startTab && !g.classList.contains("lift"));
+        check("标签栏 T1 按下未选中项 +0 ms：不选中；高亮类 .lift 即在（R59′e / R108：落指 → highlightedItemIndex → setLifted 无定时器，+140 令牌作废）", `${startTab} · lift`, `${tOn()} lift=${g.classList.contains("lift")}`, tOn() === startTab && g.classList.contains("lift"));
         await sleep(60);
-        check("标签栏 T1 +60 ms：透镜还没动（--ios-touch-tab-glide-delay 140）", "no lift", g.classList.contains("lift") ? "lift" : "no lift", !g.classList.contains("lift"));
+        { const L = window.__tabLens; check("标签栏 T1 +60 ms：驱动器已在抬（按下下一 tick 起，探针 +47 已 95.76）：p > 0、仍不选中", "p > 0 · not selected", `p ${L ? L.p.toFixed(3) : "-"} · ${tOn()}`, !!L && L.p > 0 && tOn() === startTab); }
         await sleep(140);
         { const gr = g.getBoundingClientRect();   // #7a (tab-lens.js geometry mode): the lift is the box itself, w0 × 54 → (w0 + 16) × 70 on ζ 1 / .25 from +140 ms (tab-lens-motion.md §0 / §4), view.js's inline left = the pressed item is the target
-          check("标签栏 T1 +200 ms：透镜抬起中并滑向被按项（R59′d / R108：按下下一帧起 ζ1/.25 抬向 +22.7 × 74、位置 ζ.85/.4；.lift 类仍 +140 到）", `left→${other.offsetLeft}, lift, 54 < h ≤ 74`, `left ${g.style.left} ${g.classList.contains("lift") ? "lift" : "-"} h ${gr.height.toFixed(1)}`, g.classList.contains("lift") && g.style.left === other.offsetLeft + "px" && gr.height > 54 && gr.height <= 74.5); }   // 2号 R59′d: the lens's lifted size per the probe (tab-lens-motion §6.9 ⑤)
+          check("标签栏 T1 +200 ms：透镜抬起中并滑向被按项（R59′d / R108：按下下一帧起 ζ1/.25 抬向 +22.7 × 74、位置 ζ.85/.4；.lift 类自按下即在）", `left→${other.offsetLeft}, lift, 54 < h ≤ 74`, `left ${g.style.left} ${g.classList.contains("lift") ? "lift" : "-"} h ${gr.height.toFixed(1)}`, g.classList.contains("lift") && g.style.left === other.offsetLeft + "px" && gr.height > 54 && gr.height <= 74.5); }   // 2号 R59′d: the lens's lifted size per the probe (tab-lens-motion §6.9 ⑤)
         await sleep(400);
         { const gr = g.getBoundingClientRect();
           check("标签栏 T5 按住 600 ms：仍不选中，透镜停在 (w0 + 22.7) × 74（R108 探针 94×54 → 116.7 × 74.0，tab-lens-motion §6.9 ⑤；旧 +16 两轴是选中框的 inset）", `${startTab} ${(other.offsetWidth + 22.7).toFixed(1)}×74`, `${tOn()} ${gr.width.toFixed(1)}×${gr.height.toFixed(1)}`, tOn() === startTab && Math.abs(gr.width - (other.offsetWidth + 22.7)) <= 0.5 && Math.abs(gr.height - 74) <= 0.5); }   // 2号 R59′d
@@ -787,10 +787,10 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
         /* T3/T9: pressing the selected tab, releasing on it - no event */
         const nav3 = document.querySelector("nav.tabs"), seg3 = nav3.querySelector(".seg"), on3 = seg3.querySelector("button.on");
         const before = (nav3.querySelector(".seg button.on") || {}).dataset.tab, g3 = nav3.querySelector(".glide"); pev(seg3, "pointerdown", at(on3)); await sleep(100);
-        check("标签栏 T3 按下已选中项 +100 ms：透镜还没抬（--ios-touch-tab-selected-lift-delay 125）", "no lift", g3.classList.contains("lift-sel") ? "lift" : "no lift", !g3.classList.contains("lift-sel"));
+        { const L = window.__tabLens; check("标签栏 T3 按下已选中项 +100 ms：高亮类 .lift-sel 自按下即在、驱动器已在抬（R59′e / R108：+125 令牌作废）", "lift-sel · p > 0", `${g3.classList.contains("lift-sel") ? "lift-sel" : "-"} · p ${L ? L.p.toFixed(3) : "-"}`, g3.classList.contains("lift-sel") && !!L && L.p > 0); }
         await sleep(120);
         { const gr = g3.getBoundingClientRect();   // #7a: the selected item's press lifts the same box (+16 on both axes, tab-lens-motion §0 "抬起（按住已选中项）"), from +125 ms on ζ 1 / .25
-          check("标签栏 T3 +220 ms：透镜抬起中（R59′d / R108：按下下一帧起 ζ1/.25 抬向 74，+125 令牌作废；.lift-sel 类仍到）", "lift-sel, 54 < h ≤ 74", `${g3.classList.contains("lift-sel") ? "lift-sel" : "-"} h ${gr.height.toFixed(1)}`, g3.classList.contains("lift-sel") && gr.height > 54 && gr.height <= 74.5); }   // 2号 R59′d
+          check("标签栏 T3 +220 ms：透镜抬起中（R59′d / R108：按下下一帧起 ζ1/.25 抬向 74，+125 令牌作废）", "lift-sel, 54 < h ≤ 74", `${g3.classList.contains("lift-sel") ? "lift-sel" : "-"} h ${gr.height.toFixed(1)}`, g3.classList.contains("lift-sel") && gr.height > 54 && gr.height <= 74.5); }   // 2号 R59′d
         pev(seg3, "pointerup", at(on3));
         check("标签栏 T3 按下已选中项抬手：无事件", before, (nav3.querySelector(".seg button.on") || {}).dataset.tab, (nav3.querySelector(".seg button.on") || {}).dataset.tab === before && !g3.classList.contains("lift-sel"));
         await sleep(900);   // the T3 lens has fallen back: the bar is at rest
