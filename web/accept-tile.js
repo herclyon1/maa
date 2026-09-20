@@ -96,5 +96,5 @@
       check("胶囊钮 ② tile.css 里有 .capsule:active → opacity 1（盖掉 index.html 的 button:active .6）", "rule present", ruleWith(".capsule:active", "opacity", "1") ? "rule present" : "no rule", ruleWith(".capsule:active", "opacity", "1"));
     } finally { cap.remove(); capRed.remove(); }
     } finally { app.remove(); }
-  });
+  }, { layer: "static", dark: true });   // S4 file-level layer tags (S4-tags.md (e))
 })();

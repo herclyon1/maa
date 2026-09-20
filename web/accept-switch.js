@@ -127,4 +127,4 @@ ACCEPT.add(async function sw({ check, num, col, sleep, settle }) {
   check("开关 pointercancel：不翻转、不 pressed", "on ×6, rest", `${inp.checked ? "on" : "off"} ×${flips}, ${sw.classList.contains("pressed") ? "pressed" : "rest"}`, inp.checked && flips === 6 && !sw.classList.contains("pressed"));
   await rest(200);
   swLab.remove();
-});
+}, { layer: "timing", dark: true });   // S4 file-level layer tags (S4-tags.md (e))

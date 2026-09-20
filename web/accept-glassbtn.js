@@ -121,5 +121,5 @@
       num("玻璃钮 R71″ ③ 再按 +650 ms：到位 L（盒 60）", 60 / 44, wOf() / 44, .005);
       ev(b3, "pointerup", far3, y3, 14); await settle(() => !GlassBtn.state(b3), 900); check("玻璃钮 R71″ ③ 松手后复位（驱动器放手，≤ 900）", "无 · 44", `${b3.style.width || "无"} · ${wOf().toFixed(1)}`, !b3.style.width && Math.abs(wOf() - 44) < .01); }
     b2.click(); await navSettled();
-  });
+  }, { layer: "timing", dark: true });   // S4 file-level layer tags (S4-tags.md (e))
 })();

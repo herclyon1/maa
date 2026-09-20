@@ -9,7 +9,7 @@
 /* night batch (BOARD.md A6): per-control acceptance files register through ACCEPT.add(fn); accept.js loads them in index.html hook order and runs
    each fn(ctx) after its own rows, ctx = { check, num, col, sleep }. A file that is still a shell registers nothing. */
 /* T1 (2026-09-20): ?only=<控件>[,…] runs one control's file and sections only — see the note at ACCEPT.files below. */
-window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading || null; this.fns.push(fn); } };   // __file: the accept-<控件>.js being loaded (files load one after another) — its rows' tag (S6 / T1)
+window.ACCEPT = window.ACCEPT || { fns: [], add(fn, opt) { fn.__opt = opt || {}; fn.__file = this.loading || null; this.fns.push(fn); } };   // S4: opt = { layer, dark } (the file's layer tags); __file: the accept-<控件>.js being loaded (files load one after another) — its rows' tag (S6 / T1)
 (function () {
   const q = new URLSearchParams(location.search);
   if (!q.has("accept")) return;
@@ -24,13 +24,22 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
   const ONLY = (() => { const v = (q.get("only") || "").split(",").map((s) => s.trim()).filter(Boolean); return v.length ? new Set(v) : null; })();
   if (ONLY) window.ACCEPT.files = window.ACCEPT.files.filter((c) => ONLY.has(c));
   let cur = "core";   // the section tag of the rows being produced now
-  const sec = (...tags) => { cur = tags[0]; if (!ONLY) return true; const hit = tags.find((t) => ONLY.has(t)); if (hit) cur = hit; return !!hit; };   // tags the rows that follow; false = skip the section under ?only
+  /* S4 (数据 S4-tags.md (c)(d)): layers. A file (ACCEPT.add(fn, { layer, dark })) or a section (sec(name, { layer, dark }); ctx.sec(name, opt) inside a file,
+     falling back to the file's opt) is static (default), timing or release-only; ?layer=daily (default) runs static + timing, ?layer=release everything;
+     ?theme=dark runs only dark:true files / sections (a light run ignores the dark flag). A skipped section produces no rows; "core" rows always count. */
+  const LAYER = q.get("layer") === "release" ? "release" : "daily", DARKONLY = q.get("theme") === "dark";
+  const runs = (o) => !((LAYER !== "release" && (o.layer || "static") === "release-only") || (DARKONLY && o.dark !== true));
+  let secOn = true, curLayer = "static", curSec = null;   // the current section's decision / layer / (file sub-section) name
+  const sec = (...args) => { const opt = args.length && typeof args[args.length - 1] === "object" && args[args.length - 1] !== null ? args.pop() : {}; cur = args[0]; curSec = null;
+    let on = true; if (ONLY) { const hit = args.find((t) => ONLY.has(t)); if (hit) cur = hit; on = !!hit; }   // T1: tags the rows that follow; false = skip the section under ?only
+    curLayer = opt.layer || "static"; secOn = on && runs(opt); return secOn; };
+  const secFile = (file, fo) => (name, opt) => { cur = file; curSec = name || null; const o = { ...fo, ...(opt || {}) }; curLayer = o.layer || "static"; secOn = runs(o); return secOn; };   // ctx.sec: the file stays the tag (?only / S6), layer / dark decide
   /* S2 (2号 2026-09-20 13:0x): each row records the tag of the section that produced it (`tag`, printed by accept-run.py as ⟨file⟩ — 验收 S6 attributes a red row
      to its file by it). A control file's rows get the file's name: ACCEPT.add is wrapped here so the function it registers sets `cur` to the name of the
      script that called it (document.currentScript — the loader's classic <script> tags) when it starts; no other behaviour changes. */
   { const add0 = window.ACCEPT.add.bind(window.ACCEPT);
-    window.ACCEPT.add = (fn) => { const m = /accept-([^./?]+)\.js/.exec((document.currentScript || {}).src || ""); if (!m) return add0(fn);
-      const w = async (ctx) => { cur = m[1]; return fn(ctx); }; Object.defineProperty(w, "name", { value: fn.name }); add0(w); }; }
+    window.ACCEPT.add = (fn, opt) => { const m = /accept-([^./?]+)\.js/.exec((document.currentScript || {}).src || ""); if (!m) return add0(fn, opt);
+      const w = async (ctx) => { cur = m[1]; return fn(ctx); }; Object.defineProperty(w, "name", { value: fn.name }); add0(w, opt); w.__file = m[1]; }; }   // S4: opt passed through; __file from the script's own name
   window.ACCEPT.load = (c) => new Promise((res) => { window.ACCEPT.loading = c; const done = (v) => { if (window.ACCEPT.loading === c) window.ACCEPT.loading = null; res(v); };
     const s = document.createElement("script"); s.src = "accept-" + c + ".js?r=" + Math.random().toString(36).slice(2, 7); s.onload = () => { window.ACCEPT.loaded.add(c); done(true); }; s.onerror = () => done(false); document.head.appendChild(s); setTimeout(() => done(false), 4000); });
   (async () => { for (const c of window.ACCEPT.files) await window.ACCEPT.load(c); })();   // one after another (≈ 50 ms each): ACCEPT.loading names the file whose fn registers
@@ -42,14 +51,13 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
      0 in a browser viewport — the geometry below is expressed relative to it, the way the page's own CSS is */
   const satTop = () => { const pr = document.createElement("div"); pr.style.cssText = "position:fixed;top:0;left:0;width:1px;padding-top:env(safe-area-inset-top);visibility:hidden";
     document.body.appendChild(pr); const v = px(cs(pr).paddingTop); pr.remove(); return v; };
-  /* S5 (BOARD SPEED2): a row may carry tags — check(item, expect, got, ok, { tags: [...] }) — plus its section's tags (SEC_TAGS: the page-behaviour
-     section is "release-only"); the batch runner picks layers by tag (数据 S4 names the layers; until then only "release-only" is written) */
-  const SEC_TAGS = { page: ["release-only"] };
+  /* S5 / S4: a row records its section (`tag`, S6 attribution), its layer (S4) and, inside a control file, the ctx.sec name (`sec`); check(item, expect, got,
+     ok, { tags: [...] }) may add free tags. Rows of a skipped section (?only / ?layer / ?theme) are not produced; "core" rows always are. */
   function check(item, expect, got, ok, opts) {
-    if (ONLY && cur !== "core" && !ONLY.has(cur)) return;   // ?only: rows of other sections are not produced (T1)
-    const tags = [...(SEC_TAGS[cur] || []), ...((opts && opts.tags) || [])];
-    const row = { item, expect: String(expect), got: got === undefined || got === null ? "缺" : String(typeof got === "number" ? Math.round(got * 100) / 100 : got), ok: !!ok, tag: cur };   // tag: the section (S6 attribution, night); tags: layers (S5)
-    if (tags.length) row.tags = tags;
+    if (cur !== "core" && (!secOn || (ONLY && !ONLY.has(cur)))) return;
+    const row = { item, expect: String(expect), got: got === undefined || got === null ? "缺" : String(typeof got === "number" ? Math.round(got * 100) / 100 : got), ok: !!ok, tag: cur, layer: curLayer };
+    if (curSec) row.sec = curSec;
+    if (opts && opts.tags && opts.tags.length) row.tags = [...opts.tags];
     rows.push(row);
   }
   function num(item, expect, got, tol, opts) { check(item, expect, got, typeof got === "number" && near(got, expect, tol), opts); }
@@ -79,7 +87,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
     const probe = document.createElement("i"); probe.style.cssText = "position:fixed;left:-9999px;top:0"; document.body.appendChild(probe);
 
     check("view.js 就绪后才量（window.__viewReady，accept.js 等它 ≤ 60 s）", "true", String(window.__viewReady), window.__viewReady === true);
-    sec("page");
+    sec("page", { layer: "release-only" });   // S4-tags.md (e): the page-structure rows are release-only
     const root = px(cs(document.documentElement).fontSize);
     num("根字号 17（--ios-body-size）", 17, root, 0.01);
     num("正文行框 20.33（--ios-body-lh）", 20.33, px(cs(document.body).lineHeight), 0.05);
@@ -143,7 +151,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
       num("段尾上边距 7.67（--ios-footer-text-top）", 7.67, px(c.paddingTop), 0.05);
       num("段尾下边距 24.66（30.33 − 7.67 − 15.67 + 17.67：--ios-footer-h + --ios-group-gap）", 24.66, px(c.paddingBottom), 0.05);
     }
-    sec("tile");
+    sec("tile", { layer: "static", dark: true });   // tile token colours
     const tile = document.querySelector(".tile");
     if (tile) {
       const r = tile.getBoundingClientRect();
@@ -160,7 +168,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
       const ico = numT.querySelector(".nico"); if (ico) num("数字磁贴徽章 48（--ios-tile-icon）", 48, ico.getBoundingClientRect().width);
       const lab = numT.querySelector(".lab"); if (lab) { const lr = lab.getBoundingClientRect(); num("数字磁贴标签 17（--ios-tile-label-size）", 17, px(cs(lab).fontSize), 0.1); num("数字磁贴标签 x 12（--ios-tile-label-x）", 12, lr.left - r.left); num("数字磁贴标签 y 52（--ios-tile-label-top）", 52, lr.top - r.top); }
     }
-    sec("page");
+    sec("page", { layer: "release-only" });
     /* 2026-09-18: the device card is a Settings value row (46 Apple 账户页), no icon. */
     const dev = document.querySelector(".devcard");
     if (dev) {
@@ -216,7 +224,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
         num("短值不被长副题挤瘦（「没有」保持自然宽，label flex-basis 0）", probeW, ro2.getBoundingClientRect().width, 0.6); }
       check("段头一行、尾部省略", "nowrap ellipsis 20.33", `${cs(hh).whiteSpace} ${cs(hh).textOverflow} ${Math.round((hh.getBoundingClientRect().height - px(cs(hh).paddingTop) - px(cs(hh).paddingBottom)) * 100) / 100}`, cs(hh).whiteSpace === "nowrap" && cs(hh).textOverflow === "ellipsis" && near(hh.getBoundingClientRect().height - px(cs(hh).paddingTop) - px(cs(hh).paddingBottom), 20.33, 0.6));
       wl.remove(); }
-    sec("segctl");
+    sec("segctl", { layer: "static" });
     /* Segmented control (状态 tab, 早班/晚班; 34 屏幕时间) */
     const segc = document.querySelector(".segctl");
     if (segc) {
@@ -232,7 +240,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
         check("分段选中段无滤镜（--ios-segment-selected-filter）", "none", (cs(lens).backdropFilter || cs(lens).webkitBackdropFilter || "none"), /^none$/.test(cs(lens).backdropFilter || cs(lens).webkitBackdropFilter || "none")); }
       if (b) { num("分段文字 13（--ios-segment-label-size）", 13, px(cs(b).fontSize), 0.05); check("分段选中字重 500（--ios-medium-weight）", 500, cs(segc.querySelector("button.on") || b).fontWeight, String(cs(segc.querySelector("button.on") || b).fontWeight) === "500"); }
     }
-    sec("alert");
+    sec("alert", { layer: "static", dark: true });   // alert tokens / glass layer presence
     /* The confirm alert (closed, but its computed geometry is there) */
     const alert = document.querySelector("dialog#alert");
     if (alert) {
@@ -269,7 +277,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
         else col("弹窗按钮 Chrome 等值常量 α .131 / .127（--ios-alert-button-fallback）", dark ? [255, 255, 255, .127] : [0, 0, 0, .131], ov.backgroundColor);
       }
     }
-    sec("tabbar");
+    sec("tabbar", { layer: "static", dark: true });   // tab bar material keys (per theme)
     /* Tab bar: hidden when the snapshot has a single tab (nav.hidden = present.size < 2);
        measure a synthetic one then, so the run does not depend on the data. */
     let seg = document.querySelector("nav.tabs:not([hidden]) .seg"), fakeNav = null;
@@ -309,7 +317,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
         check("透镜滑动 0.55 s（--ios-motion-lens-duration，dampingRatio .85 / response .4）", "0.55s", cs(gl).transitionDuration.split(",")[0].trim(), /^0\.55s/.test(cs(gl).transitionDuration)); }
     }
     if (fakeNav) fakeNav.remove();
-    sec("topbar");
+    sec("topbar", { layer: "static" });
     const top = document.querySelector(".topbar");
     if (top) {
       const sat = satTop();
@@ -317,7 +325,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
     }
     const h1 = document.querySelector("header h1");
     if (h1) { num("大标题字号 34（--ios-large-title-size）", 34, px(cs(h1).fontSize), 0.1); num("大标题行框 40.57（--ios-large-title-lh）", 40.57, px(cs(h1).lineHeight), 0.05); check("大标题字重 700（NUMBERS 56）", 700, cs(h1).fontWeight, String(cs(h1).fontWeight) === "700"); }
-    sec("page");
+    sec("page", { layer: "release-only" });
     /* State colours, probed on synthetic controls so they are checked whatever the
        data happens to show: a switch on/off, the danger tile title, the selected
        tab, the edit bar's two capsules. 2026-09-15 the green track rule vanished
@@ -404,9 +412,9 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
     const pev = (el, type, p, id = 11) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, clientX: p.x, clientY: p.y, isPrimary: true, button: 0, buttons: type === "pointerup" ? 0 : 1, pointerType: "touch" }));
     async function interactions() {
       /* Behaviour 5: the sheet element is hidden once the dismiss has travelled */
-      if (sec("sheet")) { const sh = document.querySelector("#picker"); if (sh) { await sleep(600); check("勾选页关闭 0.5 s 后隐藏（open 去掉）", "hidden", sh.hasAttribute("open") ? "open" : "hidden", !sh.hasAttribute("open") && getComputedStyle(sh).display === "none"); } }
+      if (sec("sheet", { layer: "timing" })) { const sh = document.querySelector("#picker"); if (sh) { await sleep(600); check("勾选页关闭 0.5 s 后隐藏（open 去掉）", "hidden", sh.hasAttribute("open") ? "open" : "hidden", !sh.hasAttribute("open") && getComputedStyle(sh).display === "none"); } }
       /* Behaviour 1: one alert at a time; Chrome runs the pane flat until the appear animation ends (.settled), WebKit keeps it from frame 1 */
-      if (sec("alert") && typeof ask === "function" && document.querySelector("#alert")) {
+      if (sec("alert", { layer: "timing", dark: true }) && typeof ask === "function" && document.querySelector("#alert")) {   // appear animation + the read-key glass layer in both themes (R57′)
         const d = document.querySelector("#alert"), pane = d.querySelector(".pane"), bf = (el) => getComputedStyle(el).backdropFilter || getComputedStyle(el).webkitBackdropFilter || "";
         const p1 = ask("测", "一", "好"); const p2 = ask("测二", "二", "好");
         const second = await Promise.race([p2.then((v) => `resolved ${v}`), sleep(50).then(() => "pending")]);
@@ -423,7 +431,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
         check("弹窗取消后关闭", "closed", d.open ? "open" : "closed", !d.open);
       }
       /* Behaviour 2: placeholders before the first reading; the cached reading restores at once */
-      if (sec("page") && window.Stamina && typeof numTiles === "function") {
+      if (sec("page", { layer: "release-only" }) && window.Stamina && typeof numTiles === "function") {
         const had = localStorage.getItem("ark-remote-tokens"), hadCache = localStorage.getItem("ark-remote-stamina"), d0 = Stamina.data, at0 = Stamina.at;
         try {
           localStorage.setItem("ark-remote-tokens", JSON.stringify({ sk: { cred: "x", token: "y" } })); Stamina.tokens = null; Stamina.data = null;
@@ -440,7 +448,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
         }
       }
       /* Behaviour 4: the home keeps the newest 3 receipts + 「查看全部 ›」; the pushed page groups by day */
-      if (sec("page")) { const secs = [...document.querySelectorAll("#app > section")].filter((s) => /机器最近的回执/.test((s.querySelector("h2") || {}).textContent || ""));
+      if (sec("page", { layer: "release-only" })) { const secs = [...document.querySelectorAll("#app > section")].filter((s) => /机器最近的回执/.test((s.querySelector("h2") || {}).textContent || ""));
         const sec = secs[0], rows = sec ? sec.querySelectorAll(".row:not(.nav)") : [], more = sec && sec.querySelector('.row.nav[data-page="receipts"]');
         if (sec) {
           check("首页回执最多 3 条 + 「查看全部 ›」（AX-13 显示所有健康数据 ›）", "≤3 + 查看全部", `${rows.length} + ${more ? "查看全部 " + more.querySelector(".val").textContent : "-"}`, rows.length <= 3 && (!more || rows.length === 3));
@@ -464,7 +472,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
       const thisShift = (name) => { const sec = [...document.querySelectorAll("#app section")].find((x) => ((x.querySelector("h2") || {}).textContent || "").trim() === "这一趟"); return !!sec && [...sec.querySelectorAll(".row label")].some((l) => l.textContent.includes(name + " · ")); };
       /* count page renders synchronously (a MutationObserver fires a microtask later than the same-tick assertions need) */
       let renders = 0; const origRender = window.render; window.render = function () { renders++; return origRender.apply(this, arguments); };
-      if (sec("segctl") && q()) {
+      if (sec("segctl", { layer: "timing" }) && q()) {
         const start = onText();
         /* §1 G15: touch-down on the unselected segment - value, lens and content unchanged; its label dims towards .2 over .43 s */
         let seg = q(), other = bs().find((b) => !b.classList.contains("on")), want = other.textContent, i0 = seg.style.getPropertyValue("--i");
@@ -487,7 +495,10 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
           const ops = ghosts.map((g) => parseFloat(getComputedStyle(g).opacity));
           check("R20c 换值 +100 ms：换了的两段各两张标签位图叠淡（.segx 4 张，旧淡出 / 新淡入途中 0 < α < 1）、过渡 .2 s cubic-bezier(.25,.1,.25,1)、真字暂透明", "4 ghosts mid-fade · .2s bezier · transparent", `${ghosts.length} ghosts α ${ops.map((o) => o.toFixed(2)).join("/")} · ${cg ? cg.transitionDuration + " " + cg.transitionTimingFunction : "-"} · color ${onB ? getComputedStyle(onB).color : "-"}`, ghosts.length === 4 && ops.every((o) => o > 0.02 && o < 0.98) && !!cg && parseFloat(cg.transitionDuration) === 0.2 && /0\.25, 0\.1, 0\.25, 1/.test(cg.transitionTimingFunction) && !!onB && getComputedStyle(onB).color === "rgba(0, 0, 0, 0)");
           /* the +260 ms state is captured by a timer (the rows below keep their own timing) and judged after the +476 row */
-          window.__r20cLater = new Promise((res) => setTimeout(() => { const onB2 = bs().find((b) => b.classList.contains("on")); res({ left: q().querySelectorAll(".segx").length, color: onB2 ? getComputedStyle(onB2).color : "-", weight: onB2 ? getComputedStyle(onB2).fontWeight : "-" }); }, 160)); }
+          window.__r20cLater = new Promise((res) => setTimeout(async () => { const onB2 = bs().find((b) => b.classList.contains("on")); let late = 0;
+            const anims = onB2 && onB2.getAnimations ? onB2.getAnimations() : [];   // S1 / A16 (red once under load: weight 499.75 at the wall-clock +260): a still-running weight / colour transition of the label is waited to its own end
+            if (anims.length) { const t0 = performance.now(); try { await Promise.all(anims.map((a) => a.finished)); } catch (e) {} late = Math.round(performance.now() - t0); }
+            res({ left: q().querySelectorAll(".segx").length, color: onB2 ? getComputedStyle(onB2).color : "-", weight: onB2 ? getComputedStyle(onB2).fontWeight : "-", late }); }, 160)); }
         { const gone = document.querySelectorAll(".flipgone"), moved = [...document.querySelectorAll("#app > section")].filter((s) => /translateY\((-?[\d.]+)px\)/.test(s.style.transform) && Math.abs(parseFloat(s.style.transform.match(/translateY\((-?[\d.]+)px\)/)[1])) > 20);
           const elF = performance.now() - t0, wantF = tabAt(FLIP_DEL_FADE, elF);   // the switch is at the up itself now: the clone's opacity read against view.js's §1 table at the actual elapsed time
           check("分段 B3 换值后 +100 ms：卡片内容已换（renders+1）；删的行原地克隆在淡出途中（起 .72，+193 到 .04，切换即抬手：按实际时刻查 FLIP_DEL_FADE ± .15，一帧 rAF 步进的滞后）、下方内容仍从原位（+行高）上滑（seg-value-change-content.md §0/§1，采样）", `clone ${wantF.toFixed(2)} ± .15 @ ${elF.toFixed(0)} ms · sections offset`, `${gone.length} clones ${gone.length ? cs(gone[0]).opacity : "-"} · ${moved.length} sections offset ${moved.length ? moved[0].style.transform : "-"}`, gone.length > 0 && Math.abs(parseFloat(cs(gone[0]).opacity) - wantF) <= .15 && moved.length > 0); }
@@ -512,7 +523,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
           const segW = (sr.width / bs().length - 4), pos = (lr.left + lr.width / 2 - sr.left - 2 - segW / 2) / segW;   // centre-based in segment units (the lens now moves by `left`, its width breathes)
           num("分段 G1 抬手 +556 ms：透镜在目标外过冲途中（原生 seg-native-tap-frames.json up+.553 中心 307.55 → 行程 1.038；换值弹簧 ζ.85/.4 + flex 漂移）", 1.038, (pos - fromI) / (toI - fromI), 0.05); }
         check("分段 B3 +476 ms：内容过渡收尾（+400 到位 → 克隆移除、transform / opacity 内联清空）", "clean", `${document.querySelectorAll(".flipgone").length} clones · ${[...document.querySelectorAll("#app > section, #app .row")].filter((e) => e.style.transform || e.style.opacity).length} inline`, !document.querySelectorAll(".flipgone").length && ![...document.querySelectorAll("#app > section, #app .row")].some((e) => e.style.transform || e.style.opacity));
-        { const L = await window.__r20cLater; check("R20c 换值 +260 ms：位图已撤、真字恢复（颜色非透明、字重 = 选中 .on 的 medium）", "0 ghosts · real text", `${L.left} ghosts · color ${L.color} · weight ${L.weight}`, L.left === 0 && L.color !== "rgba(0, 0, 0, 0)" && parseInt(L.weight) >= 500); }
+        { const L = await window.__r20cLater; check("R20c 换值 +260 ms：位图已撤、真字恢复（颜色非透明、字重 = 选中 .on 的 medium；真字自己的过渡未完则等它结束，报多等的 ms）", "0 ghosts · real text", `${L.left} ghosts · color ${L.color} · weight ${L.weight}${L.late ? " · waited +" + L.late + " ms" : ""}`, L.left === 0 && L.color !== "rgba(0, 0, 0, 0)" && parseInt(L.weight) >= 500); }
         await segRest(800);   // S1: the lens loop's own "done" (≤ the old 800)
         /* §1 G4/G16: touch-down on the selected segment lifts the lens after ~100 ms (196×28 → 220×44), no event */
         seg = q(); let sel = bs().find((b) => b.classList.contains("on")), unsel = bs().find((b) => !b.classList.contains("on"));
@@ -690,13 +701,13 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
       }
       /* 验收 09-19 18:0x: with the page unscrolled, the ask() dialog opened from the 停止一切 tile must show its title (the dialog is overflow:clip — not a scroll
          container — and ask() resets scrollTop; before: .pane's −60 inset gave 60 px of scrollable overflow and the title scrolled out of the box) */
-      if (sec("alert")) { const tile = document.querySelector("#estop"), dlg = document.querySelector("#alert");
+      if (sec("alert", { layer: "timing" })) { const tile = document.querySelector("#estop"), dlg = document.querySelector("#alert");
         if (tile && dlg && !dlg.open) { scrollTo(0, 0); await sleep(100); tile.click(); await sleep(700);
           const dr = dlg.getBoundingClientRect(), tr = dlg.querySelector("#alert-t").getBoundingClientRect(); dlg.scrollTop = 60; const st = dlg.scrollTop;
           check("顶部未滚动时点磁贴弹窗：标题在弹窗盒内（盒顶 ≤ 标题顶，标题有高度）、弹窗不可滚（overflow clip，scrollTop 设 60 读回 0）", "title inside · scrollTop 0", `open ${dlg.open} · box ${Math.round(dr.top)}…${Math.round(dr.bottom)} title ${Math.round(tr.top)}…${Math.round(tr.bottom)} "${dlg.querySelector("#alert-t").textContent}" · scrollTop ${st} · overflow ${getComputedStyle(dlg).overflow}`, dlg.open && tr.height > 10 && tr.top >= dr.top - 0.5 && tr.bottom <= dr.bottom + 0.5 && st === 0);
           const cancel = dlg.querySelector("#alert-cancel"); if (cancel) cancel.click(); await sleep(600); } }
       /* 数据终核 181053 ⑤1/3: with the keyboard up (visual viewport > 120 px shorter) the tab capsule is hidden (html.kbd), and comes back when it closes */
-      if (sec("tabbar")) { const nav0 = document.querySelector("nav.tabs"), on = window.__tabKbd && window.__tabKbd(innerHeight - 300), hid = nav0 ? getComputedStyle(nav0).display : "-";
+      if (sec("tabbar", { layer: "timing" })) { const nav0 = document.querySelector("nav.tabs"), on = window.__tabKbd && window.__tabKbd(innerHeight - 300), hid = nav0 ? getComputedStyle(nav0).display : "-";
         const off = window.__tabKbd && window.__tabKbd(null), shown = nav0 ? getComputedStyle(nav0).display : "-", nb = nav0 ? nav0.getBoundingClientRect() : null;
         check("键盘弹出（视口矮 300）时底部标签胶囊藏起（html.kbd → display none），收起后回到屏底（原生 tab bar 被键盘盖住，不浮到键盘上）", "kbd hidden → shown at bottom", `kbd ${on} ${hid} → ${off} ${shown} bottom gap ${nb ? Math.round(innerHeight - nb.bottom) : "-"}`, on === true && hid === "none" && off === false && shown !== "none" && !!nb && innerHeight - nb.bottom >= 0 && innerHeight - nb.bottom < 120);
         const fi = document.querySelector("input[data-time]") || document.querySelector('#app input[type="text"]');
@@ -708,7 +719,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
           check("键盘露出 300 px 时聚焦的字段滚进可见区中央（visualViewport resize 后下一帧 scrollBy 到可见区中心；190821 首次聚焦字段留在键盘下）", "field inside 0…300", `top ${Math.round(r0)} → ${Math.round(r1.top)}…${Math.round(r1.bottom)} · scrolled ${did}`, hasF ? (did === true && inside) : true); } }
       /* 监督局 19:4x: keyboard state = viewport evidence only. Android shrinks innerHeight itself (vv.height = innerHeight): H0 − innerHeight > 120 hides; the
          viewport recovering shows — with a text field focused the whole time (the keyboard may go without a blur: iOS tap on the segments, Android back key) */
-      if (sec("tabbar")) { const fi2 = document.querySelector("input[data-time]"), nv2 = document.querySelector("nav.tabs");
+      if (sec("tabbar", { layer: "timing" })) { const fi2 = document.querySelector("input[data-time]"), nv2 = document.querySelector("nav.tabs");
         if (fi2 && nv2) { fi2.focus({ preventScroll: true }); const a1 = window.__tabKbd(innerHeight - 300, innerHeight - 300), d1 = getComputedStyle(nv2).display;
           const a2 = window.__tabKbd(null), d2 = getComputedStyle(nv2).display; const a3 = window.__tabKbd(innerHeight - 300), d3 = getComputedStyle(nv2).display; const a4 = window.__tabKbd(null), d4 = getComputedStyle(nv2).display; fi2.blur();
           check("键盘只信视口：安卓式 innerHeight 缩 300（H0 基线）→ 藏，回高 → 放回；iOS 式 vv 缩 300 → 藏，回高 → 放回；全程字段保持聚焦（不经失焦收键盘也放回）", "hidden shown hidden shown", `${a1} ${d1} · ${a2} ${d2} · ${a3} ${d3} · ${a4} ${d4}`, a1 === true && d1 === "none" && a2 === false && d2 !== "none" && a3 === true && d3 === "none" && a4 === false && d4 !== "none"); } }
@@ -716,7 +727,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
          (0, 873, 440, 83), alpha 1) — the keyboard window simply covers it and slides away in .3833 s. The page hides the capsule while the viewport is short
          (browsers float fixed elements above the keyboard); the equivalence to check: when the keyboard goes, the capsule is back in the very same rect, the same
          nodes, without any transition — within one frame */
-      if (sec("tabbar")) { const nv3 = document.querySelector("nav.tabs");
+      if (sec("tabbar", { layer: "timing" })) { const nv3 = document.querySelector("nav.tabs");
         if (nv3) { const r0 = nv3.getBoundingClientRect(), plat0 = nv3.querySelector(":scope > .plat"), gl0 = nv3.querySelector(":scope > .glide");
           window.__tabKbd(innerHeight - 300); const hidden = getComputedStyle(nv3).display === "none"; window.__tabKbd(null); await new Promise(requestAnimationFrame);
           const r1 = nv3.getBoundingClientRect(), same = Math.abs(r1.top - r0.top) < 0.01 && Math.abs(r1.left - r0.left) < 0.01 && Math.abs(r1.width - r0.width) < 0.01 && Math.abs(r1.height - r0.height) < 0.01, nodes = plat0 === nv3.querySelector(":scope > .plat") && gl0 === nv3.querySelector(":scope > .glide");
@@ -724,20 +735,20 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
           check("R28′ 键盘收起后胶囊原位原样：视口回高后下一帧 rect 与键盘前逐项相同（±.01）、.plat/.glide 同一节点、nav 无位置/透明度过渡（原生 R28：标签栏全程一帧不动，只是被键盘盖住）", "hidden → same rect · same nodes · no transition", `hidden ${hidden} · same ${same} · nodes ${nodes} · transition ${tr} ${getComputedStyle(nv3).transitionDuration}`, hidden && same && nodes && trOK); } }
       /* 监督局 19:3x: a segment tap must not flash — the buttons carry no tap highlight and no pointer focus ring (unchanged since 181053), and a render must not
          rebuild the tab bar's nodes (the platter's backdrop-filter layer / glide / buttons stay the same elements) */
-      if (sec("segctl", "tabbar")) { const sb = document.querySelector("#queueseg button"), nv = document.querySelector("nav.tabs"), plat0 = nv && nv.querySelector(".plat"), gl0 = nv && nv.querySelector(".glide"), b0 = nv && nv.querySelector(".seg > button");
+      if (sec("segctl", "tabbar", { layer: "timing" })) { const sb = document.querySelector("#queueseg button"), nv = document.querySelector("nav.tabs"), plat0 = nv && nv.querySelector(".plat"), gl0 = nv && nv.querySelector(".glide"), b0 = nv && nv.querySelector(".seg > button");
         const th = sb ? getComputedStyle(sb).webkitTapHighlightColor : "-", fv = sb ? sb.matches(":focus-visible") : null;
         window.render(); await sleep(50); window.render(); await sleep(50);
         const same = nv && plat0 === nv.querySelector(".plat") && gl0 === nv.querySelector(".glide") && b0 === nv.querySelector(".seg > button");
         check("分段按钮无点按高亮（-webkit-tap-highlight-color transparent，index.html:82）、无指针焦点环（:focus-visible 不匹配）；重画两次后标签栏节点不重建（.plat / .glide / 按钮同一元素）", "transparent · no ring · same nodes", `${th} · focus-visible ${fv} · nodes ${same ? "same" : "REBUILT"}`, /rgba\(0, 0, 0, 0\)|transparent/.test(th) && fv === false && same === true); }
       /* 数据终核 181053 ⑤2: the 刷到几点 input takes HH:MM only — 08:930 rolls back to the last valid value, nothing enters the pending edits */
-      if (sec("page")) { const ti = document.querySelector("input[data-time]");
+      if (sec("page", { layer: "release-only" })) { const ti = document.querySelector("input[data-time]");
         if (ti) { const before = ti.value, n0 = Object.keys(edits).length; ti.value = "08:930"; ti.dispatchEvent(new Event("change", { bubbles: true })); const back = ti.value;
           ti.value = "9:05"; ti.dispatchEvent(new Event("change", { bubbles: true })); const norm = ti.value; ti.value = before; ti.dispatchEvent(new Event("change", { bubbles: true }));
           check("时间输入只收 HH:MM：08:930 回滚成原值、9:05 规整成 09:05、待保存数不变", `${before} · 09:05 · edits ${n0}`, `${back} · ${norm} · edits ${Object.keys(edits).length}`, back === before && norm === "09:05" && Object.keys(edits).length === n0); }
         else check("时间输入只收 HH:MM（页面上此刻没有 data-time 输入框：刷声骸块未渲染，不核）", "-", "no input", true); }
       /* 验收 09-19 18:0x: view.js arriving 3 s late (slow network) must not throw in live.js's timers / events (window.__viewReady gate): the page in an iframe with
          ?viewdelay=5500 (live.js's 5 s updateLive tick fires first), its error / unhandledrejection events counted for 7 s */
-      if (sec("page")) { const fr = document.createElement("iframe"); fr.style.cssText = "position:fixed;left:-2000px;top:0;width:440px;height:956px;opacity:0;pointer-events:none"; fr.src = "index.html?demo=1&viewdelay=5500";
+      if (sec("page", { layer: "release-only" })) { const fr = document.createElement("iframe"); fr.style.cssText = "position:fixed;left:-2000px;top:0;width:440px;height:956px;opacity:0;pointer-events:none"; fr.src = "index.html?demo=1&viewdelay=5500";
         const errs = []; document.body.appendChild(fr);
         await new Promise((r) => { fr.onload = r; setTimeout(r, 3000); });
         try { fr.contentWindow.addEventListener("error", (e) => errs.push(String(e.message || e.error || e))); fr.contentWindow.addEventListener("unhandledrejection", (e) => errs.push("rejection " + String(e.reason))); } catch (e) { errs.push("no access " + e); }
@@ -747,7 +758,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
         fr.remove(); }
       /* §2 UITabBar */
       const nav = document.querySelector("nav.tabs:not([hidden])"), tseg = nav && nav.querySelector(".seg"), tbs = nav ? [...nav.querySelectorAll(".seg button")] : [];
-      if (sec("tabbar") && nav && tbs.length > 1) {
+      if (sec("tabbar", { layer: "timing" }) && nav && tbs.length > 1) {
         const tOn = () => (nav.querySelector(".seg button.on") || {}).dataset.tab, g = nav.querySelector(".glide"), startTab = tOn();
         const other = tbs.find((b) => !b.classList.contains("on")), cur = tbs.find((b) => b.classList.contains("on"));
         const shown = () => [...document.querySelectorAll("#app > section:not([hidden])")].map((x) => x.dataset.tab).filter((v, i, a) => a.indexOf(v) === i).join(",");
@@ -850,7 +861,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
         }
       }
       /* §4 UIButton on a synthetic tile; alert action on a synthetic open dialog */
-      if (sec("tile")) {
+      if (sec("tile", { layer: "timing", dark: true })) {   // tile press (colours)
       const bLab = document.createElement("div"); bLab.style.cssText = "position:fixed;left:20px;top:300px;z-index:99;opacity:0";
       bLab.innerHTML = `<div class="group tiles"><button type="button" class="tile"><span class="ttitle">x</span></button></div>`; document.body.appendChild(bLab);
       const tile = bLab.querySelector(".tile"); let clicks = 0; tile.addEventListener("click", () => clicks++);
@@ -889,7 +900,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
       /* §5 B14 UITableViewCell press (remote-ref/cell-native.md §0 probe originals, state-tables/cell.md C*) on a synthetic .row.nav and an
          action row inside a .group, through controls.js. Colours: --ios-cell-highlight light (209,209,214) / dark (58,58,60); the fade
          .5 s cubic-bezier(.42,0,.58,1) checked against the curve at the sampled instant (the same easeInOut UIView used). */
-      if (sec("cell")) {
+      if (sec("cell", { layer: "timing", dark: true })) {   // cell press colours (the rest-colour row after a theme change included)
       const rLab = document.createElement("div"); rLab.style.cssText = "position:fixed;left:20px;top:500px;width:400px;z-index:99;opacity:0";
       rLab.innerHTML = `<div class="group"><div class="row nav"><label>上一行</label><span class="val">值</span><i class="sf chev"></i></div><div class="row nav"><label>行</label><span class="val">值</span><i class="sf chev"></i></div><div class="acts"><button type="button">蓝字行</button></div></div>`;
       document.body.appendChild(rLab);
@@ -988,7 +999,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
         document.dispatchEvent(new Event("visibilitychange")); }   // the strip on hide runs without error (a hidden page cannot be simulated here)
       rLab.remove(); }
       /* the page's own action rows must not block the main thread: no synchronous confirm() left in view.js except ask()'s no-dialog fallback */
-      if (sec("page")) {
+      if (sec("page", { layer: "release-only" })) {
       try { const src = await (await fetch("view.js?v=" + Date.now())).text(); const n = (src.match(/\bconfirm\(/g) || []).length;
         check("行动作不再同步 confirm()（view.js 里只剩 ask() 的无 dialog 兜底那一处）", 1, n, n === 1); } catch (e) { check("行动作不再同步 confirm()", 1, "读不到 view.js", false); }
       }
@@ -997,7 +1008,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
       const fails = rows.filter((r) => !r.ok).length;
       const out = { at: new Date().toISOString(), href: location.href, viewport: `${innerWidth}×${innerHeight}`,
                     standalone: matchMedia("(display-mode: standalone)").matches,
-                    dark, only: ONLY ? [...ONLY].join(",") : null, total: rows.length, fails, rows };
+                    dark, only: ONLY ? [...ONLY].join(",") : null, layer: LAYER, dark_only: DARKONLY, total: rows.length, fails, rows };
       try { localStorage.setItem("ark-accept", JSON.stringify(out)); } catch {}
       document.title = `验收 ${rows.length - fails}/${rows.length}`;
       if (!q.has("quiet")) {
@@ -1009,9 +1020,12 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { fn.__file = this.loading |
       }
     };
     const extra = async () => {
-      if (window.ACCEPT) { for (const c of window.ACCEPT.files) { cur = c; if (!window.ACCEPT.loaded.has(c)) await window.ACCEPT.load(c); if (!window.ACCEPT.loaded.has(c)) await window.ACCEPT.load(c);
+      if (window.ACCEPT) { for (const c of window.ACCEPT.files) { cur = c; secOn = true; curLayer = "static"; curSec = null; if (!window.ACCEPT.loaded.has(c)) await window.ACCEPT.load(c); if (!window.ACCEPT.loaded.has(c)) await window.ACCEPT.load(c);
           check(`accept-${c}.js 已加载（动态脚本，丢了会重取两次）`, "已加载", window.ACCEPT.loaded.has(c) ? "已加载" : "缺", window.ACCEPT.loaded.has(c)); } }
-      for (const fn of (window.ACCEPT ? window.ACCEPT.fns : [])) { cur = fn.__file || "core"; try { await fn({ check, num, col, sleep: (ms) => new Promise((r) => setTimeout(r, ms)), settle, raf }); } catch (e) { check("控件检查文件出错 " + (fn.name || ""), "", String(e), false); } } cur = "core"; };
+      for (const fn of (window.ACCEPT ? window.ACCEPT.fns : [])) { const file = fn.__file || "core", fo = fn.__opt || {}; cur = file; curSec = null; curLayer = fo.layer || "static"; secOn = runs(fo);
+        if (!secOn) continue;   // S4: the file's layer is not in this run (release-only under daily / not dark:true under ?theme=dark)
+        try { await fn({ check, num, col, sleep: (ms) => new Promise((r) => setTimeout(r, ms)), settle, raf, sec: secFile(file, fo) }); } catch (e) { secOn = true; check("控件检查文件出错 " + (fn.name || ""), "", String(e), false); } }
+      cur = "core"; secOn = true; curSec = null; };
     interactions().then(extra, (e) => { cur = "core"; check("交互测试脚本出错", "", String(e), false); }).then(finish, (e) => { cur = "core"; check("控件检查出错", "", String(e), false); finish(); });
   }
   /* The page renders after its first snapshot and the number tiles after the game

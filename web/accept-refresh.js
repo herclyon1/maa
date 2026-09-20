@@ -109,5 +109,5 @@
         check("下拉刷新 R5 位置与色：指示器中心 = 安全区顶 + 栏 54 + 30（控件 60 高的中心）、臂色 = --ios-refresh-arm（R61′ 合成色）", `cy ${Math.round(sat + navH + 30)} · ${tokRgb}`, `cy ${cy.toFixed(1)} · ${c0.backgroundColor}`, Math.abs(cy - (sat + navH + 30)) < 0.6 && c0.backgroundColor === tokRgb);
         R.__drive({ down: false }); await new Promise(requestAnimationFrame); }
     } finally { R.onRefresh = null; R.reset(); }
-  });
+  }, { layer: "timing", dark: true });   // S4 file-level layer tags (S4-tags.md (e))
 })();
