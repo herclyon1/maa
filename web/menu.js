@@ -52,7 +52,8 @@
          (58.45 / .5 light .8 dark, the SDF-distance bleed of alert-pipeline-plan §1.3 variant e), BlurFill (8, lighten .9 / darken .9, normal .5:
          formula not read), FaceColorMatrixMaxLuma (1 / .35: formula not read). */
   const GLASS_KEYS = {
-    light: { BlurRadius: 5, BlurDistance0: -83.5, BlurDistance1: -1, BlurDistance2: 0, BlurDistance3: 0, BlurOpacity0: 0.8, BlurOpacity1: 0.4, BlurOpacity2: 0.5, BlurOpacity3: 1, BlurFillBlurRadius: 8, BlurFillDarkenOpacity: 0, BlurFillLightenOpacity: 0.9, BlurFillNormalOpacity: 0.5,
+    light: { GradientOvalization: 0.5,   // 数据 R109: the menu's glass elements' gradientOvalization (materials[13]/[14] and the elements under the LensingSDFLayer) = .5 (alert-native-formula §4 ⑨: the gradient only)
+      BlurRadius: 5, BlurDistance0: -83.5, BlurDistance1: -1, BlurDistance2: 0, BlurDistance3: 0, BlurOpacity0: 0.8, BlurOpacity1: 0.4, BlurOpacity2: 0.5, BlurOpacity3: 1, BlurFillBlurRadius: 8, BlurFillDarkenOpacity: 0, BlurFillLightenOpacity: 0.9, BlurFillNormalOpacity: 0.5,
       FaceColorMatrixWhite: 1.03, FaceColorMatrixBlack: 0.4, FaceColorMatrixSaturation: 1.2, FaceColorMatrixFillColor: [1, 1, 1, 0.2], FaceColorMatrixMaxLuma: 1, FaceColorMatrixMaxLumaSDR: 0.94, FaceOpacity: 1, Clamp: 1.07, ClampPreserveHue: 0,
       InnerRefractionAmount: -60, InnerRefractionHeight: 20, OuterRefractionAmount: 41.75, OuterRefractionHeight: 33.4, RefractionOpacity: 0.6, RefractionDistance0: -1, RefractionDistance1: 0,
       KeyFillHighlightAmount: 0.4, KeyFillHighlightAngle: 1.571, KeyFillHighlightColorBias: -0.3, KeyFillHighlightEffectOffset: -0.5333, KeyFillHighlightHeight: 0.5333, KeyFillHighlightSpread: 1.676, KeyFillHighlightSpreadSDR: 1.85,
@@ -68,7 +69,8 @@
   Object.assign(BUILT, { "FaceColorMatrixWhite/Black/Saturation": "feColorMatrix = YCC⁻¹·D·YCC (Rec.709, menu-card-material §7.1)", FaceColorMatrixMaxLumaSDR: "the pre-compression k = sat(1 − Y·(1 − MaxLumaSDR)), c′ = c·k + .3(1 − k)(c·k − Y·k) (§7.1) as c·A(Y) − B(Y): two luma LUTs, α kept 1 (R57′)", "BlurFillBlurRadius/Darken/Lighten/Normal": "b = the unrefracted capture at mip 3 (level std 9.581 → σ 38.32 pt) sampled at ±.75 mip texels (±24 pt) and averaged, then darken / lighten blends + arithmetic mixes on the refracted c (§7.2 / §7c, R63′)", "ShadowOpacity/Radius/Offset/ColorMatrixFillColor": "drop-shadow 0 8 24 rgba(0,0,0,.3 × opacity) on the panel (§7.3; 剖面近似)" });
   const UNBUILT = { "BlurDistance*/BlurOpacity*": "the rim's blur reduction (three-stage r(d)): 待做 with the level-mix construction of topbar.js R3″ (not in R63)", "FaceColorMatrixMaxLuma (EDR)": "SDR screen: MaxLumaSDR used (k_EDR 0, §7.1)",
  "ShadowColorMatrixWhite/Black/Saturation": "待读: how the four shadow colour keys enter set_ycc_composite (§7.3)", "Bleed capture edge": "近似: the capture box (panel ± marginWidth 58.45 (R84), clamped to the copy) tiled and blurred σ 100 = its mean; native clamp_to_edge replicates the edge column instead (R57′)" };
-  Object.assign(BUILT, { "KeyFillHighlight* (in-shader, stroke_mode 1)": "R63′: keyfill-highlight §2c — the band outside the shape (edge − fw/2 … edge + .5333), k per pixel from the SDF normal and SpreadSDR, colour B″ = mix(B, min(face(B), B), k)·(1 + ColorBias·k·(3 − 2B″)) on a second page copy in its own layer (#menu-stroke-f); at rest only",
+  Object.assign(BUILT, { GradientOvalization: "R63″: .5 (数据 R109) — g = normalize(mix(shape normal, normalize((x, hw/hh·y)), .5)) on the refraction / bleed maps and the highlight / stroke n·dir (alert-native-formula §4 ⑨)",
+    "KeyFillHighlight* (in-shader, stroke_mode 1)": "R63′: keyfill-highlight §2c — the band outside the shape (edge − fw/2 … edge + .5333), k per pixel from the SDF normal and SpreadSDR, colour B″ = mix(B, min(face(B), B), k)·(1 + ColorBias·k·(3 − 2B″)) on a second page copy in its own layer (#menu-stroke-f); at rest only",
     "InnerRefraction*/OuterRefraction*/RefractionOpacity/RefractionDistance*": "R63: two feDisplacementMaps (maps from the supercircle SDF, formula §3 uv1/uv2) mixed by .6·sat((d + 1)/1)", "Bleed*": "R63 / R57′: the capture box's mean (feTile + σ 100 blur; lod 5.87 ≈ a 128-pt texel) displaced outward 58.45·Dc through the bleed YCC matrix, weight Opacity·w(d)·(luma or 1 − luma)⁴ as one 65-sample LUT (alert-native-formula §4 ⑦)", "highlight layer (menu-glass-sdfdump §3)": "R63: the KeyFill bands (main + diffuse, spread 1.5253) through the dumped vibrantColorMatrix, two stages" });
   const glassTheme = () => (matchMedia("(prefers-color-scheme: dark)").matches && document.documentElement.dataset.theme !== "light") || document.documentElement.dataset.theme === "dark" ? "dark" : "light";
   const glassKeys = (theme) => ({ ...GLASS_KEYS.light, ...(theme === "dark" ? GLASS_KEYS.dark : {}) });
@@ -113,6 +115,9 @@
        (0x1c3a68418–0x1c3a68444) — the stroke-mode branch is unread; the documented band is stroke_mode 0's → 待读, not built (UNBUILT). */
   const KR = 1.528665, satf = (x) => Math.max(0, Math.min(1, x));
   const scPoly = (rho) => (((-0.926054 * rho + 3.15601) * rho - 3.64122) * rho + 1.26803) * rho + 0.268531;
+  /* R63″ (数据 R109: gradientOvalization .5; alert-native-formula §4 ⑨ R83): g = normalize(mix(g_shape, normalize((x, (hw/hh)·y)), o)) — the gradient only, d untouched; the refraction / bleed
+     map directions and the highlight / stroke n·dir turn towards the centre along the long edges */
+  const gOval = (x, y, hw, hh, gx, gy, o) => { if (!(o > 0)) return [gx, gy]; const rx = x, ry = (hw / hh) * y, rn = Math.hypot(rx, ry) || 1; const mx = gx + (rx / rn - gx) * o, my = gy + (ry / rn - gy) * o, mn = Math.hypot(mx, my) || 1; return [mx / mn, my / mn]; };
   const sdfSuper = (x, y, hw, hh, r) => { const R = KR * r; const cx = Math.abs(x) - hw, cy = Math.abs(y) - hh; const qx = cx + R, qy = cy + R;
     const ux = Math.max(0, qx / R), uy = Math.max(0, qy / R); const umax = Math.max(ux, uy); const rho = umax > 0 ? Math.min(ux, uy) / umax : 0; const ul = Math.hypot(ux, uy);
     const kk = rho * rho * satf(ul) * scPoly(rho); const f = ul + 1 - 1 / (1 - kk); const d = R * (f - 1) + Math.min(Math.max(qx, qy), 0);
@@ -130,7 +135,7 @@
     const mk = () => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; }; const cin = mk(), cout = mk(), chl = mk(), chl2 = mk(), cbl = mk();
     const iin = cin.getContext("2d").createImageData(w, h), iout = cout.getContext("2d").createImageData(w, h), ihl = chl.getContext("2d").createImageData(w, h), ihl2 = chl2.getContext("2d").createImageData(w, h), ibl = cbl.getContext("2d").createImageData(w, h);
     const cosK = Math.cos(HLK.spread), cosD = Math.cos(HLK.diffuseSpreadScale * HLK.spread), biasD = 1 / (HLK.diffuseAmountScale * HLK.amount) - 2, hD = HLK.diffuseHeightScale * HLK.height, fw = 1 / 3;
-    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const x = (i + 0.5) / PXG - hw, y = (j + 0.5) / PXG - hh; const [d, gx, gy] = sdfSuper(x, y, hw, hh, r); const o = (j * w + i) * 4;
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const x = (i + 0.5) / PXG - hw, y = (j + 0.5) / PXG - hh; const [d, gsx, gsy] = sdfSuper(x, y, hw, hh, r); const [gx, gy] = gOval(x, y, hw, hh, gsx, gsy, k.GradientOvalization); const o = (j * w + i) * 4;   // R63″: the ovalized gradient drives the directions
       const di = k.InnerRefractionAmount * Dc(satf(-d / k.InnerRefractionHeight)), dout = k.OuterRefractionAmount * Dc(satf(-d / k.OuterRefractionHeight));
       const wr = Math.round(255 * k.RefractionOpacity * satf((d - k.RefractionDistance0) / (k.RefractionDistance1 - k.RefractionDistance0)));
       iin.data[o] = Math.round(128 + di * gx * 255 / MAPS); iin.data[o + 1] = Math.round(128 + di * gy * 255 / MAPS); iin.data[o + 2] = wr; iin.data[o + 3] = 255;
@@ -240,7 +245,7 @@
      the rest box when the full chain comes on (settled), removed for the morph and at close (形变期间无描边: 记录). */
   const strokeMap = (W, H, r, k, dpr) => { const E = 3, S = Math.cos(k.KeyFillHighlightSpreadSDR), a = 1 / k.KeyFillHighlightAmount - 2, h = k.KeyFillHighlightHeight, fw = 1 / dpr, dir = [Math.sin(k.KeyFillHighlightAngle), -Math.cos(k.KeyFillHighlightAngle)];
     const w = Math.round((W + 2 * E) * dpr), hh = Math.round((H + 2 * E) * dpr), c = document.createElement("canvas"); c.width = w; c.height = hh; const ctx = c.getContext("2d"), id = ctx.createImageData(w, hh); let kmax = 0, kside = 0, ktop = 0;
-    for (let j = 0; j < hh; j++) for (let i = 0; i < w; i++) { const x = (i + .5) / dpr - E - W / 2, y = (j + .5) / dpr - E - H / 2; const [d, gx, gy] = sdfSuper(x, y, W / 2, H / 2, r); const o = (j * w + i) * 4; let kk = 0;
+    for (let j = 0; j < hh; j++) for (let i = 0; i < w; i++) { const x = (i + .5) / dpr - E - W / 2, y = (j + .5) / dpr - E - H / 2; const [d, gsx, gsy] = sdfSuper(x, y, W / 2, H / 2, r); const [gx, gy] = gOval(x, y, W / 2, H / 2, gsx, gsy, k.GradientOvalization); const o = (j * w + i) * 4; let kk = 0;   // R63″: n·dir on the ovalized normal
       const cov = satf(0.5 - d / fw);
       if (!(d - h >= fw / 2 || cov >= 1)) { const e = h - d, v = (1 - cov) * satf(e / fw + 0.5), nd = gx * dir[0] + gy * dir[1];
         for (const sgn of [1, -1]) { const ang = satf((sgn * nd - S) / (1 - S)), va = v * ang; kk += va / (1 + a * (1 - va)); } kk = Math.min(1, kk); }
@@ -316,6 +321,6 @@
   /* hidden strips the state at once (BOARD A6 template): nothing animates while the page is away and a half-open menu must not come back */
   const onHidden = (force) => { if (force || document.hidden) strip(); };
   document.addEventListener("visibilitychange", () => onHidden(false));
-  window.Menu = { glass: { keys: glassKeys, built: BUILT, unbuilt: UNBUILT, theme: glassTheme, bleedSigma: () => mixStd(lod(glassKeys(glassTheme()).BleedBlurRadius)) / CAPTURE, images: glassImages }, morph: MORPH, springs: { appear: [...APPEAR], dismiss: [...DISMISS], reduce: [...REDUCE] }, open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0, t: cur.t || 0, frame: cur.frame || 0,
+  window.Menu = { glass: { keys: glassKeys, built: BUILT, unbuilt: UNBUILT, gOval, sdf: sdfSuper, theme: glassTheme, bleedSigma: () => mixStd(lod(glassKeys(glassTheme()).BleedBlurRadius)) / CAPTURE, images: glassImages }, morph: MORPH, springs: { appear: [...APPEAR], dismiss: [...DISMISS], reduce: [...REDUCE] }, open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0, t: cur.t || 0, frame: cur.frame || 0,
     x: { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, a: cur.s.a.x } } : null };
 })();
