@@ -88,7 +88,14 @@
     return { gl: true, lift: seg.classList.contains("lift"), lens_bg: lens ? getComputedStyle(lens).backgroundColor : null, frames: fr, tick: ((drew ? "drew" : "") + (req && !(req.lift > 0) ? (drew ? "+clear" : "clear") : "")) || "none", lift_req: req ? round(req.lift, 4) : null }; };
   const tabReading = () => { const nav = document.querySelector("nav.tabs"); if (!nav) return null; const r = nav.getBoundingClientRect(), cs = getComputedStyle(nav), plat = nav.querySelector(".plat"), glide = nav.querySelector(".glide"), gr = glide && glide.getBoundingClientRect();
     const same = plat === lastPlat; lastPlat = plat;
-    return { top: round(r.top), h: round(r.height), display: cs.display, opacity: num(cs.opacity, 1), transform: cs.transform === "none" ? "none" : cs.transform.slice(0, 60), plat_same: same, glide: gr ? [round(gr.left), round(gr.width), round(gr.top)] : null, glide_lift: !!(glide && glide.classList.contains("lift")), kbd: document.documentElement.classList.contains("kbd") }; };
+    /* #15 (2号, 2026-09-20): the tab-lens driver's own state per frame — window.__tabLens (phase / p / x / target / frame, null when the loop is off), the classes it sets (tl-on / drag),
+       its finger record (__tabLensFinger: down / x / moved / a), why it last stopped (__tabLensStop), the last down it saw (__tabLensRM), any error (__tabLensErr) — so a device record
+       says whether the pointer events reached the driver and what it did with them */
+    const tl = window.__tabLens, fg = window.__tabLensFinger, stp = window.__tabLensStop, rmd = window.__tabLensRM;
+    return { top: round(r.top), h: round(r.height), display: cs.display, opacity: num(cs.opacity, 1), transform: cs.transform === "none" ? "none" : cs.transform.slice(0, 60), plat_same: same, glide: gr ? [round(gr.left), round(gr.width), round(gr.top)] : null, glide_lift: !!(glide && glide.classList.contains("lift")), glide_liftsel: !!(glide && glide.classList.contains("lift-sel")), kbd: document.documentElement.classList.contains("kbd"),
+      tl_on: nav.classList.contains("tl-on"), drag: nav.classList.contains("drag"), tlens: nav.classList.contains("tlens"), tl_vars: [nav.style.getPropertyValue("--tl-left"), nav.style.getPropertyValue("--tl-w")].join("/"),
+      tl: tl ? { phase: tl.phase, p: round(tl.p, 4), x: round(tl.x, 2), target: round(tl.target, 2), frame: tl.frame, w: round(tl.w, 2), h: round(tl.h, 2), rm: tl.rm } : null,
+      finger: fg ? { down: fg.down, x: fg.x === null ? null : round(fg.x, 1), moved: fg.moved, a: round(fg.a, 3), last: fg.last ? { t: fg.last.t, pt: fg.last.pt, id: fg.last.id, at: round(fg.last.at, 1), target: fg.last.target || null } : null } : null, stop: stp ? { why: stp.why, at: round(stp.at, 1) } : null, down_seen: rmd ? { at: round(rmd.at, 1), started: rmd.started, why: rmd.why || null } : null, err: window.__tabLensErr || null }; };
   const vpReading = () => { const vv = window.visualViewport; const ae = document.activeElement; return { vvh: vv ? round(vv.height) : null, vvt: vv ? round(vv.offsetTop) : null, vvs: vv ? round(vv.scale, 3) : null, ih: innerHeight, ae: ae ? ae.tagName.toLowerCase() + (ae.id ? "#" + ae.id : "") : null }; };
   const vpEvents = []; const vpEvent = (type) => () => { if (vpEvents.length < 400) vpEvents.push({ type, t: performance.now(), ...vpReading() }); };
   addEventListener("resize", vpEvent("resize")); addEventListener("scroll", vpEvent("scroll"), { passive: true });
@@ -166,6 +173,7 @@
       vp_events: vpEvents.filter((e) => e.t >= rec.t_down - 1000 && e.t <= (rec.t_up === null ? rec.t_down : rec.t_up) + MAX_AFTER_UP_MS).map((e) => ({ ...e, t: round(e.t / 1000 - td, 3) })),
       gl_mode: rec.gl_mode, gl_query: new URLSearchParams(location.search).get("gl"),
       ua: navigator.userAgent, page_version: (() => { const t = document.querySelector('script[src^="view.js"]'); const m = t && /v=([0-9]+)/.exec(t.getAttribute("src")); return m ? m[1] : null; })(),
+      tab_lens: (() => { const t = document.querySelector('script[src*="tab-lens.js"]'); return { src: t ? t.getAttribute("src") : null, loaded: !!window.__tabLensStep, mode: window.__tabLensGL ? (window.__tabLensGL() ? "geometry+gl" : "geometry") : null, sw: !!(navigator.serviceWorker && navigator.serviceWorker.controller), rm: matchMedia("(prefers-reduced-motion: reduce)").matches, err: window.__tabLensErr || null }; })(),   // #15: which tab-lens.js the device runs and whether the driver is present
       trigger: q.has("accept") ? "?accept" : q.has("diag") ? "?diag" : q.has("segframes") ? "?segframes" : "localStorage ark-diag" };
     try { localStorage.setItem(KEY, JSON.stringify(out)); } catch {}
     window.__segFrames = out; dispatchEvent(new CustomEvent("segframes", { detail: out }));
