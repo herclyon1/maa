@@ -51,7 +51,7 @@ float darkLineK(float d, vec2 n){ float off = -0.6667, h = 1.0; float e = -(d + 
   const FS1 = `#version 300 es
 ${COMMON}
 in vec2 v; out vec4 o;
-uniform sampler2D t_page, t_lab, m_bg, m_lab, t_ish; uniform vec4 u_page; /* the backdrop region x y w h, page pt */ uniform vec4 u_lens; uniform float u_S; uniform float u_p; uniform float u_pd; uniform vec4 u_platter; uniform float u_srcclip;
+uniform sampler2D t_page, t_lab, m_bg, m_lab, t_ish; uniform float u_lincomp; uniform vec4 u_page; /* the backdrop region x y w h, page pt */ uniform vec4 u_lens; uniform float u_S; uniform float u_p; uniform float u_pd; uniform vec4 u_platter; uniform float u_srcclip;
 uniform float u_labmode; uniform vec2 u_model; uniform vec4 u_lst;   /* R37: 1 = the label field in float (below); u_model = the set's model box (pt); u_lst = the label stages in sampling order (amount, height)×2 */
 /* compute_sdf_with_mode's gradient ovalization (formula §3; gen_lens_maps.py ovalized_gradient): g = normalize(mix(box normal, normalize((x, hw·y/hh)), .5)) — gradientOvalization .5 (seg-lens-refraction.md §1b 表 1 #13 / #19) */
 uniform float u_sdfmode;   /* R38a: 0 = the rounded-box / capsule SDF (gen_lens_maps.py capsule_sdf); 1 = QuartzCore's supercircle branch (below) — opts.labelSdf / ?glsdf=super */
@@ -78,6 +78,8 @@ vec3 lstage(vec2 pm, vec2 hm, float rr, float amount, float height){ float d = e
 vec4 page(vec2 p){ return texture(t_page, (p - u_page.xy) / u_page.zw); }
 vec4 lab(vec2 p){ return texture(t_lab, (p - u_page.xy) / u_page.zw); }
 vec4 over(vec4 s, vec4 d){ return s + d * (1.0 - s.a); }
+vec3 linv(vec3 c){ return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }   /* sRGB → linear (IEC 61966-2-1), R38d */
+vec3 encv(vec3 l){ return mix(l * 12.92, 1.055 * pow(max(l, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055, step(0.0031308, l)); }
 void main(){
   vec2 C = u_lens.xy + u_lens.zw * 0.5, half_ = u_lens.zw * 0.5; float r = min(u_rmax, half_.y);   /* the segment lens: r 22 clamped to h/2 (DestOut cornerRadius stays 22 through the drag) */
   vec2 pl = v - C; float d = sdf(pl, half_, r); vec2 n = nrm(pl, half_, r); float fwd = max(fwidth(d), 1e-4);
@@ -107,7 +109,11 @@ void main(){
     ul = pm * Sc - pl; Bl = B;
   } else { ul = decode(ml.rg, u_S) * u_p; Bl = ml.b; }
   vec2 ql = v + ul; float dl = (u_sdfmode > 0.5 && u_labmode > 0.5) ? sdfSuper((ql - C) / (u_lens.zw / u_model), u_model * 0.5, min(u_rmax, u_model.y * 0.5)).x : sdf(ql - C, half_, r); float Ml = sat(0.5 - dl / max(fwidth(dl), 1e-4));   /* R38a: the portal's clip in the element's shape (model coords in super mode) */
-  vec4 lc = lab(ql) * (u_srcclip > 0.5 ? Ml : 1.0) * Bl; col = over(lc, col);   /* u_srcclip: the #20 clip at the sampled position (1, the read chain); 0 = the destination clip only (before d3a6dce), an instrument */
+  vec4 lc = lab(ql) * (u_srcclip > 0.5 ? Ml : 1.0) * Bl;   /* u_srcclip: the #20 clip at the sampled position (1, the read chain); 0 = the destination clip only (before d3a6dce), an instrument */
+  /* R38d (老网页 R99, label-end-tear §7g): the label copy meets the glass background in #33's LINEAR-light source surface — L′ = enc(lin(bg)·(1 − c) + lin(ink)·c), not the sRGB
+     over: the same coverage c darkens less, so near-threshold ink drops out (drag-mid, three fields + aberration off: model 799 / 286 vs native 807 / 279 against the sRGB
+     composite's 1018 / 385). u_lincomp 1 (default; ?gllin=0 = the sRGB over of before) */
+  if (u_lincomp > 0.5 && lc.a > 1e-6) { vec3 ic = lc.rgb / lc.a; vec3 l = linv(ic) * lc.a + linv(col.rgb) * (1.0 - lc.a); col = vec4(encv(l), 1.0); } else col = over(lc, col);
   float ish = inBox ? texture(t_ish, vec2(uv.x, 1.0 - uv.y)).r : 0.0; col.rgb *= (1.0 - ish * u_p);   /* inner shadow #21 (keyfill §5.2c); t_ish is an FBO (row 0 = bottom) */
   o = vec4(col.rgb, 1.0);
 }`;
@@ -127,6 +133,8 @@ uniform sampler2D t_a, m_ab, t_page, t_lab; uniform vec4 u_page; uniform vec4 u_
 uniform vec2 u_ascale; /* the wrapper's share of the (larger, once-allocated) FBO */
 vec4 A(vec2 p){ vec2 t = (p - u_wrap.xy) / u_wrap.zw; return texture(t_a, vec2(t.x * u_ascale.x, (1.0 - t.y) * u_ascale.y)); }   /* an FBO's row 0 is the viewport's bottom: page-down y → flipped t */
 vec4 over(vec4 s, vec4 d){ return s + d * (1.0 - s.a); }
+vec3 linv(vec3 c){ return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }   /* sRGB → linear (IEC 61966-2-1), R38d */
+vec3 encv(vec3 l){ return mix(l * 12.92, 1.055 * pow(max(l, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055, step(0.0031308, l)); }
 vec3 V(vec3 b){ return min(vec3(1.0), 0.9118 * b + 0.1471); }   /* vibrantColorMatrix on the layer's α (keyfill §2) */
 float band(float e, float h, float cosS, float bias, float curv, vec2 n, vec2 dir, float fw){
   float t = sat(e / h); float prof = mix(t < 1.0 ? 1.0 : 0.0, 1.0 - t, curv); float aa = sat(e / fw + 0.5) * sat((h - e) / fw + 0.5);
@@ -264,8 +272,8 @@ void main(){
       const TR = opts.trace || TRACE; const tr = TR ? { t0: performance.now() } : null; const mark = (k) => { if (!tr) return; gl.finish(); tr[k] = +(performance.now() - tr.t0).toFixed(2); };
       gl.bindFramebuffer(gl.FRAMEBUFFER, A.f); gl.viewport(0, 0, aw, ah); useProg(P1); mark("bindFbo_useP1");
       gl.uniform4f(U(P1, "u_quad"), wx, wy, ww, wh_); gl.uniform2f(U(P1, "u_origin"), wx, wy); gl.uniform2f(U(P1, "u_view"), ww, wh_);
-      gl.uniform4f(U(P1, "u_page"), region.x, region.y, region.w, region.h); gl.uniform4f(U(P1, "u_lens"), lx, ly, lw, lh); gl.uniform1f(U(P1, "u_S"), st.S); gl.uniform1f(U(P1, "u_p"), p);
-      gl.uniform1f(U(P1, "u_srcclip"), opts.srcClip === false ? 0 : 1); gl.uniform1f(U(P1, "u_pd"), pd);
+      gl.uniform4f(U(P1, "u_page"), region.x, region.y, region.w, region.h); gl.uniform4f(U(P1, "u_lens"), lx, ly, lw, lh); gl.uniform1f(U(P1, "u_S"), st.S * FIELDS); gl.uniform1f(U(P1, "u_p"), p);
+      gl.uniform1f(U(P1, "u_srcclip"), opts.srcClip === false ? 0 : 1); gl.uniform1f(U(P1, "u_lincomp"), LINCOMP); gl.uniform1f(U(P1, "u_pd"), pd);
       gl.uniform1f(U(P1, "u_rmax"), RMAX); gl.uniform1f(U(P1, "u_labmode"), LABMODE); gl.uniform1f(U(P1, "u_sdfmode"), SDFMODE); const mdl = st.model || opts.model || [220, 44]; gl.uniform2f(U(P1, "u_model"), mdl[0], mdl[1]); gl.uniform4f(U(P1, "u_lst"), LST[0], LST[1], LST[2], LST[3]);
       const pl_ = s.platter || { rgba: [0, 0, 0, 0], alpha: 0 }; gl.uniform4f(U(P1, "u_platter"), (pl_.rgba[0] || 0) / 255, (pl_.rgba[1] || 0) / 255, (pl_.rgba[2] || 0) / 255, (pl_.rgba[3] == null ? 1 : pl_.rgba[3]) * (pl_.alpha == null ? 1 : pl_.alpha));
       bind(P1, "t_page", 0, tPage); bind(P1, "t_lab", 1, tLab); bind(P1, "m_bg", 2, st.bg); bind(P1, "m_lab", 3, st.lab); bind(P1, "t_ish", 4, st.ish.t); mark("uniforms_binds1");
@@ -294,8 +302,10 @@ void main(){
     const LABMODE = (() => { const q = new URLSearchParams(location.search).get("gllab"); const m = q || opts.labMode || "closed"; return m === "map" ? 0 : 1; })();
     const SDFMODE = (() => { const q = new URLSearchParams(location.search).get("glsdf"); const m = q || opts.labelSdf || "circle"; return m === "super" ? 1 : 0; })();   /* R38a: the element SDF of the float label field — "super" = QuartzCore's supercircle branch (FS1 sdfSuper), default "circle" (待澄清: the supercircle raises the closed form's end ink 81 → 93 %, the native is 68 %) */
     const RMAX = opts.rmax != null ? opts.rmax : 22;   /* the capsule's corner radius cap (seg 22; the tab family passes 1e6 = h/2) */
-    const LST = opts.labelStages || [-8.8, 7.04, -17.5, 11.2];   /* the label stack in sampling order: ContentLensing −8.8 / SDF height 7.04, then ClearGlass −17.5 / 11.2 (seg-lens-refraction.md §1b 表 1 #18 / #30, A9 原值) */
-    stats.labMode = LABMODE ? "closed" : "map"; stats.rmax = RMAX; stats.labelStages = [...LST]; stats.labelSdf = SDFMODE ? "super" : "circle";
+    const LINCOMP = new URLSearchParams(location.search).get("gllin") === "0" ? 0 : 1;   /* R38d: the label copy composited in linear light inside the lens (R99); ?gllin=0 = the sRGB over (instrument) */
+    const FIELDS = new URLSearchParams(location.search).get("glfields") === "0" ? 0 : 1;   /* R38c instrument: ?glfields=0 = the three displacement fields off (the label stages' amounts and the maps' S → 0), the dispersion / highlight / lines untouched — the state of 数据's R95 / R98 measurements */
+    const LST = (opts.labelStages || [-8.8, 7.04, -17.5, 11.2]).map((v, i) => (i % 2 === 0 ? v * FIELDS : v));   /* the label stack in sampling order: ContentLensing −8.8 / SDF height 7.04, then ClearGlass −17.5 / 11.2 (seg-lens-refraction.md §1b 表 1 #18 / #30, A9 原值) */
+    stats.labMode = LABMODE ? "closed" : "map"; stats.rmax = RMAX; stats.labelStages = [...LST]; stats.labelSdf = SDFMODE ? "super" : "circle"; stats.fields = FIELDS; stats.linComp = LINCOMP;
     const TRACE = new URLSearchParams(location.search).get("gltrace") === "1";   /* per-step gl.finish timing of every frame into stats.trace / stats.traces (last 60) — an instrument, slows the frame */
     /* prewarm = one full lifted frame (the preloaded set, lift 1, pd 1, the current backdrop textures) through pass 1 (FBO A) and pass 2 (FBO B), gl.finish after
        each; the canvas is cleared only on an instance's first warm-up (the cleared buffer is what the compositor presents: the layer's display surface gets allocated); the per-step
@@ -326,5 +336,20 @@ void main(){
       const bg = href(f.querySelector("feImage")), lab = href(document.querySelector(`#${prefix}-lens-f-lab-${w} feImage`)), fab = document.querySelector(`#${prefix}-lens-f-ab-${w}`), ab = href(fab && fab.querySelector("feImage"));
       if (!bg || !lab || !ab) continue; const S0 = parseFloat(f.dataset.s0 || f.dataset.s) || 40; const Sab = fab ? parseFloat(fab.dataset.s) || 12 : 12;
       out[w] = { bg, lab, ab, S: S0, Sab, h: heights && heights[w] ? heights[w] : null }; } return out; };
-  window.LensWebGL = { create, setsFromFilters, VS, FS1, FS2, FS_ISH, COMMON };
+  /* R96 (页面 bug): a lens canvas paints past the viewport — the tab bar's canvas is nav ± 24 (its right edge 452 on a 440 screen with five tabs, its bottom 968),
+     the segment's canvas is scaled by the flex transform (× 1.1 about the lens centre) — and a mobile browser lets overflowing content widen the layout viewport
+     (界面's frame log: innerWidth 440 → 455 for a few frames, the fixed tab bar 3 px lower = the user's bug ②) or pan the page sideways. clipCanvas wraps the
+     canvas in an overflow-hidden box (.lens-clip) that is the canvas's nominal box clamped to [0, innerWidth] (and to [0, innerHeight] when `y`), and gives the
+     canvas explicit pixel size / offsets inside it, so nothing the lens draws can extend the document; the drawing itself is unchanged (the canvas keeps its
+     size and mapping, the wrapper only clips). Call it again after a layout change (a resize, the bar recentred) — it re-measures the parent. */
+  const clipCanvas = (canvas, ax = {}) => { if (!canvas || !canvas.parentElement) return null; let w = canvas.parentElement; const fresh = !w.classList.contains("lens-clip");
+    if (fresh) { const nom = { l: canvas.offsetLeft, t: canvas.offsetTop, w: canvas.offsetWidth, h: canvas.offsetHeight }, cs = getComputedStyle(canvas); w = document.createElement("div"); w.className = "lens-clip"; w.dataset.nom = JSON.stringify(nom);
+      w.style.cssText = `position:absolute;overflow:hidden;pointer-events:none;z-index:${cs.zIndex === "auto" ? 0 : cs.zIndex}`; canvas.replaceWith(w); w.appendChild(canvas);
+      canvas.style.position = "absolute"; canvas.style.width = nom.w + "px"; canvas.style.height = nom.h + "px"; canvas.style.zIndex = "0"; }
+    const nom = JSON.parse(w.dataset.nom), parent = w.offsetParent || w.parentElement, pr = parent.getBoundingClientRect();
+    const pad = ax.pad || 0;   // room for a transform that grows the canvas (the segment's flex scale): the box before the clamp is the nominal box ± pad in x
+    const L = pr.left + nom.l, T = pr.top + nom.t, R = L + nom.w, B = T + nom.h, cl = Math.max(0, L - pad), cr = Math.min(innerWidth, R + pad), ct = ax.y ? Math.max(0, T) : T, cb = ax.y ? Math.min(innerHeight, B) : B;
+    w.style.left = (cl - pr.left) + "px"; w.style.top = (ct - pr.top) + "px"; w.style.width = Math.max(0, cr - cl) + "px"; w.style.height = Math.max(0, cb - ct) + "px";
+    canvas.style.left = (L - cl) + "px"; canvas.style.top = (T - ct) + "px"; w.dataset.clip = `${Math.round(cl)},${Math.round(ct)},${Math.round(cr)},${Math.round(cb)}`; return w; };
+  window.LensWebGL = { create, setsFromFilters, clipCanvas, VS, FS1, FS2, FS_ISH, COMMON };
 })();

@@ -14,7 +14,7 @@
       back on view.js's box; the keyboard rule's two lines (view.js __tabKbd) as in accept.js.
    #7b the drag (tab-lens-motion.md §6.5 / §6.6): the target while dragging = finger x − a·W + W/2 (a = .5 when pressed at the centre → the finger),
       the centre vs the closed form ζ .85 / .2 from the value and velocity before the move (rms ≤ 1 pt), the hard clamp at the items' run, the up:
-      target = the centre of the item under the finger, ζ .9 / .4 from the value and velocity at the up, that item selected, driver off at rest;
+      target = the centre of the item under the finger, ζ .85 / .4 (R106: §6.9's "no gesture" pair) from the value and velocity at the up, that item selected, driver off at rest;
       hidden mid-drag stops the driver. */
 (function () {
   if (!window.ACCEPT) return;
@@ -75,7 +75,8 @@
       const samples = []; await new Promise((res) => { let first = null; const tick = (now) => { if (first === null) first = now; const L = window.__tabLens; samples.push({ t: now, cx: cxNav2(), h: rect().height, p: L ? L.p : null, ph: L ? L.phase : null, x: L ? L.x : null, target: L ? L.target : null }); if (now - first < 900) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick); });
       const target = tx - navL2; const tapFrames = samples.filter((s) => s.ph === "tap"), dropIdx = samples.findIndex((s) => s.ph === "drop"), atDrop = dropIdx > 0 ? samples[dropIdx - 1] : null, firstDrop = dropIdx >= 0 ? samples[dropIdx] : null;
       check("R33 快速点另一项：松手后驱动进 tap 相（抬起 + 滑行同步起步）", "tap · p > 0 · x 在动", L0 ? `${L0.phase} · p ${L0.p.toFixed(3)} · x ${cxNav2().toFixed(1)}→${target.toFixed(1)}` : "无驱动", !!L0 && (L0.phase === "tap" || L0.phase === "drop") && tapFrames.length >= 3);
-      check(`R33 到位那帧起落回（到位 = 位置弹簧首次 |x − 目标| ≤ .5 pt）：drop 首帧 |Δx| ≤ .5、drop 前高仍在抬起（${atDrop ? atDrop.h.toFixed(1) : "-"} > 54）`, "|Δx| ≤ .5 · h > 54", firstDrop && atDrop ? `|Δx| ${Math.abs(firstDrop.x - firstDrop.target).toFixed(2)}（前一帧 ${Math.abs(atDrop.x - atDrop.target).toFixed(2)}）· h ${atDrop.h.toFixed(1)} · ${tapFrames.length} tap 帧` : "无 drop", !!firstDrop && !!atDrop && Math.abs(firstDrop.x - firstDrop.target) <= 0.5 && Math.abs(atDrop.x - atDrop.target) > 0.5 && atDrop.h > 54);
+      /* R106 (tab-lens-motion.md §6.9 ①): the fall (setLifted false) begins on the frame the lens is within 8 pt of its target with no highlight — 0x1c50e8634–0x1c50e8650; R33's ".5 pt arrival" was that rule read off the tap trace */
+      check(`R33 / R106 到目标 8 pt 内那帧起落回（§6.9 ①：无高亮且 |目标 − 呈现| < 8）：drop 首帧 |Δx| < 8、前一帧 ≥ 8、drop 前高仍在抬起（${atDrop ? atDrop.h.toFixed(1) : "-"} > 54）`, "|Δx| < 8 · 前帧 ≥ 8 · h > 54", firstDrop && atDrop ? `|Δx| ${Math.abs(firstDrop.x - firstDrop.target).toFixed(2)}（前一帧 ${Math.abs(atDrop.x - atDrop.target).toFixed(2)}）· h ${atDrop.h.toFixed(1)} · ${tapFrames.length} tap 帧` : "无 drop", !!firstDrop && !!atDrop && Math.abs(firstDrop.x - firstDrop.target) < 8 && Math.abs(atDrop.x - atDrop.target) >= 8 && atDrop.h > 54);
       const dropS = samples.slice(dropIdx).filter((s) => s.ph === "drop"); const pDrop = dropS.map((s) => s.p);
       check("R33 落回：高沿 ζ1/.4 单调回到 54（p 单调降）", "单调 · 末 54", `${pDrop.length} 帧 · 末 h ${samples[samples.length - 1].h.toFixed(1)}`, pDrop.length >= 5 && pDrop.every((v, i) => i === 0 || v <= pDrop[i - 1] + 1e-6) && Math.abs(samples[samples.length - 1].h - 54) <= 0.5);
       const onNow = bs.find((b) => b.classList.contains("on")); check("R33 松手即选中被点项、胶囊落定在其中心", tgt.dataset.tab, `${onNow ? onNow.dataset.tab : "-"} · ${cxNav2().toFixed(1)} vs ${target.toFixed(1)}`, onNow === tgt && Math.abs(cxNav2() - target) <= 1.5);
@@ -100,10 +101,19 @@
         check("R2 材质：平台里透出的页面、项复本 1.16 缩放——未画（不可表达 / 待做，tab-lens.js 注释）", "记录", "记录", true);
         /* R37: the tab lens is a capsule r = h/2 (tab-lens-native.md §0 cornerRadii 35 = 70/2 — the outline terms took the segment lens's r 22 before), its label stack
            ContentLensing −14 / 11.2 then ClearGlass −17.5 / 11.2 (tab-lens-native.md §3, tab/lens-field.json), the field in float (closed) */
+        /* R38c: the glassForeground's 7-tap dispersion (formula §3b.2, the rim band e(d) of §3b.5) runs in pass 2 over pass 1's raster — which already holds the label
+           copy — so the label copy IS dispersed (数据 R98: that dispersion is the lifted state's softening); the closed form with the same band on the native label bitmap
+           reproduces three of R98's five numbers (end 267 = 267, core .852 vs .857, black columns 52 vs 49; the total 863 vs 792 and the mid-tones 526 vs 876 are the
+           material term 老网页 R99 reads — tools/tear_cbg.py fg); ?glfields=0 = the three fields off (stats.fields), the state of those measurements */
+        check("R38c 色散在标签复本上：pass 2 的 7 抽头（k 1/⅔/⅓，R/2 G/3 B/2）取样 pass 1 栅格（含标签复本）× 带 e(d)；三场开关默认开（?glfields=0 关）；闭式核 R98：端 267 = 267、核心 .852 对 .857、到黑列 52 对 49，总 863 / 中间调 526 对 792 / 876 = 材质项（R99）", "7 抽头 over pass 1 · fields 1", `${/A\(v \+ sg\[i\] \* ks\[i\] \* D\)/.test(LensWebGL.FS2) && /ks\[7\] = float\[7\]\(1\.0, 2\.0 \/ 3\.0, 1\.0 \/ 3\.0, 0\.0/.test(LensWebGL.FS2) ? "7 抽头 over pass 1" : "?"} · fields ${L.stats.fields}`, /A\(v \+ sg\[i\] \* ks\[i\] \* D\)/.test(LensWebGL.FS2) && L.stats.fields === 1);
+        /* R38d (老网页 R99, label-end-tear §7g): inside the lens the label copy meets the glass background in #33's linear-light source surface — L′ = enc(lin(bg)·(1 − c) + lin(ink)·c),
+           not the sRGB over — so the same coverage darkens less and near-threshold ink drops out (native drag-mid, fields + aberration off: 807 / 279; the linear model 799 / 286, the
+           sRGB model 1018 / 385); pass 1 does that composite when u_lincomp = 1 (?gllin=0 = the old over). Headless 3× lifted 早班 on this page: I>.56 1145 (linear) vs 1238 (sRGB), mid-tones 683 vs 645 */
+        check("R38d 透镜内标签复本线性光合成（R99 §7g：L′ = enc(lin(bg)(1 − c) + lin(ink)c)，胶囊外仍 sRGB over）：pass 1 有 linv/encv 合成、stats.linComp 1（?gllin=0 关）；本页无头抬起态 I>.56 1145 对 sRGB 1238", "linv·encv · linComp 1", `${/linv\(ic\) \* lc\.a \+ linv\(col\.rgb\) \* \(1\.0 - lc\.a\)/.test(LensWebGL.FS1) ? "linv·encv" : "?"} · linComp ${L.stats.linComp}`, /linv\(ic\) \* lc\.a \+ linv\(col\.rgb\) \* \(1\.0 - lc\.a\)/.test(LensWebGL.FS1) && L.stats.linComp === 1);
         check("R2/R37 材质：胶囊 r = h/2（rmax ≥ 35）、标签两级 −14/11.2 → −17.5/11.2、场按式逐像素（closed）", "rmax ≥ 35 · −14/11.2,−17.5/11.2 · closed", `rmax ${L.stats.rmax} · ${(L.stats.labelStages || []).join("/")} · ${L.stats.labMode}`, L.stats.rmax >= 35 && (L.stats.labelStages || []).join(",") === "-14,11.2,-17.5,11.2" && L.stats.labMode === "closed"); } }
     /* ---- #7b the drag (tab-lens-motion.md §6.5 / §6.6): while the selected item is held and lifted, the capsule's centre springs (ζ .85 / .2, retargeted
        on every move) to finger x − a·W + W/2 (a = where in the item the finger went down; pressed at the centre a = .5 → the target is the finger), the
-       left edge hard-clamped to the items' run; at the up ζ .9 / .4 to the centre of the item under the finger, which becomes the selection */
+       left edge hard-clamped to the items' run; at the up ζ .85 / .4 (R106) to the centre of the item under the finger, which becomes the selection */
     { const selB2 = bs.find((b) => b.classList.contains("on")), idx2 = bs.indexOf(selB2), nbr = bs[idx2 === bs.length - 1 ? idx2 - 1 : idx2 + 1], dir = bs.indexOf(nbr) > idx2 ? 1 : -1;
       const sr2 = selB2.getBoundingClientRect(), sx2 = sr2.left + sr2.width / 2, sy2 = sr2.top + sr2.height / 2, navL = nav.getBoundingClientRect().left, w0b = selB2.offsetWidth;
       const underDamped = (x0, v0, target, zeta, resp, t) => { const w = 2 * Math.PI / resp, wd = w * Math.sqrt(1 - zeta * zeta), dx = x0 - target, e = Math.exp(-zeta * w * t); return target + e * (dx * Math.cos(wd * t) + ((v0 + zeta * w * dx) / wd) * Math.sin(wd * t)); };
@@ -138,7 +148,7 @@
         ev(selB2, "pointerup", nx, sy2, 6); await new Promise((r) => requestAnimationFrame(r)); const Lr = window.__tabLens;
         num("7b 松手目标 = 手指下那项的中心（§6.5 落点）", nx - navL, Lr ? Lr.target : NaN, 0.5);
         const rl = await sampleX(500, tfu);
-        num(`7b 松手 中心 x 对 ζ.9/.4 闭式 rms（${rl.length} 帧，自松手前一帧的 x / v 起）`, 0, rms(rl.map((s) => s.cx - underDamped(xu, vu, nx - navL, 0.9, 0.4, s.t))), 1);
+        num(`7b / R106 松手 中心 x 对 ζ.85/.4 闭式 rms（${rl.length} 帧，自松手前一帧的 x / v 起；§6.9 ③「无手势」支 0x1c50e8774）`, 0, rms(rl.map((s) => s.cx - underDamped(xu, vu, nx - navL, 0.85, 0.4, s.t))), 1);
         await sleep(400); const onB = bs.find((b) => b.classList.contains("on"));
         check("7b 松手后选中 = 手指下那项", nbr.dataset.tab || "邻项", onB ? (onB.dataset.tab || "?") : "-", onB === nbr);
         num("7b 落定：胶囊中心 = 该项中心", nx - navL, cxNav(), 1); check("7b 落定后驱动停（无 .tl-on）", "无", nav.classList.contains("tl-on") ? "还在" : "无", !nav.classList.contains("tl-on"));
@@ -152,11 +162,12 @@
         delete document.hidden; if (hd) Object.defineProperty(Document.prototype, "hidden", hd);
         ev(b3, "pointerup", x3, y3, 7); await sleep(600);
       } }
-    /* ---- R59′b Reduce Motion (page-inventory.md §12b ② decompiled: no setLifted:, no .95 platter scale; R59″ records tabhold / tabtap: the lens still slides
-       259 → 87 from the down, both records = the closed spring ζ .9 / .2 to .11 pt rms — tab-lens.js header): forced through window.__forceRM like view.js's
-       段 rows. Pressing another item: the driver starts at the down (phase rm), the centre follows ζ .9 / .2 to the item's centre, width / height never
-       leave w0 × 54 and p stays 0 (no lift, no flex); while the finger is held the driver stays on and the lens is parked on the item; the up selects it and
-       the driver stops at rest on view.js's box; a drag under RM: no lift, the target = the finger rule. */
+    /* ---- R59′b / R59′b″ Reduce Motion (page-inventory.md §12b ② decompiled: no setLifted:, no .95 platter scale; tab-lens-motion.md §6.9 = 老网页 R105: the bar's
+       tracker _UITabBarVisualProvider_Floating uses ζ .9 / .2 for position and size under Reduce Motion (0x1c50e8690 / 0x1c50e86c4), the target = the finger rule;
+       R94: the selection frame and the lens move as one): forced through window.__forceRM like view.js's 段 rows. Pressing another item: the driver starts at the
+       down (phase rm), the centre follows ζ .9 / .2 to the item's centre, width / height never leave w0 × 54 and p stays 0 (no lift, no flex); while the finger is
+       held the driver stays on and the lens is parked on the item; the up selects it and the driver stops at rest on view.js's box; a drag under RM: no lift, the
+       target = the finger rule. Records vs that spring: the slide-at-down .11 pt rms (start +42.6), the R94 held slide 1.15 with the 2-frame delivery latency (§6.9 ④). */
     { window.__forceRM = true; try {
       const closedRM = (x0, target, t) => { const w = 2 * Math.PI / 0.2, z = 0.9, wd = w * Math.sqrt(1 - z * z), e = Math.exp(-z * w * t); return target + (x0 - target) * e * (Math.cos(wd * t) + (z * w / wd) * Math.sin(wd * t)); };
       const navL4 = nav.getBoundingClientRect().left, cx4 = () => rect().cx - navL4;
@@ -164,7 +175,7 @@
       const tDown = performance.now(); ev(tgt4, "pointerdown", tx4, ty4, 21); let L4 = null, nf = 0; for (; nf < 4 && !L4; nf++) { await new Promise((r) => requestAnimationFrame(r)); L4 = window.__tabLens; }   // the driver's first integrated frame: a rAF stamped before the start re-ticks (tab-lens.js frame0), so the state appears on the first or second frame
       check(`R59′b RM 按下另一项：驱动在按下后 ≤ 2 帧起（不等 +140 抬起；起点 +${L4 ? Math.round(L4.t0 - tDown) : "-"} ms）、phase rm、p 0、目标 = 该项中心`, "≤ 2 帧 · rm · p 0 · 目标 = 中心", L4 ? `${nf} 帧 · ${L4.phase} · p ${L4.p.toFixed(3)} · 目标 ${L4.target.toFixed(1)} vs ${(tx4 - navL4).toFixed(1)}` : `无驱动（${JSON.stringify(window.__tabLensRM || null)} stop ${JSON.stringify(window.__tabLensStop || null)} err ${window.__tabLensErr || "-"}）`, !!L4 && nf <= 2 && L4.phase === "rm" && L4.rm === true && L4.p === 0 && Math.abs(L4.target - (tx4 - navL4)) <= 0.5 && L4.t0 - tDown <= 40);
       const sl = []; await new Promise((res) => { let first = null; const tick = (now) => { if (first === null) first = now; const L = window.__tabLens; sl.push({ t: (now - (L4 ? L4.t0 : tDown)) / 1000, cx: cx4(), w: rect().width, h: rect().height, p: L ? L.p : null, ph: L ? L.phase : null, on: nav.classList.contains("tl-on") }); if (now - first < 450) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick); });
-      num(`R59′b RM 滑动 中心 x 对 ζ.9/.2 闭式 rms（${sl.length} 帧，自驱动起点；R59″ 两条记录对同一闭式 rms .11 pt）`, 0, rms(sl.map((s) => s.cx - closedRM(c04, tx4 - navL4, s.t))), 1);
+      num(`R59′b″ RM 滑动 中心 x 对 ζ.9/.2 闭式 rms（${sl.length} 帧，自驱动起点；§6.9 ③ RM 分支原值 0x1c50e8690，一根弹簧驱动框与透镜）`, 0, rms(sl.map((s) => s.cx - closedRM(c04, tx4 - navL4, s.t))), 1);
       check(`R59′b RM 全程不抬不拉伸：每帧 宽 = ${w04}、高 = ${h0}、p = 0（§12b ②：无 setLifted、无 .95 平台缩放）`, "every frame", sl.every((s) => Math.abs(s.w - w04) <= 0.5 && Math.abs(s.h - h0) <= 0.5 && s.p === 0) ? "every frame" : `OFF（宽 ${Math.max(...sl.map((s) => s.w)).toFixed(1)} 高 ${Math.max(...sl.map((s) => s.h)).toFixed(1)} p ${Math.max(...sl.map((s) => s.p || 0)).toFixed(3)}）`, sl.length > 10 && sl.every((s) => Math.abs(s.w - w04) <= 0.5 && Math.abs(s.h - h0) <= 0.5 && s.p === 0));
       check("R59′b RM 按住 450 ms：驱动仍在（.tl-on）、透镜停在按下项中心（|Δ| ≤ .5；选择在 touch-down 发生，抬手才换页）", "tl-on · |Δ| ≤ .5", `${nav.classList.contains("tl-on") ? "tl-on" : "off"} · |Δ| ${Math.abs(cx4() - (tx4 - navL4)).toFixed(2)}`, nav.classList.contains("tl-on") && Math.abs(cx4() - (tx4 - navL4)) <= 0.5);
       /* a drag under RM: the target follows the finger rule, still no lift */
@@ -177,11 +188,28 @@
       /* back to the original tab, still under RM (the same path) */
       const sr4 = sel4.getBoundingClientRect(); ev(sel4, "pointerdown", sr4.left + sr4.width / 2, sr4.top + sr4.height / 2, 22); await sleep(350); ev(sel4, "pointerup", sr4.left + sr4.width / 2, sr4.top + sr4.height / 2, 22); await sleep(700); delete seg.dataset.pe;
       check("R59′b RM 再按回原项：回到原项、驱动停", `${sel4.dataset.tab} · off`, `${(bs.find((b) => b.classList.contains("on")) || {}).dataset?.tab || "-"} · ${nav.classList.contains("tl-on") ? "tl-on" : "off"}`, bs.find((b) => b.classList.contains("on")) === sel4 && !nav.classList.contains("tl-on"));
-      /* the record itself against the same closed form (tools/touch/seg-native-r59-motion.json, tabhold: frames +75.3 … +275.2 ms after the down; start +42.6 — a 41 ms stall in the touch log — tap: +42.1 … +242.1, start +21.2) */
+      /* the record against the read spring: tools/touch/seg-native-r59-motion.json tabhold, frames +75.3 … +275.2 ms after the down, start +42.6 ms (the touch log marks a 41 ms
+         stall there; the tap record starts +21.2): ζ .9 / .2 leaves .11 pt rms; the R94 held slide: the finger rule + ζ .9 / .2 + a 2-frame delivery latency 1.15 (§6.9 ④) */
       const rec = [[75.3, 209.49], [91.9, 175.24], [108.6, 146.58], [125.3, 125.07], [142.0, 110.08], [158.6, 100.23], [175.3, 94.10], [192.0, 90.48], [208.7, 88.46], [225.2, 87.42], [241.9, 86.94], [258.5, 86.77], [275.2, 87.0]];
       const recRms = rms(rec.map(([t, x]) => x - closedRM(259, 87, (t - 42.6) / 1000)));
-      num("R59′b 记录核：R59″ tabhold 13 帧（259 → 87）对 ζ.9/.2 闭式 rms（pt；ζ.85/.2 为 2.15）", 0, recRms, 0.2);
+      num("R59′b″ 记录核：R59″ tabhold 13 帧（259 → 87）对 ζ.9/.2 闭式（起点 +42.6）rms（pt；R94 按住滑动 + 2 帧送达延迟 1.15，§6.9 ④）", 0, recRms, 0.2);
     } finally { window.__forceRM = null; } }
+    /* ---- R96 (页面 bug): the lens canvases must not paint past the viewport — with five tabs nav ± 24 reaches x 452 / y 968, the segment canvas is scaled × ≤ 1.15 by the
+       flex transform while dragging; a mobile browser widens the layout viewport to the content (界面's frame log: innerWidth 440 → 455, the fixed bar 3 px lower = the user's
+       bug ②) or pans sideways. Each canvas now sits in a .lens-clip box = its nominal box clamped to the viewport (LensWebGL.clipCanvas); checked in every state: the
+       clip boxes inside [0, innerWidth] (× [0, innerHeight] for the bar), the canvases' own transformed boxes may exceed (they are clipped), scrollWidth = innerWidth. */
+    { const clips = () => [...document.querySelectorAll(".lens-clip")].map((w) => { const r = w.getBoundingClientRect(); return { who: w.querySelector("canvas") ? w.querySelector("canvas").className : "?", l: r.left, t: r.top, r: r.right, b: r.bottom, y: w.parentElement && w.parentElement.matches("nav.tabs") }; });
+      const inside = (c) => c.l >= -0.5 && c.r <= innerWidth + 0.5 && (!c.y || (c.t >= -0.5 && c.b <= innerHeight + 0.5));
+      const states = []; const rec = (tag) => states.push({ tag, sw: document.documentElement.scrollWidth, iw: innerWidth, clips: clips(), bad: clips().filter((c) => !inside(c)).map((c) => `${c.who} ${Math.round(c.l)}…${Math.round(c.r)}${c.y ? `/${Math.round(c.t)}…${Math.round(c.b)}` : ""}`) });
+      rec("rest");
+      const on9 = bs.find((b) => b.classList.contains("on")), o9 = bs[bs.indexOf(on9) === 0 ? 1 : 0], r9 = o9.getBoundingClientRect(), x9 = r9.left + r9.width / 2, y9 = r9.top + r9.height / 2;
+      ev(o9, "pointerdown", x9, y9, 31); await waitClass("lift", 600); await sleep(300); rec("tab lift"); ev(o9, "pointermove", x9 + 80, y9, 31); await sleep(250); rec("tab drag"); ev(o9, "pointermove", x9, y9, 31); await sleep(200); ev(o9, "pointerup", x9, y9, 31); await sleep(900); delete seg.dataset.pe;
+      const qseg9 = document.querySelector("#queueseg"), qb9 = qseg9 ? [...qseg9.querySelectorAll("button")] : [];
+      if (qb9.length >= 2) { const b9 = qb9.find((b) => b.classList.contains("on")) || qb9[0], rr9 = b9.getBoundingClientRect(), bx = rr9.left + rr9.width / 2, by = rr9.top + rr9.height / 2;
+        ev(b9, "pointerdown", bx, by, 32); await sleep(450); rec("seg lift"); ev(b9, "pointermove", bx + 60, by, 32); await sleep(250); rec("seg drag"); ev(b9, "pointermove", bx, by, 32); await sleep(150); ev(b9, "pointerup", bx, by, 32); await sleep(900); delete qseg9.dataset.pe; }
+      const wraps = [...document.querySelectorAll("#app .lens-clip, nav.tabs .lens-clip")], orphans = wraps.filter((w) => !w.querySelector("canvas")).length, tabWraps = nav.querySelectorAll(":scope > .lens-clip, :scope > canvas.tlens-gl").length;   // the live page only (a glass layer's page copy drops the canvases and, since R96, their wrappers)
+      check(`R96 透镜画布钳进视口：画布都在 .lens-clip 裁框里（标签栏框还裁到 innerHeight；标签栏里恰一张画布、无空裁框）；静止 / 标签抬起 / 标签拖动 / 分段抬起 / 分段拖动 ${states.length} 态裁框都在 [0, ${innerWidth}]，scrollWidth = innerWidth`, "标签栏 1 张 · 空裁框 0 · 全态在内 · scrollWidth = innerWidth", `标签栏 ${tabWraps} 张 · 空裁框 ${orphans}（裁框共 ${wraps.length}） · ${states.every((st) => st.bad.length === 0) ? "全态在内" : "越界 " + states.filter((st) => st.bad.length).map((st) => `${st.tag}: ${st.bad.join(" ")}`).join("; ")} · ${states.map((st) => `${st.tag} sw ${st.sw}`).join(", ")}`,
+        tabWraps === 1 && orphans === 0 && wraps.length >= 2 && states.every((st) => st.bad.length === 0 && st.sw === st.iw)); }
     /* ---- R0② the tab set changes under the bar (the user's bug 2: 切晚班再切早班 the capsule flashed downward — the bar was rebuilt): view.js keeps the
        nodes (R0①) and tells the driver with "tabs-changed"; per frame through 早 → 晚 → 早: nav's top unchanged, never display none, .plat / .glide / .seg
        the same elements, the button count never 0, the glide 54 high and on the selected button (≤ 1 pt), the driver idle (no __tabLens, no .tl-on) */
@@ -215,6 +243,7 @@
         const pageBad = Object.entries(bad).filter(([k]) => k !== "vp").every(([, v]) => v === 0);
         check(`R0② 切班次两次（${frames} 帧）：nav 在自己 CSS 的位置（top = clientHeight − bottom − 高，不变高、无 transform）/ 无 display none / 节点不重建 / 按钮数不为 0 / glide 高 54 / glide 在选中项 / 驱动不起（vp = 视口本身变的帧，只记不判）`, "页面项全 0", `${JSON.stringify(bad)} · tabs-changed ×${events} · ${tabsNow}${dev.length ? " · 偏帧 " + JSON.stringify(dev) : ""}`, pageBad);
         check("R0② 集合变时 nav 派发 tabs-changed（ui 807da64 接口）", "≥ 1", String(events), events >= 1 || tabsNow.split(",").length === 0);
+        { const w9 = document.querySelector("nav.tabs .lens-clip"), r9 = w9 && w9.getBoundingClientRect(); check("R96 切班次后标签栏画布裁框仍在视口内（重建后重钳）", "在内", r9 ? `${Math.round(r9.left)}…${Math.round(r9.right)} / ${Math.round(r9.top)}…${Math.round(r9.bottom)}` : "无裁框", !!r9 && r9.left >= -0.5 && r9.right <= innerWidth + 0.5 && r9.top >= -0.5 && r9.bottom <= innerHeight + 0.5); }
       } else check("R0② 页面无两段可切（demo 应有早班/晚班）", "≥ 2 段", qbs.length + " 段", false); }
     if (typeof window.__tabKbd === "function") { window.__tabKbd(innerHeight - 300); await sleep(50); check("视口矮 300 后 nav.tabs display none（键盘规则）", "none", getComputedStyle(nav).display, getComputedStyle(nav).display === "none");
       window.__tabKbd(null); await sleep(50); const nb = nav.getBoundingClientRect(); check("复原后 nav.tabs 回到底部（innerHeight − bottom < 120）", "< 120", Math.round(innerHeight - nb.bottom), getComputedStyle(nav).display !== "none" && innerHeight - nb.bottom < 120); }

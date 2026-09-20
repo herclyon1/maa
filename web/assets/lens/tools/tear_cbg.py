@@ -2,12 +2,14 @@
 """tear_cbg.py — R38a 续: the backdrop copy's share of the drag-mid 「早班」 end-zone ink in the closed form, decomposed the way 数据's R65 switched the
 native layers (bg off / all off / bg only), plus the bg-path variants (capture margin, the glass_background inner stage, the supercircle) and the
 lifted-state softening test (the label copy rasterised at 1 … 3 px/pt and magnified to 3×, R52's metrics). Numbers in label-end-tear-closed-vs-map.md §7e.
-usage: tear_cbg.py <ui2 lens dir> <label png (tear/label-native-m.png, 6 px/pt)> [bg|super|soft]  (default: all three)
+usage: tear_cbg.py <ui2 lens dir> <label png (tear/label-native-m.png, 6 px/pt)> [bg|super|soft|fg]  (default: all four)
+fg (R38c): the glassForeground 7-tap dispersion (formula §3b.2 / 3b.3 / 3b.5: θ −15°, amount 2.3158, W/H 1.72, the rim band e = sat((d + 8.8)/8.8)) on the label copy
+with the three fields off, against 数据's R98 five numbers (n>.56 / end / core mean / mid-tones / black columns).
 The closed form is end_tear.py's (imported from ~/Money/styl-work/remote-ref/tools/lens), the counting = tear_fg.py's (x 95–145 × y 185–205, cov > .56, 3 px/pt)."""
 import sys, math, importlib.util
 import numpy as np
 from PIL import Image
-LENS_DIR, label_png = sys.argv[1], sys.argv[2]; WHAT = sys.argv[3:] or ["bg", "super", "soft"]
+LENS_DIR, label_png = sys.argv[1], sys.argv[2]; WHAT = sys.argv[3:] or ["bg", "super", "soft", "fg"]
 spec = importlib.util.spec_from_file_location("end_tear", "/Users/herclyon/Money/styl-work/remote-ref/tools/lens/end_tear.py")
 et = importlib.util.module_from_spec(spec); sys.modules["end_tear"] = et; sys.argv = [sys.argv[0], LENS_DIR, label_png]; spec.loader.exec_module(et)
 lab6 = 1 - np.asarray(Image.open(label_png).convert("L")).astype(float) / 255.0; Hh, Ww = lab6.shape
@@ -70,3 +72,28 @@ if "soft" in WHAT:
         return "n>.56 %4d  core %.3f  mid(.2–.56) %4d  peak cols %2d  end x<116 %3d  n>.25 %4d" % ((p > .56).sum(), core.mean() if core.size else 0, ((p > .2) & (p <= .56)).sum(), (p.max(axis=0) > .9).sum(), (p[:, :63] > .56).sum(), (p > .25).sum())
     print("\nlifted-state softening (all fields off; native R52 rest → bothoff: core .924 → .852, mid 254 → 787, peak cols 66 → 50; R65 end x<116 333 → 267, n>.56 942 → 792):")
     for ppp in (3.0, 2.0, 1.5, 1.0): print("  label copy rasterised at %.1f px/pt, shown at 3×:  %s" % (ppp, metrics(sample3x(ppp))))
+if "fg" in WHAT:
+    THETA, WH, AMP = -0.2618, 1.72, 2.3158   # glass-displacement-formula §3b.5: AberrationAngle −.2618, source surface W/H = (220 + 200)/(44 + 200), AberrationAmount 2.3158 (constant inside: height 0, offset 24.44)
+    def delta(x, y):
+        d, gx, gy = et.g_oval(x, y); c, s_ = math.cos(THETA), math.sin(THETA); rgx, rgy = c * gx - s_ * gy, s_ * gx + c * gy
+        return AMP * WH * rgy, AMP / WH * rgx   # §3b.3: the lanes swapped, each × the aspect
+    def e_band(d): return min(max((d + 8.8) / 8.8, 0.0), 1.0)   # §3b.5: EdgeStart −8.8 / End 0, opacity 1 → 0: the foreground shows within 8.8 pt of the rim
+    def fgink(X, Y, env):
+        x, y = X - CX, Y - CY; d, _, _ = et.sdf_capsule(x, y); base = lab_at(X, Y)
+        if d > 0: return base
+        e = env(d)
+        if e <= 0: return base
+        dx, dy = delta(x, y); L = lambda a, b: lab_at(X + a, Y + b)
+        Rr = sum(k * L(k * dx, k * dy) for k in (1, 2 / 3, 1 / 3)) / 2; Bc = sum(k * L(-k * dx, -k * dy) for k in (1, 2 / 3, 1 / 3)) / 2
+        G = (L(0, 0) + sum((1 - k) * (L(k * dx, k * dy) + L(-k * dx, -k * dy)) for k in (1 / 3, 2 / 3))) / 3
+        return e * (.2126 * Rr + .7152 * G + .0722 * Bc) + (1 - e) * base
+    def five(fn):
+        p = np.zeros((60, 150))
+        for j in range(60):
+            Y = 185 + (j + .5) / 3
+            for i in range(150): p[j, i] = fn(95 + (i + .5) / 3, Y)
+        core = p[p > .56]; return "n>.56 %4d  end x<116 %3d  core %.3f  mid(.2–.56) %4d  black cols %2d" % ((p > .56).sum(), (p[:, :63] > .56).sum(), core.mean() if core.size else 0, ((p > .2) & (p <= .56)).sum(), (p.max(axis=0) > .9).sum())
+    print("\nR38c: the foreground dispersion on the label copy, three fields off (native R98: rest 942 / 333 / .924 / 254 / 66; aberration on 792 / 267 / .857 / 876 / 49; off 807 / 279 / .918 / 578 / 65):")
+    print("  rest (no lens)                    ", five(lambda X, Y: lab_at(X, Y)))
+    print("  §3b.2 within the rim band e(d)    ", five(lambda X, Y: fgink(X, Y, e_band)))
+    print("  §3b.2 everywhere inside (e ≡ 1)   ", five(lambda X, Y: fgink(X, Y, lambda d: 1.0)))
