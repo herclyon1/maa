@@ -166,5 +166,5 @@
     /* ⑤ hidden strips the state */
     btn.click(); await until(() => !!Menu.state(), 50); document.dispatchEvent(new Event("visibilitychange", { bubbles: true })); Menu.onHidden(true); await until(() => !Menu.state(), 50);
     check("菜单：页面 hidden 时菜单剥掉", "无", document.querySelector(".menu.morph") ? "还在" : "无", !document.querySelector(".menu.morph"));
-  });
+  }, { layer: "timing", dark: true });   // S4 file-level tags (数据 S4-tags.md (e), 2号 13:5x): timing = waits on the drivers, so ?layer=daily and release both run it; dark true = the glass keys / face matrix change with the theme (R74 / R109 dark values)
 })();
