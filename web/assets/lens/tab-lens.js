@@ -43,17 +43,21 @@
    coordinates). Active from the first drag frame (the selection gesture's pan) until the floats settle after the up; the press-glide to another item
    is left as the pure lift (the ① trace of tab-lens-motion.md §4 reads the lift sizes alone there). Not read: the retargetImpulse gap (§6.4: the native peak 1.109 vs the chain's 1.085 — no impulse in the loupe spec), the interaction
    pulse (§3, four parameters unread). Instrument: window.__tabLens.flex = { sx, sy, dx, target, spec, sp, accel, vel, trace }.
-   REDUCE MOTION (R59′b; page-inventory.md §12b ② decompiled + R59″ probe records tools/touch/seg-native-r59-motion.json tabhold / tabtap): with
-   Reduce Motion on, _UIFloatingTabBarSelectionContainerView never calls setLifted: (0x1c4974abc–0x1c4974ac8) and the .95 platter scale needs a trait
-   this bar lacks → no lift, no stretch, no platter scale; but _UIContinuousSelectionGestureRecognizer still begins at the down and the selection
-   view slides to the pressed item at once (259 → 87 in the records, from ≈ +21 ms after the down — one commit frame; the hold record's +43 sits
-   behind a 41 ms main-thread stall the touch log marks). The curve: both records are the closed spring ζ .9 / response .2 to 0.11 pt rms (13 frames
-   each) — damping .9 = _animateSelection's no-highlight damping constant (0x1c5718108), response .2 = its highlighted response (0x1c5717e88,
-   tab-lens-motion.md §6 line 100); ζ .85 / .2 (the highlighted pair) misses by 2.2 pt rms / 3.3 max. Which condition pairs them on this path is
-   unread (待读, 老网页). Here (geometry mode): the driver starts at the pointerdown, p stays 0 (rest box, no flex), the position spring is ζ .9 / .2 to
-   the §6.6 finger target (= the pressed item's centre at the down; the finger rule while moving), the loop keeps running while the finger is down
-   (the lens parks on the item — the glide's own CSS box is still the old item until view.js selects at the up), and after the up the usual ζ .9 / .4
-   to view.js's selection. Detected like view.js: window.__forceRM (the acceptance's switch), else prefers-reduced-motion. ?tlens=material unchanged. */
+   REDUCE MOTION (R59′b / R59′b′; page-inventory.md §12b ② decompiled + the R59″ records tools/touch/seg-native-r59-motion.json tabhold / tabtap, the R94
+   frames tools/uiprobe/uiprobe-r94-frames.json): with Reduce Motion on, _UIFloatingTabBarSelectionContainerView never calls setLifted:
+   (0x1c4974abc–0x1c4974ac8) and the .95 platter scale needs a trait this bar lacks → no lift, no stretch, no platter scale; but
+   _UIContinuousSelectionGestureRecognizer still begins at the down and the selection view slides to the pressed item at once (259 → 87 in the records,
+   from ≈ +21 ms after the down — one commit frame). The spring: _animateSelection:completion: 0x1c4e16230 has four (ζ, response) pairs and Reduce Motion
+   picks none of them (老网页 R93, tab-lens-motion.md §6.7) → Solarium + highlighted = ζ .85 / .2 (0x1c4e16284), the same spring as the drag; the lens
+   layer and the selection view move as ONE (数据 R94: their presented centres equal to 0.00 on 238 frames) — so here one spring drives the glide's
+   box and the lens. Residuals against the records with that spring (not fitted away, 2号 R59′b′): the slide-at-down records 2.15 / 2.25 pt rms
+   (a ζ .9 / .2 curve would give .11 — unread why); the R94 held slide with the §6.6 finger target adopted the frame after each move: 22.6 / 22.5 pt
+   rms (the native selection lags the finger ≈ 2 frames more: 4.1 / 3.0 rms when the target is the finger 33 ms earlier) — the native path between
+   the finger and the selection's target (targetPosition transformer 0x1c4e0eae4, flex input EMA .3, §6.4) is unread. Here (geometry mode): the
+   driver starts at the pointerdown, p stays 0 (rest box, no flex), the position spring ζ .85 / .2 to the §6.6 finger target (= the pressed item's
+   centre at the down; the finger rule on every move, adopted on the next frame), the loop keeps running while the finger is down (the lens parks on
+   the item — the glide's own CSS box is still the old item until view.js selects at the up), and after the up the usual ζ .9 / .4 to view.js's
+   selection. Detected like view.js: window.__forceRM (the acceptance's switch), else prefers-reduced-motion. ?tlens=material unchanged. */
 (function () {
   const q = new URLSearchParams(location.search);
   if (q.get("tlens") === "0") return;
@@ -74,7 +78,7 @@
   const LIFT = 16, PLATTER = 1.0516, ITEM = 1.16;                             // +16 on both axes (94×54 → 110×70), platter 1.0516, items 1.16 (tab-lens-native.md §3)
   const SP_LIFT = { z: 1, w: 2 * Math.PI / .25 }, SP_DROP = { z: 1, w: 2 * Math.PI / .4 }, SP_POS = { z: .85, w: 2 * Math.PI / .4 };   // tab-lens-motion.md §0 / §4: lift, drop, the jump to a pressed item (the ① trace)
   const SP_DRAG = { z: .85, w: 2 * Math.PI / .2 }, SP_RELEASE = { z: .9, w: 2 * Math.PI / .4 };
-  const SP_RM = { z: .9, w: 2 * Math.PI / .2 };                             // R59′b: the Reduce Motion slide (records: rms .11 pt; the pairing of the two read constants 待读)
+  const SP_RM = SP_DRAG;                                                    // R59′b′: Reduce Motion changes no spring (R93) — the highlighted selection's ζ .85 / .2 drives the frame and the lens alike (R94); residuals vs the records in the header
   const RM = () => (window.__forceRM != null ? !!window.__forceRM : matchMedia("(prefers-reduced-motion: reduce)").matches);   // tab-lens-motion.md §6.6 (UIKitCore _animateSelection, checked on the drag trace rms .55 / max .75 by the old page): the finger-following spring while highlighted, the spring after the up
   const step = (st, target, sp, dt) => {                                      // analytic damped-spring step from (x, v): ζ ≥ 1 critically damped, else under-damped
     const dx = st.x - target;

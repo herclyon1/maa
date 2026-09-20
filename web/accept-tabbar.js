@@ -152,19 +152,20 @@
         delete document.hidden; if (hd) Object.defineProperty(Document.prototype, "hidden", hd);
         ev(b3, "pointerup", x3, y3, 7); await sleep(600);
       } }
-    /* ---- R59′b Reduce Motion (page-inventory.md §12b ② decompiled: no setLifted:, no .95 platter scale; R59″ records tabhold / tabtap: the lens still slides
-       259 → 87 from the down, both records = the closed spring ζ .9 / .2 to .11 pt rms — tab-lens.js header): forced through window.__forceRM like view.js's
-       段 rows. Pressing another item: the driver starts at the down (phase rm), the centre follows ζ .9 / .2 to the item's centre, width / height never
+    /* ---- R59′b / R59′b′ Reduce Motion (page-inventory.md §12b ② decompiled: no setLifted:, no .95 platter scale; R93: Reduce Motion picks no other spring —
+       the highlighted selection's ζ .85 / .2 (0x1c4e16284); R94: the selection view and the lens move as one): forced through window.__forceRM like view.js's
+       段 rows. Pressing another item: the driver starts at the down (phase rm), the centre follows ζ .85 / .2 to the item's centre, width / height never
        leave w0 × 54 and p stays 0 (no lift, no flex); while the finger is held the driver stays on and the lens is parked on the item; the up selects it and
-       the driver stops at rest on view.js's box; a drag under RM: no lift, the target = the finger rule. */
+       the driver stops at rest on view.js's box; a drag under RM: no lift, the target = the finger rule. The records' residuals against that spring are
+       recorded, not fitted away (tab-lens.js header): slide-at-down 2.15 pt rms, the R94 held slide 22.6 / 4.1 (finger now / 33 ms earlier). */
     { window.__forceRM = true; try {
-      const closedRM = (x0, target, t) => { const w = 2 * Math.PI / 0.2, z = 0.9, wd = w * Math.sqrt(1 - z * z), e = Math.exp(-z * w * t); return target + (x0 - target) * e * (Math.cos(wd * t) + (z * w / wd) * Math.sin(wd * t)); };
+      const closedRM = (x0, target, t) => { const w = 2 * Math.PI / 0.2, z = 0.85, wd = w * Math.sqrt(1 - z * z), e = Math.exp(-z * w * t); return target + (x0 - target) * e * (Math.cos(wd * t) + (z * w / wd) * Math.sin(wd * t)); };
       const navL4 = nav.getBoundingClientRect().left, cx4 = () => rect().cx - navL4;
       const sel4 = bs.find((b) => b.classList.contains("on")), tgt4 = bs[bs.indexOf(sel4) === 0 ? 1 : 0], tr4 = tgt4.getBoundingClientRect(), tx4 = tr4.left + tr4.width / 2, ty4 = tr4.top + tr4.height / 2, w04 = tgt4.offsetWidth, c04 = cx4();
       const tDown = performance.now(); ev(tgt4, "pointerdown", tx4, ty4, 21); let L4 = null, nf = 0; for (; nf < 4 && !L4; nf++) { await new Promise((r) => requestAnimationFrame(r)); L4 = window.__tabLens; }   // the driver's first integrated frame: a rAF stamped before the start re-ticks (tab-lens.js frame0), so the state appears on the first or second frame
       check(`R59′b RM 按下另一项：驱动在按下后 ≤ 2 帧起（不等 +140 抬起；起点 +${L4 ? Math.round(L4.t0 - tDown) : "-"} ms）、phase rm、p 0、目标 = 该项中心`, "≤ 2 帧 · rm · p 0 · 目标 = 中心", L4 ? `${nf} 帧 · ${L4.phase} · p ${L4.p.toFixed(3)} · 目标 ${L4.target.toFixed(1)} vs ${(tx4 - navL4).toFixed(1)}` : `无驱动（${JSON.stringify(window.__tabLensRM || null)} stop ${JSON.stringify(window.__tabLensStop || null)} err ${window.__tabLensErr || "-"}）`, !!L4 && nf <= 2 && L4.phase === "rm" && L4.rm === true && L4.p === 0 && Math.abs(L4.target - (tx4 - navL4)) <= 0.5 && L4.t0 - tDown <= 40);
       const sl = []; await new Promise((res) => { let first = null; const tick = (now) => { if (first === null) first = now; const L = window.__tabLens; sl.push({ t: (now - (L4 ? L4.t0 : tDown)) / 1000, cx: cx4(), w: rect().width, h: rect().height, p: L ? L.p : null, ph: L ? L.phase : null, on: nav.classList.contains("tl-on") }); if (now - first < 450) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick); });
-      num(`R59′b RM 滑动 中心 x 对 ζ.9/.2 闭式 rms（${sl.length} 帧，自驱动起点；R59″ 两条记录对同一闭式 rms .11 pt）`, 0, rms(sl.map((s) => s.cx - closedRM(c04, tx4 - navL4, s.t))), 1);
+      num(`R59′b′ RM 滑动 中心 x 对 ζ.85/.2 闭式 rms（${sl.length} 帧，自驱动起点；R93 原值，一根弹簧驱动框与透镜）`, 0, rms(sl.map((s) => s.cx - closedRM(c04, tx4 - navL4, s.t))), 1);
       check(`R59′b RM 全程不抬不拉伸：每帧 宽 = ${w04}、高 = ${h0}、p = 0（§12b ②：无 setLifted、无 .95 平台缩放）`, "every frame", sl.every((s) => Math.abs(s.w - w04) <= 0.5 && Math.abs(s.h - h0) <= 0.5 && s.p === 0) ? "every frame" : `OFF（宽 ${Math.max(...sl.map((s) => s.w)).toFixed(1)} 高 ${Math.max(...sl.map((s) => s.h)).toFixed(1)} p ${Math.max(...sl.map((s) => s.p || 0)).toFixed(3)}）`, sl.length > 10 && sl.every((s) => Math.abs(s.w - w04) <= 0.5 && Math.abs(s.h - h0) <= 0.5 && s.p === 0));
       check("R59′b RM 按住 450 ms：驱动仍在（.tl-on）、透镜停在按下项中心（|Δ| ≤ .5；选择在 touch-down 发生，抬手才换页）", "tl-on · |Δ| ≤ .5", `${nav.classList.contains("tl-on") ? "tl-on" : "off"} · |Δ| ${Math.abs(cx4() - (tx4 - navL4)).toFixed(2)}`, nav.classList.contains("tl-on") && Math.abs(cx4() - (tx4 - navL4)) <= 0.5);
       /* a drag under RM: the target follows the finger rule, still no lift */
@@ -177,10 +178,11 @@
       /* back to the original tab, still under RM (the same path) */
       const sr4 = sel4.getBoundingClientRect(); ev(sel4, "pointerdown", sr4.left + sr4.width / 2, sr4.top + sr4.height / 2, 22); await sleep(350); ev(sel4, "pointerup", sr4.left + sr4.width / 2, sr4.top + sr4.height / 2, 22); await sleep(700); delete seg.dataset.pe;
       check("R59′b RM 再按回原项：回到原项、驱动停", `${sel4.dataset.tab} · off`, `${(bs.find((b) => b.classList.contains("on")) || {}).dataset?.tab || "-"} · ${nav.classList.contains("tl-on") ? "tl-on" : "off"}`, bs.find((b) => b.classList.contains("on")) === sel4 && !nav.classList.contains("tl-on"));
-      /* the record itself against the same closed form (tools/touch/seg-native-r59-motion.json, tabhold: frames +75.3 … +275.2 ms after the down; start +42.6 — a 41 ms stall in the touch log — tap: +42.1 … +242.1, start +21.2) */
+      /* the record against the read spring — a residual row (recorded, not fitted): tools/touch/seg-native-r59-motion.json tabhold, frames +75.3 … +275.2 ms after the down, the
+         best-fitting start +44.5 ms (the touch log marks a 41 ms stall there); ζ .85 / .2 leaves 2.15 pt rms / 3.25 max (a ζ .9 / .2 curve would leave .11 — unread why, R59′b′) */
       const rec = [[75.3, 209.49], [91.9, 175.24], [108.6, 146.58], [125.3, 125.07], [142.0, 110.08], [158.6, 100.23], [175.3, 94.10], [192.0, 90.48], [208.7, 88.46], [225.2, 87.42], [241.9, 86.94], [258.5, 86.77], [275.2, 87.0]];
-      const recRms = rms(rec.map(([t, x]) => x - closedRM(259, 87, (t - 42.6) / 1000)));
-      num("R59′b 记录核：R59″ tabhold 13 帧（259 → 87）对 ζ.9/.2 闭式 rms（pt；ζ.85/.2 为 2.15）", 0, recRms, 0.2);
+      const recRms = rms(rec.map(([t, x]) => x - closedRM(259, 87, (t - 44.5) / 1000)));
+      check("R59′b′ 残差记录：R59″ tabhold 13 帧（259 → 87）对 ζ.85/.2 闭式（起点 +44.5）rms 2.15 / R94 按住滑动对手指规则 22.6（手指提前 33 ms 则 4.1）——记录不判", "2.15 ± .05", recRms.toFixed(2), Math.abs(recRms - 2.15) < 0.05);
     } finally { window.__forceRM = null; } }
     /* ---- R96 (页面 bug): the lens canvases must not paint past the viewport — with five tabs nav ± 24 reaches x 452 / y 968, the segment canvas is scaled × ≤ 1.15 by the
        flex transform while dragging; a mobile browser widens the layout viewport to the content (界面's frame log: innerWidth 440 → 455, the fixed bar 3 px lower = the user's
