@@ -90,5 +90,5 @@
       check(`弹窗玻璃 首开（贴图未缓存）：首帧走轻链 f0（无生成图）、+200 ms 内换到 f1/f2/f3（换链在 +${Math.round(A.warmedAt - (window.ALERT_T ? ALERT_T.open : 0))} ms）、尺寸记入 ark-alert-size（下次载入空闲预热）`, "f0 首帧 · 满链 ≤ 200 · 记尺寸", `${f0 && light1 ? "f0 首帧" : `首帧 ${c3 ? c3.style.filter : "-"} light ${light1}`} · ${full ? "满链" : "未换"} · ${localStorage.getItem("ark-alert-size") === dlg.offsetWidth + "x" + dlg.offsetHeight ? "记尺寸" : "尺寸未记"}`, f0 && light1 && full && !A.light && localStorage.getItem("ark-alert-size") === dlg.offsetWidth + "x" + dlg.offsetHeight && A.cached(dlg.offsetWidth, dlg.offsetHeight));
       document.getElementById("alert-cancel").click(); await p3; await until(() => !A.layer && !dlg.open, 500); }
     check("弹窗玻璃：关掉后层撤（含描边层）", "无", A.layer || dlg.querySelector(".alert-stroke") ? "层" : "无", !A.layer && !dlg.querySelector(".alert-stroke"));
-  });
+  }, { layer: "timing", dark: true });   // S4 file-level tags (数据 S4-tags.md (e), 2号 13:5x): timing = waits on the drivers, so ?layer=daily and release both run it; dark true = the 70 light / 18 dark keys (R74)
 })();
