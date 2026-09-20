@@ -100,6 +100,11 @@
         check("R2 材质：平台里透出的页面、项复本 1.16 缩放——未画（不可表达 / 待做，tab-lens.js 注释）", "记录", "记录", true);
         /* R37: the tab lens is a capsule r = h/2 (tab-lens-native.md §0 cornerRadii 35 = 70/2 — the outline terms took the segment lens's r 22 before), its label stack
            ContentLensing −14 / 11.2 then ClearGlass −17.5 / 11.2 (tab-lens-native.md §3, tab/lens-field.json), the field in float (closed) */
+        /* R38c: the glassForeground's 7-tap dispersion (formula §3b.2, the rim band e(d) of §3b.5) runs in pass 2 over pass 1's raster — which already holds the label
+           copy — so the label copy IS dispersed (数据 R98: that dispersion is the lifted state's softening); the closed form with the same band on the native label bitmap
+           reproduces three of R98's five numbers (end 267 = 267, core .852 vs .857, black columns 52 vs 49; the total 863 vs 792 and the mid-tones 526 vs 876 are the
+           material term 老网页 R99 reads — tools/tear_cbg.py fg); ?glfields=0 = the three fields off (stats.fields), the state of those measurements */
+        check("R38c 色散在标签复本上：pass 2 的 7 抽头（k 1/⅔/⅓，R/2 G/3 B/2）取样 pass 1 栅格（含标签复本）× 带 e(d)；三场开关默认开（?glfields=0 关）；闭式核 R98：端 267 = 267、核心 .852 对 .857、到黑列 52 对 49，总 863 / 中间调 526 对 792 / 876 = 材质项（R99）", "7 抽头 over pass 1 · fields 1", `${/A\(v \+ sg\[i\] \* ks\[i\] \* D\)/.test(LensWebGL.FS2) && /ks\[7\] = float\[7\]\(1\.0, 2\.0 \/ 3\.0, 1\.0 \/ 3\.0, 0\.0/.test(LensWebGL.FS2) ? "7 抽头 over pass 1" : "?"} · fields ${L.stats.fields}`, /A\(v \+ sg\[i\] \* ks\[i\] \* D\)/.test(LensWebGL.FS2) && L.stats.fields === 1);
         check("R2/R37 材质：胶囊 r = h/2（rmax ≥ 35）、标签两级 −14/11.2 → −17.5/11.2、场按式逐像素（closed）", "rmax ≥ 35 · −14/11.2,−17.5/11.2 · closed", `rmax ${L.stats.rmax} · ${(L.stats.labelStages || []).join("/")} · ${L.stats.labMode}`, L.stats.rmax >= 35 && (L.stats.labelStages || []).join(",") === "-14,11.2,-17.5,11.2" && L.stats.labMode === "closed"); } }
     /* ---- #7b the drag (tab-lens-motion.md §6.5 / §6.6): while the selected item is held and lifted, the capsule's centre springs (ζ .85 / .2, retargeted
        on every move) to finger x − a·W + W/2 (a = where in the item the finger went down; pressed at the centre a = .5 → the target is the finger), the
