@@ -1,6 +1,11 @@
 # -*- coding: utf-8 -*-
 """Run web/accept.js in headless Chrome (desktop Chromium: no safe area) with a fake snapshot.
-usage: accept-run.py <url-without-query> [dark] [nodata]  → prints the ark-accept rows
+usage: accept-run.py <url-without-query> [light|dark|both] [nodata] [--only <控件[,控件]>] [--out <prefix>]  → prints the ark-accept rows
+  T2 (2号 2026-09-20 12:2x, SPEED-summary §三): `both` runs light and dark in ONE Chrome, each in its own browser context (separate localStorage — the
+  result key ark-accept must not be shared — and its own renderer), in parallel; the two results print as separate sections and, with --out <prefix>,
+  land in <prefix>-light.txt / <prefix>-dark.txt. `--only a,b` is passed to the page as ?only=a,b (accept.js's loader, 界面 T1, loads only those
+  accept-<控件>.js files; absent = the whole suite). A machine-wide lock (/tmp/ark-accept-run.lock, flock) queues concurrent runners of any session
+  instead of letting them share the CPU (timing rows) — a waiting runner says so every 15 s.
 Order of events (监督局 2026-09-19 18:3x: no more "no result / first-run retry"):
   1. the page is opened with ?accept=1&quiet=1; window.__acceptHold = true is set before any page script, so accept.js
      (which also waits for window.__viewReady) does not start measuring yet;
@@ -13,7 +18,7 @@ Order of events (监督局 2026-09-19 18:3x: no more "no result / first-run retr
      first run of this runner: headless Chrome never requested pending.js?v=… — server log — and render() threw
      "reconcilePending is not defined"; the second run was clean. A lost script fetch is detected here, not retried by hand).
 Any JS exception seen on the way is printed; exit 1 when a step does not complete."""
-import socket, os, base64, json, struct, sys, subprocess, time, urllib.request, tempfile, shutil, random, signal
+import socket, os, base64, json, struct, sys, subprocess, time, urllib.request, tempfile, shutil, signal, threading, fcntl
 # SIGTERM (the `timeout` wrapper) must run the finally below, or the Chrome profile in $TMPDIR leaks (271 of them, 8.8 GB, 2026-09-20 08:4x)
 signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(SystemExit(143)))
 CH = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
@@ -54,7 +59,15 @@ SNAP = {"at": NOW - 180, "config": {"MAA": {"关卡": "1-7", "理智药": 0, "�
         "今天": {"跑了": 2, "失败": 0, "最近": "鸣潮"}, "master": {}, "options": {}}
 STAMINA = {"明日方舟": {"理智": 128, "上限": 135, "回满": "09-18 15:42"}, "终末地": {"理智": 96, "上限": 240, "回满": "09-19 02:10"},
            "鸣潮": {"波片": 172, "上限": 240, "回满": "09-18 18:20"}, "取自": "14:20"}
-url = sys.argv[1]; dark = 'dark' in sys.argv[2:]; nodata = 'nodata' in sys.argv[2:]
+args = sys.argv[2:]
+def opt(name):
+    if name in args:
+        i = args.index(name); v = args[i + 1] if i + 1 < len(args) else ''; del args[i:i + 2]; return v
+    return None
+only = opt('--only'); outp = opt('--out')
+url = sys.argv[1]; nodata = 'nodata' in args
+themes = ['light', 'dark'] if 'both' in args else (['dark'] if 'dark' in args else ['light'])
+if only: url = url + ('&' if '?' in url else '?') + 'only=' + only
 def free_port():
     # several sessions run this runner at once: a fixed / random port can already belong to ANOTHER session's Chrome, and we would then talk to it
     # (EOF, "view.js not ready", 0/0 results). Ask the kernel for a free port instead.
@@ -74,6 +87,20 @@ def sweep_code_sign_clones():
             except Exception: pass
     except Exception: pass
 sweep_code_sign_clones()
+LOCK = '/tmp/ark-accept-run.lock'   # one headless run per machine at a time (several sessions run this runner; two at once share the CPU and flake the timing rows)
+open(LOCK, 'a').close(); lockf = open(LOCK, 'r+')
+t_lock = time.time()
+while True:
+    try: fcntl.flock(lockf, fcntl.LOCK_EX | fcntl.LOCK_NB); break
+    except OSError:
+        if int(time.time() - t_lock) % 15 == 0:
+            try: lockf.seek(0); holder = lockf.read().strip()[:80]
+            except Exception: holder = '?'
+            print(f'waiting for {LOCK} (held by {holder}) …', flush=True)
+        time.sleep(1)
+try: lockf.seek(0); lockf.truncate(); lockf.write(f'pid {os.getpid()} {time.strftime("%H:%M:%S")} {url}'); lockf.flush()
+except Exception: pass
+if time.time() - t_lock > 2: print(f'lock acquired after {time.time() - t_lock:.0f} s')
 port = free_port(); prof = tempfile.mkdtemp()
 chrome_log = open(os.path.join(prof, 'chrome.log'), 'wb')   # Chrome's own stderr: a renderer crash shows here (printed on failure)
 p = subprocess.Popen([CH, '--headless=new', '--hide-scrollbars', f'--remote-debugging-port={port}', f'--user-data-dir={prof}', '--window-size=440,956', 'about:blank'], stdout=subprocess.DEVNULL, stderr=chrome_log)
@@ -82,62 +109,94 @@ try:
     for i in range(100):
         try: page = next(t for t in json.load(urllib.request.urlopen(f'http://127.0.0.1:{port}/json')) if t['type'] == 'page'); break
         except Exception: time.sleep(0.2)
-    ws = WS(page['webSocketDebuggerUrl'])
-    own = ws.send('Browser.getVersion')['result'].get('userAgent', '')   # sanity: the DevTools endpoint answers → it is a live Chrome on our port
-    ws.send('Runtime.enable'); ws.send('Page.enable')
-    ws.send('Emulation.setFocusEmulationEnabled', {'enabled': True})   # a headless document is otherwise unfocused: focusin never fires (界面1号 5d71467's capsule row)
-    ws.send('Emulation.setDeviceMetricsOverride', {'width': 440, 'height': 956, 'deviceScaleFactor': 3, 'mobile': True})
-    if dark: ws.send('Emulation.setEmulatedMedia', {'features': [{'name': 'prefers-color-scheme', 'value': 'dark'}]})
+    bws = WS(json.load(urllib.request.urlopen(f'http://127.0.0.1:{port}/json/version'))['webSocketDebuggerUrl'])   # the browser endpoint: contexts and targets
+    own = bws.send('Browser.getVersion')['result'].get('userAgent', '')   # sanity: the DevTools endpoint answers → it is a live Chrome on our port
     init = 'window.__acceptHold = true; localStorage.setItem("ark-remote-cfg", %s); localStorage.setItem("ark-remote-cfg-snap", %s); localStorage.setItem("ark-remote-tab", "状态");' % (
         json.dumps(json.dumps({"topic": "smoke-test-topic", "pin": "1234"})), json.dumps(json.dumps(SNAP, ensure_ascii=False)))
-    if not nodata: ws.send('Page.addScriptToEvaluateOnNewDocument', {'source': init})
-    t0 = time.time()
-    def errors():
-        return [e['params']['exceptionDetails'].get('text', '') + ' ' + ((e['params']['exceptionDetails'].get('exception') or {}).get('description', '')[:200]) for e in ws.events if e.get('method') == 'Runtime.exceptionThrown']
-    def wait_ready():
-        ready = None
-        for i in range(300):                   # ≤ 60 s for view.js
-            time.sleep(0.2)
-            try: ready = ws.send('Runtime.evaluate', {'expression': 'document.readyState === "complete" && window.__viewReady === true', 'returnByValue': True})['result']['result'].get('value')
-            except Exception: ready = None
-            if ready is True: return True
-        return False
     MISSING = ('(() => { const ok = new Set(performance.getEntriesByType("resource").filter(e => (e.responseStatus === 0 || e.responseStatus === 200 || e.responseStatus === 304) && (e.transferSize > 0 || e.encodedBodySize > 0 || e.decodedBodySize > 0)).map(e => e.name)); '
                'const js = [...document.scripts].filter(s => s.src && !/accept[^/]*\\.js/.test(s.src) && !ok.has(s.src)).map(s => s.src.split("/").pop()); '
                'const size = (h) => { const e = performance.getEntriesByType("resource").find(x => x.name === h); return e ? Math.max(e.decodedBodySize || 0, e.encodedBodySize || 0) : 0; }; '
                'const css = [...document.querySelectorAll("link[rel=stylesheet]")].filter(l => { try { const sh = [...document.styleSheets].find(x => x.href === l.href); return !sh || (sh.cssRules.length === 0 && size(l.href) > 300); } catch (e) { return false; } }).map(l => l.href.split("/").pop()); '
                'return js.concat(css); })()')   # a script counts as arrived only with a body (a refused / reset connection leaves an empty entry and it silently never runs); a stylesheet counts only when it is in document.styleSheets with rules (数据: topbar.css once never applied); accept*.js are appended lazily and may still be loading
-    ws.send('Page.navigate', {'url': url + ('&' if '?' in url else '?') + 'accept=1&quiet=1'})
-    for attempt in (1, 2):
-        if not wait_ready():
-            print('view.js not ready in 60 s (document.readyState / window.__viewReady)'); print('JS errors:', errors()); sys.exit(1)
-        missing = ws.send('Runtime.evaluate', {'expression': MISSING, 'returnByValue': True})['result']['result'].get('value') or []
-        if missing: time.sleep(1.5); missing = ws.send('Runtime.evaluate', {'expression': MISSING, 'returnByValue': True})['result']['result'].get('value') or []   # a script still in flight is not a lost fetch
-        early = errors()
-        if not missing and not early: break
-        if attempt == 2:
-            print('page did not load cleanly twice: missing scripts', missing, 'errors', early); sys.exit(1)
-        print('load incomplete (missing scripts %s, %d errors) — reloading once' % (missing, len(early)))
-        ws.events = []; ws.send('Page.reload', {'ignoreCache': True})
-    t_ready = time.time() - t0
-    inj = ('window.Stamina && (Stamina.data = %s, Stamina.at = Date.now()); typeof lastHb !== "undefined" && (lastHb = Date.now()); '
-           'typeof render === "function" && render(); typeof updateLive === "function" && updateLive(); ' % json.dumps(STAMINA, ensure_ascii=False)) if not nodata else ''
-    res = ws.send('Runtime.evaluate', {'expression': inj + 'window.__acceptHold = false; 1', 'returnByValue': True})
-    if 'exceptionDetails' in res.get('result', {}):
-        print('injection threw:', res['result']['exceptionDetails'].get('text', ''), (res['result']['exceptionDetails'].get('exception') or {}).get('description', '')[:200])
-    r = None
-    for i in range(900):                       # ≤ 180 s for accept.js's result (the night batch's full run takes ~70 s; 老网页 00:3x)
-        time.sleep(0.2)
-        r = ws.send('Runtime.evaluate', {'expression': 'localStorage.getItem("ark-accept")', 'returnByValue': True})['result']['result'].get('value')
-        if r: break
-    errs = errors()
-    if errs: print('JS errors:', errs)
-    if not r: print(f'no result in 180 s after view.js ready (ready at {t_ready:.1f} s)'); sys.exit(1)
-    print(f'view.js ready at {t_ready:.1f} s, result at {time.time() - t0:.1f} s')
-    out = json.loads(r)
-    print(f"{url} {'dark' if dark else 'light'}  {out['total'] - out['fails']}/{out['total']}")
-    for row in out['rows']:
-        print(('✓' if row['ok'] else '✗'), row['item'], '|', row['got'], '' if row['ok'] else '（要 ' + row['expect'] + '）')
+    def run_theme(dark, wsurl):
+        """one theme in its own browser context (own localStorage, own renderer — the browser-level WS is not thread-safe, so the context and target are made in the main thread); returns (lines, ok)"""
+        lines = []; log = lambda *a: lines.append(' '.join(str(x) for x in a))
+        ws = WS(wsurl)
+        ws.send('Runtime.enable'); ws.send('Page.enable')
+        ws.send('Emulation.setFocusEmulationEnabled', {'enabled': True})   # a headless document is otherwise unfocused: focusin never fires (界面1号 5d71467's capsule row)
+        ws.send('Emulation.setDeviceMetricsOverride', {'width': 440, 'height': 956, 'deviceScaleFactor': 3, 'mobile': True})
+        if dark: ws.send('Emulation.setEmulatedMedia', {'features': [{'name': 'prefers-color-scheme', 'value': 'dark'}]})
+        if not nodata: ws.send('Page.addScriptToEvaluateOnNewDocument', {'source': init})
+        t0 = time.time()
+        def errors():
+            return [e['params']['exceptionDetails'].get('text', '') + ' ' + ((e['params']['exceptionDetails'].get('exception') or {}).get('description', '')[:200]) for e in ws.events if e.get('method') == 'Runtime.exceptionThrown']
+        def wait_ready():
+            ready = None
+            for i in range(300):                   # ≤ 60 s for view.js
+                time.sleep(0.2)
+                try: ready = ws.send('Runtime.evaluate', {'expression': 'document.readyState === "complete" && window.__viewReady === true', 'returnByValue': True})['result']['result'].get('value')
+                except Exception: ready = None
+                if ready is True: return True
+            return False
+        ws.send('Page.navigate', {'url': url + ('&' if '?' in url else '?') + 'accept=1&quiet=1'})
+        for attempt in (1, 2):
+            if not wait_ready():
+                log('view.js not ready in 60 s (document.readyState / window.__viewReady)'); log('JS errors:', errors()); return lines, False
+            missing = ws.send('Runtime.evaluate', {'expression': MISSING, 'returnByValue': True})['result']['result'].get('value') or []
+            if missing: time.sleep(1.5); missing = ws.send('Runtime.evaluate', {'expression': MISSING, 'returnByValue': True})['result']['result'].get('value') or []   # a script still in flight is not a lost fetch
+            early = errors()
+            if not missing and not early: break
+            if attempt == 2:
+                log('page did not load cleanly twice: missing scripts', missing, 'errors', early); return lines, False
+            log('load incomplete (missing scripts %s, %d errors) — reloading once' % (missing, len(early)))
+            ws.events = []; ws.send('Page.reload', {'ignoreCache': True})
+        t_ready = time.time() - t0
+        inj = ('window.Stamina && (Stamina.data = %s, Stamina.at = Date.now()); typeof lastHb !== "undefined" && (lastHb = Date.now()); '
+               'typeof render === "function" && render(); typeof updateLive === "function" && updateLive(); ' % json.dumps(STAMINA, ensure_ascii=False)) if not nodata else ''
+        res = ws.send('Runtime.evaluate', {'expression': inj + 'window.__acceptHold = false; 1', 'returnByValue': True})
+        if 'exceptionDetails' in res.get('result', {}):
+            log('injection threw:', res['result']['exceptionDetails'].get('text', ''), (res['result']['exceptionDetails'].get('exception') or {}).get('description', '')[:200])
+        r = None
+        for i in range(900):                       # ≤ 180 s for accept.js's result (the night batch's full run takes ~70 s; 老网页 00:3x)
+            time.sleep(0.2)
+            r = ws.send('Runtime.evaluate', {'expression': 'localStorage.getItem("ark-accept")', 'returnByValue': True})['result']['result'].get('value')
+            if r: break
+        errs = errors()
+        if errs: log('JS errors:', errs)
+        if not r: log(f'no result in 180 s after view.js ready (ready at {t_ready:.1f} s)'); return lines, False
+        log(f'view.js ready at {t_ready:.1f} s, result at {time.time() - t0:.1f} s')
+        out = json.loads(r)
+        log(f"{url} {'dark' if dark else 'light'}  {out['total'] - out['fails']}/{out['total']}")
+        for row in out['rows']:
+            log(('✓' if row['ok'] else '✗'), row['item'], '|', row['got'], '' if row['ok'] else '（要 ' + row['expect'] + '）')
+        return lines, True
+    targets = {}
+    for th in themes:
+        ctx = bws.send('Target.createBrowserContext')['result']['browserContextId']
+        tid = bws.send('Target.createTarget', {'url': 'about:blank', 'browserContextId': ctx})['result']['targetId']
+        wsurl = None
+        for i in range(50):
+            try: wsurl = next(t['webSocketDebuggerUrl'] for t in json.load(urllib.request.urlopen(f'http://127.0.0.1:{port}/json')) if t.get('id') == tid); break
+            except Exception: time.sleep(0.2)
+        targets[th] = (ctx, tid, wsurl)
+    results = {}
+    def worker(th):
+        try: results[th] = run_theme(th == 'dark', targets[th][2])
+        except Exception as e: results[th] = ([f'runner failed ({th}): {e!r}'], False)
+    threads = [threading.Thread(target=worker, args=(th,)) for th in themes]
+    for t in threads: t.start()
+    for t in threads: t.join()
+    for th in themes:
+        try: bws.send('Target.closeTarget', {'targetId': targets[th][1]}); bws.send('Target.disposeBrowserContext', {'browserContextId': targets[th][0]})
+        except Exception: pass
+    failed = False
+    for th in themes:
+        lines, ok = results.get(th, (['no result'], False)); failed = failed or not ok
+        if len(themes) > 1: print(f'=== {th} ===')
+        print('\n'.join(lines))
+        if outp:
+            with open(f'{outp}-{th}.txt', 'w') as f: f.write('\n'.join(lines) + '\n')
+    if failed: sys.exit(1)
 except Exception as e:
     try:
         chrome_log.flush(); tail = open(os.path.join(prof, 'chrome.log'), 'rb').read()[-3000:].decode('utf-8', 'replace')
@@ -149,3 +208,5 @@ finally:
     try: p.wait(timeout=5)
     except Exception: p.kill()
     shutil.rmtree(prof, ignore_errors=True)
+    try: fcntl.flock(lockf, fcntl.LOCK_UN); lockf.close()
+    except Exception: pass
