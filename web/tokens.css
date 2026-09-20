@@ -648,6 +648,11 @@
   /* the R6 recording tokens (--ios-touch-capsule-press-delay 172ms, --ios-capsule-pressed-*) were withdrawn by R6′: the capsule is a UIButton tinted (button.md R62) — see the "capsule button" block above */
   /* (the note that lensHangTime was 'not a page token' is superseded: --ios-touch-segment-quicktap-fall above IS lensHangTime, R9②″) */
   /* tab bar: pressing the SELECTED tab lifts the lens 94×54 → 103×63 by +180 ms (first size change ~125 ms), 110×70 while dragging (T3/T4) */
+  /* tab bar tracker's up rules (R106, tab-lens-motion.md §6.9 ② — _UITabBarVisualProvider_Floating handleSelectionGesture 0x1c50e9078):
+     the reselect of the already selected item is lost once the finger travelled >= 4 pt in x from the down (0x1c50e94c8–0x1c50e94dc);
+     an up outside window.bounds inset by 8 only clears the highlight (0x1c50e9288, _UIRectInsetEdges) — requested by 界面 R59′c */
+  --ios-touch-tab-reselect-slop: 4px;
+  --ios-touch-tab-lift-outside-inset: 8px;
   --ios-touch-tab-selected-lift-delay: 125ms;
   --ios-touch-tab-selected-lift-done: 180ms;
   --ios-touch-tab-drag-lift-w: 110px;
