@@ -620,7 +620,8 @@
   --ios-touch-segment-lens-overshoot: .075;
   /* segmented / tab bar: target segment = the one under the finger x while sliding (divider crossing at ±2 pt); the index never changes mid-drag */
   --ios-touch-segment-divider-hysteresis: 0px;
-  /* tab bar: pressing an unselected tab starts the lens gliding to it 130–150 ms after touch-down (lift 94×54 → 119×64), ~350 ms to arrive; selection + primaryActionTriggered +0–2 ms after the up; NO distance cancel (450 pt away still selects) */
+  /* tab bar: pressing an unselected tab starts the lens gliding to it 130–150 ms after touch-down (lift 94×54 → 119×64), ~350 ms to arrive; selection + primaryActionTriggered +0–2 ms after the up; NO distance cancel (450 pt away still selects)
+     ★ the 140 ms is 录像口径 too (R108: no timer in the chain; the lift and the slide start on the frame after the down) — kept for view.js's class timer only, tab-lens.js starts at the down (R59′d) */
   --ios-touch-tab-glide-delay: 140ms;
   --ios-touch-tab-lift-w: 25px;
   --ios-touch-tab-lift-h: 10px;
@@ -647,7 +648,10 @@
   --ios-touch-segment-quicktap-fall: 220ms;
   /* the R6 recording tokens (--ios-touch-capsule-press-delay 172ms, --ios-capsule-pressed-*) were withdrawn by R6′: the capsule is a UIButton tinted (button.md R62) — see the "capsule button" block above */
   /* (the note that lensHangTime was 'not a page token' is superseded: --ios-touch-segment-quicktap-fall above IS lensHangTime, R9②″) */
-  /* tab bar: pressing the SELECTED tab lifts the lens 94×54 → 103×63 by +180 ms (first size change ~125 ms), 110×70 while dragging (T3/T4) */
+  /* tab bar: pressing the SELECTED tab lifts the lens 94×54 → 103×63 by +180 ms (first size change ~125 ms), 110×70 while dragging (T3/T4)
+     ★ 录像口径，作废（R108, tab-lens-motion.md §6.9 ⑤, 2号 R59′d）: the down → setLifted chain has no timer (touchesBegan 0x1c42552c8 → handleSelectionGesture → updateLensView → setLifted, four springs at once);
+     the probe uiprobe-motion-tabdrag-light.json shows the width leaving 94 on the frame after the down (+47 95.76, +97 105.07, +130 110.14, +180 114.55 → 116.7, ζ 1 / .25 from t0 ≈ +30 = the next frame);
+     the two values below are kept only for view.js's class timer (界面 R59′c to withdraw) — tab-lens.js lifts from the down */
   --ios-touch-tab-selected-lift-delay: 125ms;
   --ios-touch-tab-selected-lift-done: 180ms;
   --ios-touch-tab-drag-lift-w: 110px;

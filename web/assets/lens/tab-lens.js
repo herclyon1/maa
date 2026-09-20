@@ -77,7 +77,13 @@
   window.__tabLensStep = (dt) => { vnow += dt; const f = pendingTick; pendingTick = null; if (f) f(vnow); return !!f; };
   window.__tabLensGL = () => glo;   // the WebGL overlay (R2), for the acceptance
   const AM = 16;                                                              // the fringe wrapper's margin (lens-field.json aberration.wrapper; ≥ the 15 pt tap span)
-  const LIFT = 16, PLATTER = 1.0516, ITEM = 1.16;                             // +16 on both axes (94×54 → 110×70), platter 1.0516, items 1.16 (tab-lens-native.md §3)
+  const LIFT = 16, PLATTER = 1.0516, ITEM = 1.16;                             // +16 on both axes (94×54 → 110×70 — the selection frame's CGRectInset(−8, −8), §6 line 100), platter 1.0516, items 1.16 (tab-lens-native.md §3); the material mode still uses it
+  /* R59′d (老网页 R108, tab-lens-motion.md §6.9 ⑤; probe tools/uiprobe/uiprobe-motion-tabdrag-light.json, the selected item held still 615 ms): the LENS view's presented size leaves 94 × 54 on
+     the frame after the down (+14 still 94, +47 95.76, +97 105.07, +130 110.14, +180 114.55, +197 115.34) on ζ 1 / .25 towards 116.7 wide (the fit's target; the bounds settle 115.7 by +464
+     after a .5 % flex wobble) and 74.0 high (the +464 row: 73.99, d 1.005); there is no timer anywhere in the down → setLifted chain (touchesBegan 0x1c42552c8 … setLifted 0x1c54c7ea0, four
+     springs at once) — the +125 / +140 ms of the tokens were the recording's latency. So the geometry driver lifts from the pointerdown itself (the next tick), by LIFT_W / LIFT_H, not
+     waiting for view.js's +140 / +125 ms class (which still arrives and is then redundant). */
+  const LIFT_W = 116.7 - 94, LIFT_H = 74.0 - 54;
   const SP_LIFT = { z: 1, w: 2 * Math.PI / .25 }, SP_DROP = { z: 1, w: 2 * Math.PI / .4 }, SP_POS = { z: .85, w: 2 * Math.PI / .4 };   // tab-lens-motion.md §0 / §4: lift, drop, the jump to a pressed item (the ① trace)
   const SP_DRAG = { z: .85, w: 2 * Math.PI / .2 }, SP_RELEASE = { z: .85, w: 2 * Math.PI / .4 };   /* R106 (tab-lens-motion.md §6.9 ③ / R106): after the up the highlight is cleared and the "no gesture" pair .85 / .4 drives the frame + lens to the selected item (0x1c50e8774); the .9 / .4 of before was _UIFloatingTabBar's, not this bar's */
   const DROP_WITHIN = 8;                                                    /* R106 (§6.9 ①): setLifted(false) only when there is no highlight AND |target − presented| < 8 pt (0x1c50e8634–0x1c50e8650) — after the up the lens slides first and falls within 8 pt of its target (the R33 tap's "arrival at .5 pt" was that rule seen late) */
@@ -134,16 +140,17 @@
   /* the finger (tab-lens-motion.md §6.6: while the selection view is highlighted its target is finger x − a·W + W/2, a = where in the item the
      finger went down (0 … 1), the left edge hard-clamped to the track [track.minX, track.maxX − W] — no rubber band; the landing = the item under
      the finger): read here from the same pointer events view.js's press() handles, capture phase, nothing consumed */
-  const finger = { x: null, a: .5, down: false };
+  const finger = { x: null, a: .5, down: false, moved: false, x0: 0 };
   const trackFinger = (nav) => {
     if (nav.__tlensFinger) return; nav.__tlensFinger = true;
     nav.addEventListener("pointerdown", (e) => { const r = nav.getBoundingClientRect(); const bs = [...nav.querySelectorAll(".seg button")];
       let a = .5; for (const b of bs) { const q = b.getBoundingClientRect(); if (e.clientX >= q.left && e.clientX <= q.right) { a = (e.clientX - q.left) / q.width; break; } }
-      finger.down = true; finger.a = a; finger.x = e.clientX - r.left; if (loop) loop.retarget();
-      else if (MODE === "geometry" && RM() && st && st.nav === nav && ready) { const tx = rmTarget(st); window.__tabLensRM = { at: performance.now(), target: tx, X: st.X, started: tx != null && Math.abs(tx - st.X) > .5 }; if (tx != null && Math.abs(tx - st.X) > .5) { st.lastX = st.X; start(st); } }
-      else if (RM()) window.__tabLensRM = { at: performance.now(), why: !st ? "no st" : st.nav !== nav ? "other nav" : !ready ? "not ready" : "loop " + (loop ? loop.st === st : "-") }; }, true);   // instrument for the acceptance   // R59′b: the slide begins at the down, no lift
-    nav.addEventListener("pointermove", (e) => { if (!finger.down) return; finger.x = e.clientX - nav.getBoundingClientRect().left; if (loop) loop.retarget(); }, true);
-    for (const t of ["pointerup", "pointercancel"]) nav.addEventListener(t, () => { finger.down = false; finger.x = null; if (loop) loop.retarget(); }, true);
+      finger.down = true; finger.a = a; finger.x = e.clientX - r.left; finger.moved = false; finger.x0 = e.clientX;
+      if (st && st.nav === nav) st.pressed = !RM();   // R59′d: the lift belongs to the down itself (no highlight → no lift under Reduce Motion)
+      if (loop) loop.retarget();
+      else if (MODE === "geometry" && st && st.nav === nav && ready) { const tx = rmTarget(st); window.__tabLensRM = { at: performance.now(), target: tx, X: st.X, started: !RM() || (tx != null && Math.abs(tx - st.X) > .5) }; if (!RM() || (tx != null && Math.abs(tx - st.X) > .5)) { st.lastX = st.X; start(st); } } }, true);   // R59′d: the driver starts on the down (its first tick = the lift's t0); RM: only when there is somewhere to slide   // R59′b: the slide begins at the down, no lift
+    nav.addEventListener("pointermove", (e) => { if (!finger.down) return; finger.x = e.clientX - nav.getBoundingClientRect().left; if (Math.abs(e.clientX - finger.x0) >= 1) finger.moved = true; if (loop) loop.retarget(); }, true);
+    for (const t of ["pointerup", "pointercancel"]) nav.addEventListener(t, () => { finger.down = false; finger.x = null; finger.moved = false; if (st) st.pressed = false; if (loop) loop.retarget(); }, true);
   };
   /* R59′b: the Reduce Motion target = the §6.6 finger rule (finger x − a·W + W/2 = the pressed item's centre at the down), hard-clamped to the items' run */
   const rmTarget = (st) => { if (finger.x == null) return null; const w = parseFloat(st.glide.style.width) || st.glide.offsetWidth; const navBox = st.nav.getBoundingClientRect(), segBox = st.seg.getBoundingClientRect();
@@ -233,10 +240,11 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
     const tap = !!st.tap; let arrived = false;
     /* the lift target: 1 while the page holds the highlight (lift / lift-sel); after the up (no highlight) it stays 1 until the lens is within DROP_WITHIN of its target, then 0 (R106 ①);
        a quick tap (R33: the lift never got its class) rides the same rule: up (1 until within 8) then the fall; Reduce Motion never lifts */
-    const setTargets = () => { const lifted = glide.classList.contains("lift") || glide.classList.contains("lift-sel"), dragging = lifted && nav.classList.contains("drag") && finger.down && finger.x != null, rm = RM();
+    const setTargets = () => { const lifted = glide.classList.contains("lift") || glide.classList.contains("lift-sel") || (st.pressed && finger.down), dragging = lifted && finger.down && finger.x != null && (nav.classList.contains("drag") || finger.moved), rm = RM();   // R59′d: lifted from the down (st.pressed), dragging once the finger has moved
       st.rm = rm;
       if (rm && finger.down && finger.x != null) { const left = Math.max(track.min, Math.min(track.max - w0, finger.x - finger.a * w0)); st.X = left + w0 / 2; posSpring = SP_RM; phase = "rm"; }   // R59′b: the slide to the pressed item from the down, the finger rule while moving, ζ .9 / .2
       else if (dragging) { const left = Math.max(track.min, Math.min(track.max - w0, finger.x - finger.a * w0)); st.X = left + w0 / 2; posSpring = SP_DRAG; phase = "drag"; }
+      else if (st.pressed && finger.down && finger.x != null) { const left = Math.max(track.min, Math.min(track.max - w0, finger.x - finger.a * w0)); st.X = left + w0 / 2; posSpring = SP_POS; phase = Math.abs(st.X - XS.x) > .5 ? "move" : "lift"; }   // R59′d: began → the pressed item's frame (§6.9 ②), the "began" pair .85 / .4
       else if (tap) { st.X = centreOf(glide); posSpring = rm ? SP_RM : SP_POS; phase = arrived ? "drop" : "tap"; }
       else { st.X = centreOf(glide); posSpring = lifted ? SP_POS : (rm ? SP_RM : SP_RELEASE); phase = lifted ? (Math.abs(st.X - XS.x) > .5 ? "move" : "lift") : "drop"; }   // after the up: §6.9's "no gesture" pair .85 / .4 (RM .9 / .2) to view.js's selection
       const near = Math.abs(st.X - XS.x) < DROP_WITHIN; arrived = tap ? (arrived || near) : arrived;
@@ -249,7 +257,7 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
       const dt = Math.min(1, (now - last) / 1000); last = now; frameN++;
       spring(P, pTarget, pTarget > .5 ? SP_LIFT : SP_DROP, dt); spring(XS, st.X, posSpring, dt);
       if (pTarget > .5 && !st.rm && !(glide.classList.contains("lift") || glide.classList.contains("lift-sel")) && Math.abs(XS.x - st.X) < DROP_WITHIN) { if (tap && !arrived) st.tapArrivedAt = now; arrived = true; setTargets(); }   // R106 ①: the fall begins on the frame the lens comes within 8 pt of its target (no highlight)
-      const p = Math.max(0, Math.min(1, P.x)), x = XS.x, W = w0 + LIFT * p, H = h0 + LIFT * p;
+      const p = Math.max(0, Math.min(1, P.x)), x = XS.x, W = w0 + LIFT_W * p, H = h0 + LIFT_H * p;
       /* R64 — the flex, once per frame: the presented centre (position + the drift in the scaled coordinates) into the integrator, the variant from the
          model bounds (lifted (w0 + 16) × (h0 + 16) while the lift target is up, the resting box otherwise — §7.4), updateFlex's targets, the three floats
          on the tracking spring while the finger is down, else the scaleSpring */
@@ -258,7 +266,7 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
       if (fl && fl.active && phase !== "drag" && Math.abs(fl.out.sx - 1) < .002 && Math.abs(fl.out.sy - 1) < .002 && Math.abs(fl.out.dx) < .1) { fl.active = false; fl.sx = { x: 1, v: 0 }; fl.sy = { x: 1, v: 0 }; fl.dx = { x: 0, v: 0 }; fl.out = { sx: 1, sy: 1, dx: 0 }; fl.vi = flexIntegrator(); }
       if (fl && fl.active) {
         fl.vi.add(x + fl.out.sx * fl.out.dx, now / 1000);
-        const Wm = pTarget > .5 ? w0 + LIFT : w0, Hm = pTarget > .5 ? h0 + LIFT : h0;
+        const Wm = pTarget > .5 ? w0 + LIFT_W : w0, Hm = pTarget > .5 ? h0 + LIFT_H : h0;
         const spec = flexSpec(Wm, Hm), tg = flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity), sp = finger.down ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
         springStep(fl.sx, tg.sX, sp, dt); springStep(fl.sy, tg.sY, sp, dt); springStep(fl.dx, tg.drift, sp, dt);
         fl.out = { sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x }; fl.tg = tg; fl.spec = spec; fl.sp = sp;

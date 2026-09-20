@@ -33,18 +33,22 @@
     const waitClass = async (cls, ms) => { const t0 = performance.now(); while (performance.now() - t0 < ms) { if (g.classList.contains(cls)) return performance.now() - t0; await sleep(4); } return null; };
     const on0 = bs.findIndex((b) => b.classList.contains("on")); const other = bs[on0 === 0 ? 1 : 0]; const w0 = other.offsetWidth, h0 = g.offsetHeight;
     const r0 = rect(); const or = other.getBoundingClientRect(), ox = or.left + or.width / 2, oy = or.top + or.height / 2;
-    /* ① + ② press another item */
-    ev(other, "pointerdown", ox, oy); const dLift = await waitClass("lift", 600);
-    const delay = px("--ios-touch-tab-glide-delay", 140);
-    check(`按下未选中项 +${delay} ms 抬起（.lift）`, `${delay}…${delay + 50} ms`, dLift === null ? "没抬" : Math.round(dLift) + " ms", dLift !== null && dLift >= delay - 5 && dLift <= delay + 50);
-    await new Promise((r) => requestAnimationFrame(r)); const L0 = window.__tabLens;
-    if (!L0) { check("标签栏：抬起后驱动在跑（window.__tabLens）", "有", "缺", false); ev(other, "pointerup", ox, oy); return; }
+    /* ① + ② press another item — R59′d (老网页 R108, tab-lens-motion.md §6.9 ⑤): the lift has NO delay: the driver starts on the down (its first tick = t0), the width leaves w0 on ζ 1 / .25
+       towards w0 + 22.7 (the probe's 94 → 116.7), the height towards 74; the probe's five points as width increments from the down: +47 1.76 / +97 11.07 / +130 16.14 / +180 20.55 / +197 21.34 (± 1 pt,
+       t0 = the frame after the down); the +140 / +125 ms tokens were the recording's latency — view.js's class still arrives then (界面 R59′c withdraws it), the driver no longer waits for it */
+    const LW = 116.7 - 94, LH = 74 - 54, tDown = performance.now(); ev(other, "pointerdown", ox, oy); let L0 = null, nf0 = 0; for (; nf0 < 4 && !L0; nf0++) { await new Promise((r) => requestAnimationFrame(r)); L0 = window.__tabLens; }
+    check(`R59′d 按下即抬：驱动器在按下后 ≤ 2 帧起（t0 +${L0 ? Math.round(L0.t0 - tDown) : "-"} ms）、抬起目标 = 按下项、p 在升`, "≤ 2 帧 · lift/move · p > 0", L0 ? `${nf0} 帧 · ${L0.phase} · p ${L0.p.toFixed(3)}` : "无驱动", !!L0 && nf0 <= 2 && L0.t0 - tDown <= 40 && (L0.phase === "lift" || L0.phase === "move"));
+    if (!L0) { check("标签栏：按下后驱动在跑（window.__tabLens）", "有", "缺", false); ev(other, "pointerup", ox, oy); return; }
     const lift = await sample(600, L0.t0);
-    num(`抬起 宽 对 ζ1/.25 闭式 rms（${lift.length} 帧；${w0} → ${w0 + 16}）`, 0, rms(lift.map((s) => s.width - crit(w0, w0 + 16, 0.25, s.t))), 1);
-    num(`抬起 高 对 ζ1/.25 闭式 rms（${h0} → ${h0 + 16}）`, 0, rms(lift.map((s) => s.height - crit(h0, h0 + 16, 0.25, s.t))), 1);
+    num(`抬起 宽 对 ζ1/.25 闭式 rms（${lift.length} 帧；${w0} → ${(w0 + LW).toFixed(1)}，R108 探针 94 → 116.7）`, 0, rms(lift.map((s) => s.width - crit(w0, w0 + LW, 0.25, s.t))), 1);
+    num(`抬起 高 对 ζ1/.25 闭式 rms（${h0} → ${h0 + LH}，探针 54 → 74.0）`, 0, rms(lift.map((s) => s.height - crit(h0, h0 + LH, 0.25, s.t))), 1);
+    { const pts = [[47, 1.76], [97, 11.07], [130, 16.14], [180, 20.55], [197, 21.34]]; const at = (ms) => { const t = (ms - 30) / 1000; return LW * (1 - Math.exp(-2 * Math.PI / 0.25 * t) * (1 + 2 * Math.PI / 0.25 * t)); };   // the probe's points vs the same closed form from t0 = +30 (the frame after the down), as increments
+      const dmax = Math.max(...pts.map(([ms, dw]) => Math.abs(at(ms) - dw)));
+      num(`R59′d 探针五点（+47/+97/+130/+180/+197 宽增 1.76/11.07/16.14/20.55/21.34）对 ζ1/.25 → +22.7 自 +30 的最大差（pt）`, 0, dmax, 1); }
     num("抬起 中心 x 对 ζ.85/.4 闭式 rms（旧项中心 → 按下项中心）", 0, rms(lift.map((s) => s.cx - under(r0.cx, ox, 0.85, 0.4, s.t))), 1);
-    num("抬满后 宽 = w0 + 16", w0 + 16, rect().width, 0.5); num("抬满后 高 = 54 + 16", h0 + 16, rect().height, 0.5);
-    num("抬满后 圆角 = 高 / 2（胶囊，999px）", (h0 + 16) / 2, Math.min(parseFloat(getComputedStyle(g).borderTopLeftRadius), rect().height / 2), 0.5);
+    num("抬满后 宽 = w0 + 22.7（R108）", w0 + LW, rect().width, 0.5); num("抬满后 高 = 74（R108 探针 +464 行）", h0 + LH, rect().height, 0.5);
+    num("抬满后 圆角 = 高 / 2（胶囊，999px）", (h0 + LH) / 2, Math.min(parseFloat(getComputedStyle(g).borderTopLeftRadius), rect().height / 2), 0.5);
+    { const dLift = g.classList.contains("lift") ? 0 : await waitClass("lift", 600); check("view.js 的 .lift 类仍在 +140 ms 到（录像口径令牌，界面 R59′c 撤；驱动器已不等它）", "到", dLift === null ? "没到" : "到", dLift !== null); }
     /* ③ drop */
     /* the drop's time base = the last frame before the up (window.__tabLens.tf): the retarget keeps the loop's clock, the state at that frame is `up` */
     const up = rect(); const Lup = window.__tabLens; ev(other, "pointerup", ox, oy); await new Promise((r) => requestAnimationFrame(r));
@@ -59,8 +63,8 @@
     /* ⑤ template */
     check("手势后 .plat 是同一节点（未重建）", "同", nav.querySelector(".plat") === plat0 ? "同" : "新节点", nav.querySelector(".plat") === plat0);
     const selB = bs.find((b) => b.classList.contains("on")); const sr = selB.getBoundingClientRect(), sx = sr.left + sr.width / 2, sy = sr.top + sr.height / 2;
-    ev(selB, "pointerdown", sx, sy, 5); const dSel = await waitClass("lift-sel", 600); const selDelay = px("--ios-touch-tab-selected-lift-delay", 125);
-    check(`按下已选中项 +${selDelay} ms 抬起（.lift-sel）`, `${selDelay}…${selDelay + 50} ms`, dSel === null ? "没抬" : Math.round(dSel) + " ms", dSel !== null && dSel >= selDelay - 5 && dSel <= selDelay + 50);
+    ev(selB, "pointerdown", sx, sy, 5); await new Promise((r) => requestAnimationFrame(r)); const Ls = window.__tabLens; const dSel = await waitClass("lift-sel", 600);
+    check("R59′d 按下已选中项：驱动器同样在按下后即抬（不等 +125 的 .lift-sel 类，该令牌作废 = 录像口径）", "驱动在 · p 升", Ls ? `驱动在 · p ${Ls.p.toFixed(3)} · 类 ${dSel === null ? "没到" : "+" + Math.round(dSel) + " ms"}` : "无驱动", !!Ls && Ls.phase !== "rm");
     await sleep(150); const hiddenDesc = Object.getOwnPropertyDescriptor(Document.prototype, "hidden"); Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
     document.dispatchEvent(new Event("visibilitychange", { bubbles: true })); await sleep(30);
     check("抬起中 hidden → 驱动停、glide 回 view.js 的框", "无 .tl-on", nav.classList.contains("tl-on") ? "还在" : "无 .tl-on", !nav.classList.contains("tl-on"));
@@ -73,8 +77,9 @@
       ev(tgt, "pointerdown", tx, ty, 12); await sleep(40); ev(tgt, "pointerup", tx, ty, 12);
       let L0 = null; for (let i = 0; i < 30 && !L0; i++) { await new Promise((r) => requestAnimationFrame(r)); L0 = window.__tabLens; }   // the selection's render and the driver's first frame follow the up within a few frames
       const samples = []; await new Promise((res) => { let first = null; const tick = (now) => { if (first === null) first = now; const L = window.__tabLens; samples.push({ t: now, cx: cxNav2(), h: rect().height, p: L ? L.p : null, ph: L ? L.phase : null, x: L ? L.x : null, target: L ? L.target : null }); if (now - first < 900) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick); });
-      const target = tx - navL2; const tapFrames = samples.filter((s) => s.ph === "tap"), dropIdx = samples.findIndex((s) => s.ph === "drop"), atDrop = dropIdx > 0 ? samples[dropIdx - 1] : null, firstDrop = dropIdx >= 0 ? samples[dropIdx] : null;
-      check("R33 快速点另一项：松手后驱动进 tap 相（抬起 + 滑行同步起步）", "tap · p > 0 · x 在动", L0 ? `${L0.phase} · p ${L0.p.toFixed(3)} · x ${cxNav2().toFixed(1)}→${target.toFixed(1)}` : "无驱动", !!L0 && (L0.phase === "tap" || L0.phase === "drop") && tapFrames.length >= 3);
+      const target = tx - navL2; const tapFrames = samples.filter((s) => s.ph === "tap" || s.ph === "slide" || s.ph === "lift" || s.ph === "move"), dropIdx = samples.findIndex((s) => s.ph === "drop"), atDrop = dropIdx > 0 ? samples[dropIdx - 1] : null, firstDrop = dropIdx >= 0 ? samples[dropIdx] : null;
+      /* R59′d: the lift and the slide begin at the down itself (R108), so after a 40 ms up the driver is already lifting and sliding (phase lift / move, then slide once the highlight is gone) */
+      check("R33 / R59′d 快速点另一项：按下即抬 + 滑行，松手后仍在滑（无高亮：slide），p > 0", "lift/move/slide · p > 0 · x 在动", L0 ? `${L0.phase} · p ${L0.p.toFixed(3)} · x ${cxNav2().toFixed(1)}→${target.toFixed(1)}` : "无驱动", !!L0 && ["tap", "slide", "lift", "move", "drop"].includes(L0.phase) && L0.p > 0 && tapFrames.length >= 3);
       /* R106 (tab-lens-motion.md §6.9 ①): the fall (setLifted false) begins on the frame the lens is within 8 pt of its target with no highlight — 0x1c50e8634–0x1c50e8650; R33's ".5 pt arrival" was that rule read off the tap trace */
       check(`R33 / R106 到目标 8 pt 内那帧起落回（§6.9 ①：无高亮且 |目标 − 呈现| < 8）：drop 首帧 |Δx| < 8、前一帧 ≥ 8、drop 前高仍在抬起（${atDrop ? atDrop.h.toFixed(1) : "-"} > 54）`, "|Δx| < 8 · 前帧 ≥ 8 · h > 54", firstDrop && atDrop ? `|Δx| ${Math.abs(firstDrop.x - firstDrop.target).toFixed(2)}（前一帧 ${Math.abs(atDrop.x - atDrop.target).toFixed(2)}）· h ${atDrop.h.toFixed(1)} · ${tapFrames.length} tap 帧` : "无 drop", !!firstDrop && !!atDrop && Math.abs(firstDrop.x - firstDrop.target) < 8 && Math.abs(atDrop.x - atDrop.target) >= 8 && atDrop.h > 54);
       const dropS = samples.slice(dropIdx).filter((s) => s.ph === "drop"); const pDrop = dropS.map((s) => s.p);
