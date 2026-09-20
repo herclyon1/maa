@@ -59,6 +59,21 @@ def free_port():
     # several sessions run this runner at once: a fixed / random port can already belong to ANOTHER session's Chrome, and we would then talk to it
     # (EOF, "view.js not ready", 0/0 results). Ask the kernel for a free port instead.
     with socket.socket() as sk: sk.bind(('127.0.0.1', 0)); return sk.getsockname()[1]
+# Chrome leaves a code-signing clone of its own bundle per launch under $TMPDIR/../X/com.google.Chrome.code_sign_clone and a killed
+# instance never removes it (320 of them by 2026-09-20 11:50, ≈ 1 GB real, 440 GB apparent); sweep the ones older than 10 minutes —
+# no live Chrome keeps a clone that old — before every run (BOARD disk-2026-09-20.md)
+def sweep_code_sign_clones():
+    try:
+        base = os.path.join(os.path.dirname(tempfile.gettempdir().rstrip('/')), 'X', 'com.google.Chrome.code_sign_clone')
+        if not os.path.isdir(base): return
+        now = time.time()
+        for name in os.listdir(base):
+            d = os.path.join(base, name)
+            try:
+                if now - os.stat(d).st_mtime > 600: shutil.rmtree(d, ignore_errors=True)
+            except Exception: pass
+    except Exception: pass
+sweep_code_sign_clones()
 port = free_port(); prof = tempfile.mkdtemp()
 chrome_log = open(os.path.join(prof, 'chrome.log'), 'wb')   # Chrome's own stderr: a renderer crash shows here (printed on failure)
 p = subprocess.Popen([CH, '--headless=new', '--hide-scrollbars', f'--remote-debugging-port={port}', f'--user-data-dir={prof}', '--window-size=440,956', 'about:blank'], stdout=subprocess.DEVNULL, stderr=chrome_log)
