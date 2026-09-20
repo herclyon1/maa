@@ -43,21 +43,23 @@
    coordinates). Active from the first drag frame (the selection gesture's pan) until the floats settle after the up; the press-glide to another item
    is left as the pure lift (the ① trace of tab-lens-motion.md §4 reads the lift sizes alone there). Not read: the retargetImpulse gap (§6.4: the native peak 1.109 vs the chain's 1.085 — no impulse in the loupe spec), the interaction
    pulse (§3, four parameters unread). Instrument: window.__tabLens.flex = { sx, sy, dx, target, spec, sp, accel, vel, trace }.
-   REDUCE MOTION (R59′b / R59′b′; page-inventory.md §12b ② decompiled + the R59″ records tools/touch/seg-native-r59-motion.json tabhold / tabtap, the R94
-   frames tools/uiprobe/uiprobe-r94-frames.json): with Reduce Motion on, _UIFloatingTabBarSelectionContainerView never calls setLifted:
-   (0x1c4974abc–0x1c4974ac8) and the .95 platter scale needs a trait this bar lacks → no lift, no stretch, no platter scale; but
-   _UIContinuousSelectionGestureRecognizer still begins at the down and the selection view slides to the pressed item at once (259 → 87 in the records,
-   from ≈ +21 ms after the down — one commit frame). The spring: _animateSelection:completion: 0x1c4e16230 has four (ζ, response) pairs and Reduce Motion
-   picks none of them (老网页 R93, tab-lens-motion.md §6.7) → Solarium + highlighted = ζ .85 / .2 (0x1c4e16284), the same spring as the drag; the lens
-   layer and the selection view move as ONE (数据 R94: their presented centres equal to 0.00 on 238 frames) — so here one spring drives the glide's
-   box and the lens. Residuals against the records with that spring (not fitted away, 2号 R59′b′): the slide-at-down records 2.15 / 2.25 pt rms
-   (a ζ .9 / .2 curve would give .11 — unread why); the R94 held slide with the §6.6 finger target adopted the frame after each move: 22.6 / 22.5 pt
-   rms (the native selection lags the finger ≈ 2 frames more: 4.1 / 3.0 rms when the target is the finger 33 ms earlier) — the native path between
-   the finger and the selection's target (targetPosition transformer 0x1c4e0eae4, flex input EMA .3, §6.4) is unread. Here (geometry mode): the
-   driver starts at the pointerdown, p stays 0 (rest box, no flex), the position spring ζ .85 / .2 to the §6.6 finger target (= the pressed item's
-   centre at the down; the finger rule on every move, adopted on the next frame), the loop keeps running while the finger is down (the lens parks on
-   the item — the glide's own CSS box is still the old item until view.js selects at the up), and after the up the usual ζ .9 / .4 to view.js's
-   selection. Detected like view.js: window.__forceRM (the acceptance's switch), else prefers-reduced-motion. ?tlens=material unchanged. */
+   REDUCE MOTION (R59′b / R59′b′ / R59′b″; page-inventory.md §12b ② decompiled + the R59″ records tools/touch/seg-native-r59-motion.json tabhold / tabtap,
+   the R94 frames tools/uiprobe/uiprobe-r94-frames.json; the springs from tab-lens-motion.md §6.9 = 老网页 R105's read of this bar's real tracker
+   UIKit._UITabBarVisualProvider_Floating): with Reduce Motion on nothing lifts (no setLifted:, the .95 platter scale needs a trait this bar lacks) but
+   _UIContinuousSelectionGestureRecognizer begins at the down and the selection frame + the lens (one and the same motion, 数据 R94: equal to 0.00 on 238
+   frames) spring to the target. Six springs (0x1c50e8654–0x1c50e87a4, UIViewSpringAnimationBehavior dampingRatio:response:): Reduce Motion ON → position
+   AND size ζ .9 / .2 (0x1c50e8690 / 0x1c50e86c4); RM off and the gesture changed → .85 / .2 position, .85 / .3 size; otherwise .85 / .4 / .85 / .6. Target
+   (handleSelectionGesture 0x1c50e9078 → updateLensView 0x1c50e8180): frame.x = clamp(finger + offset, platter.minX + a·W, maxX − (1 − a)·W) − a·W with a =
+   the press point's fraction in the item (= the §6.6 finger rule, offset 0 here); the R94 frames fit that rule + ζ .9 / .2 + a 2-frame delivery latency to
+   1.15 pt rms (§6.9 ④, tools/lens/r94sim.py) and the slide-at-down records to .11. Here (geometry mode): the driver starts at the pointerdown, p stays 0
+   (rest box, no flex), the position spring ζ .9 / .2 to the finger target (the pressed item's centre at the down; every move adopted on the next tick —
+   no artificial latency: the page's own event → rAF path is its delivery), the loop keeps running while the finger is down (the lens parks on the item —
+   the glide's own CSS box is still the old item until view.js selects at the up), after the up the usual ζ .9 / .4 to view.js's selection (§6.9's
+   .85 / .4 is the non-RM release: read, kept as the .9 / .4 of §6 line 100 for the up after a lift — 待核 which applies after an RM press). The
+   non-RM pairs: position .85 / .2 (drag) = SP_DRAG ✓, .85 / .4 = SP_POS ✓; the size pairs .85 / .3 / .85 / .6 act on the selection frame's width when
+   the highlighted item's width differs — this bar's items share --ios-tab-button-w, so no width spring runs here (记录); the lift's 94 → 110 is the
+   material's setLifted spring (§0 / §4, ζ 1 / .25), not these six. Detected like view.js: window.__forceRM (the acceptance's switch), else
+   prefers-reduced-motion. ?tlens=material unchanged. */
 (function () {
   const q = new URLSearchParams(location.search);
   if (q.get("tlens") === "0") return;
@@ -78,7 +80,7 @@
   const LIFT = 16, PLATTER = 1.0516, ITEM = 1.16;                             // +16 on both axes (94×54 → 110×70), platter 1.0516, items 1.16 (tab-lens-native.md §3)
   const SP_LIFT = { z: 1, w: 2 * Math.PI / .25 }, SP_DROP = { z: 1, w: 2 * Math.PI / .4 }, SP_POS = { z: .85, w: 2 * Math.PI / .4 };   // tab-lens-motion.md §0 / §4: lift, drop, the jump to a pressed item (the ① trace)
   const SP_DRAG = { z: .85, w: 2 * Math.PI / .2 }, SP_RELEASE = { z: .9, w: 2 * Math.PI / .4 };
-  const SP_RM = SP_DRAG;                                                    // R59′b′: Reduce Motion changes no spring (R93) — the highlighted selection's ζ .85 / .2 drives the frame and the lens alike (R94); residuals vs the records in the header
+  const SP_RM = { z: .9, w: 2 * Math.PI / .2 };                             // R59′b″: Reduce Motion's own pair, position and size (tab-lens-motion.md §6.9 ③: 0x1c50e8690 / 0x1c50e86c4) — the records' .11 / 1.15 pt rms in the header
   const RM = () => (window.__forceRM != null ? !!window.__forceRM : matchMedia("(prefers-reduced-motion: reduce)").matches);   // tab-lens-motion.md §6.6 (UIKitCore _animateSelection, checked on the drag trace rms .55 / max .75 by the old page): the finger-following spring while highlighted, the spring after the up
   const step = (st, target, sp, dt) => {                                      // analytic damped-spring step from (x, v): ζ ≥ 1 critically damped, else under-damped
     const dx = st.x - target;
