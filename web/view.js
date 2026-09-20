@@ -1979,13 +1979,16 @@ function attachTabBar(nav, select) {
      still holds, and a move of ≥ 4 pt in x from the initial location clears that flag (0x1c50e94c8–0x1c50e94dc) — so a held selected tab dragged 4 pt and
      released, even on the same item, only clears; a lift outside window.bounds inset by 8 only clears the highlight (0x1c50e929c–0x1c50e92c0), no selection */
   const RESELECT_SLOP = () => touchPx("--ios-touch-tab-reselect-slop", 4), LIFT_INSET = () => touchPx("--ios-touch-tab-lift-outside-inset", 8);   // tokens requested (status-界面); the read values as fallbacks
+  /* R59′e (tab-lens-motion.md §6.9 ⑤ / R108): the highlight is set on the down itself — touchesBegan → highlightedItemIndex → updateLensView → setLifted:animated:
+     with no timer in the chain (the probe's lens is already 95.76 wide at +47 ms; the +140 / +125 ms of the retired tokens were the recording's latency).
+     So the .lift / .lift-sel class (= the highlight; the tab-lens driver lifts from the down on its own since R59′d) goes on at the down, nav.drag on a move. */
   seg.onpointerdown = (e) => {
     const cur = bs.findIndex((b) => b.classList.contains("on")), pressed = itemAt(e.clientX), onSelected = pressed === cur, x0 = e.clientX;
-    let timer = 0, lifted = false, reselect = true;
+    let reselect = true;
     if (!press(seg, e, {
-      move: (ev) => { if (Math.abs(ev.clientX - x0) >= RESELECT_SLOP()) reselect = false; if (lifted) { nav.classList.add("drag"); liftTo(itemAt(ev.clientX), onSelected ? "lift-sel" : "lift"); } },   // T4/T9/T11: lens follows (110×70 while dragging), value waits for the up; ≥ 4 pt: no reselect at the up (R106 ②)
+      move: (ev) => { if (Math.abs(ev.clientX - x0) >= RESELECT_SLOP()) reselect = false; nav.classList.add("drag"); liftTo(itemAt(ev.clientX), onSelected ? "lift-sel" : "lift"); },   // T4/T9/T11: the highlight follows the finger (the driver's lens follows on its own), value waits for the up; ≥ 4 pt: no reselect at the up (R106 ②)
       end: (ev, cancelled) => {
-        clearTimeout(timer); g.classList.remove("lift", "lift-sel"); nav.classList.remove("drag");
+        g.classList.remove("lift", "lift-sel"); nav.classList.remove("drag");
         const ins = LIFT_INSET(), outside = ev.clientX < ins || ev.clientX > innerWidth - ins || ev.clientY < ins || ev.clientY > innerHeight - ins;   // R106 ②: outside window.bounds inset by 8 → the highlight clears, nothing is selected
         const target = cancelled || outside ? cur : itemAt(ev.clientX);
         if (target === cur) {
@@ -1997,8 +2000,7 @@ function attachTabBar(nav, select) {
       },
     })) return;
     if (window.Motion) Motion.swallowNextClick(seg); else seg.dataset.pe = "1";   // same as the segmented control: an expiring swallow (motion.js) instead of the sticky data-pe
-    timer = setTimeout(() => { lifted = true; liftTo(pressed, onSelected ? "lift-sel" : "lift"); },
-      onSelected ? touchMs("--ios-touch-tab-selected-lift-delay", 125) : touchMs("--ios-touch-tab-glide-delay", 140));   // T1: +140 ms glide 119×64 / T3: selected lifts +125 ms → 103×63 by +180
+    liftTo(pressed, onSelected ? "lift-sel" : "lift");   // R59′e: the highlight at the down (no +140 / +125 timer — R108)
   };
   for (const b of bs) b.onclick = () => { if (seg.dataset.pe) { delete seg.dataset.pe; return; } if (!b.classList.contains("on")) select(b); };
 }
