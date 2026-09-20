@@ -34,6 +34,16 @@ OWNERS = {  # control: (owner, page files that only this control uses)
     'core': ('验收', ['web/accept.js']),
 }
 SHARED = ['web/tokens.css', 'web/view.js', 'web/index.html', 'web/motion.js', 'web/accept.js', 'web/sw.js', 'web/controls.css']
+if sys.argv[1:2] == ['--scope']:   # accept-batch.sh: which controls did the batch touch? (stdin: changed paths) → "FULL" | "a,b" | ""
+    only = set(); full = False
+    for f in sys.stdin.read().split():
+        if not f.startswith('web/'): continue                      # scripts / docs / tools do not change the page
+        m = re.match(r'web/accept-([a-z-]+)\.js$', f)
+        if m: only.add(m.group(1)); continue
+        hit = [c for c, (o, fs) in OWNERS.items() if c not in ('page', 'cell', 'core') and any(f == x or (x.endswith('/') and f.startswith(x)) for x in fs)]
+        if hit: only.update(hit)
+        else: full = True                                          # tokens.css / view.js / index.html / accept.js / anything unmapped
+    print('FULL' if full else ','.join(sorted(only))); sys.exit(0)
 args = sys.argv[1:]; base = None; refs = []; register = os.environ.get('ACCEPT_REGISTER', os.path.expanduser('~/Money/styl-work/BOARD/A16-register.md'))
 board = os.path.expanduser('~/Money/styl-work/BOARD.md'); files = []
 while args:
