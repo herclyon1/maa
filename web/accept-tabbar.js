@@ -39,7 +39,12 @@
     const stopped = () => !L() && !nav.classList.contains("tl-on");
     const rest = () => stopped() && g.getAnimations().length === 0;   // the glide's CSS transitions (view.js's own box move) are in getAnimations()
     const until = async (cond, cap) => { const t0 = performance.now(); while (!cond()) { if (performance.now() - t0 >= cap) return null; await frame(); } return performance.now() - t0; };
-    const sample = (ms, t0, done) => new Promise((resolve) => { const out = []; let first = null; const tick = (now) => { if (first === null) first = now; out.push({ t: (now - t0) / 1000, ...rect(), p: window.__tabLens ? window.__tabLens.p : null }); if (now - first < ms && !(done && done())) requestAnimationFrame(tick); else resolve(out); }; requestAnimationFrame(tick); });
+    /* a read "one frame after an event" waits for the driver's own next integrated frame (__tabLens.frame), not for one rAF: under the runner's virtual time
+       (--virtual-time, S3) several rAF callbacks fall in one 16.7 ms step and the driver integrates once per step (its `now <= last` guard), so one rAF could
+       precede the tick that publishes the retarget (老网页 13:2x: 7b's target / clamp rows read the previous move's value); on the wall clock it is one rAF */
+    const tick = async () => { const f = L() ? L().frame : -1; await until(() => !!L() && L().frame > f, 100); };
+    /* the samplers take one sample per driver frame (__tabLens.frame): under virtual time several rAF callbacks share one integrated frame and would repeat it */
+    const sample = (ms, t0, done) => new Promise((resolve) => { const out = []; let first = null, lastF = null; const tick = (now) => { if (first === null) first = now; const f = L() ? L().frame : null; if (f === null || f !== lastF) out.push({ t: (now - t0) / 1000, ...rect(), p: L() ? L().p : null, x: L() ? L().x : null }); lastF = f; if (now - first < ms && !(done && done())) requestAnimationFrame(tick); else resolve(out); }; requestAnimationFrame(tick); });
     const px = (name, fb) => { const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)); return Number.isNaN(v) ? fb : v; };
     const waitClass = async (cls, ms) => { const t0 = performance.now(); while (performance.now() - t0 < ms) { if (g.classList.contains(cls)) return performance.now() - t0; await sleep(4); } return null; };
     const on0 = bs.findIndex((b) => b.classList.contains("on")); const other = bs[on0 === 0 ? 1 : 0]; const w0 = other.offsetWidth, h0 = g.offsetHeight;
@@ -47,8 +52,8 @@
     /* ① + ② press another item — R59′d (老网页 R108, tab-lens-motion.md §6.9 ⑤): the lift has NO delay: the driver starts on the down (its first tick = t0), the width leaves w0 on ζ 1 / .25
        towards w0 + 22.7 (the probe's 94 → 116.7), the height towards 74; the probe's five points as width increments from the down: +47 1.76 / +97 11.07 / +130 16.14 / +180 20.55 / +197 21.34 (± 1 pt,
        t0 = the frame after the down); the +140 / +125 ms tokens were the recording's latency — view.js's class still arrives then (界面 R59′c withdraws it), the driver no longer waits for it */
-    const LW = 116.7 - 94, LH = 74 - 54, tDown = performance.now(); ev(other, "pointerdown", ox, oy); let L0 = null, nf0 = 0; for (; nf0 < 4 && !L0; nf0++) { await new Promise((r) => requestAnimationFrame(r)); L0 = window.__tabLens; }
-    check(`R59′d 按下即抬：驱动器在按下后 ≤ 2 帧起（t0 +${L0 ? Math.round(L0.t0 - tDown) : "-"} ms）、抬起目标 = 按下项、p 在升`, "≤ 2 帧 · lift/move · p > 0", L0 ? `${nf0} 帧 · ${L0.phase} · p ${L0.p.toFixed(3)}` : "无驱动", !!L0 && nf0 <= 2 && L0.t0 - tDown <= 40 && (L0.phase === "lift" || L0.phase === "move"));
+    const LW = 116.7 - 94, LH = 74 - 54, tDown = performance.now(); ev(other, "pointerdown", ox, oy); const wDrv = await until(() => !!L(), 50); const L0 = L();   // the driver's first integrated frame (a rAF stamped before the start re-ticks: tab-lens.js frame0), judged on the page's clock, not in rAF counts (virtual time: several rAFs per step)
+    check(`R59′d 按下即抬：驱动器在按下后 ≤ 40 ms（两帧）起（t0 +${L0 ? Math.round(L0.t0 - tDown) : "-"} ms，读到用了 ${wDrv === null ? "> 50" : Math.round(wDrv)} ms）、抬起目标 = 按下项、p 在升`, "t0 ≤ +40 · lift/move · p > 0", L0 ? `t0 +${Math.round(L0.t0 - tDown)} · ${L0.phase} · p ${L0.p.toFixed(3)}` : "无驱动", !!L0 && L0.t0 - tDown <= 40 && (L0.phase === "lift" || L0.phase === "move"));
     if (!L0) { check("标签栏：按下后驱动在跑（window.__tabLens）", "有", "缺", false); ev(other, "pointerup", ox, oy); return; }
     const lift = await sample(600, L0.t0, settled);
     { const eW = devs(lift.map((s) => s.width - crit(w0, w0 + LW, 0.25, s.t))), eH = devs(lift.map((s) => s.height - crit(h0, h0 + LH, 0.25, s.t))), eX = devs(lift.map((s) => s.cx - under(r0.cx, ox, 0.85, 0.4, s.t)));
@@ -63,7 +68,7 @@
     { const dLift = g.classList.contains("lift") ? 0 : await waitClass("lift", 600); check("view.js 的 .lift 类 = 高亮，自按下即在（R59′e 撤了 +140 定时器；驱动器不等它）", "到", dLift === null ? "没到" : "到", dLift !== null); }
     /* ③ drop */
     /* the drop's time base = the last frame before the up (window.__tabLens.tf): the retarget keeps the loop's clock, the state at that frame is `up` */
-    const up = rect(); const Lup = window.__tabLens; ev(other, "pointerup", ox, oy); await new Promise((r) => requestAnimationFrame(r));
+    const up = rect(); const Lup = window.__tabLens; ev(other, "pointerup", ox, oy); await tick();
     const drop = await sample(700, Lup ? Lup.tf : performance.now(), stopped);
     { const dr = drop.filter((s) => s.p !== null), eW = devs(dr.map((s) => s.width - crit(up.width, w0, 0.4, s.t))), eH = devs(dr.map((s) => s.height - crit(up.height, h0, 0.4, s.t))), worst = eW.max >= eH.max ? ["宽", eW] : ["高", eH];
       check(`落回（一手势一行）：宽 / 高 对 ζ1/.4 闭式（松手值 → ${w0} × ${h0}，自松手前一帧起）——各 rms ≤ 1 pt（${dr.length} 帧）`, "rms 宽 / 高 ≤ 1",
@@ -76,7 +81,7 @@
     /* ⑤ template */
     check("手势后 .plat 是同一节点（未重建）", "同", nav.querySelector(".plat") === plat0 ? "同" : "新节点", nav.querySelector(".plat") === plat0);
     const selB = bs.find((b) => b.classList.contains("on")); const sr = selB.getBoundingClientRect(), sx = sr.left + sr.width / 2, sy = sr.top + sr.height / 2;
-    ev(selB, "pointerdown", sx, sy, 5); let Ls = null; for (let i = 0; i < 4 && !Ls; i++) { await frame(); Ls = L(); } const dSel = await waitClass("lift-sel", 600);
+    ev(selB, "pointerdown", sx, sy, 5); await until(() => !!L(), 50); const Ls = L(); const dSel = await waitClass("lift-sel", 600);
     check("R59′d 按下已选中项：驱动器同样在按下后即抬（不等 +125 的 .lift-sel 类，该令牌作废 = 录像口径）", "驱动在 · p 升", Ls ? `驱动在 · p ${Ls.p.toFixed(3)} · 类 ${dSel === null ? "没到" : "+" + Math.round(dSel) + " ms"}` : "无驱动", !!Ls && Ls.phase !== "rm");
     await frame(); const hiddenDesc = Object.getOwnPropertyDescriptor(Document.prototype, "hidden"); Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
     document.dispatchEvent(new Event("visibilitychange", { bubbles: true })); await until(stopped, 30);
@@ -88,7 +93,7 @@
     { const sel0 = bs.find((b) => b.classList.contains("on")), tgt = bs[bs.indexOf(sel0) === 0 ? 1 : 0], tr = tgt.getBoundingClientRect(), tx = tr.left + tr.width / 2, ty = tr.top + tr.height / 2, navL2 = nav.getBoundingClientRect().left;
       const cxNav2 = () => rect().cx - navL2; const c0 = cxNav2();
       ev(tgt, "pointerdown", tx, ty, 12); await sleep(40); ev(tgt, "pointerup", tx, ty, 12);
-      let L0 = null; for (let i = 0; i < 30 && !L0; i++) { await new Promise((r) => requestAnimationFrame(r)); L0 = window.__tabLens; }   // the selection's render and the driver's first frame follow the up within a few frames
+      await until(() => !!L(), 500); const L0 = L();   // the selection's render and the driver's first frame follow the up within a few frames (≤ 30 at 60 Hz)
       const samples = []; await new Promise((res) => { let first = null; const tick = (now) => { if (first === null) first = now; const L = window.__tabLens; samples.push({ t: now, cx: cxNav2(), h: rect().height, p: L ? L.p : null, ph: L ? L.phase : null, x: L ? L.x : null, target: L ? L.target : null }); if (now - first < 900 && !stopped()) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick); });
       const target = tx - navL2; const tapFrames = samples.filter((s) => s.ph === "tap" || s.ph === "slide" || s.ph === "lift" || s.ph === "move"), dropIdx = samples.findIndex((s) => s.ph === "drop"), atDrop = dropIdx > 0 ? samples[dropIdx - 1] : null, firstDrop = dropIdx >= 0 ? samples[dropIdx] : null;
       /* R59′d: the lift and the slide begin at the down itself (R108), so after a 40 ms up the driver is already lifting and sliding (phase lift / move, then slide once the highlight is gone) */
@@ -136,12 +141,12 @@
       const sr2 = selB2.getBoundingClientRect(), sx2 = sr2.left + sr2.width / 2, sy2 = sr2.top + sr2.height / 2, navL = nav.getBoundingClientRect().left, w0b = selB2.offsetWidth;
       const underDamped = (x0, v0, target, zeta, resp, t) => { const w = 2 * Math.PI / resp, wd = w * Math.sqrt(1 - zeta * zeta), dx = x0 - target, e = Math.exp(-zeta * w * t); return target + e * (dx * Math.cos(wd * t) + ((v0 + zeta * w * dx) / wd) * Math.sin(wd * t)); };
       const cxNav = () => rect().cx - navL;
-      const sampleX = (ms, t0, done) => new Promise((resolve) => { const out = []; let first = null; const tick = (now) => { if (first === null) first = now; out.push({ t: (now - t0) / 1000, cx: cxNav() }); if (now - first < ms && !(done && done())) requestAnimationFrame(tick); else resolve(out); }; requestAnimationFrame(tick); });
+      const sampleX = (ms, t0, done) => new Promise((resolve) => { const out = []; let first = null, lastF = null; const tick = (now) => { if (first === null) first = now; const f = L() ? L().frame : null; if (f === null || f !== lastF) out.push({ t: (now - t0) / 1000, cx: cxNav(), x: L() ? L().x : cxNav() }); lastF = f; if (now - first < ms && !(done && done())) requestAnimationFrame(tick); else resolve(out); }; requestAnimationFrame(tick); });
       ev(selB2, "pointerdown", sx2, sy2, 6); const dl = await until(settled, 1050);   // lifted and settled (the driver's flag; the old 600 + 450 is the cap)
       if (dl === null) check("7b：按住已选中项抬起", "lift-sel", "没抬", false);
       else {
         const Lm = window.__tabLens; const xm = Lm ? Lm.x : cxNav(), vm = Lm ? Lm.xv : 0, tfm = Lm ? Lm.tf : performance.now();
-        const fx1 = sx2 + dir * 40; ev(selB2, "pointermove", fx1, sy2, 6); await new Promise((r) => requestAnimationFrame(r));
+        const fx1 = sx2 + dir * 40; ev(selB2, "pointermove", fx1, sy2, 6); await tick();
         const Lt = window.__tabLens; const want1 = fx1 - navL;   // a = .5: target = the finger (nav coordinates)
         num("7b 拖动目标 = 手指 x − a·W + W/2（按在中心 a = .5 → 手指 x，nav 坐标）", want1, Lt ? Lt.target : NaN, 0.5);
         check("7b 拖动中 nav.drag + 驱动 phase drag", "drag", `${nav.classList.contains("drag") ? "drag" : "-"} ${Lt ? Lt.phase : "-"}`, nav.classList.contains("drag") && !!Lt && Lt.phase === "drag");
@@ -160,15 +165,18 @@
           check(`7b 拖动（一手势一行）：位置弹簧 x 对 ζ.85/.2 闭式 rms ≤ 1 pt（${mv.length} 帧，自移动前一帧的 x / v 起，驱动器本帧值）；呈现盒 = W·sX × H·sY、中心 = 位置 + sX·drift 每帧 ± .6 px（R64，${withF.length} 帧）；三个 flex 浮点每帧 = 解析弹簧一步 ≤ 1e-6（${n} 帧）`, "rms ≤ 1 · 盒 < .6 · flex ≤ 1e-6",
             `rms x ${eP.rms.toFixed(2)}（最大 ${eP.max.toFixed(2)} pt @ 帧 ${eP.at}）· 盒最大偏差 ${eG.max.toFixed(2)} px @ 帧 ${eG.at} · flex 最大差 ${maxErr.toExponential(2)} @ 帧 ${atErr}`, eP.rms <= 1 && withF.length > 10 && eG.max < .6 && n > 10 && maxErr <= 1e-6); }
         const segR = seg.getBoundingClientRect(), padR = parseFloat(getComputedStyle(seg).paddingRight) || 0, padL = parseFloat(getComputedStyle(seg).paddingLeft) || 0;
-        const far = dir > 0 ? sx2 + 400 : sx2 - 400; ev(selB2, "pointermove", far, sy2, 6); await new Promise((r) => requestAnimationFrame(r)); const Lc = window.__tabLens;
+        const far = dir > 0 ? sx2 + 400 : sx2 - 400; ev(selB2, "pointermove", far, sy2, 6); await tick(); const Lc = window.__tabLens;
         const clampWant = dir > 0 ? segR.right - navL - padR - w0b / 2 : segR.left - navL + padL + w0b / 2;
         num("7b 拖过端点：目标硬钳在轨道端（§6.6 无橡皮筋）", clampWant, Lc ? Lc.target : NaN, 0.5);
         const nr = nbr.getBoundingClientRect(), nx = nr.left + nr.width / 2; ev(selB2, "pointermove", nx, sy2, 6); await until(settled, 350);   // over the neighbour, parked there
         const Lu = window.__tabLens; const xu = Lu ? Lu.x : cxNav(), vu = Lu ? Lu.xv : 0, tfu = Lu ? Lu.tf : performance.now();
-        ev(selB2, "pointerup", nx, sy2, 6); await new Promise((r) => requestAnimationFrame(r)); const Lr = window.__tabLens;
+        ev(selB2, "pointerup", nx, sy2, 6); await tick(); const Lr = window.__tabLens;
         num("7b 松手目标 = 手指下那项的中心（§6.5 落点）", nx - navL, Lr ? Lr.target : NaN, 0.5);
         const rl = await sampleX(500, tfu, stopped);
-        num(`7b / R106 松手 中心 x 对 ζ.85/.4 闭式 rms（${rl.length} 帧，自松手前一帧的 x / v 起；§6.9 ③「无手势」支 0x1c50e8774）`, 0, rms(rl.map((s) => s.cx - underDamped(xu, vu, nx - navL, 0.85, 0.4, s.t))), 1);
+        /* judged on the driver's own x like the drag row (R64): the presented centre carries the flex drift sX·dx decaying on its own spring after the up (2.4 px at the up, gone by +350 ms —
+           the old rect-based rms sat at ≈ 1.0 on the wall clock and 1.5 under virtual time's denser early samples); the drift's decay is the R64 落定 row's */
+        { const e = devs(rl.map((s) => s.x - underDamped(xu, vu, nx - navL, 0.85, 0.4, s.t)));
+          check(`7b / R106 松手 位置弹簧 x 对 ζ.85/.4 闭式 rms ≤ 1（${rl.length} 帧，自松手前一帧的 x / v 起，驱动器本帧值；§6.9 ③「无手势」支 0x1c50e8774）`, "rms ≤ 1", `rms ${e.rms.toFixed(2)} · 最大偏差 ${e.max.toFixed(2)} pt @ 帧 ${e.at}`, e.rms <= 1); }
         await until(rest, 400); const onB = bs.find((b) => b.classList.contains("on"));
         check("7b 松手后选中 = 手指下那项", nbr.dataset.tab || "邻项", onB ? (onB.dataset.tab || "?") : "-", onB === nbr);
         num("7b 落定：胶囊中心 = 该项中心", nx - navL, cxNav(), 1); check("7b 落定后驱动停（无 .tl-on）", "无", nav.classList.contains("tl-on") ? "还在" : "无", !nav.classList.contains("tl-on"));
