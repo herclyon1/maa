@@ -196,9 +196,12 @@
         const bad = { top: 0, none: 0, node: 0, zero: 0, h: 0, pos: 0, drv: 0, vp: 0 }; let frames = 0, events = 0; const onEv = () => events++; nav.addEventListener("tabs-changed", onEv); const dev = [];
         const watch = (ms) => new Promise((res) => { let first = null; const tick = (now) => { if (first === null) first = now; frames++;
           const r = nav.getBoundingClientRect(), g = nav.querySelector(".glide"), on = nav.querySelector(".seg button.on"), n = nav.querySelectorAll(".seg button").length;
-          const cs = getComputedStyle(nav), expTop = document.documentElement.clientHeight - (parseFloat(cs.bottom) || 0) - r.height, dTop = r.top - top0, dExp = r.top - expTop;
-          if (Math.abs(dTop) > 0.5) { if (Math.abs(dExp) > 0.5 || Math.abs(r.height - navH0) > 0.5) bad.top++; else bad.vp++;
-            if (dev.length < 6) dev.push({ f: frames, top: +r.top.toFixed(2), d: +dTop.toFixed(2), exp: +expTop.toFixed(2), h: +r.height.toFixed(2), ch: document.documentElement.clientHeight, ih: innerHeight, vv: window.visualViewport ? +visualViewport.height.toFixed(1) : null, sy: +scrollY.toFixed(1), tf: cs.transform, b: cs.bottom, cls: nav.className, kbd: document.documentElement.classList.contains("kbd") }); }
+          /* the nav's CSS position from either viewport height the browser reports: innerHeight (the initial containing block of position:fixed) or documentElement.clientHeight —
+             in headless Chrome the two diverge for a frame or two during the tab-set change (seen 2026-09-20 09:1x dark run: innerHeight 959 vs clientHeight 956 for frames 14–15,
+             the nav at 885 = 959 − 12 − 62 while top0 was 882): the page is where its CSS puts it, the viewport moved — `vp`, not a page bug */
+          const cs = getComputedStyle(nav), bot = parseFloat(cs.bottom) || 0, expInner = innerHeight - bot - r.height, expClient = document.documentElement.clientHeight - bot - r.height, dTop = r.top - top0, dExp = Math.min(Math.abs(r.top - expInner), Math.abs(r.top - expClient));
+          if (Math.abs(dTop) > 0.5) { if (dExp > 0.5 || Math.abs(r.height - navH0) > 0.5 || !/^matrix\(1, 0, 0, 1, [-\d.]+, 0\)$|^none$/.test(cs.transform)) bad.top++; else bad.vp++;
+            if (dev.length < 6) dev.push({ f: frames, top: +r.top.toFixed(2), d: +dTop.toFixed(2), expI: +expInner.toFixed(2), expC: +expClient.toFixed(2), h: +r.height.toFixed(2), ch: document.documentElement.clientHeight, ih: innerHeight, vv: window.visualViewport ? +visualViewport.height.toFixed(1) : null, sy: +scrollY.toFixed(1), tf: cs.transform, b: cs.bottom, cls: nav.className, kbd: document.documentElement.classList.contains("kbd") }); }
           if (Math.abs(r.height - navH0) > 0.5) bad.h++;
           if (getComputedStyle(nav).display === "none") bad.none++;
           if (nav.querySelector(".plat") !== plat || g !== gl0 || nav.querySelector(".seg") !== sg0) bad.node++; if (n === 0) bad.zero++;
