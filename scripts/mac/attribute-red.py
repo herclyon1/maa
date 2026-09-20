@@ -58,6 +58,10 @@ def git(*a):
     except Exception: return ''
 head = git('rev-parse', '--short', 'HEAD').strip()
 changed = set(git('diff', '--name-only', base, 'HEAD').split()) if base else set()
+if base and not refs:   # --base without --ref: the merges in base..HEAD name the refs ("Merge remote-tracking branch 'origin/ui' into night" → its 2nd parent)
+    for line in git('log', '--merges', '--format=%h %s', f'{base}..HEAD').splitlines():
+        m = re.search(r"'(origin/[^']+)'", line)
+        if m: refs.append([m.group(1), git('rev-parse', '--short', line.split()[0] + '^2').strip()])
 by_ref = {}
 for name, sha in refs:
     by_ref[name] = set(git('diff', '--name-only', base, sha).split()) if base else set()
@@ -93,9 +97,10 @@ def known(item):
             if src == board and 'A16' in line: quoted.update(re.findall(r'「([^」]{6,})」', line))          # BOARD.md: only the A16 rows' quoted items
             elif src == register and line.startswith('| ') and line.count('|') >= 7: quoted.add(line.split('|')[5].strip())   # the register's 行 cell
     return any(q[:10] in item for q in quoted if q)
+SESSION = {'ui': '界面', 'ui2': '2号', 'night-老网页': '老网页', 'data': '数据'}
 def owner_of_shared(f):
     for name, fs in by_ref.items():
-        if f in fs: return name
+        if f in fs: return SESSION.get(name.split('/')[-1], name)
     return '本批某 ref'
 out = []; reg_lines = []
 for fpath in files:
@@ -104,14 +109,22 @@ for fpath in files:
     except Exception: continue
     for line in lines:
         if not line.startswith('✗'): continue
-        body = line[1:].strip(); item = body.split(' | ')[0].strip(); got = body.split(' | ', 1)[1].strip() if ' | ' in body else ''
+        body = line[1:].strip()
+        mt = re.search(r'⟨([a-z-]+)⟩\s*$', body)            # S2 (2号): every row ends with ⟨tag⟩ = the loader's section / file tag
+        tag = mt.group(1) if mt else None
+        if mt: body = body[:mt.start()].rstrip()
+        item = body.split(' | ')[0].strip(); got = body.split(' | ', 1)[1].strip() if ' | ' in body else ''
         path, ctrl = locate(item)
+        if tag and tag in OWNERS: ctrl = tag; path = path or ('web/accept.js' if tag in ('segctl', 'cell', 'page', 'core') else f'web/accept-{tag}.js')
         if path is None: out.append(f'未定位 · {theme} · {item[:100]} | {got[:60]}'); continue
         owner, own_files = OWNERS.get(ctrl, ('?', []))
         touched = [f for f in changed if f == path or any(f == o or (o.endswith('/') and f.startswith(o)) for o in own_files)]
         shared = [f for f in changed if f in SHARED and f not in touched]
         already = known(item)
-        if touched: verdict = f'归 {owner}（本批改了 {", ".join(sorted(touched))[:80]}）'
+        if already and not touched: verdict = f'已记 A16（抖行；本批改了共享文件 {", ".join(sorted(shared))[:60]}，多半仍是同一抖动）' if shared else '记录不判（已记）'
+        elif touched:
+            whos = sorted({owner_of_shared(f) for f in touched})   # which merged ref changed it — not always the control's owner (a loader edit by another session)
+            verdict = f'归 {owner}（本批 {", ".join(whos)} 改了 {", ".join(sorted(touched))[:80]}）'
         elif shared: verdict = f'疑 {", ".join(sorted(shared))[:60]}（{owner_of_shared(sorted(shared)[0])} 合入）→ 归改它的人；{ctrl} 自身未动'
         else:
             verdict = '记录不判' + ('（已记）' if already else '（新记入 A16 表）')

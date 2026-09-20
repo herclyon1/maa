@@ -25,7 +25,7 @@
 (function () {
   if (!window.ACCEPT) return;
   ACCEPT.add(async function acceptRefresh(ctx) {
-    const { check, num, sleep } = ctx;
+    const { check, num, sleep, settle } = ctx;
     const R = window.Refresh;
     if (!R) { check("下拉刷新：Refresh 未装载（refresh.js）", "Refresh", "缺", false); return; }
     const ptr = document.getElementById("ptr"), ai = document.getElementById("ptrai"), arms = [...ai.querySelectorAll("i")], app = document.querySelector("body > header"), host = document.body;   // R68′: the inset is the header's top margin, the class on body
@@ -81,7 +81,7 @@
       window.scrollTo(0, 0); const syEnd = window.scrollY;   // at the top: the whole 60 scrolls back (scrolled ≥ 60 the content would stay put instead)
       const tE = performance.now(); done(); await sleep(60);
       const st4 = R.state, midBack = R.back && app ? { t: (performance.now() - R.back.t0) / 1000, m: parseFloat(getComputedStyle(app).marginTop) } : null;   // ⑪: a layout sample mid-way
-      let opAt = null; await sleep(300); const opEnd = parseFloat(ai.style.opacity || "1"); await sleep(120);
+      let opAt = null; await sleep(300); const opEnd = parseFloat(ai.style.opacity || "1"); await settle(() => R.state === 0, 120);   // S1: the go-away's own end (state 0), ≤ the old 120
       check("下拉刷新 ⑤ 结束：状态 4（.3 s ease-in-out (.42,0,.58,1) 淡出 + 再转 3.1316 rad + 缩到 .001，§11a）→ 状态 0，指示器回 0°、透明度回默认", "4 → 0 · rotation 0", `after 60 ms state ${st4} · after 360 ms opacity ${isNaN(opEnd) ? "(default)" : opEnd} · now state ${R.state} · rotation ${R.rotation}`, st4 === 4 && R.state === 0 && R.rotation === 0);
       /* ⑪ the scroll-back (§11 item 1: _setAbsoluteContentOffset:animated: → curve 0, .3 s, progress sin²(π/2 · f)) on the driver's frames */
       { const bt = R.backTrace.slice(), exp = (t) => 60 * (1 - Math.pow(Math.sin(Math.PI / 2 * Math.min(1, t / 0.3)), 2));
