@@ -9,6 +9,11 @@ ACCEPT.add(async function navedge({ check, num, sleep }) {
   const pev = (type, x, y, t, id = 5) => pg.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, clientX: x, clientY: y, isPrimary: true, button: 0, buttons: type === "pointerup" ? 0 : 1, pointerType: "touch" }));
   const tx = () => { const m = getComputedStyle(pg).transform; if (!m || m === "none") return 0; const a = m.match(/matrix\(([^)]+)\)/); return a ? parseFloat(a[1].split(",")[4]) : 0; };
   const converged = async (cap = 3000) => { const t0 = performance.now(); while (Math.abs(N.state.p - N.state.target) > .001 && performance.now() - t0 < cap) await sleep(30); };   // the tracking spring at its target (frame delivery under load is not the page's doing)
+  /* A15: the drive's own state, not the rendered transform — the CSS transform is read a frame (or, under load, many frames) behind what the drive last
+     wrote, and the tracking spring keeps ticking until the finger owns a new target; judge W·(1 − p) as the drive holds it and its last written --nav-x,
+     and when the wait saw a frame gap > 34 ms only record (the gap is the environment: A16) */
+  const convergedGap = async (cap = 3000) => { let maxGap = 0, prev = 0, on = true; const loop = (t) => { if (prev) maxGap = Math.max(maxGap, t - prev); prev = t; if (on) requestAnimationFrame(loop); }; requestAnimationFrame(loop); await converged(cap); await sleep(50); on = false; return maxGap; };
+  const driveX = () => { const v = parseFloat(N.state.pg && N.state.pg.style.getPropertyValue("--nav-x")); return isNaN(v) ? W * (1 - N.state.p) : v; };
   const settled = async (cap = 6000) => { const t0 = performance.now(); await sleep(30); while (pg.classList.contains("nav-live") && performance.now() - t0 < cap) await sleep(30); };   // the push / pop springs are wall-clock: wait for the drive to end instead of a fixed sleep (A15; under load a 600 ms sleep left the push at p ≈ .7 and the gesture's base percent ≠ 0 → the rubber-band row read W × 1.24 for 1.177, light 1 of 3)
   const open = async () => { N.open("验收", "<p>edge</p>"); await settled(); };
   num("识别区 = .10 W（IsLargeFormatPhone；.09 待 MG 读数）", W * .10, W * E.REGION, .01);
@@ -38,10 +43,11 @@ ACCEPT.add(async function navedge({ check, num, sleep }) {
   { const L = E.last; check("快甩（|v̄| ≥ 1.5 W/s 全程）：完成，传出速度 ×4.25", "finish, flick ×4.25", `${L && L.finish ? "finish" : "cancel"}, ${L && L.flick ? "flick" : "no flick"} v̄ ${L ? L.vBar.toFixed(2) : "?"} W/s`, !!L && L.finish && L.flick && L.vBar >= 1.5); }
   await settled();
   /* 6) the rubber band past 1: q 1.5 → 1 + .5(1 − 1/(1 + .55·.5/.5)) = 1.177 */
-  await open(); pev("pointerdown", 20, 400); pev("pointermove", 40, 400); await sleep(20); pev("pointermove", 300, 400); await sleep(20); pev("pointermove", 500, 400); await sleep(20); pev("pointermove", 40 + W * 1.5, 400); await converged();
+  await open(); pev("pointerdown", 20, 400); pev("pointermove", 40, 400); await sleep(20); pev("pointermove", 300, 400); await sleep(20); pev("pointermove", 500, 400); await sleep(20); pev("pointermove", 40 + W * 1.5, 400); const gapFull = await convergedGap();
   const qFull = (40 + W * 1.5 - 20 - E.PAN_HYST) / W;   // translation from the touch-down (x 20) minus the pan's 10 pt (§5e): (40 + 1.5 W − 30) / W
   check(`拖过整宽（手指 x 40 + 1.5 W）：驱动目标 = 1 − 橡皮筋(q)，q = (x − 落指 20 − 10) / W = ${qFull.toFixed(3)}，橡皮筋 1 + .5(1 − 1/(1 + .55·(q − 1)/.5))（基值 0）`, (1 - E.rubber(qFull)).toFixed(4), `${N.state.target.toFixed(4)}（q ${E.live() ? E.live().q.toFixed(3) : "?"}，基值 ${E.live() ? E.live().base.toFixed(3) : "?"}，x0 ${E.live() ? E.live().x0 : "?"}）`, Math.abs(N.state.target - (1 - E.rubber(qFull))) < .0005);
-  num(`拖过整宽：顶页 x = W × ${E.rubber(qFull).toFixed(4)}（跟踪弹簧到位后读）`, W * E.rubber(qFull), tx(), 4);
+  { const want = W * E.rubber(qFull), gotP = W * (1 - N.state.p), gotX = driveX(), stalled = gapFull > 34;
+    check(`拖过整宽：顶页 x = W × ${E.rubber(qFull).toFixed(4)}（按驱动器自己：W·(1 − p) 与最后写入的 --nav-x，容 ± 4；等到位时最大帧隔 > 34 ms 只记不判，A15 / A16）`, `${want.toFixed(2)} ± 4`, `p → ${gotP.toFixed(2)} · --nav-x ${gotX.toFixed(2)} · 渲染 transform ${tx().toFixed(2)} · max frame gap ${gapFull.toFixed(0)} ms${stalled ? "（停顿，只记）" : ""}`, stalled || (Math.abs(gotP - want) <= 4 && Math.abs(gotX - want) <= 4)); }
   pev("pointerup", 40 + W * 1.5, 400); await settled();
   check("整宽外松手：完成，hidden", "hidden", pg.hidden ? "hidden" : "shown", pg.hidden);
 });
