@@ -104,8 +104,13 @@ for fpath in files:
     except Exception: continue
     for line in lines:
         if not line.startswith('✗'): continue
-        body = line[1:].strip(); item = body.split(' | ')[0].strip(); got = body.split(' | ', 1)[1].strip() if ' | ' in body else ''
+        body = line[1:].strip()
+        mt = re.search(r'⟨([a-z-]+)⟩\s*$', body)            # S2 (2号): every row ends with ⟨tag⟩ = the loader's section / file tag
+        tag = mt.group(1) if mt else None
+        if mt: body = body[:mt.start()].rstrip()
+        item = body.split(' | ')[0].strip(); got = body.split(' | ', 1)[1].strip() if ' | ' in body else ''
         path, ctrl = locate(item)
+        if tag and tag in OWNERS: ctrl = tag; path = path or ('web/accept.js' if tag in ('segctl', 'cell', 'page', 'core') else f'web/accept-{tag}.js')
         if path is None: out.append(f'未定位 · {theme} · {item[:100]} | {got[:60]}'); continue
         owner, own_files = OWNERS.get(ctrl, ('?', []))
         touched = [f for f in changed if f == path or any(f == o or (o.endswith('/') and f.startswith(o)) for o in own_files)]
