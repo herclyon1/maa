@@ -4,6 +4,16 @@
   "counts": "alert=45 menu=58 tabbar=16",
   "night": "8f140ce"
  },
+ "daily:nav,nav-edge:dark": {
+  "at": "09-20 13:56",
+  "counts": "nav=1 nav-edge=1",
+  "night": "c03c131"
+ },
+ "daily:nav,nav-edge:light": {
+  "at": "09-20 13:56",
+  "counts": "nav=26 nav-edge=16",
+  "night": "c03c131"
+ },
  "daily:refresh,tile:dark": {
   "at": "09-20 13:54",
   "counts": "refresh=21 tile=46",
