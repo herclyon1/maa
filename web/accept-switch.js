@@ -6,7 +6,8 @@ ACCEPT.add(async function sw({ check, num, col, sleep, settle }) {
   const T = { green: dark ? [48, 209, 88] : [52, 199, 89], swOff: dark ? [235, 235, 245, .298] : [60, 60, 67, .298] };
   const cs = (el, pseudo) => el ? getComputedStyle(el, pseudo || null) : null, px = (v) => parseFloat(v) || 0;
   const at = (el, fx = .5, fy = .5, dx = 0, dy = 0) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width * fx + dx, y: r.top + r.height * fy + dy }; };
-  const pev = (el, type, p, id = 11) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, clientX: p.x, clientY: p.y, isPrimary: true, button: 0, buttons: type === "pointerup" ? 0 : 1, pointerType: "touch" }));
+  const stamp = (e) => { Object.defineProperty(e, "timeStamp", { value: performance.now(), configurable: true }); return e; };   // the page clock as the event's timeStamp (两钟同读, accept.js pev)
+  const pev = (el, type, p, id = 11) => el.dispatchEvent(stamp(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, clientX: p.x, clientY: p.y, isPrimary: true, button: 0, buttons: type === "pointerup" ? 0 : 1, pointerType: "touch" })));
   /* the resting well and the lifted lens, as B13's static rows (controls 3008bf5 accept.js) */
   const lab = document.createElement("div"); lab.style.cssText = "position:fixed;left:-9999px;top:0";
   lab.innerHTML = `<label class="sw"><input type="checkbox" checked><span></span></label><label class="sw"><input type="checkbox"><span></span></label>`; document.body.appendChild(lab);

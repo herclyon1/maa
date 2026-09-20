@@ -22,7 +22,7 @@
     const iconOp = () => parseFloat(getComputedStyle(btn, "::before").opacity);
     const rms = (a) => Math.sqrt(a.reduce((s, v) => s + v * v, 0) / Math.max(1, a.length));
     const raf = () => new Promise((r) => requestAnimationFrame(r));
-    const ev = (el, type, x, y, id = 7) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, isPrimary: true, pointerType: "touch", clientX: x, clientY: y, button: 0, buttons: type === "pointerup" ? 0 : 1 }));
+    const ev = (el, type, x, y, id = 7) => el.dispatchEvent(ctx.stamp(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, isPrimary: true, pointerType: "touch", clientX: x, clientY: y, button: 0, buttons: type === "pointerup" ? 0 : 1 })));   // ctx.stamp: the page clock as timeStamp (两钟同读)
     const sample = (el, ms, t0) => new Promise((resolve) => { const out = []; let first = null;
       const tick = (now) => { if (first === null) first = now; out.push({ t: (now - t0) / 1000, x: scaleOf(el) }); if (now - first < ms) requestAnimationFrame(tick); else resolve(out); }; requestAnimationFrame(tick); });
     const pg = document.querySelector("#subpage");
@@ -38,8 +38,11 @@
     /* ② press (R71′ §7c): +52.6 still resting, +69.3 the first grown frame; the box follows the probe's frames (GlassBtn.LIFT_T) from the down */
     const tDown = performance.now(); ev(btn, "pointerdown", cx, cy); await sleep(20); await raf();
     check("按下后第一帧图标 alpha 直接 .2（§7c：+19.3 ms 已 .2，anims 0 条——不是过渡）", ".2 · transition none", `${iconOp()} · ${getComputedStyle(btn, "::before").transitionProperty}`, Math.abs(iconOp() - 0.2) < 0.001 && getComputedStyle(btn, "::before").transitionProperty === "none");
-    await sleep(Math.max(0, 40 - (performance.now() - tDown))); const st40 = GlassBtn.state(btn);
-    check(`按下 +40 ms：还没抬（探针 +52.6 帧仍 32，+69.3 帧 34.48：起点在 52.6…69.3 内；表首结 ${GlassBtn.LIFT_START}）`, "44 · 未起", `${btn.getBoundingClientRect().width.toFixed(2)} · ${st40 && st40.started ? "已起" : "未起"}`, Math.abs(btn.getBoundingClientRect().width - 44) < 0.01 && !!st40 && !st40.started);
+    await sleep(Math.max(0, 40 - (performance.now() - tDown))); const st40 = GlassBtn.state(btn), el40 = st40 ? performance.now() - st40.downAt : NaN, w40 = btn.getBoundingClientRect().width;
+    /* judged for the time the sample was actually taken (the driver's own downAt): before 52.6 the lift has not started and the box is 44; a sample that lands
+       later under load (A16, red once in a sharded dark run) is judged by the table for its own time instead of failing for being late */
+    const early40 = el40 < GlassBtn.LIFT_START, ok40 = !!st40 && (early40 ? (!st40.started && Math.abs(w40 - 44) < 0.01) : (st40.started && (el40 < GlassBtn.LIFT_FIRST ? Math.abs(w40 - 44) < 0.01 : w40 >= 44 - 0.01)));
+    check(`按下 +40 ms：还没抬（探针 +52.6 帧仍 32，+69.3 帧 34.48：起点在 52.6…69.3 内；表首结 ${GlassBtn.LIFT_START}；按取样的实际时刻判：< 52.6 未起且 44，≥ 52.6 已起）`, "44 · 未起 @ < 52.6", `${w40.toFixed(2)} · ${st40 && st40.started ? "已起" : "未起"} @ +${Number.isFinite(el40) ? el40.toFixed(1) : "?"} ms`, ok40);
     let st = null; for (let i = 0; i < 20; i++) { st = GlassBtn.state(btn); if (st && st.started) break; await sleep(4); }
     if (!st || !st.started) { check("玻璃钮：按下后起动", "有", "缺", false); return; }
     const hold = await sample(btn, 600, st.downAt);

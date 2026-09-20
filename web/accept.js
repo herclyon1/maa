@@ -97,13 +97,17 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn, opt) { fn.__opt = opt || {};
     const tabRest = (maxMs) => settle(() => { const n = document.querySelector("nav.tabs"); return !n || !n.classList.contains("tl-on"); }, maxMs);   // tab-lens.js drops .tl-on when its driver rests
     const fadeRest = async (el, maxMs) => { await settle(() => !el.getAnimations || el.getAnimations().length === 0, maxMs); await raf(); };   // the element's CSS transitions have finished (+ one frame)
     const at = (el, fx = .5, fy = .5, dx = 0, dy = 0) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width * fx + dx, y: r.top + r.height * fy + dy }; };
-    const pev = (el, type, p, id = 11) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, clientX: p.x, clientY: p.y, isPrimary: true, button: 0, buttons: type === "pointerup" ? 0 : 1, pointerType: "touch" }));
+    /* 两钟同读 (收尾单 ③): a synthetic event's timeStamp is stamped by the browser's real clock; the drivers read e.timeStamp as their time base (view.js segLens
+       downAt / drag / up), so under the runner's virtual time (accept-run.py --virtual-time) the two clocks mixed. The event gets the PAGE clock — an own
+       timeStamp property = performance.now() — exactly what a real touch carries. */
+    const stamp = (e) => { Object.defineProperty(e, "timeStamp", { value: performance.now(), configurable: true }); return e; };
+    const pev = (el, type, p, id = 11) => el.dispatchEvent(stamp(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, clientX: p.x, clientY: p.y, isPrimary: true, button: 0, buttons: type === "pointerup" ? 0 : 1, pointerType: "touch" })));
     const segQ = () => document.querySelector("#queueseg"), segBs = () => [...document.querySelectorAll("#queueseg button")];   // the segmented control's helpers for the files (q / bs in their ctx; q here is the URLSearchParams)
     const onText = () => (document.querySelector("#queueseg button.on") || {}).textContent || "";
     const thisShift = (name) => { const sec = [...document.querySelectorAll("#app section")].find((x) => ((x.querySelector("h2") || {}).textContent || "").trim() === "这一趟"); return !!sec && [...sec.querySelectorAll(".row label")].some((l) => l.textContent.includes(name + " · ")); };
     /* the page's render() count for the control files (segctl / cell rows): wrapped for the run, restored after every file has run */
-    const R = { n: 0 }; const origRender = window.render; window.render = function () { R.n++; return origRender.apply(this, arguments); };
-    const ctx0 = { check, num, col, sleep, settle, raf, segRest, tabRest, fadeRest, at, pev, cs, px, T, dark, near, rgb, same, fmt, satTop, varColor, probe, q: segQ, bs: segBs, onText, thisShift, R };
+    const R = { n: 0 }; const origRender = window.render; window.render = function () { if (!/live\.js|stamina\.js/.test(String(new Error().stack))) R.n++; return origRender.apply(this, arguments); };   // R.n counts the CONTROLS' renders: a live.js tick / snapshot arrival (its own clock) landing inside a row's window is not the control's re-render (收尾单 ③: G3 / G1 renders+2)
+    const ctx0 = { check, num, col, sleep, settle, raf, segRest, tabRest, fadeRest, at, pev, cs, px, T, dark, near, rgb, same, fmt, satTop, varColor, probe, q: segQ, bs: segBs, onText, thisShift, R, stamp };
     const finish = () => {
       const fails = rows.filter((r) => !r.ok).length;
       const out = { at: new Date().toISOString(), href: location.href, viewport: `${innerWidth}×${innerHeight}`,
