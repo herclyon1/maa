@@ -22,8 +22,8 @@
     const btn = document.querySelector("main .menubtn"); const sel = btn && btn.previousElementSibling;
     if (!btn || !sel || sel.tagName !== "SELECT") { check("菜单：页面上没有值行按钮可测", "有", "缺", false); return; }
     /* the closed-form spring, ζ < 1 (the same expression view.js springStep / Motion.spring integrate) */
-    const closed = (start, target, zeta, resp, t) => { const w = 2 * Math.PI / resp, wd = w * Math.sqrt(1 - zeta * zeta), e = Math.exp(-zeta * w * t);
-      return target + (start - target) * e * (Math.cos(wd * t) + (zeta * w / wd) * Math.sin(wd * t)); };
+    const closed = (start, target, zeta, resp, t, v0 = 0) => { const w = 2 * Math.PI / resp, wd = w * Math.sqrt(1 - zeta * zeta), e = Math.exp(-zeta * w * t), dx = start - target;
+      return target + e * (dx * Math.cos(wd * t) + ((v0 + zeta * w * dx) / wd) * Math.sin(wd * t)); };   // v0: the start velocity (0 for a morph from rest; the dismiss leaves the "in" rest with |v| < 1 pt/s, menu.js settled — v0 = 0 there read rms .01 = the tolerance, both clocks)
     const rms = (a) => Math.sqrt(a.reduce((s, v) => s + v * v, 0) / Math.max(1, a.length));
     const rect = (el) => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; };
     /* t = the frame's timestamp − the spring's start (Menu.state().t0, the open / close call's performance.now()): the page integrates the same
@@ -40,8 +40,8 @@
       const tick = (now) => { if (first === null) first = now; if (!panel.isConnected) { resolve(out); return; }   // removed on settle (the dismiss): the frame's read would be zeros
         const st = Menu.state(); if (st) out.push({ t: st.t, r: rect(panel), x: { ...st.x }, op: parseFloat(cs(panel).opacity) }); if (now - first < ms && !(st && st.settled)) requestAnimationFrame(tick); else resolve(out); };
       requestAnimationFrame(tick); });
-    const fit = (samples, from, to, zeta, resp) => { const res = {}; for (const k of ["left", "top", "width", "height"]) {
-      res[k] = { dom: rms(samples.map((s) => s.r[k] - s.x[k])), model: rms(samples.map((s) => s.x[k] - closed(from[k], to[k], zeta, resp, s.t))) }; } return res; };
+    const fit = (samples, from, to, zeta, resp, v0) => { const res = {}; for (const k of ["left", "top", "width", "height"]) {
+      res[k] = { dom: rms(samples.map((s) => s.r[k] - s.x[k])), model: rms(samples.map((s) => s.x[k] - closed(from[k], to[k], zeta, resp, s.t, v0 ? v0[k] : 0))) }; } return res; };
     btn.scrollIntoView({ block: "center" }); await until(() => { const r = btn.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }, 100);   // the value row on screen, as a finger would find it
     const a0 = rect(btn);
     /* ① appear */
@@ -141,11 +141,11 @@
         check(`菜单玻璃 五灰阶平底核（${theme === "dark" ? "暗" : "亮"}，⑦ 闭链不调暗：${pred.map((v) => v.toFixed(1)).join(" / ")}；无头 Chrome 实测记录）`, "|Δ| ≤ 1.25/255", `${measured.join(" / ")} · |Δ|max ${dmax.toFixed(2)}`, dmax <= 1.25); }
       check("菜单玻璃 未接项已列（Menu.glass.unbuilt）", "≥ 4 项", Menu.glass ? Object.keys(Menu.glass.unbuilt).length + " 项" : "-", !!Menu.glass && Object.keys(Menu.glass.unbuilt).length >= 4); }
     /* ② dismiss (the scrim tap = cancel = the reverse morph) */
-    const from2 = rect(panel); scrim.click(); await new Promise((r) => requestAnimationFrame(r));
+    const from2 = rect(panel), v0 = (Menu.state() || {}).v; scrim.click(); await new Promise((r) => requestAnimationFrame(r));   // v0: the rested "in" springs' velocities (the loop stopped at settle: frozen until the close)
     const st2 = Menu.state(); const close = await sample(panel, 900);
-    const fout = fit(close, st2.from, st2.to, 0.8, 0.3);
+    const fout = fit(close, st2.from, st2.to, 0.8, 0.3, v0);
     check("菜单变形一步走（R19″ / §8b ③）：无中间形、无 .03 s 第二步；收回弹簧 = liquidMorph ζ.8/.3（liquidMorphShrink 无消费者）；RM ζ1/.15；crossBlur 自动规则只记不接", "oneStep · intermediate 0 · dismiss .8/.3 · reduce 1/.15 · crossBlur unwired", Menu.morph ? `${Menu.morph.oneStep ? "oneStep" : "steps"} · intermediate ${Menu.morph.useIntermediateShape} · dismiss ${Menu.springs.dismiss.join("/")} · reduce ${Menu.springs.reduce.join("/")} · crossBlur ${Menu.morph.crossBlur.wired ? "wired" : "unwired"}` : "no Menu.morph", !!Menu.morph && Menu.morph.oneStep && Menu.morph.useIntermediateShape === 0 && Menu.springs.dismiss[0] === 0.8 && Menu.springs.dismiss[1] === 0.3 && Menu.springs.reduce[0] === 1 && Menu.springs.reduce[1] === 0.15 && !Menu.morph.crossBlur.wired);
-    for (const k of ["left", "top", "width", "height"]) { num(`菜单收回 ${k}：弹簧值对 ζ.8/r.3 闭式 rms（pt，${close.length} 帧；§8b ① liquidMorph 两向同一根）`, 0, fout[k].model, 0.01); num(`菜单收回 ${k}：面板矩形 = 弹簧值 rms（pt）`, 0, fout[k].dom, 1); }
+    for (const k of ["left", "top", "width", "height"]) { num(`菜单收回 ${k}：弹簧值对 ζ.8/r.3 闭式 rms（pt，${close.length} 帧，自静止态的 x / v 起；§8b ① liquidMorph 两向同一根；解析步精确，.01 = 浮点余量）`, 0, fout[k].model, 0.01); num(`菜单收回 ${k}：面板矩形 = 弹簧值 rms（pt）`, 0, fout[k].dom, 1); }
     num("菜单收回目标 = 值行按钮框（top）", a0.top, st2.to.top, 0.5); num("菜单收回起点 = 静止框（width）", from2.width, st2.from.width, 0.5);
     await until(() => !Menu.state(), 300); check("菜单收回后面板移除", "无", document.querySelector(".menu.morph") ? "还在" : "无", !document.querySelector(".menu.morph"));
     check("菜单收回后描边层移除（R63′；形变期无描边：记录）", "无", document.querySelector(".menu-stroke") ? "还在" : "无", !document.querySelector(".menu-stroke"));
@@ -153,14 +153,14 @@
        resting rect from the first frame, the opacity follows ζ 1 / .15 from 0 to 1 on the driver's clock; the dismiss fades to 0 the same way, geometry
        unchanged. Forced through Menu.open's hook (the runner cannot set prefers-reduced-motion) */
     { Menu.open(btn, sel, { reduced: true }); await new Promise((r) => requestAnimationFrame(r)); const pr = document.querySelector(".menu.morph"), sr = Menu.state();
-      const critical = (start, target, resp, t) => { const w = 2 * Math.PI / resp; return target + (start - target) * (1 + w * t) * Math.exp(-w * t); };
+      const critical = (start, target, resp, t, v0 = 0) => { const w = 2 * Math.PI / resp, dx = start - target; return target + (dx + (v0 + w * dx) * t) * Math.exp(-w * t); };   // ζ 1 with the start velocity
       const smp = await sample(pr, 500);
       const geo = rms(smp.flatMap((s) => ["left", "top", "width", "height"].map((k) => s.r[k] - sr.to[k])));
       num("菜单减少动态效果：几何从首帧起 = 静止框（rms，pt）", 0, geo, 1);
       num(`菜单减少动态效果：opacity 对 ζ1/.15 闭式 0 → 1 rms（${smp.length} 帧，驱动时钟）`, 0, rms(smp.map((s) => s.x.a - critical(0, 1, 0.15, s.t))), 0.01);
       num("菜单减少动态效果：面板计算 opacity = 弹簧值（同帧读，rms）", 0, rms(smp.map((s) => s.op - s.x.a)), 0.02);
       const before = Menu.state(); document.querySelector(".menu-scrim").click(); await new Promise((r) => requestAnimationFrame(r)); const s2 = Menu.state(); const out2 = await sample(pr, 500);
-      num("菜单减少动态效果 收回：opacity 对 ζ1/.15 闭式 → 0 rms", 0, rms(out2.map((s) => s.x.a - critical(before.x.a, 0, 0.15, s.t))), 0.01);
+      num("菜单减少动态效果 收回：opacity 对 ζ1/.15 闭式 → 0 rms（自静止态的 a / v 起）", 0, rms(out2.map((s) => s.x.a - critical(before.x.a, 0, 0.15, s.t, before.v ? before.v.a : 0))), 0.01);
       num("菜单减少动态效果 收回：几何不动（rms，pt）", 0, rms(out2.flatMap((s) => ["left", "top", "width", "height"].map((k) => s.r[k] - s2.from[k]))), 1);
       await until(() => !Menu.state(), 200); check("菜单减少动态效果 收回后面板移除", "无", document.querySelector(".menu.morph") ? "还在" : "无", !document.querySelector(".menu.morph")); }
     /* ⑤ hidden strips the state */
