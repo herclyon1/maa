@@ -7,9 +7,11 @@ usage: accept-run.py <url-without-query> [light|dark|both] [nodata] [--only <控
   exits 1; the finally always releases the lock, Chrome and the profile.
   S3 (老网页 2026-09-20 13:2x, SPEED2-summary): by default (since 15:3x) the page runs on CDP virtual time once it is ready and the hold is released: Chrome
   is started with --enable-begin-frame-control --disable-frame-rate-limit, the clock is set to 'pause', then stepped 16.667 ms at a time
-  (Emulation.setVirtualTimePolicy advance, budget 16.667) and after every step the runner waits for the page's rAF (window.__vtf) before the
-  next — one frame per 16.7 ms of page time, so setTimeout / rAF / performance.now / CSS animations all advance together and the accept files'
-  sleeps cost no wall time. Measured 2026-09-20 13:16 (light, 703 rows): 52 s wall for 109.5 s of page time (6570 steps) vs 115 s on the
+  (Emulation.setVirtualTimePolicy advance, budget 16.667); the page's requestAnimationFrame is replaced by a queue (VT_PATCH) that the runner
+  drains once per step (__vtStep: the callbacks run with the step's time, nested requests wait for the next step) and then one real compositor
+  frame is forced and awaited (__vt.f) — exactly one frame per 16.667 ms of page time, steps = frames (the earlier rAF counter let the
+  free-running renderer paint 6–15 frames a step and the per-frame timing rows drifted by a frame, 验收 15:4x), so setTimeout / rAF /
+  performance.now / CSS animations all advance together and the accept files' sleeps cost no wall time. Measured 2026-09-20 13:16 (light, 703 rows): 52 s wall for 109.5 s of page time (6570 steps) vs 115 s on the
   wall clock; nav / nav-edge alone 4 s (7.5 s page time). The 9 rows that first read differently on the virtual clock (cell / glassbtn / tabbar /
   nav R69′: PointerEvent timeStamps, transitions armed after a double rAF, a one-frame sampling window) were made clock-agnostic by their
   authors (night 81a961f / 29640bf / 47fb198); 验收's two full sharded runs then read 572/572 · 281/281 on both clocks (25 s wall) and the
@@ -181,6 +183,12 @@ try:
             if ws.send('Runtime.evaluate', {'expression': 'window.__hbProbed === true', 'returnByValue': True})['result']['result'].get('value') is True: return
             time.sleep(0.2)
         log('heartbeat probe not settled in 5 s (window.__hbProbed) — injecting anyway')
+    VT_PATCH = ("window.__vt = { q: new Map(), n: 0, f: 0, orig: window.requestAnimationFrame.bind(window) }; "
+                "window.requestAnimationFrame = (cb) => { const id = ++__vt.n; __vt.q.set(id, cb); return id; }; "
+                "window.cancelAnimationFrame = (id) => { __vt.q.delete(id); }; "
+                "window.__vtStep = () => { const q = __vt.q; __vt.q = new Map(); const t = performance.now(); "
+                "for (const cb of q.values()) { try { cb(t); } catch (e) { console.error(e); } } "
+                "__vt.orig(() => { __vt.f++; }); return __vt.f; }; 1")
     def run_theme(dark, wsurl, only_list):
         """one theme × one shard in its own browser context (own localStorage, own renderer — the browser-level WS is not thread-safe, so the context and
         target are made in the main thread); returns (lines, ok, rows)"""
@@ -222,7 +230,8 @@ try:
                'typeof render === "function" && render(); typeof updateLive === "function" && updateLive(); ' % json.dumps(STAMINA, ensure_ascii=False)) if not nodata else ''
         if virtual_time:   # S3: from here on the page's clock is virtual — stepped 16.7 ms at a time below, so every rAF gets its frame (one big 'advance' budget starves rAF: timers race ahead, the drives see 1 s dt steps)
             ws.send('Emulation.setVirtualTimePolicy', {'policy': 'pause'})
-        if virtual_time: ws.send('Runtime.evaluate', {'expression': 'window.__vtf = 0; (function l() { requestAnimationFrame(() => { window.__vtf++; l(); }); })(); 1'})   # a frame counter: the runner steps the clock one frame at a time and waits for this rAF before the next step
+        if virtual_time:   # one frame per step (用户 15:4x): the page's requestAnimationFrame is replaced by a queue the runner drains once per 16.667 ms step — __vtStep() runs the queued callbacks with the step's time (nested requests land in the next step: afterPaint = two steps) and then asks the real compositor for exactly one frame (__vt.f), so steps = frames whatever the renderer's free-running frame rate does
+            ws.send('Runtime.evaluate', {'expression': VT_PATCH})
         res = ws.send('Runtime.evaluate', {'expression': inj + 'window.__acceptHold = false; 1', 'returnByValue': True})
         if 'exceptionDetails' in res.get('result', {}):
             log('injection threw:', res['result']['exceptionDetails'].get('text', ''), (res['result']['exceptionDetails'].get('exception') or {}).get('description', '')[:200])
@@ -241,8 +250,9 @@ try:
                     except Exception: break
                 ws.events = [e for e in ws.events if e.get('method') != 'Emulation.virtualTimeBudgetExpired']
                 got_frame = False
-                for k in range(400):                # the frame for this slice: wait until the page's rAF ran once more (frames are not vsync-bound: --disable-frame-rate-limit), so every 16.7 ms of page time gets exactly one frame
-                    f = ws.send('Runtime.evaluate', {'expression': 'window.__vtf', 'returnByValue': True})['result']['result'].get('value')
+                stepped = ws.send('Runtime.evaluate', {'expression': 'window.__vtStep ? window.__vtStep() : -1', 'returnByValue': True})['result']['result'].get('value')   # the frame's rAF callbacks, at this step's time
+                for k in range(400):                # then exactly one real compositor frame (style / layout / animation events) before the next step
+                    f = ws.send('Runtime.evaluate', {'expression': 'window.__vt ? window.__vt.f : -1', 'returnByValue': True})['result']['result'].get('value')
                     if isinstance(f, int) and f > vframes: vframes = f; got_frame = True; break
                     time.sleep(0.0005)
                 stalls = stalls + 1 if not (expired and got_frame) else 0
