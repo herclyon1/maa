@@ -6,18 +6,23 @@ only reason for a single rollback or hot fix). The project's future UI is a nati
 
 ## Live
 
-- Version: `v=20260919190821` (main `8be9d7a (batch 28fb83c + stamp)`, deployed 2026-09-19 19:08 JST; verify with `curl -s https://herclyon1.github.io/maa/ | grep -o 'view.js?v=[0-9]*'`,
-  which must print the stamp twice: the inline view.js loader and the accept row both carry it).
-- Content = the 181053 release + tonight's bug batch:
-  - segmented-control lens drawn in WebGL (`web/assets/lens/lens-webgl.js`, ui2 `145ddc1`: rest bound .001 = the page's own settle bound, prewarm to an
-    offscreen framebuffer, `?gl=0` falls back to the SVG stack, `?gltrace=1` per-step timing) and the page side of the ghost-lens fix (ui `7deefe6`);
-  - keyboard: the tab-bar capsule hides on focusin of any keyboard field and on a visualViewport height drop > 120, returns 60 ms after blur
-    (`html.kbd`, ui `654d4a8` / `5d71467`); HH:MM inputs accept only `H:MM` / `HH:MM`, anything else rolls back to the last value with a toast;
-  - first lens gesture after load: the lens layers and the GL instance are built at the first idle after load (ui `5d71467`; was 30 ms on the first
-    press); live.js's timers wait for view.js (`window.__viewReady`, ui `68c6f15`); dialogs no longer scroll their title out (`overflow: clip`);
-  - list-row press (B14, `web/controls.js` / `web/controls.css`, b14-fix `7d3ea7a`): +150 ms highlight, .5 s fade, page `ask()` dialog instead of `confirm()`;
-  - accept harness (`scripts/mac/accept-run.py`, main `dc126d3`): starts only after `window.__viewReady`, 60 s windows, reloads once on a lost script.
-- Rollback point: `v=20260919181053` (main `fceb5de`: the same WebGL lens without tonight's keyboard / time / first-idle-build fixes).
+- Version: `v=20260920122207` (main `c33d341` = night `e470332` content + runner housekeeping, deployed 2026-09-20 12:22 JST at the user's request;
+  verify with `curl -s https://herclyon1.github.io/maa/ | grep -o 'view.js?v=[0-9]*' | sort -u`).
+- Content = the 20260919202020 release + the overnight batch of 2026-09-19 23:45 → 2026-09-20 11:23 (90 items on the `night` branch, headless
+  acceptance 707 rows light and dark green at `e470332`; the ledger is `~/Money/styl-work/BOARD.md` sections B/B2/E, outside the repo):
+  - the two phone bugs: a quick tap on the selected segment no longer blanks the platter (canvas clear at lift < .001) and the fall is created at
+    down + 220 ms (lensHangTime, decompiled and confirmed by a timer hook); a shift change no longer drops the bottom tab bar (the lens canvases painted
+    past the right edge and widened the layout viewport — canvases are now clipped to the viewport and `html{overflow-x:clip}`);
+  - per control (each from decompiled UIKit / QuartzCore values, sources in `~/Money/styl-work/remote-ref/RENDER-PIPELINE.md`): segmented control,
+    tab-bar lens (lift on the next tick, flex while dragging, drop within 8 pt, up rules), top bar (large title, pocket blur by the read mask),
+    navigation push/pop (parallax, back chevron, large-title scale, edge-back recognizer), value-row menu and alert (glass from the 70 dumped keys,
+    KeyFill stroke, ring shadow, soft shadow, ovalization), pull-to-refresh (arms, placement under the small-title bar), glass round buttons
+    (probe frame tables), switch (own file, in the release by the user's decision), tile / capsule press states, reduce-motion branches;
+  - runner: `scripts/mac/accept-run.py` waits for `__viewReady`, kernel-assigned DevTools port, sweeps stale Chrome profiles and code-sign clones.
+- Not verified on a device yet: the morning simulator sweep ran against a stale service-worker shell (the night shell scripts were `?v=0`), so its
+  seven "bad" items are void until re-run on a stamped build; three page defects found by reading are pending in the next batch (a row with a
+  status suffix mis-lays its switch; the ✓/✕ buttons lack user-select / touch-callout; the top-bar ✓/✕ glyph never fades when held).
+- Rollback point: `v=20260919202020` (main `17b5d3e`: the 181053 content plus the diagnostics pieces).
 - How to roll back: `git checkout <release commit> -- web/ && git commit && bash scripts/mac/deploy-web.sh && git push`.
 
 ## Known issues (device-measured on the iOS simulator, standalone; records in `~/Money/styl-work/remote-ref/tools/touch/`)
