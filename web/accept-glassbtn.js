@@ -24,7 +24,7 @@
     const raf = () => new Promise((r) => requestAnimationFrame(r));
     const ev = (el, type, x, y, id = 7) => el.dispatchEvent(ctx.stamp(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, isPrimary: true, pointerType: "touch", clientX: x, clientY: y, button: 0, buttons: type === "pointerup" ? 0 : 1 })));   // ctx.stamp: the page clock as timeStamp (两钟同读)
     const sample = (el, ms, t0) => new Promise((resolve) => { const out = []; let first = null;
-      const tick = (now) => { if (first === null) first = now; out.push({ t: (now - t0) / 1000, x: scaleOf(el) }); if (now - first < ms) requestAnimationFrame(tick); else resolve(out); }; requestAnimationFrame(tick); });
+      const tick = () => { const now = performance.now(); if (first === null) first = now; out.push({ t: (now - t0) / 1000, x: scaleOf(el) }); if (now - first < ms) requestAnimationFrame(tick); else resolve(out); }; requestAnimationFrame(tick); });   // 收尾④: the page clock inside the frame, not the rAF timestamp (a second clock under virtual time)
     const pg = document.querySelector("#subpage");
     /* S1: a push / pop is waited on nav.js's own nav-live class (on while its spring runs; set on the push's first frame) instead of a fixed 450 ms */
     const navSettled = async () => { await settle(() => pg.classList.contains("nav-live"), 100); await settle(() => !pg.classList.contains("nav-live"), 3000); };
@@ -92,7 +92,7 @@
     /* ---- R71″ (§7d, R81 probe): partial presses. All releases 120 pt away (outside the 70 pt margin) so the page stays. */
     const b3 = pg.querySelector(".navbtn.pback"); const r3 = b3.getBoundingClientRect(), x3 = r3.left + r3.width / 2, y3 = r3.top + r3.height / 2, far3 = x3 + 120;
     const wOf = () => b3.getBoundingClientRect().width, op3 = () => parseFloat(getComputedStyle(b3, "::before").opacity);
-    const sampleW = (ms) => new Promise((resolve) => { const out = []; let first = null; const tick = (now) => { if (first === null) first = now; out.push({ t: now, w: wOf(), a: op3(), s: GlassBtn.state(b3) }); if (now - first < ms) requestAnimationFrame(tick); else resolve(out); }; requestAnimationFrame(tick); });
+    const sampleW = (ms) => new Promise((resolve) => { const out = []; let first = null; const tick = () => { const now = performance.now(); if (first === null) first = now; out.push({ t: now, w: wOf(), a: op3(), s: GlassBtn.state(b3) }); if (now - first < ms) requestAnimationFrame(tick); else resolve(out); }; requestAnimationFrame(tick); });
     /* ① a 60 ms tap: no lift at all (the first grown frame +69.3 lies after the up), the icon .2 for a frame then the fade */
     { const tD = performance.now(); ev(b3, "pointerdown", x3, y3, 11); await sleep(20); await raf(); const a20 = op3();
       await sleep(Math.max(0, 60 - (performance.now() - tD))); ev(b3, "pointerup", far3, y3, 11); const tU = performance.now();
@@ -108,9 +108,9 @@
          clock) — a wall-clock sample at ≥ 30 ms landed on a +47 ms frame under load, already past the reversal; no frame inside the window (a stall) → reported, not judged */
       const inWin = smpB.filter((s) => s.s && s.s.phase === "release" && s.s.tLast != null && s.s.tLast <= GlassBtn.REVERSE_MS), at30 = inWin.length ? inWin[inWin.length - 1] : null, stall30 = !at30;
       const tr = smpB.reduce((m, s) => (s.w < m.w ? s : m), smpB[0]), st12 = smpB[smpB.length - 1].s, kUsed = (smpB.find((s) => s.s && s.s.k != null) || {}).s;
-      const jumps = smpB.slice(1).map((s, i) => Math.abs(s.w - smpB[i].w)), maxJump = Math.max(...jumps);
+      const jumps = smpB.slice(1).map((s, i) => Math.abs(s.w - smpB[i].w) / Math.max(1, (s.t - smpB[i].t) / 16.667)), maxJump = Math.max(...jumps);   // 收尾④: per 16.667 ms of the samples' own spacing — the sampler's rAF can skip driver frames (virtual time), the table's slope is per frame
       check("玻璃钮 R71″ ② 120 ms 点按：抬手时已抬起中（宽 > 44），抬手后 ≈ 30 ms 仍在长（驱动器自己 since_up ≤ 30 ms 内最后一帧的宽 ≥ 抬手时的宽，A15；窗口内无帧 = 停顿，只记不判），然后回落", "wUp > 44 · w(≤ up+30) ≥ wUp", `wUp ${wUp.toFixed(2)} · ${at30 ? "w(up+" + at30.s.tLast.toFixed(0) + ") " + at30.w.toFixed(2) : "no frame inside 30 ms (stall: not judged)"}`, wUp > 44.5 && (stall30 || at30.w >= wUp - .05));
-      check(`玻璃钮 R71″ ② 回落谷时刻不变（up + 225…250，探针 120 ms 点按 +230），谷深随起点缩（k = ${kUsed ? kUsed.k.toFixed(3) : "?"}：探针从 41.5 起 ×.917）；切换连续（相邻帧宽差 ≤ 3.5 px = 回落表最陡段 2.5 px/帧 × k）`, "trough 225…250 · < 44 · max jump ≤ 3.5", `trough ${tr.w.toFixed(2)} (×${(tr.w / 44).toFixed(3)}) @ up+${(tr.t - tU).toFixed(0)} · max jump ${maxJump.toFixed(2)}`, tr.t - tU > 220 && tr.t - tU < 255 && tr.w < 44 && maxJump <= 3.5);
+      check(`玻璃钮 R71″ ② 回落谷时刻不变（up + 225…250，探针 120 ms 点按 +230），谷深随起点缩（k = ${kUsed ? kUsed.k.toFixed(3) : "?"}：探针从 41.5 起 ×.917）；切换连续（每 16.7 ms 宽差 ≤ 3.5 px = 回落表最陡段 2.5 px/帧 × k，按样本自身间隔折算）`, "trough 225…250 · < 44 · max jump ≤ 3.5", `trough ${tr.w.toFixed(2)} (×${(tr.w / 44).toFixed(3)}) @ up+${(tr.t - tU).toFixed(0)} · max jump ${maxJump.toFixed(2)}`, tr.t - tU > 220 && tr.t - tU < 255 && tr.w < 44 && maxJump <= 3.5);
       await settle(() => !GlassBtn.state(b3), 200); check("玻璃钮 R71″ ② 回落表结束后复位（驱动器放手，≤ up + 800；盒清、44）", "无 · 44", `${b3.style.width || "无"} · ${wOf().toFixed(1)}`, !b3.style.width && Math.abs(wOf() - 44) < .01); }
     /* ③ hold 700 → release → re-press 120 ms into the fall: the icon back to .2 within a frame, the geometry keeps falling until the lift table's start (down₂ + 52.6), then
        re-lifts from that value on the lift timeline (the probe: peak × 1.385 @ down₂ + 204 from 34.14 = the table scaled to what is left), settles at L */

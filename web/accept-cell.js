@@ -13,7 +13,10 @@
   rLab.innerHTML = `<div class="group"><div class="row nav"><label>上一行</label><span class="val">值</span><i class="sf chev"></i></div><div class="row nav"><label>行</label><span class="val">值</span><i class="sf chev"></i></div><div class="acts"><button type="button">蓝字行</button></div></div>`;
   document.body.appendChild(rLab);
   const [row0, row] = rLab.querySelectorAll(".row.nav"), act = rLab.querySelector(".acts button"); let rsel = 0, asel = 0;
-  const seq = []; new MutationObserver(() => seq.push([performance.now(), row.className])).observe(row, { attributes: true, attributeFilter: ["class"] });
+  /* 收尾④ (两钟同读): the fade is read from the CSSTransition itself at the moment .hl-out is set (MutationObserver microtask; getAnimations() flushes
+     style) — under the runner's virtual time the .5 s transition completes within one stepped frame, so a row sampled later sees the class gone */
+  let fadeSeen = null; const fadeOf = (el) => { const a = el.getAnimations().find((x) => x.transitionProperty === "background-color"); if (!a) return null; const tm = a.effect.getTiming(); return { t: performance.now(), dur: tm.duration, easing: tm.easing, prop: a.transitionProperty }; };
+  const seq = []; new MutationObserver(() => { seq.push([performance.now(), row.className]); if (row.classList.contains("hl-out")) { const f = fadeOf(row); if (f) fadeSeen = f; } }).observe(row, { attributes: true, attributeFilter: ["class"] });
   row.addEventListener("click", () => { rsel++; seq.push([performance.now(), "click"]); }); act.addEventListener("click", () => asel++);
   const HL = dark ? [58, 58, 60] : [209, 209, 214], bgOf = (el) => cs(el).backgroundColor, lit = (el) => same(bgOf(el), HL);
   const bez = (x) => { let lo = 0, hi = 1; for (let i = 0; i < 40; i++) { const t = (lo + hi) / 2, cx = 3 * .42 * t * (1 - t) * (1 - t) + 3 * .58 * t * t * (1 - t) + t * t * t; if (cx < x) lo = t; else hi = t; } const t = (lo + hi) / 2; return 3 * 0 * t * (1 - t) * (1 - t) + 3 * 1 * t * t * (1 - t) + t * t * t; };   // cubic-bezier(.42,0,.58,1)
@@ -30,9 +33,10 @@
   row.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));   // = the browser's own click for this touch: swallowed
   check("列表行 抬手 +45 ms 浏览器自己的 click 被吞（data-rc；选中由页面在淡出首帧后发，此时已 1 次）", "1", rsel, rsel === 1);
   await sleep(15);
-  check("列表行 C3 抬手 +60 ms：选中 1 次（淡出首帧之后一帧）、淡出中（.hl-out）", "1, fading", `${rsel}, ${row.classList.contains("hl-out") ? "fading" : "not fading"}`, rsel === 1 && row.classList.contains("hl-out"));
-  { const t = cs(row).transitionDuration, e = cs(row).transitionTimingFunction, pr = cs(row).transitionProperty;
-    check("列表行 淡出 = background-color .5 s cubic-bezier(.42,0,.58,1)（--ios-motion-row-release-duration / --ios-motion-ease-in-out）", "background-color 0.5s cubic-bezier(0.42, 0, 0.58, 1)", `${pr} ${t} ${e}`, pr === "background-color" && t === "0.5s" && e === "cubic-bezier(0.42, 0, 0.58, 1)"); }
+  { const fading = row.classList.contains("hl-out"), seen = !!fadeSeen && fadeSeen.t >= tUp && !row.classList.contains("hl");   // seen: the fade's transition started after the up (page clock) — the class may already be gone under a stepped clock
+    check("列表行 C3 抬手 +60 ms：选中 1 次（淡出首帧之后一帧）、淡出中（.hl-out 在，或抬手后过渡对象已见——两钟同读）", "1, fading", `${rsel}, ${fading ? "fading" : seen ? "fade seen +" + Math.round(fadeSeen.t - tUp) + " ms" : "not fading"}`, rsel === 1 && (fading || seen)); }
+  { const f = fadeSeen || {}, t = f.dur, e = f.easing, pr = f.prop;   // read from the transition object when .hl-out was set (收尾④), not from the computed style at +60
+    check("列表行 淡出 = background-color .5 s cubic-bezier(.42,0,.58,1)（--ios-motion-row-release-duration / --ios-motion-ease-in-out；过渡对象自身的 duration / easing）", "background-color 500 cubic-bezier(0.42, 0, 0.58, 1)", `${pr} ${t} ${e}`, pr === "background-color" && t === 500 && e === "cubic-bezier(0.42, 0, 0.58, 1)"); }
   await sleep(200);
   { const el = performance.now() - tUp - 16, c = rgb(bgOf(row)), want = T.card[0] + (HL[0] - T.card[0]) * (1 - bez(Math.max(0, Math.min(1, el / 500))));   // the fade starts one frame after the up
     check(`列表行 抬手 +${Math.round(el)} ms：R 在曲线上（±8；原生 +235 ms 亮 227 / 暗 46）`, Math.round(want), c ? Math.round(c[0]) : "缺", !!c && Math.abs(c[0] - want) <= 8); }
@@ -40,13 +44,14 @@
   col("列表行 抬手 +660 ms：回到静止色 = 卡片色（--ios-card-bg）", T.card, bgOf(row));
   check("列表行 淡完后类名清空", "clean", row.className, !row.classList.contains("hl") && !row.classList.contains("hl-out"));
   /* C1: a 100 ms tap — no highlight at the up; one frame of highlight at +150 and the fade from there; selected once */
-  pev(row, "pointerdown", at(row)); await sleep(100); pev(row, "pointerup", at(row));
+  fadeSeen = null; const tUp1 = performance.now() + 100; pev(row, "pointerdown", at(row)); await sleep(100); pev(row, "pointerup", at(row));
   check("列表行 C1 短点 100 ms 抬手时：还没高亮", "rest", lit(row) ? "highlight" : "rest", !lit(row));
   seq.length = 0; await sleep(170);
   { const names = seq.map((e) => e[1]), iH = names.findIndex((n) => /\bhl\b/.test(n) && !/hl-out/.test(n)), iF = names.findIndex((n) => /hl-out/.test(n)), iC = names.indexOf("click");
     const gapHF = iH >= 0 && iF > iH ? seq[iF][0] - seq[iH][0] : -1, gapFC = iF >= 0 && iC > iF ? seq[iC][0] - seq[iF][0] : -1;
     check("列表行 C1 短点：高亮帧 → 淡出帧 → 选中，三者依次、各隔一次上屏（rAF + setTimeout 0；数据真机核 ②：confirm()/推页不得吞掉高亮帧）", "hl < hl-out < click", `${iH} < ${iF} < ${iC}, 间隔 ${Math.round(gapHF)} / ${Math.round(gapFC)} ms`, iH >= 0 && iF > iH && iC > iF); }   // the gaps are JS timestamps (the paint sits between rAF and the timeout; headless Chrome renders in < 1 ms): reported, not judged
-  check("列表行 C1 按下 +270 ms：高亮已亮过并在淡出（.hl-out）、选中 1 次", "fading, 2", `${row.classList.contains("hl-out") ? "fading" : row.classList.contains("hl") ? "lit" : "rest"}, ${rsel}`, row.classList.contains("hl-out") && rsel === 2);
+  { const fading = row.classList.contains("hl-out"), seen = !!fadeSeen && fadeSeen.t >= tUp1 - 1 && !row.classList.contains("hl");
+    check("列表行 C1 按下 +270 ms：高亮已亮过并在淡出（.hl-out 在，或过渡对象已见——两钟同读）、选中 1 次", "fading, 2", `${fading ? "fading" : seen ? "fade seen" : row.classList.contains("hl") ? "lit" : "rest"}, ${rsel}`, (fading || seen) && rsel === 2); }
   await fadeRest(row, 620);   // S1: the .5 s release fade is a CSS transition — wait for its own end
   /* C6: vertical 12 pt after the highlight — off at once, the up selects nothing */
   pev(row, "pointerdown", at(row)); await sleep(200); pev(row, "pointermove", at(row, .5, .5, 0, 12));
@@ -74,9 +79,10 @@
      confirm dialog); a rAF loop logs the row's class at every frame (a rAF tick sees what that frame paints): a highlight frame and a fade
      frame must have been logged before the alert opened, and the fade must keep running under the open alert (native: deselectRow's .5 s
      fade runs while the alert presents) */
-  const frames = []; let logging = true; const logFrame = (ts) => { frames.push([ts, act.className]); if (logging) requestAnimationFrame(logFrame); }; requestAnimationFrame(logFrame);
+  const frames = []; let logging = true; const logFrame = () => { frames.push([performance.now(), act.className]); if (logging) requestAnimationFrame(logFrame); }; requestAnimationFrame(logFrame);   // 收尾④: the page clock (the rAF timestamp is a second clock under virtual time; blockedAt is performance.now())
+  const actSeq = []; new MutationObserver(() => actSeq.push([performance.now(), act.className])).observe(act, { attributes: true, attributeFilter: ["class"] });   // the class sequence itself (page clock): under a stepped clock the fade class can come and go between two rAF frames
   let blockedAt = 0, askP = null; act.addEventListener("click", () => { blockedAt = performance.now(); askP = ask("开始刷？", "验收：弹窗打开后淡回仍在走", "开始刷"); });
-  const framesBefore = () => { const fr = frames.filter((f) => f[0] < blockedAt); return { hl: fr.some((f) => /\bhl\b/.test(f[1]) && !/hl-out/.test(f[1])), out: fr.some((f) => /hl-out/.test(f[1])) }; };
+  const framesBefore = () => { const fr = frames.concat(actSeq).filter((f) => f[0] < blockedAt); return { hl: fr.some((f) => /\bhl\b/.test(f[1]) && !/hl-out/.test(f[1])), out: fr.some((f) => /hl-out/.test(f[1])) }; };
   pev(act, "pointerdown", at(act)); await sleep(100); pev(act, "pointerup", at(act)); await sleep(60);
   const alertEl = document.querySelector("#alert"), r60 = rgb(bgOf(act));
   await sleep(200); const r210 = rgb(bgOf(act)), openAt60 = !!(alertEl && alertEl.open);   // the click (and the alert) comes ~2 frames after the +150 ms highlight of a 100 ms tap
@@ -86,7 +92,7 @@
     check("蓝字行 弹窗打开后淡回仍在走（up +60 → +260 ms 底色继续向静止色走，+660 到静止）", "走, 到静止", `${moving ? "走" : "停"}（R ${r60 ? Math.round(r60[0]) : "?"} → ${r210 ? Math.round(r210[0]) : "?"}）, ${rest ? "到静止" : "未到"}`, moving && rest); }
   if (alertEl && alertEl.open) { document.querySelector("#alert-cancel").click(); await settle(() => !alertEl.open, 450); }
   if (askP) await askP;
-  frames.length = 0; blockedAt = 0;
+  frames.length = 0; actSeq.length = 0; blockedAt = 0;
   pev(act, "pointerdown", at(act)); await sleep(200);
   col("蓝字行 按下 +200 ms：底色 = 高亮色（同 cell）", HL, bgOf(act));
   pev(act, "pointerup", at(act)); await sleep(80);
