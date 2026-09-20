@@ -1,0 +1,12 @@
+{
+ "daily:refresh,tile:dark": {
+  "at": "09-20 13:54",
+  "counts": "refresh=21 tile=46",
+  "night": "272b3ab"
+ },
+ "daily:refresh,tile:light": {
+  "at": "09-20 13:54",
+  "counts": "refresh=21 tile=46",
+  "night": "272b3ab"
+ }
+}
