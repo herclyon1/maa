@@ -13,7 +13,7 @@
 (function () {
   if (!window.ACCEPT) return;
   ACCEPT.add(async function acceptGlassBtn(ctx) {
-    const { check, num, sleep } = ctx;
+    const { check, num, sleep, settle } = ctx;
     if (!window.GlassBtn) { check("玻璃钮：GlassBtn 未装载（motion.js 未到）", "GlassBtn", "缺", false); return; }
     if (typeof openPage !== "function") { check("玻璃钮：openPage 不可用，无法推入页取返回钮", "有", "缺", false); return; }
     /* R4: the press grows the BOX (44 → 60, glass-button-press-formula.md §7 item 2), not a transform — the scale read = the rect's width ÷ 44 (tokens.css
@@ -25,8 +25,10 @@
     const ev = (el, type, x, y, id = 7) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, isPrimary: true, pointerType: "touch", clientX: x, clientY: y, button: 0, buttons: type === "pointerup" ? 0 : 1 }));
     const sample = (el, ms, t0) => new Promise((resolve) => { const out = []; let first = null;
       const tick = (now) => { if (first === null) first = now; out.push({ t: (now - t0) / 1000, x: scaleOf(el) }); if (now - first < ms) requestAnimationFrame(tick); else resolve(out); }; requestAnimationFrame(tick); });
-    const pg = document.querySelector("#subpage"); const pop = openPage("检查", "<p>玻璃钮检查</p>"); await sleep(450);
-    const navSettled = async () => { const t0 = performance.now(); while (pg.classList.contains("nav-live") && performance.now() - t0 < 3000) await sleep(30); };   // the push (nav.js) still owns .pback::before's opacity while nav-live (R47′ chevron keyframes)
+    const pg = document.querySelector("#subpage");
+    /* S1: a push / pop is waited on nav.js's own nav-live class (on while its spring runs; set on the push's first frame) instead of a fixed 450 ms */
+    const navSettled = async () => { await settle(() => pg.classList.contains("nav-live"), 100); await settle(() => !pg.classList.contains("nav-live"), 3000); };
+    const pop = openPage("检查", "<p>玻璃钮检查</p>"); await navSettled();   // the push (nav.js) still owns .pback::before's opacity while nav-live (R47′ chevron keyframes)
     await navSettled();
     const btn = pg.querySelector(".navbtn.pback"); const r = btn.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
     /* ① */
@@ -73,9 +75,9 @@
     await sleep(Math.max(0, 830 - (performance.now() - upAt)));
     check("松手后盒复位（表末 +800 ms：内联 width 清、宽 44）", "无 · 44", `${btn.style.width || "无"} · ${btn.getBoundingClientRect().width.toFixed(1)}`, !btn.style.width && Math.abs(btn.getBoundingClientRect().width - 44) < 0.01);
     /* ④ tap rule: a release inside the margin fires the button (the page pops) */
-    ev(btn, "pointerdown", cx, cy, 8); await sleep(120); ev(btn, "pointerup", cx + 60, cy, 8); await sleep(500);
+    ev(btn, "pointerdown", cx, cy, 8); await sleep(120); ev(btn, "pointerup", cx + 60, cy, 8); await settle(() => !pg.classList.contains("in"), 500);   // S1: the pop itself, ≤ 500
     check("70 pt 内松手 = 点按（页面弹出）", "弹出", pg.classList.contains("in") ? "还在" : "弹出", !pg.classList.contains("in"));
-    await sleep(450); openPage("检查", "<p>玻璃钮检查</p>"); await sleep(450); await navSettled();
+    await navSettled(); openPage("检查", "<p>玻璃钮检查</p>"); await navSettled();
     const b2 = pg.querySelector(".navbtn.pback"); const r2 = b2.getBoundingClientRect(), x2 = r2.left + r2.width / 2, y2 = r2.top + r2.height / 2;
     /* ⑤ hidden strips */
     ev(b2, "pointerdown", x2, y2, 9); await sleep(100);
@@ -83,7 +85,7 @@
     document.dispatchEvent(new Event("visibilitychange", { bubbles: true })); await sleep(30);
     check("hidden 时按下态剥掉（盒清）", "无", b2.style.width || "无", !b2.style.width);
     delete document.hidden; if (hiddenDesc) Object.defineProperty(Document.prototype, "hidden", hiddenDesc);
-    ev(b2, "pointerup", x2, y2, 9); await sleep(300);
+    ev(b2, "pointerup", x2, y2, 9); await settle(() => !GlassBtn.state(b2), 300);   // S1: the driver drops the button when its release table ends
     /* ---- R71″ (§7d, R81 probe): partial presses. All releases 120 pt away (outside the 70 pt margin) so the page stays. */
     const b3 = pg.querySelector(".navbtn.pback"); const r3 = b3.getBoundingClientRect(), x3 = r3.left + r3.width / 2, y3 = r3.top + r3.height / 2, far3 = x3 + 120;
     const wOf = () => b3.getBoundingClientRect().width, op3 = () => parseFloat(getComputedStyle(b3, "::before").opacity);
@@ -106,7 +108,7 @@
       const jumps = smpB.slice(1).map((s, i) => Math.abs(s.w - smpB[i].w)), maxJump = Math.max(...jumps);
       check("玻璃钮 R71″ ② 120 ms 点按：抬手时已抬起中（宽 > 44），抬手后 ≈ 30 ms 仍在长（驱动器自己 since_up ≤ 30 ms 内最后一帧的宽 ≥ 抬手时的宽，A15；窗口内无帧 = 停顿，只记不判），然后回落", "wUp > 44 · w(≤ up+30) ≥ wUp", `wUp ${wUp.toFixed(2)} · ${at30 ? "w(up+" + at30.s.tLast.toFixed(0) + ") " + at30.w.toFixed(2) : "no frame inside 30 ms (stall: not judged)"}`, wUp > 44.5 && (stall30 || at30.w >= wUp - .05));
       check(`玻璃钮 R71″ ② 回落谷时刻不变（up + 225…250，探针 120 ms 点按 +230），谷深随起点缩（k = ${kUsed ? kUsed.k.toFixed(3) : "?"}：探针从 41.5 起 ×.917）；切换连续（相邻帧宽差 ≤ 3.5 px = 回落表最陡段 2.5 px/帧 × k）`, "trough 225…250 · < 44 · max jump ≤ 3.5", `trough ${tr.w.toFixed(2)} (×${(tr.w / 44).toFixed(3)}) @ up+${(tr.t - tU).toFixed(0)} · max jump ${maxJump.toFixed(2)}`, tr.t - tU > 220 && tr.t - tU < 255 && tr.w < 44 && maxJump <= 3.5);
-      await sleep(200); check("玻璃钮 R71″ ② +800 后复位（盒清、44）", "无 · 44", `${b3.style.width || "无"} · ${wOf().toFixed(1)}`, !b3.style.width && Math.abs(wOf() - 44) < .01); }
+      await settle(() => !GlassBtn.state(b3), 200); check("玻璃钮 R71″ ② 回落表结束后复位（驱动器放手，≤ up + 800；盒清、44）", "无 · 44", `${b3.style.width || "无"} · ${wOf().toFixed(1)}`, !b3.style.width && Math.abs(wOf() - 44) < .01); }
     /* ③ hold 700 → release → re-press 120 ms into the fall: the icon back to .2 within a frame, the geometry keeps falling until the lift table's start (down₂ + 52.6), then
        re-lifts from that value on the lift timeline (the probe: peak × 1.385 @ down₂ + 204 from 34.14 = the table scaled to what is left), settles at L */
     { ev(b3, "pointerdown", x3, y3, 13); await sleep(700); ev(b3, "pointerup", far3, y3, 13); await sleep(120);
@@ -117,7 +119,7 @@
       const from = minS.w / 44, wantPeak = from + (1.390 - 1) * (60 / 44 - from) / (60 / 44 - 1);
       check(`玻璃钮 R71″ ③ 再按后：谷在 down₂ + 40…70（落到抬起表起点 52.6 后转向；探针 +38 / 首长大帧 +71），再从谷值按抬起表时间线长起，峰 ≈ from + .39·(L − from)/(L − 1) = ${wantPeak.toFixed(3)}（探针 ×1.385 @ +204）在 down₂ + 185…225`, "trough 40…70 · peak match ± .01 · peak 185…225", `trough ×${from.toFixed(3)} @ +${(minS.t - tD2).toFixed(0)} · peak ×${(pk.w / 44).toFixed(3)} @ +${(pk.t - tD2).toFixed(0)}`, minS.t - tD2 > 35 && minS.t - tD2 < 75 && Math.abs(pk.w / 44 - wantPeak) < .01 && pk.t - tD2 > 185 && pk.t - tD2 < 225);
       num("玻璃钮 R71″ ③ 再按 +650 ms：到位 L（盒 60）", 60 / 44, wOf() / 44, .005);
-      ev(b3, "pointerup", far3, y3, 14); await sleep(900); check("玻璃钮 R71″ ③ 松手后复位", "无 · 44", `${b3.style.width || "无"} · ${wOf().toFixed(1)}`, !b3.style.width && Math.abs(wOf() - 44) < .01); }
-    b2.click(); await sleep(450);
+      ev(b3, "pointerup", far3, y3, 14); await settle(() => !GlassBtn.state(b3), 900); check("玻璃钮 R71″ ③ 松手后复位（驱动器放手，≤ 900）", "无 · 44", `${b3.style.width || "无"} · ${wOf().toFixed(1)}`, !b3.style.width && Math.abs(wOf() - 44) < .01); }
+    b2.click(); await navSettled();
   });
 })();
