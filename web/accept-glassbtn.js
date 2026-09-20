@@ -45,7 +45,11 @@
     const pk = hold.reduce((m, s) => (s.x > m.x ? s : m), hold[0]);
     check("抬起峰 × 1.390 @ +202.6（44.48 / 32）后回到持住 L（表：+236 1.383、+336 1.3628、≥ +353 1.3636）", "peak 1.38…1.39 near +190…+215 ms", `peak ${pk.x.toFixed(4)} @ +${Math.round(pk.t * 1000)} ms`, pk.x > 1.38 && pk.x < 1.395 && pk.t * 1000 > 185 && pk.t * 1000 < 220);
     num("按住 600 ms 后 scale = L（盒 60 × 60）", L, scaleOf(btn), 0.005);
-    num("按住：盒中心不动（margin 抵消）", cx, (() => { const q = btn.getBoundingClientRect(); return q.left + q.width / 2; })(), 0.5);
+    /* A16 (red twice on first dark runs: 42 vs 42.51): the pre-press cx was read while the pushed page's slide still had half a pixel to go, then the page settled under the
+       hold — the measurement, not the box. Now both sides are read at the same instant: the centre from the rect vs the rest centre from the layout tokens (the page's
+       left + --ios-nav-side 20 + --ios-nav-button/2 22), which the negative margins must reproduce */
+    { const q = btn.getBoundingClientRect(), pgL = pg.getBoundingClientRect().left, side = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ios-nav-side")) || 20, half = (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ios-nav-button")) || 44) / 2;
+      num("按住：盒中心不动（margin 抵消；同一帧读：矩形中心 vs 页左 + --ios-nav-side 20 + 22）", pgL + side + half, q.left + q.width / 2, 0.5); }
     num("按住：图标 alpha = .2（§7 item 4）", 0.2, parseFloat(getComputedStyle(btn, "::before").opacity), 0.01);
     num("按住：图标 scale × 1.3636（§7 item 4 wrapper 36 → 49.09）", L, (() => { const m = /matrix\(([^)]+)\)/.exec(getComputedStyle(btn, "::before").transform); return m ? parseFloat(m[1].split(",")[0]) : 1; })(), 0.005);
     check("玻璃钮 光晕（§7b）：读数已记、不可表达（backdrop-aware vibrantColorMatrix），不画", "GlassBtn.glow.built false + why", GlassBtn.glow ? `${GlassBtn.glow.built} · ${GlassBtn.glow.why} · little ${GlassBtn.glow.littleGlow.size}/${GlassBtn.glow.littleGlow.shadowRadius} · dodge ${GlassBtn.glow.littleGlow.luminance.light}/${GlassBtn.glow.littleGlow.luminance.dark}` : "-", !!GlassBtn.glow && GlassBtn.glow.built === false && GlassBtn.glow.littleGlow.shadowRadius === 45);
