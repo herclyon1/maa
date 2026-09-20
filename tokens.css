@@ -71,6 +71,11 @@
   --ios-switch-knob: rgb(255 255 255);
   /* probe UIActivityIndicatorView.color = secondaryLabel */
   --ios-spinner: rgb(60 60 67 / .6);
+  /* UIRefreshControl arm (BOARD R61′; refresh-native-formula.md §10 R61, 数据 probe getters uiprobe-getter-r61-light-S-{rep,seed}.json): the drawn
+     colour is the CAReplicatorLayer composite instanceColor × seed backgroundColor, component-wise — secondaryLabel (60,60,67) α 1 × secondaryLabel
+     α .6 = (60²/255, 60²/255, 67²/255) = rgb(14 14 18) at α .6 (× the reveal progress); the probe screenshot's read-back α .434 fits this product,
+     not secondaryLabel .6 (r61_sample.py) */
+  --ios-refresh-arm: rgb(14 14 18 / .6);
   /* probe UIDimmingView behind a sheet */
   --ios-dimming: rgb(0 0 0 / .2);
   /* probe scroll indicator */
@@ -363,6 +368,7 @@
   --ios-motion-nav-pop-duration: 0.35s;
   --ios-motion-nav-pop-easing: linear(0.000, 0.125, 0.256, 0.379, 0.490, 0.586, 0.668, 0.735, 0.790, 0.835, 0.871, 0.899, 0.922, 0.940, 0.953, 0.964, 0.972, 0.979, 0.984, 0.988, 0.991, 0.993, 0.995, 0.996, 1.000);
   /* probe: switch track cross-fade = two opacity CABasicAnimations 0.200 s, timing "default" */
+  /* switch track cross-fade: decompiled value — _transitionImagesToPressed:on:animated: animateWithDuration .2, options 0x50000 = curve 5 default (.25,.1,.25,1) (switch-native-formula.md §10, BOARD R34 ⑧) */
   --ios-motion-switch-track-duration: 0.2s;
   --ios-motion-switch-track-easing: cubic-bezier(0.25, 0.1, 0.25, 1);
   /* probe: segmented label weight cross-fade (contents) 0.200 s default; pressed segment dims to opacity .2 in 0.47 s, back in 0.2 s */
@@ -443,6 +449,7 @@
   --ios-alert-glass-saturate: 1.94;
   --ios-alert-glass-brightness: 1.071;
   --ios-alert-glass-white: .538;
+  /* 采样替代（BOARD R34, 2026-09-20）: this filter chain is a sampled stand-in, not a decoded value — the alert glass keys are in alert-native-formula.md §1.3–1.6; replace when wired (A20) */
   --ios-alert-glass-filter: blur(20px) saturate(1.94) brightness(1.071);
   --ios-alert-backdrop-scale: .25;
   --ios-alert-dimming: rgb(0 0 0 / .2);
@@ -587,6 +594,18 @@
   /* UIButton / alert action: highlight within 1–6 ms of touch-down; alert actions have NO slop (6 pt beyond the edge un-highlights) and transfer the highlight to a neighbour */
   --ios-touch-button-highlight-delay: 0ms;
   --ios-touch-alert-slop: 0px;
+  /* ---- capsule button (the Health tip card's) = UIButton tinted configuration inside a UICollectionView (state-tables/button.md R62: hook rows
+     beginTrackingWithTouch: → setHighlighted: → touchDown / touchUpInside, delaysContentTouches = YES; the recording's colours equal the R14 probe's
+     tinted row value for value). Values = the R14 probe table (uiprobe-subtree-r14-tinted-{rest,held}-{light,dark}.json) + the R62 PNGs; BOARD R6′ ---- */
+  --ios-capsule-rest-alpha: 18%;              /* tinted fill at rest: the tint at α .18 — __tintBehaviorAlphaReduction light .18 ([0x1c5718490]; systemYellow .2), button.md R91; R62 PNG (209,234,255) ✓ */
+  --ios-capsule-pressed-alpha: 11.7%;         /* held: rest × .65 ([0x1c5718348], R91 tintBehaviors block_10 → __colorByReducingAlpha) = .117 (R14 probe .117; R62 PNG .1176) */
+  --ios-capsule-pressed-text-alpha: 75%;      /* held label: the tint at α .75 (R14 tinted / plain / filled rows; R62 PNG (56,162,255) = systemBlue .75 over the held fill) */
+  --ios-capsule-rest-alpha-dark: 25%;         /* tinted dark fill at rest: α .25 (R91 dark base; R14 probe) — systemRed / systemPink tints get .2 instead */
+  --ios-capsule-pressed-alpha-dark: 17.5%;    /* held dark: rest × .70 ([0x1c57184d0], R91) = .175 (R14 probe) */
+  --ios-capsule-red-rest-alpha-dark: 20%;     /* the red (systemRed) capsule in dark: __tintBehaviorAlphaReduction's __isSameColor(color, systemRed) → .2 (R91) */
+  --ios-capsule-red-pressed-alpha-dark: 14%;  /* held: .2 × .70 (R91) */
+  --ios-capsule-pressed-text-white-mix: 10%;   /* held dark label = AddingWhite10: c ← .9·c + .1 (R86, -[_UIButtonConfiguration updatedConfigurationForState:] 0x1c484d128 → transformer 16 __colorByAddingWhite 0x1c424b568, constant 0x1c5717f68 = .1; probe: (0, .569, 1) → (.1, .612, 1) ✓) — a transformer of the configuration, so any tint (the red variant too) */
+  --ios-touch-capsule-press-delay: var(--ios-touch-highlight-delay);   /* 150 ms = UIScrollView delaysContentTouches (R62: the card stack is a UICollectionView); the first changed frame is the next one (cell-native.md row 12: probe +174…175); the R14″ / R14‴ recordings' +172 / +155 are the same delay seen at 60 Hz */
   /* segmented: pressed unselected label dims 1 → .2 ease-out over .43 s (0.98 @32 ms, .79 @100, .5 @182, .2 @432); back to 1 in ~.1 s at commit */
   --ios-touch-segment-dim-opacity: .2;
   --ios-touch-segment-dim-duration: .43s;
@@ -601,7 +620,8 @@
   --ios-touch-segment-lens-overshoot: .075;
   /* segmented / tab bar: target segment = the one under the finger x while sliding (divider crossing at ±2 pt); the index never changes mid-drag */
   --ios-touch-segment-divider-hysteresis: 0px;
-  /* tab bar: pressing an unselected tab starts the lens gliding to it 130–150 ms after touch-down (lift 94×54 → 119×64), ~350 ms to arrive; selection + primaryActionTriggered +0–2 ms after the up; NO distance cancel (450 pt away still selects) */
+  /* tab bar: pressing an unselected tab starts the lens gliding to it 130–150 ms after touch-down (lift 94×54 → 119×64), ~350 ms to arrive; selection + primaryActionTriggered +0–2 ms after the up; NO distance cancel (450 pt away still selects)
+     ★ the 140 ms is 录像口径 too (R108: no timer in the chain; the lift and the slide start on the frame after the down) — kept for view.js's class timer only, tab-lens.js starts at the down (R59′d) */
   --ios-touch-tab-glide-delay: 140ms;
   --ios-touch-tab-lift-w: 25px;
   --ios-touch-tab-lift-h: 10px;
@@ -621,7 +641,22 @@
   --ios-touch-segment-lens-h-keys: 0 1, 42 1.111, 76 1.268, 109 1.35, 125 1.371, 142 1.361, 176 1.304, 209 1.139, 242 1.021, 276 .975, 309 .986, 342 1.025, 376 1.068, 409 1.096, 442 1.125, 476 1.136, 542 1.125, 609 1.089, 676 1.046, 742 1.007, 809 .989, 843 .986, 943 1.0, 1009 1.007, 1209 1.0;
   /* segmented lens follows the finger with a spring lag: 4/6 of a 6 pt step in 130 ms, finger 320 → lens catches up in ~120 ms (G4/F1) */
   --ios-touch-segment-follow-lag: .12s;
-  /* tab bar: pressing the SELECTED tab lifts the lens 94×54 → 103×63 by +180 ms (first size change ~125 ms), 110×70 while dragging (T3/T4) */
+  /* quick tap on the selected segment: the fall spring is CREATED at liftTime + lensHangTime = down + 220 ms (seg-lens-refraction.md §4.5 lensHangTime .22;
+     seg-native-quicktap.md R87: setLifted:YES records liftTime on the down path, setLifted:NO schedules the NSTimer for .22 − (now − liftTime); R88 hooks:
+     the timer fires at liftTime + 220.9…222.1 ms in three runs) — visible on the next frame; the native peak frames at +241…+257 were 220 + delivery +
+     timer lag + frame quantisation, not the anchor (the earlier 242ms here). An up after 220 ms falls at once (R9②″). */
+  --ios-touch-segment-quicktap-fall: 220ms;
+  /* the R6 recording tokens (--ios-touch-capsule-press-delay 172ms, --ios-capsule-pressed-*) were withdrawn by R6′: the capsule is a UIButton tinted (button.md R62) — see the "capsule button" block above */
+  /* (the note that lensHangTime was 'not a page token' is superseded: --ios-touch-segment-quicktap-fall above IS lensHangTime, R9②″) */
+  /* tab bar: pressing the SELECTED tab lifts the lens 94×54 → 103×63 by +180 ms (first size change ~125 ms), 110×70 while dragging (T3/T4)
+     ★ 录像口径，作废（R108, tab-lens-motion.md §6.9 ⑤, 2号 R59′d）: the down → setLifted chain has no timer (touchesBegan 0x1c42552c8 → handleSelectionGesture → updateLensView → setLifted, four springs at once);
+     the probe uiprobe-motion-tabdrag-light.json shows the width leaving 94 on the frame after the down (+47 95.76, +97 105.07, +130 110.14, +180 114.55 → 116.7, ζ 1 / .25 from t0 ≈ +30 = the next frame);
+     the two values below are kept only for view.js's class timer (界面 R59′c to withdraw) — tab-lens.js lifts from the down */
+  /* tab bar tracker's up rules (R106, tab-lens-motion.md §6.9 ② — _UITabBarVisualProvider_Floating handleSelectionGesture 0x1c50e9078):
+     the reselect of the already selected item is lost once the finger travelled >= 4 pt in x from the down (0x1c50e94c8–0x1c50e94dc);
+     an up outside window.bounds inset by 8 only clears the highlight (0x1c50e9288, _UIRectInsetEdges) — requested by 界面 R59′c */
+  --ios-touch-tab-reselect-slop: 4px;
+  --ios-touch-tab-lift-outside-inset: 8px;
   --ios-touch-tab-selected-lift-delay: 125ms;
   --ios-touch-tab-selected-lift-done: 180ms;
   --ios-touch-tab-drag-lift-w: 110px;
@@ -692,7 +727,7 @@
   --ios-pagesheet-spring-damping-ratio: 1;
   /* sheet-native.md §2.3 + formula §0 松手 (only if a drag is added): |v| ≥ 1000 pt/s → dismiss with ζ 0.8 (block 0x1c3c78c98, constant 0x1c5717fe8; the scan (990, 1024] covers it);
    * else the projection p + 0.099·v (deceleration 0.99 → r/(1−r)/1000; scan (0.0961, 0.1034)) against 447 = 894/2 (scan (445, 450]); the pan's first move eats 10 pt (UIPanGestureRecognizer hysteresis), then 1:1;
-   * the velocity estimator UNREAD (outputs ≈ .87–.95 of the last 4 steps' nominal speed) */
+   * the velocity estimator read (sheet-native-formula.md §8b; sheet.js implements it — comment updated 2026-09-20, BOARD R34 ⑦) (outputs ≈ .87–.95 of the last 4 steps' nominal speed) */
   --ios-pagesheet-fling-threshold: 1000;
   --ios-pagesheet-fling-damping-ratio: 0.8;
   --ios-pagesheet-projection: 0.099;
@@ -733,6 +768,8 @@
     --ios-switch-knob: rgb(255 255 255);
     /* probe list-dark spinner colour = secondaryLabel dark */
     --ios-spinner: rgb(235 235 245 / .6);
+    /* UIRefreshControl arm, dark (R61: instanceColor (0.9216, 0.9216, 0.9608, 1) × seed (0.9216, 0.9216, 0.9608, .6) = secondaryLabel dark squared: (235²/255, 235²/255, 245²/255)) */
+    --ios-refresh-arm: rgb(217 217 235 / .6);
     /* probe list-dark scroll indicator */
     --ios-scrollbar: rgb(255 255 255 / .5);
     /* probe dark column: orange/yellow/fills/grays/tertiary grouped bg/tab labels */

@@ -6,9 +6,18 @@
    2026-09-18：期望值改成 web/tokens.css 的原值（每项后面写变量名；出处在 tokens.css
    该变量上一行的注释：UIProbe 探针 / AX json / Kit NUMBERS）。期望值故意写死在这里，
    不从 tokens.css 读——两边同源的话 tokens 写错也会「通过」。颜色比对解析 rgb，不比字串。 */
+/* night batch (BOARD.md A6): per-control acceptance files register through ACCEPT.add(fn); accept.js loads them in index.html hook order and runs
+   each fn(ctx) after its own rows, ctx = { check, num, col, sleep }. A file that is still a shell registers nothing. */
+window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
 (function () {
   const q = new URLSearchParams(location.search);
   if (!q.has("accept")) return;
+  /* the per-control files are appended dynamically; headless Chrome occasionally drops one of those fetches (night 00:3x: accept-sheet.js never
+     requested in one run → 17 rows silently missing). Each load is tracked; a file that has not loaded when the checks start is re-appended, and
+     a file still missing gets a ✗ row so the total never drops silently. */
+  window.ACCEPT.files = ["motion","nav","nav-edge","sheet","menu","topbar","refresh","glassbtn","alert","switch","tabbar","tile"]; window.ACCEPT.loaded = new Set();
+  window.ACCEPT.load = (c) => new Promise((res) => { const s = document.createElement("script"); s.src = "accept-" + c + ".js?r=" + Math.random().toString(36).slice(2, 7); s.onload = () => { window.ACCEPT.loaded.add(c); res(true); }; s.onerror = () => res(false); document.head.appendChild(s); setTimeout(() => res(false), 4000); });
+  for (const c of window.ACCEPT.files) window.ACCEPT.load(c);
   const rows = [];
   const near = (a, b, tol = 0.6) => Math.abs(a - b) <= tol;
   const cs = (el, pseudo) => el ? getComputedStyle(el, pseudo || null) : null;
@@ -205,8 +214,12 @@
       const bf = (el) => cs(el).backdropFilter || cs(el).webkitBackdropFilter || "";
       const pane = alert.querySelector(".pane"), wantPane = dark ? "blur(20px) saturate(1.73) brightness(0.755)" : "blur(20px) saturate(1.94) brightness(1.071)";
       check("弹窗玻璃层是独立的 .pane（按钮的混合要看得见它）", "pane", pane ? "pane" : "缺", !!pane);
-      check("弹窗玻璃滤镜链 = 端到端实测（--ios-alert-glass-filter：blur 20 · saturate · brightness）", wantPane, pane ? bf(pane).replace(/\s+/g, " ") : "缺", !!pane && bf(pane).replace(/\s+/g, " ") === wantPane);
-      col("弹窗叠白（--ios-alert-glass-white .538 / 暗 .135）", dark ? [255, 255, 255, .135] : [255, 255, 255, .538], pane ? cs(pane).backgroundColor : "");
+      /* R57 (alert-glass.js): in the light theme the pane's sampled substitute is off and the read-keys layer carries the glass (accept-alert.js has its rows);
+         the dark theme's keys are unread — the substitute stays there */
+      /* the closed pane still carries index.html's sampled substitute (the dark theme's keys are unread; the light theme's open dialog gets the read-keys
+         layer from alert-glass.js — R57, accept-alert.js has those rows) */
+      check("弹窗玻璃滤镜链（关着的 pane）= 端到端实测（--ios-alert-glass-filter：blur 20 · saturate · brightness；开着时由 R57 / R57′ 读键层接管，两主题）", wantPane, pane ? bf(pane).replace(/\s+/g, " ") : "缺", !!pane && bf(pane).replace(/\s+/g, " ") === wantPane);
+      col("弹窗叠白（关着的 pane；--ios-alert-glass-white .538 / 暗 .135）", dark ? [255, 255, 255, .135] : [255, 255, 255, .538], pane ? cs(pane).backgroundColor : "");
       col("弹窗遮罩（--ios-alert-dimming）", dark ? [0, 0, 0, .48] : [0, 0, 0, .2], varColor("--ios-alert-dimming", probe));
       check("弹窗玻璃无描边无阴影（pipeline #10）", "none", pane ? cs(pane).boxShadow : "缺", !!pane && cs(pane).boxShadow === "none");
       if (pane) { const pr = cs(pane); check("弹窗玻璃层外扩 60 pt 再用 clip-path 裁回 r34（marginWidth 60.2 ← ⑨；Safari 合成层不吃 overflow 圆角）", "top -60px / inset(60px round 34px)", `${pr.top} / ${pr.clipPath}`, /-60px/.test(pr.top) && /inset\(60px round 34px\)/.test(pr.clipPath)); check("dialog 上没有 clip-path（Chrome 会把它当 backdrop root，模糊失效）", "none", cs(alert).clipPath, cs(alert).clipPath === "none"); }
@@ -285,6 +298,7 @@
       `<div class="group"><div class="row"><label>x</label><span class="sent">已寄出 10:00</span></div><div class="row"><label>y</label><input type="text" class="short" value="08:30"></div><div class="acts"><button>开始刷</button></div></div>`;
     document.body.appendChild(lab);
     const [on, off] = lab.querySelectorAll(".sw span");
+    if (!window.Switch) {   // BOARD #13: with switch.js the track is the well (accept-switch.js checks it); these rows describe the old track
     col("开关开 = 系统绿（--ios-switch-on）", T.green, cs(on).backgroundColor);
     col("开关关 = 灰（--ios-switch-off）", T.swOff, cs(off).backgroundColor);
     num("开关开：圆钮位移 22（--ios-switch-travel = 63 − 37 − 2×2）", 22, px(cs(on, "::after").translate));
@@ -298,6 +312,7 @@
     check("开关圆钮动效 0.35 s（--ios-motion-switch-knob-duration）", "0.35s", kt.transitionDuration.split(",")[0].trim(), /^0\.35s/.test(kt.transitionDuration));
     check("开关圆钮曲线 linear()（--ios-motion-switch-knob-easing）", "linear(…)", kt.transitionTimingFunction.slice(0, 12), /^linear\(/.test(kt.transitionTimingFunction));
     check("开关轨道交叉淡 0.2 s（--ios-motion-switch-track-duration）", "0.2s", cs(on).transitionDuration, /^0\.2s/.test(cs(on).transitionDuration));
+    }
     /* A tap through the page's own pointer handling, followed by the click the
        browser fires anyway: the switch must flip exactly once and `change` fire
        once (12:0x: it flipped twice and stayed put). */
@@ -376,9 +391,12 @@
         const second = await Promise.race([p2.then((v) => `resolved ${v}`), sleep(50).then(() => "pending")]);
         check("弹窗重入保护：开着时再 ask 立即回 false，不叠第二层", "resolved false · 1 open", `${second} · ${document.querySelectorAll("dialog[open]").length} open`, second === "resolved false" && document.querySelectorAll("dialog[open]").length === 1);
         const chrome = !CSS.supports("mix-blend-mode", "plus-darker");
-        check(chrome ? "弹窗出现动画期间玻璃层先走平底（Chrome 路：无 backdrop-filter）" : "弹窗出现动画期间玻璃层就是精确层（WebKit 路）", chrome ? "none" : "blur", bf(pane), chrome ? bf(pane) === "none" : /blur/.test(bf(pane)));
+        const glassRead2 = !!window.AlertGlass;   // R57′: the read-key layer is built in both themes (the dark keys came with 数据 R74)
+        if (glassRead2) check("弹窗出现动画期间读键玻璃层已在（R57：层随弹窗同帧建）", "层", window.AlertGlass.layer ? "层" : "无", !!window.AlertGlass.layer);
+        else check(chrome ? "弹窗出现动画期间玻璃层先走平底（Chrome 路：无 backdrop-filter）" : "弹窗出现动画期间玻璃层就是精确层（WebKit 路）", chrome ? "none" : "blur", bf(pane), chrome ? bf(pane) === "none" : /blur/.test(bf(pane)));
         await sleep(520);
-        check("弹窗出现动画结束 → .settled，玻璃层到位（--ios-alert-glass-filter）", "settled + blur", `${d.classList.contains("settled") ? "settled" : "-"} + ${bf(pane).slice(0, 10)}`, d.classList.contains("settled") && /blur/.test(bf(pane)));
+        if (glassRead2) check("弹窗出现动画结束 → .settled，读键玻璃层在（R57 / R57′ 两主题）", "settled + 层", `${d.classList.contains("settled") ? "settled" : "-"} + ${window.AlertGlass.layer ? "层" : "无"}`, d.classList.contains("settled") && !!window.AlertGlass.layer);
+        else check("弹窗出现动画结束 → .settled，玻璃层到位（--ios-alert-glass-filter）", "settled + blur", `${d.classList.contains("settled") ? "settled" : "-"} + ${bf(pane).slice(0, 10)}`, d.classList.contains("settled") && /blur/.test(bf(pane)));
         check("弹窗首帧时间戳记录（?diag：alert f1/f2）", "f1 ≤ 40 ms", window.ALERT_T ? `f1 +${Math.round(ALERT_T.f1 - ALERT_T.open)} f2 +${Math.round(ALERT_T.f2 - ALERT_T.open)} ms` : "缺", !!window.ALERT_T && ALERT_T.f1 - ALERT_T.open <= 40);
         document.querySelector("#alert-cancel").click(); await sleep(450); await p1;
         check("弹窗取消后关闭", "closed", d.open ? "open" : "closed", !d.open);
@@ -441,16 +459,30 @@
         check("分段 G1 抬手 +0：换值即抬手——选中态（标签 .on）与内容同一任务一帧替换（view.js SEG_VC_NOW；原 +66 计时器 + vcsplit 在真机落到抬手 +136…143，原生 +50…92 ← seg-value-change-content.md §0 / 数据 78284dd；?vcnow=0 回计时器）", `${want} renders+1`, `${onText()} renders+${renders - r0}`, onText() === want && renders === r0 + 1);
         await sleep(100);
         check("分段 G1 抬手 +100 ms：选中态与内容保持已换（只重画一次）；透镜由点按链自抬手起动", want, `${onText()} renders+${renders - r0}`, onText() === want && thisShift(want) && renders === r0 + 1);
+        /* R20c (seg-value-change-content.md §5a / §5b): the two labels that changed cross-dissolve over 0.2 s on cubic-bezier(.25,.1,.25,1) — at +100 ms two ghosts per
+           changed button (old fading out, new fading in), the real text transparent; the ghosts' transition is that curve and duration; by +260 ms the ghosts are
+           gone and the real text shows the new weight */
+        { const ghosts = [...q().querySelectorAll(".segx")], onB = bs().find((b) => b.classList.contains("on")), cg = ghosts[0] ? getComputedStyle(ghosts[0]) : null;
+          const ops = ghosts.map((g) => parseFloat(getComputedStyle(g).opacity));
+          check("R20c 换值 +100 ms：换了的两段各两张标签位图叠淡（.segx 4 张，旧淡出 / 新淡入途中 0 < α < 1）、过渡 .2 s cubic-bezier(.25,.1,.25,1)、真字暂透明", "4 ghosts mid-fade · .2s bezier · transparent", `${ghosts.length} ghosts α ${ops.map((o) => o.toFixed(2)).join("/")} · ${cg ? cg.transitionDuration + " " + cg.transitionTimingFunction : "-"} · color ${onB ? getComputedStyle(onB).color : "-"}`, ghosts.length === 4 && ops.every((o) => o > 0.02 && o < 0.98) && !!cg && parseFloat(cg.transitionDuration) === 0.2 && /0\.25, 0\.1, 0\.25, 1/.test(cg.transitionTimingFunction) && !!onB && getComputedStyle(onB).color === "rgba(0, 0, 0, 0)");
+          /* the +260 ms state is captured by a timer (the rows below keep their own timing) and judged after the +476 row */
+          window.__r20cLater = new Promise((res) => setTimeout(() => { const onB2 = bs().find((b) => b.classList.contains("on")); res({ left: q().querySelectorAll(".segx").length, color: onB2 ? getComputedStyle(onB2).color : "-", weight: onB2 ? getComputedStyle(onB2).fontWeight : "-" }); }, 160)); }
         { const gone = document.querySelectorAll(".flipgone"), moved = [...document.querySelectorAll("#app > section")].filter((s) => /translateY\((-?[\d.]+)px\)/.test(s.style.transform) && Math.abs(parseFloat(s.style.transform.match(/translateY\((-?[\d.]+)px\)/)[1])) > 20);
           const elF = performance.now() - t0, wantF = tabAt(FLIP_DEL_FADE, elF);   // the switch is at the up itself now: the clone's opacity read against view.js's §1 table at the actual elapsed time
           check("分段 B3 换值后 +100 ms：卡片内容已换（renders+1）；删的行原地克隆在淡出途中（起 .72，+193 到 .04，切换即抬手：按实际时刻查 FLIP_DEL_FADE ± .15，一帧 rAF 步进的滞后）、下方内容仍从原位（+行高）上滑（seg-value-change-content.md §0/§1，采样）", `clone ${wantF.toFixed(2)} ± .15 @ ${elF.toFixed(0)} ms · sections offset`, `${gone.length} clones ${gone.length ? cs(gone[0]).opacity : "-"} · ${moved.length} sections offset ${moved.length ? moved[0].style.transform : "-"}`, gone.length > 0 && Math.abs(parseFloat(cs(gone[0]).opacity) - wantF) <= .15 && moved.length > 0); }
         const lensNow = q().querySelector(".lens");
         { const lp0 = q().__lensLoop; check("分段 G1 抬手：点按走 segLens 点按链（seg-lens-refraction §4.4：up +82 抬起几何 ζ1/.25 原位、+92 材质、+98 换值行程 ζ.85/.4、+443/+450 落回；view.js SEG_TAP_T），不再走 CSS 关键帧滑行", "loop phase tap · no lens-stretch", `${lp0 ? (lp0.state.done ? "done" : (lp0.diag ? lp0.diag.phase : "no tick")) : "no loop"} · ${cs(lensNow).animationName}`, !!lp0 && !lp0.state.done && !!lp0.diag && lp0.diag.phase === "tap" && cs(lensNow).animationName !== "lens-stretch"); }
         await sleep(192);
-        { const lr = lensNow.getBoundingClientRect(), sr = q().getBoundingClientRect(), lp = parseFloat(q().style.getPropertyValue("--lp") || "0"), c = lr.left + lr.width / 2 - sr.left, el = (performance.now() - t0) / 1000;
+        /* A16 (red three times on light first runs): the sample is the DRIVER's last tick — its own time since the up, the width and centre it wrote —
+           not a wall-clock elapsed against a DOM rect read up to a frame later (and, per the R0② investigation, while an overflowing lens canvas may be
+           widening the layout viewport under the control) */
+        { const L = window.__segLens, lp = parseFloat(q().style.getPropertyValue("--lp") || "0"), el = L && L.since_up != null ? L.since_up : (performance.now() - t0) / 1000, c = L ? L.x_screen : NaN, lw = L ? L.w_screen : NaN, lr = { width: lw };
           const NT = [[.236, 229.65, 230.3], [.253, 240.8, 235.8], [.271, 249.8, 240.8], [.286, 257.15, 242.9], [.303, 263.6, 241.6], [.320, 269.25, 238.3], [.336, 274.6, 233.8], [.353, 279.55, 228.5], [.370, 284.2, 222.8]];   // native seg-native-tap-frames.json: t since up → lens centre (control coords = page − 20), width
           let nc = NT[NT.length - 1][1], nw = NT[NT.length - 1][2]; for (let i = 1; i < NT.length; i++) if (el <= NT[i][0]) { const a = NT[i - 1], b = NT[i], u = Math.max(0, (el - a[0]) / (b[0] - a[0])); nc = a[1] + (b[1] - a[1]) * u; nw = a[2] + (b[2] - a[2]) * u; break; }
-          check("分段 G1 抬手 +272 ms：玻璃滑行中（--lp ≥ .8）、拉长（原生 seg-native-tap-frames.json 同时刻插值：中心 / 宽，控件坐标；容 ± 12；计时器实际时刻一并报）", `lp ≥ .8 · w ${nw.toFixed(1)} ± 12 · centre ${nc.toFixed(1)} ± 12 @ ${el.toFixed(3)}`, `lp ${lp.toFixed(3)} · w ${lr.width.toFixed(1)} · centre ${c.toFixed(1)}`, lp >= .8 && Math.abs(lr.width - nw) <= 12 && Math.abs(c - nc) <= 12); }
+          /* the centre carries the flex drift (B5: ≈ −11 pt while accelerating); a frame gap > 50 ms resets the integrator (flex-interaction.md §1 hysteresis .05, the read
+             mechanism) and the drift goes to 0 — so on a stalled run the centre is reported, not judged (A16: the gap is the environment, the reset the native rule) */
+          const gap = L && L.max_dt_up != null ? L.max_dt_up : 0, stalled = gap > .034;
+          check(`分段 G1 抬手 +272 ms：玻璃滑行中（--lp ≥ .8）、拉长（原生 seg-native-tap-frames.json 同时刻插值：中心 / 宽，控件坐标；容 ± 12；按驱动器本帧：__segLens.since_up / w_screen / x_screen，A15；抬手后最大帧隔 > 34 ms 时中心只记不判——积分器 .05 s 滞后复位使漂移归零）`, `lp ≥ .8 · w ${nw.toFixed(1)} ± 12 · centre ${nc.toFixed(1)} ± 12 @ ${el.toFixed(3)}`, `lp ${lp.toFixed(3)} · w ${isNaN(lw) ? "-" : lw.toFixed(1)} · centre ${isNaN(c) ? "-" : c.toFixed(1)} @ tick ${L ? L.tick : "-"} · max frame gap ${(gap * 1000).toFixed(0)} ms${stalled ? "（停顿，中心不判）" : ""}`, !!L && lp >= .8 && Math.abs(lw - nw) <= 12 && (stalled || Math.abs(c - nc) <= 12)); }
         { const gone = document.querySelectorAll(".flipgone"), moved = [...document.querySelectorAll("#app > section")].filter((s) => /translateY/.test(s.style.transform)), insR = [...document.querySelectorAll("#app .row")].filter((r) => r.style.opacity !== "" && parseFloat(r.style.opacity) < 1);
           const elI = performance.now() - t0, wantI = tabAt(FLIP_INS, elI);   // the inserted rows against view.js's §2 table at the actual elapsed time (the switch is at the up)
           check("分段 B3 抬手 +292 ms：删的行淡到 ≤ .10（§1 +193 .04）、下方内容上滑途中（§0 +177 剩 24/133，+400 到位）、插的行淡入途中（§2 表按实际时刻查 FLIP_INS ± .15）", `clone ≤ .12 · sections still offset · inserted ${wantI.toFixed(2)} ± .15 @ ${elI.toFixed(0)} ms`, `${gone.length ? cs(gone[0]).opacity : "no clone"} · ${moved.length} moving · ${insR.length} fading in ${insR.length ? insR[0].style.opacity : ""}`, gone.length > 0 && parseFloat(cs(gone[0]).opacity) <= 0.12 && moved.length > 0 && (insR.length > 0 ? Math.abs(parseFloat(insR[0].style.opacity) - wantI) <= .15 : wantI >= .95)); }
@@ -459,6 +491,7 @@
           const segW = (sr.width / bs().length - 4), pos = (lr.left + lr.width / 2 - sr.left - 2 - segW / 2) / segW;   // centre-based in segment units (the lens now moves by `left`, its width breathes)
           num("分段 G1 抬手 +556 ms：透镜在目标外过冲途中（原生 seg-native-tap-frames.json up+.553 中心 307.55 → 行程 1.038；换值弹簧 ζ.85/.4 + flex 漂移）", 1.038, (pos - fromI) / (toI - fromI), 0.05); }
         check("分段 B3 +476 ms：内容过渡收尾（+400 到位 → 克隆移除、transform / opacity 内联清空）", "clean", `${document.querySelectorAll(".flipgone").length} clones · ${[...document.querySelectorAll("#app > section, #app .row")].filter((e) => e.style.transform || e.style.opacity).length} inline`, !document.querySelectorAll(".flipgone").length && ![...document.querySelectorAll("#app > section, #app .row")].some((e) => e.style.transform || e.style.opacity));
+        { const L = await window.__r20cLater; check("R20c 换值 +260 ms：位图已撤、真字恢复（颜色非透明、字重 = 选中 .on 的 medium）", "0 ghosts · real text", `${L.left} ghosts · color ${L.color} · weight ${L.weight}`, L.left === 0 && L.color !== "rgba(0, 0, 0, 0)" && parseInt(L.weight) >= 500); }
         await sleep(800);
         /* §1 G4/G16: touch-down on the selected segment lifts the lens after ~100 ms (196×28 → 220×44), no event */
         seg = q(); let sel = bs().find((b) => b.classList.contains("on")), unsel = bs().find((b) => !b.classList.contains("on"));
@@ -504,8 +537,29 @@
           svgcheck("分段抬起满 B6 ①：内侧亮线 + 高光尾 = #36 层公式：黑栈 stroke-opacity .0882·α / 白栈 .1471·α，主带 3 环 × 上下两条直线（B6-c §4b：只画直边 x ∈ [R, W−R]，纯色；首环 α .875）+ 漫射 10 环（首环 .803，渐变描边）", "6+6 lines · 10+10 · .0772/.1287 · .0708/.1181 · x1 R x2 W−R", `${hkR.length}+${hwR.length} · ${hdR.length}+${hdW.length} · ${hkR.length ? hkR[0].getAttribute("stroke-opacity") : "-"}/${hwR.length ? hwR[0].getAttribute("stroke-opacity") : "-"} · ${hdR.length ? hdR[0].getAttribute("stroke-opacity") : "-"}/${hdW.length ? hdW[0].getAttribute("stroke-opacity") : "-"} · ${hkR.length ? `x1 ${hkR[0].getAttribute("x1")} x2 ${hkR[0].getAttribute("x2")} ${hkR[0].getAttribute("stroke")}` : "-"}`,
             hkR.length === 6 && hwR.length === 6 && hdR.length === 10 && hdW.length === 10 && Math.abs(parseFloat(hkR[0].getAttribute("stroke-opacity")) - 0.0882 * 0.875) < 0.001 && Math.abs(parseFloat(hwR[0].getAttribute("stroke-opacity")) - 0.1471 * 0.875) < 0.001 && Math.abs(parseFloat(hdR[0].getAttribute("stroke-opacity")) - 0.0882 * 0.803) < 0.001 && Math.abs(parseFloat(hdW[0].getAttribute("stroke-opacity")) - 0.1471 * 0.803) < 0.001 && hkR.every((l) => l.getAttribute("stroke") === "#000") && hdR.every((r) => /url/.test(r.getAttribute("stroke"))) && Math.abs(parseFloat(hkR[0].getAttribute("stroke-width")) - 1 / 3) < 0.001 && Math.abs(parseFloat(hkR[0].getAttribute("x1")) - lens0.getBoundingClientRect().height / 2) < 0.6 && Math.abs(parseFloat(hkR[0].getAttribute("x2")) - (lens0.getBoundingClientRect().width - lens0.getBoundingClientRect().height / 2)) < 0.6);
           if (GLON) { const c = seg.querySelector("canvas.glens"), g = seg.__gl, sr = seg.getBoundingClientRect(), cr = c && c.getBoundingClientRect(), lr = lens0.getBoundingClientRect(), fr0 = g ? g.lens.stats.frames : 0, F1 = window.LensWebGL ? LensWebGL.FS1 + LensWebGL.FS2 + LensWebGL.COMMON : "";
-            check("分段 WebGL：canvas.glens 盖住控件 ± 24 pt（宽 = 控件，高 = 控件 + 48；README §0.8.7：包裹 = 透镜 ± 16 + 抬起外扩 6，环影下延 11），指针穿透，z 9", "box = seg ± 24 · pointer-events none · z 9", c ? `dx ${(cr.left - sr.left).toFixed(1)} dy ${(cr.top - sr.top).toFixed(1)} w ${(cr.width - sr.width).toFixed(1)} h ${(cr.height - sr.height).toFixed(1)} · ${cs(c).pointerEvents} · z ${cs(c).zIndex}` : "no canvas", !!c && Math.abs(cr.left - sr.left) < .6 && Math.abs(cr.top - sr.top + 24) < .6 && Math.abs(cr.width - sr.width) < .6 && Math.abs(cr.height - sr.height - 48) < .6 && cs(c).pointerEvents === "none" && cs(c).zIndex === "9");
+            check("分段 WebGL：canvas.glens 盖住控件 ± 24 pt（宽 = 控件，高 = 控件 + 48；README §0.8.7：包裹 = 透镜 ± 16 + 抬起外扩 6，环影下延 11），指针穿透，z 9", "box = seg ± 24 · pointer-events none · z 9", c ? `dx ${(cr.left - sr.left).toFixed(1)} dy ${(cr.top - sr.top).toFixed(1)} w ${(cr.width - sr.width).toFixed(1)} h ${(cr.height - sr.height).toFixed(1)} · ${cs(c).pointerEvents} · z ${c.parentElement && c.parentElement.classList.contains("lens-clip") ? cs(c.parentElement).zIndex + "（裁框）" : cs(c).zIndex}` : "no canvas", !!c && Math.abs(cr.left - sr.left) < .6 && Math.abs(cr.top - sr.top + 24) < .6 && Math.abs(cr.width - sr.width) < .6 && Math.abs(cr.height - sr.height - 48) < .6 && cs(c).pointerEvents === "none" && (c.parentElement && c.parentElement.classList.contains("lens-clip") ? cs(c.parentElement).zIndex : cs(c).zIndex) === "9");   // R96: the z-index moved to the canvas's .lens-clip wrapper (2号)
             check("分段 WebGL：LensWebGL 实例走 220 组（README §0.3：抬起与拖动都在模型宽的那组），有帧在画（stats.frames 递增、set 220）", "set 220 · frames > 0", g ? `set ${g.lens.stats.set} · frames ${g.lens.stats.frames} · gpu ${g.lens.stats.gpuMs.toFixed(2)} ms` : "no instance", !!g && g.lens.stats.set === 220 && g.lens.stats.frames > 0);
+            /* R31 (2号 lens-webgl.js): the labels texture for a selection is prepared at idle and switched at the down without a redraw — the API row: a variant
+               prepared (seg:gl-prepare measured once), useLabels binds it with no seg:gl-redraw measure and no frame; an unknown key returns false */
+            if (g && typeof g.lens.prepareLabels === "function") { const meas = (n) => performance.getEntriesByType("measure").filter((m) => m.name === n).length;
+              const p0 = meas("seg:gl-prepare"), r0 = meas("seg:gl-redraw") + meas("seg:gl-redraw-task"), f0 = g.lens.stats.frames;
+              const okP = g.lens.prepareLabels("accept", (x, info) => { x.fillStyle = "#000"; x.font = "bold 13px -apple-system"; x.fillText("R31", info.region.x + 10, info.region.y + 40); });
+              const okU = g.lens.useLabels("accept"); const r1 = meas("seg:gl-redraw") + meas("seg:gl-redraw-task"), f1 = g.lens.stats.frames;
+              check("分段 WebGL R31：标签纹理按选中预备（prepareLabels 一次 seg:gl-prepare）、按下只切绑定（useLabels 无 seg:gl-redraw、不画帧）、未知键 false", "prepare 1 · use true · redraw +0 · frames +0 · unknown false", `prepare ${meas("seg:gl-prepare") - p0} · use ${okU} · redraw +${r1 - r0} · frames +${f1 - f0} · unknown ${g.lens.useLabels("no-such")}`, okP && okU && meas("seg:gl-prepare") - p0 === 1 && r1 - r0 === 0 && f1 - f0 === 0 && !g.lens.hasLabels("no-such"));
+              g.lens.redrawNow(); }   // back to the live labels (a redraw drops the variants)
+            /* R37 (2号): the label copy's field is evaluated per pixel in float from the decoded stages (formula §1 / §2 composed as compose_stages; no 8-bit map) — the
+               stages and the capsule radius the shader is given are the read values (seg-lens-refraction.md §1b 表 1 #18 / #30: ContentLensing −8.8 / 7.04 then ClearGlass −17.5 / 11.2;
+               r 22); the harness numbers (README §0.8.14) are the Mac's, the device's saturation is the phone's to read */
+            if (g && g.lens.stats.labMode) { const st = g.lens.stats; const okS = Array.isArray(st.labelStages) && st.labelStages.join(",") === "-8.8,7.04,-17.5,11.2";
+              check("分段 WebGL R37：标签复本场在着色器里按式逐像素算（closed；?gllab=map 回贴图）、两级键 = 读数、胶囊 r 22", "closed · −8.8/7.04,−17.5/11.2 · r 22", `${st.labMode} · ${(st.labelStages || []).join("/")} · r ${st.rmax}`, st.labMode === "closed" && okS && st.rmax === 22);
+              /* R38a: the element SDF of the label field — QuartzCore's supercircle branch (§7 ② / §7b (a′)) is in the shader behind ?glsdf=super / opts.labelSdf; the
+                 default stays the capsule (待澄清: on the label stages the supercircle takes the end ink 81 → 79 % in the closed form, the native is 68 %) */
+              const fs1 = (window.LensWebGL && LensWebGL.FS1) || "";
+              check("分段 WebGL R38a：超圆 SDF（1.528665·r、clamp sat(2.89158·(1 − hs/r))、poly 五次）在着色器里，默认 circle（?glsdf=super 切）", "circle · sdfSuper 在", `${st.labelSdf} · ${/sdfSuper/.test(fs1) && /1\.528665/.test(fs1) && /2\.89158/.test(fs1) && /0\.268531/.test(fs1) ? "sdfSuper 在" : "缺"}`, st.labelSdf === "circle" && /sdfSuper/.test(fs1) && /1\.528665/.test(fs1) && /2\.89158/.test(fs1) && /0\.268531/.test(fs1));
+              /* R38″ (§5d): the portal composite's three items do nothing to the copy — here the copy term lab(ql)·Ml·B carries no DestOut (u_pd acts on the source labels in the
+                 backdrop copy only) and no opacity factor */
+              const lcLine = (fs1.match(/vec4 lc = [^;]+;/) || [""])[0], bgcLine = (fs1.match(/vec4 bgc = [^;]+;/) || [""])[0];
+              check("分段 WebGL R38″：复本无 DestOut、opacity ×1（lc 项无 u_pd；u_pd 只在底图复本的源标签上）", "lc 无 u_pd · bgc 有 u_pd", `lc ${/u_pd/.test(lcLine) ? "有" : "无"} u_pd · bgc ${/u_pd/.test(bgcLine) ? "有" : "无"} u_pd`, !!lcLine && !/u_pd/.test(lcLine) && /u_pd/.test(bgcLine)); }
             check("分段 WebGL：flex 变换加在 canvas 上、原点 = 透镜中心（canvas 坐标 = 透镜盒中心 + 24 pt）", "origin = lens centre", c ? `${c.style.transformOrigin || "-"} vs ${(lr.left - sr.left + lr.width / 2).toFixed(1)}px ${(lr.top - sr.top + 24 + lr.height / 2).toFixed(1)}px` : "-", !!c && (() => { const m = /([\d.]+)px ([\d.]+)px/.exec(c.style.transformOrigin || ""); return !!m && Math.abs(parseFloat(m[1]) - (lr.left - sr.left + lr.width / 2)) < 1.5 && Math.abs(parseFloat(m[2]) - (lr.top - sr.top + 24 + lr.height / 2)) < 1.5; })());
             check("分段 WebGL：白平台淡出在 shader 里（dc2af2a u_platter：位移底图之上、边线/标签之下，alpha 1 − p，_controlForegroundColor 令牌），.lens 抬起时透明如 SVG 路径", "u_platter · .lens transparent z 2", `${F1 && F1.includes("u_platter") ? "u_platter" : "no u_platter"} · ${cs(lens0).backgroundColor} z ${cs(lens0).zIndex}`, !!F1 && F1.includes("u_platter") && /rgba\(0, 0, 0, 0\)|transparent/.test(cs(lens0).backgroundColor) && cs(lens0).zIndex === "2");
             check("分段 WebGL：SVG 栈隐藏（.stack / .rimo / .hlk / .hlw display none）", "none ×4", [".stack", ".rimo", ".hlk", ".hlw"].map((q) => { const e = seg.querySelector(q); return e ? cs(e).display : "-"; }).join(" "), [".stack", ".rimo", ".hlk", ".hlw"].every((q) => { const e = seg.querySelector(q); return !e || cs(e).display === "none"; }));
@@ -539,6 +593,14 @@
           check("分段 G21 松手 +1 帧：透镜仍是抬起尺寸、随后逐帧回落（B2-b：不瞬回 28）", "h ≥ 39 at +0, > 36 at +16 ms", `${h1.toFixed(1)} → ${h2.toFixed(1)}`, h1 >= 39 && h2 > 36); }
         await sleep(200); { const lr = lens21.getBoundingClientRect(); check("分段 G21 松手 +216 ms：几何回落途中，叠着 flex 回弹（原生 C 段 +204 ms h 31.8；B5 后本页 24 < h < 40）", "24 < h < 40", lr.height.toFixed(1), lr.height > 24 && lr.height < 40); }
         await sleep(600); { const lr = lens21.getBoundingClientRect(), sr = seg.getBoundingClientRect(); check("分段 G21 松手 +816 ms：落定 196×28 于目标段（flex 回弹收敛；位置 ζ.85/.4 → ζ.56/.444）", `196×28 at ${(sr.left + 2 + bs().indexOf(unsel) * (sr.width / bs().length)).toFixed(1)}`, `${lr.width.toFixed(1)}×${lr.height.toFixed(1)} at ${lr.left.toFixed(1)}`, Math.abs(lr.height - 28) < 0.6 && Math.abs(lr.width - (sr.width / bs().length - 4)) < 0.8 && Math.abs(lr.left - (sr.left + 2 + bs().indexOf(unsel) * (sr.width / bs().length))) < 1.5); }
+        /* R7 (seg-lift-material.md §5, R15's frames): the white platter fades from the lift's first frame and its opacity = 1 − the lift progress every
+           frame (+287 ms 199.1×30.1 → .8688; +304 202.8×32.5 → .7186; …; the same spring, no lag) — a press on the selected segment here, what the
+           package drew each frame (stats.last) sampled for 420 ms, then released */
+        { const seg7 = q(), g7 = seg7 && seg7.__gl; if (g7 && g7.lens.stats) { const selB = [...seg7.querySelectorAll("button")].find((b) => b.classList.contains("on")); const t7 = performance.now(); pev(seg7, "pointerdown", at(selB)); const r7 = [];
+          await new Promise((res) => { const tick = () => { const L = g7.lens.stats.last; if (L && L.t > t7 && !(r7.length && r7[r7.length - 1].t === L.t)) r7.push({ lift: L.lift, a: L.platterAlpha, t: L.t }); if (performance.now() - t7 < 420) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick); });
+          pev(seg7, "pointerup", at(selB)); await sleep(900); delete seg7.dataset.pe;   // the browser's click would have consumed the press flag; a synthetic press leaves it, and it would eat the next real click
+          const lifted = r7.filter((x) => x.lift > 0 && x.lift < 1), first = r7.find((x) => x.lift > 0), dev = lifted.map((x) => Math.abs(x.a - (1 - x.lift))), mx = dev.length ? Math.max(...dev) : NaN;
+          check(`分段 R7 平台淡出：与抬起同帧起、每帧 alpha = 1 − lift（${lifted.length} 帧，最大差 ${Number.isFinite(mx) ? mx.toFixed(4) : "-"}；R15 表 .8688@p.131 / .7186@.281 / .5694@.431）`, "首抬帧 alpha < 1 · |Δ| ≤ .001 · ≥ 5 帧", first ? `首抬帧 lift ${first.lift.toFixed(3)} alpha ${first.a.toFixed(4)} · ${lifted.length} 帧` : "无抬起帧", !!first && first.a < 1 && lifted.length >= 5 && mx <= 0.001); } }
         await sleep(50);
         /* §1 G5: press the unselected one, slide onto the selected one, release - no event */
         seg = q(); sel = bs().find((b) => b.classList.contains("on")); unsel = bs().find((b) => !b.classList.contains("on"));
@@ -562,6 +624,29 @@
         check("分段 G12 快速交替 10 次（30 ms 点 / 30 ms 间隔）：每下模型都改（抬手即改）、终态 = 最后一次；内容重画在 valueChanged 时刻，被更新的值追上的那次不再画（快速连点 未量）", last, `${onText()} renders+${renders - r7}${everyTick ? "" : "（某下抬手时模型未改）"}`, onText() === last && renders >= r7 + 1 && renders <= r7 + 10 && everyTick && thisShift(last));
         let stable = true; for (let k = 0; k < 6; k++) { await sleep(100); if (onText() !== last) stable = false; }
         check("分段 G12 快速交替后 600 ms 内不回跳", last, onText(), stable && onText() === last);
+        /* BOARD #9① + #9②: a quick tap on the SELECTED segment (up at 60 ms, before the 109 ms lift). 9a re-recording (seg-native-quicktap.md, run quick90c):
+           the lens lifts and falls IN PLACE — first grown frame down +109, peak 217.5×42.4 at +242, back to 196×28 by +476; centre fixed; no value change.
+           ① the platter is never blank: a frame with .lift must have p > 0 (the glass is drawn) — before 9① the DestOut ramp gave .lift at p = 0;
+           ② geometry: the lens width / height sampled every frame against the quick90c list interpolated at the frame's time since the down. */
+        await sleep(1300);   // the previous gesture's loop (G14's taps) has ended: the control is at rest with its opaque platter
+        { const sg = q(), selB = bs().find((b) => b.classList.contains("on")), lensQ = sg.querySelector(".lens"), r9 = renders, onIdx0 = bs().findIndex((b) => b.classList.contains("on"));
+          const NAT = [[109, 198.2, 29.5], [126, 201.7, 31.8], [142, 205.3, 34.2], [159, 208.6, 36.4], [176, 211.4, 38.3], [192, 213.6, 39.7], [209, 215.3, 40.9], [227, 216.6, 41.7], [242, 217.5, 42.4], [259, 216.6, 41.8], [276, 213.8, 39.9], [292, 210.5, 37.7], [309, 207.4, 35.6], [326, 204.7, 33.8], [342, 202.5, 32.4], [359, 200.8, 31.2], [376, 199.5, 30.3], [392, 198.5, 29.7], [409, 197.8, 29.2], [426, 197.3, 28.9], [442, 196.9, 28.6], [459, 196.6, 28.4], [476, 196.5, 28.3], [493, 196, 28]];   // seg-native-quicktap.md quick90c (t ms since down, w, h)
+          const natAt = (t, k) => { if (t <= NAT[0][0]) return k === 1 ? 196 : 28; for (let i = 1; i < NAT.length; i++) if (t <= NAT[i][0]) { const a = NAT[i - 1], b = NAT[i], u = (t - a[0]) / (b[0] - a[0]); return a[k] + (b[k] - a[k]) * u; } return k === 1 ? 196 : 28; };
+          const c0 = (() => { const r = lensQ.getBoundingClientRect(); return r.left + r.width / 2; })();
+          const tDown = performance.now(); pev(sg, "pointerdown", at(selB)); await sleep(60); pev(sg, "pointerup", at(selB));
+          const fr = []; let blank = 0; const tEnd = tDown + 620;
+          while (performance.now() < tEnd) { await new Promise(requestAnimationFrame); const r = lensQ.getBoundingClientRect(), L = window.__segLens, p = L && typeof L.p === "number" ? L.p : 0;
+            if (sg.classList.contains("lift") && !(p > 0)) blank++; fr.push({ t: performance.now() - tDown, w: r.width, h: r.height, c: r.left + r.width / 2, p }); }
+          const peak = fr.reduce((m, f) => f.w > m.w ? f : m, fr[0]), first = fr.find((f) => f.w > 196.5), back = fr.find((f) => f.t > (peak ? peak.t : 0) && f.w <= 196.5);
+          /* the probe stamps each lens rect at the frame's targetTimestamp = its display time, one frame after the value was computed; our rAF samples are the
+             values computed for the next display → the native list is read at t + 16.7 ms (the 60 Hz frame) for the frame-wise comparison; both rms are reported */
+          const mid = fr.filter((f) => f.t >= 109 && f.t <= 476), rmsAt = (k, shift) => Math.sqrt(mid.reduce((s, f) => s + Math.pow((k === 1 ? f.w : f.h) - natAt(f.t + shift, k), 2), 0) / Math.max(1, mid.length));
+          const rmsW0 = rmsAt(1, 0), rmsH0 = rmsAt(2, 0), rmsW = rmsAt(1, -16.7), rmsH = rmsAt(2, -16.7);
+          const drift = Math.max(...fr.map((f) => Math.abs(f.c - c0)));
+          check("分段 #9① 快速点已选中段（60 ms 抬手）：平台任何一帧不空白——带 .lift 的帧 p 必 > 0（9① 前 DestOut 在 p = 0 也给 .lift），不换值、选中不变", "blank 0 · renders = · on same", `${fr.length} frames · blank ${blank} · renders+${renders - r9} · on ${bs().findIndex((b) => b.classList.contains("on"))}`, fr.length > 20 && blank === 0 && renders === r9 && bs().findIndex((b) => b.classList.contains("on")) === onIdx0);
+          check("分段 #9② / R9②″ 快速点已选中段原地抬落（落回弹簧建于 down + 220 ms = liftTime + lensHangTime，R87 / R88 钩子 220.9…222.1；抬手先后皆同；原生峰帧 +241…+257 = 220 + 送达 + 定时器迟到 + 帧量化）：首个长大帧 +95…+145、峰时刻 +215…+265、+430…+515 回 ≤ 196.5（原生 +474…+497）、中心不动（≤ .5 pt）", "first 95–145 · peak @225–270 · back 450–515 · drift ≤ .5", `first ${first ? first.t.toFixed(0) : "-"} · peak @${peak ? peak.t.toFixed(0) : "-"} · back ${back ? back.t.toFixed(0) : "-"} · drift ${drift.toFixed(2)}`, !!first && first.t >= 95 && first.t <= 145 && !!peak && peak.t >= 215 && peak.t <= 265 && !!back && back.t >= 430 && back.t <= 515 && drift <= 0.5);
+          check("分段 #9② 峰与逐帧（记录，不判）：原生 quick90c 峰 217.5×42.4 @242；页面峰 = 抬起 ζ1/.25 自 +109 到 +242 的解析值 216.3×41.5 + 落回起步的速度惯性；差 ≈ 一帧——原生表在 +109 那帧已是 198.2（抬起起点早于 109 或探针按显示时刻记帧），待读；rms 对表 不移 / 原生前移一帧", "记录", `peak ${peak ? peak.w.toFixed(1) + "×" + peak.h.toFixed(1) : "-"} · rms w ${rmsW0.toFixed(2)} h ${rmsH0.toFixed(2)} · shifted −16.7 ms: w ${rmsW.toFixed(2)} h ${rmsH.toFixed(2)}`, true);
+          await sleep(500); }
         /* a page re-render (heartbeat / snapshot) while the lens rests on a segment must not move it (the carry-over reads the lens box, not the % translate) */
         { await sleep(1300); const sg = q(), ln = sg.querySelector(".lens"), lb = ln.getBoundingClientRect().left; window.render(); const ln2 = q().querySelector(".lens"); const lb2 = ln2.getBoundingClientRect().left; await sleep(120); const lb3 = q().querySelector(".lens").getBoundingClientRect().left;
           check("重画时透镜不动（心跳/快照 render 不会让它跳）", `${Math.round(lb)}`, `${Math.round(lb2)} → ${Math.round(lb3)} ${q().querySelector(".lens").classList.contains("spring") ? "spring!" : ""}`, Math.abs(lb2 - lb) < 1 && Math.abs(lb3 - lb) < 1 && !q().querySelector(".lens").classList.contains("spring")); }
@@ -569,6 +654,28 @@
         const sameName = (bs().find((x) => !x.classList.contains("on")) || bs()[0]).textContent;
         const r8 = renders; for (let k = 0; k < 3; k++) { const b = bs().find((x) => x.textContent === sameName); const sg = q(); pev(sg, "pointerdown", at(b)); pev(sg, "pointerup", at(b)); await sleep(40); }
         check("分段 G14 同段连点 3 下：只 1 次事件", 1, renders - r8, renders - r8 === 1);
+        /* R59′a / R59′a″ — prefers-reduced-motion (page-inventory.md §12b ① decompiled; R79 anims read with Reduce Motion on), forced through window.__forceRM
+           (the media query cannot be toggled from the page): a held selected segment neither lifts nor follows, a release on another segment selects it
+           (tap-at-release), the indicator is placed on the new segment without a slide and appears there on the two read CABasicAnimations: scale .88 → 1 and
+           opacity 0 → 1, 0.2 s, timingFunction default (.25,.1,.25,1); the old indicator withdrawn at once */
+        { window.__forceRM = true;
+          try {
+            const sg0 = q(), sel0 = bs().find((b) => b.classList.contains("on")), un0 = bs().find((b) => !b.classList.contains("on")), ln0 = sg0.querySelector(".lens"), i0 = bs().indexOf(sel0);
+            pev(sg0, "pointerdown", at(sel0)); await sleep(200); const lifted = !!(ln0 && (ln0.classList.contains("lift") || sg0.classList.contains("drag"))); pev(sg0, "pointermove", at(un0)); await sleep(60); const iHold = sg0.style.getPropertyValue("--i");
+            const rA = renders; pev(sg0, "pointerup", at(un0)); await sleep(40);
+            check("分段 R59′a 减少动态效果：按住选中段 200 ms 不抬起、拖到别段透镜不跟手（_disableSlidingControl 0x1c41342e0），抬手在别段 = 点按选中该段（R59″：tap-at-release，不是取消）", "no lift · --i unchanged · 1 event · switched", `${lifted ? "lifted" : "no lift"} · --i ${iHold} · events ${renders - rA} · ${onText()}`, !lifted && iHold === String(i0) && renders - rA === 1 && onText() === un0.textContent);
+            const ln1 = q().querySelector(".lens"), c1 = ln1 ? getComputedStyle(ln1) : null, onIdx = bs().indexOf(q().querySelector("button.on"));
+            check("分段 R59′a″ 换段：透镜不滑、直接落在新段并在原位淡入 + 缩放（.rm-in → @keyframes seg-rm-in = R79 读到的两根 CABasicAnimation：scale .88 → 1、opacity 0 → 1，0.2 s cubic-bezier(.25,.1,.25,1)；旧指示器瞬撤）", "rm-in · seg-rm-in 0.2s (.25,.1,.25,1) · --i = new · opacity < 1", ln1 ? `${ln1.classList.contains("rm-in") ? "rm-in" : "no class"} · ${c1.animationName} ${c1.animationDuration} ${c1.animationTimingFunction} · --i ${q().style.getPropertyValue("--i")} (on ${onIdx}) · opacity ${c1.opacity} · transition ${c1.transitionProperty}` : "no lens", !!ln1 && ln1.classList.contains("rm-in") && c1.animationName === "seg-rm-in" && c1.animationDuration === "0.2s" && /0\.25, 0\.1, 0\.25, 1/.test(c1.animationTimingFunction) && q().style.getPropertyValue("--i") === String(onIdx) && parseFloat(c1.opacity) < 1 && c1.transitionProperty === "none");
+            { const kf = [...document.styleSheets].flatMap((s) => { try { return [...s.cssRules]; } catch (e) { return []; } }).find((r) => r.type === CSSRule.KEYFRAMES_RULE && r.name === "seg-rm-in"), from = kf && kf.cssRules[0] ? kf.cssRules[0].style : null;
+              check("分段 R59′a″ 关键帧起点 = scale .88、opacity 0（R79 anims：transform from .88、opacity from 0，模型 1）", ".88 .88 · 0", from ? `${from.scale} · ${from.opacity}` : "no keyframes", !!from && /^0?\.88( 0?\.88)?$/.test(from.scale.trim()) && from.opacity === "0"); }   // Chrome serialises 'scale: .88 .88' as '0.88'
+
+            await sleep(260); const ln2 = q().querySelector(".lens"), c2 = ln2 ? getComputedStyle(ln2) : null;
+            check("分段 R59′a″ 200 ms 后：透镜 opacity 1、scale 1、rm-in 已除（animationend）", "1 · 1 · no class", ln2 ? `${c2.opacity} · ${c2.scale} · ${ln2.classList.contains("rm-in") ? "rm-in" : "no class"}` : "no lens", !!ln2 && c2.opacity === "1" && (c2.scale === "none" || c2.scale === "1") && !ln2.classList.contains("rm-in"));
+            const un2 = bs().find((b) => !b.classList.contains("on")), loop0 = q().__lensLoop, rB = renders; pev(q(), "pointerdown", at(un2)); await sleep(30); const dim2 = un2.classList.contains("dim"); pev(q(), "pointerup", at(un2)); await sleep(40);
+            check("分段 R59′a 点按未选段：标签照常压暗（G15，RM 无此分支读数）、不建透镜环、值直接换（1 次事件）", "dim · no new loop · 1 event · switched", `${dim2 ? "dim" : "no dim"} · ${q().__lensLoop === loop0 ? "no new loop" : "loop built"} · events ${renders - rB} · ${onText()}`, dim2 && q().__lensLoop === loop0 && renders - rB === 1 && onText() === un2.textContent);
+            await sleep(260);
+          } finally { window.__forceRM = null; }
+          const back0 = bs().find((b) => b.textContent === start); if (back0 && onText() !== start) { const sg = q(); pev(sg, "pointerdown", at(back0)); pev(sg, "pointerup", at(back0)); await sleep(700); } }
         const back = bs().find((b) => b.textContent === start); if (back && onText() !== start) { const sg = q(); pev(sg, "pointerdown", at(back)); pev(sg, "pointerup", at(back)); }
         /* 验收 09-19 17:5x: a one-queue page (one segment, 400 wide) re-rendered twice showed a lifted capsule (the preloaded set's width, left) on the resting
            control — the package's warm-up frame put back by the next warm-up (view.js segGlRedraw). Here: one segment, two re-renders 400 ms apart, then
@@ -606,6 +713,16 @@
         if (fi2 && nv2) { fi2.focus({ preventScroll: true }); const a1 = window.__tabKbd(innerHeight - 300, innerHeight - 300), d1 = getComputedStyle(nv2).display;
           const a2 = window.__tabKbd(null), d2 = getComputedStyle(nv2).display; const a3 = window.__tabKbd(innerHeight - 300), d3 = getComputedStyle(nv2).display; const a4 = window.__tabKbd(null), d4 = getComputedStyle(nv2).display; fi2.blur();
           check("键盘只信视口：安卓式 innerHeight 缩 300（H0 基线）→ 藏，回高 → 放回；iOS 式 vv 缩 300 → 藏，回高 → 放回；全程字段保持聚焦（不经失焦收键盘也放回）", "hidden shown hidden shown", `${a1} ${d1} · ${a2} ${d2} · ${a3} ${d3} · ${a4} ${d4}`, a1 === true && d1 === "none" && a2 === false && d2 !== "none" && a3 === true && d3 === "none" && a4 === false && d4 !== "none"); } }
+      /* BOARD R28′ (state-tables/tabbar.md §6, R28 probe): the native floating tab bar does not move, hide or fade while the keyboard shows / hides (317 frames at
+         (0, 873, 440, 83), alpha 1) — the keyboard window simply covers it and slides away in .3833 s. The page hides the capsule while the viewport is short
+         (browsers float fixed elements above the keyboard); the equivalence to check: when the keyboard goes, the capsule is back in the very same rect, the same
+         nodes, without any transition — within one frame */
+      { const nv3 = document.querySelector("nav.tabs");
+        if (nv3) { const r0 = nv3.getBoundingClientRect(), plat0 = nv3.querySelector(":scope > .plat"), gl0 = nv3.querySelector(":scope > .glide");
+          window.__tabKbd(innerHeight - 300); const hidden = getComputedStyle(nv3).display === "none"; window.__tabKbd(null); await new Promise(requestAnimationFrame);
+          const r1 = nv3.getBoundingClientRect(), same = Math.abs(r1.top - r0.top) < 0.01 && Math.abs(r1.left - r0.left) < 0.01 && Math.abs(r1.width - r0.width) < 0.01 && Math.abs(r1.height - r0.height) < 0.01, nodes = plat0 === nv3.querySelector(":scope > .plat") && gl0 === nv3.querySelector(":scope > .glide");
+          const tr = getComputedStyle(nv3).transitionProperty, trOK = !/transform|bottom|top|opacity/.test(tr) || getComputedStyle(nv3).transitionDuration.split(",").every((d) => parseFloat(d) === 0);
+          check("R28′ 键盘收起后胶囊原位原样：视口回高后下一帧 rect 与键盘前逐项相同（±.01）、.plat/.glide 同一节点、nav 无位置/透明度过渡（原生 R28：标签栏全程一帧不动，只是被键盘盖住）", "hidden → same rect · same nodes · no transition", `hidden ${hidden} · same ${same} · nodes ${nodes} · transition ${tr} ${getComputedStyle(nv3).transitionDuration}`, hidden && same && nodes && trOK); } }
       /* 监督局 19:3x: a segment tap must not flash — the buttons carry no tap highlight and no pointer focus ring (unchanged since 181053), and a render must not
          rebuild the tab bar's nodes (the platter's backdrop-filter layer / glide / buttons stay the same elements) */
       { const sb = document.querySelector("#queueseg button"), nv = document.querySelector("nav.tabs"), plat0 = nv && nv.querySelector(".plat"), gl0 = nv && nv.querySelector(".glide"), b0 = nv && nv.querySelector(".seg > button");
@@ -636,13 +753,15 @@
         const other = tbs.find((b) => !b.classList.contains("on")), cur = tbs.find((b) => b.classList.contains("on"));
         const shown = () => [...document.querySelectorAll("#app > section:not([hidden])")].map((x) => x.dataset.tab).filter((v, i, a) => a.indexOf(v) === i).join(",");
         pev(tseg, "pointerdown", at(other));
-        check("标签栏 T1 按下未选中项 +0 ms：不选中、透镜未动", startTab, `${tOn()} lift=${g.classList.contains("lift")}`, tOn() === startTab && !g.classList.contains("lift"));
+        check("标签栏 T1 按下未选中项 +0 ms：不选中；高亮类 .lift 即在（R59′e / R108：落指 → highlightedItemIndex → setLifted 无定时器，+140 令牌作废）", `${startTab} · lift`, `${tOn()} lift=${g.classList.contains("lift")}`, tOn() === startTab && g.classList.contains("lift"));
         await sleep(60);
-        check("标签栏 T1 +60 ms：透镜还没动（--ios-touch-tab-glide-delay 140）", "no lift", g.classList.contains("lift") ? "lift" : "no lift", !g.classList.contains("lift"));
+        { const L = window.__tabLens; check("标签栏 T1 +60 ms：驱动器已在抬（按下下一 tick 起，探针 +47 已 95.76）：p > 0、仍不选中", "p > 0 · not selected", `p ${L ? L.p.toFixed(3) : "-"} · ${tOn()}`, !!L && L.p > 0 && tOn() === startTab); }
         await sleep(140);
-        check("标签栏 T1 +200 ms：透镜抬起中并滑向被按项（+140 ms 起，~350 ms 到）", `left→${other.offsetLeft}, lift`, `left ${g.style.left} ${g.classList.contains("lift") ? "lift" : "-"} ${cs(g).scale}`, g.classList.contains("lift") && g.style.left === other.offsetLeft + "px" && parseFloat(cs(g).scale) > 1.0);
+        { const gr = g.getBoundingClientRect();   // #7a (tab-lens.js geometry mode): the lift is the box itself, w0 × 54 → (w0 + 16) × 70 on ζ 1 / .25 from +140 ms (tab-lens-motion.md §0 / §4), view.js's inline left = the pressed item is the target
+          check("标签栏 T1 +200 ms：透镜抬起中并滑向被按项（R59′d / R108：按下下一帧起 ζ1/.25 抬向 +22.7 × 74、位置 ζ.85/.4；.lift 类自按下即在）", `left→${other.offsetLeft}, lift, 54 < h ≤ 74`, `left ${g.style.left} ${g.classList.contains("lift") ? "lift" : "-"} h ${gr.height.toFixed(1)}`, g.classList.contains("lift") && g.style.left === other.offsetLeft + "px" && gr.height > 54 && gr.height <= 74.5); }   // 2号 R59′d: the lens's lifted size per the probe (tab-lens-motion §6.9 ⑤)
         await sleep(400);
-        check("标签栏 T5 按住 600 ms：仍不选中，透镜停在目标 119×64（--ios-touch-tab-lift-w 25 / -h 10）", `${startTab} 1.266 1.185`, `${tOn()} ${cs(g).scale}`, tOn() === startTab && /^1\.26/.test(cs(g).scale));
+        { const gr = g.getBoundingClientRect();
+          check("标签栏 T5 按住 600 ms：仍不选中，透镜停在 (w0 + 22.7) × 74（R108 探针 94×54 → 116.7 × 74.0，tab-lens-motion §6.9 ⑤；旧 +16 两轴是选中框的 inset）", `${startTab} ${(other.offsetWidth + 22.7).toFixed(1)}×74`, `${tOn()} ${gr.width.toFixed(1)}×${gr.height.toFixed(1)}`, tOn() === startTab && Math.abs(gr.width - (other.offsetWidth + 22.7)) <= 0.5 && Math.abs(gr.height - 74) <= 0.5); }   // 2号 R59′d
         const t1 = performance.now(); pev(tseg, "pointerup", at(other)); const d1 = performance.now() - t1;
         check("标签栏 T1 抬手：+0 ms 选中、内容同步切", other.dataset.tab, `${tOn()} 显示 ${shown()} +${Math.round(d1 * 10) / 10} ms`, tOn() === other.dataset.tab && shown() === other.dataset.tab && d1 < 50);
         /* Behaviour 3: scroll offsets are kept per tab (Health: 0 px difference after switching away and back, tabscroll/README §1) */
@@ -651,9 +770,13 @@
           pev(sg, "pointerdown", at(startB)); pev(sg, "pointerup", at(startB)); await sleep(30); const yStart = window.scrollY;
           pev(sg, "pointerdown", at(otherB)); pev(sg, "pointerup", at(otherB)); await sleep(30);
           check("切标签保留各自滚动位置（切走 → 切回差 0，Health 实测）", `${y1} → ${y1}`, `${y1} → ${yStart} → ${window.scrollY}`, y1 > 0 && yStart === 0 && Math.abs(window.scrollY - y1) < 1);
-          /* tap on the selected tab: to the top on the ω 12 spring (tabscroll/README §2: 0.2 s 71 %, 0.33 s 92 %, 0.5 s 98 %) */
-          const y2 = window.scrollY; pev(sg, "pointerdown", at(otherB)); pev(sg, "pointerup", at(otherB)); await sleep(200); const y200 = window.scrollY; await sleep(300); const y500 = window.scrollY; await sleep(300);
-          check("点已选中标签回顶：ω 12 弹簧（0.2 s ≈ 69–71 %，0.5 s ≈ 98 %，0.8 s 到 0）", "≈31 % · ≈2 % · 0", `${Math.round(y200 / y2 * 100)} % · ${Math.round(y500 / y2 * 100)} % · ${window.scrollY}`, y2 > 0 && Math.abs(y200 / y2 - 0.31) < 0.08 && y500 / y2 < 0.05 && window.scrollY === 0);
+          /* tap on the selected tab: to the top on the system scroll-to-top (tabscroll/README §2b, R17: progress = S(1.6 · bezier(0,.2,1,1)(t / 1.6)), S = ζ 1 / response .6);
+             sampled every frame against the driver's own clock (window.ScrollTop.state.t0, A15), rms ≤ 1 pt; 0 by 1.6 s */
+          const y2 = window.scrollY; pev(sg, "pointerdown", at(otherB)); pev(sg, "pointerup", at(otherB));
+          const stS = []; { const tEnd = performance.now() + 1700; while (performance.now() < tEnd) { await new Promise(requestAnimationFrame); const s = window.ScrollTop && window.ScrollTop.state; if (s && s.last) stS.push({ t: s.last.t, yW: s.last.y, y: window.scrollY, y0: s.y0 }); } }   // the driver's own frame (t, written y) and the browser's scrollY after it (A15)
+          const F = window.ScrollTop && window.ScrollTop.formula, rmsTop = F && stS.length ? Math.sqrt(stS.reduce((acc, s) => acc + Math.pow(s.yW - s.y0 * (1 - F.progress(s.t)), 2), 0) / stS.length) : NaN, rmsScr = stS.length ? Math.sqrt(stS.reduce((acc, s) => acc + Math.pow(s.y - s.yW, 2), 0) / stS.length) : NaN;
+          const p2 = F ? Math.round(F.progress(0.2) * 1000) / 10 : NaN;
+          check("点已选中标签回顶：系统回顶式（§2b：贝塞尔 (0,.2,1,1) 再临界弹簧 ζ1/.6，D 1.6 s；.2 s 应 85.8 %）驱动器逐帧写入值对闭式 rms ≤ .01 pt（本帧 t，A15），浏览器 scrollY 对写入值 rms ≤ 1 pt（整数取整），1.6 s 内到 0", `rms ≤ .01 · scrollY rms ≤ 1 · progress(.2) 85.8 · end 0`, `${stS.length} frames · rms ${isNaN(rmsTop) ? "-" : rmsTop.toFixed(3)} · scrollY rms ${isNaN(rmsScr) ? "-" : rmsScr.toFixed(2)} · progress(.2) ${p2} · end ${window.scrollY}`, y2 > 0 && stS.length > 20 && rmsTop <= 0.01 && rmsScr <= 1 && Math.abs(p2 - 85.8) < 0.2 && window.scrollY === 0);
           window.scrollTo(0, 0); }
         { const sg = document.querySelector("#queueseg"); check("班次分段只在「状态」页（别的标签页隐藏）", "hidden", sg ? (sg.hidden ? "hidden" : "shown") : "缺", !!sg && sg.hidden && getComputedStyle(sg).display === "none"); }
         /* T7/T8: release 250 pt above still selects */
@@ -664,13 +787,71 @@
         /* T3/T9: pressing the selected tab, releasing on it - no event */
         const nav3 = document.querySelector("nav.tabs"), seg3 = nav3.querySelector(".seg"), on3 = seg3.querySelector("button.on");
         const before = (nav3.querySelector(".seg button.on") || {}).dataset.tab, g3 = nav3.querySelector(".glide"); pev(seg3, "pointerdown", at(on3)); await sleep(100);
-        check("标签栏 T3 按下已选中项 +100 ms：透镜还没抬（--ios-touch-tab-selected-lift-delay 125）", "no lift", g3.classList.contains("lift-sel") ? "lift" : "no lift", !g3.classList.contains("lift-sel"));
+        { const L = window.__tabLens; check("标签栏 T3 按下已选中项 +100 ms：高亮类 .lift-sel 自按下即在、驱动器已在抬（R59′e / R108：+125 令牌作废）", "lift-sel · p > 0", `${g3.classList.contains("lift-sel") ? "lift-sel" : "-"} · p ${L ? L.p.toFixed(3) : "-"}`, g3.classList.contains("lift-sel") && !!L && L.p > 0); }
         await sleep(120);
-        check("标签栏 T3 +220 ms：透镜抬到 103×63（--ios-touch-tab-selected-lift-done 180）", "1.096 1.167", cs(g3).scale, /^1\.09/.test(cs(g3).scale));
+        { const gr = g3.getBoundingClientRect();   // #7a: the selected item's press lifts the same box (+16 on both axes, tab-lens-motion §0 "抬起（按住已选中项）"), from +125 ms on ζ 1 / .25
+          check("标签栏 T3 +220 ms：透镜抬起中（R59′d / R108：按下下一帧起 ζ1/.25 抬向 74，+125 令牌作废）", "lift-sel, 54 < h ≤ 74", `${g3.classList.contains("lift-sel") ? "lift-sel" : "-"} h ${gr.height.toFixed(1)}`, g3.classList.contains("lift-sel") && gr.height > 54 && gr.height <= 74.5); }   // 2号 R59′d
         pev(seg3, "pointerup", at(on3));
         check("标签栏 T3 按下已选中项抬手：无事件", before, (nav3.querySelector(".seg button.on") || {}).dataset.tab, (nav3.querySelector(".seg button.on") || {}).dataset.tab === before && !g3.classList.contains("lift-sel"));
+        await sleep(900);   // the T3 lens has fallen back: the bar is at rest
+        /* R59′c (tab-lens-motion.md §6.9 ② / R106 ②): the reselect of the selected item (here the scroll-to-top) is withheld once the finger has moved ≥ 4 pt in x from the
+           initial location, even when the up is still on the same item; a lift outside window.bounds inset by 8 only clears — nothing is selected */
+        { const on4 = seg3.querySelector("button.on"), tab4 = on4.dataset.tab; window.scrollTo(0, 150); await sleep(60); const y4 = window.scrollY;
+          pev(seg3, "pointerdown", at(on4)); pev(seg3, "pointermove", at(on4, .5, .5, 6, 0)); await sleep(30); pev(seg3, "pointerup", at(on4, .5, .5, 6, 0)); await sleep(120);
+          check("标签栏 R59′c 按住已选中项、横移 6 pt 仍在同一项、抬手：不重选（不回顶）、不选中别项、透镜回位（R106 ②：|adj.x − initial.x| ≥ 4 → shouldReselectHighlightedItemOnLift 0）", `${tab4} · scrollY ${y4} · no ScrollTop`, `${seg3.querySelector("button.on").dataset.tab} · scrollY ${window.scrollY} · ${window.ScrollTop && window.ScrollTop.state ? "ScrollTop running" : "no ScrollTop"}`, seg3.querySelector("button.on").dataset.tab === tab4 && Math.abs(window.scrollY - y4) < 1 && !(window.ScrollTop && window.ScrollTop.state) && !g3.classList.contains("lift-sel"));
+          pev(seg3, "pointerdown", at(on4)); pev(seg3, "pointermove", at(on4, .5, .5, 2, 0)); await sleep(30); pev(seg3, "pointerup", at(on4, .5, .5, 2, 0)); await sleep(60);
+          check("标签栏 R59′c 按住已选中项、横移 2 pt（< 4）抬手：重选 → 回顶起（对照）", "ScrollTop running", window.ScrollTop && window.ScrollTop.state ? "ScrollTop running" : "no ScrollTop", !!(window.ScrollTop && window.ScrollTop.state));
+          await sleep(1700); window.scrollTo(0, 0);
+          const other4 = [...seg3.querySelectorAll("button")].find((b) => !b.classList.contains("on")), rO = other4.getBoundingClientRect();
+          pev(seg3, "pointerdown", at(other4)); await sleep(30); pev(seg3, "pointermove", { x: rO.left + rO.width / 2, y: 2 }); pev(seg3, "pointerup", { x: rO.left + rO.width / 2, y: 2 }); await sleep(60);
+          check("标签栏 R59′c 按住未选中项、抬手在窗口内缩 8 之外（y 2）：只清高亮，不选中", tab4, seg3.querySelector("button.on").dataset.tab, seg3.querySelector("button.on").dataset.tab === tab4 && !nav3.classList.contains("drag"));
+          await sleep(700); }
+        /* BOARD R31 (page side): the labels textures for every segment are prepared at idle and the down on an unselected segment binds one (useLabels) — no
+           backdrop redraw in the down's task (marks: seg:gl-uselabels present, seg:gl-redraw count unchanged across the down) */
+        { const sg = q(), g = sg.__gl;
+          if (g && typeof g.lens.hasLabels === "function") {
+            await sleep(600);   // idle: the variants prepared
+            const n = sg.querySelectorAll("button").length; const prepared = [...Array(n).keys()].every((i) => g.lens.hasLabels(i));
+            const on0 = onText(), off = bs().find((b) => !b.classList.contains("on")), pressedIdx = bs().indexOf(off);
+            const redraws0 = performance.getEntriesByName("seg:gl-redraw").length;
+            pev(sg, "pointerdown", at(off)); const labelsAtDown = g.lens.stats.labels, used = performance.getEntriesByName("seg:gl-uselabels").length > 0; await sleep(40);
+            const redraws1 = performance.getEntriesByName("seg:gl-redraw").length;
+            pev(sg, "pointerup", at(off)); await sleep(1300);
+            check("R31 页面侧：空闲期每段的「将选中」标签纹理已预备（hasLabels 全 true）；按下未选中段只切绑定（stats.labels = 被按段、seg:gl-uselabels 有记录），按下任务内无底图重画（seg:gl-redraw 计数不变）", `prepared · labels ${pressedIdx} · uselabels · redraw +0`, `prepared ${prepared} · labels ${labelsAtDown} · uselabels ${used} · redraw +${redraws1 - redraws0}`, prepared && labelsAtDown === pressedIdx && used && redraws1 === redraws0);
+            const back = bs().find((b) => b.textContent === on0); if (back && onText() !== on0) { pev(q(), "pointerdown", at(back)); pev(q(), "pointerup", at(back)); await sleep(1300); }   // the selection restored for the rows after
+          } else check("R31 页面侧【GL 不可用或包无 prepareLabels：不核】", "-", g ? "no hasLabels" : "no gl", true); }
+        /* BOARD R0① (user bug 2): a shift change (早班 5 tabs ↔ 晚班 3 tabs) must not rebuild the tab bar — .plat / .glide / .seg stay the same elements, the nav's
+           top and display never change, the button count goes 5 → 3 → 5 with no frame at 0, and the glide sits on the selected button every frame */
+        if (typeof snap === "object" && snap && Array.isArray(snap.queues) && snap.queues.length > 1) {
+          const nv0 = document.querySelector("nav.tabs"), plat0 = nv0.querySelector(":scope > .plat"), gl0 = nv0.querySelector(":scope > .glide"), sg0 = nv0.querySelector(":scope > .seg"), top0 = nv0.getBoundingClientRect().top, savedQ = curQueue, savedTab = curTab;
+          const counts = [], bad = [];
+          const sampleFrames = async (n) => { for (let i = 0; i < n; i++) { await new Promise(requestAnimationFrame); const nv = document.querySelector("nav.tabs"), bsN = nv.querySelectorAll(":scope > .seg > button").length, on = nv.querySelector(":scope > .seg > button.on"), g = nv.querySelector(":scope > .glide");
+            counts.push(bsN); const r = nv.getBoundingClientRect();
+            if (nv !== nv0 || nv.querySelector(":scope > .plat") !== plat0 || g !== gl0 || nv.querySelector(":scope > .seg") !== sg0) bad.push("rebuilt");
+            if (Math.abs(r.top - top0) > 0.5) bad.push("top " + r.top.toFixed(1)); if (getComputedStyle(nv).display === "none") bad.push("display none"); if (bsN === 0) bad.push("0 buttons");
+            if (on && g && !nv.classList.contains("tl-on")) { const gr = g.getBoundingClientRect(), orr = on.getBoundingClientRect(); if (Math.abs(gr.left - orr.left) > 1 || Math.abs(gr.width - orr.width) > 1) bad.push("glide off " + gr.left.toFixed(1) + "/" + orr.left.toFixed(1)); } } };   // viewport rects: during the R0③ set animation the button is translated and the glide rides it
+          const names = snap.queues.map((x) => x["名"]); const other = names.find((nm) => nm !== savedQ) || names[0];
+          curQueue = other; window.render(); await sampleFrames(8); curQueue = savedQ; window.render(); await sampleFrames(8); curQueue = other; window.render(); await sampleFrames(8); curQueue = savedQ; window.render(); await sampleFrames(4);
+          const uniq = [...new Set(counts)];
+          check("R0① 换班次三次（早→晚→早→晚→早，render）逐帧：标签栏 .plat/.glide/.seg 同一元素、nav top 不变、display 不为 none、按钮数在两个值间切换且无一帧 0、glide 每帧贴着选中按钮（≤ 1 pt）", "same nodes · top = · counts {5,3} · glide on", `${bad.length ? bad.slice(0, 4).join(" · ") : "clean"} · counts ${uniq.join("/")} · ${counts.length} frames`, bad.length === 0 && uniq.length === 2 && !uniq.includes(0) && counts.length >= 20);
+          /* R0③ (tab-lens-motion.md §7, R24): on a set change the kept buttons' translateX follows ζ 1 / .3 from their FLIP delta, the removed ones fade on ζ 1 / .2 at their
+             old place and leave when the .3 spring settles, the added ones fade in on ζ 1 / .3; sampled on the driver's own clock (nav.__tabAnim, A15) */
+          { const nv = document.querySelector("nav.tabs"); const closed = (t, resp) => { const w = 2 * Math.PI / resp; return (1 + w * t) * Math.exp(-w * t); };
+            curQueue = other; window.render(); const A = nv.__tabAnim;
+            const smp = []; let removedSeen = 0; const tEnd = performance.now() + 1200;
+            while (performance.now() < tEnd) { await new Promise(requestAnimationFrame); if (nv.__tabAnim === A && A && A.tNow) { const t = (A.tNow - A.t0) / 1000;   // the driver's own frame time (A15)
+              for (const it of A.items) { const m = /translateX\(([-\d.]+)px\)/.exec(it.el.style.transform || ""); smp.push({ kind: "pos", t, got: m ? parseFloat(m[1]) : 0, want: it.dx * closed(t, 0.3) }); }
+              for (const b of A.removed) { if (b.isConnected) { removedSeen++; smp.push({ kind: "out", t, got: parseFloat(b.style.opacity || "1"), want: closed(t, 0.2) }); } }
+              for (const b of A.added) smp.push({ kind: "in", t, got: parseFloat(b.style.opacity || "1"), want: 1 - closed(t, 0.3) }); } }
+            const rmsOf = (k) => { const a = smp.filter((s) => s.kind === k); return a.length ? Math.sqrt(a.reduce((acc, s) => acc + Math.pow(s.got - s.want, 2), 0) / a.length) : 0; };
+            const goneAfter = A ? A.removed.every((b) => !b.isConnected) : true, hadAnim = !!A && (A.items.length + A.removed.length + A.added.length) > 0;
+            check("R0③ 换班次时项增删动画（§7）：保留项位移逐帧对 ζ1/.3 闭式（rms ≤ 1 pt）、删项淡出对 ζ1/.2（rms ≤ .03）、加项淡入对 ζ1/.3（rms ≤ .03）、删项在动画结束后摘掉、驱动器存在", "anim · pos ≤ 1 · out ≤ .03 · in ≤ .03 · removed gone", `anim ${hadAnim} · ${smp.length} samples · pos ${rmsOf("pos").toFixed(2)} · out ${rmsOf("out").toFixed(3)} (${removedSeen} frames) · in ${rmsOf("in").toFixed(3)} · gone ${goneAfter}`, hadAnim && rmsOf("pos") <= 1 && rmsOf("out") <= 0.03 && rmsOf("in") <= 0.03 && goneAfter);
+            curQueue = savedQ; window.render(); await sleep(1300); }
+          curTab = savedTab; window.render(); await sleep(100);
+        }
       }
-      /* §3 UISwitch on a synthetic switch through the page's own pointer handling */
+      /* §3 UISwitch on a synthetic switch through the page's own pointer handling (the old handler; with switch.js — BOARD #13 — accept-switch.js runs the B13 rows instead) */
+      if (!window.Switch) {
       const swLab = document.createElement("div"); swLab.style.cssText = "position:fixed;left:20px;top:200px;z-index:99;opacity:0";
       swLab.innerHTML = `<label class="sw"><input type="checkbox"><span></span></label>`; document.body.appendChild(swLab);
       const sw = swLab.querySelector(".sw"), inp = sw.querySelector("input"); let flips = 0; inp.addEventListener("change", () => flips++);
@@ -698,6 +879,7 @@
       pev(sw, "pointerdown", at(sw)); pev(sw, "pointercancel", at(sw));
       check("开关 pointercancel：不翻转", "on ×3", `${inp.checked ? "on" : "off"} ×${flips}`, inp.checked && flips === 3 && !sw.classList.contains("hold"));
       swLab.remove();
+      }
       /* §4 UIButton on a synthetic tile; alert action on a synthetic open dialog */
       const bLab = document.createElement("div"); bLab.style.cssText = "position:fixed;left:20px;top:300px;z-index:99;opacity:0";
       bLab.innerHTML = `<div class="group tiles"><button type="button" class="tile"><span class="ttitle">x</span></button></div>`; document.body.appendChild(bLab);
@@ -852,7 +1034,11 @@
         document.body.appendChild(box);
       }
     };
-    interactions().then(finish, (e) => { check("交互测试脚本出错", "", String(e), false); finish(); });
+    const extra = async () => {
+      if (window.ACCEPT) { for (const c of window.ACCEPT.files) { if (!window.ACCEPT.loaded.has(c)) await window.ACCEPT.load(c); if (!window.ACCEPT.loaded.has(c)) await window.ACCEPT.load(c);
+          check(`accept-${c}.js 已加载（动态脚本，丢了会重取两次）`, "已加载", window.ACCEPT.loaded.has(c) ? "已加载" : "缺", window.ACCEPT.loaded.has(c)); } }
+      for (const fn of (window.ACCEPT ? window.ACCEPT.fns : [])) { try { await fn({ check, num, col, sleep: (ms) => new Promise((r) => setTimeout(r, ms)) }); } catch (e) { check("控件检查文件出错 " + (fn.name || ""), "", String(e), false); } } };
+    interactions().then(extra, (e) => { check("交互测试脚本出错", "", String(e), false); }).then(finish, (e) => { check("控件检查出错", "", String(e), false); finish(); });
   }
   /* The page renders after its first snapshot and the number tiles after the game
      APIs answer: measure once the tiles exist (or after 8 s) — never before view.js's top-level bindings exist (window.__viewReady, set at the

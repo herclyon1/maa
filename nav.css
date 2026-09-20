@@ -1,0 +1,36 @@
+/* nav.css — the pushed page's push / pop drawn by nav.js (BOARD.md #2; remote-ref/nav-native-formula.md §0–§1, iOS 27.0 UIKitCore
+   _UINavigationParallaxTransition). While nav.js drives (.nav-live on the page and on body), the page's CSS transitions in index.html are
+   off and every quantity is a per-frame value of the one progress p (spring ζ 1 / .3, from rest). Rest states keep index.html's classes
+   (.page.in / hidden, body.pushed), so nothing else changes. Selectors carry an extra class to outrank the inline rules of index.html
+   (loaded after this file) without editing them (A7). */
+.page.nav-live.nav-live { transition: none; transform: translateX(var(--nav-x, 0px)); will-change: transform; }
+body.nav-live.nav-live > header, body.nav-live.nav-live > main { transition: none; translate: var(--nav-from, 0px) 0; will-change: translate; }   /* own layers while moving: the old page must not re-raster per frame */
+/* the transition card (Solarium _UIParallaxTransitionCardView 0x1c54ab304 / updateProperties 0x1c54ab854): corners = the container's
+   concentric radii (this phone's screen corner 62, sheet-native.md), shadow black r 12 / opacity .04 / offset (0, −3) — only while moving */
+.page.nav-live.nav-live { border-radius: 62px; box-shadow: 0 -3px 12px rgba(0, 0, 0, .04); }
+/* the dimming view between the two cards: black α .1 whose alpha = p (push) / 1 − p (pop) — _UIParallaxDimmingView 0x1c40fe0dc, [0x1c5717f68] = .1 */
+.nav-dim { position: fixed; inset: 0; z-index: 4; pointer-events: none; background: rgb(0 0 0 / .1); opacity: var(--nav-dim, 0); }
+/* the 9 pt vertical edge shadow outside the top card's left edge, alpha = 1 − p (_UIVerticalEdgeShadowView width 9, formula §0):
+   its 27 px profile is UNREAD (§5.1: CGContextSetShadowWithColor blur → σ in CoreGraphics) — the strip is placed, not painted. 待读：剖面 */
+/* the left edge strip: _UIVerticalEdgeShadowView frame (−9, 0, 9, H), alpha = 1 − p (push) / p (pop) — its image is 27×3 px @3x = 9×1 pt,
+   capInsets 0, every pixel black with alpha (/255) 12,12,12,13,13,13,13,14,14,14,14,15,15,15,16,16,16,16,16,17,17,17,17,17,17,18,18 from
+   left to right (nav-native-formula.md §9, 数据 R21d imgdump); drawn as 27 hard stops of 1/3 pt each — the exact pixel column, not a fit */
+.page.nav-live.nav-live::before { content: ""; position: absolute; top: 0; bottom: 0; left: -9px; width: 9px; opacity: var(--nav-edge, 0);
+  background: linear-gradient(to right, rgb(0 0 0 / 0.04706) 0.0000% 3.7037%, rgb(0 0 0 / 0.04706) 3.7037% 7.4074%, rgb(0 0 0 / 0.04706) 7.4074% 11.1111%, rgb(0 0 0 / 0.05098) 11.1111% 14.8148%, rgb(0 0 0 / 0.05098) 14.8148% 18.5185%, rgb(0 0 0 / 0.05098) 18.5185% 22.2222%, rgb(0 0 0 / 0.05098) 22.2222% 25.9259%, rgb(0 0 0 / 0.0549) 25.9259% 29.6296%, rgb(0 0 0 / 0.0549) 29.6296% 33.3333%, rgb(0 0 0 / 0.0549) 33.3333% 37.0370%, rgb(0 0 0 / 0.0549) 37.0370% 40.7407%, rgb(0 0 0 / 0.05882) 40.7407% 44.4444%, rgb(0 0 0 / 0.05882) 44.4444% 48.1481%, rgb(0 0 0 / 0.05882) 48.1481% 51.8519%, rgb(0 0 0 / 0.06275) 51.8519% 55.5556%, rgb(0 0 0 / 0.06275) 55.5556% 59.2593%, rgb(0 0 0 / 0.06275) 59.2593% 62.9630%, rgb(0 0 0 / 0.06275) 62.9630% 66.6667%, rgb(0 0 0 / 0.06275) 66.6667% 70.3704%, rgb(0 0 0 / 0.06667) 70.3704% 74.0741%, rgb(0 0 0 / 0.06667) 74.0741% 77.7778%, rgb(0 0 0 / 0.06667) 77.7778% 81.4815%, rgb(0 0 0 / 0.06667) 81.4815% 85.1852%, rgb(0 0 0 / 0.06667) 85.1852% 88.8889%, rgb(0 0 0 / 0.06667) 88.8889% 92.5926%, rgb(0 0 0 / 0.07059) 92.5926% 96.2963%, rgb(0 0 0 / 0.07059) 96.2963% 100.0000%); }
+/* the nav bar items of the incoming page (formula §0 row 导航栏): back button + title fade in with f_in = cubic-bezier(.75,.1,.75,.1) over the
+   second key segment [.425, 1]; the title's frame slides from the title area's right end to its place (linear in p) */
+.page.nav-live.nav-live > .pnav > .ptitle { opacity: var(--nav-in, 1); transition: none; }
+/* R47′ (§5g): on a push the back button's body keeps alpha 1 (prepare 0x1c3cf629c–0x1c3cf62e4) and its CONTENT fades in over the keyframe [.5, 1];
+   on a pop the body fades with the bar's items (§0 f_out, --nav-back-a = the items' alpha) */
+.page.nav-live.nav-live > .pnav > .pback { opacity: var(--nav-back-a, 1); transition: none; }
+.page.nav-live.nav-live > .pnav > .ptitle { translate: var(--nav-title, 0px) 0; }
+/* R21e′: the back chevron (the button's content, not its glass) rides from the root's large-title label centre to its place (§5d) */
+/* R47′: the chevron image is prepared at scale .7, (+7, +5) pt from its final frame, alpha 0, and pops out in the keyframe [.9, 1] (0x1c3cf61b8–0x1c3cf6288,
+   0x1c3cf7ed8–0x1c3cf7f5c); its alpha is the content's [.5, 1] keyframe × its own — nav.js writes --nav-chev-a / -s / -kx / -ky per frame (identity on a pop) */
+.page.nav-live.nav-live > .pnav > .pback::before { translate: calc(var(--nav-back-dx, 0px) + var(--nav-chev-kx, 0px)) calc(var(--nav-back-dy, 0px) + var(--nav-chev-ky, 0px)); scale: var(--nav-chev-s, 1); opacity: var(--nav-chev-a, 1); transition: none; }
+/* R47′ (§5g, _animateScaleTransition mode 2): the root's large title scales about its text's centre to the chevron's bounds (w_chev / w_h1, h_chev / h_h1),
+   its centre moves −d·p on screen (the header's own parallax translate is compensated in --nav-h1-dx), alpha keyframe [0, .6] → 0 — multiplied into
+   index.html:187's scroll fade (1 − --big) so a scrolled title keeps its own alpha */
+body.nav-live.nav-live > header > h1 { transform-origin: var(--nav-h1-ox, 50%) var(--nav-h1-oy, 50%); transform: translate(var(--nav-h1-dx, 0px), var(--nav-h1-dy, 0px)) scale(var(--nav-h1-sx, 1), var(--nav-h1-sy, 1)); opacity: calc((1 - var(--big, 0)) * var(--nav-h1-a, 1)); transition: none; will-change: transform, opacity; }
+/* the pushed page pans vertically on its own; a sideways drag from the left edge reaches nav-edge.js (BOARD #12) */
+.page.page { touch-action: pan-y; }

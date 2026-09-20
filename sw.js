@@ -1,6 +1,6 @@
 /* 只为「机器关着也能打开看最后状态」。数据本身走网络，不缓存。 */
 const CACHE = "ark-remote-v1";
-const SHELL = ["./", "index.html", "tokens.css", "controls.css", "schema.js", "net.js", "pending.js", "live.js", "stamina.js", "view.js", "controls.js", "manifest.webmanifest", "icon.svg"];
+const SHELL = ["./", "index.html", "tokens.css", "controls.css", "schema.js", "net.js", "pending.js", "live.js", "stamina.js", "view.js", "controls.js", "motion.js", "nav.js", "nav-edge.js", "sheet.js", "menu.js", "topbar.js", "refresh.js", "glassbtn.js", "alert-glass.js", "switch.js", "assets/lens/tab-lens.js", "motion.css", "nav.css", "sheet.css", "menu.css", "topbar.css", "refresh.css", "glassbtn.css", "alert-glass.css", "switch.css", "tile.css", "manifest.webmanifest", "icon.svg"];
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });

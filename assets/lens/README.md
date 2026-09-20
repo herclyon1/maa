@@ -18,6 +18,8 @@ compiled from the native per-frame recordings. Nothing here touches `view.js` / 
 | `gen_seg_keys.py` → `seg-keys.css` | lift / release / commit / drag keyframes compiled from the native frame data (§5) |
 | `verify_lens_maps.py`, `gen_lens_maps.py` without `--formula` | the earlier measured-resampling mode (§1–§4, record only): resamples the phase files into maps — no longer part of the deliverable |
 | `calib/` | WebKit feDisplacementMap calibration (`gen_calib.py` → maps + `webkit-displacement.html`, `check_calib.py` reads a render): the engine applies negative displacements one device pixel short (§0.4) |
+| `tools/air_sampler.py` | lists the functions of a Metal library (`.metallib`) and decodes every constexpr sampler state they carry (bit layout read with the Metal compiler, §0.8.14) |
+| `tools/tear_cbg.py` | R38a 续: the closed form's drag-mid end-zone ink decomposed like 数据's R65 layer switches (bg off / all off / bg only), the bg-path variants (capture margin, the inner stage, the supercircle per path) and the lifted-state softening test (label copy rasterised at 1–3 px/pt, R52's metrics); label-end-tear §7e |
 | `tools/fringe_check.py` | the A1 8× three-item check (coloured share of the outer 12 pt, saturation mean / median, the ends' colour order) on any screenshot of the held lens (§0.5) |
 | `lens-supersample.js` | 引擎校正 2, default on (`?ss=0` off): wraps every filtered lens layer in a composited ½ wrapper and lays it out 2× (the filter runs on a 2× raster), folds SS into the filters' `data-s` / scale / region (§0.4); one `<script>` line before view.js and lens-engine-fix.js |
 | `lens-engine-fix.js` | 引擎校正, default on: re-encodes the bg / label maps at page load so negative displacements are one device pixel longer (k = 1/devicePixelRatio), blob: copies only (§0.4); load after the `<svg>` |
@@ -859,6 +861,19 @@ cost on the device (the data session's 36916a9 reads the fringe chain and the su
 is the switch here). Engine fact for the geometry: the glide's `offsetLeft` reads its CSS transition mid-flight, so the script reads the
 inline `style.left / width` (the target view.js wrote).
 
+**R2 (2026-09-20 03:2x, BOARD round 2, 验收's (b)): the material through `lens-webgl.js`, geometry mode.** `tab-lens.js` puts a canvas over the bar
+(nav's box + 24 pt on every side: the lifted 98 × 70 over the 62 bar and the fringe wrapper 16) and drives `LensWebGL` with the tab5 family:
+`setsFromFilters("tab", heights)` from tab5/lens-filter.svg (data-s 40, 48 for the 98 set, fringe 16) and tab5/lens-field.json (heights 54 … 70);
+the lift rides the 98 set stretched over the growing box (as the segment lens rides its 220 set, §0.3), `pd = lift` (DestOut on the lift
+spring, tab-lens-motion §4), `wh` from the capture-box rule per frame, the geometry driver's p / x / W / H fed to setState each frame, lift 0 at
+rest (the canvas cleared). The backdrop: the page colour everywhere and the platter's fill (`.plat`'s background-color) as its capsule — the page
+under the bar cannot be drawn into a canvas (标不可表达: the blurred page in the platter, the page content the lens would show above the bar);
+the items are drawn with their own alpha (`labelsDirect`, a package option added for this: tinted mask icons, tab images, the labels in their
+computed font / colour) — no single-ink alpha recovery. Not drawn: the items' 1.16 scale of the SelectedContentView copy (the package has no
+label scale: 待做), `_UITabSelectionView`'s own α 1 → 0 (the glide stays the geometry driver's). `?tlens-gl=0` leaves the canvas out.
+Offscreen: nine sets loaded, a press on the selected item draws 26 frames on set 98 (34 482 opaque px @2×), cleared at the settle;
+`accept-tabbar.js` R2 rows (sets, keys, canvas box, frames / set / pd during a lift, lift 0 at rest, no JS error); headless Chrome 545 / 545.
+
 ### 0.8.4 Frame cost of the fringe chain — the lean chain `#…-f-abl-<w>` and the baked 引擎校正 maps (2026-09-19 12:5x, ui2)
 
 Order (监督局 12:2x, after the data session's 36916a9: on the phone the dispersion layer alone makes a drag frame 37–38 ms (19 ms of it),
@@ -1130,6 +1145,19 @@ In the harness (`lens-webgl-test.html?state=mid&dpr=3`, 3 px/pt, the row 8 pt ab
 page's stretched 「班」 reaches the rim rows (the harness's centre row shows the glyph's ink at x 330–332 too). To be compared on the same
 row between the harness and the page (the page's labels / lens box are the page's inputs).
 
+**R8 (2026-09-20 02:4x, BOARD round 2 — the right end's 1 pt, cause hunt):** the device's row 616 (seg-dragmid-compare-d02487f.md, 3 px/pt,
+light): native 325:214 326:212 327:205 **328:179** 329:209 330:228 (a 1-px dip, 2 px wide); the page 324:202 325:165 326:100 **327:83** 328:139
+329:201 330:228 (min 83, 6 px = 2 pt wide, from 324.7 inward; dark: native a 27 → 45 bump at 327–328, the page 34 / 59 / 120 / **150** / 89
+at 324–328). The same row in the harness (`?state=mid&dpr=3`, the composited snapshot at 3 px/pt, the same box and labels): right 328.33: 205
+· **328.67: 183** · 329.0: 196, left 111.0: 183 — one column, symmetric, the native right end's shape. Four label variants (as is, both regular,
+the right label weight 600, no labels) give the identical row (the row is 2.3 pt above the label ink on both device and harness, so the label
+copy is not in it); the maps, the shader and the box are the same files on both. So the cause is not the maps, not the labels, not the
+geometry: it is only on the device, at the right end only — an engine / GPU difference in rendering the pass-2 rim terms there. Not
+reproducible on the Mac, so not fixed; three A/B switches for the device instead (数据, the same row 616 on each): `?glab=nodark2` (the outside
+dark line of pass 2 off — in the harness the whole rim dip is that term: 227 / 236 without it), `?glab=noring2` (the outside ring off),
+`?glab=nofringe` (the dispersion taps off). Whichever switch flattens the page's 324–329 feature names the term; the default render is
+byte-identical to before (0 diff at 3×). 待读 until then.
+
 ### 0.8.9 GL prewarm — what is moved off the first glass frame (2026-09-19 15:0x; 验收 / 监督局: the wired page's first glass frame stalled 46–55 ms)
 
 What a WebGL lens pays the first time, and where `lens-webgl.js` now pays it instead (each step timed with gl.finish into `L.stats.prewarm`;
@@ -1285,6 +1313,47 @@ the package must draw until then. A package-side "small enough lift" bound, howe
 contract. Fixed: `p <= 0` again. The fixed check: `scripts/mac/seg-tap-platter-check.sh` runs the sequence above against web/ and fails on any
 tick where the control has `.lift` and the canvas is clear (the page's platter hidden and the package's gone) — run it before any change to
 the rest / clear logic on either side.
+
+### 0.8.13 R31 — the tap's down frame without a backdrop redraw: label variants (2026-09-20 02:xx; BOARD.md round 2)
+
+§0.8.11 ③: on the tap path the page redrew the backdrop at the down (futureOn: the labels with the segment about to be selected in the
+selected weight) — two 2D canvases, the alpha recovery, two uploads and a warm-up in the task after the handler; ~40 ms of the down frame on
+the phone. Now the package keeps one labels texture per selection: `prepareLabels(key, labels)` draws the page canvas once more and the labels
+with the caller's callback `(ctx2d, info) → void` (info.region as for setBackdrop), recovers the alpha against the page render, uploads into a
+texture kept under `key` (re-used on the next prepare of the same key) and records `seg:gl-prepare`; `useLabels(key)` binds that texture for the
+following frames — a variable assignment, nothing drawn, nothing uploaded; `hasLabels(key)` tells whether it is there. The live texture of
+`redrawBackdrop` / `redrawNow` stays the default; a redraw drops every variant (the page's content changed) and sets `stats.labels = "live"`;
+`stats.labels` = the bound key otherwise. The deferred redraw task records `seg:gl-redraw-task` (redrawNow + warm-up) and every redrawNow
+`seg:gl-redraw`, so the frames recorder shows where a redraw ran.
+Wiring (view.js, the ui session's line): after the prewarm, at idle, `for (i of segments) lens.prepareLabels(i, (x, info) => drawLabels(x, i))`
+where drawLabels draws the labels with segment i as the selected one (the futureOn drawing); at the down on segment p: `lens.useLabels(p)`
+instead of `segGlRedraw(seg)`; at the commit the selection is p, so the bound texture already matches (the deferred redraw at segSync may stay
+as a safety net — it re-prepares nothing, the page prepares again at idle); after a render / theme change: prepare again at idle.
+Harness: `prepareLabels("bold", …)` → 1 seg:gl-prepare; `useLabels` → 0 redraw measures, 0 frames; a frame with the bold variant differs from
+the live one (7 648 px @2x); after `redrawNow` the variant is gone and the render equals the live one (0 diff). The accept row (accept.js 分段
+section) exercises the API on the page's instance; the page-path row (a tap's down frame with no seg:gl-redraw-task) goes in with the wiring.
+
+### 0.8.14 R37 — the fringe's "source" item read: CA's sampler for the label copy, mips, and the map's quantisation (2026-09-20 04:xx; BOARD round 2)
+
+The question (formula.md §3b.8): the band's label ink is grey on the native (darkest G 36–44 in the ±1 pt box), black on the web (9), the chain's gain is
+the same on both (.48), so the saturation difference (69 vs 85) is in the SOURCE the seven taps read. Three reads, in `remote-ref/glass-displacement-formula.md`
+§3b.9 with the addresses: **①** `displacement_map_lpf` samples both its textures through one constexpr sampler, `0x7bff0000082a49` = clamp_to_edge,
+`filter::linear`, `mip_filter::nearest`, implicit-LOD `sample()` — decoded by compiling one probe sampler per field with the same Metal compiler version
+that built QuartzCore's library (32023.921; the bit layout is in `tools/air_sampler.py`, which also lists every function of a `.metallib` and decodes
+its samplers: the ten sampler states of `default.metallib` are in its output). **②** intermediate surfaces are allocated without mip levels unless a
+surface flag is set (`MetalContext::create_surface_with_properties` +0xb9c / +0xc6c); which filter inputs get the flag is unread — bounded: mips act
+only where the sampling is minified (the ends' compression zone s ∈ [6, 11.2]); the platform (magnified ×55) reads level 0 either way, so the band's
+grey is not a mip. **③** the web's 8-bit 2 px/pt label map is not the term either: the field evaluated per pixel in float in FS1 (`lstage` / `gOval`
+— formula §1 + §2 composed like `gen_lens_maps.py compose_stages`, coverage fw ⅓ pt, the ⅙ pt clamp, the amounts riding the lift) gives, on the Mac
+harness at 3 px/pt with §3b.8's judge (`scratchpad/r37_sat.py`): share 1.52 → 1.52 %, saturation 89.8 → 89.1, darkest G 7.6 → 7.5, gain .48 → .48.
+
+Wired: the float field is the default (`opts.labMode` / `?gllab=map` returns to the map; `stats.labMode`, `stats.labelStages`, `stats.rmax`); the
+capsule radius is a uniform (`opts.rmax`: the segment lens 22 clamped to h/2, the tab lens h/2 — before this the tab overlay's outline terms (ring,
+dark line, KeyFill, DestOut punch, source clip) used r 22 on a 70-pt capsule: fixed); `tab-lens.js` passes the tab family's stages −14 / 11.2 →
+−17.5 / 11.2 and each set's model box (lift path = the set, stretch = 110×70). What is left for the source item: the device says rest 905 / 905 and
+lift 941 / 925 agree, only drag-mid differs (586 / 760, seg-webgl-fb7bbdc.md §3) — the same end-zone term as R38 (`label-end-tear-closed-vs-map.md`
+§0 item 4); next reads listed in §3b.9 (the mip flag's origin; L2 / L4 alone on the probe; the nested evaluation in `CA::Render`). The Mac harness's
+own label bitmap is 13 % heavier than the native crop's (WebKit macOS rasterisation) — a Mac-only difference, not the phone's.
 
 ### 0.9 Page sheet (#picker) — B7 visual package (2026-09-19; tokens + a static test page, not wired)
 

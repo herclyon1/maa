@@ -1,0 +1,48 @@
+/* tile.css — the press states of the page's two Reminders / Health-shaped controls (BOARD.md R6; night batch shell, A7: index.html's old rules
+   stay and are outranked by `body`-prefixed selectors, so the order of this <link> against index.html's own <style> does not matter).
+
+   ① .tile — Reminders' smart-list tile (TTRIPinnedListControl): a press changes NOTHING. remote-ref/state-tables/button.md R14′ ① (RemindersUICore
+      decompiled, old-page session): the appearance updater 0x1000b6324 never reads the highlighted bit, the fillColor setter (0x7a9fc) only sets the
+      dynamic colour, the isSelected setter (0x7b1f4) only shows / hides the selection view, and the only animation is a .15 s cubic-bezier(.34,0,.67,1)
+      shell (0x1000b69d4 → 0x1000b6170) with nothing of a press to animate. The slow growth from +180 ms in the R14″ recording is the long-press
+      (context-menu) preview, not the press — the page's tiles have no menu, so it is not copied. Overrides index.html:213 .tile:active{transform:
+      scale(.97)} and :280 .tile:active,.tile.pressed{background: 8 % ink} (both unsourced); the .pressed class (view.js installPressables, U1–U6)
+      stays as the press state so acceptance can address it.
+   ② .capsule — the Health tip card's capsule button = a UIButton with the tinted configuration inside a UICollectionView (remote-ref/state-tables/button.md
+      R62, 数据 hooks in Health.app: beginTrackingWithTouch: → setHighlighted: → touchDown / touchUpInside, delaysContentTouches = YES; R14′ ②'s "SwiftUI,
+      not decompilable" is withdrawn there). So its press state is the R14 probe table's tinted row (UIButton(configuration:) on the probe, subtree dumps at
+      rest and held +.8 s, light and dark), the recordings only confirming it value for value: fill = the tint at α .18 → .117 (light) / .25 → .175 (dark)
+      — R91 (decompiled, closed): the fill is the tintBehaviors block: rest α = __tintBehaviorAlphaReduction light .18 / dark .25 (systemRed and
+      systemPink .2 in dark, systemYellow .2 in light), held = rest × .65 (light) / × .70 (dark); so the red capsule rests at .2 and holds at .14 in dark —
+      label = the tint at α .75 (light) / (.1, .612, 1) (dark); size unchanged, no scale, no dimming. Timing: the highlight lands 150 ms after touch-down
+      (UIScrollView delaysContentTouches, painted on the next frame — cell-native.md row 12: +174…175; the recordings' +172 / +155) as a 0 s transition
+      with that delay; the un-highlight runs the .25 s ease-in-out of the same _UISystemBackgroundView (R14 timing rows: filled / plain / gray / tinted
+      one mechanism, 15 frames two-slow-ends). Behaviour (R62): a tap shorter than the delay never shows the colour and still triggers (the click is
+      installPressables'); holding then releasing keeps the colour until the action fires — here the action fires at the up and the page stays, so
+      the .25 s return is drawn from there; a cancel (the finger past the slop) returns the same way (R62: the return's curve is unread — drawn with the
+      same mechanism). The red variant gets the same tinted configuration on its own tint (--bad): the transformers are the configuration's, not a
+      colour's (R6″, button.md R86 decompiled: -[_UIButtonConfiguration updatedConfigurationForState:] picks the label / image colour transformer by
+      style × highlighted × interface style — tinted light 14 Alpha75Percent (α × .75), tinted dark 16 AddingWhite10: c ← .9·c + .1, α unchanged
+      (__colorByAddingWhite, white α .1 source-over; probe (0, .569, 1) → (.1, .612, 1) ✓) — so the dark held label is the tint mixed with 10 % white
+      for the blue and the red alike). index.html:675 button:active {opacity:.6} (unsourced) is switched off. Tokens: tokens.css "capsule button"
+      block (BOARD R6′ / R6″; the R6 recording tokens are withdrawn). */
+body .tile:active, body .tile.pressed { transform: none; background: var(--card); }
+body .capsule:active { opacity: 1; }
+/* rest fills at the tinted rest alpha (index.html:270 / :272 wrote 18 % / 16 %), and the release / cancel return of .25 s ease-in-out */
+body .capsule:not(.red) { background: color-mix(in srgb, var(--accent) var(--ios-capsule-rest-alpha, 18%), transparent); }
+body .capsule.red { background: color-mix(in srgb, var(--bad) var(--ios-capsule-rest-alpha, 18%), transparent); }
+body .capsule { transition: background-color var(--ios-motion-button-release-duration, .25s) var(--ios-motion-ease-in-out, cubic-bezier(.42, 0, .58, 1)), color var(--ios-motion-button-release-duration, .25s) var(--ios-motion-ease-in-out, cubic-bezier(.42, 0, .58, 1)); }
+/* held: the hop after the 150 ms delay */
+body .capsule.pressed:not(.red) { background: color-mix(in srgb, var(--accent) var(--ios-capsule-pressed-alpha, 11.76%), transparent); color: color-mix(in srgb, var(--accent) var(--ios-capsule-pressed-text-alpha, 75%), transparent); }
+body .capsule.red.pressed { background: color-mix(in srgb, var(--bad) var(--ios-capsule-pressed-alpha, 11.76%), transparent); color: color-mix(in srgb, var(--bad) var(--ios-capsule-pressed-text-alpha, 75%), transparent); }
+body .capsule.pressed { transition: background-color 0s var(--ios-touch-capsule-press-delay, 150ms), color 0s var(--ios-touch-capsule-press-delay, 150ms); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) body .capsule:not(.red) { background: color-mix(in srgb, var(--accent) var(--ios-capsule-rest-alpha-dark, 25%), transparent); }
+  :root:not([data-theme="light"]) body .capsule.red { background: color-mix(in srgb, var(--bad) var(--ios-capsule-red-rest-alpha-dark, 20%), transparent); }   /* R91: a systemRed tint rests at .2 in dark */
+  :root:not([data-theme="light"]) body .capsule.pressed:not(.red) { background: color-mix(in srgb, var(--accent) var(--ios-capsule-pressed-alpha-dark, 17.5%), transparent); color: color-mix(in srgb, var(--accent) calc(100% - var(--ios-capsule-pressed-text-white-mix, 10%)), white var(--ios-capsule-pressed-text-white-mix, 10%)); }   /* R6″: AddingWhite10 = .9·c + .1 */
+  :root:not([data-theme="light"]) body .capsule.red.pressed { background: color-mix(in srgb, var(--bad) var(--ios-capsule-red-pressed-alpha-dark, 14%), transparent); color: color-mix(in srgb, var(--bad) calc(100% - var(--ios-capsule-pressed-text-white-mix, 10%)), white var(--ios-capsule-pressed-text-white-mix, 10%)); }
+}
+:root[data-theme="dark"] body .capsule:not(.red) { background: color-mix(in srgb, var(--accent) var(--ios-capsule-rest-alpha-dark, 25%), transparent); }
+:root[data-theme="dark"] body .capsule.red { background: color-mix(in srgb, var(--bad) var(--ios-capsule-red-rest-alpha-dark, 20%), transparent); }
+:root[data-theme="dark"] body .capsule.pressed:not(.red) { background: color-mix(in srgb, var(--accent) var(--ios-capsule-pressed-alpha-dark, 17.5%), transparent); color: color-mix(in srgb, var(--accent) calc(100% - var(--ios-capsule-pressed-text-white-mix, 10%)), white var(--ios-capsule-pressed-text-white-mix, 10%)); }
+:root[data-theme="dark"] body .capsule.red.pressed { background: color-mix(in srgb, var(--bad) var(--ios-capsule-red-pressed-alpha-dark, 14%), transparent); color: color-mix(in srgb, var(--bad) calc(100% - var(--ios-capsule-pressed-text-white-mix, 10%)), white var(--ios-capsule-pressed-text-white-mix, 10%)); }

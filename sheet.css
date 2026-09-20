@@ -1,0 +1,11 @@
+/* sheet.css — the picker sheet (#picker) dragged to dismiss, driven by sheet.js (BOARD.md #10 / #11; remote-ref/sheet-native-formula.md
+   §5 / §7b / §8b, iOS 27.0 UIKitCore UISheetPresentationController). While sheet.js drives (.sheet-live), index.html's present / dismiss
+   transitions are off and the card's y and the dimming are per-frame values; the rest states stay index.html's (.sheet.in / [open]).
+   Extra class in the selectors to outrank the inline rules of index.html (loaded after this file) without editing them (A7). */
+.sheet.sheet-live.sheet-live .card { transition: none; transform: translateY(var(--sheet-y, 0px)); will-change: transform; }
+/* the dimming follows the position: α = .2 (light) / .48 (dark) × percentDisplayed, percentDisplayed linear in y for the single large
+   detent (§7b 遮罩随位置; the detent form of percentDisplayed is unread — 待读) */
+.sheet.sheet-live.sheet-live .dim { transition: none; opacity: var(--sheet-dim, 1); }
+/* the list stops the browser's own scroll bounce at its top so the drag can be taken over there (the sheet's rule: the pan belongs to the
+   sheet once the scroll view is at its top and the finger moves down); this is a page mechanism, not a measured value */
+.sheet .plist { overscroll-behavior-y: contain; }

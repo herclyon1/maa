@@ -635,6 +635,26 @@ function segSameQueues(a, b) {
    rapid taps change direction, spec §1 G12/G13); the pressed label's .dim was already removed by attachSegmented's `end`, so its
    opacity runs .2 → 1 over --ios-touch-segment-undim-duration on the same element, and .on moving between the same two buttons
    gives the weight transition its start and end values. The commit stretch (.spring) restarts when the value changed. */
+/* R59′a — Reduce Motion (page-inventory.md §12b ①, -[UISegmentedControl _disableSlidingControl] 0x1c41342e0 = isMomentary ‖ _AXSReduceMotionEnabled ‖
+   custom background): no sliding selection state — the down neither lifts nor follows (_tapSegmentAtPoint:touchDown: 0x1c4138b90 skips it), the value
+   changes at the up for the segment under the finger (R59″: a release on another segment after a hold is a tap, not a cancel), and the indicator does
+   not slide (_setSelectedSegmentIndex:notify:animate: 0x1c4132eac skips the relayout; UISegment _updateSelectionIndicator 0x1c4128a90 puts it on the
+   new segment). What the new indicator does there (R79, 数据's anims read with Reduce Motion on, page-inventory.md §12b ①): the new segment's
+   selection view carries two CABasicAnimations — transform scale .88 → 1 and opacity 0 → 1 — duration 0.2 s, timingFunction default (.25, .1, .25, 1),
+   fillMode both, beginning at valueChanged (up + 44 / 51 ms); the old segment's selection view is already gone from the tree at the next read (no
+   animation on it: withdrawn at once). The R59″ 12-frame lenstrace was those animations sampled (≈ 190 ms) and is replaced by them (R59′a″). The
+   label crossfade (R20c) and the content switch stay. window.__forceRM is the instrument (the media query cannot be toggled from the page;
+   accept.js 分段段). */
+const RM = () => (window.__forceRM != null ? !!window.__forceRM : matchMedia("(prefers-reduced-motion: reduce)").matches);
+const SEG_RM = { ms: 200, curve: "cubic-bezier(.25, .1, .25, 1)", scale0: .88, alpha0: 0 };   // R79: two CABasicAnimations, 0.2 s default, scale .88 → 1, opacity 0 → 1 (page-inventory.md §12b ①)
+function segRmStyle() {
+  if (document.getElementById("seg-rm")) return;
+  const st = document.createElement("style"); st.id = "seg-rm";
+  st.textContent = `@media (prefers-reduced-motion: reduce) { .segctl .lens { transition: none !important; } }
+.segctl .lens.rm-in { transition: none !important; animation: seg-rm-in ${SEG_RM.ms}ms ${SEG_RM.curve}; }
+@keyframes seg-rm-in { from { opacity: ${SEG_RM.alpha0}; scale: ${SEG_RM.scale0} ${SEG_RM.scale0}; } to { opacity: 1; scale: 1 1; } }`;
+  document.head.appendChild(st);
+}
 function segSync(seg, fresh) {
   const lens = seg.querySelector(".lens"), to = fresh.style.getPropertyValue("--i"), from = seg.style.getPropertyValue("--i");
   if (seg.__gl) { const onIdx = [...fresh.querySelectorAll("button")].findIndex((b) => b.classList.contains("on")), gs = seg.__gl.gs;
@@ -642,11 +662,13 @@ function segSync(seg, fresh) {
     else { gs.futureOn = null; requestAnimationFrame(() => segGlRedraw(seg)); } }   // WebGL: the labels' weight / the selection changed under the lens (README §0.8.7 step 4)
   const freshBs = [...fresh.querySelectorAll("button")];
   [...seg.querySelectorAll("button")].forEach((b, i) => {
-    const on = freshBs[i] && freshBs[i].classList.contains("on");
-    b.classList.toggle("on", !!on); b.setAttribute("aria-selected", on ? "true" : "false");
+    const on = !!(freshBs[i] && freshBs[i].classList.contains("on"));
+    if (b.classList.contains("on") !== on) segLabelXfade(b, on); else b.setAttribute("aria-selected", on ? "true" : "false");   // R20c: a changed label cross-dissolves .2 s
   });
   if (lens && to !== "" && Math.abs(parseFloat(to) - parseFloat(from)) > 0.001) {
-    if (segCommitMode === "tap" && seg.__lensLoop && !seg.__lensLoop.state.done) {
+    if (RM()) {   // R59′a: no slide — the indicator is placed on the new segment and appears there on the R59″ frames (.rm-in, cleared at animationend)
+      segRmStyle(); lens.classList.remove("spring", "lift"); seg.classList.remove("drag"); lens.classList.remove("rm-in"); void lens.offsetWidth; lens.classList.add("rm-in"); lens.__rmT0 = performance.now();
+    } else if (segCommitMode === "tap" && seg.__lensLoop && !seg.__lensLoop.state.done) {
       lens.classList.remove("spring");   // 点按外观: the segLens tap chain (SEG_TAP_T) drives the lens — glass lift in place, glass slide on the value-change spring, fall; no CSS keyframe slide
     } else if (segCommitMode === "tap") {
       lens.classList.remove("spring"); void lens.offsetWidth;   // restart the stretch keyframes when a previous commit's are still running (keyboard / click path without the loop)
@@ -729,17 +751,31 @@ function layoutTabs() {
   const nav = $("#tabs");
   nav.hidden = present.size < 2;
   /* platter, lens and buttons are siblings (index.html: a lens nested in the backdrop-filtered platter cannot filter it).
-     The nav's DOM is rebuilt only when the SET of tabs changes; otherwise the nodes stay (only .on is toggled and the glide re-placed) — every render
-     used to recreate the platter's backdrop-filter layer, the glide and the buttons, so the value flip's render at a segment tap (c3c1e58, in the
-     tap's own frame) recreated the whole bottom capsule under the finger (监督局 19:3x: "底部标签胶囊往下闪一下" on the phone). */
-  const wantTabs = TABS.filter(([t]) => present.has(t)).map(([t]) => t), haveTabs = [...nav.querySelectorAll(".seg > button")].map((b) => b.dataset.tab);
-  if (wantTabs.join("|") !== haveTabs.join("|") || !nav.querySelector(".plat") || !nav.querySelector(".glide")) {
-    nav.innerHTML = `<div class="plat"></div><i class="glide"></i><div class="seg">` + wantTabs.map((t) =>
-      `<button type="button" class="${t === curTab ? "on" : ""}" data-tab="${t}" aria-label="${t}">` +
-      `<span class="ico">` + (TAB_IMAGES[t] ? `<img class="tabimg" src="${TAB_IMAGES[t]}" alt="">`
-                     : `<i class="sf" style="-webkit-mask-image:url(${TAB_ICONS[t]});mask-image:url(${TAB_ICONS[t]})" aria-hidden="true"></i>`) + `</span>` +
-      `<span>${t}</span></button>`).join("") + `</div>`;
-  } else for (const x of nav.querySelectorAll(".seg > button")) x.classList.toggle("on", x.dataset.tab === curTab);
+     BOARD R0① (user bug 2, 切晚班再切早班 → 底部胶囊往下闪): the nav is reconciled IN PLACE, never rebuilt — .plat (the backdrop-filter layer), .glide
+     and .seg are created once; the buttons are matched by data-tab (missing ones inserted, extra ones removed, order per TABS). Before, a change of the
+     SET of tabs (早班 three games = 5 tabs, 晚班 one = 3) replaced nav.innerHTML, so the platter layer, the glide and the buttons were new nodes under the
+     finger and the glide was placed a frame later (ee86bc5 only kept the nodes when the set was unchanged). The glide's inline left / width are written
+     once when the set changed (or at first build), otherwise only when the selected button actually moved and no tab-lens motion is on (.tl-on); the
+     nav gets a "tabs-changed" event when the set changed (tab-lens.js listens to that, R0②, instead of assuming new nodes). */
+  const wantTabs = TABS.filter(([t]) => present.has(t)).map(([t]) => t);
+  let plat = nav.querySelector(":scope > .plat"), glideEl = nav.querySelector(":scope > .glide"), segEl = nav.querySelector(":scope > .seg"), setChanged = false;
+  if (!plat) { plat = document.createElement("div"); plat.className = "plat"; nav.prepend(plat); setChanged = true; }
+  if (!glideEl) { glideEl = document.createElement("i"); glideEl.className = "glide"; plat.after(glideEl); setChanged = true; }
+  if (!segEl) { segEl = document.createElement("div"); segEl.className = "seg"; nav.appendChild(segEl); setChanged = true; }
+  const mkTab = (t) => { const b = document.createElement("button"); b.type = "button"; b.dataset.tab = t; b.setAttribute("aria-label", t);
+    b.innerHTML = `<span class="ico">` + (TAB_IMAGES[t] ? `<img class="tabimg" src="${TAB_IMAGES[t]}" alt="">`
+                     : `<i class="sf" style="-webkit-mask-image:url(${TAB_ICONS[t]});mask-image:url(${TAB_ICONS[t]})" aria-hidden="true"></i>`) + `</span><span>${t}</span>`; return b; };
+  const haveBtns = new Map([...segEl.querySelectorAll(":scope > button")].map((b) => [b.dataset.tab, b]));
+  /* R0③ (tab-lens-motion.md §7, R24 — setItems:animated: of the floating bar): the old rects are captured before the tree changes (FLIP) so the kept
+     buttons can travel from their old x on ζ 1 / .3, the removed ones fade at their old place on ζ 1 / .2 and leave when the .3 spring has settled,
+     the added ones sit at their final place and fade in on ζ 1 / .3, the platter's width follows on ζ 1 / .3 — both springs start on the same frame */
+  const animItems = haveBtns.size > 0 && !nav.hidden && document.visibilityState !== "hidden", oldRect = new Map(), navRect0 = nav.getBoundingClientRect();
+  if (animItems) for (const [t, b] of haveBtns) oldRect.set(b, b.getBoundingClientRect());
+  const removed = [], added = [];
+  for (const [t, b] of haveBtns) if (!wantTabs.includes(t)) { if (animItems) removed.push(b); else b.remove(); haveBtns.delete(t); setChanged = true; }
+  wantTabs.forEach((t, i) => { let b = haveBtns.get(t); if (!b) { b = mkTab(t); haveBtns.set(t, b); added.push(b); setChanged = true; } if (segEl.children[i] !== b) { segEl.insertBefore(b, segEl.children[i] || null); setChanged = true; } });
+  for (const x of segEl.querySelectorAll(":scope > button")) x.classList.toggle("on", x.dataset.tab === curTab);
+  for (const b of removed) { const r = oldRect.get(b); b.classList.remove("on"); b.style.cssText += `;position:absolute;left:${r.left - navRect0.left}px;top:${r.top - navRect0.top}px;width:${r.width}px;height:${r.height}px;pointer-events:none;margin:0`; nav.appendChild(b); }   // out of the flex flow, at its old place, while it fades
   const glide = (animate) => {
     /* The selection capsule slides to the chosen tab (the Liquid Glass tab bar's
        own motion); brief, and off under Reduce Motion (HIG: Motion). On a
@@ -751,8 +787,9 @@ function layoutTabs() {
     g.style.left = on.offsetLeft + "px"; g.style.width = on.offsetWidth + "px";
     if (!animate) { void g.offsetWidth; g.style.transition = ""; }
   };
-  glide(false);
-  requestAnimationFrame(() => glide(false));
+  if (setChanged) { glide(false); requestAnimationFrame(() => glide(false)); nav.dispatchEvent(new CustomEvent("tabs-changed", { detail: { tabs: wantTabs } }));
+    if (animItems && (removed.length || added.length)) tabSetAnimate(nav, plat, glideEl, oldRect, navRect0, removed, added); else for (const b of removed) b.remove(); }
+  else { const on = nav.querySelector("button.on"), g = glideEl; if (on && !nav.classList.contains("tl-on") && (g.style.left !== on.offsetLeft + "px" || g.style.width !== on.offsetWidth + "px")) glide(false); }   // an unchanged set: re-place only if the selected button really moved (a label / width change), never mid tab-lens motion
   const selectTab = (b) => {
     /* Behaviour 3: each tab keeps its own scroll position — UITabBarController keeps every tab's view controller alive, HIG Tab bars:
        “preserving the current navigation state within each section”; Health measured: switch away and back = 0 px difference
@@ -766,12 +803,13 @@ function layoutTabs() {
     glide(true);
     window.scrollTo(0, tabScroll[curTab] || 0);
   };
-  attachTabBar(nav, selectTab);
+  if (setChanged || !nav.__tabsAttached) { attachTabBar(nav, selectTab); nav.__tabsAttached = true; }   // R0①: the handlers close over the button list — re-attached only when that list changed
 }
 
 let receiptsPage = null;   // Behaviour 4: builder for the pushed receipts page (set by render)
 /* A pushed page (UINavigationController push): title in the nav bar, back button pops. index.html .page for the geometry / motion sources. */
 function openPage(title, html) {
+  if (window.Nav) return Nav.open(title, html);   // BOARD #2: nav.js drives the push / pop (nav-native-formula.md); the rest of this function is the old path
   const pg = $("#subpage"); if (!pg) return;
   pg.querySelector(".ptitle").textContent = title; pg.querySelector(".pbody").innerHTML = html;
   pg.classList.remove("out"); pg.hidden = false; pg.scrollTop = 0; void pg.offsetWidth;
@@ -807,7 +845,7 @@ function wire() {
          timer + vcsplit path). A slide's up: +25 ms (--seg-commit-delay-drag, tokens.css --ios-touch-segment-commit-delay note). A newer value change
          before a timer fires simply renders again (快速连点 未量). */
       const begin = () => { segCommitAt = performance.now(); segCommitMode = mode; flipPending = true; performance.mark("seg:commit"); };
-      const select = () => { bs.forEach((b, k) => { b.classList.toggle("on", k === i); b.setAttribute("aria-selected", k === i ? "true" : "false"); }); segMeasure("seg:commit-select", segCommitAt); };   // the selection state (labels .on / aria; the lens is the loop's)
+      const select = () => { bs.forEach((b, k) => { if (b.classList.contains("on") !== (k === i)) segLabelXfade(b, k === i); }); segMeasure("seg:commit-select", segCommitAt); };   // the selection state (labels .on / aria; the lens is the loop's); R20c: each changed label cross-dissolves .2 s
       const content = () => { const tR = performance.now(); performance.mark("seg:commit-render-start"); qsel.dispatchEvent(new Event("change")); segMeasure("seg:commit-render", tR); };   // the content render (segSync keeps the control)
       if (SEG_VC_NOW && mode !== "drag") { begin(); select(); content(); return; }   // 换值即抬手: selection + content now, one frame — the frames until the lift (up +82) carry the render, not the lift's
       const delay = touchMs(mode === "drag" ? "--seg-commit-delay-drag" : "--seg-commit-delay-tap", 0);
@@ -1195,6 +1233,7 @@ function dressSelects() {
   }
 }
 function openMenu(anchor, sel) {
+  if (window.Menu) return Menu.open(anchor, sel);   // night batch #3 (BOARD A7 guard): web/menu.js takes the menu over when motion.js is there
   closeMenu();
   const scrim = document.createElement("div"); scrim.className = "menu-scrim";
   const menu = document.createElement("div"); menu.className = "menu"; menu.setAttribute("role", "menu");
@@ -1405,7 +1444,16 @@ const segRgba = (css) => { const m = /rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d
 function segGlRedraw(seg) {
   const glo = seg.__gl; if (!glo) return;
   try { glo.lens.redrawBackdrop(); } catch (e) {}
-  setTimeout(() => { if (!seg.isConnected || seg.__gl !== glo) return; if (seg.__lensLoop && !seg.__lensLoop.state.done) return; try { glo.lens.setState({ cx: 0, cy: 0, w: glo.w, h: glo.h, lift: 0 }); } catch (e) {} }, 0);
+  setTimeout(() => { if (!seg.isConnected || seg.__gl !== glo) return; if (seg.__lensLoop && !seg.__lensLoop.state.done) return; try { glo.lens.setState({ cx: 0, cy: 0, w: glo.w, h: glo.h, lift: 0 }); } catch (e) {} segGlPrepare(seg); }, 0);
+}
+/* R31 (page side; package: lens-webgl.js prepareLabels / useLabels, README §0.8.11 ③, §0.8.13): the labels texture for "segment i selected" is prepared for
+   every segment at idle — after the prewarm and after each redraw (a redraw drops the variants) — so the down on an unselected segment only binds a
+   resident texture (useLabels) instead of drawing + recovering alpha + uploading in its own task (the phone's first gesture paid ~40 ms there). */
+function segGlPrepare(seg) {
+  const glo = seg.__gl; if (!glo || typeof glo.lens.prepareLabels !== "function") return;
+  const go = () => { if (!seg.isConnected || seg.__gl !== glo) return; if (seg.__lensLoop && !seg.__lensLoop.state.done) { setTimeout(go, 300); return; }   // never inside a gesture: the draw + upload would land in its frames
+    const n = seg.querySelectorAll("button").length; for (let i = 0; i < n; i++) { try { glo.lens.prepareLabels(i, (x) => glo.drawLabels(x, i)); } catch (e) {} } };
+  if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 1500 }); else setTimeout(go, 200);
 }
 /* the page shown again (the appearance switch on the phone happens with the web app in the background, the theme change is delivered on the way back):
    every resting GL control is put to its rest state — canvas cleared, `last` = lift 0 — so nothing drawn while hidden can stay on screen (验收 09-19 18:0x:
@@ -1413,7 +1461,7 @@ function segGlRedraw(seg) {
 try { document.addEventListener("visibilitychange", () => { if (document.visibilityState !== "visible") return; for (const s of document.querySelectorAll(".segctl")) { const glo = s.__gl; if (!glo || (s.__lensLoop && !s.__lensLoop.state.done)) continue; try { glo.lens.setState({ cx: 0, cy: 0, w: glo.w, h: glo.h, lift: 0 }); } catch (e) {} } }); } catch (e) {}
 function segGlCreate(seg, lens, bs, setW) {
   const cur = seg.__gl; if (cur && cur.w === seg.clientWidth && cur.h === seg.clientHeight && cur.setW === setW) return cur;
-  if (cur) { try { cur.lens.destroy(); } catch (e) {} cur.canvas.remove(); seg.__gl = null; }
+  if (cur) { try { cur.lens.destroy(); } catch (e) {} (cur.canvas.parentElement && cur.canvas.parentElement.classList.contains("lens-clip") ? cur.canvas.parentElement : cur.canvas).remove(); seg.__gl = null; }   // R96: the clip wrapper goes with the canvas
   let canvas = seg.querySelector("canvas.glens"); if (!canvas) { canvas = document.createElement("canvas"); canvas.className = "glens"; seg.appendChild(canvas); }
   const segW = seg.clientWidth, segH = seg.clientHeight;
   const sets = LensWebGL.setsFromFilters("seg"); if (!sets[setW]) return null;
@@ -1423,11 +1471,14 @@ function segGlCreate(seg, lens, bs, setW) {
     backdrop: (x, which) => {   // canvas pt; the canvas origin = the control's left, 24 pt above its top
       if (which === "page") { x.fillStyle = getComputedStyle(document.body).backgroundColor || "#fff"; x.fillRect(0, 0, segW, segH + 2 * SEG_GLM);
         const cs = getComputedStyle(seg); x.fillStyle = cs.backgroundColor; x.beginPath(); x.roundRect(0, SEG_GLM, segW, segH, parseFloat(cs.borderTopLeftRadius) || 16); x.fill(); }   // the track over the page colour; no platter (the DOM's shows at rest)
-      else { const sr = seg.getBoundingClientRect(); x.textAlign = "center"; x.textBaseline = "middle";
-        bs.forEach((b, i) => { const r = b.getBoundingClientRect(), c = getComputedStyle(b), on = gs.futureOn != null ? i === gs.futureOn : b.classList.contains("on");
-          x.font = on ? gs.fontOn : gs.fontOff; x.fillStyle = c.color; x.fillText(b.textContent, r.left - sr.left + r.width / 2, SEG_GLM + r.top - sr.top + r.height / 2); }); } } };
+      else drawLabels(x, gs.futureOn != null ? gs.futureOn : bs.findIndex((b) => b.classList.contains("on"))); } };
+  /* the labels layer with segment `onIdx` drawn as the selected one (R31: the same drawing serves the live texture and the per-segment prepared variants) */
+  const drawLabels = (x, onIdx) => { const sr = seg.getBoundingClientRect(); x.textAlign = "center"; x.textBaseline = "middle";
+    bs.forEach((b, i) => { const r = b.getBoundingClientRect(), c = getComputedStyle(b);
+      x.font = i === onIdx ? gs.fontOn : gs.fontOff; x.fillStyle = b.dataset.xfadeColor || c.color; x.fillText(b.textContent, r.left - sr.left + r.width / 2, SEG_GLM + r.top - sr.top + r.height / 2); }); };   // R20c: during a label crossfade the real colour is transparent — the saved one is drawn
   let glLens; try { glLens = LensWebGL.create(canvas, opts); } catch (e) { console.warn("LensWebGL", e); canvas.remove(); segGlOk = false; return null; }
-  return (seg.__gl = { canvas, lens: glLens, opts, w: segW, h: segH, setW, gs, platter: segRgba(getComputedStyle(seg).getPropertyValue("--ios-segment-selected-bg")) });   // the platter colour token (light (255,255,255,1) / dark (235,235,245,.3), tokens.css)
+  if (LensWebGL.clipCanvas) LensWebGL.clipCanvas(canvas, { pad: 24 });   // R96 (2号): the canvas (scaled up to × 1.15 by the flex transform while dragging: ≤ 24 px past the control) clipped to the viewport's width so it cannot widen the layout viewport
+  return (seg.__gl = { canvas, lens: glLens, opts, w: segW, h: segH, setW, gs, drawLabels, platter: segRgba(getComputedStyle(seg).getPropertyValue("--ios-segment-selected-bg")) });   // the platter colour token (light (255,255,255,1) / dark (235,235,245,.3), tokens.css)
 }
 try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { for (const s of document.querySelectorAll(".segctl")) if (s.__gl) { const b = s.querySelector("button"); if (b) s.__gl.opts.ink = segRgb(getComputedStyle(b).color); s.__gl.platter = segRgba(getComputedStyle(s).getPropertyValue("--ios-segment-selected-bg")); segGlRedraw(s); } }); } catch (e) {}   // theme change: the backdrop's colours and the ink   // 换值重画不阻塞: the commit frame switches the selection only, the content render runs in the next frame (?vcsplit=0 = one frame, the old path)   // layer-5 colour fringe (7-tap chain on .stack, per-frame W/H matrix + tap scales): default off, ?disp=1 on (监督局 09-19 12:0x, phone fps bisect)
 /* instrumentation (仪器, no behaviour): the lens loop publishes its per-tick internals as window.__segLens — a flat object of numbers and strings,
@@ -1445,6 +1496,32 @@ let segActiveLoop = null;
 window.__segLens = null;
 window.__segDiag = () => window.__segLens;
 window.__segPerf = () => performance.getEntriesByType("measure").filter((e) => e.name.startsWith("seg:")).map((e) => ({ name: e.name, start: Math.round(e.startTime * 100) / 100, dur: Math.round(e.duration * 100) / 100 }));
+/* R20c — the label's weight / colour change on a value flip is a bitmap cross-dissolve over 0.2 s on cubic-bezier(.25, .1, .25, 1) (seg-value-change-content.md
+   §5a: animateWithDuration:0.2 options:0x50005 around the old / new segments' _setSelected:, UISegmentLabel animates the layer "contents"; §5b: curve field
+   5 = kCAMediaTimingFunctionDefault). Two ghosts over the button — the OLD rendering (regular ↔ medium, old colour) fading out, the NEW one fading in — while
+   the real text is transparent; at the end the ghosts go and the real text (already the new style) shows. beginFromCurrentState: a flip during a fade starts
+   from the ghosts' current opacities (read back from computed style). The GL labels drawing reads data-xfade-color instead of the transparent colour. */
+const SEG_XFADE = { ms: 200, curve: "cubic-bezier(.25,.1,.25,1)" };
+function segLabelXfade(b, on) {
+  const seg = b.parentElement; if (!seg || b.classList.contains("on") === on) return;
+  const c0 = getComputedStyle(b), oldFont = c0.font, oldColor = b.dataset.xfadeColor || c0.color;
+  let ghosts = b.__xfade; let startOld = 1, startNew = 0;
+  if (ghosts) { startOld = parseFloat(getComputedStyle(ghosts.newG).opacity); startNew = parseFloat(getComputedStyle(ghosts.oldG).opacity); clearTimeout(ghosts.timer); ghosts.wrap.remove(); b.__xfade = null; }   // beginFromCurrentState: the previous fade's current values swap roles
+  b.classList.toggle("on", on); b.setAttribute("aria-selected", on ? "true" : "false");
+  const c1 = getComputedStyle(b), newFont = c1.font, newColor = b.dataset.xfadeColor || c1.color;
+  const r = b.getBoundingClientRect(), sr = seg.getBoundingClientRect();
+  /* the ghosts sit in a wrapper that mirrors the button's own opacity (a pressed label is dimmed to .2 and returns to 1 on the button's transition, G12) */
+  const wrap = document.createElement("span"); wrap.className = "segxw"; wrap.style.cssText = `position:absolute;left:${r.left - sr.left}px;top:${r.top - sr.top}px;width:${r.width}px;height:${r.height}px;pointer-events:none;z-index:3;opacity:${c0.opacity};transition:opacity ${c0.transitionDuration} ${c0.transitionTimingFunction}`; seg.appendChild(wrap);
+  const mk = (font, color, op) => { const g = document.createElement("span"); g.className = "segx"; g.textContent = b.textContent;
+    g.style.cssText = `position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:${font};color:${color};opacity:${op};transition:opacity ${SEG_XFADE.ms}ms ${SEG_XFADE.curve};white-space:nowrap`;
+    wrap.appendChild(g); return g; };
+  const oldG = mk(oldFont, oldColor, startOld), newG = mk(newFont, newColor, startNew);
+  b.dataset.xfadeColor = newColor; b.style.color = "transparent"; b.style.animation = "none";   // the real text hidden under the ghosts; index.html's seg-in .1 s (a sampled fade) does not run
+  void oldG.offsetWidth;
+  oldG.style.opacity = "0"; newG.style.opacity = "1"; wrap.style.opacity = "1";
+  const timer = setTimeout(() => { if (b.__xfade && b.__xfade.timer === timer) { wrap.remove(); b.style.color = ""; b.style.animation = ""; delete b.dataset.xfadeColor; b.__xfade = null; } }, SEG_XFADE.ms + 20);
+  b.__xfade = { oldG, newG, wrap, timer };
+}
 const segMeasure = (name, from) => { try { performance.measure(name, { start: from, end: performance.now() }); } catch (e) { /* older engines */ } };   // ?segx switches (index.html hook; ios-switch-list.md): scale0 holds the displacement scale at 0
 function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the pointerdown's event timeStamp (the press path's time base: the lift delay counts from the touch)   // tap = { target, upAt }: the 点按 schedule (SEG_TAP_T) instead of the press / drag / release chain; tap = { prewarm: true }: build + one invisible paint, no loop (A 起手预建); tap = { deferred: true }: build now, arm later with loop.beginTap(target, upAt) (the tap's work done at the down)
   const prewarm = !!(tap && tap.prewarm), deferred = !!(tap && tap.deferred); if (prewarm || deferred) tap = null;
@@ -1573,6 +1650,16 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
   const LX = touchPx("--ios-touch-segment-lift-x", 12), LY = touchPx("--ios-touch-segment-lift-y", 8), PITCH = segW / n, W0 = PITCH - 2 * pad, CY = pad + H0 / 2;   // segment pitch 200, resting lens 196 (inset 2 ← seg-native-abc-frames.json rest rect 22 610 196×28)
   const restCentre = (i) => i * PITCH + PITCH / 2, idx0 = Math.max(0, bs.findIndex((b) => b.classList.contains("on")));
   const liftDelay = touchMs("--ios-touch-segment-lift-delay", 109) / 1000, relDelay = touchMs("--ios-touch-segment-release-delay", 31) / 1000;
+  /* BOARD #9② / R9②′ / R9②″ — a quick tap on the SELECTED segment (the up before the lens has lifted) still lifts and falls in place (9a re-recording,
+     seg-native-quicktap.md, twelve runs: lens centre fixed, selectedSegmentIndex unchanged). The lift runs as always from the 109 ms delay. The fall
+     (R87 decompiled, seg-lens-refraction.md §4.4 + seg-native-quicktap.md R87 / R88): setLifted:YES on the down path records liftTime (ivar +0x230,
+     0x1c54c7a20–0x1c54c7a34, down + ~1 ms); setLifted:NO at the up schedules an NSTimer for lensHangTime .22 − (now − liftTime) (0x1c54c7a64–0x1c54c7b80),
+     which creates the fall spring (ζ 1 / .25) — so the fall is CREATED at down + 220 ms whatever the up's time within it, visible on the next frame; an up
+     later than 220 falls at once. R88 hooks (数据): the timer fires at liftTime + 220.9 / 221.9 / 222.1 ms in three runs (interval .220 − (NO − liftTime)
+     exactly), down + 223…231 with delivery and timer lag. The earlier 242 was the native PEAK frame (220 + delivery + lag + frame quantisation: peaks at
+     +241…+257 in seven clean runs) and the 'release + 31 ms' for this case was not the mechanism (both withdrawn). The page: the fall begins at
+     max(down + 220 ms, the up) — the token --ios-touch-segment-quicktap-fall is 220ms (the read lensHangTime); relDelay is not added here. */
+  const SEG_QUICKTAP_FALL_MS = touchMs("--ios-touch-segment-quicktap-fall", 220);   // tokens.css: lensHangTime .22 s (seg-lens-refraction.md §4.5; R87 / R88)
   const destDelay = touchMs("--ios-touch-segment-release-destout-delay", 198) / 1000;
   const K_LIFT_DEST = cssKeys("--ios-touch-segment-destout-keys", SEG_LIFT_DESTOUT), K_DEST = cssKeys("--ios-touch-segment-release-destout-keys", SEG_DROP_DESTOUT.filter(([t]) => t >= .198).map(([t, v]) => [t - .198, v]));
   const destEnd = destDelay + K_DEST[K_DEST.length - 1][0];
@@ -1637,24 +1724,31 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
     if (st.done) return;
     if (!seg.isConnected || !lens.isConnected) { clear(); return; }
     const tickStart = performance.now(), cxBefore = st.cx, pendingBefore = st.pending;
-    const dt = Math.min(.04, Math.max(0, (now - st.prev) / 1000)); st.prev = now;
+    const dt = Math.min(1, Math.max(0, (now - st.prev) / 1000)); st.prev = now;   // no .04 clamp: the analytic step is exact for any dt, a stalled frame lands where the clock says (A16 08:5x; nav.js / glassbtn.js dropped theirs before)
     let p, pd, moving = false, liftedModel = false;   // liftedModel: the MODEL bounds are 220×44 (setLifted:YES … actuallySetLifted:NO) — the flex spec and W/H follow the model, as a step (§7.4)
     if (st.tap) {
       /* 点按 (SEG_TAP_T, s after the up): geometry lifts in place on the lift spring, material follows 10 ms later, the position springs to the target
          on the value-change spring; at +443 / +450 both fall (geometry ζ1/.25, material ζ1/.4); DestOut rides the material (§4.4: 0 → 1 with the
          lift material, 1 → 0 with the fall material) */
-      const tu = (now - st.t0) / 1000, T = SEG_TAP_T;
+      const tu = (now - st.t0) / 1000, T = SEG_TAP_T, tuPrev = tu - dt;
       liftedModel = tu >= T.geo && tu < T.fallGeo;
-      if (tu >= T.geo) springStep(st.sL, tu >= T.fallGeo ? 0 : 1, SEG_SPRING.lift, dt);
-      if (tu >= T.mat) springStep(st.sMt, tu >= T.fallMat ? 0 : 1, tu >= T.fallMat ? SEG_SPRING.fallMaterial : SEG_SPRING.lift, dt);
-      if (tu >= T.travel) springStep(st.pos, restCentre(st.rest), SEG_SPRING.travel, dt);
+      /* each spring steps only over the part of this frame inside its phase (a CA animation starts at its beginTime, not at the frame that first sees it): a phase
+         beginning inside the frame gets tu − begin, a fall flipping inside the frame gets the old target up to the flip and the new one after (A16 08:5x) */
+      const phased = (s, begin, fallAt, upTarget, upSpec, downSpec) => {
+        if (tu < begin) return;
+        const from = Math.max(tuPrev, begin);
+        if (fallAt != null && tu >= fallAt) { if (fallAt > from) springStep(s, upTarget, upSpec, fallAt - from); springStep(s, 0, downSpec, tu - Math.max(from, fallAt)); }
+        else springStep(s, upTarget, upSpec, tu - from); };
+      phased(st.sL, T.geo, T.fallGeo, 1, SEG_SPRING.lift, SEG_SPRING.lift);
+      phased(st.sMt, T.mat, T.fallMat, 1, SEG_SPRING.lift, SEG_SPRING.fallMaterial);
+      if (tu >= T.travel) springStep(st.pos, restCentre(st.rest), SEG_SPRING.travel, tu - Math.max(tuPrev, T.travel));
       p = clamp01(st.sMt.x); pd = p; st.pr = p;
       const fx = st.flex.out, settled = tu > T.fallMat + .1 && st.sL.x < .001 && st.sMt.x < .001 && Math.abs(st.pos.x - restCentre(st.rest)) < .05 && Math.abs(st.pos.v) < 1 && Math.abs(fx.sx - 1) < .001 && Math.abs(fx.sy - 1) < .001 && Math.abs(fx.dx) < .05;
       if (settled || tu > 3) { clear(); return; }
-    } else if (st.rel == null) {
+    } else if (st.rel == null || now < st.rel) {   // st.rel in the future = a quick tap's deferred release (#9②): the press branch keeps lifting until then
       const tl = (now - st.t0) / 1000 - liftDelay;   // time since the lift started (+109 ms)
       liftedModel = tl > 0;
-      if (tl > 0) springStep(st.sL, 1, SEG_SPRING.lift, dt);
+      if (tl > 0) springStep(st.sL, 1, SEG_SPRING.lift, Math.min(dt, tl));   // the lift starts at +109 exactly, not at the frame that first sees it (A16 08:5x)
       if (st.dragged && st.cx != null) springStep(st.pos, st.cx, SEG_SPRING.model, dt);   // B5-b: the position is ONE spring ζ .85 / .2 s continuing from its value and velocity at every retarget (§6 retarget 语义) — the ζ .6533/.4559 tracking spring belongs to the flex floats, not to the position
       /* B5-c time base (flex-interaction.md §6e.2 / §6e.3, the UIUpdate cycle's order HIDEvents → CADisplayLinks → CATransactionCommit → next vsync):
          a move delivered at T (between frames) → cycle V_{j+1}: the handler builds the new spring behaviour, AnimationKit evaluates it at t = 0 from the
@@ -1672,10 +1766,15 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
       const tr = (now - st.rel) / 1000;
       liftedModel = st.pr > 0 && tr < relDelay;   // the fall animation (model bounds → 196×28) is created at release + relDelay
       if (tr >= relDelay) { springStep(st.sL, 0, SEG_SPRING.lift, dt); springStep(st.sM, 0, SEG_SPRING.fallMaterial, dt); }
+      else if (st.pr > 0 && st.sL.x < 1) springStep(st.sL, 1, SEG_SPRING.lift, dt);   // #9②: until the fall animation is created (release + relDelay) the lift animation keeps running — a quick tap's lens is still growing here (native quick90c keeps growing to +242); a held lens is already at 1
       springStep(st.pos, restCentre(st.rest), SEG_SPRING.travel, dt);   // after the up: one spring ζ .85 / .4 s to the segment the lens ends on (§4.4 换值行程 row); the ζ .56/.444 "settle" spring is the flex's smallLoupe scale/drift spring once the lens is 196×28 (flexSpec)
-      p = st.pr * clamp01(st.sM.x); pd = tr <= destDelay ? 1 : tabAt(K_DEST, tr - destDelay);
+      /* BOARD #9①: a lens that never lifted (the up before the 109 ms lift delay: st.pr = 0) has nothing to fall or un-punch — no DestOut ramp, no .lift
+         (frame(0, pd > 0) used to add .lift, and .segctl.lift .lens{background:transparent} blanked the resting platter for destEnd ≈ .4 s while the GL
+         package draws nothing at p = 0: the "flash" of a quick tap on the selected segment). The position spring still returns if a pre-lift slide moved it. */
+      const lifted = st.pr > 0;
+      p = lifted ? st.pr * clamp01(st.sM.x) : 0; pd = !lifted ? 0 : tr <= destDelay ? 1 : tabAt(K_DEST, tr - destDelay);
       const fx = st.flex.out, settled = Math.abs(st.pos.x - restCentre(st.rest)) < .05 && Math.abs(st.pos.v) < 1 && st.sL.x < .001 && st.sM.x < .001 && Math.abs(fx.sx - 1) < .001 && Math.abs(fx.sy - 1) < .001 && Math.abs(fx.dx) < .05;
-      if ((tr >= destEnd && settled) || tr > 3) { clear(); return; }
+      if ((!lifted && settled) || (tr >= destEnd && settled) || tr > 3) { clear(); return; }
     }
     /* B5 — the flex interaction, once per frame: the model bounds are the lift's (196×28 → 220×44), the presentation centre = the position spring + the
        flex drift goes into the integrator, updateFlex sets the targets, the three animatable floats follow on spec.scaleSpring (tracking while the finger is
@@ -1692,12 +1791,13 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
     frame(p, pd);
     /* 仪器: what this tick used and produced — window.__segLens for the frame recorder (names: see the note at segActiveLoop) */
     st.ticks++; const adopted = pendingBefore != null && st.cx === pendingBefore; if (adopted && st.cx !== cxBefore) st.retargetT = tickStart;
+    if (st.tap) st.maxDtUp = Math.max(st.maxDtUp || 0, dt);   // the largest frame gap since the tap's up (accept A16: a gap > .05 resets the flex integrator by the read hysteresis — the centre is then not judged)
     const r3 = (q) => Math.round(q * 1000) / 1000, r2 = (q) => Math.round(q * 100) / 100;
     window.__segLens = st.__lens = { t: r2(tickStart), raf_t: r2(now), tick: st.ticks, dt: Math.round(dt * 100000) / 100000, tick_ms: r2(performance.now() - tickStart),
       x: r3(st.pos.x), v: Math.round(st.pos.v * 10) / 10, target: cxBefore == null ? null : r3(cxBefore), target_next: st.cx == null ? null : r3(st.cx), adopted: adopted ? 1 : 0, retarget_t: st.retargetT == null ? null : r2(st.retargetT),
       pointer_t: st.ev.t == null ? null : r2(st.ev.t), pointer_ev_t: st.ev.evt == null ? null : r2(st.ev.evt), pointer_x: st.ev.x == null ? null : r2(st.ev.x), pointer_target: st.ev.target == null ? null : r2(st.ev.target), pointer_n: st.ev.n,
       drift: r3(fl.out.dx), x_screen: r3(st.pos.x + fl.out.dx), sx: Math.round(fl.out.sx * 10000) / 10000, sy: Math.round(fl.out.sy * 10000) / 10000, accel: Math.round(fl.vi.acceleration), vel: Math.round(fl.vi.velocity),
-      p: Math.round(p * 10000) / 10000, set: curSet || 0, rel_t: st.rel == null ? null : r2(st.rel), phase: st.tap ? "tap" : st.rel != null ? "release" : st.dragged ? "drag" : p < 1 ? "lift" : "hold",
+      p: Math.round(p * 10000) / 10000, set: curSet || 0, rel_t: st.rel == null ? null : r2(st.rel), since_up: st.tap ? Math.round((now - st.tap.upAt) * 10) / 10000 : null, max_dt_up: st.tap ? Math.round((st.maxDtUp || 0) * 100000) / 100000 : null, w_screen: r2(w * fl.out.sx), h_screen: r2(h * fl.out.sy), phase: st.tap ? "tap" : st.rel != null && now >= st.rel ? "release" : st.quick ? "quick" : st.dragged ? "drag" : p < 1 ? "lift" : "hold",
       gl_trace: GL && glo.lens.stats.trace ? JSON.stringify(glo.lens.stats.trace) : null };   // ?gltrace=1 (lens-webgl.js e1e5633): this frame's per-step gl.finish ms (bindFbo_useP1 / uniforms_binds1 / pass1 / clear_useP2 / uniforms_binds2 / pass2, set, total) as a JSON string — the recorder copies numbers and strings only; null otherwise
     st.ev.n = 0;   // moves consumed since the previous tick (the last move's fields stay until the next move)
     if (st.ticks === 1) segMeasure("seg:first-tick", tickStart);
@@ -1715,7 +1815,9 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
     },
     release: (restIdx) => {   // every way out — up, out of bounds, pointercancel — falls the same way, to the rest rect of `restIdx`
       if (st.rel != null || st.done) return;
-      st.rel = performance.now(); st.rest = restIdx;
+      st.rest = restIdx;
+      if (restIdx === idx0 && !st.dragged) { const fallAt = Math.max(performance.now(), st.t0 + SEG_QUICKTAP_FALL_MS); st.rel = fallAt - relDelay * 1000; st.quick = !(st.pr > 0) && fallAt > performance.now(); return; }   // #9② / R9②″: a same-segment release without a slide — the fall is created at max(down + 220, the up) (liftTime + lensHangTime, R87 / R88; the release delay is not part of this path)
+      st.rel = performance.now();
     },
     stop: () => { cancelAnimationFrame(st.raf); if (!st.done) clear(); },
     freeze: () => { cancelAnimationFrame(st.raf); },   // ?segtap=<ms> (index.html hook): hold the current frame for a snapshot
@@ -1729,7 +1831,8 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
        the LIFTED state — the model box 220×44 at the rest position, progress 1 (displacement scale S on both maps, the label filter, the inner-shadow and
        ring-shadow blurs evaluated for real, the maps decoded) — then back to rest; the white .lens is never touched (frame()'s .lift class is removed at once) */
     if (GL) { const s = glo.lens.sets[glo.setW]; const warm = () => { try { glo.lens.setState({ cx: pad + idx0 * PITCH + W0 / 2, cy: SEG_GLM + pad + H0 / 2, w: W0 + 2 * LX, h: H0 + 2 * LY, lift: 1, wh: 1.35 }); glo.lens.setState({ cx: 0, cy: 0, w: W0, h: H0, lift: 0 }); } catch (e) {} seg.__prewarmed = performance.now(); };
-      if (s && s.ready) s.ready.then(() => requestAnimationFrame(warm)); else requestAnimationFrame(warm); st.done = true; return loop; }   // WebGL prewarm: shaders + maps + one lifted frame (FBO, pipeline), then cleared
+      const warmThenPrepare = () => { warm(); segGlPrepare(seg); };   // R31: the per-segment labels textures prepared right after the warm-up, at idle
+      if (s && s.ready) s.ready.then(() => requestAnimationFrame(warmThenPrepare)); else requestAnimationFrame(warmThenPrepare); st.done = true; return loop; }   // WebGL prewarm: shaders + maps + one lifted frame (FBO, pipeline), then cleared
     st.geo = { left: pad + idx0 * PITCH - LX, top: pad - LY, w: W0 + 2 * LX, h: H0 + 2 * LY }; frame(1, 1); seg.classList.remove("lift");
     seg.classList.add("prewarm"); seg.__prewarmed = performance.now(); st.done = true;
     requestAnimationFrame(() => requestAnimationFrame(() => { if (!seg.isConnected || !seg.classList.contains("prewarm")) return; st.geo = null; frame(0, 0); seg.classList.remove("lift"); }));
@@ -1762,21 +1865,27 @@ function attachSegmented(seg, getIndex, commit) {
   const segAt = (x) => { const r = seg.getBoundingClientRect(); return Math.max(0, Math.min(n - 1, Math.floor((x - r.left) / (r.width / n)))); };   // 跨分隔线即换目标（G22/G24/G25）
   const outside = (x, y) => { const r = seg.getBoundingClientRect(), s = touchPx("--ios-touch-inside-slop", 70); return x < r.left - s || x > r.right + s || y < r.top - s || y > r.bottom + s; };
   const showLens = (i) => seg.style.setProperty("--i", String(i));
+  if (lens) { segRmStyle(); lens.addEventListener("animationend", (ev) => { if (ev.animationName === "seg-rm-in") lens.classList.remove("rm-in"); }); }   // R59′a
   seg.onpointerdown = (e) => {
-    const idx = getIndex(), pressed = segAt(e.clientX), onSelected = pressed === idx;
+    const idx = getIndex(), pressed = segAt(e.clientX), onSelected = pressed === idx, rm = RM();
     let liftTimer = 0, glass = null;
     if (lens) lens.classList.remove("spring");   // a new touch ends the previous commit's stretch (G12/G13: no queueing)
     if (!press(seg, e, {
-      move: (ev) => { if (onSelected && glass && lens && lens.classList.contains("lift")) glass.drag(ev.clientX, ev.timeStamp); },   // the lifted lens follows the finger (edge springs); the index never changes while sliding (G4/G22)
+      move: (ev) => { if (!rm && onSelected && glass && lens && lens.classList.contains("lift")) glass.drag(ev.clientX, ev.timeStamp); },   // the lifted lens follows the finger (edge springs); the index never changes while sliding (G4/G22)
       end: (ev, cancelled) => {
         clearTimeout(liftTimer);
+        if (rm) {   // R59′a: Reduce Motion — no lens loop was built; the up selects the segment under the finger (tap-at-release), the same no-event rules
+          bs[pressed].classList.remove("dim");
+          const target = segAt(ev.clientX), noEvent = cancelled || outside(ev.clientX, ev.clientY) || target === idx;
+          if (!noEvent) commit(target, "tap");
+          return; }
         const lifted = !!(lens && lens.classList.contains("lift"));   // patch 03 (seg-impl-review.md #3): a lifted lens commits by falling + gliding (G4/G21), a tap commits with the stretch sequence (G1/G3)
         bs[pressed].classList.remove("dim");                        // label back to 1 in .1 s (G12)
         seg.classList.remove("drag"); if (lens) lens.classList.remove("lift");
         const target = segAt(ev.clientX), noEvent = cancelled || outside(ev.clientX, ev.clientY) || target === idx;   // cancel (> 70 pt out, G17/G18) or back on the selected one (G8/G10/G23): no event
         if (glass && !glass.beginTap) glass.release(noEvent ? idx : target);   // glass, copies and geometry fall on the lens's own curve, to the rest rect it ends on
         if (noEvent) { if (glass && glass.beginTap) glass.stop(); showLens(idx);
-          if (seg.__gl && seg.__gl.gs.futureOn != null) { seg.__gl.gs.futureOn = null; requestAnimationFrame(() => segGlRedraw(seg)); }   // the speculative labels texture undone (nothing was lifted)
+          if (seg.__gl && seg.__gl.gs.futureOn != null) { seg.__gl.gs.futureOn = null; let back = false; try { back = seg.__gl.lens.useLabels(idx); } catch (e) {} if (!back) requestAnimationFrame(() => segGlRedraw(seg)); }   // R31: the current selection's variant bound back; redraw only without one   // the speculative labels texture undone (nothing was lifted)
           return; }
         if (!lifted && !onSelected && lens) {   // 点按外观: the tap runs the lift chain from the up (SEG_TAP_T) — glass in place, glass slide, solid again on settling; the loop owns the lens, segSync skips the old CSS slide
           const tUp = performance.now(), upAt = ev.timeStamp > 0 && ev.timeStamp <= tUp ? ev.timeStamp : tUp; performance.mark("seg:tap-up");
@@ -1785,10 +1894,13 @@ function attachSegmented(seg, getIndex, commit) {
         commit(target, lifted ? "drag" : "tap");                    // the up: the index changes now (G1–G3); a tap's content switches in this task (wire(): SEG_VC_NOW), a slide's at +25 ms; the lens's slide is the loop's (SEG_TAP_T.travel)
       },
     })) return;
-    seg.dataset.pe = "1";
+    if (rm) { if (!onSelected) bs[pressed].classList.add("dim"); if (window.Motion) Motion.swallowNextClick(seg); else seg.dataset.pe = "1"; return; }   // R59′a: Reduce Motion — the label dims (G15, no RM branch read for it), no lens build, no lift timer
+    if (window.Motion) Motion.swallowNextClick(seg); else seg.dataset.pe = "1";   // the browser's click after our pointerup is redundant: Motion swallows it for 700 ms (motion.js, A7) — the old data-pe flag had no expiry, so a press without a following click (a cancelled touch, a synthetic pev) left the NEXT real tap swallowed
     if (!onSelected) { bs[pressed].classList.add("dim");           // G15: only the label dims; no highlight, no lens move, no value
       if (lens) { const tBuild = performance.now(); performance.mark("seg:down"); glass = segLens(seg, lens, bs, NaN, { deferred: true }); segMeasure("seg:build", tBuild);
-        if (seg.__gl && seg.__gl.gs.futureOn !== pressed) { const tU = performance.now(); seg.__gl.gs.futureOn = pressed; segGlRedraw(seg); segMeasure("seg:gl-upload", tU); } } }   // WebGL: the backdrop textures for the tap's outcome uploaded now (and prewarmed by the package), not at the value flip   // the tap's build work at the down (copies, labels, SVG state); the up only arms the schedule
+        if (seg.__gl && seg.__gl.gs.futureOn !== pressed) { const tU = performance.now(); seg.__gl.gs.futureOn = pressed;
+          let bound = false; try { bound = seg.__gl.lens.useLabels(pressed); } catch (e) {}   // R31: bind the prepared "pressed selected" texture — no draw, no upload in the down's task
+          if (bound) segMeasure("seg:gl-uselabels", tU); else { segGlRedraw(seg); segMeasure("seg:gl-upload", tU); } } } }   // no variant yet (idle not reached): the old redraw   // WebGL: the backdrop textures for the tap's outcome uploaded now (and prewarmed by the package), not at the value flip   // the tap's build work at the down (copies, labels, SVG state); the up only arms the schedule
     else {
       const tBuild = performance.now(); performance.mark("seg:down");
       glass = lens ? segLens(seg, lens, bs, e.clientX, null, e.timeStamp) : null; segMeasure("seg:build", tBuild);   // 仪器: DOM / SVG construction of the lens layers     // the loop: glass, copies, geometry — the lift itself starts at +109 ms (G4/G16); the down x is the drag delta's origin (B5-c)
@@ -1805,36 +1917,90 @@ const tabScroll = {};   // Behaviour 3: scroll offset per tab
 /* Behaviour 3: scroll-to-top on tapping the selected tab — UIScrollView's system curve, measured on Health (remote-ref/tabscroll/README.md §2,
    采样, 逐帧): critical spring ω ≈ 12 /s (0.2 s 71 %, 0.33 s 92 %, 0.5 s 98 %, ~0.7 s stop). Not scrollTo({behavior:"smooth"}) — that is the
    browser's own curve. */
+/* Scroll to top on a tap of the selected tab = the system scroll-to-top (tabscroll/README.md §2b, R17 decompiled, path A: -[UIScrollView _scrollToTopIfPossible:] →
+   UIScrollViewScrollAnimation with __smoothDecelerationAnimation): progress(t) = S(D · B(t / D)) — B = cubic-bezier(0, .2, 1, 1) applied to the time fraction
+   (UIScrollViewScrollAnimation progressForFraction: → timingFunction _solveForInput:), S = the critically damped spring of dampingRatio 1 / response 0.6
+   (ω = 2π / .6 = 10.472, mass 1, stiffness ω², damping 2ω) evaluated at D·B, D = durationForEpsilon(FLT_MIN → 1e-6 floor, 0.1 s steps) = 1.6 s;
+   offset = original + (target − original) × progress every UIAnimator frame. (Before: an ω 12 critical spring fitted to §2's samples — a sampled fit.) */
+const SCROLL_TOP = { D: 1.6, omega: 2 * Math.PI / 0.6,
+  bezierY: (x) => { let lo = 0, hi = 1; for (let i = 0; i < 40; i++) { const s = (lo + hi) / 2, xs = 3 * s * s - 2 * s * s * s; if (xs < x) lo = s; else hi = s; } const s = (lo + hi) / 2; return 0.6 * s * (1 - s) * (1 - s) + 3 * s * s * (1 - s) + s * s * s; },   // x(s) = 3s² − 2s³ (P1x 0, P2x 1), y(s) = .6s(1−s)² + 3s²(1−s) + s³ (P1y .2, P2y 1)
+  spring: (tau) => 1 - (1 + SCROLL_TOP.omega * tau) * Math.exp(-SCROLL_TOP.omega * tau),
+  progress: (t) => t >= SCROLL_TOP.D ? 1 : t <= 0 ? 0 : SCROLL_TOP.spring(SCROLL_TOP.D * SCROLL_TOP.bezierY(t / SCROLL_TOP.D)) };
+window.ScrollTop = { formula: SCROLL_TOP, state: null };   // state = { t0, y0 } of the running scroll (the driver's own clock, accept A15)
 function springToTop() {
   const y0 = window.scrollY; if (!(y0 > 0.5)) return;
-  const w = 12, t0 = performance.now();
-  const f = (now) => { const t = (now - t0) / 1000, y = y0 * (1 + w * t) * Math.exp(-w * t); if (y < 0.5) { window.scrollTo(0, 0); return; } window.scrollTo(0, y); requestAnimationFrame(f); };
+  const t0 = performance.now(); const st = { t0, y0 }; window.ScrollTop.state = st;
+  const f = (now) => { if (window.ScrollTop.state !== st) return; const t = (now - t0) / 1000;
+    if (t >= SCROLL_TOP.D) { window.scrollTo(0, 0); window.ScrollTop.state = null; return; }
+    const y = y0 * (1 - SCROLL_TOP.progress(t)); st.last = { t, y };   // the driver's own frame value (accept A15: compared before the browser's integer scroll rounding)
+    window.scrollTo(0, y); requestAnimationFrame(f); };
   requestAnimationFrame(f);
+}
+/* R0③ driver (tab-lens-motion.md §7, R24): two critical springs started on the same frame — s3: ζ 1 / .3 (positions, the bar's width, the added items' fade-in),
+   s2: ζ 1 / .2 (the removed items' fade-out); the kept buttons translateX from their old x (FLIP: old − new viewport left), the platter's inset from the
+   old width to the new (symmetric, pill shape kept), the glide rides the selected button's animated x; the removed buttons leave when s3 has settled.
+   nav.__tabAnim = { t0, s3, s2, items: [{ el, dx }], removed, added, w0, w1 } is the driver's own clock for the acceptance rows (A15). */
+function tabSetAnimate(nav, plat, glideEl, oldRect, navRect0, removed, added) {
+  const kept = [...nav.querySelectorAll(":scope > .seg > button")].filter((b) => oldRect.has(b));
+  const navRect1 = nav.getBoundingClientRect(), w0 = navRect0.width, w1 = navRect1.width;
+  const items = kept.map((el) => ({ el, dx: oldRect.get(el).left - el.getBoundingClientRect().left })).filter((it) => Math.abs(it.dx) > 0.01);
+  const on = nav.querySelector(":scope > .seg > button.on"), onItem = items.find((it) => it.el === on), onLeft = on ? on.offsetLeft : 0, onWidth = on ? on.offsetWidth : 0;
+  if (nav.__tabAnim) { cancelAnimationFrame(nav.__tabAnim.raf); for (const b of nav.__tabAnim.removed) b.remove(); }
+  const A = { t0: performance.now(), prev: performance.now(), s3: { x: 1, v: 0 }, s2: { x: 1, v: 0 }, items, removed, added, w0, w1, raf: 0 };
+  nav.__tabAnim = A;
+  for (const b of added) b.style.opacity = "0";
+  const apply = () => {
+    const s = Math.max(0, A.s3.x), o = Math.max(0, Math.min(1, A.s2.x));
+    for (const it of A.items) it.el.style.transform = s > 0.0005 ? `translateX(${(it.dx * s).toFixed(3)}px)` : "";
+    for (const b of A.added) b.style.opacity = s > 0.0005 ? (1 - s).toFixed(4) : "";
+    for (const b of A.removed) b.style.opacity = o.toFixed(4);
+    const inset = Math.max(0, (w1 - (w1 + (w0 - w1) * s)) / 2); plat.style.left = plat.style.right = inset > 0.01 ? inset.toFixed(3) + "px" : "";
+    if (on) { glideEl.style.transition = "none"; glideEl.style.left = (onLeft + (onItem ? onItem.dx * s : 0)).toFixed(3) + "px"; glideEl.style.width = onWidth + "px"; }
+  };
+  const step = (now) => {
+    if (nav.__tabAnim !== A) return;
+    const dt = Math.min(0.05, Math.max(0, (now - A.prev) / 1000)); A.prev = now; A.tNow = now;   // tNow: the frame time the springs were stepped to (accept A15)
+    const spring = window.Motion ? Motion.spring : springStep;
+    spring(A.s3, 0, [1, 0.3], dt); spring(A.s2, 0, [1, 0.2], dt);
+    apply();
+    const settled = Math.abs(A.s3.x) < 0.0005 && Math.abs(A.s3.v) < 0.005 && Math.abs(A.s2.x) < 0.0005;
+    if (settled || now - A.t0 > 2000) { for (const b of A.removed) b.remove(); for (const it of A.items) it.el.style.transform = ""; for (const b of A.added) b.style.opacity = ""; plat.style.left = plat.style.right = ""; if (on) { glideEl.style.left = on.offsetLeft + "px"; void glideEl.offsetWidth; glideEl.style.transition = ""; } nav.__tabAnim = null; return; }
+    A.raf = requestAnimationFrame(step);
+  };
+  apply(); A.raf = requestAnimationFrame(step);
 }
 function attachTabBar(nav, select) {
   const seg = nav.querySelector(".seg"), g = nav.querySelector(".glide"), bs = [...seg.querySelectorAll("button")];
   if (!seg || !g || !bs.length) return;
   const itemAt = (x) => { let best = 0, d = Infinity; bs.forEach((b, i) => { const r = b.getBoundingClientRect(); const dd = x < r.left ? r.left - x : x > r.right ? x - r.right : 0; if (dd < d) { d = dd; best = i; } }); return best; };
   const liftTo = (i, cls) => { g.classList.add(cls); g.style.left = bs[i].offsetLeft + "px"; g.style.width = bs[i].offsetWidth + "px"; };
+  /* R59′c — the lift's commit (tab-lens-motion.md §6.9 ② / R106 ②, _UITabBarVisualProvider_Floating.handleSelectionGesture): the item under the finger at the up
+     is the target; if it is the selected one it is "reselected" (performPrimaryAction — here the scroll-to-top) only while shouldReselectHighlightedItemOnLift
+     still holds, and a move of ≥ 4 pt in x from the initial location clears that flag (0x1c50e94c8–0x1c50e94dc) — so a held selected tab dragged 4 pt and
+     released, even on the same item, only clears; a lift outside window.bounds inset by 8 only clears the highlight (0x1c50e929c–0x1c50e92c0), no selection */
+  const RESELECT_SLOP = () => touchPx("--ios-touch-tab-reselect-slop", 4), LIFT_INSET = () => touchPx("--ios-touch-tab-lift-outside-inset", 8);   // tokens requested (status-界面); the read values as fallbacks
+  /* R59′e (tab-lens-motion.md §6.9 ⑤ / R108): the highlight is set on the down itself — touchesBegan → highlightedItemIndex → updateLensView → setLifted:animated:
+     with no timer in the chain (the probe's lens is already 95.76 wide at +47 ms; the +140 / +125 ms of the retired tokens were the recording's latency).
+     So the .lift / .lift-sel class (= the highlight; the tab-lens driver lifts from the down on its own since R59′d) goes on at the down, nav.drag on a move. */
   seg.onpointerdown = (e) => {
-    const cur = bs.findIndex((b) => b.classList.contains("on")), pressed = itemAt(e.clientX), onSelected = pressed === cur;
-    let timer = 0, lifted = false, movedAway = false;
+    const cur = bs.findIndex((b) => b.classList.contains("on")), pressed = itemAt(e.clientX), onSelected = pressed === cur, x0 = e.clientX;
+    let reselect = true;
     if (!press(seg, e, {
-      move: (ev) => { if (itemAt(ev.clientX) !== cur) movedAway = true; if (lifted) { nav.classList.add("drag"); liftTo(itemAt(ev.clientX), onSelected ? "lift-sel" : "lift"); } },   // T4/T9/T11: lens follows (110×70 while dragging), value waits for the up
+      move: (ev) => { if (Math.abs(ev.clientX - x0) >= RESELECT_SLOP()) reselect = false; nav.classList.add("drag"); liftTo(itemAt(ev.clientX), onSelected ? "lift-sel" : "lift"); },   // T4/T9/T11: the highlight follows the finger (the driver's lens follows on its own), value waits for the up; ≥ 4 pt: no reselect at the up (R106 ②)
       end: (ev, cancelled) => {
-        clearTimeout(timer); g.classList.remove("lift", "lift-sel"); nav.classList.remove("drag");
-        const target = cancelled ? cur : itemAt(ev.clientX);
+        g.classList.remove("lift", "lift-sel"); nav.classList.remove("drag");
+        const ins = LIFT_INSET(), outside = ev.clientX < ins || ev.clientX > innerWidth - ins || ev.clientY < ins || ev.clientY > innerHeight - ins;   // R106 ②: outside window.bounds inset by 8 → the highlight clears, nothing is selected
+        const target = cancelled || outside ? cur : itemAt(ev.clientX);
         if (target === cur) {
           g.style.left = bs[cur].offsetLeft + "px"; g.style.width = bs[cur].offsetWidth + "px";
-          if (onSelected && !cancelled && !movedAway) springToTop();   // Behaviour 3: a tap on the selected tab scrolls its page to the top (Health, tabscroll §2); still no selection event (T3)
+          if (onSelected && !cancelled && !outside && reselect) springToTop();   // Behaviour 3: the reselect of the selected tab scrolls its page to the top (Health, tabscroll §2); no selection event (T3); withheld after a ≥ 4 pt drag (R106 ②)
           return;                                                    // T3/T9: no selection event
         }
         select(bs[target]);                                          // T1/T2: +0–2 ms after the up
       },
     })) return;
-    seg.dataset.pe = "1";
-    timer = setTimeout(() => { lifted = true; liftTo(pressed, onSelected ? "lift-sel" : "lift"); },
-      onSelected ? touchMs("--ios-touch-tab-selected-lift-delay", 125) : touchMs("--ios-touch-tab-glide-delay", 140));   // T1: +140 ms glide 119×64 / T3: selected lifts +125 ms → 103×63 by +180
+    if (window.Motion) Motion.swallowNextClick(seg); else seg.dataset.pe = "1";   // same as the segmented control: an expiring swallow (motion.js) instead of the sticky data-pe
+    liftTo(pressed, onSelected ? "lift-sel" : "lift");   // R59′e: the highlight at the down (no +140 / +125 timer — R108)
   };
   for (const b of bs) b.onclick = () => { if (seg.dataset.pe) { delete seg.dataset.pe; return; } if (!b.classList.contains("on")) select(b); };
 }
@@ -1881,6 +2047,7 @@ function installNative() {
      handling (the 2026-09-15 11:20 recording: a 0.9 s hold flipped nothing), so
      the pointer is captured and the click is synthesised. */
   document.addEventListener("pointerdown", (e) => {
+    if (window.Switch) return;   // BOARD #13: switch.js owns the switch (A7 guard)
     const sw = e.target.closest && e.target.closest(".sw"); if (!sw) return;
     const input = sw.querySelector("input"); if (!input || input.disabled) return;
     e.preventDefault();
@@ -1931,6 +2098,7 @@ function installNative() {
        other, not a cross-fade. --big drives the large title, --title the small. */
     const clamp = (v) => Math.max(0, Math.min(1, v));
     const onScroll = () => {
+      if (window.Topbar) return;   // BOARD #4: topbar.js owns the bar's scroll behaviour (--tb-*); this entry yields (one-line guard, A7)
       const y = window.scrollY;
       const top = h1.offsetTop, hgt = h1.offsetHeight || 41;
       root.style.setProperty("--bar", String(clamp(y / 12)));
@@ -1940,7 +2108,7 @@ function installNative() {
     addEventListener("scroll", onScroll, { passive: true });
     onScroll();
   }
-  const ptr = $("#ptr");
+  const ptr = document.querySelector('script[src^="refresh.js"]') ? null : $("#ptr");   // BOARD #8 (A7 one-line guard): refresh.js owns the pull when it is loaded; these handlers then see no #ptr and do nothing
   let y0 = null, pulled = 0, armed = false;
   const THRESH = 72;
   addEventListener("touchstart", (e) => { y0 = (window.scrollY <= 0 && e.touches.length === 1) ? e.touches[0].clientY : null; pulled = 0; armed = false; }, { passive: true });

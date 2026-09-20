@@ -1,0 +1,26 @@
+/* refresh.css — pull to refresh as UIRefreshControl, geometry and timing only (BOARD.md #8; numbers: remote-ref/refresh-native-formula.md).
+   Overrides the old .ptr rules of index.html by specificity (A7: the old lines stay): the indicator is never scaled or CSS-transitioned — refresh.js
+   sets each arm's opacity from show = min(1, pull / maxSnap) every frame (arm i α = clamp(1 + i·(show − 1), 0, 1) × show, §0 / §4.1) and the
+   rotation of the whole indicator (the spin spring, the 125 ms / 45° tick, the 0.3 s go-away); the indicator's own bars stay the Kit dump's 7×3
+   activity-indicator bars (the refresh control's arm length / ring radius are unread, §6.1). */
+#ptr.ptr { opacity: 0; transform: none; transition: none; }
+#ptr.ptr .ai { transform-origin: 50% 50%; will-change: transform, opacity; }
+#ptr.ptr .ai i { transition: none; animation: none; }
+
+/* BOARD R5 — the arms' geometry from the probe (refresh-native-formula.md §10, R13): the replicator is a 100×100 box centred on the 60 pt control
+   (control y = safe-area top + the 54 pt bar, centre +30); 8 arms every 45°; each arm (the seed layer) 3.667 × 10 pt, corner 1.833 (a full round end),
+   inner end 5 pt from the centre, outer end 15 pt; colour (R61′, §10 R61) = the replicator composite instanceColor × seed backgroundColor, component-
+   wise = secondaryLabel squared at α .6 — light rgb(14 14 18 / .6), dark rgb(217 217 235 / .6), tokens.css --ios-refresh-arm (the token carries the .6,
+   so refresh.js's per-arm opacity is the reveal / spun factor alone; --ios-spinner, secondaryLabel .6, is the activity indicator's colour, another control). The 30 × 30 box below = the arms' extent (radius 15); the old
+   .ai / .ai i rules of index.html (the 20 pt activity indicator) stay and are overridden by specificity. */
+#ptr.ptr { top: calc(env(safe-area-inset-top) + var(--ios-nav-h) + 30px - 15px); }
+#ptr.ptr .ai { width: 30px; height: 30px; }
+#ptr.ptr .ai i { left: calc(15px - 1.8335px); top: 0; width: 3.667px; height: 10px; border-radius: 1.833px; transform-origin: 1.8335px 15px; background: var(--ios-refresh-arm, var(--ios-spinner)); }
+
+/* BOARD R5′ / R39 item 4, placed per R68′ — the content inset while refreshing (refresh-native-formula.md §11 item 4: _addInsetHeight: = the control's
+   height 60 → -[UIScrollView _addRefreshInset:], contentInset only; §12: the hosted control's 60 pt item stacks between the 54 pt bar and the large
+   title, so the large title and the list go down together). On the web the inset is the header's top margin on body.ptr-inset (the header is the
+   first in-flow child under body's safe-area padding, so the margin cannot collapse away): refresh.js sets --ptr-inset to 60px while refreshing and,
+   at the end with the finger up, drives it to 0 over .3 s with progress sin²(π/2 · f) (§11 item 1); no CSS transition — the value is written every
+   frame on the driver's clock. The spinner (#ptr.ptr above) is centred in that band: safe-area + 54 + 30. */
+body.ptr-inset > header { margin-top: var(--ptr-inset, 60px); }
