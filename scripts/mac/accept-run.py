@@ -153,13 +153,27 @@ try:
         except Exception: time.sleep(0.2)
     bws = WS(json.load(urllib.request.urlopen(f'http://127.0.0.1:{port}/json/version'))['webSocketDebuggerUrl'])   # the browser endpoint: contexts and targets
     own = bws.send('Browser.getVersion')['result'].get('userAgent', '')   # sanity: the DevTools endpoint answers → it is a live Chrome on our port
-    init = 'window.__acceptHold = true; localStorage.setItem("ark-remote-cfg", %s); localStorage.setItem("ark-remote-cfg-snap", %s); localStorage.setItem("ark-remote-tab", "状态");' % (
+    # the heartbeat probe (live.js probeHb: fetch <ntfy>/<topic>-hb/json) lands ≈ .5 s after load and, finding no heartbeat for the fake topic, sets
+    # lastHb = 0 → updateLive() re-renders main ("off"); the demo's 1 s interval restores lastHb → a second re-render ≤ 1 s later. A control file that
+    # picked its elements before those renders holds detached nodes (2号 14:3x: accept-menu under ?only=menu opened on a button the +520 ms render
+    # replaced → close() read a zero anchor rect). The hold is released only after the probe's fetch settled (window.__hbProbed, ≤ 5 s), so the
+    # injected lastHb = now below is the last word and main stays put from the first row on.
+    init = ('window.__acceptHold = true; window.__hbProbed = false; (() => { const f = window.fetch; window.fetch = function (u) { const p = f.apply(this, arguments); '
+            'if (/-hb\\/json/.test(String(u))) p.then(() => { window.__hbProbed = true; }, () => { window.__hbProbed = true; }); return p; }; })(); '
+            'localStorage.setItem("ark-remote-cfg", %s); localStorage.setItem("ark-remote-cfg-snap", %s); localStorage.setItem("ark-remote-tab", "状态");') % (
         json.dumps(json.dumps({"topic": "smoke-test-topic", "pin": "1234"})), json.dumps(json.dumps(SNAP, ensure_ascii=False)))
     MISSING = ('(() => { const ok = new Set(performance.getEntriesByType("resource").filter(e => (e.responseStatus === 0 || e.responseStatus === 200 || e.responseStatus === 304) && (e.transferSize > 0 || e.encodedBodySize > 0 || e.decodedBodySize > 0)).map(e => e.name)); '
                'const js = [...document.scripts].filter(s => s.src && !/accept[^/]*\\.js/.test(s.src) && !ok.has(s.src)).map(s => s.src.split("/").pop()); '
                'const size = (h) => { const e = performance.getEntriesByType("resource").find(x => x.name === h); return e ? Math.max(e.decodedBodySize || 0, e.encodedBodySize || 0) : 0; }; '
                'const css = [...document.querySelectorAll("link[rel=stylesheet]")].filter(l => { try { const sh = [...document.styleSheets].find(x => x.href === l.href); return !sh || (sh.cssRules.length === 0 && size(l.href) > 300); } catch (e) { return false; } }).map(l => l.href.split("/").pop()); '
                'return js.concat(css); })()')   # a script counts as arrived only with a body (a refused / reset connection leaves an empty entry and it silently never runs); a stylesheet counts only when it is in document.styleSheets with rules (数据: topbar.css once never applied); accept*.js are appended lazily and may still be loading
+    def wait_hb_probe(ws, log):
+        """≤ 5 s for the heartbeat probe's fetch to settle (window.__hbProbed, see init): ≈ .5 s with the network up, at once without; not under nodata"""
+        if nodata: return
+        for i in range(25):
+            if ws.send('Runtime.evaluate', {'expression': 'window.__hbProbed === true', 'returnByValue': True})['result']['result'].get('value') is True: return
+            time.sleep(0.2)
+        log('heartbeat probe not settled in 5 s (window.__hbProbed) — injecting anyway')
     def run_theme(dark, wsurl, only_list):
         """one theme × one shard in its own browser context (own localStorage, own renderer — the browser-level WS is not thread-safe, so the context and
         target are made in the main thread); returns (lines, ok, rows)"""
@@ -196,6 +210,7 @@ try:
             log('load incomplete (missing scripts %s, %d errors) — reloading once' % (missing, len(early)))
             ws.events = []; ws.send('Page.reload', {'ignoreCache': True})
         t_ready = time.time() - t0
+        wait_hb_probe(ws, log)
         inj = ('window.Stamina && (Stamina.data = %s, Stamina.at = Date.now()); typeof lastHb !== "undefined" && (lastHb = Date.now()); '
                'typeof render === "function" && render(); typeof updateLive === "function" && updateLive(); ' % json.dumps(STAMINA, ensure_ascii=False)) if not nodata else ''
         if virtual_time:   # S3: from here on the page's clock is virtual — stepped 16.7 ms at a time below, so every rAF gets its frame (one big 'advance' budget starves rAF: timers race ahead, the drives see 1 s dt steps)

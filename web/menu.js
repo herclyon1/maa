@@ -322,5 +322,6 @@
   const onHidden = (force) => { if (force || document.hidden) strip(); };
   document.addEventListener("visibilitychange", () => onHidden(false));
   window.Menu = { glass: { keys: glassKeys, built: BUILT, unbuilt: UNBUILT, gOval, sdf: sdfSuper, theme: glassTheme, bleedSigma: () => mixStd(lod(glassKeys(glassTheme()).BleedBlurRadius)) / CAPTURE, images: glassImages }, morph: MORPH, springs: { appear: [...APPEAR], dismiss: [...DISMISS], reduce: [...REDUCE] }, open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0, t: cur.t || 0, frame: cur.frame || 0, settled: !cur.raf,   // settled: read-only (S1, 2号 13:1x) — the "in" morph rests (its loop stopped, the full glass on); the "out" morph strips cur, so state() null = closed
-    x: { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, a: cur.s.a.x } } : null };
+    x: { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, a: cur.s.a.x },
+    v: { left: cur.s.left.v, top: cur.s.top.v, width: cur.s.width.v, height: cur.s.height.v, a: cur.s.a.v } } : null };   // v: read-only (2号 14:4x) — the springs' velocities (pt/s, opacity/s): the dismiss starts from the rested "in" state, whose |v| < 1 pt/s (settled) is not 0, so the acceptance's closed form takes it
 })();
