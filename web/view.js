@@ -1975,16 +1975,20 @@ function attachTabBar(nav, select) {
   const itemAt = (x) => { let best = 0, d = Infinity; bs.forEach((b, i) => { const r = b.getBoundingClientRect(); const dd = x < r.left ? r.left - x : x > r.right ? x - r.right : 0; if (dd < d) { d = dd; best = i; } }); return best; };
   const liftTo = (i, cls) => { g.classList.add(cls); g.style.left = bs[i].offsetLeft + "px"; g.style.width = bs[i].offsetWidth + "px"; };
   seg.onpointerdown = (e) => {
-    const cur = bs.findIndex((b) => b.classList.contains("on")), pressed = itemAt(e.clientX), onSelected = pressed === cur;
+    const cur = bs.findIndex((b) => b.classList.contains("on")), pressed = itemAt(e.clientX), onSelected = pressed === cur, x0 = e.clientX;
     let timer = 0, lifted = false, movedAway = false;
+    /* R106 / R59′b‴ (2号; tab-lens-motion.md §6.9 ② handleSelectionGesture 0x1c50e9078): the reselect of the already selected item is lost once the finger has travelled
+       ≥ 4 pt in x from where it went down (0x1c50e94c8–0x1c50e94dc: not "moved to another item"); an up outside the window's bounds inset by 8 only clears the
+       highlight (0x1c50e9288, _UIRectInsetEdges) — no selection; otherwise the item under the finger is selected at once */
     if (!press(seg, e, {
-      move: (ev) => { if (itemAt(ev.clientX) !== cur) movedAway = true; if (lifted) { nav.classList.add("drag"); liftTo(itemAt(ev.clientX), onSelected ? "lift-sel" : "lift"); } },   // T4/T9/T11: lens follows (110×70 while dragging), value waits for the up
+      move: (ev) => { if (Math.abs(ev.clientX - x0) >= 4) movedAway = true; if (lifted) { nav.classList.add("drag"); liftTo(itemAt(ev.clientX), onSelected ? "lift-sel" : "lift"); } },   // T4/T9/T11: lens follows (110×70 while dragging), value waits for the up
       end: (ev, cancelled) => {
         clearTimeout(timer); g.classList.remove("lift", "lift-sel"); nav.classList.remove("drag");
-        const target = cancelled ? cur : itemAt(ev.clientX);
+        const outside = ev.clientX < 8 || ev.clientX > innerWidth - 8 || ev.clientY < 8 || ev.clientY > innerHeight - 8;   // §6.9 ②: the window inset by 8
+        const target = cancelled || outside ? cur : itemAt(ev.clientX);
         if (target === cur) {
           g.style.left = bs[cur].offsetLeft + "px"; g.style.width = bs[cur].offsetWidth + "px";
-          if (onSelected && !cancelled && !movedAway) springToTop();   // Behaviour 3: a tap on the selected tab scrolls its page to the top (Health, tabscroll §2); still no selection event (T3)
+          if (onSelected && !cancelled && !outside && !movedAway) springToTop();   // Behaviour 3: a tap on the selected tab scrolls its page to the top (Health, tabscroll §2); still no selection event (T3)
           return;                                                    // T3/T9: no selection event
         }
         select(bs[target]);                                          // T1/T2: +0–2 ms after the up

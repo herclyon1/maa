@@ -194,6 +194,21 @@
       const recRms = rms(rec.map(([t, x]) => x - closedRM(259, 87, (t - 42.6) / 1000)));
       num("R59′b″ 记录核：R59″ tabhold 13 帧（259 → 87）对 ζ.9/.2 闭式（起点 +42.6）rms（pt；R94 按住滑动 + 2 帧送达延迟 1.15，§6.9 ④）", 0, recRms, 0.2);
     } finally { window.__forceRM = null; } }
+    /* ---- R59′b‴ / R106 ② the up's commit rules (tab-lens-motion.md §6.9 ② handleSelectionGesture 0x1c50e9078; view.js attachTabBar): an up outside the window inset by 8 only
+       clears the highlight (no selection); the already selected item dragged ≥ 4 pt in x is not reselected (no scroll-to-top); otherwise the item under the finger is selected at
+       once and the lens's target is its frame (the 7b / R33 rows above show the last) */
+    { const on6 = bs.find((b) => b.classList.contains("on")), o6 = bs[bs.indexOf(on6) === 0 ? 1 : 0], r6 = o6.getBoundingClientRect(), x6 = r6.left + r6.width / 2, y6 = r6.top + r6.height / 2;
+      ev(o6, "pointerdown", x6, y6, 51); await sleep(250); ev(o6, "pointermove", 3, y6, 51); await sleep(60); ev(o6, "pointerup", 3, y6, 51); await sleep(1400); delete seg.dataset.pe;   // the lens slides back from the track's end (.85 / .4) and falls within 8 pt (ζ 1 / .4): ≈ 1.2 s to rest
+      const onAfter = bs.find((b) => b.classList.contains("on"));
+      check("R106 ② 抬在窗口内缩 8 之外（x = 3）：只清高亮不选（选中项不变、透镜回原项、驱动停）", `${on6.dataset.tab} · off`, `${onAfter ? onAfter.dataset.tab : "-"} · ${nav.classList.contains("tl-on") ? "tl-on" : "off"} · |Δ| ${Math.abs(rect().cx - (on6.getBoundingClientRect().left + on6.getBoundingClientRect().width / 2)).toFixed(1)}`, onAfter === on6 && !nav.classList.contains("tl-on") && Math.abs(rect().cx - (on6.getBoundingClientRect().left + on6.getBoundingClientRect().width / 2)) <= 1.5);
+      const app6 = document.getElementById("app"), mh6 = app6.style.minHeight; app6.style.minHeight = (innerHeight + 600) + "px";   // the current tab's page may be short: make it scrollable for the two scroll-to-top rows
+      window.scrollTo(0, 240); await sleep(80); const y0s = window.scrollY; const sr6 = on6.getBoundingClientRect(), sx6 = sr6.left + sr6.width / 2, sy6 = sr6.top + sr6.height / 2;
+      ev(on6, "pointerdown", sx6, sy6, 52); await sleep(200); ev(on6, "pointermove", sx6 + 5, sy6, 52); await sleep(60); ev(on6, "pointerup", sx6 + 5, sy6, 52); await sleep(400); delete seg.dataset.pe;
+      const stA = window.ScrollTop && window.ScrollTop.state, movedTop = !!stA && stA.t0 > performance.now() - 700;
+      check("R106 ② 已选项按住拖 ≥ 4 pt（+5）再抬：不重选（不回顶，scrollY 不动），选中不变", `不回顶 · scrollY ${y0s}`, `${movedTop ? "回顶了" : "不回顶"} · scrollY ${window.scrollY} · ${(bs.find((b) => b.classList.contains("on")) || {}).dataset?.tab}`, !movedTop && y0s > 0 && Math.abs(window.scrollY - y0s) < 2 && bs.find((b) => b.classList.contains("on")) === on6);
+      ev(on6, "pointerdown", sx6, sy6, 53); await sleep(60); ev(on6, "pointerup", sx6 + 2, sy6, 53); await sleep(80); const stB = window.ScrollTop && window.ScrollTop.state, tappedTop = !!stB && stB !== stA; await sleep(1900); delete seg.dataset.pe;   // the driver's state is read while the scroll runs (it is cleared when done)
+      check("R106 ② 已选项按住拖 < 4 pt（+2）再抬：仍算重选（回顶，scrollY → 0）", "回顶 · scrollY 0", `${tappedTop ? "回顶" : "没回顶"} · scrollY ${window.scrollY}`, tappedTop && window.scrollY === 0);
+      window.scrollTo(0, 0); app6.style.minHeight = mh6; await sleep(100); }
     /* ---- R96 (页面 bug): the lens canvases must not paint past the viewport — with five tabs nav ± 24 reaches x 452 / y 968, the segment canvas is scaled × ≤ 1.15 by the
        flex transform while dragging; a mobile browser widens the layout viewport to the content (界面's frame log: innerWidth 440 → 455, the fixed bar 3 px lower = the user's
        bug ②) or pans sideways. Each canvas now sits in a .lens-clip box = its nominal box clamped to the viewport (LensWebGL.clipCanvas); checked in every state: the
