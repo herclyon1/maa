@@ -97,7 +97,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   /* Sizes are the probe's px values at the default text size (tokens.css), so the
      page no longer follows Settings › 显示与亮度 › 文字大小 (the old `-apple-system-body`
      em scale). Root = Body 17 so rem/em fallbacks and the acceptance probe agree. */
-  html{font-size:var(--ios-body-size);font-family:var(--ios-font)}   /* 根 17 = --ios-body-size；--ios-font ← 探针 .SFUI-* + PingFang 回退 */
+  html{font-size:var(--ios-body-size);font-family:var(--ios-font);overflow-x:clip}   /* R96′: the lens canvases (tlens-gl / glens) paint past the right edge while lifted or during a tab-set change; without clip the layout viewport grows to the content width (界面 R0② frame log: innerWidth 440 → 455, scrollWidth up) and the fixed bottom bar drops for a few frames; on iOS the page could pan sideways. clip does not create a scroll container. */   /* 根 17 = --ios-body-size；--ios-font ← 探针 .SFUI-* + PingFang 回退 */
   body{margin:0;background:var(--bg);color:var(--ink);
        font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-family:inherit;   /* 正文 17 / 行框 20.33 ← 探针 */
        padding:env(safe-area-inset-top) 0 calc(env(safe-area-inset-bottom) + 120px)}

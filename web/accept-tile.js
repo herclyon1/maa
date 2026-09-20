@@ -1,5 +1,6 @@
 /* accept-tile.js — acceptance of the tile / capsule press states (BOARD.md R6, R6′; tile.css). Registered through ACCEPT.add; runs in accept.js's page,
-   light and dark, on synthetic controls appended to #app (styled by the page's own sheets) so the rows do not depend on the current tab:
+   light and dark, on synthetic controls in a fixed off-screen container under body (styled by the page's own sheets; nothing enters #app, so no other
+   row's recording sees a layout change) so the rows do not depend on the current tab:
    ① a pressed tile (.pressed, the press state view.js installPressables sets) shows NO change — computed transform none and background = the resting
       tile's (state-tables/button.md R14′ ①); the :active override (transform none) is present in tile.css (the :active state itself cannot be set from
       script, so the rule is read from the sheet);
@@ -15,7 +16,10 @@
   ACCEPT.add(async function acceptTile(ctx) {
     const { check, sleep } = ctx;
     const dark = matchMedia("(prefers-color-scheme: dark)").matches && document.documentElement.dataset.theme !== "light" || document.documentElement.dataset.theme === "dark";
-    const app = document.getElementById("app") || document.body;
+    /* the synthetic controls live in a fixed off-screen container under body (验收 08:5x): nothing is inserted into #app — its layout, view.js's observers
+       and any other row's frame recording stay untouched; the page's sheets still style .tile / .capsule there (body-prefixed selectors) */
+    const app = document.createElement("div"); app.className = "accept-tile-lab"; app.style.cssText = "position:fixed;left:-9999px;top:0;width:400px;pointer-events:none;"; document.body.appendChild(app);
+    try {
     const sheet = [...document.styleSheets].find((s) => /tile\.css/.test(s.href || ""));
     let rules = [];
     try { rules = sheet ? [...sheet.cssRules] : []; } catch (e) { rules = []; }
@@ -91,5 +95,6 @@
       check("胶囊钮 ② R62 ①：短于 150 ms 的点按（60 ms 抬手）全程无按下色（+60 / 抬手后 +120 / +270 都是静止色）", `${restBg} ×3`, `${cShort} · ${cAfter} · ${cAfter2}`, sameColor(cShort, restBg) && sameColor(cAfter, restBg) && sameColor(cAfter2, restBg));
       check("胶囊钮 ② tile.css 里有 .capsule:active → opacity 1（盖掉 index.html 的 button:active .6）", "rule present", ruleWith(".capsule:active", "opacity", "1") ? "rule present" : "no rule", ruleWith(".capsule:active", "opacity", "1"));
     } finally { cap.remove(); capRed.remove(); }
+    } finally { app.remove(); }
   });
 })();
