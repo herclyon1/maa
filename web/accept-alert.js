@@ -70,6 +70,13 @@
     check(`弹窗玻璃 五灰阶平底核（${dark ? "暗" : "亮"}，⑦ 闭链：${pred.map((v) => v.toFixed(1)).join(" / ")}；无头 Chrome 实测记录）`, "|Δ| ≤ 1.25/255", `${measured.join(" / ")} · |Δ|max ${dmax.toFixed(2)}`, dmax <= 1.25 && Math.abs(pred[0] - (dark ? 117.2 : 237.0)) < 0.15);
     check("弹窗玻璃 不可表达 / 未读记录（AlertGlass.unbuilt）：钳 no-op、描边只在落定后（形变期无）、d′、椭圆化、bleed 捕获边（平铺 vs clamp_to_edge）、BlurFill 纹素对读法", "6 项", `${Object.keys(A.unbuilt).length} 项`, Object.keys(A.unbuilt).length === 6 && !A.unbuilt.Dark && !A.unbuilt.KeyFillInShader && !A.unbuilt.RingShadow);
     document.getElementById("alert-cancel").click(); await p; await sleep(500);
+    /* R57‴: an open whose maps are not cached (a new height: a three-line message) paints its first frame on the light chain (#alert-glass-f0, no generated images) and switches
+       to f1 / f2 / f3 after that frame; the size is remembered for the idle pre-warm of the next load */
+    { const p3 = ask("检查", "第一行说明\n第二行说明\n第三行说明——换个高度让贴图缓存未命中", "好", false); await new Promise((r) => requestAnimationFrame(r));
+      const c3 = dlg.querySelector(".alert-glass-copy"), f0 = c3 && /alert-glass-f0/.test(c3.style.filter), light1 = A.light; await sleep(200);
+      const full = c3 && /alert-glass-f1/.test(c3.style.filter) && /alert-glass-f2/.test(dlg.querySelector(".alert-glass-w2")?.style.filter || "") && /alert-glass-f3/.test(dlg.querySelector(".alert-glass-w3")?.style.filter || "");
+      check(`弹窗玻璃 首开（贴图未缓存）：首帧走轻链 f0（无生成图）、+200 ms 内换到 f1/f2/f3（换链在 +${Math.round(A.warmedAt - (window.ALERT_T ? ALERT_T.open : 0))} ms）、尺寸记入 ark-alert-size（下次载入空闲预热）`, "f0 首帧 · 满链 ≤ 200 · 记尺寸", `${f0 && light1 ? "f0 首帧" : `首帧 ${c3 ? c3.style.filter : "-"} light ${light1}`} · ${full ? "满链" : "未换"} · ${localStorage.getItem("ark-alert-size") === dlg.offsetWidth + "x" + dlg.offsetHeight ? "记尺寸" : "尺寸未记"}`, f0 && light1 && full && !A.light && localStorage.getItem("ark-alert-size") === dlg.offsetWidth + "x" + dlg.offsetHeight && A.cached(dlg.offsetWidth, dlg.offsetHeight));
+      document.getElementById("alert-cancel").click(); await p3; await sleep(500); }
     check("弹窗玻璃：关掉后层撤（含描边层）", "无", A.layer || dlg.querySelector(".alert-stroke") ? "层" : "无", !A.layer && !dlg.querySelector(".alert-stroke"));
   });
 })();
