@@ -69,6 +69,7 @@
     const sx = (1 + st.lift.x * (st.liftSX - 1)) * fsx, sy = (1 + st.lift.x * (st.liftSY - 1)) * fsy;
     sw.style.setProperty("--kx", (st.pos.x - SW_BASE[0]).toFixed(3) + "px"); sw.style.setProperty("--kdx", fdx.toFixed(3) + "px");
     sw.style.setProperty("--ksx", sx.toFixed(4)); sw.style.setProperty("--ksy", sy.toFixed(4));
+    st.written = { ksx: +sx.toFixed(4), ksy: +sy.toFixed(4), kdx: +fdx.toFixed(3), kx: +(st.pos.x - SW_BASE[0]).toFixed(3), lift: st.lift.x, sx: fsx, sy: fsy, dx: fl ? fl.out.dx : 0 };   // the driver's last WRITE (accept A15: swSync steps the springs between frames without writing — the state and the style differ until the next tick)
     sw.style.setProperty("--lift", Math.max(0, Math.min(1, st.lift.x)).toFixed(4));
   };
   const swRun = (sw, st) => {
@@ -143,5 +144,5 @@
       retarget();
     }, T.press);
   });
-  window.Switch = { version: "B13 3008bf5 → night", SW_BASE, flexOf: (sw) => (sw && sw._sw && sw._sw.flex) ? { active: sw._sw.flex.active, spec: { ...sw._sw.flex.spec }, out: { ...sw._sw.flex.out }, target: sw._sw.flex.tg, trace: sw._sw.flex.trace, lift: sw._sw.lift.x, liftSX: sw._sw.liftSX, liftSY: sw._sw.liftSY } : null };   // lift: the UNCLAMPED lift value the scale is built from (the --lift var is clamped 0…1; accept A15)
+  window.Switch = { version: "B13 3008bf5 → night", SW_BASE, flexOf: (sw) => (sw && sw._sw && sw._sw.flex) ? { active: sw._sw.flex.active, spec: { ...sw._sw.flex.spec }, out: { ...sw._sw.flex.out }, target: sw._sw.flex.tg, trace: sw._sw.flex.trace, lift: sw._sw.lift.x, liftSX: sw._sw.liftSX, liftSY: sw._sw.liftSY, written: sw._sw.written ? { ...sw._sw.written } : null } : null };   // lift: the UNCLAMPED lift value the scale is built from (the --lift var is clamped 0…1; accept A15)
 })();
