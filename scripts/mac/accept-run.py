@@ -1,6 +1,14 @@
 # -*- coding: utf-8 -*-
 """Run web/accept.js in headless Chrome (desktop Chromium: no safe area) with a fake snapshot.
-usage: accept-run.py <url-without-query> [light|dark|both] [nodata] [--only <控件[,控件]>] [--out <prefix>]  → prints the ark-accept rows
+usage: accept-run.py <url-without-query> [light|dark|both] [nodata] [--only <控件[,控件]>] [--out <prefix>] [--shard N]  → prints the ark-accept rows
+  S2 (2号 2026-09-20 13:0x, SPEED2-summary): --shard N runs each theme in N browser contexts at once, each loading a share of the accept files /
+  sections through the loader's ?only= (TAGS below, packed by the explicit-sleep cost of each tag), and merges the rows back into the one list:
+  rows an identical (item, expect) produced by a second shard — the core rows (readiness / loader / errors) and sections tagged with two names —
+  are kept once; each shard's tag list is printed once as "--- shard k: … ---" before its readiness lines; every row ends with ⟨file⟩ = the
+  loader's tag of the section that produced it (accept.js check() `tag`; a page without it gets the shard's list) — 验收 S6 attributes red rows
+  by it; totals are recomputed. --only and --shard combine (the shards divide the --only list); the lock and `both` are unchanged; the dark
+  context's page also gets ?theme=dark (S4-tags.md (d)). Measured 2026-09-20 13:01 (both, 707 rows per theme): --shard 3 46 s wall (the
+  tabbar shard 45 s) vs 115 s unsharded; six renderers at once flaked 3 timing rows of 1414 (0 unsharded) — S3's virtual time is the fix.
   T2 (2号 2026-09-20 12:2x, SPEED-summary §三): `both` runs light and dark in ONE Chrome, each in its own browser context (separate localStorage — the
   result key ark-accept must not be shared — and its own renderer), in parallel; the two results print as separate sections and, with --out <prefix>,
   land in <prefix>-light.txt / <prefix>-dark.txt. `--only a,b` is passed to the page as ?only=a,b (accept.js's loader, 界面 T1, loads only those
@@ -64,10 +72,25 @@ def opt(name):
     if name in args:
         i = args.index(name); v = args[i + 1] if i + 1 < len(args) else ''; del args[i:i + 2]; return v
     return None
-only = opt('--only'); outp = opt('--out')
+only = opt('--only'); outp = opt('--out'); shard = int(opt('--shard') or 1)
 url = sys.argv[1]; nodata = 'nodata' in args
 themes = ['light', 'dark'] if 'both' in args else (['dark'] if 'dark' in args else ['light'])
+base_url = url
 if only: url = url + ('&' if '?' in url else '?') + 'only=' + only
+# the loader's tags (web/accept.js ACCEPT.files + its own section tags segctl / cell / page) with the cost used to pack the shards: the sum of the
+# explicit sleep() ms in accept-<tag>.js plus in accept.js's sec("<tag>") regions at night 7250d29 (BOARD S4-tags.md (e) has the per-file column)
+TAGS = [('tabbar', 26.1), ('segctl', 17.4), ('page', 10.9), ('cell', 6.7), ('sheet', 6.5), ('switch', 6.5), ('glassbtn', 5.0), ('alert', 4.3), ('topbar', 1.8),
+        ('nav', 1.3), ('refresh', 1.1), ('nav-edge', 1.1), ('menu', 0.7), ('tile', 0.6), ('motion', 0.2)]
+def shards_of(n, wanted):
+    """the ?only= list of each shard: the wanted tags (all when --only is absent) greedy-packed by cost into n bins, heaviest first"""
+    known = dict(TAGS)
+    tags = [(t, known.get(t, 4.0)) for t in wanted] if wanted else list(TAGS)
+    if n <= 1: return [','.join(t for t, _ in tags) if wanted else '']
+    bins = [[0.0, []] for _ in range(n)]
+    for t, c in sorted(tags, key=lambda x: -x[1]):
+        b = min(bins, key=lambda x: x[0]); b[0] += c; b[1].append(t)
+    return [','.join(b[1]) for b in bins if b[1]]
+SHARDS = shards_of(shard, [x.strip() for x in only.split(',') if x.strip()] if only else None)   # '' = the whole suite in one context
 def free_port():
     # several sessions run this runner at once: a fixed / random port can already belong to ANOTHER session's Chrome, and we would then talk to it
     # (EOF, "view.js not ready", 0/0 results). Ask the kernel for a free port instead.
@@ -118,9 +141,12 @@ try:
                'const size = (h) => { const e = performance.getEntriesByType("resource").find(x => x.name === h); return e ? Math.max(e.decodedBodySize || 0, e.encodedBodySize || 0) : 0; }; '
                'const css = [...document.querySelectorAll("link[rel=stylesheet]")].filter(l => { try { const sh = [...document.styleSheets].find(x => x.href === l.href); return !sh || (sh.cssRules.length === 0 && size(l.href) > 300); } catch (e) { return false; } }).map(l => l.href.split("/").pop()); '
                'return js.concat(css); })()')   # a script counts as arrived only with a body (a refused / reset connection leaves an empty entry and it silently never runs); a stylesheet counts only when it is in document.styleSheets with rules (数据: topbar.css once never applied); accept*.js are appended lazily and may still be loading
-    def run_theme(dark, wsurl):
-        """one theme in its own browser context (own localStorage, own renderer — the browser-level WS is not thread-safe, so the context and target are made in the main thread); returns (lines, ok)"""
+    def run_theme(dark, wsurl, only_list):
+        """one theme × one shard in its own browser context (own localStorage, own renderer — the browser-level WS is not thread-safe, so the context and
+        target are made in the main thread); returns (lines, ok, rows)"""
         lines = []; log = lambda *a: lines.append(' '.join(str(x) for x in a))
+        url = base_url + (('&' if '?' in base_url else '?') + 'only=' + only_list if only_list else '')
+        if dark: url += ('&' if '?' in url else '?') + 'theme=dark'   # S4 (数据 S4-tags.md (d)): the loader skips the dark:false files / sections under ?theme=dark once 界面 wires it; the media emulation below is what sets the colours
         ws = WS(wsurl)
         ws.send('Runtime.enable'); ws.send('Page.enable')
         ws.send('Emulation.setFocusEmulationEnabled', {'enabled': True})   # a headless document is otherwise unfocused: focusin never fires (界面1号 5d71467's capsule row)
@@ -141,13 +167,13 @@ try:
         ws.send('Page.navigate', {'url': url + ('&' if '?' in url else '?') + 'accept=1&quiet=1'})
         for attempt in (1, 2):
             if not wait_ready():
-                log('view.js not ready in 60 s (document.readyState / window.__viewReady)'); log('JS errors:', errors()); return lines, False
+                log('view.js not ready in 60 s (document.readyState / window.__viewReady)'); log('JS errors:', errors()); return lines, False, []
             missing = ws.send('Runtime.evaluate', {'expression': MISSING, 'returnByValue': True})['result']['result'].get('value') or []
             if missing: time.sleep(1.5); missing = ws.send('Runtime.evaluate', {'expression': MISSING, 'returnByValue': True})['result']['result'].get('value') or []   # a script still in flight is not a lost fetch
             early = errors()
             if not missing and not early: break
             if attempt == 2:
-                log('page did not load cleanly twice: missing scripts', missing, 'errors', early); return lines, False
+                log('page did not load cleanly twice: missing scripts', missing, 'errors', early); return lines, False, []
             log('load incomplete (missing scripts %s, %d errors) — reloading once' % (missing, len(early)))
             ws.events = []; ws.send('Page.reload', {'ignoreCache': True})
         t_ready = time.time() - t0
@@ -163,35 +189,46 @@ try:
             if r: break
         errs = errors()
         if errs: log('JS errors:', errs)
-        if not r: log(f'no result in 180 s after view.js ready (ready at {t_ready:.1f} s)'); return lines, False
+        if not r: log(f'no result in 180 s after view.js ready (ready at {t_ready:.1f} s)'); return lines, False, []
         log(f'view.js ready at {t_ready:.1f} s, result at {time.time() - t0:.1f} s')
-        out = json.loads(r)
-        log(f"{url} {'dark' if dark else 'light'}  {out['total'] - out['fails']}/{out['total']}")
-        for row in out['rows']:
-            log(('✓' if row['ok'] else '✗'), row['item'], '|', row['got'], '' if row['ok'] else '（要 ' + row['expect'] + '）')
-        return lines, True
+        return lines, True, json.loads(r)['rows']
+    jobs = [(th, k) for th in themes for k in range(len(SHARDS))]   # (theme, shard index); SHARDS[k] is the shard's ?only list
     targets = {}
-    for th in themes:
+    for job in jobs:
         ctx = bws.send('Target.createBrowserContext')['result']['browserContextId']
         tid = bws.send('Target.createTarget', {'url': 'about:blank', 'browserContextId': ctx})['result']['targetId']
         wsurl = None
         for i in range(50):
             try: wsurl = next(t['webSocketDebuggerUrl'] for t in json.load(urllib.request.urlopen(f'http://127.0.0.1:{port}/json')) if t.get('id') == tid); break
             except Exception: time.sleep(0.2)
-        targets[th] = (ctx, tid, wsurl)
+        targets[job] = (ctx, tid, wsurl)
     results = {}
-    def worker(th):
-        try: results[th] = run_theme(th == 'dark', targets[th][2])
-        except Exception as e: results[th] = ([f'runner failed ({th}): {e!r}'], False)
-    threads = [threading.Thread(target=worker, args=(th,)) for th in themes]
+    def worker(job):
+        try: results[job] = run_theme(job[0] == 'dark', targets[job][2], SHARDS[job[1]])
+        except Exception as e: results[job] = ([f'runner failed ({job[0]}{" shard %d" % (job[1] + 1) if len(SHARDS) > 1 else ""}): {e!r}'], False, [])
+    threads = [threading.Thread(target=worker, args=(job,)) for job in jobs]
     for t in threads: t.start()
     for t in threads: t.join()
-    for th in themes:
-        try: bws.send('Target.closeTarget', {'targetId': targets[th][1]}); bws.send('Target.disposeBrowserContext', {'browserContextId': targets[th][0]})
+    for job in jobs:
+        try: bws.send('Target.closeTarget', {'targetId': targets[job][1]}); bws.send('Target.disposeBrowserContext', {'browserContextId': targets[job][0]})
         except Exception: pass
     failed = False
     for th in themes:
-        lines, ok = results.get(th, (['no result'], False)); failed = failed or not ok
+        lines = []; rows = []; first = {}; ok_all = True   # first: (item, expect) → shard index that produced it first (a copy from another shard is dropped)
+        for job in jobs:
+            if job[0] != th: continue
+            jl, ok, jr = results.get(job, (['no result'], False, [])); ok_all = ok_all and ok
+            if len(SHARDS) > 1: lines.append(f'--- shard {job[1] + 1}: {SHARDS[job[1]]} ---')
+            lines += jl
+            for row in jr:
+                key = (row['item'], row['expect'])
+                if first.setdefault(key, job[1]) != job[1]: continue
+                rows.append((row, row.get('tag') or (SHARDS[job[1]] if len(SHARDS) > 1 else '')))
+        failed = failed or not ok_all
+        fails = sum(1 for row, _ in rows if not row['ok'])
+        lines.append(f"{url} {th}  {len(rows) - fails}/{len(rows)}" + (f'  (--shard {len(SHARDS)})' if len(SHARDS) > 1 else ''))
+        for row, tag in rows:
+            lines.append(('✓' if row['ok'] else '✗') + ' ' + row['item'] + ' | ' + row['got'] + ('' if row['ok'] else '（要 ' + row['expect'] + '）') + (' ⟨' + tag + '⟩' if tag else ''))
         if len(themes) > 1: print(f'=== {th} ===')
         print('\n'.join(lines))
         if outp:
