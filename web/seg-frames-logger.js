@@ -147,6 +147,17 @@
   addEventListener("pointermove", (e) => { if (rec && !rec.done && e.pointerId === rec.pointerId) { rec.moves.push(performance.now()); rec.pointer.push({ type: "move", t: performance.now(), x: e.clientX, y: e.clientY, lag: lagOf(e) }); } }, true);
   const up = (e) => { if (rec && !rec.done && e.pointerId === rec.pointerId && rec.t_up === null) { rec.t_up = performance.now(); rec.pointer.push({ type: e.type === "pointercancel" ? "cancel" : "up", t: rec.t_up, x: e.clientX, y: e.clientY, lag: lagOf(e) }); } };
   addEventListener("pointerup", up, true); addEventListener("pointercancel", up, true);
+  /* T7 (2号, 2026-09-20 12:3x, WORKLIST): the keyboard case — a text field's focus starts a 1.5 s record ("<name>-kbd") with no pointer: every frame carries `vp`
+     (innerHeight, visualViewport height / offsetTop, the active element) and `tab` (the capsule's top / display, html.kbd), `vp_events` lists the resize / scroll /
+     visualViewport events from 1 s before the focus; the focus / blur moments go to control_events. Only when no gesture record is running. */
+  const KBD_MS = 1500, isText = (el) => !!el && ((el.tagName === "INPUT" && !/^(checkbox|radio|range|button|submit|reset|file|color|hidden)$/i.test(el.type)) || el.tagName === "TEXTAREA" || el.isContentEditable === true);
+  addEventListener("focusin", (e) => {
+    if (!isText(e.target) || (rec && !rec.done)) return;
+    const t = performance.now();
+    rec = { name: name + "-kbd", kind: "kbd", gl_mode: "n/a (keyboard record)", pointerId: null, t_down: t, t_up: t, moves: [], events: [{ t_since_down: 0, events: "focusin", index: -1, field: e.target.tagName.toLowerCase() + (e.target.id ? "#" + e.target.id : "") }], frames: ring.map((f) => ({ ...f, phase: "before" })), pointer: [], done: false, settledSince: null };
+    const first = reading(t); rec.rest = first ? first.rect.slice() : null; rec.index0 = first ? first.index : -1;
+  }, true);
+  addEventListener("focusout", (e) => { if (rec && !rec.done && rec.kind === "kbd") rec.events.push({ t_since_down: round((performance.now() - rec.t_down) / 1000, 3), events: "focusout", index: -1 }); }, true);
 
   const phaseAt = (t) => !rec || t < rec.t_down ? "before" : rec.t_up !== null && t >= rec.t_up ? "released" : rec.moves.length && t >= rec.moves[0] ? "drag" : "hold";
   const changed = (a, b, tol) => !a || !b || a.some((v, i) => Math.abs(v - b[i]) > tol);
@@ -174,7 +185,7 @@
       gl_mode: rec.gl_mode, gl_query: new URLSearchParams(location.search).get("gl"),
       ua: navigator.userAgent, page_version: (() => { const t = document.querySelector('script[src^="view.js"]'); const m = t && /v=([0-9]+)/.exec(t.getAttribute("src")); return m ? m[1] : null; })(),
       tab_lens: (() => { const t = document.querySelector('script[src*="tab-lens.js"]'); return { src: t ? t.getAttribute("src") : null, loaded: !!window.__tabLensStep, mode: window.__tabLensGL ? (window.__tabLensGL() ? "geometry+gl" : "geometry") : null, sw: !!(navigator.serviceWorker && navigator.serviceWorker.controller), rm: matchMedia("(prefers-reduced-motion: reduce)").matches, err: window.__tabLensErr || null }; })(),   // #15: which tab-lens.js the device runs and whether the driver is present
-      trigger: q.has("accept") ? "?accept" : q.has("diag") ? "?diag" : q.has("segframes") ? "?segframes" : "localStorage ark-diag" };
+      trigger: q.has("accept") ? "?accept" : q.has("diag") ? "?diag" : q.has("segframes") ? "?segframes" : "localStorage ark-diag", kind: rec.kind || "gesture" };
     try { localStorage.setItem(KEY, JSON.stringify(out)); } catch {}
     window.__segFrames = out; dispatchEvent(new CustomEvent("segframes", { detail: out }));
     lastNote = `${frames.length}fr ok`;
@@ -188,6 +199,7 @@
       rec.frames.push(f);
       const prev = rec.frames[rec.frames.length - 2];
       if (prev && f.index !== prev.index) rec.events.push({ t_since_down: round(now / 1000 - rec.t_down / 1000, 3), events: "valueChanged", index: f.index });
+      if (rec.kind === "kbd") { if (now - rec.t_down >= KBD_MS) finish(); return; }   // T7: a fixed 1.5 s window from the focus
       if (rec.t_up !== null) {
         const still = prev && !changed(f.rect, prev.rect, SETTLE_PT) && f.scale[0] === prev.scale[0] && f.scale[1] === prev.scale[1];
         rec.settledSince = still ? (rec.settledSince ?? now) : null;
