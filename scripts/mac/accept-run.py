@@ -1,6 +1,16 @@
 # -*- coding: utf-8 -*-
 """Run web/accept.js in headless Chrome (desktop Chromium: no safe area) with a fake snapshot.
-usage: accept-run.py <url-without-query> [light|dark|both] [nodata] [--only <控件[,控件]>] [--out <prefix>] [--shard N]  → prints the ark-accept rows
+usage: accept-run.py <url-without-query> [light|dark|both] [nodata] [--only <控件[,控件]>] [--out <prefix>] [--shard N] [--virtual-time]  → prints the ark-accept rows
+  S3 (老网页 2026-09-20 13:2x, SPEED2-summary): --virtual-time runs the page on CDP virtual time once it is ready and the hold is released: Chrome
+  is started with --enable-begin-frame-control --disable-frame-rate-limit, the clock is set to 'pause', then stepped 16.667 ms at a time
+  (Emulation.setVirtualTimePolicy advance, budget 16.667) and after every step the runner waits for the page's rAF (window.__vtf) before the
+  next — one frame per 16.7 ms of page time, so setTimeout / rAF / performance.now / CSS animations all advance together and the accept files'
+  sleeps cost no wall time. Measured 2026-09-20 13:16 (light, 703 rows): 52 s wall for 109.5 s of page time (6570 steps) vs 115 s on the
+  wall clock; nav / nav-edge alone 4 s (7.5 s page time). NOT the default yet: 8 rows read differently under virtual time (their inputs mix the
+  real clock into the page's: synthetic PointerEvent timeStamps and CSS transitions armed after a double rAF) — cell C3 抬手 / 淡出 .5 s /
+  蓝字行 长按 (⟨cell⟩ 界面), 玻璃钮 R71″ ② ③ (⟨glassbtn⟩ 界面), tabbar 7b 拖过端点 / 7b R106 松手 rms / R59′b RM 拖动 (⟨tabbar⟩ 2号); once those
+  read the same on both clocks the default flips. --no-virtual-time is accepted (no-op). The row format is unchanged; the ready line says
+  "virtual time: <steps> steps / <frames> frames = <s> s of page time".
   S2 (2号 2026-09-20 13:0x, SPEED2-summary): --shard N runs each theme in N browser contexts at once, each loading a share of the accept files /
   sections through the loader's ?only= (TAGS below, packed by the explicit-sleep cost of each tag), and merges the rows back into the one list:
   rows an identical (item, expect) produced by a second shard — the core rows (readiness / loader / errors) and sections tagged with two names —
@@ -46,6 +56,12 @@ class WS:
             m = s.recv()
             if m.get('id') == s.id: return m
             s.events.append(m)
+    def recv_event(s, timeout=5.0):
+        """read one event (a message without our id) — used while waiting for Emulation.virtualTimeBudgetExpired (S3); raises on timeout"""
+        s.sock.settimeout(timeout)
+        try:
+            m = s.recv(); s.events.append(m); return m
+        finally: s.sock.settimeout(None)
     def recvn(s, n):
         b = b''
         while len(b) < n:
@@ -73,6 +89,9 @@ def opt(name):
         i = args.index(name); v = args[i + 1] if i + 1 < len(args) else ''; del args[i:i + 2]; return v
     return None
 only = opt('--only'); outp = opt('--out'); shard = int(opt('--shard') or 1)
+virtual_time = '--virtual-time' in args   # S3: opt-in until the 8 rows listed in the doc header are clock-agnostic; --no-virtual-time is accepted as a no-op
+for f in ('--virtual-time', '--no-virtual-time'):
+    if f in args: args.remove(f)
 url = sys.argv[1]; nodata = 'nodata' in args
 themes = ['light', 'dark'] if 'both' in args else (['dark'] if 'dark' in args else ['light'])
 base_url = url
@@ -126,7 +145,7 @@ except Exception: pass
 if time.time() - t_lock > 2: print(f'lock acquired after {time.time() - t_lock:.0f} s')
 port = free_port(); prof = tempfile.mkdtemp()
 chrome_log = open(os.path.join(prof, 'chrome.log'), 'wb')   # Chrome's own stderr: a renderer crash shows here (printed on failure)
-p = subprocess.Popen([CH, '--headless=new', '--hide-scrollbars', f'--remote-debugging-port={port}', f'--user-data-dir={prof}', '--window-size=440,956', 'about:blank'], stdout=subprocess.DEVNULL, stderr=chrome_log)
+p = subprocess.Popen([CH, '--headless=new', '--hide-scrollbars', f'--remote-debugging-port={port}', f'--user-data-dir={prof}', '--window-size=440,956'] + (['--enable-begin-frame-control', '--disable-frame-rate-limit'] if virtual_time else []) + ['about:blank'], stdout=subprocess.DEVNULL, stderr=chrome_log)   # S3: frames are issued by the runner (HeadlessExperimental.beginFrame) in step with the virtual clock
 try:
     page = None
     for i in range(100):
@@ -179,18 +198,37 @@ try:
         t_ready = time.time() - t0
         inj = ('window.Stamina && (Stamina.data = %s, Stamina.at = Date.now()); typeof lastHb !== "undefined" && (lastHb = Date.now()); '
                'typeof render === "function" && render(); typeof updateLive === "function" && updateLive(); ' % json.dumps(STAMINA, ensure_ascii=False)) if not nodata else ''
+        if virtual_time:   # S3: from here on the page's clock is virtual — stepped 16.7 ms at a time below, so every rAF gets its frame (one big 'advance' budget starves rAF: timers race ahead, the drives see 1 s dt steps)
+            ws.send('Emulation.setVirtualTimePolicy', {'policy': 'pause'})
+        if virtual_time: ws.send('Runtime.evaluate', {'expression': 'window.__vtf = 0; (function l() { requestAnimationFrame(() => { window.__vtf++; l(); }); })(); 1'})   # a frame counter: the runner steps the clock one frame at a time and waits for this rAF before the next step
         res = ws.send('Runtime.evaluate', {'expression': inj + 'window.__acceptHold = false; 1', 'returnByValue': True})
         if 'exceptionDetails' in res.get('result', {}):
             log('injection threw:', res['result']['exceptionDetails'].get('text', ''), (res['result']['exceptionDetails'].get('exception') or {}).get('description', '')[:200])
         r = None
-        for i in range(900):                       # ≤ 180 s for accept.js's result (the night batch's full run takes ~70 s; 老网页 00:3x)
-            time.sleep(0.2)
+        vsteps = 0; vframes = 0
+        for i in range(900 if not virtual_time else 60000):   # ≤ 180 s wall for accept.js's result; virtual: ≤ 60000 frames = 1000 s of page time
+            if virtual_time:
+                # one frame of page time per step: advance the virtual clock by 16.667 ms and wait for the budget to expire — timers due in that slice run,
+                # and the renderer produces the frame (rAF callbacks) before the next step; the accept's sleeps thus cost the CDP round trip only
+                ws.send('Emulation.setVirtualTimePolicy', {'policy': 'advance', 'budget': 16.667, 'maxVirtualTimeTaskStarvationCount': 10000})
+                for k in range(200):
+                    if any(e.get('method') == 'Emulation.virtualTimeBudgetExpired' for e in ws.events): break
+                    try: ws.recv_event()
+                    except Exception: break
+                ws.events = [e for e in ws.events if e.get('method') != 'Emulation.virtualTimeBudgetExpired']
+                for k in range(400):                # the frame for this slice: wait until the page's rAF ran once more (frames are not vsync-bound: --disable-frame-rate-limit), so every 16.7 ms of page time gets exactly one frame
+                    f = ws.send('Runtime.evaluate', {'expression': 'window.__vtf', 'returnByValue': True})['result']['result'].get('value')
+                    if isinstance(f, int) and f > vframes: vframes = f; break
+                    time.sleep(0.0005)
+                vsteps += 1
+                if vsteps % 30: continue            # poll the result every 30 frames (≈ .5 s of page time)
+            else: time.sleep(0.2)
             r = ws.send('Runtime.evaluate', {'expression': 'localStorage.getItem("ark-accept")', 'returnByValue': True})['result']['result'].get('value')
             if r: break
         errs = errors()
         if errs: log('JS errors:', errs)
         if not r: log(f'no result in 180 s after view.js ready (ready at {t_ready:.1f} s)'); return lines, False, []
-        log(f'view.js ready at {t_ready:.1f} s, result at {time.time() - t0:.1f} s')
+        log(f'view.js ready at {t_ready:.1f} s, result at {time.time() - t0:.1f} s' + (f' (virtual time: {vsteps} steps / {vframes} frames = {vsteps / 60:.1f} s of page time)' if virtual_time else ' (wall clock)'))
         return lines, True, json.loads(r)['rows']
     jobs = [(th, k) for th in themes for k in range(len(SHARDS))]   # (theme, shard index); SHARDS[k] is the shard's ?only list
     targets = {}
