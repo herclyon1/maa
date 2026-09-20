@@ -25,6 +25,12 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
   if (ONLY) window.ACCEPT.files = window.ACCEPT.files.filter((c) => ONLY.has(c));
   let cur = "core";   // the section tag of the rows being produced now
   const sec = (...tags) => { cur = tags[0]; if (!ONLY) return true; const hit = tags.find((t) => ONLY.has(t)); if (hit) cur = hit; return !!hit; };   // tags the rows that follow; false = skip the section under ?only
+  /* S2 (2号 2026-09-20 13:0x): each row records the tag of the section that produced it (`tag`, printed by accept-run.py as ⟨file⟩ — 验收 S6 attributes a red row
+     to its file by it). A control file's rows get the file's name: ACCEPT.add is wrapped here so the function it registers sets `cur` to the name of the
+     script that called it (document.currentScript — the loader's classic <script> tags) when it starts; no other behaviour changes. */
+  { const add0 = window.ACCEPT.add.bind(window.ACCEPT);
+    window.ACCEPT.add = (fn) => { const m = /accept-([^./?]+)\.js/.exec((document.currentScript || {}).src || ""); if (!m) return add0(fn);
+      const w = async (ctx) => { cur = m[1]; return fn(ctx); }; Object.defineProperty(w, "name", { value: fn.name }); add0(w); }; }
   window.ACCEPT.load = (c) => new Promise((res) => { const s = document.createElement("script"); s.src = "accept-" + c + ".js?r=" + Math.random().toString(36).slice(2, 7); s.onload = () => { window.ACCEPT.loaded.add(c); res(true); }; s.onerror = () => res(false); document.head.appendChild(s); setTimeout(() => res(false), 4000); });
   for (const c of window.ACCEPT.files) window.ACCEPT.load(c);
   const rows = [];
@@ -37,7 +43,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
     document.body.appendChild(pr); const v = px(cs(pr).paddingTop); pr.remove(); return v; };
   function check(item, expect, got, ok) {
     if (ONLY && cur !== "core" && !ONLY.has(cur)) return;   // ?only: rows of other sections are not produced (T1)
-    rows.push({ item, expect: String(expect), got: got === undefined || got === null ? "缺" : String(typeof got === "number" ? Math.round(got * 100) / 100 : got), ok: !!ok });
+    rows.push({ item, expect: String(expect), got: got === undefined || got === null ? "缺" : String(typeof got === "number" ? Math.round(got * 100) / 100 : got), ok: !!ok, tag: cur });
   }
   function num(item, expect, got, tol) { check(item, expect, got, typeof got === "number" && near(got, expect, tol)); }
   /* Colours: computed styles come back as rgb(r, g, b) / rgba(r, g, b, a); compare the
