@@ -1,4 +1,9 @@
 {
+ "daily:alert,menu,tabbar:dark": {
+  "at": "09-20 13:56",
+  "counts": "alert=45 menu=58 tabbar=16",
+  "night": "8f140ce"
+ },
  "daily:refresh,tile:dark": {
   "at": "09-20 13:54",
   "counts": "refresh=21 tile=46",
