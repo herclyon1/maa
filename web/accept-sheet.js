@@ -6,6 +6,8 @@ ACCEPT.add(async function sheet({ check, num, sleep, settle }) {
   const S = window.Sheet, sh = document.querySelector("#picker");
   check("sheet.js：window.Sheet 已接在 #picker 上", "Sheet", S && sh ? "Sheet" : "缺", !!S && !!sh && typeof openPicker === "function");
   if (!S || !sh || typeof openPicker !== "function") return;
+  /* Behaviour 5 (moved from accept.js 2026-09-20): the sheet element is hidden once the dismiss has travelled */
+  await settle(() => !sh.hasAttribute("open"), 600); check("勾选页关闭后隐藏（open 去掉；等它自己关，≤ .6 s）", "hidden", sh.hasAttribute("open") ? "open" : "hidden", !sh.hasAttribute("open") && getComputedStyle(sh).display === "none");
   const card = sh.querySelector(".card"), dimEl = sh.querySelector(".dim"), bar = sh.querySelector(".pnav");
   const ty = () => { const m = getComputedStyle(card).transform; if (!m || m === "none") return 0; const a = m.match(/matrix\(([^)]+)\)/); return a ? parseFloat(a[1].split(",")[5]) : 0; };
   const crit = (t) => { const u = 2 * Math.PI / S.RESPONSE * t; return 1 - (1 + u) * Math.exp(-u); };
