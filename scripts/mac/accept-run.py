@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 """Run web/accept.js in headless Chrome (desktop Chromium: no safe area) with a fake snapshot.
-usage: accept-run.py <url-without-query> [light|dark|both] [nodata] [--only <控件[,控件]>] [--out <prefix>] [--shard N] [--virtual-time]  → prints the ark-accept rows
+usage: accept-run.py <url-without-query> [light|dark|both] [nodata] [--only <控件[,控件]>] [--out <prefix>] [--shard N] [--virtual-time] [--timeout S]  → prints the ark-accept rows
+  Hard timeouts (八条④, 验收 15:2x: a --virtual-time run hung 30 minutes holding the machine lock): every CDP send has a 30 s socket timeout, a
+  virtual-time step that sees no budget-expired event / no page rAF for 10 s prints "virtual time stalled at step k" and that theme is re-run on
+  the wall clock once, and a watchdog ends the whole run at --timeout seconds (default 300): it prints what it was waiting for, kills Chrome and
+  exits 1; the finally always releases the lock, Chrome and the profile.
   S3 (老网页 2026-09-20 13:2x, SPEED2-summary): --virtual-time runs the page on CDP virtual time once it is ready and the hold is released: Chrome
   is started with --enable-begin-frame-control --disable-frame-rate-limit, the clock is set to 'pause', then stepped 16.667 ms at a time
   (Emulation.setVirtualTimePolicy advance, budget 16.667) and after every step the runner waits for the page's rAF (window.__vtf) before the
@@ -52,10 +56,13 @@ class WS:
         s.id += 1; data = json.dumps({'id': s.id, 'method': method, 'params': params or {}}).encode(); mask = os.urandom(4); L = len(data)
         hdr = bytes([0x81]) + (bytes([0x80 | L]) if L < 126 else bytes([0x80 | 126]) + struct.pack('>H', L) if L < 65536 else bytes([0x80 | 127]) + struct.pack('>Q', L))
         s.sock.send(hdr + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data)))
-        while True:
-            m = s.recv()
-            if m.get('id') == s.id: return m
-            s.events.append(m)
+        s.sock.settimeout(30.0)   # a hung renderer never answers: 30 s and the call raises (socket.timeout) instead of holding the lock forever
+        try:
+            while True:
+                m = s.recv()
+                if m.get('id') == s.id: return m
+                s.events.append(m)
+        finally: s.sock.settimeout(None)
     def recv_event(s, timeout=5.0):
         """read one event (a message without our id) — used while waiting for Emulation.virtualTimeBudgetExpired (S3); raises on timeout"""
         s.sock.settimeout(timeout)
@@ -88,7 +95,7 @@ def opt(name):
     if name in args:
         i = args.index(name); v = args[i + 1] if i + 1 < len(args) else ''; del args[i:i + 2]; return v
     return None
-only = opt('--only'); outp = opt('--out'); shard = int(opt('--shard') or 1)
+only = opt('--only'); outp = opt('--out'); shard = int(opt('--shard') or 1); total_timeout = float(opt('--timeout') or 300)
 virtual_time = '--virtual-time' in args   # S3: opt-in until the 8 rows listed in the doc header are clock-agnostic; --no-virtual-time is accepted as a no-op
 for f in ('--virtual-time', '--no-virtual-time'):
     if f in args: args.remove(f)
@@ -220,21 +227,29 @@ try:
         if 'exceptionDetails' in res.get('result', {}):
             log('injection threw:', res['result']['exceptionDetails'].get('text', ''), (res['result']['exceptionDetails'].get('exception') or {}).get('description', '')[:200])
         r = None
-        vsteps = 0; vframes = 0
+        vsteps = 0; vframes = 0; stalls = 0
         for i in range(900 if not virtual_time else 60000):   # ≤ 180 s wall for accept.js's result; virtual: ≤ 60000 frames = 1000 s of page time
             if virtual_time:
                 # one frame of page time per step: advance the virtual clock by 16.667 ms and wait for the budget to expire — timers due in that slice run,
                 # and the renderer produces the frame (rAF callbacks) before the next step; the accept's sleeps thus cost the CDP round trip only
                 ws.send('Emulation.setVirtualTimePolicy', {'policy': 'advance', 'budget': 16.667, 'maxVirtualTimeTaskStarvationCount': 10000})
-                for k in range(200):
-                    if any(e.get('method') == 'Emulation.virtualTimeBudgetExpired' for e in ws.events): break
-                    try: ws.recv_event()
+                expired = False; t_step = time.time()
+                while time.time() - t_step < 10:
+                    if any(e.get('method') == 'Emulation.virtualTimeBudgetExpired' for e in ws.events): expired = True; break
+                    try: ws.recv_event(timeout=2.0)
+                    except socket.timeout: continue
                     except Exception: break
                 ws.events = [e for e in ws.events if e.get('method') != 'Emulation.virtualTimeBudgetExpired']
+                got_frame = False
                 for k in range(400):                # the frame for this slice: wait until the page's rAF ran once more (frames are not vsync-bound: --disable-frame-rate-limit), so every 16.7 ms of page time gets exactly one frame
                     f = ws.send('Runtime.evaluate', {'expression': 'window.__vtf', 'returnByValue': True})['result']['result'].get('value')
-                    if isinstance(f, int) and f > vframes: vframes = f; break
+                    if isinstance(f, int) and f > vframes: vframes = f; got_frame = True; break
                     time.sleep(0.0005)
+                stalls = stalls + 1 if not (expired and got_frame) else 0
+                if stalls >= 3:                     # 3 consecutive slices without the clock or the frame moving = a hung page: give up on virtual time here
+                    msg = f'virtual time stalled at step {vsteps} (budget expired {expired}, frame {got_frame}; {vframes} frames so far) — this theme is re-run on the wall clock'
+                    log(msg); print(msg, flush=True)
+                    return lines, None, []
                 vsteps += 1
                 if vsteps % 30: continue            # poll the result every 30 frames (≈ .5 s of page time)
             else: time.sleep(0.2)
@@ -257,11 +272,27 @@ try:
         targets[job] = (ctx, tid, wsurl)
     results = {}
     def worker(job):
-        try: results[job] = run_theme(job[0] == 'dark', targets[job][2], SHARDS[job[1]])
+        global virtual_time
+        try:
+            res = run_theme(job[0] == 'dark', targets[job][2], SHARDS[job[1]])
+            if res[1] is None:                       # virtual time stalled: once more on the wall clock in a fresh context (the hung page is closed)
+                lines0 = res[0]; virtual_time = False
+                ctx = bws.send('Target.createBrowserContext')['result']['browserContextId']
+                tid = bws.send('Target.createTarget', {'url': 'about:blank', 'browserContextId': ctx})['result']['targetId']
+                wsurl = None
+                for i in range(50):
+                    try: wsurl = next(t['webSocketDebuggerUrl'] for t in json.load(urllib.request.urlopen(f'http://127.0.0.1:{port}/json')) if t.get('id') == tid); break
+                    except Exception: time.sleep(0.2)
+                res = run_theme(job[0] == 'dark', wsurl, SHARDS[job[1]]); res = (lines0 + res[0], bool(res[1]), res[2])
+            results[job] = res
         except Exception as e: results[job] = ([f'runner failed ({job[0]}{" shard %d" % (job[1] + 1) if len(SHARDS) > 1 else ""}): {e!r}'], False, [])
-    threads = [threading.Thread(target=worker, args=(job,)) for job in jobs]
+    threads = [threading.Thread(target=worker, args=(job,), daemon=True) for job in jobs]
+    t_start = time.time()
     for t in threads: t.start()
-    for t in threads: t.join()
+    for t in threads: t.join(max(0.0, total_timeout - (time.time() - t_start)))
+    if any(t.is_alive() for t in threads):          # the watchdog: whatever a thread is still waiting for, the run ends here — Chrome and the lock go in the finally
+        print(f'runner timed out after {total_timeout:.0f} s (--timeout): still waiting on ' + ', '.join(f'{job[0]}' + (f' shard {job[1] + 1}' if len(SHARDS) > 1 else '') for job, t in zip(jobs, threads) if t.is_alive()) + ' — Chrome killed, lock released', flush=True)
+        sys.exit(1)
     for job in jobs:
         try: bws.send('Target.closeTarget', {'targetId': targets[job][1]}); bws.send('Target.disposeBrowserContext', {'browserContextId': targets[job][0]})
         except Exception: pass
