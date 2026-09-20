@@ -8,14 +8,16 @@
 #   --no-run        merge and report the scope only
 #   --gate <控件>[,…]  (BOARD A29, 2号's meeting4 knife) run by a worker in its own worktree before a self-merge: merge origin/night here (a
 #                   conflict = 不可合), refuse when the branch touches a shared file, run ?only=<控件> light + dark UNSHARDED, compare the row
-#                   counts with scripts/mac/accept-baseline.json (the last green run of the same list; first time = recorded) and the red rows
+#                   counts (its own tags only) with scripts/mac/accept-baseline.json — written by 验收's green whole-suite batch runs, read-only
+#                   here (2号 13:57 ③) — and the red rows
 #                   → prints 可合 / 不可合 + the reason, and on 可合 the commit's first line「?only=… 亮 a/b 暗 c/d @ night <sha>」. Exit 0 = 可合.
-# A whole-suite run is sharded (--shard $ACCEPT_SHARD, default 3). Outputs land in $ACCEPT_OUT (default /tmp/accept-batch): accept-<label>-{light,dark}.txt, serve-<label>.log. Port: $ACCEPT_PORT (8931).
+# A whole-suite run is sharded (--shard $ACCEPT_SHARD, default 3). Outputs land in $ACCEPT_OUT (default $TMPDIR/accept-batch-<worktree>): accept-<label>-{light,dark}.txt,
+# serve-<label>.log. The server port is a free one unless $ACCEPT_PORT is set (several sessions run this at once).
 set -u
 LAYER=daily; FULL=0; RUN=1; BASE0=; GATE=
 while [ $# -gt 0 ]; do case "$1" in
   --layer) LAYER="$2"; shift 2;; --base) BASE0="$2"; shift 2;; --gate) GATE="$2"; shift 2;; --full) FULL=1; shift;; --no-run) RUN=0; shift;; *) break;; esac; done
-W="$(cd "$(dirname "$0")/../.." && pwd)"; OUT="${ACCEPT_OUT:-/tmp/accept-batch}"; mkdir -p "$OUT"; cd "$W"
+W="$(cd "$(dirname "$0")/../.." && pwd)"; OUT="${ACCEPT_OUT:-${TMPDIR:-/tmp}/accept-batch-$(basename "$W")}"; mkdir -p "$OUT"; cd "$W"   # outputs per worktree unless ACCEPT_OUT is set
 PORT="${ACCEPT_PORT:-$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')}"   # a free port unless ACCEPT_PORT is set: several sessions run this at once
 BASELINE="$W/scripts/mac/accept-baseline.json"
 serve() { ( exec python3 "$W/scripts/mac/serve.py" "$W/web" "$PORT" >"$OUT/serve-$1.log" 2>&1 ) & SRV=$!; disown $SRV; sleep 2; }
@@ -46,20 +48,13 @@ if [ -n "$GATE" ]; then
     [ "$((p + n))" = 0 ] && { echo "不可合：runner 无行（$th）— $(grep -m1 -E 'not ready|no result|failed' "$OUT/accept-$L-run1.log" | cut -c1-140)"; exit 4; }
     eval "P_$th=$p; N_$th=$n"
     [ "$n" != 0 ] && { R=1; MSG="$MSG 红行（$th）：$(grep '^✗' "$f" | cut -c1-110 | tr '\n' '；')"; }
-    NOW=$(counts "$f"); KEY="$LAYER:$ONLY:$th"
-    BASE=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])) if __import__('os').path.exists(sys.argv[1]) else {}; print(d.get(sys.argv[2],{}).get('counts',''))" "$BASELINE" "$KEY")
-    if [ -z "$BASE" ]; then MSG="$MSG 无基线（$th，首次）：$NOW 记为基线；"
-      python3 - "$BASELINE" "$KEY" "$NOW" "$NIGHT" <<'PY'
-import json, os, sys, time
-p, k, now, sha = sys.argv[1:]
-d = json.load(open(p)) if os.path.exists(p) else {}
-d[k] = {'counts': now, 'night': sha, 'at': time.strftime('%m-%d %H:%M')}
-json.dump(d, open(p, 'w'), ensure_ascii=False, indent=1, sort_keys=True)
-PY
+    NOW=$(counts "$f"); KEY="$LAYER:FULL:$th"   # the baseline = the last green whole-suite batch run (验收 writes it; the gate never writes — 2号 13:57 ③)
+    BASE=$(python3 -c "import json,sys,os; d=json.load(open(sys.argv[1])) if os.path.exists(sys.argv[1]) else {}; print(d.get(sys.argv[2],{}).get('counts',''))" "$BASELINE" "$KEY")
+    if [ -z "$BASE" ]; then MSG="$MSG 无基线（$th；验收整套绿跑后 accept-baseline.json 才有，只看红行）；"
     else
       DROP=$(python3 -c "
-b=dict(x.split('=') for x in '$BASE'.split() if '=' in x); n=dict(x.split('=') for x in '$NOW'.split() if '=' in x)
-print(' '.join(f'{k} {n.get(k,0)}<{v}' for k,v in b.items() if int(n.get(k,0))<int(v)))")
+b=dict(x.split('=') for x in '$BASE'.split() if '=' in x); n=dict(x.split('=') for x in '$NOW'.split() if '=' in x); want='$ONLY'.split(',')
+print(' '.join(f'{k} {n.get(k,0)}<{v}' for k,v in b.items() if k in want and int(n.get(k,0))<int(v)))")
       [ -n "$DROP" ] && { R=1; MSG="$MSG 行数减少（$th，A9）：$DROP（基线 night $(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]]['night'])" "$BASELINE" "$KEY")）；"; }
     fi
   done
@@ -101,8 +96,8 @@ kill $SRV 2>/dev/null
 for th in light dark; do f="$OUT/accept-$L-$th.txt"; echo "accept $th: pass=$(grep -c '^✓' "$f" 2>/dev/null) fail=$(grep -c '^✗' "$f" 2>/dev/null) $( [ "$ONLY" != FULL ] && echo "(only $ONLY)")"; done
 echo "run time $(( $(date +%s) - T0 )) s"
 python3 "$W/scripts/mac/attribute-red.py" --base "$BASE" ${REFS[@]+"${REFS[@]}"} "$OUT/accept-$L-light.txt" "$OUT/accept-$L-dark.txt"
-for th in light dark; do f="$OUT/accept-$L-$th.txt"   # a green run records the row counts per tag as the gate's baseline (key layer:list:theme)
-  [ "$(grep -c '^✗' "$f")" = 0 ] && python3 - "$BASELINE" "$LAYER:$ONLY:$th" "$(counts "$f")" "$HEAD" <<'PY'
+for th in light dark; do f="$OUT/accept-$L-$th.txt"   # a WHOLE-SUITE run records the row counts per tag (✓ and ✗ both are rows present) as the gate's baseline (key layer:FULL:theme; the gate only reads)
+  [ "$ONLY" = FULL ] && python3 - "$BASELINE" "$LAYER:FULL:$th" "$(counts "$f")" "$HEAD" <<'PY'
 import json, os, sys, time
 p, k, now, sha = sys.argv[1:]
 d = json.load(open(p)) if os.path.exists(p) else {}

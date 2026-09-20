@@ -1,27 +1,12 @@
 {
- "daily:alert,menu,tabbar:dark": {
-  "at": "09-20 13:56",
-  "counts": "alert=45 menu=58 tabbar=16",
-  "night": "8f140ce"
+ "daily:FULL:dark": {
+  "at": "09-20 14:01",
+  "counts": "alert=45 cell=28 glassbtn=30 menu=58 motion=1 nav=1 nav-edge=1 refresh=21 sheet=1 switch=40 tabbar=16 tile=46 topbar=1",
+  "night": "ebacb76"
  },
- "daily:nav,nav-edge:dark": {
-  "at": "09-20 13:56",
-  "counts": "nav=1 nav-edge=1",
-  "night": "c03c131"
- },
- "daily:nav,nav-edge:light": {
-  "at": "09-20 13:56",
-  "counts": "nav=26 nav-edge=16",
-  "night": "c03c131"
- },
- "daily:refresh,tile:dark": {
-  "at": "09-20 13:54",
-  "counts": "refresh=21 tile=46",
-  "night": "272b3ab"
- },
- "daily:refresh,tile:light": {
-  "at": "09-20 13:54",
-  "counts": "refresh=21 tile=46",
-  "night": "272b3ab"
+ "daily:FULL:light": {
+  "at": "09-20 14:01",
+  "counts": "alert=46 cell=28 glassbtn=30 menu=58 motion=11 nav=26 nav-edge=16 refresh=21 segctl=75 sheet=19 switch=40 tabbar=91 tile=46 topbar=58",
+  "night": "ebacb76"
  }
 }
