@@ -794,6 +794,18 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
         pev(seg3, "pointerup", at(on3));
         check("标签栏 T3 按下已选中项抬手：无事件", before, (nav3.querySelector(".seg button.on") || {}).dataset.tab, (nav3.querySelector(".seg button.on") || {}).dataset.tab === before && !g3.classList.contains("lift-sel"));
         await sleep(900);   // the T3 lens has fallen back: the bar is at rest
+        /* R59′c (tab-lens-motion.md §6.9 ② / R106 ②): the reselect of the selected item (here the scroll-to-top) is withheld once the finger has moved ≥ 4 pt in x from the
+           initial location, even when the up is still on the same item; a lift outside window.bounds inset by 8 only clears — nothing is selected */
+        { const on4 = seg3.querySelector("button.on"), tab4 = on4.dataset.tab; window.scrollTo(0, 150); await sleep(60); const y4 = window.scrollY;
+          pev(seg3, "pointerdown", at(on4)); pev(seg3, "pointermove", at(on4, .5, .5, 6, 0)); await sleep(30); pev(seg3, "pointerup", at(on4, .5, .5, 6, 0)); await sleep(120);
+          check("标签栏 R59′c 按住已选中项、横移 6 pt 仍在同一项、抬手：不重选（不回顶）、不选中别项、透镜回位（R106 ②：|adj.x − initial.x| ≥ 4 → shouldReselectHighlightedItemOnLift 0）", `${tab4} · scrollY ${y4} · no ScrollTop`, `${seg3.querySelector("button.on").dataset.tab} · scrollY ${window.scrollY} · ${window.ScrollTop && window.ScrollTop.state ? "ScrollTop running" : "no ScrollTop"}`, seg3.querySelector("button.on").dataset.tab === tab4 && Math.abs(window.scrollY - y4) < 1 && !(window.ScrollTop && window.ScrollTop.state) && !g3.classList.contains("lift-sel"));
+          pev(seg3, "pointerdown", at(on4)); pev(seg3, "pointermove", at(on4, .5, .5, 2, 0)); await sleep(30); pev(seg3, "pointerup", at(on4, .5, .5, 2, 0)); await sleep(60);
+          check("标签栏 R59′c 按住已选中项、横移 2 pt（< 4）抬手：重选 → 回顶起（对照）", "ScrollTop running", window.ScrollTop && window.ScrollTop.state ? "ScrollTop running" : "no ScrollTop", !!(window.ScrollTop && window.ScrollTop.state));
+          await sleep(1700); window.scrollTo(0, 0);
+          const other4 = [...seg3.querySelectorAll("button")].find((b) => !b.classList.contains("on")), rO = other4.getBoundingClientRect();
+          pev(seg3, "pointerdown", at(other4)); await sleep(30); pev(seg3, "pointermove", { x: rO.left + rO.width / 2, y: 2 }); pev(seg3, "pointerup", { x: rO.left + rO.width / 2, y: 2 }); await sleep(60);
+          check("标签栏 R59′c 按住未选中项、抬手在窗口内缩 8 之外（y 2）：只清高亮，不选中", tab4, seg3.querySelector("button.on").dataset.tab, seg3.querySelector("button.on").dataset.tab === tab4 && !nav3.classList.contains("drag"));
+          await sleep(700); }
         /* BOARD R31 (page side): the labels textures for every segment are prepared at idle and the down on an unselected segment binds one (useLabels) — no
            backdrop redraw in the down's task (marks: seg:gl-uselabels present, seg:gl-redraw count unchanged across the down) */
         { const sg = q(), g = sg.__gl;

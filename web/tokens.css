@@ -652,6 +652,11 @@
      ★ 录像口径，作废（R108, tab-lens-motion.md §6.9 ⑤, 2号 R59′d）: the down → setLifted chain has no timer (touchesBegan 0x1c42552c8 → handleSelectionGesture → updateLensView → setLifted, four springs at once);
      the probe uiprobe-motion-tabdrag-light.json shows the width leaving 94 on the frame after the down (+47 95.76, +97 105.07, +130 110.14, +180 114.55 → 116.7, ζ 1 / .25 from t0 ≈ +30 = the next frame);
      the two values below are kept only for view.js's class timer (界面 R59′c to withdraw) — tab-lens.js lifts from the down */
+  /* tab bar tracker's up rules (R106, tab-lens-motion.md §6.9 ② — _UITabBarVisualProvider_Floating handleSelectionGesture 0x1c50e9078):
+     the reselect of the already selected item is lost once the finger travelled >= 4 pt in x from the down (0x1c50e94c8–0x1c50e94dc);
+     an up outside window.bounds inset by 8 only clears the highlight (0x1c50e9288, _UIRectInsetEdges) — requested by 界面 R59′c */
+  --ios-touch-tab-reselect-slop: 4px;
+  --ios-touch-tab-lift-outside-inset: 8px;
   --ios-touch-tab-selected-lift-delay: 125ms;
   --ios-touch-tab-selected-lift-done: 180ms;
   --ios-touch-tab-drag-lift-w: 110px;

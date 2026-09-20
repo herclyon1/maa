@@ -99,9 +99,12 @@
       const smpA = await sampleW(Math.max(0, 118 - (performance.now() - tD)));
       ev(b3, "pointerup", far3, y3, 12); const tU = performance.now(); const wUp = wOf();
       const smpB = await sampleW(700);
-      const at30 = smpB.find((s) => s.t - tU >= 30) || smpB[0], tr = smpB.reduce((m, s) => (s.w < m.w ? s : m), smpB[0]), st12 = smpB[smpB.length - 1].s, kUsed = (smpB.find((s) => s.s && s.s.k != null) || {}).s;
+      /* A16 (red twice): the 'still rising ≈ 30 ms after the up' read must be the driver's own last frame inside the rising window (state.tLast ≤ REVERSE_MS on its release
+         clock) — a wall-clock sample at ≥ 30 ms landed on a +47 ms frame under load, already past the reversal; no frame inside the window (a stall) → reported, not judged */
+      const inWin = smpB.filter((s) => s.s && s.s.phase === "release" && s.s.tLast != null && s.s.tLast <= GlassBtn.REVERSE_MS), at30 = inWin.length ? inWin[inWin.length - 1] : null, stall30 = !at30;
+      const tr = smpB.reduce((m, s) => (s.w < m.w ? s : m), smpB[0]), st12 = smpB[smpB.length - 1].s, kUsed = (smpB.find((s) => s.s && s.s.k != null) || {}).s;
       const jumps = smpB.slice(1).map((s, i) => Math.abs(s.w - smpB[i].w)), maxJump = Math.max(...jumps);
-      check("玻璃钮 R71″ ② 120 ms 点按：抬手时已抬起中（宽 > 44），抬手后 ≈ 30 ms 仍在长（up + 30 的宽 ≥ 抬手时的宽），然后回落", "wUp > 44 · w(up+30) ≥ wUp", `wUp ${wUp.toFixed(2)} · w(up+${(at30.t - tU).toFixed(0)}) ${at30.w.toFixed(2)}`, wUp > 44.5 && at30.w >= wUp - .05);
+      check("玻璃钮 R71″ ② 120 ms 点按：抬手时已抬起中（宽 > 44），抬手后 ≈ 30 ms 仍在长（驱动器自己 since_up ≤ 30 ms 内最后一帧的宽 ≥ 抬手时的宽，A15；窗口内无帧 = 停顿，只记不判），然后回落", "wUp > 44 · w(≤ up+30) ≥ wUp", `wUp ${wUp.toFixed(2)} · ${at30 ? "w(up+" + at30.s.tLast.toFixed(0) + ") " + at30.w.toFixed(2) : "no frame inside 30 ms (stall: not judged)"}`, wUp > 44.5 && (stall30 || at30.w >= wUp - .05));
       check(`玻璃钮 R71″ ② 回落谷时刻不变（up + 225…250，探针 120 ms 点按 +230），谷深随起点缩（k = ${kUsed ? kUsed.k.toFixed(3) : "?"}：探针从 41.5 起 ×.917）；切换连续（相邻帧宽差 ≤ 3.5 px = 回落表最陡段 2.5 px/帧 × k）`, "trough 225…250 · < 44 · max jump ≤ 3.5", `trough ${tr.w.toFixed(2)} (×${(tr.w / 44).toFixed(3)}) @ up+${(tr.t - tU).toFixed(0)} · max jump ${maxJump.toFixed(2)}`, tr.t - tU > 220 && tr.t - tU < 255 && tr.w < 44 && maxJump <= 3.5);
       await sleep(200); check("玻璃钮 R71″ ② +800 后复位（盒清、44）", "无 · 44", `${b3.style.width || "无"} · ${wOf().toFixed(1)}`, !b3.style.width && Math.abs(wOf() - 44) < .01); }
     /* ③ hold 700 → release → re-press 120 ms into the fall: the icon back to .2 within a frame, the geometry keeps falling until the lift table's start (down₂ + 52.6), then

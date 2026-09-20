@@ -1974,21 +1974,23 @@ function attachTabBar(nav, select) {
   if (!seg || !g || !bs.length) return;
   const itemAt = (x) => { let best = 0, d = Infinity; bs.forEach((b, i) => { const r = b.getBoundingClientRect(); const dd = x < r.left ? r.left - x : x > r.right ? x - r.right : 0; if (dd < d) { d = dd; best = i; } }); return best; };
   const liftTo = (i, cls) => { g.classList.add(cls); g.style.left = bs[i].offsetLeft + "px"; g.style.width = bs[i].offsetWidth + "px"; };
+  /* R59′c — the lift's commit (tab-lens-motion.md §6.9 ② / R106 ②, _UITabBarVisualProvider_Floating.handleSelectionGesture): the item under the finger at the up
+     is the target; if it is the selected one it is "reselected" (performPrimaryAction — here the scroll-to-top) only while shouldReselectHighlightedItemOnLift
+     still holds, and a move of ≥ 4 pt in x from the initial location clears that flag (0x1c50e94c8–0x1c50e94dc) — so a held selected tab dragged 4 pt and
+     released, even on the same item, only clears; a lift outside window.bounds inset by 8 only clears the highlight (0x1c50e929c–0x1c50e92c0), no selection */
+  const RESELECT_SLOP = () => touchPx("--ios-touch-tab-reselect-slop", 4), LIFT_INSET = () => touchPx("--ios-touch-tab-lift-outside-inset", 8);   // tokens requested (status-界面); the read values as fallbacks
   seg.onpointerdown = (e) => {
     const cur = bs.findIndex((b) => b.classList.contains("on")), pressed = itemAt(e.clientX), onSelected = pressed === cur, x0 = e.clientX;
-    let timer = 0, lifted = false, movedAway = false;
-    /* R106 / R59′b‴ (2号; tab-lens-motion.md §6.9 ② handleSelectionGesture 0x1c50e9078): the reselect of the already selected item is lost once the finger has travelled
-       ≥ 4 pt in x from where it went down (0x1c50e94c8–0x1c50e94dc: not "moved to another item"); an up outside the window's bounds inset by 8 only clears the
-       highlight (0x1c50e9288, _UIRectInsetEdges) — no selection; otherwise the item under the finger is selected at once */
+    let timer = 0, lifted = false, reselect = true;
     if (!press(seg, e, {
-      move: (ev) => { if (Math.abs(ev.clientX - x0) >= 4) movedAway = true; if (lifted) { nav.classList.add("drag"); liftTo(itemAt(ev.clientX), onSelected ? "lift-sel" : "lift"); } },   // T4/T9/T11: lens follows (110×70 while dragging), value waits for the up
+      move: (ev) => { if (Math.abs(ev.clientX - x0) >= RESELECT_SLOP()) reselect = false; if (lifted) { nav.classList.add("drag"); liftTo(itemAt(ev.clientX), onSelected ? "lift-sel" : "lift"); } },   // T4/T9/T11: lens follows (110×70 while dragging), value waits for the up; ≥ 4 pt: no reselect at the up (R106 ②)
       end: (ev, cancelled) => {
         clearTimeout(timer); g.classList.remove("lift", "lift-sel"); nav.classList.remove("drag");
-        const outside = ev.clientX < 8 || ev.clientX > innerWidth - 8 || ev.clientY < 8 || ev.clientY > innerHeight - 8;   // §6.9 ②: the window inset by 8
+        const ins = LIFT_INSET(), outside = ev.clientX < ins || ev.clientX > innerWidth - ins || ev.clientY < ins || ev.clientY > innerHeight - ins;   // R106 ②: outside window.bounds inset by 8 → the highlight clears, nothing is selected
         const target = cancelled || outside ? cur : itemAt(ev.clientX);
         if (target === cur) {
           g.style.left = bs[cur].offsetLeft + "px"; g.style.width = bs[cur].offsetWidth + "px";
-          if (onSelected && !cancelled && !outside && !movedAway) springToTop();   // Behaviour 3: a tap on the selected tab scrolls its page to the top (Health, tabscroll §2); still no selection event (T3)
+          if (onSelected && !cancelled && !outside && reselect) springToTop();   // Behaviour 3: the reselect of the selected tab scrolls its page to the top (Health, tabscroll §2); no selection event (T3); withheld after a ≥ 4 pt drag (R106 ②)
           return;                                                    // T3/T9: no selection event
         }
         select(bs[target]);                                          // T1/T2: +0–2 ms after the up
