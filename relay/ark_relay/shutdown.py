@@ -409,4 +409,10 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
     if not eng._power_off():
         return False
     eng._shutdown_issued = True
+    # From here the machine is going down: services and COM links drop as
+    # Windows tears them down. Those are not faults - 09-20 10:11:05,
+    # 09-21 11:33, 09-22 10:02 each logged "进程启动事件监听中断" as ERROR about
+    # a minute after this point and the daily health check counted them.
+    from . import errwatch  # noqa: PLC0415
+    errwatch.mark_stopping()
     return True
