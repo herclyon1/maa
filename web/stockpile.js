@@ -29,14 +29,14 @@
     const st = document.createElement("style");
     st.id = "stockpile-css";
     st.textContent = `
-.stk-card{margin:0 var(--ios-card-inset);width:var(--ios-card-w);max-width:calc(100% - 2 * var(--ios-card-inset));background:var(--ios-card-bg);border-radius:var(--ios-card-radius);overflow:hidden}
+.stk-card{margin:0;background:var(--ios-card-bg);border-radius:var(--ios-card-radius);overflow:hidden}
 .stk-row{position:relative;height:var(--ios-row2-h)}
 .stk-row img,.stk-row .noimg{position:absolute;left:calc(var(--ios-row2-icon-x) - var(--ios-card-inset));top:17px;width:var(--ios-row2-icon);height:var(--ios-row2-icon);object-fit:contain}
 .stk-row .t{position:absolute;left:calc(var(--ios-row2-text-x) - var(--ios-card-inset));top:var(--ios-row2-title-top);right:calc(20px + var(--stk-vw, 0px));font-size:var(--ios-body-size);line-height:var(--ios-body-lh);color:var(--ios-label);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stk-row .s{position:absolute;left:calc(var(--ios-row2-text-x) - var(--ios-card-inset));top:var(--ios-row2-sub-top);right:calc(20px + var(--stk-vw, 0px));font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);color:var(--ios-settings-subtitle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
 .stk-row .v{position:absolute;right:20px;top:50%;transform:translateY(-50%);font-size:var(--ios-body-size);line-height:var(--ios-body-lh);color:var(--ios-secondary-label);white-space:nowrap;font-variant-numeric:tabular-nums}
 .stk-row:not(:last-child)::after{content:"";position:absolute;left:calc(var(--ios-row2-text-x) - var(--ios-card-inset));right:20px;bottom:0;height:var(--ios-separator-h);background:var(--ios-separator)}
-.stk-foot{margin:0 var(--ios-card-inset);padding:var(--ios-footer-text-top) 20px 0;font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh);color:var(--ios-secondary-label)}
+.stk-foot{margin:0;padding:var(--ios-footer-text-top) 20px 0;font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh);color:var(--ios-secondary-label)}
 .stk-load{position:relative;height:var(--ios-row2-h);display:flex;align-items:center;padding:0 20px;font-size:var(--ios-body-size);color:var(--ios-label)}
 .stk-empty{text-align:center;padding:48px 20px}
 .stk-empty .ttl{font-size:var(--ios-empty-title-size);font-weight:600;color:var(--ios-label);margin-top:8px}
