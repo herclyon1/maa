@@ -10,6 +10,17 @@ wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change"
 `NEXT-BOOT.md` keeps only "the first thing to do at the next boot".
 
 ## Todo
+- [ ] **Osaka HP ProOne 600 G3 as a cloud server - shelved 2026-09-01, recovery notes kept here.** The user shelved it
+      after I said the box was not needed for anything we run; plans must treat it as non-existent. If it is ever
+      revived: it reached the net through the Cloudflare tunnel `osaka` plus the Mac's WARP team, SSH on port 2222.
+      Failure mode: on the shared-flat Wi-Fi its LAN address is re-issued by DHCP on every reboot (`10.32.24.34` ->
+      `10.32.30.142`), which kills the hard-coded /32 route and the SSH path with it. Recovery (verified): Cloudflare
+      dashboard -> Networks -> Tunnels & Mesh -> `osaka` -> the connector diagnostics page reports the box's current
+      LAN address as **Private IP** (cloudflared reports it itself, no scanning) - put that address into both the
+      tunnel's CIDR route and the WARP split-tunnel include list, and SSH answers within seconds. Permanent fix: buy a
+      cheap domain, add a Cloudflare Public Hostname pointing at `ssh://localhost:2222`, and cloudflared dials
+      localhost so the LAN address stops mattering. Longer write-up: `~/Claude/HANDOFF-hp-cloud-server.md`.
+      (Moved out of the session memory store on 2026-09-23 so the shelved box is not re-read every session.)
 - [ ] **Phone page, alert first open ≈ 776 ms (acceptance measured on Mac Chromium, v=20260919002833, `?demo=1`, real click, rAF after pointerup):**
       showModal is called within 0.3 ms, the first frame comes 776 ms later on the FIRST open after a load (28 ms on the second); with
       `dialog > .pane`'s backdrop-filter removed the first open paints in 3 ms. Cause: the blur layer's first creation (top layer + backdrop
