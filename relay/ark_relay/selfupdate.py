@@ -31,8 +31,9 @@ Why: jsDelivr's caches are per node and refresh independently - on 2026-09-18
 a manifest pushed at 02:31 was still the old one on the machine's node at
 08:45, and the update only landed because a person deployed by hand. COS has
 no cache layer: what was written is what is read. The four GitHub doors stay
-as the fallback (COS answered 451 on 2026-09-13, an unpaid bill), and the
-bucket's own lifecycle rule may delete the prefix one day. Since the evening
+as the fallback (COS answered 451 on 2026-09-13, an unpaid bill); the
+bucket's lifecycle rule has left relay/ alone since 2026-09-23
+(PrefixNotEquals, docs/OPERATIONS.md). Since the evening
 of 2026-09-18 the GitHub doors are **off by default** (GITHUB_FALLBACK_ENV):
 a COS that cannot be used ends the round as a recorded failure, reported at
 the next boot, which tries again. When COS answers and its latest
