@@ -136,10 +136,14 @@ def main() -> int:
     print("\n[周本没领奖＝没干成（2026-09-14 09:19 真实行）]")
     wb = ("2026-09-14 10:02:00,000 INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0\n"
           "2026-09-14 10:02:15,000 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：3/3_1.00, x60_0.79]\n"
+          "2026-09-14 10:02:30,615 INFO TaskExecutor FarmEchoTask:teleport_to_boss prepared as realm\n"
           "2026-09-14 10:04:16,000 INFO TaskExecutor FarmEchoTask:left_click claim_cancel_button_hcenter_vcenter (538, 675) after_sleep 0\n"
           "DailyTask:Daily Task Completed\n"
           "ForgeryTask:used all stamina\n")
     check("打了没领＝红", "周本领到了奖励" in bad_labels(okww_checks(wb, expect_nest=False)), True)
+    # 2026-09-21: the key is logged before the book opens; no 「prepared as」 = never got in.
+    nowb = wb.replace("2026-09-14 10:02:30,615 INFO TaskExecutor FarmEchoTask:teleport_to_boss prepared as realm\n", "")
+    check("没进本不说「打了」", bad_labels(okww_checks(nowb, expect_nest=False)).count("周本"), 1)
     check("触发→痕迹也报", "周本领奖改动在跑（打完按 F 领奖）" in bad_labels(patch_effect_checks(wb)), True)
     wb_ok = wb + "2026-09-14 10:04:20,000 INFO TaskExecutor FarmEchoTask:周本领奖：已点确认\n"
     check("领了＝绿", "周本领到了奖励" not in bad_labels(okww_checks(wb_ok, expect_nest=False)), True)

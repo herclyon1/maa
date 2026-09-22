@@ -138,8 +138,15 @@ def _maaend_farm(text: str) -> dict:
     # 979/899/819/739/659 -- five claims give only 320 by adjacent differences,
     # when 400 was actually spent.
     # The correct form is "runs x step per run", not the sum of the differences.
+    # Each step is the run's cost minus what regenerated while it ran, so the
+    # median undercounts: 2026-09-22 read 237/158/78/38/38/39 over five runs,
+    # steps 79/80/40, median 79 -> "395" for 5 x 80 = 400 spent
+    # (history/2026-09-22/endfield/MaaEnd-05-25-40.log). The largest step is
+    # the closest to the cost; steps above 1.5x the median would span a
+    # missed reading and are not a single run.
     if steps and runs:
-        out["maaend_sanity_spent"] = runs * sorted(steps)[len(steps) // 2]
+        med = sorted(steps)[len(steps) // 2]
+        out["maaend_sanity_spent"] = runs * max(x for x in steps if x <= med * 1.5)
     elif runs and len(readings) >= 2:
         out["maaend_sanity_spent"] = readings[0] - readings[-1]
     # With only one run there is no step to see within it (a single reading),

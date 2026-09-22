@@ -69,6 +69,10 @@ def main():
     check("Stopped 判失败",
           any(not c.ok for c in maa_checks(run(stopped=("Mall",)))), True)
 
+    print("已完成的链后面多一条停止回执不算中止（2026-09-22 21:47:10.864 CloseDown 真实形状）")
+    late = run(extra='\n[2026-09-22 21:47:11][INF] TaskChainStopped {"taskchain":"CloseDown","taskid":7}')
+    check("收尾后的停止回执全绿", summarize(maa_checks(late), "MAA"), None)
+
     print("一条任务链事件都没有 = 窗口切错，不许当成没问题")
     got2 = maa_checks("随便什么日志，没有 TaskChain")
     check("判失败", any(not c.ok for c in got2), True)

@@ -132,6 +132,12 @@ def daily_lines(day: str, log_text: str) -> list[str]:
     md = day[5:]
     errors: list[tuple[str, str, str]] = []
     boots: list[str] = []
+    # A boot where AUTO-MAS answered at once logs none of the four lines
+    # below, and was left out of the list: 09-22's report showed only the
+    # morning though the relay started again at 21:20:19 and ran the evening
+    # queue (relay.log 21367-21392). Each service start opens a boot; one that
+    # closes without an outcome line is "already up".
+    pending = ""
     for line in log_text.splitlines():
         m = _TS.match(line)
         if not m or m.group(1) != md:
@@ -139,6 +145,12 @@ def daily_lines(day: str, log_text: str) -> list[str]:
         hhmm, level, name, msg = m.group(2), m.group(3), m.group(4), m.group(5)
         if level == "ERROR":
             errors.append((hhmm, name, msg))
+        if msg.startswith("服务模式启动"):
+            if pending:
+                boots.append(f"{pending} 开机时已经在")
+            pending = hhmm
+            continue
+        n_before = len(boots)
         # The four outcomes ensure_automas logs (boot_stages.py), matched on
         # the parts of each line that are not engineering words.
         if "自己起来了（等了" in msg:
@@ -149,6 +161,10 @@ def daily_lines(day: str, log_text: str) -> list[str]:
             boots.append(f"{hhmm} 重开后还是没应答")
         elif msg.startswith("AUTO-MAS 已") and msg.endswith("秒）"):
             boots.append(f"{hhmm} 重开后起来了{msg[msg.index('（'):]}")
+        if len(boots) > n_before:
+            pending = ""
+    if pending:
+        boots.append(f"{pending} 开机时已经在")
     out = []
     if errors:
         hhmm, name, msg = errors[0]

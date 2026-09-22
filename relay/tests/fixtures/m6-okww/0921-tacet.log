@@ -1,0 +1,71 @@
+2026-09-21 10:24:08,431 INFO TaskExecutor TacetTask:info_set current task in main esc=True
+2026-09-21 10:24:08,431 INFO TaskExecutor TacetTask:click f2 to open the book
+2026-09-21 10:24:12,480 INFO TaskExecutor TacetTask:send f2 key to open
+2026-09-21 10:24:13,556 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=86)
+2026-09-21 10:24:15,959 INFO TaskExecutor TacetTask:left_click gray_book_boss (76, 321) after_sleep 1.5
+2026-09-21 10:24:17,551 INFO TaskExecutor TacetTask:info_set current_stamina 240
+2026-09-21 10:24:17,551 INFO TaskExecutor TacetTask:info_set back_up_stamina 56
+2026-09-21 10:24:17,551 INFO TaskExecutor TacetTask:open_boss_book wuyin
+2026-09-21 10:24:18,355 INFO TaskExecutor TacetTask:left_click wuyin (460, 788) after_sleep 2
+2026-09-21 10:24:20,356 INFO TaskExecutor TacetTask:info_set Teleport to Tacet Suppression 1
+2026-09-21 10:24:21,084 INFO TaskExecutor TacetTask:left_click boss_proceed (1824, 510) after_sleep 1
+2026-09-21 10:24:23,539 INFO TaskExecutor TacetTask:left_click team_start_challenge (1791, 994) after_sleep 1
+2026-09-21 10:24:27,622 INFO TaskExecutor TaskExecutor:wait_until timeout <bound method BaseWWTask.click_skip_dialog_confirm of <src.task.TacetTask.TacetTask object at 0x00000243228832F0>> 3 seconds
+2026-09-21 10:24:32,486 INFO TaskExecutor TacetTask:info_set Liberation Key r
+2026-09-21 10:24:32,487 INFO TaskExecutor TacetTask:info_set Echo Key q
+2026-09-21 10:24:32,581 INFO TaskExecutor TacetTask:info_set Chars 莫宁, 达妮娅, Qingxiao
+2026-09-21 10:24:32,581 INFO TaskExecutor TacetTask:loaded chars success Mornye 0.9075276851654053
+2026-09-21 10:24:32,581 INFO TaskExecutor TacetTask:loaded chars success Denia 0.9984114170074463
+2026-09-21 10:24:32,581 INFO TaskExecutor TacetTask:loaded chars success Qingxiao 0.9722664952278137
+2026-09-21 10:24:32,594 INFO TaskExecutor CombatCheck:target lost try retarget 10
+2026-09-21 10:24:32,679 INFO TaskExecutor TacetTask:enter combat None
+2026-09-21 10:24:41,327 INFO TaskExecutor Mornye:click_liberation end 4.78141450881958
+2026-09-21 10:24:46,105 INFO TaskExecutor TaskExecutor:wait_until timeout <function Mornye.on_air_actions.<locals>.<lambda> at 0x000002436788E200> 1.5 seconds
+2026-09-21 10:24:48,564 INFO TaskExecutor BaseCombatTask:switch_next_char current_con 0.96 almost full, sleep and check again
+2026-09-21 10:24:48,643 INFO TaskExecutor BaseCombatTask:switch selection result current=Mornye(Healer) target=Qingxiao(MainDps) has_intro=True reason=intro_role_order_main_sub_healer
+2026-09-21 10:24:48,643 INFO TaskExecutor BaseCombatTask:switch_next_char Mornye(Healer) -> Qingxiao(MainDps) has_intro True has_sub_dps_intro False current_con 1
+2026-09-21 10:24:48,755 INFO TaskExecutor Mornye:switch_out at full con set current_con to 0
+2026-09-21 10:24:48,755 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.112s
+2026-09-21 10:24:48,761 INFO TaskExecutor BaseCombatTask:switch selection result current=Qingxiao(MainDps) target=Denia(SubDps) has_intro=True reason=intro_unbuffed_subdps
+2026-09-21 10:24:48,762 INFO TaskExecutor BaseCombatTask:switch_next_char Qingxiao(MainDps) -> Denia(SubDps) has_intro True has_sub_dps_intro False current_con 1
+2026-09-21 10:24:49,067 INFO TaskExecutor Qingxiao:switch_out at full con set current_con to 0
+2026-09-21 10:24:49,067 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.305s
+2026-09-21 10:24:55,578 INFO TaskExecutor Denia:click_liberation end 4.1443870067596436
+2026-09-21 10:24:57,573 INFO TaskExecutor BaseCombatTask:switch selection result current=Denia(SubDps) target=Qingxiao(MainDps) has_intro=False reason=support_buffs_active_return_to_main_dps
+2026-09-21 10:24:57,573 INFO TaskExecutor BaseCombatTask:switch_next_char Denia(SubDps) -> Qingxiao(MainDps) has_intro False has_sub_dps_intro False current_con 0.7133182844243793
+2026-09-21 10:24:58,390 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.817s
+2026-09-21 10:24:58,395 INFO TaskExecutor BaseCombatTask:switch selection result current=Qingxiao(MainDps) target=Denia(SubDps) has_intro=False reason=unbuffed_subdps
+2026-09-21 10:24:58,396 INFO TaskExecutor BaseCombatTask:switch_next_char Qingxiao(MainDps) -> Denia(SubDps) has_intro False has_sub_dps_intro False current_con 0.0
+2026-09-21 10:24:58,743 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.347s
+2026-09-21 10:25:05,424 INFO TaskExecutor Denia:click_liberation end 2.308274745941162
+2026-09-21 10:25:05,573 INFO TaskExecutor BaseCombatTask:switch selection result current=Denia(SubDps) target=Qingxiao(MainDps) has_intro=True reason=intro_role_order_main_sub_healer
+2026-09-21 10:25:05,574 INFO TaskExecutor BaseCombatTask:switch_next_char Denia(SubDps) -> Qingxiao(MainDps) has_intro True has_sub_dps_intro True current_con 1
+2026-09-21 10:25:06,185 INFO TaskExecutor Denia:switch_out at full con set current_con to 0
+2026-09-21 10:25:06,185 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.610s
+2026-09-21 10:25:28,698 INFO TaskExecutor Qingxiao:click_liberation end 5.050613164901733
+2026-09-21 10:25:28,757 INFO TaskExecutor BaseCombatTask:switch selection result current=Qingxiao(MainDps) target=Mornye(Healer) has_intro=True reason=priority_400
+2026-09-21 10:25:28,757 INFO TaskExecutor BaseCombatTask:switch_next_char Qingxiao(MainDps) -> Mornye(Healer) has_intro True has_sub_dps_intro False current_con 1
+2026-09-21 10:25:28,784 INFO TaskExecutor CombatCheck:target lost try retarget 10
+2026-09-21 10:25:38,836 ERROR TaskExecutor CombatCheck:target_enemy failed, try recheck break out of combat 
+2026-09-21 10:25:38,837 ERROR TaskExecutor BaseCombatTask:combat check not in combat 
+2026-09-21 10:25:40,842 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_feature.<locals>.<lambda> at 0x0000024337ACF420> 2 seconds
+2026-09-21 10:25:40,843 INFO TaskExecutor BaseCombatTask:combat_once out of combat break combat check not in combat
+2026-09-21 10:25:41,615 INFO TaskExecutor TacetTask:start walk_to_treasure
+2026-09-21 10:25:41,644 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-21 10:25:41,765 INFO TaskExecutor FeatureSet:find_one_feature treasure_icon took 123.76ms (check_size: 0.00ms, prepare: 80.88ms, match: 42.89ms, post: 0.00ms)
+2026-09-21 10:25:42,747 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-21 10:25:43,936 INFO TaskExecutor BaseWWTask:do_walk_to_box ended Box(name='Labels.pick_up_f_hcenter_vcenter', x=1222, y=548, width=20, height=20, confidence=56)
+2026-09-21 10:25:43,963 INFO TaskExecutor BaseWWTask:walk_until_f direction w target_text: None
+2026-09-21 10:25:48,063 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-21 10:25:49,146 INFO TaskExecutor TacetTask:info_set current_stamina 0
+2026-09-21 10:25:49,146 INFO TaskExecutor TacetTask:info_set back_up_stamina 240
+2026-09-21 10:25:49,146 INFO TaskExecutor BaseWWTask:使用单倍体力
+2026-09-21 10:25:49,149 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-21 10:25:49,216 WARNING TaskExecutor task:find_one:found [<Labels.cancel_button_hcenter_vcenter: 'cancel_button_hcenter_vcenter'>, <Labels.cancel_button_highlight_hcenter_vcenter: 'cancel_button_highlight_hcenter_vcenter'>] too many 2
+2026-09-21 10:25:49,417 INFO TaskExecutor TacetTask:left_click Labels.cancel_button_hcenter_vcenter (476, 679) after_sleep 2
+2026-09-21 10:25:51,440 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-21 10:25:53,443 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_feature.<locals>.<lambda> at 0x000002436788E340> 2 seconds
+2026-09-21 10:25:53,443 INFO TaskExecutor BaseWWTask:current stamina: -60 must_use completed, no need to use back_up
+2026-09-21 10:26:16,190 INFO TaskExecutor DailyTask:info_set current task claim daily
+2026-09-21 10:26:16,190 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-09-21 10:26:16,722 INFO TaskExecutor DailyTask:info_set current task in main esc=True

@@ -336,9 +336,27 @@ def _stage_evidence_sources(cfg, notifier, log) -> None:
     try:
         from ark_relay import evidence, texts  # noqa: PLC0415
         changed, unreachable = evidence.check_sources()
+        # One upstream change is one notice. Every boot compared again and
+        # re-sent the same change until somebody re-pinned. Remember what was
+        # announced, by the upstream text's fingerprint; a further upstream
+        # change to the same file has a new fingerprint and is sent again.
+        import json  # noqa: PLC0415
+        seen_file = Path(cfg.state_dir) / "evidence-source-notified.json"
+        try:
+            told = json.loads(seen_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            told = {}
+        new = [n for n in changed if told.get(n) != evidence.LAST_SEEN.get(n)]
         if changed:
-            log.warning("上游导出代码变了：%s", "、".join(changed))
-            notifier.send(texts.EVIDENCE_SOURCE_CHANGED, texts.evidence_source_changed_body(changed))
+            log.warning("上游导出代码变了：%s%s", "、".join(changed),
+                        "" if new else "（都已报过，不再重发）")
+        if new:
+            notifier.send(texts.EVIDENCE_SOURCE_CHANGED, texts.evidence_source_changed_body(new))
+            told.update({n: evidence.LAST_SEEN.get(n) for n in new})
+            try:
+                seen_file.write_text(json.dumps(told, ensure_ascii=False), encoding="utf-8")
+            except OSError:
+                log.exception("记不下已报过的上游变化，下次开机可能重报")
         elif unreachable:
             log.info("上游导出代码核对：%d 个文件今天拉不到，明天再比", len(unreachable))
         else:

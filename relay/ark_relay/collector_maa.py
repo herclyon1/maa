@@ -29,6 +29,16 @@ _STAGE_DROPS = re.compile(r"(\S+)\s*掉落统计[:：]")
 # the only thing separating an item from the run counter, so it is required.
 _DROP_ITEM = re.compile(r"^\s*(\S[^:：]*?)\s*[:：]\s*(\d+)\s*\(\+\d+\)\s*$")
 _RUN_TIMES = re.compile(r"^\s*当前次数\s*[:：]\s*(\d+)\s*$")
+# An item whose running total did not move in this block: "酯原料 : 2" with no
+# "(+N)". It is still inside the block. Treating it as the block's end lost
+# every "当前次数" after it: 2026-09-22 21:3x farmed 1-7 21 times and the
+# daily report said x10 (history/2026-09-22/arknights/MAA-17-30-02.log).
+_DROP_ITEM_UNCHANGED = re.compile(r"^\s*(\S[^:：]*?)\s*[:：]\s*(\d+)\s*$")
+# MAA's own statement of which runs a batch covers: "开始行动 11~19 次" /
+# "开始行动 21 次". Runs are numbered across the whole stage, so the highest
+# number seen is how many times the stage was started - the drop blocks'
+# "当前次数" are per batch and a batch can end without one.
+_RUN_SPAN = re.compile(r"开始行动\s*(\d+)(?:\s*~\s*(\d+))?\s*次")
 _SANITY_SPENT = re.compile(r"开始行动.*?-\s*(\d+)\s*理智")
 # AUTO-MAS runs 剿灭 as a separate pass before the day's farming, so every queue
 # produces two records. The short one farms nothing and ends on 0 sanity, which
@@ -64,6 +74,7 @@ def _maa_scan_lines(text: str) -> "tuple[dict[str, dict[str, int]], list[str], i
     medicine = 0
 
     times = 0
+    last_run = 0
     current = ""
     in_block = False
     for line in text.splitlines():
@@ -97,15 +108,24 @@ def _maa_scan_lines(text: str) -> "tuple[dict[str, dict[str, int]], list[str], i
                 name, total = m.group(1), int(m.group(2))
                 per_stage.setdefault(current, {})[name] = total
                 continue
+            elif m := _DROP_ITEM_UNCHANGED.match(line):
+                per_stage.setdefault(current, {})[m.group(1)] = int(m.group(2))
+                continue
             elif not line.strip():
                 continue
             else:
                 in_block = False
+        if m := _RUN_SPAN.search(line):
+            last_run = max(last_run, int(m.group(2) or m.group(1)))
         if m := _SANITY_SPENT.search(line):
             spent += int(m.group(1))
         if m := _MEDICINE.search(line):
             medicine = max(medicine, int(m.group(1)))
 
+    # "当前次数" only says this is a counted farming stage (annihilation prints
+    # none); the count itself comes from the run numbers.
+    if times:
+        times = max(times, last_run)
     return per_stage, stages, spent, medicine, times
 
 

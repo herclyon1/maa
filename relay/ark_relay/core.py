@@ -492,6 +492,8 @@ def _block_okww(raw: dict, finished: datetime) -> tuple[list[str], ...]:
         s = f"波片 {wl}/240" + (f"，备用 {back}" if back is not None else "")
         if not (raw.get("okww_stamina_left_exact") or raw.get("okww_stopped")):
             s += "　※最后一次读数"
+        if mm := raw.get("okww_stamina_mismatch"):
+            s += f"（体力读数对不上：脚本读成 {mm[0]}，结算页写剩余 {mm[1]}，按结算页）"
         if full := _sanity_full(raw.get("sanity_full_at"), finished):
             s += "，" + full
         left.append(s)

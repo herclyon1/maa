@@ -244,7 +244,20 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
         capped = "收取物资次数已达到上限" in text or bool(re.search(r"本周剩余可收取次数[：:]\s*0\s*/", text))
         skipped = "结晶波片不足，取消并跳过本次周本" in text or "本周周本次数已领满" in text
         ok_ = claimed or capped or skipped
-        out.append(Check("周本领到了奖励", ok_, "" if ok_ else "周本打了，但没有领奖那一步：奖励没拿到"))
+        # 「info_set Teleport to Boss Weekly Challenge 0」 is logged before the
+        # book is even opened (FarmEchoTask.teleport_to_configured_boss; the 0
+        # is the boss's index), so it does not mean fought. Getting in is
+        # 「teleport_to_boss prepared as …」 (FarmEchoTask.py:240). 2026-09-21
+        # never got in and was reported as fought-but-unclaimed.
+        entered = "teleport_to_boss prepared as" in text
+        if ok_:
+            out.append(Check("周本领到了奖励", True, ""))
+        elif not entered:
+            why = ("选了等级后没等到「开启挑战」" if re.search(r"找不到开启挑战|都没进开启挑战", text)
+                   else "传送去 Boss 没成")
+            out.append(Check("周本", False, f"没进本，一次没打：{why}"))
+        else:
+            out.append(Check("周本领到了奖励", False, "周本打了，但没有领奖那一步：奖励没拿到"))
 
     if expect_stamina:
         if _STAMINA_SHORT in text and not _STAMINA_SPENT.search(text):
@@ -444,6 +457,13 @@ def maa_checks(text: str) -> list[Check]:
         if kind == "Start":
             started[chain] += 1
         else:
+            # A stop receipt for a chain that already completed is not an
+            # abort: 2026-09-22 21:47:10.864 "TaskChainCompleted CloseDown" +
+            # "AllTasksCompleted", then 0.5 s later "TaskChainStopped CloseDown"
+            # (asst.log in report_09-22_21-47-18_part01.zip) - the game had
+            # already been closed and the report said "被中止".
+            if kind == "Stopped" and ended[chain] >= started[chain] > 0:
+                continue
             ended[chain] += 1
             if kind in ("Error", "Stopped"):
                 bad.append(f"{chain}({'报错' if kind == 'Error' else '被中止'})")

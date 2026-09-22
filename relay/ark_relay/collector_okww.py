@@ -14,6 +14,7 @@ wording word for word.
 """
 from __future__ import annotations
 
+import bisect
 import logging
 import re
 from pathlib import Path
@@ -162,7 +163,12 @@ _OKWW_EXC_ZH = {
     "TimeoutError": "超时", "TaskDisabledException": "任务被关掉了",
 }
 _OKWW_MSG_ZH = (
-    ("farm 4c error", "打完 Boss 领完奖之后没能退出副本"),
+    # 「farm 4c error, try handle monthly card」 is FarmEchoTask.run's catch-all
+    # around do_run (FarmEchoTask.py:106-107): it names no step, so it is not
+    # translated here - _okww_error reads the exception under it instead. It
+    # used to read 「打完 Boss 领完奖之后没能退出副本」, which on 2026-09-21 was
+    # said of a run that never got into the realm (OK-WW-05-33-53.log:1172-1177).
+    ("Teleport to boss failed", "传送去打 Boss 没成（图鉴传送、选关卡、进本其中一步没过），没进本，一次没打"),
     ("can't find gray_book_boss", "按 F2 打不开图鉴——先核对键位是不是游戏默认"),
     ("NightmareNestTask Failed", "打了但没打成"),
     ("Logger.error() got an unexpected keyword", "旧版补丁自己的日志调用写错（已撤回）"),
@@ -265,6 +271,10 @@ def _okww_error(text: str) -> str:
     nxt = heads[heads.index(head) + 1].start() if heads.index(head) + 1 < len(heads) else len(text)
     excs = _OKWW_EXC_LINE.findall(text[head.end():nxt])
     exc = excs[-1][0].rsplit(".", 1)[-1] if excs else ""
+    if "farm 4c error" in msg:
+        # The catch-all sentence (see _OKWW_MSG_ZH): the reason is the exception
+        # printed under it, e.g. 「RuntimeError: Teleport to boss failed」.
+        msg = excs[-1][1].lstrip(": ").strip() if excs else ""
     # The current task upstream recorded itself is more reliable than the
     # wrapper layer's class name: `run_task_by_class <class …>` only says who
     # called it, while `current task` says which step is being done.
@@ -347,6 +357,9 @@ def _okww_say(task: str, msg: str, exc: str, text: str = "", at: int = 0) -> str
         raw = " ".join((msg or "").split())[:110] or exc or "（连原文都没抓到）"
         return f"{who}：中继还不认识这条错，原文照抄——「{raw}」"
     what = msg_zh or exc_zh
+    if "Teleport to boss failed" in msg and text and re.search(
+            r"找不到开启挑战|都没进开启挑战", text[max(0, at - 3000):at]):
+        what = "选了等级后没等到「开启挑战」，没进本，一次没打"
     # The 「wait_until timeout … N seconds」line right before the traceback says
     # how long it waited
     before = text[max(0, at - 600):at] if text else ""
@@ -456,10 +469,16 @@ def _okww_stamina_fields(text: str, out: dict) -> "tuple[list[int], int]":
     (the series of readings, the entry count) for the checks that follow.
     """
     readings = [int(m.group(1)) for m in _OKWW_STAMINA.finditer(text)]
+    fixes = _okww_settled(text)
+    if wrong := [(readings[i], v) for i, v in sorted(fixes.items()) if readings[i] != v]:
+        out["okww_stamina_mismatch"] = wrong[-1]
+    readings = [fixes.get(i, r) for i, r in enumerate(readings)]
     # The wrap-up line 「current stamina: 8 not enough to continue」is the last
     # reading; leaving it out loses the final run's cost (recorded 2026-09-02:
     # 168 -> 88 -> 8 came out as only 80).
     tail = [int(x) for x in _OKWW_STAMINA_END.findall(text)]
+    if readings and len(readings) - 1 in fixes:
+        tail = []      # the wrap-up line repeats the reading the dialog corrected
     series = readings + tail[-1:]
     spent = sum(a - b for a, b in zip(series, series[1:]) if a > b)
     if spent:
@@ -516,8 +535,33 @@ def _okww_farm_fields(text: str, out: dict) -> None:
             out["okww_farm_drops"] = {reward: per * (2 * double + single)}
 
 
+_OKWW_SETTLE_LEFT = re.compile(r"体力读字原文领奖框（第 \d+ 次）: [^\n]*?剩余\s*[:：]?\s*(\d+)")
+
+
+def _okww_settled(text: str) -> dict:
+    """{index of an `info_set current_stamina` reading: 剩余 N on the same dialog}.
+
+    2026-09-21 10:25:49 (OK-WW-05-33-53.log:1524-1532): the tacet settlement
+    dialog showed 「挑战成功……剩余180」 (screenshot 10-25-53.444_tacet_drops),
+    OK-WW read the bar in that dialog as 0 with 240 in reserve, and the report
+    said 波片 0/240 while 180 were left unspent. The M7 get_stamina override
+    logs the dialog's raw text before upstream stores its reading, so the
+    settlement's own 剩余 is paired with the reading that follows it and wins.
+    """
+    starts = [m.start() for m in _OKWW_STAMINA.finditer(text)]
+    fixes = {}
+    for m in _OKWW_SETTLE_LEFT.finditer(text):
+        i = bisect.bisect_left(starts, m.end())
+        if i < len(starts):
+            fixes[i] = int(m.group(1))
+    return fixes
+
+
 def _okww_stamina_left(text: str, out: dict, readings: list) -> None:
-    if end := _OKWW_STAMINA_END.findall(text):
+    if readings and len(readings) - 1 in _okww_settled(text):
+        out["okww_stamina_left"] = readings[-1]
+        out["okww_stamina_left_exact"] = True
+    elif end := _OKWW_STAMINA_END.findall(text):
         out["okww_stamina_left"] = int(end[-1])
         out["okww_stamina_left_exact"] = True
     elif readings:
@@ -611,8 +655,15 @@ def _okww_steps(text: str, entries: int) -> list[str]:
     if "Teleport to Boss Weekly Challenge" in text:
         claims = text.count("周本领奖：已点确认")
         left = [int(m) for m in re.findall(r"本周剩余可收取次数[：:]\s*(\d+)\s*/", text)]
-        if "farm 4c error" in text:
-            steps.append(f"周本（领了 {claims} 次，然后没能退出副本）" if claims
+        if "本周周本次数已领满" in text and not claims:
+            # Read 0/3 before entering and skipped: full, but not by this run
+            # (2026-09-22 09:19:39: 3/3 the day before, no OK-WW run in between,
+            # fought by hand - the user's own words, M3).
+            steps.append("周本（已完成：进本前读到本周 0/3，早已领满，这一趟没领）")
+        elif "Teleport to boss failed" in text and not claims:
+            steps.append("周本（没进本，一次没打，原因见失败于）")
+        elif "farm 4c error" in text:
+            steps.append(f"周本（领了 {claims} 次，之后出错，原因见失败于）" if claims
                          else "周本（没做完，原因见失败于）")
         elif "收取物资次数已达到上限" in text or (left and left[-1] == 0 and not claims):
             steps.append("周本（已完成，本周已领满）")
