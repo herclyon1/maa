@@ -34,9 +34,10 @@ every other day, and each copy would have gone stale the first time they touched
 method - the pin would have said so, but the change would have stopped happening.
 Hooking one call deeper removes the exposure: 「skip the weekly boss when waveplates
 are short」 used to copy a 28-line teleport method and now replaces the three-line
-challenge button it calls. Twelve of the fourteen bindings are wrappers that run
-upstream's own body inside them; only `revive_action` and `click_team_challenge`
-replace it, and both are pinned to its hash.
+challenge button it calls. Most bindings are wrappers that run upstream's own body
+inside them; only `revive_action`, `click_team_challenge` and `get_stamina` (M7,
+2026-09-23: an unread 数/数 became 「0 current」) replace it, and each is pinned to
+its hash.
 
 `test_okww_overlay_copies.py` enforces the rule: a wrapper must call the original, a
 replacement must be pinned, and the names of the old copies must not come back.

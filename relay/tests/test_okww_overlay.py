@@ -147,6 +147,87 @@ def _fresh(self):
 check("正文对得上就照贴", Upstream().still_here(), "对得上就贴")
 check("没有被跳过的", ns["_skipped"], [])
 
+print("\n[体力读数：数/数 没读到是「没读到」，不是 0]")
+parse = ns["_parse_stamina"]
+# The strip as OCR reads it on the 2026-09-21 screenshots (10-20-43.029 and two more):
+check("09-21 截图原样", parse(["55", "240/240", "+"]), (240, 55))
+check("240/240 拆成两块也拼得回", parse(["55", "240", "/240"]), (240, 55))
+check("拆成三块也拼得回", parse(["55", "240", "/", "240"]), (240, 55))
+check("备用只取数/数左边那块，右边的数不覆盖", parse(["55", "240/240", "120"]), (240, 55))
+check("左边不是纯数字就没有备用", parse(["+", "120/240"]), (120, 0))
+check("一块数/数都拼不出来 = 没读到（上游这里当 0）", parse(["240", "55"]), None)
+check("什么都没读到", parse([]), None)
+check("真读到 0/240 就是 0", parse(["0/240"]), (0, 0))
+
+
+class _Box:
+    def __init__(self, name, x=0, y=0, width=10, height=10):
+        self.name, self.x, self.y, self.width, self.height = name, x, y, width, height
+
+    def __str__(self):
+        return f"Box(name='{self.name}')"
+
+
+class FakeTask:
+    """Plays back a script of screens; records what the override does."""
+
+    def __init__(self, frames, start_after=None, strip=None):
+        self.frames, self.start_after, self.strip = frames, start_after, strip or []
+        self.clicks, self.logs, self.shots, self.slept = [], [], [], 0
+
+    def wait_feature(self, name, **kw):
+        return self.start_after is not None and len(self.clicks) >= self.start_after
+
+    def box_of_screen(self, *xy):
+        return xy
+
+    def ocr(self, box=None):
+        return self.frames(box)
+
+    def wait_ocr(self, *box, **kw):
+        return self.strip.pop(0) if self.strip else []
+
+    def click_box(self, b, after_sleep=0):
+        self.clicks.append((b.x + b.width // 2, b.y + b.height // 2))
+
+    def screenshot(self, name):
+        self.shots.append(name)
+
+    def log_info(self, msg):
+        self.logs.append(msg)
+
+    def sleep(self, s):
+        self.slept += s
+
+
+solo_btn = _Box("单人挑战", 1474, 965, 124, 36)
+still_solo = lambda box: [solo_btn]  # noqa: E731
+confirm = ns["_confirm_solo"]
+t = FakeTask(still_solo, start_after=0)
+check("开启挑战已经在：一下都不补", (confirm(t), t.clicks), (0, []))
+t = FakeTask(still_solo, start_after=1)
+check("09-21 那种：仍是单人挑战就点它读到的位置", (confirm(t), t.clicks), (1, [(1536, 983)]))
+check("补点前截图", t.shots, ["solo_retry_1"])
+check("补点写日志", any("补点第 1 次 (1536,983)" in m for m in t.logs), True)
+t = FakeTask(still_solo)
+check("最多补 3 次", (confirm(t), len(t.clicks)), (3, 3))
+check("3 次都没进要说", any("3 次都没进开启挑战" in m for m in t.logs), True)
+t = FakeTask(lambda box: [_Box("结晶波片不足，无法获取奖励")])
+check("波片不足弹窗不补点，交给原来那段", (confirm(t), t.clicks), (0, []))
+t = FakeTask(lambda box: [_Box("别的画面")] if box == (0.0, 0.0, 1.0, 1.0) else [])
+check("屏上没有单人挑战不乱点", (confirm(t), t.clicks), (0, []))
+
+read = ns["_read_stamina"]
+t = FakeTask(None, strip=[[_Box("55", 1351), _Box("/240", 1600), _Box("240", 1551)]])
+check("按横坐标排好再拼", read(t, False), (240, 55))
+check("读字原文进日志", any("['55', '240', '/240']" in m for m in t.logs), True)
+t = FakeTask(None, strip=[[_Box("240")], [_Box("55"), _Box("240/240", 5)]])
+check("领奖框没读到隔 1 秒再读", (read(t, True), t.slept), ((240, 55), 1))
+t = FakeTask(None, strip=[[_Box("240")]])
+check("F2 书页只读一次，没读到交回上游（-1 分支）", (read(t, False), t.slept), (None, 0))
+t = FakeTask(None, strip=[])
+check("领奖框读 5 次都没有就算没读到", (read(t, True), t.slept, t.shots), (None, 4, ["stamina_error"]))
+
 print("\n[母本指路文件：改动文件靠它读「只刷落渊南丘」]")
 # ok-script rewrites configs/ at load and drops the key (09-10..09-13 farmed all
 # four nests), so the value is only ever readable from AUTO-MAS's master.
