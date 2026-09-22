@@ -85,7 +85,7 @@ class Pin:
 
 
 _HEADER = {
-    ".cs": r"^\s*(?:public|private|internal|protected|static|\s)*[\w<>\[\]?]+\s+{name}\s*(?:<[^>]*>)?\s*\(",
+    ".cs": r"^\s*(?:public|private|internal|protected|static|async|override|virtual|sealed|\s)*[\w<>\[\]?]+\s+{name}\s*(?:<[^>]*>)?\s*\(",
     ".rs": r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+{name}\b",
     ".py": r"^\s*def\s+{name}\s*\(",
 }
@@ -152,8 +152,14 @@ PINS = (
         "src/MaaWpfGui/ViewModels/UserControl/Settings/IssueReportUserControlModel.cs",
         # Re-pinned 2026-09-13: upstream 4f144457 (09-12 14:55Z) only swapped the
         # static Log calls for a class-scoped logger; GenerateSupportPayload is unchanged.
-        "4f1444577a17f99037aa385c488bef5b70e23f8d",
-        "4ecfc6390003aa63d2177fe5f2a75e1568cee2881cc88e5b8ed3ee4be6d98093",
+        # Re-pinned 2026-09-23: ba095571/313516f1/7c4edb83 (09-20 17:18Z) moved the
+        # copy-and-zip body into Task.Run behind an IsGeneratingSupportPayload flag;
+        # the files copied, the part01/partNN split, 20 MB parts, 3-day window and
+        # names are line-for-line the same (whitespace-normalised diff of the body),
+        # so the relay's mirror still matches. The C# header pattern now accepts
+        # `async`: without it the new signature hashed as <missing ...>.
+        "7c4edb832f96a45fc9b8abccd82699a4f11e381c",
+        "ba7a983cbead8cf1e3c7f5475483b869e89126286fc281ca033b73da40028e31",
         ("GenerateSupportPayload", "CopyDirectoryIfExists")),
     Pin("OK-WW Export Logs（ok-script StartTab.py）", "ok-oldking/ok-script", "master",
         "ok/ui/qt/start/StartTab.py",
@@ -171,15 +177,23 @@ def check_sources(fetch=None, timeout: int = 30) -> tuple[list[str], list[str]]:
             return r.read()
     fetch = fetch or _get
     changed, unreachable = [], []
+    LAST_SEEN.clear()
     for pin in PINS:
         try:
             raw = fetch(JSDELIVR.format(repo=pin.repo, branch=pin.branch, path=pin.path))
         except (urllib.error.URLError, OSError, ValueError):
             unreachable.append(pin.name)
             continue
-        if hashlib.sha256(pinned_text(pin, raw)).hexdigest() != pin.sha256:
+        seen = hashlib.sha256(pinned_text(pin, raw)).hexdigest()
+        LAST_SEEN[pin.name] = seen
+        if seen != pin.sha256:
             changed.append(pin.name)
     return changed, unreachable
+
+
+# Fingerprint of each pin as last fetched by check_sources(), so the boot stage
+# can tell "the same change as yesterday" from a new one.
+LAST_SEEN: dict[str, str] = {}
 
 
 # ------------------------------------------------------ MaaEnd (MXU export)

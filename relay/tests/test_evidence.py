@@ -146,7 +146,7 @@ check("拉不到只算「够不着」，不算变了", (changed, len(unreachable
 check("三处钉的都有提交号和哈希", all(len(p.commit) == 40 and len(p.sha256) == 64 for p in ev.PINS))
 
 print("\n[只钉打包那几个函数：别处改一行日志不报，函数体改一个字才报]")
-# Fixture copies of the three upstream files as pinned (MAA at 4f144457, 09-12).
+# Fixture copies of the three upstream files as pinned (MAA at 7c4edb83, 09-20).
 FXP = Path(__file__).resolve().parent / "fixtures" / "source-pins"
 files = {"IssueReportUserControlModel.cs": "MAA 生成日志压缩包（IssueReportUserControlModel.cs）",
          "file_ops.rs": "MaaEnd 导出（MXU file_ops.rs）",
@@ -172,7 +172,9 @@ inside = cs.replace("const int PartSize = 20 * 1024 * 1024;", "const int PartSiz
 check("分卷大小改了（在函数体里）", inside != cs)
 changed, _ = ev.check_sources(fetch=lambda url: inside.encode() if url.endswith(".cs") else from_fixtures(url))
 check("函数体一变就报", changed, [files["IssueReportUserControlModel.cs"]])
-renamed = cs.replace("public void GenerateSupportPayload()", "public void GenerateSupportPayload2()", 1)
+check("async 签名也认得出（09-20 起是 public async Task）", "<missing" not in ev.region_text(cs, "x.cs", ("GenerateSupportPayload",)))
+renamed = cs.replace("public async Task GenerateSupportPayload()", "public async Task GenerateSupportPayload2()", 1)
+check("改名替换生效", renamed != cs)
 changed, _ = ev.check_sources(fetch=lambda url: renamed.encode() if url.endswith(".cs") else from_fixtures(url))
 check("函数被改名也报（缺失标记进哈希）", changed, [files["IssueReportUserControlModel.cs"]])
 py = (FXP / "StartTab.py").read_text(encoding="utf-8")
