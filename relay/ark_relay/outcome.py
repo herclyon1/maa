@@ -441,6 +441,13 @@ def maa_checks(text: str) -> list[Check]:
         if kind == "Start":
             started[chain] += 1
         else:
+            # A stop receipt for a chain that already completed is not an
+            # abort: 2026-09-22 21:47:10.864 "TaskChainCompleted CloseDown" +
+            # "AllTasksCompleted", then 0.5 s later "TaskChainStopped CloseDown"
+            # (asst.log in report_09-22_21-47-18_part01.zip) - the game had
+            # already been closed and the report said "被中止".
+            if kind == "Stopped" and ended[chain] >= started[chain] > 0:
+                continue
             ended[chain] += 1
             if kind in ("Error", "Stopped"):
                 bad.append(f"{chain}({'报错' if kind == 'Error' else '被中止'})")
