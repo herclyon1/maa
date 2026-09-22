@@ -2,7 +2,7 @@
 /* 游戏机遥控。
    一根管道：ntfy 上一个信箱。手机写指令，机器写状态。零轮询——
    机器那头挂长连接，这头只在你按刷新时发一条 ping。
-   信箱名和 PIN 只存在这台手机里，不在这份代码里。 */
+   信箱名和 PIN 不写进这份代码：手机上存在本机 localStorage；Mac 上的副本在 ~/.config/ark/密钥总表.md（A48）。 */
 const NTFY = "https://ntfy.sh";
 const LS = "ark-remote-cfg";
 const $ = (s) => document.querySelector(s);
