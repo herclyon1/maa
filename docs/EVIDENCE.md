@@ -160,3 +160,66 @@ taken when the record lands, and AUTO-MAS writes records at the end of the
 whole script run, so after a retry it shows the state after the retry, not the
 failure. A picture that cannot be taken (no interactive session, a Mac, a
 test) is simply absent; the bundle is otherwise unchanged.
+
+## The diagnostics bucket (since 2026-09-23)
+
+A **second, separate** bucket, `ark-diag-<appid>` (ap-shanghai, built and measured
+2026-09-23 04:0x by `scripts/mac/cos-setup.py --diag`). It holds the records the
+phone page writes when he taps 诊断记录 while he is out: one JSON object per tap,
+PUT from the browser with **no credentials at all** under the `diag/` prefix.
+
+It is not the evidence bucket, and the reason is the machine: the evidence bucket
+is the first door of the relay's self-update (`relay/ark_relay/selfupdate.py:117`
+`COS_PREFIX = "relay"`, `:129-134` the same `COS_SECRET_ID/KEY/BUCKET/REGION`
+client; the GitHub fallbacks are off by default), so it decides what code the game
+machine installs. Anonymous writes never go near it.
+
+Three settings, and nothing else (readbacks measured 2026-09-23):
+
+| setting | body | readback |
+|---|---|---|
+| lifecycle | one rule, whole bucket (`<Prefix/>` empty), `<Days>14</Days>` | `GET /?lifecycle` 200, rule `diag-expire-14d` |
+| policy | `qcs::cam::anyone:anyone` → `name/cos:PutObject` on `qcs::cos:ap-shanghai:uid/<appid>:ark-diag-<appid>/diag/*` | `GET /?policy` 200, COS added its own `Sid` |
+| cors | `https://herclyon1.github.io`, method `PUT`, `ExposeHeader` ETag, `MaxAgeSeconds` 600 | `GET /?cors` 200 (COS appends `<ResponseVary>false</ResponseVary>`) |
+
+`OPTIONS` is not a CORS `AllowedMethod`: the enum is 「PUT、GET、POST、DELETE、HEAD」
+(https://cloud.tencent.com/document/product/436/8279). COS answers the preflight
+itself once a rule matches - measured below. `PUT Bucket policy` answers **204 No
+Content** on success, not 200 (官方响应示例「HTTP/1.1 204 No Content」,
+https://cloud.tencent.com/document/product/436/8282); lifecycle and cors answer 200.
+
+The six anonymous measurements `cos-setup.py --diag [--check]` runs every time
+(2026-09-23 04:0x, all six as expected):
+
+| measurement | reading |
+|---|---|
+| anonymous PUT into `diag/` | 200, `Access-Control-Allow-Origin: https://herclyon1.github.io` |
+| anonymous PUT outside `diag/` | 403 AccessDenied |
+| anonymous GET of the object just written | 403 AccessDenied |
+| anonymous list of the bucket | 403 AccessDenied |
+| preflight OPTIONS from our origin | 200, allow-methods `PUT`, max-age 600 |
+| preflight OPTIONS from another origin | 403 AccessForbidden |
+
+Only `cos:PutObject` is granted, so **a browser `<form>` upload would be refused**
+(that is `cos:PostObject`, which is deliberately not in the policy) - the page has
+to PUT. The page side must also give every key a long random suffix
+(`diag/<date>-<random>.json`): anyone can write into that prefix, and a guessable
+key can be overwritten.
+
+**Pulling the records: `scripts/mac/diag-pull.py`** (lists `diag/` with the signed
+key, downloads everything not already on disk into `~/Claude/ark-diag/`, `--list`
+to look without downloading). End-to-end measured 2026-09-23 04:06: an anonymous
+PUT of a 54-byte record, then `diag-pull.py` fetched it to
+`~/Claude/ark-diag/2026-09-23-endtoendprobe01.json` byte-for-byte; the probe was
+then deleted with a signed DELETE (204).
+
+**A record that is not pulled within 14 days is gone** - the lifecycle rule deletes
+every object 14 days after it was written, and nobody but us can read them back.
+Pull after he reports anything, and do not let a record sit in the bucket for two
+weeks.
+
+Deliberately **not** configured on this bucket (the owner's 2026-09-23 instruction:
+the only threat we defend against is tampering with what the game machine installs,
+which lives in the other bucket): no hotlink/Referer whitelist, no cloud-monitor
+alarms, no request-rate cap, no content-length cap. `COS_DIAG_BUCKET` in
+`~/.config/ark/push.env` is what both scripts read.
