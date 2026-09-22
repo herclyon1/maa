@@ -30,7 +30,7 @@ bucket is the first door of the machine's self-update (relay/ark_relay/selfupdat
 may be allowed to write there. The diagnostics bucket carries three settings and
 nothing else:
 
-* lifecycle - one rule over the whole bucket, objects deleted after 14 days;
+* lifecycle - one rule over the whole bucket, objects deleted after 7 days;
 * policy    - anonymous identity (`qcs::cam::anyone:anyone`) may call
               `name/cos:PutObject` and only under the `diag/` prefix. No read, no
               list, no delete, no form upload (`cos:PostObject` is NOT granted -
@@ -70,8 +70,8 @@ LIFECYCLE = """<LifecycleConfiguration>
 
 
 DIAG_LIFECYCLE = """<LifecycleConfiguration>
-  <Rule><ID>diag-expire-14d</ID><Filter><Prefix></Prefix></Filter><Status>Enabled</Status>
-    <Expiration><Days>14</Days></Expiration></Rule>
+  <Rule><ID>diag-expire-7d</ID><Filter><Prefix></Prefix></Filter><Status>Enabled</Status>
+    <Expiration><Days>7</Days></Expiration></Rule>
 </LifecycleConfiguration>"""
 
 DIAG_CORS = """<CORSConfiguration>
@@ -203,7 +203,7 @@ def diag(sid: str, skey: str, appid: str, region: str, e: dict, check_only: bool
         else:
             print("建桶：桶已经在了")
         for name, params, payload, ctype in (
-                ("生命周期（全桶一条，14 天）", "lifecycle", DIAG_LIFECYCLE.encode(), ""),
+                ("生命周期（全桶一条，7 天）", "lifecycle", DIAG_LIFECYCLE.encode(), ""),
                 ("桶策略（匿名只能 PUT diag/）", "policy", diag_policy(appid, region, bucket).encode(),
                  "application/json"),
                 ("CORS（只放手机页那个来源的 PUT）", "cors", DIAG_CORS.encode(), ""),

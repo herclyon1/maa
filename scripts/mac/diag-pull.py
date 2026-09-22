@@ -11,9 +11,10 @@ diagnostics bucket (COS_DIAG_BUCKET in ~/.config/ark/push.env, built by
 script is the reader, and it signs with the COS key the same way
 relay/ark_relay/evidence.py does.
 
-**The bucket deletes every object 14 days after it is written** (one lifecycle
-rule over the whole bucket). So a record that is not pulled within 14 days is
-gone for good; files that land here stay forever.
+**The bucket deletes every object 7 days after it is written** (one lifecycle
+rule over the whole bucket; the owner set the number on 2026-09-23: 「正常来说你们
+第一天就该修复了」). So a record that is not pulled within 7 days is gone for
+good; files that land here stay forever.
 
 Files land in ~/Claude/ark-diag/<the object key under diag/>. A key already on
 disk is never fetched twice.
@@ -111,7 +112,7 @@ def main() -> int:
         got += len(body)
         new += 1
     if "--list" not in sys.argv:
-        print(f"新取回 {new} 条、{got} 字节，存在 {DEST}/。桶里的原件写入满 14 天就会被自动删掉。")
+        print(f"新取回 {new} 条、{got} 字节，存在 {DEST}/。桶里的原件写入满 7 天就会被自动删掉。")
     return 0
 
 

@@ -178,7 +178,7 @@ Three settings, and nothing else (readbacks measured 2026-09-23):
 
 | setting | body | readback |
 |---|---|---|
-| lifecycle | one rule, whole bucket (`<Prefix/>` empty), `<Days>14</Days>` | `GET /?lifecycle` 200, rule `diag-expire-14d` |
+| lifecycle | one rule, whole bucket (`<Prefix/>` empty), `<Days>7</Days>` | `GET /?lifecycle` 200, rule `diag-expire-7d` |
 | policy | `qcs::cam::anyone:anyone` → `name/cos:PutObject` on `qcs::cos:ap-shanghai:uid/<appid>:ark-diag-<appid>/diag/*` | `GET /?policy` 200, COS added its own `Sid` |
 | cors | `https://herclyon1.github.io`, method `PUT`, `ExposeHeader` ETag, `MaxAgeSeconds` 600 | `GET /?cors` 200 (COS appends `<ResponseVary>false</ResponseVary>`) |
 
@@ -213,10 +213,11 @@ PUT of a 54-byte record, then `diag-pull.py` fetched it to
 `~/Claude/ark-diag/2026-09-23-endtoendprobe01.json` byte-for-byte; the probe was
 then deleted with a signed DELETE (204).
 
-**A record that is not pulled within 14 days is gone** - the lifecycle rule deletes
-every object 14 days after it was written, and nobody but us can read them back.
-Pull after he reports anything, and do not let a record sit in the bucket for two
-weeks.
+**A record that is not pulled within 7 days is gone** - the lifecycle rule deletes
+every object 7 days after it was written, and nobody but us can read them back.
+The owner set that number on 2026-09-23 (「正常来说你们第一天就该修复了」): a record
+is worth pulling the day he reports it, and one that has sat untouched for a week
+has already failed its purpose. Pull as soon as he reports anything.
 
 Deliberately **not** configured on this bucket (the owner's 2026-09-23 instruction:
 the only threat we defend against is tampering with what the game machine installs,
