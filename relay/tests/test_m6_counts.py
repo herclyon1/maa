@@ -6,9 +6,13 @@
 * MaaEnd: five runs read 237/158/78/38/38/39; median step 79 gave "395"
   for 5 x 80 = 400.
 """
+import os
 import sys, pathlib, tempfile
+from datetime import datetime, timedelta
+from unittest import mock
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from ark_relay import collector_maa, collector_maaend
+from ark_relay import collector_maa, collector_maaend, plan, annihilation
+from ark_relay.config import SERVER_TZ
 
 fails = []
 
@@ -61,7 +65,6 @@ chk("终末地 09-22 理智", collector_maaend._maaend_farm(end).get("maaend_san
 
 # plan: gathering routes live under per-region keys since MaaEnd split them
 # (mxu-MaaEnd.json 2026-09-23: ValleyIV rare 5 + Wuling rare 12 = 17 walked 09-21)
-from ark_relay import plan, annihilation  # noqa: E402
 ov = {
     "AutoCollectValleyIV": {"type": "switch", "value": True},
     "AutoCollectValleyIVRareRoutes": {"caseNames": ["Route4", "Route5", "Route6", "Route13", "Route14"]},
@@ -76,10 +79,6 @@ chk("采集路线 关掉的区不算", plan._collect_route_count(ov), 5)
 chk("采集路线 旧键仍认", plan._collect_route_count({"AutoCollectRoutes": {"caseNames": ["a", "b"]}}), 2)
 
 # plan: Sunday's plan for Monday must say annihilation reopens (relay.log 09-21 08:49:00)
-import os
-from datetime import datetime, timedelta
-from unittest import mock
-from ark_relay.config import SERVER_TZ
 with tempfile.TemporaryDirectory() as d:
     os.environ["ARK_STATE_DIR"] = d
     sun = datetime(2026, 9, 20, 21, 0, tzinfo=SERVER_TZ)
