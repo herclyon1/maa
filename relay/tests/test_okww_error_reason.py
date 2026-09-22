@@ -55,7 +55,7 @@ d = tmpdir()
 print("[今天的形状：开头窗口连不上、后来跑了 41 分钟、倒在周本]")
 t = collector.parse_okww_log(d / "today.log")
 check("不是「进不了游戏」", t.get("okww_unreachable"), None)
-check("真实原因是人话", t.get("okww_error"), "周本：打完 Boss 领完奖之后没能退出副本")
+check("真实原因是人话", t.get("okww_error"), "周本：等一个画面没等到（等了 10 秒）")
 import re as _re  # noqa: E402
 check("通知字段里除 Boss 外不许有英文", bool(_re.search(r"[A-Za-z]", (t.get("okww_error") or "").replace("Boss", ""))), False)
 
@@ -71,7 +71,7 @@ h = d / "2026-09-07" / "wuwa"; h.mkdir(parents=True)
 (h / "OK-WW-05-19-17.log").write_text(TODAY, encoding="utf-8")
 rec = collector.parse_record(h / "OK-WW-05-19-17.json", d)
 check("判失败", rec.ok, False)
-check("失败于写真实原因", rec.failed_tasks, ["周本：打完 Boss 领完奖之后没能退出副本"])
+check("失败于写真实原因", rec.failed_tasks, ["周本：等一个画面没等到（等了 10 秒）"])
 check("不标 unreachable", rec.raw.get("okww_unreachable"), None)
 
 print("[没见过的原文、认识的异常：按异常写具体的，带等了多久]")

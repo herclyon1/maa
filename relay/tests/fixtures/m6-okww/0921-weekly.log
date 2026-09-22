@@ -1,0 +1,106 @@
+2026-09-21 10:20:28,277 INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0
+2026-09-21 10:20:28,278 INFO TaskExecutor FarmEchoTask:info_set current task wait main esc=True
+2026-09-21 10:20:28,804 INFO TaskExecutor FarmEchoTask:info_set current task in main esc=True
+2026-09-21 10:20:28,804 INFO TaskExecutor FarmEchoTask:click f2 to open the book
+2026-09-21 10:20:32,853 INFO TaskExecutor FarmEchoTask:send f2 key to open
+2026-09-21 10:20:33,917 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=86)
+2026-09-21 10:20:36,321 INFO TaskExecutor FarmEchoTask:left_click gray_book_boss (76, 321) after_sleep 1.5
+2026-09-21 10:20:37,822 INFO TaskExecutor FarmEchoTask:open_boss_book zhange
+2026-09-21 10:20:38,624 INFO TaskExecutor FarmEchoTask:left_click zhange (460, 658) after_sleep 2
+2026-09-21 10:20:41,349 INFO TaskExecutor FarmEchoTask:left_click boss_proceed (1824, 416) after_sleep 1
+2026-09-21 10:20:42,376 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-21 10:20:42,436 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-21 10:20:42,490 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-21 10:20:43,126 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：3/3_0.99, x60_0.79]
+2026-09-21 10:20:43,180 INFO TaskExecutor FarmEchoTask:周本名称原文: [千傀重楼_1.00]
+2026-09-21 10:20:44,821 INFO TaskExecutor FarmEchoTask:left_click 推荐等级90 (281, 609) after_sleep 1
+2026-09-21 10:20:58,026 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_click_feature.<locals>.<lambda> at 0x000002436788E200> 10 seconds
+2026-09-21 10:20:58,624 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [失坠困咎之庭_1.00, 55_1.00, 240/240+_0.99, 推荐等级40_1.00, 千傀重楼_1.00, 吸收了咎庭建筑组成的巨大机傀。与其战斗时，能感_1.00, 推荐等级50_1.00, 受到其似乎被某种执念所束缚_1.00, 推荐等级60_1.00, 挑战详情_1.00, Q_0.91, 该敌人导电伤害抗性提高。_1.00, 推荐等级70_1.00, 该敌人湮灭伤害抗性提高。_1.00, 千傀重楼的【墙甲】，【左臂】，【头部】部位可被破_1.00, 推荐等级80_1.00, 坏。【墙甲】被破坏时，千傀重楼受到的共振度削减提_0.98, 高；【左臂】被破坏时，千傀重楼造成的伤害将暂时降_0.98, 低；【头部】被破坏时，千傀重楼将被累积大量偏谐值。_1.00, 推荐等级90_1.00, 千傀重楼偏谐值上限较高。千傀重楼处于集谐·偏移状态_0.99, 下，被谐度破坏命中时，额外获得2层【集谐·干涉】。_0.97, 奖励预览_1.00, 450_1.00, 本周剩余可收取次数：3/3_1.00, ×60_0.87, 单人挑战_1.00, 特征码：119403610_0.96]
+2026-09-21 10:20:58,644 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 220, in teleport_to_configured_boss_and_prepare
+    is_team = self.teleport_to_configured_boss()
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\ok_tasks\ark_overrides.py", line 257, in teleport_to_configured_boss
+    return outer(self)
+           ^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 264, in teleport_to_configured_boss
+    self.click_team_challenge()
+  File "D:\ark\okww\data\apps\ok-ww\working\ok_tasks\ark_overrides.py", line 383, in click_team_challenge
+    self.wait_click_feature("team_start_challenge", raise_if_not_found=True,
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\task.py", line 669, in wait_click_feature
+    box = self.wait_until(
+          ^^^^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\task.py", line 523, in wait_until
+    return self.executor.wait_condition(condition, time_out, pre_action, post_action, settle_time=settle_time,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\TaskExecutor.py", line 445, in wait_condition
+    raise WaitFailedException()
+ok.task.exceptions.WaitFailedException
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 103, in run
+    return self.do_run()
+           ^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 123, in do_run
+    self.teleport_to_configured_boss_and_prepare()
+  File "D:\ark\okww\data\apps\ok-ww\working\ok_tasks\ark_overrides.py", line 271, in teleport_to_configured_boss_and_prepare
+    return prepare(self)
+           ^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 227, in teleport_to_configured_boss_and_prepare
+    raise RuntimeError('Teleport to boss failed') from e
+RuntimeError: Teleport to boss failed
+
+2026-09-21 10:20:58,671 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-21 10:21:00,152 INFO TaskExecutor TaskExecutor:wait_until timeout <bound method BaseWWTask.has_claim of <src.task.FarmEchoTask.FarmEchoTask object at 0x0000024323496E10>> 1.5 seconds
+2026-09-21 10:21:00,158 ERROR TaskExecutor DailyTask:run_task_by_class <class 'src.task.FarmEchoTask.FarmEchoTask'> Traceback (most recent call last):
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 220, in teleport_to_configured_boss_and_prepare
+    is_team = self.teleport_to_configured_boss()
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\ok_tasks\ark_overrides.py", line 257, in teleport_to_configured_boss
+    return outer(self)
+           ^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 264, in teleport_to_configured_boss
+    self.click_team_challenge()
+  File "D:\ark\okww\data\apps\ok-ww\working\ok_tasks\ark_overrides.py", line 383, in click_team_challenge
+    self.wait_click_feature("team_start_challenge", raise_if_not_found=True,
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\task.py", line 669, in wait_click_feature
+    box = self.wait_until(
+          ^^^^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\task.py", line 523, in wait_until
+    return self.executor.wait_condition(condition, time_out, pre_action, post_action, settle_time=settle_time,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\TaskExecutor.py", line 445, in wait_condition
+    raise WaitFailedException()
+ok.task.exceptions.WaitFailedException
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\ark\okww\data\apps\ok-ww\working\ok\task\task.py", line 1116, in run_task_by_class
+    task.run()
+  File "D:\ark\okww\data\apps\ok-ww\working\ok_tasks\ark_overrides.py", line 325, in run
+    return farm_run(self)
+           ^^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 103, in run
+    return self.do_run()
+           ^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 123, in do_run
+    self.teleport_to_configured_boss_and_prepare()
+  File "D:\ark\okww\data\apps\ok-ww\working\ok_tasks\ark_overrides.py", line 271, in teleport_to_configured_boss_and_prepare
+    return prepare(self)
+           ^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 227, in teleport_to_configured_boss_and_prepare
+    raise RuntimeError('Teleport to boss failed') from e
+RuntimeError: Teleport to boss failed
+
+2026-09-21 10:21:00,184 ERROR TaskExecutor DailyTask:附加任务出错，不拖垮当趟日常: Teleport to boss failed Traceback (most recent call last):
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 220, in teleport_to_configured_boss_and_prepare
+    is_team = self.teleport_to_configured_boss()
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\ok_tasks\ark_overrides.py", line 257, in teleport_to_configured_boss
+    return outer(self)
+           ^^^^^^^^^^^
+  File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 264, in teleport_to_configured_boss
+    self.click_team_challenge()

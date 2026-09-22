@@ -1,0 +1,31 @@
+2026-09-22 09:19:19,096 INFO TaskExecutor DailyTask:Daily task completed, start teleport to farm 4C echo
+2026-09-22 09:19:19,640 INFO TaskExecutor FarmEchoTask:profile: Other {'combat_wait_time': 0, 'bypass_end_wait': False, 'treat_as_not_in_realm': False}
+2026-09-22 09:19:19,641 INFO TaskExecutor FarmEchoTask:in_realm: None
+2026-09-22 09:19:19,641 INFO TaskExecutor FarmEchoTask:info_set current task wait main esc=True
+2026-09-22 09:19:19,669 INFO TaskExecutor FarmEchoTask:monthly_card found click
+2026-09-22 09:19:24,496 INFO TaskExecutor BaseWWTask:set next monthly card start time to 2026-09-23 03:59:30
+2026-09-22 09:19:25,020 INFO TaskExecutor FarmEchoTask:info_set current task in main esc=True
+2026-09-22 09:19:25,020 INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0
+2026-09-22 09:19:25,020 INFO TaskExecutor FarmEchoTask:info_set current task wait main esc=True
+2026-09-22 09:19:25,543 INFO TaskExecutor FarmEchoTask:info_set current task in main esc=True
+2026-09-22 09:19:25,543 INFO TaskExecutor FarmEchoTask:click f2 to open the book
+2026-09-22 09:19:29,591 INFO TaskExecutor FarmEchoTask:send f2 key to open
+2026-09-22 09:19:29,639 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-22 09:19:30,679 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=84)
+2026-09-22 09:19:33,081 INFO TaskExecutor FarmEchoTask:left_click gray_book_boss (76, 321) after_sleep 1.5
+2026-09-22 09:19:34,582 INFO TaskExecutor FarmEchoTask:open_boss_book zhange
+2026-09-22 09:19:35,384 INFO TaskExecutor FarmEchoTask:left_click zhange (460, 658) after_sleep 2
+2026-09-22 09:19:37,907 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-22 09:19:38,126 INFO TaskExecutor FarmEchoTask:left_click boss_proceed (1824, 416) after_sleep 1
+2026-09-22 09:19:39,148 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-22 09:19:39,204 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-22 09:19:39,254 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
+2026-09-22 09:19:39,844 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：0/3_0.99, x60_0.79]
+2026-09-22 09:19:39,844 INFO TaskExecutor FarmEchoTask:本周周本次数已领满（0/3），不进本，跳过
+2026-09-22 09:19:39,844 INFO TaskExecutor FarmEchoTask:info_set current task wait main esc=True
+2026-09-22 09:19:44,445 INFO TaskExecutor FarmEchoTask:info_set current task in main esc=True
+2026-09-22 09:19:44,445 INFO TaskExecutor DailyTask:open_daily
+2026-09-22 09:19:44,446 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-09-22 09:19:44,968 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-09-22 09:19:44,968 INFO TaskExecutor DailyTask:click f2 to open the book
+2026-09-22 09:19:49,014 INFO TaskExecutor DailyTask:send f2 key to open
