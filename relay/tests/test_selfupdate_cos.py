@@ -254,10 +254,13 @@ class SlowNet(Net):
 su._cos = lambda: None
 net = SlowNet({"fastly.jsdelivr.net": {"manifest.json": man, **many}}); su._get_once = net.get; su._last_good = ""
 root = workdir({k: b"old\n" for k in many}, 20260917000000)
-t0 = time.time(); updated = su.check(root, "https://raw.githubusercontent.com/herclyon1/maa/main/relay/"); dt = time.time() - t0
+updated = su.check(root, "https://raw.githubusercontent.com/herclyon1/maa/main/relay/")
 check("12 个文件全更新", len(updated), 12)
 check("确实并发了（峰值 >1）", net.peak > 1)
-check("12 × 50 ms 串行要 0.6 秒，并发后明显更快", dt < 0.45)
+# Width, not wall time: a 50 ms time.sleep on this Mac measured 130-150 ms on
+# 2026-09-23 06:06 (OS timer slack), which turned the old "under 0.45 s" into a
+# test of the clock. Full pool width is what makes the fallback faster.
+check(f"并发宽度用满（峰值 = PARALLEL_FETCHES = {su.PARALLEL_FETCHES}）", net.peak, min(su.PARALLEL_FETCHES, 12))
 missing_one = dict(many); missing_one.pop("ark_relay/m7.py")
 net = SlowNet({"fastly.jsdelivr.net": {"manifest.json": man, **missing_one}}); su._get_once = net.get; su._last_good = ""
 root = workdir({k: b"old\n" for k in many}, 20260917000000)
