@@ -26,7 +26,12 @@ def check(label, got, want):
         fails.append(label)
 
 
-man = json.loads((RELAY / "manifest.json").read_text(encoding="utf-8"))
+# The generator stamps a fresh version and ref every time it runs, so rebuilding
+# the manifest "back" still leaves a different file behind: every lint-repo.sh
+# run left relay/manifest.json modified (2026-09-23 04:08, a version nobody
+# deployed). Keep the exact bytes and put them back at the end.
+original = (RELAY / "manifest.json").read_bytes()
+man = json.loads(original.decode("utf-8"))
 listed = set(man["files"])
 
 print("[顶层每个 .py 都在清单里]")
@@ -54,13 +59,13 @@ try:
     check("新文件被收进清单", "zz_manifest_probe.py" in again["files"], True)
 finally:
     probe.unlink(missing_ok=True)
-    # 还原成不含探针的那份，别把探针留在清单里
-    subprocess.run([sys.executable, "make-manifest.py"], cwd=RELAY,
-                   capture_output=True, text=True)
+    # the bytes from the start, not a rebuild (a rebuild stamps a new version)
+    (RELAY / "manifest.json").write_bytes(original)
 
 back = json.loads((RELAY / "manifest.json").read_text(encoding="utf-8"))
 check("还原后清单里没有探针", "zz_manifest_probe.py" in back["files"], False)
 check("还原后文件数和开工时一致", len(back["files"]), len(listed))
+check("还原后清单逐字节和开工时一致", (RELAY / "manifest.json").read_bytes() == original, True)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
