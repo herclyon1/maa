@@ -9,8 +9,8 @@ reading it off screenshots.
 to skland.com in a browser, then open
 `https://web-api.skland.com/account/info/hg`; `data.content` in the returned
 JSON is the token. It is **equivalent to the account login credential**, it
-lives only in the machine's `.env` (this repo is public and `.env` is the first
-line of `.gitignore`), and it must never appear in any log or report.
+lives in the machine's `.env` and on the Mac in `~/.config/ark/.env` (never in
+this repo: it is public and `.env` is the first line of `.gitignore`), and it must never appear in any log or report.
 
 **The token expires**, so this is built as an automatic chain: token -> code ->
 cred, and cred can be renewed via `/api/v1/auth/refresh`; only when all of that

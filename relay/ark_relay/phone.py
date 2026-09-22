@@ -20,7 +20,9 @@ No heartbeat is needed, so no polling is needed.
 
 **The only credential is a PIN** (the user, 2026-08-31:
 「留一个 pin 就行了，那那么多事」). The mailbox name itself is a 28-character
-random string that exists only in the user's phone and the machine's .env.
+random string kept in the user's phone, the machine's .env and the Mac's
+~/.config/ark/push.env (ARK_PHONE_TOPIC / ARK_PHONE_PIN; docs/CONFIG.md
+"Relay environment" names the index of every key's location).
 State carries game config only, never credentials.
 
 The command window is 24 hours: the machine powers on twice a day, and a command

@@ -135,8 +135,8 @@ Server酱 has two product lines with different key prefixes - `SCT...` is Turbo,
 `sctp...` is Server酱³ - and `notify.py` handles both, sending everything to
 `sctapi.ftqq.com` (the per-uid `{uid}.push.ft07.com` host that Server酱³
 documents returns 403 for this key and is not a usable fallback). Which line
-this deployment's key belongs to is not recorded here; the key lives only in
-`relay/.env` on the machine.
+this deployment's key belongs to is not recorded here; the key lives in
+`relay/.env` on the machine and in `~/.config/ark/push.env` on the Mac.
 
 Delivery rule: **one channel delivering counts as delivered.** See
 [PITFALLS.md](PITFALLS.md) for why that sentence exists.

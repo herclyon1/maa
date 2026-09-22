@@ -251,7 +251,8 @@ class WeComBot:
     (a shared IPv4-over-IPv6 address) and the game box behind dial-up
     broadband both get errcode=60020 the moment their address changes. A group
     robot authenticates by the key embedded in its URL instead, which is why
-    that URL is a secret and lives only in .env.
+    that URL is a secret: it lives in the machine's .env and in the Mac's
+    ~/.config/ark/push.env, never in this repo.
 
     The robot posts into a group chat rather than as a direct app message, and
     is capped at 20 messages per minute. Neither matters here: this system

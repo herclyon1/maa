@@ -520,7 +520,11 @@ sc.exe failure sshd reset= 86400 actions= restart/5000/restart/10000/restart/300
 
 ## Relay environment
 
-`relay/.env` on the machine, never committed.
+`relay/.env` on the machine, never committed. The machine is not the only copy:
+the Mac holds `~/.config/ark/push.env` (WeCom, Server酱, COS, `ARK_PHONE_TOPIC`,
+`ARK_PHONE_PIN`) and `~/.config/ark/.env` (`SKLAND_TOKEN`, `KUROBBS_*`), and `~/.config/ark/密钥总表.md`
+lists every key with its path. As of 2026-09-23 `ARK_LLM_KEY` and `ARK_LLM_BASE_URL`
+have no Mac copy; the next time the machine is up, copy them into push.env and the index.
 
 | Variable | Meaning |
 |---|---|
