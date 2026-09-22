@@ -54,11 +54,13 @@
   const KEY = "ark-segframes", BEFORE = 40, SETTLE_PT = 0.5, SETTLE_MS = 300, MAX_AFTER_UP_MS = 3000, BITS = 10, CELL = 6;
   const HARD_MS = 10000;                                          // 件 A: a light record never runs longer than this, whatever the page keeps animating
   const DIAG_UI = !q.has("accept") && !q.has("segframes");         // the phone's own diagnostic session: mark button + status line, and no frame counter
-  /* 件 C: where a finished record goes. The diagnostic bucket takes an anonymous PUT into one prefix (会议十一 / D44-D45); it holds no key, so
-     nothing secret is in this page. The host is filled in when 老中继2号 hands over the bucket; until then it can be set on the phone without a
-     deploy: localStorage["ark-diag-bucket"] = "https://<bucket>.cos.<region>.myqcloud.com", or ?diagbucket=<host>. Empty = keep records local
-     and say so on the page. */
-  const COS_BASE = "";
+  /* 件 C: where a finished record goes — the diagnostic bucket (BOARD DECISIONS-DATA DATA16 / DATA17, 事实-上传目标-老中继2号 28–31):
+     ark-diag-1315873325 in ap-shanghai; anonymous name/cos:PutObject on diag/* only (read / list / anything else 403), CORS rule
+     diag-from-pages = origin https://herclyon1.github.io, PUT, AllowedHeader *, ExposeHeader ETag, MaxAge 600; lifecycle 7 days. Measured
+     2026-09-23 04:5x from this Mac: the preflight for PUT + content-type,x-cos-forbid-overwrite from that origin 200; the anonymous PUT 200;
+     the same key again 409 FileAlreadyExists; an anonymous GET 403. No key in this page. localStorage["ark-diag-bucket"] / ?diagbucket=
+     override it. An acceptance run (?accept) never writes to the bucket: its records take the keep-local path, which is what its rows check. */
+  const COS_BASE = "https://ark-diag-1315873325.cos.ap-shanghai.myqcloud.com";
   const QKEY = "ark-diag-queue";
   const name = q.get("segframes") && q.get("segframes") !== "1" ? q.get("segframes") : "web";
 
@@ -406,7 +408,7 @@
      object key, and x-cos-forbid-overwrite so a key collision can never overwrite an earlier record. Anything that does not end in a 2xx
      keeps the record on the phone (localStorage queue, retried on the next upload and on the next start) and says so on the page — the
      copy / share sheet stays as the manual way out. Nothing here is silent: every state writes the line. */
-  const BUCKET = (() => { let v = ""; try { v = q.get("diagbucket") || localStorage.getItem("ark-diag-bucket") || ""; } catch {} return (v || COS_BASE).trim().replace(/\/+$/, ""); })();
+  const BUCKET = q.has("accept") ? "" : (() => { let v = ""; try { v = q.get("diagbucket") || localStorage.getItem("ark-diag-bucket") || ""; } catch {} return (v || COS_BASE).trim().replace(/\/+$/, ""); })();
   const keyFor = () => { const d = new Date(), z = (n) => String(n).padStart(2, "0");
     return `diag/${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}-${rid()}.json`; };
   const readQ = () => { try { return JSON.parse(localStorage.getItem(QKEY) || "[]"); } catch { return []; } };
@@ -444,7 +446,7 @@
     let body = "";
     try { body = JSON.stringify(out); } catch (e) { report(out, "failed", "记录转不成 JSON：" + (e && e.message ? e.message : e)); return; }
     const key = keyFor(), kb = Math.round(body.length / 1024 * 10) / 10;
-    if (!BUCKET) { keep(key, body, "no bucket"); report(out, "kept", `收件桶还没配，已存在手机里（共 ${keptN} 份，${kb} KB 这份）`, key); return; }
+    if (!BUCKET) { const why = q.has("accept") ? "验收模式不往桶里写" : "收件桶地址是空的"; keep(key, body, why); report(out, "kept", `${why}，已存在手机里（共 ${keptN} 份，${kb} KB 这份）`, key); return; }
     try { await put(key, body); sentN++; report(out, "sent", `已送达 ${sentN} 份（这份 ${kb} KB）`, key); await flush(); }
     catch (e) { const why = e && e.message ? e.message : String(e); keep(key, body, why); report(out, "kept", `没送到（${why}），已存在手机里共 ${keptN} 份；点这行可复制 / 分享`, key); }
   }
