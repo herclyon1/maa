@@ -42,6 +42,7 @@ if sys.argv[1:2] == ['--scope']:   # accept-batch.sh: which controls did the bat
     only = set(); full = False
     for f in sys.stdin.read().split():
         if not f.startswith('web/'): continue                      # scripts / docs / tools do not change the page
+        if f in SHARED: full = True; continue                     # a shared page file reaches every control, even one that lists it (view.js ∈ alert-view …)
         m = re.match(r'web/accept-([a-z-]+)\.js$', f)
         if m: only.add(m.group(1)); continue
         hit = [c for c, (o, fs) in OWNERS.items() if c not in ('page', 'cell', 'core') and any(f == x or (x.endswith('/') and f.startswith(x)) for x in fs)]
