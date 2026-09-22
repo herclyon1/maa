@@ -25,7 +25,6 @@ if __name__ == '__main__':
     def dil(M, d):
         h, w = M.shape; D = np.zeros(((h - 1) * d + 1, (w - 1) * d + 1))
         D[::d, ::d] = M; return D
-    from numpy.fft import fft2, ifft2
     N = 512; img = np.zeros((N, N)); img[N // 2, N // 2] = 1.0
     def conv(img, K):
         out = np.zeros_like(img); h, w = K.shape; oy, ox = h // 2, w // 2
