@@ -42,10 +42,16 @@ Order of events (监督局 2026-09-19 18:3x: no more "no result / first-run retr
      first run of this runner: headless Chrome never requested pending.js?v=… — server log — and render() threw
      "reconcilePending is not defined"; the second run was clean. A lost script fetch is detected here, not retried by hand).
 Any JS exception seen on the way is printed; exit 1 when a step does not complete."""
-import socket, os, base64, json, struct, sys, subprocess, time, urllib.request, tempfile, shutil, signal, threading, fcntl
+import socket, os, base64, json, struct, sys, subprocess, time, urllib.request, http.client, tempfile, shutil, signal, threading, fcntl
 # SIGTERM (the `timeout` wrapper) must run the finally below, or the Chrome profile in $TMPDIR leaks (271 of them, 8.8 GB, 2026-09-20 08:4x)
 signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(SystemExit(143)))
 CH = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+# What a DevTools /json probe raises while Chrome is still starting or a target is not listed yet: refused / reset (OSError, URLError),
+# a truncated HTTP answer (HTTPException), half-written JSON (ValueError), no matching target yet (StopIteration, KeyError).
+PROBE_ERRORS = (OSError, http.client.HTTPException, ValueError, StopIteration, KeyError)
+# What a CDP call over WS raises: the 30 s timeout and a dead socket (OSError), a closed stream (EOFError), a frame that is not JSON
+# (ValueError), and an error reply that has no ['result'] (KeyError, TypeError).
+CDP_ERRORS = (OSError, EOFError, ValueError, KeyError, TypeError)
 class WS:
     def __init__(s, url):
         host, port = url.split('/')[2].split(':'); path = '/' + '/'.join(url.split('/')[3:])
@@ -135,8 +141,8 @@ def sweep_code_sign_clones():
             d = os.path.join(base, name)
             try:
                 if now - os.stat(d).st_mtime > 600: shutil.rmtree(d, ignore_errors=True)
-            except Exception: pass
-    except Exception: pass
+            except OSError: pass
+    except OSError: pass
 sweep_code_sign_clones()
 LOCK = '/tmp/ark-accept-run.lock'   # one headless run per machine at a time (several sessions run this runner; two at once share the CPU and flake the timing rows)
 open(LOCK, 'a').close(); lockf = open(LOCK, 'r+')
@@ -146,11 +152,11 @@ while True:
     except OSError:
         if int(time.time() - t_lock) % 15 == 0:
             try: lockf.seek(0); holder = lockf.read().strip()[:80]
-            except Exception: holder = '?'
+            except (OSError, ValueError): holder = '?'   # ValueError: a half-written holder line that is not UTF-8
             print(f'waiting for {LOCK} (held by {holder}) …', flush=True)
         time.sleep(1)
 try: lockf.seek(0); lockf.truncate(); lockf.write(f'pid {os.getpid()} {time.strftime("%H:%M:%S")} {url}'); lockf.flush()
-except Exception: pass
+except OSError: pass
 if time.time() - t_lock > 2: print(f'lock acquired after {time.time() - t_lock:.0f} s')
 port = free_port(); prof = tempfile.mkdtemp()
 chrome_log = open(os.path.join(prof, 'chrome.log'), 'wb')   # Chrome's own stderr: a renderer crash shows here (printed on failure)
@@ -159,7 +165,7 @@ try:
     page = None
     for i in range(100):
         try: page = next(t for t in json.load(urllib.request.urlopen(f'http://127.0.0.1:{port}/json')) if t['type'] == 'page'); break
-        except Exception: time.sleep(0.2)
+        except PROBE_ERRORS: time.sleep(0.2)
     bws = WS(json.load(urllib.request.urlopen(f'http://127.0.0.1:{port}/json/version'))['webSocketDebuggerUrl'])   # the browser endpoint: contexts and targets
     own = bws.send('Browser.getVersion')['result'].get('userAgent', '')   # sanity: the DevTools endpoint answers → it is a live Chrome on our port
     # the heartbeat probe (live.js probeHb: fetch <ntfy>/<topic>-hb/json) lands ≈ .5 s after load and, finding no heartbeat for the fake topic, sets
@@ -189,10 +195,11 @@ try:
                 "window.__vtStep = () => { const q = __vt.q; __vt.q = new Map(); const t = performance.now(); "
                 "for (const cb of q.values()) { try { cb(t); } catch (e) { console.error(e); } } "
                 "__vt.orig(() => { __vt.f++; }); return __vt.f; }; 1")
-    def run_theme(dark, wsurl, only_list):
+    def run_theme(dark, wsurl, only_list):  # noqa: C901 — one CDP session from navigate to rows; split, its steps would pass ws/lines/t0 around
         """one theme × one shard in its own browser context (own localStorage, own renderer — the browser-level WS is not thread-safe, so the context and
         target are made in the main thread); returns (lines, ok, rows)"""
-        lines = []; log = lambda *a: lines.append(' '.join(str(x) for x in a))
+        lines = []
+        def log(*a): lines.append(' '.join(str(x) for x in a))
         url = base_url + (('&' if '?' in base_url else '?') + 'only=' + only_list if only_list else '')
         if dark: url += ('&' if '?' in url else '?') + 'theme=dark'   # S4 (数据 S4-tags.md (d)): the loader skips the dark:false files / sections under ?theme=dark once 界面 wires it; the media emulation below is what sets the colours
         ws = WS(wsurl)
@@ -209,7 +216,7 @@ try:
             for i in range(300):                   # ≤ 60 s for view.js
                 time.sleep(0.2)
                 try: ready = ws.send('Runtime.evaluate', {'expression': 'document.readyState === "complete" && window.__viewReady === true', 'returnByValue': True})['result']['result'].get('value')
-                except Exception: ready = None
+                except CDP_ERRORS: ready = None
                 if ready is True: return True
             return False
         ws.send('Page.navigate', {'url': url + ('&' if '?' in url else '?') + 'accept=1&quiet=1'})
@@ -247,7 +254,7 @@ try:
                     if any(e.get('method') == 'Emulation.virtualTimeBudgetExpired' for e in ws.events): expired = True; break
                     try: ws.recv_event(timeout=2.0)
                     except socket.timeout: continue
-                    except Exception: break
+                    except CDP_ERRORS: break
                 ws.events = [e for e in ws.events if e.get('method') != 'Emulation.virtualTimeBudgetExpired']
                 got_frame = False
                 ws.send('Runtime.evaluate', {'expression': 'window.__vtStep ? window.__vtStep() : -1', 'returnByValue': True})['result']['result'].get('value')   # the frame's rAF callbacks, at this step's time
@@ -278,11 +285,11 @@ try:
         wsurl = None
         for i in range(50):
             try: wsurl = next(t['webSocketDebuggerUrl'] for t in json.load(urllib.request.urlopen(f'http://127.0.0.1:{port}/json')) if t.get('id') == tid); break
-            except Exception: time.sleep(0.2)
+            except PROBE_ERRORS: time.sleep(0.2)
         targets[job] = (ctx, tid, wsurl)
     results = {}
     def worker(job):
-        global virtual_time
+        global virtual_time  # noqa: PLW0603 — after one stall every later context of this run falls back to the wall clock
         try:
             res = run_theme(job[0] == 'dark', targets[job][2], SHARDS[job[1]])
             if res[1] is None:                       # virtual time stalled: once more on the wall clock in a fresh context (the hung page is closed)
@@ -292,10 +299,10 @@ try:
                 wsurl = None
                 for i in range(50):
                     try: wsurl = next(t['webSocketDebuggerUrl'] for t in json.load(urllib.request.urlopen(f'http://127.0.0.1:{port}/json')) if t.get('id') == tid); break
-                    except Exception: time.sleep(0.2)
+                    except PROBE_ERRORS: time.sleep(0.2)
                 res = run_theme(job[0] == 'dark', wsurl, SHARDS[job[1]]); res = (lines0 + res[0], bool(res[1]), res[2])
             results[job] = res
-        except Exception as e: results[job] = ([f'runner failed ({job[0]}{" shard %d" % (job[1] + 1) if len(SHARDS) > 1 else ""}): {e!r}'], False, [])
+        except Exception as e: results[job] = ([f'runner failed ({job[0]}{" shard %d" % (job[1] + 1) if len(SHARDS) > 1 else ""}): {e!r}'], False, [])   # noqa: BLE001 — a thread's exception would otherwise vanish and the job read "no result"; any failure becomes its row
     threads = [threading.Thread(target=worker, args=(job,), daemon=True) for job in jobs]
     t_start = time.time()
     for t in threads: t.start()
@@ -305,7 +312,7 @@ try:
         sys.exit(1)
     for job in jobs:
         try: bws.send('Target.closeTarget', {'targetId': targets[job][1]}); bws.send('Target.disposeBrowserContext', {'browserContextId': targets[job][0]})
-        except Exception: pass
+        except CDP_ERRORS: pass
     failed = False
     for th in themes:
         lines = []; rows = []; first = {}; ok_all = True   # first: (item, expect) → shard index that produced it first (a copy from another shard is dropped)
@@ -332,12 +339,12 @@ except Exception as e:
     try:
         chrome_log.flush(); tail = open(os.path.join(prof, 'chrome.log'), 'rb').read()[-3000:].decode('utf-8', 'replace')
         print('runner failed:', repr(e)); print('chrome stderr tail:', tail)
-    except Exception: pass
+    except OSError: pass
     raise
 finally:
     p.terminate()
     try: p.wait(timeout=5)
-    except Exception: p.kill()
+    except subprocess.TimeoutExpired: p.kill()
     shutil.rmtree(prof, ignore_errors=True)
     try: fcntl.flock(lockf, fcntl.LOCK_UN); lockf.close()
-    except Exception: pass
+    except OSError: pass

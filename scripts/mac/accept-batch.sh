@@ -17,7 +17,7 @@ set -u
 LAYER=daily; FULL=0; RUN=1; BASE0=; GATE=
 while [ $# -gt 0 ]; do case "$1" in
   --layer) LAYER="$2"; shift 2;; --base) BASE0="$2"; shift 2;; --gate) GATE="$2"; shift 2;; --full) FULL=1; shift;; --no-run) RUN=0; shift;; *) break;; esac; done
-W="$(cd "$(dirname "$0")/../.." && pwd)"; OUT="${ACCEPT_OUT:-${TMPDIR:-/tmp}/accept-batch-$(basename "$W")}"; mkdir -p "$OUT"; cd "$W"   # outputs per worktree unless ACCEPT_OUT is set
+W="$(cd "$(dirname "$0")/../.." && pwd)"; OUT="${ACCEPT_OUT:-${TMPDIR:-/tmp}/accept-batch-$(basename "$W")}"; mkdir -p "$OUT"; cd "$W" || exit 1   # outputs per worktree unless ACCEPT_OUT is set
 PORT="${ACCEPT_PORT:-$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')}"   # a free port unless ACCEPT_PORT is set: several sessions run this at once
 BASELINE="$W/scripts/mac/accept-baseline.json"
 serve() { ( exec python3 "$W/scripts/mac/serve.py" "$W/web" "$PORT" >"$OUT/serve-$1.log" 2>&1 ) & SRV=$!; disown $SRV; sleep 2; }
@@ -46,7 +46,7 @@ if [ -n "$GATE" ]; then
   R=0; MSG=""
   for th in light dark; do f="$OUT/accept-$L-$th.txt"; p=$(grep -c '^✓' "$f" 2>/dev/null); n=$(grep -c '^✗' "$f" 2>/dev/null)
     [ "$((p + n))" = 0 ] && { echo "不可合：runner 无行（$th）— $(grep -m1 -E 'not ready|no result|failed' "$OUT/accept-$L-run1.log" | cut -c1-140)"; exit 4; }
-    eval "P_$th=$p; N_$th=$n"
+    case $th in light) P_light=$p; N_light=$n ;; dark) P_dark=$p; N_dark=$n ;; esac   # named, not eval'd: shellcheck (and a reader) can see them
     [ "$n" != 0 ] && { R=1; MSG="$MSG 红行（$th）：$(grep '^✗' "$f" | cut -c1-110 | tr '\n' '；')"; }
     NOW=$(counts "$f"); KEY="$LAYER:FULL:$th"   # the baseline = the last green whole-suite batch run (验收 writes it; the gate never writes — 2号 13:57 ③)
     BASE=$(python3 -c "import json,sys,os; d=json.load(open(sys.argv[1])) if os.path.exists(sys.argv[1]) else {}; print(d.get(sys.argv[2],{}).get('counts',''))" "$BASELINE" "$KEY")
