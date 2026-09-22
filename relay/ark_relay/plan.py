@@ -461,12 +461,54 @@ def _maaend_extra_bits(maaend_dir: Path | None, when) -> list[str]:
             if not picked:
                 return []
             label = "周" + "、".join(zh[i] for i in picked)
-            routes = len((((t.get("optionValues") or {})
-                           .get("AutoCollectRoutes") or {}).get("caseNames") or []))
+            routes = _collect_route_count(t.get("optionValues") or {})
             if when.weekday() in picked:
                 return [f"⏳ 先跑自动采集（{routes} 条路线，上次实测 33 分钟）"]
             return [f"自动采集仅 {label} 跑"]
     return []
+
+
+def _annihilation_reopens(automas_dir) -> str:
+    """The value the weekly gate will restore tomorrow, or "".
+
+    Sunday's plan read the switch as it stood ("Close") and said
+    「剿灭 本周已完成/关闭」, but the gate reopens it at the first boot of the
+    new week (relay.log 09-21 08:49:00 「新的一周，剿灭已恢复为 Annihilation」)
+    and Monday farmed 18 minutes of it. Mirrors WeeklyGate.maybe_reopen:
+    it restores only a week it recorded closing itself.
+    """
+    from .annihilation import DEFAULT_WHEN_UNKNOWN, WeeklyGate, week_key  # noqa: PLC0415
+    try:
+        state = WeeklyGate(Path(os.environ.get("ARK_STATE_DIR", "./ark-state")),
+                             automas_dir)._load()
+    except Exception:  # noqa: BLE001
+        return ""
+    done = state.get("done_week")
+    tomorrow_noon = _tomorrow().replace(hour=12, minute=0, second=0, microsecond=0)
+    if done and done != week_key(tomorrow_noon):
+        return state.get("restore_to") or DEFAULT_WHEN_UNKNOWN
+    return ""
+
+
+def _collect_route_count(ov: dict) -> int:
+    """Routes the gathering task will walk, from the master's option values.
+
+    MaaEnd split the single AutoCollectRoutes list per region and rarity
+    (AutoCollect<Region><Rare|Common>Routes, each region behind its own
+    AutoCollect<Region> switch); reading the old key alone gave "0 条路线" on
+    2026-09-20 for a run that walked 17 (mxu-MaaEnd.json: ValleyIV rare 5 +
+    Wuling rare 12; history/2026-09-21/endfield/MaaEnd-07-03-17.log).
+    """
+    total = len((ov.get("AutoCollectRoutes") or {}).get("caseNames") or [])
+    for key, val in ov.items():
+        m = re.fullmatch(r"AutoCollect(\w+?)(?:Rare|Common)Routes", key)
+        if not m:
+            continue
+        switch = ov.get(f"AutoCollect{m.group(1)}")
+        if isinstance(switch, dict) and switch.get("value") is False:
+            continue
+        total += len((val or {}).get("caseNames") or [])
+    return total
 
 
 def _tomorrow():
@@ -595,8 +637,12 @@ def next_plan(automas_dir: Path | None) -> str:
                         "ARK_STATE_DIR", "./ark-state")))
                 except Exception:  # noqa: BLE001
                     pass
-                bits.append("剿灭 本周已完成/关闭" if anni == "Close"
-                            else f"剿灭 {zh.get(anni, anni)}")
+                reopen = _annihilation_reopens(automas_dir) if anni == "Close" else ""
+                if reopen:
+                    bits.append(f"剿灭 {zh.get(reopen, reopen)}（新一周自动恢复）")
+                else:
+                    bits.append("剿灭 本周已完成/关闭" if anni == "Close"
+                                else f"剿灭 {zh.get(anni, anni)}")
             if (med := s.get("medicine")) is not None:
                 # AUTO-MAS stores "use as many as you have" as a sentinel, not
                 # as a real count. Printing 999 makes a reader stop and wonder.

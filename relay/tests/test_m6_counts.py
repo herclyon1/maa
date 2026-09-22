@@ -59,6 +59,38 @@ end = "\n".join([
 ])
 chk("终末地 09-22 理智", collector_maaend._maaend_farm(end).get("maaend_sanity_spent"), 400)
 
+# plan: gathering routes live under per-region keys since MaaEnd split them
+# (mxu-MaaEnd.json 2026-09-23: ValleyIV rare 5 + Wuling rare 12 = 17 walked 09-21)
+from ark_relay import plan, annihilation
+ov = {
+    "AutoCollectValleyIV": {"type": "switch", "value": True},
+    "AutoCollectValleyIVRareRoutes": {"caseNames": ["Route4", "Route5", "Route6", "Route13", "Route14"]},
+    "AutoCollectValleyIVCommonRoutes": {"caseNames": []},
+    "AutoCollectWuling": {"type": "switch", "value": True},
+    "AutoCollectWulingRareRoutes": {"caseNames": [f"Route{i}" for i in (1, 2, 3, 7, 8, 9, 10, 11, 12, 15, 16, 17)]},
+    "AutoCollectSchedule": {"caseNames": ["AutoCollectScheduleMonday"]},
+}
+chk("采集路线 新两键", plan._collect_route_count(ov), 17)
+ov["AutoCollectWuling"]["value"] = False
+chk("采集路线 关掉的区不算", plan._collect_route_count(ov), 5)
+chk("采集路线 旧键仍认", plan._collect_route_count({"AutoCollectRoutes": {"caseNames": ["a", "b"]}}), 2)
+
+# plan: Sunday's plan for Monday must say annihilation reopens (relay.log 09-21 08:49:00)
+import os
+from datetime import datetime, timedelta
+from unittest import mock
+from ark_relay.config import SERVER_TZ
+with tempfile.TemporaryDirectory() as d:
+    os.environ["ARK_STATE_DIR"] = d
+    sun = datetime(2026, 9, 20, 21, 0, tzinfo=SERVER_TZ)
+    annihilation.WeeklyGate(pathlib.Path(d), None)._save(
+        {"done_week": annihilation.week_key(sun), "restore_to": "Annihilation"})
+    with mock.patch.object(plan, "_tomorrow", lambda: sun + timedelta(days=1)):
+        chk("周日排周一 剿灭恢复", plan._annihilation_reopens(None), "Annihilation")
+    with mock.patch.object(plan, "_tomorrow", lambda: sun - timedelta(days=2)):
+        chk("周五排周六 仍关", plan._annihilation_reopens(None), "")
+    del os.environ["ARK_STATE_DIR"]
+
 if fails:
     print("\n".join(fails)); sys.exit(1)
 print("all checks passed")
