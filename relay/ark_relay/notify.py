@@ -359,7 +359,10 @@ def _hint(name: str, err: str) -> str:
 # Three channels, three jobs (the user, 2026-09-14 evening):
 #
 #   企业微信群机器人  the real alarms only - nothing else, no 「中继已更新」, no
-#                    progress notes, no test noise
+#                    progress notes, no test noise. One exception, sent from the
+#                    Mac and never from here: 「总统令第 N 条」, the user's ruling
+#                    on a question the sessions could not settle (BOARD A45 (3),
+#                    2026-09-23; scripts/mac/push.py --decree)
 #   Server酱          the daily report, and every other notification that means
 #                    something
 #   企业微信自建应用   (the private chat) never on its own - only text the user

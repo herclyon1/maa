@@ -5,6 +5,8 @@
     push.py "标题" 正文.md
     push.py --group "标题" 正文.md    # 企业微信群机器人：只放日报和真报警
     push.py --private "标题" 正文.md  # 企业微信私聊：只发用户本人口述要发的内容
+    push.py --decree N "text"         # decree number N: group robot only, N = last one + 1
+    push.py --decree --check          # probe the robot key (nothing is posted), print the next N
 
 Three channels, three jobs (the user, 2026-09-14): the group robot carries the
 daily report and real alarms and nothing else; Server酱 carries every other
@@ -12,6 +14,14 @@ notification that means something; the self-built app's private chat is never
 written to on my own initiative. The group falls back to Server酱 when the
 robot refuses; nothing ever falls back into the private chat. The relay
 (`relay/ark_relay/notify.py`) follows the same split.
+
+`--decree` is the one exception to "the group carries real alarms only" (BOARD
+A45 (3), the user 2026-09-23 05:30: when the sessions still disagree at the end
+of a meeting the decision is his, 「并且通过群机器人发送，标注总统令第几条」). It
+goes to the group robot and nowhere else - no fallback channel, a failure
+exits 1 and says why. The numbering is mechanical: every decree that went out is
+a line in ~/.config/ark/decrees.jsonl, and the next one must be the last N + 1,
+so a decree can be neither skipped nor sent twice by hand.
 
 Why this exists: the game machine is powered on roughly three hours a day, and
 when it is off there is no way to get a message out - which is exactly when you
@@ -36,7 +46,9 @@ Exit code is 0 when at least one channel accepted the message.
 """
 from __future__ import annotations
 
+import json
 import os
+import time
 import sys
 from pathlib import Path
 
@@ -44,6 +56,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "relay"))
 
 ENV_FILE = Path.home() / ".config" / "ark" / "push.env"
+DECREES = Path.home() / ".config" / "ark" / "decrees.jsonl"
 
 
 def load_env(path: Path) -> None:
@@ -61,12 +74,59 @@ def load_env(path: Path) -> None:
             os.environ[key] = value
 
 
+def decree(argv: list[str]) -> int:
+    """总统令 through the group robot only; see the module docstring."""
+    load_env(ENV_FILE)
+    from ark_relay.config import Config                # noqa: PLC0415 - after env is loaded
+    from ark_relay.notify import WeComBot, _post_json  # noqa: PLC0415
+    bot = WeComBot(Config())
+    if not bot.enabled:
+        print(f"✗ {ENV_FILE} 里没有 WECOM_BOT_URL，总统令发不出去", file=sys.stderr)
+        return 1
+    sent = ([json.loads(ln) for ln in DECREES.read_text(encoding="utf-8").splitlines() if ln.strip()]
+            if DECREES.exists() else [])
+    nxt = sent[-1]["n"] + 1 if sent else 1
+    if argv[:1] == ["--check"]:
+        # An unknown msgtype is refused before anything is posted: 40008 (invalid
+        # message type) means the key is live, 93000 (invalid webhook url) means it
+        # is not (both measured 2026-09-23 against the real key and a zero key).
+        data = _post_json(bot.url, {"msgtype": "nosuchtype"})
+        live = data.get("errcode") == 40008
+        print(f"{'✅' if live else '✗'} 群机器人钥匙{'有效' if live else '不可用'}"
+              f"（errcode {data.get('errcode')}，群里没有收到任何消息）；已发 {len(sent)} 条，下一条是第 {nxt} 条")
+        return 0 if live else 1
+    if len(argv) < 2 or not argv[0].isdigit():
+        sys.exit(__doc__)
+    n = int(argv[0])
+    text = (sys.stdin.read() if argv[1] == "-" else " ".join(argv[1:])).strip()
+    if n != nxt:
+        print(f"✗ 下一条应是第 {nxt} 条（已发 {len(sent)} 条，记在 {DECREES}），这里给的是第 {n} 条，没发",
+              file=sys.stderr)
+        return 1
+    if not text:
+        sys.exit(__doc__)
+    msg = f"总统令第{n}条：{text}"
+    try:
+        bot.send_text(msg)
+    except Exception as exc:  # noqa: BLE001 - reported, never rerouted
+        print(f"✗ 群机器人没收：{exc}（没有改走别的渠道）", file=sys.stderr)
+        return 1
+    with DECREES.open("a", encoding="utf-8") as f:
+        f.write(json.dumps({"n": n, "sent": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "text": text},
+                           ensure_ascii=False) + "\n")
+    print(f"✅ 总统令第{n}条 已发到群（{len(msg.encode())} 字节），记进 {DECREES}")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     # `push.py --help` once went out as a real message titled 「--help」 with
     # body 「.」 (2026-09-11 01:25, the user: 「你把谁关禁闭了，他给我发help呢」).
     # Anything starting with "-" is a flag, never a title.
-    if not argv or argv[0] in ("-h", "--help") or (argv[0].startswith("-") and argv[0] not in ("--group", "--private")):
+    if not argv or argv[0] in ("-h", "--help") or (
+            argv[0].startswith("-") and argv[0] not in ("--group", "--private", "--decree")):
         sys.exit(__doc__)
+    if argv[0] == "--decree":
+        return decree(argv[1:])
     # Channels (the user, 2026-09-14): default Server酱 (information); --group is
     # the group robot (daily report / real alarms only); --private is the
     # self-built app's private chat, only for text the user dictated himself.
@@ -110,6 +170,10 @@ def main(argv: list[str]) -> int:
     tried: list[str] = []
     for name, channel, call in order:
         if not channel.enabled:
+            # Until 2026-09-23 push.env had no WECOM_BOT_URL, and --group went to
+            # the fallback with nothing saying the group had been skipped.
+            print(f"  ✗ {name}: {ENV_FILE} 里没配，跳过", file=sys.stderr)
+            tried.append(name)
             continue
         try:
             call()

@@ -125,7 +125,7 @@ config, which is exactly the artefact that may be wrong.
 |---|---|
 | Server酱 (`sctapi.ftqq.com`) | **carrying everything** |
 | WeCom self-built app | **down**: `errcode=60020`, the home IP is not in the trusted list |
-| WeCom group bot (`WECOM_BOT_URL`) | not configured; has no trusted-IP list, so it would survive a changing home IP |
+| WeCom group bot (`WECOM_BOT_URL`) | configured on the machine (since 2026-08-30) and, since 2026-09-23, in the Mac's push.env too; has no trusted-IP list, so it survives a changing home IP |
 
 MAA's and AUTO-MAS's own direct pushes are all off - both would reach the same
 WeChat, so leaving them on delivers everything twice. When WeCom comes back,
@@ -148,6 +148,7 @@ Delivery rule: **one channel delivering counts as delivered.** See
 | WeCom group robot | real alarms someone has to act on | `send(..., alert=True)` |
 | Server酱 | the daily report (and its 补发 / 临时查看) and every other notification that means something | `send(..., daily=True)` / `send(...)` |
 | WeCom self-built app (private chat) | nothing on its own - only text the operator dictated (`push.py --private`) | never in an automatic order |
+| WeCom group robot, **总统令** (the one exception, BOARD A45 (3), 2026-09-23) | 「总统令第 N 条：…」 - the operator's ruling on a question the sessions still disagree on after a meeting. Sent by hand from the Mac, group robot only, no fallback; N is checked against `~/.config/ark/decrees.jsonl` so none is skipped or repeated | `scripts/mac/push.py --decree N "…"`; `--decree --check` probes the key without posting |
 
 The operator, 2026-09-14: 「群里面的机器人通知，只允许出现正常的日报、以及日报中的
 真实报错报警通知」「server酱里允许一切有意义的通知」「私聊的通道只允许是我本人亲自口述
