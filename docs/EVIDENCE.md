@@ -136,7 +136,8 @@ media ids with `expires`. `scripts/mac/evidence.sh list | pull | open`.
 
 Setting COS up once the account owner has an API key: `scripts/mac/cos-setup.py`
 (reads COS_SECRET_ID / COS_SECRET_KEY / COS_APPID from `~/.config/ark/push.env`, creates
-`ark-evidence-<appid>` in ap-shanghai with a 90-day expiry rule, probes it, writes the
+`ark-evidence-<appid>` in ap-shanghai with a 30-day expiry rule that leaves `relay/` alone
+(`--lifecycle` rewrites only that rule and prints it back), probes it, writes the
 COS_* lines into both .env files and restarts the relay). Measured 2026-09-12 20:04: the
 WeCom **app** API refuses the machine (60020, IP 112.43.41.80 not on the trusted list),
 so the chain skipped to the group robot in one step and delivered 6 files / 9 messages
