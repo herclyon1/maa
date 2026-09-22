@@ -56,6 +56,19 @@ only reason for a single rollback or hot fix). The project's future UI is a nati
 - WebGL open items: fringe saturation source comparison, label tearing intensity term, the 1 pt right-end offset, platter fade start.
 - Branch tips at the freeze: ui `5d71467`, ui2 `145ddc1`, b14-fix `7d3ea7a`, controls `51bf2d2`, data `38129f4`.
 
+## Tools that still run against the frozen page
+
+Bug fixes are batched, so these four are the whole loop from a branch to a phone; each one is named here because nothing else documents it.
+
+- `scripts/mac/accept-batch.sh` — merge several branches/shas into the current worktree one at a time (a conflict aborts that merge only), then ONE headless
+  acceptance run (light and dark in one Chrome), then attribute every red row: a red in a control nobody touched is recorded, not re-run.
+- `scripts/mac/export-web.sh <sha> <outdir>` — export a commit's `web/` for a local phone test through the same shell-stamp step a release uses, so the phone
+  never loads an unstamped `?v=0` shell (the HTTP cache would keep it forever).
+- `scripts/mac/check-shell.sh <url|port>` — the stamp check itself: every `?v=` in index.html is the same non-zero stamp, `sw.js`'s CACHE name carries it,
+  its SHELL list holds every css/js index.html loads, and each shell URL answers 200.
+- `scripts/mac/webclip-serve.sh <sha> [port]` — serve a commit's `web/` to the resident home-screen web clip on simulator A the way a deploy would (stamped,
+  no gh-pages push). The simulator itself is frozen by the user's order; the script is kept for when it is unfrozen.
+
 ## Direction
 
 Web: bug fixes only, batched; no new controls. iOS native: see `remote-ref/ios-native-plan.md` (which system controls replace which page functions,

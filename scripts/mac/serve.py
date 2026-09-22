@@ -4,7 +4,7 @@
 page (≈40 lens PNGs + a dozen scripts), so under load some connections are refused/reset and a script silently never runs (night 00:2x–00:5x:
 "Motion is not defined", window.Sheet / NavEdge missing, accept-sheet.js never requested). This server listens with a backlog of 256 and
 answers each request in its own thread."""
-import sys, os, functools
+import sys, functools
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 class Server(ThreadingHTTPServer):
     request_queue_size = 256

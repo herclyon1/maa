@@ -13,7 +13,7 @@ Order of events (监督局 2026-09-19 18:3x: no more "no result / first-run retr
      first run of this runner: headless Chrome never requested pending.js?v=… — server log — and render() threw
      "reconcilePending is not defined"; the second run was clean. A lost script fetch is detected here, not retried by hand).
 Any JS exception seen on the way is printed; exit 1 when a step does not complete."""
-import socket, os, base64, json, struct, sys, subprocess, time, urllib.request, tempfile, shutil, random, signal
+import socket, os, base64, json, struct, sys, subprocess, time, urllib.request, tempfile, shutil, signal
 # SIGTERM (the `timeout` wrapper) must run the finally below, or the Chrome profile in $TMPDIR leaks (271 of them, 8.8 GB, 2026-09-20 08:4x)
 signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(SystemExit(143)))
 CH = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
@@ -71,8 +71,8 @@ def sweep_code_sign_clones():
             d = os.path.join(base, name)
             try:
                 if now - os.stat(d).st_mtime > 600: shutil.rmtree(d, ignore_errors=True)
-            except Exception: pass
-    except Exception: pass
+            except Exception: pass  # noqa: BLE001 - stale profile sweep: anything that stops one delete skips it
+    except Exception: pass  # noqa: BLE001 - stale profile sweep is best-effort
 sweep_code_sign_clones()
 port = free_port(); prof = tempfile.mkdtemp()
 chrome_log = open(os.path.join(prof, 'chrome.log'), 'wb')   # Chrome's own stderr: a renderer crash shows here (printed on failure)
@@ -81,7 +81,7 @@ try:
     page = None
     for i in range(100):
         try: page = next(t for t in json.load(urllib.request.urlopen(f'http://127.0.0.1:{port}/json')) if t['type'] == 'page'); break
-        except Exception: time.sleep(0.2)
+        except Exception: time.sleep(0.2)  # noqa: BLE001 - DevTools not up yet: any failure means retry
     ws = WS(page['webSocketDebuggerUrl'])
     own = ws.send('Browser.getVersion')['result'].get('userAgent', '')   # sanity: the DevTools endpoint answers → it is a live Chrome on our port
     ws.send('Runtime.enable'); ws.send('Page.enable')
@@ -99,7 +99,7 @@ try:
         for i in range(300):                   # ≤ 60 s for view.js
             time.sleep(0.2)
             try: ready = ws.send('Runtime.evaluate', {'expression': 'document.readyState === "complete" && window.__viewReady === true', 'returnByValue': True})['result']['result'].get('value')
-            except Exception: ready = None
+            except Exception: ready = None  # noqa: BLE001 - page mid-navigation: any failure means not ready
             if ready is True: return True
         return False
     MISSING = ('(() => { const ok = new Set(performance.getEntriesByType("resource").filter(e => (e.responseStatus === 0 || e.responseStatus === 200 || e.responseStatus === 304) && (e.transferSize > 0 || e.encodedBodySize > 0 || e.decodedBodySize > 0)).map(e => e.name)); '
@@ -142,10 +142,10 @@ except Exception as e:
     try:
         chrome_log.flush(); tail = open(os.path.join(prof, 'chrome.log'), 'rb').read()[-3000:].decode('utf-8', 'replace')
         print('runner failed:', repr(e)); print('chrome stderr tail:', tail)
-    except Exception: pass
+    except Exception: pass  # noqa: BLE001 - diagnostics of a failure must not mask it
     raise
 finally:
     p.terminate()
     try: p.wait(timeout=5)
-    except Exception: p.kill()
+    except Exception: p.kill()  # noqa: BLE001 - Chrome did not exit: kill it whatever the reason
     shutil.rmtree(prof, ignore_errors=True)
