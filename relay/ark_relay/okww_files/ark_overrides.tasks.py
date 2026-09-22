@@ -24,6 +24,7 @@ import json
 import os
 import pathlib
 import re
+import sys
 import traceback
 
 # The copied method bodies below reach these as module globals. They are filled in by
@@ -294,12 +295,112 @@ _TEAM_CHALLENGE_SHA = "daeaf5a0f809"
 NO_STAMINA_FLAG = r"C:\ProgramData\ark-relay\state\no-stamina-farm.flag"
 _MAX_FARM_RETRIES = 3
 
+# Weekly boss, 「单人挑战」: where upstream's one blind click lands. The box is the
+# bottom-right strip the button sits in; on the 2026-09-21 screenshots (1920x1080,
+# 10-20-43.029_weekly_remaining / 10-20-58.624_no_start_btn) the text 「单人挑战」
+# reads at x1474-1598 y965-1001, inside it.
+SOLO_BOX = (0.60, 0.84, 0.98, 0.96)
+_SOLO_WAIT = 5          # seconds for 开启挑战 after each click
+_SOLO_RETRIES = 3       # extra clicks on 单人挑战 before the old error path runs
+
+# Stamina: upstream's own read box (BaseWWTask.get_stamina) and pattern. get_stamina
+# is replaced outright (its body is the bug), so it is pinned: hash of the game
+# machine's copy pulled 2026-09-23 (ark-evidence/M5b-0923/src, BaseWWTask.py:409-424).
+_GET_STAMINA_SHA = "8ba6c1344ff8"
+STAMINA_BOX = (0.49, 0.0, 0.92, 0.10)
+_STAMINA_PAIR = re.compile(r"(\d+)/(\d+)")
+_STAMINA_DIALOG_READS = 5   # reads, 1 s apart, inside use_stamina's reward dialog
+
+
+def _confirm_solo(task):
+    """Make sure the click on 「单人挑战」 was taken; returns how many extra clicks it took.
+
+    Upstream's teleport_to_configured_boss picks the level, clicks (0.880, 0.911)
+    once and never looks at the result (FarmEchoTask.py:262-264). On 2026-09-21 the
+    click landed inside the button and the game did not take it: the screen stayed
+    on 单人挑战 and the run died ten seconds later on 「no 开启挑战」. This waits for
+    开启挑战; while it is missing and 单人挑战 is still on screen, it takes a screenshot,
+    logs a line and clicks the button where OCR actually found it, up to
+    _SOLO_RETRIES times. Anything else on screen (the waveplate dialog, some other
+    screen) is left to click_team_challenge's own handling below.
+    """
+    for n in range(_SOLO_RETRIES + 1):
+        if task.wait_feature("team_start_challenge", time_out=_SOLO_WAIT, raise_if_not_found=False):
+            if n:
+                task.log_info(f"周本：补点单人挑战 {n} 次后等到了开启挑战")
+            return n
+        if n == _SOLO_RETRIES:
+            break
+        seen = task.ocr(box=task.box_of_screen(0.0, 0.0, 1.0, 1.0)) or []
+        text = " ".join(str(getattr(b, "name", b)) for b in seen)
+        if "结晶波片不足" in text or "无法获取奖励" in text:
+            return n
+        solo = [b for b in (task.ocr(box=task.box_of_screen(*SOLO_BOX)) or [])
+                if "单人挑战" in str(getattr(b, "name", ""))]
+        if not solo:
+            task.log_info(f"周本：{_SOLO_WAIT} 秒没等到开启挑战，屏上也没有单人挑战，整屏读到: {text[:160]}")
+            return n
+        b = solo[0]
+        try:
+            task.screenshot(f"solo_retry_{n + 1}")
+        except Exception:
+            pass
+        task.log_info(f"周本：点单人挑战后 {_SOLO_WAIT} 秒没等到开启挑战，屏上仍是单人挑战，"
+                      f"补点第 {n + 1} 次 ({b.x + b.width // 2},{b.y + b.height // 2})")
+        task.click_box(b, after_sleep=0)
+    task.log_info(f"周本：补点单人挑战 {_SOLO_RETRIES} 次都没进开启挑战")
+    return _SOLO_RETRIES
+
+
+def _parse_stamina(names):
+    """(current, back_up) from the stamina strip's text blocks in reading order, or None.
+
+    Upstream (BaseWWTask.py:409-424) takes the block matching 数/数 as the current
+    stamina, leaves it at 0 when there is none, and lets every later pure number
+    overwrite the backup. When 240/240 came back split, that read 「0 / 240」
+    (2026-09-21 10:25:49, OK-WW-05-33-53.log:1524) and a full 240 was spent as 60.
+    Here: a single block first (searched, as upstream does), then two or three
+    neighbours joined (the join has to be exactly 数/数); the backup is only the pure
+    number right before the 数/数; nothing found is None, never 0.
+    """
+    names = [str(n).replace(" ", "") for n in names]
+    for span in (1, 2, 3):
+        for i in range(len(names) - span + 1):
+            joined = "".join(names[i:i + span])
+            m = _STAMINA_PAIR.search(joined) if span == 1 else _STAMINA_PAIR.fullmatch(joined)
+            if m:
+                left = names[i - 1] if i else ""
+                return int(m.group(1)), int(left) if left.isdigit() else 0
+    return None
+
+
+def _read_stamina(task, in_dialog):
+    reads = _STAMINA_DIALOG_READS if in_dialog else 1
+    where = "领奖框" if in_dialog else ""
+    for n in range(reads):
+        if n:
+            task.sleep(1)
+        boxes = task.wait_ocr(*STAMINA_BOX, raise_if_not_found=False) or []
+        boxes = sorted(boxes, key=lambda b: b.x)
+        names = [b.name for b in boxes]
+        task.log_info(f"体力读字原文{where}（第 {n + 1} 次）: {names}")
+        got = _parse_stamina(names)
+        if got:
+            return got
+    try:
+        task.screenshot("stamina_error")
+    except Exception:
+        pass
+    task.log_info(f"体力{where}读了 {reads} 次都没有「数/数」，按没读到处理（-1），不当 0")
+    return None
+
 
 def _install_hooks():
     global logger, TaskDisabledException, CharRevivedException
     from ok import Logger
     from ok import TaskDisabledException as _TDE
     from src.task.BaseCombatTask import CharRevivedException as _CRE
+    from src.task.BaseWWTask import BaseWWTask
     from src.task.DailyTask import DailyTask
     from src.task.FarmEchoTask import FarmEchoTask
     from src.task.ForgeryTask import ForgeryTask
@@ -379,6 +480,7 @@ def _install_hooks():
         # in one go. That dialog can be the one saying there are not enough
         # waveplates to collect a reward, and confirming it fights the boss for
         # nothing. Split in two so the dialog is read before anything is confirmed.
+        _confirm_solo(self)
         try:
             self.wait_click_feature("team_start_challenge", raise_if_not_found=True,
                                     click_after_delay=0.5, after_sleep=1)
@@ -415,6 +517,20 @@ def _install_hooks():
             self.sleep(1)
             raise TaskDisabledException()
         self.wait_click_skip_dialog_confirm()
+
+    # -- stamina: an unread 数/数 is 「unknown」, not 0 ------------------------
+    @override(BaseWWTask, "get_stamina", expect_sha=_GET_STAMINA_SHA)
+    def get_stamina(self):
+        # Inside use_stamina the reward dialog is already open and upstream spends
+        # on whatever this returns, so it reads again 1 s apart. Everywhere else a
+        # miss goes back as -1, which farm_tacet already answers with a click and a
+        # second read (TacetTask.py:58-61).
+        in_dialog = sys._getframe(1).f_code.co_name == "use_stamina"
+        got = _read_stamina(self, in_dialog)
+        current, back_up = got if got else (-1, -1)
+        self.info_set("current_stamina", current)
+        self.info_set("back_up_stamina", back_up)
+        return current, back_up, (current + back_up if got else -1)
 
     # -- tacet field: keep one settlement screenshot for the daily report ----
     tacet_stamina = TacetTask.use_stamina
