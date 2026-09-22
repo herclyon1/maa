@@ -33,7 +33,7 @@
 .stk-row{position:relative;height:var(--ios-row2-h)}
 .stk-row img,.stk-row .noimg{position:absolute;left:calc(var(--ios-row2-icon-x) - var(--ios-card-inset));top:17px;width:var(--ios-row2-icon);height:var(--ios-row2-icon);object-fit:contain}
 .stk-row .t{position:absolute;left:calc(var(--ios-row2-text-x) - var(--ios-card-inset));top:var(--ios-row2-title-top);right:calc(20px + var(--stk-vw, 0px));font-size:var(--ios-body-size);line-height:var(--ios-body-lh);color:var(--ios-label);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.stk-row .s{position:absolute;left:calc(var(--ios-row2-text-x) - var(--ios-card-inset));top:var(--ios-row2-sub-top);right:20px;font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);color:var(--ios-settings-subtitle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.stk-row .s{position:absolute;left:calc(var(--ios-row2-text-x) - var(--ios-card-inset));top:var(--ios-row2-sub-top);right:calc(20px + var(--stk-vw, 0px));font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);color:var(--ios-settings-subtitle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
 .stk-row .v{position:absolute;right:20px;top:50%;transform:translateY(-50%);font-size:var(--ios-body-size);line-height:var(--ios-body-lh);color:var(--ios-secondary-label);white-space:nowrap;font-variant-numeric:tabular-nums}
 .stk-row:not(:last-child)::after{content:"";position:absolute;left:calc(var(--ios-row2-text-x) - var(--ios-card-inset));right:20px;bottom:0;height:var(--ios-separator-h);background:var(--ios-separator)}
 .stk-foot{margin:0 var(--ios-card-inset);padding:var(--ios-footer-text-top) 20px 0;font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh);color:var(--ios-secondary-label)}
@@ -89,7 +89,7 @@
     if (lastGood) el.innerHTML = listHtml(lastGood.games[0], lastGood, lastErr);
     else if (err === "没配森空岛") el.innerHTML = emptyHtml("没配森空岛", "库存从森空岛读；在「手机」页填好密钥串再来。", "去手机页", "phone");
     else el.innerHTML = emptyHtml("读不到库存", err, "重试", "retry");
-    // plan §4.2: title max width = 400 − 83 − value width − 8 (--ios-value-gap); the value's
+    // plan §4.2: text column (title and subtitle) max width = 400 − 83 − value width − 8 (--ios-value-gap); the value's
     // width is measured, not estimated from its character count
     for (const v of el.querySelectorAll(".stk-row .v")) v.parentNode.style.setProperty("--stk-vw", `calc(${v.getBoundingClientRect().width}px + var(--ios-value-gap))`);
     const b = el.querySelector("[data-act]");
