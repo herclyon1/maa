@@ -389,6 +389,10 @@ function render() {
   };
 
   for (const g of SCHEMA) {
+    /* I1 (D72): the 库存 entry — a single-row card with no group header, first group of the 终末地 page, above 基质刷取
+       (inventory-plan.md §2: AX-46 Cell with 17.67 of space above and no header). Not gated by the shift: the stockpile
+       page reads 森空岛 from the phone, not the machine. data-tabfix puts it on the 终末地 page without an h2. */
+    if (g.title === "终末地 · 基质刷取") html += `<section data-tabfix="终末地"><div class="group"><div class="row nav" data-page="stockpile"><label>库存</label>${sf("chevron.right", "chev")}</div></div></section>`;
     if (!inShift(g.owner)) continue;
     const M = ((snap && snap.master) || {})[g.game] || {};
     const cur = g.src === "master" ? (M.values || {}) : (c[g.sec] || {});
@@ -706,7 +710,7 @@ function layoutTabs() {
   const present = new Set();
   for (const sec of secs) {
     const title = ((sec.querySelector("h2") || {}).textContent || "").trim();
-    const hit = TABS.find(([, re]) => re.test(title));
+    const hit = sec.dataset.tabfix ? [sec.dataset.tabfix] : TABS.find(([, re]) => re.test(title));
     sec.dataset.tab = hit ? hit[0] : "状态";
     present.add(sec.dataset.tab);
     /* iOS grouped list: the title sits above the card as a small grey header,
@@ -824,6 +828,7 @@ function openPage(title, html) {
 }
 function wire() {
   for (const el of document.querySelectorAll('.row.nav[data-page="receipts"]')) el.onclick = () => { if (receiptsPage) openPage("回执", receiptsPage()); };
+  for (const el of document.querySelectorAll('.row.nav[data-page="stockpile"]')) el.onclick = () => { if (window.Stockpile) Stockpile.open(openPage); };   // I1: the pushed 库存 page lives in stockpile.js (老中继2号, M4 branch m4-stockpile)
   // 必须包一层：`onclick = ping` 会把**鼠标事件对象**当成 minAt 传进去，
   // 于是 `s.at >= floor` 变成「数字 >= 事件对象」，永远为假——
   // 机器明明开着也判成关机。2026-08-31 我加 minAt 参数时就这么弄坏过一次。
