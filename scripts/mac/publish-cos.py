@@ -12,9 +12,9 @@ as the fallback. Written 2026-09-18 after a manifest pushed at 02:31 was still t
 one on the machine's jsDelivr node at 08:45.
 
 Credentials: COS_* in ~/.config/ark/push.env (the same bucket the evidence goes to).
-The bucket's lifecycle rule deletes objects after 90 days; until that rule is limited
-to the evidence prefix, a deleted relay/<version>/ simply makes the machine fall back
-to GitHub - latest.json carries `uploaded` so the age is visible.
+The bucket's lifecycle rule (30 days, since 2026-09-23) excludes relay/ with
+PrefixNotEquals, so nothing published here ever expires; latest.json still carries
+`uploaded` so the age of a deploy is visible.
 """
 from __future__ import annotations
 
