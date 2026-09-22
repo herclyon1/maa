@@ -218,8 +218,8 @@ def _start_process_watch(evt, alive: dict, log) -> bool:
                     from ark_relay import errwatch  # noqa: PLC0415
                     if errwatch.going_down():
                         # The shutdown this relay issued (or Windows') takes WMI
-                        # down with it - "远程过程调用失败" about a minute after
-                        # 「本轮已处理完毕，60 秒后关机」 (relay.log 09-20 10:11:05).
+                        # down with it - an RPC failure about a minute after the
+                        # relay announced the 60-second shutdown (relay.log 09-20 10:11:05).
                         # Expected, not an error; the health check must not count it.
                         log.info("关机途中，进程启动事件监听随系统断开（不是故障）")
                         alive["ok"] = False

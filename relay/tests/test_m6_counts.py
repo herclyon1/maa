@@ -61,7 +61,7 @@ chk("终末地 09-22 理智", collector_maaend._maaend_farm(end).get("maaend_san
 
 # plan: gathering routes live under per-region keys since MaaEnd split them
 # (mxu-MaaEnd.json 2026-09-23: ValleyIV rare 5 + Wuling rare 12 = 17 walked 09-21)
-from ark_relay import plan, annihilation
+from ark_relay import plan, annihilation  # noqa: E402
 ov = {
     "AutoCollectValleyIV": {"type": "switch", "value": True},
     "AutoCollectValleyIVRareRoutes": {"caseNames": ["Route4", "Route5", "Route6", "Route13", "Route14"]},

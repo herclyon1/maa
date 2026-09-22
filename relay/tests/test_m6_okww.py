@@ -1,13 +1,14 @@
 """M6 OK-WW report fixes, replayed on the machine's own logs (slices under
 fixtures/m6-okww, cut from the 09-21 and 09-22 runs pulled back on 09-23).
 
-- 09-21 周本: 「Teleport to Boss Weekly Challenge 0」 is logged before the book
-  opens; the run never got in (找不到开启挑战 → Teleport to boss failed). It was
-  reported as 「打了，但没有领奖」 and 「打完 Boss 领完奖之后没能退出副本」.
-- 09-22 周本: read 0/3 before entering and skipped - full, but not by this run.
-- 09-21 无音区: the reward dialog said 剩余180, OK-WW read 0 (reserve 240) and
-  stopped; the report said 波片 0/240 and spent 240. With the M7 override's raw
-  dialog text in the log, the settlement's 剩余 wins and the mismatch is said.
+- 09-21 weekly boss: the Teleport-to-Boss key is logged before the book opens;
+  the run never got in (no start-challenge button, then Teleport to boss
+  failed) and used to be reported as fought-but-unclaimed.
+- 09-22 weekly boss: read 0/3 before entering and skipped - full, but not by
+  this run.
+- 09-21 tacet: the reward dialog showed 180 left, OK-WW read 0 (reserve 240)
+  and stopped. With the M7 override's raw dialog text in the log, the
+  settlement's remainder wins and the mismatch is reported.
 """
 import sys
 from pathlib import Path
