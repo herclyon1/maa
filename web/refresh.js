@@ -51,6 +51,11 @@
    driver's own frame clock (accept-refresh.js, A15). */
 (function () {
   const ptr = document.getElementById("ptr"), ai = document.getElementById("ptrai"), app = document.body;   // app: the inset host (body.ptr-inset > header margin-top, R68′)
+  /* I2 (D72, inventory-plan.md §5): the pushed page (#subpage at rest = body.pushed, nav.js / view.js openPage) is its own scroll view — the pull
+     starts at ITS top and the inset goes on ITS body (#subpage.ptr-inset > .pbody, refresh.css); `host` is fixed at the trigger until the inset is gone */
+  const pushed = () => (app.classList.contains("pushed") ? document.getElementById("subpage") : null);
+  const topOf = () => { const pg = pushed(); return pg ? pg.scrollTop : window.scrollY; };
+  let host = app;
   if (!ptr || !ai) return;
   const arms = [...ai.querySelectorAll("i")];
   const H_CTL = 60, ROT_SPUN = 3.1316, TICK_MS = 125, TICK_DEG = 45, GOAWAY_MS = 300, GOAWAY_SCALE = 0.001, SPIN_CAP_S = 4, K_PER_V = 48.333, K_MIN = 5, K_MAX = 150;
@@ -88,18 +93,18 @@
     arms.forEach((a, i) => { a.style.transform = `rotate(${i * TICK_DEG}deg) translateY(${dy}px) scale(${s}) translateY(${ARM_CENTRE}px)`; });
   };
   /* the inset (body.ptr-inset > header margin-top: the large title and the list go down together, §12) — applied / removed only with the finger up (see the header) */
-  const insetApply = () => { if (insetOn || !app) return; insetOn = true; back = null; app.classList.add("ptr-inset"); app.style.setProperty("--ptr-inset", H_CTL + "px"); };
-  const insetClear = () => { if (!app) return; app.classList.remove("ptr-inset"); app.style.removeProperty("--ptr-inset"); back = null; };
+  const insetApply = () => { if (insetOn || !app) return; insetOn = true; back = null; host = pushed() || app; host.classList.add("ptr-inset"); host.style.setProperty("--ptr-inset", H_CTL + "px"); };
+  const insetClear = () => { if (!app) return; host.classList.remove("ptr-inset"); host.style.removeProperty("--ptr-inset"); host = app; back = null; };
   const insetRemove = (animated, now) => {
     if (!insetOn) return; insetOn = false; if (!app) return;
     if (!animated) { insetClear(); return; }
     /* _removeRefreshInset: keeps the content where it is (the offset stays) — here scrollY takes up to 60 of the change at once; what is left (the part
        within the inset) scrolls back over BACK_MS with progress sin²(π/2 · f) */
-    const s = window.scrollY || 0, keep = Math.max(0, Math.min(H_CTL, s));
-    if (keep > 0) window.scrollTo(0, s - keep);
+    const s = (host === app ? window.scrollY : host.scrollTop) || 0, keep = Math.max(0, Math.min(H_CTL, s));
+    if (keep > 0) { if (host === app) window.scrollTo(0, s - keep); else host.scrollTop = s - keep; }
     const from = H_CTL - keep;
     if (from <= 0) { insetClear(); return; }
-    back = { t0: now, from }; backTrace = []; app.style.setProperty("--ptr-inset", from + "px"); ensureLoop();
+    back = { t0: now, from }; backTrace = []; host.style.setProperty("--ptr-inset", from + "px"); ensureLoop();
   };
   const insetSync = (now) => { if (touching) return; if (insetWant && !insetOn) insetApply(); else if (!insetWant && insetOn) insetRemove(false, now); };   // at the release: pending changes go in without animation (the browser's bounce is the motion)
   const ensureLoop = () => { if (!raf) raf = requestAnimationFrame(frame); };
@@ -127,7 +132,7 @@
     arms.forEach((a) => { a.style.opacity = "1"; });   // _cleanUpAfterRevealing: the reveal's end state (all arms lit) is where the spring starts
     insetWant = true; insetSync(spinT0);
     cancelAnimationFrame(raf); raf = requestAnimationFrame(frame);
-    refreshing = Refresh.onRefresh ? Refresh.onRefresh() : (typeof window.ping === "function" ? window.ping() : Promise.resolve());   // the page's refresh (live.js ping); accept swaps its own
+    refreshing = Refresh.onRefresh ? Refresh.onRefresh() : typeof window.pullRefresh === "function" ? window.pullRefresh() : (typeof window.ping === "function" ? window.ping() : Promise.resolve());   // the page's refresh (view.js pullRefresh: the 库存 page's Stockpile.load(true) or live.js ping); accept swaps its own
     Promise.resolve(refreshing).catch(() => {}).finally(() => { if (state === 3) endRefreshing(); });
   };
   const frame = (now) => {
@@ -155,7 +160,7 @@
     }
     if (back) {
       const f = Math.min(1, (now - back.t0) / BACK_MS), m = back.from * (1 - backProgress(f));
-      if (app) app.style.setProperty("--ptr-inset", m.toFixed(3) + "px");
+      if (app) host.style.setProperty("--ptr-inset", m.toFixed(3) + "px");
       if (backTrace.length < 200) backTrace.push({ t: (now - back.t0) / 1000, m });
       if (f >= 1) insetClear();
     }
@@ -170,14 +175,22 @@
   };
 
   /* touch: the pull is the finger's travel below its start while the page is at the top */
-  addEventListener("touchstart", (e) => { touching = true; if (e.touches.length !== 1) { y0 = null; return; } y0 = window.scrollY <= 0 ? e.touches[0].clientY : null; lastY = e.touches[0].clientY; lastT = e.timeStamp; vel = 0; }, { passive: true });
-  addEventListener("touchmove", (e) => {
+  /* I2: a refresh that re-renders the content (the 库存 page's Stockpile.load paints its loading row at once) detaches the node under the finger;
+     the rest of that touch (moves, the end) is still dispatched to that node but no longer bubbles to window — the release was lost (probe
+     2026-09-23: 15 of 21 moves and no touchend reached window, the inset never went on). So move / end are also heard on the touch's own target;
+     `seen` keeps an event that does bubble from being handled twice. */
+  const seen = new WeakSet(); let tgt = null;
+  const listen = (el, on) => { if (!el || !el.addEventListener) return; const f = on ? "addEventListener" : "removeEventListener"; el[f]("touchmove", onMove, { passive: true }); el[f]("touchend", onEnd, { passive: true }); el[f]("touchcancel", onEnd, { passive: true }); };
+  addEventListener("touchstart", (e) => { if (e.touches.length === 1 && e.target !== tgt) { listen(tgt, false); tgt = e.target; listen(tgt, true); } touching = true; if (e.touches.length !== 1) { y0 = null; return; } y0 = !app.classList.contains("nav-live") && topOf() <= 0 ? e.touches[0].clientY : null; lastY = e.touches[0].clientY; lastT = e.timeStamp; vel = 0; }, { passive: true });
+  function onMove(e) {
+    if (seen.has(e)) return; seen.add(e);
     if (y0 === null || state === 3 || state === 4) return;
     const y = e.touches[0].clientY, dt = (e.timeStamp - lastT) / 1000; if (dt > 0) vel = (y - lastY) / dt; lastY = y; lastT = e.timeStamp;
     reveal(y - y0, true);
-  }, { passive: true });
+  }
+  addEventListener("touchmove", onMove, { passive: true });
   const up = () => { touching = false; insetSync(performance.now()); if (y0 === null) return; y0 = null; if (state === 1) { setState(0); setArms(0); } };   // released before f reached 1: nothing happens (the trigger needs the finger)
-  const onEnd = (e) => { if (e.touches && e.touches.length) return; up(); };
+  function onEnd(e) { if (seen.has(e)) return; seen.add(e); if (e.touches && e.touches.length) return; up(); }
   addEventListener("touchend", onEnd, { passive: true }); addEventListener("touchcancel", onEnd, { passive: true });
 
   const Refresh = {

@@ -826,6 +826,12 @@ function openPage(title, html) {
   pg.querySelector(".pback").onclick = back;
   return back;
 }
+/* I2 (D72, inventory-plan.md §5): a pull on the pushed 库存 page re-reads the depot — Stockpile.load(true), a Promise the spinner waits for (while it
+   reads, the page's 「刷新」 is disabled; a failure keeps the old list with the error in the footnote — stockpile.js); any other pull is live.js's
+   ping(). refresh.js calls this (Refresh.onRefresh stays accept's slot); #stockbody lives only in #subpage (topbar.js's pocket copy is of main). */
+function pullRefresh() {
+  return document.querySelector("body.pushed > #subpage #stockbody") && window.Stockpile ? Stockpile.load(true) : ping();
+}
 function wire() {
   for (const el of document.querySelectorAll('.row.nav[data-page="receipts"]')) el.onclick = () => { if (receiptsPage) openPage("回执", receiptsPage()); };
   for (const el of document.querySelectorAll('.row.nav[data-page="stockpile"]')) el.onclick = () => { if (window.Stockpile) Stockpile.open(openPage); };   // I1: the pushed 库存 page lives in stockpile.js (老中继2号, M4 branch m4-stockpile)
@@ -2125,7 +2131,7 @@ function installNative() {
   }, { passive: true });
   addEventListener("touchend", () => {
     const ai = $("#ptrai");
-    if (armed && ptr) { ptr.classList.add("go"); if (ai) ai.classList.add("on"); ping().finally(() => { ptr.classList.remove("go", "arm"); if (ai) ai.classList.remove("on"); }); }
+    if (armed && ptr) { ptr.classList.add("go"); if (ai) ai.classList.add("on"); pullRefresh().finally(() => { ptr.classList.remove("go", "arm"); if (ai) ai.classList.remove("on"); }); }
     else if (ptr) ptr.classList.remove("arm");
     y0 = null; armed = false;
   }, { passive: true });

@@ -108,6 +108,29 @@
         check("下拉刷新 R5 臂到中心：内端 5 pt、外端 15 pt（环半径 5、臂长 10）", "inner 5 · outer 15", `inner ${inner.toFixed(2)} · outer ${outer.toFixed(2)}`, Math.abs(inner - 5) < 0.15 && Math.abs(outer - 15) < 0.15);
         check("下拉刷新 R5 位置与色：指示器中心 = 安全区顶 + 栏 54 + 30（控件 60 高的中心）、臂色 = --ios-refresh-arm（R61′ 合成色）", `cy ${Math.round(sat + navH + 30)} · ${tokRgb}`, `cy ${cy.toFixed(1)} · ${c0.backgroundColor}`, Math.abs(cy - (sat + navH + 30)) < 0.6 && c0.backgroundColor === tokRgb);
         R.__drive({ down: false }); await new Promise(requestAnimationFrame); }
+      /* ⑫ I2 (D72, inventory-plan.md §5 「下拉刷新：复用现页 .ptr」): on the pushed 库存 page a pull calls Stockpile.load(true) through view.js
+         pullRefresh (Refresh.onRefresh left empty), the spinner waits for its Promise, sits above the page (z 6 over #subpage's 5) and the 60 inset
+         goes on the page's body (#subpage.ptr-inset > .pbody), not on the main header; Stockpile.load is stubbed so no 森空岛 request is made */
+      if (typeof window.openPage === "function") {
+        const SP = window.Stockpile, stub = { calls: 0, force: null, done: null }, frames = async (ms, ok) => { const t = performance.now() + ms; while (!ok() && performance.now() < t) await new Promise(requestAnimationFrame); };
+        window.Stockpile = Object.assign({}, SP, { load: (f) => { stub.calls++; stub.force = f; return new Promise((r) => { stub.done = r; }); } });
+        R.onRefresh = null; R.reset();
+        try {
+          openPage("库存", '<div id="stockbody"></div>');
+          await frames(2000, () => document.body.classList.contains("pushed"));
+          const pg = document.getElementById("subpage"), pb = pg.querySelector(".pbody");
+          R.__drive({ pull: want, v: 800, down: true }); R.__drive({ down: false }); await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame);
+          const z = getComputedStyle(ptr).zIndex, mt = getComputedStyle(pb).marginTop, hm = getComputedStyle(app).marginTop;
+          check("下拉刷新 ⑫ 库存子页（I2，方案 §5）：下拉调 Stockpile.load(true) 一次、转圈在子页之上（z 6 > 子页 5）、60 缩进加在子页正文而非主页大标题", "load 1 · true · z 6 · pbody 60px · header 0px · state 3", `load ${stub.calls} · ${stub.force} · z ${z} · pbody ${mt} · header ${hm} · state ${R.state}`, stub.calls === 1 && stub.force === true && z === "6" && mt === "60px" && hm === "0px" && R.state === 3);
+          if (stub.done) stub.done();
+          await frames(1500, () => R.state === 0); await sleep(400);
+          check("下拉刷新 ⑫ 库存子页：load 的 Promise 了结 → 转圈收起（状态 0）、子页正文缩进回 0、类已除", "state 0 · 0px · no class", `state ${R.state} · ${getComputedStyle(pb).marginTop} · ${pg.classList.contains("ptr-inset") ? "ptr-inset" : "no class"}`, R.state === 0 && getComputedStyle(pb).marginTop === "0px" && !pg.classList.contains("ptr-inset"));
+        } finally {
+          window.Stockpile = SP;
+          const bk = document.querySelector("#subpage .pback"); if (bk && document.body.classList.contains("pushed")) bk.click();
+          await frames(2000, () => !document.body.classList.contains("pushed") && document.getElementById("subpage").hidden);
+        }
+      }
     } finally { R.onRefresh = null; R.reset(); }
   });
 })();
