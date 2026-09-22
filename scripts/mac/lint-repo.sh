@@ -149,7 +149,10 @@ else
   # 2026-09-08 把 relay/tests 也纳进来：之前不查，于是 55 条报告在里面躺着，
   # 其中 test_preupdate_problems.py 那条 f-string 缺占位符指向一个真断言错误——
   # 它用 for + break 只查了四个函数里的第一个。
-  hits=$(uvx pyflakes relay/ark_relay relay/tests relay/service.py relay/boot_stages.py relay/run.py relay/make-manifest.py scripts 2>&1 \
+  # -q: on a cold cache uvx itself prints "Installed 1 package in 1ms" to stderr, which the
+  # 2>&1 below turned into a pyflakes "hit" (M4 lint, 2026-09-23 08:20:57; reproduced with an
+  # empty UV_CACHE_DIR). pyflakes' own reports and syntax errors still come through.
+  hits=$(uvx -q pyflakes relay/ark_relay relay/tests relay/service.py relay/boot_stages.py relay/run.py relay/make-manifest.py scripts 2>&1 \
          | grep -v 'okww_files' || true)
   [ -z "$hits" ] && ok "pyflakes 零报告" || { note "pyflakes 有报告（未定义名 / 先读后绑定 / 无用导入）"; sed 's/^/       /' <<<"$hits" | head -12; }
 fi
