@@ -19,8 +19,8 @@ state. An answer within a few seconds means it is up; no answer means it is down
 No heartbeat is needed, so no polling is needed.
 
 **The only credential is a PIN** (the user, 2026-08-31:
-「留一个 pin 就行了，那那么多事」). The mailbox name itself is a 28-character
-random string kept in the user's phone, the machine's .env and the Mac's
+「留一个 pin 就行了，那那么多事」). The mailbox name itself is a random string
+(32 characters in the Mac copy, measured 2026-09-23) kept in the user's phone, the machine's .env and the Mac's
 ~/.config/ark/push.env (ARK_PHONE_TOPIC / ARK_PHONE_PIN; docs/CONFIG.md
 "Relay environment" names the index of every key's location).
 State carries game config only, never credentials.
