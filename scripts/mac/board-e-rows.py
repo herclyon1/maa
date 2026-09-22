@@ -2,7 +2,7 @@
 """BOARD E rows from commits (SPEED-summary 二 6: the E section is generated, not hand-written).
 Usage: python3 board-e-rows.py [worktree] [since=YYYY-MM-DD HH:MM]  → prints one E-format row per non-merge commit not on main:
 | 件 | 合入时间 | 无头亮 / 暗 | 用户看哪里（Change 行前 120 字） | 疑点（Unread 行前 120 字） |  — fill 无头 counts by hand after the batch run."""
-import subprocess, re, sys, os, collections
+import subprocess, re, sys, os
 W = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()
 SINCE = sys.argv[2] if len(sys.argv) > 2 else '2026-09-19 22:50'
 S = os.path.dirname(os.path.abspath(__file__))
