@@ -96,6 +96,8 @@ _PATCH_EFFECTS = (
      r"NightmareNestTask:opened gray_book_boss", r"nightmare nest: 只刷 \[", "巢穴任务打开了残象聚落页"),
     ("日常改动在跑（附加任务提到刷体力之前）",
      r"NightmareNestTask:opened gray_book_boss", r"TacetTask:info_set current_stamina|ForgeryTask:info_set current_stamina|SimulationTask:info_set current_stamina", "巢穴任务先跑、刷体力后跑"),
+    ("体力读数改动在跑（读字原文进日志）",
+     r"(Tacet|Forgery|Simulation)Task:info_set current_stamina", r"体力读字原文", "读了体力"),
 )
 
 
@@ -113,6 +115,7 @@ PATCH_COVERAGE = {
     "DailyTask.open_daily": "日常改动在跑（附加任务提到刷体力之前）",
     "DailyTask.run_additional_tasks": "日常改动在跑（附加任务提到刷体力之前）",
     "TacetTask.use_stamina": "无音区改动在跑（结算页留图）",
+    "BaseWWTask.get_stamina": "体力读数改动在跑（读字原文进日志）",
 }
 PATCH_NO_TRIGGER = {
     "FarmEchoTask.revive_action": "only when a character dies inside a realm during an echo farm",
