@@ -579,6 +579,14 @@ claiming a check exists when it does not is worse than having none.)
 | `COS_SECRET_ID` / `COS_SECRET_KEY` / `COS_BUCKET` / `COS_REGION` | Tencent Cloud COS for evidence bundles (docs/EVIDENCE.md; `scripts/mac/cos-setup.py` writes them). All four or none; bucket in the `name-appid` form, region like `ap-shanghai`. Absent: evidence goes out as WeCom file messages (app, then group robot), gofile last |
 | `ARK_LLM_PROVIDER` / `_BASE_URL` / `_KEY` / `_MODEL` | prose only; the report is complete without it |
 
+## Mac-side acceptance tools
+
+Read on the Mac by `scripts/mac/` tools, never on the machine.
+
+| Variable | Meaning |
+|---|---|
+| `ACCEPT_REGISTER` | the red-row register `scripts/mac/attribute-red.py` appends to (A16: a red row that nothing in the batch can reach is recorded there, not re-run, not messaged). Default `~/Money/styl-work/BOARD/A16-register.md` (attribute-red.py:51); `--register <file>` overrides both |
+
 ## Backups
 
 Every config touched was backed up first:

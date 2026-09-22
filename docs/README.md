@@ -81,6 +81,7 @@ exist - the next session will never read it, so writing it was wasted.
 | [PHONE-COPY-RULES.md](PHONE-COPY-RULES.md) | How to write the copy on the phone remote page |
 - [HIG-CHECKLIST.md](HIG-CHECKLIST.md) - the phone page checked against Apple's Human Interface Guidelines, rule by rule
 - [PHONE-NATIVE-REFERENCES.md](PHONE-NATIVE-REFERENCES.md) - which Apple app each block of the phone page copies (simulator for numbers, Mac apps for patterns), surveyed 2026-09-15
+- [WEB-FREEZE.md](WEB-FREEZE.md) - the phone page is frozen since 2026-09-19: bug fixes only, batched into one release; what still counts as a bug and what does not
 
 ## Archive (mind the dates when reading)
 
