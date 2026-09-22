@@ -1208,15 +1208,15 @@ it GET that version's manifest and bundle, verifying every wanted file against
 the manifest's SHA-1. COS has no cache layer, so "pushed at 02:31, still the old
 manifest on the machine's CDN node at 08:45" (2026-09-18) cannot happen there.
 
-**Why the bucket's 90-day lifecycle rule cannot hurt this path**: the machine
-never asks for anything but the *latest* deploy. `latest.json` is rewritten by
-every deploy, and it points at the version directory written seconds before it.
-An object that is 90 days old is by definition not the latest deploy (a deploy
-that old means nothing was pushed for three months - then `latest.json` and its
-version directory age out together, and a missing object simply falls through
-to GitHub). Old version directories are the only things the rule ever deletes,
-and nothing reads them. So the rule stays as it is; no path needs a 90-day-old
-object.
+**Why the bucket's lifecycle rule cannot hurt this path**: since 2026-09-23 the
+rule is `expire-30d-not-relay` - evidence expires after 30 days (the user,
+06:13) and the filter `<PrefixNotEquals>relay/</PrefixNotEquals>` keeps it off
+`relay/` entirely. Before that it was a whole-bucket 90-day rule, which would
+have deleted `latest.json` and its version directory after three months without
+a deploy; with the GitHub doors off by default (selfupdate.py) that would have
+stopped self-update. Read-back after the change (`cos-setup.py --lifecycle`,
+2026-09-23 06:19): `GET /?lifecycle` 200, one rule, `<PrefixNotEquals>relay/`,
+`<Days>30</Days>`.
 
 Anything wrong on COS - missing object, refused key (451 unpaid bill on
 2026-09-13), hash mismatch in the bundle, `latest.json` and manifest

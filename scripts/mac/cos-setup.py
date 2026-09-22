@@ -3,6 +3,7 @@
 
     scripts/mac/cos-setup.py              # create + verify + configure both ends
     scripts/mac/cos-setup.py --check      # only verify the bucket answers a signed PUT/GET
+    scripts/mac/cos-setup.py --lifecycle  # only (re)write the evidence bucket's expiry rule, read it back
     scripts/mac/cos-setup.py --diag       # the SEPARATE diagnostics bucket (see below)
     scripts/mac/cos-setup.py --diag --check   # only re-measure that bucket, change nothing
 
@@ -16,7 +17,8 @@ rest is this script:
 1. picks the bucket name `ark-evidence-<appid>` in COS_REGION (default ap-shanghai,
    closest to the user in Tokyo among the mainland regions the machine reaches);
 2. creates it (private ACL) if it is not there, sets a lifecycle rule that deletes
-   objects after 90 days so the bill stays at cents;
+   evidence after 30 days (the user, 2026-09-23 06:13) and never touches relay/, so a
+   month without a deploy cannot delete latest.json out from under self-update;
 3. PUTs, GETs and DELETEs a probe object to prove the key works;
 4. writes COS_* into ~/.config/ark/push.env (for evidence.sh pull) and into the
    machine's C:\\ProgramData\\ark-relay\\.env, then restarts the relay service so
@@ -64,8 +66,8 @@ from ark_relay.evidence import Cos  # noqa: E402
 
 PUSH_ENV = Path(os.path.expanduser("~/.config/ark/push.env"))
 LIFECYCLE = """<LifecycleConfiguration>
-  <Rule><ID>expire-90d</ID><Filter><Prefix></Prefix></Filter><Status>Enabled</Status>
-    <Expiration><Days>90</Days></Expiration></Rule>
+  <Rule><ID>expire-30d-not-relay</ID><Filter><PrefixNotEquals>relay/</PrefixNotEquals></Filter>
+    <Status>Enabled</Status><Expiration><Days>30</Days></Expiration></Rule>
 </LifecycleConfiguration>"""
 
 
@@ -238,6 +240,25 @@ def write_env(lines: dict) -> None:
     PUSH_ENV.write_text(text.rstrip("\n") + "\n", encoding="utf-8")
 
 
+def lifecycle(cos: Cos) -> int:
+    """Rewrite only the evidence bucket's lifecycle and print it before and after, verbatim.
+
+    PUT lifecycle replaces the whole configuration, so the read-back is the
+    proof of what the bucket now does; nothing else about the bucket changes.
+    """
+    status, before = request(cos, "GET", "", params="lifecycle")
+    print("before:", status, before.decode("utf-8", "replace"))
+    status, body = request(cos, "PUT", "", LIFECYCLE.encode(), params="lifecycle")
+    print("PUT lifecycle:", status, body[:300].decode("utf-8", "replace"))
+    if status not in (200, 204):
+        return 1
+    status, after = request(cos, "GET", "", params="lifecycle")
+    print("after:", status, after.decode("utf-8", "replace"))
+    ok = status == 200 and b"<Days>30</Days>" in after and b"<PrefixNotEquals>relay/</PrefixNotEquals>" in after
+    print("read-back matches:", ok)
+    return 0 if ok else 1
+
+
 def main() -> int:
     e = env(PUSH_ENV)
     sid, skey, appid = e.get("COS_SECRET_ID", ""), e.get("COS_SECRET_KEY", ""), e.get("COS_APPID", "")
@@ -250,6 +271,8 @@ def main() -> int:
         return diag(sid, skey, appid, region, e, check_only="--check" in sys.argv)
     bucket = e.get("COS_BUCKET") or f"ark-evidence-{appid}"
     cos = Cos(sid, skey, bucket, region)
+    if "--lifecycle" in sys.argv:
+        return lifecycle(cos)
     check_only = "--check" in sys.argv
     if not check_only:
         status, body = request(cos, "HEAD", "")
@@ -262,7 +285,7 @@ def main() -> int:
             print("桶查不到也建不了：", status, body[:300].decode("utf-8", "replace"))
             return 1
         status, body = request(cos, "PUT", "", LIFECYCLE.encode(), params="lifecycle")
-        print("90 天自动删除规则：", status, body[:200].decode("utf-8", "replace") if status != 200 else "已设")
+        print("30 天自动删除规则（relay/ 除外）：", status, body[:200].decode("utf-8", "replace") if status != 200 else "已设")
     status, _ = request(cos, "PUT", "_probe.txt", b"ark evidence probe")
     status2, got = request(cos, "GET", "_probe.txt")
     status3, _ = request(cos, "DELETE", "_probe.txt")
