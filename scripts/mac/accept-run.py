@@ -250,7 +250,7 @@ try:
                     except Exception: break
                 ws.events = [e for e in ws.events if e.get('method') != 'Emulation.virtualTimeBudgetExpired']
                 got_frame = False
-                stepped = ws.send('Runtime.evaluate', {'expression': 'window.__vtStep ? window.__vtStep() : -1', 'returnByValue': True})['result']['result'].get('value')   # the frame's rAF callbacks, at this step's time
+                ws.send('Runtime.evaluate', {'expression': 'window.__vtStep ? window.__vtStep() : -1', 'returnByValue': True})['result']['result'].get('value')   # the frame's rAF callbacks, at this step's time
                 for k in range(400):                # then exactly one real compositor frame (style / layout / animation events) before the next step
                     f = ws.send('Runtime.evaluate', {'expression': 'window.__vt ? window.__vt.f : -1', 'returnByValue': True})['result']['result'].get('value')
                     if isinstance(f, int) and f > vframes: vframes = f; got_frame = True; break
