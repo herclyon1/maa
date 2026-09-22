@@ -49,9 +49,12 @@
   }
 
   function rowHtml(r) {
-    const icon = r.icon ? `<img src="${esc(r.icon)}" alt="" onerror="this.style.visibility='hidden'">` : `<span class="noimg"></span>`;
+    // bbs.hycdn.cn answers 403 to any off-site Referer (200 with none), so the icon is fetched
+    // without one; referrerpolicy on <img> is in Safari / iOS Safari since 14 (MDN compat data)
+    const icon = r.icon ? `<img src="${esc(r.icon)}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : `<span class="noimg"></span>`;
     const sub = r.need == null ? `库存 ${num(r.have)}` : `库存 ${num(r.have)} · 需 ${num(r.need)}`;
-    const v = r.servings == null ? "" : mult(r.servings);
+    // user 09-23 08:40: short of one build reads 「差 N」 (N = need − have), not 「0.x 人份」
+    const v = r.servings == null ? "" : r.have < r.need ? `差 ${num(r.need - r.have)}` : mult(r.servings);
     return `<div class="stk-row">${icon}<span class="t">${esc(r.name)}</span>`
       + `<span class="s">${sub}</span>${v ? `<span class="v">${v}</span>` : ""}</div>`;
   }
@@ -69,7 +72,7 @@
     const secs = groups.map((s) => `<section><h2>${esc(s.name)}</h2><div class="stk-card">${s.rows.slice().sort(order).map(rowHtml).join("")}</div></section>`).join("");
     const first = err ? `${esc(d["取自"])} 读取的数据；这次没读到：${esc(err)}` : `${esc(d["取自"])} 从森空岛读取`;
     const lag = g.lagNote ? `<br>${esc(g.lagNote)}` : "";
-    return secs + `<p class="stk-foot">${first}<br>人份 = 库存 ÷ ${esc(g.caliber || "")}${lag}</p>`;
+    return secs + `<p class="stk-foot">${first}<br>人份 = 库存 ÷ ${esc(g.caliber || "")}<br>差 N = 库存不够一人份，还差 N（需 − 库存）${lag}</p>`;
   }
   function emptyHtml(title, text, btn, act) {
     return `<div class="stk-empty"><svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="var(--ios-secondary-label)" stroke-width="1.2" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/></svg>`
