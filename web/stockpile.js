@@ -1,7 +1,8 @@
 /* 库存 page (M4, user 2026-09-23 08:09), built to remote-mock/v4/inventory-plan.md:
    the pushed page behind the 终末地 tab's 「库存 ›」 row. For every material the newest
    six-star's full build uses: icon, name, 「库存 1,234 · 需 472」, and on the right how many
-   builds the stock covers, 「2.6x」 (user's wording 2026-09-23; plan §4.3 said 「人份」).
+   builds the stock covers, 「2.6 人份」 (plan §4.3 as written; user 2026-09-23 08:23
+   「2.6 人份也行，按原方案走」).
 
    Data: Inventory.refresh() (web/inventory.js) - the page signs its own 森空岛 request
    (calculate/user-game-data) with the session stored on this phone; the game machine
@@ -18,7 +19,7 @@
 (function () {
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   const num = (n) => Number(n || 0).toLocaleString("en-US");        // 千分位 1,234 (plan §4.3)
-  const mult = (x) => x.toFixed(1) + "x";                           // x is already floored to one decimal (Inventory.servingsOf)
+  const mult = (x) => x.toFixed(1) + " 人份";                       // x is already floored to one decimal (Inventory.servingsOf)
   let lastGood = null, lastErr = "";
 
   /* Geometry per plan §4.2 / §3 / §5; every value is a tokens.css variable except the
@@ -51,7 +52,7 @@
     const icon = r.icon ? `<img src="${esc(r.icon)}" alt="" onerror="this.style.visibility='hidden'">` : `<span class="noimg"></span>`;
     const sub = r.need == null ? `库存 ${num(r.have)}` : `库存 ${num(r.have)} · 需 ${num(r.need)}`;
     const v = r.servings == null ? "" : mult(r.servings);
-    return `<div class="stk-row" style="--stk-vw:${v ? v.length * 10 + 8 : 0}px">${icon}<span class="t">${esc(r.name)}</span>`
+    return `<div class="stk-row">${icon}<span class="t">${esc(r.name)}</span>`
       + `<span class="s">${sub}</span>${v ? `<span class="v">${v}</span>` : ""}</div>`;
   }
   const order = (a, b) => (a.servings == null) - (b.servings == null) || (a.servings || 0) - (b.servings || 0) || a.have - b.have;
@@ -68,7 +69,7 @@
     const secs = groups.map((s) => `<section><h2>${esc(s.name)}</h2><div class="stk-card">${s.rows.slice().sort(order).map(rowHtml).join("")}</div></section>`).join("");
     const first = err ? `${esc(d["取自"])} 读取的数据；这次没读到：${esc(err)}` : `${esc(d["取自"])} 从森空岛读取`;
     const lag = g.lagNote ? `<br>${esc(g.lagNote)}` : "";
-    return secs + `<p class="stk-foot">${first}<br>倍数 = 库存 ÷ ${esc(g.caliber || "")}${lag}</p>`;
+    return secs + `<p class="stk-foot">${first}<br>人份 = 库存 ÷ ${esc(g.caliber || "")}${lag}</p>`;
   }
   function emptyHtml(title, text, btn, act) {
     return `<div class="stk-empty"><svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="var(--ios-secondary-label)" stroke-width="1.2" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/></svg>`
@@ -85,6 +86,9 @@
     if (lastGood) el.innerHTML = listHtml(lastGood.games[0], lastGood, lastErr);
     else if (err === "没配森空岛") el.innerHTML = emptyHtml("没配森空岛", "库存从森空岛读；在「手机」页填好密钥串再来。", "去手机页", "phone");
     else el.innerHTML = emptyHtml("读不到库存", err, "重试", "retry");
+    // plan §4.2: title max width = 400 − 83 − value width − 8 (--ios-value-gap); the value's
+    // width is measured, not estimated from its character count
+    for (const v of el.querySelectorAll(".stk-row .v")) v.parentNode.style.setProperty("--stk-vw", `calc(${v.getBoundingClientRect().width}px + var(--ios-value-gap))`);
     const b = el.querySelector("[data-act]");
     if (b) b.onclick = () => (b.dataset.act === "phone" ? toPhone() : load(true));
   }
