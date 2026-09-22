@@ -3,40 +3,40 @@
   "script": "OK-WW",
   "ok": false,
   "failed_tasks": [
-   "周本：打完 Boss 领完奖之后没能退出副本"
+   "周本：传送去打 Boss 没成（图鉴传送、选关卡、进本其中一步没过），没进本，一次没打"
   ],
   "duration_known": true,
   "okww_steps": [
    "残象聚落（已刷满）",
-   "周本（没做完，原因见失败于）"
+   "周本（没进本，一次没打，原因见失败于）"
   ],
-  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+  "okww_error": "周本：传送去打 Boss 没成（图鉴传送、选关卡、进本其中一步没过），没进本，一次没打"
  },
  "OK-WW-00-39-08": {
   "script": "OK-WW",
   "ok": false,
   "failed_tasks": [
-   "周本：打完 Boss 领完奖之后没能退出副本"
+   "周本：传送去打 Boss 没成（图鉴传送、选关卡、进本其中一步没过），没进本，一次没打"
   ],
   "duration_known": true,
   "okww_steps": [
    "残象聚落（已刷满）",
-   "周本（没做完，原因见失败于）"
+   "周本（没进本，一次没打，原因见失败于）"
   ],
-  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+  "okww_error": "周本：传送去打 Boss 没成（图鉴传送、选关卡、进本其中一步没过），没进本，一次没打"
  },
  "OK-WW-00-48-43": {
   "script": "OK-WW",
   "ok": false,
   "failed_tasks": [
-   "周本：打完 Boss 领完奖之后没能退出副本"
+   "周本：等一个画面没等到（等了 10 秒）"
   ],
   "duration_known": true,
   "okww_steps": [
    "残象聚落（已刷满）",
    "周本（没做完，原因见失败于）"
   ],
-  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+  "okww_error": "周本：等一个画面没等到（等了 10 秒）"
  },
  "OK-WW-00-51-35": {
   "script": "OK-WW",
@@ -74,79 +74,79 @@
   "script": "OK-WW",
   "ok": false,
   "failed_tasks": [
-   "周本：打完 Boss 领完奖之后没能退出副本"
+   "周本：角色倒下了"
   ],
   "duration_known": true,
   "okww_steps": [
    "残象聚落（已刷满）",
    "周本（没做完，原因见失败于）"
   ],
-  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+  "okww_error": "周本：角色倒下了"
  },
  "OK-WW-02-01-22": {
   "script": "OK-WW",
   "ok": false,
   "failed_tasks": [
-   "周本：打完 Boss 领完奖之后没能退出副本"
+   "周本：没有进入战斗"
   ],
   "duration_known": true,
   "okww_steps": [
    "残象聚落（已刷满）",
    "周本（没做完，原因见失败于）"
   ],
-  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+  "okww_error": "周本：没有进入战斗"
  },
  "OK-WW-03-04-49": {
   "script": "OK-WW",
   "ok": false,
   "failed_tasks": [
-   "周本：打完 Boss 领完奖之后没能退出副本"
+   "周本：没有进入战斗"
   ],
   "duration_known": true,
   "okww_steps": [
    "残象聚落（已刷满）",
    "周本（没做完，原因见失败于）"
   ],
-  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+  "okww_error": "周本：没有进入战斗"
  },
  "OK-WW-03-07-57": {
   "script": "OK-WW",
   "ok": false,
   "failed_tasks": [
-   "周本：打完 Boss 领完奖之后没能退出副本"
+   "周本：没有进入战斗"
   ],
   "duration_known": true,
   "okww_steps": [
    "残象聚落（已刷满）",
    "周本（没做完，原因见失败于）"
   ],
-  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+  "okww_error": "周本：没有进入战斗"
  },
  "OK-WW-03-09-48": {
   "script": "OK-WW",
   "ok": false,
   "failed_tasks": [
-   "周本：打完 Boss 领完奖之后没能退出副本"
+   "周本：没有进入战斗"
   ],
   "duration_known": true,
   "okww_steps": [
    "残象聚落（已刷满）",
    "周本（没做完，原因见失败于）"
   ],
-  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+  "okww_error": "周本：没有进入战斗"
  },
  "OK-WW-03-18-38": {
   "script": "OK-WW",
   "ok": false,
   "failed_tasks": [
-   "周本：打完 Boss 领完奖之后没能退出副本"
+   "周本：没有进入战斗"
   ],
   "duration_known": true,
   "okww_steps": [
    "残象聚落（已刷满）",
    "周本（没做完，原因见失败于）"
   ],
-  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+  "okww_error": "周本：没有进入战斗"
  },
  "OK-WW-03-20-31": {
   "script": "OK-WW",
@@ -164,27 +164,27 @@
   "script": "OK-WW",
   "ok": false,
   "failed_tasks": [
-   "周本：打完 Boss 领完奖之后没能退出副本"
+   "周本：等一个画面没等到（等了 10 秒）"
   ],
   "duration_known": true,
   "okww_steps": [
    "残象聚落（已刷满）",
-   "周本（领了 1 次，然后没能退出副本）"
+   "周本（领了 1 次，之后出错，原因见失败于）"
   ],
-  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+  "okww_error": "周本：等一个画面没等到（等了 10 秒）"
  },
  "OK-WW-05-43-17": {
   "script": "OK-WW",
   "ok": false,
   "failed_tasks": [
-   "周本：打完 Boss 领完奖之后没能退出副本"
+   "周本：选了等级后没等到「开启挑战」，没进本，一次没打（等了 10 秒）"
   ],
   "duration_known": true,
   "okww_steps": [
    "残象聚落（已刷满）",
-   "周本（没做完，原因见失败于）"
+   "周本（没进本，一次没打，原因见失败于）"
   ],
-  "okww_error": "周本：打完 Boss 领完奖之后没能退出副本"
+  "okww_error": "周本：选了等级后没等到「开启挑战」，没进本，一次没打（等了 10 秒）"
  },
  "OK-WW-06-35-43": {
   "script": "OK-WW",
@@ -195,7 +195,7 @@
   "duration_known": true,
   "okww_steps": [
    "残象聚落（已刷满）",
-   "周本（领了 1 次，然后没能退出副本）"
+   "周本（领了 1 次，之后出错，原因见失败于）"
   ],
   "okww_error": "任务执行：等一个画面没等到"
  },

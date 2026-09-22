@@ -168,7 +168,7 @@ _OKWW_MSG_ZH = (
     # translated here - _okww_error reads the exception under it instead. It
     # used to read 「打完 Boss 领完奖之后没能退出副本」, which on 2026-09-21 was
     # said of a run that never got into the realm (OK-WW-05-33-53.log:1172-1177).
-    ("Teleport to boss failed", "传送去打 Boss 没成（图鉴传送、选等级、进本其中一步没过），没进本，一次没打"),
+    ("Teleport to boss failed", "传送去打 Boss 没成（图鉴传送、选关卡、进本其中一步没过），没进本，一次没打"),
     ("can't find gray_book_boss", "按 F2 打不开图鉴——先核对键位是不是游戏默认"),
     ("NightmareNestTask Failed", "打了但没打成"),
     ("Logger.error() got an unexpected keyword", "旧版补丁自己的日志调用写错（已撤回）"),
