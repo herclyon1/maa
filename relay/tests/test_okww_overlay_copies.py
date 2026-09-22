@@ -50,6 +50,8 @@ CHANGES = {
     "周本领完点退出副本": "退出副本",
     "巢穴没打满就接着打": "is not complete",
     "巢穴白打一局就拉黑": "no progress after an attempt",
+    "周本单人挑战没接就补点": "补点第",
+    "体力数/数没读到不当 0": "不当 0",
 }
 
 print("[每一条改动都还在]")
@@ -58,9 +60,9 @@ for name, marker in CHANGES.items():
 
 # A replacement stops upstream's body from running, so it must be pinned.
 # Everything else wraps.
-REPLACEMENTS = {"click_team_challenge", "find_nest"}
+REPLACEMENTS = {"click_team_challenge", "find_nest", "get_stamina"}
 
-print("[只有两处整段替换，而且都钉了指纹]")
+print("[只有三处整段替换，而且都钉了指纹]")
 bound = re.findall(r'@override\((\w+), "(\w+)"([^)]*)\)', src)
 bound += [(c, m, r) for c, m, r in re.findall(r'override\((\w+), "(\w+)"([^)]*)\)\(', src)]
 names = {m for _, m, _ in bound}

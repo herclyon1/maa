@@ -112,6 +112,12 @@ def main() -> int:
     day = ("2026-09-13 09:21:58,916 INFO TaskExecutor NightmareNestTask:opened gray_book_boss\n"
            "2026-09-13 12:45:52,773 INFO TaskExecutor NightmareNestTask:nightmare nest: 只刷 ['落渊南丘']（设置来自母本）\n"
            "2026-09-13 09:33:01,760 INFO TaskExecutor TacetTask:info_set current_stamina 239\n")
+    # M7 (09-23): get_stamina logs its raw read. 09-13 predates it, so the real day alone
+    # must now flag the stamina override; with the M7 line (format from _read_stamina,
+    # not a real log line) the day is clean again.
+    check("M7 之前的日志没有体力原文＝体力改动没跑", bad_labels(patch_effect_checks(day, tacet_shot_today=True)),
+          ["体力读数改动在跑（读字原文进日志）"])
+    day += "2026-09-13 09:33:01,700 INFO TaskExecutor TacetTask:体力读字原文（第 1 次）: ['55', '239/240', '+']\n"
     check("巢穴＋顺序都对", bad_labels(patch_effect_checks(day, tacet_shot_today=True)), [])
     check("刷了无音区但没留图", "无音区改动在跑（结算页留图）" in bad_labels(patch_effect_checks(day, tacet_shot_today=False)), True)
     day_old = day.replace("nightmare nest: 只刷 ['落渊南丘']（设置来自母本）", "left_click 已击败残象：0/48")

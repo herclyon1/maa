@@ -758,10 +758,13 @@
 ],
 "test_release_notes.py": [],
 "test_replay.py": [
+"__init__",
 "collector",
 "collector_maa",
 "collector_maaend",
 "collector_okww",
+"config",
+"wuwa_forgery",
 "wuwa_tacet"
 ],
 "test_report_due.py": [
