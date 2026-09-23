@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import collector_okww as c, core, outcome as o  # noqa: E402
+from ark_relay import collector_okww as c, core, outcome as o
 
 FX = Path(__file__).resolve().parent / "fixtures" / "m6-okww"
 bad = []
