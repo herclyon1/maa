@@ -183,6 +183,7 @@
       const dt = Math.min(1, Math.max(0, (now - st.last) / 1000)); if (now > st.last) st.last = now;   // closed-form: a slow frame gets its whole elapsed time; a frame stamped before the last sync adds nothing and does not move the clock back
       spring(st.pos, dt); spring(st.lift, dt); if (st.well) spring(st.well, dt); swFlexStep(st, now, dt);
       const posDone = Math.abs(st.pos.x - st.pos.target) < .02 && Math.abs(st.pos.v) < .5, liftDone = Math.abs(st.lift.x - st.lift.target) < .004 && Math.abs(st.lift.v) < .04;   // .004 of the lift = .002 of scale (< ⅒ px on the 58-pt knob)
+      if (st.flex && st.flex.active && st.lift.target === 0 && liftDone) { st.flex.active = false; st.flex.vi = flexIntegrator(); }   // flex-interaction.md §8 ③: the fall animation group's completion (0x1c54c9a28) sets activation mode 1 — not setLifted:NO; integrator cleared, targets identity
       const flexDone = !st.flex || (!st.flex.active && swFlexRest(st.flex));
       if (posDone) { st.pos.x = st.pos.target; st.pos.v = 0; }
       if (liftDone) { st.lift.x = st.lift.target; st.lift.v = 0; }
@@ -232,7 +233,7 @@
         st.held = false; t = 0; sw.classList.remove("pressed"); retarget();
         if (st.lift.target === 1) {
           const wait = Math.max(0, liftAt + T.hang - performance.now());
-          st.hangT = setTimeout(() => { swSync(st); swAim(st.lift, 0, T.unliftResp, T.unliftZeta); if (st.flex) st.flex.active = false; swRun(sw, st); }, wait);   // spec.unLiftSpring ζ .7 / .5; R70′: setLifted:NO → the flex deactivates (its floats settle on their spring)
+          st.hangT = setTimeout(() => { swSync(st); swAim(st.lift, 0, T.unliftResp, T.unliftZeta); swRun(sw, st); }, wait);   // spec.unLiftSpring ζ .7 / .5; the flex stays active until the fall completes (tick above; §8 ③ supersedes R70′ setLifted:NO)
         }
         if (on !== initialOn) input.dispatchEvent(new Event("change", { bubbles: true }));
       },

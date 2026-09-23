@@ -1385,8 +1385,8 @@ const SEG_TAP_T = { geo: .082, mat: .092, travel: .098, fallGeo: .082 + .22, fal
    (0x1c5127a48: pts 100, min .75, max 1.15, N 2500, ζ 1.0 / .5, tracking .9 / .5): 220×44 → pts 29.1, [.8682, 1.1106], N 2106, ζ .653 / .456
    (tracking .632 / .456); 196×28 → smallLoupe. Per frame (§3, 0x1c5052558 / 0x1c505297c): m = a / N; per axis lo = max(min, (D − pts) / D),
    hi = min(max, (D + pts) / D); sX = clamp(lerp(1, hiX, m), loX, hiX), sY = clamp(lerp(1, loY, m), loY, hiY) (accelerating: X out, Y in);
-   drift = sign(v)·(1 − sX)·W/2; the translation term (threshold 6000) is negligible here; at the END of updateFlex the hard clamp [0.9, 1.1]
-   (0x1c54c53d4) on the TARGET scaleX / scaleY — the presented values are the spring floats and are not clamped (§6f.3: the native peak 253.4 =
+   drift = sign(v)·(1 − sX)·W/2; the translation term (threshold 6000) is negligible here; the per-axis range is a SOFT tanh clamp
+   (0x1c54c53d4, §8 ② — the former "[0.9, 1.1] hard clamp" reading is void) on the TARGET scaleX / scaleY — the presented values are the spring floats and are not clamped (§6f.3: the native peak 253.4 =
    1.152·220 is the ζ .632 / .653 spring's overshoot past the clamped target; B5-d, §6f.4). Not read
    (§4): the retargetImpulse .032 impulse form — the recomputation peaks at 244 where the native reaches 253.5 (标「retargetImpulse 未读」).
    B5-d check (§7.3): the drift is not applied instantly — its target sign(v)·(1 − sX)·W/2 feeds the closed-form scaleSpring float (tracking
@@ -1413,19 +1413,21 @@ function flexIntegrator() {
   return { add(p, t) {
       if (vi.pf === null || t - vi.t > .05) { vi.pf = p; vi.vf = 0; vi.af = 0; vi.t = t; return; }   // first sample / hysteresis 0.05 s → reset
       const dt = t - vi.t; if (dt <= 0) return;
-      const pf = .3 * p + .7 * vi.pf, v = (pf - vi.pf) / dt, vf = .3 * v + .7 * vi.vf, acc = (vf - vi.vf) / dt;   // EMA α .3 on position, velocity, acceleration; consecutive differentiation
+      const pf = .3 * p + .7 * vi.pf, v = (pf - vi.pf) / dt, vf = .3 * v + .7 * vi.vf, acc = (Math.abs(vf) - Math.abs(vi.vf)) / dt;   // EMA α .3 on position, velocity, acceleration; the acceleration of the SPEEDS (flex-interaction.md §8 ①: -[_UIVelocityIntegrator addSample3D:withTimestamp:] 0x1c483c328–0x1c483c3ec takes |v| per axis before differencing)
       vi.af = .3 * acc + .7 * vi.af; vi.pf = pf; vi.vf = vf; vi.t = t;
     },
     get velocity() { return vi.vf; },
-    get acceleration() { return Math.sign(vi.vf) * vi.af; },   // prefersDirectionlessAcceleration: the component along the velocity
+    get acceleration() { return vi.af; },   // prefersDirectionlessAcceleration: the stored value as is (§8 ①; the former sign(v)·af read the wrong sign after v changes sign)
   };
 }
 /* one updateFlex: targets from the acceleration (§3) */
 function flexTargets(spec, W, H, accel, vel) {
   const m = accel / spec.N, loX = Math.max(spec.min, (W - spec.pts) / W), hiX = Math.min(spec.max, (W + spec.pts) / W), loY = Math.max(spec.min, (H - spec.pts) / H), hiY = Math.min(spec.max, (H + spec.pts) / H);
-  const sX = Math.max(loX, Math.min(hiX, 1 + (hiX - 1) * m)), sY = Math.max(loY, Math.min(hiY, 1 + (loY - 1) * m));
-  const hard = (q) => Math.max(.9, Math.min(1.1, q));   // updateFlex's final hard clamp on the targets (0x1c54c53d4); the drift term was formed from sX before it (§3 order)
-  return { sX: hard(sX), sY: hard(sY), drift: Math.sign(vel) * (1 - sX) * W / 2 };
+  // 0x1c54c53d4 is a SOFT clamp into [lo, hi] (flex-interaction.md §8 ②, 老网页 21:50; the former hard clamps [lo, hi] then [.9, 1.1] were a misread):
+  // r = (hi − lo) / 3, above hi → hi + r·tanh(.55·(x − hi) / r), below lo → lo + r·tanh(.55·(x − lo) / r); the drift uses the soft-clamped sX (0x1c50525f0–0x1c5052610)
+  const soft = (x, lo, hi) => { const r = (hi - lo) / 3; return x < lo ? lo + r * Math.tanh(.55 * (x - lo) / r) : x > hi ? hi + r * Math.tanh(.55 * (x - hi) / r) : x; };
+  const sX = soft(1 + (hiX - 1) * m, loX, hiX), sY = soft(1 + (loY - 1) * m, loY, hiY);
+  return { sX, sY, drift: Math.sign(vel) * (1 - sX) * W / 2 };
 }
 /* damped spring x'' = −ω₀²(x − target) − 2ζω₀x' (ω₀ = 2π / response) — the ANALYTIC step over dt from the current (x, v) (flex-interaction.md §6e.3:
    AnimationKit evaluates the closed-form solution, §4 0x1de3cfb00–0x1de3d4000; the old page's dragsim.py spring_step). A retarget keeps (x, v) and only
@@ -1824,13 +1826,17 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
        flex drift goes into the integrator, updateFlex sets the targets, the three animatable floats follow on spec.scaleSpring (tracking while the finger is
        down), the result is the presentation transform */
     const q = clamp01(st.sL.x), w = W0 + 2 * LX * q, h = H0 + 2 * LY * q, fl = st.flex;
-    fl.vi.add(st.pos.x + fl.out.dx, now / 1000);   // the presentation centre = position + flex drift (the update link reads the presentation layer, §1)
+    /* when (flex-interaction.md §8 ③, 老网页 21:50): live from the lift (preferredActivationMode 3, 0x1c54c8258) until the fall group completes (1, 0x1c54c9a28:
+       integrator cleared, targets identity, the floats settle on their spring) */
+    if (!fl.active && liftedModel) { fl.active = true; fl.vi = flexIntegrator(); }
+    if (fl.active && !liftedModel && st.sL.x < .001 && Math.abs(st.sL.v) < .01) { fl.active = false; fl.vi = flexIntegrator(); }
+    if (fl.active) fl.vi.add(st.pos.x + fl.out.dx, now / 1000);   // the presentation centre = position + flex drift (the update link reads the presentation layer, §1)
     /* §7.4 (老网页 13:2x): preferredVariant 4 = liquidLensWithSize:(_UILiquidLensView.bounds) recomputed per frame from the MODEL bounds — a step 196×28 ↔ 220×44 at
        setLifted:YES / actuallySetLifted:NO, not the presented size; the same W / H feed the targets' per-axis range and the drift (§3: W, H = view.bounds) */
     const Wm = liftedModel ? W0 + 2 * LX : W0, Hm = liftedModel ? H0 + 2 * LY : H0;
-    const spec = flexSpec(Wm, Hm), tg = flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity), sp = st.rel == null ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
+    const spec = flexSpec(Wm, Hm), tg = fl.active ? flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity) : { sX: 1, sY: 1, drift: 0 }, sp = st.rel == null ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
     springStep(fl.sx, tg.sX, sp, dt); springStep(fl.sy, tg.sY, sp, dt); springStep(fl.dx, tg.drift, sp, dt);
-    fl.out = { sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x };   // B5-d: the presented values are the spring floats, unclamped (the [0.9, 1.1] clamp is on the targets in flexTargets; §6f.4)
+    fl.out = { sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x };   // B5-d: the presented values are the spring floats, unclamped (the soft clamp is on the targets in flexTargets; §8 ②)
     setGeo(st.pos.x - w / 2, CY - h / 2, w, h);
     frame(p, pd);
     /* 仪器: what this tick used and produced — window.__segLens for the frame recorder (names: see the note at segActiveLoop) */
