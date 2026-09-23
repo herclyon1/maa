@@ -2,7 +2,9 @@
 # webclip_serve.sh <sha> [port] [clip-id]: serve web/ of a maa-automation commit to the resident home-screen web clip on simulator A the
 # way a deploy would — T5 (2026-09-20), the fix for the 09-20 morning "旧壳" run (the ?v=0 shell scripts never left WebKit's cache):
 #   1. `git archive <sha> web` into the scratchpad;
-#   2. stamp every ?v= reference exactly like scripts/mac/deploy-web.sh (webclip_stamp.py, same regexes; no gh-pages push);
+#   2. stamp every ?v= reference with the step deploy-web.sh / export-web.sh run (stamp-shell.py: every .js/.css/.png/.svg/.webmanifest
+#      ?v= in index.html, the manifest icons, sw.js's CACHE name; exits non-zero if a ?v=0 survives — the old per-name webclip_stamp.py
+#      missed the segmented-lens assets/lens/seg-f-*.png, 2026-09-23 17:10; no gh-pages push);
 #   3. serve it with night's scripts/mac/serve.py on <port> (default 9320);
 #   4. terminate Web.app (com.apple.webapp) and wipe the clip's site data: Storage/Default/<origin>/ (LocalStorage, CacheStorage,
 #      ServiceWorkers), NetworkCache, MediaCache — so the next launch must fetch the stamped shell;
@@ -20,7 +22,7 @@ D=$S/web-$SHA
 rm -rf "$D"; mkdir -p "$D"
 git -C "$REPO" archive "$SHA" web | tar -x -C "$D" --strip-components 1
 V=$(date +%Y%m%d%H%M%S)
-python3 "$HERE/webclip_stamp.py" "$D" "$V"
+python3 "$HERE/stamp-shell.py" "$D" "$V" || { echo "stamp failed — not serving"; exit 3; }
 git -C "$REPO" log -1 --format='%h %ci %s' "$SHA" | cut -c1-120
 kill "$(cat "$S/serve-$PORT.pid" 2>/dev/null)" 2>/dev/null; sleep 0.3
 nohup python3 "$REPO/scripts/mac/serve.py" "$D" "$PORT" > "$S/serve-$PORT.log" 2>&1 &
