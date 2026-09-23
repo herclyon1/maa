@@ -15,7 +15,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
   /* the per-control files are appended dynamically; headless Chrome occasionally drops one of those fetches (night 00:3x: accept-sheet.js never
      requested in one run → 17 rows silently missing). Each load is tracked; a file that has not loaded when the checks start is re-appended, and
      a file still missing gets a ✗ row so the total never drops silently. */
-  window.ACCEPT.files = ["motion","nav","nav-edge","sheet","menu","topbar","refresh","glassbtn","alert","switch","tabbar","tile"]; window.ACCEPT.loaded = new Set();
+  window.ACCEPT.files = ["motion","nav","nav-edge","sheet","menu","topbar","refresh","glassbtn","alert","switch","tabbar","tile","stockpile"]; window.ACCEPT.loaded = new Set();
   window.ACCEPT.load = (c) => new Promise((res) => { const s = document.createElement("script"); s.src = "accept-" + c + ".js?r=" + Math.random().toString(36).slice(2, 7); s.onload = () => { window.ACCEPT.loaded.add(c); res(true); }; s.onerror = () => res(false); document.head.appendChild(s); setTimeout(() => res(false), 4000); });
   for (const c of window.ACCEPT.files) window.ACCEPT.load(c);
   const rows = [];
@@ -329,6 +329,18 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
     const cap = lab.querySelector(".sent");
     num("三态小字 11（--ios-caption2-size）", 11, px(cs(cap).fontSize), 0.05); num("三态小字行框 13.13（--ios-caption2-lh）", 13.13, px(cs(cap).lineHeight), 0.05);
     col("三态小字色 secondaryLabel（--ios-secondary-label）", T.dim, cs(cap).color);
+    /* B1 (morning-sweep 「调试模式」 row, status-老网页 #15 11:56): a switch row with its small line (.sent / .cap = flex 1 0 100 %) keeps the switch at
+       the row's right edge like a plain switch row, and the small line goes under it (.row is nowrap since 0671005, so it has to wrap for these rows) */
+    { const g = document.createElement("div"); g.className = "group"; g.style.cssText = "position:fixed;left:0;top:0;width:440px;visibility:hidden";
+      const sw = '<span class="sw"><input type="checkbox"><span></span></span>';
+      g.innerHTML = `<div class="row"><label>调试模式</label>${sw}</div><div class="row"><label>调试模式</label>${sw}<div class="sent">已寄出 10:00 · 机器开机后生效</div></div>` +
+        `<div class="row"><label>调试模式</label>${sw}<div class="cap edit">待保存</div></div>`;
+      document.body.appendChild(g);
+      const [r0, r1, r2] = [...g.querySelectorAll(".row")].map((r) => r.querySelector(".sw").getBoundingClientRect()), [t1, t2] = [g.querySelector(".sent"), g.querySelector(".cap")].map((t) => t.getBoundingClientRect());
+      check("带小字的开关行（已寄出 / 待保存）：开关右缘 = 无小字行的，小字另起一行在开关下面（B1 调试模式行错位）", `right ${r0.right.toFixed(1)} · caption below`,
+        `right ${r1.right.toFixed(1)} / ${r2.right.toFixed(1)} · caption top ${t1.top.toFixed(1)} ≥ ${r1.bottom.toFixed(1)}, ${t2.top.toFixed(1)} ≥ ${r2.bottom.toFixed(1)}`,
+        Math.abs(r1.right - r0.right) < 0.5 && Math.abs(r2.right - r0.right) < 0.5 && t1.top >= r1.bottom - 0.5 && t2.top >= r2.bottom - 0.5);
+      g.remove(); }
     /* navigation value row 「已选 N/M ›」 (AX-37 value row + disclosure) and the check-list sheet (AX-38) */
     lab.insertAdjacentHTML("beforeend", `<div class="group" style="width:400px"><div class="row nav"><label>多选</label><span class="val">已选 1/3</span><i class="sf chev"></i></div></div>`);
     { const nr = lab.querySelector(".row.nav"), ch = nr.querySelector(".chev"), vl = nr.querySelector(".val"), rr = nr.getBoundingClientRect(), cr = ch.getBoundingClientRect();
@@ -635,7 +647,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
           const c0 = (() => { const r = lensQ.getBoundingClientRect(); return r.left + r.width / 2; })();
           const tDown = performance.now(); pev(sg, "pointerdown", at(selB)); await sleep(60); pev(sg, "pointerup", at(selB));
           const fr = []; let blank = 0; const tEnd = tDown + 620;
-          while (performance.now() < tEnd) { await new Promise(requestAnimationFrame); const r = lensQ.getBoundingClientRect(), L = window.__segLens, p = L && typeof L.p === "number" ? L.p : 0;
+          while (performance.now() < tEnd) { await new Promise(requestAnimationFrame); const r = lensQ.getBoundingClientRect(), L = window.__segLens, p = L && typeof L.p_exact === "number" ? L.p_exact : L && typeof L.p === "number" ? L.p : 0;   // the UNROUNDED p (A16: the lift starts inside a frame, so its first tick can step the lift spring < .4 ms → p < 5e-5, which __segLens.p rounds to 0 while .lift is on and the glass draws)
             if (sg.classList.contains("lift") && !(p > 0)) blank++; fr.push({ t: performance.now() - tDown, w: r.width, h: r.height, c: r.left + r.width / 2, p }); }
           const peak = fr.reduce((m, f) => f.w > m.w ? f : m, fr[0]), first = fr.find((f) => f.w > 196.5), back = fr.find((f) => f.t > (peak ? peak.t : 0) && f.w <= 196.5);
           /* the probe stamps each lens rect at the frame's targetTimestamp = its display time, one frame after the value was computed; our rAF samples are the

@@ -5,6 +5,9 @@ ACCEPT.add(async function sw({ check, num, col, sleep }) {
   const dark = matchMedia("(prefers-color-scheme: dark)").matches && document.documentElement.dataset.theme !== "light" || document.documentElement.dataset.theme === "dark";
   const T = { green: dark ? [48, 209, 88] : [52, 199, 89], swOff: dark ? [235, 235, 245, .298] : [60, 60, 67, .298] };
   const cs = (el, pseudo) => el ? getComputedStyle(el, pseudo || null) : null, px = (v) => parseFloat(v) || 0;
+  /* the computed `scale` as [x, y]: Chrome serialises equal axes as one number ('scale: 1.5784 1.5784' → "1.5784", probed; accept.js:670) and identity as "none" —
+     the R70′ style row went red on the frame where lift × flex made --ksx = --ksy (sc[1] undefined; BOARD A16) */
+  const scaleOf = (el, pseudo) => { const v = cs(el, pseudo).scale; if (v === "none") return [1, 1]; const a = v.split(" ").map(Number); return a.length === 1 ? [a[0], a[0]] : a; };
   const at = (el, fx = .5, fy = .5, dx = 0, dy = 0) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width * fx + dx, y: r.top + r.height * fy + dy }; };
   const pev = (el, type, p, id = 11) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, clientX: p.x, clientY: p.y, isPrimary: true, button: 0, buttons: type === "pointerup" ? 0 : 1, pointerType: "touch" }));
   /* the resting well and the lifted lens, as B13's static rows (controls 3008bf5 accept.js) */
@@ -18,7 +21,7 @@ ACCEPT.add(async function sw({ check, num, col, sleep }) {
   col("开关关：井环色 = 同一灰（_wellColorOn:NO = tint）", T.swOff, cs(off).color);
   num("开关开：圆钮位移 22（--ios-switch-travel = 63 − 37 − 2×2）", 22, px(cs(on, "::after").translate));
   const held = lab.querySelectorAll(".sw")[1]; held.classList.add("drive"); held.style.setProperty("--lift", "1"); held.style.setProperty("--ksx", String(58 / 37)); held.style.setProperty("--ksy", String(38.33 / 24));
-  { const sc = cs(held.querySelector("span"), "::after").scale.split(" ").map(Number); check("按住（lift 1）：旋钮 58×38.33（--ios-switch-knob-lift-w/-h：scale 1.5676 1.5971）", "1.5676 1.5971", cs(held.querySelector("span"), "::after").scale, Math.abs(sc[0] - 58 / 37) < .001 && Math.abs(sc[1] - 38.33 / 24) < .001); }
+  { const sc = scaleOf(held.querySelector("span"), "::after"); check("按住（lift 1）：旋钮 58×38.33（--ios-switch-knob-lift-w/-h：scale 1.5676 1.5971）", "1.5676 1.5971", cs(held.querySelector("span"), "::after").scale, Math.abs(sc[0] - 58 / 37) < .001 && Math.abs(sc[1] - 38.33 / 24) < .001); }
   held.classList.remove("drive"); held.style.removeProperty("--lift"); held.style.removeProperty("--ksx"); held.style.removeProperty("--ksy");
   check("开关开：井环宽 .39 s / 色 .18 s（--ios-motion-switch-well-grow-duration / -color-duration）", "--wb 0.39s, color 0.18s", `${cs(on).transitionProperty} ${cs(on).transitionDuration}`, cs(on).transitionProperty === "--wb, color" && cs(on).transitionDuration === "0.39s, 0.18s");
   check("开关关：井环宽 .365 s 延 .025 s / 色 .18 s（--ios-motion-switch-well-shrink-*）", "0.365s, 0.18s / 0.025s, 0s", `${cs(off).transitionDuration} / ${cs(off).transitionDelay}`, cs(off).transitionDuration === "0.365s, 0.18s" && cs(off).transitionDelay === "0.025s, 0s");
@@ -42,10 +45,10 @@ ACCEPT.add(async function sw({ check, num, col, sleep }) {
     check(`开关 按下 +${Math.round(el * 1000 + 10)} ms：抬起中，lift 进度 ≈ ${Math.round(want * 100)} %（spec.small liftSpring ζ .625 / .27 自 +10 ms；--ios-motion-switch-lift-*）`, `${Math.round(want * 100)} %（或前 3 帧内的值 ± 6）`, `${Math.round(l * 100)} %`, [0, .017, .033, .05].some((d) => Math.abs(l - Math.min(1, spr(.625, .27, el - d))) <= .06));   // the value is the last rAF tick's: up to ~3 frames behind in headless Chrome
     check("开关 按下 +120 ms：井环 2 → 15.5 在途（.39 s，--ios-motion-switch-well-grow-duration）", "2 < wb < 15.5", Math.round(w * 100) / 100, w > 2.5 && w < 15); }
   await sleep(120);
-  { const sc = cs(kn(), "::after").scale.split(" ").map(Number), el = (performance.now() - tDown - 10) / 1000, want = 1 + spr(.625, .27, el) * (58 / 37 - 1);
+  { const sc = scaleOf(kn(), "::after"), el = (performance.now() - tDown - 10) / 1000, want = 1 + spr(.625, .27, el) * (58 / 37 - 1);
     check(`开关 按下 +${Math.round(el * 1000 + 10)} ms：过冲中（ζ .625 峰 +173 ms 1.081 → 58 → 59.7）scale x ≈ ${Math.round(want * 1000) / 1000}`, `${Math.round(want * 1000) / 1000} ± .02`, sc[0], Math.abs(sc[0] - want) <= .02 && lift() >= .95); }
   await sleep(220);
-  { const sc = cs(kn(), "::after").scale.split(" ").map(Number); check("开关 按下 +460 ms：旋钮落定 58×38.33（scale 1.5676 1.5971，± .003）", "1.5676 1.5971", cs(kn(), "::after").scale, Math.abs(sc[0] - 58 / 37) < .003 && Math.abs(sc[1] - 38.33 / 24) < .003); }
+  { const sc = scaleOf(kn(), "::after"); check("开关 按下 +460 ms：旋钮落定 58×38.33（scale 1.5676 1.5971，± .003）", "1.5676 1.5971", cs(kn(), "::after").scale, Math.abs(sc[0] - 58 / 37) < .003 && Math.abs(sc[1] - 38.33 / 24) < .003); }
   num("开关 按下 +460 ms：井环到 15.5（.39 s 完）", 15.5, wb(), 0.05);
   const t2 = performance.now(); pev(sw, "pointerup", at(sw)); const d2 = performance.now() - t2;
   check("开关 S1 抬手：立刻翻转一次（pending 点按预置；--ios-touch-switch-flip-delay 0）", "on ×1", `${inp.checked ? "on" : "off"} ×${flips} +${Math.round(d2 * 10) / 10} ms`, inp.checked && flips === 1 && d2 < 50);
@@ -107,7 +110,7 @@ ACCEPT.add(async function sw({ check, num, col, sleep }) {
     await sleep(200);   // lifted and still: no motion → identity
     { const f = Switch.flexOf(sw); check("开关 R70′ 抬起后静止：无运动 → sX = sY = 1、drift 0（源是旋钮自己的呈现运动，不是手指）", "1 · 1 · 0", f ? `${f.out.sx.toFixed(4)} · ${f.out.sy.toFixed(4)} · ${f.out.dx.toFixed(3)}` : "-", !!f && Math.abs(f.out.sx - 1) < .001 && Math.abs(f.out.sy - 1) < .001 && Math.abs(f.out.dx) < .01); }
     for (let i = 1; i <= 4; i++) { pev(sw, "pointermove", at(sw, .5, .5, -5.5 * i, 0)); await sleep(16); }   // the probe's fast drag: 22 pt in 4 steps / 64 ms (on → off direction)
-    const fr = []; await new Promise((res) => { let first = null; const tick = (now) => { if (first === null) first = now; const f = Switch.flexOf(sw), sc = cs(kn(), "::after").scale.split(" ").map(Number), l = lift(); fr.push({ t: now - first, f: f ? { ...f, trace: undefined } : null, sc, l, kdx: parseFloat(sw.style.getPropertyValue("--kdx")) || 0 }); if (now - first < 450) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick); });
+    const fr = []; await new Promise((res) => { let first = null; const tick = (now) => { if (first === null) first = now; const f = Switch.flexOf(sw), sc = scaleOf(kn(), "::after"), l = lift(); fr.push({ t: now - first, f: f ? { ...f, trace: undefined } : null, sc, l, kdx: parseFloat(sw.style.getPropertyValue("--kdx")) || 0 }); if (now - first < 450) requestAnimationFrame(tick); else res(); }; requestAnimationFrame(tick); });
     const withF = fr.filter((s) => s.f), peak = withF.reduce((m, s) => Math.max(m, s.f.out.sx), 1), dip = withF.reduce((m, s) => Math.min(m, s.f.out.sy), 1), maxDx = withF.reduce((m, s) => Math.max(m, s.f.out.dx), 0);
     check("开关 R70′ 快拖中：X 伸 Y 缩（§3：加速沿 x），面积近守恒（§12a：1.028 × .9709 ≈ .998），drift 沿运动方向", "peak sX > 1.002 · dip sY < .998 · |sX·sY − 1| < .01 · drift ≠ 0", `peak ${peak.toFixed(4)} · dip ${dip.toFixed(4)} · area ${withF.every((s) => Math.abs(s.f.out.sx * s.f.out.sy - 1) < .01) ? "ok" : "OFF"} · max drift ${maxDx.toFixed(3)}`, withF.length > 10 && peak > 1.002 && dip < .998 && withF.every((s) => Math.abs(s.f.out.sx * s.f.out.sy - 1) < .01) && Math.abs(maxDx) > .01);
     /* A16 (red twice): between frames a pointer move retargets through swSync, which steps the springs WITHOUT writing — the state read here then differs from the

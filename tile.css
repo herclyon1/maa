@@ -5,8 +5,8 @@
       decompiled, old-page session): the appearance updater 0x1000b6324 never reads the highlighted bit, the fillColor setter (0x7a9fc) only sets the
       dynamic colour, the isSelected setter (0x7b1f4) only shows / hides the selection view, and the only animation is a .15 s cubic-bezier(.34,0,.67,1)
       shell (0x1000b69d4 → 0x1000b6170) with nothing of a press to animate. The slow growth from +180 ms in the R14″ recording is the long-press
-      (context-menu) preview, not the press — the page's tiles have no menu, so it is not copied. Overrides index.html:213 .tile:active{transform:
-      scale(.97)} and :280 .tile:active,.tile.pressed{background: 8 % ink} (both unsourced); the .pressed class (view.js installPressables, U1–U6)
+      (context-menu) preview, not the press — the page's tiles have no menu, so it is not copied. Overrides index.html's .tile:active,.tile.pressed{background: 8 % ink}
+      (unsourced; the old .tile:active{transform: scale(.97)} is deleted, P0c); the .pressed class (view.js installPressables, U1–U6)
       stays as the press state so acceptance can address it.
    ② .capsule — the Health tip card's capsule button = a UIButton with the tinted configuration inside a UICollectionView (remote-ref/state-tables/button.md
       R62, 数据 hooks in Health.app: beginTrackingWithTouch: → setHighlighted: → touchDown / touchUpInside, delaysContentTouches = YES; R14′ ②'s "SwiftUI,
