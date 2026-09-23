@@ -719,9 +719,13 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   dialog > .pane{position:absolute;inset:-60px;z-index:-2;border-radius:0;clip-path:inset(60px round var(--ios-alert-radius));background:var(--alert-fill);   /* 外扩 60 = marginWidth 60.2 ← ⑨；自己用 clip-path 裁回 320×172 r34：采样区仍是外扩后的整块（两端 backdrop-filter 都按元素框采样、再按 clip-path 裁输出） */backdrop-filter:var(--ios-alert-glass-filter);-webkit-backdrop-filter:var(--ios-alert-glass-filter);box-shadow:none;pointer-events:none}   /* 无描边、无阴影 ← alert-pipeline-plan #10（glassBackground inputShadowAmount 0，链上无 shadow 层）；边缘亮线是 SDF 高光，另做 */
   /* paint order inside the dialog's stacking context: pane (z −2) → button overlays (z −1, blend with the pane) → text; the buttons must NOT be stacking contexts (no z-index / isolation) or the blend would be isolated */
   dialog > :not(.pane){position:relative}
-  dialog[open]{animation:alert-in var(--ios-motion-alert-duration) var(--ios-motion-alert-easing)}                                   /* 出现 scale 1.2→1 + 淡入 0.40 s ω22.86 ← 探针 CASpringAnimation k522.4 c45.71 */
+  dialog[open]{animation:alert-in var(--ios-motion-alert-duration) var(--ios-motion-alert-easing) forwards}                                   /* 出现 scale 1.2→1 + 淡入 0.40 s ω22.86 ← 探针 CASpringAnimation k522.4 c45.71 */
   dialog[open].closing{animation:alert-out var(--ios-motion-alert-duration) var(--ios-motion-alert-easing) forwards}                  /* 消失只淡出，同一 spring ← 探针 */
-  @keyframes alert-in{from{opacity:0;transform:scale(1.2)}to{opacity:1;transform:none}}
+  @keyframes alert-in{from{opacity:0;transform:scale(1.2)}to{opacity:.999;transform:none}}
+  /* the end holds at opacity .999 (forwards): the spring's own value at its settle time — (1 + ωT)e^(−ωT) = 10⁻³ at T = 0.404 s (alert-native-formula.md 数据 A8, 出现),
+     a step to 1 below one 8-bit level (.001 × 255 = .26). Ending at exactly 1 cost one 42–74 ms frame on WebKit right at the end (老网页 09-23, 模拟器 A, rAF gaps
+     over 1.5 s from ask(): 53 / 59 / 57 at +405…+418 ms in every run; not the .settled stroke — .settled held back 250 ms kept the gap at the end; not the scale —
+     an opacity-only or a scale-only animation both kept it; .999 held: 0 of 5 runs). transform ends at none (scale 1.0002 is .03 px on 270). */
   @keyframes alert-out{to{opacity:0}}
   dialog h2{padding:var(--ios-alert-title-top) var(--ios-alert-pad-x) 0;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight);color:var(--ios-label);text-align:left;display:block}   /* 标题 Semibold 17，帧 (30, 22, 260, 20.33) 左起 ← 探针 ④ / AX-48d（标题框 x 90 = 60 + 30，宽 260）；色 = 矩阵 e −1 钳成纯黑（暗 +.95 ≈ 白）= labelColor ← pipeline §1.9 */
   dialog::backdrop{background:var(--ios-alert-dimming)}                      /* 遮罩 (0,0,0).2 / 暗 .48 ← 探针 UIDimmingView / ⑨ */
