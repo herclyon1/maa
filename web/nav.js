@@ -2,7 +2,10 @@
    (remote-ref/nav-native-formula.md §0–§1, the old page session's decompile of iOS 27.0 UIKitCore _UINavigationParallaxTransition +
    _UIFluidParallaxTransitionSettings); the unread parts are left empty and named (nav.css, §5).
    p(t): ONE spring ζ 1 / response .3 (ω₀ 20.944) from rest, 0 → 1 (noninteractiveSpring, _UIFluidParallaxTransitionSettings.setDefaultValues
-     0x1c5410f44; the .35 s "transitionDuration" is only the shell), stepped per frame by Motion.spring.
+     0x1c5410f44; the .35 s "transitionDuration" is only the shell), stepped per frame by Motion.spring. Probe check (G18 / G21, uiprobe-motion-g21-C.json
+     8.6–9.1 s): the .35 s linear CABasicAnimations (additive position −100 → 0, uiFractionalProgress 0 → 100) sit on a 1×1 UIView at (100, 0) inside
+     UIViewControllerWrapperView and are re-added at speed 0 (a paused, scrubbed property animator), while the moves are _animateUsingSpringBehavior ζ 1 /
+     .3 retargetImpulse .02 — the page is not a .35 s linear slide; a pop during the push starts a new (paused) shell and retargets the spring (below).
    push: new page x = W(1 − p); old page x = −(W − round(.7 W))·p = −.3 W·p (parallaxOffset [0x1c57184d0] = .7, gap 0);
          dimming (black .1) alpha = p; the top card's left edge strip alpha = 1 − p; nav bar items of the new page alpha = f_in(u₂),
          u₂ = the second key segment [.5 − .075, 1], f_in = cubic-bezier(.75,.1,.75,.1); the title slides from the title area's right end.
@@ -72,7 +75,11 @@
        parallax compensated), alpha keyframe [0, .6] → 0; scale / centre the same functions of p on the pop (mirror), alpha the pop's own keyframes (R69′) */
     const u = 1 - p, h = st.h1, kOut = st.dir > 0 ? 1 - kf(KF.h1Out, p) : kf(KF.popH1In, u);   // the large title's alpha: push [0, .6] → 0 in p; pop held 0 then [.5, 1] → 1 in u (R69′)
     if (h) {
-      const sx = 1 + (h.sx - 1) * p, sy = 1 + (h.sy - 1) * p, dx = -st.backDx * p - parallax() * p, dy = -st.backDy * p;
+      /* G18 (数据 20:0x, probe simulator C, iOS 27.0; nav-native-formula.md 末「数据核 G18 / G21」, uiprobe-motion-g18-C2..5.json): a large-title root pushing an
+         inline-title page and popping back — every Label / LargeTitle view's transform is the identity on every frame (xfwatch), so the §5g scale path
+         (_animateScaleTransition) does not run in this configuration: no scale toward the chevron and no centre shift; the title rides its page (the
+         header's parallax). The alpha keyframe below is unchanged — the probe watched transforms only. */
+      const sx = 1, sy = 1, dx = 0, dy = 0;
       root.style.setProperty("--nav-h1-ox", h.ox.toFixed(2) + "px"); root.style.setProperty("--nav-h1-oy", h.oy.toFixed(2) + "px");
       root.style.setProperty("--nav-h1-sx", sx.toFixed(5)); root.style.setProperty("--nav-h1-sy", sy.toFixed(5));
       root.style.setProperty("--nav-h1-dx", dx.toFixed(2) + "px"); root.style.setProperty("--nav-h1-dy", dy.toFixed(2) + "px");
@@ -85,7 +92,7 @@
     pg.style.setProperty("--nav-chev-a", (kIn * kc).toFixed(4));
     pg.style.setProperty("--nav-chev-s", (CHEV0.scale + (1 - CHEV0.scale) * kc).toFixed(4));
     pg.style.setProperty("--nav-chev-kx", (CHEV0.dx * (1 - kc)).toFixed(2) + "px"); pg.style.setProperty("--nav-chev-ky", (CHEV0.dy * (1 - kc)).toFixed(2) + "px");
-    if (st.trace.length < 400) st.trace.push({ p, el: st.elapsed || 0, dir: st.dir, h1: h ? { sx: 1 + (h.sx - 1) * p, sy: 1 + (h.sy - 1) * p, dx: -st.backDx * p - parallax() * p, dy: -st.backDy * p, a: kOut } : null, back: { a: st.dir > 0 ? 1 : a, ca: kIn * kc, cs: CHEV0.scale + (1 - CHEV0.scale) * kc, kx: CHEV0.dx * (1 - kc), ky: CHEV0.dy * (1 - kc) } });
+    if (st.trace.length < 400) st.trace.push({ p, el: st.elapsed || 0, dir: st.dir, h1: h ? { sx: 1, sy: 1, dx: 0, dy: 0, a: kOut } : null, back: { a: st.dir > 0 ? 1 : a, ca: kIn * kc, cs: CHEV0.scale + (1 - CHEV0.scale) * kc, kx: CHEV0.dx * (1 - kc), ky: CHEV0.dy * (1 - kc) } });
   };
   const settled = () => Math.abs(st.p - st.target) < .001 && Math.abs(st.v) < .01;
   const tick = (now) => {
