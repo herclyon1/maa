@@ -25,15 +25,20 @@
    [0, .1] to scale .7 / (+7, +5) / alpha 0 (block_6 0x1c3cface4) — the push's [.9, 1] pop-out read backwards in p. The back button's body fades
    with the bar's items (§0 f_out) as before.
    On this page the large title is page content that parallaxes with the root (−.3 W·p); natively it is the bar's and does not, so the h1's own
-   translate compensates the parallax and its centre moves exactly −d·p on screen. Segment interpolation inside a keyframe is drawn linear
-   (§5g 未读 ①: the keyframe state's use of curve bit 5 is unread — 待读).
+   translate compensates the parallax and its centre moves exactly −d·p on screen. Keyframe time (§5g ①, read 09-23 界面): the keyframe animation
+   is one CAKeyframeAnimation per key path with calculationMode = options bits 10–12 (0x50040 → 0 = linear; UIViewKeyframeAnimationState setup
+   0x1c4e7f7a8), values / keyTimes only, no per-segment timingFunctions (pop block 0x1c4e7ff4c–0x1c4e80014), and one timing function for the whole
+   animation from _setAnimationAttributes: (block_2 0x1c4e800b0 → setAnimationAttributes:skipDelegateAssignment:customCurve: 0x1c4e7db28, custom
+   curve nil, factory nil → _UIGetAnimationCurveSpline(curve = options bits 16–18 = 5) 0x1c4e78cf0 → kCAMediaTimingFunctionDefault
+   (GOT 0x2222bd1e0) → QuartzCore builtin index 0 (functionWithName: 0x1c38e7690, table 0x1c3b9b0cc) = cubic-bezier(.25, .1, .25, 1)). Its local
+   time is the hybrid animator's fractionComplete = the transition's own progress (push p, pop 1 − p) → each keyframe = linear in D(progress).
    Hook: view.js openPage's first line `if (window.Nav) return Nav.open(title, html);` (A7). */
 (() => {
   "use strict";
   const SPRING = [1, .3];                       // noninteractiveSpring ζ 1 / response .3
   const SEG = { mid: .5, overlap: .15 };        // key segments: [0, .5 + .075] and [.5 − .075, 1] (overlap .15 × .5)
   const bez = (x1, y1, x2, y2) => (x) => {      // y of the cubic bezier at abscissa x (CAMediaTimingFunction semantics)
-    let lo = 0, hi = 1; for (let i = 0; i < 24; i++) { const t = (lo + hi) / 2, cx = 3 * x1 * t * (1 - t) * (1 - t) + 3 * x2 * t * t * (1 - t) + t * t * t; if (cx < x) lo = t; else hi = t; }
+    let lo = 0, hi = 1; for (let i = 0; i < 40; i++) { const t = (lo + hi) / 2, cx = 3 * x1 * t * (1 - t) * (1 - t) + 3 * x2 * t * t * (1 - t) + t * t * t; if (cx < x) lo = t; else hi = t; }
     const t = (lo + hi) / 2; return 3 * y1 * t * (1 - t) * (1 - t) + 3 * y2 * t * t * (1 - t) + t * t * t;
   };
   const fIn = bez(.75, .1, .75, .1), fOut = bez(.25, .9, .25, .9);
@@ -44,6 +49,8 @@
   const KF = { h1Out: [0, .6], backIn: [.5, 1], chev: [.9, 1], popBackOut: [0, .6], popH1In: [.5, 1] };   // §5g push keyframes (start, end) in p: large title alpha → 0; back content alpha → 1; chevron pop-out. §5g′ pop keyframes in u = 1 − p: old back content → 0; large title → 1 (held 0 before .5); the chevron's [0, .1] shrink-out = chev read backwards
   const CHEV0 = { scale: .7, dx: 7, dy: 5 };                     // the chevron's prepared start: MakeScale(.7) [0x1c57184d0], final frame + (+7, +5) pt (flags bit 1 → −7: RTL, not this page)
   const seg = ([a, b], p) => clamp01((p - a) / (b - a));
+  const D = bez(.25, .1, .25, 1);                                // kCAMediaTimingFunctionDefault (QuartzCore table 0x1c3b9b0cc index 0) — the keyframe animation's timing
+  const kf = (k, x) => seg(k, D(clamp01(x)));                   // a keyframe at the transition's own progress x (push p, pop u = 1 − p)
   const W = () => window.innerWidth;
   const parallax = () => -(W() - Math.round(.7 * W()));   // −132 at 440
   const write = () => {
@@ -58,8 +65,8 @@
     pg.style.setProperty("--nav-back-dx", (st.backDx * (1 - p)).toFixed(2) + "px");   // the back chevron starts at the root's large-title label centre (§5d: d = label.center − content origin, 2-D) and rides p home; pop runs it back
     pg.style.setProperty("--nav-back-dy", (st.backDy * (1 - p)).toFixed(2) + "px");
     /* R47′ — the large title (mode 2, §5g): scale 1 → (w_chev / w_h1, h_chev / h_h1) about the text's centre, centre −d·p on screen (the header's
-       parallax compensated), alpha keyframe [0, .6] → 0; the same functions of p on the pop (mirror, 待读 ②) */
-    const u = 1 - p, h = st.h1, kOut = st.dir > 0 ? 1 - seg(KF.h1Out, p) : seg(KF.popH1In, u);   // the large title's alpha: push [0, .6] → 0 in p; pop held 0 then [.5, 1] → 1 in u (R69′)
+       parallax compensated), alpha keyframe [0, .6] → 0; scale / centre the same functions of p on the pop (mirror), alpha the pop's own keyframes (R69′) */
+    const u = 1 - p, h = st.h1, kOut = st.dir > 0 ? 1 - kf(KF.h1Out, p) : kf(KF.popH1In, u);   // the large title's alpha: push [0, .6] → 0 in p; pop held 0 then [.5, 1] → 1 in u (R69′)
     if (h) {
       const sx = 1 + (h.sx - 1) * p, sy = 1 + (h.sy - 1) * p, dx = -st.backDx * p - parallax() * p, dy = -st.backDy * p;
       root.style.setProperty("--nav-h1-ox", h.ox.toFixed(2) + "px"); root.style.setProperty("--nav-h1-oy", h.oy.toFixed(2) + "px");
@@ -68,8 +75,8 @@
       root.style.setProperty("--nav-h1-a", kOut.toFixed(4));
     }
     /* the back button on a push: body alpha 1 (prepare), content alpha keyframe [.5, 1], the chevron image alpha / scale / offset keyframe [.9, 1] from
-       .7× and (+7, +5); on a pop the body fades with the bar's items (§0 f_out) and the content shows (pop keyframes unread) */
-    const kIn = st.dir > 0 ? seg(KF.backIn, p) : 1 - seg(KF.popBackOut, u), kc = seg(KF.chev, p);   // back content alpha: push [.5, 1] → 1 in p, pop [0, .6] → 0 in u; the chevron keyframe in p both ways (pop = the first 10 % shrink-out)
+       .7× and (+7, +5); on a pop the body fades with the bar's items (§0 f_out), the content keyframe [0, .6] → 0 and the chevron [0, .1] shrink-out in u (R69′) */
+    const kIn = st.dir > 0 ? kf(KF.backIn, p) : 1 - kf(KF.popBackOut, u), kc = st.dir > 0 ? kf(KF.chev, p) : 1 - kf([0, .1], u);   // back content alpha: push [.5, 1] → 1 in D(p), pop [0, .6] → 0 in D(u); chevron: push [.9, 1] pop-out in D(p), pop [0, .1] shrink-out in D(u) (block_6 0x1c3cface4)
     pg.style.setProperty("--nav-back-a", st.dir > 0 ? "1" : a.toFixed(4));
     pg.style.setProperty("--nav-chev-a", (kIn * kc).toFixed(4));
     pg.style.setProperty("--nav-chev-s", (CHEV0.scale + (1 - CHEV0.scale) * kc).toFixed(4));
@@ -152,5 +159,5 @@
       st.tracking = false; st.spring = RELEASE; st.v = -vProgress; st.target = finish ? 0 : 1; st.last = performance.now(); run();
     },
   };
-  window.Nav = { open, back: () => { if (st.pg) start(-1); }, state: st, fIn, fOut, u1, u2, SPRING, TRACK, RELEASE, interactive, KF, CHEV0, seg, parallax };
+  window.Nav = { open, back: () => { if (st.pg) start(-1); }, state: st, fIn, fOut, u1, u2, SPRING, TRACK, RELEASE, interactive, KF, CHEV0, seg, kf, D, parallax };
 })();
