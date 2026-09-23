@@ -56,7 +56,7 @@
   const BAR_P = [0, .115, .278, .506, .712, .842, .962, 1.056, 1.103, 1.111, 1.107, 1.094, 1.081, 1.064, 1.051, 1.043, 1.030, 1.026, 1.017, 1.013, 1.009, 1.009, 1];
   /* 2.8 release snap: only when the scroll settled inside the collapse range and no finger is down */
   const settle = () => {
-    if (dragging || snapping || !api.snap || performance.now() - lastTouchEnd > 1500) return;   // only after a finger just let go (2.8 is a drag-end retarget); programmatic scrolls (tab tap → top spring) are left alone
+    if (dragging || snapping || !api.snap || performance.now() - lastTouchEnd > 1500 || (window.__kbdSettling && window.__kbdSettling())) return;   // I3: while view.js settles a field focus / the keyboard it owns the resting point (it applies snapTarget itself, keeping the field visible)   // only after a finger just let go (2.8 is a drag-end retarget); programmatic scrolls (tab tap → top spring) are left alone
     const y = window.scrollY; if (!(y > 0.5 && y < p - 0.5)) return;
     const target = snapTarget(y), t0 = performance.now(), y0 = y;
     snapping = true;

@@ -24,3 +24,9 @@
    at the end with the finger up, drives it to 0 over .3 s with progress sin²(π/2 · f) (§11 item 1); no CSS transition — the value is written every
    frame on the driver's clock. The spinner (#ptr.ptr above) is centred in that band: safe-area + 54 + 30. */
 body.ptr-inset > header { margin-top: var(--ptr-inset, 60px); }
+
+/* I2 (D72, inventory-plan.md §5 「下拉刷新：复用现页 .ptr」): on a pushed page (body.pushed, #subpage z 5 over the main page) the spinner sits above it —
+   same band (the pushed page's bar is the same 54 at the safe-area top, AX-11 / AX-46) — and the 60 inset is the page body's top margin (#subpage's
+   own padding holds the bar, so the margin cannot collapse); refresh.js puts .ptr-inset / --ptr-inset on #subpage instead of body there. */
+body.pushed > #ptr.ptr { z-index: 6; }
+#subpage.ptr-inset > .pbody { margin-top: var(--ptr-inset, 60px); }

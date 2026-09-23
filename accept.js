@@ -706,7 +706,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
           scrollTo(0, 0); const r0 = fi.getBoundingClientRect().top, did = window.__kbdReveal && window.__kbdReveal(300); await sleep(700); const r1 = fi.getBoundingClientRect(); const inside = r1.top >= 0 && r1.bottom <= 300;
           fi.blur(); await sleep(120); const dB = !document.documentElement.classList.contains("kbd") && getComputedStyle(nav0).display !== "none"; scrollTo(0, sy0);
           check("聚焦本身不动胶囊（只认视口变矮，监督局 19:3x）：文本框聚焦 360 ms 后胶囊仍在，失焦后仍在", "focus shown · blur shown", `hasFocus ${hasF} · focus ${dF ? "shown" : "hidden!"} · blur ${dB ? "shown" : "hidden!"}`, dF && dB);
-          check("键盘露出 300 px 时聚焦的字段滚进可见区中央（visualViewport resize 后下一帧 scrollBy 到可见区中心；190821 首次聚焦字段留在键盘下）", "field inside 0…300", `top ${Math.round(r0)} → ${Math.round(r1.top)}…${Math.round(r1.bottom)} · scrolled ${did}`, hasF ? (did === true && inside) : true); } }
+          check("键盘露出 300 px 时聚焦的字段滚进可见区（I3 起按 scrollRectToVisible 最少滚动 + 大标题停点，不再居中；190821 首次聚焦字段留在键盘下）", "field inside 0…300", `top ${Math.round(r0)} → ${Math.round(r1.top)}…${Math.round(r1.bottom)} · scrolled ${did}`, hasF ? (did === true && inside) : true); } }
       /* 监督局 19:4x: keyboard state = viewport evidence only. Android shrinks innerHeight itself (vv.height = innerHeight): H0 − innerHeight > 120 hides; the
          viewport recovering shows — with a text field focused the whole time (the keyboard may go without a blur: iOS tap on the segments, Android back key) */
       { const fi2 = document.querySelector("input[data-time]"), nv2 = document.querySelector("nav.tabs");

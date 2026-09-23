@@ -57,6 +57,7 @@ if "bg" in WHAT:
 if "super" in WHAT:
     src = open(__file__.replace("tear_cbg.py", "tear_super.py")).read(); HW, HH, r = et.HW, et.HH, et.R; KR = 1.528665; R = KR * r
     exec(src[src.index("def poly"):src.index("# ---- tear_fg.py")])
+    sdf_super = globals()["sdf_super"]  # bound by the exec above (tear_super.py poly … sdf_super); named here so the linter sees it
     print("\nsupercircle (label-end-tear §7b) on which path:")
     decompose("supercircle on all paths", sdf_lab=sdf_super, sdf_bg=sdf_super); decompose("supercircle labels, circle bg (as built)", sdf_lab=sdf_super, sdf_bg=circle)
     et.sdf_capsule = circle
@@ -83,9 +84,10 @@ if "fg" in WHAT:
         if d > 0: return base
         e = env(d)
         if e <= 0: return base
-        dx, dy = delta(x, y); L = lambda a, b: lab_at(X + a, Y + b)
-        Rr = sum(k * L(k * dx, k * dy) for k in (1, 2 / 3, 1 / 3)) / 2; Bc = sum(k * L(-k * dx, -k * dy) for k in (1, 2 / 3, 1 / 3)) / 2
-        G = (L(0, 0) + sum((1 - k) * (L(k * dx, k * dy) + L(-k * dx, -k * dy)) for k in (1 / 3, 2 / 3))) / 3
+        dx, dy = delta(x, y)
+        def lab_off(a, b): return lab_at(X + a, Y + b)
+        Rr = sum(k * lab_off(k * dx, k * dy) for k in (1, 2 / 3, 1 / 3)) / 2; Bc = sum(k * lab_off(-k * dx, -k * dy) for k in (1, 2 / 3, 1 / 3)) / 2
+        G = (lab_off(0, 0) + sum((1 - k) * (lab_off(k * dx, k * dy) + lab_off(-k * dx, -k * dy)) for k in (1 / 3, 2 / 3))) / 3
         return e * (.2126 * Rr + .7152 * G + .0722 * Bc) + (1 - e) * base
     def five(fn):
         p = np.zeros((60, 150))

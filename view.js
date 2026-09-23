@@ -389,6 +389,10 @@ function render() {
   };
 
   for (const g of SCHEMA) {
+    /* I1 (D72): the 库存 entry — a single-row card with no group header, first group of the 终末地 page, above 基质刷取
+       (inventory-plan.md §2: AX-46 Cell with 17.67 of space above and no header). Not gated by the shift: the stockpile
+       page reads 森空岛 from the phone, not the machine. data-tabfix puts it on the 终末地 page without an h2. */
+    if (g.title === "终末地 · 基质刷取") html += `<section data-tabfix="终末地"><div class="group"><div class="row nav" data-page="stockpile"><label>库存</label>${sf("chevron.right", "chev")}</div></div></section>`;
     if (!inShift(g.owner)) continue;
     const M = ((snap && snap.master) || {})[g.game] || {};
     const cur = g.src === "master" ? (M.values || {}) : (c[g.sec] || {});
@@ -706,7 +710,7 @@ function layoutTabs() {
   const present = new Set();
   for (const sec of secs) {
     const title = ((sec.querySelector("h2") || {}).textContent || "").trim();
-    const hit = TABS.find(([, re]) => re.test(title));
+    const hit = sec.dataset.tabfix ? [sec.dataset.tabfix] : TABS.find(([, re]) => re.test(title));
     sec.dataset.tab = hit ? hit[0] : "状态";
     present.add(sec.dataset.tab);
     /* iOS grouped list: the title sits above the card as a small grey header,
@@ -822,8 +826,15 @@ function openPage(title, html) {
   pg.querySelector(".pback").onclick = back;
   return back;
 }
+/* I2 (D72, inventory-plan.md §5): a pull on the pushed 库存 page re-reads the depot — Stockpile.load(true), a Promise the spinner waits for (while it
+   reads, the page's 「刷新」 is disabled; a failure keeps the old list with the error in the footnote — stockpile.js); any other pull is live.js's
+   ping(). refresh.js calls this (Refresh.onRefresh stays accept's slot); #stockbody lives only in #subpage (topbar.js's pocket copy is of main). */
+function pullRefresh() {
+  return document.querySelector("body.pushed > #subpage #stockbody") && window.Stockpile ? Stockpile.load(true) : ping();
+}
 function wire() {
   for (const el of document.querySelectorAll('.row.nav[data-page="receipts"]')) el.onclick = () => { if (receiptsPage) openPage("回执", receiptsPage()); };
+  for (const el of document.querySelectorAll('.row.nav[data-page="stockpile"]')) el.onclick = () => { if (window.Stockpile) Stockpile.open(openPage); };   // I1: the pushed 库存 page lives in stockpile.js (老中继2号, M4 branch m4-stockpile)
   // 必须包一层：`onclick = ping` 会把**鼠标事件对象**当成 minAt 传进去，
   // 于是 `s.at >= floor` 变成「数字 >= 事件对象」，永远为假——
   // 机器明明开着也判成关机。2026-08-31 我加 minAt 参数时就这么弄坏过一次。
@@ -2120,7 +2131,7 @@ function installNative() {
   }, { passive: true });
   addEventListener("touchend", () => {
     const ai = $("#ptrai");
-    if (armed && ptr) { ptr.classList.add("go"); if (ai) ai.classList.add("on"); ping().finally(() => { ptr.classList.remove("go", "arm"); if (ai) ai.classList.remove("on"); }); }
+    if (armed && ptr) { ptr.classList.add("go"); if (ai) ai.classList.add("on"); pullRefresh().finally(() => { ptr.classList.remove("go", "arm"); if (ai) ai.classList.remove("on"); }); }
     else if (ptr) ptr.classList.remove("arm");
     y0 = null; armed = false;
   }, { passive: true });
@@ -2299,7 +2310,7 @@ boot();
    the keyboard. Here: while the visual viewport is > 120 px shorter than the window (keyboard up) html.kbd hides the capsule; on every visualViewport
    resize / scroll and after a focus leaves a field the state is re-applied — the capsule comes back through display:none → block, i.e. freshly placed at
    the bottom. window.__tabKbd(h) runs the same code with a pretended visual-viewport height (accept). */
-{ const vv = window.visualViewport; let H0 = innerHeight, W0 = innerWidth, kbdNow = false;
+{ const vv = window.visualViewport; let H0 = innerHeight, W0 = innerWidth, kbdNow = false, preY = null, focusT = -1e9, kbT = -1e9, settleTimer = 0, fingers = 0;
   const kbInput = (el) => !!el && ((el.tagName === "INPUT" && !/^(checkbox|radio|range|button|submit|reset|file|color|hidden)$/i.test(el.type)) || el.tagName === "TEXTAREA" || el.isContentEditable === true);   // a <select> opens a menu, not the keyboard
   /* The keyboard state is viewport evidence only, never focus (监督局 09-19 19:4x, 验收 headless + 数据 simulator):
      · 5d71467 kept a kbdFocus flag cleared only by the field's focusout — when the keyboard goes WITHOUT a blur (iOS: a tap on the segmented control, whose
@@ -2310,7 +2321,7 @@ boot();
      just re-read the viewport); either measure recovering clears it. The frame after kbd turns true the focused field is revealed (below). */
   const apply = (h, ih) => { if (innerWidth !== W0) { W0 = innerWidth; H0 = innerHeight; } if (ih == null && innerHeight > H0) H0 = innerHeight;
     const IH = ih != null ? ih : innerHeight, vh = h != null ? h : (vv ? vv.height : innerHeight), kbd = (H0 - IH > 120) || (IH - vh > 120);
-    document.documentElement.classList.toggle("kbd", kbd); if (kbd && !kbdNow) requestAnimationFrame(() => reveal()); kbdNow = kbd; return kbd; };
+    document.documentElement.classList.toggle("kbd", kbd); if (kbd && !kbdNow) { kbT = performance.now(); requestAnimationFrame(() => later()); } kbdNow = kbd; return kbd; };
   window.__tabKbd = (h, ih) => apply(h, ih);
   /* the focused field must end up inside the visible (keyboard-free) part of the viewport. WebKit reveals it itself on focus; on the phone the first
      focus of the time field after load stayed under the keyboard (数据 190821 vs 181053, +1.5 s still hidden; the second focus was revealed). What this
@@ -2321,10 +2332,43 @@ boot();
      anyway), and after every visualViewport resize the next frame checks the active field against the visible range [offsetTop, offsetTop + height] and
      scrolls the window so the field's centre lands at that range's centre when it is outside (scrollIntoView would centre in the LAYOUT viewport, under
      the keyboard; 监督局 09-19 19:2x). */
-  const reveal = (h) => { const el = document.activeElement; if (!kbInput(el)) return false; const top = vv ? vv.offsetTop : 0, vh = h != null ? h : (vv ? vv.height : innerHeight), r = el.getBoundingClientRect();
-    if (r.bottom > top + vh - 8 || r.top < top + 8) { scrollBy({ top: (r.top + r.height / 2) - (top + vh / 2), behavior: "smooth" }); return true; } return false; };
+  /* I3 (acceptance 09-23 08:54, the first-use page in the standalone window): with the keyboard up the large title rested half under the bar. The two
+     fields sit high on that page, visible above the keyboard, yet the page ended scrolled into the title's collapse range (0, p) — and nothing puts a
+     scroll that was not a finger drag onto a resting point (topbar.js settle() is the 2.8 drag-end retarget only). What UIKit does instead:
+     · the edited field is brought in with UIScrollView.scrollRectToVisible(_:animated:) — "scrolls the content view so that the area defined by rect is
+       just visible inside the scroll view. If the area is already visible, the method does nothing" (developer.apple.com/documentation/uikit/uiscrollview/
+       scrollrecttovisible(_:animated:), Discussion): the least scroll that shows the field, none when it already shows — not centred (the old reveal
+       centred it in the visible range);
+     · the large title never rests part-way: a stop inside (0, p) goes to the nearest resting point, 0 or p (nav-bar-scroll-formula.md 2.8 midpoint rule,
+       topbar.js snapTarget), here only onto a resting point at which the field still shows (else the other one).
+     So after the keyboard / a field focus the page's final scroll is target(): from the scroll the page had when the field was focused (whoever moved it
+     since — WebKit's own reveal included — is undone when the field showed there), the least scroll that shows the field between the bar's bottom and
+     the keyboard (8 px margins), then the resting-point rule. It runs 200 ms after the last visualViewport resize / scroll or window scroll within 2 s of
+     the focus or the keyboard coming up, never with a finger down; its scroll animation is the browser's smooth scroll (the scrollRectToVisible
+     animated: curve is unread). topbar.js settle() yields while this is in charge (window.__kbdSettling). */
+  const target = (h, base) => { const el = document.activeElement; if (!kbInput(el)) return null;
+    const top = vv ? vv.offsetTop : 0, vh = h != null ? h : (vv ? vv.height : innerHeight), r = el.getBoundingClientRect(), y = window.scrollY;
+    const bar = document.getElementById("topbar"), lo = Math.max(top, bar ? bar.getBoundingClientRect().bottom : 0) + 8, hi = top + vh - 8;
+    const at = (t) => ({ a: r.top - (t - y), b: r.bottom - (t - y) }), shows = (t) => { const q = at(t); return q.a >= lo - 0.5 && q.b <= hi + 0.5; };
+    const max = Math.max(0, document.documentElement.scrollHeight - Math.min(innerHeight, vh + top));
+    let t = base != null ? base : y; const q = at(t);
+    if (!shows(t)) t += q.b > hi ? q.b - hi : q.a - lo;   // scrollRectToVisible: just visible
+    t = Math.max(0, Math.min(max, t));
+    const T = window.Topbar, p = T ? T.p : 0;
+    if (T && t > 0.5 && t < p - 0.5) { const near = T.snapTarget(t), far = near === 0 ? p : 0, ok = (s) => s <= max + 0.5 && shows(s); t = ok(near) ? near : ok(far) ? far : (p <= max + 0.5 ? p : 0); }
+    return t; };
+  const settleKbd = (h, base) => { const t = target(h, base); if (t == null || Math.abs(t - window.scrollY) < 0.5) return false; window.scrollTo({ top: t, behavior: "smooth" }); return true; };
+  const reveal = (h) => settleKbd(h, window.scrollY);   // an explicit call (accept): from where the page is now
+  const armed = () => fingers === 0 && preY != null && kbInput(document.activeElement) && performance.now() - Math.max(focusT, kbT) < 2000;
+  window.__kbdSettling = () => armed();
+  const later = () => { if (!armed()) return; clearTimeout(settleTimer); settleTimer = setTimeout(() => { if (armed()) settleKbd(null, preY); }, 200); };
   window.__kbdReveal = (h) => reveal(h);
-  if (vv) { vv.addEventListener("resize", () => apply()); vv.addEventListener("scroll", () => apply()); }
+  window.__kbdTarget = (h, base) => target(h, base);
+  addEventListener("focusin", (e) => { if (kbInput(e.target)) { preY = window.scrollY; focusT = performance.now(); } else preY = null; });
+  addEventListener("touchstart", (e) => { fingers = e.touches.length; preY = null; clearTimeout(settleTimer); }, { passive: true, capture: true });   // a finger on the page: the scroll is the user's from here (a tap on a field sets preY again at its focusin)
+  for (const n of ["touchend", "touchcancel"]) addEventListener(n, (e) => { fingers = e.touches.length; }, { passive: true, capture: true });
+  addEventListener("scroll", later, { passive: true });
+  if (vv) { vv.addEventListener("resize", () => { apply(); later(); }); vv.addEventListener("scroll", () => { apply(); later(); }); }
   addEventListener("resize", () => apply()); document.addEventListener("pointerdown", () => apply(), { capture: true, passive: true });
   addEventListener("focusout", (e) => { if (kbInput(e.target)) for (const ms of [0, 60, 300, 600, 1000]) setTimeout(() => apply(), ms); }); }   // a text field losing focus: the keyboard is going — re-check through its slide; focusin does nothing
 
