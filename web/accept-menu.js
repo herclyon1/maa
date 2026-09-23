@@ -38,8 +38,9 @@
     const until = async (cond, cap) => { const t0 = performance.now(); while (!cond()) { if (performance.now() - t0 >= cap) return null; await frame(); } return performance.now() - t0; };
     const sample = (panel, ms) => new Promise((resolve) => { const out = []; let first = null;
       const tick = (now) => { if (first === null) first = now; if (!panel.isConnected) { resolve(out); return; }   // removed on settle (the dismiss): the frame's read would be zeros
-        const st = Menu.state(); if (st) { const bd = panel.querySelector(".menu-body"), bs = bd ? cs(bd) : null, bm = bs ? /blur\(([\d.]+)px\)/.exec(bs.filter) : null; out.push({ t: st.t, r: rect(panel), x: { ...st.x }, op: parseFloat(cs(panel).opacity), bo: bs ? parseFloat(bs.opacity) : NaN, bb: bm ? +bm[1] : 0 }); } if (now - first < ms && !(st && st.settled)) requestAnimationFrame(tick); else resolve(out); };
+        const st = Menu.state(); if (st) { const bd = panel.querySelector(".menu-body"), bs = bd ? cs(bd) : null, bm = bs ? /blur\(([\d.]+)px\)/.exec(bs.filter) : null; out.push({ t: st.t, r: rect(panel), x: { ...st.x }, op: parseFloat(cs(panel).opacity), bo: bs ? parseFloat(bs.opacity) : NaN, bb: bm ? +bm[1] : 0, ...btnLayer() }); } if (now - first < ms && !(st && st.settled)) requestAnimationFrame(tick); else resolve(out); };
       requestAnimationFrame(tick); });
+    const btnLayer = () => { const s = cs(btn), m = /blur\(([\d.]+)px\)/.exec(s.filter); return { ao: parseFloat(s.opacity), ab: m ? +m[1] : 0 }; };   // the hidden layer (G22): the anchor button
     const fit = (samples, from, to, zeta, resp, v0) => { const res = {}; for (const k of ["left", "top", "width", "height"]) {
       res[k] = { dom: rms(samples.map((s) => s.r[k] - s.x[k])), model: rms(samples.map((s) => s.x[k] - closed(from[k], to[k], zeta, resp, s.t, v0 ? v0[k] : 0))) }; } return res; };
     btn.scrollIntoView({ block: "center" }); await until(() => { const r = btn.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }, 100);   // the value row on screen, as a finger would find it
@@ -56,6 +57,8 @@
       num(`菜单出现 交叉模糊 p：对 ζ.75/r.35 闭式 0→1 rms（${ps.length} 帧，驱动自己的时钟）`, 0, rms(ps.map((o) => o.x.p - closed(0, 1, 0.75, 0.35, o.t))), 0.001);
       num("菜单出现 内容透明度 = clamp(p) rms（G22：显出层透明度 = p）", 0, rms(ps.map((o) => o.bo - clamp(o.x.p))), 0.01);
       num("菜单出现 内容模糊 = 4(1 − p) rms（px；G22：半径 = 4 ×（1 − p））", 0, rms(ps.map((o) => o.bb - Math.max(0, 4 * (1 - o.x.p)))), 0.02);
+      num("菜单出现 按钮（隐去层）透明度 = clamp(1 − p) rms（G22：隐去层 p_h = 1 − p）", 0, rms(ps.map((o) => o.ao - clamp(1 - o.x.p))), 0.01);
+      num("菜单出现 按钮模糊 = 4p rms（px；G22：隐去层半径 = 4 × p）", 0, rms(ps.map((o) => o.ab - Math.max(0, 4 * o.x.p))), 0.02);
       const f1 = ps[0]; check("菜单出现 首帧内容几乎透明且糊（p 从 0 起，原生显出层呈现透明度 0 → .0979 → …）", "p < .2, 模糊 > 3", f1 ? `p ${f1.x.p.toFixed(3)}, 模糊 ${f1.bb.toFixed(2)}` : "无帧", !!f1 && f1.x.p < 0.2 && f1.bb > 3); }
     /* R19 (menu-motion-formula.md §7b, R18b): no per-item delay — every item is fully opaque and in place on the first frame after the open (the
        list view has no stagger); the intermediate shape (a geometry step) waits for its rect's formula (待读), so nothing else to check */
@@ -148,10 +151,19 @@
         check(`菜单玻璃 五灰阶平底核（${theme === "dark" ? "暗" : "亮"}，⑦ 闭链不调暗：${pred.map((v) => v.toFixed(1)).join(" / ")}；无头 Chrome 实测记录）`, "|Δ| ≤ 1.25/255", `${measured.join(" / ")} · |Δ|max ${dmax.toFixed(2)}`, dmax <= 1.25); }
       check("菜单玻璃 未接项已列（Menu.glass.unbuilt）", "≥ 4 项", Menu.glass ? Object.keys(Menu.glass.unbuilt).length + " 项" : "-", !!Menu.glass && Object.keys(Menu.glass.unbuilt).length >= 4); }
     /* ② dismiss (the scrim tap = cancel = the reverse morph) */
-    const from2 = rect(panel), v0 = (Menu.state() || {}).v; scrim.click(); await new Promise((r) => requestAnimationFrame(r));   // v0: the rested "in" springs' velocities (the loop stopped at settle: frozen until the close)
+    const from2 = rect(panel), v0 = (Menu.state() || {}).v, p0 = ((Menu.state() || {}).x || {}).p ?? 1; scrim.click(); await new Promise((r) => requestAnimationFrame(r));   // v0: the rested "in" springs' velocities (the loop stopped at settle: frozen until the close)
     const st2 = Menu.state(); const close = await sample(panel, 900);
     const fout = fit(close, st2.from, st2.to, 0.8, 0.3, v0);
-    check("菜单变形一步走（R19″ / §8b ③）：无中间形、无 .03 s 第二步；收回弹簧 = liquidMorph ζ.8/.3（liquidMorphShrink 无消费者）；RM ζ1/.15；crossBlur 探针读到 1（G22 19:05）、出现段接上（G22），收回段未读", "oneStep · intermediate 0 · dismiss .8/.3 · reduce 1/.15 · crossBlur 1 appear", Menu.morph ? `${Menu.morph.oneStep ? "oneStep" : "steps"} · intermediate ${Menu.morph.useIntermediateShape} · dismiss ${Menu.springs.dismiss.join("/")} · reduce ${Menu.springs.reduce.join("/")} · crossBlur ${Menu.morph.crossBlur.read} ${/^appear/.test(String(Menu.morph.crossBlur.wired)) ? "appear" : "?"}` : "no Menu.morph", !!Menu.morph && Menu.morph.oneStep && Menu.morph.useIntermediateShape === 0 && Menu.springs.dismiss[0] === 0.8 && Menu.springs.dismiss[1] === 0.3 && Menu.springs.reduce[0] === 1 && Menu.springs.reduce[1] === 0.15 && Menu.morph.crossBlur.read === 1 && /^appear/.test(String(Menu.morph.crossBlur.wired)));
+    /* G22 dismiss (data probe 09-24 00:1x, NATIVE-GAP last rows): p runs back 1 → 0 on its own spring ζ .8 / response .49 (stiffness 164.42; the four
+       destinations one spring), the same two layer formulas — content opacity p / blur 4(1 − p), button opacity 1 − p / blur 4p */
+    check("菜单收回 点击后首帧停在起点、次帧才动（g22-blur-table 7.732 写模型 → 7.760 仍旧值 → 7.794 起动）", "t 0 · p = 起点 · 框不动", `t ${st2.t} · p ${st2.x.p === p0 ? "= 起点" : st2.x.p} · Δw ${(st2.x.width - st2.from.width).toFixed(3)}`, st2.t === 0 && st2.x.p === p0 && st2.x.width === st2.from.width && st2.x.top === st2.from.top);
+    { const cp = close.filter((o) => o.x.p != null && o.t > 0), clamp = (v) => Math.max(0, Math.min(1, v)), vp = v0 && v0.p ? v0.p : 0;
+      num(`菜单收回 交叉模糊 p：对 ζ.8/r.49 闭式 1→0 rms（${cp.length} 帧，驱动自己的时钟）`, 0, cp.length ? rms(cp.map((o) => o.x.p - closed(p0, 0, 0.8, 0.49, o.t, vp))) : NaN, 0.001);
+      num("菜单收回 内容透明度 = clamp(p) rms", 0, cp.length ? rms(cp.map((o) => o.bo - clamp(o.x.p))) : NaN, 0.01);
+      num("菜单收回 内容模糊 = 4(1 − p) rms（px）", 0, cp.length ? rms(cp.map((o) => o.bb - Math.max(0, 4 * (1 - o.x.p)))) : NaN, 0.02);
+      num("菜单收回 按钮透明度 = clamp(1 − p) rms", 0, cp.length ? rms(cp.map((o) => o.ao - clamp(1 - o.x.p))) : NaN, 0.01);
+      num("菜单收回 按钮模糊 = 4p rms（px）", 0, cp.length ? rms(cp.map((o) => o.ab - Math.max(0, 4 * o.x.p))) : NaN, 0.02); }
+    check("菜单变形一步走（R19″ / §8b ③）：无中间形、无 .03 s 第二步；收回弹簧 = liquidMorph ζ.8/.3（liquidMorphShrink 无消费者）；RM ζ1/.15；crossBlur 探针读到 1（G22 19:05）、出现与收回两段接上（G22；收回 p ζ.8/.49 数据 00:1x）", "oneStep · intermediate 0 · dismiss .8/.3 · reduce 1/.15 · crossBlur 1 appear+dismiss · p .75/.35 → .8/.49", Menu.morph ? `${Menu.morph.oneStep ? "oneStep" : "steps"} · intermediate ${Menu.morph.useIntermediateShape} · dismiss ${Menu.springs.dismiss.join("/")} · reduce ${Menu.springs.reduce.join("/")} · crossBlur ${Menu.morph.crossBlur.read} ${/^appear \+ dismiss/.test(String(Menu.morph.crossBlur.wired)) ? "appear+dismiss" : "?"} · p ${Menu.springs.cross.join("/")} → ${Menu.springs.crossOut.join("/")}` : "no Menu.morph", !!Menu.morph && Menu.morph.oneStep && Menu.morph.useIntermediateShape === 0 && Menu.springs.dismiss[0] === 0.8 && Menu.springs.dismiss[1] === 0.3 && Menu.springs.reduce[0] === 1 && Menu.springs.reduce[1] === 0.15 && Menu.morph.crossBlur.read === 1 && /^appear \+ dismiss/.test(String(Menu.morph.crossBlur.wired)) && Menu.springs.crossOut[0] === 0.8 && Menu.springs.crossOut[1] === 0.49);
     for (const k of ["left", "top", "width", "height"]) { num(`菜单收回 ${k}：弹簧值对 ζ.8/r.3 闭式 rms（pt，${close.length} 帧，自静止态的 x / v 起；§8b ① liquidMorph 两向同一根；解析步精确，.01 = 浮点余量）`, 0, fout[k].model, 0.01); num(`菜单收回 ${k}：面板矩形 = 弹簧值 rms（pt）`, 0, fout[k].dom, 1); }
     num("菜单收回目标 = 值行按钮框（top）", a0.top, st2.to.top, 0.5); num("菜单收回起点 = 静止框（width）", from2.width, st2.from.width, 0.5);
     await until(() => !Menu.state(), 300); check("菜单收回后面板移除", "无", document.querySelector(".menu.morph") ? "还在" : "无", !document.querySelector(".menu.morph"));
