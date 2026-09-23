@@ -390,10 +390,11 @@ function render() {
 
   for (const g of SCHEMA) {
     /* I1 (D72): the 库存 entry — a single-row card with no group header, first group of the 终末地 page, above 基质刷取
-       (inventory-plan.md §2: AX-46 Cell with 17.67 of space above and no header). Not gated by the shift: the stockpile
-       page reads 森空岛 from the phone, not the machine. data-tabfix puts it on the 终末地 page without an h2. */
-    if (g.title === "终末地 · 基质刷取") html += `<section data-tabfix="终末地"><div class="group"><div class="row nav" data-page="stockpile"><label>库存</label>${sf("chevron.right", "chev")}</div></div></section>`;
+       (inventory-plan.md §2: AX-46 Cell with 17.67 of space above and no header). data-tabfix puts it on the 终末地 page without an h2.
+       Gated by the shift like the game's own groups (用户 09-23 18:27 真机 ①「切换到晚班的时候不应该显示终末地，因为终末地不在晚班里面」: emitted
+       before the inShift test, this one row kept the 终末地 tab in 晚班) */
     if (!inShift(g.owner)) continue;
+    if (g.title === "终末地 · 基质刷取") html += `<section data-tabfix="终末地"><div class="group"><div class="row nav" data-page="stockpile"><label>库存</label>${sf("chevron.right", "chev")}</div></div></section>`;
     const M = ((snap && snap.master) || {})[g.game] || {};
     const cur = g.src === "master" ? (M.values || {}) : (c[g.sec] || {});
     const ro = M.readonly || {};

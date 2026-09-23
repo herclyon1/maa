@@ -187,6 +187,15 @@
         check("R0③′ 项增删动画途中点另一个标签：选中切过去，动画结束后透镜停在新选中项上（≤ 1 pt），不回旧项", "点时动画在跑 · 选中 = 点的 · 透镜贴新项", `${mid ? "动画在跑" : "动画没在跑"} · 选中 ${on ? on.dataset.tab : "无"}（点 ${tgt ? tgt.dataset.tab : "无"}） · 透镜 x ${gr.left.toFixed(1)} vs 项 ${orr ? orr.left.toFixed(1) : "-"} · 宽 ${gr.width.toFixed(1)} vs ${orr ? orr.width.toFixed(1) : "-"}`,
           mid && !!tgt && on === tgt && !!orr && Math.abs(gr.left - orr.left) <= 1 && Math.abs(gr.width - orr.width) <= 1);
         curQueue = savedQ; window.render(); await sleep(1300); }
+      /* 界面-串2 (用户 09-23 18:27 真机 ①「切换到晚班的时候不应该显示终末地，因为终末地不在晚班里面」): in every shift each tab except 状态 must own a
+         game group of its own; the 库存 entry row (data-tabfix, view.js SCHEMA loop) was emitted before the inShift test and alone kept 终末地 in 晚班 */
+      { const per = [];
+        for (const nm of names) { curQueue = nm; window.render(); await sleep(50);
+          const nv = document.querySelector("nav.tabs"), tabs = [...nv.querySelectorAll(":scope > .seg > button")].map((b) => b.dataset.tab);
+          const orphan = tabs.filter((t) => t !== "状态" && ![...document.querySelectorAll("#app section")].some((x) => x.dataset.tab === t && !x.dataset.tabfix && x.querySelector("h2")));
+          per.push({ nm, tabs, orphan }); }
+        curQueue = savedQ; window.render(); await sleep(1300);
+        check("①′ 每个班次的标签只含本班有的游戏：除「状态」外每个标签都有本班自己的游戏分组，不靠库存入口行撑出一个标签", "无空标签", per.map((x) => `${x.nm}：${x.tabs.join("/")}${x.orphan.length ? "（空 " + x.orphan.join("/") + "）" : ""}`).join(" · "), per.every((x) => !x.orphan.length)); }
       curTab = savedTab; window.render(); await sleep(100);
     }
   }
