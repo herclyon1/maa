@@ -169,7 +169,7 @@
     /* §1 G4/G21: lift, slide to the other segment, release there - commits at the up */
     seg = q(); sel = bs().find((b) => b.classList.contains("on")); unsel = bs().find((b) => !b.classList.contains("on"));
     pev(seg, "pointerdown", at(sel)); await sleep(400); pev(seg, "pointermove", at(unsel)); await sleep(500); const r2 = R.n, parent0 = seg.parentNode, lens21 = seg.querySelector(".lens"); pev(seg, "pointerup", at(unsel)); const q21 = document.querySelector("#queue").value; await sleep(60);
-    check("分段 G21 抬起后滑到另一段抬手：选中那段（模型在抬手即改，内容 +25 ms 切 ← --seg-commit-delay-drag；vcsplit 重画在其后一帧，+60 ms 看）", unsel.textContent, `${onText()} model ${q21}`, q21 === unsel.dataset.q && onText() === unsel.textContent && thisShift(unsel.textContent) && R.n === r2 + 1);
+    check("分段 G21 抬起后滑到另一段抬手：选中那段（模型在抬手即改，内容 +11.6 ms 切 ← --seg-commit-delay-drag，探针 G30；vcsplit 重画在其后一帧，+60 ms 看）", unsel.textContent, `${onText()} model ${q21}`, q21 === unsel.dataset.q && onText() === unsel.textContent && thisShift(unsel.textContent) && R.n === r2 + 1);
     check("分段 G21 换值重画：#queueseg 及其父节点原地保留（replaceKeeping，不摘下再插回 → 过渡不被取消；B2-b）", "same node · same parent", `${q() === seg ? "same node" : "new node"} · ${q().parentNode === parent0 ? "same parent" : "new parent"}`, q() === seg && q().parentNode === parent0);
     { const h1 = lens21.getBoundingClientRect().height; await sleep(16); const h2 = lens21.getBoundingClientRect().height;
       check("分段 G21 松手 +1 帧：透镜仍是抬起尺寸、随后逐帧回落（B2-b：不瞬回 28）", "h ≥ 39 at +0, > 36 at +16 ms", `${h1.toFixed(1)} → ${h2.toFixed(1)}`, h1 >= 39 && h2 > 36); }

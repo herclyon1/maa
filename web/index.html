@@ -68,9 +68,9 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
     /* interaction-spec.md §1/§2/§3 values that have no --ios-touch-* token yet: the lens follows a drag with a spring lag of ~100–150 ms (G4: finger 320 → lens 61→237 in ~120 ms);
        the committed lens settles in ~1.2 s while its width goes 196 → 239 → 181 → 196 and height 28 → 38.6 → 27 → 28 (G1/G3); the tab-bar lens lifts 94×54 → 119×64 (T1), the switch knob 37×24 → 60.5×40 then 58×38 (L*) */
     --seg-follow-lag:var(--ios-touch-segment-follow-lag);   /* .12 s ← G4/F1 */
-    --seg-commit-delay-tap:66ms;    /* valueChanged after a tap's up ← seg-value-change-content.md §0 (+92/+68/+50/+66, 采样); used by the ?vcnow=0 path only — by default a tap's
+    --seg-commit-delay-tap:16ms;    /* valueChanged after a tap's up ← probe (data 19:33, NATIVE-GAP G29; touch-local.uiprobe-g29-seg-C.json / -C2.json controlEvents − touch ended: 400 ms holds +13.4 / +16.0, the larger taken; cold first +33.5; the old +66 was a recording sample); used by the ?vcnow=0 path only — by default a tap's
                                        content switches in the up's own task (view.js SEG_VC_NOW, 监督局 09-19 15:5x: on the phone the timer put the switch at +136…143 vs the native's +50…92) */
-    --seg-commit-delay-drag:25ms;   /* valueChanged after a slide's up ← tokens.css --ios-touch-segment-commit-delay 注（"after a slide +25 ms"，数据会话） */
+    --seg-commit-delay-drag:11.6ms; /* valueChanged after a slide's up ← probe (G30, same files: +11.6 / +10.2, the larger taken; sent once at the up, never during the drag); the old +25 was a sample */
     --seg-settle:1.209s;                                        /* the measured lens sequence ends at 1209 ms (--ios-touch-segment-lens-*-keys) */
     /* lens travel after the up = the measured per-frame x path (G1/G3, 60 Hz, fraction of the travel; peak 1.075 at 476 ms) as a linear() easing over the whole 1209 ms */
     --seg-x-easing:linear(0, 0.084 3.47%, 0.257 6.29%, 0.424 9.02%, 0.547 11.75%, 0.632 14.56%, 0.717 17.29%, 0.795 20.02%, 0.866 22.83%, 0.933 25.56%, 0.988 28.29%, 1.028 31.10%, 1.056 33.83%, 1.071 36.56%, 1.075 39.37%, 1.066 44.83%, 1.045 50.37%, 1.02 55.91%, 1.001 61.37%, 0.994 66.91%, 0.995 72.46%, 0.998 78.00%, 1 83.46%, 1 100.00%);

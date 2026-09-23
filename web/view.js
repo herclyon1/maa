@@ -876,7 +876,7 @@ function wire() {
       qsel.value = q;   // the model changes at the up (the next touch already sees the new index)
       /* valueChanged — the content switch (one render) and, in the loop, the lens's slide. A tap: in the up's own task (SEG_VC_NOW, 换值即抬手 — the +66 ms
          timer of seg-value-change-content.md §0 put the phone's visible switch at up +136…143 against the native's +50…92, data 78284dd; ?vcnow=0 = the
-         timer + vcsplit path). A slide's up: +25 ms (--seg-commit-delay-drag, tokens.css --ios-touch-segment-commit-delay note). A newer value change
+         timer + vcsplit path). A slide's up: +11.6 ms (--seg-commit-delay-drag ← probe G30). A newer value change
          before a timer fires simply renders again (快速连点 未量). */
       const begin = () => { segCommitAt = performance.now(); segCommitMode = mode; flipPending = true; performance.mark("seg:commit"); };
       const select = () => { bs.forEach((b, k) => { if (b.classList.contains("on") !== (k === i)) segLabelXfade(b, k === i); }); segMeasure("seg:commit-select", segCommitAt); };   // the selection state (labels .on / aria; the lens is the loop's); R20c: each changed label cross-dissolves .2 s
@@ -1925,7 +1925,7 @@ function attachSegmented(seg, getIndex, commit) {
           const tUp = performance.now(), upAt = ev.timeStamp > 0 && ev.timeStamp <= tUp ? ev.timeStamp : tUp; performance.mark("seg:tap-up");
           if (glass && glass.beginTap) glass.beginTap(target, upAt); else segLens(seg, lens, bs, NaN, { target, upAt });   // the loop was built at the down (deferred); arm it — or build now if the down had none
           segMeasure("seg:tap-arm", tUp); }
-        commit(target, lifted ? "drag" : "tap");                    // the up: the index changes now (G1–G3); a tap's content switches in this task (wire(): SEG_VC_NOW), a slide's at +25 ms; the lens's slide is the loop's (SEG_TAP_T.travel)
+        commit(target, lifted ? "drag" : "tap");                    // the up: the index changes now (G1–G3); a tap's content switches in this task (wire(): SEG_VC_NOW), a slide's at +11.6 ms; the lens's slide is the loop's (SEG_TAP_T.travel)
       },
     })) return;
     if (rm) { if (!onSelected) bs[pressed].classList.add("dim"); if (window.Motion) Motion.swallowNextClick(seg); else seg.dataset.pe = "1"; return; }   // R59′a: Reduce Motion — the label dims (G15, no RM branch read for it), no lens build, no lift timer
