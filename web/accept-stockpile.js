@@ -125,6 +125,14 @@
         庚: "库存 1 · 需 100 | 差 99", 丙: "库存 5 · 需 100 | 差 95", 乙: "库存 6 + 箱 110 · 理智关卡 | 1.0 人份", 丁: "库存 22,639k | 22.6 人份", 戊: "库存 3 | （无右值）",
         甲: "库存 354 · 采集 | 2.6 人份", 高阶培养自选箱Ⅰ: "133 个 · 换成缺的材料用了 131 个 | 剩 2 个" };
       for (const [n, w] of Object.entries(want)) check(`库存 ⑤ 行文字「${n}」：千分位、≥ 10,000 写 k、只有缺的行写「需 N」「差 N」、箱写「+ 箱 N」、尾写来源（§4.3，M4g–M4i）`, w, txt(n), txt(n) === w);
+      const wrapCheck = (tag, mustWrap) => { const rows = [...document.querySelectorAll("#subpage .stk-row")].filter((r) => r.querySelector(".s")), bad = [];
+        for (const r of rows) { const s = r.querySelector(".s"), lh = parseFloat(cs(s).lineHeight), n = Math.round(R(s).height / lh), want = 62 + (n - 1) * lh;
+          if (s.scrollWidth > s.clientWidth + .5 || Math.abs(R(r).height - want) > .5 || cs(s).whiteSpace !== "normal") bad.push(`${r.querySelector(".t").textContent} ${n} 行 ${R(r).height.toFixed(2)}`); }
+        const wrapped = rows.filter((r) => Math.round(R(r.querySelector(".s")).height / parseFloat(cs(r.querySelector(".s")).lineHeight)) > 1).map((r) => `${r.querySelector(".t").textContent} ${r2(R(r).height)}`);
+        if (mustWrap && !wrapped.length) bad.push("没有折行的行");
+        check(`库存 ${tag} 副标题超宽折行、不省略，行高 = 62 + (行数 − 1) × 副标题行高（UIListContentConfiguration subtitleCell numberOfLines 0，数据探针 cellcfg.json 09-23 17:18）`, "全行合 · 无截断",
+          bad.length ? bad.join(" / ") : `全行合 · 无截断（${rows.length} 行${wrapped.length ? "，折行：" + wrapped.join("、") : "，本数据无折行"}）`, bad.length === 0); };
+      wrapCheck("⑤", false);
       num("库存 ⑤ 人份固定样例 servingsOf(354, 136) = 2.6（一位小数向下取，§8.5）", 2.6, I.servingsOf(354, 136), 0.001);
       const bad = body().querySelector('img[src="' + BAD + '"]');
       check("库存 ⑤ 图标读不到：留 28 的空位、不放替代图（§4.2）", "hidden · 28×28", bad ? `${bad.style.visibility} · ${r2(R(bad).width)}×${r2(R(bad).height)}` : "缺", !!bad && bad.style.visibility === "hidden" && Math.abs(R(bad).width - 28) < 0.1 && Math.abs(R(bad).height - 28) < 0.1);
@@ -157,7 +165,9 @@
         `${rowsNow} 行 · 不透明度 ${cs(body().querySelector(".stk-row")).opacity} · ${f6[0]}`, rowsNow === 7 && cs(body().querySelector(".stk-row")).opacity === "1" && f6[0] === "12:34 读取的数据；这次没读到：超时");
       /* ⑦ */
       rb.click();
-      await answer(good({ lagNote: "测试延迟句" }));
+      { const d7 = good({ lagNote: "测试延迟句" }); Object.assign(d7.games[0].rows[0], { have: 9999, box: 9999, need: 99999, short: 80003, servings: 0, origin: { 理智关卡: ["某关"] } }); await answer(d7); }
+      await frames(1000, () => body().textContent.includes("箱 9,999"));
+      wrapCheck("⑦ 四位数带箱带需", true);
       const f7 = foot();
       check("库存 ⑦ 数据带了延迟句才显示，在脚注末行（§4.3）", "测试延迟句 · 首行 12:34 从森空岛读取", `${f7[f7.length - 1]} · 首行 ${f7[0]}`, f7[f7.length - 1] === "测试延迟句" && f7[0] === "12:34 从森空岛读取");
       /* ⑧ */
