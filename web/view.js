@@ -2299,10 +2299,11 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catc
    object when it ends, and 关闭 then restarts the page without ?accept (index.html's head puts this phone's own data back). Every frame record also
    carries selfcheck = this phone's last run (time, page, totals, the failing rows; null = never run here), so a record shared later still says it. */
 function lastSelfcheck() {
-  try { const a = JSON.parse(localStorage.getItem("ark-accept") || "null"); if (!a || !Array.isArray(a.rows)) return null;
+  try { const a = JSON.parse(lastSelfcheck.src() || "null"); if (!a || !Array.isArray(a.rows)) return null;
     return { at: a.at, href: a.href, viewport: a.viewport, standalone: a.standalone, dark: a.dark, total: a.total, fails: a.fails, failRows: a.rows.filter((r) => !r.ok) }; }
   catch (e) { return { error: String(e && e.message || e) }; }
 }
+lastSelfcheck.src = () => localStorage.getItem("ark-accept");   // accept-selfcheck.js swaps this: a fake result in ark-accept itself is what a runner polls for
 function showDiagSheet(rec, kind) {
   const sh = $("#diagsheet"); if (!sh || !rec) return;
   const self = kind === "accept", out = self ? rec : Object.assign({}, rec, { selfcheck: lastSelfcheck() });
