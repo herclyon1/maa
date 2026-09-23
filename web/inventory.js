@@ -8,11 +8,22 @@
        games: [ { game: "终末地", gameId: "endfield", caliber, footnote, source, built, gameLevel,
                   sections: ["通用", "高阶素材", "采集", "经验与货币"], lagMinutes: 30, lagNote,
                   standard: {charId, name, rarity, releasedAt, status, weapon, sources}, standards: [...], "错误": "",
-                  rows: [ { id, name, rarity, icon, have, need, servings, section,
-                            group, stage, note, virtual, sumInto, exp } ] } ] }
+                  box: {id, name, per, picks, pickNames, note, source, rule}, boxUse: {held, used, left},
+                  rows: [ { id, name, rarity, icon, have, need, servings, box, short, section,
+                            group, owner, uses, origin, stage, note, virtual, sumInto, exp,
+                            boxUsed, boxLeft } ] } ] }
 
    * section   - which heading the row sits under, in `sections` order; a row with
                  section null (the exp cards) is folded into 干员经验 / 武器经验 and not shown
+   * group     - the use section (干员精英化 / 干员技能升级 / 干员技能专精 / 干员等级提升 /
+                 武器突破 / 武器等级提升 / 多处共用), in games[].groups order; useSource says
+                 where each name comes from. null = this build does not use the row
+   * owner     - 干员 / 专武 / 干员 + 专武 (null when unused)
+   * uses      - [{use, need}] every step the build spends it on, with the count
+   * origin    - how it is obtained, from its official wiki entry's 物品来源 lines:
+                 {kind: 采集物 | 理智关卡产出 | 其它来源, 采集: [..], 理智关卡: [..], 其它: [..],
+                 wikiItemId}; the two exp rows carry the union of their folded cards'
+                 (wikiItemId null, from / wikiItemIds name them). originSource = the rule
    * footnote  - the one-line caption for 人份 (already worded for the page)
    * lagNote   - Skland's own statement that its depot copy runs about 30 minutes behind
                  the game (the official calculator page says so); lagMinutes is the number
@@ -25,7 +36,14 @@
    * standards - data/need.json carries games[].standards[] (today: the newest six-star
                  with her signature weapon); setStandard(charId) picks one and the choice
                  stays in this phone's localStorage; standards() lists them for a picker
-   * servings  - have ÷ need, one decimal, null when there is no need
+   * servings  - (have + box) ÷ need, one decimal, null when there is no need
+   * box       - units the self-select box tops this row up with (0 when none); see applyBox
+   * short     - need − have − box when still short of one build (差 N), 0 when covered,
+                 null when there is no need
+   * boxUsed / boxLeft - on the box's own row only: boxes spent above / boxes still spare
+   * games[].box    - the self-select box from need.json (which item, which materials it
+                      opens into, `per` units a box, `note` = the footnote sentence);
+                      boxUse = {held, used, left} for this read
    * virtual   - the two exp rows (exp:char / exp:weapon): have = Σ count × exp of the
                  exp materials (rows carrying sumInto), because the game spends exp,
                  not cards
@@ -118,6 +136,10 @@
     if (!need || !(need > 0)) return null;
     return Math.floor((have / need) * 10) / 10;
   }
+  function shortOf(have, need) {
+    if (!need || !(need > 0)) return null;
+    return Math.max(0, need - have);
+  }
   function rowOf(base, have, mat) {
     const m = mat[base.id] || {};
     return {
@@ -125,10 +147,12 @@
       rarity: base.rarity != null ? base.rarity : (m.rarity != null ? m.rarity : null),
       icon: base.icon || m.icon || "",
       have, need: base.need == null ? null : base.need, servings: servingsOf(have, base.need),
+      box: 0, short: shortOf(have, base.need),
       group: base.group == null ? null : base.group, stage: base.stage == null ? null : base.stage,
       note: base.note == null ? null : base.note,
       virtual: !!base.virtual, sumInto: base.sumInto || null, exp: base.exp == null ? null : base.exp,
       section: base.section == null ? null : base.section,
+      owner: base.owner == null ? null : base.owner, uses: base.uses || [], origin: base.origin || null,
     };
   }
   /* need rows + live counts -> rows. Exp materials add count × exp into their
@@ -151,6 +175,37 @@
     }
     return rows;
   }
+  /* The self-select box (user 2026-09-23 09:05): boxes only top up the materials the box
+     opens into (box.picks) that are short of one build. One box at a time goes to the
+     one with the fewest servings, (have + box) ÷ need - ties keep table order - as
+     box.per units, until each is covered or the boxes run out. A row still short keeps
+     its 差 N (short); a covered row counts as enough and shows its servings as usual,
+     box units included. Boxes left over stay unspent. Rows are changed in place. */
+  function applyBox(rows, box) {
+    if (!box || !box.id) return null;
+    const own = rows.find((r) => r.id === box.id);
+    const held = own ? own.have : 0;
+    const per = Number(box.per) || 0;
+    const picks = new Set(box.picks || []);
+    const want = rows.filter((r) => picks.has(r.id) && r.need > 0 && r.have < r.need);
+    let used = 0;
+    while (used < held && per > 0) {
+      let low = null;
+      for (const r of want) {
+        if (r.have + r.box >= r.need) continue;
+        if (!low || (r.have + r.box) / r.need < (low.have + low.box) / low.need) low = r;
+      }
+      if (!low) break;
+      low.box += per;
+      used++;
+    }
+    for (const r of want) {
+      r.servings = servingsOf(r.have + r.box, r.need);
+      r.short = shortOf(r.have + r.box, r.need);
+    }
+    if (own) { own.boxUsed = used; own.boxLeft = held - used; }
+    return { held, used, left: held - used };
+  }
   async function endfield(sk) {
     const g = { game: GAME, gameId: GAME_ID, "错误": "", rows: [] };
     const needGame = needFor(GAME_ID);
@@ -158,7 +213,7 @@
     if (needGame) {
       g.caliber = (std && std.caliber) || needGame.caliber; g.footnote = (std && std.footnote) || needGame.footnote || "";
       g.source = needGame.source; g.built = Inventory.need.built;
-      g.sections = needGame.sections || []; g.lagMinutes = needGame.lagMinutes == null ? null : needGame.lagMinutes; g.lagNote = needGame.lagNote || "";
+      g.sections = needGame.sections || []; g.groups = needGame.groups || []; g.useSource = needGame.useSource || ""; g.originSource = needGame.originSource || ""; g.lagMinutes = needGame.lagMinutes == null ? null : needGame.lagMinutes; g.lagNote = needGame.lagNote || "";
       g.standard = std ? { charId: std.charId, name: std.name, rarity: std.rarity, releasedAt: std.releasedAt, status: std.status,
                            weapon: std.weapon && std.weapon.name, sources: std.sources } : null;
       g.standards = standards(GAME_ID);
@@ -174,6 +229,8 @@
       const known = new Set(((needRows && needRows.rows) || []).map((b) => b.id));
       if (Object.keys(counts).some((id) => !known.has(id) && !mat[id])) mat = await materialList(sk, ts, true);
       g.rows = rowsFor(needRows, counts, mat);
+      g.box = (needGame && needGame.box) || null;
+      g.boxUse = applyBox(g.rows, g.box);
       g.gameLevel = (d.userGameData || {}).gameLevel;
     } catch (e) { g["错误"] = e.message; }
     return g;
@@ -201,6 +258,6 @@
     return t && t.sk ? "森空岛" : "";
   }
 
-  Object.assign(Inventory, { refresh, loadNeed, needFor, rowsFor, flattenMaterials, servingsOf, status, standards, setStandard, chosenStandard });
+  Object.assign(Inventory, { refresh, loadNeed, needFor, rowsFor, applyBox, flattenMaterials, servingsOf, status, standards, setStandard, chosenStandard });
   window.Inventory = Inventory;
 })();

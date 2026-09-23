@@ -130,6 +130,47 @@ LAG_NOTE = "森空岛的仓库数比游戏里晚约 30 分钟（官方养成计�
 FORESIGHT_LISTS = ("skNur", "skCol", "skPreItm", "skPreMat", "upAdv", "upCol", "upPre")
 FORESIGHT_WITH_TALENTS = {"协议棱柱", "协议棱柱组", "折金票"}
 
+# Sections by use (the rows' `group`, user 2026-09-23: 「按用途分类…哪些是角色，哪些是武器」).
+# Which step a material serves is read off the calculator rules (charBreak* nodes,
+# skills[].levels[].targetLevel, weapon breakthroughs, the two level tables); each
+# section name is the official wiki's own wording, quoted with its entry (wiki ids 217,
+# 755, 1809, 19) in USE_SOURCE. Skill levels up to SKILL_UP_MAX are upgrades - the
+# wiki's own limit for them - and 10-12 are mastery.
+# A material one build uses at more than one step goes to USE_SHARED, with every step
+# and its count in `uses`. Only calculator rules say which step; a build read from the
+# wiki cards or the preview table keeps the old per-owner group (who / 专武 …).
+USE_ELITE, USE_SKILL_UP, USE_SKILL_MASTER, USE_CHAR_LV = "干员精英化", "干员技能升级", "干员技能专精", "干员等级提升"
+USE_WEAPON_BREAK, USE_WEAPON_LV, USE_SHARED = "武器突破", "武器等级提升", "多处共用"
+USE_ORDER = (USE_ELITE, USE_SKILL_UP, USE_SKILL_MASTER, USE_CHAR_LV, USE_WEAPON_BREAK, USE_WEAPON_LV, USE_SHARED)
+SKILL_UP_MAX = 9
+USE_SOURCE = ("用途按森空岛养成计算器 rules 里每种材料出现在哪一步（精英化节点 charBreak*、技能 2–9 / 10–12 级、武器突破、等级表）；"
+              "步骤名取官方百科原文：三相纳米片「用于干员精英化、武器突破、干员技能专精」、至晶多齿叶「作为干员升级等级不高于9级的技能时的消耗素材」、"
+              "折金票「干员及武器等级提升」；一种材料用在两步及以上的放「多处共用」，每步用量见 uses")
+
+# Where each material comes from (user 2026-09-23: 「哪些是采集物哪些是体力消耗的产出物需要做区分」):
+# the material's own official wiki entry, chapter 物品来源, one line per way. A line
+# naming the protocol space (协议空间) is a sanity stage, per the wiki's sanity entry
+# (id 17) quoted in ORIGIN_SOURCE; a line saying 采集 is gathering; the rest stay verbatim.
+ORIGIN_CHAPTER = "物品来源"
+ORIGIN_GATHER, ORIGIN_STAGE, ORIGIN_OTHER = "采集物", "理智关卡产出", "其它来源"
+ORIGIN_SOURCE = ("怎么来取自森空岛百科每种材料词条的「物品来源」原文，逐条：含「采集」的算采集，含「协议空间」的算理智关卡"
+                 "（百科「理智」词条：完成协议空间等玩法的战斗后，需要消耗理智领取奖励），其余原文放「其它」；"
+                 "kind 按 采集物 → 理智关卡产出 → 其它来源 的先后取第一个有的")
+# The self-select box. Which item is the box and which materials it can open come from
+# material-list: materialSpecials type SELFSELECT_* (高阶培养自选箱Ⅰ) and priorities[RARE]
+# (the five high-tier materials). What one box gives comes from the official calculator's
+# own script (game.skland.com/tools/endfield/cost-calculator, CostCalculator-BGMqCZak.js +
+# share_bottom_decorator-cN9de4XQ.js, read 2026-09-23 - BOARD/M4d-资源箱与分节.md): the
+# box it offers is ⌈RARE total ÷ 2⌉ capped by what is held, and the pop-up's
+# cost_calc_box_acquisition_tip takes count = boxes × 2, so one box = 2 of one RARE material.
+# How the page spends them is the user's rule (2026-09-23 09:05): only materials short of
+# one build, the shortest first, until covered or out of boxes; still short -> still 差 N.
+BOX_PER = 2
+BOX_SOURCE = ("箱子与可选材料取自森空岛养成计算器 material-list（materialSpecials 的 SELFSELECT 项、priorities 的 RARE 五种）；"
+              "一箱开出任选一种 2 个，按官方养成计算器页面脚本（箱数 = ⌈高阶素材总需 ÷ 2⌉，说明句参数 count = 箱数 × 2）")
+BOX_RULE = ("用户 2026-09-23 09:05：按不足的资源用资源箱去折算，还不足的标出来说不足，否则算已经充足；"
+            "折算时依旧按人数算多少倍")
+
 
 def section_of(name: str, kind: str) -> str | None:
     if kind != "materials":
@@ -162,7 +203,7 @@ class RulesSource:
     `wiki-items.json`, keyed by id; wiki documents (`wiki-doc-<id>`) likewise share
     `wiki-docs.json`."""
 
-    MERGED = {"wiki-item-": "wiki-items.json", "wiki-doc-": "wiki-docs.json"}
+    MERGED = {"wiki-item-": "wiki-items.json", "wiki-doc-": "wiki-docs.json", "wiki-origin-": "wiki-origins.json"}
 
     def __init__(self, offline: Path | None, save: Path | None):
         self.offline, self.save = offline, save
@@ -362,6 +403,20 @@ def material_table(mat: dict) -> dict[str, dict]:
     return out
 
 
+def self_select_box(raw: dict, mat: dict[str, dict]) -> dict | None:
+    """games[].box: the first SELFSELECT item (the calculator takes the first too) and
+    the RARE materials it opens into; None when material-list names neither."""
+    sel = [s["id"] for s in raw.get("materialSpecials") or [] if str(s.get("type", "")).startswith("SELFSELECT")]
+    picks = next((p["ids"] for p in raw.get("priorities") or [] if p.get("type") == "RARE"), [])
+    if not sel or not picks or sel[0] not in mat:
+        return None
+    name = mat[sel[0]]["name"]
+    return {"id": sel[0], "name": name, "per": BOX_PER, "picks": list(picks),
+            "pickNames": [mat[i]["name"] for i in picks if i in mat],
+            "note": f"箱 N = {name}补进来的数：一箱换任选一种高阶素材 {BOX_PER} 个，只补不够一人份的，人份最低的先补",
+            "source": BOX_SOURCE, "rule": BOX_RULE}
+
+
 def char_need(rule: dict) -> tuple[Counter, int]:
     """Materials and gold for every breakthrough plus every skill level up to 12."""
     c = rule["chars"][0]
@@ -387,6 +442,95 @@ def weapon_need(rule: dict) -> tuple[Counter, int]:
         for m in b["materials"]:
             need[m["resourceId"]] += int(m["count"])
     return need, gold
+
+
+def char_uses(rule: dict) -> dict[str, Counter]:
+    """material id -> {use: count} for the same breakthroughs and skills `char_need` sums."""
+    c = rule["chars"][0]
+    out: dict[str, Counter] = {}
+    for b in c["breakthroughs"]:
+        if not b["materials"]:
+            continue
+        if not str(b.get("nodeId", "")).startswith("charBreak"):
+            raise RuntimeError(f"breakthrough node {b.get('nodeId')!r} carries materials; no use name is known for it")
+        for m in b["materials"]:
+            out.setdefault(m["resourceId"], Counter())[USE_ELITE] += int(m["count"])
+    for s in c["skills"]:
+        for lv in s["levels"]:
+            t = int(lv["targetLevel"])
+            if t <= MAX_SKILL_LEVEL:
+                for m in lv["materials"]:
+                    out.setdefault(m["resourceId"], Counter())[USE_SKILL_UP if t <= SKILL_UP_MAX else USE_SKILL_MASTER] += int(m["count"])
+    return out
+
+
+def weapon_uses(wneed: Counter) -> dict[str, Counter]:
+    """Every weapon material (rules or the 武器信息 cards) is a breakthrough material."""
+    return {mid: Counter({USE_WEAPON_BREAK: n}) for mid, n in wneed.items()}
+
+
+def trim_wiki_origin(d: dict) -> dict:
+    """A wiki entry cut down to its 物品来源 chapter: one string per block, in order."""
+    doc = (d.get("item") or {}).get("document") or {}
+    dm, wc = doc.get("documentMap") or {}, doc.get("widgetCommonMap") or {}
+
+    def text(o) -> str:
+        if isinstance(o, dict):
+            return (o["text"] if isinstance(o.get("text"), str) else "") + "".join(
+                text(v) for k, v in o.items() if not (k == "text" and isinstance(v, str)))
+        if isinstance(o, list):
+            return "".join(text(v) for v in o)
+        return ""
+    lines = []
+    for ch in doc.get("chapterGroup") or []:
+        if ch.get("title") != ORIGIN_CHAPTER:
+            continue
+        for w in ch.get("widgets") or []:
+            for tab in ((wc.get(w.get("id")) or {}).get("tabDataMap") or {}).values():
+                c = dm.get((tab or {}).get("content")) or {}
+                bm = c.get("blockMap") or {}
+                for bid in c.get("blockIds") or list(bm):
+                    t = text(bm.get(bid)).strip()
+                    if t:
+                        lines.append(t)
+    return {"itemId": (d.get("item") or {}).get("itemId"), "name": (d.get("item") or {}).get("name"), "lines": lines}
+
+
+def material_origin(src: RulesSource, name: str, wiki_ids: dict[str, str]) -> dict | None:
+    """The material's 物品来源 lines sorted into 采集 / 理智关卡 / 其它; None when the wiki has
+    no entry or the entry has no 物品来源 lines (the caller lists those, nothing is guessed)."""
+    wid = wiki_ids.get(name)
+    if not wid:
+        return None
+    lines = src.get(f"wiki-origin-{wid}", "/web/v1/wiki/item/info", f"id={wid}", trim_wiki_origin)["lines"]
+    if not lines:
+        return None
+    by = {"采集": [l for l in lines if "采集" in l]}
+    by["理智关卡"] = [l for l in lines if "协议空间" in l and l not in by["采集"]]
+    by["其它"] = [l for l in lines if l not in by["采集"] and l not in by["理智关卡"]]
+    kind = ORIGIN_GATHER if by["采集"] else ORIGIN_STAGE if by["理智关卡"] else ORIGIN_OTHER
+    return {"kind": kind, **by, "wikiItemId": wid}
+
+
+def folded_origin(parts: list[dict]) -> dict | None:
+    """An exp row's origin: the union of the origins of the cards folded into it, each
+    line once, in the order of `parts`; kind by material_origin's rule (first present).
+    None when none of the cards has an origin."""
+    got = [r for r in parts if r.get("origin")]
+    if not got:
+        return None
+    by = {k: list(dict.fromkeys(l for r in got for l in r["origin"][k])) for k in ("采集", "理智关卡", "其它")}
+    kind = ORIGIN_GATHER if by["采集"] else ORIGIN_STAGE if by["理智关卡"] else ORIGIN_OTHER
+    return {"kind": kind, **by, "wikiItemId": None,
+            "from": [r["name"] for r in got], "wikiItemIds": [r["origin"]["wikiItemId"] for r in got]}
+
+
+def folded_cards(rows: list[dict], sid: str) -> tuple[list[dict], str, str]:
+    """The exp cards folded into `sid`, highest rarity first; the icon an exp row borrows
+    (the first of them that has one) and the note's words naming it ("" when none has)."""
+    parts = sorted((r for r in rows if r.get("sumInto") == sid), key=lambda r: (-(r["rarity"] or 0), r["name"]))
+    top = next((r for r in parts if r["icon"]), None)
+    return parts, top["icon"] if top else "", f"；图标借{top['name']}" if top else ""
 
 
 def level_totals(rows: list[dict]) -> tuple[int, int]:
@@ -423,6 +567,13 @@ def wiki_item_names(src: RulesSource) -> dict[str, str]:
     """Every catalog entry's id -> name (the material cards point at 物品 ids)."""
     cat = src.get("wiki-catalog", "/web/v1/wiki/item/catalog", "typeMainId=1&onlyOnline=true", trim_catalog)
     return {str(it["itemId"]): it["name"] for sub in cat["catalog"][0]["typeSub"] for it in sub["items"]}
+
+
+def wiki_material_ids(src: RulesSource) -> dict[str, str]:
+    """name -> wiki item id for the 物品 and 贵重品库 listings (where every calculator material has its entry)."""
+    cat = src.get("wiki-catalog", "/web/v1/wiki/item/catalog", "typeMainId=1&onlyOnline=true", trim_catalog)
+    return {it["name"]: str(it["itemId"]) for sub in cat["catalog"][0]["typeSub"] if sub["name"] in ("物品", "贵重品库")
+            for it in sub["items"]}
 
 
 def newest(entries: list[dict]) -> tuple[dict, list[dict]]:
@@ -494,7 +645,9 @@ def by_name_to_ids(counts: Counter, mat: dict[str, dict]) -> Counter:
 
 def build(src: RulesSource, pulled_at: str, today: str, char_name: str = "", weapon_name: str = "",
           rarity: str = "6") -> dict:
-    mat = material_table(src.get("material-list", "/web/v1/game/endfield/calculate/material-list"))
+    raw_mat = src.get("material-list", "/web/v1/game/endfield/calculate/material-list")
+    mat = material_table(raw_mat)
+    box = self_select_box(raw_mat, mat)
     listed = src.get("search-chars", "/web/v1/game/endfield/search-chars", "", trim_search_chars)["chars"]
     calc_ids = {c["name"]: c["id"] for c in listed}
     weapon_types = {c["name"]: str(((c.get("weaponType") or {}).get("value")) or "") for c in listed}
@@ -523,6 +676,7 @@ def build(src: RulesSource, pulled_at: str, today: str, char_name: str = "", wea
 
     # 2. her numbers: calculator -> wiki cards -> client preview table
     sources = {}
+    cuses: dict[str, Counter] | None = None
     need_by_id: Counter
     op_gold: int
     need_note = {}
@@ -530,6 +684,7 @@ def build(src: RulesSource, pulled_at: str, today: str, char_name: str = "", wea
     if who in calc_ids:
         rule = src.get(f"rules-char-{calc_ids[who]}", "/web/v1/game/endfield/calculate/rules", f"charIds={calc_ids[who]}", trim_rules)
         need_by_id, op_gold = char_need(rule)
+        cuses = char_uses(rule)
         lv = rule
         sources["need"] = SRC_CALC
     else:
@@ -590,6 +745,18 @@ def build(src: RulesSource, pulled_at: str, today: str, char_name: str = "", wea
     gold_total = op_gold + char_gold + w_gold + weap_gold
     who_group = who
     weapon_group = f"专武 {weapon['name']}" if weapon else "专武（待定）"
+    wuses = weapon_uses(wneed)
+    wiki_ids = wiki_material_ids(src)
+    origin_missing = []
+
+    def by_use(mid: str) -> tuple[list[dict], str | None]:
+        """`uses` and the use-section of one material; group None when the operator's
+        numbers did not come from the calculator (no per-step split to read)."""
+        if cuses is None and need_by_id.get(mid):
+            return [], None
+        u = cuses.get(mid, Counter()) + wuses.get(mid, Counter()) if cuses is not None else wuses.get(mid, Counter())
+        uses = [{"use": k, "need": u[k]} for k in USE_ORDER if u.get(k)]
+        return uses, (uses[0]["use"] if len(uses) == 1 else USE_SHARED if uses else None)
 
     # 4. rows: every material, with this build's need (0 when the build does not use it)
     rows = []
@@ -599,30 +766,47 @@ def build(src: RulesSource, pulled_at: str, today: str, char_name: str = "", wea
                "section": section_of(nm, m["kind"]),
                "stage": STAGE.get(nm) or (GATHER if nm in GATHERED else None), "note": need_note.get(nm)}
         c, w = need_by_id.get(mid, 0), wneed.get(mid, 0)
+        row["origin"] = material_origin(src, nm, wiki_ids)
+        if row["origin"] is None:
+            origin_missing.append(nm)
+        row["owner"] = "干员 + 专武" if c and w else "干员" if c else "专武" if w else None
+        uses, use_group = by_use(mid)
+        row["uses"] = uses
         if m["kind"] != "materials":
             row.update(need=None, exp=m["exp"], sumInto=EXP_CHAR if m["kind"] == "charExpMaterials" else EXP_WEAPON,
                        stage="干员经验" if m["kind"] == "charExpMaterials" else "武器经验")
         elif nm == "折金票":
-            row.update(need=gold_total, group=f"{who_group} + {weapon_group}",
+            row.update(need=gold_total, group=USE_SHARED if cuses is not None else f"{who_group} + {weapon_group}", owner="干员 + 专武",
                        note=("；".join(x for x in (row["note"], f"干员 {op_gold + char_gold:,} + 专武 {w_gold + weap_gold:,}") if x)))
         elif c and w:
-            row.update(need=c + w, group=f"{who_group} + {weapon_group}", note=f"干员 {c} + 专武 {w}")
+            row.update(need=c + w, group=use_group or f"{who_group} + {weapon_group}", note=f"干员 {c} + 专武 {w}")
         elif c:
-            row.update(need=c, group=who_group)
+            row.update(need=c, group=use_group or who_group)
         elif w:
-            row.update(need=w, group=weapon_group)
+            row.update(need=w, group=use_group or weapon_group)
         elif nm == "高阶培养自选箱Ⅰ":
-            row.update(need=None, note="开出任意一种高阶素材，不计入人份")
+            row.update(need=None, note=f"一箱换任选一种高阶素材 {BOX_PER} 个；页面拿它补不够一人份的高阶素材（games[].box）")
         else:
             row["note"] = f"{who} 的满练不用它"
         rows.append(row)
-    rows.append({"id": EXP_CHAR, "name": "干员经验", "rarity": None, "icon": "", "need": char_exp, "group": who_group,
-                 "section": "经验与货币", "stage": "干员经验", "virtual": True, "note": "五种作战记录 / 认知载体按经验值折算"})
-    rows.append({"id": EXP_WEAPON, "name": "武器经验", "rarity": None, "icon": "", "need": weap_exp, "group": weapon_group,
-                 "section": "经验与货币", "stage": "武器经验", "virtual": True, "note": "武器检查套组 / 装置 / 单元按经验值折算"})
-    sec = {name: i for i, name in enumerate(SECTIONS)}
-    rows.sort(key=lambda r: (sec.get(r["section"], len(SECTIONS)), 2 if r["need"] is None else 1 if r["need"] == 0 else 0,
+    # The two exp rows have no wiki entry of their own: origin is the union of the folded
+    # cards' origins, the icon is the highest-rarity card's (the note names it).
+    cparts, cicon, cnote = folded_cards(rows, EXP_CHAR)
+    wparts, wicon, wnote = folded_cards(rows, EXP_WEAPON)
+    rows.append({"id": EXP_CHAR, "name": "干员经验", "rarity": None, "icon": cicon, "need": char_exp,
+                 "group": USE_CHAR_LV if cuses is not None else who_group, "owner": "干员",
+                 "uses": [{"use": USE_CHAR_LV, "need": char_exp}], "origin": folded_origin(cparts),
+                 "section": "经验与货币", "stage": "干员经验", "virtual": True, "note": "五种作战记录 / 认知载体按经验值折算" + cnote})
+    rows.append({"id": EXP_WEAPON, "name": "武器经验", "rarity": None, "icon": wicon, "need": weap_exp,
+                 "group": USE_WEAPON_LV if cuses is not None else weapon_group, "owner": "专武",
+                 "uses": [{"use": USE_WEAPON_LV, "need": weap_exp}], "origin": folded_origin(wparts),
+                 "section": "经验与货币", "stage": "武器经验", "virtual": True, "note": "武器检查套组 / 装置 / 单元按经验值折算" + wnote})
+    # Rows in section order (the page takes sections in first-seen order): the use
+    # sections, then any per-owner fallback groups, then rows with no group.
+    order = {g: i for i, g in enumerate(USE_ORDER + (who_group, weapon_group, f"{who_group} + {weapon_group}"))}
+    rows.sort(key=lambda r: (order.get(r["group"], len(order)), 2 if r["need"] is None else 1 if r["need"] == 0 else 0,
                              -(r["need"] or 0), r["name"]))
+    groups = list(dict.fromkeys(r["group"] for r in rows if r["group"]))
 
     label = {"6": "最新六星", "5": "最新五星", "4": "最新四星"}[rarity] if who == top["name"] and not char_name else "指定干员"
     online = f"（{op['onlineDate']} 上线）" if op.get("onlineDate") else ""
@@ -646,7 +830,9 @@ def build(src: RulesSource, pulled_at: str, today: str, char_name: str = "", wea
         "built": pulled_at,
         "games": [{
             "game": GAME, "gameId": GAME_ID, "caliber": caliber, "footnote": footnote, "source": SOURCE,
-            "sections": list(SECTIONS), "lagMinutes": LAG_MINUTES, "lagNote": LAG_NOTE,
+            "sections": list(SECTIONS), "groups": groups, "useSource": USE_SOURCE if cuses is not None else "",
+            "originSource": ORIGIN_SOURCE, "originMissing": origin_missing,
+            "lagMinutes": LAG_MINUTES, "lagNote": LAG_NOTE, "box": box,
             "standard": standard["charId"] or standard["wikiItemId"], "standards": [standard], "rows": rows,
             "coverage": {
                 "operator": who, "releasedAt": op.get("onlineDate", ""), "status": status,

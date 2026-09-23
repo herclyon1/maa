@@ -22,6 +22,7 @@ Three things are pinned:
 """
 import importlib.util
 import json
+import subprocess
 import sys
 from collections import Counter
 from pathlib import Path
@@ -60,6 +61,14 @@ TYPHOEUS = {
 # 寒夜幽影 1→90, every breakthrough (rules?weaponIds=4e7f3757…).
 WEAPON = {"重型强固模具": 50, "强固模具": 23, "中黯石": 5, "重黯石": 5, "轻黯石": 3, "协议纹石": 8, "武器经验": 2_524_080}
 SHARED = {"象限拟合液": (132, "干员 116 + 专武 16"), "折金票": (841_000 + 385_420 + 125_700 + 341_390, "干员 1,226,420 + 专武 467,090")}
+# The use section each of them lands in (rules: charBreak* nodes / skill levels 2-9 and 10-12 / weapon breakthroughs).
+USE_OF = {"协议圆盘组": "干员精英化", "协议圆盘": "干员精英化", "重红柱状菌": "干员精英化", "中红柱状菌": "干员精英化",
+          "轻红柱状菌": "干员精英化", "快子遴捡晶格": "干员精英化", "塔罗斯菌": "干员精英化",
+          "协议棱柱": "干员技能升级", "纯晶多齿叶": "干员技能升级", "至晶多齿叶": "干员技能升级", "晶化多齿叶": "干员技能升级",
+          "存续的痕迹": "干员技能专精", "D96钢样品四": "干员技能专精", "红矛叶": "干员技能专精",
+          "干员经验": "干员等级提升", "武器经验": "武器等级提升",
+          "协议棱柱组": "多处共用", "象限拟合液": "多处共用", "折金票": "多处共用",
+          **{k: "武器突破" for k in ("重型强固模具", "强固模具", "中黯石", "重黯石", "轻黯石", "协议纹石")}}
 UNUSED = ["三相纳米片", "超距辉映管", "受蚀玉化叶", "岩天使叶", "星门菌", "血菌", "武陵石", "燎石"]
 # 噗切娜 from the client preview table: her choices, and the two rows that carry talents.
 PURRCHENA = {"超距辉映管": 116, "三相纳米片": 116, "D96钢样品四": 20, "岩天使叶": 84, "塔罗斯菌": 8,
@@ -134,11 +143,27 @@ cov = g["coverage"]
 check("coverage", (cov["operator"], cov["status"], cov["weapon"], cov["weaponStatus"], cov["asOf"]), ("提弗洛斯", "已实装", "寒夜幽影", "已收录", TODAY))
 require("coverage 里没有别人的数据", "universalCheckedOn" not in cov and "upcoming" not in cov)
 for name, want in TYPHOEUS.items():
-    check(f"提弗洛斯 {name}", (rows[name]["need"], rows[name]["group"]), (want, "提弗洛斯"))
+    check(f"提弗洛斯 {name}", (rows[name]["need"], rows[name]["group"], rows[name]["owner"]), (want, USE_OF[name], "干员"))
 for name, want in WEAPON.items():
-    check(f"专武 寒夜幽影 {name}", (rows[name]["need"], rows[name]["group"]), (want, "专武 寒夜幽影"))
+    check(f"专武 寒夜幽影 {name}", (rows[name]["need"], rows[name]["group"], rows[name]["owner"]), (want, USE_OF[name], "专武"))
 for name, (want, note) in SHARED.items():
-    check(f"两边都要的 {name}", (rows[name]["need"], rows[name]["group"], rows[name]["note"]), (want, "提弗洛斯 + 专武 寒夜幽影", note))
+    check(f"两边都要的 {name}", (rows[name]["need"], rows[name]["group"], rows[name]["note"]), (want, "多处共用", note))
+check("用在两步的写出每步用量", {n: rows[n]["uses"] for n in ("协议棱柱组", "象限拟合液")},
+      {"协议棱柱组": [{"use": "干员技能升级", "need": 116}, {"use": "干员技能专精", "need": 356}],
+       "象限拟合液": [{"use": "干员技能专精", "need": 116}, {"use": "武器突破", "need": 16}]})
+check("节的顺序", g["groups"], ["干员精英化", "干员技能升级", "干员技能专精", "干员等级提升", "武器突破", "武器等级提升", "多处共用"])
+require("用途有出处", "三相纳米片" in g["useSource"] and "至晶多齿叶" in g["useSource"])
+print("\n[怎么来：百科「物品来源」原文，采集 / 理智关卡 / 其它]")
+check("怎么来：每种材料都查到了", g["originMissing"], [])
+check("怎么来：采集物", sorted(r["name"] for r in g["rows"] if (r.get("origin") or {}).get("kind") == "采集物"),
+      sorted(["协议纹石", "红矛叶", "塔罗斯菌", "至晶多齿叶", "血菌", "中红柱状菌", "重黯石", "纯晶多齿叶", "重红柱状菌",
+              "中黯石", "受蚀玉化叶", "岩天使叶", "星门菌", "武陵石", "燎石", "轻黯石", "晶化多齿叶", "轻红柱状菌"]))
+check("怎么来：自选箱不是理智关卡", (rows["高阶培养自选箱Ⅰ"]["origin"]["kind"], rows["高阶培养自选箱Ⅰ"]["origin"]["其它"]),
+      ("其它来源", ["协议通行证及各类活动奖励。", "四号谷地-物资调度终端购买。"]))
+check("怎么来：高阶素材的理智关卡原文", rows["三相纳米片"]["origin"]["理智关卡"],
+      [l for l in rows["三相纳米片"]["origin"]["理智关卡"] if "协议空间" in l])
+require("怎么来：每条原文恰好落在一类", all(sorted(r["origin"]["采集"] + r["origin"]["理智关卡"] + r["origin"]["其它"]) ==
+        sorted(set(r["origin"]["采集"] + r["origin"]["理智关卡"] + r["origin"]["其它"])) for r in g["rows"] if r.get("origin")))
 for name in UNUSED:
     check(f"不用 {name}", (rows[name]["need"], rows[name]["group"], rows[name]["note"]), (0, None, "提弗洛斯 的满练不用它"))
 require("没有一行写「因人而异」", not any("因人而异" in json.dumps(r, ensure_ascii=False) for r in g["rows"]))
@@ -147,21 +172,30 @@ check("经验材料折算进虚拟行", {r["name"]: (r["exp"], r["sumInto"]) for
       {"高级认知载体": (10000, "exp:char"), "初级认知载体": (1000, "exp:char"),
        "高级作战记录": (10000, "exp:char"), "中级作战记录": (1000, "exp:char"), "初级作战记录": (200, "exp:char"),
        "武器检查套组": (10000, "exp:weapon"), "武器检查装置": (1000, "exp:weapon"), "武器检查单元": (200, "exp:weapon")})
-check("自选箱不计人份", (rows["高阶培养自选箱Ⅰ"]["need"], rows["高阶培养自选箱Ⅰ"]["group"]), (None, None))
+for exp_row, sid in (("干员经验", "exp:char"), ("武器经验", "exp:weapon")):
+    cards = sorted((r for r in g["rows"] if r.get("sumInto") == sid), key=lambda r: (-r["rarity"], r["name"]))
+    o = rows[exp_row]["origin"]
+    check(f"{exp_row}：怎么来 = 折进来那几种的并集", (o["kind"], o["from"], {k: set(o[k]) for k in ("采集", "理智关卡", "其它")}),
+          (cards[0]["origin"]["kind"], [r["name"] for r in cards],
+           {k: {l for r in cards for l in r["origin"][k]} for k in ("采集", "理智关卡", "其它")}))
+    check(f"{exp_row}：图标借最高稀有度那件", (rows[exp_row]["icon"], rows[exp_row]["note"].endswith(f"图标借{cards[0]['name']}")),
+          (cards[0]["icon"], True))
+check("自选箱不计人份",(rows["高阶培养自选箱Ⅰ"]["need"], rows["高阶培养自选箱Ⅰ"]["group"]), (None, None))
 check("sections", g["sections"], ["通用", "高阶素材", "采集", "经验与货币"])
 check("延迟那句是官方计算器页面说的", (g["lagMinutes"], "官方" in g["lagNote"]), (30, True))
 check("每行都在某一节里，经验材料不在", {r["section"] for r in g["rows"] if not r.get("sumInto")}, {"通用", "高阶素材", "采集", "经验与货币"})
 check("经验材料无节（折进两条经验行）", {r["section"] for r in g["rows"] if r.get("sumInto")}, {None})
 check("高阶素材一节", [r["name"] for r in g["rows"] if r["section"] == "高阶素材"],
-      ["象限拟合液", "D96钢样品四", "快子遴捡晶格", "三相纳米片", "超距辉映管", "高阶培养自选箱Ⅰ"])
-check("经验与货币一节", [r["name"] for r in g["rows"] if r["section"] == "经验与货币"], ["武器经验", "干员经验", "折金票"])
+      ["快子遴捡晶格", "D96钢样品四", "象限拟合液", "三相纳米片", "超距辉映管", "高阶培养自选箱Ⅰ"])
+check("经验与货币一节", [r["name"] for r in g["rows"] if r["section"] == "经验与货币"], ["干员经验", "武器经验", "折金票"])
 require("每种材料都有一行（40 种 + 2 个经验虚拟行）", len(g["rows"]) == 42, str(len(g["rows"])))
 require("每行都有 id / name / rarity / icon / need / group / section / stage / note",
         all({"id", "name", "rarity", "icon", "need", "group", "section", "stage", "note"} <= set(r) for r in g["rows"]))
 require("名字没有首尾空白", all(r["name"] == r["name"].strip() for r in g["rows"]))
 order = [r["name"] for r in g["rows"]]
-require("排序：按节，节内需求大的在前、不用的在后、无需求的最后",
-        order.index("协议棱柱组") < order.index("象限拟合液") < order.index("三相纳米片") < order.index("红矛叶") < order.index("燎石") < order.index("折金票") < order.index("高级认知载体"),
+require("排序：按用途节，节内需求大的在前、不用的在后、无需求的最后",
+        order.index("协议圆盘组") < order.index("协议棱柱") < order.index("D96钢样品四") < order.index("干员经验") < order.index("重型强固模具")
+        < order.index("武器经验") < order.index("协议棱柱组") < order.index("三相纳米片") < order.index("高级认知载体"),
         str(order[:8]))
 
 print("\n[未来的干员：--rarity 5 选中未实装的噗切娜，用量来自客户端预览表]")
@@ -176,7 +210,7 @@ check("等级表来自专武应答（她自己还没有）", s5["sources"]["leve
 check("专武待定，理由说清", (s5["weapon"]["status"], s5["weapon"]["name"]), ("待定", ""))
 require("待定理由提到计算器未收录", "计算器还没收录" in s5["weapon"]["reason"], s5["weapon"]["reason"])
 for name, want in PURRCHENA.items():
-    check(f"噗切娜 {name}", (rows5[name]["need"], rows5[name]["group"]), (want, "噗切娜"))
+    check(f"噗切娜 {name}", (rows5[name]["need"], rows5[name]["group"]), (want, "噗切娜"))  # no rules yet: no per-step split
 check("含天赋的两行有说明", (rows5["协议棱柱"]["note"], rows5["协议棱柱组"]["note"]), ("预览表的数含天赋树", "预览表的数含天赋树"))
 check("caliber 写专武待定", g5["caliber"], "最新五星 噗切娜（2026-09-24 上线）：1→90 全突破、四技能 12、专武待定 1→90；不含天赋")
 require("footnote 提醒预览表含天赋", g5["footnote"].endswith("（上线前按客户端预览表，棱柱和折金票含天赋树）"), g5["footnote"])
@@ -200,6 +234,42 @@ require("built 有时间戳", bool(pub.get("built")), str(pub.get("built")))
 check("game 层级", [(x["game"], x["gameId"]) for x in pub["games"]], [("终末地", "endfield")])
 check("已发布：同一个标准", [(s["name"], s["weapon"]["name"], s["status"]) for s in pg["standards"]], [("提弗洛斯", "寒夜幽影", "已实装")])
 check("已发布：行与离线重建完全一致", pg["rows"], g["rows"])
+
+print("\n[自选箱：只补不够一人份的高阶素材，最缺的先补（用户 2026-09-23 09:05）]")
+box = pg["box"]
+check("箱子 = material-list 的 SELFSELECT 项", (box["id"], box["name"], box["per"]), ("e55ebf79deddbe781f2a33fb65fd7c61", "高阶培养自选箱Ⅰ", 2))
+check("可选 = priorities RARE 五种", box["pickNames"], ["超距辉映管", "D96钢样品四", "快子遴捡晶格", "象限拟合液", "三相纳米片"])
+check("已发布的 box 与离线重建一致", box, g["box"])
+check("箱子那行仍不算人份", prow["高阶培养自选箱Ⅰ"]["need"], None)
+# web/inventory.js applyBox, run in macOS JavaScriptCore (osascript -l JavaScript; the
+# tests run on the Mac, deploy-relay.sh). Counts are the account's 2026-09-23 08:4x read
+# (BOARD/M4d-资源箱与分节.md): D96 6, 快子 1, 象限 1, 三相 49, 133 boxes.
+ids = {r["name"]: r["id"] for r in pg["rows"]}
+def apply_box(held):
+    counts = {ids["D96钢样品四"]: 6, ids["快子遴捡晶格"]: 1, ids["象限拟合液"]: 1, ids["三相纳米片"]: 49}
+    if held:
+        counts[box["id"]] = held
+    js = ("var window={}; var localStorage={getItem(){return null},setItem(){},removeItem(){}};\n"
+          + (REPO / "web/inventory.js").read_text(encoding="utf-8")
+          + f"\nvar g={json.dumps(pg, ensure_ascii=False)}; var I=window.Inventory; var rows=I.rowsFor(g,{json.dumps(counts)},{{}});"
+          + "var u=I.applyBox(rows,g.box); JSON.stringify({u:u, rows:rows.map(function(r){return [r.name,r.box,r.servings,r.short,r.boxUsed,r.boxLeft]})})")
+    out = subprocess.run(["osascript", "-l", "JavaScript", "-e", js], capture_output=True, text=True, timeout=60)
+    require(f"applyBox 在 JavaScriptCore 里跑通（{held} 箱）", out.returncode == 0, out.stderr[-300:])
+    d = json.loads(out.stdout) if out.returncode == 0 else {"u": None, "rows": []}
+    return d["u"], {r[0]: r[1:] for r in d["rows"]}
+u, rb = apply_box(133)
+check("133 箱：用 131、剩 2", u, {"held": 133, "used": 131, "left": 2})
+check("D96 补 110 → 1.0 人份、不差", rb["D96钢样品四"][:3], [110, 1, 0])
+check("快子 补 20（奇数差 19 进一箱）→ 1.0、不差", rb["快子遴捡晶格"][:3], [20, 1, 0])
+check("象限 补 132 → 1.0、不差", rb["象限拟合液"][:3], [132, 1, 0])
+check("三相 这套不用，不补", rb["三相纳米片"][:3], [0, None, None])
+check("箱子那行记用了几箱、剩几箱", rb["高阶培养自选箱Ⅰ"][3:], [131, 2])
+u, rb = apply_box(40)
+check("40 箱：全用完", u, {"held": 40, "used": 40, "left": 0})
+check("箱子不够：最缺的先补，三行拉平到 0.3，仍标差", [rb[n][:3] for n in ("快子遴捡晶格", "D96钢样品四", "象限拟合液")],
+      [[6, 0.3, 13], [32, 0.3, 78], [42, 0.3, 89]])
+u, rb = apply_box(0)
+check("没箱子：照旧差 N", (u, rb["D96钢样品四"][:3]), ({"held": 0, "used": 0, "left": 0}, [0, 0, 110]))
 
 print()
 if fails:
