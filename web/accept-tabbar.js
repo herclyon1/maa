@@ -195,14 +195,23 @@
         num("7b 拖过端点：目标硬钳在轨道端（§6.6 无橡皮筋）", clampWant, Lc ? Lc.target : NaN, 0.5);
         const nr = nbr.getBoundingClientRect(), nx = nr.left + nr.width / 2; ev(selB2, "pointermove", nx, sy2, 6); await until(settled, 350);   // over the neighbour, parked there
         const Lu = window.__tabLens; const xu = Lu ? Lu.x : cxNav(), vu = Lu ? Lu.xv : 0, tfu = Lu ? Lu.tf : performance.now();
-        ev(selB2, "pointerup", nx, sy2, 6); await tick(); const Lr = window.__tabLens;
+        ev(selB2, "pointerup", nx, sy2, 6); await tick(); const Lr = window.__tabLens; const trG10 = Lr && Lr.flex ? Lr.flex.trace : null;   // G10: the trace array outlives the driver (window.__tabLens is nulled at the stop)
         num("7b 松手目标 = 手指下那项的中心（§6.5 落点）", nx - navL, Lr ? Lr.target : NaN, 0.5);
         const rl = await sampleX(500, tfu, stopped);
         /* judged on the driver's own x like the drag row (R64): the presented centre carries the flex drift sX·dx decaying on its own spring after the up (2.4 px at the up, gone by +350 ms —
            the old rect-based rms sat at ≈ 1.0 on the wall clock and 1.5 under virtual time's denser early samples); the drift's decay is the R64 落定 row's */
         { const e = devs(rl.map((s) => s.x - underDamped(xu, vu, nx - navL, 0.85, 0.4, s.t)));
           check(`7b / R106 松手 位置弹簧 x 对 ζ.85/.4 闭式 rms ≤ 1（${rl.length} 帧，自松手前一帧的 x / v 起，驱动器本帧值；§6.9 ③「无手势」支 0x1c50e8774）`, "rms ≤ 1", `rms ${e.rms.toFixed(2)} · 最大偏差 ${e.max.toFixed(2)} pt @ 帧 ${e.at}`, e.rms <= 1); }
-        await until(rest, 400); const onB = bs.find((b) => b.classList.contains("on"));
+        await until(rest, 2000); const onB = bs.find((b) => b.classList.contains("on"));   // G10: the flex stays on until the fall start + 1.283 s (the fall group's completion), scaleY settles after
+        /* G10 (tab-lens-motion.md「数据核 G10」① / ⑤, flex-interaction.md §8): the fall start + .923 s → one frame whose flex point lacks the platter's x (the page's
+           platter = the nav, its left in the viewport; the native C run's 83), the next frame back; the fall start + 1.283 s → the deactivate frame (sX = 1, the
+           integrator off). The chain's frame-by-frame match to the native C run with the native geometry (94 × 54, 83 pt) is the replay of the page's own
+           view.js functions, tools/lens/g10chain-b.js (rms .00074 / .00100) */
+        { const tr = trG10 || [], k = tr.findIndex((e) => e.kick), K = tr[k], N = tr[k + 1], off = k < 0 ? null : tr.slice(k).find((e) => !e.active);
+          const kOk = !!K && K.since >= .923 && K.since - K.dt < .923 && Math.abs(K.fed - (K.x + tr[k - 1].sx * tr[k - 1].dx - K.px)) < 1e-9 && K.px === nav.getBoundingClientRect().left && !!N && !N.kick && Math.abs(N.fed - (N.x + K.sx * K.dx)) < 1e-9;
+          const oOk = !!off && off.since >= 1.283 && off.since - off.dt < 1.283 && off.sx === 1 && off.tSx === 1 && off.tSy === 1;
+          check("G10 落回起点 +.923 s 那帧 flex 量点少平台左距一帧、下帧还原；+1.283 s 那帧停用（sX 置 1、目标回 1）", "踢一帧 · 停用",
+            `${K ? `踢 +${K.since.toFixed(3)} s 量点 −${K.px}` : "无踢"} · ${off ? `停用 +${off.since.toFixed(3)} s sX ${off.sx} sY ${off.sy.toFixed(4)}` : "无停用"}${kOk ? "" : " ✗踢"}${oOk ? "" : " ✗停"}`, kOk && oOk); }
         check("7b 松手后选中 = 手指下那项", nbr.dataset.tab || "邻项", onB ? (onB.dataset.tab || "?") : "-", onB === nbr);
         num("7b 落定：胶囊中心 = 该项中心", nx - navL, cxNav(), 1); check("7b 落定后驱动停（无 .tl-on）", "无", nav.classList.contains("tl-on") ? "还在" : "无", !nav.classList.contains("tl-on"));
         num("R64 落定后 flex 归位：胶囊宽 = 项宽（sX → 1，drift → 0）", w0b, rect().width, 1);
@@ -221,7 +230,7 @@
        clears the highlight (no selection); the already selected item dragged ≥ 4 pt in x is not reselected (no scroll-to-top); otherwise the item under the finger is selected at
        once and the lens's target is its frame (the 7b / R33 rows above show the last) */
     { const on6 = bs.find((b) => b.classList.contains("on")), o6 = bs[bs.indexOf(on6) === 0 ? 1 : 0], r6 = o6.getBoundingClientRect(), x6 = r6.left + r6.width / 2, y6 = r6.top + r6.height / 2;
-      ev(o6, "pointerdown", x6, y6, 51); await sleep(250); ev(o6, "pointermove", 3, y6, 51); await sleep(60); ev(o6, "pointerup", 3, y6, 51); await until(rest, 1400); delete seg.dataset.pe;   // the lens slides back from the track's end (.85 / .4) and falls within 8 pt (ζ 1 / .4): ≈ 1.2 s to rest
+      ev(o6, "pointerdown", x6, y6, 51); await sleep(250); ev(o6, "pointermove", 3, y6, 51); await sleep(60); ev(o6, "pointerup", 3, y6, 51); await until(rest, 2800); delete seg.dataset.pe;   // the lens slides back from the track's end (.85 / .4) and falls within 8 pt (ζ 1 / .4), the flex stays on to the fall start + 1.283 s (G10): ≈ 2.4 s to rest
       const onAfter = bs.find((b) => b.classList.contains("on"));
       check("R106 ② 抬在窗口内缩 8 之外（x = 3）：只清高亮不选（选中项不变、透镜回原项、驱动停）", `${on6.dataset.tab} · off`, `${onAfter ? onAfter.dataset.tab : "-"} · ${nav.classList.contains("tl-on") ? "tl-on" : "off"} · |Δ| ${Math.abs(rect().cx - (on6.getBoundingClientRect().left + on6.getBoundingClientRect().width / 2)).toFixed(1)}`, onAfter === on6 && !nav.classList.contains("tl-on") && Math.abs(rect().cx - (on6.getBoundingClientRect().left + on6.getBoundingClientRect().width / 2)) <= 1.5);
       const app6 = document.getElementById("app"), mh6 = app6.style.minHeight; app6.style.minHeight = (innerHeight + 600) + "px";   // the current tab's page may be short: make it scrollable for the two scroll-to-top rows
