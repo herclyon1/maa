@@ -53,8 +53,12 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn, opt) { fn.__opt = opt || {};
   { const add0 = window.ACCEPT.add.bind(window.ACCEPT);
     window.ACCEPT.add = (fn, opt) => { const m = /accept-([^./?]+)\.js/.exec((document.currentScript || {}).src || ""); if (!m) return add0(fn, opt);
       const w = async (ctx) => { cur = m[1]; return fn(ctx); }; Object.defineProperty(w, "name", { value: fn.name }); add0(w, opt); w.__file = m[1]; }; }   // S4: opt passed through; __file from the script's own name
-  window.ACCEPT.load = (c) => new Promise((res) => { window.ACCEPT.loading = c; const done = (v) => { if (window.ACCEPT.loading === c) window.ACCEPT.loading = null; res(v); };
-    const s = document.createElement("script"); s.src = "accept-" + c + ".js?r=" + Math.random().toString(36).slice(2, 7); s.onload = () => { window.ACCEPT.loaded.add(c); done(true); }; s.onerror = () => done(false); document.head.appendChild(s); setTimeout(() => done(false), 4000); });
+  /* one script per file: a load already done or in flight is answered, not appended again — on the phone the checks start before this chain
+     has appended every file, and the retry below then appended a second copy of each (simulator A 18:36, b8bc7e3: 42 fetches for 21 files,
+     every fn registered twice, 1320 rows for 660) */
+  const pend = new Map();
+  window.ACCEPT.load = (c) => window.ACCEPT.loaded.has(c) ? Promise.resolve(true) : pend.get(c) || (pend.set(c, new Promise((res) => { window.ACCEPT.loading = c; let fin = false; const done = (v) => { if (fin) return; fin = true; if (window.ACCEPT.loading === c) window.ACCEPT.loading = null; pend.delete(c); res(v); };
+    const s = document.createElement("script"); s.src = "accept-" + c + ".js?r=" + Math.random().toString(36).slice(2, 7); s.onload = () => { window.ACCEPT.loaded.add(c); done(true); }; s.onerror = () => done(false); document.head.appendChild(s); setTimeout(() => done(false), 4000); })), pend.get(c));
   (async () => { for (const c of window.ACCEPT.files) await window.ACCEPT.load(c); })();   // one after another (≈ 50 ms each): ACCEPT.loading names the file whose fn registers
   const rows = [];
   const near = (a, b, tol = 0.6) => Math.abs(a - b) <= tol;
