@@ -1,6 +1,6 @@
 /* accept-switch.js — the B13 switch rows (controls 3008bf5's accept.js, re-homed with the file split: BOARD.md #13; into night, not the
    release). Basis: switch-native-formula.md §0–§4 §9, dispatch-B13-switch.md §4. Helpers are local copies of accept.js's (pev / at / cs / px). */
-ACCEPT.add(async function sw({ check, num, col, sleep, settle }) {
+ACCEPT.add(async function sw({ check, num, col, sleep, settle, raf }) {
   if (!window.Switch) { check("switch.js：window.Switch", "Switch", "缺", false); return; }
   const dark = matchMedia("(prefers-color-scheme: dark)").matches && document.documentElement.dataset.theme !== "light" || document.documentElement.dataset.theme === "dark";
   const T = { green: dark ? [48, 209, 88] : [52, 199, 89], swOff: dark ? [235, 235, 245, .298] : [60, 60, 67, .298] };
@@ -50,6 +50,7 @@ ACCEPT.add(async function sw({ check, num, col, sleep, settle }) {
      Springs: knob position ζ 1 / .3 (ω 20.94: .1 s 62 %, .2 s 92 %); lift ζ .625 / .27 from +10 ms (spec.small); un-lift ζ .7 / .5 at max(up, +10 + 220 ms). */
   const swLab = document.createElement("div"); swLab.style.cssText = "position:fixed;left:20px;top:200px;z-index:99;opacity:0";
   swLab.innerHTML = `<label class="sw"><input type="checkbox"><span></span></label>`; (document.getElementById("app") || document.body).appendChild(swLab);   // in #app like the page's switches: the knob lens canvas lives in the page and is only moved (switch.js swGlTake), a body-level switch would re-parent it on every run
+  await sleep(100); await raf(); await raf();   // the insertion into #app re-clones the top bar's pocket copy 60 ms later (topbar.js pocketObs → pocketBuild): let that land before the timed press
   const sw = swLab.querySelector(".sw"), inp = sw.querySelector("input"); let flips = 0; inp.addEventListener("change", () => flips++);
   const rest = (maxMs) => settle(() => !sw.classList.contains("drive"), maxMs);   // S1: switch.js removes .drive when position, lift and flex are settled and the finger is up (≤ the old fixed wait)
   const kn = () => sw.querySelector("span"), lift = () => parseFloat(sw.style.getPropertyValue("--lift")) || 0, kx = () => parseFloat(sw.style.getPropertyValue("--kx")) || 0;
