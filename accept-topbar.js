@@ -1,6 +1,7 @@
 /* accept-topbar.js — acceptance for the top bar's scroll behaviour (BOARD.md #4, topbar.js / topbar.css; remote-ref/nav-bar-scroll-formula.md).
    Registers through ACCEPT.add(ctx): ctx.check(item, expect, got, ok) / ctx.num(item, expect, got, tol) / ctx.col(item, [r,g,b,a], got).
    The checks scroll the page programmatically and read the CSS variables topbar.js sets and the titles' computed styles. */
+/* S4 (BOARD/S4-tags.md): file-level tags — timing (scrolls + transitions), dark:true only for the 栏底线 = --line token row (the rest is geometry / curves) */
 window.ACCEPT && ACCEPT.add(async (ctx) => {
   const { check, num, col, sleep } = ctx;
   const T = window.Topbar, root = document.documentElement, cs = (el, ps) => getComputedStyle(el, ps || null);
@@ -15,7 +16,11 @@ window.ACCEPT && ACCEPT.add(async (ctx) => {
   if (!T || !h1 || !small) return;
   const v = (n) => parseFloat(root.style.getPropertyValue(n)) || 0;
   const y0 = window.scrollY;
-  const go = async (y) => { window.scrollTo(0, y); await sleep(60); T.apply(); await sleep(260); };   // 0.2 s opacity transitions settle
+  /* S1 (SPEED2): no fixed sleeps — after a programmatic scroll + apply(), wait for the driver's own CSS transitions (h1 / small title 0.2 s,
+     #topbar::after 0.517 s) to finish via the Web Animations API; nothing pending = continue at once (max 800 ms guard) */
+  const frame = () => new Promise(requestAnimationFrame);
+  const settle = async (els, maxMs = 800) => { await frame(); const anims = els.flatMap((el) => el ? el.getAnimations({ subtree: true }) : []); if (!anims.length) return; await Promise.race([Promise.all(anims.map((a) => a.finished.catch(() => {}))), sleep(maxMs)]); };
+  const go = async (y) => { window.scrollTo(0, y); await frame(); T.apply(); await settle([h1, small, document.querySelector("#topbar")]); };
   const p = T.p, B = T.B, sw = p - 0.5;   // §10b ④: the switch when the zone is fully under the bar (probe), see topbar.js apply()
   const snapWas = T.snap; T.snap = false;   // the release snap (2.8) would move the programmatic scrolls to a resting point mid-check
   num("折叠范围 p = 大标题框底 + 7.67 − 栏底（§10b ①：标题区 52 的页面等价）", p, (h1.getBoundingClientRect().bottom + window.scrollY + T.ZONE_BELOW) - document.querySelector("#topbar").getBoundingClientRect().bottom, 0.6);
@@ -71,7 +76,7 @@ window.ACCEPT && ACCEPT.add(async (ctx) => {
   check("栏底线淡入曲线 = 探针 31 采样（linear()）", "linear(0 0%, 0.008 3.3%, 0.166 6.7%, …)", edgeFn.slice(0, 44), /^linear\(0 0%, 0\.008 3\.3\d*%, 0\.166 6\.6/.test(edgeFn));
   await go(sw + 1);
   check("旧入口 view.js onScroll 已让位（--big 不再由它驱动：为空或 0）", "空/0", root.style.getPropertyValue("--big") || "空", !(parseFloat(root.style.getPropertyValue("--big")) > 0));
-  T.snap = snapWas; window.scrollTo(0, y0); await sleep(60); T.apply();
+  T.snap = snapWas; window.scrollTo(0, y0); await frame(); T.apply();
   /* R3 (2号) — the scroll pocket: the layer, its keys (nav-pocket-sdfdump §1 / §2, nav-bar-scroll-formula §6b), its alpha with the scroll, the copy on the page's pixels */
   { const P = window.TopbarPocket, el = P && P.el; if (!el) { check("口袋：层存在（topbar.js R3）", "有", "缺", false); }
     else { const th = P.theme(), k = P.keys(th), f = document.getElementById("topbar-pocket-f"), rp = f && f.querySelector("feFlood"), bf = f && f.querySelector('feGaussianBlur[result="bf"]'), dl = f && f.querySelector('feComposite[result="dl"]'), nm = f && f.querySelector('feComposite[result="c"]'), cm = f && f.querySelector('feColorMatrix[result="cm"]');
@@ -102,14 +107,14 @@ window.ACCEPT && ACCEPT.add(async (ctx) => {
       check("口袋 colorMatrix = dump 的 4 × 5（对角 1.1969 / 1.0712 / 1.232，偏置 .03）", k.matrix.slice(0, 5).join(" "), cm ? cm.getAttribute("values").split(/\s+/).slice(0, 5).join(" ") : "无", !!cm && cm.getAttribute("values").split(/\s+/).slice(0, 15).map(Number).every((v, i) => Math.abs(v - k.matrix[i]) < 1e-6));
       const hair = el.querySelector(".topbar-pocket-hair"); const hr = hair && hair.getBoundingClientRect();
       check(`口袋 发丝线 ⅓ pt 在口袋底，${th === "dark" ? "白" : "黑"} α .1`, `bottom = 口袋底 · rgba(…,0.1) · h ⅓`, hair ? `${(er.bottom - hr.bottom).toFixed(2)} · ${getComputedStyle(hair).backgroundColor} · ${hr.height.toFixed(2)}` : "无", !!hair && Math.abs(er.bottom - hr.bottom) < 0.5 && /0\.1\)$/.test(getComputedStyle(hair).backgroundColor) && Math.abs(hr.height - 1 / 3) < 0.2);
-      const y1 = window.scrollY; window.scrollTo(0, 0); await sleep(700); num("口袋 静止（顶部）alpha 0（shouldHideAtTop）", 0, parseFloat(getComputedStyle(el).opacity), 0.001);
-      window.scrollTo(0, 40); await sleep(700); num("口袋 滚后 alpha 1（同边线的 .517 s 淡入）", 1, parseFloat(getComputedStyle(el).opacity), 0.001);
+      const y1 = window.scrollY; window.scrollTo(0, 0); await frame(); T.apply(); await settle([el]); num("口袋 静止（顶部）alpha 0（shouldHideAtTop）", 0, parseFloat(getComputedStyle(el).opacity), 0.001);
+      window.scrollTo(0, 40); await frame(); T.apply(); await settle([el]); num("口袋 滚后 alpha 1（同边线的 .517 s 淡入）", 1, parseFloat(getComputedStyle(el).opacity), 0.001);
       const copy = el.querySelector(".topbar-pocket-copy"), mr = document.getElementById("app").getBoundingClientRect(), tm = /matrix\(([^)]+)\)/.exec(getComputedStyle(copy).transform), ty = tm ? parseFloat(tm[1].split(",")[5]) : NaN;
       num("口袋 内容复本贴着页面像素（translateY = 页 top）", mr.top, ty, 1.5);
       { const bg = getComputedStyle(el).backgroundColor, rpk = k.replay; const bm = /rgba?\(([\d.]+), ([\d.]+), ([\d.]+)(?:, ([\d.]+))?\)/.exec(bg);
         check("口袋 Replay 平罩在模糊层之下（口袋自身背景 = replay 键；R3′）", `rgba(${rpk.join(",")})`, bg, !!bm && +bm[1] === rpk[0] && +bm[2] === rpk[1] && +bm[3] === rpk[2] && Math.abs((bm[4] == null ? 1 : +bm[4]) - rpk[3]) < 0.01);
         check("口袋 遮罩：R3′ 的 alpha 遮罩已撤（复本无 mask-image；R3″ 按式改为逐行模糊级）", "无", getComputedStyle(copy).webkitMaskImage || getComputedStyle(copy).maskImage || "none", /^none$/.test(getComputedStyle(copy).webkitMaskImage || getComputedStyle(copy).maskImage || "none")); }
-      window.scrollTo(0, y1); await sleep(60); } }
+      window.scrollTo(0, y1); await frame(); } }
   /* I3 (acceptance 09-23 08:54): after a field focus / the keyboard the page never rests with the large title part-way under the bar. view.js target(h, base):
      scrollRectToVisible (the least scroll that shows the field, none when it shows) from the scroll at focus, then 2.8's resting point that keeps it shown */
   const fi = document.querySelector('#app input[type="text"], #app input[data-time], #app input[inputmode]');

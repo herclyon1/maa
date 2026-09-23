@@ -1,6 +1,6 @@
 /* accept-switch.js — the B13 switch rows (controls 3008bf5's accept.js, re-homed with the file split: BOARD.md #13; into night, not the
    release). Basis: switch-native-formula.md §0–§4 §9, dispatch-B13-switch.md §4. Helpers are local copies of accept.js's (pev / at / cs / px). */
-ACCEPT.add(async function sw({ check, num, col, sleep }) {
+ACCEPT.add(async function sw({ check, num, col, sleep, settle }) {
   if (!window.Switch) { check("switch.js：window.Switch", "Switch", "缺", false); return; }
   const dark = matchMedia("(prefers-color-scheme: dark)").matches && document.documentElement.dataset.theme !== "light" || document.documentElement.dataset.theme === "dark";
   const T = { green: dark ? [48, 209, 88] : [52, 199, 89], swOff: dark ? [235, 235, 245, .298] : [60, 60, 67, .298] };
@@ -9,7 +9,8 @@ ACCEPT.add(async function sw({ check, num, col, sleep }) {
      the R70′ style row went red on the frame where lift × flex made --ksx = --ksy (sc[1] undefined; BOARD A16) */
   const scaleOf = (el, pseudo) => { const v = cs(el, pseudo).scale; if (v === "none") return [1, 1]; const a = v.split(" ").map(Number); return a.length === 1 ? [a[0], a[0]] : a; };
   const at = (el, fx = .5, fy = .5, dx = 0, dy = 0) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width * fx + dx, y: r.top + r.height * fy + dy }; };
-  const pev = (el, type, p, id = 11) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, clientX: p.x, clientY: p.y, isPrimary: true, button: 0, buttons: type === "pointerup" ? 0 : 1, pointerType: "touch" }));
+  const stamp = (e) => { Object.defineProperty(e, "timeStamp", { value: performance.now(), configurable: true }); return e; };   // the page clock as the event's timeStamp (两钟同读, accept.js pev)
+  const pev = (el, type, p, id = 11) => el.dispatchEvent(stamp(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, clientX: p.x, clientY: p.y, isPrimary: true, button: 0, buttons: type === "pointerup" ? 0 : 1, pointerType: "touch" })));
   /* the resting well and the lifted lens, as B13's static rows (controls 3008bf5 accept.js) */
   const lab = document.createElement("div"); lab.style.cssText = "position:fixed;left:-9999px;top:0";
   lab.innerHTML = `<label class="sw"><input type="checkbox" checked><span></span></label><label class="sw"><input type="checkbox"><span></span></label>`; document.body.appendChild(lab);
@@ -23,6 +24,25 @@ ACCEPT.add(async function sw({ check, num, col, sleep }) {
   const held = lab.querySelectorAll(".sw")[1]; held.classList.add("drive"); held.style.setProperty("--lift", "1"); held.style.setProperty("--ksx", String(58 / 37)); held.style.setProperty("--ksy", String(38.33 / 24));
   { const sc = scaleOf(held.querySelector("span"), "::after"); check("按住（lift 1）：旋钮 58×38.33（--ios-switch-knob-lift-w/-h：scale 1.5676 1.5971）", "1.5676 1.5971", cs(held.querySelector("span"), "::after").scale, Math.abs(sc[0] - 58 / 37) < .001 && Math.abs(sc[1] - 38.33 / 24) < .001); }
   held.classList.remove("drive"); held.style.removeProperty("--lift"); held.style.removeProperty("--ksx"); held.style.removeProperty("--ksy");
+  /* P0b-5 (P0b-数据.md #5): while .drive is on the knob is the driver's alone. index.html's old knob rules — `.sw input:checked + span::after`
+     (0,2,3) pinning translate to 22, `.sw input:active + span::after` (0,2,3) with .12 s translate / box-shadow transitions and the fixed hold
+     scale, `.sw input:active:checked + span::after` (0,3,3) — won the (0,2,3) tie by coming later; :active outlives a real touchend by ~120 ms,
+     so every tap ran the old .12 s ease and scale for that window (CDP-touch probe: 21 of 42 driven frames off the driver's values, 0 after).
+     :active cannot be set from script, so the cascade is checked on the rules themselves, and :checked (settable) on the computed style. */
+  const onSw = on.parentNode; onSw.classList.add("drive"); onSw.style.setProperty("--kx", "5px");
+  check("开关 P0b-5 开态驱动中：位移 = 驱动器 --kx（旧 :checked 规则不再把旋钮钉在 22）、无过渡", "5px · none", `${cs(on, "::after").translate} · ${cs(on, "::after").transitionProperty}`,
+    Math.abs(px(cs(on, "::after").translate) - 5) < .01 && cs(on, "::after").transitionProperty === "none");
+  onSw.classList.remove("drive"); onSw.style.removeProperty("--kx");
+  { const spec = (sel) => { const t = sel.replace(/::[\w-]+/g, "");   // [ids, classes + pseudo-classes, types + pseudo-elements]; the page's selectors have no :is / :not / :where
+      return [(t.match(/#[\w-]+/g) || []).length, (t.match(/\.[\w-]+/g) || []).length + (t.match(/:[\w-]+/g) || []).length,
+        (sel.match(/::[\w-]+/g) || []).length + (t.replace(/[.#:][\w-]+/g, "").match(/(^|[\s>+~])[a-z][\w-]*/gi) || []).length]; };
+    const gt = (x, y) => x[0] !== y[0] ? x[0] > y[0] : x[1] !== y[1] ? x[1] > y[1] : x[2] > y[2];
+    const parts = []; const walk = (rules) => { for (const r of rules) { if (r.cssRules && !r.selectorText) walk(r.cssRules); else if (r.selectorText) for (const p of r.selectorText.split(",")) parts.push(p.trim()); } };
+    for (const ss of document.styleSheets) { try { walk(ss.cssRules); } catch (e) {} }
+    const knob = parts.filter((p) => /\.sw\b/.test(p) && /span::after$/.test(p)), drive = knob.filter((p) => /\.drive\b/.test(p) && !/:active/.test(p));
+    const rivals = knob.filter((p) => !/\.drive\b/.test(p) && !/\.hold\b/.test(p)), top = rivals.reduce((m, p) => gt(spec(p), m.s) ? { p, s: spec(p) } : m, { p: "", s: [0, 0, 0] });
+    check("开关 P0b-5 驱动规则特异性 > 旧旋钮规则最高者（含 :active / :checked；.hold 只由已让位的 view.js 旧路加）", `> ${top.s.join(",")} (${top.p})`,
+      drive.map((p) => `${spec(p).join(",")} ${p}`).join(" | ") || "缺", drive.length === 1 && gt(spec(drive[0]), top.s)); }
   check("开关开：井环宽 .39 s / 色 .18 s（--ios-motion-switch-well-grow-duration / -color-duration）", "--wb 0.39s, color 0.18s", `${cs(on).transitionProperty} ${cs(on).transitionDuration}`, cs(on).transitionProperty === "--wb, color" && cs(on).transitionDuration === "0.39s, 0.18s");
   check("开关关：井环宽 .365 s 延 .025 s / 色 .18 s（--ios-motion-switch-well-shrink-*）", "0.365s, 0.18s / 0.025s, 0s", `${cs(off).transitionDuration} / ${cs(off).transitionDelay}`, cs(off).transitionDuration === "0.365s, 0.18s" && cs(off).transitionDelay === "0.025s, 0s");
   lab.remove();
@@ -31,6 +51,7 @@ ACCEPT.add(async function sw({ check, num, col, sleep }) {
   const swLab = document.createElement("div"); swLab.style.cssText = "position:fixed;left:20px;top:200px;z-index:99;opacity:0";
   swLab.innerHTML = `<label class="sw"><input type="checkbox"><span></span></label>`; document.body.appendChild(swLab);
   const sw = swLab.querySelector(".sw"), inp = sw.querySelector("input"); let flips = 0; inp.addEventListener("change", () => flips++);
+  const rest = (maxMs) => settle(() => !sw.classList.contains("drive"), maxMs);   // S1: switch.js removes .drive when position, lift and flex are settled and the finger is up (≤ the old fixed wait)
   const kn = () => sw.querySelector("span"), lift = () => parseFloat(sw.style.getPropertyValue("--lift")) || 0, kx = () => parseFloat(sw.style.getPropertyValue("--kx")) || 0;
   const posEl = () => (sw._sw && sw._sw.pos.el) || 0;   // the knob spring's own time since its retarget at the up (switch.js swSync / swAim): the check compares at it, not at the wall clock (the last tick is a frame timestamp, the check runs up to a frame later)
   const crit = (resp, t) => { const w = 2 * Math.PI / resp, u = w * t; return 1 - (1 + u) * Math.exp(-u); };   // critical spring progress
@@ -57,8 +78,8 @@ ACCEPT.add(async function sw({ check, num, col, sleep }) {
     const l = lift(), wantL = 1 - spr(.7, .5, el); check(`开关 抬手 +${Math.round(el * 1000)} ms：缩回中（抬手晚于按下 +.22 s → 立即；spec.small unLiftSpring ζ .7 / .5）lift ≈ ${Math.round(wantL * 100)} %`, `${Math.round(wantL * 100)} % ± 15（rAF 帧粒度）`, `${Math.round(l * 100)} %`, Math.abs(l - wantL) <= .15); }
   await sleep(100);
   { const el = posEl(), k = kx(), want = 22 * crit(.3, el); check(`开关 抬手 +${Math.round(el * 1000)} ms（弹簧自己的时间）：旋钮行程 ${Math.round(want / 22 * 100)} %（.2 s 92 % = 20.2 pt）`, `${Math.round(want * 10) / 10} ± 1`, Math.round(k * 10) / 10, Math.abs(k - want) <= 1); }
-  await sleep(600);
-  check("开关 抬手 +800 ms：落定 22、驱动结束（缩回 ζ .7 / .5 到 .4 % 需 .63 s）（.drive 去掉，静止规则接管）", "22, rest", `${Math.round(kx() * 100) / 100}, ${sw.classList.contains("drive") ? "drive" : "rest"}`, Math.abs(kx() - 22) < .05 && !sw.classList.contains("drive") && Math.abs(px(cs(kn(), "::after").translate) - 22) < .05);
+  await rest(600);
+  check("开关 抬手后驱动结束（.drive 去掉，≤ 800 ms）：落定 22（缩回 ζ .7 / .5 到 .4 % 需 .63 s）（.drive 去掉，静止规则接管）", "22, rest", `${Math.round(kx() * 100) / 100}, ${sw.classList.contains("drive") ? "drive" : "rest"}`, Math.abs(kx() - 22) < .05 && !sw.classList.contains("drive") && Math.abs(px(cs(kn(), "::after").translate) - 22) < .05);
   /* a 100 ms tap: the lens stays lifted until +230 ms (lensHangTime .22 from the lift at +10), then un-lifts */
   pev(sw, "pointerdown", at(sw)); await sleep(100); pev(sw, "pointerup", at(sw));
   check("开关 短点 100 ms 抬手：翻转（off ×2）", "off ×2", `${inp.checked ? "on" : "off"} ×${flips}`, !inp.checked && flips === 2);
@@ -66,11 +87,11 @@ ACCEPT.add(async function sw({ check, num, col, sleep }) {
   check("开关 短点 按下 +200 ms：旋钮仍抬着（hang .22 s 未到）lift ≥ 90 %", "≥ 90 %", `${Math.round(lift() * 100)} %`, lift() >= .9);
   await sleep(130);
   check("开关 短点 按下 +330 ms：已在缩回（+230 起 ζ .7 / .5）lift < 85 %", "< 85 %", `${Math.round(lift() * 100)} %`, lift() < .85);
-  await sleep(400);
+  await rest(400);
   /* X: drag −10 (against the direction) and release - still flips (the tap's pending value) */
   pev(sw, "pointerdown", at(sw)); pev(sw, "pointermove", at(sw, .5, .5, -10, 0)); pev(sw, "pointerup", at(sw, .5, .5, -10, 0));
   check("开关 X 反方向拖 10 抬手：仍翻转", "on ×3", `${inp.checked ? "on" : "off"} ×${flips}`, inp.checked && flips === 3);
-  await sleep(400);
+  await rest(400);
   /* drag +30 from off in 1 pt steps: the flip at the 26th pt zeroes the translation; the knob's target = 42.5 + rb(4) */
   inp.checked = false;
   pev(sw, "pointerdown", at(sw)); await sleep(30);
@@ -80,25 +101,25 @@ ACCEPT.add(async function sw({ check, num, col, sleep }) {
   { const want = 22 + 12 * (1 - 1 / (1 + .55 * 4 / 12)); check("开关 拖 +30 停住：旋钮 = 42.5 + rb(4)（翻转清零后余 4：橡皮筋 12 / .55）", `${Math.round(want * 100) / 100} ± .3`, Math.round(kx() * 100) / 100, Math.abs(kx() - want) <= .3); }
   pev(sw, "pointerup", at(sw, .5, .5, 30, 0));
   check("开关 拖 +30 抬手：显示态已翻，不再翻（on，事件 ×4）", "on ×4", `${inp.checked ? "on" : "off"} ×${flips}`, inp.checked && flips === 4);
-  await sleep(400);
+  await rest(400);
   /* +47 in 1 pt steps from off: flip at 26, then 21 more past the end → 42.5 + rb(21); release: back to 42.5, no second flip */
   inp.checked = false;
   pev(sw, "pointerdown", at(sw)); await sleep(30);
   for (let d = 1; d <= 47; d++) pev(sw, "pointermove", at(sw, .5, .5, d, 0));
   await sleep(300);
   { const want = 22 + 12 * (1 - 1 / (1 + .55 * 21 / 12)); check("开关 拖到 +47 停住：旋钮 = 42.5 + rb(21)（超出端点的橡皮筋）", `${Math.round(want * 100) / 100} ± .3`, Math.round(kx() * 100) / 100, Math.abs(kx() - want) <= .3); }
-  pev(sw, "pointerup", at(sw, .5, .5, 47, 0)); await sleep(300);
+  pev(sw, "pointerup", at(sw, .5, .5, 47, 0)); await rest(300);
   check("开关 +47 抬手：回 42.5（位移 22）、仍 on（×5）", "22, on ×5", `${Math.round(kx() * 100) / 100}, ${inp.checked ? "on" : "off"} ×${flips}`, Math.abs(kx() - 22) < .3 && inp.checked && flips === 5);
-  await sleep(200);
+  await rest(200);
   /* N2–N4: beyond the far end (+40 > 25: flip) and back (−35 < −25: flip back) - no net flip, no event */
   inp.checked = false;
   pev(sw, "pointerdown", at(sw)); pev(sw, "pointermove", at(sw, .5, .5, 40, 0)); pev(sw, "pointermove", at(sw, .5, .5, 5, 0)); pev(sw, "pointerup", at(sw, .5, .5, 5, 0));
   check("开关 N2 拖过远端外 (+40) 再拖回 (+5) 抬手：翻两次抵消，不翻转、无事件", "off ×5", `${inp.checked ? "on" : "off"} ×${flips}`, !inp.checked && flips === 5);
-  await sleep(400);
+  await rest(400);
   /* X11: dragged beyond the far end and released there - flips */
   pev(sw, "pointerdown", at(sw)); pev(sw, "pointermove", at(sw, .5, .5, 40, 0)); pev(sw, "pointerup", at(sw, .5, .5, 40, 0));
   check("开关 X11 拖过远端外直接抬手：翻转", "on ×6", `${inp.checked ? "on" : "off"} ×${flips}`, inp.checked && flips === 6);
-  await sleep(400);
+  await rest(400);
   /* R70′ — the knob's flex while lifted (switch-native-formula.md §12 / §12a): active from pressed (+10 ms) to the un-lift, driven by the knob's own
      presented motion; a fast drag like the probe's (4 × 5.5 pt every 16 ms) stretches X and squashes Y (sX·sY ≈ 1) with a positive drift, then the
      reverse stretch while decelerating; the presented scale = lift × flex per frame; after the un-lift the floats return to 1 and the flex is off */
@@ -120,13 +141,13 @@ ACCEPT.add(async function sw({ check, num, col, sleep }) {
     { const tr = Switch.flexOf(sw).trace, stepRef = (x, v, target, [z, r], dt) => { const w = 2 * Math.PI / r, dx = x - target; if (z < 1) { const wd = w * Math.sqrt(1 - z * z), B = (v + z * w * dx) / wd, e = Math.exp(-z * w * dt); return target + e * (dx * Math.cos(wd * dt) + B * Math.sin(wd * dt)); } const e = Math.exp(-w * dt), B = v + w * dx; return target + e * (dx + B * dt); };
       let maxErr = 0, n = 0; for (let i = 1; i < tr.length; i++) { const a0 = tr[i - 1], b0 = tr[i]; if (!(b0.dt > 0)) continue; const sp = [f0.spec.zeta, f0.spec.resp]; maxErr = Math.max(maxErr, Math.abs(stepRef(a0.sx, a0.vsx, b0.tSx, sp, b0.dt) - b0.sx), Math.abs(stepRef(a0.sy, a0.vsy, b0.tSy, sp, b0.dt) - b0.sy), Math.abs(stepRef(a0.dx, a0.vdx, b0.tDx, sp, b0.dt) - b0.dx)); n++; }
       check(`开关 R70′ 三个 flex 浮点逐帧 = spec 弹簧（ζ .5777 / .4463）解析一步（自上一帧值 / 速度向本帧目标；${n} 帧，最大差）`, "≤ 1e-6", maxErr.toExponential(2), n > 10 && maxErr <= 1e-6); }
-    pev(sw, "pointercancel", at(sw, .5, .5, -22, 0)); await sleep(700);   // a cancel ends the press without a flip (the rows below count flips)
+    pev(sw, "pointercancel", at(sw, .5, .5, -22, 0)); await rest(700);   // a cancel ends the press without a flip (the rows below count flips)
     { const f = Switch.flexOf(sw); check("开关 R70′ 抬手 → hang 后放下 → flex 关（激活模式回 1），浮点回 1 / 0，驱动结束", "off · 1 · 1 · 0 · rest", f ? `${f.active ? "active" : "off"} · ${f.out.sx.toFixed(4)} · ${f.out.sy.toFixed(4)} · ${f.out.dx.toFixed(3)} · ${sw.classList.contains("drive") ? "drive" : "rest"}` : "-", !!f && !f.active && Math.abs(f.out.sx - 1) < .002 && Math.abs(f.out.sy - 1) < .002 && Math.abs(f.out.dx) < .05 && !sw.classList.contains("drive")); }
     await sleep(100);
   }
   /* pointercancel: no flip, nothing pressed */
   pev(sw, "pointerdown", at(sw)); pev(sw, "pointercancel", at(sw));
   check("开关 pointercancel：不翻转、不 pressed", "on ×6, rest", `${inp.checked ? "on" : "off"} ×${flips}, ${sw.classList.contains("pressed") ? "pressed" : "rest"}`, inp.checked && flips === 6 && !sw.classList.contains("pressed"));
-  await sleep(200);
+  await rest(200);
   swLab.remove();
-});
+}, { layer: "timing", dark: true });   // S4 file-level layer tags (S4-tags.md (e))

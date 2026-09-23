@@ -57,7 +57,7 @@ if "bg" in WHAT:
 if "super" in WHAT:
     src = open(__file__.replace("tear_cbg.py", "tear_super.py")).read(); HW, HH, r = et.HW, et.HH, et.R; KR = 1.528665; R = KR * r
     exec(src[src.index("def poly"):src.index("# ---- tear_fg.py")])
-    sdf_super = globals()["sdf_super"]  # bound by the exec above (tear_super.py poly … sdf_super); named here so the linter sees it
+    sdf_super = globals()["sdf_super"]   # bound by the exec above (tear_super.py:16); named here so the linter sees it
     print("\nsupercircle (label-end-tear §7b) on which path:")
     decompose("supercircle on all paths", sdf_lab=sdf_super, sdf_bg=sdf_super); decompose("supercircle labels, circle bg (as built)", sdf_lab=sdf_super, sdf_bg=circle)
     et.sdf_capsule = circle
