@@ -62,6 +62,22 @@
     await settle(() => !!got, 5000); removeEventListener("segframes-light", onLight);
     check("诊断：一份记录结束后接着能记下一份", "有第二份", got ? "有" : "没有", !!got);
 
+    /* ---- 数据 17:3x, two gaps: a light frame carries the control's background (read, never written), and the alert's cancel fade (.40 s, longer
+       than the 300 ms rest) keeps the record open until the alert is really closed ---- */
+    check("诊断：轻记录逐帧带控件底色（bg）", "首帧有 bg", String((r.frames || [])[0] && r.frames[0].bg), !!((r.frames || [])[0] && typeof r.frames[0].bg === "string" && r.frames[0].bg));
+    const dlg = document.querySelector("dialog#alert"), cancel = document.getElementById("alert-cancel");
+    if (typeof window.ask === "function" && dlg && cancel) {
+      window.ask("诊断自检", "取消后关窗要进记录");
+      await settle(() => dlg.open && dlg.classList.contains("settled"), 3000);
+      got = null; addEventListener("segframes-light", onLight);
+      const pc = at(cancel); pev(cancel, "pointerdown", pc); await sleep(30); pev(cancel, "pointerup", pc); cancel.click();
+      await settle(() => !!got, 5000); removeEventListener("segframes-light", onLight);
+      const al = ((got || {}).frames || []).filter((f) => f.scene).map((f) => String(f.scene.alert));
+      check("诊断：弹窗点取消 → 淡出与关窗都在同一份记录里（场景 true → closing → false）", "…closing → false", al.join(" → ") || (got ? "无场景帧" : "没有记录"),
+        al.indexOf("closing") >= 0 && al[al.length - 1] === "false" && al.lastIndexOf("false") > al.indexOf("closing"));
+      await settle(() => !dlg.open, 2000);
+    } else check("诊断：弹窗取消自检（页面有 ask() 与 #alert）", "有", "缺", false);
+
     /* ---- handing the page back ---- */
     const stopOk = typeof window.__segFramesStop === "function" && window.__segFramesStop() === true;
     got = null; addEventListener("segframes-light", onLight);
