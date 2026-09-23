@@ -147,19 +147,28 @@
   const sceneReading = () => {
     const dlg = document.querySelector("dialog#alert"), sp = document.getElementById("subpage"), ds = document.getElementById("diagsheet"), ts = document.getElementById("toast");
     const tab = document.querySelector("nav.tabs button.on, nav.tabs [aria-selected=\"true\"]");
-    return { tab: tab ? clip(tab.textContent, 12) : null,
+    return { tab: tab ? clip((tab.querySelector(".tcg") || tab).textContent, 12) : null,   // the tab button holds two copies of its label (P0b-tabclip); read one
              sheets: [...document.querySelectorAll(".sheet")].filter((x) => x.hasAttribute("open")).map((x) => (x.id || "sheet") + (x.classList.contains("in") ? ":in" : "")),
-             alert: !!(dlg && dlg.open), subpage: sp && !sp.hidden ? ([...sp.classList].join(".") || "open") : null,
+             alert: dlg && dlg.open ? (dlg.classList.contains("closing") ? "closing" : true) : false,   // "closing" = the fade-out before close() (view.js ask()) subpage: sp && !sp.hidden ? ([...sp.classList].join(".") || "open") : null,
              diagsheet: !!(ds && !ds.hidden), toast: ts && ts.classList.contains("show") ? clip(ts.textContent, 40) : null,
              html: [...document.documentElement.classList].filter((c) => c === "sheet-open" || c === "kbd").join(" ") || null,
              scroll: round(scrollY) };
   };
+  /* running finite animations / transitions on what the user sees (the control, the alert, open sheets, the sub page, the toast): a record must not stop
+     "still" while one of them is still moving — 数据 17:3x: the alert's cancel fade (--ios-motion-alert-duration .40 s) outlasts the 300 ms rest, so
+     the close never reached the record */
+  const animsOf = (el) => {
+    const els = [el, document.querySelector("dialog#alert"), document.getElementById("subpage"), document.getElementById("toast"), ...document.querySelectorAll(".sheet[open]")];
+    let n = 0;
+    for (const x of els) if (x && x.getAnimations) for (const a of x.getAnimations()) if (a.playState === "running" && isFinite(a.effect && a.effect.getComputedTiming().endTime)) n++;
+    return n;
+  };
   function lightReading(now) {
     const el = rec && rec.el;
-    if (!el || !el.isConnected) return { pts: now / 1000, rect: null, gone: true, scene: sceneReading(), last_pointer_t: rec && rec.pointer.length ? rec.pointer[rec.pointer.length - 1].t : null };
+    if (!el || !el.isConnected) return { pts: now / 1000, rect: null, gone: true, anims: animsOf(null), scene: sceneReading(), last_pointer_t: rec && rec.pointer.length ? rec.pointer[rec.pointer.length - 1].t : null };
     const cs = getComputedStyle(el), sc = scaleOf(cs);
     return { pts: now / 1000, rect: rectOf(el), alpha: num(cs.opacity, 1), scale: [round(sc[0], 4), round(sc[1], 4)],
-             transform: cs.transform === "none" ? "none" : cs.transform.slice(0, 48), bg: cs.backgroundColor,
+             transform: cs.transform === "none" ? "none" : cs.transform.slice(0, 48), bg: cs.backgroundColor, anims: animsOf(el),
              cls: [...el.classList].join(" ").slice(0, 60) || null, scene: sceneReading(),
              last_pointer_t: rec && rec.pointer.length ? rec.pointer[rec.pointer.length - 1].t : null };
   }
@@ -289,7 +298,7 @@
     const frames = rec.frames.map((f) => {
       const sm = f.sample_t ?? f.pts, pt = sm + interval, sc = JSON.stringify(f.scene);
       const o = { frame: f.frame, pts: round(pt, 3), t_since_down: round(pt - td, 3), t_since_up: round(pt - tu, 3), phase: phaseAt(pt * 1000),
-                  rect: f.rect, alpha: f.alpha, scale: f.scale, transform: f.transform, cls: f.cls,
+                  rect: f.rect, alpha: f.alpha, scale: f.scale, transform: f.transform, bg: f.bg, anims: f.anims, cls: f.cls,   // bg: 数据 17:3x — read but never written
                   last_pointer_t: f.last_pointer_t === null || f.last_pointer_t === undefined ? null : round(f.last_pointer_t / 1000 - td, 3) };
       if (f.gone) o.gone = true;
       if (sc !== lastScene) { o.scene = f.scene; lastScene = sc; }  // only the frames where the visible scene changed carry it
@@ -329,7 +338,7 @@
         if (prev && !sceneSame) rec.events.push({ t_since_down: round((now - rec.t_down) / 1000, 3), events: "sceneChanged", scene: f.scene });
         if (now - rec.t_down >= HARD_MS) { finishLight("10 s 硬上限"); return; }
         if (rec.t_up !== null) {
-          const still = sceneSame && f.rect && prev.rect && !changed(f.rect, prev.rect, SETTLE_PT) && f.alpha === prev.alpha && f.transform === prev.transform;
+          const still = sceneSame && f.rect && prev.rect && !changed(f.rect, prev.rect, SETTLE_PT) && f.alpha === prev.alpha && f.transform === prev.transform && f.bg === prev.bg && !f.anims;
           rec.settledSince = still ? (rec.settledSince ?? now) : null;
           if (rec.settledSince !== null && now - rec.settledSince >= SETTLE_MS) finishLight("静止 300 ms");
           else if (now - rec.t_up >= MAX_AFTER_UP_MS) finishLight("抬手后 3 s");

@@ -31,7 +31,10 @@
       num("标签按钮高 54（--ios-tab-button-h）", 54, b.getBoundingClientRect().height);
       num(`标签按钮宽 ${Math.round(want * 100) / 100}（--ios-tab-button-w 94，${bs.length} 个标签放不下时等比缩）`, want, w);
       num("标签文字 10（--ios-tab-label-size）", 10, px(cs(b).fontSize), 0.05); num("标签按钮圆角 27（--ios-tab-lens-radius）", 27, px(cs(b).borderTopLeftRadius));
-      const lb = [...b.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim()) || b.querySelector("span:not(.ico)");
+      const lb = [...b.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim()) || b.querySelector(".tcg > span:not(.ico)") || b.querySelector("span:not(.ico)");   // the unselected copy (P0b-tabclip); the selected copy (.tcs) must sit on it
+      const lbs = b.querySelector(".tcs > span:not(.ico)"), ics = b.querySelector(".tcs > .ico"), icg = b.querySelector(".tcg > .ico");
+      if (lbs && lb && ics && icg) { const a = lbs.getBoundingClientRect(), c = b.querySelector(".tcg > span:not(.ico)").getBoundingClientRect(), d = ics.getBoundingClientRect(), e = icg.getBoundingClientRect();
+        num("标签两份（选中色 / 灰）叠在同一处：字与图标框差之和", 0, Math.abs(a.left - c.left) + Math.abs(a.top - c.top) + Math.abs(a.width - c.width) + Math.abs(d.left - e.left) + Math.abs(d.top - e.top) + Math.abs(d.width - e.width), 0.5); }
       if (lb) { const rg = document.createRange(); rg.selectNodeContents(lb); const lr = rg.getBoundingClientRect(); num("标签文字顶 = 胶囊顶 + 39（--ios-tab-label-top）", 39, lr.top - r.top, 1.5); }
     }
     const ico = seg.querySelector(".ico"); if (ico) num("标签符号框 28（--ios-tab-symbol-box，探针 27–31）", 28, ico.getBoundingClientRect().height);

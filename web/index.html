@@ -141,16 +141,20 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   nav.tabs.drag .glide{transition:left var(--seg-follow-lag) ease-out,width var(--seg-follow-lag) ease-out,scale .4s var(--ios-motion-lens-easing)}   /* 按住滑动：透镜跟手（spec §2 T4） */
   nav.tabs button{position:relative;width:var(--ios-tab-button-w);flex:0 1 auto;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;
                   height:var(--ios-tab-button-h);padding:6px 8px 7px;border-radius:var(--ios-tab-lens-radius);font-size:var(--ios-tab-label-size);line-height:12px;font-weight:var(--ios-headline-weight);   /* 按钮 94×54 r27、字 Semibold 10 ← 探针（5 个标签放不下 5×94 时等比缩）；6/8/7 待 tokens，但 4 + 6 + 28 + 1 = 39 = --ios-tab-label-top ← 探针 */
-                  background:transparent;box-shadow:none;color:var(--tab);white-space:nowrap;transition:color .2s}
+                  background:transparent;box-shadow:none;color:var(--tab);white-space:nowrap}   /* 选中色无渐变：原生选中 / 灰两份内容切换，点标签时 _UITabButton 上无动画（P0b-数据.md #1，uiprobe-motion-run1.json scene-tab-tap）；按下不缩：原生按住已选中项是透镜里的复本放大 1.16、未选中项无（tab-lens-native.md §3，tabbar.md:17），旧 :active .ico scale .9 已删 */
   nav.tabs button .ico{display:flex;align-items:center;justify-content:center;width:var(--ios-tab-symbol-box);height:var(--ios-tab-symbol-box);flex:none}   /* 符号框 28 ← 探针 27–31 */
-  nav.tabs button .tabimg{display:block;width:26px;height:26px;border-radius:7px;object-fit:cover;
-                          opacity:.7;filter:saturate(.6);transition:opacity .2s,filter .2s}
-  nav.tabs button.on .tabimg{opacity:1;filter:none}
+  /* Every item twice (the floating bar's two contents, P0b-数据.md 14:1x ← uiprobe-sdf-r104-rest.json): .tcg = ContentView #33 (unselected colour),
+     .tcs = SelectedContentView #2 (selected colour). view.js tabClip() cuts them to the selection lens on every frame — .tcs shows only inside the
+     lens's capsule (the lens's _UIPortalView #31: hidesSourceLayer 1, matchesPosition 1, clipsToBounds, cornerRadii = h/2), .tcg has the same capsule
+     punched out (DestOutView #55: compositingFilter destOut, cornerRadius = h/2, riding the lens's presentation box). The selected colour is where the
+     lens is: a geometric cut, no colour or opacity change on any item. Until the first cut .tcs is clipped away. */
+  nav.tabs button .tcg{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;align-self:stretch;min-width:0}
+  nav.tabs button .tcs{position:absolute;inset:0;padding:inherit;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;
+                       color:var(--accent);pointer-events:none;clip-path:inset(0 0 0 100%)}
+  nav.tabs button .tabimg{display:block;width:26px;height:26px;border-radius:7px;object-fit:cover}   /* 照片标签两份同样：原生 alwaysOriginal 图在选中 / 未选中两份里是同一张 CGImage、opacity 1、无滤镜（祖先链亦无），26×26 距按钮顶 7 ← BOARD/evidence/uiprobe-sdf-tabphoto-{unsel,sel}.json #18 / #47（庚 #2，BOARD/庚2-标签栏照片-界面.md）；旧 .7 / saturate .6 无出处，删 */
   nav.tabs button .sf{display:block;width:26px;height:26px;background:currentColor;
                       -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;
                       -webkit-mask-size:contain;mask-size:contain}
-  nav.tabs button.on{color:var(--accent)}
-  nav.tabs button:active .ico{transform:scale(.9);transition:transform .1s}
   /* No global reduce-motion kill switch: iOS keeps the switch well/colour animations and the navigation parallax under Reduce Motion;
      only the sites that read the _AXSReduceMotionEnabled stub change behaviour (page-inventory.md §12 / §12a, switch.js R30′). */
   main{padding:4px var(--ios-card-inset);margin:0 auto}                 /* 卡片距边 20 ← AX45；不再写死 640 */
@@ -208,9 +212,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .tile.busy .tico .sf{display:none}
   .tile.busy .tico .ai{display:inline-block}
   .tile.busy .tico .ai i{background:#fff}
-  /* Notice cards come and go with the system's short fade+rise. */
-  .group.notice{animation:rise .28s cubic-bezier(.2,.8,.2,1)}   /* 无来源（老页自定），待 tokens */
-  @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  /* Notice cards: no CSS animation (it replayed on every render) — view.js noticeInsert() animates a real insertion only, as UITableView's section insert (P0b #6) */
   .tile{transition:background var(--ios-motion-button-release-duration) var(--ios-motion-ease-in-out)}   /* 松开 0.25 s ease-in-out ← 探针 UIButton；按下瞬时（下面 :active 关掉过渡） */
   /* Number tiles: Reminders' smart-list tiles (2×2, 195.67×80.33 on the Pro Max,
      radius 16, gap 8): symbol top-left, big number top-right, name bottom-left. */
@@ -403,7 +405,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
         background:var(--alert-fill);
         backdrop-filter:var(--ios-alert-glass-filter);-webkit-backdrop-filter:var(--ios-alert-glass-filter);   /* 菜单材质未测（探针没有 UIMenu）；tokens.css：弹窗 glass 是最近的原值 → --ios-alert-glass-*（端到端实测） */
         box-shadow:var(--glass-diffuse),var(--glass-rim);
-        transform-origin:top right;animation:menu-in .22s cubic-bezier(.2,.8,.2,1)}   /* 菜单出现动效 无来源（这轮没测），待 tokens */
+        transform-origin:top right}   /* 出现动效在 menu.css（menu.js:292 只建 "menu morph"）；旧 menu-in .22 s 无来源、永不跑，已删（P0b-数据.md） */
   .menu.up{transform-origin:bottom right}
   .menu button{display:flex;align-items:center;gap:0;width:100%;height:var(--ios-menu-item-h);padding:0 var(--ios-menu-item-x);margin:0;border:0;border-radius:0;   /* 项 42 高、x 16 ← Kit L96 */
                background:transparent;box-shadow:none;color:var(--ink);font:inherit;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);text-align:left;cursor:pointer}
@@ -411,7 +413,6 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
                    -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;-webkit-mask-size:contain;mask-size:contain}
   .menu button.on .ck{opacity:1}
   .menu button:active{background:color-mix(in srgb, var(--ink) 8%, transparent)}
-  @keyframes menu-in{from{opacity:0;transform:scale(.55)}to{opacity:1;transform:none}}
   /* The toggle: 63×28 track, 38×24 pill knob (measured in Settings › 动态效果 on the
      simulator). Motion measured frame by frame on the simulator's own recording
      (Settings › 动态效果 › 首选非闪动光标, 2026-09-15 04:58, 120 samples/s): the
@@ -752,8 +753,9 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .toast{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom) + 76px);z-index:9;
          background:var(--alert-fill);backdrop-filter:var(--ios-alert-glass-filter);-webkit-backdrop-filter:var(--ios-alert-glass-filter);
          border-radius:18px;padding:12px 14px;font-size:var(--ios-sub-size);box-shadow:var(--glass-diffuse),var(--glass-rim);   /* toast：无苹果对应组件；材质取弹窗端到端配方 --ios-alert-glass-*（最近实测原值）；圆角 18 待 tokens */
-         opacity:0;transition:.2s;pointer-events:none}   /* toast 动效 无来源，待 tokens */
-  .toast.show{opacity:1}
+         opacity:0;scale:.95;pointer-events:none;
+         transition:opacity .1s cubic-bezier(.42,0,.58,1),scale .1s cubic-bezier(.42,0,.58,1)}   /* 淡入淡出 = UIAccessibilityHUDView（UIKit 里唯一会淡的 HUD；UIProgressHUD 首帧即 1、无动画）：出 = opacity 0→1 + 卡片 scale .95→1，收 = 1→0 + 1→.95，同 0.1 s easeInEaseOut (.42,0)(.58,1) ← uiprobe-motion-hud-prog-ax.json（P0b-数据.md #4；缩放的是 112 宽的卡片层本身 → 这里缩整个 .toast） */
+  .toast.show{opacity:1;scale:1}
   .setup{padding:16px}
   .setup input{width:100%;text-align:left;margin-top:6px}
   .pills{display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end}

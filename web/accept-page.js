@@ -132,7 +132,7 @@
      and nobody noticed until the phone showed grey everywhere. */
   const lab = document.createElement("div"); lab.style.cssText = "position:fixed;left:-9999px;top:0";
   lab.innerHTML = `<label class="sw"><input type="checkbox" checked><span></span></label><label class="sw"><input type="checkbox"><span></span></label>` +
-    `<button class="tile danger"><span class="ttitle">x</span></button><nav class="tabs"><div class="seg"><button class="on">x</button></div></nav>` +
+    `<button class="tile danger"><span class="ttitle">x</span></button><nav class="tabs"><div class="seg"><button class="on"><span class="tcg"><span class="ico"><img class="tabimg" alt=""></span><span>x</span></span><span class="tcs"><span class="ico"><img class="tabimg" alt=""></span><span>x</span></span></button></div></nav>` +
     `<div class="topbar editing"><button class="navbtn" id="_d">x</button><button class="navbtn" id="_s">x</button></div>` +
     `<div class="group"><div class="row"><label>x</label><span class="sent">已寄出 10:00</span></div><div class="row"><label>y</label><input type="text" class="short" value="08:30"></div><div class="acts"><button>开始刷</button></div></div>`;
   document.body.appendChild(lab);
@@ -148,7 +148,13 @@
   check("轻点一下：开关翻转一次", !was, tapIn.checked, tapIn.checked === !was);
   check("轻点一下：change 只发一次", 1, changes, changes === 1);
   col("停止一切标题 = 红（--ios-red）", T.red, cs(lab.querySelector(".ttitle")).color);
-  col("选中的标签 = tint（--ios-tint）", T.tint, cs(lab.querySelector("nav.tabs button.on")).color);
+  col("标签的选中色那份 = tint（--ios-tint）", T.tint, cs(lab.querySelector("nav.tabs button .tcs")).color);
+  { const im = [...lab.querySelectorAll("nav.tabs .tabimg")].map((e) => `${cs(e).opacity}/${cs(e).filter}`);   // 庚 #2: the alwaysOriginal image is the same CGImage, opacity 1, no filter in both copies (evidence/uiprobe-sdf-tabphoto-*.json #18 / #47)
+    check("照片标签图两份都原样（不透明度 1、无滤镜，庚 #2 原生读值）", "1/none ×2", im.join(" · "), im.length === 2 && im.every((x) => x === "1/none")); }
+  { const tt = document.getElementById("toast"); if (tt) { const c0 = cs(tt), tr = `${c0.transitionProperty} ${c0.transitionDuration} ${c0.transitionTimingFunction}`;   // P0b #4: UIAccessibilityHUDView (uiprobe-motion-hud-prog-ax.json)
+      const was = tt.classList.contains("show"); tt.style.transition = "none"; tt.classList.add("show"); const on = `${cs(tt).opacity}/${cs(tt).scale}`; if (!was) tt.classList.remove("show"); const off = was ? "-" : `${cs(tt).opacity}/${cs(tt).scale}`; void tt.offsetWidth; tt.style.transition = "";
+      check("轻提示淡入淡出 = 原生 HUD：opacity 与 scale 各 0.1 s cubic-bezier(.42,0,.58,1)，出 1/1、收 0/.95（P0b #4）", "opacity, scale 0.1s ×2 (.42,0,.58,1) · 1/1 · 0/0.95", `${tr} · ${on} · ${off}`,
+        /^opacity, scale 0\.1s, 0\.1s cubic-bezier\(0\.42, 0, 0\.58, 1\), cubic-bezier\(0\.42, 0, 0\.58, 1\)$/.test(tr) && on === "1/1" && (was || off === "0/0.95")); } }
   col("蓝字行 = link（--ios-link）", T.link, cs(lab.querySelector(".acts button")).color);
   const cap = lab.querySelector(".sent");
   num("三态小字 11（--ios-caption2-size）", 11, px(cs(cap).fontSize), 0.05); num("三态小字行框 13.13（--ios-caption2-lh）", 13.13, px(cs(cap).lineHeight), 0.05);
@@ -268,5 +274,25 @@
   try { const src = await (await fetch("view.js?v=" + Date.now())).text(); const n = (src.match(/\bconfirm\(/g) || []).length;
     check("行动作不再同步 confirm()（view.js 里只剩 ask() 的无 dialog 兜底那一处）", 1, n, n === 1); } catch (e) { check("行动作不再同步 confirm()", 1, "读不到 view.js", false); }
   }
+    /* P0b #6: a notice card animates only when it is really inserted (UITableView insertSections .fade — uiprobe-motion-grouped-section.json): opacity 0 → 1
+       on the card, the sections below from −(its height) to 0, one spring ζ 1 / ω 20.944 over 440.94 ms; a re-render with the same card starts nothing */
+    if (typeof snap !== "undefined" && snap && typeof render === "function") {
+      const rl = snap.relay = snap.relay || {}, had = Object.prototype.hasOwnProperty.call(rl, "刷声骸"), keep = rl["刷声骸"];
+      try {
+        delete rl["刷声骸"]; render(); await sleep(50);
+        rl["刷声骸"] = { "到": "2026-09-23 23:00:00", "名字": "验收" }; render();
+        const cap = [...document.querySelectorAll("#app .group.notice .ncap")].find((e) => e.textContent === "刷声骸"), sec = cap && cap.closest("section");
+        const an = sec ? sec.getAnimations() : [], kf = an[0] ? an[0].effect.getKeyframes() : [], tm = an[0] ? an[0].effect.getTiming() : {};
+        let nx = sec && sec.nextElementSibling; while (nx && (nx.hidden || !nx.offsetHeight)) nx = nx.nextElementSibling;
+        const bk = nx && nx.getAnimations()[0] ? nx.getAnimations()[0].effect.getKeyframes() : [];
+        const k8 = kf.find((k) => Math.abs(k.offset - 0.25) < 1e-6), want8 = 1 - (1 + 20.943951 * 0.110235) * Math.exp(-20.943951 * 0.110235);   // offset .25 = 110.235 ms into the 440.94 ms
+        check("通知卡真插入：卡片 opacity 0→1、下方一节自 −卡高 → 0，弹簧 ζ1 ω 20.944 共 440.94 ms（P0b #6，¼ 处 opacity = 闭式）", `440.94 ms · 0→1 · ¼ ${want8.toFixed(4)} · 下方有位移`,
+          `${sec ? (sec.hidden ? "卡在隐藏页 " : "") : "无卡 "}${Number(tm.duration || 0).toFixed(2)} ms · ${kf.length ? kf[0].opacity + "→" + kf[kf.length - 1].opacity : "-"} · ¼ ${k8 ? Number(k8.opacity).toFixed(4) : "-"} · 下方 ${bk.length ? bk[0].transform : "无"}`,
+          !!sec && Math.abs(tm.duration - 440.94) < 0.01 && kf.length > 0 && +kf[0].opacity === 0 && +kf[kf.length - 1].opacity === 1 && !!k8 && Math.abs(k8.opacity - want8) < 1e-3 && bk.length > 0 && /translateY\(-/.test(bk[0].transform));
+        await sleep(500); render(); const cap2 = [...document.querySelectorAll("#app .group.notice .ncap")].find((e) => e.textContent === "刷声骸"), s2 = cap2 && cap2.closest("section");
+        const again = s2 ? s2.getAnimations({ subtree: true }).length + (s2.nextElementSibling ? s2.nextElementSibling.getAnimations().length : 0) : -1;   // subtree: the old `rise` ran on the .group inside
+        check("通知卡还在、页面重画：不再播动画（旧 rise 每次重画都重放）", "0 个动画", `${again} 个`, again === 0);
+      } finally { if (had) rl["刷声骸"] = keep; else delete rl["刷声骸"]; render(); await sleep(500); }
+    }
   }, { layer: "release-only" });
 })();
