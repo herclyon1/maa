@@ -10,3 +10,12 @@
    opacity .7 (an older hand-made press) is cancelled here, since glassbtn.js now owns the press */
 .topbar .navbtn.navbtn > .sf { transform: scale(var(--gb-scale, 1)); opacity: var(--gb-icon-alpha, 1); transform-origin: 50% 50%; transition: none; }
 .topbar .navbtn.navbtn:active { opacity: 1; }
+/* P0a: the glow (glassbtn.js, glass-button-press-formula.md §7e) — a sibling laid over the held button, clipped to its circle; each layer is only a
+   backdrop-filter (the vibrant matrix) whose α is its opacity (BigGlow) or the shadow-profile mask × opacity (LittleGlow, 150 % of the box, centred) */
+.gb-glow { display: block; position: absolute; pointer-events: none; border-radius: 50%; overflow: hidden; --gb-little-k: 1.6667; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .gb-glow { --gb-little-k: 4; } }
+:root[data-theme="dark"] .gb-glow { --gb-little-k: 4; }
+.gb-glow > .gb-big { display: block; position: absolute; inset: 0; opacity: 0; backdrop-filter: saturate(1.2) contrast(.90909) brightness(1.1); -webkit-backdrop-filter: saturate(1.2) contrast(.90909) brightness(1.1); }
+.gb-glow > .gb-little { display: block; position: absolute; left: 50%; top: 50%; width: 150%; height: 150%; opacity: 0; transform: translate(-50%, -50%);
+  backdrop-filter: saturate(1.5) brightness(var(--gb-little-k)); -webkit-backdrop-filter: saturate(1.5) brightness(var(--gb-little-k));
+  -webkit-mask-size: 100% 100%; mask-size: 100% 100%; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; }

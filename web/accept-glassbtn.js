@@ -52,7 +52,17 @@
       num("按住：盒中心不动（margin 抵消；同一帧读：矩形中心 vs 页左 + --ios-nav-side 20 + 22）", pgL + side + half, q.left + q.width / 2, 0.5); }
     num("按住：图标 alpha = .2（§7 item 4）", 0.2, parseFloat(getComputedStyle(btn, "::before").opacity), 0.01);
     num("按住：图标 scale × 1.3636（§7 item 4 wrapper 36 → 49.09）", L, (() => { const m = /matrix\(([^)]+)\)/.exec(getComputedStyle(btn, "::before").transform); return m ? parseFloat(m[1].split(",")[0]) : 1; })(), 0.005);
-    check("玻璃钮 光晕（§7b）：读数已记、不可表达（backdrop-aware vibrantColorMatrix），不画", "GlassBtn.glow.built false + why", GlassBtn.glow ? `${GlassBtn.glow.built} · ${GlassBtn.glow.why} · little ${GlassBtn.glow.littleGlow.size}/${GlassBtn.glow.littleGlow.shadowRadius} · dodge ${GlassBtn.glow.littleGlow.luminance.light}/${GlassBtn.glow.littleGlow.luminance.dark}` : "-", !!GlassBtn.glow && GlassBtn.glow.built === false && GlassBtn.glow.littleGlow.shadowRadius === 45);
+    { const g = GlassBtn.glowState(btn), n = btn.nextElementSibling, dark = matchMedia("(prefers-color-scheme: dark)").matches && document.documentElement.dataset.theme !== "light" || document.documentElement.dataset.theme === "dark";
+      const big = n && n.querySelector(".gb-big"), lit = n && n.querySelector(".gb-little"), q = btn.getBoundingClientRect(), gq = n ? n.getBoundingClientRect() : { left: 0, top: 0, width: 0 };
+      const bf = (e) => e ? (getComputedStyle(e).backdropFilter || getComputedStyle(e).webkitBackdropFilter) : "";
+      check("玻璃钮 光晕 P0a（§7e）：按住 600 ms 兄弟层在钮后、与钮同框同圆；BigGlow 1、LittleGlow 1；滤镜 = 探针矩阵按行和拆（大 saturate 1.2 contrast .90909 brightness 1.1，小 saturate 1.5 brightness 1.6667 亮 / 4 暗）；小层带遮罩",
+        `gb-glow · 同框 · 1 · 1 · ${dark ? 4 : 1.6667}`, `${n && n.className} · ${n ? (Math.abs(gq.left - q.left) < .5 && Math.abs(gq.top - q.top) < .5 && Math.abs(gq.width - q.width) < .5 ? "同框" : "错框") : "-"} · ${big && getComputedStyle(big).opacity} · ${lit && getComputedStyle(lit).opacity} · ${bf(big)} | ${bf(lit)} · mask ${lit ? getComputedStyle(lit).webkitMaskImage.slice(0, 15) : "-"}`,
+        !!g && n && n.className === "gb-glow" && Math.abs(gq.width - q.width) < .5 && Math.abs(gq.left - q.left) < .5 && getComputedStyle(n).borderRadius === "50%" && parseFloat(getComputedStyle(big).opacity) === 1 && parseFloat(getComputedStyle(lit).opacity) === 1
+        && /saturate\(1\.2\) contrast\(0\.90909\) brightness\(1\.1\)/.test(bf(big)) && new RegExp(`saturate\\(1\\.5\\) brightness\\(${dark ? "4" : "1\\.6667"}\\)`).test(bf(lit)) && /^url\(/.test(getComputedStyle(lit).webkitMaskImage)); }
+    num("玻璃钮 光晕 P0a：LittleGlow 剖面中心 α = 1 − e^−½（半径 R 的圆与 σ = R 的高斯卷积，keyfill §5.2c）", 1 - Math.exp(-0.5), GlassBtn.glowAlpha(0), 1e-4);
+    check("玻璃钮 光晕 P0a：表 = 探针逐帧原值（BigGlow 按下 +56.9 .4409 / +157 1、松手 +40.2 .9756 / +624 0；LittleGlow 按下 +91.1 .5698 / +191.1 1、松手 +41.1 .9847 × 1.0459 / +624.4 0 × 3.9861）",
+      ".4409 1 .9756 0 · .5698 1 .9847 1.0459 0 3.9861", (() => { const h = (t) => GlassBtn.glowAt("hold", t), r = (t) => GlassBtn.glowAt("release", t, 1, 1); return [h(56.9).b, h(157).b, r(40.2).b, r(624).b, "·", h(91.1).l, h(191.1).l, r(41.1).l, r(41.1).s, r(624.4).l, r(624.4).s].join(" "); })(),
+      (() => { const h = (t) => GlassBtn.glowAt("hold", t), r = (t) => GlassBtn.glowAt("release", t, 1, 1); return h(56.9).b === .4409 && h(157).b === 1 && r(40.2).b === .9756 && r(624).b === 0 && h(91.1).l === .5698 && h(191.1).l === 1 && r(41.1).l === .9847 && r(41.1).s === 1.0459 && r(624.4).l === 0 && r(624.4).s === 3.9861; })());
     /* ③ release — released OUTSIDE the 70 pt margin so nothing fires and the page stays (a firing release pops the page 350 ms later and hides the
        button mid-curve); the release table (§7c) is the same either way */
     ev(btn, "pointermove", cx + 120, cy); await raf();   // 120 = 22 (half the 44) + 70 + 28: outside the margin around the BOUNDS (the scaled rect would reach 100.6)
@@ -128,7 +138,13 @@
         const q = b.getBoundingClientRect(), Lb = GlassBtn.L(b), x = q.left + q.width / 2, y = q.top + q.height / 2, sfOp = () => parseFloat(getComputedStyle(sf).opacity);
         ev(b, "pointerdown", x, y, 21); await sleep(20); await raf(); const a1 = sfOp();
         await sleep(600); const aH = sfOp(), m = /matrix\(([^)]+)\)/.exec(getComputedStyle(sf).transform), sH = m ? parseFloat(m[1].split(",")[0]) : 1;   // L read at rest (44 → 60/44): GlassBtn.L reads the box, which is 60 while held
-        ev(b, "pointermove", x + 120, y, 21); await raf(); ev(b, "pointerup", x + 120, y, 21); await sleep(900); const aE = sfOp();
+        ev(b, "pointermove", x + 120, y, 21); await raf(); ev(b, "pointerup", x + 120, y, 21); await sleep(300);
+        { const g = GlassBtn.glowState(b), n = b.nextElementSibling, lit = n && n.querySelector(".gb-little"), big = n && n.querySelector(".gb-big"), want = g && GlassBtn.glowAt("release", g.t, 1, 1);
+          check(`玻璃钮 光晕 P0a ${sel} 松手 +300 ms：两层按探针表淡出、小层放大（驱动器本帧 t 查表 = 屏上值）`, want ? `${want.b.toFixed(4)} · ${want.l.toFixed(4)} · ×${want.s.toFixed(4)}` : "有",
+            g ? `${getComputedStyle(big).opacity} · ${getComputedStyle(lit).opacity} · ${getComputedStyle(lit).transform}` : "无",
+            !!g && g.phase === "release" && g.t > 250 && g.t < 400 && Math.abs(parseFloat(getComputedStyle(big).opacity) - want.b) < 1e-3 && Math.abs(parseFloat(getComputedStyle(lit).opacity) - want.l) < 1e-3 && want.b < .2 && want.s > 3.4); }
+        await sleep(600); const aE = sfOp();
+        check(`玻璃钮 光晕 P0a ${sel} 松手 +900 ms：光晕层已撤`, "无", b.nextElementSibling && b.nextElementSibling.className === "gb-glow" ? "还在" : "无", !(b.nextElementSibling && b.nextElementSibling.className === "gb-glow"));
         check(`玻璃钮 B3 ${sel}：图标 .sf 按下一帧 .2、按住 .2 且 × L（${Lb.toFixed(4)}）、松手后回 1（§7 item 4 / §7c）`, `.2 · .2 · ${Lb.toFixed(4)} · 1`, `${a1} · ${aH} · ${sH.toFixed(4)} · ${aE}`,
           Math.abs(a1 - 0.2) < 0.001 && Math.abs(aH - 0.2) < 0.01 && Math.abs(sH - Lb) < 0.005 && Math.abs(aE - 1) < 0.001); }
       let best = null; for (const ss of document.styleSheets) { let rs; try { rs = ss.cssRules; } catch (e) { continue; } for (const r of rs) if (r.selectorText && /\.topbar \.navbtn(\.navbtn)?:active/.test(r.selectorText) && r.style.opacity) { const sp = (r.selectorText.match(/\.|:/g) || []).length; if (!best || sp >= best.spec) best = { sel: r.selectorText, v: r.style.opacity, spec: sp }; } }
