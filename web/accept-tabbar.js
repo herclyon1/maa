@@ -23,6 +23,10 @@
     const nav = document.querySelector("nav.tabs"); if (!nav) { check("标签栏：页面无 nav.tabs", "有", "缺", false); return; }
     if (!nav.classList.contains("tlens")) { check("标签栏：tab-lens.js 未接（nav 无 .tlens：挂钩行 / motion.js）", "tlens", nav.className, false); return; }
     const seg = nav.querySelector(".seg"), g = nav.querySelector(".glide"), bs = [...seg.querySelectorAll("button")], plat0 = nav.querySelector(".plat");
+    /* 切页首画（老网页 09-24 01:1x；status-老网页 00:33–01:18）: which pages have been on screen since this file started — a page never shown is the "first visit" (its first paint) */
+    const shownTabs = new Set([...document.querySelectorAll("#app > section")].filter((s) => !s.hidden).map((s) => s.dataset.tab));
+    const shownObs = new MutationObserver(() => { for (const s of document.querySelectorAll("#app > section")) if (!s.hidden) shownTabs.add(s.dataset.tab); });
+    shownObs.observe(document.getElementById("app"), { subtree: true, attributes: true, attributeFilter: ["hidden"] });
     /* V1 偶发标签红 (界面 09-23 17:0x, 5 light runs 2 red on ② with the same numbers 4.7 / 4.1 / 22.9): the rows below measure a lift FROM REST (r0 = the rest box,
        t0 = our own down), but the files register in fetch-arrival order, and when accept-stockpile.js ran first its last line (tab back to startTab, a click) left the
        lens driver running — caught at the start: __tabLens on, nav.tl-on, the glide at l 178.9 instead of 16, the driver's t0 690 ms before our down. So first wait
@@ -335,6 +339,31 @@
       } else check("P0b 标签选中色裁切：标签栏至少两项、每项有 .tcg / .tcs 两份", "有", `${bs.length} 项`, false); }
     /* leave the bar at rest for the next file (the runner starts it at once; a per-block probe 09-23 17:1x caught the next block — sw / acceptTile — starting with
        this file's lens driver still on in 3 of 4 runs, and the switch's +126 ms lift row went red in one of them) */
+    /* 切页首画（老网页 09-24 01:1x，验收 01:19 定由界面改成各页常驻；status-老网页 00:33–01:18）: on real WebKit (模拟器 D, 线上 99ce024) a drag to another tab
+       and release fell from the first frame (+3…+21 ms, native g1_tabdrag_table.txt +21) but the next frame came 20–117 ms late — the page switch's first paint
+       (all page content off → 0). Native keeps every tab's view alive. The rows: from the up until the lens has fallen, no frame dropped (every gap < 2 × the frame
+       interval measured before the up: one dropped frame = 2 ×) — once on a page not yet shown in this file (first visit) and once on a page already shown; and each page keeps its own
+       scroll position across switches (UITabBarController keeps each tab's view controller: HIG Tab bars, remote-ref/tabscroll/README.md §1). */
+    { shownObs.disconnect(); const tb = [...seg.querySelectorAll(":scope > button")].filter((b) => b.offsetWidth), wait = (ms) => new Promise((r) => setTimeout(r, ms));
+      const dragRelease = async (to) => { const from = tb.find((b) => b.classList.contains("on")), fr = from.getBoundingClientRect(), tr = to.getBoundingClientRect(), y = fr.top + fr.height / 2, x0 = fr.left + fr.width / 2, x1 = tr.left + tr.width / 2;
+        ev(from, "pointerdown", x0, y, 71); await wait(600); for (let k = 1; k <= 6; k++) { ev(from, "pointermove", x0 + (x1 - x0) * k / 6, y, 71); await frame(); } await wait(400);
+        const pre = []; for (let k = 0; k < 8; k++) pre.push(await frame()); const iv = pre.slice(1).map((t, k) => t - pre[k]).sort((a, b) => a - b)[3];
+        const tUp = performance.now(); ev(from, "pointerup", x1, y, 71); const ts = [tUp]; const t0 = performance.now();
+        while (performance.now() - t0 < 1500) { ts.push(await frame()); const L = window.__tabLens; if (!L || L.p < 0.01) break; }
+        const gaps = ts.slice(1).map((t, k) => t - ts[k]); return { iv, max: Math.max(...gaps), n: gaps.length, on: to.dataset.tab, landed: to.classList.contains("on") }; };
+      const on0 = tb.findIndex((b) => b.classList.contains("on")), order = tb.map((_, k) => tb[(on0 + 1 + k) % tb.length]).filter((b, k) => k < tb.length - 1);
+      const cold = order.find((b) => !shownTabs.has(b.dataset.tab)), warmT = order.find((b) => shownTabs.has(b.dataset.tab) && !b.classList.contains("on"));
+      for (const [name, to] of [["头一次去的页", cold], ["去过的页", warmT]]) {
+        if (!to) { check(`切页首画 ${name}：松手到落完每帧不空（< 2 × 帧距）`, "有可测的页", "无（本文件开始前各页都已显示过 / 只有一页）", false); continue; }
+        const r = await dragRelease(to); await until(() => !window.__tabLens, 1500);
+        check(`切页首画 ${name}（${r.on}）：拖过去松手，到透镜落完不丢帧（每个帧距 < 2 × 松手前帧距，丢一帧即 2 倍；真 WebKit 原样空 20–117 ms）`, `最大帧距 < ${(2 * r.iv).toFixed(1)} ms · 选中 ${r.on}`, `最大帧距 ${r.max.toFixed(1)} ms（${r.n} 帧，帧距 ${r.iv.toFixed(1)}）· ${r.landed ? "选中 " + r.on : "没选中"}`, r.landed && r.max < 2 * r.iv); }
+      /* scroll positions: page A at 300, page B at 150, back to A = 300, back to B = 150 */
+      const app = document.getElementById("app"), mh = app.style.minHeight; app.style.minHeight = (innerHeight + 900) + "px";
+      const A = tb.find((b) => b.classList.contains("on")), B = tb.find((b) => b !== A), go = async (b) => { b.click(); await frame(); await frame(); };
+      window.scrollTo(0, 300); await until(() => Math.abs(scrollY - 300) < 1, 100); await go(B); window.scrollTo(0, 150); await until(() => Math.abs(scrollY - 150) < 1, 100);
+      await go(A); const ya = scrollY; await go(B); const yb = scrollY; await go(A);
+      check(`各页滚动位置互不干扰（${A.dataset.tab} 停 300 → 切 ${B.dataset.tab} 停 150 → 切回各自原位）`, `${A.dataset.tab} 300 · ${B.dataset.tab} 150`, `${A.dataset.tab} ${Math.round(ya)} · ${B.dataset.tab} ${Math.round(yb)}`, Math.abs(ya - 300) < 1 && Math.abs(yb - 150) < 1);
+      window.scrollTo(0, 0); app.style.minHeight = mh; await until(() => scrollY === 0, 100); }
     { const t0 = performance.now(), rest = () => !window.__tabLens && !nav.classList.contains("tl-on") && !nav.__tabAnim && !g.getAnimations().some((a) => a.playState === "running");
       while (!rest() && performance.now() - t0 < 3000) await new Promise((r) => requestAnimationFrame(r));
       check("标签栏：收尾静止（交给下一个文件前驱动已停、透镜无动画，≤ 3 s）", "静止", `${rest() ? "静止" : "仍在动"} · 等了 ${Math.round(performance.now() - t0)} ms`, rest()); }
