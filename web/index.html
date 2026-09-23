@@ -655,6 +655,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .changed{background:color-mix(in srgb, var(--accent) 8%, var(--card))}
   .posted{background:color-mix(in srgb, var(--ok) 8%, var(--card))}
   .row .sent,.row .cap{flex:1 0 100%;max-width:none;display:block;font-size:var(--ios-caption2-size);line-height:var(--ios-caption2-lh);color:var(--dim);margin-top:calc(6px - 6px);text-align:right}   /* 三态小字：caption2 11/13.13 ← 探针 preferredFont；右齐、距控件 6 ← AX54b 信息「已送达」；色 secondaryLabel ← px54b */
+  .row:has(> .sent),.row:has(> .cap){flex-wrap:wrap}   /* B1: .row is nowrap (0671005), so the full-width small line wrapped nowhere and pushed the switch to x≈225 (morning-sweep 「调试模式」) */
   .row .sent.ok{color:var(--dim)}
   .row .sent.bad{color:var(--bad)}
   .row .sent .again{font:inherit;font-size:var(--ios-caption2-size);line-height:var(--ios-caption2-lh);padding:0 0 0 6px;border-radius:0;margin-left:0;box-shadow:none;background:transparent;color:var(--link)}
