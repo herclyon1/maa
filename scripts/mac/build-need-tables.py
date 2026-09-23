@@ -512,6 +512,27 @@ def material_origin(src: RulesSource, name: str, wiki_ids: dict[str, str]) -> di
     return {"kind": kind, **by, "wikiItemId": wid}
 
 
+def folded_origin(parts: list[dict]) -> dict | None:
+    """An exp row's origin: the union of the origins of the cards folded into it, each
+    line once, in the order of `parts`; kind by material_origin's rule (first present).
+    None when none of the cards has an origin."""
+    got = [r for r in parts if r.get("origin")]
+    if not got:
+        return None
+    by = {k: list(dict.fromkeys(l for r in got for l in r["origin"][k])) for k in ("采集", "理智关卡", "其它")}
+    kind = ORIGIN_GATHER if by["采集"] else ORIGIN_STAGE if by["理智关卡"] else ORIGIN_OTHER
+    return {"kind": kind, **by, "wikiItemId": None,
+            "from": [r["name"] for r in got], "wikiItemIds": [r["origin"]["wikiItemId"] for r in got]}
+
+
+def folded_cards(rows: list[dict], sid: str) -> tuple[list[dict], str, str]:
+    """The exp cards folded into `sid`, highest rarity first; the icon an exp row borrows
+    (the first of them that has one) and the note's words naming it ("" when none has)."""
+    parts = sorted((r for r in rows if r.get("sumInto") == sid), key=lambda r: (-(r["rarity"] or 0), r["name"]))
+    top = next((r for r in parts if r["icon"]), None)
+    return parts, top["icon"] if top else "", f"；图标借{top['name']}" if top else ""
+
+
 def level_totals(rows: list[dict]) -> tuple[int, int]:
     """Gold and exp for 1 -> 90. Negative entries are the level-90 sentinel, skipped."""
     return (sum(int(r["gold"]) for r in rows if int(r["gold"]) >= 0),
@@ -768,14 +789,18 @@ def build(src: RulesSource, pulled_at: str, today: str, char_name: str = "", wea
         else:
             row["note"] = f"{who} 的满练不用它"
         rows.append(row)
-    rows.append({"id": EXP_CHAR, "name": "干员经验", "rarity": None, "icon": "", "need": char_exp,
+    # The two exp rows have no wiki entry of their own: origin is the union of the folded
+    # cards' origins, the icon is the highest-rarity card's (the note names it).
+    cparts, cicon, cnote = folded_cards(rows, EXP_CHAR)
+    wparts, wicon, wnote = folded_cards(rows, EXP_WEAPON)
+    rows.append({"id": EXP_CHAR, "name": "干员经验", "rarity": None, "icon": cicon, "need": char_exp,
                  "group": USE_CHAR_LV if cuses is not None else who_group, "owner": "干员",
-                 "uses": [{"use": USE_CHAR_LV, "need": char_exp}], "origin": None,
-                 "section": "经验与货币", "stage": "干员经验", "virtual": True, "note": "五种作战记录 / 认知载体按经验值折算"})
-    rows.append({"id": EXP_WEAPON, "name": "武器经验", "rarity": None, "icon": "", "need": weap_exp,
+                 "uses": [{"use": USE_CHAR_LV, "need": char_exp}], "origin": folded_origin(cparts),
+                 "section": "经验与货币", "stage": "干员经验", "virtual": True, "note": "五种作战记录 / 认知载体按经验值折算" + cnote})
+    rows.append({"id": EXP_WEAPON, "name": "武器经验", "rarity": None, "icon": wicon, "need": weap_exp,
                  "group": USE_WEAPON_LV if cuses is not None else weapon_group, "owner": "专武",
-                 "uses": [{"use": USE_WEAPON_LV, "need": weap_exp}], "origin": None,
-                 "section": "经验与货币", "stage": "武器经验", "virtual": True, "note": "武器检查套组 / 装置 / 单元按经验值折算"})
+                 "uses": [{"use": USE_WEAPON_LV, "need": weap_exp}], "origin": folded_origin(wparts),
+                 "section": "经验与货币", "stage": "武器经验", "virtual": True, "note": "武器检查套组 / 装置 / 单元按经验值折算" + wnote})
     # Rows in section order (the page takes sections in first-seen order): the use
     # sections, then any per-owner fallback groups, then rows with no group.
     order = {g: i for i, g in enumerate(USE_ORDER + (who_group, weapon_group, f"{who_group} + {weapon_group}"))}

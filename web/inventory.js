@@ -22,7 +22,8 @@
    * uses      - [{use, need}] every step the build spends it on, with the count
    * origin    - how it is obtained, from its official wiki entry's 物品来源 lines:
                  {kind: 采集物 | 理智关卡产出 | 其它来源, 采集: [..], 理智关卡: [..], 其它: [..],
-                 wikiItemId}; null for the two exp rows. originSource = the rule
+                 wikiItemId}; the two exp rows carry the union of their folded cards'
+                 (wikiItemId null, from / wikiItemIds name them). originSource = the rule
    * footnote  - the one-line caption for 人份 (already worded for the page)
    * lagNote   - Skland's own statement that its depot copy runs about 30 minutes behind
                  the game (the official calculator page says so); lagMinutes is the number

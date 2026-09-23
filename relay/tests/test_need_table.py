@@ -172,7 +172,15 @@ check("经验材料折算进虚拟行", {r["name"]: (r["exp"], r["sumInto"]) for
       {"高级认知载体": (10000, "exp:char"), "初级认知载体": (1000, "exp:char"),
        "高级作战记录": (10000, "exp:char"), "中级作战记录": (1000, "exp:char"), "初级作战记录": (200, "exp:char"),
        "武器检查套组": (10000, "exp:weapon"), "武器检查装置": (1000, "exp:weapon"), "武器检查单元": (200, "exp:weapon")})
-check("自选箱不计人份", (rows["高阶培养自选箱Ⅰ"]["need"], rows["高阶培养自选箱Ⅰ"]["group"]), (None, None))
+for exp_row, sid in (("干员经验", "exp:char"), ("武器经验", "exp:weapon")):
+    cards = sorted((r for r in g["rows"] if r.get("sumInto") == sid), key=lambda r: (-r["rarity"], r["name"]))
+    o = rows[exp_row]["origin"]
+    check(f"{exp_row}：怎么来 = 折进来那几种的并集", (o["kind"], o["from"], {k: set(o[k]) for k in ("采集", "理智关卡", "其它")}),
+          (cards[0]["origin"]["kind"], [r["name"] for r in cards],
+           {k: {l for r in cards for l in r["origin"][k]} for k in ("采集", "理智关卡", "其它")}))
+    check(f"{exp_row}：图标借最高稀有度那件", (rows[exp_row]["icon"], rows[exp_row]["note"].endswith(f"图标借{cards[0]['name']}")),
+          (cards[0]["icon"], True))
+check("自选箱不计人份",(rows["高阶培养自选箱Ⅰ"]["need"], rows["高阶培养自选箱Ⅰ"]["group"]), (None, None))
 check("sections", g["sections"], ["通用", "高阶素材", "采集", "经验与货币"])
 check("延迟那句是官方计算器页面说的", (g["lagMinutes"], "官方" in g["lagNote"]), (30, True))
 check("每行都在某一节里，经验材料不在", {r["section"] for r in g["rows"] if not r.get("sumInto")}, {"通用", "高阶素材", "采集", "经验与货币"})
