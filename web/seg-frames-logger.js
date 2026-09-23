@@ -390,8 +390,16 @@
       lineEl.style.cssText = "position:fixed;left:12px;right:88px;bottom:calc(env(safe-area-inset-bottom, 0px) + 8px);z-index:2147483645;padding:6px 10px;border-radius:10px;background:rgba(28,28,30,.9);color:#fff;font:12px/1.35 -apple-system, ui-sans-serif, system-ui;-webkit-user-select:none;user-select:none";
       lineEl.addEventListener("click", () => { if (lastOut) dispatchEvent(new CustomEvent("segframes", { detail: lastOut })); });   // tap the line = the copy / share sheet for the latest record
       document.body.appendChild(lineEl);
+      addEventListener("resize", placeLine);
     }
-    lineEl.textContent = t;
+    lineEl.textContent = t; placeLine();
+  }
+  /* the line sits above the floating tab bar: at the screen's bottom it covered the first four tabs, so with diagnostics on a tap on a tab hit
+     the line (opened the copy / share sheet) instead of switching (模拟器 A 18:12, 界面 自核) */
+  function placeLine() {
+    if (!lineEl) return;
+    const nav = document.querySelector("nav.tabs"), r = nav && getComputedStyle(nav).display !== "none" ? nav.getBoundingClientRect() : null;
+    lineEl.style.bottom = r && r.height ? `${Math.round(innerHeight - r.top + 8)}px` : "calc(env(safe-area-inset-bottom, 0px) + 8px)";
   }
   function buildMarkUI() {
     if (!DIAG_UI || markUI || !document.body) return;
