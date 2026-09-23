@@ -49,7 +49,7 @@
         `${same ? "同链" : "链不同"} · ${mv.length} 项 |Δ|max ${mv.length === 20 ? Math.max(...mv.map((v, i) => Math.abs(v - m.vibrant[i]))).toExponential(1) : "-"} · ${mask.slice(0, 20)} · ${col}`,
         same && !!vcopy && vcopy.style.filter === 'url("#toast-glass-v")' && mv.length === 20 && mv.every((v, i) => Math.abs(v - m.vibrant[i]) < 1e-6) && /^url\("?data:image\/svg\+xml/.test(mask) && col === "rgba(0, 0, 0, 0)");
       /* the mask = the engine's own layout of the toast's text (toast-glass.js glyphMask: SVG foreignObject, the toast's box and computed text styles) */
-      const want = [...tt.childNodes].filter((n) => n.nodeType === 3).map((n) => n.data).join(""), svg = (() => { try { return decodeURIComponent(mask.replace(/^url\("?data:image\/svg\+xml;charset=utf-8,/, "").replace(/"?\)$/, "")); } catch (e) { return ""; } })();
+      const want = [...tt.childNodes].filter((n) => n.nodeType === 3).map((n) => n.data).join(""), svg = (() => { try { return decodeURIComponent(mask.split(/,\s*url\(/)[0].replace(/^url\("?data:image\/svg\+xml;charset=utf-8,/, "").replace(/"?\)$/, "")); } catch (e) { return ""; } })();
       const dv = new DOMParser().parseFromString(svg || "<svg/>", "image/svg+xml").querySelector("foreignObject > div"), ds = dv ? dv.style : null, tcs = getComputedStyle(tt), gb = G.box;
       const same2 = !!ds && ["font-family", "font-size", "font-weight", "line-height", "letter-spacing", "padding-left", "padding-top", "text-align", "white-space"].every((k) => ds.getPropertyValue(k) === tcs.getPropertyValue(k));
       check("轻提示活字 字形图 = 引擎按面板同款排的同一段字（SVG foreignObject：字相同、面板框宽高、字体 / 字号 / 字重 / 行高 / 字距 / 内距 / 对齐 / 换行同计算样式）", `${want} · ${gb ? gb.W + "×" + gb.H : "-"} · 同样式`,

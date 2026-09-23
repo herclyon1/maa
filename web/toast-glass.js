@@ -44,7 +44,7 @@
     return [0, 1, 2].map(r).join("  ") + "  0 0 0 1 0"; };
   const K = 0.25;   // UICABackdropLayer scale (uiprobe-subtree-g8-hud-{light,dark}.json kvc.scale), both themes
   const MARGIN = (m) => Math.ceil(3 * m.radius);   // the blur's support beyond the toast (3σ, page units)
-  const glass = { layer: null, copy: null, vcopy: null, ups: [], maskText: null, theme: null, box: null };
+  const glass = { layer: null, copy: null, vcopy: null, ups: [], maskText: null, maskLines: null, theme: null, box: null };
   const ensureFilter = (th) => { const m = MAT[th]; let svg = document.getElementById("toast-glass-svg");
     if (!svg) { svg = document.createElementNS(NS, "svg"); svg.id = "toast-glass-svg"; svg.setAttribute("width", "0"); svg.setAttribute("height", "0"); svg.setAttribute("aria-hidden", "true"); svg.style.cssText = "position:absolute;width:0;height:0"; document.body.appendChild(svg); }
     if (svg.dataset.theme === th) return svg.querySelector("filter"); svg.dataset.theme = th;
@@ -79,8 +79,25 @@
     const text = [...tt.childNodes].filter((n) => n.nodeType === 3).map((n) => n.data).join("");   // the toast's own text (view.js toast() sets textContent; the glass layer is an element)
     const css = STYLE.map((k) => { const v = cs.getPropertyValue(k); return v ? `${k}:${v}` : ""; }).filter(Boolean).join(";").replace(/"/g, "'");
     const div = `<div xmlns="http://www.w3.org/1999/xhtml"${lang ? ` lang="${lang}"` : ""} style="box-sizing:border-box;margin:0;width:${b.W}px;height:${b.H}px;border-style:solid;border-color:transparent;color:#000;background:none;${esc(css)}">${esc(text)}</div>`;
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${b.W}" height="${b.H}"><foreignObject x="0" y="0" width="${b.W}" height="${b.H}">${div}</foreignObject></svg>`;
-    return { url: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg), text }; };
+    /* one mask layer per line: the image document rounds each baseline to a whole CSS px, the page to a device px (TextBoxPainter.cpp textOriginFromPaintRect:
+       y = roundToDevicePixel(box y + ascent, document deviceScaleFactor); SVGImage.cpp never sets one, Page.h:1589 defaults it to 1), so on D (dpr 3) line 1 at
+       27.65625 painted at 28 in the image and 83/3 in the page (mask 1 device px low), line 2 at 47.984375 at 48 in both. Layer i is the whole text clipped to
+       line i's box, moved by page baseline − image baseline, both from that rule (the move is a whole number of device px, so its own placement does not round). */
+    const bl = baselines(b), dpr = devicePixelRatio || 1, lead = bl.length ? bl[0] - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.borderTopWidth) || 0) : 0;
+    const layers = (bl.length ? bl : [null]).map((y, i) => { const y0 = i && y !== null ? y - lead : 0, y1 = y !== null && i < bl.length - 1 ? bl[i + 1] - lead : b.H;
+      const dy = y === null ? 0 : Math.round((b.t + y) * dpr) / dpr - b.t - Math.round(y);
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${b.W}" height="${b.H}"><clipPath id="l"><rect x="0" y="${y0}" width="${b.W}" height="${y1 - y0}"/></clipPath><g clip-path="url(#l)"><foreignObject x="0" y="0" width="${b.W}" height="${b.H}">${div}</foreignObject></g></svg>`;
+      return { url: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg), dy }; });
+    return { layers, text, baselines: bl }; };
+  /* each line's baseline in the toast's untransformed box, unrounded (layout units): a zero-size inline-block after each line's first character, read and removed */
+  const baselines = (b) => { const tn = [...tt.childNodes].find((n) => n.nodeType === 3); if (!tn || !tn.data) return [];
+    const s = tn.data, r = document.createRange(), starts = []; let prev = null;
+    for (let i = 0; i < s.length; i += s.codePointAt(i) > 0xffff ? 2 : 1) { r.setStart(tn, i); r.setEnd(tn, i + (s.codePointAt(i) > 0xffff ? 2 : 1)); const q = r.getClientRects()[0]; if (!q) continue;
+      if (prev === null || q.top > prev + q.height / 2) starts.push(i); prev = q.top; }
+    const marks = []; for (const i of starts.reverse()) { const k = i + (s.codePointAt(i) > 0xffff ? 2 : 1); if (k > s.length) continue; const rest = tn.splitText(k), m = document.createElement("span");
+      m.style.cssText = "display:inline-block;width:0;height:0;vertical-align:baseline"; tt.insertBefore(m, rest); marks.unshift(m); }
+    const tr = tt.getBoundingClientRect(), sc = tr.height / b.H || 1, cy = tr.top + tr.height / 2;   // the appear scale acts about the centre
+    const ys = marks.map((m) => (m.getBoundingClientRect().bottom - cy) / sc + b.H / 2); for (const m of marks) m.remove(); tt.normalize(); return ys; };
   const build = () => { const main = document.getElementById("app"); if (!main) return; const th = theme(); ensureFilter(th); strip();
     const mr = main.getBoundingClientRect(), ph = Math.max(mr.height, innerHeight + 200);
     const page = main.cloneNode(true); page.removeAttribute("id"); page.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); page.querySelectorAll("canvas, .lens-clip, script, .menu, .menu-scrim, dialog").forEach((e) => e.remove());
@@ -88,13 +105,13 @@
     const mk = (fid, pg) => { const copy = document.createElement("div"); copy.className = "toast-glass-copy"; copy.style.cssText = `position:absolute;left:0;top:0;width:${mr.width * K}px;height:${ph * K}px;pointer-events:none;filter:url(#${fid})`; copy.appendChild(pg);
       const up = document.createElement("div"); up.className = "toast-glass-up"; up.style.cssText = "position:absolute;left:0;top:0;transform-origin:0 0;pointer-events:none"; up.appendChild(copy); return { up, copy }; };
     const A = mk("toast-glass-f", page), V = mk("toast-glass-v", page.cloneNode(true)), b = box(), gm = glyphMask(b);
-    const vib = document.createElement("div"); vib.className = "toast-glass-vib"; vib.style.cssText = `position:absolute;inset:0;pointer-events:none;-webkit-mask:url("${gm.url}") 0 0 / ${b.W}px ${b.H}px no-repeat;mask:url("${gm.url}") 0 0 / ${b.W}px ${b.H}px no-repeat`; vib.appendChild(V.up);
+    const vib = document.createElement("div"); vib.className = "toast-glass-vib"; vib.style.cssText = `position:absolute;inset:0;pointer-events:none;${["-webkit-mask", "mask"].map((k) => `${k}:${gm.layers.map((l) => `url("${l.url}") 0 ${l.dy}px / ${b.W}px ${b.H}px no-repeat`).join(", ")}`).join(";")}`; vib.appendChild(V.up);
     const layer = document.createElement("div"); layer.className = "toast-glass"; layer.setAttribute("aria-hidden", "true"); layer.appendChild(A.up); layer.appendChild(vib);
-    tt.prepend(layer); glass.layer = layer; glass.copy = A.copy; glass.vcopy = V.copy; glass.ups = [A.up, V.up]; glass.maskText = gm.text; glass.theme = th; tt.classList.add("glass-read"); place(); };
-  const strip = () => { if (glass.layer) glass.layer.remove(); glass.layer = glass.copy = glass.vcopy = glass.box = glass.maskText = null; glass.ups = []; tt.classList.remove("glass-read"); };
+    tt.prepend(layer); glass.layer = layer; glass.copy = A.copy; glass.vcopy = V.copy; glass.ups = [A.up, V.up]; glass.maskText = gm.text; glass.maskLines = gm.layers.map((l, i) => ({ baseline: gm.baselines[i], dy: l.dy })); glass.theme = th; tt.classList.add("glass-read"); place(); };
+  const strip = () => { if (glass.layer) glass.layer.remove(); glass.layer = glass.copy = glass.vcopy = glass.box = glass.maskText = glass.maskLines = null; glass.ups = []; tt.classList.remove("glass-read"); };
   /* showing = the .show class; view.js toast() rewrites textContent (the layer goes with it) and adds .show in the same task — both land in one observer call */
   new MutationObserver(() => { const on = tt.classList.contains("show"); if (on && (!glass.layer || glass.layer.parentNode !== tt)) build(); }).observe(tt, { attributes: true, attributeFilter: ["class"], childList: true });
   tt.addEventListener("transitionend", (e) => { if (e.target === tt && e.propertyName === "opacity" && !tt.classList.contains("show")) strip(); });   // hidden: drop the copy after the 0.1 s fade
   addEventListener("resize", place); addEventListener("scroll", place, { passive: true });
-  window.ToastGlass = { MAT, K, horner, curve, satMatrix, theme, rebuild: build, get layer() { return glass.layer; }, get box() { return glass.box; }, get maskText() { return glass.maskText; } };
+  window.ToastGlass = { MAT, K, horner, curve, satMatrix, theme, rebuild: build, get layer() { return glass.layer; }, get box() { return glass.box; }, get maskText() { return glass.maskText; }, get maskLines() { return glass.maskLines; } };
 })();
