@@ -10,8 +10,10 @@
 这个测试就是钉住这一点——往 relay/ 里放个新 .py，清单没收它就红。
 """
 import json
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 RELAY = Path(__file__).resolve().parents[1]
@@ -26,10 +28,12 @@ def check(label, got, want):
         fails.append(label)
 
 
-# The generator stamps a fresh version and ref every time it runs, so rebuilding
-# the manifest "back" still leaves a different file behind: every lint-repo.sh
-# run left relay/manifest.json modified (2026-09-23 04:08, a version nobody
-# deployed). Keep the exact bytes and put them back at the end.
+# The generator stamps a fresh version and ref every time it runs, so the
+# probe below must never run it against the real tree. Restoring the bytes in a
+# `finally` was not enough: a run killed mid-way (or one from an older checkout)
+# still left a version nobody deployed in the shared tree - 2026-09-23 10:55:04,
+# maa-automation-controls, version 20260923001824, which exists on no branch.
+# The probe now runs on a throwaway copy; the real file is only read.
 original = (RELAY / "manifest.json").read_bytes()
 man = json.loads(original.decode("utf-8"))
 listed = set(man["files"])
@@ -49,23 +53,21 @@ check("清单无幽灵条目",
       sorted(f for f in listed if f != "RELEASE-NOTES.md" and not (RELAY / f).exists()), [])
 
 print("\n[新放一个文件进去，重新生成的清单必须收它]")
-probe = RELAY / "zz_manifest_probe.py"
-try:
-    probe.write_text("# 临时探针，测完就删\n", encoding="utf-8")
-    out = subprocess.run([sys.executable, "make-manifest.py"], cwd=RELAY,
+with tempfile.TemporaryDirectory() as tmp:
+    copy = Path(tmp) / "relay"
+    shutil.copytree(RELAY, copy,
+                    ignore=shutil.ignore_patterns("tests", "state", "__pycache__"))
+    (copy / "zz_manifest_probe.py").write_text("# 临时探针，测完就删\n", encoding="utf-8")
+    out = subprocess.run([sys.executable, "make-manifest.py"], cwd=copy,
                          capture_output=True, text=True)
     check("生成器跑得起来", out.returncode, 0)
-    again = json.loads((RELAY / "manifest.json").read_text(encoding="utf-8"))
+    again = json.loads((copy / "manifest.json").read_text(encoding="utf-8"))
     check("新文件被收进清单", "zz_manifest_probe.py" in again["files"], True)
-finally:
-    probe.unlink(missing_ok=True)
-    # the bytes from the start, not a rebuild (a rebuild stamps a new version)
-    (RELAY / "manifest.json").write_bytes(original)
+    check("副本里的清单和真清单文件集一致（除探针）",
+          sorted(set(again["files"]) - {"zz_manifest_probe.py"}), sorted(listed))
 
-back = json.loads((RELAY / "manifest.json").read_text(encoding="utf-8"))
-check("还原后清单里没有探针", "zz_manifest_probe.py" in back["files"], False)
-check("还原后文件数和开工时一致", len(back["files"]), len(listed))
-check("还原后清单逐字节和开工时一致", (RELAY / "manifest.json").read_bytes() == original, True)
+check("真树里没留下探针", (RELAY / "zz_manifest_probe.py").exists(), False)
+check("真清单测试前后逐字节不变", (RELAY / "manifest.json").read_bytes() == original, True)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
