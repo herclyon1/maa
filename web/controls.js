@@ -39,10 +39,17 @@
   function fadeOut(el) {   // .hl → .hl-out in one style change, so the transition runs highlight → resting
     el.classList.add("hl-out"); el.classList.remove("hl");
     let done = false;
-    const end = () => { if (done) return; done = true; el.removeEventListener("transitionend", onEnd); el.classList.remove("hl-out"); };
+    const end = () => { if (done) return; done = true; el.removeEventListener("transitionend", onEnd); el.removeEventListener("transitioncancel", onEnd); el.classList.remove("hl-out"); };
     const onEnd = (ev) => { if (ev.target === el && ev.propertyName === "background-color") end(); };
     el.addEventListener("transitionend", onEnd);
-    setTimeout(end, ROW_FADE_MS() + 100);   // a fallback: the transition may be skipped (display change, reduced motion)
+    /* the class goes when the fade itself ends — never on a clock: a frame stall right after the up (an alert / sheet opening; simulator A
+       19:1x: rAF gaps 149 → 1483 → 5503 ms while ask() opened) delays the transition's start, and a timer of duration + 100 ms cut the fade
+       mid-way into a jump to rest (蓝字行 R 209 → 209 then rest). Only when no transition was created (display change, reduced motion) is the
+       class dropped at once; a cancelled one (the row re-pressed / stripped) ends through transitioncancel. */
+    el.addEventListener("transitioncancel", onEnd);
+    const tr = el.getAnimations ? el.getAnimations().find((a) => a.transitionProperty === "background-color") : null;
+    if (el.getAnimations && !tr) end();
+    else if (!el.getAnimations) setTimeout(end, ROW_FADE_MS() + 100);   // no Web Animations API: the old fallback
   }
   document.addEventListener("pointerdown", (e) => {
     const el = e.target.closest && e.target.closest(ROW_SEL); if (!el || el.disabled || el.closest("dialog")) return;
@@ -56,7 +63,7 @@
     const afterPaint = Motion.afterPaint;
     const release = () => { fadeOut(el); afterPaint(select); };   // the fade starts now (painted next frame), the selection after that paint
     const light = () => {   // +150 ms with the finger still down: the highlight, instant
-      timer = 0; if (over) return; lit = true; el.classList.add("hl");
+      timer = 0; if (over) return; lit = true; el.classList.remove("hl-out"); el.classList.add("hl");   // a re-press during the last fade: .hl-out's transition must not carry the instant highlight
     };
     const cancel = () => {   // instant off (no transition even on .acts button, whose rest rule carries one), no select
       if (over) return; over = true; clearTimeout(timer); timer = 0; delete el.dataset.rp;
@@ -70,7 +77,7 @@
         over = true; delete el.dataset.rp;
         Motion.swallowNextClick(el);   // the browser's own click for this touch (Android: 40–60 ms after the up) is swallowed, ours follows after the frames
         if (!lit) {                     // a short tap: no wait for the timer — highlight now, flushed so the fade starts from it
-          clearTimeout(timer); timer = 0; lit = true; el.classList.add("hl"); void getComputedStyle(el).backgroundColor;
+          clearTimeout(timer); timer = 0; lit = true; el.classList.remove("hl-out"); el.classList.add("hl"); void getComputedStyle(el).backgroundColor;
         }
         release();
       },
