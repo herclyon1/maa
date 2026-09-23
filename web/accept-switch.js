@@ -67,7 +67,7 @@ ACCEPT.add(async function sw({ check, num, col, sleep, settle }) {
     check("开关 按下 +120 ms：井环 2 → 15.5 在途（.39 s，--ios-motion-switch-well-grow-duration）", "2 < wb < 15.5", Math.round(w * 100) / 100, w > 2.5 && w < 15); }
   await sleep(120);
   { const sc = scaleOf(kn(), "::after"), el = (performance.now() - tDown - 10) / 1000, want = 1 + spr(.625, .27, el) * (58 / 37 - 1);
-    check(`开关 按下 +${Math.round(el * 1000 + 10)} ms：过冲中（ζ .625 峰 +173 ms 1.081 → 58 → 59.7）scale x ≈ ${Math.round(want * 1000) / 1000}`, `${Math.round(want * 1000) / 1000} ± .02`, sc[0], Math.abs(sc[0] - want) <= .02 && lift() >= .95); }
+    check(`开关 按下 +${Math.round(el * 1000 + 10)} ms：过冲中（ζ .625 峰 +173 ms 1.081 → 58 → 59.7）scale x ≈ ${Math.round(want * 1000) / 1000}`, `${Math.round(want * 1000) / 1000} ± .02`, sc[0], [0, .017, .033, .05].some((d) => Math.abs(sc[0] - (1 + spr(.625, .27, el - d) * (58 / 37 - 1))) <= .02) && lift() >= .95); }   // like the +142 row: the scale is the last rAF tick's, up to ~3 frames behind (simulator B 09-23 21:33, +280 ms read 1.6 against 1.574 at the read time, 1.588 / 1.597 one / three frames earlier)
   await sleep(220);
   { const sc = scaleOf(kn(), "::after"); check("开关 按下 +460 ms：旋钮落定 58×38.33（scale 1.5676 1.5971，± .003）", "1.5676 1.5971", cs(kn(), "::after").scale, Math.abs(sc[0] - 58 / 37) < .003 && Math.abs(sc[1] - 38.33 / 24) < .003); }
   num("开关 按下 +460 ms：井环到 15.5（.39 s 完）", 15.5, wb(), 0.05);
