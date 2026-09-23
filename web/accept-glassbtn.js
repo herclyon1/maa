@@ -123,6 +123,22 @@
       check(`玻璃钮 R71″ ③ 再按后：谷在 down₂ + 40…70（落到抬起表起点 52.6 后转向；探针 +38 / 首长大帧 +71），再从谷值按抬起表时间线长起，峰 ≈ from + .39·(L − from)/(L − 1) = ${wantPeak.toFixed(3)}（探针 ×1.385 @ +204）在 down₂ + 185…225`, "trough 40…70 · peak match ± .01 · peak 185…225", `trough ×${from.toFixed(3)} @ +${(minS.t - tD2).toFixed(0)} · peak ×${(pk.w / 44).toFixed(3)} @ +${(pk.t - tD2).toFixed(0)}`, minS.t - tD2 > 35 && minS.t - tD2 < 75 && Math.abs(pk.w / 44 - wantPeak) < .01 && pk.t - tD2 > 185 && pk.t - tD2 < 225);
       num("玻璃钮 R71″ ③ 再按 +650 ms：到位 L（盒 60）", 60 / 44, wOf() / 44, .005);
       ev(b3, "pointerup", far3, y3, 14); await settle(() => !GlassBtn.state(b3), 900); check("玻璃钮 R71″ ③ 松手后复位（驱动器放手，≤ 900）", "无 · 44", `${b3.style.width || "无"} · ${wOf().toFixed(1)}`, !b3.style.width && Math.abs(wOf() - 44) < .01); }
+    /* B3: the top bar's ✕ / ✓ — the glyph is a child .sf (view.js sf()), it must take the same .2 / × L as ::before above; the button itself stays opaque
+       while held (§7: only the geometry, the icon alpha and the glow change) — a synthetic pointerdown does not set :active, so that rule is read from the CSSOM */
+    { const bar = document.querySelector("#topbar"), was = bar && bar.classList.contains("editing");
+      if (bar && !was) bar.classList.add("editing");
+      for (const sel of ["#save", "#discard"]) {
+        const b = document.querySelector(sel), sf = b && b.querySelector(".sf");
+        if (!sf) { check(`玻璃钮 B3 ${sel} 图标 .sf 在`, "有", "缺", false); continue; }
+        const q = b.getBoundingClientRect(), Lb = GlassBtn.L(b), x = q.left + q.width / 2, y = q.top + q.height / 2, sfOp = () => parseFloat(getComputedStyle(sf).opacity);
+        ev(b, "pointerdown", x, y, 21); await sleep(20); await raf(); const a1 = sfOp();
+        await sleep(600); const aH = sfOp(), m = /matrix\(([^)]+)\)/.exec(getComputedStyle(sf).transform), sH = m ? parseFloat(m[1].split(",")[0]) : 1;   // L read at rest (44 → 60/44): GlassBtn.L reads the box, which is 60 while held
+        ev(b, "pointermove", x + 120, y, 21); await raf(); ev(b, "pointerup", x + 120, y, 21); await sleep(900); const aE = sfOp();
+        check(`玻璃钮 B3 ${sel}：图标 .sf 按下一帧 .2、按住 .2 且 × L（${Lb.toFixed(4)}）、松手后回 1（§7 item 4 / §7c）`, `.2 · .2 · ${Lb.toFixed(4)} · 1`, `${a1} · ${aH} · ${sH.toFixed(4)} · ${aE}`,
+          Math.abs(a1 - 0.2) < 0.001 && Math.abs(aH - 0.2) < 0.01 && Math.abs(sH - Lb) < 0.005 && Math.abs(aE - 1) < 0.001); }
+      let best = null; for (const ss of document.styleSheets) { let rs; try { rs = ss.cssRules; } catch (e) { continue; } for (const r of rs) if (r.selectorText && /\.topbar \.navbtn(\.navbtn)?:active/.test(r.selectorText) && r.style.opacity) { const sp = (r.selectorText.match(/\.|:/g) || []).length; if (!best || sp >= best.spec) best = { sel: r.selectorText, v: r.style.opacity, spec: sp }; } }
+      check("玻璃钮 B3 顶栏钮按住整钮不变淡（§7：只改几何 + 图标 alpha + 光晕；CSSOM 里特异度最高的 :active opacity 规则）", "1", best ? `${best.v}（${best.sel}）` : "无规则", !best || best.v === "1");
+      if (bar && !was) bar.classList.remove("editing"); }
     b2.click(); await navSettled();
     /* B2 (P1-数据 §五): a long press on ✓ selected the title beside it (「待保存 1 项」, blue range + handles, then half the page) — a UINavigationBar's
        title and its UIButtons take no text selection; -webkit-touch-callout is not readable in Chrome, user-select is set in the same rule (index.html) */
