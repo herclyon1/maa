@@ -11,6 +11,22 @@ dialog#alert.glass-read > .pane { background: transparent; backdrop-filter: none
 dialog#alert.glass-read { overflow: visible; filter: drop-shadow(0 8px 16.9706px rgba(0, 0, 0, 0.12)); }
 dialog#alert.glass-read.glass-dark { filter: drop-shadow(0 8px 16.9706px rgba(0, 0, 0, 0.18)); }
 dialog#alert.glass-read > .alert-stroke { position: absolute; }
+/* its own composited layer from the open (alert-glass.js build: a repaint over the panel no longer re-runs the stroke's filter) */
+dialog#alert.glass-read > .alert-stroke-host { position: absolute; will-change: transform; }
 dialog#alert.glass-read > .pane > .alert-glass > .alert-glass-w3, dialog#alert.glass-read > .pane > .alert-glass > .alert-glass-w3 > .alert-glass-w2 { position: absolute; left: 0; top: 0; width: 100%; pointer-events: none; }
 dialog#alert.glass-read > .pane > .alert-glass { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 dialog#alert.glass-read > .pane > .alert-glass > .alert-glass-copy { contain: layout paint style; }
+/* The two clones of #app (the glass copy .alert-glass-page, the stroke copy .alert-stroke-copy) are stills of the page as it stands at open: the live page's
+   entrance animations have already run (e.g. index.html:489 `.segctl button.on` seg-in .1s), a fresh clone replays them from 0 — repainting the filtered copy
+   on every frame of the replay (the whole filter chain recomputed per frame) and bubbling animationend up to dialog#alert, where view.js:50 takes the first
+   animationend as the end of alert-in: .settled at 124 ms instead of 423 ms, so the stroke was built inside the still-scaling dialog (simulator B, 09-23 19:5x:
+   animationstart alert-in 15 · animationend seg-in 124 · seg-in again at 244 from the stroke copy · animationend alert-in 423). */
+.alert-glass-page, .alert-glass-page *, .alert-stroke-copy, .alert-stroke-copy * { animation: none !important; transition: none !important; }
+/* ... and never composited inside: a composited descendant (the switch knob's `span::after`, index.html:465 will-change: translate, scale, background,
+   box-shadow) makes every ancestor with a filter or transform composited too (WebKit RenderLayerCompositor.cpp:4214 computeIndirectCompositingReason →
+   GraphicalEffect), and a composited layer cannot hand a url() filter to the compositor (RenderLayerBacking.cpp:884 m_canCompositeFilters = false for a
+   reference filter): the filter then runs only over the layer's own paint, the composited copy page is drawn beside it unfiltered — f1 / f2 / f3 silently
+   skipped (simulator D, 09-23 21:0x: Web Inspector LayerTree w3 / up / w2 / copy composited with 0 MB backing, the page its own 8 MB layer; the panel
+   pixel-identical with and without the three filters). The pseudo-elements are listed on their own: `*` does not match them. */
+.alert-glass-page, .alert-glass-page *, .alert-glass-page *::before, .alert-glass-page *::after,
+.alert-stroke-copy, .alert-stroke-copy *, .alert-stroke-copy *::before, .alert-stroke-copy *::after { will-change: auto !important; }

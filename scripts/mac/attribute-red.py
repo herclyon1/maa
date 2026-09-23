@@ -26,6 +26,7 @@ OWNERS = {  # control: (owner, page files that only this control uses)
     'glassbtn': ('界面', ['web/glassbtn.js', 'web/glassbtn.css']),
     'alert': ('2号', ['web/alert-glass.js', 'web/alert-glass.css', 'web/alert-prewarm.js']),
     'textfit': ('2号', ['web/textfit.css', 'web/stockpile.js']),
+    'toast': ('2号', ['web/index.html', 'web/toast-glass.js']),
     'switch': ('界面', ['web/switch.js', 'web/switch.css']),
     'tabbar': ('2号', ['web/assets/lens/tab-lens.js', 'web/assets/lens/lens-webgl.js']),
     'tile': ('界面', ['web/tile.css']),
