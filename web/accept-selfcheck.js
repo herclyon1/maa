@@ -4,9 +4,12 @@
    written — is checked by what it leaves behind, not by reading the code. */
 ACCEPT.add(async function selfcheck({ check, sleep }) {
   const $ = (s) => document.querySelector(s);
-  /* 1. the runners (&quiet) never enter the sandbox: their fake mailbox stays, no backup key is written */
-  check("自检沙箱：带 &quiet 的跑不进沙箱（__acceptDevice = false，无 ark-accept-restore）", "false, 无", `${window.__acceptDevice}, ${localStorage.getItem("ark-accept-restore") === null ? "无" : "有"}`,
-        window.__acceptDevice === false && localStorage.getItem("ark-accept-restore") === null);
+  /* 1. the runners (&quiet) never enter the sandbox: their fake mailbox stays, no backup key is written; a run from 运行自检 is in it, with its backup
+     (simulator 18:18, 2b9082d: this row read the runner's expectation on the phone and failed there) */
+  const onDevice = !/[?&]quiet(=|&|$)/.test(location.search), hasBak = localStorage.getItem("ark-accept-restore") !== null;
+  check(onDevice ? "自检沙箱：从「运行自检」进来的跑在沙箱里（__acceptDevice = true，ark-accept-restore 在，信箱设置已摘）" : "自检沙箱：带 &quiet 的跑不进沙箱（__acceptDevice = false，无 ark-accept-restore）",
+        onDevice ? "true, 有, 摘了" : "false, 无", `${window.__acceptDevice}, ${hasBak ? "有" : "无"}${onDevice ? (localStorage.getItem("ark-remote-cfg") === null ? ", 摘了" : ", 还在") : ""}`,
+        onDevice ? window.__acceptDevice === true && hasBak && localStorage.getItem("ark-remote-cfg") === null : window.__acceptDevice === false && !hasBak);
   /* 2. the head script, run against a stand-in localStorage / location / fetch */
   let code = "";
   try { const html = await (await fetch("index.html?v=" + Date.now(), { cache: "no-store" })).text(); const m = /<script>(\/\* 诊断记录 \(手机 tab[\s\S]*?)<\/script>/.exec(html); code = m ? m[1] : ""; } catch (e) {}
