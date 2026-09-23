@@ -21,6 +21,20 @@
     if (!window.Menu) { check("菜单：Menu 未装载（motion.js 未到 → 旧路径）", "Menu", "缺", false); return; }
     const btn = document.querySelector("main .menubtn"); const sel = btn && btn.previousElementSibling;
     if (!btn || !sel || sel.tagName !== "SELECT") { check("菜单：页面上没有值行按钮可测", "有", "缺", false); return; }
+    /* long values (NATIVE-GAP 省略号三处, 数据 20:18): the native popup button wraps by word (titleLabel numberOfLines 0) and grows taller;
+       a clone beside the real button, 120 wide, carries a long value — it must take more than one 22 line and cut nothing */
+    {
+      const c = btn.cloneNode(false); c.style.width = "120px"; c.style.maxWidth = "120px"; c.textContent = "Tokyo Shinjuku Shibuya Ikebukuro Ueno";
+      btn.parentNode.insertBefore(c, btn.nextSibling);
+      const h = c.getBoundingClientRect().height, cut = c.scrollWidth > c.clientWidth + 0.5 || cs(c).textOverflow === "ellipsis";
+      c.remove();
+      check("值行按钮长值按词换行、随之长高、不截断（popbtn numberOfLines 0）", "高 > 22 · 不截", `高 ${h.toFixed(1)} · ${cut ? "截" : "不截"}`, h > 22.5 && !cut);
+    }
+    for (const [k, q] of [["通知横幅标题", ".ntitle"], ["磁贴标题", ".ttitle"]]) {
+      const el = document.querySelector(q); if (!el) continue;
+      const s = cs(el);
+      check(`${k}一行尾部省略、不缩字（lineBreakMode 4）`, "nowrap · ellipsis", `${s.whiteSpace} · ${s.textOverflow}`, s.whiteSpace === "nowrap" && s.textOverflow === "ellipsis" && s.overflow === "hidden");
+    }
     /* the closed-form spring, ζ < 1 (the same expression view.js springStep / Motion.spring integrate) */
     const closed = (start, target, zeta, resp, t, v0 = 0) => { const w = 2 * Math.PI / resp, wd = w * Math.sqrt(1 - zeta * zeta), e = Math.exp(-zeta * w * t), dx = start - target;
       return target + e * (dx * Math.cos(wd * t) + ((v0 + zeta * w * dx) / wd) * Math.sin(wd * t)); };   // v0: the start velocity (0 for a morph from rest; the dismiss leaves the "in" rest with |v| < 1 pt/s, menu.js settled — v0 = 0 there read rms .01 = the tolerance, both clocks)
@@ -38,7 +52,7 @@
     const until = async (cond, cap) => { const t0 = performance.now(); while (!cond()) { if (performance.now() - t0 >= cap) return null; await frame(); } return performance.now() - t0; };
     const sample = (panel, ms) => new Promise((resolve) => { const out = []; let first = null;
       const tick = (now) => { if (first === null) first = now; if (!panel.isConnected) { resolve(out); return; }   // removed on settle (the dismiss): the frame's read would be zeros
-        const st = Menu.state(); if (st) out.push({ t: st.t, r: rect(panel), x: { ...st.x }, op: parseFloat(cs(panel).opacity) }); if (now - first < ms && !(st && st.settled)) requestAnimationFrame(tick); else resolve(out); };
+        const st = Menu.state(); if (st) { const bd = panel.querySelector(".menu-body"), bs = bd ? cs(bd) : null, bm = bs ? /blur\(([\d.]+)px\)/.exec(bs.filter) : null; out.push({ t: st.t, r: rect(panel), x: { ...st.x }, op: parseFloat(cs(panel).opacity), bo: bs ? parseFloat(bs.opacity) : NaN, bb: bm ? +bm[1] : 0 }); } if (now - first < ms && !(st && st.settled)) requestAnimationFrame(tick); else resolve(out); };
       requestAnimationFrame(tick); });
     const fit = (samples, from, to, zeta, resp, v0) => { const res = {}; for (const k of ["left", "top", "width", "height"]) {
       res[k] = { dom: rms(samples.map((s) => s.r[k] - s.x[k])), model: rms(samples.map((s) => s.x[k] - closed(from[k], to[k], zeta, resp, s.t, v0 ? v0[k] : 0))) }; } return res; };
@@ -50,6 +64,13 @@
     const st = Menu.state(); const open = await sample(panel, 900); await frame();   // one paint after the settle: the full chain / stroke rows below read the rested panel
     const fin = fit(open, st.from, st.to, 0.8, 0.3);
     for (const k of ["left", "top", "width", "height"]) { num(`菜单出现 ${k}：弹簧值对 ζ.8/r.3 闭式 rms（pt，${open.length} 帧，驱动自己的时钟）`, 0, fin[k].model, 0.01); num(`菜单出现 ${k}：面板矩形 = 弹簧值 rms（pt）`, 0, fin[k].dom, 1); }
+    /* G22 (NATIVE-GAP G22 driver ① ③): the menu content is the morph's shown layer — opacity p, gaussianBlur 4(1 − p) (σ = inputRadius, G8) — and p rides its own
+       spring ζ .75 / .35 from 0 (Parameters.morphSpring, probe uiprobe-motion-g22spring10-A.json), not the geometry's ζ .8 / .3 */
+    { const ps = open.filter((o) => o.x.p != null && o.t > 0), clamp = (v) => Math.max(0, Math.min(1, v));
+      num(`菜单出现 交叉模糊 p：对 ζ.75/r.35 闭式 0→1 rms（${ps.length} 帧，驱动自己的时钟）`, 0, rms(ps.map((o) => o.x.p - closed(0, 1, 0.75, 0.35, o.t))), 0.001);
+      num("菜单出现 内容透明度 = clamp(p) rms（G22：显出层透明度 = p）", 0, rms(ps.map((o) => o.bo - clamp(o.x.p))), 0.01);
+      num("菜单出现 内容模糊 = 4(1 − p) rms（px；G22：半径 = 4 ×（1 − p））", 0, rms(ps.map((o) => o.bb - Math.max(0, 4 * (1 - o.x.p)))), 0.02);
+      const f1 = ps[0]; check("菜单出现 首帧内容几乎透明且糊（p 从 0 起，原生显出层呈现透明度 0 → .0979 → …）", "p < .2, 模糊 > 3", f1 ? `p ${f1.x.p.toFixed(3)}, 模糊 ${f1.bb.toFixed(2)}` : "无帧", !!f1 && f1.x.p < 0.2 && f1.bb > 3); }
     /* R19 (menu-motion-formula.md §7b, R18b): no per-item delay — every item is fully opaque and in place on the first frame after the open (the
        list view has no stagger); the intermediate shape (a geometry step) waits for its rect's formula (待读), so nothing else to check */
     { const items = [...panel.querySelectorAll(".menu-body button")]; const ops = items.map((b) => parseFloat(cs(b).opacity)); const rects = items.map((b) => b.getBoundingClientRect().height);
@@ -144,7 +165,7 @@
     const from2 = rect(panel), v0 = (Menu.state() || {}).v; scrim.click(); await new Promise((r) => requestAnimationFrame(r));   // v0: the rested "in" springs' velocities (the loop stopped at settle: frozen until the close)
     const st2 = Menu.state(); const close = await sample(panel, 900);
     const fout = fit(close, st2.from, st2.to, 0.8, 0.3, v0);
-    check("菜单变形一步走（R19″ / §8b ③）：无中间形、无 .03 s 第二步；收回弹簧 = liquidMorph ζ.8/.3（liquidMorphShrink 无消费者）；RM ζ1/.15；crossBlur 自动规则只记不接", "oneStep · intermediate 0 · dismiss .8/.3 · reduce 1/.15 · crossBlur unwired", Menu.morph ? `${Menu.morph.oneStep ? "oneStep" : "steps"} · intermediate ${Menu.morph.useIntermediateShape} · dismiss ${Menu.springs.dismiss.join("/")} · reduce ${Menu.springs.reduce.join("/")} · crossBlur ${Menu.morph.crossBlur.wired ? "wired" : "unwired"}` : "no Menu.morph", !!Menu.morph && Menu.morph.oneStep && Menu.morph.useIntermediateShape === 0 && Menu.springs.dismiss[0] === 0.8 && Menu.springs.dismiss[1] === 0.3 && Menu.springs.reduce[0] === 1 && Menu.springs.reduce[1] === 0.15 && !Menu.morph.crossBlur.wired);
+    check("菜单变形一步走（R19″ / §8b ③）：无中间形、无 .03 s 第二步；收回弹簧 = liquidMorph ζ.8/.3（liquidMorphShrink 无消费者）；RM ζ1/.15；crossBlur 探针读到 1（G22 19:05）、出现段接上（G22），收回段未读", "oneStep · intermediate 0 · dismiss .8/.3 · reduce 1/.15 · crossBlur 1 appear", Menu.morph ? `${Menu.morph.oneStep ? "oneStep" : "steps"} · intermediate ${Menu.morph.useIntermediateShape} · dismiss ${Menu.springs.dismiss.join("/")} · reduce ${Menu.springs.reduce.join("/")} · crossBlur ${Menu.morph.crossBlur.read} ${/^appear/.test(String(Menu.morph.crossBlur.wired)) ? "appear" : "?"}` : "no Menu.morph", !!Menu.morph && Menu.morph.oneStep && Menu.morph.useIntermediateShape === 0 && Menu.springs.dismiss[0] === 0.8 && Menu.springs.dismiss[1] === 0.3 && Menu.springs.reduce[0] === 1 && Menu.springs.reduce[1] === 0.15 && Menu.morph.crossBlur.read === 1 && /^appear/.test(String(Menu.morph.crossBlur.wired)));
     for (const k of ["left", "top", "width", "height"]) { num(`菜单收回 ${k}：弹簧值对 ζ.8/r.3 闭式 rms（pt，${close.length} 帧，自静止态的 x / v 起；§8b ① liquidMorph 两向同一根；解析步精确，.01 = 浮点余量）`, 0, fout[k].model, 0.01); num(`菜单收回 ${k}：面板矩形 = 弹簧值 rms（pt）`, 0, fout[k].dom, 1); }
     num("菜单收回目标 = 值行按钮框（top）", a0.top, st2.to.top, 0.5); num("菜单收回起点 = 静止框（width）", from2.width, st2.from.width, 0.5);
     await until(() => !Menu.state(), 300); check("菜单收回后面板移除", "无", document.querySelector(".menu.morph") ? "还在" : "无", !document.querySelector(".menu.morph"));
