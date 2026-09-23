@@ -87,7 +87,8 @@
          Y′ = (White − Black)·Y + Black, Cb′ / Cr′ = sat·(·) + (.5 − .5 sat), YCC⁻¹ (R = Y + 1.5748 Cr − .7874; G = Y − .18732 Cb − .46812 Cr + .32772;
          B = Y + 1.8556 Cb − .9278) — one feColorMatrix computed here from those constants (exact); then the fill mix (a flood at the fill's alpha);
        the soft shadow (§7.3): ShadowAmount 0 only skips the displacement — the shadow is drawn: black α .3 × ShadowOpacity (.4 light / .6 dark), radius 24,
-         offset (0, 8), the panel's shape — CSS drop-shadow on the panel (the Gaussian profile vs the shader's erf-type one: 剖面近似, as the read says). */
+         offset (0, 8), the panel's shape — CSS drop-shadow on the panel; the shader's profile is .5·erfc(d/R) = a Gaussian edge of σ = R/√2 = 16.9706 (§7.3b), so
+         drop-shadow's σ argument is 16.9706 — exact on straight edges, corners (convolution vs SDF distance) remain 表达差异. */
   const mul = (A, B) => A.map((row) => B[0].map((_, j) => row.reduce((acc, v, i) => acc + v * B[i][j], 0)));   // 4×4 affine (3×3 + offset column as homogeneous)
   const faceMatrix = (k) => { const W = k.FaceColorMatrixWhite, Bk = k.FaceColorMatrixBlack, sat = k.FaceColorMatrixSaturation, fill = k.FaceColorMatrixFillColor;
     const YCC = [[.2126, .7152, .0722, 0], [-.1146, -.3854, .5, .5], [.5, -.4542, -.0458, .5], [0, 0, 0, 1]];
