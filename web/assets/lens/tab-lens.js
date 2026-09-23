@@ -26,7 +26,7 @@
    the items' run, spring ζ .85 / .2 retargeted on every move, no rubber band; after the up ζ .85 / .4 (R106: §6.9's "no gesture" pair) to the item under the finger (view.js's
    choice). The flex stretch (loupe sX / sY, drift tx = sX(1 − sX)·55) is read but not drawn (per-axis map scaling needed).
    Not drawn yet (material, the ui session's tokens): the KeyFill highlight, the ring shadow, the dark line, the little glow (α 0 → .2).
-   Instrument: window.__tabLens = the per-frame state (t s since the start, p, x, v, target, set, s, phase). */
+   Instrument: window.__tabLens = the per-frame state (t s since the start, p, x, v, target, set, s, phase; settled = both springs at their targets, S1). */
 /* GEOMETRY MODE (BOARD.md #7a, 2026-09-20 — the default tonight; ?tlens=material restores the layered lens above): no material at all — the page's own
    .glide (the selection view, index.html's rules for its glass stay) is driven per frame: size (w0 + 16p) × (54 + 16p) about the item's centre
    (tab-lens-motion.md §0 / §4: 94×54 → 110×70 read as +16 on both axes; r = h/2 through the capsule's border-radius), lift ζ 1 / .25, drop ζ 1 / .4,
@@ -140,17 +140,17 @@
   /* the finger (tab-lens-motion.md §6.6: while the selection view is highlighted its target is finger x − a·W + W/2, a = where in the item the
      finger went down (0 … 1), the left edge hard-clamped to the track [track.minX, track.maxX − W] — no rubber band; the landing = the item under
      the finger): read here from the same pointer events view.js's press() handles, capture phase, nothing consumed */
-  const finger = { x: null, a: .5, down: false, moved: false, x0: 0 };
+  const finger = { x: null, a: .5, down: false, moved: false, x0: 0 }; window.__tabLensFinger = finger;   // instrument (#15 device record: seg-frames-logger.js tab reading)
   const trackFinger = (nav) => {
     if (nav.__tlensFinger) return; nav.__tlensFinger = true;
     nav.addEventListener("pointerdown", (e) => { const r = nav.getBoundingClientRect(); const bs = [...nav.querySelectorAll(".seg button")];
       let a = .5; for (const b of bs) { const q = b.getBoundingClientRect(); if (e.clientX >= q.left && e.clientX <= q.right) { a = (e.clientX - q.left) / q.width; break; } }
-      finger.down = true; finger.a = a; finger.x = e.clientX - r.left; finger.moved = false; finger.x0 = e.clientX;
+      finger.down = true; finger.a = a; finger.x = e.clientX - r.left; finger.moved = false; finger.x0 = e.clientX; finger.last = { t: e.type, pt: e.pointerType, id: e.pointerId, at: performance.now(), target: e.target && e.target.tagName ? e.target.tagName.toLowerCase() + "." + (e.target.className || "") : null };
       if (st && st.nav === nav) st.pressed = !RM();   // R59′d: the lift belongs to the down itself (no highlight → no lift under Reduce Motion)
       if (loop) loop.retarget();
       else if (MODE === "geometry" && st && st.nav === nav && ready) { const tx = rmTarget(st); window.__tabLensRM = { at: performance.now(), target: tx, X: st.X, started: !RM() || (tx != null && Math.abs(tx - st.X) > .5) }; if (!RM() || (tx != null && Math.abs(tx - st.X) > .5)) { st.lastX = st.X; start(st); } } }, true);   // R59′d: the driver starts on the down (its first tick = the lift's t0); RM: only when there is somewhere to slide   // R59′b: the slide begins at the down, no lift
-    nav.addEventListener("pointermove", (e) => { if (!finger.down) return; finger.x = e.clientX - nav.getBoundingClientRect().left; if (Math.abs(e.clientX - finger.x0) >= 1) finger.moved = true; if (loop) loop.retarget(); }, true);
-    for (const t of ["pointerup", "pointercancel"]) nav.addEventListener(t, () => { finger.down = false; finger.x = null; finger.moved = false; if (st) st.pressed = false; if (loop) loop.retarget(); }, true);
+    nav.addEventListener("pointermove", (e) => { finger.last = { t: e.type, pt: e.pointerType, id: e.pointerId, at: performance.now() }; if (!finger.down) return; finger.x = e.clientX - nav.getBoundingClientRect().left; if (Math.abs(e.clientX - finger.x0) >= 1) finger.moved = true; if (loop) loop.retarget(); }, true);
+    for (const t of ["pointerup", "pointercancel"]) nav.addEventListener(t, (e) => { finger.last = { t: e.type, pt: e.pointerType, id: e.pointerId, at: performance.now() }; finger.down = false; finger.x = null; finger.moved = false; if (st) st.pressed = false; if (loop) loop.retarget(); }, true);
   };
   /* R59′b: the Reduce Motion target = the §6.6 finger rule (finger x − a·W + W/2 = the pressed item's centre at the down), hard-clamped to the items' run */
   const rmTarget = (st) => { if (finger.x == null) return null; const w = parseFloat(st.glide.style.width) || st.glide.offsetWidth; const navBox = st.nav.getBoundingClientRect(), segBox = st.seg.getBoundingClientRect();
@@ -277,9 +277,10 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
       nav.style.setProperty("--tl-left", (xc - Wp / 2) + "px"); nav.style.setProperty("--tl-w", Wp + "px"); nav.style.setProperty("--tl-top", (pad + h0 / 2 - Hp / 2) + "px"); nav.style.setProperty("--tl-h", Hp + "px");
       if (!nav.classList.contains("tl-on")) nav.classList.add("tl-on");
       glFrame(st, p, xc, Wp, Hp, pad, h0);
-      window.__tabLens = { t: (now - t0) / 1000, t0, tf: last, p, v: P.v, x, xv: XS.v, target: st.X, set: 0, s: 1, phase, w: W, h: H, wp: Wp, hp: Hp, xc, frame: frameN, mode: "geometry", rm: !!st.rm,
-        flex: fl ? { sx: fl.out.sx, sy: fl.out.sy, dx: fl.out.dx, target: fl.tg, spec: fl.spec, sp: fl.sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, trace: fl.trace } : null };   // tf = this frame's timestamp: a retarget after it (the up) integrates from here
       const flexRest = !fl || !fl.active;
+      window.__tabLens = { t: (now - t0) / 1000, t0, tf: last, p, v: P.v, x, xv: XS.v, target: st.X, set: 0, s: 1, phase, w: W, h: H, wp: Wp, hp: Hp, xc, frame: frameN, mode: "geometry", rm: !!st.rm,
+        settled: Math.abs(P.x - pTarget) < .002 && Math.abs(P.v) < .02 && Math.abs(XS.x - st.X) < .05 && Math.abs(XS.v) < 1,   // read-only (S1, 2号 13:1x): both springs at their current targets — the stop rule's thresholds below, whatever the target is (a held lift, a parked drag); the flex is not in it (its floats are exposed above)
+        flex: fl ? { sx: fl.out.sx, sy: fl.out.sy, dx: fl.out.dx, target: fl.tg, spec: fl.spec, sp: fl.sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, trace: fl.trace } : null };   // tf = this frame's timestamp: a retarget after it (the up) integrates from here
       if (pTarget === 0 && p < .002 && Math.abs(P.v) < .02 && Math.abs(XS.x - st.X) < .05 && Math.abs(XS.v) < 1 && flexRest && !(st.rm && finger.down)) { stop(); return; }   // R59′b: parked on the item while the finger is down (view.js's box is still the old item until the up)
       tick(frame);
     };

@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 """Five-grey flat-background check of the read-key glass chains (alert-glass.js, menu.js) in headless Chrome — R57′ (2号, 2026-09-20).
-usage: glass-flat.py <url-without-query> [alert|menu] [light|dark|both]  (a local url: serve web/ with scripts/mac/serve.py — `python3 -m http.server`
-       drops connections under the page's parallel load and a script never runs; a failed evaluate prints its exception after 「no panel」)
-       → one line per theme × grey: the panel centre's value, the closed
+usage: glass-flat.py <url-without-query> [alert|menu] [light|dark|both]  → one line per theme × grey: the panel centre's value, the closed
        chain's prediction (alert-native-formula.md §4 ⑦ from the page's own keys), Δ, the flatness (sd of a 40 × 40 device-px box) and the
        centre column / row profiles.
 What it does: the page is loaded with a fake snapshot (the same seed as accept-run.py); #app is emptied (alert) or reduced to the menu button
@@ -66,13 +64,12 @@ def shot(url, js, dark):
         page = None
         for i in range(100):
             try: page = next(t for t in json.load(urllib.request.urlopen(f'http://127.0.0.1:{port}/json')) if t['type'] == 'page'); break
-            except (OSError, ValueError, StopIteration): time.sleep(0.2)  # DevTools not up yet / no page target yet
+            except (OSError, ValueError, StopIteration): time.sleep(0.2)   # DevTools not up yet: refused / half-written JSON / no page target
         ws = WS(page['webSocketDebuggerUrl']); ws.send('Runtime.enable'); ws.send('Page.enable'); ws.send('Emulation.setDeviceMetricsOverride', {'width': 440, 'height': 956, 'deviceScaleFactor': 3, 'mobile': True})
         ws.send('Page.addScriptToEvaluateOnNewDocument', {'source': 'localStorage.setItem("ark-remote-cfg", %s); localStorage.setItem("ark-remote-cfg-snap", %s); localStorage.setItem("ark-remote-tab", "状态");' % (json.dumps(json.dumps({'topic': 'smoke-test-topic', 'pin': '1234'})), json.dumps(json.dumps(SNAP, ensure_ascii=False)))})
         if dark: ws.send('Emulation.setEmulatedMedia', {'features': [{'name': 'prefers-color-scheme', 'value': 'dark'}]})
         ws.send('Page.navigate', {'url': url}); time.sleep(4)
         r = ws.send('Runtime.evaluate', {'expression': js, 'awaitPromise': True, 'returnByValue': True}); info = r.get('result', {}).get('result', {}).get('value')
-        if not info or not info.get('rect'): info = {'error': r.get('result', {}).get('exceptionDetails', {}).get('exception', {}).get('description', json.dumps(r)[:300]).split('\n')[0]}
         time.sleep(1.0); png = base64.b64decode(ws.send('Page.captureScreenshot', {'format': 'png'})['result']['data'])
         return info, Image.open(io.BytesIO(png)).convert('RGB')
     finally:
@@ -84,7 +81,7 @@ if __name__ == '__main__':
         for theme in themes:
             for N in [255, 192, 128, 64, 0]:
                 js = (JS_ALERT if what == 'alert' else JS_MENU).replace('N,N,N', f'{N},{N},{N}'); info, im = shot(url, js, theme == 'dark')
-                if not info or not info.get('rect'): print(f'{what} {theme} {N}: no panel — {info.get("error") if info else "no result"}'); bad += 1; continue
+                if not info or not info.get('rect'): print(f'{what} {theme} {N}: no panel'); bad += 1; continue
                 x, y, w, h = info['rect']; D = 3; cx, cy = int((x + w / 2) * D), int((y + h / 2) * D)
                 box = [im.getpixel((i, j))[0] for i in range(cx - 20, cx + 20) for j in range(cy - 20, cy + 20)]; mean = statistics.mean(box); sd = statistics.pstdev(box)
                 col = [im.getpixel((cx, j))[0] for j in range(int(y * D) + 3, int((y + h) * D) - 3, max(1, int(h * D / 20)))]; row = [im.getpixel((i, cy))[0] for i in range(int(x * D) + 3, int((x + w) * D) - 3, max(1, int(w * D / 20)))]
