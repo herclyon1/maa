@@ -115,10 +115,19 @@ def mark_line(m):
     return f"- 用户标记 {m.get('at')} {m.get('word')!r} 控件 {m.get('control')} 点 {m.get('point')}" + (f" 挂到 {m['into']}" if m.get("into") else "")
 
 
+def bg_cell(c):
+    """the control's computed background-color as the logger read it (seg-frames-logger.js cs.backgroundColor); a record from a page
+    before the logger wrote bg (light frames had no bg before 63940f5) shows 未记"""
+    if c is None:
+        return "未记"
+    return "透明" if c in ("transparent", "rgba(0, 0, 0, 0)") else c
+
+
 def watched(k, f):
     """the fields whose change makes a row a change row"""
     if k == "light":
-        return (f.get("alpha"), tuple(f.get("scale") or ()), f.get("transform"), f.get("cls"), f.get("gone"), json.dumps(f.get("scene")) if "scene" in f else None)
+        return (f.get("alpha"), tuple(f.get("scale") or ()), f.get("transform"), f.get("cls"), f.get("gone"), f.get("bg"), f.get("anims"),
+                json.dumps(f.get("scene")) if "scene" in f else None)
     t, v = f.get("tab") or {}, f.get("vp") or {}
     lens = (f.get("lens") or [{}])[0]
     return (lens.get("alpha"), tuple(lens.get("scale") or ()), f.get("index"), f.get("lift"), f.get("drag"), f.get("spring"),
@@ -174,7 +183,7 @@ def table(r, show_all):
     if lags:
         out.append(f"- 指针等主线程（lag，ms）：最大 {max(lags)} · 超过一帧 {sum(1 for x in lags if x > fi * 1000)} / {len(lags)}")
     if k == "light":
-        head = "| 帧 | 按下后 ms | 阶段 | 指针 | 框 x,y,w,h | α | 缩放 | 类 | 场景（变了才有） | 掉帧 |"
+        head = "| 帧 | 按下后 ms | 阶段 | 指针 | 框 x,y,w,h | α | 缩放 | 底色 | 动画数 | 类 | 场景（变了才有） | 掉帧 |"   # 底色 / 动画数: 界面 via 验收 18:1x (数据-串7)
     else:
         head = "| 帧 | 按下后 ms | 阶段 | 指针 | 框 x,y,w,h | 缩放 | 选中 | 抬/拖/弹 | 标签栏 | 视口 | 标记 | 掉帧 |"
     ncol = head.count("|") - 1
@@ -198,7 +207,7 @@ def table(r, show_all):
         if show_all or change or here or marks or miss or i == len(frames) - 1:
             if k == "light":
                 row = [f.get("frame"), ms(f.get("t_since_down")), f.get("phase"), "；".join(here), fmt_rect(rc) + (" 已移除" if f.get("gone") else ""),
-                       f.get("alpha"), f.get("scale"), f.get("cls") or "", scene_cell(f.get("scene")), miss or ""]
+                       f.get("alpha"), f.get("scale"), bg_cell(f.get("bg")), "未记" if f.get("anims") is None else f["anims"], f.get("cls") or "", scene_cell(f.get("scene")), miss or ""]
             else:
                 lens = (f.get("lens") or [{}])[0]
                 flags = "/".join(x for x, y in (("抬", f.get("lift")), ("拖", f.get("drag")), ("弹", f.get("spring"))) if y)

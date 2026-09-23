@@ -135,7 +135,10 @@ def serve(web, out):
             got.append(name)
             s.send_response(200); s.end_headers()
 
-    srv = http.server.ThreadingHTTPServer(("127.0.0.1", free_port()), H)
+    class Srv(http.server.ThreadingHTTPServer):   # serve.py's fix: the default backlog of 5 resets some of the page's ~50 parallel requests and a
+        request_queue_size = 256                    # script silently never runs (18:30: seg-frames-logger.js missing → "recorder not ready")
+        daemon_threads = True
+    srv = Srv(("127.0.0.1", free_port()), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv, got
 
@@ -170,23 +173,27 @@ def center(ws, sel):
 
 
 def take_lock():
-    """the lock file, held; None when it stayed busy 120 s"""
+    """the lock file, held; None when it stayed busy 300 s"""
     # the headless runners' machine lock (accept-run.py LOCK): one headless Chrome per machine at a time, so this run and an accept-run
     # never share the CPU; wait for it like accept-run does
     lockf = open(LOCK, "a+")
     t_lock = time.time()
-    while True:
+    try:
+        fcntl.flock(lockf, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        lockf.seek(0)
+        print(f"waiting for {LOCK} (held by {lockf.read().strip()[:80]}) …", flush=True)
+        # a blocking wait: the kernel hands the lock over on release. The old 1 s poll lost every hand-over to a runner looping back to
+        # back (18:27–18:32: 8141's runs took it each minute, two 120 s waits gave up)
+        signal.signal(signal.SIGALRM, lambda *_: (_ for _ in ()).throw(TimeoutError()))
+        signal.alarm(300)
         try:
-            fcntl.flock(lockf, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            break
-        except OSError:
-            if int(time.time() - t_lock) % 15 == 0:
-                lockf.seek(0)
-                print(f"waiting for {LOCK} (held by {lockf.read().strip()[:80]}) …", flush=True)
-            if time.time() - t_lock > 120:
-                print(f"✗ {LOCK} still held after 120 s", flush=True)
-                return None
-            time.sleep(1)
+            fcntl.flock(lockf, fcntl.LOCK_EX)
+        except TimeoutError:
+            print(f"✗ {LOCK} still held after 300 s", flush=True)
+            return None
+        finally:
+            signal.alarm(0)
     lockf.seek(0); lockf.truncate(); lockf.write(f"pid {os.getpid()} {time.strftime('%H:%M:%S')} diag-sample.py\n"); lockf.flush()
     if time.time() - t_lock > 1:
         print(f"waited {time.time() - t_lock:.0f} s for {LOCK}", flush=True)
