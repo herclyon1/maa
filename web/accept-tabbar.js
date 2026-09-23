@@ -123,7 +123,14 @@
         const cr = g.canvas.getBoundingClientRect(), nr = nav.getBoundingClientRect();
         num("R2 材质：canvas 盖 nav 每边 +24（抬起 98×70 与色散包 16 都在内）", 24, nr.left - cr.left, 0.5); num("R2 材质：canvas 高 = nav + 48", nr.height + 48, cr.height, 0.5);
         const selB3 = bs.find((b) => b.classList.contains("on")); const r3 = selB3.getBoundingClientRect(); const f0 = L.stats.frames;
-        ev(selB3, "pointerdown", r3.left + r3.width / 2, r3.top + r3.height / 2, 11); await until(settled, 900);
+        ev(selB3, "pointerdown", r3.left + r3.width / 2, r3.top + r3.height / 2, 11);
+        /* G4 抬起段 (数据 20:13, NATIVE-GAP.md 数据核 G4 抬起段, g1_tabdrag_table.txt「sel.op」: +70 .886 → … → +336 .006, monotone, no overshoot = 1 − the ζ 1 / .25
+           lift progress, not the lens width): every drawn lift frame carries the grey at α = 1 − lift */
+        const liftF = []; { const tEnd = performance.now() + 900; let lastT = null;
+          while (performance.now() < tEnd && !(liftF.length && settled())) { await frame(); const s = L.stats.last; if (s && s.t !== lastT && s.lift > 0 && s.lift < .999) { lastT = s.t; liftF.push({ lift: s.lift, a: s.platterAlpha * (s.platterColorAlpha == null ? 1 : s.platterColorAlpha) }); } } }
+        await until(settled, 900);
+        { const worst = liftF.reduce((m, f) => Math.max(m, Math.abs(f.a - (1 - f.lift))), 0), mono = liftF.every((f, i) => !i || f.a <= liftF[i - 1].a + 1e-9);
+          check("G4 抬起：透镜里的选中灰底逐帧 = 1 − 抬起量（原生探针 sel.op 单调降、无过冲，同 ζ1/.25 抬起弹簧）", "每帧 |α − (1 − lift)| ≤ .002 · 单调不升 · 帧 > 3", `${liftF.length} 帧 · 最大偏差 ${worst.toFixed(4)} · ${mono ? "单调" : "有回升"}`, liftF.length > 3 && worst <= .002 && mono); }
         const fLift = L.stats.frames - f0, setLift = L.stats.set, lastLift = L.stats.last;
         check("R2 材质：抬起中包在画帧（stats.frames 增）、走 98 组（抬起骑最大组，README §0.3）、pd = lift", "frames > 5 · set 98 · pd = lift", `frames +${fLift} · set ${setLift} · lift ${lastLift ? lastLift.lift.toFixed(3) : "-"} pd ${lastLift ? lastLift.pd.toFixed(3) : "-"}`, fLift > 5 && setLift === 98 && !!lastLift && Math.abs(lastLift.lift - lastLift.pd) < 1e-6);
         ev(selB3, "pointerup", r3.left + r3.width / 2, r3.top + r3.height / 2, 11);
