@@ -11,6 +11,8 @@
 #   5. print the stamp. Then tap the clip icon (simulator tool) and check: the page's 「页面版本」row = the stamp, and
 #      `tail scratchpad/serve-<port>.log` shows every shell file (controls / motion / nav / nav-edge / sheet / menu / topbar / refresh /
 #      glassbtn / switch / alert-glass / tab-lens / tile.css …) fetched with 200 — both, or the run does not count.
+# One resident clip per simulator, reused for every commit (serve a new sha to the same port; never add another icon): A = dd25 below on
+# 9320; B = UDID=C9827365-571F-4440-9844-6A44BC8D972A on port 9322 with the clip id registered in BOARD.md A52 once it exists.
 # Default clip: dd25 = 735B060F82CA4FE0B664FEE3BA81A139 → http://localhost:9320/?demo=1 (the only clip left on simulator A, 12:09).
 HERE=$(cd "$(dirname "$0")" && pwd)
 S=${SCRATCH:-${TMPDIR:-/tmp}/webclip-serve}; mkdir -p "$S"
@@ -32,7 +34,10 @@ curl -s "http://localhost:$PORT/" | grep -o "view.js?v=[0-9]*" | head -1
 xcrun simctl terminate "$UDID" com.apple.webapp > /dev/null 2>&1; sleep 1
 W=/Users/herclyon/Library/Developer/CoreSimulator/Devices/$UDID/data/Library/WebClips/$CLIP.webclip/Storage
 [ -d "$W" ] || { echo "no clip storage at $W (clip id wrong?)"; exit 2; }
-for o in "$W"/Default/*/; do [ "$(basename "$o")" = salt ] || rm -rf "$o"; done
+# caches only: CacheStorage / ServiceWorkers per origin + NetworkCache / MediaCache. LocalStorage stays — it holds the mailbox name and PIN the
+# page asks for once; wiping the whole origin (up to 2026-09-23) made every serve a new sign-in, and workers started a fresh port / clip each time
+# instead (用户 18:19「正常来说不是创建一个，填一次就能重复利用了吗？」). The stamp already changes every shell URL and sw.js's CACHE name.
+for o in "$W"/Default/*/*/; do rm -rf "$o/CacheStorage" "$o/ServiceWorkers"; done
 rm -rf "$W/NetworkCache" "$W/MediaCache"
-echo "clip $CLIP storage wiped: $(ls "$W" | tr '\n' ' ')"
+echo "clip $CLIP caches wiped (LocalStorage kept): $(ls "$W" | tr '\n' ' ')"
 echo "stamp $V — now tap the clip icon, then: 页面版本 == $V and $(basename "$S")/serve-$PORT.log lists every shell file"

@@ -72,11 +72,12 @@ trap 'rm -rf "$GATED"' EXIT
 ( python3 "$HERE/../scripts/mac/lib/deadcode.py" "$HERE" "$HERE/../scripts" \
       >"$GATED/dead.out" 2>&1
   echo $? >"$GATED/dead.rc" ) &
-# test_manifest_covers_tree.py rewrites relay/manifest.json to prove the generator
-# picks up a new file. That is shared state, so it cannot run beside anything else
-# that reads or rebuilds the manifest - once these gates went parallel it started
-# failing, and for three deploys in a row the failure was invisible because the
-# output was being filtered. It runs on its own, first.
+# test_manifest_covers_tree.py used to rewrite relay/manifest.json to prove the
+# generator picks up a new file. That was shared state: once these gates went
+# parallel it started failing, and for three deploys in a row the failure was
+# invisible because the output was being filtered. Since 2026-09-23 it runs the
+# generator on a temp copy and asserts the real file is byte-identical; it still
+# runs on its own, first.
 ( python3 tests/test_manifest_covers_tree.py >"$GATED/manifest.out" 2>&1
   echo $? >"$GATED/manifest.rc"
   # Only the tests that execute a changed module (relay/tests/test-map.json,
