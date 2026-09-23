@@ -47,9 +47,13 @@
       const mask = vib ? vib.style.maskImage || vib.style.webkitMaskImage : "", col = getComputedStyle(tt).color;
       check(`轻提示活字 = 原生内容层 vibrantColorMatrix（${th === "dark" ? "暗" : "亮"}，uiprobe-subtree-g8-hud-${th}.json）：第二份复本走 #toast-glass-v = 同一条链 + 矩阵 M（20 项逐项）、遮罩 = 字形图、面板字本身透明`, "同链 · 20 项 · data: 遮罩 · 透明",
         `${same ? "同链" : "链不同"} · ${mv.length} 项 |Δ|max ${mv.length === 20 ? Math.max(...mv.map((v, i) => Math.abs(v - m.vibrant[i]))).toExponential(1) : "-"} · ${mask.slice(0, 20)} · ${col}`,
-        same && !!vcopy && vcopy.style.filter === 'url("#toast-glass-v")' && mv.length === 20 && mv.every((v, i) => Math.abs(v - m.vibrant[i]) < 1e-6) && /^url\("?data:image\/png/.test(mask) && col === "rgba(0, 0, 0, 0)");
-      const want = [...tt.childNodes].filter((n) => n.nodeType === 3).map((n) => n.data).join("").replace(/\s/g, ""), got = (G.lines || []).map((l) => l.chars.map((c) => c.ch).join("")).join("");
-      check("轻提示活字 字形图逐字取排版位置：每个非空白字符一格（按字的 Range 框落位，基线取排版读数）", want, got, want === got);
+        same && !!vcopy && vcopy.style.filter === 'url("#toast-glass-v")' && mv.length === 20 && mv.every((v, i) => Math.abs(v - m.vibrant[i]) < 1e-6) && /^url\("?data:image\/svg\+xml/.test(mask) && col === "rgba(0, 0, 0, 0)");
+      /* the mask = the engine's own layout of the toast's text (toast-glass.js glyphMask: SVG foreignObject, the toast's box and computed text styles) */
+      const want = [...tt.childNodes].filter((n) => n.nodeType === 3).map((n) => n.data).join(""), svg = (() => { try { return decodeURIComponent(mask.replace(/^url\("?data:image\/svg\+xml;charset=utf-8,/, "").replace(/"?\)$/, "")); } catch (e) { return ""; } })();
+      const dv = new DOMParser().parseFromString(svg || "<svg/>", "image/svg+xml").querySelector("foreignObject > div"), ds = dv ? dv.style : null, tcs = getComputedStyle(tt), gb = G.box;
+      const same2 = !!ds && ["font-family", "font-size", "font-weight", "line-height", "letter-spacing", "padding-left", "padding-top", "text-align", "white-space"].every((k) => ds.getPropertyValue(k) === tcs.getPropertyValue(k));
+      check("轻提示活字 字形图 = 引擎按面板同款排的同一段字（SVG foreignObject：字相同、面板框宽高、字体 / 字号 / 字重 / 行高 / 字距 / 内距 / 对齐 / 换行同计算样式）", `${want} · ${gb ? gb.W + "×" + gb.H : "-"} · 同样式`,
+        `${dv ? dv.textContent : "-"} · ${ds ? parseFloat(ds.width) + "×" + parseFloat(ds.height) : "-"} · ${same2 ? "同样式" : "样式不同"}`, !!dv && dv.textContent === want && G.maskText === want && !!gb && Math.abs(parseFloat(ds.width) - gb.W) < 1e-3 && Math.abs(parseFloat(ds.height) - gb.H) < 1e-3 && same2);
     } finally { tt.textContent = keep; if (!wasShow) tt.classList.remove("show"); void tt.offsetWidth; tt.style.transition = ""; }
   }, { dark: true });
 })();

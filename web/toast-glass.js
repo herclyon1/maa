@@ -22,10 +22,10 @@
    keyfill-highlight.md §2 (QuartzCore vibrant_color_matrix_sover): the layer's colour is not used, only its α — out = (1 − α)·B + α·clamp(M·B + bias), B = what
    lies under it (here the material). So the page's text is laid out as usual but painted transparent (.glass-read), and a second copy runs the same chain
    plus M (filter #toast-glass-v; B is the blurred material, so it is computed at the same .25 and scaled up) under a mask = the text's own glyphs
-   (canvas fillText of each laid-out line, same computed font, at devicePixelRatio).
+   (an SVG image of the same text laid out by the engine with the toast's computed styles, see glyphMask).
    Not built (标): inputDither (±½ LSB noise); the capture's downsample kernel (the page is rasterised small instead of box-filtered); the appear scale .95 → 1 also
-   scales the copy for its 0.1 s (the native backdrop samples the screen unscaled); the glyph mask is canvas text, not the DOM's own raster (same font and
-   positions, antialiasing may differ by a level at edges). */
+   scales the copy for its 0.1 s (the native backdrop samples the screen unscaled); the glyph mask is the engine's own layout of the same text in an image,
+   not the DOM text's raster itself (same font and positions, antialiasing may differ by a level at edges). */
 (function () {
   const tt = document.getElementById("toast"); if (!tt) return;
   const NS = "http://www.w3.org/2000/svg";
@@ -44,7 +44,7 @@
     return [0, 1, 2].map(r).join("  ") + "  0 0 0 1 0"; };
   const K = 0.25;   // UICABackdropLayer scale (uiprobe-subtree-g8-hud-{light,dark}.json kvc.scale), both themes
   const MARGIN = (m) => Math.ceil(3 * m.radius);   // the blur's support beyond the toast (3σ, page units)
-  const glass = { layer: null, copy: null, vcopy: null, ups: [], lines: null, theme: null, box: null };
+  const glass = { layer: null, copy: null, vcopy: null, ups: [], maskText: null, theme: null, box: null };
   const ensureFilter = (th) => { const m = MAT[th]; let svg = document.getElementById("toast-glass-svg");
     if (!svg) { svg = document.createElementNS(NS, "svg"); svg.id = "toast-glass-svg"; svg.setAttribute("width", "0"); svg.setAttribute("height", "0"); svg.setAttribute("aria-hidden", "true"); svg.style.cssText = "position:absolute;width:0;height:0"; document.body.appendChild(svg); }
     if (svg.dataset.theme === th) return svg.querySelector("filter"); svg.dataset.theme = th;
@@ -64,22 +64,23 @@
   const place = () => { if (!glass.copy) return; const main = document.getElementById("app"); if (!main) return; const b = box(), mr = main.getBoundingClientRect(), f = document.getElementById("toast-glass-f"); if (!f) return;
     const ox = mr.left - b.l, oy = mr.top - b.t, M = +f.dataset.margin; for (const up of glass.ups) up.style.transform = `translate(${ox}px, ${oy}px) scale(${1 / K})`; glass.box = b;   // page point p → toast point ox + p (via the copy at K)
     for (const ff of document.querySelectorAll("#toast-glass-f, #toast-glass-v")) { ff.setAttribute("x", String((-ox - M) * K)); ff.setAttribute("y", String((-oy - M) * K)); ff.setAttribute("width", String((b.W + 2 * M) * K)); ff.setAttribute("height", String((b.H + 2 * M) * K)); } };
-  /* the text's glyphs as an α image: every laid-out character (Range client rect per code point, un-scaled about the toast centre like box()) drawn one by one with fillText
-     in the toast's computed font at devicePixelRatio, at its own laid-out x — a whole line drawn from its left drifted off the laid-out glyphs on iOS 27 Safari
-     (simulator D, 09-23 22:02: ink missed from the glyphs after 「跑 」 on). Layout may trim fullwidth punctuation (CSS Text 4 text-spacing-trim) and canvas draws the
-     untrimmed glyph: a trimmed opening bracket (Ps / Pi) loses its start half (the spec's trimmed side), so it is drawn right-aligned in its box. */
-  const glyphMask = (b) => { const r = tt.getBoundingClientRect(), sc = r.width / b.W || 1, cx = r.left + r.width / 2, cy = r.top + r.height / 2, un = (x, c) => c + (x - c) / sc;
-    const dpr = window.devicePixelRatio || 1, cv = document.createElement("canvas"); cv.width = Math.ceil(b.W * dpr); cv.height = Math.ceil(b.H * dpr); const ctx = cv.getContext("2d"), cs = getComputedStyle(tt);
-    ctx.scale(dpr, dpr); ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`; ctx.fillStyle = "#000"; ctx.textBaseline = "alphabetic"; const lines = new Map(), open = /[\p{Ps}\p{Pi}]/u;
-    const texts = () => document.createTreeWalker(tt, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.parentElement && n.parentElement.closest(".toast-glass") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
-    for (let w = texts(), n = w.nextNode(); n; n = w.nextNode()) { const rg = document.createRange(); for (let i = 0; i < n.data.length; ) { const ch = String.fromCodePoint(n.data.codePointAt(i)); rg.setStart(n, i); rg.setEnd(n, i + ch.length); i += ch.length;
-      const q = rg.getClientRects()[0]; if (!q || !q.width || !ch.trim()) continue; const top = un(q.top, cy) - b.t, key = Math.round(top * 4) / 4, left = un(q.left, cx) - b.l, right = un(q.right, cx) - b.l;
-      if (!lines.has(key)) lines.set(key, { top, left, text: "", chars: [] }); const Ln = lines.get(key); Ln.text += ch; Ln.chars.push({ ch, left, right }); } }
-    // Baseline read from layout, not from font metrics: an empty inline-block's baseline is its bottom margin edge (CSS 2.1 §10.8.1), so a 0x0 one before the first glyph sits with its bottom on line 1's baseline; later lines keep the same top-to-baseline offset (one font, one line-height).
-    const first = texts().nextNode(), ls = [...lines.values()];
-    if (first && ls.length) { const pr = document.createElement("span"); pr.style.cssText = "display:inline-block;width:0;height:0;vertical-align:baseline"; first.parentNode.insertBefore(pr, first); const base = un(pr.getBoundingClientRect().bottom, cy) - b.t - ls[0].top; pr.remove();
-      for (const Ln of ls) for (const c of Ln.chars) ctx.fillText(c.ch, open.test(c.ch) ? c.right - ctx.measureText(c.ch).width : c.left, Ln.top + base); }
-    return { url: cv.toDataURL(), lines: ls }; };
+  /* the text's glyphs as an α image laid out by the engine itself: an SVG image whose foreignObject holds the toast's text in a box of the toast's border-box size
+     with its computed text styles, painted black — the same fonts, line breaks, punctuation trimming and fractional glyph positions as the DOM text (the mask is
+     that image at b.W × b.H on the layer). The earlier canvas text sat 1.0–1.6 device px left of the laid-out glyphs on iOS 27 Safari (simulator D, 09-23 22:4x):
+     WebKit's per-character Range rects are whole pixels (现 30–45, 在 44–60, 正 59–75) and the canvas font's advances differ from the DOM's
+     (measureText 现 14.88 / 在 14.03 / five glyphs 71.01 against about 74 laid out). */
+  const STYLE = ["display", "font-family", "font-size", "font-weight", "font-style", "font-stretch", "font-variant", "font-feature-settings", "font-variation-settings", "font-kerning",
+    "font-optical-sizing", "font-synthesis", "line-height", "letter-spacing", "word-spacing", "text-align", "text-align-last", "text-indent", "text-transform", "text-spacing-trim",
+    "text-autospace", "white-space", "white-space-collapse", "text-wrap", "word-break", "overflow-wrap", "line-break", "hyphens", "tab-size", "direction", "unicode-bidi",
+    "writing-mode", "text-rendering", "-webkit-font-smoothing", "padding-top", "padding-right", "padding-bottom", "padding-left", "border-top-width", "border-right-width",
+    "border-bottom-width", "border-left-width", "overflow", "text-overflow", "-webkit-line-clamp", "-webkit-box-orient", "align-items", "justify-content", "flex-direction"];
+  const esc = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const glyphMask = (b) => { const cs = getComputedStyle(tt), lang = (tt.closest("[lang]") || document.documentElement).getAttribute("lang") || "";
+    const text = [...tt.childNodes].filter((n) => n.nodeType === 3).map((n) => n.data).join("");   // the toast's own text (view.js toast() sets textContent; the glass layer is an element)
+    const css = STYLE.map((k) => { const v = cs.getPropertyValue(k); return v ? `${k}:${v}` : ""; }).filter(Boolean).join(";").replace(/"/g, "'");
+    const div = `<div xmlns="http://www.w3.org/1999/xhtml"${lang ? ` lang="${lang}"` : ""} style="box-sizing:border-box;margin:0;width:${b.W}px;height:${b.H}px;border-style:solid;border-color:transparent;color:#000;background:none;${esc(css)}">${esc(text)}</div>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${b.W}" height="${b.H}"><foreignObject x="0" y="0" width="${b.W}" height="${b.H}">${div}</foreignObject></svg>`;
+    return { url: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg), text }; };
   const build = () => { const main = document.getElementById("app"); if (!main) return; const th = theme(); ensureFilter(th); strip();
     const mr = main.getBoundingClientRect(), ph = Math.max(mr.height, innerHeight + 200);
     const page = main.cloneNode(true); page.removeAttribute("id"); page.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); page.querySelectorAll("canvas, .lens-clip, script, .menu, .menu-scrim, dialog").forEach((e) => e.remove());
@@ -87,13 +88,13 @@
     const mk = (fid, pg) => { const copy = document.createElement("div"); copy.className = "toast-glass-copy"; copy.style.cssText = `position:absolute;left:0;top:0;width:${mr.width * K}px;height:${ph * K}px;pointer-events:none;filter:url(#${fid})`; copy.appendChild(pg);
       const up = document.createElement("div"); up.className = "toast-glass-up"; up.style.cssText = "position:absolute;left:0;top:0;transform-origin:0 0;pointer-events:none"; up.appendChild(copy); return { up, copy }; };
     const A = mk("toast-glass-f", page), V = mk("toast-glass-v", page.cloneNode(true)), b = box(), gm = glyphMask(b);
-    const vib = document.createElement("div"); vib.className = "toast-glass-vib"; vib.style.cssText = `position:absolute;inset:0;pointer-events:none;-webkit-mask:url(${gm.url}) 0 0 / ${b.W}px ${b.H}px no-repeat;mask:url(${gm.url}) 0 0 / ${b.W}px ${b.H}px no-repeat`; vib.appendChild(V.up);
+    const vib = document.createElement("div"); vib.className = "toast-glass-vib"; vib.style.cssText = `position:absolute;inset:0;pointer-events:none;-webkit-mask:url("${gm.url}") 0 0 / ${b.W}px ${b.H}px no-repeat;mask:url("${gm.url}") 0 0 / ${b.W}px ${b.H}px no-repeat`; vib.appendChild(V.up);
     const layer = document.createElement("div"); layer.className = "toast-glass"; layer.setAttribute("aria-hidden", "true"); layer.appendChild(A.up); layer.appendChild(vib);
-    tt.prepend(layer); glass.layer = layer; glass.copy = A.copy; glass.vcopy = V.copy; glass.ups = [A.up, V.up]; glass.lines = gm.lines; glass.theme = th; tt.classList.add("glass-read"); place(); };
-  const strip = () => { if (glass.layer) glass.layer.remove(); glass.layer = glass.copy = glass.vcopy = glass.box = glass.lines = null; glass.ups = []; tt.classList.remove("glass-read"); };
+    tt.prepend(layer); glass.layer = layer; glass.copy = A.copy; glass.vcopy = V.copy; glass.ups = [A.up, V.up]; glass.maskText = gm.text; glass.theme = th; tt.classList.add("glass-read"); place(); };
+  const strip = () => { if (glass.layer) glass.layer.remove(); glass.layer = glass.copy = glass.vcopy = glass.box = glass.maskText = null; glass.ups = []; tt.classList.remove("glass-read"); };
   /* showing = the .show class; view.js toast() rewrites textContent (the layer goes with it) and adds .show in the same task — both land in one observer call */
   new MutationObserver(() => { const on = tt.classList.contains("show"); if (on && (!glass.layer || glass.layer.parentNode !== tt)) build(); }).observe(tt, { attributes: true, attributeFilter: ["class"], childList: true });
   tt.addEventListener("transitionend", (e) => { if (e.target === tt && e.propertyName === "opacity" && !tt.classList.contains("show")) strip(); });   // hidden: drop the copy after the 0.1 s fade
   addEventListener("resize", place); addEventListener("scroll", place, { passive: true });
-  window.ToastGlass = { MAT, K, horner, curve, satMatrix, theme, rebuild: build, get layer() { return glass.layer; }, get box() { return glass.box; }, get lines() { return glass.lines; } };
+  window.ToastGlass = { MAT, K, horner, curve, satMatrix, theme, rebuild: build, get layer() { return glass.layer; }, get box() { return glass.box; }, get maskText() { return glass.maskText; } };
 })();
