@@ -113,7 +113,7 @@ base_url = url
 if only: url = url + ('&' if '?' in url else '?') + 'only=' + only
 # the loader's tags (web/accept.js ACCEPT.files + its own section tags segctl / cell / page) with the cost used to pack the shards: the sum of the
 # explicit sleep() ms in accept-<tag>.js plus in accept.js's sec("<tag>") regions at night 7250d29 (BOARD S4-tags.md (e) has the per-file column)
-TAGS = [('textfit', 0.3), ('tabbar', 26.1), ('segctl', 17.4), ('page', 10.9), ('cell', 6.7), ('sheet', 6.5), ('switch', 6.5), ('glassbtn', 5.0), ('alert', 4.3), ('topbar', 1.8),
+TAGS = [('textfit', 0.3), ('toast', 0.1), ('tabbar', 26.1), ('segctl', 17.4), ('page', 10.9), ('cell', 6.7), ('sheet', 6.5), ('switch', 6.5), ('glassbtn', 5.0), ('alert', 4.3), ('topbar', 1.8),
         ('nav', 1.3), ('refresh', 1.1), ('nav-edge', 1.1), ('menu', 0.7), ('tile', 0.6), ('motion', 0.2),
         ('stockpile', 4.0), ('diagmark', 4.0), ('tabbar-view', 4.0), ('alert-view', 4.0), ('topbar-view', 4.0),
         ('selfcheck', 0.2)]   # 老网页 P3 (accept-selfcheck.js: 4 × sleep(50))
