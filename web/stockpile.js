@@ -54,7 +54,13 @@
   let lastGood = null, lastErr = "";
 
   /* Geometry per plan §4.2 / §3 / §5; every value is a tokens.css variable except the
-     刷新 button box, AX-11 Button「编辑」(358, 66, 58, 36) = nav top + 4, right inset 24. */
+     刷新 button box, AX-11 Button「编辑」(358, 66, 58, 36) = nav top + 4, right inset 24.
+     P4 (plan §5 first state): the loading row is a one-line cell (--ios-row-h 53.33, text x 40) with the page's
+     UIActivityIndicatorView (.ai, index.html) 20 × 20 at x 380, i.e. 40 from the screen's right edge (tokens.css
+     --ios-spinner-inset, probe); its vertical place is the flex centre — 待读 (not in the probe line).
+     P4: the sections sit in #stockbody, so index.html's pushed-page rule for the first header (.page > .pbody > section > h2,
+     text at the bar's bottom + --ios-header-text-top) missed them and the main page's `section:first-child > h2 {padding-top:10px}`
+     won: the first card was 9 lower than bar + --ios-header-h. The same rule, one level deeper. */
   function style() {
     if (document.getElementById("stockpile-css")) return;
     const st = document.createElement("style");
@@ -70,14 +76,17 @@
 .stk-row .v{position:absolute;right:20px;top:50%;transform:translateY(-50%);font-size:var(--ios-body-size);line-height:var(--ios-body-lh);color:var(--ios-secondary-label);white-space:nowrap;font-variant-numeric:tabular-nums}
 .stk-row:not(:last-child)::after{content:"";position:absolute;left:var(--ios-row2-text-x);right:20px;bottom:0;height:var(--ios-separator-h);background:var(--ios-separator)}
 .stk-foot{margin:0;padding:var(--ios-footer-text-top) 20px 0;font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh);color:var(--ios-secondary-label)}
-.stk-load{position:relative;height:var(--ios-row2-h);display:flex;align-items:center;padding:0 20px;font-size:var(--ios-body-size);color:var(--ios-label)}
+.stk-load{position:relative;height:var(--ios-row-h);display:flex;align-items:center;padding:0 20px;font-size:var(--ios-body-size);color:var(--ios-label)}
+.stk-load .ai{position:absolute;right:calc(var(--ios-spinner-inset) - var(--ios-card-inset))}
+#stockbody > section:first-child > h2{padding-top:calc(var(--ios-header-text-top) - var(--ios-group-gap))}
 .stk-empty{text-align:center;padding:48px 20px}
 .stk-empty .ttl{font-size:var(--ios-empty-title-size);font-weight:600;color:var(--ios-label);margin-top:8px}
 .stk-empty .txt{font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);color:var(--ios-secondary-label);margin:6px auto 14px;max-width:var(--ios-empty-caption-w)}
 .stk-empty button{height:var(--ios-empty-button-h);padding:0 18px;border-radius:calc(var(--ios-empty-button-h) / 2);border:0;background:var(--ios-tint);color:#fff;font-size:var(--ios-sub-size)}
 .stk-zero{margin:40px auto;max-width:var(--ios-empty-caption-w);text-align:center;font-size:var(--ios-body-size);color:var(--ios-empty-text)}
 .pnav .stk-refresh{position:absolute;top:4px;right:24px;width:58px;height:36px;border:0;background:none;padding:0;font-size:var(--ios-body-size);font-weight:500;color:var(--ios-tint)}
-.pnav .stk-refresh:disabled{opacity:var(--ios-disabled-opacity)}`;
+.pnav .stk-refresh:disabled{opacity:var(--ios-disabled-opacity)}
+#subpage:not(:has(#stockbody)) .stk-refresh{display:none}`;
     document.head.appendChild(st);
   }
 
@@ -153,7 +162,9 @@
     if (b) b.onclick = () => (b.dataset.act === "phone" ? toPhone() : load(true));
   }
   function toPhone() {
-    if (window.Nav && Nav.back) Nav.back(); else { const bk = document.querySelector("#subpage .pback"); if (bk) bk.click(); }
+    // P4: through the back button itself, so its once-listener takes 「刷新」 along (Nav.back() alone left it in the bar)
+    const bk = document.querySelector("#subpage .pback");
+    if (bk) bk.click(); else if (window.Nav && Nav.back) Nav.back();
     const t = document.querySelector('button[data-tab="手机"]');
     if (t) t.click();
   }
@@ -163,7 +174,7 @@
   }
   async function load(force) {
     const el = document.getElementById("stockbody");
-    if (el && !lastGood) el.innerHTML = `<div class="stk-card"><div class="stk-load">正在从森空岛读取…</div></div>`;
+    if (el && !lastGood) el.innerHTML = `<div class="stk-card"><div class="stk-load">正在从森空岛读取…<span class="ai on">${"<i></i>".repeat(8)}</span></div></div>`;
     busy(true);
     try { paint(await Inventory.refresh(force)); }
     catch (e) { paint({ games: [{ "错误": e.message }] }); }
@@ -178,12 +189,14 @@
       b.type = "button"; b.className = "stk-refresh"; b.textContent = "刷新";
       b.onclick = () => load(true);
       bar.appendChild(b);
-      /* #subpage is shared with the 回执 page: the button leaves with this page */
+      /* #subpage is shared with the 回执 page: the button leaves with this page (P4: a pop that is not a click on the back
+         button — the edge swipe, nav-edge.js — leaves it in the bar; the stylesheet hides it on any page without #stockbody) */
       const back = bar.querySelector(".pback");
       if (back) back.addEventListener("click", () => b.remove(), { once: true });
     }
     load(false);
   }
 
-  window.Stockpile = { open, load, listHtml };
+  // reset: forget the last good read (web/accept-stockpile.js walks the no-data states first; nothing on the page calls it)
+  window.Stockpile = { open, load, listHtml, reset: () => { lastGood = null; lastErr = ""; } };
 })();
