@@ -2358,7 +2358,14 @@ $("#go").onclick = async () => {
    已寄出的回执要等下一次上报才出现——机器关着时就是永远不出现（2026-09-14）。 */
 {
   const _renderRaw = render;
-  render = (...a) => { _renderRaw(...a); reconcilePending(); applyEdits(); dressSelects(); };
+  /* A re-render while a menu is up (open or retracting) waits for its end (menu.js strip → "menu-closed"): the render rebuilt the row, so the button the
+     menu is anchored to left the page mid-retract — the panel shrank toward a detached node and the new button stood fully lit under it (2号 01:34
+     probe, status-2号: live.js updateLive → render → replaceKeeping; the dark self-check's 菜单收回 opacity / blur rows read NaN). UIKit's dismiss
+     morph targets the source view, which "must be in a window" (UITargetedPreview init(view:), Apple docs). The chosen item's label does not wait:
+     dressSelects' change listener sets the button text at the choice. */
+  let held = false;
+  document.addEventListener("menu-closed", () => { if (held) { held = false; render(); } });
+  render = (...a) => { if (window.Menu && Menu.state && Menu.state()) { held = true; return; } _renderRaw(...a); reconcilePending(); applyEdits(); dressSelects(); };
 }
 
 applyTheme();
