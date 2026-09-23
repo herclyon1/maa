@@ -42,7 +42,7 @@ ACCEPT.add(async function sw({ check, num, col, sleep, settle }) {
     const knob = parts.filter((p) => /\.sw\b/.test(p) && /span::after$/.test(p)), drive = knob.filter((p) => /\.drive\b/.test(p) && !/:active/.test(p));
     const rivals = knob.filter((p) => !/\.drive\b/.test(p) && !/\.hold\b/.test(p)), top = rivals.reduce((m, p) => gt(spec(p), m.s) ? { p, s: spec(p) } : m, { p: "", s: [0, 0, 0] });
     check("开关 P0b-5 驱动规则特异性 > 旧旋钮规则最高者（含 :active / :checked；.hold 只由已让位的 view.js 旧路加）", `> ${top.s.join(",")} (${top.p})`,
-      drive.map((p) => `${spec(p).join(",")} ${p}`).join(" | ") || "缺", drive.length === 1 && gt(spec(drive[0]), top.s)); }
+      drive.map((p) => `${spec(p).join(",")} ${p}`).join(" | ") || "缺", drive.filter((p) => !/\.glk\b/.test(p)).length === 1 && drive.every((p) => gt(spec(p), top.s))); }   // ⓪: + the .glk sub-rule (the knob on the WebGL canvas), also above the old rules
   check("开关开：井环宽 .39 s / 色 .18 s（--ios-motion-switch-well-grow-duration / -color-duration）", "--wb 0.39s, color 0.18s", `${cs(on).transitionProperty} ${cs(on).transitionDuration}`, cs(on).transitionProperty === "--wb, color" && cs(on).transitionDuration === "0.39s, 0.18s");
   check("开关关：井环宽 .365 s 延 .025 s / 色 .18 s（--ios-motion-switch-well-shrink-*）", "0.365s, 0.18s / 0.025s, 0s", `${cs(off).transitionDuration} / ${cs(off).transitionDelay}`, cs(off).transitionDuration === "0.365s, 0.18s" && cs(off).transitionDelay === "0.025s, 0s");
   lab.remove();
@@ -71,6 +71,22 @@ ACCEPT.add(async function sw({ check, num, col, sleep, settle }) {
   await sleep(220);
   { const sc = scaleOf(kn(), "::after"); check("开关 按下 +460 ms：旋钮落定 58×38.33（scale 1.5676 1.5971，± .003）", "1.5676 1.5971", cs(kn(), "::after").scale, Math.abs(sc[0] - 58 / 37) < .003 && Math.abs(sc[1] - 38.33 / 24) < .003); }
   num("开关 按下 +460 ms：井环到 15.5（.39 s 完）", 15.5, wb(), 0.05);
+  /* ⓪ 打回 (用户 09-23 20:07 「就是单纯不鼓玻璃泡」): the held knob is the lens glass on the WebGL canvas — the canvas is in this switch and drew the lifted
+     58 × 38.33 frame (lift 1, white content view gone), the DOM knob's placeholder material is off, and the glass REFRACTS: along the lens's centre
+     column the well's top edge (backdrop → well colour) sits ≥ 1 pt away from where the unrefracted backdrop has it. Red before the fix (no
+     Switch.glOf / the CSS placeholder moves nothing) and on a WebKit without WebGL2 (glOf().ok false). */
+  { const g = window.Switch.glOf ? window.Switch.glOf(sw) : null, f = g && g.frame, pr = window.Switch.glProbe ? window.Switch.glProbe(sw) : null;
+    const lum = (c) => .2126 * c[0] + .7152 * c[1] + .0722 * c[2];
+    /* the crossing of the backdrop's own mid level (the colour above the well ↔ the well's at the centre), scanned from 2.5 pt inside the lens's top
+       (past the rim's dark line / ring) down to the centre, in both columns */
+    const mid = pr ? (lum(pr.bd[Math.round((pr.top - 3) * 2)]) + lum(pr.bd[Math.round(pr.cy * 2)])) / 2 : 0, a0 = pr ? lum(pr.bd[Math.round((pr.top - 3) * 2)]) : 0;
+    const edge = (arr) => { if (!arr) return null; for (let i = Math.round((pr.cy - 19.17 + 2.5) * 2); i < Math.round(pr.cy * 2); i++) if ((lum(arr[i]) - mid) * (a0 - mid) <= 0) return i / 2; return null; };
+    const eg = pr ? edge(pr.col) : null, eb = pr ? edge(pr.bd) : null, ab = cs(kn(), "::after");
+    check("开关 ⓪ 按住 +460 ms：旋钮是玻璃透镜（WebGL 画布在本开关、抬起 1、58×38.33、白底 0；DOM 旋钮占位材质关）", "gl · here · lift 1 · 58×38.33 · platter 0 · ::after 透明",
+      g ? `${g.ok ? "gl" : "无 WebGL"} · ${g.here ? "here" : "别处"} · lift ${g.last && Math.round(g.last.lift * 100) / 100} · ${f ? f.w + "×" + f.h : "未画"} · platter ${g.last && Math.round(g.last.platterAlpha * 100) / 100} · ::after ${ab.backgroundImage === "none" && /rgba\(0, 0, 0, 0\)|transparent/.test(ab.backgroundColor) ? "透明" : ab.backgroundImage.slice(0, 30)}` : "缺 Switch.glOf",
+      !!(g && g.ok && g.here && g.glk && g.last && g.last.lift >= .99 && f && Math.abs(f.w - 58) < .6 && Math.abs(f.h - 38.33) < .6 && g.last.platterAlpha < .01 && ab.backgroundImage === "none"));
+    check("开关 ⓪ 按住：玻璃折射——透镜中列上井上沿的位置与无玻璃底图差 ≥ 1 pt（底位移 +9 / 36、内折射 −11.5 / 6.9）", "|Δ| ≥ 1 pt",
+      pr ? `玻璃 ${eg} · 底图 ${eb} · Δ ${eg != null && eb != null ? Math.round((eg - eb) * 10) / 10 : "?"} pt` : "无探针", pr != null && eg != null && eb != null && Math.abs(eg - eb) >= 1); }
   const t2 = performance.now(); pev(sw, "pointerup", at(sw)); const d2 = performance.now() - t2;
   check("开关 S1 抬手：立刻翻转一次（pending 点按预置；--ios-touch-switch-flip-delay 0）", "on ×1", `${inp.checked ? "on" : "off"} ×${flips} +${Math.round(d2 * 10) / 10} ms`, inp.checked && flips === 1 && d2 < 50);
   await sleep(100);

@@ -60,6 +60,11 @@
      2026-09-23 04:5x from this Mac: the preflight for PUT + content-type,x-cos-forbid-overwrite from that origin 200; the anonymous PUT 200;
      the same key again 409 FileAlreadyExists; an anonymous GET 403. No key in this page. localStorage["ark-diag-bucket"] / ?diagbucket=
      override it. An acceptance run (?accept) never writes to the bucket: its records take the keep-local path, which is what its rows check. */
+  /* ⓪ 打回 (验收 09-23 20:1x): the phone's accessibility display settings in every record — Reduce Motion (the switch never lifts its lens), Reduce
+     Transparency and Increase Contrast (the glass materials change) — read by the standard media queries at the moment the record is made */
+  const a11yNow = () => { const mm = (q) => { try { return matchMedia(q).matches; } catch (e) { return null; } };
+    return { reduce_motion: mm("(prefers-reduced-motion: reduce)"), reduce_transparency: mm("(prefers-reduced-transparency: reduce)"),
+      contrast: ["more", "less", "custom"].find((v) => mm(`(prefers-contrast: ${v})`)) || (mm("(prefers-contrast: no-preference)") ? "no-preference" : null) }; };
   const COS_BASE = "https://ark-diag-1315873325.cos.ap-shanghai.myqcloud.com";
   const QKEY = "ark-diag-queue";
   const name = q.get("segframes") && q.get("segframes") !== "1" ? q.get("segframes") : "web";
@@ -287,7 +292,7 @@
     const out = { name: rec.name, t_down_pts: round(td, 3), t_up_pts: round(tu, 3), moves_since_down: rec.moves.map((m) => round(m / 1000 - td, 3)),
       control_events: rec.events, first_lens_change_since_down: firstChange ? firstChange.t_since_down : null, frames,
       pointer: rec.pointer.map((p) => ({ ...p, t: round(p.t / 1000 - td, 3) })), counter: { x: 0, y: "env(safe-area-inset-top)", cell: CELL, bits: BITS, gray: true, dpr },
-      viewport: `${innerWidth}×${innerHeight}`, standalone: matchMedia("(display-mode: standalone)").matches, href: location.href, at: new Date().toISOString(),
+      viewport: `${innerWidth}×${innerHeight}`, standalone: matchMedia("(display-mode: standalone)").matches, a11y: a11yNow(), href: location.href, at: new Date().toISOString(),
       sampler: "after the page's rAF callbacks (rAF wrapper, last sample of the frame; 2026-09-19)", frame_interval: round(interval, 4),
       time_semantics: "pts = presentation time = the sampling frame's rAF timestamp (sample_t) + frame_interval (the next vsync); t_since_down / t_since_up from pts",
       state_source: window.__segLens ? "window.__segLens (the page's lens loop)" : "window.__segLens not present",
@@ -322,7 +327,7 @@
       t_down_pts: round(td, 3), t_up_pts: round(tu, 3), moves_since_down: rec.moves.map((m) => round(m / 1000 - td, 3)),
       control_events: rec.events, scene0: rec.scene0, first_change_since_down: moved ? moved.t_since_down : null, frames,
       pointer: rec.pointer.map((x) => ({ ...x, t: round(x.t / 1000 - td, 3) })), frame_interval: round(interval, 4),
-      viewport: `${innerWidth}×${innerHeight}`, standalone: matchMedia("(display-mode: standalone)").matches, href: location.href, at: new Date().toISOString(),
+      viewport: `${innerWidth}×${innerHeight}`, standalone: matchMedia("(display-mode: standalone)").matches, a11y: a11yNow(), href: location.href, at: new Date().toISOString(),
       vp_events: vpEvents.filter((e) => e.t >= rec.t_down - 1000 && e.t <= (rec.t_up === null ? rec.t_down : rec.t_up) + MAX_AFTER_UP_MS).map((e) => ({ ...e, t: round(e.t / 1000 - td, 3) })),
       ua: navigator.userAgent, page_version: pageVersion(), trigger: triggerName(), longtask_supported: longtaskSupported,
       time_semantics: "pts = presentation time = the sampling frame's rAF timestamp + frame_interval; t_since_down / t_since_up from pts" };
@@ -392,7 +397,7 @@
       upload(lastOut); return m;
     }
     emit({ kind: "mark", record_id: rid(), marks: [m], at: new Date().toISOString(), href: location.href, viewport: `${innerWidth}×${innerHeight}`,
-           standalone: matchMedia("(display-mode: standalone)").matches, ua: navigator.userAgent, page_version: pageVersion(), trigger: triggerName() }, false);
+           standalone: matchMedia("(display-mode: standalone)").matches, a11y: a11yNow(), ua: navigator.userAgent, page_version: pageVersion(), trigger: triggerName() }, false);
     return m;
   }
   window.__diagMark = markNow;

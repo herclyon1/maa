@@ -40,6 +40,11 @@ html .sw.sw.drive.drive span::after { translate: calc(var(--kx, 0px) + var(--kdx
   backdrop-filter: blur(calc(1.5px * var(--lift, 0))) saturate(calc(1 + .5 * var(--lift, 0)));
   -webkit-backdrop-filter: blur(calc(1.5px * var(--lift, 0))) saturate(calc(1 + .5 * var(--lift, 0))); }
 html .sw.drive input:active + span::after { animation: none; }
+/* ⓪ 打回: while switch.js draws the knob lens on the WebGL canvas (.glk, lift progress > 0) the ::after only keeps the rest knob's outer shadow,
+   fading 1 − q with the white content view (NATIVE-GAP: the rest shadow is index.html's unsourced one); the glass, the white platter, the ring shadow
+   and the highlight are the canvas's (switch.js SWG, lens-webgl.js). Without WebGL (or ?swgl=0) the placeholder above stays. */
+html .sw.sw.drive.drive.glk span::after { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none;
+  box-shadow: 0 3px 8px rgb(0 0 0 / calc(.15 * (1 - var(--lift, 0)))), 0 1px 1px rgb(0 0 0 / calc(.16 * (1 - var(--lift, 0)))); }
 /* NATIVE-GAP G24 — the container's gradient image (switch-native-formula.md §13, 2号 read UIKitCore iOS 27.0): +_modernGradientImageWithOnColor:
    draws a 10w × 1 canvas (w = the well's width, 63 → 630) with CGContextDrawLinearGradient from (w, 0) to (9w, 0), [onColor, onColor α 0], both ends
    extended → 0…w solid onColor, w…9w linear to clear, 9w…10w clear; the container sits at x 0 when on and −9w (−567) when off, moved by the well's

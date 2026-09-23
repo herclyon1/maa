@@ -39,7 +39,8 @@ float sat(float x){ return clamp(x, 0.0, 1.0); }
 uniform float u_rmax;   /* the capsule's corner radius cap: the segment lens 22 (DestOut cornerRadius stays 22 through the drag), the tab lens h/2 (tab-lens-native.md §0: cornerRadii 35 = 70/2 on every element) — opts.rmax */
 vec2 decode(vec2 rg, float S){ return (rg - 128.0 / 255.0) * S; }
 /* glassBackground ring shadow (keyfill §4; keys offset 8 / opacity .1 / stroke 4 / blur 3 / mask 0): black α = .1·[N((d_r + 4)/3) − N(d_r/3)], d_r = the SDF of the capsule shifted 8 pt down; drawn inside and outside */
-float ringTerm(vec2 pl, vec2 half_, float r){ float dr = sdf(pl - vec2(0.0, 8.0), half_, r); return sat(N((dr + 4.0) / 3.0) - N(dr / 3.0)) * 0.1; }
+uniform float u_ring;   /* the ring shadow's opacity: glassBackground inputRingShadowOpacity — the segment lens .1 (keyfill §4), the switch knob lens .15 (uiprobe-subtree-r21a-pressed.json) — opts.ring */
+float ringTerm(vec2 pl, vec2 half_, float r){ float dr = sdf(pl - vec2(0.0, 8.0), half_, r); return sat(N((dr + 4.0) / 3.0) - N(dr / 3.0)) * u_ring; }
 /* glassBackground built-in KeyFill = the outer 1 pt dark line (keyfill §5.1; keys Amount .5 → uniform 1/.5 − 2 = 0 (B6-3), ColorBias −.3, EffectOffset −.6667, Height 1, Angle π/2 → dir (sin θ, −cos θ) = (1, 0), SpreadSDR 2.0944 → S = cos = −.5;
    e = −(d + offset), prof = mix(1, 1 − e, .75), aa = sat((d + off + h)/fw + .5)·sat(e/fw + .5) with fw = fwidth (keyfill §2 B6-2), k = v·ang_key + v·ang_fill) → returns k */
 float darkLineK(float d, vec2 n){ float off = -0.6667, h = 1.0; float e = -(d + off); float fw = max(fwidth(e), 1e-4);
@@ -274,7 +275,7 @@ void main(){
       gl.uniform4f(U(P1, "u_quad"), wx, wy, ww, wh_); gl.uniform2f(U(P1, "u_origin"), wx, wy); gl.uniform2f(U(P1, "u_view"), ww, wh_);
       gl.uniform4f(U(P1, "u_page"), region.x, region.y, region.w, region.h); gl.uniform4f(U(P1, "u_lens"), lx, ly, lw, lh); gl.uniform1f(U(P1, "u_S"), st.S * FIELDS); gl.uniform1f(U(P1, "u_p"), p);
       gl.uniform1f(U(P1, "u_srcclip"), opts.srcClip === false ? 0 : 1); gl.uniform1f(U(P1, "u_lincomp"), LINCOMP); gl.uniform1f(U(P1, "u_pd"), pd);
-      gl.uniform1f(U(P1, "u_rmax"), RMAX); gl.uniform1f(U(P1, "u_labmode"), LABMODE); gl.uniform1f(U(P1, "u_sdfmode"), SDFMODE); const mdl = st.model || opts.model || [220, 44]; gl.uniform2f(U(P1, "u_model"), mdl[0], mdl[1]); gl.uniform4f(U(P1, "u_lst"), LST[0], LST[1], LST[2], LST[3]);
+      gl.uniform1f(U(P1, "u_rmax"), RMAX); gl.uniform1f(U(P1, "u_ring"), RING); gl.uniform1f(U(P1, "u_labmode"), LABMODE); gl.uniform1f(U(P1, "u_sdfmode"), SDFMODE); const mdl = st.model || opts.model || [220, 44]; gl.uniform2f(U(P1, "u_model"), mdl[0], mdl[1]); gl.uniform4f(U(P1, "u_lst"), LST[0], LST[1], LST[2], LST[3]);
       const pl_ = s.platter || { rgba: [0, 0, 0, 0], alpha: 0 }; gl.uniform4f(U(P1, "u_platter"), (pl_.rgba[0] || 0) / 255, (pl_.rgba[1] || 0) / 255, (pl_.rgba[2] || 0) / 255, (pl_.rgba[3] == null ? 1 : pl_.rgba[3]) * (pl_.alpha == null ? 1 : pl_.alpha));
       bind(P1, "t_page", 0, tPage); bind(P1, "t_lab", 1, tLab); bind(P1, "m_bg", 2, st.bg); bind(P1, "m_lab", 3, st.lab); bind(P1, "t_ish", 4, st.ish.t); mark("uniforms_binds1");
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); mark("pass1");
@@ -283,7 +284,7 @@ void main(){
       else clear();
       useProg(P2); mark("clear_useP2");
       gl.uniform4f(U(P2, "u_quad"), wx, wy, ww, wh_); gl.uniform2f(U(P2, "u_origin"), canvasOrigin.x, canvasOrigin.y); gl.uniform2f(U(P2, "u_view"), W, H);
-      gl.uniform1f(U(P2, "u_rmax"), RMAX); gl.uniform4f(U(P2, "u_lens"), lx, ly, lw, lh); gl.uniform4f(U(P2, "u_wrap"), wx, wy, ww, wh_); gl.uniform1f(U(P2, "u_Sab"), st.Sab); gl.uniform1f(U(P2, "u_wh"), s.wh || 1.72); gl.uniform1f(U(P2, "u_p"), p);
+      gl.uniform1f(U(P2, "u_rmax"), RMAX); gl.uniform1f(U(P2, "u_ring"), RING); gl.uniform4f(U(P2, "u_lens"), lx, ly, lw, lh); gl.uniform4f(U(P2, "u_wrap"), wx, wy, ww, wh_); gl.uniform1f(U(P2, "u_Sab"), st.Sab); gl.uniform1f(U(P2, "u_wh"), s.wh || 1.72); gl.uniform1f(U(P2, "u_p"), p);
       gl.uniform4f(U(P2, "u_page"), region.x, region.y, region.w, region.h); gl.uniform1f(U(P2, "u_pd"), pd); gl.uniform1f(U(P2, "u_dbg"), opts.debugPass1 ? 1 : 0); gl.uniform1f(U(P2, "u_ab"), AB); gl.uniform2f(U(P2, "u_ascale"), aw / A.w, ah / A.h); bind(P2, "t_a", 0, A.t); bind(P2, "m_ab", 1, st.ab); bind(P2, "t_page", 2, tPage); bind(P2, "t_lab", 3, tLab); mark("uniforms_binds2"); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); mark("pass2");
       if (tr) { tr.set = wsel; tr.total = +(performance.now() - tr.t0).toFixed(2); stats.trace = tr; (stats.traces = stats.traces || []).push(tr); if (stats.traces.length > 60) stats.traces.shift(); }
       if (opts.finish || s._split) gl.finish();
@@ -301,6 +302,7 @@ void main(){
     /* R37 (formula.md §3b.9): the label copy's field per pixel in float — opts.labMode "closed" | "map", ?gllab=closed|map overrides; default "closed" */
     const LABMODE = (() => { const q = new URLSearchParams(location.search).get("gllab"); const m = q || opts.labMode || "closed"; return m === "map" ? 0 : 1; })();
     const SDFMODE = (() => { const q = new URLSearchParams(location.search).get("glsdf"); const m = q || opts.labelSdf || "super"; return m === "circle" ? 0 : 1; })();   /* R38a / NATIVE-GAP G25: the element SDF of the float label field (the label stages and the portal clip only; the backdrop path stays on the capsule maps, label-end-tear §7e) — default "super" = QuartzCore's equal-radius branch, the one the element takes (emit_sdf_bounds_internal 0x1c3a686cc: image function 21 = supercircle_sdf_image<false>, §7b (a′)); ?glsdf=circle = the half-disc capsule (instrument). The end-ink gap it left (78.6 vs 68 %, §7c) is the lifted state's dispersion and linear-light composite, now R38c / R38d */
+    const RING = opts.ring != null ? opts.ring : 0.1;   /* u_ring (COMMON): the segment / tab lenses keep .1 */
     const RMAX = opts.rmax != null ? opts.rmax : 22;   /* the capsule's corner radius cap (seg 22; the tab family passes 1e6 = h/2) */
     const LINCOMP = new URLSearchParams(location.search).get("gllin") === "0" ? 0 : 1;   /* R38d: the label copy composited in linear light inside the lens (R99); ?gllin=0 = the sRGB over (instrument) */
     const FIELDS = new URLSearchParams(location.search).get("glfields") === "0" ? 0 : 1;   /* R38c instrument: ?glfields=0 = the three displacement fields off (the label stages' amounts and the maps' S → 0), the dispersion / highlight / lines untouched — the state of 数据's R95 / R98 measurements */
