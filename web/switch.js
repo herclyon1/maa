@@ -145,4 +145,13 @@
     }, T.press);
   });
   window.Switch = { version: "B13 3008bf5 → night", SW_BASE, flexOf: (sw) => (sw && sw._sw && sw._sw.flex) ? { active: sw._sw.flex.active, spec: { ...sw._sw.flex.spec }, out: { ...sw._sw.flex.out }, target: sw._sw.flex.tg, trace: sw._sw.flex.trace, lift: sw._sw.lift.x, liftSX: sw._sw.liftSX, liftSY: sw._sw.liftSY, written: sw._sw.written ? { ...sw._sw.written } : null } : null };   // lift: the UNCLAMPED lift value the scale is built from (the --lift var is clamped 0…1; accept A15)
+  /* 界面-串2 ⑤ (09-23, simulator B frame tables BOARD/evidence/界面-串2-开关-新载首按*.json): the knob's first lift after a page load stalled the
+     page 107–284 ms — WebKit builds its backdrop-filter pipeline (blur + saturate, switch.css .drive) on first use; the same first press with that
+     filter removed ran at 60 fps, and a later press or another switch's first press did not stall (the cost is per page, not per element). The lift
+     rose inside the stall, so the first visible lifted frame was already .84 and falling (2号 rec new-5「圆钮不再抬起成玻璃」). One 2 × 2 pt
+     element with the same two functions for two frames after load builds it off the gesture path (measured: first press then smooth, max gap 33 ms). */
+  const prewarm = () => { if (!document.body) return; const w = document.createElement("div");
+    w.style.cssText = "position:fixed;left:0;top:0;width:2px;height:2px;pointer-events:none;z-index:2147483647;-webkit-backdrop-filter:blur(1px) saturate(1.5);backdrop-filter:blur(1px) saturate(1.5)";
+    document.body.appendChild(w); requestAnimationFrame(() => requestAnimationFrame(() => { w.remove(); window.Switch.prewarmedAt = performance.now(); })); };
+  if (document.readyState === "complete") setTimeout(prewarm, 300); else addEventListener("load", () => setTimeout(prewarm, 300), { once: true });
 })();

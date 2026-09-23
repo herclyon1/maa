@@ -149,5 +149,12 @@ ACCEPT.add(async function sw({ check, num, col, sleep, settle }) {
   pev(sw, "pointerdown", at(sw)); pev(sw, "pointercancel", at(sw));
   check("开关 pointercancel：不翻转、不 pressed", "on ×6, rest", `${inp.checked ? "on" : "off"} ×${flips}, ${sw.classList.contains("pressed") ? "pressed" : "rest"}`, inp.checked && flips === 6 && !sw.classList.contains("pressed"));
   await rest(200);
+  /* 界面-串2 ⑤ (09-23 simulator B, BOARD/evidence/界面-串2-开关-*.json): ① the rest knob has no background / box-shadow / scale transition — the old
+     .12 s ones faded the colour in from the driven rule's transparent over 6 frames when .drive came off (「落定后闪半透明」); ② the backdrop-filter
+     pipeline was built once after load (first lift stalled 107–284 ms without it) and the prewarm element is gone */
+  { const tp = getComputedStyle(sw.querySelector("span"), "::after").transitionProperty.split(",").map((x) => x.trim());
+    check("开关 静止旋钮只有位移过渡（无 background / box-shadow / scale：摘 .drive 那刻底色不再从透明渐回）", "translate", tp.join(","), !tp.some((x) => /background|box-shadow|scale|^all$/.test(x))); }
+  check("开关 载入后预热背景滤镜一次（首按不卡）、预热块已摘", "prewarmedAt · 无残留", `${window.Switch && window.Switch.prewarmedAt ? "prewarmedAt " + Math.round(window.Switch.prewarmedAt) : "没预热"} · ${[...document.body.children].some((e) => /backdrop-filter:\s*blur\(1px\)/.test(e.getAttribute("style") || "") && e.style.width === "2px") ? "有残留" : "无残留"}`,
+    !!(window.Switch && window.Switch.prewarmedAt) && ![...document.body.children].some((e) => /backdrop-filter:\s*blur\(1px\)/.test(e.getAttribute("style") || "") && e.style.width === "2px"));
   swLab.remove();
 }, { layer: "timing", dark: true });   // S4 file-level layer tags (S4-tags.md (e))

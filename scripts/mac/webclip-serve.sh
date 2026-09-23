@@ -27,8 +27,13 @@ V=$(date +%Y%m%d%H%M%S)
 python3 "$HERE/stamp-shell.py" "$D" "$V" || { echo "stamp failed — not serving"; exit 3; }
 git -C "$REPO" log -1 --format='%h %ci %s' "$SHA" | cut -c1-120
 kill "$(cat "$S/serve-$PORT.pid" 2>/dev/null)" 2>/dev/null; sleep 0.3
+# another session's server on the port (its own SCRATCH, so not the pid file above) would answer the curls below with ITS build and the
+# bind of ours would fail in the log only — the run then checks the wrong commit (老网页 19:03: 数据's 42ff6d0 still on 9320). Refuse.
+HOLD=$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | head -1)
+[ -z "$HOLD" ] || { echo "port $PORT is held by pid $HOLD ($(lsof -p "$HOLD" -a -d cwd -Fn 2>/dev/null | sed -n 's/^n//p')) — not ours; ask its owner to stop it"; exit 4; }
 nohup python3 "$REPO/scripts/mac/serve.py" "$D" "$PORT" > "$S/serve-$PORT.log" 2>&1 &
 echo $! > "$S/serve-$PORT.pid"; sleep 1.2
+[ "$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | head -1)" = "$(cat "$S/serve-$PORT.pid")" ] || { echo "serve.py did not come up on $PORT:"; tail -2 "$S/serve-$PORT.log"; exit 4; }
 curl -s -o /dev/null -w "manifest %{http_code}\n" "http://localhost:$PORT/manifest.webmanifest"
 curl -s "http://localhost:$PORT/" | grep -o "view.js?v=[0-9]*" | head -1
 xcrun simctl terminate "$UDID" com.apple.webapp > /dev/null 2>&1; sleep 1
