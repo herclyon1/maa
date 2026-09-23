@@ -268,5 +268,17 @@
       } else check("R0② 页面无两段可切（demo 应有早班/晚班）", "≥ 2 段", qbs.length + " 段", false); }
     if (typeof window.__tabKbd === "function") { window.__tabKbd(innerHeight - 300); await sleep(50); check("视口矮 300 后 nav.tabs display none（键盘规则）", "none", getComputedStyle(nav).display, getComputedStyle(nav).display === "none");
       window.__tabKbd(null); await sleep(50); const nb = nav.getBoundingClientRect(); check("复原后 nav.tabs 回到底部（innerHeight − bottom < 120）", "< 120", Math.round(innerHeight - nb.bottom), getComputedStyle(nav).display !== "none" && innerHeight - nb.bottom < 120); }
+    /* P0b (P0b-数据.md #1 / #3 / 旧菜单): no colour transition on the tab button (native swaps the selected / grey copies; no animation on _UITabButton
+       in scene-tab-tap), no press scale on the icon (native: only the lens copy of the selected item scales 1.16, tab-lens-native.md §3), and the
+       dead menu-in keyframes (menu.js:292 builds only "menu morph") are gone. :active cannot be set from script, so the rules are read from the CSSOM. */
+    { const rules = []; const walk = (rs) => { for (const r of rs) { if (r.cssRules && !r.selectorText) walk(r.cssRules); rules.push(r); } };
+      for (const ss of document.styleSheets) { try { walk(ss.cssRules); } catch (e) {} }
+      const b0 = nav.querySelector("button"), bc = getComputedStyle(b0), tps = bc.transitionProperty.split(/,\s*/), tds = bc.transitionDuration.split(/,\s*/);
+      const colT = tps.map((p, i) => `${p} ${tds[i % tds.length]}`).filter((x) => /^(color|all) /.test(x) && parseFloat(x.split(" ")[1]) > 0);   // no transition computes as "all 0s"
+      check("P0b 标签钮：无颜色过渡（原生选中 / 灰两份内容切换）", "无 color / all > 0 s", colT.join(", ") || `${bc.transitionProperty} ${bc.transitionDuration}`, colT.length === 0);
+      const press = rules.filter((r) => r.selectorText && /nav\.tabs/.test(r.selectorText) && /:active/.test(r.selectorText) && /\.ico|\.sf|\.tabimg/.test(r.selectorText) && /transform|scale/.test(r.style.cssText));
+      check("P0b 标签图标：按下不缩（旧 :active .ico scale .9 无原生对应）", "0 条", `${press.length} 条${press.length ? " " + press.map((r) => r.selectorText).join(" | ") : ""}`, press.length === 0);
+      const mk = rules.filter((r) => r.type === CSSRule.KEYFRAMES_RULE && r.name === "menu-in").length + rules.filter((r) => r.style && /menu-in/.test(r.style.animationName || "")).length;
+      check("P0b 旧菜单 menu-in：关键帧与引用已删（menu.js 只建 menu morph）", "0", String(mk), mk === 0); }
   });
 })();
