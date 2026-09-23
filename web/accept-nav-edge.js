@@ -8,18 +8,19 @@ ACCEPT.add(async function navedge({ check, num, sleep }) {
   const W = window.innerWidth, thr = Math.min(187.5 / W, .5);
   const pev = (type, x, y, t, id = 5) => pg.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, clientX: x, clientY: y, isPrimary: true, button: 0, buttons: type === "pointerup" ? 0 : 1, pointerType: "touch" }));
   const tx = () => { const m = getComputedStyle(pg).transform; if (!m || m === "none") return 0; const a = m.match(/matrix\(([^)]+)\)/); return a ? parseFloat(a[1].split(",")[4]) : 0; };
-  const converged = async (cap = 3000) => { const t0 = performance.now(); while (Math.abs(N.state.p - N.state.target) > .001 && performance.now() - t0 < cap) await sleep(30); };   // the tracking spring at its target (frame delivery under load is not the page's doing)
+  const tick = () => new Promise(requestAnimationFrame);   // S1: every wait is the drive's own frames, never a wall-clock sleep (the stimulus sleeps between pointer events stay: they ARE the finger's speed)
+  const converged = async (cap = 3000) => { const t0 = performance.now(); while (Math.abs(N.state.p - N.state.target) > .001 && performance.now() - t0 < cap) await tick(); };   // the tracking spring at its target
   /* A15: the drive's own state, not the rendered transform — the CSS transform is read a frame (or, under load, many frames) behind what the drive last
      wrote, and the tracking spring keeps ticking until the finger owns a new target; judge W·(1 − p) as the drive holds it and its last written --nav-x,
      and when the wait saw a frame gap > 34 ms only record (the gap is the environment: A16) */
-  const convergedGap = async (cap = 3000) => { let maxGap = 0, prev = 0, on = true; const loop = (t) => { if (prev) maxGap = Math.max(maxGap, t - prev); prev = t; if (on) requestAnimationFrame(loop); }; requestAnimationFrame(loop); await converged(cap); await sleep(50); on = false; return maxGap; };
+  const convergedGap = async (cap = 3000) => { let maxGap = 0, prev = 0, on = true; const loop = (t) => { if (prev) maxGap = Math.max(maxGap, t - prev); prev = t; if (on) requestAnimationFrame(loop); }; requestAnimationFrame(loop); await converged(cap); await tick(); await tick(); on = false; return maxGap; };
   const driveX = () => { const v = parseFloat(N.state.pg && N.state.pg.style.getPropertyValue("--nav-x")); return isNaN(v) ? W * (1 - N.state.p) : v; };
-  const settled = async (cap = 6000) => { const t0 = performance.now(); await sleep(30); while (pg.classList.contains("nav-live") && performance.now() - t0 < cap) await sleep(30); };   // the push / pop springs are wall-clock: wait for the drive to end instead of a fixed sleep (A15; under load a 600 ms sleep left the push at p ≈ .7 and the gesture's base percent ≠ 0 → the rubber-band row read W × 1.24 for 1.177, light 1 of 3)
+  const settled = async (cap = 6000) => { const t0 = performance.now(); await tick(); while (pg.classList.contains("nav-live") && performance.now() - t0 < cap) await tick(); };   // the push / pop springs are wall-clock: wait for the drive to end instead of a fixed sleep (A15; under load a 600 ms sleep left the push at p ≈ .7 and the gesture's base percent ≠ 0 → the rubber-band row read W × 1.24 for 1.177, light 1 of 3)
   const open = async () => { N.open("验收", "<p>edge</p>"); await settled(); };
   num("识别区 = .10 W（IsLargeFormatPhone；.09 待 MG 读数）", W * .10, W * E.REGION, .01);
   num("松手阈值 thr = min(187.5 / W, .5)", Math.min(187.5 / W, .5), thr, .001);
   /* 1) outside the region: nothing */
-  await open(); pev("pointerdown", 80, 400); pev("pointermove", 120, 400); pev("pointermove", 160, 400); pev("pointerup", 160, 400); await sleep(50);
+  await open(); pev("pointerdown", 80, 400); pev("pointermove", 120, 400); pev("pointermove", 160, 400); pev("pointerup", 160, 400); await tick(); await tick();
   check("起手 x 80（区外 44）：不识别，页不动", "in, 0", `${pg.classList.contains("in") ? "in" : "-"}, ${Math.round(tx())}`, pg.classList.contains("in") && Math.abs(tx()) < .5);
   /* 2) inside the region but under the hysteresis: nothing yet; past it: began, the percent tracks Δx / W through ζ .85 / .08 */
   pev("pointerdown", 20, 400); pev("pointermove", 30, 400);
@@ -50,4 +51,4 @@ ACCEPT.add(async function navedge({ check, num, sleep }) {
     check(`拖过整宽：顶页 x = W × ${E.rubber(qFull).toFixed(4)}（按驱动器自己：W·(1 − p) 与最后写入的 --nav-x，容 ± 4；等到位时最大帧隔 > 34 ms 只记不判，A15 / A16）`, `${want.toFixed(2)} ± 4`, `p → ${gotP.toFixed(2)} · --nav-x ${gotX.toFixed(2)} · 渲染 transform ${tx().toFixed(2)} · max frame gap ${gapFull.toFixed(0)} ms${stalled ? "（停顿，只记）" : ""}`, stalled || (Math.abs(gotP - want) <= 4 && Math.abs(gotX - want) <= 4)); }
   pev("pointerup", 40 + W * 1.5, 400); await settled();
   check("整宽外松手：完成，hidden", "hidden", pg.hidden ? "hidden" : "shown", pg.hidden);
-});
+}, { layer: "timing", dark: false });

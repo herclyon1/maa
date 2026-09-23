@@ -26,7 +26,7 @@
    the items' run, spring ζ .85 / .2 retargeted on every move, no rubber band; after the up ζ .85 / .4 (R106: §6.9's "no gesture" pair) to the item under the finger (view.js's
    choice). The flex stretch (loupe sX / sY, drift tx = sX(1 − sX)·55) is read but not drawn (per-axis map scaling needed).
    Not drawn yet (material, the ui session's tokens): the KeyFill highlight, the ring shadow, the dark line, the little glow (α 0 → .2).
-   Instrument: window.__tabLens = the per-frame state (t s since the start, p, x, v, target, set, s, phase). */
+   Instrument: window.__tabLens = the per-frame state (t s since the start, p, x, v, target, set, s, phase; settled = both springs at their targets, S1). */
 /* GEOMETRY MODE (BOARD.md #7a, 2026-09-20 — the default tonight; ?tlens=material restores the layered lens above): no material at all — the page's own
    .glide (the selection view, index.html's rules for its glass stay) is driven per frame: size (w0 + 16p) × (54 + 16p) about the item's centre
    (tab-lens-motion.md §0 / §4: 94×54 → 110×70 read as +16 on both axes; r = h/2 through the capsule's border-radius), lift ζ 1 / .25, drop ζ 1 / .4,
@@ -277,9 +277,10 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
       nav.style.setProperty("--tl-left", (xc - Wp / 2) + "px"); nav.style.setProperty("--tl-w", Wp + "px"); nav.style.setProperty("--tl-top", (pad + h0 / 2 - Hp / 2) + "px"); nav.style.setProperty("--tl-h", Hp + "px");
       if (!nav.classList.contains("tl-on")) nav.classList.add("tl-on");
       glFrame(st, p, xc, Wp, Hp, pad, h0);
-      window.__tabLens = { t: (now - t0) / 1000, t0, tf: last, p, v: P.v, x, xv: XS.v, target: st.X, set: 0, s: 1, phase, w: W, h: H, wp: Wp, hp: Hp, xc, frame: frameN, mode: "geometry", rm: !!st.rm,
-        flex: fl ? { sx: fl.out.sx, sy: fl.out.sy, dx: fl.out.dx, target: fl.tg, spec: fl.spec, sp: fl.sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, trace: fl.trace } : null };   // tf = this frame's timestamp: a retarget after it (the up) integrates from here
       const flexRest = !fl || !fl.active;
+      window.__tabLens = { t: (now - t0) / 1000, t0, tf: last, p, v: P.v, x, xv: XS.v, target: st.X, set: 0, s: 1, phase, w: W, h: H, wp: Wp, hp: Hp, xc, frame: frameN, mode: "geometry", rm: !!st.rm,
+        settled: Math.abs(P.x - pTarget) < .002 && Math.abs(P.v) < .02 && Math.abs(XS.x - st.X) < .05 && Math.abs(XS.v) < 1,   // read-only (S1, 2号 13:1x): both springs at their current targets — the stop rule's thresholds below, whatever the target is (a held lift, a parked drag); the flex is not in it (its floats are exposed above)
+        flex: fl ? { sx: fl.out.sx, sy: fl.out.sy, dx: fl.out.dx, target: fl.tg, spec: fl.spec, sp: fl.sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, trace: fl.trace } : null };   // tf = this frame's timestamp: a retarget after it (the up) integrates from here
       if (pTarget === 0 && p < .002 && Math.abs(P.v) < .02 && Math.abs(XS.x - st.X) < .05 && Math.abs(XS.v) < 1 && flexRest && !(st.rm && finger.down)) { stop(); return; }   // R59′b: parked on the item while the finger is down (view.js's box is still the old item until the up)
       tick(frame);
     };

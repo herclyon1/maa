@@ -14,7 +14,7 @@
 (function () {
   if (!window.ACCEPT) return;
   ACCEPT.add(async function acceptTile(ctx) {
-    const { check, sleep } = ctx;
+    const { check, num, col, sleep, settle, raf, sec, segRest, tabRest, fadeRest, at, pev, cs, px, T, near, rgb, same, fmt, satTop, varColor, probe, q, bs, onText, thisShift, R } = ctx;   // dark: the file's own below
     const dark = matchMedia("(prefers-color-scheme: dark)").matches && document.documentElement.dataset.theme !== "light" || document.documentElement.dataset.theme === "dark";
     /* the synthetic controls live in a fixed off-screen container under body (验收 08:5x): nothing is inserted into #app — its layout, view.js's observers
        and any other row's frame recording stay untouched; the page's sheets still style .tile / .capsule there (body-prefixed selectors) */
@@ -96,5 +96,59 @@
       check("胶囊钮 ② tile.css 里有 .capsule:active → opacity 1（盖掉 index.html 的 button:active .6）", "rule present", ruleWith(".capsule:active", "opacity", "1") ? "rule present" : "no rule", ruleWith(".capsule:active", "opacity", "1"));
     } finally { cap.remove(); capRed.remove(); }
     } finally { app.remove(); }
-  });
+    /* --- moved from accept.js 2026-09-20 (BOARD 收尾单 ②): the tile's static token rows and the §4 UIButton press on a synthetic tile / alert action --- */
+    sec("static", { layer: "static", dark: true });
+  const tile = document.querySelector(".tile");
+  if (tile) {
+    const r = tile.getBoundingClientRect();
+    num("动作磁贴高 ≥ 80.33（--ios-tile-h，AX-57）", 80.33, Math.min(r.height, 80.33)); num("动作磁贴圆角 16（--ios-tile-radius，提醒事项 layer.cornerRadius）", 16, px(cs(tile).borderTopLeftRadius));
+    num("磁贴间距 8（--ios-tile-gap）", 8, px(cs(tile.parentElement).columnGap));
+    const ico = tile.querySelector(".tico"); if (ico) { const ir = ico.getBoundingClientRect(); num("磁贴徽章 48（--ios-tile-icon）", 48, ir.width); num("磁贴徽章 x 6（--ios-tile-icon-x）", 6, ir.left - r.left); num("磁贴徽章 y 2（--ios-tile-icon-y）", 2, ir.top - r.top); }
+    const tt = tile.querySelector(".ttitle"); if (tt) { const tr = tt.getBoundingClientRect(); num("磁贴标题 17（--ios-tile-label-size）", 17, px(cs(tt).fontSize), 0.05); num("磁贴标题行框 20.33（--ios-tile-label-lh）", 20.33, px(cs(tt).lineHeight), 0.05); check("磁贴标题字重 600（--ios-tile-label-weight）", 600, cs(tt).fontWeight, String(cs(tt).fontWeight) === "600"); num("磁贴标题 x 12（--ios-tile-label-x）", 12, tr.left - r.left); num("磁贴标题 y 52（--ios-tile-label-top）", 52, tr.top - r.top); check("磁贴字族 ui-rounded 优先（--ios-tile-number-font）", "ui-rounded", cs(tt).fontFamily.slice(0, 10), /^ui-rounded/.test(cs(tt).fontFamily)); }
+  }
+  const numT = document.querySelector(".num");
+  if (numT) {
+    const r = numT.getBoundingClientRect();
+    num("数字磁贴高 ≥ 80.33（--ios-tile-h）", 80.33, Math.min(r.height, 80.33)); num("数字磁贴圆角 16（--ios-tile-radius）", 16, px(cs(numT).borderTopLeftRadius));
+    const big = numT.querySelector(".big"); if (big) { const br = big.getBoundingClientRect(); num("数字右内缩 10（--ios-tile-number-inset）", 10, r.right - br.right); num("数字顶 9（--ios-tile-number-top）", 9, br.top - r.top); num("数字字号 28（--ios-tile-number-size）", 28, px(cs(big).fontSize), 0.1); num("数字行框 33.67（--ios-tile-number-lh）", 33.67, px(cs(big).lineHeight), 0.05); check("数字字重 700（--ios-tile-number-weight）", 700, cs(big).fontWeight, String(cs(big).fontWeight) === "700"); }
+    const ico = numT.querySelector(".nico"); if (ico) num("数字磁贴徽章 48（--ios-tile-icon）", 48, ico.getBoundingClientRect().width);
+    const lab = numT.querySelector(".lab"); if (lab) { const lr = lab.getBoundingClientRect(); num("数字磁贴标签 17（--ios-tile-label-size）", 17, px(cs(lab).fontSize), 0.1); num("数字磁贴标签 x 12（--ios-tile-label-x）", 12, lr.left - r.left); num("数字磁贴标签 y 52（--ios-tile-label-top）", 52, lr.top - r.top); }
+  }
+  /* §4 UIButton on a synthetic tile; alert action on a synthetic open dialog */
+  if (sec("press", { layer: "timing", dark: true })) {   // tile press (colours)
+  const bLab = document.createElement("div"); bLab.style.cssText = "position:fixed;left:20px;top:300px;z-index:99;opacity:0";
+  bLab.innerHTML = `<div class="group tiles"><button type="button" class="tile"><span class="ttitle">x</span></button></div>`; document.body.appendChild(bLab);
+  const tile = bLab.querySelector(".tile"); let clicks = 0; tile.addEventListener("click", () => clicks++);
+  const t3 = performance.now(); pev(tile, "pointerdown", at(tile)); const d3 = performance.now() - t3;
+  check("按钮 U1 按下：立刻 highlighted（.pressed，--ios-touch-button-highlight-delay 0）", "pressed", tile.classList.contains("pressed") ? `pressed +${Math.round(d3 * 10) / 10} ms` : "not pressed", tile.classList.contains("pressed"));
+  pev(tile, "pointermove", at(tile, .5, 1, 0, 50));
+  check("按钮 U3 拖出边界 50 pt：仍高亮（余量 70）", "pressed", tile.classList.contains("pressed") ? "pressed" : "not pressed", tile.classList.contains("pressed"));
+  pev(tile, "pointermove", at(tile, .5, 1, 0, 80));
+  check("按钮 U3 拖出边界 80 pt：高亮灭（touchDragExit）", "not pressed", tile.classList.contains("pressed") ? "pressed" : "not pressed", !tile.classList.contains("pressed"));
+  pev(tile, "pointermove", at(tile, .5, 1, 0, 30));
+  check("按钮 U4 拖回：高亮亮（touchDragEnter）", "pressed", tile.classList.contains("pressed") ? "pressed" : "not pressed", tile.classList.contains("pressed"));
+  pev(tile, "pointerup", at(tile, .5, 1, 0, 50)); await sleep(10);
+  check("按钮 U3 在边界外 50 pt 抬手：触发一次（touchUpInside）", 1, clicks, clicks === 1);
+  pev(tile, "pointerdown", at(tile)); pev(tile, "pointermove", at(tile, .5, 1, 0, 100)); pev(tile, "pointerup", at(tile, .5, 1, 0, 100)); await sleep(10);
+  check("按钮 U6 在边界外 100 pt 抬手：不触发（touchUpOutside）", 1, clicks, clicks === 1 && !tile.classList.contains("pressed"));
+  const dlg = document.createElement("dialog"); dlg.style.cssText = "position:fixed;left:20px;top:400px;z-index:99;opacity:0"; dlg.innerHTML = `<div class="acts"><button type="button" id="_a">a</button><button type="button" id="_b">b</button></div>`;
+  document.body.appendChild(dlg); dlg.show(); const ba = dlg.querySelector("#_a"), bb = dlg.querySelector("#_b"); let ca = 0, cb = 0; ba.addEventListener("click", () => ca++); bb.addEventListener("click", () => cb++);
+  pev(ba, "pointerdown", at(ba)); pev(ba, "pointermove", at(bb));
+  check("弹窗按钮 A3 滑到相邻按钮：高亮转移", "b pressed", `${ba.classList.contains("pressed") ? "a" : ""}${bb.classList.contains("pressed") ? "b" : ""} pressed`, !ba.classList.contains("pressed") && bb.classList.contains("pressed"));
+  pev(ba, "pointermove", at(bb, .5, 1, 0, 6));
+  check("弹窗按钮 A4 出边 6 pt：高亮灭（无余量，--ios-touch-alert-slop 0）", "none pressed", `${ba.classList.contains("pressed") ? "a" : ""}${bb.classList.contains("pressed") ? "b" : ""} pressed`, !ba.classList.contains("pressed") && !bb.classList.contains("pressed"));
+  pev(ba, "pointerup", at(bb, .5, 1, 0, 6)); await sleep(10);
+  check("弹窗按钮 A2 出边抬手：不触发", "0 / 0", `${ca} / ${cb}`, ca === 0 && cb === 0);
+  pev(ba, "pointerdown", at(ba)); pev(ba, "pointermove", at(bb)); pev(ba, "pointerup", at(bb)); await sleep(10);
+  check("弹窗按钮 A3/A6 从 a 滑到 b 抬手：触发 b", "0 / 1", `${ca} / ${cb}`, ca === 0 && cb === 1);
+  /* ghost click (data session 862de97): the action closes the dialog on the up, then the browser's own click lands on
+     whatever is under the finger - a tile below opened a second dialog. The tile sits under button a; a's handler closes
+     the dialog; the browser's click is replayed as a plain click on the element now at that point. */
+  { const p = at(ba); ba.addEventListener("click", () => dlg.close(), { once: true }); const c0 = clicks;
+    pev(ba, "pointerdown", p); pev(ba, "pointerup", p);                                    // the action closes the dialog on the up
+    tile.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, clientX: p.x, clientY: p.y }));   // = the browser's click, now landing on the tile under the finger
+    await sleep(10);
+    check("弹窗按钮抬手关掉弹窗后，浏览器补的 click 不穿到底下的磁贴", `tile ${c0}, closed`, `tile ${clicks}, ${dlg.open ? "open" : "closed"}`, clicks === c0 && !dlg.open); }
+  dlg.close(); dlg.remove(); bLab.remove(); }
+  }, { layer: "static", dark: true });   // S4 file-level layer tags (S4-tags.md (e))
 })();
