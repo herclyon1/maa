@@ -116,7 +116,7 @@ ACCEPT.add(async function sw({ check, num, col, sleep, settle, raf }) {
   pev(sw, "pointerdown", at(sw)); await sleep(30);
   let flippedAt = 0; for (let d = 1; d <= 30; d++) { pev(sw, "pointermove", at(sw, .5, .5, d, 0)); if (!flippedAt && inp.checked) flippedAt = d; }
   check("开关 拖 +30（关 → 开）：过 25 即翻开（--ios-touch-switch-flip-distance）", "26", flippedAt, flippedAt === 26);
-  await sleep(300);
+  await sleep(600);   // 停住 = settled: the knob spring (ζ 1 / .3) from rest is 1.4 % short after .3 s — .32 pt of the 23.6-pt travel here, .38 of 27.9 at +47 (over the ± .3); after .6 s < .01 pt (simulator B 09-23 21:4x traced 27.47 at +345 ms → 27.84 at +456)
   { const want = 22 + 12 * (1 - 1 / (1 + .55 * 4 / 12)); check("开关 拖 +30 停住：旋钮 = 42.5 + rb(4)（翻转清零后余 4：橡皮筋 12 / .55）", `${Math.round(want * 100) / 100} ± .3`, Math.round(kx() * 100) / 100, Math.abs(kx() - want) <= .3); }
   pev(sw, "pointerup", at(sw, .5, .5, 30, 0));
   check("开关 拖 +30 抬手：显示态已翻，不再翻（on，事件 ×4）", "on ×4", `${inp.checked ? "on" : "off"} ×${flips}`, inp.checked && flips === 4);
@@ -125,7 +125,7 @@ ACCEPT.add(async function sw({ check, num, col, sleep, settle, raf }) {
   inp.checked = false;
   pev(sw, "pointerdown", at(sw)); await sleep(30);
   for (let d = 1; d <= 47; d++) pev(sw, "pointermove", at(sw, .5, .5, d, 0));
-  await sleep(300);
+  await sleep(600);   // settled (see the +30 row)
   { const want = 22 + 12 * (1 - 1 / (1 + .55 * 21 / 12)); check("开关 拖到 +47 停住：旋钮 = 42.5 + rb(21)（超出端点的橡皮筋）", `${Math.round(want * 100) / 100} ± .3`, Math.round(kx() * 100) / 100, Math.abs(kx() - want) <= .3); }
   pev(sw, "pointerup", at(sw, .5, .5, 47, 0)); await rest(300);
   check("开关 +47 抬手：回 42.5（位移 22）、仍 on（×5）", "22, on ×5", `${Math.round(kx() * 100) / 100}, ${inp.checked ? "on" : "off"} ×${flips}`, Math.abs(kx() - 22) < .3 && inp.checked && flips === 5);
