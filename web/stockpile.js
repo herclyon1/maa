@@ -24,7 +24,9 @@
 
    How it is obtained: the end of the subtitle names the first non-empty list of the
    row's `origin` (采集 / 理智关卡 / 其它, the same order `origin.kind` is picked in;
-   plan §10), e.g. 「库存 354 · 需 136 · 采集」; one line, ellipsis when it does not fit.
+   plan §10), e.g. 「库存 354 · 需 136 · 采集」; one line. M4h (验收 09:18: on 折金票 the
+   ellipsis ate the origin): the origin is a tail that is never cut; when the line does
+   not fit, the counts before it take the ellipsis.
 
    Entry (the 终末地 row is view.js's, owned by 界面): Stockpile.open() - pushes through
    view.js's global openPage (Nav.open when nav.js is loaded). */
@@ -48,7 +50,9 @@
 .stk-row{position:relative;height:var(--ios-row2-h)}
 .stk-row img,.stk-row .noimg{position:absolute;left:var(--ios-row2-icon-x);top:17px;width:var(--ios-row2-icon);height:var(--ios-row2-icon);object-fit:contain}
 .stk-row .t{position:absolute;left:var(--ios-row2-text-x);top:var(--ios-row2-title-top);right:calc(20px + var(--stk-vw, 0px));font-size:var(--ios-body-size);line-height:var(--ios-body-lh);color:var(--ios-label);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.stk-row .s{position:absolute;left:var(--ios-row2-text-x);top:var(--ios-row2-sub-top);right:calc(20px + var(--stk-vw, 0px));font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);color:var(--ios-settings-subtitle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.stk-row .s{position:absolute;left:var(--ios-row2-text-x);top:var(--ios-row2-sub-top);right:calc(20px + var(--stk-vw, 0px));display:flex;font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);color:var(--ios-settings-subtitle);white-space:nowrap;overflow:hidden;font-variant-numeric:tabular-nums}
+.stk-row .s .n{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.stk-row .s .o{flex:none;white-space:pre}
 .stk-row .v{position:absolute;right:20px;top:50%;transform:translateY(-50%);font-size:var(--ios-body-size);line-height:var(--ios-body-lh);color:var(--ios-secondary-label);white-space:nowrap;font-variant-numeric:tabular-nums}
 .stk-row:not(:last-child)::after{content:"";position:absolute;left:var(--ios-row2-text-x);right:20px;bottom:0;height:var(--ios-separator-h);background:var(--ios-separator)}
 .stk-foot{margin:0;padding:var(--ios-footer-text-top) 20px 0;font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh);color:var(--ios-secondary-label)}
@@ -69,7 +73,7 @@
     const icon = r.icon ? `<img src="${esc(r.icon)}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : `<span class="noimg"></span>`;
     const have = r.box > 0 ? `库存 ${num(r.have)} + 箱 ${num(r.box)}` : `库存 ${num(r.have)}`;
     const from = originOf(r);
-    const sub = (r.need == null ? have : `${have} · 需 ${num(r.need)}`) + (from ? ` · ${from}` : "");
+    const sub = `<span class="n">${r.need == null ? have : `${have} · 需 ${num(r.need)}`}</span>` + (from ? `<span class="o"> · ${esc(from)}</span>` : "");
     // user 09-23 08:40: short of one build reads 「差 N」, not 「0.x 人份」; M4g: N = `short`
     // (need − have − box, after the self-select box); a row the box covers shows its 人份
     const short = r.short != null ? r.short : Math.max(0, r.need - r.have);
@@ -80,7 +84,7 @@
   function boxRowHtml(r, box) {
     const icon = r.icon ? `<img src="${esc(r.icon)}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : `<span class="noimg"></span>`;
     return `<div class="stk-row">${icon}<span class="t">${esc(box.name || r.name)}</span>`
-      + `<span class="s">库存 ${num(r.have)} · 补缺用 ${num(r.boxUsed)}</span><span class="v">剩 ${num(r.boxLeft)}</span></div>`;
+      + `<span class="s"><span class="n">库存 ${num(r.have)} · 补缺用 ${num(r.boxUsed)}</span></span><span class="v">剩 ${num(r.boxLeft)}</span></div>`;
   }
   const order = (a, b) => (a.servings == null) - (b.servings == null) || (a.servings || 0) - (b.servings || 0) || a.have - b.have;
 
