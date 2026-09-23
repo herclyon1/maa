@@ -405,6 +405,11 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
     if (MODE === "geometry") { injectGeoStyle(); ready = true; } else await loadFilters();
     const nav = document.getElementById("tabs"); if (!nav) return;
     nav.addEventListener("tabs-changed", onTabsChanged);
+    /* 用户 09-23 18:27 真机 ②「切换到晚班再切早班的时候会出现晚班的底图重叠」: tabs-changed fires on the first frame of view.js's item-set animation, so
+       the backdrop above was painted from a platter still 290 → 416 wide and buttons still at their old x (模拟器 B, evidence 界面-串2-②-底图画布.json: the
+       live 1392×330 page canvas had its capsule at css 45..370 of a 416 bar, the item canvas its first icon 45 px right) — the lens then showed that 晚班
+       layout under the new one on every lift. Painted again from the settled bar when the animation ends (view.js tabSetAnimate "tabs-settled"). */
+    nav.addEventListener("tabs-settled", () => { if (MODE === "geometry" && GL_ON && st && st.nav === nav) glAttach(st).then((g) => { if (g && g.nav === nav) { try { g.lens.redrawBackdrop(); } catch (e) {} } }); });
     st = attach(nav);
     mo.observe(nav, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "style"] });   // nav itself is static; view.js rewrites its children on every render
   };

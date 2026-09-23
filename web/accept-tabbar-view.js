@@ -196,6 +196,19 @@
           per.push({ nm, tabs, orphan }); }
         curQueue = savedQ; window.render(); await sleep(1300);
         check("①′ 每个班次的标签只含本班有的游戏：除「状态」外每个标签都有本班自己的游戏分组，不靠库存入口行撑出一个标签", "无空标签", per.map((x) => `${x.nm}：${x.tabs.join("/")}${x.orphan.length ? "（空 " + x.orphan.join("/") + "）" : ""}`).join(" · "), per.every((x) => !x.orphan.length)); }
+      /* 界面-串2 (用户 09-23 18:27 真机 ②「切换到晚班再切早班的时候会出现晚班的底图重叠」): the tab lens's backdrop (lens-webgl scratch canvases, the page
+         layer = body colour + the platter capsule) was painted on tabs-changed, the first frame of the item-set animation, from a platter still at the old
+         width — on 模拟器 B the live page canvas had its capsule at css 45..370 of a 416 bar (evidence 界面-串2-②-底图画布.json), and every set change left
+         one more scratch pair in the body. After 早→晚→早 and the settle: one scratch box per lens, and the tab page canvas's capsule spans the whole bar */
+      { const nv = document.querySelector("nav.tabs"), boxes0 = [...document.body.children].filter((e) => e.style && e.style.left === "-100000px").length;
+        curQueue = other; window.render(); await sleep(1500); curQueue = savedQ; window.render(); await sleep(1800);
+        const dpr = window.devicePixelRatio || 1, navW = nv.offsetWidth, navH = nv.offsetHeight, boxes = [...document.body.children].filter((e) => e.style && e.style.left === "-100000px");
+        const pg = boxes.map((b) => b.querySelector("canvas")).filter((c) => c && c.width > navW * dpr && Math.abs(c.width / dpr - navW - (c.height / dpr - navH)) < 1).pop();
+        if (!pg) check("②′ 换班次后标签透镜底图【标签透镜 GL 不可用：不核】", "-", "no tab canvas", true);
+        else { const m = (pg.width / dpr - navW) / 2, d = pg.getContext("2d").getImageData(0, Math.round(pg.height / 2), pg.width, 1).data, px = (i) => d.slice(i * 4, i * 4 + 4).join(",");
+          let a = -1, b = -1; for (let i = 0; i < pg.width; i++) if (px(i) !== px(0)) { if (a < 0) a = i; b = i; }
+          const l = a / dpr - m, r = (b + 1) / dpr - m;
+          check("②′ 换班次（早→晚→早）动画落定后：标签透镜底图里的平台胶囊横跨整条标签栏（左 0、右 = 栏宽，≤ 1 pt），离屏底图画布不随换班次累积", `0..${navW} · 画布盒 ${boxes0}`, `${l.toFixed(1)}..${r.toFixed(1)} · 画布盒 ${boxes0} → ${boxes.length}`, Math.abs(l) <= 1 && Math.abs(r - navW) <= 1 && boxes.length <= boxes0); } }
       curTab = savedTab; window.render(); await sleep(100);
     }
   }

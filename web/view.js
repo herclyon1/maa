@@ -2043,7 +2043,7 @@ function tabSetAnimate(nav, plat, glideEl, oldRect, navRect0, removed, added) {
     spring(A.s3, 0, [1, 0.3], dt); spring(A.s2, 0, [1, 0.2], dt);
     apply();
     const settled = Math.abs(A.s3.x) < 0.0005 && Math.abs(A.s3.v) < 0.005 && Math.abs(A.s2.x) < 0.0005;
-    if (settled || now - A.t0 > 2000) { for (const b of A.removed) b.remove(); for (const it of A.items) it.el.style.transform = ""; for (const b of A.added) b.style.opacity = ""; plat.style.left = plat.style.right = ""; if (mine()) { glideEl.style.left = on.offsetLeft + "px"; void glideEl.offsetWidth; glideEl.style.transition = ""; } nav.__tabAnim = null; return; }
+    if (settled || now - A.t0 > 2000) { for (const b of A.removed) b.remove(); for (const it of A.items) it.el.style.transform = ""; for (const b of A.added) b.style.opacity = ""; plat.style.left = plat.style.right = ""; if (mine()) { glideEl.style.left = on.offsetLeft + "px"; void glideEl.offsetWidth; glideEl.style.transition = ""; } nav.__tabAnim = null; nav.dispatchEvent(new CustomEvent("tabs-settled")); return; }   // tab-lens.js repaints its backdrop from the settled bar
     A.raf = requestAnimationFrame(step);
   };
   apply(); A.raf = requestAnimationFrame(step);
