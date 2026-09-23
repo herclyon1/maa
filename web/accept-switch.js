@@ -23,6 +23,25 @@ ACCEPT.add(async function sw({ check, num, col, sleep }) {
   const held = lab.querySelectorAll(".sw")[1]; held.classList.add("drive"); held.style.setProperty("--lift", "1"); held.style.setProperty("--ksx", String(58 / 37)); held.style.setProperty("--ksy", String(38.33 / 24));
   { const sc = scaleOf(held.querySelector("span"), "::after"); check("按住（lift 1）：旋钮 58×38.33（--ios-switch-knob-lift-w/-h：scale 1.5676 1.5971）", "1.5676 1.5971", cs(held.querySelector("span"), "::after").scale, Math.abs(sc[0] - 58 / 37) < .001 && Math.abs(sc[1] - 38.33 / 24) < .001); }
   held.classList.remove("drive"); held.style.removeProperty("--lift"); held.style.removeProperty("--ksx"); held.style.removeProperty("--ksy");
+  /* P0b-5 (P0b-数据.md #5): while .drive is on the knob is the driver's alone. index.html's old knob rules — `.sw input:checked + span::after`
+     (0,2,3) pinning translate to 22, `.sw input:active + span::after` (0,2,3) with .12 s translate / box-shadow transitions and the fixed hold
+     scale, `.sw input:active:checked + span::after` (0,3,3) — won the (0,2,3) tie by coming later; :active outlives a real touchend by ~120 ms,
+     so every tap ran the old .12 s ease and scale for that window (CDP-touch probe: 21 of 42 driven frames off the driver's values, 0 after).
+     :active cannot be set from script, so the cascade is checked on the rules themselves, and :checked (settable) on the computed style. */
+  const onSw = on.parentNode; onSw.classList.add("drive"); onSw.style.setProperty("--kx", "5px");
+  check("开关 P0b-5 开态驱动中：位移 = 驱动器 --kx（旧 :checked 规则不再把旋钮钉在 22）、无过渡", "5px · none", `${cs(on, "::after").translate} · ${cs(on, "::after").transitionProperty}`,
+    Math.abs(px(cs(on, "::after").translate) - 5) < .01 && cs(on, "::after").transitionProperty === "none");
+  onSw.classList.remove("drive"); onSw.style.removeProperty("--kx");
+  { const spec = (sel) => { const t = sel.replace(/::[\w-]+/g, "");   // [ids, classes + pseudo-classes, types + pseudo-elements]; the page's selectors have no :is / :not / :where
+      return [(t.match(/#[\w-]+/g) || []).length, (t.match(/\.[\w-]+/g) || []).length + (t.match(/:[\w-]+/g) || []).length,
+        (sel.match(/::[\w-]+/g) || []).length + (t.replace(/[.#:][\w-]+/g, "").match(/(^|[\s>+~])[a-z][\w-]*/gi) || []).length]; };
+    const gt = (x, y) => x[0] !== y[0] ? x[0] > y[0] : x[1] !== y[1] ? x[1] > y[1] : x[2] > y[2];
+    const parts = []; const walk = (rules) => { for (const r of rules) { if (r.cssRules && !r.selectorText) walk(r.cssRules); else if (r.selectorText) for (const p of r.selectorText.split(",")) parts.push(p.trim()); } };
+    for (const ss of document.styleSheets) { try { walk(ss.cssRules); } catch (e) {} }
+    const knob = parts.filter((p) => /\.sw\b/.test(p) && /span::after$/.test(p)), drive = knob.filter((p) => /\.drive\b/.test(p) && !/:active/.test(p));
+    const rivals = knob.filter((p) => !/\.drive\b/.test(p) && !/\.hold\b/.test(p)), top = rivals.reduce((m, p) => gt(spec(p), m.s) ? { p, s: spec(p) } : m, { p: "", s: [0, 0, 0] });
+    check("开关 P0b-5 驱动规则特异性 > 旧旋钮规则最高者（含 :active / :checked；.hold 只由已让位的 view.js 旧路加）", `> ${top.s.join(",")} (${top.p})`,
+      drive.map((p) => `${spec(p).join(",")} ${p}`).join(" | ") || "缺", drive.length === 1 && gt(spec(drive[0]), top.s)); }
   check("开关开：井环宽 .39 s / 色 .18 s（--ios-motion-switch-well-grow-duration / -color-duration）", "--wb 0.39s, color 0.18s", `${cs(on).transitionProperty} ${cs(on).transitionDuration}`, cs(on).transitionProperty === "--wb, color" && cs(on).transitionDuration === "0.39s, 0.18s");
   check("开关关：井环宽 .365 s 延 .025 s / 色 .18 s（--ios-motion-switch-well-shrink-*）", "0.365s, 0.18s / 0.025s, 0s", `${cs(off).transitionDuration} / ${cs(off).transitionDelay}`, cs(off).transitionDuration === "0.365s, 0.18s" && cs(off).transitionDelay === "0.025s, 0s");
   lab.remove();
