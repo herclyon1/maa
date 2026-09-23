@@ -8,8 +8,11 @@
          u₂ = the second key segment [.5 − .075, 1], f_in = cubic-bezier(.75,.1,.75,.1); the title slides from the title area's right end.
    pop: the same spring, roles swapped (top page x = W·p, page below −.3 W(1 − p), dimming 1 − p, strip 1 − p, items fade out with
         f_out = cubic-bezier(.25,.9,.25,.9) over [0, .575]).
-   Interrupt (pop while pushing): the spring continues from its current value / velocity toward the new target (retargetImpulse .02 of
-   the settings is NOT applied: how AnimationKit adds it to the velocity is unread — 待读). Interactive back = #12 (nav-edge.js).
+   Interrupt (pop while pushing): the spring continues from its current value / velocity toward the new target, and the retarget adds
+   the impulse Δv = retargetImpulse · (2π / response)² · (new target − previous target) once, at the retarget (remote-ref/flex-interaction.md
+   §7.1b: AnimationKit's pending-retarget loop 0x1de3d2380–0x1de3d2454, velocity += impulse·ω²·Δtarget at 0x1de3d2408–0x1de3d2420;
+   retargetImpulse .02 = noninteractiveSpring, _UIFluidParallaxTransitionSettings setDefaultValues 0x1c5410f44 — G21). The record's +0x70
+   flag (=1 → no impulse) is unread; this retarget carries no explicit velocity. Interactive back = #12 (nav-edge.js).
    R47′ (nav-native-formula.md §5g, _animateScaleTransition 0x1c3cf7b74 / _animateLargeTitleView 0x1c3cf85b8, the scale style of a large-title
    push): the root's large title (body > header h1) is not faded away as content — its label scales about its own centre to the new back button's
    content bounds (the chevron: no back label → the imageView is the reference, __applyStretchTransformForTitleViewAndBackButtonLayout mode 2:
@@ -36,6 +39,7 @@
 (() => {
   "use strict";
   const SPRING = [1, .3];                       // noninteractiveSpring ζ 1 / response .3
+  const RETARGET_IMPULSE = .02;                 // noninteractiveSpring retargetImpulse (0x1c5410f44)
   const SEG = { mid: .5, overlap: .15 };        // key segments: [0, .5 + .075] and [.5 − .075, 1] (overlap .15 × .5)
   const bez = (x1, y1, x2, y2) => (x) => {      // y of the cubic bezier at abscissa x (CAMediaTimingFunction semantics)
     let lo = 0, hi = 1; for (let i = 0; i < 40; i++) { const t = (lo + hi) / 2, cx = 3 * x1 * t * (1 - t) * (1 - t) + 3 * x2 * t * t * (1 - t) + t * t * t; if (cx < x) lo = t; else hi = t; }
@@ -108,8 +112,10 @@
   const start = (dir) => {
     const pg = st.pg;
     if (!st.dim) { st.dim = document.createElement("div"); st.dim.className = "nav-dim"; document.body.appendChild(st.dim); }
+    const prevT = st.target, live = pg.classList.contains("nav-live");
     st.dir = dir; st.target = dir > 0 ? 1 : 0; st.tracking = false; st.spring = SPRING;
-    if (!pg.classList.contains("nav-live")) {            // from rest: p = 0 (hidden) or 1 (shown), no velocity
+    if (live && st.target !== prevT) st.v += RETARGET_IMPULSE * (2 * Math.PI / SPRING[1]) ** 2 * (st.target - prevT);   // G21: the retarget's one-off impulse (§7.1b)
+    if (!live) {            // from rest: p = 0 (hidden) or 1 (shown), no velocity
       st.p = dir > 0 ? 0 : 1; st.v = 0;
       pg.classList.remove("in", "out"); pg.hidden = false; document.body.classList.remove("pushed");
       const title = pg.querySelector(".ptitle"), bar = pg.querySelector(".pnav");
@@ -159,5 +165,5 @@
       st.tracking = false; st.spring = RELEASE; st.v = -vProgress; st.target = finish ? 0 : 1; st.last = performance.now(); run();
     },
   };
-  window.Nav = { open, back: () => { if (st.pg) start(-1); }, state: st, fIn, fOut, u1, u2, SPRING, TRACK, RELEASE, interactive, KF, CHEV0, seg, kf, D, parallax };
+  window.Nav = { open, back: () => { if (st.pg) start(-1); }, state: st, fIn, fOut, u1, u2, SPRING, TRACK, RELEASE, interactive, KF, CHEV0, seg, kf, D, RETARGET_IMPULSE, parallax };
 })();

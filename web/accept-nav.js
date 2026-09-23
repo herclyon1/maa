@@ -53,8 +53,10 @@ ACCEPT.add(async function nav({ check, num, sleep }) {
     check(`返回逐帧 ${F.length} 帧（S5）：顶页 x = W·p′、下页视差 −132·(1 − p′)（同一弹簧，角色互换）`, "x ± 2 · 视差 ± 1", `x ${wx.dev.toFixed(2)} @${wx.i} (${Math.round(wx.el * 1000)} ms) · 视差 ${wf.dev.toFixed(2)} @${wf.i}`, F.length >= 3 && wx.dev <= 2 && wf.dev <= 1); }
   check("返回落定：页 hidden、body.pushed 去掉、视差 0", "hidden, -, 0", `${pg.hidden ? "hidden" : "shown"}, ${document.body.classList.contains("pushed") ? "pushed" : "-"}, ${tr(main)}`, pg.hidden && !document.body.classList.contains("pushed") && Math.abs(tr(main)) < .5);
   /* interrupt: pop while the push is mid-flight continues from the current p / v (no jump) */
-  N.open("验收", "<p>y</p>"); await atEl(.12); const pMid = N.state.p, xMid = tx(pg); N.back(); await tick(); await tick();
-  check("推入中途返回：从当前 p / 速度续算，不跳变（打断后一帧内位移 < 60 px）", "< 60", Math.round(Math.abs(tx(pg) - xMid)), Math.abs(tx(pg) - xMid) < 60 && pMid > .5);
+  N.open("验收", "<p>y</p>"); await atEl(.12); const pMid = N.state.p, xMid = tx(pg), vMid = N.state.v; N.back(); const vRe = N.state.v, pRe = N.state.p; await tick(); await tick();
+  { const want = vMid + .02 * (2 * Math.PI / .3) ** 2 * (0 - 1);   // flex-interaction.md §7.1b: Δv = retargetImpulse · (2π / response)² · Δtarget; .02 / .3 = noninteractiveSpring (0x1c5410f44)
+    check("G21 推入中途返回：重定目标那一刻速度加冲量 .02·(2π/.3)²·(0 − 1) = −8.773 /s（AnimationKit 0x1de3d2408–0x1de3d2420）", want.toFixed(3), `${vRe.toFixed(3)}（打断前 ${vMid.toFixed(3)}）`, Math.abs(vRe - want) < 1e-9 && N.RETARGET_IMPULSE === .02); }
+  check("推入中途返回：从当前 p / 速度续算，值不跳变（重定目标那一刻 p 不变；之后两帧位移只记不判——冲量 G21 让它按新速度走）", `p ${pMid.toFixed(4)}`, `p ${pRe.toFixed(4)} · 两帧后位移 ${Math.round(Math.abs(tx(pg) - xMid))} px`, Math.abs(pRe - pMid) < 1e-12 && pMid > .5);
   await settled();
   check("中途返回落定：hidden", "hidden", pg.hidden ? "hidden" : "shown", pg.hidden);
 }, { layer: "timing", dark: false });
