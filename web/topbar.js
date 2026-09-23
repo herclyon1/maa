@@ -10,8 +10,8 @@
    title crosses over with a 0.2 s opacity transition (2.5; no translation — §6 item 8); the large title is clipped at the bar's bottom
    edge while it slides under (clipsToBounds, §4 item 1), not faded. Bottom edge line (§3): hidden while the content is at rest at the top
    (shouldHideAtTop), shown once scrolled — its fade, if any, is unread (instant here).
-   Release snap (2.8): when a scroll ends inside the collapse range the target is the nearest resting point — midpoint rule; the curve of
-   that deceleration retarget is unread — the page reuses its own measured UIScrollView top-spring (view.js springToTop, ω 12 /s).
+   Release snap (2.8): when a scroll ends inside the collapse range the target is the nearest resting point — midpoint rule; the curve is
+   UIScrollView's standard deceleration to it (§2.8b, settle() below).
    Pull-down stretch (2.7): scale = clamp(1 + (h − h_rest) / (displayScale × screenH × 0.66), 1, 1.1) with h − h_rest = the overscroll;
    the title's anchor point for that scale is unread (leading baseline used).
    Unread (left as the old behaviour / untouched): the pocket material (五个闭包), the replay layer, the edge line fade. */
@@ -25,9 +25,16 @@
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   let p = 52, restBottom = 0, barBottom = 0, dragging = false, snapping = false, snapRaf = 0, lastTouchEnd = -1e9;
   const api = { snap: true };   // snap: the 2.8 release retarget (accept-topbar.js turns it off while it scrolls programmatically)
-  const measure = () => {   // at rest (scrollY 0): the collapse range p and where the bar's bottom edge is
-    const y = window.scrollY, hr = h1.getBoundingClientRect(), br = bar.getBoundingClientRect();
-    barBottom = br.bottom; restBottom = hr.bottom + y; p = Math.max(1, restBottom + ZONE_BELOW - barBottom);   // p = the title zone (label box + 7.67) = 52 in the native geometry (§10 / §10b)
+  /* 顶栏红 (老网页 09-23; simulator A, 20219fa, ?only=topbar, the probe's per-measure log): the collapse range was read at a scroll event whose
+     scrollY was 0 while the FIXED bar's rect still sat at the previous scroll's layout viewport — logged: bar bottom 146 against 116 at rest, the h1
+     and the root already at 0 — so p came out 21.89 (other runs 41.89 / 5.89) instead of 51.89, and it held until the next rest at the top: the full
+     run's 50.889 vs 51.89 and the 51.4 switch 0.001 pt short. The bar is pinned at the top (top 0 in index.html .topbar), so its bottom is its height;
+     the title's document position is read against the root's box from the same layout read (not rect + window.scrollY). */
+  let lastMeasure = null;
+  const measure = () => {   // the collapse range p and where the bar's bottom edge is (at rest at the top, on load / resize)
+    const hr = h1.getBoundingClientRect(), br = bar.getBoundingClientRect(), dt = root.getBoundingClientRect().top;
+    barBottom = br.height; restBottom = hr.bottom - dt; p = Math.max(1, restBottom + ZONE_BELOW - barBottom);   // p = the title zone (label box + 7.67) = 52 in the native geometry (§10 / §10b)
+    lastMeasure = { y: window.scrollY, barRectBottom: br.bottom, barBottom, p };   // accept-topbar.js: the bar's rect at the read vs the height used
   };
   /* §2.4/§2.5 progress → the two titles' alpha (binary, transitions in CSS) */
   const progressOf = (s) => { const c = p - s; return c >= p - B ? 1 : (c <= 0 ? 0 : (c - B) / (p - B)); };
@@ -46,9 +53,13 @@
   /* 2.8 release snap curve — nav-bar-scroll-formula.md §2.8b (decompiled, R45): §2.8 only moves the deceleration TARGET to the detent;
      the content then follows UIScrollView's standard deceleration to it: x(t) = target − Δ·r^(1000 t), r = 0.998 per ms
      (_adjustedDecelerationFactor when the velocity change is < .25), time constant ≈ 0.5 s, no overshoot.
-     The probe's 22-sample table with an 11 % overshoot (§10b ④) was the navigation BAR's own height animation (54 → 111.67 → 106,
-     ~1 s) that the large title rides on — not the scroll offset (the offset was already at the detent within 150 ms); kept here only
-     as that record (BAR_T / BAR_P), not used. Its closed form is unread. */
+     G16 (数据核 2026-09-23 19:42, nav-bar-scroll-formula.md §2.8c; probe tools/uiprobe/g16/g16-scroll-table.txt): the probe's 22-sample table
+     with an 11 % overshoot (§10b ④, BAR_T / BAR_P) is NOT a bar animation — no bounds / position animation on UINavigationBar, model = presentation
+     every frame, bar height = −contentOffset.y − 62 on all 174 frames: it is the table's own deceleration carrying past the top edge (3.333 pt at
+     +816 ms) and coming back, released WITH velocity (−.3747 pt/ms, the last move's velocity kept through a 3 s hold). So the page adds no bar
+     overshoot: the large title rides the page's own scroll 1:1 (WebKit's edge bounce is the scroll view's own); this snap starts from a settled
+     scroll (velocity 0), where the read chain has no overshoot. The edge-bounce formula (_smoothScrollWithUpdateTime: past the edge) is unread.
+     BAR_T / BAR_P stay only as the record of that table, not used. */
   const SNAP_R = 0.998;
   const snapProgress = (ms) => (ms <= 0 ? 0 : 1 - Math.pow(SNAP_R, ms));   // §2.8b: progress = 1 − r^(ms)
   const SNAP_END_MS = Math.ceil(Math.log(0.5 / 200) / Math.log(SNAP_R));   // ≈ 3 s: 200 pt would be within 0.5 pt of the target
@@ -161,5 +172,5 @@
   addEventListener("resize", () => { measure(); apply(); });
   addEventListener("load", () => { measure(); apply(); });   // the stylesheets are all in effect by then (a late topbar.css would leave p from index.html's geometry)
   measure(); apply();
-  Object.assign(api, { measure, apply, progressOf, snapTarget, snapProgress, stretchOf, B, THRESH, FADE_S, ZONE_BELOW, SNAP_R, BAR_T, BAR_P }); Object.defineProperty(api, "p", { get: () => p }); window.Topbar = api;
+  Object.assign(api, { measure, apply, progressOf, snapTarget, snapProgress, stretchOf, B, THRESH, FADE_S, ZONE_BELOW, SNAP_R, BAR_T, BAR_P }); Object.defineProperty(api, "p", { get: () => p }); Object.defineProperty(api, "lastMeasure", { get: () => lastMeasure }); window.Topbar = api;
 })();
