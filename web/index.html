@@ -288,7 +288,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   section + section > .group.notice:first-child{margin-top:10px}
   .ncap{position:relative;padding:14px 0 10px;font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh);color:var(--dim)}
   .ncap::after{content:"";position:absolute;left:0;right:0;bottom:0;height:var(--ios-separator-h);background:var(--line)}
-  .ntitle{margin-top:14px;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ntitle{margin-top:14px;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);font-weight:var(--ios-headline-weight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 1 行尾部省略、不缩字 = 通知横幅标题 numberOfLines 1、lineBreakMode 4 ← 数据 20:4x SpringBoard 内读，remote-ref/tools/uiprobe/ntitle/banner-labels-C.json */
   .nbody{margin-top:4px;font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);color:var(--dim)}
   .nacts{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
   .capsule{font:inherit;font-size:var(--ios-sub-size);font-weight:var(--ios-headline-weight);line-height:var(--ios-sub-lh);height:30px;padding:0 14px;border:0;border-radius:15px;   /* 30：健康胶囊钮，待 tokens */
@@ -305,7 +305,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .tile:active,.tile.pressed{opacity:1;transition:none}   /* G7：磁贴按下不变色不缩放（state-tables/button.md R14′：-[TTRIPinnedListControl setHighlighted:] 更新体不读按下位；tile.css 末行同值），原 8 % 墨色无来源已删；.pressed 由指针状态机管（按下即高亮、出边 70 pt 余量 ← spec §4 U1–U6） */
   .tico{position:absolute;left:var(--ios-tile-icon-x);top:var(--ios-tile-icon-y);width:var(--ios-tile-icon);height:var(--ios-tile-icon);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;flex:none}   /* 徽章 48 at (6,2) ← 提醒事项 */
   .tico .sf{width:var(--ios-symbol-slot);height:var(--ios-symbol-slot);background:#fff}   /* 符号槽 22 ← Kit */
-  .ttitle{margin:0;max-width:100%;font-family:var(--ios-tile-number-font);font-size:var(--ios-tile-label-size);line-height:var(--ios-tile-label-lh);font-weight:var(--ios-tile-label-weight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 标题 = 磁贴标签 Rounded Semibold 17/20.33 ← 提醒事项 */
+  .ttitle{margin:0;max-width:100%;font-family:var(--ios-tile-number-font);font-size:var(--ios-tile-label-size);line-height:var(--ios-tile-label-lh);font-weight:var(--ios-tile-label-weight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 标题 = 磁贴标签 Rounded Semibold 17/20.33 ← 提醒事项；1 行尾部省略、不缩字 = TTRIPinnedListControl 标题 numberOfLines 1、lineBreakMode 4 ← 数据 20:18，remote-ref/tools/uiprobe/ttitle/reminders-labels-lists-C.json */
   .tsub{font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh);color:var(--dim)}
   .tile.danger .ttitle{color:var(--bad)}
   .sf{display:inline-block;width:22px;height:22px;background:currentColor;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
@@ -417,10 +417,11 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
      rows 42 high, 17pt regular, label 50 from the left edge (the leading 22pt symbol
      slot holds the checkmark of the chosen row), 5 above and below, corner 26, glass. */
   main select.native{display:none}
-  .menubtn{display:inline-block;vertical-align:middle;max-width:100%;height:22px;padding:0 20px 0 0;border:0;border-radius:0;   /* inline-block（不是 inline-flex）：值长了才会真的尾部省略，chevron 底图留在右侧 20 里 */
+  .menubtn{display:inline-block;vertical-align:middle;max-width:100%;min-height:22px;padding:0 20px 0 0;border:0;border-radius:0;   /* chevron 底图留在右侧 20 里；值长了按词换行、按钮随之长高、不截断 ↓ */
         background:transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='18' viewBox='0 0 12 18'%3E%3Cpath d='M2 7l4-4 4 4M2 11l4 4 4-4' fill='none' stroke='%238e8e93' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right center;
         color:var(--dim);font:inherit;font-size:var(--ios-body-size);line-height:var(--ios-body-lh);text-align:right;box-shadow:none;cursor:pointer;
-        white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        white-space:normal;overflow-wrap:break-word}
+  .row > .menubtn{white-space:normal;text-overflow:clip}   /* 压过上面 .row > :not(label) 的一行省略；原生弹出按钮 titleLabel numberOfLines 0、lineBreakMode 0 按词换行（宽 300 / 160 / 120 排 2 / 5 / 8 行，sizeThatFits 高随之长）← 数据 20:18 探针 popbtn，NATIVE-GAP 省略号三处条，remote-ref/tools/uiprobe/uiprobe-motion-popbtn-C.json */
   .menubtn:active{opacity:.6}
   .menu-scrim{position:fixed;inset:0;z-index:7;background:transparent}
   .menu{position:fixed;z-index:8;width:var(--ios-menu-w);padding:var(--ios-menu-pad) 0;border-radius:var(--ios-card-radius);   /* 250 宽 / 内边距 10 ← Kit L96（tokens.css --ios-menu-*）；圆角 26 待 tokens；材质 采样替代 */
