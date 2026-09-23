@@ -167,7 +167,7 @@ BleedEdge: "近似: the capture box (panel ± 60.2, clamped to the copy) is TILE
       + `<feBlend in="w4" in2="wb" mode="multiply" result="wbl"/>` + invert("wbl", "wbli")
       + `<feBlend in="face" in2="wbli" mode="multiply" result="o0"/><feBlend in="cb" in2="wbl" mode="multiply" result="o1"/><feComposite in="o0" in2="o1" operator="arithmetic" k2="1" k3="1" result="ob"/></filter>`;
     /* f3 (wrapper 3, SourceGraphic = the bleed output): the highlight layer's two stages through the vibrant matrix */
-    const f3 = head("alert-glass-f3")
+    const f3 = head("alert-glass-f3", 0)   // margin 0: f3 is per pixel (images, flood, matrices, blends — no primitive reads a neighbour) and the pane clips the glass to the panel box (clip-path inset(60px round 34px), alert-glass.css:7), so the pixels outside the panel it used to compute (M 120 each side: 560×392 pt vs 320×152 at devicePixelRatio) were never shown
       + img(im.hl, "hl0") + img(im.hl2, "hl20") + `<feFlood flood-color="rgb(0,0,0)" result="blk3"/><feComposite in="hl0" in2="blk3" operator="over" result="hl"/><feComposite in="hl20" in2="blk3" operator="over" result="hl2"/>`
       + `<feColorMatrix in="SourceGraphic" type="matrix" values="${HL.vibrant.join(" ")} 0 0 0 1 0" result="vib"/>` + invert("hl", "hli")
       + `<feBlend in="SourceGraphic" in2="hli" mode="multiply" result="f0"/><feBlend in="vib" in2="hl" mode="multiply" result="f1"/><feComposite in="f0" in2="f1" operator="arithmetic" k2="1" k3="1" result="o1h"/>`
