@@ -85,7 +85,11 @@
     document.getElementById("alert-cancel").click(); await p; await until(() => !A.layer && !dlg.open, 500);
     /* R57‴: an open whose maps are not cached (a new height: a three-line message) paints its first frame on the light chain (#alert-glass-f0, no generated images) and switches
        to f1 / f2 / f3 after that frame; the size is remembered for the idle pre-warm of the next load */
-    { const p3 = ask("检查", "第一行说明\n第二行说明\n第三行说明——换个高度让贴图缓存未命中", "好", false); await new Promise((r) => requestAnimationFrame(r));
+    { const msg3 = "第一行说明\n第二行说明\n第三行说明——换个高度让贴图缓存未命中";
+      /* 0fe960c simulator A: a real browser keeps localStorage between runs, so this size was the last one opened and the idle pre-warm had already generated its maps —
+         the open went straight to f1 (by design) and warmedAt was a minute old (−59028 ms). Open it once, then drop that size's maps so the timed open is a real miss */
+      { const q = ask("检查", msg3, "好", false); await until(() => !!A.layer, 200); const W3 = dlg.offsetWidth, H3 = dlg.offsetHeight; document.getElementById("alert-cancel").click(); await q; await until(() => !A.layer && !dlg.open, 500); A.forget(W3, H3); }
+      const p3 = ask("检查", msg3, "好", false); await new Promise((r) => requestAnimationFrame(r));
       const c3 = dlg.querySelector(".alert-glass-copy"), f0 = c3 && /alert-glass-f0/.test(c3.style.filter), light1 = A.light; await until(fullChain, 200);
       const full = c3 && /alert-glass-f1/.test(c3.style.filter) && /alert-glass-f2/.test(dlg.querySelector(".alert-glass-w2")?.style.filter || "") && /alert-glass-f3/.test(dlg.querySelector(".alert-glass-w3")?.style.filter || "");
       check(`弹窗玻璃 首开（贴图未缓存）：首帧走轻链 f0（无生成图）、+200 ms 内换到 f1/f2/f3（换链在 +${Math.round(A.warmedAt - (window.ALERT_T ? ALERT_T.open : 0))} ms）、尺寸记入 ark-alert-size（下次载入空闲预热）`, "f0 首帧 · 满链 ≤ 200 · 记尺寸", `${f0 && light1 ? "f0 首帧" : `首帧 ${c3 ? c3.style.filter : "-"} light ${light1}`} · ${full ? "满链" : "未换"} · ${localStorage.getItem("ark-alert-size") === dlg.offsetWidth + "x" + dlg.offsetHeight ? "记尺寸" : "尺寸未记"}`, f0 && light1 && full && !A.light && localStorage.getItem("ark-alert-size") === dlg.offsetWidth + "x" + dlg.offsetHeight && A.cached(dlg.offsetWidth, dlg.offsetHeight));
