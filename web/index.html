@@ -3953,9 +3953,9 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   </filter>
 </svg>
 <script>window.LENS_SS = new URLSearchParams(location.search).get("ss") === "1" ? 2 : 1; window.LENS_ENGINE_FIX = new URLSearchParams(location.search).get("enginefix") !== "0";</script>   <!-- 引擎校正（62 张 feImage 换 blob）默认开，?enginefix=0 关——数据 36916a9 开关归因：它对帧速无影响（76ccab4 / 998689c nofix 都慢），修右「班」折叠；拖慢主因 = 色散层（单开 37–38 ms/帧），超采样单开 27–30 ms → 两者仍默认关（?disp=1 / ?ss=1 开；监督局 09-19 12:3x） -->   <!-- 引擎校正 2 / 候选 A 默认关（监督局 09-19 11:1x）：?ss=1 才开 2× -->
-<script src="assets/lens/lens-supersample.js"></script>   <!-- 引擎校正 2 / 候选 A（2号 ui2 7c26d3b，README §0.4）：开时把 .warp .disp / .warpl .displ 包成 .ssw scale3d(½) + 2× 滤镜层 + .ss2，滤镜 data-s ×2、区域 50 %（data-s0 = 文件 S）；必须在 lens-engine-fix.js 之前（它读 window.LENS_SS / data-s0） -->
-<script src="assets/lens/lens-webgl.js"></script>   <!-- WebGL 透镜（2号 ui2 fb7bbdc，README §0.8.7）：同一套贴图与反编译常量的两遍片元着色器；view.js segLens 有 webgl2 且非 ?gl=0 时在 .segctl 建 canvas.glens 每 tick setState，SVG 栈隐藏；?gl=0 回 SVG 栈 -->
-<script src="assets/lens/lens-engine-fix.js"></script>   <!-- 引擎校正（2号 ui2 bed84e4，web/assets/lens/README.md §0.4）：按 devicePixelRatio 把每张 -f-bg- / -f-lab- 贴图的负位移加长一个设备像素（2× ½、3× ⅓）写成 blob 副本换进 feImage（data-engine-fixed 可查），贴图文件与彩边链不动；关法 window.LENS_ENGINE_FIX = false -->
+<script src="assets/lens/lens-supersample.js?v=0"></script>   <!-- 引擎校正 2 / 候选 A（2号 ui2 7c26d3b，README §0.4）：开时把 .warp .disp / .warpl .displ 包成 .ssw scale3d(½) + 2× 滤镜层 + .ss2，滤镜 data-s ×2、区域 50 %（data-s0 = 文件 S）；必须在 lens-engine-fix.js 之前（它读 window.LENS_SS / data-s0） -->
+<script src="assets/lens/lens-webgl.js?v=0"></script>   <!-- WebGL 透镜（2号 ui2 fb7bbdc，README §0.8.7）：同一套贴图与反编译常量的两遍片元着色器；view.js segLens 有 webgl2 且非 ?gl=0 时在 .segctl 建 canvas.glens 每 tick setState，SVG 栈隐藏；?gl=0 回 SVG 栈 -->
+<script src="assets/lens/lens-engine-fix.js?v=0"></script>   <!-- 引擎校正（2号 ui2 bed84e4，web/assets/lens/README.md §0.4）：按 devicePixelRatio 把每张 -f-bg- / -f-lab- 贴图的负位移加长一个设备像素（2× ½、3× ⅓）写成 blob 副本换进 feImage（data-engine-fixed 可查），贴图文件与彩边链不动；关法 window.LENS_ENGINE_FIX = false -->
 <!-- 推入页（UINavigationController push）：回执全表、以后的库存页；导航栏 54 at 62、返回 44 at 20 ← AX-11 / AX-46 -->
 <div class="page" id="subpage" hidden role="region">
   <div class="pnav"><button type="button" class="navbtn pback" aria-label="返回"></button><span class="ptitle"></span></div>
@@ -3989,7 +3989,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
    它自己看查询串，其它时候什么都不做。 */
 { const q = new URLSearchParams(location.search);
   if (q.has("accept")) { const s = document.createElement("script"); s.src = "accept.js?v=20260923140535"; document.body.appendChild(s); }
-  if (q.has("diag") || q.has("segframes")) { const s = document.createElement("script"); s.src = "seg-frames-logger.js"; document.body.appendChild(s); }
+  if (q.has("diag") || q.has("segframes")) { const s = document.createElement("script"); s.src = "seg-frames-logger.js?v=20260923"; document.body.appendChild(s); }
   /* ?segx=a,b,… : layer / map switches for the simulator-standalone experiments (remote-ref/tools/webkit/b6/ios-switch-list.md). Works with or without
      ?seghold. nowarp | norimb | nohl | nowarpl | noplat hide one lens layer (visibility, so the loop still runs); mapflat swaps every displacement map for
      a 1×1 constant (128, 128, 255) = zero displacement, full coverage; maponlyr / maponlyg feed feDisplacementMap a copy of the map with G / R forced to

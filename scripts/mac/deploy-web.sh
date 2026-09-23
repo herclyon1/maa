@@ -15,37 +15,7 @@ WT="${TMPDIR:-/tmp}/ark-ghpages"
 
 cd "$HERE"
 V="$(date +%Y%m%d%H%M%S)"
-python3 - "$V" <<'PY'
-import pathlib, re, sys
-v = sys.argv[1]
-p = pathlib.Path("web/index.html")
-s = p.read_text(encoding="utf-8")
-# app.js 2026-09-18 拆成 schema/net/pending/live/view（stamina 原本就单独；inventory 是库存页的数据层），七个都盖同一个版本号
-s = re.sub(r'<script src="(schema|net|pending|live|stamina|inventory|stockpile|view|controls|alert-prewarm|seg-frames-logger|motion|nav|nav-edge|sheet|menu|topbar|refresh|glassbtn|alert-glass|switch|accept-[a-z-]+)\.js[^"]*"></script>', lambda m: f'<script src="{m.group(1)}.js?v={v}"></script>', s)   # controls.js: the row / switch press state machines (B14 / B13)
-s = re.sub(r'controls\.css\?v=[^"]*', f'controls.css?v={v}', s)   # their stylesheet
-s = re.sub(r'(motion|nav|sheet|menu|topbar|refresh|glassbtn|alert-glass|switch|tile)\.css\?v=[^"]*', lambda m: f'{m.group(1)}.css?v={v}', s)   # night batch control stylesheets
-s = re.sub(r'accept\.js\?v=[^"]*', f'accept.js?v={v}', s)
-# view.js is now loaded by an inline loader (?viewdelay), so its stamp lives inside JS strings too — stamp every view.js?v= occurrence
-s = re.sub(r'view\.js\?v=\d+', f'view.js?v={v}', s)   # the ?accept-only acceptance script
-s = re.sub(r'assets/lens/(tab-lens|lens-webgl)\.js\?v=[^"]*', lambda m: f'assets/lens/{m.group(1)}.js?v={v}', s)   # lens package scripts referenced from index.html (night batch #7a)
-s = re.sub(r'tokens\.css\?v=[^"]*', f'tokens.css?v={v}', s)   # the component tokens stylesheet
-s = re.sub(r'href="manifest\.webmanifest[^"]*"', f'href="manifest.webmanifest?v={v}"', s)
-# 图标：<link rel="...icon..." href="xxx.png?v=...">，连 manifest 里的一起盖
-s = re.sub(r'href="(apple-touch-icon|icon-\d+)\.png[^"]*"', rf'href="\1.png?v={v}"', s)
-
-m = pathlib.Path("web/manifest.webmanifest")
-if m.exists():
-    t = m.read_text(encoding="utf-8")
-    # [^"?]* 只能匹配「还没盖过版本号」的那次：盖过一次之后串里有了 ?，
-    # 排除 ? 就再也匹配不上，于是第二次起永远盖不上——手机上拿到的是缓存里的旧图标。
-    before = t
-    t = re.sub(r'"(icon-\d+\.png|icon\.svg)[^"]*"', rf'"\1?v={v}"', t)
-    if t == before:
-        raise SystemExit("✗ manifest 的图标版本号没盖上，检查正则")
-    m.write_text(t, encoding="utf-8")
-p.write_text(s, encoding="utf-8")
-print(f"  版本号 v={v}")
-PY
+python3 scripts/mac/stamp-shell.py web "$V"   # one stamp on every shell URL + manifest icons + sw.js CACHE (T4; the same script the local export uses)
 
 rm -rf "$WT"
 git worktree prune

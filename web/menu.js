@@ -28,6 +28,17 @@
   const reduce = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
   const restRect = (anchor, h) => { const r = anchor.getBoundingClientRect(); const right = Math.max(EDGE, innerWidth - r.right), left = innerWidth - right - W;
     const top = r.bottom + GAP + h <= innerHeight - EDGE ? r.bottom + GAP : Math.max(EDGE, r.top - GAP - h); return { left, top, width: W, height: h }; };
+  /* the page re-renders on its own clock (a live.js tick, a snapshot arriving) and dressSelects() builds new <select> + .menubtn nodes, so the
+     pair the menu was opened from can be detached by the time it closes or an item is chosen. A detached button reads a 0×0 rect at (0, 0):
+     the dismiss morph collapsed into the top-left corner, and a choice went to a select no longer on screen (2026-09-23: the dark acceptance
+     run, anchor.isConnected false at close — the three 菜单收回 rows). The live pair is found again by the select's id / data-id; every
+     select the page builds carries one (view.js: #efboss, #queue, select[data-id]). */
+  const livePair = (sel, anchor) => {
+    if (sel.isConnected && anchor.isConnected) return { sel, anchor };
+    const key = sel.id ? `select#${CSS.escape(sel.id)}` : sel.dataset && sel.dataset.id ? `select[data-id="${CSS.escape(sel.dataset.id)}"]` : null;
+    const s2 = key && document.querySelector(key), b2 = s2 && s2.nextElementSibling;
+    return s2 && b2 && b2.classList.contains("menubtn") ? { sel: s2, anchor: b2 } : { sel, anchor };
+  };
   const anchorRect = (anchor) => { const r = anchor.getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; };
   const cornerOf = (el) => parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
   /* ---- the panel's glass (BOARD R1; material by the read keys only, BOARD A20) ----
@@ -296,7 +307,8 @@
       const ck = document.createElement("i"); ck.className = "ck"; const sym = typeof SYM !== "undefined" && SYM["checkmark"];   // view.js's SYM is a top-level const (not on window)
       if (sym) ck.setAttribute("style", `-webkit-mask-image:url(${sym});mask-image:url(${sym})`);
       b.appendChild(ck); b.appendChild(document.createTextNode(o.textContent));
-      b.onclick = () => { if (sel.value !== o.value) { sel.value = o.value; sel.dispatchEvent(new Event("change", { bubbles: true })); } close(); };
+      b.onclick = () => { const t = cur ? livePair(cur.sel, cur.anchor).sel : sel, to = [...t.options].some((x) => x.value === o.value) ? t : sel;   // the select on screen now (see livePair)
+        if (to.value !== o.value) { to.value = o.value; to.dispatchEvent(new Event("change", { bubbles: true })); } close(); };
       body.appendChild(b);
     }
     scrim.onclick = close;
@@ -313,7 +325,8 @@
   function close() {
     if (!cur) return;
     if (cur.phase === "out") return;
-    const back = anchorRect(cur.anchor);   // the button's frame now (the page may have scrolled)
+    const lp = livePair(cur.sel, cur.anchor); cur.sel = lp.sel; cur.anchor = lp.anchor;   // a re-render while open replaced the button: morph back to the one on screen
+    const back = cur.anchor.isConnected ? anchorRect(cur.anchor) : cur.from;   // the button's frame now (the page may have scrolled); an unfindable button: where it was at the open
     cur.phase = "out"; cur.from = { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x }; cur.to = back;
     cur.goalOut = cur.reduced ? { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, r: R, a: 0 } : { left: back.left, top: back.top, width: back.width, height: back.height, r: cornerOf(cur.anchor), a: 1 };
     cur.scrim.style.pointerEvents = "none"; glassFull(cur.glass, false); run(); cur.t0 = cur.prev; cur.t = 0; cur.frame = 0;   // the dismiss morph on the light chain (R63)
@@ -321,6 +334,7 @@
   /* hidden strips the state at once (BOARD A6 template): nothing animates while the page is away and a half-open menu must not come back */
   const onHidden = (force) => { if (force || document.hidden) strip(); };
   document.addEventListener("visibilitychange", () => onHidden(false));
-  window.Menu = { glass: { keys: glassKeys, built: BUILT, unbuilt: UNBUILT, gOval, sdf: sdfSuper, theme: glassTheme, bleedSigma: () => mixStd(lod(glassKeys(glassTheme()).BleedBlurRadius)) / CAPTURE, images: glassImages }, morph: MORPH, springs: { appear: [...APPEAR], dismiss: [...DISMISS], reduce: [...REDUCE] }, open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0, t: cur.t || 0, frame: cur.frame || 0,
-    x: { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, a: cur.s.a.x } } : null };
+  window.Menu = { glass: { keys: glassKeys, built: BUILT, unbuilt: UNBUILT, gOval, sdf: sdfSuper, theme: glassTheme, bleedSigma: () => mixStd(lod(glassKeys(glassTheme()).BleedBlurRadius)) / CAPTURE, images: glassImages }, morph: MORPH, springs: { appear: [...APPEAR], dismiss: [...DISMISS], reduce: [...REDUCE] }, open, close, onHidden, state: () => cur ? { phase: cur.phase, from: { ...cur.from }, to: { ...cur.to }, reduced: cur.reduced, t0: cur.t0, t: cur.t || 0, frame: cur.frame || 0, settled: !cur.raf,   // settled: read-only (S1, 2号 13:1x) — the "in" morph rests (its loop stopped, the full glass on); the "out" morph strips cur, so state() null = closed
+    x: { left: cur.s.left.x, top: cur.s.top.x, width: cur.s.width.x, height: cur.s.height.x, a: cur.s.a.x },
+    v: { left: cur.s.left.v, top: cur.s.top.v, width: cur.s.width.v, height: cur.s.height.v, a: cur.s.a.v } } : null };   // v: read-only (2号 14:4x) — the springs' velocities (pt/s, opacity/s): the dismiss starts from the rested "in" state, whose |v| < 1 pt/s (settled) is not 0, so the acceptance's closed form takes it
 })();

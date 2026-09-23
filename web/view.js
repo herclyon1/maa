@@ -2,7 +2,7 @@
 /* 游戏机遥控。
    一根管道：ntfy 上一个信箱。手机写指令，机器写状态。零轮询——
    机器那头挂长连接，这头只在你按刷新时发一条 ping。
-   信箱名和 PIN 只存在这台手机里，不在这份代码里。 */
+   信箱名和 PIN 不写进这份代码：手机上存在本机 localStorage；Mac 上的副本在 ~/.config/ark/密钥总表.md（A48）。 */
 const NTFY = "https://ntfy.sh";
 const LS = "ark-remote-cfg";
 const $ = (s) => document.querySelector(s);
@@ -983,8 +983,8 @@ function wire() {
   if (dsw) dsw.onchange = () => {
     try { if (dsw.checked) localStorage.setItem("ark-diag", "1"); else localStorage.removeItem("ark-diag"); } catch (e) {}
     try { const q = new URLSearchParams(location.search); if (dsw.checked) q.set("diag", "1"); else q.delete("diag"); history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q.toString() : "") + location.hash); } catch (e) {}
-    if (dsw.checked && !document.querySelector('script[src^="seg-frames-logger.js"]')) { const s = document.createElement("script"); s.src = "seg-frames-logger.js"; document.body.appendChild(s); }
-    toast(dsw.checked ? "诊断记录已开：现在去点分段控件，记录生成后会弹出" : "诊断记录已关；下次打开页面不再记录", 4000);
+    if (dsw.checked && !document.querySelector('script[src^="seg-frames-logger.js"]')) { const s = document.createElement("script"); s.src = "seg-frames-logger.js?v=20260923"; document.body.appendChild(s); }
+    toast(dsw.checked ? "诊断记录已开：点任意控件都会记一份，出问题按右下角「就是这里」" : "诊断记录已关；下次打开页面不再记录", 4000);
   };
   const mk = $("#mklink");
   if (mk) mk.onclick = async () => {
@@ -2293,7 +2293,14 @@ function showDiagSheet(rec) {
   const sh = $("#diagsheet"); if (!sh || !rec) return;
   let json = ""; try { json = JSON.stringify(rec); } catch (e) { json = String(rec); }
   const kb = Math.round(json.length / 1024 * 10) / 10, fr = Array.isArray(rec.frames) ? rec.frames.length : "?";
-  $("#diagsheet-m").textContent = `一份 JSON，${kb} KB，${fr} 帧。复制后粘到聊天里，或用分享发出。`;
+  /* 件 C (2026-09-23): the record uploads itself; the sheet says where it got to, so a failure is never silent. `upload.state`:
+     sent = 已在桶里, kept = 还在这台手机里（原因在 detail）, failed = 连存都没成。The line updates live on "segframes-upload". */
+  const upWord = (u) => !u ? "上传：还在送" : u.state === "sent" ? "上传：已送达" : `上传：没送到（${u.detail || "原因不明"}）`;
+  const ctl = rec.control && (rec.control.label || rec.control.path) ? `点的是「${rec.control.label || rec.control.path}」。` : "";
+  const mk = Array.isArray(rec.marks) && rec.marks.length ? `你标了 ${rec.marks.length} 处（${rec.marks.map((m) => m.word || "未选词").join("、")}）。` : "";
+  const msg = () => `${ctl}${mk}一份 JSON，${kb} KB，${fr} 帧。${upWord(rec.upload)}。送不到时复制后粘到聊天里，或用分享发出。`;
+  $("#diagsheet-m").textContent = msg();
+  showDiagSheet._live = (r) => { if (!sh.hidden && r && r.record_id === rec.record_id) { rec.upload = r.upload; rec.marks = r.marks; $("#diagsheet-m").textContent = msg(); } };
   const share = $("#diagsheet-share"); share.hidden = !(navigator.share && (!navigator.canShare || navigator.canShare({ text: "x" })));
   $("#diagsheet-copy").onclick = async () => { try { await navigator.clipboard.writeText(json); toast("已复制整份记录"); } catch (e) { toast("复制失败：" + (e && e.message ? e.message : e), 4000); } };
   share.onclick = async () => { try { await navigator.share({ title: "诊断记录", text: json }); } catch (e) { if (!(e && e.name === "AbortError")) toast("分享失败：" + (e && e.message ? e.message : e), 4000); } };
@@ -2301,6 +2308,9 @@ function showDiagSheet(rec) {
   sh.hidden = false;
 }
 addEventListener("segframes", (e) => showDiagSheet(e.detail || window.__segFrames));
+/* light records (件 A: any control, many per session) do not open the sheet — the recorder's own line reports them; these two only refresh a sheet that is already open */
+addEventListener("segframes-upload", (e) => { if (showDiagSheet._live) showDiagSheet._live(e.detail); });
+addEventListener("segframes-mark", (e) => { if (showDiagSheet._live) showDiagSheet._live(e.detail); });
 window.__viewReady = true;   // every top-level binding above exists now: live.js's timers / events may use cfg, snap, render … (they return until this)
 boot();
 
