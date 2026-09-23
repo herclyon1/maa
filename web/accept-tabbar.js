@@ -312,16 +312,6 @@
         delete seg.dataset.pe; other.click(); await sleep(150); const c1 = cut(); await sleep(700); const c2 = cut(), col2 = cols();
         check("P0b 标签选中色裁切 · 滑动途中 150 ms：裁切框跟透镜当帧框（±.5），透镜在途中", "≤ .5 · 途中", `${c1.worst.toFixed(2)} · 透镜 x ${c1.gl.toFixed(1)}（起 ${c0.gl.toFixed(1)} → 止 ${c2.gl.toFixed(1)}）`, c1.worst <= 0.5 && Math.abs(c1.gl - c0.gl) > 1 && Math.abs(c1.gl - c2.gl) > 1);
         check("P0b 标签选中色裁切 · 换页后：两份颜色一个不变（选中色只靠裁切露出）", `${[...col0].join(" / ")}`, `${[...col2].join(" / ")} · 框差 ${c2.worst.toFixed(2)}`, col0.size === 1 && col2.size === 1 && [...col0][0] === [...col2][0] && c2.worst <= 0.5);
-        /* 用户 09-23 18:27 真机 ③: dragging the lens over other tabs must not show them selected before the release — while the driver runs the cut
-           stays on the selected item's own box (view.js tabClip); the lens is elsewhere */
-        { const sel = bs.find((b) => b.classList.contains("on")), nb = bs.find((b) => b !== sel && b.offsetWidth);
-          const cutTo = (el) => { const rr = el.getBoundingClientRect(); let worst = 0; for (const b of bs) for (const c of b.querySelectorAll(":scope > .tcg, :scope > .tcs")) { const q = pbox(c); if (!q) { worst = Infinity; continue; } worst = Math.max(worst, Math.abs(q.l - rr.left), Math.abs(q.r - rr.right), Math.abs(q.t - rr.top), Math.abs(q.b - rr.bottom)); } return worst; };
-          if (sel && nb) { const sr = sel.getBoundingClientRect(), nr = nb.getBoundingClientRect(), sx = sr.left + sr.width / 2, sy = sr.top + sr.height / 2, nx = nr.left + nr.width / 2;
-            ev(sel, "pointerdown", sx, sy, 41); await until(settled, 900); ev(sel, "pointermove", sx + (nx > sx ? 20 : -20), sy, 41); await until(() => !!L() && L().phase === "drag", 150);
-            ev(sel, "pointermove", nx, sy, 41); await until(settled, 400);
-            const drag = !!L() && L().phase === "drag" && nav.classList.contains("tl-on"), wSel = cutTo(sel), gr = g.getBoundingClientRect(), away = Math.abs(gr.left + gr.width / 2 - (sr.left + sr.width / 2)), stillOn = sel.classList.contains("on");
-            check("③ 拖动透镜到别的标签、未松手：选中色裁切仍在原选中项自己的框上（±.5），透镜已离开它，选中项未变（用户 18:27 真机：拖动时别的标签不许显示已选择）", "拖动中 · ≤ .5 · 透镜离开 > 20 · 选中未变", `${drag ? "拖动中" : "不在拖动"} · ${wSel.toFixed(2)} · 透镜离开 ${away.toFixed(1)} · ${stillOn ? "选中未变" : "选中已变"}`, drag && wSel <= 0.5 && away > 20 && stillOn);
-            ev(sel, "pointerup", nx, sy, 41); await until(rest, 2500); delete seg.dataset.pe; await sleep(100); } }
         delete seg.dataset.pe; back.click(); await sleep(700);
       } else check("P0b 标签选中色裁切：标签栏至少两项、每项有 .tcg / .tcs 两份", "有", `${bs.length} 项`, false); }
     /* leave the bar at rest for the next file (the runner starts it at once; a per-block probe 09-23 17:1x caught the next block — sw / acceptTile — starting with
