@@ -160,6 +160,13 @@
   addEventListener("touchend", () => { dragging = false; lastTouchEnd = performance.now(); }, { passive: true }); addEventListener("touchcancel", () => { dragging = false; lastTouchEnd = performance.now(); }, { passive: true });
   addEventListener("resize", () => { measure(); apply(); });
   addEventListener("load", () => { measure(); apply(); });   // the stylesheets are all in effect by then (a late topbar.css would leave p from index.html's geometry)
+  /* p used to be re-read only at scrollY 0 (apply), on resize and on load: a layout change while the page was scrolled left it stale until the next
+     return to the top — 老网页's run of 0fe960c on 模拟器 A (OPEN.md 09-23 18:50) read p 50.889 against a geometry of 51.889 (the switch rows then
+     missed by that 1 pt), and accept-topbar's own note has 51.89 vs 52.406 in a dark run. The formula is scroll-invariant (模拟器 B, WebKit: 51.889 at
+     scrollY 0 / 1 / 5 / 20 / 40 / 52 / 60 / 200; the pull-down scale keeps the title's bottom, transform-origin 0 100%), so any size change of the
+     title, its header or the bar re-measures at once; which change moved it on A is not measured, this covers every size change of the three boxes */
+  if (window.ResizeObserver) { const ro = new ResizeObserver(() => { measure(); apply(); }); for (const el of [h1, h1.closest("header"), bar]) if (el) ro.observe(el, { box: "border-box" }); }
+  if (document.fonts) document.fonts.addEventListener("loadingdone", () => { measure(); apply(); });
   measure(); apply();
   Object.assign(api, { measure, apply, progressOf, snapTarget, snapProgress, stretchOf, B, THRESH, FADE_S, ZONE_BELOW, SNAP_R, BAR_T, BAR_P }); Object.defineProperty(api, "p", { get: () => p }); window.Topbar = api;
 })();

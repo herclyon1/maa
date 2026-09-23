@@ -84,12 +84,17 @@
     const shown = () => [...document.querySelectorAll("#app > section:not([hidden])")].map((x) => x.dataset.tab).filter((v, i, a) => a.indexOf(v) === i).join(",");
     pev(tseg, "pointerdown", at(other));
     check("标签栏 T1 按下未选中项 +0 ms：不选中；高亮类 .lift 即在（R59′e / R108：落指 → highlightedItemIndex → setLifted 无定时器，+140 令牌作废）", `${startTab} · lift`, `${tOn()} lift=${g.classList.contains("lift")}`, tOn() === startTab && g.classList.contains("lift"));
-    await sleep(60);
+    /* +60 / +200 / +600 are read on the driver's own clock (BOARD A15: window.__tabLens.t, the frame time the springs were stepped to), not the harness's
+       wall clock: on 模拟器 A under 老网页's full run (0fe960c, OPEN.md 09-23 18:50) the driver had drawn no frame 60 ms of wall time after the synthetic down
+       and the rows read "p -" / "h 54" (why that frame was late is not measured — the harness's own waits are what the row must not depend on); a real finger on 模拟器 B, fresh load, lifts from +2 ms: +64 p .486, +198 h 73.2
+       (evidence 界面-OPEN78-T1-新载首按.json) */
+    const untilT = async (tt, max) => { const end = performance.now() + max; while (performance.now() < end) { const L = window.__tabLens; if (L && L.t >= tt) return L; await new Promise(requestAnimationFrame); } return window.__tabLens; };
+    await untilT(0.06, 1500);
     { const L = window.__tabLens; check("标签栏 T1 +60 ms：驱动器已在抬（按下下一 tick 起，探针 +47 已 95.76）：p > 0、仍不选中", "p > 0 · not selected", `p ${L ? L.p.toFixed(3) : "-"} · ${tOn()}`, !!L && L.p > 0 && tOn() === startTab); }
-    await sleep(140);
+    await untilT(0.2, 1500);
     { const gr = g.getBoundingClientRect();   // #7a (tab-lens.js geometry mode): the lift is the box itself, w0 × 54 → (w0 + 16) × 70 on ζ 1 / .25 from +140 ms (tab-lens-motion.md §0 / §4), view.js's inline left = the pressed item is the target
       check("标签栏 T1 +200 ms：透镜抬起中并滑向被按项（R59′d / R108：按下下一帧起 ζ1/.25 抬向 +22.7 × 74、位置 ζ.85/.4；.lift 类自按下即在）", `left→${other.offsetLeft}, lift, 54 < h ≤ 74`, `left ${g.style.left} ${g.classList.contains("lift") ? "lift" : "-"} h ${gr.height.toFixed(1)}`, g.classList.contains("lift") && g.style.left === other.offsetLeft + "px" && gr.height > 54 && gr.height <= 74.5); }   // 2号 R59′d: the lens's lifted size per the probe (tab-lens-motion §6.9 ⑤)
-    await sleep(400);
+    await untilT(0.6, 1500);
     { const gr = g.getBoundingClientRect();
       check("标签栏 T5 按住 600 ms：仍不选中，透镜停在 (w0 + 22.7) × 74（R108 探针 94×54 → 116.7 × 74.0，tab-lens-motion §6.9 ⑤；旧 +16 两轴是选中框的 inset）", `${startTab} ${(other.offsetWidth + 22.7).toFixed(1)}×74`, `${tOn()} ${gr.width.toFixed(1)}×${gr.height.toFixed(1)}`, tOn() === startTab && Math.abs(gr.width - (other.offsetWidth + 22.7)) <= 0.5 && Math.abs(gr.height - 74) <= 0.5); }   // 2号 R59′d
     const t1 = performance.now(); pev(tseg, "pointerup", at(other)); const d1 = performance.now() - t1;
@@ -177,6 +182,38 @@
         const goneAfter = A ? A.removed.every((b) => !b.isConnected) : true, hadAnim = !!A && (A.items.length + A.removed.length + A.added.length) > 0;
         check("R0③ 换班次时项增删动画（§7）：保留项位移逐帧对 ζ1/.3 闭式（rms ≤ 1 pt）、删项淡出对 ζ1/.2（rms ≤ .03）、加项淡入对 ζ1/.3（rms ≤ .03）、删项在动画结束后摘掉、驱动器存在", "anim · pos ≤ 1 · out ≤ .03 · in ≤ .03 · removed gone", `anim ${hadAnim} · ${smp.length} samples · pos ${rmsOf("pos").toFixed(2)} · out ${rmsOf("out").toFixed(3)} (${removedSeen} frames) · in ${rmsOf("in").toFixed(3)} · gone ${goneAfter}`, hadAnim && rmsOf("pos") <= 1 && rmsOf("out") <= 0.03 && rmsOf("in") <= 0.03 && goneAfter);
         curQueue = savedQ; window.render(); await sleep(1300); }
+      /* 界面-串2 (09-23 18:4x): a tap on another tab while the item-set animation runs — the glide must end on the tapped tab; before, the driver
+         wrote the old selection's left every frame and at its end, and the glide stayed on the old tab (view.js tabSetAnimate, mine()) */
+      { const nv = document.querySelector("nav.tabs"), gl = nv.querySelector(":scope > .glide");
+        curQueue = other; window.render(); const A = nv.__tabAnim; await sleep(150);
+        const tgt = [...nv.querySelectorAll(":scope > .seg > button")].find((b) => !b.classList.contains("on") && !(A && A.removed.includes(b)));
+        const mid = !!A && nv.__tabAnim === A; if (tgt) tgt.click(); await sleep(900);
+        const on = nv.querySelector(":scope > .seg > button.on"), gr = gl.getBoundingClientRect(), orr = on ? on.getBoundingClientRect() : null;
+        check("R0③′ 项增删动画途中点另一个标签：选中切过去，动画结束后透镜停在新选中项上（≤ 1 pt），不回旧项", "点时动画在跑 · 选中 = 点的 · 透镜贴新项", `${mid ? "动画在跑" : "动画没在跑"} · 选中 ${on ? on.dataset.tab : "无"}（点 ${tgt ? tgt.dataset.tab : "无"}） · 透镜 x ${gr.left.toFixed(1)} vs 项 ${orr ? orr.left.toFixed(1) : "-"} · 宽 ${gr.width.toFixed(1)} vs ${orr ? orr.width.toFixed(1) : "-"}`,
+          mid && !!tgt && on === tgt && !!orr && Math.abs(gr.left - orr.left) <= 1 && Math.abs(gr.width - orr.width) <= 1);
+        curQueue = savedQ; window.render(); await sleep(1300); }
+      /* 界面-串2 (用户 09-23 18:27 真机 ①「切换到晚班的时候不应该显示终末地，因为终末地不在晚班里面」): in every shift each tab except 状态 must own a
+         game group of its own; the 库存 entry row (data-tabfix, view.js SCHEMA loop) was emitted before the inShift test and alone kept 终末地 in 晚班 */
+      { const per = [];
+        for (const nm of names) { curQueue = nm; window.render(); await sleep(50);
+          const nv = document.querySelector("nav.tabs"), tabs = [...nv.querySelectorAll(":scope > .seg > button")].map((b) => b.dataset.tab);
+          const orphan = tabs.filter((t) => t !== "状态" && ![...document.querySelectorAll("#app section")].some((x) => x.dataset.tab === t && !x.dataset.tabfix && x.querySelector("h2")));
+          per.push({ nm, tabs, orphan }); }
+        curQueue = savedQ; window.render(); await sleep(1300);
+        check("①′ 每个班次的标签只含本班有的游戏：除「状态」外每个标签都有本班自己的游戏分组，不靠库存入口行撑出一个标签", "无空标签", per.map((x) => `${x.nm}：${x.tabs.join("/")}${x.orphan.length ? "（空 " + x.orphan.join("/") + "）" : ""}`).join(" · "), per.every((x) => !x.orphan.length)); }
+      /* 界面-串2 (用户 09-23 18:27 真机 ②「切换到晚班再切早班的时候会出现晚班的底图重叠」): the tab lens's backdrop (lens-webgl scratch canvases, the page
+         layer = body colour + the platter capsule) was painted on tabs-changed, the first frame of the item-set animation, from a platter still at the old
+         width — on 模拟器 B the live page canvas had its capsule at css 45..370 of a 416 bar (evidence 界面-串2-②-底图画布.json), and every set change left
+         one more scratch pair in the body. After 早→晚→早 and the settle: one scratch box per lens, and the tab page canvas's capsule spans the whole bar */
+      { const nv = document.querySelector("nav.tabs"), boxes0 = [...document.body.children].filter((e) => e.style && e.style.left === "-100000px").length;
+        curQueue = other; window.render(); await sleep(1500); curQueue = savedQ; window.render(); await sleep(1800);
+        const dpr = window.devicePixelRatio || 1, navW = nv.offsetWidth, navH = nv.offsetHeight, boxes = [...document.body.children].filter((e) => e.style && e.style.left === "-100000px");
+        const pg = boxes.map((b) => b.querySelector("canvas")).filter((c) => c && c.width > navW * dpr && Math.abs(c.width / dpr - navW - (c.height / dpr - navH)) < 1).pop();
+        if (!pg) check("②′ 换班次后标签透镜底图【标签透镜 GL 不可用：不核】", "-", "no tab canvas", true);
+        else { const m = (pg.width / dpr - navW) / 2, d = pg.getContext("2d").getImageData(0, Math.round(pg.height / 2), pg.width, 1).data, px = (i) => d.slice(i * 4, i * 4 + 4).join(",");
+          let a = -1, b = -1; for (let i = 0; i < pg.width; i++) if (px(i) !== px(0)) { if (a < 0) a = i; b = i; }
+          const l = a / dpr - m, r = (b + 1) / dpr - m;
+          check("②′ 换班次（早→晚→早）动画落定后：标签透镜底图里的平台胶囊横跨整条标签栏（左 0、右 = 栏宽，≤ 1 pt），离屏底图画布不随换班次累积", `0..${navW} · 画布盒 ${boxes0}`, `${l.toFixed(1)}..${r.toFixed(1)} · 画布盒 ${boxes0} → ${boxes.length}`, Math.abs(l) <= 1 && Math.abs(r - navW) <= 1 && boxes.length <= boxes0); } }
       curTab = savedTab; window.render(); await sleep(100);
     }
   }
