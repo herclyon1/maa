@@ -296,7 +296,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
        and nobody noticed until the phone showed grey everywhere. */
     const lab = document.createElement("div"); lab.style.cssText = "position:fixed;left:-9999px;top:0";
     lab.innerHTML = `<label class="sw"><input type="checkbox" checked><span></span></label><label class="sw"><input type="checkbox"><span></span></label>` +
-      `<button class="tile danger"><span class="ttitle">x</span></button><nav class="tabs"><div class="seg"><button class="on"><span class="tcg"><span>x</span></span><span class="tcs"><span>x</span></span></button></div></nav>` +
+      `<button class="tile danger"><span class="ttitle">x</span></button><nav class="tabs"><div class="seg"><button class="on"><span class="tcg"><span class="ico"><img class="tabimg" alt=""></span><span>x</span></span><span class="tcs"><span class="ico"><img class="tabimg" alt=""></span><span>x</span></span></button></div></nav>` +
       `<div class="topbar editing"><button class="navbtn" id="_d">x</button><button class="navbtn" id="_s">x</button></div>` +
       `<div class="group"><div class="row"><label>x</label><span class="sent">已寄出 10:00</span></div><div class="row"><label>y</label><input type="text" class="short" value="08:30"></div><div class="acts"><button>开始刷</button></div></div>`;
     document.body.appendChild(lab);
@@ -328,6 +328,8 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
     check("轻点一下：change 只发一次", 1, changes, changes === 1);
     col("停止一切标题 = 红（--ios-red）", T.red, cs(lab.querySelector(".ttitle")).color);
     col("标签的选中色那份 = tint（--ios-tint）", T.tint, cs(lab.querySelector("nav.tabs button .tcs")).color);
+    { const im = [...lab.querySelectorAll("nav.tabs .tabimg")].map((e) => `${cs(e).opacity}/${cs(e).filter}`);   // 庚 #2: the alwaysOriginal image is the same CGImage, opacity 1, no filter in both copies (evidence/uiprobe-sdf-tabphoto-*.json #18 / #47)
+      check("照片标签图两份都原样（不透明度 1、无滤镜，庚 #2 原生读值）", "1/none ×2", im.join(" · "), im.length === 2 && im.every((x) => x === "1/none")); }
     col("蓝字行 = link（--ios-link）", T.link, cs(lab.querySelector(".acts button")).color);
     const cap = lab.querySelector(".sent");
     num("三态小字 11（--ios-caption2-size）", 11, px(cs(cap).fontSize), 0.05); num("三态小字行框 13.13（--ios-caption2-lh）", 13.13, px(cs(cap).lineHeight), 0.05);

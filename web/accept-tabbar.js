@@ -23,6 +23,13 @@
     const nav = document.querySelector("nav.tabs"); if (!nav) { check("标签栏：页面无 nav.tabs", "有", "缺", false); return; }
     if (!nav.classList.contains("tlens")) { check("标签栏：tab-lens.js 未接（nav 无 .tlens：挂钩行 / motion.js）", "tlens", nav.className, false); return; }
     const seg = nav.querySelector(".seg"), g = nav.querySelector(".glide"), bs = [...seg.querySelectorAll("button")], plat0 = nav.querySelector(".plat");
+    /* V1 偶发标签红 (界面 09-23 17:0x, 5 light runs 2 red on ② with the same numbers 4.7 / 4.1 / 22.9): the rows below measure a lift FROM REST (r0 = the rest box,
+       t0 = our own down), but the files register in fetch-arrival order, and when accept-stockpile.js ran first its last line (tab back to startTab, a click) left the
+       lens driver running — caught at the start: __tabLens on, nav.tl-on, the glide at l 178.9 instead of 16, the driver's t0 690 ms before our down. So first wait
+       until the bar is at rest: no driver, no .tl-on, no running animation on the glide, no item-set animation (≤ 3 s) */
+    { const t0 = performance.now(), rest = () => !window.__tabLens && !nav.classList.contains("tl-on") && !nav.__tabAnim && !g.getAnimations().some((a) => a.playState === "running");
+      while (!rest() && performance.now() - t0 < 3000) await new Promise((r) => requestAnimationFrame(r));
+      check("标签栏：开测前静止（无驱动 / 无 tl-on / 透镜无动画；前一文件留下的换页动效等完，≤ 3 s）", "静止", `${rest() ? "静止" : "仍在动"} · 等了 ${Math.round(performance.now() - t0)} ms`, rest()); }
     const crit = (start, target, resp, t) => { const w = 2 * Math.PI / resp; return target + (start - target) * (1 + w * t) * Math.exp(-w * t); };   // ζ 1
     const under = (start, target, zeta, resp, t) => { const w = 2 * Math.PI / resp, wd = w * Math.sqrt(1 - zeta * zeta), e = Math.exp(-zeta * w * t); return target + (start - target) * e * (Math.cos(wd * t) + (zeta * w / wd) * Math.sin(wd * t)); };
     const rms = (a) => Math.sqrt(a.reduce((s, v) => s + v * v, 0) / Math.max(1, a.length));
@@ -304,5 +311,10 @@
         check("P0b 标签选中色裁切 · 换页后：两份颜色一个不变（选中色只靠裁切露出）", `${[...col0].join(" / ")}`, `${[...col2].join(" / ")} · 框差 ${c2.worst.toFixed(2)}`, col0.size === 1 && col2.size === 1 && [...col0][0] === [...col2][0] && c2.worst <= 0.5);
         delete seg.dataset.pe; back.click(); await sleep(700);
       } else check("P0b 标签选中色裁切：标签栏至少两项、每项有 .tcg / .tcs 两份", "有", `${bs.length} 项`, false); }
+    /* leave the bar at rest for the next file (the runner starts it at once; a per-block probe 09-23 17:1x caught the next block — sw / acceptTile — starting with
+       this file's lens driver still on in 3 of 4 runs, and the switch's +126 ms lift row went red in one of them) */
+    { const t0 = performance.now(), rest = () => !window.__tabLens && !nav.classList.contains("tl-on") && !nav.__tabAnim && !g.getAnimations().some((a) => a.playState === "running");
+      while (!rest() && performance.now() - t0 < 3000) await new Promise((r) => requestAnimationFrame(r));
+      check("标签栏：收尾静止（交给下一个文件前驱动已停、透镜无动画，≤ 3 s）", "静止", `${rest() ? "静止" : "仍在动"} · 等了 ${Math.round(performance.now() - t0)} ms`, rest()); }
   });
 })();

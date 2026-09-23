@@ -151,9 +151,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   nav.tabs button .tcg{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;align-self:stretch;min-width:0}
   nav.tabs button .tcs{position:absolute;inset:0;padding:inherit;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;
                        color:var(--accent);pointer-events:none;clip-path:inset(0 0 0 100%)}
-  nav.tabs button .tabimg{display:block;width:26px;height:26px;border-radius:7px;object-fit:cover;
-                          opacity:.7;filter:saturate(.6)}
-  nav.tabs button .tcs .tabimg{opacity:1;filter:none}   /* the photo tab's two looks (#2 灰→亮: which look native gives an alwaysOriginal image is 庚 #2, 待读) */
+  nav.tabs button .tabimg{display:block;width:26px;height:26px;border-radius:7px;object-fit:cover}   /* 照片标签两份同样：原生 alwaysOriginal 图在选中 / 未选中两份里是同一张 CGImage、opacity 1、无滤镜（祖先链亦无），26×26 距按钮顶 7 ← BOARD/evidence/uiprobe-sdf-tabphoto-{unsel,sel}.json #18 / #47（庚 #2，BOARD/庚2-标签栏照片-界面.md）；旧 .7 / saturate .6 无出处，删 */
   nav.tabs button .sf{display:block;width:26px;height:26px;background:currentColor;
                       -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;
                       -webkit-mask-size:contain;mask-size:contain}
