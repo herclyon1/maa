@@ -85,7 +85,11 @@ PROBE = r"""(function () {
 # the hit check without injecting anything: `rwi arm` leaves a capture pointerdown listener in the page, `rwi taps` reads and clears
 # what it caught (client point, the element, the control around it) — a tap sent at a table's (x, y) must come back as that control
 ARM = r"""(function () { if (window.__simTaps) return 'armed already'; window.__simTaps = [];
-  addEventListener('pointerdown', function (e) { var c = e.target.closest ? e.target.closest('button,a[href],input,select,textarea,summary,[role],[onclick],[tabindex]') : null;
+  // the control = the first element under the point that the table lists (same selector as COLLECT), not e.target.closest(...): an overlay
+  // inside a control (the segmented lens <i>) is the target there and its closest [role] is the whole group (rwi check 19:01, 早班 tap)
+  var SEL = 'button,a[href],input,select,textarea,summary,[role=button],[role=tab],[role=switch],[role=link],[role^=menuitem],[onclick],[tabindex]:not([tabindex="-1"])';
+  addEventListener('pointerdown', function (e) { var c = null, under = document.elementsFromPoint(e.clientX, e.clientY);
+    for (var i = 0; i < under.length && !c; i++) c = under[i].matches(SEL) ? under[i] : null;
     window.__simTaps.push({ cx: Math.round(e.clientX * 10) / 10, cy: Math.round(e.clientY * 10) / 10, type: e.pointerType, target: e.target.tagName.toLowerCase() + (e.target.id ? '#' + e.target.id : ''),
       control: c ? (c.getAttribute('aria-label') || (c.innerText || '').trim().slice(0, 30) || c.id || c.tagName.toLowerCase()) : null }); }, true);
   return 'armed'; })()"""
