@@ -22,6 +22,7 @@ Three things are pinned:
 """
 import importlib.util
 import json
+import subprocess
 import sys
 from collections import Counter
 from pathlib import Path
@@ -225,6 +226,42 @@ require("built 有时间戳", bool(pub.get("built")), str(pub.get("built")))
 check("game 层级", [(x["game"], x["gameId"]) for x in pub["games"]], [("终末地", "endfield")])
 check("已发布：同一个标准", [(s["name"], s["weapon"]["name"], s["status"]) for s in pg["standards"]], [("提弗洛斯", "寒夜幽影", "已实装")])
 check("已发布：行与离线重建完全一致", pg["rows"], g["rows"])
+
+print("\n[自选箱：只补不够一人份的高阶素材，最缺的先补（用户 2026-09-23 09:05）]")
+box = pg["box"]
+check("箱子 = material-list 的 SELFSELECT 项", (box["id"], box["name"], box["per"]), ("e55ebf79deddbe781f2a33fb65fd7c61", "高阶培养自选箱Ⅰ", 2))
+check("可选 = priorities RARE 五种", box["pickNames"], ["超距辉映管", "D96钢样品四", "快子遴捡晶格", "象限拟合液", "三相纳米片"])
+check("已发布的 box 与离线重建一致", box, g["box"])
+check("箱子那行仍不算人份", prow["高阶培养自选箱Ⅰ"]["need"], None)
+# web/inventory.js applyBox, run in macOS JavaScriptCore (osascript -l JavaScript; the
+# tests run on the Mac, deploy-relay.sh). Counts are the account's 2026-09-23 08:4x read
+# (BOARD/M4d-资源箱与分节.md): D96 6, 快子 1, 象限 1, 三相 49, 133 boxes.
+ids = {r["name"]: r["id"] for r in pg["rows"]}
+def apply_box(held):
+    counts = {ids["D96钢样品四"]: 6, ids["快子遴捡晶格"]: 1, ids["象限拟合液"]: 1, ids["三相纳米片"]: 49}
+    if held:
+        counts[box["id"]] = held
+    js = ("var window={}; var localStorage={getItem(){return null},setItem(){},removeItem(){}};\n"
+          + (REPO / "web/inventory.js").read_text(encoding="utf-8")
+          + f"\nvar g={json.dumps(pg, ensure_ascii=False)}; var I=window.Inventory; var rows=I.rowsFor(g,{json.dumps(counts)},{{}});"
+          + "var u=I.applyBox(rows,g.box); JSON.stringify({u:u, rows:rows.map(function(r){return [r.name,r.box,r.servings,r.short,r.boxUsed,r.boxLeft]})})")
+    out = subprocess.run(["osascript", "-l", "JavaScript", "-e", js], capture_output=True, text=True, timeout=60)
+    require(f"applyBox 在 JavaScriptCore 里跑通（{held} 箱）", out.returncode == 0, out.stderr[-300:])
+    d = json.loads(out.stdout) if out.returncode == 0 else {"u": None, "rows": []}
+    return d["u"], {r[0]: r[1:] for r in d["rows"]}
+u, rb = apply_box(133)
+check("133 箱：用 131、剩 2", u, {"held": 133, "used": 131, "left": 2})
+check("D96 补 110 → 1.0 人份、不差", rb["D96钢样品四"][:3], [110, 1, 0])
+check("快子 补 20（奇数差 19 进一箱）→ 1.0、不差", rb["快子遴捡晶格"][:3], [20, 1, 0])
+check("象限 补 132 → 1.0、不差", rb["象限拟合液"][:3], [132, 1, 0])
+check("三相 这套不用，不补", rb["三相纳米片"][:3], [0, None, None])
+check("箱子那行记用了几箱、剩几箱", rb["高阶培养自选箱Ⅰ"][3:], [131, 2])
+u, rb = apply_box(40)
+check("40 箱：全用完", u, {"held": 40, "used": 40, "left": 0})
+check("箱子不够：最缺的先补，三行拉平到 0.3，仍标差", [rb[n][:3] for n in ("快子遴捡晶格", "D96钢样品四", "象限拟合液")],
+      [[6, 0.3, 13], [32, 0.3, 78], [42, 0.3, 89]])
+u, rb = apply_box(0)
+check("没箱子：照旧差 N", (u, rb["D96钢样品四"][:3]), ({"held": 0, "used": 0, "left": 0}, [0, 0, 110]))
 
 print()
 if fails:

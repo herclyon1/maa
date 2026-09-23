@@ -156,6 +156,20 @@ ORIGIN_GATHER, ORIGIN_STAGE, ORIGIN_OTHER = "采集物", "理智关卡产出", "
 ORIGIN_SOURCE = ("怎么来取自森空岛百科每种材料词条的「物品来源」原文，逐条：含「采集」的算采集，含「协议空间」的算理智关卡"
                  "（百科「理智」词条：完成协议空间等玩法的战斗后，需要消耗理智领取奖励），其余原文放「其它」；"
                  "kind 按 采集物 → 理智关卡产出 → 其它来源 的先后取第一个有的")
+# The self-select box. Which item is the box and which materials it can open come from
+# material-list: materialSpecials type SELFSELECT_* (高阶培养自选箱Ⅰ) and priorities[RARE]
+# (the five high-tier materials). What one box gives comes from the official calculator's
+# own script (game.skland.com/tools/endfield/cost-calculator, CostCalculator-BGMqCZak.js +
+# share_bottom_decorator-cN9de4XQ.js, read 2026-09-23 - BOARD/M4d-资源箱与分节.md): the
+# box it offers is ⌈RARE total ÷ 2⌉ capped by what is held, and the pop-up's
+# cost_calc_box_acquisition_tip takes count = boxes × 2, so one box = 2 of one RARE material.
+# How the page spends them is the user's rule (2026-09-23 09:05): only materials short of
+# one build, the shortest first, until covered or out of boxes; still short -> still 差 N.
+BOX_PER = 2
+BOX_SOURCE = ("箱子与可选材料取自森空岛养成计算器 material-list（materialSpecials 的 SELFSELECT 项、priorities 的 RARE 五种）；"
+              "一箱开出任选一种 2 个，按官方养成计算器页面脚本（箱数 = ⌈高阶素材总需 ÷ 2⌉，说明句参数 count = 箱数 × 2）")
+BOX_RULE = ("用户 2026-09-23 09:05：按不足的资源用资源箱去折算，还不足的标出来说不足，否则算已经充足；"
+            "折算时依旧按人数算多少倍")
 
 
 def section_of(name: str, kind: str) -> str | None:
@@ -389,6 +403,20 @@ def material_table(mat: dict) -> dict[str, dict]:
     return out
 
 
+def self_select_box(raw: dict, mat: dict[str, dict]) -> dict | None:
+    """games[].box: the first SELFSELECT item (the calculator takes the first too) and
+    the RARE materials it opens into; None when material-list names neither."""
+    sel = [s["id"] for s in raw.get("materialSpecials") or [] if str(s.get("type", "")).startswith("SELFSELECT")]
+    picks = next((p["ids"] for p in raw.get("priorities") or [] if p.get("type") == "RARE"), [])
+    if not sel or not picks or sel[0] not in mat:
+        return None
+    name = mat[sel[0]]["name"]
+    return {"id": sel[0], "name": name, "per": BOX_PER, "picks": list(picks),
+            "pickNames": [mat[i]["name"] for i in picks if i in mat],
+            "note": f"箱 N = {name}补进来的数：一箱换任选一种高阶素材 {BOX_PER} 个，只补不够一人份的，人份最低的先补",
+            "source": BOX_SOURCE, "rule": BOX_RULE}
+
+
 def char_need(rule: dict) -> tuple[Counter, int]:
     """Materials and gold for every breakthrough plus every skill level up to 12."""
     c = rule["chars"][0]
@@ -596,7 +624,9 @@ def by_name_to_ids(counts: Counter, mat: dict[str, dict]) -> Counter:
 
 def build(src: RulesSource, pulled_at: str, today: str, char_name: str = "", weapon_name: str = "",
           rarity: str = "6") -> dict:
-    mat = material_table(src.get("material-list", "/web/v1/game/endfield/calculate/material-list"))
+    raw_mat = src.get("material-list", "/web/v1/game/endfield/calculate/material-list")
+    mat = material_table(raw_mat)
+    box = self_select_box(raw_mat, mat)
     listed = src.get("search-chars", "/web/v1/game/endfield/search-chars", "", trim_search_chars)["chars"]
     calc_ids = {c["name"]: c["id"] for c in listed}
     weapon_types = {c["name"]: str(((c.get("weaponType") or {}).get("value")) or "") for c in listed}
@@ -734,7 +764,7 @@ def build(src: RulesSource, pulled_at: str, today: str, char_name: str = "", wea
         elif w:
             row.update(need=w, group=use_group or weapon_group)
         elif nm == "高阶培养自选箱Ⅰ":
-            row.update(need=None, note="开出任意一种高阶素材，不计入人份")
+            row.update(need=None, note=f"一箱换任选一种高阶素材 {BOX_PER} 个；页面拿它补不够一人份的高阶素材（games[].box）")
         else:
             row["note"] = f"{who} 的满练不用它"
         rows.append(row)
@@ -777,7 +807,7 @@ def build(src: RulesSource, pulled_at: str, today: str, char_name: str = "", wea
             "game": GAME, "gameId": GAME_ID, "caliber": caliber, "footnote": footnote, "source": SOURCE,
             "sections": list(SECTIONS), "groups": groups, "useSource": USE_SOURCE if cuses is not None else "",
             "originSource": ORIGIN_SOURCE, "originMissing": origin_missing,
-            "lagMinutes": LAG_MINUTES, "lagNote": LAG_NOTE,
+            "lagMinutes": LAG_MINUTES, "lagNote": LAG_NOTE, "box": box,
             "standard": standard["charId"] or standard["wikiItemId"], "standards": [standard], "rows": rows,
             "coverage": {
                 "operator": who, "releasedAt": op.get("onlineDate", ""), "status": status,
