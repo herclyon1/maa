@@ -126,7 +126,15 @@
         ev(selB3, "pointerdown", r3.left + r3.width / 2, r3.top + r3.height / 2, 11); await until(settled, 900);
         const fLift = L.stats.frames - f0, setLift = L.stats.set, lastLift = L.stats.last;
         check("R2 材质：抬起中包在画帧（stats.frames 增）、走 98 组（抬起骑最大组，README §0.3）、pd = lift", "frames > 5 · set 98 · pd = lift", `frames +${fLift} · set ${setLift} · lift ${lastLift ? lastLift.lift.toFixed(3) : "-"} pd ${lastLift ? lastLift.pd.toFixed(3) : "-"}`, fLift > 5 && setLift === 98 && !!lastLift && Math.abs(lastLift.lift - lastLift.pd) < 1e-6);
-        ev(selB3, "pointerup", r3.left + r3.width / 2, r3.top + r3.height / 2, 11); await until(stopped, 900); await frame(); delete seg.dataset.pe;
+        ev(selB3, "pointerup", r3.left + r3.width / 2, r3.top + r3.height / 2, 11);
+        /* G4 / 用户 09-23 18:27 ④「圆钮落回标签时的动画有问题，会闪一下白色」: on every drawn drop frame the grey (_UITabSelectionView) is in the capsule at
+           α = 1 − lift (数据 A53, NATIVE-GAP.md 数据核 G4: +1020 .029 … +1386 .983 on the drop spring from the first drop frame); before, α 0 until the stop */
+        { const dropF = []; const tEnd = performance.now() + 900; let lastT = null;
+          while (performance.now() < tEnd && window.__tabLens) { await frame(); const s = L.stats.last; if (s && s.t !== lastT && s.lift > 0 && s.lift < .999) { lastT = s.t; dropF.push({ lift: s.lift, a: s.platterAlpha * (s.platterColorAlpha == null ? 1 : s.platterColorAlpha) }); } }
+          await until(stopped, 900); await frame();
+          const worst = dropF.reduce((m, f) => Math.max(m, Math.abs(f.a - (1 - f.lift))), 0), f1 = dropF[0];
+          check("G4 落回：透镜里的选中灰底逐帧按 1 − 抬起量回来（原生探针：落回下一帧 .029 起、同一条弹簧），不再先白后灰", "每帧 |α − (1 − lift)| ≤ .002 · 帧 > 3", `${dropF.length} 帧 · 首帧 lift ${f1 ? f1.lift.toFixed(3) : "-"} α ${f1 ? f1.a.toFixed(3) : "-"} · 最大偏差 ${worst.toFixed(4)}`, dropF.length > 3 && worst <= .002); }
+        delete seg.dataset.pe;
         check("R2 材质：落定后画布清（最后一帧 lift 0）、无 JS 错", "lift 0 · no error", `lift ${L.stats.last ? L.stats.last.lift : "-"} · ${window.__tabLensErr || "no error"}`, !!L.stats.last && L.stats.last.lift === 0 && !window.__tabLensErr);
         check("R2 材质：平台里透出的页面、项复本 1.16 缩放——未画（不可表达 / 待做，tab-lens.js 注释）", "记录", "记录", true);
         /* R37: the tab lens is a capsule r = h/2 (tab-lens-native.md §0 cornerRadii 35 = 70/2 — the outline terms took the segment lens's r 22 before), its label stack

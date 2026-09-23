@@ -219,12 +219,28 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
     if (!lens) { canvas.remove(); return null; }
     LensWebGL.clipCanvas(canvas, { y: true });   // R96: clipped to the viewport (nav ± 24 reaches x 452 / y 968 on a 440 × 956 screen with five tabs) — re-measured on resize below
     glo = { nav, canvas, lens, w: navW, h: navH, top }; return glo; };
+  /* G4 / 用户 09-23 18:27 真机 ④「圆钮落回标签时的动画有问题，会闪一下白色」: _UITabSelectionView (the grey under the selected item) fades back on the
+     drop's own spring, α = 1 − p from the first drop frame (数据 A53 probe, NATIVE-GAP.md 数据核 G4: +1003 0 → +1020 .029 → +1053 .186 → +1103 .466 →
+     +1203 .821 → +1386 .983 = (1 + ωt)e^(−ωt), ω 15.71, the drop spring; tab-lens-motion.md: every lift quantity on one spring). The canvas capsule is
+     opaque while p > 0, so the grey is drawn in it as the platter uniform (the segment lens's restingBackground path, view.js segGl): the glide's own
+     colour = its backdrop filter (--lens-filter: saturate · brightness · contrast; blur is the identity on a flat colour) applied, in sRGB as CSS filter
+     functions are (Filter Effects 1 §13), to the flat backdrop the canvas draws (body background, the platter fill over it). Before, alpha 0: the
+     capsule showed that white backdrop until the driver stopped and the DOM glide came back (2号 rec new-4 f094–f109, 16 frames white). */
+  const selRest = (nav) => { const rgb = (c) => { const m = /rgba?\(([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?/.exec(c || ""); return m ? [+m[1] / 255, +m[2] / 255, +m[3] / 255, m[4] == null ? 1 : +m[4]] : [1, 1, 1, 0]; };
+    const bg = rgb(getComputedStyle(document.body).backgroundColor), plat = nav.querySelector(".plat"), pf = rgb(plat ? getComputedStyle(plat).backgroundColor : "");
+    let c = [0, 1, 2].map((i) => pf[i] * pf[3] + (bg[3] ? bg[i] : 1) * (1 - pf[3]));
+    const g = nav.querySelector(".glide"), f = g ? (getComputedStyle(g).backdropFilter || getComputedStyle(g).webkitBackdropFilter || "") : "", cl = (v) => Math.max(0, Math.min(1, v));
+    for (const [, fn, a] of f.matchAll(/(saturate|brightness|contrast)\(([\d.]+)\)/g)) { const s = +a;
+      if (fn === "saturate") { const [r, gg, b] = c; c = [cl((.213 + .787 * s) * r + (.715 - .715 * s) * gg + (.072 - .072 * s) * b), cl((.213 - .213 * s) * r + (.715 + .285 * s) * gg + (.072 - .072 * s) * b), cl((.213 - .213 * s) * r + (.715 - .715 * s) * gg + (.072 + .928 * s) * b)]; }
+      else if (fn === "brightness") c = c.map((v) => cl(v * s)); else c = c.map((v) => cl((v - .5) * s + .5)); }
+    return [c[0] * 255, c[1] * 255, c[2] * 255, 1]; };
   const glFrame = (st, p, x, W, H, pad, h0) => { if (!glo || glo.nav !== st.nav) return; const nb = st.nav.getBoundingClientRect(); const l = nb.left + x - W / 2, t = nb.top + pad + h0 / 2 - H / 2;
     const wh = (Math.min(l + W + 100, innerWidth) - Math.max(l - 100, 0)) / (Math.min(t + H + 100, innerHeight) - Math.max(t - 100, 0));   // formula §3b.6: the capture box = frame ± 100 clamped to the screen
-    try { glo.lens.setState({ cx: x + GLM, cy: pad + h0 / 2 + GLM, w: W, h: H, lift: p, pd: p, wh, platter: { rgba: [0, 0, 0, 0], alpha: 0 } }); } catch (e) { window.__tabLensErr = String(e && e.stack || e); } };
+    try { glo.lens.setState({ cx: x + GLM, cy: pad + h0 / 2 + GLM, w: W, h: H, lift: p, pd: p, wh, platter: { rgba: st.selRest || (st.selRest = selRest(st.nav)), alpha: 1 - p } }); } catch (e) { window.__tabLensErr = String(e && e.stack || e); } };
   const glRest = (st) => { if (!glo || glo.nav !== st.nav) return; try { glo.lens.setState({ cx: 0, cy: 0, w: 82, h: 54, lift: 0 }); } catch (e) {} };
   const startGeo = (st) => {
     if (loop) { loop.stop("restart"); }
+    st.selRest = null;                                                       // G4: the grey is read again on every press (theme / page colour may have changed)
     const nav = st.nav, glide = st.glide;
     if (!nav.offsetWidth) return;                                            // html.kbd: the bar is display:none, its geometry 0 — nothing to drive
     const w0 = parseFloat(glide.style.width) || glide.offsetWidth || 82, h0 = glide.offsetHeight || 54, pad = glide.offsetTop;   // the resting box = the item's (view.js's inline left / width; top = the bar's pad)
