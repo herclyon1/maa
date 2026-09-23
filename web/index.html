@@ -765,9 +765,9 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .diagsheet .dsmsg{margin:0 0 10px;color:var(--dim);font-size:var(--ios-footnote-size, 13px);line-height:1.4;word-break:break-all}
   .diagsheet .acts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
   .diagsheet .acts button[hidden]{display:none}
-  .toast{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom) + 76px);z-index:9;
+  .toast{position:fixed;left:16px;right:16px;top:50%;translate:0 -50%;z-index:9;   /* 位置 = UIAccessibilityHUDView 屏幕正中（uiprobe-subtree-g8-hud-light.json：中心 (220, 478) = 440×956 的中心，NATIVE-GAP G8）；左右 16 的宽度沿旧值（原生 HUD 宽随图标 + 字，纯文字版未读） */
          background:var(--alert-fill);backdrop-filter:var(--ios-alert-glass-filter);-webkit-backdrop-filter:var(--ios-alert-glass-filter);
-         border-radius:18px;padding:12px 14px;font-size:var(--ios-sub-size);box-shadow:var(--glass-diffuse),var(--glass-rim);   /* toast：无苹果对应组件；材质取弹窗端到端配方 --ios-alert-glass-*（最近实测原值）；圆角 18 待 tokens */
+         border-radius:17px;padding:12px 14px;font-size:var(--ios-sub-size);   /* 无阴影（UIAccessibilityHUDView 子树无 shadow，NATIVE-GAP G8） */   /* toast：无苹果对应组件；材质取弹窗端到端配方 --ios-alert-glass-*（最近实测原值）；圆角 17（UIAccessibilityHUDView 内层 UIVisualEffectView cornerRadius 17 continuous，同件；材质待 colorSaturate / colorBrightness 原值，已请数据读） */
          opacity:0;scale:.95;pointer-events:none;
          transition:opacity .1s cubic-bezier(.42,0,.58,1),scale .1s cubic-bezier(.42,0,.58,1)}   /* 淡入淡出 = UIAccessibilityHUDView（UIKit 里唯一会淡的 HUD；UIProgressHUD 首帧即 1、无动画）：出 = opacity 0→1 + 卡片 scale .95→1，收 = 1→0 + 1→.95，同 0.1 s easeInEaseOut (.42,0)(.58,1) ← uiprobe-motion-hud-prog-ax.json（P0b-数据.md #4；缩放的是 112 宽的卡片层本身 → 这里缩整个 .toast） */
   .toast.show{opacity:1;scale:1}
