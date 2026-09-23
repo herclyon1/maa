@@ -119,9 +119,11 @@
       num("玻璃钮 R71″ ③ 再按 +650 ms：到位 L（盒 60）", 60 / 44, wOf() / 44, .005);
       ev(b3, "pointerup", far3, y3, 14); await sleep(900); check("玻璃钮 R71″ ③ 松手后复位", "无 · 44", `${b3.style.width || "无"} · ${wOf().toFixed(1)}`, !b3.style.width && Math.abs(wOf() - 44) < .01); }
     b2.click(); await sleep(450);
-    /* B2 (P1-数据 §二): a long press on a glass button (✓ / 返回 / 放弃 / 保存) must not open the system copy / look-up menu — a UIButton has no text
-       selection; -webkit-touch-callout is not readable in Chrome, user-select is set in the same rule (glassbtn.css) */
-    { const bs = [...document.querySelectorAll(".pnav .navbtn, .pnav .pdone, .topbar .navbtn")], us = bs.map((b) => { const c = getComputedStyle(b); return c.userSelect || c.webkitUserSelect; });
-      check("玻璃钮长按不弹系统拷贝 / 查询菜单：玻璃圆钮全部 user-select none（B2）", `${bs.length} × none`, us.join(" / "), bs.length >= 4 && us.every((u) => u === "none")); }
+    /* B2 (P1-数据 §五): a long press on ✓ selected the title beside it (「待保存 1 项」, blue range + handles, then half the page) — a UINavigationBar's
+       title and its UIButtons take no text selection; -webkit-touch-callout is not readable in Chrome, user-select is set in the same rule (index.html) */
+    { const bs = [...document.querySelectorAll(".topbar, .topbar *, .pnav, .pnav *")], us = bs.map((b) => { const c = getComputedStyle(b); return c.userSelect || c.webkitUserSelect; }),
+        bad = bs.filter((b, i) => us[i] !== "none").map((b) => b.id || b.className || b.tagName);
+      check("导航栏长按不选字、不弹系统拷贝 / 查询菜单：标题与玻璃圆钮全部 user-select none（B2）", `${bs.length} × none`, bad.length ? `非 none：${bad.join(" / ")}` : `${bs.length} × none`,
+        bs.length >= 8 && !bad.length && bs.some((b) => b.id === "save") && bs.some((b) => b.matches(".topbar > span"))); }
   });
 })();
