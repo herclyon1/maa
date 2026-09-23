@@ -239,8 +239,14 @@
   for (const type of ["click", "change", "input"]) addEventListener(type, (e) => {
     if (!rec || rec.done || rec.kind !== "light") return;
     if (markUI && markUI.contains(e.target)) return;
-    rec.events.push({ t_since_down: round((performance.now() - rec.t_down) / 1000, 3), events: type, on: pathOf(e.target),
-                      value: type === "click" ? null : clip(e.target && (e.target.type === "checkbox" ? String(e.target.checked) : e.target.value), 24) });
+    /* the browser's own click after a press the page already answered with its own click at the up is swallowed further down the capture
+       path (view.js installPressables: ghost / data-pe; motion.js: data-rc) — after this window-capture listener, so it used to land here as a
+       second "click" (界面-串2 09-23 18:4x, simulator B: alert 取消 pointerup @8 ms, the page's click @8 untrusted, the browser's @10 trusted;
+       the page acted once). Once the dispatch is over, a click whose default was prevented is renamed click-swallowed */
+    const ent = { t_since_down: round((performance.now() - rec.t_down) / 1000, 3), events: type, on: pathOf(e.target),
+                  value: type === "click" ? null : clip(e.target && (e.target.type === "checkbox" ? String(e.target.checked) : e.target.value), 24) };
+    rec.events.push(ent);
+    if (type === "click") setTimeout(() => { if (e.defaultPrevented) ent.events = "click-swallowed"; }, 0);
   }, true);
   addEventListener("pointermove", (e) => { if (rec && !rec.done && e.pointerId === rec.pointerId) { rec.moves.push(performance.now()); rec.pointer.push({ type: "move", t: performance.now(), x: e.clientX, y: e.clientY, lag: lagOf(e) }); } }, true);
   const up = (e) => { if (rec && !rec.done && e.pointerId === rec.pointerId && rec.t_up === null) { rec.t_up = performance.now(); rec.pointer.push({ type: e.type === "pointercancel" ? "cancel" : "up", t: rec.t_up, x: e.clientX, y: e.clientY, lag: lagOf(e) }); } };

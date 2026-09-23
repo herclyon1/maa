@@ -75,6 +75,8 @@
       const al = ((got || {}).frames || []).filter((f) => f.scene).map((f) => String(f.scene.alert));
       check("诊断：弹窗点取消 → 淡出与关窗都在同一份记录里（场景 true → closing → false）", "…closing → false", al.join(" → ") || (got ? "无场景帧" : "没有记录"),
         al.indexOf("closing") >= 0 && al[al.length - 1] === "false" && al.lastIndexOf("false") > al.indexOf("closing"));
+      { const ce = ((got || {}).control_events || []).filter((e) => /^click/.test(e.events)).map((e) => e.events);   // 界面-串2: the page's click at the up + the browser's click view.js swallows (here: ours after the up)
+        check("诊断：取消键记录的点击 = 页面在抬手时自己的一次 click + 浏览器随后那次被吞的 click-swallowed（不再记成两次 click）", "click, click-swallowed", ce.join(", ") || "无", ce.length === 2 && ce[0] === "click" && ce[1] === "click-swallowed"); }
       await settle(() => !dlg.open, 2000);
     } else check("诊断：弹窗取消自检（页面有 ask() 与 #alert）", "有", "缺", false);
 
