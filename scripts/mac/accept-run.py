@@ -42,7 +42,7 @@ Order of events (监督局 2026-09-19 18:3x: no more "no result / first-run retr
      first run of this runner: headless Chrome never requested pending.js?v=… — server log — and render() threw
      "reconcilePending is not defined"; the second run was clean. A lost script fetch is detected here, not retried by hand).
 Any JS exception seen on the way is printed; exit 1 when a step does not complete."""
-import socket, os, base64, json, struct, sys, subprocess, time, urllib.request, http.client, tempfile, shutil, signal, threading, fcntl
+import socket, os, re, base64, json, struct, sys, subprocess, time, urllib.request, http.client, tempfile, shutil, signal, threading, fcntl
 # SIGTERM (the `timeout` wrapper) must run the finally below, or the Chrome profile in $TMPDIR leaks (271 of them, 8.8 GB, 2026-09-20 08:4x)
 signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(SystemExit(143)))
 CH = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
@@ -114,7 +114,8 @@ if only: url = url + ('&' if '?' in url else '?') + 'only=' + only
 # the loader's tags (web/accept.js ACCEPT.files + its own section tags segctl / cell / page) with the cost used to pack the shards: the sum of the
 # explicit sleep() ms in accept-<tag>.js plus in accept.js's sec("<tag>") regions at night 7250d29 (BOARD S4-tags.md (e) has the per-file column)
 TAGS = [('tabbar', 26.1), ('segctl', 17.4), ('page', 10.9), ('cell', 6.7), ('sheet', 6.5), ('switch', 6.5), ('glassbtn', 5.0), ('alert', 4.3), ('topbar', 1.8),
-        ('nav', 1.3), ('refresh', 1.1), ('nav-edge', 1.1), ('menu', 0.7), ('tile', 0.6), ('motion', 0.2)]
+        ('nav', 1.3), ('refresh', 1.1), ('nav-edge', 1.1), ('menu', 0.7), ('tile', 0.6), ('motion', 0.2),
+        ('stockpile', 4.0), ('diagmark', 4.0), ('tabbar-view', 4.0), ('alert-view', 4.0), ('topbar-view', 4.0)]   # 验收 09-23 17:5x: the five tags added since the table was measured; a tag missing here was in no shard, so --shard silently dropped its rows (night 573 vs 590, merged main 577 vs 632); 4.0 = shards_of's own default for an unmeasured tag
 def shards_of(n, wanted):
     """the ?only= list of each shard: the wanted tags (all when --only is absent) greedy-packed by cost into n bins, heaviest first"""
     known = dict(TAGS)
@@ -125,6 +126,11 @@ def shards_of(n, wanted):
         b = min(bins, key=lambda x: x[0]); b[0] += c; b[1].append(t)
     return [','.join(b[1]) for b in bins if b[1]]
 SHARDS = shards_of(shard, [x.strip() for x in only.split(',') if x.strip()] if only else None)   # '' = the whole suite in one context
+if shard > 1 and not only:   # a page file whose tag is not in TAGS lands in no shard and its rows vanish without a red row: refuse instead
+    try: page_files = re.findall(r'"([a-z-]+)"', re.search(r'ACCEPT\.files = \[([^\]]*)\]', urllib.request.urlopen(base_url.rsplit('/', 1)[0] + '/accept.js', timeout=10).read().decode('utf-8')).group(1))
+    except (OSError, AttributeError) as e: sys.exit(f'✗ --shard: could not read ACCEPT.files from accept.js ({e}); run without --shard')
+    lost = [t for t in page_files if t not in dict(TAGS)]
+    if lost: sys.exit('✗ --shard: accept.js loads ' + ', '.join(lost) + ' but TAGS has no entry, so no shard would run them; add them to TAGS')
 def free_port():
     # several sessions run this runner at once: a fixed / random port can already belong to ANOTHER session's Chrome, and we would then talk to it
     # (EOF, "view.js not ready", 0/0 results). Ask the kernel for a free port instead.
