@@ -526,6 +526,7 @@ function render() {
      (replaceWith) was not enough: a detached-and-reinserted element loses its running CSS transitions (the drag-release snapped to 198×28 at
      up + 1 ms, 4317ecd). Now the old #queueseg is never detached — replaceKeeping swaps everything around its ancestor chain — and only its
      state is synced (segSync): the lens, the labels, the copies and the running glass fall keep their elements AND their transitions. */
+  const hadNotices = $("#app").querySelector("section") ? new Set([...$("#app").querySelectorAll(".group.notice .ncap")].map((e) => e.textContent)) : null;   // P0b #6: which notice cards exist before (null = first render: a table's first load does not animate)
   const oldSeg = $("#queueseg"), probe = document.createElement("template"); probe.innerHTML = html;
   const cand = probe.content.querySelector("#queueseg");
   const tR = performance.now(), before = flipPending ? flipSnapshot($("#app")) : null; flipPending = false;   // B3: where every block was, before the content changes
@@ -538,6 +539,25 @@ function render() {
   const tL = performance.now(); layoutTabs(); if (before) segMeasure("seg:render:layoutTabs", tL);   // the other tabs' sections are hidden here — the "after" positions are read only after that
   const tF = performance.now(); if (before) { flipRun(before, $("#app")); segMeasure("seg:render:flip", tF); }
   const tW = performance.now(); wire(); if (before) { segMeasure("seg:render:wire", tW); segMeasure("seg:render:total", tR); }
+  if (hadNotices) noticeInsert(hadNotices);
+}
+/* P0b #6 (P0b-数据.md 17:02 ← tools/uiprobe/uiprobe-motion-grouped-section.json): a notice card is a section of the grouped list, and native inserts a
+   section (insertSections:withRowAnimation: on an insetGrouped UITableView) only when it really appears — not on every reload (the old CSS `rise`
+   replayed on each render). The .fade insertion: the new section's opacity 0 → 1, every row below it moves from −(the new section's height) to its
+   place, one CASpringAnimation for both: mass 1, stiffness 438.6490844928604, damping 41.88790204786391, initialVelocity 0 (ω = √438.649 = 20.944 =
+   2π / .3, ζ = 41.888 / 2ω = 1 — perceptualDuration .3, bounce 0), duration 0.44094051784378036. The spring's closed form (ζ 1, v0 0) is sampled
+   into keyframes (linear between) — the same curve on Safari and Chrome, no frame loop. A card that stays (same caption) is not animated. */
+function noticeInsert(had) {
+  const W = Math.sqrt(438.6490844928604), D = 0.44094051784378036, N = 32;
+  const P = Array.from({ length: N + 1 }, (_, i) => { const t = D * i / N; return { o: i / N, p: i === N ? 1 : 1 - (1 + W * t) * Math.exp(-W * t) }; });
+  for (const cap of $("#app").querySelectorAll(".group.notice .ncap")) {
+    if (had.has(cap.textContent)) continue;
+    const sec = cap.closest("section"); if (!sec || sec.hidden || !sec.offsetHeight) continue;
+    const below = []; for (let n = sec.nextElementSibling; n; n = n.nextElementSibling) if (!n.hidden && n.offsetHeight) below.push(n);
+    const h = below.length ? below[0].getBoundingClientRect().top - sec.getBoundingClientRect().top : 0;
+    sec.animate(P.map((k) => ({ offset: k.o, opacity: k.p })), { duration: D * 1000, easing: "linear" });
+    if (h > 0) for (const n of below) n.animate(P.map((k) => ({ offset: k.o, transform: `translateY(${(-h * (1 - k.p)).toFixed(3)}px)` })), { duration: D * 1000, easing: "linear" });
+  }
 }
 
 /* B3 — content transition on a value change (remote-ref/seg-value-change-content.md, 设置 › 屏幕使用时间 每周/每天, iOS 27.0 simulator recordings; every

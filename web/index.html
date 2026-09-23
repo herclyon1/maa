@@ -212,9 +212,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .tile.busy .tico .sf{display:none}
   .tile.busy .tico .ai{display:inline-block}
   .tile.busy .tico .ai i{background:#fff}
-  /* Notice cards come and go with the system's short fade+rise. */
-  .group.notice{animation:rise .28s cubic-bezier(.2,.8,.2,1)}   /* 无来源（老页自定），待 tokens */
-  @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  /* Notice cards: no CSS animation (it replayed on every render) — view.js noticeInsert() animates a real insertion only, as UITableView's section insert (P0b #6) */
   .tile{transition:background var(--ios-motion-button-release-duration) var(--ios-motion-ease-in-out)}   /* 松开 0.25 s ease-in-out ← 探针 UIButton；按下瞬时（下面 :active 关掉过渡） */
   /* Number tiles: Reminders' smart-list tiles (2×2, 195.67×80.33 on the Pro Max,
      radius 16, gap 8): symbol top-left, big number top-right, name bottom-left. */
@@ -755,8 +753,9 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .toast{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom) + 76px);z-index:9;
          background:var(--alert-fill);backdrop-filter:var(--ios-alert-glass-filter);-webkit-backdrop-filter:var(--ios-alert-glass-filter);
          border-radius:18px;padding:12px 14px;font-size:var(--ios-sub-size);box-shadow:var(--glass-diffuse),var(--glass-rim);   /* toast：无苹果对应组件；材质取弹窗端到端配方 --ios-alert-glass-*（最近实测原值）；圆角 18 待 tokens */
-         opacity:0;transition:.2s;pointer-events:none}   /* toast 动效 无来源，待 tokens */
-  .toast.show{opacity:1}
+         opacity:0;scale:.95;pointer-events:none;
+         transition:opacity .1s cubic-bezier(.42,0,.58,1),scale .1s cubic-bezier(.42,0,.58,1)}   /* 淡入淡出 = UIAccessibilityHUDView（UIKit 里唯一会淡的 HUD；UIProgressHUD 首帧即 1、无动画）：出 = opacity 0→1 + 卡片 scale .95→1，收 = 1→0 + 1→.95，同 0.1 s easeInEaseOut (.42,0)(.58,1) ← uiprobe-motion-hud-prog-ax.json（P0b-数据.md #4；缩放的是 112 宽的卡片层本身 → 这里缩整个 .toast） */
+  .toast.show{opacity:1;scale:1}
   .setup{padding:16px}
   .setup input{width:100%;text-align:left;margin-top:6px}
   .pills{display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end}
