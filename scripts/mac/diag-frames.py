@@ -117,7 +117,7 @@ def mark_line(m):
 
 def bg_cell(c):
     """the control's computed background-color as the logger read it (seg-frames-logger.js cs.backgroundColor); a record from a page
-    before the logger wrote bg (light frames had no bg before 63940f5) shows 未记"""
+    before the logger wrote bg (light frames had no bg before 63940f5) shows the not-recorded mark"""
     if c is None:
         return "未记"
     return "透明" if c in ("transparent", "rgba(0, 0, 0, 0)") else c
@@ -183,7 +183,7 @@ def table(r, show_all):
     if lags:
         out.append(f"- 指针等主线程（lag，ms）：最大 {max(lags)} · 超过一帧 {sum(1 for x in lags if x > fi * 1000)} / {len(lags)}")
     if k == "light":
-        head = "| 帧 | 按下后 ms | 阶段 | 指针 | 框 x,y,w,h | α | 缩放 | 底色 | 动画数 | 类 | 场景（变了才有） | 掉帧 |"   # 底色 / 动画数: 界面 via 验收 18:1x (数据-串7)
+        head = "| 帧 | 按下后 ms | 阶段 | 指针 | 框 x,y,w,h | α | 缩放 | 底色 | 动画数 | 类 | 场景（变了才有） | 掉帧 |"   # bg / animation-count columns: 界面 via 验收 18:1x (数据-串7)
     else:
         head = "| 帧 | 按下后 ms | 阶段 | 指针 | 框 x,y,w,h | 缩放 | 选中 | 抬/拖/弹 | 标签栏 | 视口 | 标记 | 掉帧 |"
     ncol = head.count("|") - 1

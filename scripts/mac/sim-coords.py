@@ -22,7 +22,7 @@ Protocol (undocumented by Apple; framing and selectors as google/ios-webkit-debu
 Source/JavaScriptCore/inspector/remote/RemoteInspectorConstants.h): 4-byte big-endian length + binary plist
 {__selector, __argument}; the simulator socket takes the plist bare (no WIRFinalMessageKey wrapper, webinspector.c is_sim).
 """
-import http.server, json, os, plistlib, re, socket, struct, subprocess, sys, threading, time, uuid
+import http.server, json, os, plistlib, socket, struct, subprocess, sys, time, uuid
 
 UDID_A = "8E793B8A-922B-46BC-86E2-E0F2BE845CA5"
 
