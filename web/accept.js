@@ -50,8 +50,11 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn, opt) { fn.__opt = opt || {};
   /* S2 (2号 2026-09-20 13:0x): each row records the tag of the section that produced it (`tag`, printed by accept-run.py as ⟨file⟩ — 验收 S6 attributes a red row
      to its file by it). A control file's rows get the file's name: ACCEPT.add is wrapped here so the function it registers sets `cur` to the name of the
      script that called it (document.currentScript — the loader's classic <script> tags) when it starts; no other behaviour changes. */
-  { const add0 = window.ACCEPT.add.bind(window.ACCEPT);
-    window.ACCEPT.add = (fn, opt) => { const m = /accept-([^./?]+)\.js/.exec((document.currentScript || {}).src || ""); if (!m) return add0(fn, opt);
+  { const add0 = window.ACCEPT.add.bind(window.ACCEPT), from = new Map();   // file → the <script> src its fns came from
+    window.ACCEPT.add = (fn, opt) => { const src = (document.currentScript || {}).src || "", m = /accept-([^./?]+)\.js/.exec(src); if (!m) return add0(fn, opt);
+      /* a second copy of a file (its first fetch outlived the loader's 4 s timeout, then ran after the retry — OPEN.md 验收 on 0fe960c) registers
+         nothing: only the first script element of a file counts (nav / topbar register two fns from one element) */
+      if (from.has(m[1]) && from.get(m[1]) !== src) return; from.set(m[1], src);
       const w = async (ctx) => { cur = m[1]; return fn(ctx); }; Object.defineProperty(w, "name", { value: fn.name }); add0(w, opt); w.__file = m[1]; }; }   // S4: opt passed through; __file from the script's own name
   /* one script per file: a load already done or in flight is answered, not appended again — on the phone the checks start before this chain
      has appended every file, and the retry below then appended a second copy of each (simulator A 18:36, b8bc7e3: 42 fetches for 21 files,
