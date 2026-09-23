@@ -177,6 +177,16 @@
         const goneAfter = A ? A.removed.every((b) => !b.isConnected) : true, hadAnim = !!A && (A.items.length + A.removed.length + A.added.length) > 0;
         check("R0③ 换班次时项增删动画（§7）：保留项位移逐帧对 ζ1/.3 闭式（rms ≤ 1 pt）、删项淡出对 ζ1/.2（rms ≤ .03）、加项淡入对 ζ1/.3（rms ≤ .03）、删项在动画结束后摘掉、驱动器存在", "anim · pos ≤ 1 · out ≤ .03 · in ≤ .03 · removed gone", `anim ${hadAnim} · ${smp.length} samples · pos ${rmsOf("pos").toFixed(2)} · out ${rmsOf("out").toFixed(3)} (${removedSeen} frames) · in ${rmsOf("in").toFixed(3)} · gone ${goneAfter}`, hadAnim && rmsOf("pos") <= 1 && rmsOf("out") <= 0.03 && rmsOf("in") <= 0.03 && goneAfter);
         curQueue = savedQ; window.render(); await sleep(1300); }
+      /* 界面-串2 (09-23 18:4x): a tap on another tab while the item-set animation runs — the glide must end on the tapped tab; before, the driver
+         wrote the old selection's left every frame and at its end, and the glide stayed on the old tab (view.js tabSetAnimate, mine()) */
+      { const nv = document.querySelector("nav.tabs"), gl = nv.querySelector(":scope > .glide");
+        curQueue = other; window.render(); const A = nv.__tabAnim; await sleep(150);
+        const tgt = [...nv.querySelectorAll(":scope > .seg > button")].find((b) => !b.classList.contains("on") && !(A && A.removed.includes(b)));
+        const mid = !!A && nv.__tabAnim === A; if (tgt) tgt.click(); await sleep(900);
+        const on = nv.querySelector(":scope > .seg > button.on"), gr = gl.getBoundingClientRect(), orr = on ? on.getBoundingClientRect() : null;
+        check("R0③′ 项增删动画途中点另一个标签：选中切过去，动画结束后透镜停在新选中项上（≤ 1 pt），不回旧项", "点时动画在跑 · 选中 = 点的 · 透镜贴新项", `${mid ? "动画在跑" : "动画没在跑"} · 选中 ${on ? on.dataset.tab : "无"}（点 ${tgt ? tgt.dataset.tab : "无"}） · 透镜 x ${gr.left.toFixed(1)} vs 项 ${orr ? orr.left.toFixed(1) : "-"} · 宽 ${gr.width.toFixed(1)} vs ${orr ? orr.width.toFixed(1) : "-"}`,
+          mid && !!tgt && on === tgt && !!orr && Math.abs(gr.left - orr.left) <= 1 && Math.abs(gr.width - orr.width) <= 1);
+        curQueue = savedQ; window.render(); await sleep(1300); }
       curTab = savedTab; window.render(); await sleep(100);
     }
   }

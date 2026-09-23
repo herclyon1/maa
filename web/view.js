@@ -808,7 +808,7 @@ function layoutTabs() {
        replayed the slide from the left edge. */
     const on = nav.querySelector("button.on"), g = nav.querySelector(".glide");
     if (!on || !g) return;
-    if (!animate) g.style.transition = "none";
+    g.style.transition = animate ? "" : "none";   // animate: also drops a "none" the item-set driver left while it rode the old selection
     g.style.left = on.offsetLeft + "px"; g.style.width = on.offsetWidth + "px";
     if (!animate) { void g.offsetWidth; g.style.transition = ""; }
   };
@@ -2017,13 +2017,17 @@ function tabSetAnimate(nav, plat, glideEl, oldRect, navRect0, removed, added) {
   const A = { t0: performance.now(), prev: performance.now(), s3: { x: 1, v: 0 }, s2: { x: 1, v: 0 }, items, removed, added, w0, w1, raf: 0 };
   nav.__tabAnim = A;
   for (const b of added) b.style.opacity = "0";
+  /* the glide rides the selected button only while that button is still the selection: a tap on another tab during the item-set animation
+     (a game tab appearing when its data arrives) hands the glide to selectTab's slide — before, every frame and the end wrote the old button's
+     left back, and the glide stayed on the old tab (界面-串2 09-23 18:4x: accept-tabbar P0b-tabclip row, wall clock, 4 of 5 runs 鸣潮 added 514 ms before the tap) */
+  const mine = () => !!on && on.classList.contains("on");
   const apply = () => {
     const s = Math.max(0, A.s3.x), o = Math.max(0, Math.min(1, A.s2.x));
     for (const it of A.items) it.el.style.transform = s > 0.0005 ? `translateX(${(it.dx * s).toFixed(3)}px)` : "";
     for (const b of A.added) b.style.opacity = s > 0.0005 ? (1 - s).toFixed(4) : "";
     for (const b of A.removed) b.style.opacity = o.toFixed(4);
     const inset = Math.max(0, (w1 - (w1 + (w0 - w1) * s)) / 2); plat.style.left = plat.style.right = inset > 0.01 ? inset.toFixed(3) + "px" : "";
-    if (on) { glideEl.style.transition = "none"; glideEl.style.left = (onLeft + (onItem ? onItem.dx * s : 0)).toFixed(3) + "px"; glideEl.style.width = onWidth + "px"; }
+    if (mine()) { glideEl.style.transition = "none"; glideEl.style.left = (onLeft + (onItem ? onItem.dx * s : 0)).toFixed(3) + "px"; glideEl.style.width = onWidth + "px"; }
   };
   const step = (now) => {
     if (nav.__tabAnim !== A) return;
@@ -2032,7 +2036,7 @@ function tabSetAnimate(nav, plat, glideEl, oldRect, navRect0, removed, added) {
     spring(A.s3, 0, [1, 0.3], dt); spring(A.s2, 0, [1, 0.2], dt);
     apply();
     const settled = Math.abs(A.s3.x) < 0.0005 && Math.abs(A.s3.v) < 0.005 && Math.abs(A.s2.x) < 0.0005;
-    if (settled || now - A.t0 > 2000) { for (const b of A.removed) b.remove(); for (const it of A.items) it.el.style.transform = ""; for (const b of A.added) b.style.opacity = ""; plat.style.left = plat.style.right = ""; if (on) { glideEl.style.left = on.offsetLeft + "px"; void glideEl.offsetWidth; glideEl.style.transition = ""; } nav.__tabAnim = null; return; }
+    if (settled || now - A.t0 > 2000) { for (const b of A.removed) b.remove(); for (const it of A.items) it.el.style.transform = ""; for (const b of A.added) b.style.opacity = ""; plat.style.left = plat.style.right = ""; if (mine()) { glideEl.style.left = on.offsetLeft + "px"; void glideEl.offsetWidth; glideEl.style.transition = ""; } nav.__tabAnim = null; return; }
     A.raf = requestAnimationFrame(step);
   };
   apply(); A.raf = requestAnimationFrame(step);
