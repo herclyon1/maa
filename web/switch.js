@@ -121,6 +121,13 @@
       const lens = LensWebGL.create(canvas, { sets, preload: f, dpr: window.devicePixelRatio || 1, width: SWG.W, height: SWG.H, margin: 16, rmax: 1e6, ring: .15, labelsDirect: true,
         backdrop: (x, which) => { if (which === "page") swGlPage(x); } });
       if (!lens) { SWG.ok = false; return null; }
+      /* every set's first draw off the gesture path: the package warms only its first set (lens-webgl.js prewarm); on simulator B the first press after a
+         load stalled 282 ms between the 44 and 48 sets' first frames (the second press ran at 60 fps) — one warm-up draw per set (pass 2 into the package's
+         off-screen target, never the canvas), one set per idle slot */
+      const idle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 1000 }) : setTimeout(fn, 30));
+      const warmSet = (i) => { if (i >= f.length) { SWG.warmedAt = performance.now(); return; } idle(() => { if (SWG.drawn) { setTimeout(() => warmSet(i), 300); return; }
+        try { lens.setState({ cx: SWG.W / 2, cy: SWG.H / 2, w: f[i], h: H[f[i]], lift: 1, pd: 1, wh: 1, _prewarm: true }); lens.gl.finish(); } catch (e) {} warmSet(i + 1); }); };
+      if (lens.ready && lens.ready.then) lens.ready.then(() => warmSet(0));
       Object.assign(SWG, { lens, wrap, canvas }); return lens;
     } catch (e) { console.warn("switch gl", e); SWG.ok = false; return null; }
   };
@@ -230,7 +237,7 @@
       retarget();
     }, T.press);
   });
-  window.Switch = { version: "B13 3008bf5 → night", SW_BASE, glProbe: swGlProbe, glOf: (sw) => ({ ok: SWG.ok, ready: !!SWG.lens, here: !!sw && SWG.sw === sw, drawn: SWG.drawn, glk: !!sw && sw.classList.contains("glk"), last: SWG.lens ? { ...SWG.lens.stats.last } : null, frame: sw && sw._sw && sw._sw.gl ? { ...sw._sw.gl } : null, canvas: SWG.canvas }), wellOf: (sw) => (sw && sw._sw && sw._sw.well) ? { ...sw._sw.well } : null, flexOf: (sw) => (sw && sw._sw && sw._sw.flex) ? { active: sw._sw.flex.active, spec: { ...sw._sw.flex.spec }, out: { ...sw._sw.flex.out }, target: sw._sw.flex.tg, trace: sw._sw.flex.trace, lift: sw._sw.lift.x, liftSX: sw._sw.liftSX, liftSY: sw._sw.liftSY, written: sw._sw.written ? { ...sw._sw.written } : null } : null };   // lift: the UNCLAMPED lift value the scale is built from (the --lift var is clamped 0…1; accept A15)
+  window.Switch = { version: "B13 3008bf5 → night", SW_BASE, glProbe: swGlProbe, glOf: (sw) => ({ ok: SWG.ok, ready: !!SWG.lens, here: !!sw && SWG.sw === sw, drawn: SWG.drawn, glk: !!sw && sw.classList.contains("glk"), warmedAt: SWG.warmedAt, last: SWG.lens ? { ...SWG.lens.stats.last } : null, frame: sw && sw._sw && sw._sw.gl ? { ...sw._sw.gl } : null, canvas: SWG.canvas }), wellOf: (sw) => (sw && sw._sw && sw._sw.well) ? { ...sw._sw.well } : null, flexOf: (sw) => (sw && sw._sw && sw._sw.flex) ? { active: sw._sw.flex.active, spec: { ...sw._sw.flex.spec }, out: { ...sw._sw.flex.out }, target: sw._sw.flex.tg, trace: sw._sw.flex.trace, lift: sw._sw.lift.x, liftSX: sw._sw.liftSX, liftSY: sw._sw.liftSY, written: sw._sw.written ? { ...sw._sw.written } : null } : null };   // lift: the UNCLAMPED lift value the scale is built from (the --lift var is clamped 0…1; accept A15)
   /* 界面-串2 ⑤ (09-23, simulator B frame tables BOARD/evidence/界面-串2-开关-新载首按*.json): the knob's first lift after a page load stalled the
      page 107–284 ms — WebKit builds its backdrop-filter pipeline (blur + saturate, switch.css .drive) on first use; the same first press with that
      filter removed ran at 60 fps, and a later press or another switch's first press did not stall (the cost is per page, not per element). The lift
