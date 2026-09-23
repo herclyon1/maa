@@ -20,11 +20,11 @@
    Motion (tab-lens-motion.md §4, the read curves): lift = ONE spring ζ 1 / response .25 s for every quantity (size, r, the three amounts,
    _UITabSelectionView α 1 → 0 (= .glide, --tsel-alpha), DestOut 0 → 1, items 1 → 1.16, platter 1 → 1.0516); drop = the same back with
    ζ 1 / .4 s; page change while held (press another item / drag) = position ζ .85 / .4 s from the old centre to the new + the lift at the same
-   time (the flex stretch of the loupe is NOT drawn: no read sets beyond the lift for this family; the ±1.6 pt wobble after the drop unread; a
+   time (the loupe's flex stretch is drawn in the geometry mode below, R64, from the first drag frame; the ±1.6 pt wobble after the drop unread; a
    quick tap without the +140 ms lift keeps view.js's glide slide — the tap's lens trace is unread). The drag (nav.drag while lifted) follows the
    finger by tab-lens-motion.md §6.6: target = finger x − a·W + W/2 (a = the press point's fraction in the item), the left edge hard-clamped to
    the items' run, spring ζ .85 / .2 retargeted on every move, no rubber band; after the up ζ .85 / .4 (R106: §6.9's "no gesture" pair) to the item under the finger (view.js's
-   choice). The flex stretch (loupe sX / sY, drift tx = sX(1 − sX)·55) is read but not drawn (per-axis map scaling needed).
+   choice). The flex stretch (loupe sX / sY, drift tx = sX(1 − sX)·55): this layered mode does not draw it; the geometry mode (default) does (R64).
    Not drawn yet (material, the ui session's tokens): the KeyFill highlight, the ring shadow, the dark line, the little glow (α 0 → .2).
    Instrument: window.__tabLens = the per-frame state (t s since the start, p, x, v, target, set, s, phase; settled = both springs at their targets, S1). */
 /* GEOMETRY MODE (BOARD.md #7a, 2026-09-20 — the default tonight; ?tlens=material restores the layered lens above): no material at all — the page's own
