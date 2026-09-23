@@ -23,6 +23,10 @@
     const nav = document.querySelector("nav.tabs"); if (!nav) { check("标签栏：页面无 nav.tabs", "有", "缺", false); return; }
     if (!nav.classList.contains("tlens")) { check("标签栏：tab-lens.js 未接（nav 无 .tlens：挂钩行 / motion.js）", "tlens", nav.className, false); return; }
     const seg = nav.querySelector(".seg"), g = nav.querySelector(".glide"), bs = [...seg.querySelectorAll("button")], plat0 = nav.querySelector(".plat");
+    /* 切页首画（老网页 09-24 01:1x；status-老网页 00:33–01:18）: which pages have been on screen since this file started — a page never shown is the "first visit" (its first paint) */
+    const shownTabs = new Set([...document.querySelectorAll("#app > section")].filter((s) => !s.hidden).map((s) => s.dataset.tab));
+    const shownObs = new MutationObserver(() => { for (const s of document.querySelectorAll("#app > section")) if (!s.hidden) shownTabs.add(s.dataset.tab); });
+    shownObs.observe(document.getElementById("app"), { subtree: true, attributes: true, attributeFilter: ["hidden"] });
     /* V1 偶发标签红 (界面 09-23 17:0x, 5 light runs 2 red on ② with the same numbers 4.7 / 4.1 / 22.9): the rows below measure a lift FROM REST (r0 = the rest box,
        t0 = our own down), but the files register in fetch-arrival order, and when accept-stockpile.js ran first its last line (tab back to startTab, a click) left the
        lens driver running — caught at the start: __tabLens on, nav.tl-on, the glide at l 178.9 instead of 16, the driver's t0 690 ms before our down. So first wait
@@ -195,14 +199,23 @@
         num("7b 拖过端点：目标硬钳在轨道端（§6.6 无橡皮筋）", clampWant, Lc ? Lc.target : NaN, 0.5);
         const nr = nbr.getBoundingClientRect(), nx = nr.left + nr.width / 2; ev(selB2, "pointermove", nx, sy2, 6); await until(settled, 350);   // over the neighbour, parked there
         const Lu = window.__tabLens; const xu = Lu ? Lu.x : cxNav(), vu = Lu ? Lu.xv : 0, tfu = Lu ? Lu.tf : performance.now();
-        ev(selB2, "pointerup", nx, sy2, 6); await tick(); const Lr = window.__tabLens;
+        ev(selB2, "pointerup", nx, sy2, 6); await tick(); const Lr = window.__tabLens; const trG10 = Lr && Lr.flex ? Lr.flex.trace : null;   // G10: the trace array outlives the driver (window.__tabLens is nulled at the stop)
         num("7b 松手目标 = 手指下那项的中心（§6.5 落点）", nx - navL, Lr ? Lr.target : NaN, 0.5);
         const rl = await sampleX(500, tfu, stopped);
         /* judged on the driver's own x like the drag row (R64): the presented centre carries the flex drift sX·dx decaying on its own spring after the up (2.4 px at the up, gone by +350 ms —
            the old rect-based rms sat at ≈ 1.0 on the wall clock and 1.5 under virtual time's denser early samples); the drift's decay is the R64 落定 row's */
         { const e = devs(rl.map((s) => s.x - underDamped(xu, vu, nx - navL, 0.85, 0.4, s.t)));
           check(`7b / R106 松手 位置弹簧 x 对 ζ.85/.4 闭式 rms ≤ 1（${rl.length} 帧，自松手前一帧的 x / v 起，驱动器本帧值；§6.9 ③「无手势」支 0x1c50e8774）`, "rms ≤ 1", `rms ${e.rms.toFixed(2)} · 最大偏差 ${e.max.toFixed(2)} pt @ 帧 ${e.at}`, e.rms <= 1); }
-        await until(rest, 400); const onB = bs.find((b) => b.classList.contains("on"));
+        await until(rest, 2000); const onB = bs.find((b) => b.classList.contains("on"));   // G10: the flex stays on until the fall start + 1.283 s (the fall group's completion), scaleY settles after
+        /* G10 (tab-lens-motion.md「数据核 G10」① / ⑤, flex-interaction.md §8): the fall start + .923 s → one frame whose flex point lacks the platter's x (the page's
+           platter = the nav, its left in the viewport; the native C run's 83), the next frame back; the fall start + 1.283 s → the deactivate frame (sX = 1, the
+           integrator off). The chain's frame-by-frame match to the native C run with the native geometry (94 × 54, 83 pt) is the replay of the page's own
+           view.js functions, tools/lens/g10chain-b.js (rms .00074 / .00100) */
+        { const tr = trG10 || [], k = tr.findIndex((e) => e.kick), K = tr[k], N = tr[k + 1], off = k < 0 ? null : tr.slice(k).find((e) => !e.active);
+          const kOk = !!K && K.since >= .923 && K.since - K.dt < .923 && Math.abs(K.fed - (K.x + tr[k - 1].sx * tr[k - 1].dx - K.px)) < 1e-9 && K.px === nav.getBoundingClientRect().left && !!N && !N.kick && Math.abs(N.fed - (N.x + K.sx * K.dx)) < 1e-9;
+          const oOk = !!off && off.since >= 1.283 && off.since - off.dt < 1.283 && off.sx === 1 && off.tSx === 1 && off.tSy === 1;
+          check("G10 落回起点 +.923 s 那帧 flex 量点少平台左距一帧、下帧还原；+1.283 s 那帧停用（sX 置 1、目标回 1）", "踢一帧 · 停用",
+            `${K ? `踢 +${K.since.toFixed(3)} s 量点 −${K.px}` : "无踢"} · ${off ? `停用 +${off.since.toFixed(3)} s sX ${off.sx} sY ${off.sy.toFixed(4)}` : "无停用"}${kOk ? "" : " ✗踢"}${oOk ? "" : " ✗停"}`, kOk && oOk); }
         check("7b 松手后选中 = 手指下那项", nbr.dataset.tab || "邻项", onB ? (onB.dataset.tab || "?") : "-", onB === nbr);
         num("7b 落定：胶囊中心 = 该项中心", nx - navL, cxNav(), 1); check("7b 落定后驱动停（无 .tl-on）", "无", nav.classList.contains("tl-on") ? "还在" : "无", !nav.classList.contains("tl-on"));
         num("R64 落定后 flex 归位：胶囊宽 = 项宽（sX → 1，drift → 0）", w0b, rect().width, 1);
@@ -221,7 +234,7 @@
        clears the highlight (no selection); the already selected item dragged ≥ 4 pt in x is not reselected (no scroll-to-top); otherwise the item under the finger is selected at
        once and the lens's target is its frame (the 7b / R33 rows above show the last) */
     { const on6 = bs.find((b) => b.classList.contains("on")), o6 = bs[bs.indexOf(on6) === 0 ? 1 : 0], r6 = o6.getBoundingClientRect(), x6 = r6.left + r6.width / 2, y6 = r6.top + r6.height / 2;
-      ev(o6, "pointerdown", x6, y6, 51); await sleep(250); ev(o6, "pointermove", 3, y6, 51); await sleep(60); ev(o6, "pointerup", 3, y6, 51); await until(rest, 1400); delete seg.dataset.pe;   // the lens slides back from the track's end (.85 / .4) and falls within 8 pt (ζ 1 / .4): ≈ 1.2 s to rest
+      ev(o6, "pointerdown", x6, y6, 51); await sleep(250); ev(o6, "pointermove", 3, y6, 51); await sleep(60); ev(o6, "pointerup", 3, y6, 51); await until(rest, 2800); delete seg.dataset.pe;   // the lens slides back from the track's end (.85 / .4) and falls within 8 pt (ζ 1 / .4), the flex stays on to the fall start + 1.283 s (G10): ≈ 2.4 s to rest
       const onAfter = bs.find((b) => b.classList.contains("on"));
       check("R106 ② 抬在窗口内缩 8 之外（x = 3）：只清高亮不选（选中项不变、透镜回原项、驱动停）", `${on6.dataset.tab} · off`, `${onAfter ? onAfter.dataset.tab : "-"} · ${nav.classList.contains("tl-on") ? "tl-on" : "off"} · |Δ| ${Math.abs(rect().cx - (on6.getBoundingClientRect().left + on6.getBoundingClientRect().width / 2)).toFixed(1)}`, onAfter === on6 && !nav.classList.contains("tl-on") && Math.abs(rect().cx - (on6.getBoundingClientRect().left + on6.getBoundingClientRect().width / 2)) <= 1.5);
       const app6 = document.getElementById("app"), mh6 = app6.style.minHeight; app6.style.minHeight = (innerHeight + 600) + "px";   // the current tab's page may be short: make it scrollable for the two scroll-to-top rows
@@ -326,6 +339,31 @@
       } else check("P0b 标签选中色裁切：标签栏至少两项、每项有 .tcg / .tcs 两份", "有", `${bs.length} 项`, false); }
     /* leave the bar at rest for the next file (the runner starts it at once; a per-block probe 09-23 17:1x caught the next block — sw / acceptTile — starting with
        this file's lens driver still on in 3 of 4 runs, and the switch's +126 ms lift row went red in one of them) */
+    /* 切页首画（老网页 09-24 01:1x，验收 01:19 定由界面改成各页常驻；status-老网页 00:33–01:18）: on real WebKit (模拟器 D, 线上 99ce024) a drag to another tab
+       and release fell from the first frame (+3…+21 ms, native g1_tabdrag_table.txt +21) but the next frame came 20–117 ms late — the page switch's first paint
+       (all page content off → 0). Native keeps every tab's view alive. The rows: from the up until the lens has fallen, no frame dropped (every gap < 2 × the frame
+       interval measured before the up: one dropped frame = 2 ×) — once on a page not yet shown in this file (first visit) and once on a page already shown; and each page keeps its own
+       scroll position across switches (UITabBarController keeps each tab's view controller: HIG Tab bars, remote-ref/tabscroll/README.md §1). */
+    { shownObs.disconnect(); const tb = [...seg.querySelectorAll(":scope > button")].filter((b) => b.offsetWidth), wait = (ms) => new Promise((r) => setTimeout(r, ms));
+      const dragRelease = async (to) => { const from = tb.find((b) => b.classList.contains("on")), fr = from.getBoundingClientRect(), tr = to.getBoundingClientRect(), y = fr.top + fr.height / 2, x0 = fr.left + fr.width / 2, x1 = tr.left + tr.width / 2;
+        ev(from, "pointerdown", x0, y, 71); await wait(600); for (let k = 1; k <= 6; k++) { ev(from, "pointermove", x0 + (x1 - x0) * k / 6, y, 71); await frame(); } await wait(400);
+        const pre = []; for (let k = 0; k < 8; k++) pre.push(await frame()); const iv = pre.slice(1).map((t, k) => t - pre[k]).sort((a, b) => a - b)[3];
+        const tUp = performance.now(); ev(from, "pointerup", x1, y, 71); const ts = [tUp]; const t0 = performance.now();
+        while (performance.now() - t0 < 1500) { ts.push(await frame()); const L = window.__tabLens; if (!L || L.p < 0.01) break; }
+        const gaps = ts.slice(1).map((t, k) => t - ts[k]); return { iv, max: Math.max(...gaps), n: gaps.length, on: to.dataset.tab, landed: to.classList.contains("on") }; };
+      const on0 = tb.findIndex((b) => b.classList.contains("on")), order = tb.map((_, k) => tb[(on0 + 1 + k) % tb.length]).filter((b, k) => k < tb.length - 1);
+      const cold = order.find((b) => !shownTabs.has(b.dataset.tab)), warmT = order.find((b) => shownTabs.has(b.dataset.tab) && !b.classList.contains("on"));
+      for (const [name, to] of [["头一次去的页", cold], ["去过的页", warmT]]) {
+        if (!to) { check(`切页首画 ${name}：松手到落完每帧不空（< 2 × 帧距）`, "有可测的页", "无（本文件开始前各页都已显示过 / 只有一页）", false); continue; }
+        const r = await dragRelease(to); await until(() => !window.__tabLens, 1500);
+        check(`切页首画 ${name}（${r.on}）：拖过去松手，到透镜落完不丢帧（每个帧距 < 2 × 松手前帧距，丢一帧即 2 倍；真 WebKit 原样空 20–117 ms）`, `最大帧距 < ${(2 * r.iv).toFixed(1)} ms · 选中 ${r.on}`, `最大帧距 ${r.max.toFixed(1)} ms（${r.n} 帧，帧距 ${r.iv.toFixed(1)}）· ${r.landed ? "选中 " + r.on : "没选中"}`, r.landed && r.max < 2 * r.iv); }
+      /* scroll positions: page A at 300, page B at 150, back to A = 300, back to B = 150 */
+      const app = document.getElementById("app"), mh = app.style.minHeight; app.style.minHeight = (innerHeight + 900) + "px";
+      const A = tb.find((b) => b.classList.contains("on")), B = tb.find((b) => b !== A), go = async (b) => { b.click(); await frame(); await frame(); };
+      window.scrollTo(0, 300); await until(() => Math.abs(scrollY - 300) < 1, 100); await go(B); window.scrollTo(0, 150); await until(() => Math.abs(scrollY - 150) < 1, 100);
+      await go(A); const ya = scrollY; await go(B); const yb = scrollY; await go(A);
+      check(`各页滚动位置互不干扰（${A.dataset.tab} 停 300 → 切 ${B.dataset.tab} 停 150 → 切回各自原位）`, `${A.dataset.tab} 300 · ${B.dataset.tab} 150`, `${A.dataset.tab} ${Math.round(ya)} · ${B.dataset.tab} ${Math.round(yb)}`, Math.abs(ya - 300) < 1 && Math.abs(yb - 150) < 1);
+      window.scrollTo(0, 0); app.style.minHeight = mh; await until(() => scrollY === 0, 100); }
     { const t0 = performance.now(), rest = () => !window.__tabLens && !nav.classList.contains("tl-on") && !nav.__tabAnim && !g.getAnimations().some((a) => a.playState === "running");
       while (!rest() && performance.now() - t0 < 3000) await new Promise((r) => requestAnimationFrame(r));
       check("标签栏：收尾静止（交给下一个文件前驱动已停、透镜无动画，≤ 3 s）", "静止", `${rest() ? "静止" : "仍在动"} · 等了 ${Math.round(performance.now() - t0)} ms`, rest()); }

@@ -87,6 +87,11 @@
   const SP_LIFT = { z: 1, w: 2 * Math.PI / .25 }, SP_DROP = { z: 1, w: 2 * Math.PI / .4 }, SP_POS = { z: .85, w: 2 * Math.PI / .4 };   // tab-lens-motion.md §0 / §4: lift, drop, the jump to a pressed item (the ① trace)
   const SP_DRAG = { z: .85, w: 2 * Math.PI / .2 }, SP_RELEASE = { z: .85, w: 2 * Math.PI / .4 };   /* R106 (tab-lens-motion.md §6.9 ③ / R106): after the up the highlight is cleared and the "no gesture" pair .85 / .4 drives the frame + lens to the selected item (0x1c50e8774); the .9 / .4 of before was _UIFloatingTabBar's, not this bar's */
   const DROP_WITHIN = 8;                                                    /* R106 (§6.9 ①): setLifted(false) only when there is no highlight AND |target − presented| < 8 pt (0x1c50e8634–0x1c50e8650) — after the up the lens slides first and falls within 8 pt of its target (the R33 tap's "arrival at .5 pt" was that rule seen late) */
+  /* G10 (tab-lens-motion.md「数据核 G10」① / ⑤, probe lenstrace C / C3 runs; flex-interaction.md §8): after the fall starts the platter's presented frame x reads 0 for one frame
+     (+.923 s, C3 +.933) — the flex's point goes through the presentation layers to the outermost space, so it jumps left by the platter's x for that frame and the
+     integrator kicks the targets (1.221 / .723 …); the fall group's completion block deactivates the flex at +1.283 s (C3: up +1.308 − fall +.025) — scaleX set to 1
+     on that frame, scaleY back on its spring. The page's platter x = the nav's left in the viewport. */
+  const FLEX_KICK_S = .923, FLEX_OFF_S = 1.283;
   const SP_RM = { z: .9, w: 2 * Math.PI / .2 };                             // R59′b″: Reduce Motion's own pair, position and size (tab-lens-motion.md §6.9 ③: 0x1c50e8690 / 0x1c50e86c4) — the records' .11 / 1.15 pt rms in the header
   const RM = () => (window.__forceRM != null ? !!window.__forceRM : matchMedia("(prefers-reduced-motion: reduce)").matches);   // tab-lens-motion.md §6.6 (UIKitCore _animateSelection, checked on the drag trace rms .55 / max .75 by the old page): the finger-following spring while highlighted, the spring after the up
   const step = (st, target, sp, dt) => {                                      // analytic damped-spring step from (x, v): ζ ≥ 1 critically damped, else under-damped
@@ -279,22 +284,25 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
          on the tracking spring while the finger is down, else the scaleSpring */
       let Wp = W, Hp = H, xc = x;
       /* when: the fall animation group's completion block sets activation mode 1 (flex-interaction.md §8 ③, 0x1c54c9a28, §5b R73) — the integrator is cleared and
-         the targets go back to identity, the three floats settle on their spring from where they are (probe C3: value 1 on that frame, presentation
-         .9836 → … → 1). The START stays the first drag frame: §8 ③ reads mode 3 from the lift (0x1c54c8258), but the R108 probe's press-glide (94×54 →
+         the targets go back to identity, scaleX is set to 1 on that frame, the other floats settle on their spring from where they are (tab-lens-motion.md
+         「数据核 G10」⑤: C3 +1.308, scaleY back to 1 by +1.608); the frame is FLEX_OFF_S after the fall starts (above). The START stays the first drag frame: §8 ③ reads mode 3 from the lift (0x1c54c8258), but the R108 probe's press-glide (94×54 →
          116.7 × 74.0 held, the lift rows of accept-tabbar) shows the pure lift sizes while the lens travels to the pressed item — with the flex live from the
          lift the page stretches it to 101 × 78 there; the two readings disagree and the difference is not read (asked 老网页 22:1x) */
       if (fl && phase === "drag" && !fl.active) { fl.active = true; fl.vi = flexIntegrator(); }
-      if (fl && fl.active && pTarget === 0 && p < .002 && Math.abs(P.v) < .02) { fl.active = false; fl.vi = flexIntegrator(); }
+      if (fl && fl.active) { if (pTarget !== 0) { fl.fallAt = null; fl.kicked = false; } else if (fl.fallAt == null) fl.fallAt = now; }
+      const sinceFall = fl && fl.fallAt != null ? (now - fl.fallAt) / 1000 : -1;
+      if (fl && fl.active && sinceFall >= FLEX_OFF_S) { fl.active = false; fl.vi = flexIntegrator(); fl.sx = { x: 1, v: 0 }; fl.fallAt = null; fl.kicked = false; }   // G10 ⑤: the completion block's deactivate
       const flexMoving = fl && (Math.abs(fl.out.sx - 1) >= .002 || Math.abs(fl.out.sy - 1) >= .002 || Math.abs(fl.out.dx) >= .1 || Math.abs(fl.sx.v) >= .01 || Math.abs(fl.sy.v) >= .01 || Math.abs(fl.dx.v) >= .5);
       if (fl && !fl.active && !flexMoving && (fl.out.sx !== 1 || fl.out.sy !== 1 || fl.out.dx !== 0)) { fl.sx = { x: 1, v: 0 }; fl.sy = { x: 1, v: 0 }; fl.dx = { x: 0, v: 0 }; fl.out = { sx: 1, sy: 1, dx: 0 }; }
       if (fl && (fl.active || flexMoving)) {
-        if (fl.active) fl.vi.add(x + fl.out.sx * fl.out.dx, now / 1000);
+        const kick = fl.active && !fl.kicked && sinceFall >= FLEX_KICK_S; if (kick) fl.kicked = true;   // G10 ①: one frame of the point without the platter's x
+        const fed = x + fl.out.sx * fl.out.dx - (kick ? navBox.left : 0); if (fl.active) fl.vi.add(fed, now / 1000);
         const Wm = pTarget > .5 ? w0 + LIFT_W : w0, Hm = pTarget > .5 ? h0 + LIFT_H : h0;
         const spec = flexSpec(Wm, Hm), tg = fl.active ? flexTargets(spec, Wm, Hm, fl.vi.acceleration, fl.vi.velocity) : { sX: 1, sY: 1, drift: 0 }, sp = finger.down ? [spec.tzeta, spec.tresp] : [spec.zeta, spec.resp];
         springStep(fl.sx, tg.sX, sp, dt); springStep(fl.sy, tg.sY, sp, dt); springStep(fl.dx, tg.drift, sp, dt);
         fl.out = { sx: fl.sx.x, sy: fl.sy.x, dx: fl.dx.x }; fl.tg = tg; fl.spec = spec; fl.sp = sp;
         Wp = W * fl.out.sx; Hp = H * fl.out.sy; xc = x + fl.out.sx * fl.out.dx;   // §6.6 / §6.4: W·sX × H·sY, tx = sX·dx
-        if (fl.trace.length < 600) fl.trace.push({ t: now, dt, sx: fl.out.sx, sy: fl.out.sy, dx: fl.out.dx, vsx: fl.sx.v, vsy: fl.sy.v, vdx: fl.dx.v, tSx: tg.sX, tSy: tg.sY, tDx: tg.drift, sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, Wm, Hm, x, W, H });
+        if (fl.trace.length < 600) fl.trace.push({ t: now, dt, kick, fed, since: sinceFall, px: navBox.left, active: fl.active, sx: fl.out.sx, sy: fl.out.sy, dx: fl.out.dx, vsx: fl.sx.v, vsy: fl.sy.v, vdx: fl.dx.v, tSx: tg.sX, tSy: tg.sY, tDx: tg.drift, sp, accel: fl.vi.acceleration, vel: fl.vi.velocity, Wm, Hm, x, W, H });
       }
       /* the glide's box: the centre x from the position spring (+ the flex drift), the vertical centre = the resting centre (pad + h0 / 2) */
       nav.style.setProperty("--tl-left", (xc - Wp / 2) + "px"); nav.style.setProperty("--tl-w", Wp + "px"); nav.style.setProperty("--tl-top", (pad + h0 / 2 - Hp / 2) + "px"); nav.style.setProperty("--tl-h", Hp + "px");
