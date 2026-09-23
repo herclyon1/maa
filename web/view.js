@@ -2321,6 +2321,7 @@ function showDiagSheet(rec, kind) {
 }
 addEventListener("segframes", (e) => showDiagSheet(e.detail || window.__segFrames));
 addEventListener("arkaccept", (e) => showDiagSheet(e.detail, "accept"));
+try { if (sessionStorage.getItem("ark-accept-cut")) { sessionStorage.removeItem("ark-accept-cut"); setTimeout(() => toast("自检中途切到了别处，没跑完；本机数据已换回。要结果就再点一次「运行自检」，跑完前别离开这页", 8000), 1200); } } catch (e) {}
 if (window.__acceptRestoreErr) setTimeout(() => toast("自检后换回本机数据没成：" + window.__acceptRestoreErr + "。备份还在，下次打开再试", 8000), 1200);
 window.__viewReady = true;   // every top-level binding above exists now: live.js's timers / events may use cfg, snap, render … (they return until this)
 boot();

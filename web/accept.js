@@ -17,7 +17,13 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
   const devStrip = window.__acceptDevice ? document.createElement("div") : null;
   if (devStrip) { devStrip.id = "accept-dev-strip"; devStrip.textContent = "自检进行中，约两分钟，别碰屏幕；跑完弹出结果";
     devStrip.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:2147483647;pointer-events:none;padding:calc(env(safe-area-inset-top) + 4px) 12px 6px;background:rgba(0,0,0,.72);color:#fff;font:600 13px/1.3 -apple-system,system-ui,sans-serif;text-align:center";
-    document.documentElement.appendChild(devStrip); }
+    document.documentElement.appendChild(devStrip);
+    /* the phone really leaving the page (another app, the lock button) stalls the run for good — a resumed page never finished (simulator 17:53, 88c25e1:
+       the web app went to the background, came back and hung on 方舟 with no result). A real hidden (visibilityState; the checks' own synthetic
+       visibilitychange events keep "visible") restarts the page without ?accept, so index.html's head puts the phone's data back, and view.js says so. */
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState !== "hidden" || !devStrip.isConnected) return;
+      try { sessionStorage.setItem("ark-accept-cut", "1"); } catch (e) {}
+      const q2 = new URLSearchParams(location.search); q2.delete("accept"); location.replace(location.pathname + (q2.toString() ? "?" + q2.toString() : "")); }); }
   /* the per-control files are appended dynamically; headless Chrome occasionally drops one of those fetches (night 00:3x: accept-sheet.js never
      requested in one run → 17 rows silently missing). Each load is tracked; a file that has not loaded when the checks start is re-appended, and
      a file still missing gets a ✗ row so the total never drops silently. */
