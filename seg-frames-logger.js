@@ -390,23 +390,34 @@
       lineEl.style.cssText = "position:fixed;left:12px;right:88px;bottom:calc(env(safe-area-inset-bottom, 0px) + 8px);z-index:2147483645;padding:6px 10px;border-radius:10px;background:rgba(28,28,30,.9);color:#fff;font:12px/1.35 -apple-system, ui-sans-serif, system-ui;-webkit-user-select:none;user-select:none";
       lineEl.addEventListener("click", () => { if (lastOut) dispatchEvent(new CustomEvent("segframes", { detail: lastOut })); });   // tap the line = the copy / share sheet for the latest record
       document.body.appendChild(lineEl);
+      addEventListener("resize", placeLine);
     }
-    lineEl.textContent = t;
+    lineEl.textContent = t; placeLine();
+  }
+  /* the line sits above the floating tab bar: at the screen's bottom it covered the first four tabs, so with diagnostics on a tap on a tab hit
+     the line (opened the copy / share sheet) instead of switching (模拟器 A 18:12, 界面 自核) */
+  function placeLine() {
+    if (!lineEl) return;
+    const nav = document.querySelector("nav.tabs"), r = nav && getComputedStyle(nav).display !== "none" ? nav.getBoundingClientRect() : null;
+    lineEl.style.bottom = r && r.height ? `${Math.round(innerHeight - r.top + 8)}px` : "calc(env(safe-area-inset-bottom, 0px) + 8px)";
   }
   function buildMarkUI() {
     if (!DIAG_UI || markUI || !document.body) return;
     markUI = document.createElement("div"); markUI.id = "diagmark";
     markUI.style.cssText = "position:fixed;right:12px;bottom:calc(env(safe-area-inset-bottom, 0px) + 96px);z-index:2147483646;display:flex;flex-direction:column;align-items:flex-end;gap:8px;font:600 13px/1.15 -apple-system, ui-sans-serif, system-ui;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none";
-    const panel = document.createElement("div"); panel.hidden = true; panel.id = "diagmark-words";
-    panel.style.cssText = "display:flex;flex-direction:column;gap:6px;padding:8px;border-radius:14px;background:rgba(28,28,30,.92);color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.35)";
+    /* open / closed through style.display: the inline display:flex outranks the UA's [hidden]{display:none}, so toggling .hidden alone left the
+       word panel open over the page from the start (模拟器 A 18:10, 界面 自核) */
+    const panel = document.createElement("div"); panel.id = "diagmark-words";
+    const openWords = (o) => { panel.hidden = !o; panel.style.display = o ? "flex" : "none"; };
+    panel.style.cssText = "display:none;flex-direction:column;gap:6px;padding:8px;border-radius:14px;background:rgba(28,28,30,.92);color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.35)";
     const word = (t, w) => { const b = document.createElement("button"); b.type = "button"; b.textContent = t;
       b.style.cssText = "all:unset;padding:8px 12px;border-radius:10px;background:rgba(255,255,255,.14);color:#fff;text-align:center";
-      b.addEventListener("click", () => { markNow(w); panel.hidden = true; }); panel.appendChild(b); };
+      b.addEventListener("click", () => { markNow(w); openWords(false); }); panel.appendChild(b); };
     for (const w of MARK_WORDS) word(w, w);
     word("直接发（不选词）", null);
     const btn = document.createElement("button"); btn.type = "button"; btn.id = "diagmark-btn"; btn.textContent = "就是这里";
     btn.style.cssText = "all:unset;width:64px;height:64px;border-radius:32px;background:#ff3b30;color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;box-shadow:0 6px 18px rgba(0,0,0,.35)";
-    btn.addEventListener("click", () => { panel.hidden = !panel.hidden; });
+    btn.addEventListener("click", () => { openWords(panel.style.display === "none"); });
     markUI.append(panel, btn); document.body.appendChild(markUI);
     line("诊断记录开着：点任意控件都会记一份；出问题按右下角「就是这里」");
   }
