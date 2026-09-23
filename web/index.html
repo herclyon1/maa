@@ -439,7 +439,9 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
                   background:var(--ios-switch-knob);   /* 旋钮 37×24 内距 2 ← 探针 */
                   box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16);
                   transform-origin:center;will-change:translate,scale,background,box-shadow;translate:0 0;scale:1 1;
-                  transition:translate var(--ios-motion-switch-knob-duration) var(--ios-motion-switch-knob-easing),scale .12s,background .12s,box-shadow .12s}   /* 旋钮 = UIViewSpringAnimationBehavior dampingRatio 1 / response 0.3 s（--ios-motion-switch-knob-response/-damping-ratio ← 探针 deep _transitionKnobToPressed），采成 0.35 s linear()；.12s 透镜起落 无来源 */
+                  transition:translate var(--ios-motion-switch-knob-duration) var(--ios-motion-switch-knob-easing)}   /* 旋钮 = UIViewSpringAnimationBehavior dampingRatio 1 / response 0.3 s（--ios-motion-switch-knob-response/-damping-ratio ← 探针 deep _transitionKnobToPressed），采成 0.35 s linear()。
+                  界面-串2 ⑤（09-23 模拟器 B 逐帧，BOARD/evidence/界面-串2-开关-落定底色.json）：原有的 scale / background / box-shadow .12 s 过渡（无来源）在 switch.js 驱动结束摘 .drive 那一刻
+                  把底色从驱动规则的透明（background 简写）渐回白 .17 → .98 共 6 帧 = 「落定后圆钮闪半透明」；驱动期间这三项由 switch.js 逐帧写，静止时不再过渡 */
   .sw input:checked + span::after{translate:var(--ios-switch-travel) 0}   /* 行程 22 = 63 − 37 − 2×2 ← 探针 */
   /* 界面-串2 ⑤ / NATIVE-GAP G3 (09-23): the old finger-down rules (.sw.hold / .sw input:active + span::after with .12 s translate / box-shadow and a
      fixed hold scale, knob-lift keyframes, :active:checked pinning translate) are gone — switch.js drives the knob (switch.css .drive, switch-native-formula.md);
