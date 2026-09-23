@@ -2,7 +2,7 @@
 /* 游戏机遥控。
    一根管道：ntfy 上一个信箱。手机写指令，机器写状态。零轮询——
    机器那头挂长连接，这头只在你按刷新时发一条 ping。
-   信箱名和 PIN 只存在这台手机里，不在这份代码里。 */
+   信箱名和 PIN 不写进这份代码：手机上存在本机 localStorage；Mac 上的副本在 ~/.config/ark/密钥总表.md（A48）。 */
 const NTFY = "https://ntfy.sh";
 const LS = "ark-remote-cfg";
 const $ = (s) => document.querySelector(s);
@@ -526,6 +526,7 @@ function render() {
      (replaceWith) was not enough: a detached-and-reinserted element loses its running CSS transitions (the drag-release snapped to 198×28 at
      up + 1 ms, 4317ecd). Now the old #queueseg is never detached — replaceKeeping swaps everything around its ancestor chain — and only its
      state is synced (segSync): the lens, the labels, the copies and the running glass fall keep their elements AND their transitions. */
+  const hadNotices = $("#app").querySelector("section") ? new Set([...$("#app").querySelectorAll(".group.notice .ncap")].map((e) => e.textContent)) : null;   // P0b #6: which notice cards exist before (null = first render: a table's first load does not animate)
   const oldSeg = $("#queueseg"), probe = document.createElement("template"); probe.innerHTML = html;
   const cand = probe.content.querySelector("#queueseg");
   const tR = performance.now(), before = flipPending ? flipSnapshot($("#app")) : null; flipPending = false;   // B3: where every block was, before the content changes
@@ -538,6 +539,25 @@ function render() {
   const tL = performance.now(); layoutTabs(); if (before) segMeasure("seg:render:layoutTabs", tL);   // the other tabs' sections are hidden here — the "after" positions are read only after that
   const tF = performance.now(); if (before) { flipRun(before, $("#app")); segMeasure("seg:render:flip", tF); }
   const tW = performance.now(); wire(); if (before) { segMeasure("seg:render:wire", tW); segMeasure("seg:render:total", tR); }
+  if (hadNotices) noticeInsert(hadNotices);
+}
+/* P0b #6 (P0b-数据.md 17:02 ← tools/uiprobe/uiprobe-motion-grouped-section.json): a notice card is a section of the grouped list, and native inserts a
+   section (insertSections:withRowAnimation: on an insetGrouped UITableView) only when it really appears — not on every reload (the old CSS `rise`
+   replayed on each render). The .fade insertion: the new section's opacity 0 → 1, every row below it moves from −(the new section's height) to its
+   place, one CASpringAnimation for both: mass 1, stiffness 438.6490844928604, damping 41.88790204786391, initialVelocity 0 (ω = √438.649 = 20.944 =
+   2π / .3, ζ = 41.888 / 2ω = 1 — perceptualDuration .3, bounce 0), duration 0.44094051784378036. The spring's closed form (ζ 1, v0 0) is sampled
+   into keyframes (linear between) — the same curve on Safari and Chrome, no frame loop. A card that stays (same caption) is not animated. */
+function noticeInsert(had) {
+  const W = Math.sqrt(438.6490844928604), D = 0.44094051784378036, N = 32;
+  const P = Array.from({ length: N + 1 }, (_, i) => { const t = D * i / N; return { o: i / N, p: i === N ? 1 : 1 - (1 + W * t) * Math.exp(-W * t) }; });
+  for (const cap of $("#app").querySelectorAll(".group.notice .ncap")) {
+    if (had.has(cap.textContent)) continue;
+    const sec = cap.closest("section"); if (!sec || sec.hidden || !sec.offsetHeight) continue;
+    const below = []; for (let n = sec.nextElementSibling; n; n = n.nextElementSibling) if (!n.hidden && n.offsetHeight) below.push(n);
+    const h = below.length ? below[0].getBoundingClientRect().top - sec.getBoundingClientRect().top : 0;
+    sec.animate(P.map((k) => ({ offset: k.o, opacity: k.p })), { duration: D * 1000, easing: "linear" });
+    if (h > 0) for (const n of below) n.animate(P.map((k) => ({ offset: k.o, transform: `translateY(${(-h * (1 - k.p)).toFixed(3)}px)` })), { duration: D * 1000, easing: "linear" });
+  }
 }
 
 /* B3 — content transition on a value change (remote-ref/seg-value-change-content.md, 设置 › 屏幕使用时间 每周/每天, iOS 27.0 simulator recordings; every
@@ -767,8 +787,9 @@ function layoutTabs() {
   if (!glideEl) { glideEl = document.createElement("i"); glideEl.className = "glide"; plat.after(glideEl); setChanged = true; }
   if (!segEl) { segEl = document.createElement("div"); segEl.className = "seg"; nav.appendChild(segEl); setChanged = true; }
   const mkTab = (t) => { const b = document.createElement("button"); b.type = "button"; b.dataset.tab = t; b.setAttribute("aria-label", t);
-    b.innerHTML = `<span class="ico">` + (TAB_IMAGES[t] ? `<img class="tabimg" src="${TAB_IMAGES[t]}" alt="">`
-                     : `<i class="sf" style="-webkit-mask-image:url(${TAB_ICONS[t]});mask-image:url(${TAB_ICONS[t]})" aria-hidden="true"></i>`) + `</span><span>${t}</span>`; return b; };
+    const item = `<span class="ico">` + (TAB_IMAGES[t] ? `<img class="tabimg" src="${TAB_IMAGES[t]}" alt="">`
+                     : `<i class="sf" style="-webkit-mask-image:url(${TAB_ICONS[t]});mask-image:url(${TAB_ICONS[t]})" aria-hidden="true"></i>`) + `</span><span>${t}</span>`;
+    b.innerHTML = `<span class="tcg">${item}</span><span class="tcs" aria-hidden="true">${item}</span>`; return b; };   // the unselected / selected copies (index.html .tcg / .tcs, tabClip)
   const haveBtns = new Map([...segEl.querySelectorAll(":scope > button")].map((b) => [b.dataset.tab, b]));
   /* R0③ (tab-lens-motion.md §7, R24 — setItems:animated: of the floating bar): the old rects are captured before the tree changes (FLIP) so the kept
      buttons can travel from their old x on ζ 1 / .3, the removed ones fade at their old place on ζ 1 / .2 and leave when the .3 spring has settled,
@@ -807,6 +828,7 @@ function layoutTabs() {
     glide(true);
     window.scrollTo(0, tabScroll[curTab] || 0);
   };
+  tabClipWatch(nav);
   if (setChanged || !nav.__tabsAttached) { attachTabBar(nav, selectTab); nav.__tabsAttached = true; }   // R0①: the handlers close over the button list — re-attached only when that list changed
 }
 
@@ -983,8 +1005,8 @@ function wire() {
   if (dsw) dsw.onchange = () => {
     try { if (dsw.checked) localStorage.setItem("ark-diag", "1"); else localStorage.removeItem("ark-diag"); } catch (e) {}
     try { const q = new URLSearchParams(location.search); if (dsw.checked) q.set("diag", "1"); else q.delete("diag"); history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q.toString() : "") + location.hash); } catch (e) {}
-    if (dsw.checked && !document.querySelector('script[src^="seg-frames-logger.js"]')) { const s = document.createElement("script"); s.src = "seg-frames-logger.js"; document.body.appendChild(s); }
-    toast(dsw.checked ? "诊断记录已开：现在去点分段控件，记录生成后会弹出" : "诊断记录已关；下次打开页面不再记录", 4000);
+    if (dsw.checked && !document.querySelector('script[src^="seg-frames-logger.js"]')) { const s = document.createElement("script"); s.src = "seg-frames-logger.js?v=20260923"; document.body.appendChild(s); }
+    toast(dsw.checked ? "诊断记录已开：点任意控件都会记一份，出问题按右下角「就是这里」" : "诊断记录已关；下次打开页面不再记录", 4000);
     const sc = $("#selfcheck"); if (sc) sc.hidden = !dsw.checked;
   };
   /* 运行自检 (shown while 诊断记录 is on): the page restarts as ?accept=1 — index.html's head backs this phone's data up and keeps every command on the
@@ -1957,6 +1979,41 @@ function springToTop() {
    s2: ζ 1 / .2 (the removed items' fade-out); the kept buttons translateX from their old x (FLIP: old − new viewport left), the platter's inset from the
    old width to the new (symmetric, pill shape kept), the glide rides the selected button's animated x; the removed buttons leave when s3 has settled.
    nav.__tabAnim = { t0, s3, s2, items: [{ el, dx }], removed, added, w0, w1 } is the driver's own clock for the acceptance rows (A15). */
+/* P0b-tabclip — the selected colour is where the lens is (P0b-数据.md 14:1x, read from tools/uiprobe/uiprobe-sdf-r104-rest.json): the lens carries a
+   _UIPortalView (#31, CAPortalLayer) of SelectedContentView (#2, every item in the selected colour) with hidesSourceLayer 1, matchesPosition /
+   matchesTransform 1, clipsToBounds, cornerRadii = h/2 — the selected copy is drawn at its own place but only inside the lens's capsule — and a
+   DestOutView (#55, compositingFilter destOut, cornerRadius = h/2, its presentation box = the lens's) punches the same capsule out of ContentView
+   (#33, every item unselected). No item changes colour; a slide, a lift, a drag only move the cut (state-tables/tabbar.md:20). Here the lens is the
+   .glide — view.js's slide, tab-lens.js's driver (--tl-*), the lift scales, the platter scale all land in its on-screen box — and every item's two
+   copies (.tcs / .tcg, mkTab) are clipped to that box mapped into their own coordinates: .tcs = the capsule, .tcg = everything but the capsule. */
+function tabClip(nav) {
+  const g = nav.querySelector(":scope > .glide"); if (!g || nav.hidden) return;
+  const gr = g.getBoundingClientRect(); if (!gr.width || !gr.height || !g.offsetWidth || !g.offsetHeight) return;
+  const r0 = Math.min(g.offsetWidth, g.offsetHeight) / 2, grx = r0 * gr.width / g.offsetWidth, gry = r0 * gr.height / g.offsetHeight;   // border-radius 999px → r = min(w, h) / 2 of the layout box, then the box's own scale
+  const f = (v) => +v.toFixed(2);
+  for (const el of nav.querySelectorAll("button > .tcg, button > .tcs")) {
+    const er = el.getBoundingClientRect(); if (!el.offsetWidth || !el.offsetHeight || !er.width) continue;
+    const kx = er.width / el.offsetWidth, ky = er.height / el.offsetHeight;   // the item's own scale (the platter's presentation scale) — the path is in its untransformed coordinates
+    const x = f((gr.left - er.left) / kx), y = f((gr.top - er.top) / ky), w = f(gr.width / kx), h = f(gr.height / ky), rx = f(Math.min(grx / kx, w / 2)), ry = f(Math.min(gry / ky, h / 2));
+    const cap = `M${f(x + rx)} ${y}H${f(x + w - rx)}A${rx} ${ry} 0 0 1 ${f(x + w)} ${f(y + ry)}V${f(y + h - ry)}A${rx} ${ry} 0 0 1 ${f(x + w - rx)} ${f(y + h)}H${f(x + rx)}A${rx} ${ry} 0 0 1 ${x} ${f(y + h - ry)}V${f(y + ry)}A${rx} ${ry} 0 0 1 ${f(x + rx)} ${y}Z`;
+    const clip = el.classList.contains("tcs") ? `path("${cap}")` : `path(evenodd, "M-9999 -9999H9999V9999H-9999Z${cap}")`;
+    if (el.__clip !== clip) { el.__clip = clip; el.style.clipPath = clip; el.style.webkitClipPath = clip; }
+  }
+}
+/* when to cut: synchronously after any change of the bar's styles / classes / items (MutationObserver — view.js's glide(), tab-lens.js's per-frame
+   --tl-* on nav, tabSetAnimate's per-frame writes; the cut's own clip-path writes are ignored), then on every frame while a CSS animation runs on the
+   glide (its .55 s slide, the lift's scale transition — started by transitionrun), on resize and when html.kbd hides / shows the bar */
+function tabClipWatch(nav) {
+  if (nav.__tabClip) { nav.__tabClip(); return; }
+  let raf = 0;
+  const run = () => { raf = 0; tabClip(nav); const g = nav.querySelector(":scope > .glide"); if (g && g.getAnimations && g.getAnimations().some((a) => a.playState === "running")) raf = requestAnimationFrame(run); };
+  const kick = () => { tabClip(nav); if (!raf) raf = requestAnimationFrame(run); };
+  const mine = (r) => r.type === "attributes" && r.target.classList && (r.target.classList.contains("tcg") || r.target.classList.contains("tcs"));
+  new MutationObserver((recs) => { if (recs.some((r) => !mine(r))) kick(); }).observe(nav, { attributes: true, attributeFilter: ["style", "class", "hidden"], childList: true, subtree: true });
+  new MutationObserver(kick).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+  nav.addEventListener("transitionrun", kick); addEventListener("resize", kick);
+  nav.__tabClip = kick; kick();
+}
 function tabSetAnimate(nav, plat, glideEl, oldRect, navRect0, removed, added) {
   const kept = [...nav.querySelectorAll(":scope > .seg > button")].filter((b) => oldRect.has(b));
   const navRect1 = nav.getBoundingClientRect(), w0 = navRect0.width, w1 = navRect1.width;
@@ -2309,9 +2366,15 @@ function showDiagSheet(rec, kind) {
   const self = kind === "accept", out = self ? rec : Object.assign({}, rec, { selfcheck: lastSelfcheck() });
   let json = ""; try { json = JSON.stringify(out); } catch (e) { json = String(out); }
   const kb = Math.round(json.length / 1024 * 10) / 10, fr = Array.isArray(rec.frames) ? rec.frames.length : "?";
+  /* 件 C (2026-09-23): the record uploads itself; the sheet says where it got to, so a failure is never silent. `upload.state`:
+     sent = 已在桶里, kept = 还在这台手机里（原因在 detail）, failed = 连存都没成。The line updates live on "segframes-upload". */
+  const upWord = (u) => !u ? "上传：还在送" : u.state === "sent" ? "上传：已送达" : `上传：没送到（${u.detail || "原因不明"}）`;
+  const ctl = rec.control && (rec.control.label || rec.control.path) ? `点的是「${rec.control.label || rec.control.path}」。` : "";
+  const mk = Array.isArray(rec.marks) && rec.marks.length ? `你标了 ${rec.marks.length} 处（${rec.marks.map((m) => m.word || "未选词").join("、")}）。` : "";
+  const msg = () => `${ctl}${mk}一份 JSON，${kb} KB，${fr} 帧。${upWord(rec.upload)}。送不到时复制后粘到聊天里，或用分享发出。`;
   $("#diagsheet-t").textContent = self ? "自检结果" : "诊断记录已生成";
-  $("#diagsheet-m").textContent = self ? `通过 ${rec.total - rec.fails} / ${rec.total}，不通过 ${rec.fails} 项。一份 JSON，${kb} KB。复制后粘到聊天里，或用分享发出；关闭后页面重新打开，换回你自己的数据。`
-                                       : `一份 JSON，${kb} KB，${fr} 帧。复制后粘到聊天里，或用分享发出。`;
+  $("#diagsheet-m").textContent = self ? `通过 ${rec.total - rec.fails} / ${rec.total}，不通过 ${rec.fails} 项。一份 JSON，${kb} KB。复制后粘到聊天里，或用分享发出；关闭后页面重新打开，换回你自己的数据。` : msg();
+  showDiagSheet._live = self ? null : (r) => { if (!sh.hidden && r && r.record_id === rec.record_id) { rec.upload = r.upload; rec.marks = r.marks; $("#diagsheet-m").textContent = msg(); } };
   const share = $("#diagsheet-share"); share.hidden = !(navigator.share && (!navigator.canShare || navigator.canShare({ text: "x" })));
   $("#diagsheet-copy").onclick = async () => { try { await navigator.clipboard.writeText(json); toast("已复制整份记录"); } catch (e) { toast("复制失败：" + (e && e.message ? e.message : e), 4000); } };
   share.onclick = async () => { try { await navigator.share({ title: self ? "自检结果" : "诊断记录", text: json }); } catch (e) { if (!(e && e.name === "AbortError")) toast("分享失败：" + (e && e.message ? e.message : e), 4000); } };
@@ -2323,6 +2386,9 @@ addEventListener("segframes", (e) => showDiagSheet(e.detail || window.__segFrame
 addEventListener("arkaccept", (e) => showDiagSheet(e.detail, "accept"));
 try { if (sessionStorage.getItem("ark-accept-cut")) { sessionStorage.removeItem("ark-accept-cut"); setTimeout(() => toast("自检中途切到了别处，没跑完；本机数据已换回。要结果就再点一次「运行自检」，跑完前别离开这页", 8000), 1200); } } catch (e) {}
 if (window.__acceptRestoreErr) setTimeout(() => toast("自检后换回本机数据没成：" + window.__acceptRestoreErr + "。备份还在，下次打开再试", 8000), 1200);
+/* light records (件 A: any control, many per session) do not open the sheet — the recorder's own line reports them; these two only refresh a sheet that is already open */
+addEventListener("segframes-upload", (e) => { if (showDiagSheet._live) showDiagSheet._live(e.detail); });
+addEventListener("segframes-mark", (e) => { if (showDiagSheet._live) showDiagSheet._live(e.detail); });
 window.__viewReady = true;   // every top-level binding above exists now: live.js's timers / events may use cfg, snap, render … (they return until this)
 boot();
 

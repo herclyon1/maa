@@ -30,9 +30,12 @@
 
    How it is obtained: the end of the subtitle names the first non-empty list of the
    row's `origin` (采集 / 理智关卡 / 其它, the same order `origin.kind` is picked in;
-   plan §10), e.g. 「库存 354 · 需 136 · 采集」; one line. M4h (验收 09:18: on 折金票 the
-   ellipsis ate the origin): the origin is a tail that is never cut; when the line does
-   not fit, the counts before it take the ellipsis.
+   plan §10), e.g. 「库存 354 · 需 136 · 采集」. A subtitle wider than its column wraps and
+   the row grows by one sub line per extra line — nothing is cut (OPEN.md 08:44 item, the
+   data session's probe 09-23 17:18, remote-ref/tools/uiprobe-cellcfg/cellcfg.json:
+   UIListContentConfiguration subtitleCell() secondaryTextProperties.numberOfLines = 0;
+   only the sidebar cells are 1). Replaces M4c's one-line ellipsis and M4h's cut counts.
+   The line height is the page's own row (AX-35), not the probe cell's 20 pt.
 
    Entry (the 终末地 row is view.js's, owned by 界面): Stockpile.open() - pushes through
    view.js's global openPage (Nav.open when nav.js is loaded). */
@@ -70,9 +73,8 @@
 .stk-row{position:relative;height:var(--ios-row2-h)}
 .stk-row img,.stk-row .noimg{position:absolute;left:var(--ios-row2-icon-x);top:17px;width:var(--ios-row2-icon);height:var(--ios-row2-icon);object-fit:contain}
 .stk-row .t{position:absolute;left:var(--ios-row2-text-x);top:var(--ios-row2-title-top);right:calc(20px + var(--stk-vw, 0px));font-size:var(--ios-body-size);line-height:var(--ios-body-lh);color:var(--ios-label);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.stk-row .s{position:absolute;left:var(--ios-row2-text-x);top:var(--ios-row2-sub-top);right:calc(20px + var(--stk-vw, 0px));display:flex;font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);color:var(--ios-settings-subtitle);white-space:nowrap;overflow:hidden;font-variant-numeric:tabular-nums}
-.stk-row .s .n{min-width:0;overflow:hidden;text-overflow:ellipsis}
-.stk-row .s .o{flex:none;white-space:pre}
+.stk-row .s{position:absolute;left:var(--ios-row2-text-x);top:var(--ios-row2-sub-top);right:calc(20px + var(--stk-vw, 0px));font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);color:var(--ios-settings-subtitle);white-space:normal;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.stk-row .s .o{white-space:pre-wrap}
 .stk-row .v{position:absolute;right:20px;top:50%;transform:translateY(-50%);font-size:var(--ios-body-size);line-height:var(--ios-body-lh);color:var(--ios-secondary-label);white-space:nowrap;font-variant-numeric:tabular-nums}
 .stk-row:not(:last-child)::after{content:"";position:absolute;left:var(--ios-row2-text-x);right:20px;bottom:0;height:var(--ios-separator-h);background:var(--ios-separator)}
 .stk-foot{margin:0;padding:var(--ios-footer-text-top) 20px 0;font-size:var(--ios-footnote-size);line-height:var(--ios-footnote-lh);color:var(--ios-secondary-label)}
@@ -158,6 +160,9 @@
     // plan §4.2: text column (title and subtitle) max width = 400 − 83 − value width − 8 (--ios-value-gap); the value's
     // width is measured, not estimated from its character count
     for (const v of el.querySelectorAll(".stk-row .v")) v.parentNode.style.setProperty("--stk-vw", `calc(${v.getBoundingClientRect().width}px + var(--ios-value-gap))`);
+    // a wrapped subtitle (numberOfLines 0): the row grows by the extra lines (read after the value width is set, since it narrows the column)
+    for (const sub of el.querySelectorAll(".stk-row .s")) { const lh = parseFloat(getComputedStyle(sub).lineHeight), n = lh > 0 ? Math.max(1, Math.round(sub.getBoundingClientRect().height / lh)) : 1;
+      if (n > 1) sub.parentNode.style.height = `calc(var(--ios-row2-h) + ${n - 1} * var(--ios-sub-lh))`; else sub.parentNode.style.removeProperty("height"); }
     const b = el.querySelector("[data-act]");
     if (b) b.onclick = () => (b.dataset.act === "phone" ? toPhone() : load(true));
   }
