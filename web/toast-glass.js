@@ -1,0 +1,71 @@
+/* toast-glass.js — G8 (2号 2026-09-23): the toast's material = the backdrop of UIAccessibilityHUDView (NATIVE-GAP G8;
+   remote-ref/tools/uiprobe/uiprobe-subtree-g8-hud-{light,dark}.json: UICABackdropLayer scale .25, marginWidth 0, filters in array order)
+     luminanceCurveMap  inputAmount .75, inputValues (.9, .83, .925, .815) light / (.16, .26, .1, .1) dark
+     colorSaturate      inputAmount 1.5
+     colorBrightness    inputAmount .1 (light only; the dark layer has no brightness filter)
+     gaussianBlur       inputRadius 29.5, inputNormalizeEdges 1, inputDither 1
+   Formulas (decompiled, not sampled):
+     luminanceCurveMap  remote-ref/tools/lens/g8-luminance-curve.txt — Horner a = 3(v1−v2) + v3 − v0, b = 3(v0 − 2v1 + v2), c = 3(v1 − v0), d = v0;
+                        L = sat(dot(rgb, (.2125, .7154, .0721))) on straight colour, y = sat(((aL + b)L + c)L + d), rgb = mix(rgb, y, amount)
+     colorSaturate / colorBrightness  remote-ref/tools/lens/g8-saturate-brightness.txt — one 4×5 matrix: Rec.709 (.2126, .7152, .0722) saturation s,
+                        brightness = + b on straight R G B (the shader adds b·α to premultiplied colour)
+     gaussianBlur       QuartzCore GaussianBlurFilter::render 0x1c398ff24–0x1c398ff48: radius_px = inputRadius × *scale (the surface's px per point,
+                        nav-bar-scroll-formula.md §3.4b) × the layer's axis scale; Context::create_blur_surface_internal 0x1c3901f98–0x1c3901fac:
+                        the target variance = radius_px² (clamped ≤ 1e8) → σ = inputRadius in points. inputNormalizeEdges (atom 0x1a1, read at
+                        0x1c39900a0): colour ÷ blurred coverage — here feGaussianBlur then alpha forced to 1 (feComponentTransfer works on straight colour).
+   iOS WebKit takes no url() in backdrop-filter, so (as alert-glass.js) the glass is a still copy of #app under the toast carrying the SVG chain; the copy
+   is re-cloned each time the toast shows (view.js toast() sets textContent, which drops the glass → re-inserted by the observer before the frame paints).
+   Capture scale: the backdrop layer's scale .25 (probe kvc.scale) = the native backdrop is captured and blurred at a quarter of the screen's px per point and
+   drawn back up — the copy is laid out at scale(.25), filtered there (σ 29.5 × .25 in copy units = the native radius_px 29.5 × 3 × .25 = 22.1 px at 3×) and
+   scaled ×4 back; the filter also costs 1/16 of the pixels (D 21:5x: full resolution added ~40 ms to the appear frame).
+   Not built (标): inputDither (±½ LSB noise); the capture's downsample kernel (the page is rasterised small instead of box-filtered); the appear scale .95 → 1 also
+   scales the copy for its 0.1 s (the native backdrop samples the screen unscaled); the content layer's vibrantColorMatrix (the text over the material). */
+(function () {
+  const tt = document.getElementById("toast"); if (!tt) return;
+  const NS = "http://www.w3.org/2000/svg";
+  const MAT = { light: { amount: 0.75, values: [0.9, 0.83, 0.925, 0.815], saturate: 1.5, brightness: 0.1, radius: 29.5 },
+                dark: { amount: 0.75, values: [0.16, 0.26, 0.1, 0.1], saturate: 1.5, brightness: 0, radius: 29.5 } };
+  const theme = () => (matchMedia("(prefers-color-scheme: dark)").matches && document.documentElement.dataset.theme !== "light") || document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+  const sat = (x) => Math.max(0, Math.min(1, x));
+  const horner = ([v0, v1, v2, v3]) => [3 * (v1 - v2) + v3 - v0, 3 * (v0 - 2 * v1 + v2), 3 * (v1 - v0), v0];
+  const curve = (m) => { const [a, b, c, d] = horner(m.values); return (L) => sat(((a * L + b) * L + c) * L + d); };
+  const f5 = (v) => (+v.toFixed(6)).toString();
+  /* feComponentTransfer "table" is linear between its n values; 256 values = one per 8-bit input level, so every representable L lands on a node exactly */
+  const table = (fn) => Array.from({ length: 256 }, (_, i) => f5(fn(i / 255))).join(" ");
+  const satMatrix = (s, b) => { const w = [0.2126, 0.7152, 0.0722], r = (i) => [0, 1, 2].map((j) => f5(i === j ? w[j] + (1 - w[j]) * s : w[j] * (1 - s))).join(" ") + " 0 " + f5(b);
+    return [0, 1, 2].map(r).join("  ") + "  0 0 0 1 0"; };
+  const K = 0.25;   // UICABackdropLayer scale (uiprobe-subtree-g8-hud-{light,dark}.json kvc.scale), both themes
+  const MARGIN = (m) => Math.ceil(3 * m.radius);   // the blur's support beyond the toast (3σ, page units)
+  const glass = { layer: null, copy: null, up: null, theme: null, box: null };
+  const ensureFilter = (th) => { const m = MAT[th]; let svg = document.getElementById("toast-glass-svg");
+    if (!svg) { svg = document.createElementNS(NS, "svg"); svg.id = "toast-glass-svg"; svg.setAttribute("width", "0"); svg.setAttribute("height", "0"); svg.setAttribute("aria-hidden", "true"); svg.style.cssText = "position:absolute;width:0;height:0"; document.body.appendChild(svg); }
+    if (svg.dataset.theme === th) return svg.querySelector("filter"); svg.dataset.theme = th;
+    const lum = [0, 1, 2].map(() => ".2125 .7154 .0721 0 0").join("  ") + "  0 0 0 1 0", y = table(curve(m));
+    svg.innerHTML = `<filter id="toast-glass-f" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB" data-theme="${th}" data-margin="${MARGIN(m)}">`
+      + `<feColorMatrix in="SourceGraphic" type="matrix" values="${lum}" result="L"/>`
+      + `<feComponentTransfer in="L" result="Y"><feFuncR type="table" tableValues="${y}"/><feFuncG type="table" tableValues="${y}"/><feFuncB type="table" tableValues="${y}"/></feComponentTransfer>`
+      + `<feComposite in="SourceGraphic" in2="Y" operator="arithmetic" k1="0" k2="${f5(1 - m.amount)}" k3="${f5(m.amount)}" k4="0" result="curve"/>`
+      + `<feColorMatrix in="curve" type="matrix" values="${satMatrix(m.saturate, m.brightness)}" result="mat"/>`
+      + `<feGaussianBlur in="mat" stdDeviation="${m.radius * K}" result="blur"/>`
+      + `<feComponentTransfer in="blur"><feFuncA type="discrete" tableValues="1"/></feComponentTransfer></filter>`;
+    return svg.querySelector("filter"); };
+  /* the toast's untransformed box (translate 0 −50% and the appear scale act about its centre) in viewport coordinates */
+  const box = () => { const r = tt.getBoundingClientRect(), W = tt.offsetWidth, H = tt.offsetHeight; return { l: r.left + r.width / 2 - W / 2, t: r.top + r.height / 2 - H / 2, W, H }; };
+  const place = () => { if (!glass.copy) return; const main = document.getElementById("app"); if (!main) return; const b = box(), mr = main.getBoundingClientRect(), f = document.getElementById("toast-glass-f"); if (!f) return;
+    const ox = mr.left - b.l, oy = mr.top - b.t, M = +f.dataset.margin; glass.up.style.transform = `translate(${ox}px, ${oy}px) scale(${1 / K})`; glass.box = b;   // page point p → toast point ox + p (via the copy at K)
+    f.setAttribute("x", String((-ox - M) * K)); f.setAttribute("y", String((-oy - M) * K)); f.setAttribute("width", String((b.W + 2 * M) * K)); f.setAttribute("height", String((b.H + 2 * M) * K)); };
+  const build = () => { const main = document.getElementById("app"); if (!main) return; const th = theme(); ensureFilter(th); strip();
+    const mr = main.getBoundingClientRect(), ph = Math.max(mr.height, innerHeight + 200);
+    const page = main.cloneNode(true); page.removeAttribute("id"); page.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); page.querySelectorAll("canvas, .lens-clip, script, .menu, .menu-scrim, dialog").forEach((e) => e.remove());
+    page.className = "toast-glass-page"; page.setAttribute("aria-hidden", "true"); page.inert = true; page.style.cssText = `position:absolute;left:0;top:0;width:${mr.width}px;min-height:${ph}px;pointer-events:none;background:${getComputedStyle(document.body).backgroundColor};transform:scale(${K});transform-origin:0 0`;   // body's colour under #app (#app paints none)
+    const copy = document.createElement("div"); copy.className = "toast-glass-copy"; copy.style.cssText = `position:absolute;left:0;top:0;width:${mr.width * K}px;height:${ph * K}px;pointer-events:none;filter:url(#toast-glass-f)`; copy.appendChild(page);
+    const up = document.createElement("div"); up.className = "toast-glass-up"; up.style.cssText = "position:absolute;left:0;top:0;transform-origin:0 0;pointer-events:none"; up.appendChild(copy);
+    const layer = document.createElement("div"); layer.className = "toast-glass"; layer.setAttribute("aria-hidden", "true"); layer.appendChild(up);
+    tt.prepend(layer); glass.layer = layer; glass.copy = copy; glass.up = up; glass.theme = th; tt.classList.add("glass-read"); place(); };
+  const strip = () => { if (glass.layer) glass.layer.remove(); glass.layer = glass.copy = glass.up = glass.box = null; tt.classList.remove("glass-read"); };
+  /* showing = the .show class; view.js toast() rewrites textContent (the layer goes with it) and adds .show in the same task — both land in one observer call */
+  new MutationObserver(() => { const on = tt.classList.contains("show"); if (on && (!glass.layer || glass.layer.parentNode !== tt)) build(); }).observe(tt, { attributes: true, attributeFilter: ["class"], childList: true });
+  tt.addEventListener("transitionend", (e) => { if (e.target === tt && e.propertyName === "opacity" && !tt.classList.contains("show")) strip(); });   // hidden: drop the copy after the 0.1 s fade
+  addEventListener("resize", place); addEventListener("scroll", place, { passive: true });
+  window.ToastGlass = { MAT, K, horner, curve, satMatrix, theme, rebuild: build, get layer() { return glass.layer; }, get box() { return glass.box; } };
+})();
