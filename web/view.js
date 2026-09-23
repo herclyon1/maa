@@ -511,7 +511,7 @@ function render() {
     <div class="row"><label>页面版本<span class="hint">view.js 的 ?v= 戳；没有戳就是本地文件</span></label><span class="ro short" id="pagever">${pageVer}</span></div>
     <div class="row"><label>诊断记录<span class="hint">开着时页面按 ?diag 方式启动：底部一行几何数，分段控件每次操作后弹出记录，可复制 / 分享给我们</span></label>
       <span class="sw"><input type="checkbox" id="diagsw" ${diagOn ? "checked" : ""}><span></span></span></div>
-    <div class="acts"><button id="mklink">复制免输入链接</button></div>
+    <div class="acts"><button id="selfcheck" ${diagOn ? "" : "hidden"}>运行自检</button><button id="mklink">复制免输入链接</button></div>
     <p class="foot">把这条链接存成书签或加到主屏幕，以后打开就直接是控制台，
       再也不用填信箱和 PIN。链接里带着这两样，别转发给别人</p>
   </section>
@@ -1008,7 +1008,13 @@ function wire() {
     try { const q = new URLSearchParams(location.search); if (dsw.checked) q.set("diag", "1"); else q.delete("diag"); history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q.toString() : "") + location.hash); } catch (e) {}
     if (dsw.checked && !document.querySelector('script[src^="seg-frames-logger.js"]')) { const s = document.createElement("script"); s.src = "seg-frames-logger.js?v=20260923"; document.body.appendChild(s); }
     toast(dsw.checked ? "诊断记录已开：点任意控件都会记一份，出问题按右下角「就是这里」" : "诊断记录已关；下次打开页面不再记录", 4000);
+    const sc = $("#selfcheck"); if (sc) sc.hidden = !dsw.checked;
   };
+  /* 运行自检 (shown while 诊断记录 is on): the page restarts as ?accept=1 — index.html's head backs this phone's data up and keeps every command on the
+     phone, accept.js clicks through the page (a strip on top says so) and the result comes up in the 诊断记录 sheet for 复制 / 分享. The #k= link part is
+     dropped: the mailbox settings are in the backup. */
+  const sc = $("#selfcheck");
+  if (sc) sc.onclick = () => { const q = new URLSearchParams(location.search); q.delete("diag"); q.set("accept", "1"); location.href = location.pathname + "?" + q.toString(); };
   const mk = $("#mklink");
   if (mk) mk.onclick = async () => {
     const url = myLink();
@@ -2350,10 +2356,20 @@ applyTheme();
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 /* 诊断记录 sheet: the frame recorder (seg-frames-logger.js, 2号) writes a record after each segmented-control gesture and dispatches "segframes" with it —
-   the phone cannot hand us localStorage, so the record is offered for copy / share right there (验收 09-19 20:0x, user's Android phone). */
-function showDiagSheet(rec) {
+   the phone cannot hand us localStorage, so the record is offered for copy / share right there (验收 09-19 20:0x, user's Android phone).
+   真机自检 (WORKLIST P3, D31): the same sheet carries accept.js's result — a run started from 运行自检 dispatches "arkaccept" with the whole ark-accept
+   object when it ends, and 关闭 then restarts the page without ?accept (index.html's head puts this phone's own data back). Every frame record also
+   carries selfcheck = this phone's last run (time, page, totals, the failing rows; null = never run here), so a record shared later still says it. */
+function lastSelfcheck() {
+  try { const a = JSON.parse(lastSelfcheck.src() || "null"); if (!a || !Array.isArray(a.rows)) return null;
+    return { at: a.at, href: a.href, viewport: a.viewport, standalone: a.standalone, dark: a.dark, total: a.total, fails: a.fails, failRows: a.rows.filter((r) => !r.ok) }; }
+  catch (e) { return { error: String(e && e.message || e) }; }
+}
+lastSelfcheck.src = () => localStorage.getItem("ark-accept");   // accept-selfcheck.js swaps this: a fake result in ark-accept itself is what a runner polls for
+function showDiagSheet(rec, kind) {
   const sh = $("#diagsheet"); if (!sh || !rec) return;
-  let json = ""; try { json = JSON.stringify(rec); } catch (e) { json = String(rec); }
+  const self = kind === "accept", out = self ? rec : Object.assign({}, rec, { selfcheck: lastSelfcheck() });
+  let json = ""; try { json = JSON.stringify(out); } catch (e) { json = String(out); }
   const kb = Math.round(json.length / 1024 * 10) / 10, fr = Array.isArray(rec.frames) ? rec.frames.length : "?";
   /* 件 C (2026-09-23): the record uploads itself; the sheet says where it got to, so a failure is never silent. `upload.state`:
      sent = 已在桶里, kept = 还在这台手机里（原因在 detail）, failed = 连存都没成。The line updates live on "segframes-upload". */
@@ -2361,15 +2377,20 @@ function showDiagSheet(rec) {
   const ctl = rec.control && (rec.control.label || rec.control.path) ? `点的是「${rec.control.label || rec.control.path}」。` : "";
   const mk = Array.isArray(rec.marks) && rec.marks.length ? `你标了 ${rec.marks.length} 处（${rec.marks.map((m) => m.word || "未选词").join("、")}）。` : "";
   const msg = () => `${ctl}${mk}一份 JSON，${kb} KB，${fr} 帧。${upWord(rec.upload)}。送不到时复制后粘到聊天里，或用分享发出。`;
-  $("#diagsheet-m").textContent = msg();
-  showDiagSheet._live = (r) => { if (!sh.hidden && r && r.record_id === rec.record_id) { rec.upload = r.upload; rec.marks = r.marks; $("#diagsheet-m").textContent = msg(); } };
+  $("#diagsheet-t").textContent = self ? "自检结果" : "诊断记录已生成";
+  $("#diagsheet-m").textContent = self ? `通过 ${rec.total - rec.fails} / ${rec.total}，不通过 ${rec.fails} 项。一份 JSON，${kb} KB。复制后粘到聊天里，或用分享发出；关闭后页面重新打开，换回你自己的数据。` : msg();
+  showDiagSheet._live = self ? null : (r) => { if (!sh.hidden && r && r.record_id === rec.record_id) { rec.upload = r.upload; rec.marks = r.marks; $("#diagsheet-m").textContent = msg(); } };
   const share = $("#diagsheet-share"); share.hidden = !(navigator.share && (!navigator.canShare || navigator.canShare({ text: "x" })));
   $("#diagsheet-copy").onclick = async () => { try { await navigator.clipboard.writeText(json); toast("已复制整份记录"); } catch (e) { toast("复制失败：" + (e && e.message ? e.message : e), 4000); } };
-  share.onclick = async () => { try { await navigator.share({ title: "诊断记录", text: json }); } catch (e) { if (!(e && e.name === "AbortError")) toast("分享失败：" + (e && e.message ? e.message : e), 4000); } };
-  $("#diagsheet-close").onclick = () => { sh.hidden = true; };
+  share.onclick = async () => { try { await navigator.share({ title: self ? "自检结果" : "诊断记录", text: json }); } catch (e) { if (!(e && e.name === "AbortError")) toast("分享失败：" + (e && e.message ? e.message : e), 4000); } };
+  $("#diagsheet-close").onclick = () => { sh.hidden = true;
+    if (self) { const q = new URLSearchParams(location.search); q.delete("accept"); location.replace(location.pathname + (q.toString() ? "?" + q.toString() : "")); } };
   sh.hidden = false;
 }
 addEventListener("segframes", (e) => showDiagSheet(e.detail || window.__segFrames));
+addEventListener("arkaccept", (e) => showDiagSheet(e.detail, "accept"));
+try { if (sessionStorage.getItem("ark-accept-cut")) { sessionStorage.removeItem("ark-accept-cut"); setTimeout(() => toast("自检中途切到了别处，没跑完；本机数据已换回。要结果就再点一次「运行自检」，跑完前别离开这页", 8000), 1200); } } catch (e) {}
+if (window.__acceptRestoreErr) setTimeout(() => toast("自检后换回本机数据没成：" + window.__acceptRestoreErr + "。备份还在，下次打开再试", 8000), 1200);
 /* light records (件 A: any control, many per session) do not open the sheet — the recorder's own line reports them; these two only refresh a sheet that is already open */
 addEventListener("segframes-upload", (e) => { if (showDiagSheet._live) showDiagSheet._live(e.detail); });
 addEventListener("segframes-mark", (e) => { if (showDiagSheet._live) showDiagSheet._live(e.detail); });

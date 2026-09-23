@@ -134,10 +134,10 @@
            r 22); the harness numbers (README §0.8.14) are the Mac's, the device's saturation is the phone's to read */
         if (g && g.lens.stats.labMode) { const st = g.lens.stats; const okS = Array.isArray(st.labelStages) && st.labelStages.join(",") === "-8.8,7.04,-17.5,11.2";
           check("分段 WebGL R37：标签复本场在着色器里按式逐像素算（closed；?gllab=map 回贴图）、两级键 = 读数、胶囊 r 22", "closed · −8.8/7.04,−17.5/11.2 · r 22", `${st.labMode} · ${(st.labelStages || []).join("/")} · r ${st.rmax}`, st.labMode === "closed" && okS && st.rmax === 22);
-          /* R38a: the element SDF of the label field — QuartzCore's supercircle branch (§7 ② / §7b (a′)) is in the shader behind ?glsdf=super / opts.labelSdf; the
-             default stays the capsule (待澄清: on the label stages the supercircle takes the end ink 81 → 79 % in the closed form, the native is 68 %) */
+          /* R38a / NATIVE-GAP G25: the element SDF of the label field is QuartzCore's supercircle branch by default (§7b (a′): equal radii → image function 21);
+             ?glsdf=circle / opts.labelSdf "circle" = the capsule as an instrument. The 81 → 79 % end ink vs the native 68 % was the unbuilt lifted state (R38c / R38d, §7e–§7g) */
           const fs1 = (window.LensWebGL && LensWebGL.FS1) || "";
-          check("分段 WebGL R38a：超圆 SDF（1.528665·r、clamp sat(2.89158·(1 − hs/r))、poly 五次）在着色器里，默认 circle（?glsdf=super 切）", "circle · sdfSuper 在", `${st.labelSdf} · ${/sdfSuper/.test(fs1) && /1\.528665/.test(fs1) && /2\.89158/.test(fs1) && /0\.268531/.test(fs1) ? "sdfSuper 在" : "缺"}`, st.labelSdf === "circle" && /sdfSuper/.test(fs1) && /1\.528665/.test(fs1) && /2\.89158/.test(fs1) && /0\.268531/.test(fs1));
+          check("分段 WebGL R38a：超圆 SDF（1.528665·r、clamp sat(2.89158·(1 − hs/r))、poly 五次）在着色器里，默认 super（?glsdf=circle 切回胶囊）", "super · sdfSuper 在", `${st.labelSdf} · ${/sdfSuper/.test(fs1) && /1\.528665/.test(fs1) && /2\.89158/.test(fs1) && /0\.268531/.test(fs1) ? "sdfSuper 在" : "缺"}`, st.labelSdf === "super" && /sdfSuper/.test(fs1) && /1\.528665/.test(fs1) && /2\.89158/.test(fs1) && /0\.268531/.test(fs1));
           /* R38″ (§5d): the portal composite's three items do nothing to the copy — here the copy term lab(ql)·Ml·B carries no DestOut (u_pd acts on the source labels in the
              backdrop copy only) and no opacity factor */
           const lcLine = (fs1.match(/vec4 lc = [^;]+;/) || [""])[0], bgcLine = (fs1.match(/vec4 bgc = [^;]+;/) || [""])[0];
