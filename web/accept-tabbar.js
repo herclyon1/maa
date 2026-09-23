@@ -63,7 +63,8 @@
     /* ⑤ template */
     check("手势后 .plat 是同一节点（未重建）", "同", nav.querySelector(".plat") === plat0 ? "同" : "新节点", nav.querySelector(".plat") === plat0);
     const selB = bs.find((b) => b.classList.contains("on")); const sr = selB.getBoundingClientRect(), sx = sr.left + sr.width / 2, sy = sr.top + sr.height / 2;
-    ev(selB, "pointerdown", sx, sy, 5); await new Promise((r) => requestAnimationFrame(r)); const Ls = window.__tabLens; const dSel = await waitClass("lift-sel", 600);
+    ev(selB, "pointerdown", sx, sy, 5); let Ls = null; for (let k = 0; k < 4 && !Ls; k++) { await new Promise((r) => requestAnimationFrame(r)); Ls = window.__tabLens; }   // V1c: like the first press (≤ 4 frames) — tab-lens.js skips a rAF stamped at / before its start (`now <= last`), so one rAF read null 4/40 (main f548aca) · 6/40 (92909d1), two rAF 0/130
+    const dSel = await waitClass("lift-sel", 600);
     check("R59′d 按下已选中项：驱动器同样在按下后即抬（不等 +125 的 .lift-sel 类，该令牌作废 = 录像口径）", "驱动在 · p 升", Ls ? `驱动在 · p ${Ls.p.toFixed(3)} · 类 ${dSel === null ? "没到" : "+" + Math.round(dSel) + " ms"}` : "无驱动", !!Ls && Ls.phase !== "rm");
     await sleep(150); const hiddenDesc = Object.getOwnPropertyDescriptor(Document.prototype, "hidden"); Object.defineProperty(document, "hidden", { configurable: true, get: () => true });
     document.dispatchEvent(new Event("visibilitychange", { bubbles: true })); await sleep(30);
