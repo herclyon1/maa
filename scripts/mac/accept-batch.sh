@@ -7,7 +7,7 @@
 #   --full          the whole suite regardless of what changed
 #   --no-run        merge and report the scope only
 #   --gate <控件>[,…]  (BOARD A29, 2号's meeting4 knife) run by a worker in its own worktree before a self-merge: merge origin/night here (a
-#                   conflict = 不可合), refuse when the branch touches a shared file, run ?only=<控件> light + dark UNSHARDED, compare the row
+#                   conflict = 不可合), refuse a change to an A7 hook line (验收 adds those); a change to another shared file runs the WHOLE suite + attribute-red.py (A44 补), run ?only=<控件> light + dark UNSHARDED, compare the row
 #                   counts (its own tags only) with scripts/mac/accept-baseline.json — written by 验收's green whole-suite batch runs, read-only
 #                   here (2号 13:57 ③) — and the red rows
 #                   → prints 可合 / 不可合 + the reason, and on 可合 the commit's first line「?only=… 亮 a/b 暗 c/d @ night <sha>」. Exit 0 = 可合.
@@ -36,7 +36,37 @@ if [ -n "$GATE" ]; then
   if ! git merge -q --no-edit origin/night >/dev/null 2>&1; then echo "不可合：merge origin/night 冲突 — $(git diff --name-only --diff-filter=U | tr '\n' ' ')（别人文件里的冲突 → 停，等文件主；A29）"; git merge --abort 2>/dev/null; exit 2; fi
   NIGHT=$(git rev-parse --short origin/night)
   SCOPE=$(git diff --name-only origin/night HEAD | python3 "$W/scripts/mac/attribute-red.py" --scope)
-  [ "$SCOPE" = FULL ] && { echo "不可合：改动碰了共享文件（$(git diff --name-only origin/night HEAD | grep -E '^web/' | grep -vE '^web/accept-|^web/(motion|nav|nav-edge|sheet|menu|topbar|refresh|glassbtn|alert-glass|alert-prewarm|switch|tile|controls|seg-keys|seg-frames-logger)\.(js|css)$|^web/assets/lens/' | tr '\n' ' ')）→ 走验收整套（A29）"; exit 3; }
+  A7=$(git diff -U0 origin/night HEAD -- web/accept.js web/sw.js web/index.html scripts/mac/deploy-web.sh scripts/mac/stamp-shell.py | python3 -c "
+import sys, re
+f = ''; hits = []
+for l in sys.stdin:
+    if l.startswith('+++ b/'): f = l[6:].strip(); continue
+    if not l[:1] in '+-' or l.startswith(('+++', '---')): continue
+    if (f == 'web/accept.js' and 'ACCEPT.files' in l) or (f == 'web/sw.js' and 'SHELL' in l) \\
+       or (f == 'web/index.html' and re.search(r'<script[^>]*\\bsrc=|<link[^>]*stylesheet|\\.src\\s*=\\s*\\S+\\.js', l)) \\
+       or (f == 'scripts/mac/deploy-web.sh' and re.search(r'stamp|\\?v=', l)) or f == 'scripts/mac/stamp-shell.py':
+        hits.append(f)
+print(' '.join(sorted(set(hits))))")   # BOARD A7: the four hook lines only 验收 adds (A44 补 / meeting12d, D56)
+  [ -n "$A7" ] && { echo "不可合：改动碰了 A7 保留给验收的挂钩行（$A7）→ status 写一行要加什么，交验收合（A7 / A44 补）"; exit 3; }
+  if [ "$SCOPE" = FULL ]; then   # other shared files (view.js, tokens.css, index.html body …): the worker self-merges on the WHOLE suite + attribution (A44 补, D56)
+    echo "gate $BR @ night $NIGHT · 碰共享文件 $(git diff --name-only origin/night HEAD | grep -E '^web/' | tr '\n' ' ')→ 整套（亮暗，分片 ${ACCEPT_SHARD:-3}）+ 红行归属"
+    serve "$L"; T0=$(date +%s)
+    timeout "${ACCEPT_TIMEOUT:-900}" python3 "$W/scripts/mac/accept-run.py" "http://127.0.0.1:$PORT/?layer=$LAYER" both --shard "${ACCEPT_SHARD:-3}" --out "$OUT/accept-$L" > "$OUT/accept-$L-run1.log" 2>&1
+    kill $SRV 2>/dev/null
+    for th in light dark; do f="$OUT/accept-$L-$th.txt"; p=$(grep -c '^✓' "$f" 2>/dev/null); n=$(grep -c '^✗' "$f" 2>/dev/null)
+      [ "$((p + n))" = 0 ] && { echo "不可合：runner 无行（$th）— $(grep -m1 -E 'not ready|no result|failed' "$OUT/accept-$L-run1.log" | cut -c1-140)"; exit 4; }
+      case $th in light) P_light=$p; N_light=$n ;; dark) P_dark=$p; N_dark=$n ;; esac
+    done
+    ATTR=$(python3 "$W/scripts/mac/attribute-red.py" --base origin/night --ref "$BR=$(git rev-parse --short HEAD)" "$OUT/accept-$L-light.txt" "$OUT/accept-$L-dark.txt")
+    echo "$ATTR"
+    echo "?only=FULL 亮 $P_light/$((P_light + N_light)) 暗 $P_dark/$((P_dark + N_dark)) · $(( $(date +%s) - T0 )) s"
+    BAD=$(echo "$ATTR" | grep -E '^(归 |疑 |未定位)')   # red rows this branch can reach, or rows nobody can place → not mergeable; 记录不判 / 已记 rows go to the A16 register
+    [ -n "$BAD" ] && { echo "不可合：本分支能碰到的红行 $(echo "$BAD" | grep -c .) 条（见上）"; exit 1; }
+    echo "可合（整套，余下红行均为记录不判 / 已记）。"
+    echo "提交信首行：?only=FULL 亮 $P_light/$((P_light + N_light)) 暗 $P_dark/$((P_dark + N_dark)) @ night $NIGHT"
+    echo "下一步（A29）：git push origin HEAD:night（被拒 = 别人刚推过 → 回到本闸重跑）→ status 一行；30 分钟内自己看一次 night 日常层"
+    exit 0
+  fi
   ONLY="$GATE"; for c in $(echo "$SCOPE" | tr ',' ' '); do echo ",$ONLY," | grep -q ",$c," || ONLY="$ONLY,$c"; done
   [ "$ONLY" != "$GATE" ] && echo "提示：分支还改了 $SCOPE，闸门按 $ONLY 跑"
   echo "gate $BR @ night $NIGHT · ?only=$ONLY（亮暗各一遍，不分片）"
@@ -62,7 +92,7 @@ print(' '.join(f'{k} {n.get(k,0)}<{v}' for k,v in b.items() if k in want and int
   if [ "$R" = 1 ]; then echo "不可合：$MSG"; exit 1; fi
   echo "可合。$MSG"
   echo "提交信首行：?only=$ONLY 亮 $P_light/$((P_light + N_light)) 暗 $P_dark/$((P_dark + N_dark)) @ night $NIGHT"
-  echo "下一步（A29）：status 写「准备自合 <件>」→ 10 分钟内无人写「等一下」→ git push origin HEAD:night → status 一行；30 分钟内自己看一次 night 日常层。"
+  echo "下一步（A29）：git push origin HEAD:night（被拒 = 别人刚推过 → 回到本闸重跑） → status 一行；30 分钟内自己看一次 night 日常层。"
   exit 0
 fi
 L="$1"; shift
