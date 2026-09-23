@@ -65,7 +65,7 @@ window.ACCEPT && ACCEPT.add(async (ctx) => {
   num("吸附曲线 = §2.8b 标准减速 1 − .998^ms：+100 ms 进度 .181", 1 - Math.pow(0.998, 100), T.snapProgress(100), 0.0005);
   num("吸附曲线：+500 ms 进度 .632（τ ≈ .5 s）", 1 - Math.pow(0.998, 500), T.snapProgress(500), 0.0005);
   num("吸附曲线：+2000 ms 进度 .982", 1 - Math.pow(0.998, 2000), T.snapProgress(2000), 0.0005);
-  check("吸附曲线无过冲（§2.8b；探针 11 % 过冲的表是栏高动画，BAR_P 只作记录）", "≤ 1", String(Math.max(T.snapProgress(300), T.snapProgress(3000))), T.snapProgress(3000) <= 1 && T.SNAP_R === 0.998);
+  check("吸附曲线无过冲（§2.8b；探针 11 % 过冲的表 = 带速松手越过顶边的回弹，不是栏高动画：G16 数据核 §2.8c，BAR_P 只作记录）", "≤ 1", String(Math.max(T.snapProgress(300), T.snapProgress(3000))), T.snapProgress(3000) <= 1 && T.SNAP_R === 0.998);
   /* pull-down stretch (2.7): clamp(1 + over/(dpr × screenH × .66), 1, 1.1) */
   check("拉过顶不缩放（§10b ③ 探针：大标题只随内容平移）：--tb-stretch 恒 1", "1", root.style.getPropertyValue("--tb-stretch"), root.style.getPropertyValue("--tb-stretch") === "1");
   check("大标题 transform 无缩放", "matrix(1, 0, 0, 1, 0, 0) 或 none", cs(h1).transform, cs(h1).transform === "none" || cs(h1).transform === "matrix(1, 0, 0, 1, 0, 0)");
@@ -99,7 +99,15 @@ window.ACCEPT && ACCEPT.add(async (ctx) => {
         const im = f && f.querySelector("feImage"), w = f && f.querySelector('feColorMatrix[result="w3"]'), p0 = f && f.querySelector('feBlend[result="p0"]'), sum = f && f.querySelector('feComposite[result="blur"]');
         const row = (i) => { const L = V.level(V.k * V.radius * base * V.maskR(i)); return [0, 1, 2, 3].map((kk) => Math.max(0, 1 - Math.abs(L - kk))); };
         const r204 = row(204), r383 = row(383);
-        check("口袋 模糊（R3″）：逐行权重图（feImage 1 × 384 data:png，R/G/B = 级 0/1/2 权，级 3 = 1 − 和）× 四级 multiply 后相加；行 204 = 全强、行 383 = 遮罩 .247", `img · w3 · p0 · sum · 204 [${r204.map((v) => v.toFixed(2)).join(",")}] · 383 [${r383.map((v) => v.toFixed(2)).join(",")}]`, `${im ? "img" : "-"} · ${w ? "w3" : "-"} · ${p0 ? "p0" : "-"} · ${sum ? "sum" : "-"} · L204 ${V.level(V.k * V.radius * base * V.maskR(204)).toFixed(3)} · L383 ${V.level(V.k * V.radius * base * V.maskR(383)).toFixed(3)}`, !!im && !!w && !!p0 && !!sum && (im.getAttribute("href") || "").startsWith("data:image/png") && Math.abs(r204.reduce((a, c) => a + c, 0) - 1) < 1e-6 && Math.abs(r383.reduce((a, c) => a + c, 0) - 1) < 1e-6 && V.maskR(204) === 1 && Math.abs(V.maskR(383) - 63 / 255) < 1e-6);
+        /* G17 / G31: the column is generated (§6d′ getter) from the probe-read ramp for this orientation; each generated column checked against the
+           probe's own image bytes (uiprobe-g17-pocketinfo-A.json col0: portrait Σ 80677 / last 255 at row 204 / rows 250, 300 = 229, 148; landscape Σ 67608 /
+           row 68 / rows 250, 300 = 134, 91; both end at 63) */
+        { const M = P.mask, pc = M.column(M.ramps.portrait), lc = M.column(M.ramps.landscape), cur = M.values, sum = (c) => c.reduce((x, v) => x + v, 0), top = (c) => c.lastIndexOf(255);
+          const got = `竖 Σ ${sum(pc)} · 顶 ${top(pc)} · 250/300 ${pc[250]}/${pc[300]} · 末 ${pc[383]}；横 Σ ${sum(lc)} · 顶 ${top(lc)} · 250/300 ${lc[250]}/${lc[300]} · 末 ${lc[383]}；当前 ${M.orient()}`;
+          check("口袋 遮罩（G17 / G31）：1 × 384 列按式生成（t = i/383、缓入缓出 .42/0/.58/1、×255 截断），坡 0 按方向取探针原值（竖 .5345 → 1、横 .1795 → 1，值 1 → .25）", "竖 Σ 80677 · 顶 204 · 250/300 229/148 · 末 63；横 Σ 67608 · 顶 68 · 250/300 134/91 · 末 63", got,
+            sum(pc) === 80677 && top(pc) === 204 && pc[250] === 229 && pc[300] === 148 && pc[383] === 63 && sum(lc) === 67608 && top(lc) === 68 && lc[250] === 134 && lc[300] === 91 && lc[383] === 63 && cur.length === 384 && cur.every((v, i) => v === (M.orient() === "landscape" ? lc : pc)[i])); }
+        const rTop = P.mask.orient() === "landscape" ? 68 : 204;
+        check("口袋 模糊（R3″）：逐行权重图（feImage 1 × 384 data:png，R/G/B = 级 0/1/2 权，级 3 = 1 − 和）× 四级 multiply 后相加；行 204 = 全强、行 383 = 遮罩 .247", `img · w3 · p0 · sum · 204 [${r204.map((v) => v.toFixed(2)).join(",")}] · 383 [${r383.map((v) => v.toFixed(2)).join(",")}]`, `${im ? "img" : "-"} · ${w ? "w3" : "-"} · ${p0 ? "p0" : "-"} · ${sum ? "sum" : "-"} · L204 ${V.level(V.k * V.radius * base * V.maskR(204)).toFixed(3)} · L383 ${V.level(V.k * V.radius * base * V.maskR(383)).toFixed(3)}`, !!im && !!w && !!p0 && !!sum && (im.getAttribute("href") || "").startsWith("data:image/png") && Math.abs(r204.reduce((a, c) => a + c, 0) - 1) < 1e-6 && Math.abs(r383.reduce((a, c) => a + c, 0) - 1) < 1e-6 && V.maskR(rTop) === 1 && V.maskR(rTop + 1) < 1 && Math.abs(V.maskR(383) - 63 / 255) < 1e-6);
         const fr = f && { x: +f.getAttribute("x"), y: +f.getAttribute("y"), w: +f.getAttribute("width"), h: +f.getAttribute("height") }, imy = im ? +im.getAttribute("y") : NaN, imh = im ? +im.getAttribute("height") : NaN;
         check("口袋 模糊（R3″）：滤镜区与权重图跟着口袋走（复本坐标 y = scrollY − top0，高 = 口袋高）", `img y = scrollY − top0 = ${(window.scrollY - P.top0).toFixed(1)} · h ${el.offsetHeight}`, `img y ${imy} h ${imh} · region ${fr ? `${fr.y}…${fr.y + fr.h}` : "-"}`, !!fr && imh === el.offsetHeight && Math.abs(imy - (window.scrollY - P.top0)) < 0.01 && fr.y <= imy && fr.y + fr.h >= imy + imh);
         check("口袋 模糊（R3″）：inputFade = 1 的淡出项 saturate((r − .02)/.08) 对本遮罩每行 = 1（最小 r = 1.6·2·base·.247 ≥ .1）→ 不缩 alpha", "≥ .1", `min r ${(V.k * V.radius * base * 63 / 255).toFixed(3)}`, V.k * V.radius * base * 63 / 255 >= 0.1);
@@ -123,18 +131,30 @@ window.ACCEPT && ACCEPT.add(async (ctx) => {
       window.scrollTo(0, y1); await frame(); } }
   /* I3 (acceptance 09-23 08:54): after a field focus / the keyboard the page never rests with the large title part-way under the bar. view.js target(h, base):
      scrollRectToVisible (the least scroll that shows the field, none when it shows) from the scroll at focus, then 2.8's resting point that keeps it shown */
-  const fi = document.querySelector('#app input[type="text"], #app input[data-time], #app input[inputmode]');
-  if (fi && typeof window.__kbdTarget === "function") {
-    const y2 = window.scrollY; fi.focus({ preventScroll: true }); const rows = []; let bad = 0, skipped = 0;
-    for (const K of [120, 200, 260, 320, 400, 520, innerHeight]) for (const b of [0, 10, 30, p - 5]) {
-      window.scrollTo(0, b); await sleep(20); const t = window.__kbdTarget(K, b); if (t == null) continue;
-      /* a visible height with no room for the field between the bar and the keyboard (K − 8 − (bar bottom + 8) < field height) is not a state any scroll
-         can satisfy: on a notched phone the bar ends at 116 (safe area 62 + 54, 模拟器 B), so K 120 leaves −4 pt — 老网页's 0fe960c run on 模拟器 A
-         reported exactly those four K120 rows; skipped and counted, not judged */
-      if (K - 8 - (document.querySelector("#topbar").getBoundingClientRect().bottom + 8) < fi.getBoundingClientRect().height) { skipped++; continue; }
-      const r = fi.getBoundingClientRect(), a = r.top - (t - window.scrollY), z = r.bottom - (t - window.scrollY), lo = document.querySelector("#topbar").getBoundingClientRect().bottom + 8;
-      const mid = t > 0.5 && t < p - 0.5, hid = a < lo - 0.5 || z > K - 8 + 0.5; if (mid || hid) { bad++; if (rows.length < 4) rows.push(`K${K}/b${Math.round(b)}→${t.toFixed(1)}${mid ? " 半截" : ""}${hid ? " 字段看不见" : ""}`); } }
-    window.scrollTo(0, 0); await sleep(20); const b0 = fi.getBoundingClientRect().bottom < innerHeight - 8 ? window.__kbdTarget(innerHeight, 0) : 0; fi.blur(); window.scrollTo(0, y2); await sleep(60);
-    check("I3 键盘 / 聚焦后停点：大标题不停在半截（0 或 ≥ p），字段在栏底与键盘之间（scrollRectToVisible 最少滚动 + 2.8 停点）", "0 处违例", (bad ? rows.join(" · ") : "0 处违例") + (skipped ? `（${skipped} 组可见高放不下字段，不核）` : ""), bad === 0);
-    check("I3 字段本来就看得见：不滚（scrollRectToVisible「already visible → does nothing」）", "0", String(b0), b0 === 0 || b0 == null); }
+  /* 顶栏红 (老网页 09-23, simulator A): the first matching field was often inside a hidden section (#efuntil, rect 0 × 0) — focus() fails, __kbdTarget
+     returns null for every K and the row passed with nothing judged; and K 120 under a 62-pt safe area leaves no room at all (bar bottom 116 + 8 >
+     120 − 8): no scroll can show a field there, so it is not a case, not a violation. Now: the first visible page field plus two probe fields (the top
+     and the end of #app) are judged; a K whose band (K − 8) − (bar bottom + 8) is shorter than the field is listed as unreachable; judging nothing fails. */
+  if (typeof window.__kbdTarget === "function") {
+    const app = document.getElementById("app"), y2 = window.scrollY, rows = [], skip = new Set(); let bad = 0, judged = 0;
+    const mk = (where) => { const e = document.createElement("input"); e.type = "text"; e.inputMode = "numeric"; e.dataset.acceptProbe = "i3"; e.style.cssText = "display:block;width:120px;height:44px;margin:8px 16px"; where === "top" ? app.prepend(e) : app.append(e); return e; };
+    const pick = () => [...app.querySelectorAll('input[type="text"], input[data-time], input[inputmode]')].find((e) => !e.dataset.acceptProbe && e.getClientRects().length && e.getBoundingClientRect().height > 0);
+    const real = pick(), probes = [];
+    /* each field is (re)made right before it is focused, one retry, and a failure says why (in the tree or detached / what holds the focus):
+       the full run on simulator A (d432d52) had one probe 「聚焦失败」 with the probes made up front */
+    const get = (w) => (w === "page" ? pick() : (() => { const e = mk(w); probes.push(e); return e; })());
+    for (const w of (real ? ["page"] : []).concat(["top", "end"])) { let fi = get(w); fi && fi.focus({ preventScroll: true });
+      if (!fi || document.activeElement !== fi) { fi = get(w); fi && fi.focus({ preventScroll: true }); }
+      if (!fi || document.activeElement !== fi) { const ae = document.activeElement; rows.push(`${w} 字段聚焦失败（${!fi ? "无" : fi.isConnected ? "在树" : "已脱树"} · 焦点在 ${ae ? ae.tagName + (ae.id ? "#" + ae.id : "") : "无"}）`); bad++; continue; }
+      for (const K of [120, 200, 260, 320, 400, 520, innerHeight]) for (const b of [0, 10, 30, p - 5]) {
+        window.scrollTo(0, b); await sleep(20); const lo = document.querySelector("#topbar").getBoundingClientRect().height + 8, fh = fi.getBoundingClientRect().height;
+        if (K - 8 - lo < fh) { skip.add(K); continue; }
+        const t = window.__kbdTarget(K, b); if (t == null) continue; judged++;
+        const r = fi.getBoundingClientRect(), a = r.top - (t - window.scrollY), z = r.bottom - (t - window.scrollY);
+        const mid = t > 0.5 && t < p - 0.5, hid = a < lo - 0.5 || z > K - 8 + 0.5; if (mid || hid) { bad++; if (rows.length < 4) rows.push(`${w} K${K}/b${Math.round(b)}→${t.toFixed(1)}${mid ? " 半截" : ""}${hid ? " 字段看不见" : ""}`); } }
+      fi.blur(); }
+    probes.forEach((e) => e.remove()); window.scrollTo(0, y2); await sleep(60);
+    check(`I3 键盘 / 聚焦后停点：大标题不停在半截（0 或 ≥ p），字段在栏底与键盘之间（scrollRectToVisible 最少滚动 + 2.8 停点）；判 ${judged} 处（${real ? "页字段 + " : ""}探针字段 2）${skip.size ? `，K ${[...skip].join(" / ")} 带宽容不下字段不判` : ""}`, "0 处违例 · 判 > 0", bad ? rows.join(" · ") : `0 处违例 · 判 ${judged}`, bad === 0 && judged > 0);
+    const fi = real || null; if (fi) { window.scrollTo(0, 0); await sleep(20); fi.focus({ preventScroll: true }); const b0 = document.activeElement === fi && fi.getBoundingClientRect().bottom < innerHeight - 8 && fi.getBoundingClientRect().top > document.querySelector("#topbar").getBoundingClientRect().height + 8 ? window.__kbdTarget(innerHeight, 0) : 0; fi.blur(); window.scrollTo(0, y2); await sleep(60);
+      check("I3 字段本来就看得见：不滚（scrollRectToVisible「already visible → does nothing」）", "0", String(b0), b0 === 0 || b0 == null); } }
 });

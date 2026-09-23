@@ -1,0 +1,669 @@
+{
+ "mode": "formula",
+ "label": "反编译原值（公式 + 探针参数）",
+ "formula": {
+  "map": "glass-displacement-formula.md §1 sdf_glass_displacement: e = d + effectOffset; t = saturate(−e/H); P = mix(t<1 ? 0.7071 : 1, sqrt(1 − (1−t)²), curvature); D = R(angle)·g·(1 − P); coverage = saturate((−e − maskOffset)/fwidth + .5)",
+  "filter": "§2 displacement_map: out(p) = src(p + amount·D(p)) × coverage, amount in layer pt (negative = towards the inside of the shape)",
+  "glass_background": "§3 inner refraction: t = saturate(−d/H); amt = amount·(1 − sqrt(t(2 − t))) = the same profile; sampled before the layers below it",
+  "sdf": "§3 compute_sdf_with_mode: d = rounded-rectangle SDF (the supercircle degenerates to it at r = h/2); g = normalize(mix(box normal, normalize((x, hw·y/hh)), gradientOvalization))",
+  "composition": "layers in sampling order, u(p) = Δ₁(p) + Δ₂(p + Δ₁(p)) (content shown at p lies at p + u; validate2.py, glass-displacement-formula.md §5)"
+ },
+ "parameters": {
+  "backdrop": "-11.5/6.9/0.5/lens,9/36/0.5/lens",
+  "label": "-17.5/11.2/0.5/lens",
+  "curvature": 1,
+  "angle": 0,
+  "effectOffset": 0,
+  "maskOffset": 0,
+  "gradientOvalization": 0.5,
+  "sources": {
+   "amounts / SDF heights": "seg-lens-refraction.md §1b 表 1 (A9 in-process: #12 BackdropView height 36, displacementMap +9; #18 ClearGlass 11.2 / −17.5; #30 ContentLensing 7.04 / −8.8), §0",
+   "glass_background inner refraction −6.6 / 4.4": "seg-lift-material.md §2 glassBackground keys; glass-displacement-formula.md §4",
+   "gradientOvalization 0.5, cornerRadii 22, effectOffset 0, maskOffset 0, curvature 1, angle 0": "seg-lens-refraction.md §1b 表 1 #13 / #19 (原值)",
+   "which layer acts on what": "seg-lens-refraction.md §1b 表 3 (switch test: page content only through BackdropView; the label copy through ClearGlass then ContentLensing); the ContentLensing element taken as the lens capsule (监督局 05:0x after the old page's recomputation: the 196×28 rectangle gives rms 1.37 inside the portal)",
+   "sampling order": "the outer layer samples first: ContentLensing's image is portal #32 (196×28) showing the ClearGlass layer, whose image is the capsule-clipped segment content (formula.md §2, §1b 表 2) → u = Δ_L(p) + Δ_C(p + Δ_L(p)); the other order (validate_label.py) differs ≤ 0.1 rms inside the portal (verification → *_reversed_order)",
+   "sampling / source rules": "formula.md §2 + §4b (final structure): clamp_to_edge (the sample position is clamped to the stage's texture box; BackdropView marginWidth 0 → no content beyond its 220×44 frame, the edge column is replicated), clip first then displace (portal #20 clips the segment content to the r22 capsule before ClearGlass; portal #32 (ContentLensing's source) does NOT clip, masksToBounds 0 — the label stack acts on the whole lens), output × the effect shape's coverage (the map's B channel, applied by feComposite)",
+   "glass_background SDF shape / ovalization": "the filter layer's own bounds + corner radii (监督局 05:0x); its ovalization is not read by the probe — the old page's residual table (rms 0.12–0.16) uses 0.5 on both backdrop layers, kept here"
+  }
+ },
+ "encoding": {
+  "device_px": 3.0,
+  "coverage_aa": "cov = saturate(.5 − d/fw), fw = 1 device px = 1/device_px pt (formula.md §4b.1 D)",
+  "clamp": "the sample position is clamped to the last texel centre of the stage's texture (½ device px inside the box) then clamp_to_edge (formula.md §4b.1 A)",
+  "engine_fix_pt": 0.0,
+  "engine_fix": "引擎校正: WebKit's feDisplacementMap applies negative values one device pixel short (calib/: Mac 2× ½ px, iOS simulator 3× ⅓ px), positive rounded up; the correction is applied AT PAGE LOAD by lens-engine-fix.js (default on, k = 1/devicePixelRatio: every negative R/G byte −k·255/S, blob: copies, files untouched); --engine-fix <pt> bakes the same into the files for a static build (default 0 = not baked); README §0.4",
+  "scale": "per set: sets[w].S — 40 where the scaled stack fits ±20 pt, 48 for the widest stretch sets; the filter element carries data-s",
+  "px_per_pt": 2,
+  "bytes": "R = 128 + round(u_x·255/S), G = same for u_y, B = shape coverage (255 inside, anti-aliased edge), A 255; u = content − screen (pt, +x right, +y down); the browser decodes S·(byte/255 − .5) = u + S/510",
+  "channels": "one map for all three colour channels (no dispersion)"
+ },
+ "sets": {
+  "38": {
+   "h": 24.68,
+   "scale": [
+    0.6552,
+    0.6439
+   ],
+   "S": 40.0,
+   "layer_pt": [
+    38.0,
+    24.68
+   ],
+   "map_px": [
+    76,
+    49
+   ],
+   "h_source": "lift path 37×24 → 58×38.3333 (both dimensions on the same curve, model bounds)",
+   "frames": [],
+   "label_portal_pt": "0",
+   "ab": "sw-f-ab-38.png",
+   "ab_files": [
+    "sw-f-ab-38.png"
+   ],
+   "abl_files": [
+    "sw-f-ab-38.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "sw-f-abe-38-l.png",
+    "sw-f-abe-38-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
+   "peak_ab_pt": 0.0,
+   "S_ab": 12.0,
+   "bg": "sw-f-bg-38.png",
+   "lab": "sw-f-lab-38.png",
+   "peak_bg_pt": 8.86,
+   "peak_lab_pt": 17.11,
+   "bytes": 6927,
+   "model": [
+    38.0,
+    24.68
+   ],
+   "lift_path": true,
+   "filters": [
+    "sw-lens-f-bg-38",
+    "sw-lens-f-lab-38",
+    "sw-lens-f-ab-38",
+    "sw-lens-f-ab-ir-38"
+   ]
+  },
+  "40": {
+   "h": 26.05,
+   "scale": [
+    0.6897,
+    0.6795
+   ],
+   "S": 40.0,
+   "layer_pt": [
+    40.0,
+    26.05
+   ],
+   "map_px": [
+    80,
+    52
+   ],
+   "h_source": "lift path 37×24 → 58×38.3333 (both dimensions on the same curve, model bounds)",
+   "frames": [],
+   "label_portal_pt": "0",
+   "ab": "sw-f-ab-40.png",
+   "ab_files": [
+    "sw-f-ab-40.png"
+   ],
+   "abl_files": [
+    "sw-f-ab-40.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "sw-f-abe-40-l.png",
+    "sw-f-abe-40-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
+   "peak_ab_pt": 0.0,
+   "S_ab": 12.0,
+   "bg": "sw-f-bg-40.png",
+   "lab": "sw-f-lab-40.png",
+   "peak_bg_pt": 8.86,
+   "peak_lab_pt": 17.12,
+   "bytes": 7386,
+   "model": [
+    40.0,
+    26.05
+   ],
+   "lift_path": true,
+   "filters": [
+    "sw-lens-f-bg-40",
+    "sw-lens-f-lab-40",
+    "sw-lens-f-ab-40",
+    "sw-lens-f-ab-ir-40"
+   ]
+  },
+  "42": {
+   "h": 27.41,
+   "scale": [
+    0.7241,
+    0.7151
+   ],
+   "S": 40.0,
+   "layer_pt": [
+    42.0,
+    27.41
+   ],
+   "map_px": [
+    84,
+    55
+   ],
+   "h_source": "lift path 37×24 → 58×38.3333 (both dimensions on the same curve, model bounds)",
+   "frames": [],
+   "label_portal_pt": "0",
+   "ab": "sw-f-ab-42.png",
+   "ab_files": [
+    "sw-f-ab-42.png"
+   ],
+   "abl_files": [
+    "sw-f-ab-42.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "sw-f-abe-42-l.png",
+    "sw-f-abe-42-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
+   "peak_ab_pt": 0.0,
+   "S_ab": 12.0,
+   "bg": "sw-f-bg-42.png",
+   "lab": "sw-f-lab-42.png",
+   "peak_bg_pt": 8.84,
+   "peak_lab_pt": 17.09,
+   "bytes": 7885,
+   "model": [
+    42.0,
+    27.41
+   ],
+   "lift_path": true,
+   "filters": [
+    "sw-lens-f-bg-42",
+    "sw-lens-f-lab-42",
+    "sw-lens-f-ab-42",
+    "sw-lens-f-ab-ir-42"
+   ]
+  },
+  "44": {
+   "h": 28.78,
+   "scale": [
+    0.7586,
+    0.7507
+   ],
+   "S": 40.0,
+   "layer_pt": [
+    44.0,
+    28.78
+   ],
+   "map_px": [
+    88,
+    58
+   ],
+   "h_source": "lift path 37×24 → 58×38.3333 (both dimensions on the same curve, model bounds)",
+   "frames": [],
+   "label_portal_pt": "0",
+   "ab": "sw-f-ab-44.png",
+   "ab_files": [
+    "sw-f-ab-44.png"
+   ],
+   "abl_files": [
+    "sw-f-ab-44.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "sw-f-abe-44-l.png",
+    "sw-f-abe-44-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
+   "peak_ab_pt": 0.0,
+   "S_ab": 12.0,
+   "bg": "sw-f-bg-44.png",
+   "lab": "sw-f-lab-44.png",
+   "peak_bg_pt": 8.98,
+   "peak_lab_pt": 17.15,
+   "bytes": 8381,
+   "model": [
+    44.0,
+    28.78
+   ],
+   "lift_path": true,
+   "filters": [
+    "sw-lens-f-bg-44",
+    "sw-lens-f-lab-44",
+    "sw-lens-f-ab-44",
+    "sw-lens-f-ab-ir-44"
+   ]
+  },
+  "46": {
+   "h": 30.14,
+   "scale": [
+    0.7931,
+    0.7863
+   ],
+   "S": 40.0,
+   "layer_pt": [
+    46.0,
+    30.14
+   ],
+   "map_px": [
+    92,
+    60
+   ],
+   "h_source": "lift path 37×24 → 58×38.3333 (both dimensions on the same curve, model bounds)",
+   "frames": [],
+   "label_portal_pt": "0",
+   "ab": "sw-f-ab-46.png",
+   "ab_files": [
+    "sw-f-ab-46.png"
+   ],
+   "abl_files": [
+    "sw-f-ab-46.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "sw-f-abe-46-l.png",
+    "sw-f-abe-46-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
+   "peak_ab_pt": 0.0,
+   "S_ab": 12.0,
+   "bg": "sw-f-bg-46.png",
+   "lab": "sw-f-lab-46.png",
+   "peak_bg_pt": 8.91,
+   "peak_lab_pt": 17.19,
+   "bytes": 8652,
+   "model": [
+    46.0,
+    30.14
+   ],
+   "lift_path": true,
+   "filters": [
+    "sw-lens-f-bg-46",
+    "sw-lens-f-lab-46",
+    "sw-lens-f-ab-46",
+    "sw-lens-f-ab-ir-46"
+   ]
+  },
+  "48": {
+   "h": 31.51,
+   "scale": [
+    0.8276,
+    0.8219
+   ],
+   "S": 40.0,
+   "layer_pt": [
+    48.0,
+    31.51
+   ],
+   "map_px": [
+    96,
+    63
+   ],
+   "h_source": "lift path 37×24 → 58×38.3333 (both dimensions on the same curve, model bounds)",
+   "frames": [],
+   "label_portal_pt": "0",
+   "ab": "sw-f-ab-48.png",
+   "ab_files": [
+    "sw-f-ab-48.png"
+   ],
+   "abl_files": [
+    "sw-f-ab-48.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "sw-f-abe-48-l.png",
+    "sw-f-abe-48-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
+   "peak_ab_pt": 0.0,
+   "S_ab": 12.0,
+   "bg": "sw-f-bg-48.png",
+   "lab": "sw-f-lab-48.png",
+   "peak_bg_pt": 8.9,
+   "peak_lab_pt": 17.18,
+   "bytes": 9008,
+   "model": [
+    48.0,
+    31.51
+   ],
+   "lift_path": true,
+   "filters": [
+    "sw-lens-f-bg-48",
+    "sw-lens-f-lab-48",
+    "sw-lens-f-ab-48",
+    "sw-lens-f-ab-ir-48"
+   ]
+  },
+  "50": {
+   "h": 32.87,
+   "scale": [
+    0.8621,
+    0.8576
+   ],
+   "S": 40.0,
+   "layer_pt": [
+    50.0,
+    32.87
+   ],
+   "map_px": [
+    100,
+    66
+   ],
+   "h_source": "lift path 37×24 → 58×38.3333 (both dimensions on the same curve, model bounds)",
+   "frames": [],
+   "label_portal_pt": "0",
+   "ab": "sw-f-ab-50.png",
+   "ab_files": [
+    "sw-f-ab-50.png"
+   ],
+   "abl_files": [
+    "sw-f-ab-50.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "sw-f-abe-50-l.png",
+    "sw-f-abe-50-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
+   "peak_ab_pt": 0.0,
+   "S_ab": 12.0,
+   "bg": "sw-f-bg-50.png",
+   "lab": "sw-f-lab-50.png",
+   "peak_bg_pt": 8.89,
+   "peak_lab_pt": 17.17,
+   "bytes": 9460,
+   "model": [
+    50.0,
+    32.87
+   ],
+   "lift_path": true,
+   "filters": [
+    "sw-lens-f-bg-50",
+    "sw-lens-f-lab-50",
+    "sw-lens-f-ab-50",
+    "sw-lens-f-ab-ir-50"
+   ]
+  },
+  "52": {
+   "h": 34.24,
+   "scale": [
+    0.8966,
+    0.8932
+   ],
+   "S": 40.0,
+   "layer_pt": [
+    52.0,
+    34.24
+   ],
+   "map_px": [
+    104,
+    68
+   ],
+   "h_source": "lift path 37×24 → 58×38.3333 (both dimensions on the same curve, model bounds)",
+   "frames": [],
+   "label_portal_pt": "0",
+   "ab": "sw-f-ab-52.png",
+   "ab_files": [
+    "sw-f-ab-52.png"
+   ],
+   "abl_files": [
+    "sw-f-ab-52.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "sw-f-abe-52-l.png",
+    "sw-f-abe-52-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
+   "peak_ab_pt": 0.0,
+   "S_ab": 12.0,
+   "bg": "sw-f-bg-52.png",
+   "lab": "sw-f-lab-52.png",
+   "peak_bg_pt": 8.92,
+   "peak_lab_pt": 17.21,
+   "bytes": 9717,
+   "model": [
+    52.0,
+    34.24
+   ],
+   "lift_path": true,
+   "filters": [
+    "sw-lens-f-bg-52",
+    "sw-lens-f-lab-52",
+    "sw-lens-f-ab-52",
+    "sw-lens-f-ab-ir-52"
+   ]
+  },
+  "54": {
+   "h": 35.6,
+   "scale": [
+    0.931,
+    0.9288
+   ],
+   "S": 40.0,
+   "layer_pt": [
+    54.0,
+    35.6
+   ],
+   "map_px": [
+    108,
+    71
+   ],
+   "h_source": "lift path 37×24 → 58×38.3333 (both dimensions on the same curve, model bounds)",
+   "frames": [],
+   "label_portal_pt": "0",
+   "ab": "sw-f-ab-54.png",
+   "ab_files": [
+    "sw-f-ab-54.png"
+   ],
+   "abl_files": [
+    "sw-f-ab-54.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "sw-f-abe-54-l.png",
+    "sw-f-abe-54-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
+   "peak_ab_pt": 0.0,
+   "S_ab": 12.0,
+   "bg": "sw-f-bg-54.png",
+   "lab": "sw-f-lab-54.png",
+   "peak_bg_pt": 8.95,
+   "peak_lab_pt": 17.24,
+   "bytes": 10150,
+   "model": [
+    54.0,
+    35.6
+   ],
+   "lift_path": true,
+   "filters": [
+    "sw-lens-f-bg-54",
+    "sw-lens-f-lab-54",
+    "sw-lens-f-ab-54",
+    "sw-lens-f-ab-ir-54"
+   ]
+  },
+  "56": {
+   "h": 36.97,
+   "scale": [
+    0.9655,
+    0.9644
+   ],
+   "S": 40.0,
+   "layer_pt": [
+    56.0,
+    36.97
+   ],
+   "map_px": [
+    112,
+    74
+   ],
+   "h_source": "lift path 37×24 → 58×38.3333 (both dimensions on the same curve, model bounds)",
+   "frames": [],
+   "label_portal_pt": "0",
+   "ab": "sw-f-ab-56.png",
+   "ab_files": [
+    "sw-f-ab-56.png"
+   ],
+   "abl_files": [
+    "sw-f-ab-56.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "sw-f-abe-56-l.png",
+    "sw-f-abe-56-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
+   "peak_ab_pt": 0.0,
+   "S_ab": 12.0,
+   "bg": "sw-f-bg-56.png",
+   "lab": "sw-f-lab-56.png",
+   "peak_bg_pt": 8.94,
+   "peak_lab_pt": 17.23,
+   "bytes": 10533,
+   "model": [
+    56.0,
+    36.97
+   ],
+   "lift_path": true,
+   "filters": [
+    "sw-lens-f-bg-56",
+    "sw-lens-f-lab-56",
+    "sw-lens-f-ab-56",
+    "sw-lens-f-ab-ir-56"
+   ]
+  },
+  "58": {
+   "h": 38.33,
+   "scale": [
+    1.0,
+    1.0
+   ],
+   "S": 40.0,
+   "layer_pt": [
+    58.0,
+    38.33
+   ],
+   "map_px": [
+    116,
+    77
+   ],
+   "h_source": "the lifted lens (58×38.3333)",
+   "frames": [],
+   "label_portal_pt": "0",
+   "ab": "sw-f-ab-58.png",
+   "ab_files": [
+    "sw-f-ab-58.png"
+   ],
+   "abl_files": [
+    "sw-f-ab-58.png"
+   ],
+   "abl_margin": 16.0,
+   "abe_files": [
+    "sw-f-abe-58-l.png",
+    "sw-f-abe-58-r.png"
+   ],
+   "abe_box_pt": 60.0,
+   "abe_visible_pt": 56.0,
+   "abe_reach_pt": 4.0,
+   "peak_ab_pt": 0.0,
+   "S_ab": 12.0,
+   "bg": "sw-f-bg-58.png",
+   "lab": "sw-f-lab-58.png",
+   "peak_bg_pt": 8.93,
+   "peak_lab_pt": 17.22,
+   "bytes": 11162,
+   "model": [
+    58.0,
+    38.33
+   ],
+   "lift_path": false,
+   "filters": [
+    "sw-lens-f-bg-58",
+    "sw-lens-f-lab-58",
+    "sw-lens-f-ab-58",
+    "sw-lens-f-ab-ir-58"
+   ]
+  }
+ },
+ "series": {
+  "widths": [
+   38,
+   40,
+   42,
+   44,
+   46,
+   48,
+   50,
+   52,
+   54,
+   56,
+   58
+  ],
+  "step": 2,
+  "height_source": "linear between the two nearest recorded drag frames (seg-native-abc-frames.json phase drag; uiprobe-motion-segdragmid-light.json lenstrace); outside the recorded range the nearest frame (flagged clamped)",
+  "shape": "the 220×44 r22 model lens scaled by (w/220, h/44) — seg-lens-refraction.md §1c(d): the flex scale sits on _UILiquidLensView's presentation transform alone, the layers below (SDF elements, portals 196×28, glass group) keep their model bounds; elliptical ends, the portal = scale × 196×28",
+  "total_bytes": 99261
+ },
+ "aberration": {
+  "map": "sw-f-ab-<w>.png: the lens box plus 16 pt on every side at 1 px/pt; R/G = the ratio-1 vector Δ₁ (pt) = amount · ((R(θ)g).y, (R(θ)g).x) · e(d) (§3b.3 direction with the lanes swapped; e = the edge factor, 1 at the edge → 0 at |EdgeStart| pt), B = e = the filter's band factor; own scale sets[w].S_ab (data-s on the fringe filter)",
+  "W_over_H": {
+   "applied_by": "the fringe filter's feColorMatrix #<fid>-wh (data-wh): R × W/H + ½(1 − W/H), G × H/W + ½(1 − H/W) — Δ = (W/H · Δ₁.x, H/W · Δ₁.y); the page sets it per frame (lens-test: whRule())",
+   "rule": "formula.md §3b.6: W × H = the foreground's capture box = the lens frame + marginWidth 100 (A9 #33) on every side, clamped to the screen — read at two positions of the 220×44 lens on the 440×956 screen: drag-mid x 110–330 → 10–430 = 420 × 244 → 1.72; lifted in place x 10–230 → 0–330 = 330 × 244 → 1.35; the value written into the SVG is the drag-mid 1.72 (the position of every verification frame)",
+   "written": 1.72,
+   "not_read": "the capture box of a STRETCHED lens (presentation transform ≠ 1) was not read; the page applies the same rule to the lens's screen frame"
+  },
+  "wrapper": "the chain filter sits on a wrapper of the lens box extended by 16 pt (overflow hidden), holding a plain copy of the page under the two displaced layers: the foreground's backdrop capture has marginWidth 100 (A9 #33), its outward taps read the page beyond the lens — with the lens box alone they read transparent and a saturated yellow ring appears",
+  "formula": "formula.md §3b glass_foreground_base: t_a = saturate((−d − offset)/height); amt_a = amount·(1 − sqrt(t_a(2 − t_a))); 7 taps k = 1, 2/3, 1/3 at +kΔ (R += r·k, G += g·(1−k)), k = 0, 1/3, 2/3, 1 at −kΔ (G += g·(1−k), B += b·k); out = (R/2, G/3, B/2); edge band out ×= 1 − op",
+  "parameters": {
+   "amount/height/offset/angle": "0/0/21.2963/-0.2618",
+   "edge start/end/opacity": "-7.6667/0/1/0",
+   "tap_direction_sign": 1.0,
+   "alpha_elem": 1.0,
+   "edr": 1.0,
+   "source": "seg-lens-refraction.md §1c(a) (A9 sdfdump, in-process): #33 glassForeground inputAberrationAmount 2.3158, inputAberrationAngle −0.2618 (−15°), inputAberrationHeight 0, inputEdgeStart −8.8, inputEdgeEnd 0, inputRefractionAmount 0 / Height 0 (no refraction term), layer opacity 1, normalBlendMode; the old page's '−15 / 20' were the angle in degrees and an unread height",
+   "mask": "the formula (§3b.2 %195–%199) with the lens's keys inputEdgeOpacityStart 1 / End 0: out ×= 1 − mix(1, 0, e) = e = saturate((d + 8.8)/8.8) → #seg-lens-f-ab-<w> (the test page's default); 1 − e (#seg-lens-f-ab-ir-<w>) is the record of the first reading",
+   "tap sides (sign +1)": "Δ = amt_a·R(angle)·g with amt_a = +2.3158 (no falloff) and g the outward gradient rotated by −15° → Δ points OUTWARD (rotated); R accumulates the taps at uv + kΔ (outward), B the taps at uv − kΔ (inward) — the data session's sdfset: angle + π ≡ amount negated, pixel-identical (seg-lens-drag-mid.md §6b(d)); sign −1 only for verification"
+  },
+  "shape": "the lens capsule with gradient ovalization 0.5 like the other stages — the foreground's SDF element and ovalization were not read (formula.md §3b: its element comes through a portal from the glass group)",
+  "mask_switch": "#seg-lens-f-ab-<w> = e (the formula, default); #seg-lens-f-ab-ir-<w> = 1 − e (record); test page ?ab=flip (default) | ir | 0",
+  "applies_to": "the wrapper of the two displaced layers (the foreground samples what lies below it inside the lens); test page ?ab=flip|ir|0"
+ },
+ "filter": {
+  "region": "the element's own box (objectBoundingBox 0/0/100%/100%), the map fills it",
+  "layer": "the lens box extended by 0 pt on every side (layer_pt of each set), overflow hidden, at −0/−0 inside the lens; the lens capsule clips it",
+  "requirement": "the source must extend past the lens: with the layer equal to the lens box the outward sampling at the edges reads transparent (1-px coloured lines along the long edges)",
+  "not_used": "userSpaceOnUse region + feImage subregion (Chrome only: WebKit renders nothing with them, and its objectBoundingBox region follows an overflowing child)"
+ },
+ "verification": {},
+ "sources": [
+  "remote-ref/glass-displacement-formula.md §1–§5",
+  "remote-ref/seg-lens-refraction.md §0, §1b, §2",
+  "remote-ref/tools/touch/seg-phase-*.json (comparison only)"
+ ]
+}
