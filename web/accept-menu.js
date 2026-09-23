@@ -26,6 +26,10 @@
       return target + e * (dx * Math.cos(wd * t) + ((v0 + zeta * w * dx) / wd) * Math.sin(wd * t)); };   // v0: the start velocity (0 for a morph from rest; the dismiss leaves the "in" rest with |v| < 1 pt/s, menu.js settled — v0 = 0 there read rms .01 = the tolerance, both clocks)
     const rms = (a) => Math.sqrt(a.reduce((s, v) => s + v * v, 0) / Math.max(1, a.length));
     const rect = (el) => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, width: r.width, height: r.height }; };
+    /* the shape the page shows: while it morphs the panel stays on its rest box and the shape is the glass layer's clip-path inset (menu.js setMorph);
+       at rest (no clip-path) it is the panel's own box */
+    const shown = (panel) => { const g = panel.querySelector(".menu-glass"), m = g && /^inset\(([-\d.]+)px ([-\d.]+)px ([-\d.]+)px ([-\d.]+)px/.exec(g.style.clipPath);
+      if (!m) return rect(panel); const r = g.getBoundingClientRect(), [t, rt, b, l] = m.slice(1).map(Number); return { left: r.left + l, top: r.top + t, width: r.width - l - rt, height: r.height - t - b }; };
     /* t = the frame's timestamp − the spring's start (Menu.state().t0, the open / close call's performance.now()): the page integrates the same
        closed form step by step on these timestamps, so the sample of frame k must equal x(t_k) exactly (up to the rect's rounding) */
     /* two readings per frame: the panel's rect (what the DOM shows) and the driver's own state (Menu.state(): x = the spring's value, t = its clock).
@@ -38,7 +42,7 @@
     const until = async (cond, cap) => { const t0 = performance.now(); while (!cond()) { if (performance.now() - t0 >= cap) return null; await frame(); } return performance.now() - t0; };
     const sample = (panel, ms) => new Promise((resolve) => { const out = []; let first = null;
       const tick = (now) => { if (first === null) first = now; if (!panel.isConnected) { resolve(out); return; }   // removed on settle (the dismiss): the frame's read would be zeros
-        const st = Menu.state(); if (st) { const bd = panel.querySelector(".menu-body"), bs = bd ? cs(bd) : null, bm = bs ? /blur\(([\d.]+)px\)/.exec(bs.filter) : null; out.push({ t: st.t, r: rect(panel), x: { ...st.x }, op: parseFloat(cs(panel).opacity), bo: bs ? parseFloat(bs.opacity) : NaN, bb: bm ? +bm[1] : 0, ...btnLayer() }); } if (now - first < ms && !(st && st.settled)) requestAnimationFrame(tick); else resolve(out); };
+        const st = Menu.state(); if (st) { const bd = panel.querySelector(".menu-body"), bs = bd ? cs(bd) : null, bm = bs ? /blur\(([\d.]+)px\)/.exec(bs.filter) : null; out.push({ t: st.t, r: shown(panel), x: { ...st.x }, op: parseFloat(cs(panel).opacity), bo: bs ? parseFloat(bs.opacity) : NaN, bb: bm ? +bm[1] : 0, ...btnLayer() }); } if (now - first < ms && !(st && st.settled)) requestAnimationFrame(tick); else resolve(out); };
       requestAnimationFrame(tick); });
     const btnLayer = () => { const s = cs(btn), m = /blur\(([\d.]+)px\)/.exec(s.filter); return { ao: parseFloat(s.opacity), ab: m ? +m[1] : 0 }; };   // the hidden layer (G22): the anchor button
     const fit = (samples, from, to, zeta, resp, v0) => { const res = {}; for (const k of ["left", "top", "width", "height"]) {
