@@ -4,6 +4,25 @@
 <meta charset="utf-8">
 <script>/* 诊断记录 (手机 tab switch, localStorage ark-diag = 1): the page starts on the ?diag path — the URL is rewritten before any other script reads it, so the
    frame recorder (seg-frames-logger.js, query-gated) and the diag line load exactly as with ?diag typed (a home-screen window has no address bar). */
+/* 真机自检 (WORKLIST P3, DECISIONS D31): the phone tab's 运行自检 opens the page with ?accept=1 and no &quiet (every runner passes &quiet). accept.js then
+   clicks through the page on the user's own phone, so before any page script: every localStorage key is copied to ark-accept-restore, the mailbox settings
+   are taken out (view.js then renders its built-in demo snapshot, the same data the checks are written against) and a write to ntfy is answered here without
+   leaving the phone — no command can reach the machine. The next start without ?accept puts every key back and keeps only the new ark-accept, whether the
+   run finished, the result sheet was closed or the app was killed half-way. A backup that cannot be taken stops the run (a run without one is refused). */
+window.__acceptDevice = /[?&]accept(=|&|$)/.test(location.search) && !/[?&]quiet(=|&|$)/.test(location.search);
+try { const bak = localStorage.getItem("ark-accept-restore");
+  if (bak !== null && !window.__acceptDevice) { const o = JSON.parse(bak), res = localStorage.getItem("ark-accept"); localStorage.clear();
+    for (const k in o) localStorage.setItem(k, o[k]); if (res !== null) localStorage.setItem("ark-accept", res); }
+} catch (e) { window.__acceptRestoreErr = String(e && e.message || e); }
+if (window.__acceptDevice) {
+  try { if (localStorage.getItem("ark-accept-restore") === null) { const o = {};
+      for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k !== "ark-accept") o[k] = localStorage.getItem(k); }
+      localStorage.setItem("ark-accept-restore", JSON.stringify(o)); }
+    localStorage.removeItem("ark-remote-cfg");
+    const f = window.fetch.bind(window);
+    window.fetch = (u, o) => /^https:\/\/ntfy\.sh\//.test(String(u && u.url || u)) && /^(POST|PUT)$/i.test(o && o.method || u && u.method || "") ? Promise.resolve(new Response("{}", { status: 200 })) : f(u, o);
+  } catch (e) { alert("自检没有开始：这台手机存不下本机数据的备份（" + (e && e.message || e) + "）。本机数据没动。"); window.__acceptDevice = false; location.replace(location.pathname); }
+}
 try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|accept)(=|&|$)/.test(location.search)) history.replaceState(null, "", location.pathname + (location.search ? location.search + "&" : "?") + "diag=1" + location.hash); } catch (e) {}</script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f2f2f7">

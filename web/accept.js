@@ -12,10 +12,16 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
 (function () {
   const q = new URLSearchParams(location.search);
   if (!q.has("accept")) return;
+  /* 真机自检 (index.html head, window.__acceptDevice): a strip at the top says a run is on so nobody touches the page; it hangs off <html>, not <body>, and
+     takes no pointer, so no check that walks body or hit-tests a point sees it. finish() takes it off and hands the result to view.js's share sheet. */
+  const devStrip = window.__acceptDevice ? document.createElement("div") : null;
+  if (devStrip) { devStrip.id = "accept-dev-strip"; devStrip.textContent = "自检进行中，约两分钟，别碰屏幕；跑完弹出结果";
+    devStrip.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:2147483647;pointer-events:none;padding:calc(env(safe-area-inset-top) + 4px) 12px 6px;background:rgba(0,0,0,.72);color:#fff;font:600 13px/1.3 -apple-system,system-ui,sans-serif;text-align:center";
+    document.documentElement.appendChild(devStrip); }
   /* the per-control files are appended dynamically; headless Chrome occasionally drops one of those fetches (night 00:3x: accept-sheet.js never
      requested in one run → 17 rows silently missing). Each load is tracked; a file that has not loaded when the checks start is re-appended, and
      a file still missing gets a ✗ row so the total never drops silently. */
-  window.ACCEPT.files = ["motion","nav","nav-edge","sheet","menu","topbar","refresh","glassbtn","alert","switch","tabbar","tile","stockpile"]; window.ACCEPT.loaded = new Set();
+  window.ACCEPT.files = ["motion","nav","nav-edge","sheet","menu","topbar","refresh","glassbtn","alert","switch","tabbar","tile","stockpile","selfcheck"]; window.ACCEPT.loaded = new Set();
   window.ACCEPT.load = (c) => new Promise((res) => { const s = document.createElement("script"); s.src = "accept-" + c + ".js?r=" + Math.random().toString(36).slice(2, 7); s.onload = () => { window.ACCEPT.loaded.add(c); res(true); }; s.onerror = () => res(false); document.head.appendChild(s); setTimeout(() => res(false), 4000); });
   for (const c of window.ACCEPT.files) window.ACCEPT.load(c);
   const rows = [];
@@ -1037,6 +1043,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
                     standalone: matchMedia("(display-mode: standalone)").matches,
                     dark, total: rows.length, fails, rows };
       try { localStorage.setItem("ark-accept", JSON.stringify(out)); } catch {}
+      if (devStrip) { devStrip.remove(); dispatchEvent(new CustomEvent("arkaccept", { detail: out })); }
       document.title = `验收 ${rows.length - fails}/${rows.length}`;
       if (!q.has("quiet")) {
         const box = document.createElement("pre");
