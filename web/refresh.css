@@ -1,5 +1,5 @@
 /* refresh.css — pull to refresh as UIRefreshControl, geometry and timing only (BOARD.md #8; numbers: remote-ref/refresh-native-formula.md).
-   Overrides the old .ptr rules of index.html by specificity (A7: the old lines stay): the indicator is never scaled or CSS-transitioned — refresh.js
+   index.html's old .ptr scale / fade rules are gone (NATIVE-GAP G6; they were overridden here by specificity): the indicator is never scaled or CSS-transitioned — refresh.js
    sets each arm's opacity from show = min(1, pull / maxSnap) every frame (arm i α = clamp(1 + i·(show − 1), 0, 1) × show, §0 / §4.1) and the
    rotation of the whole indicator (the spin spring, the 125 ms / 45° tick, the 0.3 s go-away); the indicator's own bars stay the Kit dump's 7×3
    activity-indicator bars (the refresh control's arm length / ring radius are unread, §6.1). */

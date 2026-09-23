@@ -188,10 +188,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   header h1{opacity:calc(1 - var(--big, 0))}
   /* Pull to refresh: UIActivityIndicatorView - eight bars fading in turn. It grows
      with the pull and spins once released. */
-  .ptr{position:fixed;top:calc(env(safe-area-inset-top) + 10px);left:0;right:0;display:flex;justify-content:center;pointer-events:none;z-index:4;
-       opacity:0;transform:scale(.3);transition:opacity .15s,transform .2s cubic-bezier(.2,.8,.2,1)}
-  .ptr.arm{opacity:1;transform:scale(1)}
-  .ptr.go{opacity:1;transform:scale(1)}
+  .ptr{position:fixed;top:calc(env(safe-area-inset-top) + 10px);left:0;right:0;display:flex;justify-content:center;pointer-events:none;z-index:4}   /* opacity / motion: refresh.css + refresh.js (the old scale .3 · .15 s · .2 s rules had no source and were overridden — NATIVE-GAP G6) */
   .ai{position:relative;width:var(--ios-spinner-size);height:var(--ios-spinner-size);display:inline-block}   /* 20 ← 探针 UIActivityIndicatorView */
   .ai i{position:absolute;left:8.5px;top:0;width:3px;height:7px;border-radius:1.5px;background:var(--ios-spinner);transform-origin:1.5px 10px;opacity:.25}   /* 条 7×3 r1.5 ← Kit dump Progress Indicators；色 secondaryLabel ← 探针 */
   .ai i:nth-child(1){transform:rotate(0deg)}   .ai i:nth-child(2){transform:rotate(45deg)}
