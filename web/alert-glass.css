@@ -14,3 +14,9 @@ dialog#alert.glass-read > .alert-stroke { position: absolute; }
 dialog#alert.glass-read > .pane > .alert-glass > .alert-glass-w3, dialog#alert.glass-read > .pane > .alert-glass > .alert-glass-w3 > .alert-glass-w2 { position: absolute; left: 0; top: 0; width: 100%; pointer-events: none; }
 dialog#alert.glass-read > .pane > .alert-glass { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 dialog#alert.glass-read > .pane > .alert-glass > .alert-glass-copy { contain: layout paint style; }
+/* The two clones of #app (the glass copy .alert-glass-page, the stroke copy .alert-stroke-copy) are stills of the page as it stands at open: the live page's
+   entrance animations have already run (e.g. index.html:489 `.segctl button.on` seg-in .1s), a fresh clone replays them from 0 — repainting the filtered copy
+   on every frame of the replay (the whole filter chain recomputed per frame) and bubbling animationend up to dialog#alert, where view.js:50 takes the first
+   animationend as the end of alert-in: .settled at 124 ms instead of 423 ms, so the stroke was built inside the still-scaling dialog (simulator B, 09-23 19:5x:
+   animationstart alert-in 15 · animationend seg-in 124 · seg-in again at 244 from the stroke copy · animationend alert-in 423). */
+.alert-glass-page, .alert-glass-page *, .alert-stroke-copy, .alert-stroke-copy * { animation: none !important; transition: none !important; }
