@@ -43,13 +43,18 @@
   await sleep(420);
   col("列表行 抬手 +660 ms：回到静止色 = 卡片色（--ios-card-bg）", T.card, bgOf(row));
   check("列表行 淡完后类名清空", "clean", row.className, !row.classList.contains("hl") && !row.classList.contains("hl-out"));
-  /* C1: a 100 ms tap — no highlight at the up; one frame of highlight at +150 and the fade from there; selected once */
-  fadeSeen = null; const tUp1 = performance.now() + 100; pev(row, "pointerdown", at(row)); await sleep(100); pev(row, "pointerup", at(row));
-  check("列表行 C1 短点 100 ms 抬手时：还没高亮", "rest", lit(row) ? "highlight" : "rest", !lit(row));
-  seq.length = 0; await sleep(170);
+  /* C1: a 100 ms tap — at the up (no wait for the 150 ms delay) the highlight, the fade from it and, one paint later, the selection
+     (remote-ref/cell-native-shorttap.md: 60 / 30 ms probe taps, fade added up +17 / +19 ms, highlight colour on screen up +35 ms) */
+  const nearHL = (c) => { const v = rgb(c); return !!v && [0, 1, 2].every((i) => Math.abs(v[i] - HL[i]) <= 3); };   // the fade's first frame: highlight colour
+  fadeSeen = null; const tUp1 = performance.now() + 100; pev(row, "pointerdown", at(row)); await sleep(100); seq.length = 0; pev(row, "pointerup", at(row));
+  let f1 = null; requestAnimationFrame(() => { f1 = { bg: bgOf(row), cls: row.className, sel: rsel }; });   // the first frame after the up, before its paint
+  check("列表行 C1 短点 100 ms 抬手当下：高亮色、淡出已起（不等 150 ms；原生抬手 +17 ms 高亮 + 选中 + 淡出同一轮）", "highlight, fading", `${lit(row) ? "highlight" : "rest"}, ${row.classList.contains("hl-out") ? "fading" : "no fade"}`, lit(row) && row.classList.contains("hl-out"));
+  await sleep(60);
+  check("列表行 C1 短点 抬手 +60 ms：已选中（原生选中在抬手 +17…19 ms；旧版等计时器到按下 +150 后才选）", 2, rsel, rsel === 2);
+  await sleep(110);
   { const names = seq.map((e) => e[1]), iH = names.findIndex((n) => /\bhl\b/.test(n) && !/hl-out/.test(n)), iF = names.findIndex((n) => /hl-out/.test(n)), iC = names.indexOf("click");
     const gapHF = iH >= 0 && iF > iH ? seq[iF][0] - seq[iH][0] : -1, gapFC = iF >= 0 && iC > iF ? seq[iC][0] - seq[iF][0] : -1;
-    check("列表行 C1 短点：高亮帧 → 淡出帧 → 选中，三者依次、各隔一次上屏（rAF + setTimeout 0；数据真机核 ②：confirm()/推页不得吞掉高亮帧）", "hl < hl-out < click", `${iH} < ${iF} < ${iC}, 间隔 ${Math.round(gapHF)} / ${Math.round(gapFC)} ms`, iH >= 0 && iF > iH && iC > iF); }   // the gaps are JS timestamps (the paint sits between rAF and the timeout; headless Chrome renders in < 1 ms): reported, not judged
+    check("列表行 C1 短点：抬手后第一帧 = 淡出第一帧、底色仍是高亮色，选中在这一帧上屏之后（原生：抬手 +35 ms 首帧高亮色，淡出与选中同一轮；数据真机核 ②：confirm()/推页不得吞掉这一帧）", "hl-out · 高亮色 · 未选 → 选中", f1 ? `${/hl-out/.test(f1.cls) ? "hl-out" : f1.cls} · ${nearHL(f1.bg) ? "高亮色" : f1.bg} · ${f1.sel === 1 ? "未选" : "已选"} → ${iC > iF ? "选中" : "无"}` : "无帧", !!f1 && /hl-out/.test(f1.cls) && nearHL(f1.bg) && f1.sel === 1 && iF >= 0 && iC > iF); }
   { const fading = row.classList.contains("hl-out"), seen = !!fadeSeen && fadeSeen.t >= tUp1 - 1 && !row.classList.contains("hl");
     check("列表行 C1 按下 +270 ms：高亮已亮过并在淡出（.hl-out 在，或过渡对象已见——两钟同读）、选中 1 次", "fading, 2", `${fading ? "fading" : seen ? "fade seen" : row.classList.contains("hl") ? "lit" : "rest"}, ${rsel}`, (fading || seen) && rsel === 2); }
   await fadeRest(row, 620);   // S1: the .5 s release fade is a CSS transition — wait for its own end
@@ -79,16 +84,16 @@
      confirm dialog); a rAF loop logs the row's class at every frame (a rAF tick sees what that frame paints): a highlight frame and a fade
      frame must have been logged before the alert opened, and the fade must keep running under the open alert (native: deselectRow's .5 s
      fade runs while the alert presents) */
-  const frames = []; let logging = true; const logFrame = () => { frames.push([performance.now(), act.className]); if (logging) requestAnimationFrame(logFrame); }; requestAnimationFrame(logFrame);   // 收尾④: the page clock (the rAF timestamp is a second clock under virtual time; blockedAt is performance.now())
+  const frames = []; let logging = true; const logFrame = () => { frames.push([performance.now(), act.className, bgOf(act)]); if (logging) requestAnimationFrame(logFrame); }; requestAnimationFrame(logFrame);   // 收尾④: the page clock (the rAF timestamp is a second clock under virtual time; blockedAt is performance.now())
   const actSeq = []; new MutationObserver(() => actSeq.push([performance.now(), act.className])).observe(act, { attributes: true, attributeFilter: ["class"] });   // the class sequence itself (page clock): under a stepped clock the fade class can come and go between two rAF frames
   let blockedAt = 0, askP = null; act.addEventListener("click", () => { blockedAt = performance.now(); actSeq.push([blockedAt, "click"]); askP = ask("开始刷？", "验收：弹窗打开后淡回仍在走", "开始刷"); });
   /* 收尾④: judged by ORDER — the class records and the click marker sit in one sequence (the observer's microtasks run before the next task, the click is a task
      two paints later), so "before the click" is the index, not the timestamp: under the stepped virtual clock several frames share one timestamp */
   const framesBefore = () => { const fr = frames.filter((f) => f[0] < blockedAt), iC = actSeq.findIndex((e) => e[1] === "click"), seqB = iC < 0 ? actSeq : actSeq.slice(0, iC), all = fr.concat(seqB);
-    return { hl: all.some((f) => /\bhl\b/.test(f[1]) && !/hl-out/.test(f[1])), out: all.some((f) => /hl-out/.test(f[1])) }; };
+    return { hl: all.some((f) => (/\bhl\b/.test(f[1]) && !/hl-out/.test(f[1])) || (/hl-out/.test(f[1]) && f[2] && nearHL(f[2]))), out: all.some((f) => /hl-out/.test(f[1])) }; };   // a short tap: the highlight frame IS the fade's first frame (cell-native-shorttap.md)
   pev(act, "pointerdown", at(act)); await sleep(100); pev(act, "pointerup", at(act)); await sleep(60);
   const alertEl = document.querySelector("#alert"), r60 = rgb(bgOf(act));
-  await sleep(200); const r210 = rgb(bgOf(act)), openAt60 = !!(alertEl && alertEl.open);   // the click (and the alert) comes ~2 frames after the +150 ms highlight of a 100 ms tap
+  await sleep(200); const r210 = rgb(bgOf(act)), openAt60 = !!(alertEl && alertEl.open);   // the click (and the alert) comes one paint after the up of a 100 ms tap
   await sleep(400);
   { const b = framesBefore(); check("蓝字行 短点 100 ms，click 开页面弹窗（ask）：弹窗前已有高亮帧与淡出帧上屏（数据真机核 ②）", "hl 帧, hl-out 帧, 弹窗开（up +260）, 触发 1", `${b.hl ? "hl 帧" : "无 hl 帧"}, ${b.out ? "hl-out 帧" : "无 hl-out 帧"}, ${openAt60 ? "弹窗开" : "弹窗未开"}, 触发 ${asel}`, b.hl && b.out && openAt60 && asel === 1);
     const moving = !!(r60 && r210) && (dark ? r210[0] < r60[0] - 2 : r210[0] > r60[0] + 2), rest = same(bgOf(act), T.card);

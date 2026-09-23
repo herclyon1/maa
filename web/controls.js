@@ -14,8 +14,13 @@
                      (UIView animateWithDuration:0.5 options:0, curve easeInOut, from deselectRow(animated:)); the selection (our click) fires
                      one frame after that — once the fade's first frame is on screen — because the page's actions block (confirm()) or
                      replace the frame (openPage), which the device check (数据 b14-cell-8bf3bcd.md) saw swallowing the highlight
-       short tap     (up before +150 ms) the highlight still shows one frame at +150 (up +16…18) and the fade starts at that moment; the click
-                     follows the same way (highlight frame painted → fade frame painted → click), never before the highlight was on screen
+       short tap     (up before +150 ms) UIKit does not wait for the delay: at the up it highlights, selects and adds the .5 s fade in one
+                     turn (probe 60 / 30 ms taps: the fade's CAAnimation at up +17 / +19 ms, the first frame on screen = the highlight colour at
+                     up +35 ms — remote-ref/cell-native-shorttap.md; cell-native.md §0's 133 ms tap is the same up +17). So at the up: .hl, a
+                     style flush (the highlight becomes the transition's start value), .hl-out at once — the first painted frame is the fade's
+                     first frame at the highlight colour — and the click after that paint. The phone delivers pointerdown only ~3 ms before the
+                     pointerup of a quick tap (its 诊断记录 ark-diag 20260923-181332: down → up 3 ms), so waiting for the 150 ms timer after
+                     the up put the highlight at up +150 and the click at +216 (user report 18:27 items 6–7: the sheet late, the tap half gone)
        cancel        scrolling ≥ 12 pt vertically (threshold 10 = --ios-touch-scroll-threshold) or the finger 15 pt outside the card's edge:
                      the highlight goes off INSTANTLY (.hl-cut kills the base transition of .acts button for that frame) and the up selects
                      nothing — UITableView touchesCancelled: (0x1c4b31830) / touchesMoved: (0x1c4b306a8) un-highlight through
@@ -44,14 +49,14 @@
     if (!e.isPrimary || el.dataset.rp) return;
     const card = el.closest(".group, .plist, .card") || el.parentElement, cr = card.getBoundingClientRect();
     const x0 = e.clientX, y0 = e.clientY, T = ROW_SCROLL_PT();
-    let lit = false, over = false, released = false, timer = 0;
+    let lit = false, over = false, timer = 0;
     const select = () => Motion.click(el);
     /* each step AFTER A PAINT (Motion.afterPaint = rAF → rAF): the highlight paints, then the fade's start paints, then the selection runs —
        an action that blocks the main thread (confirm()) or replaces the content (openPage) cannot swallow either frame */
     const afterPaint = Motion.afterPaint;
     const release = () => { fadeOut(el); afterPaint(select); };   // the fade starts now (painted next frame), the selection after that paint
-    const light = () => {   // +150 ms: the highlight, instant; if the finger is already up, one painted frame of it, then the release
-      timer = 0; if (over && !released) return; lit = true; el.classList.add("hl"); if (released) afterPaint(release);
+    const light = () => {   // +150 ms with the finger still down: the highlight, instant
+      timer = 0; if (over) return; lit = true; el.classList.add("hl");
     };
     const cancel = () => {   // instant off (no transition even on .acts button, whose rest rule carries one), no select
       if (over) return; over = true; clearTimeout(timer); timer = 0; delete el.dataset.rp;
@@ -62,9 +67,12 @@
       end: (ev, cancelled) => {
         if (cancelled) { cancel(); return; }
         if (over) return;
-        over = true; released = true; delete el.dataset.rp;
+        over = true; delete el.dataset.rp;
         Motion.swallowNextClick(el);   // the browser's own click for this touch (Android: 40–60 ms after the up) is swallowed, ours follows after the frames
-        if (lit) release();             // a short tap: the pending 150 ms timer lights the row, then light() runs the same release
+        if (!lit) {                     // a short tap: no wait for the timer — highlight now, flushed so the fade starts from it
+          clearTimeout(timer); timer = 0; lit = true; el.classList.add("hl"); void getComputedStyle(el).backgroundColor;
+        }
+        release();
       },
     })) return;
     el.dataset.rp = "1";
