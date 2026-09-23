@@ -35,7 +35,10 @@
   await sleep(15);
   { const fading = row.classList.contains("hl-out"), seen = !!fadeSeen && fadeSeen.t >= tUp && !row.classList.contains("hl");   // seen: the fade's transition started after the up (page clock) — the class may already be gone under a stepped clock
     check("列表行 C3 抬手 +60 ms：选中 1 次（淡出首帧之后一帧）、淡出中（.hl-out 在，或抬手后过渡对象已见——两钟同读）", "1, fading", `${rsel}, ${fading ? "fading" : seen ? "fade seen +" + Math.round(fadeSeen.t - tUp) + " ms" : "not fading"}`, rsel === 1 && (fading || seen)); }
-  { const f = fadeSeen || {}, t = f.dur, e = f.easing, pr = f.prop;   // read from the transition object when .hl-out was set (收尾④), not from the computed style at +60
+  { const f = fadeSeen || {}, t = f.dur, pr = f.prop;   // read from the transition object when .hl-out was set (收尾④), not from the computed style at +60
+    /* WebKit serializes the effect's easing cubic-bezier(.42,0,.58,1) as its keyword "ease-in-out" (simulator A, 老网页 0fe960c res json, OPEN.md 09-23 18:50);
+       CSS Easing 1 §2.2 defines the keywords as exactly these curves, so the check compares the curve, not the spelling */
+    const KW = { ease: "cubic-bezier(0.25, 0.1, 0.25, 1)", "ease-in": "cubic-bezier(0.42, 0, 1, 1)", "ease-out": "cubic-bezier(0, 0, 0.58, 1)", "ease-in-out": "cubic-bezier(0.42, 0, 0.58, 1)" }, e = KW[f.easing] || f.easing;
     check("列表行 淡出 = background-color .5 s cubic-bezier(.42,0,.58,1)（--ios-motion-row-release-duration / --ios-motion-ease-in-out；过渡对象自身的 duration / easing）", "background-color 500 cubic-bezier(0.42, 0, 0.58, 1)", `${pr} ${t} ${e}`, pr === "background-color" && t === 500 && e === "cubic-bezier(0.42, 0, 0.58, 1)"); }
   await sleep(200);
   { const el = performance.now() - tUp - 16, c = rgb(bgOf(row)), want = T.card[0] + (HL[0] - T.card[0]) * (1 - bez(Math.max(0, Math.min(1, el / 500))));   // the fade starts one frame after the up

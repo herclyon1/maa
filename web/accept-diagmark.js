@@ -57,10 +57,16 @@
     check("诊断：没送出去的记录留在手机本地（可补送 / 复制）", up.state === "sent" ? "已送达，本地不留" : "≥ 1 份", `${qn} 份`, up.state === "sent" ? qn >= 0 : qn >= 1);
 
     /* ---- the next gesture is not blocked by the finished one ---- */
+    const scWas = Object.getOwnPropertyDescriptor(window, "lastSelfcheck"), scFake = { total: 4, fails: 1, failRows: [{ item: "坏的一项" }] };
+    let upGot = null; const onUp = (e) => { upGot = e.detail; };
+    window.lastSelfcheck = () => scFake; addEventListener("segframes-upload", onUp);
     got = null; addEventListener("segframes-light", onLight);
     pev(row, "pointerdown", p); await sleep(30); pev(row, "pointerup", p);
-    await settle(() => !!got, 5000); removeEventListener("segframes-light", onLight);
+    await settle(() => !!got && !!upGot, 5000); removeEventListener("segframes-light", onLight); removeEventListener("segframes-upload", onUp);
+    if (scWas) Object.defineProperty(window, "lastSelfcheck", scWas); else delete window.lastSelfcheck;
     check("诊断：一份记录结束后接着能记下一份", "有第二份", got ? "有" : "没有", !!got);
+    check("诊断：送桶的记录带这台手机最近一次自检（lastSelfcheck()，老网页 P3；没跑过 = null）", "4 项 1 不通过", upGot && upGot.selfcheck ? `${upGot.selfcheck.total} 项 ${upGot.selfcheck.fails} 不通过` : "缺",
+      !!upGot && !!upGot.selfcheck && upGot.selfcheck.total === 4 && upGot.selfcheck.fails === 1);
 
     /* ---- 数据 17:3x, two gaps: a light frame carries the control's background (read, never written), and the alert's cancel fade (.40 s, longer
        than the 300 ms rest) keeps the record open until the alert is really closed ---- */
@@ -72,9 +78,14 @@
       got = null; addEventListener("segframes-light", onLight);
       const pc = at(cancel); pev(cancel, "pointerdown", pc); await sleep(30); pev(cancel, "pointerup", pc); cancel.click();
       await settle(() => !!got, 5000); removeEventListener("segframes-light", onLight);
-      const al = ((got || {}).frames || []).filter((f) => f.scene).map((f) => String(f.scene.alert));
-      check("诊断：弹窗点取消 → 淡出与关窗都在同一份记录里（场景 true → closing → false）", "…closing → false", al.join(" → ") || (got ? "无场景帧" : "没有记录"),
-        al.indexOf("closing") >= 0 && al[al.length - 1] === "false" && al.lastIndexOf("false") > al.indexOf("closing"));
+      /* frames carry the scene where it changed (sampled, then presented a frame later); control_events "sceneMutation" carry it at the class / open change
+         itself, so a closing fade shorter than a frame gap is still recorded (simulator A 0fe960c: the frames alone read true → false). Two clocks → two
+         sequences, not merged; either one showing closing then false passes */
+      const fold = (a) => a.filter((v, i) => i === 0 || v !== a[i - 1]), good = (a) => a.indexOf("closing") >= 0 && a[a.length - 1] === "false" && a.lastIndexOf("false") > a.indexOf("closing");
+      const alF = fold(((got || {}).frames || []).filter((f) => f.scene).map((f) => String(f.scene.alert))),
+            alM = fold(((got || {}).control_events || []).filter((e) => e.events === "sceneMutation" && e.scene).map((e) => String(e.scene.alert)));
+      check("诊断：弹窗点取消 → 淡出与关窗都在同一份记录里（场景 true → closing → false；帧或场景变动事件）", "…closing → false", got ? `帧 ${alF.join(" → ") || "无场景帧"} · 变动 ${alM.join(" → ") || "无"}` : "没有记录",
+        good(alF) || good(alM));
       { const ce = ((got || {}).control_events || []).filter((e) => /^click/.test(e.events)).map((e) => e.events);   // 界面-串2: the page's click at the up + the browser's click view.js swallows (here: ours after the up)
         check("诊断：取消键记录的点击 = 页面在抬手时自己的一次 click + 浏览器随后那次被吞的 click-swallowed（不再记成两次 click）", "click, click-swallowed", ce.join(", ") || "无", ce.length === 2 && ce[0] === "click" && ce[1] === "click-swallowed"); }
       await settle(() => !dlg.open, 2000);
