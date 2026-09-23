@@ -250,16 +250,6 @@
   --ios-seg-lift-shadow: 0 7px 3px rgb(0 0 0 / .06);   /* ORIGINAL: ClearGlass shadow layer offset (0,7) radius 3 opacity .06 */
   --ios-seg-lift-refraction-amount: -17.5;             /* ORIGINAL: displacementMap inputAmount (tab-bar lens: −14); SDF height 11.2, curvature 1 */
   --ios-seg-lift-content-refraction: -8.8;             /* ORIGINAL: ContentLensingView displacementMap on the label copy (SDF height 7.04) */
-  /* SAMPLED (渲染器输出采样, seg-lift-light.png row y 624 / col x 60, 3x): edge = 1 pt dark line + 1 pt orange/blue dispersion line inside it;
-   * top/bottom edges additionally a 1 pt bright line. Light: dark line −47/255 over the page (244 → 197), −48 over the track (229 → 181); bright line +3…+5
-   * (244 → 247/249) → alphas below. Dark: bright line +45 over black (0 → 45), dark line −12 over the track (29 → 17). */
-  --ios-seg-lift-rim-light: rgb(255 255 255 / .35);    /* SAMPLED: +5/255 over 244 ≈ white α .45 (top/bottom), +3 ≈ .27 → .35 */
-  --ios-seg-lift-rim-dark: rgb(0 0 0 / .2);            /* SAMPLED: −47/244 = black α .19, −48/229 = .21 */
-  --ios-seg-lift-mag-x: 1.00;                          /* SAMPLED: no horizontal magnification inside |s| ≤ 80 (u ≈ ±0.5 pt constant) */
-  --ios-seg-lift-mag-y: 0.82;                          /* SAMPLED: vertical compression, u = +0.22·s inside |s| ≤ 10 */
-  --ios-seg-lift-edge-x: 24px;                         /* SAMPLED: end zones (|s| 84–108): u to ±3.4 pt, M 0.84 → 1.2–1.5 at the last 4 pt, R−B up to 3.6 pt */
-  --ios-seg-lift-edge-y: 12px;                         /* SAMPLED: top/bottom zones: u to ±3.4 pt, M 0.82 → 1.29 */
-  --ios-seg-lift-label-mag: 1.00;                      /* SAMPLED: the label copy inside the lens is not magnified or shifted (ContentLensing only bends near the edges) */
   --ios-motion-seg-lift-delay: 109ms;                  /* ORIGINAL: touch-down → first presentation change (trace; +125 ms first visible frame) */
   --ios-motion-seg-lift-duration: .35s;                /* ORIGINAL: geometry reaches 220×44 at +359 ms; filter amounts finish at +459 ms on the same curve */
   --ios-motion-seg-lift-easing: linear(0, .10 4.6%, .245 9.4%, .397 14.3%, .533 18.9%, .646 23.7%, .737 28.6%, .807 33.1%, .86 38%, .899 42.9%, .928 47.4%, .949 52.3%, .964 57.1%, .975 61.7%, .982 66.6%, .988 71.4%, .991 76%, .994 80.9%, .996 85.7%, .998 95%, 1);   /* ORIGINAL: one progress curve for size, corner, displacement, SDF height, platter fade, shadow, glass keys (350 ms base) */
@@ -814,8 +804,6 @@
     --ios-segment-label-color: rgb(255 255 255);
     /* segmented lifted lens, dark: filters identical to light (deep-seg-lift-dark.json); resting fill (235,235,245,.3) → opacity 0 */
     --ios-seg-lift-fill: rgb(235 235 245 / 0);
-    --ios-seg-lift-rim-light: rgb(255 255 255 / .18);   /* SAMPLED: +45/255 over black */
-    --ios-seg-lift-rim-dark: rgb(0 0 0 / .4);           /* SAMPLED: 29 → 17 over the track = black α .41 */
     --ios-alert-button-offset: 0.11;
     --ios-vibrancy-label: 0.95;
     --ios-vibrancy-secondary: 0.3;
