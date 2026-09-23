@@ -84,12 +84,17 @@
     const shown = () => [...document.querySelectorAll("#app > section:not([hidden])")].map((x) => x.dataset.tab).filter((v, i, a) => a.indexOf(v) === i).join(",");
     pev(tseg, "pointerdown", at(other));
     check("标签栏 T1 按下未选中项 +0 ms：不选中；高亮类 .lift 即在（R59′e / R108：落指 → highlightedItemIndex → setLifted 无定时器，+140 令牌作废）", `${startTab} · lift`, `${tOn()} lift=${g.classList.contains("lift")}`, tOn() === startTab && g.classList.contains("lift"));
-    await sleep(60);
+    /* +60 / +200 / +600 are read on the driver's own clock (BOARD A15: window.__tabLens.t, the frame time the springs were stepped to), not the harness's
+       wall clock: on 模拟器 A under 老网页's full run (0fe960c, OPEN.md 09-23 18:50) the driver had drawn no frame 60 ms of wall time after the synthetic down
+       and the rows read "p -" / "h 54" (why that frame was late is not measured — the harness's own waits are what the row must not depend on); a real finger on 模拟器 B, fresh load, lifts from +2 ms: +64 p .486, +198 h 73.2
+       (evidence 界面-OPEN78-T1-新载首按.json) */
+    const untilT = async (tt, max) => { const end = performance.now() + max; while (performance.now() < end) { const L = window.__tabLens; if (L && L.t >= tt) return L; await new Promise(requestAnimationFrame); } return window.__tabLens; };
+    await untilT(0.06, 1500);
     { const L = window.__tabLens; check("标签栏 T1 +60 ms：驱动器已在抬（按下下一 tick 起，探针 +47 已 95.76）：p > 0、仍不选中", "p > 0 · not selected", `p ${L ? L.p.toFixed(3) : "-"} · ${tOn()}`, !!L && L.p > 0 && tOn() === startTab); }
-    await sleep(140);
+    await untilT(0.2, 1500);
     { const gr = g.getBoundingClientRect();   // #7a (tab-lens.js geometry mode): the lift is the box itself, w0 × 54 → (w0 + 16) × 70 on ζ 1 / .25 from +140 ms (tab-lens-motion.md §0 / §4), view.js's inline left = the pressed item is the target
       check("标签栏 T1 +200 ms：透镜抬起中并滑向被按项（R59′d / R108：按下下一帧起 ζ1/.25 抬向 +22.7 × 74、位置 ζ.85/.4；.lift 类自按下即在）", `left→${other.offsetLeft}, lift, 54 < h ≤ 74`, `left ${g.style.left} ${g.classList.contains("lift") ? "lift" : "-"} h ${gr.height.toFixed(1)}`, g.classList.contains("lift") && g.style.left === other.offsetLeft + "px" && gr.height > 54 && gr.height <= 74.5); }   // 2号 R59′d: the lens's lifted size per the probe (tab-lens-motion §6.9 ⑤)
-    await sleep(400);
+    await untilT(0.6, 1500);
     { const gr = g.getBoundingClientRect();
       check("标签栏 T5 按住 600 ms：仍不选中，透镜停在 (w0 + 22.7) × 74（R108 探针 94×54 → 116.7 × 74.0，tab-lens-motion §6.9 ⑤；旧 +16 两轴是选中框的 inset）", `${startTab} ${(other.offsetWidth + 22.7).toFixed(1)}×74`, `${tOn()} ${gr.width.toFixed(1)}×${gr.height.toFixed(1)}`, tOn() === startTab && Math.abs(gr.width - (other.offsetWidth + 22.7)) <= 0.5 && Math.abs(gr.height - 74) <= 0.5); }   // 2号 R59′d
     const t1 = performance.now(); pev(tseg, "pointerup", at(other)); const d1 = performance.now() - t1;
