@@ -1,7 +1,7 @@
 /* accept-toast.js — G8 (2号): the toast (#toast) against the native HUD it maps to, UIAccessibilityHUDView (NATIVE-GAP G8;
    remote-ref/tools/uiprobe/uiprobe-subtree-g8-hud-light.json): centred on the screen (centre (220, 478) of 440×956), the inner UIVisualEffectView
    cornerRadius 17, no shadow; the material = its backdrop chain (luminanceCurveMap → colorSaturate → colorBrightness → gaussianBlur, toast-glass.js
-   with the formula sources). Runs in both themes (dark: true): the chain's values differ per theme. */
+   with the formula sources); the text = the content layer's vibrantColorMatrix over that material, masked to the glyphs. Runs in both themes (dark: true): the values differ per theme. */
 (function () {
   if (!window.ACCEPT) return;
   ACCEPT.add(async function acceptToast(ctx) {
@@ -41,6 +41,15 @@
       const greys = [255, 192, 128, 64, 0], measured = th === "dark" ? [83, 71, 64, 53, 30] : [245, 239, 225, 208, 198], pred = greys.map((g) => Math.max(0, Math.min(1, (1 - m.amount) * (g / 255) + m.amount * y(g / 255) + m.brightness)) * 255);
       const dmax = Math.max(...measured.map((v, i) => Math.abs(v - pred[i])));
       check(`轻提示材质 五灰阶平底核（${th === "dark" ? "暗" : "亮"}，闭链：${pred.map((v) => v.toFixed(1)).join(" / ")}；无头 Chrome 实测记录）`, "|Δ| ≤ 1.25/255", `${measured.join(" / ")} · |Δ|max ${dmax.toFixed(2)}`, dmax <= 1.25);
+      /* the text (toast-glass.js header): vibrantColorMatrix over the material — a second copy through #toast-glass-v (the same chain + M), masked to the glyphs; the DOM text itself transparent */
+      const vib = lay && lay.querySelector(".toast-glass-vib"), vcopy = vib && vib.querySelector(".toast-glass-copy"), fv = document.getElementById("toast-glass-v"), pv = fv ? [...fv.children] : [];
+      const same = !!f && pv.length === prims.length + 1 && prims.every((e, i) => e.outerHTML === pv[i].outerHTML), last = pv[pv.length - 1], mv = last ? last.getAttribute("values").trim().split(/\s+/).map(Number) : [];
+      const mask = vib ? vib.style.maskImage || vib.style.webkitMaskImage : "", col = getComputedStyle(tt).color;
+      check(`轻提示活字 = 原生内容层 vibrantColorMatrix（${th === "dark" ? "暗" : "亮"}，uiprobe-subtree-g8-hud-${th}.json）：第二份复本走 #toast-glass-v = 同一条链 + 矩阵 M（20 项逐项）、遮罩 = 字形图、面板字本身透明`, "同链 · 20 项 · data: 遮罩 · 透明",
+        `${same ? "同链" : "链不同"} · ${mv.length} 项 |Δ|max ${mv.length === 20 ? Math.max(...mv.map((v, i) => Math.abs(v - m.vibrant[i]))).toExponential(1) : "-"} · ${mask.slice(0, 20)} · ${col}`,
+        same && !!vcopy && vcopy.style.filter === 'url("#toast-glass-v")' && mv.length === 20 && mv.every((v, i) => Math.abs(v - m.vibrant[i]) < 1e-6) && /^url\("?data:image\/png/.test(mask) && col === "rgba(0, 0, 0, 0)");
+      const want = [...tt.childNodes].filter((n) => n.nodeType === 3).map((n) => n.data).join("").replace(/\s/g, ""), got = (G.lines || []).map((l) => l.chars.map((c) => c.ch).join("")).join("");
+      check("轻提示活字 字形图逐字取排版位置：每个非空白字符一格（按字的 Range 框落位，基线取排版读数）", want, got, want === got);
     } finally { tt.textContent = keep; if (!wasShow) tt.classList.remove("show"); void tt.offsetWidth; tt.style.transition = ""; }
   }, { dark: true });
 })();
