@@ -767,8 +767,9 @@ function layoutTabs() {
   if (!glideEl) { glideEl = document.createElement("i"); glideEl.className = "glide"; plat.after(glideEl); setChanged = true; }
   if (!segEl) { segEl = document.createElement("div"); segEl.className = "seg"; nav.appendChild(segEl); setChanged = true; }
   const mkTab = (t) => { const b = document.createElement("button"); b.type = "button"; b.dataset.tab = t; b.setAttribute("aria-label", t);
-    b.innerHTML = `<span class="ico">` + (TAB_IMAGES[t] ? `<img class="tabimg" src="${TAB_IMAGES[t]}" alt="">`
-                     : `<i class="sf" style="-webkit-mask-image:url(${TAB_ICONS[t]});mask-image:url(${TAB_ICONS[t]})" aria-hidden="true"></i>`) + `</span><span>${t}</span>`; return b; };
+    const item = `<span class="ico">` + (TAB_IMAGES[t] ? `<img class="tabimg" src="${TAB_IMAGES[t]}" alt="">`
+                     : `<i class="sf" style="-webkit-mask-image:url(${TAB_ICONS[t]});mask-image:url(${TAB_ICONS[t]})" aria-hidden="true"></i>`) + `</span><span>${t}</span>`;
+    b.innerHTML = `<span class="tcg">${item}</span><span class="tcs" aria-hidden="true">${item}</span>`; return b; };   // the unselected / selected copies (index.html .tcg / .tcs, tabClip)
   const haveBtns = new Map([...segEl.querySelectorAll(":scope > button")].map((b) => [b.dataset.tab, b]));
   /* R0③ (tab-lens-motion.md §7, R24 — setItems:animated: of the floating bar): the old rects are captured before the tree changes (FLIP) so the kept
      buttons can travel from their old x on ζ 1 / .3, the removed ones fade at their old place on ζ 1 / .2 and leave when the .3 spring has settled,
@@ -807,6 +808,7 @@ function layoutTabs() {
     glide(true);
     window.scrollTo(0, tabScroll[curTab] || 0);
   };
+  tabClipWatch(nav);
   if (setChanged || !nav.__tabsAttached) { attachTabBar(nav, selectTab); nav.__tabsAttached = true; }   // R0①: the handlers close over the button list — re-attached only when that list changed
 }
 
@@ -1951,6 +1953,41 @@ function springToTop() {
    s2: ζ 1 / .2 (the removed items' fade-out); the kept buttons translateX from their old x (FLIP: old − new viewport left), the platter's inset from the
    old width to the new (symmetric, pill shape kept), the glide rides the selected button's animated x; the removed buttons leave when s3 has settled.
    nav.__tabAnim = { t0, s3, s2, items: [{ el, dx }], removed, added, w0, w1 } is the driver's own clock for the acceptance rows (A15). */
+/* P0b-tabclip — the selected colour is where the lens is (P0b-数据.md 14:1x, read from tools/uiprobe/uiprobe-sdf-r104-rest.json): the lens carries a
+   _UIPortalView (#31, CAPortalLayer) of SelectedContentView (#2, every item in the selected colour) with hidesSourceLayer 1, matchesPosition /
+   matchesTransform 1, clipsToBounds, cornerRadii = h/2 — the selected copy is drawn at its own place but only inside the lens's capsule — and a
+   DestOutView (#55, compositingFilter destOut, cornerRadius = h/2, its presentation box = the lens's) punches the same capsule out of ContentView
+   (#33, every item unselected). No item changes colour; a slide, a lift, a drag only move the cut (state-tables/tabbar.md:20). Here the lens is the
+   .glide — view.js's slide, tab-lens.js's driver (--tl-*), the lift scales, the platter scale all land in its on-screen box — and every item's two
+   copies (.tcs / .tcg, mkTab) are clipped to that box mapped into their own coordinates: .tcs = the capsule, .tcg = everything but the capsule. */
+function tabClip(nav) {
+  const g = nav.querySelector(":scope > .glide"); if (!g || nav.hidden) return;
+  const gr = g.getBoundingClientRect(); if (!gr.width || !gr.height || !g.offsetWidth || !g.offsetHeight) return;
+  const r0 = Math.min(g.offsetWidth, g.offsetHeight) / 2, grx = r0 * gr.width / g.offsetWidth, gry = r0 * gr.height / g.offsetHeight;   // border-radius 999px → r = min(w, h) / 2 of the layout box, then the box's own scale
+  const f = (v) => +v.toFixed(2);
+  for (const el of nav.querySelectorAll("button > .tcg, button > .tcs")) {
+    const er = el.getBoundingClientRect(); if (!el.offsetWidth || !el.offsetHeight || !er.width) continue;
+    const kx = er.width / el.offsetWidth, ky = er.height / el.offsetHeight;   // the item's own scale (the platter's presentation scale) — the path is in its untransformed coordinates
+    const x = f((gr.left - er.left) / kx), y = f((gr.top - er.top) / ky), w = f(gr.width / kx), h = f(gr.height / ky), rx = f(Math.min(grx / kx, w / 2)), ry = f(Math.min(gry / ky, h / 2));
+    const cap = `M${f(x + rx)} ${y}H${f(x + w - rx)}A${rx} ${ry} 0 0 1 ${f(x + w)} ${f(y + ry)}V${f(y + h - ry)}A${rx} ${ry} 0 0 1 ${f(x + w - rx)} ${f(y + h)}H${f(x + rx)}A${rx} ${ry} 0 0 1 ${x} ${f(y + h - ry)}V${f(y + ry)}A${rx} ${ry} 0 0 1 ${f(x + rx)} ${y}Z`;
+    const clip = el.classList.contains("tcs") ? `path("${cap}")` : `path(evenodd, "M-9999 -9999H9999V9999H-9999Z${cap}")`;
+    if (el.__clip !== clip) { el.__clip = clip; el.style.clipPath = clip; el.style.webkitClipPath = clip; }
+  }
+}
+/* when to cut: synchronously after any change of the bar's styles / classes / items (MutationObserver — view.js's glide(), tab-lens.js's per-frame
+   --tl-* on nav, tabSetAnimate's per-frame writes; the cut's own clip-path writes are ignored), then on every frame while a CSS animation runs on the
+   glide (its .55 s slide, the lift's scale transition — started by transitionrun), on resize and when html.kbd hides / shows the bar */
+function tabClipWatch(nav) {
+  if (nav.__tabClip) { nav.__tabClip(); return; }
+  let raf = 0;
+  const run = () => { raf = 0; tabClip(nav); const g = nav.querySelector(":scope > .glide"); if (g && g.getAnimations && g.getAnimations().some((a) => a.playState === "running")) raf = requestAnimationFrame(run); };
+  const kick = () => { tabClip(nav); if (!raf) raf = requestAnimationFrame(run); };
+  const mine = (r) => r.type === "attributes" && r.target.classList && (r.target.classList.contains("tcg") || r.target.classList.contains("tcs"));
+  new MutationObserver((recs) => { if (recs.some((r) => !mine(r))) kick(); }).observe(nav, { attributes: true, attributeFilter: ["style", "class", "hidden"], childList: true, subtree: true });
+  new MutationObserver(kick).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+  nav.addEventListener("transitionrun", kick); addEventListener("resize", kick);
+  nav.__tabClip = kick; kick();
+}
 function tabSetAnimate(nav, plat, glideEl, oldRect, navRect0, removed, added) {
   const kept = [...nav.querySelectorAll(":scope > .seg > button")].filter((b) => oldRect.has(b));
   const navRect1 = nav.getBoundingClientRect(), w0 = navRect0.width, w1 = navRect1.width;

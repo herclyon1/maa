@@ -280,5 +280,29 @@
       check("P0b 标签图标：按下不缩（旧 :active .ico scale .9 无原生对应）", "0 条", `${press.length} 条${press.length ? " " + press.map((r) => r.selectorText).join(" | ") : ""}`, press.length === 0);
       const mk = rules.filter((r) => r.type === CSSRule.KEYFRAMES_RULE && r.name === "menu-in").length + rules.filter((r) => r.style && /menu-in/.test(r.style.animationName || "")).length;
       check("P0b 旧菜单 menu-in：关键帧与引用已删（menu.js 只建 menu morph）", "0", String(mk), mk === 0); }
+    /* P0b-tabclip (P0b-数据.md 14:1x, uiprobe-sdf-r104-rest.json #31 portal / #55 DestOut): every item's selected copy (.tcs) is cut to the lens's
+       capsule and its unselected copy (.tcg) has the same capsule punched out — at rest and in the middle of the .55 s slide the cut = the .glide's box;
+       the copies never change colour. The path's box is read back from the computed clip-path (end points of M / H / V / A — the capsule's extremes). */
+    { const seg = nav.querySelector(".seg"), bs = [...seg.querySelectorAll(":scope > button")], g = nav.querySelector(":scope > .glide");
+      const pbox = (el) => { const m = /path\((evenodd,\s*)?"([^"]*)"\)/.exec(getComputedStyle(el).clipPath || ""); if (!m) return null;
+        const tk = m[2].match(/[MHVAZ]|-?[\d.]+(e-?\d+)?/g) || [], P = []; let i = 0, cx = 0, cy = 0, c = "", sub = [];
+        while (i < tk.length) { if (/[MHVAZ]/.test(tk[i])) { c = tk[i++]; if (c === "Z") { P.push(sub); sub = []; } continue; }
+          if (c === "M") { cx = +tk[i++]; cy = +tk[i++]; } else if (c === "H") cx = +tk[i++]; else if (c === "V") cy = +tk[i++]; else if (c === "A") { i += 5; cx = +tk[i++]; cy = +tk[i++]; } sub.push([cx, cy]); }
+        const cap = P[P.length - 1] || []; if (!cap.length) return null; const er = el.getBoundingClientRect(), kx = er.width / el.offsetWidth, ky = er.height / el.offsetHeight;
+        const xs = cap.map((p) => er.left + p[0] * kx), ys = cap.map((p) => er.top + p[1] * ky);
+        return { l: Math.min(...xs), r: Math.max(...xs), t: Math.min(...ys), b: Math.max(...ys), eo: !!m[1] }; };
+      const cut = () => { const gr = g.getBoundingClientRect(); let worst = 0, n = 0, eo = 0;
+        for (const b of bs) for (const el of b.querySelectorAll(":scope > .tcg, :scope > .tcs")) { const q = pbox(el); if (!q) { worst = Infinity; continue; } n++;
+          if (el.classList.contains("tcg") === q.eo) eo++; worst = Math.max(worst, Math.abs(q.l - gr.left), Math.abs(q.r - gr.right), Math.abs(q.t - gr.top), Math.abs(q.b - gr.bottom)); }
+        return { worst, n, eo, gl: gr.left }; };
+      const cols = () => new Set(bs.map((b) => getComputedStyle(b.querySelector(".tcg")).color + "|" + getComputedStyle(b.querySelector(".tcs")).color));
+      if (bs.length >= 2 && g && bs.every((b) => b.querySelector(":scope > .tcg") && b.querySelector(":scope > .tcs"))) {
+        const c0 = cut(), col0 = cols(), i0 = bs.findIndex((b) => b.classList.contains("on")), other = bs[i0 === 0 ? 1 : 0], back = bs[Math.max(0, i0)];
+        check("P0b 标签选中色裁切 · 静止：每项两份的裁切框 = 透镜框（±.5），选中那份 = 胶囊、灰那份 = 挖洞（evenodd）", `≤ .5 · ${bs.length * 2} 份`, `${c0.worst.toFixed(2)} · ${c0.n} 份 · 形对 ${c0.eo}`, c0.worst <= 0.5 && c0.n === bs.length * 2 && c0.eo === bs.length * 2);
+        delete seg.dataset.pe; other.click(); await sleep(150); const c1 = cut(); await sleep(700); const c2 = cut(), col2 = cols();
+        check("P0b 标签选中色裁切 · 滑动途中 150 ms：裁切框跟透镜当帧框（±.5），透镜在途中", "≤ .5 · 途中", `${c1.worst.toFixed(2)} · 透镜 x ${c1.gl.toFixed(1)}（起 ${c0.gl.toFixed(1)} → 止 ${c2.gl.toFixed(1)}）`, c1.worst <= 0.5 && Math.abs(c1.gl - c0.gl) > 1 && Math.abs(c1.gl - c2.gl) > 1);
+        check("P0b 标签选中色裁切 · 换页后：两份颜色一个不变（选中色只靠裁切露出）", `${[...col0].join(" / ")}`, `${[...col2].join(" / ")} · 框差 ${c2.worst.toFixed(2)}`, col0.size === 1 && col2.size === 1 && [...col0][0] === [...col2][0] && c2.worst <= 0.5);
+        delete seg.dataset.pe; back.click(); await sleep(700);
+      } else check("P0b 标签选中色裁切：标签栏至少两项、每项有 .tcg / .tcs 两份", "有", `${bs.length} 项`, false); }
   });
 })();

@@ -265,7 +265,10 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
         num("标签按钮高 54（--ios-tab-button-h）", 54, b.getBoundingClientRect().height);
         num(`标签按钮宽 ${Math.round(want * 100) / 100}（--ios-tab-button-w 94，${bs.length} 个标签放不下时等比缩）`, want, w);
         num("标签文字 10（--ios-tab-label-size）", 10, px(cs(b).fontSize), 0.05); num("标签按钮圆角 27（--ios-tab-lens-radius）", 27, px(cs(b).borderTopLeftRadius));
-        const lb = [...b.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim()) || b.querySelector("span:not(.ico)");
+        const lb = [...b.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim()) || b.querySelector(".tcg > span:not(.ico)") || b.querySelector("span:not(.ico)");   // the unselected copy (P0b-tabclip); the selected copy (.tcs) must sit on it
+        const lbs = b.querySelector(".tcs > span:not(.ico)"), ics = b.querySelector(".tcs > .ico"), icg = b.querySelector(".tcg > .ico");
+        if (lbs && lb && ics && icg) { const a = lbs.getBoundingClientRect(), c = b.querySelector(".tcg > span:not(.ico)").getBoundingClientRect(), d = ics.getBoundingClientRect(), e = icg.getBoundingClientRect();
+          num("标签两份（选中色 / 灰）叠在同一处：字与图标框差之和", 0, Math.abs(a.left - c.left) + Math.abs(a.top - c.top) + Math.abs(a.width - c.width) + Math.abs(d.left - e.left) + Math.abs(d.top - e.top) + Math.abs(d.width - e.width), 0.5); }
         if (lb) { const rg = document.createRange(); rg.selectNodeContents(lb); const lr = rg.getBoundingClientRect(); num("标签文字顶 = 胶囊顶 + 39（--ios-tab-label-top）", 39, lr.top - r.top, 1.5); }
       }
       const ico = seg.querySelector(".ico"); if (ico) num("标签符号框 28（--ios-tab-symbol-box，探针 27–31）", 28, ico.getBoundingClientRect().height);
@@ -293,7 +296,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
        and nobody noticed until the phone showed grey everywhere. */
     const lab = document.createElement("div"); lab.style.cssText = "position:fixed;left:-9999px;top:0";
     lab.innerHTML = `<label class="sw"><input type="checkbox" checked><span></span></label><label class="sw"><input type="checkbox"><span></span></label>` +
-      `<button class="tile danger"><span class="ttitle">x</span></button><nav class="tabs"><div class="seg"><button class="on">x</button></div></nav>` +
+      `<button class="tile danger"><span class="ttitle">x</span></button><nav class="tabs"><div class="seg"><button class="on"><span class="tcg"><span>x</span></span><span class="tcs"><span>x</span></span></button></div></nav>` +
       `<div class="topbar editing"><button class="navbtn" id="_d">x</button><button class="navbtn" id="_s">x</button></div>` +
       `<div class="group"><div class="row"><label>x</label><span class="sent">已寄出 10:00</span></div><div class="row"><label>y</label><input type="text" class="short" value="08:30"></div><div class="acts"><button>开始刷</button></div></div>`;
     document.body.appendChild(lab);
@@ -324,7 +327,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn) { this.fns.push(fn); } };
     check("轻点一下：开关翻转一次", !was, tapIn.checked, tapIn.checked === !was);
     check("轻点一下：change 只发一次", 1, changes, changes === 1);
     col("停止一切标题 = 红（--ios-red）", T.red, cs(lab.querySelector(".ttitle")).color);
-    col("选中的标签 = tint（--ios-tint）", T.tint, cs(lab.querySelector("nav.tabs button.on")).color);
+    col("标签的选中色那份 = tint（--ios-tint）", T.tint, cs(lab.querySelector("nav.tabs button .tcs")).color);
     col("蓝字行 = link（--ios-link）", T.link, cs(lab.querySelector(".acts button")).color);
     const cap = lab.querySelector(".sent");
     num("三态小字 11（--ios-caption2-size）", 11, px(cs(cap).fontSize), 0.05); num("三态小字行框 13.13（--ios-caption2-lh）", 13.13, px(cs(cap).lineHeight), 0.05);

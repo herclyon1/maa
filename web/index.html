@@ -143,13 +143,20 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
                   height:var(--ios-tab-button-h);padding:6px 8px 7px;border-radius:var(--ios-tab-lens-radius);font-size:var(--ios-tab-label-size);line-height:12px;font-weight:var(--ios-headline-weight);   /* 按钮 94×54 r27、字 Semibold 10 ← 探针（5 个标签放不下 5×94 时等比缩）；6/8/7 待 tokens，但 4 + 6 + 28 + 1 = 39 = --ios-tab-label-top ← 探针 */
                   background:transparent;box-shadow:none;color:var(--tab);white-space:nowrap}   /* 选中色无渐变：原生选中 / 灰两份内容切换，点标签时 _UITabButton 上无动画（P0b-数据.md #1，uiprobe-motion-run1.json scene-tab-tap）；按下不缩：原生按住已选中项是透镜里的复本放大 1.16、未选中项无（tab-lens-native.md §3，tabbar.md:17），旧 :active .ico scale .9 已删 */
   nav.tabs button .ico{display:flex;align-items:center;justify-content:center;width:var(--ios-tab-symbol-box);height:var(--ios-tab-symbol-box);flex:none}   /* 符号框 28 ← 探针 27–31 */
+  /* Every item twice (the floating bar's two contents, P0b-数据.md 14:1x ← uiprobe-sdf-r104-rest.json): .tcg = ContentView #33 (unselected colour),
+     .tcs = SelectedContentView #2 (selected colour). view.js tabClip() cuts them to the selection lens on every frame — .tcs shows only inside the
+     lens's capsule (the lens's _UIPortalView #31: hidesSourceLayer 1, matchesPosition 1, clipsToBounds, cornerRadii = h/2), .tcg has the same capsule
+     punched out (DestOutView #55: compositingFilter destOut, cornerRadius = h/2, riding the lens's presentation box). The selected colour is where the
+     lens is: a geometric cut, no colour or opacity change on any item. Until the first cut .tcs is clipped away. */
+  nav.tabs button .tcg{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;align-self:stretch;min-width:0}
+  nav.tabs button .tcs{position:absolute;inset:0;padding:inherit;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;
+                       color:var(--accent);pointer-events:none;clip-path:inset(0 0 0 100%)}
   nav.tabs button .tabimg{display:block;width:26px;height:26px;border-radius:7px;object-fit:cover;
-                          opacity:.7;filter:saturate(.6);transition:opacity .2s,filter .2s}
-  nav.tabs button.on .tabimg{opacity:1;filter:none}
+                          opacity:.7;filter:saturate(.6)}
+  nav.tabs button .tcs .tabimg{opacity:1;filter:none}   /* the photo tab's two looks (#2 灰→亮: which look native gives an alwaysOriginal image is 庚 #2, 待读) */
   nav.tabs button .sf{display:block;width:26px;height:26px;background:currentColor;
                       -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;
                       -webkit-mask-size:contain;mask-size:contain}
-  nav.tabs button.on{color:var(--accent)}
   /* No global reduce-motion kill switch: iOS keeps the switch well/colour animations and the navigation parallax under Reduce Motion;
      only the sites that read the _AXSReduceMotionEnabled stub change behaviour (page-inventory.md §12 / §12a, switch.js R30′). */
   main{padding:4px var(--ios-card-inset);margin:0 auto}                 /* 卡片距边 20 ← AX45；不再写死 640 */
