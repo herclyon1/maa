@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""sim-webclips.py [A|B|C|D|UDID] [PORT]: the home-screen web clips of ONE simulator — look here before adding one.
+"""sim-webclips.py [A|B|C|D|UDID] [PORT | --delete ID]: the home-screen web clips of ONE simulator — look here before adding one.
 
 Every clip is Library/WebClips/<id>.webclip (Info.plist Title / URL) and, when it is on the home screen, its <id> sits in
 Library/SpringBoard/IconState.plist. Without PORT: one line per clip — id, title, URL, home-screen page / slot (or 「not in layout」),
@@ -8,10 +8,13 @@ and exit 0, or exit 1 when there is none.
 
 Reuse rule (用户 2026-09-24 01:57「还要留下了复用的啊」, BOARD A52 one resident clip per simulator): before adding a clip through
 Safari, run this with your port; if a clip on that port exists, serve to it (webclip-serve.sh looks it up the same way) and do not add
-another. Clips are never deleted by a script; a clip nobody serves any more is listed to 验收, who decides.
+another. A clip nobody serves any more is listed to 验收, who decides; only a clip 验收 (or its owner) decided to delete goes through
+--delete ID: the clip's id leaves IconState.plist (page or folder), Library/WebClips/<id>.webclip is removed, and this simulator's
+SpringBoard is restarted (launchctl kill 9 inside the simulator, the same restart the home-screen folder move used) so the icon is gone.
 """
 import os
 import plistlib
+import shutil
 import subprocess
 import sys
 from urllib.parse import urlsplit
@@ -72,10 +75,55 @@ def clips(udid):
         yield cid, info.get('Title', ''), url, urlsplit(url).port, where.get(cid, 'not in layout')
 
 
+def strip(entries, cid):
+    """entries without cid, recursing into folders; returns (new list, hits)."""
+    out, hits = [], 0
+    for e in entries:
+        if e == cid:
+            hits += 1
+            continue
+        if isinstance(e, dict):
+            subs = []
+            for sub in e.get('iconLists', []):
+                sub, h = strip(sub, cid)
+                hits += h
+                subs.append(sub)
+            e = dict(e, iconLists=subs)
+        out.append(e)
+    return out, hits
+
+
+def delete(udid, cid):
+    lib = os.path.expanduser(f'~/Library/Developer/CoreSimulator/Devices/{udid}/data/Library')
+    clip = os.path.join(lib, 'WebClips', cid + '.webclip')
+    if not os.path.isdir(clip):
+        print(f'no clip {cid} on {udid}', file=sys.stderr)
+        return 1
+    state = os.path.join(lib, 'SpringBoard', 'IconState.plist')
+    with open(state, 'rb') as f:
+        st = plistlib.load(f)
+    pages, hits = [], 0
+    for page in st.get('iconLists', []):
+        page, h = strip(page, cid)
+        hits += h
+        pages.append(page)
+    st['iconLists'] = pages
+    with open(state, 'wb') as f:
+        plistlib.dump(st, f, fmt=plistlib.FMT_BINARY)
+    shutil.rmtree(clip)
+    r = subprocess.run(['xcrun', 'simctl', 'spawn', udid, 'launchctl', 'kill', '9', 'user/foreground/com.apple.SpringBoard'],
+                       capture_output=True, text=True)
+    print(f'deleted {cid} on {udid}: {hits} layout entr{"y" if hits == 1 else "ies"}, clip folder removed, '
+          f'SpringBoard restart exit {r.returncode} {r.stderr.strip()}')
+    return r.returncode
+
+
 def main():
     args = sys.argv[1:]
     dev = args.pop(0) if args and not args[0].isdigit() else 'A'
     udid = SIMS.get(dev, dev)
+    if args[:1] == ['--delete'] and len(args) == 2:
+        return delete(udid, args[1])
     port = int(args[0]) if args else None
     rows = list(clips(udid))
     if port is not None:
