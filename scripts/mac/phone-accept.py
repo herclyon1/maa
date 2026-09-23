@@ -85,14 +85,17 @@ def main() -> None:
     if a.udid not in booted:
         sim("boot", a.udid); sim("bootstatus", a.udid, "-b"); time.sleep(3)
     fails = 0
-    sim("ui", a.udid, "appearance", "light")
-    fails += run_once(a.udid, a.url, "light", a.wait)
-    if not a.light_only:
-        sim("ui", a.udid, "appearance", "dark")
-        try:
-            fails += run_once(a.udid, a.url, "dark", a.wait)
-        finally:
-            sim("ui", a.udid, "appearance", "light")
+    try:
+        sim("ui", a.udid, "appearance", "light")
+        fails += run_once(a.udid, a.url, "light", a.wait)
+        if not a.light_only:
+            sim("ui", a.udid, "appearance", "dark")
+            try:
+                fails += run_once(a.udid, a.url, "dark", a.wait)
+            finally:
+                sim("ui", a.udid, "appearance", "light")
+    finally:  # BOARD A52: close the Safari page and its WebKit processes when the run ends
+        subprocess.run(["sh", str(Path(__file__).with_name("sim-webclean.sh")), a.udid], check=False)
     print("ALL PASS" if not fails else f"{fails} item(s) off - docs/HIG-CHECKLIST.md is the reference; fix the CSS or, with a new measurement, the table first")
     sys.exit(1 if fails else 0)
 
