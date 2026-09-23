@@ -9,10 +9,18 @@
                   sections: ["通用", "高阶素材", "采集", "经验与货币"], lagMinutes: 30, lagNote,
                   standard: {charId, name, rarity, releasedAt, status, weapon, sources}, standards: [...], "错误": "",
                   rows: [ { id, name, rarity, icon, have, need, servings, section,
-                            group, stage, note, virtual, sumInto, exp } ] } ] }
+                            group, owner, uses, origin, stage, note, virtual, sumInto, exp } ] } ] }
 
    * section   - which heading the row sits under, in `sections` order; a row with
                  section null (the exp cards) is folded into 干员经验 / 武器经验 and not shown
+   * group     - the use section (干员精英化 / 干员技能升级 / 干员技能专精 / 干员等级提升 /
+                 武器突破 / 武器等级提升 / 多处共用), in games[].groups order; useSource says
+                 where each name comes from. null = this build does not use the row
+   * owner     - 干员 / 专武 / 干员 + 专武 (null when unused)
+   * uses      - [{use, need}] every step the build spends it on, with the count
+   * origin    - how it is obtained, from its official wiki entry's 物品来源 lines:
+                 {kind: 采集物 | 理智关卡产出 | 其它来源, 采集: [..], 理智关卡: [..], 其它: [..],
+                 wikiItemId}; null for the two exp rows. originSource = the rule
    * footnote  - the one-line caption for 人份 (already worded for the page)
    * lagNote   - Skland's own statement that its depot copy runs about 30 minutes behind
                  the game (the official calculator page says so); lagMinutes is the number
@@ -129,6 +137,7 @@
       note: base.note == null ? null : base.note,
       virtual: !!base.virtual, sumInto: base.sumInto || null, exp: base.exp == null ? null : base.exp,
       section: base.section == null ? null : base.section,
+      owner: base.owner == null ? null : base.owner, uses: base.uses || [], origin: base.origin || null,
     };
   }
   /* need rows + live counts -> rows. Exp materials add count × exp into their
@@ -158,7 +167,7 @@
     if (needGame) {
       g.caliber = (std && std.caliber) || needGame.caliber; g.footnote = (std && std.footnote) || needGame.footnote || "";
       g.source = needGame.source; g.built = Inventory.need.built;
-      g.sections = needGame.sections || []; g.lagMinutes = needGame.lagMinutes == null ? null : needGame.lagMinutes; g.lagNote = needGame.lagNote || "";
+      g.sections = needGame.sections || []; g.groups = needGame.groups || []; g.useSource = needGame.useSource || ""; g.originSource = needGame.originSource || ""; g.lagMinutes = needGame.lagMinutes == null ? null : needGame.lagMinutes; g.lagNote = needGame.lagNote || "";
       g.standard = std ? { charId: std.charId, name: std.name, rarity: std.rarity, releasedAt: std.releasedAt, status: std.status,
                            weapon: std.weapon && std.weapon.name, sources: std.sources } : null;
       g.standards = standards(GAME_ID);
