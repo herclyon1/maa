@@ -203,16 +203,19 @@
     /* ⑤ hidden strips the state */
     btn.click(); await until(() => !!Menu.state(), 50); document.dispatchEvent(new Event("visibilitychange", { bubbles: true })); Menu.onHidden(true); await until(() => !Menu.state(), 50);
     check("菜单：页面 hidden 时菜单剥掉", "无", document.querySelector(".menu.morph") ? "还在" : "无", !document.querySelector(".menu.morph"));
-    /* ⑥ a re-render while the menu is open (2026-09-23, menu.js livePair): the page's render() rebuilds the select + its .menubtn; the dismiss must
-       morph back to the button now on screen, not to the (0, 0) a detached node reads (the dark run's three 菜单收回 rows went red on exactly this) */
+    /* ⑥ a re-render while the menu is up (live.js updateLive → render): view.js holds it until the menu is gone ("menu-closed"), so the button the
+       menu is anchored to stays on the page through the retract (UITargetedPreview init(view:): "This view must be in a window") and the dismiss morphs
+       back to it; the held render runs once after the close */
     if (typeof window.render === "function") {
       const b1 = document.querySelector("main .menubtn"); b1.click(); await until(() => !!Menu.state(), 50);
       window.render(); await new Promise((r) => requestAnimationFrame(r));
-      const b2 = document.querySelector("main .menubtn"), r2 = rect(b2);
-      const sc = document.querySelector(".menu-scrim"); if (sc) sc.click(); await new Promise((r) => requestAnimationFrame(r)); const s6 = Menu.state();
-      check("菜单：开着时页面重绘换了按钮，收回回到屏上的新按钮（不缩到左上角）", `换了按钮 · top ${r2.top.toFixed(1)}`, `${b1.isConnected ? "没换" : "换了按钮"} · top ${s6 && s6.to ? s6.to.top.toFixed(1) : "-"}`,
-        !b1.isConnected && !!s6 && !!s6.to && Math.abs(s6.to.top - r2.top) < 0.5 && s6.to.width > 0);
-      await until(() => !Menu.state(), 300);
+      const r1 = rect(b1);
+      const r0 = window.render; let runs = 0; window.render = (...a) => { runs++; return r0(...a); };   // view.js's "menu-closed" listener calls the global render
+      const sc = document.querySelector(".menu-scrim"); if (sc) sc.click(); await new Promise((r) => requestAnimationFrame(r)); const s6 = Menu.state(), kept = b1.isConnected;
+      check("菜单：开着时页面重绘先压住，收回回到原按钮（不缩到左上角）", `没换 · top ${r1.top.toFixed(1)}`, `${kept ? "没换" : "换了按钮"} · top ${s6 && s6.to ? s6.to.top.toFixed(1) : "-"}`,
+        kept && !!s6 && !!s6.to && Math.abs(s6.to.top - r1.top) < 0.5 && s6.to.width > 0);
+      await until(() => !Menu.state(), 1500); window.render = r0;   // the driver's own end (strip), capped: the dismiss outlasts 300 ms on a loaded run
+      check("菜单：收回后补一次压住的重绘", "1 次", `${runs} 次`, runs === 1);
     }
   }, { layer: "timing", dark: true });   // S4 file-level tags (数据 S4-tags.md (e), 2号 13:5x): timing = waits on the drivers, so ?layer=daily and release both run it; dark true = the glass keys / face matrix change with the theme (R74 / R109 dark values)
 })();

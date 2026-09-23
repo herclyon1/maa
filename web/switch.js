@@ -212,7 +212,7 @@
     const initialOn = input.checked;
     let st = sw._sw;
     if (!st) st = sw._sw = { pos: { x: SW_BASE[initialOn ? 1 : 0], v: 0, target: SW_BASE[initialOn ? 1 : 0], resp: .3 }, lift: { x: 0, v: 0, target: 0, resp: .25 }, raf: 0, last: 0, hangT: 0, pressT: 0, held: false };
-    let on = initialOn, pending = "tap", t = 0, lastX = e.clientX, liftAt = 0;
+    let on = initialOn, pending = "tap", t = 0, lastX = e.clientX, liftAt = 0, begun = false;
     const target = () => {
       const raw = SW_BASE[on ? 1 : 0] + t, lo = SW_BASE[0], hi = SW_BASE[1];
       if (raw > hi) return hi + (reduceMotion.matches ? 0 : rubber(raw - hi, T.rbLimit, T.rbSlope));
@@ -229,6 +229,10 @@
       },
       end: (ev, cancelled) => {
         clearTimeout(st.pressT);
+        /* the up before the +10 ms press timer ran: the press still begins, now, so a short tap lifts, slides and falls like a long press (用户 09-24 00:03
+           「1短单击不会触发开关动画，只有稍微长按点击才能触发」; simulator B 09-24 00:3x: the pointerdown handler ran 67 ms after its timeStamp, the pointerup
+           9 ms after the handler — a 76 ms finger tap, but the timer set in the handler had not fired, so the lift was never aimed) */
+        if (!cancelled && !begun) begin();
         if (!cancelled && pending === "tap") setOn(!on);
         st.held = false; t = 0; sw.classList.remove("pressed"); retarget();
         if (st.lift.target === 1) {
@@ -244,13 +248,14 @@
     clearTimeout(st.hangT); clearTimeout(st.pressT); st.held = true; st.tDown = performance.now(); st.evDown = e.timeStamp;   // instrument: when the handler ran / the event was stamped
     if (SWG.ok && !reduceMotion.matches) swGlTake(sw);   // ⓪: the glass canvas into this switch, its backdrop drawn now (before the lift at +10 ms)
     st.tGl = performance.now(); swWrite(sw, st); sw.classList.add("drive"); st.tWritten = performance.now();
-    st.pressT = setTimeout(() => {   // longPress began at +.01 s: pressed
-      sw.classList.add("pressed"); st.tPressed = performance.now();
+    const begin = () => {   // longPress began at +.01 s: pressed
+      begun = true; sw.classList.add("pressed"); st.tPressed = performance.now();
       swSync(st);
       if (!reduceMotion.matches) { liftAt = performance.now(); swAim(st.lift, 1, T.liftResp, T.liftZeta);   // spec.liftSpring (small variant: ζ .625 / .27 — overshoots 8 %: 58 → 59.7 at +173 ms)
         if (st.flex) { st.flex.active = true; st.flex.vi = flexIntegrator(); st.flex.spec = swFlexSpec(T.liftW, T.liftH); st.flex.trace = []; } }   // R70′: setLifted:YES → activation mode 3 (activateIfPermitted resets the integrator)
       retarget();
-    }, T.press);
+    };
+    st.pressT = setTimeout(begin, T.press);
   });
   window.Switch = { version: "B13 3008bf5 → night", SW_BASE, glProbe: swGlProbe, glOf: (sw) => ({ ok: SWG.ok, ready: !!SWG.lens, here: !!sw && SWG.sw === sw, drawn: SWG.drawn, glk: !!sw && sw.classList.contains("glk"), warmedAt: SWG.warmedAt, placedAt: SWG.placedAt, last: SWG.lens ? { ...SWG.lens.stats.last } : null, frame: sw && sw._sw && sw._sw.gl ? { ...sw._sw.gl } : null, canvas: SWG.canvas, lens: SWG.lens }), wellOf: (sw) => (sw && sw._sw && sw._sw.well) ? { ...sw._sw.well } : null, flexOf: (sw) => (sw && sw._sw && sw._sw.flex) ? { active: sw._sw.flex.active, spec: { ...sw._sw.flex.spec }, out: { ...sw._sw.flex.out }, target: sw._sw.flex.tg, trace: sw._sw.flex.trace, lift: sw._sw.lift.x, liftSX: sw._sw.liftSX, liftSY: sw._sw.liftSY, written: sw._sw.written ? { ...sw._sw.written } : null } : null };   // lift: the UNCLAMPED lift value the scale is built from (the --lift var is clamped 0…1; accept A15)
   /* 界面-串2 ⑤ (09-23, simulator B frame tables BOARD/evidence/界面-串2-开关-新载首按*.json): the knob's first lift after a page load stalled the

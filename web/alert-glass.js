@@ -58,33 +58,60 @@ BleedEdge: "近似: the capture box (panel ± 60.2, clamped to the copy) is TILE
   const band = (e, h, cosS, bias, curv, ndir, fw) => { const t = sat(e / h); const prof = (t < 1 ? 1 : 0) * (1 - curv) + (1 - t) * curv; const aa = sat(e / fw + 0.5) * sat((h - e) / fw + 0.5);
     const ang = sat((ndir - cosS) / (1 - cosS)); const vv = e < -5 ? 0 : prof * aa * ang; return vv / (1 + bias * (1 - vv)); };
   const PX = 2;   // px per pt of the generated images
-  const imageCache = {};
-  const images = (() => { const cache = imageCache; return (W, H) => { const key = W + "x" + H; if (cache[key]) return cache[key];
-    const hw = W / 2, hh = H / 2, r = KEYS.CornerRadius, w = Math.round(W * PX), h = Math.round(H * PX);   // the maps use keys shared by both themes (refraction, bleed geometry)
-    const mk = () => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; };
-    const cw = mk(), cin = mk(), cout = mk(), chl = mk(), chl2 = mk(), cbl = mk(); const iw = cw.getContext("2d").createImageData(w, h), iin = cin.getContext("2d").createImageData(w, h), iout = cout.getContext("2d").createImageData(w, h), ihl = chl.getContext("2d").createImageData(w, h), ihl2 = chl2.getContext("2d").createImageData(w, h), ibl = cbl.getContext("2d").createImageData(w, h);
+  /* the six maps' bytes as a pure function of (W, H, the keys): run on the main thread by images(), or — its source text, with the helpers it calls — in the
+     map worker (imagesAsync), the same code on the same engine, so the same bytes. 界面 09-23: an alert of a size not cached built them inside the open
+     (R57‴'s 0 ms task after the first frame): 86–97 ms of main thread on simulator B (224 on the first call), the open's rAF gap 71–96 ms (4 / 4 cold opens,
+     warm 38–42) — every new message length is a new size. */
+  const mapPixels = (W, H, KEYS, HL) => { const hw = W / 2, hh = H / 2, r = KEYS.CornerRadius, w = Math.round(W * PX), h = Math.round(H * PX);   // the maps use keys shared by both themes (refraction, bleed geometry)
+    const n = w * h * 4, iw = new Uint8ClampedArray(n), iin = new Uint8ClampedArray(n), iout = new Uint8ClampedArray(n), ihl = new Uint8ClampedArray(n), ihl2 = new Uint8ClampedArray(n), ibl = new Uint8ClampedArray(n);
     const S = 128;   // the maps' displacement scale (pt at byte 255 − 128)
+    let hlInset = 0;   // the deepest highlight pixel (hl or hl2 byte > 0), as its distance from the nearer bbox edge — f3 computes only the rim strips that deep (+1 pt)
     const cosK = Math.cos(HL.keySpread), cosD = Math.cos(HL.diffuseSpreadScale * HL.keySpread), biasD = 1 / (HL.diffuseAmountScale * HL.keyAmount) - 2, hD = HL.diffuseHeightScale * HL.keyHeight, fw = 1 / 3;
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const x = (i + 0.5) / PX - hw, y = (j + 0.5) / PX - hh; const [d, gsx, gsy] = sdf(x, y, hw, hh, r); const [gx, gy] = gOval(x, y, hw, hh, gsx, gsy, KEYS.GradientOvalization); const o = (j * w + i) * 4;   // R57⁗: the ovalized gradient drives the directions below
       /* the blur level weights */
       const s1 = sat((d - KEYS.BlurDistance0) / (KEYS.BlurDistance1 - KEYS.BlurDistance0)), s2 = sat((d - KEYS.BlurDistance1) / (KEYS.BlurDistance2 - KEYS.BlurDistance1));
       const rr = KEYS.BlurRadius * (KEYS.BlurOpacity0 - KEYS.BlurOpacity1 * s1 - KEYS.BlurOpacity2 * s2); const L = d > 0 ? 0 : level(Math.max(0, rr));
-      for (let k = 0; k < 3; k++) iw.data[o + k] = Math.round(255 * Math.max(0, 1 - Math.abs(L - k)));
-      iw.data[o + 3] = 255; const wr = Math.round(255 * KEYS.RefractionOpacity * sat((d - KEYS.RefractionDistance0) / (KEYS.RefractionDistance1 - KEYS.RefractionDistance0)));   // the outer-refraction mix weight (kept in the inner map's B: a PNG's alpha would premultiply the weights)
+      for (let k = 0; k < 3; k++) iw[o + k] = Math.round(255 * Math.max(0, 1 - Math.abs(L - k)));
+      iw[o + 3] = 255; const wr = Math.round(255 * KEYS.RefractionOpacity * sat((d - KEYS.RefractionDistance0) / (KEYS.RefractionDistance1 - KEYS.RefractionDistance0)));   // the outer-refraction mix weight (kept in the inner map's B: a PNG's alpha would premultiply the weights)
       /* the two refraction maps: D = amount·Dc(t)·g (formula §3 uv1 / uv2), encoded 128 + D·255/S */
       const ti = sat(-d / KEYS.InnerRefractionHeight), to = sat(-d / KEYS.OuterRefractionHeight);
       const di = KEYS.InnerRefractionAmount * Dc(ti), dout = KEYS.OuterRefractionAmount * Dc(to);
-      iin.data[o] = Math.round(128 + di * gx * 255 / S); iin.data[o + 1] = Math.round(128 + di * gy * 255 / S); iin.data[o + 2] = wr; iin.data[o + 3] = 255;
-      iout.data[o] = Math.round(128 + dout * gx * 255 / S); iout.data[o + 1] = Math.round(128 + dout * gy * 255 / S); iout.data[o + 2] = 0; iout.data[o + 3] = 255;
+      iin[o] = Math.round(128 + di * gx * 255 / S); iin[o + 1] = Math.round(128 + di * gy * 255 / S); iin[o + 2] = wr; iin[o + 3] = 255;
+      iout[o] = Math.round(128 + dout * gx * 255 / S); iout[o + 1] = Math.round(128 + dout * gy * 255 / S); iout[o + 2] = 0; iout[o + 3] = 255;
       /* the bleed map (§4 ⑦ / §3 e): offset 60.2·(1 − sqrt(t(2 − t)))·g outward within 60.2 pt of the rim (0 inside → the point itself); B = w(d) = sat((d − 1)/(0 − 1)) */
       const db = KEYS.BleedAmount * Dc(sat(-d / KEYS.BleedHeight)), wb = Math.round(255 * sat((d - KEYS.BleedDistance0) / (KEYS.BleedDistance1 - KEYS.BleedDistance0)));
-      ibl.data[o] = Math.round(128 + db * gx * 255 / S); ibl.data[o + 1] = Math.round(128 + db * gy * 255 / S); ibl.data[o + 2] = wb; ibl.data[o + 3] = 255;
+      ibl[o] = Math.round(128 + db * gx * 255 / S); ibl[o + 1] = Math.round(128 + db * gy * 255 / S); ibl[o + 2] = wb; ibl[o + 3] = 255;
       /* the highlight α (keyfill §2, as lens-webgl.js FS2): key band from the top (dir (0, −1)), fill band from the bottom (dir (0, 1)), each main 1 pt + diffuse 8 pt */
       const e = -d; let a1 = 0, a2 = 0;   // stage 1: the two main bands (key from the top, fill from the bottom) as one α; stage 2: the two diffuse bands (FS2's three sequential mixes)
       if (d <= 0) { for (const dy of [-1, 1]) { const nd = gy * dy; a1 += band(e, HL.keyHeight, cosK, 0, HL.curvature, nd, fw); a2 = 1 - (1 - a2) * (1 - sat(band(e, hD, cosD, biasD, 1, nd, fw))); } }
-      ihl.data[o] = ihl.data[o + 1] = ihl.data[o + 2] = Math.round(255 * sat(a1)); ihl.data[o + 3] = 255; ihl2.data[o] = ihl2.data[o + 1] = ihl2.data[o + 2] = Math.round(255 * sat(a2)); ihl2.data[o + 3] = 255; }
-    cw.getContext("2d").putImageData(iw, 0, 0); cin.getContext("2d").putImageData(iin, 0, 0); cout.getContext("2d").putImageData(iout, 0, 0); chl.getContext("2d").putImageData(ihl, 0, 0); chl2.getContext("2d").putImageData(ihl2, 0, 0); cbl.getContext("2d").putImageData(ibl, 0, 0);
-    cache[key] = { weights: cw.toDataURL("image/png"), inner: cin.toDataURL("image/png"), outer: cout.toDataURL("image/png"), hl: chl.toDataURL("image/png"), hl2: chl2.toDataURL("image/png"), bleed: cbl.toDataURL("image/png"), S, w, h, W, H }; return cache[key]; }; })();
+      if (Math.round(255 * sat(a1)) > 0 || Math.round(255 * sat(a2)) > 0) hlInset = Math.max(hlInset, Math.min(hw - Math.abs(x), hh - Math.abs(y))); ihl[o] = ihl[o + 1] = ihl[o + 2] = Math.round(255 * sat(a1)); ihl[o + 3] = 255; ihl2[o] = ihl2[o + 1] = ihl2[o + 2] = Math.round(255 * sat(a2)); ihl2[o + 3] = 255; }
+    return { bufs: [iw, iin, iout, ihl, ihl2, ibl], S, w, h, hlInset }; };
+  const MAP_NAMES = ["weights", "inner", "outer", "hl", "hl2", "bleed"];
+  const imageCache = {};
+  const encodeMaps = (W, H, px) => { const out = { S: px.S, w: px.w, h: px.h, W, H, hlInset: px.hlInset };
+    px.bufs.forEach((b, i) => { const c = document.createElement("canvas"); c.width = px.w; c.height = px.h; c.getContext("2d").putImageData(new ImageData(b, px.w, px.h), 0, 0); out[MAP_NAMES[i]] = c.toDataURL("image/png"); }); return out; };
+  const images = (W, H) => { const key = W + "x" + H; return imageCache[key] || (imageCache[key] = encodeMaps(W, H, mapPixels(W, H, KEYS, HL))); };
+  /* the map worker: mapPixels and its helpers by source text, PNG-encoded there on an OffscreenCanvas (FileReaderSync → data URL) when the worker has one, else the
+     bytes come back and are encoded here. A worker that cannot start or fails is recorded (AlertGlass.mapWorker = "main: …", accept row) and that size is
+     built on the main thread as before. */
+  const mapWorker = { w: null, state: "idle", pending: {}, gen: {} };   // gen: per size, bumped by forget() — a result for an older generation is dropped
+  const imagesAsync = (W, H) => { const key = W + "x" + H; if (imageCache[key]) return Promise.resolve(imageCache[key]); if (mapWorker.pending[key]) return mapWorker.pending[key].p;
+    const main = (why) => { mapWorker.state = "main: " + why; return Promise.resolve(images(W, H)); };
+    if (mapWorker.state.startsWith("main")) return main(mapWorker.state.slice(6));
+    try { if (!mapWorker.w) { const src = `const PX = ${PX}, KR = ${KR}; const sat = ${sat}; const poly = ${poly}; const sdf = ${sdf}; const gOval = ${gOval}; const Dc = ${Dc}; const level = ${level}; const band = ${band}; const mapPixels = ${mapPixels};
+onmessage = async (e) => { const { key, gen, W, H, KEYS, HL } = e.data; try { const t0 = performance.now(), px = mapPixels(W, H, KEYS, HL), t1 = performance.now(); let urls = null;
+  if (typeof OffscreenCanvas === "function" && typeof FileReaderSync === "function") { urls = []; for (const b of px.bufs) { const c = new OffscreenCanvas(px.w, px.h); c.getContext("2d").putImageData(new ImageData(b, px.w, px.h), 0, 0); urls.push(new FileReaderSync().readAsDataURL(await c.convertToBlob({ type: "image/png" }))); } }
+  const ms = [Math.round(t1 - t0), Math.round(performance.now() - t1)]; if (urls) postMessage({ key, gen, ms, urls, S: px.S, w: px.w, h: px.h, hlInset: px.hlInset }); else postMessage({ key, gen, ms, bufs: px.bufs, S: px.S, w: px.w, h: px.h, hlInset: px.hlInset }, px.bufs.map((b) => b.buffer)); }
+  catch (err) { postMessage({ key, gen, error: String(err && err.message || err) }); } };`;
+        mapWorker.w = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" }))); mapWorker.state = "worker";
+        mapWorker.w.onmessage = (e) => { const m = e.data, q = mapWorker.pending[m.key]; if (m.ms) mapWorker.ms = m.ms; if (!q || m.gen !== (mapWorker.gen[m.key] || 0)) return; delete mapWorker.pending[m.key];
+          if (m.error) { mapWorker.state = "main: " + m.error; q.res(images(q.W, q.H)); return; }
+          if (!imageCache[m.key]) { if (m.urls) { const o = { S: m.S, w: m.w, h: m.h, W: q.W, H: q.H, hlInset: m.hlInset }; m.urls.forEach((u, i) => { o[MAP_NAMES[i]] = u; }); imageCache[m.key] = o; mapWorker.encoded = "worker"; }
+            else { imageCache[m.key] = encodeMaps(q.W, q.H, m); mapWorker.encoded = "main"; } }
+          q.res(imageCache[m.key]); };
+        mapWorker.w.onerror = (e) => { mapWorker.state = "main: " + (e.message || "worker error"); for (const k of Object.keys(mapWorker.pending)) { const q = mapWorker.pending[k]; delete mapWorker.pending[k]; q.res(images(q.W, q.H)); } }; } }
+    catch (err) { return main(String(err && err.message || err)); }
+    const q = { W, H }; q.p = new Promise((res) => { q.res = res; }); mapWorker.pending[key] = q; mapWorker.w.postMessage({ key, gen: mapWorker.gen[key] || 0, W, H, KEYS, HL }); return q.p; };
   const mul = (A, B) => A.map((row) => B[0].map((_, j) => row.reduce((acc, v, i) => acc + v * B[i][j], 0)));
   const yccMatrix = (W, Bk, s, fill) => { const YCC = [[.2126, .7152, .0722, 0], [-.1146, -.3854, .5, .5], [.5, -.4542, -.0458, .5], [0, 0, 0, 1]]; const D = [[W - Bk, 0, 0, Bk], [0, s, 0, .5 - .5 * s], [0, 0, s, .5 - .5 * s], [0, 0, 0, 1]];
     const INV = [[1, 0, 1.5748, -.7874], [1, -.18732, -.46812, .32772], [1, 1.8556, 0, -.9278], [0, 0, 0, 1]]; let M = mul(mul(INV, D), YCC);
@@ -109,8 +136,9 @@ BleedEdge: "近似: the capture box (panel ± 60.2, clamped to the copy) is TILE
   /* R57‴: the open frame must not pay for images(): 195k pixels × six maps ≈ 52 ms on the first open of a session (the harness's first-frame row: f1 +42 > 40). So an
      open whose maps are not cached builds this LIGHT chain first — the dimming, one blur at the interior level (deep inside r = 5·.8 = 4 → level 2, σ 18.78; the rim's
      sharpening and the refraction / bleed / highlight need the maps), BlurFill, MaxLuma, the face — one url() on the copy, no wrappers filtered; the first frame paints,
-     then a 0 ms task generates the maps and switches to f1 / f2 / f3 (the CSS appear animation runs on the compositor and does not stall on that task). The size is
-     remembered in localStorage (ark-alert-size) and pre-warmed at idle on the next load, so a repeat session opens on the full chain at once. */
+     then the map worker (imagesAsync; 界面 09-23 — the earlier 0 ms task after the first frame held the main thread 86–97 ms on simulator B) makes the maps
+     and the copy switches to f1 / f2 / f3. The size is remembered in localStorage (ark-alert-size) and pre-warmed (in the worker) after the next load, so a
+     repeat session opens on the full chain at once. */
   /* 串3 filter-chain stall (界面-串2 simulator B: rAF one frame per ~1.5 s with the alert open, f1 alone 1.3 s, f2 alone 2.0 s): WebKit renders a CSS filter:url() at
      page().deviceScaleFactor (RenderLayer::ensureLayerFilters) whatever the transforms, and FilterResults caches effect results only up to maxAllowedMemoryCost 100 MB
      (FilterResults.cpp canCacheResult); f1's 760×592 pt region at 3× is ~16 MB per result (image buffer + pixel buffers), so past the first few results every shared input
@@ -166,13 +194,23 @@ BleedEdge: "近似: the capture box (panel ± 60.2, clamped to the copy) is TILE
       + tf3("w4", "lx", lut((L) => k.BleedOpacity * L ** 4, 65))   /* w = Opacity · L⁴ as one luma LUT (65 samples of the quartic), then × w(d) from the map */
       + `<feBlend in="w4" in2="wb" mode="multiply" result="wbl"/>` + invert("wbl", "wbli")
       + `<feBlend in="face" in2="wbli" mode="multiply" result="o0"/><feBlend in="cb" in2="wbl" mode="multiply" result="o1"/><feComposite in="o0" in2="o1" operator="arithmetic" k2="1" k3="1" result="ob"/></filter>`;
-    /* f3 (wrapper 3, SourceGraphic = the bleed output): the highlight layer's two stages through the vibrant matrix */
-    const f3 = head("alert-glass-f3", 0)   // margin 0: f3 is per pixel (images, flood, matrices, blends — no primitive reads a neighbour) and the pane clips the glass to the panel box (clip-path inset(60px round 34px), alert-glass.css:7), so the pixels outside the panel it used to compute (M 120 each side: 560×392 pt vs 320×152 at devicePixelRatio) were never shown
-      + img(im.hl, "hl0") + img(im.hl2, "hl20") + `<feFlood flood-color="rgb(0,0,0)" result="blk3"/><feComposite in="hl0" in2="blk3" operator="over" result="hl"/><feComposite in="hl20" in2="blk3" operator="over" result="hl2"/>`
-      + `<feColorMatrix in="SourceGraphic" type="matrix" values="${HL.vibrant.join(" ")} 0 0 0 1 0" result="vib"/>` + invert("hl", "hli")
-      + `<feBlend in="SourceGraphic" in2="hli" mode="multiply" result="f0"/><feBlend in="vib" in2="hl" mode="multiply" result="f1"/><feComposite in="f0" in2="f1" operator="arithmetic" k2="1" k3="1" result="o1h"/>`
-      + `<feColorMatrix in="o1h" type="matrix" values="${HL.vibrant.join(" ")} 0 0 0 1 0" result="vib2"/>` + invert("hl2", "hl2i")
-      + `<feBlend in="o1h" in2="hl2i" mode="multiply" result="g0"/><feBlend in="vib2" in2="hl2" mode="multiply" result="g1"/><feComposite in="g0" in2="g1" operator="arithmetic" k2="1" k3="1" result="out"/></filter>`;
+    /* f3 (wrapper 3, SourceGraphic = the bleed output): the highlight layer's two stages through the vibrant matrix. Both stages are mix(c, vib(c), α) with α = the
+       hl / hl2 maps, which are 0 deeper than im.hlInset from the bbox edge (14.75 pt on every size tried: 320×152 / 172 / 300, 270×200 — the diffuse band's
+       8.17 pt from the rim plus the continuous corner's inset) — there the output is SourceGraphic exactly (×1 + 0). So the chain runs only on the four rim
+       strips (s = hlInset + 1 pt, the maps' bilinear reach: 2 texels) through primitive subregions, merged over SourceGraphic: the same pixels, 29 % of the
+       area on 320×152. Measured (simulator B, 09-23 22:3x, low load): f3 was the costly filter — open with f3 off 31–38 ms frame gaps (= the page without the
+       glass), with it 44–60; repainting the open alert: all filters 32–41 ms a frame, f3 alone 23–24, f1 / f2 / f1 + f2 17 (one vsync). */
+    const sw = Math.ceil(im.hlInset + 1), strips = sw * 2 < Math.min(W, H) ? [[0, 0, W, sw], [0, H - sw, W, sw], [0, sw, sw, H - 2 * sw], [W - sw, sw, sw, H - 2 * sw]] : [[0, 0, W, H]];
+    const sub = (i) => { const [x, y, w, h] = strips[i]; return `x="${x}" y="${y}" width="${w}" height="${h}" data-strip="${x},${y}"`; };
+    const f3 = head("alert-glass-f3", 0).replace("<filter ", `<filter data-strips="${strips.length}" data-strip-width="${sw}" `)   // margin 0: f3 is per pixel (images, flood, matrices, blends — no primitive reads a neighbour) and the pane clips the glass to the panel box (clip-path inset(60px round 34px), alert-glass.css:7), so the pixels outside the panel it used to compute (M 120 each side: 560×392 pt vs 320×152 at devicePixelRatio) were never shown
+      + img(im.hl, "hl0") + img(im.hl2, "hl20")
+      + strips.map((_, i) => { const r = (n) => n + "_" + i, a = sub(i);
+        return `<feFlood flood-color="rgb(0,0,0)" ${a} result="${r("blk3")}"/><feComposite in="hl0" in2="${r("blk3")}" operator="over" ${a} result="${r("hl")}"/><feComposite in="hl20" in2="${r("blk3")}" operator="over" ${a} result="${r("hl2")}"/>`
+          + `<feColorMatrix in="SourceGraphic" type="matrix" values="${HL.vibrant.join(" ")} 0 0 0 1 0" ${a} result="${r("vib")}"/>` + invert(r("hl"), r("hli")).replace("<feComponentTransfer ", `<feComponentTransfer ${a} `)
+          + `<feBlend in="SourceGraphic" in2="${r("hli")}" mode="multiply" ${a} result="${r("f0")}"/><feBlend in="${r("vib")}" in2="${r("hl")}" mode="multiply" ${a} result="${r("f1")}"/><feComposite in="${r("f0")}" in2="${r("f1")}" operator="arithmetic" k2="1" k3="1" ${a} result="${r("o1h")}"/>`
+          + `<feColorMatrix in="${r("o1h")}" type="matrix" values="${HL.vibrant.join(" ")} 0 0 0 1 0" ${a} result="${r("vib2")}"/>` + invert(r("hl2"), r("hl2i")).replace("<feComponentTransfer ", `<feComponentTransfer ${a} `)
+          + `<feBlend in="${r("o1h")}" in2="${r("hl2i")}" mode="multiply" ${a} result="${r("g0")}"/><feBlend in="${r("vib2")}" in2="${r("hl2")}" mode="multiply" ${a} result="${r("g1")}"/><feComposite in="${r("g0")}" in2="${r("g1")}" operator="arithmetic" k2="1" k3="1" ${a} result="${r("out")}"/>`; }).join("")
+      + `<feMerge result="out"><feMergeNode in="SourceGraphic"/>${strips.map((_, i) => `<feMergeNode in="out_${i}"/>`).join("")}</feMerge></filter>`;
     svg.innerHTML = f1 + f2 + f3; for (const id of ["alert-glass-f1", "alert-glass-f2"]) shrink(svg.querySelector("#" + id), gres(k)); return k; };
   /* ---- R57″: the in-shader KeyFill's STROKE mode and the RingShadow, the menu's construction (menu.js R63′; keyfill-highlight.md §2c / §4; keys = the 70-key truths:
      KeyFill Amount .4 / Angle 1.5708 / ColorBias −.3 / EffectOffset −.5333 / Height .5333 / SpreadSDR 1.85 light, 1.309 dark; RingShadow StrokeWidth 4 / Offset 8 /
@@ -185,41 +223,64 @@ BleedEdge: "近似: the capture box (panel ± 60.2, clamped to the copy) is TILE
      face + MaxLuma chain, darken, the (3x − 2x²) LUT, a k4-safe subtraction). Placed once the appear animation has settled (.settled), removed at close.
      Ring shadow (mask 1 → only inside the shape): the shape shifted RingShadowOffset down, the band StrokeWidth wide just inside it, blurred σ BlurRadius, black at
      Opacity, multiplied onto the glass layer inside the pane (its clip-path is the mask). */
-  const strokeMap = (W, H, r, k, dpr) => { const E = 3, S = Math.cos(k.KeyFillHighlightSpreadSDR), a = 1 / k.KeyFillHighlightAmount - 2, h = k.KeyFillHighlightHeight, fw = 1 / dpr, dir = [Math.sin(k.KeyFillHighlightAngle), -Math.cos(k.KeyFillHighlightAngle)];
+  /* 界面 09-23: the map is built once per size / theme / scale (strokeCache) and pre-warmed at idle with images() — built inside the .settled handler it held the
+     main thread 61–97 ms right at the end of the appear animation (simulator B, 09-23 22:30, instrumented buildStroke: strokeFilter 61 / 62 / 63 / 65 / 97 ms,
+     the rest ≤ 1; the rAF gap there 79–114 ms). Pixels of the two straight-edge strips (|x| ≤ W/2 − R, |y| ≤ H/2 − 1 and the transpose; R = KR·r) have
+     d = |y| − H/2 (resp. |x| − W/2) ≤ −1 exactly (sdf: q ≤ 0 on one axis → d = the other axis's distance), so cov = 1 and k = 0 there — skipped without the sdf. */
+  const strokeCache = {};
+  const strokeMap = (W, H, r, k, dpr) => { const key = W + "x" + H + "/" + r + "/" + k.KeyFillHighlightSpreadSDR + "/" + dpr; if (strokeCache[key]) return strokeCache[key];
+    const E = 3, S = Math.cos(k.KeyFillHighlightSpreadSDR), a = 1 / k.KeyFillHighlightAmount - 2, h = k.KeyFillHighlightHeight, fw = 1 / dpr, dir = [Math.sin(k.KeyFillHighlightAngle), -Math.cos(k.KeyFillHighlightAngle)];
     const w = Math.round((W + 2 * E) * dpr), hh = Math.round((H + 2 * E) * dpr), c = document.createElement("canvas"); c.width = w; c.height = hh; const ctx = c.getContext("2d"), id = ctx.createImageData(w, hh); let kside = 0, ktop = 0;
-    for (let j = 0; j < hh; j++) for (let i = 0; i < w; i++) { const x = (i + .5) / dpr - E - W / 2, y = (j + .5) / dpr - E - H / 2; const [d, gsx, gsy] = sdf(x, y, W / 2, H / 2, r); const [gx, gy] = gOval(x, y, W / 2, H / 2, gsx, gsy, k.GradientOvalization); const o = (j * w + i) * 4; let kk = 0;   // R57⁗: n·dir on the ovalized normal
+    const R = KR * r, ix = W / 2 - R, iy = H / 2 - R;
+    for (let j = 0; j < hh; j++) for (let i = 0; i < w; i++) { const x = (i + .5) / dpr - E - W / 2, y = (j + .5) / dpr - E - H / 2; const ax = Math.abs(x), ay = Math.abs(y);
+      if ((ax <= ix && ay <= H / 2 - 1) || (ay <= iy && ax <= W / 2 - 1)) { const o = (j * w + i) * 4; id.data[o + 3] = 255; continue; }
+      const [d, gsx, gsy] = sdf(x, y, W / 2, H / 2, r); const [gx, gy] = gOval(x, y, W / 2, H / 2, gsx, gsy, k.GradientOvalization); const o = (j * w + i) * 4; let kk = 0;   // R57⁗: n·dir on the ovalized normal
       const cov = sat(0.5 - d / fw);
       if (!(d - h >= fw / 2 || cov >= 1)) { const e = h - d, v = (1 - cov) * sat(e / fw + 0.5), nd = gx * dir[0] + gy * dir[1];
         for (const sgn of [1, -1]) { const ang = sat((sgn * nd - S) / (1 - S)), va = v * ang; kk += va / (1 + a * (1 - va)); } kk = Math.min(1, kk); }
       id.data[o] = id.data[o + 1] = id.data[o + 2] = Math.round(255 * kk); id.data[o + 3] = 255;
       if (Math.abs(y) < 0.5 && x < -W / 2 && x > -W / 2 - 1.5 * fw) kside = Math.max(kside, kk); if (Math.abs(x) < 0.5 && y < -H / 2 && y > -H / 2 - 1.5 * fw) ktop = Math.max(ktop, kk); }
-    ctx.putImageData(id, 0, 0); return { href: c.toDataURL("image/png"), E, dpr, kside, ktop }; };
+    ctx.putImageData(id, 0, 0); return (strokeCache[key] = { href: c.toDataURL("image/png"), E, dpr, kside, ktop }); };
+  const warmStroke = (W, H, th = theme()) => { const k = keysFor(th), t0 = performance.now(); strokeMap(W, H, k.CornerRadius, k, Math.min(3, Math.max(1, window.devicePixelRatio || 1))); return performance.now() - t0; };   // the key strokeFilter uses
   const strokeFilter = (th, W, H, r) => { const k = keysFor(th), dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1)), m = strokeMap(W, H, r, k, dpr), E = m.E, comp = 1 - k.FaceColorMatrixMaxLumaSDR, luma = ".2126 .7152 .0722", bias = -k.KeyFillHighlightColorBias, qmax = 9 / 8;
     let svg = document.getElementById("alert-stroke-svg"); if (!svg) { svg = document.createElementNS(NS, "svg"); svg.id = "alert-stroke-svg"; svg.setAttribute("width", "0"); svg.setAttribute("height", "0"); svg.style.cssText = "position:absolute;width:0;height:0"; document.body.appendChild(svg); }
     const mode = k.KeyFillHighlightColorBias < 0 ? "darken" : "lighten";
-    svg.innerHTML = `<filter id="alert-stroke-f" filterUnits="userSpaceOnUse" x="${-E}" y="${-E}" width="${W + 2 * E}" height="${H + 2 * E}" color-interpolation-filters="sRGB" data-theme="${th}" data-e="${E}" data-dpr="${dpr}" data-kside="${m.kside.toFixed(3)}" data-ktop="${m.ktop.toFixed(3)}" data-s="${Math.cos(k.KeyFillHighlightSpreadSDR).toFixed(4)}" data-bias="${bias}" data-dimming="${k.Dimming}">`
-      + `<feFlood flood-color="rgb(0,0,0)" flood-opacity="${k.Dimming}" result="dim"/><feComposite in="dim" in2="SourceGraphic" operator="over" result="src"/>`
-      + `<feImage href="${m.href}" preserveAspectRatio="none" x="${-E}" y="${-E}" width="${W + 2 * E}" height="${H + 2 * E}" result="k0" data-stroke-img="1"/><feFlood flood-color="rgb(0,0,0)" result="blk"/><feComposite in="k0" in2="blk" operator="over" result="kk"/>` + invert("kk", "kki")
+    /* 界面 09-23: the chain runs only where the ring can show. The layer's clip-path is the ring between the rounded rects at E − h − fw and E + fw / 2 (radii
+       r + h + fw / r − fw / 2 about the same centres E + r), so every shown pixel lies in the four corner squares c = E + r + 1 or the four edge bands
+       t = E + 1 deep; every primitive is per pixel (floods, the image, matrices, transfers, blends — none reads a neighbour), so each region's pixels are the
+       same as the full chain's and the rest is clipped away. 10 % of the 326×158 area. Measured (simulator B, 09-23 23:2x, low load): this filter was the costly
+       one at close — the dialog's repaint when alert-out starts re-renders it (rAF gaps 45–49 + 36–43 ms at the close; with its filter off 21–24, with the stroke
+       gone ≤ 25); in the GPU process CSSFilterRenderer ~36 ms of ~62 per open / close cycle (sample, 10 cycles: 594 samples, without the stroke 235). */
+    const Wf = W + 2 * E, Hf = H + 2 * E, c = Math.ceil(E + r + 1), t = E + 1;
+    const rings = 2 * c < Math.min(Wf, Hf) ? [[0, 0, c, c], [Wf - c, 0, c, c], [0, Hf - c, c, c], [Wf - c, Hf - c, c, c], [c, 0, Wf - 2 * c, t], [c, Hf - t, Wf - 2 * c, t], [0, c, t, Hf - 2 * c], [Wf - t, c, t, Hf - 2 * c]] : [[0, 0, Wf, Hf]];
+    const ring = (i, chain) => { const [x, y, w, h] = rings[i]; return chain.replace(/\b(in2?|result)="(\w+)"/g, (a, n, v) => (v === "SourceGraphic" || v === "k0" ? a : `${n}="${v}_${i}"`))
+      .replace(/<(fe(?!Func|MergeNode)\w+) /g, (a) => `${a}x="${x - E}" y="${y - E}" width="${w}" height="${h}" data-strip="${x},${y}" `); };
+    svg.innerHTML = `<filter id="alert-stroke-f" data-rings="${rings.length}" filterUnits="userSpaceOnUse" x="${-E}" y="${-E}" width="${W + 2 * E}" height="${H + 2 * E}" color-interpolation-filters="sRGB" data-theme="${th}" data-e="${E}" data-dpr="${dpr}" data-kside="${m.kside.toFixed(3)}" data-ktop="${m.ktop.toFixed(3)}" data-s="${Math.cos(k.KeyFillHighlightSpreadSDR).toFixed(4)}" data-bias="${bias}" data-dimming="${k.Dimming}">`
+      + `<feImage href="${m.href}" preserveAspectRatio="none" x="${-E}" y="${-E}" width="${W + 2 * E}" height="${H + 2 * E}" result="k0" data-stroke-img="1"/>` + rings.map((_, i) => ring(i, `<feFlood flood-color="rgb(0,0,0)" flood-opacity="${k.Dimming}" result="dim"/><feComposite in="dim" in2="SourceGraphic" operator="over" result="src"/>`
+      + `<feFlood flood-color="rgb(0,0,0)" result="blk"/><feComposite in="k0" in2="blk" operator="over" result="kk"/>` + invert("kk", "kki")
       + maxLumaChain("src", comp, luma) + `<feColorMatrix in="ml" type="matrix" values="${faceMatrix(k)}" result="face"/><feBlend in="src" in2="face" mode="${mode}" result="bmin"/>`
       + `<feBlend in="src" in2="kki" mode="multiply" result="t1"/><feBlend in="bmin" in2="kk" mode="multiply" result="t2"/><feComposite in="t1" in2="t2" operator="arithmetic" k2="1" k3="1" result="bmix"/>`
       + tf3("qh", "bmix", lut((x) => (3 * x - 2 * x * x) / qmax)) + `<feBlend in="qh" in2="kk" mode="multiply" result="t"/>` + invert("t", "ti")
-      + `<feComposite in="bmix" in2="ti" operator="arithmetic" k2="1" k3="${(bias * qmax).toFixed(5)}" k4="${(-bias * qmax).toFixed(5)}" result="out"/></filter>`;
+      + `<feComposite in="bmix" in2="ti" operator="arithmetic" k2="1" k3="${(bias * qmax).toFixed(5)}" k4="${(-bias * qmax).toFixed(5)}" result="out"/>`)).join("")
+      + `<feMerge result="out">${rings.map((_, i) => `<feMergeNode in="out_${i}"/>`).join("")}</feMerge></filter>`;
     return { E, dpr, map: m }; };
   const roundRect = (x, y, w, h, r) => { const q = Math.max(0, Math.min(r, w / 2, h / 2)); return `M${x + q} ${y}H${x + w - q}A${q} ${q} 0 0 1 ${x + w} ${y + q}V${y + h - q}A${q} ${q} 0 0 1 ${x + w - q} ${y + h}H${x + q}A${q} ${q} 0 0 1 ${x} ${y + h - q}V${y + q}A${q} ${q} 0 0 1 ${x + q} ${y}Z`; };
-  const buildStroke = () => { if (!glass.copy || !dlg.open || glass.stroke) return; const main = document.getElementById("app"); if (!main) return; const th = glass.theme, k = keysFor(th), W = dlg.offsetWidth, H = dlg.offsetHeight, r = k.CornerRadius, f = strokeFilter(th, W, H, r), E = f.E, fw = 1 / f.dpr, h = k.KeyFillHighlightHeight;
+  const buildStroke = () => { if (!glass.copy || !dlg.open || glass.stroke) return; const t0 = performance.now(), main = document.getElementById("app"); if (!main) return; const th = glass.theme, k = keysFor(th), W = dlg.offsetWidth, H = dlg.offsetHeight, r = k.CornerRadius, f = strokeFilter(th, W, H, r), E = f.E, fw = 1 / f.dpr, h = k.KeyFillHighlightHeight;
     const dr = dlg.getBoundingClientRect(), mr = main.getBoundingClientRect(), pl = dr.left + dr.width / 2 - W / 2, pt = dr.top + dr.height / 2 - H / 2;   // the untransformed panel box (the appear animation scales about the centre; at .settled it is 1)
-    const el = document.createElement("div"); el.className = "alert-stroke"; el.setAttribute("aria-hidden", "true");
+    const el = glass.strokeHost || document.createElement("div"); el.classList.add("alert-stroke"); el.setAttribute("aria-hidden", "true");
     el.style.cssText = `position:absolute;left:${-E}px;top:${-E}px;width:${W + 2 * E}px;height:${H + 2 * E}px;overflow:hidden;pointer-events:none;z-index:-3;clip-path:path(evenodd, "${roundRect(E - h - fw, E - h - fw, W + 2 * (h + fw), H + 2 * (h + fw), r + h + fw)} ${roundRect(E + fw / 2, E + fw / 2, W - fw, H - fw, Math.max(0, r - fw / 2))}")`;
     const copy = main.cloneNode(true); copy.removeAttribute("id"); copy.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id")); copy.querySelectorAll("canvas, .lens-clip, script, .menu, .menu-scrim, .menu-stroke, dialog").forEach((e) => e.remove()); copy.className = "alert-stroke-copy"; copy.inert = true;
     copy.style.cssText = `position:absolute;left:${mr.left - (pl - E)}px;top:${mr.top - (pt - E)}px;width:${mr.width}px;min-height:${Math.max(mr.height, innerHeight + 200)}px;pointer-events:none;background:${getComputedStyle(document.body).backgroundColor};filter:url(#alert-stroke-f)`;
     const fx = document.getElementById("alert-stroke-f"), px = pl - mr.left, py = pt - mr.top; fx.setAttribute("x", String(px - E)); fx.setAttribute("y", String(py - E)); const im = fx.querySelector("feImage"); im.setAttribute("x", String(px - E)); im.setAttribute("y", String(py - E));
-    el.appendChild(copy); dlg.insertBefore(el, dlg.firstChild); glass.stroke = el; };
+    for (const e of fx.querySelectorAll("[data-strip]")) { const [sx, sy] = e.dataset.strip.split(",").map(Number); e.setAttribute("x", String(px - E + sx)); e.setAttribute("y", String(py - E + sy)); }   // the ring regions
+    el.appendChild(copy); if (!el.parentNode) dlg.insertBefore(el, dlg.firstChild); glass.stroke = el; glass.strokeMs = performance.now() - t0; };   // strokeMs: the .settled handler's own main-thread time (accept-alert)
   const ringPath = (w, h, r, off, sw) => roundRect(0, off, w, h, r) + " " + roundRect(sw, off + sw, w - 2 * sw, h - 2 * sw, Math.max(0, r - sw));   // the shape shifted down `off`, minus the same shape inset by the stroke width (evenodd = the band just inside the shifted outline)
-  const glass = { layer: null, copy: null, page: null, w2: null, w3: null, theme: null, stroke: null, ring: null, light: false, warmedAt: 0 };
+  const glass = { layer: null, copy: null, page: null, w2: null, w3: null, theme: null, stroke: null, strokeHost: null, ring: null, ringImg: null, light: false, warmedAt: 0 };
   const place = () => { if (!glass.copy || !dlg.open) return; const dr = dlg.getBoundingClientRect(), mr = document.getElementById("app").getBoundingClientRect(); const M = 120, W = dlg.offsetWidth, H = dlg.offsetHeight;
     /* the panel's box in the copy's coordinates (the copy = #app's pixels): the dialog's untransformed box from its rect centre and layout size (the appear animation scales it about the centre); the pane is the dialog box oversized by 60 */
     const pl = dr.left + dr.width / 2 - W / 2, pt = dr.top + dr.height / 2 - H / 2; const px = pl - mr.left, py = pt - mr.top; glass.w3.style.transform = `translate(${mr.left - (pl - 60)}px, ${mr.top - (pt - 60)}px)`;
     for (const id of ["alert-glass-f0", "alert-glass-f1", "alert-glass-f2", "alert-glass-f3"]) { const f = document.getElementById(id); if (!f) continue; const m = f.dataset.margin != null ? +f.dataset.margin : M, g = +f.dataset.gres || 1; f.setAttribute("x", String((px - m) / g)); f.setAttribute("y", String((py - m) / g)); for (const im of f.querySelectorAll("feImage")) { im.setAttribute("x", String(px / g)); im.setAttribute("y", String(py / g)); }
+      for (const e of f.querySelectorAll("[data-strip]")) { const [sx, sy] = e.dataset.strip.split(",").map(Number); e.setAttribute("x", String((px + sx) / g)); e.setAttribute("y", String((py + sy) / g)); }   // f3's rim strips
       /* the capture box (panel ± CaptureMargin), clamped to the copy's own box: the copy has no pixels beyond #app (native clamp_to_edge would replicate the edge column; the clamped box's mean drops that strip instead) */
       const cap = f.querySelector("[data-alert-cap]"); if (cap) { const cw = glass.page.offsetWidth, ch = glass.page.offsetHeight, cm = KEYS.CaptureMargin, x0 = Math.max(0, px - cm), y0 = Math.max(0, py - cm), x1 = Math.min(cw, px + W + cm), y1 = Math.min(ch, py + H + cm); cap.setAttribute("x", String(x0 / g)); cap.setAttribute("y", String(y0 / g)); cap.setAttribute("width", String(Math.max(1, x1 - x0) / g)); cap.setAttribute("height", String(Math.max(1, y1 - y0) / g)); } } };
   const build = () => { const th = theme(); const main = document.getElementById("app"), pane = dlg.querySelector(".pane"); if (!main || !pane) return; strip(); const W = dlg.offsetWidth, H = dlg.offsetHeight, warm = !!imageCache[W + "x" + H];
@@ -237,17 +298,40 @@ BleedEdge: "近似: the capture box (panel ± 60.2, clamped to the copy) is TILE
     { const k = keysFor(th), W = dlg.offsetWidth, H = dlg.offsetHeight; let rsvg = document.getElementById("alert-ring-svg"); if (!rsvg) { rsvg = document.createElementNS(NS, "svg"); rsvg.id = "alert-ring-svg"; rsvg.setAttribute("width", "0"); rsvg.setAttribute("height", "0"); rsvg.style.cssText = "position:absolute;width:0;height:0"; document.body.appendChild(rsvg); }
       rsvg.innerHTML = `<filter id="alert-glass-ring" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="${k.RingShadowBlurRadius}"/></filter>`;
       const ring = document.createElementNS(NS, "svg"); ring.setAttribute("class", "alert-glass-ring"); ring.setAttribute("viewBox", `0 0 ${W} ${H}`); ring.style.cssText = `position:absolute;left:60px;top:60px;width:${W}px;height:${H}px;mix-blend-mode:multiply;pointer-events:none;overflow:visible`;
-      const path = document.createElementNS(NS, "path"); path.setAttribute("fill", "#000"); path.setAttribute("fill-rule", "evenodd"); path.setAttribute("fill-opacity", String(k.RingShadowOpacity)); path.setAttribute("filter", "url(#alert-glass-ring)"); path.setAttribute("d", ringPath(W, H, k.CornerRadius, k.RingShadowOffset, k.RingShadowStrokeWidth)); path.dataset.ring = `${k.RingShadowOffset}/${k.RingShadowStrokeWidth}/${k.RingShadowBlurRadius}/${k.RingShadowOpacity}`; ring.appendChild(path); layer.appendChild(ring); glass.ring = ring; }
+      const path = document.createElementNS(NS, "path"); path.setAttribute("fill", "#000"); path.setAttribute("fill-rule", "evenodd"); path.setAttribute("fill-opacity", String(k.RingShadowOpacity)); path.setAttribute("filter", "url(#alert-glass-ring)"); path.setAttribute("d", ringPath(W, H, k.CornerRadius, k.RingShadowOffset, k.RingShadowStrokeWidth)); path.dataset.ring = `${k.RingShadowOffset}/${k.RingShadowStrokeWidth}/${k.RingShadowBlurRadius}/${k.RingShadowOpacity}`; ring.appendChild(path); layer.appendChild(ring); glass.ring = ring;
+      /* the ring as a bitmap made at idle from this same SVG (ringBitmap below): drawn from the SVG, its σ 5 blur ran anew in the first frame of every open —
+         10–13 ms of the open's second frame (simulator B, 09-24 00:4x, 10 alternating opens each: second frame 45 → 32 with the ring off, blur off 32, blend
+         mode normal 40 = on); the bitmap in its place: the panel ± 30 pt of the screenshot 0 pixels different, second frame 47 → 40 */
+      const bm = ringCache[ringSig(W, H, th)]; if (bm && bm.img) { const im = bm.img.cloneNode(); im.className = "alert-glass-ring-img"; im.setAttribute("aria-hidden", "true"); im.dataset.ring = path.dataset.ring;
+        im.style.cssText = `position:absolute;left:${60 - RING_M}px;top:${60 - RING_M}px;width:${bm.vw}px;height:${bm.vh}px;mix-blend-mode:multiply;pointer-events:none`; ring.style.display = "none"; layer.insertBefore(im, ring); glass.ringImg = im; }
+      else ringBitmap(W, H, th); }
+    /* The stroke's own composited layer, in place from the open (alert-glass.css .alert-stroke-host): as part of the dialog's backing the stroke copy's filter
+       re-ran on every repaint of anything over the panel — a button's press / focus, a text change, the start of alert-out at close — one 26–49 ms frame each
+       (simulator B, 09-23 23:3x: the cancel button's colour changed with the alert open 32 / 33 ms, with the stroke on its own layer 17–19; the screen
+       pixel-identical). Created at the open with the panel's box so the layer tree has its final shape from the first frame: added at .settled, the new layer
+       re-laid the dialog's layers and repainted the glass (29–31 ms at .settled). The copy goes in at .settled (buildStroke). */
+    const host = document.createElement("div"); host.className = "alert-stroke-host"; host.setAttribute("aria-hidden", "true");
+    host.style.cssText = `position:absolute;left:-3px;top:-3px;width:${W + 6}px;height:${H + 6}px;pointer-events:none;z-index:-3`; dlg.insertBefore(host, dlg.firstChild); glass.strokeHost = host;
     pane.appendChild(layer); glass.layer = layer; glass.copy = copy; glass.page = page; glass.w2 = w2; glass.w3 = w3; glass.theme = th; dlg.classList.add("glass-read"); dlg.classList.toggle("glass-dark", th === "dark"); place(); if (dlg.classList.contains("settled")) buildStroke();
-    if (!warm) { glass.light = true; requestAnimationFrame(() => setTimeout(() => { if (glass.copy !== copy || !dlg.open) return; ensureFilter(W, H, th); copy.style.filter = "url(#alert-glass-f1)"; w2.style.filter = "url(#alert-glass-f2)"; w3.style.filter = "url(#alert-glass-f3)"; glass.light = false; glass.warmedAt = performance.now(); place(); }, 0)); } };   // R57‴: the maps and the full chain after the first painted frame
-  const strip = () => { if (glass.layer) glass.layer.remove(); if (glass.stroke) glass.stroke.remove(); glass.layer = glass.copy = glass.page = glass.w2 = glass.w3 = glass.stroke = glass.ring = null; glass.light = false; };
+    if (!warm) { glass.light = true; imagesAsync(W, H).then(() => { if (glass.copy !== copy || !dlg.open) return; ensureFilter(W, H, th); copy.style.filter = "url(#alert-glass-f1)"; w2.style.filter = "url(#alert-glass-f2)"; w3.style.filter = "url(#alert-glass-f3)"; glass.light = false; glass.warmedAt = performance.now(); place(); }); } };   // R57‴: the full chain once the maps are made — in the map worker (界面 09-23), the light chain meanwhile
+  /* ringBitmap: the ring's SVG (the same path, fill and #alert-glass-ring filter as build) as an image at devicePixelRatio, drawn into a canvas once (WebKit
+     rasterizes it with the same filter code as the page), kept as a decoded PNG per size / theme / scale; build uses it from the next open, warmUp at idle */
+  const RING_M = 40, ringCache = {}, ringSig = (W, H, th) => `${W}x${H}/${th}/${window.devicePixelRatio || 1}`;
+  const ringBitmap = (W, H, th) => { const sig = ringSig(W, H, th); if (ringCache[sig]) return ringCache[sig].p; const k = keysFor(th), dpr = window.devicePixelRatio || 1, cw = Math.ceil((W + 2 * RING_M) * dpr), ch = Math.ceil((H + 2 * RING_M) * dpr), vw = cw / dpr, vh = ch / dpr;
+    const src = `<svg xmlns="${NS}" width="${cw}" height="${ch}" viewBox="${-RING_M} ${-RING_M} ${vw} ${vh}"><filter id="alert-glass-ring" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="${k.RingShadowBlurRadius}"/></filter>`
+      + `<path d="${ringPath(W, H, k.CornerRadius, k.RingShadowOffset, k.RingShadowStrokeWidth)}" fill="#000" fill-rule="evenodd" fill-opacity="${k.RingShadowOpacity}" filter="url(#alert-glass-ring)"/></svg>`;
+    const e = ringCache[sig] = { img: null, vw, vh }; e.p = (async () => { try { const sv = new Image(); sv.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(src); await sv.decode();
+      const c = document.createElement("canvas"); c.width = cw; c.height = ch; c.getContext("2d").drawImage(sv, 0, 0); const blob = await new Promise((r) => c.toBlob(r, "image/png")); if (!blob) throw new Error("toBlob");
+      const im = new Image(); im.src = URL.createObjectURL(blob); await im.decode(); e.img = im; } catch (err) { delete ringCache[sig]; } })(); return e.p; };
+  const strip = () => { if (glass.layer) glass.layer.remove(); if (glass.stroke) glass.stroke.remove(); if (glass.strokeHost) glass.strokeHost.remove(); glass.layer = glass.copy = glass.page = glass.w2 = glass.w3 = glass.stroke = glass.strokeHost = glass.ring = glass.ringImg = null; glass.light = false; };
   /* the dialog's open state: showModal() has no event — watch the `open` attribute */
   new MutationObserver(() => { if (dlg.open) build(); else strip(); }).observe(dlg, { attributes: true, attributeFilter: ["open"] });
   new MutationObserver(() => { if (dlg.open && dlg.classList.contains("settled") && glass.copy && !glass.stroke) buildStroke(); }).observe(dlg, { attributes: true, attributeFilter: ["class"] });   // R57″: the stroke once the appear animation has settled (the dialog's scale is 1 then)
   addEventListener("resize", place); addEventListener("scroll", place, { passive: true });
   /* R57‴ pre-warm: the last opened alert's size (localStorage) has its maps generated at idle after load — a repeat session opens on the full chain in its first frame */
-  { const warmUp = () => { try { const sz = localStorage.getItem("ark-alert-size"); if (!sz) return; const [W, H] = sz.split("x").map(Number); if (W > 0 && H > 0 && !imageCache[sz]) { images(W, H); glass.prewarmed = sz; } } catch (e) {} };
+  { const warmUp = () => { try { const sz = localStorage.getItem("ark-alert-size"); if (!sz) return; const [W, H] = sz.split("x").map(Number); if (W > 0 && H > 0 && !imageCache[sz]) imagesAsync(W, H).then(() => { glass.prewarmed = sz; });
+        if (W > 0 && H > 0) idle(() => { warmStroke(W, H); glass.strokeWarmed = sz; }); if (W > 0 && H > 0) idle(() => ringBitmap(W, H, theme())); } catch (e) {} };   // the stroke's k map too, in its own idle slot
     const idle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 3000 }) : setTimeout(fn, 1500)); if (document.readyState === "complete") idle(warmUp); else addEventListener("load", () => idle(warmUp), { once: true }); }
-  window.AlertGlass = { forget: (W, H) => { delete imageCache[W + "x" + H]; const f = document.getElementById("alert-glass-svg"); if (f) delete f.dataset.size; },   // instrument: that size opens cold again (accept-alert first-open check)
-     keys: KEYS, keysFor, dark: DARK, highlight: HL, unbuilt: UNBUILT, images, faceMatrix, bleedMatrix, sdf, level, mixStd, theme, rebuild: build, get layer() { return glass.layer; }, get light() { return glass.light; }, get warmedAt() { return glass.warmedAt; }, cached: (W, H) => !!imageCache[W + "x" + H], gOval, VB_STD };
+  window.AlertGlass = { forget: (W, H) => { delete imageCache[W + "x" + H]; delete mapWorker.pending[W + "x" + H]; mapWorker.gen[W + "x" + H] = (mapWorker.gen[W + "x" + H] || 0) + 1; const f = document.getElementById("alert-glass-svg"); if (f) delete f.dataset.size; },   // instrument: that size opens cold again (accept-alert first-open check); a worker result still on its way for it is dropped
+     keys: KEYS, keysFor, dark: DARK, highlight: HL, unbuilt: UNBUILT, images, faceMatrix, bleedMatrix, sdf, level, mixStd, theme, rebuild: build, get layer() { return glass.layer; }, get light() { return glass.light; }, get warmedAt() { return glass.warmedAt; }, get strokeWarmed() { return glass.strokeWarmed; }, get strokeMs() { return glass.strokeMs; }, get ringImg() { return glass.ringImg; }, ringBitmap, warmStroke, imagesAsync, get mapWorker() { return mapWorker.state + (mapWorker.encoded ? " / png " + mapWorker.encoded : "") + (mapWorker.ms ? " / " + mapWorker.ms.join("+") + " ms" : ""); }, cached: (W, H) => !!imageCache[W + "x" + H], gOval, VB_STD };
 })();
