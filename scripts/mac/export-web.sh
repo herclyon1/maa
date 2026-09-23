@@ -1,8 +1,8 @@
-#!/bin/zsh
+#!/bin/bash
 # export-web.sh <sha|HEAD> <outdir> [<v>] — export web/ of a commit for a local phone test with the SAME stamp step as the
 # release (T4): git archive → stamp-shell.py. The phone must never load an unstamped ?v=0 shell (HTTP cache serves it forever).
 set -euo pipefail
-HERE="$(cd "$(dirname "${0:A}")/../.." && pwd)"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SHA="${1:?sha}"; OUT="${2:?outdir}"; V="${3:-$(date +%Y%m%d%H%M%S)}"
 mkdir -p "$OUT"; cd "$HERE"
 git archive "$SHA" web | tar -x -C "$OUT"

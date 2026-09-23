@@ -15,7 +15,7 @@ that built QuartzCore's default.metallib; each field changed one at a time, 2026
   bit 15  coord::pixel           bits 16-18 compare_func (never 0, less 1 …)      bits 20-23 max_anisotropy − 1      bit 19: always set (unassigned here)
   bits 24-39 / 40-55  lod_clamp min / max as IEEE half (probe lod_clamp(1, 4) → 0x3c00 / 0x4400; defaults 0 / 0x7bff = 65504)
 """
-import struct, sys, os, subprocess, re, glob, tempfile
+import struct, sys, os, subprocess, re, tempfile
 
 def functions(path):
     data = open(path, 'rb').read(); assert data[:4] == b'MTLB', 'not a metallib'

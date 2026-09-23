@@ -64,7 +64,7 @@ def shot(url, js, dark):
         page = None
         for i in range(100):
             try: page = next(t for t in json.load(urllib.request.urlopen(f'http://127.0.0.1:{port}/json')) if t['type'] == 'page'); break
-            except Exception: time.sleep(0.2)
+            except (OSError, ValueError, StopIteration): time.sleep(0.2)   # DevTools not up yet: refused / half-written JSON / no page target
         ws = WS(page['webSocketDebuggerUrl']); ws.send('Runtime.enable'); ws.send('Page.enable'); ws.send('Emulation.setDeviceMetricsOverride', {'width': 440, 'height': 956, 'deviceScaleFactor': 3, 'mobile': True})
         ws.send('Page.addScriptToEvaluateOnNewDocument', {'source': 'localStorage.setItem("ark-remote-cfg", %s); localStorage.setItem("ark-remote-cfg-snap", %s); localStorage.setItem("ark-remote-tab", "状态");' % (json.dumps(json.dumps({'topic': 'smoke-test-topic', 'pin': '1234'})), json.dumps(json.dumps(SNAP, ensure_ascii=False)))})
         if dark: ws.send('Emulation.setEmulatedMedia', {'features': [{'name': 'prefers-color-scheme', 'value': 'dark'}]})

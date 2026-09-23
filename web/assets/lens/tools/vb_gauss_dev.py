@@ -15,10 +15,10 @@ def gauss(sig):
 for k in (1, 2, 3):
     K = pyramid_kernel(k); s, sx, sy = stats(K); G = gauss(sx)
     l1 = np.abs(K - G).sum(); c = W // 2
-    prof = lambda M: M[c, c:c + 24]
+    def prof(M): return M[c, c:c + 24]
     # blurred edge (x ≥ c → 1) and a 1-px line: RMS differences over the image
     from numpy.fft import fft2, ifft2
-    conv = lambda img, Kk: np.real(ifft2(fft2(img) * fft2(np.fft.ifftshift(Kk))))
+    def conv(img, Kk): return np.real(ifft2(fft2(img) * fft2(np.fft.ifftshift(Kk))))
     edge = np.zeros((W, W)); edge[:, c:] = 1.0; line = np.zeros((W, W)); line[:, c] = 1.0
     de = conv(edge, K) - conv(edge, G); dl = conv(line, K) - conv(line, G)
     print(f'level {k}: std {sx:.3f} base px · L1(K − G) {l1:.4f} · centre K {K[c, c]:.5f} vs G {G[c, c]:.5f} · edge RMS diff {np.sqrt((de ** 2).mean()):.5f} (max {np.abs(de).max():.4f}) · line max diff {np.abs(dl).max():.5f}')
