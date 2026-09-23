@@ -13,10 +13,22 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn, opt) { fn.__opt = opt || {};
 (function () {
   const q = new URLSearchParams(location.search);
   if (!q.has("accept")) return;
+  /* 真机自检 (index.html head, window.__acceptDevice): a strip at the top says a run is on so nobody touches the page; it hangs off <html>, not <body>, and
+     takes no pointer, so no check that walks body or hit-tests a point sees it. finish() takes it off and hands the result to view.js's share sheet. */
+  const devStrip = window.__acceptDevice ? document.createElement("div") : null;
+  if (devStrip) { devStrip.id = "accept-dev-strip"; devStrip.textContent = "自检进行中，约两分钟，别碰屏幕；跑完弹出结果";
+    devStrip.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:2147483647;pointer-events:none;padding:calc(env(safe-area-inset-top) + 4px) 12px 6px;background:rgba(0,0,0,.72);color:#fff;font:600 13px/1.3 -apple-system,system-ui,sans-serif;text-align:center";
+    document.documentElement.appendChild(devStrip);
+    /* the phone really leaving the page (another app, the lock button) stalls the run for good — a resumed page never finished (simulator 17:53, 88c25e1:
+       the web app went to the background, came back and hung on 方舟 with no result). A real hidden (visibilityState; the checks' own synthetic
+       visibilitychange events keep "visible") restarts the page without ?accept, so index.html's head puts the phone's data back, and view.js says so. */
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState !== "hidden" || !devStrip.isConnected) return;
+      try { sessionStorage.setItem("ark-accept-cut", "1"); } catch (e) {}
+      const q2 = new URLSearchParams(location.search); q2.delete("accept"); location.replace(location.pathname + (q2.toString() ? "?" + q2.toString() : "")); }); }
   /* the per-control files are appended dynamically; headless Chrome occasionally drops one of those fetches (night 00:3x: accept-sheet.js never
      requested in one run → 17 rows silently missing). Each load is tracked; a file that has not loaded when the checks start is re-appended, and
      a file still missing gets a ✗ row so the total never drops silently. */
-  window.ACCEPT.files = ["page","tile","segctl","alert-view","tabbar-view","topbar-view","cell","motion","nav","nav-edge","sheet","menu","topbar","refresh","glassbtn","alert","switch","tabbar","diagmark","stockpile","textfit"]; window.ACCEPT.loaded = new Set();   // 2026-09-20 split: page / tile / segctl / alert-view / tabbar-view / topbar-view / cell hold what were accept.js's own sections (run first: the static rows measure the untouched page)
+  window.ACCEPT.files = ["page","tile","segctl","alert-view","tabbar-view","topbar-view","cell","motion","nav","nav-edge","sheet","menu","topbar","refresh","glassbtn","alert","switch","tabbar","diagmark","stockpile","textfit","selfcheck"]; window.ACCEPT.loaded = new Set();   // 2026-09-20 split: page / tile / segctl / alert-view / tabbar-view / topbar-view / cell hold what were accept.js's own sections (run first: the static rows measure the untouched page)
   /* T1 (BOARD SPEED-summary §二 1): ?only=<控件>[,<控件>…] loads only those accept-<控件>.js files (the names above) and produces only their rows plus
      accept.js's own sections tagged with the same names through sec() — a worker's pre-push check runs in seconds; the whole suite (no ?only) is
      unchanged. Tags that exist only here: segctl (分段控件的交互行), cell (B14 行按压), page (页面行为：占位 / 回执 / 时间输入 / 迟到的 view.js / confirm),
@@ -38,11 +50,18 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn, opt) { fn.__opt = opt || {};
   /* S2 (2号 2026-09-20 13:0x): each row records the tag of the section that produced it (`tag`, printed by accept-run.py as ⟨file⟩ — 验收 S6 attributes a red row
      to its file by it). A control file's rows get the file's name: ACCEPT.add is wrapped here so the function it registers sets `cur` to the name of the
      script that called it (document.currentScript — the loader's classic <script> tags) when it starts; no other behaviour changes. */
-  { const add0 = window.ACCEPT.add.bind(window.ACCEPT);
-    window.ACCEPT.add = (fn, opt) => { const m = /accept-([^./?]+)\.js/.exec((document.currentScript || {}).src || ""); if (!m) return add0(fn, opt);
+  { const add0 = window.ACCEPT.add.bind(window.ACCEPT), from = new Map();   // file → the <script> src its fns came from
+    window.ACCEPT.add = (fn, opt) => { const src = (document.currentScript || {}).src || "", m = /accept-([^./?]+)\.js/.exec(src); if (!m) return add0(fn, opt);
+      /* a second copy of a file (its first fetch outlived the loader's 4 s timeout, then ran after the retry — OPEN.md 验收 on 0fe960c) registers
+         nothing: only the first script element of a file counts (nav / topbar register two fns from one element) */
+      if (from.has(m[1]) && from.get(m[1]) !== src) return; from.set(m[1], src);
       const w = async (ctx) => { cur = m[1]; return fn(ctx); }; Object.defineProperty(w, "name", { value: fn.name }); add0(w, opt); w.__file = m[1]; }; }   // S4: opt passed through; __file from the script's own name
-  window.ACCEPT.load = (c) => new Promise((res) => { window.ACCEPT.loading = c; const done = (v) => { if (window.ACCEPT.loading === c) window.ACCEPT.loading = null; res(v); };
-    const s = document.createElement("script"); s.src = "accept-" + c + ".js?r=" + Math.random().toString(36).slice(2, 7); s.onload = () => { window.ACCEPT.loaded.add(c); done(true); }; s.onerror = () => done(false); document.head.appendChild(s); setTimeout(() => done(false), 4000); });
+  /* one script per file: a load already done or in flight is answered, not appended again — on the phone the checks start before this chain
+     has appended every file, and the retry below then appended a second copy of each (simulator A 18:36, b8bc7e3: 42 fetches for 21 files,
+     every fn registered twice, 1320 rows for 660) */
+  const pend = new Map();
+  window.ACCEPT.load = (c) => window.ACCEPT.loaded.has(c) ? Promise.resolve(true) : pend.get(c) || (pend.set(c, new Promise((res) => { window.ACCEPT.loading = c; let fin = false; const done = (v) => { if (fin) return; fin = true; if (window.ACCEPT.loading === c) window.ACCEPT.loading = null; pend.delete(c); res(v); };
+    const s = document.createElement("script"); s.src = "accept-" + c + ".js?r=" + Math.random().toString(36).slice(2, 7); s.onload = () => { window.ACCEPT.loaded.add(c); done(true); }; s.onerror = () => done(false); document.head.appendChild(s); setTimeout(() => done(false), 4000); })), pend.get(c));
   (async () => { for (const c of window.ACCEPT.files) await window.ACCEPT.load(c); })();   // one after another (≈ 50 ms each): ACCEPT.loading names the file whose fn registers
   const rows = [];
   const near = (a, b, tol = 0.6) => Math.abs(a - b) <= tol;
@@ -114,6 +133,7 @@ window.ACCEPT = window.ACCEPT || { fns: [], add(fn, opt) { fn.__opt = opt || {};
                     standalone: matchMedia("(display-mode: standalone)").matches,
                     dark, only: ONLY ? [...ONLY].join(",") : null, layer: LAYER, dark_only: DARKONLY, total: rows.length, fails, rows };
       try { localStorage.setItem("ark-accept", JSON.stringify(out)); } catch {}
+      if (devStrip) { devStrip.remove(); dispatchEvent(new CustomEvent("arkaccept", { detail: out })); }
       document.title = `验收 ${rows.length - fails}/${rows.length}`;
       if (!q.has("quiet")) {
         const box = document.createElement("pre");
