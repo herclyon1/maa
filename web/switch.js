@@ -235,11 +235,11 @@
     if (!sw.classList.contains("drive")) { st.pos.x = st.pos.target = SW_BASE[initialOn ? 1 : 0]; st.pos.v = 0; }   // a rested switch starts at its rest position (a programmatic change may have moved it)
     st.pos.resp = T.posResp; st.liftSX = T.liftW / T.knobW; st.liftSY = T.liftH / T.knobH; st.liftW = T.liftW; st.liftH = T.liftH;
     if (FLEX_OK && !st.flex) st.flex = swFlexNew(T.liftW, T.liftH);
-    clearTimeout(st.hangT); clearTimeout(st.pressT); st.held = true;
+    clearTimeout(st.hangT); clearTimeout(st.pressT); st.held = true; st.tDown = performance.now(); st.evDown = e.timeStamp;   // instrument: when the handler ran / the event was stamped
     if (SWG.ok && !reduceMotion.matches) swGlTake(sw);   // ⓪: the glass canvas into this switch, its backdrop drawn now (before the lift at +10 ms)
-    swWrite(sw, st); sw.classList.add("drive");
+    st.tGl = performance.now(); swWrite(sw, st); sw.classList.add("drive"); st.tWritten = performance.now();
     st.pressT = setTimeout(() => {   // longPress began at +.01 s: pressed
-      sw.classList.add("pressed");
+      sw.classList.add("pressed"); st.tPressed = performance.now();
       swSync(st);
       if (!reduceMotion.matches) { liftAt = performance.now(); swAim(st.lift, 1, T.liftResp, T.liftZeta);   // spec.liftSpring (small variant: ζ .625 / .27 — overshoots 8 %: 58 → 59.7 at +173 ms)
         if (st.flex) { st.flex.active = true; st.flex.vi = flexIntegrator(); st.flex.spec = swFlexSpec(T.liftW, T.liftH); st.flex.trace = []; } }   // R70′: setLifted:YES → activation mode 3 (activateIfPermitted resets the integrator)

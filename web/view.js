@@ -47,7 +47,11 @@ function ask(title, msg, okLabel = "好", danger = false) {
     d.oncancel = (e) => { e.preventDefault(); done(false); };
     /* Behaviour 1: `.settled` marks the end of the appear animation (index.html: Chrome runs the glass flat until then). The two frame stamps
        after showModal go to the ?diag=1 line, so the first-frame delay can be read off a phone. */
-    d.classList.remove("settled"); d.addEventListener("animationend", () => d.classList.add("settled"), { once: true });
+    /* only the dialog's own appear animation settles it: animationend bubbles, and the first one to arrive was the page copy's segmented entrance inside
+       the alert (`seg-in@button.on`, 老网页 82cf4b0 headless alert-view row) — .settled then came early and the outline was built in a still-scaling dialog */
+    d.classList.remove("settled"); if (d.__onEnd) d.removeEventListener("animationend", d.__onEnd);
+    d.__onEnd = (e) => { if (e.target !== d || e.animationName !== "alert-in") return; d.removeEventListener("animationend", d.__onEnd); d.__onEnd = null; d.classList.add("settled"); };
+    d.addEventListener("animationend", d.__onEnd);
     const t0 = performance.now(); d.showModal();
     d.scrollTop = 0;   // 验收 09-19 18:0x: the glass .pane (inset −60) made the dialog scrollable by 60 px and the focus showModal() moves could scroll the title out; overflow:clip in index.html, this is the belt
     requestAnimationFrame((f1) => requestAnimationFrame((f2) => { window.ALERT_T = { open: t0, f1, f2 }; d.scrollTop = 0; }));
