@@ -278,7 +278,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .tile{position:relative;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:0;min-height:var(--ios-tile-h);
         padding:var(--ios-tile-label-top) var(--ios-tile-number-inset) calc(var(--ios-tile-h) - var(--ios-tile-label-top) - var(--ios-tile-label-lh)) var(--ios-tile-label-x);   /* 同提醒事项磁贴：标题 at (12,52)，底距 8 */
         border:0;border-radius:var(--ios-tile-radius);background:var(--card);color:var(--ink);text-align:left;font:inherit;box-shadow:none;cursor:pointer}   /* 圆角 16 ← 提醒事项 layer.cornerRadius（原值，不再是采样） */
-  .tile:active,.tile.pressed{opacity:1;background:color-mix(in srgb, var(--ink) 8%, var(--card));transition:none}   /* 按下填色 8% 无来源；.pressed 由指针状态机管（按下即高亮、出边 70 pt 余量 ← spec §4 U1–U6） */
+  .tile:active,.tile.pressed{opacity:1;transition:none}   /* G7：磁贴按下不变色不缩放（state-tables/button.md R14′：-[TTRIPinnedListControl setHighlighted:] 更新体不读按下位；tile.css 末行同值），原 8 % 墨色无来源已删；.pressed 由指针状态机管（按下即高亮、出边 70 pt 余量 ← spec §4 U1–U6） */
   .tico{position:absolute;left:var(--ios-tile-icon-x);top:var(--ios-tile-icon-y);width:var(--ios-tile-icon);height:var(--ios-tile-icon);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;flex:none}   /* 徽章 48 at (6,2) ← 提醒事项 */
   .tico .sf{width:var(--ios-symbol-slot);height:var(--ios-symbol-slot);background:#fff}   /* 符号槽 22 ← Kit */
   .ttitle{margin:0;max-width:100%;font-family:var(--ios-tile-number-font);font-size:var(--ios-tile-label-size);line-height:var(--ios-tile-label-lh);font-weight:var(--ios-tile-label-weight);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* 标题 = 磁贴标签 Rounded Semibold 17/20.33 ← 提醒事项 */
@@ -765,6 +765,7 @@ try { if (localStorage.getItem("ark-diag") === "1" && !/[?&](diag|segframes|acce
   .pick img{width:34px;height:34px;border-radius:50%;display:block}
   .pick.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--card))}
 </style>
+<link rel="stylesheet" href="textfit.css?v=20260923181656">   <!-- 串3 2号：列表文字换行不省略（UIListContentConfiguration numberOfLines 0，textfit.css 头注） -->
 </head>
 <body>
 <!-- The compact bar a large title collapses into (UINavigationBar): glass, the

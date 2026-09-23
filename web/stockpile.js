@@ -72,8 +72,8 @@
 .stk-card{margin:0;background:var(--ios-card-bg);border-radius:var(--ios-card-radius);overflow:hidden}
 .stk-row{position:relative;height:var(--ios-row2-h)}
 .stk-row img,.stk-row .noimg{position:absolute;left:var(--ios-row2-icon-x);top:17px;width:var(--ios-row2-icon);height:var(--ios-row2-icon);object-fit:contain}
-.stk-row .t{position:absolute;left:var(--ios-row2-text-x);top:var(--ios-row2-title-top);right:calc(20px + var(--stk-vw, 0px));font-size:var(--ios-body-size);line-height:var(--ios-body-lh);color:var(--ios-label);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.stk-row .s{position:absolute;left:var(--ios-row2-text-x);top:var(--ios-row2-sub-top);right:calc(20px + var(--stk-vw, 0px));font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);color:var(--ios-settings-subtitle);white-space:normal;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.stk-row .t{position:absolute;left:var(--ios-row2-text-x);top:var(--ios-row2-title-top);right:calc(20px + var(--stk-vw, 0px));font-size:var(--ios-body-size);line-height:var(--ios-body-lh);color:var(--ios-label);white-space:normal;overflow-wrap:anywhere}
+.stk-row .s{position:absolute;left:var(--ios-row2-text-x);top:calc(var(--ios-row2-sub-top) + var(--stk-tx, 0px));right:calc(20px + var(--stk-vw, 0px));font-size:var(--ios-sub-size);line-height:var(--ios-sub-lh);color:var(--ios-settings-subtitle);white-space:normal;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
 .stk-row .s .o{white-space:pre-wrap}
 .stk-row .v{position:absolute;right:20px;top:50%;transform:translateY(-50%);font-size:var(--ios-body-size);line-height:var(--ios-body-lh);color:var(--ios-secondary-label);white-space:nowrap;font-variant-numeric:tabular-nums}
 .stk-row:not(:last-child)::after{content:"";position:absolute;left:var(--ios-row2-text-x);right:20px;bottom:0;height:var(--ios-separator-h);background:var(--ios-separator)}
@@ -160,9 +160,12 @@
     // plan §4.2: text column (title and subtitle) max width = 400 − 83 − value width − 8 (--ios-value-gap); the value's
     // width is measured, not estimated from its character count
     for (const v of el.querySelectorAll(".stk-row .v")) v.parentNode.style.setProperty("--stk-vw", `calc(${v.getBoundingClientRect().width}px + var(--ios-value-gap))`);
-    // a wrapped subtitle (numberOfLines 0): the row grows by the extra lines (read after the value width is set, since it narrows the column)
-    for (const sub of el.querySelectorAll(".stk-row .s")) { const lh = parseFloat(getComputedStyle(sub).lineHeight), n = lh > 0 ? Math.max(1, Math.round(sub.getBoundingClientRect().height / lh)) : 1;
-      if (n > 1) sub.parentNode.style.height = `calc(var(--ios-row2-h) + ${n - 1} * var(--ios-sub-lh))`; else sub.parentNode.style.removeProperty("height"); }
+    // a wrapped title or subtitle (subtitleCell() text / secondaryText numberOfLines 0, cellcfg.json): the row grows by the extra lines and the subtitle moves down
+    // by the title's extra lines (read after the value width is set, since it narrows the column). 串3: the title no longer ends in an ellipsis (卢智超 18:45)
+    const lines = (e) => { if (!e) return 1; const lh = parseFloat(getComputedStyle(e).lineHeight); return lh > 0 ? Math.max(1, Math.round(e.getBoundingClientRect().height / lh)) : 1; };
+    for (const row of el.querySelectorAll(".stk-row")) { const nt = lines(row.querySelector(".t")), ns = lines(row.querySelector(".s"));
+      if (nt > 1) row.style.setProperty("--stk-tx", `calc(${nt - 1} * var(--ios-body-lh))`); else row.style.removeProperty("--stk-tx");
+      if (nt > 1 || ns > 1) row.style.height = `calc(var(--ios-row2-h) + ${nt - 1} * var(--ios-body-lh) + ${ns - 1} * var(--ios-sub-lh))`; else row.style.removeProperty("height"); }
     const b = el.querySelector("[data-act]");
     if (b) b.onclick = () => (b.dataset.act === "phone" ? toPhone() : load(true));
   }

@@ -1,0 +1,24 @@
+/* textfit.css — 串3 (2号, 09-23): list text wraps instead of ending in an ellipsis (卢智超 via the user 18:45: 「整个网站充斥着各自省略号，看不全信息」; OPEN.md last entry).
+   Native originals (data probe 09-23 17:18, remote-ref/tools/uiprobe-cellcfg/cellcfg.json, iOS 27 simulator @3x):
+   - UIListContentConfiguration cell() / subtitleCell() / valueCell() / groupedHeader() / plainHeader(): text and secondaryText numberOfLines 0 (no limit),
+     adjustsFontSizeToFitWidth false → long text wraps and the row grows; the font never shrinks. Only the sidebar cells are 1 line (not used here).
+   - valueCell() prefersSideBySideTextAndSecondaryText YES — UIListContentConfiguration.h:86: "When YES, the text and secondary text will be positioned
+     side-by-side if there is sufficient space. Otherwise, the text will be stacked in a vertical layout." Measured stacked (cellcfg.json rows[3]): the
+     value starts at the title's x (80 = title x), spans the full text width (299), 3 lines, its top = the title's bottom + 4 (textToSecondaryTextVerticalPadding 4).
+   Loaded after index.html's <style> so these win over its one-line rules (index.html:172 h2, :253 .dname, :310–311 .row > label / values, :320 .row.nav .val). */
+
+/* section header (groupedHeader text numberOfLines 0) */
+h2 { white-space: normal; overflow: visible; text-overflow: clip; }
+/* the device card's title 「游戏机 · 开机中」 (cell() text numberOfLines 0) */
+.dname { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+/* every row title wraps (cell() / valueCell() text numberOfLines 0); beside a switch / field / pop-up button it wraps in the space left of the control */
+.row > label { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+/* value rows (valueCell): side by side when title and value both fit on one line at their natural widths — a flex line breaks exactly there — else the value
+   drops under the title, left-aligned, full width, 4 below it. The title takes the rest of the first line (flex-grow), so a side-by-side value sits at the trailing edge. */
+.row:has(> .ro, > .val) { flex-wrap: wrap; row-gap: 4px; }
+.row:has(> .ro, > .val) > label { flex: 1 1 auto; min-width: 0; }
+.row > .ro, .row > .ro.short, .row.nav > .val { flex: 0 1 auto; max-width: 100%; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; text-align: left; }
+/* the disclosure chevron is the cell's accessory: it stays at the trailing edge, centred on the whole (possibly taller) row, out of the wrapping line
+   (same place as before: 20 from the right = --ios-chevron-inset, the value 8 before it = --ios-value-gap) */
+.row.nav { padding-right: calc(var(--ios-chevron-inset) + var(--ios-chevron-w) + var(--ios-value-gap)); }
+.row.nav > .sf.chev { position: absolute; right: var(--ios-chevron-inset); top: 50%; transform: translateY(-50%); margin: 0; }
