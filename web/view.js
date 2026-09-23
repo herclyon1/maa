@@ -1282,7 +1282,7 @@ function openMenu(anchor, sel) {
   document.body.append(scrim, menu);
   /* Below the value, right edge on the value's right edge; above it when there is no room. */
   const r = anchor.getBoundingClientRect(), mh = menu.offsetHeight, gap = 6;
-  const right = Math.max(8, innerWidth - r.right);
+  const right = Math.max(8, document.documentElement.clientWidth - r.right);
   menu.style.right = right + "px";
   if (r.bottom + gap + mh <= innerHeight - 8) menu.style.top = (r.bottom + gap) + "px";
   else { menu.classList.add("up"); menu.style.bottom = Math.max(8, innerHeight - r.top + gap) + "px"; }
@@ -1672,7 +1672,7 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
      1.72 dragged to the divider on the 440 screen, 1.35 lifted in place) and the seven taps' scales = ±S_ab·k × lift progress */
   const abFrame = (set, p) => {
     const f = document.querySelector(`#seg-lens-f-ab-${set}`); if (!f) return;
-    const r = lens.getBoundingClientRect(), sw = innerWidth, sh = innerHeight;
+    const r = lens.getBoundingClientRect(), sw = document.documentElement.clientWidth, sh = innerHeight;   // screen width: innerWidth counts overflow (nav.js W)
     const wh = (Math.min(r.right + 100, sw) - Math.max(r.left - 100, 0)) / (Math.min(r.bottom + 100, sh) - Math.max(r.top - 100, 0));
     const key = `${set}|${wh.toFixed(4)}|${p.toFixed(3)}`; if (key === abKey) return; abKey = key;
     const m = f.querySelector(`#seg-lens-f-ab-${set}-wh`); if (m) m.setAttribute("values", `${wh.toFixed(4)} 0 0 0 ${(0.5 * (1 - wh)).toFixed(4)}  0 ${(1 / wh).toFixed(4)} 0 0 ${(0.5 * (1 - 1 / wh)).toFixed(4)}  0 0 1 0 0  0 0 0 1 0`);
@@ -1714,7 +1714,7 @@ function segLens(seg, lens, bs, downClientX, tap, downAt) {   // downAt = the po
     const g = st.geo || { left: pad + idx0 * PITCH, top: pad, w: W0, h: H0 };   // the model box (the flex transform sits on top of it, so not getBoundingClientRect)
     const L = g.left, T = g.top, Wd = g.w, Hd = g.h, R = Hd / 2;   // capsule: corner = h/2 (r22 at 44 ← §0; the lift's corner 14 → 22 on the same spring ← §4.4 row 1)
     if (GL) {   // WebGL: one setState per tick — uniforms only (README §0.8.7 step 3); wh = the §3b.6 capture-box rule from the lens's screen rect
-      const r = lens.getBoundingClientRect(), sw = innerWidth, sh = innerHeight, wh = (Math.min(r.right + 100, sw) - Math.max(r.left - 100, 0)) / (Math.min(r.bottom + 100, sh) - Math.max(r.top - 100, 0));
+      const r = lens.getBoundingClientRect(), sw = document.documentElement.clientWidth, sh = innerHeight, wh = (Math.min(r.right + 100, sw) - Math.max(r.left - 100, 0)) / (Math.min(r.bottom + 100, sh) - Math.max(r.top - 100, 0));
       /* pd = the DestOut α (§4.1 -destout-keys, the first three frames .396 / .98 / 1): in the package (7940efc) it fades the REAL labels out of the backdrop copy
          at the source position only — the capsule stays opaque and the platter layer is not scaled by it (the a20df11 flash: the earlier package multiplied the
          whole capsule by pd, so the platter was gone on the first two lifted frames). */
@@ -2062,7 +2062,7 @@ function attachTabBar(nav, select) {
       move: (ev) => { if (Math.abs(ev.clientX - x0) >= RESELECT_SLOP()) reselect = false; nav.classList.add("drag"); liftTo(itemAt(ev.clientX), onSelected ? "lift-sel" : "lift"); },   // T4/T9/T11: the highlight follows the finger (the driver's lens follows on its own), value waits for the up; ≥ 4 pt: no reselect at the up (R106 ②)
       end: (ev, cancelled) => {
         g.classList.remove("lift", "lift-sel"); nav.classList.remove("drag");
-        const ins = LIFT_INSET(), outside = ev.clientX < ins || ev.clientX > innerWidth - ins || ev.clientY < ins || ev.clientY > innerHeight - ins;   // R106 ②: outside window.bounds inset by 8 → the highlight clears, nothing is selected
+        const ins = LIFT_INSET(), outside = ev.clientX < ins || ev.clientX > document.documentElement.clientWidth - ins || ev.clientY < ins || ev.clientY > innerHeight - ins;   // R106 ②: outside window.bounds inset by 8 → the highlight clears, nothing is selected
         const target = cancelled || outside ? cur : itemAt(ev.clientX);
         if (target === cur) {
           g.style.left = bs[cur].offsetLeft + "px"; g.style.width = bs[cur].offsetWidth + "px";
@@ -2382,7 +2382,7 @@ boot();
    the keyboard. Here: while the visual viewport is > 120 px shorter than the window (keyboard up) html.kbd hides the capsule; on every visualViewport
    resize / scroll and after a focus leaves a field the state is re-applied — the capsule comes back through display:none → block, i.e. freshly placed at
    the bottom. window.__tabKbd(h) runs the same code with a pretended visual-viewport height (accept). */
-{ const vv = window.visualViewport; let H0 = innerHeight, W0 = innerWidth, kbdNow = false, preY = null, focusT = -1e9, kbT = -1e9, settleTimer = 0, fingers = 0;
+{ const vv = window.visualViewport; let H0 = innerHeight, W0 = document.documentElement.clientWidth, kbdNow = false, preY = null, focusT = -1e9, kbT = -1e9, settleTimer = 0, fingers = 0;
   const kbInput = (el) => !!el && ((el.tagName === "INPUT" && !/^(checkbox|radio|range|button|submit|reset|file|color|hidden)$/i.test(el.type)) || el.tagName === "TEXTAREA" || el.isContentEditable === true);   // a <select> opens a menu, not the keyboard
   /* The keyboard state is viewport evidence only, never focus (监督局 09-19 19:4x, 验收 headless + 数据 simulator):
      · 5d71467 kept a kbdFocus flag cleared only by the field's focusout — when the keyboard goes WITHOUT a blur (iOS: a tap on the segmented control, whose
@@ -2391,7 +2391,7 @@ boot();
      H0 = the largest innerHeight seen at the current width (an orientation change resets it); kbd = (H0 − innerHeight > 120) || (innerHeight − vv.height > 120),
      recomputed on window resize, visualViewport resize / scroll, every pointerdown and 0 / 60 / 300 / 600 / 1000 ms after a text field's blur (all of them
      just re-read the viewport); either measure recovering clears it. The frame after kbd turns true the focused field is revealed (below). */
-  const apply = (h, ih) => { if (innerWidth !== W0) { W0 = innerWidth; H0 = innerHeight; } if (ih == null && innerHeight > H0) H0 = innerHeight;
+  const apply = (h, ih) => { if (document.documentElement.clientWidth !== W0) { W0 = document.documentElement.clientWidth; H0 = innerHeight; } if (ih == null && innerHeight > H0) H0 = innerHeight;
     const IH = ih != null ? ih : innerHeight, vh = h != null ? h : (vv ? vv.height : innerHeight), kbd = (H0 - IH > 120) || (IH - vh > 120);
     document.documentElement.classList.toggle("kbd", kbd); if (kbd && !kbdNow) { kbT = performance.now(); requestAnimationFrame(() => later()); } kbdNow = kbd; return kbd; };
   window.__tabKbd = (h, ih) => apply(h, ih);

@@ -235,7 +235,7 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
       else if (fn === "brightness") c = c.map((v) => cl(v * s)); else c = c.map((v) => cl((v - .5) * s + .5)); }
     return [c[0] * 255, c[1] * 255, c[2] * 255, 1]; };
   const glFrame = (st, p, x, W, H, pad, h0) => { if (!glo || glo.nav !== st.nav) return; const nb = st.nav.getBoundingClientRect(); const l = nb.left + x - W / 2, t = nb.top + pad + h0 / 2 - H / 2;
-    const wh = (Math.min(l + W + 100, innerWidth) - Math.max(l - 100, 0)) / (Math.min(t + H + 100, innerHeight) - Math.max(t - 100, 0));   // formula §3b.6: the capture box = frame ± 100 clamped to the screen
+    const wh = (Math.min(l + W + 100, document.documentElement.clientWidth) - Math.max(l - 100, 0)) / (Math.min(t + H + 100, innerHeight) - Math.max(t - 100, 0));   // formula §3b.6: the capture box = frame ± 100 clamped to the screen
     try { glo.lens.setState({ cx: x + GLM, cy: pad + h0 / 2 + GLM, w: W, h: H, lift: p, pd: p, wh, platter: { rgba: st.selRest || (st.selRest = selRest(st.nav)), alpha: 1 - p } }); } catch (e) { window.__tabLensErr = String(e && e.stack || e); } };
   const glRest = (st) => { if (!glo || glo.nav !== st.nav) return; try { glo.lens.setState({ cx: 0, cy: 0, w: 82, h: 54, lift: 0 }); } catch (e) {} };
   const startGeo = (st) => {
@@ -363,7 +363,7 @@ nav.tabs.tlens.tl-on .glide,nav.tabs.tlens.tl-on.drag .glide{transition:none;lef
       for (const id of [`tab-lens-f-bg-${set}`, `tab-lens-f-lab-${set}`]) { const fd = document.querySelector(`#${id} feDisplacementMap`); if (fd) fd.setAttribute("scale", (sOf(id) * p * s).toFixed(3)); }
       if (FRINGE) {                                                       // layer 5: W/H = the capture box (lens screen frame ± 100 clamped to the screen), taps ±S_ab·k × p × s
         const f = document.getElementById(`tab-lens-f-ab-${set}`);
-        if (f) { const l0 = SL + AM, t0s = ST + AM, wh = (Math.min(l0 + W + 100, innerWidth) - Math.max(l0 - 100, 0)) / (Math.min(t0s + H + 100, innerHeight) - Math.max(t0s - 100, 0));
+        if (f) { const l0 = SL + AM, t0s = ST + AM, wh = (Math.min(l0 + W + 100, document.documentElement.clientWidth) - Math.max(l0 - 100, 0)) / (Math.min(t0s + H + 100, innerHeight) - Math.max(t0s - 100, 0));
           const key = `${set}|${wh.toFixed(4)}|${(p * s).toFixed(4)}`;
           if (key !== abKey) { abKey = key; const m = f.querySelector(`#tab-lens-f-ab-${set}-wh`); if (m) m.setAttribute("values", `${wh.toFixed(4)} 0 0 0 ${(0.5 * (1 - wh)).toFixed(4)}  0 ${(1 / wh).toFixed(4)} 0 0 ${(0.5 * (1 - 1 / wh)).toFixed(4)}  0 0 1 0 0  0 0 0 1 0`);
             const S = parseFloat(f.getAttribute("data-s")) || 16, taps = f.querySelectorAll("feDisplacementMap"), n = taps.length; taps.forEach((t, i) => t.setAttribute("scale", (S * p * s * (1 - 2 * i / (n - 1))).toFixed(3))); } }

@@ -55,7 +55,7 @@
   const seg = ([a, b], p) => clamp01((p - a) / (b - a));
   const D = bez(.25, .1, .25, 1);                                // kCAMediaTimingFunctionDefault (QuartzCore table 0x1c3b9b0cc index 0) — the keyframe animation's timing
   const kf = (k, x) => seg(k, D(clamp01(x)));                   // a keyframe at the transition's own progress x (push p, pop u = 1 − p)
-  const W = () => window.innerWidth;
+  const W = () => document.documentElement.clientWidth;   // the screen width: window.innerWidth also counts content past the right edge (clipped or not: a 488-wide box read innerWidth 488, clientWidth 440 — accept-nav-edge 09-23, the sporadic 578.15 = 488 × 1.18475)
   const parallax = () => -(W() - Math.round(.7 * W()));   // −132 at 440
   const write = () => {
     const pg = st.pg, p = st.tracking ? st.p : Math.max(0, Math.min(1, st.p)), root = document.body;   // the interactive drive may rubber-band past [0, 1] (fluid percent)
@@ -165,5 +165,5 @@
       st.tracking = false; st.spring = RELEASE; st.v = -vProgress; st.target = finish ? 0 : 1; st.last = performance.now(); run();
     },
   };
-  window.Nav = { open, back: () => { if (st.pg) start(-1); }, state: st, fIn, fOut, u1, u2, SPRING, TRACK, RELEASE, interactive, KF, CHEV0, seg, kf, D, RETARGET_IMPULSE, parallax };
+  window.Nav = { open, back: () => { if (st.pg) start(-1); }, state: st, fIn, fOut, u1, u2, SPRING, TRACK, RELEASE, interactive, KF, CHEV0, seg, kf, D, RETARGET_IMPULSE, parallax, W };
 })();
