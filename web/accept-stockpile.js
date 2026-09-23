@@ -192,6 +192,12 @@
       if (pend) pend({ games: [{ "错误": "验收结束" }] });
       if (document.body.classList.contains("pushed")) { const bk = document.querySelector("#subpage .pback"); if (bk) bk.click(); await frames(2000, () => !document.body.classList.contains("pushed")); }
       const t0 = tabs && tabs.querySelector(`button[data-tab="${startTab}"]`); if (t0 && tabOn() !== startTab) t0.click();
+      /* leave the tab bar at rest for the next file (界面 V1 17:0x: this click left the lens driver running and accept-tabbar.js's lift-from-rest rows went red
+         when it ran next) — the same rest test as accept-tabbar.js: no driver, no .tl-on, no item-set animation, no running animation on the glide (≤ 3 s) */
+      const nav = document.querySelector("nav.tabs"), g = nav && nav.querySelector(".glide");
+      if (nav && g) { const s0 = performance.now(), rest = () => !window.__tabLens && !nav.classList.contains("tl-on") && !nav.__tabAnim && !g.getAnimations().some((a) => a.playState === "running");
+        while (!rest() && performance.now() - s0 < 3000) await new Promise((r) => requestAnimationFrame(r));
+        check("库存 收尾：标签栏静止（交给下一个文件前驱动已停、透镜无动画，≤ 3 s）", "静止", `${rest() ? "静止" : "仍在动"} · 等了 ${Math.round(performance.now() - s0)} ms`, rest()); }
     }
   });
 })();

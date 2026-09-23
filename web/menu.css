@@ -3,15 +3,18 @@
    Geometry from menu-card-material.md §1.2: width 250 (defaultMenuWidth), corner 32 (menuCornerRadius, driven per frame by menu.js from the
    button's corner), section insets 10 / 10 (the page's --ios-menu-pad = 10 ✓), item 42 (index.html `.menu button`). */
 .menu.menu.morph { position: fixed; width: auto; padding: 0; overflow: hidden; animation: none; transform: none; transform-origin: 50% 50%;
+/* P0d: the third drop-shadow length is the Gaussian σ (Filter Effects 1 §drop-shadow; Chrome measured σ = the value). The shader profile is f(d) = .5·erfc(d/R), R = ShadowRadius 24
+   (menu-card-material §7.3b: glass_background_sdf_all_lpf %184–%197, inv_radius = 1/R from render 0x1c39943ac) = 1 − Φ(d/σ) with σ = R/√2 = 16.9706 — exact on straight
+   edges; corners (2-D convolution vs the shader's SDF distance) and the shader's |d| ≥ 2R cutoff (< .1/255 here) remain 表达差异. */
   box-sizing: border-box; will-change: left, top, width, height; }   /* left / top / width / height / border-radius / opacity: inline, per frame (menu.js) */
 .menu.menu.morph.up { transform-origin: 50% 50%; }
 .menu.menu.morph .menu-body { position: absolute; left: 0; top: 0; width: 250px; padding: 10px 0; box-sizing: border-box; }   /* the items keep the resting layout while the panel is still small: the panel clips them */
 /* R1 — the glass layer (menu.js buildGlass; keys menu-glass-sdfdump-2026-09-19.md §2 / §3, formulas alert-native-formula.md §1, keyfill-highlight.md §4):
    the panel's own background / backdrop-filter / box-shadow were the alert's sampled substitute (--alert-fill, --ios-alert-glass-filter, --glass-*) —
    off here, the layer below carries the material from the keys */
-.menu.menu.morph { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.12)); }   /* R1′ §7.3: the glassBackground's soft shadow — black α .3 × ShadowOpacity .4 (light) / .6 (dark), radius 24, offset (0, 8); the Gaussian vs the shader's erf-type profile: 剖面近似 */
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .menu.menu.morph { filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.18)); } }
-:root[data-theme="dark"] .menu.menu.morph { filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.18)); }
+.menu.menu.morph { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; filter: drop-shadow(0 8px 16.9706px rgba(0, 0, 0, 0.12)); }   /* R1′ §7.3: the glassBackground's soft shadow — black α .3 × ShadowOpacity .4 (light) / .6 (dark), radius 24 → σ 24/√2 (see below), offset (0, 8) */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .menu.menu.morph { filter: drop-shadow(0 8px 16.9706px rgba(0, 0, 0, 0.18)); } }
+:root[data-theme="dark"] .menu.menu.morph { filter: drop-shadow(0 8px 16.9706px rgba(0, 0, 0, 0.18)); }
 .menu.menu.morph .menu-glass { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; z-index: 0; }   /* clipped to the panel's shape = RingShadowMask 1 */
 .menu.menu.morph .menu-glass-copy { contain: layout paint style; }   /* no will-change: a composited page-sized copy with a url() filter made Chrome re-rasterise the chain every frame of the morph (15 frames / 1.5 s vs 70 without; R63) */
 .menu.menu.morph .menu-body { z-index: 1; }

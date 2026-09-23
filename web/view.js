@@ -390,10 +390,11 @@ function render() {
 
   for (const g of SCHEMA) {
     /* I1 (D72): the 库存 entry — a single-row card with no group header, first group of the 终末地 page, above 基质刷取
-       (inventory-plan.md §2: AX-46 Cell with 17.67 of space above and no header). Not gated by the shift: the stockpile
-       page reads 森空岛 from the phone, not the machine. data-tabfix puts it on the 终末地 page without an h2. */
-    if (g.title === "终末地 · 基质刷取") html += `<section data-tabfix="终末地"><div class="group"><div class="row nav" data-page="stockpile"><label>库存</label>${sf("chevron.right", "chev")}</div></div></section>`;
+       (inventory-plan.md §2: AX-46 Cell with 17.67 of space above and no header). data-tabfix puts it on the 终末地 page without an h2.
+       Gated by the shift like the game's own groups (用户 09-23 18:27 真机 ①「切换到晚班的时候不应该显示终末地，因为终末地不在晚班里面」: emitted
+       before the inShift test, this one row kept the 终末地 tab in 晚班) */
     if (!inShift(g.owner)) continue;
+    if (g.title === "终末地 · 基质刷取") html += `<section data-tabfix="终末地"><div class="group"><div class="row nav" data-page="stockpile"><label>库存</label>${sf("chevron.right", "chev")}</div></div></section>`;
     const M = ((snap && snap.master) || {})[g.game] || {};
     const cur = g.src === "master" ? (M.values || {}) : (c[g.sec] || {});
     const ro = M.readonly || {};
@@ -510,7 +511,7 @@ function render() {
     <div class="row"><label>页面版本<span class="hint">view.js 的 ?v= 戳；没有戳就是本地文件</span></label><span class="ro short" id="pagever">${pageVer}</span></div>
     <div class="row"><label>诊断记录<span class="hint">开着时页面按 ?diag 方式启动：底部一行几何数，分段控件每次操作后弹出记录，可复制 / 分享给我们</span></label>
       <span class="sw"><input type="checkbox" id="diagsw" ${diagOn ? "checked" : ""}><span></span></span></div>
-    <div class="acts"><button id="mklink">复制免输入链接</button></div>
+    <div class="acts"><button id="selfcheck" ${diagOn ? "" : "hidden"}>运行自检</button><button id="mklink">复制免输入链接</button></div>
     <p class="foot">把这条链接存成书签或加到主屏幕，以后打开就直接是控制台，
       再也不用填信箱和 PIN。链接里带着这两样，别转发给别人</p>
   </section>
@@ -808,7 +809,7 @@ function layoutTabs() {
        replayed the slide from the left edge. */
     const on = nav.querySelector("button.on"), g = nav.querySelector(".glide");
     if (!on || !g) return;
-    if (!animate) g.style.transition = "none";
+    g.style.transition = animate ? "" : "none";   // animate: also drops a "none" the item-set driver left while it rode the old selection
     g.style.left = on.offsetLeft + "px"; g.style.width = on.offsetWidth + "px";
     if (!animate) { void g.offsetWidth; g.style.transition = ""; }
   };
@@ -1007,7 +1008,13 @@ function wire() {
     try { const q = new URLSearchParams(location.search); if (dsw.checked) q.set("diag", "1"); else q.delete("diag"); history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q.toString() : "") + location.hash); } catch (e) {}
     if (dsw.checked && !document.querySelector('script[src^="seg-frames-logger.js"]')) { const s = document.createElement("script"); s.src = "seg-frames-logger.js?v=20260923"; document.body.appendChild(s); }
     toast(dsw.checked ? "诊断记录已开：点任意控件都会记一份，出问题按右下角「就是这里」" : "诊断记录已关；下次打开页面不再记录", 4000);
+    const sc = $("#selfcheck"); if (sc) sc.hidden = !dsw.checked;
   };
+  /* 运行自检 (shown while 诊断记录 is on): the page restarts as ?accept=1 — index.html's head backs this phone's data up and keeps every command on the
+     phone, accept.js clicks through the page (a strip on top says so) and the result comes up in the 诊断记录 sheet for 复制 / 分享. The #k= link part is
+     dropped: the mailbox settings are in the backup. */
+  const sc = $("#selfcheck");
+  if (sc) sc.onclick = () => { const q = new URLSearchParams(location.search); q.delete("diag"); q.set("accept", "1"); location.href = location.pathname + "?" + q.toString(); };
   const mk = $("#mklink");
   if (mk) mk.onclick = async () => {
     const url = myLink();
@@ -2017,13 +2024,17 @@ function tabSetAnimate(nav, plat, glideEl, oldRect, navRect0, removed, added) {
   const A = { t0: performance.now(), prev: performance.now(), s3: { x: 1, v: 0 }, s2: { x: 1, v: 0 }, items, removed, added, w0, w1, raf: 0 };
   nav.__tabAnim = A;
   for (const b of added) b.style.opacity = "0";
+  /* the glide rides the selected button only while that button is still the selection: a tap on another tab during the item-set animation
+     (a game tab appearing when its data arrives) hands the glide to selectTab's slide — before, every frame and the end wrote the old button's
+     left back, and the glide stayed on the old tab (界面-串2 09-23 18:4x: accept-tabbar P0b-tabclip row, wall clock, 4 of 5 runs 鸣潮 added 514 ms before the tap) */
+  const mine = () => !!on && on.classList.contains("on");
   const apply = () => {
     const s = Math.max(0, A.s3.x), o = Math.max(0, Math.min(1, A.s2.x));
     for (const it of A.items) it.el.style.transform = s > 0.0005 ? `translateX(${(it.dx * s).toFixed(3)}px)` : "";
     for (const b of A.added) b.style.opacity = s > 0.0005 ? (1 - s).toFixed(4) : "";
     for (const b of A.removed) b.style.opacity = o.toFixed(4);
     const inset = Math.max(0, (w1 - (w1 + (w0 - w1) * s)) / 2); plat.style.left = plat.style.right = inset > 0.01 ? inset.toFixed(3) + "px" : "";
-    if (on) { glideEl.style.transition = "none"; glideEl.style.left = (onLeft + (onItem ? onItem.dx * s : 0)).toFixed(3) + "px"; glideEl.style.width = onWidth + "px"; }
+    if (mine()) { glideEl.style.transition = "none"; glideEl.style.left = (onLeft + (onItem ? onItem.dx * s : 0)).toFixed(3) + "px"; glideEl.style.width = onWidth + "px"; }
   };
   const step = (now) => {
     if (nav.__tabAnim !== A) return;
@@ -2032,7 +2043,7 @@ function tabSetAnimate(nav, plat, glideEl, oldRect, navRect0, removed, added) {
     spring(A.s3, 0, [1, 0.3], dt); spring(A.s2, 0, [1, 0.2], dt);
     apply();
     const settled = Math.abs(A.s3.x) < 0.0005 && Math.abs(A.s3.v) < 0.005 && Math.abs(A.s2.x) < 0.0005;
-    if (settled || now - A.t0 > 2000) { for (const b of A.removed) b.remove(); for (const it of A.items) it.el.style.transform = ""; for (const b of A.added) b.style.opacity = ""; plat.style.left = plat.style.right = ""; if (on) { glideEl.style.left = on.offsetLeft + "px"; void glideEl.offsetWidth; glideEl.style.transition = ""; } nav.__tabAnim = null; return; }
+    if (settled || now - A.t0 > 2000) { for (const b of A.removed) b.remove(); for (const it of A.items) it.el.style.transform = ""; for (const b of A.added) b.style.opacity = ""; plat.style.left = plat.style.right = ""; if (mine()) { glideEl.style.left = on.offsetLeft + "px"; void glideEl.offsetWidth; glideEl.style.transition = ""; } nav.__tabAnim = null; nav.dispatchEvent(new CustomEvent("tabs-settled")); return; }   // tab-lens.js repaints its backdrop from the settled bar
     A.raf = requestAnimationFrame(step);
   };
   apply(); A.raf = requestAnimationFrame(step);
@@ -2345,10 +2356,20 @@ applyTheme();
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 /* 诊断记录 sheet: the frame recorder (seg-frames-logger.js, 2号) writes a record after each segmented-control gesture and dispatches "segframes" with it —
-   the phone cannot hand us localStorage, so the record is offered for copy / share right there (验收 09-19 20:0x, user's Android phone). */
-function showDiagSheet(rec) {
+   the phone cannot hand us localStorage, so the record is offered for copy / share right there (验收 09-19 20:0x, user's Android phone).
+   真机自检 (WORKLIST P3, D31): the same sheet carries accept.js's result — a run started from 运行自检 dispatches "arkaccept" with the whole ark-accept
+   object when it ends, and 关闭 then restarts the page without ?accept (index.html's head puts this phone's own data back). Every frame record also
+   carries selfcheck = this phone's last run (time, page, totals, the failing rows; null = never run here), so a record shared later still says it. */
+function lastSelfcheck() {
+  try { const a = JSON.parse(lastSelfcheck.src() || "null"); if (!a || !Array.isArray(a.rows)) return null;
+    return { at: a.at, href: a.href, viewport: a.viewport, standalone: a.standalone, dark: a.dark, total: a.total, fails: a.fails, failRows: a.rows.filter((r) => !r.ok) }; }
+  catch (e) { return { error: String(e && e.message || e) }; }
+}
+lastSelfcheck.src = () => localStorage.getItem("ark-accept");   // accept-selfcheck.js swaps this: a fake result in ark-accept itself is what a runner polls for
+function showDiagSheet(rec, kind) {
   const sh = $("#diagsheet"); if (!sh || !rec) return;
-  let json = ""; try { json = JSON.stringify(rec); } catch (e) { json = String(rec); }
+  const self = kind === "accept", out = self ? rec : Object.assign({}, rec, { selfcheck: lastSelfcheck() });
+  let json = ""; try { json = JSON.stringify(out); } catch (e) { json = String(out); }
   const kb = Math.round(json.length / 1024 * 10) / 10, fr = Array.isArray(rec.frames) ? rec.frames.length : "?";
   /* 件 C (2026-09-23): the record uploads itself; the sheet says where it got to, so a failure is never silent. `upload.state`:
      sent = 已在桶里, kept = 还在这台手机里（原因在 detail）, failed = 连存都没成。The line updates live on "segframes-upload". */
@@ -2356,15 +2377,20 @@ function showDiagSheet(rec) {
   const ctl = rec.control && (rec.control.label || rec.control.path) ? `点的是「${rec.control.label || rec.control.path}」。` : "";
   const mk = Array.isArray(rec.marks) && rec.marks.length ? `你标了 ${rec.marks.length} 处（${rec.marks.map((m) => m.word || "未选词").join("、")}）。` : "";
   const msg = () => `${ctl}${mk}一份 JSON，${kb} KB，${fr} 帧。${upWord(rec.upload)}。送不到时复制后粘到聊天里，或用分享发出。`;
-  $("#diagsheet-m").textContent = msg();
-  showDiagSheet._live = (r) => { if (!sh.hidden && r && r.record_id === rec.record_id) { rec.upload = r.upload; rec.marks = r.marks; $("#diagsheet-m").textContent = msg(); } };
+  $("#diagsheet-t").textContent = self ? "自检结果" : "诊断记录已生成";
+  $("#diagsheet-m").textContent = self ? `通过 ${rec.total - rec.fails} / ${rec.total}，不通过 ${rec.fails} 项。一份 JSON，${kb} KB。复制后粘到聊天里，或用分享发出；关闭后页面重新打开，换回你自己的数据。` : msg();
+  showDiagSheet._live = self ? null : (r) => { if (!sh.hidden && r && r.record_id === rec.record_id) { rec.upload = r.upload; rec.marks = r.marks; $("#diagsheet-m").textContent = msg(); } };
   const share = $("#diagsheet-share"); share.hidden = !(navigator.share && (!navigator.canShare || navigator.canShare({ text: "x" })));
   $("#diagsheet-copy").onclick = async () => { try { await navigator.clipboard.writeText(json); toast("已复制整份记录"); } catch (e) { toast("复制失败：" + (e && e.message ? e.message : e), 4000); } };
-  share.onclick = async () => { try { await navigator.share({ title: "诊断记录", text: json }); } catch (e) { if (!(e && e.name === "AbortError")) toast("分享失败：" + (e && e.message ? e.message : e), 4000); } };
-  $("#diagsheet-close").onclick = () => { sh.hidden = true; };
+  share.onclick = async () => { try { await navigator.share({ title: self ? "自检结果" : "诊断记录", text: json }); } catch (e) { if (!(e && e.name === "AbortError")) toast("分享失败：" + (e && e.message ? e.message : e), 4000); } };
+  $("#diagsheet-close").onclick = () => { sh.hidden = true;
+    if (self) { const q = new URLSearchParams(location.search); q.delete("accept"); location.replace(location.pathname + (q.toString() ? "?" + q.toString() : "")); } };
   sh.hidden = false;
 }
 addEventListener("segframes", (e) => showDiagSheet(e.detail || window.__segFrames));
+addEventListener("arkaccept", (e) => showDiagSheet(e.detail, "accept"));
+try { if (sessionStorage.getItem("ark-accept-cut")) { sessionStorage.removeItem("ark-accept-cut"); setTimeout(() => toast("自检中途切到了别处，没跑完；本机数据已换回。要结果就再点一次「运行自检」，跑完前别离开这页", 8000), 1200); } } catch (e) {}
+if (window.__acceptRestoreErr) setTimeout(() => toast("自检后换回本机数据没成：" + window.__acceptRestoreErr + "。备份还在，下次打开再试", 8000), 1200);
 /* light records (件 A: any control, many per session) do not open the sheet — the recorder's own line reports them; these two only refresh a sheet that is already open */
 addEventListener("segframes-upload", (e) => { if (showDiagSheet._live) showDiagSheet._live(e.detail); });
 addEventListener("segframes-mark", (e) => { if (showDiagSheet._live) showDiagSheet._live(e.detail); });

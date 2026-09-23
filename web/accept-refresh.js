@@ -79,8 +79,14 @@
         check("下拉刷新 R68′ 带的位置：旋钮中心 = 栏底 + 30（带 安全区 + 54…114 的正中，§12 centerY 约束），大标题文字盒顶 = 带底 + 3.67（推到带之下；3.67 = topbar.css §10b ① 标签盒距栏区），不再是「标题 / 列表间隙、高 6.6」", `cy ${(bandTop + 30).toFixed(1)} · h1 top ${(bandBot + 3.67).toFixed(1)}`, `cy ${cy.toFixed(1)} · h1 top ${hb.top.toFixed(1)}`, Math.abs(cy - (bandTop + 30)) < 0.6 && Math.abs(hb.top - (bandBot + 3.67)) < 0.6); }
       /* ⑤ end */
       window.scrollTo(0, 0); const syEnd = window.scrollY;   // at the top: the whole 60 scrolls back (scrolled ≥ 60 the content would stay put instead)
-      const tE = performance.now(); done(); await sleep(60);
-      const st4 = R.state, midBack = R.back && app ? { t: (performance.now() - R.back.t0) / 1000, m: parseFloat(getComputedStyle(app).marginTop) } : null;   // ⑪: a layout sample mid-way
+      const tE = performance.now(); done();
+      /* ⑪ mid-way layout sample (界面-串2 09-23 18:5x): once red under the old wall-clock runner (界面 17:4x, one of five). The row compared the margin read
+         now with the formula at now, but the margin is the one the driver wrote at its last frame — any gap between that frame and the read (a busy
+         main thread) shows as error at the curve's slope, 60·(π/.6)·sin(π·t/.3) ≈ 185 px/s at t = 60 ms, so a 33 ms gap alone is 6 px; and a sleep
+         stretched past .3 s reads 0. Now: wait for the driver's first frame past 50 ms (≤ 300 ms), read the margin in that task, and hold it to that
+         frame's own value (t, m from backTrace); wall-clock run 18:5x: the read lands 18 ms after that frame, = 3.3 px of the old 6 */
+      { const w0 = performance.now(); while (performance.now() - w0 < 300 && !(R.back && R.backTrace.length && R.backTrace[R.backTrace.length - 1].t >= 0.05)) await new Promise(requestAnimationFrame); }
+      const st4 = R.state, lastF = R.backTrace[R.backTrace.length - 1], midBack = R.back && app && lastF ? { t: lastF.t, mf: lastF.m, m: parseFloat(getComputedStyle(app).marginTop), age: performance.now() - R.back.t0 - lastF.t * 1000 } : null;   // ⑪: a layout sample mid-way
       let opAt = null; await sleep(300); const opEnd = parseFloat(ai.style.opacity || "1"); await settle(() => R.state === 0, 120);   // S1: the go-away's own end (state 0), ≤ the old 120
       check("下拉刷新 ⑤ 结束：状态 4（.3 s ease-in-out (.42,0,.58,1) 淡出 + 再转 3.1316 rad + 缩到 .001，§11a）→ 状态 0，指示器回 0°、透明度回默认", "4 → 0 · rotation 0", `after 60 ms state ${st4} · after 360 ms opacity ${isNaN(opEnd) ? "(default)" : opEnd} · now state ${R.state} · rotation ${R.rotation}`, st4 === 4 && R.state === 0 && R.rotation === 0);
       /* ⑪ the scroll-back (§11 item 1: _setAbsoluteContentOffset:animated: → curve 0, .3 s, progress sin²(π/2 · f)) on the driver's frames */
@@ -88,7 +94,9 @@
         const rmsB = Math.sqrt(bt.reduce((s, r) => s + Math.pow(r.m - exp(r.t), 2), 0) / Math.max(1, bt.length));
         const mtEnd = app ? getComputedStyle(app).marginTop : "-";
         num("下拉刷新 ⑪ 结束后缩进 .3 s 滚回：逐帧 margin 对 60 × (1 − sin²(π/2 · t/.3)) 的 rms（px，" + bt.length + " 帧）", 0, rmsB, 0.5);
-        check("下拉刷新 ⑪ 滚回中途版面真在动：+60 ms 左右读到的 computed margin-top 在 0 与 60 之间、与该时刻公式值差 ≤ 6 px（一帧的斜率）", "0 < m < 60 · |Δ| ≤ 6", midBack ? `t ${midBack.t.toFixed(3)} m ${midBack.m.toFixed(1)} vs ${exp(midBack.t).toFixed(1)}` : "no sample", !!midBack && midBack.m > 0 && midBack.m < 60 && Math.abs(midBack.m - exp(midBack.t)) <= 6);
+        const gapB = bt.reduce((g, r, i) => i ? Math.max(g, r.t - bt[i - 1].t) : g, 0);
+        check("下拉刷新 ⑪ 滚回中途版面真在动：驱动过 50 ms 后的第一帧，当场读 computed margin-top 在 0 与 60 之间、= 该帧写的值（± .5）、该帧值 = 该帧时刻的公式值（± .5）", "0 < m < 60 · = 帧值 · = 公式", midBack ? `帧 t ${midBack.t.toFixed(3)} 读 ${midBack.m.toFixed(2)} 帧值 ${midBack.mf.toFixed(2)} 公式 ${exp(midBack.t).toFixed(2)} · 读时距该帧 ${midBack.age.toFixed(0)} ms · 滚回最大帧距 ${(gapB * 1000).toFixed(0)} ms` : "no sample",
+          !!midBack && midBack.m > 0 && midBack.m < 60 && Math.abs(midBack.m - midBack.mf) <= 0.5 && Math.abs(midBack.mf - exp(midBack.t)) <= 0.5);
         check("下拉刷新 ⑪ 滚回收尾：header margin 0、body.ptr-inset 已除、滚回动画结束", "0px · no class · back null", `${mtEnd} · ${host.classList.contains("ptr-inset") ? "body.ptr-inset" : "no class"} · back ${R.back ? "running" : "null"} · ${bt.length} frames · scrollY at end ${syEnd}`, bt.length >= 8 && mtEnd === "0px" && !host.classList.contains("ptr-inset") && !R.back && !R.insetOn); }
       /* R5 — the arms' geometry (refresh-native-formula.md §10, probe): 8 arms, each 3.667 × 10 with corner 1.833, inner end 5 pt from the centre (outer 15),
          every 45°; the box centred at safe-area top + 54 + 30; colour token --ios-refresh-arm (R61′: instanceColor × seed = secondaryLabel squared at α .6 —

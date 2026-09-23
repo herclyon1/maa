@@ -234,13 +234,26 @@
             pointer: [{ type: "down", t, x: e.clientX, y: e.clientY, lag: lagOf(e) }], done: false, rest: null, settledSince: null };
     cur = null;                                                   // see (2) above: no rich-shaped frame in a light record
     const first = lightReading(t); rec.rest = first.rect ? first.rect.slice() : null; rec.scene0 = first.scene;
+    /* the scene between frames: a state shorter than a frame gap (the alert's .40 s closing fade under 1.5 s frames — simulator A 0fe960c run, 老网页 res json
+       09-23 18:50: frames read true → false, the closing never sampled) is still a fact of what the page did; a class / open / hidden change anywhere writes
+       the scene at that moment to control_events as "sceneMutation" (only when it differs from the last one written) */
+    const r0 = rec; let lastMut = JSON.stringify(first.scene);
+    r0.mo = new MutationObserver(() => { if (r0.done) return; const sc = sceneReading(), js = JSON.stringify(sc); if (js === lastMut) return; lastMut = js;
+      r0.events.push({ t_since_down: round((performance.now() - r0.t_down) / 1000, 3), events: "sceneMutation", scene: sc }); });
+    r0.mo.observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ["class", "open", "hidden"] });
   }
   /* 「动作 → 可见响应」 needs the action too: the click / change the page itself acts on, in the capture phase like the pointers */
   for (const type of ["click", "change", "input"]) addEventListener(type, (e) => {
     if (!rec || rec.done || rec.kind !== "light") return;
     if (markUI && markUI.contains(e.target)) return;
-    rec.events.push({ t_since_down: round((performance.now() - rec.t_down) / 1000, 3), events: type, on: pathOf(e.target),
-                      value: type === "click" ? null : clip(e.target && (e.target.type === "checkbox" ? String(e.target.checked) : e.target.value), 24) });
+    /* the browser's own click after a press the page already answered with its own click at the up is swallowed further down the capture
+       path (view.js installPressables: ghost / data-pe; motion.js: data-rc) — after this window-capture listener, so it used to land here as a
+       second "click" (界面-串2 09-23 18:4x, simulator B: alert 取消 pointerup @8 ms, the page's click @8 untrusted, the browser's @10 trusted;
+       the page acted once). Once the dispatch is over, a click whose default was prevented is renamed click-swallowed */
+    const ent = { t_since_down: round((performance.now() - rec.t_down) / 1000, 3), events: type, on: pathOf(e.target),
+                  value: type === "click" ? null : clip(e.target && (e.target.type === "checkbox" ? String(e.target.checked) : e.target.value), 24) };
+    rec.events.push(ent);
+    if (type === "click") setTimeout(() => { if (e.defaultPrevented) ent.events = "click-swallowed"; }, 0);
   }, true);
   addEventListener("pointermove", (e) => { if (rec && !rec.done && e.pointerId === rec.pointerId) { rec.moves.push(performance.now()); rec.pointer.push({ type: "move", t: performance.now(), x: e.clientX, y: e.clientY, lag: lagOf(e) }); } }, true);
   const up = (e) => { if (rec && !rec.done && e.pointerId === rec.pointerId && rec.t_up === null) { rec.t_up = performance.now(); rec.pointer.push({ type: e.type === "pointercancel" ? "cancel" : "up", t: rec.t_up, x: e.clientX, y: e.clientY, lag: lagOf(e) }); } };
@@ -290,7 +303,7 @@
   }
   /* ---- 件 A: the light record's own output ------------------------------------------------------------------------------------------- */
   function finishLight(why) {
-    rec.done = true;
+    rec.done = true; if (rec.mo) { rec.mo.disconnect(); delete rec.mo; }
     const td = rec.t_down / 1000, tu = (rec.t_up === null ? rec.t_down : rec.t_up) / 1000;
     const st = rec.frames.map((f) => f.sample_t ?? f.pts), gaps = st.slice(1).map((v, i) => v - st[i]).filter((g) => g > 0).sort((a, b) => a - b);
     const interval = gaps.length ? gaps[Math.floor(gaps.length / 2)] : 1 / 60;
@@ -463,6 +476,9 @@
     }
   }
   async function upload(out) {
+    /* 老网页 串2 ① P3 (status-老网页 09-23 18:47, OPEN.md 18:50): the record that reaches the bucket carries this phone's last self-check, as the copied one
+       does (view.js showDiagSheet → lastSelfcheck(): {total, fails, failRows} or null = never run) */
+    if (!("selfcheck" in out)) { try { out.selfcheck = typeof window.lastSelfcheck === "function" ? window.lastSelfcheck() : null; } catch (e) { out.selfcheck = null; } }
     let body = "";
     try { body = JSON.stringify(out); } catch (e) { report(out, "failed", "记录转不成 JSON：" + (e && e.message ? e.message : e)); return; }
     const key = keyFor(), kb = Math.round(body.length / 1024 * 10) / 10;

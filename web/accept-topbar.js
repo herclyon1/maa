@@ -44,11 +44,13 @@ window.ACCEPT && ACCEPT.add(async (ctx) => {
   num(`滚 ${s1.toFixed(1)}：栏底线 --tb-edge 1`, 1, v("--tb-edge"), 0.001);
   check(`滚 ${s1.toFixed(1)}：大标题被栏底裁切（--tb-clip > 0）`, "> 0", root.style.getPropertyValue("--tb-clip"), (parseFloat(root.style.getPropertyValue("--tb-clip")) || 0) > 0);
   /* the switch: progress < 0.05 ⇔ s > 0.95 (p − b) — one side, then the other */
-  await go(sw - 1);
-  num(`滚 ${(sw - 1).toFixed(1)}（阈值前 1 pt）：小标题 0`, 0, parseFloat(cs(small).opacity), 0.01);
-  await go(sw + 1);
-  num(`滚 ${(sw + 1).toFixed(1)}（阈值后 1 pt，§10b ④ 标题区全进栏下）：小标题 1`, 1, parseFloat(cs(small).opacity), 0.01);
-  num(`滚 ${(sw + 1).toFixed(1)}：大标题 0`, 0, parseFloat(cs(h1).opacity), 0.01);
+  /* whole points: WebKit truncates scrollTo(0, 51.4) to scrollY 51 (模拟器 B, 51.4 / 51.39 / 51.5 → 51), which put "1 pt past" the switch before it */
+  const swB = Math.floor(sw - 1), swA = Math.ceil(sw + 1);
+  await go(swB);
+  num(`滚 ${swB}（阈值前 ≥ 1 pt）：小标题 0`, 0, parseFloat(cs(small).opacity), 0.01);
+  await go(swA);
+  num(`滚 ${swA}（阈值后 ≥ 1 pt，§10b ④ 标题区全进栏下）：小标题 1`, 1, parseFloat(cs(small).opacity), 0.01);
+  num(`滚 ${swA}：大标题 0`, 0, parseFloat(cs(h1).opacity), 0.01);
   check("切换过渡 0.2 s（2.5；小标题 transition-duration）", "0.2s", cs(small).transitionDuration, /^0\.2s/.test(cs(small).transitionDuration));
   check("切换过渡 0.2 s（大标题）", "0.2s", cs(h1).transitionDuration, /^0\.2s/.test(cs(h1).transitionDuration));
   check("小标题无位移（§6 item 8：只 alpha）", "none", cs(small).transform, cs(small).transform === "none");
@@ -74,8 +76,12 @@ window.ACCEPT && ACCEPT.add(async (ctx) => {
   const edgeTr = getComputedStyle(document.querySelector("#topbar"), "::after").transitionDuration, edgeFn = getComputedStyle(document.querySelector("#topbar"), "::after").transitionTimingFunction;
   check("栏底线淡入 0.517 s（§10b ②：ScrollEdgeEffectView 31 帧）", "0.517s", edgeTr, /^0\.517s/.test(edgeTr));
   check("栏底线淡入曲线 = 探针 31 采样（linear()）", "linear(0 0%, 0.008 3.3%, 0.166 6.7%, …)", edgeFn.slice(0, 44), /^linear\(0 0%, 0\.008 3\.3\d*%, 0\.166 6\.6/.test(edgeFn));
-  await go(sw + 1);
+  await go(swA);
   check("旧入口 view.js onScroll 已让位（--big 不再由它驱动：为空或 0）", "空/0", root.style.getPropertyValue("--big") || "空", !(parseFloat(root.style.getPropertyValue("--big")) > 0));
+  /* OPEN.md 09-23 18:50 (0fe960c on 模拟器 A: p 50.889 vs geometry 51.889): a size change of the large title while the page is scrolled re-measures p
+     at once (topbar.js ResizeObserver), not only at the next return to the top */
+  { await go(100); const pA = T.p; h1.style.paddingBottom = "1px"; await frame(); await frame(); const pB = T.p; h1.style.paddingBottom = ""; await frame(); await frame(); const pC = T.p;
+    check("滚在 100 时大标题框高 +1 → p 当即 +1、复原后回原值（不等回到顶部）", `${(pA + 1).toFixed(2)} → ${pA.toFixed(2)}`, `${pB.toFixed(2)} → ${pC.toFixed(2)}`, Math.abs(pB - pA - 1) <= 0.05 && Math.abs(pC - pA) <= 0.05); }
   T.snap = snapWas; window.scrollTo(0, y0); await frame(); T.apply();
   /* R3 (2号) — the scroll pocket: the layer, its keys (nav-pocket-sdfdump §1 / §2, nav-bar-scroll-formula §6b), its alpha with the scroll, the copy on the page's pixels */
   { const P = window.TopbarPocket, el = P && P.el; if (!el) { check("口袋：层存在（topbar.js R3）", "有", "缺", false); }
